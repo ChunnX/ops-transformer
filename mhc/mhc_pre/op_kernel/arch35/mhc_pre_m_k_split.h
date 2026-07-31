@@ -17,7 +17,7 @@
 #define MHC_PRE_M_K_SPLIT_H
 
 #include "mhc_pre_cube_compute.h"
-#include "mhc_pre_bs_common.h"
+#include "mhc_pre_vector_compute.h"
 
 namespace MhcPre {
 
@@ -568,62 +568,60 @@ __aicore__ inline void MhcPreMkVFReducePartialsSequentialFlat(
     }
 }
 
-template <class T, class P, int8_t HAS_RESI>
-class MhcPreMKPart1 : public MhcPreBsCommon<T, P, HAS_RESI> {
+template <class T, class P, int8_t RESI_MODE>
+class MhcPreMKPart1 {
 public:
-    using Parent = MhcPreBsCommon<T, P, HAS_RESI>;
-
     __aicore__ inline MhcPreMKPart1() = default;
 
     __aicore__ inline void Init(InitParams initParams)
     {
-        this->BindGlobalTensors(initParams);
-        this->InitFromTilingData(initParams.tilingData);
-        this->InitMNConfig();
-        this->pipe_ = initParams.tPipeIn;
+        vector_.BindGlobalTensors(initParams);
+        vector_.InitFromTilingData(initParams.tilingData);
+        vector_.InitMNConfig();
+        vector_.pipe_ = initParams.tPipeIn;
         partialMmGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(
-            initParams.workspace + this->tiling_->mkWorkspaceMmOffset));
+            initParams.workspace + vector_.tiling_->mkWorkspaceMmOffset));
         partialRmsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(
-            initParams.workspace + this->tiling_->mkWorkspaceRmsOffset));
+            initParams.workspace + vector_.tiling_->mkWorkspaceRmsOffset));
         if (UseGmStage()) {
             xStageGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(
-                initParams.workspace + this->tiling_->mkWorkspaceFinalOffset));
+                initParams.workspace + vector_.tiling_->mkWorkspaceFinalOffset));
         }
 
-        this->pipe_->InitBuffer(l1Buffer_, MHC_PRE_BASIC_API_L1_ALLOC_SIZE);
+        vector_.pipe_->InitBuffer(l1Buffer_, MHC_PRE_BASIC_API_L1_ALLOC_SIZE);
         aL1_ = l1Buffer_.Get<P>();
         bL1_ = aL1_[MHC_PRE_BASIC_API_L1_BUF_NUM * MHC_PRE_BASIC_API_L1_BUF_OFFSET];
 
         if ASCEND_IS_AIC {
-            mmService_.Init(this->implMode_);
+            mmService_.Init(vector_.implMode_);
             // Seed two availability tokens for each subblock because X staging
             // is ping-ponged. Every later token is returned after AIC consumes X.
-            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MhcPreUtils::X_CONSUMED_FLAG);
-            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
-                MhcPreUtils::X_CONSUMED_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
-            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MhcPreUtils::X_CONSUMED_FLAG);
-            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
-                MhcPreUtils::X_CONSUMED_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
+            CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MHC_PRE_X_CONSUMED_FLAG);
+            CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+                MHC_PRE_X_CONSUMED_FLAG + MHC_PRE_SUBBLOCK_FLAG_OFFSET);
+            CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MHC_PRE_X_CONSUMED_FLAG);
+            CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+                MHC_PRE_X_CONSUMED_FLAG + MHC_PRE_SUBBLOCK_FLAG_OFFSET);
         }
         if ASCEND_IS_AIV {
-            uint32_t rowCapacity = (this->tiling_->mL1Size + 1U) / 2U;
-            uint32_t kCapacity = BasicApiRoundUp<T>(this->tiling_->kUbSize);
-            this->pipe_->InitBuffer(this->xInQueue_, 2, rowCapacity * kCapacity * sizeof(T));
-            this->pipe_->InitBuffer(this->outQueue_, UseGmStage() ? 2 : 1,
-                                    rowCapacity * BasicApiRoundUp<P>(this->tiling_->kUbSize) * sizeof(P));
-            this->pipe_->InitBuffer(this->invRmsOutQueue_, 1,
-                                    BasicApiRoundUp<P>(rowCapacity) * sizeof(P));
-            if (this->hasGamma_) {
-                this->pipe_->InitBuffer(this->gammaInQueue_, 2,
-                                        BasicApiRoundUp<P>(this->tiling_->kUbSize) * sizeof(P));
+            uint32_t rowCapacity = (vector_.tiling_->mL1Size + 1U) / 2U;
+            uint32_t kCapacity = BasicApiRoundUp<T>(vector_.tiling_->kUbSize);
+            vector_.pipe_->InitBuffer(vector_.xInQueue_, 2, rowCapacity * kCapacity * sizeof(T));
+            vector_.pipe_->InitBuffer(vector_.outQueue_, UseGmStage() ? 2 : 1,
+                                      rowCapacity * BasicApiRoundUp<P>(vector_.tiling_->kUbSize) * sizeof(P));
+            vector_.pipe_->InitBuffer(vector_.invRmsOutQueue_, 1,
+                                      BasicApiRoundUp<P>(rowCapacity) * sizeof(P));
+            if (vector_.hasGamma_) {
+                vector_.pipe_->InitBuffer(vector_.gammaInQueue_, 2,
+                                          BasicApiRoundUp<P>(vector_.tiling_->kUbSize) * sizeof(P));
             }
             if (!UseGmStage()) {
-                this->pipe_->InitBuffer(nd2NzBuf_,
-                                        BasicApiAlign(rowCapacity, MHC_PRE_BASIC_API_C0_SIZE) *
-                                            BasicApiRoundUp<P>(this->tiling_->kUbSize) * sizeof(P));
+                vector_.pipe_->InitBuffer(nd2NzBuf_,
+                                          BasicApiAlign(rowCapacity, MHC_PRE_BASIC_API_C0_SIZE) *
+                                              BasicApiRoundUp<P>(vector_.tiling_->kUbSize) * sizeof(P));
                 nd2NzLocal_ = nd2NzBuf_.Get<P>();
             }
-            this->invRmsUb_ = this->invRmsOutQueue_.template AllocTensor<P>();
+            vector_.invRmsUb_ = vector_.invRmsOutQueue_.template AllocTensor<P>();
         }
     }
 
@@ -633,17 +631,17 @@ public:
         if ASCEND_IS_AIV {
             aicIndex /= 2U;
         }
-        uint32_t usedCoreNum = this->tiling_->cubeBlockDimM * this->tiling_->cubeBlockDimK;
+        uint32_t usedCoreNum = vector_.tiling_->cubeBlockDimM * vector_.tiling_->cubeBlockDimK;
         if (aicIndex < usedCoreNum) {
-            uint32_t mIndex = aicIndex / this->tiling_->cubeBlockDimK;
-            uint32_t kIndex = aicIndex % this->tiling_->cubeBlockDimK;
-            uint32_t mStart = mIndex * this->tiling_->mL1Size;
+            uint32_t mIndex = aicIndex / vector_.tiling_->cubeBlockDimK;
+            uint32_t kIndex = aicIndex % vector_.tiling_->cubeBlockDimK;
+            uint32_t mStart = mIndex * vector_.tiling_->mL1Size;
             uint32_t mReal = AscendC::Std::min(
-                static_cast<uint64_t>(this->tiling_->mL1Size), this->totalLength_ - mStart);
-            uint32_t kStart = kIndex * this->tiling_->multCoreSplitKSize;
+                static_cast<uint64_t>(vector_.tiling_->mL1Size), vector_.totalLength_ - mStart);
+            uint32_t kStart = kIndex * vector_.tiling_->multCoreSplitKSize;
             uint32_t kEnd = AscendC::Std::min(
-                static_cast<uint64_t>(kStart + this->tiling_->multCoreSplitKSize),
-                static_cast<uint64_t>(this->matrixInfo_.nD));
+                static_cast<uint64_t>(kStart + vector_.tiling_->multCoreSplitKSize),
+                static_cast<uint64_t>(vector_.matrixInfo_.nD));
             if ASCEND_IS_AIC {
                 ProcessAic(mStart, mReal, kIndex, kStart, kEnd);
             } else {
@@ -651,7 +649,7 @@ public:
             }
         }
         if ASCEND_IS_AIC {
-            mmService_.End(this->implMode_);
+            mmService_.End(vector_.implMode_);
         }
         SyncAll<false>();
     }
@@ -659,12 +657,12 @@ public:
 private:
     __aicore__ inline bool UseSequentialKPartials() const
     {
-        return this->tiling_->multCoreSplitKSize >= MHC_PRE_MK_SEQUENTIAL_PARTIAL_THRESHOLD;
+        return vector_.tiling_->multCoreSplitKSize >= MHC_PRE_MK_SEQUENTIAL_PARTIAL_THRESHOLD;
     }
 
     __aicore__ inline bool UseGmStage() const
     {
-        return this->tiling_->mkUseGmStage != 0U;
+        return vector_.tiling_->mkUseGmStage != 0U;
     }
 
     __aicore__ inline void ProcessAic(uint32_t mStart, uint32_t mReal, uint32_t kIndex,
@@ -675,20 +673,20 @@ private:
                                 MHC_PRE_MK_SEQUENTIAL_PARTIAL_K :
                                 static_cast<uint64_t>(kEnd - kStart);
         uint64_t mAlign = BasicApiAlign(mReal, AscendC::BLOCK_CUBE);
-        uint64_t nAlign = BasicApiAlign(this->matrixInfo_.fusionSize, AscendC::BLOCK_CUBE);
+        uint64_t nAlign = BasicApiAlign(vector_.matrixInfo_.fusionSize, AscendC::BLOCK_CUBE);
         uint64_t baseK = (256U / AscendC::Std::max(mAlign, nAlign)) * 32U;
         uint64_t stageSlotElements =
-            static_cast<uint64_t>(this->tiling_->mL1Size) * this->tiling_->kL1Size;
+            static_cast<uint64_t>(vector_.tiling_->mL1Size) * vector_.tiling_->kL1Size;
         uint64_t stageCoreOffset = 2U * GetBlockIdx() * stageSlotElements;
         uint64_t partialBaseIndex = useSequentialPartials ? 0U : kIndex;
         uint64_t partialBaseOffset =
-            (partialBaseIndex * this->totalLength_ + mStart) * this->matrixInfo_.fusionSize;
+            (partialBaseIndex * vector_.totalLength_ + mStart) * vector_.matrixInfo_.fusionSize;
         uint64_t partialGroupStride =
-            this->totalLength_ * this->matrixInfo_.fusionSize;
-        mmService_.ProcessKRange(mReal, this->matrixInfo_.fusionSize, this->matrixInfo_.nD,
-                                 mReal, baseK, kStart, kEnd, this->tiling_->kL1Size,
+            vector_.totalLength_ * vector_.matrixInfo_.fusionSize;
+        mmService_.ProcessKRange(mReal, vector_.matrixInfo_.fusionSize, vector_.matrixInfo_.nD,
+                                 mReal, baseK, kStart, kEnd, vector_.tiling_->kL1Size,
                                  useSequentialPartials, partialK, UseGmStage(), stageSlotElements,
-                                 stageCoreOffset, this->phiGm_, xStageGm_, partialMmGm_[partialBaseOffset],
+                                 stageCoreOffset, vector_.phiGm_, xStageGm_, partialMmGm_[partialBaseOffset],
                                  partialGroupStride, aL1_, bL1_);
     }
     __aicore__ inline void ProcessAiv(uint32_t mStart, uint32_t mReal, uint32_t kIndex,
@@ -698,96 +696,96 @@ private:
         uint32_t rowStart = GetSubBlockIdx() == 0 ? 0U : firstRows;
         uint32_t rowCount = GetSubBlockIdx() == 0 ? firstRows : mReal - firstRows;
         uint8_t aL1BufferId = 0;
-        this->globalOffsetM_ = mStart;
+        vector_.globalOffsetM_ = mStart;
         if (rowCount == 0U) {
-            for (uint32_t kOffset = kStart; kOffset < kEnd; kOffset += this->tiling_->kL1Size) {
-                CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::X_CONSUMED_FLAG);
-                CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::X_READY_FLAG);
+            for (uint32_t kOffset = kStart; kOffset < kEnd; kOffset += vector_.tiling_->kL1Size) {
+                CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MHC_PRE_X_CONSUMED_FLAG);
+                CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MHC_PRE_X_READY_FLAG);
             }
-            this->invRmsOutQueue_.FreeTensor(this->invRmsUb_);
+            vector_.invRmsOutQueue_.FreeTensor(vector_.invRmsUb_);
             return;
         }
         if (!UseGmStage()) {
             SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
         }
         uint32_t firstK = AscendC::Std::min(
-            static_cast<uint64_t>(this->tiling_->kL1Size), static_cast<uint64_t>(kEnd - kStart));
-        this->xLocal_ = this->xInQueue_.template AllocTensor<T>();
-        this->DataCopyX(rowCount, firstK, rowStart, kStart);
-        if (this->hasGamma_) {
-            this->gammaUb_ = this->gammaInQueue_.template AllocTensor<P>();
-            this->DataCopyGamma(firstK, kStart);
+            static_cast<uint64_t>(vector_.tiling_->kL1Size), static_cast<uint64_t>(kEnd - kStart));
+        vector_.xLocal_ = vector_.xInQueue_.template AllocTensor<T>();
+        vector_.DataCopyX(rowCount, firstK, rowStart, kStart);
+        if (vector_.hasGamma_) {
+            vector_.gammaUb_ = vector_.gammaInQueue_.template AllocTensor<P>();
+            vector_.DataCopyGamma(firstK, kStart);
         }
 
-        for (uint32_t kOffset = kStart; kOffset < kEnd; kOffset += this->tiling_->kL1Size) {
+        for (uint32_t kOffset = kStart; kOffset < kEnd; kOffset += vector_.tiling_->kL1Size) {
             uint32_t currentK = AscendC::Std::min(
-                static_cast<uint64_t>(this->tiling_->kL1Size), static_cast<uint64_t>(kEnd - kOffset));
-            CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::X_CONSUMED_FLAG);
+                static_cast<uint64_t>(vector_.tiling_->kL1Size), static_cast<uint64_t>(kEnd - kOffset));
+            CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MHC_PRE_X_CONSUMED_FLAG);
 
-            LocalTensor<T> currentXLocal = this->xInQueue_.template DeQue<T>();
-            LocalTensor<P> xFloatLocal = this->outQueue_.template AllocTensor<P>();
+            LocalTensor<T> currentXLocal = vector_.xInQueue_.template DeQue<T>();
+            LocalTensor<P> xFloatLocal = vector_.outQueue_.template AllocTensor<P>();
             bool initializeRms = kOffset == kStart;
             LocalTensor<P> currentGammaLocal;
-            if (this->hasGamma_) {
-                currentGammaLocal = this->gammaInQueue_.template DeQue<P>();
+            if (vector_.hasGamma_) {
+                currentGammaLocal = vector_.gammaInQueue_.template DeQue<P>();
             }
 
-            uint32_t nextKOffset = kOffset + this->tiling_->kL1Size;
+            uint32_t nextKOffset = kOffset + vector_.tiling_->kL1Size;
             if (nextKOffset < kEnd) {
                 uint32_t nextK = AscendC::Std::min(
-                    static_cast<uint64_t>(this->tiling_->kL1Size),
+                    static_cast<uint64_t>(vector_.tiling_->kL1Size),
                     static_cast<uint64_t>(kEnd - nextKOffset));
-                this->xLocal_ = this->xInQueue_.template AllocTensor<T>();
-                this->DataCopyX(rowCount, nextK, rowStart, nextKOffset);
-                if (this->hasGamma_) {
-                    this->gammaUb_ = this->gammaInQueue_.template AllocTensor<P>();
-                    this->DataCopyGamma(nextK, nextKOffset);
+                vector_.xLocal_ = vector_.xInQueue_.template AllocTensor<T>();
+                vector_.DataCopyX(rowCount, nextK, rowStart, nextKOffset);
+                if (vector_.hasGamma_) {
+                    vector_.gammaUb_ = vector_.gammaInQueue_.template AllocTensor<P>();
+                    vector_.DataCopyGamma(nextK, nextKOffset);
                 }
             }
 
-            if (this->hasGamma_) {
+            if (vector_.hasGamma_) {
                 if (initializeRms) {
-                    MhcPreMkVFProcessXInGamma<T, true>(xFloatLocal, this->invRmsUb_,
+                    MhcPreMkVFProcessXInGamma<T, true>(xFloatLocal, vector_.invRmsUb_,
                                                        currentXLocal, currentGammaLocal, rowCount, currentK);
                 } else {
-                    MhcPreMkVFProcessXInGamma<T, false>(xFloatLocal, this->invRmsUb_,
+                    MhcPreMkVFProcessXInGamma<T, false>(xFloatLocal, vector_.invRmsUb_,
                                                         currentXLocal, currentGammaLocal, rowCount, currentK);
                 }
-                this->gammaInQueue_.FreeTensor(currentGammaLocal);
+                vector_.gammaInQueue_.FreeTensor(currentGammaLocal);
             } else if (initializeRms) {
-                this->template VFDoV0ProcessXIn<false, true>((__ubuf__ P *)xFloatLocal.GetPhyAddr(),
-                                                             (__ubuf__ P *)this->invRmsUb_.GetPhyAddr(),
-                                                             (__ubuf__ T *)currentXLocal.GetPhyAddr(), nullptr, rowCount, currentK);
+                vector_.template VFDoV0ProcessXIn<false, true>((__ubuf__ P *)xFloatLocal.GetPhyAddr(),
+                                                               (__ubuf__ P *)vector_.invRmsUb_.GetPhyAddr(),
+                                                               (__ubuf__ T *)currentXLocal.GetPhyAddr(), nullptr, rowCount, currentK);
             } else {
-                this->template VFDoV0ProcessXIn<false, false>((__ubuf__ P *)xFloatLocal.GetPhyAddr(),
-                                                              (__ubuf__ P *)this->invRmsUb_.GetPhyAddr(),
-                                                              (__ubuf__ T *)currentXLocal.GetPhyAddr(), nullptr, rowCount, currentK);
+                vector_.template VFDoV0ProcessXIn<false, false>((__ubuf__ P *)xFloatLocal.GetPhyAddr(),
+                                                                (__ubuf__ P *)vector_.invRmsUb_.GetPhyAddr(),
+                                                                (__ubuf__ T *)currentXLocal.GetPhyAddr(), nullptr, rowCount, currentK);
             }
-            this->xInQueue_.FreeTensor(currentXLocal);
+            vector_.xInQueue_.FreeTensor(currentXLocal);
 
             if (UseGmStage()) {
-                this->outQueue_.template EnQue<P>(xFloatLocal);
-                xFloatLocal = this->outQueue_.template DeQue<P>();
+                vector_.outQueue_.template EnQue<P>(xFloatLocal);
+                xFloatLocal = vector_.outQueue_.template DeQue<P>();
                 DataCopyExtParams xCopyParams;
                 xCopyParams.blockCount = static_cast<uint16_t>(rowCount);
                 xCopyParams.blockLen = currentK * sizeof(P);
                 xCopyParams.srcStride =
                     (BasicApiRoundUp<P>(currentK) - currentK) * sizeof(P);
                 xCopyParams.dstStride =
-                    (this->tiling_->kL1Size - currentK) * sizeof(P);
+                    (vector_.tiling_->kL1Size - currentK) * sizeof(P);
                 uint64_t stageSlotElements =
-                    static_cast<uint64_t>(this->tiling_->mL1Size) * this->tiling_->kL1Size;
+                    static_cast<uint64_t>(vector_.tiling_->mL1Size) * vector_.tiling_->kL1Size;
                 uint64_t stageOffset =
                     (2U * (GetBlockIdx() / 2U) + aL1BufferId) * stageSlotElements +
-                    static_cast<uint64_t>(rowStart) * this->tiling_->kL1Size;
+                    static_cast<uint64_t>(rowStart) * vector_.tiling_->kL1Size;
                 DataCopyPad(xStageGm_[stageOffset], xFloatLocal, xCopyParams);
-                this->outQueue_.FreeTensor(xFloatLocal);
+                vector_.outQueue_.FreeTensor(xFloatLocal);
             } else {
                 constexpr event_t eventId = EVENT_ID0;
                 WaitFlag<HardEvent::MTE3_V>(eventId);
                 LocalTensor<P> currentNd2Nz = nd2NzLocal_;
                 MhcPreMkVFTransND2NZ(currentNd2Nz, xFloatLocal, rowCount, currentK);
-                this->outQueue_.FreeTensor(xFloatLocal);
+                vector_.outQueue_.FreeTensor(xFloatLocal);
                 SetFlag<HardEvent::V_MTE3>(eventId);
                 WaitFlag<HardEvent::V_MTE3>(eventId);
                 DataCopyParams copyParams;
@@ -802,7 +800,7 @@ private:
                                  aL1_[aL1BufferId * MHC_PRE_BASIC_API_L1_BUF_OFFSET + dstRowOffset], copyParams);
                 SetFlag<HardEvent::MTE3_V>(eventId);
             }
-            CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MhcPreUtils::X_READY_FLAG);
+            CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(MHC_PRE_X_READY_FLAG);
             aL1BufferId ^= 1U;
         }
         if (!UseGmStage()) {
@@ -813,12 +811,13 @@ private:
         copyParams.blockLen = rowCount * sizeof(P);
         copyParams.srcStride = 0;
         copyParams.dstStride = 0;
-        uint64_t rmsOffset = static_cast<uint64_t>(kIndex) * this->totalLength_ + mStart + rowStart;
-        DataCopyPad(partialRmsGm_[rmsOffset], this->invRmsUb_, copyParams);
-        this->invRmsOutQueue_.FreeTensor(this->invRmsUb_);
+        uint64_t rmsOffset = static_cast<uint64_t>(kIndex) * vector_.totalLength_ + mStart + rowStart;
+        DataCopyPad(partialRmsGm_[rmsOffset], vector_.invRmsUb_, copyParams);
+        vector_.invRmsOutQueue_.FreeTensor(vector_.invRmsUb_);
     }
 
 private:
+    MhcPreVectorCompute<T, P, RESI_MODE> vector_;
     GlobalTensor<P> partialMmGm_;
     GlobalTensor<P> partialRmsGm_;
     GlobalTensor<P> xStageGm_;
@@ -830,46 +829,44 @@ private:
     MhcPreCubeCompute mmService_;
 };
 
-template <class T, class P, int8_t HAS_RESI>
-class MhcPreMKPart2 : public MhcPreBsCommon<T, P, HAS_RESI> {
+template <class T, class P, int8_t RESI_MODE>
+class MhcPreMKPart2 {
 public:
-    using Parent = MhcPreBsCommon<T, P, HAS_RESI>;
-
     __aicore__ inline MhcPreMKPart2() = default;
 
     __aicore__ inline void Init(InitParams initParams)
     {
-        this->BindGlobalTensors(initParams);
-        this->InitFromTilingData(initParams.tilingData);
-        this->InitMNConfig();
-        this->pipe_ = initParams.tPipeIn;
+        vector_.BindGlobalTensors(initParams);
+        vector_.InitFromTilingData(initParams.tilingData);
+        vector_.InitMNConfig();
+        vector_.pipe_ = initParams.tPipeIn;
         partialMmGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(
-            initParams.workspace + this->tiling_->mkWorkspaceMmOffset));
+            initParams.workspace + vector_.tiling_->mkWorkspaceMmOffset));
         partialRmsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(
-            initParams.workspace + this->tiling_->mkWorkspaceRmsOffset));
-        if (this->outFlag_) {
-            this->hMixGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_mix));
+            initParams.workspace + vector_.tiling_->mkWorkspaceRmsOffset));
+        if (vector_.outFlag_) {
+            vector_.hMixGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_mix));
         }
-        this->InitUbBuffers(false, kPart2MaxRows);
+        vector_.InitUbBuffers(false, kPart2MaxRows);
 
         if ASCEND_IS_AIV {
             uint32_t aivIndex = GetBlockIdx();
-            selected_ = aivIndex < this->tiling_->stage2UsedAivNum;
+            selected_ = aivIndex < vector_.tiling_->stage2UsedAivNum;
             if (selected_) {
                 uint64_t absoluteMStart =
-                    static_cast<uint64_t>(aivIndex) * this->tiling_->stage2RowsPerCore;
-                uint64_t mIndex = absoluteMStart / this->tiling_->mL1Size;
-                uint64_t localMStart = absoluteMStart - mIndex * this->tiling_->mL1Size;
-                this->coreIdx_ = mIndex;
-                this->globalOffsetM_ = static_cast<uint64_t>(mIndex) * this->tiling_->mL1Size;
-                this->curSingleT_ = AscendC::Std::min(
-                    static_cast<uint64_t>(this->tiling_->stage2RowsPerCore),
-                    this->totalLength_ - absoluteMStart);
-                this->mnConfig_.curSingleCoreM = this->curSingleT_;
-                this->vectorOffset_.singleCoreM = this->curSingleT_;
-                this->vectorOffset_.offsetMStart = localMStart;
-                this->vectorOffset_.offsetMEnd = localMStart + this->curSingleT_;
-                this->AIVPreLoad();
+                    static_cast<uint64_t>(aivIndex) * vector_.tiling_->stage2RowsPerCore;
+                uint64_t mIndex = absoluteMStart / vector_.tiling_->mL1Size;
+                uint64_t localMStart = absoluteMStart - mIndex * vector_.tiling_->mL1Size;
+                vector_.coreIdx_ = mIndex;
+                vector_.globalOffsetM_ = static_cast<uint64_t>(mIndex) * vector_.tiling_->mL1Size;
+                vector_.curSingleT_ = AscendC::Std::min(
+                    static_cast<uint64_t>(vector_.tiling_->stage2RowsPerCore),
+                    vector_.totalLength_ - absoluteMStart);
+                vector_.mnConfig_.curSingleCoreM = vector_.curSingleT_;
+                vector_.vectorOffset_.singleCoreM = vector_.curSingleT_;
+                vector_.vectorOffset_.offsetMStart = localMStart;
+                vector_.vectorOffset_.offsetMEnd = localMStart + vector_.curSingleT_;
+                vector_.AIVPreLoad();
             }
         }
     }
@@ -879,12 +876,12 @@ public:
         if ASCEND_IS_NOT_AIV {
             return;
         }
-        if (!selected_ || this->vectorOffset_.singleCoreM == 0) {
+        if (!selected_ || vector_.vectorOffset_.singleCoreM == 0) {
             return;
         }
         ReduceAndPostProcess();
-        this->invRmsOutQueue_.FreeTensor(this->invRmsUb_);
-        this->biasInQue_.FreeTensor(this->biasInUb_);
+        vector_.invRmsOutQueue_.FreeTensor(vector_.invRmsUb_);
+        vector_.biasInQue_.FreeTensor(vector_.biasInUb_);
     }
 
 private:
@@ -895,7 +892,7 @@ private:
 
     __aicore__ inline bool UseSequentialKPartials() const
     {
-        return this->tiling_->multCoreSplitKSize >= MHC_PRE_MK_SEQUENTIAL_PARTIAL_THRESHOLD;
+        return vector_.tiling_->multCoreSplitKSize >= MHC_PRE_MK_SEQUENTIAL_PARTIAL_THRESHOLD;
     }
 
     __aicore__ inline uint32_t GetReduceRows(uint32_t remainingRows, uint32_t mmGroupK,
@@ -920,168 +917,169 @@ private:
         uint64_t localOffset = 0;
         bool useSequentialKPartials = UseSequentialKPartials();
         uint32_t groupK = useSequentialKPartials ?
-                              BasicApiCeilDiv(this->matrixInfo_.nD, MHC_PRE_MK_SEQUENTIAL_PARTIAL_K) :
-                              this->tiling_->cubeBlockDimK;
-        uint32_t rmsGroupK = this->tiling_->cubeBlockDimK;
-        uint32_t fusionSize = this->matrixInfo_.fusionSize;
+                              BasicApiCeilDiv(vector_.matrixInfo_.nD, MHC_PRE_MK_SEQUENTIAL_PARTIAL_K) :
+                              vector_.tiling_->cubeBlockDimK;
+        uint32_t rmsGroupK = vector_.tiling_->cubeBlockDimK;
+        uint32_t fusionSize = vector_.matrixInfo_.fusionSize;
         bool useSequentialMmReduce =
-            useSequentialKPartials || this->implMode_ == MHC_PRE_IMPL_MODE_HF32;
+            useSequentialKPartials || vector_.implMode_ == MHC_PRE_IMPL_MODE_HF32;
         bool useFlatSequentialReduce = useSequentialKPartials &&
-                                       (this->totalLength_ >= MHC_PRE_MK_FLAT_REDUCE_MIN_M ||
+                                       (vector_.totalLength_ >= MHC_PRE_MK_FLAT_REDUCE_MIN_M ||
                                         groupK >= MHC_PRE_MK_FLAT_REDUCE_MIN_GROUP_K);
-        for (uint32_t offsetT = this->vectorOffset_.offsetMStart;
-             offsetT < this->vectorOffset_.offsetMEnd;) {
+        for (uint32_t offsetT = vector_.vectorOffset_.offsetMStart;
+             offsetT < vector_.vectorOffset_.offsetMEnd;) {
             uint32_t lenT = GetReduceRows(
-                this->vectorOffset_.offsetMEnd - offsetT, groupK, rmsGroupK, fusionSize);
+                vector_.vectorOffset_.offsetMEnd - offsetT, groupK, rmsGroupK, fusionSize);
             uint32_t rmsStride = BasicApiRoundUp<P>(lenT);
             uint32_t mmGroupStride = BasicApiRoundUp<P>(lenT * fusionSize);
             uint32_t mmPartialElements = groupK * mmGroupStride;
-            LocalTensor<P> partialLocal = this->xInQueue_.template AllocTensor<P>();
+            LocalTensor<P> partialLocal = vector_.xInQueue_.template AllocTensor<P>();
             LocalTensor<P> rmsPartialLocal = partialLocal[mmPartialElements];
 
             DataCopyExtParams mmCopyParams;
             mmCopyParams.blockCount = groupK;
             mmCopyParams.blockLen = lenT * fusionSize * sizeof(P);
-            mmCopyParams.srcStride = (this->totalLength_ - lenT) * fusionSize * sizeof(P);
+            mmCopyParams.srcStride = (vector_.totalLength_ - lenT) * fusionSize * sizeof(P);
             mmCopyParams.dstStride = 0;
             DataCopyPadExtParams<P> mmPadParams{true, 0, 0, 0};
-            uint64_t mmSourceOffset = (this->globalOffsetM_ + offsetT) * fusionSize;
+            uint64_t mmSourceOffset = (vector_.globalOffsetM_ + offsetT) * fusionSize;
             DataCopyPad(partialLocal, partialMmGm_[mmSourceOffset], mmCopyParams, mmPadParams);
 
             DataCopyExtParams rmsCopyParams;
             rmsCopyParams.blockCount = useSequentialKPartials ?
-                                           this->tiling_->cubeBlockDimK :
+                                           vector_.tiling_->cubeBlockDimK :
                                            groupK;
             rmsCopyParams.blockLen = lenT * sizeof(P);
-            rmsCopyParams.srcStride = (this->totalLength_ - lenT) * sizeof(P);
+            rmsCopyParams.srcStride = (vector_.totalLength_ - lenT) * sizeof(P);
             rmsCopyParams.dstStride = 0;
             DataCopyPadExtParams<P> rmsPadParams{true, 0,
                                                  static_cast<uint8_t>(rmsStride - lenT), 0};
-            uint64_t rmsSourceOffset = this->globalOffsetM_ + offsetT;
+            uint64_t rmsSourceOffset = vector_.globalOffsetM_ + offsetT;
             DataCopyPad(rmsPartialLocal, partialRmsGm_[rmsSourceOffset], rmsCopyParams, rmsPadParams);
 
-            this->xInQueue_.template EnQue<P>(partialLocal);
-            partialLocal = this->xInQueue_.template DeQue<P>();
+            vector_.xInQueue_.template EnQue<P>(partialLocal);
+            partialLocal = vector_.xInQueue_.template DeQue<P>();
             rmsPartialLocal = partialLocal[mmPartialElements];
-            LocalTensor<P> accumulator = this->outQueue_.template AllocTensor<P>();
-            uint32_t invRmsOffset = offsetT - this->vectorOffset_.offsetMStart;
+            LocalTensor<P> accumulator = vector_.outQueue_.template AllocTensor<P>();
+            uint32_t invRmsOffset = offsetT - vector_.vectorOffset_.offsetMStart;
             uint16_t firstSegmentSize = static_cast<uint16_t>(
                 AscendC::Std::min(fusionSize, MHC_PRE_BASIC_API_VL_FP32));
             if (useFlatSequentialReduce) {
                 MhcPreMkVFReducePartialsSequentialFlat(accumulator,
-                                                       this->invRmsUb_[invRmsOffset], partialLocal, rmsPartialLocal,
+                                                       vector_.invRmsUb_[invRmsOffset], partialLocal, rmsPartialLocal,
                                                        static_cast<uint16_t>(groupK),
-                                                       static_cast<uint16_t>(this->tiling_->cubeBlockDimK),
+                                                       static_cast<uint16_t>(vector_.tiling_->cubeBlockDimK),
                                                        static_cast<uint16_t>(lenT), static_cast<uint16_t>(fusionSize),
-                                                       static_cast<uint16_t>(rmsStride), this->scaleMean_,
-                                                       this->matrixInfo_.normEps);
+                                                       static_cast<uint16_t>(rmsStride), vector_.scaleMean_,
+                                                       vector_.matrixInfo_.normEps);
             } else if (useSequentialMmReduce) {
-                MhcPreMkVFReducePartialsSequentialGeneral(accumulator, this->invRmsUb_[invRmsOffset],
+                MhcPreMkVFReducePartialsSequentialGeneral(accumulator, vector_.invRmsUb_[invRmsOffset],
                                                           partialLocal, rmsPartialLocal, static_cast<uint16_t>(groupK),
-                                                          static_cast<uint16_t>(this->tiling_->cubeBlockDimK),
+                                                          static_cast<uint16_t>(vector_.tiling_->cubeBlockDimK),
                                                           static_cast<uint16_t>(lenT), static_cast<uint16_t>(fusionSize), 0U,
-                                                          firstSegmentSize, static_cast<uint16_t>(rmsStride), this->scaleMean_,
-                                                          this->matrixInfo_.normEps);
+                                                          firstSegmentSize, static_cast<uint16_t>(rmsStride), vector_.scaleMean_,
+                                                          vector_.matrixInfo_.normEps);
             } else {
-                MhcPreMkVFReducePartials(accumulator, this->invRmsUb_[invRmsOffset], partialLocal,
+                MhcPreMkVFReducePartials(accumulator, vector_.invRmsUb_[invRmsOffset], partialLocal,
                                          rmsPartialLocal, static_cast<uint16_t>(groupK), static_cast<uint16_t>(lenT),
                                          static_cast<uint16_t>(fusionSize), 0U, firstSegmentSize,
-                                         static_cast<uint16_t>(rmsStride), this->scaleMean_, this->matrixInfo_.normEps);
+                                         static_cast<uint16_t>(rmsStride), vector_.scaleMean_, vector_.matrixInfo_.normEps);
             }
             if (fusionSize > firstSegmentSize) {
                 if (useSequentialMmReduce) {
                     MhcPreMkVFReducePartialsSequentialGeneral(accumulator,
-                                                              this->invRmsUb_[invRmsOffset], partialLocal, rmsPartialLocal,
+                                                              vector_.invRmsUb_[invRmsOffset], partialLocal, rmsPartialLocal,
                                                               static_cast<uint16_t>(groupK),
-                                                              static_cast<uint16_t>(this->tiling_->cubeBlockDimK),
+                                                              static_cast<uint16_t>(vector_.tiling_->cubeBlockDimK),
                                                               static_cast<uint16_t>(lenT), static_cast<uint16_t>(fusionSize),
                                                               firstSegmentSize, static_cast<uint16_t>(fusionSize - firstSegmentSize),
-                                                              static_cast<uint16_t>(rmsStride), this->scaleMean_,
-                                                              this->matrixInfo_.normEps);
+                                                              static_cast<uint16_t>(rmsStride), vector_.scaleMean_,
+                                                              vector_.matrixInfo_.normEps);
                 } else {
-                    MhcPreMkVFReducePartials(accumulator, this->invRmsUb_[invRmsOffset],
+                    MhcPreMkVFReducePartials(accumulator, vector_.invRmsUb_[invRmsOffset],
                                              partialLocal, rmsPartialLocal, static_cast<uint16_t>(groupK),
                                              static_cast<uint16_t>(lenT), static_cast<uint16_t>(fusionSize),
                                              firstSegmentSize, static_cast<uint16_t>(fusionSize - firstSegmentSize),
-                                             static_cast<uint16_t>(rmsStride), this->scaleMean_,
-                                             this->matrixInfo_.normEps);
+                                             static_cast<uint16_t>(rmsStride), vector_.scaleMean_,
+                                             vector_.matrixInfo_.normEps);
                 }
             }
-            this->xInQueue_.FreeTensor(partialLocal);
-            this->outQueue_.template EnQue<P>(accumulator);
-            accumulator = this->outQueue_.template DeQue<P>();
-            if (this->outFlag_) {
+            vector_.xInQueue_.FreeTensor(partialLocal);
+            vector_.outQueue_.template EnQue<P>(accumulator);
+            accumulator = vector_.outQueue_.template DeQue<P>();
+            if (vector_.outFlag_) {
                 DataCopyExtParams outputParams;
                 outputParams.blockCount = 1;
                 outputParams.blockLen = lenT * fusionSize * sizeof(P);
                 outputParams.srcStride = 0;
                 outputParams.dstStride = 0;
-                uint64_t outputOffset = (this->globalOffsetM_ + offsetT) * fusionSize;
-                DataCopyPad(this->hMixGm_[outputOffset], accumulator, outputParams);
+                uint64_t outputOffset = (vector_.globalOffsetM_ + offsetT) * fusionSize;
+                DataCopyPad(vector_.hMixGm_[outputOffset], accumulator, outputParams);
                 SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
                 WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
             }
             PostProcessSegments(offsetT, lenT, localOffset, accumulator);
-            this->AIV1ProcessHPost(offsetT, lenT);
-            this->AIV1ProcessHPre(offsetT, lenT);
-            this->AIV1ProcessHInBatched(offsetT, lenT);
-            this->outQueue_.FreeTensor(accumulator);
+            vector_.AIV1ProcessHPost(offsetT, lenT);
+            vector_.AIV1ProcessHPre(offsetT, lenT);
+            vector_.AIV1ProcessHInBatched(offsetT, lenT);
+            vector_.outQueue_.FreeTensor(accumulator);
             offsetT += lenT;
             localOffset += lenT;
         }
-        this->DataCopyOutInvRmsUb(this->vectorOffset_.singleCoreM,
-                                  this->vectorOffset_.offsetMStart);
+        vector_.DataCopyOutInvRmsUb(vector_.vectorOffset_.singleCoreM,
+                                    vector_.vectorOffset_.offsetMStart);
     }
 
     __aicore__ inline void PostProcessSegments(uint64_t offsetT, uint64_t lenT,
                                                uint64_t localOffset, const LocalTensor<P> &matmulResult)
     {
-        uint64_t outputOffset = this->globalOffsetM_ + offsetT;
+        uint64_t outputOffset = vector_.globalOffsetM_ + offsetT;
         LocalTensor<P> hResLocal;
-        if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-            hResLocal = this->outQueue_.template AllocTensor<P>();
+        if constexpr (RESI_MODE == MHC_PRE_HAS_RESI) {
+            hResLocal = vector_.outQueue_.template AllocTensor<P>();
         }
 
-        this->matmulRes_ = matmulResult;
-        if (this->N_ == 4U) {
-            MhcPreVFPostSegments<P, 4U, HAS_RESI == MHC_PRE_HAS_RESI>(
-                this->hPreBuff_, this->hPostBuff_, hResLocal, this->matmulRes_,
-                this->invRmsUb_, this->alphaInUb_, this->biasInUb_,
+        vector_.matmulRes_ = matmulResult;
+        if (vector_.N_ == 4U) {
+            MhcPreVFPostSegments<P, 4U, RESI_MODE == MHC_PRE_HAS_RESI>(
+                vector_.hPreBuff_, vector_.hPostBuff_, hResLocal, vector_.matmulRes_,
+                vector_.invRmsUb_, vector_.alphaInUb_, vector_.biasInUb_,
                 static_cast<uint16_t>(lenT), static_cast<uint32_t>(localOffset),
-                this->matrixInfo_.fusionSize);
-        } else if (this->N_ == 6U) {
-            MhcPreVFPostSegments<P, 6U, HAS_RESI == MHC_PRE_HAS_RESI>(
-                this->hPreBuff_, this->hPostBuff_, hResLocal, this->matmulRes_,
-                this->invRmsUb_, this->alphaInUb_, this->biasInUb_,
+                vector_.matrixInfo_.fusionSize);
+        } else if (vector_.N_ == 6U) {
+            MhcPreVFPostSegments<P, 6U, RESI_MODE == MHC_PRE_HAS_RESI>(
+                vector_.hPreBuff_, vector_.hPostBuff_, hResLocal, vector_.matmulRes_,
+                vector_.invRmsUb_, vector_.alphaInUb_, vector_.biasInUb_,
                 static_cast<uint16_t>(lenT), static_cast<uint32_t>(localOffset),
-                this->matrixInfo_.fusionSize);
+                vector_.matrixInfo_.fusionSize);
         } else {
-            MhcPreVFPostSegments<P, 8U, HAS_RESI == MHC_PRE_HAS_RESI>(
-                this->hPreBuff_, this->hPostBuff_, hResLocal, this->matmulRes_,
-                this->invRmsUb_, this->alphaInUb_, this->biasInUb_,
+            MhcPreVFPostSegments<P, 8U, RESI_MODE == MHC_PRE_HAS_RESI>(
+                vector_.hPreBuff_, vector_.hPostBuff_, hResLocal, vector_.matmulRes_,
+                vector_.invRmsUb_, vector_.alphaInUb_, vector_.biasInUb_,
                 static_cast<uint16_t>(lenT), static_cast<uint32_t>(localOffset),
-                this->matrixInfo_.fusionSize);
+                vector_.matrixInfo_.fusionSize);
         }
         PipeBarrier<PIPE_V>();
 
-        if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
-            this->outQueue_.template EnQue<P>(hResLocal);
-            hResLocal = this->outQueue_.template DeQue<P>();
+        if constexpr (RESI_MODE == MHC_PRE_HAS_RESI) {
+            vector_.outQueue_.template EnQue<P>(hResLocal);
+            hResLocal = vector_.outQueue_.template DeQue<P>();
             DataCopyExtParams copyParams;
             copyParams.blockCount = 1;
             copyParams.blockLen = static_cast<uint32_t>(
-                lenT * this->N_ * this->N_ * sizeof(P));
+                lenT * vector_.N_ * vector_.N_ * sizeof(P));
             copyParams.srcStride = 0;
             copyParams.dstStride = 0;
-            DataCopyPad(this->hResGm_[outputOffset * this->N_ * this->N_],
+            DataCopyPad(vector_.hResGm_[outputOffset * vector_.N_ * vector_.N_],
                         hResLocal, copyParams);
             SetFlag<HardEvent::MTE3_V>(EVENT_ID3);
             WaitFlag<HardEvent::MTE3_V>(EVENT_ID3);
-            this->outQueue_.FreeTensor(hResLocal);
+            vector_.outQueue_.FreeTensor(hResLocal);
         }
     }
 
 private:
+    MhcPreVectorCompute<T, P, RESI_MODE> vector_;
     GlobalTensor<P> partialMmGm_;
     GlobalTensor<P> partialRmsGm_;
     bool selected_ = false;

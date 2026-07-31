@@ -13,7 +13,7 @@
  * \brief
  */
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
-#include "arch35/mhc_pre_base.h"
+#include "arch35/mhc_pre_common.h"
 #include "arch35/mhc_pre_split_bs.h"
 #include "arch35/mhc_pre_m_k_split.h"
 #include "arch35/mhc_pre_split_nd.h"
@@ -22,7 +22,7 @@
 using namespace AscendC;
 using namespace MhcPre;
 
-template <int8_t TILING_MODE, int8_t HAS_RESI>
+template <int8_t TILING_MODE, int8_t RESI_MODE>
 __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADDR bias, GM_ADDR gamma, GM_ADDR hin,
                                    GM_ADDR h_post, GM_ADDR h_res, GM_ADDR inv_rms, GM_ADDR h_mix, GM_ADDR h_pre,
                                    GM_ADDR workspaceGM, GM_ADDR tilingGM)
@@ -35,25 +35,25 @@ __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADD
     if constexpr (TILING_MODE == MHC_PRE_SPLIT_BS) {
         InitParams initParams{x, phi, alpha, bias, gamma, hin, h_post,
                               h_res, inv_rms, h_mix, h_pre, user, &pipe, &tilingData};
-        MhcPreSplitBS<DTYPE_X, float32_t, HAS_RESI> op;
+        MhcPreSplitBS<DTYPE_X, float32_t, RESI_MODE> op;
         op.Init(initParams);
         op.Process();
     } else if constexpr (TILING_MODE == MHC_PRE_SPLIT_M_K) {
         InitParams initParams{x, phi, alpha, bias, gamma, hin, h_post,
                               h_res, inv_rms, h_mix, h_pre, user, &pipe, &tilingData};
-        MhcPreMKPart1<DTYPE_X, float32_t, HAS_RESI> part1;
+        MhcPreMKPart1<DTYPE_X, float32_t, RESI_MODE> part1;
         part1.Init(initParams);
         part1.Process();
         pipe.Destroy();
         TPipe stage2Pipe;
         initParams.tPipeIn = &stage2Pipe;
-        MhcPreMKPart2<DTYPE_X, float32_t, HAS_RESI> part2;
+        MhcPreMKPart2<DTYPE_X, float32_t, RESI_MODE> part2;
         part2.Init(initParams);
         part2.Process();
     } else if constexpr (TILING_MODE == MHC_PRE_SPLIT_ND) {
         InitParams initParams{x, phi, alpha, bias, gamma, hin, h_post,
                               h_res, inv_rms, h_mix, h_pre, user, &pipe, &tilingData};
-        MhcPreSplitND<DTYPE_X, float32_t, HAS_RESI> op;
+        MhcPreSplitND<DTYPE_X, float32_t, RESI_MODE> op;
         op.Init(initParams);
         op.Process();
     }

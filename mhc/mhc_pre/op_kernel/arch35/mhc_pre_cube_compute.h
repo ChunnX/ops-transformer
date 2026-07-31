@@ -16,8 +16,7 @@
 #ifndef MHC_PRE_CUBE_COMPUTE_H
 #define MHC_PRE_CUBE_COMPUTE_H
 
-#include "mhc_pre_basic_api.h"
-#include "mhc_pre_utils.h"
+#include "mhc_pre_common.h"
 
 namespace MhcPre {
 
@@ -180,17 +179,17 @@ public:
             CopyInB1Nd2Nz(k, currentK, n, phiGlobal[kOffset], currentBL1);
 
             if (useGmStage) {
-                AscendC::CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE2>(
-                    MhcPreUtils::X_READY_FLAG);
-                AscendC::CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE2>(
-                    MhcPreUtils::X_READY_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
+                AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(
+                    MHC_PRE_X_READY_FLAG);
+                AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(
+                    MHC_PRE_X_READY_FLAG + MHC_PRE_SUBBLOCK_FLAG_OFFSET);
                 uint64_t stageOffset = stageCoreOffset + aL1BufferId * stageSlotElements;
                 CopyInA1Nd2Nz(m, currentK, kL1Size, xStageGlobal[stageOffset], currentAL1);
             } else {
-                AscendC::CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
-                    MhcPreUtils::X_READY_FLAG);
-                AscendC::CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
-                    MhcPreUtils::X_READY_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
+                AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+                    MHC_PRE_X_READY_FLAG);
+                AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+                    MHC_PRE_X_READY_FLAG + MHC_PRE_SUBBLOCK_FLAG_OFFSET);
             }
 
             bool isFirstKL1 = useSequentialPartials ?
@@ -206,10 +205,10 @@ public:
                                             0U;
                 CopyOut(dstGlobal[partialIndex * dstGroupStride], n);
             }
-            AscendC::CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
-                MhcPreUtils::X_CONSUMED_FLAG);
-            AscendC::CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
-                MhcPreUtils::X_CONSUMED_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
+            AscendC::CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+                MHC_PRE_X_CONSUMED_FLAG);
+            AscendC::CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
+                MHC_PRE_X_CONSUMED_FLAG + MHC_PRE_SUBBLOCK_FLAG_OFFSET);
             aL1BufferId ^= 1U;
         }
     }

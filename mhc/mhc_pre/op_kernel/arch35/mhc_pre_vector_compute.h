@@ -9,38 +9,28 @@
  */
 
 /*!
- * \file mhc_pre_base.h
- * \brief Shared tensor bindings and vector processing for MHC Pre templates
+ * \file mhc_pre_vector_compute.h
+ * \brief Shared AIV buffers, data movement, and vector processing for MHC Pre
  */
 
-#ifndef MHC_PRE_BASE_H_
-#define MHC_PRE_BASE_H_
+#ifndef MHC_PRE_VECTOR_COMPUTE_H_
+#define MHC_PRE_VECTOR_COMPUTE_H_
 
-#include "kernel_operator.h"
-#include "kernel_tiling/kernel_tiling.h"
-#include "mhc_pre_basic_api.h"
-#include "mhc_pre_utils.h"
+#include "mhc_pre_common.h"
+#include "mhc_pre_tiling_key.h"
 
 namespace MhcPre {
 
 using namespace AscendC;
 
-struct InitParams {
-    GM_ADDR x;
-    GM_ADDR phi;
-    GM_ADDR alpha;
-    GM_ADDR bias;
-    GM_ADDR gamma;
-    GM_ADDR hin;
-    GM_ADDR h_post;
-    GM_ADDR h_res;
-    GM_ADDR inv_rms;
-    GM_ADDR h_mix;
-    GM_ADDR h_pre;
-    GM_ADDR workspace;
-    TPipe *tPipeIn;
-    const MhcPreTilingData *tilingData;
-};
+template <class T, class P, int8_t RESI_MODE>
+class MhcPreSplitBS;
+template <class T, class P, int8_t RESI_MODE>
+class MhcPreMKPart1;
+template <class T, class P, int8_t RESI_MODE>
+class MhcPreMKPart2;
+template <class T, class P, int8_t RESI_MODE>
+class MhcPreSplitND;
 
 // Vector cast and division traits shared by all templates.
 constexpr MicroAPI::CastTrait MHC_PRE_CAST_FP32_TO_B16 = {
@@ -51,33 +41,6 @@ constexpr MicroAPI::CastTrait MHC_PRE_CAST_B16_TO_FP32 = {
     MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 constexpr MicroAPI::DivSpecificMode MHC_PRE_DIV_ZEROING_MODE = {
     MicroAPI::MaskMergeMode::ZEROING, true};
-
-struct MatrixInfo {
-    uint32_t totalLength = 0;
-    uint32_t nD = 0;
-    uint32_t fusionSize = 0;
-    float normEps = 0.0f;
-    float hcEps = 0.0f;
-};
-
-struct VectorOffsetParams {
-    uint64_t globalOffsetM = 0;
-    uint64_t singleCoreM = 0;
-    uint64_t offsetMStart = 0;
-    uint64_t offsetMEnd = 0;
-};
-
-struct MNConfig {
-    uint64_t m = 0;
-    uint64_t n = 0;
-    uint64_t k = 0;
-    uint64_t singleCoreM;
-    uint64_t singleCoreN;
-    uint64_t singleCoreK;
-    uint64_t curSingleCoreM;
-    uint64_t curSingleCoreN;
-    uint64_t curSingleCoreK;
-};
 
 template <class P>
 __aicore__ inline void MhcPreLoadHInValue(MicroAPI::RegTensor<P> &dst, __ubuf__ P *src, uint32_t offset)
@@ -189,9 +152,11 @@ __aicore__ inline void MhcPreVFExpandAlpha(const LocalTensor<P> &alphaLocal)
         }
     }
 }
-template <class T, class P>
-class MhcPreBase {
+template <class T, class P, int8_t RESI_MODE>
+class MhcPreVectorCompute {
 public:
+    static_assert(RESI_MODE == MHC_PRE_HAS_RESI || RESI_MODE == MHC_PRE_NO_RESI,
+                  "Unsupported MhcPre residual mode");
     // Buffering and supported head-count constants.
     static constexpr uint32_t kDoubleBufferCount = 2;
     static constexpr uint32_t kSingleBufferCount = 1;
@@ -213,7 +178,13 @@ public:
     static constexpr uint64_t V1_BASE_T = 16;
     static constexpr uint64_t V1_BASE_D = 32;
 
-    __aicore__ inline MhcPreBase() = default;
+    // Shared AIV buffer sizes.
+    static constexpr uint32_t kXInQueueBufferBytes = 80U * 1024U;
+    static constexpr uint32_t kOutQueueBufferBytes = 20U * 1024U;
+    static constexpr uint32_t kTmpBufferBytes = 40U * 1024U;
+    static constexpr int8_t kResiMode = RESI_MODE;
+
+    __aicore__ inline MhcPreVectorCompute() = default;
 
     __aicore__ inline void InitPipeAndCoreIdx(TPipe *pipe)
     {
@@ -256,7 +227,7 @@ public:
         hasGamma_ = (tiling_->hasGamma != 0);
         hasResi_ = (tiling_->hasResi != 0);
         implMode_ = tiling_->implMode;
-        eleNumPerVf_ = MhcPreUtils::GetVRegSize() / sizeof(P);
+        eleNumPerVf_ = MhcPreGetVRegSize() / sizeof(P);
     }
 
     __aicore__ inline void InitMNConfig()
@@ -271,6 +242,123 @@ public:
         mnConfig_.curSingleCoreN = mnConfig_.singleCoreN;
         mnConfig_.curSingleCoreK = mnConfig_.singleCoreK;
         curSingleT_ = chunkTSize_;
+    }
+
+    __aicore__ inline void InitHMixBuffer(InitParams initParams)
+    {
+        if (outFlag_) {
+            hMixGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_mix));
+        } else {
+            hMixGm_.SetGlobalBuffer(
+                reinterpret_cast<__gm__ P *>(initParams.workspace + mnConfig_.singleCoreM * mnConfig_.singleCoreK *
+                                                                        PARALLEL_NUM * sizeof(P) * coreNum_));
+        }
+    }
+
+    __aicore__ inline void InitUbBuffers(bool splitAcrossSubBlocks = true,
+                                         uint32_t v1BufferRows = V1_BASE_T)
+    {
+        if ASCEND_IS_NOT_AIV {
+            return;
+        }
+
+        pipe_->InitBuffer(xInQueue_, kDoubleBufferCount, kXInQueueBufferBytes);
+        pipe_->InitBuffer(outQueue_, kDoubleBufferCount, kOutQueueBufferBytes);
+        uint32_t invRmsRows = splitAcrossSubBlocks ?
+                                  (curSingleT_ + kHalfSplitDivisor - 1U) / kHalfSplitDivisor :
+                                  curSingleT_;
+        uint32_t invRmsBytes = MhcPreAlign(invRmsRows, kAlignmentBytes / sizeof(P)) * sizeof(P);
+        pipe_->InitBuffer(invRmsOutQueue_, kSingleBufferCount, invRmsBytes);
+
+        if (hasGamma_) {
+            pipe_->InitBuffer(gammaInQueue_, kSingleBufferCount, ND_LENGTH * sizeof(P));
+        }
+
+        pipe_->InitBuffer(tmpBuff_, kTmpBufferBytes);
+        uint32_t parameterBufferBytes = MhcPreAlign(mnConfig_.n * sizeof(P), kAlignmentBytes);
+        pipe_->InitBuffer(biasInQue_, kSingleBufferCount, parameterBufferBytes);
+        pipe_->InitBuffer(alphaBuf_, parameterBufferBytes);
+        alphaInUb_ = alphaBuf_.template Get<P>();
+
+        uint64_t buffOffset = 0;
+        hPreBuff_ = tmpBuff_.template GetWithOffset<P>(v1BufferRows * N_, buffOffset);
+        buffOffset += v1BufferRows * N_ * sizeof(P);
+        hPostBuff_ = tmpBuff_.template GetWithOffset<P>(v1BufferRows * N_, buffOffset);
+    }
+
+    __aicore__ inline void InitBlockParams(uint64_t curblock, uint32_t tBlockNum)
+    {
+        globalOffsetM_ = curblock * chunkTSize_;
+        curSingleT_ = chunkTSize_;
+        if (curblock == tBlockNum - 1U) {
+            mnConfig_.curSingleCoreM = totalLength_ - globalOffsetM_;
+            curSingleT_ = matrixInfo_.totalLength - curblock * chunkTSize_;
+        }
+        if ASCEND_IS_AIV {
+            VectorComputeOffset();
+        }
+    }
+
+    __aicore__ inline void V0Prologue(uint32_t curNdLen, uint32_t offsetNd)
+    {
+        if (hasGamma_) {
+            gammaUb_ = gammaInQueue_.template AllocTensor<P>();
+            DataCopyGamma(curNdLen, offsetNd);
+            gammaUb_ = gammaInQueue_.template DeQue<P>();
+        }
+
+        for (uint32_t offsetM = vectorOffset_.offsetMStart; offsetM < vectorOffset_.offsetMEnd;
+             offsetM += V0_BASE_T) {
+            uint32_t curMLen = V0_BASE_T;
+            if (offsetM + V0_BASE_T >= vectorOffset_.offsetMEnd) {
+                curMLen = vectorOffset_.offsetMEnd - offsetM;
+            }
+            uint64_t invRmsOffset = offsetM - vectorOffset_.offsetMStart;
+            LocalTensor<P> invRmsUb = invRmsUb_[invRmsOffset];
+            xLocal_ = xInQueue_.template AllocTensor<T>();
+            DataCopyX(curMLen, curNdLen, offsetM, offsetNd);
+            xLocal_ = xInQueue_.template DeQue<T>();
+
+            LocalTensor<P> aL1Ub = outQueue_.template AllocTensor<P>();
+            if (hasGamma_) {
+                if (offsetNd == 0U) {
+                    VFDoV0ProcessXIn<true, true>(
+                        (__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(),
+                        (__ubuf__ T *)xLocal_.GetPhyAddr(), (__ubuf__ P *)gammaUb_.GetPhyAddr(), curMLen, curNdLen);
+                } else {
+                    VFDoV0ProcessXIn<true, false>(
+                        (__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(),
+                        (__ubuf__ T *)xLocal_.GetPhyAddr(), (__ubuf__ P *)gammaUb_.GetPhyAddr(), curMLen, curNdLen);
+                }
+            } else if (offsetNd == 0U) {
+                VFDoV0ProcessXIn<false, true>((__ubuf__ P *)aL1Ub.GetPhyAddr(),
+                                              (__ubuf__ P *)invRmsUb.GetPhyAddr(),
+                                              (__ubuf__ T *)xLocal_.GetPhyAddr(), nullptr, curMLen, curNdLen);
+            } else {
+                VFDoV0ProcessXIn<false, false>((__ubuf__ P *)aL1Ub.GetPhyAddr(),
+                                               (__ubuf__ P *)invRmsUb.GetPhyAddr(),
+                                               (__ubuf__ T *)xLocal_.GetPhyAddr(), nullptr, curMLen, curNdLen);
+            }
+            outQueue_.template EnQue<P>(aL1Ub);
+            aL1Ub = outQueue_.template DeQue<P>();
+            DataCopyOutToWorkSpace(aL1Ub, curMLen, curNdLen, offsetM, offsetNd);
+            xInQueue_.FreeTensor(xLocal_);
+            outQueue_.FreeTensor(aL1Ub);
+        }
+
+        if (hasGamma_) {
+            gammaInQueue_.FreeTensor(gammaUb_);
+        }
+    }
+
+    __aicore__ inline void V0PostProcess(uint32_t curblock, uint32_t tBlockNum)
+    {
+        if (vectorOffset_.singleCoreM == 0U) {
+            return;
+        }
+        VFDoV0ProcessInvRms((__ubuf__ P *)invRmsUb_.GetPhyAddr(), vectorOffset_.singleCoreM,
+                            scaleMean_, matrixInfo_.normEps);
+        DataCopyOutInvRmsUb(vectorOffset_.singleCoreM, vectorOffset_.offsetMStart);
     }
 
     __aicore__ inline void VectorComputeOffset()
@@ -291,11 +379,11 @@ public:
     __aicore__ inline void VFDoV0ProcessXIn(__ubuf__ P *xDst, __ubuf__ P *invRmsDst, __ubuf__ T *xIn,
                                             __ubuf__ P *gamma, uint16_t mSize, uint16_t nSize)
     {
-        uint32_t nSrcUbAligned = MhcPreUtils::Align(
-            nSize, static_cast<uint16_t>(MhcPreUtils::UB_ALIGN_SIZE / sizeof(T)));
-        uint32_t nDstUbAligned = MhcPreUtils::Align(
-            nSize, static_cast<uint16_t>(MhcPreUtils::UB_ALIGN_SIZE / sizeof(P)));
-        uint16_t nLoopCnt = MhcPreUtils::CeilDiv(nSize, eleNumPerVf_);
+        uint32_t nSrcUbAligned = MhcPreAlign(
+            nSize, static_cast<uint16_t>(MHC_PRE_UB_ALIGN_SIZE / sizeof(T)));
+        uint32_t nDstUbAligned = MhcPreAlign(
+            nSize, static_cast<uint16_t>(MHC_PRE_UB_ALIGN_SIZE / sizeof(P)));
+        uint16_t nLoopCnt = MhcPreCeilDiv(nSize, eleNumPerVf_);
         __VEC_SCOPE__
         {
             MicroAPI::MaskReg mask = MicroAPI::CreateMask<P>();
@@ -338,8 +426,8 @@ public:
 
     __aicore__ inline void VFDoV0ProcessInvRms(__ubuf__ P *invRms, uint16_t nSize, float scaleMean, float normEps)
     {
-        uint32_t nUbAligned = MhcPreUtils::Align(nSize, static_cast<uint16_t>(MhcPreUtils::UB_ALIGN_SIZE / sizeof(P)));
-        uint16_t nLoopCnt = MhcPreUtils::CeilDiv(nSize, eleNumPerVf_);
+        uint32_t nUbAligned = MhcPreAlign(nSize, static_cast<uint16_t>(MHC_PRE_UB_ALIGN_SIZE / sizeof(P)));
+        uint16_t nLoopCnt = MhcPreCeilDiv(nSize, eleNumPerVf_);
         __VEC_SCOPE__
         {
             uint32_t elementNum = nSize;
@@ -666,16 +754,16 @@ public:
             uint32_t maxRowsByX = xBufferBytes / (N_ * localStride * sizeof(T));
             uint32_t maxRowsByOut = outBufferBytes / (localStride * sizeof(T));
             uint32_t maxBatchRows = chunkTSize_ <= 32U ? 2U : 4U;
-            uint32_t rowsPerBatch = MhcPreUtils::Min(
-                static_cast<uint64_t>(MhcPreUtils::Min(
-                    MhcPreUtils::Min(maxRowsByX, maxRowsByOut), maxBatchRows)),
+            uint32_t rowsPerBatch = MhcPreMin(
+                static_cast<uint64_t>(MhcPreMin(
+                    MhcPreMin(maxRowsByX, maxRowsByOut), maxBatchRows)),
                 lenT);
             if (rowsPerBatch == 0U) {
                 return;
             }
 
             for (uint32_t rowOffset = 0; rowOffset < lenT; rowOffset += rowsPerBatch) {
-                uint32_t rowCount = MhcPreUtils::Min(
+                uint32_t rowCount = MhcPreMin(
                     static_cast<uint64_t>(rowsPerBatch), lenT - rowOffset);
                 LocalTensor<T> xIn = xInQueue_.AllocTensor<T>();
                 DataCopyExtParams xCopyParams;
@@ -723,7 +811,15 @@ public:
         }
     }
 
-protected:
+private:
+    template <class U, class V, int8_t MODE>
+    friend class MhcPreSplitBS;
+    template <class U, class V, int8_t MODE>
+    friend class MhcPreMKPart1;
+    template <class U, class V, int8_t MODE>
+    friend class MhcPreMKPart2;
+    template <class U, class V, int8_t MODE>
+    friend class MhcPreSplitND;
     MNConfig mnConfig_;
     uint32_t coreNum_;
     uint64_t totalLength_;
@@ -790,4 +886,4 @@ protected:
 
 } // namespace MhcPre
 
-#endif // MHC_PRE_BASE_H_
+#endif // MHC_PRE_VECTOR_COMPUTE_H_
