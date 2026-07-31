@@ -740,7 +740,7 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
                         subMLoc * config.outputN + nLoc,
                         subMLoc * CeilDiv(config.outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
                             CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
-                        0,
+                        static_cast<int64_t>(subMLoc / L1_TILE_M_256),
                         0,
                         static_cast<int64_t>(metaInfoMLoc),
                         0};
