@@ -779,14 +779,14 @@
   <tr>
    <td>activation</td>
    <td>可选属性</td>
-   <td>激活函数类型。默认值为"swiglu"。A2/A3支持"swiglu"、"swiglustep"、"swiglu_gpt_oss"、"swigluoai"和"situglu"。"swiglu"按前后半区拆分gate/up并计算gate * sigmoid(gate) * up；"swiglustep"使用相同拆分方式，按STEP 3.5语义在SiLU后截断gate分支；"swiglu_gpt_oss"按偶奇列拆分gate/up并计算gate * sigmoid(alpha * gate) * (up + 1)；"swigluoai"按前后半区拆分gate/up并计算(up + beta) * gate * sigmoid(alpha * gate)；"situglu"按前后半区拆分gate/up并计算beta * tanh(gate / beta) * sigmoid(gate) * up，传递linear_beta时还会将up变换为linear_beta * tanh(up / linear_beta)。A5当前仅支持"swiglu"。</td>
+   <td>激活函数类型。默认值为"swiglu"。A2/A3支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"；其中"swiglu"为通用SwiGLU，"swiglustep"对应Step 3.5，"swigluoai"对应MiniMax-M3，"situglu"对应Kimi K3。A5当前仅支持"swiglu"。</td>
    <td>STRING</td>
    <td></td>
   </tr>
   <tr>
    <td>activation_params</td>
    <td>可选属性</td>
-   <td>激活函数参数列表，默认值为[float最大值]。参数顺序和数量由activation决定："swiglu"和"swiglustep"传[clamp]；"swiglu_gpt_oss"传[clamp, alpha]；"swigluoai"传[clamp, alpha, beta]；"situglu"在linear_beta为None时传[beta]，否则传[beta, linear_beta]。clamp需≥0且不能为NaN；alpha和swigluoai的beta需为有限值；situglu的beta和linear_beta作为除数，需为有限非零值。</td>
+   <td>激活函数参数列表，默认值为[float最大值]。参数顺序和数量由activation决定："swiglu"和"swiglustep"传[clamp]；"swigluoai"传[clamp, alpha, beta]；"situglu"在linear_beta为None时传[beta]，否则传[beta, linear_beta]。clamp需≥0且不能为NaN；alpha和swigluoai的beta需为有限值；situglu的beta和linear_beta作为除数，需为有限非零值。</td>
    <td>LIST_FLOAT</td>
    <td></td>
   </tr>
@@ -858,8 +858,6 @@
       | A16W16 | BF16 | BF16 | BF16 | – | – | – | – | BF16 | 0 | – |
       | A8W8-INT | BF16 | INT8 | INT8 | UINT64 | UINT64 | – | – | BF16 | 2 | 1（INT8） |
       | A8W4-INT | BF16 | INT4(INT32) | INT4(INT32) | UINT64 | UINT64 | FP32 | FP32 | BF16 | 2 | 1（INT8） |
-
-    - intermediate_hidden（weight1 每个专家矩阵的 dim1 / 2）需大于等于 1024 且按 512 对齐。SwiGLU 采用 UB 分块计算，不再因 UB 容量设置该维度的上限。
 
   - **<term>Ascend 950PR/Ascend 950DT</term>**：
     - BS（x.dim0）支持[1, maxBS], maxBS = (8 * (totalUbSize - 48K)) / (topK * (64 + epWorldSize)), 其中totalUbSize为UB总大小，950系列产品该值支持到当前环境能申请的最大内存。

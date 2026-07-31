@@ -56,7 +56,6 @@ constexpr uint32_t ATTR_TRANSPOSE_WEIGHT2_INDEX = 13;      // weight2 是否转�
 constexpr uint32_t ATTR_WEIGHT1_INTERLEAVE_INDEX = 14;     // weight1 交错模式
 
 constexpr uint32_t ACTIVATION_CODE_SWIGLU = 0;
-constexpr uint32_t ACTIVATION_CODE_SWIGLU_GPT_OSS = 1;
 constexpr uint32_t ACTIVATION_CODE_SITU = 2;
 constexpr uint32_t ACTIVATION_CODE_SWIGLU_STEP = 3;
 constexpr uint32_t ACTIVATION_CODE_SWIGLU_OAI = 4;
@@ -276,8 +275,6 @@ static ge::graphStatus CheckActivationAttr(const char *ptr, uint32_t &activation
     std::string activationStr(ptr);
     if (activationStr == "swiglu") {
         activationCode = ACTIVATION_CODE_SWIGLU;
-    } else if (activationStr == "swiglu_gpt_oss") {
-        activationCode = ACTIVATION_CODE_SWIGLU_GPT_OSS;
     } else if (activationStr == "situglu") {
         activationCode = ACTIVATION_CODE_SITU;
     } else if (activationStr == "swiglustep") {
@@ -286,8 +283,7 @@ static ge::graphStatus CheckActivationAttr(const char *ptr, uint32_t &activation
         activationCode = ACTIVATION_CODE_SWIGLU_OAI;
     } else {
         OP_LOGE(K_INNER_DEBUG,
-                "activation is invalid, support 'swiglu', 'swiglustep', 'swiglu_gpt_oss', "
-                "'swigluoai' and 'situglu', but got '%s'.",
+                "activation is invalid, support 'swiglu', 'swiglustep', 'swigluoai' and 'situglu', but got '%s'.",
                 ptr);
         return GRAPH_FAILED;
     }
@@ -336,11 +332,6 @@ static ge::graphStatus CheckActivationParamsAttr(const gert::TypedContinuousVect
         OP_TILING_CHECK(CheckActivationParamCount(info.activationCode, paramCount, 1U, 1U) != ge::GRAPH_SUCCESS,
                         OP_LOGE(K_INNER_DEBUG, "CheckActivationParamCount failed."), return GRAPH_FAILED);
         info.activationClamp = data[0];
-    } else if (info.activationCode == ACTIVATION_CODE_SWIGLU_GPT_OSS) {
-        OP_TILING_CHECK(CheckActivationParamCount(info.activationCode, paramCount, 2U, 2U) != ge::GRAPH_SUCCESS,
-                        OP_LOGE(K_INNER_DEBUG, "CheckActivationParamCount failed."), return GRAPH_FAILED);
-        info.activationClamp = data[0];
-        info.activationAlpha = data[1];
     } else if (info.activationCode == ACTIVATION_CODE_SWIGLU_OAI) {
         OP_TILING_CHECK(CheckActivationParamCount(info.activationCode, paramCount, 3U, 3U) != ge::GRAPH_SUCCESS,
                         OP_LOGE(K_INNER_DEBUG, "CheckActivationParamCount failed."), return GRAPH_FAILED);
@@ -360,7 +351,7 @@ static ge::graphStatus CheckActivationParamsAttr(const gert::TypedContinuousVect
             OP_LOGE(K_INNER_DEBUG, "activation clamp must be >= 0 and not NAN, but got %f.", info.activationClamp),
             return GRAPH_FAILED);
     }
-    if (info.activationCode == ACTIVATION_CODE_SWIGLU_GPT_OSS || info.activationCode == ACTIVATION_CODE_SWIGLU_OAI) {
+    if (info.activationCode == ACTIVATION_CODE_SWIGLU_OAI) {
         OP_TILING_CHECK(!IsFiniteActivationParam(info.activationAlpha),
                         OP_LOGE(K_INNER_DEBUG, "activation alpha must be finite, but got %f.", info.activationAlpha),
                         return GRAPH_FAILED);

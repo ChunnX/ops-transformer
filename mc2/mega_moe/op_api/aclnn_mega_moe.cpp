@@ -121,21 +121,15 @@ static bool CheckActivationParams(const char *activation, const aclFloatArray *a
 
     const bool isSwiglu = std::strcmp(activation, "swiglu") == 0;
     const bool isSwigluStep = std::strcmp(activation, "swiglustep") == 0;
-    const bool isGptOss = std::strcmp(activation, "swiglu_gpt_oss") == 0;
     const bool isSwigluOai = std::strcmp(activation, "swigluoai") == 0;
     const bool isSituGlu = std::strcmp(activation, "situglu") == 0;
 
-    if (!isSwiglu && !isSwigluStep && !isGptOss && !isSwigluOai && !isSituGlu) {
+    if (!isSwiglu && !isSwigluStep && !isSwigluOai && !isSituGlu) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported activation '%s'.", activation);
         return false;
     }
     if ((isSwiglu || isSwigluStep) && paramCount != 1U) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s expects activationParams=[clamp], but got %zu values.", activation,
-                paramCount);
-        return false;
-    }
-    if (isGptOss && paramCount != 2U) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "swiglu_gpt_oss expects activationParams=[clamp, alpha], but got %zu values.",
                 paramCount);
         return false;
     }
@@ -154,7 +148,7 @@ static bool CheckActivationParams(const char *activation, const aclFloatArray *a
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "activation clamp must be >= 0 and not NAN, but got %f.", params[0]);
         return false;
     }
-    if ((isGptOss || isSwigluOai) && !IsFiniteActivationParam(params[1])) {
+    if (isSwigluOai && !IsFiniteActivationParam(params[1])) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "activation alpha must be finite, but got %f.", params[1]);
         return false;
     }

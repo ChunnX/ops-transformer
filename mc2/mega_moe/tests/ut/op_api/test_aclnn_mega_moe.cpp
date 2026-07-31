@@ -66,13 +66,11 @@ TEST_F(AclnnMegaMoeTest, activation_param_domain)
 
     // Valid parameter sets pass ACLNN validation and reach the mocked inner op,
     // which returns ACLNN_ERR_RUNTIME_ERROR in this test environment.
-    EXPECT_EQ(RunActivationParamCase("swiglu_gpt_oss", {kMax, -1.702f}), ACLNN_ERR_RUNTIME_ERROR);
     EXPECT_EQ(RunActivationParamCase("swigluoai", {kMax, 0.0f, -1.0f}), ACLNN_ERR_RUNTIME_ERROR);
     EXPECT_EQ(RunActivationParamCase("situglu", {-4.0f}), ACLNN_ERR_RUNTIME_ERROR);
     EXPECT_EQ(RunActivationParamCase("situglu", {-4.0f, -25.0f}), ACLNN_ERR_RUNTIME_ERROR);
 
     EXPECT_EQ(RunActivationParamCase("swiglu", {-1.0f}), ACLNN_ERR_PARAM_INVALID);
-    EXPECT_EQ(RunActivationParamCase("swiglu_gpt_oss", {kMax, kInf}), ACLNN_ERR_PARAM_INVALID);
     EXPECT_EQ(RunActivationParamCase("swigluoai", {kMax, nan, 1.0f}), ACLNN_ERR_PARAM_INVALID);
     EXPECT_EQ(RunActivationParamCase("swigluoai", {kMax, 1.702f, kInf}), ACLNN_ERR_PARAM_INVALID);
     EXPECT_EQ(RunActivationParamCase("situglu", {0.0f}), ACLNN_ERR_PARAM_INVALID);

@@ -151,7 +151,7 @@ public:
                      AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2,
                      Arch::Resource<ArchTag> const &resource, uint32_t epilogueCoreNum = 40,
                      float activationClamp = 0.0f, uint32_t activationCode = 0,
-                     float activationAlpha = GptOssSwigluActivation::DEFAULT_ALPHA,
+                     float activationAlpha = SwigluOaiActivation::DEFAULT_ALPHA,
                      float activationBeta = SituActivation::DEFAULT_BETA, uint32_t gmmOutPreRowStride = 1,
                      Callback &&callback = Callback{})
     {
@@ -238,7 +238,7 @@ public:
     void operator()(AscendC::GlobalTensor<ElementC> const &gmC, MatrixCoord const &shapeC,
                      AscendC::GlobalTensor<ElementD> const &gmD, Arch::Resource<ArchTag> const &resource,
                      uint32_t epilogueCoreNum = 40, float activationClamp = 0.0f, uint32_t activationCode = 0,
-                     float activationAlpha = GptOssSwigluActivation::DEFAULT_ALPHA,
+                     float activationAlpha = SwigluOaiActivation::DEFAULT_ALPHA,
                      float activationBeta = SituActivation::DEFAULT_BETA,
                      uint32_t gmmOutPreRowStride = 1, Callback &&callback = Callback{})
     {
@@ -351,17 +351,10 @@ private:
     {
         auto &ubC = ubCList[stageId];
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[stageId]);
-        if (Activation::IsInterleaved(activationCode_)) {
-            uint32_t interleavedLength = tileLength * 2;
-            LayoutC tileLayout{1, interleavedLength};
-            LayoutC gmTileLayout{1, interleavedLength, gmRowStride};
-            copyGmToUbC(ubC, gmTileC[tileOffset * 2], tileLayout, gmTileLayout);
-        } else {
-            LayoutC tileLayout{1, tileLength};
-            LayoutC gmTileLayout{1, tileLength, gmRowStride};
-            copyGmToUbC(ubC, gmTileC[tileOffset], tileLayout, gmTileLayout);
-            copyGmToUbC(ubC[TILE_LENGTH], gmTileC[branchLength + tileOffset], tileLayout, gmTileLayout);
-        }
+        LayoutC tileLayout{1, tileLength};
+        LayoutC gmTileLayout{1, tileLength, gmRowStride};
+        copyGmToUbC(ubC, gmTileC[tileOffset], tileLayout, gmTileLayout);
+        copyGmToUbC(ubC[TILE_LENGTH], gmTileC[branchLength + tileOffset], tileLayout, gmTileLayout);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[stageId]);
     }
 
@@ -373,7 +366,7 @@ private:
         auto &ubGate = ubGateFp32List[stageId];
         auto &ubUp = ubUpFp32List[stageId];
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[stageId]);
-        Activation::PrepareBranches(ubGate, ubUp, ubC, sharedTmpBuffer, TILE_LENGTH, tileLength, activationCode_);
+        Activation::PrepareBranches(ubGate, ubUp, ubC, TILE_LENGTH, tileLength);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[stageId]);
         if (applyPerTokenScale) {
             AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
@@ -464,7 +457,7 @@ private:
     int32_t eventUbDMTE3VList[UB_STAGES];
     int32_t eventUbDVMTE3List[UB_STAGES];
     uint32_t activationCode_{0};
-    float activationAlpha_{GptOssSwigluActivation::DEFAULT_ALPHA};
+    float activationAlpha_{SwigluOaiActivation::DEFAULT_ALPHA};
     float activationBeta_{SituActivation::DEFAULT_BETA};
     size_t ubOffset{0};
     CopyGmToUbC copyGmToUbC;

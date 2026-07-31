@@ -153,7 +153,7 @@ public:
         uint32_t epilogueGranularity{0};
         float swigluLimit;
         uint32_t activationCode{0};
-        float activationAlpha{Epilogue::GptOssSwigluActivation::DEFAULT_ALPHA};
+        float activationAlpha{Epilogue::SwigluOaiActivation::DEFAULT_ALPHA};
         float activationBeta{Epilogue::SituActivation::DEFAULT_BETA};
         GM_ADDR contextGM{nullptr};
         // 算子tiling数据地址（GM），ADump启动时由0核dump到Tiling段
@@ -182,7 +182,7 @@ public:
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
                MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_, uint32_t epilogueGranularity_ = 0,
                float swigluLimit_ = std::numeric_limits<float>::infinity(), uint32_t activationCode_ = 0,
-               float activationAlpha_ = Epilogue::GptOssSwigluActivation::DEFAULT_ALPHA,
+               float activationAlpha_ = Epilogue::SwigluOaiActivation::DEFAULT_ALPHA,
                float activationBeta_ = Epilogue::SituActivation::DEFAULT_BETA, GM_ADDR tilingGM_ = nullptr)
             : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
@@ -230,7 +230,7 @@ public:
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
                uint32_t epilogueGranularity_ = 0, float swigluLimit_ = std::numeric_limits<float>::infinity(),
                uint32_t activationCode_ = 0,
-               float activationAlpha_ = Epilogue::GptOssSwigluActivation::DEFAULT_ALPHA,
+               float activationAlpha_ = Epilogue::SwigluOaiActivation::DEFAULT_ALPHA,
                float activationBeta_ = Epilogue::SituActivation::DEFAULT_BETA, GM_ADDR tilingGM_ = nullptr)
             : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),

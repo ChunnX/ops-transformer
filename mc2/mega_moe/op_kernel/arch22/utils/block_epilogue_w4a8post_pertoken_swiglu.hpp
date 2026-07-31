@@ -171,7 +171,7 @@ public:
                      uint32_t expertPerRank, uint32_t EP, int32_t rank, int32_t listLen,
                      Arch::Resource<ArchTag> const &resource, uint32_t epilogueCoreNum = 40,
                      float activationClamp = 0.0f, uint32_t activationCode = 0,
-                     float activationAlpha = GptOssSwigluActivation::DEFAULT_ALPHA,
+                     float activationAlpha = SwigluOaiActivation::DEFAULT_ALPHA,
                      float activationBeta = SituActivation::DEFAULT_BETA, uint32_t gmmOutPreRowStride = 1,
                      Callback &&callback = Callback{})
     {
@@ -359,33 +359,19 @@ private:
         auto &ubWeightAux = ubWeightAuxList[stageId];
 
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[stageId]);
-        if (Activation::IsInterleaved(activationCode_)) {
-            uint32_t interleavedLength = tileLength * 2;
-            LayoutC tileLayout{1, interleavedLength};
-            LayoutC gmTileLayout{1, interleavedLength, gmRowStride};
-            copyGmToUbC(ubC, gmTileC[tileOffset * 2], tileLayout, gmTileLayout);
-            copyGmToUbC(ubC[2 * TILE_LENGTH], gmTileC[gmRowStride + tileOffset * 2], tileLayout, gmTileLayout);
-        } else {
-            LayoutC tileLayout{1, tileLength};
-            LayoutC gmTileLayout{1, tileLength, gmRowStride};
-            copyGmToUbC(ubC, gmTileC[tileOffset], tileLayout, gmTileLayout);
-            copyGmToUbC(ubC[TILE_LENGTH], gmTileC[branchLength + tileOffset], tileLayout, gmTileLayout);
-            copyGmToUbC(ubC[2 * TILE_LENGTH], gmTileC[gmRowStride + tileOffset], tileLayout, gmTileLayout);
-            copyGmToUbC(ubC[3 * TILE_LENGTH], gmTileC[gmRowStride + branchLength + tileOffset], tileLayout,
-                        gmTileLayout);
-        }
+        LayoutC tileLayout{1, tileLength};
+        LayoutC gmTileLayout{1, tileLength, gmRowStride};
+        copyGmToUbC(ubC, gmTileC[tileOffset], tileLayout, gmTileLayout);
+        copyGmToUbC(ubC[TILE_LENGTH], gmTileC[branchLength + tileOffset], tileLayout, gmTileLayout);
+        copyGmToUbC(ubC[2 * TILE_LENGTH], gmTileC[gmRowStride + tileOffset], tileLayout, gmTileLayout);
+        copyGmToUbC(ubC[3 * TILE_LENGTH], gmTileC[gmRowStride + branchLength + tileOffset], tileLayout, gmTileLayout);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[stageId]);
 
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbWAVMTE2List[stageId]);
-        uint32_t weightAuxLength = Activation::IsInterleaved(activationCode_) ? tileLength * 2 : tileLength;
-        DataCopyExtParams copyParams{1, static_cast<uint32_t>(weightAuxLength * sizeof(float)), 0, 0, 0};
+        DataCopyExtParams copyParams{1, static_cast<uint32_t>(tileLength * sizeof(float)), 0, 0, 0};
         DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
-        if (Activation::IsInterleaved(activationCode_)) {
-            DataCopyPad(ubWeightAux, weightAux[tileOffset * 2], copyParams, padParams);
-        } else {
-            DataCopyPad(ubWeightAux, weightAux[tileOffset], copyParams, padParams);
-            DataCopyPad(ubWeightAux[TILE_LENGTH], weightAux[branchLength + tileOffset], copyParams, padParams);
-        }
+        DataCopyPad(ubWeightAux, weightAux[tileOffset], copyParams, padParams);
+        DataCopyPad(ubWeightAux[TILE_LENGTH], weightAux[branchLength + tileOffset], copyParams, padParams);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbWAMTE2VList[stageId]);
     }
 
@@ -397,29 +383,15 @@ private:
         auto &ubWeightAux = ubWeightAuxList[stageId];
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[stageId]);
-        if (Activation::IsInterleaved(activationCode_)) {
-            Activation::PrepareBranches(ubGateFp32, ubUpFp32, ubC, sharedTmpBuffer, TILE_LENGTH, tileLength,
-                                        activationCode_);
-            Activation::SplitInterleaved(ubC[2 * TILE_LENGTH], sharedTmpBuffer, TILE_LENGTH, tileLength);
-            auto splitLow = sharedTmpBuffer.template ReinterpretCast<ElementC>();
-            AscendC::Cast(ubActivation, splitLow, AscendC::RoundMode::CAST_NONE, tileLength);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Muls(ubGateFp32, ubGateFp32, reconstructScale, tileLength);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Add(ubGateFp32, ubGateFp32, ubActivation, tileLength);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Cast(ubActivation, splitLow[TILE_LENGTH], AscendC::RoundMode::CAST_NONE, tileLength);
-        } else {
-            AscendC::Cast(ubGateFp32, ubC, AscendC::RoundMode::CAST_NONE, tileLength);
-            AscendC::Cast(ubActivation, ubC[2 * TILE_LENGTH], AscendC::RoundMode::CAST_NONE, tileLength);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Muls(ubGateFp32, ubGateFp32, reconstructScale, tileLength);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Add(ubGateFp32, ubGateFp32, ubActivation, tileLength);
-            AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Cast(ubUpFp32, ubC[TILE_LENGTH], AscendC::RoundMode::CAST_NONE, tileLength);
-            AscendC::Cast(ubActivation, ubC[3 * TILE_LENGTH], AscendC::RoundMode::CAST_NONE, tileLength);
-        }
+        AscendC::Cast(ubGateFp32, ubC, AscendC::RoundMode::CAST_NONE, tileLength);
+        AscendC::Cast(ubActivation, ubC[2 * TILE_LENGTH], AscendC::RoundMode::CAST_NONE, tileLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Muls(ubGateFp32, ubGateFp32, reconstructScale, tileLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Add(ubGateFp32, ubGateFp32, ubActivation, tileLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Cast(ubUpFp32, ubC[TILE_LENGTH], AscendC::RoundMode::CAST_NONE, tileLength);
+        AscendC::Cast(ubActivation, ubC[3 * TILE_LENGTH], AscendC::RoundMode::CAST_NONE, tileLength);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[stageId]);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::Muls(ubUpFp32, ubUpFp32, reconstructScale, tileLength);
@@ -428,15 +400,8 @@ private:
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbWAMTE2VList[stageId]);
         AscendC::PipeBarrier<PIPE_V>();
-        if (Activation::IsInterleaved(activationCode_)) {
-            Activation::SplitInterleavedFp32(ubWeightAux, sharedTmpBuffer, TILE_LENGTH, tileLength);
-            auto splitWeightAux = sharedTmpBuffer.template ReinterpretCast<float>();
-            AscendC::Add(ubGateFp32, ubGateFp32, splitWeightAux, tileLength);
-            AscendC::Add(ubUpFp32, ubUpFp32, splitWeightAux[TILE_LENGTH], tileLength);
-        } else {
-            AscendC::Add(ubGateFp32, ubGateFp32, ubWeightAux, tileLength);
-            AscendC::Add(ubUpFp32, ubUpFp32, ubWeightAux[TILE_LENGTH], tileLength);
-        }
+        AscendC::Add(ubGateFp32, ubGateFp32, ubWeightAux, tileLength);
+        AscendC::Add(ubUpFp32, ubUpFp32, ubWeightAux[TILE_LENGTH], tileLength);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbWAVMTE2List[stageId]);
 
         AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
@@ -552,7 +517,7 @@ private:
     int32_t eventxLowMTE3VList[UB_STAGES];
     int32_t eventxLowVMTE3List[UB_STAGES];
     uint32_t activationCode_{0};
-    float activationAlpha_{GptOssSwigluActivation::DEFAULT_ALPHA};
+    float activationAlpha_{SwigluOaiActivation::DEFAULT_ALPHA};
     float activationBeta_{SituActivation::DEFAULT_BETA};
     size_t ubOffset{0};
 
