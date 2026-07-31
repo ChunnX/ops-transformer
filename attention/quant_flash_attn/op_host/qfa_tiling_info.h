@@ -139,7 +139,10 @@ enum class QfaAxis : uint32_t {
     CONST = 12
 };
 
-enum class QfaQuantMode : uint32_t { MXFP8_FP32 = 1 };
+enum class QfaQuantMode : uint32_t {
+    MXFP8_FP32 = 1,
+    HIF8_FP32 = 7
+};
 
 enum class KvStorageMode : uint32_t { BATCH_CONTINUOUS = 0, PAGE_ATTENTION = 1 };
 
@@ -350,9 +353,9 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {{ge::DT_UNDE
                                                                     {ge::DT_FLOAT4_E2M1, "DT_FLOAT4_E2M1"}};
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
-    {QUERY_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}},
-    {KEY_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}},
-    {VALUE_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}},
+    {QUERY_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8}},
+    {KEY_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8}},
+    {VALUE_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8}},
     {Q_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT8_E8M0}},
     {K_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT8_E8M0}},
     {V_DESCALE_NAME, {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT8_E8M0}},
