@@ -35,7 +35,11 @@ constexpr uint32_t MAX_OP_NUM = 8U;    // MC2最大通信算子数
 constexpr uint32_t WRITE_SQE_SIZE = 64U;
 constexpr uint32_t WRITE_WITH_NOTIFY_SQE_SIZE = 96U;
 constexpr uint64_t WIN_STATE_OFFSET = 350U * 1024U;
-constexpr uint64_t STATE_WIN_OFFSET = 950U * 1024U;
+constexpr uint64_t STATE_WIN_OFFSET = 950U * 1024U; // dispatch 的 dataState 0/1 开关
+// combine 独立 dataState 开关，避免与 dispatch 共用导致串联时 bank 错位
+constexpr uint64_t COMBINE_STATE_WIN_OFFSET = 818U * 1024U;
+// combine 状态区相对 bank 基址的偏移，前面预留给 dispatch 状态
+constexpr uint64_t COMBINE_STATE_OFFSET = 64U * 1024U;
 constexpr uint64_t WIN_PICI_OFFSET = 1024U * 1024U;
 constexpr uint64_t PICI_WIN_SIZE = 512UL;
 constexpr uint32_t NORMAL_CQE_SIZE = 64U;

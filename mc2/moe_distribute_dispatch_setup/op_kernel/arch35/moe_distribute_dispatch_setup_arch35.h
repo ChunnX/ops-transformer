@@ -1055,7 +1055,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
 
             if (hasWrite) {
                 hcomm_.Commit(channelId);
-                // hcomm_.Drain(channelId);  // 等待接收cq
+                hcomm_.Drain(channelId); // 确保状态写落到对端，避免与后续combine复用jetty时丢更新
             }
         }
     }

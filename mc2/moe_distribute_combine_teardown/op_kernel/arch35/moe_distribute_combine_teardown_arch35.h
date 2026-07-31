@@ -47,7 +47,6 @@ class MoeDistributeCombineTeardown {
     constexpr static uint32_t STATE_SIZE = 1024U * 1024;  // 1M
     constexpr static uint32_t UB_ALIGN = 32U;             // UB按32字节对齐
     constexpr static uint64_t STATE_SIZE_PER_CORE = 512U; // 数据和状态的0/1区标识占用空间
-    constexpr static uint64_t COMBINE_STATE_OFFSET = 0U; // 本卡状态空间偏移地址，前面的地址给dispatch用
     constexpr static uint32_t STATE_COUNT_THRESHOLD = 512U; // moeExpertNumPerRank*epWorldSize状态数阈值
 
 public:
@@ -138,16 +137,14 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(G
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
     epRankId_ = mc2Context_->epRankId;
 
-    // 获取win状态区地址，并保证数据一致
-    // 在1M中选择512K偏移后的1.5k空间记录本卡历史状态
-    // 在teardown内进行状态切换，到setup内时，state即目标flag
+    // combine 使用独立 dataState 开关，与 dispatch 隔离；本层用当前值，随后翻转供下一层使用
     GlobalTensor<int32_t> selfDataStatusTensor;
     GM_ADDR statusDataSpaceGm = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
-    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGm + STATE_WIN_OFFSET +
+    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGm + COMBINE_STATE_WIN_OFFSET +
                                                             STATE_SIZE_PER_CORE * static_cast<uint64_t>(coreIdx_)));
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
 
-    dataState_ = selfDataStatusTensor(0);      // win状态区的0/1标识
+    dataState_ = selfDataStatusTensor(0);      // combine 侧 win 状态区的0/1标识
     selfDataStatusTensor(0) = 1U - dataState_; // 切换0/1区标识
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
 
