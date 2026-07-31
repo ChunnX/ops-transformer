@@ -129,7 +129,7 @@ __simd_callee__ inline void CastFP32ToFP16ToFP32(AscendC::MicroAPI::RegTensor<fl
 }
 
 // int32 in uint16 out
-__simd_vf__ void MulWeightAndReduceSumInt32GSizeEvenVF(__ubuf__ uint16_t *out, __ubuf__ int32_t *qk,
+__simd_vf__ void MulWeightAndReduceSumInt32GSizeOddVF(__ubuf__ uint16_t *out, __ubuf__ int32_t *qk,
                                                        uint32_t qkVLStride, __ubuf__ half *weight,
                                                        __ubuf__ half *kScale, __ubuf__ half *qScale,
                                                        uint16_t gSize)
@@ -237,7 +237,7 @@ __simd_vf__ void MulWeightAndReduceSumInt32GSizeEvenVF(__ubuf__ uint16_t *out, _
 }
 
 // float in uint16 out
-__simd_vf__ void MulWeightAndReduceSumF32GSizeEvenVF(__ubuf__ uint16_t *out, __ubuf__ float *qk, uint32_t qkVLStride,
+__simd_vf__ void MulWeightAndReduceSumF32GSizeOddVF(__ubuf__ uint16_t *out, __ubuf__ float *qk, uint32_t qkVLStride,
                                                      __ubuf__ float *weight, __ubuf__ float *kScale,
                                                      __ubuf__ float *qScale, uint16_t gSize)
 {
