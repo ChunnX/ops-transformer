@@ -744,10 +744,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
                 uint64_t roundSendCnt = 0;
                 GatherMask(sendGatherOutTensor_, topkIdsTensor_, maskBufU32, true, static_cast<uint32_t>(roundLen),
                            {1, 1, 0, 0}, roundSendCnt);
-                totalSendCnt += roundSendCnt;
                 SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
-                SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
+                SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID3>();
 
+                totalSendCnt += roundSendCnt;
                 // Phase 2b: 将本轮部分 mask 写入 workspace 或 local win 对应字节偏移
                 // roundByteOffset = roundStart/8，因 roundSendTotalNum_ 为 256 对齐，该偏移 32B 对齐
                 uint64_t roundByteOffset = static_cast<uint64_t>(roundStart) / 8U;
@@ -1401,6 +1401,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::MetaInfoC
                 LocalTensor<uint32_t> rankMaskSlice = gatherMaskInt32Tensor_[0];
                 GatherMask(validTopkIndexTensor_, topkIndexTensor_, rankMaskSlice, true, roundLen, {1, 1, 0, 0},
                            roundTokenCnt);
+                SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
 
                 if (roundTokenCnt == 0) {
                     continue;
@@ -1425,10 +1426,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::MetaInfoC
                     uint32_t metaInfoTensorSize = chunkRows * ALIGN_32;
                     metaInfoTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, metaInfoTensorAddr,
                                                            metaInfoTensorSize / sizeof(int32_t));
-                    SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
                     CopyGMToGMPerToken(rowDstOffsetInCore, dstRankIdx, chunkSrcIdx, chunkRows);
+                    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
                 }
-                SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
                 int32_t roundRowStartLocal = rowStartIdxInDst + accumulatedRowSrcOffset - priorExpertCumsum;
                 int32_t roundRowEndLocal = roundRowStartLocal + roundCopyCnt;
                 int32_t waveLo = roundRowStartLocal / L1_TILE_M_I32;
@@ -1443,6 +1443,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::MetaInfoC
                 }
                 accumulatedRowSrcOffset += static_cast<int32_t>(roundTokenCnt);
             }
+            //hcomm_.FlushChannel(GetUrmaCommHandle(mc2Context_, dstRankIdx, rankId_));
         }
     }
 }
@@ -1803,6 +1804,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCo
     tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.metaInfoPtr +
                                                                 (gmm2State.expertBeforeCnt + currentRow) *
                                                                     META_INFO_SIZE * sizeof(int32_t)));
+    SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID1>();
     AscendC::DataCopy(metaInfoTensor, tripleGm, batchCount * META_INFO_SIZE);
 
     // 执行 combine 并发送
@@ -1889,6 +1891,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DrainComb
             continue;
         }
         hcomm_.Drain(GetUrmaCommHandle(mc2Context_, dr, rankId_));
+        //hcomm_.FlushChannel(GetUrmaCommHandle(mc2Context_, dr, rankId_));
     }
 }
 
@@ -2045,6 +2048,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
             DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(chunkTokenCnt * topK_ * sizeof(float)), 0U, 0U,
                                             0U};
             DataCopyPadExtParams<float> copyPadParams{false, 0U, 0U, 0U};
+            SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID2>();
             DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_[chunkStart * topK_], copyParams, copyPadParams);
             SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
         }
@@ -2058,6 +2062,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
             DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(chunkTokenCnt * topK_ * sizeof(bfloat16_t)), 0U,
                                             0U, 0U};
             DataCopyPadExtParams<bfloat16_t> copyPadParams{false, 0U, 0U, 0U};
+            SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID2>();
             DataCopyPad(tempLocal, topkWeightsGlobalTensor[chunkStart * topK_], copyParams, copyPadParams);
             SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID2>();
             Cast(topKWeightsTensor_, tempLocal, AscendC::RoundMode::CAST_NONE, chunkTokenCnt * topK_);
@@ -2147,6 +2152,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CrossRank
                         static_cast<int64_t>(sizeof(int32_t)));
         auto syncCheck = syncRank + rankIndex * 16;
         GmSignalWaitBarrier(syncCheck, count);
+        //hcomm_.FlushChannel(GetUrmaCommHandle(mc2Context_, rankIndex, rankId_));
     }
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
