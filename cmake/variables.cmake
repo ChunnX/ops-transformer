@@ -157,7 +157,7 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/tmp/host-prefix/src/host-build/asl/ops/cann/ops/built-in/op_host/inner/
   )
 else()
-  list(APPEND OPAPI_INCLUDE ${ASCEND_AUTOGEN_DIR}/inner/)
+  list(APPEND OPAPI_INCLUDE ${OPS_TRANSFORMER_DIR}/build/autogen/inner/)
 endif()
 
 set(OP_TILING_INCLUDE
