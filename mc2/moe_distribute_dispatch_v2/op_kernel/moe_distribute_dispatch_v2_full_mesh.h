@@ -67,6 +67,8 @@ constexpr uint32_t RUNPOS_ARRIVECNT = 4U;
 constexpr uint8_t VALID_EVENT_FLAG_NUM = 8U;
 constexpr uint8_t UB_ALIGN_DATA_COUNT = 8U; // 8 = UB_ALIGN / sizeof(float) = UB_ALIGN / sizeof(int32_t)
 constexpr uint32_t MIN_ACTIVE_BS_FOR_BS_MODE = 16U;
+// Token 预取到 L2Cache 的 active token 上限
+constexpr uint32_t TOKEN_PREFETCH_MAX_ACTIVE_BS = 16U;
 constexpr uint32_t DURATION_OFFSET = sizeof(int64_t) / sizeof(int32_t);
 constexpr AscendC::CumSumConfig cumSumConfig{true, true, false};
 
@@ -124,6 +126,7 @@ private:
     __aicore__ inline void AllToAllDispatchA5(TQue<QuePosition::VECIN, 1> inQueue, TBuf<> expertMaskBuf, TBuf<> outBuf);
     __aicore__ inline void AllToAllDispatchA3(TQue<QuePosition::VECIN, 1> inQueue, TBuf<> outBuf);
     __aicore__ inline void AllToAllDispatch();
+    __aicore__ inline void TokenPrefetchToL2Cache();
     __aicore__ inline void CalCumSum();
     __aicore__ inline void WaitCumSumFlag();
     __aicore__ inline void CalAndSendCntByExp();
@@ -243,6 +246,7 @@ private:
     TBuf<> performanceFlagBuf_;
     TBuf<> calBeginBuf_;
     TBuf<> calEndBuf_;
+    TBuf<> prefetchScratch_; // token 预取的 1-token UB 落地 buffer（fire-and-forget，仅触发 L2 填充）
     GM_ADDR expandXOutGM_;
     GM_ADDR expandScalesOutGM_;
     GM_ADDR sendCountsOutGM_;
@@ -1094,6 +1098,24 @@ MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::SendToMoeExpertByB
 }
 
 template <TemplateMC2TypeFullmeshClass>
+__aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::TokenPrefetchToL2Cache()
+{
+    // 分散读取前预取 [0, activeMaskBsCnt_) 进共享 L2，后续 token 读命中。
+    // 门控：!isExpertMaskFlag_ 且 activeMaskBsCnt_ <= TOKEN_PREFETCH_MAX_ACTIVE_BS。
+    if (isExpertMaskFlag_ || activeMaskBsCnt_ == 0 || activeMaskBsCnt_ > TOKEN_PREFETCH_MAX_ACTIVE_BS) {
+        return;
+    }
+    DataCopyPadParams prefetchPadParams{true, 0U, 0U, 0U};
+    uint32_t pfStart, pfEnd, pfPerCore;
+    SplitToCore(static_cast<uint32_t>(activeMaskBsCnt_), aivUsedCumSum_, pfStart, pfEnd, pfPerCore, false);
+    tpipe_->InitBuffer(prefetchScratch_, Ceil(copyInAxisH_ * sizeof(XInType), UB_ALIGN) * UB_ALIGN);
+    LocalTensor<XInType> prefetchScratch = prefetchScratch_.Get<XInType>();
+    for (uint32_t t = pfStart; t < pfEnd; ++t) {
+        DataCopyPad(prefetchScratch, xGMTensor_[t * axisH_], hCopyParams_, prefetchPadParams);
+    }
+}
+
+template <TemplateMC2TypeFullmeshClass>
 __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFunc>::AllToAllDispatch()
 {
     // 使用的全局参数
@@ -1315,6 +1337,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, statusCntAlign_ / 8, 1,
                        8); // 0x3F800000为float的1 8为一次操作8个block
     SyncFunc<AscendC::HardEvent::V_S>();
+    TokenPrefetchToL2Cache(); // token 预取到 L2Cache（计数/发送循环前，MTE2 空闲、不被 PIPE_ALL 排空）
 
     GlobalTensor<int32_t> rankGMTensor;
     uint32_t newAivId = aivId_ - aivUsedAllToAll_;
