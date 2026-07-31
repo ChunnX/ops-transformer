@@ -85,7 +85,8 @@ ge::graphStatus CompressorTiling::ConvertContext(gert::TilingContext &context, C
     compressorContext.cmpRatio = attrs->GetAttrPointer<int>(CMP_RATIO_ATTR_INDEX);
     compressorContext.cacheMode = attrs->GetAttrPointer<int>(CACHE_MODE_ATTR_INDEX);
     compressorContext.stateCacheStrideDim0 = attrs->GetAttrPointer<int>(STATE_CACHE_STRIDE_DIM0_ATTR_INDEX);
-
+    compressorContext.batchConsistency = context.GetDeterministicLevel();
+    OP_LOGD(context.GetNodeName(), "deterministic_level=%d", context.GetDeterministicLevel());
     OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "workSpaceSize got from ge is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -136,6 +137,7 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
     baseParams_->stateCacheStrideDim0 = static_cast<uint64_t>(*context_->stateCacheStrideDim0);
     baseParams_->nSize = 2; // 2:每个核处理两个基本块后做全核同步
     baseParams_->usedCoreNum = aicNum_;
+    baseParams_->batchConsistency = static_cast<uint32_t>(context_->batchConsistency);
     OP_LOGI(context_->opName, "[TILING] bSize:%u  tSize:%u cmpRatio:%u coff:%u, stateCacheStrideDim0:%u",
             baseParams_->batchSize, baseParams_->tokenSize, baseParams_->cmpRatio, coff,
             baseParams_->stateCacheStrideDim0);
@@ -195,7 +197,7 @@ ge::graphStatus CompressorTiling::SetInnerSplitInfo()
         baseParams_->coreGroupNum = baseParams_->usedCoreNum / dBaseNum;
         baseParams_->kBaseNum = 1;
         baseParams_->kBaseSize = baseParams_->hiddenSize;
-        if ((dBaseNum * mBaseNum) < baseParams_->usedCoreNum) {
+        if ((dBaseNum * mBaseNum) < baseParams_->usedCoreNum && baseParams_->batchConsistency != BATCH_CONSISTENCY) {
             baseParams_->kBaseNum = baseParams_->usedCoreNum / dBaseNum;
             uint32_t kAlignSize = (baseParams_->hiddenSize + baseParams_->kBaseNum - 1) / baseParams_->kBaseNum;
             baseParams_->kBaseSize = kAlignSize / 16 * 16; // 切k的size需要16对齐
@@ -622,9 +624,11 @@ ge::graphStatus CompressorTiling::CheckSingleParaCmpKv() const
 
 ge::graphStatus CompressorTiling::CheckSingleParaCmpRatio() const
 {
-    if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(context_->cmpRatio, CMP_RATIO, CMP_RATIO_NAME)) {
-        return ge::GRAPH_FAILED;
-    }
+    uint32_t cmpRatio = static_cast<uint32_t>(*context_->cmpRatio);
+    OP_CHECK_IF(cmpRatio > MAX_CMPRATIO_SIZE || cmpRatio < MIN_CMPRATIO_SIZE,
+                OP_LOGE(context_->opName, "cmpRatio should be within [%u, %u], but got %u", MIN_CMPRATIO_SIZE,
+                        MAX_CMPRATIO_SIZE, cmpRatio),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -830,23 +834,6 @@ ge::graphStatus CompressorTiling::CheckDimNumConsistency() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CompressorTiling::CheckScenarioConsistency() const
-{
-    auto curCmpratio = baseParams_->cmpRatio;
-    auto curHeaddim = baseParams_->headDim;
-    auto curCoff = static_cast<uint8_t>(*context_->coff);
-    std::vector<uint32_t> curScenario{curCmpratio, curCoff, curHeaddim};
-    const std::vector<std::vector<uint32_t>> allowdScenarios = {{4, 2, 512}, {4, 2, 128}, {128, 1, 512}};
-
-    OP_CHECK_IF(
-        std::find(allowdScenarios.begin(), allowdScenarios.end(), curScenario) == allowdScenarios.end(),
-        OP_LOGE(context_->opName, "Cmpratio Coff Headdim should be equal to {4, 2, 512}, {4, 2, 128}, {128, 1, 512}, \
-                        but now cmpratio=%u, coff=%u, headdim=%u",
-                curCmpratio, curCoff, curHeaddim),
-        return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus CompressorTiling::CheckBlockDimConstrain() const
 {
     uint32_t minBlockNum = baseParams_->headDim / 64; // 64 is the largest dBaseSize
@@ -862,11 +849,6 @@ ge::graphStatus CompressorTiling::CheckMultiParaConsistency() const
         CheckDimNumConsistency() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-#ifdef DAY0_SCOPE
-    if (CheckScenarioConsistency() != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-#endif
     return ge::GRAPH_SUCCESS;
 }
 
