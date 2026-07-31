@@ -44,7 +44,7 @@ DQUERY = 512
 DQUERY_INDEX = 128
 # 显式参与 TileLang JIT specialization，源码结构调整后递增以避免复用
 # 旧的持久编译产物。该值不进入运行时 kernel ABI。
-KERNEL_CACHE_REVISION = 15
+KERNEL_CACHE_REVISION = 17
 
 _kernel_cache = {}
 _workspace_cache = {}
@@ -1420,7 +1420,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
     @T.macro
     def vector1_owned_p_task(
-        KRealSize,
+        valid_k_size,
         SoftmaxMax,
         SoftmaxSum,
         bmm1Res,
@@ -1455,9 +1455,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     n_block,
                 )
             for s1_id in T.serial(s1_begin_task, s1_end_task):
-                valid_k_size = K
-                if not full_valid:
-                    valid_k_size = KRealSize[bz_task, s1_id]
                 T.copy(SoftmaxMax[bz_task, 0, s1_id, 0:N1], v1_op_max)
                 T.copy(SoftmaxSum[bz_task, 0, s1_id, 0:N1], v1_op_sum)
                 T.set_flag("mte2", "v", 0)
@@ -1577,7 +1574,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
     @T.macro
     def vector1_owned_sy_max_task(
-        KRealSize,
+        valid_k_size,
         Weights,
         bmm2Res,
         V1Stats,
@@ -1615,9 +1612,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     n_block,
                 )
             for s1_id in T.serial(s1_begin_task, s1_end_task):
-                valid_k_size = K
-                if not full_valid:
-                    valid_k_size = KRealSize[bz_task, s1_id]
                 T.copy(Weights[bz_task, s1_id, 0:Nidx1], v1_om_weight_half)
                 T.set_flag("mte2", "v", 2)
                 T.wait_flag("mte2", "v", 2)
@@ -1697,7 +1691,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
     @T.macro
     def vector1_owned_sy_sum_task(
-        KRealSize,
+        valid_k_size,
         Weights,
         bmm2Res,
         V1Stats,
@@ -1732,9 +1726,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     n_block,
                 )
             for s1_id in T.serial(s1_begin_task, s1_end_task):
-                valid_k_size = K
-                if not full_valid:
-                    valid_k_size = KRealSize[bz_task, s1_id]
                 T.copy(V1Stats[bz_task, s1_id, 0:2, 0:8], v1_os_stats)
                 T.copy(Weights[bz_task, s1_id, 0:Nidx1], v1_os_weight_half)
                 T.set_flag("mte2", "v", 2)
@@ -1826,7 +1817,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
     @T.macro
     def vector1_owned_backward_task(
-        KRealSize,
+        valid_k_size,
         Weights,
         bmm2Res,
         PReduced,
@@ -1882,9 +1873,6 @@ def tilelang_grad_kl_loss_single_kernel(
             T.set_flag("mte3", "v", 2)
             T.set_flag("mte3", "v", 3)
             for s1_id in T.serial(s1_begin_task, s1_end_task):
-                valid_k_size = K
-                if not full_valid:
-                    valid_k_size = KRealSize[bz_task, s1_id]
                 T.copy(Weights[bz_task, s1_id, 0:Nidx1], v1_ob_weight_half)
                 T.copy(V1Stats[bz_task, s1_id, 0:4, 0:8], v1_ob_stats)
                 T.set_flag("mte2", "v", 2)
@@ -2023,6 +2011,15 @@ def tilelang_grad_kl_loss_single_kernel(
                                 v1_ob_p,
                             )
                             if not full_valid and bw_col_end > valid_k_size:
+                                T.pipe_barrier("v")
+                                # packed mask 不跨越中间 Vector 指令复用；在 Loss
+                                # 消费前重新生成，避免后端临时区覆盖旧 mask。
+                                T.tile.compare(
+                                    v1_ob_mask,
+                                    v1_ob_offsets,
+                                    valid_k_size - bw_col_start,
+                                    "LT",
+                                )
                                 T.pipe_barrier("v")
                                 T.tile.select(
                                     v1_ob_loss_2d[0, :],
@@ -2763,6 +2760,11 @@ def tilelang_grad_kl_loss_single_kernel(
                             bz_prev = task_prev // S1
                             s1_prev = task_prev % S1
                             task_prev_slot = task_prev_iter % 2
+                            valid_k_prev = K
+                            if not full_valid:
+                                # 在主 task 流水中读取一次，避免宏内单次 serial
+                                # 展开时丢失动态 KRealSize 依赖。
+                                valid_k_prev = KRealSize[bz_prev, s1_prev]
                             cube1_task(
                                 Query,
                                 QueryRope,
@@ -2778,7 +2780,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                 task_prev_slot,
                             )
                             vector1_owned_p_task(
-                                KRealSize,
+                                valid_k_prev,
                                 SoftmaxMax,
                                 SoftmaxSum,
                                 bmm1Res,
@@ -2790,7 +2792,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                 vid,
                             )
                             vector1_owned_sy_max_task(
-                                KRealSize,
+                                valid_k_prev,
                                 Weights,
                                 bmm2Res,
                                 V1Stats,
@@ -2802,7 +2804,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             )
                             relay_vector1_psy(task_prev_slot)
                             vector1_owned_sy_sum_task(
-                                KRealSize,
+                                valid_k_prev,
                                 Weights,
                                 bmm2Res,
                                 V1Stats,
@@ -2814,7 +2816,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             )
                             relay_vector1_psy(task_prev_slot)
                             vector1_owned_backward_task(
-                                KRealSize,
+                                valid_k_prev,
                                 Weights,
                                 bmm2Res,
                                 PReduced,

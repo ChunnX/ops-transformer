@@ -510,6 +510,7 @@ def _run_task_diagnostics(context: DebugContext) -> None:
         print(
             f"[DEBUG_TASK] Loss owner={debug_owner} "
             f"slot={debug_loss_base + debug_owner * context.loss_partial_stride} "
+            f"actual={debug_loss_partials[debug_owner].item():.6e} "
             f"host_reconstructed_sum={debug_owner_loss.sum().item():.6e} "
             f"min={debug_owner_min:.6e} max={debug_owner_max:.6e} "
             f"nonfinite={(~debug_owner_finite).sum().item()}"
