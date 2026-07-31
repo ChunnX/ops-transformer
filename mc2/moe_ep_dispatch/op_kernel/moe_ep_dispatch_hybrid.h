@@ -63,6 +63,9 @@ constexpr uint32_t DATA_BLOCK_NUM = 8U;         // 256B/32B=8
 constexpr uint8_t BUFFER_NUM = 2;
 constexpr int64_t STATUS_POLL_BACKOFF_CYCLES = 100; // ready 未就绪时的轮询退避周期
 constexpr uint32_t STATUS_CLEAR_BATCH_RECORDS = 64U;
+constexpr uint64_t DEBUG_POLL_TIMEOUT_CYCLES = 1000000000UL; // A5上约1秒，仅用于死锁诊断
+constexpr uint32_t DEBUG_ROUND_TAG_OFFSET = 256U; // 复用状态记录中未使用的padding保存本地轮次
+constexpr uint32_t DEBUG_MAX_MISSING_STATUS_PRINTS = 16U;
 // status[0]发布总slot数，其余status只表示对应slot已到达。
 constexpr uint32_t SCALEOUT_SLOT_READY = 1U;
 
@@ -91,6 +94,8 @@ private:
                                              GM_ADDR routeScaleoutSlot);
     __aicore__ inline void InitCopyParams();
     __aicore__ inline void InitGlobalAddresses(const MoeEpDispatchTilingData *tilingData);
+    __aicore__ inline void AdvanceDebugRoundTag();
+    __aicore__ inline uint32_t GetDebugRoundTag();
     __aicore__ inline void CalSendCntPerRank(LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt);
     __aicore__ inline void CalSendCntPerExpert(LocalTensor<int16_t> expertIdsTensor, uint32_t calCnt);
     __aicore__ inline void CalSendCntPerScaleout(LocalTensor<int16_t> rankIdsTensor, uint32_t calCnt,
@@ -241,6 +246,7 @@ private:
     GM_ADDR fanoutDescriptorAddr_{nullptr};
     GM_ADDR fanoutCountAddr_{nullptr};
     GM_ADDR payloadStashWinAddr_{nullptr};
+    GM_ADDR debugRoundTagAddr_{nullptr};
 
     uint32_t axisBS_{0};
     uint32_t axisH_{0};
@@ -468,10 +474,33 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, epRankId_, info.payloadStashWinOffset);
     GM_ADDR localCntStateWinAddr =
         MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, epRankId_, cntWinStateOffset_);
+    debugRoundTagAddr_ =
+        MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, epRankId_, slotWinStateOffset_) +
+        static_cast<uint64_t>(epRankId_) * WIN_ADDR_ALIGN + DEBUG_ROUND_TAG_OFFSET;
     scaleupCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)scaleupCounterAddr_);
     scaleoutCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)scaleoutCounterAddr);
     recvCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)localCntStateWinAddr);
     sendCntGMTensor_.SetGlobalBuffer((__gm__ int32_t *)sendCntWorkspaceAddr_);
+}
+
+template <TemplateMoeEpDispatchHybridTypeClass>
+__aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::AdvanceDebugRoundTag()
+{
+    if (aivId_ != 0U) {
+        return;
+    }
+    __gm__ uint32_t *roundTagAddr = (__gm__ uint32_t *)debugRoundTagAddr_;
+    uint32_t nextRoundTag = static_cast<uint32_t>(ReadGmByPassDCache(roundTagAddr)) + 1U;
+    if (nextRoundTag == 0U) {
+        nextRoundTag = 1U;
+    }
+    WriteGmByPassDCache(roundTagAddr, nextRoundTag);
+}
+
+template <TemplateMoeEpDispatchHybridTypeClass>
+__aicore__ inline uint32_t MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::GetDebugRoundTag()
+{
+    return static_cast<uint32_t>(ReadGmByPassDCache((__gm__ uint32_t *)debugRoundTagAddr_));
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -768,6 +797,12 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
 
     // notifyValue 的低 32 位为 ready，高 32 位为该目标 rank 的 token count。
+    if (aivId_ < 2U) {
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch_count_send rank=%u round=%u aiv=%u dstRank=%u "
+                        "notifyAddr=%lu notifyVal=%lu\n",
+                        epRankId_, GetDebugRoundTag(), aivId_, dstRankId,
+                        (uint64_t)notifyAddr, notifyValue);
+    }
     hcomm_.WriteWithNotifyNbi(commHandle, remoteCountAddr, srcWorkspaceAddr,
                               static_cast<uint64_t>(moeExpertNumPerRank_ * sizeof(int32_t)),
                               notifyAddr, notifyValue);
@@ -775,6 +810,10 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     // 需通过 GetCommHandle(dstRankId, channelIndex) 获取当前 channel，
     // 并调用 hcomm_.FlushChannel(commHandle) 刷新 DCCI。
     hcomm_.Drain(commHandle);
+    if (aivId_ < 2U) {
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch_count_send_done rank=%u round=%u aiv=%u dstRank=%u\n",
+                        epRankId_, GetDebugRoundTag(), aivId_, dstRankId);
+    }
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -852,19 +891,60 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     LocalTensor<float> recvCounterTensorFp32 = recvCounterTensor.template ReinterpretCast<float>();
     LocalTensor<float> numRecvPerRankTensorFp32 = numRecvPerRankTensor_.template ReinterpretCast<float>();
     SyncFunc<AscendC::HardEvent::MTE3_V>(); // 等待本核上轮计数器清0(buf 复用)
+    uint32_t roundTag = GetDebugRoundTag();
+    uint64_t pollStartCycle = static_cast<uint64_t>(GetSystemCycle());
+    uint32_t recvPollCount = 0U;
+    AscendC::PRINTF("[MOE_EP_TRACE] dispatch_count_wait_enter rank=%u round=%u expected=%d\n",
+                    epRankId_, roundTag, compareFlag);
     while (sumOfFlag != compareFlag) {      // 状态位check
         DataCopy(recvCounterTensor, recvCounterGMTensor_, statusCopyParams_);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum(numRecvPerRankTensorFp32, recvCounterTensorFp32, tempFp32, mask, serverRankCount, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = numRecvPerRankTensor_.GetValue(0);
+        if (recvPollCount == 0U) {
+            int32_t sourceZeroStatus = recvCounterTensor.GetValue(0);
+            int32_t sourceOneStatus =
+                serverRankCount > 1U ? recvCounterTensor.GetValue(UB_STRIDE) : 0;
+            AscendC::PRINTF("[MOE_EP_TRACE] dispatch_count_wait_first rank=%u round=%u sum=%d "
+                            "src0=%d src1=%d\n",
+                            epRankId_, roundTag, sumOfFlag, sourceZeroStatus, sourceOneStatus);
+        }
+        uint64_t elapsedCycles = static_cast<uint64_t>(GetSystemCycle()) - pollStartCycle;
+        if (elapsedCycles >= DEBUG_POLL_TIMEOUT_CYCLES) {
+            uint32_t missingStatusCount = 0U;
+            for (uint32_t srcRankId = 0U; srcRankId < serverRankCount; srcRankId++) {
+                int32_t statusValue = recvCounterTensor.GetValue(srcRankId * UB_STRIDE);
+                if (statusValue == 1) {
+                    continue;
+                }
+                if (missingStatusCount < DEBUG_MAX_MISSING_STATUS_PRINTS) {
+                    GM_ADDR statusAddr =
+                        MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, epRankId_, cntWinStateOffset_) +
+                        static_cast<uint64_t>(srcRankId) * WIN_ADDR_ALIGN;
+                    AscendC::PRINTF("[MOE_EP_TIMEOUT] dispatch_count_wait rank=%u round=%u srcRank=%u "
+                                    "status=%d statusAddr=%lu polls=%u cycles=%lu\n",
+                                    epRankId_, roundTag, srcRankId, statusValue,
+                                    (uint64_t)statusAddr, recvPollCount, elapsedCycles);
+                }
+                missingStatusCount++;
+            }
+            PipeBarrier<PIPE_ALL>();
+            assert(false && "MoeEpDispatch hybrid count wait timed out");
+            return;
+        }
+        recvPollCount++;
     }
+    AscendC::PRINTF("[MOE_EP_TRACE] dispatch_count_wait_done rank=%u round=%u polls=%u\n",
+                    epRankId_, roundTag, recvPollCount);
     SetRecvNumPerExpert();                // 计算本卡上各专家接收的token总数
     SetRecvNumPerRank(recvCounterTensor); // 计算本端接收来自各卡的token总数
     // status clear
     Duplicate<int32_t>(recvCounterTensor, 0, serverRankCount * UB_STRIDE);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(recvCounterGMTensor_, recvCounterTensor, clearStatusCopyParams_);
+    AscendC::PRINTF("[MOE_EP_TRACE] dispatch_count_clear_issued rank=%u round=%u\n",
+                    epRankId_, roundTag);
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1511,7 +1591,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
             CopyPayloadToLocal(sourcePayloadAddr, destinationPayloadAddr);
         } else {
             hcomm_.WriteNbi<false>(commHandle, destinationPayloadAddr, sourcePayloadAddr, perSlotBytes_);
-            hasRemotePayload = true;
+            hcomm_.Commit(commHandle);
+            hcomm_.Drain(commHandle);
         }
     }
 }
@@ -1608,9 +1689,22 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     } else if (dstRankId == epRankId_) {
         PipeBarrier<PIPE_MTE3>();
     }
+    if (aivId_ < 2U) {
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch_payload_done rank=%u round=%u aiv=%u dstRank=%u "
+                        "hasRemote=%d\n",
+                        epRankId_, GetDebugRoundTag(), aivId_, dstRankId, hasRemotePayload ? 1 : 0);
+    }
     PublishFinalReadyStatuses(dstRankId);
     if (dstRankId != epRankId_) {
+        if (aivId_ < 2U) {
+            AscendC::PRINTF("[MOE_EP_TRACE] dispatch_ready_drain_enter rank=%u round=%u aiv=%u dstRank=%u\n",
+                            epRankId_, GetDebugRoundTag(), aivId_, dstRankId);
+        }
         hcomm_.Drain(commHandle);
+        if (aivId_ < 2U) {
+            AscendC::PRINTF("[MOE_EP_TRACE] dispatch_ready_drain_done rank=%u round=%u aiv=%u dstRank=%u\n",
+                            epRankId_, GetDebugRoundTag(), aivId_, dstRankId);
+        }
     }
 }
 
@@ -1630,6 +1724,10 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 
     for (uint32_t localRankIndex = destinationScaleupStart;
          localRankIndex < destinationScaleupEnd; localRankIndex++) {
+        if (aivId_ < 2U) {
+            AscendC::PRINTF("[MOE_EP_TRACE] dispatch_scaleup_send rank=%u round=%u aiv=%u dstRank=%u\n",
+                            epRankId_, GetDebugRoundTag(), aivId_, serverStartRank_ + localRankIndex);
+        }
         SendPayloadsToScaleupRank(serverStartRank_ + localRankIndex);
     }
 }
@@ -1647,12 +1745,28 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         statusTensor.SetGlobalBuffer((__gm__ int32_t *)notifyAddr);
         statusTensor.SetValue(0, 1);
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(statusTensor);
+        if (aivId_ < 2U) {
+            AscendC::PRINTF("[MOE_EP_TRACE] dispatch_ready_local rank=%u round=%u aiv=%u src=%u dst=%u "
+                            "addr=%lu value=1\n",
+                            epRankId_, GetDebugRoundTag(), aivId_, srcRankId, dstRankId,
+                            reinterpret_cast<uint64_t>(notifyAddr));
+        }
         return;
     }
 
     uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
     GM_ADDR readySourceAddr = sendCntWorkspaceAddr_ + dstRankId * WIN_ADDR_ALIGN;
+    __gm__ uint64_t *readySourceGm = reinterpret_cast<__gm__ uint64_t *>(readySourceAddr);
+    uint64_t readyVal = *readySourceGm;
+    if (aivId_ < 2U) {
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch_ready_remote rank=%u round=%u aiv=%u src=%u dst=%u "
+                        "addr=%lu srcAddr=%lu value=%lu\n",
+                        epRankId_, GetDebugRoundTag(), aivId_, srcRankId, dstRankId,
+                        reinterpret_cast<uint64_t>(notifyAddr),
+                        reinterpret_cast<uint64_t>(readySourceAddr), readyVal);
+    }
     hcomm_.WriteNbi(commHandle, notifyAddr, readySourceAddr, sizeof(uint64_t));
+    hcomm_.Drain(commHandle);
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1915,6 +2029,10 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         GetRecvCount();
     }
     PipeBarrier<PIPE_ALL>();
+    if (aivId_ == 0U) {
+        AscendC::PRINTF("[MOE_EP_TRACE] dispatch_count_clear_completed rank=%u round=%u\n",
+                        epRankId_, GetDebugRoundTag());
+    }
     tpipe_->Reset();
     if (aivId_ != 0U || aivNum_ == 1U) {
         PreparePayloads();
@@ -1965,8 +2083,17 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
+        AdvanceDebugRoundTag();
+        if (aivId_ == 0U) {
+            AscendC::PRINTF("[MOE_EP_TRACE] dispatch_enter rank=%u round=%u\n",
+                            epRankId_, GetDebugRoundTag());
+        }
         PrepareDispatchPayloads();
         TransferDispatchPayloads();
+        if (aivId_ == 0U) {
+            AscendC::PRINTF("[MOE_EP_TRACE] dispatch_exit rank=%u round=%u\n",
+                            epRankId_, GetDebugRoundTag());
+        }
     }
 }
 } // namespace MoeEpDispatchHybridImpl
