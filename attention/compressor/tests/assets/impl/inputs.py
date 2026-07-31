@@ -315,12 +315,17 @@ def apply_batch_slice_seeded(
                         if axis_pos == 1:
                             if start < cmp_ratio:
                                 continue
+                            if slices[0] is None:
+                                bidx = 0
+                            else:
+                                bidx = slices[0][slice_idx][0]
+                                slice_idx += 1
                             sliced_shape[0] = 1
                             sliced_shape[axis_pos] = length + cmp_ratio
                             data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(
                                 np.float32
                             )
-                            tensor[0, (start - cmp_ratio) : end, :] = torch.from_numpy(
+                            tensor[bidx, (start - cmp_ratio) : end, :] = torch.from_numpy(
                                 data
                             ).to(tensor.dtype)
                         else:
