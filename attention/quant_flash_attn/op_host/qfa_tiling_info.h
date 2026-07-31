@@ -141,7 +141,7 @@ enum class QfaAxis : uint32_t {
 
 enum class QfaQuantMode : uint32_t {
     MXFP8_FP32 = 1,
-    HIF8_FP32 = 3
+    HIF8_FP32 = 7
 };
 
 enum class KvStorageMode : uint32_t { BATCH_CONTINUOUS = 0, PAGE_ATTENTION = 1 };

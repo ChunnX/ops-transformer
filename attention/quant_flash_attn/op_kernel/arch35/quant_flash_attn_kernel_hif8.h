@@ -50,7 +50,7 @@ public:
     static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
 
-    static constexpr uint32_t PRELOAD_N = 1;
+    static constexpr uint32_t PRELOAD_N = 2;
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
@@ -68,10 +68,10 @@ public:
     BufferManager<BufferType::GM> gmBufferManager;
     BufferManager<BufferType::UB> ubBufferManager;
     BufferManager<BufferType::L1> l1BufferManager;
-    BuffersPolicyDB<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers;
+    BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD> bmm2ResGmBuffers;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
     BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
+    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
 
     GlobalTensor<int32_t> cuSeqLensGmQ;
     GlobalTensor<int32_t> cuSeqLensGmKv;
@@ -614,7 +614,11 @@ public:
 
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo, uint32_t subLoop)
     {
-        vecFaBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo, subLoop);
+        if (subLoop % 2 == 0) {
+            vecFaBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo, subLoop);
+        } else {
+            vecFaBlock.ProcessVec1(this->l1PBuffers.GetPre(), this->bmm1Buffers.Get(), runInfo, subLoop);
+        }
     }
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
