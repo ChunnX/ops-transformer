@@ -37,9 +37,9 @@ TEST_F(MhcSinkhornOpapiUt, aclnn_mhc_sinkhorn_basic_4d_fp32)
 {
     auto x = TensorDesc({1, 128, 4, 4}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto outPut = TensorDesc({1, 128, 16, 1024}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto normOut = TensorDesc({1, 128, 16, 1024}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto SumOut = TensorDesc({1, 128, 16, 1024}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto outPut = TensorDesc({1, 128, 4, 4}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto normOut = TensorDesc({40, 4, 8, 128}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto SumOut = TensorDesc({40, 8, 128}, ACL_FLOAT, ACL_FORMAT_ND);
 
     float eps = 1e-6;
     int64_t num_iters = 20;
@@ -59,8 +59,8 @@ TEST_F(MhcSinkhornOpapiUt, aclnn_mhc_sinkhorn_basic_3d_fp32)
     auto x = TensorDesc({1024, 6, 6}, ACL_FLOAT, ACL_FORMAT_ND);
 
     auto outPut = TensorDesc({1024, 6, 6}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto normOut = TensorDesc({1024, 6, 6}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto SumOut = TensorDesc({1024, 6, 6}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto normOut = TensorDesc({30, 6, 8, 1024}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto SumOut = TensorDesc({30, 8, 1024}, ACL_FLOAT, ACL_FORMAT_ND);
 
     float eps = 1e-7;
     int64_t num_iters = 15;
