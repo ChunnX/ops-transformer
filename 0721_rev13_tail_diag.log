@@ -1,0 +1,8 @@
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+0721 general test: suite=all, cases=1, benchmark=False, resource_excluded=9
+Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on the 61 GiB device; TND S1*K=16.78M also OOMs.
+
+========================================================================================
+[00] isolate_tail_b1_s1_1_k_4096: suite=isolate kind=tail-k layout=BSND B=1 S1=1 S2=1025 N1=32 Nidx1=16 K=4096 valid_k=[1025,1025] exec_k=2048 scatter_exec_k=1040 invalid=3071 path=tail-protected dtype=bfloat16
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=13 python_sha256=c82aa00fa6732a3c993513857d2a0b49d28952986a4c79adb70d37de5fd7941a
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=ccf46283bdbb3b29d51ceb895ce6d6e5d12c3f1dff9d1dbe65dee1da15f6ff96
