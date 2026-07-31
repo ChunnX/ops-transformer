@@ -44,7 +44,7 @@ DQUERY = 512
 DQUERY_INDEX = 128
 # 显式参与 TileLang JIT specialization，源码结构调整后递增以避免复用
 # 旧的持久编译产物。该值不进入运行时 kernel ABI。
-KERNEL_CACHE_REVISION = 17
+KERNEL_CACHE_REVISION = 18
 
 _kernel_cache = {}
 _workspace_cache = {}
@@ -1471,95 +1471,96 @@ def tilelang_grad_kl_loss_single_kernel(
                     n_start = n_idx * n_block
                     T.wait_flag("v", "mte2", 1)
                     T.wait_flag("mte3", "v", 0)
-                    if n_start < valid_k_size:
-                        T.copy(
-                            bmm1Res[bz_task, s1_id, 0:N1,
-                                    n_start:n_start + n_block],
-                            v1_op_bmm1,
+                    T.copy(
+                        bmm1Res[bz_task, s1_id, 0:N1,
+                                n_start:n_start + n_block],
+                        v1_op_bmm1,
+                    )
+                    T.set_flag("mte2", "v", 1)
+                    T.wait_flag("mte2", "v", 1)
+                    T.tile.mul(v1_op_bmm1, v1_op_bmm1, scale_value)
+                    T.pipe_barrier("v")
+                    if not full_valid:
+                        # 运行时 if 会被后端消除；tail specialization 对每个
+                        # 静态 tile 都生成 mask，完整 tile 的 mask 自然全为真。
+                        T.tile.compare(
+                            v1_op_mask,
+                            v1_op_offsets,
+                            valid_k_size - n_start,
+                            "LT",
                         )
-                        T.set_flag("mte2", "v", 1)
-                        T.wait_flag("mte2", "v", 1)
-                        T.tile.mul(v1_op_bmm1, v1_op_bmm1, scale_value)
                         T.pipe_barrier("v")
-                        if not full_valid and n_start + n_block > valid_k_size:
-                            T.tile.compare(
-                                v1_op_mask,
-                                v1_op_offsets,
-                                valid_k_size - n_start,
-                                "LT",
-                            )
-                            T.pipe_barrier("v")
-                            for p_mask_row in T.serial(N1):
-                                T.tile.select(
-                                    v1_op_bmm1[p_mask_row, 0:n_block],
-                                    v1_op_mask,
-                                    v1_op_bmm1[p_mask_row, 0:n_block],
-                                    -T.infinity(calc_dtype),
-                                    "VSEL_TENSOR_SCALAR_MODE",
-                                )
-                            T.pipe_barrier("v")
-                        for p_row_chunk in T.serial(p_row_chunk_count):
-                            p_row_start = p_row_chunk * p_rows_per_chunk
-                            for p_col_chunk in T.serial(p_col_chunk_count):
-                                p_col_start = p_col_chunk * p_cols_per_chunk
-                                T.tile.row_expand_sub_experiment(
-                                    v1_op_bmm1[
-                                        p_row_start:p_row_start + p_rows_per_chunk,
-                                        p_col_start:p_col_start + p_cols_per_chunk,
-                                    ],
-                                    v1_op_bmm1[
-                                        p_row_start:p_row_start + p_rows_per_chunk,
-                                        p_col_start:p_col_start + p_cols_per_chunk,
-                                    ],
-                                    v1_op_max[
-                                        p_row_start:p_row_start + p_rows_per_chunk
-                                    ],
-                                    v1_op_tmp[
-                                        p_row_start:p_row_start + p_rows_per_chunk, 0:8
-                                    ],
-                                )
-                        T.pipe_barrier("v")
-                        T.tile.exp(v1_op_bmm1, v1_op_bmm1)
-                        T.pipe_barrier("v")
-                        for p_row_chunk in T.serial(p_row_chunk_count):
-                            p_row_start = p_row_chunk * p_rows_per_chunk
-                            for p_col_chunk in T.serial(p_col_chunk_count):
-                                p_col_start = p_col_chunk * p_cols_per_chunk
-                                T.tile.row_expand_div_experiment(
-                                    v1_op_bmm1[
-                                        p_row_start:p_row_start + p_rows_per_chunk,
-                                        p_col_start:p_col_start + p_cols_per_chunk,
-                                    ],
-                                    v1_op_bmm1[
-                                        p_row_start:p_row_start + p_rows_per_chunk,
-                                        p_col_start:p_col_start + p_cols_per_chunk,
-                                    ],
-                                    v1_op_sum[
-                                        p_row_start:p_row_start + p_rows_per_chunk
-                                    ],
-                                    v1_op_tmp[
-                                        p_row_start:p_row_start + p_rows_per_chunk, 0:8
-                                    ],
-                                )
-                        T.pipe_barrier("v")
-                        T.tile.fill(v1_op_out, 0.0)
-                        T.pipe_barrier("v")
-                        for p_reduce_chunk in T.serial(p_row_chunk_count):
-                            p_reduce_start = p_reduce_chunk * p_rows_per_chunk
-                            T.reduce_sum(
+                        for p_mask_row in T.serial(N1):
+                            T.tile.select(
                                 v1_op_bmm1[
-                                    p_reduce_start:p_reduce_start + p_rows_per_chunk,
-                                    0:n_block,
+                                    p_mask_row, 0:n_block
                                 ],
-                                v1_op_partial[0:n_block],
-                                0,
+                                v1_op_mask,
+                                v1_op_bmm1[p_mask_row, 0:n_block],
+                                -T.infinity(calc_dtype),
+                                "VSEL_TENSOR_SCALAR_MODE",
                             )
-                            T.pipe_barrier("v")
-                            T.tile.add(v1_op_out, v1_op_out, v1_op_partial[0:n_block])
-                            T.pipe_barrier("v")
-                        T.tile.mul(v1_op_out, v1_op_out, 1.0 / N1)
-                    else:
-                        T.tile.fill(v1_op_out, 0.0)
+                        T.pipe_barrier("v")
+                    for p_row_chunk in T.serial(p_row_chunk_count):
+                        p_row_start = p_row_chunk * p_rows_per_chunk
+                        for p_col_chunk in T.serial(p_col_chunk_count):
+                            p_col_start = p_col_chunk * p_cols_per_chunk
+                            T.tile.row_expand_sub_experiment(
+                                v1_op_bmm1[
+                                    p_row_start:p_row_start + p_rows_per_chunk,
+                                    p_col_start:p_col_start + p_cols_per_chunk,
+                                ],
+                                v1_op_bmm1[
+                                    p_row_start:p_row_start + p_rows_per_chunk,
+                                    p_col_start:p_col_start + p_cols_per_chunk,
+                                ],
+                                v1_op_max[
+                                    p_row_start:p_row_start + p_rows_per_chunk
+                                ],
+                                v1_op_tmp[
+                                    p_row_start:p_row_start + p_rows_per_chunk, 0:8
+                                ],
+                            )
+                    T.pipe_barrier("v")
+                    T.tile.exp(v1_op_bmm1, v1_op_bmm1)
+                    T.pipe_barrier("v")
+                    for p_row_chunk in T.serial(p_row_chunk_count):
+                        p_row_start = p_row_chunk * p_rows_per_chunk
+                        for p_col_chunk in T.serial(p_col_chunk_count):
+                            p_col_start = p_col_chunk * p_cols_per_chunk
+                            T.tile.row_expand_div_experiment(
+                                v1_op_bmm1[
+                                    p_row_start:p_row_start + p_rows_per_chunk,
+                                    p_col_start:p_col_start + p_cols_per_chunk,
+                                ],
+                                v1_op_bmm1[
+                                    p_row_start:p_row_start + p_rows_per_chunk,
+                                    p_col_start:p_col_start + p_cols_per_chunk,
+                                ],
+                                v1_op_sum[
+                                    p_row_start:p_row_start + p_rows_per_chunk
+                                ],
+                                v1_op_tmp[
+                                    p_row_start:p_row_start + p_rows_per_chunk, 0:8
+                                ],
+                            )
+                    T.pipe_barrier("v")
+                    T.tile.fill(v1_op_out, 0.0)
+                    T.pipe_barrier("v")
+                    for p_reduce_chunk in T.serial(p_row_chunk_count):
+                        p_reduce_start = p_reduce_chunk * p_rows_per_chunk
+                        T.reduce_sum(
+                            v1_op_bmm1[
+                                p_reduce_start:p_reduce_start + p_rows_per_chunk,
+                                0:n_block,
+                            ],
+                            v1_op_partial[0:n_block],
+                            0,
+                        )
+                        T.pipe_barrier("v")
+                        T.tile.add(v1_op_out, v1_op_out, v1_op_partial[0:n_block])
+                        T.pipe_barrier("v")
+                    T.tile.mul(v1_op_out, v1_op_out, 1.0 / N1)
                     T.set_flag("v", "mte2", 1)
                     T.set_flag("v", "mte3", 0)
                     T.wait_flag("v", "mte3", 0)
@@ -1635,40 +1636,39 @@ def tilelang_grad_kl_loss_single_kernel(
                 for local_n in T.serial(owned_n_num):
                     n_idx = vector_id * owned_n_num + local_n
                     n_start = n_idx * n_block
-                    if n_start < valid_k_size:
-                        T.wait_flag("v", "mte2", 3)
-                        T.copy(
-                            bmm2Res[bz_task, s1_id, 0:Nidx1,
-                                    n_start:n_start + n_block],
-                            v1_om_bmm2,
+                    T.wait_flag("v", "mte2", 3)
+                    T.copy(
+                        bmm2Res[bz_task, s1_id, 0:Nidx1,
+                                n_start:n_start + n_block],
+                        v1_om_bmm2,
+                    )
+                    T.set_flag("mte2", "v", 3)
+                    T.wait_flag("mte2", "v", 3)
+                    T.tile.mul(v1_om_bmm2, v1_om_bmm2, v1_om_weight_2d)
+                    T.pipe_barrier("v")
+                    T.reduce_sum(v1_om_bmm2, v1_om_score, 0)
+                    if not full_valid:
+                        T.tile.compare(
+                            v1_om_mask,
+                            v1_om_offsets,
+                            valid_k_size - n_start,
+                            "LT",
                         )
-                        T.set_flag("mte2", "v", 3)
-                        T.wait_flag("mte2", "v", 3)
-                        T.tile.mul(v1_om_bmm2, v1_om_bmm2, v1_om_weight_2d)
                         T.pipe_barrier("v")
-                        T.reduce_sum(v1_om_bmm2, v1_om_score, 0)
-                        if not full_valid and n_start + n_block > valid_k_size:
-                            T.tile.compare(
-                                v1_om_mask,
-                                v1_om_offsets,
-                                valid_k_size - n_start,
-                                "LT",
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.select(
-                                v1_om_score,
-                                v1_om_mask,
-                                v1_om_score,
-                                -T.infinity(calc_dtype),
-                                "VSEL_TENSOR_SCALAR_MODE",
-                            )
-                        T.pipe_barrier("v")
-                        T.tile.mul(v1_om_reduce_2d[0, :], v1_om_score, 1.0)
-                        T.pipe_barrier("v")
-                        T.reduce_max(v1_om_reduce_2d, v1_om_tile_max, 1)
-                        T.pipe_barrier("v")
-                        T.tile.max(v1_om_local_max, v1_om_local_max, v1_om_tile_max)
-                        T.set_flag("v", "mte2", 3)
+                        T.tile.select(
+                            v1_om_score,
+                            v1_om_mask,
+                            v1_om_score,
+                            -T.infinity(calc_dtype),
+                            "VSEL_TENSOR_SCALAR_MODE",
+                        )
+                    T.pipe_barrier("v")
+                    T.tile.mul(v1_om_reduce_2d[0, :], v1_om_score, 1.0)
+                    T.pipe_barrier("v")
+                    T.reduce_max(v1_om_reduce_2d, v1_om_tile_max, 1)
+                    T.pipe_barrier("v")
+                    T.tile.max(v1_om_local_max, v1_om_local_max, v1_om_tile_max)
+                    T.set_flag("v", "mte2", 3)
                 T.tile.fill(v1_om_floor, -1e20)
                 T.pipe_barrier("v")
                 T.tile.max(v1_om_local_max, v1_om_local_max, v1_om_floor)
@@ -1756,48 +1756,47 @@ def tilelang_grad_kl_loss_single_kernel(
                 for local_n in T.serial(owned_n_num):
                     n_idx = vector_id * owned_n_num + local_n
                     n_start = n_idx * n_block
-                    if n_start < valid_k_size:
-                        T.wait_flag("v", "mte2", 3)
-                        T.copy(
-                            bmm2Res[bz_task, s1_id, 0:Nidx1,
-                                    n_start:n_start + n_block],
-                            v1_os_bmm2,
-                        )
-                        T.set_flag("mte2", "v", 3)
-                        T.wait_flag("mte2", "v", 3)
-                        T.tile.mul(v1_os_bmm2, v1_os_bmm2, v1_os_weight_2d)
-                        T.pipe_barrier("v")
-                        T.reduce_sum(v1_os_bmm2, v1_os_score, 0)
-                        if not full_valid and n_start + n_block > valid_k_size:
-                            T.tile.compare(
-                                v1_os_mask,
-                                v1_os_offsets,
-                                valid_k_size - n_start,
-                                "LT",
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.select(
-                                v1_os_score,
-                                v1_os_mask,
-                                v1_os_score,
-                                -T.infinity(calc_dtype),
-                                "VSEL_TENSOR_SCALAR_MODE",
-                            )
-                        T.pipe_barrier("v")
-                        T.tile.sub(
-                            v1_os_score,
-                            v1_os_score,
-                            v1_os_global_max_2d[0, :],
+                    T.wait_flag("v", "mte2", 3)
+                    T.copy(
+                        bmm2Res[bz_task, s1_id, 0:Nidx1,
+                                n_start:n_start + n_block],
+                        v1_os_bmm2,
+                    )
+                    T.set_flag("mte2", "v", 3)
+                    T.wait_flag("mte2", "v", 3)
+                    T.tile.mul(v1_os_bmm2, v1_os_bmm2, v1_os_weight_2d)
+                    T.pipe_barrier("v")
+                    T.reduce_sum(v1_os_bmm2, v1_os_score, 0)
+                    if not full_valid:
+                        T.tile.compare(
+                            v1_os_mask,
+                            v1_os_offsets,
+                            valid_k_size - n_start,
+                            "LT",
                         )
                         T.pipe_barrier("v")
-                        T.tile.exp(v1_os_score, v1_os_score)
-                        T.pipe_barrier("v")
-                        T.tile.mul(v1_os_reduce_2d[0, :], v1_os_score, 1.0)
-                        T.pipe_barrier("v")
-                        T.reduce_sum(v1_os_reduce_2d, v1_os_tile_sum, 1)
-                        T.pipe_barrier("v")
-                        T.tile.add(v1_os_local_sum, v1_os_local_sum, v1_os_tile_sum)
-                        T.set_flag("v", "mte2", 3)
+                        T.tile.select(
+                            v1_os_score,
+                            v1_os_mask,
+                            v1_os_score,
+                            -T.infinity(calc_dtype),
+                            "VSEL_TENSOR_SCALAR_MODE",
+                        )
+                    T.pipe_barrier("v")
+                    T.tile.sub(
+                        v1_os_score,
+                        v1_os_score,
+                        v1_os_global_max_2d[0, :],
+                    )
+                    T.pipe_barrier("v")
+                    T.tile.exp(v1_os_score, v1_os_score)
+                    T.pipe_barrier("v")
+                    T.tile.mul(v1_os_reduce_2d[0, :], v1_os_score, 1.0)
+                    T.pipe_barrier("v")
+                    T.reduce_sum(v1_os_reduce_2d, v1_os_tile_sum, 1)
+                    T.pipe_barrier("v")
+                    T.tile.add(v1_os_local_sum, v1_os_local_sum, v1_os_tile_sum)
+                    T.set_flag("v", "mte2", 3)
                 T.wait_flag("v", "mte2", 3)
                 T.set_flag("v", "mte3", 1)
                 T.wait_flag("v", "mte3", 1)
@@ -1912,148 +1911,165 @@ def tilelang_grad_kl_loss_single_kernel(
                         )
                         bw_col_end = bw_col_start + bw_col_block
                         T.wait_flag("v", "mte2", 3)
-                        if bw_col_start < valid_k_size:
-                            T.copy(
-                                PReduced[bz_task, s1_id,
-                                         bw_col_start:bw_col_end],
-                                v1_ob_p,
-                            )
-                            T.copy(
-                                bmm2Res[
-                                    bz_task,
-                                    s1_id,
-                                    0:Nidx1,
-                                    bw_col_start:bw_col_end,
-                                ],
-                                v1_ob_bmm2,
-                            )
-                            T.set_flag("mte2", "v", 3)
-                            T.wait_flag("mte2", "v", 3)
-                            T.wait_flag("mte3", "v", 2)
+                        T.copy(
+                            PReduced[bz_task, s1_id,
+                                     bw_col_start:bw_col_end],
+                            v1_ob_p,
+                        )
+                        T.copy(
+                            bmm2Res[
+                                bz_task,
+                                s1_id,
+                                0:Nidx1,
+                                bw_col_start:bw_col_end,
+                            ],
+                            v1_ob_bmm2,
+                        )
+                        T.set_flag("mte2", "v", 3)
+                        T.wait_flag("mte2", "v", 3)
+                        T.wait_flag("mte3", "v", 2)
 
-                            T.tile.mul(
-                                v1_ob_work,
-                                v1_ob_bmm2,
-                                v1_ob_weight_2d,
+                        T.tile.mul(
+                            v1_ob_work,
+                            v1_ob_bmm2,
+                            v1_ob_weight_2d,
+                        )
+                        T.pipe_barrier("v")
+                        T.reduce_sum(v1_ob_work, v1_ob_sy, 0)
+                        if not full_valid:
+                            T.tile.compare(
+                                v1_ob_mask,
+                                v1_ob_offsets,
+                                valid_k_size - bw_col_start,
+                                "LT",
                             )
                             T.pipe_barrier("v")
-                            T.reduce_sum(v1_ob_work, v1_ob_sy, 0)
-                            if not full_valid and bw_col_end > valid_k_size:
-                                T.tile.compare(
-                                    v1_ob_mask,
-                                    v1_ob_offsets,
-                                    valid_k_size - bw_col_start,
-                                    "LT",
-                                )
-                                T.pipe_barrier("v")
+                            T.tile.select(
+                                v1_ob_sy,
+                                v1_ob_mask,
+                                v1_ob_sy,
+                                -T.infinity(calc_dtype),
+                                "VSEL_TENSOR_SCALAR_MODE",
+                            )
+                        T.pipe_barrier("v")
+                        T.tile.sub(
+                            v1_ob_sy,
+                            v1_ob_sy,
+                            v1_ob_global_max_2d[0, :],
+                        )
+                        T.pipe_barrier("v")
+                        T.tile.exp(v1_ob_sy, v1_ob_sy)
+                        T.pipe_barrier("v")
+                        T.tile.div(
+                            v1_ob_sy,
+                            v1_ob_sy,
+                            v1_ob_global_sum_2d[0, :],
+                        )
+                        T.tile.sub(v1_ob_diff, v1_ob_sy, v1_ob_p)
+                        T.pipe_barrier("v")
+                        T.tile.broadcast(v1_ob_diff_2d, v1_ob_diff)
+
+                        T.tile.mul(v1_ob_gate, v1_ob_bmm2, -10000.0)
+                        T.pipe_barrier("v")
+                        T.tile.exp(v1_ob_gate, v1_ob_gate)
+                        T.pipe_barrier("v")
+                        T.tile.mul(v1_ob_gate, v1_ob_gate, -1.0)
+                        T.pipe_barrier("v")
+                        T.tile.add(v1_ob_gate, v1_ob_gate, 1.0)
+
+                        T.tile.mul(
+                            v1_ob_work,
+                            v1_ob_bmm2,
+                            v1_ob_diff_2d,
+                        )
+                        T.pipe_barrier("v")
+                        T.reduce_sum(v1_ob_work, v1_ob_dw, 1)
+                        T.pipe_barrier("v")
+                        T.tile.add(
+                            v1_ob_dw_accum,
+                            v1_ob_dw_accum,
+                            v1_ob_dw,
+                        )
+
+                        T.tile.max(v1_ob_loss_p, v1_ob_p, v1_ob_eps)
+                        T.tile.max(v1_ob_sy, v1_ob_sy, v1_ob_eps)
+                        T.pipe_barrier("v")
+                        T.tile.ln(v1_ob_log_p, v1_ob_loss_p)
+                        T.tile.ln(v1_ob_log_sy, v1_ob_sy)
+                        T.pipe_barrier("v")
+                        T.tile.sub(
+                            v1_ob_loss_2d[0, :],
+                            v1_ob_log_p,
+                            v1_ob_log_sy,
+                        )
+                        T.pipe_barrier("v")
+                        T.tile.mul(
+                            v1_ob_loss_2d[0, :],
+                            v1_ob_loss_2d[0, :],
+                            v1_ob_p,
+                        )
+                        if not full_valid:
+                            T.pipe_barrier("v")
+                            # packed mask 不跨越中间 Vector 指令复用；在每个
+                            # 消费点前重新生成，确保无效列不进入 Loss 归约。
+                            T.tile.compare(
+                                v1_ob_mask,
+                                v1_ob_offsets,
+                                valid_k_size - bw_col_start,
+                                "LT",
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.select(
+                                v1_ob_loss_2d[0, :],
+                                v1_ob_mask,
+                                v1_ob_loss_2d[0, :],
+                                0.0,
+                                "VSEL_TENSOR_SCALAR_MODE",
+                            )
+                        T.pipe_barrier("v")
+                        T.reduce_sum(v1_ob_loss_2d, v1_ob_loss_sum, 1)
+                        T.pipe_barrier("v")
+                        T.tile.add(
+                            v1_ob_loss_accum,
+                            v1_ob_loss_accum,
+                            v1_ob_loss_sum,
+                        )
+
+                        T.tile.mul(
+                            v1_ob_bmm2,
+                            v1_ob_weight_2d,
+                            v1_ob_diff_2d,
+                        )
+                        T.pipe_barrier("v")
+                        T.tile.mul(v1_ob_bmm2, v1_ob_bmm2, v1_ob_gate)
+                        if not full_valid:
+                            T.pipe_barrier("v")
+                            T.tile.compare(
+                                v1_ob_mask,
+                                v1_ob_offsets,
+                                valid_k_size - bw_col_start,
+                                "LT",
+                            )
+                            T.pipe_barrier("v")
+                            for rg_mask_row in T.serial(Nidx1):
                                 T.tile.select(
-                                    v1_ob_sy,
+                                    v1_ob_bmm2[
+                                        rg_mask_row, 0:bw_col_block
+                                    ],
                                     v1_ob_mask,
-                                    v1_ob_sy,
-                                    -T.infinity(calc_dtype),
-                                    "VSEL_TENSOR_SCALAR_MODE",
-                                )
-                            T.pipe_barrier("v")
-                            T.tile.sub(
-                                v1_ob_sy,
-                                v1_ob_sy,
-                                v1_ob_global_max_2d[0, :],
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.exp(v1_ob_sy, v1_ob_sy)
-                            T.pipe_barrier("v")
-                            T.tile.div(
-                                v1_ob_sy,
-                                v1_ob_sy,
-                                v1_ob_global_sum_2d[0, :],
-                            )
-                            T.tile.sub(v1_ob_diff, v1_ob_sy, v1_ob_p)
-                            T.pipe_barrier("v")
-                            T.tile.broadcast(v1_ob_diff_2d, v1_ob_diff)
-
-                            T.tile.mul(v1_ob_gate, v1_ob_bmm2, -10000.0)
-                            T.pipe_barrier("v")
-                            T.tile.exp(v1_ob_gate, v1_ob_gate)
-                            T.pipe_barrier("v")
-                            T.tile.mul(v1_ob_gate, v1_ob_gate, -1.0)
-                            T.pipe_barrier("v")
-                            T.tile.add(v1_ob_gate, v1_ob_gate, 1.0)
-
-                            T.tile.mul(
-                                v1_ob_work,
-                                v1_ob_bmm2,
-                                v1_ob_diff_2d,
-                            )
-                            T.pipe_barrier("v")
-                            T.reduce_sum(v1_ob_work, v1_ob_dw, 1)
-                            T.pipe_barrier("v")
-                            T.tile.add(
-                                v1_ob_dw_accum,
-                                v1_ob_dw_accum,
-                                v1_ob_dw,
-                            )
-
-                            T.tile.max(v1_ob_loss_p, v1_ob_p, v1_ob_eps)
-                            T.tile.max(v1_ob_sy, v1_ob_sy, v1_ob_eps)
-                            T.pipe_barrier("v")
-                            T.tile.ln(v1_ob_log_p, v1_ob_loss_p)
-                            T.tile.ln(v1_ob_log_sy, v1_ob_sy)
-                            T.pipe_barrier("v")
-                            T.tile.sub(
-                                v1_ob_loss_2d[0, :],
-                                v1_ob_log_p,
-                                v1_ob_log_sy,
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.mul(
-                                v1_ob_loss_2d[0, :],
-                                v1_ob_loss_2d[0, :],
-                                v1_ob_p,
-                            )
-                            if not full_valid and bw_col_end > valid_k_size:
-                                T.pipe_barrier("v")
-                                # packed mask 不跨越中间 Vector 指令复用；在 Loss
-                                # 消费前重新生成，避免后端临时区覆盖旧 mask。
-                                T.tile.compare(
-                                    v1_ob_mask,
-                                    v1_ob_offsets,
-                                    valid_k_size - bw_col_start,
-                                    "LT",
-                                )
-                                T.pipe_barrier("v")
-                                T.tile.select(
-                                    v1_ob_loss_2d[0, :],
-                                    v1_ob_mask,
-                                    v1_ob_loss_2d[0, :],
+                                    v1_ob_bmm2[
+                                        rg_mask_row, 0:bw_col_block
+                                    ],
                                     0.0,
                                     "VSEL_TENSOR_SCALAR_MODE",
                                 )
-                            T.pipe_barrier("v")
-                            T.reduce_sum(v1_ob_loss_2d, v1_ob_loss_sum, 1)
-                            T.pipe_barrier("v")
-                            T.tile.add(
-                                v1_ob_loss_accum,
-                                v1_ob_loss_accum,
-                                v1_ob_loss_sum,
-                            )
-
-                            T.tile.mul(
-                                v1_ob_bmm2,
-                                v1_ob_weight_2d,
-                                v1_ob_diff_2d,
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.mul(v1_ob_bmm2, v1_ob_bmm2, v1_ob_gate)
-                            T.pipe_barrier("v")
-                            T.tile.cast(
-                                v1_ob_rg_half,
-                                v1_ob_bmm2,
-                                "CAST_RINT",
-                                Nidx1 * bw_col_block,
-                            )
-                        else:
-                            T.wait_flag("mte3", "v", 2)
-                            T.tile.fill(v1_ob_rg_half, 0.0)
+                        T.pipe_barrier("v")
+                        T.tile.cast(
+                            v1_ob_rg_half,
+                            v1_ob_bmm2,
+                            "CAST_RINT",
+                            Nidx1 * bw_col_block,
+                        )
 
                         T.pipe_barrier("v")
                         T.set_flag("v", "mte3", 2)
