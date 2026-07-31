@@ -1,0 +1,16 @@
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=18 python_sha256=67cec18d713b735acb69e48b69518786e865f8c69f55ef7c2666cb727c5510d4
+[00] bsnd_b4_s1_512_k_1024 TileLang FAIL: Traceback (most recent call last):
+  10: _ZN3tvm7runtime13PackedF
+  9: tvm::runtime::TypedPackedFunc<tvm::IRModule (tvm::transform::Pass, tvm::IRModule)>::AssignTypedLambda<tvm::transform::__mk_TVM9::{lambda(tvm::transform::Pass, tvm::IRModule)#1}>(tvm::transform::__mk_TVM9::{lambda(tvm::transform::Pass, tvm::IRModule)#1}, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)::{lambda(tvm::runtime::TVMArgs const&, tvm::runtime::TVMRetValue*)#1}::operator()(tvm::runtime::TVMArgs const, tvm::runtime::TVMRetValue) const
+  8: tvm::transform::Pass::operator()(tvm::IRModule) const
+  7: tvm::transform::Pass::operator()(tvm::IRModule, tvm::transform::PassContext const&) const
+  6: tvm::tir::transform::PrimFuncPassNode::operator()(tvm::IRModule, tvm::transform::PassContext const&) const
+  5: _ZN3tvm7runtime13PackedF
+  4: tvm::runtime::TypedPackedFunc<tvm::tir::PrimFunc (tvm::tir::PrimFunc, tvm::IRModule, tvm::transform::PassContext)>::AssignTypedLambda<tvm::tl::AscendMemoryPlanning()::{lambda(tvm::tir::PrimFunc, tvm::IRModule, tvm::transform::PassContext)#1}>(tvm::tl::AscendMemoryPlanning()::{lambda(tvm::tir::PrimFunc, tvm::IRModule, tvm::transform::PassContext)#1})::{lambda(tvm::runtime::TVMArgs const&, tvm::runtime::TVMRetValue*)#1}::operator()(tvm::runtime::TVMArgs const&, tvm::runtime::TVMRetValue*) const
+  3: tvm::tl::AscendMemoryPlanning::Substitute(tvm::tir::PrimFunc, tvm::transform::PassContext)
+  2: tvm::tl::AscendMemoryPlanning::AscendMemoryPlanner::AscendMemoryPlanner(tvm::tir::PrimFunc const&, tvm::runtime::Map<tvm::tir::Var, tvm::PrimExpr, void, void>, tvm::runtime::Map<tvm::tir::Var, tvm::runtime::Array<tvm::PrimExpr, void>, void, void>, bool)
+  1: tvm::tl::AscendMemoryPlanning::AscendMemoryPlanner::PlanMemoryForScope(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::vector<tvm::tir::VarNode const*, std::allocator<tvm::tir::VarNode const*> > const&)
+  0: tvm::tl::AscendMemoryPlanning::AscendMemoryPlanner::LinearScanAllocator::allocate(std::vector<tvm::tl::AscendMemoryPlanning::AscendMemoryPlanner::LiveInterval, std::allocator<tvm::tl::AscendMemoryPlanning::AscendMemoryPlanner::LiveInterval> >&)
+  File "/data/z00943842/tilelang-ascend/src/transform/ascend_memory_planning.cc", line 766
+TVMError: Memory allocation failed for: v1_ob_gate required: 16384, new memory available: 0
+Summary: total=1 pass=0 fail=1 precision=0 tilelang_error=1 official_error=0 input_error=0 bench_error=0 resource_excluded=9
