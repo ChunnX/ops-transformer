@@ -428,7 +428,7 @@ def main():
                   f"Available: {[c['testcase_name'] for c in allCases]}")
             return 1
     else:
-        cases = REDLINE_CASES[:1]
+        cases = REDLINE_CASES
 
     # Override dataType
     for c in cases:
