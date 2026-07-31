@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef MEGA_MOE_SINGLE_CORE_CONTEXT_H
-#define MEGA_MOE_SINGLE_CORE_CONTEXT_H
+#ifndef MEGA_MOE_JOB_CONTEXT_H
+#define MEGA_MOE_JOB_CONTEXT_H
 
 #include "kernel_operator.h"
 #include "mega_moe_base.h"
@@ -65,4 +65,4 @@ __aicore__ inline void TilingByJobContext(int32_t totalLen, int32_t &jobLen, int
 
 } // namespace MegaMoeImpl
 
-#endif // MEGA_MOE_SINGLE_CORE_CONTEXT_H
+#endif // MEGA_MOE_JOB_CONTEXT_H

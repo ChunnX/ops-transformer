@@ -20,7 +20,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
-#include "blaze/epilogue/mega_moe_block_epilogue_swiglu_mx_quant.h"
+#include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_base.h"
 
 #include "tensor_api/tensor.h"
@@ -374,10 +374,10 @@ struct Config {
     }
 };
 
-#include "blaze/gemm/block/mega_moe_group_matmul_compute.h"
-#include "blaze/prologue/mega_moe_group_matmul_prologue.h"
-#include "blaze/epilogue/mega_moe_group_matmul_epilogue.h"
-#include "mega_moe_group_matmul_dispatch.h"
+#include "mega_moe_group_matmul_compute.h"
+#include "mega_moe_group_matmul_prologue.h"
+#include "mega_moe_group_matmul_epilogue.h"
+#include "mega_moe_group_matmul_pipeline.h"
 
 template <typename SwigluQuantOp>
 struct Gmm1ArgsGeneric {

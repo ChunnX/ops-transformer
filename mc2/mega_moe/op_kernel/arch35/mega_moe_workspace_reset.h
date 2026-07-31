@@ -11,7 +11,7 @@
 #ifndef MEGA_MOE_WORKSPACE_RESET_H
 #define MEGA_MOE_WORKSPACE_RESET_H
 
-#include "mega_moe_single_core_context.h"
+#include "mega_moe_job_context.h"
 
 namespace MegaMoeImpl {
 
@@ -29,9 +29,9 @@ struct ResetWorkspaceArgs {
 };
 
 // Prototype: MegaMoe::ResetGmm2CombineSyncCounters. Clears one logical AIV job's combine counters in batches.
-// ResetFlagListOneCore validates the job and prepares the zero-filled resetTensor before calling this helper.
-__aicore__ inline void ResetGmm2CombineSyncCountersOneCore(const AivJobContext &job, const ResetWorkspaceArgs &args,
-                                                           LocalTensor<int32_t> &resetTensor)
+// ResetDispatchWorkspace validates the job and prepares the zero-filled resetTensor before calling this helper.
+__aicore__ inline void ResetGmm2CombineSyncCounters(const AivJobContext &job, const ResetWorkspaceArgs &args,
+                                                    LocalTensor<int32_t> &resetTensor)
 {
     int32_t jobLen;
     int32_t jobOffset;
@@ -47,9 +47,8 @@ __aicore__ inline void ResetGmm2CombineSyncCountersOneCore(const AivJobContext &
 }
 
 // Clears the tile counters used by shared-expert GMM2 producers and Unpermute consumers.
-__aicore__ inline void ResetSharedExpertGmm2TileCountersOneCore(const AivJobContext &job,
-                                                                const ResetWorkspaceArgs &args,
-                                                                LocalTensor<int32_t> &resetTensor)
+__aicore__ inline void ResetSharedExpertGmm2TileCounters(const AivJobContext &job, const ResetWorkspaceArgs &args,
+                                                         LocalTensor<int32_t> &resetTensor)
 {
     int32_t jobLen;
     int32_t jobOffset;
@@ -66,8 +65,8 @@ __aicore__ inline void ResetSharedExpertGmm2TileCountersOneCore(const AivJobCont
 
 // Prototype: MegaMoe::ResetFlagList. Clears one logical AIV job's dispatch flags in bounded UB batches.
 template <bool ResetCombineCounters, bool TopkWeightsPrefetch>
-__aicore__ inline void ResetFlagListOneCore(const DispatchPrepareContext &context, const ResetWorkspaceArgs &args,
-                                            LocalTensor<int32_t> &resetTensor)
+__aicore__ inline void ResetDispatchWorkspace(const DispatchPrepareContext &context, const ResetWorkspaceArgs &args,
+                                              LocalTensor<int32_t> &resetTensor)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -88,10 +87,10 @@ __aicore__ inline void ResetFlagListOneCore(const DispatchPrepareContext &contex
         DataCopyPad(flagGm[jobOffset + offset], resetTensor, copyParams);
     }
     if constexpr (ResetCombineCounters) {
-        ResetGmm2CombineSyncCountersOneCore(job, args, resetTensor);
+        ResetGmm2CombineSyncCounters(job, args, resetTensor);
     }
     if (args.sharedExpertGmm2TileCounterNum > 0) {
-        ResetSharedExpertGmm2TileCountersOneCore(job, args, resetTensor);
+        ResetSharedExpertGmm2TileCounters(job, args, resetTensor);
     }
     if constexpr (TopkWeightsPrefetch) {
         GlobalTensor<int32_t> statusGm;

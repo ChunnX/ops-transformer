@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file mega_moe_block_epilogue_swiglu_mx_quant.h
+ * \file block_epilogue_swiglu_mx_quant.h
  * \brief
  */
 
-#ifndef MEGA_MOE_BLOCK_EPILOGUE_SWIGLU_MX_QUANT_H
-#define MEGA_MOE_BLOCK_EPILOGUE_SWIGLU_MX_QUANT_H
+#ifndef BLOCK_EPILOGUE_SWIGLU_MX_QUANT_H
+#define BLOCK_EPILOGUE_SWIGLU_MX_QUANT_H
 
 #if defined(__DAV_C310__)
 #if ASC_DEVKIT_MAJOR >= 9
@@ -22,7 +22,7 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "../../mega_moe_base.h"
+#include "mega_moe_base.h"
 
 namespace SwigluQuantMsg {
 enum class QuantMode : uint32_t {
@@ -158,12 +158,12 @@ public:
     // Computes and writes one SwiGLU tile without notifying GMM2.
     __aicore__ inline void operator()(const BlockShape &blockShape, const BlockCoord &blockCoord,
                                       uint16_t pingpongIdx = 0);
-    // Pipeline controllers call this after dependency-free SwiGLU compute.
-    __aicore__ inline void NotifyCompletedTiles(uint32_t completedTileCount);
+    // Pipeline wrappers call this after each dependency-free SwiGLU tile compute.
+    __aicore__ inline void NotifyCompletedTile();
     __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset);
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
 
-    // 权重预加载相关：由 SwigluComputeTileGenericOneCore 提前 DataCopy，VFDoSwigluAndQuantForMX 直接消费
+    // 权重预加载相关：由 ComputeSwigluTileGeneric 提前 DataCopy，VFDoSwigluAndQuantForMX 直接消费
     AscendC::LocalTensor<float> weightUb_;
     AscendC::GlobalTensor<float> metaInfoGm_;
 
@@ -598,7 +598,7 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     const float negScalarOne = -1.0f;
     bfloat16_t numZero = 0;
 
-    // 权重已在 SwigluComputeTileGenericOneCore 中预加载到 weightUb_，直接取地址
+    // 权重已在 ComputeSwigluTileGeneric 中预加载到 weightUb_，直接取地址
     __ubuf__ float *weightUbAddr = nullptr;
     if constexpr (TopkWeightsPrefetch) {
         weightUbAddr = (__ubuf__ float *)weightUb_.GetPhyAddr();
@@ -810,13 +810,12 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::NotifyCompletedTiles(
-    uint32_t completedTileCount)
+__aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::NotifyCompletedTile()
 {
-    if (groupFlagListGmAddr_ != nullptr && completedTileCount != 0U) {
-        AscendC::AtomicAdd(groupFlagListGmAddr_, static_cast<int32_t>(completedTileCount));
+    if (groupFlagListGmAddr_ != nullptr) {
+        AscendC::AtomicAdd(groupFlagListGmAddr_, 1);
     }
 }
 
 #endif // defined(__DAV_C310__)
-#endif // MEGA_MOE_BLOCK_EPILOGUE_SWIGLU_MX_QUANT_H
+#endif // BLOCK_EPILOGUE_SWIGLU_MX_QUANT_H

@@ -11,7 +11,7 @@
 #ifndef MEGA_MOE_SHARED_EXPERT_PREPARE_H
 #define MEGA_MOE_SHARED_EXPERT_PREPARE_H
 
-#include "../mega_moe_single_core_context.h"
+#include "../mega_moe_job_context.h"
 
 namespace MegaMoeImpl {
 
@@ -22,6 +22,7 @@ struct SharedExpertPrepareArgs {
     uint32_t quantTokenAlignBytes;
     uint32_t quantScaleAlignBytes;
     uint32_t quantTokenScaleAlignBytes;
+    uint32_t activationElementsPerByte;
 };
 
 template <typename ActivationType>
@@ -32,9 +33,9 @@ struct SharedExpertPrepareScratch {
 
 // Prototype: MegaMoe::SharedExpertCopyInput. Splits interleaved token data and scale for one logical AIV job.
 template <typename ActivationType, typename QuantScaleType>
-__aicore__ inline void SharedExpertCopyInputOneCore(const DispatchPrepareContext &context,
-                                                    const SharedExpertPrepareArgs &args,
-                                                    SharedExpertPrepareScratch<ActivationType> &scratch)
+__aicore__ inline void PrepareSharedExpertInput(const DispatchPrepareContext &context,
+                                                const SharedExpertPrepareArgs &args,
+                                                SharedExpertPrepareScratch<ActivationType> &scratch)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -48,8 +49,7 @@ __aicore__ inline void SharedExpertCopyInputOneCore(const DispatchPrepareContext
     int32_t jobTokenOffset;
     TilingByJobContext(context.tokenShape.tokenNum, jobTokenNum, jobTokenOffset, job.jobIndex, job.totalJobs, 1);
 
-    constexpr uint32_t activationElemsPerByte = Std::IsSame<ActivationType, uint8_t>::value ? 2U : 1U;
-    int64_t tokenDataElementCount = context.tokenShape.tokenHiddenDim / activationElemsPerByte;
+    int64_t tokenDataElementCount = context.tokenShape.tokenHiddenDim / args.activationElementsPerByte;
     int64_t tokenScaleElementCount = Ops::Base::CeilDiv(static_cast<int64_t>(context.tokenShape.tokenHiddenDim),
                                                         static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
                                      MXFP_MULTI_BASE_SIZE;

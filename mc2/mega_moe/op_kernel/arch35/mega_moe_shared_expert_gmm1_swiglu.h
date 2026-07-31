@@ -52,8 +52,8 @@ __aicore__ inline void UpdateSharedExpertGmm1GlobalBuffer(const SharedExpertGmm1
                                                           BlockEpilogue &epilogueOp, GMMAddrInfo &gmmAddrInfo,
                                                           uint32_t sharedExpertIdx)
 {
-    constexpr uint32_t weightElemsPerByte = Std::IsSame<WeightType, fp4x2_e2m1_t>::value ? 2U : 1U;
-    constexpr uint32_t outputElemsPerByte = Std::IsSame<SwigluOutType, fp4x2_e2m1_t>::value ? 2U : 1U;
+    constexpr uint32_t weightElemsPerByte = PackedElementTraits<WeightType>::ELEMENTS_PER_BYTE;
+    constexpr uint32_t outputElemsPerByte = PackedElementTraits<SwigluOutType>::ELEMENTS_PER_BYTE;
     uint64_t m = context.tokenNum;
     uint64_t n = context.gmm1OutputDim;
     uint64_t k = context.tokenHiddenDim;
@@ -90,12 +90,12 @@ __aicore__ inline void UpdateSharedExpertGmm1GlobalBuffer(const SharedExpertGmm1
 // Prototype: MegaMoe::GroupMatmulWithSwigluQuant<true>. Dispatches one shared-expert GMM1/SwiGLU stage.
 template <typename QuantOutType, typename WeightType, typename SwigluOutType, typename QuantScaleType, bool EnableA8W4,
           uint32_t Gmm1TileM, typename BlockEpilogue>
-__aicore__ inline void RunSharedExpertGmm1SwigluStageOneCore(const SharedExpertGmm1SwigluContext &context,
-                                                             const Params &gmmParams, BlockEpilogue &epilogueOp,
-                                                             const GMMAddrInfo &gmmAddrInfo,
-                                                             const SharedExpertGmm1ProblemShape &problemShape,
-                                                             SharedExpertGmm1SwigluState &runtimeState,
-                                                             uint32_t sharedExpertIdx)
+__aicore__ inline void RunSharedExpertGmm1SwigluStage(const SharedExpertGmm1SwigluContext &context,
+                                                      const Params &gmmParams, BlockEpilogue &epilogueOp,
+                                                      const GMMAddrInfo &gmmAddrInfo,
+                                                      const SharedExpertGmm1ProblemShape &problemShape,
+                                                      SharedExpertGmm1SwigluState &runtimeState,
+                                                      uint32_t sharedExpertIdx)
 {
     uint32_t expertBeforeCnt = sharedExpertIdx * context.tokenNum;
     if constexpr (EnableA8W4) {
@@ -121,10 +121,9 @@ __aicore__ inline void RunSharedExpertGmm1SwigluStageOneCore(const SharedExpertG
 // Prototype: MegaMoe::ProcessSharedExpertGmm1. Runs shared-expert GMM1 and SwiGLU for one logical MIX block job.
 template <typename QuantOutType, typename ActivationType, typename WeightType, typename SwigluOutType,
           typename QuantScaleType, bool EnableA8W4, uint32_t Gmm1TileM, typename BlockEpilogue>
-__aicore__ inline void SharedExpertGmm1SwigluOneCore(const SharedExpertGmm1SwigluContext &context,
-                                                     const SharedExpertGmm1SwigluArgs &args, const Params &gmmParams,
-                                                     BlockEpilogue &epilogueOp,
-                                                     SharedExpertGmm1SwigluState &runtimeState)
+__aicore__ inline void ControlSharedExpertGmm1SwigluPipeline(
+    const SharedExpertGmm1SwigluContext &context, const SharedExpertGmm1SwigluArgs &args,
+    const Params &gmmParams, BlockEpilogue &epilogueOp, SharedExpertGmm1SwigluState &runtimeState)
 {
     if (context.blockJob.totalJobs == 0U || context.blockJob.jobIndex >= context.blockJob.totalJobs ||
         context.sharedExpertNum == 0U) {
@@ -145,9 +144,9 @@ __aicore__ inline void SharedExpertGmm1SwigluOneCore(const SharedExpertGmm1Swigl
     for (uint32_t sharedExpertIdx = 0; sharedExpertIdx < context.sharedExpertNum; ++sharedExpertIdx) {
         UpdateSharedExpertGmm1GlobalBuffer<ActivationType, WeightType, SwigluOutType, QuantScaleType, EnableA8W4>(
             context, args, epilogueOp, gmmAddrInfo, sharedExpertIdx);
-        RunSharedExpertGmm1SwigluStageOneCore<QuantOutType, WeightType, SwigluOutType, QuantScaleType, EnableA8W4,
-                                              Gmm1TileM>(context, gmmParams, epilogueOp, gmmAddrInfo, problemShape,
-                                                         runtimeState, sharedExpertIdx);
+        RunSharedExpertGmm1SwigluStage<QuantOutType, WeightType, SwigluOutType, QuantScaleType, EnableA8W4,
+                                       Gmm1TileM>(context, gmmParams, epilogueOp, gmmAddrInfo, problemShape,
+                                                  runtimeState, sharedExpertIdx);
     }
     EndSync(runtimeState.vecSetSyncCom);
 }

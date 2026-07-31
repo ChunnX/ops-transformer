@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef MEGA_MOE_GROUP_MATMUL_DISPATCH_H
-#define MEGA_MOE_GROUP_MATMUL_DISPATCH_H
+#ifndef MEGA_MOE_GROUP_MATMUL_PIPELINE_H
+#define MEGA_MOE_GROUP_MATMUL_PIPELINE_H
 
 // This header is included from mega_moe_impl.h inside MegaMoeImpl::Detail after
 // the AIC and AIV GMM implementation headers have been included.
@@ -33,12 +33,13 @@ __aicore__ inline void NotifyGmm1TileStatus(const Params &params, uint32_t exper
     AscendC::WriteGmByPassDCache(statusAddr, static_cast<int32_t>(expertIdx + 1));
 }
 
-// Controls the current generic GMM1/SwiGLU tile pipeline. The compute leaves called here
-// contain no cross-stage waits or notifications.
+// Controls the current generic GMM1/SwiGLU tile pipeline. Cross-stage waits remain here;
+// ComputeSwigluTileGeneric publishes each completed tile immediately after the dependency-free
+// SwiGLU operator returns so the original GMM1/GMM2 overlap is preserved.
 template <typename Policy, typename BlockMmad, typename ElementC, typename MakeLayoutC, bool TopkWeightsPrefetch,
           bool IsShared, typename WorkSet, typename ExtraArgs>
-__aicore__ inline void ControlGmm1SwigluPipelineGenericOneCore(WorkSet &workSet, uint32_t startLoopIdx,
-                                                               uint32_t tileNum, ExtraArgs &args)
+__aicore__ inline void ControlGmm1SwigluPipelineGeneric(WorkSet &workSet, uint32_t startLoopIdx,
+                                                        uint32_t tileNum, ExtraArgs &args)
 {
     const auto &config = workSet.config;
     if constexpr (g_coreType == AscendC::AIC) {
@@ -81,7 +82,7 @@ __aicore__ inline void ControlGmm1SwigluPipelineGenericOneCore(WorkSet &workSet,
                 }
             }
 
-            Gmm1ComputeTileGenericOneCore<BlockMmad, ElementC, TopkWeightsPrefetch>(
+            ComputeGmm1TileGeneric<BlockMmad, ElementC, TopkWeightsPrefetch>(
                 blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmBias,
                 workSet.gmmAddrInfo.gmm1OutGlobal, workSet.layouts.c, actualShape, mLoc, nLoc, kLoc, gmBlockA,
                 gmBlockScaleA, l0cOutUbFirst, l0cOutUbSecond);
@@ -107,10 +108,9 @@ __aicore__ inline void ControlGmm1SwigluPipelineGenericOneCore(WorkSet &workSet,
                 WaitForCube();
             }
 
-            uint32_t completedTileCount = SwigluComputeTileGenericOneCore<MakeLayoutC, ElementC, TopkWeightsPrefetch>(
+            ComputeSwigluTileGeneric<MakeLayoutC, ElementC, TopkWeightsPrefetch>(
                 config, workSet.gmmAddrInfo.gmm1OutGlobal, workSet.layouts.c, args.swigluQuantOp,
                 args.expertBeforeCnt, actualShape, mLoc, nLoc);
-            args.swigluQuantOp.NotifyCompletedTiles(completedTileCount);
 
             if constexpr (!TopkWeightsPrefetch) {
                 NotifyCube();
@@ -126,8 +126,8 @@ __aicore__ inline void GroupMatmulExecGeneric(WorkSet &workSet, uint32_t startLo
                                               ExtraArgs &args)
 {
     if constexpr (Policy::IS_GMM1) {
-        ControlGmm1SwigluPipelineGenericOneCore<Policy, BlockMmad, ElementC, MakeLayoutC, TopkWeightsPrefetch,
-                                                IsShared>(workSet, startLoopIdx, tileNum, args);
+        ControlGmm1SwigluPipelineGeneric<Policy, BlockMmad, ElementC, MakeLayoutC, TopkWeightsPrefetch, IsShared>(
+            workSet, startLoopIdx, tileNum, args);
     } else if constexpr (g_coreType == AscendC::AIC) {
         BlockMmad blockMmad;
         bool enableL0CPingPong = false;
@@ -150,10 +150,10 @@ __aicore__ inline void GroupMatmulExecGeneric(WorkSet &workSet, uint32_t startLo
 // downstream completion publication are owned here.
 template <typename Policy, typename BlockMmad, typename BlockPrologue, typename ElementC, typename MakeLayoutC,
           bool IsShared, typename WorkSet, typename Config, bool TopkWeightsPrefetch, typename ExtraArgs>
-__aicore__ inline void ControlGmm1SwigluPipelineA8W4OneCore(WorkSet &workSet, const Params &params,
-                                                             const GMMAddrInfo &gmmAddrInfo, const Config &config,
-                                                             uint32_t startLoopIdx, uint32_t tileNum,
-                                                             int32_t &gmTileSequence, ExtraArgs &args)
+__aicore__ inline void ControlGmm1SwigluPipelineA8W4(WorkSet &workSet, const Params &params,
+                                                      const GMMAddrInfo &gmmAddrInfo, const Config &config,
+                                                      uint32_t startLoopIdx, uint32_t tileNum,
+                                                      int32_t &gmTileSequence, ExtraArgs &args)
 {
     if constexpr (g_coreType == AscendC::AIC) {
         BlockMmad blockMmad{};
@@ -173,8 +173,8 @@ __aicore__ inline void ControlGmm1SwigluPipelineA8W4OneCore(WorkSet &workSet, co
                 lastWaveWaited = waveIdx;
             }
 
-            Gmm1ComputeTileA8W4OneCore(blockMmad, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB,
-                                       workSet.l0cOutGm, config, actualShape, mLoc, nLoc);
+            ComputeGmm1TileA8W4(blockMmad, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB,
+                                workSet.l0cOutGm, config, actualShape, mLoc, nLoc);
 
             if constexpr (TopkWeightsPrefetch) {
                 AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
@@ -207,11 +207,9 @@ __aicore__ inline void ControlGmm1SwigluPipelineA8W4OneCore(WorkSet &workSet, co
                 }
             }
 
-            uint32_t completedTileCount =
-                SwigluComputeTileA8W4OneCore<ElementC, MakeLayoutC, decltype(workSet.l0cOutGm),
-                                              decltype(args.swigluQuantOp), Config, TopkWeightsPrefetch>(
-                    args.swigluQuantOp, workSet.l0cOutGm, config, actualShape, mLoc, nLoc, args.expertBeforeCnt);
-            args.swigluQuantOp.NotifyCompletedTiles(completedTileCount);
+            ComputeSwigluTileA8W4<ElementC, MakeLayoutC, decltype(workSet.l0cOutGm),
+                                  decltype(args.swigluQuantOp), Config, TopkWeightsPrefetch>(
+                args.swigluQuantOp, workSet.l0cOutGm, config, actualShape, mLoc, nLoc, args.expertBeforeCnt);
             if constexpr (!TopkWeightsPrefetch) {
                 gmTileSequence = expectedReadySequence;
             }
@@ -228,8 +226,8 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet &workSet, const Params &param
                                             int32_t &gmTileSequence, ExtraArgs &args)
 {
     if constexpr (Policy::IS_GMM1) {
-        ControlGmm1SwigluPipelineA8W4OneCore<Policy, BlockMmad, BlockPrologue, ElementC, MakeLayoutC, IsShared,
-                                              WorkSet, Config, TopkWeightsPrefetch>(
+        ControlGmm1SwigluPipelineA8W4<Policy, BlockMmad, BlockPrologue, ElementC, MakeLayoutC, IsShared,
+                                       WorkSet, Config, TopkWeightsPrefetch>(
             workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, args);
     } else if constexpr (g_coreType == AscendC::AIC) {
         BlockMmad blockMmad{};
@@ -254,4 +252,4 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet &workSet, const Params &param
     }
 }
 
-#endif // MEGA_MOE_GROUP_MATMUL_DISPATCH_H
+#endif // MEGA_MOE_GROUP_MATMUL_PIPELINE_H

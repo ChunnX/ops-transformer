@@ -148,6 +148,11 @@ struct BlockWorkspaceContext {
     uint32_t blockNum;
 };
 
+template <typename T>
+struct PackedElementTraits {
+    static constexpr uint32_t ELEMENTS_PER_BYTE = Std::IsSame<T, fp4x2_e2m1_t>::value ? 2U : 1U;
+};
+
 __aicore__ inline void NotifyCube(uint16_t value = 0)
 {
     CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG + value);
@@ -168,7 +173,7 @@ __aicore__ inline void WaitForCube(uint16_t value = 0)
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + value);
 }
 
-__aicore__ inline void EndSync(int32_t &vecSetSyncCom)
+__aicore__ inline void EndSync(int32_t vecSetSyncCom)
 {
     if constexpr (g_coreType == AIC) {
         if (vecSetSyncCom != 0) {

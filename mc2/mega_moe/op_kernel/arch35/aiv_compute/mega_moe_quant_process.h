@@ -11,7 +11,7 @@
 #ifndef MEGA_MOE_QUANT_PROCESS_H
 #define MEGA_MOE_QUANT_PROCESS_H
 
-#include "../mega_moe_single_core_context.h"
+#include "../mega_moe_job_context.h"
 #if __has_include("../../../moe_distribute_dispatch_v2/quantize_functions.h")
 #include "../../../moe_distribute_dispatch_v2/quantize_functions.h"
 #else
@@ -71,17 +71,14 @@ __aicore__ inline void LoadTopkWeightsToUb(const QuantProcessArgs &args, QuantPr
             SetFlag<AscendC::HardEvent::MTE2_V>(event);
             WaitFlag<AscendC::HardEvent::MTE2_V>(event);
         }
-    } else {
-        SetFlag<AscendC::HardEvent::MTE2_V>(event);
-        WaitFlag<AscendC::HardEvent::MTE2_V>(event);
     }
 }
 
 // Prototype: MegaMoe::QuantProcessInRank. Quantizes the local tokens assigned to one logical AIV job.
 template <int32_t QuantMode, typename QuantOutType, typename ActivationType, typename TopkWeightsType,
           bool TopkWeightsPrefetch>
-__aicore__ inline void QuantProcessInRankOneCore(const DispatchPrepareContext &context, const QuantProcessArgs &args,
-                                                 QuantProcessScratch<ActivationType> &scratch)
+__aicore__ inline void QuantizeLocalTokens(const DispatchPrepareContext &context, const QuantProcessArgs &args,
+                                           QuantProcessScratch<ActivationType> &scratch)
 {
     if constexpr (g_coreType == AIC) {
         return;
@@ -124,6 +121,10 @@ __aicore__ inline void QuantProcessInRankOneCore(const DispatchPrepareContext &c
                     xCopyInPadParams);
         LoadTopkWeightsToUb<TopkWeightsType, ActivationType, TopkWeightsPrefetch>(args, scratch, xOutTensor,
                                                                                   currentOffset + index, event);
+        if constexpr (!TopkWeightsPrefetch) {
+            SetFlag<AscendC::HardEvent::MTE2_V>(event);
+            WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+        }
         __ubuf__ bfloat16_t *srcAddr = (__ubuf__ bfloat16_t *)xInTensor.GetPhyAddr();
         __ubuf__ int8_t *outDataAddr = (__ubuf__ int8_t *)xOutTensor.GetPhyAddr();
         __ubuf__ uint16_t *mxScaleAddr = (__ubuf__ uint16_t *)xOutTensor[args.quantTokenAlignBytes].GetPhyAddr();

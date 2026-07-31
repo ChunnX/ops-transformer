@@ -15,17 +15,17 @@
 // the shared GMM policies and Config template have been defined.
 
 // Prototype: the per-tile compute body in AivGmm1PostGeneric. Runs SwiGLU/quant for one
-// generic GMM1 tile without waiting for or notifying other stages, and returns the number
-// of epilogue tiles written so the template controller can notify downstream readiness.
+// generic GMM1 tile without owning its upstream wait. The wrapper notifies GMM2 immediately
+// after each dependency-free SwiGLU call to preserve the original sub-tile overlap.
 template <typename MakeLayoutC, typename ElementC, bool TopkWeightsPrefetch, typename Config, typename LayoutC,
           typename SwigluQuantOp, typename ActualShape>
-__aicore__ inline uint32_t SwigluComputeTileGenericOneCore(
+__aicore__ inline void ComputeSwigluTileGeneric(
     const Config &config, GM_ADDR gmm1OutputAddr, const LayoutC &layoutC, SwigluQuantOp &swigluQuantOp,
     uint32_t expertBeforeCnt, const ActualShape &actualShape, uint32_t mLoc, uint32_t nLoc)
 {
     uint32_t mLen = Get<M_VALUE>(actualShape);
     if (mLen == 0U) {
-        return 0U;
+        return;
     }
 
     if constexpr (TopkWeightsPrefetch) {
@@ -78,10 +78,10 @@ __aicore__ inline uint32_t SwigluComputeTileGenericOneCore(
                 0};
             AscendC::SetCtrlSpr<60, 60>(0);
             swigluOp(epilogueShape, epilogueOffset);
+            swigluOp.NotifyCompletedTile();
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
         }
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
-        return Ops::Base::CeilDiv(mLen, subTileM);
     } else {
         Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<M_VALUE>(actualShape),
                                                                      Get<N_VALUE>(actualShape), 0, 0};
@@ -95,22 +95,22 @@ __aicore__ inline uint32_t SwigluComputeTileGenericOneCore(
             0};
         AscendC::SetCtrlSpr<60, 60>(0);
         swigluQuantOp(epilogueShape, epilogueOffset);
-        return 1U;
+        swigluQuantOp.NotifyCompletedTile();
     }
 }
 
 // Prototype: the per-tile compute body in AivGmm1PostA8W4. Runs SwiGLU/quant for one
-// A8W4 GMM1 tile without owning cross-stage handshakes, and returns the number of
-// epilogue tiles written so the template controller can notify downstream readiness.
+// A8W4 GMM1 tile without owning its upstream handshake. The wrapper publishes each
+// completed sub-tile at the same point as the original epilogue implementation.
 template <typename ElementC, typename MakeLayoutC, typename TensorC, typename SwigluQuantOp, typename Config,
           bool TopkWeightsPrefetch, typename ActualShape>
-__aicore__ inline uint32_t SwigluComputeTileA8W4OneCore(
+__aicore__ inline void ComputeSwigluTileA8W4(
     SwigluQuantOp &swigluQuantOp, TensorC &l0cOutGm, const Config &config, const ActualShape &actualShape,
     uint32_t mLoc, uint32_t nLoc, uint32_t expertBeforeCnt)
 {
     uint32_t mLen = Get<M_VALUE>(actualShape);
     if (mLen == 0U) {
-        return 0U;
+        return;
     }
 
     if constexpr (TopkWeightsPrefetch) {
@@ -156,10 +156,10 @@ __aicore__ inline uint32_t SwigluComputeTileA8W4OneCore(
                 0};
             AscendC::SetCtrlSpr<60, 60>(0);
             swigluQuantOp(epilogueShape, epilogueOffset);
+            swigluQuantOp.NotifyCompletedTile();
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
         }
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
-        return Ops::Base::CeilDiv(mLen, subTileM);
     } else {
         AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
@@ -194,9 +194,9 @@ __aicore__ inline uint32_t SwigluComputeTileA8W4OneCore(
             0};
         AscendC::SetCtrlSpr<60, 60>(0);
         swigluQuantOp(epilogueShape, epilogueOffset);
+        swigluQuantOp.NotifyCompletedTile();
         AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
-        return 1U;
     }
 }
 

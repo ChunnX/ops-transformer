@@ -19,7 +19,7 @@
 template <typename BlockMmad, typename ElementC, bool TopkWeightsPrefetch, typename Config, typename TensorB,
           typename TensorScaleB, typename TensorBias, typename LayoutC, typename ActualShape, typename TensorA,
           typename TensorScaleA, typename TensorC>
-__aicore__ inline void Gmm1ComputeTileGenericOneCore(
+__aicore__ inline void ComputeGmm1TileGeneric(
     BlockMmad &blockMmad, const Config &config, TensorB &gmB, TensorScaleB &gmScaleB, TensorBias &gmBias,
     GM_ADDR gmm1OutputAddr, const LayoutC &layoutC, const ActualShape &actualShape, uint32_t mLoc, uint32_t nLoc,
     uint32_t kLoc, TensorA &gmBlockA, TensorScaleA &gmBlockScaleA, TensorC &l0cOutUbFirst, TensorC &l0cOutUbSecond)
@@ -65,9 +65,9 @@ __aicore__ inline void Gmm1ComputeTileGenericOneCore(
 // Dispatch/GMM1 or GMM1/SwiGLU synchronization. The AIV0-AIC Blaze handshake remains internal to GMM.
 template <typename BlockMmad, typename TensorA, typename TensorScaleA, typename TensorScaleB, typename TensorC,
           typename Config, typename ActualShape>
-__aicore__ inline void Gmm1ComputeTileA8W4OneCore(BlockMmad &blockMmad, TensorA &gmA, TensorScaleA &gmScaleA,
-                                                  TensorScaleB &gmScaleB, TensorC &l0cOutGm, const Config &config,
-                                                  const ActualShape &actualShape, uint32_t mLoc, uint32_t nLoc)
+__aicore__ inline void ComputeGmm1TileA8W4(BlockMmad &blockMmad, TensorA &gmA, TensorScaleA &gmScaleA,
+                                           TensorScaleB &gmScaleB, TensorC &l0cOutGm, const Config &config,
+                                           const ActualShape &actualShape, uint32_t mLoc, uint32_t nLoc)
 {
     auto gmBlockA = gmA.Slice(Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.k));
     auto gmBlockScaleA =
@@ -89,7 +89,7 @@ template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typenam
 __aicore__ inline void AicComputeGmm2Generic(BlockMmad &blockMmad, WorkSet &workSet, uint32_t startLoopIdx,
                                              uint32_t tileNum, ExtraArgs &args)
 {
-    static_assert(!Policy::IS_GMM1, "GMM1 must use ControlGmm1SwigluPipelineGenericOneCore");
+    static_assert(!Policy::IS_GMM1, "GMM1 must use ControlGmm1SwigluPipelineGeneric");
     const auto &config = workSet.config;
     constexpr uint32_t ubBufSize =
         (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) ? MAX_SINGLE_MN_ALIGN32_NUM_128 : 0;
@@ -170,7 +170,7 @@ __aicore__ inline void AicComputeGmm2A8W4(BlockMmad &blockMmad, Scheduler &sched
                                            const GMMAddrInfo &gmmAddrInfo, int32_t &gmTileSequence, const Config &config,
                                            uint32_t startLoopIdx, uint32_t tileNum)
 {
-    static_assert(!Policy::IS_GMM1, "GMM1 must use ControlGmm1SwigluPipelineA8W4OneCore");
+    static_assert(!Policy::IS_GMM1, "GMM1 must use ControlGmm1SwigluPipelineA8W4");
     GroupSyncSlotLayout groupSyncSlotLayout{};
     if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
         uint32_t logicalCoreCount = config.blockNum;
