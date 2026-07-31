@@ -1,0 +1,20 @@
+===== BASELINE 1 =====
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[00] bsnd_b1_s1_1024_k_5120 bench tl_med=74.615ms off_med=19.495ms ratio=0.26x
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+===== BASELINE 2 =====
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[00] bsnd_b1_s1_1024_k_5120 bench tl_med=74.230ms off_med=19.543ms ratio=0.26x
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+===== BASELINE 3 =====
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[00] bsnd_b1_s1_1024_k_5120 bench tl_med=74.752ms off_med=19.525ms ratio=0.26x
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+===== BASELINE 4 =====
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[00] bsnd_b1_s1_1024_k_5120 bench tl_med=74.546ms off_med=19.567ms ratio=0.26x
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+===== BASELINE 5 =====
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp
+[00] bsnd_b1_s1_1024_k_5120 bench tl_med=75.942ms off_med=19.393ms ratio=0.26x
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
