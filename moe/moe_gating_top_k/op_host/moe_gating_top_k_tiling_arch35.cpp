@@ -26,6 +26,7 @@
 namespace optiling {
 const static uint64_t MOE_GATING_TOP_K_REGBASE_TILING_KEY = 10000;
 const static uint64_t MOE_GATING_TOP_K_WITHOUT_GROUP_REGBASE_TILING_KEY = 10005;
+const static uint64_t MOE_GATING_TOP_K_E_K_FULLLOAD_REGBASE_TILING_KEY = 10010;
 const static int64_t TILINGKEY_INT32_INT64_SUFFIX = 1;
 const static int64_t TILINGKEY_INT32_INT32_SUFFIX = 2;
 const static int64_t TILINGKEY_INT64_INT64_SUFFIX = 3;
@@ -721,8 +722,13 @@ ge::graphStatus MoeGatingTopKTilingRegbase::PostTiling()
 uint64_t MoeGatingTopKTilingRegbase::GetTilingKey() const
 {
     if (!hashFlag_) {
+        if (expertCount_ == 256 && groupCount_ == 8 && kGroup_ == 4 && k_ <= 32 && addBias_ &&
+            groupSelectMode_ == GROUP_SELECT_MODE_SUM && renorm_ == RENORM_NO && normType_ == NORM_TYPE_SIGMOID &&
+            outFlag_ == OUT_FLAG_FALSE) {
+            return MOE_GATING_TOP_K_E_K_FULLLOAD_REGBASE_TILING_KEY;
+        }
         bool isSimplifiedPath = (kGroup_ == groupCount_ || groupCount_ == expertCount_);
-        if (isSimplifiedPath && groupCount_ == 1) {
+        if (isSimplifiedPath && groupCount_ == 1 && k_ == 1) {
             return MOE_GATING_TOP_K_WITHOUT_GROUP_REGBASE_TILING_KEY;
         }
         return MOE_GATING_TOP_K_REGBASE_TILING_KEY;
