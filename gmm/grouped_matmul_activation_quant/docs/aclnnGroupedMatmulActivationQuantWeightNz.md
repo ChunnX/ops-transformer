@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                       |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |    ×     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                              |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -368,6 +378,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
   </tbody>
   </table>
 
+  <!-- npu="950" id7 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - x仅支持非转置输入，weight支持非转置和转置输入，接口会根据weight和weightScale的形状及转置关系推导weight是否转置。
     - weightScale转置属性需要与weight保持一致。
@@ -375,6 +386,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       - weight和weightScale作为必选输入，不支持空tensorlist，tensorlist中的元素不能为nullptr。
       - 支持M为0或N为0的空Tensor场景：x和xScaleOptional支持M为0，weight和weightScale支持N为0；该场景下允许K为0，第一段接口返回ACLNN_SUCCESS，workspaceSize为0；当M和N均不为0时，不支持K为0。
       - 支持groupList为空的空Tensor场景：当groupList为空，且输出y或yScale为空时，第一段接口返回ACLNN_SUCCESS，workspaceSize为0。
+
+  <!-- end id7 -->
 
 - **返回值**
 
