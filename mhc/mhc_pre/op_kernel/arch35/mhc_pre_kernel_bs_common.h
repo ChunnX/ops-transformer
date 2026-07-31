@@ -96,7 +96,8 @@ public:
 
     __aicore__ inline MhcPreKernelBsCommon() = default;
     __aicore__ inline void InitHMixBuffer(InitParams initParams);
-    __aicore__ inline void InitUbBuffers(bool splitAcrossSubBlocks = true);
+    __aicore__ inline void InitUbBuffers(bool splitAcrossSubBlocks = true,
+        uint32_t v1BufferRows = V1_BASE_T);
     __aicore__ inline void InitBlockParams(uint64_t curblock, uint32_t tBlockNum);
     __aicore__ inline void V0PostProcess(uint32_t curblock, uint32_t tBlockNum);
     __aicore__ inline void V0Prologue(uint32_t curNdLen, uint32_t offsetNd);
@@ -115,7 +116,8 @@ __aicore__ inline void MhcPreKernelBsCommon<T, P, HAS_RESI>::InitHMixBuffer(Init
 }
 
 template <class T, class P, int8_t HAS_RESI>
-__aicore__ inline void MhcPreKernelBsCommon<T, P, HAS_RESI>::InitUbBuffers(bool splitAcrossSubBlocks)
+__aicore__ inline void MhcPreKernelBsCommon<T, P, HAS_RESI>::InitUbBuffers(
+    bool splitAcrossSubBlocks, uint32_t v1BufferRows)
 {
     if ASCEND_IS_NOT_AIV {
         return;
@@ -146,10 +148,10 @@ __aicore__ inline void MhcPreKernelBsCommon<T, P, HAS_RESI>::InitUbBuffers(bool 
     alphaInUb_ = alphaBuf_.template Get<P>();
 
     uint64_t buffOffset = 0;
-    hPreBuff_ = tmpBuff_.template GetWithOffset<P>(uint32_t(V1_BASE_T * N_), buffOffset);
-    buffOffset += V1_BASE_T * N_ * sizeof(P);
+    hPreBuff_ = tmpBuff_.template GetWithOffset<P>(v1BufferRows * N_, buffOffset);
+    buffOffset += v1BufferRows * N_ * sizeof(P);
 
-    hPostBuff_ = tmpBuff_.template GetWithOffset<P>(uint32_t(V1_BASE_T * N_), buffOffset);
+    hPostBuff_ = tmpBuff_.template GetWithOffset<P>(v1BufferRows * N_, buffOffset);
 }
 
 template <class T, class P, int8_t HAS_RESI>
