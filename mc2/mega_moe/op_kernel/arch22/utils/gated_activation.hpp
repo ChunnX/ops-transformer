@@ -174,14 +174,16 @@ struct SwigluOaiActivation {
 // tiling field carries linearBeta for SiTUGLU.
 struct SituActivation {
     static constexpr float DEFAULT_BETA = 1.0f;
-    static constexpr float LINEAR_BETA_DISABLED = 3.402823466e+38F;
+    // Zero is not a valid scale because the formula divides by linearBeta,
+    // so it is also the unambiguous internal representation of None.
+    static constexpr float LINEAR_BETA_DISABLED = 0.0f;
 
     CATLASS_DEVICE
     static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
                         AscendC::LocalTensor<float> const &up, AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
                         uint32_t dataLength, float linearBeta = LINEAR_BETA_DISABLED, float beta = DEFAULT_BETA)
     {
-        bool enableLinearBeta = linearBeta > 0.0f && linearBeta < LINEAR_BETA_DISABLED;
+        bool enableLinearBeta = linearBeta != LINEAR_BETA_DISABLED;
         if (enableLinearBeta) {
             // output = linearBeta * tanh(up / linearBeta). The original up
             // tile can then be reused for the sigmoid denominator.

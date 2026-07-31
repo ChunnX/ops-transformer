@@ -103,7 +103,7 @@ TEST_F(MegaMoeArch22TilingTest, Test0)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED, UINT64_MAX);
 }
 
-TEST_F(MegaMoeArch22TilingTest, LargeIntermediateHiddenIsNotLimitedByUb)
+TEST_F(MegaMoeArch22TilingTest, ActivationParamValidationWithLargeIntermediateHidden)
 {
     struct MegaMoeCompileInfo {};
     MegaMoeCompileInfo compileInfo;
@@ -128,17 +128,37 @@ TEST_F(MegaMoeArch22TilingTest, LargeIntermediateHiddenIsNotLimitedByUb)
             {{{kIntermediateHidden, kHiddenSize}, {kIntermediateHidden, kHiddenSize}}, ge::DT_BF16, ge::FORMAT_ND});
     }
 
-    const std::vector<std::pair<std::string, std::vector<float>>> activationCases = {
-        {"swiglu", {std::numeric_limits<float>::max()}},
-        {"swiglustep", {std::numeric_limits<float>::max()}},
-        {"swiglu_gpt_oss", {std::numeric_limits<float>::max(), 1.702f}},
-        {"swigluoai", {std::numeric_limits<float>::max(), 1.702f, 1.0f}},
-        {"situglu", {2.0f}},
-        {"situglu", {2.0f, 2.0f}},
+    struct ActivationCase {
+        std::string activation;
+        std::vector<float> params;
+        ge::graphStatus expectedStatus;
+    };
+    const std::vector<ActivationCase> activationCases = {
+        {"swiglu", {std::numeric_limits<float>::max()}, ge::GRAPH_SUCCESS},
+        {"swiglu", {0.0f}, ge::GRAPH_SUCCESS},
+        {"swiglustep", {std::numeric_limits<float>::max()}, ge::GRAPH_SUCCESS},
+        {"swiglu_gpt_oss", {std::numeric_limits<float>::max(), 0.0f}, ge::GRAPH_SUCCESS},
+        {"swiglu_gpt_oss", {std::numeric_limits<float>::max(), -1.702f}, ge::GRAPH_SUCCESS},
+        {"swigluoai", {std::numeric_limits<float>::max(), 0.0f, 0.0f}, ge::GRAPH_SUCCESS},
+        {"swigluoai", {std::numeric_limits<float>::max(), -1.702f, -1.0f}, ge::GRAPH_SUCCESS},
+        {"situglu", {-2.0f}, ge::GRAPH_SUCCESS},
+        {"situglu", {-2.0f, -2.0f}, ge::GRAPH_SUCCESS},
+        {"swiglu", {-1.0f}, ge::GRAPH_FAILED},
+        {"swiglu_gpt_oss",
+         {std::numeric_limits<float>::max(), std::numeric_limits<float>::infinity()},
+         ge::GRAPH_FAILED},
+        {"swigluoai",
+         {std::numeric_limits<float>::max(), std::numeric_limits<float>::quiet_NaN(), 1.0f},
+         ge::GRAPH_FAILED},
+        {"swigluoai",
+         {std::numeric_limits<float>::max(), 1.702f, std::numeric_limits<float>::infinity()},
+         ge::GRAPH_FAILED},
+        {"situglu", {0.0f}, ge::GRAPH_FAILED},
+        {"situglu", {1.0f, 0.0f}, ge::GRAPH_FAILED},
+        {"situglu", {std::numeric_limits<float>::quiet_NaN()}, ge::GRAPH_FAILED},
+        {"situglu", {1.0f, std::numeric_limits<float>::infinity()}, ge::GRAPH_FAILED},
     };
     for (const auto &activationCase : activationCases) {
-        const std::string &activation = activationCase.first;
-        const std::vector<float> &activationParams = activationCase.second;
         gert::TilingContextPara tilingContextPara(
             "MegaMoe", inputs,
             {
@@ -155,8 +175,8 @@ TEST_F(MegaMoeArch22TilingTest, LargeIntermediateHiddenIsNotLimitedByUb)
              {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
              {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
              {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-             {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>(activation)},
-             {"activation_params", Ops::Transformer::AnyValue::CreateFrom<std::vector<float>>(activationParams)},
+             {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>(activationCase.activation)},
+             {"activation_params", Ops::Transformer::AnyValue::CreateFrom<std::vector<float>>(activationCase.params)},
              {"activation_out_dtype",
               Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
              {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
@@ -166,7 +186,7 @@ TEST_F(MegaMoeArch22TilingTest, LargeIntermediateHiddenIsNotLimitedByUb)
             ubSize);
 
         Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, UINT64_MAX);
+        Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, activationCase.expectedStatus, UINT64_MAX);
     }
 }
 

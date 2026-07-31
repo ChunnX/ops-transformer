@@ -622,7 +622,7 @@
   <tr>
    <td>activation_params</td>
    <td>可选属性</td>
-   <td>激活函数参数列表，默认值为[float最大值]。参数顺序和数量由activation决定："swiglu"和"swiglustep"传[clamp]；"swiglu_gpt_oss"传[clamp, alpha]；"swigluoai"传[clamp, alpha, beta]；"situglu"在linear_beta为None时传[beta]，否则传[beta, linear_beta]。clamp需≥0且不能为NaN，alpha、beta和linear_beta需为有限正数。</td>
+   <td>激活函数参数列表，默认值为[float最大值]。参数顺序和数量由activation决定："swiglu"和"swiglustep"传[clamp]；"swiglu_gpt_oss"传[clamp, alpha]；"swigluoai"传[clamp, alpha, beta]；"situglu"在linear_beta为None时传[beta]，否则传[beta, linear_beta]。clamp需≥0且不能为NaN；alpha和swigluoai的beta需为有限值；situglu的beta和linear_beta作为除数，需为有限非零值。</td>
    <td>LIST_FLOAT</td>
    <td></td>
   </tr>
