@@ -126,28 +126,28 @@ def npu_test(case, device):
     dtypeMap   = {"float16": torch.float16, "bfloat16": torch.bfloat16}
     ioDtype    = dtypeMap[dataType]
     dataTypeId = 0 if dataType == "bfloat16" else 1
-    layoutId   = 0 if layout == "TH" else 1
+    layoutId   = 1 if layout == "TH" else 0
 
     tokenSize = batchSize * seqSize
-    if layoutId == 0:
+    if layoutId == 1:  # TH
         tokenSize = seqlens_list_q[-1]
 
     scKvRowCount = coff * cmpRatio
 
     # ── Build cu_seqlens / seqused / start_pos ──
-    if layoutId == 0:
+    if layoutId == 1:  # TH
         seqlens_list = case.get('seqlens_list_q')
         if seqlens_list is not None:
             cuNpu = torch.tensor(seqlens_list, dtype=torch.int32)
         else:
             cuNpu = torch.tensor([0] + torch.tensor(sqs).cumsum(0).tolist(), 
                                 device=device, dtype=torch.int32)
-    else:
+    else:  # BSH
         cuNpu = None
 
-    if layoutId == 0:
+    if layoutId == 1:  # TH
         outputRows = min(tokenSize, (tokenSize // cmpRatio) + batchSize)
-    else:
+    else:  # BSH
         outputRows = batchSize * ((seqSize + cmpRatio - 1) // cmpRatio)
 
     sqNpu = torch.tensor(sqs, device=device, dtype=torch.int32) if sqs else None
@@ -162,7 +162,7 @@ def npu_test(case, device):
         elif cuNpu is not None:
             sq = int(cuNpu[i + 1].item() - cuNpu[i].item())
         else:
-            sq = tokenSize // batchSize if layoutId == 1 else tokenSize
+            sq = tokenSize if layoutId == 1 else tokenSize // batchSize
         cmpLimit = (sp + sq) // cmpRatio * cmpRatio
         if cmpLimit > sp:
             totalValid += (cmpLimit - sp) // cmpRatio
@@ -196,9 +196,9 @@ def npu_test(case, device):
 
     # ── Output tensors ──
     # d_x/d_wkv/d_wgate: Phase 2/3 写入，当前仅占位
-    if layoutId == 0:
+    if layoutId == 1:  # TH
         totalTokens = tokenSize
-    else:
+    else:  # BSH
         totalTokens = batchSize * seqSize
     d_xNpu     = torch.zeros(totalTokens, hiddenSize, device=device,
                              dtype=ioDtype)
@@ -220,7 +220,7 @@ def npu_test(case, device):
     
 
     # cu_seqlens argument (None if BSH or noCu)
-    if layoutId == 1 or case.get('noCu'):
+    if layoutId == 0 or case.get('noCu'):
         cuArg = None
     else:
         cuArg = cuNpu
@@ -257,7 +257,7 @@ def npu_test(case, device):
         block_table_npu = torch.zeros(batchSize,
                                       device=device, dtype=torch.int32)
 
-    if layoutId == 1:  # BSH
+    if layoutId == 0:  # BSH
         x_npu_input = xNpu.view(batchSize, seqSize, hiddenSize)
     else:  # TH
         x_npu_input = xNpu
@@ -298,12 +298,12 @@ def npu_test(case, device):
     cuGolden = cuNpu.cpu() if cuNpu is not None else None
     # golden 的 compressor_grad 用 cu_seqlens 判断 TH/BSH 布局，
     # 而 noCu 测试用例不传 cu_seqlens 给 kernel，需为 golden 单独构造
-    if layoutId == 0 and cuGolden is None and sqs is not None:
+    if layoutId == 1 and cuGolden is None and sqs is not None:
         cuGolden = torch.tensor([0] + torch.tensor(sqs).cumsum(0).tolist(), dtype=torch.int32)
 
     # x 输入：TH 布局为 (T, H)，BSH 布局为 (B, S, H)
     xCpu = xNpu.cpu()
-    if layoutId == 1:  # BSH
+    if layoutId == 0:  # BSH
         xCpu = xCpu.view(batchSize, seqSize, hiddenSize)
     wkvCpu = wkvInp.cpu()
     wgateCpu = wgateInp.cpu()
