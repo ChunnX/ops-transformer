@@ -266,6 +266,9 @@ protected:
         (void)coreNum;
         int64_t accumS1BlockNum = 0;
         for (int64_t i = 0; i < bSize; ++i) {
+            if (actualSeqLenKvData[i] == 0) {
+                continue;
+            }
             accumS1BlockNum += CeilDivision(actualSeqLenData[i], s1BasicBlock);
         }
         totalSize = accumS1BlockNum * n2Size * gSize;
@@ -678,6 +681,9 @@ protected:
         uint8_t sparseType = inputParamsRegbase_->get_sparseType();
         int64_t localAccumS1BlockNum = 0;
         for (int32_t i = 0; i < bSize; i++) {
+            if (actualSeqLenKvData[i] == 0) {
+                continue;
+            }
             int64_t n2G = n2Size * gSize;
             int64_t s1BlockNum = CeilDivision(actualSeqLenData[i], s1BasicBlock);
             for (int64_t j = 0; j < s1BlockNum; j++) {
