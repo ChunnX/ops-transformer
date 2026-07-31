@@ -181,15 +181,13 @@ private:
         const bool hasMropeSection =
             params_.mropeSectionOptional != nullptr && params_.mropeSectionOptional->Size() != 0;
         if (hasMropePosition != hasMropeSection) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                ACLNN_NAME, "mropePositionOptional/mropeSectionOptional", "presence mismatch",
-                "both parameters must be provided together");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "mropePositionOptional/mropeSectionOptional",
+                                                  "presence mismatch", "both parameters must be provided together");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (hasMropePosition && (hasQueryStartLoc || hasSeqLens)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                ACLNN_NAME, "queryStartLocOptional/seqLensOptional", "not nullptr",
-                "both parameters must be nullptr in the M-RoPE scene");
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "queryStartLocOptional/seqLensOptional", "not nullptr",
+                                                  "both parameters must be nullptr in the M-RoPE scene");
             return ACLNN_ERR_PARAM_INVALID;
         }
         scene_ = hasMropePosition ? SceneType::MROPE : SceneType::ROPE;
@@ -232,10 +230,7 @@ private:
                                "mropePositionOptional must have shape [T, 3] matching qkv token count");
     }
 
-    bool IsMropeScene() const
-    {
-        return scene_ == SceneType::MROPE;
-    }
+    bool IsMropeScene() const { return scene_ == SceneType::MROPE; }
 
     struct PointerNullRule {
         const char *paramName;

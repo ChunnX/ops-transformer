@@ -99,8 +99,7 @@ constexpr uint32_t QKV_K_SCALE_A_ROT_L1_POOL_OFFSET = QKV_K_SCALE_ROTATION_RESER
 constexpr uint32_t QKV_K_SCALE_ROTATION_ONE_L1_ELEMENTS = QKV_K_SCALE_ROTATION_ONE_L1_BYTES / sizeof(bfloat16_t);
 constexpr uint32_t QKV_K_SCALE_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS =
     QKV_K_SCALE_MIX_AIV_PER_AIC * 64U * QKV_K_SCALE_KIB / sizeof(bfloat16_t);
-constexpr uint32_t QKV_K_SCALE_A_ROT_L1_POOL_ELEMENTS =
-    2U * QKV_K_SCALE_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS;
+constexpr uint32_t QKV_K_SCALE_A_ROT_L1_POOL_ELEMENTS = 2U * QKV_K_SCALE_A_ROT_L1_LOGICAL_BUFFER_ELEMENTS;
 
 constexpr uint32_t QKV_K_SCALE_RESERVE_UB_BYTES = 40U * QKV_K_SCALE_KIB;
 constexpr uint32_t QKV_K_SCALE_GAMMA_UB_BYTES = 1U * QKV_K_SCALE_KIB;
@@ -120,8 +119,7 @@ constexpr uint32_t QKV_K_SCALE_V_OUT_ONE_BUFFER_BYTES = 10U * QKV_K_SCALE_KIB;
 // transfer slot.  Current host tiling uses a smaller cap, but the layout must
 // remain safe if that cap is raised later.
 constexpr uint32_t QKV_K_SCALE_MROPE_POSITION_ONE_BUFFER_BYTES = 128U;
-constexpr uint32_t QKV_K_SCALE_MROPE_GATHER_INDEX_BYTES =
-    (QKV_K_SCALE_HEAD_DIM_D128 / 2U) * sizeof(uint32_t);
+constexpr uint32_t QKV_K_SCALE_MROPE_GATHER_INDEX_BYTES = (QKV_K_SCALE_HEAD_DIM_D128 / 2U) * sizeof(uint32_t);
 
 constexpr uint32_t QKV_K_SCALE_GAMMA_UB_OFFSET = 0U;
 constexpr uint32_t QKV_K_SCALE_COS_SIN_DB_POOL_OFFSET = QKV_K_SCALE_GAMMA_UB_OFFSET + QKV_K_SCALE_GAMMA_UB_BYTES;
@@ -139,34 +137,27 @@ constexpr uint32_t QKV_K_SCALE_MROPE_GATHER_INDEX_OFFSET =
     QKV_K_SCALE_MROPE_POSITION_DB_POOL_OFFSET + 2U * QKV_K_SCALE_MROPE_POSITION_ONE_BUFFER_BYTES;
 constexpr uint32_t QKV_K_SCALE_GAMMA_UB_ELEMENTS = QKV_K_SCALE_GAMMA_UB_BYTES / sizeof(float);
 constexpr uint32_t QKV_K_SCALE_COS_SIN_ONE_BUFFER_ELEMENTS = QKV_K_SCALE_COS_SIN_ONE_BUFFER_BYTES / sizeof(float);
-constexpr uint32_t QKV_K_SCALE_COS_SIN_DB_POOL_ELEMENTS =
-    2U * QKV_K_SCALE_COS_SIN_ONE_BUFFER_ELEMENTS;
+constexpr uint32_t QKV_K_SCALE_COS_SIN_DB_POOL_ELEMENTS = 2U * QKV_K_SCALE_COS_SIN_ONE_BUFFER_ELEMENTS;
 constexpr uint32_t QKV_K_SCALE_SLOT_MAPPING_ONE_BUFFER_ELEMENTS =
     QKV_K_SCALE_SLOT_MAPPING_ONE_BUFFER_BYTES / sizeof(int32_t);
-constexpr uint32_t QKV_K_SCALE_SLOT_MAPPING_DB_POOL_ELEMENTS =
-    2U * QKV_K_SCALE_SLOT_MAPPING_ONE_BUFFER_ELEMENTS;
+constexpr uint32_t QKV_K_SCALE_SLOT_MAPPING_DB_POOL_ELEMENTS = 2U * QKV_K_SCALE_SLOT_MAPPING_ONE_BUFFER_ELEMENTS;
 constexpr uint32_t QKV_K_SCALE_V_SCALE_UB_ELEMENTS = QKV_K_SCALE_V_SCALE_UB_BYTES / sizeof(float);
 constexpr uint32_t QKV_K_SCALE_QK_NZ_SCATTER_INDEX_UB_ELEMENTS =
     QKV_K_SCALE_QK_NZ_SCATTER_INDEX_UB_BYTES / sizeof(uint16_t);
 constexpr uint32_t QKV_K_SCALE_V_OUT_ONE_BUFFER_ELEMENTS = QKV_K_SCALE_V_OUT_ONE_BUFFER_BYTES / sizeof(fp8_e4m3fn_t);
-constexpr uint32_t QKV_K_SCALE_V_OUT_DB_POOL_ELEMENTS =
-    2U * QKV_K_SCALE_V_OUT_ONE_BUFFER_ELEMENTS;
+constexpr uint32_t QKV_K_SCALE_V_OUT_DB_POOL_ELEMENTS = 2U * QKV_K_SCALE_V_OUT_ONE_BUFFER_ELEMENTS;
 constexpr uint32_t QKV_K_SCALE_MROPE_POSITION_ONE_BUFFER_ELEMENTS =
     QKV_K_SCALE_MROPE_POSITION_ONE_BUFFER_BYTES / sizeof(int32_t);
-constexpr uint32_t QKV_K_SCALE_MROPE_POSITION_DB_POOL_ELEMENTS =
-    2U * QKV_K_SCALE_MROPE_POSITION_ONE_BUFFER_ELEMENTS;
-static_assert(QKV_K_SCALE_MROPE_POSITION_ONE_BUFFER_BYTES >=
-                  QKV_K_SCALE_MAX_TOKEN_TILE_PER_AIV * 3U * sizeof(int32_t),
+constexpr uint32_t QKV_K_SCALE_MROPE_POSITION_DB_POOL_ELEMENTS = 2U * QKV_K_SCALE_MROPE_POSITION_ONE_BUFFER_ELEMENTS;
+static_assert(QKV_K_SCALE_MROPE_POSITION_ONE_BUFFER_BYTES >= QKV_K_SCALE_MAX_TOKEN_TILE_PER_AIV * 3U * sizeof(int32_t),
               "M-RoPE position slot is smaller than the maximum AIV token slice");
-constexpr uint32_t QKV_K_SCALE_MROPE_GATHER_INDEX_ELEMENTS =
-    QKV_K_SCALE_MROPE_GATHER_INDEX_BYTES / sizeof(uint32_t);
+constexpr uint32_t QKV_K_SCALE_MROPE_GATHER_INDEX_ELEMENTS = QKV_K_SCALE_MROPE_GATHER_INDEX_BYTES / sizeof(uint32_t);
 static_assert(QKV_K_SCALE_MROPE_GATHER_INDEX_OFFSET + QKV_K_SCALE_MROPE_GATHER_INDEX_BYTES <=
                   QKV_K_SCALE_RESERVE_UB_BYTES,
               "M-RoPE reserve layout exceeds the 40 KiB UB budget");
 
 constexpr uint32_t QKV_K_SCALE_INPUT_POOL_OFFSET = 0U;
-constexpr uint32_t QKV_K_SCALE_OUTPUT_DB_POOL_OFFSET =
-    QKV_K_SCALE_INPUT_POOL_OFFSET + QKV_K_SCALE_INPUT_POOL_BYTES;
+constexpr uint32_t QKV_K_SCALE_OUTPUT_DB_POOL_OFFSET = QKV_K_SCALE_INPUT_POOL_OFFSET + QKV_K_SCALE_INPUT_POOL_BYTES;
 constexpr uint32_t QKV_K_SCALE_RESERVE_UB_OFFSET = QKV_K_SCALE_OUTPUT_DB_POOL_OFFSET + QKV_K_SCALE_OUTPUT_DB_POOL_BYTES;
 
 // Compact direct-M-RoPE layout.  Valid M-RoPE selectors use this layout;
@@ -351,15 +342,9 @@ __aicore__ inline uint64_t AlignUp(uint64_t value, uint64_t align)
     return ((value + align - 1U) / align) * align;
 }
 
-__aicore__ inline uint64_t MinU64(uint64_t lhs, uint64_t rhs)
-{
-    return lhs < rhs ? lhs : rhs;
-}
+__aicore__ inline uint64_t MinU64(uint64_t lhs, uint64_t rhs) { return lhs < rhs ? lhs : rhs; }
 
-__aicore__ inline uint64_t MaxU64(uint64_t lhs, uint64_t rhs)
-{
-    return lhs > rhs ? lhs : rhs;
-}
+__aicore__ inline uint64_t MaxU64(uint64_t lhs, uint64_t rhs) { return lhs > rhs ? lhs : rhs; }
 
 __aicore__ inline uint64_t NzMatrixElements(uint64_t rowCount)
 {

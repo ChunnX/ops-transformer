@@ -67,10 +67,7 @@ static const char *GetLogOpName(gert::InferShapeContext *context)
     return context == nullptr || context->GetNodeName() == nullptr ? DEFAULT_OP_NAME : context->GetNodeName();
 }
 
-static std::string RankString(uint64_t dimNum)
-{
-    return std::to_string(dimNum) + "D";
-}
+static std::string RankString(uint64_t dimNum) { return std::to_string(dimNum) + "D"; }
 
 static std::string ShapeString(const gert::Shape *shape)
 {
@@ -327,9 +324,8 @@ ge::graphStatus InferDtype4QkvRmsNormRopeCacheWithKScale(gert::InferDataTypeCont
             const auto requestedDtype = static_cast<ge::DataType>(*qOutDtypeAttr);
             if (requestedDtype != ge::DT_FLOAT8_E4M3FN && requestedDtype != ge::DT_BF16) {
                 const std::string incorrectValue = std::to_string(*qOutDtypeAttr);
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    DEFAULT_OP_NAME, "q_out_dtype", incorrectValue.c_str(),
-                    "q_out_dtype must be ge::DT_FLOAT8_E4M3FN or ge::DT_BF16");
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(DEFAULT_OP_NAME, "q_out_dtype", incorrectValue.c_str(),
+                                                      "q_out_dtype must be ge::DT_FLOAT8_E4M3FN or ge::DT_BF16");
                 return ge::GRAPH_FAILED;
             }
             qOutDtype = requestedDtype;

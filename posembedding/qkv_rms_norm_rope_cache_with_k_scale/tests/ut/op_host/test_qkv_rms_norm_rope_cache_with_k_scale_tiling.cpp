@@ -44,15 +44,9 @@ int64_t ReadExpected(const csv_map &csvMap, const std::string &key)
     return value.empty() ? EXPECT_UNSET : std::stoll(value);
 }
 
-bool IsNullValue(const std::string &value)
-{
-    return value.empty() || value == "<null>";
-}
+bool IsNullValue(const std::string &value) { return value.empty() || value == "<null>"; }
 
-std::string DecodeString(const std::string &value)
-{
-    return value == "<empty>" ? std::string() : value;
-}
+std::string DecodeString(const std::string &value) { return value == "<empty>" ? std::string() : value; }
 
 std::vector<int64_t> ParseIntList(const std::string &value)
 {
@@ -123,28 +117,23 @@ struct QkvTilingCase : public HostUtParamBase {
     QkvTilingCase(const csv_map &csvMap) : HostUtParamBase(csvMap)
     {
         inputInstance.emplace_back(GetTensorGE(csvMap, "qkv_shape", "qkv_dtype", "qkv_format", qkv));
-        inputInstance.emplace_back(
-            GetTensorGE(csvMap, "qGamma_shape", "qGamma_dtype", "qGamma_format", qGamma));
-        inputInstance.emplace_back(
-            GetTensorGE(csvMap, "kGamma_shape", "kGamma_dtype", "kGamma_format", kGamma));
+        inputInstance.emplace_back(GetTensorGE(csvMap, "qGamma_shape", "qGamma_dtype", "qGamma_format", qGamma));
+        inputInstance.emplace_back(GetTensorGE(csvMap, "kGamma_shape", "kGamma_dtype", "kGamma_format", kGamma));
         inputInstance.emplace_back(GetTensorGE(csvMap, "cosSin_shape", "cosSin_dtype", "cosSin_format", cosSin));
         inputInstance.emplace_back(
             GetTensorGE(csvMap, "slotMapping_shape", "slotMapping_dtype", "slotMapping_format", slotMapping));
+        inputInstance.emplace_back(GetTensorGE(csvMap, "kCache_shape", "kCache_dtype", "kCache_format", kCache));
+        inputInstance.emplace_back(GetTensorGE(csvMap, "vCache_shape", "vCache_dtype", "vCache_format", vCache));
         inputInstance.emplace_back(
-            GetTensorGE(csvMap, "kCache_shape", "kCache_dtype", "kCache_format", kCache));
+            GetTensorGE(csvMap, "kScaleCache_shape", "kScaleCache_dtype", "kScaleCache_format", kScaleCache));
         inputInstance.emplace_back(
-            GetTensorGE(csvMap, "vCache_shape", "vCache_dtype", "vCache_format", vCache));
-        inputInstance.emplace_back(GetTensorGE(csvMap, "kScaleCache_shape", "kScaleCache_dtype",
-                                               "kScaleCache_format", kScaleCache));
-        inputInstance.emplace_back(GetTensorGE(csvMap, "queryStartLoc_shape", "queryStartLoc_dtype",
-                                               "queryStartLoc_format", queryStartLoc));
-        inputInstance.emplace_back(
-            GetTensorGE(csvMap, "seqLens_shape", "seqLens_dtype", "seqLens_format", seqLens));
+            GetTensorGE(csvMap, "queryStartLoc_shape", "queryStartLoc_dtype", "queryStartLoc_format", queryStartLoc));
+        inputInstance.emplace_back(GetTensorGE(csvMap, "seqLens_shape", "seqLens_dtype", "seqLens_format", seqLens));
         inputInstance.emplace_back(
             GetTensorGE(csvMap, "rotation_shape", "rotation_dtype", "rotation_format", rotation));
         inputInstance.emplace_back(GetTensorGE(csvMap, "vScale_shape", "vScale_dtype", "vScale_format", vScale));
-        inputInstance.emplace_back(GetTensorGE(csvMap, "mropePosition_shape", "mropePosition_dtype",
-                                               "mropePosition_format", mropePosition));
+        inputInstance.emplace_back(
+            GetTensorGE(csvMap, "mropePosition_shape", "mropePosition_dtype", "mropePosition_format", mropePosition));
 
         outputInstance.emplace_back(GetTensorGE(csvMap, "qOut_shape", "qOut_dtype", "qOut_format", qOut));
         outputInstance.emplace_back(GetTensorGE(csvMap, "qScale_shape", "qScale_dtype", "qScale_format", qScale));
@@ -162,7 +151,7 @@ struct QkvTilingCase : public HostUtParamBase {
         aicNum = static_cast<uint32_t>(std::stoull(ReadMap(csvMap, "aic_num", "32")));
         const std::string aivNumValue = ReadMap(csvMap, "aiv_num");
         aivNum = IsNullValue(aivNumValue) ? aicNum * QkvTiling::AIV_PER_AIC :
-                                           static_cast<uint32_t>(std::stoull(aivNumValue));
+                                            static_cast<uint32_t>(std::stoull(aivNumValue));
         socVersion = ReadMap(csvMap, "soc_version", "Ascend950");
 
         expected.tilingKey = ReadExpected(csvMap, "expectTilingKey");
@@ -191,18 +180,18 @@ std::vector<gert::TilingContextPara::OpAttr> BuildAttrs(const QkvTilingCase &tes
         return attrs;
     }
 
-    attrs.emplace_back("head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(
-                                         ParseIntList(testCase.headNums)));
+    attrs.emplace_back("head_nums",
+                       Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(ParseIntList(testCase.headNums)));
     if (IsNullValue(testCase.layoutQkv)) {
         return attrs;
     }
-    attrs.emplace_back("layout_qkv", Ops::Transformer::AnyValue::CreateFrom<std::string>(
-                                         DecodeString(testCase.layoutQkv)));
+    attrs.emplace_back("layout_qkv",
+                       Ops::Transformer::AnyValue::CreateFrom<std::string>(DecodeString(testCase.layoutQkv)));
     if (IsNullValue(testCase.layoutQOut)) {
         return attrs;
     }
-    attrs.emplace_back("layout_q_out", Ops::Transformer::AnyValue::CreateFrom<std::string>(
-                                           DecodeString(testCase.layoutQOut)));
+    attrs.emplace_back("layout_q_out",
+                       Ops::Transformer::AnyValue::CreateFrom<std::string>(DecodeString(testCase.layoutQOut)));
     if (IsNullValue(testCase.epsilon)) {
         return attrs;
     }
@@ -211,17 +200,17 @@ std::vector<gert::TilingContextPara::OpAttr> BuildAttrs(const QkvTilingCase &tes
         return attrs;
     }
     attrs.emplace_back("mrope_section", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(
-                                             ParseIntList(testCase.mropeSection)));
+                                            ParseIntList(testCase.mropeSection)));
     if (IsNullValue(testCase.qQuantMode)) {
         return attrs;
     }
-    attrs.emplace_back("q_quant_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(
-                                             DecodeString(testCase.qQuantMode)));
+    attrs.emplace_back("q_quant_mode",
+                       Ops::Transformer::AnyValue::CreateFrom<std::string>(DecodeString(testCase.qQuantMode)));
     if (IsNullValue(testCase.qOutDtypeAttr)) {
         return attrs;
     }
     attrs.emplace_back("q_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(
-                                             static_cast<int64_t>(Str2DTypeGE(testCase.qOutDtypeAttr))));
+                                          static_cast<int64_t>(Str2DTypeGE(testCase.qOutDtypeAttr))));
     return attrs;
 }
 
@@ -244,9 +233,9 @@ gert::TilingContextPara BuildTilingContext(const QkvTilingCase &testCase, Compil
         {testCase.qkv, testCase.qGamma, testCase.kGamma, testCase.cosSin, testCase.slotMapping, testCase.kCache,
          testCase.vCache, testCase.kScaleCache, testCase.queryStartLoc, testCase.seqLens, testCase.rotation,
          testCase.vScale, testCase.mropePosition},
-        {testCase.qOut, testCase.qScale, testCase.kCache, testCase.vCache, testCase.kScaleCache},
-        BuildAttrs(testCase), testCase.inputInstance, testCase.outputInstance, &compileInfo, testCase.socVersion,
-        testCase.aicNum, compileInfo.ubSize);
+        {testCase.qOut, testCase.qScale, testCase.kCache, testCase.vCache, testCase.kScaleCache}, BuildAttrs(testCase),
+        testCase.inputInstance, testCase.outputInstance, &compileInfo, testCase.socVersion, testCase.aicNum,
+        compileInfo.ubSize);
 }
 
 bool RunTiling(const QkvTilingCase &testCase, TilingInfo &tilingInfo)
@@ -339,10 +328,8 @@ void ExpectTilingResult(const QkvTilingCase &testCase, const TilingInfo &tilingI
 
     const auto mropeSection = ParseIntList(testCase.mropeSection);
     if (mropeSection.size() == 3U) {
-        EXPECT_EQ(tiling.mropeSectionH, static_cast<uint64_t>(mropeSection[1]))
-            << "caseName=" << testCase.case_name;
-        EXPECT_EQ(tiling.mropeSectionW, static_cast<uint64_t>(mropeSection[2]))
-            << "caseName=" << testCase.case_name;
+        EXPECT_EQ(tiling.mropeSectionH, static_cast<uint64_t>(mropeSection[1])) << "caseName=" << testCase.case_name;
+        EXPECT_EQ(tiling.mropeSectionW, static_cast<uint64_t>(mropeSection[2])) << "caseName=" << testCase.case_name;
     }
 
     const uint64_t tokenTilePerAiv = Ops::Base::CeilDiv(tiling.tokenTile, QkvTiling::AIV_PER_AIC);
@@ -351,8 +338,7 @@ void ExpectTilingResult(const QkvTilingCase &testCase, const TilingInfo &tilingI
     ExpectU64(testCase.case_name, "tokenTile", expected.tokenTile, tiling.tokenTile);
     ExpectU64(testCase.case_name, "tokenTilePerAiv", expected.tokenTilePerAiv, tokenTilePerAiv);
     ExpectU64(testCase.case_name, "rowTile", expected.rowTile, rowTile);
-    ExpectU64(testCase.case_name, "rowTileAligned", expected.rowTileAligned,
-              Ops::Base::CeilAlign(rowTile, 16UL));
+    ExpectU64(testCase.case_name, "rowTileAligned", expected.rowTileAligned, Ops::Base::CeilAlign(rowTile, 16UL));
     ExpectU64(testCase.case_name, "coreTokenTile", expected.coreTokenTile, tiling.coreTokenTile);
     ExpectU64(testCase.case_name, "coreGroupNum", expected.coreGroupNum, tiling.coreGroupNum);
 
@@ -361,20 +347,17 @@ void ExpectTilingResult(const QkvTilingCase &testCase, const TilingInfo &tilingI
     EXPECT_LE(CalcQkPreprocessNzBytes(qPreprocessRows) + CalcQkPreprocessNzBytes(kPreprocessRows),
               QkvTiling::QK_PREPROCESS_UB_BYTES);
     EXPECT_LE(tokenTilePerAiv * qkHeadNum, QkvTiling::QK_OUTPUT_ROWS_PER_AIV);
-    const uint64_t qkvInputRowsPerAiv = mropeSection.size() == 3U ? QkvTiling::MROPE_COMPACT_INPUT_ROWS_PER_AIV :
-                                                                   QkvTiling::QKV_INPUT_ROWS_PER_AIV;
+    const uint64_t qkvInputRowsPerAiv =
+        mropeSection.size() == 3U ? QkvTiling::MROPE_COMPACT_INPUT_ROWS_PER_AIV : QkvTiling::QKV_INPUT_ROWS_PER_AIV;
     EXPECT_LE(tokenTilePerAiv * (qkHeadNum + tiling.kvHeadNum), qkvInputRowsPerAiv);
     EXPECT_LE(tokenTilePerAiv * tiling.kvHeadNum, QkvTiling::V_OUTPUT_ROWS_PER_AIV);
 
     ExpectU64(testCase.case_name, "kvCacheStrideBlock", expected.kvStrideBlock, tiling.kvCacheStrideBlock);
     ExpectU64(testCase.case_name, "kvCacheStrideHead", expected.kvStrideHead, tiling.kvCacheStrideHead);
     ExpectU64(testCase.case_name, "kvCacheStrideToken", expected.kvStrideToken, tiling.kvCacheStrideToken);
-    ExpectU64(testCase.case_name, "kScaleCacheStrideBlock", expected.kScaleStrideBlock,
-              tiling.kScaleCacheStrideBlock);
-    ExpectU64(testCase.case_name, "kScaleCacheStrideHead", expected.kScaleStrideHead,
-              tiling.kScaleCacheStrideHead);
-    ExpectU64(testCase.case_name, "kScaleCacheStrideToken", expected.kScaleStrideToken,
-              tiling.kScaleCacheStrideToken);
+    ExpectU64(testCase.case_name, "kScaleCacheStrideBlock", expected.kScaleStrideBlock, tiling.kScaleCacheStrideBlock);
+    ExpectU64(testCase.case_name, "kScaleCacheStrideHead", expected.kScaleStrideHead, tiling.kScaleCacheStrideHead);
+    ExpectU64(testCase.case_name, "kScaleCacheStrideToken", expected.kScaleStrideToken, tiling.kScaleCacheStrideToken);
     EXPECT_FLOAT_EQ(tiling.epsilon, input.epsilon) << "caseName=" << testCase.case_name;
 }
 
@@ -387,9 +370,8 @@ const std::vector<QkvTilingCase> &GetTilingCases()
 const QkvTilingCase *FindTilingCase(const std::string &caseName)
 {
     const auto &cases = GetTilingCases();
-    const auto it = std::find_if(cases.begin(), cases.end(), [&](const QkvTilingCase &testCase) {
-        return testCase.case_name == caseName;
-    });
+    const auto it = std::find_if(cases.begin(), cases.end(),
+                                 [&](const QkvTilingCase &testCase) { return testCase.case_name == caseName; });
     return it == cases.end() ? nullptr : &*it;
 }
 

@@ -15,16 +15,16 @@
 #include "acl/acl.h"
 #include "aclnnop/aclnn_qkv_rms_norm_rope_cache_with_k_scale.h"
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
-        if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
-        }                                                                                                              \
+#define CHECK_RET(cond, return_expr) \
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
-    do {                                                                                                               \
-        printf(message, ##__VA_ARGS__);                                                                                \
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
     } while (0)
 
 struct TensorResource {
@@ -213,7 +213,7 @@ int main()
     TensorResource vScale;
     TensorResource qOut;
     TensorResource qScale;
-    resource.tensors = {&qkv,         &qGamma,    &kGamma,        &cosSin,   &slotMapping, &kCache, &vCache,
+    resource.tensors = {&qkv,         &qGamma,        &kGamma,  &cosSin,   &slotMapping, &kCache, &vCache,
                         &kScaleCache, &queryStartLoc, &seqLens, &rotation, &vScale,      &qOut,   &qScale};
 
     ret = CreateAclTensor(qkvHostData, qkvShape, ACL_BF16, qkv);

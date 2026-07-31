@@ -16,12 +16,10 @@
 
 namespace QkvRmsNormRopeCacheWithKScale {
 
-template <uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT, uint32_t ROPE_MODE, uint32_t K_QUANT_MODE,
-          uint32_t Q_QUANT_MODE>
+template <uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT, uint32_t ROPE_MODE, uint32_t K_QUANT_MODE, uint32_t Q_QUANT_MODE>
 class QkvRmsNormRopeCacheWithKScaleVec {
 public:
-    __aicore__ inline void Init(const GlobalTensors &tensors,
-                                const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
+    __aicore__ inline void Init(const GlobalTensors &tensors, const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
     {
         totalTokens_ = tilingData->totalTokens;
         batch_ = IS_MROPE ? 0U : tilingData->batch;
@@ -204,8 +202,7 @@ public:
         if (tile.aivTokenSize == 0U) {
             return 0U;
         }
-        const uint32_t kQuantBufferId =
-            static_cast<uint32_t>(kQuantBufferUseId_ % K_QUANT_BUFFER_NUM);
+        const uint32_t kQuantBufferId = static_cast<uint32_t>(kQuantBufferUseId_ % K_QUANT_BUFFER_NUM);
         ++kQuantBufferUseId_;
         WaitFlag<HardEvent::MTE3_V>(static_cast<event_t>(EVT_MTE3_TO_PIPE_V_K_QUANT_UB_BASE + kQuantBufferId));
         const LocalTensor<int8_t> kInt8 =
@@ -245,8 +242,7 @@ public:
             vOutDbPoolUb_[vOutBufferId * V_OUT_ONE_BUFFER_ELEMENTS].template ReinterpretCast<float>();
         LocalTensor<float> kScale = qkScaleStaging;
         if constexpr (K_QUANT_MODE == QKV_K_SCALE_K_QUANT_MODE_FP8) {
-            const uint64_t qScaleNtdHeadStride =
-                AlignUp(tile.aivTokenSize, QKV_K_SCALE_QK_SCALE_MTE3_ALIGN_ELEMENTS);
+            const uint64_t qScaleNtdHeadStride = AlignUp(tile.aivTokenSize, QKV_K_SCALE_QK_SCALE_MTE3_ALIGN_ELEMENTS);
             kScale = qkScaleStaging[qHeadNum_ * qScaleNtdHeadStride];
         }
 
@@ -275,29 +271,26 @@ private:
     static constexpr bool Q_OUT_IS_TND = Q_OUT_LAYOUT == QKV_K_SCALE_LAYOUT_TND;
     static constexpr bool IS_MROPE = ROPE_MODE == QKV_K_SCALE_ROPE_MODE_MROPE;
     static constexpr uint32_t INPUT_BUFFER_NUM =
-        IS_MROPE ? QKV_K_SCALE_INPUT_POOL_ELEMENTS / QKV_K_SCALE_MROPE_COMPACT_INPUT_ONE_BUFFER_ELEMENTS
-                 : QKV_K_SCALE_INPUT_POOL_ELEMENTS / QKV_K_SCALE_ROPE_INPUT_ONE_BUFFER_ELEMENTS;
+        IS_MROPE ? QKV_K_SCALE_INPUT_POOL_ELEMENTS / QKV_K_SCALE_MROPE_COMPACT_INPUT_ONE_BUFFER_ELEMENTS :
+                   QKV_K_SCALE_INPUT_POOL_ELEMENTS / QKV_K_SCALE_ROPE_INPUT_ONE_BUFFER_ELEMENTS;
     static constexpr uint32_t METADATA_BUFFER_NUM =
-        IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_RAW_COS_SIN_DB_POOL_ELEMENTS /
-                       QKV_K_SCALE_COS_SIN_ONE_BUFFER_ELEMENTS
-                 : QKV_K_SCALE_COS_SIN_DB_POOL_ELEMENTS / QKV_K_SCALE_COS_SIN_ONE_BUFFER_ELEMENTS;
+        IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_RAW_COS_SIN_DB_POOL_ELEMENTS / QKV_K_SCALE_COS_SIN_ONE_BUFFER_ELEMENTS :
+                   QKV_K_SCALE_COS_SIN_DB_POOL_ELEMENTS / QKV_K_SCALE_COS_SIN_ONE_BUFFER_ELEMENTS;
     static constexpr uint32_t OUTPUT_BUFFER_NUM =
         IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_OUTPUT_DB_POOL_FLOAT_ELEMENTS /
-                       QKV_K_SCALE_MROPE_COMPACT_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS
-                 : QKV_K_SCALE_OUTPUT_DB_POOL_FLOAT_ELEMENTS / QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS;
+                       QKV_K_SCALE_MROPE_COMPACT_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS :
+                   QKV_K_SCALE_OUTPUT_DB_POOL_FLOAT_ELEMENTS / QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS;
     static constexpr uint32_t V_OUT_BUFFER_NUM =
-        IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_V_OUT_DB_POOL_ELEMENTS /
-                       QKV_K_SCALE_MROPE_COMPACT_V_OUT_ONE_BUFFER_ELEMENTS
-                 : QKV_K_SCALE_V_OUT_DB_POOL_ELEMENTS / QKV_K_SCALE_V_OUT_ONE_BUFFER_ELEMENTS;
+        IS_MROPE ?
+            QKV_K_SCALE_MROPE_COMPACT_V_OUT_DB_POOL_ELEMENTS / QKV_K_SCALE_MROPE_COMPACT_V_OUT_ONE_BUFFER_ELEMENTS :
+            QKV_K_SCALE_V_OUT_DB_POOL_ELEMENTS / QKV_K_SCALE_V_OUT_ONE_BUFFER_ELEMENTS;
     static constexpr uint32_t K_QUANT_BUFFER_NUM =
-        QKV_K_SCALE_MROPE_COMPACT_K_QUANT_DB_POOL_BYTES /
-        QKV_K_SCALE_MROPE_COMPACT_K_QUANT_ONE_BUFFER_BYTES;
+        QKV_K_SCALE_MROPE_COMPACT_K_QUANT_DB_POOL_BYTES / QKV_K_SCALE_MROPE_COMPACT_K_QUANT_ONE_BUFFER_BYTES;
     static constexpr uint32_t SLOT_MAPPING_ONE_BUFFER_ELEMENTS = QKV_K_SCALE_SLOT_MAPPING_ONE_BUFFER_ELEMENTS;
     static constexpr uint32_t V_OUT_ONE_BUFFER_ELEMENTS =
         IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_V_OUT_ONE_BUFFER_ELEMENTS : QKV_K_SCALE_V_OUT_ONE_BUFFER_ELEMENTS;
     static constexpr uint32_t INPUT_ONE_BUFFER_ELEMENTS =
-        IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_INPUT_ONE_BUFFER_ELEMENTS
-                 : QKV_K_SCALE_ROPE_INPUT_ONE_BUFFER_ELEMENTS;
+        IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_INPUT_ONE_BUFFER_ELEMENTS : QKV_K_SCALE_ROPE_INPUT_ONE_BUFFER_ELEMENTS;
     static constexpr uint32_t EVT_MTE2_TO_PIPE_V_INPUT_READY = 0U;
     static constexpr uint32_t EVT_PIPE_V_TO_MTE2_INPUT_UB_BASE = 0U;
     static constexpr uint32_t EVT_MTE3_TO_PIPE_V_V_OUT_UB_BASE = 0U;
@@ -343,8 +336,8 @@ private:
         const uint64_t windowTokenSize =
             MinU64(QKV_K_SCALE_MROPE_METADATA_WINDOW_TOKEN_CAPACITY, metadataRangeEnd_ - windowBegin);
         DataCopyGmToUb2D(slotMappingDbPoolUb_, slotMappingGm_[windowBegin], 1U, windowTokenSize, windowTokenSize);
-        DataCopyGmToUb2D(mropePositionDbPoolUb_, mropePositionGm_[windowBegin * 3U], 1U,
-                         windowTokenSize * 3U, windowTokenSize * 3U);
+        DataCopyGmToUb2D(mropePositionDbPoolUb_, mropePositionGm_[windowBegin * 3U], 1U, windowTokenSize * 3U,
+                         windowTokenSize * 3U);
         SetAndWaitMte2ToSSlotMappingReady();
         metadataWindowBegin_ = windowBegin;
         metadataWindowEnd_ = windowBegin + windowTokenSize;
@@ -382,13 +375,11 @@ private:
 
     __aicore__ inline void CopyMropeCosSinTile(const TileParam &tile, uint32_t metadataBufferId)
     {
-        const LocalTensor<float> cosSin =
-            cosSinDbPoolUb_[metadataBufferId * QKV_K_SCALE_COS_SIN_ONE_BUFFER_ELEMENTS];
+        const LocalTensor<float> cosSin = cosSinDbPoolUb_[metadataBufferId * QKV_K_SCALE_COS_SIN_ONE_BUFFER_ELEMENTS];
         const uint64_t metadataTokenOffset = tile.aivTokenOffset - metadataWindowBegin_;
         for (uint64_t tokenIdx = 0U; tokenIdx < tile.aivTokenSize; ++tokenIdx) {
             for (uint32_t axis = 0U; axis < 3U; ++axis) {
-                const int32_t position =
-                    mropePositionDbPoolUb_.GetValue((metadataTokenOffset + tokenIdx) * 3U + axis);
+                const int32_t position = mropePositionDbPoolUb_.GetValue((metadataTokenOffset + tokenIdx) * 3U + axis);
                 const uint64_t sourceOffset = static_cast<uint64_t>(position) * headDim_;
                 const uint64_t destinationOffset = (tokenIdx * 3U + axis) * headDim_;
                 DataCopyGmToUb2D(cosSin[destinationOffset], cosSinGm_[sourceOffset], 1U, headDim_, headDim_);
@@ -402,8 +393,7 @@ private:
         if constexpr (!IS_MROPE) {
             slotMapping = slotMappingDbPoolUb_[metadataBufferId * SLOT_MAPPING_ONE_BUFFER_ELEMENTS];
         }
-        const uint64_t metadataTokenOffset =
-            IS_MROPE ? tile.aivTokenOffset - metadataWindowBegin_ : 0U;
+        const uint64_t metadataTokenOffset = IS_MROPE ? tile.aivTokenOffset - metadataWindowBegin_ : 0U;
         for (uint64_t tokenIdx = 0U; tokenIdx < tile.aivTokenSize; ++tokenIdx) {
             const uint64_t slot = static_cast<uint64_t>(slotMapping.GetValue(metadataTokenOffset + tokenIdx));
             const uint64_t blockId = slot / blockSize_;
@@ -416,8 +406,7 @@ private:
 
     __aicore__ inline void CopyCosSinTile(const TileParam &tile, uint32_t metadataBufferId)
     {
-        const LocalTensor<float> cosSin =
-            cosSinDbPoolUb_[metadataBufferId * QKV_K_SCALE_COS_SIN_ONE_BUFFER_ELEMENTS];
+        const LocalTensor<float> cosSin = cosSinDbPoolUb_[metadataBufferId * QKV_K_SCALE_COS_SIN_ONE_BUFFER_ELEMENTS];
         uint64_t runStart = 0U;
         while (runStart < tile.aivTokenSize) {
             const uint64_t tokenOffset = tile.aivTokenOffset + runStart;
@@ -446,14 +435,12 @@ private:
         }
     }
 
-    __aicore__ inline void BuildRopeBf16NzUb(const TileParam &tile, uint32_t inputBufferId,
-                                             uint32_t metadataBufferId, const LocalTensor<float> &outputUb)
+    __aicore__ inline void BuildRopeBf16NzUb(const TileParam &tile, uint32_t inputBufferId, uint32_t metadataBufferId,
+                                             const LocalTensor<float> &outputUb)
     {
-        const LocalTensor<bfloat16_t> input =
-            inputPoolUb_[inputBufferId * QKV_K_SCALE_ROPE_INPUT_ONE_BUFFER_ELEMENTS];
+        const LocalTensor<bfloat16_t> input = inputPoolUb_[inputBufferId * QKV_K_SCALE_ROPE_INPUT_ONE_BUFFER_ELEMENTS];
         const LocalTensor<float> gamma = gammaUb_;
-        const LocalTensor<float> cosSin =
-            cosSinDbPoolUb_[metadataBufferId * QKV_K_SCALE_COS_SIN_ONE_BUFFER_ELEMENTS];
+        const LocalTensor<float> cosSin = cosSinDbPoolUb_[metadataBufferId * QKV_K_SCALE_COS_SIN_ONE_BUFFER_ELEMENTS];
         const LocalTensor<bfloat16_t> qRopeNz = outputUb.template ReinterpretCast<bfloat16_t>();
         const LocalTensor<bfloat16_t> kRopeNz = qRopeNz[qPreprocessElements_];
         const LocalTensor<uint16_t> kNzScatterIndex = qkNzScatterIndexUb_[QK_PREPROCESS_SCATTER_INDEX_TABLE_ELEMENTS];
@@ -522,8 +509,7 @@ private:
         }
     }
 
-    __aicore__ inline void BuildMropeBf16NzUb(const TileParam &tile, uint32_t inputBufferId,
-                                              uint32_t metadataBufferId,
+    __aicore__ inline void BuildMropeBf16NzUb(const TileParam &tile, uint32_t inputBufferId, uint32_t metadataBufferId,
                                               const LocalTensor<float> &outputUb)
     {
         const LocalTensor<bfloat16_t> input = inputPoolUb_[inputBufferId * INPUT_ONE_BUFFER_ELEMENTS];
@@ -548,11 +534,11 @@ private:
         const uint32_t kInputOffset = static_cast<uint32_t>(qHeadNum_) * inputHeadStride;
         AscendC::VF_CALL<QkRmsNormMropeD128SegmentNzVfImpl>(
             (__ubuf__ bfloat16_t *)input[kInputOffset].GetPhyAddr(),
-            (__ubuf__ float *)(gamma[QKV_K_SCALE_HEAD_DIM_D128].GetPhyAddr()),
-            (__ubuf__ float *)rawCosSin.GetPhyAddr(), (__ubuf__ uint32_t *)mropeGatherIndexUb_.GetPhyAddr(),
-            (__ubuf__ bfloat16_t *)kRopeNz.GetPhyAddr(), (__ubuf__ uint16_t *)kNzScatterIndex.GetPhyAddr(),
-            static_cast<uint16_t>(tile.aivTokenSize), static_cast<uint16_t>(kvHeadNum_), inputTokenStride,
-            inputHeadStride, kOutputTokenStride, outputHeadStride, kPreprocessRowStride_, epsilon_);
+            (__ubuf__ float *)(gamma[QKV_K_SCALE_HEAD_DIM_D128].GetPhyAddr()), (__ubuf__ float *)rawCosSin.GetPhyAddr(),
+            (__ubuf__ uint32_t *)mropeGatherIndexUb_.GetPhyAddr(), (__ubuf__ bfloat16_t *)kRopeNz.GetPhyAddr(),
+            (__ubuf__ uint16_t *)kNzScatterIndex.GetPhyAddr(), static_cast<uint16_t>(tile.aivTokenSize),
+            static_cast<uint16_t>(kvHeadNum_), inputTokenStride, inputHeadStride, kOutputTokenStride, outputHeadStride,
+            kPreprocessRowStride_, epsilon_);
     }
 
     __aicore__ inline void BuildRopeNzScatterIndexTable(const LocalTensor<uint16_t> &scatterIndex, uint32_t rowStride)
@@ -720,8 +706,7 @@ private:
             const uint64_t kScaleOffset = tile.scaleCacheBaseOffset[tokenIdx];
             DataCopyUbToGm2D(kCacheOutGm_[kCacheOffset], kFp8[kUbOffset], kvHeadNum_, headDim_, kUbHeadStride,
                              kvCacheStrideHead_);
-            const uint64_t kScaleUbOffset =
-                tokenIdx * kvHeadNum_ * QKV_K_SCALE_QK_SCALE_MTE3_ALIGN_ELEMENTS;
+            const uint64_t kScaleUbOffset = tokenIdx * kvHeadNum_ * QKV_K_SCALE_QK_SCALE_MTE3_ALIGN_ELEMENTS;
             DataCopyUbToGm2D(kScaleCacheOutGm_[kScaleOffset], kScale[kScaleUbOffset], kvHeadNum_, 1U, 1U,
                              kScaleCacheStrideHead_);
         }
@@ -745,8 +730,7 @@ private:
     }
 
     __aicore__ inline void QuantKMropeToInt8Compact(const TileParam &tile, const LocalTensor<float> &kRotationUb,
-                                                   const LocalTensor<int8_t> &kInt8,
-                                                   const LocalTensor<float> &kScale)
+                                                    const LocalTensor<int8_t> &kInt8, const LocalTensor<float> &kScale)
     {
         const uint32_t inputHeadStride = QKV_K_SCALE_D128_FULL_SIZE;
         const uint32_t inputTokenStride = static_cast<uint32_t>(kvHeadNum_) * QKV_K_SCALE_D128_FULL_SIZE;
@@ -773,8 +757,7 @@ private:
             const uint64_t kScaleOffset = tile.scaleCacheBaseOffset[tokenIdx];
             DataCopyUbToGm2D(kCacheInt8OutGm_[kCacheOffset], kInt8[kUbOffset], kvHeadNum_, headDim_, kUbHeadStride,
                              kvCacheStrideHead_);
-            const uint64_t kScaleUbOffset =
-                tokenIdx * kvHeadNum_ * QKV_K_SCALE_QK_SCALE_MTE3_ALIGN_ELEMENTS;
+            const uint64_t kScaleUbOffset = tokenIdx * kvHeadNum_ * QKV_K_SCALE_QK_SCALE_MTE3_ALIGN_ELEMENTS;
             DataCopyUbToGm2D(kScaleCacheOutGm_[kScaleOffset], kScale[kScaleUbOffset], kvHeadNum_, 1U, 1U,
                              kScaleCacheStrideHead_);
         }
@@ -791,8 +774,7 @@ private:
             const uint64_t kScaleOffset = tile.scaleCacheBaseOffset[tokenIdx];
             DataCopyUbToGm2D(kCacheInt8OutGm_[kCacheOffset], kInt8[kUbOffset], kvHeadNum_, headDim_, kUbHeadStride,
                              kvCacheStrideHead_);
-            const uint64_t kScaleUbOffset =
-                tokenIdx * kvHeadNum_ * QKV_K_SCALE_QK_SCALE_MTE3_ALIGN_ELEMENTS;
+            const uint64_t kScaleUbOffset = tokenIdx * kvHeadNum_ * QKV_K_SCALE_QK_SCALE_MTE3_ALIGN_ELEMENTS;
             DataCopyUbToGm2D(kScaleCacheOutGm_[kScaleOffset], kScale[kScaleUbOffset], kvHeadNum_, 1U, 1U,
                              kScaleCacheStrideHead_);
         }
@@ -810,47 +792,41 @@ private:
             IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_V_SCALE_UB_OFFSET : QKV_K_SCALE_V_SCALE_UB_OFFSET;
         constexpr uint32_t vScaleElements =
             IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_V_SCALE_UB_ELEMENTS : QKV_K_SCALE_V_SCALE_UB_ELEMENTS;
-        constexpr uint32_t indexOffset =
-            IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_QK_NZ_SCATTER_INDEX_UB_OFFSET
-                     : QKV_K_SCALE_QK_NZ_SCATTER_INDEX_UB_OFFSET;
-        constexpr uint32_t indexElements =
-            IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_QK_NZ_SCATTER_INDEX_UB_ELEMENTS
-                     : QKV_K_SCALE_QK_NZ_SCATTER_INDEX_UB_ELEMENTS;
+        constexpr uint32_t indexOffset = IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_QK_NZ_SCATTER_INDEX_UB_OFFSET :
+                                                    QKV_K_SCALE_QK_NZ_SCATTER_INDEX_UB_OFFSET;
+        constexpr uint32_t indexElements = IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_QK_NZ_SCATTER_INDEX_UB_ELEMENTS :
+                                                      QKV_K_SCALE_QK_NZ_SCATTER_INDEX_UB_ELEMENTS;
         constexpr uint32_t cosSinOffset =
-            IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_RAW_COS_SIN_DB_POOL_OFFSET
-                     : QKV_K_SCALE_COS_SIN_DB_POOL_OFFSET;
+            IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_RAW_COS_SIN_DB_POOL_OFFSET : QKV_K_SCALE_COS_SIN_DB_POOL_OFFSET;
         constexpr uint32_t cosSinElements =
-            IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_RAW_COS_SIN_DB_POOL_ELEMENTS
-                     : QKV_K_SCALE_COS_SIN_DB_POOL_ELEMENTS;
+            IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_RAW_COS_SIN_DB_POOL_ELEMENTS : QKV_K_SCALE_COS_SIN_DB_POOL_ELEMENTS;
         constexpr uint32_t vOutOffset =
             IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_V_OUT_DB_POOL_OFFSET : QKV_K_SCALE_V_OUT_DB_POOL_OFFSET;
         constexpr uint32_t vOutElements =
             IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_V_OUT_DB_POOL_ELEMENTS : QKV_K_SCALE_V_OUT_DB_POOL_ELEMENTS;
-        inputPoolUb_ = LocalTensor<bfloat16_t>(TPosition::LCM,
-                                               IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_INPUT_POOL_OFFSET
-                                                        : QKV_K_SCALE_INPUT_POOL_OFFSET,
-                                               QKV_K_SCALE_INPUT_POOL_ELEMENTS);
+        inputPoolUb_ = LocalTensor<bfloat16_t>(
+            TPosition::LCM, IS_MROPE ? QKV_K_SCALE_MROPE_COMPACT_INPUT_POOL_OFFSET : QKV_K_SCALE_INPUT_POOL_OFFSET,
+            QKV_K_SCALE_INPUT_POOL_ELEMENTS);
         gammaUb_ = LocalTensor<float>(TPosition::LCM, reserveOffset + gammaOffset, gammaElements);
         vScaleUb_ = LocalTensor<float>(TPosition::LCM, reserveOffset + vScaleOffset, vScaleElements);
         qkNzScatterIndexUb_ = LocalTensor<uint16_t>(TPosition::LCM, reserveOffset + indexOffset, indexElements);
         cosSinDbPoolUb_ = LocalTensor<float>(TPosition::LCM, reserveOffset + cosSinOffset, cosSinElements);
         if constexpr (IS_MROPE) {
-            slotMappingDbPoolUb_ = LocalTensor<int32_t>(TPosition::LCM,
-                                                        QKV_K_SCALE_MROPE_METADATA_SLOT_CACHE_OFFSET,
+            slotMappingDbPoolUb_ = LocalTensor<int32_t>(TPosition::LCM, QKV_K_SCALE_MROPE_METADATA_SLOT_CACHE_OFFSET,
                                                         QKV_K_SCALE_MROPE_METADATA_SLOT_CACHE_ELEMENTS);
         } else {
-            slotMappingDbPoolUb_ = LocalTensor<int32_t>(TPosition::LCM,
-                                                        reserveOffset + QKV_K_SCALE_SLOT_MAPPING_DB_POOL_OFFSET,
-                                                        QKV_K_SCALE_SLOT_MAPPING_DB_POOL_ELEMENTS);
+            slotMappingDbPoolUb_ =
+                LocalTensor<int32_t>(TPosition::LCM, reserveOffset + QKV_K_SCALE_SLOT_MAPPING_DB_POOL_OFFSET,
+                                     QKV_K_SCALE_SLOT_MAPPING_DB_POOL_ELEMENTS);
         }
         vOutDbPoolUb_ = LocalTensor<fp8_e4m3fn_t>(TPosition::LCM, reserveOffset + vOutOffset, vOutElements);
         if constexpr (IS_MROPE) {
-            mropePositionDbPoolUb_ = LocalTensor<int32_t>(TPosition::LCM,
-                                                         QKV_K_SCALE_MROPE_METADATA_POSITION_CACHE_OFFSET,
-                                                         QKV_K_SCALE_MROPE_METADATA_POSITION_CACHE_ELEMENTS);
-            mropeGatherIndexUb_ = LocalTensor<uint32_t>(
-                TPosition::LCM, reserveOffset + QKV_K_SCALE_MROPE_COMPACT_GATHER_INDEX_UB_OFFSET,
-                QKV_K_SCALE_MROPE_GATHER_INDEX_ELEMENTS);
+            mropePositionDbPoolUb_ =
+                LocalTensor<int32_t>(TPosition::LCM, QKV_K_SCALE_MROPE_METADATA_POSITION_CACHE_OFFSET,
+                                     QKV_K_SCALE_MROPE_METADATA_POSITION_CACHE_ELEMENTS);
+            mropeGatherIndexUb_ =
+                LocalTensor<uint32_t>(TPosition::LCM, reserveOffset + QKV_K_SCALE_MROPE_COMPACT_GATHER_INDEX_UB_OFFSET,
+                                      QKV_K_SCALE_MROPE_GATHER_INDEX_ELEMENTS);
             kQuantDbPoolUb_ = LocalTensor<int8_t>(
                 TPosition::LCM,
                 QKV_K_SCALE_MROPE_COMPACT_RESERVE_UB_OFFSET + QKV_K_SCALE_MROPE_COMPACT_K_QUANT_DB_POOL_OFFSET,

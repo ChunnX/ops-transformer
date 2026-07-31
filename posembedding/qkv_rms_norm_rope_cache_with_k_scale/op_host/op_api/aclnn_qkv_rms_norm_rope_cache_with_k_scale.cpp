@@ -135,13 +135,10 @@ static aclnnStatus ContiguousInputs(Params &params, aclOpExecutor *executor)
     CHECK_RET(MakeInputContiguous(params.kGamma, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(MakeInputContiguous(params.cosSin, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(MakeInputContiguous(params.slotMapping, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(MakeOptionalInputContiguous(params.queryStartLoc, executor) == ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeOptionalInputContiguous(params.queryStartLoc, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(MakeOptionalInputContiguous(params.seqLens, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(MakeOptionalInputContiguous(params.rotationOptional, executor) == ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(MakeOptionalInputContiguous(params.vScaleOptional, executor) == ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeOptionalInputContiguous(params.rotationOptional, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeOptionalInputContiguous(params.vScaleOptional, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(MakeOptionalInputContiguous(params.mropePositionOptional, executor) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
     return ACLNN_SUCCESS;
@@ -221,18 +218,17 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
     const char *layoutQkvAttr = QkvRmsNormRopeCacheWithKScale::GetLayoutQkvOrDefault(layoutQkv);
     const char *layoutQOutAttr = QkvRmsNormRopeCacheWithKScale::GetLayoutQOutOrDefault(layoutQOut);
     const auto parsedQQuantMode = QkvRmsNormRopeCacheWithKScale::ParseQQuantMode(qQuantMode);
-    L2_DFX_PHASE_1(aclnnQkvRmsNormRopeCacheWithKScale,
-                   DFX_IN(qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef, kScaleCacheRef,
-                          queryStartLocOptional, seqLensOptional, rotationOptional, vScaleOptional,
-                          mropePositionOptional, headNums, layoutQkvAttr, layoutQOutAttr, epsilon, mropeSectionOptional,
-                          qQuantMode),
-                   DFX_OUT(qOut, qScaleOptional, kCacheRef, vCacheRef, kScaleCacheRef));
+    L2_DFX_PHASE_1(
+        aclnnQkvRmsNormRopeCacheWithKScale,
+        DFX_IN(qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef, kScaleCacheRef, queryStartLocOptional,
+               seqLensOptional, rotationOptional, vScaleOptional, mropePositionOptional, headNums, layoutQkvAttr,
+               layoutQOutAttr, epsilon, mropeSectionOptional, qQuantMode),
+        DFX_OUT(qOut, qScaleOptional, kCacheRef, vCacheRef, kScaleCacheRef));
 
     auto params = QkvRmsNormRopeCacheWithKScale::MakeParams(
         qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef, kScaleCacheRef, queryStartLocOptional,
         seqLensOptional, rotationOptional, vScaleOptional, mropePositionOptional, headNums, layoutQkvAttr,
-        layoutQOutAttr, epsilon, mropeSectionOptional, parsedQQuantMode, qOut, qScaleOptional, workspaceSize,
-        executor);
+        layoutQOutAttr, epsilon, mropeSectionOptional, parsedQQuantMode, qOut, qScaleOptional, workspaceSize, executor);
     aclnnStatus checkRet = QkvRmsNormRopeCacheWithKScale::CheckParams(params);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
 

@@ -15,8 +15,7 @@
 
 namespace QkvRmsNormRopeCacheWithKScale {
 
-template <uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT, uint32_t ROPE_MODE, uint32_t K_QUANT_MODE,
-          uint32_t Q_QUANT_MODE>
+template <uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT, uint32_t ROPE_MODE, uint32_t K_QUANT_MODE, uint32_t Q_QUANT_MODE>
 class QkvRmsNormRopeCacheWithKScaleController {
     static constexpr uint32_t TILE_PARAM_BUFFER_NUM = 2U;
 
@@ -40,8 +39,8 @@ public:
     }
 
 private:
-    using BasicBlock = QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT, Q_OUT_LAYOUT, ROPE_MODE, K_QUANT_MODE,
-                                                               Q_QUANT_MODE>;
+    using BasicBlock =
+        QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT, Q_OUT_LAYOUT, ROPE_MODE, K_QUANT_MODE, Q_QUANT_MODE>;
 
     struct TokenRange {
         uint64_t begin;
@@ -103,8 +102,7 @@ private:
     }
 
     __aicore__ inline uint64_t ForEachTile(const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData,
-                                           const TokenRange &range,
-                                           TileParam tileParam[TILE_PARAM_BUFFER_NUM])
+                                           const TokenRange &range, TileParam tileParam[TILE_PARAM_BUFFER_NUM])
     {
         uint64_t tileParamBufferUseId = 0U;
         for (uint64_t tokenOffset = range.begin; tokenOffset < range.end;) {

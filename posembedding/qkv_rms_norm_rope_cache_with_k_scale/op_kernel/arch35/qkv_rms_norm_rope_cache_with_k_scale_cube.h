@@ -22,8 +22,7 @@ constexpr uint8_t QKV_K_SCALE_FIXPIPE_DUAL_DST_SPLIT_M = 1;
 template <uint32_t ROPE_MODE>
 class QkvRmsNormRopeCacheWithKScaleCube {
 public:
-    __aicore__ inline void Init(const GlobalTensors &tensors,
-                                const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
+    __aicore__ inline void Init(const GlobalTensors &tensors, const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData)
     {
         qHeadNum_ = tilingData->qHeadNum;
         kvHeadNum_ = tilingData->kvHeadNum;
@@ -98,8 +97,8 @@ public:
             return;
         }
 
-        const uint32_t l0cBufferId = static_cast<uint32_t>(
-            (l0cBufferUseId_ + AIC_L0C_BUFFER_NUM - 1U) % AIC_L0C_BUFFER_NUM);
+        const uint32_t l0cBufferId =
+            static_cast<uint32_t>((l0cBufferUseId_ + AIC_L0C_BUFFER_NUM - 1U) % AIC_L0C_BUFFER_NUM);
         const uint64_t qRows = tile.cubeTokenSize * qHeadNum_;
         const uint64_t validQRows = tile.tokenSize * qHeadNum_;
         const uint64_t qOutBaseRow = tile.tokenOffset * qHeadNum_;
@@ -168,8 +167,7 @@ private:
     }
 
     __aicore__ inline void ComputeSegmentToL0C(uint64_t segmentRows, const LocalTensor<bfloat16_t> &segmentL1Nz,
-                                               uint32_t l0cBufferId, uint64_t l0cOffset,
-                                               uint32_t &l0aBufferUseId)
+                                               uint32_t l0cBufferId, uint64_t l0cOffset, uint32_t &l0aBufferUseId)
     {
         if (segmentRows == 0U) {
             return;
@@ -281,8 +279,8 @@ private:
         fixpipeParams.params.dstNdStride = 0U;
 
         Fixpipe<bfloat16_t, float, QKV_K_SCALE_FIXPIPE_ROW_MAJOR_GM>(
-            qOutBf16Gm_[dstBaseRow * QKV_K_SCALE_HEAD_DIM_D128],
-            l0c_[bufferId * AIC_L0C_ONE_BUFFER_ELEMENTS], fixpipeParams);
+            qOutBf16Gm_[dstBaseRow * QKV_K_SCALE_HEAD_DIM_D128], l0c_[bufferId * AIC_L0C_ONE_BUFFER_ELEMENTS],
+            fixpipeParams);
     }
 
     __aicore__ inline void BindLocalTensors()

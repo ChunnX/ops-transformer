@@ -78,9 +78,7 @@ public:
     static constexpr uint64_t DIM_TILE = 128;
     static constexpr uint64_t AIV_PER_AIC = 2;
 
-    explicit QkvRmsNormRopeCacheWithKScaleBaseTiling(gert::TilingContext *context) : TilingBaseClass(context)
-    {
-    }
+    explicit QkvRmsNormRopeCacheWithKScaleBaseTiling(gert::TilingContext *context) : TilingBaseClass(context) {}
     ~QkvRmsNormRopeCacheWithKScaleBaseTiling() override = default;
 
     void Reset(gert::TilingContext *context) override;
