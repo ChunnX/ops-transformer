@@ -187,7 +187,7 @@ public:
 
     // [改造] P 的 L1->L0B 转置搬运改走 mx functor（原裸 LoadPToL0 下沉到 policy）。
     //   zN L1(P) + P-scale -> nZ L0B(Pᵀ)，ifTranspose=true 由 functor 内部设定。
-    __aicore__ inline void LoadPToL0(uint32_t l1BBufId, uint32_t l0BBufId,
+        __aicore__ inline void LoadPToL0(uint32_t l1BBufId, uint32_t l0BBufId,
                                      uint32_t s1Align128, uint32_t s2Align64,
                                      uint32_t embedReal)
     {
@@ -267,12 +267,12 @@ public:
             auto l1ATensorTile = GetTile(l1ATensorTla,
                 tla::MakeCoord(0, dealtLenAccum), tla::MakeShape(embed, curDealtLen));
             // [验证] catlass offset vs raw：srcOff 应=oriStartOffset*embed，dstOff 应=dealtAccum*64
-            AscendC::printf("[V-CHK] oriStart=%u dealtAccum=%u curDealtLen=%u srcOff=%u(want %u) dstOff=%u(want %u)\n",
-                (unsigned)oriStartOffset, (unsigned)dealtLenAccum, (unsigned)curDealtLen,
-                (unsigned)static_cast<uint32_t>(gVTensorTile.layout()(gVTensorTile.coord())),
-                (unsigned)(oriStartOffset * embed),
-                (unsigned)static_cast<uint32_t>(l1ATensorTile.layout()(l1ATensorTile.coord())),
-                (unsigned)(dealtLenAccum * 64));
+            // AscendC::printf("[V-CHK] oriStart=%u dealtAccum=%u curDealtLen=%u srcOff=%u(want %u) dstOff=%u(want %u)\n",
+            //     (unsigned)oriStartOffset, (unsigned)dealtLenAccum, (unsigned)curDealtLen,
+            //     (unsigned)static_cast<uint32_t>(gVTensorTile.layout()(gVTensorTile.coord())),
+            //     (unsigned)(oriStartOffset * embed),
+            //     (unsigned)static_cast<uint32_t>(l1ATensorTile.layout()(l1ATensorTile.coord())),
+            //     (unsigned)(dealtLenAccum * 64));
             copyGmToL1A(l1ATensorTile, gVTensorTile);
 
             dealtLenAccum += curDealtLen;
@@ -336,12 +336,12 @@ public:
             //   srcOff(fp8) 应=2*srcB16Off=(oriStart/64)*embed*2，dstOff(fp8) 应=2*dstB16Off=(dealtAccum/64)*16*2
             uint32_t rawSrcB16Off = (oriStartOffset / 64) * embed;
             uint32_t rawDstB16Off = (dealtLenAccum / 64) * 16;
-            AscendC::printf("[VS-CHK] oriStart=%u dealtAccum=%u curDealtLen=%u srcOff=%u(want %u=2*srcB16) dstOff=%u(want %u=2*dstB16)\n",
-                (unsigned)oriStartOffset, (unsigned)dealtLenAccum, (unsigned)curDealtLen,
-                (unsigned)static_cast<uint32_t>(gVScaleTile.layout()(gVScaleTile.coord())),
-                (unsigned)(rawSrcB16Off * 2),
-                (unsigned)static_cast<uint32_t>(l1AScaleTile.layout()(l1AScaleTile.coord())),
-                (unsigned)(rawDstB16Off * 2));
+            // AscendC::printf("[VS-CHK] oriStart=%u dealtAccum=%u curDealtLen=%u srcOff=%u(want %u=2*srcB16) dstOff=%u(want %u=2*dstB16)\n",
+            //     (unsigned)oriStartOffset, (unsigned)dealtLenAccum, (unsigned)curDealtLen,
+            //     (unsigned)static_cast<uint32_t>(gVScaleTile.layout()(gVScaleTile.coord())),
+            //     (unsigned)(rawSrcB16Off * 2),
+            //     (unsigned)static_cast<uint32_t>(l1AScaleTile.layout()(l1AScaleTile.coord())),
+            //     (unsigned)(rawDstB16Off * 2));
             copyGmToL1AScale(l1AScaleTile, gVScaleTile);
 
             dealtLenAccum += curDealtLen;
@@ -380,11 +380,11 @@ public:
         uint32_t fpDstStride = static_cast<uint32_t>(tla::get<0>(ubOTmpTensor.stride()));
         uint32_t fpSrcStride = static_cast<uint32_t>(tla::get<1, 1>(l0CTensorTla.stride())) /
                                static_cast<uint32_t>(tla::get<0, 0>(l0CTensorTla.shape()));
-        AscendC::printf("[FP-CHK] mSize=%u(want %u) nSizeBase=%u(want %u) srcStride=%u(want %u) dstStride=%u(want 64) dualDstCtl=2\n",
-            (unsigned)fpMSize, (unsigned)(embedReal + 1),
-            (unsigned)fpNSizeBase, (unsigned)s1Align128,
-            (unsigned)fpSrcStride, (unsigned)(embedReal + 16),
-            (unsigned)fpDstStride);
+        // AscendC::printf("[FP-CHK] mSize=%u(want %u) nSizeBase=%u(want %u) srcStride=%u(want %u) dstStride=%u(want 64) dualDstCtl=2\n",
+        //     (unsigned)fpMSize, (unsigned)(embedReal + 1),
+        //     (unsigned)fpNSizeBase, (unsigned)s1Align128,
+        //     (unsigned)fpSrcStride, (unsigned)(embedReal + 16),
+        //     (unsigned)fpDstStride);
         copyL0CToDst(ubOTmpTensor, l0CTensorTla);   // operator()(dst=UB, src=L0C)
     }
 
@@ -411,16 +411,6 @@ public:
         AscendC::InitConstValueParams<uint16_t> vscaleFillParams(1, static_cast<uint16_t>(MXFP4::V_SCALE_L0A_SIZE / MXFP4::BLOCK_SIZE), 0, 0x7d7d);
         AscendC::Fill(l1AScaleTensor[l1ABufId].template ReinterpretCast<uint16_t>(), vscaleFillParams); // V scale
         AscendC::PipeBarrier<PIPE_MTE2>();
-        AscendC::InitConstValueParams<uint16_t> pFillParams(1, static_cast<uint16_t>(MXFP4::L1_P_BUF_SIZE / MXFP4::BLOCK_SIZE), 0, 0x6666);
-        AscendC::InitConstValueParams<uint16_t> pscaleFillParams(1, static_cast<uint16_t>(MXFP4::L1_P_SCALE_BUF_SIZE / MXFP4::BLOCK_SIZE), 0, 0x7d7d);
-        // P/P-scale：填满全部 20 槽（确保假数据可观测，任意 pSlot 都有数据）
-        // [TODO]BSA stub 阶段需要，生产阶段删
-        for (uint32_t i = 0; i < MXFP4::L1_P_BUF_CNT; i++) {
-            AscendC::Fill(l1BTensor[i].template ReinterpretCast<uint16_t>(), pFillParams);           // P 数据
-            AscendC::PipeBarrier<PIPE_MTE2>();
-            AscendC::Fill(l1BScaleTensor[i].template ReinterpretCast<uint16_t>(), pscaleFillParams); // P scale
-            AscendC::PipeBarrier<PIPE_MTE2>();
-        }
 
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(KV_EVENT0 + l1ABufId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(KV_EVENT0 + l1ABufId);
@@ -514,11 +504,11 @@ public:
         //   P 由 vector 推送到此槽，block 从此槽读。P L1 不走 event 同步（靠 delay20 调度）
         uint32_t pSlot = delay20TileInfo.loop % MXFP4::L1_P_BUF_CNT;
         // [验证] P L1 槽位轮转
-        AscendC::printf("[P-CHK] loop=%u pSlot=%u\n", (unsigned)delay20TileInfo.loop, (unsigned)pSlot);
+        // AscendC::printf("[P-CHK] loop=%u pSlot=%u\n", (unsigned)delay20TileInfo.loop, (unsigned)pSlot);
         // l1ABufId 是成员变量，不再 local 声明
         // mmad 维度：C = Vᵀ@P = Oᵀ
         
-        AscendC::printf("[P-CHK] s2Align64=%u s2Align32=%u s1Align128=%u\n", (unsigned)delay20TileInfo.kvsActBaseTileAlign64, (unsigned)delay20TileInfo.kvsActBaseTileAlign32, (unsigned)delay20TaskInfo.qsActBaseTileAlign128);
+        // AscendC::printf("[P-CHK] s2Align64=%u s2Align32=%u s1Align128=%u\n", (unsigned)delay20TileInfo.kvsActBaseTileAlign64, (unsigned)delay20TileInfo.kvsActBaseTileAlign32, (unsigned)delay20TaskInfo.qsActBaseTileAlign128);
 
         uint32_t mMmad = embedReal + MXFP4::ROW_SUM_PAD_NUM;   // m = D+16（含 rowsum seed 行）
 
@@ -542,7 +532,7 @@ public:
         // [#4] 等 V L1 槽空闲（上次 LoadV 释放了它），对应 QFA WaitFlag<MTE1_MTE2>(KV_EVENT0+kvBufId)
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + l1ABufId);
         // [验证] V L1 槽轮转
-        AscendC::printf("[L1-CHK] l1ABufId=%u\n", (unsigned)l1ABufId);
+        // AscendC::printf("[L1-CHK] l1ABufId=%u\n", (unsigned)l1ABufId);
 
         // ===== 稀疏 gather：按 gSparseBlockIdx 把稀疏 V / V-scale 逐段搬到 L1 整 tile =====
         // [step2] V 数据 gather 走 tla：gV(tla ColumnMajor) + l1A(tla nZ) + copyGmToL1A(GetTile 段)。
@@ -589,8 +579,9 @@ public:
         // [#3] 等上次 Mmad 释放 L0A/B 槽（M_MTE1：M→MTE1，Mmad 完成后 L0A/B 可复用）
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
 
+
         // [验证] L0A/B bufId 轮转
-        AscendC::printf("[L0-CHK] pvL0abBufId=%u\n", (unsigned)pvL0abBufId);
+        // AscendC::printf("[L0-CHK] pvL0abBufId=%u\n", (unsigned)pvL0abBufId);
 
         LoadPToL0(pSlot, l0BBufId, delay20TaskInfo.qsActBaseTileAlign128, delay20TileInfo.kvsActBaseTileAlign64, embedReal);
 
@@ -604,9 +595,9 @@ public:
         // [#3] Mmad 完成 → 释放 L0A/B 槽给下次（M_MTE1：M→MTE1），轮转
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
         pvL0abBufId = (pvL0abBufId + 1) % MXFP4::L0A_PV_BUF_CNT;
-        AscendC::DumpTensor(l0CTensor[0], 123, 128);
+        // AscendC::DumpTensor(l0CTensor[0], 123, 128);
         // AscendC::DumpTensor(l0CTensor[1024], 124, 128);
-        AscendC::DumpTensor(l0CTensor[0][1024 * 2], 125, 128);
+        // AscendC::DumpTensor(l0CTensor[0][1024 * 2], 125, 128);
 
         if (delay20TileInfo.isUpdatePScale) {  // tile 末尾 → Fixpipe L0C→UB
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
@@ -626,7 +617,7 @@ public:
         }
 
         // [诊断] 确认轮转是否执行
-        AscendC::printf("[L1-ROT] l1ABufId after rotate=%u\n", (unsigned)l1ABufId);
+        // AscendC::printf("[L1-ROT] l1ABufId after rotate=%u\n", (unsigned)l1ABufId);
     }
 
 
