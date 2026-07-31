@@ -88,6 +88,25 @@ dotted_line="-------------------------------------------------------------------
 # 预定义函数
 ########################################################################################################################
 
+# Temporary debug filter: discover operators whose op_host/CMakeLists.txt enables a PyPTO kernel.
+function get_pypto_operator_names() {
+    find "${CURRENT_DIR}" \
+        \( -path "${CURRENT_DIR}/.git" \
+        -o -path "${BUILD_DIR}" \
+        -o -path "${BUILD_OUT_DIR}" \
+        -o -path "${OUTPUT_DIR}" \
+        -o -path "${CURRENT_DIR}/third_party" \
+        -o -path "${CURRENT_DIR}/custom" \) -prune \
+        -o -type f -path "*/op_host/CMakeLists.txt" -print0 |
+        while IFS= read -r -d '' cmake_file; do
+            if grep -Eq '^[[:space:]]*enable_pypto_kernel[[:space:]]*\(' "${cmake_file}"; then
+                basename "$(dirname "$(dirname "${cmake_file}")")"
+            fi
+        done |
+        sort -u |
+        paste -sd, -
+}
+
 function help_info() {
     local specific_help="$1"
 
@@ -1469,6 +1488,18 @@ while [[ $# -gt 0 ]]; do
         ;;
     esac
 done
+
+# Temporary debug behavior: an all-operator build selects PyPTO-decorated operators plus compressor.
+if [[ -z "${ascend_op_name}" || "${ascend_op_name}" == "all" || "${ascend_op_name}" == "ALL" ]]; then
+    ascend_op_name=$(get_pypto_operator_names)
+    if [[ -z "${ascend_op_name}" ]]; then
+        echo "[ERROR] No operator decorated with enable_pypto_kernel was found."
+        exit 1
+    fi
+    ascend_op_name="${ascend_op_name},compressor"
+    echo "Temporary PyPTO debug build operators: ${ascend_op_name}"
+fi
+
 set_ut_mode
 
 if [ -n "$KERNEL_TEMPLATE_INPUT" ]; then
