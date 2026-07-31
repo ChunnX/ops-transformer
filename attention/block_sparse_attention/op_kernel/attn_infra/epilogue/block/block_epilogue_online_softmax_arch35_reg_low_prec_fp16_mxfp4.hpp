@@ -61,43 +61,43 @@ public:
             sUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementInput>(
                 MXFP4::UB_S_BUF_OFFSET + MXFP4::UB_S_INNER_BUF_OFFSET * i);
         }
-        oTmpUBTensor = resource.ubBuf.template GetBufferByByte<ElementOutput>(MXFP4::UB_OTMP_BUF_OFFSET);
-        localRowSumUBTensor = resource.ubBuf.template GetBufferByByte<float>(MXFP4::UB_LOCAL_ROW_SUM_OFFSET);
-        globalRowSumUBTensor = resource.ubBuf.template GetBufferByByte<float>(MXFP4::UB_GLOBAL_ROW_SUM_OFFSET);
+        oTmpUBTensor = resource.ubBuf.template GetBufferByByte<float>(MXFP4::UB_OTMP_BUF_OFFSET);
+        localRowSumUBTensor = resource.ubBuf.template GetBufferByByte<float>(MXFP4::UB_LOCAL_ROW_SUM_BUF_OFFSET);
+        globalRowSumUBTensor = resource.ubBuf.template GetBufferByByte<float>(MXFP4::UB_GLOBAL_ROW_SUM_BUF_OFFSET);
 
         // 输出缓冲区
         for (uint32_t i = 0; i < MXFP4::UB_P_BUF_CNT; i++) {
             pUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementDisguiseP>(
                 MXFP4::UB_P_BUF_OFFSET + MXFP4::UB_P_INNER_BUF_OFFSET * i);
         }
-        oTransUBTensor = resource.ubBuf.template GetBufferByByte<ElementOutput>(MXFP4::UB_O_TRANS_OFFSET);
+        oTransUBTensor = resource.ubBuf.template GetBufferByByte<ElementOutput>(MXFP4::UB_O_TRANS_BUF_OFFSET);
         for (uint32_t i = 0; i < MXFP4::UB_P_SCALE_CNT; i++) {
             pscaleUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementPScale>(
-                MXFP4::UB_P_SCALE_OFFSET + MXFP4::UB_P_SCALE_SIZE * i);
+                MXFP4::UB_P_SCALE_BUF_OFFSET + MXFP4::UB_P_SCALE_BUF_SIZE * i);
         }
-        oUBTensor = resource.ubBuf.template GetBufferByByte<ElementOutput>(MXFP4::UB_O_OFFSET);
+        oUBTensor = resource.ubBuf.template GetBufferByByte<ElementOutput>(MXFP4::UB_O_BUF_OFFSET);
 
         // L1 <-> UB
         for (uint32_t i = 0; i < MXFP4::UB_PEER_GLOBAL_MAX_CNT; i++) {
             peerGlobalMaxUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementMax>(
-                MXFP4::UB_PEER_GLOBAL_MAX_OFFSET + MXFP4::UB_PEER_GLOBAL_MAX_SIZE * i);
+                MXFP4::UB_PEER_GLOBAL_MAX_BUF_OFFSET + MXFP4::UB_PEER_GLOBAL_MAX_BUF_SIZE * i);
         }
 
         // 常驻 buffer
-        softmaxMaxUBTensor = resource.ubBuf.template GetBufferByByte<ElementMax>(MXFP4::UB_SOFTMAX_MAX_OFFSET);
+        softmaxMaxUBTensor = resource.ubBuf.template GetBufferByByte<ElementMax>(MXFP4::UB_SOFTMAX_MAX_BUF_OFFSET);
         for (uint32_t i = 0; i < MXFP4::UB_LOCAL_GROUP_MAX_CNT; i++) {
             localGroupMaxUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementMax>(
-                MXFP4::UB_LOCAL_GROUP_MAX_OFFSET + MXFP4::UB_LOCAL_GROUP_MAX_SIZE * i);
+                MXFP4::UB_LOCAL_GROUP_MAX_BUF_OFFSET + MXFP4::UB_LOCAL_GROUP_MAX_BUF_SIZE * i);
         }
         for (uint32_t i = 0; i < MXFP4::UB_LOCAL_GLOBAL_MAX_CNT; i++) {
             localGlobalMaxUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementMax>(
-                MXFP4::UB_LOCAL_GLOBAL_MAX_OFFSET + MXFP4::UB_LOCAL_GLOBAL_MAX_SIZE * i);
+                MXFP4::UB_LOCAL_GLOBAL_MAX_BUF_OFFSET + MXFP4::UB_LOCAL_GLOBAL_MAX_BUF_SIZE * i);
         }
         for (uint32_t i = 0; i < MXFP4::UB_UPDATE_SCALE_CNT; i++) {
             updateScaleUBTensor[i] = resource.ubBuf.template GetBufferByByte<float>(
-                MXFP4::UB_UPDATE_SCALE_OFFSET + MXFP4::UB_UPDATE_SCALE_SIZE * i);
+                MXFP4::UB_UPDATE_SCALE_BUF_OFFSET + MXFP4::UB_UPDATE_SCALE_BUF_SIZE * i);
         }
-        indexUBTensor = resource.ubBuf.template GetBufferByByte<ElementIndex>(MXFP4::UB_INDEX_OFFSET);
+        indexUBTensor = resource.ubBuf.template GetBufferByByte<ElementIndex>(MXFP4::UB_INDEX_BUF_OFFSET);
 
         dstTypeMax_ = dstTypeMax;
         scaleValue_ = static_cast<ElementInput>(scaleValue);
@@ -283,7 +283,7 @@ public:
 private:
     // UB tensors（FIXPIPE<->V 及常驻 buffer）
     AscendC::LocalTensor<ElementInput>  sUBTensor[MXFP4::UB_S_BUF_CNT];        // mm1Res(S)
-    AscendC::LocalTensor<ElementOutput> oTmpUBTensor;                          // mm2Res(PV)
+    AscendC::LocalTensor<float> oTmpUBTensor;                          // mm2Res(PV)
     AscendC::LocalTensor<float>        localRowSumUBTensor;                    // LocalRowSum
     AscendC::LocalTensor<float>        globalRowSumUBTensor;                  // GlobalRowSum
     AscendC::LocalTensor<ElementDisguiseP> pUBTensor[MXFP4::UB_P_BUF_CNT];      // vec1Res(P)
