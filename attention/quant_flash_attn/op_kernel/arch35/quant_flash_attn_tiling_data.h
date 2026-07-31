@@ -38,6 +38,28 @@ constexpr uint32_t QFA_FD_WORKSPACE_NUM_INDEX = 3;
 constexpr uint32_t QFA_FD_M_START_INDEX = 4;
 constexpr uint32_t QFA_FD_M_NUM_INDEX = 5;
 
+struct stridesParams {
+    uint64_t bnStride = 0;
+    uint64_t n2Stride = 0;
+ 
+    void set_bnStride(uint64_t bnStride)
+    {
+        this->bnStride = bnStride;
+    }
+    uint64_t get_bnStride() const
+    {
+        return bnStride;
+    }
+    void set_n2Stride(uint64_t n2Stride)
+    {
+        this->n2Stride = n2Stride;
+    }
+    uint64_t get_n2Stride() const
+    {
+        return n2Stride;
+    }
+};
+
 struct QuantFlashAttnBaseParams {
     uint32_t bSize;
     uint32_t t1Size;
@@ -60,6 +82,12 @@ struct QuantFlashAttnBaseParams {
     uint32_t coreNum;
     uint32_t outputLayout;
     bool needInitOutput;
+
+    // 增加strides参数
+    stridesParams keyStrides;
+    stridesParams valueStrides;
+    stridesParams kDescaleStrides;
+    stridesParams vDescaleStrides;
 };
 
 struct QuantFlashAttnAttenMaskParams {
