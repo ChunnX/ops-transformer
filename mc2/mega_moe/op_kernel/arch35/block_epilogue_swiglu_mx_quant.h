@@ -782,8 +782,10 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     uint64_t yScaleOffset = Get<Y_SCALE_IDX>(blockCoord);
     uint64_t mLoc = Get<M_LOC_IDX>(blockCoord);
     VFDoSwigluForMX(singleM_, pingpongIdx, mLoc); // switch(x)*y 计算quant quantScale
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[GB04]: swiglu/quant vector work -> output handoff
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[GB05]: vector output readiness -> MTE3 copies
     // scale已按compact布局生成，直接copy到GM，省掉原先TransMxScaleLayout重排scale。
     if constexpr (IsInterleaved_) {
         constexpr uint32_t PONG_INT8_ELEMS = MAX_SINGLE_MN * sizeof(DataTypeIn);
@@ -800,10 +802,13 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
         CopyOutputFromUb2Gm(singleM_, yOffset, quantOutput_);
         CopyScaleFromUb2GmCompact(singleM_, yScaleOffset, quantScaleOutput_);
     }
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[GB06]: paired MTE3 output copies -> buffer reuse
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[GB07]: MTE3 completion -> vector-side reuse
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[GB08]: MTE3 completion -> scalar progress update
     if (groupFlagListGmAddr_ != nullptr) {
         AscendC::AtomicAdd(groupFlagListGmAddr_, 1);
     }

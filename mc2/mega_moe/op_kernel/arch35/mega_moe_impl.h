@@ -624,9 +624,12 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
                 0,
                 0};
             WaitForCube();
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[GB01]: cube completion -> GMM1 epilogue setup
             AscendC::SetCtrlSpr<60, 60>(0);
             args.swigluQuantOp(epilogueShape, epilogueOffset);
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[GB02]: GMM1 epilogue writes -> cube notification
             NotifyCube();
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[GB03]: cube notification -> next GMM1 tile
         }
     }
 }
