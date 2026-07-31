@@ -36,7 +36,6 @@ TEST_PARAMS = {
         "gamma_k_datarange": [[0, 1]],
         "beta_datarange": [[0, 1]],
         "state_datarange": [[-10, 10]],
-        "state_non_contiguous": [False],
     },
     "Testcase1": {
         "batch_size": [2],
@@ -62,7 +61,6 @@ TEST_PARAMS = {
         "gamma_k_datarange": [[0, 1]],
         "beta_datarange": [[0, 1]],
         "state_datarange": [[-10, 10]],
-        "state_non_contiguous": [False],
     },
 }  # 注意单个用例组内的用例尽量不要超过32
 FIRST_CASE = [TEST_PARAMS["Testcase0"], TEST_PARAMS["Testcase1"]]

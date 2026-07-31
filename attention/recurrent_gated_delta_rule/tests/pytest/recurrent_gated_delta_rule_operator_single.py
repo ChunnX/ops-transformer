@@ -70,7 +70,6 @@ def output_operator(params):
         gamma_k_datarange,
         beta_datarange,
         state_datarange,
-        state_non_contiguous,
     ) = params
 
     print(f"params = {params}")
@@ -99,5 +98,4 @@ def output_operator(params):
         gamma_k_datarange=gamma_k_datarange,
         beta_datarange=beta_datarange,
         state_datarange=state_datarange,
-        state_non_contiguous=state_non_contiguous,
     )
