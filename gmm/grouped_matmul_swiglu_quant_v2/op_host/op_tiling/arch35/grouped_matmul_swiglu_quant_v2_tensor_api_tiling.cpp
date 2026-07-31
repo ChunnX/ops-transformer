@@ -302,14 +302,15 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::IsCapable()
     const bool checkNSizeAlign = inputParams_.nSize % TENSOR_API_FP8_N_ALIGN == 0;
     const bool checkBNoTransMLimlit =
         inputParams_.transB ? true : inputParams_.mSize > TENSOR_API_B_NOTRANS_M_LOWER_LIMIT;
+    const bool checkKSize = inputParams_.kSize > 64;
     const bool capable = dtypeSupported && formatSupported && checkMSizeGroupNumRatio &&
-                         checkNSizeAlign && coreSupported && checkTensorApiShapes && !inputParams_.hasBias checkTensorApiScaleShapes && checkBNoTransMLimlit;
+                         checkNSizeAlign && coreSupported && checkTensorApiShapes && !inputParams_.hasBias && checkTensorApiScaleShapes && checkBNoTransMLimlit && checkKSize;
     OP_LOGD(context_->GetNodeName(),
             "Tensor API capability: dtype=%d, format=%d, groupNum=%lu, M=%lu, N=%lu, cores=%lu:%u, "
-            "checkTensorApiShapes=%d, "
+            "checkTensorApiShapes=%d, checkKSize=%d, "
             "checkTensorApiScaleShapes=%d, checkBNoTransMLimlit=%d, capable=%d.",
             dtypeSupported, formatSupported, inputParams_.groupNum, inputParams_.mSize, inputParams_.nSize,
-            aicoreParams_.aicNum, aivNum_, checkTensorApiShapes, checkTensorApiScaleShapes, checkBNoTransMLimlit,
+            aicoreParams_.aicNum, aivNum_, checkTensorApiShapes, checkKSize, checkTensorApiScaleShapes, checkBNoTransMLimlit,
             capable);
     return capable;
 }
@@ -332,7 +333,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::DoOpTiling()
 ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::DoLibApiTiling()
 {
     GroupedQmmTiling::CalBasicBlock();
-    auto baseM_modified = std::min(basicTiling_.baseM, GmmConstant::BASIC_BLOCK_SIZE_128);
+    auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(GmmConstant::BASIC_BLOCK_SIZE_128));
     basicTiling_.baseM = GroupedMatmul::CeilAlign(baseM_modified, GmmConstant::CUBE_BLOCK);
     OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
