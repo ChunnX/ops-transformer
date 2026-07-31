@@ -137,7 +137,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
     epRankId_ = mc2Context_->epRankId;
 
-    // combine 使用独立 dataState 开关（COMBINE_STATE_WIN_OFFSET），与 dispatch 的 STATE_WIN_OFFSET 隔离
+    // combine 使用独立 dataState（COMBINE_STATE_WIN_OFFSET），不与 dispatch 共用开关；
+    // 状态写在 bank[S_c]+0。联跑时 S_c 与 D 本层使用的 S_d 相同，复用 D 已 clear 的 bank。
     GlobalTensor<int32_t> selfDataStatusTensor;
     statusDataSpaceGM_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
     selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGM_ + COMBINE_STATE_WIN_OFFSET +

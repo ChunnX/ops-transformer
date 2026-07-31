@@ -137,7 +137,8 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(G
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
     epRankId_ = mc2Context_->epRankId;
 
-    // combine 使用独立 dataState 开关，与 dispatch 隔离；本层用当前值，随后翻转供下一层使用
+    // combine 独立 dataState；本层用当前值写/等状态，随后翻转供下一层。
+    // 与 dispatch 串行时复用同一 bank 基址（COMBINE_STATE_OFFSET=0），不依赖 64KB 硬隔离。
     GlobalTensor<int32_t> selfDataStatusTensor;
     GM_ADDR statusDataSpaceGm = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
     selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGm + COMBINE_STATE_WIN_OFFSET +

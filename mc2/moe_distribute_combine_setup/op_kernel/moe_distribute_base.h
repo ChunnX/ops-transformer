@@ -36,10 +36,12 @@ constexpr uint32_t WRITE_SQE_SIZE = 64U;
 constexpr uint32_t WRITE_WITH_NOTIFY_SQE_SIZE = 96U;
 constexpr uint64_t WIN_STATE_OFFSET = 350U * 1024U;
 constexpr uint64_t STATE_WIN_OFFSET = 950U * 1024U; // dispatch 的 dataState 0/1 开关
-// combine 独立 dataState 开关，避免与 dispatch 共用导致串联时 bank 错位
+// combine 独立 dataState 开关，与 dispatch 的 STATE_WIN_OFFSET 隔离。
+// 同层内 S_c 与 D 使用时的 S_d 同值（均从 0 起各自翻一次），从而复用 D 刚 clear 完的同一 bank。
 constexpr uint64_t COMBINE_STATE_WIN_OFFSET = 818U * 1024U;
-// combine 状态区相对 bank 基址的偏移，前面预留给 dispatch 状态
-constexpr uint64_t COMBINE_STATE_OFFSET = 64U * 1024U;
+// arch35 状态步长为 512B，不能照搬 v2 的 64KB 隔离（仅约 128 槽，易与 dispatch 状态区重叠）。
+// 联跑时 D/C 串行：D teardown clear 后再由 C 写入同一 bank 基址，故偏移为 0。
+constexpr uint64_t COMBINE_STATE_OFFSET = 0U;
 constexpr uint64_t WIN_PICI_OFFSET = 1024U * 1024U;
 constexpr uint64_t PICI_WIN_SIZE = 512UL;
 constexpr uint32_t NORMAL_CQE_SIZE = 64U;
