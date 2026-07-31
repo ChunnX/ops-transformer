@@ -9,6 +9,7 @@
  */
 
 #include <torch/extension.h>
+#include <string>
 #include "aclnn_common.h"
 
 namespace op_api {
@@ -19,7 +20,7 @@ const int64_t DIM_QK = 128;
 std::tuple<at::Tensor, at::Tensor> StemOamPrepPagedKv(const at::Tensor &kCache, const at::Tensor &vCache,
                                                       const at::Tensor &kvIndices, const at::IntArrayRef &kvSeqLens,
                                                       const at::Tensor &kScaleCache, const at::Tensor &vScale,
-                                                      double lambdaMag, int64_t cacheLayout, int64_t kvBlockSize,
+                                                      double lambdaMag, const std::string &kvLayout,
                                                       int64_t stemBlockSize, int64_t stemStride)
 {
     TORCH_CHECK(kCache.numel() > 0, "kCache is empty");
@@ -28,14 +29,14 @@ std::tuple<at::Tensor, at::Tensor> StemOamPrepPagedKv(const at::Tensor &kCache, 
     TORCH_CHECK(kvSeqLens.size() > 0, "kvSeqLens is empty");
     TORCH_CHECK(kScaleCache.numel() > 0, "kScaleCache is empty");
     TORCH_CHECK(vScale.numel() > 0, "vScale is empty");
-    TORCH_CHECK(kvBlockSize == 64 || kvBlockSize == 128, "kvBlockSize must be 64 or 128, got ", kvBlockSize);
     TORCH_CHECK(stemBlockSize % 32 == 0 && stemBlockSize <= 256, "stemBlockSize must be %32==0 and <=256, got ",
                 stemBlockSize);
     TORCH_CHECK(stemStride % 16 == 0 && stemStride <= 64 && stemStride <= stemBlockSize,
                 "stemStride must be %16==0, <=64, and <=stemBlockSize, got ", stemStride);
+    TORCH_CHECK(kvLayout == "BBND" || kvLayout == "BNBD", "kvLayout must be BBND or BNBD, got ", kvLayout);
 
     int64_t batch = kvIndices.size(0);
-    int64_t numHeads = (cacheLayout == 0) ? kCache.size(2) : kCache.size(1);
+    int64_t numHeads = (kvLayout == "BBND") ? kCache.size(2) : kCache.size(1);
     int64_t kflatDim = stemStride * DIM_QK;
 
     // read kvSeqLens from NPU to host to compute max_Kb
@@ -54,7 +55,7 @@ std::tuple<at::Tensor, at::Tensor> StemOamPrepPagedKv(const at::Tensor &kCache, 
     StorageShapeTensor kFlatWrapped{kFlat};
     StorageShapeTensor vBiasWrapped{vBias};
     ACLNN_CMD(aclnnStemOamPrepPagedKv, kCacheWrapped, vCacheWrapped, kvIndicesWrapped, kvSeqLens, kScaleCacheWrapped,
-              vScale, lambdaMag, cacheLayout, kvBlockSize, stemBlockSize, stemStride, kFlatWrapped, vBiasWrapped);
+              vScale, lambdaMag, kvLayout.c_str(), stemBlockSize, stemStride, kFlatWrapped, vBiasWrapped);
 
     return std::tuple<at::Tensor, at::Tensor>(kFlat, vBias);
 }
