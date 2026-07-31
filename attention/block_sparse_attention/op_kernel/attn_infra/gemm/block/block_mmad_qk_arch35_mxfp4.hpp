@@ -326,13 +326,13 @@ public:
             uint32_t curDealtLen = gatheredEndOffset - gatheredStartOffset;
             if (curDealtLen == 0) { break; }
 
-            AscendC::printf(
-                "[K-GATHER] seg: oriYBlock=%u oriStart=%u curDealtLen=%u dealtAccum=%u "
-                "srcOff=%u dstOff=%u c0Stride=%u\n",
-                (unsigned)oriYBlockIdx, (unsigned)oriStartOffset, (unsigned)curDealtLen,
-                (unsigned)dealtLenAccum,
-                (unsigned)(oriStartOffset * embed), (unsigned)(dealtLenAccum * 64),
-                (unsigned)s2Align64);
+            // AscendC::printf(
+            //     "[K-GATHER] seg: oriYBlock=%u oriStart=%u curDealtLen=%u dealtAccum=%u "
+            //     "srcOff=%u dstOff=%u c0Stride=%u\n",
+            //     (unsigned)oriYBlockIdx, (unsigned)oriStartOffset, (unsigned)curDealtLen,
+            //     (unsigned)dealtLenAccum,
+            //     (unsigned)(oriStartOffset * embed), (unsigned)(dealtLenAccum * 64),
+            //     (unsigned)s2Align64);
             auto gKTile = GetTile(
                 gKTensorTla, tla::MakeCoord(oriStartOffset, 0), tla::MakeShape(curDealtLen, embed));
             auto l1KTile = GetTile(
@@ -349,8 +349,8 @@ public:
             }
         }
         // [STEP0 golden] L1 K 数据（gather 完成后；NZ 布局，前 256B 采样）
-        AscendC::DumpTensor(l1BTensor[0].template ReinterpretCast<uint8_t>(), 2201, 128);
-        AscendC::DumpTensor(l1BTensor[0].template ReinterpretCast<uint8_t>()[128], 2202, 128);
+        // AscendC::DumpTensor(l1BTensor[0].template ReinterpretCast<uint8_t>(), 2201, 128);
+        // AscendC::DumpTensor(l1BTensor[0].template ReinterpretCast<uint8_t>()[128], 2202, 128);
     }
 
     // ========== Step6：稀疏 K-scale gather → CopyGmToL1MxScaleDn2NzA5（沿 D Dn2Nz）==========
@@ -388,11 +388,11 @@ public:
 
             uint32_t srcB16Off = oriStartOffset * scaleRowHalf;
             uint32_t dstB16Off = dealtLenAccum * scaleRowHalf;
-            AscendC::printf(
-                "[KS-GATHER] seg: oriStart=%u curDealtLen=%u dealtAccum=%u scaleK=%u "
-                "srcB16Off=%u dstB16Off=%u\n",
-                (unsigned)oriStartOffset, (unsigned)curDealtLen, (unsigned)dealtLenAccum,
-                (unsigned)scaleK, (unsigned)srcB16Off, (unsigned)dstB16Off);
+            // AscendC::printf(
+            //     "[KS-GATHER] seg: oriStart=%u curDealtLen=%u dealtAccum=%u scaleK=%u "
+            //     "srcB16Off=%u dstB16Off=%u\n",
+            //     (unsigned)oriStartOffset, (unsigned)curDealtLen, (unsigned)dealtLenAccum,
+            //     (unsigned)scaleK, (unsigned)srcB16Off, (unsigned)dstB16Off);
             copyGmToL1MxScaleDn2Nz(
                 l1BScaleTensor[0], gKScale, curDealtLen, scaleK, srcB16Off, dstB16Off);
 
@@ -405,8 +405,8 @@ public:
                 oriStartOffset = oriYBlockIdx * blockShapeY + yBlockInnerStart;
             }
         }
-        AscendC::DumpTensor(l1BScaleTensor[0], 2221, 128);
-        AscendC::DumpTensor(l1BScaleTensor[0][128], 2222, 128);
+        // AscendC::DumpTensor(l1BScaleTensor[0], 2221, 128);
+        // AscendC::DumpTensor(l1BScaleTensor[0][128], 2222, 128);
     }
     
     // [Step2] Q→L0B 改走 mx functor（原裸 5 参 LoadData 下沉到 CopyL1ToL0BMxQKA5）
@@ -432,14 +432,14 @@ public:
                                       uint32_t s2Align64Full,    // 全 tile 行对齐(K 数据源 stride)
                                       uint32_t scaleK)           // = Ceil(D/64)*2，沿 D
     {
-        AscendC::printf(
-            "[K-L0A] nSubStart=%u nCur=%u mStart=%u mStep=%u kStep=%u srcStr=%u | "
-            "mx xStart=%u xStep=%u yStep=%u scaleK=%u\n",
-            (unsigned)nSubRowStart, (unsigned)nCur,
-            (unsigned)(nSubRowStart / 16), (unsigned)(CeilAlign(nCur, 16) / 16),
-            (unsigned)CeilDivision(alignK, 64), (unsigned)(s2Align64Full / 16),
-            (unsigned)(nSubRowStart / 16), (unsigned)(CeilAlign(nCur, 16) / 16),
-            (unsigned)(scaleK / 2), (unsigned)scaleK);
+        // AscendC::printf(
+        //     "[K-L0A] nSubStart=%u nCur=%u mStart=%u mStep=%u kStep=%u srcStr=%u | "
+        //     "mx xStart=%u xStep=%u yStep=%u scaleK=%u\n",
+        //     (unsigned)nSubRowStart, (unsigned)nCur,
+        //     (unsigned)(nSubRowStart / 16), (unsigned)(CeilAlign(nCur, 16) / 16),
+        //     (unsigned)CeilDivision(alignK, 64), (unsigned)(s2Align64Full / 16),
+        //     (unsigned)(nSubRowStart / 16), (unsigned)(CeilAlign(nCur, 16) / 16),
+        //     (unsigned)(scaleK / 2), (unsigned)scaleK);
         copyL1ToL0AMxQk(
             l0ATensor[0].template ReinterpretCast<fp4x2_e2m1_t>(),
             l1BTensor[0].template ReinterpretCast<fp4x2_e2m1_t>(),
@@ -507,12 +507,12 @@ public:
                     bool isFirstKvsTile,         // Step2：task 内首个 KV tile 才搬 Q
                     uint32_t subBlockIdx)        // Fixpipe → AIV0/AIV1
     {
-        AscendC::printf(
-            "\n MmadAtlasA5Bsa[QK0725]Mxfp4 Step3 | m(Q)=%u n(K)=%u k(D)=%u gatheredIdx=%u "
-            "firstQ=%u kvSeq=%lld yAval=%u yRsvd=%u\n",
-            (unsigned)rowNumQ, (unsigned)curBaseTileSize, (unsigned)embed,
-            (unsigned)gatheredKvSTileIdx, (unsigned)(isFirstKvsTile ? 1 : 0),
-            (long long)kvSeqlen, (unsigned)yBlockNumAval, (unsigned)yBlockNumRsvd);
+        // AscendC::printf(
+        //     "\n MmadAtlasA5Bsa[QK0725]Mxfp4 Step3 | m(Q)=%u n(K)=%u k(D)=%u gatheredIdx=%u "
+        //     "firstQ=%u kvSeq=%lld yAval=%u yRsvd=%u\n",
+        //     (unsigned)rowNumQ, (unsigned)curBaseTileSize, (unsigned)embed,
+        //     (unsigned)gatheredKvSTileIdx, (unsigned)(isFirstKvsTile ? 1 : 0),
+        //     (long long)kvSeqlen, (unsigned)yBlockNumAval, (unsigned)yBlockNumRsvd);
 
         // K·Qᵀ：A=K[n,D], B=Q[m,D], C[n,m]；m=Q 行，n=K 行(整 tile)，k=D
         uint32_t m = rowNumQ;
@@ -537,16 +537,16 @@ public:
 
         // Step5：Q/QScale 仅在 task 首 KV tile 稠密搬 GM→L1（TileCopyTla + Dn2Nz；后续 tile 复用）
         if (isFirstKvsTile) {
-            AscendC::printf("[Q-LOAD] gatheredIdx=%u m=%u k=%u (task first tile)\n",
-                (unsigned)gatheredKvSTileIdx, (unsigned)m, (unsigned)k);
+            // AscendC::printf("[Q-LOAD] gatheredIdx=%u m=%u k=%u (task first tile)\n",
+            //     (unsigned)gatheredKvSTileIdx, (unsigned)m, (unsigned)k);
             CopyQGmToL1(m, k, gQ);                       // k=embed（fp4 元素），非 packedK
             CopyQScaleGmToL1(m, scaleK, gQDequantScale);
             // [STEP0 golden] L1 Q 数据 / Q-scale（仅首 tile；前 256B 采样）
-            AscendC::DumpTensor(l1ATensor[0].template ReinterpretCast<uint8_t>(), 1101, 128);
-            AscendC::DumpTensor(l1ATensor[0].template ReinterpretCast<uint8_t>()[128], 1102, 128);
-            AscendC::DumpTensor(l1AScaleTensor[0], 1111, 128);
-            // Q-scale 单份 0.5K；第二段从 offset 128 起再采 128B（仍在缓冲内）
-            AscendC::DumpTensor(l1AScaleTensor[0][128], 1112, 128);
+            // AscendC::DumpTensor(l1ATensor[0].template ReinterpretCast<uint8_t>(), 1101, 128);
+            // AscendC::DumpTensor(l1ATensor[0].template ReinterpretCast<uint8_t>()[128], 1102, 128);
+            // AscendC::DumpTensor(l1AScaleTensor[0], 1111, 128);
+            // // Q-scale 单份 0.5K；第二段从 offset 128 起再采 128B（仍在缓冲内）
+            // AscendC::DumpTensor(l1AScaleTensor[0][128], 1112, 128);
         }
         // Step3：每 tile 按 gSparseBlockIdx 稀疏 gather 整个 K / KScale（≤512 行）到 L1（替代稠密 CopyK*）
         // KScale：Host 沿 D [S,D//64,2]；与 SparseK 同行映射（Step2）
@@ -567,8 +567,8 @@ public:
         for (uint32_t nSub = 0; nSub < nLoopNum; ++nSub) {
             uint32_t nSubRowStart = nSub * L0_TILE_N;
             uint32_t nCur = MinU32(L0_TILE_N, curBaseTileSize - nSubRowStart);
-            AscendC::printf("[MM1] nSub=%u nCur=%u rowStart=%u m=%u k=%u\n",
-                (unsigned)nSub, (unsigned)nCur, (unsigned)nSubRowStart, (unsigned)m, (unsigned)k);
+            // AscendC::printf("[MM1] nSub=%u nCur=%u rowStart=%u m=%u k=%u\n",
+            //     (unsigned)nSub, (unsigned)nCur, (unsigned)nSubRowStart, (unsigned)m, (unsigned)k);
             // Q 常驻 L0B：循环外只搬一次（Step2 成果），n 子循环内复用（Q 不随 nSub 变）
             LoadQToL0B(mAlignL1, alignK, mAlignL0, scaleMAlignL1, scaleK);           // Q-scale 仍 D 向
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
@@ -581,7 +581,7 @@ public:
             MatmulQK(nCur, m, k);
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
-            AscendC::DumpTensor(l0CTensor[0], 6660 + nSub, 128);
+            // AscendC::DumpTensor(l0CTensor[0], 6660 + nSub, 128);
             AscendC::PipeBarrier<PIPE_ALL>();
             // 写到 ubS 的第 nSubRowStart 行起：GetTile 继承父视图行 stride=256
             auto ubSSubTla = GetTile(
