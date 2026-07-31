@@ -122,8 +122,8 @@ bool FlashAttnMetadataCpuKernel::CheckActualQuerySeq()
     for (size_t i = 1; i < cuSeqlensQ.size(); ++i) {
         if (cuSeqlensQ[i] < cuSeqlensQ[i - 1]) {
             KERNEL_LOG_ERROR(
-                "The %zuth element of cuSeqlensQ must be greather than the %zuth element, but got %ld and %ld",
-                cuSeqlensQ[i], cuSeqlensQ[i - 1]);
+                "The %zuth element of cuSeqlensQ must be greater than the %zuth element, but got %ld and %ld",
+                i, i -1, cuSeqlensQ[i], cuSeqlensQ[i - 1]);
             return false;
         }
     }
@@ -167,8 +167,8 @@ bool FlashAttnMetadataCpuKernel::CheckActualKvSeq()
     for (size_t i = 1; i < cuSeqlensKv.size(); ++i) {
         if (cuSeqlensKv[i] < cuSeqlensKv[i - 1]) {
             KERNEL_LOG_ERROR(
-                "The %zuth element of cuSeqlensKv must be greather than the %zuth element, but got %ld and %ld",
-                cuSeqlensKv[i], cuSeqlensKv[i - 1]);
+                "The %zuth element of cuSeqlensKv must be greater than the %zuth element, but got %ld and %ld",
+                i, i - 1, cuSeqlensKv[i], cuSeqlensKv[i - 1]);
             return false;
         }
     }
@@ -220,8 +220,12 @@ void FlashAttnMetadataCpuKernel::InitBaseInfo()
     baseInfo.kvSeqSize = maxSeqlenKv_;
     baseInfo.kvHeadNum = numHeadsKv_;
     baseInfo.headDim = headDim_;
-    baseInfo.attenMaskFlag = (maskMode_ != 0);
-    baseInfo.sparseMode = static_cast<uint32_t>(maskMode_);
+    load_balance::SparseMode maskMode = load_balance::SparseMode::BUTT;
+    if (maskMode_ != 0) {
+        maskMode = static_cast<load_balance::SparseMode>(maskMode_);
+    }
+    baseInfo.attenMaskFlag = (maskMode != load_balance::SparseMode::BUTT);
+    baseInfo.sparseMode = static_cast<uint32_t>(maskMode);
     baseInfo.preToken = (winLeft_ == -1) ? std::numeric_limits<uint32_t>::max() : static_cast<uint32_t>(winLeft_);
     baseInfo.nextToken = (winRight_ == -1) ? std::numeric_limits<uint32_t>::max() : static_cast<uint32_t>(winRight_);
     baseInfo.layoutQuery = load_balance::ConvertToLayout(layoutQ_);
