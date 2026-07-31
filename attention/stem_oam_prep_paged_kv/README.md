@@ -28,8 +28,8 @@
     vBias:[batch, H_kv, max_Kb]
     ```
 
-- kCache/vCache 支持两种 layout，由 cacheLayout 属性指定：0=Layout A (interleaved), 1=Layout B (contiguous)。
-- kScaleCache 布局随 cacheLayout 变化，与 kCache/vCache 布局一致（仅最后一维 D=1 代替 D=128）。
+- kCache/vCache 支持两种 layout，由 kvLayout 属性指定："BBND"表示[total_blocks, kvBlockSize, H_kv, 128]，"BNBD"表示[total_blocks, H_kv, kvBlockSize, 128]。当前仅支持"BNBD"。
+- kScaleCache 布局随 kvLayout 变化，与 kCache/vCache 布局一致（仅最后一维 D=1 代替 D=128）。
 - 仅支持 FP8_E4M3FN 输入路径。
 
 ## 参数说明
@@ -53,7 +53,7 @@
     <tr>
       <td>kCache</td>
       <td>输入</td>
-      <td>Paged K cache。cacheLayout=0时shape为[total_blocks, kvBlockSize, H_kv, 128]，cacheLayout=1时shape为[total_blocks, H_kv, kvBlockSize, 128]。支持非连续（stride>shape），最后一维HeadDim 128连续。</td>
+      <td>Paged K cache。kvLayout="BBND"时shape为[total_blocks, kvBlockSize, H_kv, 128]，kvLayout="BNBD"时shape为[total_blocks, H_kv, kvBlockSize, 128]。支持非连续（stride>shape），最后一维HeadDim 128连续。</td>
       <td>FLOAT8_E4M3FN</td>
       <td>ND</td>
     </tr>
@@ -81,7 +81,7 @@
     <tr>
       <td>kScaleCache</td>
       <td>输入</td>
-      <td>Per-token per-head K scale。随cacheLayout变化：cacheLayout=0: [total_blocks, kvBlockSize, H_kv, 1]，cacheLayout=1: [total_blocks, H_kv, kvBlockSize, 1]。支持非连续（stride>shape），最后一维连续。</td>
+      <td>Per-token per-head K scale。随kvLayout变化：kvLayout="BBND": [total_blocks, kvBlockSize, H_kv, 1]，kvLayout="BNBD": [total_blocks, H_kv, kvBlockSize, 1]。支持非连续（stride>shape），最后一维连续。</td>
       <td>FLOAT</td>
       <td>ND</td>
     </tr>
@@ -100,17 +100,10 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>cacheLayout</td>
+      <td>kvLayout</td>
       <td>属性</td>
-      <td>KV Cache布局，0=Layout A (interleaved), 1=Layout B (contiguous)，默认 0。当前仅支持Layout B</td>
-      <td>INT64</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>kvBlockSize</td>
-      <td>属性</td>
-      <td>Paged KV block size，64或128，默认 64。</td>
-      <td>INT64</td>
+      <td>KV Cache布局，"BBND"表示[total_blocks, kvBlockSize, H_kv, 128]，"BNBD"表示[total_blocks, H_kv, kvBlockSize, 128]。当前仅支持"BNBD"，默认"BNBD"。</td>
+      <td>STRING</td>
       <td>-</td>
     </tr>
     <tr>
@@ -147,9 +140,9 @@
 
 - kCache/vCache dtype必须为FLOAT8_E4M3FN（仅FP8路径）。
 - kScaleCache/vScale必填，不允许nullptr。
-- kScaleCache shape随cacheLayout变化：Layout A `[total_blocks, kvBlockSize, H_kv, 1]`，Layout B `[total_blocks, H_kv, kvBlockSize, 1]`。当前仅支持Layout B。
+- kScaleCache shape随kvLayout变化："BBND"为`[total_blocks, kvBlockSize, H_kv, 1]`，"BNBD"为`[total_blocks, H_kv, kvBlockSize, 1]`。当前仅支持"BNBD"。
 - vScale shape：`[H_kv]`。
-- kvBlockSize ∈ {64, 128}。
+- kvBlockSize 从kCache shape推导：BBND布局时为kCache shape[1]，BNBD布局时为kCache shape[2]，取值{64, 128}。
 - stemBlockSize % 32 == 0，≤256；stemStride % 16 == 0，≤64，且stemStride ≤ stemBlockSize，stemBlockSize必须是stemStride的整数倍。
 - 派生值：R = stemBlockSize / stemStride，kflat_dim = stemStride × 128，k_down_len = num_Kb × R。
 - 边界：kvSeqLens[b]=0时该batch对应的kFlat/vBias输出全零；kScaleCache padding rows（beyond kv_len）→ zero。
