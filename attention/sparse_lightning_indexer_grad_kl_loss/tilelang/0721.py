@@ -44,7 +44,7 @@ DQUERY = 512
 DQUERY_INDEX = 128
 # 显式参与 TileLang JIT specialization，源码结构调整后递增以避免复用
 # 旧的持久编译产物。该值不进入运行时 kernel ABI。
-KERNEL_CACHE_REVISION = 10
+KERNEL_CACHE_REVISION = 11
 
 _kernel_cache = {}
 _workspace_cache = {}
@@ -1298,34 +1298,10 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.pipe_barrier("v")
                         T.tile.add(v1_bw_dw_accum, v1_bw_dw_accum, v1_bw_dw)
 
-                        T.tile.mul(
-                            v1_bw_bmm2,
-                            v1_bw_weight_2d,
-                            v1_bw_diff_2d,
-                        )
-                        T.pipe_barrier("v")
-                        T.tile.mul(v1_bw_bmm2, v1_bw_bmm2, v1_bw_rg)
-                        T.pipe_barrier("v")
-                        T.tile.cast(
-                            v1_bw_rg_half,
-                            v1_bw_bmm2,
-                            "CAST_RINT",
-                            rows_per_aiv * bw_col_block,
-                        )
-                        T.pipe_barrier("v")
-                        T.set_flag("v", "mte3", 2)
-                        T.wait_flag("v", "mte3", 2)
-                        T.pipe_barrier("mte3")
-                        T.copy(
-                            v1_bw_rg_half,
-                            reluGradRes[bz_task, s1_id,
-                                        g_start:g_start + rows_per_aiv,
-                                        bw_col_start:bw_col_end],
-                        )
-                        T.set_flag("mte3", "v", 2)
-
                         # 对齐 VectorLoss：在 AIV 对之间拆分外层 K 分块，
-                        # 由所属 AIV 消费两个物理子 tile。
+                        # 由所属 AIV 消费两个物理子 tile。Loss 必须在
+                        # reluGrad 的异步 MTE3 回写之前完成，防止临时 UB
+                        # 被内存规划器复用为仍在读取的 MTE3 源缓冲区。
                         if n_idx % 2 == vector_id:
                             T.tile.max(
                                 v1_bw_p,
@@ -1375,6 +1351,33 @@ def tilelang_grad_kl_loss_single_kernel(
                                 v1_bw_loss_accum,
                                 v1_bw_loss_sum,
                             )
+
+                        T.tile.mul(
+                            v1_bw_bmm2,
+                            v1_bw_weight_2d,
+                            v1_bw_diff_2d,
+                        )
+                        T.pipe_barrier("v")
+                        T.tile.mul(v1_bw_bmm2, v1_bw_bmm2, v1_bw_rg)
+                        T.pipe_barrier("v")
+                        T.tile.cast(
+                            v1_bw_rg_half,
+                            v1_bw_bmm2,
+                            "CAST_RINT",
+                            rows_per_aiv * bw_col_block,
+                        )
+                        T.pipe_barrier("v")
+                        T.set_flag("v", "mte3", 2)
+                        T.wait_flag("v", "mte3", 2)
+                        T.pipe_barrier("mte3")
+                        T.copy(
+                            v1_bw_rg_half,
+                            reluGradRes[bz_task, s1_id,
+                                        g_start:g_start + rows_per_aiv,
+                                        bw_col_start:bw_col_end],
+                        )
+                        T.set_flag("mte3", "v", 2)
+
                         T.set_flag("v", "mte2", 3)
 
                 T.wait_flag("v", "mte2", 3)
