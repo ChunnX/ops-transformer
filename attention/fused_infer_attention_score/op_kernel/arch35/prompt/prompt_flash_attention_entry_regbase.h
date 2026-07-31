@@ -26,25 +26,28 @@
 #if __has_include("../../../../common/op_kernel/arch35/flash_attention_score_kernel_infer.h")
 #include "../../../../common/op_kernel/arch35/flash_attention_score_kernel_infer.h"
 #include "../../../../common/op_kernel/arch35/flash_attention_noquant_kernel_infer.h"
-#include "../../../../common/op_kernel/arch35/flash_attention_score_kernel_infer_mla_fullquant.h"
-#include "../../../../common/op_kernel/arch35/flash_attention_score_kernel_infer_gqa_fullquant.h"
-#include "../../../../common/op_kernel/arch35/flash_attention_score_kernel_infer_mx_fullquant.h"
 #include "../../../../common/op_kernel/arch35/flash_attention_kernel_noquant_mla.h"
 #include "../../../../common/op_kernel/arch35/fia_kernel_noquant_gqa.h"
-#include "../../../../common/op_kernel/arch35/fia_kernel_fullquant_mx.h"
-#include "../../../../common/op_kernel/arch35/fia_kernel_fullquant_gqa.h"
 #include "../../../../common/op_kernel/arch35/fia_template_dispatcher.h"
 #else
 #include "../../../common/arch35/flash_attention_score_kernel_infer.h"
-#include "../../../common/arch35/flash_attention_score_kernel_infer_mla_fullquant.h"
-#include "../../../common/arch35/flash_attention_score_kernel_infer_gqa_fullquant.h"
-#include "../../../common/arch35/flash_attention_score_kernel_infer_mx_fullquant.h"
 #include "../../../common/arch35/flash_attention_kernel_noquant_mla.h"
 #include "../../../common/arch35/fia_kernel_noquant_gqa.h"
-#include "../../../common/arch35/fia_kernel_fullquant_mx.h"
-#include "../../../common/arch35/fia_kernel_fullquant_gqa.h"
 #endif
 
+#if __has_include("../../../../fused_infer_attention_score/op_kernel/arch35/fia_kernel_fullquant_mx.h")
+#include "../../../../fused_infer_attention_score/op_kernel/arch35/flash_attention_score_kernel_infer_mla_fullquant.h"
+#include "../../../../fused_infer_attention_score/op_kernel/arch35/flash_attention_score_kernel_infer_gqa_fullquant.h"
+#include "../../../../fused_infer_attention_score/op_kernel/arch35/flash_attention_score_kernel_infer_mx_fullquant.h"
+#include "../../../../fused_infer_attention_score/op_kernel/arch35/fia_kernel_fullquant_mx.h"
+#include "../../../../fused_infer_attention_score/op_kernel/arch35/fia_kernel_fullquant_gqa.h"
+#else
+#include "../../../../fused_infer_attention_score_apt/op_kernel/arch35/flash_attention_score_kernel_infer_mla_fullquant.h"
+#include "../../../../fused_infer_attention_score_apt/op_kernel/arch35/flash_attention_score_kernel_infer_gqa_fullquant.h"
+#include "../../../../fused_infer_attention_score_apt/op_kernel/arch35/flash_attention_score_kernel_infer_mx_fullquant.h"
+#include "../../../../fused_infer_attention_score_apt/op_kernel/arch35/fia_kernel_fullquant_mx.h"
+#include "../../../../fused_infer_attention_score_apt/op_kernel/arch35/fia_kernel_fullquant_gqa.h"
+#endif
 
 using namespace regbaseutil;
 
