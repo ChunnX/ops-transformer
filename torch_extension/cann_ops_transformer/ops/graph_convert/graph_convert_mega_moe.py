@@ -241,8 +241,6 @@ if _TORCHAIR_AVAILABLE:
         )
         if activation in ("swiglu", "swiglustep"):
             activation_params = [activation_clamp_value]
-        elif activation == "swiglu_gpt_oss":
-            activation_params = [activation_clamp_value, activation_alpha]
         elif activation == "swigluoai":
             activation_params = [
                 activation_clamp_value,

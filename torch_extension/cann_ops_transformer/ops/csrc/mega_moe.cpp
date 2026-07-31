@@ -98,8 +98,6 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     std::vector<float> activationParams;
     if (activationStr == "swiglu" || activationStr == "swiglustep") {
         activationParams = {activationClampValue};
-    } else if (activationStr == "swiglu_gpt_oss") {
-        activationParams = {activationClampValue, activationAlpha};
     } else if (activationStr == "swigluoai") {
         activationParams = {activationClampValue, activationAlpha, activationBeta};
     } else if (activationStr == "situglu") {

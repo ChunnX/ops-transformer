@@ -890,7 +890,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation</td>
         <td>str</td>
         <td>可选</td>
-        <td>激活函数类型，默认值为"swiglu"。A2/A3支持"swiglu"、"swiglustep"、"swiglu_gpt_oss"、"swigluoai"和"situglu"。"swiglu"按前后半区拆分gate/up并计算gate * sigmoid(gate) * up；"swiglustep"使用相同拆分方式，按STEP 3.5语义在SiLU后截断gate分支；"swiglu_gpt_oss"按偶奇列拆分gate/up并计算gate * sigmoid(activation_alpha * gate) * (up + 1)；"swigluoai"按前后半区拆分gate/up并计算(up + activation_beta) * gate * sigmoid(activation_alpha * gate)；"situglu"按前后半区拆分gate/up并计算activation_beta * tanh(gate / activation_beta) * sigmoid(gate) * up，传递activation_linear_beta时还会将up变换为activation_linear_beta * tanh(up / activation_linear_beta)。A5当前仅支持"swiglu"。</td>
+        <td>激活函数类型，默认值为"swiglu"。A2/A3支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"；其中"swiglu"为通用SwiGLU，"swiglustep"对应Step 3.5，"swigluoai"对应MiniMax-M3，"situglu"对应Kimi K3。A5当前仅支持"swiglu"。</td>
         <td>str</td>
         <td>不涉及</td>
         <td>不涉及</td>
@@ -899,7 +899,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation_clamp</td>
         <td>float</td>
         <td>可选</td>
-        <td>"swiglu"、"swiglustep"、"swiglu_gpt_oss"和"swigluoai"的截断值；None使用float最大值。"situglu"忽略此参数。值需≥0且不能为NaN。</td>
+        <td>"swiglu"、"swiglustep"和"swigluoai"的截断值；None使用float最大值。"situglu"忽略此参数。值需≥0且不能为NaN。</td>
         <td>float</td>
         <td>不涉及</td>
         <td>不涉及</td>
@@ -908,7 +908,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation_alpha</td>
         <td>float</td>
         <td>可选</td>
-        <td>"swiglu_gpt_oss"和"swigluoai"的sigmoid增益。默认值为1.702，值需为有限值。</td>
+        <td>"swigluoai"的sigmoid增益。默认值为1.702，值需为有限值。</td>
         <td>float</td>
         <td>不涉及</td>
         <td>不涉及</td>
@@ -1296,7 +1296,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     - `max_recv_token_num` 需大于0，输入0表示自动计算，公式为 `num_tokens × ep_world_size × min(num_topk, local_moe_expert_num)`。
     - `num_topk`：取值范围为 `1 ≤ num_topk ≤ 16`。
     - `hidden`：取值范围为 `1024 ≤ hidden ≤ 8192`，且 `hidden % 512 == 0`。
-    - `intermediate_hidden`：取值范围为 `intermediate_hidden ≥ 1024`，且 `intermediate_hidden % 512 == 0`。SwiGLU 采用 UB 分块计算，不再因 UB 容量设置该维度的上限。
+    - `intermediate_hidden`：取值范围为 `1024 ≤ intermediate_hidden ≤ 3072`，且 `intermediate_hidden % 512 == 0`。
     - `dispatch_quant_mode`：取值范围为 `0`（非量化）、`2`（pertoken量化）。
     - `dispatch_quant_out_dtype`：取值为 `torch.int8`。
     - 支持三种计算场景（A16W16、A8W8-INT、A8W4-INT），不同场景下可选入参（缩放因子、偏置等）的必需性及数据类型有严格配套要求。调用时必须根据所选场景完整提供对应参数，不可混用或遗漏，配套关系见下表。
