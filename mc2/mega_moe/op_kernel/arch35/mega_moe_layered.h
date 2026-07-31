@@ -674,11 +674,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ExpertTok
         int32_t prev = cumsumInfoTensor_.GetValue((expertIdx - 1) * static_cast<int32_t>(worldSize_) + lastRankIdx);
         expertTokenNumsOutTensor_.SetValue(expertIdx, cur - prev);
     }
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[AX01]: expert-count scalar build -> result MTE3
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
     DataCopyExtParams copyParams{1U, static_cast<uint32_t>(moeExpertPerRank_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(expertTokenNumsOut_, expertTokenNumsOutTensor_, copyParams);
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[AX02]: expert-count result MTE3 -> buffer reuse
     AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[AX03]: expert-count output completion -> caller
 }
 
 // ======================================================================================================
@@ -854,6 +857,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ResetCont
                                       static_cast<uint64_t>(resetBatchElementCount_));
         DataCopyExtParams copyParams{1U, static_cast<uint32_t>(currentElements * sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPad(dstGm[coreOffset + resetOffset], resetTensor_, copyParams);
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[AX04]: reset MTE3 batch -> next reset batch
     }
 }
 
@@ -1702,8 +1706,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ResetGmm2
             // 诊断性全流水同步：验证前序 MTE3 读 resetTensor_ 与本次 Vector 覆写之间的依赖。
             PipeBarrier<PIPE_ALL>();
             Duplicate(resetTensor_, 0, coreLen);
+            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[AX05]: combine-counter reset V -> MTE3
             SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
             DataCopy(gmm2CombineSyncCounterGm[coreOffset], resetTensor_, coreLen);
+            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[AX06]: combine-counter reset MTE3 -> caller
         }
     }
 }
@@ -2280,6 +2286,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SharedExp
     DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SC01]: shared double-buffer prime -> first token
     for (int32_t index = 0; index < curentNum; index++) {
         int32_t tokenIdx = curentOffset + index;
         auto event = (index % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
@@ -2289,9 +2296,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SharedExp
         srcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(
             params_.aGmAddr + static_cast<uint64_t>(tokenIdx) * H * sizeof(bfloat16_t)));
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SC02]: shared slot MTE3 completion -> input MTE2
         DataCopyPad(xInBuf, srcGlobalTensor, xCopyInParams, xCopyInPadParams);
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SC03]: shared input MTE2 -> vector quant
         SetFlag<AscendC::HardEvent::MTE2_V>(event);
         WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SC04]: shared input readiness -> quant implementation
 
         __ubuf__ bfloat16_t *srcAddr = reinterpret_cast<__ubuf__ bfloat16_t *>(xInBuf.GetPhyAddr());
         __ubuf__ uint16_t *maxExpAddr = reinterpret_cast<__ubuf__ uint16_t *>(mxTempBuf.GetPhyAddr());
@@ -2312,15 +2322,19 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SharedExp
                                   AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleAddr, outDataAddr, H);
         }
 
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SC05]: shared quant V -> output MTE3
         SetFlag<AscendC::HardEvent::V_MTE3>(event);
         WaitFlag<AscendC::HardEvent::V_MTE3>(event);
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SC06]: shared quant readiness -> paired output copies
         LocalTensor<QuantScaleOutType> bufScale =
             xOutBuf[mxQuantTokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
         DataCopyPad(dataDstGlobalTensor[tokenIdx * widthA], xOutBuf,
                     {1, static_cast<uint16_t>(widthA * sizeof(ActivationType)), 0U, 0U, 0U});
         DataCopyPad(scaleDstGlobalTensor[tokenIdx * widthAScale], bufScale,
                     {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SC07]: shared data/scale MTE3 -> slot release
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SC08]: shared slot release -> next token
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
@@ -2495,10 +2509,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     if constexpr (g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
             DispatchTokenToRmtServer(0);
+            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[PH01]: initial dispatch receive -> count calculation
             SendCntCal(0, nextSendCnt);
+            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[PH02]: initial count calculation -> metadata dispatch
             if (UpdateGroupParams<AddrUpdateMode::GMM1>(dispatchState, 0, nextSendCnt)) {
                 UpdateGlobalBuffer<AddrUpdateMode::GMM1>(dispatchAddrInfo, dispatchState);
                 MetaInfoCalAndDispatch(dispatchAddrInfo, 0);
+                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[PH03]: initial metadata dispatch -> expert loop
             }
         }
     }
@@ -2510,10 +2527,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
         if constexpr (g_coreType == AIV) {
             if (subBlockIdx_ == 1 && localExpertId + 1 < moeExpertPerRank_) {
                 DispatchTokenToRmtServer(localExpertId + 1);
+                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[PH04]: prefetched dispatch receive -> count calculation
                 SendCntCal(localExpertId + 1, nextSendCnt);
+                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[PH05]: prefetched count calculation -> metadata dispatch
                 if (UpdateGroupParams<AddrUpdateMode::GMM1>(dispatchState, localExpertId + 1, nextSendCnt)) {
                     UpdateGlobalBuffer<AddrUpdateMode::GMM1>(dispatchAddrInfo, dispatchState);
                     MetaInfoCalAndDispatch(dispatchAddrInfo, localExpertId + 1);
+                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[PH06]: prefetched metadata dispatch -> GMM1 consumer
                 }
             }
         }
@@ -2527,8 +2547,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     }
     EndSync(vecSetSyncCom);
     if constexpr (g_coreType == AIV) {
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[PH07]: final GMM1 epilogue -> expert-count output
         if (subBlockIdx_ == 1) {
             ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出
+            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[PH08]: expert-count output -> GMM2 phase barrier
         }
     }
 
@@ -2559,8 +2581,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     // 4. 本卡数据Unpermute
     if constexpr (g_coreType == AIV) {
         UnpermuteBuffInit();
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[PH09]: unpermute buffer setup -> cross-rank completion
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[PH10]: cross-rank completion -> unpermute reads
         Unpermute();
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[PH11]: unpermute output -> process exit
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
