@@ -807,6 +807,7 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     if (groupFlagListGmAddr_ != nullptr) {
         AscendC::AtomicAdd(groupFlagListGmAddr_, 1);
     }
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[R2-G1]: GMM1 progress publication -> NotifyCube
     return;
 }
 

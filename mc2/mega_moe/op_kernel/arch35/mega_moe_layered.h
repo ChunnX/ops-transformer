@@ -1000,6 +1000,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchT
     GM_ADDR dstAddr = GetRankWinAddrWithOffset(peerRank, dispatchWinOffset_) + relayOffset;
     GM_ADDR remoteFlagAddr = GetRankWinAddrWithOffset(peerRank, dispatchFlagWinOffset_) +
                              RelayFlagOffset(serverId_, static_cast<uint32_t>(tokenIdx));
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[R2-H2]: READY acquire -> relay Hcomm send
     hcomm_.WriteWithNotifyNbi(channel, dstAddr, srcAddr, mxQuantTokenScaleAlignBytes_, remoteFlagAddr, uint64_t(1));
     WriteGmByPassDCache(srcMetaPtr + 1, int32_t(2));
 }
@@ -2148,6 +2149,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CrossRank
         (__gm__ int32_t *)(params_.peermemInfo.rankSyncInWorldPtr + 48 * 1024 + aivCoreIdx_ * 64);
     int count = ReadGmByPassDCache(syncCount) + 1;
     WriteGmByPassDCache(syncCount, count);
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[R2-H1]: syncCount publication -> Hcomm source read
     for (int rankIndex = aivCoreIdx_; rankIndex < worldSize_; rankIndex += blockAivNum_) {
         if (rankIndex == rankId_) {
             continue;
