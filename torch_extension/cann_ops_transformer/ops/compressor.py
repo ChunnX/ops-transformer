@@ -135,7 +135,7 @@ def _compressor_backward(
     d_x = torch.empty_like(x)
     d_wkv = torch.empty_like(wkv)
     d_wgate = torch.empty_like(wgate)
-    d_ape_size = (cmp_ratio, wkv.size(1))
+    d_ape_size = (cmp_ratio, wkv.size(0))
     d_ape = torch.empty(d_ape_size, dtype=torch.float32, device=x.device)
     return op_module.compressor_backward(
         d_cmp_kv, x, wkv, wgate, softmax_score, kv, 
@@ -160,7 +160,7 @@ def _compressor_backward_fake(
     d_x = torch.empty_like(x)
     d_wkv = torch.empty_like(wkv)
     d_wgate = torch.empty_like(wgate)
-    d_ape_size = (cmp_ratio, wkv.size(1))
+    d_ape_size = (cmp_ratio, wkv.size(0))
     d_ape = torch.empty(d_ape_size, dtype=torch.float32, device=x.device)
     return (d_x, d_wkv, d_wgate, d_ape)
 
