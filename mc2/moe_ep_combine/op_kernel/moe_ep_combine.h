@@ -59,6 +59,7 @@ constexpr uint32_t DCCI_OFFSET = 64U;
 constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
 constexpr uint32_t SEND_DOUBLE_BUFFER_NUM = 2U;
+constexpr uint32_t DEBUG_ROUND_TAG_OFFSET = 256U; // dispatch slot-state记录内保存轮次的padding偏移
 
 template <TemplateMoeEpCombineTypeClass>
 class MoeEpCombine {
@@ -88,6 +89,11 @@ private:
     __aicore__ inline void MaskAlign(LocalTensor<half> maskCalcSelectedTensor);
     __aicore__ inline void MaskCheck();
     __aicore__ inline void RecvPhaseReduce();
+
+    __aicore__ inline uint32_t GetDebugRoundTag()
+    {
+        return static_cast<uint32_t>(ReadGmByPassDCache((__gm__ uint32_t *)debugRoundTagAddr_));
+    }
 
     __aicore__ inline uint64_t GetCommHandle(uint32_t rankId, uint32_t channelIndex)
     {
@@ -192,6 +198,7 @@ private:
     GM_ADDR winRankAddr_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
     uint64_t hcommHandle_[Mc2Aclnn::HCCL_MAX_RANK_SIZE];
     GM_ADDR combineSendDataWorkspaceAddr_{nullptr};
+    GM_ADDR debugRoundTagAddr_{nullptr};
     uint32_t aivId_{0};
 };
 
@@ -240,6 +247,10 @@ MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_
 
     combineStateWinOffset_ = tilingData->combineStateWinOffset;
     combineDataWinOffset_ = tilingData->combineDataWinOffset;
+    // combine状态区紧跟dispatch slot-state区，通过其尾部反推本rank的轮次地址。
+    uint64_t slotWinStateOffset = combineStateWinOffset_ - static_cast<uint64_t>(epWorldSize_) * WIN_ADDR_ALIGN;
+    debugRoundTagAddr_ = GetUrmaStateAddrByRankId(rankId_, slotWinStateOffset) +
+                         static_cast<uint64_t>(rankId_) * WIN_ADDR_ALIGN + DEBUG_ROUND_TAG_OFFSET;
 
     xGm_.SetGlobalBuffer((__gm__ XType *)x);
     topkIdxGm_.SetGlobalBuffer((__gm__ int32_t *)topkIdx);
@@ -593,10 +604,16 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
 {
+    if (tilingData_->networkMode == 1U && aivId_ == 0U) {
+        AscendC::PRINTF("[MOE_EP_TRACE] combine_enter rank=%u round=%u\n", rankId_, GetDebugRoundTag());
+    }
     SendPhaseExpertToToken();
     PipeBarrier<PIPE_ALL>(); // MaskCheck中包含reset操作，需确保前面操作完成
     BuffInit();
     RecvPhaseReduce();
+    if (tilingData_->networkMode == 1U && aivId_ == 0U) {
+        AscendC::PRINTF("[MOE_EP_TRACE] combine_exit rank=%u round=%u\n", rankId_, GetDebugRoundTag());
+    }
 }
 
 } // namespace MoeEpCombineImpl

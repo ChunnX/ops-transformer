@@ -50,6 +50,9 @@ static constexpr uint32_t META_SLOT_IDX_OFFSET = 3U;
 static constexpr uint32_t HIT_ROW_OFFSET = 0U;
 static constexpr uint32_t HIT_TOPK_OFFSET = 1U;
 static constexpr uint32_t HIT_ENTRY_SIZE = 2U;
+static constexpr uint64_t DEBUG_POLL_TIMEOUT_CYCLES = 500000000UL; // 约10秒，仅用于死锁诊断
+static constexpr uint32_t DEBUG_ROUND_TAG_OFFSET = 256U;
+static constexpr uint32_t DEBUG_MAX_MISSING_STATUS_PRINTS = 16U;
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 class MoeEpDispatchEpilogue {
@@ -67,6 +70,7 @@ private:
     __aicore__ inline void WaitDispatch();
     __aicore__ inline void CopyFromWindowByExpert();
     __aicore__ inline void CopyFromWindowByCachedMeta();
+    __aicore__ inline uint32_t GetDebugRoundTag();
 
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startId, uint32_t &endId,
                                        uint32_t &sendNum);
@@ -135,6 +139,7 @@ private:
     GM_ADDR workspaceGM_{nullptr};
     GM_ADDR localWinAddr_{nullptr};
     GM_ADDR localSlotStateWinAddr_{nullptr};
+    GM_ADDR debugRoundTagAddr_{nullptr};
     uint32_t scalesOffset_{0};
     uint32_t scalesBytes_{0};
     uint32_t scalesElems_{0};
@@ -196,6 +201,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::MoeCommContext *>(context);
     epRankId_ = mc2Context_->epRankId;
     localSlotStateWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, slotWinStateOffset_);
+    debugRoundTagAddr_ = localSlotStateWinAddr_ +
+                         static_cast<uint64_t>(epRankId_) * WIN_ADDR_ALIGN + DEBUG_ROUND_TAG_OFFSET;
     localWinAddr_ = GetWinAddrByRankId(mc2Context_, epRankId_, winDataOffset_);
     metaOffset_ = Ceil((uint32_t)(axisH_ * sizeof(XType)), UB_ALIGN) * UB_ALIGN;
 
@@ -292,6 +299,13 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
+__aicore__ inline uint32_t
+MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::GetDebugRoundTag()
+{
+    return static_cast<uint32_t>(ReadGmByPassDCache((__gm__ uint32_t *)debugRoundTagAddr_));
+}
+
+template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::WaitDispatch()
 {
     if (aivId_ != aivNum_ - 1) {
@@ -300,9 +314,14 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
     int32_t sumOfFlag = 0;
     int32_t commpareFlag = static_cast<int32_t>(epWorldSize_);
+    uint32_t roundTag = GetDebugRoundTag();
+    uint64_t pollStartCycle = static_cast<uint64_t>(GetSystemCycle());
+    uint32_t waitPollCount = 0U;
     const uint32_t shape[] = {epWorldSize_, UB_ALIGN / sizeof(int32_t)};
     GlobalTensor<int32_t> statusGMTensor;
     statusGMTensor.SetGlobalBuffer((__gm__ int32_t *)localSlotStateWinAddr_);
+    AscendC::PRINTF("[MOE_EP_TRACE] epilogue_wait_enter rank=%u round=%u aiv=%u baseAddr=%lu expected=%d\n",
+                    epRankId_, roundTag, aivId_, (uint64_t)localSlotStateWinAddr_, commpareFlag);
     DataCopyParams statusCopyParams = {static_cast<uint16_t>(epWorldSize_), 1U,
                                        static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN), 0U};
     DataCopyParams clearStatusCopyParams = {static_cast<uint16_t>(epWorldSize_), 1U, 0U,
@@ -314,10 +333,45 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         ReduceSum<int32_t, AscendC::Pattern::Reduce::RA, true>(ubWaitSum_, ubWaitStatus_, shape, true);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = ubWaitSum_.GetValue(0);
+        if (waitPollCount == 0U) {
+            int32_t sourceZeroStatus = ubWaitStatus_.GetValue(0);
+            int32_t sourceOneStatus =
+                epWorldSize_ > 1U ? ubWaitStatus_.GetValue(UB_ALIGN / sizeof(int32_t)) : 0;
+            AscendC::PRINTF("[MOE_EP_TRACE] epilogue_wait_first rank=%u round=%u sum=%d "
+                            "src0=%d src1=%d\n",
+                            epRankId_, roundTag, sumOfFlag, sourceZeroStatus, sourceOneStatus);
+        }
+        uint64_t elapsedCycles = static_cast<uint64_t>(GetSystemCycle()) - pollStartCycle;
+        if (elapsedCycles >= DEBUG_POLL_TIMEOUT_CYCLES) {
+            uint32_t missingStatusCount = 0U;
+            for (uint32_t srcRankId = 0U; srcRankId < epWorldSize_; srcRankId++) {
+                int32_t statusValue = ubWaitStatus_.GetValue(srcRankId * UB_ALIGN / sizeof(int32_t));
+                if (statusValue == 1) {
+                    continue;
+                }
+                if (missingStatusCount < DEBUG_MAX_MISSING_STATUS_PRINTS) {
+                    GM_ADDR statusAddr =
+                        localSlotStateWinAddr_ + static_cast<uint64_t>(srcRankId) * WIN_ADDR_ALIGN;
+                    AscendC::PRINTF("[MOE_EP_TIMEOUT] epilogue_ready_wait rank=%u round=%u srcRank=%u "
+                                    "status=%d statusAddr=%lu polls=%u cycles=%lu\n",
+                                    epRankId_, roundTag, srcRankId, statusValue,
+                                    (uint64_t)statusAddr, waitPollCount, elapsedCycles);
+                }
+                missingStatusCount++;
+            }
+            PipeBarrier<PIPE_ALL>();
+            assert(false && "MoeEpDispatchEpilogue ready wait timed out");
+            return;
+        }
+        waitPollCount++;
     }
+    AscendC::PRINTF("[MOE_EP_TRACE] epilogue_wait_done rank=%u round=%u polls=%u\n",
+                    epRankId_, roundTag, waitPollCount);
     Duplicate<int32_t>(ubWaitStatus_, 0, epWorldSize_ * UB_ALIGN / sizeof(int32_t));
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(statusGMTensor, ubWaitStatus_, clearStatusCopyParams);
+    AscendC::PRINTF("[MOE_EP_TRACE] epilogue_ready_clear_issued rank=%u round=%u\n",
+                    epRankId_, roundTag);
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
@@ -327,6 +381,10 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         ComputePrefixSums();
         WaitDispatch();
         SyncAll<true>();
+        if (aivId_ == aivNum_ - 1U) {
+            AscendC::PRINTF("[MOE_EP_TRACE] epilogue_after_wait_sync rank=%u round=%u\n",
+                            epRankId_, GetDebugRoundTag());
+        }
         CountHits();
         SyncAll<true>();
 
@@ -341,7 +399,15 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     } else {
         WaitDispatch();
         SyncAll<true>();
+        if (aivId_ == aivNum_ - 1U) {
+            AscendC::PRINTF("[MOE_EP_TRACE] epilogue_after_wait_sync rank=%u round=%u\n",
+                            epRankId_, GetDebugRoundTag());
+        }
         CopyFromWindowByCachedMeta();
+    }
+    if (aivId_ == aivNum_ - 1U) {
+        AscendC::PRINTF("[MOE_EP_TRACE] epilogue_exit rank=%u round=%u\n",
+                        epRankId_, GetDebugRoundTag());
     }
 }
 
