@@ -288,6 +288,26 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/quant_sparse_flash_mla/README.md">quant_sparse_flash_mla</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>支持全量化场景下的Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention计算。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/quant_sparse_flash_mla_metadata/README.md">quant_sparse_flash_mla_metadata</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI CPU</td>
+    <td>quant_sparse_flash_mla算子的前置算子，用于计算quant_sparse_flash_mla的负载均衡。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/mla_preprocess/README.md">mla_preprocess</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -425,6 +445,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>全量推理场景的FlashAttention算子。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/quant_compressor/README.md">quant_compressor</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>推理场景下SMLA和QLI的前处理算子，是Compressor的量化版本，用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。</td>
   </tr>
   <tr>
     <td>attention</td>
