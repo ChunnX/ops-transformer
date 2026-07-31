@@ -304,7 +304,7 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::IsCapable()
         inputParams_.transB ? true : inputParams_.mSize > TENSOR_API_B_NOTRANS_M_LOWER_LIMIT;
     const bool checkKSize = inputParams_.kSize > 64;
     const bool capable = dtypeSupported && formatSupported && checkMSizeGroupNumRatio &&
-                         checkNSizeAlign && coreSupported && checkTensorApiShapes && !inputParams_.hasBias && checkTensorApiScaleShapes && checkBNoTransMLimlit && checkKSize;
+                         checkNSizeAlign && coreSupported && checkTensorApiShapes && checkTensorApiScaleShapes && checkBNoTransMLimlit && checkKSize;
     OP_LOGD(context_->GetNodeName(),
             "Tensor API capability: dtype=%d, format=%d, groupNum=%lu, M=%lu, N=%lu, cores=%lu:%u, "
             "checkTensorApiShapes=%d, checkKSize=%d, "
