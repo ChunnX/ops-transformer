@@ -99,7 +99,7 @@ aclnnStatus aclnnMoeTokenPermute(
       <td><ul><li>支持空tensor。</li><li>要求为一个维度大于等于2的Tensor，第一维的大小为num_tokens。</li><li>INT8仅支持Ascend 950，按非量化方式处理。</li></ul></td>
       <td>FLOAT16、BFLOAT16、FLOAT32、INT8</td>
       <td>ND</td>
-      <td>2</td>
+      <td>≥2</td>
       <td>√</td>
     </tr>
     <tr>
