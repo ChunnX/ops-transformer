@@ -34,13 +34,13 @@ public:
             .DataType({ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         this->Input("v")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E4M3FN})
             .FormatList({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         this->Input("q_descale")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E8M0})
@@ -52,13 +52,13 @@ public:
             .DataType({ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         this->Input("v_descale")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         this->Input("block_table")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})

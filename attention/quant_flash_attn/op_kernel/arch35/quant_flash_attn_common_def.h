@@ -179,6 +179,11 @@ struct RunInfoX {
     uint64_t kvPaddingBeginOffset = 0;
 };
 
+struct StridesConstInfo {
+    uint64_t bnStride = 0;
+    uint64_t n2Stride = 0;
+};
+
 struct CommonConstInfo {
     uint32_t bSize;
     uint64_t t1Size;
@@ -215,6 +220,11 @@ struct CommonConstInfo {
 
     FA_LAYOUT outputLayout;
     bool needInitOutput;
+
+    StridesConstInfo keyStrides;
+    StridesConstInfo valueStrides;
+    StridesConstInfo kDescaleStrides;
+    StridesConstInfo vDescaleStrides;
 };
 
 struct PAConstInfo {
