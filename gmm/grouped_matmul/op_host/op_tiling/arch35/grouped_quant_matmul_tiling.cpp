@@ -930,8 +930,10 @@ bool GroupedQmmTiling::AnalyzeInputs()
 
 bool GroupedQmmTiling::CheckCoreNum() const
 {
-    auto aicNum = context_->GetCompileInfo<GMMCompileInfo>()->aicNum;
-    auto aivNum = context_->GetCompileInfo<GMMCompileInfo>()->aivNum;
+    auto compileInfo = context_->GetCompileInfo<GMMCompileInfo>();
+    OP_CHECK_IF(compileInfo == nullptr, OP_LOGE(inputParams_.opName, "compileInfo is nullptr."), return false);
+    auto aicNum = compileInfo->aicNum;
+    auto aivNum = compileInfo->aivNum;
     if (inputParams_.groupType == SPLIT_K) {
         OP_CHECK_IF(
             aivNum != GmmConstant::CORE_RATIO * aicNum,

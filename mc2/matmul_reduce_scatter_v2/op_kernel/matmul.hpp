@@ -35,14 +35,7 @@ using namespace AscendC;
 using namespace matmulReduceScatterV2_aivmode_tiling;
 using namespace matmulReduceScatterV2_util;
 namespace Catlass::Gemm::Kernel {
-template <
-    class PrologueA,
-    class PrologueB,
-    class BlockMmad_,
-    class BlockEpilogue_,
-    class BlockScheduler_,
-    bool HasBias
->
+template <class PrologueA, class PrologueB, class BlockMmad_, class BlockEpilogue_, class BlockScheduler_, bool HasBias>
 class MatmulReduceScatterAivMode : public CommBase {
 public:
     using BlockMmad = BlockMmad_;
@@ -57,21 +50,21 @@ public:
     using LayoutWA = typename BlockMmad::LayoutA;
     using LayoutWB = typename BlockMmad::LayoutB;
     using LayoutScale = typename layout::VectorLayout;
-    template<bool condition, class mmad>
+    template <bool condition, class mmad>
     struct BiasTypeHelper {
         using type = typename mmad::ElementBias;
     };
 
-    template<class mmad>
+    template <class mmad>
     struct BiasTypeHelper<false, mmad> {
         using type = float;
     };
 
-    template<class T>
+    template <class T>
     struct LayoutHelper {
         using type = typename T::LayoutIn;
     };
-    template<>
+    template <>
     struct LayoutHelper<void> {
         using type = void;
     };
@@ -85,7 +78,7 @@ public:
     using LayoutC = typename BlockMmad::LayoutC;
 
     using FixpipeBlockMmad = Gemm::Block::FixpipeBlockMmad<Gemm::MmadAtlasA2Preload<false, false>, L1TileShape,
-        L0TileShape, LayoutA, LayoutB, LayoutC>;
+                                                           L0TileShape, LayoutA, LayoutB, LayoutC>;
 
     /// Parameters structure
     struct Params {
@@ -118,16 +111,18 @@ public:
         }
 
         CATLASS_HOST_DEVICE
-        Params(GemmCoord const &problemShape_,
-               GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_, GM_ADDR ptrBias_, GM_ADDR ptrC_,
-               LayoutC layoutC_, GM_ADDR ptrScale_, LayoutScale layoutScale_, GM_ADDR ptrPeerMem_, LayoutC layoutPeerMem_,
-               GM_ADDR ptrWorkSpace_, int32_t pValue_, int32_t swizzlCount_, int32_t swizzlDirect_, DequantType dequantType_,
-               int32_t rankIdx_, int32_t rankSize_, bool needFixpipe_)
+        Params(GemmCoord const &problemShape_, GM_ADDR ptrA_, LayoutA layoutA_, GM_ADDR ptrB_, LayoutB layoutB_,
+               GM_ADDR ptrBias_, GM_ADDR ptrC_, LayoutC layoutC_, GM_ADDR ptrScale_, LayoutScale layoutScale_,
+               GM_ADDR ptrPeerMem_, LayoutC layoutPeerMem_, GM_ADDR ptrWorkSpace_, int32_t pValue_,
+               int32_t swizzlCount_, int32_t swizzlDirect_, DequantType dequantType_, int32_t rankIdx_,
+               int32_t rankSize_, bool needFixpipe_)
             : problemShape(problemShape_), ptrA(ptrA_), layoutA(layoutA_), ptrB(ptrB_), layoutB(layoutB_),
               ptrBias(ptrBias_), ptrC(ptrC_), layoutC(layoutC_), ptrScale(ptrScale_), layoutScale(layoutScale_),
-              ptrPeerMem(ptrPeerMem_), layoutPeerMem(layoutPeerMem_), ptrWorkSpace(ptrWorkSpace_),
-              pValue(pValue_), swizzlCount(swizzlCount_), swizzlDirect(swizzlDirect_), dequantType(dequantType_),
-              rankIdx(rankIdx_), rankSize(rankSize_), needFixpipe(needFixpipe_) {}
+              ptrPeerMem(ptrPeerMem_), layoutPeerMem(layoutPeerMem_), ptrWorkSpace(ptrWorkSpace_), pValue(pValue_),
+              swizzlCount(swizzlCount_), swizzlDirect(swizzlDirect_), dequantType(dequantType_), rankIdx(rankIdx_),
+              rankSize(rankSize_), needFixpipe(needFixpipe_)
+        {
+        }
     };
 
     // Methods
@@ -205,11 +200,11 @@ public:
                 int32_t dstRankIdx = loopIdx % params.rankSize;
                 int64_t gmABlockSt = static_cast<int64_t>(dstRankIdx) * finalM * kAlign;
                 int32_t inRankIdx = loopIdx / params.rankSize;
-                GemmCoord blockIdxCoord = GetBlockIdCoord(inRankIdx, mLoopPerRank, nLoops,
-                    params.swizzlDirect, params.swizzlCount);
+                GemmCoord blockIdxCoord =
+                    GetBlockIdCoord(inRankIdx, mLoopPerRank, nLoops, params.swizzlDirect, params.swizzlCount);
                 GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
-                GemmCoord blockSizeCoord = GetBlockSizeCoord(blockIdxCoord, blockLocCoord, 
-                    mLoopPerRank, finalM, nLoops, params.problemShape.n(), params.problemShape.k());
+                GemmCoord blockSizeCoord = GetBlockSizeCoord(blockIdxCoord, blockLocCoord, mLoopPerRank, finalM, nLoops,
+                                                             params.problemShape.n(), params.problemShape.k());
 
                 MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
                 MatrixCoord offsetB{blockLocCoord.k(), blockLocCoord.n()};
@@ -227,8 +222,9 @@ public:
                     layoutGmDst = params.layoutPeerMem;
                     gmDstHalf = gmPeerMemHalf;
                     gmOffsetC = (static_cast<int64_t>(flagIdx) * loopNumPerComm +
-                                dstRankIdx * (loopNumPerComm / params.rankSize) +
-                                (loopIdx % loopNumPerComm) / params.rankSize) * blockSize;
+                                 dstRankIdx * (loopNumPerComm / params.rankSize) +
+                                 (loopIdx % loopNumPerComm) / params.rankSize) *
+                                blockSize;
                 }
 
                 bool hasNextBlock = false;
@@ -241,11 +237,11 @@ public:
                 int32_t nextInRankIdx = nextLoopIdx / params.rankSize;
                 if (nextLoopIdx < coreLoops) {
                     hasNextBlock = true;
-                    nextBlockIdCoord = GetBlockIdCoord(nextInRankIdx, mLoopPerRank, nLoops, params.swizzlDirect,
-                        params.swizzlCount);
+                    nextBlockIdCoord =
+                        GetBlockIdCoord(nextInRankIdx, mLoopPerRank, nLoops, params.swizzlDirect, params.swizzlCount);
                     nextBlockLocCoord = GetBlockLocCoord(nextBlockIdCoord);
-                    nextBlockSizeCoord = GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, mLoopPerRank,
-                        finalM, nLoops, params.problemShape.n(), params.problemShape.k());
+                    nextBlockSizeCoord = GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, mLoopPerRank, finalM,
+                                                           nLoops, params.problemShape.n(), params.problemShape.k());
                 }
                 int64_t nextGmABlockSt = static_cast<int64_t>(nextDstRankIdx) * finalM * kAlign;
                 MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
@@ -254,13 +250,10 @@ public:
                 int64_t gmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
 
                 int64_t gmOffsetScale = blockLocCoord.n();
-                fixpipeBlockMmad(	
-                    gmAInt8[gmOffsetA], params.layoutA,	
-                    gmBInt8[gmOffsetB], params.layoutB,	
-                    gmDstHalf[gmOffsetC], layoutGmDst,	
-                    gmScale[gmOffsetScale], params.layoutScale,
-                    gmAInt8[gmOffsetNextA], gmBInt8[gmOffsetNextB],
-                    blockSizeCoord, nextBlockSizeCoord, isFirstBlock, hasNextBlock);
+                fixpipeBlockMmad(gmAInt8[gmOffsetA], params.layoutA, gmBInt8[gmOffsetB], params.layoutB,
+                                 gmDstHalf[gmOffsetC], layoutGmDst, gmScale[gmOffsetScale], params.layoutScale,
+                                 gmAInt8[gmOffsetNextA], gmBInt8[gmOffsetNextB], blockSizeCoord, nextBlockSizeCoord,
+                                 isFirstBlock, hasNextBlock);
             }
             FFTSCrossCoreSync<PIPE_FIX, 2>(flagIdx);
         }
@@ -301,10 +294,9 @@ public:
                 GemmCoord matmulBlockIdxCoord =
                     GetBlockIdCoord(matmulInRankIdx, mLoopPerRank, nLoops, params.swizzlDirect, params.swizzlCount);
                 GemmCoord matmulBlockLocCoord = GetBlockLocCoord(matmulBlockIdxCoord);
-                GemmCoord matmulBlockSizeCoord = GetBlockSizeCoord(
-                    matmulBlockIdxCoord, matmulBlockLocCoord, mLoopPerRank,
-                    finalM, nLoops, params.problemShape.n(),
-                    params.problemShape.k());
+                GemmCoord matmulBlockSizeCoord =
+                    GetBlockSizeCoord(matmulBlockIdxCoord, matmulBlockLocCoord, mLoopPerRank, finalM, nLoops,
+                                      params.problemShape.n(), params.problemShape.k());
 
                 MatrixCoord offsetA{matmulBlockLocCoord.m(), matmulBlockLocCoord.k()};
                 MatrixCoord offsetB{matmulBlockLocCoord.k(), matmulBlockLocCoord.n()};
@@ -318,9 +310,9 @@ public:
                     gmDst = gmWorkSpace;
                     layoutGmDst = params.layoutPeerMem;
                     matmulGmOffsetC = (static_cast<int64_t>(matmulFlagIdx) * loopNumPerComm +
-                        matmulDstRankIdx * (loopNumPerComm / params.rankSize) +
-                        (matmulLoopIdx % loopNumPerComm) / params.rankSize) *
-                        matmulBlockSize;
+                                       matmulDstRankIdx * (loopNumPerComm / params.rankSize) +
+                                       (matmulLoopIdx % loopNumPerComm) / params.rankSize) *
+                                      matmulBlockSize;
                 } else if (matmulDstRankIdx == params.rankIdx) {
                     gmDst = gmC;
                     layoutGmDst = params.layoutC;
@@ -329,16 +321,14 @@ public:
                     gmDst = gmPeerMem;
                     layoutGmDst = params.layoutPeerMem;
                     matmulGmOffsetC = (static_cast<int64_t>(matmulFlagIdx) * loopNumPerComm +
-                        matmulDstRankIdx * (loopNumPerComm / params.rankSize) +
-                        (matmulLoopIdx % loopNumPerComm) / params.rankSize) *
-                        matmulBlockSize;
+                                       matmulDstRankIdx * (loopNumPerComm / params.rankSize) +
+                                       (matmulLoopIdx % loopNumPerComm) / params.rankSize) *
+                                      matmulBlockSize;
                 }
                 if constexpr (HasBias) {
-                    blockMmad(
-                        gmA[matmulGmOffsetA], params.layoutA,
-                        gmB[matmulGmOffsetB], params.layoutB,
-                        gmDst[matmulGmOffsetC], layoutGmDst,
-                        gmBias[matmulBlockLocCoord.n()], matmulBlockSizeCoord);
+                    blockMmad(gmA[matmulGmOffsetA], params.layoutA, gmB[matmulGmOffsetB], params.layoutB,
+                              gmDst[matmulGmOffsetC], layoutGmDst, gmBias[matmulBlockLocCoord.n()],
+                              matmulBlockSizeCoord);
                 } else {
                     bool matmulIsFirstBlock = matmulLoopIdx == coreIdx;
                     bool matmulHasNextBlock = false;
@@ -351,22 +341,20 @@ public:
                     if (nextLoopIdx < coreLoops) {
                         matmulHasNextBlock = true;
                         nextBlockIdCoord = GetBlockIdCoord(nextInRankIdx, mLoopPerRank, nLoops, params.swizzlDirect,
-                            params.swizzlCount);
+                                                           params.swizzlCount);
                         nextBlockLocCoord = GetBlockLocCoord(nextBlockIdCoord);
-                        matmulNextBlockSizeCoord = GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, mLoopPerRank,
-                            finalM, nLoops, params.problemShape.n(), params.problemShape.k());
+                        matmulNextBlockSizeCoord =
+                            GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, mLoopPerRank, finalM, nLoops,
+                                              params.problemShape.n(), params.problemShape.k());
                     }
                     int64_t nextGmABlockSt = static_cast<int64_t>(nextDstRankIdx) * finalM * kAlign;
                     MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
                     MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
                     int64_t matmulGmOffsetNextA = nextGmABlockSt + params.layoutA.GetOffset(offsetNextA);
                     int64_t matmulGmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
-                    blockMmad(
-                        gmA[matmulGmOffsetA], params.layoutA,
-                        gmB[matmulGmOffsetB], params.layoutB,
-                        gmDst[matmulGmOffsetC], layoutGmDst,
-                        gmA[matmulGmOffsetNextA], gmB[matmulGmOffsetNextB],
-                        matmulBlockSizeCoord, matmulNextBlockSizeCoord, matmulIsFirstBlock, matmulHasNextBlock);
+                    blockMmad(gmA[matmulGmOffsetA], params.layoutA, gmB[matmulGmOffsetB], params.layoutB,
+                              gmDst[matmulGmOffsetC], layoutGmDst, gmA[matmulGmOffsetNextA], gmB[matmulGmOffsetNextB],
+                              matmulBlockSizeCoord, matmulNextBlockSizeCoord, matmulIsFirstBlock, matmulHasNextBlock);
                 }
             }
             FFTSCrossCoreSync<PIPE_FIX, 2>(matmulFlagIdx);

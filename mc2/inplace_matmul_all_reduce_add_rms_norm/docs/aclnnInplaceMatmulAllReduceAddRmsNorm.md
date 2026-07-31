@@ -19,7 +19,7 @@
 
 ## 功能说明
 
-- **算子功能**：完成mm + all_reduce + add + rms_norm计算。
+- **算子功能**：完成原地的mm + all_reduce + add + rms_norm计算。
 - **计算公式**：
 
     $$
@@ -96,7 +96,7 @@ aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(
         <tr>
           <td>x1</td>
           <td>输入</td>
-          <td>MatMul计算的左矩阵，即计算公式中的x1。</td>
+          <td>MatMul计算的左矩阵，即计算公式中的x1，同时也是输出，即公式中的y。</td>
           <td><ul><li>支持空Tensor。</li><li>与x2的数据类型保持一致。</li><li>当前版本仅支持二维或者三维输入。</li></ul></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -228,7 +228,7 @@ aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一阶段接口完成入参校验，出现以下场景报错：
     <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
@@ -298,7 +298,7 @@ aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -318,7 +318,7 @@ aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
 

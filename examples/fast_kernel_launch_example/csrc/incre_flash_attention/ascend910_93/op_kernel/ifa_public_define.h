@@ -15,7 +15,7 @@
 #ifndef IFA_PUBLIC_DEFINE_H
 #define IFA_PUBLIC_DEFINE_H
 #include "kernel_operator.h"
-#include "matmul_intf.h"
+#include "lib/matmul_intf.h"
 #include "matmul/tiling.h"
 #include "incre_flash_attention_tilingdata.h"
 using namespace AscendC;

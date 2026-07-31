@@ -135,8 +135,6 @@ def _call_npu_quant_block_sparse_attn_metadata(test_data):
         layout_sparse_indices=metadata_input.get("layout_sparse_indices", inputs["layout_sparse_indices"]),
     )
     torch_npu.npu.synchronize()
-    metadata_cpu = metadata.detach().cpu()
-    nonzero_count = int(torch.count_nonzero(metadata_cpu).item())
     return metadata
 
 
@@ -163,7 +161,7 @@ def _call_npu_quant_block_sparse_attn(test_data, device_id):
         _to_npu(inputs["p_scale"]),
         _to_npu(inputs["sparse_indices"]),
         _to_npu(inputs["sparse_seq_len"]),
-        _to_npu(inputs["atten_mask"]),
+        _to_npu(inputs.get("atten_mask")),
         inputs["softmax_scale"],
         inputs["sparse_q_block_size"],
         inputs["sparse_kv_block_size"],
@@ -225,7 +223,7 @@ def test_quant_block_sparse_attn_process_graph(test_data, device_id=0):
     output = model(
         _to_npu(inputs["query"]), key, value, _to_npu(inputs["q_descale"]), k_descale,
         _to_npu(inputs["v_descale"]), _to_npu(inputs["p_scale"]), _to_npu(inputs["sparse_indices"]),
-        _to_npu(inputs["sparse_seq_len"]), _to_npu(inputs["atten_mask"]), _to_npu(inputs["cu_seqlens_q"]),
+        _to_npu(inputs["sparse_seq_len"]), _to_npu(inputs.get("atten_mask")), _to_npu(inputs["cu_seqlens_q"]),
         _to_npu(inputs["cu_seqlens_kv"]), _to_npu(inputs["seqused_q"]), _to_npu(inputs["seqused_kv"]),
         _to_npu(inputs["block_table"]), metadata)
     torch_npu.npu.synchronize()

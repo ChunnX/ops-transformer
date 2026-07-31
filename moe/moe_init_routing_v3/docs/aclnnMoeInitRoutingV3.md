@@ -1,8 +1,8 @@
-# aclnnMoeInitRoutingV3	
+# aclnnMoeInitRoutingV3
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_init_routing_v3)
 
-## 产品支持情况	
+## 产品支持情况
 
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
@@ -56,7 +56,7 @@
     </tr>
   </table>
   </ol>
-- 计算公式：  
+- 计算公式：
 
   1.对输入expertIdx做排序，得出排序后的结果sortedExpertIdx和对应的序号sortedRowIdx：
 
@@ -76,7 +76,7 @@
       $$
       expandedRowIdxOut[sortedRowIdx[i]]=i
       $$
-      
+
   3.对sortedExpertIdx的每个专家统计直方图结果，得出expertTokensCountOrCumsumOutOptional：
 
     $$
@@ -89,7 +89,7 @@
      $$
      quantResult=round((x∗scaleOptional)+offsetOptional)
      $$
-     
+
     - 动态quant：
         - 若不输入scale：
 
@@ -112,7 +112,7 @@
             $$
 
         - 当quantMode为13时，动态量化使用对称量化范围[-8, 7]，scale计算中的分母为7，量化结果沿H维每两个INT4值打包为1个字节。
-  
+
   5.若活跃的expert范围为全专家范围时，按照Scatter索引搬运token；反之按照Gather索引搬运token。在dropPadMode为1时将每个专家需要处理的Token个数对齐为expertCapacity个，超过expertCapacity个的Token会被Drop，不足的会用0填充。得出expandedXOut：
     - 非量化场景
       - 按照Scatter索引搬运
@@ -148,36 +148,36 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeInitRoutingV3GetWorkspaceSize”接口获取入参并计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRoutingV3”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeInitRoutingV3GetWorkspaceSize”接口获取入参并计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeInitRoutingV3”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnMoeInitRoutingV3GetWorkspaceSize(
-  const aclTensor   *x, 
-  const aclTensor   *expertIdx, 
-  const aclTensor   *scaleOptional, 
-  const aclTensor   *offsetOptional, 
-  int64_t            activeNum, 
-  int64_t            expertCapacity, 
-  int64_t            expertNum, 
-  int64_t            dropPadMode, 
-  int64_t            expertTokensNumType, 
-  bool               expertTokensNumFlag, 
-  int64_t            quantMode, 
-  const aclIntArray *activeExpertRangeOptional, 
-  int64_t            rowIdxType, 
+  const aclTensor   *x,
+  const aclTensor   *expertIdx,
+  const aclTensor   *scaleOptional,
+  const aclTensor   *offsetOptional,
+  int64_t            activeNum,
+  int64_t            expertCapacity,
+  int64_t            expertNum,
+  int64_t            dropPadMode,
+  int64_t            expertTokensNumType,
+  bool               expertTokensNumFlag,
+  int64_t            quantMode,
+  const aclIntArray *activeExpertRangeOptional,
+  int64_t            rowIdxType,
   const aclTensor   *expandedXOut,
   const aclTensor   *expandedRowIdxOut,
   const aclTensor   *expertTokensCountOrCumsumOut,
-  const aclTensor   *expandedScaleOut, 
-  uint64_t          *workspaceSize, 
+  const aclTensor   *expandedScaleOut,
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnMoeInitRoutingV3(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -238,12 +238,12 @@ aclnnStatus aclnnMoeInitRoutingV3(
         <li>静态量化场景必须输入，输入要求为1D的Tensor，shape为[1, ]；</li>
         <li>quantMode为1的INT8动态量化场景下为可选输入，如果输入则要求为2D的Tensor，shape为(expertEnd-expertStart, H)；quantMode为13的INT4动态量化场景下为可选输入，如果输入则要求shape为(1, H)，表示按H维广播的smooth scale。</li>
         <li>MXFP8量化场景下（quantMode为2、3）不输入。</li>
-        <li>MXFP8 RoundScale+Amax量化场景下（quantMode为16、17）不输入。</li>
         <li>HIF8直转和HIF8 PERTOKEN量化场景下（quantMode为6、8）不输入。</li>
         <li>HIF8 PERTENSOR量化场景下（quantMode为7）,输入要求为1D的Tensor，shape为[1, ]。</li>
         <li>MXFP4量化场景下（quantMode为9）不输入。</li>
         <li>FP8 PerGroup量化场景下（quantMode为4、5、14、15）不输入。</li>
         <li>FP8 PerBlock量化场景下（quantMode为11、12）不输入。</li>
+        <li>MXFP8 RoundScale+Amax量化场景下（quantMode为16、17）不输入。</li>
         </ul></td>
       <td>FLOAT32、FLOAT8_E8M0</td>
       <td>ND</td>
@@ -334,7 +334,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
       <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>表示不同量化场景</td>
-      <td>取值为0、1、-1、2、3、6、7、8、9、11、12、13、16、17（不同产品支持情况有差异，见表后描述）
+      <td>取值为0、1、-1、2、3、4、5、6、7、8、9、11、12、13、14、15、16、17（不同产品支持情况有差异，见表后描述）
         <br>0：表示静态quant场景;
         <br>1：表示动态quant场景，expandedXOut量化到INT8;
         <br>-1：表示不量化场景;
@@ -471,10 +471,10 @@ aclnnStatus aclnnMoeInitRoutingV3(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
-    
+
   <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
   <col style="width: 319px">
   <col style="width: 144px">
@@ -511,7 +511,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
 - **不同产品支持情况差异**
   - quantMode支持情况差异：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持-1、0、1。
-    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、0、1、2、3、6、7、8、9、11、12、13、16、17。
+    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、0、1、2、3、4、5、6、7、8、9、11、12、13、14、15、16、17。
   - <term>Ascend 950PR/Ascend 950DT</term>仅支持如下参数的值：
     - activeNum仅支持值等于NUM_ROWS*K。
     - expertCapacity在Dropless场景下仅校验其值，不使用该参数；在DropPad场景下必须校验且取值范围为(0, NUM_ROWS]。
@@ -524,7 +524,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
     - activeNum等于NUM_ROWS*K。
     - scaleOptional不输入，或输入shape为(1, H)、数据类型为FLOAT32，表示对activeExpertRangeOptional范围内的expert按H维广播smooth scale；offsetOptional不输入。
     - expertTokensNumType为0或1时，expertTokensCountOrCumsumOut的shape为[expertEnd-expertStart]；expertTokensNumType为2时，expertTokensCountOrCumsumOut的shape为[expertNum, 2]。
-    
+
 ## aclnnMoeInitRoutingV3
 
 - **参数说明：**
@@ -566,7 +566,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -604,7 +604,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
