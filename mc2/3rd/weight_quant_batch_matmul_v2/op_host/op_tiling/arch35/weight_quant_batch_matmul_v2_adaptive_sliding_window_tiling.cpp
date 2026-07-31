@@ -38,8 +38,7 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingASW::DoOpTiling()
 {
     OP_LOGD(opName_, "DoOpTiling of adaptive sliding window tiling strategy.");
     OP_TILING_CHECK(InstantiateTilingData() == ge::GRAPH_FAILED,
-                    OP_LOGE(opName_, "unable to get pointer of tiling data"),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_, "unable to get pointer of tiling data"), return ge::GRAPH_FAILED);
 
     AnalyseSlidingWinInfo();
     CalL1Tiling();
@@ -59,11 +58,10 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingASW::InstantiateTilingData()
             return ge::GRAPH_FAILED;
         }
     }
-    OP_TILING_CHECK(
-        context_->GetRawTilingData()->GetCapacity() < tilingDataSize,
-        OP_LOGE(opName_, "tiling data capacity %zu < actual tiling data size %zu",
-                                        context_->GetRawTilingData()->GetCapacity(), tilingDataSize),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context_->GetRawTilingData()->GetCapacity() < tilingDataSize,
+                    OP_LOGE(opName_, "tiling data capacity %zu < actual tiling data size %zu",
+                            context_->GetRawTilingData()->GetCapacity(), tilingDataSize),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -97,14 +95,14 @@ void Mc2WeightQuantBatchMatmulV2TilingASW::CalcBasicBlock()
     // 所以下列代码中的对齐计算方式合理
     adaptiveWin_.baseM = std::min(matmulInfoPtr_->mSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_128));
     adaptiveWin_.baseM =
-        !matmulInfoPtr_->transA
-            ? ops::CeilAlign(adaptiveWin_.baseM, CUBE_BLOCK)
-            : ops::CeilAlign(adaptiveWin_.baseM, GetShapeWithDataType(L1_ALIGN_SIZE, matmulInfoPtr_->aDtype));
+        !matmulInfoPtr_->transA ?
+            ops::CeilAlign(adaptiveWin_.baseM, CUBE_BLOCK) :
+            ops::CeilAlign(adaptiveWin_.baseM, GetShapeWithDataType(L1_ALIGN_SIZE, matmulInfoPtr_->aDtype));
     adaptiveWin_.baseN = std::min(matmulInfoPtr_->nSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_128));
     adaptiveWin_.baseN =
-        matmulInfoPtr_->transB
-            ? ops::CeilAlign(adaptiveWin_.baseN, CUBE_BLOCK)
-            : ops::CeilAlign(adaptiveWin_.baseN, GetShapeWithDataType(L1_ALIGN_SIZE, matmulInfoPtr_->bDtype));
+        matmulInfoPtr_->transB ?
+            ops::CeilAlign(adaptiveWin_.baseN, CUBE_BLOCK) :
+            ops::CeilAlign(adaptiveWin_.baseN, GetShapeWithDataType(L1_ALIGN_SIZE, matmulInfoPtr_->bDtype));
 
     uint64_t minBaseK =
         std::min(std::min(GetShapeWithDataType(static_cast<uint64_t>(BASIC_BLOCK_SIZE_128), matmulInfoPtr_->aDtype),
@@ -134,9 +132,8 @@ uint64_t Mc2WeightQuantBatchMatmulV2TilingASW::GetSizeWithDataType(uint64_t shap
         // 2: 判断是否是偶数
         OP_TILING_CHECK(
             shapeSize % 2 != 0,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "shapeSize",
-                std::to_string(shapeSize).c_str(),
-                "The value of shapeSize must be even when dtype is FLOAT4/INT4."),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "shapeSize", std::to_string(shapeSize).c_str(),
+                                                  "The value of shapeSize must be even when dtype is FLOAT4/INT4."),
             return 0);
         // 1/2: 这几种数据类型的dsize=1/2
         return shapeSize / 2;
@@ -220,9 +217,9 @@ void Mc2WeightQuantBatchMatmulV2TilingASW::CalL1Tiling()
     basicTiling_.iterateOrder = 0;
     basicTiling_.dbL0c =
         ((basicTiling_.baseM * basicTiling_.baseN * DATA_SIZE_L0C * DB_SIZE <= compileInfoPtr_->l0cSize) &&
-         CheckAntiQuantScale(basicTiling_.baseN, DB_SIZE))
-            ? DB_SIZE
-            : 1;
+         CheckAntiQuantScale(basicTiling_.baseN, DB_SIZE)) ?
+            DB_SIZE :
+            1;
     uint64_t singleCoreBiasSize = matmulInfoPtr_->hasBias ? basicTiling_.baseN * biasDtypeSize : 0;
     uint64_t singleCoreScaleSize =
         matmulInfoPtr_->antiQuantType == Mc2QuantType::PER_CHANNEL ? basicTiling_.baseN * scaleDtypeSize : 0;
@@ -306,8 +303,8 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingASW::DoLibApiTiling()
     tilingData_->matmulTiling.stepKb = basicTiling_.stepKb;
     tilingData_->matmulTiling.isBias = 0;
     tilingData_->matmulTiling.iterateOrder = basicTiling_.iterateOrder;
-    tilingData_->matmulTiling.dbL0A = 2;  // db switch, 1: off, 2: on
-    tilingData_->matmulTiling.dbL0B = 2;  // db switch, 1: off, 2: on
+    tilingData_->matmulTiling.dbL0A = 2; // db switch, 1: off, 2: on
+    tilingData_->matmulTiling.dbL0B = 2; // db switch, 1: off, 2: on
     tilingData_->matmulTiling.dbL0C = basicTiling_.dbL0c;
     return ge::GRAPH_SUCCESS;
 }
@@ -315,9 +312,8 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingASW::DoLibApiTiling()
 ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingASW::GetWorkspaceSize()
 {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "failed to get workspace size"),
-                    return ge::GRAPH_FAILED);
-    workspaces[0] = WORKSPACE_SIZE;  // asc要求workspace最低需要16 * 1024 * 1024 Byte
+    OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "failed to get workspace size"), return ge::GRAPH_FAILED);
+    workspaces[0] = WORKSPACE_SIZE; // asc要求workspace最低需要16 * 1024 * 1024 Byte
     return ge::GRAPH_SUCCESS;
 }
 
@@ -325,13 +321,13 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2TilingASW::PostTiling()
 {
     size_t tilingDataSize = sizeof(WeightQuantBatchMatmulV2ASWTilingData);
     OP_LOGD(opName_, "final tiling data size: %zu", tilingDataSize);
-    OP_TILING_CHECK(
-        tilingDataSize % sizeof(uint64_t) != 0,
-        OP_LOGE(opName_, "tiling data size[%zu] is not aligned to 8.", tilingDataSize),
-        return ge::GRAPH_FAILED);
-    errno_t ret = memcpy_s(context_->GetTilingData<WeightQuantBatchMatmulV2ASWTilingData>(),
-     context_->GetRawTilingData()->GetCapacity(), reinterpret_cast<void *>(&tilingData_), tilingDataSize);
-    if (ret != EOK){
+    OP_TILING_CHECK(tilingDataSize % sizeof(uint64_t) != 0,
+                    OP_LOGE(opName_, "tiling data size[%zu] is not aligned to 8.", tilingDataSize),
+                    return ge::GRAPH_FAILED);
+    errno_t ret =
+        memcpy_s(context_->GetTilingData<WeightQuantBatchMatmulV2ASWTilingData>(),
+                 context_->GetRawTilingData()->GetCapacity(), reinterpret_cast<void *>(&tilingData_), tilingDataSize);
+    if (ret != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
         return ge::GRAPH_FAILED;
     }
@@ -368,5 +364,5 @@ uint64_t Mc2WeightQuantBatchMatmulV2TilingASW::GetTilingKey() const
     return tilingKeyConfigure.GenTilingKey();
 }
 REGISTER_OPS_TILING_TEMPLATE(Mc2WeightQuantBatchMatmulV2, Mc2WeightQuantBatchMatmulV2TilingASW, ASW_PRIORITY);
-}  // namespace weight_quant_batch_matmul_v2
-}  // namespace optiling
+} // namespace Mc2weight_quant_batch_matmul_v2
+} // namespace optiling

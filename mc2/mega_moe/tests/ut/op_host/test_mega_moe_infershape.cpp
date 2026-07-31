@@ -42,44 +42,36 @@ TEST_F(MegaMoeInferShapeTest, InferShape_H4096_BS128)
     gert::StorageShape xActiveMaskShape = {{}, {}};
     gert::StorageShape scalesShape = {{}, {}};
 
-    gert::InfershapeContextPara infershapeContextPara("MegaMoe",
-        {
-            {contextShape, ge::DT_INT32, ge::FORMAT_ND},
-            {xShape, ge::DT_BF16, ge::FORMAT_ND},
-            {topkIdsShape, ge::DT_INT32, ge::FORMAT_ND},
-            {topkWeightsShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {weight1Shape, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-            {weight2Shape, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-            {weightScales1Shape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-            {weightScales2Shape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-            {xActiveMaskShape, ge::DT_INT8, ge::FORMAT_ND},
-            {scalesShape, ge::DT_FLOAT, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_BF16, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND}
-        },
-        {
-            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2097152)},
-            {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"dispatch_quant_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(24)},
-            {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
-            {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-            {"activation_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
-            {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 4}
-    };
+    gert::InfershapeContextPara infershapeContextPara(
+        "MegaMoe",
+        {{contextShape, ge::DT_INT32, ge::FORMAT_ND},
+         {xShape, ge::DT_BF16, ge::FORMAT_ND},
+         {topkIdsShape, ge::DT_INT32, ge::FORMAT_ND},
+         {topkWeightsShape, ge::DT_FLOAT, ge::FORMAT_ND},
+         {weight1Shape, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+         {weight2Shape, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+         {weightScales1Shape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+         {weightScales2Shape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+         {xActiveMaskShape, ge::DT_INT8, ge::FORMAT_ND},
+         {scalesShape, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{}, ge::DT_BF16, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND}},
+        {{"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+         {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2097152)},
+         {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+         {"dispatch_quant_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(24)},
+         {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+         {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
+         {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
+         {"activation_out_dtype",
+          Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+         {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
     std::vector<std::vector<int64_t>> expectedOutputShapes = {{128, 4096}, {4}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectedOutputShapes);
 }
@@ -97,44 +89,36 @@ TEST_F(MegaMoeInferShapeTest, InferShape_H5120_BS256)
     gert::StorageShape xActiveMaskShape = {{}, {}};
     gert::StorageShape scalesShape = {{}, {}};
 
-    gert::InfershapeContextPara infershapeContextPara("MegaMoe",
-        {
-            {contextShape, ge::DT_INT32, ge::FORMAT_ND},
-            {xShape, ge::DT_BF16, ge::FORMAT_ND},
-            {topkIdsShape, ge::DT_INT32, ge::FORMAT_ND},
-            {topkWeightsShape, ge::DT_BF16, ge::FORMAT_ND},
-            {weight1Shape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-            {weight2Shape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
-            {weightScales1Shape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-            {weightScales2Shape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-            {xActiveMaskShape, ge::DT_INT8, ge::FORMAT_ND},
-            {scalesShape, ge::DT_FLOAT, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_BF16, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND}
-        },
-        {
-            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-            {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2097152)},
-            {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"dispatch_quant_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(23)},
-            {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
-            {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-            {"activation_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
-            {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+    gert::InfershapeContextPara infershapeContextPara(
+        "MegaMoe",
+        {{contextShape, ge::DT_INT32, ge::FORMAT_ND},
+         {xShape, ge::DT_BF16, ge::FORMAT_ND},
+         {topkIdsShape, ge::DT_INT32, ge::FORMAT_ND},
+         {topkWeightsShape, ge::DT_BF16, ge::FORMAT_ND},
+         {weight1Shape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
+         {weight2Shape, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},
+         {weightScales1Shape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+         {weightScales2Shape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+         {xActiveMaskShape, ge::DT_INT8, ge::FORMAT_ND},
+         {scalesShape, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{}, ge::DT_BF16, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND}},
+        {{"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2097152)},
+         {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+         {"dispatch_quant_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(23)},
+         {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+         {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
+         {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
+         {"activation_out_dtype",
+          Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+         {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     std::vector<std::vector<int64_t>> expectedOutputShapes = {{256, 5120}, {8}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectedOutputShapes);
 }
@@ -152,44 +136,36 @@ TEST_F(MegaMoeInferShapeTest, InferShape_H7168_BS512)
     gert::StorageShape xActiveMaskShape = {{}, {}};
     gert::StorageShape scalesShape = {{}, {}};
 
-    gert::InfershapeContextPara infershapeContextPara("MegaMoe",
-        {
-            {contextShape, ge::DT_INT32, ge::FORMAT_ND},
-            {xShape, ge::DT_BF16, ge::FORMAT_ND},
-            {topkIdsShape, ge::DT_INT32, ge::FORMAT_ND},
-            {topkWeightsShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {weight1Shape, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-            {weight2Shape, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-            {weightScales1Shape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-            {weightScales2Shape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-            {xActiveMaskShape, ge::DT_INT8, ge::FORMAT_ND},
-            {scalesShape, ge::DT_FLOAT, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_BF16, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND}
-        },
-        {
-            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
-            {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2097152)},
-            {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"dispatch_quant_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(24)},
-            {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
-            {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-            {"activation_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
-            {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 2}
-    };
+    gert::InfershapeContextPara infershapeContextPara(
+        "MegaMoe",
+        {{contextShape, ge::DT_INT32, ge::FORMAT_ND},
+         {xShape, ge::DT_BF16, ge::FORMAT_ND},
+         {topkIdsShape, ge::DT_INT32, ge::FORMAT_ND},
+         {topkWeightsShape, ge::DT_FLOAT, ge::FORMAT_ND},
+         {weight1Shape, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+         {weight2Shape, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+         {weightScales1Shape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+         {weightScales2Shape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+         {xActiveMaskShape, ge::DT_INT8, ge::FORMAT_ND},
+         {scalesShape, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{}, ge::DT_BF16, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND}},
+        {{"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+         {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2097152)},
+         {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+         {"dispatch_quant_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(24)},
+         {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+         {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
+         {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
+         {"activation_out_dtype",
+          Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+         {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 2}};
     std::vector<std::vector<int64_t>> expectedOutputShapes = {{512, 7168}, {2}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectedOutputShapes);
 }
@@ -207,44 +183,36 @@ TEST_F(MegaMoeInferShapeTest, InferShape_InvalidEpWorldSize)
     gert::StorageShape xActiveMaskShape = {{}, {}};
     gert::StorageShape scalesShape = {{}, {}};
 
-    gert::InfershapeContextPara infershapeContextPara("MegaMoe",
-        {
-            {contextShape, ge::DT_INT32, ge::FORMAT_ND},
-            {xShape, ge::DT_BF16, ge::FORMAT_ND},
-            {topkIdsShape, ge::DT_INT32, ge::FORMAT_ND},
-            {topkWeightsShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {weight1Shape, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-            {weight2Shape, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-            {weightScales1Shape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-            {weightScales2Shape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
-            {xActiveMaskShape, ge::DT_INT8, ge::FORMAT_ND},
-            {scalesShape, ge::DT_FLOAT, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_BF16, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND}
-        },
-        {
-            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
-            {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2097152)},
-            {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"dispatch_quant_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(24)},
-            {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
-            {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-            {"activation_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
-            {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 4}
-    };
+    gert::InfershapeContextPara infershapeContextPara(
+        "MegaMoe",
+        {{contextShape, ge::DT_INT32, ge::FORMAT_ND},
+         {xShape, ge::DT_BF16, ge::FORMAT_ND},
+         {topkIdsShape, ge::DT_INT32, ge::FORMAT_ND},
+         {topkWeightsShape, ge::DT_FLOAT, ge::FORMAT_ND},
+         {weight1Shape, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+         {weight2Shape, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
+         {weightScales1Shape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+         {weightScales2Shape, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+         {xActiveMaskShape, ge::DT_INT8, ge::FORMAT_ND},
+         {scalesShape, ge::DT_FLOAT, ge::FORMAT_ND}},
+        {{{}, ge::DT_BF16, ge::FORMAT_ND}, {{}, ge::DT_INT32, ge::FORMAT_ND}},
+        {{"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+         {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2097152)},
+         {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+         {"dispatch_quant_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(24)},
+         {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+         {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
+         {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
+         {"activation_out_dtype",
+          Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+         {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
 
@@ -263,40 +231,42 @@ TEST_F(MegaMoeInferShapeTest, InferDatatype_BF16_FP8E4M3FN)
     ge::DataType outputType = ge::DT_UNDEFINED;
     ge::DataType expertTokenNumsType = ge::DT_UNDEFINED;
 
-    auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(10, 2)
-        .NodeAttrs({{"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
-                    {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-                    {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2097152)},
-                    {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                    {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-                    {"dispatch_quant_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(24)},
-                    {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                    {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-                    {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                    {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
-                    {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-                    {"activation_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
-                    {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-                    {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-                    {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}})
-        .NodeInputTd(0, contextType, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(1, xType, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(2, topkIdsType, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(3, topkWeightsType, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(4, weight1Type, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(5, weight2Type, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(6, weightScales1Type, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(7, weightScales2Type, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(8, xActiveMaskType, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(9, scalesType, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .InputDataTypes({&contextType, &xType, &topkIdsType, &topkWeightsType,
-                         &weight1Type, &weight2Type, &weightScales1Type, &weightScales2Type,
-                         &xActiveMaskType, &scalesType})
-        .OutputDataTypes({&outputType, &expertTokenNumsType})
-        .Build();
+    auto contextHolder =
+        gert::InferDataTypeContextFaker()
+            .NodeIoNum(10, 2)
+            .NodeAttrs(
+                {{"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
+                 {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+                 {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2097152)},
+                 {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+                 {"dispatch_quant_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(24)},
+                 {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+                 {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
+                 {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
+                 {"activation_out_dtype",
+                  Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+                 {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                 {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                 {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}})
+            .NodeInputTd(0, contextType, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(1, xType, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(2, topkIdsType, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(3, topkWeightsType, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(4, weight1Type, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(5, weight2Type, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(6, weightScales1Type, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(7, weightScales2Type, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(8, xActiveMaskType, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(9, scalesType, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+            .InputDataTypes({&contextType, &xType, &topkIdsType, &topkWeightsType, &weight1Type, &weight2Type,
+                             &weightScales1Type, &weightScales2Type, &xActiveMaskType, &scalesType})
+            .OutputDataTypes({&outputType, &expertTokenNumsType})
+            .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDataTypeFunc = spaceRegistry->GetOpImpl("MegaMoe")->infer_datatype;
@@ -320,40 +290,42 @@ TEST_F(MegaMoeInferShapeTest, InferDatatype_BF16_FP8E5M2)
     ge::DataType outputType = ge::DT_UNDEFINED;
     ge::DataType expertTokenNumsType = ge::DT_UNDEFINED;
 
-    auto contextHolder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(10, 2)
-        .NodeAttrs({{"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
-                    {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-                    {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2097152)},
-                    {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                    {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-                    {"dispatch_quant_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(23)},
-                    {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                    {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-                    {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                    {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
-                    {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-                    {"activation_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
-                    {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-                    {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-                    {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}})
-        .NodeInputTd(0, contextType, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(1, xType, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(2, topkIdsType, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(3, topkWeightsType, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(4, weight1Type, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(5, weight2Type, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(6, weightScales1Type, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(7, weightScales2Type, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(8, xActiveMaskType, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(9, scalesType, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .InputDataTypes({&contextType, &xType, &topkIdsType, &topkWeightsType,
-                         &weight1Type, &weight2Type, &weightScales1Type, &weightScales2Type,
-                         &xActiveMaskType, &scalesType})
-        .OutputDataTypes({&outputType, &expertTokenNumsType})
-        .Build();
+    auto contextHolder =
+        gert::InferDataTypeContextFaker()
+            .NodeIoNum(10, 2)
+            .NodeAttrs(
+                {{"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+                 {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+                 {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2097152)},
+                 {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+                 {"dispatch_quant_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(23)},
+                 {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+                 {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                 {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
+                 {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
+                 {"activation_out_dtype",
+                  Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+                 {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                 {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+                 {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}})
+            .NodeInputTd(0, contextType, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(1, xType, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(2, topkIdsType, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(3, topkWeightsType, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(4, weight1Type, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(5, weight2Type, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(6, weightScales1Type, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(7, weightScales2Type, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(8, xActiveMaskType, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeInputTd(9, scalesType, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+            .InputDataTypes({&contextType, &xType, &topkIdsType, &topkWeightsType, &weight1Type, &weight2Type,
+                             &weightScales1Type, &weightScales2Type, &xActiveMaskType, &scalesType})
+            .OutputDataTypes({&outputType, &expertTokenNumsType})
+            .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDataTypeFunc = spaceRegistry->GetOpImpl("MegaMoe")->infer_datatype;
@@ -362,4 +334,4 @@ TEST_F(MegaMoeInferShapeTest, InferDatatype_BF16_FP8E5M2)
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(1), ge::DT_INT32);
 }
 
-} // MegaMoeUT
+} // namespace MegaMoeUT
