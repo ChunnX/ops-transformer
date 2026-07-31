@@ -82,13 +82,17 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::DoLibApiTiling()
 {
     OP_LOGD(context_->GetNodeName(), "start DoLibApiTiling.");
     uint64_t maxMSize = 0;
-    uint64_t mSize = 0;
-    for (uint64_t expertIdx = 0; expertIdx < e_; expertIdx++) {
-        mSize = 0;
-        for (uint64_t rankIdx = 0; rankIdx < epWorldSize_; rankIdx++) {
-            mSize += recvCounts[rankIdx * e_ + expertIdx];
+    if (countsFromTensor_) {
+        maxMSize = a_;
+    } else {
+        uint64_t mSize = 0;
+        for (uint64_t expertIdx = 0; expertIdx < e_; expertIdx++) {
+            mSize = 0;
+            for (uint64_t rankIdx = 0; rankIdx < epWorldSize_; rankIdx++) {
+                mSize += recvCounts[rankIdx * e_ + expertIdx];
+            }
+            maxMSize = std::max(mSize, maxMSize);
         }
-        maxMSize = std::max(mSize, maxMSize);
     }
     MC2_CHECK_LOG_RET(context_->GetNodeName(), DoGmmTiling(maxMSize));
     OP_LOGD(context_->GetNodeName(), "end DoLibApiTiling.");
@@ -170,9 +174,12 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     tilingData->taskTilingInfo.totalLoopCount =
         static_cast<uint32_t>((e_ + expertNum - 1) / expertNum);
     tilingData->isNeedMM = hasSharedExpertFlag_;
-    for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
-        tilingData->taskTilingInfo.sendCnt[i] = sendCounts[i];
-        tilingData->taskTilingInfo.recvCnt[i] = recvCounts[i];
+    tilingData->taskTilingInfo.countsFromTensor = static_cast<uint8_t>(countsFromTensor_);
+    if (!countsFromTensor_) {
+        for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
+            tilingData->taskTilingInfo.sendCnt[i] = sendCounts[i];
+            tilingData->taskTilingInfo.recvCnt[i] = recvCounts[i];
+        }
     }
     PrintTaskTilingInfo(tilingData->taskTilingInfo);
     OP_LOGD(context_->GetNodeName(), "end PostTiling.");

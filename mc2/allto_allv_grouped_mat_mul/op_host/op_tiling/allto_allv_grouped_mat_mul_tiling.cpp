@@ -17,8 +17,8 @@
 #include <algorithm>
 #include <cstddef>
 #include <numeric>
-#include "../../../allto_allv_quant_grouped_mat_mul/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_tiling_base.h"
 #include "../../op_kernel/allto_allv_grouped_mat_mul_tiling_key.h"
+#include "../../../allto_allv_quant_grouped_mat_mul/op_host/op_tiling/allto_allv_quant_grouped_mat_mul_tiling_base.h"
 #include "mc2_comm_utils.h"
 
 namespace optiling {
@@ -125,6 +125,11 @@ ge::graphStatus AlltoAllvGmmTiling::GetContextAttr(const gert::TilingContext *co
     group_ = groupEpPtr;
     epWorldSizePtr_ = epWorldSizePtr;
 
+    constexpr uint32_t SEND_COUNTS_TENSOR_INDEX = 2U;
+    constexpr uint32_t RECV_COUNTS_TENSOR_INDEX = 3U;
+    countsFromTensor_ = IsShapePresent(context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_INDEX)) &&
+                        IsShapePresent(context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_INDEX));
+
     auto transGmmWeightPtr = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_TRANS_GMM_WEIGHT_INDEX);
     OP_TILING_CHECK(transGmmWeightPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "transGmmWeight"),
                     return ge::GRAPH_FAILED);
@@ -179,6 +184,9 @@ ge::graphStatus AlltoAllvGmmTiling::CheckMKN(const gert::TilingContext *context)
 
 ge::graphStatus AlltoAllvGmmTiling::CheckSendRecvDataVolumn(const gert::TilingContext *context) const
 {
+    if (countsFromTensor_) {
+        return ge::GRAPH_SUCCESS;
+    }
     uint64_t eExpert = tilingData->taskTilingInfo.e;
     uint64_t epWorldSize = tilingData->taskTilingInfo.epWorldSize;
 
@@ -300,6 +308,9 @@ ge::graphStatus AlltoAllvGmmTiling::CheckShapeSize(const gert::TilingContext *co
 
 ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeSize(const gert::TilingContext *context) const
 {
+    if (countsFromTensor_) {
+        return ge::GRAPH_SUCCESS;
+    }
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "attrs"),
                     return ge::GRAPH_FAILED);
@@ -334,6 +345,9 @@ ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeSize(const gert::TilingContex
 
 ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeRelation(const gert::TilingContext *context) const
 {
+    if (countsFromTensor_) {
+        return ge::GRAPH_SUCCESS;
+    }
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "attrs"),
                     return ge::GRAPH_FAILED);
@@ -793,9 +807,7 @@ uint64_t AlltoAllvGmmTiling::GetTilingKey() const
     }
     bool tilingekyGmmTrans = transGmmWeight_;
     bool tilingekyMmTrans = transMmWeight_;
-    uint64_t tilingKey = GET_TPL_TILING_KEY(tilingekyGmmTrans, tilingekyMmTrans, commMode);
-    OP_LOGD(context_->GetNodeName(), "TilingKey is %llu, gmmTrans=%d, mmTrans=%d, commMode=%u.", tilingKey,
-            tilingekyGmmTrans, tilingekyMmTrans, commMode);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(tilingekyGmmTrans, tilingekyMmTrans, commMode, countsFromTensor_);
     return tilingKey;
 }
 
@@ -819,20 +831,22 @@ ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext *c
                     return ge::GRAPH_FAILED);
     epWorldSize_ = *epWorldSizePtr;
 
-    auto sendCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
-    auto recvCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
-    OP_TILING_CHECK((sendCountsPtr == nullptr) || (recvCountsPtr == nullptr),
-                    OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "sendCounts or recvCounts"),
-                    return ge::GRAPH_FAILED);
+    if (!countsFromTensor_) {
+        auto sendCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
+        auto recvCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
+        OP_TILING_CHECK((sendCountsPtr == nullptr) || (recvCountsPtr == nullptr),
+                        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "sendCounts or recvCounts"),
+                        return ge::GRAPH_FAILED);
 
-    sendCounts = static_cast<const int64_t *>(sendCountsPtr->GetData());
-    OP_TILING_CHECK(sendCounts == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "sendCounts data"),
-                    return ge::GRAPH_FAILED);
-    recvCounts = static_cast<const int64_t *>(recvCountsPtr->GetData());
-    OP_TILING_CHECK(recvCounts == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "recvCounts data"),
-                    return ge::GRAPH_FAILED);
-    uint64_t sendCountsSize = sendCountsPtr->GetSize();
-    e_ = sendCountsSize / epWorldSize_;
+        sendCounts = static_cast<const int64_t *>(sendCountsPtr->GetData());
+        OP_TILING_CHECK(sendCounts == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "sendCounts data"),
+                        return ge::GRAPH_FAILED);
+        recvCounts = static_cast<const int64_t *>(recvCountsPtr->GetData());
+        OP_TILING_CHECK(recvCounts == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "recvCounts data"),
+                        return ge::GRAPH_FAILED);
+        uint64_t sendCountsSize = sendCountsPtr->GetSize();
+        e_ = sendCountsSize / epWorldSize_;
+    }
 
     auto gmmXShape = context->GetInputShape(GMM_X_INDEX)->GetStorageShape();
     bsk_ = gmmXShape.GetDim(0);
@@ -875,27 +889,31 @@ ge::graphStatus AlltoAllvGmmTiling::RunFusionKernelTiling(gert::TilingContext *c
 
 ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext *context)
 {
-    auto attrs = context->GetAttrs();
-    auto recvCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
-    OP_TILING_CHECK(recvCountsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "recvCounts"),
-                    return ge::GRAPH_FAILED);
-    recvCounts = static_cast<const int64_t *>(recvCountsPtr->GetData());
-    OP_TILING_CHECK(recvCounts == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "recvCounts data"),
-                    return ge::GRAPH_FAILED);
-    uint64_t recvCountsSize = recvCountsPtr->GetSize();
     uint64_t maxMSize = 0;
-    OP_TILING_CHECK(
-        e_ * epWorldSize_ > recvCountsSize,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "e * epWorldSize",
-                                              (std::to_string(e_) + " * " + std::to_string(epWorldSize_)).c_str(),
-                                              "should not exceed recvCounts size"),
-        return ge::GRAPH_FAILED);
-    for (uint64_t expertIdx = 0; expertIdx < e_; expertIdx++) {
-        uint64_t mSize = 0;
-        for (uint64_t rankIdx = 0; rankIdx < epWorldSize_; rankIdx++) {
-            mSize += recvCounts[rankIdx * e_ + expertIdx];
+    if (countsFromTensor_) {
+        maxMSize = a_;
+    } else {
+        auto attrs = context->GetAttrs();
+        auto recvCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
+        OP_TILING_CHECK(recvCountsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "recvCounts"),
+                        return ge::GRAPH_FAILED);
+        recvCounts = static_cast<const int64_t *>(recvCountsPtr->GetData());
+        OP_TILING_CHECK(recvCounts == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "recvCounts data"),
+                        return ge::GRAPH_FAILED);
+        uint64_t recvCountsSize = recvCountsPtr->GetSize();
+        OP_TILING_CHECK(
+            e_ * epWorldSize_ > recvCountsSize,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "e * epWorldSize",
+                                                  (std::to_string(e_) + " * " + std::to_string(epWorldSize_)).c_str(),
+                                                  "should not exceed recvCounts size"),
+            return ge::GRAPH_FAILED);
+        for (uint64_t expertIdx = 0; expertIdx < e_; expertIdx++) {
+            uint64_t mSize = 0;
+            for (uint64_t rankIdx = 0; rankIdx < epWorldSize_; rankIdx++) {
+                mSize += recvCounts[rankIdx * e_ + expertIdx];
+            }
+            maxMSize = std::max(mSize, maxMSize);
         }
-        maxMSize = std::max(mSize, maxMSize);
     }
 
     if (maxMSize != 0) {
@@ -1031,17 +1049,13 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
                     return ge::GRAPH_FAILED);
     epWorldSize_ = *epWorldSizePtr_;
     sendCountsPtr_ = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
-    OP_TILING_CHECK(sendCountsPtr_ == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "sendCounts"),
-                    return ge::GRAPH_FAILED);
-    sendCounts = static_cast<const int64_t *>(sendCountsPtr_->GetData());
-    OP_TILING_CHECK(sendCounts == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "sendCounts data"),
-                    return ge::GRAPH_FAILED);
+    if (sendCountsPtr_ != nullptr) {
+        sendCounts = static_cast<const int64_t *>(sendCountsPtr_->GetData());
+    }
     recvCountsPtr_ = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
-    OP_TILING_CHECK(recvCountsPtr_ == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "recvCounts"),
-                    return ge::GRAPH_FAILED);
-    recvCounts = static_cast<const int64_t *>(recvCountsPtr_->GetData());
-    OP_TILING_CHECK(recvCounts == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "recvCounts data"),
-                    return ge::GRAPH_FAILED);
+    if (recvCountsPtr_ != nullptr) {
+        recvCounts = static_cast<const int64_t *>(recvCountsPtr_->GetData());
+    }
     transGmmWeightPtr_ = attrs->GetAttrPointer<bool>(NON_QUANT_ATTR_TRANS_GMM_WEIGHT_INDEX);
     if (transGmmWeightPtr_ != nullptr) {
         transGmmWeight_ = *transGmmWeightPtr_;
@@ -1074,14 +1088,36 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeAttrsInfo()
 
     constexpr uint32_t SEND_COUNTS_TENSOR_INDEX = 2U;
     constexpr uint32_t RECV_COUNTS_TENSOR_INDEX = 3U;
-    OP_TILING_CHECK(IsShapePresent(context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_INDEX)),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "sendCounts input", "present",
-                                                          "The value of sendCounts input must be nullptr."),
+    bool hasSendTensor = IsShapePresent(context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_INDEX));
+    bool hasRecvTensor = IsShapePresent(context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_INDEX));
+    size_t sendAttrSz = (sendCountsPtr_ != nullptr) ? sendCountsPtr_->GetSize() : 999U;
+    size_t recvAttrSz = (recvCountsPtr_ != nullptr) ? recvCountsPtr_->GetSize() : 999U;
+    bool hasSendAttr = !hasSendTensor && (sendCountsPtr_ != nullptr) && (sendAttrSz > 0U);
+    bool hasRecvAttr = !hasRecvTensor && (recvCountsPtr_ != nullptr) && (recvAttrSz > 0U);
+
+    OP_TILING_CHECK(hasSendTensor != hasRecvTensor,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "sendCountsTensor/recvCountsTensor",
+                        (std::to_string(hasSendTensor) + "/" + std::to_string(hasRecvTensor)).c_str(),
+                        "sendCountsTensor and recvCountsTensor must use the same source (both tensor or both attr)."),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(IsShapePresent(context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_INDEX)),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "recvCounts input", "present",
-                                                          "The value of recvCounts input must be nullptr."),
+    OP_TILING_CHECK(hasSendAttr != hasRecvAttr,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "sendCounts/recvCounts",
+                        (std::to_string(hasSendAttr) + "/" + std::to_string(hasRecvAttr)).c_str(),
+                        "sendCounts and recvCounts attrs must use the same source (both present or both absent)."),
                     return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(hasSendTensor && hasSendAttr,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "sendCounts/sendCountsTensor", "both set",
+                        "sendCounts attr and sendCountsTensor are mutually exclusive."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(!hasSendTensor && !hasSendAttr,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "sendCounts/sendCountsTensor", "both null",
+                        "at least one of sendCounts attr or sendCountsTensor must be provided."),
+                    return ge::GRAPH_FAILED);
+    countsFromTensor_ = hasSendTensor;
 
     auto gmmXDesc = context_->GetInputDesc(GMM_X_INDEX);
     OP_TILING_CHECK(gmmXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "gmmX"),
@@ -1174,6 +1210,47 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetShapeInfo()
         mmWeightDataType_ = context_->GetOptionalInputDesc(NON_QUANT_MM_WEIGHT_INDEX)->GetDataType();
     }
 
+    constexpr uint64_t MAX_TOTAL_EXPERTS_FOR_TENSOR = 2048U;
+    uint64_t totalExperts = e_ * epWorldSize_;
+    OP_TILING_CHECK(totalExperts > MAX_TOTAL_EXPERTS_FOR_TENSOR,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->GetNodeName(), "ep_world_size",
+                        (std::to_string(totalExperts) + " (e=" + std::to_string(e_) + " * ep=" +
+                         std::to_string(epWorldSize_) + ")").c_str(),
+                        (std::string("total experts (e * ep_world_size) must be <= ") +
+                         std::to_string(MAX_TOTAL_EXPERTS_FOR_TENSOR)).c_str()),
+                    return ge::GRAPH_FAILED);
+    if (countsFromTensor_) {
+        constexpr uint32_t SEND_COUNTS_TENSOR_INDEX = 2U;
+        constexpr uint32_t RECV_COUNTS_TENSOR_INDEX = 3U;
+        auto sendTensorShape = context_->GetOptionalInputShape(SEND_COUNTS_TENSOR_INDEX);
+        auto recvTensorShape = context_->GetOptionalInputShape(RECV_COUNTS_TENSOR_INDEX);
+        int64_t sendTensorLen = sendTensorShape->GetStorageShape().GetDim(0);
+        int64_t recvTensorLen = recvTensorShape->GetStorageShape().GetDim(0);
+        OP_TILING_CHECK(sendTensorLen > static_cast<int64_t>(MAX_TOTAL_EXPERTS_FOR_TENSOR),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            context_->GetNodeName(), "sendCountsTensor", std::to_string(sendTensorLen).c_str(),
+                            (std::string("length of sendCountsTensor must be <= ") +
+                             std::to_string(MAX_TOTAL_EXPERTS_FOR_TENSOR)).c_str()),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(recvTensorLen > static_cast<int64_t>(MAX_TOTAL_EXPERTS_FOR_TENSOR),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            context_->GetNodeName(), "recvCountsTensor", std::to_string(recvTensorLen).c_str(),
+                            (std::string("length of recvCountsTensor must be <= ") +
+                             std::to_string(MAX_TOTAL_EXPERTS_FOR_TENSOR)).c_str()),
+                        return ge::GRAPH_FAILED);
+    } else {
+        OP_TILING_CHECK(totalExperts > EXPERT_MAX_VALUE,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            context_->GetNodeName(), "sendCounts",
+                            (std::to_string(totalExperts) + " (e=" + std::to_string(e_) + " * ep=" +
+                             std::to_string(epWorldSize_) + ")").c_str(),
+                            (std::string("when total experts (e * ep_world_size) > ") +
+                             std::to_string(EXPERT_MAX_VALUE) +
+                             ", sendCounts/recvCounts must be passed as Tensor, attr list not supported.").c_str()),
+                        return ge::GRAPH_FAILED);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1226,22 +1303,27 @@ ge::graphStatus AlltoAllvGmmTilingBase::PostTiling()
     auto attrs = context_->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "attrs"),
                     return ge::GRAPH_FAILED);
-    auto sendCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
-    OP_TILING_CHECK(sendCountsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "sendCounts"),
-                    return ge::GRAPH_FAILED);
-    auto recvCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
-    OP_TILING_CHECK(recvCountsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "recvCounts"),
-                    return ge::GRAPH_FAILED);
-    const int64_t *sendCountsData = static_cast<const int64_t *>(sendCountsPtr->GetData());
-    OP_TILING_CHECK(sendCountsData == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "sendCounts data"),
-                    return ge::GRAPH_FAILED);
-    const int64_t *recvCountsData = static_cast<const int64_t *>(recvCountsPtr->GetData());
-    OP_TILING_CHECK(recvCountsData == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "recvCounts data"),
-                    return ge::GRAPH_FAILED);
+    tilingData->taskTilingInfo.countsFromTensor = static_cast<uint8_t>(countsFromTensor_);
+    if (!countsFromTensor_) {
+        auto sendCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
+        OP_TILING_CHECK(sendCountsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "sendCounts"),
+                        return ge::GRAPH_FAILED);
+        auto recvCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
+        OP_TILING_CHECK(recvCountsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "recvCounts"),
+                        return ge::GRAPH_FAILED);
+        const int64_t *sendCountsData = static_cast<const int64_t *>(sendCountsPtr->GetData());
+        OP_TILING_CHECK(sendCountsData == nullptr,
+                        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "sendCounts data"),
+                        return ge::GRAPH_FAILED);
+        const int64_t *recvCountsData = static_cast<const int64_t *>(recvCountsPtr->GetData());
+        OP_TILING_CHECK(recvCountsData == nullptr,
+                        OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "recvCounts data"),
+                        return ge::GRAPH_FAILED);
 
-    for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
-        tilingData->taskTilingInfo.sendCnt[i] = sendCountsData[i];
-        tilingData->taskTilingInfo.recvCnt[i] = recvCountsData[i];
+        for (uint32_t i = 0; i < e_ * epWorldSize_; i++) {
+            tilingData->taskTilingInfo.sendCnt[i] = sendCountsData[i];
+            tilingData->taskTilingInfo.recvCnt[i] = recvCountsData[i];
+        }
     }
 
     tilingData->isPermuteOut = permuteOutFlag_;

@@ -43,7 +43,7 @@ uint64_t AlltoAllvMXQuantGmmTiling::GetTilingKey() const
     if (AlltoAllvQuantGmmTilingCommon::QuantGetAndConvertCommMode(context_, commMode) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    uint64_t tilingKey = GET_TPL_TILING_KEY(transGmmWeight_, transMmWeight_, commMode);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(transGmmWeight_, transMmWeight_, commMode, countsFromTensor_);
     return tilingKey;
 }
 

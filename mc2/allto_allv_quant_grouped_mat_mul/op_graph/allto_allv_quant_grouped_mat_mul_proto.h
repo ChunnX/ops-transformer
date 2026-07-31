@@ -41,8 +41,8 @@ namespace ge {
 * @par Attributes:
 * @li group: A required String identifying the expert group of ranks.
 * @li ep_world_size: A required int identifying the number of expert parallel group rank num.
-* @li send_counts: An int list. A list containing amount of data to be sent.
-* @li recv_counts: An int list. A list containing amount of data to be received.
+* @li send_counts: An optional int list. A list containing amount of data to be sent. Mutually exclusive with send_counts_tensor; required when e*ep_world_size <= 256, must use send_counts_tensor instead when e*ep_world_size > 256.
+* @li recv_counts: An optional int list. A list containing amount of data to be received. Mutually exclusive with recv_counts_tensor; required when e*ep_world_size <= 256, must use recv_counts_tensor instead when e*ep_world_size > 256.
 * @li gmm_x_quant_mode: An int. Quantization mode of gmm_x. Default: 0.
 *        - 0：No Quantization
 *        - 1：PerTensor Quantization
@@ -89,8 +89,8 @@ REG_OP(AlltoAllvQuantGroupedMatMul)
     .OUTPUT(permute_out, TensorType({DT_HIFLOAT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_FLOAT4_E2M1}))
     .REQUIRED_ATTR(group, String)
     .REQUIRED_ATTR(ep_world_size, Int)
-    .REQUIRED_ATTR(send_counts, ListInt)
-    .REQUIRED_ATTR(recv_counts, ListInt)
+    .ATTR(send_counts, ListInt, {})
+    .ATTR(recv_counts, ListInt, {})
     .REQUIRED_ATTR(gmm_x_quant_mode, Int)
     .REQUIRED_ATTR(gmm_weight_quant_mode, Int)
     .ATTR(trans_gmm_weight, Bool, false)

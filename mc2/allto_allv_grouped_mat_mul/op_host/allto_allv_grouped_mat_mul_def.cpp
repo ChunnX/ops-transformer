@@ -74,8 +74,8 @@ public:
 
         this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
-        this->Attr("send_counts").AttrType(REQUIRED).ListInt();
-        this->Attr("recv_counts").AttrType(REQUIRED).ListInt();
+        this->Attr("send_counts").AttrType(OPTIONAL).ListInt();
+        this->Attr("recv_counts").AttrType(OPTIONAL).ListInt();
         this->Attr("trans_gmm_weight").AttrType(OPTIONAL).Bool(false);
         this->Attr("trans_mm_weight").AttrType(OPTIONAL).Bool(false);
         this->Attr("permute_out_flag").AttrType(OPTIONAL).Bool(false);

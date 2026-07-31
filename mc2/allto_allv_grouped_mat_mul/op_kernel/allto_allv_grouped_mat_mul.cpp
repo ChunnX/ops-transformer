@@ -43,7 +43,8 @@ using namespace Mc2GroupedMatmulTilingData;
 #define TILING_TYPE __gm__ int32_t
 #endif
 
-template <bool TILINGKEY_GMM_WEIGHT_TRANSPOSE, bool TILINGKEY_MM_WEIGHT_TRANSPOSE, int TILINGKEY_COMM_MODE>
+template <bool TILINGKEY_GMM_WEIGHT_TRANSPOSE, bool TILINGKEY_MM_WEIGHT_TRANSPOSE, int TILINGKEY_COMM_MODE,
+          bool TILINGKEY_COUNTS_FROM_TENSOR>
 __global__ __aicore__ void
 allto_allv_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCountsTensorOptionalGM,
                            GM_ADDR recvCountsTensorOptionalGM, GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM,
@@ -70,8 +71,8 @@ allto_allv_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCoun
     using LocalComputeOpType =
         QuantGroupedMatmul<AlltoAllvGmmTilingData, GMMQuantTilingData, DTYPE_MM_X, DTYPE_MM_WEIGHT, float, DTYPE_MM_Y,
                            CubeFormat::ND, false, TILINGKEY_MM_WEIGHT_TRANSPOSE, true, true>;
-    A2avGmmScheduler<HcclA2avOp<DTYPE_GMM_X, true, TILINGKEY_COMM_MODE>, ComputeOpType, LocalComputeOpType,
-                     AlltoAllvGmmTilingData, GMMQuantTilingData, TILING_TYPE>
+    A2avGmmScheduler<HcclA2avOp<DTYPE_GMM_X, true, TILINGKEY_COMM_MODE, TILINGKEY_COUNTS_FROM_TENSOR>, ComputeOpType,
+                     LocalComputeOpType, AlltoAllvGmmTilingData, GMMQuantTilingData, TILING_TYPE>
         a2avGmmScheduler;
 
     GET_NESTED_TILING_DATA_MEMBER_ADDR(AlltoAllvGmmTilingData, GMMQuantTilingData, gmmQuantTilingData, gmmArray,
@@ -81,6 +82,6 @@ allto_allv_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCoun
 
     a2avGmmScheduler.Init(gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM, nullptr, nullptr, nullptr, nullptr,
                           gmmyGM, mmyOptionalGM, permuteOutOptionalGM, userWorkspace, tilingGM, gmmArrayAddr_,
-                          mmArrayAddr_, &pipe, true);
+                          mmArrayAddr_, &pipe, true, sendCountsTensorOptionalGM, recvCountsTensorOptionalGM);
     a2avGmmScheduler.Process();
 }
