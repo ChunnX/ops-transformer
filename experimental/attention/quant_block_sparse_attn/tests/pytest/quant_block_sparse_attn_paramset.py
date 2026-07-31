@@ -91,6 +91,20 @@ TEST_PARAMS = {
         p_scale_value=[1.0],
         seed=[17],
     ),
+    "tnd_no_pscale": _case(
+        layout_q=["TND"],
+        B=[2],
+        S1=[256],
+        S2=[256],
+        sparse_count=[2],
+        return_softmax_lse=[True],
+        actlen_mode=["full"],
+        sparse_pattern=["sequential"],
+        scale_pattern=["ones"],
+        block_table_pattern=["sequential"],
+        p_scale_value=[None],
+        seed=[29],
+    ),
 }
 
 ENABLED_PARAMS = [TEST_PARAMS["TND_TYPICAL_CASE"], TEST_PARAMS["NTD_TYPICAL_CASE"]]

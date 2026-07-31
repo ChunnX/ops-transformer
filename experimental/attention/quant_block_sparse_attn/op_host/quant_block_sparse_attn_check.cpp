@@ -274,11 +274,13 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckFormat() const
     }
 
     const gert::CompileTimeTensorDesc *optionalDescs[] = {
-        opParamInfo.attenMask.desc,  opParamInfo.blockTable.desc,  opParamInfo.metadata.desc,
+        opParamInfo.attenMask.desc,  opParamInfo.blockTable.desc,
+        opParamInfo.metadata.desc,
         opParamInfo.cuSeqlensQ.desc, opParamInfo.cuSeqlensKV.desc, opParamInfo.seqUsedQ.desc,
         opParamInfo.seqUsedKV.desc,
     };
-    const char *optionalNames[] = {"atten_mask",    "block_table", "metadata",  "cu_seqlens_q",
+    const char *optionalNames[] = {"atten_mask",    "block_table", "metadata",
+                                    "cu_seqlens_q",
                                    "cu_seqlens_kv", "seqused_q",   "seqused_kv"};
     for (size_t i = 0; i < sizeof(optionalDescs) / sizeof(optionalDescs[0]); ++i) {
         if (optionalDescs[i] != nullptr && optionalDescs[i]->GetOriginFormat() != ge::FORMAT_ND) {
@@ -525,9 +527,9 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckQuantShape() const
 
     if (opParamInfo.pScale.shape != nullptr) {
         const gert::Shape &pScaleShape = opParamInfo.pScale.shape->GetStorageShape();
-        if (pScaleShape.GetShapeSize() != 1) {
+        if (pScaleShape.GetShapeSize() != 1 && pScaleShape.GetShapeSize() != 0) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "p_scale", Ops::Base::ToString(pScaleShape),
-                                                  "p_scale must be a scalar (shape size == 1)");
+                                                  "p_scale must be a scalar (shape size == 1) or empty (shape size == 0)");
             return ge::GRAPH_FAILED;
         }
     }
@@ -643,13 +645,20 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckMXFP8FullQuantShape() const
         static_cast<int64_t>(tilingInfo_.paBlockNumSum), static_cast<int64_t>(tilingInfo_.n2Size), valueScaleBlockSize,
         static_cast<int64_t>(tilingInfo_.dSizeV), BSA_MXFP8_SCALE_LAST_DIM};
 
-    if (CheckInputShape(opParamInfo.pScale, "quantScale1", pScaleShape) != ge::GRAPH_SUCCESS ||
-        CheckInputShape(opParamInfo.qDescale, "dequantScaleQuery", queryAntiquantScaleShape) != ge::GRAPH_SUCCESS ||
+    if (CheckInputShape(opParamInfo.qDescale, "dequantScaleQuery", queryAntiquantScaleShape) != ge::GRAPH_SUCCESS ||
         CheckInputShape(opParamInfo.key, "key", keyShapeExpect) != ge::GRAPH_SUCCESS ||
         CheckInputShape(opParamInfo.value, "value", valueShapeExpect) != ge::GRAPH_SUCCESS ||
         CheckInputShape(opParamInfo.kDescale, "keyAntiquantScale", keyAntiquantScaleShape) != ge::GRAPH_SUCCESS ||
         CheckInputShape(opParamInfo.vDescale, "valueAntiquantScale", valueAntiquantScaleShape) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
+    }
+    // pScale may be an empty tensor (shape size 0) to indicate default scale 1.0
+    const int64_t pScaleShapeSize = (opParamInfo.pScale.shape != nullptr)
+        ? opParamInfo.pScale.shape->GetStorageShape().GetShapeSize() : 0;
+    if (pScaleShapeSize != 0) {
+        if (CheckInputShape(opParamInfo.pScale, "quantScale1", pScaleShape) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
