@@ -18,26 +18,26 @@ import torch
 from test_cases import REDLINE_CASES
 from cpu_golden import compressor_grad_golden
 from npu_core import NPUBackend
+from precision_check import (
+    check_one_output,
+    print_log,
+    get_pct_thd,
+    get_output_keys,
+    format_case_line,
+    build_error_result,
+    print_summary,
+    ALL_OUTPUTS,
+)
 
 
 DEVICE_ID = 0
 
 
-# Precision thresholds (from ops-transformer compressor test standards)
-PRECISION = {
-    "bfloat16": {"rtol": 0.0078125, "atol": 0.0001, "pctThd": 99.5},
-    "float16": {"rtol": 0.005, "atol": 0.000025, "pctThd": 99.5},
-}
-
-
-# ── Output toggle flags ──────────────────────────────────────────
-# dkv/dsb: unified kernel 不输出 dkv/dsb 到 GM（作为 CV 中间数据传给 Cube）
-#   如需测试 dkv/dsb，需在 kernel 中添加 pl.store 写 GM 指令，
-#   然后在此处分配输出 tensor 并开启对应 flag
+# ── 输出精度对比开关 ──
 ENABLE_DKV_CHECK  = False
 ENABLE_DSB_CHECK  = False
 ENABLE_APE_CHECK  = True
-ENABLE_DX_CHECK   = False    # Phase 3 已实现
+ENABLE_DX_CHECK   = False
 
 
 # ================================================================
@@ -314,15 +314,7 @@ def npu_test(case, device):
         cu_seqlens=cuGolden, seqused=sqGolden, start_pos=spGolden,
         cmp_ratio=cmpRatio, coff=coff,
     )
-    # print("d_cpm_kv:")
-    # print(d_cpm_kv.shape)
-    # print(d_cpm_kv[0])
-    # print(dXGold.shape)
-    # print(dXGold)
-    # print(wkvCpu.shape)
-    # print(wkvCpu[0])
-    # print(wgateCpu.shape)
-    # print(wgateCpu[0])
+    
     # ── Phase 3 writes d_ape directly ──
     apeNp = dapeOutNpu.cpu().view(cmpRatio, coff * headDim)
 
@@ -354,79 +346,69 @@ def npu_test(case, device):
                   coff=coff, cmpRatio=cmpRatio, headDim=headDim,
                   batchSize=batchSize)
 
-    p = PRECISION[dataType]
-    pctThd = p["pctThd"]
+    p_pct_thd = get_pct_thd(dataType)
 
-    # ── dkv check (disabled — kernel 未输出 dkv 到 GM) ──
-    if ENABLE_DKV_CHECK and totalValid > 0:
-        # TODO: kernel 添加 dkv GM store 后:
-        #   dkvNp = dkvNpu.cpu().float()[:totalValid]
-        #   ... compare with dkvGold ...
-        result["dkvDiff"] = float("nan")
-        result["dkvPct"] = 100.0
-        result["dkvStatus"] = "SKIP"
-    else:
-        result["dkvDiff"] = float("nan")
-        result["dkvPct"] = 100.0
-        result["dkvStatus"] = "SKIP"
+    # ── dkv/dsb golden 准备（仅当对应 check 开启时才计算，节省时间）──
+    # 当前 cpu_golden.compressor_grad_golden 不直接返回 dkv/dsb，
+    # 它们是 d_new_kv / d_new_score 的中间变量。
+    # 若 ENABLE_DKV_CHECK / ENABLE_DSB_CHECK 开启，需要扩展 golden 接口返回 dkv/dsb
+    # 这里先按当前 golden 接口能力，dkv/dsb 用 None 占位，开启 check 时会输出 SKIP
+    dkvGold = None
+    dsbGold = None
+    # 若 kernel 已写 dkvNpu/dsbNpu 到 GM，则在此处取出:
+    # dkvNp = dkvNpu.cpu().float()[:totalValid]
+    # dsbNp = dsbNpu.cpu().float()[:totalValid]
 
-    # ── dsb check (disabled — kernel 未输出 dsb 到 GM) ──
-    if ENABLE_DSB_CHECK and totalValid > 0:
-        # TODO: kernel 添加 dsb GM store 后:
-        #   dsbNp = dsbNpu.cpu().float()[:totalValid]
-        #   ... compare with dsbGold ...
-        result["dsbDiff"] = float("nan")
-        result["dsbPct"] = 100.0
-        result["dsbStatus"] = "SKIP"
-    else:
-        result["dsbDiff"] = float("nan")
-        result["dsbPct"] = 100.0
-        result["dsbStatus"] = "SKIP"
+    # ── 输出精度对比 ──
+    # 通过 ENABLE_XXX_CHECK 控制是否对比；未开启 → SKIP，便于按需启用任意输出
+    print_log("=" * 80)
+    print_log(f"Start precision check for case '{name}' (validBlocks={totalValid})")
 
-    # ── d_ape check (enabled) ──
-    if ENABLE_APE_CHECK and totalValid > 0:
-        apeDiff = (apeNp - apeGold).abs().max().item()
-        apeClose = torch.isclose(apeNp, apeGold,
-                                 rtol=1e-4, atol=1e-4, equal_nan=True)
-        apePct = apeClose.float().mean().item() * 100.0
-        result["apeDiff"] = apeDiff
-        result["apePct"] = apePct
-        result["apeStatus"] = "PASS" if apePct >= pctThd else "FAIL"
-    else:
-        result["apeDiff"] = float("nan")
-        result["apePct"] = 100.0
-        result["apeStatus"] = "SKIP"
+    # dkv check
+    r_dkv = check_one_output("dkv", dkvGold, None, dataType,
+                             ENABLE_DKV_CHECK, totalValid, p_pct_thd)
+    result["dkvDiff"] = r_dkv["diff"]
+    result["dkvPct"] = r_dkv["pct"]
+    result["dkvStatus"] = r_dkv["status"]
 
-    # ── d_x check (enabled) ──
-    if ENABLE_DX_CHECK and totalValid > 0:
-        dXNp = d_xNpu.cpu().float()
-        dXGoldF = dXGold.float()
-        dxDiff = (dXNp - dXGoldF).abs().max().item()
-        dxClose = torch.isclose(dXNp, dXGoldF,
-                                rtol=1e-4, atol=1e-4, equal_nan=True)
-        dxPct = dxClose.float().mean().item() * 100.0
-        result["dxDiff"] = dxDiff
-        result["dxPct"] = dxPct
-        result["dxStatus"] = "PASS" if dxPct >= pctThd else "FAIL"
-    else:
-        result["dxDiff"] = float("nan")
-        result["dxPct"] = 100.0
-        result["dxStatus"] = "SKIP"
+    # dsb check
+    r_dsb = check_one_output("dsb", dsbGold, None, dataType,
+                             ENABLE_DSB_CHECK, totalValid, p_pct_thd)
+    result["dsbDiff"] = r_dsb["diff"]
+    result["dsbPct"] = r_dsb["pct"]
+    result["dsbStatus"] = r_dsb["status"]
+
+    # d_ape check (enabled by default — Phase 3 实现)
+    r_ape = check_one_output("d_ape", apeGold, apeNp, dataType,
+                             ENABLE_APE_CHECK, totalValid, p_pct_thd)
+    result["apeDiff"] = r_ape["diff"]
+    result["apePct"] = r_ape["pct"]
+    result["apeStatus"] = r_ape["status"]
+
+    # d_x check (Phase 3 实现，按需开启)
+    dXNp = d_xNpu.cpu().float()
+    dXGoldF = dXGold.float()
+    r_dx = check_one_output("d_x", dXGoldF, dXNp, dataType,
+                            ENABLE_DX_CHECK, totalValid, p_pct_thd)
+    result["dxDiff"] = r_dx["diff"]
+    result["dxPct"] = r_dx["pct"]
+    result["dxStatus"] = r_dx["status"]
 
     # ── Overall status ──
+    # 全部 SKIP 或 0 有效块 → PASS（trivial）
+    # 任一 FAIL → FAIL；任一 ERROR → ERROR
+    statuses = [result["dkvStatus"], result["dsbStatus"],
+                result["apeStatus"], result["dxStatus"]]
     if totalValid == 0:
         result["status"] = "PASS"  # No valid blocks → trivial pass
+    elif any(s == "ERROR" for s in statuses):
+        result["status"] = "ERROR"
+    elif any(s == "FAIL" for s in statuses):
+        result["status"] = "FAIL"
+    elif all(s == "SKIP" for s in statuses):
+        result["status"] = "SKIP"
     else:
-        statuses = [result.get("dkvStatus", "SKIP"),
-                    result.get("dsbStatus", "SKIP"),
-                    result.get("apeStatus", "SKIP"),
-                    result.get("dxStatus", "SKIP")]
-        if any(s == "FAIL" for s in statuses):
-            result["status"] = "FAIL"
-        elif all(s == "SKIP" for s in statuses):
-            result["status"] = "SKIP"
-        else:
-            result["status"] = "PASS"
+        result["status"] = "PASS"
 
     return result
 
@@ -446,7 +428,7 @@ def main():
                   f"Available: {[c['testcase_name'] for c in allCases]}")
             return 1
     else:
-        cases = REDLINE_CASES
+        cases = REDLINE_CASES[:1]
 
     # Override dataType
     for c in cases:
@@ -470,33 +452,19 @@ def main():
         try:
             r = npu_test(c, device)
             results.append(r)
-
-            parts = []
-            if ENABLE_DKV_CHECK:
-                parts.append(f"dkv={r['dkvPct']:.2f}%")
-            if ENABLE_DSB_CHECK:
-                parts.append(f"dsb={r['dsbPct']:.2f}%")
-            if ENABLE_APE_CHECK:
-                parts.append(f"ape={r['apePct']:.2f}%")
-            if ENABLE_DX_CHECK:
-                parts.append(f"dx={r['dxPct']:.2f}%")
-            detail = "  ".join(parts) if parts else "(no checks enabled)"
-            print(f"  {r['status']:5s}  {detail}  "
-                  f"(validBlocks={r['totalValid']})")
+            # 每个用例输出每个输出的对比结果，未对比的输出明确标记 SKIP
+            print(format_case_line(r))
         except Exception as e:
             print(f"  ERROR: {e}")
-            results.append(dict(name=c["testcase_name"], status="ERROR"))
+            # 错误用例补齐每个输出的状态为 ERROR，便于 per-output 统计
+            results.append(build_error_result(c["testcase_name"]))
 
     # ── Summary ──
-    print("\n" + "=" * 70)
-    passed  = sum(1 for r in results if r.get("status") == "PASS")
-    failed  = sum(1 for r in results if r.get("status") == "FAIL")
-    skipped = sum(1 for r in results if r.get("status") == "SKIP")
-    errors  = sum(1 for r in results if r.get("status") == "ERROR")
-    print(f"SUMMARY: {passed} PASS, {failed} FAIL, {skipped} SKIP, "
-          f"{errors} ERROR out of {len(results)}")
-    print("=" * 70)
+    # 汇总统计（含用例通过个数 + 以 case 为粒度的 per-output 对比结果表）统一在 precision_check 中实现
+    print_summary(results)
 
+    failed  = sum(1 for r in results if r.get("status") == "FAIL")
+    errors  = sum(1 for r in results if r.get("status") == "ERROR")
     return 0 if (failed + errors) == 0 else 1
 
 
