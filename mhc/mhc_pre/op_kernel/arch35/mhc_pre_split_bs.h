@@ -250,22 +250,25 @@ private:
         }
 
         vector_.matmulRes_ = hMixLocal;
+        // HMixCopyIn reads compact rows from GM. Use the logical fusion width,
+        // not the aligned Fixpipe stride from the former direct L0C-to-UB path.
+        const uint32_t hMixRowStride = vector_.mnConfig_.n;
 
         if (vector_.N_ == vector_.kSupportedN4) {
             MhcPreVFPostSegments<P, 4U, RESI_MODE == MHC_PRE_HAS_RESI>(
                 vector_.hPreBuff_, vector_.hPostBuff_, hResOutLocal, vector_.matmulRes_,
                 vector_.invRmsUb_, vector_.alphaInUb_, vector_.biasInUb_, static_cast<uint16_t>(lenT),
-                static_cast<uint32_t>(localOffset), vector_.tiling_->fusionAlign);
+                static_cast<uint32_t>(localOffset), hMixRowStride);
         } else if (vector_.N_ == vector_.kSupportedN6) {
             MhcPreVFPostSegments<P, 6U, RESI_MODE == MHC_PRE_HAS_RESI>(
                 vector_.hPreBuff_, vector_.hPostBuff_, hResOutLocal, vector_.matmulRes_,
                 vector_.invRmsUb_, vector_.alphaInUb_, vector_.biasInUb_, static_cast<uint16_t>(lenT),
-                static_cast<uint32_t>(localOffset), vector_.tiling_->fusionAlign);
+                static_cast<uint32_t>(localOffset), hMixRowStride);
         } else {
             MhcPreVFPostSegments<P, 8U, RESI_MODE == MHC_PRE_HAS_RESI>(
                 vector_.hPreBuff_, vector_.hPostBuff_, hResOutLocal, vector_.matmulRes_,
                 vector_.invRmsUb_, vector_.alphaInUb_, vector_.biasInUb_, static_cast<uint16_t>(lenT),
-                static_cast<uint32_t>(localOffset), vector_.tiling_->fusionAlign);
+                static_cast<uint32_t>(localOffset), hMixRowStride);
         }
         PipeBarrier<PIPE_V>();
 
