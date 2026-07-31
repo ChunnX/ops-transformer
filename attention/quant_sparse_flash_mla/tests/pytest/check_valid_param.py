@@ -11,7 +11,6 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import logging
-import math
 import torch
 
 logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
@@ -28,10 +27,30 @@ def check_valid_param(params):
     if params.get("layout_kv") not in ["BSND", "PA_BBND", "TND"]:
         raise ValueError(f"不支持的KV shape: {params.get('layout_kv')}")
 
-    if params.get("template_run_mode") not in ["CSA", "HCA", "SWA"]:
+    if params.get("template_run_mode") not in [
+        "CSA",
+        "HCA",
+        "SWA",
+        "ORI_SPARSE",
+        "ORI_CMP_SPARSE",
+    ]:
         raise ValueError(
             f"不支持的template_run_mode: {params.get('template_run_mode')}"
         )
+
+    template_run_mode = params.get("template_run_mode")
+    ori_mask_mode = params.get("ori_mask_mode")
+    cmp_mask_mode = params.get("cmp_mask_mode")
+
+    if template_run_mode in ("ORI_SPARSE", "ORI_CMP_SPARSE"):
+        if ori_mask_mode != 0:
+            raise ValueError(
+                f"ORI_SPARSE/ORI_CMP_SPARSE模式下ori_mask_mode仅支持0, 当前为{ori_mask_mode}"
+            )
+        if cmp_mask_mode != 0:
+            raise ValueError(
+                f"ORI_SPARSE/ORI_CMP_SPARSE模式下cmp_mask_mode仅支持0, 当前为{cmp_mask_mode}"
+            )
 
     B = params.get("B")
     cmp_ratio = params.get("cmp_ratio")
@@ -75,9 +94,3 @@ def check_valid_param(params):
                 for i in range(len(cu_seqlens_cmp_kv) - 1)
             ):
                 raise ValueError(f"cu_seqlens_cmp_kv必须单调递增: {cu_seqlens_cmp_kv}")
-            if cmp_ratio is not None and cmp_ratio != 1:
-                expected_T3 = math.floor(T2 / cmp_ratio)
-                if T3 != expected_T3:
-                    raise ValueError(
-                        f"cu_seqlens_cmp_kv最后一维({T3})与预期T3({expected_T3})不一致, T2={T2}, cmp_ratio={cmp_ratio}"
-                    )
