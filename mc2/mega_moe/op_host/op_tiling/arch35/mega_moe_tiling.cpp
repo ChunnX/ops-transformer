@@ -507,8 +507,8 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
     tilingData->combineQuantMode = GetCombineQuantModeByAttr(context, config);
     tilingData->clampLimit = *activationClampPtr;
-    tilingData->actMode = 0U;            // ACT_MODE_SWIGLU, 功能关闭
-    tilingData->actSubMode = 0U;         // ACT_SUB_MODE_DEFAULT
+    tilingData->actMode = 0U;    // ACT_MODE_SWIGLU, 功能关闭
+    tilingData->actSubMode = 0U; // ACT_SUB_MODE_DEFAULT
     tilingData->activationAlpha = 1.0f;
     tilingData->activationBeta = 1.0f;
 

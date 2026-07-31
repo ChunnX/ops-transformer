@@ -641,25 +641,25 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::ComputeDat
 // ============================================================================
 #define COMPUTE_TANH_TWOPATH(result, zReg, msk, oneReg, absReg, sqrReg, \
                              polyReg, tmpReg, expReg, c1Reg, c2Reg, cmpMask) \
-do { \
-    AscendC::MicroAPI::Mul(sqrReg, zReg, zReg, msk); \
-    AscendC::MicroAPI::Muls(polyReg, sqrReg, 0.0157396831f, msk); \
-    AscendC::MicroAPI::Adds(polyReg, polyReg, -0.0523039624f, msk); \
-    AscendC::MicroAPI::FusedMulDstAdd(polyReg, sqrReg, c2Reg, msk); \
-    AscendC::MicroAPI::FusedMulDstAdd(polyReg, sqrReg, c1Reg, msk); \
-    AscendC::MicroAPI::Mul(polyReg, polyReg, sqrReg, msk); \
-    AscendC::MicroAPI::FusedMulDstAdd(polyReg, zReg, zReg, msk); \
-    AscendC::MicroAPI::Muls(expReg, zReg, -2.0f, msk); \
-    AscendC::MicroAPI::Exp(expReg, expReg, msk); \
-    AscendC::MicroAPI::Adds(expReg, expReg, 1.0f, msk); \
-    AscendC::MicroAPI::Div(tmpReg, oneReg, expReg, msk); \
-    AscendC::MicroAPI::Muls(tmpReg, tmpReg, 2.0f, msk); \
-    AscendC::MicroAPI::Adds(tmpReg, tmpReg, -1.0f, msk); \
-    AscendC::MicroAPI::Abs(absReg, zReg, msk); \
-    AscendC::MicroAPI::CompareScalar<float, AscendC::CMPMODE::GE>(cmpMask, absReg, \
-                                                                  0.60000002384185791016f, msk); \
-    AscendC::MicroAPI::Select(result, tmpReg, polyReg, cmpMask); \
-} while (0)
+    do { \
+        AscendC::MicroAPI::Mul(sqrReg, zReg, zReg, msk); \
+        AscendC::MicroAPI::Muls(polyReg, sqrReg, 0.0157396831f, msk); \
+        AscendC::MicroAPI::Adds(polyReg, polyReg, -0.0523039624f, msk); \
+        AscendC::MicroAPI::FusedMulDstAdd(polyReg, sqrReg, c2Reg, msk); \
+        AscendC::MicroAPI::FusedMulDstAdd(polyReg, sqrReg, c1Reg, msk); \
+        AscendC::MicroAPI::Mul(polyReg, polyReg, sqrReg, msk); \
+        AscendC::MicroAPI::FusedMulDstAdd(polyReg, zReg, zReg, msk); \
+        AscendC::MicroAPI::Muls(expReg, zReg, -2.0f, msk); \
+        AscendC::MicroAPI::Exp(expReg, expReg, msk); \
+        AscendC::MicroAPI::Adds(expReg, expReg, 1.0f, msk); \
+        AscendC::MicroAPI::Div(tmpReg, oneReg, expReg, msk); \
+        AscendC::MicroAPI::Muls(tmpReg, tmpReg, 2.0f, msk); \
+        AscendC::MicroAPI::Adds(tmpReg, tmpReg, -1.0f, msk); \
+        AscendC::MicroAPI::Abs(absReg, zReg, msk); \
+        AscendC::MicroAPI::CompareScalar<float, AscendC::CMPMODE::GE>(cmpMask, absReg, \
+                                                                      0.60000002384185791016f, msk); \
+        AscendC::MicroAPI::Select(result, tmpReg, polyReg, cmpMask); \
+    } while (0)
 
 // ============================================================================
 // ActivationFlowSwiGLU: SwiGLU 激活完整计算流
@@ -870,7 +870,7 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::Activation
                 AscendC::MicroAPI::Duplicate(betaReg, ctx.beta, mask);        // betaReg = beta
                 AscendC::MicroAPI::Div(expReg, betaReg, addsReg, mask);       // beta/(exp(-gate)+1)
                 // situ_a = tanh(gate/beta) * beta * sigmoid(gate)
-                AscendC::MicroAPI::Mul(outFReg, sigmoidReg, expReg, mask);    // outFReg = situ_a
+                AscendC::MicroAPI::Mul(outFReg, sigmoidReg, expReg, mask); // outFReg = situ_a
 
                 if constexpr (ActSub == ActSubMode::LINEAR) {
                     // up路: alpha * tanh(up/alpha), 用 vregX1F 暂存 gate_result
@@ -1047,8 +1047,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     }
 
     // ---- 量化（原样保留，不涉及激活寄存器）----
-    uint32_t totalDataInUb = mSize * nDstUbAligned;                  // 128*256
-    uint32_t totalScaleInUb = totalDataInUb / AscendC::ONE_BLK_SIZE; // 128*256 / 32 = 128 * 8
+    uint32_t totalDataInUb = mSize * nDstUbAligned;                                             // 128*256
+    uint32_t totalScaleInUb = totalDataInUb / AscendC::ONE_BLK_SIZE;                            // 128*256 / 32 = 128 * 8
     uint16_t loopDataNum = (totalDataInUb + vlForHalfNumber_ * 2 - 1) / (vlForHalfNumber_ * 2); // 128
     uint16_t loopScaleNum = (totalScaleInUb + vlForHalfNumber_ - 1) / vlForHalfNumber_;         // 8
     ComputeMaxExp(gluResAddr, maxExpAddr, totalDataInUb, loopDataNum);                          // 获取最大值

@@ -2506,9 +2506,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSh
     const TupleShape &initShape, const BlockOffset &initOffset, int32_t &gmTileSequence)
 {
     sharedEpilogueOp_.Init({params_.workspaceInfo.sharedExpertSwigluDataPtr,
-                             params_.workspaceInfo.sharedExpertSwigluScalePtr, nullptr, nullptr, nullptr, nullptr,
-                             nullptr, params_.tilingData->clampLimit, static_cast<uint8_t>(ActMode::SWIGLU),
-                             static_cast<uint8_t>(ActSubMode::DEFAULT), 1.0f, 1.0f});
+                            params_.workspaceInfo.sharedExpertSwigluScalePtr, nullptr, nullptr, nullptr, nullptr,
+                            nullptr, params_.tilingData->clampLimit, static_cast<uint8_t>(ActMode::SWIGLU),
+                            static_cast<uint8_t>(ActSubMode::DEFAULT), 1.0f, 1.0f});
 
     GMMAddrInfo sharedGmm1AddrInfo;
     ExpertLoopState sharedGmm1State{initShape, initOffset, 0};
