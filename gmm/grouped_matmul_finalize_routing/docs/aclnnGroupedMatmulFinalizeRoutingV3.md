@@ -350,7 +350,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     - sharedInputOptional支持二维，维度为(bsdp,n)，bsdp必须小于等于batchSize/e，n和w的n一致。
     - logitOptional支持m和x的m一致。
     - rowIndexOptional支持m和x的m一致。
-    - x1、x2、groupListOptional、biasOptional是必选参数，scaleOptional、pertokenScaleOptional、logitOptional、rowIndexOptional、sharedInputOptional是可选参数。
+    - x1、x2、groupListOptional是必选参数，scaleOptional、pertokenScaleOptional、logitOptional、rowIndexOptional、biasOptional，sharedInputOptional是可选参数。
 
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - x1不支持INT8。
