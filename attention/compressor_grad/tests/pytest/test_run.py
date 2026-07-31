@@ -25,8 +25,8 @@ DEVICE_ID = 0
 
 # Precision thresholds (from ops-transformer compressor test standards)
 PRECISION = {
-    "bf16": {"rtol": 0.0078125, "atol": 0.0001, "pctThd": 99.5},
-    "fp16": {"rtol": 0.005,     "atol": 0.000025, "pctThd": 99.5},
+    "bfloat16": {"rtol": 0.0078125, "atol": 0.0001, "pctThd": 99.5},
+    "float16": {"rtol": 0.005, "atol": 0.000025, "pctThd": 99.5},
 }
 
 
