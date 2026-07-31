@@ -45,7 +45,8 @@ using BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, 
 #define TemplateMegaMoeLayeredTypeClass \
     typename XType, typename OutputType, typename TopkWeightsType, typename Weight1Type, int32_t QuantMode, \
         int32_t CombineQuantMode, bool TopkWeightsPrefetch
-#define TemplateMegaMoeLayeredTypeFunc XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch
+#define TemplateMegaMoeLayeredTypeFunc XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, \
+    TopkWeightsPrefetch
 
 template <TemplateMegaMoeLayeredTypeClass>
 class MegaMoeLayered {
@@ -2231,10 +2232,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
             if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
                 GlobalTensor<float> topKWeightsGlobalTensor_;
                 topKWeightsGlobalTensor_.SetGlobalBuffer((__gm__ float *)params_.probsGmAddr);
-                DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(chunkTokenCnt * topK_ * sizeof(float)), 0U, 0U,
-                                                0U};
+                DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(chunkTokenCnt * topK_ * sizeof(float)),
+                                                0U, 0U, 0U};
                 DataCopyPadExtParams<float> copyPadParams{false, 0U, 0U, 0U};
-                DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_[chunkStart * topK_], copyParams, copyPadParams);
+                DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_[chunkStart * topK_], copyParams,
+                            copyPadParams);
                 SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
             }
             if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
