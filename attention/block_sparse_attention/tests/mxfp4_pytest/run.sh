@@ -6,9 +6,10 @@ source /srv/workspace/mnt1/work_code/Ascend_20260703/cann/bin/setenv.bash
 cd "$(dirname "$0")"
 export BSA_CPU_ONLY=0 #npu模式
 export TORCH_DEVICE_BACKEND_AUTOLOAD=0
+# 加上-s才能看到日志
 python -m pytest test_bsa_mxfp4_golden.py::TestBSAMxfp4Golden::test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs128_d128 \
-    -v -s \              #加上-s才能看到日志
-    --b 1 --n1 1 --n2 8 --s1 128 --s2 512 --qk_d 128 --dump True
+    -v -s \
+    --b 1 --n1 1 --n2 1 --s1 128 --s2 512 --qk_d 128 --dump True
 
 
 # 2.cpu_模式
