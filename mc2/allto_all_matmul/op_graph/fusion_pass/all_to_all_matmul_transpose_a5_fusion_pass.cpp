@@ -160,6 +160,17 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
     if (info.hasX2Offset) {
         patternName += PATTERN_X2_OFFSET;
     }
+    // [FUSION_DBG] 期望 AlltoAllMatmul 有效输入个数 = 2(x1,x2) + 可选
+    const size_t expectMc2InputNum =
+        2U + static_cast<size_t>(info.hasBias) + static_cast<size_t>(info.hasX1Scale) +
+        static_cast<size_t>(info.hasX2Scale) + static_cast<size_t>(info.hasCommScale) +
+        static_cast<size_t>(info.hasX1Offset) + static_cast<size_t>(info.hasX2Offset);
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(),
+              "[FUSION_DBG] MakePattern name=%s expectMc2InputNum=%zu flags={bias=%d,x1s=%d,x2s=%d,comm=%d,x1o=%d,x2o=%d,node=%s}",
+              patternName.c_str(), expectMc2InputNum, info.hasBias, info.hasX1Scale, info.hasX2Scale, info.hasCommScale,
+              info.hasX1Offset, info.hasX2Offset,
+              info.node == TransposeNode::Transpose ? "Transpose" : "TransposeD");
+
     auto graphBuilder = ge::es::EsGraphBuilder(patternName.c_str());
     auto [x1, x2, bias, x1Scale, x2Scale, commScale, x1Offset, x2Offset] = graphBuilder.CreateInputs<8>();
     ge::es::EsTensorHolder transpose;
@@ -177,9 +188,20 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
                                       info.hasX2Scale ? x2Scale : nullptr, info.hasCommScale ? commScale : nullptr,
                                       info.hasX1Offset ? x1Offset : nullptr, info.hasX2Offset ? x2Offset : nullptr, group,
                                       worldSize);
-    auto graph = graphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
+    // 与 MatmulAlltoAll fusion 一致：pattern 只挂主输出 y，避免 all2all_out 未接入时匹配失败
+    auto graph = graphBuilder.BuildAndReset({mc2.y});
+    if (graph == nullptr) {
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "[FUSION_DBG] MakePattern BuildAndReset failed, name=%s", patternName.c_str());
+        return nullptr;
+    }
+    auto *mc2Producer = mc2.y.GetProducer();
+    auto *transposeProducer = transpose.GetProducer();
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(),
+              "[FUSION_DBG] MakePattern built name=%s expectMc2InputNum=%zu mc2Producer=%p transposeProducer=%p",
+              patternName.c_str(), expectMc2InputNum, static_cast<const void *>(mc2Producer),
+              static_cast<const void *>(transposeProducer));
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
-    pattern->CaptureTensor({*mc2.y.GetProducer(), 0}).CaptureTensor({*transpose.GetProducer(), 0});
+    pattern->CaptureTensor({*mc2Producer, 0}).CaptureTensor({*transposeProducer, 0});
     return pattern;
 }
 
@@ -492,7 +514,8 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
                                       attrs.group.GetString(), attrs.world_size, attrs.all2all_axes, attrs.y_dtype, attrs.x1_quant_mode,
                                       attrs.x2_quant_mode, attrs.comm_quant_mode, attrs.x1_quant_dtype, attrs.comm_quant_dtype,
                                       attrs.transpose_x1, attrs.transpose_x2, attrs.group_size, attrs.comm_mode.GetString(), attrs.alltoall_out_flag);
-    return replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
+    // 与 MakePattern 保持一致，替换子图只暴露主输出 y
+    return replaceGraphBuilder.BuildAndReset({mc2.y});
 }
 
 static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
@@ -539,71 +562,95 @@ std::vector<ge::fusion::PatternUniqPtr> AllToAllMatmulTransposeA5FusionPass::Pat
         }
     }
     std::vector<ge::fusion::PatternUniqPtr> patternGraphs;
+    size_t size3Count = 0;
     for (const auto &info : infos) {
+        const size_t expectMc2InputNum =
+            2U + static_cast<size_t>(info.hasBias) + static_cast<size_t>(info.hasX1Scale) +
+            static_cast<size_t>(info.hasX2Scale) + static_cast<size_t>(info.hasCommScale) +
+            static_cast<size_t>(info.hasX1Offset) + static_cast<size_t>(info.hasX2Offset);
+        if (expectMc2InputNum == 3U) {
+            ++size3Count;
+        }
         patternGraphs.emplace_back(MakePattern(info));
     }
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(),
+              "[FUSION_DBG] Patterns done, total=%zu size3=%zu (infos=%zu)", patternGraphs.size(), size3Count,
+              infos.size());
     return patternGraphs;
 }
 
 bool AllToAllMatmulTransposeA5FusionPass::MeetRequirements(
     const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter MeetRequirements for AllToAllMatmulTransposeA5FusionPass");
+    ge::AscendString patternName = "";
+    matchResult->GetPatternGraph().GetName(patternName);
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(),
+              "[FUSION_DBG] Enter MeetRequirements, pattern=%s", patternName.GetString());
 
     // 9.0.0 版本前运行降级stage 空跑
     int32_t geCompilerVersion = 0;
     aclsysGetVersionNum("ge_compiler", &geCompilerVersion);
     if (geCompilerVersion < GRAPH_FUSION_SUPPORT_VERSION) {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Skip in MeetRequirements when cann version not compatible.");
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(),
+                  "[FUSION_DBG] Skip MeetRequirements: cann version not compatible, ver=%d", geCompilerVersion);
         return false;
     }
 
     // 是否ascend950
     if (!IsTargetPlatformNpuArch(FUSION_PASS_NAME.c_str(), NPUARCH_A5)) {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Check target platform fail!");
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "[FUSION_DBG] Skip MeetRequirements: platform not A5");
         return false;
     }
 
     // 是否mx quant
     if (!IsMXQuantMode(matchResult)) {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Quant mode is not MX QUANT, fusion will be skipped.");
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "[FUSION_DBG] Skip MeetRequirements: not MX QUANT, pattern=%s",
+                  patternName.GetString());
         return false;
     }
 
     // 是否transpose 条件吻合
     if (!IsTransposePermValid(matchResult)) {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Transpose permutation is not valid.");
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "[FUSION_DBG] Skip MeetRequirements: transpose perm invalid, pattern=%s",
+                  patternName.GetString());
         return false;
     }
 
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Found One pattern that meets requirements");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(),
+              "[FUSION_DBG] MeetRequirements PASS, pattern=%s", patternName.GetString());
     return true;
 }
 
 ge::fusion::GraphUniqPtr AllToAllMatmulTransposeA5FusionPass::Replacement(
     const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter Replacement for AllToAllMatmulTransposeA5FusionPass");
+    ge::AscendString patternName = "";
+    matchResult->GetPatternGraph().GetName(patternName);
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "[FUSION_DBG] Enter Replacement, pattern=%s", patternName.GetString());
     std::vector<ge::fusion::SubgraphInput> subgraphInputs;
     if (matchResult->ToSubgraphBoundary()->GetAllInputs(subgraphInputs) != ge::SUCCESS) {
-        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Get subgraph inputs failed in Replacement.");
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "[FUSION_DBG] Get subgraph inputs failed in Replacement.");
         return nullptr;
     }
     size_t subgraphInputSize = subgraphInputs.size();
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Subgraph input size is %zu.", subgraphInputSize);
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "[FUSION_DBG] Replacement subgraph input size=%zu, pattern=%s",
+              subgraphInputSize, patternName.GetString());
 
     // build replace graph after removing Transpose nodes
     ge::fusion::GraphUniqPtr replaceGraph = BuildReplaceGraph(subgraphInputs, matchResult);
     if (replaceGraph == nullptr) {
-        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph failed in Replacement.");
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "[FUSION_DBG] BuildReplaceGraph failed, pattern=%s",
+                  patternName.GetString());
         return nullptr;
     }
 
     if (!InferShapeReplaceGraph(replaceGraph, subgraphInputs)) {
-        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "InferShapeReplaceGraph failed in Replacement.");
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "[FUSION_DBG] InferShapeReplaceGraph failed, pattern=%s",
+                  patternName.GetString());
         return nullptr;
     }
 
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "[FUSION_DBG] Replacement SUCCESS, pattern=%s", patternName.GetString());
     return std::move(replaceGraph);
 }
 
