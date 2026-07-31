@@ -926,25 +926,49 @@ auto DecodeDevice(Ts &...args) -> at::Device
     return ft.device();
 }
 
+// 弱符号签名须与 torch_npu >= 2.9.0.post3 一致，返回类型不参与名字修饰，修改前请核对对应版本头文件：
+//   uint32_t c10_npu::GetDeterministicLevel();                                    (NPUFunctions.h)
+//   void at_npu::native::ApplyDeterministicLevel(int64_t, bool, bool);            (op_plugin 内部导出符号)
 namespace at_npu {
 namespace native {
 __attribute__((weak)) void ApplyDeterministicLevel(int64_t level, bool deterministicAlgorithmsStatus, bool isOpapi);
-}
-}
+} // namespace native
+} // namespace at_npu
 
 namespace c10_npu {
 __attribute__((weak)) uint32_t GetDeterministicLevel();
-}
+} // namespace c10_npu
 
 inline void ApplyDeterministicConfig()
 {
+    constexpr bool kUseOpApiPath = true; // isOpapi=true: 走 opapi 路径下发，aclnn_common.h 全场景均为 opapi
     auto deterministicAlgorithmsStatus = at::globalContext().deterministicAlgorithms();
-    if (at_npu::native::ApplyDeterministicLevel != nullptr && c10_npu::GetDeterministicLevel != nullptr) {
-        int64_t level = static_cast<int64_t>(c10_npu::GetDeterministicLevel());
-        at_npu::native::ApplyDeterministicLevel(level, deterministicAlgorithmsStatus, true);
+    auto applyLevelFn = at_npu::native::ApplyDeterministicLevel;
+    auto getLevelFn = c10_npu::GetDeterministicLevel;
+    if (applyLevelFn != nullptr && getLevelFn != nullptr) {
+        int64_t level = static_cast<int64_t>(getLevelFn());
+        applyLevelFn(level, deterministicAlgorithmsStatus, kUseOpApiPath);
         return;
     }
-    aclrtCtxSetSysParamOpt(aclSysParamOpt::ACL_OPT_DETERMINISTIC, deterministicAlgorithmsStatus ? 1 : 0);
+    static bool fallbackWarned = false;
+    if (!fallbackWarned) {
+        fallbackWarned = true;
+        if (applyLevelFn == nullptr && getLevelFn == nullptr) {
+            ASCEND_LOGW("ApplyDeterministicLevel and GetDeterministicLevel are both missing in torch_npu, "
+                        "fallback to ACL_OPT_DETERMINISTIC binary switch, deterministic_level will be ignored.");
+        } else if (applyLevelFn == nullptr) {
+            ASCEND_LOGW("ApplyDeterministicLevel is missing in torch_npu, "
+                        "fallback to ACL_OPT_DETERMINISTIC binary switch, deterministic_level will be ignored.");
+        } else {
+            ASCEND_LOGW("GetDeterministicLevel is missing in torch_npu, "
+                        "fallback to ACL_OPT_DETERMINISTIC binary switch, deterministic_level will be ignored.");
+        }
+    }
+    aclError ret = aclrtCtxSetSysParamOpt(aclSysParamOpt::ACL_OPT_DETERMINISTIC, deterministicAlgorithmsStatus ? 1 : 0);
+    if (ret != ACL_SUCCESS) {
+        ASCEND_LOGW("aclrtCtxSetSysParamOpt(ACL_OPT_DETERMINISTIC) failed, ret=%d, deterministic config may be incorrect.",
+                    static_cast<int>(ret));
+    }
 }
 
 #define ACLNN_CMD(aclnn_api, ...) \
