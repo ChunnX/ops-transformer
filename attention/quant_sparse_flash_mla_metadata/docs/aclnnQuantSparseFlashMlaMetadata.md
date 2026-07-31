@@ -22,7 +22,9 @@
 <!-- npu="910" id6 -->
 - <term>Atlas 训练系列产品</term>：不支持
 <!-- end id6 -->
+
 ## 功能说明
+
 - 接口功能：`aclnnQuantSparseFlashMlaMetadata`是`aclnnQuantSparseFlashMla`算子的前置算子，用于后续Attention计算生成负载均衡的任务划分方案。本算子不执行实际的Attention计算，而是根据输入参数在AI CPU计算出每个AI Core应处理的Attention计算起止范围，从而最大化计算资源的利用率，避免各Core间负载不均衡的问题。
 
 - 负载均衡原理：本算子将Attention计算的工作建模为三维（BN2、S1G、S2）的块级划分问题。通过代价函数估算各工作块的开销，随后采用贪心策略，将工作块按顺序分配到各AI Core，使每个Core承担的计算量尽量接近平均值；对于跨Core拆分的S1G行，会记录FlashDecode规约任务，后续由AIV Core完成部分结果的合并。
@@ -533,6 +535,10 @@ aclnnStatus aclnnQuantSparseFlashMlaMetadata(
   - TND场景
     - 当传入的layoutQOptional为"TND"时，必传cuSeqlensQOptional参数。
     - 当传入的layoutKvOptional为"TND"时，若hasOriKv为true，必传cuSeqlensOriKvOptional；若hasCmpKv为true，必传cuSeqlensCmpKvOptional参数。
+  - TopkLength参数
+    - oriTopkLengthOptional、cmpTopkLengthOptional表示ori/cmp sparseIndices实际参与计算的长度。其值不能大于sparseIndices的最后一维大小，且当sequsedQOptional传入时，topkLength对应有效部分的值需要大于等于0。
+    - 当oriMaskMode=0且oriSparseIndicesOptional不为空时，oriTopkLengthOptional必须传入。
+    - 当cmpMaskMode=0且cmpSparseIndicesOptional不为空时，cmpTopkLengthOptional必须传入。
 
 ## 调用示例
 
