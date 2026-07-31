@@ -149,7 +149,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
       <td>支持空Tensor。maskMode=0且存在稀疏索引时需要传，且必须为准确值。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape为(B,S1)或(T1,)</td>
+      <td>2维、3维，shape为(B,S1,N2)或(T1,N2)</td>
       <td>x</td>
     </tr>
     <tr>

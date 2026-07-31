@@ -183,7 +183,13 @@ aclnnStatus CheckConsistencySmla(int64_t batchSize, const aclTensor *cuSeqLensQO
     }
     if (IsTensorExistSmla(topkLengthOptional)) {
         dimNum = GetDimNumSmla(topkLengthOptional);
-        CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID, "The dim num of topk_length must be 1, but got %lld", dimNum);
+        if (strcmp(layoutQ, "BSND") == 0) {
+            CHECK_COND(dimNum == 3, ACLNN_ERR_PARAM_INVALID,
+                       "For layout_q BSND, the dim num of topk_length must be 3 (B,S1,N2), but got %lld", dimNum);
+        } else {
+            CHECK_COND(dimNum == 2, ACLNN_ERR_PARAM_INVALID,
+                       "For layout_q TND, the dim num of topk_length must be 2 (T1,N2), but got %lld", dimNum);
+        }
         dataType = GetDataTypeSmla(topkLengthOptional);
         CHECK_COND(dataType == aclDataType::ACL_INT32, ACLNN_ERR_PARAM_INVALID,
                    "The data type of topk_length must be int32, but got %d", static_cast<int32_t>(dataType));
