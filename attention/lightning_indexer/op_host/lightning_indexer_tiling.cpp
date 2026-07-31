@@ -538,8 +538,8 @@ ge::graphStatus LIInfoParser::CheckKeyContiguous() const
 
         if (kLayout_ == DataLayout::BnBsND) {
             totalElements = keyStride1_ * static_cast<uint64_t>(shape.GetDim(1));
-            shapeSize = context_->GetOptionalInputTensor(KEY_INDEX)->GetShapeSize() /
-                        static_cast<uint64_t>(shape.GetDim(0));
+            shapeSize = static_cast<uint64_t>(shape.GetDim(1)) * static_cast<uint64_t>(shape.GetDim(2)) *
+                        static_cast<uint64_t>(shape.GetDim(3));
         } else {
             totalElements = keyStride0_ * static_cast<uint64_t>(shape.GetDim(0));
             shapeSize = context_->GetOptionalInputTensor(KEY_INDEX)->GetShapeSize();
@@ -549,7 +549,7 @@ ge::graphStatus LIInfoParser::CheckKeyContiguous() const
     }
 
     OP_CHECK_IF(keyNonContiguous,
-        OP_LOGE(opName_, "key only support non-continuous keying on the 0-axis with PA_BSND layout."),
+        OP_LOGE(opName_, "key only support non-contiguous tensor on the 0-axis with PA_BSND layout."),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
