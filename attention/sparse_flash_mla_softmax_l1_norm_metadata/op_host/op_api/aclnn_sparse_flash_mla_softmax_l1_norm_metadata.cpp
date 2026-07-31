@@ -58,9 +58,10 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadataGetWorkspaceSize(
     std::string socVersionStr = npuInfo.GetSocLongVersion();
     const char *socVersion = socVersionStr.c_str();
 
-    auto ret = ParamsCheckSmla(cuSeqLensQOptional, cuSeqLensKOptional, seqUsedQOptional, seqUsedKOptional,
-                               cmpResidualKOptional, topkLengthOptional, batchSize, maxSeqLenQ, maxSeqLenK, numHeadsQ,
-                               numHeadsK, headDim, topk, maskMode, cmpRatio, layoutQ, layoutK, metadata, aicCoreNum);
+    auto ret = ParamsCheckSmlaL1Norm(cuSeqLensQOptional, cuSeqLensKOptional, seqUsedQOptional, seqUsedKOptional,
+                                     cmpResidualKOptional, topkLengthOptional, batchSize, maxSeqLenQ, maxSeqLenK,
+                                     numHeadsQ, numHeadsK, headDim, topk, maskMode, cmpRatio, layoutQ, layoutK,
+                                     metadata, aicCoreNum);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const aclTensor *cuSeqLensQContiguous = nullptr;

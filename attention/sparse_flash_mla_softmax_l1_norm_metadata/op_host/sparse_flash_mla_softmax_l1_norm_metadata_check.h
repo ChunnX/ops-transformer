@@ -30,12 +30,12 @@ inline constexpr int64_t SMLA_CMP_RATIO_LOWER_BOUND = 1;
 inline constexpr int64_t SMLA_CMP_RATIO_UPPER_BOUND = 128;
 inline constexpr int64_t SMLA_METADATA_SIZE = 64;
 
-inline bool IsTensorExistSmla(const aclTensor *tensor)
+inline bool IsTensorExistSmlaL1Norm(const aclTensor *tensor)
 {
     return (tensor != nullptr) && (tensor->GetViewShape().GetDimNum() > 0) && (tensor->GetViewShape().GetDim(0) > 0);
 }
 
-int64_t GetDimNumSmla(const aclTensor *tensor)
+int64_t GetDimNumSmlaL1Norm(const aclTensor *tensor)
 {
     if (tensor == nullptr) {
         return -1;
@@ -43,7 +43,7 @@ int64_t GetDimNumSmla(const aclTensor *tensor)
     return tensor->GetViewShape().GetDimNum();
 }
 
-aclDataType GetDataTypeSmla(const aclTensor *tensor)
+aclDataType GetDataTypeSmlaL1Norm(const aclTensor *tensor)
 {
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     if (tensor == nullptr) {
@@ -53,37 +53,37 @@ aclDataType GetDataTypeSmla(const aclTensor *tensor)
     return dataType;
 }
 
-int64_t GetQueryBatchSizeSmla(int64_t batchSize, const aclTensor *cuSeqLensQOptional,
-                              const aclTensor *seqUsedQOptional, const char *layoutQ)
+int64_t GetQueryBatchSizeSmlaL1Norm(int64_t batchSize, const aclTensor *cuSeqLensQOptional,
+                                    const aclTensor *seqUsedQOptional, const char *layoutQ)
 {
-    if (IsTensorExistSmla(seqUsedQOptional)) {
+    if (IsTensorExistSmlaL1Norm(seqUsedQOptional)) {
         return seqUsedQOptional->GetViewShape().GetDim(0);
     }
     if (strcmp(layoutQ, "TND") == 0) {
-        if (IsTensorExistSmla(cuSeqLensQOptional)) {
+        if (IsTensorExistSmlaL1Norm(cuSeqLensQOptional)) {
             return cuSeqLensQOptional->GetViewShape().GetDim(0) - 1;
         }
     }
     return batchSize;
 }
 
-int64_t GetKeyBatchSizeSmla(int64_t batchSize, const aclTensor *cuSeqLensKOptional,
-                            const aclTensor *seqUsedKOptional, const char *layoutK)
+int64_t GetKeyBatchSizeSmlaL1Norm(int64_t batchSize, const aclTensor *cuSeqLensKOptional,
+                                  const aclTensor *seqUsedKOptional, const char *layoutK)
 {
-    if (IsTensorExistSmla(seqUsedKOptional)) {
+    if (IsTensorExistSmlaL1Norm(seqUsedKOptional)) {
         return seqUsedKOptional->GetViewShape().GetDim(0);
     }
     if (strcmp(layoutK, "TND") == 0) {
-        if (IsTensorExistSmla(cuSeqLensKOptional)) {
+        if (IsTensorExistSmlaL1Norm(cuSeqLensKOptional)) {
             return cuSeqLensKOptional->GetViewShape().GetDim(0) - 1;
         }
     }
     return batchSize;
 }
 
-aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqLenQ, int64_t maxSeqLenK, int64_t numHeadsQ,
-                                 int64_t numHeadsK, int64_t headDim, int64_t topk, int64_t maskMode, int64_t cmpRatio,
-                                 const char *layoutQ, const char *layoutK, int64_t aicCoreNum)
+aclnnStatus CheckSingleParamSmlaL1Norm(int64_t batchSize, int64_t maxSeqLenQ, int64_t maxSeqLenK, int64_t numHeadsQ,
+                                       int64_t numHeadsK, int64_t headDim, int64_t topk, int64_t maskMode,
+                                       int64_t cmpRatio, const char *layoutQ, const char *layoutK, int64_t aicCoreNum)
 {
     CHECK_COND(batchSize >= 0, ACLNN_ERR_PARAM_INVALID, "batch_size should be >= 0, but got %lld", batchSize);
     CHECK_COND(maxSeqLenQ >= 0, ACLNN_ERR_PARAM_INVALID, "max_seqlen_q should be >= 0, but got %lld", maxSeqLenQ);
@@ -109,80 +109,80 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqLenQ, int64_t 
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqLensQOptional, const aclTensor *cuSeqLensKOptional,
-                               const aclTensor *topkLengthOptional, const aclTensor *cmpResidualKOptional,
-                               int64_t topk, int64_t maskMode, int64_t cmpRatio, const char *layoutQ,
-                               const char *layoutK, const aclTensor *metadata)
+aclnnStatus CheckExistenceSmlaL1Norm(const aclTensor *cuSeqLensQOptional, const aclTensor *cuSeqLensKOptional,
+                                     const aclTensor *topkLengthOptional, const aclTensor *cmpResidualKOptional,
+                                     int64_t topk, int64_t maskMode, int64_t cmpRatio, const char *layoutQ,
+                                     const char *layoutK, const aclTensor *metadata)
 {
     if (strcmp(layoutQ, "TND") == 0) {
-        CHECK_COND(IsTensorExistSmla(cuSeqLensQOptional), ACLNN_ERR_PARAM_INVALID,
+        CHECK_COND(IsTensorExistSmlaL1Norm(cuSeqLensQOptional), ACLNN_ERR_PARAM_INVALID,
                    "For layout_q TND, cu_seq_lens_q must be provided!");
     }
     if (strcmp(layoutK, "TND") == 0) {
-        CHECK_COND(IsTensorExistSmla(cuSeqLensKOptional), ACLNN_ERR_PARAM_INVALID,
+        CHECK_COND(IsTensorExistSmlaL1Norm(cuSeqLensKOptional), ACLNN_ERR_PARAM_INVALID,
                    "For layout_k TND, cu_seq_lens_k must be provided!");
     }
     if (maskMode == SMLA_NO_MASK_MODE && topk > 0) {
-        CHECK_COND(IsTensorExistSmla(topkLengthOptional), ACLNN_ERR_PARAM_INVALID,
+        CHECK_COND(IsTensorExistSmlaL1Norm(topkLengthOptional), ACLNN_ERR_PARAM_INVALID,
                    "When mask_mode is 0 and sparse index exists (topk > 0), topk_length must be provided!");
     }
     if (maskMode == SMLA_CAUSAL_MASK_MODE && cmpRatio != SMLA_CMP_RATIO_LOWER_BOUND) {
-        CHECK_COND(IsTensorExistSmla(cmpResidualKOptional), ACLNN_ERR_PARAM_INVALID,
+        CHECK_COND(IsTensorExistSmlaL1Norm(cmpResidualKOptional), ACLNN_ERR_PARAM_INVALID,
                    "When mask_mode is 3 and cmp_ratio != 1, cmp_residual_k must be provided!");
     }
-    CHECK_COND(IsTensorExistSmla(metadata), ACLNN_ERR_PARAM_INVALID, "Output metadata is nullptr!");
+    CHECK_COND(IsTensorExistSmlaL1Norm(metadata), ACLNN_ERR_PARAM_INVALID, "Output metadata is nullptr!");
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckConsistencySmla(int64_t batchSize, const aclTensor *cuSeqLensQOptional,
-                                 const aclTensor *cuSeqLensKOptional, const aclTensor *seqUsedQOptional,
-                                 const aclTensor *seqUsedKOptional, const aclTensor *cmpResidualKOptional,
-                                 const aclTensor *topkLengthOptional, const char *layoutQ, const char *layoutK,
-                                 const aclTensor *metadata)
+aclnnStatus CheckConsistencySmlaL1Norm(int64_t batchSize, const aclTensor *cuSeqLensQOptional,
+                                       const aclTensor *cuSeqLensKOptional, const aclTensor *seqUsedQOptional,
+                                       const aclTensor *seqUsedKOptional, const aclTensor *cmpResidualKOptional,
+                                       const aclTensor *topkLengthOptional, const char *layoutQ, const char *layoutK,
+                                       const aclTensor *metadata)
 {
     int64_t dimNum = -1;
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
 
-    if (IsTensorExistSmla(cuSeqLensQOptional)) {
-        dimNum = GetDimNumSmla(cuSeqLensQOptional);
+    if (IsTensorExistSmlaL1Norm(cuSeqLensQOptional)) {
+        dimNum = GetDimNumSmlaL1Norm(cuSeqLensQOptional);
         CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID,
                    "The dim num of cu_seq_lens_q must be 1, but got %lld", dimNum);
-        dataType = GetDataTypeSmla(cuSeqLensQOptional);
+        dataType = GetDataTypeSmlaL1Norm(cuSeqLensQOptional);
         CHECK_COND(dataType == aclDataType::ACL_INT32, ACLNN_ERR_PARAM_INVALID,
                    "The data type of cu_seq_lens_q must be int32, but got %d", static_cast<int32_t>(dataType));
     }
-    if (IsTensorExistSmla(cuSeqLensKOptional)) {
-        dimNum = GetDimNumSmla(cuSeqLensKOptional);
+    if (IsTensorExistSmlaL1Norm(cuSeqLensKOptional)) {
+        dimNum = GetDimNumSmlaL1Norm(cuSeqLensKOptional);
         CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID,
                    "The dim num of cu_seq_lens_k must be 1, but got %lld", dimNum);
-        dataType = GetDataTypeSmla(cuSeqLensKOptional);
+        dataType = GetDataTypeSmlaL1Norm(cuSeqLensKOptional);
         CHECK_COND(dataType == aclDataType::ACL_INT32, ACLNN_ERR_PARAM_INVALID,
                    "The data type of cu_seq_lens_k must be int32, but got %d", static_cast<int32_t>(dataType));
     }
-    if (IsTensorExistSmla(seqUsedQOptional)) {
-        dimNum = GetDimNumSmla(seqUsedQOptional);
+    if (IsTensorExistSmlaL1Norm(seqUsedQOptional)) {
+        dimNum = GetDimNumSmlaL1Norm(seqUsedQOptional);
         CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID, "The dim num of seq_used_q must be 1, but got %lld", dimNum);
-        dataType = GetDataTypeSmla(seqUsedQOptional);
+        dataType = GetDataTypeSmlaL1Norm(seqUsedQOptional);
         CHECK_COND(dataType == aclDataType::ACL_INT32, ACLNN_ERR_PARAM_INVALID,
                    "The data type of seq_used_q must be int32, but got %d", static_cast<int32_t>(dataType));
     }
-    if (IsTensorExistSmla(seqUsedKOptional)) {
-        dimNum = GetDimNumSmla(seqUsedKOptional);
+    if (IsTensorExistSmlaL1Norm(seqUsedKOptional)) {
+        dimNum = GetDimNumSmlaL1Norm(seqUsedKOptional);
         CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID, "The dim num of seq_used_k must be 1, but got %lld", dimNum);
-        dataType = GetDataTypeSmla(seqUsedKOptional);
+        dataType = GetDataTypeSmlaL1Norm(seqUsedKOptional);
         CHECK_COND(dataType == aclDataType::ACL_INT32, ACLNN_ERR_PARAM_INVALID,
                    "The data type of seq_used_k must be int32, but got %d", static_cast<int32_t>(dataType));
     }
-    if (IsTensorExistSmla(cmpResidualKOptional)) {
-        dimNum = GetDimNumSmla(cmpResidualKOptional);
+    if (IsTensorExistSmlaL1Norm(cmpResidualKOptional)) {
+        dimNum = GetDimNumSmlaL1Norm(cmpResidualKOptional);
         CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID, "The dim num of cmp_residual_k must be 1, but got %lld",
                    dimNum);
-        dataType = GetDataTypeSmla(cmpResidualKOptional);
+        dataType = GetDataTypeSmlaL1Norm(cmpResidualKOptional);
         CHECK_COND(dataType == aclDataType::ACL_INT32, ACLNN_ERR_PARAM_INVALID,
                    "The data type of cmp_residual_k must be int32, but got %d", static_cast<int32_t>(dataType));
     }
-    if (IsTensorExistSmla(topkLengthOptional)) {
-        dimNum = GetDimNumSmla(topkLengthOptional);
+    if (IsTensorExistSmlaL1Norm(topkLengthOptional)) {
+        dimNum = GetDimNumSmlaL1Norm(topkLengthOptional);
         if (strcmp(layoutQ, "BSND") == 0) {
             CHECK_COND(dimNum == 3, ACLNN_ERR_PARAM_INVALID,
                        "For layout_q BSND, the dim num of topk_length must be 3 (B,S1,N2), but got %lld", dimNum);
@@ -190,14 +190,14 @@ aclnnStatus CheckConsistencySmla(int64_t batchSize, const aclTensor *cuSeqLensQO
             CHECK_COND(dimNum == 2, ACLNN_ERR_PARAM_INVALID,
                        "For layout_q TND, the dim num of topk_length must be 2 (T1,N2), but got %lld", dimNum);
         }
-        dataType = GetDataTypeSmla(topkLengthOptional);
+        dataType = GetDataTypeSmlaL1Norm(topkLengthOptional);
         CHECK_COND(dataType == aclDataType::ACL_INT32, ACLNN_ERR_PARAM_INVALID,
                    "The data type of topk_length must be int32, but got %d", static_cast<int32_t>(dataType));
     }
-    if (IsTensorExistSmla(metadata)) {
-        dimNum = GetDimNumSmla(metadata);
+    if (IsTensorExistSmlaL1Norm(metadata)) {
+        dimNum = GetDimNumSmlaL1Norm(metadata);
         CHECK_COND(dimNum == 1, ACLNN_ERR_PARAM_INVALID, "The dim num of metadata must be 1, but got %lld", dimNum);
-        dataType = GetDataTypeSmla(metadata);
+        dataType = GetDataTypeSmlaL1Norm(metadata);
         CHECK_COND(dataType == aclDataType::ACL_INT32, ACLNN_ERR_PARAM_INVALID,
                    "The data type of metadata must be int32, but got %d", static_cast<int32_t>(dataType));
         if (metadata->GetViewShape().GetDim(0) != SMLA_METADATA_SIZE) {
@@ -206,12 +206,12 @@ aclnnStatus CheckConsistencySmla(int64_t batchSize, const aclTensor *cuSeqLensQO
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
-    int64_t queryBatchSize = GetQueryBatchSizeSmla(batchSize, cuSeqLensQOptional, seqUsedQOptional, layoutQ);
-    int64_t keyBatchSize = GetKeyBatchSizeSmla(batchSize, cuSeqLensKOptional, seqUsedKOptional, layoutK);
+    int64_t queryBatchSize = GetQueryBatchSizeSmlaL1Norm(batchSize, cuSeqLensQOptional, seqUsedQOptional, layoutQ);
+    int64_t keyBatchSize = GetKeyBatchSizeSmlaL1Norm(batchSize, cuSeqLensKOptional, seqUsedKOptional, layoutK);
     CHECK_COND(queryBatchSize == keyBatchSize, ACLNN_ERR_PARAM_INVALID,
                "The batch_size obtained from query should be the same as that obtained from key, but got %lld and %lld",
                queryBatchSize, keyBatchSize);
-    if (strcmp(layoutQ, "TND") == 0 && IsTensorExistSmla(seqUsedQOptional)) {
+    if (strcmp(layoutQ, "TND") == 0 && IsTensorExistSmlaL1Norm(seqUsedQOptional)) {
         int64_t cuSeqLensQBatchSize = cuSeqLensQOptional->GetViewShape().GetDim(0) - 1;
         CHECK_COND(
             cuSeqLensQBatchSize == queryBatchSize, ACLNN_ERR_PARAM_INVALID,
@@ -219,7 +219,7 @@ aclnnStatus CheckConsistencySmla(int64_t batchSize, const aclTensor *cuSeqLensQO
             "seq_used_q, but got %lld and %lld",
             cuSeqLensQBatchSize, queryBatchSize);
     }
-    if (strcmp(layoutK, "TND") == 0 && IsTensorExistSmla(seqUsedKOptional)) {
+    if (strcmp(layoutK, "TND") == 0 && IsTensorExistSmlaL1Norm(seqUsedKOptional)) {
         int64_t cuSeqLensKBatchSize = cuSeqLensKOptional->GetViewShape().GetDim(0) - 1;
         CHECK_COND(
             cuSeqLensKBatchSize == keyBatchSize, ACLNN_ERR_PARAM_INVALID,
@@ -227,7 +227,7 @@ aclnnStatus CheckConsistencySmla(int64_t batchSize, const aclTensor *cuSeqLensQO
             "seq_used_k, but got %lld and %lld",
             cuSeqLensKBatchSize, keyBatchSize);
     }
-    if (IsTensorExistSmla(cmpResidualKOptional)) {
+    if (IsTensorExistSmlaL1Norm(cmpResidualKOptional)) {
         auto cmpResidualKBatch = cmpResidualKOptional->GetViewShape().GetDim(0);
         CHECK_COND(cmpResidualKBatch == queryBatchSize, ACLNN_ERR_PARAM_INVALID,
                    "The batch_size of cmp_residual_k should match the valid batch size, but got %lld and %lld",
@@ -236,23 +236,24 @@ aclnnStatus CheckConsistencySmla(int64_t batchSize, const aclTensor *cuSeqLensQO
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus ParamsCheckSmla(const aclTensor *cuSeqLensQOptional, const aclTensor *cuSeqLensKOptional,
-                            const aclTensor *seqUsedQOptional, const aclTensor *seqUsedKOptional,
-                            const aclTensor *cmpResidualKOptional, const aclTensor *topkLengthOptional,
-                            int64_t batchSize, int64_t maxSeqLenQ, int64_t maxSeqLenK, int64_t numHeadsQ,
-                            int64_t numHeadsK, int64_t headDim, int64_t topk, int64_t maskMode, int64_t cmpRatio,
-                            char *layoutQ, char *layoutK, const aclTensor *metadata, int64_t aicCoreNum)
+aclnnStatus ParamsCheckSmlaL1Norm(const aclTensor *cuSeqLensQOptional, const aclTensor *cuSeqLensKOptional,
+                                  const aclTensor *seqUsedQOptional, const aclTensor *seqUsedKOptional,
+                                  const aclTensor *cmpResidualKOptional, const aclTensor *topkLengthOptional,
+                                  int64_t batchSize, int64_t maxSeqLenQ, int64_t maxSeqLenK, int64_t numHeadsQ,
+                                  int64_t numHeadsK, int64_t headDim, int64_t topk, int64_t maskMode, int64_t cmpRatio,
+                                  char *layoutQ, char *layoutK, const aclTensor *metadata, int64_t aicCoreNum)
 {
-    auto ret = CheckSingleParamSmla(batchSize, maxSeqLenQ, maxSeqLenK, numHeadsQ, numHeadsK, headDim, topk, maskMode,
-                                    cmpRatio, layoutQ, layoutK, aicCoreNum);
+    auto ret = CheckSingleParamSmlaL1Norm(batchSize, maxSeqLenQ, maxSeqLenK, numHeadsQ, numHeadsK, headDim, topk,
+                                          maskMode, cmpRatio, layoutQ, layoutK, aicCoreNum);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
-    ret = CheckExistenceSmla(cuSeqLensQOptional, cuSeqLensKOptional, topkLengthOptional, cmpResidualKOptional, topk,
-                             maskMode, cmpRatio, layoutQ, layoutK, metadata);
+    ret = CheckExistenceSmlaL1Norm(cuSeqLensQOptional, cuSeqLensKOptional, topkLengthOptional, cmpResidualKOptional,
+                                   topk, maskMode, cmpRatio, layoutQ, layoutK, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
-    ret = CheckConsistencySmla(batchSize, cuSeqLensQOptional, cuSeqLensKOptional, seqUsedQOptional, seqUsedKOptional,
-                               cmpResidualKOptional, topkLengthOptional, layoutQ, layoutK, metadata);
+    ret = CheckConsistencySmlaL1Norm(batchSize, cuSeqLensQOptional, cuSeqLensKOptional, seqUsedQOptional,
+                                     seqUsedKOptional, cmpResidualKOptional, topkLengthOptional, layoutQ,
+                                     layoutK, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;
