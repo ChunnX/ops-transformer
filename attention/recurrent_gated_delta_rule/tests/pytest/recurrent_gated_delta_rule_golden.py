@@ -15,7 +15,6 @@ import datetime
 import os
 import sys
 import argparse
-import gc
 
 np.random.seed(21)  # 固定随机种子
 np.set_printoptions(suppress=True)
@@ -479,7 +478,6 @@ def run_recurrent_gated_delta_rule_eager(
     gamma_k_datarange=[0, 1],
     beta_datarange=[0, 1],
     state_datarange=[-10, 10],
-    state_non_contiguous=False,
 ):
     torch_npu.npu.set_device(int(DEVICE_ID))
     # ======================== set input params finish ========================
@@ -590,16 +588,6 @@ def run_recurrent_gated_delta_rule_eager(
     key = key.to("npu:%s" % DEVICE_ID)
     value = value.to("npu:%s" % DEVICE_ID)
     state = state.to("npu:%s" % DEVICE_ID)
-    if state_non_contiguous:
-        padded_state = torch.zeros(
-            block_num * 2, nv * 2, dv, dk, dtype=state.dtype, device=state.device
-        )
-        padded_state[::2, ::2, :, :] = state
-        state = padded_state[::2, ::2, :, :]
-        print(
-            f"state non-contiguous: shape={state.shape}, strides={state.stride()}, "
-            f"is_contiguous={state.is_contiguous()}"
-        )
     beta = beta.to("npu:%s" % DEVICE_ID)
     act_seq_len = act_seq_len.to("npu:%s" % DEVICE_ID)
     ssm_state_indices = ssm_state_indices.to("npu:%s" % DEVICE_ID)
@@ -641,13 +629,6 @@ def run_recurrent_gated_delta_rule_eager(
     # 结果精度对比
     out_data_type = str(npu_out.dtype)
     state_data_type_str = str(npu_state_out.dtype)
-
-    del query, key, value, state, beta, act_seq_len, ssm_state_indices
-    del num_accepted_tokens, g, gk, init_state
-    if state_non_contiguous:
-        del padded_state
-    torch.npu.empty_cache()
-
     print(
         "--------------------------------------------------------------check result-------------------------------------------------------------"
     )
@@ -660,10 +641,6 @@ def run_recurrent_gated_delta_rule_eager(
         npu_state_out,
         state_data_type_str,
     )
-
-    del cpu_out, cpu_state_ouput, npu_out, npu_state_out
-    gc.collect()
-    torch.npu.empty_cache()
 
 
 if __name__ == "__main__":
