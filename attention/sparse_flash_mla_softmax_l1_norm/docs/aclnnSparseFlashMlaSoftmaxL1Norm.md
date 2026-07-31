@@ -238,7 +238,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
             <td>输入</td>
             <td>表示每个batch S2 // cmpRatio后的余数。</td>
             <td>
-            当k不为空且maskMode=3时必须传入。
+            maskMode=3且cmpRatio!=1时必须传入。
             </td>
             <td>INT32</td>
             <td>ND</td>

@@ -110,7 +110,9 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqLenQ, int64_t 
 }
 
 aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqLensQOptional, const aclTensor *cuSeqLensKOptional,
-                               const char *layoutQ, const char *layoutK, const aclTensor *metadata)
+                               const aclTensor *topkLengthOptional, const aclTensor *cmpResidualKOptional,
+                               int64_t topk, int64_t maskMode, int64_t cmpRatio, const char *layoutQ,
+                               const char *layoutK, const aclTensor *metadata)
 {
     if (strcmp(layoutQ, "TND") == 0) {
         CHECK_COND(IsTensorExistSmla(cuSeqLensQOptional), ACLNN_ERR_PARAM_INVALID,
@@ -119,6 +121,14 @@ aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqLensQOptional, const aclTen
     if (strcmp(layoutK, "TND") == 0) {
         CHECK_COND(IsTensorExistSmla(cuSeqLensKOptional), ACLNN_ERR_PARAM_INVALID,
                    "For layout_k TND, cu_seq_lens_k must be provided!");
+    }
+    if (maskMode == SMLA_NO_MASK_MODE && topk > 0) {
+        CHECK_COND(IsTensorExistSmla(topkLengthOptional), ACLNN_ERR_PARAM_INVALID,
+                   "When mask_mode is 0 and sparse index exists (topk > 0), topk_length must be provided!");
+    }
+    if (maskMode == SMLA_CAUSAL_MASK_MODE && cmpRatio != SMLA_CMP_RATIO_LOWER_BOUND) {
+        CHECK_COND(IsTensorExistSmla(cmpResidualKOptional), ACLNN_ERR_PARAM_INVALID,
+                   "When mask_mode is 3 and cmp_ratio != 1, cmp_residual_k must be provided!");
     }
     CHECK_COND(IsTensorExistSmla(metadata), ACLNN_ERR_PARAM_INVALID, "Output metadata is nullptr!");
     return ACLNN_SUCCESS;
@@ -231,7 +241,8 @@ aclnnStatus ParamsCheckSmla(const aclTensor *cuSeqLensQOptional, const aclTensor
                                     cmpRatio, layoutQ, layoutK, aicCoreNum);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
-    ret = CheckExistenceSmla(cuSeqLensQOptional, cuSeqLensKOptional, layoutQ, layoutK, metadata);
+    ret = CheckExistenceSmla(cuSeqLensQOptional, cuSeqLensKOptional, topkLengthOptional, cmpResidualKOptional, topk,
+                             maskMode, cmpRatio, layoutQ, layoutK, metadata);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     ret = CheckConsistencySmla(batchSize, cuSeqLensQOptional, cuSeqLensKOptional, seqUsedQOptional, seqUsedKOptional,
