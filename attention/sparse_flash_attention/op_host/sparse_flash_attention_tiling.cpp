@@ -2158,7 +2158,8 @@ ge::graphStatus SFAInfoParser::CheckContiguous() const
     }
 
     OP_CHECK_IF(keyNonContiguous,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key", "key only supports non-contiguous tensor on the 0-axis in PA scenarios"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key",
+                                                "key only supports non-contiguous tensor on the 0-axis in PA scenarios"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

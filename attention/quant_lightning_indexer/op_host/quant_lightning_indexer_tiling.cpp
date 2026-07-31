@@ -1085,10 +1085,8 @@ ge::graphStatus QLIInfoParser::CheckContiguous()
     }
     OP_CHECK_IF(
         keyNonContiguous || scaleNonContiguous,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "keyNonContiguous and scaleNonContiguous",
-                                              std::string(keyNonContiguous ? "true" : "false") + " and " +
-                                                  std::string(scaleNonContiguous ? "true" : "false"),
-                                              "key and keyscale only support non-continuous keying on the 0-axis"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key/key_dequant_scale",
+                                                "key and key_dequant_scale only supports non-contiguous tensor on the 0-axis in PA scenarios"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
