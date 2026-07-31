@@ -120,12 +120,24 @@ public:
         mm.SetSingleShape(realMSize, realNSize, tilingData_->K);
     }
 
-    __aicore__ inline void SetupMatmulWeight(int currentGroupId, int currentBasicBlockNId) {
+    __aicore__ inline void SetupMatmulWeight(int currentGroupId, int64_t currentBasicBlockNId, int mBasicBlocks)
+    {
         if (tilingData_->isSingleTensor == 0) {
             weightGm_.SetGlobalBuffer(GetTensorAddr<int8_t>(currentGroupId, weightTensorPtr_));
+        }
+#if !(defined(ASCENDC_OOM) && ASCENDC_OOM == 1)
+        // 对齐 GMM：blockDimM==1（本组 m 向 basic block 数 == 1）时关闭 weight L2
+        if (mBasicBlocks == 1) {
+            weightGm_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+        } else {
+            weightGm_.SetL2CacheHint(CacheMode::CACHE_MODE_NORMAL);
+        }
+#endif
+        if (tilingData_->isSingleTensor == 0) {
             mm.SetTensorB(weightGm_[0x8 * currentBasicBlockNId * tilingData_->K * 0x20]);
         } else {
-            int64_t tensorBOffset = currentGroupId * tilingData_->K * tilingData_->N + 0x8 * currentBasicBlockNId * tilingData_->K * 0x20;
+            int64_t tensorBOffset =
+                currentGroupId * tilingData_->K * tilingData_->N + 0x8 * currentBasicBlockNId * tilingData_->K * 0x20;
             mm.SetTensorB(weightGm_[tensorBOffset]);
         }
     }
@@ -147,7 +159,7 @@ public:
         SetupMatmulShape(tokens, realMSize, realNSize);
         int64_t tensorAOffset = currentBasicBlockMId * matmulTilingData_->baseM * tilingData_->K + globalMOffset * tilingData_->K;
         mm.SetTensorA(xGm_[tensorAOffset]);
-        SetupMatmulWeight(currentGroupId, currentBasicBlockNId);
+        SetupMatmulWeight(currentGroupId, currentBasicBlockNId, mBasicBlocks);
         int64_t workspaceOffset = globalMOffset * tilingData_->N + currentBasicBlockMId * matmulTilingData_->baseM * tilingData_->N
             + currentBasicBlockNId * matmulTilingData_->baseN;
         mm.template IterateAll<false>(workspaceGm_[workspaceOffset]);
