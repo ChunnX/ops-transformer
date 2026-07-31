@@ -4,24 +4,14 @@
 
 ## 产品支持情况
 
-<!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
-<!-- end id1 -->
-<!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
-<!-- end id2 -->
-<!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
-<!-- end id3 -->
-<!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
-<!-- end id4 -->
-<!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：支持
-<!-- end id5 -->
-<!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
-<!-- end id6 -->
+|产品      | 是否支持 |
+|:----------------------------|:-----------:|
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      √     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -34,11 +24,7 @@
 
       - 输入的weight会被接口按AI处理器亲和数据排布格式（FRACTAL_NZ）解析。
       - 新增参数quantGroupSize，整数型参数，代表分组量化（per-group）的分组大小，不涉及分组量化时，填0。
-
-      <!-- npu="950" id7 -->
       - <term>Ascend 950PR/Ascend 950DT</term>：暂不支持quantGroupSize参数。
-
-      <!-- end id7 -->
 
   - **计算公式**：
 
@@ -110,7 +96,7 @@
         y_i=x_i \times (weight_i  * antiquant\_scale_i) + bias_i
         $$
 
-        x为FLOAT8_E4M3FN输入，weight为FLOAT32(表示8个FLOAT4_E2M1)/FLOAT4_E2M1输入
+        x为FLOAT8_E4M3FN输入，weight为FLOAT32(表示8个FLOAT4_E2M1)/FLOAT4_E2M1/FLOAT4_E1M2输入
 
         $$
         y_i=(x_i * per\_token\_scale_i) \times (weight_i  * antiquant\_scale_i) + bias_i
@@ -432,7 +418,6 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     </tbody>
     </table>
 
-    <!-- npu="950" id8 -->
     - <term>Ascend 950PR/Ascend 950DT</term>：
       - 上表数据类型列中的角标"1"代表该系列不支持的数据类型。
       - `weight`支持FRACTAL_NZ格式。当最后两根轴其中一根轴为1（即n=1或k=1）时，不支持私有格式，不能调用该接口。可使用aclnnNpuFormatCast接口完成输入Format从ND到AI处理器亲和数据排布格式（NZ）的转换。如原始weight为转置状态且想使用性能更高的非转置通路计算，可使用aclnnPermute接口转为非转置后再调用aclnnNpuFormatCast接口。非全量化场景，当数据类型为FLOAT4_E2M1时，还需要在aclnnNpuFormatCast调用后，调用aclnnCast接口将FLOAT32表示的FLOAT4_E2M1转换为正确的类型。但当为INT4类型时，需要使用aclnnConvertWeightToInt4Pack接口完成数据格式从ND到NZ和数据类型从INT32到INT4的转换。当传入FLOAT32或者INT32时，接口内部每个FLOAT32/INT32识别成8个FLOAT4_E2M1/INT4。
@@ -442,14 +427,10 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       - `actType`支持0、1、2、4、5。综合约束请参见<a href="#约束说明">约束说明</a>。
       - 输入参数`x`、`weight`，输出参数`out`在非量化场景支持最多1024个tensor，在伪量化场景支持最多128个tensor。在全量化场景下，输入参数`x`、输出参数`out`最多支持1个tensor；动态量化（mx量化）场景下，输入参数`weight`支持多tensor，最多支持1024个tensor。
 
-    <!-- end id8 -->
-    <!-- npu="A3,910b" id9 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
       - 上表数据类型列中的角标"2"代表该系列不支持的数据类型。
       - `weight`会被接口按FRACTAL_NZ格式解析。当传入INT32时，接口内部将每个INT32识别成8个INT4。
       - 输入参数`x`、`weight`，输出参数`out`支持最多128个tensor。
-
-    <!-- end id9 -->
 
   - **返回值：**
 
@@ -526,7 +507,6 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 - 确定性计算：
   - aclnnGroupedMatmulWeightNz默认确定性实现。
 
-<!-- npu="A3,910b" id10 -->
 <details>
 <summary><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></summary>
 
@@ -600,9 +580,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       | 0 | 多多单 |1）仅支持splitItem为2/3<br>2）x,weight,y中tensor需为2维<br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应，当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应，且长度最大为128，当groupListType为2时，groupListOptional第二列的数值需与x中tensor的第一维一一对应，且长度最大为128<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置 |
 
 </details>
-<!-- end id10 -->
 
-<!-- npu="950" id11 -->
 <details>
 <summary><term>Ascend 950PR/Ascend 950DT</term></summary>
 
@@ -634,10 +612,10 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |:-------:|:-------:|:-------------------:|:-------:|:--------------------:|:-----------:|:---------------------:|:------------:|:-------:|:---------------------------:|:------------:|:---------------------------:|:------------------:|:--------:|
       |0   |BFLOAT16      |null          |FLOAT4_E2M1     |FLOAT8_E8M0 |null    |null |BFLOAT16/FLOAT32/null     |BFLOAT16 |null             |(g, K, N)   |(g, K/groupSize, N) |null   |(g, N) |
       |0   |FLOAT16       |null          |FLOAT4_E2M1     |FLOAT8_E8M0 |null    |null |FLOAT16/null              |FLOAT16  |null             |(g, K, N)   |(g, K/groupSize, N) |null   |(g, N) |
-      |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT4_E2M1     |FLOAT8_E8M0 |null    |null |FLOAT16/null              |FLOAT16  |(M, K/groupSize/2, 2) |(g, N, K)   |(g, N, K/groupSize/2, 2) |null   |(g, N) |
-      |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT4_E2M1     |FLOAT8_E8M0 |null    |null |BFLOAT16/null             |BFLOAT16 |(M, K/groupSize/2, 2) |(g, N, K)   |(g, N, K/groupSize/2, 2) |null   |(g, N) |
-      |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT4_E2M1     |FLOAT8_E8M0 |null    |null |FLOAT16/null              |FLOAT16  |(M, K/groupSize/2, 2) |(N, K)      |(N, K/groupSize/2, 2)    |null   |(N)    |
-      |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT4_E2M1     |FLOAT8_E8M0 |null    |null |BFLOAT16/null             |BFLOAT16 |(M, K/groupSize/2, 2) |(N, K)      |(N, K/groupSize/2, 2)    |null   |(N)    |
+      |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT4_E2M1/FLOAT4_E1M2 |FLOAT8_E8M0 |null |null |FLOAT16/null  |FLOAT16  |(M, K/groupSize/2, 2) |(g, N, K) |(g, N, K/groupSize/2, 2) |null |(g, N) |
+      |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT4_E2M1/FLOAT4_E1M2 |FLOAT8_E8M0 |null |null |BFLOAT16/null |BFLOAT16 |(M, K/groupSize/2, 2) |(g, N, K) |(g, N, K/groupSize/2, 2) |null |(g, N) |
+      |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT4_E2M1/FLOAT4_E1M2 |FLOAT8_E8M0 |null |null |FLOAT16/null  |FLOAT16  |(M, K/groupSize/2, 2) |(N, K) |(N, K/groupSize/2, 2) |null |(N) |
+      |0   |FLOAT8_E4M3FN |FLOAT8_E8M0   |FLOAT4_E2M1/FLOAT4_E1M2 |FLOAT8_E8M0 |null |null |BFLOAT16/null |BFLOAT16 |(M, K/groupSize/2, 2) |(N, K) |(N, K/groupSize/2, 2) |null |(N) |
       |0   |INT8          |FLOAT32       |INT4            |FLOAT16     |FLOAT32 |null |FLOAT32/null              |BFLOAT16 |(M)              |(g, K, N)   |(g, K/groupSize, N) |(g, N) |(g, N) |
       |0   |INT8          |FLOAT32       |INT4            |FLOAT16     |FLOAT32 |null |FLOAT32/null              |FLOAT16  |(M)              |(g, K, N)   |(g, K/groupSize, N) |(g, N) |(g, N) |
       |0   |BFLOAT16      |null          |FLOAT32         |FLOAT8_E8M0 |null    |null |BFLOAT16/FLOAT32/null     |BFLOAT16 |null             |(g, K, N/8) |(g, K/groupSize, N) |null   |(g, N) |
@@ -648,13 +626,14 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |0   |INT8          |FLOAT32       |INT32           |FLOAT16     |FLOAT32 |null |FLOAT32/null              |FLOAT16  |(M)              |(g, K, N/8) |(g, K/groupSize, N) |(g, N) |(g, N) |
 
     - 约束说明：
-      - 当x为FLOAT8_E4M3FN/FLOAT16/BFLOAT16，weight为FLOAT4_E2M1/FLOAT32的场景， groupSize只支持32。
+      - 当x为FLOAT16/BFLOAT16，weight为FLOAT4_E2M1/FLOAT32的场景，groupSize只支持32。
+      - 当x为FLOAT8_E4M3FN，weight为FLOAT4_E2M1/FLOAT4_E1M2/FLOAT32的场景，groupSize只支持32。
       - 当x为INT8， weight为INT4/INT32的场景， groupSize只支持128、192、256、512。
       - 当x的shape固定为（M, K）, out的shape固定为（M, N）。
       - mx伪量化和K-CG伪量化场景，weight的K轴和N轴均要求32B对齐。
-      - 当x和weight的类型分别为BFLOAT16/FLOAT16和FLOAT4_E2M1/FLOAT32时，或为INT8和INT4/INT32时，仅支持x、weight均不转置，为FLOAT8_E4M3FN和FLOAT4_E2M1/FLOAT32时仅支持x不转置且weight转置。
+      - 当x和weight的类型分别为BFLOAT16/FLOAT16和FLOAT4_E2M1/FLOAT32时，或为INT8和INT4/INT32时，仅支持x、weight均不转置，为FLOAT8_E4M3FN和FLOAT4_E2M1/FLOAT4_E1M2/FLOAT32时仅支持x不转置且weight转置。
       - antiquantScale的转置与否和weight保持一致。
-      - 当x为FLOAT8_E4M3FN，weight为FLOAT4_E2M1，weight shape为(N, K)的场景，属于单多单场景， weight支持多tensor(个数大于等于1)，antiquantScaleOptional、antiquantOffsetOptional、biasOptional的tensor个数和weight一致。
+      - 当x为FLOAT8_E4M3FN，weight为FLOAT4_E2M1/FLOAT4_E1M2，weight shape为(N, K)的场景，属于单多单场景， weight支持多tensor(个数大于等于1)，antiquantScaleOptional、antiquantOffsetOptional、biasOptional的tensor个数和weight一致。
 
   - 静态量化场景支持的输入类型与shape为：
     - 以下入参为空：offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、perTokenScaleOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
@@ -729,7 +708,6 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       | 0 | 多多单 |1）仅支持splitItem为2/3<br>2）x，out中tensor需为2维， shape分别为（M, K）和（M, N）；weight中tensor需为2维，shape为（N, K）或（K, N）；bias中tensor需为1维，shape为（N）<br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional，当groupListType为0时，groupListOptional的差值需与x中tensor的第一维一一对应，当groupListType为1时，groupListOptional的数值需与x中tensor的第一维一一对应，且长度最大为1024<br>5）支持weight转置，但weight的tensorList中每个tensor是否转置需保持统一<br>6）x不支持转置<br>7）仅支持非量化|
 
 </details>
-<!-- end id11 -->
 
 ## 调用示例
 
@@ -1388,12 +1366,9 @@ int main()
 }
 ```
 
-<!-- npu="950" id12 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
   MxA8W4伪量化（单多单场景）调用示例
-
-<!-- end id12 -->
 
 ```c++
 #include <algorithm>
