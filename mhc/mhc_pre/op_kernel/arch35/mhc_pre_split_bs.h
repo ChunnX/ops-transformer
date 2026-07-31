@@ -9,24 +9,24 @@
  */
 
 /*!
- * \file mhc_pre_kernel_split_bs.h
- * \brief
+ * \file mhc_pre_split_bs.h
+ * \brief BS-split Basic API implementation for MHC Pre
  */
 
-#ifndef MHC_PRE_KERNEL_SPLIT_BS_H
-#define MHC_PRE_KERNEL_SPLIT_BS_H
+#ifndef MHC_PRE_SPLIT_BS_H
+#define MHC_PRE_SPLIT_BS_H
 
-#include "mhc_pre_kernel_bs_common.h"
-#include "mhc_pre_cube_compute_arch35.h"
+#include "mhc_pre_bs_common.h"
+#include "mhc_pre_cube_compute.h"
 
 namespace MhcPre {
 
 template <class T, class P, int8_t HAS_RESI>
-class MhcPreKernelSplitBS : public MhcPreKernelBsCommon<T, P, HAS_RESI> {
+class MhcPreSplitBS : public MhcPreBsCommon<T, P, HAS_RESI> {
 public:
-    using Parent = MhcPreKernelBsCommon<T, P, HAS_RESI>;
+    using Parent = MhcPreBsCommon<T, P, HAS_RESI>;
 
-    __aicore__ inline MhcPreKernelSplitBS() = default;
+    __aicore__ inline MhcPreSplitBS() = default;
 
     __aicore__ inline void Init(InitParams initParams)
     {
@@ -41,7 +41,7 @@ public:
         this->pipe_->InitBuffer(mmXBuf_, mmRowsPerAiv * this->tiling_->fusionAlign * sizeof(float));
         mmXLocal_ = mmXBuf_.Get<float>();
 
-        InitUbBuffersLowApi();
+        InitUbBuffersBasicApi();
         SyncAll<false>();
 
         if ASCEND_IS_AIV {
@@ -49,9 +49,9 @@ public:
             this->AIVPreLoad();
         }
         if ASCEND_IS_AIC {
-            this->pipe_->InitBuffer(l1Buffer_, MHC_PRE_LOW_API_L1_ALLOC_SIZE);
+            this->pipe_->InitBuffer(l1Buffer_, MHC_PRE_BASIC_API_L1_ALLOC_SIZE);
             aL1_ = l1Buffer_.Get<float>();
-            bL1_ = aL1_[MHC_PRE_LOW_API_L1_BUF_NUM * MHC_PRE_LOW_API_L1_BUF_OFFSET];
+            bL1_ = aL1_[MHC_PRE_BASIC_API_L1_BUF_NUM * MHC_PRE_BASIC_API_L1_BUF_OFFSET];
             mmService_.Init(this->implMode_);
         }
     }
@@ -86,7 +86,7 @@ public:
                     AscendC::CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MhcPreUtils::X_READY_FLAG);
                     AscendC::CrossCoreWaitFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE2>(
                         MhcPreUtils::X_READY_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
-                    AICProcessLowApi(offsetNd);
+                    AICProcessBasicApi(offsetNd);
                     CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MhcPreUtils::X_CONSUMED_FLAG);
                     CrossCoreSetFlag<MhcPreUtils::CROSS_CORE_SYNC_MODE, PIPE_MTE2>(
                         MhcPreUtils::X_CONSUMED_FLAG + MhcPreUtils::SUBBLOCK_FLAG_OFFSET);
@@ -115,27 +115,27 @@ public:
     }
 
 private:
-    __aicore__ inline void InitUbBuffersLowApi()
+    __aicore__ inline void InitUbBuffersBasicApi()
     {
         if ASCEND_IS_NOT_AIV {
             return;
         }
 
-        static constexpr uint32_t kXInQueueBufferBytes = 80 * 1024;
-        static constexpr uint32_t kOutQueueBufferBytes = 20 * 1024;
-
-        this->pipe_->InitBuffer(this->xInQueue_, this->kDoubleBufferCount, kXInQueueBufferBytes);
-        this->pipe_->InitBuffer(this->outQueue_, this->kDoubleBufferCount, kOutQueueBufferBytes);
+        this->pipe_->InitBuffer(
+            this->xInQueue_, this->kDoubleBufferCount, this->kXInQueueBufferBytes);
+        this->pipe_->InitBuffer(
+            this->outQueue_, this->kDoubleBufferCount, this->kOutQueueBufferBytes);
 
         uint32_t invRmsRows =
             (this->curSingleT_ + this->kHalfSplitDivisor - 1U) / this->kHalfSplitDivisor;
         uint32_t invRmsBytes = MhcPreUtils::Align(
-            invRmsRows, this->kAlignmentBytes / sizeof(P)) * sizeof(P);
+                                   invRmsRows, this->kAlignmentBytes / sizeof(P)) *
+                               sizeof(P);
         this->pipe_->InitBuffer(this->invRmsOutQueue_, this->kSingleBufferCount, invRmsBytes);
 
         if (this->hasGamma_) {
             this->pipe_->InitBuffer(this->gammaInQueue_, this->kSingleBufferCount,
-                this->ND_LENGTH * sizeof(P));
+                                    this->ND_LENGTH * sizeof(P));
         }
 
         uint32_t parameterBufferBytes = MhcPreUtils::Align(
@@ -170,7 +170,7 @@ private:
         }
     }
 
-    __aicore__ inline void AICProcessLowApi(uint32_t offsetNd)
+    __aicore__ inline void AICProcessBasicApi(uint32_t offsetNd)
     {
         if (offsetNd + this->mnConfig_.singleCoreK > this->mnConfig_.k) {
             this->mnConfig_.curSingleCoreK = this->mnConfig_.k - offsetNd;
@@ -178,24 +178,24 @@ private:
 
         uint32_t currentK = this->mnConfig_.curSingleCoreK;
         uint64_t xOffset = this->chunkTSize_ * this->ND_LENGTH *
-            (this->coreIdx_ + (this->cubeCount_ % this->PARALLEL_NUM) * this->coreNum_);
+                           (this->coreIdx_ + (this->cubeCount_ % this->PARALLEL_NUM) * this->coreNum_);
         uint8_t aL1BufferId = this->cubeCount_ & 1;
         uint8_t bL1BufferId = mmService_.GetBL1BufferId();
 
-        LocalTensor<float> currentAL1 = aL1_[aL1BufferId * MHC_PRE_LOW_API_L1_BUF_OFFSET];
-        LocalTensor<float> currentBL1 = bL1_[bL1BufferId * MHC_PRE_LOW_API_L1_BUF_OFFSET];
+        LocalTensor<float> currentAL1 = aL1_[aL1BufferId * MHC_PRE_BASIC_API_L1_BUF_OFFSET];
+        LocalTensor<float> currentBL1 = bL1_[bL1BufferId * MHC_PRE_BASIC_API_L1_BUF_OFFSET];
         mmService_.CopyInA1Nd2Nz(this->mnConfig_.curSingleCoreM, currentK,
-            this->xFloatGm_[xOffset], currentAL1);
+                                 this->xFloatGm_[xOffset], currentAL1);
         mmService_.CopyInB1Nd2Nz(this->mnConfig_.k, currentK, this->mnConfig_.n,
-            this->phiGm_[offsetNd], currentBL1);
+                                 this->phiGm_[offsetNd], currentBL1);
 
         bool isFirstKL1 = (offsetNd == 0);
         bool isLastKL1 = (offsetNd + currentK >= this->matrixInfo_.nD);
-        uint64_t mAlign = LowApiAlign(this->mnConfig_.curSingleCoreM, AscendC::BLOCK_CUBE);
-        uint64_t nAlign = LowApiAlign(this->mnConfig_.n, AscendC::BLOCK_CUBE);
+        uint64_t mAlign = BasicApiAlign(this->mnConfig_.curSingleCoreM, AscendC::BLOCK_CUBE);
+        uint64_t nAlign = BasicApiAlign(this->mnConfig_.n, AscendC::BLOCK_CUBE);
         uint64_t baseK = (256 / AscendC::Std::max(mAlign, nAlign)) * 32;
         mmService_.Process(this->mnConfig_.curSingleCoreM, this->mnConfig_.n,
-            this->mnConfig_.curSingleCoreM, baseK, isFirstKL1, isLastKL1, currentAL1, currentBL1);
+                           this->mnConfig_.curSingleCoreM, baseK, isFirstKL1, isLastKL1, currentAL1, currentBL1);
 
         if (isLastKL1) {
             mmService_.CopyOut(mmXLocal_);
@@ -214,7 +214,7 @@ private:
         for (uint64_t offsetT = this->vectorOffset_.offsetMStart;
              offsetT < this->vectorOffset_.offsetMEnd; offsetT += this->V1_BASE_T) {
             uint64_t lenT = AscendC::Std::min(static_cast<uint64_t>(this->V1_BASE_T),
-                this->vectorOffset_.offsetMEnd - offsetT);
+                                              this->vectorOffset_.offsetMEnd - offsetT);
             AIV1PrologueDirect(offsetT, lenT, localOffset);
             this->AIV1ProcessHPost(offsetT, lenT);
             this->AIV1ProcessHPre(offsetT, lenT);
@@ -232,7 +232,7 @@ private:
         if (this->tiling_->fusionAlign != this->mnConfig_.n) {
             compactLocal = this->xInQueue_.template AllocTensor<P>();
             MhcPreVFCompactRows(compactLocal, this->matmulRes_, static_cast<uint16_t>(lenT),
-                this->tiling_->fusionAlign, this->mnConfig_.n);
+                                this->tiling_->fusionAlign, this->mnConfig_.n);
             copySource = compactLocal;
         }
         SetFlag<HardEvent::V_MTE3>(EVENT_ID2);
@@ -244,7 +244,7 @@ private:
         copyParams.srcStride = 0;
         copyParams.dstStride = 0;
         DataCopyPad(this->hMixGm_[(this->globalOffsetM_ + offsetT) * this->mnConfig_.n],
-            copySource, copyParams);
+                    copySource, copyParams);
 
         SetFlag<HardEvent::MTE3_V>(EVENT_ID2);
         WaitFlag<HardEvent::MTE3_V>(EVENT_ID2);
@@ -307,4 +307,4 @@ private:
 
 } // namespace MhcPre
 
-#endif // MHC_PRE_KERNEL_SPLIT_BS_H
+#endif // MHC_PRE_SPLIT_BS_H
