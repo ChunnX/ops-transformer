@@ -48,7 +48,7 @@
 
 - 示例：
 
-  ```
+  ```python
   cache shape:        [128, 16, 1, 384]   # 4D [blockNum, blockSize, 1, headDim], num_slots=2048, headDim≥kvCacheCol(=323)
   x shape:            [1024, 256]
   slot_mapping shape: [1024]

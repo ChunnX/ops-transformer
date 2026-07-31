@@ -618,7 +618,6 @@ aclnnStatus aclnnMlaProlog(
         <col style="width: 625px">
         <col style="width: 360px">
         </colgroup>
-<table>
   <thead>
     <tr>
       <th>字段名</th>

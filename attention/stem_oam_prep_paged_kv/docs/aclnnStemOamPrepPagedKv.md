@@ -45,7 +45,7 @@
 
 - 输入输出支持以下数据场景：
 
-    ```
+    ```python
     kCache:[total_blocks, kvBlockSize, H_kv, D] 或 [total_blocks, H_kv, kvBlockSize, D]
     vCache:[total_blocks, kvBlockSize, H_kv, D] 或 [total_blocks, H_kv, kvBlockSize, D]
     kvIndices:[batch, max_kv_blocks]

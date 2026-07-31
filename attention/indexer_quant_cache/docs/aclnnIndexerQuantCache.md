@@ -42,7 +42,7 @@
 
 - 示例：
 
-  ```
+  ```python
   # cache/cache_scale 均为 4D [blockNum, blockSize, 1, headDim]; num_slots = blockNum*blockSize = 2048
   cache shape:        [128, 16, 1, 128]   # headDim=128 >= d(128)
   cache_scale shape:  [128, 16, 1, 1]     # mode1 scaleCol=1

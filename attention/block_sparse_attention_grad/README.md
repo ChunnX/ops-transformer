@@ -87,8 +87,6 @@ BlockSparseAttentionGrad输入dout、query、key、value, attentionOut的数据�
 - <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>:
 不支持"BSND"。
 
-
-
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1550px">
