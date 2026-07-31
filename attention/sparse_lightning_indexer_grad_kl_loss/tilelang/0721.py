@@ -44,7 +44,7 @@ DQUERY = 512
 DQUERY_INDEX = 128
 # 显式参与 TileLang JIT specialization，源码结构调整后递增以避免复用
 # 旧的持久编译产物。该值不进入运行时 kernel ABI。
-KERNEL_CACHE_REVISION = 11
+KERNEL_CACHE_REVISION = 12
 
 _kernel_cache = {}
 _workspace_cache = {}
@@ -1990,6 +1990,10 @@ def tilelang_grad_kl_loss_single_kernel(
         LossOut: T.Tensor((1,), calc_dtype),
     ):
         with T.Kernel(launch_core_num, is_npu=True) as (cid, vid):
+            # dKeyIndexAccum 与 task 流水写入的 dk_matmul_partial 相互独立。
+            # 提前清零后，流水末尾的一次全核同步即可同时保护两者。
+            clear_dkey_accumulator(dKeyIndexAccum, cid, vid)
+
             for pipe_iter in T.serial(tasks_per_core + task_pipeline_lag):
                 if pipe_iter < tasks_per_core:
                     task_current = pipe_iter * launch_core_num + cid
@@ -2083,8 +2087,6 @@ def tilelang_grad_kl_loss_single_kernel(
             # 所有任务负责人必须完成 C2 后，才能开始全核的确定性 scatter。
             # 这对应官方切换到 ProcessDeterVector2 的阶段边界，也允许空闲的
             # 任务核参与后续处理。
-            T.sync_all()
-            clear_dkey_accumulator(dKeyIndexAccum, cid, vid)
             T.sync_all()
             vector2_scatter_all_tasks(
                 SparseIndices,
