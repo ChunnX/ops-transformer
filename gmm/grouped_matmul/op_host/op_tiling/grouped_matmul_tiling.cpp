@@ -161,7 +161,6 @@ static inline uint32_t FindBestSingleNA8W4(uint32_t baseM_, uint32_t baseN_, uin
     return baseN_;
 }
 
-
 ge::graphStatus GMMTiling::CheckWeightNZShape(const gert::TilingContext *context, int64_t numInOneBlk) const
 {
     OP_CHECK_IF(numInOneBlk <= 0,
@@ -879,7 +878,6 @@ void GMMTiling::FindBestUsedCoreNumOneGroup(const uint32_t aicNum)
     }
 }
 
-
 ge::graphStatus GMMTiling::SetWorkspscesPerTokenQuant(const uint32_t aicNum, size_t *workspaces)
 {
     if (aicNum == 0U) { // invaild value
@@ -887,7 +885,7 @@ ge::graphStatus GMMTiling::SetWorkspscesPerTokenQuant(const uint32_t aicNum, siz
     }
     bool opt = (maxM_ <= 32 * groupNum_ && wFormat_ == matmul_tiling::CubeFormat::NZ) &&
                (!transposeWeight_ || maxN_ >= 2048); // 32: a factor, 2048: a threshold.
-    if (opt) { // non-basic strategy. matmul output in non-continugous mode with singleN >= baseN
+    if (opt) {                                       // non-basic strategy. matmul output in non-continugous mode with singleN >= baseN
         int32_t bestSingleN = FindBestSingleNPertoken(aicNum);
         tilingData.gmmBaseParams.set_singleN(bestSingleN);
     }
@@ -1104,8 +1102,8 @@ int64_t GMMTiling::GMMGetBS(const gert::Shape &xShape) const
     if (transposeX_) {
         bs = xShape.GetDim(1); // x shape is [k, m] if x is transpose_
     } else {
-        if (groupType_ == -1) {    // -1: no group case, may exits a situation that multi dims product equals to bs.
-            bs = xShape.GetDim(0); // 0: x first dim
+        if (groupType_ == -1) {                                      // -1: no group case, may exits a situation that multi dims product equals to bs.
+            bs = xShape.GetDim(0);                                   // 0: x first dim
             size_t bsDimNum = xDimNum_ >= 1U ? xDimNum_ - 1UL : 0UL; // 1: x last dim k, the other dimensions are bs
             for (size_t i = 1; i < bsDimNum; i++) {
                 bs *= xShape.GetDim(i);
@@ -1120,8 +1118,7 @@ int64_t GMMTiling::GMMGetBS(const gert::Shape &xShape) const
 uint32_t GMMTiling::GetTplDataType(const ge::DataType &dtype)
 {
     static const std::map<ge::DataType, uint32_t> dtype_map = {
-        {ge::DT_INT4, GMM_TPL_INT4}, {ge::DT_INT8, GMM_TPL_INT8},   {ge::DT_FLOAT16, GMM_TPL_FLOAT16},
-        {ge::DT_BF16, GMM_TPL_BF16}, {ge::DT_INT32, GMM_TPL_INT32}, {ge::DT_FLOAT, GMM_TPL_FLOAT}};
+        {ge::DT_INT4, GMM_TPL_INT4}, {ge::DT_INT8, GMM_TPL_INT8}, {ge::DT_FLOAT16, GMM_TPL_FLOAT16}, {ge::DT_BF16, GMM_TPL_BF16}, {ge::DT_INT32, GMM_TPL_INT32}, {ge::DT_FLOAT, GMM_TPL_FLOAT}};
     auto it = dtype_map.find(dtype);
     if (it != dtype_map.end()) {
         return it->second;
@@ -1546,7 +1543,6 @@ ge::graphStatus GMMTiling::GMMSetMMTiling(const gert::TilingContext *context, co
                     OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "matmul getTiling failed."),
                     return ge::GRAPH_FAILED);
     }
-
 
     uint32_t mmStepKa = 1;
     uint32_t mmStepKb = 1;
@@ -2041,14 +2037,14 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
                                 sizeof(uint8_t));
         context->SetScheduleMode(1); // set as batchmod for template using SyncAll
         context->SetTilingKey(GET_TPL_TILING_KEY(GMM_TPL_INT8, GMM_TPL_INT4, yDtype, 0, 0,
-                                                  GROUPED_MATMUL_GROUP_LIST_TYPE_COUNT, 0,
+                                                 GROUPED_MATMUL_GROUP_LIST_TYPE_COUNT, 0,
                                                  GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_AUTOTILING,
                                                  GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE,
                                                  GROUPED_MATMUL_AIV_AIC_RATIO_2, 0));
 
         size_t *workspaces = context->GetWorkspaceSizes(1); // get second variable
         OP_CHECK_NULL_WITH_CONTEXT(context, workspaces);
-        workspaces[0] = SYS_WORKSPACE_SIZE;                 // default size
+        workspaces[0] = SYS_WORKSPACE_SIZE; // default size
         workspaces[0] += workspaceSize;
 
         auto rawTilingData = context->GetRawTilingData();
@@ -2225,6 +2221,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
             if (isPerchannel) {
                 tilingData.gmmBaseParams.set_isSingleTensor(isSingleTensor);
                 isA8W4FakeA8W8_ = true;
+                
                 A8W4GroupNum_ = groupNum;
                 A8W4QuantGroupNum_ = quantGroupNum;
                 A8W4N_ = n;
