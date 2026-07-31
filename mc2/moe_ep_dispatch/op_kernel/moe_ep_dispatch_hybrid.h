@@ -768,6 +768,10 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
 
     // notifyValue 的低 32 位为 ready，高 32 位为该目标 rank 的 token count。
+    if (aivId_ < 2U) {
+        AscendC::PRINTF("sendcount: rank=%u aiv=%u dstRank=%u notifyVal=%lu\n",
+                        epRankId_, aivId_, dstRankId, notifyValue);
+    }
     hcomm_.WriteWithNotifyNbi(commHandle, remoteCountAddr, srcWorkspaceAddr,
                               static_cast<uint64_t>(moeExpertNumPerRank_ * sizeof(int32_t)),
                               notifyAddr, notifyValue);
@@ -775,6 +779,10 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     // 需通过 GetCommHandle(dstRankId, channelIndex) 获取当前 channel，
     // 并调用 hcomm_.FlushChannel(commHandle) 刷新 DCCI。
     hcomm_.Drain(commHandle);
+    if (aivId_ < 2U) {
+        AscendC::PRINTF("sendcount done: rank=%u aiv=%u dstRank=%u\n",
+                        epRankId_, aivId_, dstRankId);
+    }
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -852,12 +860,20 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     LocalTensor<float> recvCounterTensorFp32 = recvCounterTensor.template ReinterpretCast<float>();
     LocalTensor<float> numRecvPerRankTensorFp32 = numRecvPerRankTensor_.template ReinterpretCast<float>();
     SyncFunc<AscendC::HardEvent::MTE3_V>(); // 等待本核上轮计数器清0(buf 复用)
+    uint32_t recvPollCount = 0U;
     while (sumOfFlag != compareFlag) {      // 状态位check
         DataCopy(recvCounterTensor, recvCounterGMTensor_, statusCopyParams_);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum(numRecvPerRankTensorFp32, recvCounterTensorFp32, tempFp32, mask, serverRankCount, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = numRecvPerRankTensor_.GetValue(0);
+        if (recvPollCount < 3U || recvPollCount % 1000U == 0U) {
+            int32_t s0 = recvCounterTensor.GetValue(0);
+            int32_t s1 = recvCounterTensor.GetValue(UB_STRIDE);
+            AscendC::PRINTF("recvcount poll: rank=%u sum=%d cmp=%d poll=%u r0=%d r1=%d\n",
+                            epRankId_, sumOfFlag, compareFlag, recvPollCount, s0, s1);
+        }
+        recvPollCount++;
     }
     SetRecvNumPerExpert();                // 计算本卡上各专家接收的token总数
     SetRecvNumPerRank(recvCounterTensor); // 计算本端接收来自各卡的token总数
