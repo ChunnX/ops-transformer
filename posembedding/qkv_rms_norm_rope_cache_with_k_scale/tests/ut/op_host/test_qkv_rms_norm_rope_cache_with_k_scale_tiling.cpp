@@ -361,7 +361,9 @@ void ExpectTilingResult(const QkvTilingCase &testCase, const TilingInfo &tilingI
     EXPECT_LE(CalcQkPreprocessNzBytes(qPreprocessRows) + CalcQkPreprocessNzBytes(kPreprocessRows),
               QkvTiling::QK_PREPROCESS_UB_BYTES);
     EXPECT_LE(tokenTilePerAiv * qkHeadNum, QkvTiling::QK_OUTPUT_ROWS_PER_AIV);
-    EXPECT_LE(tokenTilePerAiv * (qkHeadNum + tiling.kvHeadNum), QkvTiling::QKV_INPUT_ROWS_PER_AIV);
+    const uint64_t qkvInputRowsPerAiv = mropeSection.size() == 3U ? QkvTiling::MROPE_COMPACT_INPUT_ROWS_PER_AIV :
+                                                                   QkvTiling::QKV_INPUT_ROWS_PER_AIV;
+    EXPECT_LE(tokenTilePerAiv * (qkHeadNum + tiling.kvHeadNum), qkvInputRowsPerAiv);
     EXPECT_LE(tokenTilePerAiv * tiling.kvHeadNum, QkvTiling::V_OUTPUT_ROWS_PER_AIV);
 
     ExpectU64(testCase.case_name, "kvCacheStrideBlock", expected.kvStrideBlock, tiling.kvCacheStrideBlock);

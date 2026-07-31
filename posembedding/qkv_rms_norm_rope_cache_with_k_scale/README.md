@@ -161,8 +161,8 @@ RoPE路径提供量化Q和Q scale；M-RoPE路径提供BF16 Q，公开接口不�
   - M-RoPE场景必须同时传`mrope_position[T,3]`和非空`mrope_section=[t,h,w]`，不传`query_start_loc/seq_lens`；
     `q_quant_mode=NoQuant`、`q_out_dtype=BF16`、公开`q_scale=None`，K Cache为INT8，且仅支持
     `layout_qkv="TND"`、`layout_q_out="TND"`。两组位置输入不能同时存在或同时缺失。
-  - M-RoPE的`mrope_section`长度必须为3。D128时单项上限为`[22,21,21]`，三项之和不得超过`64`；第0项
-    只参与值域和总和校验，不参与lane选源。`mrope_position`必须为INT32、rank 2、shape `[T,3]`。
+  - M-RoPE的`mrope_section`长度必须为3。D128时三项分别受`[22,21,21]`上限约束；这些互不重叠的lane容量使三项总量自然不超过`64`，第0项
+    只参与值域校验，不参与lane选源。`mrope_position`必须为INT32、rank 2、shape `[T,3]`。
   - `layout_qkv`控制`qkv`的N/T轴布局，默认值为`"TND"`；`layout_q_out`控制`q_out`和`q_scale`的N/T轴布局，默认值为`"NTD"`：
     - `layout_qkv="TND"`，`layout_q_out="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`q_out=[T, Nq, D]`，`q_scale=[T, Nq]`。
     - `layout_qkv="TND"`，`layout_q_out="NTD"`：`qkv=[T, Nq+Nk+Nv, D]`，`q_out=[Nq, T, D]`，`q_scale=[Nq, T]`。

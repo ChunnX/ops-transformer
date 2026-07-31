@@ -114,7 +114,7 @@
   =(t,h,w).
   $$
 
-  $s_{\mathrm T}$只参与`mropeSectionOptional`的值域和总和校验，不参与lane选源；T路是half-lane的默认来源，H/W在各自覆盖范围内替换对应lane。对$0\leq\ell<D_{\mathrm{half}}$，定义
+  $s_{\mathrm T}$只参与`mropeSectionOptional`的逐项值域校验，不参与lane选源；T路是half-lane的默认来源，H/W在各自覆盖范围内替换对应lane。对$0\leq\ell<D_{\mathrm{half}}$，定义
 
   $$
   r(\ell)=\left\lfloor\frac{\ell}{3}\right\rfloor,\qquad
@@ -574,7 +574,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td><code>kCacheRef</code>、<code>vCacheRef</code>或<code>kScaleCacheRef</code>非连续Tensor的stride不满足约束。</td>
     </tr>
     <tr>
-      <td><code>mropePositionOptional</code>与非空<code>mropeSectionOptional</code>未同时缺席或同时存在，<code>mropeSectionOptional</code>长度/单项值域/三项总和不满足约束，或位置参数、<code>qQuantMode</code>、<code>qOut</code> dtype、<code>qScaleOptional</code>的组合与所选场景不匹配。</td>
+      <td><code>mropePositionOptional</code>与非空<code>mropeSectionOptional</code>未同时缺席或同时存在，<code>mropeSectionOptional</code>长度或单项值域不满足约束，或位置参数、<code>qQuantMode</code>、<code>qOut</code> dtype、<code>qScaleOptional</code>的组合与所选场景不匹配。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap">ACLNN_ERR_INNER_CREATE_EXECUTOR</td>
@@ -661,11 +661,10 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
 
     $$
     0\leq s_i\leq C_i=\left\lfloor\frac{D/2+2-i}{3}\right\rfloor,
-    \qquad i\in\{0,1,2\},
-    \qquad s_{\mathrm T}+s_{\mathrm H}+s_{\mathrm W}\leq D/2.
+    \qquad i\in\{0,1,2\}.
     $$
 
-    当前`D=128`，因此三项总和上限为64。
+    当前`D=128`时，逐项上限为`[22,21,21]`；三项对应互不重叠的lane集合，因此总量由逐项约束自然不超过`D/2`。
   - 资源边界约束：`Nq+Nk <= 128`，`Nq+Nk+Nv <= 160`，`Nv <= 80`，`ceil_align(Nq,16)+ceil_align(Nk,16) <= 256`。
 
 ## 调用示例

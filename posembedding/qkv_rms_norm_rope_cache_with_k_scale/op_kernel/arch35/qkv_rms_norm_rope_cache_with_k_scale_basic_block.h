@@ -166,10 +166,11 @@ private:
 
             // Keep the current A path ahead of K postprocessing. Otherwise
             // staging K(i - 1) delays A_READY(i) and stalls both AIC and AIV.
-            vec_.ComputeTile(
-                tile, aRotL1Nz,
-                outputDbPoolUb_[outputBufferId * QKV_K_SCALE_MROPE_COMPACT_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
-                outputBufferId);
+            const LocalTensor<float> outputUb =
+                outputDbPoolUb_[outputBufferId * QKV_K_SCALE_MROPE_COMPACT_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS];
+            vec_.ComputeMropeTileBeforeL1(tile, outputUb, outputBufferId);
+            WaitAicMte1ToAivMte3AConsumed();
+            vec_.CommitMropeTileToL1(tile, aRotL1Nz, outputUb, outputBufferId);
             SetAivMte3ToAicMte1AReady();
 
             if (hasPreviousTile_) {
@@ -191,7 +192,7 @@ private:
             const uint32_t outputBufferId =
                 static_cast<uint32_t>(outputBufferUseId_ % ROPE_OUTPUT_BUFFER_NUM);
             WaitAicMte1ToAivMte3AConsumed();
-            vec_.ComputeTile(
+            vec_.ComputeRopeTile(
                 tile, aRotL1Nz,
                 outputDbPoolUb_[outputBufferId * QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS], outputBufferId);
             ++outputBufferUseId_;
@@ -203,7 +204,7 @@ private:
                 const uint32_t lastOutputBufferId = static_cast<uint32_t>(
                     outputBufferUseId_ % ROPE_OUTPUT_BUFFER_NUM);
                 WaitAicFixToAivOutputReady();
-                vec_.PostprocessQk(
+                vec_.PostprocessRopeQk(
                     lastTile,
                     outputDbPoolUb_[lastOutputBufferId * QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
                     lastOutputBufferId);
@@ -250,9 +251,9 @@ private:
             const uint32_t lastOutputBufferId = static_cast<uint32_t>(
                 outputBufferUseId_ % ROPE_OUTPUT_BUFFER_NUM);
             WaitAicFixToAivOutputReady();
-            vec_.PostprocessQk(lastTile,
-                               outputDbPoolUb_[lastOutputBufferId * QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
-                               lastOutputBufferId);
+            vec_.PostprocessRopeQk(
+                lastTile, outputDbPoolUb_[lastOutputBufferId * QKV_K_SCALE_OUTPUT_ONE_BUFFER_FLOAT_ELEMENTS],
+                lastOutputBufferId);
             SetAivMte3ToAicFixOutputConsumed();
             ++outputBufferUseId_;
         }

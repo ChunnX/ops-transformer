@@ -175,6 +175,8 @@ private:
     // Classify the call from the presence of the two complete position sources.
     aclnnStatus DetermineScene()
     {
+        const bool hasQueryStartLoc = params_.queryStartLoc != nullptr;
+        const bool hasSeqLens = params_.seqLens != nullptr;
         const bool hasMropePosition = params_.mropePositionOptional != nullptr;
         const bool hasMropeSection =
             params_.mropeSectionOptional != nullptr && params_.mropeSectionOptional->Size() != 0;
@@ -184,8 +186,13 @@ private:
                 "both parameters must be provided together");
             return ACLNN_ERR_PARAM_INVALID;
         }
-        const bool hasMropePositionSource = hasMropePosition && hasMropeSection;
-        scene_ = hasMropePositionSource ? SceneType::MROPE : SceneType::ROPE;
+        if (hasMropePosition && (hasQueryStartLoc || hasSeqLens)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                ACLNN_NAME, "queryStartLocOptional/seqLensOptional", "not nullptr",
+                "both parameters must be nullptr in the M-RoPE scene");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        scene_ = hasMropePosition ? SceneType::MROPE : SceneType::ROPE;
         return ACLNN_SUCCESS;
     }
 
@@ -209,12 +216,6 @@ private:
         aclnnStatus kCacheRet = CheckDtypeSupported("kCacheRef", params_.kCache, MROPE_K_CACHE_TYPE_LIST);
         if (kCacheRet != ACLNN_SUCCESS) {
             return kCacheRet;
-        }
-        if (params_.queryStartLoc != nullptr || params_.seqLens != nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                ACLNN_NAME, "queryStartLocOptional/seqLensOptional", "not nullptr",
-                "both parameters must be nullptr in the M-RoPE scene");
-            return ACLNN_ERR_PARAM_INVALID;
         }
         if (params_.qScale != nullptr) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "qScaleOptional", "not nullptr",
@@ -563,7 +564,6 @@ private:
         }
 
         const int64_t halfHeadDim = headDim / 2;
-        int64_t sectionSum = 0;
         for (uint64_t i = 0; i < MROPE_SECTION_SIZE; ++i) {
             const int64_t value = (*params_.mropeSectionOptional)[i];
             if (value < 0) {
@@ -573,20 +573,6 @@ private:
                                                       reason.c_str());
                 return ACLNN_ERR_PARAM_INVALID;
             }
-            // Compare against the remaining budget so the sum check cannot overflow int64_t.
-            if (value > halfHeadDim - sectionSum) {
-                const std::string incorrectValues = params_.mropeSectionOptional->ToString().GetString();
-                const std::string reason = "the sum of mropeSectionOptional values must be less than or equal to "
-                                            "D/2 (" + std::to_string(halfHeadDim) + ")";
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "mropeSectionOptional", incorrectValues.c_str(),
-                                                      reason.c_str());
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-            sectionSum += value;
-        }
-
-        for (uint64_t i = 0; i < MROPE_SECTION_SIZE; ++i) {
-            const int64_t value = (*params_.mropeSectionOptional)[i];
             const int64_t axisCapacity = GetMropeAxisCapacity(halfHeadDim, i);
             if (value > axisCapacity) {
                 const std::string incorrectValue = std::to_string(value);

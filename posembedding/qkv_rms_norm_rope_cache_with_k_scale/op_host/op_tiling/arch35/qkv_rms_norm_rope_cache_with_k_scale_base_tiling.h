@@ -68,6 +68,7 @@ public:
     static constexpr uint64_t L0A_FULL_DIM_SEGMENT_ROWS = 128;
     static constexpr uint64_t L0C_MAX_ROWS = 256;
     static constexpr uint64_t QKV_INPUT_ROWS_PER_AIV = 160;
+    static constexpr uint64_t MROPE_COMPACT_INPUT_ROWS_PER_AIV = 80;
     static constexpr uint64_t QK_OUTPUT_ROWS_PER_AIV = 128;
     static constexpr uint64_t QK_PREPROCESS_UB_BYTES = 64UL * 1024UL;
     static constexpr uint64_t QK_PREPROCESS_BLOCK_BYTES = 32;
@@ -137,8 +138,6 @@ private:
     void FillOptionalTensorInputs();
     ge::graphStatus BuildContractInput();
     ge::graphStatus ValidateCompileInfo(const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo) const;
-    bool IsMropeCompactTile(uint64_t tokenTile) const;
-
     const char *opName_ = "QkvRmsNormRopeCacheWithKScale";
     const QkvRmsNormRopeCacheWithKScaleCompileInfo *compileInfo_ = nullptr;
     ContractInput input_;
@@ -151,6 +150,7 @@ private:
     uint64_t tilingDataSize_ = 0;
     uint64_t mropeSectionSize_ = 0;
     bool hasMropeSection_ = false;
+    const int64_t *mropeSectionData_ = nullptr;
     uint64_t mropeSectionH_ = 0;
     uint64_t mropeSectionW_ = 0;
 };
