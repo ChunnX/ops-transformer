@@ -746,7 +746,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation</td>
         <td>str</td>
         <td>可选</td>
-        <td>激活函数类型，默认值为"swiglu"。A2/A3支持"swiglu"、"swiglustep"、"swiglu_gpt_oss"、"swigluoai"和"situ"。"swiglu"按前后半区拆分gate/up并计算gate * sigmoid(gate) * up；"swiglustep"使用相同拆分方式，按STEP 3.5语义在SiLU后截断gate分支；"swiglu_gpt_oss"按偶奇列拆分gate/up并计算gate * sigmoid(1.702 * gate) * (up + 1)；"swigluoai"按前后半区拆分gate/up并计算(up + activation_beta) * gate * sigmoid(activation_alpha * gate)，MiniMax M3推荐activation_alpha=1.702、activation_beta=1.0、activation_clamp=7.0；"situ"按前后半区拆分gate/up，beta固定为1.0，并使用activation_clamp作为可选linear_beta。A5当前仅支持"swiglu"。</td>
+        <td>激活函数类型，默认值为"swiglu"。A2/A3支持"swiglu"、"swiglustep"、"swiglu_gpt_oss"、"swigluoai"和"situglu"。"swiglu"按前后半区拆分gate/up并计算gate * sigmoid(gate) * up；"swiglustep"使用相同拆分方式，按STEP 3.5语义在SiLU后截断gate分支；"swiglu_gpt_oss"按偶奇列拆分gate/up并计算gate * sigmoid(activation_alpha * gate) * (up + 1)；"swigluoai"按前后半区拆分gate/up并计算(up + activation_beta) * gate * sigmoid(activation_alpha * gate)；"situglu"按前后半区拆分gate/up并计算activation_beta * tanh(gate / activation_beta) * sigmoid(gate) * up，传递activation_linear_beta时还会将up变换为activation_linear_beta * tanh(up / activation_linear_beta)。A5当前仅支持"swiglu"。</td>
         <td>str</td>
         <td>不涉及</td>
         <td>不涉及</td>
@@ -755,7 +755,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation_clamp</td>
         <td>float</td>
         <td>可选</td>
-        <td>激活函数控制值。对"swiglu"、"swiglu_gpt_oss"和"swigluoai"，gate分支在激活前限制上界，up分支限制在[-activation_clamp, activation_clamp]区间内；对"swiglustep"，gate分支在SiLU后限制上界，up分支使用相同的对称截断。对"situ"，有限正值作为linear_beta，计算linear_beta * tanh(up / linear_beta)；0或None表示linear_beta=None，up保持不变。值需≥0。</td>
+        <td>"swiglu"、"swiglustep"、"swiglu_gpt_oss"和"swigluoai"的截断值；None使用float最大值。"situglu"忽略此参数。值需≥0且不能为NaN。</td>
         <td>float</td>
         <td>不涉及</td>
         <td>不涉及</td>
@@ -773,7 +773,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation_beta</td>
         <td>float</td>
         <td>可选</td>
-        <td>"swigluoai"的up分支偏置；"situ"的gate分支beta。默认值为1.0，值需为有限正数。</td>
+        <td>"swigluoai"的up分支偏置；"situglu"的gate分支beta。默认值为1.0，值需为有限正数。</td>
         <td>float</td>
         <td>不涉及</td>
         <td>不涉及</td>
@@ -782,7 +782,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation_linear_beta</td>
         <td>float</td>
         <td>可选</td>
-        <td>"situ"的up分支linear_beta；None表示不启用该截断。其他激活忽略此参数。</td>
+        <td>"situglu"的up分支linear_beta；None表示不传递linear_beta并保持up不变。其他激活忽略此参数。</td>
         <td>float</td>
         <td>不涉及</td>
         <td>不涉及</td>

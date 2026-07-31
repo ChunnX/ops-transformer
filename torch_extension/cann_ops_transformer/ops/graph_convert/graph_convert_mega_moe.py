@@ -84,9 +84,7 @@ if _TORCHAIR_AVAILABLE:
         comm_alg: str = "",
         num_max_tokens_per_rank: int = 0,
         activation: str = "swiglu",
-        activation_clamp: float = 3.4028234663852886e38,
-        activation_alpha: float = 1.702,
-        activation_beta: float = 1.0,
+        activation_params: Optional[List[float]] = None,
         activation_out_dtype: int = 28,
         transpose_weight1: bool = False,
         transpose_weight2: bool = False,
@@ -125,9 +123,7 @@ if _TORCHAIR_AVAILABLE:
         .ATTR(comm_alg, String, "")\n
         .ATTR(num_max_tokens_per_rank, Int, 0)\n
         .ATTR(activation, String, "swiglu")\n
-        .ATTR(activation_clamp, Float, 3.4028234663852886e+38)\n
-        .ATTR(activation_alpha, Float, 1.702)\n
-        .ATTR(activation_beta, Float, 1.0)\n
+        .ATTR(activation_params, ListFloat, {3.4028234663852886e+38})\n
         .ATTR(activation_out_dtype, Int, 28)\n
         .ATTR(transpose_weight1, Bool, false)\n
         .ATTR(transpose_weight2, Bool, false)\n
@@ -135,6 +131,9 @@ if _TORCHAIR_AVAILABLE:
         .ATTR(topo_type, Int, 0)\n
         .ATTR(rank_num_per_server, Int, 2)\n
         """
+        if activation_params is None:
+            activation_params = [3.4028234663852886e38]
+
         inputs = {
             "context": context,
             "x": x,
@@ -161,9 +160,7 @@ if _TORCHAIR_AVAILABLE:
             "comm_alg": attr.Str(comm_alg),
             "num_max_tokens_per_rank": attr.Int(num_max_tokens_per_rank),
             "activation": attr.Str(activation),
-            "activation_clamp": attr.Float(activation_clamp),
-            "activation_alpha": attr.Float(activation_alpha),
-            "activation_beta": attr.Float(activation_beta),
+            "activation_params": attr.ListFloat(activation_params),
             "activation_out_dtype": attr.Int(activation_out_dtype),
             "transpose_weight1": attr.Bool(transpose_weight1),
             "transpose_weight2": attr.Bool(transpose_weight2),
@@ -219,9 +216,7 @@ if _TORCHAIR_AVAILABLE:
             .attr("comm_alg", attr.Str(""))
             .attr("num_max_tokens_per_rank", attr.Int(0))
             .attr("activation", attr.Str("swiglu"))
-            .attr("activation_clamp", attr.Float(3.4028234663852886e38))
-            .attr("activation_alpha", attr.Float(1.702))
-            .attr("activation_beta", attr.Float(1.0))
+            .attr("activation_params", attr.ListFloat([3.4028234663852886e38]))
             .attr("activation_out_dtype", attr.Int(28))
             .attr("transpose_weight1", attr.Bool(False))
             .attr("transpose_weight2", attr.Bool(False))
@@ -268,14 +263,29 @@ if _TORCHAIR_AVAILABLE:
         topk_weights_type: int = 0,
         meta_outputs: TensorSpec = None,
     ):
-        activation_clamp_value = 3.4028234663852886e38 if activation_clamp is None else activation_clamp
-        activation_alpha_value = activation_alpha
-        if activation == "situ":
-            activation_alpha_value = (
-                3.4028234663852886e38 if activation_linear_beta is None else activation_linear_beta
-            )
+        activation_clamp_value = (
+            3.4028234663852886e38 if activation_clamp is None else activation_clamp
+        )
+        if activation in ("swiglu", "swiglustep"):
+            activation_params = [activation_clamp_value]
+        elif activation == "swiglu_gpt_oss":
+            activation_params = [activation_clamp_value, activation_alpha]
+        elif activation == "swigluoai":
+            activation_params = [
+                activation_clamp_value,
+                activation_alpha,
+                activation_beta,
+            ]
+        elif activation == "situglu":
+            activation_params = [activation_beta]
+            if activation_linear_beta is not None:
+                activation_params.append(activation_linear_beta)
+        else:
+            raise ValueError(f"Unsupported activation: {activation}")
         topo_type_value = 0 if topo_type is None else topo_type
-        rank_num_per_server_value = 2 if rank_num_per_server is None else rank_num_per_server
+        rank_num_per_server_value = (
+            2 if rank_num_per_server is None else rank_num_per_server
+        )
         return MegaMoe(
             context=context,
             x=x,
@@ -299,9 +309,7 @@ if _TORCHAIR_AVAILABLE:
             comm_alg=comm_alg,
             num_max_tokens_per_rank=num_max_tokens_per_rank,
             activation=activation,
-            activation_clamp=activation_clamp_value,
-            activation_alpha=activation_alpha_value,
-            activation_beta=activation_beta,
+            activation_params=activation_params,
             activation_out_dtype=28,
             transpose_weight1=False,
             transpose_weight2=False,
