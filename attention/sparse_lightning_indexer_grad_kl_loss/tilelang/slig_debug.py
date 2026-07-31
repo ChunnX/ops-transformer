@@ -453,6 +453,67 @@ def _run_task_diagnostics(context: DebugContext) -> None:
     _debug_task_tensor(
         "DWeightPartial", dweight_partial_ws[debug_b, debug_q]
     )
+    # LossPartial 为每个（batch，query）保留两个 owner 槽位；只检查实际
+    # 写入的首元素，避免把对齐填充区的旧值误判为计算结果。
+    debug_task_linear = debug_b * query.shape[1] + debug_q
+    debug_task_linear = debug_b * query.shape[1] + debug_q
+    debug_loss_base = (
+        debug_task_linear * 2 * context.loss_partial_stride
+    )
+    debug_loss_partials = torch.stack(
+        (
+            context.loss_partial_ws[debug_loss_base],
+            context.loss_partial_ws[
+                debug_loss_base + context.loss_partial_stride
+            ],
+        )
+    ).float()
+    _debug_task_tensor("LossPartial owners", debug_loss_partials)
+
+    # 用设备写出的 V1Stats 重建 backward 实际会使用的 SY，进一步定位
+    # 是 P/SY 输入异常，还是 ln/reduce/write-back 阶段才出现非有限值。
+    debug_stats_actual = v1_stats_ws[debug_b, debug_q, :, 0].float()
+    debug_stats_actual = v1_stats_ws[debug_b, debug_q, :, 0].float()
+    debug_actual_global_max = torch.maximum(
+        debug_stats_actual[0], debug_stats_actual[1]
+    )
+    debug_actual_global_sum = torch.maximum(
+        debug_stats_actual[2] + debug_stats_actual[3],
+        torch.tensor(1e-8, dtype=torch.float32, device=query.device),
+    )
+    debug_actual_sy = torch.exp(
+        debug_reduce_sum_y - debug_actual_global_max
+    ) / debug_actual_global_sum
+    debug_actual_p = p_reduced_ws[debug_b, debug_q].float()
+    _debug_task_tensor("Loss PReduced valid", debug_actual_p[:debug_k_real])
+    _debug_task_tensor("Loss SY reconstructed valid", debug_actual_sy[:debug_k_real])
+    debug_loss_terms = (
+        debug_actual_p.clamp_min(1e-8)
+        * (
+            torch.log(debug_actual_p.clamp_min(1e-8))
+            - torch.log(debug_actual_sy.clamp_min(1e-8))
+        )
+        * debug_valid_mask
+    )
+    for debug_owner in range(2):
+        debug_owner_start = debug_owner * debug_half_k
+        debug_owner_end = debug_owner_start + debug_half_k
+        debug_owner_loss = debug_loss_terms[debug_owner_start:debug_owner_end]
+        debug_owner_finite = torch.isfinite(debug_owner_loss)
+        debug_owner_finite_values = debug_owner_loss[debug_owner_finite]
+        if debug_owner_finite_values.numel() > 0:
+            debug_owner_min = debug_owner_finite_values.min().item()
+            debug_owner_max = debug_owner_finite_values.max().item()
+        else:
+            debug_owner_min = float("nan")
+            debug_owner_max = float("nan")
+        print(
+            f"[DEBUG_TASK] Loss owner={debug_owner} "
+            f"slot={debug_loss_base + debug_owner * context.loss_partial_stride} "
+            f"host_reconstructed_sum={debug_owner_loss.sum().item():.6e} "
+            f"min={debug_owner_min:.6e} max={debug_owner_max:.6e} "
+            f"nonfinite={(~debug_owner_finite).sum().item()}"
+        )
     _debug_task_tensor("dWeightOut", d_weight[debug_b, debug_q])
     _debug_task_tensor("reluGradRes", relu_grad_out[debug_b, debug_q])
     _debug_task_compare(
