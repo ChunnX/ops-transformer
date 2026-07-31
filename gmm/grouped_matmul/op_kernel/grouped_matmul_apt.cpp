@@ -364,9 +364,31 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 #endif
 #if defined(V310_GMM_QUANT_A4W4) && IS_BLAZE
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);   // A4W4 需 1:2 AIC:AIV
-    if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_A4W4_MIX) {
-        GET_TILING_DATA_WITH_STRUCT(GMMA4W4IntQuantTilingData, tilingData, tiling);
-        GMM_A4W4_IMPL_CLASS(AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn);
+    if constexpr (wFormat == CubeFormat::ND) {
+        if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
+                      KERNEL_TYPE == GMM_A4W4_MIX) {
+            GET_TILING_DATA_WITH_STRUCT(GMMA4W4IntQuantTilingData, tilingData, tiling);
+            GMM_A4W4_IMPL_CLASS(AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn,
+                                AscendC::Te::NDExtLayoutPtn);
+        }
+    } else {
+        // NZ weight: 恒用 NZLayoutPtn。preprocess(kernel_gmm_a8w4_weight_preprocess.h)无论 transB
+        // 都输出标准 [E,K,N] int8 NZ(ConvertNzTile/ConvertTransposedNzTile 输出布局一致),
+        // 故 cube 侧 TRANS_B=false -> MakeLayoutBL1 用 NZLayoutPtn 读,与 preprocess 输出一致。
+        // transB 通过运行时 inputTransposedNz(桥接 qgmm_a4w4int_kernel.h 从 reserved.bit0/bit1 读)
+        // 驱动 preprocess 选 ConvertNzTile(transB=0)/ConvertTransposedNzTile(transB=1)。
+        // 注意:不可用 ZNLayoutPtn(transB=1),否则 cube 按 ZN 读 NZ 物理数据会错位。
+        if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
+                      KERNEL_TYPE == GMM_A4W4_MIX) {
+            GET_TILING_DATA_WITH_STRUCT(GMMA4W4IntQuantTilingData, tilingData, tiling);
+            GMM_A4W4_IMPL_CLASS(AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn,
+                                AscendC::Te::NDExtLayoutPtn);
+        } else if constexpr (QUANT_B_TRANS == GMM_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
+                             KERNEL_TYPE == GMM_A4W4_MIX) {
+            GET_TILING_DATA_WITH_STRUCT(GMMA4W4IntQuantTilingData, tilingData, tiling);
+            GMM_A4W4_IMPL_CLASS(AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn,
+                                AscendC::Te::NDExtLayoutPtn);
+        }
     }
 #endif
 #elif defined(V310_GMM_ANTI_QUANT)
