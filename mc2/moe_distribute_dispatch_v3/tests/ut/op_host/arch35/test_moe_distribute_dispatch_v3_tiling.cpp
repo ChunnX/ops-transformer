@@ -46,7 +46,8 @@ TEST_F(MoeDistributeDispatchV3Arch35TilingTest, Arch35_Test0_SharedExpertWithTp)
     MoeDistributeDispatchV3CompileInfo compileInfo;
     uint64_t coreNum = 36;
     uint64_t ubSize = 256 * 1024;
-    gert::TilingContextPara tilingContextPara("MoeDistributeDispatchV3",
+    gert::TilingContextPara tilingContextPara(
+        "MoeDistributeDispatchV3",
         {
             {{{1, 2052}, {1, 2052}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{32, 7168}, {32, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -90,7 +91,8 @@ TEST_F(MoeDistributeDispatchV3Arch35TilingTest, Arch35_Test1_SharedExpertWithTp_
     MoeDistributeDispatchV3CompileInfo compileInfo;
     uint64_t coreNum = 36;
     uint64_t ubSize = 256 * 1024;
-    gert::TilingContextPara tilingContextPara("MoeDistributeDispatchV3",
+    gert::TilingContextPara tilingContextPara(
+        "MoeDistributeDispatchV3",
         {
             {{{1, 2052}, {1, 2052}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{16, 7160}, {16, 7160}}, ge::DT_FLOAT16, ge::FORMAT_ND},

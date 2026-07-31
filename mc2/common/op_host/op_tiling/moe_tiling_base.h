@@ -31,6 +31,7 @@ namespace optiling {
 class MoeTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit MoeTilingBase(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
+
 protected:
     ge::graphStatus GetShapeAttrsInfo() override;
     ge::graphStatus GetPlatformInfo() override;

@@ -9,7 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 set(CONDITION_UNIT_COMMON ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
-    file(GLOB OPTILING_SRCS 
+    file(GLOB OPTILING_SRCS
         utils/context_transfer.cpp
         op_host/op_tiling/hccl_formulaic_tiling.cpp
         op_host/op_tiling/hccl_performance.cpp
@@ -77,6 +77,13 @@ if (BUILD_OPEN_PROJECT)
             ${GENTASK_SRCS}
         )
     endif()
+    file(GLOB MC2_GRAPH_PLUGIN_SRCS
+        op_graph/mc2_moe_graph_context.cpp
+    )
+    if(MC2_GRAPH_PLUGIN_SRCS)
+        add_graph_plugin_modules()
+        target_sources(${GRAPH_PLUGIN_NAME}_obj PRIVATE ${MC2_GRAPH_PLUGIN_SRCS})
+    endif()
     if(NOT ENABLE_TEST)
         file(GLOB OPPROTO_SRCS)
         if(OPPROTO_SRCS)
@@ -92,7 +99,7 @@ if (BUILD_OPEN_PROJECT)
 endif()
 
 file(GLOB NEW_MC2_MM_SRC op_host/op_tiling/new_mc2_*.cpp)
-# MC2_COMPILE used to avoid tefusion_llt 
+# MC2_COMPILE used to avoid tefusion_llt
 # when blue use SUB_MC2_COMPILE when rty use MC2_COMPILE
 if(MC2_COMPILE OR SUB_MC2_COMPILE OR UT_TEST OR OP_HOST_UT)
     add_tiling_modules()
