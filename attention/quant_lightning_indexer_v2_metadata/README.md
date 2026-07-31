@@ -156,7 +156,7 @@
     <tr>
       <td>metadata</td>
       <td>输出</td>
-      <td>表示负载均衡结果输出，shape固定为[1024]</td>
+      <td>表示负载均衡结果输出，shape固定为(1024, )</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>

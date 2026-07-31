@@ -37,14 +37,14 @@
     <tr>
       <td>cu_seqlens_q</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Query的有效Sequence Length，shape为(B+1, )，第一个值固定为0。</td>
+      <td>表示不同Batch中Query的有效Sequence Length，shape为(B+1, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_k</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Key的有效Sequence Length，shape为(B+1, )，第一个值固定为0。</td>
+      <td>表示不同Batch中Key的有效Sequence Length，shape为(B+1, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>

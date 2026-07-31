@@ -240,7 +240,7 @@
     <tr>
       <td>metadata</td>
       <td>输出</td>
-      <td>表示负载均衡结果输出，shape固定为[1024]</td>
+      <td>表示负载均衡结果输出，shape固定为(1024, )</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -258,7 +258,7 @@
 - 非PA场景layout_q、layout_kv须相同。
 - layout_q=BSND场景
   - seqused_q和max_seqlen_q至少需要传入1个。
-  - ori_topk不为0且传入ori_topk_length时，，或cmp_topk不为0且传入cmp_topk_length时，max_seqlen_q必须传入query shape中的S值。
+  - ori_topk不为0且传入ori_topk_length时，或cmp_topk不为0且传入cmp_topk_length时，max_seqlen_q必须传入query shape中的S值。
 - layout_kv=BSND场景
   - has_ori_kv为true，且ori_topk为0时，seqused_ori_kv和max_seqlen_ori_kv至少需要传入1个。
   - has_cmp_kv为true，且cmp_topk为0时，seqused_cmp_kv和max_seqlen_cmp_kv至少需要传入1个。

@@ -228,13 +228,13 @@
     <tr>
       <td>metadata</td>
       <td>输出</td>
-      <td>表示`SparseFlashMla`主算子使用的任务切分结果。</td>
+      <td>表示`SparseFlashMla`主算子使用的任务切分结果，shape固定为(1024, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
   </tbody>
 </table>
-<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> ：num_heads_q/num_heads_kv支持1、2、4、8、16、32、64、128，不支持seqused_q、ori_topk_length、cmp_topk_length，ori_topk仅支持0，cmp_topk仅支持0、512、1024，ori_mask_mode仅支持4，cmp_mask_mode仅支持3，ori_win_left仅支持127，ori_win_right仅支持0，cmp_ratio仅支持1、4、128。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：num_heads_q/num_heads_kv支持1、2、4、8、16、32、64、128，不支持seqused_q、ori_topk_length、cmp_topk_length，ori_topk仅支持0，cmp_topk仅支持0、512、1024，ori_mask_mode仅支持4，cmp_mask_mode仅支持3，ori_win_left仅支持127，ori_win_right仅支持0，cmp_ratio仅支持1、4、128。</li></ul>
+<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> ：num_heads_q/num_heads_kv仅支持1、2、4、8、16、32、64、128，不支持seqused_q、ori_topk_length、cmp_topk_length，ori_topk仅支持0，cmp_topk仅支持0、512、1024，ori_mask_mode仅支持4，cmp_mask_mode仅支持3，ori_win_left仅支持127，ori_win_right仅支持0，cmp_ratio仅支持1、4、128。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：num_heads_q/num_heads_kv仅支持1、2、4、8、16、32、64、128，不支持seqused_q、ori_topk_length、cmp_topk_length，ori_topk仅支持0，cmp_topk仅支持0、512、1024，ori_mask_mode仅支持4，cmp_mask_mode仅支持3，ori_win_left仅支持127，ori_win_right仅支持0，cmp_ratio仅支持1、4、128。</li></ul>
 
 ## 约束说明
 

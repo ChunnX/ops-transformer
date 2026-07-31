@@ -37,14 +37,14 @@
     <tr>
       <td>cu_seqlens_q</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Query的有效Sequence Length，shape为(B+1, )，仅layout_q为TND场景下必传，第一个值固定为0。</td>
+      <td>表示不同Batch中Query的有效Sequence Length，shape为(B+1, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
     <tr>
       <td>cu_seqlens_k</td>
       <td>可选输入</td>
-      <td>表示不同Batch中Key的有效Sequence Length，shape为(B+1, )，仅layout_k为TND场景下必传，第一个值固定为0。</td>
+      <td>表示不同Batch中Key的有效Sequence Length，shape为(B+1, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -149,7 +149,7 @@
     <tr>
       <td>metadata</td>
       <td>输出</td>
-      <td>表示负载均衡结果输出，shape固定为(1024, )</td>
+      <td>表示负载均衡结果输出，shape固定为(1024, )。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
