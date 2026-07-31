@@ -287,7 +287,7 @@ void FiaInfoParser::GetKvIsContiguous()
             valueNonContigDim_ = dim;
         }
     }
-    if (kRopeStrides_ != nullptr) {
+    if (kRopeStrides_ != nullptr && opParamInfo_.keyRope.tensor != nullptr) {
         int32_t dim = 0;
         if (CheckTensorContiguousLocal(opParamInfo_.keyRope.tensor->GetStorageShape().GetDimNum(),
                                        opParamInfo_.keyRope.tensor->GetStorageShape(),
