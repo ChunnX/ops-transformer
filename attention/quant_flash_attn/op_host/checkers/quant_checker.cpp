@@ -297,7 +297,7 @@ ge::graphStatus QuantChecker::CheckKDescaleShape(const QfaTilingInfo &qfaInfo) c
     if (qfaInfo.kvLayout == QfaLayout::TND) {
         expected = {qfaInfo.kTSize, qfaInfo.n2Size, DPerGroup, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BBND) {
- 	    expected = {qfaInfo.totalBlockNum, qfaInfo.blockSize, qfaInfo.n2Size, DPerGroup, 2};
+        expected = {qfaInfo.totalBlockNum, qfaInfo.blockSize, qfaInfo.n2Size, DPerGroup, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD) {
         expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.blockSize, DPerGroup, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_NZ) {
@@ -338,7 +338,7 @@ ge::graphStatus QuantChecker::CheckVDescaleShape(const QfaTilingInfo &qfaInfo) c
         // 因此 dim0 不做数值校验(用 -1 占位), 仅校验维度数为 4D 及 dim[1..3]。
         expected = {-1, qfaInfo.n2Size, D, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BBND) {
- 	    expected = {qfaInfo.totalBlockNum, qfaInfo.blockSize / 64, qfaInfo.n2Size, D, 2};
+        expected = {qfaInfo.totalBlockNum, qfaInfo.blockSize / 64, qfaInfo.n2Size, D, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD) {
         expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.blockSize / 64, D, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_NZ) {
@@ -519,7 +519,7 @@ struct QfaLayoutConstraintConfig {
 const std::map<QfaQuantMode, QfaLayoutConstraintConfig> QFA_LAYOUT_CONSTRAINT_TABLE = {
     {QfaQuantMode::MXFP8_FP32,
      {{QfaLayout::TND, QfaLayout::PA_BBND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ}, {QfaLayout::TND},
- 	  {QfaLayout::TND, QfaLayout::N2TGD}}},
+      {QfaLayout::TND, QfaLayout::N2TGD}}},
 };
 } // namespace
 
