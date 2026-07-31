@@ -266,7 +266,7 @@ aclnnStatus aclnnMoeTokenPermute(
 
 - INT8类型的tokens和permuteTokensOut仅支持Ascend 950，且二者数据类型必须一致。
 - 在Ascend 950上调用本接口且`tokens`数据类型为INT8时，`indices`表示expert ID，取值范围为`[0, 10240)`，最大值为`10239`，不支持`10240`。
-- 调用本接口时，`tokens`必须为2D，`indices`必须为1D或2D；不满足时接口直接返回参数错误。
+- 调用本接口时，`indices`必须为1D或2D；不满足时接口直接返回参数错误。
 - 确定性计算：
   - aclnnMoeTokenPermute默认确定性实现。
 
