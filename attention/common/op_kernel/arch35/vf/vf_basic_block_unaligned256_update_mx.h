@@ -271,8 +271,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
         Muls(vreg_src_max, vreg_src_max, LN2, preg_all_float);
         Compare<float, CMPMODE::LE>(preg_compare_max, vreg_src_max, vreg_min, preg_all_float);
         Select(vreg_src_max, vreg_min, vreg_src_max, preg_compare_max);
-        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_src_max,
-                                                                     ureg_max, 1);
+        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_src_max, ureg_max,
+                                                                     1);
     }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
 
@@ -304,10 +304,10 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
         Add(vreg_exp_sum1, vreg_exp_even0, vreg_exp_odd0, preg_all_float); // x_sum = sum(x_exp, axis=-1, keepdims=True)
         Add(vreg_exp_sum2, vreg_exp_even1, vreg_exp_odd1, preg_all_float);
         Add(vreg_exp_sum3, vreg_exp_sum1, vreg_exp_sum2, preg_all_float);
-        Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_sum3,
-            vreg_exp_sum3, preg_all_float);
-        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb),
-            vreg_exp_sum3, ureg_exp_sum, 1);
+        Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_sum3, vreg_exp_sum3,
+                                                                                          preg_all_float);
+        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb), vreg_exp_sum3,
+                                                                     ureg_exp_sum, 1);
         // dropmask compute
         if constexpr (hasDrop == 1) {
             LoadAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::MaskDist::DIST_US>(
@@ -351,7 +351,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
             RegTensor<fp8_e4m3fn_t> vreg_exp_merge_tmp_f8e4m3_1;
             RegTensor<fp8_e4m3fn_t> vreg_exp_merge_tmp_f8e4m3_2;
             RegTensor<uint8_t> vreg_exp_merge_f8e4m3_indexes;
-            
+
             uint32_t maskLen = 128;
             MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
             Cast<T2, T, castTraitRintZero>(vreg_exp_even_f8e4m3_1, vreg_exp_even0, preg_all_float);
@@ -386,8 +386,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
         }
     }
     // store sum
-    StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb),
-                                                                     ureg_exp_sum, 0);
+    StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb), ureg_exp_sum, 0);
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_in_exp_sum, inExpSumUb);
     LoadAlign(vreg_exp_sum_brc, tmpExpSumUb2);
@@ -395,8 +394,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
     Mul(vreg_exp_max, vreg_exp_max, vreg_in_exp_sum, preg_all_float);
     Add(vreg_exp_max, vreg_exp_max, vreg_exp_sum_brc, preg_all_float);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expSumUb, vreg_exp_max, preg_all_float);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)firstLoopSumUb,
-        vreg_exp_sum_brc, preg_all_float); // 传给loop 1用于更新rowSum
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)firstLoopSumUb, vreg_exp_sum_brc,
+                                                      preg_all_float); // 传给loop 1用于更新rowSum
     Duplicate(vreg_p_scale_fp8, 0x7f, preg_all_b8);
     StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
                                                               vreg_p_scale_fp8, preg_all_b8);
@@ -621,8 +620,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
             Select(vreg_sel3, vreg_min, vreg_src_x4, preg_compare4);
             Select(vreg_sel2_new, vreg_sel2, vreg_min, preg_ori_tail_n1);
             Select(vreg_sel3_new, vreg_sel3, vreg_min, preg_ori_tail_n2);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize,
-                                                              vreg_sel0, preg_all);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_sel0,
+                                                              preg_all);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + floatRepSize + i * s2BaseSize,
                                                               vreg_sel1, preg_all);
             StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + floatRepSize * 2 + i * s2BaseSize,
@@ -633,7 +632,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
             Max(vreg_max_tmp1, vreg_sel2_new, vreg_sel3_new, preg_all);
             Max(vreg_max_tmp2, vreg_max_tmp0, vreg_max_tmp1, preg_all);
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_src_max,
-                vreg_max_tmp2, preg_all);
+                                                                                              vreg_max_tmp2, preg_all);
         } else {
             Select(vreg_src_x3_new, vreg_src_x3, vreg_min, preg_ori_tail_n1);
             Select(vreg_src_x4_new, vreg_src_x4, vreg_min, preg_ori_tail_n2);
@@ -649,7 +648,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
             Max(vreg_max_tmp1, vreg_src_x3_new, vreg_src_x4_new, preg_all);
             Max(vreg_max_tmp2, vreg_max_tmp0, vreg_max_tmp1, preg_all);
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_src_max,
-                vreg_max_tmp2, preg_all);
+                                                                                              vreg_max_tmp2, preg_all);
         }
         if constexpr (hasSink) {
             Max(vreg_src_max, vreg_src_max, vreg_sink_input, preg_all);
@@ -659,8 +658,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
         Muls(vreg_src_max, vreg_src_max, LN2, preg_all);
         Compare<float, CMPMODE::LE>(preg_compare_max, vreg_src_max, vreg_min, preg_all);
         Select(vreg_src_max, vreg_min, vreg_src_max, preg_compare_max);
-        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb),
-                                                                     vreg_src_max, ureg_max, 1);
+        StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_src_max, ureg_max,
+                                                                     1);
     }
     StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), ureg_max, 0);
 
@@ -683,8 +682,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_max, maxUbStart + i);
         Sub(vreg_max, vreg_max, vreg_ln_p_scale, preg_all);
         LoadAlign<T, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg_src_x1, vreg_src_x2, srcUb + i * s2BaseSize);
-        LoadAlign<T, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg_src_x3,
-            vreg_src_x4, srcUb + floatRepSize * 2 + i * s2BaseSize);
+        LoadAlign<T, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg_src_x3, vreg_src_x4,
+                                                          srcUb + floatRepSize * 2 + i * s2BaseSize);
         ExpSub(vreg_exp_even0, vreg_src_x1, vreg_max, preg_all);
         ExpSub(vreg_exp_odd0, vreg_src_x2, vreg_max, preg_all);
         ExpSub(vreg_exp_even1, vreg_src_x3, vreg_max, preg_all);
@@ -693,8 +692,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
         Add(vreg_exp_sum1, vreg_exp_even0, vreg_exp_odd0, preg_all);
         Add(vreg_exp_sum2, vreg_exp_even1, vreg_exp_odd1, preg_all);
         Add(vreg_exp_sum3, vreg_exp_sum1, vreg_exp_sum2, preg_all);
-        Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_sum3,
-            vreg_exp_sum3, preg_all);
+        Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_sum3, vreg_exp_sum3,
+                                                                                          preg_all);
         StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb), vreg_exp_sum3,
                                                                      ureg_exp_sum, 1);
 
@@ -793,11 +792,11 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
     Cast<bfloat16_t, T, castTraitRintOne>(vreg_p_scale_bf16_1, vreg_p_scale, preg_all);
     Cast<fp8_e8m0_t, bfloat16_t, castTraitNoneZero>(vreg_p_scale_fp8_1, vreg_p_scale_bf16_1, preg_all_b16);
     Or((RegTensor<uint8_t> &)vreg_p_scale_fp8_0, (RegTensor<uint8_t> &)vreg_p_scale_fp8_0,
-        (RegTensor<uint8_t> &)vreg_p_scale_fp8_1, preg_all_b8);
+       (RegTensor<uint8_t> &)vreg_p_scale_fp8_1, preg_all_b8);
     Duplicate(vreg_p_scale_fp8_1, 0x7f, preg_all_b8);
     DeInterleave(vreg_p_scale_fp8_dst0, vreg_p_scale_fp8_dst1, vreg_p_scale_fp8_0, vreg_p_scale_fp8_1);
     StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
-        vreg_p_scale_fp8_dst0, preg_all_b8);
+                                                              vreg_p_scale_fp8_dst0, preg_all_b8);
 }
 
 // update, 128 < originN <= 256
