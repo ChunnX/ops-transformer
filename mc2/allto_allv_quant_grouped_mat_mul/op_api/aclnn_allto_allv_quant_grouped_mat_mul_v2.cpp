@@ -26,6 +26,7 @@
 #include "opdev/op_dfx.h"
 #include "opdev/make_op_executor.h"
 #include "aclnn_allto_allv_quant_grouped_mat_mul_v2.h"
+#include "../../allto_allv_grouped_mat_mul/op_api/allto_allv_grouped_mat_mul_check.h"
 
 namespace {
 using namespace op;
@@ -59,11 +60,8 @@ static bool CheckNullStatus(const aclTensor *sendCountsTensorOptional, const acl
                             const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
                             bool permuteOutFlag, const aclTensor *mmYOptional, const aclTensor *permuteOutOptional)
 {
-    // // 检查必选入参出参为非空
-    if ((sendCountsTensorOptional != nullptr) || (recvCountsTensorOptional != nullptr)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sendCountsTensorOptional and recvCountsTensorOptional should be empty.");
-        return false;
-    }
+    (void)sendCountsTensorOptional;
+    (void)recvCountsTensorOptional;
     if (permuteOutFlag == (permuteOutOptional == nullptr)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Optional output flag does not match optional output ptr.");
         return false;
@@ -377,7 +375,6 @@ static aclnnStatus CheckWeightScaleTransposeConsistency(const aclTensor *gmmWeig
     return ACLNN_SUCCESS;
 }
 
-
 static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *gmmXScale,
                                const aclTensor *gmmWeightScale, const aclTensor *sendCountsTensorOptional,
                                const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
@@ -545,11 +542,25 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Optional commMode name is Empty.");
         return ACLNN_ERR_PARAM_INVALID;
     }
+    aclnnStatus ret_counts = checkCounts("aclnnAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize", transposeGmmWeight,
+                                         epWorldSize, sendCountsTensorOptional, recvCountsTensorOptional, sendCounts,
+                                         recvCounts);
+    CHECK_RET(ret_counts == ACLNN_SUCCESS, ret_counts);
+    uint64_t sendArrSize = 0U;
+    uint64_t recvArrSize = 0U;
+    if (sendCounts != nullptr) {
+        aclGetIntArraySize(sendCounts, &sendArrSize);
+    }
+    if (recvCounts != nullptr) {
+        aclGetIntArraySize(recvCounts, &recvArrSize);
+    }
+    const aclIntArray *sendCountsReal = (sendCounts != nullptr && sendArrSize == 0U) ? nullptr : sendCounts;
+    const aclIntArray *recvCountsReal = (recvCounts != nullptr && recvArrSize == 0U) ? nullptr : recvCounts;
     aclnnStatus ret = InnerAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize(
         gmmX, transposeGmmWeight, gmmXScale, transposeGmmWeightScale, sendCountsTensorOptional,
         recvCountsTensorOptional, mmXOptional, mmWeightOptional, mmXScaleOptional, transMmWeightScaleOptional, group,
-        commMode, epWorldSize, sendCounts, recvCounts, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight,
-        permuteOutFlag, mmXQuantMode, mmWeightQuantMode, groupSize, gmmY, mmYOptional, permuteOutOptional,
+        commMode, epWorldSize, sendCountsReal, recvCountsReal, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight,
+        transMmWeight, permuteOutFlag, mmXQuantMode, mmWeightQuantMode, groupSize, gmmY, mmYOptional, permuteOutOptional,
         workspaceSize, executor);
     OP_LOGD("AlltoAllvQuantGroupedMatmul, InnerAlltoAllvQuantGroupedMatMulV2GetWorkspaceSize ret %d.", ret);
     return ret;

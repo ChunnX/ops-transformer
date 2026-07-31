@@ -17,7 +17,8 @@
 namespace ops {
 class AlltoAllvQuantGroupedMatMul : public OpDef {
 public:
-    explicit AlltoAllvQuantGroupedMatMul(const char *name) : OpDef(name)
+    explicit AlltoAllvQuantGroupedMatMul(const char *name)
+        : OpDef(name)
     {
         this->Input("gmm_x")
             .ParamType(REQUIRED)
@@ -116,8 +117,8 @@ public:
 
         this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
-        this->Attr("send_counts").AttrType(REQUIRED).ListInt();
-        this->Attr("recv_counts").AttrType(REQUIRED).ListInt();
+        this->Attr("send_counts").AttrType(OPTIONAL).ListInt();
+        this->Attr("recv_counts").AttrType(OPTIONAL).ListInt();
         this->Attr("gmm_x_quant_mode").AttrType(REQUIRED).Int();
         this->Attr("gmm_weight_quant_mode").AttrType(REQUIRED).Int();
         this->Attr("trans_gmm_weight").AttrType(OPTIONAL).Bool(false);
