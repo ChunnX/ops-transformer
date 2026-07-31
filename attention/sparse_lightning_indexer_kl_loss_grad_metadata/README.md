@@ -65,7 +65,7 @@
     <tr>
       <td>cmp_residual_k</td>
       <td>可选输入</td>
-      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算，shape为(B, )。cmp_ratio不为1且mask_mode为3场景下必传。</td>
+      <td>表示不同Batch中cmp_k压缩后Sequence Length的余数，配合cmp_ratio实现cmp_k部分的mask和负载计算，shape为(B, )。cmp_ratio不为1且mask_mode为3场景下必传。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -162,13 +162,16 @@
 
 - SparseLightningIndexerKLLossGradMetadata算子需要与SparseLightningIndexerKLLossGrad算子配套使用。
 - B（Batch）表示输入样本批量大小。
-- layoutQOptional、layoutKOptional须相同。
+- layout_q、layout_k须相同。
 - 参数cu_seqlens_q、cu_seqlens_k要求其值为当前Batch与前序Batch有效token数的累加值，第一个元素固定为0，后一个元素的值必须大于等于前一个元素的值。
 - 参数seqused_q、seqused_k要求其值表示每个Batch中的有效token数。
 - 参数cmp_residual_k需满足cmp_residual_k[i] < cmp_ratio。
 - mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../docs/zh/context/sparse_mode_introduction.md)。
-- layout_q为TND时，cu_seqlens_q必须传入。
-- layout_kv为TND时，cu_seqlens_k必须传入。
+- Ascend 950PR/Ascend 950DT约束：
+  - layout_q=BSND场景
+    - seqused_q和max_seqlen_q至少需要传入1个。
+  - layout_q=TND场景
+    - cu_seqlens_q必需传入。
 
 ## 调用说明
 

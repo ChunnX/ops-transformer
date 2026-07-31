@@ -65,7 +65,7 @@
     <tr>
       <td>cmp_residual_k</td>
       <td>可选输入</td>
-      <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算，shape为(B, )。cmp_ratio不为1且mask_mode为3场景下必传。</td>
+      <td>表示不同Batch中cmp_k压缩后Sequence Length的余数，配合cmp_ratio实现cmp_k部分的mask和负载计算，shape为(B, )。cmp_ratio不为1且mask_mode为3场景下必传。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -149,7 +149,7 @@
     <tr>
       <td>metadata</td>
       <td>输出</td>
-      <td>表示负载均衡结果输出，shape固定为[1024]</td>
+      <td>表示负载均衡结果输出，shape固定为(1024, )</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -164,7 +164,7 @@
 - 参数seqused_q、seqused_k要求其值表示每个Batch中的有效token数。
 - 参数cmp_residual_k需满足cmp_residual_k[i] < cmp_ratio。
 - mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../docs/zh/context/sparse_mode_introduction.md)。
-- 非PA场景layout_q、layout_kv须相同。
+- 非PA场景layout_q、layout_k须相同。
 - layout_q=BSND场景
   - seqused_q和max_seqlen_q至少需要传入1个，seqused_q未传入时，max_seqlen_q不能为-1。
 - layout_k=BSND场景
@@ -183,7 +183,7 @@
   - layout_q为TND时，优先通过seqused_q中的元素获取seqlen，seqused_q未传入则通过cu_seqlens_q中的元素获取seqlen。
 - Key Seqlen取值规则
   - layout_k为BSND时，优先通过seqused_k中的元素获取seqlen，seqused_k未传入则通过max_seqlen_k获取seqlen。
-  - layout_kv为TND时，优先通过seqused_k中的元素获取seqlen，seqused_k未传入则通过cu_seqlens_k中的元素获取seqlen。
+  - layout_k为TND时，优先通过seqused_k中的元素获取seqlen，seqused_k未传入则通过cu_seqlens_k中的元素获取seqlen。
 
 ## 调用说明
 
