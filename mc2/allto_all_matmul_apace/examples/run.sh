@@ -87,16 +87,14 @@ else
 fi
 
 # 3. NPU 运行
-echo "[3/4] NPU 运行 (qrun ${RANK} ranks)..."
+echo "[3/4] NPU 运行 (${RANK} ranks)..."
 rm -rf "${BUILD_DIR}/input" "${BUILD_DIR}/output"
 cp -r input "${BUILD_DIR}/input"
 cp -r output "${BUILD_DIR}/output"
 mkdir -p "${BUILD_DIR}/output"
 for r in $(seq 0 $((RANK-1))); do mkdir -p "${BUILD_DIR}/output/$r"; done
 
-qrun -n aclnn_a2a_matmul_apace -t 600 \
-    "${BUILD_DIR}/test_aclnn_allto_all_matmul_apace" \
-    "${M}" "${K}" "${N}" "${RANK}" "${BUILD_DIR}"
+"${BUILD_DIR}/test_aclnn_allto_all_matmul_apace" "${M}" "${K}" "${N}" "${RANK}" "${BUILD_DIR}"
 
 echo "[3/4] 完成"
 

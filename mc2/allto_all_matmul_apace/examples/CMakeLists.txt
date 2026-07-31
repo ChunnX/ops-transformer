@@ -29,11 +29,19 @@ if(NOT DEFINED ASCEND_HOME_PATH)
     endif()
 endif()
 
+# 自动检测 CPU 架构
+set(HOST_ARCH "x86_64")
+set(HOST_ARCH_DIR "x86_64-linux")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+    set(HOST_ARCH "aarch64")
+    set(HOST_ARCH_DIR "aarch64-linux")
+endif()
+
 # 算子仓库根目录（examples/ 的祖父目录是 allto_all_matmul_apace/ 的祖父目录 → repo root）
 get_filename_component(REPO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../.. ABSOLUTE)
 
 set(CANN_INCLUDE          ${ASCEND_HOME_PATH}/include)
-set(CANN_ARCH_INCLUDE     ${ASCEND_HOME_PATH}/x86_64-linux/include)    # HCCL 内部头文件
+set(CANN_ARCH_INCLUDE     ${ASCEND_HOME_PATH}/${HOST_ARCH_DIR}/include)    # HCCL 内部头文件
 set(CANN_FWK_INCLUDE      ${ASCEND_HOME_PATH}/fwkacllib/include)
 set(CANN_VENDOR_INCLUDE   ${ASCEND_HOME_PATH}/vendors/custom_transformer/op_api/include)
 set(CANN_TIK_INCLUDE      ${ASCEND_HOME_PATH}/compiler/tikcpp/tikcfw)
@@ -62,9 +70,9 @@ target_link_directories(test_aclnn_allto_all_matmul_apace PRIVATE
     ${ASCEND_HOME_PATH}/lib64
     ${ASCEND_HOME_PATH}/fwkacllib/lib64
     ${ASCEND_HOME_PATH}/runtime/lib64
-    ${ASCEND_HOME_PATH}/x86_64-linux/lib64
+    ${ASCEND_HOME_PATH}/${HOST_ARCH_DIR}/lib64
     ${ASCEND_HOME_PATH}/vendors/custom_transformer/op_api/lib
-    ${ASCEND_HOME_PATH}/vendors/custom_transformer/op_proto/lib/linux/x86_64
+    ${ASCEND_HOME_PATH}/vendors/custom_transformer/op_proto/lib/linux/${HOST_ARCH}
 )
 
 target_link_libraries(test_aclnn_allto_all_matmul_apace PRIVATE
