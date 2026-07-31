@@ -44,7 +44,7 @@ DQUERY = 512
 DQUERY_INDEX = 128
 # 显式参与 TileLang JIT specialization，源码结构调整后递增以避免复用
 # 旧的持久编译产物。该值不进入运行时 kernel ABI。
-KERNEL_CACHE_REVISION = 9
+KERNEL_CACHE_REVISION = 10
 
 _kernel_cache = {}
 _workspace_cache = {}
@@ -1987,11 +1987,6 @@ def tilelang_grad_kl_loss_single_kernel(
         LossOut: T.Tensor((1,), calc_dtype),
     ):
         with T.Kernel(launch_core_num, is_npu=True) as (cid, vid):
-            # dKeyIndexAccum 在 V2 scatter 前不会被其他阶段访问。先由所有
-            # AIV 分区清零，随后利用 C2→V2 的既有全核屏障同时确认清零和
-            # dk partial 均已完成，避免 scatter 前额外执行一次全核同步。
-            clear_dkey_accumulator(dKeyIndexAccum, cid, vid)
-
             for pipe_iter in T.serial(tasks_per_core + task_pipeline_lag):
                 if pipe_iter < tasks_per_core:
                     task_current = pipe_iter * launch_core_num + cid
@@ -2082,9 +2077,11 @@ def tilelang_grad_kl_loss_single_kernel(
                                 task_prev_slot,
                             )
 
-            # 所有任务负责人必须完成 C2，且所有 AIV 必须完成前置清零，才能
-            # 开始全核的确定性 scatter。这对应官方切换到
-            # ProcessDeterVector2 的阶段边界，也允许空闲任务核参与后续处理。
+            # 所有任务负责人必须完成 C2 后，才能开始全核的确定性 scatter。
+            # 这对应官方切换到 ProcessDeterVector2 的阶段边界，也允许空闲的
+            # 任务核参与后续处理。
+            T.sync_all()
+            clear_dkey_accumulator(dKeyIndexAccum, cid, vid)
             T.sync_all()
             vector2_scatter_all_tasks(
                 SparseIndices,
