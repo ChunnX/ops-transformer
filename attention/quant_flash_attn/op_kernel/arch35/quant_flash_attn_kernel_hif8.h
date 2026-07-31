@@ -249,10 +249,10 @@ public:
         if constexpr (!BMM2_TOUB) {
             int64_t mm2ResultSize =
                 mBaseSize * constInfo.dBasicBlock;
-            int64_t prevCoretotalOffset = constInfo.aicIdx * 3 * mm2ResultSize;
+            int64_t prevCoretotalOffset = constInfo.aicIdx * (PRELOAD_N + 1) * mm2ResultSize;
             gmBufferManager.Init(workspace + prevCoretotalOffset * sizeof(T));
             bmm2ResGmBuffers.Init(gmBufferManager, mm2ResultSize * sizeof(T));
-            workspace = workspace + constInfo.coreNum * 3 * mm2ResultSize * sizeof(T);
+            workspace = workspace + constInfo.coreNum * (PRELOAD_N + 1) * mm2ResultSize * sizeof(T);
         }
     }
 

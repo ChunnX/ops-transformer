@@ -212,7 +212,7 @@ __global__ __aicore__ void quant_flash_attn(
     if constexpr (quantMode == QFA_HIF8_FP32_PREFILL) {
         quant_flash_attn_hif8<inOutLayoutType, config, quantMode, hasAttenMask, KvLayoutType, isFd>(
             query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue, blockTable, pScale, cuSeqLensQ,
-            cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata, attnOut, softmaxLse, user, tiling);
+            cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata, attnOut, softmaxLse, workspace, tiling);
     }
 #endif
 }

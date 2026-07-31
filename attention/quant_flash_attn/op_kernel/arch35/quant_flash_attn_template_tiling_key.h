@@ -38,7 +38,7 @@ ASCENDC_TPL_ARGS_DECL(QuantFlashAttn,
                       //    QuantMode (5-bit)
                       //    1: QFA_MXFP8_FP32_PREFILL
                       //    2: QFA_MXFP8_FP32_DECODE
-                      //    3: QFA_HIF8_FP32_PREFILL
+                      //    7: QFA_HIF8_FP32_PREFILL
                       ASCENDC_TPL_UINT_DECL(QuantMode, ASCENDC_TPL_5_BW, ASCENDC_TPL_UI_RANGE, 1, 0, 31),
                       //    HasAttenMask
                       //    false / true

@@ -213,13 +213,16 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     baseInfo.nextToken = winRight_ == -1 ? std::numeric_limits<uint32_t>::max() : winRight_;
     baseInfo.layoutQuery = ConvertToLayout(layoutQ_);
     baseInfo.layoutKv = ConvertToLayout(layoutKv_);
-    if (quantMode_ == 1 || quantMode_ == 2) {
+    if (quantMode_ == 1) {
         baseInfo.queryType = load_balance::DataType::INT8;
         baseInfo.kvType = load_balance::DataType::INT8;
     }
-    if (quantMode_ == 1 || quantMode_ == 2) { // TODO：用adjust函数代替
+    if (quantMode_ == 1) {
         mBaseSize_ = 64U;
         s2BaseSize_ = 512U;
+    } else if (quantMode_ == 7) {
+        mBaseSize_ = 64U;
+        s2BaseSize_ = 256U;
     }
     mBaseSize_ = mBaseSize_ * (aivCoreNum_ / aicCoreNum_);
     param.mBaseSize = mBaseSize_;
@@ -229,7 +232,8 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     param.fdOn = 0;
 
     // 校验 v_descale: TND layout 下, dim0 应等于 sum(ceil(seqused_kv[i] / 64))
-    if (vDescale_ != nullptr && vDescale_->GetTensorShape() != nullptr) {
+    // HIF8 (quantMode=7): v_descale 是 per-tensor 标量 (1,), 跳过 per-group 校验
+    if (quantMode_ != 7 && vDescale_ != nullptr && vDescale_->GetTensorShape() != nullptr) {
         const int64_t V_DESCALE_GROUP_SIZE = 64;
         bool isTndLayout = (layoutKv_ == "TND");
         if (isTndLayout) {

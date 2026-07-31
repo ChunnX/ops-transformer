@@ -267,7 +267,7 @@ ge::graphStatus QfaInfoParser::GetQuantMode()
         quantModeVal != static_cast<int64_t>(QfaQuantMode::HIF8_FP32)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_mode",
             std::to_string(quantModeVal).c_str(),
-            "quant_mode must be 1 (MXFP8_FP32) or 3 (HIF8_FP32)");
+            "quant_mode must be 1 (MXFP8_FP32) or 7 (HIF8_FP32)");
         return ge::GRAPH_FAILED;
     }
     quantMode_ = static_cast<QfaQuantMode>(quantModeVal);

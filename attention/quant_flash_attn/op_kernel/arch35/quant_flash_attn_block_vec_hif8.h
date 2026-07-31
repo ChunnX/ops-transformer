@@ -68,7 +68,7 @@ public:
     static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                   IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr uint32_t DB = 2;
-    static constexpr uint32_t PRELOAD_N = 2;
+    static constexpr uint32_t PRELOAD_N = 1;
     static constexpr uint32_t s2SplitSize = 256U;
     static constexpr uint32_t MXFP_GROUP_SIZE = 32U;
     static constexpr bool HAS_MASK = hasAtten;
@@ -715,15 +715,12 @@ public:
     {
         tPipe->InitBuffer(softmaxSumBuf[0], 256);
         tPipe->InitBuffer(softmaxSumBuf[1], 256);
-        tPipe->InitBuffer(softmaxSumBuf[2], 256);
 
         tPipe->InitBuffer(softmaxMaxBuf[0], 256);
         tPipe->InitBuffer(softmaxMaxBuf[1], 256);
-        tPipe->InitBuffer(softmaxMaxBuf[2], 256);
 
         tPipe->InitBuffer(softmaxExpBuf[0], 256);
         tPipe->InitBuffer(softmaxExpBuf[1], 256);
-        tPipe->InitBuffer(softmaxExpBuf[2], 256);
 
         tPipe->InitBuffer(preLoopMaxBuf, 256);
         tPipe->InitBuffer(preLoopSumBuf, 256);
