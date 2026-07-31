@@ -92,16 +92,11 @@ public:
 
     __aicore__ inline FragmentTensor(
         const FragmentParam<Dims>& fragParam,
-        GM_ADDR* addrList)
-        : fragParam_(fragParam)
+        GM_ADDR const* addrList)
+        : fragParam_(fragParam), addrList_(addrList)
     {
-        for (uint32_t i = 0; i < fragParam.fragmentCnt; ++i) {
-            addrList_[i] = addrList[i];
-        }
-        for (uint32_t d = 0; d < Dims; ++d) {
-            sliceCoord_[d] = 0;
-            sliceShape_[d] = fragParam.assembledShape[d];
-        }
+        ArrayFill(sliceCoord_, 0, AscendC::Std::make_index_sequence<Dims>{});
+        ArrayCopy(sliceShape_, fragParam_.assembledShape, AscendC::Std::make_index_sequence<Dims>{});
     }
 
     __aicore__ inline auto GetFragment(uint32_t idx) const
@@ -109,9 +104,7 @@ public:
         auto fragmentAddr = reinterpret_cast<__gm__ ElementType*>(addrList_[idx]);
 
         uint64_t fragmentShape[Dims];
-        for (uint32_t i = 0; i < Dims; ++i) {
-            fragmentShape[i] = fragParam_.assembledShape[i];
-        }
+        ArrayCopy(fragmentShape, fragParam_.assembledShape, AscendC::Std::make_index_sequence<Dims>{});
         fragmentShape[fragParam_.assembleAxis] = fragParam_.fragmentSize;
 
         auto memPtr = AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(fragmentAddr);
@@ -143,11 +136,9 @@ public:
         return addrList_[idx];
     }
 
-    __aicore__ inline void UpdateAddrList(GM_ADDR* addrList)
+    __aicore__ inline void UpdateAddrList(GM_ADDR const* addrList)
     {
-        for (uint32_t i = 0; i < fragParam_.fragmentCnt; ++i) {
-            addrList_[i] = addrList[i];
-        }
+        addrList_ = addrList;
     }
 
     __aicore__ inline const FragmentParam<Dims>& GetFragParam() const { return fragParam_; }
@@ -246,11 +237,9 @@ public:
         info.addr = addrList_[info.fragmentIdx];
 
         // 非 assembleAxis 槽位：直接整体复制 slice 视图，assembleAxis 槽位下面覆盖
-        for (uint32_t d = 0; d < Dims; ++d) {
-            info.fragCoord[d] = sliceCoord_[d];
-            info.localCoord[d] = 0;
-            info.copyShape[d] = sliceShape_[d];
-        }
+        ArrayCopy(info.fragCoord, sliceCoord_, AscendC::Std::make_index_sequence<Dims>{});
+        ArrayFill(info.localCoord, 0, AscendC::Std::make_index_sequence<Dims>{});
+        ArrayCopy(info.copyShape, sliceShape_, AscendC::Std::make_index_sequence<Dims>{});
 
         // assembleAxis 槽位：head/body/tail 三选一
         if (localIdx == 0) {
@@ -271,6 +260,22 @@ public:
     }
 
 private:
+    template<size_t... Is>
+    static __aicore__ inline void ArrayCopy(
+        uint64_t (&dst)[Dims], const uint64_t (&src)[Dims],
+        AscendC::Std::index_sequence<Is...>)
+    {
+        ((dst[Is] = src[Is]), ...);
+    }
+
+    template<size_t... Is>
+    static __aicore__ inline void ArrayFill(
+        uint64_t (&dst)[Dims], uint64_t val,
+        AscendC::Std::index_sequence<Is...>)
+    {
+        ((dst[Is] = val), ...);
+    }
+
     template<typename CoordType, typename ShapeType, size_t... Is>
     __aicore__ inline void SliceImpl(
         uint64_t (&coord)[Dims], uint64_t (&shape)[Dims],
@@ -294,7 +299,7 @@ private:
     }
 
     FragmentParam<Dims> fragParam_;
-    GM_ADDR addrList_[MaxFragments];
+    GM_ADDR const* addrList_{nullptr};
     uint64_t sliceCoord_[Dims]{};
     uint64_t sliceShape_[Dims]{};
 };
