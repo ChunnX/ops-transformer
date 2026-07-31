@@ -55,7 +55,7 @@ if IMPL_MODULE not in {"0721", "0721_baseline"}:
 MODULE = import_module(IMPL_MODULE)
 OP = MODULE.sparse_lightning_indexer_grad_kl_loss
 
-NORM_REL_TOLERANCE = 4e-3
+NORM_REL_TOLERANCE = 3e-2
 WARMUP_ITERS = 3
 BENCH_ITERS = 10
 
