@@ -1,14 +1,4 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
-# Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-# See LICENSE in the root of the software repository for the full text of the License.
-# ======================================================================================================================
-
+#!/usr/bin/env python3
 """
 compressor_grad_kernel — Compressor 反向传播 NPU Kernel（统一入口）。
 
@@ -24,7 +14,9 @@ TilingData: batchSize, tokenSize, seqSize,       — 运行时参数
 当前状态: Phase 1 已实现, Phase 2/3 待实现
 """
 
+from __future__ import annotations
 from dataclasses import dataclass
+import torch, torch_npu
 import pypto_pro.language as pl
 from pypto_pro.runtime.tilingkey import TilingKeyField as tilingkey_field
 
@@ -32,6 +24,8 @@ from pypto_pro.runtime.tilingkey import TilingKeyField as tilingkey_field
 #  Compile-time constants
 # ================================================================
 FLOAT_REG_ELEMENTS = 64   # FP32 VF register holds 64 elements
+D_BASE_SIZE = 128
+M_BASE_SIZE = 128
 
 # ================================================================
 #  TilingKey
@@ -50,7 +44,7 @@ class CompressorGradTilingKey:
 #  TilingData
 # ================================================================
 @dataclass
-class CompressorGradTiling:
+ class CompressorGradTiling:
     batchSize:        int = 1
     tokenSize:        int = 0
     seqSize:          int = 0
@@ -78,58 +72,66 @@ class CompressorGradTiling:
     rgRemain:         int = 0
 
 
+def _ceil_div(dividend, divisor):
+    return 0 if divisor == 0 else ((dividend) + (divisor) - 1) // (divisor)
+
+def _align(num, rnd):
+    return 0 if (rnd) == 0 else (((num) + (rnd)-1) // (rnd) * (rnd))
+
+def _trunc(num, rnd):
+    return 0 if (rnd) == 0 else (((num) // (rnd) * (rnd)))
+
 # ================================================================
 #  VF: 反向 scatter — d_kv = dC * softmax, d_score = softmax * (dsw - col_sum)
 # ================================================================
 @pl.vector_function
 def _vf_scatter_backward(
-    dc_f32_tile,       # dC: (n_blocks, D) FP32 (pre-cast outside VF)
-    kv_tile,           # kv_2d: (n_blocks*N, D) fp32 — kv → dsw
-    softmax_tile,      # softmax: (n_blocks*N, D) fp32 — sm → dsb
-    temp_tile,         # temp: (n_blocks*N, D) fp32 — dkv output
-    n_blocks: pl.DT_INT64,
-    n_rows_per_block: pl.DT_INT64,
+    dCmpKvTile,       # dC: (n_blocks, D) FP32 (pre-cast outside VF)
+    kvTile,           # kv_2d: (n_blocks*N, D) fp32 — kv → dsw
+    softmaxScoreTile,      # softmax: (n_blocks*N, D) fp32 — sm → dsb
+    tempTile,         # temp: (n_blocks*N, D) fp32 — dkv output
+    scNum: pl.DT_INT64,
+    cmpRowCnt: pl.DT_INT64, # cmpRatio * coff
     dDealSize: pl.DT_INT64,
 ):
-    dsw_tile = kv_tile
-    dsb_tile = softmax_tile
-    dkv_tile = temp_tile
+    dSoftmaxScoreTile = kvTile
+    dScoreTile = softmaxScoreTile
+    dKvTile = tempTile
 
-    preg = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    mask = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
 
     halves = dDealSize // FLOAT_REG_ELEMENTS
-    row_stride = dDealSize
-    block_stride = n_rows_per_block * row_stride
+    cmpSize = cmpRowCnt * dDealSize
 
-    for half in pl.range(0, halves):
-        half_off = half * FLOAT_REG_ELEMENTS
+    for dIdx in pl.range(0, halves):
+        dOffset = dIdx * FLOAT_REG_ELEMENTS
 
-        for k in pl.range(0, n_blocks):
-            block_off = k * block_stride
-            dc_off = k * dDealSize + half_off
+        for scIdx in pl.range(0, scNum):
+            scOffset = scIdx * cmpSize
+            dCmpKvOffset = scIdx * dDealSize + dOffset
 
-            dc_reg = vf.load_align(dc_f32_tile, dc_off)
+            vregDCmpKv = vf.load_align(dCmpKvTile, dCmpKvOffset)
 
-            col_sum = vf.full(0.0, dtype=pl.DT_FP32)
-            for m in pl.range(0, n_rows_per_block):
-                row_off = block_off + m * row_stride + half_off
-                sm_reg = vf.load_align(softmax_tile, row_off)
-                kv_reg = vf.load_align(kv_tile, row_off)
-                dkv_reg = vf.mul(dc_reg, sm_reg, preg)
-                vf.store_align(dkv_tile + row_off, dkv_reg, preg)
-                dsw_reg = vf.mul(dc_reg, kv_reg, preg)
-                vf.store_align(dsw_tile + row_off, dsw_reg, preg)
-                prod_reg = vf.mul(sm_reg, dsw_reg, preg)
-                col_sum = vf.add(col_sum, prod_reg, preg)
+            vregSum = vf.full(0.0, dtype=pl.DT_FP32)
+            for tIdx in pl.range(0, cmpRowCnt):
+                offset = scOffset + tIdx * dDealSize + dOffset
+                vregSoftmaxScore = vf.load_align(softmaxScoreTile, offset)
+                vregKv = vf.load_align(kvTile, offset)
+                vregDKv = vf.mul(vregDCmpKv, vregSoftmaxScore, mask)
+                vf.store_align(dKvTile + offset, vregDKv, mask)
+                vregDSoftmaxScore = vf.mul(vregDCmpKv, vregKv, mask)
+                vf.store_align(dSoftmaxScoreTile + offset, vregDSoftmaxScore, mask)
+                vregDSoftmaxScore = vf.mul(vregSoftmaxScore, vregDSoftmaxScore, mask)
+                vregSum = vf.add(vregSum, vregDSoftmaxScore, mask)
 
             vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
-            for m in pl.range(0, n_rows_per_block):
-                row_off = block_off + m * row_stride + half_off
-                sm_reg = vf.load_align(softmax_tile, row_off)
-                dsw_reg = vf.load_align(dsw_tile, row_off)
-                tmp_reg = vf.sub(dsw_reg, col_sum, preg)
-                dsb_reg = vf.mul(sm_reg, tmp_reg, preg)
-                vf.store_align(dsb_tile + row_off, dsb_reg, preg)
+            for tIdx in pl.range(0, cmpRowCnt):
+                offset = scOffset + tIdx * dDealSize + dOffset
+                vregSoftmaxScore = vf.load_align(softmaxScoreTile, offset)
+                vregDSoftmaxScore = vf.load_align(dSoftmaxScoreTile, offset)
+                vregDSoftmaxScore = vf.sub(vregDSoftmaxScore, vregSum, mask)
+                vregDScore = vf.mul(vregSoftmaxScore, vregDSoftmaxScore, mask)
+                vf.store_align(dScoreTile + offset, vregDScore, mask)
     vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
 
 
@@ -142,14 +144,14 @@ def _vf_tile_zero(
     n_rows: pl.DT_INT64,
     n_cols: pl.DT_INT64,
 ):
-    preg = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    mask = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
     halves = n_cols // FLOAT_REG_ELEMENTS
     row_stride = n_cols
     zero_reg = vf.full(0.0, dtype=pl.DT_FP32)
     for half in pl.range(0, halves):
         half_off = half * FLOAT_REG_ELEMENTS
         for m in pl.range(0, n_rows):
-            vf.store_align(tile + m * row_stride + half_off, zero_reg, preg)
+            vf.store_align(tile + m * row_stride + half_off, zero_reg, mask)
     vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
 
 
@@ -162,14 +164,14 @@ def _vf_tile_zero_f16(
     n_rows: pl.DT_INT64,
     n_cols: pl.DT_INT64,
 ):
-    preg = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP16)
+    mask = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP16)
     halves = n_cols // 128
     row_stride = n_cols
     zero_reg = vf.full(0.0, dtype=pl.DT_FP16)
     for half in pl.range(0, halves):
         half_off = half * 128
         for m in pl.range(0, n_rows):
-            vf.store_align(tile + m * row_stride + half_off, zero_reg, preg)
+            vf.store_align(tile + m * row_stride + half_off, zero_reg, mask)
     vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
 
 
@@ -182,14 +184,14 @@ def _vf_tile_zero_bf16(
     n_rows: pl.DT_INT64,
     n_cols: pl.DT_INT64,
 ):
-    preg = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_BF16)
+    mask = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_BF16)
     halves = n_cols // 128
     row_stride = n_cols
     zero_reg = vf.full(0.0, dtype=pl.DT_BF16)
     for half in pl.range(0, halves):
         half_off = half * 128
         for m in pl.range(0, n_rows):
-            vf.store_align(tile + m * row_stride + half_off, zero_reg, preg)
+            vf.store_align(tile + m * row_stride + half_off, zero_reg, mask)
     vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
 
 
@@ -198,22 +200,22 @@ def _vf_tile_zero_bf16(
 # ================================================================
 @pl.vector_function
 def _vf_mask_cache_fill(
-    dsb_tile,
-    dkv_tile,
-    cache_line_fill: pl.DT_INT64,
+    dScoreTile,
+    dkvTile,
+    row: pl.DT_INT64,
     dDealSize: pl.DT_INT64,
-    d_stride: pl.DT_INT64,
+    dStride: pl.DT_INT64,
 ):
-    preg = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
-    halves = dDealSize // FLOAT_REG_ELEMENTS
-    row_stride = d_stride
-    zero_reg = vf.full(0.0, dtype=pl.DT_FP32)
-    for half in pl.range(0, halves):
-        half_off = half * FLOAT_REG_ELEMENTS
-        for m in pl.range(0, cache_line_fill):
-            vf.store_align(dsb_tile + m * row_stride + half_off, zero_reg, preg)
-            vf.store_align(dkv_tile + m * row_stride + half_off, zero_reg, preg)
-    vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
+    if row > 0:
+        mask = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+        halves = dDealSize // FLOAT_REG_ELEMENTS
+        vregZero = vf.full(0.0, dtype=pl.DT_FP32)
+        for hIdx in pl.range(0, halves):
+            dOffset = hIdx * FLOAT_REG_ELEMENTS
+            for rIdx in pl.range(0, row):
+                vf.store_align(dScoreTile + rIdx * dStride + dOffset, vregZero, mask)
+                vf.store_align(dkvTile + rIdx * dStride + dOffset, vregZero, mask)
+        vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
 
 
 # ================================================================
@@ -221,14 +223,14 @@ def _vf_mask_cache_fill(
 # ================================================================
 @pl.vector_function
 def _vf_reduce_dscore_to_ape(
-    dsb_tile,
+    dScoreTile,
     ape_tile,
     n_blocks: pl.DT_INT64,
     n_rows_per_block: pl.DT_INT64,
     dDealSize: pl.DT_INT64,
     d_stride: pl.DT_INT64,
 ):
-    preg = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
+    mask = vf.create_mask(pattern=pl.MaskPattern.ALL, dtype=pl.DT_FP32)
     halves = dDealSize // FLOAT_REG_ELEMENTS
     row_stride     = d_stride
     block_stride   = n_rows_per_block * row_stride
@@ -241,9 +243,9 @@ def _vf_reduce_dscore_to_ape(
             for k in pl.range(0, n_blocks):
                 block_off = k * block_stride
                 row_off = block_off + m * row_stride + half_off
-                dsb_reg = vf.load_align(dsb_tile + row_off, 0)
-                ape_reg = vf.add(ape_reg, dsb_reg, preg)
-            vf.store_align(ape_tile + ape_off, ape_reg, preg)
+                vregDScore = vf.load_align(dScoreTile + row_off, 0)
+                ape_reg = vf.add(ape_reg, vregDScore, mask)
+            vf.store_align(ape_tile + ape_off, ape_reg, mask)
     vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
 
 
@@ -259,7 +261,7 @@ def _get_start_pos(bIdx, start_pos, ctx):
 
 def _get_seq_length(bIdx, cu_seqlens, ctx):
     result = ctx.seqSize
-    if ctx.layout == 1:  # TH
+    if ctx.layout == 1:  # TH (1=TH)
         result = pl.getval(pl.make_tensor(cu_seqlens, [ctx.batchSize + 1], [1], dtype=pl.DT_INT32), bIdx + 1) - \
                  pl.getval(pl.make_tensor(cu_seqlens, [ctx.batchSize + 1], [1], dtype=pl.DT_INT32), bIdx)
     return result
@@ -297,13 +299,14 @@ def _get_row_count(bStart, sStart, bEnd, sEnd, cu_seqlens, ctx):
 def _get_cmp_block_count(bIdx, sIdx, start_pos, seqused, cu_seqlens, ctx):
     result = 0
     for bb in pl.range(0, bIdx):
-        sp = _get_start_pos(bb, start_pos, ctx)
-        sq = _get_seq_used(bb, seqused, cu_seqlens, ctx)
-        cmpEnd = (sp + sq) // ctx.cmpRatio
-        if cmpEnd > sp // ctx.cmpRatio:
-            result += cmpEnd - (sp // ctx.cmpRatio)
-    sp = _get_start_pos(bIdx, start_pos, ctx)
-    result += (sIdx + sp) // ctx.cmpRatio - sp // ctx.cmpRatio
+        bStartPos = _get_start_pos(bb, start_pos, ctx)
+        bSeqLength = _get_seq_used(bb, seqused, cu_seqlens, ctx)
+        cmpEnd = (bStartPos + bSeqLength) // ctx.cmpRatio
+        if cmpEnd > bStartPos // ctx.cmpRatio:
+            result += cmpEnd - (bStartPos // ctx.cmpRatio)
+    bStartPos = _get_start_pos(bIdx, start_pos, ctx)
+    lastS = _trunc(_get_seq_used(bIdx, seqused, cu_seqlens, ctx) + bStartPos, ctx.cmpRatio) - bStartPos
+    result += (min(lastS, sIdx) + bStartPos) // ctx.cmpRatio - bStartPos // ctx.cmpRatio
     return result
 
 
@@ -330,10 +333,10 @@ def _skip_blocks(blockCount, bIdx, scIdx,
                  start_pos, seqused, cu_seqlens, ctx):
     skipped = 0
     while skipped < blockCount:
-        spVal = _get_start_pos(bIdx, start_pos, ctx)
+        bStartPos = _get_start_pos(bIdx, start_pos, ctx)
         sqVal = _get_seq_used(bIdx, seqused, cu_seqlens, ctx)
-        cmpLimit = (spVal + sqVal) // ctx.cmpRatio * ctx.cmpRatio
-        blkInBatch = (cmpLimit - spVal) // ctx.cmpRatio
+        cmpLimit = (bStartPos + sqVal) // ctx.cmpRatio * ctx.cmpRatio
+        blkInBatch = (cmpLimit - bStartPos) // ctx.cmpRatio
         remaining = blkInBatch - scIdx
         if remaining > 0:
             taken = min(blockCount - skipped, remaining)
@@ -358,9 +361,9 @@ def compressor_grad(
     wgate:          pl.Ptr[pl.DT_UINT8],     # (C, hiddenSize)       
 
     # ── 输入（前向中间变量 / 上游梯度） ──
-    d_cmp_kv:       pl.Ptr[pl.DT_UINT8],     # (outputRows, headDim)           
-    kv:             pl.Ptr[pl.DT_UINT8],     # (outputRows, scKvRowCount, headDim) FP32
-    softmax_score:  pl.Ptr[pl.DT_UINT8],     # (outputRows, scKvRowCount, headDim) FP32
+    d_cmp_kv:       pl.Ptr[pl.DT_UINT8],     # (cmpKvRows, headDim)           
+    kv:             pl.Ptr[pl.DT_UINT8],     # (cmpKvRows, cmpRowCnt, headDim) FP32
+    softmax_score:  pl.Ptr[pl.DT_UINT8],     # (cmpKvRows, cmpRowCnt, headDim) FP32
 
     # ── 位置 / 序列参数 ──
     cu_seqlens:     pl.Ptr[pl.DT_UINT8],
@@ -380,14 +383,21 @@ def compressor_grad(
     tiling:         CompressorGradTiling,
 ):
     batchSize  = tiling.batchSize
-    tokenSize  = tiling.tokenSize
     seqSize    = tiling.seqSize
+    tokenSize  = tiling.tokenSize if Layout == 1 else batchSize * seqSize
     cmpRatio   = tiling.cmpRatio
     headDim    = tiling.headDim
-    featureDim = Coff * headDim
-    scKvRowCount = Coff * cmpRatio
-    outStride    = (seqSize + cmpRatio - 1) // cmpRatio
+    hiddenSize = tiling.hiddenSize
+    totalHeadDim = Coff * headDim
+    cmpRowCnt = Coff * cmpRatio
+    cmpSize = Coff * cmpRatio * headDim
+    cmpKvBatchStride    = _ceil_div(seqSize, cmpRatio)
     ioDType      = pl.DT_BF16 if DataType == 0 else pl.DT_FP16
+    dbRatio = 2 # tiling传入
+    dDealSize = D_BASE_SIZE // Coff # 不从tiling 传入，作为编译期常数
+    mDealSize = M_BASE_SIZE * Coff
+    l1Addr = 0
+    ubAddr = 0
 
     # ── Sequence context ──
     seq_ctx = pl.struct("SeqCtx",
@@ -398,92 +408,93 @@ def compressor_grad(
     )
 
     # ── Compute total compression blocks ──
-    totalBlocks = 0
-    for bi in pl.range(0, batchSize):
-        sp = _get_start_pos(bi, start_pos, seq_ctx)
-        sq = _get_seq_used(bi, seqused, cu_seqlens, seq_ctx)
-        cmpLimit = (sp + sq) // cmpRatio * cmpRatio
-        if cmpLimit > sp:
-            totalBlocks = totalBlocks + (cmpLimit - sp) // cmpRatio
+    compressedCnt = 0
+    for bIdx in pl.range(0, batchSize):
+        bStartPos = _get_start_pos(bIdx, start_pos, seq_ctx)
+        bSeqUsed = _get_seq_used(bIdx, seqused, cu_seqlens, seq_ctx)
+        compressSeqIdx = _trunc(bStartPos + bSeqUsed, cmpRatio)
+        if compressSeqIdx > bStartPos:
+            compressedCnt = compressedCnt + (compressSeqIdx - bStartPos) // cmpRatio
 
     if Layout == 1:
-        outputRows = min(tokenSize, (tokenSize // cmpRatio) + batchSize)
+        cmpKvRows = min(tokenSize, (tokenSize // cmpRatio) + batchSize)
     else:
-        outputRows = batchSize * ((seqSize + cmpRatio - 1) // cmpRatio)
+        cmpKvRows = batchSize * cmpKvBatchStride
 
 
-    # ── Tensor views ──
-    tensorDCmpKv = pl.make_tensor(d_cmp_kv, [outputRows, headDim],
+    # ── Gm Tensor ──
+    dCmpKvGm = pl.make_tensor(d_cmp_kv, [cmpKvRows, headDim],
                                    [headDim, 1], dtype=ioDType)
-    tensorKv      = pl.make_tensor(kv, [outputRows, scKvRowCount, headDim],
-                                   [scKvRowCount * headDim, headDim, 1], dtype=pl.DT_FP32)
-    tensorSoftmax = pl.make_tensor(softmax_score, [outputRows, scKvRowCount, headDim],
-                                   [scKvRowCount * headDim, headDim, 1], dtype=pl.DT_FP32)
+    kvGm      = pl.make_tensor(kv, [cmpKvRows, cmpRowCnt, headDim],
+                                   [cmpSize, headDim, 1], dtype=pl.DT_FP32)
+    softmaxScoreGm = pl.make_tensor(softmax_score, [cmpKvRows, cmpRowCnt, headDim],
+                                   [cmpSize, headDim, 1], dtype=pl.DT_FP32)
+    
+    xGm = pl.make_tensor(x, [tokenSize, hiddenSize],
+                            [hiddenSize, 1], dtype=ioDType) #TODO:bsh时，tokenSize=b*s
 
-    hiddenSize = tiling.hiddenSize
+    xRows = tokenSize if Layout == 1 else batchSize * seqSize
+    dXOutGm = pl.make_tensor(d_x, [xRows, hiddenSize],
+                              [hiddenSize, 1], dtype=ioDType)
+    dWKvOutGm = pl.make_tensor(d_wkv, [totalHeadDim, hiddenSize],
+                              [hiddenSize, 1], dtype=ioDType)
+    dWGateOutGm = pl.make_tensor(d_wgate, [totalHeadDim, hiddenSize],
+                              [hiddenSize, 1], dtype=ioDType)
+
 
     # ── 共享 round 参数（Phase 1 + Phase 2 都需要）──
-    cubeCoreNum = pl.get_block_num()
-    groupSize         = headDim // 128
-    dBaseSize         = 128 // Coff
+    cubeCoreNum = pl.get_block_num() #TODO:改成tiling传入
+    groupSize         = headDim // D_BASE_SIZE
     groupNum     = cubeCoreNum // groupSize
-    mPerRoundPerGroup = 128 * 2 // Coff // cmpRatio
-    mBaseSize         = 128 // cmpRatio
-    mPerRoundAll      = groupNum * mPerRoundPerGroup
-    roundCnt          = (totalBlocks + mPerRoundAll - 1) // mPerRoundAll
-    dbRows            = mPerRoundAll * cmpRatio
+    coffCoef =  2 // Coff
+    cubeMBaseSize = M_BASE_SIZE * coffCoef # coff = 1, vec子核分M轴；coff = 2, vec子核分coff
+    groupDealScNum = cubeMBaseSize // cmpRatio
+    dealScNum         = M_BASE_SIZE // cmpRatio
+    totalScNumPerRound      = groupNum * groupDealScNum
+    roundCnt          = _ceil_div(compressedCnt, totalScNumPerRound)
+    totalRowsPerRound            = totalScNumPerRound * cmpRowCnt
 
     # ── L1A CV 通道: 4 个独立 tile_group [128,128], double-buffer ──
-    l1_nz_type = pl.TileType(shape=[128 * Coff, 128 // Coff], dtype=ioDType,
+    L1_NZ_TILE_TYPE = pl.TileType(shape=[M_BASE_SIZE, D_BASE_SIZE], dtype=ioDType,
                               target_memory=pl.MemorySpace.Mat, layout=pl.NZ, compact=1)
-    l1_zn_type = pl.TileType(shape=[128 // Coff, 128 * Coff], dtype=ioDType,
+    L1_ZN_TILE_TYPE = pl.TileType(shape=[M_BASE_SIZE, D_BASE_SIZE], dtype=ioDType,
                               target_memory=pl.MemorySpace.Mat, layout=pl.ZN, compact=1)
 
-    l1_kv0_db    = pl.make_tile_group(type=l1_nz_type, addrs=[0x00000, 0x10000], mutex_ids=[10, 11])
-    l1_kv1_db    = pl.make_tile_group(type=l1_nz_type, addrs=[0x08000, 0x18000], mutex_ids=[12, 13])
-    l1_sb0_db    = pl.make_tile_group(type=l1_nz_type, addrs=[0x20000, 0x30000], mutex_ids=[14, 15])
-    l1_sb1_db    = pl.make_tile_group(type=l1_nz_type, addrs=[0x28000, 0x38000], mutex_ids=[16, 17])
+    L1Kv0TileGroupNz    = pl.make_tile_group(type=L1_NZ_TILE_TYPE, addrs=0x00000, mutex_ids=[10, 11]) # 128 * 128 * 2 = 0x10000
+    L1Kv1TileGroupNz    = pl.make_tile_group(type=L1_NZ_TILE_TYPE, addrs=0x10000, mutex_ids=[12, 13])
+    L1Score0TileGroupNz    = pl.make_tile_group(type=L1_NZ_TILE_TYPE, addrs=0x20000, mutex_ids=[14, 15])
+    L1Score1TileGroupNz    = pl.make_tile_group(type=L1_NZ_TILE_TYPE, addrs=0x30000, mutex_ids=[16, 17])
 
-    l1_kv0_db_t  = pl.make_tile_group(type=l1_zn_type, addrs=[0x00000, 0x10000], mutex_ids=[10, 11])
-    l1_kv1_db_t  = pl.make_tile_group(type=l1_zn_type, addrs=[0x08000, 0x18000], mutex_ids=[12, 13])
-    l1_sb0_db_t  = pl.make_tile_group(type=l1_zn_type, addrs=[0x20000, 0x30000], mutex_ids=[14, 15])
-    l1_sb1_db_t  = pl.make_tile_group(type=l1_zn_type, addrs=[0x28000, 0x38000], mutex_ids=[16, 17])
+    L1Kv0TileGroupZn  = pl.make_tile_group(type=L1_ZN_TILE_TYPE, addrs=0x00000, mutex_ids=[10, 11])
+    L1Kv1TileGroupZn  = pl.make_tile_group(type=L1_ZN_TILE_TYPE, addrs=0x10000, mutex_ids=[12, 13])
+    L1Score0TileGroupZn  = pl.make_tile_group(type=L1_ZN_TILE_TYPE, addrs=0x20000, mutex_ids=[14, 15])
+    L1Score1TileGroupZn  = pl.make_tile_group(type=L1_ZN_TILE_TYPE, addrs=0x30000, mutex_ids=[16, 17])
 
     # ── Workspace 分块: APE 区域 + d_x 区域──
-    ape_ws_elems   = 2 * dbRows * headDim
-    dx_per_group   = 256 * hiddenSize
-    dx_stride      = cubeCoreNum * dx_per_group
-    dx_ws_elems    = 2 * dx_stride
-    dw_ws_elems    = 2 * groupNum * featureDim * hiddenSize
-    x_ws_elems    = 2 * groupNum * (256 // Coff) * hiddenSize
+    apeWorkSpaceSize   = dbRatio * groupNum * cmpSize * coffCoef
+    dXWorkSpaceSize    = dbRatio * cubeCoreNum * (M_BASE_SIZE * 2) * hiddenSize
+    dWeightWorkSpaceSize    = dbRatio * groupNum * totalHeadDim * hiddenSize
+    xWorkSpaceSize    = dbRatio * (groupNum * cubeMBaseSize + (Coff - 1) * cmpRatio) * hiddenSize
+    dXCacheWorkSpaceSize    = dbRatio * cmpRatio * hiddenSize
 
-    ws_f32 = pl.make_ptr(workspace, dtype=pl.DT_FP32)
-    dx_ptr = pl.addptr(ws_f32, ape_ws_elems)       # dkv@wkv + dsb@wgate partials
-    dwkv_ptr = pl.addptr(dx_ptr, dx_ws_elems)   
-    dwgate_ptr = pl.addptr(dwkv_ptr, dw_ws_elems)   
-    x_ptr = pl.addptr(dwgate_ptr, dw_ws_elems)   
+    workSpacePtr = pl.make_ptr(workspace, dtype=pl.DT_FP32)
+    dXWorkSpacePtr = pl.addptr(workSpacePtr, apeWorkSpaceSize)       
+    dWKvWorkSpacePtr = pl.addptr(dXWorkSpacePtr, dXWorkSpaceSize)   
+    dWGateWorkSpacePtr = pl.addptr(dWKvWorkSpacePtr, dWeightWorkSpaceSize)   
+    xWorkSpacePtr = pl.addptr(dWGateWorkSpacePtr, dWeightWorkSpaceSize)   
+    dXCachePtr = pl.addptr(xWorkSpacePtr, xWorkSpaceSize)   
 
     # ── d_x output + workspace views (Phase 3) ──
-    if Layout == 1:
-        d_x_rows = tokenSize
-    else:
-        d_x_rows = batchSize * seqSize
-    d_x_out = pl.make_tensor(d_x, [d_x_rows, hiddenSize],
-                              [hiddenSize, 1], dtype=ioDType)
-    d_wkv_out = pl.make_tensor(d_wkv, [featureDim, hiddenSize],
-                              [hiddenSize, 1], dtype=ioDType)
-    d_wgate_out = pl.make_tensor(d_wgate, [featureDim, hiddenSize],
-                              [hiddenSize, 1], dtype=ioDType)
-    d_x_ws = pl.make_tensor(dx_ptr,
-        [dx_ws_elems // hiddenSize, hiddenSize], [hiddenSize, 1], dtype=pl.DT_FP32)
-    d_wkv_ws = pl.make_tensor(dwkv_ptr,
-        [dw_ws_elems // hiddenSize, hiddenSize], [hiddenSize, 1], dtype=pl.DT_FP32)
-    d_wgate_ws = pl.make_tensor(dwgate_ptr,
-        [dw_ws_elems // hiddenSize, hiddenSize], [hiddenSize, 1], dtype=pl.DT_FP32)
-    x_t = pl.make_tensor(x, [tokenSize, hiddenSize],
-                            [hiddenSize, 1], dtype=ioDType)
-    x_ws = pl.make_tensor(x_ptr,
-        [x_ws_elems // hiddenSize, hiddenSize], [hiddenSize, 1], dtype=ioDType)
+    dXResultGm = pl.make_tensor(dXWorkSpacePtr,
+        [Coff, dXWorkSpaceSize // hiddenSize // Coff, hiddenSize], [dXWorkSpaceSize // Coff, hiddenSize, 1], dtype=pl.DT_FP32)
+    dWkvResultGm = pl.make_tensor(dWKvWorkSpacePtr,
+        [dWeightWorkSpaceSize // hiddenSize, hiddenSize], [hiddenSize, 1], dtype=pl.DT_FP32)
+    dWGateResultGm = pl.make_tensor(dWGateWorkSpacePtr,
+        [dWeightWorkSpaceSize // hiddenSize, hiddenSize], [hiddenSize, 1], dtype=pl.DT_FP32)
+    xArrangeGm = pl.make_tensor(xWorkSpacePtr,
+        [xWorkSpaceSize // hiddenSize, hiddenSize], [hiddenSize, 1], dtype=ioDType)
+    dXCacheGm = pl.make_tensor(dXCachePtr,
+        [dXCacheWorkSpaceSize // hiddenSize, hiddenSize], [hiddenSize, 1], dtype=pl.DT_FP32)
 
     # ── Per-round shared state (persists across rounds) ──
     bIdx              = 0
@@ -499,40 +510,58 @@ def compressor_grad(
     with pl.section_vector():
         coreNum   = cubeCoreNum * pl.get_subblock_num()
         coreIdx   = pl.get_block_idx()
+        subCoreIdx = pl.get_subblock_idx()
+        # pl.printf("subCoreIdx:%d\n", subCoreIdx)
         # pl.printf("coreNum:%d, coreIdx:%d\n", coreNum, coreIdx)
 
         # ── UB tile type declarations ──
-        tile_type_dc_f16 = pl.TileType(
-            shape=[64, 128], dtype=ioDType,
+        D_CMP_KV_TILE_TYPE = pl.TileType(
+            shape=[mDealSize // 2, dDealSize], dtype=ioDType,
             target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1])
 
-        tile_type_cast_out = pl.TileType(
-            shape=[128 * Coff, 128 // Coff], dtype=ioDType,
-            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1])
+        D_CMP_KV_FP32_TILE_TYPE = pl.TileType(shape=[mDealSize // 2, dDealSize], dtype=pl.DT_FP32,
+            target_memory=pl.MemorySpace.Vec, valid_shape=[-1,-1], pad=pl.TilePad.zero)
+        
+        NORMEL_TILE_TYPE = pl.TileType(
+            shape=[mDealSize, dDealSize], dtype=pl.DT_FP32,
+            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1],
+            pad=pl.TilePad.zero, compact=1)
+        
+        CAST_TILE_TYPE = pl.TileType(
+            shape=[mDealSize, dDealSize], dtype=ioDType,
+            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1], compact=1)
 
-        tile_type_cast_nz = pl.TileType(
-            shape=[128 * Coff, 128 // Coff], dtype=ioDType,
+        CAST_MD_TILE_TYPE = pl.TileType(
+            shape=[M_BASE_SIZE, D_BASE_SIZE], dtype=ioDType,
+            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1], compact=1)
+
+        NZ_TILE_TYPE = pl.TileType(
+            shape=[mDealSize, dDealSize], dtype=ioDType,
+            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1],
+            layout=pl.NZ, compact=1)
+        
+        NZ_MD_TILE_TYPE = pl.TileType(
+            shape=[M_BASE_SIZE, dDealSize], dtype=ioDType,
             target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1],
             layout=pl.NZ, compact=1)
 
-        tile_type_work = pl.TileType(
-            shape=[128 * Coff, 128 // Coff], dtype=pl.DT_FP32,
+        MOVE_X_TILE_TYPE = pl.TileType(
+            shape=[M_BASE_SIZE, D_BASE_SIZE * 2], dtype=ioDType,
             target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1],
             pad=pl.TilePad.zero)
         
+        FLAT_TILE_TYPE = pl.TileType(
+            shape=[1, M_BASE_SIZE * D_BASE_SIZE], dtype=pl.DT_FP32,
+            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1],
+            pad=pl.TilePad.zero)
         
-        tile_type_work3 = pl.TileType(
-            shape=[1, 128 * 128], dtype=pl.DT_FP32,
-            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1],
-            pad=pl.TilePad.zero)
-
-        tile_type_move_x = pl.TileType(
-            shape=[128, 256], dtype=ioDType,
-            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1],
-            pad=pl.TilePad.zero)
-
-        dc_type_f32 = pl.TileType(shape=[64, 128 // Coff], dtype=pl.DT_FP32,
-            target_memory=pl.MemorySpace.Vec, valid_shape=[-1,-1], pad=pl.TilePad.zero)
+        FLAT_CAST_TILE_TYPE = pl.TileType(
+            shape=[1, M_BASE_SIZE * D_BASE_SIZE], dtype=ioDType,
+            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1])
+        
+        TEMP_TILE_TYPE = pl.TileType(
+            shape=[M_BASE_SIZE, D_BASE_SIZE // 2], dtype=ioDType,
+            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1], compact=1)
 
         # ── UB tile_group allocation (auto_mutex for shared addresses) ──
         #          | group             | addr      | size   | mutex |
@@ -546,74 +575,93 @@ def compressor_grad(
         #          | dkv_cast         | 0x2C000   | 32768  | [4]   |
         #          | dkv_nz           | 0x34000   | 32768  | [6]   |
         # Total: 16K + 32K + 64K + 64K + 64K = 240KB < 248KB
-        dc_group      = pl.make_tile_group(type=tile_type_dc_f16, addrs=[0x00000], mutex_ids=[0])
-        dc_f32_group  = pl.make_tile_group(type=dc_type_f32,     addrs=[0x04000], mutex_ids=[1])
-        kv_group      = pl.make_tile_group(type=tile_type_work,  addrs=[0x0C000], mutex_ids=[2])
-        sm_group      = pl.make_tile_group(type=tile_type_work,  addrs=[0x1C000], mutex_ids=[3])
-        dkv_group     = pl.make_tile_group(type=tile_type_work,  addrs=[0x2C000], mutex_ids=[4])
-        dsb_cast_group= pl.make_tile_group(type=tile_type_cast_out, addrs=[0x1C000], mutex_ids=[3])
-        dkv_cast_group= pl.make_tile_group(type=tile_type_cast_out, addrs=[0x2C000], mutex_ids=[4])
-        ape_local_group = pl.make_tile_group(type=tile_type_work, addrs=[0x0C000], mutex_ids=[2])
-        dsb_nz_group = pl.make_tile_group(type=tile_type_cast_nz, addrs=[0x24000], mutex_ids=[3])
-        dkv_nz_group = pl.make_tile_group(type=tile_type_cast_nz, addrs=[0x34000], mutex_ids=[4])
-        movex_group = pl.make_tile_group(type=tile_type_move_x,  addrs=[0x1C000, 0x2C000], mutex_ids=[3, 4])
+        # TODO:地址之后用常量
+        dCmpKvTileGroup      = pl.make_tile_group(type=D_CMP_KV_TILE_TYPE, addrs=[0x00000], mutex_ids=[0])
+        dCmpKvFP32TileGroup  = pl.make_tile_group(type=D_CMP_KV_FP32_TILE_TYPE,     addrs=[0x04000], mutex_ids=[1]) # 16kB = 0x4000
+
+        kvTileGroup      = pl.make_tile_group(type=NORMEL_TILE_TYPE,  addrs=[0x0C000], mutex_ids=[2]) # 32kB = 0x8000
+        softmaxScoreTileGroup      = pl.make_tile_group(type=NORMEL_TILE_TYPE,  addrs=[0x1C000], mutex_ids=[3]) # 64kb = 0x10000
+        dKvTileGroup     = pl.make_tile_group(type=NORMEL_TILE_TYPE,  addrs=[0x2C000], mutex_ids=[4])
+
+        dScoreCastTileGroup = pl.make_tile_group(type=CAST_TILE_TYPE, addrs=[0x1C000], mutex_ids=[3])
+        dKvCastTileGroup = pl.make_tile_group(type=CAST_TILE_TYPE, addrs=[0x2C000], mutex_ids=[4])
+
+        apeTileGroup = pl.make_tile_group(type=NORMEL_TILE_TYPE, addrs=[0x0C000], mutex_ids=[2]) # TODO:可以直接tile复用
+
+        dScoreCastMDTileGroup = pl.make_tile_group(type=CAST_MD_TILE_TYPE, addrs=[0x1C000], mutex_ids=[3])
+        dKvCastMDTileGroup = pl.make_tile_group(type=CAST_MD_TILE_TYPE, addrs=[0x2C000], mutex_ids=[4])
+
+        dScoreNzTileGroup = pl.make_tile_group(type=NZ_TILE_TYPE, addrs=[0x24000], mutex_ids=[3])
+        dKvNzTileGroup = pl.make_tile_group(type=NZ_TILE_TYPE, addrs=[0x34000], mutex_ids=[4])
+
+        dScoreNzMDPrevTileGroup = pl.make_tile_group(type=NZ_MD_TILE_TYPE, addrs=[0x24000], mutex_ids=[3])
+        dKvNzMDPrevTileGroup = pl.make_tile_group(type=NZ_MD_TILE_TYPE, addrs=[0x34000], mutex_ids=[4])
+        dScoreNzMDCurTileGroup = pl.make_tile_group(type=NZ_MD_TILE_TYPE, addrs=[0x28000], mutex_ids=[3])
+        dKvNzMDCurTileGroup = pl.make_tile_group(type=NZ_MD_TILE_TYPE, addrs=[0x38000], mutex_ids=[4])
+
+        tempTileGroup  = pl.make_tile_group(type=TEMP_TILE_TYPE, addrs=0x00000, mutex_ids=[0, 1]) # 16kB = 0x4000
+
+        moveXTileGroup = pl.make_tile_group(type=MOVE_X_TILE_TYPE,  addrs=[0x1C000, 0x2C000], mutex_ids=[3, 4])
 
         # Phase 3 reduce: 复用 0x0C000/0x1C000/0x2C000 三个 64KB 区域
-        reduce_acc_group = pl.make_tile_group(type=tile_type_work3, addrs=[0x0C000], mutex_ids=[2])
-        reduce_ld_group = pl.make_tile_group(type=tile_type_work3, addrs=[0x1C000, 0x2C000], mutex_ids=[3, 4])
+        reduceAccTileGroup = pl.make_tile_group(type=FLAT_TILE_TYPE, addrs=[0x0C000], mutex_ids=[2])
+        reduceLoadTileGroup = pl.make_tile_group(type=FLAT_TILE_TYPE, addrs=[0x1C000, 0x2C000], mutex_ids=[3, 4])
 
         # Phase 3 d_x reduce: acc/ld 复用 reduce_acc/reduce_ld0，仅新增 cast
-        p3_tile_type_cast = pl.TileType(
-            shape=[1, 128 * 128], dtype=ioDType,
-            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1])
-        p3Cast_group = pl.make_tile_group(type=p3_tile_type_cast, addrs=[0x2C000], mutex_ids=[4])
+        reduceResultTileGroup = pl.make_tile_group(type=FLAT_CAST_TILE_TYPE, addrs=[0x0C000], mutex_ids=[2])
 
-        tile_dc_f16   = dc_group.next()
-        tile_dc_f32   = dc_f32_group.next()
-        tile_kv       = kv_group.next()
-        tile_softmax  = sm_group.next()
-        tile_dsb_cast = dsb_cast_group.next()
-        tile_temp     = dkv_group.next()
-        tile_dkv_cast = dkv_cast_group.next()
-        tile_ape_local = ape_local_group.next()
-        tile_dkv_nz  = dkv_nz_group.next()
-        tile_dsb_nz  = dsb_nz_group.next()
+        tile_dc_f16   = dCmpKvTileGroup.next()
+        tile_dc_f32   = dCmpKvFP32TileGroup.next()
+        tile_kv       = kvTileGroup.next()
+        tile_softmax  = softmaxScoreTileGroup.next()
+        tile_dsb_cast = dScoreCastTileGroup.next()
+        tile_dsb_cast_md = dScoreCastMDTileGroup.next()
+        tile_temp     = dKvTileGroup.next()
+        tile_dkv_cast = dKvCastTileGroup.next()
+        tile_dkv_cast_md = dKvCastMDTileGroup.next()
+        tile_ape_local = apeTileGroup.next()
+        tile_dkv_nz  = dKvNzTileGroup.next()
+        tile_dsb_nz  = dScoreNzTileGroup.next()
 
-        reduce_acc = reduce_acc_group.next()
+        tile_dkv_nz_md_prev  = dKvNzMDPrevTileGroup.next()
+        tile_dsb_nz_md_prev  = dScoreNzMDPrevTileGroup.next()
+        tile_dkv_nz_md_cur  = dKvNzMDCurTileGroup.next()
+        tile_dsb_nz_md_cur  = dScoreNzMDCurTileGroup.next()
 
-        p3_cast = p3Cast_group.next()
+        reduce_acc = reduceAccTileGroup.next()
+
+        p3_cast = reduceResultTileGroup.next()
 
         # ── D group division ──
         cubeCoreIdx      = coreIdx // 2
         groupIdx         = cubeCoreIdx // groupSize
         intraGroupIdx    = cubeCoreIdx % groupSize
 
-        nStart = intraGroupIdx * 128 + (coreIdx % Coff) * dBaseSize
-        nEnd   = nStart + dBaseSize
+        nStart = intraGroupIdx * D_BASE_SIZE + (subCoreIdx % Coff) * dDealSize
 
-        tensorApe = pl.make_tensor(ws_f32,
-            [2 * dbRows, headDim],
+        tensorApe = pl.make_tensor(workSpacePtr,
+            [2 * groupNum * coffCoef * cmpRowCnt,  headDim],
             [headDim, 1], dtype=pl.DT_FP32)
 
 
-        tensorDApeWsFlat = pl.make_tensor(ws_f32,
-            [2 * mPerRoundAll // Coff, Coff * cmpRatio * headDim],
-            [Coff * cmpRatio * headDim, 1], dtype=pl.DT_FP32)
+        tensorDApeWsFlat = pl.make_tensor(workSpacePtr,
+            [2 * groupNum * coffCoef, cmpSize],
+            [cmpSize, 1], dtype=pl.DT_FP32)
 
-        tensorDWKvWsFlat = pl.make_tensor(dwkv_ptr,
-            [dw_ws_elems // (featureDim * hiddenSize), featureDim * hiddenSize],
-            [featureDim * hiddenSize, 1], dtype=pl.DT_FP32)
+        tensorDWKvWsFlat = pl.make_tensor(dWKvWorkSpacePtr,
+            [dWeightWorkSpaceSize // (totalHeadDim * hiddenSize), totalHeadDim * hiddenSize],
+            [totalHeadDim * hiddenSize, 1], dtype=pl.DT_FP32)
             
-        tensorDWGateWsFlat = pl.make_tensor(dwgate_ptr,
-            [dw_ws_elems // (featureDim * hiddenSize), featureDim * hiddenSize],
-            [featureDim * hiddenSize, 1], dtype=pl.DT_FP32)
+        tensorDWGateWsFlat = pl.make_tensor(dWGateWorkSpacePtr,
+            [dWeightWorkSpaceSize // (totalHeadDim * hiddenSize), totalHeadDim * hiddenSize],
+            [totalHeadDim * hiddenSize, 1], dtype=pl.DT_FP32)
 
-        tensorDApeFlat = pl.make_tensor(d_ape, [1, Coff * cmpRatio * headDim],
-                                         [Coff * cmpRatio * headDim, 1], dtype=pl.DT_FP32)
-        tensorDWKvFlat = pl.make_tensor(d_wkv, [1, featureDim * hiddenSize],
-                                         [featureDim * hiddenSize, 1], dtype=pl.DT_FP32)
-        tensorDWGateFlat = pl.make_tensor(d_wgate, [1, featureDim * hiddenSize],
-                                         [featureDim * hiddenSize, 1], dtype=pl.DT_FP32)
+        tensorDApeFlat = pl.make_tensor(d_ape, [1, cmpSize],
+                                         [cmpSize, 1], dtype=pl.DT_FP32)
+        tensorDWKvFlat = pl.make_tensor(d_wkv, [1, totalHeadDim * hiddenSize],
+                                         [totalHeadDim * hiddenSize, 1], dtype=pl.DT_FP32)
+        tensorDWGateFlat = pl.make_tensor(d_wgate, [1, totalHeadDim * hiddenSize],
+                                         [totalHeadDim * hiddenSize, 1], dtype=pl.DT_FP32)
 
     # ═════════════════════════════════════════════════════════════════════════
     #  Cube tile declarations (once)
@@ -626,20 +674,20 @@ def compressor_grad(
         intraGroupIdx    = cubeCoreIdx % groupSize
 
         nStart = intraGroupIdx * 128
-        nEnd   = nStart + dBaseSize
+        # nEnd   = nStart + D_BASE_SIZE
         
 
         # L1A CV 数据: 复用主函数体 tile_group, 通过 .next() db
 
         # L1W: wkv/wgate chunk 加载（double-buffer, 0x40000-0x4FFFF, 64KB）
         l1_w_db = pl.make_tile_group(
-            type=pl.TileType(shape=[128, 256], dtype=ioDType,
+            type=pl.TileType(shape=[128, D_BASE_SIZE * 2], dtype=ioDType,
                              target_memory=pl.MemorySpace.Mat, layout=pl.NZ, compact=1),
-            addrs=[0x40000, 0x48000], mutex_ids=[20, 21])
+            addrs=0x40000, mutex_ids=[20, 21])
 
         # L0 tiles
         cv_l0a = pl.make_tile_group(
-            type=pl.TileType(shape=[128 * Coff, 128 // Coff], dtype=ioDType,
+            type=pl.TileType(shape=[128, 128], dtype=ioDType,
                              target_memory=pl.MemorySpace.Left, layout=pl.NZ, compact=1),
             addrs=[0x00000, 0x08000], mutex_ids=[18, 19])
         cv_l0b = pl.make_tile_group(
@@ -652,9 +700,9 @@ def compressor_grad(
             addrs=0x00000, mutex_ids=[24, 25, 26, 27])
 
         # GM tensor views
-        wkv_t = pl.make_tensor(wkv, [featureDim, hiddenSize],
+        wkv_t = pl.make_tensor(wkv, [totalHeadDim, hiddenSize],
                                [hiddenSize, 1], dtype=ioDType)
-        wgate_t = pl.make_tensor(wgate, [featureDim, hiddenSize],
+        wgate_t = pl.make_tensor(wgate, [totalHeadDim, hiddenSize],
                                  [hiddenSize, 1], dtype=ioDType)
 
         # d_x partial workspace (dkv@wkv) + dsb@wgate workspace
@@ -664,15 +712,15 @@ def compressor_grad(
     #  Phase 1+3: Vec Scatter & Reduce (per-round compute)
     # ════════════════════════════════════════════════════════════
     for roundIdx in pl.range(0, roundCnt):
-        roundBlocks = min(mPerRoundAll,
-                          totalBlocks - roundIdx * mPerRoundAll)
-        slot_id = roundIdx % 2
+        roundBlocks = min(totalScNumPerRound,
+                          compressedCnt - roundIdx * totalScNumPerRound)
+        dbIdx = roundIdx % 2
         
         with pl.section_vector():
-            preDealTcSize = groupIdx * mPerRoundPerGroup
+            preDealTcSize = groupIdx * groupDealScNum
             if Coff == 1 and coreIdx % 2 == 1:
-                preDealTcSize += mBaseSize
-            dealTcSize   = min(mBaseSize,
+                preDealTcSize += dealScNum
+            dealTcSize   = min(dealScNum,
                                max(0, roundBlocks - preDealTcSize))
             blocksAfter  = max(0, roundBlocks - preDealTcSize - dealTcSize)
 
@@ -684,67 +732,73 @@ def compressor_grad(
                 # Segment 2: process
                 processed = 0
                 while processed < dealTcSize:
-                    spVal = _get_start_pos(bIdx, start_pos, seq_ctx)
+                    bStartPos = _get_start_pos(bIdx, start_pos, seq_ctx)
                     sqVal = _get_seq_used(bIdx, seqused, cu_seqlens, seq_ctx)
-                    cmpLimit = (spVal + sqVal) // cmpRatio * cmpRatio
-                    blkInBatch = (cmpLimit - spVal) // cmpRatio
+                    cmpLimit = (bStartPos + sqVal) // cmpRatio * cmpRatio
+                    blkInBatch = (cmpLimit - bStartPos) // cmpRatio
                     remaining = blkInBatch - scIdx
                     if remaining > 0:
                         taken = min(dealTcSize - processed, remaining)
                         if Layout == 1:
-                            globalBlkIdx = roundIdx * mPerRoundAll + preDealTcSize + processed
+                            globalBlkIdx = roundIdx * totalScNumPerRound + preDealTcSize + processed
                         else:
-                            globalBlkIdx = bIdx * outStride + scIdx
+                            globalBlkIdx = bIdx * cmpKvBatchStride + scIdx
 
-                        nTileRows = taken * scKvRowCount
-                        dDealSize = dBaseSize
+                        nTileRows = taken * cmpRowCnt
 
                         dcTile  = tile_dc_f16[processed:, :]
                         dcF32   = tile_dc_f32[processed:, :]
-                        kvTile  = tile_kv[processed * scKvRowCount:, :]
-                        smTile  = tile_softmax[processed * scKvRowCount:, :]
-                        dkvTile = tile_temp[processed * scKvRowCount:, :]
+                        kvTile  = tile_kv[processed * cmpRowCnt:, :]
+                        smTile  = tile_softmax[processed * cmpRowCnt:, :]
+                        dkvTile = tile_temp[processed * cmpRowCnt:, :]
 
                         pl.set_validshape(dcTile,  [taken, dDealSize])
                         pl.set_validshape(kvTile,  [nTileRows, dDealSize])
                         pl.set_validshape(smTile,  [nTileRows, dDealSize])
 
-                        pl.load(dcTile, tensorDCmpKv, [globalBlkIdx, nStart])
-                        pl.load(kvTile, tensorKv,      [globalBlkIdx, 0, nStart])
-                        pl.load(smTile, tensorSoftmax, [globalBlkIdx, 0, nStart])
+                        
+                        pl.load(dcTile, dCmpKvGm, [globalBlkIdx, nStart])
+                        pl.load(kvTile, kvGm,      [globalBlkIdx, 0, nStart])
+                        pl.load(smTile, softmaxScoreGm, [globalBlkIdx, 0, nStart])
+                        # pl.printf("globalBlkIdx:%d, nStart:%d\n", globalBlkIdx, nStart)
+                        # pl.dump_data(kvTile, offsets=[0, 0], shapes=[1, 64])
+                        # pl.dump_data(smTile, offsets=[0, 0], shapes=[1, 64])
+                        # pl.dump_data(dcTile, offsets=[0, 0], shapes=[1, 64])
 
                         pl.set_validshape(dcF32, [taken, dDealSize])
-                        pl.cast(dcF32, dcTile,
-                                mode=pl.RoundMode.CAST_ROUND)
+                        pl.cast(dcF32, dcTile, mode=pl.RoundMode.CAST_ROUND)
 
                         _vf_scatter_backward(
                             dcF32, kvTile, smTile, dkvTile,
-                            taken, scKvRowCount, dDealSize,
+                            taken, cmpRowCnt, dDealSize,
                         )
 
                         if Coff == 1:
-                            cache_fill_rows = spVal % cmpRatio if scIdx == 0 else 0
+                            cacheFillRows = bStartPos % cmpRatio if scIdx == 0 else 0
                             _vf_mask_cache_fill(
                                 smTile,
                                 dkvTile,
-                                cache_fill_rows, dDealSize, dDealSize * Coff,
+                                cacheFillRows, dDealSize, D_BASE_SIZE,
                             )
                         else:
-                            cache_fill_rows = 0
                             if scIdx == 0:
-                                cache_fill_rows += spVal % cmpRatio + cmpRatio if taken >= 2 else cmpRatio
+                                cacheFillRows = bStartPos % cmpRatio + cmpRatio if taken >= 2 else cmpRatio
                             elif scIdx == 1:
-                                cache_fill_rows += spVal % cmpRatio
+                                cacheFillRows = bStartPos % cmpRatio
+                            else:
+                                cacheFillRows = 0
+                            # pl.printf("cacheFillRows:%d\n", cacheFillRows)
                             _vf_mask_cache_fill(
                                 smTile,
                                 dkvTile,
-                                cache_fill_rows, dDealSize, dDealSize * Coff,
+                                cacheFillRows, dDealSize, D_BASE_SIZE,
                             )
-                            cache_fill_rows = spVal % cmpRatio if scIdx == 0 else 0
+                            cacheFillRows = bStartPos % cmpRatio if scIdx == 0 else 0
+                            # pl.printf("cacheFillRows:%d\n", cacheFillRows)
                             _vf_mask_cache_fill(
-                                smTile[1:,:],
-                                dkvTile[1:,:],
-                                cache_fill_rows, dDealSize, dDealSize * Coff,
+                                smTile[1:, :],
+                                dkvTile[1:, :],
+                                cacheFillRows, dDealSize, D_BASE_SIZE,
                             )
 
                         processed += taken
@@ -755,82 +809,158 @@ def compressor_grad(
                     if bIdx >= batchSize:
                         break
 
-                nTileRows = dealTcSize * scKvRowCount
+                nTileRows = dealTcSize * cmpRowCnt
 
+                # pl.dump_data(tile_softmax, offsets=[1, 0], shapes=[1, 64])
+                # pl.dump_data(tile_temp, offsets=[1, 0], shapes=[1, 64])
                 # APE: local_ape 累加 + 写 workspace
-                pl.set_validshape(tile_ape_local, [Coff * cmpRatio, dBaseSize])
+                pl.set_validshape(tile_ape_local, [cmpRowCnt, dDealSize])
                 _vf_reduce_dscore_to_ape(
                     tile_softmax, tile_ape_local,
-                    dealTcSize, Coff * cmpRatio, dBaseSize, dBaseSize,
+                    dealTcSize, cmpRowCnt, dDealSize, dDealSize,
                 )
+                # pl.dump_data(tile_ape_local, offsets=[0, 0], shapes=[1, 64])
+                # pl.dump_data(tile_softmax, offsets=[4, 0], shapes=[1, 64])
 
                 # ── Cast dkv/dsb FP32→BF16/FP16, move ND→NZ for CV ──
                 # pl.dump_data(tile_temp, offsets=[0, 0], shapes=[1, 128])
-                pl.set_validshape(tile_dkv_cast, [nTileRows, dBaseSize])
-                pl.set_validshape(tile_temp,     [nTileRows, dBaseSize])
+                # pl.dump_data(tile_temp, offsets=[4, 0], shapes=[1, 128])
+                pl.set_validshape(tile_dkv_cast, [nTileRows, dDealSize])
+                pl.set_validshape(tile_temp,     [nTileRows, dDealSize])
                 pl.cast(tile_dkv_cast, tile_temp, mode=pl.RoundMode.CAST_ROUND)
-                pl.set_validshape(tile_dkv_nz, [nTileRows, dBaseSize])
-                pl.set_validshape(tile_dkv_cast, [nTileRows, dBaseSize])
-                pl.move(tile_dkv_nz, tile_dkv_cast)
+                if Coff == 1:
+                    pl.set_validshape(tile_dkv_cast, [nTileRows, dDealSize])
+                    pl.set_validshape(tile_dkv_nz, [nTileRows, dDealSize])
+                    pl.move(tile_dkv_nz, tile_dkv_cast)
+                else:
+                    # pass
+                    tempTile = tempTileGroup.next()
+                    pl.set_validshape(tile_dkv_cast_md, [dealTcSize * cmpRatio, dDealSize])
+                    pl.set_validshape(tile_dkv_nz_md_prev, [dealTcSize * cmpRatio, dDealSize])
+                    pl.set_validshape(tempTile, [dealTcSize * cmpRatio, dDealSize])
+                    # pl.printf("dealTcSize * cmpRatio:%d\n", dealTcSize * cmpRatio)
+                    pl.move(tempTile, tile_dkv_cast_md, offset=[0, 0])
+                    # pl.dump_data(tempTile, offsets=[4, 0], shapes=[1, 64])
+                    pl.move(tile_dkv_nz_md_prev, tempTile)
+                    tempTile = tempTileGroup.next()
+                    pl.set_validshape(tile_dkv_cast_md[:, dDealSize:], [dealTcSize * cmpRatio, dDealSize])
+                    pl.set_validshape(tile_dkv_nz_md_cur, [dealTcSize * cmpRatio, dDealSize])
+                    pl.set_validshape(tempTile, [dealTcSize * cmpRatio, dDealSize])
+                    pl.move(tempTile, tile_dkv_cast_md, offset=[0, dDealSize])
+                    # pl.dump_data(tempTile, offsets=[0, 0], shapes=[1, 64])
+                    pl.move(tile_dkv_nz_md_cur, tempTile)
 
-                # pl.dump_data(tile_softmax, offsets=[0, 0], shapes=[1, 128])
-                pl.set_validshape(tile_dsb_cast, [nTileRows, dBaseSize])
-                pl.set_validshape(tile_softmax,  [nTileRows, dBaseSize])
+
+                # tile_dkv_nz_md_prev  = dKvNzMDPrevTileGroup.next()
+                # tile_dsb_nz_md_prev  = dScoreNzMDPrevTileGroup.next()
+                # tile_dkv_nz_md_cur  = dKvNzMDCurTileGroup.next()
+                # tile_dsb_nz_md_cur  = dScoreNzMDCurTileGroup.next()
+
+                pl.set_validshape(tile_dsb_cast, [nTileRows, dDealSize])
+                pl.set_validshape(tile_softmax,  [nTileRows, dDealSize])
                 pl.cast(tile_dsb_cast, tile_softmax, mode=pl.RoundMode.CAST_ROUND)
-                # pl.printf("nTileRows:%d\n", nTileRows)
-                pl.set_validshape(tile_dsb_nz, [nTileRows, dBaseSize])
-                pl.set_validshape(tile_dsb_cast, [nTileRows, dBaseSize])
-                # pl.dump_data(tile_dsb_cast, offsets=[0, 0],shapes=[1, 128])
-                # pl.dump_data(tile_dsb_cast, offsets=[15, 0],shapes=[1, 128])
-                # pl.dump_data(tile_dsb_cast, offsets=[16, 0],shapes=[1, 128])
-                pl.move(tile_dsb_nz, tile_dsb_cast)
-                # pl.dump_data(tile_dsb_nz, offsets=[0, 0],shapes=[1, 128])
-                # pl.dump_data(tile_dsb_nz, offsets=[15, 0],shapes=[1, 128])
-                # pl.dump_data(tile_dsb_nz, offsets=[16, 0],shapes=[1, 128])
+                if Coff == 1:
+                    pl.set_validshape(tile_dsb_nz, [nTileRows, dDealSize])
+                    pl.set_validshape(tile_dsb_cast, [nTileRows, dDealSize])
+                    pl.move(tile_dsb_nz, tile_dsb_cast)
+                else:
+                    # pass
+                    tempTile = tempTileGroup.next()
+                    pl.set_validshape(tile_dsb_cast_md, [dealTcSize * cmpRatio, dDealSize])
+                    pl.set_validshape(tile_dsb_nz_md_prev, [dealTcSize * cmpRatio, dDealSize])
+                    pl.set_validshape(tempTile, [dealTcSize * cmpRatio, dDealSize])
+                    pl.move(tempTile, tile_dsb_cast_md, offset=[0, 0])
+                    # pl.dump_data(tempTile, offsets=[4, 0], shapes=[1, 64])
+                    pl.move(tile_dsb_nz_md_prev, tempTile)
+                    tempTile = tempTileGroup.next()
+                    pl.set_validshape(tile_dsb_cast_md[:, dDealSize:], [dealTcSize * cmpRatio, dDealSize])
+                    pl.set_validshape(tile_dsb_nz_md_cur, [dealTcSize * cmpRatio, dDealSize])
+                    pl.set_validshape(tempTile, [dealTcSize * cmpRatio, dDealSize])
+                    pl.move(tempTile, tile_dsb_cast_md, offset=[0, dDealSize])
+                    # pl.dump_data(tempTile, offsets=[0, 0], shapes=[1, 64])
+                    pl.move(tile_dsb_nz_md_cur, tempTile)
 
-                dbBase = slot_id * dbRows
-                localSlot = groupIdx * 2 * cmpRatio
+
+                dbBase = dbIdx * groupNum * coffCoef * cmpRowCnt
+                localSlot = groupIdx * coffCoef * cmpRowCnt
                 if Coff == 1 and coreIdx % 2 == 1:
-                    localSlot += cmpRatio
+                    localSlot += cmpRowCnt
 
                 pl.store(tensorApe, tile_ape_local, [dbBase + localSlot, nStart])
-
+                # pl.printf("dbBase:%d, localSlot:%d, nStart:%d\n", dbBase, localSlot, nStart)
+                # pl.dump_data(tensorApe, offsets=[dbBase + localSlot, nStart], shapes=[1, 128])
                 # ── CV 通路: Vec UB(NZ) → L1 Mat(NZ) (coff=1 only) ──
                 sub_idx = coreIdx % 2
-                l1_kv = l1_kv0_db.next() if sub_idx == 0 else l1_kv1_db.next()
-                l1_sb = l1_sb0_db.next() if sub_idx == 0 else l1_sb1_db.next()
-                pl.set_validshape(l1_kv, [nTileRows, dBaseSize])
-                pl.set_validshape(l1_sb, [nTileRows, dBaseSize])
-                pl.insert(l1_kv, tile_dkv_nz, [0, 0])
-                pl.insert(l1_sb, tile_dsb_nz, [0, 0])
+                if Coff == 1:
+                    l1_kv = L1Kv0TileGroupNz.next() if sub_idx == 0 else L1Kv1TileGroupNz.next()
+                    l1_sb = L1Score0TileGroupNz.next() if sub_idx == 0 else L1Score1TileGroupNz.next()
+                    pl.set_validshape(l1_kv, [nTileRows, dDealSize])
+                    pl.set_validshape(l1_sb, [nTileRows, dDealSize])
+                    pl.insert(l1_kv, tile_dkv_nz, [0, 0])
+                    pl.insert(l1_sb, tile_dsb_nz, [0, 0])
+                else:
+                    pass
+                    l1_kv0 = L1Kv0TileGroupNz.next()
+                    l1_kv1 = L1Kv1TileGroupNz.next()
+                    l1_sb0 = L1Score0TileGroupNz.next()
+                    l1_sb1 = L1Score1TileGroupNz.next()
+                    colOffset = 0 if sub_idx == 0 else dDealSize
+                    pl.set_validshape(l1_kv0, [dealTcSize * cmpRatio, D_BASE_SIZE])
+                    pl.set_validshape(l1_kv1, [dealTcSize * cmpRatio, D_BASE_SIZE])
+                    pl.set_validshape(l1_sb0, [dealTcSize * cmpRatio, D_BASE_SIZE])
+                    pl.set_validshape(l1_sb1, [dealTcSize * cmpRatio, D_BASE_SIZE])
+                    pl.insert(l1_kv0, tile_dkv_nz_md_prev, [0, colOffset])
+                    pl.insert(l1_kv1, tile_dkv_nz_md_cur, [0, colOffset])
+                    pl.insert(l1_sb0, tile_dsb_nz_md_prev, [0, colOffset])
+                    pl.insert(l1_sb1, tile_dsb_nz_md_cur, [0, colOffset])
+
+                bIdx, scIdx = _skip_blocks(blocksAfter, bIdx, scIdx,
+                                        start_pos, seqused, cu_seqlens, seq_ctx)
+
 
                 # 搬运x
+                mxbIdxStart = mxbIdx
+                mxscIdxStart = mxscIdx
+                # pl.printf("mxbIdxStart:%d, mxscIdxStart:%d\n", mxbIdxStart, mxscIdxStart)
                 mxbIdx, mxscIdx = _skip_blocks(preDealTcSize, mxbIdx, mxscIdx,
                                             start_pos, seqused, cu_seqlens, seq_ctx)
+                # pl.printf("mxbIdxStart:%d, mxscIdxStart:%d\n", mxbIdx, mxscIdx)
+
+                # pl.printf("mxbIdxStart:%d, mxscIdxStart:%d\n", mxbIdxStart, mxscIdxStart)
+                dbRowCnt = groupNum * cubeMBaseSize + (Coff - 1) * cmpRatio
+                if Coff == 2 and groupIdx == 0 and mxscIdx != 0:
+                    firstSrcIdx = ((dbIdx + dbRatio - 1) % dbRatio) * dbRowCnt + dbRowCnt - cmpRatio
+                    firstDstIdx = dbIdx * dbRowCnt
+                    for hi in pl.range(0, hiddenSize, 256):
+                        mxTie = moveXTileGroup.next()
+                        pl.set_validshape(mxTie,  [cmpRatio, 256])
+                        pl.load(mxTie, xArrangeGm, [firstSrcIdx, hi])
+                        pl.store(xArrangeGm, mxTie, [firstDstIdx, hi])
+
 
                 processed = 0
                 while processed < dealTcSize:   
-                    spVal = _get_start_pos(mxbIdx, start_pos, seq_ctx)
-                    sqVal = _get_seq_used(mxbIdx, seqused, cu_seqlens, seq_ctx)
-                    cmpLimit = (spVal + sqVal) // cmpRatio * cmpRatio
-                    blkInBatch = (cmpLimit - spVal) // cmpRatio
+                    bStartPos = _get_start_pos(mxbIdx, start_pos, seq_ctx)
+                    bSeqUsed = _get_seq_used(mxbIdx, seqused, cu_seqlens, seq_ctx)
+                    cmpLimit = (bStartPos + bSeqUsed) // cmpRatio * cmpRatio
+                    blkInBatch = (cmpLimit - bStartPos) // cmpRatio
                     remaining = blkInBatch - mxscIdx
                     if remaining > 0:
                         taken = min(dealTcSize - processed, remaining)
-                        dstIdx = slot_id * groupNum * (256 // Coff) + (preDealTcSize + processed) * cmpRatio
+                        dstIdx = dbIdx * dbRowCnt + (preDealTcSize + processed) * cmpRatio + (Coff - 1) * cmpRatio
                         mxsIdx = (0 if mxscIdx == 0
-                                                else mxscIdx * cmpRatio - (spVal % cmpRatio))
+                                                else mxscIdx * cmpRatio - (bStartPos % cmpRatio))
                         srcIdx = _get_token_idx(mxbIdx, mxsIdx, cu_seqlens, seq_ctx)
                         mxRows = taken * cmpRatio
                         if mxsIdx == 0:
-                            mxRows -= spVal % cmpRatio
-                            dstIdx += spVal % cmpRatio
+                            mxRows -= bStartPos % cmpRatio
+                            dstIdx += bStartPos % cmpRatio
                         # pl.printf("srcIdx:%d, dstIdx:%d, mxRows:%d", srcIdx, dstIdx, mxRows)
                         for hi in pl.range(0, hiddenSize, 256):
-                            mxTie = movex_group.next()
+                            mxTie = moveXTileGroup.next()
                             pl.set_validshape(mxTie,  [mxRows, 256])
-                            pl.load(mxTie, x_t, [srcIdx, hi])
-                            pl.store(x_ws, mxTie, [dstIdx, hi])
+                            pl.load(mxTie, xGm, [srcIdx, hi])
+                            pl.store(xArrangeGm, mxTie, [dstIdx, hi])
 
                         processed += taken
                         mxscIdx += taken
@@ -844,21 +974,17 @@ def compressor_grad(
                                         start_pos, seqused, cu_seqlens, seq_ctx)
 
             # ── CV 通路: 所有 Vec 每轮必发信号（避免死锁）──
-            pl.system.set_cross_core(pipe=pl.PipeType.MTE3, event_id=slot_id,
+            pl.system.set_cross_core(pipe=pl.PipeType.MTE3, event_id=dbIdx,
                 sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
 
-            # pl.system.sync_all(core_type=pl.SyncCoreType.AIV_ONLY)
-            # pl.system.wait_cross_core(pipe=pl.PipeType.MTE2, event_id=slot_id,
-            #     sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
-            
             pl.system.sync_all(core_type=pl.SyncCoreType.MIX)
 
 
             
             # ── Phase 3: d_ape cross-core reduce + RMW ──
             # d_ape: [cmpRatio, Coff*headDim]. Process per row-group of Coff rows.
-            flatRowBase = slot_id * (mPerRoundAll // Coff)
-            rgChunkNum = (Coff * cmpRatio * headDim) // 128
+            flatRowBase = dbIdx * groupNum * (2 // Coff) 
+            rgChunkNum = cmpSize // 128 # 按128分
             rgPerCore = rgChunkNum // coreNum 
             rgRemain = rgChunkNum % coreNum
             rgStart = coreIdx * rgPerCore + (coreIdx if coreIdx < rgRemain else rgRemain)
@@ -867,7 +993,7 @@ def compressor_grad(
             # pl.printf("[Mo]rgChunkNum:%d, rgPerCore:%d, rgRemain:%d\n", rgChunkNum, rgPerCore, rgRemain)
             rgStart = rgStart * 128
             rgEnd = rgEnd * 128
-            validRows = (roundBlocks + mPerRoundPerGroup - 1) // mPerRoundPerGroup * (2 // Coff)
+            validRows = (roundBlocks + groupDealScNum - 1) // groupDealScNum * (2 // Coff)
             pl.set_validshape(reduce_acc, [1, rgEnd - rgStart])
             # pl.printf("[Mo]rgStart:%d, rgEnd:%d, rgEnd - rgStart:%d\n", rgStart, rgEnd, rgEnd - rgStart)
             if roundIdx == 0:
@@ -875,90 +1001,136 @@ def compressor_grad(
             else:
                 pl.load(reduce_acc, tensorDApeFlat, [0, rgStart])
             for r in pl.range(0, validRows):
-                reduce_ld = reduce_ld_group.next()
+                reduce_ld = reduceLoadTileGroup.next()
                 pl.set_validshape(reduce_ld, [1, rgEnd - rgStart]) 
                 pl.load(reduce_ld, tensorDApeWsFlat, [flatRowBase + r, rgStart])
+                # pl.dump_data(tensorDApeWsFlat, offsets=[flatRowBase + r, rgStart], shapes=[1, 128])
+                # pl.printf("[Mo]flatRowBase:%d, r:%d, rgStart:%d\n", flatRowBase, r, rgStart)
+                
                 pl.add(reduce_acc, reduce_acc, reduce_ld)
             pl.store(tensorDApeFlat, reduce_acc, [0, rgStart])
 
             # ── Phase 3: d_x reduce ──
             p3bIdxEnd, p3scIdxEnd = _skip_blocks(roundBlocks, p3bIdx, p3scIdx,
                                            start_pos, seqused, cu_seqlens, seq_ctx)
-
-            bStart = p3bIdx
+            p3bIdxStart, p3scIdxStart = p3bIdx, p3scIdx
+            p3bIdx, p3scIdx = p3bIdxEnd, p3scIdxEnd
+            prevScIdx = 0
+            if Coff == 2 and p3scIdxStart != 0:
+                p3scIdxStart -= 1
+                prevScIdx += 1
+            
+            bStart = p3bIdxStart
             bEnd   = p3bIdxEnd - 1 if p3scIdxEnd == 0 else p3bIdxEnd
-            sStart = (0 if p3scIdx == 0
-                      else p3scIdx * cmpRatio - (_get_start_pos(bStart, start_pos, seq_ctx) % cmpRatio))
+            sStart = (0 if p3scIdxStart == 0
+                      else p3scIdxStart * cmpRatio - (_get_start_pos(bStart, start_pos, seq_ctx) % cmpRatio))
             sEnd   = (_get_seq_length(bEnd, cu_seqlens, seq_ctx) if p3scIdxEnd == 0
                       else p3scIdxEnd * cmpRatio - (_get_start_pos(bEnd, start_pos, seq_ctx) % cmpRatio))
-
+            if roundIdx == roundCnt - 1:
+                bEnd = batchSize - 1
+                sEnd = _get_seq_length(bEnd, cu_seqlens, seq_ctx)
             totalRows = _get_row_count(bStart, sStart, bEnd, sEnd, cu_seqlens, seq_ctx)
 
             rowsPerCore = totalRows // coreNum
             rowsRemain  = totalRows % coreNum
             myRowS = coreIdx * rowsPerCore + (coreIdx if coreIdx < rowsRemain else rowsRemain)
             myRowE = myRowS + rowsPerCore + (1 if coreIdx < rowsRemain else 0)
+            roundEndScIdx = _get_cmp_block_count(bEnd, sEnd, start_pos, seqused, cu_seqlens, seq_ctx) - \
+                             _get_cmp_block_count(bStart, sStart, start_pos, seqused, cu_seqlens, seq_ctx) - 1
 
+            # pl.printf("myRowS:%d, myRowE:%d\n", myRowS, myRowE)
             if myRowS < myRowE:
                 # ── 从 (bStart, sStart) 偏移 myRowS 行到达本核起始位置 ──
                 startTidx = _get_token_idx(bStart, sStart, cu_seqlens, seq_ctx)
                 b, localS = _get_pos_from_token_idx(startTidx + myRowS, cu_seqlens, seq_ctx)
                 tIdx = startTidx + myRowS
-                sp = _get_start_pos(b, start_pos, seq_ctx)
-                sq = _get_seq_used(b, seqused, cu_seqlens, seq_ctx)
-                cmpLimit = (sp + sq) // cmpRatio * cmpRatio - sp
-                scIdx = _get_cmp_block_count(b, localS, start_pos, seqused, cu_seqlens, seq_ctx) - \
-                             _get_cmp_block_count(p3bIdx, sStart, start_pos, seqused, cu_seqlens, seq_ctx)
-                scInnerIdx = (localS + sp) % cmpRatio
+                bStartPos = _get_start_pos(b, start_pos, seq_ctx)
+                bSeqUsed = _get_seq_used(b, seqused, cu_seqlens, seq_ctx)
+                bSeqLength = _get_seq_length(b, cu_seqlens, seq_ctx)
+                cmpLimit = (bStartPos + bSeqUsed) // cmpRatio * cmpRatio - bStartPos
+                p3lScIdx = _get_cmp_block_count(b, localS, start_pos, seqused, cu_seqlens, seq_ctx) - \
+                             _get_cmp_block_count(bStart, sStart, start_pos, seqused, cu_seqlens, seq_ctx)  
+                if localS >= cmpLimit and cmpLimit > 0:                                                                                                                                                                                                                                                         
+                    p3lScIdx -= 1 
+                batchEndScIdx = _get_cmp_block_count(b, bSeqUsed, start_pos, seqused, cu_seqlens, seq_ctx) - \
+                             _get_cmp_block_count(bStart, sStart, start_pos, seqused, cu_seqlens, seq_ctx) - 1
+                scInnerIdx = (localS + bStartPos) % cmpRatio
 
                 for rowIdx in pl.range(myRowS, myRowE):
                     # ── 判断是否参与压缩 ──
                     inCompress = localS < cmpLimit
 
                     if inCompress:
-                        ws_offset = slot_id * cubeCoreNum * 256 + (scIdx // mPerRoundPerGroup) * groupSize * (256 // Coff) + (scIdx % mPerRoundPerGroup) * cmpRatio + scInnerIdx
-                        pl.set_validshape(reduce_acc, [1, hiddenSize])
-                        pl.load(reduce_acc, d_x_ws, [ws_offset, 0])
-                        if groupSize > 1:
-                            for r in pl.range(1, groupSize):
-                                reduce_ld = reduce_ld_group.next()
+                        if p3lScIdx < prevScIdx: # TODO：只处理prev，需要从额外的cache里读取
+                            ws_offset = dbIdx * cubeCoreNum * cubeMBaseSize + scInnerIdx
+                            pl.set_validshape(reduce_acc, [1, hiddenSize])
+                            pl.load(reduce_acc, dXCacheGm, [dbIdx * cmpRatio + scInnerIdx, 0])
+                            for r in pl.range(0, groupSize):
+                                reduce_ld = reduceLoadTileGroup.next()
                                 pl.set_validshape(reduce_ld, [1, hiddenSize]) 
-                                pl.load(reduce_ld, d_x_ws, [ws_offset + r * (256 // Coff), 0])
+                                pl.load(reduce_ld, dXResultGm, [0, ws_offset + r * cubeMBaseSize, 0])
                                 pl.add(reduce_acc, reduce_acc, reduce_ld)
+                        else:
+                            ws_offset = dbIdx * cubeCoreNum * cubeMBaseSize + ((p3lScIdx - prevScIdx) // groupDealScNum) * groupSize * cubeMBaseSize + ((p3lScIdx - prevScIdx) % groupDealScNum) * cmpRatio + scInnerIdx
+                            pl.set_validshape(reduce_acc, [1, hiddenSize])
+                            pl.load(reduce_acc, dXResultGm, [Coff - 1, ws_offset, 0])
+                            if groupSize > 1:
+                                for r in pl.range(1, groupSize):
+                                    reduce_ld = reduceLoadTileGroup.next()
+                                    pl.set_validshape(reduce_ld, [1, hiddenSize]) 
+                                    pl.load(reduce_ld, dXResultGm, [Coff - 1, ws_offset + r * cubeMBaseSize, 0])
+                                    pl.add(reduce_acc, reduce_acc, reduce_ld)
 
-                        pl.set_validshape(p3_cast, [1, hiddenSize])
-                        pl.cast(p3_cast, reduce_acc, mode=pl.RoundMode.CAST_ROUND)
-                        pl.store(d_x_out, p3_cast, [tIdx, 0])
+                            if Coff == 2 and p3lScIdx != roundEndScIdx and p3lScIdx != batchEndScIdx:
+                                pl.set_validshape(reduce_acc, [1, hiddenSize])
+                                next_ws_offset = dbIdx * cubeCoreNum * cubeMBaseSize + ((p3lScIdx + 1 - prevScIdx) // groupDealScNum) * groupSize * cubeMBaseSize + ((p3lScIdx + 1 - prevScIdx) % groupDealScNum) * cmpRatio + scInnerIdx
+                                for r in pl.range(0, groupSize):
+                                    reduce_ld = reduceLoadTileGroup.next()
+                                    pl.set_validshape(reduce_ld, [1, hiddenSize]) 
+                                    pl.load(reduce_ld, dXResultGm, [0, next_ws_offset + r * cubeMBaseSize, 0])
+                                    pl.add(reduce_acc, reduce_acc, reduce_ld)
+
+                        if Coff == 2 and p3lScIdx == roundEndScIdx and p3lScIdx != batchEndScIdx:
+                            pl.store(dXCacheGm, reduce_acc, [(dbIdx + 1) % dbRatio * cmpRatio + scInnerIdx, 0])
+
+                        else:
+                            pl.set_validshape(p3_cast, [1, hiddenSize])
+                            pl.cast(p3_cast, reduce_acc, mode=pl.RoundMode.CAST_ROUND)
+                            pl.store(dXOutGm, p3_cast, [tIdx, 0])
 
                     else:
+                        if p3lScIdx < prevScIdx:
+                            continue
                         # ── 不参与压缩: p3_cast 直接刷零，store ──
                         pl.set_validshape(p3_cast, [1, hiddenSize])
                         if DataType == 0:
                             _vf_tile_zero_bf16(p3_cast, 1, hiddenSize)
                         else:
                             _vf_tile_zero_f16(p3_cast, 1, hiddenSize)
-                        pl.store(d_x_out, p3_cast, [tIdx, 0])
+                        pl.store(dXOutGm, p3_cast, [tIdx, 0])
 
                     # ── 推进到下一行 ──
                     tIdx += 1
                     localS += 1
-                    seqLen = _get_seq_length(b, cu_seqlens, seq_ctx)
-                    if localS >= seqLen:
+                    if localS >= bSeqLength:
                         localS = 0
                         b += 1
                         if b >= batchSize:
                             break
-                        sp = _get_start_pos(b, start_pos, seq_ctx)
-                        sq = _get_seq_used(b, seqused, cu_seqlens, seq_ctx)
-                        cmpLimit = (sp + sq) // cmpRatio * cmpRatio - sp
-                    scInnerIdx = (localS + sp) % cmpRatio
+                        bStartPos = _get_start_pos(b, start_pos, seq_ctx)
+                        bSeqUsed = _get_seq_used(b, seqused, cu_seqlens, seq_ctx)
+                        bSeqLength = _get_seq_length(b, cu_seqlens, seq_ctx)
+                        cmpLimit = (bStartPos + bSeqUsed) // cmpRatio * cmpRatio - bStartPos
+                        batchEndScIdx = _get_cmp_block_count(b, bSeqUsed, start_pos, seqused, cu_seqlens, seq_ctx) - \
+                             _get_cmp_block_count(bStart, sStart, start_pos, seqused, cu_seqlens, seq_ctx) - 1
+                    scInnerIdx = (localS + bStartPos) % cmpRatio
                     if (localS < cmpLimit) and (localS == 0 or scInnerIdx == 0):
-                        scIdx += 1
+                        p3lScIdx += 1
 
             # pl.printf("@!#\n")
             # ── Phase 3: d_w reduce ──
-            flatRowBase = slot_id * (groupNum * featureDim)
-            rgChunkNum = (featureDim * hiddenSize) // 128
+            flatRowBase = dbIdx * groupNum
+            rgChunkNum = (totalHeadDim * hiddenSize) // 128
             rgPerCore = rgChunkNum // coreNum 
             rgRemain = rgChunkNum % coreNum
             rgStart = coreIdx * rgPerCore + (coreIdx if coreIdx < rgRemain else rgRemain)
@@ -968,8 +1140,8 @@ def compressor_grad(
             rgStart = rgStart * 128
             rgEnd = rgEnd * 128
             rgNum = rgEnd - rgStart
-            validRows = (roundBlocks + mPerRoundPerGroup - 1) // mPerRoundPerGroup
-            # pl.printf("roundBlocks:%d, mPerRoundPerGroup:%d\n", roundBlocks, mPerRoundPerGroup)
+            validRows = (roundBlocks + groupDealScNum - 1) // groupDealScNum
+            # pl.printf("roundBlocks:%d, groupDealScNum:%d\n", roundBlocks, groupDealScNum)
             for curRgStart in pl.range(rgStart, rgEnd, (128 * 128)):
                 curRgNum = min(128 * 128, rgEnd - curRgStart)
                 curRgEnd = curRgStart + curRgNum
@@ -984,11 +1156,10 @@ def compressor_grad(
                     pl.load(reduce_acc, tensorDWKvFlat, [0, curRgStart])
                 for r in pl.range(0, validRows):
                     # reduce_ld = reduce_ld0 if r % 2 == 0 else reduce_ld1
-                    if r % 2 == 0:
-                        reduce_ld = reduce_ld_group.next()
-                        pl.set_validshape(reduce_ld, [1, curRgNum]) 
-                        pl.load(reduce_ld, tensorDWKvWsFlat, [flatRowBase + r, curRgStart])
-                        pl.add(reduce_acc, reduce_acc, reduce_ld)
+                    reduce_ld = reduceLoadTileGroup.next()
+                    pl.set_validshape(reduce_ld, [1, curRgNum]) 
+                    pl.load(reduce_ld, tensorDWKvWsFlat, [flatRowBase + r, curRgStart])
+                    pl.add(reduce_acc, reduce_acc, reduce_ld)
                 pl.store(tensorDWKvFlat, reduce_acc, [0, curRgStart])
                 # pl.dump_data(tensorDWKvFlat, offsets=[0, curRgStart], shapes=[1, 128])
 
@@ -998,7 +1169,7 @@ def compressor_grad(
                 else:
                     pl.load(reduce_acc, tensorDWGateFlat, [0, curRgStart])
                 for r in pl.range(0, validRows):
-                    reduce_ld = reduce_ld_group.next()
+                    reduce_ld = reduceLoadTileGroup.next()
                     pl.set_validshape(reduce_ld, [1, curRgNum]) 
                     pl.load(reduce_ld, tensorDWGateWsFlat, [flatRowBase + r, curRgStart])
                     pl.add(reduce_acc, reduce_acc, reduce_ld)
@@ -1008,134 +1179,231 @@ def compressor_grad(
         #  Phase 2: Cube Matmul — dkv@wkv + dsb@wgate → d_x_partial
         # ════════════════════════════════════════════════════════════
         with pl.section_cube():
-            preDealTcSize = groupIdx * mPerRoundPerGroup
-            dealTcSize   = min(mPerRoundPerGroup,
+            preDealTcSize = groupIdx * groupDealScNum
+            dealTcSize   = min(groupDealScNum,
                                max(0, roundBlocks - preDealTcSize))
             pl.system.wait_cross_core(
-                    pipe=pl.PipeType.MTE1, event_id=slot_id,
+                    pipe=pl.PipeType.MTE1, event_id=dbIdx,
                 sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
-            if  Coff != 1:
+            if preDealTcSize >= roundBlocks:
                 # coff=2 CV 路径 L1 布局不同，暂跳过
                 pl.system.sync_all(core_type=pl.SyncCoreType.MIX)
-                # pl.system.set_cross_core(pipe=pl.PipeType.FIX, event_id=slot_id + 2,
-                # sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK)
-                # pl.system.wait_cross_core(pipe=pl.PipeType.S, event_id=slot_id + 2,
-                # sync_mode=pl.CrossCoreSyncMode.INTER_BLOCK)
-                # pl.system.set_cross_core(pipe=pl.PipeType.FIX, event_id=slot_id,
-                # sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
-                
-                continue
-            
-            if preDealTcSize >= roundBlocks:
-                pl.system.sync_all(core_type=pl.SyncCoreType.MIX)
                 continue
 
 
-            l1_kv0 = l1_kv0_db.next()
-            l1_kv1 = l1_kv1_db.next()
-            l1_sb0 = l1_sb0_db.next()
-            l1_sb1 = l1_sb1_db.next()
+            l1_kv0 = L1Kv0TileGroupNz.next()
+            l1_kv1 = L1Kv1TileGroupNz.next()
+            l1_sb0 = L1Score0TileGroupNz.next()
+            l1_sb1 = L1Score1TileGroupNz.next()
 
-            l1_kv0_t = l1_kv0_db_t.next()
-            l1_kv1_t = l1_kv1_db_t.next()
-            l1_sb0_t = l1_sb0_db_t.next()
-            l1_sb1_t = l1_sb1_db_t.next()
+            l1_kv0_t = L1Kv0TileGroupZn.next()
+            l1_kv1_t = L1Kv1TileGroupZn.next()
+            l1_sb0_t = L1Score0TileGroupZn.next()
+            l1_sb1_t = L1Score1TileGroupZn.next()
 
             # d_x partial 写入行偏移
-            dx_row_base = slot_id * 256 * cubeCoreNum + cubeCoreIdx * 256
+            dx_row_base = (dbIdx * cubeCoreNum + cubeCoreIdx) * cubeMBaseSize
 
-            dealTcSize0 = min(dealTcSize, mBaseSize)
-            dealTcSize1 = max(dealTcSize - mBaseSize, 0)
-            nTileRows0 = dealTcSize0 * scKvRowCount
-            nTileRows1 = dealTcSize1 * scKvRowCount
+            if Coff == 1:
+                dealTcSize0 = min(dealTcSize, dealScNum)
+                dealTcSize1 = max(dealTcSize - dealScNum, 0)
+                nTileRows0 = dealTcSize0 * cmpRatio
+                nTileRows1 = dealTcSize1 * cmpRatio
+            else:
+                nTileRows0 = dealTcSize * cmpRatio
+                nTileRows1 = dealTcSize * cmpRatio
+
             # pl.printf("nStart :%d\n", nStart)
             # ── Matmul #1: dkv @ wkv → d_x partial ──
-            for ni in pl.range(0, hiddenSize, 256):
-                for mi in pl.range(0, 4):
-                    nTileRows = nTileRows0 if mi % 2 == 0 else nTileRows1
-                    # pl.printf("mi:%d, nTileRows:%d\n", mi, nTileRows)
-                    m_off = (mi % 2) * 128
-                    l0a = cv_l0a.next()
-                    pl.set_validshape(l0a, [nTileRows, dBaseSize])
-                    w_l1 = l1_w_db.next() if mi % 2 == 0 else l1_w_db.current()
-                    if mi == 0:
-                        pl.set_validshape(l1_kv0, [nTileRows, dBaseSize])
-                        pl.move(l0a, l1_kv0)
-                        pl.set_validshape(w_l1, [128, 256])
-                        pl.load(w_l1, wkv_t, [nStart, ni])
-                    elif mi == 1:
-                        pl.set_validshape(l1_kv1, [nTileRows, dBaseSize])
-                        pl.move(l0a, l1_kv1)
-                    elif mi == 2:
-                        pl.set_validshape(l1_sb0, [nTileRows, dBaseSize])
-                        pl.move(l0a, l1_sb0)
-                        pl.set_validshape(w_l1, [128, 256])
-                        pl.load(w_l1, wgate_t, [nStart, ni])
-                    else:
-                        pl.set_validshape(l1_sb1, [nTileRows, dBaseSize])
-                        pl.move(l0a, l1_sb1)
+            if Coff == 1:
+                for ni in pl.range(0, hiddenSize, 256):
+                    for mi in pl.range(0, 4):
+                        nTileRows = nTileRows0 if mi % 2 == 0 else nTileRows1
+                        # pl.printf("mi:%d, nTileRows:%d\n", mi, nTileRows)
+                        m_off = (mi % 2) * 128
+                        l0a = cv_l0a.next()
+                        pl.set_validshape(l0a, [nTileRows, D_BASE_SIZE])
+                        w_l1 = l1_w_db.next() if (mi % 2 == 0 or Coff == 2) else l1_w_db.current()
+                        dOffset = 0 if Coff == 1 else headDim 
+                        if mi == 0:
+                            pl.set_validshape(l1_kv0, [nTileRows, D_BASE_SIZE])
+                            pl.move(l0a, l1_kv0)
+                            pl.set_validshape(w_l1, [128, 256])
+                            pl.load(w_l1, wkv_t, [nStart, ni])
 
-                    for nii in pl.range(0, 256, 128):
-                        l0b = cv_l0b.next()
-                        l0c = cv_l0c.next()
-                        pl.set_validshape(l0b, [dBaseSize, 128])
-                        pl.set_validshape(l0c, [nTileRows, 128])
-                        pl.move(l0b, w_l1, offset=[0, nii])
-                        if nTileRows == 0:
-                            continue
+                            # pl.system.bar_all()
+                        elif mi == 1:
+                            pl.set_validshape(l1_kv1, [nTileRows, D_BASE_SIZE])
+                            pl.move(l0a, l1_kv1)
+                        elif mi == 2:
+                            pl.set_validshape(l1_sb0, [nTileRows, D_BASE_SIZE])
+                            pl.move(l0a, l1_sb0)
+                            pl.set_validshape(w_l1, [128, 256])
+                            # pl.system.bar_all()
+                            pl.load(w_l1, wgate_t, [nStart + dOffset, ni])
+                            # pl.system.bar_all()
+                        else:
+                            pl.set_validshape(l1_sb1, [nTileRows, D_BASE_SIZE])
+                            pl.move(l0a, l1_sb1)
+
+                        # pl.system.bar_all()
+                        for nii in pl.range(0, 256, 128):
+                            l0b = cv_l0b.next()
+                            l0c = cv_l0c.next()
+                            pl.set_validshape(l0b, [D_BASE_SIZE, 128])
+                            pl.set_validshape(l0c, [nTileRows, 128])
+                            pl.move(l0b, w_l1, offset=[0, nii])
+                            if mi // 2 == 0:
+                                pl.matmul(l0c, l0a, l0b)
+                            else:
+                                if nTileRows > 0:
+                                    pl.matmul_acc(l0c, l0c, l0a, l0b)
+                                pl.store(dXResultGm, l0c, [0, dx_row_base + m_off, ni+nii])
+
+            else:
+                for ni in pl.range(0, hiddenSize, 256):
+                    for mi in pl.range(0, 4):
+                        nTileRows = nTileRows0 if mi % 2 == 0 else nTileRows1
+                        l0a = cv_l0a.next()
+                        pl.set_validshape(l0a, [nTileRows, D_BASE_SIZE])
+                        w_l1 = l1_w_db.next() 
+                        dOffset = headDim 
+                        if mi == 0:
+                            pl.set_validshape(l1_kv0, [nTileRows, D_BASE_SIZE])
+                            pl.move(l0a, l1_kv0)
+
+                            # pl.system.bar_all()
+                        elif mi == 1:
+                            pl.set_validshape(l1_kv1, [nTileRows, D_BASE_SIZE])
+                            pl.move(l0a, l1_kv1)
+                        elif mi == 2:
+                            pl.set_validshape(l1_sb0, [nTileRows, D_BASE_SIZE])
+                            pl.move(l0a, l1_sb0)
+                            # pl.system.bar_all()
+                            # pl.system.bar_all()
+                        else:
+                            pl.set_validshape(l1_sb1, [nTileRows, D_BASE_SIZE])
+                            pl.move(l0a, l1_sb1)
+                            # pl.set_validshape(w_l1, [128, 128])
+                            # pl.load(w_l1, wgate_t, [nStart + headDim, ni])
+
+                        pl.set_validshape(w_l1, [128, 256])
                         if mi // 2 == 0:
+                            pl.load(w_l1, wkv_t, [nStart + (mi % 2) * headDim, ni])
+                        else:
+                            pl.load(w_l1, wgate_t, [nStart + (mi % 2) * headDim, ni])
+                        for nii in pl.range(0, 256, 128):
+                            l0b = cv_l0b.next()
+                            l0c = cv_l0c.next()
+                            pl.set_validshape(l0b, [D_BASE_SIZE, 128])
+                            pl.set_validshape(l0c, [nTileRows, 128])
+                            pl.move(l0b, w_l1, offset=[0, nii])
+                            if mi // 2 == 0:
+                                pl.matmul(l0c, l0a, l0b)
+                            else:
+                                pl.matmul_acc(l0c, l0c, l0a, l0b)
+                                pl.store(dXResultGm, l0c, [mi % 2, dx_row_base, ni+nii])
+                                # if ni + nii == 128 and mi % 2 == 1:
+                                #     pl.dump_data(dXResultGm, offsets=[mi % 2, dx_row_base, ni+nii], shapes = [1, 5, 128])
+                                # elif ni + nii == 0 and mi % 2 == 0:
+                                #     pl.dump_data(dXResultGm, offsets=[mi % 2, dx_row_base, ni+nii], shapes = [1, 5, 128])
+
+
+            if Coff == 1:
+                dw_row_base = dbIdx * groupNum * totalHeadDim + groupIdx * totalHeadDim + intraGroupIdx * D_BASE_SIZE
+                mStart = dbIdx * groupNum * cubeMBaseSize + groupIdx * cubeMBaseSize
+                # ── Matmul #2: dkv @ x → d_wkv & dscore @ x → d_wgate partial ──
+                for ni in pl.range(0, hiddenSize, 256):
+                    for ii in pl.range(0, 8):
+                        ki = ii // 4 # 0, 0, 0, 0, 1, 1, 1, 1
+                        nii = (ii % 4 // 2) * 128 # 0, 0, 128, 128, 0, 0, 128, 128
+                        mi = ii % 2 # 0, 1, 0, 1, 0, 1, 0, 1
+
+                        nTileRows = nTileRows0 if ki == 0 else nTileRows1
+                        l0a = cv_l0a.next()
+                        pl.set_validshape(l0a, [D_BASE_SIZE, nTileRows])
+
+                        # m_off = (mi % 2) * 128
+                        w_l1 = l1_w_db.next() if ii % 4 == 0 else l1_w_db.current()
+
+                        if ii == 0:
+                            pl.set_validshape(l1_kv0_t, [D_BASE_SIZE, nTileRows])
+                            pl.move(l0a, l1_kv0_t)
+                            pl.set_validshape(w_l1, [nTileRows, 256])
+                            pl.load(w_l1, xArrangeGm, [mStart, ni])
+
+                        elif ii == 1:
+                            pl.set_validshape(l1_sb0_t, [D_BASE_SIZE, nTileRows])
+                            pl.move(l0a, l1_sb0_t)
+                        elif ii == 4:
+                            pl.set_validshape(l1_kv1_t, [D_BASE_SIZE, nTileRows])
+                            pl.move(l0a, l1_kv1_t)
+                            pl.set_validshape(w_l1, [nTileRows, 256])
+                            pl.load(w_l1, xArrangeGm, [mStart + 128, ni])
+                        elif ii == 5:
+                            pl.set_validshape(l1_sb1_t, [D_BASE_SIZE, nTileRows])
+                            pl.move(l0a, l1_sb1_t)
+
+                        l0b = cv_l0b.next() if mi == 0 else cv_l0b.current()
+                        l0c = cv_l0c.next()
+                        pl.set_validshape(l0b, [nTileRows, 128])
+                        pl.set_validshape(l0c, [D_BASE_SIZE, 128])
+                        pl.move(l0b, w_l1, offset=[0, nii])
+                        if ki == 0:
                             pl.matmul(l0c, l0a, l0b)
                         else:
-                            pl.matmul_acc(l0c, l0c, l0a, l0b)
-                            pl.store(d_x_ws, l0c, [dx_row_base + m_off, ni+nii])
+                            if nTileRows > 0:
+                                pl.matmul_acc(l0c, l0c, l0a, l0b)
+                            if mi == 0:
+                                pl.store(dWkvResultGm, l0c, [dw_row_base, ni+nii])
+                            else:
+                                pl.store(dWGateResultGm, l0c, [dw_row_base, ni+nii])
 
-            dw_row_base = slot_id * groupNum * featureDim + groupIdx * featureDim + intraGroupIdx * dBaseSize
-            mStart = slot_id * groupNum * (256 // Coff) + groupIdx * (256 // Coff)
-            # ── Matmul #2: dkv @ x → d_wkv & dscore @ x → d_wgate partial ──
-            for ni in pl.range(0, hiddenSize, 256):
-                for ii in pl.range(0, 8):
-                    ki = ii // 4 # 0, 0, 0, 0, 1, 1, 1, 1
-                    nii = (ii % 4 // 2) * 128 # 0, 0, 128, 128, 0, 0, 128, 128
-                    mi = ii % 2 # 0, 1, 0, 1, 0, 1, 0, 1
+            else:
+                dw_row_base = dbIdx * groupNum * totalHeadDim + groupIdx * totalHeadDim + intraGroupIdx * D_BASE_SIZE
+                dbRowCnt = groupNum * cubeMBaseSize + (Coff - 1) * cmpRatio
+                mStart = dbIdx * dbRowCnt + groupIdx * cubeMBaseSize + cmpRatio
+                # ── Matmul #2: dkv @ x → d_wkv & dscore @ x → d_wgate partial ──
+                for ni in pl.range(0, hiddenSize, 256):
+                    for ii in pl.range(0, 8):
+                        ki = ii // 4 # 0, 0, 0, 0, 1, 1, 1, 1
+                        nii = (ii % 4 // 2) * 128 # 0, 0, 128, 128, 0, 0, 128, 128
+                        mi = ii % 2 # 0, 1, 0, 1, 0, 1, 0, 1
 
-                    nTileRows = nTileRows0 if ki == 0 else nTileRows1
-                    l0a = cv_l0a.next()
-                    pl.set_validshape(l0a, [dBaseSize, nTileRows])
+                        nTileRows = nTileRows0 if ki == 0 else nTileRows1
+                        l0a = cv_l0a.next()
+                        pl.set_validshape(l0a, [D_BASE_SIZE, nTileRows])
 
-                    # m_off = (mi % 2) * 128
-                    w_l1 = l1_w_db.next() if ii % 4 == 0 else l1_w_db.current()
+                        # m_off = (mi % 2) * 128
+                        w_l1 = l1_w_db.next() if ii % 4 == 0 else l1_w_db.current()
 
-                    if ii == 0:
-                        pl.set_validshape(l1_kv0_t, [dBaseSize, nTileRows])
-                        pl.move(l0a, l1_kv0_t)
-                        pl.set_validshape(w_l1, [nTileRows, 256])
-                        pl.load(w_l1, x_ws, [mStart, ni])
+                        if ii == 0:
+                            pl.set_validshape(l1_kv0_t, [D_BASE_SIZE, nTileRows])
+                            pl.move(l0a, l1_kv0_t)
+                            pl.set_validshape(w_l1, [nTileRows, 256])
+                            pl.load(w_l1, xArrangeGm, [mStart - cmpRatio, ni])
 
-                    elif ii == 1:
-                        pl.set_validshape(l1_sb0_t, [dBaseSize, nTileRows])
-                        pl.move(l0a, l1_sb0_t)
-                    elif ii == 4:
-                        pl.set_validshape(l1_kv1_t, [dBaseSize, nTileRows])
-                        pl.move(l0a, l1_kv1_t)
-                        pl.set_validshape(w_l1, [nTileRows, 256])
-                        pl.load(w_l1, x_ws, [mStart + 128, ni])
-                    elif ii == 5:
-                        pl.set_validshape(l1_sb1_t, [dBaseSize, nTileRows])
-                        pl.move(l0a, l1_sb1_t)
+                        elif ii == 1:
+                            pl.set_validshape(l1_sb0_t, [D_BASE_SIZE, nTileRows])
+                            pl.move(l0a, l1_sb0_t)
+                        elif ii == 4:
+                            pl.set_validshape(l1_kv1_t, [D_BASE_SIZE, nTileRows])
+                            pl.move(l0a, l1_kv1_t)
+                            pl.set_validshape(w_l1, [nTileRows, 256])
+                            pl.load(w_l1, xArrangeGm, [mStart, ni])
+                        elif ii == 5:
+                            pl.set_validshape(l1_sb1_t, [D_BASE_SIZE, nTileRows])
+                            pl.move(l0a, l1_sb1_t)
 
-                    l0b = cv_l0b.next() if mi == 0 else cv_l0b.current()
-                    l0c = cv_l0c.next()
-                    pl.set_validshape(l0b, [nTileRows, 128])
-                    pl.set_validshape(l0c, [dBaseSize, 128])
-                    pl.move(l0b, w_l1, offset=[0, nii])
-                    if nTileRows == 0:
-                        continue
-                    if ki == 0:
+                        l0b = cv_l0b.next() if mi == 0 else cv_l0b.current()
+                        l0c = cv_l0c.next()
+                        pl.set_validshape(l0b, [nTileRows, 128])
+                        pl.set_validshape(l0c, [D_BASE_SIZE, 128])
+                        pl.move(l0b, w_l1, offset=[0, nii])
                         pl.matmul(l0c, l0a, l0b)
-                    else:
-                        pl.matmul_acc(l0c, l0c, l0a, l0b)
-                    if mi == 0:
-                        pl.store(d_wkv_ws, l0c, [dw_row_base, ni+nii])
-                    else:
-                        pl.store(d_wgate_ws, l0c, [dw_row_base, ni+nii])
+                        if mi == 0:
+                            pl.store(dWkvResultGm, l0c, [dw_row_base + ki * headDim, ni+nii])
+                        else:
+                            pl.store(dWGateResultGm, l0c, [dw_row_base + ki * headDim, ni+nii])
+
             pl.system.sync_all(core_type=pl.SyncCoreType.MIX)
