@@ -656,7 +656,6 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
     if constexpr (QLIV2T::isMxFp4) {
         qkHeadDim = constInfo.headDim / FP4_PACK_NUM;
     }
-    runInfo.needTndPadding = false;
     if (runInfo.isFirstS2InnerLoop) {
         uint64_t actualSeqQPrefixSum;
         if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
@@ -718,11 +717,6 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::CalcRunInfo(uint32_t loop, uint32_t
     runInfo.indiceOutOffset = indiceOutCoreOffset;
     runInfo.valueOutOffset = valueOutCoreOffset;
     runInfo.outputIdxCoreOffset = outputIdxCoreOffset;
-    if ASCEND_IS_AIV {
-        if (runInfo.needTndPadding) {
-            vectorService.DoTndPadding(runInfo);
-        }
-    }
 }
 
 template <typename QLIV2T>
