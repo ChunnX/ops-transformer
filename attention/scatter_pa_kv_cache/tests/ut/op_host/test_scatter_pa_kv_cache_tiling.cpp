@@ -493,7 +493,7 @@ TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nhsd_khead_not_aligned)
         },
         {
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
-            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("NHSD")},
             {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
             {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
         },
@@ -518,7 +518,7 @@ TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nhsd_numblocks_too_small)
         },
         {
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
-            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("NHSD")},
             {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
             {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
         },
@@ -543,7 +543,7 @@ TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nhsd_numhead_mismatch)
         },
         {
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
-            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("NHSD")},
             {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
             {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
         },
@@ -568,7 +568,7 @@ TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nhsd_kc_vc_dim2_mismatch)
         },
         {
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
-            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("NHSD")},
             {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
             {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
         },
@@ -593,7 +593,7 @@ TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nhsd_kv_dim0_mismatch)
         },
         {
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
-            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("NHSD")},
             {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
             {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
         },
@@ -618,7 +618,7 @@ TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nhsd_kv_dim1_mismatch)
         },
         {
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
-            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("NHSD")},
             {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
             {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
         },
@@ -643,7 +643,7 @@ TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nhsd_khead_kc_dim3_mismatch)
         },
         {
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
-            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("NHSD")},
             {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
             {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
         },
@@ -668,7 +668,7 @@ TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nhsd_vhead_vc_dim3_mismatch)
         },
         {
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
-            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("NHSD")},
             {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
             {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
         },
@@ -693,7 +693,7 @@ TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nhsd_kc_vc_dim0_mismatch)
         },
         {
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
-            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("NHSD")},
             {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
             {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
         },
@@ -897,6 +897,304 @@ TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nz_kc_vc_dim1_mismatch)
         {
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("PA_NZ")},
             {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("None")},
+            {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
+            {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
+        },
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nct_strides_size_lt_2)
+{
+    optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
+    gert::TilingContextPara tilingContextPara("ScatterPaKvCache",
+        {
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{102}, {102}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1})},
+            {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
+        },
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nct_offsets_size_lt_2)
+{
+    optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
+    gert::TilingContextPara tilingContextPara("ScatterPaKvCache",
+        {
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{102}, {102}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
+            {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+        },
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_nct_valid_strides_offsets)
+{
+    optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
+    gert::TilingContextPara tilingContextPara("ScatterPaKvCache",
+        {
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{102}, {102}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({128, 128})},
+            {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
+        },
+        &compileInfo);
+    // TEMPLATE_NORM_NCT=7, numTokens<SMALL_TOKEN -> tilingKey = 1000*7+1
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 7001);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_error_siso_nct_strides_size_lt_2)
+{
+    optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
+    gert::TilingContextPara tilingContextPara("ScatterPaKvCache",
+        {
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{102}, {102}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({})},
+            {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
+        },
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nct_khead_kc_dim3_mismatch)
+{
+    optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
+    gert::TilingContextPara tilingContextPara("ScatterPaKvCache",
+        {
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 64}, {306, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{102}, {102}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 64}, {306, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{306, 128, 1, 64}, {306, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 64}, {306, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
+            {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
+        },
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nct_numblocks_too_small)
+{
+    optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
+    gert::TilingContextPara tilingContextPara("ScatterPaKvCache",
+        {
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 16, 1, 128}, {2, 16, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{102}, {102}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 16, 1, 128}, {2, 16, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{2, 16, 1, 128}, {2, 16, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 16, 1, 128}, {2, 16, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
+            {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
+        },
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nct_numhead_mismatch)
+{
+    optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
+    gert::TilingContextPara tilingContextPara("ScatterPaKvCache",
+        {
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 2, 128}, {306, 128, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{102}, {102}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 2, 128}, {306, 128, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{306, 128, 2, 128}, {306, 128, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 2, 128}, {306, 128, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
+            {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
+        },
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nct_kc_vc_dim1_mismatch)
+{
+    optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
+    gert::TilingContextPara tilingContextPara("ScatterPaKvCache",
+        {
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{102}, {102}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 64, 1, 128}, {306, 64, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 64, 1, 128}, {306, 64, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
+            {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
+        },
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nct_kv_dim0_mismatch)
+{
+    optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
+    gert::TilingContextPara tilingContextPara("ScatterPaKvCache",
+        {
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{102}, {102}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{64, 1, 128}, {64, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
+            {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
+        },
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nct_kv_dim1_mismatch)
+{
+    optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
+    gert::TilingContextPara tilingContextPara("ScatterPaKvCache",
+        {
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{102}, {102}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{102, 2, 128}, {102, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
+            {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
+        },
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nct_vhead_vc_dim3_mismatch)
+{
+    optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
+    gert::TilingContextPara tilingContextPara("ScatterPaKvCache",
+        {
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{102}, {102}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 64}, {306, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 64}, {306, 128, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
+            {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
+            {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
+        },
+        &compileInfo);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nct_kc_vc_dim0_mismatch)
+{
+    optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
+    gert::TilingContextPara tilingContextPara("ScatterPaKvCache",
+        {
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{102}, {102}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{200, 128, 1, 128}, {200, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{200, 128, 1, 128}, {200, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
+            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
             {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
             {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
         },

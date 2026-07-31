@@ -560,9 +560,6 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetShapeAttrsInfo()
     if (CheckInputShape() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    auto attrs = context_->GetAttrs();
-    auto strides = attrs->GetListInt(INPUT_STRIDES_INDEX);
-    auto offsets = attrs->GetListInt(INPUT_OFFSET_INDEX);
 
     bool isViewKCache = context_->InputIsView(DIM_1);
     bool isViewVCache = context_->InputIsView(DIM_4);
@@ -579,6 +576,20 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetShapeAttrsInfo()
         }
     }
     if (params_.templateType == TEMPLATE_NORM_NCT || params_.templateType == TEMPLATE_SISO_NCT) {
+        auto attrs = context_->GetAttrs();
+        OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
+        auto strides = attrs->GetListInt(INPUT_STRIDES_INDEX);
+        auto offsets = attrs->GetListInt(INPUT_OFFSET_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, strides);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, offsets);
+        if (strides->GetSize() < DIM_2) {
+            OP_LOGE(context_, "strides size should be at least 2, but got %zu.", strides->GetSize());
+            return ge::GRAPH_FAILED;
+        }
+        if (offsets->GetSize() < DIM_2) {
+            OP_LOGE(context_, "offsets size should be at least 2, but got %zu.", offsets->GetSize());
+            return ge::GRAPH_FAILED;
+        }
         params_.kStride = strides->GetData()[0];
         params_.vStride = strides->GetData()[1];
         params_.kOffset = offsets->GetData()[0];
