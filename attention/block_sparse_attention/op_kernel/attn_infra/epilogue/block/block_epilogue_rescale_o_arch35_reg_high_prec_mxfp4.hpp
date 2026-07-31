@@ -57,13 +57,13 @@ public:
 
     __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource) {
         oTmpUBTensor = resource.ubBuf.template GetBufferByByte<ElementOTmp>(MXFP4::UB_OTMP_BUF_OFFSET);
-        localRowSumUBTensor = resource.ubBuf.template GetBufferByByte<ElementSum>(MXFP4::UB_LOCAL_ROW_SUM_OFFSET);
-        globalRowSumUBTensor = resource.ubBuf.template GetBufferByByte<ElementSum>(MXFP4::UB_GLOBAL_ROW_SUM_OFFSET);
-        oTransUBTensor = resource.ubBuf.template GetBufferByByte<ElementO>(MXFP4::UB_O_TRANS_OFFSET);
-        oUBTensor = resource.ubBuf.template GetBufferByByte<ElementOTmp>(MXFP4::UB_O_OFFSET);
+        localRowSumUBTensor = resource.ubBuf.template GetBufferByByte<ElementSum>(MXFP4::UB_LOCAL_ROW_SUM_BUF_OFFSET);
+        globalRowSumUBTensor = resource.ubBuf.template GetBufferByByte<ElementSum>(MXFP4::UB_GLOBAL_ROW_SUM_BUF_OFFSET);
+        oTransUBTensor = resource.ubBuf.template GetBufferByByte<ElementO>(MXFP4::UB_O_TRANS_BUF_OFFSET);
+        oUBTensor = resource.ubBuf.template GetBufferByByte<ElementOTmp>(MXFP4::UB_O_BUF_OFFSET);
         for (uint32_t i = 0; i < MXFP4::UB_UPDATE_SCALE_CNT; i++) {
             dmUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementDm>(
-                MXFP4::UB_UPDATE_SCALE_OFFSET + MXFP4::UB_UPDATE_SCALE_SIZE * i);
+                MXFP4::UB_UPDATE_SCALE_BUF_OFFSET + MXFP4::UB_UPDATE_SCALE_BUF_SIZE * i);
         }
     }
 
