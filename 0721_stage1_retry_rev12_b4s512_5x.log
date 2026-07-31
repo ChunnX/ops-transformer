@@ -1,0 +1,20 @@
+===== REV12 RUN 1 =====
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=12 python_sha256=7a01255ee0289e98e57a13fbd314e334c2df949a12f3d1004bd52e129e0c172e
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=91ccff50d6b9a2709b478b52fb1496a2132054b8f851f6b4371abadcb55463fd
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+===== REV12 RUN 2 =====
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=12 python_sha256=7a01255ee0289e98e57a13fbd314e334c2df949a12f3d1004bd52e129e0c172e
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=91ccff50d6b9a2709b478b52fb1496a2132054b8f851f6b4371abadcb55463fd
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+===== REV12 RUN 3 =====
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=12 python_sha256=7a01255ee0289e98e57a13fbd314e334c2df949a12f3d1004bd52e129e0c172e
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=91ccff50d6b9a2709b478b52fb1496a2132054b8f851f6b4371abadcb55463fd
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+===== REV12 RUN 4 =====
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=12 python_sha256=7a01255ee0289e98e57a13fbd314e334c2df949a12f3d1004bd52e129e0c172e
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=91ccff50d6b9a2709b478b52fb1496a2132054b8f851f6b4371abadcb55463fd
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
+===== REV12 RUN 5 =====
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=12 python_sha256=7a01255ee0289e98e57a13fbd314e334c2df949a12f3d1004bd52e129e0c172e
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=91ccff50d6b9a2709b478b52fb1496a2132054b8f851f6b4371abadcb55463fd
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
