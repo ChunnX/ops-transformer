@@ -2025,7 +2025,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCo
     uint32_t endRankId = 0;
     ProcessCombineGroups(gmmAddrInfo, gmm2State, expertIdx, startRankId, endRankId);
 
-    if (expertIdx == expertPerRank_ - 1) {
+    if (expertIdx == moeExpertPerRank_ - 1) {
         DrainCombineChannels(startRankId, endRankId);
     }
 }
