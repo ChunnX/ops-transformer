@@ -593,6 +593,14 @@ public:
                                               constInfo.actualSeqLenSize);
             CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
             copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
+        } else if (constInfo.outputLayout == FIA_LAYOUT::NBSD) {
+            constexpr GmFormat OUT_FORMAT = GmFormat::NGBSD;
+            FaGmTensor<OUTPUT_T, OUT_FORMAT> outGmTensor;
+            outGmTensor.gmTensor = attentionOutGm;
+            outGmTensor.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
+                                              constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+            CopyAttenOutUbToGm<OUTPUT_T, OUT_FORMAT, GetOutUbFormat<layout>()> copyAttenOutUbToGm;
+            copyAttenOutUbToGm(outGmTensor, ubTensor, gmCoord);
         }
     }
 
@@ -777,6 +785,11 @@ public:
             offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, constInfo.dSizeV, actualSeqLengthsGmQ,
                                   constInfo.actualSeqLenSize);
             DealActSeqLenIsZero<GmFormat::NGTD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
+        } else if (constInfo.outputLayout == FIA_LAYOUT::NBSD) {
+            OffsetCalculator<GmFormat::NGBSD> offsetCalculator;
+            offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize, constInfo.s1Size,
+                                  constInfo.dSizeV, actualSeqLengthsGmQ, constInfo.actualSeqLenSize);
+            DealActSeqLenIsZero<GmFormat::NGBSD, OUTPUT_T>(bIdx, n2Idx, offsetCalculator, attentionOutGm);
         }
     }
 };

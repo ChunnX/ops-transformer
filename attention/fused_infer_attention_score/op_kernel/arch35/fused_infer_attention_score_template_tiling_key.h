@@ -1454,8 +1454,9 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, true),
         ASCENDC_TPL_TILING_STRUCT_SEL(FusedInferAttentionScoreTilingData)
     ),
+    // 重构MLA模板tilingkey
     ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD),
+        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
         ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned64_S2Aligned128_DAligned576_DVAligned512),
         ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_NONE_TYPE),
         ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, NoQuantMode),
