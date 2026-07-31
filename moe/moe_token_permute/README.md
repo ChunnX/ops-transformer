@@ -100,7 +100,8 @@
 ## 约束说明
 
 - indices要求元素个数小于`16777215`，值大于等于`0`小于`16777215`(单点支持int32或int64的最大或最小值，其余值不在范围内排序结果不正确)。在Ascend 950上调用`aclnnMoeTokenPermute`且tokens数据类型为INT8时，indices表示expert ID，取值范围为`[0, 10240)`。
-- 在RegBase平台上调用`aclnnMoeTokenPermute`时，tokens必须为2D，indices必须为1D或2D。
+- 调用`aclnnMoeTokenPermute`时，tokens必须为2D，indices必须为1D或2D。
+- 调用`aclnnMoeTokenPermuteV2`时，tokens必须为2D，indices必须为1D或2D。
 - tokens数据类型为INT8时，indices元素个数不大于`10240`，numOutTokens不大于`10240`。
 - 不支持paddedMode为`true`。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK小于等于512。
