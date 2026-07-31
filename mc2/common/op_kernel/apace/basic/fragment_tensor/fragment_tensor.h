@@ -28,13 +28,14 @@ constexpr uint32_t MAX_FRAGMENT_COUNT = 32;
 
 template<uint32_t Dims>
 struct FragmentParam {
-    uint32_t assembleAxis;
     uint64_t assembledShape[Dims];
     uint64_t fragmentSize;
     uint64_t realFragmentSize;
+    uint32_t assembleAxis;
     uint32_t fragmentCnt;
 
-    bool Validate() const {
+    bool Validate() const
+    {
         if (assembleAxis >= Dims) {
             return false;
         }
@@ -117,28 +118,28 @@ public:
         return AscendC::Te::MakeTensor(memPtr, MakeLayout(fragmentShape));
     }
 
-    __aicore__ inline uint64_t GetFragmentSize() const 
+    __aicore__ inline uint64_t GetFragmentSize() const
     {
         return fragParam_.fragmentSize;
     }
     
-    __aicore__ inline uint64_t GetRealFragmentSize() const 
-    { 
+    __aicore__ inline uint64_t GetRealFragmentSize() const
+    {
         return fragParam_.realFragmentSize;
     }
 
     __aicore__ inline uint32_t GetFragmentCnt() const
-     { 
+    {
         return fragParam_.fragmentCnt;
-     }
+    }
 
-    __aicore__ inline uint32_t GetSplitAxis() const 
-    { 
+    __aicore__ inline uint32_t GetSplitAxis() const
+    {
         return fragParam_.assembleAxis;
     }
 
     __aicore__ inline GM_ADDR GetFragmentAddr(uint32_t idx) const
-    { 
+    {
         return addrList_[idx];
     }
 
@@ -167,16 +168,15 @@ public:
      * \brief Fragment组成信息（动态推导）
      */
     struct FragmentComposition {
+        uint64_t headSize;           // 头块大小
+        uint64_t bodySize;           // 中间块大小
+        uint64_t tailSize;           // 尾块大小
+        uint64_t startRelativeCoord; // 头块在Fragment内的起始相对坐标
+
         uint32_t startFragmentIdx;   // 起始Fragment索引
         uint32_t endFragmentIdx;     // 结束Fragment索引
         uint32_t totalFragmentCnt;   // Fragment总数
-
-        uint64_t headSize;           // 头块大小
-        uint64_t bodySize;           // 中间块大小
         uint32_t bodyCnt;            // 中间块数量
-        uint64_t tailSize;           // 尾块大小
-
-        uint64_t startRelativeCoord; // 头块在Fragment内的起始相对坐标
     };
 
     /*!
@@ -226,11 +226,11 @@ public:
      * - copyShape[d]: 拷贝大小
      */
     struct FragmentInfo {
-        uint32_t fragmentIdx;           // Fragment索引（在父级addrList中）
         GM_ADDR addr;                   // Fragment地址
         uint64_t fragCoord[Dims];
         uint64_t localCoord[Dims];
         uint64_t copyShape[Dims];
+        uint32_t fragmentIdx;           // Fragment索引（在父级addrList中）
     };
 
     /*!
@@ -277,10 +277,8 @@ private:
         const CoordType& inCoord, const ShapeType& inShape,
         AscendC::Std::index_sequence<Is...>) const
     {
-        uint64_t dummy[] = {
-            (coord[Is] = sliceCoord_[Is] + AscendC::Te::Get<Is>(inCoord), uint64_t{0})...,
-            (shape[Is] = AscendC::Te::Get<Is>(inShape), uint64_t{0})...};
-        (void)dummy;
+        ((coord[Is] = sliceCoord_[Is] + AscendC::Te::Get<Is>(inCoord)), ...);
+        ((shape[Is] = AscendC::Te::Get<Is>(inShape)), ...);
     }
 
     template<size_t... Is>
@@ -301,10 +299,10 @@ private:
     uint64_t sliceShape_[Dims]{};
 };
 
-template<typename Engine, typename DestTensor,
+template<typename CopyHandle, typename DestTensor,
          uint32_t Dims, uint32_t MaxF, typename GmLayoutF, typename ElemT>
 __aicore__ inline void FragmentSliceCopy(
-    Engine engine,
+    CopyHandle copyHandle,
     DestTensor& dest,
     const FragmentTensor<Dims, MaxF, GmLayoutF, ElemT>& src)
 {
@@ -312,31 +310,31 @@ __aicore__ inline void FragmentSliceCopy(
     auto composition = src.ComputeFragmentComposition(
         src.GetSliceCoord(assembleAxis), src.GetSliceShape(assembleAxis));
 
-    for (uint32_t fi = 0; fi < composition.totalFragmentCnt; ++fi) {
-        auto info = src.GetFragmentInfo(fi, composition);
+    for (uint32_t idx = 0; idx < composition.totalFragmentCnt; ++idx) {
+        auto info = src.GetFragmentInfo(idx, composition);
         auto fragment = src.GetFragment(info.fragmentIdx);
         auto gmTensor = fragment.Slice(
             MakeCoordFromArray<Dims>(info.fragCoord), MakeShapeFromArray<Dims>(info.copyShape));
         auto l1Tensor = dest.Slice(
             MakeCoordFromArray<Dims>(info.localCoord), MakeShapeFromArray<Dims>(info.copyShape));
-        AscendC::Te::Copy(engine, l1Tensor, gmTensor);
+        AscendC::Te::Copy(copyHandle, l1Tensor, gmTensor);
     }
 }
 
-template<typename Engine, uint32_t Dims, uint32_t MaxF, typename LayoutF, typename ElemT, typename SrcTensor>
+template<typename CopyHandle, uint32_t Dims, uint32_t MaxF, typename LayoutF, typename ElemT, typename DestTensor>
 __aicore__ inline void FragmentSliceScatter(
-    Engine engine,
-    const FragmentTensor<Dims, MaxF, LayoutF, ElemT>& dest,
-    SrcTensor& src)
+    CopyHandle copyHandle,
+    const FragmentTensor<Dims, MaxF, LayoutF, ElemT>& src,
+    DestTensor& dest)
 {
-    const auto assembleAxis = dest.GetSplitAxis();
-    const uint64_t realFragmentSize = dest.GetRealFragmentSize();
+    const auto assembleAxis = src.GetSplitAxis();
+    const uint64_t realFragmentSize = src.GetRealFragmentSize();
 
-    auto composition = dest.ComputeFragmentComposition(
-        dest.GetSliceCoord(assembleAxis), dest.GetSliceShape(assembleAxis));
+    auto composition = src.ComputeFragmentComposition(
+        src.GetSliceCoord(assembleAxis), src.GetSliceShape(assembleAxis));
 
-    for (uint32_t fi = 0; fi < composition.totalFragmentCnt; ++fi) {
-        auto info = dest.GetFragmentInfo(fi, composition);
+    for (uint32_t idx = 0; idx < composition.totalFragmentCnt; ++idx) {
+        auto info = src.GetFragmentInfo(idx, composition);
 
         // assembleAxis 方向按 realFragmentSize 裁剪（尾块 pad 行不拷贝）
         if (info.fragCoord[assembleAxis] >= realFragmentSize) { continue; }
@@ -345,12 +343,12 @@ __aicore__ inline void FragmentSliceScatter(
             info.copyShape[assembleAxis] = remain;
         }
 
-        auto fragment = dest.GetFragment(info.fragmentIdx);
+        auto fragment = src.GetFragment(info.fragmentIdx);
         auto cBlock = fragment.Slice(
             MakeCoordFromArray<Dims>(info.fragCoord), MakeShapeFromArray<Dims>(info.copyShape));
-        auto l0cSlice = src.Slice(
+        auto l0cSlice = dest.Slice(
             MakeCoordFromArray<Dims>(info.localCoord), MakeShapeFromArray<Dims>(info.copyShape));
-        AscendC::Te::Copy(engine, cBlock, l0cSlice);
+        AscendC::Te::Copy(copyHandle, cBlock, l0cSlice);
     }
 }
 
