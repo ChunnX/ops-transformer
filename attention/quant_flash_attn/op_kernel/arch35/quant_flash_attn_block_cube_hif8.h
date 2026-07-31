@@ -101,7 +101,7 @@ public:
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
 
     using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
-    using MM2_ABUF_POLICY_T = BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
     using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
     using MM2_DBUF_T = mm2ResPos;
 
@@ -305,7 +305,7 @@ public:
     __aicore__ inline void CopyKeyTile(const LocalTensor<KV_T> &dstTensor, RunInfoX &runInfo, uint32_t s2RealSize,
                                        uint32_t subLoop)
     {
-        uint32_t s2Offset = (subLoop % 2 == 0) ? runInfo.s2Idx : runInfo.s2Idx + s2BaseSize / 2;
+        uint32_t s2Offset = (subLoop % 2 == 0) ? runInfo.s2Idx : runInfo.s2Idx + s2SplitSize;
         CopyKeySlice(dstTensor, s2Offset, s2RealSize, 0, constInfo.dSize, runInfo);
     }
 
@@ -498,7 +498,7 @@ public:
 
             mm2B.Wait<HardEvent::MTE2_MTE1>();
             MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo.dSizeV,
-                                        realK, true, false, k == 0, k == 0);
+                                        realK, USE_DN, false, k == 0, k == 0);
             LocalTensor<float> dummyScale;
             MatmulFullMX<INPUT_T, KV_T, T, 128, dVBaseSize, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
                        float, float, INPUT_T, INPUT_T>(
@@ -565,7 +565,7 @@ public:
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
 
     using MM1_DBUF_T = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
-    using MM2_ABUF_POLICY_T = BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
+    using MM2_ABUF_POLICY_T = BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
     using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
 
     using ConstInfoX = ConstInfo_t;

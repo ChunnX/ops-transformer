@@ -40,15 +40,16 @@ using namespace arch35QFA;
 
 ge::graphStatus QuantChecker::CheckSingleParaQuantMode(const QfaTilingInfo &qfaInfo)
 {
-    // 文档约束: data_type 支持 INT32；支持输入范围为 1、2、3
-    // quantMode 为属性，QfaTilingInfo 中存储为 QfaQuantMode 枚举
-    const std::vector<uint32_t> supportedQuantModes = {1, 2, 3};
+    const std::vector<uint32_t> supportedQuantModes = {
+        static_cast<uint32_t>(QfaQuantMode::MXFP8_FP32),
+        static_cast<uint32_t>(QfaQuantMode::HIF8_FP32),
+    };
     uint32_t quantModeVal = static_cast<uint32_t>(qfaInfo.quantMode);
     OP_CHECK_IF(
         std::find(supportedQuantModes.begin(), supportedQuantModes.end(), quantModeVal) == supportedQuantModes.end(),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, QUANT_MODE_NAME.c_str(),
                                               std::to_string(quantModeVal).c_str(),
-                                              "The value of quant_mode must be in {1, 2, 3}"),
+                                              "The value of quant_mode must be in {1, 7}"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -257,9 +258,15 @@ ge::graphStatus QuantChecker::CheckQDescaleShape(const QfaTilingInfo &qfaInfo) c
     //   4D: (Q_T, Q_N, D/64, 2)              prefill场景，layout_q_descale=TND
     //   5D: (KV_N, Q_T, G, D/64, 2)          decode场景，layout_q_descale=N2TGD
     //   其中 G = Q_N / KV_N
+    // HIF8 per-tensor: q_descale shape must be (1,), 1D
     const gert::StorageShape *shape = qfaInfo.opParamInfo.qDescale.shape;
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
+    }
+
+    if (qfaInfo.quantMode == QfaQuantMode::HIF8_FP32) {
+        std::vector<int64_t> perTensorExpected = {1};
+        return CheckShapeEqual(*shape, perTensorExpected, Q_DESCALE_NAME, qfaInfo.opName);
     }
 
     int64_t D = qfaInfo.qkHeadDim;
@@ -302,12 +309,6 @@ ge::graphStatus QuantChecker::CheckQDescaleShape(const QfaTilingInfo &qfaInfo) c
                                                                   .c_str()),
                         return ge::GRAPH_FAILED);
         }
-    }
-
-    // HIF8 per-tensor: q_descale shape must be (1,)
-    if (qfaInfo.quantMode == QfaQuantMode::HIF8_FP32) {
-        std::vector<int64_t> perTensorExpected = {1};
-        return CheckShapeEqual(*shape, perTensorExpected, Q_DESCALE_NAME, qfaInfo.opName);
     }
 
     return CheckShapeEqual(*shape, expected, Q_DESCALE_NAME, qfaInfo.opName);
