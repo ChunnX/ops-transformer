@@ -18,6 +18,10 @@
 namespace ops {
 class __attribute__((visibility("default"))) AllToAllMatmulTransposeA5FusionPass
     : public ge::fusion::PatternFusionPass {
+public:
+    // [FUSION_DBG] 临时：匹配前 dump 目标图里 AlltoAllMatmul 的输入
+    ge::Status Run(ge::GraphPtr &graph, ge::CustomPassContext &passContext) override;
+
 protected:
     std::vector<ge::fusion::PatternUniqPtr> Patterns() override;
 

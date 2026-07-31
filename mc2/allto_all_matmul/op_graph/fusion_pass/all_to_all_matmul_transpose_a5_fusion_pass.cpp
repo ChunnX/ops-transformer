@@ -138,6 +138,57 @@ ge::CustomPassStage GetAllToAllMatmulTransposeA5FusionPassStage()
 }
 } // namespace
 
+// [FUSION_DBG] 打印 AlltoAllMatmul 每个输入锚点的生产者类型/名字
+static void DumpMc2NodeInputs(const char *tag, const std::string &extra, const ge::GNode &mc2Node)
+{
+    ge::AscendString mc2Name;
+    mc2Node.GetName(mc2Name);
+    const size_t inputSize = mc2Node.GetInputsSize();
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "[FUSION_DBG] %s %s mc2Name=%s inputsSize=%zu", tag, extra.c_str(),
+              mc2Name.GetString(), inputSize);
+    for (size_t i = 0; i < inputSize; ++i) {
+        auto peer = mc2Node.GetInDataNodesAndPortIndexs(static_cast<int32_t>(i));
+        if (peer.first == nullptr) {
+            OPS_LOG_I(FUSION_PASS_NAME.c_str(), "[FUSION_DBG] %s in[%zu]=<empty>", tag, i);
+            continue;
+        }
+        ge::AscendString peerType;
+        ge::AscendString peerName;
+        peer.first->GetType(peerType);
+        peer.first->GetName(peerName);
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(),
+                  "[FUSION_DBG] %s in[%zu] producerType=%s producerName=%s peerOutPort=%d", tag, i,
+                  peerType.GetString(), peerName.GetString(), peer.second);
+    }
+}
+
+static void DumpAllAlltoAllMatmulInGraph(const ge::GraphPtr &graph)
+{
+    if (graph == nullptr) {
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "[FUSION_DBG] TARGET graph is null");
+        return;
+    }
+    const auto nodes = graph->GetAllNodes();
+    size_t mc2Count = 0;
+    for (const auto &node : nodes) {
+        ge::AscendString nodeType;
+        node.GetType(nodeType);
+        if (std::string(nodeType.GetString()) != "AlltoAllMatmul") {
+            continue;
+        }
+        ++mc2Count;
+        DumpMc2NodeInputs("TARGET", "before_match", node);
+    }
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "[FUSION_DBG] TARGET AlltoAllMatmul count=%zu", mc2Count);
+}
+
+ge::Status AllToAllMatmulTransposeA5FusionPass::Run(ge::GraphPtr &graph, ge::CustomPassContext &passContext)
+{
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "[FUSION_DBG] Enter Run, dump TARGET AlltoAllMatmul inputs");
+    DumpAllAlltoAllMatmulInGraph(graph);
+    return ge::fusion::PatternFusionPass::Run(graph, passContext);
+}
+
 static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
 {
     std::string patternName = FUSION_PASS_NAME;
@@ -200,6 +251,9 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
               "[FUSION_DBG] MakePattern built name=%s expectMc2InputNum=%zu mc2Producer=%p transposeProducer=%p",
               patternName.c_str(), expectMc2InputNum, static_cast<const void *>(mc2Producer),
               static_cast<const void *>(transposeProducer));
+    if (expectMc2InputNum == 3U && mc2Producer != nullptr) {
+        DumpMc2NodeInputs("PATTERN", patternName, *mc2Producer);
+    }
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     pattern->CaptureTensor({*mc2Producer, 0}).CaptureTensor({*transposeProducer, 0});
     return pattern;
@@ -586,6 +640,10 @@ bool AllToAllMatmulTransposeA5FusionPass::MeetRequirements(
     matchResult->GetPatternGraph().GetName(patternName);
     OPS_LOG_I(FUSION_PASS_NAME.c_str(),
               "[FUSION_DBG] Enter MeetRequirements, pattern=%s", patternName.GetString());
+    ge::fusion::NodeIo mc2NodeIo;
+    if (matchResult->GetCapturedTensor(ALL2ALLMM_CAPTURE_IDX, mc2NodeIo) == ge::SUCCESS) {
+        DumpMc2NodeInputs("MATCHED", patternName.GetString(), mc2NodeIo.node);
+    }
 
     // 9.0.0 版本前运行降级stage 空跑
     int32_t geCompilerVersion = 0;
