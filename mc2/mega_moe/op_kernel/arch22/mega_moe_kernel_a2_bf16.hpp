@@ -115,8 +115,8 @@ public:
         uint32_t epilogueGranularity{0};
         float swigluLimit;
         uint32_t activationCode{0};
-        float activationAlpha{Epilogue::SwigluOaiActivation::DEFAULT_ALPHA};
-        float activationBeta{Epilogue::SituActivation::DEFAULT_BETA};
+        float activationParams1{Epilogue::SwigluOaiActivation::DEFAULT_ALPHA};
+        float activationParams2{Epilogue::SituActivation::DEFAULT_BETA};
         GM_ADDR contextGM{nullptr};
         GM_ADDR tilingGM{nullptr};
         MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
@@ -137,12 +137,13 @@ public:
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
                uint32_t epilogueGranularity_ = 0, float swigluLimit_ = std::numeric_limits<float>::infinity(),
                uint32_t activationCode_ = 0,
-               float activationAlpha_ = Epilogue::SwigluOaiActivation::DEFAULT_ALPHA,
-               float activationBeta_ = Epilogue::SituActivation::DEFAULT_BETA, GM_ADDR tilingGM_ = nullptr)
+               float activationParams1_ = Epilogue::SwigluOaiActivation::DEFAULT_ALPHA,
+               float activationParams2_ = Epilogue::SituActivation::DEFAULT_BETA, GM_ADDR tilingGM_ = nullptr)
             : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
               epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
-              activationCode(activationCode_), activationAlpha(activationAlpha_), activationBeta(activationBeta_),
+              activationCode(activationCode_), activationParams1(activationParams1_),
+              activationParams2(activationParams2_),
               contextGM(contextGM_), tilingGM(tilingGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
               layoutA(layoutA_), layoutA2(layoutA2_), ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
               layoutB1(layoutB1_), ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
@@ -1195,7 +1196,8 @@ private:
             int64_t gmOffsetC = layoutC.GetOffset(offsetC);
             int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
             blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], params.epilogueCoreNum,
-                           params.swigluLimit, params.activationCode, params.activationAlpha, params.activationBeta,
+                           params.swigluLimit, params.activationCode, params.activationParams1,
+                           params.activationParams2,
                            params.gmmOutPreRowStride);
         }
         AscendC::SyncAll<true>();
@@ -1216,7 +1218,7 @@ private:
                 int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                 int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
                 blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], coreNum, params.swigluLimit,
-                               params.activationCode, params.activationAlpha, params.activationBeta,
+                               params.activationCode, params.activationParams1, params.activationParams2,
                                params.gmmOutPreRowStride);
             }
             AscendC::SyncAll<true>();

@@ -129,13 +129,13 @@ public:
                      AscendC::GlobalTensor<ElementD> const &gmD,
                      AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2, uint32_t epilogueCoreNum = 40,
                      float activationClamp = 0.0f, uint32_t activationCode = 0,
-                     float activationAlpha = SwigluOaiActivation::DEFAULT_ALPHA,
-                     float activationBeta = SituActivation::DEFAULT_BETA, uint32_t gmmOutPreRowStride = 1,
+                     float activationParams1 = SwigluOaiActivation::DEFAULT_ALPHA,
+                     float activationParams2 = SituActivation::DEFAULT_BETA, uint32_t gmmOutPreRowStride = 1,
                      Callback &&callback = Callback{})
     {
         activationCode_ = activationCode;
-        activationAlpha_ = activationAlpha;
-        activationBeta_ = activationBeta;
+        activationParams1_ = activationParams1;
+        activationParams2_ = activationParams2;
         callback();
         uint32_t blockM = shapeC.row();
         uint32_t branchLength = shapeC.column() / 2;
@@ -217,13 +217,13 @@ public:
     void operator()(AscendC::GlobalTensor<ElementC> const &gmC, MatrixCoord const &shapeC,
                      AscendC::GlobalTensor<ElementD> const &gmD, uint32_t epilogueCoreNum = 40,
                      float activationClamp = 0.0f, uint32_t activationCode = 0,
-                     float activationAlpha = SwigluOaiActivation::DEFAULT_ALPHA,
-                     float activationBeta = SituActivation::DEFAULT_BETA, uint32_t gmmOutPreRowStride = 1,
+                     float activationParams1 = SwigluOaiActivation::DEFAULT_ALPHA,
+                     float activationParams2 = SituActivation::DEFAULT_BETA, uint32_t gmmOutPreRowStride = 1,
                      Callback &&callback = Callback{})
     {
         activationCode_ = activationCode;
-        activationAlpha_ = activationAlpha;
-        activationBeta_ = activationBeta;
+        activationParams1_ = activationParams1;
+        activationParams2_ = activationParams2;
         callback();
         uint32_t blockM = shapeC.row();
         uint32_t branchLength = shapeC.column() / 2;
@@ -357,7 +357,7 @@ private:
             AscendC::PipeBarrier<PIPE_V>();
         }
         Activation::Compute(ubActivationList[stageId], ubGate, ubUp, sharedTmpBuffer, tileLength, activationClamp,
-                            activationCode_, activationAlpha_, activationBeta_);
+                            activationCode_, activationParams1_, activationParams2_);
     }
 
     CATLASS_DEVICE
@@ -437,8 +437,8 @@ private:
     int32_t eventUbDMTE3VList[UB_STAGES];
     int32_t eventUbDVMTE3List[UB_STAGES];
     uint32_t activationCode_{0};
-    float activationAlpha_{SwigluOaiActivation::DEFAULT_ALPHA};
-    float activationBeta_{SituActivation::DEFAULT_BETA};
+    float activationParams1_{SwigluOaiActivation::DEFAULT_ALPHA};
+    float activationParams2_{SituActivation::DEFAULT_BETA};
     CopyGmToUbC copyGmToUbC;
     CopyUbToGmD copyUbToGmD;
     CopyUbToGmDequantScale copyUbToGmDequantScale;

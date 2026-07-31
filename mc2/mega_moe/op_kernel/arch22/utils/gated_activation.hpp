@@ -133,8 +133,7 @@ struct SwigluOaiActivation {
 //     beta * tanh(gate / beta) * sigmoid(gate) * up
 // When linearBeta is enabled, up becomes:
 //     linearBeta * tanh(up / linearBeta)
-// gate/up use the regular contiguous half split. The internal activationAlpha
-// tiling field carries linearBeta for SiTUGLU.
+// gate/up use the regular contiguous half split.
 struct SituActivation {
     static constexpr float DEFAULT_BETA = 1.0f;
     // Zero is not a valid scale because the formula divides by linearBeta,
@@ -215,16 +214,17 @@ struct GatedActivation {
     static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
                         AscendC::LocalTensor<float> const &up, AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
                         uint32_t dataLength, float clampLimit, uint32_t activationCode,
-                        float activationAlpha = SwigluOaiActivation::DEFAULT_ALPHA,
-                        float activationBeta = SituActivation::DEFAULT_BETA)
+                        float activationParams1 = SwigluOaiActivation::DEFAULT_ALPHA,
+                        float activationParams2 = SituActivation::DEFAULT_BETA)
     {
         if (activationCode == static_cast<uint32_t>(GatedActivationMode::SWIGLU_OAI)) {
-            SwigluOaiActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit, activationAlpha,
-                                         activationBeta);
+            SwigluOaiActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit, activationParams1,
+                                         activationParams2);
             return;
         }
         if (activationCode == static_cast<uint32_t>(GatedActivationMode::SITU)) {
-            SituActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, activationAlpha, activationBeta);
+            SituActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, activationParams1,
+                                    activationParams2);
             return;
         }
         if (activationCode == static_cast<uint32_t>(GatedActivationMode::SWIGLU_STEP)) {

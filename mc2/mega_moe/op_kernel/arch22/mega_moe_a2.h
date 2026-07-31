@@ -131,8 +131,8 @@ private:
     int32_t listLen_;
     uint32_t activationCode_;
     float activationClamp_;
-    float activationAlpha_;
-    float activationBeta_;
+    float activationParams1_;
+    float activationParams2_;
 
     MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
     MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
@@ -182,8 +182,8 @@ MegaMoeA2<MegaMoeFuncA2>::Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM
 
         activationCode_ = tilingData.common.activationCode;
         activationClamp_ = tilingData.common.activationClamp;
-        activationAlpha_ = tilingData.common.activationAlpha;
-        activationBeta_ = tilingData.common.activationBeta;
+        activationParams1_ = tilingData.common.activationParams1;
+        activationParams2_ = tilingData.common.activationParams2;
 
         moeInitRoutingQuantV2TilingData = tilingData.moeInitRoutingQuantV2TilingData;
         initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
@@ -203,8 +203,8 @@ MegaMoeA2<MegaMoeFuncA2>::Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM
 
         activationCode_ = tilingData.common.activationCode;
         activationClamp_ = tilingData.common.activationClamp;
-        activationAlpha_ = tilingData.common.activationAlpha;
-        activationBeta_ = tilingData.common.activationBeta;
+        activationParams1_ = tilingData.common.activationParams1;
+        activationParams2_ = tilingData.common.activationParams2;
 
         moeInitRoutingV2TilingData = tilingData.moeInitRoutingV2TilingData;
         initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
@@ -365,8 +365,8 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
                                                                               epilogueGranularity,
                                                                               activationClamp_,
                                                                               activationCode_,
-                                                                              activationAlpha_,
-                                                                              activationBeta_,
+                                                                              activationParams1_,
+                                                                              activationParams2_,
                                                                               tilingGM_};
         MatmulKernel kernel(params);
         kernel(params);
@@ -414,8 +414,8 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
                                               epilogueGranularity,
                                               activationClamp_,
                                               activationCode_,
-                                              activationAlpha_,
-                                              activationBeta_,
+                                              activationParams1_,
+                                              activationParams2_,
                                               tilingGM_};
 
         MatmulKernel kernel(params);
@@ -463,8 +463,8 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
                                               epilogueGranularity,
                                               activationClamp_,
                                               activationCode_,
-                                              activationAlpha_,
-                                              activationBeta_,
+                                              activationParams1_,
+                                              activationParams2_,
                                               tilingGM_};
 
         MatmulKernel kernel(params);
