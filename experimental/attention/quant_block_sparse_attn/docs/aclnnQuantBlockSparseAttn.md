@@ -753,7 +753,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 - 一致性约束
 
-  - `metadata` 必须由与主算子相同的 `sparse_seq_len`、`num_heads_q`、`num_heads_kv`、`head_dim`、`sparse_block_size_q`、`sparse_block_size_k`、`quant_mode`、`mask_mode`、`layout_q`、`layout_kv`、`layout_sparse_indices` 生成。若 metadata 生成接口仍使用 `max_seqlen_q`、`max_seqlen_kv`，其值需与 `sparse_indices`、`block_table` 的块级上界保持一致。
+  - `metadata` 必须由与主算子相同的 `sparse_seq_len`、`num_heads_q`、`num_heads_kv`、`head_dim`、`sparse_block_size_q`、`sparse_block_size_k`、`quant_mode`、`mask_mode`、`layout_q`、`layout_kv`、`layout_sparse_indices` 生成。
   - 用于主算子的 metadata 生成参数中，`head_dim`、`sparse_block_size_q`、`sparse_block_size_k` 均应为 128，`quant_mode` 应为 1，`mask_mode` 应为 0 或 3，`layout_sparse_indices` 应为 `B_N_Qb_Kb`。
 
 - 特性交叉约束
@@ -837,8 +837,6 @@ metadata = torch.ops.custom.npu_quant_block_sparse_attn_metadata(
     sparse_block_size_k=128,
     quant_mode=1,
     mask_mode=3,
-    max_seqlen_q=max_seqlen_q,
-    max_seqlen_kv=max_seqlen_kv,
     layout_q="TND",
     layout_kv="PA_BNSD",
     layout_sparse_indices="B_N_Qb_Kb",

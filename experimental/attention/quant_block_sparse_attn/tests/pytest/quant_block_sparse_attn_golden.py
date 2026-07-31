@@ -871,11 +871,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         kv_lengths,
     )
 
-    max_seqlen_q = max(q_lengths)
-    max_seqlen_kv = max(kv_lengths)
-    case["max_seqlen_q"] = max_seqlen_q
-    case["max_seqlen_kv"] = max_seqlen_kv
-
     golden = {
         "attention_out": attention_out,
         "softmax_lse": softmax_lse,
@@ -888,8 +883,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "num_heads_kv": n2,
             "head_dim": head_dim,
             "batch_size": batch,
-            "max_seqlen_q": max_seqlen_q,
-            "max_seqlen_kv": max_seqlen_kv,
             "layout_q": case["layout_q"],
             "layout_kv": case["layout_kv"],
         },
@@ -909,8 +902,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "block_table": block_table,
             "atten_mask": atten_mask,
             "metadata": None,
-            "max_seqlen_q": max_seqlen_q,
-            "max_seqlen_kv": max_seqlen_kv,
             "softmax_scale": case["softmax_scale"],
             "sparse_q_block_size": sparse_q_block_size,
             "sparse_kv_block_size": sparse_kv_block_size,
