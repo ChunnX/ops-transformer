@@ -19,6 +19,7 @@ import torch
 
 import check_valid_param
 import combined_kv_cache
+import custom_ops
 
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -32,6 +33,15 @@ SCALE_EPSILON = 1e-8
 EMPTY_LSE = -3.4028234663852886e38
 MASK_VALUE = -10000.0
 _CUBE_COUNT_CHUNK_ELEMENTS = 4_000_000
+STEM_BLOCK_SIZE = 128
+STEM_STRIDE = 16
+STEM_ALPHA = 1.0
+STEM_INITIAL_BLOCKS = 4
+STEM_WINDOW_SIZE = 4
+STEM_K_BLOCK_NUM_RATE_MEDIUM = 0.2
+STEM_K_BLOCK_NUM_BIAS_MEDIUM = 30
+STEM_K_BLOCK_NUM_RATE_LARGE = 0.1
+STEM_K_BLOCK_NUM_BIAS_LARGE = 30
 
 
 def _fp8_dtype():
@@ -260,6 +270,151 @@ def _make_sparse_indices(case, q_lengths, kv_lengths, rng):
                             torch.tensor(selected, dtype=torch.int32)
                         )
     return sparse_indices, sparse_seq_len
+
+
+def _ceil_div(value, factor):
+    return (int(value) + int(factor) - 1) // int(factor)
+
+
+def _query_to_bnsd(query, case, cu_seqlens_q, q_lengths):
+    batch = case["B"]
+    n1 = case["N1"]
+    head_dim = case["D"]
+    max_seqlen_q = max(q_lengths)
+    query_bnsd = torch.zeros((batch, n1, max_seqlen_q, head_dim), dtype=torch.bfloat16)
+    query_bf16 = query.float().to(torch.bfloat16)
+
+    for batch_idx, q_len in enumerate(q_lengths):
+        start = int(cu_seqlens_q[batch_idx].item())
+        end = start + int(q_len)
+        if case["layout_q"] == "NTD":
+            query_bnsd[batch_idx, :, :q_len] = query_bf16[:, start:end]
+        else:
+            query_bnsd[batch_idx, :, :q_len] = query_bf16[start:end].permute(1, 0, 2)
+    return query_bnsd.contiguous()
+
+
+def _dense_key_to_bnsd(dense_key, kv_lengths):
+    batch, _, n2, head_dim = dense_key.shape
+    max_seqlen_kv = max(kv_lengths)
+    key_bnsd = torch.zeros((batch, n2, max_seqlen_kv, head_dim), dtype=torch.bfloat16)
+    dense_key_bf16 = dense_key.float().to(torch.bfloat16)
+    for batch_idx, kv_len in enumerate(kv_lengths):
+        key_bnsd[batch_idx, :, :kv_len] = dense_key_bf16[
+            batch_idx, :kv_len
+        ].permute(1, 0, 2)
+    return key_bnsd.contiguous()
+
+
+def _bnsd_to_stem_flat(tensor_bnsd):
+    batch, heads, seq_len, head_dim = tensor_bnsd.shape
+    block_num = _ceil_div(seq_len, STEM_BLOCK_SIZE)
+    padded_seq_len = block_num * STEM_BLOCK_SIZE
+    if padded_seq_len != seq_len:
+        padded = torch.zeros(
+            (batch, heads, padded_seq_len, head_dim), dtype=tensor_bnsd.dtype
+        )
+        padded[:, :, :seq_len] = tensor_bnsd
+        tensor_bnsd = padded
+
+    tokens_per_stem = STEM_BLOCK_SIZE // STEM_STRIDE
+    stemmed = tensor_bnsd.reshape(
+        batch, heads, block_num, STEM_STRIDE, tokens_per_stem, head_dim
+    )
+    stemmed = stemmed.float().mean(dim=4).to(torch.bfloat16)
+    return stemmed.reshape(
+        batch, heads, block_num, STEM_STRIDE * head_dim
+    ).contiguous()
+
+
+def _make_stem_vbias(case, generator):
+    max_kb = _ceil_div(case["S2"], STEM_BLOCK_SIZE)
+    return (torch.rand((case["B"], case["N2"], max_kb), generator=generator) * 2 - 1).to(
+        torch.float32
+    )
+
+
+def _require_stem_indexer_runtime():
+    try:
+        import torch_npu
+    except ImportError as error:  # pragma: no cover - depends on NPU environment
+        raise RuntimeError(
+            "sparse_pattern='stem_indexer' requires torch_npu to call StemIndexer"
+        ) from error
+
+    missing = []
+    if not custom_ops.has_npu_stem_indexer_op():
+        missing.append("torch.ops.custom.npu_stem_indexer")
+    if not custom_ops.has_npu_stem_indexer_metadata_op():
+        missing.append("torch.ops.custom.npu_stem_indexer_metadata")
+    if missing:
+        detail = "; ".join(custom_ops.load_errors()[:3])
+        suffix = f" Load errors: {detail}" if detail else ""
+        raise RuntimeError(
+            "sparse_pattern='stem_indexer' requires registered "
+            f"{', '.join(missing)}.{suffix}"
+        )
+    return torch_npu
+
+
+def _make_sparse_indices_by_stem_indexer(
+    case, query, dense_key, cu_seqlens_q, q_lengths, kv_lengths, generator
+):
+    if (
+        case["sparse_q_block_size"] != STEM_BLOCK_SIZE
+        or case["sparse_kv_block_size"] != STEM_BLOCK_SIZE
+    ):
+        raise ValueError(
+            "stem_indexer sparse_pattern requires "
+            "sparse_q_block_size=sparse_kv_block_size=128"
+        )
+    if case["D"] != 128:
+        raise ValueError(f"stem_indexer sparse_pattern requires D=128, got {case['D']}")
+
+    torch_npu = _require_stem_indexer_runtime()
+    device_id = int(os.environ.get("DEVICE_ID", "0"))
+    torch_npu.npu.set_device(device_id)
+
+    qflat = _bnsd_to_stem_flat(_query_to_bnsd(query, case, cu_seqlens_q, q_lengths))
+    kflat = _bnsd_to_stem_flat(_dense_key_to_bnsd(dense_key, kv_lengths))
+    vbias = _make_stem_vbias(case, generator)
+    q_seq_lens = torch.tensor(q_lengths, dtype=torch.int32)
+    kv_seq_lens = torch.tensor(kv_lengths, dtype=torch.int32)
+    causal = case["mask_mode"] == 3
+
+    q_seq_lens_npu = q_seq_lens.npu()
+    kv_seq_lens_npu = kv_seq_lens.npu()
+    metadata = torch.ops.custom.npu_stem_indexer_metadata(
+        q_seq_lens_npu,
+        kv_seq_lens_npu,
+        case["N1"],
+        case["N2"],
+        causal=causal,
+        stem_block_size=STEM_BLOCK_SIZE,
+        dim_qkflat=case["D"],
+        window_size=STEM_WINDOW_SIZE,
+    )
+    sparse_indices, sparse_seq_len = torch.ops.custom.npu_stem_indexer(
+        qflat.npu(),
+        kflat.npu(),
+        vbias.npu(),
+        q_seq_lens_npu,
+        kv_seq_lens_npu,
+        num_prompt_tokens=kv_seq_lens_npu,
+        metadata=metadata,
+        causal=causal,
+        stem_block_size=STEM_BLOCK_SIZE,
+        stem_stride=STEM_STRIDE,
+        alpha=STEM_ALPHA,
+        initial_blocks=STEM_INITIAL_BLOCKS,
+        window_size=STEM_WINDOW_SIZE,
+        k_block_num_rate_medium=STEM_K_BLOCK_NUM_RATE_MEDIUM,
+        k_block_num_bias_medium=STEM_K_BLOCK_NUM_BIAS_MEDIUM,
+        k_block_num_rate_large=STEM_K_BLOCK_NUM_RATE_LARGE,
+        k_block_num_bias_large=STEM_K_BLOCK_NUM_BIAS_LARGE,
+    )
+    torch_npu.npu.synchronize()
+    return sparse_indices.cpu().to(torch.int32), sparse_seq_len.cpu().to(torch.int32)
 
 
 def _query_index(cu_seqlens_q, batch_idx, q_idx):
@@ -878,9 +1033,14 @@ def generate_and_save_testdata(
     )
     combined_kv_cache.assert_combined_kv_views(kv_cache_storage, kv_cache_meta)
     atten_mask = torch.tril(torch.ones((2048, 2048), dtype=torch.uint8)).T.contiguous()
-    sparse_indices, sparse_seq_len = _make_sparse_indices(
-        case, q_lengths, kv_lengths, rng
-    )
+    if case["sparse_pattern"] == "stem_indexer":
+        sparse_indices, sparse_seq_len = _make_sparse_indices_by_stem_indexer(
+            case, query, dense_key, cu_seqlens_q, q_lengths, kv_lengths, generator
+        )
+    else:
+        sparse_indices, sparse_seq_len = _make_sparse_indices(
+            case, q_lengths, kv_lengths, rng
+        )
 
     if case["Testcase_Name"] is None:
         mode = "prefill"

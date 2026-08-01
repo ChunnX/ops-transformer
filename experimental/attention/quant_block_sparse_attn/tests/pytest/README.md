@@ -19,6 +19,13 @@ The CPU golden follows BSA scheme 2.4:
 - `pa_block_padding_bytes` is fixed at `0`; the segmented cache uses a tight physical block stride, exposed through `key.stride(0)`.
 - Empty sparse tasks produce zero `attention_out` and `EMPTY_LSE` softmax LSE.
 - `mask_mode`: `0` no mask, `3` lower-triangular causal.
+- `sparse_pattern="stem_indexer"` generates `sparse_indices` and `sparse_seq_len` by calling
+  `torch.ops.custom.npu_stem_indexer`. The generator converts QBSA FP8 Q/K test data to BF16, pads variable
+  sequence lengths to the batch max, converts Q from TND/NTD to BNSD, converts dense K to BNSD, and flattens each
+  128-token block into `[stem_stride * D]` with `stem_stride=16`.
+- StemIndexer generation requires `torch_npu` plus registered `npu_stem_indexer` and
+  `npu_stem_indexer_metadata`. Set `STEM_INDEXER_CUSTOM_OPS_PATH` if the StemIndexer torch extension is outside
+  the default `experimental/attention/stem_indexer/torch_ops_extension` path.
 
 ## Typical Cases
 

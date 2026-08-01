@@ -15,7 +15,8 @@
 // step1, 为新增自定义算子添加定义
 //   - schema 入参顺序：必选张量 + 必选标量在前，'*' 之后为可选张量与带默认值的属性
 //   - 张量 dtype / 属性默认值对齐 op_host/quant_block_sparse_attn_def.cpp
-TORCH_LIBRARY(custom, m)
+// 使用FRAGMENT以支持多个custom命名空间扩展在同一进程内同时加载。
+TORCH_LIBRARY_FRAGMENT(custom, m)
 {
     m.def("npu_quant_block_sparse_attn(Tensor query, Tensor key, Tensor value, "
           "Tensor q_descale, Tensor k_descale, Tensor v_descale, Tensor p_scale, "
