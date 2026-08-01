@@ -50,6 +50,7 @@ public:
     static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                   IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr bool containAllOptionalInput = hasAtten;
+    static constexpr bool HAS_LSE = hasLse;
     static constexpr bool splitD = (uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256;
     static constexpr TPosition bmm2OutPos = GetC2Position();
     static constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
@@ -381,8 +382,10 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
     outputBuf.SetCrossCore();
     //-----------------------------------------------------------------
     this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
-    if (constInfo.isSoftmaxLseEnable && unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
-        SoftmaxDataCopyOut(runInfo, constInfo, sumUb, maxUb);
+    if constexpr (HAS_LSE) {
+        if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
+            SoftmaxDataCopyOut(runInfo, constInfo, sumUb, maxUb);
+        }
     }
     return;
 }
@@ -684,13 +687,19 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *s
 {
     if ASCEND_IS_AIV {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
-        softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
-        constInfo.isSoftmaxLseEnable = this->tilingData->inputParamsRegbase.isSoftMaxLseEnable;
+        if constexpr (HAS_LSE) {
+            constInfo.isSoftmaxLseEnable = this->tilingData->inputParamsRegbase.isSoftMaxLseEnable != 0;
+            softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
+        } else {
+            constInfo.isSoftmaxLseEnable = false;
+        }
         if (this->tilingData->initOutputParams.needInit == 1) {
             InitOutputSingleCore(constInfo);
-            if (constInfo.isSoftmaxLseEnable) {
-                SyncAll();
-                InitLseOutputSingleCore(constInfo);
+            if constexpr (HAS_LSE) {
+                if (constInfo.isSoftmaxLseEnable) {
+                    SyncAll();
+                    InitLseOutputSingleCore(constInfo);
+                }
             }
         }
     }
@@ -710,7 +719,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitUniqueLocalBuffer(ConstInfo &constInfo)
 {
-    if (constInfo.isSoftmaxLseEnable) {
+    if constexpr (HAS_LSE) {
         this->tPipe->InitBuffer(softmaxLseQueue, 1, (s1BaseSize >> 1U) * sizeof(float) * 8);
     }
 }
@@ -720,7 +729,9 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxDataCopyOut(RunInfo &r
                                                                       LocalTensor<float> &sumUb,
                                                                       LocalTensor<float> &maxUb)
 {
-    SoftmaxLseCopyOut(sumUb, maxUb, runInfo, constInfo);
+    if constexpr (HAS_LSE) {
+        SoftmaxLseCopyOut(sumUb, maxUb, runInfo, constInfo);
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -737,24 +748,25 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(LocalTensor
                                                                      LocalTensor<float> &softmaxMaxTmp,
                                                                      RunInfo &runInfo, ConstInfo &constInfo)
 {
-    if (unlikely(runInfo.halfS1RealSize == 0)) {
-        return;
+    if constexpr (HAS_LSE) {
+        if (unlikely(runInfo.halfS1RealSize == 0)) {
+            return;
+        }
+        if (!constInfo.isSoftmaxLseEnable) {
+            return;
+        }
+        LocalTensor<float> lseUb = this->softmaxLseQueue.template AllocTensor<float>();
+        ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.halfS1RealSize);
+        softmaxLseQueue.template EnQue(lseUb);
+        softmaxLseQueue.DeQue<float>();
+        DataCopyExtParams intriParams1;
+        intriParams1.blockLen = sizeof(float);
+        intriParams1.blockCount = runInfo.halfS1RealSize;
+        intriParams1.srcStride = 0;
+        intriParams1.dstStride = 0;
+        DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], lseUb, intriParams1);
+        softmaxLseQueue.FreeTensor(lseUb);
     }
-
-    if (!constInfo.isSoftmaxLseEnable) {
-        return;
-    }
-    LocalTensor<float> lseUb = this->softmaxLseQueue.template AllocTensor<float>();
-    ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.halfS1RealSize);
-    softmaxLseQueue.template EnQue(lseUb);
-    softmaxLseQueue.DeQue<float>();
-    DataCopyExtParams intriParams1;
-    intriParams1.blockLen = sizeof(float);
-    intriParams1.blockCount = runInfo.halfS1RealSize;
-    intriParams1.srcStride = 0;
-    intriParams1.dstStride = 0;
-    DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], lseUb, intriParams1);
-    softmaxLseQueue.FreeTensor(lseUb);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
