@@ -9,20 +9,19 @@
 */
 
 /*!
- * \file fia_tiling_fullquant_mx.h
+ * \file fia_tiling_fullquant_mx.h  
  * \brief
  */
 #ifndef FIA_TILING_FULLQUANT_MX_H
 #define FIA_TILING_FULLQUANT_MX_H
-
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
-#include "../fia_tiling_base.h"
-#include "../fia_tiling_info.h"
+#include "../../../common/op_host/fia_tiling_base.h"
+#include "../../../common/op_host/fia_tiling_info.h"
 #include "tiling/tiling_api.h" // 这个头文件顺序必须在手写的tiling data前
 #include "../../op_kernel/arch35/fia_tiling_data_fullquant.h"
-#include "../split_core_v2.h"
-#include "../../../fused_infer_attention_score/op_kernel/fused_infer_attention_score_template_tiling_key.h"
+#include "../../../common/op_host/split_core_v2.h"
+#include "../../op_kernel/fused_infer_attention_score_template_tiling_key.h"
 #include "../../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_tiling_regbase.h"
 
 namespace optiling {
