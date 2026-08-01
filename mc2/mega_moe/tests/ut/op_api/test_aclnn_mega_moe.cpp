@@ -9,6 +9,7 @@
  */
 
 #include <gtest/gtest.h>
+#include "op_api_ut_common/array_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "opdev/platform.h"
@@ -32,6 +33,52 @@ protected:
     }
 };
 
+static aclnnStatus RunActivationParamCase(const char *activation, const std::vector<float> &activationParams)
+{
+    auto contextDesc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 1);
+    auto xDesc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto topkIdsDesc = TensorDesc({128, 8}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 3);
+    auto topkWeightsDesc = TensorDesc({128, 8}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 1);
+    TensorListDesc weight1Descs(4, TensorDesc({2048, 4096}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND).ValueRange(-1, 1));
+    TensorListDesc weight2Descs(4, TensorDesc({4096, 1024}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND).ValueRange(-1, 1));
+    TensorListDesc weightScales1Descs(4, TensorDesc({2048}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND).ValueRange(0, 2));
+    TensorListDesc weightScales2Descs(4, TensorDesc({4096}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND).ValueRange(0, 2));
+    auto yDesc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND);
+    auto expertTokenNumsDesc = TensorDesc({4}, ACL_INT32, ACL_FORMAT_ND);
+    auto activationParamsDesc = FloatArrayDesc(activationParams);
+
+    auto ut = OP_API_UT(aclnnMegaMoe,
+                        INPUT(contextDesc, xDesc, topkIdsDesc, topkWeightsDesc, weight1Descs, weight2Descs,
+                              weightScales1Descs, weightScales2Descs, nullptr, nullptr, nullptr, nullptr, nullptr,
+                              nullptr, nullptr, nullptr, nullptr, 16, 4, 2097152, 0, 0, 0, 0, "", 0, activation,
+                              activationParamsDesc, 0, 2, 0),
+                        OUTPUT(yDesc, expertTokenNumsDesc));
+
+    uint64_t workspaceSize = 0;
+    return ut.TestGetWorkspaceSize(&workspaceSize);
+}
+
+TEST_F(AclnnMegaMoeTest, activation_param_domain)
+{
+    constexpr float kMax = std::numeric_limits<float>::max();
+    constexpr float kInf = std::numeric_limits<float>::infinity();
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+
+    // Valid parameter sets pass ACLNN validation and reach the mocked inner op,
+    // which returns ACLNN_ERR_RUNTIME_ERROR in this test environment.
+    EXPECT_EQ(RunActivationParamCase("swigluoai", {kMax, 0.0f, -1.0f}), ACLNN_ERR_RUNTIME_ERROR);
+    EXPECT_EQ(RunActivationParamCase("situglu", {-4.0f}), ACLNN_ERR_RUNTIME_ERROR);
+    EXPECT_EQ(RunActivationParamCase("situglu", {-4.0f, -25.0f}), ACLNN_ERR_RUNTIME_ERROR);
+
+    EXPECT_EQ(RunActivationParamCase("swiglu", {-1.0f}), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(RunActivationParamCase("swigluoai", {kMax, nan, 1.0f}), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(RunActivationParamCase("swigluoai", {kMax, 1.702f, kInf}), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(RunActivationParamCase("situglu", {0.0f}), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(RunActivationParamCase("situglu", {1.0f, 0.0f}), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(RunActivationParamCase("situglu", {nan}), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(RunActivationParamCase("situglu", {1.0f, kInf}), ACLNN_ERR_PARAM_INVALID);
+}
+
 TEST_F(AclnnMegaMoeTest, ascend950_nullptr_context)
 {
     auto x_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
@@ -45,12 +92,13 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_context)
 
     auto y_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND);
     auto expert_token_nums_desc = TensorDesc({4}, ACL_INT32, ACL_FORMAT_ND);
+    auto activation_params_desc = FloatArrayDesc(std::vector<float>{std::numeric_limits<float>::max()});
 
     auto ut = OP_API_UT(aclnnMegaMoe,
                         INPUT(nullptr, x_desc, topk_ids_desc, topk_weights_desc, weight1_descs, weight2_descs,
                               weight_scales1_descs, weight_scales2_descs, nullptr, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, nullptr, 16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu",
-                              std::numeric_limits<float>::max(), 0, 2, 0),
+                              activation_params_desc, 0, 2, 0),
                         OUTPUT(y_desc, expert_token_nums_desc));
 
     uint64_t workspace_size = 0;
@@ -72,12 +120,13 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_x)
 
     auto y_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND);
     auto expert_token_nums_desc = TensorDesc({4}, ACL_INT32, ACL_FORMAT_ND);
+    auto activation_params_desc = FloatArrayDesc(std::vector<float>{std::numeric_limits<float>::max()});
 
     auto ut = OP_API_UT(aclnnMegaMoe,
                         INPUT(context_desc, nullptr, topk_ids_desc, topk_weights_desc, weight1_descs, weight2_descs,
                               weight_scales1_descs, weight_scales2_descs, nullptr, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, nullptr, 16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu",
-                              std::numeric_limits<float>::max(), 0, 2, 0),
+                              activation_params_desc, 0, 2, 0),
                         OUTPUT(y_desc, expert_token_nums_desc));
 
     uint64_t workspace_size = 0;
@@ -99,12 +148,13 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_topk_ids)
 
     auto y_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND);
     auto expert_token_nums_desc = TensorDesc({4}, ACL_INT32, ACL_FORMAT_ND);
+    auto activation_params_desc = FloatArrayDesc(std::vector<float>{std::numeric_limits<float>::max()});
 
     auto ut = OP_API_UT(aclnnMegaMoe,
                         INPUT(context_desc, x_desc, nullptr, topk_weights_desc, weight1_descs, weight2_descs,
                               weight_scales1_descs, weight_scales2_descs, nullptr, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, nullptr, 16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu",
-                              std::numeric_limits<float>::max(), 0, 2, 0),
+                              activation_params_desc, 0, 2, 0),
                         OUTPUT(y_desc, expert_token_nums_desc));
 
     uint64_t workspace_size = 0;
@@ -126,12 +176,13 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_topk_weights)
 
     auto y_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND);
     auto expert_token_nums_desc = TensorDesc({4}, ACL_INT32, ACL_FORMAT_ND);
+    auto activation_params_desc = FloatArrayDesc(std::vector<float>{std::numeric_limits<float>::max()});
 
     auto ut = OP_API_UT(aclnnMegaMoe,
                         INPUT(context_desc, x_desc, topk_ids_desc, nullptr, weight1_descs, weight2_descs,
                               weight_scales1_descs, weight_scales2_descs, nullptr, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, nullptr, 16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu",
-                              std::numeric_limits<float>::max(), 0, 2, 0),
+                              activation_params_desc, 0, 2, 0),
                         OUTPUT(y_desc, expert_token_nums_desc));
 
     uint64_t workspace_size = 0;
@@ -153,12 +204,13 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_weight1)
 
     auto y_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND);
     auto expert_token_nums_desc = TensorDesc({4}, ACL_INT32, ACL_FORMAT_ND);
+    auto activation_params_desc = FloatArrayDesc(std::vector<float>{std::numeric_limits<float>::max()});
 
     auto ut = OP_API_UT(aclnnMegaMoe,
                         INPUT(context_desc, x_desc, topk_ids_desc, topk_weights_desc, nullptr, weight2_descs,
                               weight_scales1_descs, weight_scales2_descs, nullptr, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, nullptr, 16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu",
-                              std::numeric_limits<float>::max(), 0, 2, 0),
+                              activation_params_desc, 0, 2, 0),
                         OUTPUT(y_desc, expert_token_nums_desc));
 
     uint64_t workspace_size = 0;
@@ -180,12 +232,13 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_weight2)
 
     auto y_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND);
     auto expert_token_nums_desc = TensorDesc({4}, ACL_INT32, ACL_FORMAT_ND);
+    auto activation_params_desc = FloatArrayDesc(std::vector<float>{std::numeric_limits<float>::max()});
 
     auto ut = OP_API_UT(aclnnMegaMoe,
                         INPUT(context_desc, x_desc, topk_ids_desc, topk_weights_desc, weight1_descs, nullptr,
                               weight_scales1_descs, weight_scales2_descs, nullptr, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, nullptr, 16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu",
-                              std::numeric_limits<float>::max(), 0, 2, 0),
+                              activation_params_desc, 0, 2, 0),
                         OUTPUT(y_desc, expert_token_nums_desc));
 
     uint64_t workspace_size = 0;
@@ -207,12 +260,13 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_y_out)
     TensorListDesc weight_scales2_descs(4, TensorDesc({4096}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND).ValueRange(0, 2));
 
     auto expert_token_nums_desc = TensorDesc({4}, ACL_INT32, ACL_FORMAT_ND);
+    auto activation_params_desc = FloatArrayDesc(std::vector<float>{std::numeric_limits<float>::max()});
 
     auto ut = OP_API_UT(aclnnMegaMoe,
                         INPUT(context_desc, x_desc, topk_ids_desc, topk_weights_desc, weight1_descs, weight2_descs,
                               weight_scales1_descs, weight_scales2_descs, nullptr, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, nullptr, 16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu",
-                              std::numeric_limits<float>::max(), 0, 2, 0),
+                              activation_params_desc, 0, 2, 0),
                         OUTPUT(nullptr, expert_token_nums_desc));
 
     uint64_t workspace_size = 0;
@@ -234,12 +288,13 @@ TEST_F(AclnnMegaMoeTest, ascend950_nullptr_expert_token_nums_out)
     TensorListDesc weight_scales2_descs(4, TensorDesc({4096}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND).ValueRange(0, 2));
 
     auto y_desc = TensorDesc({128, 4096}, ACL_BF16, ACL_FORMAT_ND);
+    auto activation_params_desc = FloatArrayDesc(std::vector<float>{std::numeric_limits<float>::max()});
 
     auto ut = OP_API_UT(aclnnMegaMoe,
                         INPUT(context_desc, x_desc, topk_ids_desc, topk_weights_desc, weight1_descs, weight2_descs,
                               weight_scales1_descs, weight_scales2_descs, nullptr, nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, nullptr, 16, 4, 2097152, 0, 0, 0, 0, "", 0, "swiglu",
-                              std::numeric_limits<float>::max(), 0, 2, 0),
+                              activation_params_desc, 0, 2, 0),
                         OUTPUT(y_desc, nullptr));
 
     uint64_t workspace_size = 0;
