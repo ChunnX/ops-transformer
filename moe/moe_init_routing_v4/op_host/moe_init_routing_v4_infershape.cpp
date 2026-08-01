@@ -749,8 +749,8 @@ static void SetExpandedScaleShape(gert::Shape *expandedScaleShape, const gert::S
 }
 
 static void SetExpandedTopkWeightShape(gert::Shape *expandedTopkWeightShape, const gert::Shape *topkWeightShape,
-                                        int64_t dropPadMode, int64_t outNum, int64_t expertNum,
-                                        int64_t expertCapacity)
+                                       int64_t dropPadMode, int64_t outNum, int64_t expertNum,
+                                       int64_t expertCapacity)
 {
     if (expandedTopkWeightShape != nullptr) {
         if (topkWeightShape != nullptr) {
