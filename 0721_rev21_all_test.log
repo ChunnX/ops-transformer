@@ -1,0 +1,122 @@
+0721 general test: suite=all, cases=40, benchmark=True, resource_excluded=9
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=371d6a029743c056c8c1bbcb01d71fba646da4799dbb129af7d69e30aa043f54
+[00] bsnd_b1_s1_1_k_1024 bench tl_med=0.404ms off_med=0.187ms ratio=0.46x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=504209e10f608470a67b6271ec282955f76e97806eb3723b2e41e93edcec82b3
+[01] bsnd_b1_s1_1_k_2048 bench tl_med=0.434ms off_med=0.259ms ratio=0.60x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=dad083f7eef5bbff145c65b8215ffd251cd5914b0c14aa799f6ee7bf77be3fdb
+[02] bsnd_b1_s1_1_k_4096 bench tl_med=0.512ms off_med=0.165ms ratio=0.32x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=ed81e3a2800d67bcfc8e01fff70dae9f38fc89aface4578dd382d6ac101c9dc5
+[03] bsnd_b1_s1_1_k_5120 bench tl_med=0.534ms off_med=0.493ms ratio=0.92x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=107d98d017baa4c7cf528eeef5352ab79bef2c4a97a4e34552de6f06b97b4825
+[04] bsnd_b1_s1_1_k_8192 bench tl_med=0.830ms off_med=0.866ms ratio=1.04x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=67e0b5740f0b2178a95735b59646696925613aa5a013ebd54de5cb873b971e03
+[05] bsnd_b1_s1_64_k_1024 bench tl_med=0.782ms off_med=0.356ms ratio=0.46x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=84436f8489c1339caded22070f16af3a9e84b1726b38c3ebc7276294f87262a8
+[06] bsnd_b1_s1_64_k_2048 bench tl_med=0.743ms off_med=0.565ms ratio=0.76x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=1735e2149f41ff44a2763816491c064147eaf9239c9c685b72b55656658078f7
+[07] bsnd_b1_s1_64_k_4096 bench tl_med=1.566ms off_med=1.298ms ratio=0.83x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=2c24627d3c859af6950ed2b0a42bdbfe01197eddff8cbc31ca0aa4e06b1a37e7
+[08] bsnd_b1_s1_64_k_5120 bench tl_med=6.898ms off_med=0.795ms ratio=0.12x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=819aa666dbfed90448d26989ef309f6ab2429e134f3da5ab6eecf2969b9e576a
+[09] bsnd_b1_s1_64_k_8192 bench tl_med=3.207ms off_med=2.797ms ratio=0.87x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=2680df0806461f8dfe07ac3ad2dd10d17f17d07923ea421a9b1af839a407b8fa
+[10] bsnd_b1_s1_512_k_1024 bench tl_med=18.076ms off_med=2.224ms ratio=0.12x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=6454bd511923933a43b3762f50a1a06a5214b103aedbfa9ec0c0b6a000376a46
+[11] bsnd_b1_s1_512_k_2048 bench tl_med=17.218ms off_med=4.170ms ratio=0.24x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=76494236216846e9d38b8bbd021fe9bb7783383d5658220570349a3ab819ab2c
+[12] bsnd_b1_s1_512_k_4096 bench tl_med=19.388ms off_med=12.675ms ratio=0.65x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=b06de080bb3fcc28f41920fe7613b1c21ab487aaa2a0def1a3ba62c5d3c39ce7
+[13] bsnd_b1_s1_512_k_5120 bench tl_med=24.025ms off_med=14.238ms ratio=0.59x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=a4d6762204c776fc7b4abc484e44f5ac315b4685c6c5349b3630faac8b0aa831
+[14] bsnd_b1_s1_512_k_8192 PRECISION_FAIL dQ_norm=1.25e-02 dK_norm=1.28e-02 dW_norm=5.61e-02 Loss_norm=1.55e-03
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=68d9b7176d55331e71737e348d85fbb7edea08473f53a5a1c56c393be7a0b513
+[15] bsnd_b1_s1_1024_k_1024 PRECISION_FAIL dQ_norm=4.52e-02 dK_norm=4.82e-02 dW_norm=5.66e-02 Loss_norm=1.18e-03
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=e89ae099454afc44241052dd44022f23595498ab47f2576a11684ced3cf347ea
+[16] bsnd_b1_s1_1024_k_2048 bench tl_med=59.929ms off_med=6.944ms ratio=0.12x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=fe4cf43da0e06f8fc985b1a748257f8137c89e871f385fea2454b8a847a82729
+[17] bsnd_b1_s1_1024_k_4096 PRECISION_FAIL dQ_norm=1.73e-02 dK_norm=1.73e-02 dW_norm=6.90e-02 Loss_norm=1.80e-03
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=87901c000d433dc40b814c84a5015189fca89c8c75fba062fc95670c871bbad8
+[18] bsnd_b1_s1_1024_k_5120 bench tl_med=71.099ms off_med=19.345ms ratio=0.27x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=83684d3c361b916b8b2f28b40b169442cd18cecf42db3207fd8bebfd63e9839f
+[19] bsnd_b1_s1_2048_k_1024 PRECISION_FAIL dQ_norm=3.26e-02 dK_norm=3.40e-02 dW_norm=3.95e-02 Loss_norm=6.97e-06
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=11736c31c9f3bab8dcbdbdaf42039998e3dd810705f9b51e5e84dedace70f048
+[20] bsnd_b1_s1_2048_k_2048 PRECISION_FAIL dQ_norm=3.39e-02 dK_norm=3.46e-02 dW_norm=5.44e-02 Loss_norm=9.74e-04
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=ddd21f970eccf54134d91121a4f025f4238c80a877016537cc4abdd08a215d11
+[21] bsnd_b4_s1_1_k_1024 bench tl_med=0.584ms off_med=0.213ms ratio=0.37x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=f3d74f190f57fbf846d0feccbd899844ca756444e9a206809695966056e1be51
+[22] bsnd_b4_s1_1_k_8192 bench tl_med=0.494ms off_med=0.173ms ratio=0.35x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=fd226b4c5c93171715a7dfa7ef1c38f6edfa8cf35e2e15bb24e6773dc894eeeb
+[23] bsnd_b4_s1_64_k_1024 bench tl_med=1.427ms off_med=0.931ms ratio=0.65x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=67a5369590394874da444e4e7e9dc1b0669363deeff59c39cc9c43586841b6ad
+[24] bsnd_b4_s1_64_k_4096 PRECISION_FAIL dQ_norm=3.93e-03 dK_norm=3.63e-03 dW_norm=3.32e-02 Loss_norm=4.38e-04
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=5a8c3430607e1ae89f868bc6633340f8a5bcd81a05ee5bdc671f9c5bf64e282a
+[25] bsnd_b4_s1_512_k_1024 bench tl_med=60.301ms off_med=8.247ms ratio=0.14x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=9b914c6c97a3762f02974118914ee0b5fef5464d453d169c7e00e5f74400eb2f
+[26] bsnd_b4_s1_512_k_2048 bench tl_med=25.860ms off_med=13.320ms ratio=0.52x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=9de986eb73bff17fce3432db45f2b1190a89c65b452fd2ca6d2cdab4ddd99c87
+[27] bsnd_b4_s1_1024_k_1024 PRECISION_FAIL dQ_norm=5.75e-02 dK_norm=5.71e-02 dW_norm=6.33e-02 Loss_norm=1.27e-03
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=a1831e600f4bc25494c55fd7408f86ff7471b79fa8e40fbf7dee5f38cd7905bf
+[28] bsnd_b64_s1_1_k_2048 bench tl_med=1.040ms off_med=0.509ms ratio=0.49x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=bd522c8544ff449f0b70e622c6046e8b438f9a9ed3ec3d2a9fc1b7e634d10c82
+[29] bsnd_b64_s1_1_k_4096 bench tl_med=0.986ms off_med=0.429ms ratio=0.43x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=14924edfe91d45a98009e783785b64f38a36d97bc8ad364d943b84ae9f369517
+[30] bsnd_b64_s1_64_k_1024 bench tl_med=25.759ms off_med=12.456ms ratio=0.48x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=6116079f5d726079a20613722e4babe1444ac88a4e886985e8dababf787a525f
+[31] bsnd_b256_s1_1_k_1024 bench tl_med=2.157ms off_med=1.478ms ratio=0.69x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=d4955e2736803e3fc2c34c0fd956eb60fb52efa14ab53ef7fbe99f718f1d38bb
+[32] bsnd_b256_s1_1_k_2048 bench tl_med=2.321ms off_med=1.521ms ratio=0.66x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=5a26563c0a28a98b1ac558795b6095240687130af17c3ac2fd33b36cffb0220c
+[33] bsnd_b256_s1_1_k_4096 bench tl_med=2.359ms off_med=1.551ms ratio=0.66x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=bd7360fdb02cbf02760cd5d93be5a2d2421125c43a63c7078eb44f82449052f3
+[34] bsnd_b256_s1_1_k_5120 bench tl_med=2.339ms off_med=1.533ms ratio=0.66x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=fbe1f9980d89e08243644e9a8fb8b1db79b6e3307b402575d68fb282f0656720
+[35] bsnd_b256_s1_1_k_8192 bench tl_med=2.379ms off_med=1.603ms ratio=0.67x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=e40260ec881fa10bbec3c66e25dd374400cbbd92d3b039f26630236381505653
+[36] tnd_s1_1_k_1024 bench tl_med=0.476ms off_med=0.193ms ratio=0.41x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=590396da9bafb7a298166f1588f017846db8fdc820c22d85812412f8cff78fb2
+[37] tnd_s1_64_k_2048 bench tl_med=0.853ms off_med=0.605ms ratio=0.71x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=89fe39733412d69be6e1f78c1a67afd0151af7432dd13a9964df61b8beacc466
+[38] tnd_s1_512_k_4096 bench tl_med=24.004ms off_med=8.122ms ratio=0.34x
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=98d561f8bb678792931ce64b268c0ca1d265c271803b275aa1211abb05489f73
+[39] tnd_s1_1024_k_5120 PRECISION_FAIL dQ_norm=1.45e-02 dK_norm=1.43e-02 dW_norm=3.91e-02 Loss_norm=1.49e-03
+Summary: total=40 pass=32 fail=8 precision=8 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
