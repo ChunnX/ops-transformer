@@ -811,6 +811,52 @@ public:
         }
     }
 
+    __aicore__ inline void AIV1PostProcessTile(LocalTensor<P> &hMixLocal, uint64_t offsetT,
+                                                uint64_t lenT, uint32_t invRmsOffset,
+                                                uint32_t hMixRowStride,
+                                                uint32_t xBufferBytes = kXInQueueBufferBytes,
+                                                uint32_t outBufferBytes = kOutQueueBufferBytes)
+    {
+        uint64_t outputOffset = globalOffsetM_ + offsetT;
+        LocalTensor<P> hResOutLocal;
+        if constexpr (RESI_MODE == MHC_PRE_HAS_RESI) {
+            hResOutLocal = outQueue_.template AllocTensor<P>();
+        }
+
+        matmulRes_ = hMixLocal;
+        if (N_ == kSupportedN4) {
+            MhcPreVFPostSegments<P, kSupportedN4, RESI_MODE == MHC_PRE_HAS_RESI>(
+                hPreBuff_, hPostBuff_, hResOutLocal, matmulRes_, invRmsUb_, alphaInUb_, biasInUb_,
+                static_cast<uint16_t>(lenT), invRmsOffset, hMixRowStride);
+        } else if (N_ == kSupportedN6) {
+            MhcPreVFPostSegments<P, kSupportedN6, RESI_MODE == MHC_PRE_HAS_RESI>(
+                hPreBuff_, hPostBuff_, hResOutLocal, matmulRes_, invRmsUb_, alphaInUb_, biasInUb_,
+                static_cast<uint16_t>(lenT), invRmsOffset, hMixRowStride);
+        } else {
+            MhcPreVFPostSegments<P, kSupportedN8, RESI_MODE == MHC_PRE_HAS_RESI>(
+                hPreBuff_, hPostBuff_, hResOutLocal, matmulRes_, invRmsUb_, alphaInUb_, biasInUb_,
+                static_cast<uint16_t>(lenT), invRmsOffset, hMixRowStride);
+        }
+        PipeBarrier<PIPE_V>();
+
+        if constexpr (RESI_MODE == MHC_PRE_HAS_RESI) {
+            outQueue_.EnQue(hResOutLocal);
+            hResOutLocal = outQueue_.template DeQue<P>();
+            DataCopyExtParams copyParams;
+            copyParams.blockCount = 1U;
+            copyParams.blockLen = static_cast<uint32_t>(lenT * N_ * N_ * sizeof(P));
+            copyParams.srcStride = 0U;
+            copyParams.dstStride = 0U;
+            DataCopyPad(hResGm_[outputOffset * N_ * N_], hResOutLocal, copyParams);
+            outQueue_.FreeTensor(hResOutLocal);
+        }
+
+        AIV1ProcessHPost(offsetT, lenT);
+        AIV1ProcessHPre(offsetT, lenT);
+        AIV1ProcessHInBatched(offsetT, lenT, xBufferBytes, outBufferBytes);
+        xInQueue_.FreeTensor(hMixLocal);
+    }
+
 private:
     template <class U, class V, int8_t MODE>
     friend class MhcPreSplitBS;

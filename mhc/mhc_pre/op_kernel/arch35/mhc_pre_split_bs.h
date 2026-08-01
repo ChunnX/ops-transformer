@@ -231,57 +231,9 @@ private:
             uint64_t hMixOffset = (vector_.globalOffsetM_ + offsetT) * vector_.mnConfig_.n;
             vector_.HMixCopyIn(hMixOffset, lenT);
             LocalTensor<P> hMixLocal = vector_.xInQueue_.template DeQue<P>();
-            AIV1PrologueDirect(offsetT, lenT, localOffset, hMixLocal);
-            vector_.AIV1ProcessHPost(offsetT, lenT);
-            vector_.AIV1ProcessHPre(offsetT, lenT);
-            vector_.AIV1ProcessHInBatched(offsetT, lenT);
-            vector_.xInQueue_.FreeTensor(hMixLocal);
+            vector_.AIV1PostProcessTile(
+                hMixLocal, offsetT, lenT, static_cast<uint32_t>(localOffset), vector_.mnConfig_.n);
             localOffset += lenT;
-        }
-    }
-
-    __aicore__ inline void AIV1PrologueDirect(uint64_t offsetT, uint64_t lenT, uint64_t localOffset,
-                                               const LocalTensor<P> &hMixLocal)
-    {
-        uint64_t outputOffset = vector_.globalOffsetM_ + offsetT;
-        LocalTensor<P> hResOutLocal;
-        if constexpr (RESI_MODE == MHC_PRE_HAS_RESI) {
-            hResOutLocal = vector_.outQueue_.template AllocTensor<P>();
-        }
-
-        vector_.matmulRes_ = hMixLocal;
-        // HMixCopyIn reads compact rows from GM. Use the logical fusion width,
-        // not the aligned Fixpipe stride from the former direct L0C-to-UB path.
-        const uint32_t hMixRowStride = vector_.mnConfig_.n;
-
-        if (vector_.N_ == vector_.kSupportedN4) {
-            MhcPreVFPostSegments<P, 4U, RESI_MODE == MHC_PRE_HAS_RESI>(
-                vector_.hPreBuff_, vector_.hPostBuff_, hResOutLocal, vector_.matmulRes_,
-                vector_.invRmsUb_, vector_.alphaInUb_, vector_.biasInUb_, static_cast<uint16_t>(lenT),
-                static_cast<uint32_t>(localOffset), hMixRowStride);
-        } else if (vector_.N_ == vector_.kSupportedN6) {
-            MhcPreVFPostSegments<P, 6U, RESI_MODE == MHC_PRE_HAS_RESI>(
-                vector_.hPreBuff_, vector_.hPostBuff_, hResOutLocal, vector_.matmulRes_,
-                vector_.invRmsUb_, vector_.alphaInUb_, vector_.biasInUb_, static_cast<uint16_t>(lenT),
-                static_cast<uint32_t>(localOffset), hMixRowStride);
-        } else {
-            MhcPreVFPostSegments<P, 8U, RESI_MODE == MHC_PRE_HAS_RESI>(
-                vector_.hPreBuff_, vector_.hPostBuff_, hResOutLocal, vector_.matmulRes_,
-                vector_.invRmsUb_, vector_.alphaInUb_, vector_.biasInUb_, static_cast<uint16_t>(lenT),
-                static_cast<uint32_t>(localOffset), hMixRowStride);
-        }
-        PipeBarrier<PIPE_V>();
-
-        if constexpr (RESI_MODE == MHC_PRE_HAS_RESI) {
-            vector_.outQueue_.EnQue(hResOutLocal);
-            hResOutLocal = vector_.outQueue_.template DeQue<P>();
-            DataCopyExtParams copyParams;
-            copyParams.blockCount = 1;
-            copyParams.blockLen = static_cast<uint32_t>(lenT * vector_.N_ * vector_.N_ * sizeof(P));
-            copyParams.srcStride = 0;
-            copyParams.dstStride = 0;
-            DataCopyPad(vector_.hResGm_[outputOffset * vector_.N_ * vector_.N_], hResOutLocal, copyParams);
-            vector_.outQueue_.FreeTensor(hResOutLocal);
         }
     }
 
