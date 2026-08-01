@@ -601,6 +601,7 @@ public:
                 ScatterBlkUpdateV(vCacheRowOffset, ubIdx, tmpFactor);
             }
 
+            AscendC::PipeBarrier<PIPE_V>();
             inQueueX.FreeTensor(xLocal);
             inQueueGamma.FreeTensor(gammaLocal);
             outQueue.FreeTensor(vOutLocal);
@@ -744,6 +745,7 @@ public:
                 ScatterBlkUpdateV(vCacheRowOffset, ubIdx, tmpFactor);
             }
 
+            AscendC::PipeBarrier<PIPE_V>();
             inQueueX.FreeTensor(xLocal);
             inQueueGamma.FreeTensor(gammaLocal);
             outQueue.FreeTensor(vOutLocal);
@@ -898,6 +900,7 @@ public:
                 ScatterBlkUpdateV(vCacheRowOffset, ubIdx, tmpFactor);
             }
 
+            AscendC::PipeBarrier<PIPE_V>();
             inQueueX.FreeTensor(xLocal);
             inQueueGamma.FreeTensor(gammaLocal);
             outQueue.FreeTensor(vOutLocal);
@@ -1146,6 +1149,7 @@ public:
                 ScatterBlkUpdateV(vCacheRowOffset, ubIdx, tmpFactor);
             }
 
+            AscendC::PipeBarrier<PIPE_V>();
             inQueueX.FreeTensor(xLocal);
             inQueueGamma.FreeTensor(gammaLocal);
             outQueue.FreeTensor(vOutLocal);
@@ -1616,6 +1620,7 @@ public:
                 ScatterBlkUpdateK(kCacheRowOffset, ubIdx, tmpFactor / 2);
             }
 
+            AscendC::PipeBarrier<PIPE_V>();
             outQueue.FreeTensor(kOutLocal);
             inQueueCosSin.FreeTensor(cosLocalPart1);
             kScaleOffsetQueue.FreeTensor(kScaleLocalPart1);
@@ -1855,6 +1860,7 @@ public:
                 ScatterBlkUpdateK(kCacheRowOffset, ubIdx, tmpFactor / 2);
             }
 
+            AscendC::PipeBarrier<PIPE_V>();
             outQueue.FreeTensor(kQuantLocal);
             inQueueCosSin.FreeTensor(cosLocalPart1);
             kScaleOffsetQueue.FreeTensor(kScaleLocalPart1);
@@ -2184,6 +2190,7 @@ public:
                 ScatterBlkUpdateK(kCacheRowOffset, ubIdx, tmpFactor / 2);
             }
 
+            AscendC::PipeBarrier<PIPE_V>();
             outQueue.FreeTensor(kQuantLocal);
             inQueueCosSin.FreeTensor(cosLocalPart1);
             kScaleOffsetQueue.FreeTensor(kScaleLocalPart1);
@@ -2518,6 +2525,7 @@ public:
                 ScatterBlkUpdateK(kCacheRowOffset, ubIdx, tmpFactor / 2);
             }
 
+            AscendC::PipeBarrier<PIPE_V>();
             outQueue.FreeTensor(kOutLocal);
             inQueueCosSin.FreeTensor(cosLocalPart1);
             kScaleOffsetQueue.FreeTensor(kScaleLocalPart1);
