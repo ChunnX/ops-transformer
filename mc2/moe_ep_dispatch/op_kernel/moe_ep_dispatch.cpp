@@ -32,11 +32,9 @@ template <bool DoCpuSync, bool IsCached, bool IsTopkWeights, bool IsMxQuant, uin
 __global__ __aicore__ void moe_ep_dispatch(GM_ADDR context, GM_ADDR x, GM_ADDR topkIdx, GM_ADDR topkWeights,
                                            GM_ADDR scales, GM_ADDR cachedSlotIdx, GM_ADDR cachedRouteCount,
                                            GM_ADDR cachedRouteDstScaleout, GM_ADDR cachedRouteScaleoutSlot,
-                                           GM_ADDR cachedRouteScaleupMask, GM_ADDR cachedRouteScaleupSlot,
                                            GM_ADDR numRecvPerRank, GM_ADDR numRecvPerExpert,
                                            GM_ADDR dstBufferSlotIdx, GM_ADDR routeCount, GM_ADDR routeDstScaleout,
-                                           GM_ADDR routeScaleoutSlot, GM_ADDR routeScaleupMask,
-                                           GM_ADDR routeScaleupSlot, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+                                           GM_ADDR routeScaleoutSlot, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeEpDispatchTilingData);
 
@@ -48,9 +46,8 @@ __global__ __aicore__ void moe_ep_dispatch(GM_ADDR context, GM_ADDR x, GM_ADDR t
         MoeEpDispatchHybridImpl::MoeEpDispatchHybrid<DTYPE_X, ScalesType, DoCpuSync, IsCached, IsTopkWeights,
                                                      NetworkMode> op;
         op.Init(context, x, topkIdx, topkWeights, scales, cachedSlotIdx, cachedRouteCount, cachedRouteDstScaleout,
-                cachedRouteScaleoutSlot, cachedRouteScaleupMask, cachedRouteScaleupSlot, numRecvPerRank,
-                numRecvPerExpert, dstBufferSlotIdx, routeCount, routeDstScaleout, routeScaleoutSlot, routeScaleupMask,
-                routeScaleupSlot, workspaceGM, &pipe, &tilingData);
+                cachedRouteScaleoutSlot, numRecvPerRank, numRecvPerExpert, dstBufferSlotIdx, routeCount,
+                routeDstScaleout, routeScaleoutSlot, workspaceGM, &pipe, &tilingData);
         op.Process();
     } else {
         MoeEpDispatch<DTYPE_X, ScalesType, DoCpuSync, IsCached, IsTopkWeights, NetworkMode> op;

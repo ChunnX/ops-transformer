@@ -31,8 +31,6 @@ struct MoeEpDispatchEpilogueInfo {
     uint32_t networkMode = 0;
     uint32_t rankSizePerServer = 1;
     uint32_t numScaleoutRanks = 1;
-    uint32_t scaleoutMaskWordCount = 1;
-    uint32_t scaleoutSlotAlignedBytes = 0;
     uint64_t totalUbSize = 0;
     uint64_t winDataOffset = 0; // Win Data Offset
     uint64_t slotWinStateOffset = 0;    // slot state offset
