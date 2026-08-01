@@ -59,7 +59,7 @@ __simd_vf__ inline void InverseAIVVF(__ubuf__ float *attnUb, __ubuf__ float *inv
         uint32_t validRows = inverseVecLen - i;
 
         RegTensor<float> v_x;
-        Load<float>(v_x, inverseRes + offset + curI * chunkSize);
+        LoadAlign<float>(v_x, inverseRes + offset + curI * chunkSize);
 
         for (uint32_t r = 0; r < validRows; ++r) {
             RegTensor<float> v_col;
@@ -67,20 +67,20 @@ __simd_vf__ inline void InverseAIVVF(__ubuf__ float *attnUb, __ubuf__ float *inv
                 attnUb + offset + (i + r) * chunkSize + curI);
 
             RegTensor<float> v_y;
-            Load<float>(v_y, yLocalUb + (i + r) * inverseVecLen);
+            LoadAlign<float>(v_y, yLocalUb + (i + r) * inverseVecLen);
 
             MulAddDst<float, MaskMergeMode::ZEROING>(v_y, v_col, v_x, preg_32);
-            Store<float>(yLocalUb + (i + r) * inverseVecLen, v_y, inverseVecLen);
+            StoreAlign<float, StoreDist::DIST_NORM_B32>(yLocalUb + (i + r) * inverseVecLen, v_y, preg_32);
         }
 
         RegTensor<float> v_yFinal;
-        Load<float>(v_yFinal, yLocalUb + i * inverseVecLen);
+        LoadAlign<float>(v_yFinal, yLocalUb + i * inverseVecLen);
 
         RegTensor<float> v_ei;
-        Load<float>(v_ei, eiMatrixUb + i * inverseVecLen);
+        LoadAlign<float>(v_ei, eiMatrixUb + i * inverseVecLen);
 
         Sub<float, MaskMergeMode::ZEROING>(v_ei, v_ei, v_yFinal, preg_32);
-        Store<float>(inverseRes + offset + i * chunkSize, v_ei, inverseVecLen);
+        StoreAlign<float, StoreDist::DIST_NORM_B32>(inverseRes + offset + i * chunkSize, v_ei, preg_32);
     }
 }
 #endif
