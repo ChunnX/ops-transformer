@@ -193,11 +193,16 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::Process()
         if (vector_.coreIdx_ < tBlockNum) {
             vector_.globalOffsetM_ = vector_.coreIdx_ * vector_.chunkTSize_;
             V0Prologue(vector_.coreIdx_, tBlockNum);
-            AIV1Process(vector_.coreIdx_, tBlockNum);
         } else {
             AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_V0toV0);
             AscendC::CrossCoreWaitFlag(SYNC_V0toV0);
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNC_V0toC);
+        }
+        // Every launched AIV drains its paired AIC completion token, including
+        // idle cores and the zero-row subblock of an odd M tile.
+        AscendC::CrossCoreWaitFlag(SYNC_CtoV1);
+        if (vector_.coreIdx_ < tBlockNum) {
+            AIV1Process(vector_.coreIdx_, tBlockNum);
         }
     }
 
@@ -446,7 +451,6 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::AIV1Process(uint64_t curB
     if (vector_.vectorOffset_.singleCoreM == 0) { // uint64_t类型永远不会小于0
         return;
     }
-    AscendC::CrossCoreWaitFlag(SYNC_CtoV1);
     uint64_t lenT = 0;
     uint64_t singleCoreOffset = 0;
     for (int offsetT = vector_.vectorOffset_.offsetMStart; offsetT < vector_.vectorOffset_.offsetMEnd; offsetT += V1_BASE_T) {
