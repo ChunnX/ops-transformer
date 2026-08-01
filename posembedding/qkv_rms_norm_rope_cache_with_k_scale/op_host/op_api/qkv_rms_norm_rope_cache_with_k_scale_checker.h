@@ -630,7 +630,12 @@ private:
             return ACLNN_ERR_PARAM_INVALID;
         }
 
-        return CheckExactShape("vScaleOptional", params_.vScaleOptional, {nv}, "vScaleOptional must have shape [Nv]");
+        if (IsMropeScene()) {
+            return CheckExactShape("vScaleOptional", params_.vScaleOptional, {nv, d},
+                                   "vScaleOptional must have shape [Nv, D] in M-RoPE scene");
+        }
+        return CheckExactShape("vScaleOptional", params_.vScaleOptional, {nv},
+                               "vScaleOptional must have shape [Nv] in RoPE scene");
     }
 
     aclnnStatus CheckCacheShapes(int64_t nk, int64_t nv, int64_t d) const

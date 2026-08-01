@@ -202,13 +202,23 @@
 
   **6. V缩放、量化与Cache写回**
 
-  令$\beta_n=\mathrm{vScaleOptional}_n$，V分支输出为
+  RoPE场景按head缩放，M-RoPE场景按head和通道缩放。令
+
+  $$
+  \beta_{n,d}=
+  \begin{cases}
+  \mathrm{vScaleOptional}_n, & \text{RoPE},\\
+  \mathrm{vScaleOptional}_{n,d}, & \text{M-RoPE},
+  \end{cases}
+  $$
+
+  则V分支输出为
 
   $$
   \widehat V_{u,n,d}
   =
   \operatorname{cast}_{\mathrm{FP8\ E4M3FN}}
-  \!\left(V_{u,n,d}\beta_n\right).
+  \!\left(V_{u,n,d}\beta_{n,d}\right).
   $$
 
   对token $u$，令$z_u=\mathrm{slotMapping}_u$，$B_{\mathrm{cache}}$表示Cache的`BlockSize`，则写回block和block内偏移为
@@ -417,7 +427,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td><ul><li>接口合同要求非空Tensor。</li><li>用于V分支FP8量化前缩放。</li></ul></td>
       <td>FLOAT</td>
       <td>ND</td>
-      <td><code>[Nv]</code></td>
+      <td>RoPE：<code>[Nv]</code><br>M-RoPE：<code>[Nv,D]</code></td>
       <td>×</td>
     </tr>
     <tr>
@@ -642,12 +652,13 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
 
   本接口不提供独立的场景属性，而是根据两组位置输入的有效presence确定场景。空`mropeSectionOptional`与未传入等价，只有非空数组才表示M-RoPE属性存在。每组位置输入必须同时存在或同时缺席，两组不能同时存在或同时缺席。`qOut`的数据类型由调用方构造的`qOut` Tensor决定，ACLNN接口不单独接收输出dtype参数。
 
-  两个场景均要求`D=128`、`0<Nq<=64`、`Nq=8*Nk`且`Nk=Nv`。`rotationOptional`和`vScaleOptional`在接口合同中均须传入：Q/K在位置编码后共享右乘`rotationOptional[D,D]`；V按head乘`vScaleOptional[Nv]`后转换为FP8 E4M3FN。三个Cache Tensor均为输入输出别名，只更新`slotMapping`指定的slot，其余位置保持原值。
+  两个场景均要求`D=128`、`0<Nq<=64`、`Nq=8*Nk`且`Nk=Nv`。`rotationOptional`和`vScaleOptional`在接口合同中均须传入：Q/K在位置编码后共享右乘`rotationOptional[D,D]`；V在RoPE场景按head乘`vScaleOptional[Nv]`，在M-RoPE场景按head和通道乘`vScaleOptional[Nv,D]`，随后转换为FP8 E4M3FN。三个Cache Tensor均为输入输出别名，只更新`slotMapping`指定的slot，其余位置保持原值。
 
 - 确定性说明：aclnnQkvRmsNormRopeCacheWithKScale默认确定性实现。
 - 输入shape限制：
   - 仅支持`D=128`。
   - `headNums=[Nq,Nk,Nv]`必须满足`0<Nq<=64`、`Nq=8*Nk`、`Nk=Nv`。
+  - `vScaleOptional`在RoPE场景的shape必须为`[Nv]`，在M-RoPE场景的shape必须为`[Nv,D]`。
   - `layoutQkv`控制`qkv`的N/T轴布局，默认值为`"TND"`；`layoutQOut`控制`qOut`和`qScaleOptional`的N/T轴布局，默认值为`"NTD"`：
     - `layoutQkv="TND"`，`layoutQOut="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`qOut=[T, Nq, D]`，`qScaleOptional=[T, Nq]`。
     - `layoutQkv="TND"`，`layoutQOut="NTD"`：`qkv=[T, Nq+Nk+Nv, D]`，`qOut=[Nq, T, D]`，`qScaleOptional=[Nq, T]`。

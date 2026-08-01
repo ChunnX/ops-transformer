@@ -142,10 +142,14 @@
 
   且不产生scale。各场景对应的目标类型和量化开关统一列在“约束说明”，不属于量化公式本身。
 
-  V分支在两种场景中均按`v_scale`缩放并量化为FP8 E4M3FN：
+  V分支在两种场景中均按`v_scale`缩放并量化为FP8 E4M3FN。RoPE场景按head缩放，M-RoPE场景按head和通道缩放：
 
   $$
-  v_{fp8} = cast(v * v\_scale)
+  v_{fp8}[t,n,d] =
+  \begin{cases}
+  cast(v[t,n,d] * v\_scale[n]), & \text{RoPE},\\
+  cast(v[t,n,d] * v\_scale[n,d]), & \text{M-RoPE}.
+  \end{cases}
   $$
 
   Cache写回位置由`slot_mapping`决定：
@@ -230,7 +234,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
 | seq_lens | Tensor | 必选（位置参数） | RoPE场景位置源之一，表示每个batch追加本次token后的实际序列长度；RoPE场景必须与`query_start_loc`同时传入有效Tensor，M-RoPE场景不可省略该位置且必须显式传`None`。 | torch.int32 | `[Batch]` |
 | head_nums | List[int] | 必选 | Q/K/V头数数组，必须按`[Nq,Nk,Nv]`传入。 | int | 长度为3 |
 | rotation | Optional[Tensor] | 可选 | Q/K共享矩阵乘权重。默认值为`None`，但完整场景合同要求传入有效Tensor。 | torch.bfloat16 | `[D,D]` |
-| v_scale | Optional[Tensor] | 可选 | V分支量化缩放因子。默认值为`None`，但完整场景合同要求传入有效Tensor。 | torch.float32 | `[Nv]` |
+| v_scale | Optional[Tensor] | 可选 | V分支量化缩放因子。默认值为`None`，但完整场景合同要求传入有效Tensor。 | torch.float32 | RoPE：`[Nv]`；M-RoPE：`[Nv,D]` |
 | layout_qkv | Optional[str] | 可选 | `qkv`的N/T轴布局标识，默认值为`"TND"`；传入`None`或空字符串时按默认值处理。大小写敏感，仅支持`"TND"`和`"NTD"`。 | str | - |
 | layout_q_out | Optional[str] | 可选 | `q_out`和存在时的`q_scale`的N/T轴布局标识，默认值为`"NTD"`；传入`None`或空字符串时按默认值处理。大小写敏感，仅支持`"TND"`和`"NTD"`。 | str | - |
 | epsilon | float | 可选 | RMSNorm防除零参数，默认值为`1e-6`。 | float | - |
@@ -272,6 +276,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
   | q_scale | FP32 Tensor | None |
   | k_cache dtype | FP8 E4M3FN | INT8 |
   | v_cache dtype | FP8 E4M3FN | FP8 E4M3FN |
+  | v_scale shape | `[Nv]` | `[Nv,D]` |
   | layout_qkv -> layout_q_out | NTD->NTD、TND->TND、TND->NTD | 仅TND->TND |
 
 - 仅支持`D=128`，`head_nums=[Nq,Nk,Nv]`必须满足`0<Nq<=64`、`Nq=8*Nk`、`Nk=Nv`。
@@ -358,7 +363,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
   v_cache = torch.empty(block_num, Nv, block_size, D, device="npu", dtype=torch.float8_e4m3fn)
   k_scale_cache = torch.empty(block_num, Nk, block_size, 1, device="npu", dtype=torch.float32)
   rotation = torch.eye(D, device="npu", dtype=torch.bfloat16)
-  v_scale = torch.ones(Nv, device="npu", dtype=torch.float32)
+  v_scale = torch.ones(Nv, D, device="npu", dtype=torch.float32)
   mrope_position = torch.tensor(
       [[0, 1, 2], [3, 5, 8], [7, 4, 3], [7, 9, 6], [2, 6, 1]],
       device="npu",

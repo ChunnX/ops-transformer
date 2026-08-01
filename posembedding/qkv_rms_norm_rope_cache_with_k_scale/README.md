@@ -49,10 +49,14 @@
 
   其中`quant_max`为目标数据类型对应的量化上限。
 
-  V分支按`v_scale`缩放后量化：
+  V分支按`v_scale`缩放后量化。RoPE场景按head使用`v_scale[n]`，M-RoPE场景按head和通道使用`v_scale[n,d]`：
 
   $$
-  v_{fp8} = cast(v * v\_scale)
+  v_{fp8}[t,n,d] =
+  \begin{cases}
+  cast(v[t,n,d] * v\_scale[n]), & \text{RoPE},\\
+  cast(v[t,n,d] * v\_scale[n,d]), & \text{M-RoPE}.
+  \end{cases}
   $$
 
   Cache写回位置由`slot_mapping`决定：
@@ -88,7 +92,7 @@
 | query_start_loc | 可选输入 | RoPE场景当前调用内各batch token数的前缀和，shape为`[Batch+1]`；M-RoPE场景不传。 | INT32 | ND |
 | seq_lens | 可选输入 | RoPE场景每个batch追加当前token后的实际序列长度，shape为`[Batch]`；M-RoPE场景不传。 | INT32 | ND |
 | rotation | 可选输入 | Q/K共享矩阵乘权重，shape为`[D, D]`。当前不支持不传或空Tensor。 | BFLOAT16 | ND |
-| v_scale | 可选输入 | V分支量化缩放因子，shape为`[Nv]`。当前不支持不传或空Tensor。 | FLOAT | ND |
+| v_scale | 可选输入 | V分支量化缩放因子。RoPE场景shape为`[Nv]`，M-RoPE场景shape为`[Nv,D]`。当前不支持不传或空Tensor。 | FLOAT | ND |
 | mrope_position | 可选输入 | M-RoPE场景token-major位置索引，shape为`[T,3]`，三列依次为T/H/W；RoPE场景不传。 | INT32 | ND |
 | q_out | 输出 | Q输出。RoPE为FP8 E4M3FN，M-RoPE为BF16；RoPE按`layout_q_out`为`[T,Nq,D]`或`[Nq,T,D]`，M-RoPE固定`[T,Nq,D]`。 | FLOAT8_E4M3FN / BFLOAT16 | ND |
 | q_scale | 输出 | Q动态量化scale。RoPE场景返回FP32 scale；M-RoPE场景在ACLNN/Torch接口中分别为`nullptr`/`None`。 | FLOAT | ND |
@@ -109,6 +113,7 @@
   - M-RoPE场景必须同时传`mrope_position[T,3]`和非空`mrope_section=[t,h,w]`，不传`query_start_loc/seq_lens`；
     `q_quant_mode=NoQuant`、`q_out_dtype=BF16`、公开`q_scale=None`，K Cache为INT8，且仅支持
     `layout_qkv="TND"`、`layout_q_out="TND"`。两组位置输入不能同时存在或同时缺失。
+  - `v_scale`在RoPE场景的shape必须为`[Nv]`，在M-RoPE场景的shape必须为`[Nv,D]`。
   - M-RoPE的`mrope_section`长度必须为3，D128时三项取值范围依次为`[0,22]`、`[0,21]`、`[0,21]`；`mrope_position`必须为INT32、rank 2、shape `[T,3]`。
   - `layout_qkv`控制`qkv`的N/T轴布局，默认值为`"TND"`；`layout_q_out`控制`q_out`和`q_scale`的N/T轴布局，默认值为`"NTD"`：
     - `layout_qkv="TND"`，`layout_q_out="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`q_out=[T, Nq, D]`，`q_scale=[T, Nq]`。

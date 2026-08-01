@@ -363,12 +363,16 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateNonCacheShapeRa
     };
     const NonCacheRankRule rankRules[] = {
         {"qGamma", &input_.qGamma, 1},     {"kGamma", &input_.kGamma, 1}, {"slotMapping", &input_.slotMapping, 1},
-        {"rotation", &input_.rotation, 2}, {"vScale", &input_.vScale, 1},
+        {"rotation", &input_.rotation, 2},
     };
     for (const auto &rule : rankRules) {
         if (ValidateShapeRank(*rule.tensor, rule.tensorName, rule.expectedRank) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
+    }
+
+    if (ValidateShapeRank(input_.vScale, "vScale", ropeMode_ == RopeMode::MROPE ? 2U : 1U) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
     }
 
     return ge::GRAPH_SUCCESS;
@@ -440,6 +444,13 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateRotationAndScal
                     opName_, "vScale", Ops::Base::ToString(input_.vScale.shape).c_str(),
                     ("dim 0 must be equal to numVHeads " + std::to_string(input_.numVHeads)).c_str()),
                 return ge::GRAPH_FAILED);
+    if (ropeMode_ == RopeMode::MROPE) {
+        OP_CHECK_IF(static_cast<uint64_t>(input_.vScale.shape.GetDim(1)) != input_.headDim,
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName_, "vScale", Ops::Base::ToString(input_.vScale.shape).c_str(),
+                        ("dim 1 must be equal to headDim " + std::to_string(input_.headDim)).c_str()),
+                    return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 

@@ -283,7 +283,11 @@ private:
     {
         DataCopyGmToUb2D(gammaUb_, qGammaGm_, 1U, headDim_, headDim_);
         DataCopyGmToUb2D(gammaUb_[QKV_K_SCALE_GAMMA_UB_ELEMENTS / 2U], kGammaGm_, 1U, headDim_, headDim_);
-        DataCopyGmToUb2D(vScaleUb_, vScaleGm_, 1U, kvHeadNum_, kvHeadNum_);
+        if constexpr (IS_MROPE) {
+            DataCopyGmToUb2D(vScaleUb_, vScaleGm_, 1U, kvHeadNum_ * headDim_, kvHeadNum_ * headDim_);
+        } else {
+            DataCopyGmToUb2D(vScaleUb_, vScaleGm_, 1U, kvHeadNum_, kvHeadNum_);
+        }
         SetAndWaitMte2ToVInputReady();
     }
 
@@ -445,7 +449,7 @@ private:
     {
         // BindLocalTensors selects the compact or generic reserve layout at
         // compile time.  Reusing that tensor is important: rebuilding it from
-        // the generic offset would move compact mode outside its 36 KiB
+        // the generic offset would move compact mode outside its 40 KiB
         // reserve and alias the neighboring slots.
         const LocalTensor<uint32_t> gatherIndex = mropeGatherIndexUb_;
         for (uint32_t lane = 0U; lane < QKV_K_SCALE_D128_HALF_SIZE; ++lane) {
@@ -556,10 +560,17 @@ private:
             inputHeadStride = static_cast<uint32_t>(tile.aivTokenSize) * QKV_K_SCALE_D128_FULL_SIZE;
         }
         const uint32_t vInputOffset = static_cast<uint32_t>(vInputHeadBase) * inputHeadStride;
-        AscendC::VF_CALL<VScaleFp8D128ToNtdVfImpl>(
-            (__ubuf__ bfloat16_t *)input[vInputOffset].GetPhyAddr(), (__ubuf__ float *)vScale.GetPhyAddr(),
-            (__ubuf__ fp8_e4m3fn_t *)vOut.GetPhyAddr(), static_cast<uint16_t>(tile.aivTokenSize),
-            static_cast<uint16_t>(tile.vHeadSize), inputTokenStride, inputHeadStride);
+        if constexpr (IS_MROPE) {
+            AscendC::VF_CALL<VScalePerChannelFp8D128ToNtdVfImpl>(
+                (__ubuf__ bfloat16_t *)input[vInputOffset].GetPhyAddr(), (__ubuf__ float *)vScale.GetPhyAddr(),
+                (__ubuf__ fp8_e4m3fn_t *)vOut.GetPhyAddr(), static_cast<uint16_t>(tile.aivTokenSize),
+                static_cast<uint16_t>(tile.vHeadSize), inputTokenStride, inputHeadStride);
+        } else {
+            AscendC::VF_CALL<VScaleFp8D128ToNtdVfImpl>(
+                (__ubuf__ bfloat16_t *)input[vInputOffset].GetPhyAddr(), (__ubuf__ float *)vScale.GetPhyAddr(),
+                (__ubuf__ fp8_e4m3fn_t *)vOut.GetPhyAddr(), static_cast<uint16_t>(tile.aivTokenSize),
+                static_cast<uint16_t>(tile.vHeadSize), inputTokenStride, inputHeadStride);
+        }
     }
 
     __aicore__ inline void ScatterVCache(const TileParam &tile, uint32_t vOutBufferId)
@@ -743,13 +754,13 @@ private:
 
     __aicore__ inline void BindMropeLocalTensors()
     {
-        // Compact M-RoPE UB, absolute byte ranges (222 KiB used):
+        // Compact M-RoPE UB, absolute byte ranges (226 KiB target):
         // 0x00000-0x14000 input 4x20K | 0x14000-0x28000 output 2x40K (basic block)
-        // 0x28000-0x2B800 K rotation 2x7K (basic block) | 0x2B800-0x34800 reserve 36K
-        // 0x34800-0x37800 persistent position window 12K
-        // Reserve: gamma@0x0000, V-scale@0x0400, Q/K index@0x0440, gather@0x0640,
-        // slot (2 x 0x20) @0x0900, cos/sin (4 x 0x1800) @0x0A00, V-out (2 x 0x700) @0x6A00,
-        // K-quant (2 x 0x900) @0x7800; 0x0800 position DB and 0x8A00-0x9000 are unused.
+        // 0x28000-0x2B800 K rotation 2x7K (basic block) | 0x2B800-0x35800 reserve 40K
+        // 0x35800-0x38800 persistent position window 12K
+        // Reserve: gamma@0x0000, V-scale@0x0400 (4K), Q/K index@0x1400, gather@0x1600,
+        // position@0x1800, slot@0x1900, cos/sin (4 x 0x1800) @0x1A00, V-out (2 x 0x700) @0x7A00,
+        // K-quant (2 x 0x900) @0x8800; 0x9A00-0xA000 is alignment slack.
         inputPoolUb_ = LocalTensor<bfloat16_t>(TPosition::LCM, QKV_K_SCALE_MROPE_COMPACT_INPUT_POOL_OFFSET,
                                                QKV_K_SCALE_INPUT_POOL_ELEMENTS);
         gammaUb_ = LocalTensor<float>(
