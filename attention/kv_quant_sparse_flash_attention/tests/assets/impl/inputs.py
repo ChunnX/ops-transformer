@@ -106,7 +106,7 @@ class KvQuantSparseFlashAttentionInputAdapter:
         }
         if mismatches:
             raise ValueError(
-                "QSFA API attributes differ from pytest_params: "
+                "QSFA API attributes differ from explicit pytest fields: "
                 f"{mismatches}"
             )
 
@@ -117,12 +117,12 @@ class KvQuantSparseFlashAttentionInputAdapter:
                  sparse_block_size=1, layout_query="BSND", layout_kv="BSND",
                  sparse_mode=3, attention_mode=0, quant_scale_repo_mode=1,
                  tile_size=128, rope_head_dim=64, testcase_name=None,
-                 pytest_params=None, **kwargs):
+                 **kwargs):
         """Generate final packed API tensors and the CPU golden through pytest."""
         golden_module = self.golden_module()
         params, pytest_golden = (
             golden_module.KvQuantSparseFlashAttentionPytestAdapter.convert_params(
-                pytest_params, testcase_name
+                kwargs, testcase_name
             )
         )
         if key_dequant_scale is not None or value_dequant_scale is not None:
@@ -176,7 +176,7 @@ def generate_qsfa_inputs(query, key, value, sparse_indices, scale_value,
                          sparse_block_size=1, layout_query="BSND", layout_kv="BSND",
                          sparse_mode=3, attention_mode=0, quant_scale_repo_mode=1,
                          tile_size=128, rope_head_dim=64, testcase_name=None,
-                         pytest_params=None, **kwargs):
+                         **kwargs):
     return INPUT_ADAPTER.generate(
         query,
         key,
@@ -199,7 +199,6 @@ def generate_qsfa_inputs(query, key, value, sparse_indices, scale_value,
         tile_size=tile_size,
         rope_head_dim=rope_head_dim,
         testcase_name=testcase_name,
-        pytest_params=pytest_params,
         **kwargs,
     )
 

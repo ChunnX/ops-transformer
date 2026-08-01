@@ -26,6 +26,21 @@ import torch
 class LightningIndexerInputAdapter:
     """Translate a TTK case and reuse the canonical pytest case generator."""
 
+    PYTEST_FIELDS = (
+        "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size",
+        "q_head_num", "k_head_num", "head_dim", "block_size", "block_num",
+        "qk_dtype", "weight_dtype", "actual_seq_dtype", "act_seq_q",
+        "act_seq_k", "layout_query", "layout_key", "sparse_count",
+        "sparse_mode", "query_datarange", "key_datarange",
+        "weights_datarange", "return_value",
+    )
+
+    INTEGER_FIELDS = (
+        "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size",
+        "q_head_num", "k_head_num", "head_dim", "block_size", "block_num",
+        "sparse_count", "sparse_mode",
+    )
+
     @staticmethod
     def module_load_error(stage, path, exc):
         return RuntimeError(
@@ -96,81 +111,100 @@ class LightningIndexerInputAdapter:
         return [int(item) for item in value]
 
     @staticmethod
-    def prefix_lengths(value):
-        if not value:
-            return []
-        return [int(value[0])] + [
-            int(value[index]) - int(value[index - 1])
-            for index in range(1, len(value))
-        ]
-
-    @staticmethod
-    def data_range(input_ranges, index, default=(-1, 1)):
-        if input_ranges and index < len(input_ranges) and input_ranges[index] is not None:
-            return list(input_ranges[index])
-        return list(default)
+    def torch_dtype(value, field):
+        if isinstance(value, torch.dtype):
+            return value
+        normalized = str(value).strip().lower().removeprefix("torch.")
+        mapping = {
+            "fp16": torch.float16,
+            "float16": torch.float16,
+            "bf16": torch.bfloat16,
+            "bfloat16": torch.bfloat16,
+            "fp32": torch.float32,
+            "float32": torch.float32,
+            "int32": torch.int32,
+        }
+        if normalized not in mapping:
+            raise ValueError(f"unsupported LightningIndexer {field}: {value!r}")
+        return mapping[normalized]
 
     def build_case_params(self, query, key, weights,
                           actual_seq_lengths_query,
                           actual_seq_lengths_key,
                           layout_query, layout_key, kwargs):
-        act_q = self.list_value(
-            kwargs.get("actual_seq_lengths_query_values", actual_seq_lengths_query)
+        missing = [
+            f"pytest_{name}"
+            for name in self.PYTEST_FIELDS
+            if f"pytest_{name}" not in kwargs
+        ]
+        if missing:
+            raise ValueError(
+                f"LightningIndexer CSV is missing explicit pytest fields: {missing}"
+            )
+        params = {
+            name: kwargs[f"pytest_{name}"]
+            for name in self.PYTEST_FIELDS
+        }
+        for name in self.INTEGER_FIELDS:
+            if params[name] is not None:
+                params[name] = int(params[name])
+        params["qk_dtype"] = self.torch_dtype(params["qk_dtype"], "qk_dtype")
+        params["weight_dtype"] = self.torch_dtype(
+            params["weight_dtype"], "weight_dtype"
         )
-        act_k = self.list_value(
-            kwargs.get("actual_seq_lengths_key_values", actual_seq_lengths_key)
+        params["actual_seq_dtype"] = self.torch_dtype(
+            params["actual_seq_dtype"], "actual_seq_dtype"
         )
+        params["act_seq_q"] = self.list_value(params["act_seq_q"])
+        params["act_seq_k"] = self.list_value(params["act_seq_k"])
+        for name in ("query_datarange", "key_datarange", "weights_datarange"):
+            value = params[name]
+            if not isinstance(value, (list, tuple)) or len(value) != 2:
+                raise ValueError(f"LightningIndexer {name} must contain two values")
+            params[name] = list(value)
+        params["return_value"] = bool(params["return_value"])
 
-        if layout_query == "BSND":
-            batch_size, q_seq, q_head_num, head_dim = map(int, query.shape)
-            q_t_size = sum(act_q) if act_q else batch_size * q_seq
-            act_q = act_q or [q_seq] * batch_size
-        elif layout_query == "TND":
-            q_t_size, q_head_num, head_dim = map(int, query.shape)
-            batch_size = len(act_q)
-            if not batch_size:
-                raise ValueError("TND LightningIndexer requires actual_seq_lengths_query_values")
-            q_seq = max(self.prefix_lengths(act_q), default=q_t_size)
-        else:
-            raise ValueError(f"unsupported LightningIndexer query layout: {layout_query}")
-
-        if layout_key == "BSND":
-            _, k_seq, k_head_num, _ = map(int, key.shape)
-            k_t_size = sum(act_k) if act_k else batch_size * k_seq
-            act_k = act_k or [k_seq] * batch_size
-            block_size = int(kwargs.get("block_size", 0))
-            block_num = int(kwargs.get("block_num", 0))
-        elif layout_key == "TND":
-            k_t_size, k_head_num, _ = map(int, key.shape)
-            if not act_k:
-                raise ValueError("TND LightningIndexer requires actual_seq_lengths_key_values")
-            k_seq = max(self.prefix_lengths(act_k), default=k_t_size)
-            block_size = int(kwargs.get("block_size", 0))
-            block_num = int(kwargs.get("block_num", 0))
-        elif layout_key == "PA_BSND":
-            block_num, block_size, k_head_num, _ = map(int, key.shape)
-            if not act_k:
-                raise ValueError("PA_BSND LightningIndexer requires actual_seq_lengths_key_values")
-            k_seq = max(act_k)
-            k_t_size = sum(act_k)
-        else:
-            raise ValueError(f"unsupported LightningIndexer key layout: {layout_key}")
-
-        input_ranges = kwargs.get("input_ranges") or ()
-        actual_seq_dtype = (
-            actual_seq_lengths_query.dtype
-            if torch.is_tensor(actual_seq_lengths_query) else torch.int32
+        expected_api = {
+            "layout_query": layout_query,
+            "layout_key": layout_key,
+            "sparse_count": int(kwargs["sparse_count"]),
+            "sparse_mode": int(kwargs["sparse_mode"]),
+            "return_value": bool(kwargs["return_value"]),
+        }
+        mismatches = {
+            name: (params[name], expected)
+            for name, expected in expected_api.items()
+            if params[name] != expected
+        }
+        if mismatches:
+            raise ValueError(
+                f"LightningIndexer API attributes differ from pytest fields: {mismatches}"
+            )
+        expected_dtypes = (
+            (query, params["qk_dtype"], "query"),
+            (key, params["qk_dtype"], "key"),
+            (weights, params["weight_dtype"], "weights"),
+            (actual_seq_lengths_query, params["actual_seq_dtype"],
+             "actual_seq_lengths_query"),
+            (actual_seq_lengths_key, params["actual_seq_dtype"],
+             "actual_seq_lengths_key"),
         )
+        for tensor, expected_dtype, name in expected_dtypes:
+            if tensor is not None and tensor.dtype != expected_dtype:
+                raise ValueError(
+                    f"{name} dtype differs from pytest field: "
+                    f"TTK={tensor.dtype}, pytest={expected_dtype}"
+                )
         return (
-            batch_size, q_seq, k_seq, q_t_size, k_t_size,
-            q_head_num, k_head_num, head_dim, block_size, block_num,
-            query.dtype, weights.dtype, actual_seq_dtype, act_q, act_k,
-            layout_query, layout_key, int(kwargs.get("sparse_count", 2048)),
-            int(kwargs.get("sparse_mode", 3)),
-            self.data_range(input_ranges, 0),
-            self.data_range(input_ranges, 1),
-            self.data_range(input_ranges, 2),
-            bool(kwargs.get("return_value", False)),
+            params["batch_size"], params["q_seq"], params["k_seq"],
+            params["q_t_size"], params["k_t_size"], params["q_head_num"],
+            params["k_head_num"], params["head_dim"], params["block_size"],
+            params["block_num"], params["qk_dtype"], params["weight_dtype"],
+            params["actual_seq_dtype"], params["act_seq_q"],
+            params["act_seq_k"], params["layout_query"], params["layout_key"],
+            params["sparse_count"], params["sparse_mode"],
+            params["query_datarange"], params["key_datarange"],
+            params["weights_datarange"], params["return_value"],
         )
 
     @staticmethod
@@ -237,10 +271,10 @@ class LightningIndexerInputAdapter:
             raise ValueError("LightningIndexer compare context requires six tensor slots")
         query, key, weights, actual_q, actual_k, block_table = tensors[:6]
         attrs = dict(compare_context.attributes)
-        attrs["actual_seq_lengths_query_values"] = self.list_value(actual_q)
-        attrs["actual_seq_lengths_key_values"] = self.list_value(actual_k)
-        layout_query = attrs.get("layout_query", "BSND")
-        layout_key = attrs.get("layout_key", "BSND")
+        attrs["pytest_act_seq_q"] = self.list_value(actual_q)
+        attrs["pytest_act_seq_k"] = self.list_value(actual_k)
+        layout_query = attrs["layout_query"]
+        layout_key = attrs["layout_key"]
         params = self.build_case_params(
             query, key, weights, actual_q, actual_k,
             layout_query, layout_key, attrs,

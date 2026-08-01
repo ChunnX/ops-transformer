@@ -160,22 +160,40 @@ class KvQuantSparseFlashAttentionPytestAdapter:
         return mapping[normalized]
 
     @classmethod
-    def convert_params(cls, pytest_params, testcase_name):
-        if not isinstance(pytest_params, dict):
-            raise ValueError(
-                "QSFA CSV attributes must contain a pytest_params dictionary; "
-                "assets do not infer missing pytest case parameters from packed tensors"
-            )
-        missing = [name for name in cls.REQUIRED_PARAM_NAMES if name not in pytest_params]
+    def convert_params(cls, attributes, testcase_name):
+        if not isinstance(attributes, dict):
+            raise ValueError("QSFA input attributes must be a dictionary")
+        missing = [
+            f"pytest_{name}"
+            for name in cls.REQUIRED_PARAM_NAMES
+            if f"pytest_{name}" not in attributes
+        ]
         if missing:
-            raise ValueError(f"QSFA pytest_params is missing required fields: {missing}")
+            raise ValueError(
+                f"QSFA CSV is missing explicit pytest fields: {missing}"
+            )
+        pytest_params = {
+            name: copy.deepcopy(attributes.get(f"pytest_{name}"))
+            for name in cls.REQUIRED_PARAM_NAMES
+        }
+        for name in ("T1", "T2", "block_size", "block_num"):
+            key = f"pytest_{name}"
+            if key in attributes:
+                pytest_params[name] = copy.deepcopy(attributes[key])
+        for name in (
+            "range_query", "range_key", "range_query_rope", "range_key_rope",
+            "range_dequant_scale", "Testcase_Number",
+        ):
+            key = f"pytest_{name}"
+            if key in attributes:
+                pytest_params[name] = copy.deepcopy(attributes[key])
         if pytest_params["actual_seq_q"] is None or pytest_params["actual_seq_kv"] is None:
             raise ValueError(
                 "QSFA CSV must provide actual_seq_q and actual_seq_kv; "
                 "random sequence generation is not allowed during TTK conversion"
             )
 
-        combination = copy.deepcopy(pytest_params)
+        combination = pytest_params
         combination["q_type"] = cls.query_dtype(combination["q_type"])
         pytest_utils, pytest_golden = cls.load_modules()
         params = pytest_utils.convert_param_combination_to_cs_format(combination)
