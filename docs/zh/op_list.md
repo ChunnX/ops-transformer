@@ -1034,7 +1034,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllV通信，最后将接收的数据整合；当不存在TP域通信时，进行AlltoAllV通信，最后将接收的数据整合。expertScales非空时乘权重再相加，为空Tensor时直接相加。</td>
+    <td>当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllV通信，最后将接收的数据整合；当不存在TP域通信时，进行AlltoAllV通信，最后将接收的数据整合。Ascend 950DT可选择是否使能topK专家权重：expertScales非空时乘权重再相加，传空Tensor时直接相加；Atlas A3系列产品仅支持传入有效expertScales并进行加权聚合。</td>
   </tr>
   <tr>
     <td>mc2</td>
