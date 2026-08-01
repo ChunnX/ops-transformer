@@ -53,7 +53,6 @@ public:
                                                   uint32_t offsetM, uint32_t offsetNd);
     __aicore__ inline void V0Prologue(uint64_t curBlock, uint64_t tBlockNum);
     __aicore__ inline void AIV1Process(uint64_t curBlock, uint64_t tBlockNum);
-    __aicore__ inline void AIV1Prologue(uint64_t offsetT, uint64_t lenT, uint64_t singleCoreOffset);
     __aicore__ inline void HMixProcess(uint64_t offsetT, uint64_t lenT);
 
     MhcPreVectorCompute<T, P, RESI_MODE> vector_;
@@ -455,59 +454,13 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::AIV1Process(uint64_t curB
     uint64_t singleCoreOffset = 0;
     for (int offsetT = vector_.vectorOffset_.offsetMStart; offsetT < vector_.vectorOffset_.offsetMEnd; offsetT += V1_BASE_T) {
         lenT = V1_BASE_T < vector_.vectorOffset_.offsetMEnd - offsetT ? V1_BASE_T : vector_.vectorOffset_.offsetMEnd - offsetT;
-        AIV1Prologue(offsetT, lenT, singleCoreOffset);
-
-        vector_.AIV1ProcessHPost(offsetT, lenT);
-
-        vector_.AIV1ProcessHPre(offsetT, lenT);
-        vector_.AIV1ProcessHInBatched(offsetT, lenT, kXInQueueBufferBytes, kOutQueueBufferBytes);
+        HMixProcess(offsetT, lenT);
+        LocalTensor<P> hMixLocal = vector_.xInQueue_.template DeQue<P>();
+        vector_.AIV1PostProcessTile(
+            hMixLocal, offsetT, lenT, static_cast<uint32_t>(singleCoreOffset), vector_.mnConfig_.n,
+            kXInQueueBufferBytes, kOutQueueBufferBytes);
 
         singleCoreOffset += lenT;
-    }
-}
-
-template <class T, class P, int8_t RESI_MODE>
-__aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::AIV1Prologue(
-    uint64_t offsetT, uint64_t lenT, uint64_t singleCoreOffset)
-{
-    uint64_t offset = vector_.globalOffsetM_ + offsetT;
-    HMixProcess(offsetT, lenT);
-
-    vector_.matmulRes_ = vector_.xInQueue_.template DeQue<P>();
-    LocalTensor<P> hResOutLocal;
-    if constexpr (RESI_MODE == MHC_PRE_HAS_RESI) {
-        hResOutLocal = vector_.outQueue_.template AllocTensor<P>();
-    }
-
-    if (vector_.N_ == 4U) {
-        MhcPreVFPostSegments<P, 4U, RESI_MODE == MHC_PRE_HAS_RESI>(
-            vector_.hPreBuff_, vector_.hPostBuff_, hResOutLocal, vector_.matmulRes_, vector_.invRmsUb_,
-            vector_.alphaInUb_, vector_.biasInUb_, static_cast<uint16_t>(lenT),
-            static_cast<uint32_t>(singleCoreOffset), vector_.mnConfig_.n);
-    } else if (vector_.N_ == 6U) {
-        MhcPreVFPostSegments<P, 6U, RESI_MODE == MHC_PRE_HAS_RESI>(
-            vector_.hPreBuff_, vector_.hPostBuff_, hResOutLocal, vector_.matmulRes_, vector_.invRmsUb_,
-            vector_.alphaInUb_, vector_.biasInUb_, static_cast<uint16_t>(lenT),
-            static_cast<uint32_t>(singleCoreOffset), vector_.mnConfig_.n);
-    } else {
-        MhcPreVFPostSegments<P, 8U, RESI_MODE == MHC_PRE_HAS_RESI>(
-            vector_.hPreBuff_, vector_.hPostBuff_, hResOutLocal, vector_.matmulRes_, vector_.invRmsUb_,
-            vector_.alphaInUb_, vector_.biasInUb_, static_cast<uint16_t>(lenT),
-            static_cast<uint32_t>(singleCoreOffset), vector_.mnConfig_.n);
-    }
-    PipeBarrier<PIPE_V>();
-
-    if constexpr (RESI_MODE == MHC_PRE_HAS_RESI) {
-        vector_.outQueue_.EnQue(hResOutLocal);
-        hResOutLocal = vector_.outQueue_.template DeQue<P>();
-        DataCopyExtParams copyParams;
-        copyParams.blockCount = static_cast<uint16_t>(1);
-        copyParams.blockLen = uint32_t(lenT * vector_.N_ * vector_.N_ * sizeof(P));
-        copyParams.srcStride = uint32_t(0);
-        copyParams.dstStride = uint32_t(0);
-        DataCopyPad(vector_.hResGm_[offset * vector_.N_ * vector_.N_], hResOutLocal, copyParams);
-        vector_.outQueue_.FreeTensor(hResOutLocal);
-        vector_.xInQueue_.FreeTensor(vector_.matmulRes_);
     }
 }
 
