@@ -14,9 +14,8 @@ TilingData: batchSize, tokenSize, seqSize,       — 运行时参数
 当前状态: Phase 1 已实现, Phase 2/3 待实现
 """
 
-from __future__ import annotations
 from dataclasses import dataclass
-import torch, torch_npu
+
 import pypto_pro.language as pl
 from pypto_pro.runtime.tilingkey import TilingKeyField as tilingkey_field
 
