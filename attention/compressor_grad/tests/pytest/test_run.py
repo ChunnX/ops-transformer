@@ -11,6 +11,7 @@
 
 import sys
 import argparse
+import random
 from dataclasses import dataclass
 
 import torch
@@ -234,28 +235,120 @@ def npu_test(case, device):
     backend = NPUBackend(device_id=DEVICE_ID)
 
     # 构建前向所需的 state_cache 和 ape 输入
-    # cache_mode=1： state_cache shape = (block_num, block_size, 2*coff*D)
-    # cache_mode=2： state_cache shape = (B, token_size, 2*coff*D)
+    # state_cache: dtype 固定 fp32, shape = (block_num, block_size, 2*coff*D)
+    # block_num 计算参考 attention/compressor 正向算子：
+    #   compressor_golden.py:565-567  -> block_num = B * ceil(S_max / block_size)
+    #   S_max 因 BSH/TH 布局而异，参考 compressor_operator_single.py:62-85
+    #     BSH: S_max = max(start_pos) + S  (有 start_pos) 否则 S_max = S
+    #     TH : S_max = max(start_pos[i] + cu_seqlens[i+1] - cu_seqlens[i]) (有 start_pos)
+    #                       否则 max(cu_seqlens[i+1] - cu_seqlens[i])
+    #   cache_mode=2: block_num = B (每 batch 一个 block)
+    #                 参考 compressor_golden.py:608-616 (kv_state shape = (B, block_size, coff*D))
     cache_mode = case.get("cache_mode", 1)
     if cache_mode == 1:
         block_size = case.get("block_size", 128)
-        max_block_num_per_batch = ((seqSize - 1) // block_size) + 1
+        # S_max 计算因 BSH/TH 布局而异
+        if layoutId == 1:  # TH
+            cu_lens = case.get('seqlens_list_q')
+            if cu_lens is None:
+                # 与上方 cuNpu 构造保持一致：用 sqs (seqused_q) 累积和
+                if sqs:
+                    cu_lens = [0] + torch.tensor(sqs).cumsum(0).tolist()
+                else:
+                    cu_lens = [0] * (batchSize + 1)
+            if sps:
+                S_max = max(sps[i] + (cu_lens[i + 1] - cu_lens[i])
+                            for i in range(batchSize)) if batchSize > 0 else 0
+            else:
+                S_max = max((cu_lens[i + 1] - cu_lens[i])
+                            for i in range(batchSize)) if batchSize > 0 else 0
+        else:  # BSH
+            if sps:
+                S_max = max(sps) + seqSize
+            else:
+                S_max = seqSize
+        max_block_num_per_batch = (S_max + block_size - 1) // block_size
         block_num = batchSize * max_block_num_per_batch
         state_shape = (block_num, block_size, 2 * coff * headDim)
     else:
-        token_cache_size_ex = 2 * cmpRatio + seqSize - 1 if coff == 2 else cmpRatio + seqSize - 1
+        # cache_mode=2: block_num = B (每 batch 一个 block)
+        # block_size (第二维) 计算与正向 golden 一致：
+        #   compressor_golden.py:610
+        #   block_size = min((2*cmpRatio+S-1) if coff==2 else (cmpRatio+S-1), 1024)
+        #   其中 S 因布局而异 (TH 布局 S = max(seqused) 或 max(cu_seqlens 差))
+        # task 说明后两维正确, 仅补齐 1024 上限与 S 取值
+        if layoutId == 1:  # TH
+            if sqs:
+                S_for_bs = max(sqs)
+            elif seqlens_list_q is not None:
+                diffs = [seqlens_list_q[i + 1] - seqlens_list_q[i]
+                         for i in range(batchSize)]
+                S_for_bs = max(diffs) if diffs else 0
+            else:
+                S_for_bs = seqSize
+        else:  # BSH
+            S_for_bs = seqSize
+        token_cache_size_ex = min(
+            (2 * cmpRatio + S_for_bs - 1) if coff == 2 else (cmpRatio + S_for_bs - 1),
+            1024)
         state_shape = (batchSize, token_cache_size_ex, 2 * coff * headDim)
 
     state_cache_npu = torch.zeros(state_shape, device=device, dtype=torch.float32)
     ape_npu = torch.randn(torch.Size([cmpRatio, coff * headDim]), device=device, dtype=torch.float32)
 
+    # block_table 构造，与正向 golden 一致：
+    #   cache_mode=1: 参考 compressor_golden.py:565-600
+    #     block_table shape = (B, max_block_num_per_batch), dtype int32
+    #     需要按 start_pos/seqused 真实写入有效 block_id (1..block_num-1),
+    #     block_id=0 表示无效 block (read_state_page_cache 会报错、write 跳过)
+    #   cache_mode=2: 参考 compressor_golden.py:609
+    #     block_table shape = (B,), dtype int32, 值为 [0, B) 的排列
+    #     (每 batch 一个独立 block_id, 全 0 会导致多 batch 写同一行)
     block_table_npu = None
     if cache_mode == 1:
-        block_table_npu = torch.zeros(batchSize, max_block_num_per_batch,
-                                      device=device, dtype=torch.int32)
+        block_table = torch.zeros(batchSize, max_block_num_per_batch,
+                                  dtype=torch.int32)
+        if batchSize > 0 and totalValid > 0:
+            next_block_id = 1
+            for i in range(batchSize):
+                sp = sps[i] if sps else 0
+                if sqs:
+                    sq = sqs[i]
+                elif cuNpu is not None:
+                    sq = int(cuNpu[i + 1].item() - cuNpu[i].item())
+                else:
+                    sq = tokenSize if layoutId == 1 else tokenSize // batchSize
+                end_pos = sq
+                # 读取范围 (与 golden compressor_golden.py:572-583 一致)
+                cur_start = sp // cmpRatio * cmpRatio - cmpRatio
+                cur_end = sp // cmpRatio * cmpRatio + cmpRatio
+                if sp % cmpRatio == 0:
+                    cur_end = sp
+                cur_end = min(cur_end, sp + sq)
+                cur_start_block_id = (cur_start // block_size) if cur_start >= 0 else 0
+                cur_end_block_id = (cur_end - 1) // block_size
+                for j in range(cur_start_block_id, cur_end_block_id + 1):
+                    if next_block_id < block_num:
+                        block_table[i][j] = next_block_id
+                        next_block_id = next_block_id + 1
+                # 写入范围 (与 golden compressor_golden.py:589-600 一致)
+                next_start = (sp + end_pos) // cmpRatio * cmpRatio - cmpRatio
+                next_end = (sp + end_pos) // cmpRatio * cmpRatio + cmpRatio
+                if (sp + end_pos) % cmpRatio == 0:
+                    next_end = sp + end_pos
+                next_end = min(next_end, sp + end_pos)
+                next_start_block_id = (next_start // block_size) if next_start >= 0 else 0
+                next_end_block_id = (next_end - 1) // block_size
+                for j in range(next_start_block_id, next_end_block_id + 1):
+                    if next_block_id < block_num and block_table[i][j] == 0:
+                        block_table[i][j] = next_block_id
+                        next_block_id = next_block_id + 1
+        block_table_npu = block_table.to(device)
     else:
-        block_table_npu = torch.zeros(batchSize,
-                                      device=device, dtype=torch.int32)
+        # cache_mode=2: block_table = [0, B) 的排列，与正向 golden 一致
+        block_table_npu = torch.tensor(random.sample(list(range(batchSize)), batchSize),
+                                       device=device, dtype=torch.int32) if batchSize > 0 else \
+                          torch.zeros(0, device=device, dtype=torch.int32)
 
     if layoutId == 0:  # BSH
         x_npu_input = xNpu.view(batchSize, seqSize, hiddenSize)
