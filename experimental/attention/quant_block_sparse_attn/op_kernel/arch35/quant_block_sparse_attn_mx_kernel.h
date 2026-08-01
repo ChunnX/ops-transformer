@@ -141,6 +141,7 @@ private:
         constInfo.paBlockStride = pageAttentionParams.paBlockStride;
         constInfo.qSparseBlockSize = pageAttentionParams.qBlockSize;
         constInfo.kvSparseBlockSize = pageAttentionParams.kvBlockSize;
+        constInfo.paBlockSize = pageAttentionParams.blockSize;
 
         constInfo.maxQb = sparseParams.maxQb;
         constInfo.maxKb = sparseParams.maxKb;

@@ -134,14 +134,24 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseKeyValue(QuantBlockSparseAt
         tilingInfo.qbMax = BSACeilDiv(tilingInfo.s1Size, tilingInfo.qBlockSizeVal);
         tilingInfo.dSizeV = BSA_D_SIZE;
         tilingInfo.paBlockNumSum = static_cast<uint32_t>(keyStorageSize / tilingInfo.paBlockStrideVal);
+        tilingInfo.paBlockSizeVal = tilingInfo.kvBlockSizeVal;
         return ge::GRAPH_SUCCESS;
     }
 
-    if (!BSAGetDimAsU32(keyShape, DIM_PA_N, tilingInfo.n2Size) ||
-        !BSAGetDimAsU32(keyShape, DIM_B, tilingInfo.paBlockNumSum)) {
-        OP_LOGE(kOpName, "ParseKeyValue: failed to get n2Size/paBlockNumSum from key shape");
+    uint32_t physicalKvBlockSize = 0;
+    uint32_t kvDSize = 0;
+    if (!BSAGetDimAsU32(keyShape, DIM_PA_BLOCK_SIZE, physicalKvBlockSize) ||
+        !BSAGetDimAsU32(keyShape, DIM_PA_N, tilingInfo.n2Size) ||
+        !BSAGetDimAsU32(keyShape, DIM_B, tilingInfo.paBlockNumSum) ||
+        !BSAGetDimAsU32(keyShape, DIM_KV_HEAD_DIM, kvDSize) ||
+        kvDSize != BSA_D_SIZE) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            kOpName, "key", Ops::Base::ToString(keyShape),
+            "key must be 4D [blockNum, kvHeadNum, blockSize, headDim] with headDim=" +
+                std::to_string(BSA_D_SIZE));
         return ge::GRAPH_FAILED;
     }
+    tilingInfo.paBlockSizeVal = physicalKvBlockSize;
 
     if (tilingInfo.n2Size == 0U || tilingInfo.n1Size % tilingInfo.n2Size != 0U) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(

@@ -268,7 +268,7 @@ private:
         startPos.dIdx = 0U;
 
         PAShape keyShape;
-        keyShape.blockSize = constInfo.kvSparseBlockSize;
+        keyShape.blockSize = constInfo.paBlockSize;
         keyShape.headNum = constInfo.n2Size;
         keyShape.headDim = constInfo.dSize;
         keyShape.actHeadDim = constInfo.dSize;
@@ -279,7 +279,7 @@ private:
 
         // KScale GM 为 [physicalBlock,kvHeads,blockSize,D/64,2]，单行使用 DN2NZ。
         PAShape keyScaleShape;
-        keyScaleShape.blockSize = constInfo.kvSparseBlockSize;
+        keyScaleShape.blockSize = constInfo.paBlockSize;
         keyScaleShape.headNum = constInfo.n2Size;
         keyScaleShape.headDim = constInfo.keyScaleDSize * constInfo.scaleLastDim;
         keyScaleShape.actHeadDim = keyScaleShape.headDim;
@@ -328,7 +328,7 @@ private:
         startPos.dIdx = 0U;
 
         PAShape valueShape;
-        valueShape.blockSize = constInfo.kvSparseBlockSize;
+        valueShape.blockSize = constInfo.paBlockSize;
         valueShape.headNum = constInfo.n2Size;
         valueShape.headDim = constInfo.dSizeV;
         valueShape.actHeadDim = constInfo.dSizeV;
@@ -364,7 +364,7 @@ private:
         const uint32_t tileStart = kIdx * S2_SPLIT;
         const uint32_t tileEnd = tileStart + realK;
         const uint32_t totalGroupCount = AlignUp64(realK) / MX_TOKEN_GROUP;
-        const uint32_t scaleBlockSize = constInfo.kvSparseBlockSize / MX_TOKEN_GROUP;
+        const uint32_t scaleBlockSize = constInfo.paBlockSize / MX_TOKEN_GROUP;
         constexpr uint32_t blockElementCnt = 32U / sizeof(SCALE_T);
         uint32_t copiedGroupCount = 0U;
 
