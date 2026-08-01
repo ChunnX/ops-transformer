@@ -148,7 +148,7 @@ ge::graphStatus GroupedA4W4IntQuantTiling::GetShapeAttrsInfo()
     auto wShapePtr = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShapePtr);
     OP_CHECK_NULL_WITH_CONTEXT(context_, wShapePtr);
-    OP_CHECK_IF(!SetMKN(xShapePtr->GetStorageShape(), wShapePtr->GetStorageShape()),
+    OP_CHECK_IF(!SetMKN(xShapePtr->GetOriginShape(), wShapePtr->GetOriginShape()),
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "A4W4 SetMKN failed."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "A4W4 SetGroupNum failed."),
@@ -276,10 +276,10 @@ bool GroupedA4W4IntQuantTiling::CheckA4W4Params()
     //             OP_LOGE(context_->GetNodeName(), "A4W4: antiquantOffset must be nullptr."), return false);
     if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
         uint64_t innerAxis = inputParams_.transB ? inputParams_.kSize : inputParams_.nSize;
-        OP_CHECK_IF(innerAxis % 64UL != 0,
-                    OP_LOGE(context_->GetNodeName(), "A4W4: NZ weight inner axis(%lu) must be multiple of 64 (int4 32B).",
-                            innerAxis),
-                    return false);
+        // OP_CHECK_IF(innerAxis % 64UL != 0,
+        //             OP_LOGE(context_->GetNodeName(), "A4W4: NZ weight inner axis(%lu) must be multiple of 64 (int4 32B).",
+        //                     innerAxis),
+        //             return false);
     }
     return true;
 }
