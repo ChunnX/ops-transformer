@@ -19,15 +19,9 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
+#include "quant_block_sparse_attn_const.h"
 
 using namespace AscendC;
-
-enum class QBSALayout : uint32_t {
-    TND = 2,
-    PA_BNSD = 3,
-    PA_BSND = 4,
-    NTD = 5,
-};
 
 enum class QBSADType : uint32_t {
     FP8_E4M3FN = 0,

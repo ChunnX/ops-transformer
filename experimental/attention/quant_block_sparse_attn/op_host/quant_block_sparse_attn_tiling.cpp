@@ -29,12 +29,6 @@
 namespace optiling {
 namespace {
 constexpr const char *kOpName = "QuantBlockSparseAttn";
-constexpr uint32_t QBSA_LAYOUT_Q_TND_VALUE = 2U;
-constexpr uint32_t QBSA_LAYOUT_Q_NTD_VALUE = 5U;
-constexpr uint32_t QBSA_LAYOUT_KV_PA_BNSD_VALUE = 1U;
-constexpr uint32_t QBSA_LAYOUT_SPARSE_B_N_QB_KB_VALUE = 0U;
-constexpr uint8_t QBSA_LAYOUT_TYPE_TND = 2U;
-constexpr uint8_t QBSA_LAYOUT_TYPE_NTD = 5U;
 constexpr uint8_t QBSA_PA_LAYOUT_TYPE_BNBD = 0U;
 constexpr uint8_t QBSA_COMPAT_MASK_NONE = 0U;
 constexpr uint8_t QBSA_COMPAT_MASK_RIGHT_DOWN_CAUSAL = 2U;
@@ -113,9 +107,9 @@ void QuantBlockSparseAttnTiling::FillInputParams()
     inputParams.set_preTokens(std::numeric_limits<int32_t>::max());
     inputParams.set_nextTokens(0);
     inputParams.set_bandIndex(0); // 当前为起始 idx
-    uint8_t layoutTypeVal = QBSA_LAYOUT_TYPE_TND;
+    uint8_t layoutTypeVal = QBSA_REGBASE_LAYOUT_TYPE_TND;
     if (info.layoutQValue == QBSA_LAYOUT_Q_NTD_VALUE) {
-        layoutTypeVal = QBSA_LAYOUT_TYPE_NTD;
+        layoutTypeVal = QBSA_REGBASE_LAYOUT_TYPE_NTD;
     }
     inputParams.set_layoutType(layoutTypeVal);
     inputParams.set_attenMaskCompressMode(compatMaskMode);
@@ -174,8 +168,8 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
 
     auto &attrParams = mxTilingData_.attrParams;
     attrParams.layoutQ = info.layoutQValue;
-    attrParams.layoutKv = QBSA_LAYOUT_KV_PA_BNSD_VALUE;
-    attrParams.layoutSparseIndices = QBSA_LAYOUT_SPARSE_B_N_QB_KB_VALUE;
+    attrParams.layoutKv = QBSA_REGBASE_KV_PA_BNSD;
+    attrParams.layoutSparseIndices = QBSA_REGBASE_SPARSE_B_N_QB_KB;
     attrParams.quantMode = info.quantModeVal;
     attrParams.maskMode = info.maskModeVal;
     attrParams.returnSoftmaxLse = info.returnSoftmaxLseVal ? 1U : 0U;
