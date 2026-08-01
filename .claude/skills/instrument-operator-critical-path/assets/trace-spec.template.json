@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "trace": {
+    "name": "TODO_TRACE_NAME",
+    "compile_switch": "TODO_ENABLE_CRITICAL_PATH_TRACE",
+    "roles": [
+      "TODO_ROLE"
+    ],
+    "clock": {
+      "api": "TODO_CLOCK_API",
+      "unit": "cycle",
+      "bits": 32,
+      "timestamp_pipeline": "Scalar",
+      "scope": "TODO_DEVICE_OR_RANK_SCOPE",
+      "comparable_across_records": true,
+      "missing_value": 0
+    },
+    "protocol": {
+      "magic": "0x43505452",
+      "version": 1,
+      "schema_id": "TODO_UNIQUE_U32_SCHEMA_ID",
+      "word_bits": 32,
+      "endianness": "little",
+      "header_words": 14,
+      "record_words": 2,
+      "record_order": "role-major",
+      "record_order_description": "all records for each role in trace.roles order, then ascending physical core index",
+      "header_contract": "magic, version, schema id, header/record words, role/record counts, clock bits, rank, shape/config, capacity, truncation, flags",
+      "header_fields": [
+        {"name": "magic", "word": 0, "width_words": 1},
+        {"name": "version", "word": 1, "width_words": 1},
+        {"name": "schema_id", "word": 2, "width_words": 1},
+        {"name": "header_words", "word": 3, "width_words": 1},
+        {"name": "record_words", "word": 4, "width_words": 1},
+        {"name": "record_count", "word": 5, "width_words": 1},
+        {"name": "role_counts", "word": 6, "width_words": 1},
+        {"name": "clock_bits", "word": 7, "width_words": 1},
+        {"name": "repetition_count", "word": 8, "width_words": 1},
+        {"name": "capture_capacity", "word": 9, "width_words": 1},
+        {"name": "truncated", "word": 10, "width_words": 1},
+        {"name": "flags", "word": 11, "width_words": 1},
+        {"name": "rank", "word": 12, "width_words": 1},
+        {"name": "runtime_config_hash", "word": 13, "width_words": 1}
+      ],
+      "record_fields": [
+        {
+          "name": "stage_begin_S",
+          "kind": "timestamp",
+          "roles": ["TODO_ROLE"],
+          "word": 0,
+          "width_words": 1,
+          "count": 1,
+          "stride_words": 1
+        },
+        {
+          "name": "stage_end_S",
+          "kind": "timestamp",
+          "roles": ["TODO_ROLE"],
+          "word": 1,
+          "width_words": 1,
+          "count": 1,
+          "stride_words": 1
+        }
+      ]
+    },
+    "output": {
+      "carrier": "TODO_DEDICATED_WORKSPACE_OR_OUTPUT",
+      "overwrites_user_output": false,
+      "capacity_check": "TODO_DEVICE_SIDE_CAPACITY_PROOF",
+      "write_phase": "TODO_AFTER_USEFUL_WORK_AND_PENDING_CARRIER_WRITES",
+      "rendezvous": "TODO_ALL_RECORD_WRITERS_AND_HEADER_WRITER"
+    }
+  },
+  "points": [
+    {
+      "id": "stage_begin_S",
+      "stage": "stage",
+      "edge": "begin",
+      "boundary_quality": "causal",
+      "roles": [
+        "TODO_ROLE"
+      ],
+      "scope": "first active task per physical core per wave",
+      "source": {
+        "file": "TODO_RELATIVE_SOURCE_FILE",
+        "symbol": "TODO_ENCLOSING_SYMBOL",
+        "target_anchor": {
+          "mode": "literal",
+          "pattern": "TODO_CURRENT_SEMANTIC_ANCHOR"
+        },
+        "placement": "after",
+        "marker": "TRACE_POINT: stage_begin_S",
+        "max_line_distance": 12
+      },
+      "why": "TODO_WHY_THIS_BOUNDARY_IS_REQUIRED",
+      "semantics": "TODO_EXACT_EVENT_REPRESENTED_BY_THIS_TIMESTAMP",
+      "dependency": {
+        "precondition": "TODO_PREDECESSOR_THAT_MUST_HAVE_COMPLETED",
+        "producer_pipeline": "TODO_PIPELINE",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "TODO_EVENT_BRIDGE_OR_NONE",
+        "proof": "TODO_CAUSALITY_PROOF"
+      },
+      "perturbation": "TODO_EXTRA_INSTRUCTIONS_OR_SERIALIZATION"
+    },
+    {
+      "id": "stage_end_S",
+      "stage": "stage",
+      "edge": "end",
+      "boundary_quality": "actual",
+      "roles": [
+        "TODO_ROLE"
+      ],
+      "scope": "last active task per physical core per wave",
+      "source": {
+        "file": "TODO_RELATIVE_SOURCE_FILE",
+        "symbol": "TODO_ENCLOSING_SYMBOL",
+        "target_anchor": {
+          "mode": "literal",
+          "pattern": "TODO_CURRENT_COMPLETION_ANCHOR"
+        },
+        "placement": "after",
+        "marker": "TRACE_POINT: stage_end_S",
+        "max_line_distance": 12
+      },
+      "why": "TODO_WHY_THIS_COMPLETION_BOUNDARY_IS_REQUIRED",
+      "semantics": "TODO_ACTUAL_COMPLETION_EVENT_NOT_JUST_ISSUE",
+      "dependency": {
+        "precondition": "TODO_ASYNC_WORK_THAT_MUST_HAVE_COMPLETED",
+        "producer_pipeline": "TODO_PIPELINE",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "TODO_EVENT_BRIDGE_OR_NONE",
+        "proof": "TODO_COMPLETION_PROOF"
+      },
+      "perturbation": "TODO_EXTRA_INSTRUCTIONS_OR_SERIALIZATION"
+    }
+  ],
+  "spans": [
+    {
+      "id": "stage",
+      "label": "Stage",
+      "begin": "stage_begin_S",
+      "end": "stage_end_S",
+      "roles": [
+        "TODO_ROLE"
+      ],
+      "quality": "exact",
+      "color": "#2563eb"
+    }
+  ]
+}
