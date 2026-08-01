@@ -277,14 +277,19 @@ def _validate_case_design_fields(case):
             f"s2_base_size must be 512 for MXFP8, got {case['s2_base_size']}"
         )
 
-    block_sizes = [
-        case.get(name)
-        for name in ("block_size", "sparse_q_block_size", "sparse_kv_block_size")
-    ]
-    if all(value is not None for value in block_sizes) and len(set(block_sizes)) != 1:
+    sparse_q = case.get("sparse_q_block_size")
+    sparse_kv = case.get("sparse_kv_block_size")
+    pa_block = case.get("block_size")
+    if sparse_q is not None and sparse_kv is not None and sparse_q != sparse_kv:
         raise ValueError(
-            "block_size, sparse_q_block_size and sparse_kv_block_size must be equal, "
-            f"got {block_sizes}"
+            f"sparse_q_block_size must equal sparse_kv_block_size, got {sparse_q} vs {sparse_kv}"
+        )
+    if all(v is not None for v in (pa_block, sparse_kv)) and (
+        pa_block < sparse_kv or pa_block % sparse_kv != 0
+    ):
+        raise ValueError(
+            f"block_size must be a positive multiple of sparse_kv_block_size, "
+            f"got block_size={pa_block}, sparse_kv_block_size={sparse_kv}"
         )
 
     _get_runtime_seq_lengths(case, "actual_seq_q", "S1")

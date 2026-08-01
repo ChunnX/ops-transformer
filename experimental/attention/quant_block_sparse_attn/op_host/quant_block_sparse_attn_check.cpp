@@ -504,7 +504,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckKeyValueShape() const
     if (CheckStrideDim(opParamInfo.key.stride, "key", DIM_0, tilingInfo_.paBlockStrideVal) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (CheckStrideDim(opParamInfo.key.stride, "key", DIM_1, tilingInfo_.kvBlockSizeVal * tilingInfo_.dSize) !=
+    if (CheckStrideDim(opParamInfo.key.stride, "key", DIM_1, tilingInfo_.paBlockSizeVal * tilingInfo_.dSize) !=
         ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -517,7 +517,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckKeyValueShape() const
     if (CheckStrideDim(opParamInfo.value.stride, "value", DIM_0, tilingInfo_.paBlockStrideVal) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (CheckStrideDim(opParamInfo.value.stride, "value", DIM_1, tilingInfo_.kvBlockSizeVal * tilingInfo_.dSizeV) !=
+    if (CheckStrideDim(opParamInfo.value.stride, "value", DIM_1, tilingInfo_.paBlockSizeVal * tilingInfo_.dSizeV) !=
         ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
