@@ -41,7 +41,7 @@ def execute_sfa(param_combination):
         "cpu_output": cpu_result,
     }
     if SAVE_PT:
-        sparse_flash_attention_golden._save_test_case(test_data, PT_SAVE_PATH)
+        sparse_flash_attention_golden.save_test_case(test_data, PT_SAVE_PATH)
     result, compare_results = utils.sfa_run_npu(
         test_data, testcase_name=None, device_id=DEVICE_ID, result_path=RESULT_PATH
     )

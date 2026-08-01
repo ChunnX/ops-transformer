@@ -59,14 +59,14 @@ def preprocessing(fa_param):
     numHeads = fa_param["numHeads"]
     numKeyValueHeads = fa_param["numKeyValueHeads"]
 
-    def _clone(t):
+    def safe_clone_tensor(t):
         if torch.is_tensor(t):
             return t.clone()
         return copy.deepcopy(t)
 
-    fa_param["q_tensor_old"] = _clone(fa_param["q_tensor"])
+    fa_param["q_tensor_old"] = safe_clone_tensor(fa_param["q_tensor"])
     fa_param["q_shape_old"] = copy.deepcopy(fa_param["q_shape"])
-    fa_param["k_tensor_old"] = _clone(fa_param["k_tensor"])
+    fa_param["k_tensor_old"] = safe_clone_tensor(fa_param["k_tensor"])
     fa_param["k_shape_old"] = copy.deepcopy(fa_param["k_shape"])
 
     q_new_tensor, q_new_shape = concat_tensor(
@@ -100,7 +100,7 @@ def preprocessing(fa_param):
     return fa_param
 
 
-def _n_trans_shape_to_bnsd(
+def n_trans_shape_to_bnsd(
     tensor, shape, layout, headnums=None, act_seq=None, tensor_name=None
 ):
     t = tensor
@@ -354,7 +354,7 @@ def compute_cpu(input_tensor_dict, params):
         return None, input_tensor_dict, params
 
 
-def _prepare_fa_param(input_tensor_dict, params):
+def prepare_fa_param(input_tensor_dict, params):
     fa_param = get_param_fus(input_tensor_dict, params)
     if not fa_param["normal_flag"]:
         return fa_param
@@ -371,7 +371,7 @@ def _prepare_fa_param(input_tensor_dict, params):
         fa_param["actualSeqLengths_q"] = trans_tnd_actseq(actualSeqLengths_q)
         if fa_param["pa_flag"]:
             fa_param["actualSeqLengths_kv"] = actualSeqLengths_kv
-        q_bnsd_tensor, q_bnsd_shape = _n_trans_shape_to_bnsd(
+        q_bnsd_tensor, q_bnsd_shape = n_trans_shape_to_bnsd(
             fa_param["q_tensor"],
             fa_param["q_shape"],
             layoutQuery,
@@ -379,7 +379,7 @@ def _prepare_fa_param(input_tensor_dict, params):
             fa_param["actualSeqLengths_q"],
         )
     else:
-        q_bnsd_tensor, q_bnsd_shape = _n_trans_shape_to_bnsd(
+        q_bnsd_tensor, q_bnsd_shape = n_trans_shape_to_bnsd(
             fa_param["q_tensor"],
             fa_param["q_shape"],
             layoutQuery,
@@ -388,14 +388,14 @@ def _prepare_fa_param(input_tensor_dict, params):
         )
     if fa_param["kv_tnd_flag"]:
         fa_param["actualSeqLengths_kv"] = trans_tnd_actseq(actualSeqLengths_kv)
-        k_bnsd_tensor, k_bnsd_shape = _n_trans_shape_to_bnsd(
+        k_bnsd_tensor, k_bnsd_shape = n_trans_shape_to_bnsd(
             fa_param["k_tensor"],
             fa_param["k_shape"],
             fa_param["layout_kv"],
             numKeyValueHeads,
             fa_param["actualSeqLengths_kv"],
         )
-        v_bnsd_tensor, v_bnsd_shape = _n_trans_shape_to_bnsd(
+        v_bnsd_tensor, v_bnsd_shape = n_trans_shape_to_bnsd(
             fa_param["v_tensor"],
             fa_param["v_shape"],
             fa_param["layout_kv"],
@@ -403,14 +403,14 @@ def _prepare_fa_param(input_tensor_dict, params):
             fa_param["actualSeqLengths_kv"],
         )
     else:
-        k_bnsd_tensor, k_bnsd_shape = _n_trans_shape_to_bnsd(
+        k_bnsd_tensor, k_bnsd_shape = n_trans_shape_to_bnsd(
             fa_param["k_tensor"],
             fa_param["k_shape"],
             fa_param["layout_kv"],
             numKeyValueHeads,
             actualSeqLengths_kv,
         )
-        v_bnsd_tensor, v_bnsd_shape = _n_trans_shape_to_bnsd(
+        v_bnsd_tensor, v_bnsd_shape = n_trans_shape_to_bnsd(
             fa_param["v_tensor"],
             fa_param["v_shape"],
             fa_param["layout_kv"],
@@ -418,7 +418,7 @@ def _prepare_fa_param(input_tensor_dict, params):
             actualSeqLengths_kv,
         )
     if fa_param["tnd_flag"]:
-        sparse_indices_bnsd_tensor, sparse_indices_bnsd_shape = _n_trans_shape_to_bnsd(
+        sparse_indices_bnsd_tensor, sparse_indices_bnsd_shape = n_trans_shape_to_bnsd(
             fa_param["sparse_indices_tensor"],
             fa_param["sparse_indices_shape"],
             layoutQuery,
@@ -427,7 +427,7 @@ def _prepare_fa_param(input_tensor_dict, params):
             "sparseIndices",
         )
     else:
-        sparse_indices_bnsd_tensor, sparse_indices_bnsd_shape = _n_trans_shape_to_bnsd(
+        sparse_indices_bnsd_tensor, sparse_indices_bnsd_shape = n_trans_shape_to_bnsd(
             fa_param["sparse_indices_tensor"],
             fa_param["sparse_indices_shape"],
             layoutQuery,
@@ -464,7 +464,7 @@ def _prepare_fa_param(input_tensor_dict, params):
     return fa_param
 
 
-def _generate_sparse_indices(
+def generate_sparse_indices(
     input_tensor_dict, fa_param, params, out_shape, layoutQuery
 ):
     sparse_indices_bnsd_shape = fa_param["sparse_indices_bnsd_shape"]
@@ -513,7 +513,7 @@ def _generate_sparse_indices(
     fa_param["sparse_indices_bnsd_tensor"] = sparse_indices_tensor
 
 
-def _generate_block_table_and_cache(
+def generate_block_table_and_cache(
     input_tensor_dict, fa_param, params, actualSeqLengths_kv, out_shape
 ):
     if fa_param["pa_flag"]:
@@ -557,7 +557,7 @@ def _generate_block_table_and_cache(
 def compute_golden(input_tensor_dict, params):
     print("cpu执行中...")
 
-    def _to_cpu_float32_tensor(val):
+    def to_cpu_float32_tensor(val):
         if torch.is_tensor(val):
             if val.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
                 return val.float().cpu()
@@ -565,9 +565,9 @@ def compute_golden(input_tensor_dict, params):
         return val
 
     cpu_input = {
-        key: _to_cpu_float32_tensor(val) for key, val in input_tensor_dict.items()
+        key: to_cpu_float32_tensor(val) for key, val in input_tensor_dict.items()
     }
-    fa_param = _prepare_fa_param(cpu_input, params)
+    fa_param = prepare_fa_param(cpu_input, params)
     if not fa_param["normal_flag"]:
         return torch.zeros(fa_param["out_shape"])
 
@@ -575,24 +575,24 @@ def compute_golden(input_tensor_dict, params):
     layoutQuery = fa_param["layout_query"]
     actualSeqLengths_kv = fa_param["actualSeqLengths_raw"]
 
-    def _to_cpu_raw(val):
+    def to_cpu_raw(val):
         if torch.is_tensor(val):
             return val.cpu()
         return val
 
-    fa_param["_raw_key"] = _to_cpu_raw(input_tensor_dict.get("key"))
-    fa_param["_raw_key_rope"] = _to_cpu_raw(input_tensor_dict.get("key_rope"))
-    fa_param["_raw_query"] = _to_cpu_raw(input_tensor_dict.get("query"))
-    fa_param["_raw_query_rope"] = _to_cpu_raw(input_tensor_dict.get("query_rope"))
+    fa_param["_raw_key"] = to_cpu_raw(input_tensor_dict.get("key"))
+    fa_param["_raw_key_rope"] = to_cpu_raw(input_tensor_dict.get("key_rope"))
+    fa_param["_raw_query"] = to_cpu_raw(input_tensor_dict.get("query"))
+    fa_param["_raw_query_rope"] = to_cpu_raw(input_tensor_dict.get("query_rope"))
 
-    _generate_sparse_indices(
+    generate_sparse_indices(
         input_tensor_dict, fa_param, params, out_shape, layoutQuery
     )
-    _generate_block_table_and_cache(
+    generate_block_table_and_cache(
         input_tensor_dict, fa_param, params, actualSeqLengths_kv, out_shape
     )
 
-    y_all, softmax_max, softmax_sum = _t_increattention_bnsd(fa_param)
+    y_all, softmax_max, softmax_sum = t_increattention_bnsd(fa_param)
     y_all = trans_bnsd_to_layout(
         y_all, out_shape, layoutQuery, fa_param["actualSeqLengths_q"]
     )
@@ -666,7 +666,7 @@ def softmax(x, sinks=None):
     return ans, x_max, x_sum
 
 
-def _t_increattention_bnsd(fa_param):
+def t_increattention_bnsd(fa_param):
     batch_size = fa_param["b"]
     numheads = fa_param["numHeads"]
     numKeyValueHeads = fa_param["numKeyValueHeads"]
@@ -883,7 +883,7 @@ def qtensor_dim(q_shape, layoutQuery, numhead):
         return q_shape[-1]
 
 
-def _save_test_case(input_data, output_dir):
+def save_test_case(input_data, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     case_name = input_data["Testcase_Name"]
     filepath = os.path.join(output_dir, f"{case_name}.pt")

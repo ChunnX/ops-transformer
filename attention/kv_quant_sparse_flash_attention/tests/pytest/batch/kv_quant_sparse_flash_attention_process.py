@@ -16,14 +16,10 @@ import torchair
 from torchair.configs.compiler_config import CompilerConfig
 
 import os
-import numpy as np
-import time
-import math
-import random
 from utils import get_torch_dtype
 
 
-def _load_inputs_to_npu(input_dict):
+def load_inputs_to_npu(input_dict):
     def to_npu(value):
         if isinstance(value, torch.Tensor):
             return value.npu()
@@ -32,7 +28,7 @@ def _load_inputs_to_npu(input_dict):
     return {key: to_npu(value) for key, value in input_dict.items()}
 
 
-def _get_kv_torch_dtype(kv_dtype_str):
+def get_kv_torch_dtype(kv_dtype_str):
     if kv_dtype_str == "hifloat8":
         return torch_npu.hifloat8
     return None
@@ -68,14 +64,14 @@ def call_npu_eager(torch_tensor_dict, params):
         rope_head_dim=params.get("rope_head_dim", 64),
         pre_tokens=params.get("pre_tokens", (1 << 63) - 1),
         next_tokens=params.get("next_tokens", (1 << 63) - 1),
-        key_dtype=_get_kv_torch_dtype(params["dtype_input"]["key"]),
-        value_dtype=_get_kv_torch_dtype(params["dtype_input"]["value"]),
+        key_dtype=get_kv_torch_dtype(params["dtype_input"]["key"]),
+        value_dtype=get_kv_torch_dtype(params["dtype_input"]["value"]),
     )
 
 
 def call_npu(input_tensor_dict, params):
     torch_npu.npu.set_device(0)
-    torch_tensor_dict = _load_inputs_to_npu(input_tensor_dict)
+    torch_tensor_dict = load_inputs_to_npu(input_tensor_dict)
     npu_result = call_npu_eager(torch_tensor_dict, params)
     # 路径3
     # npu_result = call_npu_graph(torch_tensor_dict, params)
@@ -184,6 +180,6 @@ def call_npu_graph(torch_tensor_dict, params):
         rope_head_dim=params.get("rope_head_dim", 64),
         pre_tokens=params.get("pre_tokens", (1 << 63) - 1),
         next_tokens=params.get("next_tokens", (1 << 63) - 1),
-        key_dtype=_get_kv_torch_dtype(params["dtype_input"]["key"]),
-        value_dtype=_get_kv_torch_dtype(params["dtype_input"]["value"]),
+        key_dtype=get_kv_torch_dtype(params["dtype_input"]["key"]),
+        value_dtype=get_kv_torch_dtype(params["dtype_input"]["value"]),
     )
