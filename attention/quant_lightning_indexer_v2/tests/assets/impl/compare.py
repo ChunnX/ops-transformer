@@ -142,20 +142,37 @@ class PytestV2TopKComparator:
                     f"golden={getattr(golden_values, 'shape', None)}"
                 ),
             }
+        npu_indices = self.to_torch(npu_outputs[0])
+        npu_values = self.to_torch(npu_values)
+        golden_values = self.to_torch(golden_values)
+        if return_value:
+            npu_values, sort_order = npu_values.sort(dim=-1, descending=True)
+            npu_indices = torch.gather(npu_indices, dim=-1, index=sort_order)
+        golden_indices = self.to_torch(golden_outputs[0])
+        topk_value = self.to_torch(topk_value)
+        output_idx_offset = self.to_torch(compare_data.get("output_idx_offset"))
+        golden_values_for_index = golden_values.detach().cpu().float().numpy()
+        npu_values_for_index = npu_values.detach().cpu().float().numpy()
         module = self.load_module()
         index_result = module.check_result(
-            self.to_torch(golden_outputs[0]),
-            self.to_torch(npu_outputs[0]),
-            self.to_torch(topk_value),
-            self.to_torch(compare_data.get("output_idx_offset")),
+            golden_indices,
+            npu_indices,
+            topk_value,
+            output_idx_offset,
             params,
-            self.to_torch(golden_values),
-            self.to_torch(npu_values),
+            golden_values_for_index,
+            npu_values_for_index,
         )
         results = [self.result_dict(index_result, "index compare")]
         if return_value:
             value_result = module.check_result_return_value(
-                self.to_torch(golden_values), self.to_torch(npu_values), params
+                golden_values,
+                npu_values,
+                params,
+                golden_indices,
+                npu_indices,
+                topk_value,
+                output_idx_offset,
             )
             results.append(self.result_dict(value_result, "sparse-value compare"))
         return results
