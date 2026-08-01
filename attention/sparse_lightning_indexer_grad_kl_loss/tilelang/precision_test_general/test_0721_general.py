@@ -913,7 +913,10 @@ def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
         print(f"{case_prefix} PRECISION FAIL: {exc}")
         status = "PRECISION_FAIL"
 
-    if args.bench and status == "PASS":
+    # 精度失败时默认不计时，避免错误结果混入正式性能统计。该开关仅用于
+    # 对比同一形状的调度开销，输出会明确标记为未通过精度校验。
+    bench_unverified = args.bench_on_fail and status == "PRECISION_FAIL"
+    if args.bench and (status == "PASS" or bench_unverified):
         try:
             tl_avg, tl_med, tl_min = _bench(
                 lambda: _call_tilelang(inputs, case), args.warmup, args.iters
@@ -921,8 +924,9 @@ def run_case(case: Dict[str, Any], args: argparse.Namespace, index: int) -> str:
             off_avg, off_med, off_min = _bench(
                 lambda: _call_official(inputs, case), args.warmup, args.iters
             )
+            bench_label = "bench_unverified" if bench_unverified else "bench"
             print(
-                f"{case_prefix} bench tl_med={tl_med * 1e3:.3f}ms "
+                f"{case_prefix} {bench_label} tl_med={tl_med * 1e3:.3f}ms "
                 f"off_med={off_med * 1e3:.3f}ms ratio={off_med / tl_med:.2f}x"
             )
             if args.verbose:
@@ -965,6 +969,11 @@ def parse_args() -> argparse.Namespace:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Benchmark only precision-passing cases (default: enabled)",
+    )
+    parser.add_argument(
+        "--bench-on-fail",
+        action="store_true",
+        help="仅用于诊断：精度失败时仍计时，并标记为未校验性能",
     )
     parser.add_argument("--warmup", type=int, default=WARMUP_ITERS)
     parser.add_argument("--iters", type=int, default=BENCH_ITERS)
