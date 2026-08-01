@@ -422,6 +422,7 @@ MoeDistributeBuffer.low_latency_combine(x, topk_idx, topk_weights, assist_info_f
     - 应满足0 < local_expert_num \* ep_world_size ≤ 2048。
 
 - `low_latency_dispatch`和`low_latency_combine`必须配套使用。
+- `topk_weights`的产品约束：Ascend 950PR/Ascend 950DT可传有效Tensor或None，传有效Tensor时使能topK专家权重功能，传None时不使能并直接对专家输出求和；Atlas A3系列产品仅支持传入有效Tensor并进行加权聚合，不支持None。
 - 在不同产品型号、不同通信算法或不同版本中，`low_latency_dispatch`的Tensor输出`assist_info_for_combine`、`ep_recv_counts`、`expand_scales`中的元素值可能不同，使用时直接将上述Tensor传给`low_latency_combine`对应参数即可，模型其他业务逻辑不应对其存在依赖。
 - 调用接口过程中使用的`group_ep`、`ep_world_size`、`num_experts`、`expert_shard_type`、`shared_expert_num`、`shared_expert_rank_num`、`num_max_dispatch_tokens_per_rank`参数取值所有卡需保持一致，`group_ep`、`ep_world_size`、`expert_shard_type`、`num_max_dispatch_tokens_per_rank`网络中不同层中也需保持一致，且和[low_latency_dispatch](low_latency_dispatch.md)对应参数也保持一致。
 - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
