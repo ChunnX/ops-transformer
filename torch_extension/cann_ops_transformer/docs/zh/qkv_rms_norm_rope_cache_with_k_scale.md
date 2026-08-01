@@ -142,14 +142,10 @@
 
   且不产生scale。各场景对应的目标类型和量化开关统一列在“约束说明”，不属于量化公式本身。
 
-  V分支在两种场景中均按`v_scale`缩放并量化为FP8 E4M3FN。RoPE场景按head缩放，M-RoPE场景按head和通道缩放：
+  V分支统一在FP8 E4M3FN转换前乘以`v_scale`；`v_scale`按其输入shape广播到V的逻辑shape：
 
   $$
-  v_{fp8}[t,n,d] =
-  \begin{cases}
-  cast(v[t,n,d] * v\_scale[n]), & \text{RoPE},\\
-  cast(v[t,n,d] * v\_scale[n,d]), & \text{M-RoPE}.
-  \end{cases}
+  v_{fp8} = cast_{FP8\ E4M3FN}(v * v\_scale)
   $$
 
   Cache写回位置由`slot_mapping`决定：

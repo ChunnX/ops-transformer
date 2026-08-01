@@ -202,17 +202,7 @@
 
   **6. V缩放、量化与Cache写回**
 
-  RoPE场景按head缩放，M-RoPE场景按head和通道缩放。令
-
-  $$
-  \beta_{n,d}=
-  \begin{cases}
-  \mathrm{vScaleOptional}_n, & \text{RoPE},\\
-  \mathrm{vScaleOptional}_{n,d}, & \text{M-RoPE},
-  \end{cases}
-  $$
-
-  则V分支输出为
+  将`vScaleOptional`按其输入shape广播到V的逻辑shape，记为$\boldsymbol\beta$。V分支统一在FP8 E4M3FN转换前逐元素乘以该缩放因子：
 
   $$
   \widehat V_{u,n,d}

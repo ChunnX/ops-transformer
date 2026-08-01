@@ -49,14 +49,10 @@
 
   其中`quant_max`为目标数据类型对应的量化上限。
 
-  V分支按`v_scale`缩放后量化。RoPE场景按head使用`v_scale[n]`，M-RoPE场景按head和通道使用`v_scale[n,d]`：
+  V分支在FP8 E4M3FN转换前统一乘以`v_scale`；`v_scale`按其输入shape广播到V的逻辑shape：
 
   $$
-  v_{fp8}[t,n,d] =
-  \begin{cases}
-  cast(v[t,n,d] * v\_scale[n]), & \text{RoPE},\\
-  cast(v[t,n,d] * v\_scale[n,d]), & \text{M-RoPE}.
-  \end{cases}
+  v_{fp8} = cast_{FP8\ E4M3FN}(v * v\_scale)
   $$
 
   Cache写回位置由`slot_mapping`决定：
