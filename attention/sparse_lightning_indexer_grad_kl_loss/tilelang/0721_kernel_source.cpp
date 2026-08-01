@@ -189,53 +189,51 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
         if ASCEND_IS_AIV {
           AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
           AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(1);
-          for (int32_t k_outer = 0; k_outer < 2; ++k_outer) {
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
-            for (int32_t lane = 0; lane < 16; ++lane) {
-              int32_t sparse_idx = SparseIndices.GetValue((((((pipe_iter * 122880) + (cid * 5120)) + (k_outer * 1024)) + (vid * 512)) + lane));
-              if (0 <= sparse_idx) {
-                tl::ascend::copy_gm_to_ub<bfloat16_t, 512, 1>(v0_key_ub[(lane * 512)], Key[(sparse_idx * 512)], 655872, 1, 512, bfloat16_t(0.000000e+00f));
-                tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_ki_ub[(lane * 128)], KeyIndex[(sparse_idx * 128)], 163968, 1, 128, bfloat16_t(0.000000e+00f));
-                tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_rope_ub[(lane * 128)], KeyRope[(sparse_idx * 128)], 163968, 1, 128, bfloat16_t(0.000000e+00f));
-              }
-              if (sparse_idx < 0) {
-                tl::ascend::copy_gm_to_ub<bfloat16_t, 512, 1>(v0_key_ub[(lane * 512)], V0ZeroRow[0], 512, 1, 512, bfloat16_t(0.000000e+00f));
-                tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_ki_ub[(lane * 128)], V0ZeroRow[0], 512, 1, 128, bfloat16_t(0.000000e+00f));
-                tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_rope_ub[(lane * 128)], V0ZeroRow[0], 512, 1, 128, bfloat16_t(0.000000e+00f));
-              }
+          AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+          for (int32_t lane = 0; lane < 16; ++lane) {
+            int32_t sparse_idx = SparseIndices.GetValue(((((pipe_iter * 24576) + (cid * 1024)) + (vid * 512)) + lane));
+            if (0 <= sparse_idx) {
+              tl::ascend::copy_gm_to_ub<bfloat16_t, 512, 1>(v0_key_ub[(lane * 512)], Key[(sparse_idx * 512)], 524288, 1, 512, bfloat16_t(0.000000e+00f));
+              tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_ki_ub[(lane * 128)], KeyIndex[(sparse_idx * 128)], 131072, 1, 128, bfloat16_t(0.000000e+00f));
+              tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_rope_ub[(lane * 128)], KeyRope[(sparse_idx * 128)], 131072, 1, 128, bfloat16_t(0.000000e+00f));
             }
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(0);
-            for (int32_t chunk_id = 0; chunk_id < 32; ++chunk_id) {
-              if (chunk_id < 31) {
-                AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(((chunk_id + 1) % 2));
-                for (int32_t lane_1 = 0; lane_1 < 16; ++lane_1) {
-                  int32_t sparse_idx_1 = SparseIndices.GetValue((((((((pipe_iter * 122880) + (cid * 5120)) + (k_outer * 1024)) + (vid * 512)) + (chunk_id * 16)) + lane_1) + 16));
-                  if (0 <= sparse_idx_1) {
-                    tl::ascend::copy_gm_to_ub<bfloat16_t, 512, 1>(v0_key_ub[((((chunk_id + 1) % 2) * 8192) + (lane_1 * 512))], Key[(sparse_idx_1 * 512)], 655872, 1, 512, bfloat16_t(0.000000e+00f));
-                    tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_ki_ub[((((chunk_id + 1) % 2) * 2048) + (lane_1 * 128))], KeyIndex[(sparse_idx_1 * 128)], 163968, 1, 128, bfloat16_t(0.000000e+00f));
-                    tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_rope_ub[((((chunk_id + 1) % 2) * 2048) + (lane_1 * 128))], KeyRope[(sparse_idx_1 * 128)], 163968, 1, 128, bfloat16_t(0.000000e+00f));
-                  }
-                  if (sparse_idx_1 < 0) {
-                    tl::ascend::copy_gm_to_ub<bfloat16_t, 512, 1>(v0_key_ub[((((chunk_id + 1) % 2) * 8192) + (lane_1 * 512))], V0ZeroRow[0], 512, 1, 512, bfloat16_t(0.000000e+00f));
-                    tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_ki_ub[((((chunk_id + 1) % 2) * 2048) + (lane_1 * 128))], V0ZeroRow[0], 512, 1, 128, bfloat16_t(0.000000e+00f));
-                    tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_rope_ub[((((chunk_id + 1) % 2) * 2048) + (lane_1 * 128))], V0ZeroRow[0], 512, 1, 128, bfloat16_t(0.000000e+00f));
-                  }
+            if (sparse_idx < 0) {
+              tl::ascend::copy_gm_to_ub<bfloat16_t, 512, 1>(v0_key_ub[(lane * 512)], V0ZeroRow[0], 512, 1, 512, bfloat16_t(0.000000e+00f));
+              tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_ki_ub[(lane * 128)], V0ZeroRow[0], 512, 1, 128, bfloat16_t(0.000000e+00f));
+              tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_rope_ub[(lane * 128)], V0ZeroRow[0], 512, 1, 128, bfloat16_t(0.000000e+00f));
+            }
+          }
+          AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(0);
+          for (int32_t chunk_id = 0; chunk_id < 32; ++chunk_id) {
+            if (chunk_id < 31) {
+              AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(((chunk_id + 1) % 2));
+              for (int32_t lane_1 = 0; lane_1 < 16; ++lane_1) {
+                int32_t sparse_idx_1 = SparseIndices.GetValue(((((((pipe_iter * 24576) + (cid * 1024)) + (vid * 512)) + (chunk_id * 16)) + lane_1) + 16));
+                if (0 <= sparse_idx_1) {
+                  tl::ascend::copy_gm_to_ub<bfloat16_t, 512, 1>(v0_key_ub[((((chunk_id + 1) % 2) * 8192) + (lane_1 * 512))], Key[(sparse_idx_1 * 512)], 524288, 1, 512, bfloat16_t(0.000000e+00f));
+                  tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_ki_ub[((((chunk_id + 1) % 2) * 2048) + (lane_1 * 128))], KeyIndex[(sparse_idx_1 * 128)], 131072, 1, 128, bfloat16_t(0.000000e+00f));
+                  tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_rope_ub[((((chunk_id + 1) % 2) * 2048) + (lane_1 * 128))], KeyRope[(sparse_idx_1 * 128)], 131072, 1, 128, bfloat16_t(0.000000e+00f));
                 }
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(((chunk_id + 1) % 2));
+                if (sparse_idx_1 < 0) {
+                  tl::ascend::copy_gm_to_ub<bfloat16_t, 512, 1>(v0_key_ub[((((chunk_id + 1) % 2) * 8192) + (lane_1 * 512))], V0ZeroRow[0], 512, 1, 512, bfloat16_t(0.000000e+00f));
+                  tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_ki_ub[((((chunk_id + 1) % 2) * 2048) + (lane_1 * 128))], V0ZeroRow[0], 512, 1, 128, bfloat16_t(0.000000e+00f));
+                  tl::ascend::copy_gm_to_ub<bfloat16_t, 128, 1>(v0_rope_ub[((((chunk_id + 1) % 2) * 2048) + (lane_1 * 128))], V0ZeroRow[0], 512, 1, 128, bfloat16_t(0.000000e+00f));
+                }
               }
-              AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>((chunk_id % 2));
-              tl::ascend::copy_ub_to_gm<bfloat16_t, 512, 16>(GatherKey_ws[(((((pipe_iter * 25165824) + (cid * 1048576)) + (k_outer * 524288)) + (vid * 262144)) + (chunk_id * 8192))], v0_key_ub[((chunk_id % 2) * 8192)], 512, 16, 512);
-              tl::ascend::copy_ub_to_gm<bfloat16_t, 128, 16>(GatherKeyIndex_ws[(((((pipe_iter * 6291456) + (cid * 262144)) + (k_outer * 131072)) + (vid * 65536)) + (chunk_id * 2048))], v0_ki_ub[((chunk_id % 2) * 2048)], 128, 16, 128);
-              tl::ascend::copy_ub_to_gm<bfloat16_t, 128, 16>(GatherKeyRope_ws[(((((pipe_iter * 6291456) + (cid * 262144)) + (k_outer * 131072)) + (vid * 65536)) + (chunk_id * 2048))], v0_rope_ub[((chunk_id % 2) * 2048)], 128, 16, 128);
-              AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>((chunk_id % 2));
+              AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(((chunk_id + 1) % 2));
             }
-            if (((k_outer + (pipe_iter % 2)) % 2) == 0) {
-              AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0);
-              AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(2);
-            } else {
-              AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(1);
-              AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(3);
-            }
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>((chunk_id % 2));
+            tl::ascend::copy_ub_to_gm<bfloat16_t, 512, 16>(GatherKey_ws[((((pipe_iter * 12582912) + (cid * 524288)) + (vid * 262144)) + (chunk_id * 8192))], v0_key_ub[((chunk_id % 2) * 8192)], 512, 16, 512);
+            tl::ascend::copy_ub_to_gm<bfloat16_t, 128, 16>(GatherKeyIndex_ws[((((pipe_iter * 3145728) + (cid * 131072)) + (vid * 65536)) + (chunk_id * 2048))], v0_ki_ub[((chunk_id % 2) * 2048)], 128, 16, 128);
+            tl::ascend::copy_ub_to_gm<bfloat16_t, 128, 16>(GatherKeyRope_ws[((((pipe_iter * 3145728) + (cid * 131072)) + (vid * 65536)) + (chunk_id * 2048))], v0_rope_ub[((chunk_id % 2) * 2048)], 128, 16, 128);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>((chunk_id % 2));
+          }
+          if ((pipe_iter % 2) == 0) {
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(0);
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(2);
+          } else {
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(1);
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(3);
           }
           AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
           AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(1);
@@ -260,65 +258,63 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
           AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(4);
           tl::ascend::copy_gm_to_l1<bfloat16_t, 8, 128>(c1_qi_l1[0], QueryIndex[(((pipe_iter * 24576) + (cid * 1024)) - 24576)], 128, 8, 128, true);
           AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(5);
-          for (int32_t k_outer_1 = 0; k_outer_1 < 2; ++k_outer_1) {
-            if (((k_outer_1 + ((pipe_iter + 1) % 2)) % 2) == 0) {
-              AscendC::CrossCoreWaitFlag(0);
-            } else {
-              AscendC::CrossCoreWaitFlag(1);
-            }
-            for (int32_t k_inner = 0; k_inner < 8; ++k_inner) {
-              AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
-              tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_key_l1[0], GatherKey_ws[(((((pipe_iter * 25165824) + (cid * 1048576)) + (k_outer_1 * 524288)) + (k_inner * 65536)) - 25165824)], 512, 128, 128, true);
-              AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
-              for (int32_t d_idx = 0; d_idx < 4; ++d_idx) {
-                AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(0);
-                if (d_idx == 0) {
-                  tl::ascend::copy_l1_to_l0a<bfloat16_t, 32, 128, false>(c1_q_l0a[0], c1_query_chunk_0_l1[0], 32, 128);
-                }
-                if (d_idx == 1) {
-                  tl::ascend::copy_l1_to_l0a<bfloat16_t, 32, 128, false>(c1_q_l0a[0], c1_query_chunk_1_l1[0], 32, 128);
-                }
-                if (d_idx == 2) {
-                  tl::ascend::copy_l1_to_l0a<bfloat16_t, 32, 128, false>(c1_q_l0a[0], c1_query_chunk_2_l1[0], 32, 128);
-                }
-                if (d_idx == 3) {
-                  tl::ascend::copy_l1_to_l0a<bfloat16_t, 32, 128, false>(c1_q_l0a[0], c1_query_chunk_3_l1[0], 32, 128);
-                }
-                tl::ascend::copy_l1_to_l0b<bfloat16_t, 128, 128, true>(c1_key_l0b[0], c1_key_l1[0], 128, 128);
-                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(0);
-                AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
-                if (d_idx < 3) {
-                  AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
-                  tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_key_l1[0], GatherKey_ws[((((((pipe_iter * 25165824) + (cid * 1048576)) + (k_outer_1 * 524288)) + (k_inner * 65536)) + (d_idx * 128)) - 25165696)], 512, 128, 128, true);
-                  AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
-                }
-                if (d_idx == 3) {
-                  AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
-                  tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_key_l1[0], GatherKeyRope_ws[(((((pipe_iter * 6291456) + (cid * 262144)) + (k_outer_1 * 131072)) + (k_inner * 16384)) - 6291456)], 128, 128, 128, true);
-                  AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
-                }
-                AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
-                AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(0);
-                tl::ascend::mma<bfloat16_t, float, 32, 128>(c1_q_l0a[0],c1_key_l0b[0],c1_p_l0c[0], (d_idx == 0), 128);
-                AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
-                AscendC::SetFlag<AscendC::HardEvent::FIX_M>(0);
-              }
+          if (((pipe_iter + 1) % 2) == 0) {
+            AscendC::CrossCoreWaitFlag(0);
+          } else {
+            AscendC::CrossCoreWaitFlag(1);
+          }
+          for (int32_t k_inner = 0; k_inner < 8; ++k_inner) {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
+            tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_key_l1[0], GatherKey_ws[((((pipe_iter * 12582912) + (cid * 524288)) + (k_inner * 65536)) - 12582912)], 512, 128, 128, true);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
+            for (int32_t d_idx = 0; d_idx < 4; ++d_idx) {
               AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
               AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(0);
-              tl::ascend::copy_l1_to_l0a<bfloat16_t, 32, 128, false>(c1_q_l0a[0], c1_query_rope_cache_l1[0], 32, 128);
+              if (d_idx == 0) {
+                tl::ascend::copy_l1_to_l0a<bfloat16_t, 32, 128, false>(c1_q_l0a[0], c1_query_chunk_0_l1[0], 32, 128);
+              }
+              if (d_idx == 1) {
+                tl::ascend::copy_l1_to_l0a<bfloat16_t, 32, 128, false>(c1_q_l0a[0], c1_query_chunk_1_l1[0], 32, 128);
+              }
+              if (d_idx == 2) {
+                tl::ascend::copy_l1_to_l0a<bfloat16_t, 32, 128, false>(c1_q_l0a[0], c1_query_chunk_2_l1[0], 32, 128);
+              }
+              if (d_idx == 3) {
+                tl::ascend::copy_l1_to_l0a<bfloat16_t, 32, 128, false>(c1_q_l0a[0], c1_query_chunk_3_l1[0], 32, 128);
+              }
               tl::ascend::copy_l1_to_l0b<bfloat16_t, 128, 128, true>(c1_key_l0b[0], c1_key_l1[0], 128, 128);
               AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(0);
               AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
+              if (d_idx < 3) {
+                AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
+                tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_key_l1[0], GatherKey_ws[(((((pipe_iter * 12582912) + (cid * 524288)) + (k_inner * 65536)) + (d_idx * 128)) - 12582784)], 512, 128, 128, true);
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
+              }
+              if (d_idx == 3) {
+                AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
+                tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_key_l1[0], GatherKeyRope_ws[((((pipe_iter * 3145728) + (cid * 131072)) + (k_inner * 16384)) - 3145728)], 128, 128, 128, true);
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
+              }
               AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
               AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(0);
-              tl::ascend::mma<bfloat16_t, float, 32, 128>(c1_q_l0a[0],c1_key_l0b[0],c1_p_l0c[0], (bool)0, 128);
+              tl::ascend::mma<bfloat16_t, float, 32, 128>(c1_q_l0a[0],c1_key_l0b[0],c1_p_l0c[0], (d_idx == 0), 128);
               AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
-              AscendC::SetFlag<AscendC::HardEvent::M_FIX>(0);
-              AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(0);
-              tl::ascend::copy_l0c_to_gm<float, float, layout::RowMajor, 32, 128, 0>(bmm1Res[(((((pipe_iter * 1572864) + (cid * 65536)) + (k_outer_1 * 1024)) + (k_inner * 128)) - 1572864)], c1_p_l0c[0], 2048, 32, 128, 0);
               AscendC::SetFlag<AscendC::HardEvent::FIX_M>(0);
             }
+            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(0);
+            tl::ascend::copy_l1_to_l0a<bfloat16_t, 32, 128, false>(c1_q_l0a[0], c1_query_rope_cache_l1[0], 32, 128);
+            tl::ascend::copy_l1_to_l0b<bfloat16_t, 128, 128, true>(c1_key_l0b[0], c1_key_l1[0], 128, 128);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(0);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(0);
+            tl::ascend::mma<bfloat16_t, float, 32, 128>(c1_q_l0a[0],c1_key_l0b[0],c1_p_l0c[0], (bool)0, 128);
+            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
+            AscendC::SetFlag<AscendC::HardEvent::M_FIX>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(0);
+            tl::ascend::copy_l0c_to_gm<float, float, layout::RowMajor, 32, 128, 0>(bmm1Res[((((pipe_iter * 786432) + (cid * 32768)) + (k_inner * 128)) - 786432)], c1_p_l0c[0], 1024, 32, 128, 0);
+            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(0);
           }
           AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
           AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
@@ -332,30 +328,28 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
           AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(1);
           tl::ascend::copy_l1_to_l0a<bfloat16_t, 8, 128, false>(c1_qi_l0a[0], c1_qi_l1[0], 8, 128);
           AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(1);
-          for (int32_t k_outer_2 = 0; k_outer_2 < 2; ++k_outer_2) {
-            if (((k_outer_2 + ((pipe_iter + 1) % 2)) % 2) == 0) {
-              AscendC::CrossCoreWaitFlag(2);
-            } else {
-              AscendC::CrossCoreWaitFlag(3);
-            }
-            for (int32_t k_inner_1 = 0; k_inner_1 < 8; ++k_inner_1) {
-              AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
-              tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_ki_l1[0], GatherKeyIndex_ws[(((((pipe_iter * 6291456) + (cid * 262144)) + (k_outer_2 * 131072)) + (k_inner_1 * 16384)) - 6291456)], 128, 128, 128, true);
-              AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(1);
-              AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(1);
-              AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(1);
-              tl::ascend::copy_l1_to_l0b<bfloat16_t, 128, 128, true>(c1_ki_l0b[0], c1_ki_l1[0], 128, 128);
-              AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(1);
-              AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(1);
-              AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(1);
-              AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(1);
-              tl::ascend::mma<bfloat16_t, float, 8, 128>(c1_qi_l0a[0],c1_ki_l0b[0],c1_sy_l0c[0], (bool)1, 128);
-              AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(1);
-              AscendC::SetFlag<AscendC::HardEvent::M_FIX>(1);
-              AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(1);
-              tl::ascend::copy_l0c_to_gm<float, float, layout::RowMajor, 8, 128, 1>(bmm2Res[(((((pipe_iter * 393216) + (cid * 16384)) + (k_outer_2 * 1024)) + (k_inner_1 * 128)) - 393216)], c1_sy_l0c[0], 2048, 8, 128, 0);
-              AscendC::SetFlag<AscendC::HardEvent::FIX_M>(1);
-            }
+          if (((pipe_iter + 1) % 2) == 0) {
+            AscendC::CrossCoreWaitFlag(2);
+          } else {
+            AscendC::CrossCoreWaitFlag(3);
+          }
+          for (int32_t k_inner_1 = 0; k_inner_1 < 8; ++k_inner_1) {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
+            tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c1_ki_l1[0], GatherKeyIndex_ws[((((pipe_iter * 3145728) + (cid * 131072)) + (k_inner_1 * 16384)) - 3145728)], 128, 128, 128, true);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(1);
+            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(1);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(1);
+            tl::ascend::copy_l1_to_l0b<bfloat16_t, 128, 128, true>(c1_ki_l0b[0], c1_ki_l1[0], 128, 128);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(1);
+            AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(1);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(1);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(1);
+            tl::ascend::mma<bfloat16_t, float, 8, 128>(c1_qi_l0a[0],c1_ki_l0b[0],c1_sy_l0c[0], (bool)1, 128);
+            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(1);
+            AscendC::SetFlag<AscendC::HardEvent::M_FIX>(1);
+            AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(1);
+            tl::ascend::copy_l0c_to_gm<float, float, layout::RowMajor, 8, 128, 1>(bmm2Res[((((pipe_iter * 196608) + (cid * 8192)) + (k_inner_1 * 128)) - 196608)], c1_sy_l0c[0], 1024, 8, 128, 0);
+            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(1);
           }
           AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
           AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(1);
@@ -383,10 +377,10 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
           tl::ascend::Fill<float>(v1_op_partial[0], 1.000000e-08f, 32);
           AscendC::PipeBarrier<PIPE_V>();
           AscendC::Max(v1_op_sum[0], v1_op_sum[0], v1_op_partial[0], 32);
-          for (int32_t local_n = 0; local_n < 8; ++local_n) {
+          for (int32_t local_n = 0; local_n < 4; ++local_n) {
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(1);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
-            tl::ascend::copy_gm_to_ub<float, 128, 32>(v1_op_bmm1[0], bmm1Res[(((((pipe_iter * 1572864) + (cid * 65536)) + (vid * 1024)) + (local_n * 128)) - 1572864)], 2048, 32, 128, 0.000000e+00f);
+            tl::ascend::copy_gm_to_ub<float, 128, 32>(v1_op_bmm1[0], bmm1Res[(((((pipe_iter * 786432) + (cid * 32768)) + (vid * 512)) + (local_n * 128)) - 786432)], 1024, 32, 128, 0.000000e+00f);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(1);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(1);
             {
@@ -419,7 +413,7 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(1);
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
-            tl::ascend::copy_ub_to_gm<float, 128>(PReduced[(((((pipe_iter * 49152) + (cid * 2048)) + (vid * 1024)) + (local_n * 128)) - 49152)], v1_op_out[0], 2097152, 1, 128);
+            tl::ascend::copy_ub_to_gm<float, 128>(PReduced[(((((pipe_iter * 24576) + (cid * 1024)) + (vid * 512)) + (local_n * 128)) - 24576)], v1_op_out[0], 1048576, 1, 128);
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
           }
           AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(1);
@@ -445,9 +439,9 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
           }
           tl::ascend::Fill<float>(v1_om_local_max[0], -CUDART_INF_F, 1);
           AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(3);
-          for (int32_t local_n_1 = 0; local_n_1 < 8; ++local_n_1) {
+          for (int32_t local_n_1 = 0; local_n_1 < 4; ++local_n_1) {
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(3);
-            tl::ascend::copy_gm_to_ub<float, 128, 8>(v1_om_bmm2[0], bmm2Res[(((((pipe_iter * 393216) + (cid * 16384)) + (vid * 1024)) + (local_n_1 * 128)) - 393216)], 2048, 8, 128, 0.000000e+00f);
+            tl::ascend::copy_gm_to_ub<float, 128, 8>(v1_om_bmm2[0], bmm2Res[(((((pipe_iter * 196608) + (cid * 8192)) + (vid * 512)) + (local_n_1 * 128)) - 196608)], 1024, 8, 128, 0.000000e+00f);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(3);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(3);
             AscendC::Mul(v1_om_bmm2[0], v1_om_bmm2[0], v1_om_weight_2d[0], 1024);
@@ -507,9 +501,9 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
           tl::ascend::Broadcast<float, 2, 1, false>(v1_os_global_max_2d[0],v1_os_global_max[0],tmp_ub,(uint32_t[]){1, 128}, (uint32_t[]){1, 1});
           tl::ascend::Fill<float>(v1_os_local_sum[0], 0.000000e+00f, 1);
           AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(3);
-          for (int32_t local_n_2 = 0; local_n_2 < 8; ++local_n_2) {
+          for (int32_t local_n_2 = 0; local_n_2 < 4; ++local_n_2) {
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(3);
-            tl::ascend::copy_gm_to_ub<float, 128, 8>(v1_os_bmm2[0], bmm2Res[(((((pipe_iter * 393216) + (cid * 16384)) + (vid * 1024)) + (local_n_2 * 128)) - 393216)], 2048, 8, 128, 0.000000e+00f);
+            tl::ascend::copy_gm_to_ub<float, 128, 8>(v1_os_bmm2[0], bmm2Res[(((((pipe_iter * 196608) + (cid * 8192)) + (vid * 512)) + (local_n_2 * 128)) - 196608)], 1024, 8, 128, 0.000000e+00f);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(3);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(3);
             AscendC::Mul(v1_os_bmm2[0], v1_os_bmm2[0], v1_os_weight_2d[0], 1024);
@@ -576,11 +570,11 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
           tl::ascend::Fill<float>(v1_ob_dw_accum[0], 0.000000e+00f, 8);
           tl::ascend::Fill<float>(v1_ob_loss_accum[0], 0.000000e+00f, 1);
           AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(3);
-          for (int32_t local_n_3 = 0; local_n_3 < 8; ++local_n_3) {
+          for (int32_t local_n_3 = 0; local_n_3 < 4; ++local_n_3) {
             for (int32_t bw_col_id = 0; bw_col_id < 2; ++bw_col_id) {
               AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(3);
-              tl::ascend::copy_gm_to_ub<float, 64>(v1_ob_p[0], PReduced[((((((pipe_iter * 49152) + (cid * 2048)) + (vid * 1024)) + (local_n_3 * 128)) + (bw_col_id * 64)) - 49152)], 2097152, 1, 64, 0.000000e+00f);
-              tl::ascend::copy_gm_to_ub<float, 64, 8>(v1_ob_bmm2[0], bmm2Res[((((((pipe_iter * 393216) + (cid * 16384)) + (vid * 1024)) + (local_n_3 * 128)) + (bw_col_id * 64)) - 393216)], 2048, 8, 64, 0.000000e+00f);
+              tl::ascend::copy_gm_to_ub<float, 64>(v1_ob_p[0], PReduced[((((((pipe_iter * 24576) + (cid * 1024)) + (vid * 512)) + (local_n_3 * 128)) + (bw_col_id * 64)) - 24576)], 1048576, 1, 64, 0.000000e+00f);
+              tl::ascend::copy_gm_to_ub<float, 64, 8>(v1_ob_bmm2[0], bmm2Res[((((((pipe_iter * 196608) + (cid * 8192)) + (vid * 512)) + (local_n_3 * 128)) + (bw_col_id * 64)) - 196608)], 1024, 8, 64, 0.000000e+00f);
               AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(3);
               AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(3);
               AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(2);
@@ -624,7 +618,7 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
               AscendC::PipeBarrier<PIPE_V>();
               AscendC::Mul(v1_ob_loss_2d[0], v1_ob_loss_2d[0], v1_ob_p[0], 64);
               AscendC::PipeBarrier<PIPE_V>();
-              AscendC::CompareScalar(v1_ob_mask[0], v1_ob_offsets[0], float((((KRealSize.GetValue((((pipe_iter * 24) + cid) - 24)) - (bw_col_id * 64)) - (local_n_3 * 128)) - (vid * 1024))), AscendC::CMPMODE::LT, 64);
+              AscendC::CompareScalar(v1_ob_mask[0], v1_ob_offsets[0], float((((KRealSize.GetValue((((pipe_iter * 24) + cid) - 24)) - (bw_col_id * 64)) - (local_n_3 * 128)) - (vid * 512))), AscendC::CMPMODE::LT, 64);
               AscendC::PipeBarrier<PIPE_V>();
 AscendC::Select<float, uint8_t>(v1_ob_loss_2d[0], v1_ob_mask[0], v1_ob_loss_2d[0], static_cast<float>(0.000000e+00f), AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, 64);
               AscendC::PipeBarrier<PIPE_V>();
@@ -640,7 +634,7 @@ AscendC::Select<float, uint8_t>(v1_ob_loss_2d[0], v1_ob_mask[0], v1_ob_loss_2d[0
               AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(2);
               AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(2);
               AscendC::PipeBarrier<PIPE_MTE3>();
-              tl::ascend::copy_ub_to_gm<bfloat16_t, 64, 8>(reluGradRes[((((((pipe_iter * 393216) + (cid * 16384)) + (vid * 1024)) + (local_n_3 * 128)) + (bw_col_id * 64)) - 393216)], v1_ob_rg_half[0], 2048, 8, 64);
+              tl::ascend::copy_ub_to_gm<bfloat16_t, 64, 8>(reluGradRes[((((((pipe_iter * 196608) + (cid * 8192)) + (vid * 512)) + (local_n_3 * 128)) + (bw_col_id * 64)) - 196608)], v1_ob_rg_half[0], 1024, 8, 64);
               AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(2);
               AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(3);
             }
@@ -706,10 +700,10 @@ AscendC::Select<float, uint8_t>(v1_ob_loss_2d[0], v1_ob_mask[0], v1_ob_loss_2d[0
           AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(3);
           AscendC::SetFlag<AscendC::HardEvent::FIX_M>(3);
           AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(6);
-          for (int32_t n_idx = 0; n_idx < 16; ++n_idx) {
+          for (int32_t n_idx = 0; n_idx < 8; ++n_idx) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(2);
-            tl::ascend::copy_gm_to_l1<bfloat16_t, 16, 128>(c2_rg_l1[0], reluGradRes[((((pipe_iter * 393216) + (cid * 16384)) + (n_idx * 128)) - 393216)], 2048, 8, 128, true);
-            tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c2_gki_l1[0], GatherKeyIndex_ws[((((pipe_iter * 6291456) + (cid * 262144)) + (n_idx * 16384)) - 6291456)], 128, 128, 128, true);
+            tl::ascend::copy_gm_to_l1<bfloat16_t, 16, 128>(c2_rg_l1[0], reluGradRes[((((pipe_iter * 196608) + (cid * 8192)) + (n_idx * 128)) - 196608)], 1024, 8, 128, true);
+            tl::ascend::copy_gm_to_l1<bfloat16_t, 128, 128>(c2_gki_l1[0], GatherKeyIndex_ws[((((pipe_iter * 3145728) + (cid * 131072)) + (n_idx * 16384)) - 3145728)], 128, 128, 128, true);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(2);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(2);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(3);
@@ -727,13 +721,13 @@ AscendC::Select<float, uint8_t>(v1_ob_loss_2d[0], v1_ob_mask[0], v1_ob_loss_2d[0
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(2);
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(2);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(2);
-            tl::ascend::copy_l0c_to_gm<float, float, layout::RowMajor, 128, 128, 0>(dk_matmul_partial[((((pipe_iter * 6291456) + (cid * 262144)) + (n_idx * 16384)) - 6291456)], c2_dk_l0c[0], 128, 128, 128, 0);
+            tl::ascend::copy_l0c_to_gm<float, float, layout::RowMajor, 128, 128, 0>(dk_matmul_partial[((((pipe_iter * 3145728) + (cid * 131072)) + (n_idx * 16384)) - 3145728)], c2_dk_l0c[0], 128, 128, 128, 0);
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(2);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(3);
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(3);
             tl::ascend::mma<bfloat16_t, float, 8, 128>(c2_dq_rg_l0a[0],c2_dq_gki_l0b[0],c2_dq_l0c[0], (n_idx == 0), 128);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(3);
-            if (n_idx < 15) {
+            if (n_idx < 7) {
               AscendC::SetFlag<AscendC::HardEvent::FIX_M>(3);
             }
           }
@@ -755,7 +749,15 @@ AscendC::Select<float, uint8_t>(v1_ob_loss_2d[0], v1_ob_mask[0], v1_ob_loss_2d[0
     tl::ascend::Fill<float>(v2_zero_batch[0], 0.000000e+00f, 4096);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(5);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(5);
-    tl::ascend::copy_ub_to_gm<float, 128, 32>(dKeyIndexAccum[((cid * 8192) + (vid * 4096))], v2_zero_batch[0], 128, 32, 128);
+    int32_t condval;
+    if ((cid < 16)) {
+      condval = 1;
+    } else {
+      condval = 0;
+    }
+    for (int32_t clear_iter = 0; clear_iter < condval; ++clear_iter) {
+      tl::ascend::copy_ub_to_gm<float, 128, 32>(dKeyIndexAccum[(((((cid * 2) + vid) < 32 ? ((cid * 2) + vid) : 32) * 4096) + (clear_iter * 4096))], v2_zero_batch[0], 128, ((1 <= ((((32 - vid) - (cid * 2)) > 0 ? ((32 - vid) - (cid * 2)) : 0) - clear_iter)) ? 32 : ((((((cid * 2) + vid) < 32 ? ((cid * 2) + vid) : 32) + clear_iter) < 32) ? ((1024 - ((((cid * 2) + vid) < 32 ? ((cid * 2) + vid) : 32) * 32)) - (clear_iter * 32)) : 0)), 128);
+    }
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(5);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(5);
   }
@@ -765,170 +767,170 @@ AscendC::Select<float, uint8_t>(v1_ob_loss_2d[0], v1_ob_mask[0], v1_ob_loss_2d[0
     AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(7);
     for (int32_t task_id = 0; task_id < 1024; ++task_id) {
       int32_t valid_k_size = KRealSize.GetValue(task_id);
-      int32_t condval;
-      if ((cid < 9)) {
-        condval = 1;
+      int32_t condval_1;
+      if ((cid < 16)) {
+        condval_1 = 1;
       } else {
-        condval = 0;
+        condval_1 = 0;
       }
-      if ((((cid * 48) + ((cid < 9 ? cid : 9) * 16)) + ((vid * ((condval / 2) + 2)) * 16)) < valid_k_size) {
-        int32_t condval_1;
-        if ((cid < 9)) {
-          condval_1 = 1;
-        } else {
-          condval_1 = 0;
-        }
+      if ((((cid * 32) + ((cid < 16 ? cid : 16) * 16)) + ((vid * ((condval_1 + 3) / 2)) * 16)) < valid_k_size) {
         int32_t condval_2;
-        if ((cid < 9)) {
+        if ((cid < 16)) {
           condval_2 = 1;
         } else {
           condval_2 = 0;
         }
         int32_t condval_3;
-        if ((cid < 9)) {
+        if ((cid < 16)) {
           condval_3 = 1;
         } else {
           condval_3 = 0;
         }
-        if (((((((cid * 48) + ((condval_1 / 2) * 16)) + ((cid < 9 ? cid : 9) * 16)) + ((vid * ((condval_2 / 2) + 2)) * 16)) + 32) - ((vid * (1 - (condval_3 % 2))) * 16)) <= valid_k_size) {
+        int32_t condval_4;
+        if ((cid < 16)) {
+          condval_4 = 1;
+        } else {
+          condval_4 = 0;
+        }
+        if ((((((cid * 32) + (((condval_2 + 3) / 2) * 16)) + ((cid < 16 ? cid : 16) * 16)) + ((vid * ((condval_3 + 3) / 2)) * 16)) - ((vid * (1 - ((condval_4 + 1) % 2))) * 16)) <= valid_k_size) {
           if ASCEND_IS_AIV {
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(6);
-            int32_t condval_4;
-            if ((cid < 9)) {
-              condval_4 = 1;
-            } else {
-              condval_4 = 0;
-            }
             int32_t condval_5;
-            if ((cid < 9)) {
+            if ((cid < 16)) {
               condval_5 = 1;
             } else {
               condval_5 = 0;
             }
             int32_t condval_6;
-            if ((cid < 9)) {
+            if ((cid < 16)) {
               condval_6 = 1;
             } else {
               condval_6 = 0;
             }
             int32_t condval_7;
-            if ((cid < 9)) {
+            if ((cid < 16)) {
               condval_7 = 1;
             } else {
               condval_7 = 0;
             }
-            tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_ping[0], dk_matmul_partial[((((task_id * 262144) + (cid * 6144)) + ((cid < 9 ? cid : 9) * 2048)) + ((vid * ((condval_4 / 2) + 2)) * 2048))], 128, ((1 <= (((128 - (cid < 9 ? cid : 9)) - (vid * ((condval_5 / 2) + 2))) - (cid * 3))) ? 16 : (((((cid * 3) + (cid < 9 ? cid : 9)) + (vid * ((condval_6 / 2) + 2))) < 128) ? (((2048 - ((cid < 9 ? cid : 9) * 16)) - ((vid * ((condval_7 / 2) + 2)) * 16)) - (cid * 48)) : 0)), 128, 0.000000e+00f);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(6);
             int32_t condval_8;
-            if ((cid < 9)) {
+            if ((cid < 16)) {
               condval_8 = 1;
             } else {
               condval_8 = 0;
             }
+            tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_ping[0], dk_matmul_partial[((((task_id * 131072) + (cid * 4096)) + ((cid < 16 ? cid : 16) * 2048)) + ((vid * ((condval_5 + 3) / 2)) * 2048))], 128, ((1 <= (((64 - (cid < 16 ? cid : 16)) - (vid * ((condval_6 + 3) / 2))) - (cid * 2))) ? 16 : ((((((cid < 16 ? cid : 16) + (vid * ((condval_7 + 3) / 2))) / 2) + cid) < 32) ? (((1024 - ((cid < 16 ? cid : 16) * 16)) - ((vid * ((condval_8 + 3) / 2)) * 16)) - (cid * 32)) : 0)), 128, 0.000000e+00f);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(6);
             int32_t condval_9;
-            if ((cid < 9)) {
+            if ((cid < 16)) {
               condval_9 = 1;
             } else {
               condval_9 = 0;
             }
-            for (int32_t batch_id = 0; batch_id < (((condval_8 / 2) + 2) - (vid * (1 - (condval_9 % 2)))); ++batch_id) {
-              int32_t condval_10;
-              if ((cid < 9)) {
-                condval_10 = 1;
-              } else {
-                condval_10 = 0;
-              }
+            int32_t condval_10;
+            if ((cid < 16)) {
+              condval_10 = 1;
+            } else {
+              condval_10 = 0;
+            }
+            for (int32_t batch_id = 0; batch_id < (((condval_9 + 3) / 2) - (vid * (1 - ((condval_10 + 1) % 2)))); ++batch_id) {
               int32_t condval_11;
-              if ((cid < 9)) {
+              if ((cid < 16)) {
                 condval_11 = 1;
               } else {
                 condval_11 = 0;
               }
-              if (batch_id <= ((condval_10 / 2) - (vid * (1 - (condval_11 % 2))))) {
+              int32_t condval_12;
+              if ((cid < 16)) {
+                condval_12 = 1;
+              } else {
+                condval_12 = 0;
+              }
+              if ((batch_id + 1) < (((condval_11 + 3) / 2) - (vid * (1 - ((condval_12 + 1) % 2))))) {
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>((((batch_id + 1) % 2) + 6));
                 if (((batch_id + 1) % 2) == 0) {
-                  int32_t condval_12;
-                  if ((cid < 9)) {
-                    condval_12 = 1;
-                  } else {
-                    condval_12 = 0;
-                  }
                   int32_t condval_13;
-                  if ((cid < 9)) {
+                  if ((cid < 16)) {
                     condval_13 = 1;
                   } else {
                     condval_13 = 0;
                   }
                   int32_t condval_14;
-                  if ((cid < 9)) {
+                  if ((cid < 16)) {
                     condval_14 = 1;
                   } else {
                     condval_14 = 0;
                   }
                   int32_t condval_15;
-                  if ((cid < 9)) {
+                  if ((cid < 16)) {
                     condval_15 = 1;
                   } else {
                     condval_15 = 0;
                   }
-                  tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_ping[0], dk_matmul_partial[((((((task_id * 262144) + (cid * 6144)) + (batch_id * 2048)) + ((cid < 9 ? cid : 9) * 2048)) + ((vid * ((condval_12 / 2) + 2)) * 2048)) + 2048)], 128, ((1 <= ((((127 - batch_id) - (cid < 9 ? cid : 9)) - (vid * ((condval_13 / 2) + 2))) - (cid * 3))) ? 16 : ((((((cid * 3) + (cid < 9 ? cid : 9)) + batch_id) + (vid * ((condval_14 / 2) + 2))) < 127) ? ((((2032 - (batch_id * 16)) - ((cid < 9 ? cid : 9) * 16)) - ((vid * ((condval_15 / 2) + 2)) * 16)) - (cid * 48)) : 0)), 128, 0.000000e+00f);
-                } else {
                   int32_t condval_16;
-                  if ((cid < 9)) {
+                  if ((cid < 16)) {
                     condval_16 = 1;
                   } else {
                     condval_16 = 0;
                   }
+                  tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_ping[0], dk_matmul_partial[((((((task_id * 131072) + (cid * 4096)) + (batch_id * 2048)) + ((cid < 16 ? cid : 16) * 2048)) + ((vid * ((condval_13 + 3) / 2)) * 2048)) + 2048)], 128, ((1 <= ((((63 - batch_id) - (cid < 16 ? cid : 16)) - (vid * ((condval_14 + 3) / 2))) - (cid * 2))) ? 16 : ((((((cid * 2) + (cid < 16 ? cid : 16)) + batch_id) + (vid * ((condval_15 + 3) / 2))) < 63) ? ((((1008 - (batch_id * 16)) - ((cid < 16 ? cid : 16) * 16)) - ((vid * ((condval_16 + 3) / 2)) * 16)) - (cid * 32)) : 0)), 128, 0.000000e+00f);
+                } else {
                   int32_t condval_17;
-                  if ((cid < 9)) {
+                  if ((cid < 16)) {
                     condval_17 = 1;
                   } else {
                     condval_17 = 0;
                   }
                   int32_t condval_18;
-                  if ((cid < 9)) {
+                  if ((cid < 16)) {
                     condval_18 = 1;
                   } else {
                     condval_18 = 0;
                   }
                   int32_t condval_19;
-                  if ((cid < 9)) {
+                  if ((cid < 16)) {
                     condval_19 = 1;
                   } else {
                     condval_19 = 0;
                   }
-                  tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_pong[0], dk_matmul_partial[((((((task_id * 262144) + (cid * 6144)) + (batch_id * 2048)) + ((cid < 9 ? cid : 9) * 2048)) + ((vid * ((condval_16 / 2) + 2)) * 2048)) + 2048)], 128, ((1 <= ((((127 - batch_id) - (cid < 9 ? cid : 9)) - (vid * ((condval_17 / 2) + 2))) - (cid * 3))) ? 16 : ((((((cid * 3) + (cid < 9 ? cid : 9)) + batch_id) + (vid * ((condval_18 / 2) + 2))) < 127) ? ((((2032 - (batch_id * 16)) - ((cid < 9 ? cid : 9) * 16)) - ((vid * ((condval_19 / 2) + 2)) * 16)) - (cid * 48)) : 0)), 128, 0.000000e+00f);
+                  int32_t condval_20;
+                  if ((cid < 16)) {
+                    condval_20 = 1;
+                  } else {
+                    condval_20 = 0;
+                  }
+                  tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_pong[0], dk_matmul_partial[((((((task_id * 131072) + (cid * 4096)) + (batch_id * 2048)) + ((cid < 16 ? cid : 16) * 2048)) + ((vid * ((condval_17 + 3) / 2)) * 2048)) + 2048)], 128, ((1 <= ((((63 - batch_id) - (cid < 16 ? cid : 16)) - (vid * ((condval_18 + 3) / 2))) - (cid * 2))) ? 16 : ((((((cid * 2) + (cid < 16 ? cid : 16)) + batch_id) + (vid * ((condval_19 + 3) / 2))) < 63) ? ((((1008 - (batch_id * 16)) - ((cid < 16 ? cid : 16) * 16)) - ((vid * ((condval_20 + 3) / 2)) * 16)) - (cid * 32)) : 0)), 128, 0.000000e+00f);
                 }
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>((((batch_id + 1) % 2) + 6));
               }
               AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(((batch_id % 2) + 6));
               for (int32_t pair_idx = 0; pair_idx < 8; ++pair_idx) {
-                int64_t condval_20;
-                if ((((int64_t)cid) < (int64_t)9)) {
-                  condval_20 = (int64_t)1;
-                } else {
-                  condval_20 = (int64_t)0;
-                }
-                int32_t sparse_idx0 = SparseIndices.GetValue(((((((((int64_t)task_id) * (int64_t)5120) + (((int64_t)cid) * (int64_t)48)) + (((int64_t)batch_id) * (int64_t)16)) + ((((int64_t)cid) < (int64_t)9 ? ((int64_t)cid) : (int64_t)9) * (int64_t)16)) + ((((int64_t)vid) * ((condval_20 / (int64_t)2) + (int64_t)2)) * (int64_t)16)) + (((int64_t)pair_idx) * (int64_t)2)));
                 int64_t condval_21;
-                if ((((int64_t)cid) < (int64_t)9)) {
+                if ((((int64_t)cid) < (int64_t)16)) {
                   condval_21 = (int64_t)1;
                 } else {
                   condval_21 = (int64_t)0;
                 }
-                int32_t sparse_idx1 = SparseIndices.GetValue((((((((((int64_t)task_id) * (int64_t)5120) + (((int64_t)cid) * (int64_t)48)) + (((int64_t)batch_id) * (int64_t)16)) + ((((int64_t)cid) < (int64_t)9 ? ((int64_t)cid) : (int64_t)9) * (int64_t)16)) + ((((int64_t)vid) * ((condval_21 / (int64_t)2) + (int64_t)2)) * (int64_t)16)) + (((int64_t)pair_idx) * (int64_t)2)) + (int64_t)1));
+                int32_t sparse_idx0 = SparseIndices.GetValue(((((((((int64_t)task_id) * (int64_t)1024) + (((int64_t)cid) * (int64_t)32)) + (((int64_t)batch_id) * (int64_t)16)) + ((((int64_t)cid) < (int64_t)16 ? ((int64_t)cid) : (int64_t)16) * (int64_t)16)) + ((((int64_t)vid) * ((condval_21 + (int64_t)3) / (int64_t)2)) * (int64_t)16)) + (((int64_t)pair_idx) * (int64_t)2)));
+                int64_t condval_22;
+                if ((((int64_t)cid) < (int64_t)16)) {
+                  condval_22 = (int64_t)1;
+                } else {
+                  condval_22 = (int64_t)0;
+                }
+                int32_t sparse_idx1 = SparseIndices.GetValue((((((((((int64_t)task_id) * (int64_t)1024) + (((int64_t)cid) * (int64_t)32)) + (((int64_t)batch_id) * (int64_t)16)) + ((((int64_t)cid) < (int64_t)16 ? ((int64_t)cid) : (int64_t)16) * (int64_t)16)) + ((((int64_t)vid) * ((condval_22 + (int64_t)3) / (int64_t)2)) * (int64_t)16)) + (((int64_t)pair_idx) * (int64_t)2)) + (int64_t)1));
                 if (0 <= sparse_idx0) {
                   if ((batch_id % 2) == 0) {
-                    tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx0 * 128)], v2_dk_batch_ping[(pair_idx * 256)], 196608, ((sparse_idx0 <= 1535) ? 1 : 0), 128);
+                    tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx0 * 128)], v2_dk_batch_ping[(pair_idx * 256)], 131072, ((sparse_idx0 <= 1023) ? 1 : 0), 128);
                   } else {
-                    tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx0 * 128)], v2_dk_batch_pong[(pair_idx * 256)], 196608, ((sparse_idx0 <= 1535) ? 1 : 0), 128);
+                    tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx0 * 128)], v2_dk_batch_pong[(pair_idx * 256)], 131072, ((sparse_idx0 <= 1023) ? 1 : 0), 128);
                   }
                 }
                 if (0 <= sparse_idx1) {
                   if ((batch_id % 2) == 0) {
-                    tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx1 * 128)], v2_dk_batch_ping[((pair_idx * 256) + 128)], 196608, ((sparse_idx1 <= 1535) ? 1 : 0), 128);
+                    tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx1 * 128)], v2_dk_batch_ping[((pair_idx * 256) + 128)], 131072, ((sparse_idx1 <= 1023) ? 1 : 0), 128);
                   } else {
-                    tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx1 * 128)], v2_dk_batch_pong[((pair_idx * 256) + 128)], 196608, ((sparse_idx1 <= 1535) ? 1 : 0), 128);
+                    tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx1 * 128)], v2_dk_batch_pong[((pair_idx * 256) + 128)], 131072, ((sparse_idx1 <= 1023) ? 1 : 0), 128);
                   }
                 }
               }
@@ -938,196 +940,196 @@ AscendC::Select<float, uint8_t>(v1_ob_loss_2d[0], v1_ob_mask[0], v1_ob_loss_2d[0
         } else {
           if ASCEND_IS_AIV {
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(6);
-            int32_t condval_22;
-            if ((cid < 9)) {
-              condval_22 = 1;
-            } else {
-              condval_22 = 0;
-            }
             int32_t condval_23;
-            if ((cid < 9)) {
+            if ((cid < 16)) {
               condval_23 = 1;
             } else {
               condval_23 = 0;
             }
             int32_t condval_24;
-            if ((cid < 9)) {
+            if ((cid < 16)) {
               condval_24 = 1;
             } else {
               condval_24 = 0;
             }
             int32_t condval_25;
-            if ((cid < 9)) {
+            if ((cid < 16)) {
               condval_25 = 1;
             } else {
               condval_25 = 0;
             }
-            tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_ping[0], dk_matmul_partial[((((task_id * 262144) + (cid * 6144)) + ((cid < 9 ? cid : 9) * 2048)) + ((vid * ((condval_22 / 2) + 2)) * 2048))], 128, ((1 <= (((128 - (cid < 9 ? cid : 9)) - (vid * ((condval_23 / 2) + 2))) - (cid * 3))) ? 16 : (((((cid * 3) + (cid < 9 ? cid : 9)) + (vid * ((condval_24 / 2) + 2))) < 128) ? (((2048 - ((cid < 9 ? cid : 9) * 16)) - ((vid * ((condval_25 / 2) + 2)) * 16)) - (cid * 48)) : 0)), 128, 0.000000e+00f);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(6);
             int32_t condval_26;
-            if ((cid < 9)) {
+            if ((cid < 16)) {
               condval_26 = 1;
             } else {
               condval_26 = 0;
             }
+            tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_ping[0], dk_matmul_partial[((((task_id * 131072) + (cid * 4096)) + ((cid < 16 ? cid : 16) * 2048)) + ((vid * ((condval_23 + 3) / 2)) * 2048))], 128, ((1 <= (((64 - (cid < 16 ? cid : 16)) - (vid * ((condval_24 + 3) / 2))) - (cid * 2))) ? 16 : ((((((cid < 16 ? cid : 16) + (vid * ((condval_25 + 3) / 2))) / 2) + cid) < 32) ? (((1024 - ((cid < 16 ? cid : 16) * 16)) - ((vid * ((condval_26 + 3) / 2)) * 16)) - (cid * 32)) : 0)), 128, 0.000000e+00f);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(6);
             int32_t condval_27;
-            if ((cid < 9)) {
+            if ((cid < 16)) {
               condval_27 = 1;
             } else {
               condval_27 = 0;
             }
-            for (int32_t batch_id_1 = 0; batch_id_1 < (((condval_26 / 2) + 2) - (vid * (1 - (condval_27 % 2)))); ++batch_id_1) {
-              int32_t condval_28;
-              if ((cid < 9)) {
-                condval_28 = 1;
-              } else {
-                condval_28 = 0;
-              }
+            int32_t condval_28;
+            if ((cid < 16)) {
+              condval_28 = 1;
+            } else {
+              condval_28 = 0;
+            }
+            for (int32_t batch_id_1 = 0; batch_id_1 < (((condval_27 + 3) / 2) - (vid * (1 - ((condval_28 + 1) % 2)))); ++batch_id_1) {
               int32_t condval_29;
-              if ((cid < 9)) {
+              if ((cid < 16)) {
                 condval_29 = 1;
               } else {
                 condval_29 = 0;
               }
-              if (batch_id_1 <= ((condval_28 / 2) - (vid * (1 - (condval_29 % 2))))) {
+              int32_t condval_30;
+              if ((cid < 16)) {
+                condval_30 = 1;
+              } else {
+                condval_30 = 0;
+              }
+              if ((batch_id_1 + 1) < (((condval_29 + 3) / 2) - (vid * (1 - ((condval_30 + 1) % 2))))) {
+                int32_t condval_32;
+                if ((cid < 16)) {
+                  condval_32 = 1;
+                } else {
+                  condval_32 = 0;
+                }
                 int32_t condval_31;
-                if ((cid < 9)) {
+                if (((((((cid * 32) + (batch_id_1 * 16)) + ((cid < 16 ? cid : 16) * 16)) + ((vid * ((condval_32 + 3) / 2)) * 16)) + 16) < valid_k_size)) {
                   condval_31 = 1;
                 } else {
                   condval_31 = 0;
                 }
-                int32_t condval_30;
-                if (((((((cid * 48) + (batch_id_1 * 16)) + ((cid < 9 ? cid : 9) * 16)) + ((vid * ((condval_31 / 2) + 2)) * 16)) + 16) < valid_k_size)) {
-                  condval_30 = 1;
-                } else {
-                  condval_30 = 0;
-                }
-                if (0 < condval_30) {
+                if (0 < condval_31) {
                   AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>((((batch_id_1 + 1) % 2) + 6));
                   if (((batch_id_1 + 1) % 2) == 0) {
-                    int32_t condval_32;
-                    if ((cid < 9)) {
-                      condval_32 = 1;
-                    } else {
-                      condval_32 = 0;
-                    }
                     int32_t condval_33;
-                    if ((cid < 9)) {
+                    if ((cid < 16)) {
                       condval_33 = 1;
                     } else {
                       condval_33 = 0;
                     }
                     int32_t condval_34;
-                    if ((cid < 9)) {
+                    if ((cid < 16)) {
                       condval_34 = 1;
                     } else {
                       condval_34 = 0;
                     }
                     int32_t condval_35;
-                    if ((cid < 9)) {
+                    if ((cid < 16)) {
                       condval_35 = 1;
                     } else {
                       condval_35 = 0;
                     }
-                    tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_ping[0], dk_matmul_partial[((((((task_id * 262144) + (cid * 6144)) + (batch_id_1 * 2048)) + ((cid < 9 ? cid : 9) * 2048)) + ((vid * ((condval_32 / 2) + 2)) * 2048)) + 2048)], 128, ((1 <= ((((127 - batch_id_1) - (cid < 9 ? cid : 9)) - (vid * ((condval_33 / 2) + 2))) - (cid * 3))) ? 16 : ((((((cid * 3) + (cid < 9 ? cid : 9)) + batch_id_1) + (vid * ((condval_34 / 2) + 2))) < 127) ? ((((2032 - (batch_id_1 * 16)) - ((cid < 9 ? cid : 9) * 16)) - ((vid * ((condval_35 / 2) + 2)) * 16)) - (cid * 48)) : 0)), 128, 0.000000e+00f);
-                  } else {
                     int32_t condval_36;
-                    if ((cid < 9)) {
+                    if ((cid < 16)) {
                       condval_36 = 1;
                     } else {
                       condval_36 = 0;
                     }
+                    tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_ping[0], dk_matmul_partial[((((((task_id * 131072) + (cid * 4096)) + (batch_id_1 * 2048)) + ((cid < 16 ? cid : 16) * 2048)) + ((vid * ((condval_33 + 3) / 2)) * 2048)) + 2048)], 128, ((1 <= ((((63 - batch_id_1) - (cid < 16 ? cid : 16)) - (vid * ((condval_34 + 3) / 2))) - (cid * 2))) ? 16 : ((((((cid * 2) + (cid < 16 ? cid : 16)) + batch_id_1) + (vid * ((condval_35 + 3) / 2))) < 63) ? ((((1008 - (batch_id_1 * 16)) - ((cid < 16 ? cid : 16) * 16)) - ((vid * ((condval_36 + 3) / 2)) * 16)) - (cid * 32)) : 0)), 128, 0.000000e+00f);
+                  } else {
                     int32_t condval_37;
-                    if ((cid < 9)) {
+                    if ((cid < 16)) {
                       condval_37 = 1;
                     } else {
                       condval_37 = 0;
                     }
                     int32_t condval_38;
-                    if ((cid < 9)) {
+                    if ((cid < 16)) {
                       condval_38 = 1;
                     } else {
                       condval_38 = 0;
                     }
                     int32_t condval_39;
-                    if ((cid < 9)) {
+                    if ((cid < 16)) {
                       condval_39 = 1;
                     } else {
                       condval_39 = 0;
                     }
-                    tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_pong[0], dk_matmul_partial[((((((task_id * 262144) + (cid * 6144)) + (batch_id_1 * 2048)) + ((cid < 9 ? cid : 9) * 2048)) + ((vid * ((condval_36 / 2) + 2)) * 2048)) + 2048)], 128, ((1 <= ((((127 - batch_id_1) - (cid < 9 ? cid : 9)) - (vid * ((condval_37 / 2) + 2))) - (cid * 3))) ? 16 : ((((((cid * 3) + (cid < 9 ? cid : 9)) + batch_id_1) + (vid * ((condval_38 / 2) + 2))) < 127) ? ((((2032 - (batch_id_1 * 16)) - ((cid < 9 ? cid : 9) * 16)) - ((vid * ((condval_39 / 2) + 2)) * 16)) - (cid * 48)) : 0)), 128, 0.000000e+00f);
+                    int32_t condval_40;
+                    if ((cid < 16)) {
+                      condval_40 = 1;
+                    } else {
+                      condval_40 = 0;
+                    }
+                    tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_pong[0], dk_matmul_partial[((((((task_id * 131072) + (cid * 4096)) + (batch_id_1 * 2048)) + ((cid < 16 ? cid : 16) * 2048)) + ((vid * ((condval_37 + 3) / 2)) * 2048)) + 2048)], 128, ((1 <= ((((63 - batch_id_1) - (cid < 16 ? cid : 16)) - (vid * ((condval_38 + 3) / 2))) - (cid * 2))) ? 16 : ((((((cid * 2) + (cid < 16 ? cid : 16)) + batch_id_1) + (vid * ((condval_39 + 3) / 2))) < 63) ? ((((1008 - (batch_id_1 * 16)) - ((cid < 16 ? cid : 16) * 16)) - ((vid * ((condval_40 + 3) / 2)) * 16)) - (cid * 32)) : 0)), 128, 0.000000e+00f);
                   }
                   AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>((((batch_id_1 + 1) % 2) + 6));
                 }
               }
+              int32_t condval_42;
+              if ((cid < 16)) {
+                condval_42 = 1;
+              } else {
+                condval_42 = 0;
+              }
               int32_t condval_41;
-              if ((cid < 9)) {
+              if ((((((cid * 32) + (batch_id_1 * 16)) + ((cid < 16 ? cid : 16) * 16)) + ((vid * ((condval_42 + 3) / 2)) * 16)) < valid_k_size)) {
                 condval_41 = 1;
               } else {
                 condval_41 = 0;
               }
-              int32_t condval_40;
-              if ((((((cid * 48) + (batch_id_1 * 16)) + ((cid < 9 ? cid : 9) * 16)) + ((vid * ((condval_41 / 2) + 2)) * 16)) < valid_k_size)) {
-                condval_40 = 1;
-              } else {
-                condval_40 = 0;
-              }
-              if (0 < condval_40) {
+              if (0 < condval_41) {
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(((batch_id_1 % 2) + 6));
                 for (int32_t pair_idx_1 = 0; pair_idx_1 < 8; ++pair_idx_1) {
-                  int64_t condval_42;
-                  if ((((int64_t)cid) < (int64_t)9)) {
-                    condval_42 = (int64_t)1;
-                  } else {
-                    condval_42 = (int64_t)0;
-                  }
-                  int32_t sparse_idx0_1 = SparseIndices.GetValue(((((((((int64_t)task_id) * (int64_t)5120) + (((int64_t)cid) * (int64_t)48)) + (((int64_t)batch_id_1) * (int64_t)16)) + ((((int64_t)cid) < (int64_t)9 ? ((int64_t)cid) : (int64_t)9) * (int64_t)16)) + ((((int64_t)vid) * ((condval_42 / (int64_t)2) + (int64_t)2)) * (int64_t)16)) + (((int64_t)pair_idx_1) * (int64_t)2)));
                   int64_t condval_43;
-                  if ((((int64_t)cid) < (int64_t)9)) {
+                  if ((((int64_t)cid) < (int64_t)16)) {
                     condval_43 = (int64_t)1;
                   } else {
                     condval_43 = (int64_t)0;
                   }
-                  int32_t sparse_idx1_1 = SparseIndices.GetValue((((((((((int64_t)task_id) * (int64_t)5120) + (((int64_t)cid) * (int64_t)48)) + (((int64_t)batch_id_1) * (int64_t)16)) + ((((int64_t)cid) < (int64_t)9 ? ((int64_t)cid) : (int64_t)9) * (int64_t)16)) + ((((int64_t)vid) * ((condval_43 / (int64_t)2) + (int64_t)2)) * (int64_t)16)) + (((int64_t)pair_idx_1) * (int64_t)2)) + (int64_t)1));
-                  int32_t condval_45;
-                  if ((cid < 9)) {
-                    condval_45 = 1;
+                  int32_t sparse_idx0_1 = SparseIndices.GetValue(((((((((int64_t)task_id) * (int64_t)1024) + (((int64_t)cid) * (int64_t)32)) + (((int64_t)batch_id_1) * (int64_t)16)) + ((((int64_t)cid) < (int64_t)16 ? ((int64_t)cid) : (int64_t)16) * (int64_t)16)) + ((((int64_t)vid) * ((condval_43 + (int64_t)3) / (int64_t)2)) * (int64_t)16)) + (((int64_t)pair_idx_1) * (int64_t)2)));
+                  int64_t condval_44;
+                  if ((((int64_t)cid) < (int64_t)16)) {
+                    condval_44 = (int64_t)1;
                   } else {
-                    condval_45 = 0;
+                    condval_44 = (int64_t)0;
                   }
-                  int32_t condval_44;
-                  if (((((((cid * 48) + (batch_id_1 * 16)) + ((cid < 9 ? cid : 9) * 16)) + ((vid * ((condval_45 / 2) + 2)) * 16)) + (pair_idx_1 * 2)) < valid_k_size)) {
-                    condval_44 = 1;
-                  } else {
-                    condval_44 = 0;
-                  }
-                  if (0 < condval_44) {
-                    if (0 <= sparse_idx0_1) {
-                      if ((batch_id_1 % 2) == 0) {
-                        tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx0_1 * 128)], v2_dk_batch_ping[(pair_idx_1 * 256)], 196608, ((sparse_idx0_1 <= 1535) ? 1 : 0), 128);
-                      } else {
-                        tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx0_1 * 128)], v2_dk_batch_pong[(pair_idx_1 * 256)], 196608, ((sparse_idx0_1 <= 1535) ? 1 : 0), 128);
-                      }
-                    }
-                  }
-                  int32_t condval_47;
-                  if ((cid < 9)) {
-                    condval_47 = 1;
-                  } else {
-                    condval_47 = 0;
-                  }
+                  int32_t sparse_idx1_1 = SparseIndices.GetValue((((((((((int64_t)task_id) * (int64_t)1024) + (((int64_t)cid) * (int64_t)32)) + (((int64_t)batch_id_1) * (int64_t)16)) + ((((int64_t)cid) < (int64_t)16 ? ((int64_t)cid) : (int64_t)16) * (int64_t)16)) + ((((int64_t)vid) * ((condval_44 + (int64_t)3) / (int64_t)2)) * (int64_t)16)) + (((int64_t)pair_idx_1) * (int64_t)2)) + (int64_t)1));
                   int32_t condval_46;
-                  if ((((((((cid * 48) + (batch_id_1 * 16)) + ((cid < 9 ? cid : 9) * 16)) + ((vid * ((condval_47 / 2) + 2)) * 16)) + (pair_idx_1 * 2)) + 1) < valid_k_size)) {
+                  if ((cid < 16)) {
                     condval_46 = 1;
                   } else {
                     condval_46 = 0;
                   }
-                  if (0 < condval_46) {
+                  int32_t condval_45;
+                  if (((((((cid * 32) + (batch_id_1 * 16)) + ((cid < 16 ? cid : 16) * 16)) + ((vid * ((condval_46 + 3) / 2)) * 16)) + (pair_idx_1 * 2)) < valid_k_size)) {
+                    condval_45 = 1;
+                  } else {
+                    condval_45 = 0;
+                  }
+                  if (0 < condval_45) {
+                    if (0 <= sparse_idx0_1) {
+                      if ((batch_id_1 % 2) == 0) {
+                        tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx0_1 * 128)], v2_dk_batch_ping[(pair_idx_1 * 256)], 131072, ((sparse_idx0_1 <= 1023) ? 1 : 0), 128);
+                      } else {
+                        tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx0_1 * 128)], v2_dk_batch_pong[(pair_idx_1 * 256)], 131072, ((sparse_idx0_1 <= 1023) ? 1 : 0), 128);
+                      }
+                    }
+                  }
+                  int32_t condval_48;
+                  if ((cid < 16)) {
+                    condval_48 = 1;
+                  } else {
+                    condval_48 = 0;
+                  }
+                  int32_t condval_47;
+                  if ((((((((cid * 32) + (batch_id_1 * 16)) + ((cid < 16 ? cid : 16) * 16)) + ((vid * ((condval_48 + 3) / 2)) * 16)) + (pair_idx_1 * 2)) + 1) < valid_k_size)) {
+                    condval_47 = 1;
+                  } else {
+                    condval_47 = 0;
+                  }
+                  if (0 < condval_47) {
                     if (0 <= sparse_idx1_1) {
                       if ((batch_id_1 % 2) == 0) {
-                        tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx1_1 * 128)], v2_dk_batch_ping[((pair_idx_1 * 256) + 128)], 196608, ((sparse_idx1_1 <= 1535) ? 1 : 0), 128);
+                        tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx1_1 * 128)], v2_dk_batch_ping[((pair_idx_1 * 256) + 128)], 131072, ((sparse_idx1_1 <= 1023) ? 1 : 0), 128);
                       } else {
-                        tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx1_1 * 128)], v2_dk_batch_pong[((pair_idx_1 * 256) + 128)], 196608, ((sparse_idx1_1 <= 1535) ? 1 : 0), 128);
+                        tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx1_1 * 128)], v2_dk_batch_pong[((pair_idx_1 * 256) + 128)], 131072, ((sparse_idx1_1 <= 1023) ? 1 : 0), 128);
                       }
                     }
                   }
@@ -1169,18 +1171,24 @@ AscendC::Select<float, uint8_t>(v1_ob_loss_2d[0], v1_ob_mask[0], v1_ob_loss_2d[0
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(6);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(5);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(6);
-    for (int32_t finalize_iter = 0; finalize_iter < 2; ++finalize_iter) {
-      AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>((finalize_iter + 5));
-      tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_finalize_dk_fp32[(finalize_iter * 2048)], dKeyIndexAccum[(((cid * 8192) + (vid * 4096)) + (finalize_iter * 2048))], 128, 16, 128, 0.000000e+00f);
-      AscendC::SetFlag<AscendC::HardEvent::MTE2_V>((finalize_iter + 5));
-      AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>((finalize_iter + 5));
-      AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>((finalize_iter + 5));
-      AscendC::Cast(v2_finalize_dk_half[(finalize_iter * 2048)], v2_finalize_dk_fp32[(finalize_iter * 2048)], AscendC::RoundMode::CAST_RINT, 2048);
-      AscendC::SetFlag<AscendC::HardEvent::V_MTE2>((finalize_iter + 5));
-      AscendC::SetFlag<AscendC::HardEvent::V_MTE3>((finalize_iter + 5));
-      AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>((finalize_iter + 5));
-      tl::ascend::copy_ub_to_gm<bfloat16_t, 128, 16>(dKeyIndexOut[(((cid * 8192) + (vid * 4096)) + (finalize_iter * 2048))], v2_finalize_dk_half[(finalize_iter * 2048)], 128, 16, 128);
-      AscendC::SetFlag<AscendC::HardEvent::MTE3_V>((finalize_iter + 5));
+    int32_t condval_49;
+    if ((cid < 8)) {
+      condval_49 = 1;
+    } else {
+      condval_49 = 0;
+    }
+    for (int32_t finalize_iter = 0; finalize_iter < (condval_49 + 1); ++finalize_iter) {
+      AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(((finalize_iter % 2) + 5));
+      tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_finalize_dk_fp32[((finalize_iter % 2) * 2048)], dKeyIndexAccum[((((cid * 4096) + ((((cid * 2) + vid) < 16 ? ((cid * 2) + vid) : 16) * 2048)) + (vid * 2048)) + (finalize_iter * 2048))], 128, ((1 <= ((((64 - (((cid * 2) + vid) < 16 ? ((cid * 2) + vid) : 16)) - vid) - finalize_iter) - (cid * 2))) ? 16 : ((((((cid * 2) + (((cid * 2) + vid) < 16 ? ((cid * 2) + vid) : 16)) + vid) + finalize_iter) < 64) ? ((((1024 - ((((cid * 2) + vid) < 16 ? ((cid * 2) + vid) : 16) * 16)) - (vid * 16)) - (finalize_iter * 16)) - (cid * 32)) : 0)), 128, 0.000000e+00f);
+      AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(((finalize_iter % 2) + 5));
+      AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(((finalize_iter % 2) + 5));
+      AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(((finalize_iter % 2) + 5));
+      AscendC::Cast(v2_finalize_dk_half[((finalize_iter % 2) * 2048)], v2_finalize_dk_fp32[((finalize_iter % 2) * 2048)], AscendC::RoundMode::CAST_RINT, 2048);
+      AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(((finalize_iter % 2) + 5));
+      AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(((finalize_iter % 2) + 5));
+      AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(((finalize_iter % 2) + 5));
+      tl::ascend::copy_ub_to_gm<bfloat16_t, 128, 16>(dKeyIndexOut[((((cid * 4096) + ((((cid * 2) + vid) < 16 ? ((cid * 2) + vid) : 16) * 2048)) + (vid * 2048)) + (finalize_iter * 2048))], v2_finalize_dk_half[((finalize_iter % 2) * 2048)], 128, ((1 <= ((((64 - (((cid * 2) + vid) < 16 ? ((cid * 2) + vid) : 16)) - vid) - finalize_iter) - (cid * 2))) ? 16 : ((((((cid * 2) + (((cid * 2) + vid) < 16 ? ((cid * 2) + vid) : 16)) + vid) + finalize_iter) < 64) ? ((((1024 - ((((cid * 2) + vid) < 16 ? ((cid * 2) + vid) : 16) * 16)) - (vid * 16)) - (finalize_iter * 16)) - (cid * 32)) : 0)), 128);
+      AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(((finalize_iter % 2) + 5));
     }
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(5);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(6);

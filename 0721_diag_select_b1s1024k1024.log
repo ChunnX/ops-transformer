@@ -1,0 +1,19 @@
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+0721 general test: suite=all, cases=1, benchmark=False, resource_excluded=9
+Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on the 61 GiB device; TND S1*K=16.78M also OOMs.
+
+========================================================================================
+[00] bsnd_b1_s1_1024_k_1024: suite=core kind=coverage layout=BSND B=1 S1=1024 S2=1024 N1=32 Nidx1=8 K=1024 valid_k=[1,1024] exec_k=1024 scatter_exec_k=1024 invalid=523776 path=tail-protected dtype=bfloat16
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=68d9b7176d55331e71737e348d85fbb7edea08473f53a5a1c56c393be7a0b513
+  TileLang: completed
+  Official: completed
+  dQueryIndex  max_abs=3.115387e+00 mean_abs=2.013479e-03 mean_rel=5.402719e-02 norm_rel=4.912513e-02
+  dKeyIndex    max_abs=3.968750e+00 mean_abs=1.102764e-02 mean_rel=8.072101e-02 norm_rel=4.516252e-02
+  dWeights     max_abs=2.032812e+01 mean_abs=5.805180e-02 mean_rel=3.045597e-02 norm_rel=5.711221e-02
+  Loss         max_abs=4.727539e+00 mean_abs=4.727539e+00 mean_rel=8.214879e-04 norm_rel=8.214879e-04
+[00] bsnd_b1_s1_1024_k_1024 SELECT_DEBUG_TASK: 跳过 NPU 全量诊断以限制峰值显存
+[00] bsnd_b1_s1_1024_k_1024 SELECT_DEBUG_TASK selected b=0 q=323 dQ_norm=9.80e-01 dW_norm=1.17e+00
+[00] bsnd_b1_s1_1024_k_1024 SELECT_DEBUG_TASK finished without an in-process rerun; rerun in a fresh process with SLIG_DEBUG_TASK=0,323.
+[00] bsnd_b1_s1_1024_k_1024 PRECISION_FAIL dQ_norm=4.91e-02 dK_norm=4.52e-02 dW_norm=5.71e-02 Loss_norm=8.21e-04
+Summary: total=1 pass=0 fail=1 precision=1 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
