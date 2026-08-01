@@ -233,6 +233,7 @@ private:
             LocalTensor<P> hMixLocal = vector_.xInQueue_.template DeQue<P>();
             vector_.AIV1PostProcessTile(
                 hMixLocal, offsetT, lenT, static_cast<uint32_t>(localOffset), vector_.mnConfig_.n);
+            vector_.xInQueue_.FreeTensor(hMixLocal);
             localOffset += lenT;
         }
     }

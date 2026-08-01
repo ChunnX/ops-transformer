@@ -811,11 +811,12 @@ public:
         }
     }
 
-    __aicore__ inline void AIV1PostProcessTile(LocalTensor<P> &hMixLocal, uint64_t offsetT,
-                                                uint64_t lenT, uint32_t invRmsOffset,
-                                                uint32_t hMixRowStride,
-                                                uint32_t xBufferBytes = kXInQueueBufferBytes,
-                                                uint32_t outBufferBytes = kOutQueueBufferBytes)
+    template <bool WAIT_HRES_COPY = false>
+    __aicore__ inline void AIV1PostProcessTile(const LocalTensor<P> &hMixLocal, uint64_t offsetT,
+                                               uint64_t lenT, uint32_t invRmsOffset,
+                                               uint32_t hMixRowStride,
+                                               uint32_t xBufferBytes = kXInQueueBufferBytes,
+                                               uint32_t outBufferBytes = kOutQueueBufferBytes)
     {
         uint64_t outputOffset = globalOffsetM_ + offsetT;
         LocalTensor<P> hResOutLocal;
@@ -848,13 +849,16 @@ public:
             copyParams.srcStride = 0U;
             copyParams.dstStride = 0U;
             DataCopyPad(hResGm_[outputOffset * N_ * N_], hResOutLocal, copyParams);
+            if constexpr (WAIT_HRES_COPY) {
+                SetFlag<HardEvent::MTE3_V>(EVENT_ID3);
+                WaitFlag<HardEvent::MTE3_V>(EVENT_ID3);
+            }
             outQueue_.FreeTensor(hResOutLocal);
         }
 
         AIV1ProcessHPost(offsetT, lenT);
         AIV1ProcessHPre(offsetT, lenT);
         AIV1ProcessHInBatched(offsetT, lenT, xBufferBytes, outBufferBytes);
-        xInQueue_.FreeTensor(hMixLocal);
     }
 
 private:

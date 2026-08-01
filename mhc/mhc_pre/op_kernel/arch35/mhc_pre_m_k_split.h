@@ -1018,64 +1018,14 @@ private:
                 SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
                 WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
             }
-            PostProcessSegments(offsetT, lenT, localOffset, accumulator);
-            vector_.AIV1ProcessHPost(offsetT, lenT);
-            vector_.AIV1ProcessHPre(offsetT, lenT);
-            vector_.AIV1ProcessHInBatched(offsetT, lenT);
+            vector_.template AIV1PostProcessTile<true>(
+                accumulator, offsetT, lenT, static_cast<uint32_t>(localOffset), fusionSize);
             vector_.outQueue_.FreeTensor(accumulator);
             offsetT += lenT;
             localOffset += lenT;
         }
         vector_.DataCopyOutInvRmsUb(vector_.vectorOffset_.singleCoreM,
                                     vector_.vectorOffset_.offsetMStart);
-    }
-
-    __aicore__ inline void PostProcessSegments(uint64_t offsetT, uint64_t lenT,
-                                               uint64_t localOffset, const LocalTensor<P> &matmulResult)
-    {
-        uint64_t outputOffset = vector_.globalOffsetM_ + offsetT;
-        LocalTensor<P> hResLocal;
-        if constexpr (RESI_MODE == MHC_PRE_HAS_RESI) {
-            hResLocal = vector_.outQueue_.template AllocTensor<P>();
-        }
-
-        vector_.matmulRes_ = matmulResult;
-        if (vector_.N_ == 4U) {
-            MhcPreVFPostSegments<P, 4U, RESI_MODE == MHC_PRE_HAS_RESI>(
-                vector_.hPreBuff_, vector_.hPostBuff_, hResLocal, vector_.matmulRes_,
-                vector_.invRmsUb_, vector_.alphaInUb_, vector_.biasInUb_,
-                static_cast<uint16_t>(lenT), static_cast<uint32_t>(localOffset),
-                vector_.matrixInfo_.fusionSize);
-        } else if (vector_.N_ == 6U) {
-            MhcPreVFPostSegments<P, 6U, RESI_MODE == MHC_PRE_HAS_RESI>(
-                vector_.hPreBuff_, vector_.hPostBuff_, hResLocal, vector_.matmulRes_,
-                vector_.invRmsUb_, vector_.alphaInUb_, vector_.biasInUb_,
-                static_cast<uint16_t>(lenT), static_cast<uint32_t>(localOffset),
-                vector_.matrixInfo_.fusionSize);
-        } else {
-            MhcPreVFPostSegments<P, 8U, RESI_MODE == MHC_PRE_HAS_RESI>(
-                vector_.hPreBuff_, vector_.hPostBuff_, hResLocal, vector_.matmulRes_,
-                vector_.invRmsUb_, vector_.alphaInUb_, vector_.biasInUb_,
-                static_cast<uint16_t>(lenT), static_cast<uint32_t>(localOffset),
-                vector_.matrixInfo_.fusionSize);
-        }
-        PipeBarrier<PIPE_V>();
-
-        if constexpr (RESI_MODE == MHC_PRE_HAS_RESI) {
-            vector_.outQueue_.template EnQue<P>(hResLocal);
-            hResLocal = vector_.outQueue_.template DeQue<P>();
-            DataCopyExtParams copyParams;
-            copyParams.blockCount = 1;
-            copyParams.blockLen = static_cast<uint32_t>(
-                lenT * vector_.N_ * vector_.N_ * sizeof(P));
-            copyParams.srcStride = 0;
-            copyParams.dstStride = 0;
-            DataCopyPad(vector_.hResGm_[outputOffset * vector_.N_ * vector_.N_],
-                        hResLocal, copyParams);
-            SetFlag<HardEvent::MTE3_V>(EVENT_ID3);
-            WaitFlag<HardEvent::MTE3_V>(EVENT_ID3);
-            vector_.outQueue_.FreeTensor(hResLocal);
-        }
     }
 
 private:
