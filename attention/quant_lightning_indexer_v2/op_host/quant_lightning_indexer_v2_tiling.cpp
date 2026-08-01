@@ -1244,8 +1244,12 @@ ge::graphStatus QLIV2InfoParser::CheckScaleShape()
 // 非PA_BBND时，所有轴都必须连续
 ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
 {
-    bool keyNonContiguous = false;
-    bool scaleNonContiguous = false;
+    uint32_t keyMismatchAxis = UINT32_MAX;
+    uint32_t keyActualStride = 0;
+    uint32_t keyExpectedStride = 0;
+    uint32_t scaleMismatchAxis = UINT32_MAX;
+    uint32_t scaleActualStride = 0;
+    uint32_t scaleExpectedStride = 0;
     // A5 PA_BBND: 0轴允许非连续，从1轴开始检查；非PA_BBND或A3: 从0轴开始检查
     // PA_BBND: axis 0 allows non-contiguous, check starts from axis 1
     // Non-PA_BBND: check starts from axis 0
@@ -1261,7 +1265,9 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
         }
         for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
             if (i < keyStridesVec_.size() && keyStridesVec_[i] != expectedStrides[i]) {
-                keyNonContiguous = true;
+                keyMismatchAxis = static_cast<uint32_t>(i);
+                keyActualStride = keyStridesVec_[i];
+                keyExpectedStride = expectedStrides[i];
                 break;
             }
         }
@@ -1289,7 +1295,9 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
         }
         for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
             if (i < keyDequantScaleStridesVec_.size() && keyDequantScaleStridesVec_[i] != expectedStrides[i]) {
-                scaleNonContiguous = true;
+                scaleMismatchAxis = static_cast<uint32_t>(i);
+                scaleActualStride = keyDequantScaleStridesVec_[i];
+                scaleExpectedStride = expectedStrides[i];
                 break;
             }
         }
@@ -1321,12 +1329,23 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
                 return ge::GRAPH_FAILED);
         }
     }
+    bool hasMismatch = (keyMismatchAxis != UINT32_MAX) || (scaleMismatchAxis != UINT32_MAX);
+    std::string mismatchValue;
+    if (keyMismatchAxis != UINT32_MAX) {
+        mismatchValue = "key stride[" + std::to_string(keyMismatchAxis) + "]=" +
+                        std::to_string(keyActualStride) + " != expected=" + std::to_string(keyExpectedStride);
+    }
+    if (scaleMismatchAxis != UINT32_MAX) {
+        if (!mismatchValue.empty()) mismatchValue += "; ";
+        mismatchValue += "keyscale stride[" + std::to_string(scaleMismatchAxis) + "]=" +
+                         std::to_string(scaleActualStride) + " != expected=" + std::to_string(scaleExpectedStride);
+    }
     OP_CHECK_IF(
-        keyNonContiguous || scaleNonContiguous,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "keyNonContiguous and scaleNonContiguous",
-                                              std::string(keyNonContiguous ? "true" : "false") + " and " +
-                                                  std::string(scaleNonContiguous ? "true" : "false"),
-                                              "key and keyscale only support non-continuous keying on the 0-axis"),
+        hasMismatch,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "key and keyscale stride",
+                                              mismatchValue,
+                                              "key and keyscale only support non-contiguous layout on axis 0 with "
+                                              "PA_BBND layout; all other axes must be contiguous"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
