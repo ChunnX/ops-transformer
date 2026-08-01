@@ -524,48 +524,52 @@ def _log_cube_compute_amount(
     mfu_time = (
         compute_info["cube_compute_amount"] / capacity_info["cube_compute_capacity"]
     )
-    logger.info("case_name=%s", case_name)
-    logger.info("FLOPS计算过程量:")
-    logger.info("基本块数量: %d", compute_info["basic_block_count"])
-    logger.info(
-        "基本块的shape: q_block_size=%d, kv_block_size=%d, head_dim=%d",
-        basic_block_shape[0],
-        basic_block_shape[1],
-        basic_block_shape[2],
-    )
-    logger.info("单基本块计算量: %d", compute_info["single_basic_block_compute"])
-    logger.info(
-        "FLOPS计算公式: 基本块数(%d) * 单基本块计算量(%d) * 乘加计算(%d) * 两次bmm计算(%d) = %d",
-        compute_info["basic_block_count"],
-        compute_info["single_basic_block_compute"],
-        compute_info["multiply_add_compute"],
-        compute_info["bmm_compute_count"],
-        compute_info["cube_compute_amount"],
-    )
-    logger.info("算力计算过程量:")
-    logger.info(
-        "一轮cycle对应最小分型shape: m=%d, n=%d, k=%d(fp8为32)",
-        fractal_shape[0],
-        fractal_shape[1],
-        fractal_shape[2],
-    )
-    logger.info("一轮cycle对应最小分型计算量: %d", capacity_info["min_fractal_compute"])
-    logger.info(
-        "算力计算公式: 单位换算(%d) * (一轮cycle对应最小分型计算量(%d) * 频率GHz(%.2f) * "
-        "AIC数量(%d) * 乘加计算(%d)) = %.6f",
-        capacity_info["unit_conversion"],
-        capacity_info["min_fractal_compute"],
-        capacity_info["frequency_ghz"],
-        capacity_info["aic_count"],
-        capacity_info["multiply_add_compute"],
-        capacity_info["cube_compute_capacity"],
-    )
-    logger.info(
-        "MFU*时间计算公式: FLOPS(%d) / 算力(%.6f) = MFU * 时间(us) = %.6f",
-        compute_info["cube_compute_amount"],
-        capacity_info["cube_compute_capacity"],
-        mfu_time,
-    )
+    log_lines = [
+        f"case_name={case_name}",
+        "FLOPS计算过程量:",
+        f"基本块数量: {compute_info['basic_block_count']}",
+        (
+            "基本块的shape: "
+            f"q_block_size={basic_block_shape[0]}, "
+            f"kv_block_size={basic_block_shape[1]}, "
+            f"head_dim={basic_block_shape[2]}"
+        ),
+        f"单基本块计算量: {compute_info['single_basic_block_compute']}",
+        (
+            "FLOPS计算公式: "
+            f"基本块数({compute_info['basic_block_count']}) * "
+            f"单基本块计算量({compute_info['single_basic_block_compute']}) * "
+            f"乘加计算({compute_info['multiply_add_compute']}) * "
+            f"两次bmm计算({compute_info['bmm_compute_count']}) = "
+            f"{compute_info['cube_compute_amount']}"
+        ),
+        "算力计算过程量:",
+        (
+            "一轮cycle对应最小分型shape: "
+            f"m={fractal_shape[0]}, n={fractal_shape[1]}, "
+            f"k={fractal_shape[2]}(fp8为32)"
+        ),
+        f"一轮cycle对应最小分型计算量: {capacity_info['min_fractal_compute']}",
+        (
+            "算力计算公式: "
+            f"单位换算({capacity_info['unit_conversion']}) * "
+            f"(一轮cycle对应最小分型计算量({capacity_info['min_fractal_compute']}) * "
+            f"频率GHz({capacity_info['frequency_ghz']:.2f}) * "
+            f"AIC数量({capacity_info['aic_count']}) * "
+            f"乘加计算({capacity_info['multiply_add_compute']})) = "
+            f"{capacity_info['cube_compute_capacity']:.6f}"
+        ),
+        (
+            "MFU*时间计算公式: "
+            f"FLOPS({compute_info['cube_compute_amount']}) / "
+            f"算力({capacity_info['cube_compute_capacity']:.6f}) = "
+            f"MFU * 时间(us) = {mfu_time:.6f}"
+        ),
+    ]
+    for line in log_lines:
+        logger.info(line)
+    if os.environ.get("BSA_PRINT_COMPUTE_LOG", "").upper() in ("1", "TRUE", "YES"):
+        print("\n".join(log_lines), flush=True)
     return compute_info["cube_compute_amount"], mfu_time
 
 
@@ -822,7 +826,9 @@ def save_test_case(input_data, output_dir):
     return input_filepath
 
 
-def generate_and_save_testdata(params, save_pt=False, save_path=""):
+def generate_and_save_testdata(
+    params, save_pt=False, save_path="", generate_golden=True
+):
     case = _normalize_params(params)
     check_valid_param.check_valid_param(case)
 
@@ -891,27 +897,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         sparse_seq_len,
     )
 
-    attention_out, softmax_lse = _reference_attention(
-        case,
-        query,
-        dense_key,
-        dense_value,
-        q_scale,
-        k_scale,
-        v_scale,
-        p_scale,
-        sparse_indices,
-        sparse_seq_len,
-        cu_seqlens_q,
-        cu_seqlens_kv,
-        q_lengths,
-        kv_lengths,
-    )
-
-    golden = {
-        "attention_out": attention_out,
-        "softmax_lse": softmax_lse,
-    }
     input_data = {
         "Testcase_Name": case["Testcase_Name"],
         "params": case,
@@ -950,10 +935,30 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "mask_mode": case["mask_mode"],
             "return_softmax_lse": case["return_softmax_lse"],
         },
-        "golden": golden,
-        "cpu_output": attention_out,
-        "cpu_softmax_lse": softmax_lse,
     }
+    if generate_golden:
+        attention_out, softmax_lse = _reference_attention(
+            case,
+            query,
+            dense_key,
+            dense_value,
+            q_scale,
+            k_scale,
+            v_scale,
+            p_scale,
+            sparse_indices,
+            sparse_seq_len,
+            cu_seqlens_q,
+            cu_seqlens_kv,
+            q_lengths,
+            kv_lengths,
+        )
+        input_data["golden"] = {
+            "attention_out": attention_out,
+            "softmax_lse": softmax_lse,
+        }
+        input_data["cpu_output"] = attention_out
+        input_data["cpu_softmax_lse"] = softmax_lse
 
     if save_pt:
         save_test_case(input_data, save_path)
