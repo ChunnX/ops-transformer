@@ -158,7 +158,7 @@ ge::graphStatus InferDataTypeCompressorGrad(gert::InferDataTypeContext* context)
     context->SetOutputDataType(D_X_OUTPUT_INDEX, context->GetRequiredInputDataType(TOKEN_X_INPUT_INDEX));
     context->SetOutputDataType(D_WKV_OUTPUT_INDEX, context->GetRequiredInputDataType(TOKEN_X_INPUT_INDEX));
     context->SetOutputDataType(D_WGATE_OUTPUT_INDEX, context->GetRequiredInputDataType(TOKEN_X_INPUT_INDEX));
-    context->SetOutputDataType(D_WGATE_OUTPUT_INDEX, context->GetRequiredInputDataType(D_CMP_KV_INPUT_INDEX));
+    context->SetOutputDataType(D_APE_OUTPUT_INDEX, context->GetRequiredInputDataType(SOFTMAX_SCORE_INPUT_INDEX));
 
     return GRAPH_SUCCESS;
 }

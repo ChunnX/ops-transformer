@@ -9,7 +9,7 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
-    target_sources(op_host_aclnnExc PRIVATE
+    target_sources(op_host_aclnn PRIVATE
     compressor_grad_def.cpp
     )
 endif()
@@ -42,7 +42,7 @@ else()
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE compressor_grad ACLNNTYPE aclnn_exclude)
+    add_modules_sources(OPTYPE compressor_grad ACLNNTYPE aclnn)
 endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
