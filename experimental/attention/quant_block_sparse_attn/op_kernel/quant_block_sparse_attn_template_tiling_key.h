@@ -18,12 +18,14 @@
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
-#define QBSA_LAYOUT_TND 2
-#define QBSA_LAYOUT_NTD 5
+// Template tiling key macros: values match QBSALayout enum (in quant_block_sparse_attn_const.h)
+// for ASCENDC_TPL_ARGS compile-time dispatch.
+#define QBSA_LAYOUT_TND 2       // == QBSALayout::TND
+#define QBSA_LAYOUT_NTD 5       // == QBSALayout::NTD
 
 #define QBSA_KV_LAYOUT_CONTIGUOUS 0
 #define QBSA_KV_LAYOUT_PA_ND 1
-#define QBSA_KV_LAYOUT_PA_BNSD 3
+#define QBSA_KV_LAYOUT_PA_BNSD 3  // == QBSALayout::PA_BNSD
 
 #define QBSA_MASK_NONE 0
 #define QBSA_MASK_CAUSAL 3
