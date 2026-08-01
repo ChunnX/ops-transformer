@@ -104,7 +104,9 @@ public:
 
     // ==============================fuction=======================================================
     __aicore__ inline FlashAttentionNoQuantMlaKernel()
-        : cubeBlock_(constInfo_), vecFaBlock_(constInfo_), vecFdBlock_(constInfo_){};
+        : cubeBlock_(constInfo_),
+          vecFaBlock_(constInfo_),
+          vecFdBlock_(constInfo_){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,
                                 __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable,
@@ -273,7 +275,7 @@ public:
     {
         int64_t varlenCycleCoreNums = constInfo_.coreNum * 2;
         int64_t varlenCalcLoops =
-            constInfo_.totalSize / varlenCycleCoreNums; // 需要进行计算的循环次数(正序+倒序为一次循环)
+            constInfo_.totalSize / varlenCycleCoreNums;                             // 需要进行计算的循环次数(正序+倒序为一次循环)
         int64_t varlenCalcLoopsRemain = constInfo_.totalSize % varlenCycleCoreNums; // 一次循环正序+倒序为两倍核数
         varlenCalcTimes_ = varlenCalcLoops * 2;
         if (varlenCalcLoopsRemain >= constInfo_.aicIdx + 1) {
@@ -451,8 +453,14 @@ public:
         fa_base_vector::GetSafeActToken(actSeqLensQ_, actSeqLensKv_, preTokenLeftUp, nextTokenLeftUp,
                                         constInfo_.sparseMode);
 
+        if (constInfo_.sparseMode == fa_base_vector::BAND) {
+            preTokenLeftUp += static_cast<int64_t>(actSeqLensQ_) - static_cast<int64_t>(actSeqLensKv_);
+        }
+
         if (constInfo_.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv_) - static_cast<int64_t>(actSeqLensQ_);
+        } else if (constInfo_.sparseMode == fa_base_vector::BAND) {
+            nextTokenLeftUp += static_cast<int64_t>(actSeqLensKv_) - static_cast<int64_t>(actSeqLensQ_);
         }
     }
 
