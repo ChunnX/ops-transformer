@@ -45,50 +45,6 @@ struct MatmulShapeParams {
     uint64_t sk; // 单次计算 K 维度
 };
 
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) && !defined(__CCE_KT_TEST__)
-__simd_vf__ inline void InverseAIVVF(__ubuf__ float *attnUb, __ubuf__ float *inverseRes,
-                                     __ubuf__ float *eiMatrixUb, __ubuf__ float *yLocalUb,
-                                     uint64_t offset, uint32_t inverseVecLen, uint32_t chunkSize)
-{
-    using namespace AscendC;
-    using namespace MicroAPI;
-    MaskReg preg_32 = CreateMask<float, MaskPattern::VL32>();
-
-    for (uint32_t i = 1; i < inverseVecLen; ++i) {
-        uint32_t curI = i - 1;
-        uint32_t validRows = inverseVecLen - i;
-
-        RegTensor<float> v_x;
-        LoadAlign<float>(v_x, inverseRes + offset + curI * chunkSize);
-
-        for (uint32_t r = 0; r < validRows; ++r) {
-            RegTensor<float> v_col;
-            LoadAlign<float, LoadDist::DIST_BRC_B32>(v_col,
-                attnUb + offset + (i + r) * chunkSize + curI);
-
-            RegTensor<float> v_y;
-            LoadAlign<float>(v_y, yLocalUb + (i + r) * inverseVecLen);
-
-            MulAddDst<float, MaskMergeMode::ZEROING>(v_y, v_col, v_x, preg_32);
-            StoreAlign<float, StoreDist::DIST_NORM_B32>(yLocalUb + (i + r) * inverseVecLen, v_y, preg_32);
-        }
-
-        Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
-
-        RegTensor<float> v_yFinal;
-        LoadAlign<float>(v_yFinal, yLocalUb + i * inverseVecLen);
-
-        RegTensor<float> v_ei;
-        LoadAlign<float>(v_ei, eiMatrixUb + i * inverseVecLen);
-
-        Sub<float, MaskMergeMode::ZEROING>(v_ei, v_ei, v_yFinal, preg_32);
-        StoreAlign<float, StoreDist::DIST_NORM_B32>(inverseRes + offset + i * chunkSize, v_ei, preg_32);
-
-        Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
-    }
-}
-#endif
-
 template <typename vInnerType>
 struct GDRStageOneInitParams {
     // input
@@ -589,21 +545,10 @@ private:
         }
         inverseRes_.SetValue(offset, static_cast<float>(1.0));
 
+        uint32_t srcShape[2] = {1, inverseVecLen};
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
         SetFlag<HardEvent::S_V>(eventID);
         WaitFlag<HardEvent::S_V>(eventID);
-
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) && !defined(__CCE_KT_TEST__)
-        __ubuf__ float *attnUb = (__ubuf__ float *)attnUbFloat_.GetPhyAddr();
-        __ubuf__ float *inverseResUb = (__ubuf__ float *)inverseRes_.GetPhyAddr();
-        __ubuf__ float *inverseBufBase = (__ubuf__ float *)inverseBuffer_.GetPhyAddr();
-        uint64_t yLocalOff = inverseVecLen * inverseVecLen * 2 + inverseVecLen;
-        uint64_t eiMatrixOff = yLocalOff + inverseVecLen * inverseVecLen;
-        InverseAIVVF(attnUb, inverseResUb, inverseBufBase + eiMatrixOff,
-                     inverseBufBase + yLocalOff, offset, inverseVecLen, chunkSize_);
-        PipeBarrier<PIPE_V>();
-#else
-        uint32_t srcShape[2] = {1, inverseVecLen};
         for (int i = 1; i < inverseVecLen; ++i) {
             uint32_t curI = i - 1;
             uint32_t validRows = inverseVecLen - i;
@@ -617,7 +562,6 @@ private:
             Sub(inverseRes_[offset + i * chunkSize_], eiMatrix[i * inverseVecLen],
                 yLocal[i * inverseVecLen], inverseVecLen);
         }
-#endif
     }
 
     __aicore__ inline void GBKCompute(const GlobalTensor<bfloat16_t> gBKWsGm, const GlobalTensor<bfloat16_t> outKgGm,
