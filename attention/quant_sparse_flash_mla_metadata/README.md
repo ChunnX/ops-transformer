@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：`quant_sparse_flash_mla_metadata`是`quant_sparse_flash_mla`算子的前置算子，用于后续Attention计算生成负载均衡的任务划分方案。本算子不执行实际的Attention计算，而是根据输入参数在AI CPU计算出每个AI Core应处理的Attention计算起止范围，从而最大化计算资源的利用率，避免各Core间负载不均衡的问题。
+- 算子功能：`QuantSparseFlashMlaMetadata`是`QuantSparseFlashMla`算子的前置算子，用于后续Attention计算生成负载均衡的任务划分方案。本算子不执行实际的Attention计算，而是根据输入参数在AI CPU计算出每个AI Core应处理的Attention计算起止范围，从而最大化计算资源的利用率，避免各Core间负载不均衡的问题。
 
 - 负载均衡原理：本算子将Attention计算的工作建模为三维（BN2、S1G、S2）的块级划分问题。通过代价函数估算各工作块的开销，随后采用贪心策略，将工作块按顺序分配到各AI Core，使每个Core承担的计算量尽量接近平均值；对于跨Core拆分的S1G行，会记录FlashDecode规约任务，后续由AIV Core完成部分结果的合并。
 
