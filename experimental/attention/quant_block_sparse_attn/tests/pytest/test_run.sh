@@ -65,6 +65,7 @@ run_batch_single() {
     export BSA_SKIP_CPU_GOLDEN=1
     export BSA_SKIP_RESULT_COMPARE=1
     export BSA_PRINT_COMPUTE_LOG=1
+    export BSA_PRINT_METADATA_AIC_BASIC_BLOCKS=1
 
     echo "===== 执行指定CSV单条用例 ====="
     echo "CSV文件: $joined_csv"

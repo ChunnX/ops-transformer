@@ -10,6 +10,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import os
+
 import pytest
 import torch
 import torchair
@@ -28,6 +30,19 @@ import combined_kv_cache
 
 
 QBSA_METADATA_OUTPUT_SIZE = 2048
+QBSA_HEAD_METADATA_SIZE = 8
+QBSA_AIC_CORE_NUM = 36
+QBSA_AIV_CORE_NUM = 72
+QBSA_METADATA_SIZE = 8
+QBSA_FD_METADATA_SIZE = 8
+QBSA_CORE_ENABLE_INDEX = 0
+QBSA_BN1_START_INDEX = 1
+QBSA_S1_START_INDEX = 2
+QBSA_BN1_END_INDEX = 4
+QBSA_S1_END_INDEX = 5
+PRINT_METADATA_AIC_BASIC_BLOCKS = os.environ.get(
+    "BSA_PRINT_METADATA_AIC_BASIC_BLOCKS", ""
+).upper() in ("1", "TRUE", "YES")
 
 
 def _to_npu(tensor):
@@ -100,14 +115,137 @@ def _golden_output(test_data):
     return golden
 
 
+def _metadata_section_num(metadata):
+    metadata_cpu = metadata.detach().cpu().reshape(-1).to(torch.int64)
+    if metadata_cpu.numel() < QBSA_HEAD_METADATA_SIZE:
+        return 0
+    section_num = int(metadata_cpu[0].item())
+    min_size = (
+        QBSA_HEAD_METADATA_SIZE
+        + section_num * QBSA_AIC_CORE_NUM * QBSA_METADATA_SIZE
+        + QBSA_AIV_CORE_NUM * QBSA_FD_METADATA_SIZE
+    )
+    if section_num < 0 or metadata_cpu.numel() < min_size:
+        return 0
+    return section_num
+
+
+def _metadata_is_valid(metadata):
+    return _metadata_section_num(metadata) > 0
+
+
 def _metadata_needs_generation(metadata):
     if metadata is None:
         return True
-    if metadata.numel() != QBSA_METADATA_OUTPUT_SIZE:
-        return True
     if metadata.device.type == "cpu" and int(torch.count_nonzero(metadata).item()) == 0:
         return True
-    return False
+    return not _metadata_is_valid(metadata)
+
+
+def _core_metadata_offset(section_idx, core_idx):
+    return (
+        QBSA_HEAD_METADATA_SIZE
+        + section_idx * QBSA_AIC_CORE_NUM * QBSA_METADATA_SIZE
+        + core_idx * QBSA_METADATA_SIZE
+    )
+
+
+def _section_bn1_range(core_metadata):
+    if core_metadata[QBSA_CORE_ENABLE_INDEX] == 0:
+        return None
+    bn1_start = int(core_metadata[QBSA_BN1_START_INDEX])
+    bn1_end = int(core_metadata[QBSA_BN1_END_INDEX])
+    s1_end = int(core_metadata[QBSA_S1_END_INDEX])
+    if s1_end != 0:
+        bn1_end += 1
+    if bn1_end <= bn1_start:
+        return None
+    return bn1_start, bn1_end
+
+
+def _section_s1_range(core_metadata, bn1_idx, bn1_start, bn1_end, qb_limit):
+    s1_start = int(core_metadata[QBSA_S1_START_INDEX]) if bn1_idx == bn1_start else 0
+    if bn1_idx == bn1_end - 1:
+        s1_end = int(core_metadata[QBSA_S1_END_INDEX]) or qb_limit
+    else:
+        s1_end = qb_limit
+    s1_start = max(0, min(s1_start, qb_limit))
+    s1_end = max(0, min(s1_end, qb_limit))
+    if s1_end <= s1_start:
+        return None
+    return s1_start, s1_end
+
+
+def _count_aic_basic_blocks_from_metadata(metadata, sparse_seq_len):
+    metadata_cpu = metadata.detach().cpu().reshape(-1).to(torch.int64)
+    sparse_seq_len_cpu = sparse_seq_len.detach().cpu().to(torch.int64)
+    if sparse_seq_len_cpu.dim() != 3:
+        raise ValueError(
+            f"sparse_seq_len should be 3D [B,N,Qb], got {tuple(sparse_seq_len_cpu.shape)}"
+        )
+
+    section_num = _metadata_section_num(metadata_cpu)
+    if section_num == 0:
+        raise ValueError(
+            f"invalid metadata shape/content: numel={metadata_cpu.numel()}, "
+            "section_num is zero or metadata is incomplete"
+        )
+
+    batch, head_count, qb_limit = sparse_seq_len_cpu.shape
+    bn1_limit = batch * head_count
+    totals = [0 for _ in range(QBSA_AIC_CORE_NUM)]
+    section_totals = [
+        [0 for _ in range(QBSA_AIC_CORE_NUM)] for _ in range(section_num)
+    ]
+
+    for section_idx in range(section_num):
+        for core_idx in range(QBSA_AIC_CORE_NUM):
+            offset = _core_metadata_offset(section_idx, core_idx)
+            core_metadata = metadata_cpu[offset : offset + QBSA_METADATA_SIZE].tolist()
+            bn1_range = _section_bn1_range(core_metadata)
+            if bn1_range is None:
+                continue
+            bn1_start, bn1_end = bn1_range
+            bn1_start = max(0, min(bn1_start, bn1_limit))
+            bn1_end = max(0, min(bn1_end, bn1_limit))
+            for bn1_idx in range(bn1_start, bn1_end):
+                s1_range = _section_s1_range(
+                    core_metadata, bn1_idx, bn1_start, bn1_end, qb_limit
+                )
+                if s1_range is None:
+                    continue
+                batch_idx = bn1_idx // head_count
+                head_idx = bn1_idx % head_count
+                s1_start, s1_end = s1_range
+                count = int(
+                    sparse_seq_len_cpu[
+                        batch_idx, head_idx, s1_start:s1_end
+                    ].sum().item()
+                )
+                section_totals[section_idx][core_idx] += count
+                totals[core_idx] += count
+    return section_num, totals, section_totals
+
+
+def print_metadata_aic_basic_blocks(metadata, sparse_seq_len, case_name=None):
+    section_num, totals, section_totals = _count_aic_basic_blocks_from_metadata(
+        metadata, sparse_seq_len
+    )
+    title = "===== metadata AIC basic block counts ====="
+    print(title, flush=True)
+    if case_name:
+        print(f"case_name={case_name}", flush=True)
+    print(f"section_num={section_num}", flush=True)
+    for core_idx, total in enumerate(totals):
+        per_section = [
+            section_totals[section_idx][core_idx] for section_idx in range(section_num)
+        ]
+        section_text = ",".join(str(value) for value in per_section)
+        print(
+            f"AIC[{core_idx:02d}] basic_block_count={total} "
+            f"section_counts=[{section_text}]",
+            flush=True,
+        )
 
 
 def _call_npu_quant_block_sparse_attn_metadata(test_data):
@@ -139,8 +277,16 @@ def _call_npu_quant_block_sparse_attn_metadata(test_data):
 def _prepare_metadata(test_data):
     metadata = test_data["input"].get("metadata")
     if not _metadata_needs_generation(metadata):
-        return _to_npu(metadata)
-    return _call_npu_quant_block_sparse_attn_metadata(test_data)
+        metadata_npu = _to_npu(metadata)
+    else:
+        metadata_npu = _call_npu_quant_block_sparse_attn_metadata(test_data)
+    if PRINT_METADATA_AIC_BASIC_BLOCKS:
+        print_metadata_aic_basic_blocks(
+            metadata_npu,
+            test_data["input"]["sparse_seq_len"],
+            case_name=test_data.get("Testcase_Name"),
+        )
+    return metadata_npu
 
 
 def _call_npu_quant_block_sparse_attn(test_data, device_id, normalize_output=True):
