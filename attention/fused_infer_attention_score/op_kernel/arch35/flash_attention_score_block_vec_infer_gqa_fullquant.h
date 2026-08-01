@@ -9,28 +9,28 @@
  */
 
 /*!
- * \file flash_attention_score_block_vec_infer_mla_fullquant.h
+ * \file flash_attention_score_block_vec_infer_gqa_fullquant.h
  * \brief
  */
-#ifndef FLASH_ATTENTION_SCORE_BLOCK_VEC_INFER_MLA_FULLQUANT_H_
-#define FLASH_ATTENTION_SCORE_BLOCK_VEC_INFER_MLA_FULLQUANT_H_
-
+#ifndef FLASH_ATTENTION_SCORE_BLOCK_VEC_INFER_GQA_FULLQUANT_H_
+#define FLASH_ATTENTION_SCORE_BLOCK_VEC_INFER_GQA_FULLQUANT_H_
 #include "flash_attention_score_block_vec_base_fullquant.h"
-#include "util_regbase.h"
-#include "vf/vf_flash_decode.h"
-#include "vf/vf_post_quant.h"
-#include "flash_attention_score_common_regbase.h"
+#include "../../../common/op_kernel/arch35/util_regbase.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "kernel_operator_list_tensor_intf.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#include "../../../common/op_kernel/arch35/vf/vf_post_quant.h"
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 
+
 namespace BaseApi {
 TEMPLATES_DEF
-class FABlockVecInferMlaFullquant
-    : public FABlockVecBaseFullquant<FABlockVecInferMlaFullquant<TEMPLATE_ARGS>, TEMPLATE_ARGS> {
+class FABlockVecInferGqaFullquant
+    : public FABlockVecBaseFullquant<FABlockVecInferGqaFullquant<TEMPLATE_ARGS>, TEMPLATE_ARGS> {
 public:
-    using BaseClass = FABlockVecBaseFullquant<FABlockVecInferMlaFullquant<TEMPLATE_ARGS>, TEMPLATE_ARGS>;
+    using BaseClass = FABlockVecBaseFullquant<FABlockVecInferGqaFullquant<TEMPLATE_ARGS>, TEMPLATE_ARGS>;
 
 public:
     /* ================编译期常量信息======================= */
@@ -41,27 +41,24 @@ public:
                                        !IsSameType<OUTPUT_T, float>::value;
     static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                   IsSameType<INPUT_T, hifloat8_t>::value;
-    static constexpr bool isInt8 = IsSameType<INPUT_T, int8_t>::value;
-    static constexpr bool isMlaFullQuant = (isFp8 || isInt8) && hasRope;
     /* =====================GM变量========================== */
     GlobalTensor<float> softmaxLseGm;
 
     using FDGmType = typename std::conditional<isFd, GlobalTensor<float>, int8_t>::type;
-    using postQuantGmType = typename std::conditional<POST_QUANT, GlobalTensor<float>, int8_t>::type;
-    using postQuantBf16GmType = typename std::conditional<POST_QUANT, GlobalTensor<bfloat16_t>, int8_t>::type;
-
     FDGmType accumOutGm;
     FDGmType softmaxFDMaxGm;
     FDGmType softmaxFDSumGm;
+
+    using postQuantGmType = typename std::conditional<POST_QUANT, GlobalTensor<float>, int8_t>::type;
     postQuantGmType postQuantScaleGm;
     postQuantGmType postQuantOffsetGm;
+    using postQuantBf16GmType = typename std::conditional<POST_QUANT, GlobalTensor<bfloat16_t>, int8_t>::type;
     postQuantBf16GmType postQuantScaleBf16Gm;
     postQuantBf16GmType postQuantOffsetBf16Gm;
 
     /* =====================UB变量========================== */
     TBuf<> lseTmpBuff;
     TQue<QuePosition::VECOUT, 1> softmaxLseQueue;
-    TQue<QuePosition::VECIN, 1> sinkQue; // AttentionSink
     TQue<QuePosition::VECOUT, 1> FDResOutputQue;
     TQue<QuePosition::VECIN, 1> accumOutInputQue;
     TQue<QuePosition::VECIN, 1> softmaxMaxInputQue; // FD
@@ -69,13 +66,14 @@ public:
     TQue<QuePosition::VECIN, 1> postQuantScaleQue;
     ; // postQuant
     TQue<QuePosition::VECIN, 1> postQuantOffsetQue;
-    ; // postQuant
+    ;                                    // postQuant
+    TQue<QuePosition::VECIN, 1> sinkQue; // AttentionSink
 
-    __aicore__ inline FABlockVecInferMlaFullquant(){};
+    __aicore__ inline FABlockVecInferGqaFullquant(){};
     __aicore__ inline void InitCubeVecSharedParams(CVSharedParams<isInfer, isPa> &sharedParams, int32_t aicIdx,
                                                    uint8_t subBlockIdx);
     __aicore__ inline void CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-                                       ConstInfo<isInfer, hasRope> &constInfo);
+                                       regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void InitDropOut(__gm__ uint8_t *dropMask, __gm__ uint8_t *workspace)
     {
     }
@@ -85,97 +83,97 @@ public:
                      __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
                      __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *learnableSink,
                      __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace,
-                     uint64_t singleCoreOffset, uint32_t aicIdx, ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline void InitUniqueLocalBuffer(ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline void InitPostQuant(ConstInfo<isInfer, hasRope> &constInfo, __gm__ uint8_t *postQuantScale,
+                     uint64_t singleCoreOffset, uint32_t aicIdx, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline void InitUniqueLocalBuffer(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline void InitPostQuant(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, __gm__ uint8_t *postQuantScale,
                                          __gm__ uint8_t *postQuantOffset);
-    __aicore__ inline void GenerateDropoutMask(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
+    __aicore__ inline void GenerateDropoutMask(regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
                                                LocalTensor<uint8_t> &dropMaskUb)
     {
     }
-    __aicore__ inline void SoftmaxDataCopyOut(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
+    __aicore__ inline void SoftmaxDataCopyOut(regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
                                               LocalTensor<float> &sumUb, LocalTensor<float> &maxUb);
-    __aicore__ inline void SoftmaxDataCopyOutFp8(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
+    __aicore__ inline void SoftmaxDataCopyOutFp8(regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
                                                  LocalTensor<half> &sumUb, LocalTensor<half> &maxUb)
     {
     }
     template <typename VEC2_RES_T>
-    __aicore__ inline void CopyOutAttentionOut(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
+    __aicore__ inline void CopyOutAttentionOut(regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
                                                LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx,
                                                int64_t vec2CalcSize);
-    __aicore__ inline void InitFDBuffers(ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline void FlashDecodeCompute(ConstInfo<isInfer, hasRope> &constInfo, GlobalTensor<INPUT_T> &keyGm,
+    __aicore__ inline void InitFDBuffers(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline void FlashDecodeCompute(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, GlobalTensor<INPUT_T> &keyGm,
                                               __gm__ int64_t *actualSeqKvlenAddr);
 
     template <typename VEC2_RES_T>
-    __aicore__ inline void PostQuant(ConstInfo<isInfer, hasRope> &constInfo, RunInfo<isInfer> &runInfo,
+    __aicore__ inline void PostQuant(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, regbaseutil::RunInfo<isInfer> &runInfo,
                                      LocalTensor<OUTPUT_T> &attenOut, LocalTensor<VEC2_RES_T> &vec2ResUb,
                                      int64_t vec2S1Idx, int64_t dSizeAligned64);
 
-    __aicore__ inline void FDPostQuant(ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<OUTPUT_T> &attenOut,
+    __aicore__ inline void FDPostQuant(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<OUTPUT_T> &attenOut,
                                        LocalTensor<T> &accumOutLocal, uint64_t perChannelQuantOffset,
-                                       uint32_t dealRowCount, uint32_t dSizeAligned64);
+                                       uint32_t dealRowCount, uint32_t dSizeAlignedDim64);
 
     template <typename POSTQUANT_PARAMS_T, typename VEC2_RES_T>
-    __aicore__ inline void PostQuantPerChnl(ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<OUTPUT_T> &attenOut,
+    __aicore__ inline void PostQuantPerChnl(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<OUTPUT_T> &attenOut,
                                             LocalTensor<VEC2_RES_T> &vec2ResUb, uint64_t perChannelQuantOffset,
                                             uint32_t gSplitSize, uint32_t s1RowCount, uint32_t splitOffset,
                                             int64_t dSizeAligned64, GlobalTensor<POSTQUANT_PARAMS_T> postQuantScaleGm,
                                             GlobalTensor<POSTQUANT_PARAMS_T> postQuantOffsetGm);
 
 private:
-    __aicore__ inline void InitOutputSingleCore(ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline void InitLseOutputSingleCore(ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline void GetActualSeqLenKV(ConstInfo<isInfer, hasRope> &constInfo, GlobalTensor<INPUT_T> &keyGm,
+    __aicore__ inline void InitOutputSingleCore(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline void InitLseOutputSingleCore(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline void GetActualSeqLenKV(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, GlobalTensor<INPUT_T> &keyGm,
                                              __gm__ int64_t *actualSeqKvlenAddr, int64_t boIdx,
                                              int64_t &actualSeqKvLen);
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp,
-                                             RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline void CombineSplitKVRes(ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset,
+                                             regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline void CombineSplitKVRes(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset,
                                              uint32_t bIdx, uint32_t n2Idx);
 
     __aicore__ inline void ComputeScaleValue(LocalTensor<T> lseMaxUb, LocalTensor<T> lseSumUb,
-                                             ConstInfo<isInfer, hasRope> &constInfo, uint32_t splitSize,
+                                             regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, uint32_t splitSize,
                                              uint64_t lseOffset, uint64_t sinkOffset);
 
-    __aicore__ inline void Bmm2FDOut(LocalTensor<T> &vec2ResUb, RunInfo<isInfer> &runInfo,
-                                     ConstInfo<isInfer, hasRope> &constInfo, int64_t vec2S1Idx, int64_t vec2CalcSize);
+    __aicore__ inline void Bmm2FDOut(LocalTensor<T> &vec2ResUb, regbaseutil::RunInfo<isInfer> &runInfo,
+                                     regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, int64_t vec2S1Idx, int64_t vec2CalcSize);
 
-    __aicore__ inline void CopyLseIn(ConstInfo<isInfer, hasRope> &constInfo, uint32_t bIdx, uint32_t n2Idx,
+    __aicore__ inline void CopyLseIn(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, uint32_t bIdx, uint32_t n2Idx,
                                      uint32_t startRow, uint32_t dealRowCount);
 
-    __aicore__ inline void CopyFinalResOut(ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset,
+    __aicore__ inline void CopyFinalResOut(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset,
                                            LocalTensor<T> &accumOutLocal, uint32_t startRow, uint32_t dealRowCount,
                                            uint64_t perChannelQuantOffset);
 
-    __aicore__ inline void CopyAccumOutIn(ConstInfo<isInfer, hasRope> &constInfo, uint32_t bIdx, uint32_t n2Idx,
+    __aicore__ inline void CopyAccumOutIn(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, uint32_t bIdx, uint32_t n2Idx,
                                           uint32_t splitKVIndex, uint32_t startRow, uint32_t dealRowCount);
 
-    __aicore__ inline void ComputeLogSumExpAndCopyToGm(RunInfo<isInfer> &runInfo,
-                                                       ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline void ComputeLogSumExpAndCopyToGm(regbaseutil::RunInfo<isInfer> &runInfo,
+                                                       regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
 
-    __aicore__ inline void CopySinkIn(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline void CopySinkIn(regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
 
     __aicore__ inline void CopySinkFDIn(uint32_t splitSize, uint64_t sinkOffset);
 
-    __aicore__ inline void Vec1SinkCompute(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
+    __aicore__ inline void Vec1SinkCompute(regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
                                            LocalTensor<float> &sumUb, LocalTensor<float> &maxUb);
 
-    __aicore__ inline void Vec1SinkComputeGSFused(RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo,
+    __aicore__ inline void Vec1SinkComputeGSFused(regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
                                                   LocalTensor<float> &sumUb, LocalTensor<float> &maxUb);
 
-    __aicore__ inline void ReduceFinalRes(ConstInfo<isInfer, hasRope> &constInfo, uint32_t bIdx, uint32_t n2Idx,
+    __aicore__ inline void ReduceFinalRes(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, uint32_t bIdx, uint32_t n2Idx,
                                           LocalTensor<T> &dst, LocalTensor<T> &lseLocal, uint32_t startRow,
                                           uint32_t dealRowCount);
 
-    __aicore__ inline void ReduceFDDataCopyOut(ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset,
+    __aicore__ inline void ReduceFDDataCopyOut(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset,
                                                LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow,
                                                uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
 };
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
-FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSharedParams<isInfer, isPa> &sharedParams,
+FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSharedParams<isInfer, isPa> &sharedParams,
                                                                     int32_t aicIdx, uint8_t subBlockIdx)
 {
     auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
@@ -184,8 +182,8 @@ FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSharedPara
     sharedParams.t2Size = inputParamsRegbase.t2Size;
     sharedParams.n2Size = inputParamsRegbase.n2Size;
     sharedParams.gSize = inputParamsRegbase.gSize;
-    sharedParams.s2Size = inputParamsRegbase.s2Size;
     sharedParams.s1Size = inputParamsRegbase.s1Size;
+    sharedParams.s2Size = inputParamsRegbase.s2Size;
     sharedParams.dSize = inputParamsRegbase.dSize;
     sharedParams.dSizeV = inputParamsRegbase.dSizeV;
     if constexpr (hasRope) {
@@ -193,8 +191,8 @@ FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSharedPara
     } else {
         sharedParams.dSizeRope = 0;
     }
-    sharedParams.nextTokens = inputParamsRegbase.nextTokens;
     sharedParams.preTokens = inputParamsRegbase.preTokens;
+    sharedParams.nextTokens = inputParamsRegbase.nextTokens;
     sharedParams.s1SparseValidSize = inputParamsRegbase.s1SparseValidSize;
     sharedParams.s2SparseValidSize = inputParamsRegbase.s2SparseValidSize;
     sharedParams.bandIndex = inputParamsRegbase.bandIndex;
@@ -202,14 +200,15 @@ FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSharedPara
     sharedParams.layoutType = inputParamsRegbase.layoutType;
     sharedParams.sparseType = inputParamsRegbase.sparseType;
     sharedParams.compressMode = inputParamsRegbase.attenMaskCompressMode;
-    sharedParams.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
     sharedParams.attenMaskS1Size = inputParamsRegbase.attenMaskS1Size;
+    sharedParams.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
+
+    if constexpr (isFd) {
+        sharedParams.splitKVNum = inputParamsRegbase.kvSplitPart;
+    }
     if constexpr (POST_QUANT) {
         sharedParams.isPostQuantPerChnl = inputParamsRegbase.isPostQuantPerChnl;
         sharedParams.isPostQuantBF16 = inputParamsRegbase.isPostQuantBF16;
-    }
-    if constexpr (isFd) {
-        sharedParams.splitKVNum = inputParamsRegbase.kvSplitPart;
     }
     sharedParams.transposeLayout = inputParamsRegbase.transposeLayout;
     sharedParams.fromFused = inputParamsRegbase.fromFused;
@@ -218,41 +217,42 @@ FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSharedPara
     sharedParams.isGqa = inputParamsRegbase.isGqa;
     sharedParams.isPfaGS1Merge = (inputParamsRegbase.isGqa && sharedParams.s1Size > 1);
     sharedParams.isKvContinuous = inputParamsRegbase.isKvContinuous;
-    sharedParams.actualSeqLengthsKVSize = inputParamsRegbase.actualSeqLengthsKVSize;
     sharedParams.actualSeqLengthsSize = inputParamsRegbase.actualSeqLengthsSize;
+    sharedParams.actualSeqLengthsKVSize = inputParamsRegbase.actualSeqLengthsKVSize;
     sharedParams.isActualSeqLengthsNull = inputParamsRegbase.isActualSeqLengthsNull;
     sharedParams.isActualSeqLengthsKVNull = inputParamsRegbase.isActualSeqLengthsKVNull;
     sharedParams.isQHasLeftPadding = inputParamsRegbase.isQHasLeftPadding;
     sharedParams.isKVHasLeftPadding = inputParamsRegbase.isKVHasLeftPadding;
-    // prefix
-    if constexpr (enableKVPrefix) {
-        sharedParams.isActualSharedPrefixLenNull = inputParamsRegbase.isActualSharedPrefixLenNull;
-        sharedParams.kvPrefixSize = inputParamsRegbase.prefixSeqInnerSize;
-    }
+    // pageAttention
     if constexpr (isPa) {
         sharedParams.blockTableDim2 = inputParamsRegbase.blockTableDim2;
         sharedParams.blockSize = inputParamsRegbase.blockSize;
         sharedParams.paLayoutType = inputParamsRegbase.paLayoutType;
         sharedParams.paBlockNumSum = inputParamsRegbase.paBlockNumSum;
     }
+    // prefix
+    if constexpr (enableKVPrefix) {
+        sharedParams.isActualSharedPrefixLenNull = inputParamsRegbase.isActualSharedPrefixLenNull;
+        sharedParams.kvPrefixSize = inputParamsRegbase.prefixSeqInnerSize;
+    }
     auto &multiCoreParamsRegbase = this->tilingData->multiCoreParamsRegbase;
     sharedParams.s1OuterSize = multiCoreParamsRegbase.s1OuterSize;
+    sharedParams.coreNum = multiCoreParamsRegbase.coreNum;
     /* 多核切分偏移计算 */
     sharedParams.multiCoreInnerOffset = multiCoreParamsRegbase.sparseStartIdx[aicIdx];
     sharedParams.multiCoreInnerLimit = multiCoreParamsRegbase.sparseStartIdx[aicIdx + 1];
     sharedParams.bnStartIdx = multiCoreParamsRegbase.bnStartIdx[aicIdx];
     sharedParams.bnEndIdx = multiCoreParamsRegbase.bnStartIdx[aicIdx + 1];
-    sharedParams.coreNum = multiCoreParamsRegbase.coreNum;
     sharedParams.needInit = this->tilingData->initOutputParams.needInit;
 
     if ASCEND_IS_AIV {
         if (subBlockIdx == 0) {
-            auto tmpTilingbuf = reinterpret_cast<__ssbuf__ uint32_t *>(0); // 从ssbuf的0地址开始拷贝
-            auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
+            auto ssbufTilingPtr = reinterpret_cast<__ssbuf__ uint32_t *>(0); // 从ssbuf的0地址开始拷贝
+            auto sharedParamPtr = reinterpret_cast<uint32_t *>(&sharedParams);
 #pragma unroll
             for (int i = 0; i < sizeof(CVSharedParams<isInfer, isPa>) / sizeof(uint32_t);
-                 ++i, ++tmpTilingbuf, ++tempTiling) {
-                *tmpTilingbuf = *tempTiling;
+                 ++i, ++ssbufTilingPtr, ++sharedParamPtr) {
+                *ssbufTilingPtr = *sharedParamPtr;
             }
             CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
         }
@@ -260,20 +260,21 @@ FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSharedPara
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *softmaxLse,
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *softmaxLse,
                                                                                __gm__ uint8_t *attentionOut,
-                                                                               ConstInfo<isInfer, hasRope> &constInfo)
+                                                                               regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     if ASCEND_IS_AIV {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
-        softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
         if constexpr (POST_QUANT) {
             this->attentionOutInitGm.SetGlobalBuffer((__gm__ half *)attentionOut);
         }
+        softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
         constInfo.isSoftmaxLseEnable = this->tilingData->inputParamsRegbase.isSoftMaxLseEnable;
         if (this->tilingData->initOutputParams.needInit == 1) {
             InitOutputSingleCore(constInfo);
-            if (constInfo.isSoftmaxLseEnable) { // lse output
+            // lse output
+            if (constInfo.isSoftmaxLseEnable) {
                 SyncAll();
                 InitLseOutputSingleCore(constInfo);
             }
@@ -282,30 +283,31 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CleanOutput(_
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitGlobalBuffer(
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::InitGlobalBuffer(
     __gm__ uint8_t *pse, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
     __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *prefix,
     __gm__ uint8_t *attenMask, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
     __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace,
-    uint64_t singleCoreOffset, uint32_t aicIdx, ConstInfo<isInfer, hasRope> &constInfo)
+    uint64_t singleCoreOffset, uint32_t aicIdx, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     BaseClass::InitCommonGlobalBuffer(pse, deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, prefix, attenMask,
                                       learnableSink, workspace, constInfo);
     if constexpr (isFd) {
-        // 让当前的workspace地址回到基地址, workspace偏移了totalOffset + mm2Offset * 3 + ve2offset * 3
-        workspace -= singleCoreOffset * preloadTimes * (aicIdx + 1);
+        workspace -=
+            singleCoreOffset * preloadTimes *
+            (aicIdx + 1); // 让当前的workspace地址回到基地址, workspace偏移了totalOffset + mm2Offset * 3 + ve2offset * 3
         auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
-        int32_t actualCoreNums = inputParamsRegbase.bSize * constInfo.splitKVNum * constInfo.n2Size;
-        workspace += actualCoreNums * singleCoreOffset * preloadTimes; // 针对所有核跳过其前面的所有workspace
+        int32_t actualCoreCnt = inputParamsRegbase.bSize * constInfo.n2Size * constInfo.splitKVNum;
+        workspace += actualCoreCnt * singleCoreOffset * preloadTimes; // 针对所有核跳过其前面的所有workspace
 
-        uint64_t accumOutSize = this->tilingData->inputParamsRegbase.accumOutSize;
-        uint64_t logSumSize = this->tilingData->inputParamsRegbase.logSumExpSize;
+        uint64_t accumOutMem = this->tilingData->inputParamsRegbase.accumOutSize;
+        uint64_t logSumExpMem = this->tilingData->inputParamsRegbase.logSumExpSize;
         accumOutGm.SetGlobalBuffer((__gm__ T *)(workspace));
-        workspace += accumOutSize * sizeof(float);
+        workspace += accumOutMem * sizeof(float);
         softmaxFDMaxGm.SetGlobalBuffer((__gm__ float *)(workspace));
-        workspace += logSumSize * sizeof(float);
+        workspace += logSumExpMem * sizeof(float);
         softmaxFDSumGm.SetGlobalBuffer((__gm__ float *)(workspace));
-        workspace += logSumSize * sizeof(float);
+        workspace += logSumExpMem * sizeof(float);
     }
     if constexpr (POST_QUANT) {
         this->InitPostQuant(constInfo, postQuantScale, postQuantOffset);
@@ -313,20 +315,11 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitGlobalBuf
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitPostQuant(ConstInfo<isInfer, hasRope> &constInfo,
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::InitPostQuant(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
                                                                                  __gm__ uint8_t *postQuantScale,
                                                                                  __gm__ uint8_t *postQuantOffset)
 {
     if constexpr (POST_QUANT) {
-        if (constInfo.isPostQuantPerChnl && !constInfo.isPostQuantBF16) {
-            if (postQuantScale != nullptr) {
-                this->postQuantScaleGm.SetGlobalBuffer((__gm__ float *)postQuantScale);
-            }
-            if (postQuantOffset != nullptr) {
-                constInfo.isPostQuantOffsetExist = true;
-                postQuantOffsetGm.SetGlobalBuffer((__gm__ float *)postQuantOffset);
-            }
-        }
         constInfo.isPostQuantOffsetExist = false;
         if (!constInfo.isPostQuantPerChnl && !constInfo.isPostQuantBF16) {
             if (postQuantScale != nullptr) {
@@ -340,15 +333,7 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitPostQuant
                 constInfo.postQuantOffsetValue = 0.0;
             }
         }
-        if (constInfo.isPostQuantPerChnl && constInfo.isPostQuantBF16) {
-            if (postQuantScale != nullptr) {
-                postQuantScaleBf16Gm.SetGlobalBuffer((__gm__ bfloat16_t *)postQuantScale);
-            }
-            if (postQuantOffset != nullptr) {
-                constInfo.isPostQuantOffsetExist = true;
-                postQuantOffsetBf16Gm.SetGlobalBuffer((__gm__ bfloat16_t *)postQuantOffset);
-            }
-        }
+
         if (!constInfo.isPostQuantPerChnl && constInfo.isPostQuantBF16) {
             if (postQuantScale != nullptr) {
                 postQuantScaleBf16Gm.SetGlobalBuffer((__gm__ bfloat16_t *)postQuantScale);
@@ -361,19 +346,36 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitPostQuant
                 constInfo.postQuantOffsetValue = 0.0;
             }
         }
+
+        if (constInfo.isPostQuantPerChnl && !constInfo.isPostQuantBF16) {
+            if (postQuantScale != nullptr) {
+                this->postQuantScaleGm.SetGlobalBuffer((__gm__ float *)postQuantScale);
+            }
+            if (postQuantOffset != nullptr) {
+                constInfo.isPostQuantOffsetExist = true;
+                postQuantOffsetGm.SetGlobalBuffer((__gm__ float *)postQuantOffset);
+            }
+        }
+
+        if (constInfo.isPostQuantPerChnl && constInfo.isPostQuantBF16) {
+            if (postQuantScale != nullptr) {
+                postQuantScaleBf16Gm.SetGlobalBuffer((__gm__ bfloat16_t *)postQuantScale);
+            }
+            if (postQuantOffset != nullptr) {
+                constInfo.isPostQuantOffsetExist = true;
+                postQuantOffsetBf16Gm.SetGlobalBuffer((__gm__ bfloat16_t *)postQuantOffset);
+            }
+        }
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
-FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitUniqueLocalBuffer(ConstInfo<isInfer, hasRope> &constInfo)
+FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::InitUniqueLocalBuffer(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     if (constInfo.isSoftmaxLseEnable) {
         // 8: 适配TND，每行的结果存为8个重复lse元素（32B对齐）
         this->tPipe->InitBuffer(softmaxLseQueue, 1, (BaseClass::s1BaseSize >> 1U) * sizeof(float) * 8);
-    }
-    if (constInfo.learnableSinkFlag) {
-        this->tPipe->InitBuffer(sinkQue, 1, 256); // buffer size = 256 bytes
     }
     if constexpr (POST_QUANT) {
         this->tPipe->InitBuffer(postQuantScaleQue, 1, 2048); // 2K
@@ -381,18 +383,13 @@ FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitUniqueLocalBuffer(ConstInfo<isIn
             this->tPipe->InitBuffer(postQuantOffsetQue, 1, 2048); // 2K
         }
     }
-    if constexpr (isMlaFullQuant) {
-        constexpr uint32_t softmaxRowmaxBufSize = 256; // s1 baseSize * 4b(fp32)
-        this->tPipe->InitBuffer(BaseClass::queryScaleQue[0], 1, BaseClass::s1BaseSize / CV_RATIO * sizeof(float));
-        this->tPipe->InitBuffer(BaseClass::queryScaleQue[1], 1, BaseClass::s1BaseSize / CV_RATIO * sizeof(float));
-        this->tPipe->InitBuffer(BaseClass::pScaleBuf[0], softmaxRowmaxBufSize);
-        this->tPipe->InitBuffer(BaseClass::pScaleBuf[1], softmaxRowmaxBufSize);
-        this->tPipe->InitBuffer(BaseClass::pScaleBuf[2], softmaxRowmaxBufSize); // 2: pScaleBuf index
+    if (constInfo.learnableSinkFlag) {
+        this->tPipe->InitBuffer(sinkQue, 1, 256); // buffer size = 256 bytes
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitFDBuffers(ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::InitFDBuffers(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     this->tPipe->Reset();
     this->tPipe->InitBuffer(lseTmpBuff, bufferSizeByte32K);
@@ -401,20 +398,21 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitFDBuffers
     this->tPipe->InitBuffer(FDResOutputQue, 1, bufferSizeByte32K);
     this->tPipe->InitBuffer(accumOutInputQue, 1, bufferSizeByte32K);
     if constexpr (POST_QUANT) {
+        this->tPipe->InitBuffer(postQuantScaleQue, 1, bufferSizeByte32K);
         if (constInfo.isPostQuantOffsetExist) {
             this->tPipe->InitBuffer(postQuantOffsetQue, 1, bufferSizeByte32K);
         }
-        this->tPipe->InitBuffer(postQuantScaleQue, 1, bufferSizeByte32K);
     }
     if (constInfo.isSoftmaxLseEnable) {
         // 8: 适配TND, 每行结果存为8个重复lse元素(32B对齐)
-        this->tPipe->InitBuffer(softmaxLseQueue, 1, (BaseClass::s1BaseSize >> 1U) * sizeof(float) * 8);
+        uint32_t lseBufferSize = (BaseClass::s1BaseSize >> 1U) * sizeof(float) * 8;
+        this->tPipe->InitBuffer(softmaxLseQueue, 1, lseBufferSize);
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::FlashDecodeCompute(
-    ConstInfo<isInfer, hasRope> &constInfo, GlobalTensor<INPUT_T> &keyGm, __gm__ int64_t *actualSeqKvlenAddr)
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::FlashDecodeCompute(
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, GlobalTensor<INPUT_T> &keyGm, __gm__ int64_t *actualSeqKvlenAddr)
 {
     int64_t batchIdx = constInfo.aivIdx / constInfo.n2Size;
     int64_t n2Idx = constInfo.aivIdx % constInfo.n2Size;
@@ -422,21 +420,21 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::FlashDecodeCo
     if (constInfo.aivIdx >= batchSize * constInfo.n2Size) {
         return;
     }
-    int64_t actualSeqLen;
-    GetActualSeqLenKV(constInfo, keyGm, actualSeqKvlenAddr, batchIdx, actualSeqLen);
-    if (actualSeqLen == 0) {
+    int64_t actualSeqLength;
+    GetActualSeqLenKV(constInfo, keyGm, actualSeqKvlenAddr, batchIdx, actualSeqLength);
+    if (actualSeqLength == 0) {
         return;
     }
     uint64_t attenOutOffset = (uint64_t)batchIdx * constInfo.n2GDv + n2Idx * constInfo.gDv;
-    constInfo.actualCombineLoopSize = (actualSeqLen + constInfo.sInnerLoopSize - 1) / constInfo.sInnerLoopSize;
+    constInfo.actualCombineLoopSize = (actualSeqLength + constInfo.sInnerLoopSize - 1) / constInfo.sInnerLoopSize;
     CombineSplitKVRes(constInfo, attenOutOffset, batchIdx, n2Idx);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::SoftmaxDataCopyOut(RunInfo<isInfer> &runInfo,
-                                                                               ConstInfo<isInfer, hasRope> &constInfo,
-                                                                               LocalTensor<float> &sumUb,
-                                                                               LocalTensor<float> &maxTensor)
+__aicore__ inline void
+FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::SoftmaxDataCopyOut(regbaseutil::RunInfo<isInfer> &runInfo,
+                                                               regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
+                                                               LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
 {
     if constexpr (isFd) {
         ComputeLogSumExpAndCopyToGm(runInfo, constInfo);
@@ -444,63 +442,64 @@ __aicore__ void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::SoftmaxDataCopyOut(R
     }
     if (constInfo.learnableSinkFlag) {
         if (constInfo.isGqa) {
-            this->Vec1SinkComputeGSFused(runInfo, constInfo, sumUb, maxTensor);
+            this->Vec1SinkComputeGSFused(runInfo, constInfo, sumUb, maxUb);
         } else {
-            this->Vec1SinkCompute(runInfo, constInfo, sumUb, maxTensor);
+            this->Vec1SinkCompute(runInfo, constInfo, sumUb, maxUb);
         }
     }
-    SoftmaxLseCopyOut(sumUb, maxTensor, runInfo, constInfo);
+    SoftmaxLseCopyOut(sumUb, maxUb, runInfo, constInfo);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
-FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::Vec1SinkCompute(RunInfo<isInfer> &runInfo,
-                                                            ConstInfo<isInfer, hasRope> &constInfo,
+FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::Vec1SinkCompute(regbaseutil::RunInfo<isInfer> &runInfo,
+                                                            regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
                                                             LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
 {
     int64_t sinkOffset = runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx;
-    auto sinkRaw = this->sinkGm.GetValue(sinkOffset);
+    auto sinkSrcVal = this->sinkGm.GetValue(sinkOffset);
     float sinkValue;
-    if constexpr (IsSameType<decltype(sinkRaw), half>::value) {
-        sinkValue = static_cast<float>(sinkRaw);
-    } else if constexpr (IsSameType<decltype(sinkRaw), bfloat16_t>::value) {
-        sinkValue = ToFloat(sinkRaw);
+    if constexpr (IsSameType<decltype(sinkSrcVal), half>::value) {
+        sinkValue = static_cast<float>(sinkSrcVal);
+    } else {
+        sinkValue = ToFloat(sinkSrcVal);
     }
     SinkSubExpAddVF<float>(sumUb, maxUb, sinkValue, runInfo.halfS1RealSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
-FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::Vec1SinkComputeGSFused(RunInfo<isInfer> &runInfo,
-                                                                   ConstInfo<isInfer, hasRope> &constInfo,
+FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::Vec1SinkComputeGSFused(regbaseutil::RunInfo<isInfer> &runInfo,
+                                                                   regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
                                                                    LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
 {
     CopySinkIn(runInfo, constInfo);
-    LocalTensor<INPUT_T> sinkUb = sinkQue.DeQue<INPUT_T>();
-    SinkSubExpAddGSFusedVF<float, INPUT_T>(sinkUb, sumUb, maxUb, runInfo.halfS1RealSize);
-    sinkQue.FreeTensor(sinkUb);
+    LocalTensor<INPUT_T> sinkLocalTensor = sinkQue.DeQue<INPUT_T>();
+    SinkSubExpAddGSFusedVF<float, INPUT_T>(sinkLocalTensor, sumUb, maxUb, runInfo.halfS1RealSize);
+    sinkQue.FreeTensor(sinkLocalTensor);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CopySinkIn(RunInfo<isInfer> &runInfo,
-                                                                              ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::CopySinkIn(regbaseutil::RunInfo<isInfer> &runInfo,
+                                                                              regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     LocalTensor<INPUT_T> sinkUbBf16 = sinkQue.AllocTensor<INPUT_T>();
     int64_t sinkOffset = runInfo.n2oIdx * constInfo.gSize + constInfo.subBlockIdx * runInfo.halfS1RealSize;
-    DataCopyExtParams sinkCopyParams;
-    sinkCopyParams.srcStride = 0;                                       // 源地址连续
-    sinkCopyParams.dstStride = 0;                                       // 目的地址连续
-    sinkCopyParams.blockCount = 1;                                      // 进行一次连续拷贝
-    sinkCopyParams.blockLen = runInfo.halfS1RealSize * sizeof(INPUT_T); // 实际需要拷贝的字节数
+    DataCopyExtParams sinkDataCopyParams;
+    sinkDataCopyParams.blockCount = 1;                                      // 进行一次连续拷贝
+    sinkDataCopyParams.blockLen = runInfo.halfS1RealSize * sizeof(INPUT_T); // 实际需要拷贝的字节数
+    sinkDataCopyParams.srcStride = 0;                                       // 源地址连续
+    sinkDataCopyParams.dstStride = 0;                                       // 目的地址连续
+
     DataCopyPadExtParams<INPUT_T> sinkCopyPadParams{};
-    DataCopyPad(sinkUbBf16, this->sinkGm[sinkOffset], sinkCopyParams, sinkCopyPadParams);
+    DataCopyPad(sinkUbBf16, this->sinkGm[sinkOffset], sinkDataCopyParams, sinkCopyPadParams);
     sinkQue.EnQue(sinkUbBf16);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CopyOutAttentionOut(
-    RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb,
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::CopyOutAttentionOut(
+    regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb,
     int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
     if constexpr (isFd) {
@@ -511,27 +510,32 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CopyOutAttent
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::GetActualSeqLenKV(
-    ConstInfo<isInfer, hasRope> &constInfo, GlobalTensor<INPUT_T> &keyGm, __gm__ int64_t *actualSeqKvlenAddr,
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::GetActualSeqLenKV(
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, GlobalTensor<INPUT_T> &keyGm, __gm__ int64_t *actualSeqKvlenAddr,
     int64_t boIdx, int64_t &actualSeqLen)
 {
-    int64_t s2InCurrentBatch = constInfo.s2Size;
+    int64_t s2InCurBatch = constInfo.s2Size;
     if (constInfo.isKvContinuous == 0) {
         ListTensorDesc keyListTensorDesc((__gm__ void *)keyGm.GetPhyAddr());
         AscendC::TensorDesc<__gm__ uint8_t> kvTensorDesc;
-        uint64_t dimInfos[4];
-        kvTensorDesc.SetShapeAddr(&dimInfos[0]);
+        uint64_t dimInfo[4];
+        kvTensorDesc.SetShapeAddr(&dimInfo[0]);
         keyListTensorDesc.GetDesc(kvTensorDesc, boIdx);
         if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
-            s2InCurrentBatch = kvTensorDesc.GetShape(2);
+            s2InCurBatch = kvTensorDesc.GetShape(2);
         } else {
-            s2InCurrentBatch = kvTensorDesc.GetShape(1);
+            s2InCurBatch = kvTensorDesc.GetShape(1);
         }
     }
     if (constInfo.isActualLenDimsKVNull) {
-        actualSeqLen = s2InCurrentBatch;
+        actualSeqLen = s2InCurBatch;
     } else {
         actualSeqLen = (constInfo.actualSeqLenKVSize == 1) ? actualSeqKvlenAddr[0] : actualSeqKvlenAddr[boIdx];
+        if constexpr ((layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) && (!isPa)) {
+            if (boIdx > 0) {
+                actualSeqLen -= actualSeqKvlenAddr[boIdx - 1];
+            }
+        }
     }
     if (constInfo.isKVHasLeftPadding) {
         int64_t kvLeftPaddingSize = constInfo.s2Size - actualSeqLen - constInfo.kvRightPaddingSize;
@@ -542,9 +546,9 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::GetActualSeqL
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
-    LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp, RunInfo<isInfer> &runInfo,
-    ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::SoftmaxLseCopyOut(
+    LocalTensor<float> &softmaxSumTmp, LocalTensor<float> &softmaxMaxTmp, regbaseutil::RunInfo<isInfer> &runInfo,
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     if (unlikely(runInfo.halfS1RealSize == 0)) {
         return;
@@ -553,9 +557,9 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::SoftmaxLseCop
     if (!constInfo.isSoftmaxLseEnable) {
         return;
     }
-    LocalTensor<float> lseTensor = this->softmaxLseQueue.template AllocTensor<float>();
-    ComputeLseOutputVF(lseTensor, softmaxSumTmp, softmaxMaxTmp, runInfo.halfS1RealSize);
-    softmaxLseQueue.template EnQue(lseTensor);
+    LocalTensor<float> lseUbBuf = this->softmaxLseQueue.template AllocTensor<float>();
+    ComputeLseOutputVF(lseUbBuf, softmaxSumTmp, softmaxMaxTmp, runInfo.halfS1RealSize);
+    softmaxLseQueue.template EnQue(lseUbBuf);
     softmaxLseQueue.DeQue<float>();
     DataCopyExtParams intriParams1;
     intriParams1.blockLen = sizeof(float);
@@ -566,116 +570,97 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::SoftmaxLseCop
     } else {
         intriParams1.dstStride = 0;
     }
-    if constexpr (isMlaFullQuant) {
-        intriParams1.dstStride = (layout == LayOutTypeEnum::LAYOUT_BSH) ? sizeof(float) * (constInfo.s1Size - 1) : 0;
-    }
-    if (isMlaFullQuant && layout == LayOutTypeEnum::LAYOUT_BSH && constInfo.gSize < 32) { // 32:gSize限制
-        int64_t currRowOffset = runInfo.sOuterOffset % constInfo.n2G;
-        int64_t remainDataLen = runInfo.halfS1RealSize;
-        int64_t dealDataLen = 0;
-        int64_t ubLseOffset = 0;
-        int64_t tmpSoftmaxLseOffset = runInfo.softmaxLseOffset;
-        int64_t oSoftmaxLseOffset = tmpSoftmaxLseOffset - constInfo.s1Size * (runInfo.sOuterOffset % constInfo.gSize);
-        while (remainDataLen > 0) {
-            dealDataLen = currRowOffset + remainDataLen < constInfo.n2G ? remainDataLen : constInfo.n2G - currRowOffset;
-            intriParams1.blockCount = dealDataLen;
-            DataCopyPad(this->softmaxLseGm[tmpSoftmaxLseOffset], lseTensor[ubLseOffset], intriParams1);
-            remainDataLen -= dealDataLen;
-            ubLseOffset += (dealDataLen * 8); // 8：fp32对齐
-            currRowOffset = (currRowOffset + dealDataLen) % constInfo.n2G;
-            tmpSoftmaxLseOffset = ++oSoftmaxLseOffset;
-        }
-    } else {
-        DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], lseTensor, intriParams1);
-    }
-    softmaxLseQueue.FreeTensor(lseTensor);
+    DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], lseUbBuf, intriParams1);
+    softmaxLseQueue.FreeTensor(lseUbBuf);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
-FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInfo<isInfer, hasRope> &constInfo)
+FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::InitOutputSingleCore(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     auto &initParams = this->tilingData->initOutputParams;
-    uint32_t tailSize = (initParams.totalOutputSize - constInfo.aivIdx * initParams.singleCoreSize) > 0 ?
-                            (initParams.totalOutputSize - constInfo.aivIdx * initParams.singleCoreSize) :
-                            0;
-    uint32_t singleInitOutputSize = tailSize < initParams.singleCoreSize ? tailSize : initParams.singleCoreSize;
+    uint32_t tailOutputSize = (initParams.totalOutputSize - constInfo.aivIdx * initParams.singleCoreSize) > 0 ?
+                                  (initParams.totalOutputSize - constInfo.aivIdx * initParams.singleCoreSize) :
+                                  0;
+    uint32_t initOutputSize = tailOutputSize < initParams.singleCoreSize ? tailOutputSize : initParams.singleCoreSize;
     if constexpr (POST_QUANT) {
-        InitOutput<half>(this->attentionOutInitGm[constInfo.aivIdx * initParams.singleCoreSize / 2], // 2: CV
-                         singleInitOutputSize / 2, 0.0);                                             // 2: CV
+        InitOutput<half>(this->attentionOutInitGm[constInfo.aivIdx * initParams.singleCoreSize / 2], initOutputSize / 2,
+                         0.0);
     } else {
-        InitOutput<OUTPUT_T>(this->attentionOutGm[constInfo.aivIdx * initParams.singleCoreSize], singleInitOutputSize,
-                             0.0);
+        InitOutput<OUTPUT_T>(this->attentionOutGm[constInfo.aivIdx * initParams.singleCoreSize], initOutputSize, 0.0);
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
-FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::InitLseOutputSingleCore(ConstInfo<isInfer, hasRope> &constInfo)
+FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::InitLseOutputSingleCore(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     int64_t coreNum = GetBlockNum() * GetTaskRation();
     auto &initParams = this->tilingData->initOutputParams;
     if (coreNum != 0 && constInfo.aivIdx < coreNum) {
-        int64_t singleCoreLseNum = initParams.totalSoftMaxLseOutputSize / coreNum;
+        int64_t lseSizePerCore = initParams.totalSoftMaxLseOutputSize / coreNum;
         if (constInfo.aivIdx == coreNum - 1) {
-            singleCoreLseNum += initParams.totalSoftMaxLseOutputSize % coreNum;
+            lseSizePerCore += initParams.totalSoftMaxLseOutputSize % coreNum;
         }
         InitOutput<float>(softmaxLseGm[constInfo.aivIdx * (initParams.totalSoftMaxLseOutputSize / coreNum)],
-                          singleCoreLseNum, 3e+99); // 3e+99:set the value of invalid batch to inf
+                          lseSizePerCore, 3e+99); // 3e+99:set the value of invalid batch to inf
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
-FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CombineSplitKVRes(ConstInfo<isInfer, hasRope> &constInfo,
+FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::CombineSplitKVRes(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
                                                               uint64_t attenOutOffset, uint32_t bIdx, uint32_t n2Idx)
 {
-    uint32_t gSplitSizeLse = bufferSizeByte32K / (FA_BYTE_BLOCK * constInfo.splitKVNum); // 32K / (splitKVNum * 32B)
-    uint32_t gSplitSizeAccumOut = bufferSizeByte32K / sizeof(float) / (uint32_t)dVTemplateType;
+    uint32_t gSplitLseBlk = bufferSizeByte32K / (FA_BYTE_BLOCK * constInfo.splitKVNum); // 32K / (splitKVNum * 32B)
+    uint32_t gSplitAccumBlk = bufferSizeByte32K / sizeof(float) / (uint32_t)dVTemplateType;
     // 取两者较小的，用来切g，保证ub够用
-    uint32_t gSplitSize = (gSplitSizeLse < gSplitSizeAccumOut) ? gSplitSizeLse : gSplitSizeAccumOut;
+    uint32_t gSplitSize = (gSplitLseBlk < gSplitAccumBlk) ? gSplitLseBlk : gSplitAccumBlk;
     if (constInfo.gSize > gSplitMax) {
         gSplitSize = (gSplitSize > gSplitMax) ? gSplitMax : gSplitSize;
     } else {
         gSplitSize = (gSplitSize > constInfo.gSize) ? constInfo.gSize : gSplitSize;
     }
+    uint32_t loopCnt = CeilDiv(constInfo.gSize, gSplitSize);
+    uint32_t tailSplitSize = constInfo.gSize - (loopCnt - 1) * gSplitSize;
     uint64_t lseOffset = 0;
     uint64_t sinkOffset = 0;
-    uint32_t loopCount = CeilDiv(constInfo.gSize, gSplitSize);
-    uint32_t tailSplitSize = constInfo.gSize - (loopCount - 1) * gSplitSize;
+
     // 尾块与非尾块都使用这些ub，减少处理次数
     LocalTensor<T> lseMaxUb = lseTmpBuff.Get<T>(); // 复用内存
     uint32_t shapeArray[] = {(uint32_t)gSplitSize, fp32BaseSize};
     lseMaxUb.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND)); // 2 for shape
 
-    uint64_t quantPerChannelOffset = n2Idx * constInfo.dSizeV * constInfo.gSize;
+    uint64_t perChannelQuantOffset = n2Idx * constInfo.dSizeV * constInfo.gSize;
     // 非尾块处理
-    for (uint32_t i = 0; i < loopCount - 1; i++) {
+    for (uint32_t i = 0; i < loopCnt - 1; i++) {
         uint32_t startRow = i * gSplitSize;
         CopyLseIn(constInfo, bIdx, n2Idx, startRow, gSplitSize);
         LocalTensor<T> softmaxMaxLocal = softmaxMaxInputQue.DeQue<T>();
         // 内存复用，同时作为输出 scale 值
         LocalTensor<T> softmaxSumLocal = softmaxSumInputQue.DeQue<T>();
 
-        lseOffset = constInfo.gSize * (bIdx * constInfo.n2Size + n2Idx) + i * gSplitSize;
+        lseOffset = (bIdx * constInfo.n2Size + n2Idx) * constInfo.gSize + i * gSplitSize;
         sinkOffset = n2Idx * constInfo.gSize + i * gSplitSize;
         ComputeScaleValue(softmaxMaxLocal, softmaxSumLocal, constInfo, gSplitSize, lseOffset, sinkOffset);
+
         LocalTensor<T> tmp1 = lseMaxUb;
         ReduceFinalRes(constInfo, bIdx, n2Idx, tmp1, softmaxSumLocal, startRow, gSplitSize);
+
         softmaxMaxInputQue.FreeTensor(softmaxMaxLocal);
         softmaxSumInputQue.FreeTensor(softmaxSumLocal);
-        CopyFinalResOut(constInfo, attenOutOffset, tmp1, startRow, gSplitSize, quantPerChannelOffset);
+        CopyFinalResOut(constInfo, attenOutOffset, tmp1, startRow, gSplitSize, perChannelQuantOffset);
     }
     // 尾块处理
     if (tailSplitSize > 0) {
-        uint32_t startRow = (loopCount - 1) * gSplitSize;
+        uint32_t startRow = (loopCnt - 1) * gSplitSize;
         CopyLseIn(constInfo, bIdx, n2Idx, startRow, tailSplitSize);
-
+        LocalTensor<T> softmaxMaxLocal = softmaxMaxInputQue.DeQue<T>();
         // 内存复用，同时作为输出 scale 值
         LocalTensor<T> softmaxSumLocal = softmaxSumInputQue.DeQue<T>();
-        LocalTensor<T> softmaxMaxLocal = softmaxMaxInputQue.DeQue<T>();
-        lseOffset = (bIdx * constInfo.n2Size + n2Idx) * constInfo.gSize + (loopCount - 1) * gSplitSize;
-        sinkOffset = n2Idx * constInfo.gSize + (loopCount - 1) * gSplitSize;
+
+        lseOffset = (bIdx * constInfo.n2Size + n2Idx) * constInfo.gSize + (loopCnt - 1) * gSplitSize;
+        sinkOffset = n2Idx * constInfo.gSize + (loopCnt - 1) * gSplitSize;
         ComputeScaleValue(softmaxMaxLocal, softmaxSumLocal, constInfo, tailSplitSize, lseOffset, sinkOffset);
 
         LocalTensor<T> tmp1 = lseMaxUb;
@@ -683,13 +668,13 @@ FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CombineSplitKVRes(ConstInfo<isInfer,
 
         softmaxMaxInputQue.FreeTensor(softmaxMaxLocal);
         softmaxSumInputQue.FreeTensor(softmaxSumLocal);
-        CopyFinalResOut(constInfo, attenOutOffset, tmp1, startRow, tailSplitSize, quantPerChannelOffset);
+        CopyFinalResOut(constInfo, attenOutOffset, tmp1, startRow, tailSplitSize, perChannelQuantOffset);
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::ComputeScaleValue(
-    LocalTensor<T> lseMaxUb, LocalTensor<T> lseSumUb, ConstInfo<isInfer, hasRope> &constInfo, uint32_t splitSize,
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::ComputeScaleValue(
+    LocalTensor<T> lseMaxUb, LocalTensor<T> lseSumUb, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, uint32_t splitSize,
     uint64_t lseOffset, uint64_t sinkOffset)
 {
     LocalTensor<T> lseOutUb;
@@ -706,12 +691,12 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::ComputeScaleV
     if (constInfo.isSoftmaxLseEnable) {
         softmaxLseQueue.template EnQue<T>(lseOutUb);
         softmaxLseQueue.DeQue<T>();
-        DataCopyExtParams intriParams1;
-        intriParams1.blockLen = sizeof(float);
-        intriParams1.blockCount = splitSize;
-        intriParams1.srcStride = 0;
-        intriParams1.dstStride = 0;
-        DataCopyPad(softmaxLseGm[lseOffset], lseOutUb, intriParams1);
+        DataCopyExtParams intriParams;
+        intriParams.blockLen = sizeof(float);
+        intriParams.blockCount = splitSize;
+        intriParams.srcStride = 0;
+        intriParams.dstStride = 0;
+        DataCopyPad(softmaxLseGm[lseOffset], lseOutUb, intriParams);
         softmaxLseQueue.FreeTensor(lseOutUb);
     }
     if (constInfo.learnableSinkFlag) {
@@ -720,43 +705,41 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::ComputeScaleV
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CopySinkFDIn(uint32_t splitSize, uint64_t sinkOffset)
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::CopySinkFDIn(uint32_t splitSize, uint64_t sinkOffset)
 {
     LocalTensor<INPUT_T> sinkUbBf16 = sinkQue.AllocTensor<INPUT_T>();
-    DataCopyExtParams copyParams;
-    copyParams.blockCount = 1;                         // 进行一次连续拷贝
-    copyParams.blockLen = splitSize * sizeof(INPUT_T); // 实际需要拷贝的字节数
-    copyParams.srcStride = 0;                          // 源地址连续
-    copyParams.dstStride = 0;                          // 目的地址连续
+    DataCopyExtParams sinkCopyParams;
+    sinkCopyParams.blockCount = 1;                         // 进行一次连续拷贝
+    sinkCopyParams.blockLen = splitSize * sizeof(INPUT_T); // 实际需要拷贝的字节数
+    sinkCopyParams.srcStride = 0;                          // 源地址连续
+    sinkCopyParams.dstStride = 0;                          // 目的地址连续
 
     DataCopyPadExtParams<INPUT_T> sinkCopyPadParams{};
-    DataCopyPad(sinkUbBf16, this->sinkGm[sinkOffset], copyParams, sinkCopyPadParams);
+    DataCopyPad(sinkUbBf16, this->sinkGm[sinkOffset], sinkCopyParams, sinkCopyPadParams);
     sinkQue.EnQue(sinkUbBf16);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::Bmm2FDOut(LocalTensor<T> &vec2ResUb,
-                                                                             RunInfo<isInfer> &runInfo,
-                                                                             ConstInfo<isInfer, hasRope> &constInfo,
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::Bmm2FDOut(LocalTensor<T> &vec2ResUb,
+                                                                             regbaseutil::RunInfo<isInfer> &runInfo,
+                                                                             regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
                                                                              int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
     LocalTensor<T> attenOut;
-    int64_t dvSizeAligned64 = (int64_t)dVTemplateType;
+    int64_t dSizeAligned64 = (int64_t)dVTemplateType;
     if constexpr (BaseClass::splitD) {
-        dvSizeAligned64 = constInfo.dBasicBlock;
+        dSizeAligned64 = constInfo.dBasicBlock;
     }
     SetFlag<HardEvent::V_MTE3>(this->vToMte3Id[runInfo.taskIdMod2]);
     WaitFlag<HardEvent::V_MTE3>(this->vToMte3Id[runInfo.taskIdMod2]);
     attenOut = vec2ResUb;
 
-    // 拷贝参数赋值
-    DataCopyExtParams copyParams;
-    copyParams.blockCount = runInfo.vec2S1RealSize;
-    copyParams.blockLen = constInfo.dSizeV * sizeof(T);
-    copyParams.srcStride = (dvSizeAligned64 - constInfo.dSizeV) / (FA_BYTE_BLOCK / sizeof(T));
-    copyParams.dstStride = 0;
+    DataCopyExtParams dataCopyParams;
+    dataCopyParams.blockCount = runInfo.vec2S1RealSize;
+    dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
+    dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) / (FA_BYTE_BLOCK / sizeof(T));
+    dataCopyParams.dstStride = 0;
 
-    // 地址偏移计算
     uint32_t mStart = constInfo.subBlockIdx * runInfo.firstHalfS1RealSize;
     uint64_t base = (runInfo.boIdx * constInfo.n2Size * constInfo.gSize * constInfo.dSizeV +
                      runInfo.n2oIdx * constInfo.gSize * constInfo.dSizeV) *
@@ -764,172 +747,183 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::Bmm2FDOut(Loc
                     mStart * constInfo.dSizeV + vec2S1Idx * runInfo.vec2S1BaseSize * constInfo.dSizeV;
 
     DataCopyPad(this->accumOutGm[base + runInfo.flashDecodeS2Idx * constInfo.gSize * constInfo.dSizeV], attenOut,
-                copyParams);
+                dataCopyParams);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CopyLseIn(ConstInfo<isInfer, hasRope> &constInfo,
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::CopyLseIn(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
                                                                              uint32_t bIdx, uint32_t n2Idx,
                                                                              uint32_t startRow, uint32_t dealRowCount)
 {
     LocalTensor<T> softmaxMaxLocal = softmaxMaxInputQue.AllocTensor<T>();
     LocalTensor<T> softmaxSumLocal = softmaxSumInputQue.AllocTensor<T>();
 
-    // 地址偏移计算
+    DataCopyExtParams lseInCopyParams;
+    DataCopyPadExtParams<T> lseInPadParams;
+    lseInCopyParams.blockCount = constInfo.splitKVNum;
+    lseInCopyParams.blockLen = dealRowCount * fp32BaseSize * sizeof(T);
+    lseInCopyParams.srcStride = (constInfo.gSize - dealRowCount) * fp32BaseSize * sizeof(T);
+    lseInCopyParams.dstStride = 0;
+
+    lseInPadParams.isPad = false;
+    lseInPadParams.leftPadding = 0;
+    lseInPadParams.rightPadding = 0;
+    lseInPadParams.paddingValue = 0;
+
     uint64_t combineLseOffset =
         ((uint64_t)bIdx * constInfo.n2Size * constInfo.splitKVNum + n2Idx * constInfo.splitKVNum) * constInfo.gSize *
             fp32BaseSize +
         startRow * fp32BaseSize;
 
-    // 拷贝参数赋值
-    DataCopyExtParams lseCopyParams;
-    lseCopyParams.blockCount = constInfo.splitKVNum;
-    lseCopyParams.blockLen = dealRowCount * fp32BaseSize * sizeof(T);
-    lseCopyParams.srcStride = (constInfo.gSize - dealRowCount) * fp32BaseSize * sizeof(T);
-    lseCopyParams.dstStride = 0;
-
-    DataCopyPadExtParams<T> lseCopyPadParams;
-    lseCopyPadParams.isPad = false;
-    lseCopyPadParams.leftPadding = 0;
-    lseCopyPadParams.rightPadding = 0;
-    lseCopyPadParams.paddingValue = 0;
-
-    DataCopyPad(softmaxMaxLocal, softmaxFDMaxGm[combineLseOffset], lseCopyParams, lseCopyPadParams);
-    DataCopyPad(softmaxSumLocal, softmaxFDSumGm[combineLseOffset], lseCopyParams, lseCopyPadParams);
+    DataCopyPad(softmaxMaxLocal, softmaxFDMaxGm[combineLseOffset], lseInCopyParams, lseInPadParams);
+    DataCopyPad(softmaxSumLocal, softmaxFDSumGm[combineLseOffset], lseInCopyParams, lseInPadParams);
     softmaxMaxInputQue.EnQue(softmaxMaxLocal);
     softmaxSumInputQue.EnQue(softmaxSumLocal);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CopyFinalResOut(
-    ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset, LocalTensor<T> &accumOutLocal, uint32_t startRow,
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::CopyFinalResOut(
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset, LocalTensor<T> &accumOutLocal, uint32_t startRow,
     uint32_t dealRowCount, uint64_t perChannelQuantOffset)
 {
     LocalTensor<OUTPUT_T> tmpBmm2ResCastTensor = FDResOutputQue.AllocTensor<OUTPUT_T>();
-    uint32_t dvSizeAligned64 = (uint32_t)dVTemplateType;
+    uint32_t dSizeAlign64 = (uint32_t)dVTemplateType;
     if constexpr (BaseClass::splitD) {
-        dvSizeAligned64 = constInfo.dBasicBlock;
+        dSizeAlign64 = constInfo.dBasicBlock;
     }
-    uint32_t shapeArray[] = {(uint32_t)dealRowCount, dvSizeAligned64};
+    uint32_t shapeArray[] = {(uint32_t)dealRowCount, dSizeAlign64};
     tmpBmm2ResCastTensor.SetShapeInfo(ShapeInfo(2, shapeArray, DataFormat::ND)); // 2 for shape
     if constexpr (!POST_QUANT) {
-        Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND, dealRowCount * dvSizeAligned64);
+        Cast(tmpBmm2ResCastTensor, accumOutLocal, AscendC::RoundMode::CAST_ROUND, dealRowCount * dSizeAlign64);
     } else {
         FDPostQuant(constInfo, tmpBmm2ResCastTensor, accumOutLocal, perChannelQuantOffset + startRow * constInfo.dSizeV,
-                    dealRowCount, dvSizeAligned64);
+                    dealRowCount, dSizeAlign64);
     }
 
     FDResOutputQue.EnQue(tmpBmm2ResCastTensor);
     FDResOutputQue.DeQue<OUTPUT_T>();
-    ReduceFDDataCopyOut(constInfo, attenOutOffset, tmpBmm2ResCastTensor, startRow, dealRowCount, dvSizeAligned64,
+    ReduceFDDataCopyOut(constInfo, attenOutOffset, tmpBmm2ResCastTensor, startRow, dealRowCount, dSizeAlign64,
                         constInfo.dSizeV);
     FDResOutputQue.FreeTensor(tmpBmm2ResCastTensor);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::ReduceFinalRes(
-    ConstInfo<isInfer, hasRope> &constInfo, uint32_t bIdx, uint32_t n2Idx, LocalTensor<T> &dst,
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::ReduceFinalRes(
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, uint32_t bIdx, uint32_t n2Idx, LocalTensor<T> &dst,
     LocalTensor<T> &lseLocal, uint32_t startRow, uint32_t dealRowCount)
 {
-    int64_t dvSizeAlign64 = (int64_t)dVTemplateType;
+    int64_t dSizeAligned64 = (int64_t)dVTemplateType;
     if constexpr (BaseClass::splitD) {
-        dvSizeAlign64 = constInfo.dBasicBlock;
+        dSizeAligned64 = constInfo.dBasicBlock;
     }
     for (uint32_t j = 0; j < constInfo.actualCombineLoopSize; ++j) {
         // 第一次，mul结果直接放到dst里
         CopyAccumOutIn(constInfo, bIdx, n2Idx, j, startRow, dealRowCount);
         LocalTensor<T> accumOutLocal = accumOutInputQue.DeQue<T>();
-        ReduceFinalRes_VF<T>(dst, lseLocal, accumOutLocal, dealRowCount, dvSizeAlign64, j);
+        ReduceFinalRes_VF<T>(dst, lseLocal, accumOutLocal, dealRowCount, dSizeAligned64, j);
         accumOutInputQue.FreeTensor(accumOutLocal);
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
-FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CopyAccumOutIn(ConstInfo<isInfer, hasRope> &constInfo, uint32_t bIdx,
+FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::CopyAccumOutIn(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, uint32_t bIdx,
                                                            uint32_t n2Idx, uint32_t splitKVIndex, uint32_t startRow,
                                                            uint32_t dealRowCount)
 {
     LocalTensor<T> accumOutLocal = accumOutInputQue.AllocTensor<T>();
-    int64_t dvSizeAligned64 = (int64_t)dVTemplateType;
+    int64_t dSizeAligned64 = (int64_t)dVTemplateType;
     if constexpr (BaseClass::splitD) {
-        dvSizeAligned64 = constInfo.dBasicBlock;
+        dSizeAligned64 = constInfo.dBasicBlock;
     }
-    DataCopyExtParams accumCopyParams;
-    accumCopyParams.blockCount = dealRowCount;
-    accumCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
-    accumCopyParams.srcStride = 0;
-    accumCopyParams.dstStride = (dvSizeAligned64 - constInfo.dSizeV) / 8; // 8 for align factor
-
+    DataCopyExtParams accumCopyInParams;
     DataCopyPadExtParams<T> accumCopyPadParams;
+    accumCopyInParams.blockCount = dealRowCount;
+    accumCopyInParams.blockLen = constInfo.dSizeV * sizeof(T);
+    accumCopyInParams.srcStride = 0;
+    accumCopyInParams.dstStride = (dSizeAligned64 - constInfo.dSizeV) / 8; // 8 for align factor
+
     accumCopyPadParams.isPad = true;
     accumCopyPadParams.leftPadding = 0;
-    accumCopyPadParams.rightPadding = (dvSizeAligned64 - constInfo.dSizeV) % 8; // 8 for align factor
+    accumCopyPadParams.rightPadding = (dSizeAligned64 - constInfo.dSizeV) % 8; // 8 for align factor
     accumCopyPadParams.paddingValue = 0;
-    // 地址偏移计算
+
     uint64_t combineAccumOutOffset =
         ((uint64_t)bIdx * constInfo.n2Size * constInfo.splitKVNum + n2Idx * constInfo.splitKVNum + splitKVIndex) *
             constInfo.gSize * constInfo.dSizeV +
         startRow * constInfo.dSizeV;
-    DataCopyPad(accumOutLocal, this->accumOutGm[combineAccumOutOffset], accumCopyParams, accumCopyPadParams);
+    DataCopyPad(accumOutLocal, this->accumOutGm[combineAccumOutOffset], accumCopyInParams, accumCopyPadParams);
     accumOutInputQue.EnQue(accumOutLocal);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
-FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::ComputeLogSumExpAndCopyToGm(RunInfo<isInfer> &runInfo,
-                                                                        ConstInfo<isInfer, hasRope> &constInfo)
+FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::ComputeLogSumExpAndCopyToGm(regbaseutil::RunInfo<isInfer> &runInfo,
+                                                                        regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     if (unlikely(runInfo.halfS1RealSize == 0)) {
         return;
     }
-
+    int64_t bOffset;
+    int64_t n2Offset;
+    int64_t gOffset;
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+        bOffset = constInfo.n2G * runInfo.s1SizeAcc;
+        n2Offset = runInfo.n2oIdx * constInfo.gSize * runInfo.actualS1Size;
+        gOffset = runInfo.goIdx * runInfo.actualS1Size;
+    } else {
+        bOffset = runInfo.boIdx * constInfo.n2Size * constInfo.gS1;
+        n2Offset = runInfo.n2oIdx * constInfo.gS1;
+        gOffset = runInfo.goIdx * constInfo.s1Size;
+    }
+    int64_t s1Offset = runInfo.s1oIdx * this->s1BaseSize + constInfo.subBlockIdx * runInfo.firstHalfS1RealSize;
     int64_t calculateSize = runInfo.halfS1RealSize * fp32BaseSize;
     uint32_t mStart = constInfo.subBlockIdx * runInfo.firstHalfS1RealSize;
     size_t gmOffset = runInfo.boIdx * constInfo.n2Size * constInfo.splitKVNum * constInfo.gSize * fp32BaseSize +
                       runInfo.n2oIdx * constInfo.splitKVNum * constInfo.gSize * fp32BaseSize +
                       runInfo.flashDecodeS2Idx * constInfo.gSize * fp32BaseSize + mStart * fp32BaseSize;
-    // 拷贝 FDSum 到 Gm
+    // Copy sum to gm
     this->BroadCastAndCopyOut(runInfo, softmaxFDSumGm, softmaxFDMaxGm, gmOffset, calculateSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::ReduceFDDataCopyOut(
-    ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset, LocalTensor<OUTPUT_T> &attenOutUb,
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::ReduceFDDataCopyOut(
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, uint64_t attenOutOffset, LocalTensor<OUTPUT_T> &attenOutUb,
     uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
-    DataCopyExtParams copyParams;
-    copyParams.blockCount = dealRowCount;
-    copyParams.blockLen = actualColumnCount * sizeof(OUTPUT_T);
-    copyParams.srcStride = (columnCount - actualColumnCount) / (FA_BYTE_BLOCK / sizeof(OUTPUT_T));
-    copyParams.dstStride = 0;
-    DataCopyPad(this->attentionOutGm[attenOutOffset + startRow * actualColumnCount], attenOutUb, copyParams);
+    DataCopyExtParams dataCopyParams;
+    dataCopyParams.blockCount = dealRowCount;
+    dataCopyParams.blockLen = actualColumnCount * sizeof(OUTPUT_T);
+    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (FA_BYTE_BLOCK / sizeof(OUTPUT_T));
+    dataCopyParams.dstStride = 0;
+    DataCopyPad(this->attentionOutGm[attenOutOffset + startRow * actualColumnCount], attenOutUb, dataCopyParams);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename POSTQUANT_PARAMS_T, typename VEC2_RES_T>
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::PostQuantPerChnl(
-    ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<OUTPUT_T> &attenOut, LocalTensor<VEC2_RES_T> &vec2ResUb,
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::PostQuantPerChnl(
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<OUTPUT_T> &attenOut, LocalTensor<VEC2_RES_T> &vec2ResUb,
     uint64_t perChannelQuantOffset, uint32_t gSplitSize, uint32_t s1RowCount, uint32_t splitOffset,
     int64_t dSizeAligned64, GlobalTensor<POSTQUANT_PARAMS_T> postQuantScaleGm,
     GlobalTensor<POSTQUANT_PARAMS_T> postQuantOffsetGm)
 {
-    DataCopyExtParams copyExtParams;
-    DataCopyPadExtParams<POSTQUANT_PARAMS_T> copyPadParams;
-    copyExtParams.blockCount = gSplitSize;
-    copyExtParams.blockLen = constInfo.dSizeV * sizeof(POSTQUANT_PARAMS_T);
-    copyExtParams.srcStride = 0;
-    copyExtParams.dstStride = (dSizeAligned64 - constInfo.dSizeV) / (32 / sizeof(POSTQUANT_PARAMS_T));
+    DataCopyExtParams pqCopyParams;
+    DataCopyPadExtParams<POSTQUANT_PARAMS_T> copyInPadParams;
+    pqCopyParams.blockCount = gSplitSize;
+    pqCopyParams.blockLen = constInfo.dSizeV * sizeof(POSTQUANT_PARAMS_T);
+    pqCopyParams.srcStride = 0;
+    // 32: datablock size
+    pqCopyParams.dstStride = (dSizeAligned64 - constInfo.dSizeV) / (32 / sizeof(POSTQUANT_PARAMS_T));
 
     LocalTensor<POSTQUANT_PARAMS_T> postQuantScaleUb =
         this->postQuantScaleQue.template AllocTensor<POSTQUANT_PARAMS_T>();
-    DataCopyPad(postQuantScaleUb, postQuantScaleGm[perChannelQuantOffset], copyExtParams, copyPadParams);
+    DataCopyPad(postQuantScaleUb, postQuantScaleGm[perChannelQuantOffset], pqCopyParams, copyInPadParams);
     this->postQuantScaleQue.template EnQue(postQuantScaleUb);
     this->postQuantScaleQue.template DeQue<POSTQUANT_PARAMS_T>();
     if (constInfo.isPostQuantOffsetExist) {
         LocalTensor<POSTQUANT_PARAMS_T> postQuantOffsetUb =
             this->postQuantOffsetQue.template AllocTensor<POSTQUANT_PARAMS_T>();
-        DataCopyPad(postQuantOffsetUb, postQuantOffsetGm[perChannelQuantOffset], copyExtParams, copyPadParams);
+        DataCopyPad(postQuantOffsetUb, postQuantOffsetGm[perChannelQuantOffset], pqCopyParams, copyInPadParams);
         this->postQuantOffsetQue.template EnQue(postQuantOffsetUb);
         this->postQuantOffsetQue.template DeQue<POSTQUANT_PARAMS_T>();
         PostQuantPerChnlImpl<T, OUTPUT_T, POSTQUANT_PARAMS_T>(attenOut[splitOffset], vec2ResUb[splitOffset],
@@ -946,14 +940,14 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::PostQuantPerC
 
 TEMPLATES_DEF_NO_DEFAULT
 template <typename VEC2_RES_T>
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::PostQuant(ConstInfo<isInfer, hasRope> &constInfo,
-                                                                             RunInfo<isInfer> &runInfo,
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::PostQuant(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
+                                                                             regbaseutil::RunInfo<isInfer> &runInfo,
                                                                              LocalTensor<OUTPUT_T> &attenOut,
                                                                              LocalTensor<VEC2_RES_T> &vec2ResUb,
                                                                              int64_t vec2S1Idx, int64_t dSizeAligned64)
 {
-    uint32_t s1RowCnts = constInfo.isGqa ? 1U : runInfo.vec2S1RealSize; // s1=1, gS合轴, bn2分核
-    uint32_t gRowCnt = constInfo.isGqa ? runInfo.vec2S1RealSize : 1U;   // s1>1, bn1分核
+    uint32_t s1RowCount = constInfo.isGqa ? 1U : runInfo.vec2S1RealSize; // s1=1, gS合轴, bn2分核
+    uint32_t gRowCount = constInfo.isGqa ? runInfo.vec2S1RealSize : 1U;  // s1>1, bn1分核
     if (constInfo.isPostQuantPerChnl) {
         uint64_t perChannelQuantGQAOffset = runInfo.n2oIdx * constInfo.gDv +
                                             vec2S1Idx * runInfo.vec2S1BaseSize * constInfo.dSizeV +
@@ -961,24 +955,24 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::PostQuant(Con
         uint64_t perChannelQuantOffset = constInfo.isGqa ?
                                              perChannelQuantGQAOffset :
                                              runInfo.n2oIdx * constInfo.gDv + runInfo.goIdx * constInfo.dSizeV;
-        uint32_t gSplitNum = constInfo.isPostQuantBF16 ? (2048U / ((uint32_t)dSizeAligned64 * sizeof(bfloat16_t))) :
-                                                         (2048U / ((uint32_t)dSizeAligned64 * sizeof(float)));
-        gSplitNum = gSplitNum > gRowCnt ? gRowCnt : gSplitNum;
-        uint32_t loopCount = (gRowCnt + gSplitNum - 1) / gSplitNum;
-        uint32_t tailSplitSize = gRowCnt - (loopCount - 1) * gSplitNum;
+        uint32_t gSplitSize = constInfo.isPostQuantBF16 ? (2048U / ((uint32_t)dSizeAligned64 * sizeof(bfloat16_t))) :
+                                                          (2048U / ((uint32_t)dSizeAligned64 * sizeof(float)));
+        gSplitSize = gSplitSize > gRowCount ? gRowCount : gSplitSize;
+        uint32_t loopCount = (gRowCount + gSplitSize - 1) / gSplitSize;
+        uint32_t tailSplitSize = gRowCount - (loopCount - 1) * gSplitSize;
         for (uint32_t i = 0; i < loopCount; i++) {
-            uint32_t startRow = i * gSplitNum;
+            uint32_t startRow = i * gSplitSize;
             if (i + 1 == loopCount) {
-                gSplitNum = tailSplitSize;
+                gSplitSize = tailSplitSize;
             }
             uint32_t splitOffset = startRow * dSizeAligned64;
             if (constInfo.isPostQuantBF16) {
                 PostQuantPerChnl(constInfo, attenOut, vec2ResUb, perChannelQuantOffset + startRow * constInfo.dSizeV,
-                                 gSplitNum, s1RowCnts, splitOffset, dSizeAligned64, postQuantScaleBf16Gm,
+                                 gSplitSize, s1RowCount, splitOffset, dSizeAligned64, postQuantScaleBf16Gm,
                                  postQuantOffsetBf16Gm);
             } else {
                 PostQuantPerChnl(constInfo, attenOut, vec2ResUb, perChannelQuantOffset + startRow * constInfo.dSizeV,
-                                 gSplitNum, s1RowCnts, splitOffset, dSizeAligned64, postQuantScaleGm,
+                                 gSplitSize, s1RowCount, splitOffset, dSizeAligned64, postQuantScaleGm,
                                  postQuantOffsetGm);
             }
         }
@@ -990,23 +984,23 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::PostQuant(Con
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::FDPostQuant(
-    ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<OUTPUT_T> &attenOut, LocalTensor<T> &accumOutLocal,
-    uint64_t perChannelQuantOffset, uint32_t dealRowCnt, uint32_t dSizeAlign64)
+__aicore__ inline void FABlockVecInferGqaFullquant<TEMPLATE_ARGS>::FDPostQuant(
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, LocalTensor<OUTPUT_T> &attenOut, LocalTensor<T> &accumOutLocal,
+    uint64_t perChannelQuantOffset, uint32_t dealRowCount, uint32_t dSizeAlignedDim64)
 {
     if (constInfo.isPostQuantPerChnl) {
         if (constInfo.isPostQuantBF16) {
-            PostQuantPerChnl(constInfo, attenOut, accumOutLocal, perChannelQuantOffset, dealRowCnt, 1U, 0U,
-                             dSizeAlign64, postQuantScaleBf16Gm, postQuantOffsetBf16Gm);
+            PostQuantPerChnl(constInfo, attenOut, accumOutLocal, perChannelQuantOffset, dealRowCount, 1U, 0U,
+                             dSizeAlignedDim64, postQuantScaleBf16Gm, postQuantOffsetBf16Gm);
         } else {
-            PostQuantPerChnl(constInfo, attenOut, accumOutLocal, perChannelQuantOffset, dealRowCnt, 1U, 0U,
-                             dSizeAlign64, postQuantScaleGm, postQuantOffsetGm);
+            PostQuantPerChnl(constInfo, attenOut, accumOutLocal, perChannelQuantOffset, dealRowCount, 1U, 0U,
+                             dSizeAlignedDim64, postQuantScaleGm, postQuantOffsetGm);
         }
     } else {
         PostQuantPerTensorImpl<T, OUTPUT_T, true>(attenOut, accumOutLocal, constInfo.postQuantScaleValue,
-                                                  constInfo.postQuantOffsetValue, dealRowCnt, constInfo.dSizeV,
-                                                  dSizeAlign64);
+                                                  constInfo.postQuantOffsetValue, dealRowCount, constInfo.dSizeV,
+                                                  dSizeAlignedDim64);
     }
 }
 } // namespace BaseApi
-#endif // FLASH_ATTENTION_SCORE_BLOCK_VEC_INFER_MLA_FULLQUANT_H_
+#endif // FLASH_ATTENTION_SCORE_BLOCK_VEC_INFER_GQA_FULLQUANT_H_
