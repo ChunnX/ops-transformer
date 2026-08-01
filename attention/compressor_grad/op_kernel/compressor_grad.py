@@ -43,7 +43,7 @@ class CompressorGradTilingKey:
 #  TilingData
 # ================================================================
 @dataclass
- class CompressorGradTiling:
+class CompressorGradTiling:
     batchSize:        int = 1
     tokenSize:        int = 0
     seqSize:          int = 0
