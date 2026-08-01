@@ -19,8 +19,14 @@
 namespace optiling {
 namespace QkvRmsNormRopeCacheWithKScale {
 
-enum class RopeMode : uint64_t { ROPE = 0, MROPE = 1 };
-enum class QQuantMode : uint64_t { PER_TOKEN_PER_HEAD = 0, NO_QUANT = 1 };
+enum class RopeMode : uint64_t {
+    ROPE = 0,
+    MROPE = 1
+};
+enum class QQuantMode : uint64_t {
+    PER_TOKEN_PER_HEAD = 0,
+    NO_QUANT = 1
+};
 
 struct TensorContractInfo {
     gert::Shape shape;
@@ -78,7 +84,9 @@ public:
     static constexpr uint64_t DIM_TILE = 128;
     static constexpr uint64_t AIV_PER_AIC = 2;
 
-    explicit QkvRmsNormRopeCacheWithKScaleBaseTiling(gert::TilingContext *context) : TilingBaseClass(context) {}
+    explicit QkvRmsNormRopeCacheWithKScaleBaseTiling(gert::TilingContext *context)
+        : TilingBaseClass(context)
+    {}
     ~QkvRmsNormRopeCacheWithKScaleBaseTiling() override = default;
 
     void Reset(gert::TilingContext *context) override;

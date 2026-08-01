@@ -362,7 +362,9 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateNonCacheShapeRa
         uint64_t expectedRank;
     };
     const NonCacheRankRule rankRules[] = {
-        {"qGamma", &input_.qGamma, 1},     {"kGamma", &input_.kGamma, 1}, {"slotMapping", &input_.slotMapping, 1},
+        {"qGamma", &input_.qGamma, 1},
+        {"kGamma", &input_.kGamma, 1},
+        {"slotMapping", &input_.slotMapping, 1},
         {"rotation", &input_.rotation, 2},
     };
     for (const auto &rule : rankRules) {

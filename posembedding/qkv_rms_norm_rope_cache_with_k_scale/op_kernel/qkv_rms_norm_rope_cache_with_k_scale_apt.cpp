@@ -39,10 +39,25 @@ __global__ __aicore__ void qkv_rms_norm_rope_cache_with_k_scale(
     const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData = &tilingDataIn;
 
     const GlobalTensors tensors = {
-        qkv,         q_gamma,     k_gamma,           cos_sin,         slot_mapping,
-        k_cache_in,  v_cache_in,  k_scale_cache_in,  query_start_loc, seq_lens,
-        rotation,    v_scale,     mrope_position,    q_out,           q_scale,
-        k_cache_out, v_cache_out, k_scale_cache_out, workspace,
+        qkv,
+        q_gamma,
+        k_gamma,
+        cos_sin,
+        slot_mapping,
+        k_cache_in,
+        v_cache_in,
+        k_scale_cache_in,
+        query_start_loc,
+        seq_lens,
+        rotation,
+        v_scale,
+        mrope_position,
+        q_out,
+        q_scale,
+        k_cache_out,
+        v_cache_out,
+        k_scale_cache_out,
+        workspace,
     };
 
     QkvRmsNormRopeCacheWithKScaleController<QKV_LAYOUT, Q_OUT_LAYOUT, ROPE_MODE, K_QUANT_MODE, Q_QUANT_MODE> controller;

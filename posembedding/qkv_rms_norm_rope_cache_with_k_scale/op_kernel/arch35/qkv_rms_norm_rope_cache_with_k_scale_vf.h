@@ -467,7 +467,7 @@ __simd_vf__ inline void KDynamicQuantD128VfImpl(__ubuf__ float *kFp32, __ubuf__ 
                 MicroAPI::AddrReg dstAddrReg = MicroAPI::CreateAddrReg<int8_t>(
                     outerIdx, outputOuterStrideBytes, innerIdx, outputInnerStrideBytes);
                 MicroAPI::StoreAlign<int8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(kQuant, kLowQuant, dstAddrReg,
-                                                                                 mask64);
+                                                                                  mask64);
                 MicroAPI::StoreAlign<int8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(
                     kQuant + QKV_K_SCALE_D128_HALF_SIZE, kHighQuant, dstAddrReg, mask64);
             } else {

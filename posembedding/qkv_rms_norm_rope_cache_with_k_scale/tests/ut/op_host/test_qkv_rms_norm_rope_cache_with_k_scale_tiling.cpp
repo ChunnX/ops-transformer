@@ -114,7 +114,8 @@ struct QkvTilingCase : public HostUtParamBase {
     std::string socVersion = "Ascend950";
     ExpectedTiling expected;
 
-    QkvTilingCase(const csv_map &csvMap) : HostUtParamBase(csvMap)
+    QkvTilingCase(const csv_map &csvMap)
+        : HostUtParamBase(csvMap)
     {
         inputInstance.emplace_back(GetTensorGE(csvMap, "qkv_shape", "qkv_dtype", "qkv_format", qkv));
         inputInstance.emplace_back(GetTensorGE(csvMap, "qGamma_shape", "qGamma_dtype", "qGamma_format", qGamma));
@@ -432,7 +433,11 @@ TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RealTilingIsStableAcrossThreads)
     constexpr uint32_t THREAD_COUNT = 8U;
     constexpr uint32_t ITERATIONS = 64U;
     const std::array<std::string, 5> caseNames = {
-        "q16_k2_v2_basic", "t512_q64_k8", "t1024_q16_k2", "too_many_q_heads", "unsupported_head_dim",
+        "q16_k2_v2_basic",
+        "t512_q64_k8",
+        "t1024_q16_k2",
+        "too_many_q_heads",
+        "unsupported_head_dim",
     };
     std::array<const QkvTilingCase *, caseNames.size()> cases = {};
     for (size_t i = 0; i < caseNames.size(); ++i) {

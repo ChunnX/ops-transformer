@@ -213,8 +213,8 @@ int main()
     TensorResource vScale;
     TensorResource qOut;
     TensorResource qScale;
-    resource.tensors = {&qkv,         &qGamma,        &kGamma,  &cosSin,   &slotMapping, &kCache, &vCache,
-                        &kScaleCache, &queryStartLoc, &seqLens, &rotation, &vScale,      &qOut,   &qScale};
+    resource.tensors = {&qkv, &qGamma, &kGamma, &cosSin, &slotMapping, &kCache, &vCache,
+                        &kScaleCache, &queryStartLoc, &seqLens, &rotation, &vScale, &qOut, &qScale};
 
     ret = CreateAclTensor(qkvHostData, qkvShape, ACL_BF16, qkv);
     CHECK_RET(ret == ACL_SUCCESS, return ReturnAfterCleanup(ret, resource));

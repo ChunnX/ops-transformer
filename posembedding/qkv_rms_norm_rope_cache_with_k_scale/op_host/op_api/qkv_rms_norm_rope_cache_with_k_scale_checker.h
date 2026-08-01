@@ -74,7 +74,10 @@ struct QkvRmsNormRopeCacheWithKScaleParams {
 };
 
 class QkvRmsNormRopeCacheWithKScaleChecker {
-    enum class SceneType { ROPE, MROPE };
+    enum class SceneType {
+        ROPE,
+        MROPE
+    };
 
 public:
     // ACLNN operator name for log messages

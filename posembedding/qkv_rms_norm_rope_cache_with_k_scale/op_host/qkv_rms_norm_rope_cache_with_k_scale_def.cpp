@@ -15,7 +15,8 @@
 namespace ops {
 class QkvRmsNormRopeCacheWithKScale : public OpDef {
 public:
-    explicit QkvRmsNormRopeCacheWithKScale(const char *name) : OpDef(name)
+    explicit QkvRmsNormRopeCacheWithKScale(const char *name)
+        : OpDef(name)
     {
         const std::vector<ge::DataType> bf16Types = {ge::DT_BF16, ge::DT_BF16};
         const std::vector<ge::DataType> fp32Types = {ge::DT_FLOAT, ge::DT_FLOAT};

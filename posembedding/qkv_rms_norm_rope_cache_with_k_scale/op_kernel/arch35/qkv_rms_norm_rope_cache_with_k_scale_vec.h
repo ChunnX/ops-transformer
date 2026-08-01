@@ -111,7 +111,7 @@ public:
     }
 
     __aicore__ inline void ComputeTile(TileParam &tile, const LocalTensor<bfloat16_t> &aRotL1Nz,
-                                      const LocalTensor<float> &outputUb, uint32_t outputBufferId)
+                                       const LocalTensor<float> &outputUb, uint32_t outputBufferId)
     {
         if (tile.aivTokenSize == 0U) {
             return;
