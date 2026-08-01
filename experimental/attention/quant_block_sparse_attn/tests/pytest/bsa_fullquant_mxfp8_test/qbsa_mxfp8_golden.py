@@ -50,6 +50,7 @@ _CUSTOM_OPS_IMPORTED = False
 _DEFAULT_CASE_FILE = "qbsa_mxfp8_test_cases"
 _DEFAULT_CASE_CSV = "qbsa_mxfp8_test_cases.csv"
 _CASE_LOG_WIDTH = 100
+_CUBE_COUNT_CHUNK_ELEMENTS = 4_000_000
 _DTYPE_MAP = {
     "float8_e4m3fn": torch.float8_e4m3fn,
     "float8_e8m0fnu": torch.float8_e8m0fnu,
@@ -1422,6 +1423,54 @@ def _build_causal_mask():
     return torch.triu(torch.ones(2048, 2048, dtype=torch.uint8), diagonal=0).npu()
 
 
+def _count_valid_sparse_blocks(
+    sparse_indices_cpu,
+    sparse_seq_len_cpu,
+    batch_idx,
+    head_count,
+    q_len,
+    kv_len,
+    q_block_size,
+    kv_block_size,
+    qb_limit,
+    kb_limit,
+):
+    if q_len <= 0 or kv_len <= 0 or kb_limit <= 0:
+        return 0
+
+    qb_count = min(qb_limit, math.ceil(q_len / q_block_size))
+    if qb_count <= 0:
+        return 0
+
+    valid_kv_block_count = math.ceil(kv_len / kv_block_size)
+    chunk_qb = max(
+        1,
+        _CUBE_COUNT_CHUNK_ELEMENTS // max(1, head_count * kb_limit),
+    )
+    sparse_positions = torch.arange(kb_limit, device=sparse_seq_len_cpu.device).view(
+        1, 1, kb_limit
+    )
+
+    valid_block_count = 0
+    for qb_start in range(0, qb_count, chunk_qb):
+        qb_end = min(qb_start + chunk_qb, qb_count)
+        block_counts = sparse_seq_len_cpu[
+            batch_idx, :head_count, qb_start:qb_end
+        ].to(torch.int64)
+        block_counts = torch.clamp(block_counts, min=0, max=kb_limit)
+        indices = sparse_indices_cpu[
+            batch_idx, :head_count, qb_start:qb_end, :kb_limit
+        ]
+        valid_slots = sparse_positions < block_counts.unsqueeze(-1)
+        valid_blocks = (
+            valid_slots
+            & (indices >= 0)
+            & (indices < valid_kv_block_count)
+        )
+        valid_block_count += int(valid_blocks.sum().item())
+    return valid_block_count
+
+
 def _calc_cube_compute_amount(q_lengths, kv_lengths, sparse_indices, sparse_seq_len):
     q_block_size = int(CASE["sparse_q_block_size"])
     kv_block_size = int(CASE["sparse_kv_block_size"])
@@ -1460,30 +1509,18 @@ def _calc_cube_compute_amount(q_lengths, kv_lengths, sparse_indices, sparse_seq_
     for batch_idx in range(batch):
         q_len = int(q_lengths[batch_idx])
         kv_len = int(kv_lengths[batch_idx])
-        qb_count = min(qb_limit, math.ceil(q_len / q_block_size))
-        for head_idx in range(N_q):
-            for qb_idx in range(qb_count):
-                q_start = qb_idx * q_block_size
-                q_end = min(q_start + q_block_size, q_len)
-                if q_start >= q_end:
-                    continue
-                block_count = int(
-                    sparse_seq_len_cpu[batch_idx, head_idx, qb_idx].item()
-                )
-                block_count = max(0, min(block_count, kb_limit))
-                for sparse_idx in range(block_count):
-                    kv_block_idx = int(
-                        sparse_indices_cpu[
-                            batch_idx, head_idx, qb_idx, sparse_idx
-                        ].item()
-                    )
-                    if kv_block_idx < 0:
-                        continue
-                    kv_start = kv_block_idx * kv_block_size
-                    kv_end = min(kv_start + kv_block_size, kv_len)
-                    if kv_start >= kv_end:
-                        continue
-                    basic_block_count += 1
+        basic_block_count += _count_valid_sparse_blocks(
+            sparse_indices_cpu,
+            sparse_seq_len_cpu,
+            batch_idx,
+            N_q,
+            q_len,
+            kv_len,
+            q_block_size,
+            kv_block_size,
+            qb_limit,
+            kb_limit,
+        )
 
     head_dim = int(D)
     single_basic_block_compute = q_block_size * kv_block_size * head_dim
