@@ -454,7 +454,32 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
         ParseFdRunInfo(fdRunInfo);
     }
     ProcessMainLoop();
+    if ASCEND_IS_AIV {
+        AscendC::PRINTF("[MQSMLA_SYNC][process.aiv_before_final_mte2_barrier] block=%d sub=%d\n",
+            static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(GetSubBlockIdx()));
+        PipeBarrier<PIPE_MTE2>();
+        AscendC::PRINTF("[MQSMLA_SYNC][process.aiv_after_final_mte2_barrier] block=%d sub=%d\n",
+            static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(GetSubBlockIdx()));
+        AscendC::PRINTF("[MQSMLA_SYNC][process.aiv_before_final_v_barrier] block=%d sub=%d\n",
+            static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(GetSubBlockIdx()));
+        PipeBarrier<PIPE_V>();
+        AscendC::PRINTF("[MQSMLA_SYNC][process.aiv_after_final_v_barrier] block=%d sub=%d\n",
+            static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(GetSubBlockIdx()));
+        AscendC::PRINTF("[MQSMLA_SYNC][process.aiv_before_final_sync_all] block=%d sub=%d\n",
+            static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(GetSubBlockIdx()));
+    } else {
+        AscendC::PRINTF("[MQSMLA_SYNC][process.aic_before_final_sync_all] block=%d\n",
+            static_cast<int32_t>(GetBlockIdx()));
+    }
     SyncAll();
+    if ASCEND_IS_AIV {
+        // SyncAll();
+        AscendC::PRINTF("[MQSMLA_SYNC][process.aiv_after_final_sync_all] block=%d sub=%d\n",
+            static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(GetSubBlockIdx()));
+    } else {
+        AscendC::PRINTF("[MQSMLA_SYNC][process.aic_after_final_sync_all] block=%d\n",
+            static_cast<int32_t>(GetBlockIdx()));
+    }
     if ASCEND_IS_AIV {
         if (fdRunInfo.coreEnable > 0) {
             this->vecBlock.ProcessFlashDecode(fdRunInfo, this->constInfo);
@@ -577,11 +602,25 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                     RunInfo &runInfo1 = runInfo[taskId % 3];
                     this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
                     if ASCEND_IS_AIC {
+                        AscendC::PRINTF("[MQSMLA_SYNC][main.aic_before_bmm1] block=%d task=%d s2=%d/%d\n",
+                            static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(taskId),
+                            static_cast<int32_t>(s2LoopCount), static_cast<int32_t>(s2LoopLimit));
                         this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), this->l1RightBuffers.Get(),
                                                     v0ResGmBuffers.Get(), runInfo1, this->constInfo);
+                        AscendC::PRINTF("[MQSMLA_SYNC][main.aic_after_bmm1] block=%d task=%d s2=%d/%d\n",
+                            static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(taskId),
+                            static_cast<int32_t>(s2LoopCount), static_cast<int32_t>(s2LoopLimit));
                     } else {
+                        AscendC::PRINTF("[MQSMLA_SYNC][main.aiv_before_vec0] block=%d sub=%d task=%d s2=%d/%d\n",
+                            static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(GetSubBlockIdx()),
+                            static_cast<int32_t>(taskId), static_cast<int32_t>(s2LoopCount),
+                            static_cast<int32_t>(s2LoopLimit));
                         this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(), v0ResGmBuffers.Get(), runInfo1,
                                                    this->constInfo);
+                        AscendC::PRINTF("[MQSMLA_SYNC][main.aiv_after_vec0] block=%d sub=%d task=%d s2=%d/%d\n",
+                            static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(GetSubBlockIdx()),
+                            static_cast<int32_t>(taskId), static_cast<int32_t>(s2LoopCount),
+                            static_cast<int32_t>(s2LoopLimit));
                     }
                 } else {
                     if ASCEND_IS_AIV {
@@ -601,8 +640,14 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                                                    this->constInfo);
                     } else {
                         RunInfo &runInfo2 = runInfo[(taskId + 2) % 3];
+                        AscendC::PRINTF("[MQSMLA_SYNC][main.aic_before_bmm2] block=%d task=%d s2=%d/%d\n",
+                            static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(runInfo2.taskId),
+                            static_cast<int32_t>(runInfo2.s2LoopCount), static_cast<int32_t>(runInfo2.s2LoopLimit));
                         this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers,
                                                     this->l1RightBuffers.GetReused(), runInfo2, this->constInfo);
+                        AscendC::PRINTF("[MQSMLA_SYNC][main.aic_after_bmm2] block=%d task=%d s2=%d/%d\n",
+                            static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(runInfo2.taskId),
+                            static_cast<int32_t>(runInfo2.s2LoopCount), static_cast<int32_t>(runInfo2.s2LoopLimit));
                     }
                 }
                 if (taskId > 1) {

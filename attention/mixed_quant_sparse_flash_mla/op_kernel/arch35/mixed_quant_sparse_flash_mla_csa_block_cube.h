@@ -259,10 +259,26 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(
         WaitFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
     } else {
         // N1 < 64时不出核，v0将kv直接搬运至L1
+        AscendC::PRINTF("[MQSMLA_SYNC][aic.bmm1.before_wait_l1_cross_core] block=%d task=%d s2=%d/%d reduce=%d s2RealSize=%d\n",
+            static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(runInfo.taskId),
+            static_cast<int32_t>(runInfo.s2LoopCount), static_cast<int32_t>(runInfo.s2LoopLimit),
+            static_cast<int32_t>(runInfo.reduceBlockId), static_cast<int32_t>(runInfo.s2RealSize));
         inputRightBuf.WaitCrossCore();
+        AscendC::PRINTF("[MQSMLA_SYNC][aic.bmm1.after_wait_l1_cross_core] block=%d task=%d s2=%d/%d reduce=%d\n",
+            static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(runInfo.taskId),
+            static_cast<int32_t>(runInfo.s2LoopCount), static_cast<int32_t>(runInfo.s2LoopLimit),
+            static_cast<int32_t>(runInfo.reduceBlockId));
     }
 
+    AscendC::PRINTF("[MQSMLA_SYNC][aic.bmm1.before_l1a_wait] block=%d task=%d s2=%d/%d reduce=%d\n",
+        static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(runInfo.taskId),
+        static_cast<int32_t>(runInfo.s2LoopCount), static_cast<int32_t>(runInfo.s2LoopLimit),
+        static_cast<int32_t>(runInfo.reduceBlockId));
     inputLeftBuf.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
+    AscendC::PRINTF("[MQSMLA_SYNC][aic.bmm1.after_l1a_wait] block=%d task=%d s2=%d/%d reduce=%d\n",
+        static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(runInfo.taskId),
+        static_cast<int32_t>(runInfo.s2LoopCount), static_cast<int32_t>(runInfo.s2LoopLimit),
+        static_cast<int32_t>(runInfo.reduceBlockId));
     Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
     mm1ResL0C.Wait<HardEvent::FIX_M>(); // 占用
     MMParam param = {static_cast<uint32_t>(runInfo.mRealSize),     // singleM
@@ -271,11 +287,20 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(
                      0,    // isLeftTranspose
                      1     // isRightTranspose
                     };
+    AscendC::PRINTF("[MQSMLA_SYNC][aic.bmm1.before_matmul] block=%d task=%d s2=%d/%d reduce=%d mReal=%d s2Real=%d\n",
+        static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(runInfo.taskId),
+        static_cast<int32_t>(runInfo.s2LoopCount), static_cast<int32_t>(runInfo.s2LoopLimit),
+        static_cast<int32_t>(runInfo.reduceBlockId), static_cast<int32_t>(runInfo.mRealSize),
+        static_cast<int32_t>(runInfo.s2RealSize));
     MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(  // m,n不切，k切128
         inputLeftBuf.GetTensor<Q_T>(), inputRightBuf.GetTensor<Q_T>(), // mm1B直接用tensor的数据
         mmL0ABuffers, mmL0BBuffers,
         mm1ResL0C.GetTensor<T>(),
         param);
+    AscendC::PRINTF("[MQSMLA_SYNC][aic.bmm1.after_matmul] block=%d task=%d s2=%d/%d reduce=%d\n",
+        static_cast<int32_t>(GetBlockIdx()), static_cast<int32_t>(runInfo.taskId),
+        static_cast<int32_t>(runInfo.s2LoopCount), static_cast<int32_t>(runInfo.s2LoopLimit),
+        static_cast<int32_t>(runInfo.reduceBlockId));
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         inputLeftBuf.Set<HardEvent::MTE1_MTE2>(); // 释放L1A
     }

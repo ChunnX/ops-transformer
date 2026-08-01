@@ -81,7 +81,7 @@ ge::graphStatus MQSMLAInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
-    batchConsistency_ = (context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL);
+    batchConsistency_ = true; //(context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -717,6 +717,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
                            static_cast<uint32_t>(isSplitG), static_cast<uint32_t>(tilingInfo->quantMode),
                            ((oriKvType == ge::DT_FLOAT8_E4M3FN) ? DTYPE_FP8_E4M3FN : DTYPE_HIF8),
                            static_cast<uint32_t>(tilingInfo->batchConsistency));
+    OP_LOGI("tilingkey", "Tiling key: %u.", tilingKey);
     context_->SetTilingKey(tilingKey);
     context_->SetScheduleMode(1);
 
