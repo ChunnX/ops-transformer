@@ -11,7 +11,11 @@
 |<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
-- API功能：`KvQuantSparseAttnSharedkvMetadata`算子旨在生成一个任务列表，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及Q和K的分块的索引，供后续`KvQuantSparseAttnSharedkv`算子使用。
+- 算子功能：`KvQuantSparseAttnSharedkvMetadata`是`KvQuantSparseAttnSharedkv`算子的前置算子，用于后续Attention计算生成负载均衡的任务划分方案。本算子不执行实际的Attention计算，而是根据输入参数在AI CPU计算出每个AI Core应处理的Attention计算起止范围，从而最大化计算资源的利用率，避免各Core间负载不均衡的问题。
+
+- 负载均衡原理：本算子将Attention计算的工作建模为三维（B-KV_N、Q_S-G、KV_S）的块级划分问题。通过代价函数估算各工作块的开销，随后采用贪心策略，将工作块按顺序分配到各AI Core，使每个Core承担的计算量尽量接近平均值。
+
+- 输出形式：FA元数据记录每个AIC Core的任务范围（B-KV_N、Q_S-G、KV_S维度的起止索引）。
 
 ## 参数说明
 | 参数名           |输入/输出/属性|    描述    | 数据类型    |数据格式|

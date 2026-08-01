@@ -13,7 +13,11 @@
 
 ## 功能说明
 
-- 算子功能：`MixedQuantSparseFlashMlaMetadata`算子旨在生成一个任务列表，包含每个AIcore的Attention计算任务的起止点的Batch、Head、以及Q和K的分块的索引，供后续`MixedQuantSparseFlashMla`算子使用。
+- 算子功能：`MixedQuantSparseFlashMlaMetadata`是`MixedQuantSparseFlashMla`算子的前置算子，用于后续Attention计算生成负载均衡的任务划分方案。本算子不执行实际的Attention计算，而是根据输入参数在AI CPU计算出每个AI Core应处理的Attention计算起止范围，从而最大化计算资源的利用率，避免各Core间负载不均衡的问题。
+
+- 负载均衡原理：本算子将Attention计算的工作建模为三维（B-KV_N、Q_S-G、KV_S）的块级划分问题。通过代价函数估算各工作块的开销，随后采用贪心策略，将工作块按顺序分配到各AI Core，使每个Core承担的计算量尽量接近平均值；对于跨Core拆分的Q_S-G行，会记录FlashDecode规约任务，后续由AIV Core完成部分结果的合并。
+
+- 输出形式：包含两部分元数据：其中FA元数据记录每个AIC Core的任务范围（B-KV_N、Q_S-G、KV_S维度的起止索引）及首个子结果的工作空间索引；FlashDecode元数据记录每个AIV Core负责规约的B-KV_N/Q_S-G子范围和M维切分信息。
 
 ## 参数说明
 
