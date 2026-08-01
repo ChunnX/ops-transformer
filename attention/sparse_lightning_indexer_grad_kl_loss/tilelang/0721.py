@@ -44,7 +44,7 @@ DQUERY = 512
 DQUERY_INDEX = 128
 # 显式参与 TileLang JIT specialization，源码结构调整后递增以避免复用
 # 旧的持久编译产物。该值不进入运行时 kernel ABI。
-KERNEL_CACHE_REVISION = 19
+KERNEL_CACHE_REVISION = 20
 
 _kernel_cache = {}
 _workspace_cache = {}
@@ -1848,7 +1848,6 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_ob_diff_2d = T.alloc_ub((Nidx1, bw_col_block), calc_dtype)
             v1_ob_bmm2 = T.alloc_ub((Nidx1, bw_col_block), calc_dtype)
             v1_ob_work = T.alloc_ub((Nidx1, bw_col_block), calc_dtype)
-            v1_ob_gate = T.alloc_ub((Nidx1, bw_col_block), calc_dtype)
             v1_ob_rg_half = T.alloc_ub((Nidx1, bw_col_block), input_dtype)
             v1_ob_dw = T.alloc_ub(Nidx1, calc_dtype)
             v1_ob_dw_accum = T.alloc_ub(Nidx1, calc_dtype)
@@ -2027,15 +2026,15 @@ def tilelang_grad_kl_loss_single_kernel(
                             v1_ob_loss_sum,
                         )
 
-                        # gate 与 Loss 无数据依赖。放在 tail mask 的最后一次消费
-                        # 之后，使 UB planner 可以复用 mask/offset 占用的区间。
-                        T.tile.mul(v1_ob_gate, v1_ob_bmm2, -10000.0)
+                        # dWeight 已完成，复用 work 保存 gate，避免为 Nidx1=64
+                        # 额外保留一个 16 KB FP32 矩阵。
+                        T.tile.mul(v1_ob_work, v1_ob_bmm2, -10000.0)
                         T.pipe_barrier("v")
-                        T.tile.exp(v1_ob_gate, v1_ob_gate)
+                        T.tile.exp(v1_ob_work, v1_ob_work)
                         T.pipe_barrier("v")
-                        T.tile.mul(v1_ob_gate, v1_ob_gate, -1.0)
+                        T.tile.mul(v1_ob_work, v1_ob_work, -1.0)
                         T.pipe_barrier("v")
-                        T.tile.add(v1_ob_gate, v1_ob_gate, 1.0)
+                        T.tile.add(v1_ob_work, v1_ob_work, 1.0)
 
                         T.tile.mul(
                             v1_ob_bmm2,
@@ -2043,7 +2042,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             v1_ob_diff_2d,
                         )
                         T.pipe_barrier("v")
-                        T.tile.mul(v1_ob_bmm2, v1_ob_bmm2, v1_ob_gate)
+                        T.tile.mul(v1_ob_bmm2, v1_ob_bmm2, v1_ob_work)
                         T.pipe_barrier("v")
                         T.tile.cast(
                             v1_ob_rg_half,
