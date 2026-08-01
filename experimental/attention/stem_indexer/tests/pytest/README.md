@@ -8,6 +8,8 @@
 - NPU侧：先通过`torch.ops.custom.npu_stem_indexer_metadata`生成分核信息，再通过
   `torch.ops.custom.npu_stem_indexer`获取实际结果（接口位于
   `experimental/attention/stem_indexer/torch_ops_extension`，由 `custom_ops.py` 加载注册）。
+  支持两种调用模式：eager（直接调用算子）和 graph（通过 `torch.compile` + `torchair` 编译为 aclgraph 图）。
+  通过环境变量 `STEM_INDEXER_MODE` 切换，默认 `eager`。
 - 结果比对：比较`sparse_seq_len`，并只比较`sparse_indices`中`sparse_seq_len`范围内的有效前缀；尾部未定义区域不校验。
 
 ## 用例来源
@@ -79,7 +81,8 @@ batch/replace_path.py                # 替换batch pytest中的pt路径
 在当前pytest目录执行：
 
 ```bash
-bash test_run.sh single
+bash test_run.sh single        # single (eager)
+bash test_run.sh single_graph  # single (graph)
 ```
 
 single和batch模式都支持通过`STEM_INDEXER_CASE_ID`只运行指定用例，多个case_id使用逗号分隔：
@@ -92,7 +95,8 @@ STEM_INDEXER_CASE_ID=SI_WB_001,SI_WB_002 python3 -m pytest test_stem_indexer_bat
 批量测试：
 
 ```bash
-bash test_run.sh batch
+bash test_run.sh batch        # eager 模式
+bash test_run.sh batch_graph  # graph 模式
 ```
 
 复跑已生成的`.pt`文件：
@@ -105,8 +109,8 @@ batch模式流程与QLI保持一致：
 
 ```text
 1. 读取csv/stem_indexer_cases.csv。
-2. 生成每条case的.pt文件，保存输入、metadata和CPU golden。
-3. pytest逐个读取.pt文件并调用NPU算子。
+2. 生成每条case的.pt文件，保存输入和CPU golden。
+3. pytest逐个读取.pt文件，运行时动态构造metadata并调用NPU算子。
 4. 与.pt中保存的golden比对。
 5. 生成result.csv记录批量执行结果。
 ```
