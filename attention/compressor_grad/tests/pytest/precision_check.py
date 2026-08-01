@@ -32,7 +32,9 @@ logger = logging.getLogger(__name__)
 PRECISION = {
     "bfloat16": {"rtol": 0.0078125, "atol": 0.0001, "pct_thd": 0.005,
                  "diff_thd": 0.005, "max_diff_hd": 10.0},
-    "float16":  {"rtol": 0.005,     "atol": 0.000025, "pct_thd": 0.005,
+    "float16":  {"rtol": 0.005, "atol": 0.000025, "pct_thd": 0.005,
+                 "diff_thd": 0.005, "max_diff_hd": 10.0},
+    "float32":  {"rtol": 1e-5, "atol": 1e-8, "pct_thd": 0.005,
                  "diff_thd": 0.005, "max_diff_hd": 10.0},
 }
 
@@ -41,12 +43,12 @@ PRECISION = {
 #  输出定义
 # ================================================================
 # 反向算子所有输出列表（顺序固定，便于汇总统计）
-ALL_OUTPUTS = ["dkv", "dsb", "d_ape", "d_x"]
+ALL_OUTPUTS = ["d_wkv", "d_wgate", "d_ape", "d_x"]
 
 # 输出名 → result dict 中的 status/pct key 映射
 _OUTPUT_KEY_MAP = {
-    "dkv":   ("dkvPct",   "dkvStatus"),
-    "dsb":   ("dsbPct",   "dsbStatus"),
+    "d_wkv":   ("dwkvPct",   "dwkvStatus"),
+    "d_wgate":   ("dwgatePct",   "dwgateStatus"),
     "d_ape": ("apePct",   "apeStatus"),
     "d_x":   ("dxPct",    "dxStatus"),
 }
@@ -157,7 +159,7 @@ def check_result(expect, result, data_type, pct_thd=0.005):
     Args:
         expect:    CPU golden 结果 (torch.Tensor)
         result:    NPU 反向算子输出 (torch.Tensor)
-        data_type: dtype 字符串 ('bfloat16' / 'float16')
+        data_type: dtype 字符串 ('bfloat16' / 'float16' / 'float32')
         pct_thd:   通过率阈值（默认 0.005 表示 99.5%）
 
     Returns:
@@ -187,7 +189,7 @@ def check_result(expect, result, data_type, pct_thd=0.005):
         print_log('Overflow,size:%s,benchmark_output:%s, %s' % (
             overflows_count, data_compe[np.isinf(data_compe)][0:10], data_compe[np.isnan(data_compe)][0:10]))
 
-    # 仅支持 bfloat16 / float16，阈值统一从 PRECISION 配置获取
+    # 仅支持 bfloat16 / float16 / float32，阈值统一从 PRECISION 配置获取
     cfg = PRECISION[data_type]
     diff_thd = cfg["diff_thd"]
     max_diff_hd = cfg["max_diff_hd"]
@@ -198,7 +200,7 @@ def check_result(expect, result, data_type, pct_thd=0.005):
     split_count = int(end - start + 1) if end != start else 1
     print_log('split_count:%s; max_diff_hd:%s;' % (float(split_count), max_diff_hd))
 
-    # bfloat16 需转 float32 再 isclose；float16 直接 isclose
+    # bfloat16 需转 float32 再 isclose；float16 / float32 直接 isclose
     if str(real_data.dtype) == 'bfloat16':
         diff_result = np.isclose(real_data.astype(np.float32), data_compe.astype(np.float32),
                                  rtol=rtol, atol=atol, equal_nan=True)
@@ -242,10 +244,10 @@ def check_one_output(name, expect, result, data_type, enabled, total_valid, pct_
     """对比单个反向输出，未开启对比的返回 SKIP 标记。
 
     Args:
-        name:        输出名 (如 'd_ape', 'd_x', 'dkv', 'dsb')
+        name:        输出名 (如 'd_ape', 'd_x', 'd_wkv', 'd_wgate')
         expect:      CPU golden 结果 (torch.Tensor)
         result:      NPU 反向算子输出 (torch.Tensor)
-        data_type:   dtype 字符串 ('bfloat16' / 'float16')
+        data_type:   dtype 字符串 ('bfloat16' / 'float16' / 'float32')
         enabled:     是否进行精度对比
         total_valid: 该用例的有效压缩块数（0 时无有效数据，自动 SKIP）
         pct_thd:     通过率阈值
