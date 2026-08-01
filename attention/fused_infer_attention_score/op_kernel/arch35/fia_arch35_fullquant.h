@@ -23,15 +23,11 @@
 #else
 #include "../../../prompt_flash_attention/arch35/prompt_flash_attention_template_tiling_key_enum.h"
 #endif
-#if __has_include("../../../../common/op_kernel/arch35/flash_attention_score_kernel_infer_mla_fullquant.h")
-#include "../../../../common/op_kernel/arch35/flash_attention_score_kernel_infer_mla_fullquant.h"
-#include "../../../../common/op_kernel/arch35/flash_attention_score_kernel_infer_gqa_fullquant.h"
-#include "../../../../common/op_kernel/arch35/flash_attention_score_kernel_infer_mx_fullquant.h"
-#else
-#include "../../../common/arch35/flash_attention_score_kernel_infer_mla_fullquant.h"
-#include "../../../common/arch35/flash_attention_score_kernel_infer_gqa_fullquant.h"
-#include "../../../common/arch35/flash_attention_score_kernel_infer_mx_fullquant.h"
-#endif
+
+#include "flash_attention_score_kernel_infer_mla_fullquant.h"
+#include "flash_attention_score_kernel_infer_gqa_fullquant.h"
+#include "flash_attention_score_kernel_infer_mx_fullquant.h"
+
 #if __has_include("../../../../common/op_kernel/arch35/fia_template_dispatcher.h")
 #include "../../../../common/op_kernel/arch35/fia_template_dispatcher.h"
 #endif
