@@ -26,7 +26,7 @@ aclnnStatus UndGenQkvRmsNormRopeCache(
     const aclTensor* undQkv, const aclTensor* undWeightsQ, const aclTensor* undWeightsK,
     const aclTensor* cosSinCache, aclTensor* kCache, aclTensor* vCache, const aclTensor* slotMapping,
     const aclTensor* positions, const aclTensor* genQkv, const aclTensor* genWeightsQ, const aclTensor* genWeightsK,
-    const aclTensor* catIndices, int64_t numHeadsQ, int64_t numHeadsK, int64_t numHeadsV, float normEps,
+    const aclTensor* catIndices, int64_t numHeadsQ, int64_t numHeadsK, int64_t numHeadsV, double normEps,
     const aclIntArray* mropeSection, aclTensor* q, aclTensor* kCacheOut, aclTensor* vCacheOut,
     aclOpExecutor* executor)
 {
@@ -39,7 +39,7 @@ aclnnStatus UndGenQkvRmsNormRopeCache(
         OP_INPUT(undQkv, undWeightsQ, undWeightsK, cosSinCache, kCache, vCache, slotMapping, positions, genQkv,
                  genWeightsQ, genWeightsK, catIndices),
         OP_OUTPUT(q, kCacheOut, vCacheOut),
-        OP_ATTR(numHeadsQ, numHeadsK, numHeadsV, normEps, mropeSection));
+        OP_ATTR(numHeadsQ, numHeadsK, numHeadsV, static_cast<float>(normEps), mropeSection));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "UndGenQkvRmsNormRopeCache InferShape failed.");
         return ret;
@@ -50,7 +50,7 @@ aclnnStatus UndGenQkvRmsNormRopeCache(
         OP_INPUT(undQkv, undWeightsQ, undWeightsK, cosSinCache, kCache, vCache, slotMapping, positions, genQkv,
                  genWeightsQ, genWeightsK, catIndices),
         OP_OUTPUT(q, kCacheOut, vCacheOut),
-        OP_ATTR(numHeadsQ, numHeadsK, numHeadsV, normEps, mropeSection));
+        OP_ATTR(numHeadsQ, numHeadsK, numHeadsV, static_cast<float>(normEps), mropeSection));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "UndGenQkvRmsNormRopeCache ADD_TO_LAUNCHER_LIST_AICORE failed.");
         return ret;

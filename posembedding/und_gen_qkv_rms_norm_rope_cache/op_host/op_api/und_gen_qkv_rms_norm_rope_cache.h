@@ -18,7 +18,7 @@ aclnnStatus UndGenQkvRmsNormRopeCache(
     const aclTensor* undQkv, const aclTensor* undWeightsQ, const aclTensor* undWeightsK,
     const aclTensor* cosSinCache, aclTensor* kCache, aclTensor* vCache, const aclTensor* slotMapping,
     const aclTensor* positions, const aclTensor* genQkv, const aclTensor* genWeightsQ, const aclTensor* genWeightsK,
-    const aclTensor* catIndices, int64_t numHeadsQ, int64_t numHeadsK, int64_t numHeadsV, float normEps,
+    const aclTensor* catIndices, int64_t numHeadsQ, int64_t numHeadsK, int64_t numHeadsV, double normEps,
     const aclIntArray* mropeSection, aclTensor* q, aclTensor* kCacheOut, aclTensor* vCacheOut,
     aclOpExecutor* executor);
 } // namespace l0op

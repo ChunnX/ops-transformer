@@ -53,20 +53,13 @@ at::Tensor UndGenQkvRmsNormRopeCache(const at::Tensor &undQkv, const at::Tensor 
 
     at::Tensor q = at::empty({total, numHeadsQ, HEAD_DIM}, undQkv.options());
 
-    StorageShapeTensor undQkvWrapped{undQkv};
-    StorageShapeTensor undWeightsQWrapped{undWeightsQ};
-    StorageShapeTensor undWeightsKWrapped{undWeightsK};
-    StorageShapeTensor cosSinCacheWrapped{cosSinCache};
-    StorageShapeTensor kCacheWrapped{kCache};
-    StorageShapeTensor vCacheWrapped{vCache};
-    StorageShapeTensor slotMappingWrapped{slotMapping};
-    StorageShapeTensor positionsWrapped{positions};
-    StorageShapeTensor qWrapped{q};
-
-    ACLNN_CMD(aclnnUndGenQkvRmsNormRopeCache, undQkvWrapped, undWeightsQWrapped, undWeightsKWrapped,
-              cosSinCacheWrapped, kCacheWrapped, vCacheWrapped, slotMappingWrapped, positionsWrapped, genQkv,
-              genWeightsQ, genWeightsK, catIndices, numHeadsQ, numHeadsK, numHeadsV, normEps, mropeSection, qWrapped,
-              kCacheWrapped, vCacheWrapped);
+    // NOTE: 这里必须传 at::Tensor 而非 StorageShapeTensor —— ACLNN_CMD 的 DecodeDevice
+    //       只从 at::Tensor / at::TensorList 参数里取 device，全部包成 StorageShapeTensor
+    //       会导致它拿到未定义 tensor 并抛 "tensor does not have a device"。
+    //       本算子输入输出均为连续 ND，普通 ConvertType 已足够。
+    ACLNN_CMD(aclnnUndGenQkvRmsNormRopeCache, undQkv, undWeightsQ, undWeightsK, cosSinCache, kCache, vCache,
+              slotMapping, positions, genQkv, genWeightsQ, genWeightsK, catIndices, numHeadsQ, numHeadsK, numHeadsV,
+              normEps, mropeSection, q, kCache, vCache);
 
     return q;
 }

@@ -55,7 +55,7 @@ extern "C" {
  * @param [in] numHeadsQ: 计算属性，数据类型支持int64_t，Q的头数。
  * @param [in] numHeadsK: 计算属性，数据类型支持int64_t，K的头数。
  * @param [in] numHeadsV: 计算属性，数据类型支持int64_t，V的头数。
- * @param [in] normEps: 计算属性，数据类型支持float，RMSNorm防除零epsilon，默认值1e-6。
+ * @param [in] normEps: 计算属性，数据类型支持double（下发前转 float），RMSNorm防除零epsilon，默认值1e-6。
  * @param [in] mropeSection: 计算属性，可选，数据类型支持aclIntArray（长度3），MRoPE三轴分段；
  * 传nullptr或空数组时退化为[D/2, 0, 0]，即标准RoPE。
  * @param [out] q: 计算输出张量，npu device侧的aclTensor，数据类型支持BF16，shape为[T, Hq, D]，数据格式支持ND。
@@ -69,7 +69,7 @@ ACLNN_API aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
     const aclTensor* undQkv, const aclTensor* undWeightsQ, const aclTensor* undWeightsK, const aclTensor* cosSinCache,
     aclTensor* kCache, aclTensor* vCache, const aclTensor* slotMapping, const aclTensor* positions,
     const aclTensor* genQkv, const aclTensor* genWeightsQ, const aclTensor* genWeightsK, const aclTensor* catIndices,
-    int64_t numHeadsQ, int64_t numHeadsK, int64_t numHeadsV, float normEps, const aclIntArray* mropeSection,
+    int64_t numHeadsQ, int64_t numHeadsK, int64_t numHeadsV, double normEps, const aclIntArray* mropeSection,
     aclTensor* q, aclTensor* kCacheOut, aclTensor* vCacheOut, uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /**
