@@ -560,17 +560,10 @@ private:
             inputHeadStride = static_cast<uint32_t>(tile.aivTokenSize) * QKV_K_SCALE_D128_FULL_SIZE;
         }
         const uint32_t vInputOffset = static_cast<uint32_t>(vInputHeadBase) * inputHeadStride;
-        if constexpr (IS_MROPE) {
-            AscendC::VF_CALL<VScalePerChannelFp8D128ToNtdVfImpl>(
-                (__ubuf__ bfloat16_t *)input[vInputOffset].GetPhyAddr(), (__ubuf__ float *)vScale.GetPhyAddr(),
-                (__ubuf__ fp8_e4m3fn_t *)vOut.GetPhyAddr(), static_cast<uint16_t>(tile.aivTokenSize),
-                static_cast<uint16_t>(tile.vHeadSize), inputTokenStride, inputHeadStride);
-        } else {
-            AscendC::VF_CALL<VScaleFp8D128ToNtdVfImpl>(
-                (__ubuf__ bfloat16_t *)input[vInputOffset].GetPhyAddr(), (__ubuf__ float *)vScale.GetPhyAddr(),
-                (__ubuf__ fp8_e4m3fn_t *)vOut.GetPhyAddr(), static_cast<uint16_t>(tile.aivTokenSize),
-                static_cast<uint16_t>(tile.vHeadSize), inputTokenStride, inputHeadStride);
-        }
+        AscendC::VF_CALL<VScaleFp8D128ToNtdVfImpl<IS_MROPE>>(
+            (__ubuf__ bfloat16_t *)input[vInputOffset].GetPhyAddr(), (__ubuf__ float *)vScale.GetPhyAddr(),
+            (__ubuf__ fp8_e4m3fn_t *)vOut.GetPhyAddr(), static_cast<uint16_t>(tile.aivTokenSize),
+            static_cast<uint16_t>(tile.vHeadSize), inputTokenStride, inputHeadStride);
     }
 
     __aicore__ inline void ScatterVCache(const TileParam &tile, uint32_t vOutBufferId)
