@@ -187,6 +187,25 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckSupportRange()
                         totalTokens_),
                 return ge::GRAPH_FAILED);
 
+    // 当前实现只支持 4 个可选输入全部提供的场景：
+    // gen_qkv / gen_weights_q / gen_weights_k / cat_indices 缺省的退化路径（纯 prefill、
+    // 单序列恒等映射）暂不支持。IR/OpDef 保留 OPTIONAL 声明，后续开启时删掉本段校验即可。
+    OP_CHECK_IF(!hasGen_,
+                OP_LOGE(context_->GetNodeName(),
+                        "gen_qkv is currently required and gen_len must be positive "
+                        "(prefill-only path is not supported yet), got gen_len=%ld.", genLen_),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->GetOptionalInputShape(GEN_WEIGHTS_Q_INDEX) == nullptr ||
+                    context_->GetOptionalInputShape(GEN_WEIGHTS_K_INDEX) == nullptr,
+                OP_LOGE(context_->GetNodeName(),
+                        "gen_weights_q/gen_weights_k are currently required."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!hasCatIndices_,
+                OP_LOGE(context_->GetNodeName(),
+                        "cat_indices is currently required "
+                        "(identity-mapping path is not supported yet)."),
+                return ge::GRAPH_FAILED);
+
     bool comboValid = false;
     for (int64_t i = 0; i < SUPPORTED_HEAD_COMBO_NUM; ++i) {
         if (numHeadQ_ == SUPPORTED_HEAD_COMBOS[i][DIM_ZERO] && numHeadK_ == SUPPORTED_HEAD_COMBOS[i][DIM_ONE] &&

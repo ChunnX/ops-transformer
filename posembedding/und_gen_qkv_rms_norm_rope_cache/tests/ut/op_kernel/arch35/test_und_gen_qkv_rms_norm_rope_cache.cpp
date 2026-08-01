@@ -176,7 +176,8 @@ protected:
 
 // NOTE: kernel 计算实现尚未补齐（见 op_kernel/arch35/*_regbase.h 的 TODO），
 //       当前用例仅验证 kernel 可正常拉起、参数与 TilingData 结构对齐、无越界访问。
-//       实现落地后需要补：与 golden.py 对齐的数值校验、tail block、gen=None、cat_indices=None 分支。
+//       实现落地后需要补：与 tests/golden.py 对齐的数值校验、tail block 分支。
+//       可选输入缺省（gen=None / cat_indices=None）当前不支持，由 host tiling 拦截，不在此覆盖。
 
 TEST_F(und_gen_qkv_rms_norm_rope_cache_test, launch_h8_1_1_full_optional)
 {
@@ -214,19 +215,20 @@ TEST_F(und_gen_qkv_rms_norm_rope_cache_test, launch_h16_2_2_multi_core)
     RunTestWithConfig(cfg);
 }
 
-TEST_F(und_gen_qkv_rms_norm_rope_cache_test, launch_prefill_only_plain_rope)
+TEST_F(und_gen_qkv_rms_norm_rope_cache_test, launch_plain_rope)
 {
-    // gen_qkv/gen_weights/cat_indices 均缺省，mrope_section 退化为 [D/2, 0, 0]
+    // mrope_section 退化为 [D/2, 0, 0]（等价标准 RoPE）；
+    // 可选输入当前必须全部提供，缺省场景由 host tiling 拦截，不在 kernel UT 覆盖
     TestConfig cfg;
-    cfg.undLen = 128;
-    cfg.genLen = 0;
+    cfg.undLen = 127;
+    cfg.genLen = 1;
     cfg.nq = 8;
     cfg.nk = 1;
     cfg.nv = 1;
     cfg.maxPos = 128;
     cfg.blockDim = 4;
-    cfg.hasGen = false;
-    cfg.hasCatIndices = false;
+    cfg.hasGen = true;
+    cfg.hasCatIndices = true;
     cfg.mropeSection[0] = HEAD_DIM / 2;
     cfg.mropeSection[1] = 0;
     cfg.mropeSection[2] = 0;

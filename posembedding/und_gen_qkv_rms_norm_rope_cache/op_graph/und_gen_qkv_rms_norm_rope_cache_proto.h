@@ -34,6 +34,8 @@ REG_OP(UndGenQkvRmsNormRopeCache)
     .INPUT(v_cache, TensorType({DT_BF16}))            // [Bn, Bs, Hv, D], 原地写入
     .INPUT(slot_mapping, TensorType({DT_INT64}))      // [T], slot = block_num * Bs + row_idx
     .INPUT(positions, TensorType({DT_INT64}))         // [3, T], MRoPE 三轴位置
+    // NOTE: 以下 4 个可选输入当前实现要求必须全部提供（缺省的退化路径暂不支持，tiling 会拦截），
+    //       IR 保留 OPTIONAL 语义以便后续放开。
     .OPTIONAL_INPUT(gen_qkv, TensorType({DT_BF16}))   // [gen_len, N, D]
     .OPTIONAL_INPUT(gen_weights_q, TensorType({DT_BF16}))  // [D]
     .OPTIONAL_INPUT(gen_weights_k, TensorType({DT_BF16}))  // [D]

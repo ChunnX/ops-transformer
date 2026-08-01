@@ -331,23 +331,26 @@ def golden_und_gen_qkv_rms_norm_rope_cache(
 # headDim 固定 128；(Hq,Hk,Hv) 取 (8,1,1) / (16,2,2)；cache block_size=128；
 # T = und_len + gen_len，泛化范围 1 ~ 64K。
 # slot_mode: "shuffled"（分页乱序，默认）/ "contiguous"（顺序占位）
+# NOTE: 当前算子实现只支持 gen_qkv / gen_weights_q / gen_weights_k / cat_indices
+#       全部提供的场景，因此所有 case 均 gen_len > 0 且 cat_indices 非 None。
+#       golden 本身仍支持缺省退化路径（见 golden_dense），待算子放开后可直接加用例。
 TYPICAL_CASES = (
-    dict(name="t1_min",            heads=(8, 1, 1),  und_len=1,     gen_len=0,
-         cat="none",     slot_mode="contiguous", mrope_section=[16, 16, 16], big=False),
+    dict(name="t2_min",            heads=(8, 1, 1),  und_len=1,     gen_len=1,
+         cat="shuffled", slot_mode="contiguous", mrope_section=[16, 16, 16], big=False),
     dict(name="t8_shuffle",        heads=(8, 1, 1),  und_len=5,     gen_len=3,
          cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False),
-    dict(name="t56_cores",         heads=(16, 2, 2), und_len=56,    gen_len=0,
-         cat="none",     slot_mode="contiguous", mrope_section=[16, 16, 16], big=False),
+    dict(name="t56_cores",         heads=(16, 2, 2), und_len=40,    gen_len=16,
+         cat="identity", slot_mode="contiguous", mrope_section=[16, 16, 16], big=False),
     dict(name="t96_mixed",         heads=(16, 2, 2), und_len=80,    gen_len=16,
          cat="identity", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False),
     dict(name="t128_block_edge",   heads=(8, 1, 1),  und_len=127,   gen_len=1,
          cat="shuffled", slot_mode="contiguous", mrope_section=[16, 16, 16], big=False),
     dict(name="t1024_decode",      heads=(8, 1, 1),  und_len=1,     gen_len=1023,
          cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False),
-    dict(name="t4096_prefill",     heads=(16, 2, 2), und_len=4096,  gen_len=0,
-         cat="none",     slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False),
-    dict(name="t4096_plain_rope",  heads=(8, 1, 1),  und_len=4096,  gen_len=0,
-         cat="none",     slot_mode="contiguous", mrope_section=[],           big=False),
+    dict(name="t4096_und_heavy",   heads=(16, 2, 2), und_len=4095,  gen_len=1,
+         cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False),
+    dict(name="t4096_plain_rope",  heads=(8, 1, 1),  und_len=4095,  gen_len=1,
+         cat="identity", slot_mode="contiguous", mrope_section=[],           big=False),
     dict(name="t10752_typical_h8", heads=(8, 1, 1),  und_len=6652,  gen_len=4100,
          cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False),
     dict(name="t10752_typical_h16", heads=(16, 2, 2), und_len=6652, gen_len=4100,

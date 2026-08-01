@@ -614,7 +614,7 @@
     "required": true,
     "dtype": "bf16",
     "shape": [
-     128,
+     127,
      10,
      128
     ],
@@ -752,7 +752,7 @@
     "required": true,
     "dtype": "bf16",
     "shape": [
-     0,
+     1,
      10,
      128
     ],

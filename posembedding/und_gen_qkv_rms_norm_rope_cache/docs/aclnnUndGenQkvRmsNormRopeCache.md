@@ -84,7 +84,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
     int64_t          numHeadsQ,
     int64_t          numHeadsK,
     int64_t          numHeadsV,
-    float            normEps,
+    double           normEps,
     const aclIntArray* mropeSection,
     aclTensor*       q,
     aclTensor*       kCacheOut,
@@ -115,14 +115,14 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
 | vCache | 输入/输出 | V Cache，调用方预分配、算子原地写入 | 必选，内存连续 | BFLOAT16 | ND | [Bn, Bs, Hv, D] |
 | slotMapping | 输入 | 每个 token 的 cache 行偏移 | 必选，值唯一且 < Bn*Bs | INT64 | ND | [T] |
 | positions | 输入 | MRoPE 三轴位置 | 必选，值 < max_pos | INT64 | ND | [3, T] |
-| genQkv | 输入 | generated 段 QKV | 可选，纯 prefill 传 nullptr | BFLOAT16 | ND | [gen_len, N, D] |
-| genWeightsQ | 输入 | gen 段 Q 的 RMSNorm 权重 | 可选，与 genQkv 同进同出 | BFLOAT16 | ND | [D] |
-| genWeightsK | 输入 | gen 段 K 的 RMSNorm 权重 | 可选，与 genQkv 同进同出 | BFLOAT16 | ND | [D] |
-| catIndices | 输入 | out_t → src_t 映射 | 可选，nullptr 时恒等映射 | INT64 | ND | [T] |
+| genQkv | 输入 | generated 段 QKV | **当前必填**，gen_len > 0 | BFLOAT16 | ND | [gen_len, N, D] |
+| genWeightsQ | 输入 | gen 段 Q 的 RMSNorm 权重 | **当前必填** | BFLOAT16 | ND | [D] |
+| genWeightsK | 输入 | gen 段 K 的 RMSNorm 权重 | **当前必填** | BFLOAT16 | ND | [D] |
+| catIndices | 输入 | out_t → src_t 映射 | **当前必填** | INT64 | ND | [T] |
 | numHeadsQ | 输入 | Q 头数 Hq | 必选，> 0 | INT64 | - | - |
 | numHeadsK | 输入 | K 头数 Hk | 必选，> 0 | INT64 | - | - |
 | numHeadsV | 输入 | V 头数 Hv | 必选，> 0 | INT64 | - | - |
-| normEps | 输入 | RMSNorm epsilon | 必选，> 0，推荐 1e-6 | FLOAT | - | - |
+| normEps | 输入 | RMSNorm epsilon | 必选，> 0，推荐 1e-6 | DOUBLE（内部转 FLOAT） | - | - |
 | mropeSection | 输入 | MRoPE 三轴分段 | 可选，nullptr/空表示 [D/2, 0, 0] | INT64 数组 | - | [3] |
 | q | 输出 | 处理后的 Q | - | BFLOAT16 | ND | [T, Hq, D] |
 | kCacheOut | 输出 | 与 kCache 同地址 | - | BFLOAT16 | ND | 同 kCache |
@@ -161,6 +161,9 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
 - `slotMapping` 取值必须唯一，重复 slot 会造成多核写冲突、结果不确定。
 - `kCache`/`vCache` 必须是连续的 BBND 布局，不支持非连续（BNBD）物理布局。
 - `sum(mropeSection)` 不得超过 D/2。
+- **当前实现要求 `genQkv`、`genWeightsQ`、`genWeightsK`、`catIndices` 全部传入且 `gen_len > 0`**；
+  传 nullptr 的退化路径（纯 prefill、恒等映射）暂不支持，会在 tiling 阶段返回失败。
+  接口保留可选语义，后续版本放开。
 
 ## 调用示例
 

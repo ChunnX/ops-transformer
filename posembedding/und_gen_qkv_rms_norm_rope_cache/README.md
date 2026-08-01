@@ -28,13 +28,13 @@
 
     ```
     und_qkv:       [und_len, N, D]           N = Hq + Hk + Hv
-    gen_qkv:       [gen_len, N, D]           可选，纯 prefill 时不传
+    gen_qkv:       [gen_len, N, D]           当前必填，gen_len > 0
     und_weights_q: [D]   und_weights_k: [D]
     gen_weights_q: [D]   gen_weights_k: [D]  可选，与 gen_qkv 同进同出
     cos_sin_cache: [max_pos, D]              前半 cos、后半 sin
     slot_mapping:  [T]                       slot = block_num * Bs + row_idx
     positions:     [3, T]
-    cat_indices:   [T]                       可选，不传时 src_t = out_t
+    cat_indices:   [T]                       当前必填（不传的恒等映射路径暂不支持）
     k_cache:       [Bn, Bs, Hk, D]           调用方预分配，原地写入
     v_cache:       [Bn, Bs, Hv, D]           调用方预分配，原地写入
     q:             [T, Hq, D]                T = und_len + gen_len
@@ -56,10 +56,10 @@
 | v_cache | 输入/输出 | BFLOAT16 | ND | V Cache，[Bn, Bs, Hv, D]，原地写入 |
 | slot_mapping | 输入 | INT64 | ND | 每个 token 的 cache 行偏移，[T] |
 | positions | 输入 | INT64 | ND | MRoPE 三轴位置，[3, T] |
-| gen_qkv | 可选输入 | BFLOAT16 | ND | generated 段 QKV，[gen_len, N, D] |
-| gen_weights_q | 可选输入 | BFLOAT16 | ND | gen 段 Q 的 RMSNorm 权重，[D] |
-| gen_weights_k | 可选输入 | BFLOAT16 | ND | gen 段 K 的 RMSNorm 权重，[D] |
-| cat_indices | 可选输入 | INT64 | ND | out_t → src_t 映射，[T] |
+| gen_qkv | 可选输入（当前必填） | BFLOAT16 | ND | generated 段 QKV，[gen_len, N, D]，gen_len > 0 |
+| gen_weights_q | 可选输入（当前必填） | BFLOAT16 | ND | gen 段 Q 的 RMSNorm 权重，[D] |
+| gen_weights_k | 可选输入（当前必填） | BFLOAT16 | ND | gen 段 K 的 RMSNorm 权重，[D] |
+| cat_indices | 可选输入（当前必填） | INT64 | ND | out_t → src_t 映射，[T] |
 | q | 输出 | BFLOAT16 | ND | 处理后的 Q，[T, Hq, D] |
 | num_heads_q | 属性 | INT | - | Q 头数 Hq |
 | num_heads_k | 属性 | INT | - | K 头数 Hk |
@@ -74,7 +74,9 @@
 - (Hq, Hk, Hv) 支持 (8, 1, 1) 与 (16, 2, 2) 两种组合。
 - cache block_size 为 128；T = und_len + gen_len 支持 1 ~ 64K。
 - `slot_mapping` 的取值必须唯一且落在 [0, Bn*Bs)，重复 slot 在多核下结果不确定。
-- `gen_qkv` 提供时，`gen_weights_q`/`gen_weights_k` 必须同时提供。
+- **当前实现要求 `gen_qkv`、`gen_weights_q`、`gen_weights_k`、`cat_indices` 四个可选输入全部提供，
+  且 `gen_len > 0`**；缺省的退化路径（纯 prefill、单序列恒等映射）暂不支持，tiling 会直接拦截。
+  IR/OpDef 保留 OPTIONAL 声明，后续放开时删掉 `CheckSupportRange` 中对应校验即可。
 - `k_cache`/`v_cache` 必须内存连续。
 
 ## 调用说明
@@ -93,7 +95,7 @@
 | :-- | :------- |
 | aclnn L2 | 仅空指针类：必选张量非空；`genQkv` 提供时 `genWeightsQ`/`genWeightsK` 必须成对提供 |
 | InferShape / InferDataType | 仅推导前提：`und_qkv`/`gen_qkv` 为 3D、属性 `num_heads_q` 可取；dtype 透传不校验 |
-| **Tiling** | `CheckDtypeValid`（12 输入 + 3 输出逐个查）、`CheckAttrsValid`（头数正数与求和==N、eps>0、mrope_section 长度与求和）、7 组 shape 校验（und/gen 的 N/D 一致、weights 长度、cos_sin_cache、k/v_cache 的 Bn/Bs/Hk/Hv/D 与容量、slot_mapping / positions / cat_indices 长度）、`CheckSupportRange`（headDim=128、block_size=128、T ∈ [1, 64K]、head 组合白名单） |
+| **Tiling** | `CheckDtypeValid`（12 输入 + 3 输出逐个查）、`CheckAttrsValid`（头数正数与求和==N、eps>0、mrope_section 长度与求和）、7 组 shape 校验（und/gen 的 N/D 一致、weights 长度、cos_sin_cache、k/v_cache 的 Bn/Bs/Hk/Hv/D 与容量、slot_mapping / positions / cat_indices 长度）、`CheckSupportRange`（headDim=128、block_size=128、T ∈ [1, 64K]、head 组合白名单、4 个可选输入必须全部提供） |
 
 > aclnn 单算子路径和图模式最终都会走 tiling，所以 tiling 侧的校验对两条路径都生效；
 > 代价是非法入参在 `aclnnXxxGetWorkspaceSize` 阶段不报错，而是在执行阶段由 tiling 返回失败。

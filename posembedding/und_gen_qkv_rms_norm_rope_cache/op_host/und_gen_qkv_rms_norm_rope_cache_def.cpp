@@ -70,6 +70,8 @@ public:
             .AutoContiguous();
 
         // ---------------- 可选输入（4 个）----------------
+        // NOTE: 当前实现要求这 4 个输入必须全部提供，缺省场景由 tiling 的 CheckSupportRange 拦截；
+        //       这里保留 OPTIONAL 声明以便后续放开退化路径。
         this->Input("gen_qkv")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_BF16})
