@@ -16,7 +16,7 @@ from typing import Optional
 
 import torch
 
-import cann_ops_transformer  # noqa: F401
+import cann_ops_transformer
 
 
 class MixedQuantSparseFlashMlaMetadataBuilder:
