@@ -1,3 +1,4 @@
+#define FIA_DUMP_INTERMEDIATE
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -867,6 +868,17 @@ public:
         mm1A.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
         mm1ResL0C.Set<HardEvent::M_FIX>();  // 通知
         mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
+        #ifdef FIA_DUMP_INTERMEDIATE
+            DumpTensor<T>(mm1ResL0C.GetTensor<T>(), 628, 256);   // x47: S(BMM1 Q@K^T) front r0c0 rows0-15 cols0-15 pre-fixpipe
+            DumpTensor<T>(mm1ResL0C.GetTensor<T>(1024), 629, 256);  // x47: S back-M r4c0 rows64-79 cols0-15
+            DumpTensor<T>(mm1ResL0C.GetTensor<T>(1792), 631, 256);  // x47: S back-M r7c0 rows112-127 cols0-15 (row127 block)
+            DumpTensor<T>(mm1ResL0C.GetTensor<T>(2048), 642, 256);  // s642: S offset2048 brute-force rows64-79
+            DumpTensor<T>(mm1ResL0C.GetTensor<T>(4096), 643, 256);  // s643: S offset4096
+            DumpTensor<T>(mm1ResL0C.GetTensor<T>(6144), 644, 256);  // s644: S offset6144
+            DumpTensor<T>(mm1ResL0C.GetTensor<T>(8192), 645, 256);  // s645: S offset8192
+            DumpTensor<T>(mm1ResL0C.GetTensor<T>(10240), 646, 256);  // s646: S offset10240
+            DumpTensor<T>(mm1ResL0C.GetTensor<T>(12288), 647, 256);  // s647: S offset12288
+        #endif
 
         outputBuf.WaitCrossCore();
 
@@ -990,6 +1002,10 @@ public:
         MM2_ABUF_T mm2A = inputBuf.Get();
         mm2A.WaitCrossCore();
 
+#ifdef FIA_DUMP_INTERMEDIATE
+        DumpTensor<INPUT_T>(mm2A.GetTensor<INPUT_T>(), 637, 16384);  // add11e: L1 P (BMM2 A-input) post-DataCopy(UB->L1) pre-L0A/Mmad; full head [128,128]=16384; compare desc636 UB P
+#endif
+
         constexpr uint32_t pScaleOffset = mBaseSize * s2BaseSize;
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
             constexpr uint32_t sizeOfInt16 = 2U;
@@ -1002,6 +1018,9 @@ public:
             InitConstValue(diagZero, {1, mBaseSize * s2SplitSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / blockBytes, 0, 0x0000});
         }
         LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(pScaleOffset);
+#ifdef FIA_DUMP_INTERMEDIATE
+        DumpTensor<SCALE_T>(mm2AScaleFakeTensor, 640, 512);  // (1b): L1 P-scale slot (cube side; AIV desc630 does not fire); expect 0x7f=1.0
+#endif
 
         constexpr uint32_t baseN = l1BaseD;
         uint32_t nLoops = ((uint32_t)constInfo.dSizeV + baseN - 1) / baseN;
@@ -1051,6 +1070,15 @@ public:
 
         mm2ResL0C.Set<HardEvent::M_FIX>();
         mm2ResL0C.Wait<HardEvent::M_FIX>();
+
+        #ifdef FIA_DUMP_INTERMEDIATE
+            DumpTensor<T>(mm2ResL0C.GetTensor<T>(), 621, 256);  // x42: probe AIC L0C dump (Dn, front offset 0, pre-fixpipe)
+            DumpTensor<T>(mm2ResL0C.GetTensor<T>(16384), 622, 256);  // x42: probe AIC L0C dump (Dn, back offset 16384=half, pre-fixpipe)
+            DumpTensor<T>(mm2ResL0C.GetTensor<T>(1024), 624, 256);   // x46: back-M r=4 c=0 rows64-79 cols0-15
+            DumpTensor<T>(mm2ResL0C.GetTensor<T>(17408), 625, 256);  // x46: back-M r=4 c=8 rows64-79 cols128-143
+            DumpTensor<T>(mm2ResL0C.GetTensor<T>(1792), 626, 256);   // x46: back-M r=7 c=0 rows112-127 cols0-15 (row127 block)
+            DumpTensor<T>(mm2ResL0C.GetTensor<T>(18176), 627, 256);  // x46: back-M r=7 c=8 rows112-127 cols128-143
+        #endif
 
         if constexpr (BMM2_TOUB) {
             outputBuf.WaitCrossCore();

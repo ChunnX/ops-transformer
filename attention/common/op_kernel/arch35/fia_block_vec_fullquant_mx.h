@@ -1,3 +1,4 @@
+#define FIA_DUMP_INTERMEDIATE
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -363,11 +364,30 @@ public:
                     0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
             }
         }
+#ifdef FIA_DUMP_INTERMEDIATE
+        DumpTensor<T>(mmRes, 200, 32);
+        DumpTensor<T>(bmm1ResBuf.template GetTensor<T>(128), 201, 32);
+        DumpTensor<T>(bmm1ResBuf.template GetTensor<T>(), 638, 8192);  // x48: FULL bmm1ResBuf S subLoop0/1 garbage-boundary
+        DumpTensor<T>(bmm1ResBuf.template GetTensor<T>(64), 650, 32);   // x48: off64
+        DumpTensor<T>(bmm1ResBuf.template GetTensor<T>(96), 651, 32);   // x48: off96
+        DumpTensor<T>(bmm1ResBuf.template GetTensor<T>(160), 652, 32);  // x48: off160
+        DumpTensor<T>(bmm1ResBuf.template GetTensor<T>(256), 653, 32);  // x48: off256
+        DumpTensor<T>(bmm1ResBuf.template GetTensor<T>(512), 654, 32);  // x48: off512
+        DumpTensor<T>(bmm1ResBuf.template GetTensor<T>(1024), 655, 32); // x48: off1024
+        DumpTensor<float>(maxUb, 635, 64);  // x47 add5: per-row max (new_global_max) for golden-compare m_block_j
+#endif
         bmm1ResBuf.SetCrossCore();
         if constexpr (HAS_MASK) {
             this->attenMaskInQue[0].template FreeTensor(attenMaskUb);
         }
         
+#ifdef FIA_DUMP_INTERMEDIATE
+        DumpTensor<INPUT_T>(stage1CastTensor, 600, 32);
+        DumpTensor<INPUT_T>(stage1CastTensor, 601, 64);
+        DumpTensor<INPUT_T>(stage1CastTensor, 636, 8192);  // x47 add7: FULL P_fp8 [64,128] for golden-compare sorted-set (clean=>BMM2/L0C-pool, corrupted=>V1 max0-reg-stale, NOT lane misalignment)
+            DumpTensor<INPUT_T>(stage1CastTensor[1024], 633, 256);  // x47: P_fp8 back-M r4c0 rows64-79 cols0-15
+            DumpTensor<INPUT_T>(stage1CastTensor[1792], 634, 256); // x47: P_fp8 back-M r7c0 rows112-127 cols0-15
+#endif
         this->stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
         this->stage1OutQue[stage1Offset].template DeQue<INPUT_T>();
         //-------------------------Data copy to l1-------------------------
@@ -392,6 +412,10 @@ public:
                     pScaleSubLoop0Tensor, {1, 8, 0, 0});
             }
         }
+        #ifdef FIA_DUMP_INTERMEDIATE
+        DumpTensor<fp8_e8m0_t>(mm2AScaleL1Tensor, 630, 256);
+        DumpTensor<fp8_e8m0_t>(pScaleSubLoop0Tensor, 632, 256);
+#endif
         this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
 
         LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
@@ -712,6 +736,10 @@ public:
         LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
         LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+#ifdef FIA_DUMP_INTERMEDIATE
+        DumpTensor<T>(mmRes, 620, 256);
+        DumpTensor<T>(bmm2ResBuf.template GetTensor<T>(16128), 623, 256);  // x44: back M-half last row (row 127 for dst1/odd AIV), pre-V2, 坐实 fixpipe-vs-V2
+#endif
         if (unlikely(runInfo.isFirstS2Loop)) {
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
         } else {
