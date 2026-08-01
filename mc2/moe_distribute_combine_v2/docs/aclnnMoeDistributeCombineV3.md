@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：进行AllToAllV通信，最后将接收的数据整合；expertScales非空时乘权重再相加，为空时直接相加。不支持TP域通信。
+- 接口功能：进行AllToAllV通信，最后将接收的数据整合。Ascend 950DT支持`expertScales`非空时乘权重再相加、为空时直接相加；Atlas A3系列产品不支持topK专家权重功能，仅支持传入空Tensor后直接相加。不支持TP域通信。
 - 计算公式：
 
     $$
@@ -23,7 +23,7 @@
     xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
     $$
 
-    `expertScales`为空Tensor时，不执行权重乘法，直接对专家输出求和。
+    Ascend 950DT上，`expertScales`为空Tensor时不执行权重乘法，直接对专家输出求和；Atlas A3系列产品仅支持该直接求和方式。
 
 > 注意：该接口必须与`aclnnMoeDistributeDispatchV3`配套使用，相当于按`aclnnMoeDistributeDispatchV3`接口收集数据的路径原路返还。
 
@@ -167,7 +167,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     <tr>
     <td>expertScales</td>
     <td>输入</td>
-    <td>每个token的topK个专家的权重。支持空Tensor；传入空Tensor时不进行加权，直接对专家输出求和。</td>
+    <td>每个token的topK个专家的权重。仅Ascend 950DT支持非空Tensor；Atlas A3系列产品不支持topK专家权重功能，必须传空Tensor，并直接对专家输出求和。</td>
     <td>非空时要求2D Tensor；空Tensor至少有一个维度为0，不要求固定维数。</td>
     <td>FLOAT32</td>
     <td>ND</td>
@@ -540,6 +540,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     <details>
     <summary><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：</summary>
 
+    - 不支持topK专家权重功能，expertScales必须传空Tensor，直接对专家输出求和。
     - commAlg当前版本不支持，传空指针即可。
     - epSendCounts的shape为(epWorldSize \* localExpertNum, )。
     - tpSendCountsOptional为预留参数，TP域通信不再支持，传空指针即可。
@@ -568,6 +569,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
     <details>
     <summary><term>Ascend 950DT</term>：</summary>
 
+    - 支持topK专家权重功能；expertScales可传形状为(BS, K)的有效Tensor或空Tensor，传空Tensor时直接对专家输出求和。
     - commAlg当前版本不支持，传空指针即可。
     - epSendCounts的shape为(epWorldSize \* localExpertNum, )。
     - 当前不支持TP域通信。
