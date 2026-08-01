@@ -399,7 +399,7 @@ private:
             const uint32_t groupEndInBlock = (copyStartInBlock + copyRowNum + MX_TOKEN_GROUP - 1U) / MX_TOKEN_GROUP;
             const uint32_t copyGroupNum = groupEndInBlock - groupStartInBlock;
 
-            startPos.s2Offset = static_cast<uint64_t>(runInfo.sparseBlockIdx[i]) * scaleBlockSize + groupStartInBlock;
+            startPos.s2Offset = runInfo.sparseBlockTokenOffset[i] / MX_TOKEN_GROUP + groupStartInBlock;
             valueScaleShape.copyRowNum = copyGroupNum;
             LocalTensor<SCALE_T> valueScaleDstTensor = dstTensor[copiedGroupCount * blockElementCnt];
             MxGmFlatScaleCopyInToL1PAForND<SCALE_T>(valueScaleDstTensor, vScaleGm_, blockTableGm_, valueScaleShape,
