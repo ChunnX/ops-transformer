@@ -26,6 +26,22 @@ import torch
 class QuantLightningIndexerInputAdapter:
     """Translate a TTK case and reuse the canonical pytest case generator."""
 
+    PYTEST_FIELDS = (
+        "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size",
+        "q_head_num", "k_head_num", "head_dim", "block_size", "block_num",
+        "qk_dtype", "weight_dtype", "dequant_dtype", "actual_seq_dtype",
+        "act_seq_q", "act_seq_k", "query_quant_mode", "key_quant_mode",
+        "layout_query", "layout_key", "sparse_count", "sparse_mode",
+        "query_datarange", "key_datarange", "weights_datarange",
+        "q_scale_datarange", "k_scale_datarange",
+    )
+
+    INTEGER_FIELDS = (
+        "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size",
+        "q_head_num", "k_head_num", "head_dim", "block_size", "block_num",
+        "query_quant_mode", "key_quant_mode", "sparse_count", "sparse_mode",
+    )
+
     @staticmethod
     def module_load_error(stage, path, exc):
         return RuntimeError(
@@ -96,93 +112,101 @@ class QuantLightningIndexerInputAdapter:
         return [int(item) for item in value]
 
     @staticmethod
-    def prefix_lengths(value):
-        if not value:
-            return []
-        return [int(value[0])] + [
-            int(value[index]) - int(value[index - 1])
-            for index in range(1, len(value))
-        ]
-
-    @staticmethod
-    def data_range(input_ranges, index, default=(-1, 1)):
-        if input_ranges and index < len(input_ranges) and input_ranges[index] is not None:
-            return list(input_ranges[index])
-        return list(default)
+    def torch_dtype(value, field):
+        if isinstance(value, torch.dtype):
+            return value
+        normalized = str(value).strip().lower().removeprefix("torch.")
+        mapping = {
+            "uint8": torch.uint8,
+            "int8": torch.int8,
+            "int32": torch.int32,
+            "fp16": torch.float16,
+            "float16": torch.float16,
+            "bf16": torch.bfloat16,
+            "bfloat16": torch.bfloat16,
+            "fp32": torch.float32,
+            "float32": torch.float32,
+            "float8_e4m3fn": torch.float8_e4m3fn,
+        }
+        if normalized not in mapping:
+            raise ValueError(
+                f"unsupported QuantLightningIndexer {field}: {value!r}"
+            )
+        return mapping[normalized]
 
     def build_case_params(self, query, key, weights, query_dequant_scale,
+                          key_dequant_scale,
                           actual_seq_lengths_query,
                           actual_seq_lengths_key,
                           query_quant_mode, key_quant_mode,
                           layout_query, layout_key, kwargs):
-        act_q = self.list_value(
-            kwargs.get("actual_seq_lengths_query_values", actual_seq_lengths_query)
-        )
-        act_k = self.list_value(
-            kwargs.get("actual_seq_lengths_key_values", actual_seq_lengths_key)
-        )
-
-        if layout_query == "BSND":
-            batch_size, q_seq, q_head_num, head_dim = map(int, query.shape)
-            q_t_size = sum(act_q) if act_q else batch_size * q_seq
-            act_q = act_q or [q_seq] * batch_size
-        elif layout_query == "TND":
-            q_t_size, q_head_num, head_dim = map(int, query.shape)
-            batch_size = len(act_q)
-            if not batch_size:
+        missing = [
+            f"pytest_{name}"
+            for name in self.PYTEST_FIELDS
+            if f"pytest_{name}" not in kwargs
+        ]
+        if missing:
+            raise ValueError(
+                f"QuantLightningIndexer CSV is missing explicit pytest fields: {missing}"
+            )
+        params = {
+            name: kwargs[f"pytest_{name}"]
+            for name in self.PYTEST_FIELDS
+        }
+        for name in self.INTEGER_FIELDS:
+            if params[name] is not None:
+                params[name] = int(params[name])
+        for name in ("qk_dtype", "weight_dtype", "dequant_dtype", "actual_seq_dtype"):
+            params[name] = self.torch_dtype(params[name], name)
+        params["act_seq_q"] = self.list_value(params["act_seq_q"])
+        params["act_seq_k"] = self.list_value(params["act_seq_k"])
+        for name in (
+            "query_datarange", "key_datarange", "weights_datarange",
+            "q_scale_datarange", "k_scale_datarange",
+        ):
+            value = params[name]
+            if not isinstance(value, (list, tuple)) or len(value) != 2:
                 raise ValueError(
-                    "TND QuantLightningIndexer requires actual_seq_lengths_query_values"
+                    f"QuantLightningIndexer {name} must contain two values"
                 )
-            q_seq = max(self.prefix_lengths(act_q), default=q_t_size)
-        else:
-            raise ValueError(f"unsupported QuantLightningIndexer query layout: {layout_query}")
+            params[name] = list(value)
 
-        if layout_key == "BSND":
-            _, k_seq, k_head_num, _ = map(int, key.shape)
-            k_t_size = sum(act_k) if act_k else batch_size * k_seq
-            act_k = act_k or [k_seq] * batch_size
-            block_size = int(kwargs.get("block_size", 0))
-            block_num = int(kwargs.get("block_num", 0))
-        elif layout_key == "TND":
-            k_t_size, k_head_num, _ = map(int, key.shape)
-            if not act_k:
-                raise ValueError(
-                    "TND QuantLightningIndexer requires actual_seq_lengths_key_values"
-                )
-            k_seq = max(self.prefix_lengths(act_k), default=k_t_size)
-            block_size = int(kwargs.get("block_size", 0))
-            block_num = int(kwargs.get("block_num", 0))
-        elif layout_key == "PA_BSND":
-            block_num, block_size, k_head_num, _ = map(int, key.shape)
-            if not act_k:
-                raise ValueError(
-                    "PA_BSND QuantLightningIndexer requires actual_seq_lengths_key_values"
-                )
-            k_seq = max(act_k)
-            k_t_size = sum(act_k)
-        else:
-            raise ValueError(f"unsupported QuantLightningIndexer key layout: {layout_key}")
-
-        input_ranges = kwargs.get("input_ranges") or ()
-        actual_seq_dtype = (
-            actual_seq_lengths_query.dtype
-            if torch.is_tensor(actual_seq_lengths_query) else torch.int32
+        expected_api = {
+            "query_quant_mode": int(query_quant_mode),
+            "key_quant_mode": int(key_quant_mode),
+            "layout_query": layout_query,
+            "layout_key": layout_key,
+            "sparse_count": int(kwargs["sparse_count"]),
+            "sparse_mode": int(kwargs["sparse_mode"]),
+        }
+        mismatches = {
+            name: (params[name], expected)
+            for name, expected in expected_api.items()
+            if params[name] != expected
+        }
+        if mismatches:
+            raise ValueError(
+                "QuantLightningIndexer API attributes differ from pytest fields: "
+                f"{mismatches}"
+            )
+        expected_dtypes = (
+            (query, params["qk_dtype"], "query"),
+            (key, params["qk_dtype"], "key"),
+            (weights, params["weight_dtype"], "weights"),
+            (query_dequant_scale, params["dequant_dtype"], "query_dequant_scale"),
+            (key_dequant_scale, params["dequant_dtype"], "key_dequant_scale"),
+            (actual_seq_lengths_query, params["actual_seq_dtype"],
+             "actual_seq_lengths_query"),
+            (actual_seq_lengths_key, params["actual_seq_dtype"],
+             "actual_seq_lengths_key"),
         )
-        return (
-            batch_size, q_seq, k_seq, q_t_size, k_t_size,
-            q_head_num, k_head_num, head_dim, block_size, block_num,
-            query.dtype, weights.dtype, query_dequant_scale.dtype,
-            actual_seq_dtype, act_q, act_k,
-            int(query_quant_mode), int(key_quant_mode),
-            layout_query, layout_key,
-            int(kwargs.get("sparse_count", 2048)),
-            int(kwargs.get("sparse_mode", 3)),
-            self.data_range(input_ranges, 0),
-            self.data_range(input_ranges, 1),
-            self.data_range(input_ranges, 2),
-            self.data_range(input_ranges, 3, (0, 1)),
-            self.data_range(input_ranges, 4, (0, 1)),
-        )
+        for tensor, expected_dtype, name in expected_dtypes:
+            if tensor is not None and tensor.dtype != expected_dtype:
+                raise ValueError(
+                    f"{name} dtype differs from pytest field: "
+                    f"TTK={tensor.dtype}, pytest={expected_dtype}"
+                )
+        return tuple(params[name] for name in self.PYTEST_FIELDS)
 
     @staticmethod
     def copy_tensor(dst, src, name):
@@ -255,7 +279,7 @@ class QuantLightningIndexerInputAdapter:
         query_quant_mode = int(attrs.get("query_quant_mode", 0))
         key_quant_mode = int(attrs.get("key_quant_mode", 0))
         params = self.build_case_params(
-            query, key, weights, query_scale, actual_q, actual_k,
+            query, key, weights, query_scale, key_scale, actual_q, actual_k,
             query_quant_mode, key_quant_mode, layout_query, layout_key, attrs,
         )
         model = self.load_pytest_golden().GeneralizedQLI(*params[:22])
@@ -292,7 +316,7 @@ class QuantLightningIndexerInputAdapter:
                   actual_seq_lengths_query, actual_seq_lengths_key,
                   block_table, layout_query, layout_key, kwargs):
         params = self.build_case_params(
-            query, key, weights, query_dequant_scale,
+            query, key, weights, query_dequant_scale, key_dequant_scale,
             actual_seq_lengths_query, actual_seq_lengths_key,
             query_quant_mode, key_quant_mode, layout_query, layout_key, kwargs
         )
