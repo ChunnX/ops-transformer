@@ -327,10 +327,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpCom
     uint64_t topKAlign = (topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint64_t dispatchReservedPerSlotBytes = AlignUpWin(hiddenAlign + topKAlign * 2 + UB_ALIGN);
     uint64_t superNodeCount = static_cast<uint64_t>(info.numScaleoutRanks);
-    info.scaleoutMaskWordCount = (info.rankSizePerServer + 31U) / 32U;
-    uint64_t scaleoutSlotRawBytes = dispatchReservedPerSlotBytes +
-                                    static_cast<uint64_t>(info.scaleoutMaskWordCount) * sizeof(uint32_t) +
-                                    static_cast<uint64_t>(info.rankSizePerServer) * sizeof(int32_t);
+    uint64_t scaleoutSlotRawBytes = dispatchReservedPerSlotBytes + topK * sizeof(int32_t);
     info.scaleoutSlotAlignedBytes = static_cast<uint32_t>(AlignUpWin(scaleoutSlotRawBytes));
 
     uint64_t combineDataWinOffset;
@@ -344,13 +341,9 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpCom
         uint64_t scaleupFinalRecvDataOffset = scaleoutRecvDataOffset + scaleoutRecvDataSize;
         uint64_t scaleoutRecvStatusOffset = scaleupFinalRecvDataOffset + scaleupFinalRecvDataSize;
         combineDataWinOffset = scaleoutRecvStatusOffset + scaleoutRecvStatusSize;
-        uint64_t scaleupSendWinOffset = combineDataWinOffset + combineDataSizePerRank;
-        uint64_t scaleupSendWinSize =
-            static_cast<uint64_t>(info.rankSizePerServer) * nmt * dispatchReservedPerSlotBytes;
-        uint64_t scaleoutSendWinOffset = scaleupSendWinOffset + scaleupSendWinSize;
-        uint64_t scaleoutSendWinSize =
-            superNodeCount * nmt * static_cast<uint64_t>(info.scaleoutSlotAlignedBytes);
-        winNeedTotal = scaleoutSendWinOffset + scaleoutSendWinSize;
+        uint64_t payloadStashWinOffset = combineDataWinOffset + combineDataSizePerRank;
+        uint64_t payloadStashWinSize = nmt * static_cast<uint64_t>(info.scaleoutSlotAlignedBytes);
+        winNeedTotal = payloadStashWinOffset + payloadStashWinSize;
     } else {
         uint64_t dispatchRecvWinDataReservedSize = epWorldSize * nmt * dispatchReservedPerSlotBytes;
         uint64_t stateAndRecvDataWinSize =

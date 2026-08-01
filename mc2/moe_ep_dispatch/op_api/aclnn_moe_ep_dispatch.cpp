@@ -14,18 +14,39 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnnInner_moe_ep_dispatch.h"
+#include <cstdlib>
+#include <cstring>
 
 using namespace op;
 
 namespace {
 constexpr int64_t DIRECT_MODE = 0;
 constexpr int64_t HYBRID_MODE = 1;
+
+static int64_t ResolveEffectiveNetworkMode(int64_t topoType, int64_t epWorldSize, int64_t rankNumPerServer)
+{
+    int64_t networkMode =
+        topoType == HYBRID_MODE && epWorldSize / rankNumPerServer > 1 ? HYBRID_MODE : DIRECT_MODE;
+    const char *debugNetworkMode = std::getenv("MOE_EP_DEBUG_FORCE_NETWORK_MODE");
+    if (debugNetworkMode == nullptr || debugNetworkMode[0] == '\0') {
+        return networkMode;
+    }
+    if ((std::strcmp(debugNetworkMode, "0") == 0) || (std::strcmp(debugNetworkMode, "direct") == 0) ||
+        (std::strcmp(debugNetworkMode, "DIRECT") == 0)) {
+        return DIRECT_MODE;
+    }
+    if ((std::strcmp(debugNetworkMode, "1") == 0) || (std::strcmp(debugNetworkMode, "hybrid") == 0) ||
+        (std::strcmp(debugNetworkMode, "HYBRID") == 0)) {
+        return HYBRID_MODE;
+    }
+    return networkMode;
+}
 } // namespace
 
 static aclnnStatus CheckNotNull(const aclTensor *context, const aclTensor *x, const aclTensor *topkIdx,
                                 aclTensor *numRecvTokensPerRank, aclTensor *numRecvTokensPerExpert,
                                 aclTensor *dstBufferSlotIdx, aclTensor *routeCount, aclTensor *routeDstScaleout,
-                                aclTensor *routeScaleoutSlot, aclTensor *routeScaleupMask, aclTensor *routeScaleupSlot)
+                                aclTensor *routeScaleoutSlot)
 {
     CHECK_RET(context != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(x != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -36,8 +57,6 @@ static aclnnStatus CheckNotNull(const aclTensor *context, const aclTensor *x, co
     CHECK_RET(routeCount != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(routeDstScaleout != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(routeScaleoutSlot != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(routeScaleupMask != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(routeScaleupSlot != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
 }
 
@@ -45,8 +64,7 @@ static aclnnStatus CheckParams(int64_t epWorldSize, int64_t epRankId, int64_t nu
                                int64_t cclBufferSize, int64_t expertAlignment, bool doCpuSync, int64_t topoType,
                                int64_t rankNumPerServer, const aclTensor *cachedDstSlotIdx,
                                const aclTensor *cachedRouteCount, const aclTensor *cachedRouteDstScaleout,
-                               const aclTensor *cachedRouteScaleoutSlot, const aclTensor *cachedRouteScaleupMask,
-                               const aclTensor *cachedRouteScaleupSlot)
+                               const aclTensor *cachedRouteScaleoutSlot)
 {
     CHECK_RET(epWorldSize > 1, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(epRankId >= 0 && epRankId < epWorldSize, ACLNN_ERR_PARAM_INVALID);
@@ -60,13 +78,12 @@ static aclnnStatus CheckParams(int64_t epWorldSize, int64_t epRankId, int64_t nu
     bool cachedMode = (cachedDstSlotIdx != nullptr);
     CHECK_RET(!(cachedMode && doCpuSync), ACLNN_ERR_PARAM_INVALID);
     bool anyCachedRoute = cachedRouteCount != nullptr || cachedRouteDstScaleout != nullptr ||
-                          cachedRouteScaleoutSlot != nullptr || cachedRouteScaleupMask != nullptr ||
-                          cachedRouteScaleupSlot != nullptr;
+                          cachedRouteScaleoutSlot != nullptr;
     bool allCachedRoute = cachedRouteCount != nullptr && cachedRouteDstScaleout != nullptr &&
-                          cachedRouteScaleoutSlot != nullptr && cachedRouteScaleupMask != nullptr &&
-                          cachedRouteScaleupSlot != nullptr;
+                          cachedRouteScaleoutSlot != nullptr;
     CHECK_RET(!anyCachedRoute || allCachedRoute, ACLNN_ERR_PARAM_INVALID);
-    bool hybridCachedMode = cachedMode && topoType == HYBRID_MODE;
+    bool hybridCachedMode =
+        cachedMode && ResolveEffectiveNetworkMode(topoType, epWorldSize, rankNumPerServer) == HYBRID_MODE;
     CHECK_RET(!hybridCachedMode || allCachedRoute, ACLNN_ERR_PARAM_INVALID);
 
     return ACLNN_SUCCESS;
@@ -89,38 +106,33 @@ aclnnStatus aclnnMoeEpDispatchGetWorkspaceSize(const aclTensor *context, const a
                                                const aclTensor *topkWeights, const aclTensor *scales,
                                                const aclTensor *cachedDstSlotIdx, const aclTensor *cachedRouteCount,
                                                const aclTensor *cachedRouteDstScaleout,
-                                               const aclTensor *cachedRouteScaleoutSlot,
-                                               const aclTensor *cachedRouteScaleupMask,
-                                               const aclTensor *cachedRouteScaleupSlot, int64_t epWorldSize,
+                                               const aclTensor *cachedRouteScaleoutSlot, int64_t epWorldSize,
                                                int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank,
                                                int64_t cclBufferSize, int64_t expertAlignment, bool doCpuSync,
                                                int64_t hostPinnedCounterAddr, int64_t topoType,
                                                int64_t rankNumPerServer, aclTensor *numRecvTokensPerRank,
                                                aclTensor *numRecvTokensPerExpert, aclTensor *dstBufferSlotIdx,
                                                aclTensor *routeCount, aclTensor *routeDstScaleout,
-                                               aclTensor *routeScaleoutSlot, aclTensor *routeScaleupMask,
-                                               aclTensor *routeScaleupSlot, uint64_t *workspaceSize,
+                                               aclTensor *routeScaleoutSlot, uint64_t *workspaceSize,
                                                aclOpExecutor **executor)
 {
     OP_LOGD("aclnnMoeEpDispatch WorkspaceSize start");
 
     auto retNotNull = CheckNotNull(context, x, topkIdx, numRecvTokensPerRank, numRecvTokensPerExpert, dstBufferSlotIdx,
-                                   routeCount, routeDstScaleout, routeScaleoutSlot, routeScaleupMask,
-                                   routeScaleupSlot);
+                                   routeCount, routeDstScaleout, routeScaleoutSlot);
     CHECK_RET(retNotNull == ACLNN_SUCCESS, retNotNull);
 
     auto retParams = CheckParams(epWorldSize, epRankId, numExperts, numMaxTokensPerRank, cclBufferSize,
                                  expertAlignment, doCpuSync, topoType, rankNumPerServer, cachedDstSlotIdx,
-                                 cachedRouteCount, cachedRouteDstScaleout, cachedRouteScaleoutSlot,
-                                 cachedRouteScaleupMask, cachedRouteScaleupSlot);
+                                 cachedRouteCount, cachedRouteDstScaleout, cachedRouteScaleoutSlot);
     CHECK_RET(retParams == ACLNN_SUCCESS, retParams);
 
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMoeEpDispatchGetWorkspaceSize(
         context, x, topkIdx, topkWeights, scales, cachedDstSlotIdx, cachedRouteCount, cachedRouteDstScaleout,
-        cachedRouteScaleoutSlot, cachedRouteScaleupMask, cachedRouteScaleupSlot, epWorldSize, epRankId, numExperts,
-        numMaxTokensPerRank, cclBufferSize, expertAlignment, doCpuSync, hostPinnedCounterAddr, topoType,
-        rankNumPerServer, numRecvTokensPerRank, numRecvTokensPerExpert, dstBufferSlotIdx, routeCount, routeDstScaleout,
-        routeScaleoutSlot, routeScaleupMask, routeScaleupSlot, workspaceSize, executor);
+        cachedRouteScaleoutSlot, epWorldSize, epRankId, numExperts, numMaxTokensPerRank, cclBufferSize,
+        expertAlignment, doCpuSync, hostPinnedCounterAddr, topoType, rankNumPerServer, numRecvTokensPerRank,
+        numRecvTokensPerExpert, dstBufferSlotIdx, routeCount, routeDstScaleout, routeScaleoutSlot, workspaceSize,
+        executor);
 
     return getWorkspaceSizesRes;
 }
