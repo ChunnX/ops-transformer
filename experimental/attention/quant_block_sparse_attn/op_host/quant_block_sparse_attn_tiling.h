@@ -23,6 +23,7 @@
 #include <exe_graph/runtime/tiling_context.h>
 #include <register/op_impl_registry.h>
 #include "register/tilingdata_base.h"
+#include "../op_kernel/quant_block_sparse_attn_const.h"
 #include "../op_kernel/quant_block_sparse_attn_mx_tiling_data.h"
 #include "quant_block_sparse_attn_info_parser.h"
 
