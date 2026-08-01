@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-set(OPTENSOR_TAG_ID 1f2a54fe8c3291f346e6c6b3694d62b349ebd6ea)
+set(OPTENSOR_TAG_ID d3a552c51b5787d8ff8ddca861c8d07099736c2a)
 
 if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
@@ -74,8 +74,8 @@ elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
   get_filename_component(TENSOR_API
                          ${OPTENSOR_SOURCE_PATH}/include/tensor_api REALPATH)
 else()
-  set(OPTENSOR_GIT_URL "git@gitcode.com:AlbertYoung192/ops-tensor__gmm_swiglu_mxfp8ND.git")
-  set(OPTENSOR_FALLBACK_GIT_URL "https://gitcode.com/AlbertYoung192/ops-tensor__gmm_swiglu_mxfp8ND.git")
+  set(OPTENSOR_GIT_URL "git@gitcode.com:AlbertYoung192/ops-tensor_optiTemp.git")
+  set(OPTENSOR_FALLBACK_GIT_URL "https://gitcode.com/AlbertYoung192/ops-tensor_optiTemp.git")
 
   execute_process(
     COMMAND git ls-remote ${OPTENSOR_GIT_URL} HEAD
