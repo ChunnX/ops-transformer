@@ -24,7 +24,7 @@
 #include "../split_core_v2.h"
 #include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_utils.h"
 #include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_constants.h"
-#include "../../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_template_tiling_key_enum.h"
+#include "../../../fused_infer_attention_score/op_kernel/arch35/fia_arch35_template_tiling_key_enum.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -424,9 +424,9 @@ void FiaTilingFullQuantMxArch35::CreateSplitInput(split_core_v2::BaseInfo &baseI
     splitParam.mBaseSize = sOuterFactor_ * CV_RATIO;
     splitParam.s2BaseSize = sInnerFactor_;
     splitParam.gS1BaseSizeOfFd = 8;
-    splitParam.streamK = true;
-    splitParam.fdTolerance = 10; // 实验经验值
-    splitParam.fdLeastBlock = 2; // 实验经验值
+    splitParam.streamK = decodeS1GMerge_; // decode场景开启FD
+    splitParam.fdTolerance = 10;          // 实验经验值
+    splitParam.fdLeastBlock = 2;          // 实验经验值
 }
 
 void FiaTilingFullQuantMxArch35::SetSplitOutput(const split_core_v2::FAMetaData &splitRes)

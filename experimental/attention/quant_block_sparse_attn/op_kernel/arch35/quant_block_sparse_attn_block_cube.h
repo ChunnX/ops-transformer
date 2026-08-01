@@ -98,7 +98,6 @@ struct L0CBuffSel {
 };
 } // namespace QuantBlockSparseAttnCube
 
-
 TEMPLATES_DEF
 class BSABlockCube {
 public:
@@ -145,8 +144,6 @@ private:
     __aicore__ inline void IterateBmm1Dn(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
                                          RunInfo &runInfo, ConstInfo &constInfo);
 
-    // --------------------Bmm2--------------------------
-    __aicore__ inline bool IsGS1Merge(ConstInfo &constInfo);
     TPipe *tPipe;
     /* =====================GM变量==================== */
     __gm__ uint8_t *currentKey;    // pageattention需要
@@ -235,8 +232,6 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t
         attenMaskInfo->preTokens = sharedParams->preTokens;
         attenMaskInfo->nextTokens = sharedParams->nextTokens;
         attenMaskInfo->compressMode = sharedParams->compressMode;
-        attenMaskInfo->attenMaskS1Size = sharedParams->attenMaskS1Size;
-        attenMaskInfo->attenMaskS2Size = sharedParams->attenMaskS2Size;
         if constexpr (isPa) {
             this->blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blocktablePtr);
             this->maxBlockNumPerBatch = sharedParams->blockTableDim2;
@@ -290,7 +285,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<
         GlobalTensor<int32_t> actualSeqQLen;
         actualSeqQLen.SetGlobalBuffer((__gm__ int32_t *)actualSeqQlenAddr);
         this->queryGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->gSize, sharedParams->dSize,
-                                            actualSeqQLen, sharedParams->actualSeqLengthsSize);
+                                            actualSeqQLen, sharedParams->seqUsedQlenSize);
     }
 }
 
@@ -303,9 +298,8 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo &runInfo
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-BSABlockCube<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                         RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1(
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo &runInfo, ConstInfo &constInfo)
 {
     CalcS2Coord(runInfo, constInfo);
     if constexpr (isFp8) {
@@ -434,11 +428,6 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
             1 << 1; // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
         fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) *
                                   16; // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
-        bool isS1Odd =
-            (constInfo.s1Size % 2) != 0; // GS1合轴时，若s1为奇数且开启双目标模式，扩展M维度对齐g，避免计算中间块
-        if (IsGS1Merge(constInfo) && isS1Odd) {
-            fixpipeParams.mSize = runInfo.s1RealSize + constInfo.gSize;
-        }
     }
     if constexpr (bmm2Write2Ub) {
         fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
@@ -455,11 +444,9 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
     outputBuf.SetCrossCore();
 }
 
-
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                           RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo &runInfo, ConstInfo &constInfo)
 {
     Buffer<BufferType::L1> mm1A;
     Buffer<BufferType::L1> mm1B;
@@ -606,9 +593,8 @@ __aicore__ inline GlobalTensor<INPUT_T> BSABlockCube<TEMPLATE_ARGS>::GetValueGm(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void
-BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                           RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo &runInfo, ConstInfo &constInfo)
 {
     // 计算key的offset
     Buffer<BufferType::L1> mm1A;
@@ -620,16 +606,8 @@ BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(Buffer<BufferType::UB, SyncType::CROS
         mm1A.Wait<HardEvent::MTE1_MTE2>(); // 占用L1A
         LocalTensor<INPUT_T> mm1ATensor = mm1A.GetTensor<INPUT_T>();
 
-        if (IsGS1Merge(constInfo)) {
-            uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, 0, 0,
-                                                                         0); // PFA GS1合轴下，g s1 d idx为0
-            CopyToL1Nd2NzGS1Merge<INPUT_T>(
-                mm1ATensor, this->queryGm.gmTensor[gmOffset], constInfo.s1Size, constInfo.gSize, constInfo.dSize,
-                constInfo.n2Size * constInfo.gSize * constInfo.dSize, constInfo.dSize, runInfo.s1RealSize);
-        } else {
-            CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize,
-                                   constInfo.dSize, constInfo.mm1Ka);
-        }
+        CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize,
+                               constInfo.dSize, constInfo.mm1Ka);
 
         mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
     } else {                              // 非S2的第一次循环直接复用Q
@@ -710,29 +688,16 @@ BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(Buffer<BufferType::UB, SyncType::CROS
                                   // 单位为16*sizeof(T) // 源Nz矩阵中相邻大Z排布的起始地址偏移
     fixpipeParams.dstStride = s2BaseSize; // mmResUb上两行之间的间隔，单位：element。 // 128:根据比对dump文件得到,
                                           // ND方案(S1*S2)时脏数据用mask剔除
-    fixpipeParams.dualDstCtl = 1;         // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
+    fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
-
-    bool isS1Odd = (constInfo.s1Size % 2) != 0; // GS1合轴时，若s1为奇数且开启双目标模式，扩展M维度对齐g，避免计算中间块
-    if (IsGS1Merge(constInfo) && isS1Odd) {
-        fixpipeParams.mSize = runInfo.s1RealSize + constInfo.gSize;
-    }
 
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(),
                                         fixpipeParams); // 将matmul结果从L0C搬运到UB
     mm1ResL0C.Set<HardEvent::FIX_M>();                  // 释放L0C
     outputBuf.SetCrossCore();
 }
-
-// 判断是否GS1合轴
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline bool BSABlockCube<TEMPLATE_ARGS>::IsGS1Merge(ConstInfo &constInfo)
-{
-    return (Q_FORMAT == GmFormat::TNGD) && constInfo.isPfaGS1Merge;
-}
-
 
 TEMPLATES_DEF
 class BSABlockCubeDummy {
@@ -745,29 +710,24 @@ public:
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BufferManagerPtr,
                                          __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                          __gm__ uint8_t *blockTable)
-    {
-    }
+    {}
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value, CVSharedParams<isPa> *sharedParams,
                                          AttenMaskInfo *attenMaskInfo, __gm__ int32_t *actualSeqQlenAddr,
                                          __gm__ int32_t *actualSeqKvlenAddr)
-    {
-    }
+    {}
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
                                        RunInfo &runInfo, ConstInfo &constInfo)
-    {
-    }
+    {}
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf,
                                        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
                                        RunInfo &runInfo, ConstInfo &constInfo)
-    {
-    }
+    {}
     __aicore__ inline void InitDequantParams(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
                                              __gm__ uint8_t *deqScaleV)
-    {
-    }
+    {}
 };
 
 template <typename T>
@@ -777,11 +737,11 @@ struct CubeBlockTraits; // 声明
 #define GEN_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
 #define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
 
-#define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS)                                                                     \
-    TEMPLATES_DEF_NO_DEFAULT                                                                                           \
-    struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> {                                                          \
-        CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE)                                                                  \
-        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST)                                                                \
+#define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
+    TEMPLATES_DEF_NO_DEFAULT \
+    struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
+        CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE) \
+        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST) \
     };
 
 DEFINE_CUBE_BLOCK_TRAITS(BSABlockCube);
@@ -790,8 +750,8 @@ DEFINE_CUBE_BLOCK_TRAITS(BSABlockCubeDummy);
 // /* 生成Arg Traits, kernel中只需要调用ARGS_TRAITS就可以获取所有CubeBlock中的模板参数 */
 #define GEN_ARGS_TYPE(name, ...) using name = typename CubeBlockTraits<CubeBlockType>::name##_TRAITS;
 #define GEN_ARGS_CONST(name, type, ...) static constexpr type name = CubeBlockTraits<CubeBlockType>::name##Traits;
-#define ARGS_TRAITS                                                                                                    \
-    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE)                                                                       \
+#define ARGS_TRAITS \
+    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE) \
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST)
 } // namespace BaseApi
 #endif // QUANT_BLOCK_SPARSE_ATTN_BLOCK_CUBE_H_

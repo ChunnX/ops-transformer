@@ -54,7 +54,7 @@ const std::string LAYOUT_Q_NAME = "layout_q";
 const std::string LAYOUT_Q_DESCALE_NAME = "layout_q_descale";
 const std::string LAYOUT_KV_NAME = "layout_kv";
 const std::string LAYOUT_OUT_NAME = "layout_out";
-const std::string QUANT_MODE_NAME = "quant_mode";
+const std::string QUANT_MODE_NAME = "quant_compute_mode";
 const std::string RETURN_SOFTMAX_LSE_NAME = "return_softmax_lse";
 const std::string ATTN_OUT_NAME = "attn_out";
 const std::string SOFTMAX_LSE_NAME = "softmax_lse";
@@ -106,9 +106,8 @@ constexpr int64_t MASK_MODE_INT_MAX = 2147483647;
 
 enum class MaskMode : int32_t {
     NO_MASK = 0,
-    ALL_MASK = 1,
     CAUSAL = 3,
-    BAND = 4
+    SLIDING_WINDOW = 4
 };
 
 enum class QfaLayout : uint32_t {
@@ -123,12 +122,9 @@ enum class QfaLayout : uint32_t {
     N2TGD = 8
 };
 
-const std::map<std::string, QfaLayout> qfaLayoutMap = {{"BSND", QfaLayout::BSND},
-                                                       {"BNSD", QfaLayout::BNSD},
-                                                       {"TND", QfaLayout::TND},
-                                                       {"PA_BBND", QfaLayout::PA_BBND},
-                                                       {"PA_BNBD", QfaLayout::PA_BNBD},
-                                                       {"PA_NZ", QfaLayout::PA_NZ},
+const std::map<std::string, QfaLayout> qfaLayoutMap = {{"BSND", QfaLayout::BSND},       {"BNSD", QfaLayout::BNSD},
+                                                       {"TND", QfaLayout::TND},         {"PA_BBND", QfaLayout::PA_BBND},
+                                                       {"PA_BNBD", QfaLayout::PA_BNBD}, {"PA_NZ", QfaLayout::PA_NZ},
                                                        {"N2TGD", QfaLayout::N2TGD}};
 
 enum class QfaAxis : uint32_t {
@@ -148,7 +144,7 @@ enum class QfaAxis : uint32_t {
 };
 
 enum class QfaQuantMode : uint32_t {
-    MXFP8_FP32 = 1
+    A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 = 1
 };
 
 enum class KvStorageMode : uint32_t {
@@ -240,7 +236,7 @@ public:
     uint64_t totalLseSize = 0;
 
     // Quant Param
-    QfaQuantMode quantMode = QfaQuantMode::MXFP8_FP32;
+    QfaQuantMode quantMode = QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32;
 
     // PageAttention
     bool pageAttentionFlag = false;
@@ -342,19 +338,25 @@ constexpr float FLOAT4SIZE = 0.5f;
 
 constexpr uint32_t DOUBLE_BUFFER_NUM = 2;
 
-const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
-    {ge::DT_UNDEFINED, "DT_UNDEFINED"},     {ge::DT_FLOAT, "DT_FLOAT"},
-    {ge::DT_FLOAT16, "DT_FLOAT16"},         {ge::DT_INT8, "DT_INT8"},
-    {ge::DT_INT16, "DT_INT16"},             {ge::DT_UINT16, "DT_UINT16"},
-    {ge::DT_UINT8, "DT_UINT8"},             {ge::DT_INT32, "DT_INT32"},
-    {ge::DT_INT64, "DT_INT64"},             {ge::DT_UINT32, "DT_UINT32"},
-    {ge::DT_UINT64, "DT_UINT64"},           {ge::DT_BOOL, "DT_BOOL"},
-    {ge::DT_DOUBLE, "DT_DOUBLE"},           {ge::DT_BF16, "DT_BFLOAT16"},
-    {ge::DT_INT4, "DT_INT4"},               {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},
-    {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},
-    {ge::DT_FLOAT8_E8M0, "DT_FLOAT8_E8M0FN"},
-    {ge::DT_FLOAT4_E2M1, "DT_FLOAT4_E2M1"}
-};
+const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {{ge::DT_UNDEFINED, "DT_UNDEFINED"},
+                                                                    {ge::DT_FLOAT, "DT_FLOAT"},
+                                                                    {ge::DT_FLOAT16, "DT_FLOAT16"},
+                                                                    {ge::DT_INT8, "DT_INT8"},
+                                                                    {ge::DT_INT16, "DT_INT16"},
+                                                                    {ge::DT_UINT16, "DT_UINT16"},
+                                                                    {ge::DT_UINT8, "DT_UINT8"},
+                                                                    {ge::DT_INT32, "DT_INT32"},
+                                                                    {ge::DT_INT64, "DT_INT64"},
+                                                                    {ge::DT_UINT32, "DT_UINT32"},
+                                                                    {ge::DT_UINT64, "DT_UINT64"},
+                                                                    {ge::DT_BOOL, "DT_BOOL"},
+                                                                    {ge::DT_DOUBLE, "DT_DOUBLE"},
+                                                                    {ge::DT_BF16, "DT_BFLOAT16"},
+                                                                    {ge::DT_INT4, "DT_INT4"},
+                                                                    {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},
+                                                                    {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},
+                                                                    {ge::DT_FLOAT8_E8M0, "DT_FLOAT8_E8M0FN"},
+                                                                    {ge::DT_FLOAT4_E2M1, "DT_FLOAT4_E2M1"}};
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {QUERY_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN}},
