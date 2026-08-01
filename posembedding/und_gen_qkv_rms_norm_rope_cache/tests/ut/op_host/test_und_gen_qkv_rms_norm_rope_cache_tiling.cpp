@@ -117,7 +117,7 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_success_h16_2_2)
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_success_plain_rope_empty_mrope_section)
 {
     // mrope_section 为空时退化为 [D/2, 0, 0]，等价标准 RoPE
-    auto para = BuildTilingContext(128, 0, 8, 1, 1, HEAD_DIM, BLOCK_SIZE, 4096, {});
+    auto para = BuildTilingContext(127, 1, 8, 1, 1, HEAD_DIM, BLOCK_SIZE, 4096, {});
     TilingInfo tilingInfo;
     ASSERT_TRUE(ExecuteTiling(para, tilingInfo));
     EXPECT_EQ(tilingInfo.tilingKey, 0);
@@ -128,14 +128,14 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_success_plain_rope_empty_mrope_se
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_head_dim_unsupported)
 {
     // 仅支持 headDim = 128
-    auto para = BuildTilingContext(8, 0, 8, 1, 1, 64);
+    auto para = BuildTilingContext(7, 1, 8, 1, 1, 64);
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_num_heads_mismatch_n_dim)
 {
     // und_qkv 的 N 维按 (8,1,1) 造，但属性声明 (16,2,2)
-    auto para = BuildTilingContext(8, 0, 8, 1, 1);
+    auto para = BuildTilingContext(7, 1, 8, 1, 1);
     auto badPara = para;
     // 直接改属性，使 num_heads_q + k + v != N
     badPara.attrs_[0] = {"num_heads_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)};
@@ -144,20 +144,20 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_num_heads_mismatch_n_di
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_mrope_section_size_invalid)
 {
-    auto para = BuildTilingContext(8, 0, 8, 1, 1, HEAD_DIM, BLOCK_SIZE, 4096, {16, 16});
+    auto para = BuildTilingContext(7, 1, 8, 1, 1, HEAD_DIM, BLOCK_SIZE, 4096, {16, 16});
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_mrope_section_sum_exceeds_half)
 {
-    auto para = BuildTilingContext(8, 0, 8, 1, 1, HEAD_DIM, BLOCK_SIZE, 4096, {32, 32, 32});
+    auto para = BuildTilingContext(7, 1, 8, 1, 1, HEAD_DIM, BLOCK_SIZE, 4096, {32, 32, 32});
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_kv_cache_capacity_insufficient)
 {
     // Bn * Bs 小于 total：block_size 造成容量不足
-    auto para = BuildTilingContext(8, 0, 8, 1, 1, HEAD_DIM, BLOCK_SIZE, 4096);
+    auto para = BuildTilingContext(7, 1, 8, 1, 1, HEAD_DIM, BLOCK_SIZE, 4096);
     auto badPara = para;
     // k_cache/v_cache 改成只有 1 页 1 行
     badPara.inputTensorDesc_[4] = {{{1, 1, 1, HEAD_DIM}, {1, 1, 1, HEAD_DIM}}, ge::DT_BF16, ge::FORMAT_ND};
@@ -167,7 +167,7 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_kv_cache_capacity_insuf
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_positions_shape_invalid)
 {
-    auto para = BuildTilingContext(8, 0, 8, 1, 1);
+    auto para = BuildTilingContext(7, 1, 8, 1, 1);
     auto badPara = para;
     // positions 第一维必须是 3
     badPara.inputTensorDesc_[7] = {{{2, 8}, {2, 8}}, ge::DT_INT64, ge::FORMAT_ND};
@@ -176,7 +176,7 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_positions_shape_invalid
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_slot_mapping_length_mismatch)
 {
-    auto para = BuildTilingContext(8, 0, 8, 1, 1);
+    auto para = BuildTilingContext(7, 1, 8, 1, 1);
     auto badPara = para;
     badPara.inputTensorDesc_[6] = {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND};
     ExecuteTestCase(badPara, ge::GRAPH_FAILED);
@@ -186,7 +186,7 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_slot_mapping_length_mis
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_und_qkv_dtype_invalid)
 {
-    auto para = BuildTilingContext(8, 0, 8, 1, 1);
+    auto para = BuildTilingContext(7, 1, 8, 1, 1);
     para.inputTensorDesc_[0] = {{{8, 10, HEAD_DIM}, {8, 10, HEAD_DIM}}, ge::DT_FLOAT16, ge::FORMAT_ND};
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
@@ -194,14 +194,14 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_und_qkv_dtype_invalid)
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_cos_sin_cache_dtype_invalid)
 {
     // cos_sin_cache 必须是 FLOAT32
-    auto para = BuildTilingContext(8, 0, 8, 1, 1);
+    auto para = BuildTilingContext(7, 1, 8, 1, 1);
     para.inputTensorDesc_[3] = {{{4096, HEAD_DIM}, {4096, HEAD_DIM}}, ge::DT_BF16, ge::FORMAT_ND};
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_kv_cache_dtype_invalid)
 {
-    auto para = BuildTilingContext(8, 0, 8, 1, 1);
+    auto para = BuildTilingContext(7, 1, 8, 1, 1);
     para.inputTensorDesc_[4] = {{{2, BLOCK_SIZE, 1, HEAD_DIM}, {2, BLOCK_SIZE, 1, HEAD_DIM}},
                                 ge::DT_FLOAT16, ge::FORMAT_ND};
     ExecuteTestCase(para, ge::GRAPH_FAILED);
@@ -210,14 +210,14 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_kv_cache_dtype_invalid)
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_slot_mapping_dtype_invalid)
 {
     // 索引类张量统一 int64，int32 应被拒
-    auto para = BuildTilingContext(8, 0, 8, 1, 1);
+    auto para = BuildTilingContext(7, 1, 8, 1, 1);
     para.inputTensorDesc_[6] = {{{8}, {8}}, ge::DT_INT32, ge::FORMAT_ND};
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_positions_dtype_invalid)
 {
-    auto para = BuildTilingContext(8, 0, 8, 1, 1);
+    auto para = BuildTilingContext(7, 1, 8, 1, 1);
     para.inputTensorDesc_[7] = {{{MROPE_AXIS_NUM, 8}, {MROPE_AXIS_NUM, 8}}, ge::DT_INT32, ge::FORMAT_ND};
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
@@ -227,21 +227,21 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_positions_dtype_invalid
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_head_combo_unsupported)
 {
     // 本期只支持 (8,1,1) 与 (16,2,2)
-    auto para = BuildTilingContext(8, 0, 4, 2, 2);
+    auto para = BuildTilingContext(7, 1, 4, 2, 2);
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_block_size_unsupported)
 {
     // block_size 只支持 128
-    auto para = BuildTilingContext(8, 0, 8, 1, 1, HEAD_DIM, 64);
+    auto para = BuildTilingContext(7, 1, 8, 1, 1, HEAD_DIM, 64);
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_kv_cache_head_num_mismatch_attr)
 {
     // k_cache 的 Hk 与 num_heads_k 不一致
-    auto para = BuildTilingContext(8, 0, 8, 1, 1);
+    auto para = BuildTilingContext(7, 1, 8, 1, 1);
     para.inputTensorDesc_[4] = {{{2, BLOCK_SIZE, 2, HEAD_DIM}, {2, BLOCK_SIZE, 2, HEAD_DIM}},
                                 ge::DT_BF16, ge::FORMAT_ND};
     ExecuteTestCase(para, ge::GRAPH_FAILED);
@@ -257,22 +257,23 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_gen_qkv_n_dim_mismatch)
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_weights_length_mismatch)
 {
-    auto para = BuildTilingContext(8, 0, 8, 1, 1);
+    auto para = BuildTilingContext(7, 1, 8, 1, 1);
     para.inputTensorDesc_[1] = {{{64}, {64}}, ge::DT_BF16, ge::FORMAT_ND};
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_cos_sin_cache_dim_mismatch)
 {
-    auto para = BuildTilingContext(8, 0, 8, 1, 1);
+    auto para = BuildTilingContext(7, 1, 8, 1, 1);
     para.inputTensorDesc_[3] = {{{4096, 64}, {4096, 64}}, ge::DT_FLOAT, ge::FORMAT_ND};
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-// ==================== 可选输入缺省的退化路径 ====================
-// gen_qkv / gen_weights_q / gen_weights_k / cat_indices 全部不传：
-// 通过 IrInstanceNum 把这 4 个可选输入的实例数置 0 表达"未提供"。
-TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_success_prefill_only_without_optional_inputs)
+// ==================== 可选输入缺省：当前不支持 ====================
+// gen_qkv / gen_weights_q / gen_weights_k / cat_indices 当前必须全部提供，
+// 缺省的退化路径（纯 prefill、单序列恒等映射）暂不支持，tiling 必须拦截。
+// IR/OpDef 仍保留 OPTIONAL 声明，后续放开时把这几个用例改回成功路径即可。
+TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_all_optional_inputs_absent)
 {
     constexpr int64_t undLen = 128;
     constexpr int64_t numHeadQ = 8;
@@ -320,10 +321,24 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_success_prefill_only_without_opti
     para.inputInstanceNum_ = {1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0};
     para.outputInstanceNum_ = {1, 1, 1};
 
-    TilingInfo tilingInfo;
-    ASSERT_TRUE(ExecuteTiling(para, tilingInfo));
-    EXPECT_EQ(tilingInfo.tilingKey, 0);
-    EXPECT_GT(tilingInfo.tilingDataSize, 0U);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+// cat_indices 单独缺省同样不支持
+TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_cat_indices_absent)
+{
+    auto para = BuildTilingContext(5, 3, 8, 1, 1);
+    para.inputTensorDesc_.erase(para.inputTensorDesc_.begin() + 11, para.inputTensorDesc_.end());
+    para.inputInstanceNum_ = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0};
+    para.outputInstanceNum_ = {1, 1, 1};
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+// gen_qkv 提供但 gen_len == 0（纯 prefill 的另一种表达）同样不支持
+TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_gen_len_zero)
+{
+    auto para = BuildTilingContext(8, 0, 8, 1, 1);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
 // gen_qkv 提供但 gen_weights 缺省时必须失败
