@@ -43,6 +43,7 @@ struct MoeEpDispatchInfo {
     uint32_t isMxQuant;
     uint32_t networkMode;
     uint32_t rankSizePerServer; // 单超节点内rank数
+    uint32_t debugChannelZeroStageMask; // 调试时选择回退到channel 0的通信阶段
     uint32_t numScaleupRanks;
     uint32_t numScaleoutRanks;
     uint32_t numAivStage1;
