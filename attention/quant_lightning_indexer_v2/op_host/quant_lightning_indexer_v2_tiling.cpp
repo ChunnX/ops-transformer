@@ -309,7 +309,7 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
     }
 
     OP_CHECK_IF(((std::string(opParamInfo_.layOutQuery) != "BSND") &&
-                (std::string(opParamInfo_.layOutQuery) != "TND")),
+                 (std::string(opParamInfo_.layOutQuery) != "TND")),
                 OP_LOGE(opName_, "input attr layout_query only supported BSND or TND."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(((std::string(opParamInfo_.layOutKey) != "PA_BBND") &&
                  (std::string(opParamInfo_.layOutQuery)) != (std::string(opParamInfo_.layOutKey))),
@@ -327,9 +327,9 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                     return ge::GRAPH_FAILED);
     } else if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF((*opParamInfo_.quantMode != QUANT_MODE_FP8) && (*opParamInfo_.quantMode != QUANT_MODE_INT8) &&
-                    (*opParamInfo_.quantMode != QUANT_MODE_MXFP8) &&
-                    (*opParamInfo_.quantMode != QUANT_MODE_HIFLOAT8) &&
-                    (*opParamInfo_.quantMode != QUANT_MODE_MXFP4),
+                        (*opParamInfo_.quantMode != QUANT_MODE_MXFP8) &&
+                        (*opParamInfo_.quantMode != QUANT_MODE_HIFLOAT8) &&
+                        (*opParamInfo_.quantMode != QUANT_MODE_MXFP4),
                     OP_LOGE(opName_, "input attr quant_mode only supported 1, 2, 3, 4 and 5."),
                     return ge::GRAPH_FAILED);
     }
@@ -444,17 +444,17 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
     } else if (npuArch_ == NpuArch::DAV_3510) {
         if (inputQType_ == ge::DT_INT8) {
             OP_CHECK_IF(weightsType_ != ge::DT_FLOAT16,
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "weights",
-                    QLIV2DataTypeToSerialString(weightsType_).c_str(),
-                    "When data types of input query is int8, the data types of the input weights must be float16"),
-                return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "weights",
+                                                              QLIV2DataTypeToSerialString(weightsType_).c_str(),
+                                                              "When data types of input query is int8, the data types of the input weights must be float16"),
+                        return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(weightsType_ != ge::DT_FLOAT,
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "weights",
-                    QLIV2DataTypeToSerialString(weightsType_).c_str(),
-                    "When data types of input query is not int8, "
-                    "the data types of the input weights must be float"),
-                return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "weights",
+                                                              QLIV2DataTypeToSerialString(weightsType_).c_str(),
+                                                              "When data types of input query is not int8, "
+                                                              "the data types of the input weights must be float"),
+                        return ge::GRAPH_FAILED);
         }
     }
 
@@ -1246,6 +1246,12 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
 {
     bool keyNonContiguous = false;
     bool scaleNonContiguous = false;
+    uint32_t keyReportAxis = 0;
+    uint32_t keyReportActual = 0;
+    uint32_t keyReportExpected = 0;
+    uint32_t scaleReportAxis = 0;
+    uint32_t scaleReportActual = 0;
+    uint32_t scaleReportExpected = 0;
     // A5 PA_BBND: 0轴允许非连续，从1轴开始检查；非PA_BBND或A3: 从0轴开始检查
     // PA_BBND: axis 0 allows non-contiguous, check starts from axis 1
     // Non-PA_BBND: check starts from axis 0
@@ -1260,9 +1266,13 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
             expectedStrides = {shape.GetDim(1) * shape.GetDim(2), shape.GetDim(2), 1};
         }
         for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
-            if (i < keyStridesVec_.size() && keyStridesVec_[i] != expectedStrides[i]) {
-                keyNonContiguous = true;
-                break;
+            keyReportAxis = static_cast<uint32_t>(i);
+            if (i < keyStridesVec_.size()) {
+                keyReportActual = keyStridesVec_[i];
+                keyReportExpected = expectedStrides[i];
+                if (keyStridesVec_[i] != expectedStrides[i]) {
+                    keyNonContiguous = true;
+                }
             }
         }
     }
@@ -1288,9 +1298,13 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
             }
         }
         for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
-            if (i < keyDequantScaleStridesVec_.size() && keyDequantScaleStridesVec_[i] != expectedStrides[i]) {
-                scaleNonContiguous = true;
-                break;
+            scaleReportAxis = static_cast<uint32_t>(i);
+            if (i < keyDequantScaleStridesVec_.size()) {
+                scaleReportActual = keyDequantScaleStridesVec_[i];
+                scaleReportExpected = expectedStrides[i];
+                if (keyDequantScaleStridesVec_[i] != expectedStrides[i]) {
+                    scaleNonContiguous = true;
+                }
             }
         }
     }
@@ -1325,7 +1339,13 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
         keyNonContiguous || scaleNonContiguous,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "keyNonContiguous and scaleNonContiguous",
                                               std::string(keyNonContiguous ? "true" : "false") + " and " +
-                                                  std::string(scaleNonContiguous ? "true" : "false"),
+                                                  std::string(scaleNonContiguous ? "true" : "false") +
+                                                  ", key stride[" + std::to_string(keyReportAxis) + "]=" +
+                                                  std::to_string(keyReportActual) + " != expected=" +
+                                                  std::to_string(keyReportExpected) + ", keyscale stride[" +
+                                                  std::to_string(scaleReportAxis) + "]=" +
+                                                  std::to_string(scaleReportActual) + " != expected=" +
+                                                  std::to_string(scaleReportExpected),
                                               "key and keyscale only support non-continuous keying on the 0-axis"),
         return ge::GRAPH_FAILED);
 
