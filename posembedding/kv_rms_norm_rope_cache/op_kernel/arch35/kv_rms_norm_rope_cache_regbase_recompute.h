@@ -104,11 +104,11 @@ public:
         if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                       IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
             // scaleoffset需要放scale和offset，所以需要2 * 1 * ubFactor * sizeof(float)
-            pipe_->InitBuffer(kScaleOffsetQueue, BUFFER_COUNT_SINGLE, 2 * this->ubFactor * sizeof(float));
+            pipe_->InitBuffer(kScaleOffsetQueue, BUFFER_COUNT_DOUBLE, 2 * this->ubFactor * sizeof(float));
         }
         if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
                       IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
-            pipe_->InitBuffer(vScaleOffsetQueue, BUFFER_COUNT_SINGLE, 2 * this->ubFactor * sizeof(float));
+            pipe_->InitBuffer(vScaleOffsetQueue, BUFFER_COUNT_DOUBLE, 2 * this->ubFactor * sizeof(float));
         }
     }
 
