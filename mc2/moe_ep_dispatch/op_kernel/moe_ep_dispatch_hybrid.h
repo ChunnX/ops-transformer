@@ -265,6 +265,7 @@ private:
     uint32_t aivNum_{0};
     uint32_t epRankId_{0};
     uint32_t aivId_{0};
+    uint32_t hybridCommChannelIndex_{0}; // 有空闲channel时隔离dispatch和后续combine通信
     uint32_t rankSizePerServer_{0};
     uint32_t currentServerIndex_{0};
     uint32_t serverStartRank_{0};
@@ -334,6 +335,11 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     epRankId_ = mc2Context_->epRankId;
 
     InitTilingFields(tilingData);
+    uint32_t channelsPerRank = mc2Context_->channelsPerRank == 0U ? 1U : mc2Context_->channelsPerRank;
+    uint32_t combineChannelCountPerRank = Ceil(aivNum_, epWorldSize_);
+    if (channelsPerRank > combineChannelCountPerRank) {
+        hybridCommChannelIndex_ = channelsPerRank - 1U;
+    }
     InitGlobalTensors(x, topkIdx, topkWeights, scales, cachedSlotIdx, cachedRouteCount, cachedRouteDstScaleout,
                       cachedRouteScaleoutSlot, numRecvPerRank, numRecvPerExpert, dstBufferSlotIdx, routeCount,
                       routeDstScaleout, routeScaleoutSlot);
@@ -794,7 +800,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     GM_ADDR remoteCountAddr = remoteStateAddr + epWorldSize_ * WIN_ADDR_ALIGN + epRankId_ * moeNumPerRankAlign512_;
     GM_ADDR srcWorkspaceAddr =
         sendCntWorkspaceAddr_ + cntPerRankSizeAlign512_ + dstRankId * moeExpertNumPerRank_ * sizeof(int32_t);
-    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
+    uint64_t commHandle =
+        MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId, hybridCommChannelIndex_);
 
     // notifyValue 的低 32 位为 ready，高 32 位为该目标 rank 的 token count。
     if (aivId_ < 2U) {
@@ -1339,7 +1346,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     uint32_t remoteServerOrdinal, uint32_t dstScaleoutIndex, uint32_t proxyRankId,
     uint32_t scaleoutSlotCount)
 {
-    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, proxyRankId);
+    uint64_t commHandle =
+        MoeEpDispatchBase::GetCommHandle(mc2Context_, proxyRankId, hybridCommChannelIndex_);
     GM_ADDR remoteScaleoutBase =
         MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, proxyRankId, scaleoutRecvDataOffset_);
     GM_ADDR remoteStatusBase =
@@ -1679,7 +1687,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     uint32_t dstRankId)
 {
     uint64_t commHandle =
-        dstRankId == epRankId_ ? 0UL : MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
+        dstRankId == epRankId_ ? 0UL :
+        MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId, hybridCommChannelIndex_);
     bool hasRemotePayload = false;
     SendSourceScaleupDescriptors(dstRankId, commHandle, hasRemotePayload);
     SendFanoutDescriptors(dstRankId, commHandle, hasRemotePayload);
@@ -1754,7 +1763,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         return;
     }
 
-    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
+    uint64_t commHandle =
+        MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId, hybridCommChannelIndex_);
     GM_ADDR readySourceAddr = sendCntWorkspaceAddr_ + dstRankId * WIN_ADDR_ALIGN;
     __gm__ uint64_t *readySourceGm = reinterpret_cast<__gm__ uint64_t *>(readySourceAddr);
     uint64_t readyVal = *readySourceGm;
@@ -2085,8 +2095,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     if ASCEND_IS_AIV { // 全aiv处理
         AdvanceDebugRoundTag();
         if (aivId_ == 0U) {
-            AscendC::PRINTF("[MOE_EP_TRACE] dispatch_enter rank=%u round=%u\n",
-                            epRankId_, GetDebugRoundTag());
+            AscendC::PRINTF("[MOE_EP_TRACE] dispatch_enter rank=%u round=%u channel=%u\n",
+                            epRankId_, GetDebugRoundTag(), hybridCommChannelIndex_);
         }
         PrepareDispatchPayloads();
         TransferDispatchPayloads();
