@@ -1,0 +1,8 @@
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=1735e2149f41ff44a2763816491c064147eaf9239c9c685b72b55656658078f7
+[PROFILE] prep=8883.532 kernel(incl gather)=2.058 reduce=0.001 scatter=0.001 total=8885.591ms
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=2c24627d3c859af6950ed2b0a42bdbfe01197eddff8cbc31ca0aa4e06b1a37e7
+[PROFILE] prep=8719.428 kernel(incl gather)=7.392 reduce=0.001 scatter=0.001 total=8726.821ms
+Summary: total=2 pass=2 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9

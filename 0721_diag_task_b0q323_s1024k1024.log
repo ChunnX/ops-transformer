@@ -1,0 +1,202 @@
+[W801 18:14:35.095089462 compiler_depend.ts:26] Warning: Warning: kernel [ArgSort] can not support dtype int32 or int64 on AiCore, Now this kernel is running on AiCpu.If you are more concerned about high-performance execution,please cast dtype to float32. (function operator())
+WARNING: 诊断或 profile 环境变量已启用，禁止将本次结果用于性能测试。
+0721 general test: suite=all, cases=1, benchmark=False, resource_excluded=9
+Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on the 61 GiB device; TND S1*K=16.78M also OOMs.
+
+========================================================================================
+[00] bsnd_b1_s1_1024_k_1024: suite=core kind=coverage layout=BSND B=1 S1=1024 S2=1024 N1=32 Nidx1=8 K=1024 valid_k=[1,1024] exec_k=1024 scatter_exec_k=1024 invalid=523776 path=tail-protected dtype=bfloat16
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=68d9b7176d55331e71737e348d85fbb7edea08473f53a5a1c56c393be7a0b513
+[DEBUG_TASK] selected b=0 q=323 kReal=324 full_valid=False
+[DEBUG_TASK] GatherKey_ws: shape=(1024, 512), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] GatherKeyRope_ws: shape=(1024, 128), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] GatherKeyIndex_ws: shape=(1024, 128), nonfinite=0, finite_abs_max=3.328125e+00
+[DEBUG_TASK] bmm1Res: shape=(32, 1024), nonfinite=0, finite_abs_max=9.250245e+01
+[DEBUG_TASK] bmm2Res: shape=(8, 1024), nonfinite=0, finite_abs_max=3.848524e+01
+[DEBUG_TASK] PReduced: shape=(1024,), nonfinite=0, finite_abs_max=2.530411e-03
+[DEBUG_TASK] V1Stats: shape=(4, 8), nonfinite=0, finite_abs_max=1.157898e+02
+[DEBUG_TASK] DWeightPartial: shape=(2, 8), nonfinite=0, finite_abs_max=1.439261e+00
+[DEBUG_TASK] LossPartial owners: shape=(2,), nonfinite=0, finite_abs_max=3.211941e+00
+[DEBUG_TASK] Loss PReduced valid: shape=(324,), nonfinite=0, finite_abs_max=2.530411e-03
+[DEBUG_TASK] Loss SY reconstructed valid: shape=(324,), nonfinite=0, finite_abs_max=6.146794e-03
+[DEBUG_TASK] Loss owner=0 slot=5168 actual=3.211941e+00 host_reconstructed_sum=3.211941e+00 min=-2.019550e-03 max=3.148162e-02 nonfinite=0
+[DEBUG_TASK] Loss owner=1 slot=5176 actual=0.000000e+00 host_reconstructed_sum=0.000000e+00 min=0.000000e+00 max=0.000000e+00 nonfinite=0
+[DEBUG_TASK] dWeightOut: shape=(8,), nonfinite=0, finite_abs_max=1.437500e+00
+[DEBUG_TASK] reluGradRes: shape=(8, 1024), nonfinite=0, finite_abs_max=7.080078e-03
+[DEBUG_TASK] GatherKey_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKeyRope_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] BMM1 vs Query @ GatherKey.T plus Rope (valid K): max_diff=3.433228e-05, mean_diff=2.305310e-06, norm_rel=1.579447e-07, nonfinite=0
+[DEBUG_TASK] BMM1 host-gather cross-check (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKeyIndex_ws vs host gather (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] GatherKey_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] GatherKeyRope_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] GatherKeyIndex_ws bad rows: count=0 first(row,chunk,lane,sparse_idx)=[]
+[DEBUG_TASK] Gather bad-row overlap: all=[] key_only=[] rope_only=[] key_index_only=[] union_count=0
+[DEBUG_TASK] bmm2Res vs QueryIndex @ GatherKeyIndex_ws.T (valid K): max_diff=7.629395e-06, mean_diff=1.404113e-07, norm_rel=6.197846e-08, nonfinite=0
+[DEBUG_TASK] bmm2 host-gather cross-check (valid K): max_diff=0.000000e+00, mean_diff=0.000000e+00, norm_rel=0.000000e+00, nonfinite=0
+[DEBUG_TASK] PReduced vs BMM1 formula: max_diff=5.684671e-04, mean_diff=3.886006e-04, norm_rel=8.376123e-01, nonfinite=0
+[DEBUG_TASK] V1Stats scalars vs owned-K formula: max_diff=1.000000e+20, mean_diff=2.500000e+19, norm_rel=nan, nonfinite=0
+[DEBUG_TASK] DWeightPartial vs owned-K formula: max_diff=6.398059e+00, mean_diff=7.410461e-01, norm_rel=1.174831e+00, nonfinite=0
+[DEBUG_TASK] dWeightOut vs BMM2/P/SY formula: max_diff=6.398553e+00, mean_diff=1.480438e+00, norm_rel=1.174582e+00, nonfinite=0
+[DEBUG_TASK] reluGradRes vs BF16 formula: max_diff=3.234558e-01, mean_diff=1.921875e-04, norm_rel=9.763498e-01, nonfinite=0
+[DEBUG_TASK] reluGrad mismatch summary: total=142 false_zero=0 false_nonzero=0 wrong_nonzero=142 significant_false_zero=0 significant_false_nonzero=0 significant_wrong_nonzero=39 diff_gt_1e-3=39 diff_gt_1e-2=16
+[DEBUG_TASK] reluGrad bad tiles (aiv,n_idx,bw_col,count)=[(1, 0, 0, 6), (0, 0, 0, 5), (0, 0, 1, 5), (0, 1, 1, 5), (1, 1, 0, 5), (1, 0, 1, 4), (1, 1, 1, 3), (0, 2, 1, 2), (1, 2, 0, 2), (0, 1, 0, 1), (1, 2, 1, 1)]
+[DEBUG_TASK] reluGrad error[0]: coord=(h=4,k=88) tile=(aiv=1,n_idx=0,bw_col=1) local=(h=0,group=0,col=24) actual=-6.622314e-03 expected=-3.300781e-01 unmasked=-3.298942e-01 bmm2=2.098508e-01 diff=1.336280e-01 weight=-2.468750e+00 valid=1
+[DEBUG_TASK] reluGrad error[1]: coord=(h=2,k=46) tile=(aiv=0,n_idx=0,bw_col=0) local=(h=2,group=0,col=46) actual=-7.080078e-03 expected=-2.968750e-01 unmasked=-2.969228e-01 bmm2=1.431562e+00 diff=2.275815e-01 weight=-1.304688e+00 valid=1
+[DEBUG_TASK] reluGrad error[2]: coord=(h=2,k=11) tile=(aiv=0,n_idx=0,bw_col=0) local=(h=2,group=0,col=11) actual=-5.676270e-03 expected=-2.792969e-01 unmasked=-2.802201e-01 bmm2=4.650521e-01 diff=2.147795e-01 weight=-1.304688e+00 valid=1
+[DEBUG_TASK] reluGrad error[3]: coord=(h=3,k=11) tile=(aiv=0,n_idx=0,bw_col=0) local=(h=3,group=0,col=11) actual=-2.761841e-03 expected=-1.357422e-01 unmasked=-1.359151e-01 bmm2=2.127592e+00 diff=2.147795e-01 weight=-6.328125e-01 valid=1
+[DEBUG_TASK] reluGrad error[4]: coord=(h=3,k=88) tile=(aiv=0,n_idx=0,bw_col=1) local=(h=3,group=0,col=24) actual=-1.701355e-03 expected=-8.447266e-02 unmasked=-8.456150e-02 bmm2=1.110009e+00 diff=1.336280e-01 weight=-6.328125e-01 valid=1
+[DEBUG_TASK] reluGrad error[5]: coord=(h=6,k=46) tile=(aiv=1,n_idx=0,bw_col=0) local=(h=2,group=0,col=46) actual=1.701355e-03 expected=7.177734e-02 unmasked=7.156372e-02 bmm2=1.339114e+01 diff=2.275815e-01 weight=3.144531e-01 valid=1
+[DEBUG_TASK] reluGrad error[6]: coord=(h=6,k=11) tile=(aiv=1,n_idx=0,bw_col=0) local=(h=2,group=0,col=11) actual=1.373291e-03 expected=6.738281e-02 unmasked=6.753808e-02 bmm2=1.076586e+01 diff=2.147795e-01 weight=3.144531e-01 valid=1
+[DEBUG_TASK] reluGrad error[7]: coord=(h=2,k=320) tile=(aiv=0,n_idx=2,bw_col=1) local=(h=2,group=0,col=0) actual=-1.544952e-04 expected=-5.444336e-02 unmasked=-5.451397e-02 bmm2=1.434736e-01 diff=4.178316e-02 weight=-1.304688e+00 valid=1
+[DEBUG_TASK] reluGrad error[8]: coord=(h=6,k=88) tile=(aiv=1,n_idx=0,bw_col=1) local=(h=2,group=0,col=24) actual=8.430481e-04 expected=4.199219e-02 unmasked=4.201975e-02 bmm2=6.927662e+00 diff=1.336280e-01 weight=3.144531e-01 valid=1
+[DEBUG_TASK] reluGrad error[9]: coord=(h=2,k=104) tile=(aiv=0,n_idx=0,bw_col=1) local=(h=2,group=0,col=40) actual=-2.183914e-04 expected=-3.857422e-02 unmasked=-3.852846e-02 bmm2=8.184214e-01 diff=2.953080e-02 weight=-1.304688e+00 valid=1
+[DEBUG_TASK] reluGrad error[10]: coord=(h=0,k=323) tile=(aiv=0,n_idx=2,bw_col=1) local=(h=0,group=0,col=3) actual=1.266479e-03 expected=-2.514648e-02 unmasked=-2.515543e-02 bmm2=6.847087e-01 diff=1.341623e-02 weight=-1.875000e+00 valid=1
+[DEBUG_TASK] reluGrad error[11]: coord=(h=1,k=235) tile=(aiv=0,n_idx=1,bw_col=1) local=(h=1,group=0,col=43) actual=-1.783371e-04 expected=-2.099609e-02 unmasked=-2.105068e-02 bmm2=8.001757e-02 diff=4.381280e-02 weight=-4.804688e-01 valid=1
+[DEBUG_TASK] reluGrad error[12]: coord=(h=6,k=150) tile=(aiv=1,n_idx=1,bw_col=0) local=(h=2,group=0,col=22) actual=8.630753e-05 expected=1.647949e-02 unmasked=1.653217e-02 bmm2=5.442649e-01 diff=5.257436e-02 weight=3.144531e-01 valid=1
+[DEBUG_TASK] reluGrad error[13]: coord=(h=5,k=217) tile=(aiv=1,n_idx=1,bw_col=1) local=(h=1,group=0,col=25) actual=6.942749e-04 expected=-1.556396e-02 unmasked=-1.558663e-02 bmm2=6.088109e-01 diff=1.488872e-02 weight=-1.046875e+00 valid=1
+[DEBUG_TASK] reluGrad error[14]: coord=(h=1,k=104) tile=(aiv=0,n_idx=0,bw_col=1) local=(h=1,group=0,col=40) actual=-8.058548e-05 expected=-1.416016e-02 unmasked=-1.418863e-02 bmm2=4.112048e-01 diff=2.953080e-02 weight=-4.804688e-01 valid=1
+[DEBUG_TASK] reluGrad error[15]: coord=(h=7,k=46) tile=(aiv=1,n_idx=0,bw_col=0) local=(h=3,group=0,col=46) actual=-3.204346e-04 expected=-1.342773e-02 unmasked=-1.344598e-02 bmm2=1.449841e+01 diff=2.275815e-01 weight=-5.908203e-02 valid=1
+[DEBUG_TASK] C2 dQueryAccum vs stored reluGrad: max_diff=7.450581e-09, mean_diff=3.603233e-10, norm_rel=5.160426e-08, nonfinite=0
+[DEBUG_TASK] C2 dk_partial vs stored reluGrad: max_diff=9.313226e-10, mean_diff=2.398082e-14, norm_rel=2.336124e-09, nonfinite=0
+  TileLang: completed
+  Official: completed
+  dQueryIndex  max_abs=3.115387e+00 mean_abs=2.013479e-03 mean_rel=5.402719e-02 norm_rel=4.912513e-02
+  dKeyIndex    max_abs=3.968750e+00 mean_abs=1.102774e-02 mean_rel=8.069853e-02 norm_rel=4.516253e-02
+  dWeights     max_abs=2.032812e+01 mean_abs=5.805180e-02 mean_rel=3.045597e-02 norm_rel=5.711221e-02
+  Loss         max_abs=4.728516e+00 mean_abs=4.728516e+00 mean_rel=8.216577e-04 norm_rel=8.216577e-04
+  batch=0 dQueryIndex=4.91e-02 dKeyIndex=4.52e-02 dWeights=5.71e-02
+  query诊断：launch_cores=24 tasks_per_core=43 first_failed=b=0 q=0 task=0 failed=36/1024
+    b= 0 q=   0 task=   0 round= 0 core= 0 kReal=    1 dQ_norm=1.00e+00 dW_norm=1.00e+00
+    b= 0 q=   1 task=   1 round= 0 core= 1 kReal=    2 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  23 task=  23 round= 0 core=23 kReal=   24 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  24 task=  24 round= 1 core= 0 kReal=   25 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  25 task=  25 round= 1 core= 1 kReal=   26 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  47 task=  47 round= 1 core=23 kReal=   48 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  48 task=  48 round= 2 core= 0 kReal=   49 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  49 task=  49 round= 2 core= 1 kReal=   50 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  71 task=  71 round= 2 core=23 kReal=   72 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  72 task=  72 round= 3 core= 0 kReal=   73 dQ_norm=7.55e-01 dW_norm=7.78e-01
+    b= 0 q=  73 task=  73 round= 3 core= 1 kReal=   74 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  95 task=  95 round= 3 core=23 kReal=   96 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  96 task=  96 round= 4 core= 0 kReal=   97 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=  97 task=  97 round= 4 core= 1 kReal=   98 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 119 task= 119 round= 4 core=23 kReal=  120 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 120 task= 120 round= 5 core= 0 kReal=  121 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 121 task= 121 round= 5 core= 1 kReal=  122 dQ_norm=7.90e-01 dW_norm=8.37e-01
+    b= 0 q= 143 task= 143 round= 5 core=23 kReal=  144 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 144 task= 144 round= 6 core= 0 kReal=  145 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 145 task= 145 round= 6 core= 1 kReal=  146 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 167 task= 167 round= 6 core=23 kReal=  168 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 168 task= 168 round= 7 core= 0 kReal=  169 dQ_norm=1.17e-02 dW_norm=1.22e-02
+    b= 0 q= 169 task= 169 round= 7 core= 1 kReal=  170 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 191 task= 191 round= 7 core=23 kReal=  192 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 192 task= 192 round= 8 core= 0 kReal=  193 dQ_norm=1.47e-01 dW_norm=1.57e-01
+    b= 0 q= 193 task= 193 round= 8 core= 1 kReal=  194 dQ_norm=3.12e-05 dW_norm=0.00e+00
+    b= 0 q= 215 task= 215 round= 8 core=23 kReal=  216 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 216 task= 216 round= 9 core= 0 kReal=  217 dQ_norm=5.53e-05 dW_norm=0.00e+00
+    b= 0 q= 217 task= 217 round= 9 core= 1 kReal=  218 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 239 task= 239 round= 9 core=23 kReal=  240 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 240 task= 240 round=10 core= 0 kReal=  241 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 241 task= 241 round=10 core= 1 kReal=  242 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 263 task= 263 round=10 core=23 kReal=  264 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 264 task= 264 round=11 core= 0 kReal=  265 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 265 task= 265 round=11 core= 1 kReal=  266 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 287 task= 287 round=11 core=23 kReal=  288 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 288 task= 288 round=12 core= 0 kReal=  289 dQ_norm=3.34e-02 dW_norm=0.00e+00
+    b= 0 q= 289 task= 289 round=12 core= 1 kReal=  290 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 311 task= 311 round=12 core=23 kReal=  312 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 312 task= 312 round=13 core= 0 kReal=  313 dQ_norm=5.02e-06 dW_norm=0.00e+00
+    b= 0 q= 313 task= 313 round=13 core= 1 kReal=  314 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 335 task= 335 round=13 core=23 kReal=  336 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 336 task= 336 round=14 core= 0 kReal=  337 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 337 task= 337 round=14 core= 1 kReal=  338 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 359 task= 359 round=14 core=23 kReal=  360 dQ_norm=3.87e-06 dW_norm=0.00e+00
+    b= 0 q= 360 task= 360 round=15 core= 0 kReal=  361 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 361 task= 361 round=15 core= 1 kReal=  362 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 383 task= 383 round=15 core=23 kReal=  384 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 384 task= 384 round=16 core= 0 kReal=  385 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 385 task= 385 round=16 core= 1 kReal=  386 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 407 task= 407 round=16 core=23 kReal=  408 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 408 task= 408 round=17 core= 0 kReal=  409 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 409 task= 409 round=17 core= 1 kReal=  410 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 431 task= 431 round=17 core=23 kReal=  432 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 432 task= 432 round=18 core= 0 kReal=  433 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 433 task= 433 round=18 core= 1 kReal=  434 dQ_norm=1.26e-06 dW_norm=0.00e+00
+    b= 0 q= 455 task= 455 round=18 core=23 kReal=  456 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 456 task= 456 round=19 core= 0 kReal=  457 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 457 task= 457 round=19 core= 1 kReal=  458 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 479 task= 479 round=19 core=23 kReal=  480 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 480 task= 480 round=20 core= 0 kReal=  481 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 481 task= 481 round=20 core= 1 kReal=  482 dQ_norm=5.48e-01 dW_norm=6.05e-01
+    b= 0 q= 503 task= 503 round=20 core=23 kReal=  504 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 504 task= 504 round=21 core= 0 kReal=  505 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 505 task= 505 round=21 core= 1 kReal=  506 dQ_norm=1.07e-01 dW_norm=1.16e-01
+    b= 0 q= 527 task= 527 round=21 core=23 kReal=  528 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 528 task= 528 round=22 core= 0 kReal=  529 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 529 task= 529 round=22 core= 1 kReal=  530 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 551 task= 551 round=22 core=23 kReal=  552 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 552 task= 552 round=23 core= 0 kReal=  553 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 553 task= 553 round=23 core= 1 kReal=  554 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 575 task= 575 round=23 core=23 kReal=  576 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 576 task= 576 round=24 core= 0 kReal=  577 dQ_norm=9.94e-07 dW_norm=0.00e+00
+    b= 0 q= 577 task= 577 round=24 core= 1 kReal=  578 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 599 task= 599 round=24 core=23 kReal=  600 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 600 task= 600 round=25 core= 0 kReal=  601 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 601 task= 601 round=25 core= 1 kReal=  602 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 623 task= 623 round=25 core=23 kReal=  624 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 624 task= 624 round=26 core= 0 kReal=  625 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 625 task= 625 round=26 core= 1 kReal=  626 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 647 task= 647 round=26 core=23 kReal=  648 dQ_norm=2.17e-01 dW_norm=2.87e-01
+    b= 0 q= 648 task= 648 round=27 core= 0 kReal=  649 dQ_norm=1.25e-05 dW_norm=0.00e+00
+    b= 0 q= 649 task= 649 round=27 core= 1 kReal=  650 dQ_norm=2.23e-06 dW_norm=0.00e+00
+    b= 0 q= 671 task= 671 round=27 core=23 kReal=  672 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 672 task= 672 round=28 core= 0 kReal=  673 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 673 task= 673 round=28 core= 1 kReal=  674 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 695 task= 695 round=28 core=23 kReal=  696 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 696 task= 696 round=29 core= 0 kReal=  697 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 697 task= 697 round=29 core= 1 kReal=  698 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 719 task= 719 round=29 core=23 kReal=  720 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 720 task= 720 round=30 core= 0 kReal=  721 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 721 task= 721 round=30 core= 1 kReal=  722 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 743 task= 743 round=30 core=23 kReal=  744 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 744 task= 744 round=31 core= 0 kReal=  745 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 745 task= 745 round=31 core= 1 kReal=  746 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 767 task= 767 round=31 core=23 kReal=  768 dQ_norm=1.11e-04 dW_norm=0.00e+00
+    b= 0 q= 768 task= 768 round=32 core= 0 kReal=  769 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 769 task= 769 round=32 core= 1 kReal=  770 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 791 task= 791 round=32 core=23 kReal=  792 dQ_norm=6.39e-05 dW_norm=0.00e+00
+    b= 0 q= 792 task= 792 round=33 core= 0 kReal=  793 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 793 task= 793 round=33 core= 1 kReal=  794 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 815 task= 815 round=33 core=23 kReal=  816 dQ_norm=1.25e-01 dW_norm=1.55e-01
+    b= 0 q= 816 task= 816 round=34 core= 0 kReal=  817 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 817 task= 817 round=34 core= 1 kReal=  818 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 839 task= 839 round=34 core=23 kReal=  840 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 840 task= 840 round=35 core= 0 kReal=  841 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 841 task= 841 round=35 core= 1 kReal=  842 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 863 task= 863 round=35 core=23 kReal=  864 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 864 task= 864 round=36 core= 0 kReal=  865 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 865 task= 865 round=36 core= 1 kReal=  866 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 887 task= 887 round=36 core=23 kReal=  888 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 888 task= 888 round=37 core= 0 kReal=  889 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 889 task= 889 round=37 core= 1 kReal=  890 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 911 task= 911 round=37 core=23 kReal=  912 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 912 task= 912 round=38 core= 0 kReal=  913 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 913 task= 913 round=38 core= 1 kReal=  914 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 935 task= 935 round=38 core=23 kReal=  936 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 936 task= 936 round=39 core= 0 kReal=  937 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 937 task= 937 round=39 core= 1 kReal=  938 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 959 task= 959 round=39 core=23 kReal=  960 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 960 task= 960 round=40 core= 0 kReal=  961 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 961 task= 961 round=40 core= 1 kReal=  962 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 983 task= 983 round=40 core=23 kReal=  984 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 984 task= 984 round=41 core= 0 kReal=  985 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q= 985 task= 985 round=41 core= 1 kReal=  986 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=1007 task=1007 round=41 core=23 kReal= 1008 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=1008 task=1008 round=42 core= 0 kReal= 1009 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=1009 task=1009 round=42 core= 1 kReal= 1010 dQ_norm=9.60e-07 dW_norm=0.00e+00
+    b= 0 q=1022 task=1022 round=42 core=14 kReal= 1023 dQ_norm=0.00e+00 dW_norm=0.00e+00
+    b= 0 q=1023 task=1023 round=42 core=15 kReal= 1024 dQ_norm=5.26e-04 dW_norm=0.00e+00
+  query最差：b0q323(task=323,dQ=9.8e-01,dW=1.2e+00), b0q139(task=139,dQ=9.9e-01,dW=1.1e+00), b0q67(task=67,dQ=9.9e-01,dW=1.0e+00), b0q498(task=498,dQ=8.8e-01,dW=1.0e+00), b0q333(task=333,dQ=9.3e-01,dW=1.0e+00), b0q15(task=15,dQ=1.0e+00,dW=1.0e+00), b0q11(task=11,dQ=1.0e+00,dW=1.0e+00), b0q3(task=3,dQ=1.0e+00,dW=1.0e+00), b0q7(task=7,dQ=1.0e+00,dW=1.0e+00), b0q0(task=0,dQ=1.0e+00,dW=1.0e+00)
+[00] bsnd_b1_s1_1024_k_1024 PRECISION_FAIL dQ_norm=4.91e-02 dK_norm=4.52e-02 dW_norm=5.71e-02 Loss_norm=8.22e-04
+Summary: total=1 pass=0 fail=1 precision=1 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
