@@ -73,6 +73,8 @@ __simd_vf__ inline void InverseAIVVF(__ubuf__ float *attnUb, __ubuf__ float *inv
             StoreAlign<float, StoreDist::DIST_NORM_B32>(yLocalUb + (i + r) * inverseVecLen, v_y, preg_32);
         }
 
+        Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
+
         RegTensor<float> v_yFinal;
         LoadAlign<float>(v_yFinal, yLocalUb + i * inverseVecLen);
 
@@ -81,6 +83,8 @@ __simd_vf__ inline void InverseAIVVF(__ubuf__ float *attnUb, __ubuf__ float *inv
 
         Sub<float, MaskMergeMode::ZEROING>(v_ei, v_ei, v_yFinal, preg_32);
         StoreAlign<float, StoreDist::DIST_NORM_B32>(inverseRes + offset + i * chunkSize, v_ei, preg_32);
+
+        Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
     }
 }
 #endif
@@ -597,6 +601,7 @@ private:
         uint64_t eiMatrixOff = yLocalOff + inverseVecLen * inverseVecLen;
         InverseAIVVF(attnUb, inverseResUb, inverseBufBase + eiMatrixOff,
                      inverseBufBase + yLocalOff, offset, inverseVecLen, chunkSize_);
+        PipeBarrier<PIPE_V>();
 #else
         uint32_t srcShape[2] = {1, inverseVecLen};
         for (int i = 1; i < inverseVecLen; ++i) {
