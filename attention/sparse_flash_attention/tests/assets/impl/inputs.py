@@ -62,18 +62,57 @@ class SparseFlashAttentionInputAdapter:
             raise ValueError(
                 f"{name} shape mismatch: TTK={tuple(destination.shape)}, pytest={tuple(source_cpu.shape)}"
             )
-        destination.copy_(source_cpu.to(dtype=destination.dtype, device=destination.device))
+        if destination.dtype != source_cpu.dtype:
+            raise ValueError(
+                f"{name} dtype mismatch: TTK={destination.dtype}, pytest={source_cpu.dtype}"
+            )
+        destination.copy_(source_cpu.to(device=destination.device))
 
     @staticmethod
     def copy_sequence(destination, values, name):
         if destination is None:
+            if values is not None:
+                raise ValueError(
+                    f"{name} is absent from CSV but pytest parameter conversion "
+                    "produced values"
+                )
             return
+        if values is None:
+            raise ValueError(
+                f"{name} is declared by CSV but pytest parameter conversion returned None"
+            )
         source = torch.tensor(values, dtype=destination.dtype, device=destination.device)
         if source.numel() != destination.numel():
             raise ValueError(
                 f"{name} size mismatch: TTK={destination.numel()}, pytest={source.numel()}"
             )
         destination.copy_(source.reshape(destination.shape))
+
+    @staticmethod
+    def validate_api_attributes(params, scale_value, sparse_block_size,
+                                layout_query, layout_kv, sparse_mode,
+                                attention_mode, return_softmax_lse,
+                                rope_head_dim):
+        expected = {
+            "scalevalue": scale_value,
+            "sparse_blocksize": sparse_block_size,
+            "layout_query": layout_query,
+            "layout_kv": layout_kv,
+            "sparsemode": sparse_mode,
+            "attention_mode": attention_mode,
+            "return_softmax_lse": return_softmax_lse,
+            "rope_head_dim": rope_head_dim,
+        }
+        mismatches = {
+            name: (params.get(name), value)
+            for name, value in expected.items()
+            if params.get(name) != value
+        }
+        if mismatches:
+            raise ValueError(
+                "SparseFlashAttention API attributes differ from explicit pytest "
+                f"fields: {mismatches}"
+            )
 
     def generate(self, query, key, value, sparse_indices, scale_value, *, block_table=None,
                  actual_seq_lengths_query=None, actual_seq_lengths_kv=None,
@@ -82,29 +121,24 @@ class SparseFlashAttentionInputAdapter:
                  attention_mode=0, return_softmax_lse=False, testcase_name=None,
                  input_ranges=None, **kwargs):
         """Generate final API tensors and the CPU golden through pytest."""
+        del input_ranges
         golden_module = self.golden_module()
-        params = golden_module.build_pytest_params(
-            query,
-            key,
-            value,
-            sparse_indices,
-            scale_value,
-            block_table=block_table,
-            actual_seq_lengths_query=actual_seq_lengths_query,
-            actual_seq_lengths_kv=actual_seq_lengths_kv,
-            query_rope=query_rope,
-            key_rope=key_rope,
-            sparse_block_size=sparse_block_size,
-            layout_query=layout_query,
-            layout_kv=layout_kv,
-            sparse_mode=sparse_mode,
-            attention_mode=attention_mode,
-            return_softmax_lse=return_softmax_lse,
-            input_ranges=input_ranges,
-            testcase_name=testcase_name,
-            **kwargs,
+        params, pytest_golden = (
+            golden_module.SparseFlashAttentionPytestAdapter.convert_params(
+                kwargs, testcase_name
+            )
         )
-        pytest_golden = golden_module.load_pytest_golden_module()
+        self.validate_api_attributes(
+            params,
+            scale_value,
+            sparse_block_size,
+            layout_query,
+            layout_kv,
+            sparse_mode,
+            attention_mode,
+            return_softmax_lse,
+            int(kwargs["rope_head_dim"]),
+        )
         generated = pytest_golden.generate_input_tensors(params)
         outputs, generated, _ = pytest_golden.compute_cpu(generated, params)
         if outputs is None:
@@ -128,7 +162,11 @@ class SparseFlashAttentionInputAdapter:
 
         golden_module.CASE_DATA.put(
             testcase_name,
-            {"golden": golden_module.normalize_pytest_outputs(outputs, query, return_softmax_lse)},
+            {
+                "golden": golden_module.normalize_pytest_outputs(
+                    outputs, query, params["return_softmax_lse"]
+                )
+            },
         )
 
 
