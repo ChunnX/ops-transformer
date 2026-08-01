@@ -34,10 +34,10 @@ DEVICE_ID = 0
 
 
 # ── 输出精度对比开关 ──
-ENABLE_DKV_CHECK  = False
-ENABLE_DSB_CHECK  = False
+ENABLE_DWKV_CHECK  = True
+ENABLE_DWGATE_CHECK  = True
 ENABLE_APE_CHECK  = True
-ENABLE_DX_CHECK   = False
+ENABLE_DX_CHECK   = True
 
 
 # ================================================================
@@ -308,7 +308,7 @@ def npu_test(case, device):
     wkvCpu = wkvInp.cpu()
     wgateCpu = wgateInp.cpu()
 
-    dXGold, _, _, apeGold = compressor_grad_golden(
+    dXGold, dWkvGold, dWgateGold, apeGold = compressor_grad_golden(
         x=xCpu, wkv=wkvCpu, wgate=wgateCpu,
         d_cpm_kv=dcCpu, softmax_score=smCpu, kv=kvCpu,
         cu_seqlens=cuGolden, seqused=sqGolden, start_pos=spGolden,
@@ -318,74 +318,42 @@ def npu_test(case, device):
     # ── Phase 3 writes d_ape directly ──
     apeNp = dapeOutNpu.cpu().view(cmpRatio, coff * headDim)
 
-    # ── DEBUG: inspect workspace partials for Quick_coff1_cr4 ──
-    if name == "Quick_coff1_cr4":
-        ws_cpu = dapeWsNpu.cpu().float()
-        dbRows_dbg = mPerRoundAll * cmpRatio
-        apeWsSize_dbg = 2 * dbRows_dbg * headDim
-        dxWsElems_dbg = 2 * dxPerRoundAll
-        dx_ws = ws_cpu[apeWsSize_dbg:apeWsSize_dbg + dxWsElems_dbg].view(-1, hiddenSize)
-        ds_ws = ws_cpu[apeWsSize_dbg + dxWsElems_dbg:apeWsSize_dbg + 2*dxWsElems_dbg].view(-1, hiddenSize)
-        d_x_out_dbg = d_xNpu.cpu().float()
-        try:
-            dc_block0 = dcCpu[0]
-            kv_block0 = kvCpu[0]
-            sm_block0 = smCpu[0]
-            dkv_block0 = dc_block0.unsqueeze(0) * sm_block0
-            wkvCpu_f32 = wkvCpu.float()
-            dkv_wkv_0 = dkv_block0 @ wkvCpu_f32
-            dsw_block0 = dc_block0.unsqueeze(0) * kv_block0
-            col_sum0 = (sm_block0 * dsw_block0).sum(dim=0, keepdim=True)
-            dsb_block0 = sm_block0 * (dsw_block0 - col_sum0)
-            wgateCpu_f32 = wgateCpu.float()
-            dsb_wgate_0 = dsb_block0 @ wgateCpu_f32
-        except Exception as e:
-            import traceback; traceback.print_exc()
-
     result = dict(name=name, totalValid=totalValid,
                   coff=coff, cmpRatio=cmpRatio, headDim=headDim,
                   batchSize=batchSize)
 
     p_pct_thd = get_pct_thd(dataType)
 
-    # ── dkv/dsb golden 准备（仅当对应 check 开启时才计算，节省时间）──
-    # 当前 cpu_golden.compressor_grad_golden 不直接返回 dkv/dsb，
-    # 它们是 d_new_kv / d_new_score 的中间变量。
-    # 若 ENABLE_DKV_CHECK / ENABLE_DSB_CHECK 开启，需要扩展 golden 接口返回 dkv/dsb
-    # 这里先按当前 golden 接口能力，dkv/dsb 用 None 占位，开启 check 时会输出 SKIP
-    dkvGold = None
-    dsbGold = None
-    # 若 kernel 已写 dkvNpu/dsbNpu 到 GM，则在此处取出:
-    # dkvNp = dkvNpu.cpu().float()[:totalValid]
-    # dsbNp = dsbNpu.cpu().float()[:totalValid]
+    dWkvNp = d_wkvNpu.cpu().float()
+    dWgateNp = d_wgateNpu.cpu().float()
 
     # ── 输出精度对比 ──
     # 通过 ENABLE_XXX_CHECK 控制是否对比；未开启 → SKIP，便于按需启用任意输出
     print_log("=" * 80)
     print_log(f"Start precision check for case '{name}' (validBlocks={totalValid})")
 
-    # dkv check
-    r_dkv = check_one_output("dkv", dkvGold, None, dataType,
-                             ENABLE_DKV_CHECK, totalValid, p_pct_thd)
-    result["dkvDiff"] = r_dkv["diff"]
-    result["dkvPct"] = r_dkv["pct"]
-    result["dkvStatus"] = r_dkv["status"]
+    # d_wkv check
+    r_dwkv = check_one_output("d_wkv", dWkvGold.float(), dWkvNp, dataType,
+                             ENABLE_DWKV_CHECK, totalValid, p_pct_thd)
+    result["dwkvDiff"] = r_dwkv["diff"]
+    result["dwkvPct"] = r_dwkv["pct"]
+    result["dwkvStatus"] = r_dwkv["status"]
 
-    # dsb check
-    r_dsb = check_one_output("dsb", dsbGold, None, dataType,
-                             ENABLE_DSB_CHECK, totalValid, p_pct_thd)
-    result["dsbDiff"] = r_dsb["diff"]
-    result["dsbPct"] = r_dsb["pct"]
-    result["dsbStatus"] = r_dsb["status"]
+    # d_wgate check
+    r_dwgate = check_one_output("d_wgate", dWgateGold.float(), dWgateNp, dataType,
+                             ENABLE_DWGATE_CHECK, totalValid, p_pct_thd)
+    result["dwgateDiff"] = r_dwgate["diff"]
+    result["dwgatePct"] = r_dwgate["pct"]
+    result["dwgateStatus"] = r_dwgate["status"]
 
-    # d_ape check (enabled by default — Phase 3 实现)
-    r_ape = check_one_output("d_ape", apeGold, apeNp, dataType,
-                             ENABLE_APE_CHECK, totalValid, p_pct_thd)
+    # d_ape check
+    r_ape = check_one_output("d_ape", apeGold, apeNp, "float32",
+                             ENABLE_APE_CHECK, totalValid, get_pct_thd("float32"))
     result["apeDiff"] = r_ape["diff"]
     result["apePct"] = r_ape["pct"]
     result["apeStatus"] = r_ape["status"]
 
-    # d_x check (Phase 3 实现，按需开启)
+    # d_x check
     dXNp = d_xNpu.cpu().float()
     dXGoldF = dXGold.float()
     r_dx = check_one_output("d_x", dXGoldF, dXNp, dataType,
@@ -397,7 +365,7 @@ def npu_test(case, device):
     # ── Overall status ──
     # 全部 SKIP 或 0 有效块 → PASS（trivial）
     # 任一 FAIL → FAIL；任一 ERROR → ERROR
-    statuses = [result["dkvStatus"], result["dsbStatus"],
+    statuses = [result["dwkvStatus"], result["dwgateStatus"],
                 result["apeStatus"], result["dxStatus"]]
     if totalValid == 0:
         result["status"] = "PASS"  # No valid blocks → trivial pass
@@ -440,8 +408,8 @@ def main():
     print("=" * 70)
     print(f"Compressor Grad (unified kernel) — {len(cases)} case(s), "
           f"dtype={args.dataType}")
-    print(f"  Checks: dkv={ENABLE_DKV_CHECK}  dsb={ENABLE_DSB_CHECK}  "
-          f"ape={ENABLE_APE_CHECK}  dx={ENABLE_DX_CHECK}")
+    print(f"  Checks: d_wkv={ENABLE_DWKV_CHECK}  d_wgate={ENABLE_DWGATE_CHECK}  "
+          f"d_ape={ENABLE_APE_CHECK}  d_x={ENABLE_DX_CHECK}")
     print("=" * 70)
 
     results = []
