@@ -459,6 +459,7 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::AIV1Process(uint64_t curB
         vector_.AIV1PostProcessTile(
             hMixLocal, offsetT, lenT, static_cast<uint32_t>(singleCoreOffset), vector_.mnConfig_.n,
             kXInQueueBufferBytes, kOutQueueBufferBytes);
+        vector_.xInQueue_.FreeTensor(hMixLocal);
 
         singleCoreOffset += lenT;
     }
