@@ -359,7 +359,8 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_135);
 
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_safe_min, preg_135);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_safe_min, preg_135);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
@@ -901,7 +902,8 @@ __simd_vf__ inline void ProcessVec1DnUpdateAttenTailVF(
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_135);
 
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_safe_min, preg_135);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_safe_min, preg_135);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
@@ -1475,7 +1477,8 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_135);
 
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_safe_min, preg_135);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_safe_min, preg_135);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
@@ -1993,7 +1996,8 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_135);
 
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_safe_min, preg_135);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+            (__ubuf__ T *&)input_x_local_UB + i * m, vreg_safe_min, preg_135);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
