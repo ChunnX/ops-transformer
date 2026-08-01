@@ -98,20 +98,32 @@ append_manifest() {
     local case_name="$3"
     local status="$4"
     local log_path="$5"
+    local trace_path="$6"
 
-    python3 - "$manifest" "$index" "$case_name" "$status" "$log_path" <<'PY'
+    python3 - "$manifest" "$index" "$case_name" "$status" "$log_path" "$trace_path" <<'PY'
 import csv
 import os
 import sys
 
-manifest, index, case_name, status, log_path = sys.argv[1:]
+manifest, index, case_name, status, log_path, trace_path = sys.argv[1:]
 exists = os.path.exists(manifest) and os.path.getsize(manifest) > 0
 with open(manifest, "a", encoding="utf-8", newline="") as f:
     writer = csv.writer(f)
     if not exists:
-        writer.writerow(["index", "case_name", "status", "log"])
-    writer.writerow([index, case_name, status, log_path])
+        writer.writerow(["index", "case_name", "status", "log", "trace_json"])
+    writer.writerow([index, case_name, status, log_path, trace_path])
 PY
+}
+
+latest_trace_after() {
+    local marker="$1"
+
+    find "$SCRIPT_DIR" \
+        -path "$SCRIPT_DIR/OPPROF_*/trace.json" \
+        -type f -newer "$marker" -printf '%T@ %p\n' \
+        | sort -n \
+        | tail -1 \
+        | cut -d' ' -f2-
 }
 
 run_one_case() {
@@ -123,7 +135,7 @@ run_one_case() {
     local meta
     if ! meta=$(case_meta "$csv_path" "$case_index"); then
         echo "第${case_index}条：读取CSV失败，跳过"
-        append_manifest "$manifest" "$case_index" "" "CSV_ERROR" ""
+        append_manifest "$manifest" "$case_index" "" "CSV_ERROR" "" ""
         return 1
     fi
 
@@ -135,7 +147,7 @@ run_one_case() {
 
     if [[ "$enable" != "TRUE" ]]; then
         echo "第${case_index}/${total_cases}条：${case_name} enable=${enable}，跳过"
-        append_manifest "$manifest" "$case_index" "$case_name" "DISABLED" "$log_path"
+        append_manifest "$manifest" "$case_index" "$case_name" "DISABLED" "$log_path" ""
         return 0
     fi
 
@@ -145,6 +157,9 @@ run_one_case() {
     local csv_key="${csv_path//\//_}"
     csv_key="${csv_key//,/_}"
     local testcase_dir="bsa_testcase/pipe_single_${csv_key}_${case_index}_$$"
+    local marker
+    marker=$(mktemp "$SCRIPT_DIR/.batch_single_pipe_marker.XXXXXX")
+    touch "$marker"
 
     (
         cd "$SCRIPT_DIR" || exit 1
@@ -160,10 +175,30 @@ run_one_case() {
     ) &> "$log_path"
     local run_status=$?
 
-    if [[ "$run_status" -eq 0 ]]; then
-        append_manifest "$manifest" "$case_index" "$case_name" "PASS" "$log_path"
+    local trace_path
+    trace_path=$(latest_trace_after "$marker")
+    python3 - "$marker" <<'PY'
+import os
+import sys
+
+path = sys.argv[1]
+if os.path.exists(path):
+    os.unlink(path)
+PY
+
+    local copied_trace=""
+    if [[ -n "$trace_path" ]]; then
+        copied_trace="$output_dir/${case_file_name}.json"
+        cp "$trace_path" "$copied_trace"
+        echo "第${case_index}条：trace.json已归档到 $copied_trace"
     else
-        append_manifest "$manifest" "$case_index" "$case_name" "RUN_FAILED" "$log_path"
+        echo "第${case_index}条：未找到本次生成的OPPROF_*/trace.json，跳过trace归档"
+    fi
+
+    if [[ "$run_status" -eq 0 ]]; then
+        append_manifest "$manifest" "$case_index" "$case_name" "PASS" "$log_path" "$copied_trace"
+    else
+        append_manifest "$manifest" "$case_index" "$case_name" "RUN_FAILED" "$log_path" "$copied_trace"
     fi
     return "$run_status"
 }
