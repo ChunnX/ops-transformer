@@ -99,6 +99,8 @@ TestCases = [
         "s1_s2_relation": "lt",
         "alignment": "s1_aligned_s2_aligned",
     },
+    {
+        "name": "MIX_00_mfu_128_65536_512",
         "enable": False,
         "B": 8,
         "N1": 64,
