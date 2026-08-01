@@ -22,7 +22,7 @@ using namespace AscendC;
 
 class MoeV3TopkWeightOut {
 public:
-    __aicore__ inline MoeV3TopkWeightOut(){};
+    __aicore__ inline MoeV3TopkWeightOut(){}
     __aicore__ inline void Init(GM_ADDR topkWeight, GM_ADDR expandedRowIdx, GM_ADDR expandedTopkWeight,
                                 GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
@@ -30,12 +30,11 @@ public:
 private:
     TPipe *pipe_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> topkWeightCopyInQueue_;
-    TQue<QuePosition::VECIN, 1> rowIdxCopyInQueue_;
+    TQue<QuePosition::VECIN, 2> rowIdxCopyInQueue_;
 
     GlobalTensor<float> topkWeightGm_;
     GlobalTensor<float> expandedTopkWeightGm_;
     GlobalTensor<int32_t> expandDstToSrcRowGm_;
-    GlobalTensor<int32_t> sortedExpertIdxGm_;
     GlobalTensor<int32_t> expandedRowIdxGm_;
 
     int64_t blockIdx_;
@@ -59,8 +58,8 @@ private:
     int64_t indicesLoops_;
 
     __aicore__ inline void CopyRowIdxIn(int64_t offset, int64_t curLoopElements);
-    __aicore__ inline void ProcessDropPadScatter(int64_t startIdx);
-    __aicore__ inline void ProcessNonDropPadScatter(int64_t startIdx);
+    __aicore__ inline void ProcessDropPadGather(int64_t startIdx);
+    __aicore__ inline void ProcessDroplessScatter(int64_t startIdx);
 };
 
 __aicore__ inline void MoeV3TopkWeightOut::Init(GM_ADDR topkWeight, GM_ADDR expandedRowIdx,
@@ -100,9 +99,7 @@ __aicore__ inline void MoeV3TopkWeightOut::Init(GM_ADDR topkWeight, GM_ADDR expa
             expandDstToSrcRowGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
                 Align(totalLength_, sizeof(int32_t)), Align(totalLength_, sizeof(int32_t)));
         }
-    }
-
-    if (dropPadMode_ == DROP_PAD_MODE) {
+    } else {
         expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, totalLength_);
     }
 
@@ -124,7 +121,7 @@ __aicore__ inline void MoeV3TopkWeightOut::Init(GM_ADDR topkWeight, GM_ADDR expa
     indicesLoops_ = Ceil(coreElements_, perCorePerLoopElements_);
 
     pipe_->InitBuffer(topkWeightCopyInQueue_, 1, AlignBytes(1, sizeof(float)));
-    pipe_->InitBuffer(rowIdxCopyInQueue_, 1, AlignBytes(perCorePerLoopElements_, sizeof(int32_t)));
+    pipe_->InitBuffer(rowIdxCopyInQueue_, 2, AlignBytes(perCorePerLoopElements_, sizeof(int32_t)));
 }
 
 __aicore__ inline void MoeV3TopkWeightOut::CopyRowIdxIn(int64_t offset, int64_t curLoopElements)
@@ -140,7 +137,7 @@ __aicore__ inline void MoeV3TopkWeightOut::CopyRowIdxIn(int64_t offset, int64_t 
     rowIdxCopyInQueue_.EnQue(rowIdxLocal);
 }
 
-__aicore__ inline void MoeV3TopkWeightOut::ProcessDropPadScatter(int64_t startIdx)
+__aicore__ inline void MoeV3TopkWeightOut::ProcessDropPadGather(int64_t startIdx)
 {
     DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
     DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
@@ -171,7 +168,7 @@ __aicore__ inline void MoeV3TopkWeightOut::ProcessDropPadScatter(int64_t startId
     }
 }
 
-__aicore__ inline void MoeV3TopkWeightOut::ProcessNonDropPadScatter(int64_t startIdx)
+__aicore__ inline void MoeV3TopkWeightOut::ProcessDroplessScatter(int64_t startIdx)
 {
     DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
     DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
@@ -227,14 +224,14 @@ __aicore__ inline void MoeV3TopkWeightOut::Process()
 #endif
 
         if (blockIdx_ < needCoreNum_) {
-            ProcessDropPadScatter(startIdx);
+            ProcessDropPadGather(startIdx);
         }
         return;
     }
 
-    if (blockIdx_ >= needCoreNum_) return;
-
-    ProcessNonDropPadScatter(startIdx);
+    if (blockIdx_ < needCoreNum_) {
+        ProcessDroplessScatter(startIdx);
+    }
 }
 
 } // namespace MoeInitRoutingV3
