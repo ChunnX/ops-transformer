@@ -22,7 +22,7 @@ using namespace AscendC;
 
 class MoeV3TopkWeightOut {
 public:
-    __aicore__ inline MoeV3TopkWeightOut(){}
+    __aicore__ inline MoeV3TopkWeightOut() {}
     __aicore__ inline void Init(GM_ADDR topkWeight, GM_ADDR expandedRowIdx, GM_ADDR expandedTopkWeight,
                                 GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
