@@ -103,7 +103,7 @@ public:
     }
     template <typename VEC2_RES_T>
     __aicore__ inline void CopyOutAttentionOut(regbaseutil::RunInfo<isInfer> &runInfo,
-    regbaseutil::regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
                                                LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx,
                                                int64_t vec2CalcSize);
     __aicore__ inline void InitFDBuffers(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
