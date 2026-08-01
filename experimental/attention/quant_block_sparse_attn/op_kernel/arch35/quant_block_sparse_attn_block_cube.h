@@ -188,9 +188,10 @@ private:
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr,
-                                                                  __gm__ uint8_t *query, __gm__ uint8_t *key,
-                                                                  __gm__ uint8_t *value, __gm__ uint8_t *blockTable)
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitCubeBlock(TPipe *pipe,
+                                                                   BufferManager<BufferType::L1> *l1BuffMgr,
+                                                                   __gm__ uint8_t *query, __gm__ uint8_t *key,
+                                                                   __gm__ uint8_t *value, __gm__ uint8_t *blockTable)
 {
     if ASCEND_IS_AIC {
         tPipe = pipe;
@@ -562,8 +563,8 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitDequantParams(__gm__ ui
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::GetKvByTensorList(RunInfo &runInfo, const ConstInfo &constInfo,
-                                                                      GlobalTensor<INPUT_T> &keyValueGm,
-                                                                      GlobalTensor<INPUT_T> &tempKeyValueGm)
+                                                                       GlobalTensor<INPUT_T> &keyValueGm,
+                                                                       GlobalTensor<INPUT_T> &tempKeyValueGm)
 {
     if (constInfo.isKvContinuous != 0) {
         return;
