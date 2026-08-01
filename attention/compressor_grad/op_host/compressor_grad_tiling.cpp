@@ -193,22 +193,38 @@ ge::graphStatus CalcWorkSpace(CompressorGradContext &compressorGradContext, Comp
 {
     constexpr uint32_t MM1_RES_ELEM_SIZE = 4; // 4: fp32
     constexpr uint32_t V1_RES_ELEM_SIZE = 4;  // 4: fp32
-    uint32_t maxGroupNum = aicNum / (compressorGradBaseParams.headDim / compressorGradInnerSplitParams.dBaseSize);
+    constexpr uint32_t M_BASE_SIZE = 128;
+    uint8_t coff = static_cast<uint8_t>(*compressorGradContext.coff);
+    uint32_t cmpRatio = compressorGradBaseParams.cmpRatio;
+    uint32_t headDim = compressorGradBaseParams.headDim;
+    uint32_t hiddenSize = compressorGradBaseParams.hiddenSize;
+    uint32_t cubeCoreNum = aicNum;
+    uint32_t groupSize = headDim / compressorGradInnerSplitParams.dBaseSize;
+    uint32_t groupNum = cubeCoreNum / groupSize;
+    uint32_t cmpSize = coff * cmpRatio * headDim;
+    uint32_t totalHeadDim = coff * headDim;
+    uint32_t coffCoef = 2 / coff;
+    uint32_t cubeMBaseSize = M_BASE_SIZE * coffCoef;
+    uint32_t dbRatio = compressorGradWorkspaceParams.dbWorkspaceRatio;
+
+    uint64_t apeWorkSpaceSize = static_cast<uint64_t>(dbRatio) * groupNum * cmpSize *coffCoef;
+    uint64_t dXWorkSpaceSize = static_cast<uint64_t>(dbRatio) * cubeCoreNum * (M_BASE_SIZE * 2) * hiddenSize;
+    uint64_t dWeightWorkSpaceSize = static_cast<uint64_t>(dbRatio) * groupNum * totalHeadDim * hiddenSize;
+    // dWkv / dWGate 各占一份 dWeightWorkSpaceSize
+    uint64_t xWorkSpaceSize = static_cast<uint64_t>(dbRatio) * 
+        (groupNum * cubeMBaseSize + (coff - 1) * cmpRatio) * hiddenSize;
+    uint64_t dXCacheWorkSpaceSize = static_cast<uint64_t>(dbRatio) * cmpRatio * hiddenSize;
+
     workspaceSize = libapiSize;
-    workspaceSize +=
-        compressorGradWorkspaceParams.mm1KvResSize * maxGroupNum * MM1_RES_ELEM_SIZE * compressorGradWorkspaceParams.dbWorkspaceRatio;
-    workspaceSize +=
-        compressorGradWorkspaceParams.mm1ScoreResSize * maxGroupNum * MM1_RES_ELEM_SIZE * compressorGradWorkspaceParams.dbWorkspaceRatio;
-    workspaceSize +=
-        compressorGradWorkspaceParams.vec1TailCacheSize * MM1_RES_ELEM_SIZE * compressorGradWorkspaceParams.dbWorkspaceRatio * 2; // 2 kv和score
-    workspaceSize +=
-        compressorGradWorkspaceParams.vec1ResSize * maxGroupNum * V1_RES_ELEM_SIZE * compressorGradWorkspaceParams.dbWorkspaceRatio;
+    workspaceSize += (apeWorkSpaceSize + dXWorkSpaceSize + dWeightWorkSpaceSize * 2 + 
+                     xWorkSpaceSize + dXCacheWorkSpaceSize) * MM1_RES_ELEM_SIZE;
 
     if (compressorGradContext.workSpaces) {
         compressorGradContext.workSpaces[0] = workspaceSize;
     }
 
-    OP_LOGI(compressorGradContext.opName, "Tiling info: workspaceSize = %zu", workspaceSize);
+    OP_LOGI(compressorGradContext.opName, "Tiling info: workspaceSize = %zu (ape=%llu dx=%llu dw=%llu x=%llu dxcache=%llu)", 
+            workspaceSize, apeWorkSpaceSize, dXWorkSpaceSize, dWeightWorkSpaceSize * 2, xWorkSpaceSize, dXCacheWorkSpaceSize);
     return ge::GRAPH_SUCCESS;
 }
 

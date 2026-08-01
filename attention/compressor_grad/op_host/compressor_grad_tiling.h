@@ -71,7 +71,7 @@ constexpr uint32_t MIN_CMP_RATIO = 2;
 constexpr uint32_t MAX_CMP_RATIO = 128;
 
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
-const uint32_t CMP_MAX_AIC_CORE_NUM = 24;
+const uint32_t CMP_MAX_AIC_CORE_NUM = 36;
 
 static const std::string X_NAME = "query";
 static const std::string WKV_NAME = "wkv";
