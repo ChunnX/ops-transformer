@@ -1,0 +1,899 @@
+[
+ {
+  "id": 0,
+  "name": "UndGenQkvRmsNormRopeCache",
+  "aclnn_name": "aclnnUndGenQkvRmsNormRopeCache",
+  "api_type": "function_und_gen_qkv_rms_norm_rope_cache",
+  "aclnn_api_type": "function_pyaclnn_und_gen_qkv_rms_norm_rope_cache",
+  "standard": {
+   "acc": "default",
+   "perf": "not_key"
+  },
+  "inputs": [
+   {
+    "name": "undQkv",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     5,
+     10,
+     128
+    ],
+    "range_values": [
+     -1,
+     1
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "undWeightsQ",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     128
+    ],
+    "range_values": [
+     0.01,
+     0.99
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "undWeightsK",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     128
+    ],
+    "range_values": [
+     0.01,
+     0.99
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "cosSinCache",
+    "type": "tensor",
+    "required": true,
+    "dtype": "fp32",
+    "shape": [
+     32,
+     128
+    ],
+    "range_values": [
+     -1,
+     1
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "kCache",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     2,
+     128,
+     1,
+     128
+    ],
+    "range_values": [
+     0,
+     0
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "vCache",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     2,
+     128,
+     1,
+     128
+    ],
+    "range_values": [
+     0,
+     0
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "slotMapping",
+    "type": "tensor",
+    "required": true,
+    "dtype": "int64",
+    "shape": [
+     8
+    ],
+    "range_values": [
+     0,
+     255
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "positions",
+    "type": "tensor",
+    "required": true,
+    "dtype": "int64",
+    "shape": [
+     3,
+     8
+    ],
+    "range_values": [
+     0,
+     31
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "genQkv",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     3,
+     10,
+     128
+    ],
+    "range_values": [
+     -1,
+     1
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "genWeightsQ",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     128
+    ],
+    "range_values": [
+     0.01,
+     0.99
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "genWeightsK",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     128
+    ],
+    "range_values": [
+     0.01,
+     0.99
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "catIndices",
+    "type": "tensor",
+    "required": true,
+    "dtype": "int64",
+    "shape": [
+     8
+    ],
+    "range_values": [
+     0,
+     7
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "numHeadsQ",
+    "type": "attr",
+    "required": true,
+    "dtype": "int64_t",
+    "value": 8,
+    "shape": null,
+    "range_values": null,
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "numHeadsK",
+    "type": "attr",
+    "required": true,
+    "dtype": "int64_t",
+    "value": 1,
+    "shape": null,
+    "range_values": null,
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "numHeadsV",
+    "type": "attr",
+    "required": true,
+    "dtype": "int64_t",
+    "value": 1,
+    "shape": null,
+    "range_values": null,
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "normEps",
+    "type": "attr",
+    "required": true,
+    "dtype": "double",
+    "value": 1e-06,
+    "shape": null,
+    "range_values": null,
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "mropeSection",
+    "type": "attr_tuple",
+    "required": true,
+    "dtype": "int64_t",
+    "value": [
+     16,
+     16,
+     16
+    ],
+    "shape": null,
+    "range_values": 3,
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "q",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     8,
+     8,
+     128
+    ],
+    "range_values": [
+     0,
+     0
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ]
+ },
+ {
+  "id": 1,
+  "name": "UndGenQkvRmsNormRopeCache",
+  "aclnn_name": "aclnnUndGenQkvRmsNormRopeCache",
+  "api_type": "function_und_gen_qkv_rms_norm_rope_cache",
+  "aclnn_api_type": "function_pyaclnn_und_gen_qkv_rms_norm_rope_cache",
+  "standard": {
+   "acc": "default",
+   "perf": "not_key"
+  },
+  "inputs": [
+   {
+    "name": "undQkv",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     80,
+     20,
+     128
+    ],
+    "range_values": [
+     -1,
+     1
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "undWeightsQ",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     128
+    ],
+    "range_values": [
+     0.01,
+     0.99
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "undWeightsK",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     128
+    ],
+    "range_values": [
+     0.01,
+     0.99
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "cosSinCache",
+    "type": "tensor",
+    "required": true,
+    "dtype": "fp32",
+    "shape": [
+     32,
+     128
+    ],
+    "range_values": [
+     -1,
+     1
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "kCache",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     2,
+     128,
+     2,
+     128
+    ],
+    "range_values": [
+     0,
+     0
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "vCache",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     2,
+     128,
+     2,
+     128
+    ],
+    "range_values": [
+     0,
+     0
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "slotMapping",
+    "type": "tensor",
+    "required": true,
+    "dtype": "int64",
+    "shape": [
+     96
+    ],
+    "range_values": [
+     0,
+     255
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "positions",
+    "type": "tensor",
+    "required": true,
+    "dtype": "int64",
+    "shape": [
+     3,
+     96
+    ],
+    "range_values": [
+     0,
+     31
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "genQkv",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     16,
+     20,
+     128
+    ],
+    "range_values": [
+     -1,
+     1
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "genWeightsQ",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     128
+    ],
+    "range_values": [
+     0.01,
+     0.99
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "genWeightsK",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     128
+    ],
+    "range_values": [
+     0.01,
+     0.99
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "catIndices",
+    "type": "tensor",
+    "required": true,
+    "dtype": "int64",
+    "shape": [
+     96
+    ],
+    "range_values": [
+     0,
+     95
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "numHeadsQ",
+    "type": "attr",
+    "required": true,
+    "dtype": "int64_t",
+    "value": 16,
+    "shape": null,
+    "range_values": null,
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "numHeadsK",
+    "type": "attr",
+    "required": true,
+    "dtype": "int64_t",
+    "value": 2,
+    "shape": null,
+    "range_values": null,
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "numHeadsV",
+    "type": "attr",
+    "required": true,
+    "dtype": "int64_t",
+    "value": 2,
+    "shape": null,
+    "range_values": null,
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "normEps",
+    "type": "attr",
+    "required": true,
+    "dtype": "double",
+    "value": 1e-06,
+    "shape": null,
+    "range_values": null,
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "mropeSection",
+    "type": "attr_tuple",
+    "required": true,
+    "dtype": "int64_t",
+    "value": [
+     16,
+     16,
+     16
+    ],
+    "shape": null,
+    "range_values": 3,
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "q",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     96,
+     16,
+     128
+    ],
+    "range_values": [
+     0,
+     0
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ]
+ },
+ {
+  "id": 2,
+  "name": "UndGenQkvRmsNormRopeCache",
+  "aclnn_name": "aclnnUndGenQkvRmsNormRopeCache",
+  "api_type": "function_und_gen_qkv_rms_norm_rope_cache",
+  "aclnn_api_type": "function_pyaclnn_und_gen_qkv_rms_norm_rope_cache",
+  "standard": {
+   "acc": "default",
+   "perf": "not_key"
+  },
+  "inputs": [
+   {
+    "name": "undQkv",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     128,
+     10,
+     128
+    ],
+    "range_values": [
+     -1,
+     1
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "undWeightsQ",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     128
+    ],
+    "range_values": [
+     0.01,
+     0.99
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "undWeightsK",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     128
+    ],
+    "range_values": [
+     0.01,
+     0.99
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "cosSinCache",
+    "type": "tensor",
+    "required": true,
+    "dtype": "fp32",
+    "shape": [
+     128,
+     128
+    ],
+    "range_values": [
+     -1,
+     1
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "kCache",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     2,
+     128,
+     1,
+     128
+    ],
+    "range_values": [
+     0,
+     0
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "vCache",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     2,
+     128,
+     1,
+     128
+    ],
+    "range_values": [
+     0,
+     0
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "slotMapping",
+    "type": "tensor",
+    "required": true,
+    "dtype": "int64",
+    "shape": [
+     128
+    ],
+    "range_values": [
+     0,
+     255
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "positions",
+    "type": "tensor",
+    "required": true,
+    "dtype": "int64",
+    "shape": [
+     3,
+     128
+    ],
+    "range_values": [
+     0,
+     127
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "genQkv",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     0,
+     10,
+     128
+    ],
+    "range_values": [
+     -1,
+     1
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "genWeightsQ",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     128
+    ],
+    "range_values": [
+     0.01,
+     0.99
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "genWeightsK",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     128
+    ],
+    "range_values": [
+     0.01,
+     0.99
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "catIndices",
+    "type": "tensor",
+    "required": true,
+    "dtype": "int64",
+    "shape": [
+     128
+    ],
+    "range_values": [
+     0,
+     127
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "numHeadsQ",
+    "type": "attr",
+    "required": true,
+    "dtype": "int64_t",
+    "value": 8,
+    "shape": null,
+    "range_values": null,
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "numHeadsK",
+    "type": "attr",
+    "required": true,
+    "dtype": "int64_t",
+    "value": 1,
+    "shape": null,
+    "range_values": null,
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "numHeadsV",
+    "type": "attr",
+    "required": true,
+    "dtype": "int64_t",
+    "value": 1,
+    "shape": null,
+    "range_values": null,
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "normEps",
+    "type": "attr",
+    "required": true,
+    "dtype": "double",
+    "value": 1e-06,
+    "shape": null,
+    "range_values": null,
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "mropeSection",
+    "type": "attr_tuple",
+    "required": true,
+    "dtype": "int64_t",
+    "value": [
+     64,
+     0,
+     0
+    ],
+    "shape": null,
+    "range_values": 3,
+    "backward": false,
+    "align_32B": null,
+    "outlier_values": null
+   },
+   {
+    "name": "q",
+    "type": "tensor",
+    "required": true,
+    "dtype": "bf16",
+    "shape": [
+     128,
+     8,
+     128
+    ],
+    "range_values": [
+     0,
+     0
+    ],
+    "backward": true,
+    "align_32B": null,
+    "outlier_values": null
+   }
+  ]
+ }
+]
