@@ -128,10 +128,13 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_VEC1_RES_BUF1_FLAG);
 
         
-        DataCopy(l1PScaleTensor.data()[subBlockIdx*(32*5*8)+firstLoopStart*(32*5*8)], pscale1, {static_cast<uint16_t>(firstLoop), 40, 0, 40});
-        if (secondLoop != 0) {
-            DataCopy(l1PScaleTensor.data()[subBlockIdx*(32*5*8)+secondLoopStart*(32*5*8)], pscale1[firstLoop*(32*5*8)], {static_cast<uint16_t>(secondLoop), 40, 0, 40});
-        }
+        // DataCopy(l1PScaleTensor.data()[subBlockIdx*(32*5*8)+firstLoopStart*(32*5*8)], pscale1, {static_cast<uint16_t>(firstLoop), 40, 0, 40});
+        // if (secondLoop != 0) {
+        //     DataCopy(l1PScaleTensor.data()[subBlockIdx*(32*5*8)+secondLoopStart*(32*5*8)], pscale1[firstLoop*(32*5*8)], {static_cast<uint16_t>(secondLoop), 40, 0, 40});
+        // }
+
+        // copy pscale1 ub to l1
+        CopyPScaleUbToL1(l1PScaleTensor, pscale1, pscale2, subBlockIdx, firstLoopStart, firstLoop, secondLoopStart, secondLoop);
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF0_FLAG);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF1_FLAG);
@@ -142,6 +145,7 @@ public:
                                                 uint32_t subBlockIdx, uint16_t firstLoopStart, uint16_t firstLoop, uint16_t secondLoopStart, uint16_t secondLoop) {
         // 第一部分: firstLoop 组, 从 firstLoopStart 开始
         uint32_t l1PScaleTensorNSize = tla::get<1>(l1PScaleTensor.shape());
+        // uint32_t l1PScaleTensorMSize = tla::get<0>(l1PScaleTensor.shape());
         auto l1TlaTile1 = tla::GetTile(l1PScaleTensor,
             tla::MakeCoord(subBlockIdx + firstLoopStart, 0),
             tla::MakeShape(firstLoop, l1PScaleTensorNSize));
@@ -152,6 +156,19 @@ public:
         repeatParams1.blockLen = static_cast<uint16_t>(pscaleGroupLen);
         repeatParams1.srcStride = 0;
         repeatParams1.dstStride = static_cast<uint16_t>(pscaleGroupLen);
+
+        // AscendC::printf("==== CopyPScaleUbToL1 debug ====\n");
+        // AscendC::printf("subBlockIdx:%d, firstLoopStart:%d, firstLoop:%d, secondLoopStart:%d, secondLoop:%d\n",
+        //     subBlockIdx, firstLoopStart, firstLoop, secondLoopStart, secondLoop);
+        // AscendC::printf("l1PScaleTensor shape(M,N):(%d,%d), l1PScaleTensorNSize:%d\n", l1PScaleTensorMSize, l1PScaleTensorNSize, l1PScaleTensorNSize);
+        // AscendC::printf("DATA_BLOCK_BYTE:%d, pscaleGroupLen:%d\n", MXFP4::DATA_BLOCK_BYTE, pscaleGroupLen);
+        // AscendC::printf("l1TlaTile1 coord(M,N):(%d,%d), shape(M,N):(%d,%d)\n",
+        //     tla::get<0>(l1TlaTile1.coord()), tla::get<1>(l1TlaTile1.coord()),
+        //     tla::get<0>(l1TlaTile1.shape()), tla::get<1>(l1TlaTile1.shape()));
+        // AscendC::printf("dstOffset:%d\n", dstOffset);
+        // AscendC::printf("repeatParams1: blockCount:%d, blockLen:%d, srcStride:%d, dstStride:%d\n",
+        //     repeatParams1.blockCount, repeatParams1.blockLen, repeatParams1.srcStride, repeatParams1.dstStride);
+
         AscendC::DataCopy(l1TlaTile1.data()[dstOffset], pscale1Src, repeatParams1);
 
         if (secondLoop != 0) {
@@ -165,6 +182,16 @@ public:
             repeatParams2.blockLen = static_cast<uint16_t>(pscaleGroupLen);
             repeatParams2.srcStride = 0;
             repeatParams2.dstStride = static_cast<uint16_t>(pscaleGroupLen);
+
+            // AscendC::printf("---- secondLoop branch ----\n");
+            // AscendC::printf("l1TlaTile2 coord(M,N):(%d,%d), shape(M,N):(%d,%d)\n",
+            //     tla::get<0>(l1TlaTile2.coord()), tla::get<1>(l1TlaTile2.coord()),
+            //     tla::get<0>(l1TlaTile2.shape()), tla::get<1>(l1TlaTile2.shape()));
+            // AscendC::printf("dstOffset2:%d\n", dstOffset2);
+            // AscendC::printf("repeatParams2: blockCount:%d, blockLen:%d, srcStride:%d, dstStride:%d\n",
+            //     repeatParams2.blockCount, repeatParams2.blockLen, repeatParams2.srcStride, repeatParams2.dstStride);
+            // AscendC::printf("==== CopyPScaleUbToL1 debug end ====\n");
+
             AscendC::DataCopy(l1TlaTile2.data()[dstOffset2], pscale2Src, repeatParams2);
         }
     }

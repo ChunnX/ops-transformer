@@ -56,7 +56,7 @@ public:
     using LayoutQ = layout::RowMajor;
     using LayoutK = layout::ColumnMajor;
     using LayoutS = layout::RowMajor;
-    using LayoutP = layout::RowMajor;
+    using LayoutPL1 = typename EpilogueOnlineSoftmax::LayoutPL1;
     using LayoutV = layout::ColumnMajor;
     using LayoutO = layout::RowMajor;
     using LayoutLse = layout::RowMajor;
@@ -345,7 +345,7 @@ public:
                     if (subBlockIdx == AscendC::GetSubBlockIdx()) {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId]);
                         uint32_t l1PBufId = curTileInfo.loop % GmMXFP4::L1_P_BUF_CNT;
-                        auto l1PLayoutTla = tla::MakeLayout<ElementDisguiseP, LayoutP>(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE / 2);
+                        auto l1PLayoutTla = tla::MakeLayout<ElementDisguiseP, LayoutPL1>(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE / 2);
                         auto l1PTensorTla = tla::MakeTensor(l1PTensor[l1PBufId], l1PLayoutTla, Arch::PositionL1{});
                         GemmCoord actualBlockShapeQK{curTileInfo.kvsActBaseTile, curTaskInfo.qsActBaseTile, embed_};
                         // AscendC::DumpTensor(ubSTensor[0], 7771, 128);
