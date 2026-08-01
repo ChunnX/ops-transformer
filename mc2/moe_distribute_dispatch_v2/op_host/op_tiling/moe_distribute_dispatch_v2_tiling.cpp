@@ -1000,7 +1000,8 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context, const char
                                 ((*globalBsPtr) % (static_cast<int64_t>(epWorldSize)) != 0)),
         OP_LOGE(nodeName,
                 "globalBS is invalid, only "
-                "support 0 or maxBs(maxBs is the largest bs on all ranks) * epWorldSize, but got globalBS=%ld, "
+                "support 0 or maxBs(maxBs is the configured bs capacity per rank) * epWorldSize, but got "
+                "globalBS=%ld, "
                 "bs=%ld, epWorldSize=%u.",
                 *globalBsPtr, xDim0, epWorldSize),
         return ge::GRAPH_FAILED);

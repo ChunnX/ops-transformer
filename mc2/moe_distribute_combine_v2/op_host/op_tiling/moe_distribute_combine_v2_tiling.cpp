@@ -1551,7 +1551,7 @@ static bool CheckAttrs(const gert::TilingContext *context, MoeDistributeCombineV
     OP_TILING_CHECK((*globalBsPtr != 0) && ((*globalBsPtr < static_cast<int64_t>(epWorldSize) * expertIdsDim0) ||
                                             ((*globalBsPtr) % (static_cast<int64_t>(epWorldSize)) != 0)),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "globalBS", std::to_string(*globalBsPtr).c_str(),
-                                              "should be 0 or maxBs * epWorldSize"),
+                                              "should be 0 or configured maxBs per rank * epWorldSize"),
                     return false);
     OP_TILING_CHECK(((*globalBsPtr > (expertIdsDim0 * static_cast<int64_t>(epWorldSize))) && isActiveMask),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "globalBS", std::to_string(*globalBsPtr).c_str(),
