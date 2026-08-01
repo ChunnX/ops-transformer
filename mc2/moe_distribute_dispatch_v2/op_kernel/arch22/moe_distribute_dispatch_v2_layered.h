@@ -218,6 +218,7 @@ private:
     // tiling侧已确保数据上限，相乘不会越界，因此统一采用uint32_t进行处理
     uint32_t axisBS_{0};
     uint32_t globalBs_{0};
+    uint32_t expandXRows_{0};
     uint32_t axisH_{0};
     uint32_t axisK_{0}; // 真实的K值
 
@@ -281,6 +282,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
                                         alignK_ * sizeof(uint32_t)) + IPC_DATA_OFFSET + RDMA_DATA_SIZE;*/
     axisBS_ = tilingData->moeDistributeDispatchV2Info.bs;
     globalBs_ = tilingData->moeDistributeDispatchV2Info.globalBs;
+    expandXRows_ = tilingData->moeDistributeDispatchV2Info.a;
     axisH_ = tilingData->moeDistributeDispatchV2Info.h;
     axisK_ = tilingData->moeDistributeDispatchV2Info.k;
     alignK_ = RoundUp(axisK_, B32_PER_BLOCK);
@@ -369,7 +371,7 @@ __aicore__ inline void MoeDistributeDispatchV2Layered<TemplateMC2TypeV2LayeredFu
     expertIdsGMTensor_.SetGlobalBuffer((__gm__ int32_t *)expertIds);
     xActiveMaskGMTensor_.SetGlobalBuffer((__gm__ bool *)xActiveMask);
     expandXOutGMTensor_.SetGlobalBuffer((__gm__ ExpandXOutType *)(expandXOut),
-                                        worldSize_ * axisBS_ * localMoeExpertNum_ * axisH_);
+                                        static_cast<uint64_t>(expandXRows_) * axisH_);
     dynamicScalesOutGMTensor_.SetGlobalBuffer((__gm__ float *)(dynamicScalesOut));
     weightsOutGMTensor_.SetGlobalBuffer((__gm__ float *)(expandScales));
 
