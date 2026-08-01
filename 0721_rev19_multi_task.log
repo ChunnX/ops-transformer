@@ -1,0 +1,6 @@
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=19 python_sha256=8fc71e766e6293c77da9c0c4800c712b1f21599d0cec2a4bebfd2325386d514e
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=3b6bdbb374bea3f3c90a42cf443be3cce4a5cb60688af3081c454ba37531639d
+[00] bsnd_b4_s1_512_k_1024 PRECISION FAIL: dQueryIndex: non-finite value detected (TileLang=175213, Official=0)
+  TileLang kinds: nan=146053 +inf=14650 -inf=14510
+  TileLang first coordinates: (0, 2, 0, 5), (0, 2, 0, 18), (0, 2, 0, 28), (0, 2, 0, 30), (0, 2, 0, 54), (0, 2, 0, 109), (0, 2, 0, 117), (0, 2, 0, 119), (0, 2, 0, 126), (0, 4, 0, 0), (0, 4, 0, 1), (0, 4, 0, 2), (0, 4, 0, 3), (0, 4, 0, 4), (0, 4, 0, 5), (0, 4, 0, 6)
+Summary: total=1 pass=0 fail=1 precision=1 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
