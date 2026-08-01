@@ -132,8 +132,7 @@ private:
     __aicore__ inline void WriteScaleoutDescriptorsFromRoute(uint32_t tokenId, uint32_t routeEntryCount);
     __aicore__ inline void SplitRangeForCore(uint32_t itemCount, uint32_t coreCount, uint32_t coreIndex,
                                              uint32_t &itemStart, uint32_t &itemEnd);
-    __aicore__ inline bool InitOwnedScaleupRankRange(uint32_t &destinationScaleupStart,
-                                                     uint32_t &destinationScaleupEnd);
+    __aicore__ inline uint32_t GetChannelZeroOwnerAiv(uint32_t dstRankId);
     __aicore__ inline void SendScaleoutPayloadsToProxy();
     __aicore__ inline void ReduceScaleoutCounterGroup(uint32_t counterGroup,
                                                       LocalTensor<int32_t> counterSumTensor);
@@ -265,6 +264,7 @@ private:
     uint32_t aivNum_{0};
     uint32_t epRankId_{0};
     uint32_t aivId_{0};
+    uint32_t activeCommAivNum_{0}; // 与combine使用相同的channel owner分组规模
     uint32_t rankSizePerServer_{0};
     uint32_t currentServerIndex_{0};
     uint32_t serverStartRank_{0};
@@ -272,9 +272,6 @@ private:
     uint32_t startTokenId_{0};
     uint32_t endTokenId_{0};
     uint32_t sendTokenNum_{0};
-    uint32_t startRankId_{0};
-    uint32_t endRankId_{0};
-    uint32_t rankNumPerCore_{0};
     uint32_t hAlignSize_{0};
     uint32_t kAlignSize_{0};
     uint32_t axisKAlign_{0};
@@ -334,6 +331,13 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     epRankId_ = mc2Context_->epRankId;
 
     InitTilingFields(tilingData);
+    uint32_t channelsPerRank = mc2Context_->channelsPerRank;
+    if (channelsPerRank == 0U ||
+        (epWorldSize_ > 0U && channelsPerRank > Mc2Aclnn::HCCL_MAX_RANK_SIZE / epWorldSize_)) {
+        channelsPerRank = 1U;
+    }
+    uint32_t maxChannelAivNum = epWorldSize_ * channelsPerRank;
+    activeCommAivNum_ = aivNum_ < maxChannelAivNum ? aivNum_ : maxChannelAivNum;
     InitGlobalTensors(x, topkIdx, topkWeights, scales, cachedSlotIdx, cachedRouteCount, cachedRouteDstScaleout,
                       cachedRouteScaleoutSlot, numRecvPerRank, numRecvPerExpert, dstBufferSlotIdx, routeCount,
                       routeDstScaleout, routeScaleoutSlot);
@@ -844,8 +848,36 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::ExchangeCount()
 {
-    SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, rankNumPerCore_);
-    if (startRankId_ >= epWorldSize_) {
+    if (activeCommAivNum_ == 0U || aivId_ >= activeCommAivNum_) {
+        return;
+    }
+
+    uint32_t firstOwnedRank = epWorldSize_;
+    uint32_t ownedRankCount = 0U;
+    uint32_t ownedRankStride = 1U;
+    // 反向计算combine的channel 0 owner映射，得到当前AIV负责的目标rank。
+    if (activeCommAivNum_ < epWorldSize_) {
+        firstOwnedRank = aivId_;
+        ownedRankStride = activeCommAivNum_;
+        ownedRankCount = Ceil(epWorldSize_ - firstOwnedRank, ownedRankStride);
+    } else {
+        uint32_t baseGroupSize = activeCommAivNum_ / epWorldSize_;
+        uint32_t remainder = activeCommAivNum_ % epWorldSize_;
+        uint32_t largerGroupSize = baseGroupSize + 1U;
+        uint32_t largerGroupAivNum = remainder * largerGroupSize;
+        if (aivId_ < largerGroupAivNum) {
+            if (aivId_ % largerGroupSize == 0U) {
+                firstOwnedRank = aivId_ / largerGroupSize;
+            }
+        } else {
+            uint32_t aivIndexAfterLargerGroups = aivId_ - largerGroupAivNum;
+            if (aivIndexAfterLargerGroups % baseGroupSize == 0U) {
+                firstOwnedRank = remainder + aivIndexAfterLargerGroups / baseGroupSize;
+            }
+        }
+        ownedRankCount = firstOwnedRank < epWorldSize_ ? 1U : 0U;
+    }
+    if (ownedRankCount == 0U) {
         return;
     }
 
@@ -856,16 +888,18 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 
     GlobalTensor<uint64_t> numSendGMTensorInt64;
     numSendGMTensorInt64.SetGlobalBuffer(
-        (__gm__ uint64_t *)(sendCntWorkspaceAddr_ + startRankId_ * WIN_ADDR_ALIGN));
+        (__gm__ uint64_t *)(sendCntWorkspaceAddr_ + firstOwnedRank * WIN_ADDR_ALIGN));
     LocalTensor<uint64_t> sendCntPerRankInt64 = dstExpBuf_.Get<uint64_t>();
-    // GM 512B/rank 散开读, UB 每 rank 32B (UB_ALIGN), 只取前 8B (state+count)
-    DataCopyParams cntCopyParams = {static_cast<uint16_t>(rankNumPerCore_), static_cast<uint16_t>(UB_ALIGN),
-                                    static_cast<uint16_t>(WIN_ADDR_ALIGN - UB_ALIGN), 0U};
+    // GM 512B/rank散开读，UB每rank保留32B，仅使用前8B的state和count。
+    DataCopyParams cntCopyParams = {
+        static_cast<uint16_t>(ownedRankCount), static_cast<uint16_t>(UB_ALIGN),
+        static_cast<uint16_t>(ownedRankStride * WIN_ADDR_ALIGN - UB_ALIGN), 0U};
     DataCopyPad(sendCntPerRankInt64, numSendGMTensorInt64, cntCopyParams, padParams_);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
 
-    for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; dstRankId++) {
-        uint32_t notifyStride = (dstRankId - startRankId_) * INT64_UB_STRIDE;
+    for (uint32_t ownedRankIndex = 0U; ownedRankIndex < ownedRankCount; ownedRankIndex++) {
+        uint32_t dstRankId = firstOwnedRank + ownedRankIndex * ownedRankStride;
+        uint32_t notifyStride = ownedRankIndex * INT64_UB_STRIDE;
         if (dstRankId != epRankId_) {
             SendCountToRemoteRank(dstRankId, sendCntPerRankInt64.GetValue(notifyStride));
         } else {
@@ -1302,17 +1336,19 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
-__aicore__ inline bool MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::InitOwnedScaleupRankRange(
-    uint32_t &destinationScaleupStart, uint32_t &destinationScaleupEnd)
+__aicore__ inline uint32_t MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::GetChannelZeroOwnerAiv(
+    uint32_t dstRankId)
 {
-    if (numNodeLocalAiv_ == 0U || aivId_ < numScaleoutSendAiv_ ||
-        aivId_ >= numScaleoutSendAiv_ + numNodeLocalAiv_) {
-        return false;
+    if (activeCommAivNum_ == 0U || epWorldSize_ == 0U) {
+        return aivNum_;
     }
-    uint32_t currentServerRankCount = serverEndRank_ - serverStartRank_;
-    SplitRangeForCore(currentServerRankCount, numNodeLocalAiv_, aivId_ - numScaleoutSendAiv_,
-                      destinationScaleupStart, destinationScaleupEnd);
-    return destinationScaleupStart < destinationScaleupEnd;
+    if (activeCommAivNum_ < epWorldSize_) {
+        return dstRankId % activeCommAivNum_;
+    }
+    // combine为每个目标rank分配连续AIV组，组内第一个AIV使用channel 0。
+    uint32_t baseGroupSize = activeCommAivNum_ / epWorldSize_;
+    uint32_t remainder = activeCommAivNum_ % epWorldSize_;
+    return dstRankId * baseGroupSize + (dstRankId < remainder ? dstRankId : remainder);
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1397,24 +1433,20 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SendScaleoutPayloadsToProxy()
 {
-    if (remoteServerCount_ == 0U || numScaleoutSendAiv_ == 0U) {
+    if (remoteServerCount_ == 0U || aivNum_ == 0U) {
         return;
     }
     LocalTensor<int32_t> scaleoutCounterSumTensor = counterSumTensor_;
     uint32_t counterGroupCount = Ceil(numScaleoutRanks_, UB_STRIDE);
     uint32_t currentCounterGroup = counterGroupCount;
-    uint32_t remoteScaleoutStart = 0U;
-    uint32_t remoteScaleoutEnd = 0U;
-    SplitRangeForCore(numScaleoutRanks_ - 1U, numScaleoutSendAiv_, aivId_,
-                      remoteScaleoutStart, remoteScaleoutEnd);
     uint32_t currentScaleupIndex =
         rankSizePerServer_ == 0U ? epRankId_ : epRankId_ % rankSizePerServer_;
-    for (uint32_t remoteScaleoutOrdinal = remoteScaleoutStart;
-         remoteScaleoutOrdinal < remoteScaleoutEnd; remoteScaleoutOrdinal++) {
+    for (uint32_t remoteScaleoutOrdinal = 0U;
+         remoteScaleoutOrdinal < remoteServerCount_; remoteScaleoutOrdinal++) {
         uint32_t dstScaleoutIndex =
             remoteScaleoutOrdinal < currentServerIndex_ ? remoteScaleoutOrdinal : remoteScaleoutOrdinal + 1U;
         uint32_t proxyRankId = dstScaleoutIndex * rankSizePerServer_ + currentScaleupIndex;
-        if (proxyRankId >= epWorldSize_) {
+        if (proxyRankId >= epWorldSize_ || GetChannelZeroOwnerAiv(proxyRankId) != aivId_) {
             continue;
         }
 
@@ -1711,24 +1743,21 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SendScaleupPayloads()
 {
-    uint32_t destinationScaleupStart = 0U;
-    uint32_t destinationScaleupEnd = 0U;
-    if (numNodeLocalAiv_ == 0U) {
-        if (aivNum_ != 1U || aivId_ != 0U) {
-            return;
-        }
-        destinationScaleupEnd = serverEndRank_ - serverStartRank_;
-    } else if (!InitOwnedScaleupRankRange(destinationScaleupStart, destinationScaleupEnd)) {
+    if (aivNum_ == 0U || epWorldSize_ == 0U) {
         return;
     }
 
-    for (uint32_t localRankIndex = destinationScaleupStart;
-         localRankIndex < destinationScaleupEnd; localRankIndex++) {
+    for (uint32_t localRankIndex = 0U;
+         localRankIndex < serverEndRank_ - serverStartRank_; localRankIndex++) {
+        uint32_t dstRankId = serverStartRank_ + localRankIndex;
+        if (GetChannelZeroOwnerAiv(dstRankId) != aivId_) {
+            continue;
+        }
         if (aivId_ < 2U) {
             AscendC::PRINTF("[MOE_EP_TRACE] dispatch_scaleup_send rank=%u round=%u aiv=%u dstRank=%u\n",
-                            epRankId_, GetDebugRoundTag(), aivId_, serverStartRank_ + localRankIndex);
+                            epRankId_, GetDebugRoundTag(), aivId_, dstRankId);
         }
-        SendPayloadsToScaleupRank(serverStartRank_ + localRankIndex);
+        SendPayloadsToScaleupRank(dstRankId);
     }
 }
 
@@ -2063,16 +2092,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::TransferDispatchPayloads()
 {
-    if (aivNum_ == 1U) {
-        SendScaleoutPayloadsToProxy();
-        BuildFanoutDescriptors();
-    } else {
-        if (aivId_ < numScaleoutSendAiv_) {
-            SendScaleoutPayloadsToProxy();
-        } else if (aivId_ < numScaleoutSendAiv_ + numNodeLocalAiv_) {
-            BuildFanoutDescriptors();
-        }
-    }
+    SendScaleoutPayloadsToProxy();
+    BuildFanoutDescriptors();
     SyncAll<true>(); // Scaleout发送和Fanout描述构建完成后，节点内owner才能读取完整描述。
     SendScaleupPayloads();
     SyncAll<true>(); // 所有节点内发送完成后才能清理本轮Scaleout接收状态。
