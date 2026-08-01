@@ -94,8 +94,9 @@ public:
     __aicore__ inline void InitMMResBuf();
     __aicore__ inline void InitActualKVPrefixLen(__gm__ uint8_t *actualSharedPrefixLen);
     __aicore__ inline void ComputeConstexpr();
-    __aicore__ inline void SetRunInfo(regbaseutil::RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, int64_t taskId,
-                                      int64_t s2LoopCount, int64_t s2LoopLimit, int64_t multiCoreInnerIdx);
+    __aicore__ inline void SetRunInfo(regbaseutil::RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam,
+                                      int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit,
+                                      int64_t multiCoreInnerIdx);
     __aicore__ inline void ComputeAxisIdx(int64_t multiCoreInnerIdx, RunParamStr<isInfer> &runParam);
     __aicore__ inline void ComputeBmm1Tail(regbaseutil::RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam);
     __aicore__ inline void GetSeqQlenKvlenByBoidx(int64_t boIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvLen);
@@ -115,7 +116,7 @@ public:
     static constexpr bool isMxfp8FullQuant = s1BaseSize == 128 && s2BaseSize == 512;
     /* 是否使能dn的信息; 没有可选输入并且S2切分的时候使用dn，s2比较小的时候nd效果更好 */
     static constexpr bool useDn = CubeBlockType::useDn;
-    /* HIFLOAT8场景 softmax计算使用Nz格式计算，vec1ResBuffer可以和bmm1ResBuffer进行复用*/
+    /* HIFLOAT8场景 softmax计算使用Nz格式计算，vec1ResBuffer可以和bmm1ResBuffer进行复用 */
     static constexpr bool useNz = CubeBlockType::useNz;
     static constexpr TPosition bmm2OutPos = CubeBlockType::bmm2OutPos;
     static constexpr bool bmm2Write2Ub = CubeBlockType::bmm2Write2Ub;
@@ -618,8 +619,8 @@ __aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBl
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::SetRunInfo(
-    regbaseutil::RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit,
-    int64_t multiCoreInnerIdx)
+    regbaseutil::RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, int64_t taskId, int64_t s2LoopCount,
+    int64_t s2LoopLimit, int64_t multiCoreInnerIdx)
 {
     runInfo.s2StartIdx = runParam.s2LineStartIdx;
     runInfo.s2EndIdx = runParam.s2LineEndIdx;

@@ -35,7 +35,8 @@ public:
                                                CubeBlockType, VecBlockType>;
     /* =====================UB变量==================== */
     __aicore__ inline void InitUniqueConstInfo();
-    __aicore__ inline void InitUniqueRunInfo(const RunParamStr<isInfer> &runParam, regbaseutil::RunInfo<isInfer> &runInfo);
+    __aicore__ inline void InitUniqueRunInfo(const RunParamStr<isInfer> &runParam,
+                                             regbaseutil::RunInfo<isInfer> &runInfo);
     __aicore__ inline void Process();
     __aicore__ inline void ProcessMainLoop();
 

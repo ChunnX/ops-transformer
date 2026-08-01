@@ -152,11 +152,13 @@ public:
                                          __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
                                          __gm__ uint8_t *actualSharedPrefixLen);
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
-                                       regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+                                       regbaseutil::RunInfo<isInfer> &runInfo,
+                                       regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
 
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf,
                                        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
-                                       regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+                                       regbaseutil::RunInfo<isInfer> &runInfo,
+                                       regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void InitDequantParams(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
                                              __gm__ uint8_t *deqScaleV) {};
 
@@ -164,26 +166,33 @@ private:
     __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void InitGmTensor(CVSharedParams<isInfer, isPa> *sharedParams, __gm__ int64_t *actualSeqQlenAddr,
                                         __gm__ int64_t *actualSeqKvlenAddr);
-    __aicore__ inline void CalcS1Coord(regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline void CalcS2Coord(regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
-    __aicore__ inline void GetKvByTensorList(regbaseutil::RunInfo<isInfer> &runInfo, const regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
+    __aicore__ inline void CalcS1Coord(regbaseutil::RunInfo<isInfer> &runInfo,
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline void CalcS2Coord(regbaseutil::RunInfo<isInfer> &runInfo,
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline void GetKvByTensorList(regbaseutil::RunInfo<isInfer> &runInfo,
+    const regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
                                              GlobalTensor<INPUT_T> &keyValueGm, GlobalTensor<INPUT_T> &tempKeyValueGm);
-    __aicore__ inline GlobalTensor<INPUT_T> GetKeyGm(regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+    __aicore__ inline GlobalTensor<INPUT_T> GetKeyGm(regbaseutil::RunInfo<isInfer> &runInfo,
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline GlobalTensor<INPUT_T> GetValueGm(regbaseutil::RunInfo<isInfer> &runInfo,
                                                        regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void IterateBmm1MLAFullQuant(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                                   regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+                                                   regbaseutil::RunInfo<isInfer> &runInfo,
+                                                   regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void MatmulFromValues(const float avalue, const float bvalue, const LocalTensor<T> &cL0Tensor,
                                             const MMParam &param, regbaseutil::RunInfo<isInfer> &runInfo);
     __aicore__ inline void
     IterateBmm1MLAFullQuantInt8(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+                                regbaseutil::RunInfo<isInfer> &runInfo,
+                                regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
 
     // --------------------Bmm2--------------------------
     __aicore__ inline void
     IterateBmm2MLAFullQuant(mm2ResPos &outputBuf,
                             BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
-                            regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+                            regbaseutil::RunInfo<isInfer> &runInfo,
+                            regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline bool IsGS1Merge(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
 
     TPipe *tPipe;
@@ -431,7 +440,7 @@ FABlockCubeMlaFullquant<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<isInfer, isP
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::CalcS1Coord(regbaseutil::RunInfo<isInfer> &runInfo,
-                                                                           regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+        regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     // 计算s1方向偏移
     coordInfo[runInfo.taskIdMod3].s1Coord = runInfo.s1oIdx * s1BaseSize;
@@ -444,7 +453,7 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::CalcS1Coord(regba
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::CalcS2Coord(regbaseutil::RunInfo<isInfer> &runInfo,
-                                                                           regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+        regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     coordInfo[runInfo.taskIdMod3].s2Coord = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;
     coordInfo[runInfo.taskIdMod3].curBIdx = runInfo.boIdx;
@@ -470,7 +479,8 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::CalcS2Coord(regba
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
 FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                                    regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+                                                    regbaseutil::RunInfo<isInfer> &runInfo,
+                                                    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     CalcS1Coord(runInfo, constInfo);
     CalcS2Coord(runInfo, constInfo);
@@ -494,7 +504,8 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm2(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::GetKvByTensorList(
-    regbaseutil::RunInfo<isInfer> &runInfo, const regbaseutil::ConstInfo<isInfer, hasRope> &constInfo, GlobalTensor<INPUT_T> &keyValueGm,
+    regbaseutil::RunInfo<isInfer> &runInfo, const regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
+    GlobalTensor<INPUT_T> &keyValueGm,
     GlobalTensor<INPUT_T> &tempKeyValueGm)
 {
     if (constInfo.isKvContinuous != 0) {
@@ -507,7 +518,8 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::GetKvByTensorList
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline GlobalTensor<INPUT_T>
-FABlockCubeMlaFullquant<TEMPLATE_ARGS>::GetKeyGm(regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+FABlockCubeMlaFullquant<TEMPLATE_ARGS>::GetKeyGm(regbaseutil::RunInfo<isInfer> &runInfo,
+regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     if constexpr (isInfer) {
         GlobalTensor<INPUT_T> tmpKeyGm = this->keyGm.gmTensor;
@@ -520,7 +532,8 @@ FABlockCubeMlaFullquant<TEMPLATE_ARGS>::GetKeyGm(regbaseutil::RunInfo<isInfer> &
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline GlobalTensor<INPUT_T>
-FABlockCubeMlaFullquant<TEMPLATE_ARGS>::GetValueGm(regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+FABlockCubeMlaFullquant<TEMPLATE_ARGS>::GetValueGm(regbaseutil::RunInfo<isInfer> &runInfo,
+regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     if constexpr (isInfer) {
         GlobalTensor<INPUT_T> tmpValueGm = this->valueGm.gmTensor;
@@ -531,7 +544,7 @@ FABlockCubeMlaFullquant<TEMPLATE_ARGS>::GetValueGm(regbaseutil::RunInfo<isInfer>
     }
 }
 
-/* 针对MLA的bmm1*/
+/* 针对MLA的bmm1 */
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFullQuant(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, regbaseutil::RunInfo<isInfer> &runInfo,
@@ -781,7 +794,7 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::MatmulFromValues(
     ValueBufTemp.Set<HardEvent::MTE1_MTE2>();
 }
 
-/* 针对MLA INT8的bmm1*/
+/* 针对MLA INT8的bmm1 */
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFullQuantInt8(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, regbaseutil::RunInfo<isInfer> &runInfo,
@@ -793,7 +806,7 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFul
     uint32_t dstNzC0StrideQNope = (runInfo.s1RealSize + 31) >> 5 << 5; // 字节对齐，向上取整到32字节
     uint32_t offsetQRopeByElement =
         dstNzC0StrideQNope * constInfo.dSize / dTypeRATIO; // Rope在mm1A的偏移量（单位：元素）
-    //********************新增偏执矩阵的计算 */
+    // ********************新增偏执矩阵的计算 */
     Buffer<BufferType::C2> l0biasBuffer = tmpBufBias.Get();
     LocalTensor<int32_t> btC2Tensor = l0biasBuffer.GetTensor<int32_t>(); // 将在C2上位置
     if (isFirstIter) {
@@ -810,7 +823,7 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFul
         DataCopy(btC2Tensor, biasL1Tensor, nSplitSize * 2); // 因此利用了Datacopy完成了数据从C1---C2的搬运
         biasBufTemp.Set<HardEvent::MTE1_MTE2>();
     }
-    //********************结束偏置矩阵的计算 */
+    // ********************结束偏置矩阵的计算 */
     // 左矩阵复用 ,s2的第一次循环加载左矩阵
     // 加载左矩阵到L1 当前使用全载方式
     if (unlikely(runInfo.s2LoopCount == 0)) { // sOuter循环第一个基本快：搬运0
@@ -961,7 +974,8 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFul
 
 // 判断是否GS1合轴
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline bool FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IsGS1Merge(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+__aicore__ inline bool FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IsGS1Merge(
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     return (Q_FORMAT == GmFormat::BSNGD || Q_FORMAT == GmFormat::TNGD) && constInfo.isPfaGS1Merge;
 }
@@ -991,11 +1005,13 @@ public:
     {
     }
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                       regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+                                       regbaseutil::RunInfo<isInfer> &runInfo,
+                                       regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
     {
     }
     __aicore__ inline void IterateBmm1Nz(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                         regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+                                         regbaseutil::RunInfo<isInfer> &runInfo,
+                                         regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
     {
     }
 
@@ -1007,7 +1023,8 @@ public:
     }
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf,
                                        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
-                                       regbaseutil::RunInfo<isInfer> &runInfo, regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+                                       regbaseutil::RunInfo<isInfer> &runInfo,
+                                       regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
     {
     }
 };
