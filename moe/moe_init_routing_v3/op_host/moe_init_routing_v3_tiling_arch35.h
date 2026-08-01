@@ -30,112 +30,114 @@
         return ret; \
     }
 
-using Ops::Transformer::OpTiling::TilingBaseClass;
-
 namespace optiling {
-const static int64_t SIMT_DCACHE_SIZE = 64 * 1024LL; // UB要给SIMT预留64k的DCache空间，然后要用SetLocalMemSize()
-const static int64_t SORT_API_MAX_ELEM = 32 * 255LL; // AscendC::Sort全排序模式最多支持一次排序(32*255rep)个元素
-const static int64_t MRG_SORT_API_MAX_ELEM = 1024LL;
-const static int64_t MX_QUANT_BLOCK_SIZE = 32LL;
-const static int64_t MXFPX_SCALE_BLOCK_SIZE = 64LL;
-const static int64_t SCALE_FACTOR_WITH_X = 32LL;
-const static int64_t NUM_THOUSAND = 1000LL;
-const static int64_t FP8_PERBLOCK_BLOCK_SIZE = 128LL;
-const static int64_t FP8_GROUP_SIZE = 128LL;
-const static int64_t DOUBLE_BUFFER = 2LL;
+using Ops::Transformer::OpTiling::TilingBaseClass;
+constexpr int64_t SIMT_DCACHE_SIZE = 64 * 1024LL; // UB要给SIMT预留64k的DCache空间，然后要用SetLocalMemSize()
+constexpr int64_t SORT_API_MAX_ELEM = 32 * 255LL; // AscendC::Sort全排序模式最多支持一次排序(32*255rep)个元素
+constexpr int64_t MRG_SORT_API_MAX_ELEM = 1024LL;
+constexpr int64_t MX_QUANT_BLOCK_SIZE = 32LL;
+constexpr int64_t MXFPX_SCALE_BLOCK_SIZE = 64LL;
+constexpr int64_t SCALE_FACTOR_WITH_X = 32LL;
+constexpr int64_t NUM_THOUSAND = 1000LL;
+constexpr int64_t FP8_PERBLOCK_BLOCK_SIZE = 128LL;
+constexpr int64_t FP8_GROUP_SIZE = 128LL;
+constexpr int64_t DOUBLE_BUFFER = 2LL;
 
-const static int64_t MAX_QUEUE_BUFFER_NUM = 6LL;
+constexpr int64_t MAX_QUEUE_BUFFER_NUM = 6LL;
 
-const static int64_t NUM_TWO = 2LL;
-const static int64_t NUM_THREE = 3LL;
-const static int64_t NUM_FOUR = 4LL;
-const static int64_t MRG_LIST_NUM = 4LL;
-const static int64_t SORT32_ALIGN_ELEMENT = 32LL;
-const static int64_t UB_BLOCK_SIZE = 32LL;
-const static size_t DIM_ONE = 1ULL;
-const static size_t DIM_TWO = 2ULL;
-const static int32_t SIZE_16 = 16;
-const static int32_t LENGTH_1024 = 1024;
-const static int64_t KV_FACTOR = 2LL;
-const static int64_t ONE_CORE_SORT_BUFFER = 6LL;
-const static int64_t EXPERT_IDX_MAX = 10240LL;
-const static int64_t KV_MODE_EXPERT_IDX_MAX = EXPERT_IDX_MAX / KV_FACTOR;
-const static int64_t RANK_ONE = 1LL;
-const static int64_t RANK_TWO = 2LL;
-const static int64_t RANK_THREE = 3LL;
-const static int64_t BF16_TO_FP32_SIZE_FACTOR = 2LL;
+constexpr int64_t NUM_TWO = 2LL;
+constexpr int64_t NUM_THREE = 3LL;
+constexpr int64_t NUM_FOUR = 4LL;
+constexpr int64_t MRG_LIST_NUM = 4LL;
+constexpr int64_t SORT32_ALIGN_ELEMENT = 32LL;
+constexpr int64_t UB_BLOCK_SIZE = 32LL;
+constexpr size_t DIM_ONE = 1ULL;
+constexpr size_t DIM_TWO = 2ULL;
+constexpr int32_t SIZE_16 = 16;
+constexpr int32_t LENGTH_1024 = 1024;
+constexpr int64_t KV_FACTOR = 2LL;
+constexpr int64_t ONE_CORE_SORT_BUFFER = 6LL;
+constexpr int64_t EXPERT_IDX_MAX = 10240LL;
+constexpr int64_t KV_MODE_EXPERT_IDX_MAX = EXPERT_IDX_MAX / KV_FACTOR;
+constexpr int64_t RANK_ONE = 1LL;
+constexpr int64_t RANK_TWO = 2LL;
+constexpr int64_t RANK_THREE = 3LL;
+constexpr int64_t BF16_TO_FP32_SIZE_FACTOR = 2LL;
 
 // 输入输出的位置索引（V3 回归后 topk_weight 相关索引不再使用，V4 子类使用独立索引常量）
-const static int64_t INPUT_X_INDEX = 0LL;
-const static int64_t INPUT_EXPERT_IDX_INDEX = 1LL;
-const static int64_t INPUT_SCALE_INDEX = 2LL;
-const static int64_t INPUT_OFFSET_INDEX = 3LL;
-const static int64_t OUTPUT_EXPANDED_X_INDEX = 0LL;
-const static int64_t OUTPUT_EXPANDED_ROW_IDX_INDEX = 1LL;
-const static int64_t OUTPUT_EXPERT_TOKENS_COUNT_INDEX = 2LL;
-const static int64_t OUTPUT_EXPANDED_SCALE_INDEX = 3LL;
-const static int64_t INPUT_TOPK_WEIGHT_INDEX = 4LL;
-const static int64_t OUTPUT_EXPANDED_TOPK_WEIGHT_INDEX = 4LL;
-const static int64_t ATTR_ACTIVE_NUM_INDEX = 0LL;
-const static int64_t ATTR_EXPERT_CAPACITY_INDEX = 1LL;
-const static int64_t ATTR_EXPERT_NUM_INDEX = 2LL;
-const static int64_t ATTR_DROP_PAD_MODE_INDEX = 3LL;
-const static int64_t ATTR_EXPERT_TOKEN_NUM_TYPE_INDEX = 4LL;
-const static int64_t ATTR_EXPERT_TOKEN_NUM_FLAG_INDEX = 5LL;
-const static int64_t ATTR_QUANT_MODE_INDEX = 6LL;
-const static int64_t ATTR_EXPERT_RANGE_INDEX = 7LL;
-const static int64_t ATTR_ROW_IDX_TYPE_INDEX = 8LL;
+constexpr int64_t INPUT_X_INDEX = 0LL;
+constexpr int64_t INPUT_EXPERT_IDX_INDEX = 1LL;
+constexpr int64_t INPUT_SCALE_INDEX = 2LL;
+constexpr int64_t INPUT_OFFSET_INDEX = 3LL;
+constexpr int64_t OUTPUT_EXPANDED_X_INDEX = 0LL;
+constexpr int64_t OUTPUT_EXPANDED_ROW_IDX_INDEX = 1LL;
+constexpr int64_t OUTPUT_EXPERT_TOKENS_COUNT_INDEX = 2LL;
+constexpr int64_t OUTPUT_EXPANDED_SCALE_INDEX = 3LL;
+constexpr int64_t INPUT_TOPK_WEIGHT_INDEX = 4LL;
+constexpr int64_t OUTPUT_EXPANDED_TOPK_WEIGHT_INDEX = 4LL;
+constexpr int64_t ATTR_ACTIVE_NUM_INDEX = 0LL;
+constexpr int64_t ATTR_EXPERT_CAPACITY_INDEX = 1LL;
+constexpr int64_t ATTR_EXPERT_NUM_INDEX = 2LL;
+constexpr int64_t ATTR_DROP_PAD_MODE_INDEX = 3LL;
+constexpr int64_t ATTR_EXPERT_TOKEN_NUM_TYPE_INDEX = 4LL;
+constexpr int64_t ATTR_EXPERT_TOKEN_NUM_FLAG_INDEX = 5LL;
+constexpr int64_t ATTR_QUANT_MODE_INDEX = 6LL;
+constexpr int64_t ATTR_EXPERT_RANGE_INDEX = 7LL;
+constexpr int64_t ATTR_ROW_IDX_TYPE_INDEX = 8LL;
 
-const static int64_t ACTIVE_NUM_MIN_VALUE = -1LL;
-const static int64_t DYNAMIC_QUANT_COLS_BUFFER = 21LL;
-const static int64_t HIF8_PERTENSOR_QUANT_COLS_BUFFER = 5LL;
-const static int64_t HIF8_PERTOKEN_QUANT_COLS_BUFFER = 5LL;
-const static int64_t STATIC_QUANT_ROW_MULTIPLE = 2LL; // 静态量化行方向Buffer乘数
-const static int64_t STATIC_QUANT_FULLLOAD_COLS_BUFFER = 5LL;
-const static int64_t DYNAMIC_QUANT_FULLLOAD_COLS_BUFFER = 9LL;
+constexpr int64_t ACTIVE_NUM_MIN_VALUE = -1LL;
+constexpr int64_t DYNAMIC_QUANT_COLS_BUFFER = 21LL;
+constexpr int64_t HIF8_PERTENSOR_QUANT_COLS_BUFFER = 5LL;
+constexpr int64_t HIF8_PERTOKEN_QUANT_COLS_BUFFER = 5LL;
+constexpr int64_t STATIC_QUANT_ROW_MULTIPLE = 2LL; // 静态量化行方向Buffer乘数
+constexpr int64_t STATIC_QUANT_FULLLOAD_COLS_BUFFER = 5LL;
+constexpr int64_t DYNAMIC_QUANT_FULLLOAD_COLS_BUFFER = 9LL;
 
 // 输入attrs相关
-const static int64_t ROW_IDX_GATHER = 0LL;
-const static int64_t ROW_IDX_SCATTER = 1LL;
-const static int64_t QUANT_MODE_UNQUANT = -1LL;
-const static int64_t QUANT_MODE_STATIC = 0LL;
-const static int64_t QUANT_MODE_DYNAMIC = 1LL;
-const static int64_t QUANT_MODE_MXFP8_E5M2 = 2LL;
-const static int64_t QUANT_MODE_MXFP8_E4M3FN = 3LL;
-const static int64_t QUANT_MODE_FP8_GROUP_E5M2 = 4LL;
-const static int64_t QUANT_MODE_FP8_GROUP_E4M3FN = 5LL;
-const static int64_t QUANT_MODE_HIF8_CAST = 6LL;
-const static int64_t QUANT_MODE_HIF8_PERTENSOR = 7LL;
-const static int64_t QUANT_MODE_HIF8_PERTOKEN = 8LL;
-const static int64_t QUANT_MODE_MXFP4_E2M1 = 9LL;
-const static int64_t QUANT_MODE_FP8_PERBLOCK_E5M2 = 11LL;
-const static int64_t QUANT_MODE_FP8_PERBLOCK_E4M3FN = 12LL;
-const static int64_t QUANT_MODE_INT4_DYNAMIC = 13LL;
-const static int64_t QUANT_MODE_FP8_GROUP_AMAX_E5M2 = 14LL;
-const static int64_t QUANT_MODE_FP8_GROUP_AMAX_E4M3FN = 15LL;
-const static int64_t QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 = 16LL;
-const static int64_t QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN = 17LL;
-const static int64_t EXPERT_TOKENS_TYPE_CUMSUM = 0LL;
+constexpr int64_t ROW_IDX_GATHER = 0LL;
+constexpr int64_t ROW_IDX_SCATTER = 1LL;
+constexpr int64_t QUANT_MODE_UNQUANT = -1LL;
+constexpr int64_t QUANT_MODE_STATIC = 0LL;
+constexpr int64_t QUANT_MODE_DYNAMIC = 1LL;
+constexpr int64_t QUANT_MODE_MXFP8_E5M2 = 2LL;
+constexpr int64_t QUANT_MODE_MXFP8_E4M3FN = 3LL;
+constexpr int64_t QUANT_MODE_FP8_GROUP_E5M2 = 4LL;
+constexpr int64_t QUANT_MODE_FP8_GROUP_E4M3FN = 5LL;
+constexpr int64_t QUANT_MODE_HIF8_CAST = 6LL;
+constexpr int64_t QUANT_MODE_HIF8_PERTENSOR = 7LL;
+constexpr int64_t QUANT_MODE_HIF8_PERTOKEN = 8LL;
+constexpr int64_t QUANT_MODE_MXFP4_E2M1 = 9LL;
+constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E5M2 = 11LL;
+constexpr int64_t QUANT_MODE_FP8_PERBLOCK_E4M3FN = 12LL;
+constexpr int64_t QUANT_MODE_INT4_DYNAMIC = 13LL;
+constexpr int64_t QUANT_MODE_FP8_GROUP_AMAX_E5M2 = 14LL;
+constexpr int64_t QUANT_MODE_FP8_GROUP_AMAX_E4M3FN = 15LL;
+constexpr int64_t QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 = 16LL;
+constexpr int64_t QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN = 17LL;
+constexpr int64_t EXPERT_TOKENS_TYPE_CUMSUM = 0LL;
 
-const static int64_t EXPERT_TOKENS_TYPE_COUNT = 1LL;
-const static int64_t EXPERT_TOKENS_TYPE_KEY_VALUE = 2LL;
-const static int64_t DROP_PAD_MODE_DROPLESS = 0LL;
-const static int64_t DROP_PAD_MODE_DROPPAD = 1LL;
-const static int64_t EXPERT_CAPACITY_MIN_VALUE = 0LL;
-const static int64_t MAX_COLS_ONE_LOOP = 16376LL; // DropPad Tiling计算使用的最大列数
-const static int64_t REG_SIZE = 256LL;
+constexpr int64_t EXPERT_TOKENS_TYPE_COUNT = 1LL;
+constexpr int64_t EXPERT_TOKENS_TYPE_KEY_VALUE = 2LL;
+constexpr int64_t DROP_PAD_MODE_DROPLESS = 0LL;
+constexpr int64_t DROP_PAD_MODE_DROPPAD = 1LL;
+constexpr int64_t EXPERT_CAPACITY_MIN_VALUE = 0LL;
+constexpr int64_t MAX_COLS_ONE_LOOP = 16376LL; // DropPad Tiling计算使用的最大列数
+constexpr int64_t REG_SIZE = 256LL;
 
-const static int64_t TILINGKEY_BASE = 10000000LL;
-const static int64_t FULLLOAD_TILINGKEY_BASE = 200000LL; // 全载模版
-const static int64_t SORT_CORE_TILINGKEY_BASE = 1000000LL;
-const static int64_t QUANT_MODE_TILINGKEY_BASE = 10000LL;
-const static int64_t ROWIDX_TYPE_TILINGKEY_BASE = 1000LL;
-const static int64_t DROP_MODE_TILINGKEY_BASE = 100LL;
-const static uint64_t EMPTY_TENSOR_TILINGKEY = 3000000ULL;
-const static int64_t KEY_VALUE_MODE_DIM0_NUM = 2LL;
+constexpr int64_t TILINGKEY_BASE = 10000000LL;
+constexpr int64_t FULLLOAD_TILINGKEY_BASE = 200000LL; // 全载模版
+constexpr int64_t SORT_CORE_TILINGKEY_BASE = 1000000LL;
+constexpr int64_t QUANT_MODE_TILINGKEY_BASE = 10000LL;
+constexpr int64_t ROWIDX_TYPE_TILINGKEY_BASE = 1000LL;
+constexpr int64_t DROP_MODE_TILINGKEY_BASE = 100LL;
+constexpr uint64_t EMPTY_TENSOR_TILINGKEY = 3000000ULL;
+constexpr int64_t KEY_VALUE_MODE_DIM0_NUM = 2LL;
 
 inline static int64_t CeilLog4(int64_t x)
 {
+    if (x <= 0) {
+        return 0;
+    }
     return static_cast<int64_t>(std::ceil(std::log(x) / std::log(NUM_FOUR)));
 }
 
@@ -149,6 +151,9 @@ inline static int64_t Align(int64_t elementNum, int64_t bytes)
 
 inline static int64_t AlignBytes(int64_t elementNum, int64_t bytes)
 {
+    if (bytes == 0) {
+        return 0;
+    }
     return (elementNum * bytes + UB_BLOCK_SIZE - 1) / UB_BLOCK_SIZE * UB_BLOCK_SIZE;
 }
 
@@ -211,7 +216,7 @@ protected:
     void Reset()
     {
         opName = nullptr;
-    };
+    }
 
     // DoGetShapeAttrsInfo使用的子函数（V4 需覆盖）
     virtual ge::graphStatus GetInputTensorsInfo();
@@ -243,6 +248,7 @@ protected:
         dtype = descPtr->GetDataType();
         return ge::GRAPH_SUCCESS;
     }
+
     ge::graphStatus GetOptionalInputShapeDtype(gert::Shape &shape, ge::DataType &dtype, int64_t &marker, int64_t index)
     {
         OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::GetOptionalInputShapeDtype(...)");
@@ -255,6 +261,7 @@ protected:
             return ge::GRAPH_SUCCESS;
         }
     }
+
     template <typename ATTR_T>
     ge::graphStatus GetInputAttr(ATTR_T &attr, const gert::RuntimeAttrs *attrsPtr, int64_t index)
     {

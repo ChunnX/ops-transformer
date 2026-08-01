@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file moe_init_routing_v4_tiling.cpp
+ * \file moe_init_routing_v4_tiling_arch35.cpp
  * \brief
  */
 #include "moe_init_routing_v4_tiling_arch35.h"
@@ -18,9 +18,8 @@
 #include "register/op_def_registry.h"
 #include "log/log.h"
 
-using Ops::Transformer::OpTiling::TilingBaseClass;
-
 namespace optiling {
+using Ops::Transformer::OpTiling::TilingBaseClass;
 
 const static int64_t V4_OUTPUT_EXPANDED_X_INDEX = 0LL;
 const static int64_t V4_OUTPUT_EXPANDED_ROW_IDX_INDEX = 1LL;
@@ -61,7 +60,7 @@ protected:
             GetInputAttr<int64_t>(expertTokensNumType_, attrsPtr, V4_ATTR_EXPERT_TOKEN_NUM_TYPE_INDEX));
         OP_LOGD(context_, "Get input attr expertTokensNumType = %ld.", expertTokensNumType_);
         MIRV3_CHECK_GE_RET(GetInputAttr<bool>(expertTokensNumFlag_, attrsPtr, V4_ATTR_EXPERT_TOKEN_NUM_FLAG_INDEX));
-        OP_LOGD(context_, "Get input attr expertTokensNumFlag = %ld.", expertTokensNumFlag_);
+        OP_LOGD(context_, "Get input attr expertTokensNumFlag = %d.", expertTokensNumFlag_);
         MIRV3_CHECK_GE_RET(GetInputAttr<int64_t>(quantMode_, attrsPtr, V4_ATTR_QUANT_MODE_INDEX));
         OP_LOGD(context_, "Get input attr quantMode = %ld.", quantMode_);
         const auto *aerPtr = attrsPtr->GetAttrPointer<gert::ContinuousVector>(V4_ATTR_EXPERT_RANGE_INDEX);

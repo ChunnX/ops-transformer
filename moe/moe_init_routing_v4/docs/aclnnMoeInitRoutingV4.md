@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../../moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理，支持不量化、静态量化和动态量化模式。本接口针对V3接口[aclnnMoeInitRoutingV3](../../moe_init_routing_v3/docs/aclnnMoeInitRoutingV3.md)做出如下功能变更，请根据实际情况选择合适的接口：<br>
+- 接口功能：MoE的routing计算，根据[aclnnMoeGatingTopKSoftmaxV2](../../moe_gating_top_k_softmax_v2/docs/aclnnMoeGatingTopKSoftmaxV2.md)的计算结果做routing处理，支持非量化、静态量化和动态量化模式。本接口针对V3接口[aclnnMoeInitRoutingV3](../../moe_init_routing_v3/docs/aclnnMoeInitRoutingV3.md)做出如下功能变更，请根据实际情况选择合适的接口：<br>
   <ol><li>active_num从属性改为可选输入，支持图模式下动态传入active_num值。</li><li>新增可选输入topkWeight和可选输出expandedTopkWeightOut，支持对topkWeight按排序后的索引进行重排，使得expandedTopkWeightOut与expandedXOut一一对应。topkWeight与expandedTopkWeightOut必须同时传入或同时不传入。</li></ol>
 
 - 计算公式：
@@ -336,7 +336,7 @@ aclnnStatus aclnnMoeInitRoutingV4(
       <td>取值为0、1、-1、2、3、6、7、8、9、11、12、13
         <br>0：表示静态 quant 场景;
         <br>1：表示动态 quant 场景，expandedXOut量化到INT8;
-        <br>-1：表示不量化场景;
+        <br>-1：表示非量化场景;
         <br>2：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E5M2;
         <br>3：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E4M3FN;
         <br>6：表示HIF8直转量化场景，expandedXOut量化到HIFLOAT8;
