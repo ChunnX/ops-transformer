@@ -41,6 +41,15 @@ void ConvertRequiredParams(gert::TilingContext &context, CompressorGradContext &
     compressorGradContext.kv.desc = context.GetRequiredInputDesc(KV_INPUT_INDEX);
     compressorGradContext.kv.shape = context.GetRequiredInputShape(KV_INPUT_INDEX);
 
+    compressorGradContext.dX.desc = context.GetOutputDesc(D_X_OUTPUT_INDEX);
+    compressorGradContext.dX.shape = context.GetOutputShape(D_X_OUTPUT_INDEX);
+    compressorGradContext.dWkv.desc = context.GetOutputDesc(D_WKV_OUTPUT_INDEX);
+    compressorGradContext.dWkv.shape = context.GetOutputShape(D_WKV_OUTPUT_INDEX);
+    compressorGradContext.dWgate.desc = context.GetOutputDesc(D_WGATE_OUTPUT_INDEX);
+    compressorGradContext.dWgate.shape = context.GetOutputShape(D_WGATE_OUTPUT_INDEX);
+    compressorGradContext.dApe.desc = context.GetOutputDesc(D_APE_OUTPUT_INDEX);
+    compressorGradContext.dApe.shape = context.GetOutputShape(D_APE_OUTPUT_INDEX);
+
     compressorGradContext.dtype = compressorGradContext.x.desc->GetDataType();
     auto xDimNum = compressorGradContext.x.shape->GetStorageShape().GetDimNum();
     if (xDimNum == COMPRESSOR_GRAD_DIM_NUM_3) {
@@ -125,7 +134,7 @@ ge::graphStatus SetWorkSpaceInfo(CompressorGradInnerSplitParams &compressorGradI
     }
     compressorGradWorkspaceParams.vec1ResSize = compressorGradInnerSplitParams.mBaseSize * compressorGradBaseParams.headDim * compressorGradBaseParams.nSize;
 
-    OP_LOGI(opName, "HYQ HYQ HYQ [TILING] compressorGradWorkspaceParams.mm1KvResSize:%ld  compressorGradWorkspaceParams.mm1ScoreResSize:%ld compressorGradWorkspaceParams.vec1TailCacheSize:%ld compressorGradWorkspaceParams.vec1ResSize:%ld",
+    OP_LOGI(opName, "[TILING] compressorGradWorkspaceParams.mm1KvResSize:%ld  compressorGradWorkspaceParams.mm1ScoreResSize:%ld compressorGradWorkspaceParams.vec1TailCacheSize:%ld compressorGradWorkspaceParams.vec1ResSize:%ld",
             compressorGradWorkspaceParams.mm1KvResSize, compressorGradWorkspaceParams.mm1ScoreResSize, compressorGradWorkspaceParams.vec1TailCacheSize, compressorGradWorkspaceParams.vec1ResSize);
 
     return ge::GRAPH_SUCCESS;
@@ -175,10 +184,6 @@ ge::graphStatus SetInnerSplitInfo(CompressorGradContext &compressorGradContext, 
             compressorGradBaseParams.mLoopNum = mBaseNum / compressorGradBaseParams.coreGroupNum;
         }
     }
-    // } else {
-    //     compressorGradInnerSplitParams.mBaseSize = 256;        // 256:核间切分，M轴基本块大小
-    //     compressorGradInnerSplitParams.dBaseSize = 128 / coff; // 128：核间切分，D轴基本块大小
-    // }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -238,8 +243,9 @@ ge::graphStatus GenTilingKey(CompressorGradContext &compressorGradContext)
     }
 
     uint8_t coff = static_cast<uint8_t>(*compressorGradContext.coff);
-    compressorGradContext.tilingKey = static_cast<uint64_t>(coff)
-                                        | (static_cast<uint64_t>(layout) << 1)
+    uint8_t coffIdx = coff - 1;
+    compressorGradContext.tilingKey = static_cast<uint64_t>(coffIdx)
+                                        | (static_cast<uint64_t>(layout) << 2)
                                         | (static_cast<uint64_t>(dtype) << 3);
     
     OP_LOGI(compressorGradContext.opName,
@@ -653,8 +659,8 @@ ge::graphStatus CheckShapeConsistency(CompressorGradContext &compressorGradConte
                                                       compressorGradBaseParams.headDim, compressorGradContext.opName)) {
                 return ge::GRAPH_FAILED;
         }
-        return ge::GRAPH_SUCCESS;
     }
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus CheckDtypeConsistencyX(const gert::CompileTimeTensorDesc *desc,
@@ -892,6 +898,7 @@ static ge::graphStatus CompressorGradTilingFunc(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
+    compressorGradContext.blockDim = aicNum;
     if (CheckRequiredParaExistence(compressorGradContext) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -941,10 +948,6 @@ static ge::graphStatus CompressorGradTilingFunc(gert::TilingContext *context)
     }
 
     CompressorGradTiling *tilingData = context->GetTilingData<CompressorGradTiling>();
-    OP_CHECK_IF(tilingData == nullptr, OPS_REPORT_VECTOR_INNER_ERR(compressorGradContext.opName, "TilingData is nullptr."),
-                return ge::GRAPH_FAILED);
-    // compressorGradContext.blockDim = aicNum;
-
     tilingData->batchSize = compressorGradBaseParams.batchSize;
     tilingData->tokenSize = compressorGradBaseParams.tokenSize;
     tilingData->seqSize = compressorGradBaseParams.seqSize;
