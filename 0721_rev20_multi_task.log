@@ -7,7 +7,7 @@ Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on 
 [dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=b157e155c78d375c1cf5a67090a23db1b4649a5deec0afd90619792be373b08c
   TileLang: completed
   Official: completed
-[00] bsnd_b4_s1_512_k_1024 PRECISION FAIL: dQueryIndex: non-finite value detected (TileLang=174525, Official=0)
-  TileLang kinds: nan=145451 +inf=14518 -inf=14556
-  TileLang first coordinates: (0, 0, 0, 0), (0, 0, 0, 1), (0, 0, 0, 2), (0, 0, 0, 3), (0, 0, 0, 4), (0, 0, 0, 5), (0, 0, 0, 6), (0, 0, 0, 7), (0, 0, 0, 8), (0, 0, 0, 9), (0, 0, 0, 10), (0, 0, 0, 11), (0, 0, 0, 12), (0, 0, 0, 13), (0, 0, 0, 14), (0, 0, 0, 15)
+[00] bsnd_b4_s1_512_k_1024 PRECISION FAIL: dQueryIndex: non-finite value detected (TileLang=184515, Official=0)
+  TileLang kinds: nan=155015 +inf=14596 -inf=14904
+  TileLang first coordinates: (0, 1, 0, 11), (0, 1, 0, 82), (0, 1, 0, 99), (0, 2, 1, 1), (0, 2, 1, 2), (0, 2, 1, 3), (0, 2, 1, 4), (0, 2, 1, 9), (0, 2, 1, 11), (0, 2, 1, 13), (0, 2, 1, 14), (0, 2, 1, 18), (0, 2, 1, 21), (0, 2, 1, 27), (0, 2, 1, 28), (0, 2, 1, 33)
 Summary: total=1 pass=0 fail=1 precision=1 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
