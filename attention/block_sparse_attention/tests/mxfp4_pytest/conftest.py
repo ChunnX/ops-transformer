@@ -26,3 +26,12 @@ def pytest_configure(config):
     if dump_val is not None:
         overrides["dump"] = dump_val
     mod._CLI_OVERRIDES = overrides
+
+def pytest_runtest_logreport(report):
+    """每个测试的 report 阶段触发; 在 passed 的 call 阶段后打印分隔线,
+    使其出现在 pytest 打印的 'PASSED' 之后。
+    用 sys.stdout.write + flush 显式补换行, 避免 pytest 进度行 \\r 导致 PASSED 与分隔线黏连。"""
+    import sys
+    if report.when == "call" and report.passed:
+        sys.stdout.write("\n=========================================================\n")
+        sys.stdout.flush()

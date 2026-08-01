@@ -44,7 +44,6 @@ namespace MXFP4 {
     static constexpr uint32_t UB_P_INNER_BUF_ELEMENT_OFFSET = 256;
     static constexpr uint32_t UB_P_BUF_SIZE = 16 * KB_BYTE;
     static constexpr uint32_t UB_P_BUF_OFFSET = 160 * KB_BYTE + 512;
-    static constexpr uint32_t UB_P_QS_MAJOR_BYTE = 256;
 
     // attnTrans(space-reuse P): 18K, BUFCNT=1, output buffer
     static constexpr uint32_t UB_O_TRANS_BUF_SIZE = 18 * KB_BYTE;

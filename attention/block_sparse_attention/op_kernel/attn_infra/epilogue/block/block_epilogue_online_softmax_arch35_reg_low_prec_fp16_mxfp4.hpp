@@ -52,6 +52,7 @@ public:
     using ElementDisguiseP = uint8_t;
     using ElementPScale = typename ScaleType_::Element;
     using ElementIndex = uint8_t;
+    using LayoutPL1 = typename OutputType_::Layout;
     using LayoutPUB = layout::RowMajor;
 
     __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue, ElementInput dstTypeMax)
@@ -226,45 +227,56 @@ public:
             auto pUBTensorTlaTile = GetTile(ubPTensorTla, tla::MakeCoord(0u, spBuffIdx * MXFP4::UB_P_INNER_BUF_ELEMENT_OFFSET), tla::MakeShape(pUBTlaMSize, pUBTlaNSize / 2));
             auto srcOffset = pUBTensorTlaTile.layout()(pUBTensorTlaTile.coord());
 
-            DataCopy(l1PTensorTla.data(), pUBTensorTlaTile.data()[srcOffset], {static_cast<uint16_t>(128/ 32 * 8 / 2), 8, 8, 0});
-            DataCopy(l1PTensorTla.data()[128 / 32* 8 / 2 * 256], pUBTensorTlaTile.data()[srcOffset + 16384],
-                {static_cast<uint16_t>(128 / 32 * 8 / 2), 8, 8, 0});
+            // DataCopy(l1PTensorTla.data(), pUBTensorTlaTile.data()[srcOffset], {static_cast<uint16_t>(128/ 32 * 8 / 2), 8, 8, 0});
+            // DataCopy(l1PTensorTla.data()[128 / 32* 8 / 2 * 256], pUBTensorTlaTile.data()[srcOffset + 16384],
+            //     {static_cast<uint16_t>(128 / 32 * 8 / 2), 8, 8, 0});
 
+            AscendC::DataCopyParams repeatParams1;
+            repeatParams1.blockCount = static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32 / (pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE));// UB的物理P一整行256B, 包含P的逻辑视图低位(高位)地址8行
+            repeatParams1.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
+            repeatParams1.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
+            repeatParams1.dstStride = 0;
 
-            // AscendC::DataCopyParams repeatParams1;
-            // repeatParams1.blockCount = static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32 / (MXFP4::UB_P_QS_MAJOR_BYTE / MXFP4::DATA_BLOCK_BYTE));// UB的物理P一整行256B, 包含P的逻辑视图低位(高位)地址8行
-            // repeatParams1.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
-            // repeatParams1.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
-            // repeatParams1.dstStride = 0;
+            auto pUBTensorTlaTile1 = tla::GetTile(ubPTensorTla, tla::MakeCoord(0u, spBuffIdx * MXFP4::UB_P_INNER_BUF_ELEMENT_OFFSET), tla::MakeShape(pUBTlaMSize / 2, pUBTlaNSize / 2));
+            auto srcOffset1 = pUBTensorTlaTile1.layout()(pUBTensorTlaTile1.coord());
+            AscendC::DataCopy(l1PTensorTla.data(), ubPTensorTla.data()[srcOffset1], repeatParams1);
 
-            // auto pUBTensorTlaTile1 = tla::GetTile(ubPTensorTla, tla::MakeCoord(0u, spBuffIdx * MXFP4::UB_P_INNER_BUF_ELEMENT_OFFSET), tla::MakeShape(pUBTlaMSize / 2, pUBTlaNSize / 2));
-            // auto srcOffset1 = pUBTensorTlaTile1.layout()(pUBTensorTlaTile1.coord());
-            // AscendC::DataCopy(l1PTensorTla.data(), ubPTensorTla.data()[srcOffset1], repeatParams1);
+            // 高位搬运
+            AscendC::DataCopyParams repeatParams2;
+            repeatParams2.blockCount = static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32 / (pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE));// UB的物理P一整行256B, 包含P的逻辑视图高位(低位)地址8行
+            repeatParams2.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
+            repeatParams2.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
+            repeatParams2.dstStride = 0;
 
-            // // 高位搬运
-            // AscendC::DataCopyParams repeatParams2;
-            // repeatParams2.blockCount = static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32 / (MXFP4::UB_P_QS_MAJOR_BYTE / MXFP4::DATA_BLOCK_BYTE));// UB的物理P一整行256B, 包含P的逻辑视图高位(低位)地址8行
-            // repeatParams2.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
-            // repeatParams2.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
-            // repeatParams2.dstStride = 0;
+            uint32_t pL1NHalfSize = tla::get<1, 0>(l1PTensorTla.shape());
+            uint32_t xL1P = tileInfo.kvsActBaseTileAlign64;
+            uint32_t yL1P = 0;
+            if (tileInfo.kvsActBaseTileAlign64 == MXFP4::KVS_BASE_SIZE) {
+                xL1P = 0;
+                yL1P = pL1NHalfSize;
+            }
+            auto pUBTensorTlaTile2 = tla::GetTile(pUBTensorTlaTile1, tla::MakeCoord(pUBTlaMSize / 2, 0u), tla::MakeShape(pUBTlaMSize / 2, pUBTlaNSize / 2)); // 遗留
+            auto pl1TensorTlaTile = tla::GetTile(l1PTensorTla, tla::MakeCoord(xL1P, yL1P), tla::MakeShape(MXFP4::KVS_BASE_SIZE, pL1NHalfSize));
 
-            // uint32_t pL1NHalfSize = tla::get<1, 0>(ubPTensorTla.shape());
-            // uint32_t xL1P = tileInfo.kvsActBaseTileAlign64;
-            // uint32_t yL1P = 0;
-            // if (tileInfo.kvsActBaseTileAlign64 != MXFP4::KVS_BASE_SIZE) {
-            //     xL1P = 0;
-            //     yL1P = pL1NHalfSize;
-            // }
-            // auto pUBTensorTlaTile2 = tla::GetTile(pUBTensorTlaTile1, tla::MakeCoord(pUBTlaMSize / 2, 0u), tla::MakeShape(pUBTlaMSize / 2, pUBTlaNSize / 2)); // 遗留
-            // auto pl1TensorTlaTile = tla::GetTile(l1PTensorTla, tla::MakeCoord(xL1P, yL1P), tla::MakeShape(MXFP4::KVS_BASE_SIZE, pL1NHalfSize));
+            auto srcOffset2 = pUBTensorTlaTile2.layout()(pUBTensorTlaTile2.coord());
+            auto dstOffset2 = pl1TensorTlaTile.layout()(pl1TensorTlaTile.coord());
 
-            // auto srcOffset2 = pUBTensorTlaTile2.layout()(pUBTensorTlaTile2.coord());
-            // auto dstOffset2 = pl1TensorTlaTile.layout()(pl1TensorTlaTile.coord());
+            AscendC::DataCopy(pl1TensorTlaTile.data()[dstOffset2], pUBTensorTlaTile2.data()[srcOffset2], repeatParams2);
 
-            // AscendC::printf("srcOffset2:%d , dstOffset2:%d \n",srcOffset2,dstOffset2);
-
-
-            // AscendC::DataCopy(pl1TensorTlaTile.data()[dstOffset2], pUBTensorTlaTile2.data()[srcOffset2], repeatParams2);
+            // AscendC::printf("==== CopyPUBToPL1 ELSE debug ====\n");
+            // AscendC::printf("pUBTlaMSize:%d, pUBTlaNSize:%d, actQsTile:%d, spBuffIdx:%d\n", pUBTlaMSize, pUBTlaNSize, actQsTile, spBuffIdx);
+            // AscendC::printf("tileInfo.kvsActBaseTileAlign32:%d, kvsActBaseTileAlign64:%d, KVS_BASE_SIZE:%d\n", tileInfo.kvsActBaseTileAlign32, tileInfo.kvsActBaseTileAlign64, MXFP4::KVS_BASE_SIZE);
+            // AscendC::printf("UB_P_QS_MAJOR_BYTE:%d, DATA_BLOCK_BYTE:%d\n", MXFP4::UB_P_QS_MAJOR_BYTE, MXFP4::DATA_BLOCK_BYTE);
+            // AscendC::printf("UB_P_INNER_BUF_ELEMENT_OFFSET:%d\n", MXFP4::UB_P_INNER_BUF_ELEMENT_OFFSET);
+            // AscendC::printf("srcOffset:%d, srcOffset1:%d, srcOffset2:%d, dstOffset2:%d\n", srcOffset, srcOffset1, srcOffset2, dstOffset2);
+            // AscendC::printf("repeatParams1: blockCount:%d, blockLen:%d, srcStride:%d, dstStride:%d\n", repeatParams1.blockCount, repeatParams1.blockLen, repeatParams1.srcStride, repeatParams1.dstStride);
+            // AscendC::printf("repeatParams2: blockCount:%d, blockLen:%d, srcStride:%d, dstStride:%d\n", repeatParams2.blockCount, repeatParams2.blockLen, repeatParams2.srcStride, repeatParams2.dstStride);
+            // AscendC::printf("pL1NHalfSize:%d, xL1P:%d, yL1P:%d\n", pL1NHalfSize, xL1P, yL1P);
+            // AscendC::printf("pUBTensorTlaTile1 shape(M,N):(%d,%d)\n", tla::get<0>(pUBTensorTlaTile1.shape()), tla::get<1>(pUBTensorTlaTile1.shape()));
+            // AscendC::printf("pUBTensorTlaTile2 shape(M,N):(%d,%d)\n", tla::get<0>(pUBTensorTlaTile2.shape()), tla::get<1>(pUBTensorTlaTile2.shape()));
+            // AscendC::printf("pl1TensorTlaTile shape(M,N):(%d,%d)\n", tla::get<0>(pl1TensorTlaTile.shape()), tla::get<1>(pl1TensorTlaTile.shape()));
+            // AscendC::printf("l1PTensorTla shape(M,N):(%d,%d)\n", tla::get<0>(l1PTensorTla.shape()), tla::get<1>(l1PTensorTla.shape()));
+            // AscendC::printf("==== CopyPUBToPL1 ELSE debug end ====\n");
         }
     }
 
