@@ -47,7 +47,8 @@ private:
     uint64_t GetDepthWithHighBW(uint64_t mnL1) const;
     void ModifyDepthForUnalign(uint64_t leftL1Size, uint64_t baseASize, uint64_t baseBSize, uint64_t baseScaleABSize);
     ge::graphStatus CalScaleFactors();
-    bool CanEnableThreeL1Buffer() const;
+    bool CanEnableThreeL1Buffer();
+    bool CheckFitL1ForThreeBuffer(uint64_t kAL1, uint64_t kBL1, uint64_t scaleKL1) const;
     GroupedMatmulTilingData::GMMQuantBasicApiTilingData tilingData_;
 };
 } // namespace optiling

@@ -87,7 +87,7 @@ ge::graphStatus GroupedQmmBasicApiTiling::DoLibApiTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-bool GroupedQmmBasicApiTiling::CanEnableThreeL1Buffer() const
+bool GroupedQmmBasicApiTiling::CanEnableThreeL1Buffer()
 {
     if (!IsMicroScaling() || inputParams_.transA) {
         return false;
@@ -100,6 +100,37 @@ bool GroupedQmmBasicApiTiling::CanEnableThreeL1Buffer() const
         return false;
     }
 
+    // Try the current stepK first.
+    if (CheckFitL1ForThreeBuffer(kAL1, kBL1, scaleKL1)) {
+        return true;
+    }
+
+    // When the problem has a small M, GetDepthWithHighBW may lift stepKa beyond 2 to meet the
+    // per-load MTE2 bandwidth floor (64 KB).  This inflates kAL1 and prevents the third buffer
+    // from fitting in L1.  A 3‑buffer pipeline naturally provides 50 % more data inflight than a
+    // 2‑buffer one, so we can relax stepKa back to 2 and reassess L1 occupancy.
+    const uint64_t minKAL1 = basicTiling_.baseK * DB_SIZE;  // stepKa = 2
+    if (kAL1 > minKAL1) {
+        const uint64_t reducedKAL1 = minKAL1;
+        const uint64_t reducedKBL1 = std::min(kBL1, reducedKAL1);
+        const uint64_t reducedScaleKL1 = std::min(scaleKL1, reducedKAL1);
+        if (CheckFitL1ForThreeBuffer(reducedKAL1, reducedKBL1, reducedScaleKL1)) {
+            // Shrink kAL1 / kBL1 / scaleKL1 so the kernel's actual buffer sizes match the
+            // amount of L1 space 3‑buffer can afford.
+            tilingData_.mmTilingData.kAL1 = static_cast<uint32_t>(reducedKAL1);
+            tilingData_.mmTilingData.kBL1 = static_cast<uint32_t>(reducedKBL1);
+            tilingData_.mmTilingData.scaleKAL1 = static_cast<uint32_t>(reducedScaleKL1);
+            tilingData_.mmTilingData.scaleKBL1 = static_cast<uint32_t>(reducedScaleKL1);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool GroupedQmmBasicApiTiling::CheckFitL1ForThreeBuffer(
+    const uint64_t kAL1, const uint64_t kBL1, const uint64_t scaleKL1) const
+{
     const uint64_t aL1Size =
         GetSizeWithDataType(basicTiling_.baseM * CeilAlign(kAL1, MX_GROUP_SIZE), inputParams_.aDtype);
     const uint64_t bL1Size =
