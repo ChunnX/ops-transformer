@@ -402,11 +402,14 @@ public:
         constexpr uint32_t actVec0Align32 = mBaseSize >> 1;
         uint32_t s2RealSizeAlign = (((runInfo.actSingleLoopS2Size + 63) >> 6) << 6);
         for (uint32_t i = 0; i < actCopyCount; i++) {
-            uint32_t dstOffset = 32 * s2BaseSizeCur * i + subLoopOffset;
+            // stride-fix(d256): LoadData reads L1 at 0x2000 stride (NZ fractal pair); d256 s2BaseSizeCur=128 -> 32*128=0x1000 (half stride) -> blocks 0x1000/0x3000 skipped + 0x2000 displaced to Mf2-3 (should be Mf4-5). d256-only double-stride so dstOffset lands 0x2000 grid like d128 (s2BaseSizeCur=256 -> 32*256=0x2000 unchanged).
+            constexpr uint32_t strideMul = (s2BaseSizeCur == 128) ? 64 : 32;
+            constexpr uint32_t subBlk1Mul = (s2BaseSizeCur == 128) ? 2 : 1;
+            uint32_t dstOffset = strideMul * s2BaseSizeCur * i + subLoopOffset;
             if (constInfo.subBlockIdx == 1) {
-                dstOffset += s2BaseSizeCur * actVec0Align32;
+                dstOffset += subBlk1Mul * s2BaseSizeCur * actVec0Align32;
             }
-            uint32_t srcOffset = i * (65 << 5);
+            uint32_t srcOffset = i * ((s2BaseSizeCur / 4 + 1) << 5);
             DataCopy(mm2AL1Tensor[dstOffset], stage1CastTensor[srcOffset],
                      {4, s2BaseSizeCur / 4, s2BaseSizeCur / 4 + 2, 0});
         }
