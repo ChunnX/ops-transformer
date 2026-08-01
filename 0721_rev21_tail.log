@@ -1,0 +1,19 @@
+0721 general test: suite=all, cases=1, benchmark=False, resource_excluded=9
+Resource constraint: exclude cases with workspace scale B*S1*K >= about 8.4M on the 61 GiB device; TND S1*K=16.78M also OOMs.
+
+========================================================================================
+[00] isolate_tail_b1_s1_1_k_4096: suite=isolate kind=tail-k layout=BSND B=1 S1=1 S2=1025 N1=32 Nidx1=16 K=4096 valid_k=[1025,1025] exec_k=2048 scatter_exec_k=1040 invalid=3071 path=tail-protected dtype=bfloat16
+[build] module=/data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721.py revision=21 python_sha256=ace4aefd2e0be2bd80acc31b583f799297c7e91fab3e70c34eb67e933d21e2c5
+[dump] kernel source written to /data/z00943842/code/ops-transformer/attention/sparse_lightning_indexer_grad_kl_loss/tilelang/0721_kernel_source.cpp cpp_sha256=dad083f7eef5bbff145c65b8215ffd251cd5914b0c14aa799f6ee7bf77be3fdb
+  TileLang: completed
+  Official: completed
+  dQueryIndex  max_abs=0.000000e+00 mean_abs=0.000000e+00 mean_rel=0.000000e+00 norm_rel=0.000000e+00
+  dKeyIndex    max_abs=3.051758e-05 mean_abs=1.609030e-09 mean_rel=2.885606e-06 norm_rel=1.412557e-06
+  dWeights     max_abs=0.000000e+00 mean_abs=0.000000e+00 mean_rel=0.000000e+00 norm_rel=0.000000e+00
+  Loss         max_abs=9.536743e-07 mean_abs=9.536743e-07 mean_rel=8.354906e-08 norm_rel=8.354906e-08
+  batch=0 dQueryIndex=0.00e+00 dKeyIndex=1.41e-06 dWeights=0.00e+00
+  query诊断：launch_cores=4 tasks_per_core=1 first_failed=None failed=0/1
+    b= 0 q=   0 task=   0 round= 0 core= 0 kReal= 1025 dQ_norm=0.00e+00 dW_norm=0.00e+00
+  query最差：b0q0(task=0,dQ=0.0e+00,dW=0.0e+00)
+[00] isolate_tail_b1_s1_1_k_4096 PASS dQ_norm=0.00e+00 dK_norm=1.41e-06 dW_norm=0.00e+00 Loss_norm=8.35e-08
+Summary: total=1 pass=1 fail=0 precision=0 tilelang_error=0 official_error=0 input_error=0 bench_error=0 resource_excluded=9
