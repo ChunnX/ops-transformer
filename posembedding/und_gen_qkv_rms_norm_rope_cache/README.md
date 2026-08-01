@@ -113,4 +113,4 @@
 | Kernel 计算实现 | **待实现**（见 `op_kernel/arch35/*_regbase.h` 的 TODO） |
 | aclnn L0/L2 接口 | 已完成 |
 | UT（infershape / tiling / kernel 拉起） | 已完成 |
-| ST（ATK） | golden 已就绪，待 kernel 实现后跑通 |
+| ST（ATK） | 待补（golden 已就绪，见 `tests/golden.py`） |

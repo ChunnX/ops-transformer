@@ -48,9 +48,9 @@
   v_cache       bf16 [num_blocks, block_size, Hv, D]（逻辑 shape）
   q             bf16 [total, Hq, D]
 
-本文件是本算子的**唯一 golden 实现**，被以下用例共用：
+本文件是本算子的**唯一 golden 实现**，供以下用例共用：
   - tests/test_und_gen_qkv_rms_norm_rope_cache_torch.py（torch 接口 + 上板精度比对）
-  - tests/st/aclnnUndGenQkvRmsNormRopeCache/executor_*.py（ATK ST）
+  - 后续接入的 ST 用例
 纯 CPU torch 实现，不依赖 NPU；`python3 golden.py` 可直接自检 case 集构造是否合法。
 """
 
