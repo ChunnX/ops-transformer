@@ -18,4 +18,4 @@ cpu_out, _ = g.cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, p_scal
 npu_out, _ = g.npu_mxfp8_fa(q_fp8, k_fp8, v_fp8, deq_q, deq_k, deq_v, p_scale,
                               g.ACTUAL_SEQ_Q, g.ACTUAL_SEQ_KV, bt, qr, kr)
 cpu_tnd = g.convert_q_bnsd_to_layout(cpu_out, g.ACTUAL_SEQ_Q, "TND")
-g.result_compare_method.check_result(cpu_tnd, npu_out)
+import numpy as _np; _np.save("/tmp/npu_out_d128.npy", _np.asarray(npu_out.cpu())); _np.save("/tmp/cpu_out_d128.npy", _np.asarray(cpu_tnd.cpu())); g.result_compare_method.check_result(cpu_tnd, npu_out)
