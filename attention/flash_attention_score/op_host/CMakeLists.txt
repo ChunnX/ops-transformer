@@ -17,7 +17,7 @@ endif()
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
-    set(flash_attention_score_apt_depends attention/common attention/fused_infer_attention_score CACHE INTERNAL "Dependencies for flash_attention_score")
+    set(flash_attention_score_apt_depends attention/common CACHE INTERNAL "Dependencies for flash_attention_score")
     add_ops_compile_options(
         OP_NAME FlashAttentionScore
         COMPUTE_UNIT Ascend950PR_9599
