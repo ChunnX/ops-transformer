@@ -44,7 +44,7 @@ DQUERY = 512
 DQUERY_INDEX = 128
 # 显式参与 TileLang JIT specialization，源码结构调整后递增以避免复用
 # 旧的持久编译产物。该值不进入运行时 kernel ABI。
-KERNEL_CACHE_REVISION = 17
+KERNEL_CACHE_REVISION = 21
 
 _kernel_cache = {}
 _workspace_cache = {}
@@ -1817,6 +1817,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
     @T.macro
     def vector1_owned_backward_task(
+        KRealSize,
         valid_k_size,
         Weights,
         bmm2Res,
@@ -2010,14 +2011,17 @@ def tilelang_grad_kl_loss_single_kernel(
                                 v1_ob_loss_2d[0, :],
                                 v1_ob_p,
                             )
-                            if not full_valid and bw_col_end > valid_k_size:
+                            if not full_valid:
                                 T.pipe_barrier("v")
-                                # packed mask 不跨越中间 Vector 指令复用；在 Loss
-                                # 消费前重新生成，避免后端临时区覆盖旧 mask。
+                                # Loss 直接读取运行时 KRealSize。不能依赖从主流水
+                                # 传入的 valid_k_size 来裁剪动态分支：该标量曾在
+                                # lowering 中被常量化，导致尾部无效列进入归约。
+                                # tail specialization 的每个静态块都生成 mask；
+                                # 完整块自然全真，完全无效块自然全假。
                                 T.tile.compare(
                                     v1_ob_mask,
                                     v1_ob_offsets,
-                                    valid_k_size - bw_col_start,
+                                    KRealSize[bz_task, s1_id] - bw_col_start,
                                     "LT",
                                 )
                                 T.pipe_barrier("v")
@@ -2816,6 +2820,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             )
                             relay_vector1_psy(task_prev_slot)
                             vector1_owned_backward_task(
+                                KRealSize,
                                 valid_k_prev,
                                 Weights,
                                 bmm2Res,
