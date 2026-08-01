@@ -32,6 +32,56 @@ public:
     }
 
 private:
+    static constexpr uint32_t BSA_BYTE_BLOCK = 32U;
+    static constexpr uint32_t BSA_KSCALE_BANK_COPY_NUM = 4U;
+
+    __aicore__ inline uint32_t GetKScaleUbStride(const ConstInfo &constInfo) const
+    {
+        return static_cast<uint32_t>(constInfo.s2BaseSize) + BSA_BYTE_BLOCK / sizeof(T);
+    }
+
+    __aicore__ inline void CopyKScaleBnsdToBankConflictFreeUb(LocalTensor<T> &dstTensor,
+                                                              const GlobalTensor<T> &srcTensor, int64_t srcOffset,
+                                                              uint32_t dstOffset, uint32_t copyLen,
+                                                              const ConstInfo &constInfo)
+    {
+        if (copyLen == 0U) {
+            return;
+        }
+        const uint32_t blockElemNum = BSA_BYTE_BLOCK / sizeof(T);
+        const uint32_t kScaleUbStride = GetKScaleUbStride(constInfo);
+
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = static_cast<uint16_t>(BSA_KSCALE_BANK_COPY_NUM);
+        dataCopyParams.blockLen = copyLen * sizeof(T);
+        dataCopyParams.srcStride = -static_cast<int64_t>(dataCopyParams.blockLen);
+        dataCopyParams.dstStride = (kScaleUbStride + blockElemNum - copyLen) * sizeof(T) / BSA_BYTE_BLOCK;
+        DataCopyPadExtParams<T> dataCopyPadParams{};
+        DataCopyPad(dstTensor[dstOffset], srcTensor[srcOffset], dataCopyParams, dataCopyPadParams);
+    }
+
+    __aicore__ inline void CopyKScaleBsndToBankConflictFreeUb(LocalTensor<T> &dstTensor,
+                                                              const GlobalTensor<T> &srcTensor, int64_t srcOffset,
+                                                              uint32_t dstOffset, uint32_t copyLen,
+                                                              const ConstInfo &constInfo)
+    {
+        if (copyLen == 0U) {
+            return;
+        }
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = static_cast<uint16_t>(copyLen);
+        dataCopyParams.blockLen = sizeof(T);
+        dataCopyParams.srcStride = ((constInfo.n2Size - 1) * constInfo.combineDim) * sizeof(T);
+        dataCopyParams.dstStride = 0;
+        DataCopyPadExtParams<T> dataCopyPadParams{};
+        const uint32_t kScaleUbStride = GetKScaleUbStride(constInfo);
+#pragma unroll
+        for (uint32_t i = 0; i < BSA_KSCALE_BANK_COPY_NUM; ++i) {
+            DataCopyPad(dstTensor[i * kScaleUbStride + dstOffset], srcTensor[srcOffset], dataCopyParams,
+                        dataCopyPadParams);
+        }
+    }
+
     __aicore__ inline void ProcessPA(LocalTensor<T> &dstTensor, const GlobalTensor<T> &srcTensor,
                                      const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo,
                                      const ConstInfo &constInfo)
@@ -39,34 +89,29 @@ private:
         int64_t byteOffset1 = 0;
         int64_t byteOffset2 = 0;
         if constexpr (GM_FORMAT == BSALayout::PA_BNSD) {
-            DataCopyExtParams dataCopyParams;
-            dataCopyParams.blockCount = 1;
-
-            // 当 runInfo.sparseBlkIdx2 >= 0 的情况时，runInfo.s2SparseBlk1RealSize = constInfo.kvSparseBlockSize
-            dataCopyParams.blockLen = runInfo.s2SparseBlk1RealSize * sizeof(float);
-            dataCopyParams.srcStride = 0;
-            dataCopyParams.dstStride = 0;
-            DataCopyPadExtParams<T> dataCopyPadParams{};
             if (runInfo.sparseBlkIdx1 >= 0) {
                 GetPaKScaleOffset(byteOffset1, runInfo.sparseBlkIdx1, blockTableTensor, runInfo, constInfo);
-                DataCopyPad(dstTensor, srcTensor[byteOffset1], dataCopyParams, dataCopyPadParams);
+                CopyKScaleBnsdToBankConflictFreeUb(dstTensor, srcTensor, byteOffset1, 0U,
+                                                   static_cast<uint32_t>(runInfo.s2SparseBlk1RealSize), constInfo);
             }
             if (runInfo.sparseBlkIdx2 >= 0 && runInfo.s2SparseBlk2RealSize > 0) {
                 GetPaKScaleOffset(byteOffset2, runInfo.sparseBlkIdx2, blockTableTensor, runInfo, constInfo);
-                DataCopyPad(dstTensor[constInfo.kvSparseBlockSize], srcTensor[byteOffset2], dataCopyParams,
-                            dataCopyPadParams);
+                CopyKScaleBnsdToBankConflictFreeUb(dstTensor, srcTensor, byteOffset2,
+                                                   static_cast<uint32_t>(constInfo.kvSparseBlockSize),
+                                                   static_cast<uint32_t>(runInfo.s2SparseBlk2RealSize), constInfo);
             }
         } else if constexpr (GM_FORMAT == BSALayout::PA_BSND) {
-            GetPaKScaleOffset(byteOffset1, runInfo.sparseBlkIdx1, blockTableTensor, runInfo, constInfo);
-            GetPaKScaleOffset(byteOffset2, runInfo.sparseBlkIdx2, blockTableTensor, runInfo, constInfo);
-            DataCopyExtParams dataCopyParams;
-            dataCopyParams.blockCount = 128;
-            dataCopyParams.blockLen = sizeof(float);
-            dataCopyParams.srcStride = ((constInfo.n2Size - 1) * constInfo.combineDim) * sizeof(float);
-            dataCopyParams.dstStride = 0;
-            DataCopyPadExtParams<T> dataCopyPadParams{};
-            DataCopyPad(dstTensor, srcTensor[byteOffset1], dataCopyParams, dataCopyPadParams);
-            DataCopyPad(dstTensor[128], srcTensor[byteOffset2], dataCopyParams, dataCopyPadParams);
+            if (runInfo.sparseBlkIdx1 >= 0) {
+                GetPaKScaleOffset(byteOffset1, runInfo.sparseBlkIdx1, blockTableTensor, runInfo, constInfo);
+                CopyKScaleBsndToBankConflictFreeUb(dstTensor, srcTensor, byteOffset1, 0U,
+                                                   static_cast<uint32_t>(runInfo.s2SparseBlk1RealSize), constInfo);
+            }
+            if (runInfo.sparseBlkIdx2 >= 0 && runInfo.s2SparseBlk2RealSize > 0) {
+                GetPaKScaleOffset(byteOffset2, runInfo.sparseBlkIdx2, blockTableTensor, runInfo, constInfo);
+                CopyKScaleBsndToBankConflictFreeUb(dstTensor, srcTensor, byteOffset2,
+                                                   static_cast<uint32_t>(constInfo.kvSparseBlockSize),
+                                                   static_cast<uint32_t>(runInfo.s2SparseBlk2RealSize), constInfo);
+            }
         }
     }
     __aicore__ inline void GetPaKScaleOffset(int64_t &byteOffset, const int64_t sparseBlkIdx,

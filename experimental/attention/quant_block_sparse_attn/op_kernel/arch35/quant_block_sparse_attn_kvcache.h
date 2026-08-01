@@ -142,7 +142,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr &runParam, const ConstIn
             runParam.attentionOutOffset = seqOffset * constInfo.n2GDv + runParam.sOuterOffset * constInfo.n2GDv +
                                           runParam.n2oIdx * constInfo.gDv + runParam.goIdx * constInfo.dSizeV;
         }
-        if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
+        if constexpr (hasLse && (layout == BSALayout::TND || layout == BSALayout::NTD)) {
             runParam.softmaxLseOffset = runParam.n1oIdx * constInfo.t1Size + seqOffset + runParam.sOuterOffset;
         }
     }
@@ -183,7 +183,9 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr &runParam, RunInfo &
     runInfo.nextTokensPerBatch = runParam.nextTokensPerBatch;
     runInfo.actualS1Size = runParam.actualS1Size;
     runInfo.actualS2Size = runParam.actualS2Size;
-    runInfo.softmaxLseOffset = runParam.softmaxLseOffset;
+    if constexpr (hasLse) {
+        runInfo.softmaxLseOffset = runParam.softmaxLseOffset;
+    }
 }
 
 __aicore__ inline void UpdateLoopFlagsBasedOnS1Index(int32_t extras1, bool &notLast, bool &notLastTwoLoop,

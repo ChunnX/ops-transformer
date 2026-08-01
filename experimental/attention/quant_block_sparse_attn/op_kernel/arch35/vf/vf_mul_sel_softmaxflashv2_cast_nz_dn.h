@@ -150,11 +150,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
 
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
         Mul(vreg_data_tmp0, vreg_data_tmp0, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
         Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
         Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
         Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_kscale_val, preg_135);
 
         if constexpr (needAtten) {
@@ -390,11 +390,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
 
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
         Mul(vreg_data_tmp0, vreg_data_tmp0, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
         Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
         Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
         Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_kscale_val, preg_135);
 
         if constexpr (needAtten) {
@@ -685,11 +685,11 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
 
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
         Mul(vreg_data_tmp0, vreg_data_tmp0, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
         Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
         Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
         Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_kscale_val, preg_135);
 
         if constexpr (needAtten) {
@@ -933,11 +933,11 @@ __simd_vf__ inline void ProcessVec1DnUpdateAttenTailVF(
 
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
         Mul(vreg_data_tmp0, vreg_data_tmp0, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
         Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
         Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
         Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_kscale_val, preg_135);
 
         if constexpr (needAtten) {
@@ -1268,11 +1268,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
 
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
         Mul(vreg_data_tmp0, vreg_data_tmp0, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
         Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
         Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
         Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_kscale_val, preg_135);
         if constexpr (needAtten) {
             LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare0, mask_ub0 + iter_m * m);
@@ -1497,11 +1497,11 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
 
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
         Mul(vreg_data_tmp0, vreg_data_tmp0, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
         Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
         Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
         Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_kscale_val, preg_135);
 
         if constexpr (needAtten) {
@@ -1779,11 +1779,11 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
 
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
         Mul(vreg_data_tmp0, vreg_data_tmp0, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
         Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
         Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
         Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_kscale_val, preg_135);
 
         if constexpr (needAtten) {
@@ -2016,11 +2016,11 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
 
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4);
         Mul(vreg_data_tmp0, vreg_data_tmp0, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 1);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 + iter_m * 4 + 1);
         Mul(vreg_data_tmp1, vreg_data_tmp1, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 2);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 2 + iter_m * 4 + 2);
         Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_kscale_val, preg_135);
-        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
+        LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + NUM_264 * 3 + iter_m * 4 + 3);
         Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_kscale_val, preg_135);
 
         if constexpr (needAtten) {
