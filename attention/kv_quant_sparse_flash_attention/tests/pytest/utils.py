@@ -20,12 +20,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import torch
-import check_valid_param
-import kv_quant_sparse_flash_attention_golden
 import result_compare_method
-import traceback
-import tensorflow as tf
-import json
 
 
 STR_MAP_DICT = {
@@ -537,75 +532,6 @@ def convert_param_combination_to_cs_format(param_combination):
     return params
 
 
-def get_np_dtype(type_str):
-    type_dict = {
-        "fp32": np.float32,
-        "fp16": np.float16,
-        "int32": np.int32,
-        "int8": np.int8,
-        "uint8": np.uint8,
-        "bf16": tf.bfloat16.as_numpy_dtype,
-        "bfloat16": tf.bfloat16.as_numpy_dtype,
-        "float32": np.float32,
-        "float16": np.float16,
-        "hifloat8": np.uint8,
-    }
-    if type_str == "float8_e4m3fn":
-        from ml_dtypes import float8_e4m3fn
-
-        return float8_e4m3fn
-    else:
-        return type_dict[type_str]
-
-
-def convert_tensor_data(data_pool, data_path, type_str, params=None):
-    KNOW_NP_DTYPES = [
-        "fp32",
-        "fp16",
-        "int32",
-        "int8",
-        "uint8",
-        "bf16",
-        "bfloat16",
-        "float32",
-        "float16",
-    ]
-
-    np_type = data_pool.dtype
-    dump_np_data = None
-    if len(np_type) > 1:
-        dump_np_data = data_pool
-    elif type_str.lower() in KNOW_NP_DTYPES:
-        np_dtype = get_np_dtype(type_str.lower())
-        dump_np_data = np.array(data_pool).astype(np_dtype)
-    elif type_str.lower() in ["float8_e4m3fn", "hifloat8"]:
-        dump_np_data = np.array(data_pool)
-    else:
-        dump_np_data = np.array(data_pool)
-    if dump_np_data is not None:
-        dump_shape = list(dump_np_data.shape)
-        file_name = os.path.basename(data_path)
-        if "cpu_output" in file_name and isinstance(params, type({})):
-            if "shape_output_tmp" not in params.keys():
-                params["shape_output_tmp"] = []
-            params["shape_output_tmp"].append(dump_shape)
-            shape_info = {"shape_output": params["shape_output_tmp"]}
-            modify_cs_info(shape_info, params)
-    return dump_np_data
-
-
-def get_str_dtype(type_str):
-    type_dict = {
-        torch.float32: "fp32",
-        torch.float16: "fp16",
-        torch.int8: "int8",
-        torch.int32: "int32",
-        torch.uint8: "uint8",
-        torch.bfloat16: "bf16",
-    }
-    return type_dict[type_str]
-
-
 def get_torch_dtype(type_str):
     type_dict = {
         "fp32": torch.float32,
@@ -623,45 +549,6 @@ def get_torch_dtype(type_str):
     return type_dict.get(type_str)
 
 
-def get_tensor_dtype(tensor, input_dtype):
-    if input_dtype:
-        tensor_dtype = input_dtype
-    else:
-        if torch.is_tensor(tensor):
-            tensor_dtype = get_str_dtype(tensor.dtype)
-        else:
-            tensor_dtype = str(tensor.dtype)
-    return tensor_dtype
-
-
-def modify_alcnn_input_file(
-    name: str, tensors, params: dict, data_range=None, data_dtype=None
-):
-    out_tensor = tensors
-    if tensors is not None:
-        data_range = data_range or [-10.0, 10.0]
-        tensor_dtype = get_tensor_dtype(tensors, data_dtype)
-        if torch.is_tensor(tensors):
-            if tensor_dtype == "bf16":
-                out_tensor = np.array(
-                    tensors.float()
-                    .detach()
-                    .cpu()
-                    .numpy()
-                    .astype(tf.bfloat16.as_numpy_dtype)
-                )
-            else:
-                out_tensor = tensors.detach().cpu().numpy()
-        else:
-            out_tensor = convert_tensor_data(tensors, name, tensor_dtype, params)
-
-        params["shape_input"][name] = list(tensors.shape)
-        params["dtype_input"][name] = tensor_dtype
-        params["range_input"][name] = data_range
-
-    return out_tensor
-
-
 def qsfa_run_npu(test_data, testcase_name=None, device_id=0, result_path=None):
     from batch import kv_quant_sparse_flash_attention_process
 
@@ -669,17 +556,10 @@ def qsfa_run_npu(test_data, testcase_name=None, device_id=0, result_path=None):
     if testcase_name:
         params["Testcase_Prefix"] = testcase_name
     cpu_result = test_data["cpu_output"]
-    try:
-        npu_result = kv_quant_sparse_flash_attention_process.call_npu(
-            test_data["input"], params
-        )
-        result, fulfill_percent = result_compare_method.check_result(
-            cpu_result, npu_result
-        )
-    except Exception:
-        if result_path:
-            save_result(params, "Failed", "", result_path)
-        raise
-    if result_path:
-        save_result(params, result, fulfill_percent, result_path)
+    npu_result = kv_quant_sparse_flash_attention_process.call_npu(
+        test_data["input"], params
+    )
+    result, fulfill_percent = result_compare_method.check_result(
+        cpu_result, npu_result
+    )
     return result, fulfill_percent

@@ -16,10 +16,6 @@ import torchair
 from torchair.configs.compiler_config import CompilerConfig
 
 import os
-import numpy as np
-import time
-import math
-import random
 from utils import get_torch_dtype
 
 
