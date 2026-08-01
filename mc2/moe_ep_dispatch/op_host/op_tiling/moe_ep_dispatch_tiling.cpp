@@ -86,6 +86,7 @@ constexpr uint64_t UB_ALIGN = 32UL;
 
 constexpr uint32_t DIRECT_MODE = 0;
 constexpr uint32_t HYBRID_MODE = 1;
+constexpr uint32_t DEBUG_CHANNEL_ZERO_STAGE_MASK_MAX = 15U;
 
 static uint32_t ApplyDebugNetworkModeOverride(uint32_t networkMode, const char *nodeName)
 {
@@ -109,11 +110,33 @@ static uint32_t ApplyDebugNetworkModeOverride(uint32_t networkMode, const char *
     return networkMode;
 }
 
+static uint32_t GetDebugChannelZeroStageMask(const char *nodeName)
+{
+    const char *envValue = std::getenv("MOE_EP_DEBUG_CHANNEL_ZERO_STAGE_MASK");
+    if (envValue == nullptr || envValue[0] == '\0') {
+        return 0U;
+    }
+
+    char *parseEnd = nullptr;
+    unsigned long parsedMask = std::strtoul(envValue, &parseEnd, 10);
+    if (parseEnd == envValue || parseEnd[0] != '\0' || parsedMask > DEBUG_CHANNEL_ZERO_STAGE_MASK_MAX) {
+        OP_LOGW(nodeName,
+                "Ignore invalid MOE_EP_DEBUG_CHANNEL_ZERO_STAGE_MASK=%s, expected an integer in [0, %u].",
+                envValue, DEBUG_CHANNEL_ZERO_STAGE_MASK_MAX);
+        return 0U;
+    }
+
+    OP_LOGI(nodeName, "MOE_EP_DEBUG_CHANNEL_ZERO_STAGE_MASK=%lu.", parsedMask);
+    return static_cast<uint32_t>(parsedMask);
+}
+
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchInfo &info)
 {
     OP_LOGI(nodeName,
-            "MOE_EP_DEBUG: RANK_NUM_PER_SERVER=%u, EP_WORLD_SIZE=%u, NUM_SCALEOUT_RANKS=%u, NETWORK_MODE=%u.",
-            info.rankSizePerServer, info.cfg.epWorldSize, info.numScaleoutRanks, info.networkMode);
+            "MOE_EP_DEBUG: RANK_NUM_PER_SERVER=%u, EP_WORLD_SIZE=%u, NUM_SCALEOUT_RANKS=%u, NETWORK_MODE=%u, "
+            "CHANNEL_ZERO_STAGE_MASK=%u.",
+            info.rankSizePerServer, info.cfg.epWorldSize, info.numScaleoutRanks, info.networkMode,
+            info.debugChannelZeroStageMask);
     OP_LOGD(nodeName, "epWorldSize is %u.", info.cfg.epWorldSize);
     OP_LOGD(nodeName, "epRankId is %u.", info.cfg.epRankId);
     OP_LOGD(nodeName, "numExperts is %u.", info.cfg.numExperts);
@@ -677,6 +700,7 @@ static ge::graphStatus CheckCommAttr(const gert::TilingContext *context, const c
     info.numScaleoutRanks = static_cast<uint32_t>(epWorldSize / rankNumPerServer);
     info.networkMode = (topoType == HYBRID_MODE && info.numScaleoutRanks > 1U) ? HYBRID_MODE : DIRECT_MODE;
     info.networkMode = ApplyDebugNetworkModeOverride(info.networkMode, nodeName);
+    info.debugChannelZeroStageMask = GetDebugChannelZeroStageMask(nodeName);
     return ge::GRAPH_SUCCESS;
 }
 
