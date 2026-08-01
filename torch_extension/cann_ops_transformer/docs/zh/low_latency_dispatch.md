@@ -246,7 +246,7 @@ MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode
         <td>topk_weights</td>
         <td>Tensor</td>
         <td>可选</td>
-        <td>表示每个token的topK个专家权重，可传有效Tensor或None，有效Tensor为2D Tensor，shape为(BS, K)，传None时`topk_weights`无效，不支持空Tensor。</td>
+        <td>表示每个token的topK个专家权重。仅Ascend 950PR/Ascend 950DT支持传有效Tensor或None，有效Tensor为2D Tensor，shape为(BS, K)，传None时`topk_weights`无效，不支持空Tensor；Atlas A2/A3系列产品不支持该功能，必须传None。</td>
         <td>float32</td>
         <td>(BS, K)</td>
     </tr>
@@ -516,12 +516,13 @@ MoeDistributeBuffer.low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode
 - quant_mode相关约束：
   <!-- npu="910b" id7 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - 不支持topK专家权重功能，`topk_weights`必须传None，`expand_scales`输出无效。
     - `quant_mode=0`表示非量化场景，`x_smooth_scale`不传，`expand_x`的数据类型支持float16、bfloat16。
     - `quant_mode=2`表示pertoken动态量化场景，`expand_x`的数据类型支持int8，`x_smooth_scale`可传可不传；若传入有效Tensor，shape为(num_experts, H)，输出`dynamic_scales` shape为(A,)。
   <!-- end id7 -->
   <!-- npu="A3" id8 -->
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-    - `topk_weights`可传有效Tensor或None，有效Tensor为2D Tensor，shape为(BS, K)，传None时`topk_weights`和`expand_scales`输出无效，不支持空Tensor；传有效Tensor时支持`expand_scales`输出。
+    - 不支持topK专家权重功能，`topk_weights`必须传None，`expand_scales`输出无效。
     - `quant_mode=0`表示非量化场景，`x_smooth_scale`不传，`expand_x`的数据类型支持float16、bfloat16。
     - `quant_mode=2`表示pertoken动态量化场景，`expand_x`的数据类型支持int8，`x_smooth_scale`可传可不传；若存在共享专家且传入有效Tensor，shape为(shared_expert_num + num_experts, H)，若不存在共享专家，shape为(num_experts, H)，输出`dynamic_scales` shape为(A,)。
   <!-- end id8 -->
