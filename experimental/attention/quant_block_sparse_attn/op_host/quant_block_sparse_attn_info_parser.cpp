@@ -29,7 +29,7 @@ constexpr const char *kOpName = "QuantBlockSparseAttn";
 constexpr size_t DIM_NUM_2 = 2U;
 constexpr size_t DIM_NUM_3 = 3U;
 constexpr size_t DIM_NUM_4 = 4U;
-constexpr size_t DIM_B = 0U;
+constexpr size_t DIM_0 = 0U;
 constexpr size_t DIM_TND_T = 0U;
 constexpr size_t DIM_TND_N = 1U;
 constexpr size_t DIM_TND_D = 2U;
@@ -56,20 +56,24 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseQuery(QuantBlockSparseAttnT
     const std::string &layoutQ = tilingInfo.layoutQStr;
     if (queryDimNum == DIM_NUM_3 && layoutQ == "TND") {
         tilingInfo.layoutQValue = BSA_LAYOUT_Q_TND_VALUE;
-        if (!BSAGetDimAsU32(sparseIndicesShape, DIM_B, tilingInfo.bSize) ||
+        if (!BSAGetDimAsU32(sparseIndicesShape, DIM_0, tilingInfo.bSize) ||
             !BSAGetDimAsU32(queryShape, DIM_TND_T, tilingInfo.qTokenNum) ||
             !BSAGetDimAsU32(queryShape, DIM_TND_N, tilingInfo.n1Size) ||
             !BSAGetDimAsU32(queryShape, DIM_TND_D, tilingInfo.dSize)) {
-            OP_LOGE(kOpName, "ParseQuery TND: failed to get query/sparseIndices dims, dimNum=%zu", queryDimNum);
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "query/sparse_indices",
+                                                     std::to_string(queryDimNum) + "D",
+                                                     "failed to get TND query/sparse_indices dimensions");
             return ge::GRAPH_FAILED;
         }
     } else if (queryDimNum == DIM_NUM_3 && layoutQ == "NTD") {
         tilingInfo.layoutQValue = BSA_LAYOUT_Q_NTD_VALUE;
-        if (!BSAGetDimAsU32(sparseIndicesShape, DIM_B, tilingInfo.bSize) ||
+        if (!BSAGetDimAsU32(sparseIndicesShape, DIM_0, tilingInfo.bSize) ||
             !BSAGetDimAsU32(queryShape, DIM_NTD_N, tilingInfo.n1Size) ||
             !BSAGetDimAsU32(queryShape, DIM_NTD_T, tilingInfo.qTokenNum) ||
             !BSAGetDimAsU32(queryShape, DIM_NTD_D, tilingInfo.dSize)) {
-            OP_LOGE(kOpName, "ParseQuery NTD: failed to get query/sparseIndices dims, dimNum=%zu", queryDimNum);
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "query/sparse_indices",
+                                                     std::to_string(queryDimNum) + "D",
+                                                     "failed to get NTD query/sparse_indices dimensions");
             return ge::GRAPH_FAILED;
         }
     } else {
@@ -101,20 +105,21 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseKeyValue(QuantBlockSparseAt
     }
 
     if (!BSAGetDimAsU32(keyShape, DIM_PA_N, tilingInfo.n2Size) ||
-        !BSAGetDimAsU32(keyShape, DIM_B, tilingInfo.paBlockNumSum)) {
-        OP_LOGE(kOpName, "ParseKeyValue: failed to get n2Size/paBlockNumSum from key shape");
+        !BSAGetDimAsU32(keyShape, DIM_0, tilingInfo.paBlockNumSum)) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "key", std::to_string(keyShape.GetDimNum()) + "D",
+                                                 "failed to get n2Size/paBlockNumSum from key shape");
         return ge::GRAPH_FAILED;
     }
 
     uint64_t paBlockStride = 0U;
     if (keyStride == nullptr) {
-        OP_LOGE(kOpName,
-                "In PA_BNSD segmented KV-cache scenario, key stride is nullptr. Current data layout requires 4D "
-                "non-contiguous KV-cache views for key/value/k_descale.");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            kOpName, "key stride", "nullptr",
+            "PA_BNSD segmented KV-cache requires 4D non-contiguous key/value/k_descale views");
         return ge::GRAPH_FAILED;
     }
 
-    paBlockStride = keyStride->GetStride(DIM_B);
+    paBlockStride = keyStride->GetStride(DIM_0);
     if (tilingInfo.quantModeVal == BSA_QUANT_MODE_FP8 && valueShape.GetDimNum() == DIM_NUM_4 &&
         kDescaleShape.GetDimNum() == DIM_NUM_4) {
         const uint64_t keyBlockBytes = static_cast<uint64_t>(keyShape.GetDim(DIM_PA_N)) *
@@ -163,7 +168,9 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseSparseIndices(QuantBlockSpa
 {
     if (!BSAGetDimAsU32(sparseIndicesShape, DIM_SPARSE_QB, tilingInfo.qbMax) ||
         !BSAGetDimAsU32(sparseIndicesShape, DIM_SPARSE_COUNT, tilingInfo.sparseCount)) {
-        OP_LOGE(kOpName, "ParseSparseIndices: failed to get dims from sparseIndices");
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "sparse_indices",
+                                                 std::to_string(sparseIndicesShape.GetDimNum()) + "D",
+                                                 "failed to get max_Qb/max_Kb from sparse_indices shape");
         return ge::GRAPH_FAILED;
     }
     const uint64_t qSeqUpperBound = static_cast<uint64_t>(tilingInfo.qbMax) * tilingInfo.qBlockSizeVal;
@@ -213,7 +220,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseOptionalInputs(QuantBlockSp
             nullptr;
     if (opParamInfo.blockTable.tensor == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "block_table", "nullptr",
-                                              "block_table is required to derive KeyValueBlockNumMax");
+                                              "block_table is required to derive max_block_num_per_batch");
         return ge::GRAPH_FAILED;
     }
 
@@ -225,7 +232,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseOptionalInputs(QuantBlockSp
 
     const gert::Shape &blockTableShape = blockTableStorageShape->GetStorageShape();
     uint32_t blockTableB = 0;
-    if (blockTableShape.GetDimNum() != DIM_NUM_2 || !BSAGetDimAsU32(blockTableShape, DIM_B, blockTableB) ||
+    if (blockTableShape.GetDimNum() != DIM_NUM_2 || !BSAGetDimAsU32(blockTableShape, DIM_0, blockTableB) ||
         !BSAGetDimAsU32(blockTableShape, DIM_BLOCK_TABLE_MAX, tilingInfo.maxBlockNumPerBatch) ||
         blockTableB != tilingInfo.bSize) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
@@ -283,12 +290,12 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseAttributes(QuantBlockSparse
 ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTilingInfo &tilingInfo)
 {
     if (context_ == nullptr) {
-        OP_LOGE(kOpName, "Parse: tiling context is nullptr");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "tiling context", "nullptr", "context is nullptr");
         return ge::GRAPH_FAILED;
     }
     auto attrs = context_->GetAttrs();
     if (attrs == nullptr) {
-        OP_LOGE(kOpName, "Parse: attrs is nullptr");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "attrs", "nullptr", "attrs is nullptr");
         return ge::GRAPH_FAILED;
     }
 
@@ -327,12 +334,8 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTiling
         opParamInfo.qDescale.shape == nullptr || opParamInfo.kDescale.shape == nullptr ||
         opParamInfo.vDescale.shape == nullptr || opParamInfo.pScale.shape == nullptr ||
         opParamInfo.sparseIndices.shape == nullptr || opParamInfo.sparseSeqLen.shape == nullptr) {
-        OP_LOGE(kOpName,
-                "Parse: required input shape is nullptr (query=%p, key=%p, value=%p, qDescale=%p, kDescale=%p, "
-                "vDescale=%p, pScale=%p, sparseIndices=%p, sparseSeqLen=%p)",
-                opParamInfo.query.shape, opParamInfo.key.shape, opParamInfo.value.shape, opParamInfo.qDescale.shape,
-                opParamInfo.kDescale.shape, opParamInfo.vDescale.shape, opParamInfo.pScale.shape,
-                opParamInfo.sparseIndices.shape, opParamInfo.sparseSeqLen.shape);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "required input shape", "nullptr",
+                                              "query/key/value/scale/sparse input shape must not be nullptr");
         return ge::GRAPH_FAILED;
     }
 
