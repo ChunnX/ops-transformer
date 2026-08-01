@@ -704,9 +704,11 @@ def run_bsa_mxfp4_eager(b, n1, n2, g, s1, s2, qk_d, v_d=None,
     mask = _build_block_sparse_mask(b, n1, ceil_q, ceil_kv, mask_kind)
 
     # 3. CPU golden(分块 flash + 可选 dump)
+    print("cpu calc start")
     cpu_out, _ = cpu_block_sparse_attention_bnsd_mxfp4_with_lse(
         query, key, value, mask, block_shape, scale, n2,
         p_quant=p_quant, s_dtype=s_dtype, dump=dump)
+    print("golden calc end")
 
     
     # CPU-only 模式(_FORCE_CPU 或无 NPU 算子): 无 NPU 可比对, 直接 SKIP, 不做任何 golden 自检。
@@ -726,6 +728,7 @@ def run_bsa_mxfp4_eager(b, n1, n2, g, s1, s2, qk_d, v_d=None,
 
     # 5. NPU 调用(照搬 test_pv_systematic.py)
     torch_npu.npu.set_device(device_id)
+    print("npu calc start")
     npu_out, _ = block_sparse_attention_v3(
         q_packed.contiguous().npu(), k_packed.contiguous().npu(),
         v_packed.contiguous().npu(), mask.contiguous().npu(), list(block_shape),
@@ -762,6 +765,7 @@ class TestBSAMxfp4Golden(TestCase):
         # CLI 覆盖参数(conftest.py pytest_configure 注入到模块级 _CLI_OVERRIDES)。
         # 覆盖 cfg 已有 key + 注入新 key 如 dump。
         cfg_merged = {**cfg, **_CLI_OVERRIDES}
+        print()  # 空行: 与 pytest 打印的测试 ID 行隔开
         pct, res = run_bsa_mxfp4_eager(**cfg_merged)
         cpu_mode = _FORCE_CPU or not _HAS_BSA_V3
         if res == "SKIP":
@@ -821,9 +825,21 @@ class TestBSAMxfp4Golden(TestCase):
                   block_shape=[128, 128], mask_kind='dense')
 
     @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs256_kvs256_d128(self, device="npu"):
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs256_kvs4096_d128(self, device="npu"):
         """① BNSD dense: s1=256 多块(block_shape=[128,128], S=256 -> 2x1)。"""
         self._run(b=1, n1=1, n2=1, g=1, s1=256, s2=4096, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense')
+                  
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b2_qn1_kvn1_g1_qs25600_kvs33024_d128(self, device="npu"):
+        """① BNSD dense: s1=256 多块(block_shape=[128,128], S=256 -> 2x1)。"""
+        self._run(b=2, n1=1, n2=1, g=1, s1=25600, s2=33024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b56_qn8_kvn8_g1_qs512_kvs512_d128(self, device="npu"):
+        """① BNSD dense: s1=256 多块(block_shape=[128,128], S=256 -> 2x1)。"""
+        self._run(b=56, n1=8, n2=8, g=1, s1=512, s2=512, qk_d=128,
                   block_shape=[128, 128], mask_kind='dense')
 
 
