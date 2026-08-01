@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstdint>
 #include <algorithm>
+#include <limits>
 
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "register/tilingdata_base.h"
@@ -61,6 +62,11 @@ const static int64_t MAX_EP_WORLD_SIZE = 1024LL;
 const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
 const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
 const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
+const static uint8_t ACT_MODE_SWIGLU = 0U;
+const static uint8_t ACT_MODE_SITU = 1U;
+const static uint8_t ACT_SUB_MODE_DEFAULT = 0U;
+const static uint8_t ACT_SUB_MODE_LINEAR = 1U;
+const static float DEFAULT_ACTIVATION_SCALE = 1.0f;
 } // namespace
 
 void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nodeName)
@@ -230,6 +236,61 @@ static uint64_t CalTilingKey(const gert::TilingContext *context, MegaMoeConfig &
                               topkWeightsType);
 }
 
+static bool IsValidActivationClamp(float value)
+{
+    return value >= 0.0f && !std::isnan(value);
+}
+
+static bool IsValidSituScale(float value)
+{
+    return std::isfinite(value) && value != 0.0f;
+}
+
+static ge::graphStatus CheckActivationAttrs(const char *activation,
+                                            const gert::TypedContinuousVector<float> *activationParams,
+                                            const char *nodeName)
+{
+    OP_TILING_CHECK(activation == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activation"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(activationParams == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParams"),
+                    return ge::GRAPH_FAILED);
+
+    const size_t paramCount = activationParams->GetSize();
+    const float *params = activationParams->GetData();
+    OP_TILING_CHECK(params == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParamsData"),
+                    return ge::GRAPH_FAILED);
+
+    if (std::strcmp(activation, "swiglu") == 0) {
+        OP_TILING_CHECK(paramCount != 1U,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationParamsSize", std::to_string(paramCount).c_str(),
+                                                  "should be 1 for swiglu"),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(!IsValidActivationClamp(params[0]),
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationClamp", std::to_string(params[0]).c_str(),
+                                                  "should be >= 0 and not NAN"),
+                        return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
+
+    OP_TILING_CHECK(std::strcmp(activation, "situglu") != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activation,
+                                              "A5 only supports swiglu and situglu"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(paramCount < 1U || paramCount > 2U,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationParamsSize", std::to_string(paramCount).c_str(),
+                                              "should be 1 or 2 for situglu"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(!IsValidSituScale(params[0]),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationBeta", std::to_string(params[0]).c_str(),
+                                              "should be finite and non-zero"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(paramCount == 2U && !IsValidSituScale(params[1]),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationLinearBeta", std::to_string(params[1]).c_str(),
+                                              "should be finite and non-zero"),
+                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, MegaMoeConfig &config,
                                            const char *nodeName)
 {
@@ -245,7 +306,8 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
-    auto activationClampPtr = attrs->GetAttrPointer<float>((config.attrActivationClampIndex));
+    auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrActivationIndex));
+    auto activationParamsPtr = attrs->GetListFloat(config.attrActivationParamsIndex);
 
     OP_TILING_CHECK(moeExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "moeExpertNum"),
                     return ge::GRAPH_FAILED);
@@ -264,11 +326,8 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
     OP_TILING_CHECK(commAlgPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "commAlg"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "numMaxTokensPerRank"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(activationClampPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationClamp"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(*activationClampPtr < 0 || std::isnan(*activationClampPtr),
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationClamp", std::to_string(*activationClampPtr).c_str(),
-                                              "should be >= 0 and not NAN"),
+    OP_TILING_CHECK(CheckActivationAttrs(activationPtr, activationParamsPtr, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "CheckActivationAttrs failed."),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -459,7 +518,10 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
 
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
-    auto activationClampPtr = attrs->GetAttrPointer<float>((config.attrActivationClampIndex));
+    auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrActivationIndex));
+    auto activationParamsPtr = attrs->GetListFloat(config.attrActivationParamsIndex);
+    const float *activationParams = activationParamsPtr->GetData();
+    const bool isSitu = std::strcmp(activationPtr, "situglu") == 0;
 
     tilingData->epWorldSize = *epWorldSizePtr;
     tilingData->maxOutputSize = *maxRecvTokenNumPtr != 0 ? *maxRecvTokenNumPtr :
@@ -467,11 +529,13 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
                                                                std::min(tilingData->topK, tilingData->expertPerRank);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
     tilingData->combineQuantMode = GetCombineQuantModeByAttr(context, config);
-    tilingData->clampLimit = *activationClampPtr;
-    tilingData->actMode = 0U;            // ACT_MODE_SWIGLU, 功能关闭
-    tilingData->actSubMode = 0U;         // ACT_SUB_MODE_DEFAULT
-    tilingData->activationAlpha = 1.0f;
-    tilingData->activationBeta = 1.0f;
+    tilingData->clampLimit = isSitu ? std::numeric_limits<float>::max() : activationParams[0];
+    tilingData->actMode = isSitu ? ACT_MODE_SITU : ACT_MODE_SWIGLU;
+    tilingData->actSubMode = isSitu && activationParamsPtr->GetSize() == 2U ? ACT_SUB_MODE_LINEAR :
+                                                                              ACT_SUB_MODE_DEFAULT;
+    tilingData->activationAlpha =
+        tilingData->actSubMode == ACT_SUB_MODE_LINEAR ? activationParams[1] : DEFAULT_ACTIVATION_SCALE;
+    tilingData->activationBeta = isSitu ? activationParams[0] : DEFAULT_ACTIVATION_SCALE;
 
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMoeExpertNumIndex));
     int64_t moeExpertNum = static_cast<int64_t>(*moeExpertNumPtr);

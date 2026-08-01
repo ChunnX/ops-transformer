@@ -9,6 +9,8 @@
  */
 
 #include <iostream>
+#include <limits>
+#include <vector>
 #include <gtest/gtest.h>
 #include "../../../../op_kernel/arch35/mega_moe_tiling.h"
 #include "mc2_tiling_case_executor.h"
@@ -28,7 +30,7 @@ protected:
     }
 };
 
-TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
+TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN_SITU)
 {
     struct MegaMoeCompileInfo {
     } compileInfo;
@@ -69,8 +71,8 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
             {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
             {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
-            {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
+            {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("situglu")},
+            {"activation_params", Ops::Transformer::AnyValue::CreateFrom<std::vector<float>>({-2.0f})},
             {"activation_out_dtype",
              Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
             {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
@@ -82,11 +84,22 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
         },
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
-    uint64_t expectTilingKey = 16UL;
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValues(hcomTopologyMockValues);
+    TilingInfo tilingInfo;
+    bool tilingSuccess = ExecuteTiling(tilingContextPara, tilingInfo);
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().Reset();
+    ASSERT_TRUE(tilingSuccess);
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(MegaMoeTilingData));
+    EXPECT_EQ(tilingInfo.tilingKey, 16UL);
+    const auto *tilingData = reinterpret_cast<const MegaMoeTilingData *>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tilingData->clampLimit, std::numeric_limits<float>::max());
+    EXPECT_EQ(tilingData->actMode, 1U);
+    EXPECT_EQ(tilingData->actSubMode, 0U);
+    EXPECT_FLOAT_EQ(tilingData->activationAlpha, 1.0f);
+    EXPECT_FLOAT_EQ(tilingData->activationBeta, -2.0f);
 }
 
-TEST_F(MegaMoeArch35TilingTest, H5120_BS256_FP8E5M2)
+TEST_F(MegaMoeArch35TilingTest, H5120_BS256_FP8E5M2_SITU_LINEAR)
 {
     struct MegaMoeCompileInfo {
     } compileInfo;
@@ -127,8 +140,8 @@ TEST_F(MegaMoeArch35TilingTest, H5120_BS256_FP8E5M2)
             {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
             {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
-            {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
+            {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("situglu")},
+            {"activation_params", Ops::Transformer::AnyValue::CreateFrom<std::vector<float>>({-2.0f, -4.0f})},
             {"activation_out_dtype",
              Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
             {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
@@ -140,8 +153,19 @@ TEST_F(MegaMoeArch35TilingTest, H5120_BS256_FP8E5M2)
         },
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    uint64_t expectTilingKey = 0UL;
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValues(hcomTopologyMockValues);
+    TilingInfo tilingInfo;
+    bool tilingSuccess = ExecuteTiling(tilingContextPara, tilingInfo);
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().Reset();
+    ASSERT_TRUE(tilingSuccess);
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(MegaMoeTilingData));
+    EXPECT_EQ(tilingInfo.tilingKey, 0UL);
+    const auto *tilingData = reinterpret_cast<const MegaMoeTilingData *>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tilingData->clampLimit, std::numeric_limits<float>::max());
+    EXPECT_EQ(tilingData->actMode, 1U);
+    EXPECT_EQ(tilingData->actSubMode, 1U);
+    EXPECT_FLOAT_EQ(tilingData->activationAlpha, -4.0f);
+    EXPECT_FLOAT_EQ(tilingData->activationBeta, -2.0f);
 }
 
 TEST_F(MegaMoeArch35TilingTest, H7168_BS512)
@@ -186,7 +210,8 @@ TEST_F(MegaMoeArch35TilingTest, H7168_BS512)
             {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
             {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
-            {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
+            {"activation_params",
+             Ops::Transformer::AnyValue::CreateFrom<std::vector<float>>({std::numeric_limits<float>::max()})},
             {"activation_out_dtype",
              Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
             {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
@@ -244,7 +269,8 @@ TEST_F(MegaMoeArch35TilingTest, DifferentNConfig)
             {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
             {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
-            {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
+            {"activation_params",
+             Ops::Transformer::AnyValue::CreateFrom<std::vector<float>>({std::numeric_limits<float>::max()})},
             {"activation_out_dtype",
              Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
             {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
