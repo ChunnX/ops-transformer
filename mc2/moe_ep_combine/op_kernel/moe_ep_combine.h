@@ -434,7 +434,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             int32_t src_rank = metadataLocal.GetValue(i * RECV_META_FIELDS + 0);
             int32_t src_token_idx = metadataLocal.GetValue(i * RECV_META_FIELDS + 1);
             int32_t src_topK_idx = metadataLocal.GetValue(i * RECV_META_FIELDS + 2);
-            if (src_rank < 0 || src_rank >= static_cast<int32_t>(epWorldSize_)) {
+            if (src_rank < 0 || src_rank >= static_cast<int32_t>(epWorldSize_) || src_token_idx < 0 ||
+                src_token_idx >= static_cast<int32_t>(numMaxTokensPerRank_) || src_topK_idx < 0 ||
+                src_topK_idx >= static_cast<int32_t>(topK_)) {
                 continue;
             }
             if (splitRankTokens) {

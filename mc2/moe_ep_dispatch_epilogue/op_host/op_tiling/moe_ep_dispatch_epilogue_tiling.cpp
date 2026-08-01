@@ -440,40 +440,30 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
     uint64_t topK = static_cast<uint64_t>(info.cfg.topK);
     uint64_t superNodeCount = static_cast<uint64_t>(info.numScaleoutRanks);
-    info.scaleoutMaskWordCount = (info.rankSizePerServer + 31U) / 32U;
-    uint64_t scaleoutSlotRawBytes = perSlotBytes +
-                                    static_cast<uint64_t>(info.scaleoutMaskWordCount) * sizeof(uint32_t) +
-                                    static_cast<uint64_t>(info.rankSizePerServer) * sizeof(int32_t);
-    info.scaleoutSlotAlignedBytes = static_cast<uint32_t>(AlignUpWin(scaleoutSlotRawBytes));
-
     uint64_t cntWinStateSize =
         epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + epWorldSize * WIN_ADDR_ALIGN;
     uint64_t dispatchWinStateSize = cntWinStateSize + epWorldSize * WIN_ADDR_ALIGN;
     uint64_t combineWinStateSize = nmt * topK * WIN_ADDR_ALIGN + epWorldSize * WIN_ADDR_ALIGN;
     uint64_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    uint64_t topKAlign = (topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
-    uint64_t dispatchReservedPerSlotBytes = AlignUpWin(hiddenAlign + topKAlign * 2 + UB_ALIGN);
+    uint64_t dispatchReservedPerSlotBytes = perSlotBytes;
+    uint64_t scaleoutReservedPerSlotBytes =
+        AlignUpWin(dispatchReservedPerSlotBytes + topK * sizeof(int32_t));
     uint64_t combineWinDataSize = nmt * topK * AlignUpWin(static_cast<uint64_t>(hiddenAlign + UB_ALIGN));
     uint64_t totalStateWinSizeEp = dispatchWinStateSize + combineWinStateSize;
     uint64_t winDataOffset;
     uint64_t winNeed;
     if (info.networkMode == HYBRID_MODE) {
-        uint64_t scaleoutRecvDataSize =
-            superNodeCount * nmt * static_cast<uint64_t>(info.scaleoutSlotAlignedBytes);
-        uint64_t scaleupFinalRecvDataSize = epWorldSize * nmt * perSlotBytes;
+        uint64_t scaleoutRecvDataSize = superNodeCount * nmt * scaleoutReservedPerSlotBytes;
+        uint64_t scaleupFinalRecvDataSize = epWorldSize * nmt * dispatchReservedPerSlotBytes;
         uint64_t scaleoutRecvStatusSize = AlignUpWin(superNodeCount * nmt * WIN_ADDR_ALIGN);
         uint64_t scaleoutRecvDataOffset = totalStateWinSizeEp;
         uint64_t scaleupFinalRecvDataOffset = scaleoutRecvDataOffset + scaleoutRecvDataSize;
         uint64_t scaleoutRecvStatusOffset = scaleupFinalRecvDataOffset + scaleupFinalRecvDataSize;
         uint64_t combineDataOffset = scaleoutRecvStatusOffset + scaleoutRecvStatusSize;
-        uint64_t scaleupSendWinOffset = combineDataOffset + combineWinDataSize;
-        uint64_t scaleupSendWinSize =
-            static_cast<uint64_t>(info.rankSizePerServer) * nmt * perSlotBytes;
-        uint64_t scaleoutSendWinOffset = scaleupSendWinOffset + scaleupSendWinSize;
-        uint64_t scaleoutSendWinSize =
-            superNodeCount * nmt * static_cast<uint64_t>(info.scaleoutSlotAlignedBytes);
+        uint64_t payloadStashWinOffset = combineDataOffset + combineWinDataSize;
+        uint64_t payloadStashWinSize = nmt * scaleoutReservedPerSlotBytes;
         winDataOffset = scaleupFinalRecvDataOffset;
-        winNeed = scaleoutSendWinOffset + scaleoutSendWinSize;
+        winNeed = payloadStashWinOffset + payloadStashWinSize;
     } else {
         uint64_t dispatchRecvWinDataReservedSize = epWorldSize * nmt * dispatchReservedPerSlotBytes;
         uint64_t stateAndRecvDataWinSize =

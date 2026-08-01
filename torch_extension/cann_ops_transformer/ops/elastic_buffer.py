@@ -169,13 +169,21 @@ def _inline_align(value: int, base: int) -> int:
     return (value + base - 1) // base * base
 
 
-def _get_moe_ep_minimum_window_bytes(
+@dataclass(frozen=True)
+class _MoeEpWindowLayout:
+    state_buffer_bytes: int
+    dispatch_slot_bytes: int
+    combine_slot_bytes: int
+    scaleup_receive_buffer_bytes: int
+
+
+def _get_moe_ep_window_layout(
     world_size: int,
     num_max_tokens_per_rank: int,
     hidden: int,
     num_experts: int,
     topk: int,
-) -> int:
+) -> _MoeEpWindowLayout:
     win_addr_align = 512
     ub_align = 32
     max_out_dtype_size = 2
@@ -200,11 +208,30 @@ def _get_moe_ep_minimum_window_bytes(
         hidden_align + metadata_bytes * 2 + ub_align, win_addr_align
     )
     combine_per_slot_bytes = _inline_align(hidden_align + ub_align, win_addr_align)
-    dispatch_buffer_size = (
+    scaleup_receive_buffer_bytes = (
         world_size * num_max_tokens_per_rank * dispatch_per_slot_bytes
     )
-    combine_recv_buffer_size = num_max_tokens_per_rank * combine_per_slot_bytes * topk
-    return state_buffer_size + dispatch_buffer_size * 2 + combine_recv_buffer_size
+    return _MoeEpWindowLayout(
+        state_buffer_bytes=state_buffer_size,
+        dispatch_slot_bytes=dispatch_per_slot_bytes,
+        combine_slot_bytes=combine_per_slot_bytes,
+        scaleup_receive_buffer_bytes=scaleup_receive_buffer_bytes,
+    )
+
+
+def _get_moe_ep_direct_window_bytes(
+    layout: _MoeEpWindowLayout,
+    num_max_tokens_per_rank: int,
+    topk: int,
+) -> int:
+    combine_receive_buffer_bytes = (
+        num_max_tokens_per_rank * layout.combine_slot_bytes * topk
+    )
+    return (
+        layout.state_buffer_bytes
+        + layout.scaleup_receive_buffer_bytes * 2
+        + combine_receive_buffer_bytes
+    )
 
 
 @dataclass
@@ -220,8 +247,6 @@ class EPHandle:
     route_count: Optional[torch.Tensor] = None
     route_dst_scaleout: Optional[torch.Tensor] = None
     route_scaleout_slot: Optional[torch.Tensor] = None
-    route_scaleup_mask: Optional[torch.Tensor] = None
-    route_scaleup_slot: Optional[torch.Tensor] = None
 
     @property
     def num_recv_tokens(self) -> int:
@@ -237,8 +262,6 @@ class _DispatchArgs:
     cached_route_count: Optional[torch.Tensor]
     cached_route_dst_scaleout: Optional[torch.Tensor]
     cached_route_scaleout_slot: Optional[torch.Tensor]
-    cached_route_scaleup_mask: Optional[torch.Tensor]
-    cached_route_scaleup_slot: Optional[torch.Tensor]
     cached_recv_src_metadata: Optional[torch.Tensor]
     num_experts: int
     num_max_tokens_per_rank: int
@@ -365,49 +388,25 @@ class ElasticBuffer:
         )
 
         mb_conversion = 1024 * 1024
-        direct_minimum_window_bytes = _get_moe_ep_minimum_window_bytes(
+        window_layout = _get_moe_ep_window_layout(
             world_size,
             num_max_tokens_per_rank,
             hidden,
             num_experts,
             topk,
         )
+        direct_minimum_window_bytes = _get_moe_ep_direct_window_bytes(
+            window_layout,
+            num_max_tokens_per_rank,
+            topk,
+        )
         win_addr_align = 512
-        ub_align = 32
-        max_out_dtype_size = 2
-        metadata_dtype_size = 4
         state_dtype_size = 4
-        local_experts_num = num_experts // world_size
-
-        dispatch_count_size = world_size * _inline_align(
-            local_experts_num * state_dtype_size, win_addr_align
-        )
-        dispatch_notify_size = world_size * win_addr_align
-        combine_state_size = (
-            num_max_tokens_per_rank * topk * win_addr_align
-            + world_size * win_addr_align
-        )
-        state_buffer_size = (
-            dispatch_count_size + dispatch_notify_size * 2 + combine_state_size
-        )
-
-        metadata_bytes = _inline_align(topk * metadata_dtype_size, ub_align)
-        hidden_align = _inline_align(hidden * max_out_dtype_size, ub_align)
-        dispatch_per_slot_bytes = _inline_align(
-            hidden_align + metadata_bytes * 2 + ub_align, win_addr_align
-        )
-        combine_per_slot_bytes = _inline_align(hidden_align + ub_align, win_addr_align)
-        scaleup_recv_data_size = (
-            world_size * num_max_tokens_per_rank * dispatch_per_slot_bytes
-        )
 
         def get_dispatch_buffer_size(rank_num_per_server):
             scaleout_rank_count = world_size // rank_num_per_server
-            scaleout_mask_word_count = _inline_align(rank_num_per_server, 32) // 32
             scaleout_per_slot_bytes = _inline_align(
-                dispatch_per_slot_bytes
-                + scaleout_mask_word_count * state_dtype_size
-                + rank_num_per_server * state_dtype_size,
+                window_layout.dispatch_slot_bytes + topk * state_dtype_size,
                 win_addr_align,
             )
             scaleout_recv_data_size = (
@@ -418,22 +417,12 @@ class ElasticBuffer:
             scaleout_recv_status_size = (
                 scaleout_rank_count * num_max_tokens_per_rank * win_addr_align
             )
-            scaleup_send_data_size = (
-                rank_num_per_server
-                * num_max_tokens_per_rank
-                * dispatch_per_slot_bytes
-            )
-            scaleout_send_data_size = (
-                scaleout_rank_count
-                * num_max_tokens_per_rank
-                * scaleout_per_slot_bytes
-            )
+            payload_stash_size = num_max_tokens_per_rank * scaleout_per_slot_bytes
             return (
                 scaleout_recv_data_size
-                + scaleup_recv_data_size
+                + window_layout.scaleup_receive_buffer_bytes
                 + scaleout_recv_status_size
-                + scaleup_send_data_size
-                + scaleout_send_data_size
+                + payload_stash_size
             )
 
         # Context topology is unavailable here, so reserve for the largest valid hybrid layout.
@@ -446,10 +435,14 @@ class ElasticBuffer:
             get_dispatch_buffer_size(rank_num_per_server)
             for rank_num_per_server in rank_num_per_server_candidates
         )
-        combine_buffer_size = num_max_tokens_per_rank * combine_per_slot_bytes * topk
+        combine_buffer_size = (
+            num_max_tokens_per_rank * window_layout.combine_slot_bytes * topk
+        )
 
         hybrid_minimum_window_bytes = (
-            state_buffer_size + dispatch_buffer_size + combine_buffer_size
+            window_layout.state_buffer_bytes
+            + dispatch_buffer_size
+            + combine_buffer_size
         )
         minimum_window_bytes = max(
             direct_minimum_window_bytes, hybrid_minimum_window_bytes
@@ -731,8 +724,6 @@ class ElasticBuffer:
             route_count,
             route_dst_scaleout,
             route_scaleout_slot,
-            route_scaleup_mask,
-            route_scaleup_slot,
         ) = (
             self._runtime.moe_ep_dispatch(
                 args.x,
@@ -743,8 +734,6 @@ class ElasticBuffer:
                 args.cached_route_count,
                 args.cached_route_dst_scaleout,
                 args.cached_route_scaleout_slot,
-                args.cached_route_scaleup_mask,
-                args.cached_route_scaleup_slot,
                 self._ep_world_size,
                 self._rank_id,
                 args.num_experts,
@@ -787,8 +776,6 @@ class ElasticBuffer:
             route_count,
             route_dst_scaleout,
             route_scaleout_slot,
-            route_scaleup_mask,
-            route_scaleup_slot,
         )
         return recv_x, None, recv_topk_weights, new_handle
 
@@ -928,8 +915,6 @@ class ElasticBuffer:
                 handle.route_count,
                 handle.route_dst_scaleout,
                 handle.route_scaleout_slot,
-                handle.route_scaleup_mask,
-                handle.route_scaleup_slot,
                 handle.recv_src_metadata,
                 handle.num_experts,
                 handle.num_max_tokens_per_rank,
@@ -949,8 +934,6 @@ class ElasticBuffer:
             x,
             scales,
             topk_idx,
-            None,
-            None,
             None,
             None,
             None,
@@ -1020,8 +1003,6 @@ class ElasticBuffer:
         route_count: torch.Tensor,
         route_dst_scaleout: torch.Tensor,
         route_scaleout_slot: torch.Tensor,
-        route_scaleup_mask: torch.Tensor,
-        route_scaleup_slot: torch.Tensor,
     ) -> EPHandle:
         topk_idx = (
             args.topk_idx
@@ -1040,8 +1021,6 @@ class ElasticBuffer:
             route_count=route_count,
             route_dst_scaleout=route_dst_scaleout,
             route_scaleout_slot=route_scaleout_slot,
-            route_scaleup_mask=route_scaleup_mask,
-            route_scaleup_slot=route_scaleup_slot,
         )
 
     def _unpack_bias(self, bias):

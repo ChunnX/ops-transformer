@@ -66,16 +66,6 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("cached_route_scaleup_mask")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("cached_route_scaleup_slot")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
 
         this->Output("num_recv_tokens_per_rank")
             .ParamType(REQUIRED)
@@ -98,14 +88,6 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
         this->Output("route_scaleout_slot")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
-        this->Output("route_scaleup_mask")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
-        this->Output("route_scaleup_slot")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
