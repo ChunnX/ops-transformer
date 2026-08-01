@@ -246,8 +246,8 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline bool QBSABlockVec<TEMPLATE_ARGS>::SoftmaxInvalidLineCheck(LocalTensor<T> &maxUb,
-                                                                           uint32_t negativeIntScalar,
-                                                                           SoftMaxShapeInfo &softmaxShapeInfo)
+                                                                            uint32_t negativeIntScalar,
+                                                                            SoftMaxShapeInfo &softmaxShapeInfo)
 {
     event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
     SetFlag<HardEvent::V_S>(eventIdVToS);
@@ -270,8 +270,8 @@ __aicore__ inline bool QBSABlockVec<TEMPLATE_ARGS>::SoftmaxInvalidLineCheck(Loca
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::BroadCastAndCopyOut(RunInfo &runInfo, GlobalTensor<T> &sumGm,
-                                                                       GlobalTensor<T> &maxGm, int64_t gmOffset,
-                                                                       int64_t calculateSize)
+                                                                        GlobalTensor<T> &maxGm, int64_t gmOffset,
+                                                                        int64_t calculateSize)
 {
     LocalTensor<float> sumTensor = softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
     LocalTensor<float> sumOutTensor = sumBrdcst.template AllocTensor<float>();
@@ -385,7 +385,8 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline int64_t QBSABlockVec<TEMPLATE_ARGS>::ComputeOffsetForSoftmax(RunInfo &runInfo, const int64_t vec2S1Idx)
+__aicore__ inline int64_t QBSABlockVec<TEMPLATE_ARGS>::ComputeOffsetForSoftmax(RunInfo &runInfo,
+                                                                               const int64_t vec2S1Idx)
 {
     return vec2S1Idx * runInfo.vec2S1BaseSize;
 }
@@ -454,7 +455,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
-                                                               ConstInfo &constInfo)
+                                                                ConstInfo &constInfo)
 {
     bmm2ResBuf.WaitCrossCore();
     ProcessVec2OnUb(bmm2ResBuf, runInfo, constInfo);
@@ -623,7 +624,7 @@ __aicore__ inline T QBSABlockVec<TEMPLATE_ARGS>::GetNegativeValue()
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSharedParams<isPa> &sharedParams,
-                                                                           int32_t aicIdx, uint8_t subBlockIdx)
+                                                                            int32_t aicIdx, uint8_t subBlockIdx)
 {
     auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
     sharedParams.bSize = inputParamsRegbase.bSize;
@@ -676,8 +677,9 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSh
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-                                                               ConstInfo &constInfo)
+__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *softmaxLse,
+                                                                __gm__ uint8_t *attentionOut,
+                                                                ConstInfo &constInfo)
 {
     if ASCEND_IS_AIV {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
@@ -714,8 +716,8 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitUniqueLocalBuffer(ConstI
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxDataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
-                                                                      LocalTensor<float> &sumUb,
-                                                                      LocalTensor<float> &maxUb)
+                                                                       LocalTensor<float> &sumUb,
+                                                                       LocalTensor<float> &maxUb)
 {
     SoftmaxLseCopyOut(sumUb, maxUb, runInfo, constInfo);
 }
@@ -731,8 +733,8 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::CopyOutAttentionOut(RunInfo 
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(LocalTensor<float> &softmaxSumTmp,
-                                                                     LocalTensor<float> &softmaxMaxTmp,
-                                                                     RunInfo &runInfo, ConstInfo &constInfo)
+                                                                      LocalTensor<float> &softmaxMaxTmp,
+                                                                      RunInfo &runInfo, ConstInfo &constInfo)
 {
     if (unlikely(runInfo.halfS1RealSize == 0)) {
         return;
