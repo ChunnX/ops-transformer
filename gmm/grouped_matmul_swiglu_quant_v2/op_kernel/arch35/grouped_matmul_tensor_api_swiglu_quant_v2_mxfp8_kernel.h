@@ -76,6 +76,7 @@ __aicore__ inline void GmmTensorApiSwigluQuantMxFp8Kernel(
 
     using Params = typename SwigluKernel::Params;
     using GMMTiling = typename SwigluKernel::GMMTiling;
+    using BlockMmadAddressParams = typename SwigluBlockMmad::Params;
 
     const uint8_t singleW = gmmQuantParams_.singleW;
     GMMTiling gmmParams{static_cast<uint32_t>(gmmQuantParams_.groupNum),
@@ -109,8 +110,10 @@ __aicore__ inline void GmmTensorApiSwigluQuantMxFp8Kernel(
 
     GM_ADDR groupListDataAddr = groupList;
 
+    BlockMmadAddressParams blockMmadAddressParams{
+        aDataAddr, bDataAddr, nullptr, nullptr, scaleADataAddr, scaleBDataAddr};
     Params params = {{gmmParams.m, gmmParams.n, gmmParams.k, static_cast<int64_t>(1)},
-                     {aDataAddr, bDataAddr, nullptr, nullptr, scaleADataAddr, scaleBDataAddr},
+                     blockMmadAddressParams,
                      {yDataAddr, yScaleDataAddr, gmmParams.baseM, gmmParams.baseN},
                      groupListDataAddr,
                      gmmParams};
