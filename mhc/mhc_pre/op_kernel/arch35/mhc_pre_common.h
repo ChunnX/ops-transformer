@@ -99,10 +99,7 @@ constexpr uint16_t MHC_PRE_X_CONSUMED_FLAG = 9U;
 constexpr uint16_t MHC_PRE_MM_READY_FLAG = 10U;
 
 // Integer shape helpers.
-__aicore__ inline uint32_t BasicApiCeilDiv(uint32_t value, uint32_t div)
-{
-    return (value + div - 1) / div;
-}
+__aicore__ inline uint32_t BasicApiCeilDiv(uint32_t value, uint32_t div) { return (value + div - 1) / div; }
 
 __aicore__ inline uint32_t BasicApiAlign(uint32_t value, uint32_t align)
 {
@@ -120,10 +117,7 @@ __aicore__ inline uint64_t MhcPreCeilDiv(uint64_t value, uint64_t div)
     return div == 0U ? value : (value + div - 1U) / div;
 }
 
-__aicore__ inline uint64_t MhcPreAlign(uint64_t value, uint64_t align)
-{
-    return MhcPreCeilDiv(value, align) * align;
-}
+__aicore__ inline uint64_t MhcPreAlign(uint64_t value, uint64_t align) { return MhcPreCeilDiv(value, align) * align; }
 
 __aicore__ inline constexpr uint32_t MhcPreGetVRegSize()
 {
@@ -141,8 +135,8 @@ __aicore__ inline uint32_t BasicApiRoundUp(uint32_t value)
 }
 
 // Register and tensor data-movement helpers.
-__aicore__ inline void MhcPreBasicApiLoadBroadcast(AscendC::MicroAPI::RegTensor<float> &dst,
-                                                   __local_mem__ float *src, AscendC::MicroAPI::MaskReg mask, uint32_t offset)
+__aicore__ inline void MhcPreBasicApiLoadBroadcast(AscendC::MicroAPI::RegTensor<float> &dst, __local_mem__ float *src,
+                                                   AscendC::MicroAPI::MaskReg mask, uint32_t offset)
 {
     AscendC::MicroAPI::DataCopy<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(dst, src + offset);
 }

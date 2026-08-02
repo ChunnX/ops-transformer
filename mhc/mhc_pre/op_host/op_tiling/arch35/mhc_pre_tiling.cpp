@@ -160,11 +160,11 @@ ge::graphStatus MhcPreBaseTiling::GetInputShape()
                                              std::to_string(alphaShape.GetDimNum()).c_str(), "1"),
                 return ge::GRAPH_FAILED);
     int64_t alphaSize = alphaShape.GetDim(0);
-    OP_CHECK_IF(alphaSize != 2 && alphaSize != 3,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "alpha",
-                                                      Ops::Base::ToString(alphaShape).c_str(),
-                                                      "shape must be [2] or [3]"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        alphaSize != 2 && alphaSize != 3,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "alpha", Ops::Base::ToString(alphaShape).c_str(),
+                                              "shape must be [2] or [3]"),
+        return ge::GRAPH_FAILED);
     hasResi_ = (alphaSize == 3) ? 1 : 0;
 
     auto gammaTensor = context_->GetDynamicInputTensor(GAMMA_INDEX, 0);
@@ -255,11 +255,11 @@ ge::graphStatus MhcPreBaseTiling::CheckShapePositive()
 ge::graphStatus MhcPreBaseTiling::CheckDataType()
 {
     auto xDtype = context_->GetInputDesc(X_INDEX)->GetDataType();
-    OP_CHECK_IF(xDtype != ge::DT_BF16 && xDtype != ge::DT_FLOAT16,
-                OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "x",
-                                          ge::TypeUtils::DataTypeToSerialString(xDtype).c_str(),
-                                          "DT_BF16 or DT_FLOAT16"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        xDtype != ge::DT_BF16 && xDtype != ge::DT_FLOAT16,
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "x", ge::TypeUtils::DataTypeToSerialString(xDtype).c_str(),
+                                  "DT_BF16 or DT_FLOAT16"),
+        return ge::GRAPH_FAILED);
 
     auto phiDtype = context_->GetInputDesc(PHI_INDEX)->GetDataType();
     OP_CHECK_IF(phiDtype != ge::DT_FLOAT,
@@ -340,13 +340,13 @@ ge::graphStatus MhcPreBaseTiling::CheckBsndOutputShape(uint64_t b, uint64_t s, u
     if (hasResi_) {
         auto outHresShapePtr = context_->GetOutputShape(OUT_H_RES_INDEX);
         auto outHresShape = &outHresShapePtr->GetStorageShape();
-        OP_CHECK_IF(outHresShape->GetDimNum() != DIM_NUM_4 || outHresShape->GetDim(DIM_0) != b ||
-                        outHresShape->GetDim(DIM_1) != s || outHresShape->GetDim(DIM_2) != n ||
-                        outHresShape->GetDim(DIM_3) != n,
-                    OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "hRes",
-                                              Ops::Base::ToString(*outHresShape).c_str(),
-                                              ShapeToString({b, s, n, n}).c_str()),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            outHresShape->GetDimNum() != DIM_NUM_4 || outHresShape->GetDim(DIM_0) != b ||
+                outHresShape->GetDim(DIM_1) != s || outHresShape->GetDim(DIM_2) != n ||
+                outHresShape->GetDim(DIM_3) != n,
+            OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "hRes", Ops::Base::ToString(*outHresShape).c_str(),
+                                      ShapeToString({b, s, n, n}).c_str()),
+            return ge::GRAPH_FAILED);
     }
 
     auto outInvRmsShapePtr = context_->GetOutputShape(OUT_INV_RMS_INDEX);
@@ -354,16 +354,14 @@ ge::graphStatus MhcPreBaseTiling::CheckBsndOutputShape(uint64_t b, uint64_t s, u
     OP_CHECK_IF(outInvRmsShape->GetDimNum() != DIM_NUM_2 || outInvRmsShape->GetDim(DIM_0) != b ||
                     outInvRmsShape->GetDim(DIM_1) != s,
                 OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "invRms",
-                                          Ops::Base::ToString(*outInvRmsShape).c_str(),
-                                          ShapeToString({b, s}).c_str()),
+                                          Ops::Base::ToString(*outInvRmsShape).c_str(), ShapeToString({b, s}).c_str()),
                 return ge::GRAPH_FAILED);
 
     auto outMmresShapePtr = context_->GetOutputShape(OUT_H_MIX_INDEX);
     auto outMmresShape = &outMmresShapePtr->GetStorageShape();
     OP_CHECK_IF(outMmresShape->GetDimNum() != DIM_NUM_3 || outMmresShape->GetDim(DIM_0) != b ||
                     outMmresShape->GetDim(DIM_1) != s || outMmresShape->GetDim(DIM_2) != matN_,
-                OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "hMix",
-                                          Ops::Base::ToString(*outMmresShape).c_str(),
+                OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "hMix", Ops::Base::ToString(*outMmresShape).c_str(),
                                           ShapeToString({b, s, matN_}).c_str()),
                 return ge::GRAPH_FAILED);
 
@@ -398,12 +396,12 @@ ge::graphStatus MhcPreBaseTiling::CheckTndOutputShape(uint64_t t, uint64_t n, ui
     if (hasResi_) {
         auto outHresShapePtr = context_->GetOutputShape(OUT_H_RES_INDEX);
         auto outHresShape = &outHresShapePtr->GetStorageShape();
-        OP_CHECK_IF(outHresShape->GetDimNum() != DIM_NUM_3 || outHresShape->GetDim(DIM_0) != t ||
-                        outHresShape->GetDim(DIM_1) != n || outHresShape->GetDim(DIM_2) != n,
-                    OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "hRes",
-                                              Ops::Base::ToString(*outHresShape).c_str(),
-                                              ShapeToString({t, n, n}).c_str()),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            outHresShape->GetDimNum() != DIM_NUM_3 || outHresShape->GetDim(DIM_0) != t ||
+                outHresShape->GetDim(DIM_1) != n || outHresShape->GetDim(DIM_2) != n,
+            OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "hRes", Ops::Base::ToString(*outHresShape).c_str(),
+                                      ShapeToString({t, n, n}).c_str()),
+            return ge::GRAPH_FAILED);
     }
 
     auto outInvRmsShapePtr = context_->GetOutputShape(OUT_INV_RMS_INDEX);
@@ -417,18 +415,17 @@ ge::graphStatus MhcPreBaseTiling::CheckTndOutputShape(uint64_t t, uint64_t n, ui
     auto outMmresShape = &outMmresShapePtr->GetStorageShape();
     OP_CHECK_IF(outMmresShape->GetDimNum() != DIM_NUM_2 || outMmresShape->GetDim(DIM_0) != t ||
                     outMmresShape->GetDim(DIM_1) != matN_,
-                OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "hMix",
-                                          Ops::Base::ToString(*outMmresShape).c_str(),
+                OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "hMix", Ops::Base::ToString(*outMmresShape).c_str(),
                                           ShapeToString({t, matN_}).c_str()),
                 return ge::GRAPH_FAILED);
 
     auto outHpreShapePtr = context_->GetOutputShape(OUT_H_PRE_INDEX);
     auto outHpreShape = &outHpreShapePtr->GetStorageShape();
-    OP_CHECK_IF(outHpreShape->GetDimNum() != DIM_NUM_2 || outHpreShape->GetDim(DIM_0) != t ||
-                    outHpreShape->GetDim(DIM_1) != n,
-                OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "hPre", Ops::Base::ToString(*outHpreShape).c_str(),
-                                          ShapeToString({t, n}).c_str()),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        outHpreShape->GetDimNum() != DIM_NUM_2 || outHpreShape->GetDim(DIM_0) != t || outHpreShape->GetDim(DIM_1) != n,
+        OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "hPre", Ops::Base::ToString(*outHpreShape).c_str(),
+                                  ShapeToString({t, n}).c_str()),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -587,8 +584,7 @@ ge::graphStatus MhcPreBaseTiling::ParseOutputFlags()
     auto outFlagPtr = attrs->GetAttrPointer<int64_t>(OUT_FLAG_ATTR_INDEX);
     int64_t outFlag = outFlagPtr != nullptr ? *outFlagPtr : 0;
     if (outFlag != 0 && outFlag != 1) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "out_flag",
-                                              std::to_string(outFlag).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "out_flag", std::to_string(outFlag).c_str(),
                                               "out_flag must be 0 or 1");
         return ge::GRAPH_FAILED;
     }
@@ -628,8 +624,7 @@ ge::graphStatus MhcPreBaseTiling::ParseEpsAttributes()
     auto implModePtr = attrs->GetAttrPointer<int64_t>(IMPL_MODE_ATTR_INDEX);
     int64_t implMode = (implModePtr != nullptr) ? *implModePtr : IMPL_MODE_FP32;
     if (implMode != IMPL_MODE_FP32 && implMode != IMPL_MODE_HF32) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "op_impl_mode",
-                                              std::to_string(implMode).c_str(),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "op_impl_mode", std::to_string(implMode).c_str(),
                                               "op_impl_mode must be 0 (FP32) or 1 (HF32)");
         return ge::GRAPH_FAILED;
     }
@@ -644,10 +639,8 @@ bool MhcPreBaseTiling::CanUseMk() const
     uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / 2U);
     // Each M-K AIC owns one M tile; reject shapes that cannot be covered by all active AICs.
     uint64_t maxCoveredM = activeCoreNum * M_K_M_L1_MAX_SIZE;
-    return supportedN && totalLength_ <= M_K_MAX_VALIDATED_TOTAL_LENGTH &&
-           totalLength_ <= maxCoveredM &&
-           matK_ >= M_K_MIN_MAT_K &&
-           context_->GetDeterministicLevel() != BATCH_CONSISTENCY_LEVEL;
+    return supportedN && totalLength_ <= M_K_MAX_VALIDATED_TOTAL_LENGTH && totalLength_ <= maxCoveredM &&
+           matK_ >= M_K_MIN_MAT_K && context_->GetDeterministicLevel() != BATCH_CONSISTENCY_LEVEL;
 }
 
 uint32_t MhcPreBaseTiling::SelectMkStage() const
@@ -673,12 +666,8 @@ void MhcPreBaseTiling::FillBsTilingData()
 
 void MhcPreBaseTiling::FillMkTilingData()
 {
-    auto ceilDiv = [](uint64_t value, uint64_t divisor) -> uint64_t {
-        return (value + divisor - 1U) / divisor;
-    };
-    auto roundUp = [&ceilDiv](uint64_t value, uint64_t align) -> uint64_t {
-        return ceilDiv(value, align) * align;
-    };
+    auto ceilDiv = [](uint64_t value, uint64_t divisor) -> uint64_t { return (value + divisor - 1U) / divisor; };
+    auto roundUp = [&ceilDiv](uint64_t value, uint64_t align) -> uint64_t { return ceilDiv(value, align) * align; };
 
     uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / 2U);
     uint64_t minMDim = std::min<uint64_t>(activeCoreNum, ceilDiv(totalLength_, M_K_M_L1_MAX_SIZE));
@@ -694,20 +683,14 @@ void MhcPreBaseTiling::FillMkTilingData()
     // Keep the Cube accumulation order independent of N and the optional residual
     // segment. The kernel derives the same decision from multCoreSplitKSize.
     bool useSequentialKPartials = singleCoreK >= M_K_SEQUENTIAL_PARTIAL_THRESHOLD;
-    uint64_t workspaceGroupK = useSequentialKPartials ?
-                                   ceilDiv(matK_, M_K_SEQUENTIAL_PARTIAL_K) :
-                                   0U;
-    uint64_t splitK = useSequentialKPartials ?
-                          ceilDiv(workspaceGroupK, kDim) * M_K_SEQUENTIAL_PARTIAL_K :
-                          singleCoreK;
+    uint64_t workspaceGroupK = useSequentialKPartials ? ceilDiv(matK_, M_K_SEQUENTIAL_PARTIAL_K) : 0U;
+    uint64_t splitK = useSequentialKPartials ? ceilDiv(workspaceGroupK, kDim) * M_K_SEQUENTIAL_PARTIAL_K : singleCoreK;
     uint64_t actualKBlockNum = ceilDiv(matK_, splitK);
     uint64_t mL1Size = std::min<uint64_t>(M_K_M_L1_MAX_SIZE, singleCoreM);
     uint64_t fusionAlign = roundUp(matN_, BASIC_API_FLOAT_ALIGN);
-    uint64_t kL1Size = std::min<uint64_t>(M_K_A_L1_ELEMENT_COUNT / mL1Size,
-                                          M_K_B_L1_ELEMENT_COUNT / fusionAlign);
+    uint64_t kL1Size = std::min<uint64_t>(M_K_A_L1_ELEMENT_COUNT / mL1Size, M_K_B_L1_ELEMENT_COUNT / fusionAlign);
     kL1Size = std::min<uint64_t>(kL1Size, M_K_K_L1_MAX_SIZE);
-    kL1Size = std::max<uint64_t>(M_K_K_L1_ALIGN,
-                                 kL1Size / M_K_K_L1_ALIGN * M_K_K_L1_ALIGN);
+    kL1Size = std::max<uint64_t>(M_K_K_L1_ALIGN, kL1Size / M_K_K_L1_ALIGN * M_K_K_L1_ALIGN);
     // Keep every L1 tile inside one sequential partial; only the final partial may be shorter.
     if (useSequentialKPartials) {
         while (M_K_SEQUENTIAL_PARTIAL_K % kL1Size != 0U) {
@@ -723,18 +706,15 @@ void MhcPreBaseTiling::FillMkTilingData()
     tilingData_.set_kUbSize(static_cast<uint32_t>(kL1Size));
     tilingData_.set_fusionAlign(static_cast<uint32_t>(fusionAlign));
     // Keep enough rows per AIV to amortize setup while distributing all rows across the available AIVs.
-    uint64_t stage2RowsPerCore = std::min<uint64_t>(totalLength_, std::max<uint64_t>(
-        M_K_MIN_STAGE2_ROWS_PER_CORE, ceilDiv(totalLength_, aivBlockDim_)));
-    uint64_t stage2UsedAivNum = std::min<uint64_t>(
-        aivBlockDim_, ceilDiv(totalLength_, stage2RowsPerCore));
+    uint64_t stage2RowsPerCore = std::min<uint64_t>(
+        totalLength_, std::max<uint64_t>(M_K_MIN_STAGE2_ROWS_PER_CORE, ceilDiv(totalLength_, aivBlockDim_)));
+    uint64_t stage2UsedAivNum = std::min<uint64_t>(aivBlockDim_, ceilDiv(totalLength_, stage2RowsPerCore));
     tilingData_.set_stage2UsedAivNum(static_cast<uint32_t>(stage2UsedAivNum));
     tilingData_.set_stage2RowsPerCore(static_cast<uint32_t>(stage2RowsPerCore));
 
     uint64_t mmWorkspaceGroupK = useSequentialKPartials ? workspaceGroupK : actualKBlockNum;
-    size_t partialMmBytes =
-        static_cast<size_t>(mmWorkspaceGroupK) * totalLength_ * matN_ * sizeof(float);
-    size_t partialRmsBytes =
-        static_cast<size_t>(actualKBlockNum) * totalLength_ * sizeof(float);
+    size_t partialMmBytes = static_cast<size_t>(mmWorkspaceGroupK) * totalLength_ * matN_ * sizeof(float);
+    size_t partialRmsBytes = static_cast<size_t>(actualKBlockNum) * totalLength_ * sizeof(float);
     size_t mmOffset = 0;
     size_t rmsOffset = roundUp(partialMmBytes, M_K_WORKSPACE_ALIGN);
     size_t finalOffset = roundUp(rmsOffset + partialRmsBytes, M_K_WORKSPACE_ALIGN);
@@ -746,9 +726,7 @@ void MhcPreBaseTiling::FillMkTilingData()
 
 void MhcPreBaseTiling::FillTilingData()
 {
-    uint32_t coreNum = tilingMode_ == TilingMode::SPLIT_M_K ?
-                           std::min(blockDim_, aivBlockDim_ / 2U) :
-                           blockDim_;
+    uint32_t coreNum = tilingMode_ == TilingMode::SPLIT_M_K ? std::min(blockDim_, aivBlockDim_ / 2U) : blockDim_;
     tilingData_.set_coreNum(coreNum);
     tilingData_.set_totalLength(totalLength_);
     tilingData_.set_nD(matK_);
@@ -803,12 +781,12 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
     size_t systemWorkspaceSize = SYSTEM_WORKSPACE;
 
     if (tilingMode_ == TilingMode::SPLIT_M_K) {
-        size_t mkXStageBytes = tilingData_.get_mkUseGmStage() == 0U ? 0U :
-                                                                      static_cast<size_t>(tilingData_.get_cubeBlockDimM()) *
-                                                                          tilingData_.get_cubeBlockDimK() * 2U *
-                                                                          tilingData_.get_mL1Size() * tilingData_.get_kL1Size() * sizeof(float);
-        userWorkspaceSize = static_cast<size_t>(tilingData_.get_mkWorkspaceFinalOffset()) +
-                            mkXStageBytes;
+        size_t mkXStageBytes = tilingData_.get_mkUseGmStage() == 0U ?
+                                   0U :
+                                   static_cast<size_t>(tilingData_.get_cubeBlockDimM()) *
+                                       tilingData_.get_cubeBlockDimK() * 2U * tilingData_.get_mL1Size() *
+                                       tilingData_.get_kL1Size() * sizeof(float);
+        userWorkspaceSize = static_cast<size_t>(tilingData_.get_mkWorkspaceFinalOffset()) + mkXStageBytes;
     } else if (tilingMode_ == TilingMode::SPLIT_ND) {
         size_t xFloatWorkspaceSizeRaw = static_cast<size_t>(matM_) * static_cast<size_t>(matK_) * sizeof(float);
         size_t xFloatWorkspaceSize =
@@ -829,8 +807,8 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
         // allocation, which was too small for long M and corrupted system workspace.
         size_t xStageWorkspaceSize = static_cast<size_t>(chunkTSize_) * BASIC_API_K_UB_SIZE *
                                      BASIC_API_X_STAGE_BUFFER_COUNT * sizeof(float) * blockDim_;
-        size_t hMixWorkspaceSize = outFlag_ ? 0U :
-            static_cast<size_t>(matM_) * static_cast<size_t>(matN_) * sizeof(float);
+        size_t hMixWorkspaceSize =
+            outFlag_ ? 0U : static_cast<size_t>(matM_) * static_cast<size_t>(matN_) * sizeof(float);
         userWorkspaceSize = xStageWorkspaceSize + hMixWorkspaceSize;
     }
     workspaceSize_ = userWorkspaceSize + systemWorkspaceSize;
@@ -864,17 +842,16 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
     }
 
     if (hasGamma_) {
-        size_t gammaBufferLength = (tilingMode_ == TilingMode::SPLIT_ND) ? SPLIT_ND_GAMMA_BUFFER_LENGTH : SPLIT_BS_GAMMA_BUFFER_LENGTH;
+        size_t gammaBufferLength =
+            (tilingMode_ == TilingMode::SPLIT_ND) ? SPLIT_ND_GAMMA_BUFFER_LENGTH : SPLIT_BS_GAMMA_BUFFER_LENGTH;
         dynamicBufferSize += gammaBufferLength * floatSize;
     }
 
     size_t totalUbRequired = fixedBufferSize + dynamicBufferSize;
     if (totalUbRequired > ubSize_) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "required UB size",
-                                              std::to_string(totalUbRequired).c_str(),
-                                              ("must not exceed available UB size " +
-                                               std::to_string(ubSize_) + " bytes")
-                                                  .c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            context_->GetNodeName(), "required UB size", std::to_string(totalUbRequired).c_str(),
+            ("must not exceed available UB size " + std::to_string(ubSize_) + " bytes").c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -929,12 +906,11 @@ uint64_t MhcPreBaseTiling::GetTilingKey() const
 
 ge::graphStatus MhcPreBaseTiling::PostTiling()
 {
-    OP_CHECK_IF(
-        tilingData_.GetDataSize() % sizeof(uint64_t) != 0,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "tilingData size",
-                                              std::to_string(tilingData_.GetDataSize()).c_str(),
-                                              "size must be aligned to 8 bytes"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingData_.GetDataSize() % sizeof(uint64_t) != 0,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "tilingData size",
+                                                      std::to_string(tilingData_.GetDataSize()).c_str(),
+                                                      "size must be aligned to 8 bytes"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetRawTilingData());
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
