@@ -58,11 +58,15 @@ constexpr int64_t PHI_DIM_OFFSET = 2;
 constexpr int64_t MHC_PRE_DEFAULT = 0;
 constexpr int64_t MHC_PRE_USE_HF32 = 1;
 
+// Validates that alpha selects the residual or no-residual contract.
 static bool CheckAlphaShape(const aclTensor *alphaTensor);
+// Validates supported N and aligned D values shared by both public APIs.
 static bool ValidateNDParams(int64_t n, int64_t d);
+// Compares one tensor with an exact expected shape and reports diagnostics.
 static bool CheckTensorShape(const aclTensor *tensor, std::initializer_list<int64_t> expectedShape, const char *name);
 
 
+// Formats a tensor view shape for ACLNN error messages.
 static std::string TensorShapeToString(const aclTensor *tensor)
 {
     const auto shape = tensor->GetViewShape();
@@ -73,6 +77,7 @@ static std::string TensorShapeToString(const aclTensor *tensor)
     return result + "]";
 }
 
+// Formats an expected shape for ACLNN error messages.
 static std::string ExpectedShapeToString(std::initializer_list<int64_t> shape)
 {
     std::string result = "[";
@@ -83,6 +88,7 @@ static std::string ExpectedShapeToString(std::initializer_list<int64_t> shape)
     return result + "]";
 }
 
+// Checks one mandatory tensor pointer before dereferencing its metadata.
 static bool CheckRequiredTensor(const aclTensor *tensor, const char *name, const char *reason)
 {
     if (tensor == nullptr) {
@@ -92,6 +98,7 @@ static bool CheckRequiredTensor(const aclTensor *tensor, const char *name, const
     return true;
 }
 
+// Rejects empty mandatory tensors.
 static bool CheckNonEmptyTensor(const aclTensor *tensor, const char *name)
 {
     if (tensor->IsEmpty()) {
@@ -102,6 +109,7 @@ static bool CheckNonEmptyTensor(const aclTensor *tensor, const char *name)
     return true;
 }
 
+// Checks one tensor rank against its API contract.
 static bool CheckTensorRank(const aclTensor *tensor, const char *name, size_t expectedRank)
 {
     const size_t actualRank = tensor->GetViewShape().GetDimNum();
@@ -113,6 +121,7 @@ static bool CheckTensorRank(const aclTensor *tensor, const char *name, size_t ex
     return true;
 }
 
+// Checks one tensor dtype and emits a named ACLNN diagnostic.
 static bool CheckTensorDtype(const aclTensor *tensor, const char *name, DataType expectedDtype)
 {
     const auto actualDtype = tensor->GetDataType();
@@ -203,6 +212,7 @@ private:
     MhcParamsBase obj_;
 };
 
+// Checks all mandatory input and output pointers for MhcPre/MhcPreV2.
 static bool CheckNotNull(const MhcParamsBase &params)
 {
     return CheckRequiredTensor(params.x, "x", "required input tensor must not be nullptr") &&
@@ -213,6 +223,7 @@ static bool CheckNotNull(const MhcParamsBase &params)
            CheckRequiredTensor(params.hPost, "hPost", "required output tensor must not be nullptr");
 }
 
+// Requires hRes only when alpha selects the residual-enabled mode.
 static bool CheckRequiredHRes(const MhcParamsBase &params)
 {
     if (params.alpha->GetViewShape().GetDim(DIM_IDX_0) == ALPHA_DIM_SIZE_3 && params.hRes == nullptr) {
@@ -223,12 +234,14 @@ static bool CheckRequiredHRes(const MhcParamsBase &params)
     return true;
 }
 
+// Rejects empty mandatory tensors after null checks succeed.
 static bool CheckEmptyTensor(const MhcParamsBase &params)
 {
     return CheckNonEmptyTensor(params.x, "x") && CheckNonEmptyTensor(params.phi, "phi") &&
            CheckNonEmptyTensor(params.alpha, "alpha") && CheckNonEmptyTensor(params.bias, "bias");
 }
 
+// Validates ranks of X, phi, alpha, bias, and optional gamma.
 static bool CheckInputDims(const MhcParamsBase &params)
 {
     auto xDimNum = params.x->GetViewShape().GetDimNum();
@@ -243,6 +256,7 @@ static bool CheckInputDims(const MhcParamsBase &params)
     return params.gammaOptional == nullptr || CheckTensorRank(params.gammaOptional, "gammaOptional", DIM_NUM_2);
 }
 
+// Validates ranks of the required hIn/hPost/hRes outputs.
 static bool CheckOutputDims(const MhcParamsBase &params)
 {
     auto xDimNum = params.x->GetViewShape().GetDimNum();
@@ -255,6 +269,7 @@ static bool CheckOutputDims(const MhcParamsBase &params)
     return alphaSize != ALPHA_DIM_SIZE_3 || CheckTensorRank(params.hRes, "hRes", xDimNum);
 }
 
+// Enforces all-or-none semantics for invRms/hMix/hPre optional outputs.
 static bool CheckOptionalOutputGroup(const MhcParamsBase &params)
 {
     bool hasAnyOptional =
@@ -275,6 +290,7 @@ static bool CheckOptionalOutputGroup(const MhcParamsBase &params)
 }
 
 
+// Validates optional output ranks when outFlag enables them.
 static bool CheckOptionalOutputDims(const MhcParamsBase &params)
 {
     if (params.invRmsOptional == nullptr) {
@@ -288,11 +304,13 @@ static bool CheckOptionalOutputDims(const MhcParamsBase &params)
            CheckTensorRank(params.hPreOptional, "hPreOptional", outputDimNum);
 }
 
+// Runs required and optional output-rank validation as one step.
 static bool CheckOutputAndOptionalDims(const MhcParamsBase &params)
 {
     return CheckOutputDims(params) && CheckOptionalOutputGroup(params) && CheckOptionalOutputDims(params);
 }
 
+// Extracts N/D and their product from either BSND or TND X.
 static void GetXShapeInfo(const MhcParamsBase &params, int64_t &n, int64_t &d, int64_t &nD)
 {
     auto xShape = params.x->GetViewShape();
@@ -302,6 +320,7 @@ static void GetXShapeInfo(const MhcParamsBase &params, int64_t &n, int64_t &d, i
     nD = n * d;
 }
 
+// Validates phi/alpha/bias/gamma shapes derived from X and residual mode.
 static bool CheckParamShapes(const MhcParamsBase &params, int64_t n, int64_t d, int64_t nD,
                              int64_t expectedParamRows)
 {
@@ -312,6 +331,7 @@ static bool CheckParamShapes(const MhcParamsBase &params, int64_t n, int64_t d, 
     return params.gammaOptional == nullptr || CheckTensorShape(params.gammaOptional, {n, d}, "gammaOptional");
 }
 
+// Validates BSND output shapes and optional raw-output shapes.
 static bool CheckOutputShape4D(const MhcParamsBase &params, int64_t n, int64_t d, int64_t expectedPhiRows)
 {
     auto xShape = params.x->GetViewShape();
@@ -332,6 +352,7 @@ static bool CheckOutputShape4D(const MhcParamsBase &params, int64_t n, int64_t d
            CheckTensorShape(params.hPreOptional, {b, s, n}, "hPreOptional");
 }
 
+// Validates TND output shapes and optional raw-output shapes.
 static bool CheckOutputShape3D(const MhcParamsBase &params, int64_t n, int64_t d, int64_t expectedPhiRows)
 {
     auto xShape = params.x->GetViewShape();
@@ -351,6 +372,7 @@ static bool CheckOutputShape3D(const MhcParamsBase &params, int64_t n, int64_t d
            CheckTensorShape(params.hPreOptional, {t, n}, "hPreOptional");
 }
 
+// Validates all cross-tensor shape relationships for one public API call.
 static bool CheckInputOutShape(const MhcParamsBase &params)
 {
     int64_t n = 0;
@@ -368,6 +390,7 @@ static bool CheckInputOutShape(const MhcParamsBase &params)
     return CheckOutputShape3D(params, n, d, expectedParamRows);
 }
 
+// Compares one concrete tensor shape with its expected dimensions.
 static bool CheckTensorShape(const aclTensor *tensor, std::initializer_list<int64_t> expectedShape, const char *name)
 {
     const auto tensorShape = tensor->GetViewShape();
@@ -389,6 +412,7 @@ static bool CheckTensorShape(const aclTensor *tensor, std::initializer_list<int6
     return true;
 }
 
+// Accepts alpha length 2 (no residual) or 3 (residual enabled).
 static bool CheckAlphaShape(const aclTensor *alphaTensor)
 {
     auto alphaShape = alphaTensor->GetViewShape();
@@ -402,6 +426,7 @@ static bool CheckAlphaShape(const aclTensor *alphaTensor)
     return true;
 }
 
+// Accepts N=4/6/8 and D values satisfying the kernel alignment contract.
 static bool ValidateNDParams(int64_t n, int64_t d)
 {
     if (n <= 0) {
@@ -435,6 +460,7 @@ static bool ValidateNDParams(int64_t n, int64_t d)
 }
 
 
+// Validates input dtypes, including optional gamma.
 static bool CheckInputDtype(const MhcParamsBase &params)
 {
     const std::initializer_list<DataType> X_SUPPORT_DTYPE_LIST = {DataType::DT_BF16, DataType::DT_FLOAT16};
@@ -457,6 +483,7 @@ static bool CheckInputDtype(const MhcParamsBase &params)
             CheckTensorDtype(params.gammaOptional, "gammaOptional", DataType::DT_FLOAT));
 }
 
+// Validates required output dtypes.
 static bool CheckOutputDtype(const MhcParamsBase &params)
 {
     return CheckTensorDtype(params.hIn, "hIn", params.x->GetDataType()) &&
@@ -464,6 +491,7 @@ static bool CheckOutputDtype(const MhcParamsBase &params)
            (params.hRes == nullptr || CheckTensorDtype(params.hRes, "hRes", DataType::DT_FLOAT));
 }
 
+// Validates optional output dtypes when present.
 static bool CheckOptionalOutputDtype(const MhcParamsBase &params)
 {
     if (params.invRmsOptional == nullptr) {
@@ -474,11 +502,13 @@ static bool CheckOptionalOutputDtype(const MhcParamsBase &params)
            CheckTensorDtype(params.hPreOptional, "hPreOptional", DataType::DT_FLOAT);
 }
 
+// Runs the complete input/required/optional dtype validation chain.
 static bool CheckDtypeValid(const MhcParamsBase &params)
 {
     return CheckInputDtype(params) && CheckOutputDtype(params) && CheckOptionalOutputDtype(params);
 }
 
+// Identifies storage formats unsupported by this public ACLNN path.
 static bool IsPrivateFormat(ge::Format format)
 {
     if (format == ge::FORMAT_NC1HWC0 || format == ge::FORMAT_FRACTAL_Z || format == ge::FORMAT_NDC1HWC0 ||
@@ -489,6 +519,7 @@ static bool IsPrivateFormat(ge::Format format)
     return false;
 }
 
+// Validates one tensor's view and storage formats.
 static bool CheckTensorFormat(const aclTensor *tensor, const char *name)
 {
     if (IsPrivateFormat(tensor->GetViewFormat())) {
@@ -500,6 +531,7 @@ static bool CheckTensorFormat(const aclTensor *tensor, const char *name)
     return true;
 }
 
+// Validates formats of all input tensors.
 static bool CheckInputFormat(const MhcParamsBase &params)
 {
     if (!CheckTensorFormat(params.x, "x") || !CheckTensorFormat(params.phi, "phi") ||
@@ -509,6 +541,7 @@ static bool CheckInputFormat(const MhcParamsBase &params)
     return params.gammaOptional == nullptr || CheckTensorFormat(params.gammaOptional, "gammaOptional");
 }
 
+// Validates formats of all required outputs.
 static bool CheckOutputFormat(const MhcParamsBase &params)
 {
     if (!CheckTensorFormat(params.hIn, "hIn") || !CheckTensorFormat(params.hPost, "hPost")) {
@@ -517,6 +550,7 @@ static bool CheckOutputFormat(const MhcParamsBase &params)
     return params.hRes == nullptr || CheckTensorFormat(params.hRes, "hRes");
 }
 
+// Validates formats of optional outputs when present.
 static bool CheckOptionalOutputFormat(const MhcParamsBase &params)
 {
     if (params.invRmsOptional == nullptr) {
@@ -527,11 +561,13 @@ static bool CheckOptionalOutputFormat(const MhcParamsBase &params)
            CheckTensorFormat(params.hPreOptional, "hPreOptional");
 }
 
+// Runs the complete input/output format validation chain.
 static bool CheckFormat(const MhcParamsBase &params)
 {
     return CheckInputFormat(params) && CheckOutputFormat(params) && CheckOptionalOutputFormat(params);
 }
 
+// Restricts op_impl_mode to 0 (FP32) or 1 (HF32).
 static bool CheckImplMode(const MhcParamsBase &params)
 {
     if (params.implMode != MHC_PRE_DEFAULT && params.implMode != MHC_PRE_USE_HF32) {
@@ -542,6 +578,7 @@ static bool CheckImplMode(const MhcParamsBase &params)
     return true;
 }
 
+// Runs all ACLNN validation before graph construction.
 static aclnnStatus CheckParams(const MhcParamsBase &params)
 {
     CHECK_RET(CheckNotNull(params), ACLNN_ERR_PARAM_NULLPTR);
@@ -557,6 +594,7 @@ static aclnnStatus CheckParams(const MhcParamsBase &params)
     return ACLNN_SUCCESS;
 }
 
+// Materializes contiguous tensors required by the internal MhcPre node.
 static aclnnStatus ConvertDataContiguous(MhcParamsBase &params, aclOpExecutor *executor)
 {
     // Convert input tensors to contiguous tensors.
@@ -580,6 +618,7 @@ static aclnnStatus ConvertDataContiguous(MhcParamsBase &params, aclOpExecutor *e
     return ACLNN_SUCCESS;
 }
 
+// Copies internal required outputs into the caller-provided output tensors.
 static aclnnStatus CopyRequiredOutputs(const aclTensor *hInOut, const aclTensor *hPostOut, const aclTensor *hResOut,
                                        MhcParamsBase &params, aclOpExecutor *executor)
 {
@@ -594,6 +633,7 @@ static aclnnStatus CopyRequiredOutputs(const aclTensor *hInOut, const aclTensor 
     return ACLNN_SUCCESS;
 }
 
+// Copies internal optional outputs when outFlag enables the complete output group.
 static aclnnStatus CopyOptionalOutputs(const aclTensor *invRmsOut, const aclTensor *hMixOut, const aclTensor *hPreOut,
                                        MhcParamsBase &params, aclOpExecutor *executor)
 {
@@ -609,6 +649,7 @@ static aclnnStatus CopyOptionalOutputs(const aclTensor *invRmsOut, const aclTens
     return ACLNN_SUCCESS;
 }
 
+// Shares validation, contiguous conversion, and graph construction between V1 and V2 APIs.
 static aclnnStatus mHCPreCommonProcess(MhcParamsBase &params, aclOpExecutor *executor)
 {
     auto ret = CheckParams(params);
@@ -629,6 +670,7 @@ static aclnnStatus mHCPreCommonProcess(MhcParamsBase &params, aclOpExecutor *exe
                                executor);
 }
 
+// Shares executor construction and workspace reporting between legacy and V2 entry points.
 static aclnnStatus MhcPreGetWorkspaceSizeCommon(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
     const aclTensor *gammaOptional, double normEps, double hcEps, int64_t implMode, aclTensor *hIn,
@@ -663,6 +705,7 @@ static aclnnStatus MhcPreGetWorkspaceSizeCommon(
 }
 
 
+// Builds the legacy FP32 request and returns executor/workspace requirements.
 aclnnStatus aclnnMhcPreGetWorkspaceSize(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
                                         const aclTensor *bias, const aclTensor *gammaOptional, double normEps,
                                         double hcEps, aclTensor *hIn, aclTensor *hPost, aclTensor *hRes,
@@ -676,6 +719,7 @@ aclnnStatus aclnnMhcPreGetWorkspaceSize(const aclTensor *x, const aclTensor *phi
                                         executor);
 }
 
+// Builds the V2 FP32/HF32 request and returns executor/workspace requirements.
 aclnnStatus aclnnMhcPreV2GetWorkspaceSize(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
     const aclTensor *gammaOptional, double normEps, double hcEps, int64_t implMode, aclTensor *hIn,
@@ -687,12 +731,14 @@ aclnnStatus aclnnMhcPreV2GetWorkspaceSize(
     return MhcPreGetWorkspaceSizeCommon(x, phi, alpha, bias, gammaOptional, normEps, hcEps, implMode, hIn, hPost, hRes,
                                         invRmsOptional, hMixOptional, hPreOptional, workspaceSize, executor);
 }
+// Launches the prepared legacy MhcPre executor on the requested stream.
 aclnnStatus aclnnMhcPre(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnMhcPre);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
+// Launches the prepared MhcPreV2 executor on the requested stream.
 aclnnStatus aclnnMhcPreV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnMhcPreV2);
