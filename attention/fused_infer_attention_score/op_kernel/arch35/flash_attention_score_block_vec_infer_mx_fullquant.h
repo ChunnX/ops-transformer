@@ -702,7 +702,7 @@ FABlockVecInferMxFullquant<TEMPLATE_ARGS>::ComputeScaleValue(LocalTensor<T> lseM
         tmpSinkUb = sinkQue.DeQue<INPUT_T>();
     }
     ComputeScaleValue_VF(tmpSinkUb, lseMaxUb, lseSumUb, lseOutputUbuffer, splitSize, constInfo.actualCombineLoopSize,
-    constInfo.isSoftmaxLseEnable, constInfo.learnableSinkFlag);
+        constInfo.isSoftmaxLseEnable, constInfo.learnableSinkFlag);
     if (constInfo.isSoftmaxLseEnable) {
         softmaxLseQueue.template EnQue<T>(lseOutputUbuffer);
         softmaxLseQueue.DeQue<T>();
@@ -738,8 +738,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecInferMxFullquant<TEMPLATE_ARGS>::Bmm2FDOut(LocalTensor<T> &vec2ResUb,
     regbaseutil::RunInfo<isInfer> &runInfo,
     regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
-                                                                            
-                                                                            int64_t vec2S1Idx, int64_t vec2CalcSize)
+    int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
     LocalTensor<T> attenOut;
     int64_t dvSizeAligned64 = (int64_t)dVTemplateType;
@@ -765,7 +764,7 @@ __aicore__ inline void FABlockVecInferMxFullquant<TEMPLATE_ARGS>::Bmm2FDOut(Loca
     dataCopyParams.dstStride = 0;
 
     DataCopyPad(this->accumOutGm[base + runInfo.flashDecodeS2Idx * constInfo.gSize * constInfo.dSizeV], attenOut,
-    dataCopyParams);
+        dataCopyParams);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -821,7 +820,7 @@ __aicore__ inline void FABlockVecInferMxFullquant<TEMPLATE_ARGS>::CopyFinalResOu
     FDResOutputQue.EnQue(tmpBmm2ResCasTBuff);
     FDResOutputQue.DeQue<OUTPUT_T>();
     ReduceFDDataCopyOut(constInfo, attenOutOffset, tmpBmm2ResCasTBuff, startRow, dealRowCount, dvSizeAligned64,
-    constInfo.dSizeV);
+        constInfo.dSizeV);
     FDResOutputQue.FreeTensor(tmpBmm2ResCasTBuff);
 }
 
@@ -1004,10 +1003,10 @@ __aicore__ inline void FABlockVecInferMxFullquant<TEMPLATE_ARGS>::FDPostQuant(
     if (constInfo.isPostQuantPerChnl) {
         if (constInfo.isPostQuantBF16) {
             PostQuantPerChnl(constInfo, attenOut, accumOutLocal, perChannelQuantOffset, dealRowCount, 1U, 0U,
-    dSizeAlign64, postQuantScaleBf16Gm, postQuantOffsetBf16Gm);
+                dSizeAlign64, postQuantScaleBf16Gm, postQuantOffsetBf16Gm);
         } else {
             PostQuantPerChnl(constInfo, attenOut, accumOutLocal, perChannelQuantOffset, dealRowCount, 1U, 0U,
-    dSizeAlign64, postQuantScaleGm, postQuantOffsetGm);
+                dSizeAlign64, postQuantScaleGm, postQuantOffsetGm);
         }
     } else {
         PostQuantPerTensorImpl<T, OUTPUT_T, true>(attenOut, accumOutLocal, constInfo.postQuantScaleValue,

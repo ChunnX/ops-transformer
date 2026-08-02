@@ -65,9 +65,9 @@ public:
     static constexpr bool splitD = (uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256;
     static constexpr TPosition bmm2OutPos =
         GetC2Position(dVTemplateType,
-    UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value, pseMode, hasAtten, hasDrop, hasRope,
+            UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value, pseMode, hasAtten, hasDrop, hasRope,
     s1BaseSize == 64),
-    (s2BaseSize == 256 && s1BaseSize == 64), isMlaFullQuant);
+            (s2BaseSize == 256 && s1BaseSize == 64), isMlaFullQuant);
     static constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
     static constexpr uint64_t SYNC_V1_C2_FLAG[3] = {2, 3, 4};
     static constexpr bool isW8In = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
@@ -108,8 +108,9 @@ public:
         regbaseutil::RunInfo<isInfer> &runInfo,
         regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
         int32_t subLoop = 0);
-        using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
+        using mm2ResPos = typename std::conditional<bmm2Write2Ub,
+            Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+            Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
         __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, regbaseutil::RunInfo<isInfer> &runInfo,
         regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
         TPipe *tPipe;
@@ -207,7 +208,8 @@ private:
         __aicore__ inline void InvalidLineProcess(regbaseutil::RunInfo<isInfer> &runInfo,
         regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
         LocalTensor<T> &sumUb, LocalTensor<T> &maxUb);
-        __aicore__ inline int64_t ComputeOffsetForSoftmax(regbaseutil::RunInfo<isInfer> &runInfo, const int64_t vec2S1Idx);
+        __aicore__ inline int64_t ComputeOffsetForSoftmax(regbaseutil::RunInfo<isInfer> &runInfo,
+                                                          const int64_t vec2S1Idx);
         __aicore__ inline void GetExtremeValue(T &negativeScalar, T &positiveScalar);
         template <typename VEC2_RES_T>
         __aicore__ inline void RowInvalid(LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx,
@@ -592,7 +594,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec1D
                      {vec1S2CopyCountDn, vec1S2CopyLenDn, 1,
                       static_cast<uint16_t>(runInfo.s2AlignedSize - vec1S2CopyLenDn)});
             DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1HalfS1BaseSize * runInfo.s2AlignedSize + vec1S2strideDn],
-    stage1CastTensor[vec1ResOffsetDn],
+                stage1CastTensor[vec1ResOffsetDn],
                      {vec1S2CopyCountDn, static_cast<uint16_t>(runInfo.s2AlignedSize - vec1S2CopyLenDn),
                       static_cast<uint16_t>(s2BaseSize - runInfo.s2AlignedSize + 1), vec1S2CopyLenDn});
         } else {
@@ -708,13 +710,13 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::MlaAttenMask
         int64_t maskOffset = ComputeAttenMaskOffset<hasAtten, enableKVPrefix, isFd, hasRope, isInfer, dTemplateType>(
             runInfo, constInfo, attenMaskInfo);
         this->MlaBoolCopyInRegbase(attenMaskUb, srcTensor, maskOffset, runInfo.halfS1RealSize, runInfo.s2RealSize,
-                attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo, runInfo);
+            attenMaskInfo.attenMaskS2Size, constInfo.s2BaseSize, constInfo, runInfo);
         attenMaskInQue.template EnQue(attenMaskUb);
         if (attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::BAND_MODE)) {
             LocalTensor<uint8_t> attenMaskUbPre = attenMaskInQuePre.template AllocTensor<uint8_t>();
             this->MlaBoolCopyInRegbase(attenMaskUbPre, srcTensor, attenMaskInfo.attenMaskOffsetPre,
-            runInfo.halfS1RealSize, runInfo.s2RealSize, attenMaskInfo.attenMaskS2Size,
-            constInfo.s2BaseSize, constInfo, runInfo);
+                runInfo.halfS1RealSize, runInfo.s2RealSize, attenMaskInfo.attenMaskS2Size,
+                constInfo.s2BaseSize, constInfo, runInfo);
             attenMaskInQuePre.template EnQue(attenMaskUbPre);
             attenMaskInQuePre.template DeQue<uint8_t>();
             attenMaskInQue.template DeQue<uint8_t>();
@@ -1271,10 +1273,10 @@ FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec2DSplit(GlobalTensor<T> &
                 DataCopy(bmm2Ub, mmRes[bmm2SubBlockOffset + mm2ResInnerOffset], vec2CalcSize);
             } else {
                 DataCopy(bmm2Ub,
-    mmRes[constInfo.subBlockIdx * (runInfo.s1RealSize - runInfo.halfS1RealSize) *
+                    mmRes[constInfo.subBlockIdx * (runInfo.s1RealSize - runInfo.halfS1RealSize) *
     (int64_t)dVTemplateType +
     mm2ResInnerOffset],
-    vec2CalcSize);
+                    vec2CalcSize);
             }
         } else {
             DataCopyParams dataCopyParams;
@@ -1287,7 +1289,7 @@ FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec2DSplit(GlobalTensor<T> &
                 DataCopyPad(bmm2Ub, mmRes[bmm2SubBlockOffset + mm2ResInnerOffset], dataCopyParams, dataCopyPadParams);
             } else {
                 DataCopyPad(bmm2Ub,
-    mmRes[constInfo.subBlockIdx * (runInfo.s1RealSize - runInfo.halfS1RealSize) *
+                    mmRes[constInfo.subBlockIdx * (runInfo.s1RealSize - runInfo.halfS1RealSize) *
     (int64_t)dVTemplateType +
     mm2ResInnerOffset],
     dataCopyParams, dataCopyPadParams);
@@ -1301,14 +1303,14 @@ FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec2DSplit(GlobalTensor<T> &
             WaitFlag<HardEvent::MTE3_MTE2>(mte3ToMte2);
             if constexpr (useDn || isMlaFullQuant) {
                 DataCopy(vec2ResUb, this->vec2ResGm[runInfo.multiCoreIdxMod3][vec2SubBlockOffset + vec2ResInnerOffset],
-    vec2CalcSize);
+                    vec2CalcSize);
             } else {
                 DataCopy(vec2ResUb,
-    this->vec2ResGm[runInfo.multiCoreIdxMod3][constInfo.subBlockIdx *
+                    this->vec2ResGm[runInfo.multiCoreIdxMod3][constInfo.subBlockIdx *
     (runInfo.s1RealSize - runInfo.halfS1RealSize) *
     constInfo.dBasicBlock +
     vec2ResInnerOffset],
-    vec2CalcSize);
+                    vec2CalcSize);
             }
         }
         SetFlag<HardEvent::MTE2_V>(mte2ToV);
@@ -1382,7 +1384,7 @@ FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec2DSplit(GlobalTensor<T> &
             WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
             if constexpr (useDn || isMlaFullQuant) {
                 DataCopy(this->vec2ResGm[runInfo.multiCoreIdxMod3][vec2SubBlockOffset + vec2ResInnerOffset], vec2ResUb,
-    vec2CalcSize);
+                    vec2CalcSize);
             } else {
                 DataCopy(this->vec2ResGm[runInfo.multiCoreIdxMod3][constInfo.subBlockIdx *
                                                                        (runInfo.s1RealSize - runInfo.halfS1RealSize) *
@@ -1452,7 +1454,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec2(
                 dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
                 if constexpr (useDn || isMlaFullQuant) {
                     DataCopyPad(bmm2Ub, mmRes[bmm2SubBlockOffset + mm2ResInnerOffset], dataCopyParams,
-    dataCopyPadParams);
+                        dataCopyPadParams);
                 } else {
                     DataCopyPad(
                         bmm2Ub,
@@ -1634,7 +1636,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::MlaTranspose
         }
 
         DataCopyPad(this->attentionOutGm[runInfo.attentionOutOffset + headGmOffset + attenOutOffset],
-    attenOut[headUbOffset + i * constInfo.gSize * constInfo.dSizeV], dataCopyParams);
+            attenOut[headUbOffset + i * constInfo.gSize * constInfo.dSizeV], dataCopyParams);
     }
 }
 
@@ -2038,9 +2040,9 @@ public:
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
     static constexpr TPosition bmm2OutPos =
         GetC2Position(dVTemplateType,
-    BaseApi::UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value, pseMode, hasAtten, hasDrop,
+            BaseApi::UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value, pseMode, hasAtten, hasDrop,
     hasRope, s1BaseSize == 64),
-    (s2BaseSize == 256 && s1BaseSize == 64), false);
+            (s2BaseSize == 256 && s1BaseSize == 64), false);
     static constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
 
     __aicore__ inline FABlockVecFullquantDummy(){};

@@ -133,9 +133,9 @@ public:
     using MLA_FULLQUANT_MM2_T = std::conditional_t<isMlaFullQuant && isInt8, int32_t, T>;
     static constexpr TPosition bmm2OutPos =
         GetC2Position(dVTemplateType,
-    UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value, pseMode, hasAtten, hasDrop, hasRope,
-    s1BaseSize == 64),
-    (s2BaseSize == 256 && s1BaseSize == 64), isMlaFullQuant);
+            UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value, pseMode, hasAtten, hasDrop, hasRope,
+            s1BaseSize == 64),
+            (s2BaseSize == 256 && s1BaseSize == 64), isMlaFullQuant);
     static constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
@@ -459,7 +459,7 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::CalcS2Coord(regba
                 this->keyGm.offsetCalculator.Init(0, constInfo.n2Size, runInfo.s2InCurrentBatch, constInfo.dSize);
                 if constexpr (hasRope) {
         this->keyRopeGm.offsetCalculator.Init(0, constInfo.n2Size, runInfo.s2InCurrentBatch,
-    constInfo.dSizeRope);
+            constInfo.dSizeRope);
                 }
             }
         }
@@ -509,7 +509,7 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::GetKvByTensorList
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline GlobalTensor<INPUT_T>
 FABlockCubeMlaFullquant<TEMPLATE_ARGS>::GetKeyGm(regbaseutil::RunInfo<isInfer> &runInfo,
-regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     if constexpr (isInfer) {
         GlobalTensor<INPUT_T> tmpKeyGm = this->keyGm.gmTensor;
@@ -523,7 +523,7 @@ regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline GlobalTensor<INPUT_T>
 FABlockCubeMlaFullquant<TEMPLATE_ARGS>::GetValueGm(regbaseutil::RunInfo<isInfer> &runInfo,
-regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     if constexpr (isInfer) {
         GlobalTensor<INPUT_T> tmpValueGm = this->valueGm.gmTensor;
@@ -602,7 +602,7 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFul
         runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
             coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
         uint64_t gmRopeOffset = this->keyRopeGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx,
-    coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+            coordInfo[runInfo.taskIdMod3].s2Coord, 0);
         // 先搬运KNope,再搬运Rope
         CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
     constInfo.dSize, constInfo.mm1Kb);
@@ -617,25 +617,25 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFul
     // Nope的MatMul;其中，NopeBaseM可优化为s1RealSize
     MMParam param = {
         (uint32_t)runInfo.s1RealSize, (uint32_t)runInfo.s2RealSize, (uint32_t)(constInfo.dSize),
-    0, // isLeftTranspose
+        0, // isLeftTranspose
         1  // isRightTranspose
     };
     MatmulK<INPUT_T, INPUT_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
         mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
-    param);
+        param);
     // Rope的MatMul
     MMParam paramRope = {
         (uint32_t)runInfo.s1RealSize,
-    (uint32_t)runInfo.s2RealSize,
-    (uint32_t)(constInfo.dSizeRope),
-    0, // isLeftTranspose
+        (uint32_t)runInfo.s2RealSize,
+        (uint32_t)(constInfo.dSizeRope),
+        0, // isLeftTranspose
         1, // isRightTranspose
         1,
-    0 // 累加Nope的L0C
+        0 // 累加Nope的L0C
     };
     MatmulFull<bfloat16_t, bfloat16_t, T, 64, 128, 64, ABLayout::MK, ABLayout::KN>(
         mm1A.GetTensor<bfloat16_t>(offsetQRopeByElement), mm1B.GetTensor<bfloat16_t>(offsetKRopeByElement),
-    mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), paramRope);
+        mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), paramRope);
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         mm1A.Set<HardEvent::MTE1_MTE2>(); // S2循环中，Q常驻L1
     }
@@ -658,7 +658,7 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFul
     fixpipec310Params.params.srcNdStride = 0;
     fixpipec310Params.params.dstNdStride = 0;
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(),
-    fixpipec310Params); // 将matmul结果从L0C搬运到UB
+        fixpipec310Params); // 将matmul结果从L0C搬运到UB
     mm1ResL0C.Set<HardEvent::FIX_M>();
     outputBuf.SetCrossCore();
 }
@@ -687,7 +687,7 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm2MLAFul
     };
     MatmulN<INPUT_T, INPUT_T, MLA_FULLQUANT_MM2_T, 128, 256, 128, ABLayout::MK, ABLayout::KN>(
         mm2A.GetTensor<INPUT_T>(), mm2B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers,
-    mm2ResL0C.GetTensor<MLA_FULLQUANT_MM2_T>(), param);
+        mm2ResL0C.GetTensor<MLA_FULLQUANT_MM2_T>(), param);
 
     mm2ResL0C.Set<HardEvent::M_FIX>();  // 通知
     mm2ResL0C.Wait<HardEvent::M_FIX>(); // 等待
@@ -716,7 +716,7 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm2MLAFul
     fixpipeParams.params.dstNdStride = 0;
     Fixpipe<MLA_FULLQUANT_MM2_T, MLA_FULLQUANT_MM2_T, BMM2_FIXPIPE_CONFIG>(
         outputBuf.template GetTensor<MLA_FULLQUANT_MM2_T>(), mm2ResL0C.GetTensor<MLA_FULLQUANT_MM2_T>(),
-    fixpipeParams);                // 将matmul结果从L0C搬运到UB
+        fixpipeParams);                // 将matmul结果从L0C搬运到UB
     mm2ResL0C.Set<HardEvent::FIX_M>(); // 释放
     outputBuf.SetCrossCore();
 }
@@ -866,7 +866,7 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFul
         runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
             coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
         uint64_t gmRopeOffset = this->keyRopeGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx,
-    coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+            coordInfo[runInfo.taskIdMod3].s2Coord, 0);
         // 先搬运KNope,再搬运Rope
         CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
     constInfo.dSize, constInfo.mm1Kb);
@@ -881,14 +881,14 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFul
     // Nope的MatMul;其中，NopeBaseM可优化为s1RealSize
     MMParam param = {
         (uint32_t)runInfo.s1RealSize, (uint32_t)runInfo.s2RealSize,
-    (uint32_t)(constInfo.dSize), // singleK完整dsize, MatmulK内部会切K
+        (uint32_t)(constInfo.dSize), // singleK完整dsize, MatmulK内部会切K
         0,                           // isLeftTranspose
         1                            // isRightTranspose
     };
     // 64:S1方向基本块的大小；128:S2方向基本块的大小；256:Q/K沿着K轴Dim切分的大小为256
     MatmulKbias<INPUT_T, INPUT_T, T, 64, 128, 256, ABLayout::MK, ABLayout::KN>(
         mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers,
-    mm1ResL0C.GetTensor<int32_t>(), l0biasBuffer.GetTensor<int32_t>(), param);
+        mm1ResL0C.GetTensor<int32_t>(), l0biasBuffer.GetTensor<int32_t>(), param);
     LocalTensor<int32_t> cL0Tensor = mm1ResL0C.GetTensor<int32_t>(); // 用int32_t的形式去接收，
     LocalTensor<T> cL0TensorFp32 = cL0Tensor.template ReinterpretCast<T>(); // 解释为另一种数据类型,解读方式不同
     // ROPE 计算
@@ -942,7 +942,7 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1MLAFul
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
         Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), cL0TensorFp32,
-    fixpipeParams); // 将matmul结果从L0C搬运到UB
+            fixpipeParams); // 将matmul结果从L0C搬运到UB
         mm1ResL0C.Set<HardEvent::FIX_M>();                  // 释放
         outputBuf.SetCrossCore();
     }

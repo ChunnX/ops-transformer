@@ -127,9 +127,9 @@ public:
     using ROPE_T = std::conditional_t<isMlaFullQuant, bfloat16_t, INPUT_T>;
     static constexpr TPosition bmm2OutPos =
         GetC2Position(dVTemplateType,
-    UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value, pseMode, hasAtten, hasDrop, hasRope,
+            UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value, pseMode, hasAtten, hasDrop, hasRope,
     s1BaseSize == 64),
-    (s2BaseSize == 256 && s1BaseSize == 64), isMlaFullQuant);
+            (s2BaseSize == 256 && s1BaseSize == 64), isMlaFullQuant);
     static constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
@@ -552,19 +552,19 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm2(
         mm2B.Wait<HardEvent::MTE2_MTE1>(); // 等待
         if constexpr (isFp8) {
             MatmulFull<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
-    mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
+                mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
     } else {
     if constexpr ((uint32_t)dVTemplateType > 128) {
     MatmulN<INPUT_T, INPUT_T, T, (uint32_t)s1TemplateType, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
-    mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
+        mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
     } else {
     if constexpr (s2BaseSize == 128) {
     MatmulFull<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
-    mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(),
+        mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(),
     param);
     } else {
     MatmulBase<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
-    mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(),
+        mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(),
     param);
     }
     }
@@ -610,7 +610,7 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm2(
     fixpipeParams.params.dstNdStride = 0;
     fixpipeParams.params.srcNdStride = 0;
     Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(),
-    fixpipeParams); // 将matmul结果从L0C搬运到UB
+        fixpipeParams); // 将matmul结果从L0C搬运到UB
     mm2ResL0C.Set<HardEvent::FIX_M>();                 // 释放
     outputBuf.SetCrossCore();
     }
@@ -931,7 +931,7 @@ FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm1Nd(Buffer<BufferType::UB, Syn
             } else {
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
                     uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(
-    runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, coordInfo[runInfo.taskIdMod3].s1Coord, 0);
+                        runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, coordInfo[runInfo.taskIdMod3].s1Coord, 0);
     CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize,
     constInfo.dSize, constInfo.mm1Ka);
     } else {
@@ -984,19 +984,19 @@ FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm1Nd(Buffer<BufferType::UB, Syn
     if constexpr (enableKVPrefix) {
     if ((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount) {
     runInfo.prefixOffset = this->keySharedPrefixGm.offsetCalculator.GetOffset(
-    0, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+        0, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
     CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->keySharedPrefixGm.gmTensor[runInfo.prefixOffset],
     runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
     } else {
     runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
-    coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
+        coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
     coordInfo[runInfo.taskIdMod3].s2Coord - constInfo.prefixLoopCount * s2BaseSize, 0);
     CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
     constInfo.dSize, constInfo.mm1Kb);
     }
     } else {
     runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
-    coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+        coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
     CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
     constInfo.dSize, constInfo.mm1Kb);
     }
@@ -1012,7 +1012,7 @@ FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm1Nd(Buffer<BufferType::UB, Syn
     1  // isRightTranspose
     };
     MatmulBase<INPUT_T, INPUT_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
-    mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
+        mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
     param);
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
     mm1A.Set<HardEvent::MTE1_MTE2>(); // 释放L1A
