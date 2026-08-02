@@ -309,6 +309,7 @@ private:
     TEventID reduceMte2ToVId;
     TEventID fdVToMte2Id[2];
     TEventID fdMte2ToVId;
+    TEventID fdMte3ToVId;
     TBuf<> softmaxMaxBuf[2];
     TBuf<> softmaxSumBuf[2];
     TBuf<> softmaxFinalMaxBuf[2];
@@ -1437,10 +1438,12 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(
             stagingMOffset, runInfo.vec2MRealSize, static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb,
             vToMte3Id, mte3ToVId);
     }
-    SetFlag<HardEvent::MTE3_MTE2>(
-        intraLseMte3ToMte2Id[runInfo.multiCoreIdxMod2]);
-    SetFlag<HardEvent::MTE3_MTE2>(
-        intraAttnOutMte3ToMte2Id[runInfo.multiCoreIdxMod2]);
+    if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
+        SetFlag<HardEvent::MTE3_MTE2>(
+            intraLseMte3ToMte2Id[runInfo.multiCoreIdxMod2]);
+        SetFlag<HardEvent::MTE3_MTE2>(
+            intraAttnOutMte3ToMte2Id[runInfo.multiCoreIdxMod2]);
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1578,7 +1581,6 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(FdRunInfo &fdRunInfo, ConstInfo &constInfo)
 {
     InitFDBuffers(fdRunInfo);
-    int64_t vec2CalcSize = fdRunInfo.mNum * dTemplateAlign64;
     int64_t seqOffset = 0;
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
         seqOffset = this->cuSeqlensQGm.GetValue(fdRunInfo.bn2Idx);
@@ -1604,19 +1606,32 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessFlashDecode(FdRunInfo 
     AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
         dTemplateAlign64, GetStagingSlotNum(), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
         AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-    AttentionCommon::ReduceWithLse<T, dTemplateAlign64>(stagingLayout, fdStagingBase,
-        fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
-        static_cast<int64_t>(fdRunInfo.mStartIdx), fdRunInfo.mNum,
-        static_cast<int64_t>(constInfo.dSizeV),
-        accumulatedO, lseExpUb, blockMaxUb, blockSumUb, partialOFp32,
-        constInfo.isSoftmaxLseEnable, softmaxLseGm, softmaxLseOffset,
-        fdVToMte2Id[0], fdVToMte2Id[1], fdMte2ToVId,
-        vToMte3LseOutId, mte3ToVLseOutId);
+    int64_t attentionOutRowStride = static_cast<int64_t>(constInfo.dSizeV) +
+        static_cast<int64_t>(constInfo.attentionOutStride) / sizeof(OUTPUT_T);
+    int64_t startRow = 0;
+    while (startRow < fdRunInfo.mNum) {
+        int64_t dealRowCount = AttentionCommon::FD_REDUCE_CHUNK_ROWS;
+        if (startRow + dealRowCount > fdRunInfo.mNum) {
+            dealRowCount = fdRunInfo.mNum - startRow;
+        }
+        WaitFlag<HardEvent::MTE3_V>(fdMte3ToVId);
+        AttentionCommon::ReduceWithLse<T, dTemplateAlign64>(stagingLayout, fdStagingBase,
+            fdRunInfo.workspaceIdx, fdRunInfo.workspaceNum,
+            static_cast<int64_t>(fdRunInfo.mStartIdx) + startRow, dealRowCount,
+            static_cast<int64_t>(constInfo.dSizeV),
+            accumulatedO, lseExpUb, blockMaxUb, blockSumUb, partialOFp32,
+            constInfo.isSoftmaxLseEnable, softmaxLseGm, softmaxLseOffset + startRow,
+            fdVToMte2Id[0], fdVToMte2Id[1], fdMte2ToVId,
+            vToMte3LseOutId, mte3ToVLseOutId);
 
-    RunInfo runInfo;
-    runInfo.vec2MRealSize = fdRunInfo.mNum;
-    runInfo.attentionOutOffset = attentionOutOffset;
-    this->CopyOutAttentionOut(runInfo, constInfo, accumulatedO, 0, vec2CalcSize);
+        RunInfo runInfo;
+        runInfo.vec2MRealSize = dealRowCount;
+        runInfo.attentionOutOffset = attentionOutOffset + startRow * attentionOutRowStride;
+        int64_t vec2CalcSize = dealRowCount * dTemplateAlign64;
+        this->CopyOutAttentionOut(runInfo, constInfo, accumulatedO, 0, vec2CalcSize);
+        SetFlag<HardEvent::MTE3_V>(fdMte3ToVId);
+        startRow += dealRowCount;
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1845,8 +1860,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     fdVToMte2Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
     fdVToMte2Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
     fdMte2ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
+    fdMte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     SetFlag<HardEvent::V_MTE2>(fdVToMte2Id[0]);
     SetFlag<HardEvent::V_MTE2>(fdVToMte2Id[1]);
+    SetFlag<HardEvent::MTE3_V>(fdMte3ToVId);
 
     if (this->isSinks) {
         InitSinksBuffer(constInfo);
@@ -1856,7 +1873,11 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitFDBuffers(FdRunInfo &fdRunInfo)
 {
-    AttentionCommon::InitFDBuffers<T, dTemplateAlign64>(fdRunInfo, this->tPipe, fdBuffers);
+    FdRunInfo fdBufferInfo = fdRunInfo;
+    if (fdBufferInfo.mNum > AttentionCommon::FD_REDUCE_CHUNK_ROWS) {
+        fdBufferInfo.mNum = AttentionCommon::FD_REDUCE_CHUNK_ROWS;
+    }
+    AttentionCommon::InitFDBuffers<T, dTemplateAlign64>(fdBufferInfo, this->tPipe, fdBuffers);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
