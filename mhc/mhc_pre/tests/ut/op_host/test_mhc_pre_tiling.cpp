@@ -1691,7 +1691,8 @@ TEST_F(MhcPreTiling, Ut_Check_InvalidHMixShape)
 static void CheckMkGeneralizedTiling(uint32_t totalLength, uint32_t n, uint32_t d,
                                      int64_t expectedTilingKey, int32_t deterministicLevel = 0,
                                      bool hasResi = true, int64_t implMode = 0,
-                                     uint32_t expectedSequentialPartialK = 0U)
+                                     uint32_t expectedSequentialPartialK = 0U,
+                                     uint32_t expectedMDim = 0U, uint32_t expectedKDim = 0U)
 {
     uint32_t phiDim0 = hasResi ? n * n + 2U * n : 2U * n;
     uint32_t alphaDim0 = hasResi ? 3U : 2U;
@@ -1749,6 +1750,10 @@ static void CheckMkGeneralizedTiling(uint32_t totalLength, uint32_t n, uint32_t 
     };
     uint32_t kL1Size =
         readField(fieldOffset([](auto &data, uint32_t value) { data.set_kL1Size(value); }));
+    uint32_t mDim =
+        readField(fieldOffset([](auto &data, uint32_t value) { data.set_cubeBlockDimM(value); }));
+    uint32_t kDim =
+        readField(fieldOffset([](auto &data, uint32_t value) { data.set_cubeBlockDimK(value); }));
     uint32_t splitK =
         readField(fieldOffset([](auto &data, uint32_t value) { data.set_multCoreSplitKSize(value); }));
     uint32_t fusionAlign =
@@ -1772,15 +1777,27 @@ static void CheckMkGeneralizedTiling(uint32_t totalLength, uint32_t n, uint32_t 
         EXPECT_GE(splitK, expectedSequentialPartialK);
         EXPECT_EQ(splitK % expectedSequentialPartialK, 0U);
     }
-    ASSERT_GT(stage2RowsPerCore, 0U);
-    EXPECT_EQ(stage2RowsPerCore % 8U, 0U);
-    EXPECT_EQ(stage2UsedAivNum, (totalLength + stage2RowsPerCore - 1U) / stage2RowsPerCore);
+    if (expectedMDim != 0U) {
+        EXPECT_EQ(mDim, expectedMDim);
+    }
+    if (expectedKDim != 0U) {
+        EXPECT_EQ(kDim, expectedKDim);
+    }
+    uint32_t expectedAivNum = static_cast<uint32_t>(tilingInfo.blockNum) * 2U;
+    uint32_t expectedStage2RowsPerCore = std::min<uint32_t>(
+        totalLength, std::max<uint32_t>(2U, (totalLength + expectedAivNum - 1U) / expectedAivNum));
+    uint32_t expectedStage2UsedAivNum = std::min<uint32_t>(
+        expectedAivNum, (totalLength + expectedStage2RowsPerCore - 1U) / expectedStage2RowsPerCore);
+    EXPECT_EQ(stage2RowsPerCore, expectedStage2RowsPerCore);
+    EXPECT_EQ(stage2UsedAivNum, expectedStage2UsedAivNum);
 }
 
 TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N4_SmallM)
 {
     CheckMkGeneralizedTiling(1U, 4U, 2560U, 2);
     CheckMkGeneralizedTiling(64U, 4U, 2560U, 2);
+    CheckMkGeneralizedTiling(179U, 4U, 6144U, 2);
+    CheckMkGeneralizedTiling(180U, 4U, 6144U, 2);
 }
 
 TEST_F(MhcPreTiling, Ut_Check_MK_ImplMode_HF32)
@@ -1788,6 +1805,12 @@ TEST_F(MhcPreTiling, Ut_Check_MK_ImplMode_HF32)
     CheckMkGeneralizedTiling(64U, 4U, 2560U, 2, 0, true, 1);
     CheckMkGeneralizedTiling(1024U, 8U, 6144U, 2, 0, true, 1);
     CheckMkGeneralizedTiling(1536U, 8U, 6144U, 2, 0, true, 1);
+}
+
+TEST_F(MhcPreTiling, Ut_Check_MK_FillIdleAicWithoutReducingKDim)
+{
+    CheckMkGeneralizedTiling(3072U, 4U, 5120U, 2, 0, true, 1, 1024U, 16U, 2U);
+    CheckMkGeneralizedTiling(2561U, 4U, 6144U, 6, 0, false, 0, 1024U, 15U, 2U);
 }
 
 TEST_F(MhcPreTiling, Ut_Check_MK_Generalized_N4_Boundary)

@@ -99,6 +99,7 @@ const constexpr uint64_t M_K_MIN_MAT_K = 512;
 const constexpr int32_t BATCH_CONSISTENCY_LEVEL = 3;
 const constexpr uint64_t M_K_FP32_L1_MIN_TOTAL_LENGTH = 512;
 const constexpr uint64_t M_K_N8_L1_MAX_TOTAL_LENGTH = 1536;
+const constexpr uint64_t M_K_MIN_STAGE2_ROWS_PER_CORE = 2;
 const constexpr uint32_t M_K_M_L1_MAX_SIZE = 256;
 const constexpr uint32_t M_K_SPLIT_ALIGN = 256;
 const constexpr uint32_t M_K_A_L1_ELEMENT_COUNT = 128 * 256;
@@ -680,9 +681,15 @@ void MhcPreBaseTiling::FillMkTilingData()
     };
 
     uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / 2U);
-    uint64_t mDim = std::min<uint64_t>(activeCoreNum, ceilDiv(totalLength_, M_K_M_L1_MAX_SIZE));
+    uint64_t minMDim = std::min<uint64_t>(activeCoreNum, ceilDiv(totalLength_, M_K_M_L1_MAX_SIZE));
+    uint64_t kDim = activeCoreNum / minMDim;
+    // Fill otherwise idle AIC slots without reducing K parallelism. For example,
+    // M=3072 uses 16x2 instead of 12x2 on a 32-AIC device.
+    uint64_t mDim = activeCoreNum / kDim;
     uint64_t singleCoreM = roundUp(ceilDiv(totalLength_, mDim), AscendC::BLOCK_CUBE);
-    uint64_t kDim = activeCoreNum / mDim;
+    // Alignment can make the last planned M block empty. Remove such blocks so
+    // every launched M index starts inside the tensor (M=2561: 16 -> 15 blocks).
+    mDim = ceilDiv(totalLength_, singleCoreM);
     uint64_t singleCoreK = roundUp(ceilDiv(matK_, kDim), M_K_SPLIT_ALIGN);
     // Keep the Cube accumulation order independent of N and the optional residual
     // segment. The kernel derives the same decision from multCoreSplitKSize.
@@ -715,8 +722,9 @@ void MhcPreBaseTiling::FillMkTilingData()
     tilingData_.set_kL1Size(static_cast<uint32_t>(kL1Size));
     tilingData_.set_kUbSize(static_cast<uint32_t>(kL1Size));
     tilingData_.set_fusionAlign(static_cast<uint32_t>(fusionAlign));
-    uint64_t stage2RowsPerCore = roundUp(
-        ceilDiv(totalLength_, aivBlockDim_), BASIC_API_FLOAT_ALIGN);
+    // Keep enough rows per AIV to amortize setup while distributing all rows across the available AIVs.
+    uint64_t stage2RowsPerCore = std::min<uint64_t>(totalLength_, std::max<uint64_t>(
+        M_K_MIN_STAGE2_ROWS_PER_CORE, ceilDiv(totalLength_, aivBlockDim_)));
     uint64_t stage2UsedAivNum = std::min<uint64_t>(
         aivBlockDim_, ceilDiv(totalLength_, stage2RowsPerCore));
     tilingData_.set_stage2UsedAivNum(static_cast<uint32_t>(stage2UsedAivNum));
