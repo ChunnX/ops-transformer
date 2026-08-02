@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_block_cube_mla_fullquant.h
@@ -133,66 +133,66 @@ public:
     using MLA_FULLQUANT_MM2_T = std::conditional_t<isMlaFullQuant && isInt8, int32_t, T>;
     static constexpr TPosition bmm2OutPos =
         GetC2Position(dVTemplateType,
-                      UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value, pseMode, hasAtten, hasDrop, hasRope,
-                                              s1BaseSize == 64),
-                      (s2BaseSize == 256 && s1BaseSize == 64), isMlaFullQuant);
+    UbOutCondition<INPUT_T>(IsSameType<INPUT_T, float>::value, pseMode, hasAtten, hasDrop, hasRope,
+    s1BaseSize == 64),
+    (s2BaseSize == 256 && s1BaseSize == 64), isMlaFullQuant);
     static constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, bmm2Write2Ub};
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
-                                                Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
 
     __aicore__ inline FABlockCubeMlaFullquant(){};
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BufferManagerPtr,
-                                         __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope,
-                                         __gm__ uint8_t *keyRope);
+    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+    __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope,
+    __gm__ uint8_t *keyRope);
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value,
-                                         CVSharedParams<isInfer, isPa> *sharedParams, AttenMaskInfo *attenMaskInfo,
-                                         __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr,
-                                         __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
-                                         __gm__ uint8_t *actualSharedPrefixLen);
+    CVSharedParams<isInfer, isPa> *sharedParams, AttenMaskInfo *attenMaskInfo,
+    __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr,
+    __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
+    __gm__ uint8_t *actualSharedPrefixLen);
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
-                                       regbaseutil::RunInfo<isInfer> &runInfo,
-                                       regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+    regbaseutil::RunInfo<isInfer> &runInfo,
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
 
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf,
-                                       BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
-                                       regbaseutil::RunInfo<isInfer> &runInfo,
-                                       regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
+    regbaseutil::RunInfo<isInfer> &runInfo,
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void InitDequantParams(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
-                                             __gm__ uint8_t *deqScaleV) {};
+    __gm__ uint8_t *deqScaleV) {};
 
 private:
     __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void InitGmTensor(CVSharedParams<isInfer, isPa> *sharedParams, __gm__ int64_t *actualSeqQlenAddr,
-                                        __gm__ int64_t *actualSeqKvlenAddr);
+    __gm__ int64_t *actualSeqKvlenAddr);
     __aicore__ inline void CalcS1Coord(regbaseutil::RunInfo<isInfer> &runInfo,
     regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void CalcS2Coord(regbaseutil::RunInfo<isInfer> &runInfo,
     regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void GetKvByTensorList(regbaseutil::RunInfo<isInfer> &runInfo,
     const regbaseutil::ConstInfo<isInfer, hasRope> &constInfo,
-                                             GlobalTensor<INPUT_T> &keyValueGm, GlobalTensor<INPUT_T> &tempKeyValueGm);
+    GlobalTensor<INPUT_T> &keyValueGm, GlobalTensor<INPUT_T> &tempKeyValueGm);
     __aicore__ inline GlobalTensor<INPUT_T> GetKeyGm(regbaseutil::RunInfo<isInfer> &runInfo,
     regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline GlobalTensor<INPUT_T> GetValueGm(regbaseutil::RunInfo<isInfer> &runInfo,
-                                                       regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void IterateBmm1MLAFullQuant(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                                   regbaseutil::RunInfo<isInfer> &runInfo,
-                                                   regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+    regbaseutil::RunInfo<isInfer> &runInfo,
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline void MatmulFromValues(const float avalue, const float bvalue, const LocalTensor<T> &cL0Tensor,
-                                            const MMParam &param, regbaseutil::RunInfo<isInfer> &runInfo);
+    const MMParam &param, regbaseutil::RunInfo<isInfer> &runInfo);
     __aicore__ inline void
     IterateBmm1MLAFullQuantInt8(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                regbaseutil::RunInfo<isInfer> &runInfo,
-                                regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+    regbaseutil::RunInfo<isInfer> &runInfo,
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
 
     // --------------------Bmm2--------------------------
     __aicore__ inline void
     IterateBmm2MLAFullQuant(mm2ResPos &outputBuf,
-                            BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
-                            regbaseutil::RunInfo<isInfer> &runInfo,
-                            regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
+    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
+    regbaseutil::RunInfo<isInfer> &runInfo,
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline bool IsGS1Merge(regbaseutil::ConstInfo<isInfer, hasRope> &constInfo);
 
     TPipe *tPipe;
@@ -366,8 +366,8 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::InitLocalBuffer()
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
 FABlockCubeMlaFullquant<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<isInfer, isPa> *cvSharedParams,
-                                                     __gm__ int64_t *actualSeqQlenAddr,
-                                                     __gm__ int64_t *actualSeqKvlenAddr)
+    __gm__ int64_t *actualSeqQlenAddr,
+    __gm__ int64_t *actualSeqKvlenAddr)
 {
     if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
         this->queryGm.offsetCalculator.Init(cvSharedParams->bSize, cvSharedParams->n2Size, cvSharedParams->gSize,
@@ -440,7 +440,7 @@ FABlockCubeMlaFullquant<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<isInfer, isP
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::CalcS1Coord(regbaseutil::RunInfo<isInfer> &runInfo,
-        regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     // 计算s1方向偏移
     coordInfo[runInfo.taskIdMod3].s1Coord = runInfo.s1oIdx * s1BaseSize;
@@ -453,7 +453,7 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::CalcS1Coord(regba
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::CalcS2Coord(regbaseutil::RunInfo<isInfer> &runInfo,
-        regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     coordInfo[runInfo.taskIdMod3].s2Coord = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;
     coordInfo[runInfo.taskIdMod3].curBIdx = runInfo.boIdx;
@@ -479,8 +479,8 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::CalcS2Coord(regba
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
 FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                                    regbaseutil::RunInfo<isInfer> &runInfo,
-                                                    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+    regbaseutil::RunInfo<isInfer> &runInfo,
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     CalcS1Coord(runInfo, constInfo);
     CalcS2Coord(runInfo, constInfo);
@@ -519,7 +519,7 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::GetKvByTensorList
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline GlobalTensor<INPUT_T>
 FABlockCubeMlaFullquant<TEMPLATE_ARGS>::GetKeyGm(regbaseutil::RunInfo<isInfer> &runInfo,
-regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     if constexpr (isInfer) {
         GlobalTensor<INPUT_T> tmpKeyGm = this->keyGm.gmTensor;
@@ -533,7 +533,7 @@ regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline GlobalTensor<INPUT_T>
 FABlockCubeMlaFullquant<TEMPLATE_ARGS>::GetValueGm(regbaseutil::RunInfo<isInfer> &runInfo,
-regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
 {
     if constexpr (isInfer) {
         GlobalTensor<INPUT_T> tmpValueGm = this->valueGm.gmTensor;
@@ -738,9 +738,9 @@ __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::IterateBmm2MLAFul
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeMlaFullquant<TEMPLATE_ARGS>::MatmulFromValues(const float avalue, const float bvalue,
-                                                                                const LocalTensor<T> &cL0Tensor,
-                                                                                const MMParam &param,
-                                                                                regbaseutil::RunInfo<isInfer> &runInfo)
+    const LocalTensor<T> &cL0Tensor,
+    const MMParam &param,
+    regbaseutil::RunInfo<isInfer> &runInfo)
 {
     InitConstValueParams<float> paramsA(1, 512, 0, avalue); // n*k*4/32B=128*32*4/32
     InitConstValueParams<float> paramsB(1, 512, 0, bvalue); // n*k*4/32B=128*32*4/32
@@ -993,38 +993,38 @@ public:
     static constexpr bool splitD = FABlockCubeMlaFullquant<TEMPLATE_ARGS>::splitD;
     __aicore__ inline FABlockCubeMlaFullquantDummy(){};
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value,
-                                         CVSharedParams<isInfer, isPa> *sharedParams, AttenMaskInfo *attenMaskInfo,
-                                         __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr,
-                                         __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
-                                         __gm__ uint8_t *actualSharedPrefixLen)
+    CVSharedParams<isInfer, isPa> *sharedParams, AttenMaskInfo *attenMaskInfo,
+    __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr,
+    __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
+    __gm__ uint8_t *actualSharedPrefixLen)
     {
     }
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BufferManagerPtr,
-                                         __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                         __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope)
+    __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+    __gm__ uint8_t *blockTable, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope)
     {
     }
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                       regbaseutil::RunInfo<isInfer> &runInfo,
-                                       regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+    regbaseutil::RunInfo<isInfer> &runInfo,
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
     {
     }
     __aicore__ inline void IterateBmm1Nz(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
-                                         regbaseutil::RunInfo<isInfer> &runInfo,
-                                         regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+    regbaseutil::RunInfo<isInfer> &runInfo,
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
     {
     }
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
     __aicore__ inline void InitDequantParams(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
-                                             __gm__ uint8_t *deqScaleV)
+    __gm__ uint8_t *deqScaleV)
     {
     }
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf,
-                                       BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
-                                       regbaseutil::RunInfo<isInfer> &runInfo,
-                                       regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
+    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
+    regbaseutil::RunInfo<isInfer> &runInfo,
+    regbaseutil::ConstInfo<isInfer, hasRope> &constInfo)
     {
     }
 };
