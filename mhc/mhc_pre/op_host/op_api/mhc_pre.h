@@ -15,6 +15,7 @@
 #include "opdev/make_op_executor.h"
 
 namespace l0op {
+// Builds the internal MhcPre graph node and returns its six logical outputs.
 const std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *, aclTensor *, aclTensor *>
 MhcPre(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
        const aclTensor *gammaOptional, int64_t outFlag, double normEps, double hcEps, int64_t implMode,
