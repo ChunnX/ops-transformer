@@ -98,38 +98,33 @@ constexpr uint16_t MHC_PRE_X_READY_FLAG = 8U;
 constexpr uint16_t MHC_PRE_X_CONSUMED_FLAG = 9U;
 constexpr uint16_t MHC_PRE_MM_READY_FLAG = 10U;
 
-// Divides a shape extent and rounds up; used by all low-level tiling loops.
+// Integer shape helpers.
 __aicore__ inline uint32_t BasicApiCeilDiv(uint32_t value, uint32_t div)
 {
     return (value + div - 1) / div;
 }
 
-// Aligns an extent to a hardware granularity for L1/L0/UB layouts.
 __aicore__ inline uint32_t BasicApiAlign(uint32_t value, uint32_t align)
 {
     return BasicApiCeilDiv(value, align) * align;
 }
 
 template <typename T>
-// Returns the smaller kernel-side value without pulling in a heavier helper.
 __aicore__ inline T MhcPreMin(T a, T b)
 {
     return a > b ? b : a;
 }
 
-// Performs guarded 64-bit ceiling division for large tensor offsets.
 __aicore__ inline uint64_t MhcPreCeilDiv(uint64_t value, uint64_t div)
 {
     return div == 0U ? value : (value + div - 1U) / div;
 }
 
-// Aligns a 64-bit tensor extent while preserving large-shape address ranges.
 __aicore__ inline uint64_t MhcPreAlign(uint64_t value, uint64_t align)
 {
     return MhcPreCeilDiv(value, align) * align;
 }
 
-// Returns the target vector-register width used to derive VF loop capacity.
 __aicore__ inline constexpr uint32_t MhcPreGetVRegSize()
 {
 #if __CCE_AICORE__ == 310
@@ -140,13 +135,12 @@ __aicore__ inline constexpr uint32_t MhcPreGetVRegSize()
 }
 
 template <typename T>
-// Rounds an element count to one 32-byte data block for queue and DMA safety.
 __aicore__ inline uint32_t BasicApiRoundUp(uint32_t value)
 {
     return BasicApiAlign(value, MHC_PRE_BASIC_API_BLOCK_SIZE / sizeof(T));
 }
 
-// Broadcast-loads one FP32 scalar for alpha/bias vector postprocessing.
+// Register and tensor data-movement helpers.
 __aicore__ inline void MhcPreBasicApiLoadBroadcast(AscendC::MicroAPI::RegTensor<float> &dst,
                                                    __local_mem__ float *src, AscendC::MicroAPI::MaskReg mask, uint32_t offset)
 {
@@ -154,7 +148,6 @@ __aicore__ inline void MhcPreBasicApiLoadBroadcast(AscendC::MicroAPI::RegTensor<
 }
 
 template <typename T>
-// Wraps UB-to-L1 DataCopy for the M-K direct-L1 staging path.
 __aicore__ inline void BasicApiCopyToL1(const LocalTensor<T> &srcLocal, const LocalTensor<T> &dstLocal,
                                         const DataCopyParams &copyParams)
 {
@@ -162,7 +155,6 @@ __aicore__ inline void BasicApiCopyToL1(const LocalTensor<T> &srcLocal, const Lo
 }
 
 template <typename T>
-// Provides register-based row compaction for padded UB layouts without scalar GetValue/SetValue.
 __aicore__ inline void MhcPreVFCompactRows(const LocalTensor<T> &dstLocal, const LocalTensor<T> &srcLocal,
                                            uint16_t rowCount, uint32_t srcRowStride, uint32_t rowWidth)
 {

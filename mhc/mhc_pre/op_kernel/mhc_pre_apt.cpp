@@ -23,7 +23,6 @@ using namespace AscendC;
 using namespace MhcPre;
 
 template <int8_t TILING_MODE, int8_t RESI_MODE>
-// Dispatches one compile-time BS, M-K, or ND kernel specialization selected by the host tiling key.
 __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADDR bias, GM_ADDR gamma, GM_ADDR hin,
                                    GM_ADDR h_post, GM_ADDR h_res, GM_ADDR inv_rms, GM_ADDR h_mix, GM_ADDR h_pre,
                                    GM_ADDR workspaceGM, GM_ADDR tilingGM)
@@ -45,8 +44,8 @@ __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADD
         MhcPreMKPart1<DTYPE_X, float32_t, RESI_MODE> part1;
         part1.Init(initParams);
         part1.Process();
-        // Optimization: release all stage-1 UB queues before allocating the independent stage-2
-        // reduction/postprocessing layout, allowing both stages to use the full UB budget.
+        // Stage 1 and stage 2 use different UB layouts. Releasing stage-1 queues lets stage 2
+        // reuse the full UB budget for reduction and postprocessing.
         pipe.Destroy();
         TPipe stage2Pipe;
         initParams.tPipeIn = &stage2Pipe;

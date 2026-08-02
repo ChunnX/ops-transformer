@@ -39,32 +39,20 @@ public:
     // Compile-time residual mode.
     static constexpr int8_t kResiMode = RESI_MODE;
 
-    // Constructs the small-M ND template; Init assigns D slices across Cube cores.
     __aicore__ inline MhcPreSplitND() = default;
-    // Initializes ND scheduling, workspace partitions, UB queues, and the Cube service.
     __aicore__ inline void Init(InitParams initParams);
-    // Runs the V0-to-Cube-to-V1 ND pipeline and closes every cross-core signal.
     __aicore__ inline void Process();
-    // Computes one core's D slice with low-level Cube APIs and writes a partial hMix.
     __aicore__ inline void AICProcess();
-    // Allocates the ND-specific AIV queues and aligned segment buffers.
     __aicore__ inline void InitLocalBuffers();
-    // Splits one small-M tile across the two AIV subblocks.
     __aicore__ inline void VectorComputeOffset();
-    // Reuses the common alpha/bias preload for ND postprocessing.
     __aicore__ inline void AIVPreLoad();
     template <bool hasGamma, bool isFirstND>
-    // Casts X and performs one register-level RMS reduction per row and D slice.
     __aicore__ inline void VFDoV0ProcessXInSingleReduce(__ubuf__ P *xDst, __ubuf__ P *invRmsDst,
                                                         __ubuf__ T *xIn, __ubuf__ P *gamma, uint16_t mSize, uint16_t nSize);
-    // Writes the ND V0 FP32 tile into the full [M,D] workspace consumed by AIC.
     __aicore__ inline void DataCopyOutToWorkSpace(LocalTensor<P> &x, uint32_t curMLen, uint32_t curNdLen,
                                                   uint32_t offsetM, uint32_t offsetNd);
-    // Produces all V0 X/RMS data for one M block and signals Cube readiness.
     __aicore__ inline void V0Prologue(uint64_t curBlock, uint64_t tBlockNum);
-    // Reduces hMix partials and invokes the common N=4/6/8 V1 pipeline.
     __aicore__ inline void AIV1Process(uint64_t curBlock, uint64_t tBlockNum);
-    // Loads and sums all D-split hMix partials for one row tile.
     __aicore__ inline void HMixProcess(uint64_t offsetT, uint64_t lenT);
 
     MhcPreVectorCompute<T, P, RESI_MODE> vector_;
@@ -101,7 +89,6 @@ private:
 };
 
 template <class T, class P, int8_t RESI_MODE>
-// Initializes shape-dependent ND partitions and keeps workspaces 32-byte separated.
 __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::Init(InitParams initParams)
 {
     vector_.xGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.x));
@@ -170,7 +157,6 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::Init(InitParams initParam
 }
 
 template <class T, class P, int8_t RESI_MODE>
-// Allocates double-buffered X/output queues plus compact aligned parameter storage.
 __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::InitLocalBuffers()
 {
     vector_.pipe_->InitBuffer(vector_.xInQueue_, vector_.kDoubleBufferCount, kXInQueueBufferBytes);
@@ -196,7 +182,6 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::InitLocalBuffers()
 }
 
 template <class T, class P, int8_t RESI_MODE>
-// Executes all ND stages; idle/zero-row cores still participate so signals cannot deadlock.
 __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::Process()
 {
     if ASCEND_IS_AIV {
@@ -239,14 +224,12 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::Process()
 }
 
 template <class T, class P, int8_t RESI_MODE>
-// Delegates alpha/bias loading and alpha expansion to the shared vector service.
 __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::AIVPreLoad()
 {
     vector_.AIVPreLoad();
 }
 
 template <class T, class P, int8_t RESI_MODE>
-// Loads the assigned D interval into L1 ping-pong buffers and computes one hMix partial.
 __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::AICProcess()
 {
     AscendC::CrossCoreWaitFlag(SYNC_V0toC);
@@ -262,7 +245,7 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::AICProcess()
     uint64_t maxKL1 = MHC_PRE_BASIC_API_L1_BUF_OFFSET / mAlign;
     maxKL1 = BasicApiAlign(maxKL1, MHC_PRE_BASIC_API_C0_SIZE) - MHC_PRE_BASIC_API_C0_SIZE;
     maxKL1 = AscendC::Std::max(maxKL1, static_cast<uint64_t>(MHC_PRE_BASIC_API_C0_SIZE));
-    // Optimization: derive baseK/maxKL1 from the live M/N footprint, improving D generalization.
+    // Derive baseK/maxKL1 from the active M/N footprint so the ND path generalizes across D values.
     uint64_t baseK = (256U / AscendC::Std::max(mAlign, nAlign)) * 32U;
     baseK = AscendC::Std::max(baseK, 32UL);
     // Keep each B GM-to-L1 transfer within the low-level cube K block.
@@ -291,7 +274,6 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::AICProcess()
 }
 
 template <class T, class P, int8_t RESI_MODE>
-// Computes exact subblock row ranges, including odd and one-row tails.
 __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::VectorComputeOffset()
 {
     uint64_t alignSingleM = Ceil(curSingleM_, 2);
@@ -307,7 +289,6 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::VectorComputeOffset()
 }
 
 template <class T, class P, int8_t RESI_MODE>
-// Copies one padded FP32 X tile to its global [M,D] position for Cube consumption.
 __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::DataCopyOutToWorkSpace(LocalTensor<P> &x, uint32_t curMLen,
                                                                               uint32_t curNdLen, uint32_t offsetM,
                                                                               uint32_t offsetNd)
@@ -324,7 +305,6 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::DataCopyOutToWorkSpace(Lo
 
 template <class T, class P, int8_t RESI_MODE>
 template <bool hasGamma, bool isFirstND>
-// Fuses cast, optional gamma, X staging, and RMS accumulation into one VF traversal.
 __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::VFDoV0ProcessXInSingleReduce(
     __ubuf__ P *xDst, __ubuf__ P *invRmsDst, __ubuf__ T *xIn, __ubuf__ P *gamma,
     uint16_t mSize, uint16_t nSize)
@@ -339,8 +319,7 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::VFDoV0ProcessXInSingleRed
         MicroAPI::MaskReg fullMask = MicroAPI::CreateMask<P>();
         for (uint16_t mIdx = 0; mIdx < mSize; ++mIdx) {
             uint32_t elementNum = nSize;
-            // Optimization: keep the whole D-slice sum in a register and reduce once per row,
-            // avoiding one Reduce instruction for every vector block.
+            // Keep the whole D-slice sum in one register and reduce once per row instead of once per vector block.
             MicroAPI::RegTensor<P> squareSumReg;
             MicroAPI::Duplicate(squareSumReg, 0.0f);
             for (uint16_t vfBlockIdx = 0; vfBlockIdx < nLoopCnt; ++vfBlockIdx) {
@@ -379,7 +358,6 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::VFDoV0ProcessXInSingleRed
     }
 }
 template <class T, class P, int8_t RESI_MODE>
-// Produces X workspace and RMS for one ND-owned M block, then releases the paired AIC.
 __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::V0Prologue(uint64_t curBlock, uint64_t tBlockNum)
 {
     curSingleM_ = vector_.chunkTSize_;
@@ -464,7 +442,6 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::V0Prologue(uint64_t curBl
 }
 
 template <class T, class P, int8_t RESI_MODE>
-// Processes one ND-owned M block after Cube partials become globally visible.
 __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::AIV1Process(uint64_t curBlock, uint64_t tBlockNum)
 {
     curSingleM_ = vector_.chunkTSize_;
@@ -491,12 +468,11 @@ __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::AIV1Process(uint64_t curB
 }
 
 template <class T, class P, int8_t RESI_MODE>
-// Coalesces D-split hMix partials in UB and optionally preserves raw hMix in GM.
 __aicore__ inline void MhcPreSplitND<T, P, RESI_MODE>::HMixProcess(uint64_t offsetT, uint64_t lenT)
 {
     uint32_t mmResGmBlockNum = Ceil(vector_.matrixInfo_.nD, chunNDSize_);
     uint32_t computeLen = lenT * vector_.mnConfig_.n;
-    // Optimization: keep each partial at a 32-byte-aligned UB stride for vector Add and DMA.
+    // Keep each partial at a 32-byte-aligned UB stride so vector Add and DMA start aligned.
     uint32_t alignLen = MhcPreAlign(computeLen, 8);
     uint64_t HMixOffset = (vector_.globalOffsetM_ + offsetT) * vector_.mnConfig_.n;
 

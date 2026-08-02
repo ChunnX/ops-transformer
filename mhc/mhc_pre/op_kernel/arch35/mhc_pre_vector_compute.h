@@ -42,14 +42,12 @@ constexpr MicroAPI::CastTrait MHC_PRE_CAST_B16_TO_FP32 = {
 constexpr MicroAPI::DivSpecificMode MHC_PRE_DIV_ZEROING_MODE = {
     MicroAPI::MaskMergeMode::ZEROING, true};
 
-// Broadcasts one hPre scalar across a vector register for hIn weighted accumulation.
 template <class P>
 __aicore__ inline void MhcPreLoadHInValue(MicroAPI::RegTensor<P> &dst, __ubuf__ P *src, uint32_t offset)
 {
     MicroAPI::DataCopy<P, MicroAPI::LoadDist::DIST_BRC_B32>(dst, src + offset);
 }
 
-// Loads one head of X, casts it to FP32, and accumulates X * hPre into hIn.
 template <class T, class P>
 __aicore__ inline void MhcPreAccumulateHIn(MicroAPI::RegTensor<P> &acc, MicroAPI::RegTensor<P> &xFp32,
                                            MicroAPI::RegTensor<T> &xIn, MicroAPI::RegTensor<P> &hPre, __ubuf__ T *x,
@@ -61,7 +59,6 @@ __aicore__ inline void MhcPreAccumulateHIn(MicroAPI::RegTensor<P> &acc, MicroAPI
     MicroAPI::Add(acc, acc, xFp32, mask);
 }
 
-// Splits each row-major hMix row into pre/post/res segments and applies affine normalization.
 template <class P, uint32_t HEAD_NUM, bool HAS_RESI_VALUE>
 __aicore__ inline void MhcPreVFPostSegments(const LocalTensor<P> &hPreLocal,
                                             const LocalTensor<P> &hPostLocal, const LocalTensor<P> &hResLocal,
@@ -105,8 +102,8 @@ __aicore__ inline void MhcPreVFPostSegments(const LocalTensor<P> &hPreLocal,
             MicroAPI::Load<P>(biasResReg, bias + 2U * HEAD_NUM);
         }
 
-        // Optimization: consume pre/post/res by fixed UB offsets in one VF loop; this replaces Gather
-        // and stages every output at a 32-byte-aligned local-buffer base.
+        // Consume pre/post/res by fixed UB offsets in one VF loop. This replaces Gather and stages
+        // every output at a 32-byte-aligned local-buffer base before DMA.
         for (uint16_t row = 0; row < rowCount; ++row) {
             MicroAPI::Load<P>(invRmsReg, invRms + invRmsOffset + row);
             MicroAPI::Duplicate(invRmsBroadReg, invRmsReg, nMask);
@@ -135,7 +132,6 @@ __aicore__ inline void MhcPreVFPostSegments(const LocalTensor<P> &hPreLocal,
         }
     }
 }
-// Expands the compact alpha scalars into contiguous per-segment vectors for postprocessing.
 template <class P, uint32_t HEAD_NUM, bool HAS_RESI_VALUE>
 __aicore__ inline void MhcPreVFExpandAlpha(const LocalTensor<P> &alphaLocal)
 {
@@ -190,10 +186,8 @@ public:
     static constexpr uint32_t kTmpBufferBytes = 40U * 1024U;
     static constexpr int8_t kResiMode = RESI_MODE;
 
-    // Constructs shared AIV state used by BS, ND, and both M-K stages.
     __aicore__ inline MhcPreVectorCompute() = default;
 
-    // Binds the kernel pipe and records the physical AIV/subblock indices.
     __aicore__ inline void InitPipeAndCoreIdx(TPipe *pipe)
     {
         pipe_ = pipe;
@@ -201,7 +195,6 @@ public:
         subBlockIdx_ = GetSubBlockIdx();
     }
 
-    // Binds all public inputs, outputs, and the common workspace to typed GM tensors.
     __aicore__ inline void BindGlobalTensors(InitParams initParams)
     {
         xGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.x));
@@ -217,7 +210,6 @@ public:
         xFloatGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.workspace));
     }
 
-    // Decodes shared tiling fields and derives the runtime vector-register capacity.
     __aicore__ inline void InitFromTilingData(const MhcPreTilingData *tilingData)
     {
         tiling_ = tilingData;
@@ -240,7 +232,6 @@ public:
         eleNumPerVf_ = MhcPreGetVRegSize() / sizeof(P);
     }
 
-    // Initializes the logical M/N/K description consumed by BS and ND vector stages.
     __aicore__ inline void InitMNConfig()
     {
         mnConfig_.m = matrixInfo_.totalLength;
@@ -255,7 +246,6 @@ public:
         curSingleT_ = chunkTSize_;
     }
 
-    // Selects the real hMix output or its compact workspace fallback for postprocessing.
     __aicore__ inline void InitHMixBuffer(InitParams initParams)
     {
         if (outFlag_) {
@@ -267,7 +257,6 @@ public:
         }
     }
 
-    // Allocates the shared double-buffered AIV queues and aligned postprocessing buffers.
     __aicore__ inline void InitUbBuffers(bool splitAcrossSubBlocks = true,
                                          uint32_t v1BufferRows = V1_BASE_T)
     {
@@ -275,7 +264,7 @@ public:
             return;
         }
 
-        // Optimization: X and general output queues are double-buffered to overlap MTE2/V/MTE3.
+        // Double-buffer X and general output queues to overlap MTE2, Vector, and MTE3.
         pipe_->InitBuffer(xInQueue_, kDoubleBufferCount, kXInQueueBufferBytes);
         pipe_->InitBuffer(outQueue_, kDoubleBufferCount, kOutQueueBufferBytes);
         uint32_t invRmsRows = splitAcrossSubBlocks ?
@@ -300,7 +289,6 @@ public:
         hPostBuff_ = tmpBuff_.template GetWithOffset<P>(v1BufferRows * N_, buffOffset);
     }
 
-    // Computes the current M tile and the AIV half-tile ownership for one BS/ND block.
     __aicore__ inline void InitBlockParams(uint64_t curblock, uint32_t tBlockNum)
     {
         globalOffsetM_ = curblock * chunkTSize_;
@@ -314,7 +302,6 @@ public:
         }
     }
 
-    // Runs V0 cast/gamma/RMS accumulation and stages FP32 X for the Cube path.
     __aicore__ inline void V0Prologue(uint32_t curNdLen, uint32_t offsetNd)
     {
         if (hasGamma_) {
@@ -367,7 +354,6 @@ public:
         }
     }
 
-    // Finalizes inverse RMS after all D chunks and writes the optional invRms output.
     __aicore__ inline void V0PostProcess(uint32_t curblock, uint32_t tBlockNum)
     {
         if (vectorOffset_.singleCoreM == 0U) {
@@ -378,7 +364,6 @@ public:
         DataCopyOutInvRmsUb(vectorOffset_.singleCoreM, vectorOffset_.offsetMStart);
     }
 
-    // Splits one M tile between the two AIV subblocks without dropping odd tail rows.
     __aicore__ inline void VectorComputeOffset()
     {
         uint64_t alignSingleM = Ceil(curSingleT_ / 2, 8) * 8;
@@ -394,7 +379,6 @@ public:
     }
 
     template <bool hasGamma, bool isFirstND>
-    // Casts X to FP32, optionally applies gamma, and accumulates one RMS partial per row.
     __aicore__ inline void VFDoV0ProcessXIn(__ubuf__ P *xDst, __ubuf__ P *invRmsDst, __ubuf__ T *xIn,
                                             __ubuf__ P *gamma, uint16_t mSize, uint16_t nSize)
     {
@@ -443,7 +427,6 @@ public:
         }
     }
 
-    // Converts accumulated sum-of-squares into inverse RMS for each local row.
     __aicore__ inline void VFDoV0ProcessInvRms(__ubuf__ P *invRms, uint16_t nSize, float scaleMean, float normEps)
     {
         uint32_t nUbAligned = MhcPreAlign(nSize, static_cast<uint16_t>(MHC_PRE_UB_ALIGN_SIZE / sizeof(P)));
@@ -467,7 +450,6 @@ public:
         }
     }
 
-    // Copies one [M,D] X tile from GM to the padded V0 input queue.
     __aicore__ inline void DataCopyX(uint32_t curMLen, uint32_t curNdLen, uint32_t offsetM, uint32_t offsetNd)
     {
         DataCopyExtParams copyParams;
@@ -484,7 +466,6 @@ public:
         xInQueue_.EnQue<T>(xLocal_);
     }
 
-    // Copies one D slice of gamma to UB with tail padding for aligned VF loads.
     __aicore__ inline void DataCopyGamma(uint32_t curNdLen, uint32_t offsetNd)
     {
         DataCopyExtParams copyParams;
@@ -502,7 +483,6 @@ public:
         gammaInQueue_.EnQue<P>(gammaUb_);
     }
 
-    // Reads a compact hMix tile from GM for fallback/ND postprocessing paths.
     __aicore__ inline void HMixCopyIn(uint64_t offset, uint64_t lenT)
     {
         LocalTensor<P> hMixLocal = xInQueue_.AllocTensor<P>();
@@ -519,7 +499,6 @@ public:
         xInQueue_.EnQue(hMixLocal);
     }
 
-    // Writes the finalized inverse-RMS rows from UB to their global output positions.
     __aicore__ inline void DataCopyOutInvRmsUb(uint32_t curMLen, uint32_t offsetM)
     {
         invRmsOutQueue_.EnQue<P>(invRmsUb_);
@@ -536,7 +515,6 @@ public:
         DataCopyPad(invRmsGm_[offset], invRmsUb_, copyParams);
     }
 
-    // Writes FP32 X into the per-core double-buffered workspace consumed by AIC.
     __aicore__ inline void DataCopyOutToWorkSpace(LocalTensor<P> &x, uint32_t curMLen,
                                                   uint32_t curNdLen, uint32_t offsetM,
                                                   uint32_t offsetNd)
@@ -552,7 +530,6 @@ public:
         DataCopyPad(xFloatGm_[offset], x, copyParams);
     }
 
-    // Writes optional sigmoid hPre from its aligned UB staging buffer to GM.
     __aicore__ inline void DataCopyOutHPre(uint64_t offset, uint32_t totalElem)
     {
         DataCopyExtParams copyParams;
@@ -565,7 +542,6 @@ public:
         DataCopyPad(hPreGm_[offset * N_], hPreBuff_, copyParams);
     }
 
-    // Preloads alpha/bias once per AIV and expands compact alpha values for segment VF.
     __aicore__ inline void AIVPreLoad()
     {
         invRmsUb_ = invRmsOutQueue_.AllocTensor<P>();
@@ -604,7 +580,6 @@ public:
         biasInUb_ = biasInQue_.DeQue<P>();
     }
 
-    // Copies the full fused bias vector into an aligned input queue.
     __aicore__ inline void BiasCopyIn()
     {
         LocalTensor<P> biasLocal = biasInQue_.AllocTensor<P>();
@@ -620,7 +595,6 @@ public:
         biasInQue_.EnQue(biasLocal);
     }
 
-    // Applies sigmoid plus hcEps to hPre and emits the optional hPre output.
     __aicore__ inline void AIV1ProcessHPre(uint64_t offsetT, uint64_t lenT)
     {
         __ubuf__ P *hPreBuffAddr = (__ubuf__ P *)hPreBuff_.GetPhyAddr();
@@ -652,7 +626,6 @@ public:
         }
     }
 
-    // Applies sigmoid and the post scale to hPost, then writes contiguous rows to GM.
     __aicore__ inline void AIV1ProcessHPost(uint64_t offsetT, uint64_t lenT)
     {
         uint64_t offset = globalOffsetM_ + offsetT;
@@ -696,7 +669,6 @@ public:
     }
 
     template <uint32_t HEAD_NUM>
-    // Computes multiple hIn rows in registers for a compile-time N=4/6/8 specialization.
     __aicore__ inline void VFDoV1ProcessHInRows(__ubuf__ T *xInAddr, __ubuf__ T *hinOutAddr,
                                                 __ubuf__ P *hPreAddr, uint16_t rowCount, uint32_t lenD, uint32_t localStride)
     {
@@ -766,7 +738,6 @@ public:
         }
     }
 
-    // Batches rows and D slices so hIn uses vector registers instead of scalar GetValue/SetValue.
     __aicore__ inline void AIV1ProcessHInBatched(uint64_t offsetT, uint64_t lenT,
                                                  uint32_t xBufferBytes = 80U * 1024U, uint32_t outBufferBytes = 20U * 1024U)
     {
@@ -785,7 +756,7 @@ public:
             uint32_t localStride = contiguous ? lenD : Ceil(lenD, blockElements) * blockElements;
             uint32_t maxRowsByX = xBufferBytes / (N_ * localStride * sizeof(T));
             uint32_t maxRowsByOut = outBufferBytes / (localStride * sizeof(T));
-            // Optimization: cap row batches to control register pressure while amortizing DMA/VF setup.
+            // Cap row batches to control register pressure while amortizing DMA and VF setup.
             uint32_t maxBatchRows = chunkTSize_ <= 32U ? 2U : 4U;
             uint32_t rowsPerBatch = MhcPreMin(
                 static_cast<uint64_t>(MhcPreMin(
@@ -845,7 +816,6 @@ public:
     }
 
     template <bool WAIT_HRES_COPY = false>
-    // Runs the shared hMix segment split and all hRes/hPost/hPre/hIn outputs for one tile.
     __aicore__ inline void AIV1PostProcessTile(const LocalTensor<P> &hMixLocal, uint64_t offsetT,
                                                uint64_t lenT, uint32_t invRmsOffset,
                                                uint32_t hMixRowStride,

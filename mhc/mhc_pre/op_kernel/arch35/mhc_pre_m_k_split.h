@@ -31,8 +31,6 @@ constexpr uint32_t MHC_PRE_MK_SEQUENTIAL_PARTIAL_THRESHOLD = 2048U;
 // Flat vector reduction thresholds for large workloads.
 constexpr uint32_t MHC_PRE_MK_FLAT_REDUCE_MIN_M = 2048U;
 constexpr uint32_t MHC_PRE_MK_FLAT_REDUCE_MIN_GROUP_K = 20U;
-
-// Converts one AIV-produced FP32 X tile from ND to NZ for the optional direct-L1 stage.
 __aicore__ inline void MhcPreMkVFTransND2NZ(const LocalTensor<float> &dstLocal,
                                             const LocalTensor<float> &srcLocal, uint16_t rowCount, uint16_t columnCount)
 {
@@ -101,7 +99,6 @@ __aicore__ inline void MhcPreMkVFTransND2NZ(const LocalTensor<float> &dstLocal,
 }
 
 template <typename T, bool INIT_RMS>
-// Processes a selected set of D-vector loops for the generic gamma/RMS path.
 __aicore__ inline void MhcPreMkVFProcessXInGammaLoops(const LocalTensor<float> &xOutLocal,
                                                       const LocalTensor<float> &rmsLocal, const LocalTensor<T> &xInLocal,
                                                       const LocalTensor<float> &gammaLocal, uint16_t rowCount, uint16_t columnCount,
@@ -156,7 +153,6 @@ __aicore__ inline void MhcPreMkVFProcessXInGammaLoops(const LocalTensor<float> &
     }
 }
 template <typename T, bool IS_FIRST_K>
-// Handles small row counts with one persistent RMS register per row.
 __aicore__ inline void MhcPreMkVFProcessXInGammaSmallRows(const LocalTensor<float> &xOutLocal,
                                                           const LocalTensor<float> &rmsLocal, const LocalTensor<T> &xInLocal,
                                                           const LocalTensor<float> &gammaLocal, uint16_t rowCount, uint16_t columnCount)
@@ -208,7 +204,6 @@ __aicore__ inline void MhcPreMkVFProcessXInGammaSmallRows(const LocalTensor<floa
 }
 
 template <typename T, bool IS_FIRST_K>
-// Specializes the common K=128 tile so two vector blocks share one final RMS reduction.
 __aicore__ inline void MhcPreMkVFProcessXInGammaFull128(const LocalTensor<float> &xOutLocal,
                                                         const LocalTensor<float> &rmsLocal, const LocalTensor<T> &xInLocal,
                                                         const LocalTensor<float> &gammaLocal, uint16_t rowCount)
@@ -272,17 +267,16 @@ __aicore__ inline void MhcPreMkVFProcessXInGammaFull128(const LocalTensor<float>
 }
 
 template <typename T, bool IS_FIRST_K>
-// Selects the lowest-overhead gamma/RMS VF specialization for the current row/K shape.
 __aicore__ inline void MhcPreMkVFProcessXInGamma(const LocalTensor<float> &xOutLocal,
                                                  const LocalTensor<float> &rmsLocal, const LocalTensor<T> &xInLocal,
                                                  const LocalTensor<float> &gammaLocal, uint16_t rowCount, uint16_t columnCount)
 {
+    // Hot-shape specializations keep RMS sums in registers and avoid repeated Reduce/load/store work.
     if (rowCount <= MHC_PRE_MK_RMS_REG_ROW_LIMIT && columnCount != 128U) {
         MhcPreMkVFProcessXInGammaSmallRows<T, IS_FIRST_K>(
             xOutLocal, rmsLocal, xInLocal, gammaLocal, rowCount, columnCount);
         return;
     }
-    // Optimization: compile-time-like fast paths reduce repeated Reduce/load/store work in hot K tiles.
     if (columnCount == 128U) {
         MhcPreMkVFProcessXInGammaFull128<T, IS_FIRST_K>(xOutLocal, rmsLocal, xInLocal,
                                                         gammaLocal, rowCount);
@@ -301,7 +295,6 @@ __aicore__ inline void MhcPreMkVFProcessXInGamma(const LocalTensor<float> &xOutL
                                                  gammaLocal, rowCount, columnCount, 0U, loopCount);
     }
 }
-// Reduces ordinary per-K-core hMix/RMS partials and computes inverse RMS for one segment.
 __aicore__ inline void MhcPreMkVFReducePartials(const LocalTensor<float> &mmOutLocal,
                                                 const LocalTensor<float> &invRmsOutLocal, const LocalTensor<float> &mmPartialLocal,
 
@@ -409,7 +402,6 @@ __aicore__ inline void MhcPreMkVFReducePartials(const LocalTensor<float> &mmOutL
     }
 }
 
-// Reduces ordered K=1024 partials while preserving row-wise accumulation order.
 __aicore__ inline void MhcPreMkVFReducePartialsSequentialGeneral(
     const LocalTensor<float> &mmOutLocal, const LocalTensor<float> &invRmsOutLocal,
     const LocalTensor<float> &mmPartialLocal, const LocalTensor<float> &rmsPartialLocal,
@@ -492,7 +484,6 @@ __aicore__ inline void MhcPreMkVFReducePartialsSequentialGeneral(
     }
 }
 
-// Flattens large ordered partial groups so each VF loop covers contiguous hMix elements.
 __aicore__ inline void MhcPreMkVFReducePartialsSequentialFlat(
     const LocalTensor<float> &mmOutLocal, const LocalTensor<float> &invRmsOutLocal,
     const LocalTensor<float> &mmPartialLocal, const LocalTensor<float> &rmsPartialLocal,
@@ -581,10 +572,8 @@ __aicore__ inline void MhcPreMkVFReducePartialsSequentialFlat(
 template <class T, class P, int8_t RESI_MODE>
 class MhcPreMKPart1 {
 public:
-    // Constructs M-K stage 1, which produces per-K hMix and RMS partials.
     __aicore__ inline MhcPreMKPart1() = default;
 
-    // Initializes M/K core ownership, staging buffers, workspaces, and cross-core tokens.
     __aicore__ inline void Init(InitParams initParams)
     {
         vector_.BindGlobalTensors(initParams);
@@ -618,9 +607,9 @@ public:
         if ASCEND_IS_AIV {
             uint32_t rowCapacity = (vector_.tiling_->mL1Size + 1U) / 2U;
             uint32_t kCapacity = BasicApiRoundUp<T>(vector_.tiling_->kUbSize);
-            // Optimization: GM staging uses double-buffered X and FP32 queues; direct L1 keeps
-            // one FP32 source because the AIV software ND2NZ path is serialized on Vector.
             vector_.pipe_->InitBuffer(vector_.xInQueue_, 2, rowCapacity * kCapacity * sizeof(T));
+            // GM staging is ping-ponged to overlap AIV MTE3, AIC MTE2 ND2NZ, and Cube execution.
+            // Direct-L1 staging keeps one FP32 source because software ND2NZ is serialized on Vector.
             vector_.pipe_->InitBuffer(vector_.outQueue_, UseGmStage() ? 2 : 1,
                                       rowCapacity * BasicApiRoundUp<P>(vector_.tiling_->kUbSize) * sizeof(P));
             vector_.pipe_->InitBuffer(vector_.invRmsOutQueue_, 1,
@@ -639,7 +628,6 @@ public:
         }
     }
 
-    // Dispatches one logical M-K core to AIC matmul or its paired AIV X/RMS producer.
     __aicore__ inline void Process()
     {
         uint32_t aicIndex = GetBlockIdx();
@@ -670,19 +658,16 @@ public:
     }
 
 private:
-    // Reports whether this K range must emit ordered 1024-wide precision partials.
     __aicore__ inline bool UseSequentialKPartials() const
     {
         return vector_.tiling_->multCoreSplitKSize >= MHC_PRE_MK_SEQUENTIAL_PARTIAL_THRESHOLD;
     }
 
-    // Selects GM staging or direct UB-to-L1 staging from the host tiling decision.
     __aicore__ inline bool UseGmStage() const
     {
         return vector_.tiling_->mkUseGmStage != 0U;
     }
 
-    // Runs the low-level Cube state machine for one M/K core and writes its hMix partials.
     __aicore__ inline void ProcessAic(uint32_t mStart, uint32_t mReal, uint32_t kIndex,
                                       uint32_t kStart, uint32_t kEnd)
     {
@@ -692,7 +677,7 @@ private:
                                 static_cast<uint64_t>(kEnd - kStart);
         uint64_t mAlign = BasicApiAlign(mReal, AscendC::BLOCK_CUBE);
         uint64_t nAlign = BasicApiAlign(vector_.matrixInfo_.fusionSize, AscendC::BLOCK_CUBE);
-        // Optimization: one baseK formula supports N/D generalization while filling available L0 tiles.
+        // Derive baseK from the active M/N footprint so the low-level path fills L0 across N/D shapes.
         uint64_t baseK = (256U / AscendC::Std::max(mAlign, nAlign)) * 32U;
         uint64_t stageSlotElements =
             static_cast<uint64_t>(vector_.tiling_->mL1Size) * vector_.tiling_->kL1Size;
@@ -708,7 +693,6 @@ private:
                                  stageCoreOffset, vector_.phiGm_, xStageGm_, partialMmGm_[partialBaseOffset],
                                  partialGroupStride, aL1_, bL1_);
     }
-    // Produces cast/gamma X and RMS partials, then feeds either GM ping-pong slots or A-L1.
     __aicore__ inline void ProcessAiv(uint32_t mStart, uint32_t mReal, uint32_t kIndex,
                                       uint32_t kStart, uint32_t kEnd)
     {
@@ -750,7 +734,7 @@ private:
                 currentGammaLocal = vector_.gammaInQueue_.template DeQue<P>();
             }
 
-            // Optimization: prefetch the next X/gamma tile before processing the current tile.
+            // Prefetch the next X/gamma tile before processing the current tile.
             uint32_t nextKOffset = kOffset + vector_.tiling_->kL1Size;
             if (nextKOffset < kEnd) {
                 uint32_t nextK = AscendC::Std::min(
@@ -785,8 +769,7 @@ private:
             vector_.xInQueue_.FreeTensor(currentXLocal);
 
             if (UseGmStage()) {
-                // Optimization: alternate two per-AIC GM slots so AIV MTE3, AIC MTE2 ND2NZ,
-                // and Cube execution form a three-stage pipeline.
+                // Alternate two per-AIC GM slots to keep the AIV-to-GM-to-L1-to-Cube pipeline in flight.
                 vector_.outQueue_.template EnQue<P>(xFloatLocal);
                 xFloatLocal = vector_.outQueue_.template DeQue<P>();
                 DataCopyExtParams xCopyParams;
@@ -855,10 +838,8 @@ private:
 template <class T, class P, int8_t RESI_MODE>
 class MhcPreMKPart2 {
 public:
-    // Constructs M-K stage 2, which reduces partials and performs final vector outputs.
     __aicore__ inline MhcPreMKPart2() = default;
 
-    // Assigns contiguous row ranges to active AIVs and initializes reduction/postprocess buffers.
     __aicore__ inline void Init(InitParams initParams)
     {
         vector_.BindGlobalTensors(initParams);
@@ -896,7 +877,6 @@ public:
         }
     }
 
-    // Runs reduction and common V1 processing on selected stage-2 AIV cores only.
     __aicore__ inline void Process()
     {
         if ASCEND_IS_NOT_AIV {
@@ -916,13 +896,11 @@ private:
     static constexpr uint32_t kPart2RowAlign = 8U;
     static constexpr uint32_t kPart2PartialBufferElements = 80U * 1024U / sizeof(P);
 
-    // Mirrors stage 1's precision-partial decision so both stages agree on workspace layout.
     __aicore__ inline bool UseSequentialKPartials() const
     {
         return vector_.tiling_->multCoreSplitKSize >= MHC_PRE_MK_SEQUENTIAL_PARTIAL_THRESHOLD;
     }
 
-    // Chooses the largest aligned row tile whose hMix and RMS partials fit in the 80 KB UB pool.
     __aicore__ inline uint32_t GetReduceRows(uint32_t remainingRows, uint32_t mmGroupK,
                                              uint32_t rmsGroupK, uint32_t fusionSize) const
     {
@@ -940,7 +918,6 @@ private:
         }
         return 1U;
     }
-    // Loads partial groups, performs the selected ordered reduction, and invokes shared V1 outputs.
     __aicore__ inline void ReduceAndPostProcess()
     {
         uint64_t localOffset = 0;
@@ -952,10 +929,10 @@ private:
         uint32_t fusionSize = vector_.matrixInfo_.fusionSize;
         bool useSequentialMmReduce =
             useSequentialKPartials || vector_.implMode_ == MHC_PRE_IMPL_MODE_HF32;
-        // Optimization: large M/groupK uses the flat reducer to remove nested per-row VF setup.
         bool useFlatSequentialReduce = useSequentialKPartials &&
                                        (vector_.totalLength_ >= MHC_PRE_MK_FLAT_REDUCE_MIN_M ||
                                         groupK >= MHC_PRE_MK_FLAT_REDUCE_MIN_GROUP_K);
+        // Flatten large ordered partial groups to remove nested per-row VF setup without changing sum order.
         for (uint32_t offsetT = vector_.vectorOffset_.offsetMStart;
              offsetT < vector_.vectorOffset_.offsetMEnd;) {
             uint32_t lenT = GetReduceRows(

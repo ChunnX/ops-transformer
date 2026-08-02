@@ -126,7 +126,6 @@ static constexpr uint32_t HAS_GAMMA_TRUE = 1;
 static constexpr const char *INPUT_NAMES[] = {"x", "phi", "alpha", "bias", "gamma"};
 static constexpr const char *OUTPUT_NAMES[] = {"hIn", "hPost", "hRes", "invRms", "hMix", "hPre"};
 
-// Formats a shape for validation diagnostics.
 static std::string ShapeToString(std::initializer_list<uint64_t> dims)
 {
     std::string result = "[";
@@ -139,13 +138,11 @@ static std::string ShapeToString(std::initializer_list<uint64_t> dims)
 
 REGISTER_OPS_TILING_TEMPLATE(MhcPre, MhcPreBaseTiling, 1000);
 
-// Returns the last mandatory input, accounting for optional gamma.
 inline size_t MhcPreBaseTiling::GetLastRequiredInputIndex() const
 {
     return (hasGamma_ == HAS_GAMMA_TRUE) ? GAMMA_INDEX : BIAS_INDEX;
 }
 
-// Reads required/optional tensor descriptors and caches the input layout for later validation.
 ge::graphStatus MhcPreBaseTiling::GetInputShape()
 {
     auto xTensor = context_->GetDynamicInputTensor(X_INDEX, 0);
@@ -183,7 +180,6 @@ ge::graphStatus MhcPreBaseTiling::GetInputShape()
     OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "x", std::to_string(xDims).c_str(), "3 or 4");
     return ge::GRAPH_FAILED;
 }
-// Validates descriptor presence and rank before any shape-dependent tiling arithmetic.
 ge::graphStatus MhcPreBaseTiling::CheckDescAndShape()
 {
     // gamma is optional; skip checks according to hasGamma_.
@@ -223,7 +219,6 @@ ge::graphStatus MhcPreBaseTiling::CheckDescAndShape()
 
     return ge::GRAPH_SUCCESS;
 }
-// Rejects zero or negative dimensions so kernel loop counts and DMA lengths remain valid.
 ge::graphStatus MhcPreBaseTiling::CheckShapePositive()
 {
     // gamma is optional; skip checks according to hasGamma_.
@@ -257,7 +252,6 @@ ge::graphStatus MhcPreBaseTiling::CheckShapePositive()
 
     return ge::GRAPH_SUCCESS;
 }
-// Verifies the mixed B16/FP32 dtype contract expected by the arch35 kernel specializations.
 ge::graphStatus MhcPreBaseTiling::CheckDataType()
 {
     auto xDtype = context_->GetInputDesc(X_INDEX)->GetDataType();
@@ -302,7 +296,6 @@ ge::graphStatus MhcPreBaseTiling::CheckDataType()
 
     return ge::GRAPH_SUCCESS;
 }
-// Dispatches BSND/TND output-shape validation using the parsed X layout.
 ge::graphStatus MhcPreBaseTiling::CheckOutputShapeConsistency()
 {
     auto xShapePtr = context_->GetInputShape(X_INDEX);
@@ -326,7 +319,6 @@ ge::graphStatus MhcPreBaseTiling::CheckOutputShapeConsistency()
     }
     return ge::GRAPH_SUCCESS;
 }
-// Validates every required and optional output against one BSND input shape.
 ge::graphStatus MhcPreBaseTiling::CheckBsndOutputShape(uint64_t b, uint64_t s, uint64_t n, uint64_t d)
 {
     auto outHinShapePtr = context_->GetOutputShape(OUT_H_IN_INDEX);
@@ -385,7 +377,6 @@ ge::graphStatus MhcPreBaseTiling::CheckBsndOutputShape(uint64_t b, uint64_t s, u
 
     return ge::GRAPH_SUCCESS;
 }
-// Validates every required and optional output against one TND input shape.
 ge::graphStatus MhcPreBaseTiling::CheckTndOutputShape(uint64_t t, uint64_t n, uint64_t d)
 {
     auto outHinShapePtr = context_->GetOutputShape(OUT_H_IN_INDEX);
@@ -441,7 +432,6 @@ ge::graphStatus MhcPreBaseTiling::CheckTndOutputShape(uint64_t t, uint64_t n, ui
 
     return ge::GRAPH_SUCCESS;
 }
-// Checks N/D and fused-shape ranges supported by the three arch35 templates.
 ge::graphStatus MhcPreBaseTiling::CheckDataRange()
 {
     OP_CHECK_IF(D_ < D_MIN || D_ > D_MAX,
@@ -452,7 +442,6 @@ ge::graphStatus MhcPreBaseTiling::CheckDataRange()
     return ge::GRAPH_SUCCESS;
 }
 
-// Flattens BSND into kernel M/N/D values while preserving the public output semantics.
 ge::graphStatus MhcPreBaseTiling::ParseBsndFormat(const gert::Tensor *xTensor)
 {
     uint64_t batch = xTensor->GetStorageShape().GetDim(INDEX_B_BSND);
@@ -468,7 +457,6 @@ ge::graphStatus MhcPreBaseTiling::ParseBsndFormat(const gert::Tensor *xTensor)
     return ValidateAndSetTilingParams(xTensor);
 }
 
-// Converts TND directly into kernel M/N/D values.
 ge::graphStatus MhcPreBaseTiling::ParseTndFormat(const gert::Tensor *xTensor)
 {
     totalLength_ = xTensor->GetStorageShape().GetDim(INDEX_T_TND);
@@ -482,7 +470,6 @@ ge::graphStatus MhcPreBaseTiling::ParseTndFormat(const gert::Tensor *xTensor)
     return ValidateAndSetTilingParams(xTensor);
 }
 
-// Validates phi/alpha/bias/gamma relationships and derives matM/matN/matK.
 ge::graphStatus MhcPreBaseTiling::ValidateAndSetTilingParams(const gert::Tensor *xTensor)
 {
     auto phiTensor = context_->GetDynamicInputTensor(PHI_INDEX, 0);
@@ -544,7 +531,6 @@ ge::graphStatus MhcPreBaseTiling::ValidateAndSetTilingParams(const gert::Tensor 
     return ge::GRAPH_SUCCESS;
 }
 
-// Orchestrates input parsing, attribute validation, and output-shape checks.
 ge::graphStatus MhcPreBaseTiling::ParseInputAndAttr()
 {
     if (InitPlatformMemory() != ge::GRAPH_SUCCESS) {
@@ -574,7 +560,6 @@ ge::graphStatus MhcPreBaseTiling::ParseInputAndAttr()
     }
     return ParseEpsAttributes();
 }
-// Queries AIC/AIV counts and physical UB capacity used by routing and buffer validation.
 ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
 {
     uint64_t ubSize;
@@ -596,7 +581,6 @@ ge::graphStatus MhcPreBaseTiling::InitPlatformMemory()
     return ge::GRAPH_SUCCESS;
 }
 
-// Resolves the optional-output group and whether raw hMix/hPre/invRms must be materialized.
 ge::graphStatus MhcPreBaseTiling::ParseOutputFlags()
 {
     auto attrs = context_->GetAttrs();
@@ -631,7 +615,6 @@ ge::graphStatus MhcPreBaseTiling::ParseOutputFlags()
     return ge::GRAPH_SUCCESS;
 }
 
-// Reads norm/hc epsilon and validates their numerical ranges.
 ge::graphStatus MhcPreBaseTiling::ParseEpsAttributes()
 {
     auto attrs = context_->GetAttrs();
@@ -655,7 +638,6 @@ ge::graphStatus MhcPreBaseTiling::ParseEpsAttributes()
     return ge::GRAPH_SUCCESS;
 }
 
-// Decides whether M-K can run safely under core-count, determinism, and minimum-work constraints.
 bool MhcPreBaseTiling::CanUseMk() const
 {
     bool supportedN = N_ == N_VALID_VALUES[0] || N_ == N_VALID_VALUES[1] || N_ == N_VALID_VALUES[2];
@@ -668,17 +650,15 @@ bool MhcPreBaseTiling::CanUseMk() const
            context_->GetDeterministicLevel() != BATCH_CONSISTENCY_LEVEL;
 }
 
-// Chooses the measured GM or direct-L1 X staging policy for M-K stage 1.
 uint32_t MhcPreBaseTiling::SelectMkStage() const
 {
-    // Optimization: stable msprof measurements favor direct UB-to-L1 staging for large-M
+    // Stable msprof measurements favor direct UB-to-L1 staging for large-M
     // FP32 and small-M N=8. GM staging is the robust default elsewhere.
     bool useL1Stage = (implMode_ == IMPL_MODE_FP32 && totalLength_ >= M_K_FP32_L1_MIN_TOTAL_LENGTH) ||
                       (N_ == N_VALID_VALUES[2] && totalLength_ < M_K_N8_L1_MAX_TOTAL_LENGTH);
     return useL1Stage ? M_K_USE_L1_STAGE : M_K_USE_GM_STAGE;
 }
 
-// Fills the fixed BS low-level tile sizes and aligned fused-row stride.
 void MhcPreBaseTiling::FillBsTilingData()
 {
     auto roundUp = [](uint64_t value, uint64_t align) -> uint32_t {
@@ -691,7 +671,6 @@ void MhcPreBaseTiling::FillBsTilingData()
     tilingData_.set_fusionAlign(fusionAlign);
 }
 
-// Derives generalized M/K core splits, L1 tiles, stage-2 rows, and workspace offsets.
 void MhcPreBaseTiling::FillMkTilingData()
 {
     auto ceilDiv = [](uint64_t value, uint64_t divisor) -> uint64_t {
@@ -704,7 +683,7 @@ void MhcPreBaseTiling::FillMkTilingData()
     uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / 2U);
     uint64_t minMDim = std::min<uint64_t>(activeCoreNum, ceilDiv(totalLength_, M_K_M_L1_MAX_SIZE));
     uint64_t kDim = activeCoreNum / minMDim;
-    // Optimization: fill otherwise idle AIC slots without reducing K parallelism. For example,
+    // Fill otherwise idle AIC slots without reducing K parallelism. For example,
     // M=3072 uses 16x2 instead of 12x2 on a 32-AIC device.
     uint64_t mDim = activeCoreNum / kDim;
     uint64_t singleCoreM = roundUp(ceilDiv(totalLength_, mDim), AscendC::BLOCK_CUBE);
@@ -712,7 +691,7 @@ void MhcPreBaseTiling::FillMkTilingData()
     // every launched M index starts inside the tensor (M=2561: 16 -> 15 blocks).
     mDim = ceilDiv(totalLength_, singleCoreM);
     uint64_t singleCoreK = roundUp(ceilDiv(matK_, kDim), M_K_SPLIT_ALIGN);
-    // Precision optimization: keep the Cube accumulation order independent of N and the optional residual
+    // Keep the Cube accumulation order independent of N and the optional residual
     // segment. The kernel derives the same decision from multCoreSplitKSize.
     bool useSequentialKPartials = singleCoreK >= M_K_SEQUENTIAL_PARTIAL_THRESHOLD;
     uint64_t workspaceGroupK = useSequentialKPartials ?
@@ -743,7 +722,7 @@ void MhcPreBaseTiling::FillMkTilingData()
     tilingData_.set_kL1Size(static_cast<uint32_t>(kL1Size));
     tilingData_.set_kUbSize(static_cast<uint32_t>(kL1Size));
     tilingData_.set_fusionAlign(static_cast<uint32_t>(fusionAlign));
-    // Optimization: keep enough rows per AIV to amortize setup while distributing all rows across available AIVs.
+    // Keep enough rows per AIV to amortize setup while distributing all rows across the available AIVs.
     uint64_t stage2RowsPerCore = std::min<uint64_t>(totalLength_, std::max<uint64_t>(
         M_K_MIN_STAGE2_ROWS_PER_CORE, ceilDiv(totalLength_, aivBlockDim_)));
     uint64_t stage2UsedAivNum = std::min<uint64_t>(
@@ -765,7 +744,6 @@ void MhcPreBaseTiling::FillMkTilingData()
     tilingData_.set_mkUseGmStage(SelectMkStage());
 }
 
-// Writes fields shared by BS, M-K, and ND after template-specific values are known.
 void MhcPreBaseTiling::FillTilingData()
 {
     uint32_t coreNum = tilingMode_ == TilingMode::SPLIT_M_K ?
@@ -796,7 +774,6 @@ void MhcPreBaseTiling::FillTilingData()
     }
 }
 
-// Routes the shape to a template and computes its exact user/system workspace sizes.
 ge::graphStatus MhcPreBaseTiling::TilingProcess()
 {
     // ND remains available for small-K and shape-specific fallbacks. SPLIT_BS
@@ -845,7 +822,7 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
 
         userWorkspaceSize = xFloatWorkspaceSize + mmResWorkspaceSize;
     } else {
-        // Optimization: BS stages two X tiles per AIC. When hMix is not an optional output,
+        // BS stages two X tiles per AIC. When hMix is not an optional output,
         // the kernel stores the complete compact [M, fusionSize] result after
         // the staging area and reads it back during vector postprocessing.
         // Size both regions from the actual tiling instead of the legacy fixed
@@ -865,7 +842,6 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
     return ge::GRAPH_SUCCESS;
 }
 
-// Verifies the selected template's fixed and optional UB allocations against hardware capacity.
 ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
 {
     size_t fixedBufferSize = 0;
@@ -905,7 +881,6 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
     return ge::GRAPH_SUCCESS;
 }
 
-// Runs the complete arch35 tiling pipeline and serializes its result.
 ge::graphStatus MhcPreBaseTiling::DoOpTiling()
 {
     auto inputXDesc = context_->GetInputDesc(0);
@@ -930,7 +905,6 @@ ge::graphStatus MhcPreBaseTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-// Emits the final tiling decision for diagnosis without affecting kernel behavior.
 void MhcPreBaseTiling::PrintTilingData()
 {
     OP_LOGD(context_->GetNodeName(), "BlockDim: [%u]", tilingData_.get_coreNum());
@@ -948,13 +922,11 @@ void MhcPreBaseTiling::PrintTilingData()
     OP_LOGD(context_->GetNodeName(), "V1ChunkDSize: [%u]", tilingData_.get_v1ChunkDSize());
 }
 
-// Returns the compile-time template/residual key consumed by mhc_pre_apt.cpp.
 uint64_t MhcPreBaseTiling::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(tilingMode_), static_cast<uint64_t>(hasResi_ ? 0 : 1));
 }
 
-// Sets block dimensions, schedule mode, and workspace sizes after successful tiling.
 ge::graphStatus MhcPreBaseTiling::PostTiling()
 {
     OP_CHECK_IF(
@@ -977,7 +949,6 @@ ge::graphStatus MhcPreBaseTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-// Registers the runtime tiling entry and delegates to the tiling registry.
 static ge::graphStatus TilingFunc4mHCPre(gert::TilingContext *context)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_CUBE_INNER_ERR("[mHCPreTilingTilingFunc]", "Context is null"),
@@ -986,7 +957,6 @@ static ge::graphStatus TilingFunc4mHCPre(gert::TilingContext *context)
     return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
 }
 
-// Prepares compile-time platform information required by the runtime tiler.
 static ge::graphStatus TilingPrepare4mHCPre(gert::TilingParseContext *context)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_CUBE_INNER_ERR("[TilingPrepare4mHC]", "Context is null"),

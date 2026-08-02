@@ -74,92 +74,65 @@ struct MhcPreCompileInfo {
 
 class MhcPreBaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    // Creates one arch35 tiler bound to the current runtime context.
     explicit MhcPreBaseTiling(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
 
-    // Releases the tiler through the base-class interface.
     ~MhcPreBaseTiling() override = default;
 
 protected:
-    // Advertises arch35 capability after registration selects this tiler.
     bool IsCapable() override
     {
         return true;
     }
-    // Defers platform parsing to InitPlatformMemory in the validated tiling flow.
+    // 1、获取平台信息比如CoreNum、UB/L1/L0C资源大小
     ge::graphStatus GetPlatformInfo() override
     {
         return ge::GRAPH_SUCCESS;
     };
-    // Defers shape/attribute parsing to ParseInputAndAttr in DoOpTiling.
+    // 2、获取INPUT/OUTPUT/ATTR信息
     ge::graphStatus GetShapeAttrsInfo() override
     {
         return ge::GRAPH_SUCCESS;
     };
-    // Computes and validates all template-specific tiling data.
+    // 3、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
-    // No high-level matmul library tiling is needed by the low-level arch35 kernels.
+    // 4、计算高阶API的TilingData
     ge::graphStatus DoLibApiTiling() override
     {
         return ge::GRAPH_SUCCESS;
     };
-    // Returns the selected template/residual specialization key.
+    // 5、计算TilingKey
     uint64_t GetTilingKey() const override;
-    // Workspace is computed together with template routing in TilingProcess.
+    // 6、计算Workspace 大小
     ge::graphStatus GetWorkspaceSize() override
     {
         return ge::GRAPH_SUCCESS;
     };
-    // Serializes tiling data and publishes block/workspace scheduling metadata.
+    // 7、保存Tiling数据
     ge::graphStatus PostTiling() override;
 
-    // Reads required and optional tensor shapes.
     ge::graphStatus GetInputShape();
-    // Checks descriptor presence and tensor ranks.
     ge::graphStatus CheckDescAndShape();
-    // Checks that every relevant dimension is positive.
     ge::graphStatus CheckShapePositive();
-    // Checks the kernel dtype contract.
     ge::graphStatus CheckDataType();
-    // Checks N/D/fused-size supported ranges.
     ge::graphStatus CheckDataRange();
-    // Dispatches layout-specific output validation.
     ge::graphStatus CheckOutputShapeConsistency();
-    // Validates BSND output shapes.
     ge::graphStatus CheckBsndOutputShape(uint64_t b, uint64_t s, uint64_t n, uint64_t d);
-    // Validates TND output shapes.
     ge::graphStatus CheckTndOutputShape(uint64_t t, uint64_t n, uint64_t d);
-    // Parses BSND into kernel M/N/D.
     ge::graphStatus ParseBsndFormat(const gert::Tensor *xTensor);
-    // Parses TND into kernel M/N/D.
     ge::graphStatus ParseTndFormat(const gert::Tensor *xTensor);
-    // Validates phi/alpha/bias/gamma and derives matmul dimensions.
     ge::graphStatus ValidateAndSetTilingParams(const gert::Tensor *xTensor);
-    // Queries core counts and local-memory capacities.
     ge::graphStatus InitPlatformMemory();
-    // Resolves optional output semantics.
     ge::graphStatus ParseOutputFlags();
-    // Parses norm and hc epsilon attributes.
     ge::graphStatus ParseEpsAttributes();
-    // Logs the selected tiling values.
     void PrintTilingData();
-    // Runs all input and attribute parsing steps.
     ge::graphStatus ParseInputAndAttr();
-    // Fills fields common to every template.
     void FillTilingData();
-    // Selects a template and sizes its workspace.
     ge::graphStatus TilingProcess();
-    // Checks the selected UB layout against hardware capacity.
     ge::graphStatus CheckUbBufferSize();
-    // Fills BS low-level tile fields.
     void FillBsTilingData();
-    // Fills generalized M-K split and workspace fields.
     void FillMkTilingData();
-    // Checks M-K safety, determinism, and parallelism conditions.
     bool CanUseMk() const;
-    // Chooses GM or direct-L1 M-K X staging.
     uint32_t SelectMkStage() const;
-    // Returns the final required input index for descriptor validation.
     size_t GetLastRequiredInputIndex() const;
 
 private:

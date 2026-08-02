@@ -17,7 +17,6 @@
 namespace ops {
 class MhcPre : public OpDef {
 public:
-    // Registers the public tensor/attribute schema and ascend950 AICore implementation.
     explicit MhcPre(const char* name) : OpDef(name)
     {
         this->Input("x")
