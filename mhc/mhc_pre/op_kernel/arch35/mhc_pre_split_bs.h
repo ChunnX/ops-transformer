@@ -26,10 +26,8 @@ constexpr uint32_t MHC_PRE_BS_SEQUENTIAL_PARTIAL_K = 1024U;
 template <class T, class P, int8_t RESI_MODE>
 class MhcPreSplitBS {
 public:
-    // Constructs the large-M BS template; Init binds all shared Cube/AIV resources.
     __aicore__ inline MhcPreSplitBS() = default;
 
-    // Initializes the BS template, shared vector state, aligned UB pools, and low-level Cube service.
     __aicore__ inline void Init(InitParams initParams)
     {
         vector_.BindGlobalTensors(initParams);
@@ -53,7 +51,6 @@ public:
         }
     }
 
-    // Executes BS tiles, coordinating V0 staging, Cube partials, RMS, and shared V1 postprocessing.
     __aicore__ inline void Process()
     {
         uint32_t tBlockNum = Ceil(vector_.totalLength_, vector_.chunkTSize_);
@@ -70,7 +67,7 @@ public:
             for (uint32_t offsetNd = 0; offsetNd < vector_.matrixInfo_.nD; offsetNd += vector_.ND_LENGTH) {
                 uint32_t curNdLen = MhcPreMin(vector_.ND_LENGTH, vector_.matrixInfo_.nD - offsetNd);
                 bool isPartialEnd = IsSequentialPartialEnd(offsetNd, curNdLen);
-                // Optimization: two GM X-staging slots are free initially. From the third slice on,
+                // Two X staging slots are free initially. From the third slice on,
                 // AIV waits until AIC returns the slot through X_CONSUMED_FLAG.
                 if ASCEND_IS_AIV {
                     if (vector_.vectorCount_ >= 2) {
@@ -119,7 +116,6 @@ public:
     }
 
 private:
-    // Allocates the BS-specific UB layout while preserving 32-byte starts for all output segments.
     __aicore__ inline void InitUbBuffersBasicApi()
     {
         if ASCEND_IS_NOT_AIV {
@@ -158,7 +154,6 @@ private:
             static_cast<uint32_t>(vector_.V1_BASE_T * vector_.N_), hSegmentBytes);
     }
 
-    // Splits odd M tails exactly between the two AIV subblocks used by direct postprocessing.
     __aicore__ inline void ConfigureDirectUbRowPartition()
     {
         if ASCEND_IS_NOT_AIV {
@@ -176,14 +171,12 @@ private:
         }
     }
 
-    // Marks 1024-wide ordered K partial boundaries required by the new precision criterion.
     __aicore__ inline bool IsSequentialPartialEnd(uint32_t offsetNd, uint32_t currentK) const
     {
         uint32_t endK = offsetNd + currentK;
         return endK >= vector_.matrixInfo_.nD || endK % MHC_PRE_BS_SEQUENTIAL_PARTIAL_K == 0U;
     }
 
-    // Runs one BS K tile through GM-to-L1 ND2NZ, low-level Mmad, and ordered hMix output.
     __aicore__ inline void AICProcessBasicApi(uint32_t offsetNd, uint32_t partialIndex)
     {
         if (offsetNd + vector_.mnConfig_.singleCoreK > vector_.mnConfig_.k) {
@@ -207,14 +200,14 @@ private:
         bool isLastKL1 = IsSequentialPartialEnd(offsetNd, currentK);
         uint64_t mAlign = BasicApiAlign(vector_.mnConfig_.curSingleCoreM, AscendC::BLOCK_CUBE);
         uint64_t nAlign = BasicApiAlign(vector_.mnConfig_.n, AscendC::BLOCK_CUBE);
-        // Optimization: derive baseK from the active M/N footprint to fill L0 without hard-coding one shape.
+        // Fill available L0 from the live M/N footprint instead of hard-coding baseK for one shape.
         uint64_t baseK = (256 / AscendC::Std::max(mAlign, nAlign)) * 32;
         mmService_.Process(vector_.mnConfig_.curSingleCoreM, vector_.mnConfig_.n,
                            vector_.mnConfig_.curSingleCoreM, baseK, isFirstKL1, isLastKL1, currentAL1, currentBL1);
 
         if (isLastKL1) {
-            // Precision design: emit K=1024 partials in order; later partials atomically accumulate
-            // into the same compact hMix rows without a separate vector reduction kernel.
+            // Emit ordered K=1024 partials. Later partials atomically accumulate into the same compact
+            // hMix rows, avoiding a separate vector reduction kernel while retaining the required order.
             if (partialIndex != 0U) {
                 AscendC::SetAtomicAdd<float>();
             }
@@ -227,7 +220,6 @@ private:
         vector_.cubeCount_++;
     }
 
-    // Reads compact hMix rows and reuses the common N=4/6/8 vector postprocessing pipeline.
     __aicore__ inline void AIV1ProcessDirect()
     {
         if (vector_.vectorOffset_.singleCoreM == 0) {

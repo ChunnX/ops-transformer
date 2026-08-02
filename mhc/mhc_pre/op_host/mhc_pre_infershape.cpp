@@ -47,7 +47,6 @@ const constexpr int64_t BSND_DIM_NUM = 4;
 const constexpr int64_t TND_DIM_NUM = 3;
 const constexpr int64_t UNKNOWN_DIM_VALUE = -1LL;
 
-// Assigns one concrete 3D output shape.
 static void SetShape3D(gert::Shape *shape, uint64_t d0, uint64_t d1, uint64_t d2)
 {
     shape->SetDimNum(3);
@@ -56,7 +55,6 @@ static void SetShape3D(gert::Shape *shape, uint64_t d0, uint64_t d1, uint64_t d2
     shape->SetDim(2, d2);
 }
 
-// Assigns one concrete 2D output shape.
 static void SetShape2D(gert::Shape *shape, uint64_t d0, uint64_t d1)
 {
     shape->SetDimNum(2);
@@ -64,7 +62,6 @@ static void SetShape2D(gert::Shape *shape, uint64_t d0, uint64_t d1)
     shape->SetDim(1, d1);
 }
 
-// Assigns one concrete 4D output shape.
 static void SetShape4D(gert::Shape *shape, uint64_t d0, uint64_t d1, uint64_t d2, uint64_t d3)
 {
     shape->SetDimNum(4);
@@ -74,14 +71,12 @@ static void SetShape4D(gert::Shape *shape, uint64_t d0, uint64_t d1, uint64_t d2
     shape->SetDim(3, d3);
 }
 
-// Assigns one concrete 1D output shape.
 static void SetShape1D(gert::Shape *shape, uint64_t d0)
 {
     shape->SetDimNum(1);
     shape->SetDim(0, d0);
 }
 
-// Copies X's dynamic dimensions to outputs whose layout matches X.
 static void SetShapeFromX(gert::Shape *dst, const gert::Shape *src)
 {
     dst->SetDimNum(src->GetDimNum());
@@ -90,7 +85,6 @@ static void SetShapeFromX(gert::Shape *dst, const gert::Shape *src)
     }
 }
 
-// Infers required and optional output shapes for BSND and TND inputs.
 static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do InferShape MhcPre");
@@ -165,7 +159,6 @@ static ge::graphStatus InferShape4MhcPre(InferShapeContext *context)
     return GRAPH_SUCCESS;
 }
 
-// Assigns X dtype to hIn and FP32 to all normalization/mixing outputs.
 static graphStatus InferDataType4MhcPre(gert::InferDataTypeContext *context)
 {
     const auto xDtype = context->GetInputDataType(X_INDEX);

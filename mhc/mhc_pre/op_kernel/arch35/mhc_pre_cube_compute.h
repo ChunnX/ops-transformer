@@ -49,23 +49,19 @@ public:
     AscendC::LocalTensor<float> cL0Ping_;
     AscendC::LocalTensor<float> cL0Pong_;
 
-    // Constructs the low-level Cube service; Init binds its hardware buffers and events.
     __aicore__ inline MhcPreCubeCompute() {}
 
-    // Returns the active B-L1 slot so callers write phi into the matching ping-pong buffer.
     __aicore__ inline uint8_t GetBL1BufferId()
     {
         return bL1BufferID_;
     }
 
-    // Copies compact A from GM to L1 NZ when the source row stride equals currentK.
     __aicore__ inline void CopyInA1Nd2Nz(uint64_t m, uint64_t currentK,
                                          const AscendC::GlobalTensor<float> &aGlobal, const AscendC::LocalTensor<float> &al1Local)
     {
         CopyInA1Nd2Nz(m, currentK, currentK, aGlobal, al1Local);
     }
 
-    // Copies strided A from GM to L1 NZ; this is the optimized GM-staging ND2NZ path.
     __aicore__ inline void CopyInA1Nd2Nz(uint64_t m, uint64_t currentK, uint64_t srcDValue,
                                          const AscendC::GlobalTensor<float> &aGlobal, const AscendC::LocalTensor<float> &al1Local)
     {
@@ -83,7 +79,6 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(2);
     }
 
-    // Initializes L0 ping-pong buffers/events and enables HF32 only on the AIC pipeline.
     __aicore__ inline void Init(uint32_t implMode)
     {
         implMode_ = implMode;
@@ -91,7 +86,6 @@ public:
         uint32_t bL0OneBuffer = 256 * 32;
         uint32_t cL0OneBuffer = 256 * 128;
 
-        // Optimization: double-buffer L0A/L0B/L0C so MTE1, Mmad, and Fixpipe can overlap.
         aL0Ping_ = AscendC::LocalTensor<float>(AscendC::TPosition::A2, 0, aL0OneBuffer);
         aL0Pong_ = AscendC::LocalTensor<float>(AscendC::TPosition::A2, aL0OneBuffer * sizeof(float), aL0OneBuffer);
         bL0Ping_ = AscendC::LocalTensor<float>(AscendC::TPosition::B2, 0, bL0OneBuffer);
@@ -99,6 +93,7 @@ public:
         cL0Ping_ = AscendC::LocalTensor<float>(AscendC::TPosition::CO1, 0, cL0OneBuffer);
         cL0Pong_ = AscendC::LocalTensor<float>(AscendC::TPosition::CO1, cL0OneBuffer * sizeof(float), cL0OneBuffer);
 
+        // Ping-pong L0A/L0B/L0C so MTE1, Mmad, and Fixpipe can overlap.
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(0);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(1);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(3);
@@ -106,7 +101,7 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(0);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(1);
 
-        // Optimization: HF32 changes Cube execution only; guarding AIC avoids illegal/slow AIV mode writes.
+        // HF32 is a Cube mode. Restrict the mode write to AIC to avoid an invalid AIV-side operation.
         if ASCEND_IS_AIC {
             if (implMode == MHC_PRE_IMPL_MODE_HF32) {
                 AscendC::SetHF32Mode(1);
@@ -115,7 +110,6 @@ public:
         }
     }
 
-    // Copies transposed phi from GM to the active B-L1 NZ slot for BS/ND/M-K matmul.
     __aicore__ inline void CopyInB1Nd2Nz(uint64_t k, uint64_t currentK, uint64_t baseN,
                                          const AscendC::GlobalTensor<float> &bGlobal, const AscendC::LocalTensor<float> &bl1Local)
     {
@@ -137,7 +131,6 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(bL1BufferID_);
     }
 
-    // Runs one K-L1 tile through ping-ponged L0 loads and Mmad accumulation.
     __aicore__ inline void Process(uint64_t m, uint64_t n, uint64_t baseM, uint64_t baseK,
                                    bool isFirstKL1, bool isLastKL1, const AscendC::LocalTensor<float> &al1Local,
                                    const AscendC::LocalTensor<float> &bl1Local)
@@ -166,7 +159,7 @@ public:
         bL1BufferID_ ^= 1;
     }
 
-    // Drives the M-K iter0 state machine: stage K-L1 tiles, handshake with AIV, and emit ordered partials.
+    // Own iter0 (K-L1 staging and cross-core handshakes); Process owns iter1 (K-L0 and Mmad).
     __aicore__ inline void ProcessKRange(uint64_t m, uint64_t n, uint64_t k, uint64_t baseM,
                                          uint64_t baseK, uint64_t kStart, uint64_t kEnd, uint64_t kL1Size,
                                          bool useSequentialPartials, uint64_t partialK, bool useGmStage,
@@ -187,8 +180,6 @@ public:
                 bl1Local[bL1BufferId * MHC_PRE_BASIC_API_L1_BUF_OFFSET];
             CopyInB1Nd2Nz(k, currentK, n, phiGlobal[kOffset], currentBL1);
 
-            // Optimization: GM mode uses two staging slots and lets AIC MTE2 perform ND2NZ;
-            // direct-L1 mode waits on the same two-slot protocol after AIV writes L1.
             if (useGmStage) {
                 AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(
                     MHC_PRE_X_READY_FLAG);
@@ -223,7 +214,6 @@ public:
             aL1BufferId ^= 1U;
         }
     }
-    // Loads the active A-L1 NZ tile into the selected L0A ping-pong buffer.
     __aicore__ inline void CopyInA2(uint64_t kOffset, uint64_t kAL1Offset,
                                     const AscendC::LocalTensor<float> &al1Local)
     {
@@ -242,7 +232,6 @@ public:
         AscendC::LoadData(l0PingPongID_ == 0 ? aL0Ping_ : aL0Pong_, al1Local[offsetAL1], loadData2dParams);
     }
 
-    // Loads the active B-L1 NZ tile into the selected L0B ping-pong buffer.
     __aicore__ inline void CopyInB2(uint64_t kOffset, uint64_t kBL1Offset,
                                     const AscendC::LocalTensor<float> &bl1Local)
     {
@@ -261,12 +250,10 @@ public:
         AscendC::LoadData(l0PingPongID_ == 0 ? bL0Ping_ : bL0Pong_, bl1Local[offsetBL1], loadData2dParams);
     }
 
-    // Accumulates one L0 K tile into L0C with the precision-preserving FP32 K order.
     __aicore__ inline void MmadBase(uint64_t kOffset, bool isFirstKL1, bool isLastKL1, bool isLastKL0)
     {
         uint32_t mmK = AscendC::Std::min(baseK_, kL1_ - kOffset);
-        // Optimization/precision contract: FP32 accumulates in K=32 order to match the golden;
-        // HF32 can consume the full baseK and avoid the extra Mmad loop overhead.
+        // FP32 keeps K=32 accumulation order for precision; HF32 consumes the full baseK to reduce loop overhead.
         uint32_t mmKStep = implMode_ == MHC_PRE_IMPL_MODE_FP32 ? 32U : mmK;
         uint64_t mAlign = BasicApiAlign(baseM_, AscendC::BLOCK_CUBE);
         uint64_t nAlign = BasicApiAlign(baseN_, AscendC::BLOCK_CUBE);
@@ -290,9 +277,9 @@ public:
         }
     }
 
-    // Fixpipes the completed L0C tile directly to row-major UB for direct-UB callers.
     __aicore__ inline void CopyOut(const AscendC::LocalTensor<float> &dstLocal)
     {
+        // Direct L0C-to-UB removes the hMix GM write/read round trip when the caller has aligned UB space.
         AscendC::SetFlag<AscendC::HardEvent::M_FIX>(cl0PingPongID_);
         AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(cl0PingPongID_);
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> fixpipeParams;
@@ -309,15 +296,12 @@ public:
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 1;
         fixpipeParams.params.dstNdStride = 1;
-        // Optimization hook: L0C-to-UB can remove the hMix GM write/read round trip when a
-        // template can reserve an aligned destination tile in UB.
         AscendC::Fixpipe<float, float, AscendC::Impl::CFG_ROW_MAJOR_UB>(dstLocal,
                                                                         cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_, fixpipeParams);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(cl0PingPongID_);
         cl0PingPongID_ ^= 1;
     }
 
-    // Fixpipes one completed L0C partial to GM for M-K cross-core vector reduction.
     __aicore__ inline void CopyOut(const AscendC::GlobalTensor<float> &dstGlobal, uint32_t dstStride)
     {
         AscendC::SetFlag<AscendC::HardEvent::M_FIX>(cl0PingPongID_);
@@ -336,7 +320,6 @@ public:
         cl0PingPongID_ ^= 1;
     }
 
-    // Drains all low-level events and restores the Cube math mode before kernel exit.
     __aicore__ inline void End(uint32_t implMode)
     {
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);

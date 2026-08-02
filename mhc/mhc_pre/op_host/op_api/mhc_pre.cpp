@@ -22,7 +22,6 @@ using namespace op;
 namespace l0op {
 OP_TYPE_REGISTER(MhcPre);
 
-// Allocates outputs, runs infer-shape, and appends the MhcPre AICore launch to the executor.
 const std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *, aclTensor *, aclTensor *>
 MhcPre(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
        const aclTensor *gammaOptional, int64_t outFlag, double normEps, double hcEps, int64_t implMode,
