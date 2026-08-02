@@ -382,7 +382,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
         GM_ADDR srcRankBase = localWinAddr_ + (int64_t)rankId * numMaxTokensPerRank_ * perSlotBytes_;
         GlobalTensor<int32_t> srcTopkIdsGm;
-        srcTopkIdsGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(srcRankBase + (int64_t)slotStart * perSlotBytes_ + metaOffset_));
+        srcTopkIdsGm.SetGlobalBuffer(
+            reinterpret_cast<__gm__ int32_t *>(srcRankBase + (int64_t)slotStart * perSlotBytes_ + metaOffset_));
 
         uint32_t topkBytes = axisK_ * sizeof(int32_t);
         LocalTensor<uint8_t> sharedTmpInt8 = ubMetaBuf_.Get<uint8_t>();
@@ -406,7 +407,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 uint64_t rsvdCnt = 0;
                 SyncFunc<AscendC::HardEvent::S_V>();
                 Duplicate<uint32_t>(sharedTmpInt32, 0, calCntAlign);
-                CompareScalar(sharedTmpInt8, ubTopkIds_, static_cast<int32_t>(targetExpertId), AscendC::CMPMODE::EQ, calCntAlign);
+                CompareScalar(sharedTmpInt8, ubTopkIds_, static_cast<int32_t>(targetExpertId), AscendC::CMPMODE::EQ,
+                              calCntAlign);
                 GatherMask(ubTargetExpertId_, ubTopkIds_, sharedTmpInt32, true, calCntAlign, {1, 1, 0, 0}, rsvdCnt);
                 SyncFunc<AscendC::HardEvent::V_S>();
                 int32_t curExpertCnt = rsvdCnt;
@@ -462,7 +464,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
         GM_ADDR srcRankBase = localWinAddr_ + (int64_t)rankId * numMaxTokensPerRank_ * perSlotBytes_;
         GlobalTensor<int32_t> srcMetaGm;
-        srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(srcRankBase + (int64_t)slotStart * perSlotBytes_ + metaOffset_));
+        srcMetaGm.SetGlobalBuffer(
+            reinterpret_cast<__gm__ int32_t *>(srcRankBase + (int64_t)slotStart * perSlotBytes_ + metaOffset_));
 
         for (uint32_t tileStart = 0; tileStart < slotCntPerAiv; tileStart += SLOTS_TILE) {
             uint32_t tileCnt = (slotCntPerAiv - tileStart > SLOTS_TILE) ? SLOTS_TILE : (slotCntPerAiv - tileStart);
@@ -506,7 +509,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                     GlobalTensor<ScalesType> srcScalesTensor;
                     srcScalesTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ScalesType *>(slotAddr + scalesOffset_),
                                                     scalesElems_);
-                    DataCopyParams scalesCopyParams{1U, static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
+                    DataCopyParams scalesCopyParams{1U, static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)),
+                                                    0U, 0U};
                     DataCopyPadParams scalesPadParams{false, 0, 0, 0};
                     DataCopyPad(tokenTensor[scalesOffset_ / sizeof(XType)].template ReinterpretCast<ScalesType>(),
                                 srcScalesTensor, scalesCopyParams, scalesPadParams);
@@ -520,8 +524,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
                     DataCopyPad(recvXGm_[globalRow * axisH_], tokenOut, tokenCopyParams);
                     if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
-                        DataCopyParams scalesCopyParams{1U, static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U,
-                                                        0U};
+                        DataCopyParams scalesCopyParams{1U, static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)),
+                                                        0U, 0U};
                         DataCopyPad(recvScalesGm_[globalRow * scalesElems_],
                                     tokenOut[scalesOffset_ / sizeof(XType)].template ReinterpretCast<ScalesType>(),
                                     scalesCopyParams);
