@@ -51,19 +51,17 @@ public:
 
     __aicore__ inline MhcPreCubeCompute() {}
 
-    __aicore__ inline uint8_t GetBL1BufferId()
-    {
-        return bL1BufferID_;
-    }
+    __aicore__ inline uint8_t GetBL1BufferId() { return bL1BufferID_; }
 
-    __aicore__ inline void CopyInA1Nd2Nz(uint64_t m, uint64_t currentK,
-                                         const AscendC::GlobalTensor<float> &aGlobal, const AscendC::LocalTensor<float> &al1Local)
+    __aicore__ inline void CopyInA1Nd2Nz(uint64_t m, uint64_t currentK, const AscendC::GlobalTensor<float> &aGlobal,
+                                         const AscendC::LocalTensor<float> &al1Local)
     {
         CopyInA1Nd2Nz(m, currentK, currentK, aGlobal, al1Local);
     }
 
     __aicore__ inline void CopyInA1Nd2Nz(uint64_t m, uint64_t currentK, uint64_t srcDValue,
-                                         const AscendC::GlobalTensor<float> &aGlobal, const AscendC::LocalTensor<float> &al1Local)
+                                         const AscendC::GlobalTensor<float> &aGlobal,
+                                         const AscendC::LocalTensor<float> &al1Local)
     {
         AscendC::Nd2NzParams nd2nzParam;
         nd2nzParam.ndNum = 1;
@@ -111,7 +109,8 @@ public:
     }
 
     __aicore__ inline void CopyInB1Nd2Nz(uint64_t k, uint64_t currentK, uint64_t baseN,
-                                         const AscendC::GlobalTensor<float> &bGlobal, const AscendC::LocalTensor<float> &bl1Local)
+                                         const AscendC::GlobalTensor<float> &bGlobal,
+                                         const AscendC::LocalTensor<float> &bl1Local)
     {
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(bL1BufferID_);
         k_ = k;
@@ -131,8 +130,8 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(bL1BufferID_);
     }
 
-    __aicore__ inline void Process(uint64_t m, uint64_t n, uint64_t baseM, uint64_t baseK,
-                                   bool isFirstKL1, bool isLastKL1, const AscendC::LocalTensor<float> &al1Local,
+    __aicore__ inline void Process(uint64_t m, uint64_t n, uint64_t baseM, uint64_t baseK, bool isFirstKL1,
+                                   bool isLastKL1, const AscendC::LocalTensor<float> &al1Local,
                                    const AscendC::LocalTensor<float> &bl1Local)
     {
         m_ = m;
@@ -160,11 +159,10 @@ public:
     }
 
     // Own iter0 (K-L1 staging and cross-core handshakes); Process owns iter1 (K-L0 and Mmad).
-    __aicore__ inline void ProcessKRange(uint64_t m, uint64_t n, uint64_t k, uint64_t baseM,
-                                         uint64_t baseK, uint64_t kStart, uint64_t kEnd, uint64_t kL1Size,
-                                         bool useSequentialPartials, uint64_t partialK, bool useGmStage,
-                                         uint64_t stageSlotElements, uint64_t stageCoreOffset,
-                                         const AscendC::GlobalTensor<float> &phiGlobal,
+    __aicore__ inline void ProcessKRange(uint64_t m, uint64_t n, uint64_t k, uint64_t baseM, uint64_t baseK,
+                                         uint64_t kStart, uint64_t kEnd, uint64_t kL1Size, bool useSequentialPartials,
+                                         uint64_t partialK, bool useGmStage, uint64_t stageSlotElements,
+                                         uint64_t stageCoreOffset, const AscendC::GlobalTensor<float> &phiGlobal,
                                          const AscendC::GlobalTensor<float> &xStageGlobal,
                                          const AscendC::GlobalTensor<float> &dstGlobal, uint64_t dstGroupStride,
                                          const AscendC::LocalTensor<float> &al1Local,
@@ -174,48 +172,38 @@ public:
         for (uint64_t kOffset = kStart; kOffset < kEnd; kOffset += kL1Size) {
             uint64_t currentK = AscendC::Std::min(kL1Size, kEnd - kOffset);
             uint8_t bL1BufferId = GetBL1BufferId();
-            AscendC::LocalTensor<float> currentAL1 =
-                al1Local[aL1BufferId * MHC_PRE_BASIC_API_L1_BUF_OFFSET];
-            AscendC::LocalTensor<float> currentBL1 =
-                bl1Local[bL1BufferId * MHC_PRE_BASIC_API_L1_BUF_OFFSET];
+            AscendC::LocalTensor<float> currentAL1 = al1Local[aL1BufferId * MHC_PRE_BASIC_API_L1_BUF_OFFSET];
+            AscendC::LocalTensor<float> currentBL1 = bl1Local[bL1BufferId * MHC_PRE_BASIC_API_L1_BUF_OFFSET];
             CopyInB1Nd2Nz(k, currentK, n, phiGlobal[kOffset], currentBL1);
 
             if (useGmStage) {
-                AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(
-                    MHC_PRE_X_READY_FLAG);
-                AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(
-                    MHC_PRE_X_READY_FLAG + MHC_PRE_SUBBLOCK_FLAG_OFFSET);
+                AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MHC_PRE_X_READY_FLAG);
+                AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE2>(MHC_PRE_X_READY_FLAG +
+                                                                                    MHC_PRE_SUBBLOCK_FLAG_OFFSET);
                 uint64_t stageOffset = stageCoreOffset + aL1BufferId * stageSlotElements;
                 CopyInA1Nd2Nz(m, currentK, kL1Size, xStageGlobal[stageOffset], currentAL1);
             } else {
-                AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
-                    MHC_PRE_X_READY_FLAG);
-                AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
-                    MHC_PRE_X_READY_FLAG + MHC_PRE_SUBBLOCK_FLAG_OFFSET);
+                AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MHC_PRE_X_READY_FLAG);
+                AscendC::CrossCoreWaitFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MHC_PRE_X_READY_FLAG +
+                                                                                    MHC_PRE_SUBBLOCK_FLAG_OFFSET);
             }
 
-            bool isFirstKL1 = useSequentialPartials ?
-                                  kOffset % partialK == 0U :
-                                  kOffset == kStart;
+            bool isFirstKL1 = useSequentialPartials ? kOffset % partialK == 0U : kOffset == kStart;
             bool isLastKL1 = useSequentialPartials ?
                                  ((kOffset + currentK) % partialK == 0U || kOffset + currentK >= kEnd) :
                                  kOffset + currentK >= kEnd;
             Process(m, n, baseM, baseK, isFirstKL1, isLastKL1, currentAL1, currentBL1);
             if (isLastKL1) {
-                uint64_t partialIndex = useSequentialPartials ?
-                                            (kOffset + currentK - 1U) / partialK :
-                                            0U;
+                uint64_t partialIndex = useSequentialPartials ? (kOffset + currentK - 1U) / partialK : 0U;
                 CopyOut(dstGlobal[partialIndex * dstGroupStride], n);
             }
-            AscendC::CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
-                MHC_PRE_X_CONSUMED_FLAG);
-            AscendC::CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(
-                MHC_PRE_X_CONSUMED_FLAG + MHC_PRE_SUBBLOCK_FLAG_OFFSET);
+            AscendC::CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MHC_PRE_X_CONSUMED_FLAG);
+            AscendC::CrossCoreSetFlag<MHC_PRE_CROSS_CORE_SYNC_MODE, PIPE_MTE1>(MHC_PRE_X_CONSUMED_FLAG +
+                                                                               MHC_PRE_SUBBLOCK_FLAG_OFFSET);
             aL1BufferId ^= 1U;
         }
     }
-    __aicore__ inline void CopyInA2(uint64_t kOffset, uint64_t kAL1Offset,
-                                    const AscendC::LocalTensor<float> &al1Local)
+    __aicore__ inline void CopyInA2(uint64_t kOffset, uint64_t kAL1Offset, const AscendC::LocalTensor<float> &al1Local)
     {
         uint64_t mAL1 = BasicApiAlign(baseM_, AscendC::BLOCK_CUBE);
         uint64_t offsetAL1 = BasicApiAlign(kAL1Offset, MHC_PRE_BASIC_API_C0_SIZE) * mAL1;
@@ -232,8 +220,7 @@ public:
         AscendC::LoadData(l0PingPongID_ == 0 ? aL0Ping_ : aL0Pong_, al1Local[offsetAL1], loadData2dParams);
     }
 
-    __aicore__ inline void CopyInB2(uint64_t kOffset, uint64_t kBL1Offset,
-                                    const AscendC::LocalTensor<float> &bl1Local)
+    __aicore__ inline void CopyInB2(uint64_t kOffset, uint64_t kBL1Offset, const AscendC::LocalTensor<float> &bl1Local)
     {
         uint64_t nBL1 = BasicApiAlign(baseN_, AscendC::BLOCK_CUBE);
         uint64_t offsetBL1 = BasicApiAlign(kBL1Offset, MHC_PRE_BASIC_API_C0_SIZE) * nBL1;
@@ -267,9 +254,7 @@ public:
             params.disableGemv = true;
             params.cmatrixInitVal = (isFirstKL1 && kOffset == 0 && innerK == 0);
             params.cmatrixSource = false;
-            params.unitFlag = (isLastKL1 && isLastKL0 && isLastInnerK) ?
-                                  FINAL_ACCUMULATION :
-                                  NON_FINAL_ACCUMULATION;
+            params.unitFlag = (isLastKL1 && isLastKL0 && isLastInnerK) ? FINAL_ACCUMULATION : NON_FINAL_ACCUMULATION;
             AscendC::Mmad(cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_,
                           (l0PingPongID_ == 0 ? aL0Ping_ : aL0Pong_)[innerK * mAlign],
                           (l0PingPongID_ == 0 ? bL0Ping_ : bL0Pong_)[innerK * nAlign], params);
@@ -285,19 +270,19 @@ public:
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> fixpipeParams;
         uint64_t c0 = AscendC::AuxGetC0Size<float>();
         fixpipeParams.nSize = BasicApiAlign(baseN_, c0);
-        fixpipeParams.mSize = MHC_PRE_BASIC_API_SPLIT_M ? BasicApiAlign(baseM_, MHC_PRE_BASIC_API_SPLIT_M_ALIGN) : baseM_;
+        fixpipeParams.mSize =
+            MHC_PRE_BASIC_API_SPLIT_M ? BasicApiAlign(baseM_, MHC_PRE_BASIC_API_SPLIT_M_ALIGN) : baseM_;
         fixpipeParams.dstStride = fixpipeParams.nSize;
         fixpipeParams.srcStride = BasicApiAlign(baseM_, AscendC::BLOCK_CUBE);
         fixpipeParams.quantPre = QuantMode_t::NoQuant;
-        fixpipeParams.dualDstCtl = MHC_PRE_BASIC_API_SPLIT_M ?
-                                       static_cast<uint8_t>(AscendC::McgShfMode::DUAL_DST_SPLIT_M) :
-                                       0;
+        fixpipeParams.dualDstCtl =
+            MHC_PRE_BASIC_API_SPLIT_M ? static_cast<uint8_t>(AscendC::McgShfMode::DUAL_DST_SPLIT_M) : 0;
         fixpipeParams.unitFlag = FINAL_ACCUMULATION;
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 1;
         fixpipeParams.params.dstNdStride = 1;
-        AscendC::Fixpipe<float, float, AscendC::Impl::CFG_ROW_MAJOR_UB>(dstLocal,
-                                                                        cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_, fixpipeParams);
+        AscendC::Fixpipe<float, float, AscendC::Impl::CFG_ROW_MAJOR_UB>(
+            dstLocal, cl0PingPongID_ == 0 ? cL0Ping_ : cL0Pong_, fixpipeParams);
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(cl0PingPongID_);
         cl0PingPongID_ ^= 1;
     }
