@@ -16,7 +16,6 @@
 #include "grouped_matmul_swiglu_quant_v2_tensor_api_tiling.h"
 
 #include <algorithm>
-#include <graph/utils/type_utils.h>
 #include "log/log.h"
 #include "platform/platform_infos_def.h"
 #include "../../../op_kernel/arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
@@ -41,6 +40,7 @@ void GroupedMatmulSwigluQuantV2TensorApiTiling950::Reset()
     tilingData_ = {};
     basicTiling_ = GQmmBasicTiling();
     xScaleDtype_ = ge::DT_UNDEFINED;
+    quantDtype_ = ge::DT_UNDEFINED;
     xScaleFormat_ = static_cast<ge::Format>(-1);
     weightScaleFormat_ = static_cast<ge::Format>(-1);
     yScaleFormat_ = static_cast<ge::Format>(-1);
@@ -151,17 +151,7 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::AnalyzeAttrs()
                 return false);
     OP_CHECK_IF(static_cast<ge::DataType>(*dequantDtype) != ge::DT_FLOAT,
                 OP_LOGE(context_->GetNodeName(), "dequant_dtype must be DT_FLOAT for MX quant."), return false);
-    const ge::DataType quantDataType = static_cast<ge::DataType>(*quantDtype);
-    OP_CHECK_IF(!IsFp8(quantDataType),
-                OP_LOGE(context_->GetNodeName(), "quant_dtype %s must be DT_FLOAT8_E4M3FN or DT_FLOAT8_E5M2.",
-                        ge::TypeUtils::DataTypeToSerialString(quantDataType).c_str()),
-                return false);
-    OP_CHECK_IF(quantDataType != inputParams_.outDataDtype,
-                OP_LOGE(context_->GetNodeName(), "quant_dtype %s must be the same as y dtype %s.",
-                        ge::TypeUtils::DataTypeToSerialString(quantDataType).c_str(),
-                        ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype).c_str()),
-                return false);
-
+    quantDtype_ = static_cast<ge::DataType>(*quantDtype);
     const bool *transposeWeight = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_WEIGHT);
     const int64_t *groupListType = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPLIST_TYPE);
     inputParams_.transA = false;
@@ -282,6 +272,9 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::IsCapable()
     if (!platformMemoryReady_) {
         return false;
     }
+    // Keep Tensor API-specific dtype restrictions in capability checking so unsupported cases can fall back.
+    const bool quantDtypeSupported =
+        IsFp8(quantDtype_) && quantDtype_ == inputParams_.outDataDtype;
     const bool dtypeSupported =
         IsFp8(inputParams_.aDtype) && IsFp8(inputParams_.bDtype) &&
         xScaleDtype_ == ge::DT_FLOAT8_E8M0 &&
@@ -303,15 +296,18 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::IsCapable()
     const bool checkBNoTransMLimlit =
         inputParams_.transB ? true : inputParams_.mSize > TENSOR_API_B_NOTRANS_M_LOWER_LIMIT;
     const bool checkKSize = inputParams_.kSize > 64;
-    const bool capable = dtypeSupported && formatSupported && checkMSizeGroupNumRatio &&
-                         checkNSizeAlign && coreSupported && checkTensorApiShapes && checkTensorApiScaleShapes && checkBNoTransMLimlit && checkKSize;
+    const bool capable = dtypeSupported && quantDtypeSupported && formatSupported && checkMSizeGroupNumRatio &&
+                         checkNSizeAlign && coreSupported && checkTensorApiShapes && checkTensorApiScaleShapes &&
+                         checkBNoTransMLimlit && checkKSize;
     OP_LOGD(context_->GetNodeName(),
-            "Tensor API capability: dtype=%d, format=%d, groupNum=%lu, M=%lu, N=%lu, cores=%lu:%u, "
+            "Tensor API capability: dtype=%d, quantDtypeSupported=%d, format=%d, groupNum=%lu, M=%lu, N=%lu, "
+            "cores=%lu:%u, "
             "checkTensorApiShapes=%d, checkKSize=%d, "
             "checkTensorApiScaleShapes=%d, checkBNoTransMLimlit=%d, capable=%d.",
-            dtypeSupported, formatSupported, inputParams_.groupNum, inputParams_.mSize, inputParams_.nSize,
-            aicoreParams_.aicNum, aivNum_, checkTensorApiShapes, checkKSize, checkTensorApiScaleShapes, checkBNoTransMLimlit,
-            capable);
+            dtypeSupported, quantDtypeSupported, formatSupported, inputParams_.groupNum, inputParams_.mSize,
+            inputParams_.nSize,
+            aicoreParams_.aicNum, aivNum_, checkTensorApiShapes, checkKSize, checkTensorApiScaleShapes,
+            checkBNoTransMLimlit, capable);
     return capable;
 }
 

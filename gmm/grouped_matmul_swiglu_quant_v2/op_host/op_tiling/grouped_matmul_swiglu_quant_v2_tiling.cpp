@@ -75,12 +75,14 @@ static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext 
         ge::DataType xDtype = xDesc->GetDataType();
         ge::DataType wDtype = wDesc->GetDataType();
         ge::DataType xScaleDtype = xScaleDesc->GetDataType();
+        ge::Format weightFormat =
+            static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetFormat().GetStorageFormat()));
         if (xDtype == ge::DT_FLOAT8_E4M3FN && wDtype == ge::DT_FLOAT4_E2M1) {
             // 伪量化场景 MxA8W4: x=FP8_E4M3FN, w=FP4_E2M1
             OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the weight quant tiling for MxA8W4");
             registerList[0] = GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE;
-        } else if (xScaleDtype == ge::DT_FLOAT8_E8M0) {
-            // Tensor API is the preferred candidate for MX quant. Unsupported cases fall back to template 2.
+        } else if (xScaleDtype == ge::DT_FLOAT8_E8M0 && weightFormat == ge::FORMAT_ND) {
+            // Tensor API is preferred for MX quant with ND weight. Unsupported cases fall back to template 2.
             registerList = {GMMSQ_TENSOR_API_TILING_TEMPLATE, GMMSQ_950_TILING_TEMPLATE};
             OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc",
                     "Using Tensor API tiling first and falling back to the original MX tiling");
