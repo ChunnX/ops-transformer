@@ -554,20 +554,20 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm2(
             MatmulFull<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
                 mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
     } else {
-    if constexpr ((uint32_t)dVTemplateType > 128) {
-    MatmulN<INPUT_T, INPUT_T, T, (uint32_t)s1TemplateType, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
-        mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
-    } else {
-    if constexpr (s2BaseSize == 128) {
-    MatmulFull<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
-        mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(),
-    param);
-    } else {
-    MatmulBase<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
-        mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(),
-    param);
-    }
-    }
+        if constexpr ((uint32_t)dVTemplateType > 128) {
+        MatmulN<INPUT_T, INPUT_T, T, (uint32_t)s1TemplateType, 128, s2BaseSize, ABLayout::MK, ABLayout::KN>(
+            mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), param);
+        } else {
+            if constexpr (s2BaseSize == 128) {
+            MatmulFull<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
+                mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(),
+                param);
+            } else {
+            MatmulBase<INPUT_T, INPUT_T, T, 128, (uint32_t)dVTemplateType, 128, ABLayout::MK, ABLayout::KN>(
+                mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(),
+                param);
+            }
+        }
     }
     mm2B.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
     mm2ResL0C.Set<HardEvent::M_FIX>();  // 通知
@@ -1013,9 +1013,9 @@ FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm1Nd(Buffer<BufferType::UB, Syn
     };
     MatmulBase<INPUT_T, INPUT_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
         mm1A.GetTensor<INPUT_T>(), mm1B.GetTensor<INPUT_T>(), mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(),
-    param);
+        param);
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
-    mm1A.Set<HardEvent::MTE1_MTE2>(); // 释放L1A
+        mm1A.Set<HardEvent::MTE1_MTE2>(); // 释放L1A
     }
     mm1B.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
     mm1ResL0C.Set<HardEvent::M_FIX>();  // 通知
