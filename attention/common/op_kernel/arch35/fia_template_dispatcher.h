@@ -17,8 +17,13 @@
 #define FIA_TEMPLATE_DISPATCHER_H
 
 #include "fia_kernel_noquant_gqa.h"
-#include "fia_kernel_fullquant_mx.h"
-#include "fia_kernel_fullquant_gqa.h"
+#if __has_include("../../../fused_infer_attention_score/op_kernel/arch35/fia_kernel_fullquant_mx.h")
+#include "../../../fused_infer_attention_score/op_kernel/arch35/fia_kernel_fullquant_mx.h"
+#include "../../../fused_infer_attention_score/op_kernel/arch35/fia_kernel_fullquant_gqa.h"
+#else
+#include "../../../fused_infer_attention_score_apt/op_kernel/arch35/fia_kernel_fullquant_mx.h"
+#include "../../../fused_infer_attention_score_apt/op_kernel/arch35/fia_kernel_fullquant_gqa.h"
+#endif
 
 template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint16_t config, bool hasAttenMask,
           uint8_t KvLayoutType, bool isFd, bool emptyTensor, bool enableS1OutSplit>

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_kernel_infer_mla_fullquant.h
@@ -16,10 +16,10 @@
 #ifndef FLASH_ATTENTION_SCORE_KERNEL_INFER_MLA_FULLQUANT_H_
 #define FLASH_ATTENTION_SCORE_KERNEL_INFER_MLA_FULLQUANT_H_
 #include "flash_attention_score_kernel_base_fullquant.h"
-#include "vf/vf_flash_decode.h"
-#include "infer_flash_attention_comm.h"
-#include "infer_flash_attention_kvcache.h"
-#include "infer_flash_attention_sparse.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_kvcache.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_sparse.h"
 
 namespace BaseApi {
 template <typename CubeBlockType, typename VecBlockType>
@@ -35,7 +35,8 @@ public:
                                                CubeBlockType, VecBlockType>;
 
     __aicore__ inline void InitUniqueConstInfo();
-    __aicore__ inline void InitUniqueRunInfo(const RunParamStr<isInfer> &runParam, RunInfo<isInfer> &runInfo);
+    __aicore__ inline void InitUniqueRunInfo(const RunParamStr<isInfer> &runParam,
+    regbaseutil::RunInfo<isInfer> &runInfo);
     __aicore__ inline void Process();
     __aicore__ inline void ProcessMainLoop();
 
@@ -88,13 +89,12 @@ __aicore__ inline void FlashAttentionScoreKernelInferMlaFullquant<CubeBlockType,
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelInferMlaFullquant<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
-    const RunParamStr<isInfer> &runParam, RunInfo<isInfer> &runInfo)
+    const RunParamStr<isInfer> &runParam, regbaseutil::RunInfo<isInfer> &runInfo)
 {
     InitTaskParamByRun<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParam, runInfo);
     ComputeOffset<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(
-        runParam, this->constInfo, runInfo.s2LoopCount + runInfo.s2StartIdx / this->constInfo.s2BaseSize, runInfo);
+    runParam, this->constInfo, runInfo.s2LoopCount + runInfo.s2StartIdx / this->constInfo.s2BaseSize, runInfo);
 }
-
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelInferMlaFullquant<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
@@ -133,7 +133,7 @@ __aicore__ inline void FlashAttentionScoreKernelInferMlaFullquant<CubeBlockType,
     int64_t taskIdx = 0; // 任务Id
     bool notLast = true;
     bool isLastBmm1 = false;
-    RunInfo<isInfer> runInfo[4];
+    regbaseutil::RunInfo<isInfer> runInfo[4];
     RunParamStr<isInfer> runParam;
     if constexpr (isFd) {
         runParam.n2oIdx = (this->aicIdx / this->constInfo.splitKVNum) % this->constInfo.n2Size;
@@ -211,7 +211,7 @@ __aicore__ inline void FlashAttentionScoreKernelInferMlaFullquant<CubeBlockType,
 
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                 if (notLastThreeLoops) {
-                    RunInfo<isInfer> &runInfo1 = runInfo[taskIdx & 3];
+                    regbaseutil::RunInfo<isInfer> &runInfo1 = runInfo[taskIdx & 3];
                     this->SetRunInfo(runInfo1, runParam, taskIdx, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
                     if ASCEND_IS_AIC {
                         this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo1, this->constInfo);
@@ -226,7 +226,7 @@ __aicore__ inline void FlashAttentionScoreKernelInferMlaFullquant<CubeBlockType,
                 }
                 if (taskIdx > 1 && notLast) {
                     if ASCEND_IS_AIC {
-                        RunInfo<isInfer> &runInfo2 = runInfo[(taskIdx + 2) & 3];
+                        regbaseutil::RunInfo<isInfer> &runInfo2 = runInfo[(taskIdx + 2) & 3];
                         if constexpr (BaseClass::bmm2Write2Ub) {
                             this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo2,
                                                         this->constInfo);
@@ -238,7 +238,7 @@ __aicore__ inline void FlashAttentionScoreKernelInferMlaFullquant<CubeBlockType,
                 }
                 if (taskIdx > 2) {
                     if ASCEND_IS_AIV {
-                        RunInfo<isInfer> &runInfo3 = runInfo[(taskIdx + 1) & 3];
+                        regbaseutil::RunInfo<isInfer> &runInfo3 = runInfo[(taskIdx + 1) & 3];
                         if constexpr (BaseClass::bmm2Write2Ub) {
                             this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
                         } else {

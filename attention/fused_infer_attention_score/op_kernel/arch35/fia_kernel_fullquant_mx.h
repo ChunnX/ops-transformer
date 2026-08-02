@@ -6,20 +6,20 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ */
 
 /*!
- * \file fia_kernel_fullquant_qga.h
+ * \file fia_kernel_fullquant_mx.h
  * \brief
  */
 
-#ifndef FIA_KERNEL_FULLQUANT_GQA_H_
-#define FIA_KERNEL_FULLQUANT_GQA_H_
+#ifndef FIA_KERNEL_FULLQUANT_MX_H_
+#define FIA_KERNEL_FULLQUANT_MX_H_
 
-#include "fia_public_define_arch35.h"
-#include "fia_block_cube_fullquant_gqa.h"
-#include "fia_block_vec_fullquant_gqa.h"
-#include "../memory_copy_arch35.h"
+#include "../../../common/op_kernel/arch35/fia_public_define_arch35.h"
+#include "fia_block_cube_fullquant_mx.h"
+#include "fia_block_vec_fullquant_mx.h"
+#include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "fia_block_vec_flashdecode_fullquant.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -37,7 +37,7 @@ using namespace regbaseutil;
 
 namespace BaseApi {
 template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
-class FlashAttentionFullQuantGqaKernel {
+class FlashAttentionFullQuantMxKernel {
 public:
     static constexpr uint32_t mBaseSize = CubeBlockType::mBaseSize;
     static constexpr uint32_t s2BaseSize = CubeBlockType::s2BaseSize;
@@ -107,15 +107,16 @@ public:
     ActualSeqLensParser<KV_MODE> kvActSeqLensParser;
 
     // ==============================fuction=======================================================
-    __aicore__ inline FlashAttentionFullQuantGqaKernel()
+    __aicore__ inline FlashAttentionFullQuantMxKernel()
         : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
-                                __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
-                                __gm__ uint8_t *blockTable, __gm__ uint8_t *dequantScaleQuery,
-                                __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue,
-                                __gm__ uint8_t *pScale, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-                                __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
-                                __gm__ uint8_t *fiaMetaData, const FullQuantTiling *__restrict tiling, TPipe *tPipe)
+                                __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,
+                                __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable,
+                                __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey,
+                                __gm__ uint8_t *dequantScaleValue, __gm__ uint8_t *pScale, __gm__ uint8_t *queryRope,
+                                __gm__ uint8_t *keyRope, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
+                                __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
+                                const FullQuantTiling *__restrict tiling, TPipe *tPipe)
     {
         this->pipe = tPipe;
         this->tilingData = tiling;
@@ -137,14 +138,15 @@ public:
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {
-            vecFaBlock.InitVecBlock(tPipe, actualSeqLengths, actualSeqLengthsKv, pScale, blockTable, dequantScaleQuery,
-                                    dequantScaleKey, dequantScaleValue, softmaxLse, attentionOut, workspace);
+            vecFaBlock.InitVecBlock(tPipe, actualSeqLengths, actualSeqLengthsKv, pScale, attenMask, softmaxLse,
+                                    attentionOut, workspace);
             vecFaBlock.ClearOutput();
         }
 
         if ASCEND_IS_AIC {
             cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope,
-                                    actualSeqLengths, actualSeqLengthsKv);
+                                    actualSeqLengths, actualSeqLengthsKv, dequantScaleQuery, dequantScaleKey,
+                                    dequantScaleValue);
         }
         if constexpr (FLASH_DECODE) {
             if ASCEND_IS_AIV {
@@ -165,9 +167,9 @@ public:
     {
         uint32_t mm1OutDtype = sizeof(T);
 
-        uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype;
+        uint32_t mm1ResultSize = mBaseSize / CV_RATIO * s2BaseSize * mm1OutDtype / 2;
         constexpr uint32_t mm2ResultSize = mBaseSize / CV_RATIO * dVBaseSize * sizeof(T);
-        constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T);
+        constexpr uint32_t mm2LeftSize = mBaseSize * s2BaseSize * sizeof(INPUT_T) + mBaseSize * s2BaseSize / 32;
         l1BufferManager.Init(pipe, 524288); // 512 * 1024
         // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
         // TODO，共享buffer初始化放到block层
@@ -226,13 +228,15 @@ public:
         }
         if constexpr (HAS_ROPE) {
             constInfo.dSizeRope = fiaBaseParams.dSizeRope;
+            constInfo.kRopeStrides.bnStride = fiaBaseParams.kRopeStrides.bnStride;
+            constInfo.kRopeStrides.n2Stride = fiaBaseParams.kRopeStrides.n2Stride;
         } else {
             constInfo.dSizeRope = 0;
         }
         constInfo.actualSeqLenSize = fiaBaseParams.actualSeqLengthsQSize;
         constInfo.actualSeqLenKVSize = fiaBaseParams.actualSeqLengthsKVSize;
         constInfo.scaleValue = static_cast<float>(fiaBaseParams.scaleValue);
-        constInfo.isKvContinuous = fiaBaseParams.isKvContinuous != 0;
+        constInfo.isKvContinuous = true; // 不支持tensorlist
         constInfo.coreNum = fiaBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FIA_LAYOUT>(fiaBaseParams.outputLayout);
         // constInfo.strides从fiaBaseParams赋值
@@ -277,7 +281,6 @@ public:
         constInfo.s2OEnd = fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_S2_END_INDEX));
         constInfo.coreFirstTmpOutWsPos =
             fiaMetaDataGm.GetValue(GetFAMetaDataIndex(constInfo.aicIdx, FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX));
-
         constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
     }
 
@@ -387,11 +390,7 @@ public:
         uint32_t bIdx = bN2Cur / constInfo.realN2Size;
         if (isFirstTask || prevBIdx != bIdx) {
             prevBIdx = bIdx;
-            if (constInfo.actualSeqLenKVSize == 0 && !constInfo.isKvContinuous) {
-                actSeqLensKv = SeqLenFromTensorList<LAYOUT_KV>(keyPtr, bIdx);
-            } else {
-                actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
-            }
+            actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
             actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
         }
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
@@ -415,6 +414,12 @@ public:
             prevGS1Idx = gS1Cur;
         }
 
+        // S2有效块区间为[curS2Start, curS2End), s2Cur尚未到达有效区间且该行有有效块,
+        // 需快进到curS2Start继续计算, 不能跳行 (BAND等sparse模式curS2Start常>0)
+        if (s2Cur < curS2Start && curS2Start < curS2End) {
+            return TASK_DEAL_MODE::NOT_START;
+        }
+        // 该行无有效块(curS2Start>=curS2End)或s2Cur已越过有效区间, 跳过当前行
         if (s2Cur < curS2Start || s2Cur >= curS2End) {
             return TASK_DEAL_MODE::SKIP_REMAINING_S2;
         }
@@ -530,10 +535,13 @@ public:
         RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务
         RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
         if (runInfo0.isValid) {
-            if ASCEND_IS_AIC {
-                ComputeMm1(runInfo0);
-            } else {
-                ComputeVec1(runInfo0);
+            uint32_t c1v1Loop = CeilDiv(runInfo0.actSingleLoopS2Size, 256);
+            for (uint32_t subLoop = 0; subLoop < c1v1Loop; ++subLoop) {
+                if ASCEND_IS_AIC {
+                    ComputeMm1(runInfo0, subLoop);
+                } else {
+                    ComputeVec1(runInfo0, subLoop);
+                }
             }
         }
 
@@ -549,9 +557,9 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
+    __aicore__ inline void ComputeMm1(RunInfoX &runInfo, uint32_t subLoop)
     {
-        cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo);
+        cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo, subLoop);
     }
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
@@ -563,9 +571,13 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
+    __aicore__ inline void ComputeVec1(RunInfoX &runInfo, uint32_t subLoop)
     {
-        vecFaBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo);
+        if (subLoop % 2 == 0) {
+            vecFaBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo, subLoop);
+        } else {
+            vecFaBlock.ProcessVec1(this->l1PBuffers.GetPre(), this->bmm1Buffers.Get(), runInfo, subLoop);
+        }
     }
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
@@ -617,16 +629,7 @@ public:
         info.actSingleLoopS2SizeAlign =
             AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
 
-        if (constInfo.isKvContinuous) {
-            info.isChangeBatch = false;
-        } else {
-            // for tensor-list
-            if (loop == 0) { // 第一个有效任务才需要重置KV的tensor
-                info.isChangeBatch = true;
-            } else {
-                info.isChangeBatch = (info.n2Idx == 0 && s2Cur == curS2Start);
-            }
-        }
+        info.isChangeBatch = false;
 
         GetPreNextTokenLeftUp(actSeqLensQ, actSeqLensKv, info.preTokensLeftUp, info.nextTokensLeftUp);
 
@@ -643,11 +646,12 @@ public:
             info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
             info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
         } else {
+            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
             info.actVecMSize = (info.actMSize + 1) >> 1;
         }
         info.vecMbaseIdx = 0;
         if (constInfo.subBlockIdx == 1) {
-            info.vecMbaseIdx = info.actVecMSize;
+            info.vecMbaseIdx = USE_DN ? info.actVecMSize : (info.actMSizeAlign32 >> 1);
             info.actVecMSize = info.actMSize - info.actVecMSize;
         }
 
@@ -672,6 +676,11 @@ public:
         uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
         uint64_t gS1Size = actSeqLensQ * constInfo.realGSize;
         uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+        // 尚未到达有效区间, 快进s2Cur到curS2Start, 不跳行
+        if (taskDealMode == TASK_DEAL_MODE::NOT_START) {
+            s2Cur = curS2Start;
+            return;
+        }
         if (taskDealMode != TASK_DEAL_MODE::SKIP_REMAINING_S2) {
             // 当前S2未处理完
             if (s2Cur + 1 < s2LoopTimes) {
@@ -738,8 +747,8 @@ public:
             }
         }
     }
-}; // FlashAttentionFullQuantGqaKernel
+}; // FlashAttentionFullQuantMxKernel
 
 } // namespace BaseApi
 
-#endif // FIA_KERNEL_FULLQUANT_GQA_H_
+#endif // FIA_KERNEL_FULLQUANT_MX_H_

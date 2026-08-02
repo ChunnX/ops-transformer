@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_kernel_base_fullquant.h
@@ -15,28 +15,28 @@
 
 #ifndef FLASH_ATTENTION_SCORE_KERNEL_BASE_FULLQUANT_H_
 #define FLASH_ATTENTION_SCORE_KERNEL_BASE_FULLQUANT_H_
-#include "flash_attention_score_block_vec_train.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_block_vec_train.h"
 #include "flash_attention_score_block_cube_mla_fullquant.h"
 #include "flash_attention_score_block_vec_infer_mla_fullquant.h"
 #include "flash_attention_score_block_cube_gqa_fullquant.h"
 #include "flash_attention_score_block_vec_infer_gqa_fullquant.h"
 #include "flash_attention_score_block_cube_mx_fullquant.h"
 #include "flash_attention_score_block_vec_infer_mx_fullquant.h"
-#include "flash_attention_score_common_regbase.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
 #include "kernel_operator.h"
 #endif
-#include "attenmask.h"
+#include "../../../common/op_kernel/arch35/attenmask.h"
 
 // 线上编包
-#include "../matmul.h"
-#include "../FixpipeOut.h"
-#include "../CopyInL1.h"
+#include "../../../common/op_kernel/matmul.h"
+#include "../../../common/op_kernel/FixpipeOut.h"
+#include "../../../common/op_kernel/CopyInL1.h"
 
-#include "pse.h"
-#include "infer_flash_attention_comm.h"
+#include "../../../common/op_kernel/arch35/pse.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "adv_api/utils/init_global_memory.h"
 
@@ -66,38 +66,39 @@ public:
 
     __aicore__ inline void
     InitBaseAPI(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
-                __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask,
-                __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
-                __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-                __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
-                __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *keySharedPrefix,
-                __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope,
-                __gm__ uint8_t *keyRope, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxMax,
-                __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut, __gm__ uint8_t *softmaxLse,
-                __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
-                const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe);
+    __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask,
+    __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
+    __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+    __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
+    __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *keySharedPrefix,
+    __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope,
+    __gm__ uint8_t *keyRope, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxMax,
+    __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut, __gm__ uint8_t *softmaxLse,
+    __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+    const FlashAttentionScoreSimplifiedTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
     __aicore__ inline void GetExtremeValue(T &negativeScalar, T &positiveScalar);
     __aicore__ inline void
     InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
-                     __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask,
-                     __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
-                     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
-                     __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
-                     __gm__ uint8_t *queryRope, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
-                     __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *keyRope, __gm__ uint8_t *blockTable,
-                     __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *learnableSink,
-                     __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut,
-                     __gm__ uint8_t *workspace, const FlashAttentionScoreSimplifiedTilingData *__restrict tiling,
-                     TPipe *tPipe);
+    __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask,
+    __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
+    __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
+    __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
+    __gm__ uint8_t *queryRope, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
+    __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *keyRope, __gm__ uint8_t *blockTable,
+    __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *learnableSink,
+    __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut,
+    __gm__ uint8_t *workspace, const FlashAttentionScoreSimplifiedTilingData *__restrict tiling,
+    TPipe *tPipe);
     __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void InitMMResBuf();
     __aicore__ inline void InitActualKVPrefixLen(__gm__ uint8_t *actualSharedPrefixLen);
     __aicore__ inline void ComputeConstexpr();
-    __aicore__ inline void SetRunInfo(RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, int64_t taskId,
-                                      int64_t s2LoopCount, int64_t s2LoopLimit, int64_t multiCoreInnerIdx);
+    __aicore__ inline void SetRunInfo(regbaseutil::RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam,
+    int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit,
+    int64_t multiCoreInnerIdx);
     __aicore__ inline void ComputeAxisIdx(int64_t multiCoreInnerIdx, RunParamStr<isInfer> &runParam);
-    __aicore__ inline void ComputeBmm1Tail(RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam);
+    __aicore__ inline void ComputeBmm1Tail(regbaseutil::RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam);
     __aicore__ inline void GetSeqQlenKvlenByBoidx(int64_t boIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvLen);
 
     __aicore__ inline ChildClass *GetDerived()
@@ -115,7 +116,7 @@ public:
     static constexpr bool isMxfp8FullQuant = s1BaseSize == 128 && s2BaseSize == 512;
     /* 是否使能dn的信息; 没有可选输入并且S2切分的时候使用dn，s2比较小的时候nd效果更好 */
     static constexpr bool useDn = CubeBlockType::useDn;
-    /* HIFLOAT8场景 softmax计算使用Nz格式计算，vec1ResBuffer可以和bmm1ResBuffer进行复用*/
+    /* HIFLOAT8场景 softmax计算使用Nz格式计算，vec1ResBuffer可以和bmm1ResBuffer进行复用 */
     static constexpr bool useNz = CubeBlockType::useNz;
     static constexpr TPosition bmm2OutPos = CubeBlockType::bmm2OutPos;
     static constexpr bool bmm2Write2Ub = CubeBlockType::bmm2Write2Ub;
@@ -146,7 +147,7 @@ public:
     int32_t aicIdx;
 
     /* 初始化后不变的信息 */
-    ConstInfo<isInfer, hasRope> constInfo;
+    regbaseutil::ConstInfo<isInfer, hasRope> constInfo;
     AttenMaskInfo attenMaskInfo;
     PseInfo pseInfo;
     /* 其他正向独有的一些信息 */
@@ -618,8 +619,8 @@ __aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBl
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::SetRunInfo(
-    RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit,
-    int64_t multiCoreInnerIdx)
+    regbaseutil::RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, int64_t taskId, int64_t s2LoopCount,
+    int64_t s2LoopLimit, int64_t multiCoreInnerIdx)
 {
     runInfo.s2StartIdx = runParam.s2LineStartIdx;
     runInfo.s2EndIdx = runParam.s2LineEndIdx;
@@ -664,7 +665,7 @@ __aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBl
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::ComputeBmm1Tail(
-    RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam)
+    regbaseutil::RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam)
 {
     // ------------------------S1 Base Related---------------------------
     runInfo.s1RealSize = runParam.s1RealSize;
