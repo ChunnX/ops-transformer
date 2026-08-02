@@ -20,7 +20,6 @@
 #include <algorithm>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
-
 #include "../../../common/op_host/fia_tiling_templates_registry.h"
 #include "../../../common/op_host/split_core_v2.h"
 #include "../fused_infer_attention_score_tiling_utils.h"
