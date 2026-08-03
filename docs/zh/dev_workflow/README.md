@@ -22,6 +22,11 @@
 | 7 | 远端 | [运行、调试与采集](07_remote_run_and_profile.md) | 重复运行并保留可追溯结果 |
 | 8 | 本地 | [下载与分析结果](08_download_results.md) | 拉回日志和 profiling 数据 |
 | 9 | 两端 | [常见问题](09_troubleshooting.md) | 处理版本、动态库和 Git 问题 |
+| 10 | 远端 | [一键执行脚本](10_remote_script.md) | 在无 AI Agent 的 NPU 服务器上执行固定流程 |
+
+## 无 AI Agent 远端服务器
+
+远端服务器不需要 AI coding 能力。本地完成源码和脚本修改后推送到 GitCode；远端只负责拉取和执行。人工流程稳定后，优先使用 `scripts/dev_workflow/remote_operator.sh`，命令说明见 [远端一键执行脚本](10_remote_script.md)。
 
 ## 统一参数
 
