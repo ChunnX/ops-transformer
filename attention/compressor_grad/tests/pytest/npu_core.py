@@ -28,7 +28,7 @@ try:
 except ImportError:
     _HAS_TORCH_NPU = False
 
-from cann_ops_transformer.ops.compressor import compressor, _compressor_forward
+from cann_ops_transformer.ops.compressor import _compressor_forward
 
 
 class NPUBackend:
@@ -126,35 +126,15 @@ class NPUBackend:
         wkv.requires_grad_(True)
         wgate.requires_grad_(True)
         ape.requires_grad_(True)
-
-        # 保存 state_cache 初始副本，供 no_grad 前向使用(auto_grad 前向会写入 state_cache)
-        state_cache_init = state_cache.clone()
-
-        # 调用 compressor 公共函数 (只返回 cmp_kv)
-        cmp_kv = self._forward(
-            x=x, wkv=wkv, wgate=wgate,
-            state_cache=state_cache, w_pos_embd=ape,
+       
+        cmp_kv, softmax_score, kv = _compressor_forward(
+            x, wkv, wgate, state_cache, ape,
             state_block_table=block_table,
             cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos,
             cmp_ratio=cmp_ratio, coff=coff, cache_mode=cache_mode,
+            grad_enabled=False
         )
         torch.npu.synchronize()
-
-        # 使用 no_grad 执行一次前向计算，获取 softmax_score/kv 供反向 cpu_golden使用
-        # 输入用 detach 副本(数据与 autograd 路径相同), state_cache 用初始副本
-        with torch.no_grad():
-            x_ref = x.detach().clone()
-            wkv_ref = wkv.detach().clone()
-            wgate_ref = wgate.detach().clone()
-            ape_ref = ape.detach().clone()
-            _, softmax_score_ref, kv_ref = _compressor_forward(
-                x_ref, wkv_ref, wgate_ref, state_cache_init, ape_ref,
-                state_block_table=block_table,
-                cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos,
-                cmp_ratio=cmp_ratio, coff=coff, cache_mode=cache_mode,
-                grad_enabled=False
-            )
-            torch.npu.synchronize()
 
         # 用上游梯度 d_cpm_kv 构造 loss → backward 自动调用 compressor_grad
         loss = (cmp_kv * d_cpm_kv).sum()
@@ -181,28 +161,6 @@ class NPUBackend:
             "d_wgate": d_wgate,
             "d_ape": d_ape,
             "cmp_kv": cmp_kv.detach(),
-            "softmax_score": softmax_score_ref,
-            "kv": kv_ref,
+            "softmax_score": softmax_score.detach(),
+            "kv": kv.detach(),
         }
-
-    def _forward(self, x, wkv, wgate, state_cache, w_pos_embd,
-                 state_block_table=None, cu_seqlens=None, seqused=None,
-                 start_pos=None, cmp_ratio=4, coff=1, cache_mode=1):
-        """前向通路: 调用 torch_extension 版 compressor 公共入口。
-
-        torch_extension/cann_ops_transformer/ops/compressor.py:196-228
-        定义 compressor() 包装 _compressor_forward，后者返回 (cmp_kv, softmax, kv)，
-        并注册 autograd SetupContext → backward 中自动调用 CompressorBwd。
-        """
-
-        cmp_kv = compressor(
-            x, wkv, wgate, state_cache, w_pos_embd,
-            cmp_ratio=cmp_ratio,
-            state_block_table=state_block_table,
-            cu_seqlens=cu_seqlens,
-            seqused=seqused,
-            start_pos=start_pos,
-            coff=coff,
-            cache_mode=cache_mode,
-        )
-        return cmp_kv
