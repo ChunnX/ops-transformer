@@ -842,6 +842,47 @@ class TestBSAMxfp4Golden(TestCase):
         self._run(b=56, n1=8, n2=8, g=1, s1=512, s2=512, qk_d=128,
                   block_shape=[128, 128], mask_kind='dense')
 
+    # =====================================================================
+    # S1<128 回归系列: 验证 Q(M) 方向全链路 pad 128 的 QFA 对齐修复
+    #   (原实现 Fixpipe nSize=m 在 S1<128 时违反 32B 倍数约束, 结果全错)
+    # =====================================================================
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs1_kvs128_d128(self, device="npu"):
+        """② S1=1 decode 单行 Q, 单 kv tile (最小回归, 修复前必挂)。"""
+        self._run(b=1, n1=1, n2=1, g=1, s1=1, s2=128, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs1_kvs512_d128(self, device="npu"):
+        """② S1=1 多 kv tile (4 tile, 跨 tile Q 复用 + pad)。"""
+        self._run(b=1, n1=1, n2=1, g=1, s1=1, s2=512, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs1_kvs2048_d128(self, device="npu"):
+        """② S1=1 长 KV (16 tile, online softmax rescale 路径)。"""
+        self._run(b=1, n1=1, n2=1, g=1, s1=1, s2=2048, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_sparse_b1_qn1_kvn1_g1_qs1_kvs1024_d128(self, device="npu"):
+        """② S1=1 + sparse mask (稀疏 gather + Q pad 叠加路径)。"""
+        self._run(b=1, n1=1, n2=1, g=1, s1=1, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs15_kvs256_d128(self, device="npu"):
+        """② S1=15 (m 非 16 倍数, Q pad + Nd2Nz 非满 fractal 行数)。"""
+        self._run(b=1, n1=1, n2=1, g=1, s1=15, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs127_kvs255_d128(self, device="npu"):
+        """② S1=127 + s2=255 (Q 尾块; K 尾 tile 127 行, 127%64!=0,
+           验证 K->L0A srcStride=CeilAlign(n,16)/16 与实际 zN 画布一致)。"""
+        self._run(b=1, n1=1, n2=1, g=1, s1=127, s2=255, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense')
+
 
 if __name__ == "__main__":
     run_tests()
