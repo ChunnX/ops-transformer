@@ -10,7 +10,7 @@ import random
 import torch
 import torch_npu
 import torchair
-from cann_ops_transformer.ops import compressor_grad
+from cann_ops_transformer.ops.compressor_grad import compressor_grad
 import numpy as np
 import torch.nn as nn
 from torch_npu.testing.testcase import TestCase, run_tests
