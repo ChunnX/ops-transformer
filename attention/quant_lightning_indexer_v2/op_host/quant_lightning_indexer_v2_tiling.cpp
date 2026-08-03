@@ -1266,13 +1266,15 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
             expectedStrides = {shape.GetDim(1) * shape.GetDim(2), shape.GetDim(2), 1};
         }
         for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
-            keyReportAxis = static_cast<uint32_t>(i);
-            if (i < keyStridesVec_.size()) {
+            if (i >= keyStridesVec_.size()) {
+                continue;
+            }
+            if (keyStridesVec_[i] != expectedStrides[i]) {
+                keyNonContiguous = true;
+                keyReportAxis = static_cast<uint32_t>(i);
                 keyReportActual = keyStridesVec_[i];
                 keyReportExpected = expectedStrides[i];
-                if (keyStridesVec_[i] != expectedStrides[i]) {
-                    keyNonContiguous = true;
-                }
+                break;
             }
         }
     }
@@ -1298,13 +1300,15 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
             }
         }
         for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
-            scaleReportAxis = static_cast<uint32_t>(i);
-            if (i < keyDequantScaleStridesVec_.size()) {
+            if (i >= keyDequantScaleStridesVec_.size()) {
+                continue;
+            }
+            if (keyDequantScaleStridesVec_[i] != expectedStrides[i]) {
+                scaleNonContiguous = true;
+                scaleReportAxis = static_cast<uint32_t>(i);
                 scaleReportActual = keyDequantScaleStridesVec_[i];
                 scaleReportExpected = expectedStrides[i];
-                if (keyDequantScaleStridesVec_[i] != expectedStrides[i]) {
-                    scaleNonContiguous = true;
-                }
+                break;
             }
         }
     }
@@ -1335,18 +1339,11 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
                 return ge::GRAPH_FAILED);
         }
     }
-    OP_CHECK_IF(
-        keyNonContiguous || scaleNonContiguous,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "keyNonContiguous and scaleNonContiguous",
-                                              std::string(keyNonContiguous ? "true" : "false") + " and " +
-                                                  std::string(scaleNonContiguous ? "true" : "false") +
-                                                  ", key stride[" + std::to_string(keyReportAxis) + "]=" +
-                                                  std::to_string(keyReportActual) + " != expected=" +
-                                                  std::to_string(keyReportExpected) + ", keyscale stride[" +
-                                                  std::to_string(scaleReportAxis) + "]=" +
-                                                  std::to_string(scaleReportActual) + " != expected=" +
-                                                  std::to_string(scaleReportExpected),
-                                              "key and keyscale only support non-continuous keying on the 0-axis"),
+    OP_CHECK_IF(keyNonContiguous || scaleNonContiguous,
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "key and key_dequant_scale",
+            Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()) + " and " +
+            Ops::Base::ToString(opParamInfo_.key_dequant_scale.shape->GetStorageShape()),
+            "key and keyscale only support non-continuous keying on the 0-axis"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
