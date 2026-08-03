@@ -76,8 +76,6 @@ elseif(EXISTS "${CANN_3RD_LIB_PATH}/ops-tensor")
 else()
   set(OPTENSOR_GIT_URL "git@gitcode.com:jayshu/ops-tensor.git")
   set(OPTENSOR_FALLBACK_GIT_URL "https://gitcode.com/jayshu/ops-tensor.git")
-  # set(OPTENSOR_GIT_URL "git@gitcode.com:AlbertYoung192/ops-tensor__gmm_swiglu_mxfp8ND.git")
-  # set(OPTENSOR_FALLBACK_GIT_URL "https://gitcode.com/AlbertYoung192/ops-tensor__gmm_swiglu_mxfp8ND.git")
 
   execute_process(
     COMMAND git ls-remote ${OPTENSOR_GIT_URL} HEAD
