@@ -58,22 +58,20 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheRegbaseTiling::CalUbTiling()
     // UB 只切 token 维：N*D 单 token 最大 20*128*4B=10KB，一定放得下，不需要再切 N/D。
     // 计算与写出逐 token，所以计算区与 ubFactor 无关；只有三个 DMA 队列随 ubFactor 变化。
     // 各 buffer 的含义与公式见 tiling.h 的 "UB 划分" 注释，kernel 侧必须保持一致。
-    const int64_t headNumQK = numHeadQ_ + numHeadK_; // V 不参与 RMSNorm/RoPE
     const int64_t halfDim = headDim_ / DIM_NUM_TWO;
 
+    // RMSNorm + MRoPE 融合在 VF 里做，fp32 的 x、合并后的 cos/sin、RoPE 交叉项全部留在 vreg，
+    // 计算区只剩 4 份 gamma 的 float 版本和 gather 索引两块小 buffer。
     const int64_t residentBytes =
-        WEIGHT_NUM * headDim_ * BF16_BYTES +                                    // wBf16Buf
-        WEIGHT_VARIANT_NUM * headNumQK * headDim_ * FLOAT32_BYTES +             // wExpandBuf(und/gen)
-        headNumQK * headDim_ * FLOAT32_BYTES +                                  // cosSinExpandBuf
-        headNumQK * halfDim * FLOAT32_BYTES +                                   // ropeTmpBuf
-        numHead_ * headDim_ * FLOAT32_BYTES +                                   // qkvFp32Buf（单 token）
-        REDUCE_TMP_BYTES +                                                      // reduceTmpBuf
-        Ops::Base::CeilAlign(headNumQK * FLOAT32_BYTES, BLOCK_ALIGN_BYTES);     // rmsInvBuf
+        WEIGHT_NUM * headDim_ * BF16_BYTES +                                       // wBf16Buf
+        WEIGHT_NUM * headDim_ * FLOAT32_BYTES +                                    // wFp32Buf
+        Ops::Base::CeilAlign(halfDim * UINT32_BYTES, BLOCK_ALIGN_BYTES);           // gatherIdxBuf
 
     const int64_t perTokenBytes =
         DOUBLE_BUFFER * numHead_ * headDim_ * BF16_BYTES +                      // qkvInQue
         DOUBLE_BUFFER * MROPE_AXIS_NUM * headDim_ * FLOAT32_BYTES +             // cosSinInQue
-        DOUBLE_BUFFER * numHead_ * headDim_ * BF16_BYTES;                       // outQue
+        DOUBLE_BUFFER * numHead_ * headDim_ * BF16_BYTES +                      // outQue
+        GAMMA_TILE_NUM * headDim_ * FLOAT32_BYTES;                              // gammaTileBuf(Q/K，单 buffer)
 
     OP_CHECK_IF(residentBytes + perTokenBytes > ubSize_,
                 OP_LOGE(context_->GetNodeName(),
