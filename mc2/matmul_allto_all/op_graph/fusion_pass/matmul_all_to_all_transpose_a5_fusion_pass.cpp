@@ -17,6 +17,7 @@
 #include "mc2_platform_info.h"
 #include "mc2_common_log.h"
 #include "ge/ge_utils.h"
+#include <memory>
 #include <dlfcn.h>      // dlopen 动态加载
 #include "acl/acl_rt.h" // 运行时判断cann ver
 
@@ -52,6 +53,8 @@ struct ReplaceGraphInputs {
 namespace {
 typedef EsCTensorHolder *(*EsTransposeFunc)(EsCTensorHolder *, EsCTensorHolder *);
 
+static std::unique_ptr<void, int (*)(void *)> g_esTransposeHandle(nullptr, dlclose);
+
 EsTransposeFunc GetEsTransposeFunc()
 {
     void *handle = dlopen("libes_math.so", RTLD_LAZY | RTLD_GLOBAL);
@@ -59,10 +62,12 @@ EsTransposeFunc GetEsTransposeFunc()
         OPS_LOG_E("MatmulAllToAllTransposeA5FusionPass", "dlopen failed: %s", dlerror());
         return nullptr;
     }
+    g_esTransposeHandle.reset(handle);
     dlerror();
     auto func = reinterpret_cast<EsTransposeFunc>(dlsym(handle, "EsTranspose"));
     if (dlerror() != nullptr) {
         OPS_LOG_E("MatmulAllToAllTransposeA5FusionPass", "dlsym EsTranspose failed");
+        g_esTransposeHandle.reset();
         return nullptr;
     }
     return func;
