@@ -547,6 +547,8 @@ class MoeDistributeBuffer:
         scale_expand_index_buffer = 44  # scale 32B + 3 * 4 expand_idx
         full_mesh_data_align = 480
         win_addr_align = 512
+        ep_rank_offset_step = 8192
+        reserve_buffer_size = 5  # 5 MB reserved for HCCL
 
         comm_alg_support_list = ["fullmesh_v1", "fullmesh_v2", ""]
         torch._check(
@@ -571,7 +573,8 @@ class MoeDistributeBuffer:
         token_need_size_combine = inline_align(
             hidden * max_out_dtype_size, win_addr_align
         )
-        minimum_buffer_size = (
+        ep_rank_offset = world_size * ep_rank_offset_step
+        actual_buffer_size = (
             2
             * (
                 (
@@ -586,14 +589,12 @@ class MoeDistributeBuffer:
                     * (topk + num_shared_expert)
                 )
             )
-            + mb_conversion
+            + ep_rank_offset
         )
-        ## hccl按照2*bufferSize大小开设
+        # HCCL allocates twice the configured buffer size.
         ccl_buffer_size = (
-            inline_align(
-                inline_align(minimum_buffer_size, mb_conversion) // mb_conversion, 2
-            )
-            // 2
+            (actual_buffer_size + 2 * mb_conversion - 1) // (2 * mb_conversion)
+            + reserve_buffer_size
         )
         return ccl_buffer_size
 
