@@ -103,7 +103,10 @@ static_assert(SUPPORTED_HEAD_DIM / 2 == VL_FP32_LANES,
               "VF kernel assumes headDim/2 == one float VL; add tail-mask handling in "
               "op_kernel/arch35/und_gen_qkv_rms_norm_rope_cache_mrope_vf.h before relaxing SUPPORTED_HEAD_DIM");
 constexpr int64_t SUPPORTED_BLOCK_SIZE = 128;
-constexpr int64_t MAX_TOTAL_TOKENS = 64 * 1024;
+// NOTE: T (= und_len + gen_len) 不设上限。多核切分是按 T 取余数分摊、UB 切分只切 token 数，
+//       两者都与 T 的绝对大小无关；host/kernel 侧所有 GM 偏移与 tiling 字段一律 int64_t，
+//       kernel 里的 uint32_t 只用于 UB 内的 gather 索引与 tile 内 stride（被 UB 容量兜住）。
+//       T 的真实约束是 KV Cache 容量，由 CheckKvCacheValid 的 blockNum * blockSize >= T 负责。
 // 本期支持的 (Hq, Hk, Hv) 组合，需要放宽时改这里即可
 constexpr int64_t SUPPORTED_HEAD_COMBO_NUM = 2;
 constexpr int64_t SUPPORTED_HEAD_COMBOS[SUPPORTED_HEAD_COMBO_NUM][3] = {{8, 1, 1}, {16, 2, 2}};
