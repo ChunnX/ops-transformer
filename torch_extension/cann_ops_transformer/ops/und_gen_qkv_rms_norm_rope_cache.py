@@ -23,8 +23,10 @@ class UndGenQkvRmsNormRopeCacheOpBuilder(OpBuilder):
 
     def schema(self) -> str:
         return [
+            # k_cache/v_cache 由算子原地写入，必须带 (a!)/(b!) 别名标注，
+            # 否则 functionalization / torch.compile 会把这个原地写当成无副作用而丢掉 cache 更新
             "und_gen_qkv_rms_norm_rope_cache(Tensor und_qkv, Tensor und_weights_q, Tensor und_weights_k, "
-            "Tensor cos_sin_cache, Tensor k_cache, Tensor v_cache, Tensor slot_mapping, Tensor positions, "
+            "Tensor cos_sin_cache, Tensor(a!) k_cache, Tensor(b!) v_cache, Tensor slot_mapping, Tensor positions, "
             "Tensor? gen_qkv, Tensor? gen_weights_q, Tensor? gen_weights_k, Tensor? cat_indices, "
             "int num_heads_q, int num_heads_k, int num_heads_v, float norm_eps, int[] mrope_section) -> Tensor"
         ]

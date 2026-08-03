@@ -26,6 +26,7 @@
 #include "opdev/format_utils.h"
 #include "opdev/op_executor.h"
 #include "opdev/make_op_executor.h"
+#include "opdev/tensor_view_utils.h"
 
 using namespace op;
 
@@ -51,6 +52,19 @@ static inline bool CheckNotNull(
     OP_CHECK_NULL(q, return false);
     OP_CHECK_NULL(kCacheOut, return false);
     OP_CHECK_NULL(vCacheOut, return false);
+    return true;
+}
+
+// k_cache/v_cache 是调用方预分配、算子原地写入的缓冲区，不能走 Contiguous：
+// 非连续时 Contiguous 产出的是副本，kernel 写进副本后调用方的 cache 不会被更新且无任何报错。
+// 本算子只支持连续 BBND 布局，这里直接把非连续输入拒掉。
+static inline bool CheckCacheContiguous(const aclTensor* kCache, const aclTensor* vCache)
+{
+    if (!IsContiguous(kCache) || !IsContiguous(vCache)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "kCache/vCache must be contiguous [Bn, Bs, N, D] tensors, non-contiguous KV Cache is not supported.");
+        return false;
+    }
     return true;
 }
 
@@ -80,7 +94,8 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
                           genWeightsQ, genWeightsK, catIndices, numHeadsQ, numHeadsK, numHeadsV, normEps, mropeSection),
                    DFX_OUT(q, kCacheOut, vCacheOut));
 
-    // 参数检查：L2 只做空指针类校验，dtype/shape/属性取值的完整校验统一在 tiling 侧
+    // 参数检查：L2 只做空指针与 KV Cache 连续性校验（后者 tiling 侧看不到 view stride，只能在这里拦），
+    // dtype/shape/属性取值的完整校验统一在 tiling 侧
     // （aclnn 单算子路径与图模式都会走 tiling，避免两处重复实现导致漂移）
     auto notNull = und_gen_qkv_rms_norm_rope_cache::CheckNotNull(undQkv, undWeightsQ, undWeightsK, cosSinCache, kCache,
                                                                  vCache, slotMapping, positions, q, kCacheOut,
@@ -88,6 +103,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
     CHECK_RET(notNull, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckGenPaired(genQkv, genWeightsQ, genWeightsK),
               ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckCacheContiguous(kCache, vCache), ACLNN_ERR_PARAM_INVALID);
 
     // 创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -125,13 +141,8 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
         CHECK_RET(catIndicesContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     }
 
-    // KV Cache 为原地更新的输入输出
-    auto kCacheContiguous = l0op::Contiguous(kCache, uniqueExecutor.get());
-    CHECK_RET(kCacheContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-    kCache = const_cast<aclTensor*>(kCacheContiguous);
-    auto vCacheContiguous = l0op::Contiguous(vCache, uniqueExecutor.get());
-    CHECK_RET(vCacheContiguous != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-    vCache = const_cast<aclTensor*>(vCacheContiguous);
+    // KV Cache 为原地更新的输入输出：必须直接用调用方传入的 tensor（上面已校验连续），
+    // 一旦走 Contiguous 拿到的就是副本，kernel 的原地写会落到副本上而调用方看不到结果。
 
     // 调用l0接口进行计算
     auto l0Ret = l0op::UndGenQkvRmsNormRopeCache(

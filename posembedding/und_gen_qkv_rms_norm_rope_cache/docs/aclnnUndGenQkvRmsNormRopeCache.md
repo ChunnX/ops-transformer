@@ -138,7 +138,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
 | :----- | :----- | :--- |
 | ACLNN_SUCCESS | 0 | 执行成功 |
 | ACLNN_ERR_PARAM_NULLPTR | 161001 | 必选输入/输出为空指针；或提供 genQkv 但未提供 genWeightsQ/genWeightsK |
-| ACLNN_ERR_PARAM_INVALID | 161002 | numHeadsQ/K/V 非正、normEps 非正、mropeSection 长度非 0/3、shape 不满足约束 |
+| ACLNN_ERR_PARAM_INVALID | 161002 | kCache/vCache 非连续；numHeadsQ/K/V 非正、normEps 非正、mropeSection 长度非 0/3、shape 不满足约束 |
 
 ## aclnnUndGenQkvRmsNormRopeCache
 
