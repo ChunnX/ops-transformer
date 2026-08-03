@@ -73,7 +73,7 @@ aclnnStatus aclnnLightningIndexerKLLoss(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1565px">
+  <table style="undefined;table-layout: fixed; max-width: 1550px">
   <colgroup>
     <col style="width: 146px">
     <col style="width: 135px">
@@ -101,7 +101,7 @@ aclnnStatus aclnnLightningIndexerKLLoss(
       <td>targetScore</td>
       <td>输入</td>
       <td>teacher 未归一化的原始主注意力分数。</td>
-      <td>shape 支持 (B, D) 或 (B, H, D)。</td>
+      <td>shape 支持 (T, K) 或 (B, S, K)。</td>
       <td>FLOAT16、BFLOAT16、FLOAT</td>
       <td>ND</td>
       <td>2-3</td>
@@ -179,10 +179,10 @@ aclnnStatus aclnnLightningIndexerKLLoss(
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-  <col style="width: 168px">
-  <col style="width: 128px">
-  <col style="width: 854px">
+  <table style="undefined;table-layout: fixed; max-width: 1100px"><colgroup>
+  <col style="width: 200px">
+  <col style="width: 130px">
+  <col style="width: 770px">
   </colgroup>
   <thead>
     <tr>
@@ -222,12 +222,8 @@ aclnnStatus aclnnLightningIndexerKLLoss(
 
 - 确定性计算：
   - aclnnLightningIndexerKLLoss默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
-- 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
-- 输入tensor不支持空tensor和非连续。
-- targetScore和indexProbs的shape必须一致。
-- 数据排布仅支持ND格式。
-- 支持FLOAT16、BFLOAT16、FLOAT三种数据类型，两个输入的数据类型必须一致。
-- targetScore的最后一维取值范围为1\~8191。
+- 输入shape限制：
+  - 支持 shape 为 (B, S, K) 或 (T, K)，targetScore 最后一维 K 的取值范围为 1\~8192。
 
 ## 调用示例
 
@@ -314,29 +310,29 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
   // 2. 构造输入与输出
-  // target_score: (B, H, D) = (2, 4, 128), float32, 非归一化原始注意力分数
-  // index_probs:  (B, H, D) = (2, 4, 128), float32, softmax 后的概率分布
+  // target_score: (B, S, K) = (2, 4, 128), float32, 非归一化原始注意力分数
+  // index_probs:  (B, S, K) = (2, 4, 128), float32, softmax 后的概率分布
   // loss:         标量 (1,), float32
   int64_t b = 2;
-  int64_t h = 4;
-  int64_t d = 128;
-  std::vector<int64_t> inputShape = {b, h, d};
+  int64_t s = 4;
+  int64_t k = 128;
+  std::vector<int64_t> inputShape = {b, s, k};
   std::vector<int64_t> lossShape = {1};
 
-  std::vector<float> targetScoreHostData(b * h * d, 0);
-  for (int64_t i = 0; i < b * h * d; i++) {
+  std::vector<float> targetScoreHostData(b * s * k, 0);
+  for (int64_t i = 0; i < b * s * k; i++) {
     targetScoreHostData[i] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 2.0f;
   }
 
-  std::vector<float> indexProbsHostData(b * h * d, 0);
-  for (int64_t bh = 0; bh < b * h; bh++) {
+  std::vector<float> indexProbsHostData(b * s * k, 0);
+  for (int64_t bs = 0; bs < b * s; bs++) {
     float sum = 0.0f;
-    for (int64_t j = 0; j < d; j++) {
-      indexProbsHostData[bh * d + j] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-      sum += indexProbsHostData[bh * d + j];
+    for (int64_t j = 0; j < k; j++) {
+      indexProbsHostData[bs * k + j] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+      sum += indexProbsHostData[bs * k + j];
     }
-    for (int64_t j = 0; j < d; j++) {
-      indexProbsHostData[bh * d + j] /= sum;
+    for (int64_t j = 0; j < k; j++) {
+      indexProbsHostData[bs * k + j] /= sum;
     }
   }
 

@@ -70,6 +70,11 @@ static aclnnStatus CheckParams(const LightningIndexerKLLossParams &params)
                 params.targetScore->GetViewShape().GetDimNum(), params.indexProbs->GetViewShape().GetDimNum());
         return ACLNN_ERR_PARAM_INVALID;
     }
+    std::string weightTypeStr(params.weightType);
+    if (weightTypeStr != "logits" && weightTypeStr != "probs") {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "weightType must be 'logits' or 'probs', but got '%s'.", params.weightType);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     return ACLNN_SUCCESS;
 }
 

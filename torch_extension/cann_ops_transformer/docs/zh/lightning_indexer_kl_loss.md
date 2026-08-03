@@ -12,6 +12,7 @@
 | <term>Atlas 训练系列产品</term> | × |
 
 ## 功能说明
+- 接口说明
 
   - **teacher 侧**（target_score）：压缩段未归一化的原始主注意力分数（sum ≠ 1），用 `clamp_min` 防止 y=0 处 log(0) 导致 NaN。
   - **student 侧**（index_probs）：indexer softmax 后的概率分布，用 `+eps` 保住 Y→0 处的梯度。
@@ -61,9 +62,10 @@ lightning_indexer_kl_loss(
 
 | 参数名 | 输入/输出 | 描述 | 数据类型 | 维度 |
 | :--- | :--- | :--- | :--- | :--- |
-| target_score | 必选输入 | teacher 侧压缩段原始未归一化主注意力分数，sum != 1。 | `float16`、`bfloat16`、`float32` | `(..., D)` |
-| index_probs | 必选输入 | student 侧 indexer softmax 后的概率分布。 | 与 `target_score` 一致 | `(..., D)`，与 `target_score` 一致 |
+| target_score | 必选输入 | teacher 侧压缩段原始未归一化主注意力分数，sum != 1。 | `float16`、`bfloat16`、`float32` | `(BSK)` 或 `(TKC)` |
+| index_probs | 必选输入 | student 侧 indexer softmax 后的概率分布。 | 与 `target_score` 一致 | 与 `target_score` 一致 |
 | eps | 可选属性 | 数值稳定常数。 | `float` | - |
+| weight_type | 可选属性 | 外层权重选择。`'logits'`（默认）用原始 y 作为外层权重；`'probs'` 用归一化概率 P = y / sum(y) 作为外层权重。 | `str` | - |
 
 ## 返回值说明
 
@@ -73,13 +75,18 @@ lightning_indexer_kl_loss(
 
 ## 约束说明
 
-- `target_score` 与 `index_probs` 的数据类型必须一致，且最后一维 `D` 相等。
+- `target_score` 与 `index_probs` 的数据类型必须一致，维度相同（BSK 或 TKC），且最后一维 `K` 相等。
 - `eps` 必须大于 0。
+- `weight_type` 必须为 `'logits'` 或 `'probs'`。
 - `target_score` 与 `index_probs` 需在同一 NPU 设备上。
+
+## 确定性计算
+- 默认不支持确定性计算，可通过PyTorch开关（torch.use_deterministic_algorithms）支持。
+- 默认不支持batch invariance。[todo:?]
 
 ## 调用示例
 
-### 单算子调用
+### 单算子调用（默认 logits 权重）
 
 ```python
 import torch
@@ -94,27 +101,8 @@ B, H, D = 4, 10, 128
 target_score = torch.rand(B, H, D, dtype=torch.float32, device=device)
 index_probs = torch.softmax(torch.randn(B, H, D, dtype=torch.float32, device=device), dim=-1)
 
+# 使用 logits 权重（默认），等价于 loss = sum((log_P - log_Y) * y)
 loss = lightning_indexer_kl_loss(target_score, index_probs)
 torch.npu.synchronize()
-print(f"KL loss: {loss.item()}")
-```
-
-### 混合精度调用
-
-```python
-import torch
-import torch_npu
-from cann_ops_transformer import lightning_indexer_kl_loss
-
-torch_npu.npu.set_device(0)
-device = torch.device("npu:0")
-
-B, H, D = 4, 10, 128
-
-target_score = torch.rand(B, H, D, dtype=torch.float16, device=device)
-index_probs = torch.softmax(torch.randn(B, H, D, dtype=torch.float16, device=device), dim=-1)
-
-loss = lightning_indexer_kl_loss(target_score, index_probs, eps=1e-9)
-torch.npu.synchronize()
-print(f"KL loss (fp16): {loss.item()}")
+print(f"KL loss (logits): {loss.item()}")
 ```
