@@ -87,31 +87,162 @@ gert::TilingContextPara BuildTilingContext(int64_t undLen, int64_t genLen, int64
         &compileInfo,
         "Ascend950");
 }
+// TilingData 的 POD 镜像，字段顺序必须与 op_host/und_gen_qkv_rms_norm_rope_cache_tiling.h
+// 中的 BEGIN_TILING_DATA_DEF 完全一致。CheckTilingData 会用 tilingDataSize 断言二者未漂移。
+#pragma pack(1)
+struct TilingDataMirror {
+    int64_t totalTokens;
+    int64_t undLen;
+    int64_t genLen;
+    int64_t numHead;
+    int64_t numHeadQ;
+    int64_t numHeadK;
+    int64_t numHeadV;
+    int64_t headDim;
+    int64_t maxPos;
+    int64_t blockNum;
+    int64_t blockSize;
+    int64_t hasGen;
+    int64_t hasCatIndices;
+    int64_t mropeSectionT;
+    int64_t mropeSectionH;
+    int64_t mropeSectionW;
+    float epsilon;
+    float reciprocal;
+    int64_t usedCoreNum;
+    int64_t formerCoreNum;
+    int64_t blockFactor;
+    int64_t tailBlockFactor;
+    int64_t ubFactor;
+};
+#pragma pack()
+
+// UT faker 的 Ascend950 平台参数。真机上 tiling 走 GetCoreNumAiv / GetCoreMemSize 运行时读取
+// （A5 实测核数是 56 不是 64），这里的常量只用来复算 UT 里的期望值，不代表真机取值。
+constexpr int64_t PLATFORM_CORE_NUM = 64;
+constexpr int64_t PLATFORM_UB_BYTES = 256 * 1024;
+
+const TilingDataMirror* AsTilingData(const TilingInfo& tilingInfo)
+{
+    EXPECT_EQ(tilingInfo.tilingDataSize, sizeof(TilingDataMirror))
+        << "TilingData 布局已变，同步更新本文件与 tests/ut/op_kernel/arch35 下的镜像结构";
+    return reinterpret_cast<const TilingDataMirror*>(tilingInfo.tilingData.get());
+}
+
+// 按 tiling.h 的 "UB 划分" 注释复算一遍 ubFactor 的期望值
+int64_t ExpectedUbFactor(int64_t numHeadQ, int64_t numHeadK, int64_t numHeadV, int64_t blockFactor)
+{
+    const int64_t n = numHeadQ + numHeadK + numHeadV;
+    const int64_t h2 = numHeadQ + numHeadK;
+    const int64_t d = HEAD_DIM;
+    const int64_t resident = 4 * d * 2 +          // wBf16Buf
+                             2 * h2 * d * 4 +     // wExpandBuf(und/gen)
+                             h2 * d * 4 +         // cosSinExpandBuf
+                             h2 * (d / 2) * 4 +   // ropeTmpBuf
+                             n * d * 4 +          // qkvFp32Buf
+                             4096 +               // reduceTmpBuf
+                             ((h2 * 4 + 31) / 32) * 32; // rmsInvBuf
+    const int64_t perToken = 2 * n * d * 2 + 2 * MROPE_AXIS_NUM * d * 4 + 2 * n * d * 2;
+    return std::min((PLATFORM_UB_BYTES - resident) / perToken, blockFactor);
+}
+
+// 校验多核切分：核数拉满、总量守恒、核间负载差 ≤ 1
+void CheckBlockTiling(const TilingDataMirror* td, int64_t total)
+{
+    const int64_t expectUsedCore = std::min(PLATFORM_CORE_NUM, total);
+    EXPECT_EQ(td->usedCoreNum, expectUsedCore);
+    EXPECT_EQ(td->formerCoreNum, total % expectUsedCore);
+    EXPECT_EQ(td->tailBlockFactor, total / expectUsedCore);
+    EXPECT_EQ(td->blockFactor, td->formerCoreNum > 0 ? td->tailBlockFactor + 1 : td->tailBlockFactor);
+    // 总量守恒
+    EXPECT_EQ(td->formerCoreNum * td->blockFactor + (td->usedCoreNum - td->formerCoreNum) * td->tailBlockFactor,
+              total);
+    // 核间负载差恒 ≤ 1
+    EXPECT_LE(td->blockFactor - td->tailBlockFactor, 1);
+}
 } // namespace
 
 // ==================== 成功路径 ====================
-// NOTE: 多核/UB 切分尚未实现（见 op_host/*_tiling.cpp 的 TODO），
-//       故此处只校验 tilingKey / workspace / tilingData 落盘；
-//       切分补齐后需要补 usedCoreNum、blockFactor、ubFactor 的期望值。
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_success_h8_1_1)
 {
-    auto para = BuildTilingContext(5, 3, 8, 1, 1);
+    constexpr int64_t undLen = 5;
+    constexpr int64_t genLen = 3;
+    auto para = BuildTilingContext(undLen, genLen, 8, 1, 1);
     TilingInfo tilingInfo;
     ASSERT_TRUE(ExecuteTiling(para, tilingInfo));
     EXPECT_EQ(tilingInfo.tilingKey, 0);
     ASSERT_EQ(tilingInfo.workspaceSizes.size(), 1U);
     EXPECT_EQ(tilingInfo.workspaceSizes[0], 0U);
-    EXPECT_GT(tilingInfo.tilingDataSize, 0U);
+
+    const auto* td = AsTilingData(tilingInfo);
+    ASSERT_NE(td, nullptr);
+    // total=8 < 64 核：每核 1 个 token，blockDim 只开 8 个
+    CheckBlockTiling(td, undLen + genLen);
+    EXPECT_EQ(td->usedCoreNum, 8);
+    EXPECT_EQ(tilingInfo.blockNum, 8U);
+    // 每核只有 1 个 token，ubFactor 被 blockFactor 卡到 1
+    EXPECT_EQ(td->ubFactor, 1);
+    EXPECT_EQ(td->ubFactor, ExpectedUbFactor(8, 1, 1, td->blockFactor));
 }
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_success_h16_2_2)
 {
-    auto para = BuildTilingContext(6652, 4100, 16, 2, 2);
+    constexpr int64_t undLen = 6652;
+    constexpr int64_t genLen = 4100;
+    auto para = BuildTilingContext(undLen, genLen, 16, 2, 2);
     TilingInfo tilingInfo;
     ASSERT_TRUE(ExecuteTiling(para, tilingInfo));
     EXPECT_EQ(tilingInfo.tilingKey, 0);
-    EXPECT_GT(tilingInfo.tilingDataSize, 0U);
+
+    const auto* td = AsTilingData(tilingInfo);
+    ASSERT_NE(td, nullptr);
+    CheckBlockTiling(td, undLen + genLen);
+    EXPECT_EQ(td->usedCoreNum, PLATFORM_CORE_NUM);
+    EXPECT_EQ(tilingInfo.blockNum, static_cast<size_t>(PLATFORM_CORE_NUM));
+    // N=20 档位受 UB 限制，ubFactor 远小于每核 token 数
+    EXPECT_EQ(td->ubFactor, ExpectedUbFactor(16, 2, 2, td->blockFactor));
+    EXPECT_GT(td->ubFactor, 1);
+    EXPECT_LT(td->ubFactor, td->blockFactor);
+}
+
+// total 略大于核数：ceil 切法会大幅少用核，余数分配必须把核数拉满
+TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_block_split_uses_all_cores_when_total_slightly_exceeds_cores)
+{
+    constexpr int64_t undLen = 100;
+    constexpr int64_t genLen = 13; // total = 113，CeilDiv(113,64)=2 → ceil 切法只会用 57 个核
+    auto para = BuildTilingContext(undLen, genLen, 8, 1, 1);
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(para, tilingInfo));
+
+    const auto* td = AsTilingData(tilingInfo);
+    ASSERT_NE(td, nullptr);
+    CheckBlockTiling(td, undLen + genLen);
+    EXPECT_EQ(td->usedCoreNum, PLATFORM_CORE_NUM); // 64 个核全用上
+    EXPECT_EQ(td->formerCoreNum, 49);              // 113 = 49*2 + 15*1
+    EXPECT_EQ(td->blockFactor, 2);
+    EXPECT_EQ(td->tailBlockFactor, 1);
+}
+
+// N=10 与 N=20 两档的 UB 预算不同，ubFactor 必须跟着变
+TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_ub_factor_differs_between_head_combos)
+{
+    TilingInfo infoSmall;
+    auto paraSmall = BuildTilingContext(30000, 30000, 8, 1, 1);
+    ASSERT_TRUE(ExecuteTiling(paraSmall, infoSmall));
+    const auto* tdSmall = AsTilingData(infoSmall);
+    ASSERT_NE(tdSmall, nullptr);
+
+    TilingInfo infoLarge;
+    auto paraLarge = BuildTilingContext(30000, 30000, 16, 2, 2);
+    ASSERT_TRUE(ExecuteTiling(paraLarge, infoLarge));
+    const auto* tdLarge = AsTilingData(infoLarge);
+    ASSERT_NE(tdLarge, nullptr);
+
+    EXPECT_EQ(tdSmall->ubFactor, ExpectedUbFactor(8, 1, 1, tdSmall->blockFactor));
+    EXPECT_EQ(tdLarge->ubFactor, ExpectedUbFactor(16, 2, 2, tdLarge->blockFactor));
+    // N=20 单 token 占 UB 更多，一次能处理的 token 数必然更少
+    EXPECT_GT(tdSmall->ubFactor, tdLarge->ubFactor);
 }
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_success_plain_rope_empty_mrope_section)
@@ -121,6 +252,13 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_success_plain_rope_empty_mrope_se
     TilingInfo tilingInfo;
     ASSERT_TRUE(ExecuteTiling(para, tilingInfo));
     EXPECT_EQ(tilingInfo.tilingKey, 0);
+
+    const auto* td = AsTilingData(tilingInfo);
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->mropeSectionT, HEAD_DIM / 2);
+    EXPECT_EQ(td->mropeSectionH, 0);
+    EXPECT_EQ(td->mropeSectionW, 0);
+    CheckBlockTiling(td, 128);
 }
 
 // ==================== 失败路径 ====================

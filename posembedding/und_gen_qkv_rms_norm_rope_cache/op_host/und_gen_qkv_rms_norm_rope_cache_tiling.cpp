@@ -15,7 +15,7 @@
 
 #include "und_gen_qkv_rms_norm_rope_cache_tiling.h"
 #include "log/log.h"
-#include <iostream>
+#include <algorithm>
 #include "tiling/platform/platform_ascendc.h"
 #include "register/op_impl_registry.h"
 #include "util/math_util.h"
@@ -30,20 +30,63 @@ bool UndGenQkvRmsNormRopeCacheRegbaseTiling::IsCapable()
 
 ge::graphStatus UndGenQkvRmsNormRopeCacheRegbaseTiling::CalBlockTiling()
 {
-    // TODO(tiling): 多核切分。按输出 token 维 total 切分，每个 out_t 独立、无跨核依赖，
-    //               slot_mapping[out_t] 唯一保证 KV Cache 无写冲突。
-    //               需产出 usedCoreNum / blockFactor / tailBlockFactor。
-    tilingData_.set_usedCoreNum(0);
-    tilingData_.set_blockFactor(0);
-    tilingData_.set_tailBlockFactor(0);
+    // 按输出 token 维 total 切分：每个 out_t 计算独立，slot_mapping[out_t] 唯一保证
+    // KV Cache 无写冲突，因此无需 SyncAll。
+    //
+    // 这里用余数分配而不是 blockFactor = CeilDiv(total, coreNum)：后者在 total 略大于
+    // coreNum 时会大幅少用核。例如 total=113、coreNum=56，CeilDiv 得 blockFactor=3，
+    // 实际只能用 CeilDiv(113,3)=38 个核，白扔 18 个。余数分配下核数拉满，
+    // 核间负载差恒为 1 个 token。
+    const int64_t usedCoreNum = std::min(coreNum_, totalTokens_);
+    OP_CHECK_IF(usedCoreNum <= 0,
+                OP_LOGE(context_->GetNodeName(), "usedCoreNum must be positive, got %ld (coreNum=%ld, total=%ld).",
+                        usedCoreNum, coreNum_, totalTokens_),
+                return ge::GRAPH_FAILED);
+
+    const int64_t baseFactor = totalTokens_ / usedCoreNum;
+    const int64_t formerCoreNum = totalTokens_ % usedCoreNum;
+
+    tilingData_.set_usedCoreNum(usedCoreNum);
+    tilingData_.set_formerCoreNum(formerCoreNum);
+    tilingData_.set_blockFactor(formerCoreNum > 0 ? baseFactor + 1 : baseFactor);
+    tilingData_.set_tailBlockFactor(baseFactor);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus UndGenQkvRmsNormRopeCacheRegbaseTiling::CalUbTiling()
 {
-    // TODO(tiling): UB 切分。单 token 需驻留 Q/K/V(float) + 权重 + 3 轴 cos_sin + 中间 buffer，
-    //               依据 ubSize_ 反推每次可处理的 token 数 ubFactor。
-    tilingData_.set_ubFactor(0);
+    // UB 只切 token 维：N*D 单 token 最大 20*128*4B=10KB，一定放得下，不需要再切 N/D。
+    // 计算与写出逐 token，所以计算区与 ubFactor 无关；只有三个 DMA 队列随 ubFactor 变化。
+    // 各 buffer 的含义与公式见 tiling.h 的 "UB 划分" 注释，kernel 侧必须保持一致。
+    const int64_t headNumQK = numHeadQ_ + numHeadK_; // V 不参与 RMSNorm/RoPE
+    const int64_t halfDim = headDim_ / DIM_NUM_TWO;
+
+    const int64_t residentBytes =
+        WEIGHT_NUM * headDim_ * BF16_BYTES +                                    // wBf16Buf
+        WEIGHT_VARIANT_NUM * headNumQK * headDim_ * FLOAT32_BYTES +             // wExpandBuf(und/gen)
+        headNumQK * headDim_ * FLOAT32_BYTES +                                  // cosSinExpandBuf
+        headNumQK * halfDim * FLOAT32_BYTES +                                   // ropeTmpBuf
+        numHead_ * headDim_ * FLOAT32_BYTES +                                   // qkvFp32Buf（单 token）
+        REDUCE_TMP_BYTES +                                                      // reduceTmpBuf
+        Ops::Base::CeilAlign(headNumQK * FLOAT32_BYTES, BLOCK_ALIGN_BYTES);     // rmsInvBuf
+
+    const int64_t perTokenBytes =
+        DOUBLE_BUFFER * numHead_ * headDim_ * BF16_BYTES +                      // qkvInQue
+        DOUBLE_BUFFER * MROPE_AXIS_NUM * headDim_ * FLOAT32_BYTES +             // cosSinInQue
+        DOUBLE_BUFFER * numHead_ * headDim_ * BF16_BYTES;                       // outQue
+
+    OP_CHECK_IF(residentBytes + perTokenBytes > ubSize_,
+                OP_LOGE(context_->GetNodeName(),
+                        "UB is not enough for even one token: resident(%ld) + perToken(%ld) > ubSize(%ld).",
+                        residentBytes, perTokenBytes, ubSize_),
+                return ge::GRAPH_FAILED);
+
+    // 每核最多也只处理 blockFactor 个 token，ubFactor 再大也用不上
+    const int64_t ubFactor = std::min((ubSize_ - residentBytes) / perTokenBytes, tilingData_.get_blockFactor());
+    OP_CHECK_IF(ubFactor <= 0,
+                OP_LOGE(context_->GetNodeName(), "ubFactor must be positive, got %ld.", ubFactor),
+                return ge::GRAPH_FAILED);
+    tilingData_.set_ubFactor(ubFactor);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -80,43 +123,31 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheRegbaseTiling::DoOpTiling()
 
 void UndGenQkvRmsNormRopeCacheRegbaseTiling::PrintTilingData()
 {
-    std::cout << "========== UndGenQkvRmsNormRopeCache TilingData ==========" << std::endl;
-    std::cout << "totalTokens:     " << tilingData_.get_totalTokens() << std::endl;
-    std::cout << "undLen:          " << tilingData_.get_undLen() << std::endl;
-    std::cout << "genLen:          " << tilingData_.get_genLen() << std::endl;
-    std::cout << "numHead:         " << tilingData_.get_numHead() << std::endl;
-    std::cout << "numHeadQ:        " << tilingData_.get_numHeadQ() << std::endl;
-    std::cout << "numHeadK:        " << tilingData_.get_numHeadK() << std::endl;
-    std::cout << "numHeadV:        " << tilingData_.get_numHeadV() << std::endl;
-    std::cout << "headDim:         " << tilingData_.get_headDim() << std::endl;
-    std::cout << "maxPos:          " << tilingData_.get_maxPos() << std::endl;
-    std::cout << "blockNum:        " << tilingData_.get_blockNum() << std::endl;
-    std::cout << "blockSize:       " << tilingData_.get_blockSize() << std::endl;
-    std::cout << "hasGen:          " << tilingData_.get_hasGen() << std::endl;
-    std::cout << "hasCatIndices:   " << tilingData_.get_hasCatIndices() << std::endl;
-    std::cout << "mropeSection:    [" << tilingData_.get_mropeSectionT() << ", " << tilingData_.get_mropeSectionH()
-              << ", " << tilingData_.get_mropeSectionW() << "]" << std::endl;
-    std::cout << "epsilon:         " << tilingData_.get_epsilon() << std::endl;
-    std::cout << "reciprocal:      " << tilingData_.get_reciprocal() << std::endl;
-    std::cout << "usedCoreNum:     " << tilingData_.get_usedCoreNum() << std::endl;
-    std::cout << "blockFactor:     " << tilingData_.get_blockFactor() << std::endl;
-    std::cout << "tailBlockFactor: " << tilingData_.get_tailBlockFactor() << std::endl;
-    std::cout << "ubFactor:        " << tilingData_.get_ubFactor() << std::endl;
-    std::cout << "=========================================================" << std::endl;
+    OP_LOGD(context_->GetNodeName(),
+            "TilingData: totalTokens=%ld, undLen=%ld, genLen=%ld, numHead=%ld(Q=%ld,K=%ld,V=%ld), headDim=%ld, "
+            "maxPos=%ld, blockNum=%ld, blockSize=%ld, hasGen=%ld, hasCatIndices=%ld, mropeSection=[%ld,%ld,%ld], "
+            "epsilon=%f, reciprocal=%f, usedCoreNum=%ld, formerCoreNum=%ld, blockFactor=%ld, tailBlockFactor=%ld, "
+            "ubFactor=%ld",
+            tilingData_.get_totalTokens(), tilingData_.get_undLen(), tilingData_.get_genLen(),
+            tilingData_.get_numHead(), tilingData_.get_numHeadQ(), tilingData_.get_numHeadK(),
+            tilingData_.get_numHeadV(), tilingData_.get_headDim(), tilingData_.get_maxPos(),
+            tilingData_.get_blockNum(), tilingData_.get_blockSize(), tilingData_.get_hasGen(),
+            tilingData_.get_hasCatIndices(), tilingData_.get_mropeSectionT(), tilingData_.get_mropeSectionH(),
+            tilingData_.get_mropeSectionW(), tilingData_.get_epsilon(), tilingData_.get_reciprocal(),
+            tilingData_.get_usedCoreNum(), tilingData_.get_formerCoreNum(), tilingData_.get_blockFactor(),
+            tilingData_.get_tailBlockFactor(), tilingData_.get_ubFactor());
 }
 
 ge::graphStatus UndGenQkvRmsNormRopeCacheRegbaseTiling::PostTiling()
 {
     context_->SetTilingKey(GetTilingKey());
-    // TODO(tiling): usedCoreNum 由 CalBlockTiling 产出后，这里直接使用其值
-    int64_t blockDim = tilingData_.get_usedCoreNum() > 0 ? tilingData_.get_usedCoreNum() : 1;
-    context_->SetBlockDim(static_cast<uint32_t>(blockDim));
+    context_->SetBlockDim(static_cast<uint32_t>(tilingData_.get_usedCoreNum()));
     size_t* workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
-    workspaces[0] = 0;
+    workspaces[0] = 0; // 各核独立写各自输出，无跨核归约，不需要 workspace
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
-    // PrintTilingData();
+    PrintTilingData();
     return ge::GRAPH_SUCCESS;
 }
 
