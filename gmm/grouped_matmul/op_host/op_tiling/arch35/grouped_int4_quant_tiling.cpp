@@ -153,10 +153,8 @@ ge::graphStatus GroupedA4W4IntQuantTiling::GetShapeAttrsInfo()
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "A4W4 SetGroupNum failed."),
                 return ge::GRAPH_FAILED);
-    // 4) AnalyzeA4W4 + CheckA4W4Params
+    // 4) AnalyzeA4W4
     OP_CHECK_IF(!AnalyzeA4W4(), OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "A4W4 AnalyzeA4W4 failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!CheckA4W4Params(), OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "A4W4 CheckA4W4Params failed."),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -231,56 +229,6 @@ bool GroupedA4W4IntQuantTiling::AnalyzeA4W4()
         return false;
     }
     a4w4Tiling_.isPerTokenQuant = (inputParams_.aQuantMode == QuantMode::PERTOKEN_MODE) ? 1U : 0U;
-    return true;
-}
-
-bool GroupedA4W4IntQuantTiling::CheckA4W4Params()
-{
-    OP_CHECK_IF(inputParams_.aDtype != ge::DT_INT4 || inputParams_.bDtype != ge::DT_INT4,
-                OP_LOGE(context_->GetNodeName(), "A4W4: x/weight must be INT4."), return false);
-    OP_CHECK_IF(inputParams_.scaleDtype != ge::DT_UINT64,
-                OP_LOGE(context_->GetNodeName(), "A4W4: scale must be UINT64, got %s.",
-                        ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
-                return false);
-    OP_CHECK_IF(inputParams_.aQuantMode == QuantMode::PERTOKEN_MODE && inputParams_.perTokenScaleDtype != ge::DT_FLOAT,
-                OP_LOGE(context_->GetNodeName(), "A4W4: perTokenScale must be FLOAT."), return false);
-    OP_CHECK_IF(inputParams_.cDtype != ge::DT_FLOAT16 && inputParams_.cDtype != ge::DT_BF16,
-                OP_LOGE(context_->GetNodeName(), "A4W4: y must be FP16/BF16."), return false);
-    OP_CHECK_IF(inputParams_.nSize % 8UL != 0,
-                OP_LOGE(context_->GetNodeName(), "A4W4: n(%lu) must be multiple of 8.", inputParams_.nSize),
-                return false);
-    OP_CHECK_IF(inputParams_.kSize == 0UL,
-                OP_LOGE(context_->GetNodeName(), "A4W4: k must be > 0, got k=%lu.", inputParams_.kSize),
-                return false);
-    OP_CHECK_IF(inputParams_.kSize % 32UL != 0,
-                OP_LOGE(context_->GetNodeName(), "A4W4: k(%lu) must be multiple of 32 (int8 C0_SIZE, L0B alignment).",
-                        inputParams_.kSize),
-                return false);
-    OP_CHECK_IF(!inputParams_.isSingleX,
-                OP_LOGE(context_->GetNodeName(), "A4W4 only supports single x."), return false);
-    OP_CHECK_IF(!inputParams_.isSingleW,
-                OP_LOGE(context_->GetNodeName(), "A4W4 only supports single weight."), return false);
-    OP_CHECK_IF(!inputParams_.isSingleY,
-                OP_LOGE(context_->GetNodeName(), "A4W4 only supports single y."), return false);
-    // auto offsetDesc = context_->GetOptionalInputDesc(OFFSET_INDEX);
-    // OP_CHECK_IF(offsetDesc != nullptr,
-    //             OP_LOGE(context_->GetNodeName(), "A4W4: offset must be nullptr (symmetric quant)."), return false);
-    // auto biasDesc = context_->GetOptionalInputDesc(BIAS_INDEX);
-    // OP_CHECK_IF(biasDesc != nullptr,
-    //             OP_LOGE(context_->GetNodeName(), "A4W4: bias must be nullptr."), return false);
-    // auto antiquantScaleDesc = context_->GetOptionalInputDesc(ANTIQUANT_SCALE_INDEX);
-    // OP_CHECK_IF(antiquantScaleDesc != nullptr,
-    //             OP_LOGE(context_->GetNodeName(), "A4W4: antiquantScale must be nullptr."), return false);
-    // auto antiquantOffsetDesc = context_->GetOptionalInputDesc(ANTIQUANT_OFFSET_INDEX);
-    // OP_CHECK_IF(antiquantOffsetDesc != nullptr,
-    //             OP_LOGE(context_->GetNodeName(), "A4W4: antiquantOffset must be nullptr."), return false);
-    if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
-        uint64_t innerAxis = inputParams_.transB ? inputParams_.kSize : inputParams_.nSize;
-        // OP_CHECK_IF(innerAxis % 64UL != 0,
-        //             OP_LOGE(context_->GetNodeName(), "A4W4: NZ weight inner axis(%lu) must be multiple of 64 (int4 32B).",
-        //                     innerAxis),
-        //             return false);
-    }
     return true;
 }
 
