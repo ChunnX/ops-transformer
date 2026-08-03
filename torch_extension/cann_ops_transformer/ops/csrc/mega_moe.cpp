@@ -29,10 +29,10 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
            const c10::optional<std::vector<at::Tensor>> &sharedBias1,
            const c10::optional<std::vector<at::Tensor>> &sharedBias2, int64_t maxRecvTokenNum,
            int64_t dispatchQuantMode, int64_t combineQuantMode, std::string commAlg, int64_t numMaxTokensPerRank,
-           std::string activation, c10::optional<float> activationClamp, float activationAlpha, float activationBeta,
-           c10::optional<float> activationLinearBeta, c10::optional<int64_t> dispatchQuantOutDtype,
-           c10::optional<int64_t> weight1Type, c10::optional<int64_t> weight2Type, c10::optional<int64_t> topoType,
-           c10::optional<int64_t> rankNumPerServer, int64_t topkWeightsType)
+           std::string activation, c10::optional<float> activationClamp, const py::dict &activationParamsDict,
+           c10::optional<int64_t> dispatchQuantOutDtype, c10::optional<int64_t> weight1Type,
+           c10::optional<int64_t> weight2Type, c10::optional<int64_t> topoType, c10::optional<int64_t> rankNumPerServer,
+           int64_t topkWeightsType)
 {
     TORCH_CHECK((epWorldSize > 0), "The ep_world_sizes should be greater than 0, current is: ", epWorldSize);
     TORCH_CHECK((x.dim() == DIM_TWO) && (topkIds.dim() == DIM_TWO), "The x and topk_ids should be 2D");
@@ -94,7 +94,21 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     std::string activationStr = std::string(activation);
     char *activationPtr = const_cast<char *>(activationStr.c_str());
 
-    float activationClampValue = activationClamp.value_or(std::numeric_limits<float>::max());
+    auto getActivationParam = [&activationParamsDict](const char *name, float defaultValue) {
+        auto key = py::str(name);
+        return activationParamsDict.contains(key) ? py::cast<float>(activationParamsDict[key]) : defaultValue;
+    };
+    auto clampKey = py::str("clamp");
+    bool hasClampInParams = activationParamsDict.contains(clampKey);
+    float clampInParams = hasClampInParams ? py::cast<float>(activationParamsDict[clampKey]) : 0.0f;
+    TORCH_CHECK(!activationClamp.has_value() || !hasClampInParams || activationClamp.value() == clampInParams,
+                "activation_clamp and activation_params['clamp'] must be equal when both are specified, but got ",
+                activationClamp.value_or(std::numeric_limits<float>::max()), " and ", clampInParams);
+    float activationClampValue = activationClamp.has_value() ? activationClamp.value() :
+                                                               (hasClampInParams ? clampInParams :
+                                                                                   std::numeric_limits<float>::max());
+    float activationAlpha = getActivationParam("alpha", 1.702f);
+    float activationBeta = getActivationParam("beta", 1.0f);
     std::vector<float> activationParams;
     if (activationStr == "swiglu" || activationStr == "swiglustep") {
         activationParams = {activationClampValue};
@@ -102,8 +116,9 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
         activationParams = {activationClampValue, activationAlpha, activationBeta};
     } else if (activationStr == "situglu") {
         activationParams = {activationBeta};
-        if (activationLinearBeta.has_value()) {
-            activationParams.emplace_back(activationLinearBeta.value());
+        auto linearBetaKey = py::str("linearbeta");
+        if (activationParamsDict.contains(linearBetaKey)) {
+            activationParams.emplace_back(py::cast<float>(activationParamsDict[linearBetaKey]));
         }
     } else {
         TORCH_CHECK(false, "Unsupported activation: ", activationStr);
