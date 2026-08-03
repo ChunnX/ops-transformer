@@ -941,7 +941,7 @@ private:
         fixpipeParams.quantPre = QuantMode_t::NoQuant;
         fixpipeParams.dualDstCtl = 2; // 双目标模式，按N维度拆分
 
-        uint32_t pvL0COffset = pvL0cBufId * (QK_L0C_SIZE / sizeof(COMPUTE_T));
+        uint32_t pvL0COffset = pvL0cBufId * (PV_L0C_SIZE / sizeof(COMPUTE_T));
         Fixpipe<COMPUTE_T, COMPUTE_T, CFG_ROW_MAJOR_UB>(mm2ResUB, pvL0CTensor[pvL0COffset], fixpipeParams);
     }
 };
