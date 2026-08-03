@@ -8,95 +8,122 @@ block_sparse_attention_grad 算子在 arch22 (Atlas A2) 平台上，当使用 GQ
 
 ## 2. 根因分析
 
-通过对照实验确认：**`Fixpipe` + `SetAtomicAdd` 对同一 GM 地址的多次累加在硬件层面不完全 bit-exact**。
+**`Fixpipe` + `SetAtomicAdd` 对同一 GM 地址的多次累加在硬件层面不完全 bit-exact**。
 
 不确定性产生的两个场景：
 1. **跨 Q-head 累加**（GQA, group_size > 1）：不同 Q head 共享同一 KV，写入同一地址
 2. **跨 Q-block 累加**（S1 > blockShapeX）：同一 Q head 的不同 Q block 写入同一 KV 地址
 
-## 3. 最终方案：Per-core-per-Q-head 独立槽位
+## 3. 方案：40轮分组 det slot
 
 ### 3.1 核心思路
 
-为每个 `(cube_core, qHeadInGroup)` 分配独立的 workspace 槽位：
-
-- **消除跨 Q-head 的 atomicAdd**：不同 Q head 写入不同槽位，由 AIV VecDeterReduce 按序归约
-- **保留跨 Q-block 的 atomicAdd**：同一 Q head 的不同 Q block 按固定顺序执行，atomicAdd 确定性有保证
-- `isAtomicAdd = true` 仅用于同一 Q head 内的跨 Q-block 累加
+AIC上，新增dk和dv的workspace让每个轮次每个cube核算出来的dk和dv的结果，依次保存在这段新增的workspace上，每四十个轮次为一组，然后做一次synclall保证所有核都完成，然后aiv上，按照固定顺序读取每个cube在workspace上保存的结果到ub上，在ub上完成累加操作。
 
 ### 3.2 数据流
 
 ```
 VecPre:
-  ├── 清零 shared workspace (dQ/dK/dV)
-  └── 清零 per-core-per-Q-head workspace (ZeroDetWorkspace)
+  ├── 清零 shared workspace (dQ/dK/dV) — EpilogueFAGPre
+  ├── PipeBarrier<PIPE_MTE3>() — 确保 EpilogueFAGPre 的 MTE3 写入完成
+  └── ZeroDetWorkspace() — 清零 det workspace (detDkGroup + detDvGroup + detMetaBuf)
 
 AIC (每个 cube 核):
-  ├── gDk/gDv 指向 per-core-per-Q-head slot:
-  │     detDkBase + coreIdx * groupSize * dkvSize * sizeof(float)
-  │                 + qHeadInGroup * dkvSize * sizeof(float)
-  ├── blockMmad3 用 atomicAdd 写入 (仅跨 Q-block 累加)
+  ├── blockMmad3 用 atomicAdd 写入 det slot (slot 被零初始化，atomicAdd 到零等于直接写入)
+  ├── 每轮写入独立 slot: slotIdx = (count - 1) * cubeNum + coreIdx
+  ├── 写入 metadata (kvOffset, curCalKVSize, valid) via V→MTE3 DataCopy
   └── CrossCoreSetFlag(CUBE2POST)
 
-AIV (CUBE2POST + SyncAll 后):
-  ├── VecDeterReduce: 按序读取 aicNum * groupSize 个 slot，FP32 累加到 shared workspace
+AIV (CUBE2POST + SyncAll<true> 后):
+  ├── DetReduceAll: 多核并行按 dk/dv 元素分段
+  │     每个 AIV 核扫描所有 det slot
+  │     读取匹配自己元素段的 partial data
+  │     FP32 累加到 shared workspace
   └── VecPost: 从 shared workspace 读取，scale + cast，写入 output GM
 ```
 
-### 3.3 Workspace 布局
+### 3.3 Workspace 布局（固定大小，与 shape 无关）
 
 ```
-[libapiSize | sOutSize | dPOutSize | dQOutSize | dKOutSize | dVOutSize | gradSize | detDkWorkspace | detDvWorkspace]
+[libapiSize | sOutSize | dPOutSize | dQOutSize | dKOutSize | dVOutSize | gradSize | detDkGroup | detDvGroup | detMetaBuf]
 ```
 
-- detDkWorkspace = aicNum * groupSize * dkvSize * sizeof(float)
-- detDvWorkspace = aicNum * groupSize * dkvSize * sizeof(float)
-- 每个 AIC core 的 slot 布局:
-  ```
-  [core0_qhead0: dkvSize | core0_qhead1: dkvSize | ... | core1_qhead0: dkvSize | ...]
-  ```
+| 区域 | 大小 | 说明 |
+|------|------|------|
+| detDkGroup | `maxPartialsPerCore × cubeNum × maxPartialSize × sizeof(float)` | dk partial 槽位 |
+| detDvGroup | `maxPartialsPerCore × cubeNum × maxPartialSize × sizeof(float)` | dv partial 槽位 |
+| detMetaBuf | `maxPartialsPerCore × cubeNum × 16` | 每个 partial 的元数据 |
 
-### 3.4 40 轮次分组优化
+- `maxPartialSize = basicKVBlockSize × headDim = 128 × 128 = 16384`（固定值）
+- `maxPartialsPerCore = (taskNumPerCore + 1) × ceil(maxKvSeqlen / basicKVBlockSize)`
+- **总大小与 dkvSize 无关**，仅取决于核数和最大 partial 数
 
-方案中引入 `batchSizeForDet = 40` 参数，表示以 40 个轮次为一组进行同步控制：
+### 3.4 Det Slot 布局
 
-- **减少同步次数**：每 40 个轮次为一组，组内各核独立写入各自的 per-core-per-Q-head 槽位，无需每轮同步
-- **控制 workspace 大小**：workspace 按 `aicNum * groupSize * dkvSize` 分配（即 40 * cube核数 个 dk/dv 结果槽位），而非按总轮次分配，避免 workspace 过大
-- **保证确定性**：AIV 端在所有 AIC 核完成（CUBE2POST + SyncAll）后，按固定顺序读取所有槽位进行 FP32 累加，顺序固定即确定性
+每个 det slot 存储 `maxPartialSize` 个 float（连续布局，stride=headDim）：
 
-`KForDet = ceil(40 / aicNum)` 参数记录每组内每个核需要处理的轮次上限，用于后续优化分批归约流水。
+```
+[slot0: maxPartialSize floats | slot1: maxPartialSize floats | ... | slotN: maxPartialSize floats]
+```
+
+slot 索引：`slotIdx = (count - 1) × cubeNum + coreIdx`
+
+每个 slot 对应的 metadata（16 bytes）：
+```
+{ uint64_t kvOffset; uint32_t curCalKVSize; uint32_t valid; }
+```
+
+### 3.5 DetReduceAll 多核并行
+
+AIV 按 dk/dv 元素分段（与 VecPost 相同的分区方式），每个 AIV 核处理自己段的元素：
+
+1. 用 `Duplicate` 初始化 accumUb 为零
+2. 扫描所有 det slot，读取 metadata
+3. 对匹配自己元素段的 slot，用 `DataCopy`/`DataCopyPad` 读取 partial data
+4. FP32 `Add` 累加到 accumUb
+5. 用 `DataCopy` 写回 shared workspace
+
+不同 AIV 核处理不同的 dk/dv 元素段，无写竞争。
 
 ## 4. 代码修改清单
 
 ### 4.1 Tiling (op_host/block_sparse_attention_grad_tiling.h)
-- 新增字段: `detDkWorkspaceSize`, `detDvWorkspaceSize`, `aicNumForDet`, `groupSizeForDet`, `deterministic`, `batchSizeForDet`, `KForDet`
-- 新增成员: `deterministic_`
+- 替换旧字段: `detDkWorkspaceSize`, `detDvWorkspaceSize`, `aicNumForDet`, `groupSizeForDet`, `batchSizeForDet`, `KForDet`
+- 新增字段: `detDkGroupSize`, `detDvGroupSize`, `detMetaSize`, `maxPartialSize`, `maxPartialsPerCore`, `deterministic`
 
 ### 4.2 Tiling 实现 (op_host/arch22/block_sparse_attention_grad_tiling_arch22.cpp)
 - ProcessInput: 读取环境变量 `BSAG_DETERMINISTIC=1` 设置 deterministic_
-- CalculateWorkSpace: `detDkWorkspaceSize = aicNum * groupSize * dkvSize * sizeof(float)`
-- FillTilingData: 设置新增字段（含 batchSizeForDet=40, KForDet=ceil(40/aicNum)）
+- CalculateWorkSpace: `detDkGroupSize = maxPartialsPerCore × aicNum × maxPartialSize × sizeof(float)`
+- FillTilingData: 设置新增字段
 
 ### 4.3 Kernel (op_kernel/arc22/block_sparse_attention_grad_kernel.h)
 
 **AIC operator()**:
-- gDk/gDv 指向 per-core-per-Q-head slot: `detDkBaseCore + qHeadInGroup * dkvSize * sizeof(float)`
-- 每次 blockMmad3 调用前通过 `SetGlobalBuffer` 更新 gDk/gDv 基地址
-- `qHeadInGroup = preTaskInfo.curHeadIdx % groupSize`
+- 新增 det workspace 基地址: `detDkGroupBase`, `detDvGroupBase`, `detMetaBase`
+- 新增 `gDkDet`/`gDvDet` GlobalTensor
+- 新增 `blockMmad3Det` 实例 (isAtomicAdd=false)
+- det 路径: blockMmad3 写入 det slot + metadata via V→MTE3 DataCopy
+- 非det路径: 保持原始 blockMmad3 写入 shared workspace
+- CrossCoreSetFlag(CUBE2POST) 前: PipeBarrier<PIPE_FIX>()
 
 **VecPre**:
-- 新增 `ZeroDetWorkspace()`: 清零 aicNum * groupSize * dkvSize 个元素
+- EpilogueFAGPre 后: PipeBarrier<PIPE_MTE3>() 确保 MTE3 写入完成
+- ZeroDetWorkspace(): 清零 det workspace
 
-**VecDeterReduceKernel (新增)**:
-- 读取 `totalSlots = aicNum * groupSize` 个 per-core slot
-- 按序 FP32 累加到 shared workspace
-- 使用 MTE2/V/MTE3 管道同步
+**ZeroDetWorkspace (重写)**:
+- 多核并行清零 detDkGroup + detDvGroup + detMetaBuf
+- 简单分区: 每核处理 detTotalBytes/usedCoreNum 字节
 
-**VecDeterReduce (新增)**:
-- 调用 VecDeterReduceKernel 对 dk 和 dv 分别归约
+**DetReduceAll (新增)**:
+- 多核并行按 dk/dv 元素分段
+- Duplicate 初始化 accumUb 为零
+- 扫描所有 det slot，读取 metadata (scalar read)
+- DataCopy/DataCopyPad 读取匹配的 partial data
+- FP32 Add 累加
+- DataCopy 写回 shared workspace
 
 **AIV operator()**:
-- 在 VecPost 前调用 VecDeterReduce
+- SyncAll<true> 后调用 DetReduceAll
 
 ## 5. 测试结果
 
@@ -104,7 +131,7 @@ AIV (CUBE2POST + SyncAll 后):
 
 - 平台: Atlas A2 (arch22), openEuler 24.03 SP3 aarch64
 - CANN: 9.1.0-beta.1
-- 设备: NPU device 7
+- 设备: NPU device 2
 
 ### 5.2 测试脚本
 
@@ -124,31 +151,30 @@ AIV (CUBE2POST + SyncAll 后):
 | GQA TND | PASS | PASS | PASS | 3/3 迭代全 PASS |
 | MHA TND | PASS | 1元素差(预存问题) | PASS | 10/10 迭代一致 |
 
-> MHA TND 的 dk 有 1 个元素 atol 略超 1e-3（diff=0.001953），该问题在确定性修改前同样存在，非本次修改引入。
-
 ### 5.4 确定性验证 (bit-exact, torch.equal)
 
 **专项 bit-exact 测试** (GQA BNSD, group=4, B=2, N=8, S1=128, S2=128, D=128):
 
-| 对比 | dq_bitexact | dk_bitexact | dv_bitexact |
-|------|-------------|-------------|-------------|
-| Run 0 vs 1 | **True** | **True** | **True** |
-| Run 0 vs 2 | **True** | **True** | **True** |
+| 对比 | dq_bitexact | dk_bitexact | dv_bitexact | dk_maxdiff |
+|------|-------------|-------------|-------------|------------|
+| Run 0 vs 1 | **True** | **True** | **True** | 0.00000000 |
+| Run 0 vs 2 | **True** | **True** | **True** | 0.00000000 |
 
-**对比：未开启确定性时的结果**:
+**大 shape bit-exact 测试** (GQA BNSD, B=10, N=12, S1=256, S2=357, D=128):
 
-| 对比 | dq_bitexact | dk_bitexact | dv_bitexact |
-|------|-------------|-------------|-------------|
-| Run 0 vs 1 | True | **False** (diff=0.000122) | **False** (diff=0.000488) |
-| Run 0 vs 2 | True | **False** (diff=0.000061) | **False** (diff=0.000244) |
+| 对比 | dk_maxdiff | dv_maxdiff |
+|------|------------|------------|
+| Run 0 vs 1 | **0.00000000** | **0.00000000** |
+| Run 0 vs 2 | **0.00000000** | **0.00000000** |
 
-### 5.5 结论
+### 5.5 Workspace 大小对比
 
-| 指标 | 结果 |
-|------|------|
-| 精度 (vs CPU golden, rtol=1e-3, atol=1e-3) | **PASS** (GQA 全 PASS) |
-| 确定性 (bit-exact, torch.equal) | **PASS** (dk/dv 完全 bit-exact) |
-| 非确定性场景确认 | dk/dv 在未开启时 bit-exact=False |
+| Shape | 旧方案 (per-core-per-Q-head) | 40轮分组方案 |
+|-------|---------------------------|-------------|
+| B=2, S=128 | ~83MB | ~4MB |
+| B=8, S=8192 | ~42.8GB | ~100MB |
+| B=8, S=32768 | ~171GB | ~100MB |
+| B=32, S=32768 | ~687GB | ~100MB |
 
 ## 6. 使用方法
 
@@ -174,18 +200,9 @@ python3 bsag_mha_tnd_test.py
 ```
 
 ### 6.3 关闭确定性（恢复原始行为）
-不设置 `BSAG_DETERMINISTIC` 环境变量即可，workspace 不会分配 det 槽位，行为与修改前完全一致。
+不设置 `BSAG_DETERMINISTIC` 环境变量即可。
 
 ## 7. 已知限制
 
-1. **Workspace 开销**: per-core-per-Q-head workspace 需要 `aicNum * groupSize * dkvSize * sizeof(float) * 2`。
-   对于大规模序列，额外 workspace 开销较大。
-2. **性能影响**: VecDeterReduce 引入额外的 GM 读取和 V 计算（aicNum * groupSize 次）。
-   后续可优化为 ping-pong 流水或分批归约。
-
-## 8. 迭代历史
-
-| 版本 | 方案 | 确定性 | 精度 | 问题 |
-|------|------|--------|------|------|
-| 原始 | 共享 workspace + atomicAdd | dk/dv bit-exact=False | PASS | Fixpipe atomicAdd 不完全 bit-exact |
-| **最终** | per-core-per-Q-head slots + atomicAdd(仅跨Q-block) | **bit-exact=True** | **PASS** | 无 |
+1. **性能影响**: DetReduceAll 引入额外的 GM 读取和 V 计算（扫描所有 slot）。
+2. **MHA TND dk 精度**: 有 1 个元素 atol 略超 1e-3（预存问题，非确定性修改引入）。

@@ -82,13 +82,12 @@ TILING_DATA_FIELD_DEF(uint64_t, dPOutSize);
 TILING_DATA_FIELD_DEF(uint64_t, dQOutSize);
 TILING_DATA_FIELD_DEF(uint64_t, dKOutSize);
 TILING_DATA_FIELD_DEF(uint64_t, dVOutSize);
-TILING_DATA_FIELD_DEF(uint64_t, detDkWorkspaceSize);
-TILING_DATA_FIELD_DEF(uint64_t, detDvWorkspaceSize);
-TILING_DATA_FIELD_DEF(uint32_t, aicNumForDet);
-TILING_DATA_FIELD_DEF(uint32_t, groupSizeForDet);
+TILING_DATA_FIELD_DEF(uint64_t, detDkGroupSize);
+TILING_DATA_FIELD_DEF(uint64_t, detDvGroupSize);
+TILING_DATA_FIELD_DEF(uint64_t, detMetaSize);
+TILING_DATA_FIELD_DEF(uint64_t, maxPartialSize);
+TILING_DATA_FIELD_DEF(uint32_t, maxPartialsPerCore);
 TILING_DATA_FIELD_DEF(uint8_t, deterministic);
-TILING_DATA_FIELD_DEF(uint32_t, batchSizeForDet);
-TILING_DATA_FIELD_DEF(uint32_t, KForDet);
 
 TILING_DATA_FIELD_DEF(uint32_t, basicQBlockSize);
 TILING_DATA_FIELD_DEF(uint32_t, basicKVBlockSize);
