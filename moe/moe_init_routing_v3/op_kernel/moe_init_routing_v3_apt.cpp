@@ -33,6 +33,12 @@
 #include "arch35/moe_v3_full_load_unquantized.h"
 #include "arch35/moe_v3_full_load_dynamic_quant.h"
 #include "arch35/moe_v3_full_load_static_quant.h"
+#include "arch35/moe_v3_counting_sort_full_load_unquantized.h"
+#include "arch35/moe_v3_counting_sort_full_load_static_quant.h"
+#include "arch35/moe_v3_counting_sort_full_load_dynamic_quant.h"
+#include "arch35/moe_v3_counting_sort_cut_origin_unquantized.h"
+#include "arch35/moe_v3_counting_sort_cut_origin_static_quant.h"
+#include "arch35/moe_v3_counting_sort_cut_origin_dynamic_quant.h"
 #include "arch35/moe_v3_row_idx_gather_droppad.h"
 #include "arch35/moe_v3_gather_out_droppad.h"
 
@@ -158,6 +164,16 @@
 #define MOE_INIT_ROUTING_V3_FULLLOAD_UNQUANTIZED 200000   // 全载、非量化
 #define MOE_INIT_ROUTING_V3_FULLLOAD_STATIC_QUANT 210000  // 全载、静态量化
 #define MOE_INIT_ROUTING_V3_FULLLOAD_DYNAMIC_QUANT 220000 // 全载、动态量化
+
+/*
+ * CountingSort 性能模板（计数排序）
+ */
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED       400000  // 模板1、非量化
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_STATIC_QUANT      410000  // 模板1、静态量化
+#define MOE_INIT_ROUTING_V3_CS_FULLLOAD_DYNAMIC_QUANT     420000  // 模板1、动态量化
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED      500000  // 模板2、非量化
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT     510000  // 模板2、静态量化
+#define MOE_INIT_ROUTING_V3_CS_CUTORIGIN_DYNAMIC_QUANT    520000  // 模板2、动态量化
 
 #define EMPTY_TENSOR 3000000
 
@@ -304,6 +320,95 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             fullLoadPipe.Destroy();
         }
 
+#if (__NPU_ARCH__ == 3510)
+        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
+        return;
+    }
+
+    // CountingSort 性能模板（模板1 FullLoad / 模板2 CutOrigin）
+    // 类型守卫：仅承接 X∈{bf16,fp16,fp32} 的非量化/静态量化/动态量化场景，
+    // 其余扩展类型（fp8/fp4/hifloat8/int8 X 等）回退到原分阶段路径。
+    if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_UNQUANTIZED)) {
+        if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
+                      IsSameType<DTYPE_X, float>::value) {
+            TPipe csPipe;
+            MoeV3CountingSortFullLoadUnquantized<DTYPE_X> csOp;
+            csOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
+                      userWS, t, &csPipe);
+            csOp.Process();
+            csPipe.Destroy();
+        }
+#if (__NPU_ARCH__ == 3510)
+        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
+        return;
+    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_STATIC_QUANT)) {
+        if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
+                      IsSameType<DTYPE_X, float>::value) {
+            TPipe csPipe;
+            MoeV3CountingSortFullLoadStaticQuant<DTYPE_X> csOp;
+            csOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
+                      userWS, t, &csPipe);
+            csOp.Process();
+            csPipe.Destroy();
+        }
+#if (__NPU_ARCH__ == 3510)
+        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
+        return;
+    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_FULLLOAD_DYNAMIC_QUANT)) {
+        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
+                       IsSameType<DTYPE_X, float32_t>::value) && IsSameType<DTYPE_EXPANDED_X, int8_t>::value) {
+            TPipe csPipe;
+            MoeV3CountingSortFullLoadDynamicQuant<DTYPE_X> csOp;
+            csOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
+                      userWS, t, &csPipe);
+            csOp.Process();
+            csPipe.Destroy();
+        }
+#if (__NPU_ARCH__ == 3510)
+        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
+        return;
+    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_UNQUANTIZED)) {
+        if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
+                      IsSameType<DTYPE_X, float>::value) {
+            TPipe csPipe;
+            MoeV3CountingSortCutOriginUnquantized<DTYPE_X> csOp;
+            csOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
+                      userWS, t, &csPipe);
+            csOp.Process();
+            csPipe.Destroy();
+        }
+#if (__NPU_ARCH__ == 3510)
+        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
+        return;
+    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_STATIC_QUANT)) {
+        if constexpr (IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
+                      IsSameType<DTYPE_X, float>::value) {
+            TPipe csPipe;
+            MoeV3CountingSortCutOriginStaticQuant<DTYPE_X> csOp;
+            csOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
+                      userWS, t, &csPipe);
+            csOp.Process();
+            csPipe.Destroy();
+        }
+#if (__NPU_ARCH__ == 3510)
+        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
+        return;
+    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_CS_CUTORIGIN_DYNAMIC_QUANT)) {
+        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
+                       IsSameType<DTYPE_X, float32_t>::value) && IsSameType<DTYPE_EXPANDED_X, int8_t>::value) {
+            TPipe csPipe;
+            MoeV3CountingSortCutOriginDynamicQuant<DTYPE_X> csOp;
+            csOp.Init(x, expertIdx, scale, expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
+                      userWS, t, &csPipe);
+            csOp.Process();
+            csPipe.Destroy();
+        }
 #if (__NPU_ARCH__ == 3510)
         SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 #endif
