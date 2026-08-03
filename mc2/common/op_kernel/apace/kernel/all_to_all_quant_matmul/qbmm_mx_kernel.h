@@ -15,20 +15,30 @@
 namespace Blaze {
 namespace Gemm {
 namespace Kernel {
+
+struct UdmaCommWaitPolicy {
+    __aicore__ inline void WaitTile(uint32_t tileIdx) {
+        AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(tileIdx);
+    }
+};
+
 #define QBMM_MX_KERNEL_CLASS_TEM_PARAMS \
-    template <class ProblemShape, class BlockMmad, class BlockScheduler, class Derived, bool HcommPureCMode>
-#define QBMM_MX_KERNEL_FUNC_TEM_PARAMS ProblemShape, BlockMmad, BlockScheduler, Derived, HcommPureCMode
+    template <class ProblemShape, class BlockMmad, class BlockScheduler, class CommPolicy>
+#define QBMM_MX_KERNEL_FUNC_TEM_PARAMS ProblemShape, BlockMmad, BlockScheduler, CommPolicy
 
 using namespace AscendC;
 using AscendC::Te::Get;
 
 /**
  * @brief SWAT MX 量化矩阵乘内核实现
- * 该类负责具体的矩阵乘块调度和计算，支持本地(LOCAL)和远程(REMOTE)两种切片模式
+ * 该类负责具体的矩阵乘块调度和计算，支持本地(LOCAL)和远程(REMOTE)两种切片模式。
+ * 通信等待逻辑经 CommPolicy 策略类注入（组合模式）：基类持 commPolicy_ 成员对象，
+ * WaitCommTile 调 commPolicy_.WaitTile(tileIdx)，编译期由模板参数绑定具体策略，
+ * 无需继承与 static_cast。默认 UdmaCommWaitPolicy 走 CrossCoreWaitFlag。
  */
 
 template <class ProblemShape, class BlockMmad, class BlockScheduler,
-          class Derived = void, bool HcommPureCMode = false>
+          class CommPolicy = UdmaCommWaitPolicy>
 class QuantMatmulMxKernelSwat {
 public:
     __aicore__ inline QuantMatmulMxKernelSwat()
@@ -125,6 +135,8 @@ public:
         Run(params);
     }
 
+    __aicore__ inline CommPolicy& GetCommPolicy() { return commPolicy_; }
+
 private:
     __aicore__ inline void ResetGmAddr(const Params &params);
     __aicore__ inline void ProcessSingleBatch(const Params &params, BlockScheduler& bs,
@@ -143,6 +155,7 @@ private:
 
 private:
     BlockMmad mmadOp_;
+    CommPolicy commPolicy_;
 
     __gm__ AType *aGmAddr_;               // 远程数据基址（通信缓冲区）
     __gm__ AType *localAGmAddr_;          // 本地数据基址
@@ -291,11 +304,7 @@ QBMM_MX_KERNEL_CLASS_TEM_PARAMS
 __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::WaitCommTile(
     const Params &params, uint32_t tileIdx)
 {
-    if constexpr (HcommPureCMode) {
-        static_cast<Derived*>(this)->WaitCommTile(params, tileIdx);
-    } else {
-        AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(tileIdx);
-    }
+    commPolicy_.WaitTile(tileIdx);
 }
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS

@@ -18,7 +18,7 @@
  *
  * Run():
  *   AIC: MatmulProcess() -> hccl_.Finalize()
- *        scale/data wait 由子类 AllToAllMxQuantMatmulKernel 经 CRTP 覆写 WaitCommTileHcomm 承担：
+ *        scale/data wait 由策略类 HcommCommWaitPolicy 承担（经基类成员 commPolicy_ 调用 WaitTile）：
  *        kernel 内逐 tile 通过 hccl->Wait(dataHeadHandle/dataTailHandle) 等待通信完成，
  *        首次 wait 紧挨 data wait 之前执行 hccl->Wait(scaleHandle_)（每核仅一次，掩盖 matmul 头开销）。
  *
@@ -50,21 +50,10 @@ constexpr uint64_t GetX1HcclDataType()
     }
 }
 
-template <typename ProblemShape, typename BlockMmad, typename BlockScheduler>
-class AllToAllMxQuantMatmulKernel
-    : public Blaze::Gemm::Kernel::QuantMatmulMxKernelSwat<
-          ProblemShape, BlockMmad, BlockScheduler,
-          AllToAllMxQuantMatmulKernel<ProblemShape, BlockMmad, BlockScheduler>, true> {
-    using Base = Blaze::Gemm::Kernel::QuantMatmulMxKernelSwat<
-        ProblemShape, BlockMmad, BlockScheduler,
-        AllToAllMxQuantMatmulKernel<ProblemShape, BlockMmad, BlockScheduler>, true>;
-public:
-    using Base::Base;
-    using typename Base::Params;
-
-    __aicore__ inline void SetCommParams(void* hcclPtr, AscendC::HcclHandle scaleHandle,
-                                         AscendC::HcclHandle dataHeadHandle,
-                                         AscendC::HcclHandle dataTailHandle, uint32_t headTileCnt)
+struct HcommCommWaitPolicy {
+    __aicore__ inline void SetParams(void* hcclPtr, AscendC::HcclHandle scaleHandle,
+                                     AscendC::HcclHandle dataHeadHandle,
+                                     AscendC::HcclHandle dataTailHandle, uint32_t headTileCnt)
     {
         hcclPtr_ = hcclPtr;
         scaleHandle_ = scaleHandle;
@@ -74,7 +63,7 @@ public:
         headTileCnt_ = headTileCnt;
     }
 
-    __aicore__ inline void WaitCommTile(const Params &params, uint32_t tileIdx)
+    __aicore__ inline void WaitTile(uint32_t tileIdx)
     {
         auto* hccl = static_cast<AscendC::Hccl<AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU>*>(hcclPtr_);
         if (!scaleWaited_) {
@@ -90,10 +79,10 @@ public:
 
 private:
     void* hcclPtr_{nullptr};
+    AscendC::HcclHandle scaleHandle_{0};
     AscendC::HcclHandle dataHeadHandle_{0};
     AscendC::HcclHandle dataTailHandle_{0};
     uint32_t headTileCnt_{0};
-    AscendC::HcclHandle scaleHandle_{0};
     bool scaleWaited_{false};
 };
 
@@ -123,7 +112,8 @@ public:
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<0, false>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<
         DispatchPolicy, X1Type, LayoutA, X2Type, LayoutB, YType, LayoutC, BiasType, LayoutBias>;
-    using QuantMatmulKernelImpl = AllToAllMxQuantMatmulKernel<ProblemShape, BlockMmad, BlockScheduler>;
+    using QuantMatmulKernelImpl = Blaze::Gemm::Kernel::QuantMatmulMxKernelSwat<
+        ProblemShape, BlockMmad, BlockScheduler, HcommCommWaitPolicy>;
 
     // 参数类型
     using Params = typename QuantMatmulKernelImpl::Params;
@@ -286,8 +276,9 @@ AllToAllMxMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
 {
     Params params;
     SetupParams(params);
-    quantMatmulKernelImpl_.SetCommParams(&hccl_, scaleHandle_, dataHeadHandle_, dataTailHandle_,
-                                         static_cast<uint32_t>(tilingData_->commTilingData.splitAxisTileCnt));
+    quantMatmulKernelImpl_.GetCommPolicy().SetParams(
+        &hccl_, scaleHandle_, dataHeadHandle_, dataTailHandle_,
+        static_cast<uint32_t>(tilingData_->commTilingData.splitAxisTileCnt));
     quantMatmulKernelImpl_(params);
 }
 
