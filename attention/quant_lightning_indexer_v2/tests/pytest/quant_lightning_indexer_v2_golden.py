@@ -176,6 +176,22 @@ def reduce_mxfp4_weighted_qk(weight_matrix, qk_matrix):
     return acc_bf16
 
 
+def reduce_mxfp8_weighted_qk(weight_matrix, qk_matrix):
+    output_shape = (weight_matrix.shape[0], weight_matrix.shape[1], qk_matrix.shape[2])
+    acc_fp32 = torch.zeros(
+        output_shape, dtype=torch.float32, device=weight_matrix.device
+    )
+
+    for g_idx in range(weight_matrix.shape[2]):
+        weight_fp64 = weight_matrix[:, :, g_idx : g_idx + 1].to(torch.float64)
+        qk_fp64 = qk_matrix[:, g_idx : g_idx + 1, :].to(torch.float64)
+        # Model an FP32-destination MulAddDst: compute the fused multiply-add in
+        # FP64, then round once to the FP32 destination after every G.
+        fma_fp64 = acc_fp32.to(torch.float64) + weight_fp64 * qk_fp64
+        acc_fp32 = fma_fp64.to(torch.float32)
+    return acc_fp32
+
+
 def get_qk_physical_head_dim(head_dim, quant_mode):
     return head_dim // FP4_PACK_NUM if is_mxfp4_quant_mode(quant_mode) else head_dim
 
@@ -819,35 +835,33 @@ class GeneralizedQLIV2:
         cur_k_scale = self.cur_k_scale.to(dtype=torch.float32)
         sparse_count = self.sparse_count
         sparse_mode = self.sparse_mode
-        if is_mxfp4_quant_mode(self.quant_mode):
+        is_mxfp4 = is_mxfp4_quant_mode(self.quant_mode)
+        if is_mxfp4:
             head_dim = cur_q.shape[-1]
             if head_dim % MX_SCALE_GROUP_SIZE != 0:
                 raise ValueError(
                     f"MXFP4 head_dim must be divisible by {MX_SCALE_GROUP_SIZE}, but got {head_dim}"
                 )
 
-            cur_q = cur_q * cur_q_scale
-            cur_k = cur_k * cur_k_scale
-            qk_bmm_res = torch.bmm(
-                cur_q.squeeze(0), cur_k.permute(0, 1, 3, 2).squeeze(0)
-            ).unsqueeze(0)
+        # MXFP4 and MXFP8 share the same Cube model: broadcast each 32-D
+        # E8M0 scale group to D, then run one complete-K BMM.
+        cur_q = cur_q * cur_q_scale
+        cur_k = cur_k * cur_k_scale
+        qk_bmm_res = torch.bmm(
+            cur_q.squeeze(0), cur_k.permute(0, 1, 3, 2).squeeze(0)
+        ).unsqueeze(0)
 
+        if is_mxfp4:
             qk_relu_out = qk_bmm_res.clamp_min(0.0).to(torch.bfloat16)
             weight_matrix = cur_wt.to(torch.bfloat16).permute(0, 2, 3, 1).squeeze(0)
             qk_matrix = qk_relu_out.permute(0, 2, 1, 3).squeeze(0)
             brc_vmul_matrix = reduce_mxfp4_weighted_qk(weight_matrix, qk_matrix)
             brc_vmul = brc_vmul_matrix.unsqueeze(0)
         else:
-            cur_q = cur_q * cur_q_scale
-            cur_k = cur_k * cur_k_scale
-            qk_bmm_res = torch.bmm(
-                cur_q.squeeze(0), cur_k.permute(0, 1, 3, 2).squeeze(0)
-            ).unsqueeze(0)
             qk_relu_out = qk_bmm_res.to(dtype=torch.float32).clamp_min(0.0)
-            brc_vmul = torch.bmm(
-                cur_wt.permute(0, 2, 3, 1).to(dtype=torch.float32).squeeze(0),
-                qk_relu_out.permute(0, 2, 1, 3).to(dtype=torch.float32).squeeze(0),
-            ).unsqueeze(0)
+            weight_matrix = cur_wt.permute(0, 2, 3, 1).squeeze(0)
+            qk_matrix = qk_relu_out.permute(0, 2, 1, 3).squeeze(0)
+            brc_vmul = reduce_mxfp8_weighted_qk(weight_matrix, qk_matrix).unsqueeze(0)
         temp_b, temp_s1, temp_n1, temp_s2 = brc_vmul.shape
         temp_n2 = self.k_head_num
         actual_selected_count = min(temp_s2, sparse_count)
@@ -2125,7 +2139,7 @@ def qliv2_output_single(
             query = query.to(dtype=torch.float16)
             key = key.to(dtype=torch.float16)
             if blockFusion is not None:
-                blockFusion = blockFusion.to(dtype=torch.float16)
+                blockFusion = blockFusion.view(torch.uint8)
 
         output_tensors = {
             "params": params,
