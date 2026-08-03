@@ -201,23 +201,27 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     constInfo.isActualLenDimsKVNull = false;
 
     constInfo.needInit = 0;
-    for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
-        int64_t s2Size;
-        GlobalTensor<int32_t> actualSeqLengthsKVGm;
-        actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)sequsedKv);
-        s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
-    
-        int64_t s1Size;
-        if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
-            GlobalTensor<int32_t> cuSeqlensQGm;
-            cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
-            s1Size = cuSeqlensQGm.GetValue(bIdx + 1) - cuSeqlensQGm.GetValue(bIdx);
-        } else {
-            s1Size = constInfo.s1Size;
+    GlobalTensor<int32_t> actualSeqLengthsKVGm;
+    actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)sequsedKv);
+    if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+        GlobalTensor<int32_t> cuSeqlensQGm;
+        cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensQ);
+        for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
+            int64_t s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
+            int64_t s1Size = cuSeqlensQGm.GetValue(bIdx + 1) - cuSeqlensQGm.GetValue(bIdx);
+            if (s1Size > s2Size) {
+                constInfo.needInit = 1;
+                break;
+            }
         }
-        if (s1Size > s2Size) {
-            constInfo.needInit = 1;
-            break;
+    } else {
+        for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
+            int64_t s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
+            int64_t s1Size = constInfo.s1Size;
+            if (s1Size > s2Size) {
+                constInfo.needInit = 1;
+                break;
+            }
         }
     }
 }
@@ -285,35 +289,17 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType>::ComputeConstexpr()
 {
-    constInfo.s1S2 = constInfo.s1Size * constInfo.s2Size;
-    constInfo.gS1 = constInfo.gSize * constInfo.s1Size;
-    constInfo.n2G = constInfo.n2Size * constInfo.gSize;
-
-    constInfo.s1Dv = constInfo.s1Size * constInfo.dSizeV;
-    constInfo.s2Dv = constInfo.s2Size * constInfo.dSizeV;
-    constInfo.n2Dv = constInfo.n2Size * constInfo.dSizeV;
+    // This operator fixes n2Size to 1 in ParseTilingData. Keep the derived
+    // values here in sync if shared-KV later supports N2 > 1.
+    // constInfo.n2Size = 1;
+    constInfo.n2G = constInfo.gSize;
     constInfo.gDv = constInfo.gSize * constInfo.dSizeV;
-    constInfo.gS1Dv = constInfo.gSize * constInfo.s1Dv;
-    constInfo.n2S2Dv = constInfo.n2Size * constInfo.s2Dv;
-    constInfo.n2GDv = constInfo.n2Size * constInfo.gDv;
-    constInfo.s2BaseN2Dv = constInfo.s2BaseSize * constInfo.n2Dv;
-    constInfo.n2GS1Dv = constInfo.n2Size * constInfo.gS1Dv;
-
-    if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
-        // (BS)ND
-        constInfo.s1BaseN2GDv = constInfo.s1BaseSize * constInfo.n2GDv;
-
-        constInfo.mm1Ka = constInfo.n2Size * constInfo.dSize;
-        if ASCEND_IS_AIV {
-            constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
-        }
-    } else if constexpr (LAYOUT_T == SAS_LAYOUT::BSND) {
-        // BSH/BSNGD
-        constInfo.s1BaseN2GDv = constInfo.s1BaseSize * constInfo.n2GDv;
-        constInfo.mm1Ka = constInfo.n2Size * constInfo.dSize;
-        if ASCEND_IS_AIV {
-            constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
-        }
+    constInfo.n2GDv = constInfo.gDv;
+    constInfo.mm1Ka = constInfo.dSize;
+    if ASCEND_IS_AIV {
+        // n2G == gSize when n2Size is fixed to 1, so adjacent output rows are
+        // contiguous and the MTE3 dst stride is always 0.
+        constInfo.attentionOutStride = 0;
     }
 }
 
