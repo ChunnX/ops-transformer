@@ -283,6 +283,10 @@ aclnnStatus Mc2Context::GetHcclCommResource(const HcclComm &hcclHandle, const Co
 
         if (i == rankId) {
             hcclRet = HcclGetHcclBuffer(hcclHandle, &tempBuffer, &hcclBuffSize_);
+            // host 侧 Mc2MoeContext 缺少 hcommHandle[HCCL_MAX_RANK_SIZE] 字段(8192 bytes)，
+            // kernel 侧 mega_moe_base.h 中 Mc2MoeContext 包含该字段，手动补齐差值。
+            constexpr uint64_t MISSING_HCOMM_HANDLE_SIZE = HCCL_MAX_RANK_SIZE * sizeof(uint64_t);
+            hcclBuffSize_ += MISSING_HCOMM_HANDLE_SIZE;
         } else {
             uint32_t idx = (i < rankId) ? i : (i - 1);
             hcclRet = HcclChannelGetHcclBuffer(hcclHandle, channels[idx], &tempBuffer, &bufSize);
