@@ -273,17 +273,27 @@ public:
     __aicore__ inline void CopyQGmToL1(uint32_t m,
                                        uint32_t k,   // embed：fp4 元素个数（非 packedK）
                                        AscendC::GlobalTensor<fp4x2_e2m1_t> &gQTensor,
-                                       uint32_t qBufId)
+                                       uint32_t qBufId,
+                                       uint32_t qHeadMul)   // [BSND stride 修复] Q 头内 token-stride 因子
     {
-        auto gQLayout = tla::MakeLayout<ElementA, layout::RowMajor>(m, k);
+        // [BSND stride 修复] Q GM row-stride(头内 token-stride)=qHeadMul*k(BNSD=k); RowMajor cols→row-stride
+        auto gQLayout = tla::MakeLayout<ElementA, layout::RowMajor>(m, qHeadMul * k);
         auto gQTensorTla = tla::MakeTensor(gQTensor, gQLayout, Arch::PositionGM{});
         auto l1QLayout = tla::MakeLayout<ElementA, layout::zN>(Q_M_PAD, k);
         auto l1QTensorTla = tla::MakeTensor(l1ATensor[qBufId], l1QLayout, Arch::PositionL1{});
         auto l1QTileTla = GetTile(l1QTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(m, k));
+        // [BSND stride 修复] GetTile src 到 (m,k): tile shape 给 dValue=k(正解, 否则整个 gQTensorTla
+        //   shape (m, qHeadMul*k) 会让 RowMajor→zN 的 dValue=get<1>(shape)=qHeadMul*k 放大→每 token
+        //   多读→Q 错→S 全错 1.36%)。tile 保留 parent 的 row-stride=qHeadMul*k(正解 token-stride)。
+        //   V/K 都 GetTile src, 唯 Q 漏了, 故 Q 须补此 GetTile(对 BNSD qHeadMul=1 无变化)。
+        auto gQTileTla = GetTile(gQTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(m, k));
 
-        using CopyGmToL1Q = Tile::TileCopyTla<ArchTag, decltype(gQTensorTla), decltype(l1QTensorTla)>;
+        // [BSND verify] Q gather 期望值: 对照紧跟的 [CPY-RM2ZN] 实际 dVal(应=k)/srcDVal(应=qHeadMul*k)
+        // AscendC::printf("[Q-GATHER] qHeadMul=%u m=%u k=%u expDVal=%u expSrcDVal=%u\n",
+        //     (unsigned)qHeadMul, (unsigned)m, (unsigned)k, (unsigned)k, (unsigned)(qHeadMul * k));
+        using CopyGmToL1Q = Tile::TileCopyTla<ArchTag, decltype(gQTileTla), decltype(l1QTensorTla)>;
         CopyGmToL1Q copyGmToL1Q;
-        copyGmToL1Q(l1QTileTla, gQTensorTla);
+        copyGmToL1Q(l1QTileTla, gQTileTla);
     }
 
     // [Step5] Q-scale 稠密 GM→L1：CopyGmToL1MxScaleDn2NzA5（Host 沿 D；禁止 PV MxScale）
@@ -320,7 +330,7 @@ public:
         uint32_t curBaseTileSize,                      // 本 tile 实际 K 行数
         uint32_t embed,                                // head dim D（fp4 元素）
         uint32_t s2Align64,
-        uint32_t kBufId)                            // CeilAlign(n,64)，NZ 行 stride
+        uint32_t kBufId, uint32_t kvHeadMul)                            // CeilAlign(n,64) / [BSND stride 修复]K 头内 token-stride 因子
     {
         uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile;
         uint32_t baseTileEndOffset   = baseTileStartOffset + curBaseTileSize;
@@ -330,7 +340,7 @@ public:
         uint32_t oriYBlockIdx   = gSparseBlockIdx.GetValue(gatheredYBlockIdx);
         uint32_t oriStartOffset = oriYBlockIdx * blockShapeY + yBlockInnerStart;
         uint32_t dealtLenAccum  = 0;
-        auto gKLayout = tla::MakeLayout<ElementA, layout::RowMajor>(kvSeqlen, embed);
+        auto gKLayout = tla::MakeLayout<ElementA, layout::RowMajor>(kvSeqlen, kvHeadMul * embed);  // [BSND stride 修复] row-stride=kvHeadMul*embed(BNSD=embed)
         auto gKTensorTla = tla::MakeTensor(gK, gKLayout, Arch::PositionGM{});
         auto l1KLayout = tla::MakeLayout<ElementA, layout::zN>(curBaseTileSize, embed);
         auto l1KTensorTla = tla::MakeTensor(l1BTensor[kBufId], l1KLayout, Arch::PositionL1{});
@@ -386,7 +396,7 @@ public:
         uint32_t kvSBaseTile, uint32_t blockShapeY,
         uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
         uint32_t curBaseTileSize, uint32_t embed,
-        uint32_t kBufId)
+        uint32_t kBufId, uint32_t kvHeadMul)
     {
         uint32_t scaleK = CeilDivision(embed, 64) * 2;
         uint32_t scaleRowHalf = scaleK / 2;
@@ -410,7 +420,7 @@ public:
             uint32_t curDealtLen = gatheredEndOffset - gatheredStartOffset;
             if (curDealtLen == 0) { break; }
 
-            uint32_t srcB16Off = oriStartOffset * scaleRowHalf;
+            uint32_t srcB16Off = oriStartOffset * kvHeadMul * scaleRowHalf;  // [BSND stride 修复] K-scale 头内 token stride 乘 kvHeadMul
             uint32_t dstB16Off = dealtLenAccum * scaleRowHalf;
             // AscendC::printf(
             //     "[KS-GATHER] seg: oriStart=%u curDealtLen=%u dealtAccum=%u scaleK=%u "
@@ -538,7 +548,9 @@ public:
                     uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
                     bool isFirstKvsTile,         // Step2：task 内首个 KV tile 才搬 Q
                     bool isLastKvsTile, 
-                    uint32_t subBlockIdx)        // Fixpipe → AIV0/AIV1
+                    uint32_t subBlockIdx,        // Fixpipe → AIV0/AIV1
+                    uint32_t kvHeadMul,          // [BSND stride 修复] K/K-scale 头内 token stride 因子(BNSD=1)
+                    uint32_t qHeadMul)          // [BSND stride 修复] Q 头内 token stride 因子(BNSD=1)
     {
         // AscendC::printf(
         //     "\n MmadAtlasA5Bsa[QK0725]Mxfp4 Step3 | m(Q)=%u n(K)=%u k(D)=%u gatheredIdx=%u "
@@ -579,7 +591,7 @@ public:
             // AscendC::printf("[Q-LOAD] gatheredIdx=%u m=%u k=%u (task first tile)\n",
             //     (unsigned)gatheredKvSTileIdx, (unsigned)m, (unsigned)k);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1QEventId); 
-            CopyQGmToL1(m, k, gQ, qBufId);                       // k=embed（fp4 元素），非 packedK
+            CopyQGmToL1(m, k, gQ, qBufId, qHeadMul);                       // k=embed（fp4 元素），非 packedK
             CopyQScaleGmToL1(m, scaleK, gQDequantScale, qBufId);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);  // 通知 MTE1: Q 就绪
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);
@@ -595,10 +607,10 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1KEventId);
         SparseKBaseTileL1FullLoad(
             gK, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
-            yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embed, s2Align64, kBufId);
+            yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embed, s2Align64, kBufId, kvHeadMul);
         SparseKScaleBaseTileL1FullLoad(
             gKDequantScale, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
-            yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embed, kBufId);
+            yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embed, kBufId, kvHeadMul);
         // MTE2(gather) 完成后再 MTE1(L1→L0)
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1KEventId);
