@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_attn_sharedkv_scfa_kernel.h
@@ -156,6 +156,7 @@ private:
     GlobalTensor<KV_T> vec1ResGm;
     GlobalTensor<MM2_OUT_T> mm2ResGm;
     GlobalTensor<KV_T> kvMergeGm_;
+    GlobalTensor<KV_T> kvNzWorkspaceGm_;  // 新增：NZ 格式 workspace
 
     GlobalTensor<UPDATE_T> vec2ResGm;
 
@@ -447,7 +448,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::Init(
     topKGm.SetGlobalBuffer((__gm__ int32_t *)cmpSparseIndices);
 
     // workspace 内存排布
-    // |Q--|mm1ResGm|vec1ResGm|mm2ResGm|vec2ResGm
+    // |Q--|mm1ResGm|vec1ResGm|mm2ResGm|vec2ResGm|kvNzWorkspaceGm|
     // |Core0_Q1-Core0_Q2-Core1_Q1-Core1_Q2....Core32_Q1-Core32_Q2|Core0_mmRes
     uint64_t offset = 0;
     mm1ResGm.SetGlobalBuffer(
@@ -472,9 +473,15 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::Init(
         aiCoreIdx * 512 * 512 * MERGE_CACHE_GM_BUF_NUM * sizeof(KV_T)));
     offset += GetBlockNum() * 512 * 512 * 4 * sizeof(KV_T);
 
+    // 新增：分配 kvNzWorkspaceGm_（与 kvMergeGm_ 大小相同）
+    kvNzWorkspaceGm_.SetGlobalBuffer((__gm__ KV_T *)(workspace + offset + \
+        aiCoreIdx * 512 * 512 * MERGE_CACHE_GM_BUF_NUM * sizeof(KV_T)));
+    offset += GetBlockNum() * 512 * 512 * 4 * sizeof(KV_T);
+
     if ASCEND_IS_AIV {
         vectorBlock.InitParams(constInfo, tilingData);
-        vectorBlock.InitVec0GlobalTensor(kvMergeGm_, oriKvGm, cmpKvGm, oriBlockTableGm,
+        // 传入 kvNzWorkspaceGm_ 作为第二个参数
+        vectorBlock.InitVec0GlobalTensor(kvMergeGm_, kvNzWorkspaceGm_, oriKvGm, cmpKvGm, oriBlockTableGm,
                                          cmpBlockTableGm);
         vectorBlock.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, actualSeqLengthsQGm, actualSeqLengthsKVGm, topKGm,
                                          sinksGm, softmaxLseGm);

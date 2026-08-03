@@ -703,6 +703,14 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec0L(const RunInfo &runInfo
             needWaitMte3ToMte2 = true;
         }
     }
+
+    // 2. 新增：ND→NZ 预处理
+    //    遍历所有需要的数据块，将 oriKvGm 中的 ND 数据转换成 NZ 格式
+    //    写入 kvNzWorkspaceGm_
+    Nd2NzPreprocessAll(runInfo);
+
+    // 3. 通知 Cube 核
+    SetFlag<HardEvent::MTE3_MTE2>(ND2NZ_ALL_DONE);
     return;
 }
 
@@ -1080,5 +1088,45 @@ __aicore__ inline void SASVectorBlock<SAST>::RowMuls(LocalTensor<T> dstUb, Local
         }
     }
 }
+
+
+template <typename SAST>
+__aicore__ inline void SASVectorBlock<SAST>::Nd2NzPreprocessAll(const RunInfo &runInfo)
+{
+    if (!ASCEND_IS_AIV) return;
+
+    // 根据 runInfo 和 constInfo 确定需要处理的块数量
+    // 这里需要遍历所有 nL1 × kL1 的组合
+    
+    // 示例：假设处理 BSND 分支的数据
+    uint32_t nL1Loops = CeilDiv(info.actualSingleProcessSInnerSize, N_SPLIT_SIZE);
+    uint32_t kL1Loops = 2;
+
+    for (uint32_t nL1 = 0; nL1 < nL1Loops; nL1++) {
+        uint32_t nL1Size = (nL1 == nL1Loops - 1) ? tailSize : N_SPLIT_SIZE;
+        
+        for (uint32_t kL1 = 0; kL1 < kL1Loops; kL1++) {
+            // 1. 从 oriKvGm 读取 ND 数据到 UB
+            uint64_t srcOffset = calculateSrcOffset(runInfo, nL1, kL1);
+            DataCopyParams copyParams;
+            copyParams.blockCount = 1;
+            copyParams.blockLen = (nL1Size * D_SPLIT_SIZE * sizeof(KV_T) + 31) / 32;
+            DataCopy(kvMergUb_, oriKvGm[srcOffset], copyParams);
+
+            // 2. AIV 上做 ND→NZ 转换
+            Nd2NzInAiv(kvMergUb_, kvMergUb_, nL1Size, D_SPLIT_SIZE);
+
+            // 3. 写入 kvNzWorkspaceGm_
+            uint64_t dstOffset = calculateNzOffset(runInfo, nL1, kL1);
+            DataCopy(kvNzWorkspaceGm_[dstOffset], kvMergUb_, copyParams);
+
+            // 4. 通知 Cube 核该块已就绪
+            SetFlag<HardEvent::MTE3_MTE2>(ND2NZ_DONE_EVENT + nL1 * kL1Loops + kL1);
+        }
+    }
+}
+
+
+
 } // namespace SASKernel
 #endif // SPARSE_ATTN_SHAREDKV_SCFA_BLOCK_VECTOR_H
