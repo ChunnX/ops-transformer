@@ -554,6 +554,9 @@ private:
 
         Duplicate(yLocal, static_cast<float>(0.0), inverseVecLen * inverseVecLen);
         Duplicate(eiMatrix, static_cast<float>(0.0), inverseVecLen * inverseVecLen);
+        int32_t vsEventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::V_S));
+        SetFlag<HardEvent::V_S>(vsEventID);
+        WaitFlag<HardEvent::V_S>(vsEventID);
         for (uint32_t j = 0; j < inverseVecLen; ++j) {
             eiMatrix.SetValue(j * inverseVecLen + j, static_cast<float>(1.0));
         }
