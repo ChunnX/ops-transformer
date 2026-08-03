@@ -695,7 +695,7 @@ def _build_attention_mask(b, Sq, Skv, actual_seq_q, actual_seq_kv, sparse_mode):
         return q_padding_mask | k_padding_mask
 
 
-def _compute_c1_npu(Qi, Kj, deq_scale_q_i, deq_scale_k_j, d_total
+def _compute_c1_npu(Qi, Kj, deq_scale_q_i, deq_scale_k_j, d_total,
                      Qri=None, Krj=None):
     """计算单个 S block (attention score)"""
     B, N, S1, D = Qi.shape
