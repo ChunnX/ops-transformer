@@ -87,6 +87,8 @@ private:
     __aicore__ inline void ReorderAndSaveCtx();
     __aicore__ inline void WaitAllStatusFlags(GM_ADDR statusWinBase, uint32_t expectCount);
     __aicore__ inline void ClearStatusFlags(GM_ADDR statusWinBase);
+    __aicore__ inline void ClearCountersAfterRecv(GM_ADDR localWinBase, uint32_t srcRank, uint64_t writeOffset,
+                                                   uint64_t readOffset);
     __aicore__ inline GM_ADDR GetRemoteWinAddr(uint32_t dstRank, uint64_t offset);
     __aicore__ inline uint64_t GetCommHandle(uint32_t dstRank);
     __aicore__ inline int32_t ReadLocalCounter(GM_ADDR winBase, uint64_t counterOffset, uint32_t srcRank);
@@ -117,8 +119,6 @@ private:
     uint64_t localStorageAddr_{0};
 
     uint64_t countFlagOffset_{0};
-    uint64_t indicesFlagOffset_{0};
-    uint64_t tokenFlagOffset_{0};
     uint64_t indicesWriteOffset_{0};
     uint64_t indicesReadOffset_{0};
     uint64_t tokenWriteOffset_{0};
@@ -256,9 +256,7 @@ __aicore__ inline void EngramFetchTrainArch35::InitWinLayout()
 
     uint64_t totalRanksOffset = numRanks_ * STATE_OFFSET;
     countFlagOffset_ = 0;
-    indicesFlagOffset_ = totalRanksOffset;
-    tokenFlagOffset_ = indicesFlagOffset_ + totalRanksOffset;
-    indicesWriteOffset_ = tokenFlagOffset_ + totalRanksOffset;
+    indicesWriteOffset_ = totalRanksOffset;
     indicesReadOffset_ = indicesWriteOffset_ + totalRanksOffset;
     tokenWriteOffset_ = indicesReadOffset_ + totalRanksOffset;
     tokenReadOffset_ = tokenWriteOffset_ + totalRanksOffset;
@@ -372,31 +370,12 @@ __aicore__ inline void EngramFetchTrainArch35::InitUbBuffers(const EngramFetchTi
 __aicore__ inline void EngramFetchTrainArch35::InitFlagsAndCounters()
 {
     if (aivId_ == 0) {
-        LocalTensor<int32_t> flagLocal = statusBuf_.Get<int32_t>();
-        Duplicate<int32_t>(flagLocal, 1, STATE_OFFSET / sizeof(int32_t));
+        LocalTensor<int32_t> zeroLocal = statusBuf_.Get<int32_t>();
+        Duplicate<int32_t>(zeroLocal, 0, STATE_OFFSET / sizeof(int32_t));
         EngramFetchTrainSyncFunc<HardEvent::V_MTE3>();
         GlobalTensor<int32_t> flagInit;
         flagInit.SetGlobalBuffer((__gm__ int32_t *)flagScratchGM_);
-        DataCopy(flagInit, flagLocal, STATE_OFFSET / sizeof(int32_t));
-        EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
-
-        Duplicate<int32_t>(flagLocal, 0, numRanks_ * STATE_OFFSET / sizeof(int32_t));
-        EngramFetchTrainSyncFunc<HardEvent::V_MTE3>();
-
-        uint64_t cleanSize = numRanks_ * STATE_OFFSET / sizeof(int32_t);
-        GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
-        GlobalTensor<int32_t> writeGM;
-        GlobalTensor<int32_t> readGM;
-        writeGM.SetGlobalBuffer((__gm__ int32_t *)(localWinBase + indicesWriteOffset_));
-        readGM.SetGlobalBuffer((__gm__ int32_t *)(localWinBase + indicesReadOffset_));
-        DataCopy(writeGM, flagLocal, cleanSize);
-        DataCopy(readGM, flagLocal, cleanSize);
-        GlobalTensor<int32_t> tWriteGM;
-        GlobalTensor<int32_t> tReadGM;
-        tWriteGM.SetGlobalBuffer((__gm__ int32_t *)(localWinBase + tokenWriteOffset_));
-        tReadGM.SetGlobalBuffer((__gm__ int32_t *)(localWinBase + tokenReadOffset_));
-        DataCopy(tWriteGM, flagLocal, cleanSize);
-        DataCopy(tReadGM, flagLocal, cleanSize);
+        DataCopy(flagInit, zeroLocal, STATE_OFFSET / sizeof(int32_t));
         EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
     }
     SyncAll<true>();
@@ -568,18 +547,33 @@ __aicore__ inline void EngramFetchTrainArch35::WriteRemoteCounter(uint32_t dstRa
     DrainChecked(handle);
 }
 
+__aicore__ inline void EngramFetchTrainArch35::ClearCountersAfterRecv(GM_ADDR localWinBase, uint32_t srcRank,
+                                                                       uint64_t writeOffset, uint64_t readOffset)
+{
+    if (srcRank == rankId_) {
+        return;
+    }
+
+    LocalTensor<int32_t> zeroLocal = statusBuf_.Get<int32_t>();
+    Duplicate<int32_t>(zeroLocal, 0, STATE_OFFSET / sizeof(int32_t));
+    EngramFetchTrainSyncFunc<HardEvent::V_MTE3>();
+
+    GM_ADDR localWriteAddr = localWinBase + writeOffset + srcRank * STATE_OFFSET;
+    GlobalTensor<int32_t> localWriteGM;
+    localWriteGM.SetGlobalBuffer((__gm__ int32_t *)localWriteAddr);
+    DataCopy(localWriteGM, zeroLocal, STATE_OFFSET / sizeof(int32_t));
+    EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
+
+    GM_ADDR remoteReadAddr = GetRemoteWinAddr(srcRank, readOffset) + rankId_ * STATE_OFFSET;
+    uint64_t handle = GetCommHandle(srcRank);
+    WriteNbiChecked(handle, remoteReadAddr, flagScratchGM_, STATE_OFFSET);
+    DrainChecked(handle);
+}
+
 __aicore__ inline void EngramFetchTrainArch35::ExchangeIndices()
 {
-    GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
-
     SendIndicesToPeers();
     RecvIndicesFromPeers();
-
-    if (isFlagCore_) {
-        GM_ADDR localFlagBase = localWinBase + indicesFlagOffset_;
-        WaitAllStatusFlags(localFlagBase, numRanks_);
-        ClearStatusFlags(localFlagBase);
-    }
 
     SyncAll<true>();
 }
@@ -625,34 +619,14 @@ __aicore__ inline void EngramFetchTrainArch35::SendIndicesLocal(int32_t sendCoun
                        sortedIndicesGM_ + static_cast<uint64_t>(sdispl) * sizeof(int32_t),
                        static_cast<uint64_t>(sendCount) * sizeof(int32_t));
     }
-    GM_ADDR localFlagAddr = localWinBase + indicesFlagOffset_ + rankId_ * STATE_OFFSET;
-    LocalTensor<int32_t> flagLocal = statusBuf_.Get<int32_t>();
-    Duplicate<int32_t>(flagLocal, 1, STATE_OFFSET / sizeof(int32_t));
-    EngramFetchTrainSyncFunc<HardEvent::V_MTE3>();
-    GlobalTensor<int32_t> flagGM;
-    flagGM.SetGlobalBuffer((__gm__ int32_t *)localFlagAddr);
-    DataCopy(flagGM, flagLocal, STATE_OFFSET / sizeof(int32_t));
-    EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
 }
 
 __aicore__ inline void EngramFetchTrainArch35::SendIndicesRemote(uint32_t dstRank, int32_t sendCount, int64_t sdispl,
-                                                                 GM_ADDR localWinBase)
+                                                                  GM_ADDR localWinBase)
 {
     uint64_t handle = GetCommHandle(dstRank);
     uint32_t totalSent = 0;
     uint32_t localWriteCnt = 0;
-
-    {
-        LocalTensor<int32_t> zeroLocal = statusBuf_.Get<int32_t>();
-        zeroLocal.SetValue(0, 0);
-        EngramFetchTrainSyncFunc<HardEvent::S_MTE3>();
-        GM_ADDR readCntAddr = localWinBase + indicesReadOffset_ + dstRank * STATE_OFFSET;
-        GlobalTensor<int32_t> readCntGM;
-        readCntGM.SetGlobalBuffer((__gm__ int32_t *)readCntAddr);
-        DataCopyParams zeroParams = {1U, static_cast<uint16_t>(UB_ALIGN), 0U, 0U};
-        DataCopyPad(readCntGM, zeroLocal, zeroParams);
-        EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
-    }
 
     while (totalSent < static_cast<uint32_t>(sendCount)) {
         if (totalBlocks_ > 1U) {
@@ -683,10 +657,6 @@ __aicore__ inline void EngramFetchTrainArch35::SendIndicesRemote(uint32_t dstRan
         localWriteCnt++;
         totalSent += chunkLen;
     }
-
-    GM_ADDR remoteFlagAddr = GetRemoteWinAddr(dstRank, indicesFlagOffset_) + rankId_ * STATE_OFFSET;
-    WriteNbiChecked(handle, remoteFlagAddr, flagScratchGM_, STATE_OFFSET);
-    DrainChecked(handle);
 }
 
 __aicore__ inline void EngramFetchTrainArch35::RecvIndicesFromPeers()
@@ -740,21 +710,14 @@ __aicore__ inline void EngramFetchTrainArch35::RecvIndicesFromPeers()
             totalReceived += chunkLen;
             WriteRemoteCounter(srcRank, indicesReadOffset_, static_cast<int32_t>(localReadCnt));
         }
+        ClearCountersAfterRecv(localWinBase, srcRank, indicesWriteOffset_, indicesReadOffset_);
     }
 }
 
 __aicore__ inline void EngramFetchTrainArch35::ExchangeToken()
 {
-    GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
-
     SendTokensToPeers();
     RecvTokensFromPeers();
-
-    if (isFlagCore_) {
-        GM_ADDR localFlagBase = localWinBase + tokenFlagOffset_;
-        WaitAllStatusFlags(localFlagBase, numRanks_);
-        ClearStatusFlags(localFlagBase);
-    }
 
     SyncAll<true>();
 }
@@ -800,14 +763,6 @@ __aicore__ inline void EngramFetchTrainArch35::SendTokensLocal(int32_t sendCount
         uint64_t totalBytes = static_cast<uint64_t>(sendCount) * static_cast<uint64_t>(hiddenBytes_);
         LocalCopySlice(recvDataGM_ + sdispl * hiddenBytes_, localDataGM_ + rdispl * hiddenBytes_, totalBytes);
     }
-    GM_ADDR localFlagAddr = localWinBase + tokenFlagOffset_ + rankId_ * STATE_OFFSET;
-    LocalTensor<int32_t> flagLocal = statusBuf_.Get<int32_t>();
-    Duplicate<int32_t>(flagLocal, 1, STATE_OFFSET / sizeof(int32_t));
-    EngramFetchTrainSyncFunc<HardEvent::V_MTE3>();
-    GlobalTensor<int32_t> flagGM;
-    flagGM.SetGlobalBuffer((__gm__ int32_t *)localFlagAddr);
-    DataCopy(flagGM, flagLocal, STATE_OFFSET / sizeof(int32_t));
-    EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
 }
 
 __aicore__ inline void EngramFetchTrainArch35::SendTokensRemote(uint32_t dstRank, int32_t sendCount, int64_t rdispl,
@@ -816,18 +771,6 @@ __aicore__ inline void EngramFetchTrainArch35::SendTokensRemote(uint32_t dstRank
     uint64_t handle = GetCommHandle(dstRank);
     uint32_t totalSent = 0;
     uint32_t localWriteCnt = 0;
-
-    {
-        LocalTensor<int32_t> zeroLocal = statusBuf_.Get<int32_t>();
-        zeroLocal.SetValue(0, 0);
-        EngramFetchTrainSyncFunc<HardEvent::S_MTE3>();
-        GM_ADDR readCntAddr = localWinBase + tokenReadOffset_ + dstRank * STATE_OFFSET;
-        GlobalTensor<int32_t> readCntGM;
-        readCntGM.SetGlobalBuffer((__gm__ int32_t *)readCntAddr);
-        DataCopyParams zeroParams = {1U, static_cast<uint16_t>(UB_ALIGN), 0U, 0U};
-        DataCopyPad(readCntGM, zeroLocal, zeroParams);
-        EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
-    }
 
     while (totalSent < static_cast<uint32_t>(sendCount)) {
         if (totalBlocks_ > 1U) {
@@ -859,10 +802,6 @@ __aicore__ inline void EngramFetchTrainArch35::SendTokensRemote(uint32_t dstRank
         localWriteCnt++;
         totalSent += chunkLen;
     }
-
-    GM_ADDR remoteFlagAddr = GetRemoteWinAddr(dstRank, tokenFlagOffset_) + rankId_ * STATE_OFFSET;
-    WriteNbiChecked(handle, remoteFlagAddr, flagScratchGM_, STATE_OFFSET);
-    DrainChecked(handle);
 }
 
 __aicore__ inline void EngramFetchTrainArch35::RecvTokensFromPeers()
@@ -915,6 +854,7 @@ __aicore__ inline void EngramFetchTrainArch35::RecvTokensFromPeers()
             totalReceived += chunkLen;
             WriteRemoteCounter(srcRank, tokenReadOffset_, static_cast<int32_t>(localReadCnt));
         }
+        ClearCountersAfterRecv(localWinBase, srcRank, tokenWriteOffset_, tokenReadOffset_);
     }
 }
 
