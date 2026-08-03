@@ -174,10 +174,7 @@ public:
 private:
     __aicore__ inline TEventID GetStageMte3ToVId() const
     {
-        if constexpr (IS_BATCH_CONSISTENCY) {
-            return stageMte3ToVId;
-        }
-        return mte3ToVId;
+        return stageMte3ToVId;
     }
 
     __aicore__ inline uint32_t GetStagingSlotNum(bool isInner = false) const
@@ -1839,8 +1836,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     tPipe->InitBuffer(stage2OutBuf, (s1BaseSize / CV_RATIO) * dTemplateAlign64 * sizeof(T));
 
     mte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+    stageMte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     if constexpr (IS_BATCH_CONSISTENCY) {
-        stageMte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
         v0PairMte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     }
     vToMte3Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
