@@ -774,17 +774,34 @@ Status FusionNodeX(GraphPtr& graph, GNode& groupedMatmulNode,
 Status FusionNodeWeight(GraphPtr& graph, GNode& groupedMatmulNode,
     const std::vector<GmmReshapePatternMatchInfo>& reshapePattern, std::vector<GmmInputPattern>& fusedPatterns)
 {
+    GmmInputPattern weightPattern;
+    if (!BuildInputPattern(groupedMatmulNode, kWeightIndex, reshapePattern, weightPattern) ||
+        !CheckEquivalentTransposeNode(groupedMatmulNode, kWeightIndex, reshapePattern, weightPattern)) {
+        return GRAPH_NOT_CHANGED;
+    }
+
+    const bool isDav3510 = CheckPlatformIsDav3510ForGmm();
+    const bool isWeightQuant = IsWeightQuant(groupedMatmulNode);
+    if (isDav3510 && !isWeightQuant && GetInputNode(groupedMatmulNode, kScaleIndex) != nullptr) {
+        GmmInputPattern scalePattern;
+        if (BuildInputPattern(groupedMatmulNode, kScaleIndex, reshapePattern, scalePattern) &&
+            IsType(scalePattern.transposeNode, kOpTypeReshape) &&
+            !CheckEquivalentTransposeNode(groupedMatmulNode, kScaleIndex, reshapePattern, scalePattern)) {
+            OP_LOGD(kPassName, "Skip weight fusion because its scale reshape cannot be proven transpose-equivalent.");
+            return GRAPH_NOT_CHANGED;
+        }
+    }
+
     auto fusionNodeWeightResult =
         FusionTransposeNode(graph, groupedMatmulNode, kWeightIndex, reshapePattern, fusedPatterns);
     if (fusionNodeWeightResult != SUCCESS) {
         return fusionNodeWeightResult;
     }
 
-    if (!CheckPlatformIsDav3510ForGmm()) {
+    if (!isDav3510) {
         return SUCCESS;
     }
 
-    const bool isWeightQuant = IsWeightQuant(groupedMatmulNode);
     if (!isWeightQuant && GetInputNode(groupedMatmulNode, kScaleIndex) != nullptr) {
         auto scaleRet = FusionTransposeNode(graph, groupedMatmulNode, kScaleIndex, reshapePattern, fusedPatterns);
         if (scaleRet == GRAPH_FAILED) {

@@ -393,6 +393,7 @@ GraphPtr BuildGraph(const GroupedMatmulTransposeFusionPassParam &param)
         }
     } else if (param.scenario == "scale_reshape_valid" || param.scenario == "scale_reshape_invalid" ||
                param.scenario == "scale_reshape_unknown" || param.scenario == "scale_reshape_unknown_invalid" ||
+               param.scenario == "scale_reshape_all_unknown" ||
                param.scenario == "mx_scale_reshape_unknown" ||
                param.scenario == "mx_scale_reshape_unknown_invalid") {
         std::vector<int64_t> inputShape = {2, 1, 64};
@@ -406,6 +407,9 @@ GraphPtr BuildGraph(const GroupedMatmulTransposeFusionPassParam &param)
         } else if (param.scenario == "scale_reshape_unknown_invalid") {
             inputShape = {2, -1, 1};
             outputShape = {-1, 1, 2};
+        } else if (param.scenario == "scale_reshape_all_unknown") {
+            inputShape = {-1, -1, -1};
+            outputShape = {-1, -1, -1};
         } else if (param.scenario == "mx_scale_reshape_unknown") {
             inputShape = {2, -1, 1, 2};
             outputShape = {2, 1, -1, 2};
