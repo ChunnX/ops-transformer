@@ -679,7 +679,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ExpertTok
     DataCopyExtParams copyParams{1U, static_cast<uint32_t>(moeExpertPerRank_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(expertTokenNumsOut_, expertTokenNumsOutTensor_, copyParams);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
-    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FC03]: expert-count MTE3_MTE2 SetFlag -> WaitFlag
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
 }
 
@@ -1085,7 +1084,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
             cursor = UpdateDispatchTokenCnt(targetServerForSender, cursor, endCount);
             if (cursor != oldCursor) {
                 WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
-                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FC04]: dispatch cursor publication -> completion check
             }
             if (DispatchSyncWithCompute(realComputeCoreNum, roundTag) && cursor == ReadGmByPassDCache(countPtr)) {
                 break;
@@ -2276,7 +2274,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SharedExp
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
         DataCopyPad(xInBuf, srcGlobalTensor, xCopyInParams, xCopyInPadParams);
         SetFlag<AscendC::HardEvent::MTE2_V>(event);
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FC05]: shared input MTE2_V SetFlag -> WaitFlag
         WaitFlag<AscendC::HardEvent::MTE2_V>(event);
 
         __ubuf__ bfloat16_t *srcAddr = reinterpret_cast<__ubuf__ bfloat16_t *>(xInBuf.GetPhyAddr());
@@ -2303,7 +2300,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SharedExp
         }
 
         SetFlag<AscendC::HardEvent::V_MTE3>(event);
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FC06]: shared input V_MTE3 SetFlag -> WaitFlag
         WaitFlag<AscendC::HardEvent::V_MTE3>(event);
         LocalTensor<QuantScaleOutType> bufScale =
             xOutBuf[mxQuantTokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
@@ -2313,7 +2309,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SharedExp
         DataCopyPad(scaleDstGlobalTensor[tokenIdx * widthAScale], bufScale,
                     {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FC07]: shared input MTE3_MTE2 SetFlag -> loop backedge
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
