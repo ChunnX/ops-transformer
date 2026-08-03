@@ -896,15 +896,15 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_index_only_col
 {
     RunArch35ExtendedTestcase(3, 0, 8, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT,
                               ge::DT_FLOAT, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {},
-                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS, 200000);
 }
 
 // 零宽输入、非空indices时，仍需生成路由索引。
-TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_index_only_cols_zero)
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_index_only_cols_zero_large)
 {
     RunArch35ExtendedTestcase(17, 0, 115, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT,
                               ge::DT_FLOAT, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {},
-                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS, 10000000);
+                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS, 200000);
 }
 
 // 空tensor场景：k_==0 + key_value模式

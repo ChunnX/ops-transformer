@@ -212,8 +212,8 @@ private:
     ge::graphStatus ValidateRowIdxType();
     // 校验输入Tensor的Shape、Dtype
     ge::graphStatus CheckSetInputs();
-    // 空tensor场景判定与相关tiling字段设置（含activeNum校验）
-    ge::graphStatus CheckSetEmptyTensor();
+    // 空tensor相关tiling字段设置（含activeNum校验）
+    ge::graphStatus SetEmptyTensor();
     // 校验输出Tensor的Shape、Dtype
     ge::graphStatus CheckOutputs();
     // 空tensor场景的workspace大小计算
@@ -506,7 +506,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
     MIRV3_CHECK_GE_RET(CheckSetAttrs());
     MIRV3_CHECK_GE_RET(CheckSetListAttrs());
     MIRV3_CHECK_GE_RET(CheckSetInputs());
-    MIRV3_CHECK_GE_RET(CheckSetEmptyTensor());
+    MIRV3_CHECK_GE_RET(SetEmptyTensor());
     MIRV3_CHECK_GE_RET(CheckOutputs());
 
     // 空tensor快速返回，跳过后续tiling计算
@@ -1162,9 +1162,9 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()
+ge::graphStatus MoeInitRoutingV3Arch35TilingClass::SetEmptyTensor()
 {
-    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()");
+    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::SetEmptyTensor()");
 
     // A zero-width dropless input still needs row-index routing when indices are non-empty.
     if (n_ == 0 || k_ == 0 || (cols_ == 0 && !IsIndexOnlyRouting())) {
@@ -1859,11 +1859,23 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()");
 
-    auto *gatherOutTiling = &(tilingDataPtr_->gatherOutComputeParamsOp);
-    // Index-only routing finishes after RowIdxGather, so no column-loop tiling is required.
+    // Index-only routing uses the FullLoad sort/count/row-index path. It needs core partitioning,
+    // but no column-loop parameters can be derived from a zero-width input.
     if (IsIndexOnlyRouting()) {
+        auto *gatherOutTiling = &(tilingDataPtr_->gatherOutComputeParamsOp);
+        int64_t perCoreIndicesElements = Ops::Base::CeilDiv(totalLength_, aivCoreNum_);
+        if (perCoreIndicesElements <= 0) {
+            gatherOutTiling->needCoreNum = 0;
+            return;
+        }
+        int64_t needCoreNum = Ops::Base::CeilDiv(totalLength_, perCoreIndicesElements);
+        gatherOutTiling->needCoreNum = needCoreNum;
+        gatherOutTiling->perCoreIndicesElements = perCoreIndicesElements;
+        gatherOutTiling->lastCoreIndicesElements =
+            totalLength_ - (needCoreNum - 1) * perCoreIndicesElements;
         return;
     }
+    auto *gatherOutTiling = &(tilingDataPtr_->gatherOutComputeParamsOp);
     int64_t perCoreIndicesElements = Ops::Base::CeilDiv(totalLength_, aivCoreNum_);
     if (perCoreIndicesElements <= 0) {
         gatherOutTiling->needCoreNum = 0;
@@ -2128,9 +2140,6 @@ bool MoeInitRoutingV3Arch35TilingClass::IsIndexOnlyRouting() const
 
 bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
 {
-    if (IsIndexOnlyRouting()) {
-        return false;
-    }
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
         return false;
     }

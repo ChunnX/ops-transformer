@@ -74,18 +74,21 @@ MoeV3FullLoadUnquantized<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, G
 
     int64_t rowLength = this->endXRow_ - this->startXRow_ + 1;
 
-    if (this->epFullload_) {
-        if constexpr (IsSameType<T, hifloat8_t>::value) {
-            this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_, AlignBytes(this->cols_, sizeof(uint8_t)));
+    if (this->cols_ > 0) {
+        if (this->epFullload_) {
+            if constexpr (IsSameType<T, hifloat8_t>::value) {
+                this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_, AlignBytes(this->cols_, sizeof(uint8_t)));
+            } else {
+                this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_, AlignBytes(this->cols_, sizeof(T)));
+            }
         } else {
-            this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_, AlignBytes(this->cols_, sizeof(T)));
-        }
-    } else {
-        if constexpr (IsSameType<T, hifloat8_t>::value) {
-            this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_,
-                                    AlignBytes(this->cols_ * rowLength, sizeof(uint8_t)));
-        } else {
-            this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_, AlignBytes(this->cols_ * rowLength, sizeof(T)));
+            if constexpr (IsSameType<T, hifloat8_t>::value) {
+                this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_,
+                                        AlignBytes(this->cols_ * rowLength, sizeof(uint8_t)));
+            } else {
+                this->pipe_->InitBuffer(xCopyInQueue_, this->bufferNum_,
+                                        AlignBytes(this->cols_ * rowLength, sizeof(T)));
+            }
         }
     }
     this->pipe_->InitBuffer(scaleCopyInQueue_, 1, AlignBytes(1, sizeof(float)));
@@ -113,12 +116,16 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::Process()
         }
 
         if (this->epFullload_) {
-            this->ScatterOutX();
+            if (this->cols_ > 0) {
+                this->ScatterOutX();
+            }
             if (this->isInputScale_) {
                 this->ScatterOutScale();
             }
         } else {
-            this->GatherOutX();
+            if (this->cols_ > 0) {
+                this->GatherOutX();
+            }
             if (this->isInputScale_) {
                 this->GatherOutScale();
             }
