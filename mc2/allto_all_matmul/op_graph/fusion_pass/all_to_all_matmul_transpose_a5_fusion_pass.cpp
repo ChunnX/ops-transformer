@@ -481,15 +481,19 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
         return nullptr;
     }
 
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start to GetCapturedMc2Node.");
     ge::GNode mc2Node;
     if (!GetCapturedMc2Node(matchResult, mc2Node)) {
         return nullptr;
     }
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End to GetCapturedMc2Node.");
 
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start to GetMc2ReplaceAttrs.");
     Mc2ReplaceAttrs attrs;
     if (!GetMc2ReplaceAttrs(mc2Node, attrs)) {
         return nullptr;
     }
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End to GetMc2ReplaceAttrs.");
 
     auto mc2 = ge::es::AlltoAllMatmul(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
                                       inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset, inputTensors.rX2Offset,
@@ -602,11 +606,12 @@ ge::fusion::GraphUniqPtr AllToAllMatmulTransposeA5FusionPass::Replacement(
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph failed in Replacement.");
         return nullptr;
     }
-
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start InferShapeReplaceGraph");
     if (!InferShapeReplaceGraph(replaceGraph, subgraphInputs)) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "InferShapeReplaceGraph failed in Replacement.");
         return nullptr;
     }
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End InferShapeReplaceGraph");
 
     return std::move(replaceGraph);
 }
