@@ -501,40 +501,6 @@ static bool GetMc2ReplaceAttrs(const ge::GNode &mc2Node, Mc2ReplaceAttrs &attrs)
     return true;
 }
 
-static bool ApplyMc2ReplaceAttrsToNode(ge::es::EsTensorHolder &y, Mc2ReplaceAttrs &attrs)
-{
-    ge::GNode *node = y.GetProducer();
-    OP_LOGE_IF(node == nullptr, false, FUSION_PASS_NAME.c_str(), "GetProducer failed in ApplyMc2ReplaceAttrsToNode.");
-
-    // ListInt 只能走 GNode::SetAttr；其余用 SetAttrForNode，避免额外构造 AscendString
-    std::vector<int64_t> all2allAxes = attrs.all2all_axes;
-    OP_LOGE_IF(node->SetAttr("all2all_axes", all2allAxes) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "SetAttr all2all_axes failed.");
-    OP_LOGE_IF(y.SetAttrForNode("y_dtype", attrs.y_dtype) != ge::SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "SetAttr y_dtype failed.");
-    OP_LOGE_IF(y.SetAttrForNode("x1_quant_mode", attrs.x1_quant_mode) != ge::SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "SetAttr x1_quant_mode failed.");
-    OP_LOGE_IF(y.SetAttrForNode("x2_quant_mode", attrs.x2_quant_mode) != ge::SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "SetAttr x2_quant_mode failed.");
-    OP_LOGE_IF(y.SetAttrForNode("comm_quant_mode", attrs.comm_quant_mode) != ge::SUCCESS, false,
-               FUSION_PASS_NAME.c_str(), "SetAttr comm_quant_mode failed.");
-    OP_LOGE_IF(y.SetAttrForNode("x1_quant_dtype", attrs.x1_quant_dtype) != ge::SUCCESS, false,
-               FUSION_PASS_NAME.c_str(), "SetAttr x1_quant_dtype failed.");
-    OP_LOGE_IF(y.SetAttrForNode("comm_quant_dtype", attrs.comm_quant_dtype) != ge::SUCCESS, false,
-               FUSION_PASS_NAME.c_str(), "SetAttr comm_quant_dtype failed.");
-    OP_LOGE_IF(y.SetAttrForNode("transpose_x1", attrs.transpose_x1) != ge::SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "SetAttr transpose_x1 failed.");
-    OP_LOGE_IF(y.SetAttrForNode("transpose_x2", attrs.transpose_x2) != ge::SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "SetAttr transpose_x2 failed.");
-    OP_LOGE_IF(y.SetAttrForNode("group_size", attrs.group_size) != ge::SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "SetAttr group_size failed.");
-    OP_LOGE_IF(y.SetAttrForNode("comm_mode", attrs.comm_mode.c_str()) != ge::SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "SetAttr comm_mode failed.");
-    OP_LOGE_IF(y.SetAttrForNode("alltoall_out_flag", attrs.alltoall_out_flag) != ge::SUCCESS, false,
-               FUSION_PASS_NAME.c_str(), "SetAttr alltoall_out_flag failed.");
-    return true;
-}
-
 static ge::fusion::GraphUniqPtr
 BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
                   const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
@@ -556,7 +522,21 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
             return nullptr;
         }
 
-        ge::es::AlltoAllMatmulOutput mc2;
+        // 先取出字段到局部变量，立刻销毁 Mc2ReplaceAttrs，验证是否 GetAttr 阶段已弄脏 attrs
+        std::string group;
+        int64_t worldSize = 0;
+        std::vector<int64_t> all2allAxes;
+        int64_t yDtype = 0;
+        int64_t x1QuantMode = 0;
+        int64_t x2QuantMode = 0;
+        int64_t commQuantMode = 0;
+        int64_t x1QuantDtype = 0;
+        int64_t commQuantDtype = 0;
+        bool transposeX1 = false;
+        bool transposeX2 = false;
+        int64_t groupSize = 0;
+        std::string commMode;
+        bool alltoallOutFlag = true;
         {
             Mc2ReplaceAttrs attrs;
             if (!GetMc2ReplaceAttrs(originMc2Node, attrs)) {
@@ -564,18 +544,30 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
             }
             OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: attrs ok, alltoall_out_flag=%d",
                       static_cast<int>(attrs.alltoall_out_flag));
+            group = attrs.group;
+            worldSize = attrs.world_size;
+            all2allAxes = attrs.all2all_axes;
+            yDtype = attrs.y_dtype;
+            x1QuantMode = attrs.x1_quant_mode;
+            x2QuantMode = attrs.x2_quant_mode;
+            commQuantMode = attrs.comm_quant_mode;
+            x1QuantDtype = attrs.x1_quant_dtype;
+            commQuantDtype = attrs.comm_quant_dtype;
+            transposeX1 = attrs.transpose_x1;
+            transposeX2 = attrs.transpose_x2;
+            groupSize = attrs.group_size;
+            commMode = attrs.comm_mode;
+            alltoallOutFlag = attrs.alltoall_out_flag;
+        }
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after destroy attrs (right after GetAttr)");
 
-            // 与 MakePattern 一致：ES 只传必选 group/world_size
-            mc2 = ge::es::AlltoAllMatmul(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
-                                         inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
-                                         inputTensors.rX2Offset, attrs.group.c_str(), attrs.world_size);
-            if (!ApplyMc2ReplaceAttrsToNode(mc2.y, attrs)) {
-                OPS_LOG_E(FUSION_PASS_NAME.c_str(), "ApplyMc2ReplaceAttrsToNode failed.");
-                return nullptr;
-            }
-            OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: apply attrs ok, destroy attrs before BuildAndReset");
-        } // attrs 在 BuildAndReset 前析构
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after destroy attrs");
+        // 对齐 matmul：直接把 attr 传给 ES（局部变量，不再经 Mc2ReplaceAttrs 析构）
+        auto mc2 = ge::es::AlltoAllMatmul(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
+                                          inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
+                                          inputTensors.rX2Offset, group.c_str(), worldSize, all2allAxes, yDtype,
+                                          x1QuantMode, x2QuantMode, commQuantMode, x1QuantDtype, commQuantDtype,
+                                          transposeX1, transposeX2, groupSize, commMode.c_str(), alltoallOutFlag);
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after AlltoAllMatmul");
 
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: before BuildAndReset");
         replaceGraph = replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
@@ -593,7 +585,7 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
             auto deadInputs = std::move(inputTensors);
         }
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after destroy inputTensors");
-    } // replaceGraphBuilder 在此析构
+    }
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after scope destroy (builder), about to return");
     return replaceGraph;
 }
