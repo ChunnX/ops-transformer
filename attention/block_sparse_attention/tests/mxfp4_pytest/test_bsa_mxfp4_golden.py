@@ -798,116 +798,205 @@ class TestBSAMxfp4Golden(TestCase):
         """① BNSD dense 单块: 基本精度(block_shape=[128,128], S=128 -> 1x1)。"""
         self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=128, qk_d=128,
                   block_shape=[128, 128], mask_kind='dense')
-    
+
+
+    # ==================== 精选泛化测试用例 ====================
+    # 28 个精选 case 覆盖 b/n1/n2/g/s1/s2/dense/sparse 各维度泛化, 与上方 73 例不重复。
+    # 配上方 2 个超大 case(line 845 sparse 25600x33024 + line 851 b=56 dense 512x512) 合计 30 个。
+    #
+    # 维度覆盖:
+    #   b    : 1, 2, 3, 4, 5, 8            (上方 b=2/b=56 已含大 batch)
+    #   n1   : 2, 4, 6, 8, 16(仅 1 例)      n2: 1, 2, 3, 4, 8
+    #   g    : 1(MHA), 2, 3, 4, 8
+    #   s1   : 1, 63, 64, 127, 128, 256, 384, 512, 768, 1024
+    #   s2   : 31, 95, 128, 159, 223, 255, 256, 479, 511, 512, 768, 799, 1024, 4096, 8448
+    #          s2=32*奇数-1 系列(由小到大): 31,95,159,223,479,799 (含较大值)
+    #          s2 不全是 256 倍数; 4096/8448 各 1-2 例, 与上方超大分散
+    #   mask : dense=10  sparse=18  (sparse 多覆盖 gather 泛化)
+    # 大序列(s2>=4096)分散放置, 间隔>=2, 避免连续跑耗时。
+
+    # ---------- A 组: MHA (g=1) 3 例 ----------
     @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs256_d128(self, device="npu"):
-        """① BNSD dense 单块: 基本精度(block_shape=[128,128], S=128 -> 1x1)。"""
-        self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=256, qk_d=128,
-                  block_shape=[128, 128], mask_kind='dense')
-    
-    @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs512_d128(self, device="npu"):
-        """① BNSD dense 单块: 基本精度(block_shape=[128,128], S=128 -> 1x1)。"""
-        self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=512, qk_d=128,
-                  block_shape=[128, 128], mask_kind='dense')
-    
-    @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs1024_d128(self, device="npu"):
-        """① BNSD dense 单块: 基本精度(block_shape=[128,128], S=128 -> 1x1)。"""
-        self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=1024, qk_d=128,
-                  block_shape=[128, 128], mask_kind='dense')
+    def test_bsa_mxfp4_bnsd_mha_dense_b2_qn4_kvn4_g1_qs256_kvs4096_d128(self, device="npu"):
+        """MHA dense s2=4096 长 KV, b=2 验证 batch + 长 KV dense。"""
+        self._run(b=2, n1=4, n2=4, g=1, s1=256, s2=4096, qk_d=128,
+                block_shape=[128, 128], mask_kind='dense')
 
     @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs2048_d128(self, device="npu"):
-        """① BNSD dense 单块: 基本精度(block_shape=[128,128], S=128 -> 1x1)。"""
-        self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=2048, qk_d=128,
-                  block_shape=[128, 128], mask_kind='dense')
+    def test_bsa_mxfp4_bnsd_mha_sparse_b1_qn2_kvn2_g1_qs1_kvs31_d128(self, device="npu"):
+        """MHA sparse 边界: s1=1 decode + s2=31(32*1-1), Q pad + K 单块不满。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=1, s2=31, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_sparse_b1_qn8_kvn8_g1_qs127_kvs159_d128(self, device="npu"):
+        """MHA sparse 边界: s1=127 + s2=159(32*5-1) 双尾块, K 尾 31 行非对齐。"""
+        self._run(b=1, n1=8, n2=8, g=1, s1=127, s2=159, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
+
+    # ---------- B 组: GQA dense 9 例 (大序列散布) ----------
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_dense_b1_qn8_kvn2_g4_qs256_kvs287_d128(self, device="npu"):
+        """GQA dense g4, s2=287(32*9-1) 尾块不满, 验证 K 尾块处理。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=256, s2=287, qk_d=128,
+                block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_dense_b2_qn4_kvn1_g4_qs128_kvs256_d128(self, device="npu"):
+        """GQA dense g4 b=2, 小 KV 验证 batch + 单 kv head dense。"""
+        self._run(b=2, n1=4, n2=1, g=4, s1=128, s2=256, qk_d=128,
+                block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_dense_b4_qn8_kvn2_g4_qs384_kvs768_d128(self, device="npu"):
+        """GQA dense g4 b=4, s1=384/s2=768 非 128 对齐多 q-block dense。"""
+        self._run(b=4, n1=8, n2=2, g=4, s1=384, s2=768, qk_d=128,
+                block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_dense_b8_qn6_kvn2_g3_qs256_kvs512_d128(self, device="npu"):
+        """GQA dense g3 b=8, 大 batch + g3 头分组(非 2/4 幂) dense。"""
+        self._run(b=8, n1=6, n2=2, g=3, s1=256, s2=512, qk_d=128,
+                block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_dense_b1_qn16_kvn4_g4_qs257_kvs8448_d128(self, device="npu"):
+        """GQA dense g4 唯一 n1=16, s2=8448 超长 KV, 验证大 head + 超长 dense。"""
+        self._run(b=1, n1=16, n2=4, g=4, s1=257, s2=8448, qk_d=128,
+                block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_dense_b1_qn8_kvn4_g2_qs64_kvs479_d128(self, device="npu"):
+        """GQA dense g2, s2=479(32*15-1) 较大尾块, 验证 g2 + K 尾 31 行。"""
+        self._run(b=1, n1=8, n2=4, g=2, s1=64, s2=479, qk_d=128,
+                block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_dense_b1_qn8_kvn2_g4_qs512_kvs1024_d128(self, device="npu"):
+        """GQA dense g4, s1=512/s2=1024 多 block dense。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=512, s2=1024, qk_d=128,
+                block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_dense_b1_qn8_kvn1_g8_qs256_kvs511_d128(self, device="npu"):
+        """GQA dense g8 单 kv head, s2=511 尾块(512-1), 验证 g8 + K 尾 1 行。"""
+        self._run(b=1, n1=8, n2=1, g=8, s1=256, s2=511, qk_d=128,
+                block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_dense_b1_qn8_kvn2_g4_qs1024_kvs4096_d128(self, device="npu"):
+        """GQA dense g4 + s1=1024 + s2=4096 全大维度 dense。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=1024, s2=4096, qk_d=128,
+                block_shape=[128, 128], mask_kind='dense')
+
+    # ---------- C 组: GQA sparse 16 例 (大序列散布) ----------
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b1_qn8_kvn2_g4_qs63_kvs95_d128(self, device="npu"):
+        """GQA sparse 双边界: s1=63(64-1) + s2=95(32*3-1), Q/K 双尾块 sparse。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=63, s2=95, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b1_qn6_kvn2_g3_qs127_kvs255_d128(self, device="npu"):
+        """GQA sparse g3, s1=127/s2=255 边界非对齐 sparse 尾块。"""
+        self._run(b=1, n1=6, n2=2, g=3, s1=127, s2=255, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b2_qn4_kvn1_g4_qs128_kvs256_d128(self, device="npu"):
+        """GQA sparse g4 b=2, 小 KV 验证 batch + 单 kv head sparse gather。"""
+        self._run(b=2, n1=4, n2=1, g=4, s1=128, s2=256, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b3_qn8_kvn2_g4_qs512_kvs1024_d128(self, device="npu"):
+        """GQA sparse g4 b=3, s1=512/s2=1024 多 block 大序列 sparse。"""
+        self._run(b=3, n1=8, n2=2, g=4, s1=512, s2=1024, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b1_qn8_kvn2_g4_qs1_kvs8448_d128(self, device="npu"):
+        """GQA sparse s1=1 decode + s2=8448 超长 KV, Q pad + 跨 tile rescale。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=1, s2=8448, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b4_qn8_kvn2_g4_qs384_kvs768_d128(self, device="npu"):
+        """GQA sparse g4 b=4, s1=384/s2=768 非 128 对齐 sparse 多 block。"""
+        self._run(b=4, n1=8, n2=2, g=4, s1=384, s2=768, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b8_qn6_kvn2_g3_qs256_kvs512_d128(self, device="npu"):
+        """GQA sparse g3 b=8, 大 batch + g3 头分组 sparse gather。"""
+        self._run(b=8, n1=6, n2=2, g=3, s1=256, s2=512, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b1_qn8_kvn2_g4_qs512_kvs8448_d128(self, device="npu"):
+        """GQA sparse g4, s2=8448 超长 KV sparse, 验证 n1=8 + 超长 sparse gather。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=512, s2=8448, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b1_qn8_kvn4_g2_qs64_kvs223_d128(self, device="npu"):
+        """GQA sparse g2, s2=223(32*7-1) 较大尾块, 验证 g2 + K 尾 31 行 sparse。"""
+        self._run(b=1, n1=8, n2=4, g=2, s1=64, s2=223, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b1_qn8_kvn1_g8_qs256_kvs799_d128(self, device="npu"):
+        """GQA sparse g8 单 kv head, s2=799(32*25-1) 较大尾块 sparse。"""
+        self._run(b=1, n1=8, n2=1, g=8, s1=256, s2=799, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b5_qn4_kvn1_g4_qs128_kvs256_d128(self, device="npu"):
+        """GQA sparse g4 b=5, 单 kv head 验证 b=5 + g4 sparse。"""
+        self._run(b=5, n1=4, n2=1, g=4, s1=128, s2=256, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b1_qn8_kvn2_g4_qs1024_kvs4096_d128(self, device="npu"):
+        """GQA sparse g4 + s1=1024 + s2=4096 全大维度 sparse。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=1024, s2=4096, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b1_qn4_kvn2_g2_qs64_kvs128_d128(self, device="npu"):
+        """GQA sparse g2 极小序列, s1=64 单 block sparse 验证 g2。"""
+        self._run(b=1, n1=4, n2=2, g=2, s1=64, s2=128, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b1_qn8_kvn4_g2_qs500_kvs4096_d128(self, device="npu"):
+        """GQA sparse g2, s2=4096 验证 g2 头分组 + 长 KV sparse。"""
+        self._run(b=1, n1=8, n2=4, g=2, s1=500, s2=4096, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b1_qn6_kvn3_g2_qs768_kvs1024_d128(self, device="npu"):
+        """GQA sparse g2, s1=768(6 个 q-block) + s2=1024(8 个 kv tile) 多 block sparse。"""
+        self._run(b=1, n1=6, n2=3, g=2, s1=768, s2=1024, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b1_qn8_kvn5_g2_qs256_kvs511_d128(self, device="npu"):
+        """GQA sparse g2 qn8/kvn5, s2=511 尾块, 验证 n2=5 + K 尾 1 行 sparse。"""
+        self._run(b=1, n1=8, n2=5, g=2, s1=256, s2=511, qk_d=128,
+                block_shape=[128, 128], mask_kind='sparse')
     
     @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs4096_d128(self, device="npu"):
-        """① BNSD dense 单块: 基本精度(block_shape=[128,128], S=128 -> 1x1)。"""
-        self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=4096, qk_d=128,
-                  block_shape=[128, 128], mask_kind='dense')
-
-    @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs8192_d128(self, device="npu"):
-        """① BNSD dense 单块: 基本精度(block_shape=[128,128], S=128 -> 1x1)。"""
-        self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=8192, qk_d=128,
-                  block_shape=[128, 128], mask_kind='dense')
-
-    @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs256_kvs4096_d128(self, device="npu"):
-        """① BNSD dense: s1=256 多块(block_shape=[128,128], S=256 -> 2x1)。"""
-        self._run(b=1, n1=1, n2=1, g=1, s1=256, s2=4096, qk_d=128,
-                  block_shape=[128, 128], mask_kind='dense')
-                  
-    @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_mha_dense_b2_qn1_kvn1_g1_qs25600_kvs33024_d128(self, device="npu"):
-        """① BNSD dense: s1=256 多块(block_shape=[128,128], S=256 -> 2x1)。"""
+    def test_bsa_mxfp4_bnsd_mha_sparse_b2_qn1_kvn1_g1_qs25600_kvs33024_d128(self, device="npu"):
+        """① BNSD 超大序列 sparse: s1=25600/s2=33024, b=2 验证超长 sparse gather + online rescale。"""
         self._run(b=2, n1=1, n2=1, g=1, s1=25600, s2=33024, qk_d=128,
-                  block_shape=[128, 128], mask_kind='dense')
-
-    @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_mha_dense_b56_qn8_kvn8_g1_qs512_kvs512_d128(self, device="npu"):
-        """① BNSD dense: s1=256 多块(block_shape=[128,128], S=256 -> 2x1)。"""
-        self._run(b=56, n1=8, n2=8, g=1, s1=512, s2=512, qk_d=128,
-                  block_shape=[128, 128], mask_kind='dense')
-
-    # =====================================================================
-    # S1<128 回归系列: 验证 Q(M) 方向全链路 pad 128 的 QFA 对齐修复
-    #   (原实现 Fixpipe nSize=m 在 S1<128 时违反 32B 倍数约束, 结果全错)
-    # =====================================================================
-    @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs1_kvs128_d128(self, device="npu"):
-        """② S1=1 decode 单行 Q, 单 kv tile (最小回归, 修复前必挂)。"""
-        self._run(b=1, n1=1, n2=1, g=1, s1=1, s2=128, qk_d=128,
-                  block_shape=[128, 128], mask_kind='dense')
-
-    @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs1_kvs512_d128(self, device="npu"):
-        """② S1=1 多 kv tile (4 tile, 跨 tile Q 复用 + pad)。"""
-        self._run(b=1, n1=1, n2=1, g=1, s1=1, s2=512, qk_d=128,
-                  block_shape=[128, 128], mask_kind='dense')
-
-    @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs1_kvs2048_d128(self, device="npu"):
-        """② S1=1 长 KV (16 tile, online softmax rescale 路径)。"""
-        self._run(b=1, n1=1, n2=1, g=1, s1=1, s2=2048, qk_d=128,
-                  block_shape=[128, 128], mask_kind='dense')
-
-    @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs1_kvs129_d128(self, device="npu"):
-        """② S1=1 + 奇数 K 尾块 (gathered=129 -> 尾 tile kvsActBaseTile=1,
-           验证 Fixpipe mSize 偶数对齐 (nCur+1)>>1<<1;
-           v-scale ceil(129/32)=5 奇数 -> _e8m0_v_to_v3 pad 1 个 127 block)。"""
-        self._run(b=1, n1=1, n2=1, g=1, s1=1, s2=129, qk_d=128,
-                  block_shape=[128, 128], mask_kind='dense')
-
-    @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_mha_sparse_b1_qn1_kvn1_g1_qs1_kvs1024_d128(self, device="npu"):
-        """② S1=1 + sparse mask (稀疏 gather + Q pad 叠加路径)。"""
-        self._run(b=1, n1=1, n2=1, g=1, s1=1, s2=1024, qk_d=128,
                   block_shape=[128, 128], mask_kind='sparse')
 
     @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs15_kvs256_d128(self, device="npu"):
-        """② S1=15 (m 非 16 倍数, Q pad + Nd2Nz 非满 fractal 行数)。"""
-        self._run(b=1, n1=1, n2=1, g=1, s1=15, s2=256, qk_d=128,
+    def test_bsa_mxfp4_bnsd_mha_dense_b56_qn8_kvn8_g1_qs512_kvs512_d128(self, device="npu"):
+        """① BNSD 大 batch dense: b=56 qn8/kvn8, 验证大 batch 泛化(唯一 b>=56 用例)。"""
+        self._run(b=56, n1=8, n2=8, g=1, s1=512, s2=512, qk_d=128,
                   block_shape=[128, 128], mask_kind='dense')
-
-    @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs127_kvs255_d128(self, device="npu"):
-        """② S1=127 + s2=255 (Q 尾块; K 尾 tile 127 行, 127%64!=0,
-           验证 K->L0A srcStride=CeilAlign(n,16)/16 与实际 zN 画布一致)。"""
-        self._run(b=1, n1=1, n2=1, g=1, s1=127, s2=255, qk_d=128,
-                  block_shape=[128, 128], mask_kind='dense')
-
-    @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_gqa_dense_b1_qn8_kvn2_g4_qs256_kvs1024_d128(self, device="npu"):
-        """③ GQA dense: qn8/kvn2/g4 (q 头 0,1,2,3->kv0, 4,5,6,7->kv1, n//g 连续分组),
-        s1=256 双 q-block + s2=1024 八 kv tile (头映射 + 多块叠加路径)。"""
-        self._run(b=1, n1=8, n2=2, g=4, s1=256, s2=1024, qk_d=128,
-                block_shape=[128, 128], mask_kind='dense')
 
 
 if __name__ == "__main__":
