@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-from typing import Optional, Tuple, List
+from typing import Dict, List, Optional
 
 import torch
 import torch_npu
@@ -26,27 +26,62 @@ class _MegaMoeOpBuilder(OpBuilder):
         return ['ops/csrc/mega_moe.cpp']
 
     def schema(self) -> str:
-        return "npu_mega_moe(Tensor context, Tensor x, Tensor topk_ids, Tensor topk_weights, " \
-            "Tensor[] weight1, Tensor[] weight2, int moe_expert_num, int ep_world_size, int ccl_buffer_size, *, " \
-            "Tensor[]? weight_scales1=None, Tensor[]? weight_scales2=None, " \
-            "Tensor[]? bias1=None, Tensor[]? bias2=None, " \
-            "Tensor? x_active_mask=None, int max_recv_token_num=0, " \
-            "int dispatch_quant_mode=0, int combine_quant_mode=0, " \
-            "str comm_alg=\"\", int num_max_tokens_per_rank=0, str activation=\"swiglu\", " \
-            "float? activation_clamp=None, " \
-            "int? dispatch_quant_out_dtype=None,  " \
-            "int? weight1_type=None, int? weight2_type=None) -> (Tensor, Tensor)"
+        return (
+            "npu_mega_moe(Tensor context, Tensor x, Tensor topk_ids, Tensor topk_weights, "
+            "Tensor[] weight1, Tensor[] weight2, int moe_expert_num, int ep_world_size, int ccl_buffer_size, *, "
+            "Tensor[]? weight_scales1=None, Tensor[]? weight_scales2=None, "
+            "Tensor[]? bias1=None, Tensor[]? bias2=None, "
+            "Tensor? x_active_mask=None, "
+            "Tensor[]? shared_weight1=None, Tensor[]? shared_weight2=None, "
+            "Tensor[]? shared_weight_scales1=None, Tensor[]? shared_weight_scales2=None, "
+            "Tensor[]? shared_bias1=None, Tensor[]? shared_bias2=None, "
+            "int max_recv_token_num=0, "
+            "int dispatch_quant_mode=0, int combine_quant_mode=0, "
+            'str comm_alg="", int num_max_tokens_per_rank=0, str activation="swiglu", '
+            "float? activation_clamp=None, Dict(str, float)? activation_params=None, "
+            "int? dispatch_quant_out_dtype=None,  "
+            "int? weight1_type=None, int? weight2_type=None, int? topo_type=None, "
+            "int? rank_num_per_server=None, int topk_weights_type=0) -> (Tensor, Tensor)"
+        )
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_mega_moe_meta(context, x, topk_ids, topk_weights, weight1, weight2,
-                              moe_expert_num, ep_world_size, ccl_buffer_size,
-                              weight_scales1=None, weight_scales2=None, bias1=None, bias2=None,
-                              x_active_mask=None, max_recv_token_num=0, dispatch_quant_mode=0,
-                              combine_quant_mode=0, comm_alg="",
-                              num_max_tokens_per_rank=0, activation="swiglu", activation_clamp=None,
+        def npu_mega_moe_meta(
+            context,
+            x,
+            topk_ids,
+            topk_weights,
+            weight1,
+            weight2,
+            moe_expert_num,
+            ep_world_size,
+            ccl_buffer_size,
+            weight_scales1=None,
+            weight_scales2=None,
+            bias1=None,
+            bias2=None,
+            x_active_mask=None,
+            shared_weight1=None,
+            shared_weight2=None,
+            shared_weight_scales1=None,
+            shared_weight_scales2=None,
+            shared_bias1=None,
+            shared_bias2=None,
+            max_recv_token_num=0,
+            dispatch_quant_mode=0,
+            combine_quant_mode=0,
+            comm_alg="",
+            num_max_tokens_per_rank=0,
+            activation="swiglu",
+            activation_clamp=None,
+            activation_params=None,
                               dispatch_quant_out_dtype=None,
-                              weight1_type=None, weight2_type=None):
+            weight1_type=None,
+            weight2_type=None,
+            topo_type=None,
+            rank_num_per_server=None,
+            topk_weights_type=0,
+        ):
             torch._check(
                 ep_world_size != 0,
                 lambda: (
@@ -67,20 +102,80 @@ _op_module = _mega_moe_op_builder.load()
 
 
 @impl(AS_LIBRARY, _mega_moe_op_builder.name, "PrivateUse1")
-def _npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
-                  moe_expert_num, ep_world_size, ccl_buffer_size,
-                  weight_scales1=None, weight_scales2=None, bias1=None, bias2=None,
-                  x_active_mask=None, max_recv_token_num=0, dispatch_quant_mode=0,
-                  combine_quant_mode=0, comm_alg="",
-                  num_max_tokens_per_rank=0, activation="swiglu", activation_clamp=None,
+def _npu_mega_moe(
+    context,
+    x,
+    topk_ids,
+    topk_weights,
+    weight1,
+    weight2,
+    moe_expert_num,
+    ep_world_size,
+    ccl_buffer_size,
+    weight_scales1=None,
+    weight_scales2=None,
+    bias1=None,
+    bias2=None,
+    x_active_mask=None,
+    shared_weight1=None,
+    shared_weight2=None,
+    shared_weight_scales1=None,
+    shared_weight_scales2=None,
+    shared_bias1=None,
+    shared_bias2=None,
+    max_recv_token_num=0,
+    dispatch_quant_mode=0,
+    combine_quant_mode=0,
+    comm_alg="",
+    num_max_tokens_per_rank=0,
+    activation="swiglu",
+    activation_clamp=None,
+    activation_params=None,
                   dispatch_quant_out_dtype=None,
-                  weight1_type=None, weight2_type=None):
+    weight1_type=None,
+    weight2_type=None,
+    topo_type=None,
+    rank_num_per_server=None,
+    topk_weights_type=0,
+):
+    activation_params = activation_params or {}
+    _op_module = _mega_moe_op_builder.load()
     return _op_module.npu_mega_moe(
-        context, x, topk_ids, topk_weights, weight1, weight2, moe_expert_num, ep_world_size,
-        ccl_buffer_size, weight_scales1, weight_scales2, bias1, bias2, x_active_mask,
-        max_recv_token_num, dispatch_quant_mode, combine_quant_mode, comm_alg,
-        num_max_tokens_per_rank, activation, activation_clamp, dispatch_quant_out_dtype,
-        weight1_type, weight2_type)
+        context,
+        x,
+        topk_ids,
+        topk_weights,
+        weight1,
+        weight2,
+        moe_expert_num,
+        ep_world_size,
+        ccl_buffer_size,
+        weight_scales1,
+        weight_scales2,
+        bias1,
+        bias2,
+        x_active_mask,
+        shared_weight1,
+        shared_weight2,
+        shared_weight_scales1,
+        shared_weight_scales2,
+        shared_bias1,
+        shared_bias2,
+        max_recv_token_num,
+        dispatch_quant_mode,
+        combine_quant_mode,
+        comm_alg,
+        num_max_tokens_per_rank,
+        activation,
+        activation_clamp,
+        activation_params,
+        dispatch_quant_out_dtype,
+        weight1_type,
+        weight2_type,
+        topo_type,
+        rank_num_per_server,
+        topk_weights_type,
+    )
 
 
 class SymmBuffer:
@@ -216,6 +311,7 @@ def mega_moe(
     x_active_mask: Optional[torch.Tensor] = None,
     activation: str = "swiglu",
     activation_clamp: Optional[float] = None,
+    activation_params: Optional[Dict[str, float]] = None,
     weight1_type: Optional[int] = None,
     weight2_type: Optional[int] = None,
 ):
@@ -241,6 +337,7 @@ def mega_moe(
         num_max_tokens_per_rank=sym_buffer.num_max_tokens_per_rank,
         activation=activation,
         activation_clamp=activation_clamp,
+        activation_params=activation_params,
         dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
         weight1_type=weight1_type,
         weight2_type=weight2_type
