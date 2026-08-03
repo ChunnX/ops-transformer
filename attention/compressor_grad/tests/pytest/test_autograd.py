@@ -382,8 +382,8 @@ def npu_test(case, device):
 
     # ── CPU Golden: 使用 compressor_grad.py 作为完整反向参考 ──
     dcCpu  = dcNpu.cpu().float()
-    kvCpu  = kvNpu.cpu()
-    smCpu  = smNpu.cpu()
+    smCpu  = npu_result["softmax_score"].cpu()
+    kvCpu  = npu_result["kv"].cpu()
     spGolden = sps if sps else None
     if spGolden is not None and not isinstance(spGolden, torch.Tensor):
         spGolden = torch.tensor(spGolden, dtype=torch.int32)
@@ -477,8 +477,6 @@ def npu_test(case, device):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--case",  type=str, default=None)
-    parser.add_argument("--dataType", type=str, default="fp16",
-                        choices=["fp16", "bf16"])
     args = parser.parse_args()
 
     if args.case:
