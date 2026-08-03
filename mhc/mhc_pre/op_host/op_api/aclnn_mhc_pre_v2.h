@@ -12,6 +12,7 @@
 #define OP_API_INC_MHC_PRE_V2_H
 
 #include "aclnn/aclnn_base.h"
+#include "aclnn_util.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -27,8 +28,7 @@ extern "C" {
  * @param [in] gammaOptional: Optional RMSNorm scale tensor.
  * @param [in] normEps: RMSNorm epsilon.
  * @param [in] hcEps: Hyper-connection epsilon.
- * @param [in] implMode: MhcPre private implementation mode. 0 is MHC_PRE_DEFAULT and
- * 1 is MHC_PRE_USE_HF32.
+ * @param [in] opImplMode: Matrix multiplication precision mode. 0 uses FP32 and 1 uses HF32.
  * @param [out] hIn: Output tensor.
  * @param [out] hPost: Output tensor.
  * @param [out] hRes: Output tensor.
@@ -41,10 +41,19 @@ extern "C" {
  */
 ACLNN_API aclnnStatus aclnnMhcPreV2GetWorkspaceSize(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
-    const aclTensor *gammaOptional, double normEps, double hcEps, int64_t implMode, aclTensor *hIn,
+    const aclTensor *gammaOptional, double normEps, double hcEps, int64_t opImplMode, aclTensor *hIn,
     aclTensor *hPost, aclTensor *hRes, aclTensor *invRmsOptional, aclTensor *hMixOptional, aclTensor *hPreOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
+/**
+ * @brief The second-stage interface of aclnnMhcPreV2. Executes the operator.
+ * @domain aclnn_ops_infer
+ * @param [in] workspace: Device workspace address.
+ * @param [in] workspaceSize: Workspace size returned by aclnnMhcPreV2GetWorkspaceSize.
+ * @param [in] executor: Operator executor returned by aclnnMhcPreV2GetWorkspaceSize.
+ * @param [in] stream: ACL stream used to execute the operator.
+ * @return aclnnStatus: Status code.
+ */
 ACLNN_API aclnnStatus aclnnMhcPreV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                     aclrtStream stream);
 
