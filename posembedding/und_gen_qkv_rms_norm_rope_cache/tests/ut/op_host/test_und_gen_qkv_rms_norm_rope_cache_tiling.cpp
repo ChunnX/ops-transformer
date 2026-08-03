@@ -225,6 +225,24 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_success_h16_2_2)
     EXPECT_LT(td->ubFactor, td->blockFactor);
 }
 
+// T 曾被 MAX_TOTAL_TOKENS=64K 人为卡死，现已放开：切分与偏移全是 int64_t，对 T 的绝对
+// 大小没有假设，真实上限只有 KV Cache 容量。这里用 1M token 守住"不再有人为上限"。
+TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_success_when_total_tokens_far_exceeds_64k)
+{
+    constexpr int64_t undLen = 1000000;
+    constexpr int64_t genLen = 48576; // total = 1048576 = 16 * 64K
+    auto para = BuildTilingContext(undLen, genLen, 16, 2, 2);
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(para, tilingInfo));
+
+    const auto* td = AsTilingData(tilingInfo);
+    ASSERT_NE(td, nullptr);
+    EXPECT_EQ(td->totalTokens, undLen + genLen);
+    CheckBlockTiling(td, undLen + genLen);
+    EXPECT_EQ(td->usedCoreNum, PLATFORM_CORE_NUM);
+    EXPECT_EQ(td->ubFactor, ExpectedUbFactor(16, 2, 2, td->blockFactor));
+}
+
 // total 略大于核数：ceil 切法会大幅少用核，余数分配必须把核数拉满
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_block_split_uses_all_cores_when_total_slightly_exceeds_cores)
 {

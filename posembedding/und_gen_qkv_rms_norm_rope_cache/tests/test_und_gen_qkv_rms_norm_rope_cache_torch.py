@@ -12,7 +12,8 @@
 """UndGenQkvRmsNormRopeCache torch 接口测试（NPU 上板）。
 
 用例集与精度基准都取自同目录的 golden.py（本算子唯一 golden 实现），
-覆盖 headDim=128、(Hq,Hk,Hv) ∈ {(8,1,1),(16,2,2)}、block_size=128、T=1~64K。
+覆盖 headDim=128、(Hq,Hk,Hv) ∈ {(8,1,1),(16,2,2)}、block_size=128、T=1~64K
+（T 本身算子侧不设上限，case 集覆盖到 64K）。
 
 前置条件：
   1. 自定义算子包已安装：bash build.sh --pkg --ops=und_gen_qkv_rms_norm_rope_cache --soc=ascend950

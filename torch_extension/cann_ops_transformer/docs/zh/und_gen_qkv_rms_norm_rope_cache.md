@@ -46,7 +46,8 @@ q = torch.ops.cann_ops_transformer.und_gen_qkv_rms_norm_rope_cache(
 ## 约束说明
 
 - 仅支持 Ascend 950PR / Ascend 950DT。
-- head_dim 固定 128；(Hq, Hk, Hv) 支持 (8, 1, 1) 与 (16, 2, 2)；block_size = 128；T 支持 1 ~ 64K。
+- head_dim 固定 128；(Hq, Hk, Hv) 支持 (8, 1, 1) 与 (16, 2, 2)；block_size = 128。
+- T = und_len + gen_len 不设上限，只要求为正；真实上限是 KV Cache 容量，要求 `Bn * Bs >= T`。上板已验证到 T = 64K。
 - `slot_mapping` 取值必须唯一；`k_cache`/`v_cache` 必须内存连续。
 
 ## 调用示例

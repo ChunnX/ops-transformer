@@ -156,7 +156,8 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
 ## 约束说明
 
 - 仅支持 <term>Ascend 950PR/Ascend 950DT</term>。
-- headDim 固定为 128；(Hq, Hk, Hv) 支持 (8, 1, 1) 与 (16, 2, 2)；cache block_size 为 128；T 支持 1 ~ 64K。
+- headDim 固定为 128；(Hq, Hk, Hv) 支持 (8, 1, 1) 与 (16, 2, 2)；cache block_size 为 128。
+- T = und_len + gen_len 不设上限，只要求为正；真实上限是 KV Cache 容量，要求 `Bn * Bs >= T`。上板已验证到 T = 64K。
 - `numHeadsQ + numHeadsK + numHeadsV` 必须等于 `undQkv` 的 N 维；`kCache` 的 Hk、`vCache` 的 Hv 必须与属性一致。
 - `slotMapping` 取值必须唯一，重复 slot 会造成多核写冲突、结果不确定。
 - `kCache`/`vCache` 必须是连续的 BBND 布局，不支持非连续（BNBD）物理布局。

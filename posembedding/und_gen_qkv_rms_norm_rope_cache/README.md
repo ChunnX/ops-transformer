@@ -72,7 +72,8 @@
 - 仅支持 <term>Ascend 950PR/Ascend 950DT</term>（DAV_3510, arch35）。
 - headDim 固定为 128。
 - (Hq, Hk, Hv) 支持 (8, 1, 1) 与 (16, 2, 2) 两种组合。
-- cache block_size 为 128；T = und_len + gen_len 支持 1 ~ 64K。
+- cache block_size 为 128；T = und_len + gen_len 不设上限，只要求为正，
+  真实上限是 KV Cache 容量（要求 `Bn * Bs >= T`）。上板已验证到 T = 64K。
 - `slot_mapping` 的取值必须唯一且落在 [0, Bn*Bs)，重复 slot 在多核下结果不确定。
 - **当前实现要求 `gen_qkv`、`gen_weights_q`、`gen_weights_k`、`cat_indices` 四个可选输入全部提供，
   且 `gen_len > 0`**；缺省的退化路径（纯 prefill、单序列恒等映射）暂不支持，tiling 会直接拦截。
@@ -95,7 +96,7 @@
 | :-- | :------- |
 | aclnn L2 | 仅空指针类：必选张量非空；`genQkv` 提供时 `genWeightsQ`/`genWeightsK` 必须成对提供 |
 | InferShape / InferDataType | 仅推导前提：`und_qkv`/`gen_qkv` 为 3D、属性 `num_heads_q` 可取；dtype 透传不校验 |
-| **Tiling** | `CheckDtypeValid`（12 输入 + 3 输出逐个查）、`CheckAttrsValid`（头数正数与求和==N、eps>0、mrope_section 长度与求和）、7 组 shape 校验（und/gen 的 N/D 一致、weights 长度、cos_sin_cache、k/v_cache 的 Bn/Bs/Hk/Hv/D 与容量、slot_mapping / positions / cat_indices 长度）、`CheckSupportRange`（headDim=128、block_size=128、T ∈ [1, 64K]、head 组合白名单、4 个可选输入必须全部提供） |
+| **Tiling** | `CheckDtypeValid`（12 输入 + 3 输出逐个查）、`CheckAttrsValid`（头数正数与求和==N、eps>0、mrope_section 长度与求和）、7 组 shape 校验（und/gen 的 N/D 一致、weights 长度、cos_sin_cache、k/v_cache 的 Bn/Bs/Hk/Hv/D 与容量、slot_mapping / positions / cat_indices 长度）、`CheckSupportRange`（headDim=128、block_size=128、T > 0、head 组合白名单、4 个可选输入必须全部提供） |
 
 > aclnn 单算子路径和图模式最终都会走 tiling，所以 tiling 侧的校验对两条路径都生效；
 > 代价是非法入参在 `aclnnXxxGetWorkspaceSize` 阶段不报错，而是在执行阶段由 tiling 返回失败。

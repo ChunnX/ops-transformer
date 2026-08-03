@@ -223,15 +223,16 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckOutputShapeValid()
 
 ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckSupportRange()
 {
-    // 本期支持范围（设计说明书 §2.3）：headDim=128、block_size=128、T ∈ [1, 64K]、
+    // 本期支持范围（设计说明书 §2.3）：headDim=128、block_size=128、
     // (Hq, Hk, Hv) ∈ {(8,1,1), (16,2,2)}；需要放宽时改 tiling.h 里的常量即可。
     OP_CHECK_IF(blockSize_ != SUPPORTED_BLOCK_SIZE,
                 OP_LOGE(context_->GetNodeName(), "block_size only supports %ld, got %ld.", SUPPORTED_BLOCK_SIZE,
                         blockSize_),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(totalTokens_ <= 0 || totalTokens_ > MAX_TOTAL_TOKENS,
-                OP_LOGE(context_->GetNodeName(), "total tokens must be in [1, %ld], got %ld.", MAX_TOTAL_TOKENS,
-                        totalTokens_),
+    // T 只要求为正：不设人为上限，真实上限由 KV Cache 容量（blockNum * blockSize >= T）决定，
+    // 见 CheckKvCacheValid。切分与偏移计算全部 int64_t，对 T 的绝对大小无假设。
+    OP_CHECK_IF(totalTokens_ <= 0,
+                OP_LOGE(context_->GetNodeName(), "total tokens must be positive, got %ld.", totalTokens_),
                 return ge::GRAPH_FAILED);
 
     // 当前实现只支持 4 个可选输入全部提供的场景：

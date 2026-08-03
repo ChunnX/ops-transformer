@@ -34,7 +34,7 @@
   * mrope_section 为空时退化为 [half, 0, 0]（等价标准 RoPE）。
   * 全向量化：原 golden 逐 token、逐 half 的 Python 双循环在 total=64k 时不可用。
   * 典型 case 集：headDim=128 固定，(Hq,Hk,Hv) ∈ {(8,1,1), (16,2,2)}，
-    T 从 1 泛化到 64K，block_size=128（见 TYPICAL_CASES）。
+    T 不设上限，case 集覆盖 1 ~ 64K，block_size=128（见 TYPICAL_CASES）。
 
 约定（与《算子需求分析和方案设计说明书》一致）
   und_qkv       bf16 [und_len, N, D]，N = Hq+Hk+Hv，D = head_dim = 128
@@ -329,7 +329,8 @@ def golden_und_gen_qkv_rms_norm_rope_cache(
 # 典型 case 集
 # --------------------------------------------------------------------------- #
 # headDim 固定 128；(Hq,Hk,Hv) 取 (8,1,1) / (16,2,2)；cache block_size=128；
-# T = und_len + gen_len，泛化范围 1 ~ 64K。
+# T = und_len + gen_len 不设上限（算子侧只要求为正，真实上限是 KV Cache 容量）；
+# 下面的 case 集覆盖到 64K，再大只受跑用例的机器内存限制。
 # slot_mode: "shuffled"（分页乱序，默认）/ "contiguous"（顺序占位）
 # NOTE: 当前算子实现只支持 gen_qkv / gen_weights_q / gen_weights_k / cat_indices
 #       全部提供的场景，因此所有 case 均 gen_len > 0 且 cat_indices 非 None。
@@ -375,7 +376,7 @@ def build_case(spec, device="cpu", seed=7, max_pos=4096, init_cache="randn"):
     d = HEAD_DIM
     und_len, gen_len = spec["und_len"], spec["gen_len"]
     total = und_len + gen_len
-    assert 1 <= total <= 64 * 1024, "T 支持范围 1 ~ 64K"
+    assert total >= 1, "T 必须为正"
 
     # KV Cache 预留：按 block_size 向上取整再多给 2 个 block，制造未命中位置
     num_blocks = (total + BLOCK_SIZE - 1) // BLOCK_SIZE + 2
