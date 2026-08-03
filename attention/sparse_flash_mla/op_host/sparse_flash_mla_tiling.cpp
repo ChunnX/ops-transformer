@@ -885,7 +885,6 @@ ge::graphStatus SMLAInfoParser::GetValueHeadDim()
     return ge::GRAPH_SUCCESS;
 }
 
-
 ge::graphStatus SMLAInfoParser::GetSparseBlockCount()
 {
     if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
@@ -1985,7 +1984,7 @@ void SparseFlashMlaTiling::CalcUbBmm(SMLATilingInfo *tilingInfo)
         cubeMSize = maxMSize;
     }
     mmResUbSize_ = sInnerSizeAlign_ * Align(cubeMSize, 16U); // kernel按照16对齐写出，tiling按照这个原则分配内存
-    bmm2ResUbSize_ = headDimAlign_ * Align(cubeMSize, 16U); // kernel按照16对齐写出，tiling按照这个原则分配内存
+    bmm2ResUbSize_ = headDimAlign_ * Align(cubeMSize, 16U);  // kernel按照16对齐写出，tiling按照这个原则分配内存
 }
 
 void SparseFlashMlaTiling::SplitBalanced(SMLATilingInfo *tilingInfo)
@@ -2044,7 +2043,41 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     constexpr uint32_t VEC2_RES_ELEM_SIZE = 4;
     constexpr uint32_t PRELOAD_NUM = 2;
 
-    uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
+    // PA稀疏模板下，将 sparse index -> KV物理偏移的标量热循环前移，并由VF批量完成。
+    constexpr uint64_t UB_SIZE_FOR_PHY_ADDR = 248ULL * 1024ULL;
+    constexpr uint32_t SPARSE_BLOCK_ALIGN_NUM = 128U;
+    const uint32_t alignedOriSparseBlockCount =
+        (tilingInfo->oriSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1U) / SPARSE_BLOCK_ALIGN_NUM *
+        SPARSE_BLOCK_ALIGN_NUM;
+    const uint32_t alignedCmpSparseBlockCount =
+        (tilingInfo->cmpSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1U) / SPARSE_BLOCK_ALIGN_NUM *
+        SPARSE_BLOCK_ALIGN_NUM;
+    const bool useOriSparseAddr = tilingInfo->perfMode == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                                  tilingInfo->perfMode == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE;
+    const bool useCmpSparseAddr = tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+                                  tilingInfo->perfMode == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE;
+    const bool oriBlockSizeIsPowerOfTwo =
+        tilingInfo->oriBlockSize != 0U && (tilingInfo->oriBlockSize & (tilingInfo->oriBlockSize - 1U)) == 0U;
+    const bool cmpBlockSizeIsPowerOfTwo =
+        tilingInfo->cmpBlockSize != 0U && (tilingInfo->cmpBlockSize & (tilingInfo->cmpBlockSize - 1U)) == 0U;
+    const bool blockSizeSupported = (!useOriSparseAddr || oriBlockSizeIsPowerOfTwo) &&
+                                    (!useCmpSparseAddr || cmpBlockSizeIsPowerOfTwo);
+    const uint64_t oriVectorizeUbSize = useOriSparseAddr ?
+                                            static_cast<uint64_t>(tilingInfo->oriMaxBlockNumPerBatch) * sizeof(int32_t) +
+                                                static_cast<uint64_t>(alignedOriSparseBlockCount) * (sizeof(int32_t) + sizeof(int64_t)) :
+                                            0ULL;
+    const uint64_t cmpVectorizeUbSize = useCmpSparseAddr ?
+                                            static_cast<uint64_t>(tilingInfo->cmpMaxBlockNumPerBatch) * sizeof(int32_t) +
+                                                static_cast<uint64_t>(alignedCmpSparseBlockCount) * (sizeof(int32_t) + sizeof(int64_t)) :
+                                            0ULL;
+    const uint64_t vectorizeUbSize = oriVectorizeUbSize > cmpVectorizeUbSize ?
+                                         oriVectorizeUbSize :
+                                         cmpVectorizeUbSize;
+    const uint32_t vectorizeFlag = static_cast<uint32_t>(
+        tilingInfo->npuArch == NpuArch::DAV_3510 && (useOriSparseAddr || useCmpSparseAddr) &&
+        tilingInfo->kvLayout == SMLALayout::PA_BBND && blockSizeSupported && vectorizeUbSize <= UB_SIZE_FOR_PHY_ADDR);
+
+    uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     if (tilingInfo->npuArch == NpuArch::DAV_3510) {
         bool isSplitG = tilingInfo->gSize > 64;
         if (isSplitG || tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
@@ -2054,7 +2087,7 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
             constexpr uint32_t S2_BASE_SIZE = 128;
             constexpr uint32_t D_SIZE = 512;
             constexpr uint32_t VEC_RES_ELEM_SIZE = 2;
-            uint32_t gmSize = S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM;
+            uint64_t gmSize = S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM;
             if (isSplitG) {
                 gmSize *= (aicNum >> 1U);
             } else {
@@ -2063,6 +2096,17 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
             workspaceSize += gmSize;
             constexpr uint32_t S2_REAL_BUF_LEN = 128;
             workspaceSize += TRIPLE_BUFFER_NUM * S2_REAL_BUF_LEN * sizeof(int32_t) * aivNum;
+            if (vectorizeFlag != 0U) {
+                const uint64_t totalBS1 = tilingInfo->qLayout == SMLALayout::TND ?
+                                              static_cast<uint64_t>(tilingInfo->s1Size) :
+                                              static_cast<uint64_t>(tilingInfo->bSize) * tilingInfo->s1Size;
+                if (useOriSparseAddr) {
+                    workspaceSize += totalBS1 * alignedOriSparseBlockCount * sizeof(int64_t);
+                }
+                if (useCmpSparseAddr) {
+                    workspaceSize += totalBS1 * alignedCmpSparseBlockCount * sizeof(int64_t);
+                }
+            }
         }
     } else {
         workspaceSize += PRELOAD_NUM * mmResUbSize_ * MM1_RES_ELEM_SIZE * aicNum;
@@ -2074,8 +2118,9 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
             workspaceSize += MERGE_CACHE_GM_BUF_NUM * 512 * 512 * 2 * aicNum;
         }
     }
-    workspaceSize += static_cast<uint32_t>(CalcFdStagingWorkspaceSize(tilingInfo, aicNum));
+    workspaceSize += CalcFdStagingWorkspaceSize(tilingInfo, aicNum);
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, workSpaces);
     workSpaces[0] = workspaceSize;
 
     tilingData_.baseParams.set_batchSize(tilingInfo->bSize);
@@ -2134,7 +2179,7 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
         splitG = static_cast<uint32_t>(tilingInfo->gSize > 64);
     }
     tilingKey = GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(tilingInfo->perfMode), splitG,
-                                   headRatioOne);
+                                   headRatioOne, vectorizeFlag);
     context_->SetScheduleMode(1);
     context_->SetTilingKey(tilingKey);
 

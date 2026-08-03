@@ -92,6 +92,8 @@ public:
                                          const ConstInfo &constInfo);
 
     // SWA/HCA场景, inputRightBuf是INNER_CORE_SYNC类型
+    __aicore__ inline void IterateLoadK(Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf,
+                                         const RunInfo &runInfo, const ConstInfo &constInfo);
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
                                        Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf,
                                        const RunInfo &runInfo, const ConstInfo &constInfo);
@@ -101,6 +103,10 @@ public:
                 Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf, const RunInfo &runInfo,
                 const ConstInfo &constInfo);
     // CSA场景, inputRightBuf是CROSS_CORE_SYNC_FORWARD类型
+    __aicore__ inline void IterateLoadK(
+        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
+        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo,
+        const ConstInfo &constInfo);
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
                                        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
                                        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
@@ -323,12 +329,96 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(const RunInfo &r
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
+CSABlockCube<TEMPLATE_ARGS>::IterateLoadK(
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
+    Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo,
+    const ConstInfo &constInfo)
+{
+    CalcS2Coord(runInfo, constInfo);
+    bool isSparse = false;
+    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        isSparse = true;
+    } else if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
+        isSparse = runInfo.isCmp;
+    }
+
+    WaitFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
+    if (!isSparse) {
+        LocalTensor<KV_T> inputRightTensor = inputRightBuf.GetTensor<KV_T>();
+        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
+            Position startPos;
+            startPos.bIdx = runInfo.boIdx;
+            startPos.n2Idx = runInfo.n2oIdx;
+            startPos.s2Offset = coordInfo[runInfo.taskIdMod3].s2Coord;
+            startPos.dIdx = 0;
+            PAShape shape;
+            shape.blockSize = kvCacheBlockSize;
+            shape.headNum = constInfo.n2Size;
+            shape.headDim = constInfo.dSize;
+            shape.actHeadDim = constInfo.dSize;
+            shape.maxblockNumPerBatch = maxBlockNumPerBatch;
+            shape.copyRowNum = runInfo.s2RealSize;
+            shape.copyRowNumAlign = Align16Func(runInfo.s2RealSize);
+            shape.pageStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
+            GmCopyInToL1PA<KV_T>(inputRightTensor, curKvGm.gmTensor, blockTableGm, KVLAYOUT::BBH, shape, startPos);
+        } else {
+            const int64_t keyOffset = this->curKvGm.offsetCalculator.GetOffset(
+                coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+            CopyToL1Nd2Nz<KV_T>(inputRightTensor, curKvGm.gmTensor[keyOffset], runInfo.s2RealSize, constInfo.dSize,
+                                constInfo.mm1Kb);
+        }
+    } else {
+        inputRightBuf.WaitCrossCore();
+        v0ResGm.WaitCrossCore();
+        GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
+        CopyToL1Nd2Nz<Q_T>(inputRightBuf.GetTensor<Q_T>(), v0ResGmTensor, runInfo.s2RealSize, constInfo.dSize,
+                           constInfo.mm1Kb);
+    }
+    SetFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void
+CSABlockCube<TEMPLATE_ARGS>::IterateLoadK(Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf,
+                                          const RunInfo &runInfo, const ConstInfo &constInfo)
+{
+    CalcS2Coord(runInfo, constInfo);
+
+    inputRightBuf.Wait<HardEvent::MTE1_MTE2>();
+    LocalTensor<KV_T> inputRightTensor = inputRightBuf.GetTensor<KV_T>();
+    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
+        Position startPos;
+        startPos.bIdx = runInfo.boIdx;
+        startPos.n2Idx = runInfo.n2oIdx;
+        startPos.s2Offset = coordInfo[runInfo.taskIdMod3].s2Coord;
+        startPos.dIdx = 0;
+        PAShape shape;
+        shape.blockSize = kvCacheBlockSize;
+        shape.headNum = constInfo.n2Size;
+        shape.headDim = constInfo.dSize;
+        shape.actHeadDim = constInfo.dSize;
+        shape.maxblockNumPerBatch = maxBlockNumPerBatch;
+        shape.copyRowNum = runInfo.s2RealSize;
+        shape.copyRowNumAlign = Align16Func(runInfo.s2RealSize);
+        shape.pageStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
+        GmCopyInToL1PA<KV_T>(inputRightTensor, curKvGm.gmTensor, blockTableGm, KVLAYOUT::BBH, shape, startPos);
+    } else {
+        const int64_t keyOffset = this->curKvGm.offsetCalculator.GetOffset(
+            coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+        CopyToL1Nd2Nz<KV_T>(inputRightTensor, curKvGm.gmTensor[keyOffset], runInfo.s2RealSize, constInfo.dSize,
+                            constInfo.mm1Kb);
+    }
+    inputRightBuf.Set<HardEvent::MTE2_MTE1>();
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void
 CSABlockCube<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
                                          Buffer<BufferType::L1, SyncType::INNER_CORE_SYNC> &inputRightBuf,
                                          const RunInfo &runInfo, const ConstInfo &constInfo)
 {
     CalcS1Coord(runInfo, constInfo);
-    CalcS2Coord(runInfo, constInfo);
 
     IterateBmm1HCA(outputBuf, inputRightBuf, runInfo, constInfo);
 }
@@ -370,33 +460,8 @@ CSABlockCube<TEMPLATE_ARGS>::IterateBmm1HCA(Buffer<BufferType::UB, SyncType::CRO
         inputLeftBuf.Set<HardEvent::MTE2_MTE1>(); // 通知
     }
 
-    // 加载当前轮的右矩阵到L1
-    inputRightBuf.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
-    LocalTensor<KV_T> inputRightTensor = inputRightBuf.GetTensor<KV_T>();
-    if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-        Position startPos;
-        startPos.bIdx = runInfo.boIdx;
-        startPos.n2Idx = runInfo.n2oIdx;
-        startPos.s2Offset = coordInfo[runInfo.taskIdMod3].s2Coord;
-        startPos.dIdx = 0;
-        PAShape shape;
-        shape.blockSize = kvCacheBlockSize;
-        shape.headNum = constInfo.n2Size;
-        shape.headDim = constInfo.dSize;
-        shape.actHeadDim = constInfo.dSize;
-        shape.maxblockNumPerBatch = maxBlockNumPerBatch;
-        shape.copyRowNum = runInfo.s2RealSize;
-        shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
-        shape.pageStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
-        GmCopyInToL1PA<KV_T>(inputRightTensor, curKvGm.gmTensor, blockTableGm, KVLAYOUT::BBH, shape, startPos);
-    } else {
-        int64_t keyOffset = this->curKvGm.offsetCalculator.GetOffset(
-            coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
-        CopyToL1Nd2Nz<KV_T>(inputRightTensor, curKvGm.gmTensor[keyOffset], runInfo.s2RealSize, constInfo.dSize,
-                            constInfo.mm1Kb);
-    }
-    inputRightBuf.Set<HardEvent::MTE2_MTE1>();  // 通知
-    inputRightBuf.Wait<HardEvent::MTE2_MTE1>(); // 等待L1B
+    // KV is prefetched by IterateLoadK and kept until BMM2 releases this buffer.
+    inputRightBuf.Wait<HardEvent::MTE2_MTE1>();
 
     inputLeftBuf.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
     Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
@@ -409,7 +474,7 @@ CSABlockCube<TEMPLATE_ARGS>::IterateBmm1HCA(Buffer<BufferType::UB, SyncType::CRO
         1                                          // isRightTranspose
     };
     MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>( // m,n不切，k切128
-        inputLeftBuf.GetTensor<Q_T>(), inputRightBuf.GetTensor<Q_T>(), // mm1B直接用tensor的数据
+        inputLeftBuf.GetTensor<Q_T>(), inputRightBuf.GetTensor<Q_T>(),                         // mm1B直接用tensor的数据
         mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         inputLeftBuf.Set<HardEvent::MTE1_MTE2>(); // 释放L1A
@@ -500,9 +565,6 @@ CSABlockCube<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_
                                          Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
                                          const RunInfo &runInfo, const ConstInfo &constInfo)
 {
-    CalcS1Coord(runInfo, constInfo);
-    CalcS2Coord(runInfo, constInfo);
-
     IterateBmm1CSA(outputBuf, inputRightBuf, v0ResGm, runInfo, constInfo);
 }
 
@@ -532,8 +594,8 @@ CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(Buffer<BufferType::UB, SyncType::CRO
         inputLeftBuf.Wait<HardEvent::MTE1_MTE2>(); // 占用L1A
         LocalTensor<Q_T> inputLeftTensor = inputLeftBuf.GetTensor<Q_T>();
 
-        uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
-                                                                     coordInfo[runInfo.taskIdMod3].s1Coord, 0);
+        uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(
+            runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, runInfo.s1oIdx * runInfo.qSNumInOneBlock, 0);
         CopyToL1Nd2Nz<Q_T>(inputLeftTensor, this->queryGm.gmTensor[gmOffset], runInfo.mRealSize, constInfo.dSize,
                            constInfo.mm1Ka);
 
@@ -544,54 +606,7 @@ CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(Buffer<BufferType::UB, SyncType::CRO
         inputLeftBuf.Set<HardEvent::MTE2_MTE1>(); // 通知
     }
 
-    // 加载当前轮的右矩阵到L1
-    // ORI_SPARSE、ORI_CMP_SPARSE及CSA的cmpKv为v0稀疏搬运，CSA的oriKv为cube搬运
-    bool isSparse = false;
-    if constexpr (TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
-                  TEMPLATE_MODE == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
-        isSparse = true;
-    } else if constexpr (TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE) {
-        isSparse = runInfo.isCmp ? true : false;
-    }
-
-    if (!isSparse) {
-        WaitFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
-        LocalTensor<KV_T> inputRightTensor = inputRightBuf.GetTensor<KV_T>();
-        if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
-            Position startPos;
-            startPos.bIdx = runInfo.boIdx;
-            startPos.n2Idx = runInfo.n2oIdx;
-            startPos.s2Offset = coordInfo[runInfo.taskIdMod3].s2Coord;
-            startPos.dIdx = 0;
-            PAShape shape;
-            shape.blockSize = kvCacheBlockSize;
-            shape.headNum = constInfo.n2Size;
-            shape.headDim = constInfo.dSize;
-            shape.actHeadDim = constInfo.dSize;
-            shape.maxblockNumPerBatch = maxBlockNumPerBatch;
-            shape.copyRowNum = runInfo.s2RealSize;
-            shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
-            shape.pageStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
-            GmCopyInToL1PA<KV_T>(inputRightTensor, curKvGm.gmTensor, blockTableGm, KVLAYOUT::BBH, shape, startPos);
-        } else {
-            int64_t keyOffset = this->curKvGm.offsetCalculator.GetOffset(
-                coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
-            CopyToL1Nd2Nz<KV_T>(inputRightTensor, curKvGm.gmTensor[keyOffset], runInfo.s2RealSize, constInfo.dSize,
-                                constInfo.mm1Kb);
-        }
-        SetFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
-        WaitFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
-    } else {
-        inputRightBuf.WaitCrossCore();
-        WaitFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
-        LocalTensor<Q_T> dst = inputRightBuf.GetTensor<Q_T>();
-        v0ResGm.WaitCrossCore();
-        GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
-        CopyToL1Nd2Nz<Q_T>(dst, v0ResGmTensor, runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
-        SetFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
-        WaitFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
-    }
-
+    WaitFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
     inputLeftBuf.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
     Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
     mm1ResL0C.Wait<HardEvent::FIX_M>(); // 占用
@@ -603,7 +618,7 @@ CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(Buffer<BufferType::UB, SyncType::CRO
         1                                          // isRightTranspose
     };
     MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>( // m,n不切，k切128
-        inputLeftBuf.GetTensor<Q_T>(), inputRightBuf.GetTensor<Q_T>(), // mm1B直接用tensor的数据
+        inputLeftBuf.GetTensor<Q_T>(), inputRightBuf.GetTensor<Q_T>(),                         // mm1B直接用tensor的数据
         mmL0ABuffers, mmL0BBuffers, mm1ResL0C.GetTensor<T>(), param);
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         inputLeftBuf.Set<HardEvent::MTE1_MTE2>(); // 释放L1A
@@ -715,11 +730,11 @@ struct CubeBlockTraits; // 声明
 #define GEN_TRAIT_TYPE(name, ...) using name##_TRAITS = name;
 #define GEN_TRAIT_CONST(name, type, ...) static constexpr type name##Traits = name;
 
-#define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS)                                                                     \
-    TEMPLATES_DEF_NO_DEFAULT                                                                                           \
-    struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> {                                                          \
-        CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE)                                                                  \
-        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST)                                                                \
+#define DEFINE_CUBE_BLOCK_TRAITS(CUBE_BLOCK_CLASS) \
+    TEMPLATES_DEF_NO_DEFAULT \
+    struct CubeBlockTraits<CUBE_BLOCK_CLASS<TEMPLATE_ARGS>> { \
+        CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_TRAIT_TYPE) \
+        CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST) \
     }
 
 DEFINE_CUBE_BLOCK_TRAITS(CSABlockCube);
@@ -728,8 +743,8 @@ DEFINE_CUBE_BLOCK_TRAITS(CSABlockCubeDummy);
 // /* 生成Arg Traits, kernel中只需要调用ARGS_TRAITS就可以获取所有CubeBlock中的模板参数 */
 #define GEN_ARGS_TYPE(name, ...) using name = typename CubeBlockTraits<CubeBlockType>::name##_TRAITS;
 #define GEN_ARGS_CONST(name, type, ...) static constexpr type name = CubeBlockTraits<CubeBlockType>::name##Traits;
-#define ARGS_TRAITS                                                                                                    \
-    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE)                                                                       \
+#define ARGS_TRAITS \
+    CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARGS_TYPE) \
     CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARGS_CONST)
 } // namespace SMLAKernel
 #endif // FLASH_ATTENTION_SCORE_BLOCK_CUBE_H_
