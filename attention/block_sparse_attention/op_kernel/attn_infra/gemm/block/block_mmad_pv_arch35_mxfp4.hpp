@@ -485,7 +485,7 @@ public:
         GemmCoord actualBlockShapePV,
         TileInfoT &delay20TileInfo,
         TaskInfoT &delay20TaskInfo,   // block 解析 gmOffsetVScale/gmOffsetSparseIdx/kvSeqlen/yBlockNumAval/yBlockNumRsvd
-        uint32_t kvSBaseTile, uint32_t blockShapeY)
+        uint32_t kvSBaseTile, uint32_t blockShapeY, uint32_t kvHeadMul)  // [BSND stride 修复]V-scale 头内 group-stride 因子
     {
         uint32_t rowNum = actualBlockShapePV[0];
         uint32_t embed = actualBlockShapePV[1];
@@ -549,7 +549,7 @@ public:
         //   重解释为 fp8_e8m0_t；mx 特化内部再 reinterpret 成 half 做 B16 Nd2Nz（与 raw 一致）。
         auto gVScaleTensorTla = tla::MakeTensor(
             gVScale.ReinterpretCast<AscendC::fp8_e8m0_t>(),
-            tla::MakeMxScaleLayout<AscendC::fp8_e8m0_t, layout::ColumnMajor, false>(embedReal, delay20TileInfo.kvsActBaseTileAlign64 / 32),
+            tla::MakeMxScaleLayout<AscendC::fp8_e8m0_t, layout::ColumnMajor, false>(kvHeadMul * embedReal, delay20TileInfo.kvsActBaseTileAlign64 / 32),  // [BSND stride 修复] rows 乘 kvHeadMul→group-stride=kvHeadMul*embed*2(BNSD=embed*2)
             Arch::PositionGM{});
         auto l1AScaleTensorTla = tla::MakeTensor(l1AScaleTensor[l1ABufId].ReinterpretCast<AscendC::fp8_e8m0_t>(),
             tla::MakeMxScaleLayout<AscendC::fp8_e8m0_t, layout::zZ, false>(embedReal, delay20TileInfo.kvsActBaseTileAlign64 / 32),
