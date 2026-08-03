@@ -360,9 +360,9 @@ def compressor_grad(
     wgate:          pl.Ptr[pl.DT_UINT8],     # (C, hiddenSize)       
 
     # ── 输入（前向中间变量 / 上游梯度） ──
-    d_cmp_kv:       pl.Ptr[pl.DT_UINT8],     # (cmpKvRows, headDim)           
-    kv:             pl.Ptr[pl.DT_UINT8],     # (cmpKvRows, cmpRowCnt, headDim) FP32
+    d_cmp_kv:       pl.Ptr[pl.DT_UINT8],     # (cmpKvRows, headDim)   
     softmax_score:  pl.Ptr[pl.DT_UINT8],     # (cmpKvRows, cmpRowCnt, headDim) FP32
+    kv:             pl.Ptr[pl.DT_UINT8],     # (cmpKvRows, cmpRowCnt, headDim) FP32
 
     # ── 位置 / 序列参数 ──
     cu_seqlens:     pl.Ptr[pl.DT_UINT8],
