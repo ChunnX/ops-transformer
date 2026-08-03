@@ -31,6 +31,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> MhcPostBackward(const
     if (hasHRes) {
         gradHres = at::empty_like(hRes.value());
     } else {
+        TORCH_CHECK(x.dim() == 3 || x.dim() == 4,
+                    "x must be 3D (TND) or 4D (BSND) when h_res is None or empty, but got ", x.dim(), "D");
         auto sizes = x.sizes().vec();
         sizes.back() = sizes[sizes.size() - 2];
         gradHres = at::empty(sizes, x.options().dtype(at::kFloat));
