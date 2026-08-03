@@ -17,20 +17,21 @@
 #include "moe_distribute_combine_teardown_tiling_base.h"
 
 namespace {
-constexpr uint32_t EXPAND_X_INDEX = 0U;
-constexpr uint32_t QUANT_EXPAND_X_INDEX = 1U;
-constexpr uint32_t EXPERT_IDS_INDEX = 2U;
-constexpr uint32_t EXPAND_IDX_INDEX = 3U;
-constexpr uint32_t EXPERT_SCALES_INDEX = 4U;
-constexpr uint32_t COMM_CMD_INFO_INDEX = 5U;
-constexpr uint32_t X_ACTIVE_MASK_INDEX = 6U;
-constexpr uint32_t SHARED_EXPERT_X_INDEX = 7U;
-constexpr uint32_t X_OUT_INDEX = 0U;
+// -----------------------------aclnnInner接口参数列表----------------------------- //
+constexpr uint32_t CONTEXT_INDEX = 0;
+constexpr uint32_t EXPAND_X_INDEX = 1;
+constexpr uint32_t QUANT_EXPAND_X_INDEX = 2;
+constexpr uint32_t EXPERT_IDS_INDEX = 3;
+constexpr uint32_t EXPAND_IDX_INDEX = 4;
+constexpr uint32_t EXPERT_SCALES_INDEX = 5;
+constexpr uint32_t COMM_CMD_INFO_INDEX = 6;
+constexpr uint32_t X_ACTIVE_MASK_INDEX = 7;
+constexpr uint32_t SHARED_EXPERT_X_INDEX = 8;
 
-constexpr uint32_t ATTR_GROUP_EP_INDEX = 0;
-constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1;
-constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 2;
-constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 3;
+constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 0;
+constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;
+constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 2;
+constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 3;
 constexpr uint32_t ATTR_EXPERT_SHARD_TYPE_INDEX = 4;
 constexpr uint32_t ATTR_SHARED_EXPERT_NUM_INDEX = 5;
 constexpr uint32_t ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 6;
@@ -38,6 +39,9 @@ constexpr uint32_t ATTR_GLOBAL_BS_INDEX = 7;
 constexpr uint32_t ATTR_COMM_QUANT_MODE_INDEX = 8;
 constexpr uint32_t ATTR_COMM_TYPE_INDEX = 9;
 constexpr uint32_t ATTR_COMM_ALG_INDEX = 10;
+
+constexpr uint32_t X_OUT_INDEX = 0;
+// -----------------------------aclnnInner接口参数列表----------------------------- //
 
 constexpr uint32_t THREE_DIMS = 3U;
 constexpr uint32_t TWO_DIMS = 2U;
@@ -105,7 +109,6 @@ void MoeDistributeCombineTeardownTilingBase::SetAttrToTilingData()
 {
     auto attrs = context_->GetAttrs();
 
-    auto groupEpPtr = attrs->GetAttrPointer<char>(ATTR_GROUP_EP_INDEX);
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     auto epRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_RANK_ID_INDEX);
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
@@ -113,8 +116,6 @@ void MoeDistributeCombineTeardownTilingBase::SetAttrToTilingData()
     auto sharedExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_NUM_INDEX);
     auto sharedExpertRankNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_RANK_NUM_INDEX);
     auto globalBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_GLOBAL_BS_INDEX);
-
-    groupEp_ = string(groupEpPtr);
 
     // 填tilingdata
     tilingData_->moeDistributeCombineTeardownInfo.epWorldSize = static_cast<uint32_t>(*epWorldSizePtr);
@@ -181,9 +182,6 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckAttrsNullptr()
     auto attrs = context_->GetAttrs();
 
     // 判空指针
-    auto groupEpPtr = attrs->GetAttrPointer<char>(ATTR_GROUP_EP_INDEX);
-    OP_TILING_CHECK(groupEpPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "groupEp"), return ge::GRAPH_FAILED);
-
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "epWorldSizePtr"),
                     return ge::GRAPH_FAILED);

@@ -28,13 +28,20 @@
 #include "kernel_operator.h"
 #endif
 #include "adv_api/hccl/hccl.h"
+#include "../../common/op_kernel/mc2_moe_context.h"
 
 constexpr uint32_t MAX_RANK_NUM = 64U; // 最大卡数
 constexpr uint32_t MAX_OP_NUM = 8U;    // MC2最大通信算子数
 constexpr uint32_t WRITE_SQE_SIZE = 64U;
 constexpr uint32_t WRITE_WITH_NOTIFY_SQE_SIZE = 96U;
 constexpr uint64_t WIN_STATE_OFFSET = 350U * 1024U;
+// dispatch/combine 共用 dataState 0/1 开关（对齐 arch22）：D teardown 翻转后 C 用另一 bank。
 constexpr uint64_t STATE_WIN_OFFSET = 950U * 1024U;
+// combine 本地状态 flag 源区（仅 WriteNbi 源地址，不作 dataState 开关）。
+constexpr uint64_t COMBINE_STATE_WIN_OFFSET = 818U * 1024U;
+// arch35 状态步长为 512B，不能照搬 v2 的 64KB 隔离（仅约 128 槽，易与 dispatch 状态区重叠）。
+// 与 dispatch 共用 STATE_WIN 乒乓后，同层 C 落在 D 刚用完的对侧 bank，偏移为 0。
+constexpr uint64_t COMBINE_STATE_OFFSET = 0U;
 constexpr uint64_t WIN_PICI_OFFSET = 1024U * 1024U;
 constexpr uint64_t PICI_WIN_SIZE = 512UL;
 constexpr uint32_t NORMAL_CQE_SIZE = 64U;
@@ -163,6 +170,7 @@ struct HcclCombinOpParam {
     HcclAiRMACQ cqs[MAX_RANK_NUM];
 };
 
+#if 0
 // URMA通信接口
 __aicore__ inline GM_ADDR GetURMASqInfoGMAddr(GM_ADDR hcclContext, uint32_t dstRankId)
 {
@@ -514,7 +522,7 @@ __aicore__ inline void GetPICI(const AscendC::LocalTensor<uint32_t> &piCiTensor,
     ascendc_assert((hcclContext != nullptr && curRankId < MAX_RANK_NUM && dstRankId < MAX_RANK_NUM),
                    "hcclContext is nullptr or curRankId >= MAX_RANK_NUM or dstRankId >= MAX_RANK_NUM");
 
-    GM_ADDR piCiSpaceGM = (GM_ADDR)(((__gm__ HcclCombinOpParam *)hcclContext)->windowsOut[curRankId] + WIN_PICI_OFFSET +
+    GM_ADDR piCiSpaceGM = (GM_ADDR)(hcclContext->epHcclBuffer_[curRankId] + WIN_PICI_OFFSET +
                                     PICI_WIN_SIZE * dstRankId);
     AscendC::GlobalTensor<uint32_t> piCiGlobalTensor;
     piCiGlobalTensor.SetGlobalBuffer((__gm__ uint32_t *)piCiSpaceGM);
@@ -530,7 +538,7 @@ __aicore__ inline void UpdatePICI(const AscendC::LocalTensor<uint32_t> &piCiTens
     ascendc_assert((hcclContext != nullptr && curRankId < MAX_RANK_NUM && dstRankId < MAX_RANK_NUM),
                    "hcclContext is nullptr or curRankId >= MAX_RANK_NUM or dstRankId >= MAX_RANK_NUM");
 
-    GM_ADDR piCiSpaceGM = (GM_ADDR)(((__gm__ HcclCombinOpParam *)hcclContext)->windowsOut[curRankId] + WIN_PICI_OFFSET +
+    GM_ADDR piCiSpaceGM = (GM_ADDR)(hcclContext->epHcclBuffer_[curRankId] + WIN_PICI_OFFSET +
                                     PICI_WIN_SIZE * dstRankId);
     AscendC::GlobalTensor<uint32_t> piCiGlobalTensor;
     piCiGlobalTensor.SetGlobalBuffer((__gm__ uint32_t *)piCiSpaceGM);
@@ -539,5 +547,7 @@ __aicore__ inline void UpdatePICI(const AscendC::LocalTensor<uint32_t> &piCiTens
     AscendC::DataCopyParams copyParams = {1U, 1U, 0U, 0U};
     AscendC::DataCopy(piCiGlobalTensor, piCiTensor, copyParams);
 }
+#endif
+
 
 #endif // MOE_DISTRIBUTE_BASE_H
