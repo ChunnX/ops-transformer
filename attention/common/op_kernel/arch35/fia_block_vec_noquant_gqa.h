@@ -26,7 +26,6 @@
 #include "fia_public_define_arch35.h"
 #include "../vector_common.h"
 #include "../memory_copy_arch35.h"
-#include "../row_invalid.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
@@ -56,7 +55,7 @@ public:
     static constexpr bool FLASH_DECODE = isFd;
     static constexpr bool HAS_DROP = false;                             // 不支持drop mask
     static constexpr PseTypeEnum PSE_MODE = PseTypeEnum::PSE_NONE_TYPE; // 不支持PSE
-    static constexpr uint32_t initOutputEventId = 0U;                   // attenOut和lse，刷无效行会用到剩余ub，需要加同步
+    static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
     static constexpr MaskFormat MASK_LAYOUT =
@@ -109,8 +108,7 @@ public:
     int64_t vec2SubBlockOffset = 0;
 
     // ==================== Functions ======================
-    __aicore__ inline FANoQuantGqaBlockVec(ConstInfoNoQuant &constInfo)
-        : constInfo(constInfo){};
+    __aicore__ inline FANoQuantGqaBlockVec(ConstInfoNoQuant &constInfo) : constInfo(constInfo){};
 
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *actualSeqQlenAddr,
                                         __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *attenMask,
@@ -489,27 +487,52 @@ public:
         Bmm2DataCopyOutTrans(runInfo, attenOut, mStartVec, mDealSize);
     }
 
+    __aicore__ inline bool CalcBlockNeedRowInvalid(RunInfoX &runInfo, int64_t s1FirstValidToken,
+                                                   int64_t s1LastValidToken)
+    {
+        int32_t vecMStartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
+        int32_t vecMEndIdx = vecMStartIdx + runInfo.actVecMSize - 1;
+        int32_t s1StartTdx, s1EndTdx;
+        bool ret = false;
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
+            // S1G layout
+            s1StartTdx = vecMStartIdx / constInfo.gSize;
+            s1EndTdx = vecMEndIdx / constInfo.gSize;
+            ret = (s1StartTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
+        } else {
+            // GS1 layout
+            s1StartTdx = vecMStartIdx % runInfo.actS1Size;
+            s1EndTdx = vecMEndIdx % runInfo.actS1Size;
+            int32_t gStartIdx = vecMStartIdx / runInfo.actS1Size;
+            int32_t gEndIdx = vecMEndIdx / runInfo.actS1Size;
+            if (gStartIdx != gEndIdx) { // 跨多个G
+                ret = (s1FirstValidToken > 0) ||
+                      (s1LastValidToken < static_cast<int64_t>(runInfo.actS1Size) - 1);
+            } else { // 只跨1个G
+                ret = (s1StartTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
+            }
+        }
+        return ret;
+    }
+
     template <typename VEC2_RES_T>
     __aicore__ inline void RowInvalid(LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t mStartVec, int64_t mDealSize,
                                       RunInfoX &runInfo, int64_t dSizeAligned64)
     {
         if constexpr (hasAtten) {
-            auto tokenRange = CalcRowInvalidTokenRange(runInfo.nextTokensLeftUp, runInfo.preTokensLeftUp,
-                                                       runInfo.actS2Size, runInfo.actS1Size);
-            bool batchNeedRowInvalid =
-                CalcBatchNeedRowInvalid(tokenRange, constInfo.sparseMode, constInfo.isRowInvalidOpen);
+            int64_t s1FirstValidToken =
+                AttentionCommon::Min(AttentionCommon::Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
+            int64_t s1LastValidToken = AttentionCommon::Min(
+                AttentionCommon::Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
+            s1LastValidToken = AttentionCommon::Max(s1LastValidToken - 1, 0);
+            bool hasValidRow = (s1FirstValidToken > 0) || (s1LastValidToken < runInfo.actS1Size);
+            bool batchNeedRowInvalid = constInfo.isRowInvalidOpen || // 手动开启行无效
+                                       ((constInfo.sparseMode != SparseMode::LEFT_UP_CAUSAL) &&
+                                        hasValidRow); // sparse = 0 or 3 or 4，preTokens or nextTokens负数
             if (!batchNeedRowInvalid) {
                 return;
             }
-            int32_t vecMStartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
-            bool blockNeedRowInvalid;
-            if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
-                blockNeedRowInvalid =
-                    CalcS1GBlockNeedRowInvalid(vecMStartIdx, runInfo.actVecMSize, constInfo.gSize, tokenRange);
-            } else {
-                blockNeedRowInvalid = CalcGS1BlockNeedRowInvalid(
-                    vecMStartIdx, runInfo.actVecMSize, static_cast<int64_t>(runInfo.actS1Size), tokenRange);
-            }
+            bool blockNeedRowInvalid = CalcBlockNeedRowInvalid(runInfo, s1FirstValidToken, s1LastValidToken);
             blockNeedRowInvalid = blockNeedRowInvalid || constInfo.isRowInvalidOpen;
             if (blockNeedRowInvalid) {
                 LocalTensor<float> maxTensor =
@@ -775,6 +798,7 @@ public:
         }
     }
 };
+
 
 template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout = LayOutTypeEnum::None,
           LayOutTypeEnum outLayout = LayOutTypeEnum::None, S1TemplateType s1TemplateType = S1TemplateType::Aligned128,

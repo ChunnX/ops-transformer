@@ -30,7 +30,6 @@
 #include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "../../../common/op_kernel/init_output.h"
-#include "../../../common/op_kernel/row_invalid.h"
 #else
 #include "../../common/arch35/flash_attention_score_common_regbase.h"
 #include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
@@ -41,7 +40,6 @@
 #include "../../common/vector_common.h"
 #include "../../common/memory_copy_arch35.h"
 #include "../../common/init_output.h"
-#include "../../common/row_invalid.h"
 #endif
 
 using namespace AscendC;
@@ -165,9 +163,7 @@ public:
     // ==================== Functions ======================
     __aicore__ inline FANoQuantGqaBlockVecNd(ConstInfoX &constInfo, SeqLensTool<LAYOUT_T, SEQLEN_T> &qSeqLensTool,
                                              SeqLensTool<LAYOUT_KV, SEQLEN_T> &kvSeqLensTool)
-        : constInfo(constInfo),
-          qSeqLensTool(qSeqLensTool),
-          kvSeqLensTool(kvSeqLensTool){};
+        : constInfo(constInfo), qSeqLensTool(qSeqLensTool), kvSeqLensTool(kvSeqLensTool){};
 
     __aicore__ inline void InitBlock(__gm__ uint8_t *attenMask, __gm__ uint8_t *learnableSink,
                                      __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
@@ -210,7 +206,7 @@ public:
             uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES];         // 2 * 8K = 16K, 输入BUF: MASK拷入
             uint8_t vec2Res[32768U];                                        // 32K, 输出BUF: attn_out拷出
             uint8_t vec1ResBuffers[UB_VEC1_RES_BUFCNT]
-                                  [UB_VEC1_RES_BUF_BYTES];                          // 2 * 32.25K = 64.5K, 输出BUF: softmax结果拷贝至L1
+                                  [UB_VEC1_RES_BUF_BYTES]; // 2 * 32.25K = 64.5K, 输出BUF: softmax结果拷贝至L1
             uint8_t softmaxSumBuf[UB_SOFTMAX_SUM_BUFCNT][UB_SOFTMAX_SUM_BUF_BYTES]; // 3 * 0.25K = 0.75K, sum常驻BUF
             uint8_t softmaxMaxBuf[UB_SOFTMAX_MAX_BUFCNT][UB_SOFTMAX_MAX_BUF_BYTES]; // 3 * 0.25K = 0.75K, max常驻BUF
             uint8_t softmaxExpBuf[UB_SOFTMAX_EXP_BUFCNT][UB_SOFTMAX_EXP_BUF_BYTES]; // 3 * 0.25K = 0.75K, exp常驻BUF
@@ -521,26 +517,56 @@ public:
         }
     }
 
+    __aicore__ inline bool CalcBlockNeedRowInvalid(RunInfoX &runInfo, int64_t s1FirstValidToken,
+                                                   int64_t s1LastValidToken)
+    {
+        int32_t vecMStartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
+        int32_t vecMEndIdx = vecMStartIdx + runInfo.actVecMSize - 1;
+        int32_t s1StartTdx, s1EndTdx;
+        bool ret = false;
+        if constexpr (LAYOUT_T == FA_LAYOUT::BSND || LAYOUT_T == FA_LAYOUT::TND) {
+            // S1G layout
+            s1StartTdx = vecMStartIdx / constInfo.gSize;
+            s1EndTdx = vecMEndIdx / constInfo.gSize;
+            ret = (s1StartTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
+        } else {
+            // GS1 layout
+            s1StartTdx = vecMStartIdx % runInfo.actS1Size;
+            s1EndTdx = vecMEndIdx % runInfo.actS1Size;
+            int32_t gStartIdx = vecMStartIdx / runInfo.actS1Size;
+            int32_t gEndIdx = vecMEndIdx / runInfo.actS1Size;
+            if (gStartIdx == gEndIdx) {
+                // 只跨1个G
+                ret = (s1StartTdx < s1FirstValidToken) || (s1EndTdx > s1LastValidToken);
+            } else {
+                // 跨多个G: 后续G的s1均从0开始, 存在左无效行(s1FirstValidToken>0)必命中;
+                // 中间G的s1均到actS1Size-1结束, 存在右无效行(s1LastValidToken<actS1Size-1)必命中
+                ret = (s1FirstValidToken > 0) ||
+                      (s1LastValidToken < static_cast<int64_t>(runInfo.actS1Size) - 1);
+            }
+        }
+        return ret;
+    }
+
     template <typename VEC2_RES_T>
     __aicore__ inline void RowInvalid(LocalTensor<VEC2_RES_T> &ubVec2Res, int64_t mStartVec, int64_t mDealSize,
                                       RunInfoX &runInfo, int64_t dSizeAligned64)
     {
         if constexpr (HAS_MASK) {
-            auto tokenRange = CalcRowInvalidTokenRange(runInfo.nextTokensLeftUp, runInfo.preTokensLeftUp,
-                                                       runInfo.actS2Size, runInfo.actS1Size);
-            bool batchNeedRowInvalid = CalcBatchNeedRowInvalid(tokenRange, constInfo.sparseMode, false);
+            int64_t s1FirstValidToken =
+                AttentionCommon::Min(AttentionCommon::Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
+            int64_t s1LastValidToken = AttentionCommon::Min(
+                AttentionCommon::Max(runInfo.preTokensLeftUp + runInfo.actS2Size, 0), runInfo.actS1Size);
+            s1LastValidToken = AttentionCommon::Max(s1LastValidToken - 1, 0);
+            bool hasValidRow = (s1FirstValidToken > 0) || (s1LastValidToken < runInfo.actS1Size);
+            bool batchNeedRowInvalid = ((constInfo.sparseMode != SparseMode::LEFT_UP_CAUSAL) &&
+                                        hasValidRow); // sparse = 0 or 3 or 4，preToekens or nextTokens负数
             if (!batchNeedRowInvalid) {
                 return;
             }
-            int32_t vecMStartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
-            bool blockNeedRowInvalid;
-            if constexpr (LAYOUT_T == FA_LAYOUT::BSND || LAYOUT_T == FA_LAYOUT::TND) {
-                blockNeedRowInvalid =
-                    CalcS1GBlockNeedRowInvalid(vecMStartIdx, runInfo.actVecMSize, constInfo.gSize, tokenRange);
-            } else {
-                blockNeedRowInvalid = CalcGS1BlockNeedRowInvalid(
-                    vecMStartIdx, runInfo.actVecMSize, static_cast<int64_t>(runInfo.actS1Size), tokenRange);
-            }
+
+            bool blockNeedRowInvalid = CalcBlockNeedRowInvalid(runInfo, s1FirstValidToken, s1LastValidToken);
+
             if (blockNeedRowInvalid) {
                 LocalTensor<float> maxTensor =
                     softmaxMaxBuf[(runInfo.mloop % UB_SOFTMAX_MAX_BUFCNT) * (UB_SOFTMAX_MAX_BUF_BYTES / sizeof(T)) +
