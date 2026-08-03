@@ -100,13 +100,21 @@ bash build.sh --pkg --soc=ascend950 --ops=mega_moe -j8
 
 按仓库安装指南安装 `build_out/` 下生成的 run 包；若使用自定义安装路径，还需
 source 对应 vendor 的 `bin/set_env.bash`。确认当前 Python 环境加载的是这次
-安装的 tracing 包后，运行审计脚本适配器：
+安装的 tracing 包后，在源码仓外创建独立运行目录，并通过绝对路径调用适配器：
 
 ```bash
-python3 mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py \
-  --test-script /path/to/moe_test/mega_moe/mega_moe.py \
-  --artifact-dir /path/to/trace-artifacts
+mkdir -p /path/to/mega-moe-trace-workspace
+cd /path/to/mega-moe-trace-workspace
+python3 /path/to/ops-transformer/mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py \
+  --test-script /path/to/moe_test/mega_moe/mega_moe.py
 ```
+
+不传 `--artifact-dir` 时，产物默认写入当前工作目录的
+`artifacts/YYYYMMDD_HHMMSS/`，而不是写回 `ops-transformer` 源码仓。run/check
+模式会拒绝任何位于源码仓内的 artifact 路径；`--decode-only` 仍可读取仓内已有
+fixture。适配器自身和子进程都禁用 Python bytecode 落盘，运行子进程的 cwd 也
+设为本次 artifact 目录；`moe_test` 的 Torch extension cache 和 golden cache
+也重定向到 artifact 下的 `runtime-cache/`，两个源码 checkout 都只读。
 
 适配器不会修改 `moe_test` checkout：它验证 commit、`mega_moe.py`/`graph.py`
 哈希和唯一 AST/文本锚点，在 artifact 目录生成可直接运行的临时脚本，并强制

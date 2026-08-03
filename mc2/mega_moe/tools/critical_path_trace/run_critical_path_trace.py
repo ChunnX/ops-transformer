@@ -26,6 +26,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+sys.dont_write_bytecode = True
+
 from mega_moe_trace_contract import (
     ContractError,
     validate_capture_contract,
@@ -74,6 +76,8 @@ FORCED_OVERRIDES = {
 
 HELPER_INSERT_ANCHOR = "\ndef get_cascade_graph_model_class():\n"
 SCRIPT_DIR_ANCHOR = "script_dir = os.path.dirname(os.path.abspath(__file__))"
+CACHE_DIR_ANCHOR = 'cache_dir = os.path.join(script_dir, "torch_extensions_cache")'
+GOLDEN_CACHE_DIR_ANCHOR = 'golden_cache_dir = os.path.join(script_dir, "golden_cache")'
 FINAL_SYNC_ANCHOR = (
     "    torch.npu.synchronize()\n"
     "    print(f'rank {rank} epid {rank // tp_world_size} tpid {rank % tp_world_size} npu finished! \\n')"
@@ -261,6 +265,18 @@ def adapt_test_source(
     )
     transformed = replace_once(
         transformed,
+        CACHE_DIR_ANCHOR,
+        f"cache_dir = os.path.join(os.environ[{ARTIFACT_ENV!r}], 'runtime-cache', 'torch_extensions')",
+        "Torch extension cache directory",
+    )
+    transformed = replace_once(
+        transformed,
+        GOLDEN_CACHE_DIR_ANCHOR,
+        f"golden_cache_dir = os.path.join(os.environ[{ARTIFACT_ENV!r}], 'runtime-cache', 'golden_cache')",
+        "golden cache directory",
+    )
+    transformed = replace_once(
+        transformed,
         HELPER_INSERT_ANCHOR,
         CAPTURE_HELPER + HELPER_INSERT_ANCHOR,
         "capture helper insertion",
@@ -351,6 +367,22 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
     path.write_text(
         json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
+    )
+
+
+def validate_artifact_destination(
+    artifact_dir: Path, repo_root: Path, *, decode_only: bool
+) -> None:
+    if decode_only:
+        return
+    try:
+        artifact_dir.relative_to(repo_root)
+    except ValueError:
+        return
+    raise ContractError(
+        f"artifact directory must be outside the source repository: {artifact_dir}. "
+        "Run the adapter from a separate trace workspace or pass an external "
+        "--artifact-dir."
     )
 
 
@@ -509,6 +541,7 @@ def build_parser() -> argparse.ArgumentParser:
     repo_root = Path(__file__).resolve().parents[4]
     default_test = Path("/home/mace/workspace/moe_test/mega_moe/mega_moe.py")
     timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    default_artifact_dir = Path.cwd() / "artifacts" / timestamp
     parser = argparse.ArgumentParser(
         description=(
             "Fail-closed adapter for the audited moe_test MegaMoe runner. It captures raw y "
@@ -520,7 +553,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--artifact-dir",
         type=Path,
-        default=repo_root / "build" / "mega_moe_critical_path_trace" / timestamp,
+        default=default_artifact_dir,
+        help=(
+            "external output directory; defaults to "
+            f"{default_artifact_dir} based on the current working directory"
+        ),
     )
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument(
@@ -566,6 +603,7 @@ def main() -> int:
     args = build_parser().parse_args()
     repo_root = args.repo_root.expanduser().resolve()
     artifact_dir = args.artifact_dir.expanduser().resolve()
+    validate_artifact_destination(artifact_dir, repo_root, decode_only=args.decode_only)
     spec_path = repo_root / "mc2/mega_moe/tools/critical_path_trace/trace-spec.json"
     trace_tool = repo_root / "mc2/mega_moe/tools/critical_path_trace/trace_tool.py"
     audit_path = (
@@ -647,13 +685,14 @@ def main() -> int:
         env[ARTIFACT_ENV] = str(artifact_dir)
         env[SOURCE_SHA_ENV] = expected_source_sha
         env[ORIGINAL_DIR_ENV] = str(script.parent)
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
         existing_pythonpath = env.get("PYTHONPATH")
         env["PYTHONPATH"] = (
             str(script.parent)
             if not existing_pythonpath
             else str(script.parent) + os.pathsep + existing_pythonpath
         )
-        run_checked([args.python, str(adapted_path)], cwd=script.parent, env=env)
+        run_checked([args.python, str(adapted_path)], cwd=artifact_dir, env=env)
 
     results = decode_artifacts(
         artifact_dir=artifact_dir,

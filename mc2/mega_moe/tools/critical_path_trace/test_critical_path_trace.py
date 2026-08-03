@@ -35,6 +35,7 @@ from run_critical_path_trace import (
     FORCED_OVERRIDES,
     adapt_test_source,
     decode_artifacts,
+    validate_artifact_destination,
 )
 
 
@@ -135,6 +136,24 @@ def make_synthetic_capture(directory: Path) -> tuple[Path, Path]:
 
 
 class TraceContractTests(unittest.TestCase):
+    def test_run_artifacts_must_stay_outside_source_repo(self) -> None:
+        with self.assertRaisesRegex(ContractError, "outside the source repository"):
+            validate_artifact_destination(
+                REPO_ROOT / "build" / "trace-output",
+                REPO_ROOT,
+                decode_only=False,
+            )
+        validate_artifact_destination(
+            REPO_ROOT / "mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic",
+            REPO_ROOT,
+            decode_only=True,
+        )
+        validate_artifact_destination(
+            Path("/tmp/mega-moe-trace-output"),
+            REPO_ROOT,
+            decode_only=False,
+        )
+
     def test_full_decode_order_and_html_pipeline(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
@@ -241,6 +260,8 @@ class TraceContractTests(unittest.TestCase):
         self.assertIn("loop_acc_time = 100  # critical-path trace adapter", transformed)
         self.assertIn('"capture_policy": "last_iteration_only"', transformed)
         self.assertIn('"captured_iteration": int(loop_acc_time)', transformed)
+        self.assertIn("'runtime-cache', 'torch_extensions'", transformed)
+        self.assertIn("'runtime-cache', 'golden_cache'", transformed)
         self.assertIn("accuracy comparison is intentionally skipped", transformed)
         compile(transformed, "adapted_mega_moe.py", "exec")
 
