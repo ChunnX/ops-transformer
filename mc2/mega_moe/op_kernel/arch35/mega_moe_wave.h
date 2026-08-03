@@ -2585,8 +2585,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::WriteCriticalPa
         AscendC::WriteGmByPassDCache(traceOut + 22U, sharedExpertNum_);
         AscendC::WriteGmByPassDCache(traceOut + 23U, expertsPerBatch_);
         AscendC::WriteGmByPassDCache(traceOut + 24U, worldSize_);
-        AscendC::WriteGmByPassDCache(traceOut + 25U, QuantMode);
-        AscendC::WriteGmByPassDCache(traceOut + 26U, CombineQuantMode);
+        AscendC::WriteGmByPassDCache(traceOut + 25U, static_cast<uint32_t>(QuantMode));
+        AscendC::WriteGmByPassDCache(traceOut + 26U, static_cast<uint32_t>(CombineQuantMode));
         AscendC::WriteGmByPassDCache(traceOut + 27U, static_cast<uint32_t>(TopkWeightsPrefetch));
         AscendC::WriteGmByPassDCache(traceOut + 28U, static_cast<uint32_t>(IsGmm1Interleaved));
         AscendC::WriteGmByPassDCache(

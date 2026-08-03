@@ -4,7 +4,7 @@
 - Phase: `implemented`
 - Trace: `mega-moe-wave-critical-path`
 - Repository: `/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803`
-- Revision: `4b3d39658e1d4f5d1f5b60acedfe2df8201e08b2`
+- Revision: `db81b2b3b3d8fe453cc0dca1512d21474e9c78b3`
 - Branch: `codex/mega-moe-critical-path-trace-20260803`
 - Dirty: `True`
 - Spec SHA-256: `8e450ba62fba5c9499f47bf1bf624bc389d5c2b20ffd102abf7fee4e06cc6fd8`
@@ -37,7 +37,7 @@
 - Dependency: mixed-kernel task entry for this physical role/core
 - Pipeline proof: `kernel scheduler and Scalar control` → `Scalar` using `none` — The clock is the first diagnostic instruction immediately before the first Process statement.
 - Perturbation: One 32-bit GetSystemCycle and one named Scalar assignment per role/core.
-- Source SHA-256: `7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709`
+- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
 
 ```text
   2616  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
@@ -56,7 +56,7 @@
 - Dependency: role-local GMM/Combine completion and, on AIV, final Unpermute y store completion
 - Pipeline proof: `FIX and Scalar for AIC; MTE3, Vector, and Scalar for AIV` → `Scalar` using `existing PublishGmm2Ready FIX_S and Unpermute final MTE3_V waits; no additional hot-path bridge` — The sample is after ProcessRoutedExpertWaves, cross-rank completion, Unpermute's final MTE3_V wait, and control-state restoration, but before either trace rendezvous.
 - Perturbation: One 32-bit GetSystemCycle and assignment before trace-only terminal synchronization.
-- Source SHA-256: `7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709`
+- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
 
 ```text
   2676  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
@@ -75,7 +75,7 @@
 - Dependency: the monotonic dispatch cursor selected this expert and any prior Combine ring reuse was drained by the preceding wave
 - Pipeline proof: `AIV1 Scalar control` → `Scalar` using `none` — DispatchExpert is invoked exactly once per expert by DispatchExpertsUntil; the first-expert test maps expertIdx to the current host-derived experts_per_wave.
 - Perturbation: One first-wave-slot check plus one clock sample per active AIV1/wave.
-- Source SHA-256: `7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709`
+- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
 
 ```text
   1070          if (expertIdx == traceWave * expertsPerBatch_ && traceWave < CRITICAL_PATH_TRACE_MAX_WAVES &&
@@ -94,7 +94,7 @@
 - Dependency: CopyGMToGMPerToken has recycled every dynamic ring slot and MetaInfoCalAndDispatch has issued its final publication
 - Pipeline proof: `MTE3` → `Scalar` using `trace-only MTE3_S using recycled EVENT_ID0 on the last expert of the wave` — All EVENT_ID0..5 Dispatch ring lifetimes are paired before MetaInfoCalAndDispatch returns; the added MTE3_S orders the last output/publication into Scalar before sampling.
 - Perturbation: One MTE3-to-Scalar bridge and one clock sample per active AIV1/wave.
-- Source SHA-256: `7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709`
+- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
 
 ```text
   1085              AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
@@ -132,7 +132,7 @@
 - Dependency: ProcessGmm1Wave returned after issuing every owned GMM1 tile
 - Pipeline proof: `FIX` → `Scalar` using `trace-only FIX_S using recycled EVENT_ID0 when this core recorded GMM1 work` — The bridge is after the complete wave loop and executes only for records with a causal begin, so its Scalar clock cannot run ahead of the final FIX operation.
 - Perturbation: One FIX-to-Scalar completion bridge and clock per active AIC/wave.
-- Source SHA-256: `7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709`
+- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
 
 ```text
   2439                  AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
@@ -170,7 +170,7 @@
 - Dependency: all BlockEpilogueSwigluMxQuant invocations assigned to the core returned
 - Pipeline proof: `MTE3` → `Scalar` using `existing per-tile MTE3_S in BlockEpilogueSwigluMxQuant::operator(); no added end bridge` — Each operator return consumes MTE3_V and MTE3_S after data/scale copies and then publishes its ready count; the outer wave return therefore follows the last actual GM completion.
 - Perturbation: One clock and named assignment per active AIV0/wave; no additional completion serialization.
-- Source SHA-256: `7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709`
+- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
 
 ```text
   2444          } else if (subBlockIdx_ == 0U && CriticalPathTracePtr() != nullptr &&
@@ -208,7 +208,7 @@
 - Dependency: ProcessGmm2Wave completed every expert and PublishGmm2Ready ran after each expert
 - Pipeline proof: `FIX then Scalar bypass GM store` → `Scalar` using `existing FIX_S inside PublishGmm2Ready; no extra bridge` — PublishGmm2Ready executes FIX_S before WriteGmByPassDCache; the outer sample follows the last publication in source and Scalar order. It does not claim AIV1 has observed it.
 - Perturbation: One clock and named assignment per active AIC/wave; existing production FIX_S publication semantics are reused.
-- Source SHA-256: `7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709`
+- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
 
 ```text
   2454          if constexpr (g_coreType == AIC) {
@@ -227,7 +227,7 @@
 - Dependency: WaitGmm2Ready reduced all per-AIC ready cache lines to at least blockNum
 - Pipeline proof: `MTE2 then Vector reduction` → `Scalar` using `existing MTE2_V and V_S in WaitGmm2Ready` — WaitGmm2Ready returns only after the V_S-ordered sum is read on Scalar and meets the all-AIC target; the marker is immediately after that return.
 - Perturbation: One conditional slot check and one clock per active AIV1/wave.
-- Source SHA-256: `7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709`
+- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
 
 ```text
   2344  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
@@ -246,7 +246,7 @@
 - Dependency: DrainCombineRowRing consumed every MTE3_MTE2 event for each actually used row slot
 - Pipeline proof: `MTE3 completion dependency held by MTE2` → `Scalar` using `trace-only MTE2_S using recycled EVENT_ID0 after the drain` — The ring drain waits only the slots that were issued; MTE2_S transfers those completed MTE3 dependencies to Scalar before sampling.
 - Perturbation: One MTE2-to-Scalar bridge and one clock per active AIV1/wave.
-- Source SHA-256: `7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709`
+- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
 
 ```text
   2374          AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
@@ -259,29 +259,7 @@
 ## Working tree status
 
 ```text
-M  mc2/mega_moe/op_kernel/arch35/block_epilogue_swiglu_mx_quant.h
-M  mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h
-A  mc2/mega_moe/op_kernel/arch35/mega_moe_trace.h
-M  mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h
-A  mc2/mega_moe/tools/critical_path_trace/README.md
-A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/index.html
-A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.contract-check.json
-A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.html
-A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.normalized.json
-A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.order-check.json
-A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.raw
-A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.runtime.json
-A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/run-manifest.json
-A  mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.json
-A  mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.md
-AM mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.json
-AM mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.md
-A  mc2/mega_moe/tools/critical_path_trace/generate_synthetic_fixture.py
-A  mc2/mega_moe/tools/critical_path_trace/mega_moe_trace_contract.py
-A  mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py
-A  mc2/mega_moe/tools/critical_path_trace/test_critical_path_trace.py
-A  mc2/mega_moe/tools/critical_path_trace/trace-spec.json
-A  mc2/mega_moe/tools/critical_path_trace/trace_tool.py
-A  mc2/mega_moe/tools/critical_path_trace/validation-report.json
-A  mc2/mega_moe/tools/critical_path_trace/verify_trace_off.py
+M mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h
+ M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.json
+ M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.md
 ```

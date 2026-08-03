@@ -2,43 +2,21 @@
   "audit_schema_version": 1,
   "status": "pass",
   "phase": "implemented",
-  "generated_at_utc": "2026-08-03T04:31:39.977199+00:00",
+  "generated_at_utc": "2026-08-03T07:43:40.366418+00:00",
   "trace_name": "mega-moe-wave-critical-path",
   "repo_root": "/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803",
   "git": {
     "is_git_repository": true,
-    "revision": "4b3d39658e1d4f5d1f5b60acedfe2df8201e08b2",
+    "revision": "db81b2b3b3d8fe453cc0dca1512d21474e9c78b3",
     "branch": "codex/mega-moe-critical-path-trace-20260803",
     "dirty": true,
     "status_short": [
-      "M  mc2/mega_moe/op_kernel/arch35/block_epilogue_swiglu_mx_quant.h",
-      "M  mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h",
-      "A  mc2/mega_moe/op_kernel/arch35/mega_moe_trace.h",
-      "M  mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
-      "A  mc2/mega_moe/tools/critical_path_trace/README.md",
-      "A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/index.html",
-      "A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.contract-check.json",
-      "A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.html",
-      "A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.normalized.json",
-      "A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.order-check.json",
-      "A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.raw",
-      "A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.runtime.json",
-      "A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/run-manifest.json",
-      "A  mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.json",
-      "A  mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.md",
-      "AM mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.json",
-      "AM mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.md",
-      "A  mc2/mega_moe/tools/critical_path_trace/generate_synthetic_fixture.py",
-      "A  mc2/mega_moe/tools/critical_path_trace/mega_moe_trace_contract.py",
-      "A  mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py",
-      "A  mc2/mega_moe/tools/critical_path_trace/test_critical_path_trace.py",
-      "A  mc2/mega_moe/tools/critical_path_trace/trace-spec.json",
-      "A  mc2/mega_moe/tools/critical_path_trace/trace_tool.py",
-      "A  mc2/mega_moe/tools/critical_path_trace/validation-report.json",
-      "A  mc2/mega_moe/tools/critical_path_trace/verify_trace_off.py"
+      "M mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+      " M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.json",
+      " M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.md"
     ],
     "status_truncated": false,
-    "tracked_diff_raw_sha256": "87eca0d8def95bc91c3110f84e5368855cec3e39ab71666ce1d801cda3b37b2d"
+    "tracked_diff_raw_sha256": "1410ed1ba73b1cb0a48be3bb22dfcd57cc04be8794de79f0e71f90f18fc49866"
   },
   "spec": {
     "path": "/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803/mc2/mega_moe/tools/critical_path_trace/trace-spec.json",
@@ -123,7 +101,7 @@
         ]
       },
       "max_line_distance": 4,
-      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "source_file_sha256": "fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c",
       "why": "Provides the one shared-axis per-rank reference and exposes role launch skew before input preparation.",
       "semantics": "Scalar has entered the current MTE A8W8 MegaMoeWave Process body and no operator work has yet been issued by this role/core.",
       "dependency": {
@@ -211,7 +189,7 @@
         ]
       },
       "max_line_distance": 4,
-      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "source_file_sha256": "fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c",
       "why": "Separates the real role-local useful-work tail from the diagnostic rendezvous and y record emission overhead.",
       "semantics": "All useful work owned by this role is complete; for AIV roles Unpermute has consumed its final MTE3_V completion event, and routed AIC publications already passed FIX_S.",
       "dependency": {
@@ -297,7 +275,7 @@
         ]
       },
       "max_line_distance": 5,
-      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "source_file_sha256": "fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c",
       "why": "Measures the actual per-wave AIV1 prefetch window, including send-count calculation, rather than the outer wave that may prefetch two waves at once.",
       "semantics": "The first expert in this dispatch wave is about to start SendCntCal on the AIV1 Scalar/control path.",
       "dependency": {
@@ -383,7 +361,7 @@
         ]
       },
       "max_line_distance": 10,
-      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "source_file_sha256": "fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c",
       "why": "Proves when each AIV1 has completed the token/scale/meta-info writes that release GMM1 and permits direct comparison with GMM1 readiness.",
       "semantics": "The last expert handled by this AIV1 in the wave has completed all Dispatch MTE3 writes and ready publications.",
       "dependency": {
@@ -555,7 +533,7 @@
         ]
       },
       "max_line_distance": 10,
-      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "source_file_sha256": "fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c",
       "why": "Makes the GMM1 interval end at actual local FIX completion instead of helper return or AIV notification issue.",
       "semantics": "All GMM1 FIX work assigned to this AIC in the wave is complete.",
       "dependency": {
@@ -727,7 +705,7 @@
         ]
       },
       "max_line_distance": 14,
-      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "source_file_sha256": "fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c",
       "why": "Shows the actual AIV0 epilogue completion and its overlap with AIC GMM2 and AIV1 Dispatch/Combine.",
       "semantics": "Every SwiGLU/quant GM output owned by this AIV0 in the wave has completed.",
       "dependency": {
@@ -899,7 +877,7 @@
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "source_file_sha256": "fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c",
       "why": "Proves local GMM2 direct-GM completion and ready publication timing while keeping remote AIV1 observation as a separate handoff gap.",
       "semantics": "All owned GMM2 FIX writes for the wave are complete and the final per-expert ready publication has been issued by this AIC.",
       "dependency": {
@@ -985,7 +963,7 @@
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "source_file_sha256": "fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c",
       "why": "Exposes the publication-to-ready-observation handoff and starts Combine only after the full AIC fan-in is proven.",
       "semantics": "This AIV1 owns at least one token and its first expert's GMM2-ready scan has observed all AIC publications; meta-info load and first row send follow.",
       "dependency": {
@@ -1071,7 +1049,7 @@
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "source_file_sha256": "fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c",
       "why": "Ends Combine at actual remote MTE3 send completion rather than at Scalar issue or ring-drain enqueue time.",
       "semantics": "Every token row issued by this AIV1 for the wave has completed its remote MTE3 send.",
       "dependency": {
