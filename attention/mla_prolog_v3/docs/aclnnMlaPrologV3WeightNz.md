@@ -20,6 +20,7 @@
     - 新增Query与Key的尺度矫正因子，分别对应qcQrScale（$\alpha_q$）与kcScale（$\alpha_{kv}$）。
     - 新增可选输入参数（例如actualSeqLenOptional、kNopeClipAlphaOptional、queryNormFlag、weightQuantMode、kvCacheQuantMode、queryQuantMode、ckvkrRepoMode、quantScaleRepoMode、tileSize、queryNormOutOptional和dequantScaleQNormOptional等），将cache_mode由必选改为可选。
     - 调整cacheIndex参数的名称与位置，对应当前的cacheIndexOptional。
+    - Ascend 950PR/Ascend 950DT：ropeSin/ropeCos改为可选——二者同时非空时执行RoPE；二者同时为nullptr时跳过RoPE（query_rope/kr_cache写直通结果）；不允许只传其中一个。Atlas A2/A3仍为必选，行为与改造前一致。
 - **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为五路:
     - 首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后，再乘以Query尺度矫正因子$\alpha_q$得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$。
     - 第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后，乘以Key尺度矫正因子$\alpha_{kv}$传入Cache中得到$k^C$；
@@ -244,8 +245,11 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <tr>
         <td>ropeSin</td>
         <td>输入</td>
-        <td>用于计算旋转位置编码的正弦参数矩阵。</td>
-        <td>支持B=0,S=0,T=0的空Tensor</td>
+        <td>用于计算旋转位置编码的正弦参数矩阵。Ascend 950上与ropeCos同时为nullptr时关闭RoPE。</td>
+        <td><ul>
+          <li>Ascend 950：可选；须与ropeCos同时为空或同时非空；非空时支持B=0,S=0,T=0的空Tensor</li>
+          <li>Atlas A2/A3：必选；支持B=0,S=0,T=0的空Tensor</li>
+        </ul></td>
         <td>BFLOAT16</td>
         <td>ND</td>
         <td>
@@ -254,13 +258,16 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
             <li>BS非合轴：(B,S,Dr)</li>
           </ul>
         </td>
-        <td>×</td>
+        <td>Ascend 950：√；其余：×</td>
       </tr>
       <tr>
         <td>ropeCos</td>
         <td>输入</td>
-        <td>用于计算旋转位置编码的余弦参数矩阵。</td>
-        <td>支持B=0,S=0,T=0的空Tensor</td>
+        <td>用于计算旋转位置编码的余弦参数矩阵。Ascend 950上与ropeSin同时为nullptr时关闭RoPE。</td>
+        <td><ul>
+          <li>Ascend 950：可选；须与ropeSin同时为空或同时非空；非空时支持B=0,S=0,T=0的空Tensor</li>
+          <li>Atlas A2/A3：必选；支持B=0,S=0,T=0的空Tensor</li>
+        </ul></td>
         <td>BFLOAT16</td>
         <td>ND</td>
         <td>
@@ -269,7 +276,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
             <li>BS非合轴：(B,S,Dr)</li>
           </ul>
         </td>
-        <td>×</td>
+        <td>Ascend 950：√；其余：×</td>
       </tr>
       <tr>
         <td>kvCacheRef</td>
@@ -860,7 +867,10 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <tr>
         <td>N</td>
         <td>Head-Num（多头数）</td>
-        <td>取值范围：1、2、4、8、16、32、64、128</td>
+        <td><ul>
+          <li>Ascend 950：取值范围：1-128</li>
+          <li>Atlas A2/A3：取值范围：1、2、4、8、16、32、64、128</li>
+        </ul></td>
       </tr>
       <tr>
         <td>Hckv</td>
