@@ -177,7 +177,7 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
                                       info.hasX2Scale ? x2Scale : nullptr, info.hasCommScale ? commScale : nullptr,
                                       info.hasX1Offset ? x1Offset : nullptr, info.hasX2Offset ? x2Offset : nullptr, group,
                                       worldSize);
-    auto graph = graphBuilder.BuildAndReset({mc2.y});
+    auto graph = graphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     pattern->CaptureTensor({*mc2.y.GetProducer(), 0}).CaptureTensor({*transpose.GetProducer(), 0});
     return pattern;
@@ -498,7 +498,13 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
                                       attrs.comm_quant_mode, attrs.x1_quant_dtype, attrs.comm_quant_dtype,
                                       attrs.transpose_x1, attrs.transpose_x2, attrs.group_size,
                                       attrs.comm_mode.GetString(), attrs.alltoall_out_flag);
-    return replaceGraphBuilder.BuildAndReset({mc2.y});
+    if (mc2.y == nullptr) {
+        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "mc2.y == nullptr");
+    }
+    if (mc2.all2all_out == nullptr) {
+        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "mc2.all2all_out == nullptr");
+    }
+    return replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
 }
 
 static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
