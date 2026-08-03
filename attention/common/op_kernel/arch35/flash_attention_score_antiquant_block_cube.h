@@ -85,23 +85,27 @@ __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitCubeBl
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetCrossCoreFlag()
 {
-    CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(CV_L1_EVENT[0]);
-    CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + CV_L1_EVENT[0]); // 一个aic对应两个aiv,  一共32个核，所以是16
-    CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(CV_L1_EVENT[1]);
-    CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + CV_L1_EVENT[1]); // 一个aic对应两个aiv,  一共32个核，所以是16
+    if ASCEND_IS_AIC {
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(CV_L1_EVENT[0]);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + CV_L1_EVENT[0]); // 一个aic对应两个aiv,  一共32个核，所以是16
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(CV_L1_EVENT[1]);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(16 + CV_L1_EVENT[1]); // 一个aic对应两个aiv,  一共32个核，所以是16
+    }
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeAntiquant<ANTIQUANT_TEMPLATE_ARGS>::WaitCrossCoreFlag()
 {
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM1RES_EVENT[0]);
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM1RES_EVENT[0] + 16);
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM1RES_EVENT[1]);
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM1RES_EVENT[1] + 16);
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM2RES_EVENT[0]);
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM2RES_EVENT[0] + 16);
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM2RES_EVENT[1]);
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM2RES_EVENT[1] + 16);
+    if ASCEND_IS_AIC{
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM1RES_EVENT[0]);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM1RES_EVENT[0] + 16);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM1RES_EVENT[1]);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM1RES_EVENT[1] + 16);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM2RES_EVENT[0]);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM2RES_EVENT[0] + 16);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM2RES_EVENT[1]);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(VC_MM2RES_EVENT[1] + 16);
+    }
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT

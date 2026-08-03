@@ -334,17 +334,21 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::GetExtremeV
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetCrossCoreFlag()
 {
-    CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM1RES_EVENT[0]);
-    CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM1RES_EVENT[1]);
-    CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM2RES_EVENT[0]);
-    CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM2RES_EVENT[1]);
+    if ASCEND_IS_AIV {
+        CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM1RES_EVENT[0]);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM1RES_EVENT[1]);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM2RES_EVENT[0]);
+        CrossCoreSetFlag<SYNC_MODE, PIPE_V>(VC_MM2RES_EVENT[1]);
+    }
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::WaitCrossCoreFlag()
 {
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(CV_L1_EVENT[0]);
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(CV_L1_EVENT[1]);
+    if ASCEND_IS_AIV {
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(CV_L1_EVENT[0]);
+        CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE3>(CV_L1_EVENT[1]);
+    }
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT
