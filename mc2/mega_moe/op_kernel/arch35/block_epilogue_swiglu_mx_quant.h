@@ -323,6 +323,7 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
         ub2GmParams.dstStride = n_ - singleN_;
     }
     AscendC::DataCopyPad(quantOutputGlobal_[offset], src, ub2GmParams);
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[EP01]: quant output MTE3 -> copy helper return
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
@@ -338,6 +339,7 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     ub2GmParams.srcStride = 0;
     ub2GmParams.dstStride = scaleN_ - blockScaleN;
     AscendC::DataCopyPad<int8_t, AscendC::PaddingMode::Compact>(quantScaleGlobal_[offset], src, ub2GmParams);
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[EP02]: quant scale MTE3 -> copy helper return
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS

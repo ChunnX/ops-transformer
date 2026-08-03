@@ -134,22 +134,30 @@ enum class AddrUpdateMode : int32_t { GMM1, GMM2 };
 
 __aicore__ inline void NotifyCube(uint16_t value = 0)
 {
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[XS01]: AIV work -> cube notification
     CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG + value);
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[XS02]: cube notification -> subsequent AIV work
 }
 
 __aicore__ inline void WaitForVector(uint16_t value = 0)
 {
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[XS03]: AIC work -> vector wait
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG + value);
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[XS04]: vector completion -> subsequent AIC work
 }
 
 __aicore__ inline void NotifyVector(uint16_t value = 0)
 {
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[XS05]: AIC work -> vector notification
     CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + value);
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[XS06]: vector notification -> subsequent AIC work
 }
 
 __aicore__ inline void WaitForCube(uint16_t value = 0)
 {
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[XS07]: AIV work -> cube wait
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + value);
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[XS08]: cube completion -> subsequent AIV work
 }
 
 __aicore__ inline void EndSync(int32_t &vecSetSyncCom)

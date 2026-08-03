@@ -603,6 +603,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendAndQu
     uint32_t resetTensorAddr = topkIdsTensorAddr + topkIdsTensorSize;
     resetTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, resetTensorAddr, resetTensorSize / sizeof(int32_t));
     Duplicate<int32_t>(resetTensor_, 0, (resetTensorSize / sizeof(int32_t)));
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[AX07]: reset tensor initialization -> send/reset consumers
     // Tensor用处：SendMaskCal 每轮存储部分 mask 位；DOUBLE_BUFFER 双缓冲；
     // Tensor大小：roundMaskSlotSize_（每轮部分 [mask|count] 槽位大小）；
     uint32_t sendMaskAddr = resetTensorAddr + resetTensorSize;
@@ -2234,6 +2235,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CrossRank
     }
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SB01]: cross-rank SyncAll -> caller
 }
 
 // ===============================================================
@@ -2456,7 +2458,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSh
         UpdateSharedGlobalBuffer<AddrUpdateMode::GMM2>(sharedGmm2AddrInfo, sharedGmm2State);
         GroupMatmulWithCombine<true>(sharedGmm2AddrInfo, sharedGmm2State, sharedIdx, vecSetSyncCom, gmTileSequence);
     }
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SB02]: shared GMM2 work -> phase SyncAll
     SyncAll<false>();
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SB03]: shared GMM2 SyncAll -> caller
 }
 
 template <TemplateMegaMoeLayeredTypeClass>
@@ -2476,6 +2480,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
     }
     SyncAll<false>(); // aic需要等待flag位reset清理完成
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SB04]: initialization SyncAll -> shared/MoE GMM1
 
     // 共享专家 GMM1+SwiGLU (前移, 在 MoE 之前执行, 复用 MoE 函数)
     TupleShape initShape;
@@ -2486,6 +2491,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     if (sharedExpertNum_ > 0) {
         ProcessSharedExpertGmm1(initShape, initOffset, gmTileSequence);
         SyncAll<false>();
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SB05]: shared GMM1 SyncAll -> cross-rank sync
     }
 
     CrossRankSyncInWorldSize();
@@ -2555,6 +2561,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     }
 
     SyncAll<true>();
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SB06]: GMM1 SyncAll -> GMM2 setup
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
     vecSetSyncCom = 0;
     GMMAddrInfo gmm2AddrInfo;
@@ -2571,6 +2578,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     if constexpr (g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SB07]: GMM2/Combine SyncAll -> shared GMM2
     }
 
     // 3.5: 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
