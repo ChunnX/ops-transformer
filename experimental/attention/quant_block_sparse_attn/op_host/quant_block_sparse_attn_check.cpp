@@ -105,7 +105,7 @@ ge::graphStatus CheckInputDtype(const BSARequiredParaInfo &input, const char *in
 
 ge::graphStatus CheckMXFP8FullQuantScaleInputs(const QuantBlockSparseAttnParaInfo &opParamInfo)
 {
-    if (opParamInfo.pScale.shape == nullptr || opParamInfo.kDescale.shape == nullptr ||
+    if (opParamInfo.kDescale.shape == nullptr ||
         opParamInfo.vDescale.shape == nullptr || opParamInfo.qDescale.shape == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             kOpName, "quantScale1/keyAntiquantScale/valueAntiquantScale/dequantScaleQuery", "nullptr",
@@ -259,11 +259,11 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckFormat() const
     const gert::CompileTimeTensorDesc *requiredDescs[] = {
         opParamInfo.query.desc,    opParamInfo.key.desc,           opParamInfo.value.desc,
         opParamInfo.qDescale.desc, opParamInfo.kDescale.desc,      opParamInfo.vDescale.desc,
-        opParamInfo.pScale.desc,   opParamInfo.sparseIndices.desc, opParamInfo.sparseSeqLen.desc,
+        opParamInfo.sparseIndices.desc, opParamInfo.sparseSeqLen.desc,
         opParamInfo.attnOut.desc,  opParamInfo.lseOut.desc,
     };
     const char *requiredNames[] = {"query",          "key",           "value",      "q_descale",
-                                   "k_descale",      "v_descale",     "p_scale",    "sparse_indices",
+                                   "k_descale",      "v_descale",    "sparse_indices",
                                    "sparse_seq_len", "attention_out", "softmax_lse"};
     for (size_t i = 0; i < sizeof(requiredDescs) / sizeof(requiredDescs[0]); ++i) {
         if (requiredDescs[i] != nullptr && requiredDescs[i]->GetOriginFormat() != ge::FORMAT_ND) {
@@ -274,11 +274,11 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckFormat() const
     }
 
     const gert::CompileTimeTensorDesc *optionalDescs[] = {
-        opParamInfo.attenMask.desc, opParamInfo.blockTable.desc, opParamInfo.metadata.desc,
+        opParamInfo.attenMask.desc, opParamInfo.pScale.desc, opParamInfo.blockTable.desc, opParamInfo.metadata.desc,
         opParamInfo.cuSeqlensQ.desc, opParamInfo.cuSeqlensKV.desc, opParamInfo.seqUsedQ.desc,
         opParamInfo.seqUsedKV.desc,
     };
-    const char *optionalNames[] = {"atten_mask", "block_table", "metadata", "cu_seqlens_q",
+    const char *optionalNames[] = {"atten_mask", "p_scale", "block_table", "metadata", "cu_seqlens_q",
                                    "cu_seqlens_kv", "seqused_q", "seqused_kv"};
     for (size_t i = 0; i < sizeof(optionalDescs) / sizeof(optionalDescs[0]); ++i) {
         if (optionalDescs[i] != nullptr && optionalDescs[i]->GetOriginFormat() != ge::FORMAT_ND) {
@@ -297,7 +297,8 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckScaleDtype() const
         if (CheckInputDtype(opParamInfo.qDescale, "dequantScaleQuery", ge::DT_FLOAT, "FLOAT") != ge::GRAPH_SUCCESS ||
             CheckInputDtype(opParamInfo.kDescale, "keyAntiquantScale", ge::DT_FLOAT, "FLOAT") != ge::GRAPH_SUCCESS ||
             CheckInputDtype(opParamInfo.vDescale, "valueAntiquantScale", ge::DT_FLOAT, "FLOAT") != ge::GRAPH_SUCCESS ||
-            CheckInputDtype(opParamInfo.pScale, "quantScale1", ge::DT_FLOAT, "FLOAT") != ge::GRAPH_SUCCESS) {
+            (opParamInfo.pScale.desc != nullptr &&
+             CheckInputDtype(opParamInfo.pScale, "quantScale1", ge::DT_FLOAT, "FLOAT") != ge::GRAPH_SUCCESS)) {
             return ge::GRAPH_FAILED;
         }
     } else if (tilingInfo_.quantModeVal == BSA_QUANT_MODE_MXFP8_FULL_QUANT) {
@@ -307,8 +308,9 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckScaleDtype() const
                 ge::GRAPH_SUCCESS ||
             CheckInputDtype(opParamInfo.vDescale, "valueAntiquantScale", ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0") !=
                 ge::GRAPH_SUCCESS ||
-            CheckInputDtype(opParamInfo.pScale, "quantScale1", ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0") !=
-                ge::GRAPH_SUCCESS) {
+            (opParamInfo.pScale.desc != nullptr &&
+             CheckInputDtype(opParamInfo.pScale, "quantScale1", ge::DT_FLOAT8_E8M0, "FLOAT8_E8M0") !=
+                ge::GRAPH_SUCCESS)) {
             return ge::GRAPH_FAILED;
         }
     }

@@ -338,7 +338,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTiling
     opParamInfo.vDescale.desc = context_->GetInputDesc(BSA_V_DESCALE_INDEX);
     opParamInfo.vDescale.shape = context_->GetInputShape(BSA_V_DESCALE_INDEX);
     opParamInfo.pScale.desc = context_->GetInputDesc(BSA_P_SCALE_INDEX);
-    opParamInfo.pScale.shape = context_->GetInputShape(BSA_P_SCALE_INDEX);
+    opParamInfo.pScale.shape = context_->GetOptionalInputShape(BSA_P_SCALE_INDEX);
     opParamInfo.sparseIndices.desc = context_->GetInputDesc(BSA_SPARSE_INDICES_INDEX);
     opParamInfo.sparseIndices.shape = context_->GetInputShape(BSA_SPARSE_INDICES_INDEX);
     opParamInfo.sparseSeqLen.desc = context_->GetInputDesc(BSA_SPARSE_SEQ_LEN_INDEX);
@@ -356,13 +356,13 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTiling
 
     if (opParamInfo.query.shape == nullptr || opParamInfo.key.shape == nullptr || opParamInfo.value.shape == nullptr ||
         opParamInfo.qDescale.shape == nullptr || opParamInfo.kDescale.shape == nullptr ||
-        opParamInfo.vDescale.shape == nullptr || opParamInfo.pScale.shape == nullptr ||
+        opParamInfo.vDescale.shape == nullptr ||
         opParamInfo.sparseIndices.shape == nullptr || opParamInfo.sparseSeqLen.shape == nullptr) {
         OP_LOGE(kOpName,
                 "Parse: required input shape is nullptr (query=%p, key=%p, value=%p, qDescale=%p, kDescale=%p, "
-                "vDescale=%p, pScale=%p, sparseIndices=%p, sparseSeqLen=%p)",
+                "vDescale=%p, sparseIndices=%p, sparseSeqLen=%p)",
                 opParamInfo.query.shape, opParamInfo.key.shape, opParamInfo.value.shape, opParamInfo.qDescale.shape,
-                opParamInfo.kDescale.shape, opParamInfo.vDescale.shape, opParamInfo.pScale.shape,
+                opParamInfo.kDescale.shape, opParamInfo.vDescale.shape,
                 opParamInfo.sparseIndices.shape, opParamInfo.sparseSeqLen.shape);
         return ge::GRAPH_FAILED;
     }
