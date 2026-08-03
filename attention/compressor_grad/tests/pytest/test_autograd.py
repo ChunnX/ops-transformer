@@ -119,6 +119,10 @@ def npu_test(case, device):
     coff = case["coff"]
     layout = case["input_layout"]
     sps = case["start_pos"]
+    # 临时诊断：start_pos=None 在 aclnn 路径可能被转成空 tensor 导致 kernel 访问非法地址
+    # 先验证此假设（None → [0]*batchSize 等价语义）
+    if sps is None:
+        sps = [0] * case["B"]
     sqs = case["seqused_q"]
     seqlens_list_q = case["seqlens_list_q"]
     dataType = case["dtype"]
@@ -139,6 +143,9 @@ def npu_test(case, device):
     if layoutId == 1:  # TH
         seqlens_list = case.get('seqlens_list_q')
         if seqlens_list is not None:
+            # 兼容两种数据格式：[0, s1, ...]（含前导 0）与 [s1, ...]（缺前导 0）
+            if len(seqlens_list) == 0 or seqlens_list[0] != 0:
+                seqlens_list = [0] + list(seqlens_list)
             cuNpu = torch.tensor(seqlens_list, dtype=torch.int32)
         else:
             cuNpu = torch.tensor([0] + torch.tensor(sqs).cumsum(0).tolist(), 
