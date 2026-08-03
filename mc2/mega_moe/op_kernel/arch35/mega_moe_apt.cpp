@@ -57,9 +57,7 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
                     scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2, yOut,
                     expertTokenNumsOut, workspaceGM, &tilingData);
-            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[KE01]: layered kernel initialization -> process
             op.Process();
-            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[KE02]: layered process -> kernel exit
         }
     } else if constexpr (CommModeType == TILINGKEY_TPL_URMA) {
         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {

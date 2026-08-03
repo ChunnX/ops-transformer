@@ -45,7 +45,6 @@ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, L
     AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
     PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA65]: legacy combine MTE2_S SetFlag -> WaitFlag
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
-    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SP11]: existing MTE2_S sync -> legacy combine metadata reads
     for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
         uint32_t toRankId = metaInfoTensor.GetValue(tileIdx * 8);
         uint32_t tokenIdx = metaInfoTensor.GetValue(tileIdx * 8 + 1);
@@ -66,7 +65,6 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
                                                 const Params &params, GM_ADDR localSrcPtr)
 {
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID3>();
-    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[CB01]: metadata MTE2 completion -> scalar metadata reads
     int64_t quantTokenSize = IsQuantized ? (n + nScale) : n;
     uint32_t toRankId = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + RANK_ID);
     uint32_t tokenIdx = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + TOKEN_ID);
@@ -91,11 +89,9 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
             AscendC::GlobalTensor<DataType> gmm2OutGm;
             gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ DataType *>(localSrcPtr));
             SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
-            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[CB02]: prior staging write -> local GMM2 reload
             AscendC::DataCopyPad(ubQuant, gmm2OutGm, singleCopyParams, copyPadParams);
             PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA67]: local GMM2 MTE2 -> existing MTE2_MTE3 sync
             SyncFuncStatic<AscendC::HardEvent::MTE2_MTE3, SYNC_EVENT_ID4>();
-            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[CB03]: local GMM2 reload -> staging write
         }
     }
 
@@ -104,14 +100,12 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
         AscendC::DataCopyPad(gmLocalD[dstOffset], ubQuant, singleCopyParams);
         PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA68]: combine staging MTE3 -> existing MTE3_S sync
         SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID4>();
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[C3]: staging write -> Hcomm source read
     }
 
     if (toRankId != rankId) {
         uint64_t channelHandle = GetUrmaCommHandle(params.combineCommParams.mc2Context, toRankId, rankId);
         GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset) + dstBaseOffset * sizeof(DataType);
         params.combineCommParams.hcomm->WriteNbi(channelHandle, remoteAddr, srcAddr, quantTokenSize * sizeof(DataType));
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[CB04]: remote WriteNbi issue -> next token
     }
 }
 
@@ -266,18 +260,14 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
         if constexpr (IsQuantized) {
             // MTE2: read from GM
             SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
-            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[CB05]: prior send/staging -> GMM2 GM reload
             AscendC::DataCopyPad(ubBf16, gmm2OutGm[(tokenStart + i) * n], gm2UbParams, copyPadParams);
             PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA70]: combine GMM2 MTE2 -> existing MTE2_V sync
             SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID4>();
-            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[CB06]: GMM2 GM reload -> communication quant
 
             // V: quantize
             QuantMxFp8<QuantMode, T>(ubQuantData, ubBf16, floatTemp, n);
             SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID5>();
-            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[CB07]: communication quant -> scalar send metadata
         }
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[C2]: quantization -> staging/send
 
         using SendType = typename std::conditional<IsQuantized, Fp8Type, T>::type;
         LocalTensor<SendType> ubQuantSend = ubQuantData.template ReinterpretCast<SendType>();
@@ -288,7 +278,6 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
             GM_ADDR localSrcPtr = gmm2OutAddr + (tokenStart + i) * n * sizeof(T);
             CombineSendTokenToRemote<SendType, IsQuantized>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor,
                                                             ubQuantSend, params, localSrcPtr);
-            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[CB08]: token send issue -> next token buffer reuse
         } else {
             CombineQuantizedTokens<SendType>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantSend, params);
         }
@@ -296,7 +285,6 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
 
     // Wait for all MTE3 operations to complete
     SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
-    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[CB09]: final token staging completion -> caller progress
 }
 
 } // namespace MegaMoeCombineImpl
