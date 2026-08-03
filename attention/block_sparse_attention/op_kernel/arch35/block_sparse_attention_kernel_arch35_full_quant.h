@@ -95,6 +95,10 @@ public:
         gSparseIdx.SetGlobalBuffer((__gm__ ElementSparseIdx *)params.workSpace);
         AscendC::GlobalTensor<ElementSparseCount> gSparseCount;
         gSparseCount.SetGlobalBuffer((__gm__ ElementSparseCount *)(params.workSpace + sparseIdxSize_));
+        AscendC::GlobalTensor<int32_t> gBlockEffRows;
+        if (enableEffRows_) {
+            gBlockEffRows.SetGlobalBuffer((__gm__ int32_t *)params.attenMask);
+        }
         // cross core data move dst buffers
         AscendC::LocalTensor<ElementP> l1PTensor[MAX_CROSS_CORE_BUF_STAGES];
         AscendC::LocalTensor<ElementS> ubSTensor[UB_S_OTMP_BUF_STAGES];
@@ -266,7 +270,16 @@ public:
             uint32_t xBlockNumAval = static_cast<uint32_t>(CeilDiv(qSeqlen, static_cast<int64_t>(blockShapeX_)));
             uint32_t xBlockSize = (xBlockIdx == xBlockNumAval - 1) ?
                 (qSeqlen - xBlockIdx * blockShapeX_) : blockShapeX_;
+            uint64_t effRowsBase = 0;
+            if (enableEffRows_) {
+                effRowsBase = (static_cast<uint64_t>(curBatch) * qHeads_ + qHeadIdx) * maxBlockNumEff_ * 2;
+                uint32_t effectiveX = gBlockEffRows.GetValue(effRowsBase + xBlockIdx * 2);
+                xBlockSize = (xBlockSize < effectiveX) ? xBlockSize : effectiveX;
+            }
             uint32_t qSTileNumCurXBlock = CeilDiv(xBlockSize, qBaseTile_);
+            if (enableEffRows_ && (xBlockSize == 0 || qSTileIdxCurXBlock >= qSTileNumCurXBlock)) {
+                continue;
+            }
             uint32_t qSTileSizeAct = (qSTileIdxCurXBlock == qSTileNumCurXBlock - 1) ?
                 (xBlockSize - qSTileIdxCurXBlock * qBaseTile_) : qBaseTile_;
             // calc the gathered kvS from sparse mask
@@ -275,18 +288,38 @@ public:
             uint32_t yBlockNumRsvd = gSparseCount.GetValue(gmOffsetSparseCount);
 
             uint32_t gmOffsetSparseIdx = gmOffsetSparseCount * yBlockNumAligned_;
-            uint32_t lastIdxOffset = gmOffsetSparseIdx + yBlockNumRsvd - 1;
-            uint32_t lastSparseIdx = gSparseIdx.GetValue(lastIdxOffset);
-
             uint32_t yBlockNumAval = static_cast<uint32_t>(CeilDiv(kvSeqlen, static_cast<int64_t>(blockShapeY_)));
-            uint32_t lastYBlockSize = (lastSparseIdx == yBlockNumAval - 1) ?
-                kvSeqlen - lastSparseIdx * blockShapeY_ : blockShapeY_;
-            int64_t gatheredKvSeqlen = (yBlockNumRsvd - 1) * blockShapeY_ + lastYBlockSize;
+            int64_t gatheredKvSeqlen = 0;
+            if (!enableEffRows_) {
+                uint32_t lastIdxOffset = gmOffsetSparseIdx + yBlockNumRsvd - 1;
+                uint32_t lastSparseIdx = gSparseIdx.GetValue(lastIdxOffset);
+                uint32_t lastYBlockSize = (lastSparseIdx == yBlockNumAval - 1) ?
+                    kvSeqlen - lastSparseIdx * blockShapeY_ : blockShapeY_;
+                gatheredKvSeqlen = (yBlockNumRsvd - 1) * blockShapeY_ + lastYBlockSize;
+            }
             // the rowNum of cur task
             // no qS*qN combination even in GQA/MQA senario, since each qN has a different sparse pattern
             uint32_t rowNum = qSTileSizeAct;
             uint32_t rowNumRound = RoundUp(rowNum, 16);
-            uint32_t kvSLoopNum = static_cast<uint32_t>(CeilDiv(gatheredKvSeqlen, static_cast<int64_t>(kvBaseTile_)));
+            // effRows 模式下不 gather 拼接，每块独立按 kvBaseTile_ 切 tile（保证 deqScalar 逐块唯一）
+            // 总循环次数 = Σ CeilDiv(effectiveY, kvBaseTile_)，只统计有效块，避免产生 0 尺寸 tile
+            uint32_t kvSLoopNum = 0;
+            if (enableEffRows_) {
+                for (uint32_t i = 0; i < yBlockNumRsvd; i++) {
+                    uint32_t oriBlock = gSparseIdx.GetValue(gmOffsetSparseIdx + i);
+                    uint32_t effectiveY = gBlockEffRows.GetValue(effRowsBase + oriBlock * 2 + 1);
+                    effectiveY = (effectiveY < blockShapeY_) ? effectiveY : blockShapeY_;
+                    uint32_t tailBlockY = (kvSeqlen > static_cast<int64_t>(oriBlock) * blockShapeY_) ?
+                        static_cast<uint32_t>(kvSeqlen - static_cast<int64_t>(oriBlock) * blockShapeY_) : 0;
+                    effectiveY = (effectiveY < tailBlockY) ? effectiveY : tailBlockY;
+                    kvSLoopNum += CeilDiv(effectiveY, kvBaseTile_);
+                }
+                if (kvSLoopNum == 0) {
+                    continue;
+                }
+            } else {
+                kvSLoopNum = static_cast<uint32_t>(CeilDiv(gatheredKvSeqlen, static_cast<int64_t>(kvBaseTile_)));
+            }
             uint32_t kvSTileSizeAct = kvBaseTile_;
 #ifdef __DAV_CUBE__
             uint32_t kvShapeCol = 0;
@@ -341,12 +374,53 @@ public:
             auto gmLseLayoutTla = tla::MakeLayout<ElementLse, LayoutLse>(qBaseTile_, lseShapeCol);
             auto gmLseTensorTla = tla::MakeTensor(gLse[gmOffsetLse], gmLseLayoutTla, Arch::PositionGM{});
 #endif
+            // effRows 游标：QK/PV 各自维护。由于 effectiveY 随块变化，tile 与块的对应关系
+            // 无法用公式反查，只能顺序推进（块内切完换下一块）
+            uint32_t kCurBlockIdx = 0;
+            uint32_t kCurBlockOff = 0;
+            uint32_t vCurBlockIdx = 0;
+            uint32_t vCurBlockOff = 0;
+            // FP8 不 gather（dequantScale 逐块唯一），gather=false，srcOffset 每个 tile 更新
+            Gemm::Block::EffRowsCtx kEffRowsCtx{gBlockEffRows, effRowsBase, enableEffRows_ != 0,
+                                                &kCurBlockIdx, &kCurBlockOff, false};
+            Gemm::Block::EffRowsCtx vEffRowsCtx{gBlockEffRows, effRowsBase, enableEffRows_ != 0,
+                                                &vCurBlockIdx, &vCurBlockOff, false};
             for (uint32_t gatheredKvSTileIdx = 0; gatheredKvSTileIdx < kvSLoopNum + PRE_LAUNCH; gatheredKvSTileIdx++) {
                 if (gatheredKvSTileIdx < kvSLoopNum) {
-                    if (gatheredKvSTileIdx == kvSLoopNum - 1) {
-                        kvSTileSizeAct = gatheredKvSeqlen - gatheredKvSTileIdx * kvBaseTile_;
+                    uint32_t yBlockIndex;
+                    if (enableEffRows_) {
+                        // 定位当前 tile 所属块：块内行数不够或空块则顺序换下一块。
+                        // 循环有界（kCurBlockIdx < yBlockNumRsvd），且 kvSLoopNum 与有效 tile 数严格一致
+                        uint32_t effectiveY = 0;
+                        while (kCurBlockIdx < yBlockNumRsvd) {
+                            yBlockIndex = gSparseIdx[gmOffsetSparseIdx].GetValue(kCurBlockIdx);
+                            effectiveY = gBlockEffRows.GetValue(effRowsBase + yBlockIndex * 2 + 1);
+                            effectiveY = (effectiveY < blockShapeY_) ? effectiveY : blockShapeY_;
+                            uint32_t tailBlockY = (kvSeqlen > static_cast<int64_t>(yBlockIndex) * blockShapeY_) ?
+                                static_cast<uint32_t>(kvSeqlen - static_cast<int64_t>(yBlockIndex) * blockShapeY_) : 0;
+                            effectiveY = (effectiveY < tailBlockY) ? effectiveY : tailBlockY;
+                            if (effectiveY > 0) {
+                                break;
+                            }
+                            kCurBlockIdx++;
+                            kCurBlockOff = 0;
+                        }
+                        kvSTileSizeAct = (effectiveY - kCurBlockOff < kvBaseTile_) ?
+                            (effectiveY - kCurBlockOff) : kvBaseTile_;
+                        kEffRowsCtx.srcOffset = static_cast<int32_t>(yBlockIndex * blockShapeY_ + kCurBlockOff);
+                        kCurBlockOff += kvSTileSizeAct;
+                        if (kCurBlockOff >= effectiveY) {
+                            kCurBlockIdx++;
+                            kCurBlockOff = 0;
+                        }
                     } else {
-                        kvSTileSizeAct = kvBaseTile_;
+                        if (gatheredKvSTileIdx == kvSLoopNum - 1) {
+                            kvSTileSizeAct = gatheredKvSeqlen - gatheredKvSTileIdx * kvBaseTile_;
+                        } else {
+                            kvSTileSizeAct = kvBaseTile_;
+                        }
+                        uint32_t yBlockIndexOffset = (gatheredKvSTileIdx * kvBaseTile_) / blockShapeY_;
+                        yBlockIndex = gSparseIdx[gmOffsetSparseIdx].GetValue(yBlockIndexOffset);
                     }
                     // QK
                     GemmCoord actualBlockShapeQK{rowNum, kvSTileSizeAct, embed_};
@@ -361,8 +435,6 @@ public:
                         gatheredKvSTileIdx, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, true);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdx, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, true);
-                    uint32_t yBlockIndexOffset = (gatheredKvSTileIdx * kvBaseTile_) / blockShapeY_;
-                    uint32_t yBlockIndex = gSparseIdx[gmOffsetSparseIdx].GetValue(yBlockIndexOffset);
                     uint32_t kvDequantScaleOffset =
                         curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndex;
                     float kDequantScaleValue = gKDequantScale.GetValue(kvDequantScaleOffset);
@@ -370,7 +442,7 @@ public:
                     uint64_t deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&combinedDeqScalar));
                     blockMmadQK(gmKTensorTla, ubSTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapeQK,
                                 gatheredKvSTileIdx, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
-                                prefixSumL0AStages, prefixSumL0BStages, mm1ToSmFlag, deqScalar);
+                                prefixSumL0AStages, prefixSumL0BStages, mm1ToSmFlag, deqScalar, &kEffRowsCtx);
                     if (gatheredKvSTileIdx == kvSLoopNum - 1) {
                         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID0);
                     }
@@ -397,10 +469,39 @@ public:
                 }
                 if (gatheredKvSTileIdx >= PRE_LAUNCH) {
                     uint32_t gatheredKvSTileIdxDe = gatheredKvSTileIdx - PRE_LAUNCH;
-                    if (gatheredKvSTileIdxDe == kvSLoopNum - 1) {
-                        kvSTileSizeAct = gatheredKvSeqlen - gatheredKvSTileIdxDe * kvBaseTile_;
+                    uint32_t yBlockIndexDe;
+                    if (enableEffRows_) {
+                        // 同 QK：定位当前 tile 所属块，有界循环，不会死循环
+                        uint32_t effectiveY = 0;
+                        while (vCurBlockIdx < yBlockNumRsvd) {
+                            yBlockIndexDe = gSparseIdx[gmOffsetSparseIdx].GetValue(vCurBlockIdx);
+                            effectiveY = gBlockEffRows.GetValue(effRowsBase + yBlockIndexDe * 2 + 1);
+                            effectiveY = (effectiveY < blockShapeY_) ? effectiveY : blockShapeY_;
+                            uint32_t tailBlockY = (kvSeqlen > static_cast<int64_t>(yBlockIndexDe) * blockShapeY_) ?
+                                static_cast<uint32_t>(kvSeqlen - static_cast<int64_t>(yBlockIndexDe) * blockShapeY_) : 0;
+                            effectiveY = (effectiveY < tailBlockY) ? effectiveY : tailBlockY;
+                            if (effectiveY > 0) {
+                                break;
+                            }
+                            vCurBlockIdx++;
+                            vCurBlockOff = 0;
+                        }
+                        kvSTileSizeAct = (effectiveY - vCurBlockOff < kvBaseTile_) ?
+                            (effectiveY - vCurBlockOff) : kvBaseTile_;
+                        vEffRowsCtx.srcOffset = static_cast<int32_t>(yBlockIndexDe * blockShapeY_ + vCurBlockOff);
+                        vCurBlockOff += kvSTileSizeAct;
+                        if (vCurBlockOff >= effectiveY) {
+                            vCurBlockIdx++;
+                            vCurBlockOff = 0;
+                        }
                     } else {
-                        kvSTileSizeAct = kvBaseTile_;
+                        if (gatheredKvSTileIdxDe == kvSLoopNum - 1) {
+                            kvSTileSizeAct = gatheredKvSeqlen - gatheredKvSTileIdxDe * kvBaseTile_;
+                        } else {
+                            kvSTileSizeAct = kvBaseTile_;
+                        }
+                        uint32_t yBlockIndexOffsetDe = (gatheredKvSTileIdxDe * kvBaseTile_) / blockShapeY_;
+                        yBlockIndexDe = gSparseIdx[gmOffsetSparseIdx].GetValue(yBlockIndexOffsetDe);
                     }
                     // PV
                     GemmCoord actualBlockShapePV{rowNum, embed_, kvSTileSizeAct};
@@ -413,22 +514,21 @@ public:
                     auto ubOTmpTensorTla = tla::MakeTensor(ubOTmpTensor[ubOTmpBufId],
                         ubOTmpLayoutTla, Arch::PositionUB{});
                     uint32_t smToMm2FlagId = l1PBufId + UB_S_OTMP_BUF_STAGES;
-                    
+
                     Arch::CrossCoreFlag smToMm2Flag(smToMm2FlagId);
                     Arch::CrossCoreFlag mm2ToReFlag(Mm2ToReFlagId);
                     uint64_t prefixSumL0AStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdxDe, mm1L0ATotalStages_, mm2L0ATotalStages_, kvSLoopNum, false);
                     uint64_t prefixSumL0BStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
                         gatheredKvSTileIdxDe, mm1L0BTotalStages_, mm2L0BTotalStages_, kvSLoopNum, false);
-                    uint32_t yBlockIndexOffsetDe = (gatheredKvSTileIdxDe * kvBaseTile_) / blockShapeY_;
-                    uint32_t yBlockIndexDe = gSparseIdx[gmOffsetSparseIdx].GetValue(yBlockIndexOffsetDe);
                     uint32_t kvDequantScaleOffsetDe =
                     curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndexDe;
                     float vDequantScaleValue = gVDequantScale.GetValue(kvDequantScaleOffsetDe);
                     uint64_t deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&vDequantScaleValue));
                     blockMmadPV(gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapePV,
                                 gatheredKvSTileIdxDe, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
-                                prefixSumL0AStages, prefixSumL0BStages, smToMm2Flag, mm2ToReFlag, deqScalar);
+                                prefixSumL0AStages, prefixSumL0BStages, smToMm2Flag, mm2ToReFlag, deqScalar,
+                                &vEffRowsCtx);
 #endif
 #ifdef __DAV_VEC__
                     // rescale O
@@ -474,6 +574,9 @@ public:
         // aligned seqlen q & kv
         qSeqlenAligned_ = bsaTilingData->maxQSeqlen;
         kvSeqlenAligned_ = bsaTilingData->maxKvSeqlen;
+        // effectiveRows
+        enableEffRows_ = (bsaTilingData->enableEffRows != 0);
+        maxBlockNumEff_ = bsaTilingData->maxBlockNumEff;
     }
 
     __aicore__ inline
@@ -690,6 +793,9 @@ private:
     // aligned seqlen q & kv
     int64_t qSeqlenAligned_;
     int64_t kvSeqlenAligned_;
+    // effectiveRows
+    uint32_t enableEffRows_;
+    uint32_t maxBlockNumEff_;
     // L1 tile info
     uint32_t mm1L1TileM_;
     uint32_t mm1L1TileN_;
