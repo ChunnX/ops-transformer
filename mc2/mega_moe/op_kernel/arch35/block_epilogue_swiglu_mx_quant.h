@@ -1177,6 +1177,7 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
         } else {
             AscendC::AtomicAdd(groupFlagListGmAddr_, 1);
         }
+        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB20]: epilogue progress AtomicAdd -> function exit
     }
     return;
 }

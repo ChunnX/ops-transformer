@@ -819,7 +819,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
                     wsDstGlobal.SetGlobalBuffer(
                         (__gm__ uint8_t *)(params_.workspaceInfo.maskSlotPtr + srcOffset + roundByteOffset));
                     DataCopyPad(wsDstGlobal, maskBuf, partialMaskCopyParams);
-                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA07]: local mask MTE3 -> round completion
+                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA08]: remote-source mask MTE3 -> round completion
                 }
                 PipeBarrier<PIPE_ALL>();
             }
@@ -1301,6 +1301,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
         if constexpr (TopkWeightsPrefetch) {
             SetFlag<AscendC::HardEvent::MTE2_S>(eventId);
         }
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA21]: prime relay slot signals -> steady loop
     }
 
     for (int32_t copyIdx = 0; copyIdx < copyNum; ++copyIdx) {
@@ -1341,6 +1342,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
             if constexpr (TopkWeightsPrefetch) {
                 SetFlag<AscendC::HardEvent::MTE2_S>(eventId);
             }
+            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA25]: reused relay slot signals -> next steady iteration
         }
     }
 
@@ -1416,6 +1418,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
                                      remoteRecordAddr + mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_,
                                      weightAlignBytes_);
             }
+            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA30]: payload ReadNbi submits -> receive state
             relayReceivedTensor_.SetValue(copyIdx, int32_t(1));
             ++receivedCount;
         }
@@ -1475,6 +1478,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyGMToG
 
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
     DataCopy(metaInfoGlobalTensor_[rowDstOffsetInCore * INT32_PER_256B], metaInfoTensor_, copyNum * INT32_PER_256B);
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA32]: metadata MTE3 -> existing MTE3_S sync
     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID3>();
 }
 
