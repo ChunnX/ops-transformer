@@ -102,7 +102,6 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchInfo &i
     OP_LOGD(nodeName, "isCached is %u.", info.isCached);
     OP_LOGD(nodeName, "isTopkWeights is %u.", info.isTopkWeights);
     OP_LOGD(nodeName, "networkMode is %u.", info.networkMode);
-    OP_LOGD(nodeName, "rankSizePerServer is %u.", info.rankSizePerServer);
     OP_LOGD(nodeName, "numScaleupRanks is %u.", info.numScaleupRanks);
     OP_LOGD(nodeName, "numScaleoutRanks is %u.", info.numScaleoutRanks);
     OP_LOGD(nodeName, "numAivStage1 is %u.", info.numAivStage1);
@@ -115,9 +114,7 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchInfo &i
     OP_LOGD(nodeName, "hostPinnedCounterAddr is %lu.", info.hostPinnedCounterAddr);
     OP_LOGD(nodeName, "routeWorkspaceOffset is %lu.", info.routeWorkspaceOffset);
     OP_LOGD(nodeName, "scaleoutRecvDataOffset is %lu.", info.scaleoutRecvDataOffset);
-    OP_LOGD(nodeName, "scaleupFinalRecvDataOffset is %lu.", info.scaleupFinalRecvDataOffset);
     OP_LOGD(nodeName, "scaleoutRecvStatusOffset is %lu.", info.scaleoutRecvStatusOffset);
-    OP_LOGD(nodeName, "combineDataOffset is %lu.", info.combineDataOffset);
     OP_LOGD(nodeName, "payloadStashWinOffset is %lu.", info.payloadStashWinOffset);
     OP_LOGD(nodeName, "totalWinSizeEp is %lu.", info.totalWinSizeEp);
     OP_LOGD(nodeName, "totalUbSize is %lu.", info.totalUbSize);
@@ -645,7 +642,6 @@ static ge::graphStatus CheckCommAttr(const gert::TilingContext *context, const c
 
     info.cfg.epWorldSize = static_cast<uint32_t>(epWorldSize);
     info.cfg.epRankId = static_cast<uint32_t>(*epRankIdPtr);
-    info.rankSizePerServer = static_cast<uint32_t>(rankNumPerServer);
     info.numScaleupRanks = static_cast<uint32_t>(rankNumPerServer);
     info.numScaleoutRanks = static_cast<uint32_t>(epWorldSize / rankNumPerServer);
     info.networkMode = (topoType == HYBRID_MODE && info.numScaleoutRanks > 1U) ? HYBRID_MODE : DIRECT_MODE;
@@ -746,7 +742,7 @@ static void SetSendEntryLayout(MoeEpDispatchInfo &info)
     info.fanoutSendEntryCoreBytes =
         AlignUpUb(fanoutSlotCapacity * MOE_EP_SEND_ENTRY_BYTES);
     // 每个目的rank占一个32B计数记录，避免不同生产核的计数搬出共享写块。
-    info.fanoutCountCoreBytes = info.rankSizePerServer * UB_ALIGN;
+    info.fanoutCountCoreBytes = info.numScaleupRanks * UB_ALIGN;
 }
 
 static uint64_t CalcDispatchWorkspace(MoeEpDispatchInfo &info)
@@ -779,16 +775,17 @@ static uint64_t CalcDispatchWorkspace(MoeEpDispatchInfo &info)
         info.scaleoutSendEntryOffset = workspaceOffset;
         workspaceOffset += remoteServerCount * aivNum * info.sendEntryTokenRangeBytes;
         info.scaleupSendEntryOffset = workspaceOffset;
-        workspaceOffset += static_cast<uint64_t>(info.rankSizePerServer) * aivNum *
+        workspaceOffset += static_cast<uint64_t>(info.numScaleupRanks) * aivNum *
                            info.sendEntryTokenRangeBytes;
         // fanout 发送记录和计数按生产核分段，节点内 owner 在发送阶段汇总消费。
         info.fanoutSendEntryOffset = workspaceOffset;
-        workspaceOffset += static_cast<uint64_t>(info.rankSizePerServer) * remoteServerCount *
+        workspaceOffset += static_cast<uint64_t>(info.numScaleupRanks) * remoteServerCount *
                            fanoutProducerCount * info.fanoutSendEntryCoreBytes;
         info.fanoutCountOffset = workspaceOffset;
         workspaceOffset += remoteServerCount * fanoutProducerCount * info.fanoutCountCoreBytes;
         return SYSTEM_NEED_WORKSPACE + workspaceOffset + globalABytes;
     }
+    info.routeWorkspaceOffset = 0UL;
     info.scaleoutSendEntryOffset = 0UL;
     info.scaleupSendEntryOffset = 0UL;
     info.fanoutSendEntryOffset = 0UL;
@@ -826,12 +823,12 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
         uint64_t scaleupFinalRecvDataSize = epWorldSize * nmt * dispatchReservedPerSlotBytes;
         uint64_t scaleoutRecvStatusSize = AlignUpWin(superNodeCount * nmt * WIN_ADDR_ALIGN);
         info.scaleoutRecvDataOffset = totalStateWinSizeEp;
-        info.scaleupFinalRecvDataOffset = info.scaleoutRecvDataOffset + scaleoutRecvDataSize;
-        info.scaleoutRecvStatusOffset = info.scaleupFinalRecvDataOffset + scaleupFinalRecvDataSize;
-        info.combineDataOffset = info.scaleoutRecvStatusOffset + scaleoutRecvStatusSize;
-        info.payloadStashWinOffset = info.combineDataOffset + combineWinDataSize;
+        uint64_t scaleupFinalRecvDataOffset = info.scaleoutRecvDataOffset + scaleoutRecvDataSize;
+        info.scaleoutRecvStatusOffset = scaleupFinalRecvDataOffset + scaleupFinalRecvDataSize;
+        uint64_t combineDataOffset = info.scaleoutRecvStatusOffset + scaleoutRecvStatusSize;
+        info.payloadStashWinOffset = combineDataOffset + combineWinDataSize;
         uint64_t payloadStashWinSize = nmt * scaleoutReservedPerSlotBytes;
-        info.winDataOffset = info.scaleupFinalRecvDataOffset;
+        info.winDataOffset = scaleupFinalRecvDataOffset;
         winNeed = info.payloadStashWinOffset + payloadStashWinSize;
     } else {
         uint64_t dispatchRecvWinDataReservedSize = epWorldSize * nmt * dispatchReservedPerSlotBytes;
@@ -839,9 +836,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
             dispatchRecvWinDataReservedSize + combineWinDataSize + totalStateWinSizeEp;
         uint64_t dispatchSendWinDataReservedSize = dispatchRecvWinDataReservedSize;
         info.scaleoutRecvDataOffset = 0UL;
-        info.scaleupFinalRecvDataOffset = totalStateWinSizeEp;
         info.scaleoutRecvStatusOffset = 0UL;
-        info.combineDataOffset = totalStateWinSizeEp + dispatchRecvWinDataReservedSize;
         info.winDataOffset = totalStateWinSizeEp;
         info.payloadStashWinOffset = stateAndRecvDataWinSize;
         winNeed = stateAndRecvDataWinSize + dispatchSendWinDataReservedSize;
@@ -903,7 +898,7 @@ static void SetPlatformAndNetworkInfo(gert::TilingContext *context, MoeEpDispatc
     if (info.networkMode == HYBRID_MODE) {
         // 目标数量不超过AIV数时每个Proxy/本地Rank独占一个owner，否则优先按3:1分给跨超和节点内组。
         uint32_t remoteScaleoutCount = info.numScaleoutRanks - 1U;
-        uint32_t localRankCount = info.rankSizePerServer;
+        uint32_t localRankCount = info.numScaleupRanks;
         uint32_t communicationOwnerCount = remoteScaleoutCount + localRankCount;
         if (communicationOwnerCount <= aivNum) {
             info.numAivStage1 = remoteScaleoutCount;
@@ -950,6 +945,10 @@ static ge::graphStatus MoeEpDispatchTilingFunc(gert::TilingContext *context)
     SetPlatformAndNetworkInfo(context, info, nodeName);
     if (info.networkMode == HYBRID_MODE) {
         SetSendEntryLayout(info);
+    } else {
+        info.fanoutCountCoreBytes = 0U;
+        info.sendEntryTokenRangeBytes = 0UL;
+        info.fanoutSendEntryCoreBytes = 0UL;
     }
     OP_TILING_CHECK(CheckWinSize(context, info, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check window size failed."), return ge::GRAPH_FAILED);
