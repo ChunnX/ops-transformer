@@ -11,24 +11,28 @@
 #include "include/tensor_api/tensor.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
-#include "lib/hccl/hccl.h"
 
 namespace Blaze {
 namespace Gemm {
 namespace Kernel {
+
 #define QBMM_MX_KERNEL_CLASS_TEM_PARAMS \
-    template <class ProblemShape, class BlockMmad, class BlockScheduler, bool HcommPureCMode>
-#define QBMM_MX_KERNEL_FUNC_TEM_PARAMS ProblemShape, BlockMmad, BlockScheduler, HcommPureCMode
+    template <class ProblemShape, class BlockMmad, class BlockScheduler, class CommPolicy>
+#define QBMM_MX_KERNEL_FUNC_TEM_PARAMS ProblemShape, BlockMmad, BlockScheduler, CommPolicy
 
 using namespace AscendC;
 using AscendC::Te::Get;
 
 /**
  * @brief SWAT MX 量化矩阵乘内核实现
- * 该类负责具体的矩阵乘块调度和计算，支持本地(LOCAL)和远程(REMOTE)两种切片模式
+ * 该类负责具体的矩阵乘块调度和计算，支持本地(LOCAL)和远程(REMOTE)两种切片模式。
+ * 通信等待逻辑经 CommPolicy 策略类注入（组合模式）：基类持 commPolicy_ 成员对象，
+ * 调用点直接 commPolicy_.WaitTile(tileIdx)，编译期由模板参数绑定具体策略，
+ * 无需继承与 static_cast。
  */
 
-template <class ProblemShape, class BlockMmad, class BlockScheduler, bool HcommPureCMode = false>
+template <class ProblemShape, class BlockMmad, class BlockScheduler,
+          class CommPolicy>
 class QuantMatmulMxKernelSwat {
 public:
     __aicore__ inline QuantMatmulMxKernelSwat()
@@ -103,10 +107,6 @@ public:
         uint32_t splitKNum;
         MatmulMode matmulMode; // 1: LOCAL, 2: REMOTE, 3: DEFERRED_SYNC
         uint32_t headTileSize;
-        void* hcclPtr{nullptr};
-        AscendC::HcclHandle dataHeadHandle{0};
-        AscendC::HcclHandle dataTailHandle{0};
-        uint32_t headTileCnt{0};
     };
 
     /**
@@ -129,12 +129,13 @@ public:
         Run(params);
     }
 
+    __aicore__ inline CommPolicy& GetCommPolicy() { return commPolicy_; }
+
 private:
     __aicore__ inline void ResetGmAddr(const Params &params);
     __aicore__ inline void ProcessSingleBatch(const Params &params, BlockScheduler& bs,
                             uint64_t restBatch, bool isTailRound);
     __aicore__ inline uint32_t CalcDependTileIdx(int64_t mPos, uint32_t headTileSize, uint32_t totalTiles) const;
-    __aicore__ inline void WaitCommTile(const Params &params, uint32_t tileIdx);
 
     template <typename TensorB, typename TensorScaleB, typename TensorC>
     __aicore__ inline void SetL2Cache(
@@ -147,6 +148,7 @@ private:
 
 private:
     BlockMmad mmadOp_;
+    CommPolicy commPolicy_;
 
     __gm__ AType *aGmAddr_;               // 远程数据基址（通信缓冲区）
     __gm__ AType *localAGmAddr_;          // 本地数据基址
@@ -292,23 +294,6 @@ __aicore__ inline uint32_t QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAM
 }
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::WaitCommTile(
-    const Params &params, uint32_t tileIdx)
-{
-    if constexpr (HcommPureCMode) {
-        auto* hccl = static_cast<AscendC::Hccl<AscendC::HcclServerType::HCCL_SERVER_TYPE_CCU>*>(
-            params.localParams.hcclPtr);
-        if (tileIdx < params.localParams.headTileCnt) {
-            hccl->Wait(params.localParams.dataHeadHandle);
-        } else {
-            hccl->Wait(params.localParams.dataTailHandle);
-        }
-    } else {
-        AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(tileIdx);
-    }
-}
-
-QBMM_MX_KERNEL_CLASS_TEM_PARAMS
 __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::ProcessSingleBatch(
     const Params &params, BlockScheduler& bs, uint64_t restBatch, bool isTailRound)
 {
@@ -416,7 +401,7 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
 
             // Phase 2: 在 self rank mmad 之后 wait，阻塞后续 shmem 读（去重：同一 tile 只 wait 一次）
             if ((waitedMask & (1U << dependTileIdx)) == 0U) {
-                WaitCommTile(params, dependTileIdx);
+                commPolicy_.WaitTile(dependTileIdx);
                 waitedMask |= (1U << dependTileIdx);
             }
 
@@ -445,7 +430,7 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
             uint32_t dependTileIdx = CalcDependTileIdx(mPos + blockM - 1, params.localParams.headTileSize, totalTiles);
             // 等待当前 block 依赖的通信 tile 完成（去重：同一 tile 只 wait 一次）
             if ((waitedMask & (1U << dependTileIdx)) == 0U) {
-                WaitCommTile(params, dependTileIdx);
+                commPolicy_.WaitTile(dependTileIdx);
                 waitedMask |= (1U << dependTileIdx);
             }
             for (uint64_t rank = 0; rank < rankSize; rank++) {
@@ -483,7 +468,7 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
     if (!localFirst) {
         for (uint32_t t = 0; t < totalTiles; ++t) {
             if ((waitedMask & (1U << t)) == 0U) {
-                WaitCommTile(params, t);
+                commPolicy_.WaitTile(t);
                 waitedMask |= (1U << t);
             }
         }
