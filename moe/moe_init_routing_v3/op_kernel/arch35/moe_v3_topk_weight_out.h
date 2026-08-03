@@ -20,6 +20,9 @@
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
+constexpr int32_t ROW_IDX_QUEUE_DEPTH = 2;
+constexpr int32_t ROW_IDX_BUFFER_NUM = 2;
+
 class MoeV3TopkWeightOut {
 public:
     __aicore__ inline MoeV3TopkWeightOut() {}
@@ -30,7 +33,7 @@ public:
 private:
     TPipe *pipe_;
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> topkWeightCopyInQueue_;
-    TQue<QuePosition::VECIN, 2> rowIdxCopyInQueue_;
+    TQue<QuePosition::VECIN, ROW_IDX_QUEUE_DEPTH> rowIdxCopyInQueue_;
 
     GlobalTensor<float> topkWeightGm_;
     GlobalTensor<float> expandedTopkWeightGm_;
@@ -121,7 +124,7 @@ __aicore__ inline void MoeV3TopkWeightOut::Init(GM_ADDR topkWeight, GM_ADDR expa
     indicesLoops_ = Ceil(coreElements_, perCorePerLoopElements_);
 
     pipe_->InitBuffer(topkWeightCopyInQueue_, 1, AlignBytes(1, sizeof(float)));
-    pipe_->InitBuffer(rowIdxCopyInQueue_, 2, AlignBytes(perCorePerLoopElements_, sizeof(int32_t)));
+    pipe_->InitBuffer(rowIdxCopyInQueue_, ROW_IDX_BUFFER_NUM, AlignBytes(perCorePerLoopElements_, sizeof(int32_t)));
 }
 
 __aicore__ inline void MoeV3TopkWeightOut::CopyRowIdxIn(int64_t offset, int64_t curLoopElements)

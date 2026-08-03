@@ -30,6 +30,7 @@ constexpr int64_t INT4_NUMS_IN_INT8 = 2;
 constexpr int64_t SCALE_BLOCK_SIZE = 64;
 constexpr int64_t SCALE_THIRD_DIM_SIZE = 2;
 constexpr int64_t EXPERT_TOKENS_KEY_VALUE = 2;
+constexpr int64_t ACTIVE_EXPERT_RANGE_SIZE = 2;
 
 // ---- Quant mode enum (from MoeInitRoutingV2KernelNpuOpApi.cpp) ----
 enum MoeQuantMode {
@@ -221,7 +222,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_
         // expert_tokens_count_or_cumsum (mirrors MoeInitRoutingV2KernelNpuOpApi.cpp)
         int64_t expert_range_end = expert_num;
         int64_t expert_range_start = 0;
-        if (active_expert_range.has_value() && active_expert_range.value().size() >= 2) {
+        if (active_expert_range.has_value() && active_expert_range.value().size() >= ACTIVE_EXPERT_RANGE_SIZE) {
             expert_range_start = active_expert_range.value()[0];
             expert_range_end = active_expert_range.value()[1];
         }
