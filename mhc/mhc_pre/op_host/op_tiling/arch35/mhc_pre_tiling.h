@@ -74,7 +74,8 @@ struct MhcPreCompileInfo {
 
 class MhcPreBaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MhcPreBaseTiling(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
+    explicit MhcPreBaseTiling(gert::TilingContext *context)
+        : Ops::Transformer::OpTiling::TilingBaseClass(context) {};
 
     ~MhcPreBaseTiling() override = default;
 
@@ -129,8 +130,9 @@ protected:
     void FillTilingData();
     ge::graphStatus TilingProcess();
     ge::graphStatus CheckUbBufferSize();
-    void FillBsTilingData();
-    void FillMkTilingData();
+    ge::graphStatus CalculateBsTiling();
+    ge::graphStatus CalculateNdTiling();
+    ge::graphStatus CalculateMkTiling();
     bool CanUseMk() const;
     uint32_t SelectMkStage() const;
     size_t GetLastRequiredInputIndex() const;
@@ -155,6 +157,8 @@ private:
     uint32_t hasGamma_ = 0;
     uint32_t chunkTSize_ = 0;
     uint32_t v1ChunkDSize_ = 0;
+    uint32_t usedCoreNum_ = 0;
+    float scaleMean_ = 0.0f;
     uint32_t implMode_ = 0;
     TilingMode tilingMode_ = TilingMode::SPLIT_BS;
     uint32_t hasResi_ = 1;
