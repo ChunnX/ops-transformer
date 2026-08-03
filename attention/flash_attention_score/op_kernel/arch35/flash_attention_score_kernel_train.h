@@ -15,13 +15,8 @@
 
 #ifndef FLASH_ATTENTION_SCORE_KERNEL_TRAIN_H_
 #define FLASH_ATTENTION_SCORE_KERNEL_TRAIN_H_
-#if __has_include("../../../common/op_kernel/arch35/flash_attention_noquant_kernel_base.h")
-#include "../../../common/op_kernel/arch35/flash_attention_noquant_kernel_base.h"
+#include "../../../fused_infer_attention_score/op_kernel/arch35/flash_attention_noquant_kernel_base.h"
 #include "../../../common/op_kernel/arch35/dropmask.h"
-#else
-#include "../../common/arch35/flash_attention_noquant_kernel_base.h"
-#include "../../common/arch35/dropmask.h"
-#endif
 namespace BaseApi {
 template <typename CubeBlockType, typename VecBlockType>
 class FlashAttentionScoreKernelTrain
