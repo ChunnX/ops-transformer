@@ -163,7 +163,7 @@ public:
     float pScaleValue{1.0f};
     bool isSkipMask{false};
     bool isFullMask{false};
-    uint32_t minValue{NEGATIVE_MIN_VALUE_FP32};
+    uint32_t minValue{NEGATIVE_MIN_VALUE_FP32_LN2};
 
     // ==================== Functions ======================
     __aicore__ inline FAFullQuantMxBlockVec(ConstInfoX &constInfo)
@@ -175,9 +175,12 @@ public:
                                         __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
     {
         tPipe = pipe;
-        uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
+        uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32_LN2;
         this->negativeFloatScalar = *((T *)&tmp1);
-        UpdateMinCheckValue();
+        if constexpr (USE_DN) {
+            minValue = NEGATIVE_MIN_VALUE_FP32;
+            UpdateMinCheckValue();
+        }
 
         InitVecInput(actualSeqQlenAddr, actualSeqKvlenAddr, pScale, attenMask, softmaxLse, attentionOut, workspace);
     }
