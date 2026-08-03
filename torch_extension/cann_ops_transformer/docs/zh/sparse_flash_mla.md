@@ -238,9 +238,9 @@ cann_ops_transformer.sparse_flash_mla(
 
 | 特性参数组 | 参数字段名称 |
 | :--- | :--- |
-| 公共参数组 | layout_q、layout_kv、q、ori_kv、cmp_kv、attention_out、softmax_scale|
+| 公共参数组 | layout_q、layout_kv、q、ori_kv、cmp_kv、attention_out、softmax_scale |
 | metadata参数组 | num_heads_q、num_heads_kv、head_dim、batch_size、max_seqlen_q、max_seqlen_ori_kv、max_seqlen_cmp_kv、metadata、has_ori_kv、has_cmp_kv |
-| 稀疏压缩参数组 | ori_topk、cmp_topk、cmp_ratio、ori_sparse_indices、cmp_sparse_indices|
+| 稀疏压缩参数组 | ori_topk、cmp_topk、cmp_ratio、ori_sparse_indices、cmp_sparse_indices |
 | Mask和窗口参数组 | ori_mask_mode、cmp_mask_mode、ori_win_left、ori_win_right、cmp_residual_kv |
 | Paged Attention参数组 | ori_block_table、cmp_block_table |
 | SeqLengths参数组 | cu_seqlens_q、cu_seqlens_ori_kv、cu_seqlens_cmp_kv、seqused_q、seqused_ori_kv、seqused_cmp_kv |
@@ -257,7 +257,7 @@ cann_ops_transformer.sparse_flash_mla(
 
 | 参数 | 单参数校验 | 存在性拦截 | 一致性拦截 | 特性交叉拦截 |
 | :--- | :--- | :--- | :--- | :--- |
-| num_heads_q | int32；范围1~128。 | 必选。 | 必须与`q`的`q_n`维一致。 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值非1、2、4、8、16、32、64、128时拦截；<term>Ascend 950PR/Ascend 950DT</term>：取值小于1或大于128时拦截。|
+| num_heads_q | int32；范围1~128。 | 必选。 | 必须与`q`的`q_n`维一致。 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值非1、2、4、8、16、32、64、128时拦截；<term>Ascend 950PR/Ascend 950DT</term>：取值小于1或大于128时拦截。 |
 | num_heads_kv | int32；仅支持1。 | 必选。 | 必须与`ori_kv`、`cmp_kv`的kv_n维一致。 | 与`num_heads_q`、`softmax_lse`的分组维度一致。 |
 | head_dim | int32；仅支持512。 | 必选。 | 必须与`q`、`ori_kv`、`cmp_kv`的d维一致。 | 不满足时拦截；不允许依赖自动推导。 |
 | batch_size | int32；必须大于0。 | BSND场景必传。 | 必须与BSND布局下`q`和kv的b维一致。 | TND场景由`cu_seqlens_q`长度推导时，仍须与所有长度类Tensor一致。 |
@@ -303,7 +303,7 @@ cann_ops_transformer.sparse_flash_mla(
 | 参数 | 单参数校验 | 存在性拦截 | 一致性拦截 | 特性交叉拦截 |
 | :--- | :--- | :--- | :--- | :--- |
 | q | `float16`或`bfloat16`；`BSND`为(b, q_s, q_n, d)，`TND`为(q_t, q_n, d)；任一轴为0时拦截。 | 必传。 | `q`、`attention_out`的dtype、shape需相同。 | b > 0；d必须为512，q_n/kv_n必须为正整数；布局必须符合下表。q_s > 0；0 < q_n <= 128；q_t > 0。 |
-| ori_kv | 与`q`相同的数据类型；`BSND`为(b, ori_kv_s, kv_n, d)，`TND`为(ori_kv_t, kv_n, d)，`PA_BBND`为(ori_kv_block_nums, ori_kv_block_size, kv_n, d)。 | 已支持的SWA、CSA、HCA场景均必传。 | layout_kv不为PA_BBND时，layout_q和layout_kv需保持一致；layout_kv为PA_BBND时，layout_q可为BSND或TND | PA场景必须有`ori_block_table`和`seqused_ori_kv`；block_size满足产品规格。ori_kv_s > 0；ori_kv_n = 1；ori_kv_t > 0；ori_kv_block_nums > 0；1 <= ori_kv_block_size <= 1024。|
+| ori_kv | 与`q`相同的数据类型；`BSND`为(b, ori_kv_s, kv_n, d)，`TND`为(ori_kv_t, kv_n, d)，`PA_BBND`为(ori_kv_block_nums, ori_kv_block_size, kv_n, d)。 | 已支持的SWA、CSA、HCA场景均必传。 | layout_kv不为PA_BBND时，layout_q和layout_kv需保持一致；layout_kv为PA_BBND时，layout_q可为BSND或TND | PA场景必须有`ori_block_table`和`seqused_ori_kv`；block_size满足产品规格。ori_kv_s > 0；ori_kv_n = 1；ori_kv_t > 0；ori_kv_block_nums > 0；1 <= ori_kv_block_size <= 1024。 |
 | cmp_kv | 与`q`相同的数据类型；`BSND`为(b, cmp_kv_s, kv_n, d)，`TND`为(cmp_kv_t, kv_n, d)，`PA_BBND`为(cmp_kv_block_nums, cmp_kv_block_size, kv_n, d)。 | SWA必须不传；CSA/HCA必传。 | 若cmp_kv传入，ori_kv与cmp_kv的dtype需一致。 | CSA要求`cmp_sparse_indices`；HCA禁止传该索引；PA场景要求`cmp_block_table`。cmp_kv_s > 0；cmp_kv_n = 1；cmp_kv_t > 0；cmp_kv_block_nums > 0；1 <= cmp_kv_block_size <= 1024。 |
 | metadata | `int32`、ND、shape为(1024,)。 | 必传；缺失应拦截。 | 必须是使用本次layout、序列长度、模式、窗口、压缩率和kv存在性生成的结果。 | 与前置接口不一致或复用其他输入生成的metadata应拦截。 |
 | softmax_scale | float，必须为有限值。 | 可选，默认1.0。 | 应与用户期望的缩放策略一致。 | 不参与metadata生成；常用设置为`1.0 / sqrt(d)`。 |

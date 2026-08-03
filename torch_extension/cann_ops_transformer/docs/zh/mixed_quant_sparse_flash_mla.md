@@ -109,8 +109,6 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 ) -> (Tensor, Tensor)
 ```
 
-
-
 ## 参数说明
 
 ### 常见字段释义
@@ -139,14 +137,14 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 
 ### mixed_quant_sparse_flash_mla_metadata
 
-| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度|
-| :--- | :--- | :--- | :--- | :--- | :--- | :---|
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | num_heads_q | int | 必选 | 表示q头数 | int32 | - | -
 | num_heads_kv | int | 必选 | 表示ori_kv/cmp_kv头数 | int32 | - | -
 | head_dim | int | 必选 | 表示每个注意力头的维度 | int32 | - | -
 | quant_mode | int | 必选 | 表示量化模式。当前仅支持1和2。quant_mode为1时，依次由rope（64，bfloat16）、nope（448，float8_e4m3fn）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode为2时，依次由nope（448，float8_e4m3fn）、rope（64，bfloat16）、scale（7，float8_e8m0）、pad（1B）拼接而成。 | int32 | - | -
 | cu_seqlens_q | tensor | 可选 | 表示输入q处理的变长序列的累积序列长度 | int32 | ND | <ul><li>(b+1,)</li></ul>
-| cu_seqlens_ori_kv | tensor | 可选 | 表示输入ori_kv处理变长序列的累积序列长度 | int32 | ND |<ul><li>(b+1,)</li></ul>
+| cu_seqlens_ori_kv | tensor | 可选 | 表示输入ori_kv处理变长序列的累积序列长度 | int32 | ND | <ul><li>(b+1,)</li></ul>
 | cu_seqlens_cmp_kv | tensor | 可选 | 表示输入cmp_kv处理变长序列的累积序列长度 | int32 | ND | <ul><li>(b+1,)</li></ul>
 | seqused_q | tensor | 可选 | 表示输入q每batch中实际参与运算的序列长度 | int32 | ND | <ul><li>(b,)</li></ul>
 | seqused_ori_kv | tensor | 可选 | 表示输入ori_kv每batch中实际参与运算的序列长度 | int32 | ND | <ul><li>(b,)</li></ul>
@@ -173,9 +171,9 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 
 ### mixed_quant_sparse_flash_mla
 
-| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度|
-| :--- | :--- | :--- | :--- | :--- | :--- | :---|
-| q | tensor | 必选 | 表示公式中的q | bfloat16 | ND |  <ul><li>(b, q_s, q_n, q_d)</li><li>(q_t, q_n, q_d)</li></ul>
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| q | tensor | 必选 | 表示公式中的q | bfloat16 | ND | <ul><li>(b, q_s, q_n, q_d)</li><li>(q_t, q_n, q_d)</li></ul>
 | quant_mode | int | 必选 | 表示量化模式。当前仅支持1和2。quant_mode为1时，依次由rope（64，bfloat16）、nope（448，float8_e4m3fn）、scale（7，bfloat16）、pad（18B）拼接而成；quant_mode为2时，依次由nope（448，float8_e4m3fn）、rope（64，bfloat16）、scale（7，float8_e8m0）、pad（1B）拼接而成。 | int32 | - | -
 | ori_kv | tensor | 可选 | 表示原始量化KV输入，Key和Value共享同一份数据 | fp8_e4m3 | ND | <ul><li>(b, ori_kv_s, kv_n, kv_d)</li><li>(ori_kv_t, kv_n, kv_d)</li><li>(ori_kv_block_nums, ori_kv_block_size, kv_n, kv_d)</li></ul>
 | cmp_kv | tensor | 可选 | 表示压缩量化KV输入，Key和Value共享同一份数据 | fp8_e4m3 | ND | <ul><li>(b, cmp_kv_s, kv_n, kv_d)</li><li>(cmp_kv_t, kv_n, kv_d)</li><li>(cmp_kv_block_nums, cmp_kv_block_size, kv_n, kv_d)</li></ul>
@@ -210,16 +208,16 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 
 ### mixed_quant_sparse_flash_mla_metadata
 
-| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度|
-| :--- | :--- | :--- | :--- | :--- | :--- | :---|
-| metadata | tensor | 必选 | mixed_quant_sparse_flash_mla的分核信息 | int32 | ND |<ul><li>(1024,)</li></ul>
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| metadata | tensor | 必选 | mixed_quant_sparse_flash_mla的分核信息 | int32 | ND | <ul><li>(1024,)</li></ul>
+
 ### mixed_quant_sparse_flash_mla
 
-| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度|
-| :--- | :--- | :--- | :--- | :--- | :--- | :---|
+| 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | attention_out | tensor | 必选 | mixed_quant_sparse_flash_mla的计算输出 | bfloat16 | ND | <ul><li>(b, q_s, q_n, q_d)</li><li>(q_t, q_n, q_d)</li></ul>
 | softmax_lse | tensor | 可选 | 对query乘key的结果先取max得到softmax_max，query乘key的结果减去softmax_max后取exp再取sum得到softmax_sum，最后对softmax_sum取log再加上softmax_max得到的结果。 | float32 | ND | <ul><li>(b, kv_n, q_s, q_n/kv_n)</li><li>(kv_n, q_t, q_n/kv_n)</li></ul>
-
 
 ## 约束说明
 
@@ -229,8 +227,8 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
   - ori_topk_length、cmp_topk_length表示ori/cmp sparse_indices实际参与计算的长度。其值不能大于sparse_indices的最后一维大小，且当seqused_q传入时，topk_length对应有效部分的值需要大于等于0。
   - 当ori_mask_mode/cmp_mask_mode为0时，ori_kv_k/cmp_kv_k需要大于等于ori_topk_length/cmp_topk_length的最大值。
   - cmp_residual_kv配合cmp_ratio使用，可恢复压缩前KV长度。且每个batch的值需要小于cmp_ratio。
-  -   attention_out：tensor类型，公式中的输出，数据类型支持bfloat16。数据格式支持ND。限制：该输出参数的shape与入参q的shape保持一致，dtype与q一致。
-  -   return_softmax_lse=False时返回shape为[1]的值为0的tensor；return_softmax_lse=True时返回float32的log-sum-exp结果。
+  - attention_out：tensor类型，公式中的输出，数据类型支持bfloat16。数据格式支持ND。限制：该输出参数的shape与入参q的shape保持一致，dtype与q一致。
+  - return_softmax_lse=False时返回shape为[1]的值为0的tensor；return_softmax_lse=True时返回float32的log-sum-exp结果。
   - cu_seqlens_q、cu_seqlens_ori_kv、cu_seqlens_cmp_kv须满足首元素为0，且序列整体呈非递减排列，即任一元素不小于其前一个元素。
   - 当layout_kv为PA_BBND时，ori_kv和cmp_kv支持0轴非连续。
   - 各参数shape中以相同符号表示的维度，其对应轴的实际数值需保持一致。
@@ -249,8 +247,8 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 
 ### 基准信息说明
 
-
 ### 计算模式说明
+
 |    命名    |    典型场景需传入参数    |    全稀疏场景需传入参数    |
 | :---------: | :---------------------------------------------------------: | :---------------------------------------------------------: |
 |      SWA      | ori_kv | ori_kv、ori_sparse_indices |
@@ -260,12 +258,13 @@ cann_ops_transformer.mixed_quant_sparse_flash_mla(
 ### 参数组约束
 
 #### 公共参数组
-- 入参为空的场景处理：
-    - 空tensor指必选输入、某调用场景下下必传输入和输出的shape size为0，即有任意轴为0。
-    - 触发空tensor的用例将全部拦截报错。
 
+- 入参为空的场景处理：
+  - 空tensor指必选输入、某调用场景下下必传输入和输出的shape size为0，即有任意轴为0。
+  - 触发空tensor的用例将全部拦截报错。
 
 - q、ori_kv、cmp_kv、attention_out校验
+
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
 <col style="width: 147px">
 <col style="width: 232px">
@@ -436,6 +435,7 @@ metadata校验
 </table>
 
 #### Mask参数组
+
 <ul>
     <li>ori_mask_mode/cmp_mask_mode=0，全计算模式（默认值）</li>
     <li>ori_mask_mode/cmp_mask_mode=3，Causal模式</li>
@@ -500,7 +500,7 @@ metadata校验
                  </ul>
              </td>
              <td>
-               		  <ul>
+                   <ul>
                                <li>当ori_kv/cmp_kv/cmp_sparse_indices/ori_sparse_indices传入时，cmp_mask_mode为0和ori_mask_mode必须为0</li>
                               <li>当cmp_kv不传时，ori_mask_mode为3、4</li>
                               <li>当ori_mask_mode为3时，cmp_mask_mode必须为3</li>
@@ -525,14 +525,13 @@ metadata校验
                 </ul>
             </td>
             <td>
-              		<ul>
-                    		<li>只有ori_mask_mode为4时，ori_win_left/ori_win_right可以>=0</li>
+                <ul>
+                      <li>只有ori_mask_mode为4时，ori_win_left/ori_win_right可以>=0</li>
                     </ul>
             </td>
         </tr>
     </tbody>
 </table>
-
 
 #### SeqLens参数组
 
@@ -840,6 +839,7 @@ metadata校验
 </table>
 
 #### Paged Attention参数组
+
 当layout_kv为PA_BBND时，开启Paged Attention
 <table style="undefined;table-layout: fixed; width:1625px">
     <colgroup>
