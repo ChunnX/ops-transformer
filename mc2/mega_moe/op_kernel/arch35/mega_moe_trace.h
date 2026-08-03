@@ -33,8 +33,8 @@ namespace MegaMoeImpl {
 static constexpr bool CRITICAL_PATH_TRACE_ENABLED =
     static_cast<bool>(MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE);
 static constexpr uint32_t CRITICAL_PATH_TRACE_MAGIC = 0x43505452U;
-static constexpr uint32_t CRITICAL_PATH_TRACE_PROTOCOL_VERSION = 6U;
-static constexpr uint32_t CRITICAL_PATH_TRACE_SCHEMA_ID = 0x30D7C60EU;
+static constexpr uint32_t CRITICAL_PATH_TRACE_PROTOCOL_VERSION = 5U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_SCHEMA_ID = 0xD32D8A49U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_HEADER_WORDS = 30U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_RECORD_WORDS = 18U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_ROLE_COUNT = 3U;

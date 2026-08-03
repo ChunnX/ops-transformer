@@ -4,10 +4,10 @@
 - Phase: `plan`
 - Trace: `mega-moe-wave-critical-path`
 - Repository: `/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803`
-- Revision: `55b702591a62157725bb9e7f604fc54aa58aa405`
+- Revision: `e1b6e44d75bb9d432a49c55339d4319671986b20`
 - Branch: `codex/mega-moe-critical-path-trace-20260803`
 - Dirty: `True`
-- Spec SHA-256: `4f4c3543f118652a677d1aecbffad739e535f8279855e2d11e80953f4c5b84ab`
+- Spec SHA-256: `973da3277c3e7a3529fdf664ff6e821e7ab4e3dc8c885ccbdd66107da644ddfd`
 
 ## Placement summary
 
@@ -261,20 +261,6 @@
 ```text
 M mc2/mega_moe/op_kernel/arch35/mega_moe_trace.h
  M mc2/mega_moe/tools/critical_path_trace/README.md
- M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/index.html
- M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.contract-check.json
- M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.html
- M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.normalized.json
- M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.raw
- M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.runtime.json
- M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/run-manifest.json
- M mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.json
- M mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.md
- M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.json
- M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.md
- M mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py
- M mc2/mega_moe/tools/critical_path_trace/test_critical_path_trace.py
  M mc2/mega_moe/tools/critical_path_trace/trace-spec.json
  M mc2/mega_moe/tools/critical_path_trace/trace_tool.py
- M mc2/mega_moe/tools/critical_path_trace/validation-report.json
 ```

@@ -2,42 +2,28 @@
   "audit_schema_version": 1,
   "status": "pass",
   "phase": "plan",
-  "generated_at_utc": "2026-08-03T09:46:25.023480+00:00",
+  "generated_at_utc": "2026-08-03T10:13:55.887786+00:00",
   "trace_name": "mega-moe-wave-critical-path",
   "repo_root": "/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803",
   "git": {
     "is_git_repository": true,
-    "revision": "55b702591a62157725bb9e7f604fc54aa58aa405",
+    "revision": "e1b6e44d75bb9d432a49c55339d4319671986b20",
     "branch": "codex/mega-moe-critical-path-trace-20260803",
     "dirty": true,
     "status_short": [
       "M mc2/mega_moe/op_kernel/arch35/mega_moe_trace.h",
       " M mc2/mega_moe/tools/critical_path_trace/README.md",
-      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/index.html",
-      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.contract-check.json",
-      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.html",
-      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.normalized.json",
-      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.raw",
-      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.runtime.json",
-      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/run-manifest.json",
-      " M mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.json",
-      " M mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.md",
-      " M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.json",
-      " M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.md",
-      " M mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py",
-      " M mc2/mega_moe/tools/critical_path_trace/test_critical_path_trace.py",
       " M mc2/mega_moe/tools/critical_path_trace/trace-spec.json",
-      " M mc2/mega_moe/tools/critical_path_trace/trace_tool.py",
-      " M mc2/mega_moe/tools/critical_path_trace/validation-report.json"
+      " M mc2/mega_moe/tools/critical_path_trace/trace_tool.py"
     ],
     "status_truncated": false,
-    "tracked_diff_raw_sha256": "a1c0fa14914c83524abff036a05e7e730dec9b958a6f07e1e5bd5e660c9a24ce"
+    "tracked_diff_raw_sha256": "6a7b045342d0091457c9cc80b9bc54a57594de315a4f2f67805db0ec31ffb58f"
   },
   "spec": {
     "path": "/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803/mc2/mega_moe/tools/critical_path_trace/trace-spec.json",
-    "sha256": "4f4c3543f118652a677d1aecbffad739e535f8279855e2d11e80953f4c5b84ab",
-    "protocol_version": 6,
-    "schema_id": "0x30d7c60e"
+    "sha256": "973da3277c3e7a3529fdf664ff6e821e7ab4e3dc8c885ccbdd66107da644ddfd",
+    "protocol_version": 5,
+    "schema_id": "0xd32d8a49"
   },
   "points": [
     {

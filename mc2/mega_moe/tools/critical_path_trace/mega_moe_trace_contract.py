@@ -244,7 +244,13 @@ def validate_capture_contract(
             continue
         actual = header.get(name)
         if not isinstance(actual, int) or actual != wanted:
-            mismatches.append(f"{name}={actual!r}, expected {wanted}")
+            if name in {"magic", "schema_id"} and isinstance(actual, int):
+                mismatches.append(
+                    f"{name}={actual} (0x{actual:08x}), expected {wanted} "
+                    f"(0x{wanted:08x})"
+                )
+            else:
+                mismatches.append(f"{name}={actual!r}, expected {wanted}")
     role_counts = header.get("role_counts")
     wanted_role_counts = [expected["aic_count"]] * 3
     if role_counts != wanted_role_counts:

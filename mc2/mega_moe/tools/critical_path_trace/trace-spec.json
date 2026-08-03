@@ -13,22 +13,28 @@
       "unit": "cycle",
       "bits": 32,
       "timestamp_pipeline": "Scalar",
-      "scope": "one physical AI Block identified by paired core index; AIC, AIV0, and AIV1 inside that block share a clock, while different AI Blocks and ranks are normalized separately",
-      "comparable_across_records": false,
+      "scope": "one device/rank; AIC, AIV0, and AIV1 use the same device system-cycle domain; ranks are decoded separately",
+      "comparable_across_records": true,
+      "missing_value": 0,
+      "zero_handling": "a sampled low-32 system-cycle value of zero is remapped to one so zero remains an unambiguous missing sentinel"
+    },
+    "visualization": {
       "comparison_group": {
         "kind": "shared-core-index",
         "key": "core",
         "label": "AI Block",
         "roles": ["AIC", "AIV0", "AIV1"],
-        "reference_role": "AIC"
+        "reference_role": "AIC",
+        "cross_group_comparable": false,
+        "reason": "AIC, AIV0, and AIV1 with the same paired core index form one physical AI Block and share a synchronized timestamp; different AI Blocks may have fixed timestamp offsets"
       },
-      "missing_value": 0,
-      "zero_handling": "a sampled low-32 system-cycle value of zero is remapped to one so zero remains an unambiguous missing sentinel"
+      "host_only": true,
+      "protocol_impact": "none; row grouping, reference selection, labels, and Chinese descriptions do not change device fields or wire bytes"
     },
     "protocol": {
       "magic": "0x43505452",
-      "version": 6,
-      "schema_id": "0x30d7c60e",
+      "version": 5,
+      "schema_id": "0xd32d8a49",
       "word_bits": 32,
       "endianness": "little",
       "header_words": 30,

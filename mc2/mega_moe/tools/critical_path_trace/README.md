@@ -65,6 +65,11 @@ HTML 按 AI Block 分组，每组固定排列 AIC、AIV0、AIV1，并以本组 A
 `process_begin_S` 独立归零。实际采样为零时重映射为 1，零专用于“该核/该波无
 工作”。顺序检查采用 32 位环绕差，并拒绝大于等于半周期的歧义区间。
 
+AI Block 分组、独立归零和中文说明属于 host 侧可视化策略，不改变设备记录字段
+或 wire bytes，因此继续兼容 protocol v5 / schema `0xd32d8a49`。若已经安装本
+分支此前生成的 v5 tracing-on 包，只更新本目录解析脚本即可，无需因 HTML 修改
+重新编译 kernel；runtime header 仍会严格拒绝真正不兼容的布局或算子版本。
+
 ## `y` 载体证明
 
 Tracing 仅在编译宏 `MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=1` 时存在，当前诊断

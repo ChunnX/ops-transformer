@@ -19,7 +19,7 @@
   "quant_dtype": "float8_e4m3fn",
   "quant_mode": 4,
   "rank": 0,
-  "raw_sha256": "9d030493f0e1f4857b7f2fc48e19bb6e66266844972879a5bc66036294490b84",
+  "raw_sha256": "84926c9df62ed933f1357f0a0a6cc5bdbed6ab7d0f8688c36ea7be6f93724b5b",
   "shared_expert_num": 0,
   "swiglu_quant_dtype": "float8_e4m3fn",
   "test_source_sha256": "synthetic-fixture",

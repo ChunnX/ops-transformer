@@ -184,9 +184,6 @@ def _expected_schema_id(spec: dict[str, Any]) -> int:
                 "comparable_across_records",
                 "missing_value",
             )
-        }
-        | {
-            "comparison_group": trace.get("clock", {}).get("comparison_group"),
         },
         "protocol": {
             key: protocol.get(key)
@@ -322,31 +319,39 @@ def _validate_spec(spec: Any) -> list[str]:
         errors.append("$.trace.clock.bits must be 32 or 64")
     if not isinstance(clock.get("comparable_across_records"), bool):
         errors.append("$.trace.clock.comparable_across_records must be boolean")
-    comparison_group = clock.get("comparison_group")
+    visualization = trace.get("visualization", {})
+    if not isinstance(visualization, dict):
+        errors.append("$.trace.visualization must be an object when set")
+        visualization = {}
+    comparison_group = visualization.get("comparison_group")
     if comparison_group is not None:
         if not isinstance(comparison_group, dict):
-            errors.append("$.trace.clock.comparison_group must be an object")
+            errors.append("$.trace.visualization.comparison_group must be an object")
         else:
             if comparison_group.get("kind") != "shared-core-index":
                 errors.append(
-                    "$.trace.clock.comparison_group.kind must be shared-core-index"
+                    "$.trace.visualization.comparison_group.kind must be shared-core-index"
                 )
             if comparison_group.get("key") != "core":
-                errors.append("$.trace.clock.comparison_group.key must be core")
+                errors.append("$.trace.visualization.comparison_group.key must be core")
             _required_string(
                 comparison_group,
                 "label",
-                "$.trace.clock.comparison_group",
+                "$.trace.visualization.comparison_group",
                 errors,
             )
             group_roles = comparison_group.get("roles")
             if group_roles != roles:
                 errors.append(
-                    "$.trace.clock.comparison_group.roles must exactly match trace.roles"
+                    "$.trace.visualization.comparison_group.roles must exactly match trace.roles"
                 )
             if comparison_group.get("reference_role") not in role_set:
                 errors.append(
-                    "$.trace.clock.comparison_group.reference_role must name a trace role"
+                    "$.trace.visualization.comparison_group.reference_role must name a trace role"
+                )
+            if comparison_group.get("cross_group_comparable") is not False:
+                errors.append(
+                    "$.trace.visualization.comparison_group.cross_group_comparable must be false"
                 )
     missing = clock.get("missing_value")
     if missing is not None and isinstance(bits, int):
@@ -1347,7 +1352,7 @@ def _render_html(
             + ", ".join(missing_chinese)
         )
     role_order = {role: index for index, role in enumerate(trace_spec["roles"])}
-    comparison_group = clock.get("comparison_group")
+    comparison_group = trace_spec.get("visualization", {}).get("comparison_group")
     grouped_by_ai_block = (
         isinstance(comparison_group, dict)
         and comparison_group.get("kind") == "shared-core-index"

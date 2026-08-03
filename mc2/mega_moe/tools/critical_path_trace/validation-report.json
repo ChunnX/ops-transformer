@@ -23,7 +23,7 @@
     {
       "name": "trace_spec_validation",
       "status": "passed",
-      "scope": "machine-readable schema, roles, points, spans, and protocol"
+      "scope": "machine-readable roles, points, spans, protocol-v5 wire compatibility, and host-only per-AI-Block visualization policy"
     },
     {
       "name": "plan_placement_audit",
@@ -54,7 +54,7 @@
     {
       "name": "synthetic_decode_order_render",
       "status": "passed",
-      "scope": "8192-byte host-only synthetic raw through contract validation, decode, wrap-safe order/bounds checks, and HTML"
+      "scope": "8192-byte protocol-v5 host-only synthetic raw through contract validation, decode, wrap-safe order/bounds checks, grouped Chinese HTML"
     },
     {
       "name": "trace_off_source_equivalence",
