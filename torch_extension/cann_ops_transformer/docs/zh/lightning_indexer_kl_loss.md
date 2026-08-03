@@ -13,29 +13,36 @@
 
 ## 功能说明
 
-- API 功能：
-
-  计算 teacher 侧原始未归一化主注意力分数（`target_score`）与 student 侧 indexer softmax 后概率分布（`index_probs`）之间的 KL 散度。teacher 侧用 `clamp_min` 防止 y=0 处 log(0) 导致 `0·(−inf)=NaN`，student 侧用 `+eps` 保住 Y→0 处的梯度。
+  - **teacher 侧**（target_score）：压缩段未归一化的原始主注意力分数（sum ≠ 1），用 `clamp_min` 防止 y=0 处 log(0) 导致 NaN。
+  - **student 侧**（index_probs）：indexer softmax 后的概率分布，用 `+eps` 保住 Y→0 处的梯度。
 
 - 计算公式：
 
   $$
-  P = \frac{y}{\sum(y) + \varepsilon}
+  y = \text{target\_score}, \quad Y = \text{index\_probs}
   $$
 
   $$
-  \text{log\_P} = \log(\text{clamp\_min}(P, \varepsilon))
+  P = \frac{y}{\text{sum}(y, \text{dim}=-1, \text{keepdim=True}) + \varepsilon}
   $$
 
   $$
-  \text{log\_Y} = \log(Y + \varepsilon)
+  \log\_P = \log(\text{clamp\_min}(\tilde{y}, \varepsilon))
   $$
 
   $$
-  \text{loss} = \sum_{i} (\text{log\_P}_i - \text{log\_Y}_i) \cdot y_i
+  \log\_Y = \log(Y + \varepsilon)
   $$
 
-  其中 $y$ 为 `target_score`，$Y$ 为 `index_probs`，$\varepsilon$ 为 `eps`。
+  $$
+  \text{loss} = \sum((\log\_P - \log\_Y) \cdot \text{weight})
+  $$
+
+  其中 $\varepsilon$ 为 `eps` 参数，默认值 $10^{-9}$。
+
+  weight 的选择由 `weight_type` 控制：
+  - `'logits'`（默认）：weight = y，即原始未归一化分数
+  - `'probs'`：weight = P，即归一化概率
 
 ## 函数原型
 
@@ -45,7 +52,8 @@ from cann_ops_transformer import lightning_indexer_kl_loss
 lightning_indexer_kl_loss(
     target_score,
     index_probs,
-    eps=1e-9
+    eps=1e-9,
+    weight_type='logits'
 ) -> Tensor
 ```
 
