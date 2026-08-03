@@ -338,6 +338,7 @@ public:
                         kvBaseTile_, blockShapeY_,
                         curTaskInfo.yBlockNumAval, curTaskInfo.yBlockNumRsvd,
                         curTileInfo.isFirstKvsTile,
+                        curTileInfo.isLastKvsTile, 
                         subBlockIdx);
                     AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
                 } else {
