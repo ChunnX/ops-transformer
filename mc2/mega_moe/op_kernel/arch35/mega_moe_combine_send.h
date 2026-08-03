@@ -43,6 +43,7 @@ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, L
     ub2GmParams.blockCount = 1;
     ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2); // N_VALUE是当前tile块的n长度
     AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA65]: legacy combine MTE2_S SetFlag -> WaitFlag
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
     PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SP11]: existing MTE2_S sync -> legacy combine metadata reads
     for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
@@ -54,6 +55,7 @@ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, L
         uint64_t gmDstOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * n + nLoc;
         AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)],
                              ub2GmParams);
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA66]: legacy combine MTE3 -> next token
     }
 }
 
@@ -91,6 +93,7 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
             SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
             PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[CB02]: prior staging write -> local GMM2 reload
             AscendC::DataCopyPad(ubQuant, gmm2OutGm, singleCopyParams, copyPadParams);
+            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA67]: local GMM2 MTE2 -> existing MTE2_MTE3 sync
             SyncFuncStatic<AscendC::HardEvent::MTE2_MTE3, SYNC_EVENT_ID4>();
             PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[CB03]: local GMM2 reload -> staging write
         }
@@ -99,6 +102,7 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
     if (IsQuantized || toRankId == rankId) {
         uint64_t dstOffset = toRankId == rankId ? dstBaseOffset : 0;
         AscendC::DataCopyPad(gmLocalD[dstOffset], ubQuant, singleCopyParams);
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA68]: combine staging MTE3 -> existing MTE3_S sync
         SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID4>();
         PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[C3]: staging write -> Hcomm source read
     }
@@ -225,6 +229,7 @@ __aicore__ inline void CombineQuantizedTokens(uint32_t batchStart, uint32_t curR
 
     AscendC::DataCopyExtParams singleCopyParams{1, static_cast<uint32_t>(quantTokenSize), 0, 0, 0};
     AscendC::DataCopyPad(gmRemoteD[dstBaseOffset], ubQuant, singleCopyParams);
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA69]: legacy quantized combine MTE3 -> caller
 }
 
 // =============================================
@@ -263,6 +268,7 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
             SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
             PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[CB05]: prior send/staging -> GMM2 GM reload
             AscendC::DataCopyPad(ubBf16, gmm2OutGm[(tokenStart + i) * n], gm2UbParams, copyPadParams);
+            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA70]: combine GMM2 MTE2 -> existing MTE2_V sync
             SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID4>();
             PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[CB06]: GMM2 GM reload -> communication quant
 
