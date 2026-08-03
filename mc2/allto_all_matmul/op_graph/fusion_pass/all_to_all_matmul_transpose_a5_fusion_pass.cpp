@@ -22,6 +22,7 @@
 #include "acl/acl_rt.h" // 运行时判断cann ver
 #include <set>
 #include <string>
+#include <cstring>
 #include <tuple>
 
 namespace ops {
@@ -43,6 +44,14 @@ const size_t ONE_DIM_SIZE = 1;
 const size_t PERM_SIZE_ONE = 1;
 const size_t PERM_SIZE_TWO = 2;
 const size_t PERM_SIZE_THREE = 3;
+
+// AlltoAllMatmul IR 输入下标（与 op def / ES IrDefInputs 一致）
+const int32_t IR_BIAS = 2;
+const int32_t IR_X1_SCALE = 3;
+const int32_t IR_X2_SCALE = 4;
+const int32_t IR_COMM_SCALE = 5;
+const int32_t IR_X1_OFFSET = 6;
+const int32_t IR_X2_OFFSET = 7;
 
 enum class TransposeNode {
     Transpose,
@@ -324,46 +333,148 @@ static bool CollectSubgraphInputsInfo(const std::vector<ge::fusion::SubgraphInpu
     return true;
 }
 
-static size_t GetMinRequiredSubgraphInputNum(const std::string &patternNameStr)
+static bool GetCapturedMc2Node(const std::unique_ptr<ge::fusion::MatchResult> &matchResult, ge::GNode &mc2Node);
+
+static bool IsSameGNode(const ge::GNode &lhs, const ge::GNode &rhs)
 {
-    bool hasBias = patternNameStr.find(PATTERN_BIAS) != std::string::npos;
-    bool hasX1Scale = patternNameStr.find(PATTERN_X1_SCALE) != std::string::npos;
-    bool hasX2Scale = patternNameStr.find(PATTERN_X2_SCALE) != std::string::npos;
-    bool hasCommScale = patternNameStr.find(PATTERN_COMM_SCALE) != std::string::npos;
-    bool hasX1Offset = patternNameStr.find(PATTERN_X1_OFFSET) != std::string::npos;
-    bool hasX2Offset = patternNameStr.find(PATTERN_X2_OFFSET) != std::string::npos;
-
-    // required input x1,x2
-    size_t inputNum = 2;
-    if (hasBias) {
-        inputNum++;
+    ge::AscendString lhsName;
+    ge::AscendString rhsName;
+    if (lhs.GetName(lhsName) != ge::GRAPH_SUCCESS || rhs.GetName(rhsName) != ge::GRAPH_SUCCESS) {
+        return false;
     }
-    if (hasX1Scale) {
-        inputNum++;
+    const char *lhsStr = lhsName.GetString();
+    const char *rhsStr = rhsName.GetString();
+    if (lhsStr == nullptr || rhsStr == nullptr) {
+        return false;
     }
-    if (hasX2Scale) {
-        inputNum++;
-    }
-    if (hasCommScale) {
-        inputNum++;
-    }
-    if (hasX1Offset) {
-        inputNum++;
-    }
-    if (hasX2Offset) {
-        inputNum++;
-    }
-
-    return inputNum;
+    return std::strcmp(lhsStr, rhsStr) == 0;
 }
 
-static bool ValidateSubgraphInputNum(const std::string &patternNameStr, size_t inputNum)
+static const char *IrInputName(int32_t irIndex)
 {
-    const size_t minRequiredInputs = GetMinRequiredSubgraphInputNum(patternNameStr);
-    if (inputNum < minRequiredInputs) {
-        OPS_LOG_E(FUSION_PASS_NAME.c_str(),
-                  "Subgraph input nums do not meet requirement, expect at least %zu but got %zu.", minRequiredInputs,
-                  inputNum);
+    switch (irIndex) {
+        case IR_BIAS:
+            return "bias";
+        case IR_X1_SCALE:
+            return "x1_scale";
+        case IR_X2_SCALE:
+            return "x2_scale";
+        case IR_COMM_SCALE:
+            return "comm_scale";
+        case IR_X1_OFFSET:
+            return "x1_offset";
+        case IR_X2_OFFSET:
+            return "x2_offset";
+        default:
+            return "unknown";
+    }
+}
+
+static void AssignOptionalInput(ReplaceGraphInputs &inputs, int32_t irIndex, const ge::es::EsTensorHolder &holder)
+{
+    switch (irIndex) {
+        case IR_BIAS:
+            inputs.rBias = holder;
+            break;
+        case IR_X1_SCALE:
+            inputs.rX1Scale = holder;
+            break;
+        case IR_X2_SCALE:
+            inputs.rX2Scale = holder;
+            break;
+        case IR_COMM_SCALE:
+            inputs.rCommScale = holder;
+            break;
+        case IR_X1_OFFSET:
+            inputs.rX1Offset = holder;
+            break;
+        case IR_X2_OFFSET:
+            inputs.rX2Offset = holder;
+            break;
+        default:
+            break;
+    }
+}
+
+// 顺序必须与 MakePattern 中 CreateInputs / idx++ 一致
+static std::vector<int32_t> GetOptionalIrsFromPatternName(const std::string &patternNameStr)
+{
+    std::vector<int32_t> irs;
+    if (patternNameStr.find(PATTERN_BIAS) != std::string::npos) {
+        irs.push_back(IR_BIAS);
+    }
+    if (patternNameStr.find(PATTERN_X1_SCALE) != std::string::npos) {
+        irs.push_back(IR_X1_SCALE);
+    }
+    if (patternNameStr.find(PATTERN_X2_SCALE) != std::string::npos) {
+        irs.push_back(IR_X2_SCALE);
+    }
+    if (patternNameStr.find(PATTERN_COMM_SCALE) != std::string::npos) {
+        irs.push_back(IR_COMM_SCALE);
+    }
+    if (patternNameStr.find(PATTERN_X1_OFFSET) != std::string::npos) {
+        irs.push_back(IR_X1_OFFSET);
+    }
+    if (patternNameStr.find(PATTERN_X2_OFFSET) != std::string::npos) {
+        irs.push_back(IR_X2_OFFSET);
+    }
+    return irs;
+}
+
+// 从 subgraph 边界取 optional 实际接到 mc2 的 IR 下标（无 bias 时也不会把 scale 误判成 bias）
+static bool CollectOptionalIrsFromSubgraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
+                                           const ge::GNode &mc2Node, std::vector<int32_t> &optionalIrs)
+{
+    optionalIrs.clear();
+    // subgraph[0]=x1 -> mc2:0, subgraph[1]=x2 -> Transpose；optional 从下标 2 开始
+    for (size_t i = 2; i < subgraphInputs.size(); ++i) {
+        const auto matchNodes = subgraphInputs[i].GetAllInputs();
+        bool found = false;
+        for (const auto &nodeIo : matchNodes) {
+            if (!IsSameGNode(nodeIo.node, mc2Node)) {
+                continue;
+            }
+            const int32_t irIndex = static_cast<int32_t>(nodeIo.index);
+            if (irIndex < IR_BIAS || irIndex > IR_X2_OFFSET) {
+                OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Unexpected mc2 input index %d from subgraph[%zu].", irIndex, i);
+                return false;
+            }
+            optionalIrs.push_back(irIndex);
+            found = true;
+            break;
+        }
+        if (!found) {
+            OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Subgraph[%zu] does not connect to captured AlltoAllMatmul.", i);
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool IsPatternOptionalMatchNode(const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
+{
+    ge::GNode mc2Node;
+    if (!GetCapturedMc2Node(matchResult, mc2Node)) {
+        return false;
+    }
+    std::vector<ge::fusion::SubgraphInput> subgraphInputs;
+    if (matchResult->ToSubgraphBoundary()->GetAllInputs(subgraphInputs) != ge::SUCCESS) {
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Get subgraph inputs failed in IsPatternOptionalMatchNode.");
+        return false;
+    }
+    std::vector<int32_t> connectedIrs;
+    if (!CollectOptionalIrsFromSubgraph(subgraphInputs, mc2Node, connectedIrs)) {
+        return false;
+    }
+
+    ge::AscendString patternName = "";
+    matchResult->GetPatternGraph().GetName(patternName);
+    const std::string patternNameStr = patternName.GetString() != nullptr ? patternName.GetString() : "";
+    const auto patternIrs = GetOptionalIrsFromPatternName(patternNameStr);
+    if (patternIrs != connectedIrs) {
+        OPS_LOG_D(FUSION_PASS_NAME.c_str(),
+                  "Skip pattern=%s: optional IR mismatch (pattern_size=%zu, connected_size=%zu).",
+                  patternNameStr.c_str(), patternIrs.size(), connectedIrs.size());
         return false;
     }
     return true;
@@ -382,13 +493,26 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraph
         return false;
     }
 
-    ge::AscendString patternName = "";
-    matchResult->GetPatternGraph().GetName(patternName);
-    std::string patternNameStr = patternName.GetString();
-    if (!ValidateSubgraphInputNum(patternNameStr, inputShapes.size())) {
+    ge::GNode mc2Node;
+    if (!GetCapturedMc2Node(matchResult, mc2Node)) {
         return false;
     }
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Begin create input to index.");
+    std::vector<int32_t> optionalIrs;
+    if (!CollectOptionalIrsFromSubgraph(subgraphInputs, mc2Node, optionalIrs)) {
+        return false;
+    }
+    if (2U + optionalIrs.size() != inputShapes.size()) {
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Subgraph input size mismatch, subgraph=%zu, optional=%zu.",
+                  inputShapes.size(), optionalIrs.size());
+        return false;
+    }
+
+    ge::AscendString patternName = "";
+    matchResult->GetPatternGraph().GetName(patternName);
+    const std::string patternNameStr = patternName.GetString() != nullptr ? patternName.GetString() : "";
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "CreateReplaceGraphInputs pattern=%s, subgraph=%zu, optional=%zu.",
+              patternNameStr.c_str(), inputShapes.size(), optionalIrs.size());
+
     int64_t inputIdx = 0;
     inputs.rX1 = replaceGraphBuilder.CreateInput(inputIdx, "x1", inputDTypes[inputIdx], inputFormats[inputIdx],
                                                  inputShapes[inputIdx].GetDims());
@@ -396,40 +520,20 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraph
     inputs.rX2 = replaceGraphBuilder.CreateInput(inputIdx, "x2", inputDTypes[inputIdx], inputFormats[inputIdx],
                                                  inputShapes[inputIdx].GetDims());
     ++inputIdx;
+
     inputs.rBias = nullptr;
-    if (patternNameStr.find(PATTERN_BIAS) != std::string::npos) {
-        inputs.rBias = replaceGraphBuilder.CreateInput(inputIdx, "bias", inputDTypes[inputIdx], inputFormats[inputIdx],
-                                                       inputShapes[inputIdx].GetDims());
-        ++inputIdx;
-    }
     inputs.rX1Scale = nullptr;
-    if (patternNameStr.find(PATTERN_X1_SCALE) != std::string::npos) {
-        inputs.rX1Scale = replaceGraphBuilder.CreateInput(inputIdx, "x1_scale", inputDTypes[inputIdx],
-                                                          inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
-        ++inputIdx;
-    }
     inputs.rX2Scale = nullptr;
-    if (patternNameStr.find(PATTERN_X2_SCALE) != std::string::npos) {
-        inputs.rX2Scale = replaceGraphBuilder.CreateInput(inputIdx, "x2_scale", inputDTypes[inputIdx],
-                                                          inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
-        ++inputIdx;
-    }
     inputs.rCommScale = nullptr;
-    if (patternNameStr.find(PATTERN_COMM_SCALE) != std::string::npos) {
-        inputs.rCommScale = replaceGraphBuilder.CreateInput(inputIdx, "comm_scale", inputDTypes[inputIdx],
-                                                            inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
-        ++inputIdx;
-    }
     inputs.rX1Offset = nullptr;
-    if (patternNameStr.find(PATTERN_X1_OFFSET) != std::string::npos) {
-        inputs.rX1Offset = replaceGraphBuilder.CreateInput(inputIdx, "x1_offset", inputDTypes[inputIdx],
-                                                           inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
-        ++inputIdx;
-    }
     inputs.rX2Offset = nullptr;
-    if (patternNameStr.find(PATTERN_X2_OFFSET) != std::string::npos) {
-        inputs.rX2Offset = replaceGraphBuilder.CreateInput(inputIdx, "x2_offset", inputDTypes[inputIdx],
-                                                           inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
+    for (int32_t irIndex : optionalIrs) {
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Map subgraph[%ld] -> %s(ir=%d), dtype=%d.", inputIdx, IrInputName(irIndex),
+                  irIndex, static_cast<int32_t>(inputDTypes[inputIdx]));
+        auto holder = replaceGraphBuilder.CreateInput(inputIdx, IrInputName(irIndex), inputDTypes[inputIdx],
+                                                      inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
+        AssignOptionalInput(inputs, irIndex, holder);
+        ++inputIdx;
     }
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End to create inputs in Replacement.");
     return true;
@@ -607,6 +711,11 @@ bool AllToAllMatmulTransposeA5FusionPass::MeetRequirements(
     // 是否transpose 条件吻合
     if (!IsTransposePermValid(matchResult)) {
         OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Transpose permutation is not valid.");
+        return false;
+    }
+
+    // 同 optional 个数的错误 pattern（如 HasX1Offset 误匹配真实 x2_scale）会导致 FLOAT8 接到 x1_offset
+    if (!IsPatternOptionalMatchNode(matchResult)) {
         return false;
     }
 
