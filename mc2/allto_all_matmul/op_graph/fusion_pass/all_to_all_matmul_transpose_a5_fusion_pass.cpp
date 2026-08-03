@@ -589,8 +589,11 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
     bool transposeX2 = false;
     OP_LOGE_IF(mc2Node.GetAttr("transpose_x2", transposeX2) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr transpose_x2 failed.");
-    // 移除 Transpose 节点后，transpose_x2 置反
-    transposeX2 = !transposeX2;
+    // 吸收 x2 上的 Transpose 后：MX tiling 要求 transpose_x2 必须为 true（见 CheckX2Transpose）。
+    // 不能简单取反——入图常已是 true（x2_transpose=1），再 ! 会变成 false 触发 EZ0024。
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Absorb x2 Transpose: transpose_x2 %d -> true.",
+              static_cast<int32_t>(transposeX2));
+    transposeX2 = true;
 
     int64_t groupSize = 0;
     OP_LOGE_IF(mc2Node.GetAttr("group_size", groupSize) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
