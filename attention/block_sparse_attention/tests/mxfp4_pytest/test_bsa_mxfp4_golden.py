@@ -492,6 +492,7 @@ def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(query, key, value, block_spar
         B, N, S, D = q.shape
         N2 = k.shape[1]
         S2 = k.shape[2]                       # KV 序列长(不与 q 的 S 混)
+        group_size = N // N2
         block_x, block_y = int(block_shape[0]), int(block_shape[1])
         ceil_q = (S + block_x - 1) // block_x
         ceil_kv = (S2 + block_y - 1) // block_y
@@ -508,7 +509,7 @@ def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(query, key, value, block_spar
 
         for b in range(B):
             for n in range(N):
-                n2 = n % N2                    # GQA 取模映射(query 头 n -> kv 头 n%N2)
+                n2 = n // group_size                 # GQA 取模映射(query 头 n -> kv 头 n//group_size)
                 for qb in range(ceil_q):      # ── q-block(kernel q-tile)──
                     q_lo = qb * block_x
                     q_hi = min(q_lo + block_x, S)
@@ -677,7 +678,7 @@ def _build_block_sparse_mask(b, n1, ceil_q, ceil_kv, kind='dense'):
     raise ValueError(f"unsupported mask kind: {kind}")
 
 
-def run_bsa_mxfp4_eager(b, n1, n2, g, s1, s2, qk_d, v_d=None,
+def run_bsa_mxfp4_eager(b, n1, n2, s1, s2, g=1, qk_d=None, v_d=None,
                         input_layout='BNSD', out_dtype='bfloat16',
                         block_shape=(128, 128), mask_kind='dense',
                         inner_precise=4, quant_mode=2,
@@ -686,6 +687,7 @@ def run_bsa_mxfp4_eager(b, n1, n2, g, s1, s2, qk_d, v_d=None,
     """qfa 风格: fp32 造数据 -> mxfp4 打包 -> CPU golden -> NPU -> check_result.
        p_quant: 'snap_local'|'none'; s_dtype: 'fp16'(默认)|'bf16'|'fp32'; dump: 落盘中间结果。
        返回 (fulfill_percent, result_str). NPU 不可用时返回 (-1.0, 'SKIP')."""
+    g = n1 // n2
     assert input_layout == 'BNSD', "首版仅支持 BNSD"
     assert n1 == n2 * g, f"GQA 约束 n1==n2*g: {n1} vs {n2}*{g}"
     assert block_shape[0] in (64, 128), f"MXFP4 blockShapeX 仅支持 64/128, 当前 {block_shape[0]}"
@@ -899,6 +901,13 @@ class TestBSAMxfp4Golden(TestCase):
            验证 K->L0A srcStride=CeilAlign(n,16)/16 与实际 zN 画布一致)。"""
         self._run(b=1, n1=1, n2=1, g=1, s1=127, s2=255, qk_d=128,
                   block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_dense_b1_qn8_kvn2_g4_qs256_kvs1024_d128(self, device="npu"):
+        """③ GQA dense: qn8/kvn2/g4 (q 头 0,1,2,3->kv0, 4,5,6,7->kv1, n//g 连续分组),
+        s1=256 双 q-block + s2=1024 八 kv tile (头映射 + 多块叠加路径)。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=256, s2=1024, qk_d=128,
+                block_shape=[128, 128], mask_kind='dense')
 
 
 if __name__ == "__main__":
