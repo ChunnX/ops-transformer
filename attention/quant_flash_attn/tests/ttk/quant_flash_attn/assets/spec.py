@@ -30,6 +30,7 @@ def load_impl_module(stem):
 golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
 compare_module = load_impl_module("compare")
+graph_module = load_impl_module("graph")
 
 
 class QfaMxfp8Spec:
@@ -39,15 +40,15 @@ class QfaMxfp8Spec:
     customize_inputs = inputs_module.generate_qfa_mxfp8_inputs
     compare = compare_module.compare
 
+    torch_graph = graph_module.QuantFlashAttnAclGraph
+
     tolerance = {
         "float16": {
-            "standard": "IsClose",
             "rtol": 0.005,
             "ptol": 0.005,
             "atol": 0.000025,
         },
         "bfloat16": {
-            "standard": "IsClose",
             "rtol": 0.0078125,
             "ptol": 0.005,
             "atol": 0.0001,
@@ -68,13 +69,11 @@ class QfaMetadataSpec:
 
     tolerance = {
         "float16": {
-            "standard": "IsClose",
             "rtol": 0.005,
             "ptol": 0.005,
             "atol": 0.000025,
         },
         "bfloat16": {
-            "standard": "IsClose",
             "rtol": 0.0078125,
             "ptol": 0.005,
             "atol": 0.0001,
@@ -95,13 +94,11 @@ class QfaMainSpec:
 
     tolerance = {
         "float16": {
-            "standard": "IsClose",
             "rtol": 0.005,
             "ptol": 0.005,
             "atol": 0.000025,
         },
         "bfloat16": {
-            "standard": "IsClose",
             "rtol": 0.0078125,
             "ptol": 0.005,
             "atol": 0.0001,
@@ -110,7 +107,7 @@ class QfaMainSpec:
 
 
 __spec__ = {
-    "qfa_mxfp8_wrapper.npu_qfa_mxfp8": QfaMxfp8Spec,
-    "qfa_metadata_wrapper.run_metadata": QfaMetadataSpec,
-    "qfa_main_wrapper.run_main": QfaMainSpec,
+    "qfa_mxfp8_wrapper.npu_qfa_mxfp8": "QfaMxfp8Spec",
+    "qfa_metadata_wrapper.run_metadata": "QfaMetadataSpec",
+    "qfa_main_wrapper.run_main": "QfaMainSpec",
 }

@@ -2,13 +2,13 @@
 
 ## 1. 环境准备
 
-### 1.1 安装 CANN / PyTorch + torch-npu
+### 1.1 安装 CANN / PyTorch + TorchNPU
 
 参考根目录 README.md，或使用项目根目录下的安装脚本：
 
 ```bash
 bash install_cann_950.sh    # 安装 CANN 9.1.0 + 950 ops
-bash install_torch_npu.sh   # 安装 PyTorch + torch-npu
+bash install_torch_npu.sh   # 安装 PyTorch + TorchNPU
 ```
 
 ### 1.2 每次执行前加载环境
@@ -423,7 +423,7 @@ SKIP_CASES = {
 | 报错 | 原因 | 解决 |
 |------|------|------|
 | `libhccl.so not found` | 未 source CANN 环境变量 | `source /home/user/Ascend/cann/set_env.sh` |
-| `No module named 'torch_npu'` | 未安装 torch-npu | `bash install_torch_npu.sh` |
+| `No module named 'torch_npu'` | 未安装 TorchNPU | `bash install_torch_npu.sh` |
 | `No cached input: xxx_input.pt` | 缓存模式下缺少输入数据 | 先运行 `--golden-mode=gen` 生成数据 |
 | `No cached CPU output` | npu/compare 模式下缺少 CPU 缓存 | 先运行 `--golden-mode=cpu` 生成 CPU 输出 |
 | `--use-external-input requires --load-pt-dir` | 使用外部数据但未指定目录 | 添加 `--load-pt-dir=/path/to/pt` |
@@ -447,6 +447,7 @@ pytest --msprof -v -m perf_rdv
 ```
 
 `--msprof` 的工作流程：
+
 1. 快照当前目录已有的 `PROF_*` 目录
 2. 用 `msprof python -m pytest ...` 包裹运行内层测试
 3. 测试完成后找到新生成的 `PROF_*` 目录
@@ -485,14 +486,19 @@ pytest --parse-prof=./PROF_xxx --perf-baseline=./perf_baseline/perf_report_xxx.l
 ### 14.6 建立 Baseline
 
 1. 运行一次 profiling 生成报告：
+
    ```bash
    pytest --msprof -v -m debug
    ```
+
 2. 将生成的报告拷贝到 `perf_baseline/` 目录作为基线：
+
    ```bash
    cp perf_output/perf_report_*.log perf_baseline/
    ```
+
 3. 后续运行时指定该基线进行比较：
+
    ```bash
    pytest --msprof --perf-baseline=./perf_baseline/perf_report_20260615113640.log -v -m debug
    ```

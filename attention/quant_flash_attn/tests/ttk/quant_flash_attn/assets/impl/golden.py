@@ -11,9 +11,10 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import logging
+import math
 import os
 import sys
-from typing import List
+from typing import List, Optional
 
 import numpy
 import torch
@@ -24,14 +25,232 @@ if _TESTS_DIR not in sys.path:
     sys.path.insert(0, _TESTS_DIR)
 import quant_flash_attn_golden as golden_mod
 
-# try:
-#     from common import golden_cache
-# except ImportError:
-#     import golden_cache
-
 logger = logging.getLogger(__name__)
 
 __golden__ = {"e2e": {"qfa_mxfp8_wrapper.npu_qfa_mxfp8": "cpu_qfa_mxfp8"}}
+
+
+# ==============================================================================
+# 框架 fp8/e8m0 -> torch 转换
+# ==============================================================================
+
+
+def _to_torch_fp8(t):
+    if isinstance(t, torch.Tensor):
+        if t.dtype == torch.float8_e4m3fn:
+            return t
+        if t.dtype == torch.uint8:
+            return t.view(torch.float8_e4m3fn)
+        return t.to(torch.float8_e4m3fn)
+    arr = numpy.asarray(t)
+    if arr.dtype == numpy.uint8:
+        return torch.from_numpy(arr).view(torch.float8_e4m3fn)
+    return torch.from_numpy(arr.view(numpy.uint8)).view(torch.float8_e4m3fn)
+
+
+def _to_torch_e8m0(t):
+    if isinstance(t, torch.Tensor):
+        if t.dtype == torch.float8_e8m0fnu:
+            return t
+        if t.dtype == torch.uint8:
+            return t.view(torch.float8_e8m0fnu)
+        raise ValueError(f"_to_torch_e8m0: unexpected torch dtype {t.dtype}")
+    arr = numpy.asarray(t)
+    if arr.dtype == numpy.uint8:
+        return torch.from_numpy(arr).view(torch.float8_e8m0fnu)
+    return torch.from_numpy(arr.view(numpy.uint8)).view(torch.float8_e8m0fnu)
+
+
+def _to_torch_int32(t):
+    if isinstance(t, torch.Tensor):
+        return t.to(torch.int32) if t.dtype != torch.int32 else t
+    return torch.from_numpy(numpy.asarray(t)).to(torch.int32)
+
+
+def _tnd_to_bnsd_fixed(tensor_tnd, seq_lens, cu_seqlens=None):
+    tensor = (
+        tensor_tnd
+        if isinstance(tensor_tnd, torch.Tensor)
+        else torch.as_tensor(tensor_tnd)
+    )
+    B = len(seq_lens)
+    N = tensor.shape[1]
+    D = tensor.shape[2]
+    max_seq = max(seq_lens) if seq_lens else 0
+    result = torch.zeros((B, N, max_seq, D), dtype=tensor.dtype, device=tensor.device)
+    if cu_seqlens is not None:
+        for b in range(B):
+            act_s = seq_lens[b]
+            if act_s <= 0:
+                continue
+            offset = cu_seqlens[b]
+            result[b, :, :act_s, :] = tensor[offset : offset + act_s, :, :].permute(
+                1, 0, 2
+            )
+    else:
+        t = 0
+        for b in range(B):
+            act_s = seq_lens[b]
+            if act_s > 0:
+                result[b, :, :act_s, :] = tensor[t : t + act_s, :, :].permute(1, 0, 2)
+            t += act_s
+    return result.contiguous()
+
+
+def _assert_no_e8m0_nan(t_e8m0, name="scale"):
+    if t_e8m0.numel() == 0:
+        return
+    nan_count = int((t_e8m0.view(torch.uint8) == 0xFF).sum().item())
+    if nan_count:
+        raise ValueError(
+            f"{name}: {nan_count} e8m0 bytes are 0xFF (NaN sentinel) — "
+            "bin data corrupted or inputs.py sanitize bypassed"
+        )
+
+
+# ==============================================================================
+# PA paged layout 逆转换辅助
+# ==============================================================================
+
+
+def _reverse_layout_to_cache(pa_tensor, kv_layout, is_scale, is_vscale):
+    layout = (kv_layout or "BnNBsD").upper()
+    if layout in ("BNNBSD", "PA_BNBD"):
+        return pa_tensor
+    if layout in ("BNBSND", "PA_BBND"):
+        return pa_tensor.transpose(1, 2).contiguous()
+    if layout == "PA_NZ":
+        return golden_mod.pa_reverse_permute_nz(pa_tensor, is_scale, is_vscale)
+    raise ValueError(f"Unsupported kv_layout: {kv_layout}")
+
+
+def _tnd_qk_scale_to_bnsd_grouped(
+    scale_tnd_packed, seq_lens, cu_seqlens=None, q_scale_layout="TND", num_kv_heads=None
+):
+    layout = golden_mod.canonical_q_scale_layout(q_scale_layout)
+    if layout == "N2TGD":
+        if num_kv_heads is None:
+            raise ValueError("num_kv_heads required for N2TGD layout")
+        tnd_packed = scale_tnd_packed.permute(1, 0, 2, 3, 4).contiguous()
+        N_kv, T, G, Dg_half, _ = scale_tnd_packed.shape
+        N_q = N_kv * G
+        tnd_packed = tnd_packed.reshape(T, N_q, Dg_half, 2)
+    else:
+        tnd_packed = scale_tnd_packed
+
+    T, N, Dg_half, _pair = tnd_packed.shape
+    Dg = Dg_half * 2
+    tnd_grouped = tnd_packed.reshape(T, N, Dg)
+    return _tnd_to_bnsd_fixed(tnd_grouped, seq_lens, cu_seqlens=cu_seqlens)
+
+
+def _tnd_v_scale_to_bnsd_grouped(
+    scale_tnd_packed, seq_lens, cu_seqlens=None, group_size=32
+):
+    T, N, D, _pair = scale_tnd_packed.shape
+    sg_per_batch = [math.ceil(s / group_size) for s in seq_lens]
+    sg_max = max(sg_per_batch) if sg_per_batch else 0
+    B = len(seq_lens)
+    result = torch.zeros(
+        (B, N, sg_max, D), dtype=scale_tnd_packed.dtype, device=scale_tnd_packed.device
+    )
+
+    t = 0
+    for b in range(B):
+        sg = sg_per_batch[b]
+        if sg <= 0:
+            continue
+        sg_padded = sg + (sg % 2)
+        s_out_b = sg_padded // 2
+        if cu_seqlens is not None:
+            t_start = t
+        else:
+            t_start = t
+        t_end = t_start + s_out_b
+        chunk = scale_tnd_packed[t_start:t_end, :, :, :]
+        recovered = torch.zeros(
+            (sg_padded, N, D), dtype=chunk.dtype, device=chunk.device
+        )
+        recovered[0::2, :, :] = chunk[:, :, :, 0]
+        recovered[1::2, :, :] = chunk[:, :, :, 1]
+        result[b, :, :sg, :] = recovered[:sg, :, :].permute(1, 0, 2)
+        t = t_end
+    return result.contiguous()
+
+
+def _pa_k_scale_to_bnsd_grouped(pa_cache, seq_lens, block_size, block_table):
+    pa_cache = (
+        pa_cache if isinstance(pa_cache, torch.Tensor) else torch.as_tensor(pa_cache)
+    )
+    block_table = (
+        block_table
+        if isinstance(block_table, torch.Tensor)
+        else torch.as_tensor(block_table)
+    )
+    Bn, N, Bs, Dg_half, _pair = pa_cache.shape
+    Dg = Dg_half * 2
+    B = block_table.shape[0]
+    max_skv = max(seq_lens) if seq_lens else 0
+    result = torch.zeros(
+        (B, N, max_skv, Dg_half, 2), dtype=pa_cache.dtype, device=pa_cache.device
+    )
+    num_blocks = [math.ceil(s / Bs) for s in seq_lens]
+    for b in range(B):
+        bid_table = block_table[b]
+        for blk_idx in range(num_blocks[b]):
+            blockid = int(bid_table[blk_idx])
+            block_offset = blk_idx * Bs
+            valid_len = min(Bs, seq_lens[b] - block_offset)
+            if valid_len <= 0:
+                continue
+            result[b, :, block_offset : block_offset + valid_len] = pa_cache[
+                blockid, :, :valid_len
+            ]
+    return result[:, :, :max_skv, :, :].reshape(B, N, max_skv, Dg).contiguous()
+
+
+def _pa_v_scale_to_bnsd_grouped(
+    pa_cache, seq_lens, block_size, block_table, group_size=32
+):
+    pa_cache = (
+        pa_cache if isinstance(pa_cache, torch.Tensor) else torch.as_tensor(pa_cache)
+    )
+    block_table = (
+        block_table
+        if isinstance(block_table, torch.Tensor)
+        else torch.as_tensor(block_table)
+    )
+    Bn, N, pack_bs, D, _pair = pa_cache.shape
+    B = block_table.shape[0]
+    v_scale_pack_ratio = group_size * 2
+    pack_seq_lens = [math.ceil(s / v_scale_pack_ratio) for s in seq_lens]
+    max_packed = max(pack_seq_lens) if pack_seq_lens else 0
+    result_packed = torch.zeros(
+        (B, N, max_packed, D, 2), dtype=pa_cache.dtype, device=pa_cache.device
+    )
+    num_blocks = [math.ceil(s / pack_bs) for s in pack_seq_lens]
+    for b in range(B):
+        bid_table = block_table[b]
+        for blk_idx in range(num_blocks[b]):
+            blockid = int(bid_table[blk_idx])
+            block_offset = blk_idx * pack_bs
+            valid_len = min(pack_bs, pack_seq_lens[b] - block_offset)
+            if valid_len <= 0:
+                continue
+            result_packed[b, :, block_offset : block_offset + valid_len] = pa_cache[
+                blockid, :, :valid_len
+            ]
+    result_packed = result_packed[:, :, :max_packed, :, :].contiguous()
+    B_out, N_out, S_packed, D_out, _ = result_packed.shape
+    Sg_recovered = S_packed * 2
+    unpacked = (
+        result_packed.permute(0, 1, 2, 4, 3)
+        .contiguous()
+        .reshape(B_out, N_out, Sg_recovered, D_out)
+    )
+    sg_per_batch = [math.ceil(s / group_size) for s in seq_lens]
+    sg_max = max(sg_per_batch) if sg_per_batch else 0
+    return unpacked[:, :, :sg_max, :].contiguous()
 
 
 def _apply_golden_globals(attrs):
@@ -58,12 +277,6 @@ def _apply_golden_globals(attrs):
         "max_seqlen_q": "MAX_SEQLEN_Q",
         "max_seqlen_kv": "MAX_SEQLEN_KV",
         "softmax_scale": "SOFTMAX_SCALE",
-        "seed_q": "SEED_Q",
-        "seed_k": "SEED_K",
-        "seed_v": "SEED_V",
-        "data_range_q": "DATA_RANGE_Q",
-        "data_range_k": "DATA_RANGE_K",
-        "data_range_v": "DATA_RANGE_V",
     }
     for attr_key, golden_key in mapping.items():
         if attr_key in attrs:
@@ -73,7 +286,9 @@ def _apply_golden_globals(attrs):
     p_scale = attrs.get("p_scale_value", 1.0)
     if isinstance(p_scale, torch.Tensor):
         p_scale = float(p_scale.item())
-    setattr(golden_mod, "P_SCALE", float(p_scale))
+    else:
+        p_scale = float(p_scale)
+    setattr(golden_mod, "P_SCALE", p_scale)
 
 
 def _cu_seqlens_to_actual(cu_seqlens):
@@ -84,43 +299,6 @@ def _cu_seqlens_to_actual(cu_seqlens):
     if cu_seqlens is None or len(cu_seqlens) < 2:
         return []
     return [cu_seqlens[i + 1] - cu_seqlens[i] for i in range(len(cu_seqlens) - 1)]
-
-
-def _load_bin_tensor(path, shape, dtype_name):
-    """从 numpy raw .bin 加载 tensor：numpy.fromfile + reshape + torch 还原。
-
-    与 ttk load_numpy_data 兼容：fp8/e8m0 以 uint8 字节存储，加载后 view 为 torch fp8 dtype。
-    dtype_name 是 torch dtype 的字符串名（如 'float8_e4m3fn'、'float32'、'int32'）。
-    与 assets/impl/inputs.py 的 _load_bin_tensor 保持一致（bin 分跑共用格式）。
-    """
-    _mapping = {
-        "float32": (numpy.float32, torch.float32),
-        "int32": (numpy.int32, torch.int32),
-        "float16": (numpy.float16, torch.float16),
-        "uint8": (numpy.uint8, torch.uint8),
-        "int8": (numpy.int8, torch.int8),
-        "float8_e4m3fn": (numpy.uint8, torch.float8_e4m3fn),
-        "float8_e8m0fnu": (numpy.uint8, torch.float8_e8m0fnu),
-    }
-    if dtype_name not in _mapping:
-        raise ValueError(f"unsupported dtype_name: {dtype_name}")
-    np_load_dtype, torch_dtype = _mapping[dtype_name]
-    arr = numpy.fromfile(path, dtype=np_load_dtype).reshape(shape)
-    if torch_dtype in (torch.float8_e4m3fn, torch.float8_e8m0fnu):
-        return torch.from_numpy(arr).view(torch_dtype)
-    return torch.from_numpy(arr).to(torch_dtype)
-
-
-def _torch_to_bin(tensor, path):
-    """torch tensor → numpy raw .bin 文件（ttk load_numpy_data 兼容格式）。"""
-    if tensor is None:
-        raise ValueError(f"_torch_to_bin: tensor 为 None，无法保存到 {path}")
-    arr = tensor.detach().cpu().contiguous()
-    if arr.dtype in (torch.float8_e4m3fn, torch.float8_e8m0fnu):
-        numpy_arr = arr.view(torch.uint8).numpy()
-    else:
-        numpy_arr = arr.numpy()
-    numpy_arr.tofile(path)
 
 
 def cpu_qfa_mxfp8(
@@ -160,52 +338,15 @@ def cpu_qfa_mxfp8(
     data_range_v: float = 1.0,
     **kwargs,
 ):
-    """CPU golden:从 golden_mod 缓存取真实 FP8 数据,调 cpu_mxfp8_golden 算参考输出。
-
-    Bin 分跑支持：
-    - `__bin_golden` 非空时（list of (path, shape, numpy_dtype)），直接从 bin 加载 golden
-      输出，跳过 CPU 计算。用于 cpu/npu 分跑：npu 侧直接用 cpu 预生成的 golden bin。
-    - `__bin_golden_out` 非空时（list of path），CPU 计算完后把 golden 输出按顺序写入
-      bin 路径。用于 cpu 侧预生成 golden bin 供 npu 侧读取。
-    """
     # csv precision_tolerances / absolute_precision 经 testcase.attributes → kwargs 传入,
     # 暂存到 golden_mod 供 compare 插件读取（ttk 不把 testcase 直接传给 custom compare）。
     golden_mod._csv_precision_tolerances = kwargs.get("precision_tolerances")
     golden_mod._csv_absolute_precision = kwargs.get("absolute_precision")
 
-    # ----- Bin 分跑路径：__bin_golden 非空时从 numpy .bin 加载 golden，跳过 CPU 计算 -----
-    # __bin_golden 是 list of (path, shape, dtype_name) 三元组（与 __bin_inputs 同格式）。
-    bin_golden = kwargs.get("__bin_golden")
-    if bin_golden:
-        loaded = []
-        for path, shape, dtype_name in bin_golden:
-            loaded.append(_load_bin_tensor(path, shape, dtype_name))
-        logger.info(
-            "[GOLDEN] loaded %d golden tensors from bin via __bin_golden", len(loaded)
-        )
-        return loaded
-
-    # 从 golden_mod 取 customize_inputs 缓存的真实 FP8 数据
-    cached = getattr(golden_mod, "_cached_mxfp8_inputs", None)
-    if cached is not None:
-        (
-            q,
-            k,
-            v,
-            dequant_scale_q,
-            dequant_scale_k,
-            dequant_scale_v,
-            p_scale,
-            block_table,
-        ) = cached[:8]
-
     # actual_seq (有效长度) 用于 CPU golden 的 attention mask 构建——必须与 NPU 侧
     # prepare_npu_inputs 里的 _actual_seq_q/kv() 取值逻辑一致：
     #   优先用 seqused (实际有效长度，可小于 padded 范围)；
     #   seqused 为 None 时才用 cu_seqlens 差分 (物理 TND 范围)。
-    # 设计文档 (3.2.3): cu_seqlens 提供物理 token 起止，seqused 提供实际有效长度，
-    # 两者可同时传入且 seqused <= cu_seqlens 差分。mask 必须基于 seqused 截断，
-    # 否则 CPU 会把 padding 位置当有效 token 算 (causal delta 错误) 导致大面积 mismatch。
     actual_seq_q = (
         list(seqused_q)
         if (seqused_q is not None and len(seqused_q) > 0)
@@ -220,6 +361,13 @@ def cpu_qfa_mxfp8(
     # cu_seqlens_q/kv 需要转为 list(传入时可能是 tuple 或其他类型)
     cu_seqlens_q_list = list(cu_seqlens_q) if cu_seqlens_q is not None else [0]
     cu_seqlens_kv_list = list(cu_seqlens_kv) if cu_seqlens_kv is not None else [0]
+
+    # p_scale_value 从 CSV attributes 经 kwargs 传入
+    p_scale_value = kwargs.get("p_scale_value", 1.0)
+    if isinstance(p_scale_value, torch.Tensor):
+        p_scale_value = float(p_scale_value.item())
+    else:
+        p_scale_value = float(p_scale_value)
 
     _apply_golden_globals(
         {
@@ -243,18 +391,146 @@ def cpu_qfa_mxfp8(
             "is_contiguous": is_contiguous,
             "device_id": device_id,
             "graph_path": graph_path,
-            "p_scale_value": p_scale,
+            "softmax_scale": softmax_scale,
+            "p_scale_value": p_scale_value,
         }
     )
 
+    group_size = 32
+
+    # actual_seq 推导 max_seq (用于 assertion 和 PA 逆转换的 scatter 范围)
+    max_sq = max(actual_seq_q) if actual_seq_q else D
+    max_skv = max(actual_seq_kv) if actual_seq_kv else D
+    Dg = math.ceil(D / group_size)
+
+    # Q: TND -> BNSD
+    q_fp8_tnd = _to_torch_fp8(q)
+    q_fp8_bnsd = _tnd_to_bnsd_fixed(
+        q_fp8_tnd, actual_seq_q, cu_seqlens=cu_seqlens_q_list
+    )
+
+    # Q scale: e8m0 -> fp32
+    dq_e8m0 = _to_torch_e8m0(dequant_scale_q)
+    _assert_no_e8m0_nan(dq_e8m0, "descale_q")
+    dq_fp32 = golden_mod.e8m0_to_fp32(dq_e8m0)
+
+    dq_bnsd_grouped = _tnd_qk_scale_to_bnsd_grouped(
+        dq_fp32,
+        actual_seq_q,
+        cu_seqlens=cu_seqlens_q_list,
+        q_scale_layout=q_scale_layout,
+        num_kv_heads=N_kv,
+    )
+    assert dq_bnsd_grouped.shape == (B, N_q, max_sq, Dg), (
+        f"Q scale grouped shape mismatch: got {tuple(dq_bnsd_grouped.shape)}, "
+        f"expected {(B, N_q, max_sq, Dg)}"
+    )
+
+    # K/V: PA paged / TND -> BNSD
+    if enable_pa:
+        bt = _to_torch_int32(block_table)
+        if bt.numel() == 0 or bt.ndim < 2:
+            raise ValueError(
+                f"[GOLDEN] enable_pa=True but block_table invalid: shape={tuple(bt.shape)}"
+            )
+
+        k_pa = _to_torch_fp8(k)
+        k_cache = _reverse_layout_to_cache(
+            k_pa, kv_cache_layout, is_scale=False, is_vscale=False
+        )
+        k_fp8_bnsd = golden_mod.pa_to_bnsd_data(
+            k_cache, actual_seq_kv, block_size, bt, kv_layout=kv_cache_layout
+        )
+
+        # V data: 同 K
+        v_pa = _to_torch_fp8(v)
+        v_cache = _reverse_layout_to_cache(
+            v_pa, kv_cache_layout, is_scale=False, is_vscale=False
+        )
+        v_fp8_bnsd = golden_mod.pa_to_bnsd_data(
+            v_cache, actual_seq_kv, block_size, bt, kv_layout=kv_cache_layout
+        )
+
+        # K scale: e8m0 -> fp32 -> reverse layout -> out_cache (Bn,N,Bs,Dg//2,2) -> grouped BNSD
+        dk_e8m0 = _to_torch_e8m0(dequant_scale_k)
+        _assert_no_e8m0_nan(dk_e8m0, "descale_k")
+        dk_fp32 = golden_mod.e8m0_to_fp32(dk_e8m0)
+        dk_cache = _reverse_layout_to_cache(
+            dk_fp32, kv_cache_layout, is_scale=True, is_vscale=False
+        )
+        dk_bnsd_grouped = _pa_k_scale_to_bnsd_grouped(
+            dk_cache, actual_seq_kv, block_size, bt
+        )
+        assert dk_bnsd_grouped.shape == (B, N_kv, max_skv, Dg), (
+            f"K scale grouped shape mismatch: got {tuple(dk_bnsd_grouped.shape)}, "
+            f"expected {(B, N_kv, max_skv, Dg)}"
+        )
+
+        # V scale: e8m0 -> fp32 -> reverse layout -> out_cache (Bn,N,pack_bs,D,2) -> grouped BNSD
+        dv_e8m0 = _to_torch_e8m0(dequant_scale_v)
+        _assert_no_e8m0_nan(dv_e8m0, "descale_v")
+        dv_fp32 = golden_mod.e8m0_to_fp32(dv_e8m0)
+        dv_cache = _reverse_layout_to_cache(
+            dv_fp32, kv_cache_layout, is_scale=True, is_vscale=True
+        )
+        dv_bnsd_grouped = _pa_v_scale_to_bnsd_grouped(
+            dv_cache, actual_seq_kv, block_size, bt, group_size=group_size
+        )
+        # V scale grouped: (B, N_kv, Sg_max, D), Sg_max = ceil(max_skv/32)
+        Sg_max = math.ceil(max_skv / group_size) if max_skv > 0 else 0
+        assert dv_bnsd_grouped.shape == (B, N_kv, Sg_max, D), (
+            f"V scale grouped shape mismatch: got {tuple(dv_bnsd_grouped.shape)}, "
+            f"expected {(B, N_kv, Sg_max, D)}"
+        )
+    else:
+        # 非 PA: K/V 都是 TND -> BNSD
+        k_fp8_tnd = _to_torch_fp8(k)
+        k_fp8_bnsd = _tnd_to_bnsd_fixed(
+            k_fp8_tnd, actual_seq_kv, cu_seqlens=cu_seqlens_kv_list
+        )
+        v_fp8_tnd = _to_torch_fp8(v)
+        v_fp8_bnsd = _tnd_to_bnsd_fixed(
+            v_fp8_tnd, actual_seq_kv, cu_seqlens=cu_seqlens_kv_list
+        )
+
+        # K scale: e8m0 -> fp32 -> TND grouped -> BNSD grouped
+        dk_e8m0 = _to_torch_e8m0(dequant_scale_k)
+        _assert_no_e8m0_nan(dk_e8m0, "descale_k")
+        dk_fp32 = golden_mod.e8m0_to_fp32(dk_e8m0)
+        dk_bnsd_grouped = _tnd_qk_scale_to_bnsd_grouped(
+            dk_fp32,
+            actual_seq_kv,
+            cu_seqlens=cu_seqlens_kv_list,
+            q_scale_layout="TND",
+            num_kv_heads=N_kv,
+        )
+        assert dk_bnsd_grouped.shape == (B, N_kv, max_skv, Dg), (
+            f"K scale grouped shape mismatch: got {tuple(dk_bnsd_grouped.shape)}, "
+            f"expected {(B, N_kv, max_skv, Dg)}"
+        )
+
+        # V scale: e8m0 -> fp32 -> TND v-scale grouped -> BNSD grouped
+        dv_e8m0 = _to_torch_e8m0(dequant_scale_v)
+        _assert_no_e8m0_nan(dv_e8m0, "descale_v")
+        dv_fp32 = golden_mod.e8m0_to_fp32(dv_e8m0)
+        dv_bnsd_grouped = _tnd_v_scale_to_bnsd_grouped(
+            dv_fp32, actual_seq_kv, cu_seqlens=cu_seqlens_kv_list, group_size=group_size
+        )
+        Sg_max = math.ceil(max_skv / group_size) if max_skv > 0 else 0
+        assert dv_bnsd_grouped.shape == (B, N_kv, Sg_max, D), (
+            f"V scale grouped shape mismatch: got {tuple(dv_bnsd_grouped.shape)}, "
+            f"expected {(B, N_kv, Sg_max, D)}"
+        )
+
+    # ----- 调 cpu_mxfp8_golden (BNSD fp8 + group 维 fp32 scale) -----
     cpu_out, cpu_lse = golden_mod.cpu_mxfp8_golden(
-        q,
-        k,
-        v,
-        dequant_scale_q,
-        dequant_scale_k,
-        dequant_scale_v,
-        p_scale,
+        q_fp8_bnsd,
+        k_fp8_bnsd,
+        v_fp8_bnsd,
+        dq_bnsd_grouped,
+        dk_bnsd_grouped,
+        dv_bnsd_grouped,
+        p_scale_value,
         actual_seq_q,
         actual_seq_kv,
         softmax_scale=softmax_scale,
@@ -283,23 +559,12 @@ def cpu_qfa_mxfp8(
                 list(cu_seqlens_q),
                 fill_value=float("inf"),
             )
+
+        if cpu_lse_aligned.ndim == 3 and cpu_lse_aligned.shape[-1] == 1:
+            cpu_lse_aligned = cpu_lse_aligned.squeeze(-1).contiguous()
         result = [cpu_out_aligned, cpu_lse_aligned]
 
     else:
-        result = [cpu_out_aligned]
-
-    # ----- Bin 保存路径：__bin_golden_out 非空时按顺序写入 bin 文件 -----
-    bin_golden_out = kwargs.get("__bin_golden_out")
-    if bin_golden_out:
-        if len(bin_golden_out) != len(result):
-            raise ValueError(
-                f"__bin_golden_out 长度 {len(bin_golden_out)} 与 golden 输出数 {len(result)} 不一致"
-            )
-        for path, tensor in zip(bin_golden_out, result):
-            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-            _torch_to_bin(tensor, path)
-        logger.info(
-            "[GOLDEN] saved %d golden tensors to bin via __bin_golden_out", len(result)
-        )
+        result = [cpu_out_aligned, None]
 
     return result

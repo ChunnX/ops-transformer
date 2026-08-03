@@ -426,6 +426,15 @@ function(add_opc_config)
         list(APPEND _OPC_CONFIG "-fdata-sections")
     endif()
 
+    if(ENABLE_MSSANITIZER)
+        list(APPEND _OPC_CONFIG "-g")
+        list(APPEND _OPC_CONFIG "--cce-enable-sanitizer")
+    endif()
+
+    if(ENABLE_DUMP_CCE)
+        list(APPEND _OPC_CONFIG "--save-temp-files")
+    endif()
+
     if(_OPC_CONFIG)
         add_ops_compile_options(
                 OP_NAME ${OP_COMPILE_OP_NAME}
@@ -517,6 +526,42 @@ function(add_ops_src_copy)
 endfunction()
 
 # ------------------------------------------------------------------------------------------------------------
+# require_pypto_pro(<op_name>)
+#   Require pypto_pro for the current operator. Call at the beginning of an operator's CMakeLists.txt, before
+#   registering any host or kernel build rules. If pypto_pro is unavailable in HI_PYTHON, warn and return from
+#   the caller's CMakeLists.txt so the whole operator is skipped.
+# ------------------------------------------------------------------------------------------------------------
+macro(require_pypto_pro op_name)
+    get_property(_pypto_pro_checked GLOBAL PROPERTY PYPTO_PRO_CHECKED)
+    if (NOT _pypto_pro_checked)
+        execute_process(
+            COMMAND ${HI_PYTHON} -c
+                    "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('pypto_pro') else 1)"
+            RESULT_VARIABLE _pypto_pro_check_result
+            OUTPUT_QUIET
+            ERROR_QUIET
+        )
+        if (_pypto_pro_check_result EQUAL 0)
+            set_property(GLOBAL PROPERTY PYPTO_PRO_AVAILABLE TRUE)
+        else()
+            set_property(GLOBAL PROPERTY PYPTO_PRO_AVAILABLE FALSE)
+        endif()
+        set_property(GLOBAL PROPERTY PYPTO_PRO_CHECKED TRUE)
+    endif()
+
+    get_property(_pypto_pro_available GLOBAL PROPERTY PYPTO_PRO_AVAILABLE)
+    if (NOT _pypto_pro_available)
+        message(WARNING
+                "pypto_pro is unavailable in ${HI_PYTHON}; skip operator ${op_name}.")
+        return()
+    endif()
+
+    unset(_pypto_pro_checked)
+    unset(_pypto_pro_check_result)
+    unset(_pypto_pro_available)
+endmacro()
+
+# ------------------------------------------------------------------------------------------------------------
 # enable_pypto_kernel(<op_file>)
 #   Mark an operator whose kernel is written in PyPTO. Call ONCE from the op's op_host/CMakeLists.txt,
 #   and BEFORE add_modules_sources_with_soc(...) (so the tiling logic can read PYPTO_GEN_DIR).
@@ -534,7 +579,7 @@ function(enable_pypto_kernel op_file)
 
     message(STATUS "pypto codegen: ${op_file} -> ${_gen}")
     execute_process(
-        COMMAND ${HI_PYTHON} ${CMAKE_SOURCE_DIR}/cmake/scripts/pypto_codegen.py
+        COMMAND ${HI_PYTHON} ${OPS_ADV_DIR}/cmake/scripts/pypto_codegen.py
                 --py-file ${_py} --out-dir ${_gen}
                 --op-file ${op_file} --soc ${ASCEND_COMPUTE_UNIT}
         RESULT_VARIABLE _rc
