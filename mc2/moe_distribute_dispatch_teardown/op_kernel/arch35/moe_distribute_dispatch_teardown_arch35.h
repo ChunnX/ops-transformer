@@ -65,6 +65,8 @@ public:
 private:
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void WaitDispatch();
+    // 预清对侧 bank 上 combine 按卡状态槽，避免 C 落到残留 float 2.0
+    __aicore__ inline void ClearNextBankCombineStatus();
     __aicore__ inline void GetCumSum(LocalTensor<int32_t> &outLocal, uint32_t totalCount);
     __aicore__ inline void UpdateTokenNumsOut();
     __aicore__ inline void UpdateMultiMoeTokenNumsOut();
@@ -434,6 +436,37 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::WaitD
 }
 
 template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::ClearNextBankCombineStatus()
+{
+    // dataState_ 为本层 wait/clear 的 bank；teardown Init 已把开关翻到对侧，combine 将使用对侧 bank
+    const uint32_t nextDataState = 1U - dataState_;
+    GM_ADDR nextBankGM =
+        (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_] + static_cast<uint64_t>(nextDataState) * WIN_STATE_OFFSET);
+
+    // combine 按源卡等状态：清 [0, epWorldSize) 槽，步长与 C 的 stateOffset 一致
+    uint32_t clearRankNum = epWorldSize_ / aivNum_;
+    uint32_t remainderRankNum = epWorldSize_ % aivNum_;
+    uint32_t startRankId = clearRankNum * aivId_;
+    if (aivId_ < remainderRankNum) {
+        ++clearRankNum;
+        startRankId += aivId_;
+    } else {
+        startRankId += remainderRankNum;
+    }
+    if (clearRankNum == 0U || startRankId >= epWorldSize_) {
+        return;
+    }
+
+    for (uint32_t rankId = startRankId; rankId < startRankId + clearRankNum; ++rankId) {
+        GlobalTensor<int32_t> slotTensor;
+        slotTensor.SetGlobalBuffer(
+            (__gm__ int32_t *)(nextBankGM + static_cast<uint64_t>(rankId) * stateOffset_));
+        slotTensor.SetValue(0, 0);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(slotTensor);
+    }
+}
+
+template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::GetCumSum(LocalTensor<int32_t> &outLocal,
                                                                                      uint32_t totalCount)
 {
@@ -596,6 +629,8 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Proce
 {
     if ASCEND_IS_AIV { // 全aiv处理
         WaitDispatch();
+        // 全核参与：在进入 combine 前预清对侧 bank 的按卡状态槽
+        ClearNextBankCombineStatus();
         SyncAll<true>();
         LocalWindowCopy();
         UpdateTokenNumsOut();
