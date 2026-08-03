@@ -119,10 +119,6 @@ def npu_test(case, device):
     coff = case["coff"]
     layout = case["input_layout"]
     sps = case["start_pos"]
-    # 临时诊断：start_pos=None 在 aclnn 路径可能被转成空 tensor 导致 kernel 访问非法地址
-    # 先验证此假设（None → [0]*batchSize 等价语义）
-    if sps is None:
-        sps = [0] * case["B"]
     sqs = case["seqused_q"]
     seqlens_list_q = case["seqlens_list_q"]
     dataType = case["dtype"]
