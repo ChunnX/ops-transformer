@@ -285,7 +285,6 @@ __aicore__ inline void ReduceWithLse(const S2SplitFdStagingLayout &layout,
             WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
             FaVectorApi::ReduceFinalRes_const_VF<T, D_ALIGN>(chunkAccumO, blockSumUb, partialOFp32,
                                                          dealRowCount, splitIdx);
-            PipeBarrier<PIPE_V>();
             SetFlag<HardEvent::V_MTE2>(vToMte2Id1);
             outSrcOffset += outSplitStride;
         }
@@ -335,7 +334,6 @@ __aicore__ inline void ReduceUb(const S2SplitFdStagingLayout &layout,
         LocalTensor<T> sinkUb;
         FaVectorApi::ComputeScaleValue_VF<T, T>(sinkUb, chunkMaxUb, chunkSumUb, lseExpUb,
             dealRowCount, workspaceNum, softmaxLseFlag, false);
-        PipeBarrier<PIPE_V>();
         LocalTensor<T> chunkAccumO = accumulatedO[startRow * D_ALIGN];
         int64_t partialOSplitStride = mNum * D_ALIGN;
         for (int64_t splitIdx = 0; splitIdx < workspaceNum; splitIdx++) {
