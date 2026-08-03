@@ -365,7 +365,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     fanoutSendEntryCoreBytes_ = info.fanoutSendEntryCoreBytes;
     aivNum_ = info.aivNum;
     fanoutProducerCount_ = numNodeLocalAiv_ == 0U ? 1U : numNodeLocalAiv_;
-    rankSizePerServer_ = info.rankSizePerServer;
+    rankSizePerServer_ = info.numScaleupRanks;
     currentServerIndex_ = MoeEpDispatchBase::GetCurrentServerIndex(epRankId_, rankSizePerServer_);
     serverStartRank_ = MoeEpDispatchBase::GetServerStartRank(epRankId_, rankSizePerServer_);
     serverEndRank_ = MoeEpDispatchBase::GetServerEndRank(epRankId_, rankSizePerServer_, epWorldSize_);
@@ -465,8 +465,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     const auto &info = tilingData->moeEpDispatchInfo;
     scaleupCounterAddr_ = workspaceGM_;
     sendCntWorkspaceAddr_ = scaleupCounterAddr_ + aivNum_ * epWorldSizeAlign512_;
-    GM_ADDR scaleoutCounterAddr = workspaceGM_ + info.routeWorkspaceOffset;
-    scaleoutCounterAddr_ = scaleoutCounterAddr;
+    scaleoutCounterAddr_ = workspaceGM_ + info.routeWorkspaceOffset;
     scaleoutSendEntryAddr_ = workspaceGM_ + info.scaleoutSendEntryOffset;
     scaleupSendEntryAddr_ = workspaceGM_ + info.scaleupSendEntryOffset;
     fanoutSendEntryAddr_ = workspaceGM_ + info.fanoutSendEntryOffset;
@@ -476,7 +475,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     GM_ADDR localCntStateWinAddr =
         MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, epRankId_, cntWinStateOffset_);
     scaleupCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)scaleupCounterAddr_);
-    scaleoutCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)scaleoutCounterAddr);
+    scaleoutCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)scaleoutCounterAddr_);
     recvCounterGMTensor_.SetGlobalBuffer((__gm__ int32_t *)localCntStateWinAddr);
     sendCntGMTensor_.SetGlobalBuffer((__gm__ int32_t *)sendCntWorkspaceAddr_);
 }
