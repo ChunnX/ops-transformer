@@ -103,7 +103,7 @@ const static uint32_t WEIGHT_SCALE_GROUP_DIM_INDEX = 1U;
 const static uint32_t WEIGHT_SCALE_MULTI_BASE_DIM_INDEX = 2U;
 
 /*
- * 统计指定动态输入 (tensor list) 中实际传入的 tensor 数量。
+ * 统计指定动态输入 (tensor list) 中的 tensor 数量。
  */
 static uint32_t GetDynamicInputTensorCount(const gert::TilingContext *context, uint32_t inputIndex)
 {
@@ -116,12 +116,16 @@ static uint32_t GetDynamicInputTensorCount(const gert::TilingContext *context, u
 
 /*
  * 按权重布局返回专家数：逐专家布局取 TensorList 长度，堆叠布局取首个 tensor 的 dim0。
+ * 可选输入未传入或首维为 0 时返回 0。
  */
 static int64_t GetWeightExpertCount(const gert::TilingContext *context, uint32_t inputIndex,
                                     bool isPerExpertWeightTensor)
 {
-    // 调用前须通过统一布局校验，确保输入非空且其布局与 isPerExpertWeightTensor 一致。
     const auto *firstTensorShape = context->GetDynamicInputShape(inputIndex, 0);
+    if (firstTensorShape == nullptr || firstTensorShape->GetStorageShape().GetDimNum() == 0U ||
+        firstTensorShape->GetStorageShape().GetDim(0) <= 0) {
+        return 0;
+    }
     if (isPerExpertWeightTensor) {
         return static_cast<int64_t>(GetDynamicInputTensorCount(context, inputIndex));
     }
@@ -517,12 +521,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
             return ge::GRAPH_FAILED);
     }
 
-    auto sharedWeight1StorageShape = context->GetDynamicInputShape(config.sharedWeight1Index, 0);
-    int64_t sharedExpertNum = 0;
-    if (sharedWeight1StorageShape != nullptr) {
-        sharedExpertNum =
-            GetWeightExpertCount(context, config.sharedWeight1Index, isPerExpertWeightTensor);
-    }
+    int64_t sharedExpertNum = GetWeightExpertCount(context, config.sharedWeight1Index, isPerExpertWeightTensor);
     OP_TILING_CHECK(sharedExpertNum > NUM_FOUR,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertNum", std::to_string(sharedExpertNum).c_str(),
                                               "only support 0-4"),
@@ -563,13 +562,8 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     tilingData->activationAlpha = 1.0f;
     tilingData->activationBeta = 1.0f;
 
-    auto sharedWeight1StorageShape = context->GetDynamicInputShape(config.sharedWeight1Index, 0);
-    if (sharedWeight1StorageShape != nullptr) {
-        tilingData->sharedExpertNum = static_cast<uint32_t>(
-            GetWeightExpertCount(context, config.sharedWeight1Index, tilingData->isPerExpertWeightTensor));
-    } else {
-        tilingData->sharedExpertNum = 0;
-    }
+    tilingData->sharedExpertNum = static_cast<uint32_t>(
+        GetWeightExpertCount(context, config.sharedWeight1Index, tilingData->isPerExpertWeightTensor));
 
     auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
@@ -1156,6 +1150,7 @@ static ge::graphStatus CheckMoeAndSharedWeightInputLayouts(const gert::TilingCon
     auto weightOneShape = context->GetDynamicInputShape(config.weight1Index, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightOneShape);
     uint32_t weightDimNum = weightOneShape->GetStorageShape().GetDimNum();
+    bool isPerExpertWeightTensor = weightDimNum == TWO_DIMS;
     OP_TILING_CHECK(
         weightDimNum != TWO_DIMS && weightDimNum != THREE_DIMS,
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
@@ -1177,10 +1172,14 @@ static ge::graphStatus CheckMoeAndSharedWeightInputLayouts(const gert::TilingCon
                     OP_LOGE(nodeName, "MoE expert weight layout is invalid."), return ge::GRAPH_FAILED);
 
     // 检查共享专家的四个 weight/scale 输入是否同时存在或同时缺省。
-    bool hasSharedWeightOne = context->GetDynamicInputDesc(config.sharedWeight1Index, 0) != nullptr;
-    bool hasSharedWeightTwo = context->GetDynamicInputDesc(config.sharedWeight2Index, 0) != nullptr;
-    bool hasSharedWeightScalesOne = context->GetDynamicInputDesc(config.sharedWeightScales1Index, 0) != nullptr;
-    bool hasSharedWeightScalesTwo = context->GetDynamicInputDesc(config.sharedWeightScales2Index, 0) != nullptr;
+    bool hasSharedWeightOne =
+        GetWeightExpertCount(context, config.sharedWeight1Index, isPerExpertWeightTensor) > 0;
+    bool hasSharedWeightTwo =
+        GetWeightExpertCount(context, config.sharedWeight2Index, isPerExpertWeightTensor) > 0;
+    bool hasSharedWeightScalesOne =
+        GetWeightExpertCount(context, config.sharedWeightScales1Index, isPerExpertWeightTensor) > 0;
+    bool hasSharedWeightScalesTwo =
+        GetWeightExpertCount(context, config.sharedWeightScales2Index, isPerExpertWeightTensor) > 0;
     OP_TILING_CHECK(
         hasSharedWeightOne != hasSharedWeightTwo || hasSharedWeightOne != hasSharedWeightScalesOne ||
             hasSharedWeightOne != hasSharedWeightScalesTwo,
@@ -1297,6 +1296,9 @@ static ge::graphStatus CheckSharedExpertInputs(const gert::TilingContext *contex
     OP_CHECK_NULL_WITH_CONTEXT(context, weightOneStorageShape);
 
     bool isPerExpertWeightTensor = weightOneStorageShape->GetStorageShape().GetDimNum() == TWO_DIMS;
+    if (GetWeightExpertCount(context, config.sharedWeight1Index, isPerExpertWeightTensor) == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
     // 组内一致性已校验，跨组关系只需比较第 0 项。
     const NamedIndex weightDimensions[] = {
         {WEIGHT_MATRIX_ROW_DIM_INDEX, "row count"},
@@ -1561,10 +1563,8 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, MegaMo
     OP_TILING_CHECK(CheckWeightScalesTensorDim(context, config, nodeName) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "check weight scales tensor dim failed."), return ge::GRAPH_FAILED);
 
-    if (context->GetDynamicInputDesc(config.sharedWeight1Index, 0) != nullptr) {
-        OP_TILING_CHECK(CheckSharedExpertInputs(context, config, nodeName) == ge::GRAPH_FAILED,
-                        OP_LOGE(nodeName, "check shared expert inputs failed."), return ge::GRAPH_FAILED);
-    }
+    OP_TILING_CHECK(CheckSharedExpertInputs(context, config, nodeName) == ge::GRAPH_FAILED,
+                    OP_LOGE(nodeName, "check shared expert inputs failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckOutputTensorDim(context, config, nodeName) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "output params shape is invalid."), return ge::GRAPH_FAILED);
