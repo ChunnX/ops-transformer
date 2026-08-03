@@ -325,7 +325,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
-        <td>(B,S,C)</td>
+        <td>(B,S,C)或(T,C)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -335,7 +335,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,N)</td>
+        <td>(B,S,N)或(T,N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -345,7 +345,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,N*N)或(B,S,N,N)</td>
+        <td>(B,S,N,N)或(T,N,N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -355,7 +355,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
-        <td>(B,S,N,C)</td>
+        <td>(B,S,N,C)或(T,N,C)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -395,7 +395,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,N)</td>
+        <td>(B,S,N)或(T,N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -405,7 +405,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,N*N+2*N)</td>
+        <td>(B,S,N*N+2*N)或(T,N*N+2*N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -415,7 +415,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(B,S,1)</td>
+        <td>(B,S,1)或(T,1)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -425,7 +425,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(2*sk_iter_count,B,S,N)</td>
+        <td>(2*sk_iter_count,B,S,N)或(2*sk_iter_count,T,N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -435,7 +435,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>支持空Tensor。</td>
         <td>FLOAT32 </td>
         <td>ND</td>
-        <td>(2*sk_iter_count,B,S,N,N)</td>
+        <td>(2*sk_iter_count,B,S,N,N)或(2*sk_iter_count,T,N,N)</td>
         <td>√</td>
     </tr>
     <tr>
@@ -455,7 +455,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
         <td>-</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
-        <td>(B,S,N,C)</td>
+        <td>(B,S,N,C)或(T,N,C)</td>
         <td>-</td>
     </tr>
     <tr>
@@ -599,6 +599,10 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
+
+- **维度格式约束**
+
+  输入支持两种维度格式：BSND（4维）和TND（3维）。其中T = B × S，表示所有Batch序列长度的累加和。所有带B/S维度的输入需保持维度格式一致（同为4维BSND或同为3维TND）。
 
 - **规格约束**
 
