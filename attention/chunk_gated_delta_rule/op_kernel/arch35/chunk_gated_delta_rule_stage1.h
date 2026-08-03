@@ -241,6 +241,10 @@ public:
         buffOffset += INVERSE_SHAPE * sizeof(uint32_t);
 
         inverseRes_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * halfChunkSize_), buffOffset);
+        buffOffset += chunkSize_ * halfChunkSize_ * sizeof(float);
+
+        identitySlab_ =
+            tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(INVERSE_SHAPE * INVERSE_SHAPE), buffOffset);
     }
 
     __aicore__ inline void InitGatherBuffer()
@@ -250,6 +254,11 @@ public:
         }
         for (uint32_t i = 0; i < INVERSE_SHAPE; ++i) {
             inverseGatherBuffer_.SetValue<uint32_t>(i, (i * chunkSize_) * sizeof(float));
+        }
+        Duplicate(identitySlab_, static_cast<float>(0.0), INVERSE_SHAPE * INVERSE_SHAPE);
+        PipeBarrier<PIPE_V>();
+        for (uint32_t i = 0; i < INVERSE_SHAPE; ++i) {
+            identitySlab_.SetValue(i * INVERSE_SHAPE + i, static_cast<float>(1.0));
         }
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
         SetFlag<HardEvent::S_V>(eventID);
@@ -625,16 +634,8 @@ private:
         inverseBufferOffset += inverseVecLen * inverseVecLen + inverseVecLen;
         auto yLocal = inverseBuffer_[inverseBufferOffset];
         inverseBufferOffset += inverseVecLen * inverseVecLen;
-        auto eiMatrix = inverseBuffer_[inverseBufferOffset];
 
         Duplicate(yLocal, static_cast<float>(0.0), inverseVecLen * inverseVecLen);
-        Duplicate(eiMatrix, static_cast<float>(0.0), inverseVecLen * inverseVecLen);
-        int32_t vsEventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::V_S));
-        SetFlag<HardEvent::V_S>(vsEventID);
-        WaitFlag<HardEvent::V_S>(vsEventID);
-        for (uint32_t j = 0; j < inverseVecLen; ++j) {
-            eiMatrix.SetValue(j * inverseVecLen + j, static_cast<float>(1.0));
-        }
         inverseRes_.SetValue(offset, static_cast<float>(1.0));
 
         uint32_t srcShape[2] = {1, inverseVecLen};
@@ -654,7 +655,7 @@ private:
             MulAddDst(yLocal[i * inverseVecLen], col[inverseVecLen], row, inverseVecLen * validRows);
             PipeBarrier<PIPE_V>();
             // xi = (I - SUM) / Lii = I - SUM
-            Sub(inverseRes_[offset + i * chunkSize_], eiMatrix[i * inverseVecLen],
+            Sub(inverseRes_[offset + i * chunkSize_], identitySlab_[i * INVERSE_SHAPE],
                 yLocal[i * inverseVecLen], inverseVecLen);
             PipeBarrier<PIPE_V>();
         }
@@ -968,6 +969,7 @@ private:
     LocalTensor<float> attnUbFloat_;
     LocalTensor<float> inverseBuffer_;
     LocalTensor<float> inverseRes_;
+    LocalTensor<float> identitySlab_;
     LocalTensor<float> gCumUbFloat_;
     LocalTensor<float> gCumSumUbFloat_;
     LocalTensor<float> gCumExpUbFloat_;
