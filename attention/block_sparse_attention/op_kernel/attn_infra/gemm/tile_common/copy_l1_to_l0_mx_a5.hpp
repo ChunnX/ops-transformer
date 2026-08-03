@@ -114,13 +114,13 @@ struct CopyL1ToL0AMxQKA5 {
     // nSubRowStart : = nSub * L0_TILE_N，本子块在整 tile L1 中的行起点
     // nCur         : 本子块实际 K 行数（≤L0_TILE_N）
     // alignK       : CeilAlign(D, 64)
-    // s2Align64Full: 整 tile 行对齐（L1 数据 srcStride）
+    // s2Align16Full: 整 tile 行 16 对齐（L1 数据 srcStride，与 zN 画布/QFA actSingleLoopS2SizeAlign 一致）
     // scaleK       : Ceil(D/64)*2，沿 D
     template <class TensorDst, class TensorSrc, class TensorScale>
     __aicore__ inline void operator()(
         TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
         uint32_t nSubRowStart, uint32_t nCur, uint32_t alignK,
-        uint32_t s2Align64Full, uint32_t scaleK)
+        uint32_t s2Align16Full, uint32_t scaleK)
     {
         uint32_t nCurAlign16 = (nCur + 15) / 16 * 16;
 
@@ -130,7 +130,7 @@ struct CopyL1ToL0AMxQKA5 {
         loadDataParams.kStartPosition = 0;
         loadDataParams.mStep = nCurAlign16 / 16;
         loadDataParams.kStep = (alignK + 63) / 64;
-        loadDataParams.srcStride = s2Align64Full / 16;
+        loadDataParams.srcStride = s2Align16Full / 16;
         loadDataParams.dstStride = nCurAlign16 / 16;
         loadDataParams.ifTranspose = false;
 
@@ -151,10 +151,10 @@ struct CopyL1ToL0AMxQKA5 {
 struct CopyL1ToL0BMxQKA5 {
     __aicore__ inline CopyL1ToL0BMxQKA5() {}
 
-    // mAlignL1      : CeilAlign(m_Q, 16)，L1 行分形数来源
+    // mAlignL1      : [QFA 对齐] 恒 128（actMSizeAlign128 语义），L1 行分形数来源（mStep=8）
     // alignK        : CeilAlign(D, 64)
-    // mAlignL0      : L0B dst 行对齐（通常 = mAlignL1）
-    // scaleMAlignL1 : CeilAlign(m_Q, 16)，scale xStep
+    // mAlignL0      : L0B dst 行对齐（= mAlignL1 = 128）
+    // scaleMAlignL1 : [QFA 对齐] 恒 128，scale xStep=8
     // scaleK        : Ceil(D/64)*2，沿 D
     template <class TensorDst, class TensorSrc, class TensorScale>
     __aicore__ inline void operator()(
