@@ -133,7 +133,7 @@ aclnnStatus aclnnLightningIndexer(
                 <li>layout_kv为TND时，shape为(T2, N2, D)。</li>
           </ul>
       </td>
-      <td>x</td>
+      <td>✓</td>
     </tr>
     <tr>
       <td>weights</td>
@@ -417,6 +417,10 @@ aclnnStatus aclnnLightningIndexer(
 - block_size取值为16的倍数，最大支持1024。
 - 参数query、key的数据类型应保持一致。
 - 参数weights不为`float32`时，参数query、key、weights的数据类型应保持一致。
+- Ascend 950PR/Ascend 950DT：
+  - 仅在layout_key为PA_BSND时，key支持0轴非连续。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - key不支持非连续。
 
 ## 调用示例
 
