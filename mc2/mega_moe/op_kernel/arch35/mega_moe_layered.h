@@ -646,6 +646,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ResetFlag
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
     if (coreLen != 0) {
         DataCopyPad(swigluToGmm2FlagGm_[coreOffset], resetTensor_, rankSyncCopyParams);
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA01]: flag reset copy -> next reset stage
     }
     // combine量化模式下TokenGroupCompleteFlag清零
     ResetGmm2CombineSyncCounters();
@@ -740,6 +741,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
                 LocalTensor<uint8_t> maskBuf = sendMaskTensor_[roundIdx % DOUBLE_BUFFER];
                 LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
                 CompareScalar(maskBuf, topkIdsTensor_, curExpertId, AscendC::CMPMODE::EQ, curRoundCompareCount);
+                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA05]: mask compare -> gather preparation
                 PipeBarrier<PIPE_V>();
                 uint64_t roundSendCnt = 0;
                 GatherMask(sendGatherOutTensor_, topkIdsTensor_, maskBufU32, true, static_cast<uint32_t>(roundLen),
@@ -763,11 +765,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
                     winDstGlobal.SetGlobalBuffer(
                         (__gm__ uint8_t *)(GetRankWinAddrWithOffset(rankId_, dstOffset + roundByteOffset)));
                     DataCopyPad(winDstGlobal, maskBuf, partialMaskCopyParams);
+                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA07]: local mask MTE3 -> round completion
                 } else {
                     GlobalTensor<uint8_t> wsDstGlobal;
                     wsDstGlobal.SetGlobalBuffer(
                         (__gm__ uint8_t *)(params_.workspaceInfo.maskSlotPtr + srcOffset + roundByteOffset));
                     DataCopyPad(wsDstGlobal, maskBuf, partialMaskCopyParams);
+                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA08]: remote-source mask MTE3 -> round completion
                 }
                 PipeBarrier<PIPE_ALL>();
             }
@@ -787,6 +791,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
                 hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr, localGmAddr,
                                 maskSlotSize_);
+                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA09]: mask WriteNbi submit -> next expert
             }
         }
     }
@@ -946,6 +951,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchC
         __gm__ int32_t *countPtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr +
                                                                       SendWorkspaceServerOffset(targetServer));
         int32_t slotIdx = AtomicAdd(countPtr, int32_t(1));
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA12]: dispatch slot AtomicAdd -> slot metadata
         uint64_t metaOffset = SendWorkspaceServerOffset(targetServer) + ALIGN_32 +
                               static_cast<uint64_t>(slotIdx) * sendWorkspaceMetaBytes_;
         __gm__ int32_t *metaPtr =
@@ -953,6 +959,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchC
         WriteGmByPassDCache(metaPtr, static_cast<int32_t>(tokenIdx));
         // PipeBarrier<PIPE_ALL>();
         WriteGmByPassDCache(metaPtr + 1, int32_t(1));
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA13]: READY publication -> dedup state
         sendDedupMaskTensor_.SetValue(targetDedupWordIdx, targetDedupWord | dedupBit);
     }
 }
@@ -977,6 +984,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchC
     }
     __gm__ int32_t *donePtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchDonePtr);
     WriteGmByPassDCache(donePtr + computeIdx, roundTag);
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA14]: round DONE publication -> compute exit
 }
 
 template <TemplateMegaMoeLayeredTypeClass>
@@ -1000,6 +1008,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchT
                              RelayFlagOffset(serverId_, static_cast<uint32_t>(tokenIdx));
     hcomm_.WriteWithNotifyNbi(channel, dstAddr, srcAddr, mxQuantTokenScaleAlignBytes_, remoteFlagAddr, uint64_t(1));
     WriteGmByPassDCache(srcMetaPtr + 1, int32_t(2));
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA15]: relay slot SENT publication -> sender loop
 }
 
 template <TemplateMegaMoeLayeredTypeClass>
@@ -1129,6 +1138,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendCntCa
             DataCopyPad(cumsumInfoTensor_, cumsumInfoGlobalTensor_,
                         {1U, static_cast<uint32_t>(worldSize_ * localExpertId * sizeof(int32_t)), 0U, 0U, 0U},
                         {true, 0U, 0U, 0U});
+            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA17]: cumsum prefetch MTE2 -> rank count scan
         }
     }
 
@@ -1148,6 +1158,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendCntCa
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
     DataCopy<int32_t>(expertRevNumsGlobalTensor_[localExpertId * INT32_PER_256B * aicNum_ + INT32_PER_256B * blockIdx_],
                       expertTokenCntTensor_, INT32_PER_256B);
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA18]: expert count MTE3 -> optional cumsum writeback
     if constexpr (ENABLE_A8W4) {
         // A8W4 路径下 cumsum 被 SwigluQuant 覆盖，更新后写回 GM
         DataCopyPad(cumsumInfoGlobalTensor_, cumsumInfoTensor_,
@@ -1263,11 +1274,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
         hcomm_.ReadNbi<true>(channel, scratchAddr, remoteFlagAddr, flagSnapshotBytes);
         PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA26]: flag ReadNbi submit -> Drain
         hcomm_.Drain(channel);
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA27]: flag Drain -> existing drain barrier
         SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID1>();
         // flag 在 win/L2 中按 bs * sizeof(uint64_t) 紧凑存放；搬入 UB 时由 DataCopyPad 处理非 32B 尾块。
         DataCopyPad(relayFlagTensor_, scratchFlagGlobalTensor, flagCopyParams, flagCopyPadParams);
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA28]: flag snapshot MTE2 -> existing MTE2_S sync
         SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID1>();
 
         for (int32_t copyIdx = 0; copyIdx < copyNum; ++copyIdx) {
@@ -1298,7 +1307,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
         SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID1>();
     }
     hcomm_.Drain(channel);
-    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA31]: payload Drain -> existing drain barrier
 }
 
 // ============================================================================
@@ -1342,7 +1350,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyGMToG
 
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
     DataCopy(metaInfoGlobalTensor_[rowDstOffsetInCore * INT32_PER_256B], metaInfoTensor_, copyNum * INT32_PER_256B);
-    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA32]: metadata MTE3 -> existing MTE3_S sync
     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID3>();
 }
 
@@ -1407,7 +1414,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::MetaInfoC
                 roundMaskSrc.SetGlobalBuffer(rankMaskBasePtr + roundMaskByteOffset);
                 SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
                 DataCopy(gatherMaskTensor_, roundMaskSrc, curRoundMaskBytes);
-                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA33]: dispatch mask MTE2 -> existing MTE2_V sync
                 SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 
                 CreateVecIndex(topkIndexTensor_, static_cast<int32_t>(roundStart), topkIndexTensorElemCount);
@@ -1418,7 +1424,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::MetaInfoC
                 LocalTensor<uint32_t> rankMaskSlice = gatherMaskInt32Tensor_[0];
                 GatherMask(validTopkIndexTensor_, topkIndexTensor_, rankMaskSlice, true, roundLen, {1, 1, 0, 0},
                            roundTokenCnt);
-                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA35]: dispatch gather V -> existing V_S sync
                 SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
                 if (roundTokenCnt == 0) {
                     continue;
