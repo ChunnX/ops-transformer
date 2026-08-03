@@ -190,7 +190,7 @@ bool StemIndexerMetadataCpuKernel::GenerateBaseInfo(StemIndexerBaseInfo &baseInf
 bool StemIndexerMetadataCpuKernel::GenerateSectionStreamKParam(load_balance::SectionStreamKParam &param)
 {
     param.l2Byte = 96U * 1024U * 1024U;
-    param.mBaseSize = 96;   // 96: Fix mBaseSize
+    param.mBaseSize = 64;   // 64: Fix mBaseSize
     param.s2BaseSize = 256; // 256: Fix s2BaseSize
     param.fdOn = false;
     return true;
