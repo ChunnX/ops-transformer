@@ -398,12 +398,19 @@ public:
         constexpr uint32_t actCopyCount = (singleProcessSOuterSize + elementSize - 1) / elementSize;
         constexpr uint32_t actVec0Align32 = mBaseSize >> 1;
         uint32_t s2RealSizeAlign = (((runInfo.actSingleLoopS2Size + 63) >> 6) << 6);
+        // stride-fix(d256): LoadData 读 L1 用固定 0x2000 stride(NZ fractal pair);
+        // D256 s2BaseSizeCur=128 时 32*128=0x1000(半 stride), P 落到错误 grid,
+        // BMM2 从错误位置读 P 致 rows 32-127 全错. D256-only double-stride 让 dstOffset
+        // 落到 0x2000 grid(同 D128 s2BaseSizeCur=256 -> 32*256=0x2000 不变).
+        // 移植自 A5 d256-debug 仓 commit d3d78567(KVS128 100% 关键修复).
+        constexpr uint32_t strideMul = (s2BaseSizeCur == 128) ? 64 : 32;
+        constexpr uint32_t subBlk1Mul = (s2BaseSizeCur == 128) ? 2 : 1;
         for (uint32_t i = 0; i < actCopyCount; i++) {
-            uint32_t dstOffset = 32 * s2BaseSizeCur * i + subLoopOffset;
+            uint32_t dstOffset = strideMul * s2BaseSizeCur * i + subLoopOffset;
             if (constInfo.subBlockIdx == 1) {
-                dstOffset += s2BaseSizeCur * actVec0Align32;
+                dstOffset += subBlk1Mul * s2BaseSizeCur * actVec0Align32;
             }
-            uint32_t srcOffset = i * (65 << 5);
+            uint32_t srcOffset = i * ((s2BaseSizeCur / 4 + 1) << 5);
             DataCopy(mm2AL1Tensor[dstOffset], stage1CastTensor[srcOffset],
                      {4, s2BaseSizeCur / 4, s2BaseSizeCur / 4 + 2, 0});
         }
