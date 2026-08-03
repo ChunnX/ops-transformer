@@ -23,6 +23,7 @@
 | 8 | 本地 | [下载与分析结果](08_download_results.md) | 拉回日志和 profiling 数据 |
 | 9 | 两端 | [常见问题](09_troubleshooting.md) | 处理版本、动态库和 Git 问题 |
 | 10 | 远端 | [一键执行脚本](10_remote_script.md) | 在无 AI Agent 的 NPU 服务器上执行固定流程 |
+| 11 | 两端 | [报错回传链路](11_diagnostic_bridge.md) | 通过私有结果仓库传递报错与修复指令 |
 
 ## 无 AI Agent 远端服务器
 
