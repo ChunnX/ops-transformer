@@ -265,9 +265,9 @@ aclnnStatus CheckExistenceSmlag(const aclTensor *cuSeqlensQOptional, const aclTe
                                 const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedOriKvOptional,
                                 const aclTensor *sequsedCmpKvOptional, const aclTensor *cmpResidualKvOptional,
                                 const aclTensor *oriTopkLengthOptional, const aclTensor *cmpTopkLengthOptional,
-                                 int64_t oriTopk, int64_t cmpTopk, int64_t cmpRatio, int64_t oriMaskMode,
-                                 int64_t cmpMaskMode, bool hasOriKv, bool hasCmpKv, const char *layoutQOptional,
-                                 const char *layoutKvOptional, const aclTensor *metadata)
+                                int64_t oriTopk, int64_t cmpTopk, int64_t cmpRatio, int64_t oriMaskMode,
+                                int64_t cmpMaskMode, bool hasOriKv, bool hasCmpKv, const char *layoutQOptional,
+                                const char *layoutKvOptional, const aclTensor *metadata)
 {
     // cu_seqlens_q 存在性校验
     if (strcmp(layoutQOptional, "TND") == 0) {
@@ -389,11 +389,11 @@ aclnnStatus CheckConsistencySmlag(const aclTensor *cuSeqlensQOptional, const acl
                                   const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional,
                                   const aclTensor *sequsedOriKvOptional, const aclTensor *sequsedCmpKvOptional,
                                   const aclTensor *cmpResidualKvOptional, const aclTensor *oriTopkLengthOptional,
-                                   const aclTensor *cmpTopkLengthOptional, int64_t batchSize,
-                                   const char *layoutQOptional, const char *layoutKvOptional, bool hasOriKv,
-                                   bool hasCmpKv, int64_t oriTopk, int64_t cmpTopk, int64_t oriMaskMode,
-                                   int64_t cmpMaskMode, int64_t maxSeqlenQ, int64_t numHeadsKv,
-                                   const aclTensor *metadata)
+                                  const aclTensor *cmpTopkLengthOptional, int64_t batchSize,
+                                  const char *layoutQOptional, const char *layoutKvOptional, bool hasOriKv,
+                                  bool hasCmpKv, int64_t oriTopk, int64_t cmpTopk, int64_t oriMaskMode,
+                                  int64_t cmpMaskMode, int64_t maxSeqlenQ, int64_t numHeadsKv,
+                                  const aclTensor *metadata)
 {
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     int64_t dimNum = -1;
