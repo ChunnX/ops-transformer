@@ -44,6 +44,7 @@ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, L
     ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2); // N_VALUE是当前tile块的n长度
     AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SP11]: existing MTE2_S sync -> legacy combine metadata reads
     for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
         uint32_t toRankId = metaInfoTensor.GetValue(tileIdx * 8);
         uint32_t tokenIdx = metaInfoTensor.GetValue(tileIdx * 8 + 1);

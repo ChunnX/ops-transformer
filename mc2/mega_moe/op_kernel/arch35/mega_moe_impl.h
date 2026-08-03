@@ -598,6 +598,7 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
                 uint64_t metaInfoMLoc = args.expertBeforeCnt + subMLoc;
 
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[WP01]: existing V_MTE2 sync -> prefetched GM loads
 
                 // 搬入当前 128 子块的权重（首个子块已在循环前预取，跳过）
                 // WaitFlag<V_MTE2> 保证 V 已读完上一轮的 weightUb_，此处覆写安全
@@ -615,6 +616,7 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
                 AscendC::Te::Copy(copyGM2UB, tensorBlockUbSecond, tensorBlockGmSecond);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0); // 权重+GMM1 都搬完才通知 V
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[WP02]: existing MTE2_V sync -> prefetched epilogue
 
                 Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{subM, Get<N_VALUE>(actualShape), 0, 0};
                 Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
@@ -630,6 +632,7 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
             }
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[WP03]: existing final V_MTE2 sync -> tile exit
             // prefetch 路径无需 NotifyCube（单向软同步，AIC 不等 AIV0）
         } else {
             // 原始 256×256 一次处理路径
@@ -675,6 +678,7 @@ __aicore__ inline void AivGmm2PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
         WaitForCube(args.pingpongIdx);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
+        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[WP04]: existing V_MTE2 sync -> GMM2 metadata load
         AscendC::GlobalTensor<int32_t> metaInfoGm;
         int32_t lenTile = Get<M_VALUE>(actualShape);
         LocalTensor<int32_t> metaInfoTensor =
@@ -686,6 +690,7 @@ __aicore__ inline void AivGmm2PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
                                                                            l0cOutUbGMM2, actualShape, workSet.params);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
+        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[WP05]: existing MTE3_V sync -> cube notification
         NotifyCube(args.pingpongIdx);
         args.pingpongIdx = 1 - args.pingpongIdx;
     }
@@ -922,6 +927,7 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
                 // FIX_S 同步确保 blockMmad 的 L0C→GM Fixpipe 传输完成后才写状态位
                 AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[WP06]: existing FIX_S sync -> A8W4 tile status
                 __gm__ int32_t *statusAddr =
                     reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm1TileStatusPtr) +
                     static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert + loopIdx;
@@ -930,6 +936,7 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
                 // Publish only after Fixpipe commits the tile to GM. AIC does not wait for AIV1 and may run ahead.
                 AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[WP07]: existing FIX_S sync -> A8W4 epilogue flag
                 AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++gmTileSequence);
             }
         }
@@ -1010,6 +1017,7 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
                 uint64_t metaInfoMLoc = expertBeforeCnt + subMLoc;
 
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[WP08]: existing V_MTE2 sync -> A8W4 prefetched loads
 
                 // 搬入当前 128 子块的权重（首个子块已在循环前预取，跳过）
                 // WaitFlag<V_MTE2> 保证 V 已读完上一轮的 weightUb_，此处覆写安全
@@ -1027,6 +1035,7 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
                 AscendC::Te::Copy(copyGM2UB, tensorBlockUbSecond, tensorBlockGmSecond);
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0); // 权重+GMM1 都搬完才通知 V
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[WP09]: existing MTE2_V sync -> A8W4 epilogue
 
                 Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{subM, Get<N_VALUE>(actualShape), 0, 0};
                 Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
@@ -1042,6 +1051,7 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
             }
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[WP10]: existing final V_MTE2 sync -> A8W4 tile exit
         } else {
             int32_t expectedReadySequence = gmTileSequence + 1;
             while (AscendC::ReadGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag) < expectedReadySequence) {
@@ -1051,6 +1061,7 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
             }
             AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
             AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[WP11]: existing S_MTE2 sync -> A8W4 GM tile loads
             auto tensorBlockGmFirst = l0cOutGm.Slice(
                 Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
             auto tensorBlockGmSecond =
@@ -1071,6 +1082,7 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
             AscendC::Te::Copy(copyGM2UB, tensorBlockUbSecond, tensorBlockGmSecond);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[WP12]: existing MTE2_V sync -> A8W4 non-prefetch epilogue
             Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<M_VALUE>(actualShape),
                                                                          Get<N_VALUE>(actualShape), 0, 0};
             Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
@@ -1086,6 +1098,7 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
             swigluQuantOp(epilogueShape, epilogueOffset);
             AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
             AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[WP13]: existing S_MTE2 sync -> A8W4 sequence update
             gmTileSequence = expectedReadySequence;
         }
     }
@@ -1129,6 +1142,7 @@ __aicore__ inline void AivGmm2PostA8W4(Scheduler &scheduler, TensorC &l0cOutGm, 
                                                                            l0cOutUbGMM2, actualShape, params);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[WP14]: existing MTE3_MTE2 sync -> A8W4 sequence update
         gmTileSequence = expectedReadySequence;
     }
 }

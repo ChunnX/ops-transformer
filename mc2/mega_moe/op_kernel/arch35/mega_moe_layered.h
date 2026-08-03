@@ -667,6 +667,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ExpertTok
                     {true, 0U, 0U, 0U});
         AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SP01]: existing MTE2_S sync -> expert-count scalar reads
     }
     int32_t lastRankIdx = static_cast<int32_t>(worldSize_ - 1);
     expertTokenNumsOutTensor_.SetValue(0, cumsumInfoTensor_.GetValue(lastRankIdx));
@@ -677,6 +678,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ExpertTok
     }
     PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[AX01]: expert-count scalar build -> result MTE3
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SP02]: existing S_MTE3 sync -> expert-count copy
     DataCopyExtParams copyParams{1U, static_cast<uint32_t>(moeExpertPerRank_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(expertTokenNumsOut_, expertTokenNumsOutTensor_, copyParams);
     PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[AX02]: expert-count result MTE3 -> buffer reuse
@@ -1214,6 +1216,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
         int32_t tokenIndex = metaInfoTensor_[primeIdx * INT32_PER_256B].GetValue(TOKEN_ID);
         TEventID eventId = kBufEvents[primeIdx];
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SP03]: existing relay slot sync -> prime MTE2 load
         LoadTokenFromLocalRelay(srcServer, static_cast<uint32_t>(tokenIndex), primeIdx, copyInNum);
         PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[DB15]: prime relay MTE2 -> slot event S
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
@@ -1240,6 +1243,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
             int32_t tokenIndex = metaInfoTensor_[nextIdx * INT32_PER_256B].GetValue(TOKEN_ID);
             // 等待本轮 MTE3 完成后再复用 outIdx 槽。
             WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
+            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SP04]: existing relay slot sync -> next MTE2 load
             LoadTokenFromLocalRelay(srcServer, static_cast<uint32_t>(tokenIndex), outIdx, copyInNum);
             PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[DB18]: reused relay MTE2 -> slot event S
             SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
@@ -1248,6 +1252,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
 
     for (int32_t bufferIdx = 0; bufferIdx < BufferNum; ++bufferIdx) {
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(kBufEvents[bufferIdx]);
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SP05]: existing relay drain wait -> next slot/exit
     }
     PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[DB19]: local relay drain -> metadata stage
 }
@@ -1287,6 +1292,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
         hcomm_.Drain(channel);
         PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[DB22]: flag Hcomm drain -> flag MTE2
         SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID1>();
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SP06]: existing MTE3_MTE2 sync -> flag snapshot load
         // flag 在 win/L2 中按 bs * sizeof(uint64_t) 紧凑存放；搬入 UB 时由 DataCopyPad 处理非 32B 尾块。
         DataCopyPad(relayFlagTensor_, scratchFlagGlobalTensor, flagCopyParams, flagCopyPadParams);
         SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID1>();
@@ -1709,6 +1715,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ResetGmm2
             Duplicate(resetTensor_, 0, coreLen);
             PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[AX05]: combine-counter reset V -> MTE3
             SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
+            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SP07]: existing V_MTE3 sync -> counter reset copy
             DataCopy(gmm2CombineSyncCounterGm[coreOffset], resetTensor_, coreLen);
             PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[AX06]: combine-counter reset MTE3 -> caller
         }
@@ -2196,12 +2203,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
             Cast(dataResTensor_, dataResFp32Tensor_, AscendC::RoundMode::CAST_RINT, k_);
             PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[UB18]: final vector cast -> output MTE3 handoff
             SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID3>();
+            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SP08]: existing V_MTE3 sync -> unpermute output copy
             DataCopy(output[tokenIdx * k_], dataResTensor_, k_);
             PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[UB19]: token output MTE3 -> next token
         }
         chunkStart = chunkEnd;
     }
     WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SP09]: first unpermute slot drain -> second slot drain
     WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
     PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[UB20]: final input-slot completion -> unpermute exit
 }
@@ -2339,6 +2348,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SharedExp
         PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SC08]: shared slot release -> next token
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[SP10]: first shared-input slot drain -> second slot drain
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     PipeBarrier<PIPE_ALL>();
 }
