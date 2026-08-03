@@ -325,61 +325,40 @@ __simd_vf__ void FindValueOutputVFImpl(__ubuf__ uint16_t* outputValueBuf, __ubuf
     输出最终的Idx
  */
 __simd_vf__ void FindRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ uint16_t* tmpIdxBuf,
-    __ubuf__ uint32_t* hisIdxBuf, uint32_t topK, uint32_t alignedTopK, uint32_t validLen,
-    uint32_t loopIndex, uint16_t vfLoop)
+    __ubuf__ uint32_t* hisIdxBuf, uint32_t topK, uint32_t loopIndex, uint16_t vfLoop)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
 
     MicroAPI::MaskReg pregNow;
-    MicroAPI::MaskReg pregNowStart;
-    MicroAPI::MaskReg pregNowEnd;
     MicroAPI::MaskReg pregHis;
 
     MicroAPI::RegTensor<uint16_t> tmpIdx;
-    MicroAPI::RegTensor<uint32_t> outputIdx;
     MicroAPI::RegTensor<uint32_t> outputGatherIdx;
     MicroAPI::RegTensor<uint32_t> outputAddsIdx;
-
-    // In the generalized large-topK path, the first merge starts with alignedTopK raw
-    // candidates rather than an already reduced topK history.  Therefore the alignment
-    // tail [topK, alignedTopK) is valid only when loopIndex is zero.  Later merges use
-    // that same range as padding and must keep it invalid.
-    uint32_t newDataStart = loopIndex == 0 ? topK : alignedTopK;
 
     for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
         MicroAPI::LoadAlign<uint16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(tmpIdx, tmpIdxBuf + i * 64);
 
-        MicroAPI::Compares<uint32_t, CMPMODE::LT>(pregHis, (MicroAPI::RegTensor<uint32_t>&)tmpIdx, topK, pregB32);
-        MicroAPI::Compares<uint32_t, CMPMODE::GT>(pregNowStart, (MicroAPI::RegTensor<uint32_t>&)tmpIdx,
-                                                  newDataStart - 1, pregB32);
-        MicroAPI::Compares<uint32_t, CMPMODE::LT>(pregNowEnd, (MicroAPI::RegTensor<uint32_t>&)tmpIdx,
-                                                  validLen, pregB32);
-        MicroAPI::And(pregNow, pregNowStart, pregNowEnd, pregB32);
+        MicroAPI::Compares<uint32_t, CMPMODE::GT>(pregNow, (MicroAPI::RegTensor<uint32_t>&)tmpIdx, topK - 1, pregB32);
+        MicroAPI::Xor(pregHis, pregNow, pregB32, pregB32);
 
         MicroAPI::Gather(outputGatherIdx, hisIdxBuf, (MicroAPI::RegTensor<uint32_t>&)tmpIdx, pregHis);
         MicroAPI::Adds(outputAddsIdx, (MicroAPI::RegTensor<uint32_t>&)tmpIdx, loopIndex, pregNow);
 
-        MicroAPI::Duplicate(outputIdx, 0xFFFFFFFFU, pregB32);
-        MicroAPI::Select(outputIdx, outputGatherIdx, outputIdx, pregHis);
-        MicroAPI::Select(outputIdx, outputAddsIdx, outputIdx, pregNow);
+        MicroAPI::Add(outputGatherIdx, outputGatherIdx, outputAddsIdx, pregB32);
 
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outputIdxBuf + i * 64, outputIdx, pregB32);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outputIdxBuf + i * 64, outputGatherIdx, pregB32);
     }
 }
 
 __simd_vf__ void IndicesAddOffsetVF(__ubuf__ uint32_t* indicesOutBuf, uint32_t outputIdxOffset, uint32_t vfLoop)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
-    MicroAPI::MaskReg pregInvalid;
-
     MicroAPI::RegTensor<uint32_t> outIndices;
-    MicroAPI::RegTensor<uint32_t> offsetIndices;
 
     for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
         MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(outIndices, indicesOutBuf + i * 64);
-        MicroAPI::Compares<uint32_t, CMPMODE::EQ>(pregInvalid, outIndices, 0xFFFFFFFFU, pregB32);
-        MicroAPI::Adds(offsetIndices, outIndices, outputIdxOffset, pregB32);
-        MicroAPI::Select(outIndices, outIndices, offsetIndices, pregInvalid);
+        MicroAPI::Adds(outIndices, outIndices, outputIdxOffset, pregB32);
         MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(indicesOutBuf + i * 64, outIndices, pregB32);
     }
 }
@@ -486,7 +465,7 @@ __simd_vf__ void FindLDRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__
  * @param hisIdxLocal 上一轮实际Idx输入 有效:topK * 4B
  * @param topK topK元素个数
  * @param loopBasicIdx 当前循环需要加上得基准Index
- * @param validLen 合并输入的有效上界，包含历史TopK对齐区，不包含当前trunk尾部padding
+ * @param validLen 有效元素个数
  */
 __aicore__ inline void LiTopKGatherVF(const LocalTensor<uint32_t>& outputIdxLocal,
                                       const LocalTensor<uint16_t>& outputValueLocal,
@@ -507,10 +486,7 @@ __aicore__ inline void LiTopKGatherVF(const LocalTensor<uint32_t>& outputIdxLoca
     const uint16_t repeatSize16 = 128;
     uint16_t topkLoopNum16 = (topK + repeatSize16 - 1) / repeatSize16;
     uint16_t topkLoopNum32 = (topK + repeatSize32 - 1) / repeatSize32;
-    uint32_t alignedTopK = (topK + 255U) / 256U * 256U;
-
-    FindRealIndexVFImpl(outputIdxBuf, tmpIdxBuf, hisIdxBuf, topK, alignedTopK, validLen,
-                        loopBasicIdx, topkLoopNum32);
+    FindRealIndexVFImpl(outputIdxBuf, tmpIdxBuf, hisIdxBuf, topK, loopBasicIdx, topkLoopNum32);
 }
 
 /**
