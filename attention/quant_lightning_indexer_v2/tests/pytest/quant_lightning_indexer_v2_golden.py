@@ -24,6 +24,7 @@ import math
 import ctypes
 import copy
 import ast
+from qliv2_parameter_normalization import normalize_qliv2_params
 
 try:
     import cann_ops_transformer
@@ -1450,6 +1451,8 @@ def trans_prefix_actseq(self, list):
 def qliv2_output_single(
     params, is_batch=False, split_s1=DEFAULT_SPLIT_S1, s1size=DEFAULT_S1SIZE
 ):
+    if is_batch:
+        params = normalize_qliv2_params(params)
     (
         batch_size,
         q_seq,
@@ -1487,72 +1490,6 @@ def qliv2_output_single(
     ) = params
 
     if is_batch:
-        if q_t_size is None:
-            q_t_size = 0
-        if k_t_size is None:
-            k_t_size = 0
-        if block_size is None:
-            block_size = 0
-        if block_num is None:
-            block_num = 0
-
-        batch_size = int(batch_size)
-        q_seq = int(q_seq)
-        k_seq = int(k_seq)
-        q_t_size = int(q_t_size)
-        k_t_size = int(k_t_size)
-        q_head_num = int(q_head_num)
-        k_head_num = int(k_head_num)
-        head_dim = int(head_dim)
-        block_size = int(block_size)
-        block_num = int(block_num)
-        if max_seqlen_q is None:
-            max_seqlen_q = -1
-        max_seqlen_q = int(max_seqlen_q)
-        if quant_mode is None:
-            quant_mode = 1
-        quant_mode = int(quant_mode)
-        cmp_ratio = int(cmp_ratio)
-        sparse_count = int(sparse_count)
-        sparse_mode = int(sparse_mode)
-        return_value = int(return_value)
-
-        params = (
-            batch_size,
-            q_seq,
-            k_seq,
-            q_t_size,
-            k_t_size,
-            q_head_num,
-            k_head_num,
-            head_dim,
-            block_size,
-            block_num,
-            qk_dtype,
-            weight_dtype,
-            dequant_dtype,
-            actual_seq_dtype,
-            cu_seqlens_q,
-            cu_seqlens_k,
-            seqused_q,
-            seqused_k,
-            cmp_residual_k,
-            max_seqlen_q,
-            quant_mode,
-            layout_query,
-            layout_key,
-            sparse_count,
-            sparse_mode,
-            query_datarange,
-            key_datarange,
-            weights_datarange,
-            q_scale_datarange,
-            k_scale_datarange,
-            cmp_ratio,
-            return_value,
-            output_idx_offset,
-        )
-
         dtype_map = {
             "INT8": torch.int8,
             "UINT8": torch.uint8,
