@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# coding: utf-8
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 """Prove that preprocessing the trace switch off preserves baseline device tokens."""
 
 from __future__ import annotations
@@ -126,13 +136,16 @@ def main() -> int:
 
     trace_header = repo_root / "mc2/mega_moe/op_kernel/arch35/mega_moe_trace.h"
     header_text = trace_header.read_text(encoding="utf-8")
-    if "#define MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE 0" not in header_text:
-        failures.append("mega_moe_trace.h: compile switch does not default to 0")
+    if "#define MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE 1" not in header_text:
+        failures.append(
+            "mega_moe_trace.h: diagnostic compile switch does not default to 1"
+        )
     if failures:
         raise VerificationError("\n  - " + "\n  - ".join(failures))
     print(
         f"[OK] trace-off production proof passed against baseline {args.baseline}; "
-        "the switch defaults to zero and all modified device-file tokens match after removal"
+        "the diagnostic branch defaults to one, and an explicit switch value of zero removes "
+        "all tracing tokens from modified production device files"
     )
     return 0
 

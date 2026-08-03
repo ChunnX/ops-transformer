@@ -65,8 +65,8 @@ AIC/AIV0/AIV1 共用时钟域；不同 rank 必须分别解码，不能直接相
 
 ## `y` 载体证明
 
-Tracing 仅在编译宏 `MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=1` 时存在，默认值为
-0。诊断态在最终 `Unpermute` 的 MTE3_V 完成后执行混合 AIC/AIV rendezvous，
+Tracing 仅在编译宏 `MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=1` 时存在，当前诊断
+分支默认值为 1。诊断态在最终 `Unpermute` 的 MTE3_V 完成后执行混合 AIC/AIV rendezvous，
 此时正常 BF16 `y` 已不再被 kernel 消费，才把 `y` 重用为小端 `uint32` 原始
 记录。每个角色写唯一 role-major record；第二次混合 rendezvous 后 AIC0 写
 header 字段、`PIPE_ALL` 排序，并最后发布 magic。
@@ -92,9 +92,11 @@ header 字段、`PIPE_ALL` 排序，并最后发布 magic。
 从干净构建目录生成 tracing 算子包：
 
 ```bash
-bash build.sh --pkg --soc=ascend950 --ops=mega_moe \
-  --ops-compile-options '-DMEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=1' -j8
+bash build.sh --pkg --soc=ascend950 --ops=mega_moe -j8
 ```
+
+不传该宏即使用默认 tracing-on；也可显式传
+`--ops-compile-options '-DMEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=1'`。
 
 按仓库安装指南安装 `build_out/` 下生成的 run 包；若使用自定义安装路径，还需
 source 对应 vendor 的 `bin/set_env.bash`。确认当前 Python 环境加载的是这次
@@ -121,21 +123,23 @@ python3 mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py \
   --decode-only --artifact-dir /path/to/trace-artifacts
 ```
 
-关闭 tracing 的生产包必须不带 compile option 重新构建并安装：
+关闭 tracing 的生产包必须显式传 0 重新构建并安装：
 
 ```bash
-bash build.sh --pkg --soc=ascend950 --ops=mega_moe -j8
+bash build.sh --pkg --soc=ascend950 --ops=mega_moe \
+  --ops-compile-options '-DMEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=0' -j8
 ```
 
-默认宏为 0；修改的三个生产 device 文件在剥离 trace-only 预处理块后与主线基线
-token 完全相同。不要把 tracing 包留作生产包。
+当前诊断分支默认宏为 1；显式置 0 后，修改的三个生产 device 文件在剥离
+trace-only 预处理块后与主线基线 token 完全相同。不要把默认构建的 tracing 包
+留作生产包。
 
 ## 本地验证与边界
 
 在本 worktree 已完成以下真实检查：机器规范校验、计划/实现位置 audit、Python
 语法检查、5 个 host 单测、当前 `moe_test` fail-closed 适配检查、合成 raw 的
 完整 decode/order/render 链路、trace-off token 等价检查，以及 Ascend 950
-MegaMoe 的默认关闭和显式开启两组 opkernel 构建（每组 8 个变体）。合成 HTML
+MegaMoe 的默认开启和显式关闭两组 opkernel 构建（每组 8 个变体）。合成 HTML
 入口是 [`artifacts/synthetic/index.html`](artifacts/synthetic/index.html)，其中
 明确标记为 host-only synthetic，不是设备结果。结构化结果见
 [`validation-report.json`](validation-report.json)。

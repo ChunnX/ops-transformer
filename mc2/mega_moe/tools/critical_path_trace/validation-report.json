@@ -11,7 +11,7 @@
     "branch": "codex/mega-moe-critical-path-trace-20260803",
     "worktree": "/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803",
     "compile_switch": "MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE",
-    "compile_switch_default": 0,
+    "compile_switch_default": 1,
     "supported_path": "arch35 MTE A8W8 MegaMoeWave"
   },
   "moe_test_provenance": {
@@ -65,13 +65,13 @@
       "name": "ascend950_trace_off_opkernel_build",
       "status": "passed",
       "variants": 8,
-      "command": "bash build.sh --opkernel --ops=mega_moe --soc=ascend950 -j8"
+      "command": "bash build.sh --opkernel --ops=mega_moe --soc=ascend950 --ops-compile-options '-DMEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=0' -j8"
     },
     {
       "name": "ascend950_trace_on_opkernel_build",
       "status": "passed",
       "variants": 8,
-      "command": "bash build.sh --opkernel --ops=mega_moe --soc=ascend950 --ops-compile-options '-DMEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=1' -j8"
+      "command": "bash build.sh --opkernel --ops=mega_moe --soc=ascend950 -j8"
     }
   ],
   "unavailable_checks": [
