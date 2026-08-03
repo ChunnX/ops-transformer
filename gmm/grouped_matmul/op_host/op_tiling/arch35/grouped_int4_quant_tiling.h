@@ -60,8 +60,6 @@ protected:
     bool SetMKN(const gert::Shape &xShape, const gert::Shape &wShape);
     bool SetGroupNum(uint32_t groupListIndex);
     bool SetMKNList();
-    bool AnalyzeA4W4();
-    bool CheckA4W4Params();
     void CalBasicBlockA4W4();
     ge::graphStatus CalUbDivideA4W4();
     ge::graphStatus CalWorkspaceA4W4();
