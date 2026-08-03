@@ -361,6 +361,7 @@ struct RunInfo<false> {
     uint32_t blockTableDim2;                                                                                           \
     uint32_t blockSize;                                                                                                \
     uint32_t paLayoutType;                                                                                             \
+    uint32_t kvCacheNzD0;                                                                                              \
     uint32_t paBlockNumSum;                                                                                            \
     uint32_t transposeLayout;                                                                                          \
     /* GS1合轴场景，外层循环是B、N2，内层循环G、S1，headNumRatio = 1 */                              \
