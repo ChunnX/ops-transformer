@@ -411,8 +411,14 @@ ge::graphStatus TilingMhcPreBackwardArch22(gert::TilingContext *context)
     context->SetScheduleMode(1); // 1: batchmode模式
     GET_TPL_TILING_KEY(isDeterministic);
     // if (isDeterministic) {
+    // Check if optional inputs are provided (gamma: index 10, grad_x_post: index 11)
+    bool withGamma = false; // BISECT: force disable gamma for grad_x_post validation
+    bool withGradXPost = (context->GetInputDesc(11) != nullptr);
+    tilingData->withGamma = withGamma ? 1 : 0;
+    tilingData->withGradXPost = withGradXPost ? 1 : 0;
+    size_t gammaWorkspace = withGamma ? aivNum * (n * c) * sizeof(float) : 0;
     currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize + aicNum * fusionSize * (n * c) * sizeof(float) +
-                          aivNum * (fusionSize + ELEMENTS_SIZE_PER_BLOCK) * sizeof(float);
+                          aivNum * (fusionSize + ELEMENTS_SIZE_PER_BLOCK) * sizeof(float) + gammaWorkspace;
     // } else {
     //     currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;
     // }

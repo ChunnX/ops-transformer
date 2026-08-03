@@ -33,6 +33,8 @@ struct MhcPreBackwardArch22TilingData {
     int64_t tileHHat2 = 0;
     int64_t tileSize = 0;
     int64_t ubSize = 0;
+    int64_t withGamma = 0;
+    int64_t withGradXPost = 0;
     float eps = 0;
     TCubeTiling mm1TilingData;
     TCubeTiling mm2TilingData;

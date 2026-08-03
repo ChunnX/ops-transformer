@@ -110,14 +110,15 @@ public:
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR phi, GM_ADDR h_pre, GM_ADDR h_post, GM_ADDR grad_h_in,
                                 GM_ADDR grad_h_post, GM_ADDR grad_h_res, GM_ADDR alpha, GM_ADDR h_mix, GM_ADDR inv_rms,
                                 GM_ADDR grad_x, GM_ADDR grad_phi, GM_ADDR grad_alpha, GM_ADDR grad_bias,
-                                GM_ADDR workspace, const MhcPreBackwardArch22TilingData *tilingData, TPipe *pipe)
+                                GM_ADDR workspace, const MhcPreBackwardArch22TilingData *tilingData, TPipe *pipe,
+                                GM_ADDR gamma, GM_ADDR grad_x_post_optional, GM_ADDR grad_gamma)
     {
         pipe_ = pipe;
         blkIdx_ = GetBlockIdx();
 
         InitTiling(tilingData);
         InitGM(x, phi, h_pre, h_post, grad_h_in, grad_h_post, grad_h_res, alpha, h_mix, inv_rms, grad_x, grad_phi,
-               grad_alpha, grad_bias, workspace);
+               grad_alpha, grad_bias, workspace, gamma, grad_x_post_optional, grad_gamma);
         InitGradPreStageBuffer();
     }
     __aicore__ inline void Process();
@@ -160,6 +161,16 @@ protected:
         dhatLocal_, rsqrtTempLocal_, gradXCubeLocal_;
     LocalTensor<T> hatLocal;
     LocalTensor<T> onesLocal_;
+    LocalTensor<T> gammaLocal_;
+
+    bool withGamma_ = false;
+    bool withGradXPost_ = false;
+    int64_t gammaUseCoreNum_ = 0;
+
+    GlobalTensor<T> gammaGlobal_;
+    GlobalTensor<T> gradGammaGlobal_;
+    GlobalTensor<T> gradGammaWSGlobal_;
+    GlobalTensor<TYPE_X> gradXPostGlobal_;
 
     GlobalTensor<TYPE_X> xGlobal_, gradYGlobal_;
     GlobalTensor<T> preGlobal_;
@@ -217,10 +228,13 @@ private:
         fusionSize_ = tilingData->fusionSize;
         factN_ = fusionSize_ - PRE_POST_NUM * n_;
         isBSNN_ = tilingData->isBSNN;
+        withGamma_ = (tilingData->withGamma != 0);
+        withGradXPost_ = (tilingData->withGradXPost != 0);
 
         c0RepeatTime_ = c0_ / ELEMENTS_SIZE_PER_REPEAT;
         totalTasks_ = batchSize_ * seqLength_;
         totalTasksAligned_ = AlignUp(totalTasks_, aivNum_ * tileCoreBS_);
+        gammaUseCoreNum_ = Ops::Base::CeilDiv(n_ * c_, aivNum_ * tileCoreBS_);
         if ASCEND_IS_AIC {
             mm1K_ = fusionSize_;
             mm1M_ = tileCoreBS_ * 2;
@@ -235,10 +249,18 @@ private:
     __aicore__ inline void InitGM(GM_ADDR x, GM_ADDR phi, GM_ADDR h_pre, GM_ADDR h_post, GM_ADDR grad_h_in,
                                   GM_ADDR grad_h_post, GM_ADDR grad_h_res, GM_ADDR alpha, GM_ADDR h_mix,
                                   GM_ADDR inv_rms, GM_ADDR grad_x, GM_ADDR grad_phi, GM_ADDR grad_alpha,
-                                  GM_ADDR grad_bias, GM_ADDR workspace)
+                                  GM_ADDR grad_bias, GM_ADDR workspace, GM_ADDR gamma, GM_ADDR grad_x_post_optional,
+                                  GM_ADDR grad_gamma)
     {
         xGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ TYPE_X *>(x));
         gradWeightGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(grad_phi));
+        if (withGamma_) {
+            gammaGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(gamma));
+            gradGammaGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(grad_gamma));
+        }
+        if (withGradXPost_) {
+            gradXPostGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ TYPE_X *>(grad_x_post_optional));
+        }
         int64_t workspaceOffset = 0;
         gradH2Global_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(workspace) + workspaceOffset);
         workspaceOffset += batchSize_ * seqLength_ * fusionSize_;
@@ -271,6 +293,10 @@ private:
                 workspaceOffset += aivNum_ * (ELEMENTS_SIZE_PER_BLOCK);
                 gradHcBaseWSGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(workspace) + workspaceOffset);
                 workspaceOffset += aivNum_ * fusionSize_;
+                if (withGamma_) {
+                    gradGammaWSGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(workspace) + workspaceOffset);
+                    workspaceOffset += aivNum_ * (n_ * c_);
+                }
             }
             h2Global_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(h_mix));
 
@@ -308,6 +334,9 @@ private:
                                 Ops::Base::CeilDiv(tileCoreBS_ * n_, static_cast<int64_t>(ELEMENTS_SIZE_PER_BLOCK)) *
                                     ELEMENTS_SIZE_PER_REPEAT * sizeof(float) +
                                 onceTask_ * n_ * c0_ * sizeof(float) * 2 + onceTask_ * c0_ * sizeof(float);
+            if (withGamma_) {
+                ubSizeRemain += n_ * c0_ * sizeof(float);
+            }
 
             pipe_->InitBuffer(tempBuf_, ubSizeRemain);
 
@@ -341,6 +370,11 @@ private:
             gradXCastLocal_ = tempBuf_.GetWithOffset<T>(onceTask_ * n_ * c0_, offset);
             offset += onceTask_ * n_ * c0_ * sizeof(float);
             xCastLocal_ = tempBuf_.GetWithOffset<T>(onceTask_ * n_ * c0_, offset);
+            offset += onceTask_ * n_ * c0_ * sizeof(float);
+            if (withGamma_) {
+                gammaLocal_ = tempBuf_.GetWithOffset<T>(n_ * c0_, offset);
+                offset += n_ * c0_ * sizeof(float);
+            }
             offset = 0;
             // ComputeGradPre
             tmpLocal_ = gradXCastLocal_;
@@ -799,6 +833,46 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
         }
 
         PipeBarrier<PIPE_V>();
+
+        // --- [gamma] gradGamma 计算 + gamma 乘法 ---
+        if (withGamma_) {
+            // 加载 gamma
+            DataCopyPad(gammaLocal_, gammaGlobal_[c0_ * loopIdC],
+                        {static_cast<uint16_t>(n_), static_cast<uint32_t>(copyLen * sizeof(float)),
+                         static_cast<uint32_t>((c_ - copyLen) * sizeof(float)), 0, 0},
+                        {isPad, 0, padLen, 0});
+            SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
+            WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
+
+            // gradGamma = sum_BS(x * x_grad_mm), 复用 xCastLocal_
+            Mul(xCastLocal_, xCastLocal_, gradXCubeLocal_, ubAlignC * n_ * tileTaskCount);
+            PipeBarrier<PIPE_V>();
+            // 跨 tileTaskCount 归约 (BS 维度)
+            for (int32_t bs = 1; bs < tileTaskCount; bs++) {
+                Add(xCastLocal_, xCastLocal_, xCastLocal_[bs * n_ * ubAlignC], n_ * ubAlignC);
+                PipeBarrier<PIPE_V>();
+            }
+            // V→MTE3 同步，写回 gradGammaWSGlobal_
+            SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
+            WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
+            DataCopyPad(gradGammaWSGlobal_[blkIdx_ * (n_ * c_) + c0_ * loopIdC], xCastLocal_,
+                        {static_cast<uint16_t>(n_), static_cast<uint32_t>(copyLen * sizeof(float)), 0,
+                         static_cast<uint32_t>((c_ - copyLen) * sizeof(float)), 0});
+            PipeBarrier<PIPE_V>();
+
+            // gradXCubeLocal_ *= gamma (x_grad_mm *= gamma)
+            for (int32_t loopIdN = 0; loopIdN < n_; loopIdN += 1) {
+                for (int32_t loopOffsetC0 = 0; loopOffsetC0 < copyLen; loopOffsetC0 += ELEMENTS_SIZE_PER_REPEAT) {
+                    uint64_t mask = min(static_cast<uint64_t>(ELEMENTS_SIZE_PER_REPEAT),
+                                        static_cast<uint64_t>(copyLen - loopOffsetC0));
+                    Mul(gradXCubeLocal_[loopIdN * ubAlignC + loopOffsetC0],
+                        gradXCubeLocal_[loopIdN * ubAlignC + loopOffsetC0], gammaLocal_[loopIdN * c0_ + loopOffsetC0],
+                        mask, tileTaskCount, {1, 1, 0, blkStride2, blkStride2, blkStride1});
+                }
+            }
+            PipeBarrier<PIPE_V>();
+        }
+
         // --- [公式6] x_grad = x_grad_vec3 + x_grad_vec1 + x_grad_mm ---
         // gradXCubeLocal_ = x_grad_mm (来自 AIC 侧 H_mix_grad @ phi，已含 gamma 融合)
         // gradXCastLocal_ = x_grad_vec3 + x_grad_vec1
@@ -808,6 +882,22 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
         Add(gradXCastLocal_, gradXCubeLocal_, gradXCastLocal_, ubAlignC * n_ * tileTaskCount);
         PipeBarrier<PIPE_V>();
         inputXInQueue.FreeTensor(xLocal_);
+
+        // --- [可选] grad_x_post 累加 ---
+        if (withGradXPost_) {
+            auto gradXPostXLocal = inputXInQueue.AllocTensor<TYPE_X>();
+            DataCopyPad(gradXPostXLocal, gradXPostGlobal_[taskOffset * n_ * c_ + c0_ * loopIdC],
+                        {static_cast<uint16_t>(n_ * tileTaskCount), static_cast<uint32_t>(copyLen * sizeof(TYPE_X)),
+                         static_cast<uint32_t>((c_ - copyLen) * sizeof(TYPE_X)), 0, 0},
+                        {isPad, 0, padLen, 0});
+            inputXInQueue.EnQue(gradXPostXLocal);
+            gradXPostXLocal = inputXInQueue.DeQue<TYPE_X>();
+            Cast(xCastLocal_, gradXPostXLocal, RoundMode::CAST_NONE, ubAlignC * n_ * tileTaskCount);
+            PipeBarrier<PIPE_V>();
+            Add(gradXCastLocal_, gradXCastLocal_, xCastLocal_, ubAlignC * n_ * tileTaskCount);
+            PipeBarrier<PIPE_V>();
+            inputXInQueue.FreeTensor(gradXPostXLocal);
+        }
 
         // Cast 回原始精度并写出
         auto gradXLocalOut = OutQueue.AllocTensor<TYPE_X>();
@@ -927,7 +1017,29 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
         OutQueue.EnQue(xCastOutLocal);
         xCastOutLocal = OutQueue.DeQue<T>();
 
-        // 保存 x * grad_y 到 workspace，供 AIC 侧 ProcessMatmul2 计算 phi_grad = G^T @ X
+        // gamma: x_rs = x * gamma, 保存到 workspace 供 AIC 侧 phi_grad = G^T @ x_rs
+        if (withGamma_) {
+            DataCopyPad(gammaLocal_, gammaGlobal_[c0_ * loopIdC],
+                        {static_cast<uint16_t>(n_), static_cast<uint32_t>(copyLen * sizeof(float)),
+                         static_cast<uint32_t>((c_ - copyLen) * sizeof(float)), 0, 0},
+                        {isPad, 0, padLen, 0});
+            SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
+            WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
+            for (int32_t loopIdN = 0; loopIdN < n_; loopIdN += 1) {
+                for (int32_t loopOffsetC0 = 0; loopOffsetC0 < copyLen; loopOffsetC0 += ELEMENTS_SIZE_PER_REPEAT) {
+                    uint64_t mask = min(static_cast<uint64_t>(ELEMENTS_SIZE_PER_REPEAT),
+                                        static_cast<uint64_t>(copyLen - loopOffsetC0));
+                    Mul(xCastOutLocal[loopIdN * ubAlignC + loopOffsetC0],
+                        xCastOutLocal[loopIdN * ubAlignC + loopOffsetC0], gammaLocal_[loopIdN * c0_ + loopOffsetC0],
+                        mask, tileTaskCount, {1, 1, 0, blkStride3, blkStride3, blkStride});
+                }
+            }
+            PipeBarrier<PIPE_V>();
+            SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
+            WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
+        }
+
+        // 保存 x (或 x*gamma) 到 workspace，供 AIC 侧 ProcessMatmul2 计算 phi_grad = G^T @ X
         DataCopyPad(xWorkspaceGlobal_[taskOffset * n_ * c_ + c0_ * loopIdC], xCastOutLocal,
                     {static_cast<uint16_t>(n_ * tileTaskCount), static_cast<uint32_t>(copyLen * sizeof(float)), 0,
                      static_cast<uint32_t>((c_ - copyLen) * sizeof(float)), 0});
@@ -1241,6 +1353,9 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
             int64_t useCoreNum = min(Ops::Base::CeilDiv(totalTasks_, tileCoreBS_), aivNum_);
             ComputeDeterministic(gradHcBaseWSGlobal_, gradHcBaseGlobal_, useCoreNum, fusionSize_);
             ComputeDeterministic(gradHcScaleWSGlobal_, gradHcScaleGlobal_, useCoreNum, 3);
+            if (false && withGamma_) { // BISECT: disabled gamma for grad_x_post validation
+                ComputeDeterministic(gradGammaWSGlobal_, gradGammaGlobal_, useCoreNum, n_ * c_);
+            }
             useCoreNum = Ops::Base::CeilDiv(useCoreNum, static_cast<int64_t>(2));
             ComputeDeterministic(gradWeightWSGlobal_, gradWeightGlobal_, useCoreNum, fusionSize_ * (n_ * c_));
             // printf("aiv 2 end\n");
