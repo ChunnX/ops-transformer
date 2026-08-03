@@ -139,7 +139,7 @@ aclnnStatus aclnnSparseFlashAttention(
                 <li>layoutKv为TND时，shape为(T2, N2, D)。</li>
           </ul>
       </td>
-      <td>x</td>
+      <td>✓</td>
     </tr>
     <tr>
       <td>value（aclTensor）</td>
@@ -149,7 +149,7 @@ aclnnStatus aclnnSparseFlashAttention(
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>shape与key的shape一致。</td>
-      <td>x</td>
+      <td>✓</td>
     </tr>
     <tr>
       <td>sparseIndices（aclTensor）</td>
@@ -250,7 +250,7 @@ aclnnStatus aclnnSparseFlashAttention(
                 <li>layoutKv为PA_BSND时，shape为(blockNum,blockSize,N2,Dr)。</li>
           </ul>
       </td>
-      <td>x</td>
+      <td>✓</td>
     </tr>
     <tr>
       <td>scaleValue（double）</td>
@@ -512,32 +512,18 @@ aclnnStatus aclnnSparseFlashAttention(
 
 - 确定性计算：aclnnSparseFlashAttention默认确定性实现。
 - 该接口支持推理场景下使用。
-- N1支持情况：
-
-  <!-- npu="950" id7 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：
-    - N1支持1~128。
-  <!-- end id7 -->
-  <!-- npu="A3,910b" id8 -->
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-    - N1支持1/2/4/8/16/32/64/128。
-  <!-- end id8 -->
-
 - N2仅支持1。
 - blockSize为一个block的token数，blockSize取值为16的倍数，且最大支持1024。
 - 参数query中的D和key、value的D值相等为512，参数queryRope中的Dr和keyRope的Dr值相等为64。
 - 参数query、key、value的数据类型必须保持一致。
 - 支持sparseBlockSize整除blockSize。
-
-  <!-- npu="950" id9 -->
-  - <term>Ascend 950PR/Ascend 950DT</term>：
-    - 只支持sparseBlockSize为1。
-  <!-- end id9 -->
-  <!-- npu="A3,910b" id10 -->
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-    - 支持[1,128]，且要求是2的幂次方，在PageAttention场景下要求sparseBlockSize整除blockSize
-
-  <!-- end id10 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：
+  - N1支持1~128。
+  - 只支持sparseBlockSize为1。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - N1支持1/2/4/8/16/32/64/128。
+  - 支持[1,128]，且要求是2的幂次方，在PageAttention场景下要求sparseBlockSize整除blockSize。
+  - key、value和key_rope不支持非连续。
 
 ## 调用示例
 
