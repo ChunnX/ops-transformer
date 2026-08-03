@@ -38,8 +38,15 @@ REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulFinalizeRouting, GroupedMatmulFinalize
 
 static ge::graphStatus GroupedMatmulFinalizeRoutingTilingFunc(gert::TilingContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "context is null"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr,
+            OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "context is null"),
+            return ge::GRAPH_FAILED);
+    
+    auto atomicRet = context->SetNeedAtomic(true);
+    OP_CHECK_IF(atomicRet != ge::GRAPH_SUCCESS,
+            OPS_REPORT_CUBE_INNER_ERR(context->GetNodeName(), "SetNeedAtomic failed"),
+            return ge::GRAPH_FAILED);
+    
     auto compileInfoPtr = context->GetCompileInfo<GroupedMatmulFinalizeRoutingCompileInfo>();
     OP_CHECK_IF(compileInfoPtr == nullptr,
                 OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulFinalizeRouting", "CompileInfo is null"),
