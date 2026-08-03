@@ -36,15 +36,42 @@ protected:
     }
 };
 
+// gert::StorageShape 只有 initializer_list 构造，维数在编译期固定；
+// 输出 shape 用例需要按运行期 vector 造 shape，这里补一个helper
+gert::StorageShape MakeStorageShape(const std::vector<int64_t>& dims)
+{
+    gert::StorageShape shape;
+    shape.MutableOriginShape().SetDimNum(dims.size());
+    shape.MutableStorageShape().SetDimNum(dims.size());
+    for (size_t i = 0; i < dims.size(); ++i) {
+        shape.MutableOriginShape().SetDim(i, dims[i]);
+        shape.MutableStorageShape().SetDim(i, dims[i]);
+    }
+    return shape;
+}
+
 // 全部可选输入均提供（hasGen = true, hasCatIndices = true）
+// qOut / kCacheOut / vCacheOut 传空表示用推导出的正确 shape，非空则覆盖（用于输出 shape 校验用例）
 gert::TilingContextPara BuildTilingContext(int64_t undLen, int64_t genLen, int64_t numHeadQ, int64_t numHeadK,
                                            int64_t numHeadV, int64_t headDim = HEAD_DIM,
                                            int64_t blockSize = BLOCK_SIZE, int64_t maxPos = 4096,
-                                           const std::vector<int64_t>& mropeSection = {16, 16, 16})
+                                           const std::vector<int64_t>& mropeSection = {16, 16, 16},
+                                           const std::vector<int64_t>& qOutOverride = {},
+                                           const std::vector<int64_t>& kCacheOutOverride = {},
+                                           const std::vector<int64_t>& vCacheOutOverride = {})
 {
     const int64_t total = undLen + genLen;
     const int64_t numHead = numHeadQ + numHeadK + numHeadV;
     const int64_t blockNum = (total + blockSize - 1) / blockSize + 1;
+
+    const std::vector<int64_t> qOut =
+        qOutOverride.empty() ? std::vector<int64_t>{total, numHeadQ, headDim} : qOutOverride;
+    const std::vector<int64_t> kCacheOut = kCacheOutOverride.empty()
+                                               ? std::vector<int64_t>{blockNum, blockSize, numHeadK, headDim}
+                                               : kCacheOutOverride;
+    const std::vector<int64_t> vCacheOut = vCacheOutOverride.empty()
+                                               ? std::vector<int64_t>{blockNum, blockSize, numHeadV, headDim}
+                                               : vCacheOutOverride;
 
     static optiling::UndGenQkvRmsNormRopeCacheCompileInfo compileInfo = {};
 
@@ -69,13 +96,9 @@ gert::TilingContextPara BuildTilingContext(int64_t undLen, int64_t genLen, int64
             {{{total}, {total}}, ge::DT_INT64, ge::FORMAT_ND},
         },
         {
-            {{{total, numHeadQ, headDim}, {total, numHeadQ, headDim}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{blockNum, blockSize, numHeadK, headDim}, {blockNum, blockSize, numHeadK, headDim}},
-             ge::DT_BF16,
-             ge::FORMAT_ND},
-            {{{blockNum, blockSize, numHeadV, headDim}, {blockNum, blockSize, numHeadV, headDim}},
-             ge::DT_BF16,
-             ge::FORMAT_ND},
+            {MakeStorageShape(qOut), ge::DT_BF16, ge::FORMAT_ND},
+            {MakeStorageShape(kCacheOut), ge::DT_BF16, ge::FORMAT_ND},
+            {MakeStorageShape(vCacheOut), ge::DT_BF16, ge::FORMAT_ND},
         },
         {
             {"num_heads_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(numHeadQ)},
@@ -487,5 +510,43 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_gen_weights_missing)
     para.inputTensorDesc_.erase(para.inputTensorDesc_.begin() + 9, para.inputTensorDesc_.end());
     para.inputInstanceNum_ = {1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0};
     para.outputInstanceNum_ = {1, 1, 1};
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+// ==================== 输出 shape 校验 ====================
+// 输出 buffer 由调用方分配，tiling 不校验的话 kernel 会按 TilingData 里的 T 写满而静默越界
+
+TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_q_out_token_dim_mismatch)
+{
+    // q 少一行：T = 8 但只开了 7
+    auto para = BuildTilingContext(5, 3, 8, 1, 1, HEAD_DIM, BLOCK_SIZE, 4096, {16, 16, 16}, {7, 8, HEAD_DIM});
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_q_out_head_dim_mismatch)
+{
+    // q 的 Hq 与属性不符
+    auto para = BuildTilingContext(5, 3, 8, 1, 1, HEAD_DIM, BLOCK_SIZE, 4096, {16, 16, 16}, {8, 4, HEAD_DIM});
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_q_out_not_3d)
+{
+    auto para = BuildTilingContext(5, 3, 8, 1, 1, HEAD_DIM, BLOCK_SIZE, 4096, {16, 16, 16}, {8 * 8, HEAD_DIM});
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_k_cache_out_shape_mismatch_input)
+{
+    // k_cache 是原地写入，输出 shape 必须与输入逐维一致；这里 Bn 少一个 block
+    auto para = BuildTilingContext(5, 3, 8, 1, 1, HEAD_DIM, BLOCK_SIZE, 4096, {16, 16, 16}, {},
+                                   {1, BLOCK_SIZE, 1, HEAD_DIM});
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
+}
+
+TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_v_cache_out_dim_num_mismatch_input)
+{
+    auto para = BuildTilingContext(5, 3, 8, 1, 1, HEAD_DIM, BLOCK_SIZE, 4096, {16, 16, 16}, {}, {},
+                                   {2 * BLOCK_SIZE, 1, HEAD_DIM});
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
