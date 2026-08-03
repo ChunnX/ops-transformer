@@ -79,17 +79,18 @@ __aicore__ inline void SprRw<T>::Init(uint64_t sprVaddr, GM_ADDR sprVaddrTable, 
     resultGm_.SetGlobalBuffer((__gm__ uint64_t *)resultAddr);
 }
 
-// 本核访问自身 SPR: 用 cce 指令 get_data_main_base() 读取
-// 写入用 st_dev 对自身 spr vaddr
+// 本核访问自身 SPR: 通过 vaddr 读写同一寄存器
 template <typename T>
 __aicore__ inline void SprRw<T>::WriteThenReadSelf()
 {
-    // 1. 读取本核 SPR 写前值 (cce 指令，零延迟)
-    uint64_t readBefore = static_cast<uint64_t>(get_data_main_base());
-
-    // 2. 解锁寄存器 (background.md 2.4)
     __gm__ uint8_t *selfSpr = reinterpret_cast<__gm__ uint8_t *>(
         reinterpret_cast<__gm__ uint64_t *>(sprVaddrTable_)[aivId_]);
+    __gm__ uint32_t *sprReg = reinterpret_cast<__gm__ uint32_t *>(selfSpr + SPR_DATA_MAIN_BASE_OFFSET);
+
+    // 1. 读取写前值 (通过 GM 读同一寄存器地址)
+    uint32_t readBefore = *sprReg;
+
+    // 2. 解锁寄存器 (background.md 2.4)
     st_dev(SPR_UNLOCK_VAL, (__gm__ uint32_t *)(selfSpr + SPR_UNLOCK_OFFSET), 0);
 
     // 3. CrossCore 同步 (background.md 2.4: 结合 st_dev + CrossCore 提高成功率)
@@ -97,19 +98,16 @@ __aicore__ inline void SprRw<T>::WriteThenReadSelf()
     CrossCoreWaitFlag<0, PIPE_ALL>(11);
 
     // 4. 写 SPR (st_dev 写 +0x00D0)
-    st_dev(SPR_TEST_WRITE_VAL, (__gm__ uint32_t *)(selfSpr + SPR_DATA_MAIN_BASE_OFFSET), 0);
+    st_dev(SPR_TEST_WRITE_VAL, sprReg, 0);
 
-    // 5. 再次读取本核 SPR 写后值
-    uint64_t readAfter = static_cast<uint64_t>(get_data_main_base());
+    // 5. 读取写后值 (同一寄存器地址)
+    uint32_t readAfter = *sprReg;
 
-    // 6. 回写结果
-    // 注意: get_data_main_base() 读的是 DATA_MAIN_BASE 寄存器本身，
-    //       而 st_dev 写的是 +0x00D0 偏移处的子寄存器，两者可能不是同一字段。
-    //       这里同时记录两个值供 host 侧分析。
+    // 6. 回写结果: 比较写后读值与写入值是否一致
     resultGm_.SetValue(0, sprVaddr_);
-    resultGm_.SetValue(1, readBefore);
-    resultGm_.SetValue(2, readAfter);
-    resultGm_.SetValue(3, (readAfter != readBefore) ? 0 : 2);  // 简单判断是否有变化
+    resultGm_.SetValue(1, static_cast<uint64_t>(readBefore));
+    resultGm_.SetValue(2, static_cast<uint64_t>(readAfter));
+    resultGm_.SetValue(3, (readAfter == SPR_TEST_WRITE_VAL) ? 0 : 1);
     resultGm_.SetValue(4, static_cast<uint64_t>(aivId_));
 
     DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
