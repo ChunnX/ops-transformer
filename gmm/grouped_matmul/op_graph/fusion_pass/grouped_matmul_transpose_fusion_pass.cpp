@@ -153,15 +153,34 @@ bool IsSameOrBothUnknown(int64_t lhs, int64_t rhs)
     return lhs == rhs || (IsUnknownDim(lhs) && IsUnknownDim(rhs));
 }
 
+std::string DimsToString(const std::vector<int64_t>& dims)
+{
+    std::string result = "[";
+    for (std::size_t i = 0; i < dims.size(); ++i) {
+        if (i != 0) {
+            result += ",";
+        }
+        result += std::to_string(dims[i]);
+    }
+    result += "]";
+    return result;
+}
+
 bool CheckPlatformIsDav3510ForGmm()
 {
     fe::PlatformInfo platformInfo;
     fe::OptionalInfo optionalInfo;
-    if (fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo) != SUCCESS) {
-        OP_LOGW(kPassName, "Get platform information failed.");
+    const auto platformRet =
+        fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
+    if (platformRet != SUCCESS) {
+        OP_LOGI(kPassName, "[GMM_TRANS_DIAG] Get platform information failed, ret=%u.",
+            static_cast<uint32_t>(platformRet));
         return false;
     }
-    return platformInfo.str_info.short_soc_version == kDav3510ShortSocVersion;
+    const bool isDav3510 = platformInfo.str_info.short_soc_version == kDav3510ShortSocVersion;
+    OP_LOGI(kPassName, "[GMM_TRANS_DIAG] platform short_soc_version=%s, optional_soc_version=%s, isDav3510=%d.",
+        platformInfo.str_info.short_soc_version.c_str(), optionalInfo.soc_version.c_str(), isDav3510);
+    return isDav3510;
 }
 
 bool CheckPlatformSupportReshapePattern()
@@ -224,7 +243,11 @@ bool IsReshapeTransForScale(int32_t index, const GNodePtr& nodePerInput)
     }
     auto expectedOutputDims = inputDesc.GetShape().GetDims();
     const auto outputDims = outputDesc.GetShape().GetDims();
+    OP_LOGI(kPassName, "[GMM_TRANS_DIAG] scale-like reshape index=%d, input=%s, output=%s, dtype=%d.", index,
+        DimsToString(expectedOutputDims).c_str(), DimsToString(outputDims).c_str(),
+        static_cast<int32_t>(inputDesc.GetDataType()));
     if (expectedOutputDims.size() < kMiniShapeLen || expectedOutputDims.size() != outputDims.size()) {
+        OP_LOGI(kPassName, "[GMM_TRANS_DIAG] reject scale-like reshape: invalid rank.");
         return false;
     }
 
@@ -244,14 +267,21 @@ bool IsReshapeTransForScale(int32_t index, const GNodePtr& nodePerInput)
     }
 
     if (expectedOutputDims[firstTransposeAxis] != 1 && expectedOutputDims[secondTransposeAxis] != 1) {
+        OP_LOGI(kPassName,
+            "[GMM_TRANS_DIAG] reject scale-like reshape: neither transpose axis is 1, axes=(%zu,%zu).",
+            firstTransposeAxis, secondTransposeAxis);
         return false;
     }
     std::swap(expectedOutputDims[firstTransposeAxis], expectedOutputDims[secondTransposeAxis]);
     for (std::size_t i = 0; i < expectedOutputDims.size(); ++i) {
         if (!IsSameOrBothUnknown(expectedOutputDims[i], outputDims[i])) {
+            OP_LOGI(kPassName,
+                "[GMM_TRANS_DIAG] reject scale-like reshape: dim %zu mismatches, expected=%lld, actual=%lld.", i,
+                static_cast<long long>(expectedOutputDims[i]), static_cast<long long>(outputDims[i]));
             return false;
         }
     }
+    OP_LOGI(kPassName, "[GMM_TRANS_DIAG] accept scale-like reshape index=%d.", index);
     return true;
 }
 
@@ -782,11 +812,19 @@ Status FusionNodeWeight(GraphPtr& graph, GNode& groupedMatmulNode,
 
     const bool isDav3510 = CheckPlatformIsDav3510ForGmm();
     const bool isWeightQuant = IsWeightQuant(groupedMatmulNode);
-    if (isDav3510 && !isWeightQuant && GetInputNode(groupedMatmulNode, kScaleIndex) != nullptr) {
+    const bool hasScale = GetInputNode(groupedMatmulNode, kScaleIndex) != nullptr;
+    OP_LOGI(kPassName, "[GMM_TRANS_DIAG] weight candidate: isDav3510=%d, isWeightQuant=%d, hasScale=%d.",
+        isDav3510, isWeightQuant, hasScale);
+    if (isDav3510 && !isWeightQuant && hasScale) {
         GmmInputPattern scalePattern;
-        if (BuildInputPattern(groupedMatmulNode, kScaleIndex, reshapePattern, scalePattern) &&
-            IsType(scalePattern.transposeNode, kOpTypeReshape) &&
-            !CheckEquivalentTransposeNode(groupedMatmulNode, kScaleIndex, reshapePattern, scalePattern)) {
+        const bool scalePatternBuilt = BuildInputPattern(groupedMatmulNode, kScaleIndex, reshapePattern, scalePattern);
+        const bool scaleIsReshape = scalePatternBuilt && IsType(scalePattern.transposeNode, kOpTypeReshape);
+        const bool scaleEquivalent =
+            !scaleIsReshape || CheckEquivalentTransposeNode(groupedMatmulNode, kScaleIndex, reshapePattern, scalePattern);
+        OP_LOGI(kPassName,
+            "[GMM_TRANS_DIAG] scale precheck: patternBuilt=%d, isReshape=%d, transposeEquivalent=%d.",
+            scalePatternBuilt, scaleIsReshape, scaleEquivalent);
+        if (scalePatternBuilt && scaleIsReshape && !scaleEquivalent) {
             OP_LOGD(kPassName, "Skip weight fusion because its scale reshape cannot be proven transpose-equivalent.");
             return GRAPH_NOT_CHANGED;
         }
@@ -794,16 +832,20 @@ Status FusionNodeWeight(GraphPtr& graph, GNode& groupedMatmulNode,
 
     auto fusionNodeWeightResult =
         FusionTransposeNode(graph, groupedMatmulNode, kWeightIndex, reshapePattern, fusedPatterns);
+    OP_LOGI(kPassName, "[GMM_TRANS_DIAG] weight fusion result=%u.",
+        static_cast<uint32_t>(fusionNodeWeightResult));
     if (fusionNodeWeightResult != SUCCESS) {
         return fusionNodeWeightResult;
     }
 
     if (!isDav3510) {
+        OP_LOGI(kPassName, "[GMM_TRANS_DIAG] skip companion scale fusion because isDav3510=false.");
         return SUCCESS;
     }
 
-    if (!isWeightQuant && GetInputNode(groupedMatmulNode, kScaleIndex) != nullptr) {
+    if (!isWeightQuant && hasScale) {
         auto scaleRet = FusionTransposeNode(graph, groupedMatmulNode, kScaleIndex, reshapePattern, fusedPatterns);
+        OP_LOGI(kPassName, "[GMM_TRANS_DIAG] scale fusion result=%u.", static_cast<uint32_t>(scaleRet));
         if (scaleRet == GRAPH_FAILED) {
             return GRAPH_FAILED;
         }
