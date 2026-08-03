@@ -33,7 +33,6 @@ if (BUILD_OPEN_PROJECT)
             OPTIONS --cce-auto-sync=off
                     -mllvm
                     -cce-aicore-dcci-before-kernel-end=false
-                    -DENABLE_CV_COMM_VIA_SSBUF=true
                     -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
                     -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel/apace/tests/st/.third_party/ops-tensor/include
         )
