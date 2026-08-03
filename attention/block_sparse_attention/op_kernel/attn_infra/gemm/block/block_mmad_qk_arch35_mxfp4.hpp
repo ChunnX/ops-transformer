@@ -114,6 +114,12 @@ public:
 
     static constexpr uint32_t L1_SINGLE_GLOBAL_MAX_SIZE = 128;
 
+    // [QFA 对齐] Q(M) 方向全程 pad 到 128（QFA actMSizeAlign128 语义）：
+    //   L1 画布 / L0B 加载 mStep/xStep / Mmad n / Fixpipe nSize 统一用 128；
+    //   有效行仅 rowNumQ，其余为残留垃圾列，vec 侧只读有效列（与 QFA 相同）。
+    //   原实现对齐到 CeilAlign(m,16)，S1<128 时 Fixpipe nSize=m 违反 32B 倍数约束导致全错。
+    static constexpr uint32_t Q_M_PAD = 128;
+
     // L0 各区单份字节数
     static constexpr uint32_t QK_L0A_SIZE = 128 * 128 / 2;              // QK 用 L0A：8K
     static constexpr uint32_t QK_L0B_SIZE = 128 * 128 / 2;              // QK 用 L0B：8K
@@ -208,19 +214,21 @@ public:
 
     // [Step5] Q 稠密 GM→L1：TileCopyTla RowMajor→zN（内部仍是 Nd2Nz DataCopy）
     //   shape cols = k(fp4 元素个数)；特化内 dValue/srcDValue /=2 → 与裸 packedK Nd2Nz 对齐
-    //   L1 用 zN layout 反推 Nd2Nz 的 dstNzC0Stride=CeilAlign(m,16)、dstNzNStride=1
+    //   [QFA 对齐] L1 画布恒为 Q_M_PAD=128 行（dstNzC0Stride=128，对齐 QFA rowCount=128）；
+    //   GetTile(m,k) 只搬 m 行有效数据，m..127 行为残留垃圾（与 QFA 语义一致）
     __aicore__ inline void CopyQGmToL1(uint32_t m,
                                        uint32_t k,   // embed：fp4 元素个数（非 packedK）
                                        AscendC::GlobalTensor<fp4x2_e2m1_t> &gQTensor)
     {
         auto gQLayout = tla::MakeLayout<ElementA, layout::RowMajor>(m, k);
         auto gQTensorTla = tla::MakeTensor(gQTensor, gQLayout, Arch::PositionGM{});
-        auto l1QLayout = tla::MakeLayout<ElementA, layout::zN>(m, k);
+        auto l1QLayout = tla::MakeLayout<ElementA, layout::zN>(Q_M_PAD, k);
         auto l1QTensorTla = tla::MakeTensor(l1ATensor[0], l1QLayout, Arch::PositionL1{});
+        auto l1QTileTla = GetTile(l1QTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(m, k));
 
         using CopyGmToL1Q = Tile::TileCopyTla<ArchTag, decltype(gQTensorTla), decltype(l1QTensorTla)>;
         CopyGmToL1Q copyGmToL1Q;
-        copyGmToL1Q(l1QTensorTla, gQTensorTla);
+        copyGmToL1Q(l1QTileTla, gQTensorTla);
     }
 
     // [Step5] Q-scale 稠密 GM→L1：CopyGmToL1MxScaleDn2NzA5（Host 沿 D；禁止 PV MxScale）
@@ -411,6 +419,7 @@ public:
     
     // [Step2] Q→L0B 改走 mx functor（原裸 5 参 LoadData 下沉到 CopyL1ToL0BMxQKA5）
     // Q-scale 沿 D（Host [S,D//64,2]）；ifTranspose=false 由 functor 内部设定。
+    // [QFA 对齐] m 方向三个对齐参数调用处统一传 Q_M_PAD=128（mStep=8/xStep=8）
     __aicore__ inline void LoadQToL0B(uint32_t mAlignL1,
                                       uint32_t alignK,
                                       uint32_t mAlignL0,
@@ -429,7 +438,7 @@ public:
     __aicore__ inline void LoadKToL0A(uint32_t nSubRowStart,     // = nSub * L0_TILE_N
                                       uint32_t nCur,             // 本子块实际 K 行数(≤L0_TILE_N)
                                       uint32_t alignK,
-                                      uint32_t s2Align64Full,    // 全 tile 行对齐(K 数据源 stride)
+                                      uint32_t s2Align16Full,    // 全 tile 行 16 对齐(K 数据源 stride，与 zN 画布/QFA 一致)
                                       uint32_t scaleK)           // = Ceil(D/64)*2，沿 D
     {
         // AscendC::printf(
@@ -437,18 +446,18 @@ public:
         //     "mx xStart=%u xStep=%u yStep=%u scaleK=%u\n",
         //     (unsigned)nSubRowStart, (unsigned)nCur,
         //     (unsigned)(nSubRowStart / 16), (unsigned)(CeilAlign(nCur, 16) / 16),
-        //     (unsigned)CeilDivision(alignK, 64), (unsigned)(s2Align64Full / 16),
+        //     (unsigned)CeilDivision(alignK, 64), (unsigned)(s2Align16Full / 16),
         //     (unsigned)(nSubRowStart / 16), (unsigned)(CeilAlign(nCur, 16) / 16),
         //     (unsigned)(scaleK / 2), (unsigned)scaleK);
         copyL1ToL0AMxQk(
             l0ATensor[0].template ReinterpretCast<fp4x2_e2m1_t>(),
             l1BTensor[0].template ReinterpretCast<fp4x2_e2m1_t>(),
             l1BScaleTensor[0].template ReinterpretCast<AscendC::fp8_e8m0_t>(),
-            nSubRowStart, nCur, alignK, s2Align64Full, scaleK);
+            nSubRowStart, nCur, alignK, s2Align16Full, scaleK);
     }
 
     // [Step3] Mmad 改走 tileMmad（原裸 AscendC::Mmad 下沉到 TileMmadTla）
-    // C=[n,m]=[K行,Q行]；A=K@L0A，B=Q@L0B；每 nSub 独立计算，initC 恒 true。
+    // C=[n,m]=[K行,Q行(pad Q_M_PAD)]；A=K@L0A，B=Q@L0B；每 nSub 独立计算，initC 恒 true。
     // tileMmad 只读 .data()（不消费 layout stride），与 PV::MatmulPV 同构。
     __aicore__ inline void MatmulQK(uint32_t n,
                                     uint32_t m,
@@ -464,10 +473,11 @@ public:
     }
 
     // [Step4] L0C→UB fixpipe 改走 CopyL0CToUBTla NO_SPLIT/NO_QUANT
-    //   nSize=m(Q行) / mSize=n(K子块行) / srcStride=CeilAlign(n,16) /
+    //   nSize=m(Q行, pad Q_M_PAD=128，满足 nSize*sizeof(half) 32B 倍数约束) /
+    //   mSize=n(K子块行, 调用处已偶数对齐) / srcStride=CeilAlign(n,16) /
     //   dstStride=256 / quantPre=F322F16 / dualDstCtl=0
     //   subBlockId：选目标 AIV（与 kernel loop%2 / Vec GetSubBlockIdx 对齐）
-    //   UB 由调用方构好 TLA（非标 RowMajor：shape=(n,m)、row-stride=256），直传不再 .data() 重包。
+    //   UB 由调用方构好 TLA（非标 RowMajor：shape=(nEven,Q_M_PAD)、row-stride=256），直传不再 .data() 重包。
     template <class TensorUB>
     __aicore__ inline void FixpipeMm1(uint32_t m, uint32_t n, TensorUB &ubSTensorTla, bool subBlockId)
     {
@@ -519,12 +529,16 @@ public:
         uint32_t k = embed;
         // Q-scale / K-scale：均按 D 分组；scaleK = Ceil(D/64)*2（= Host 每 token 的 D//64*2）
         uint32_t scaleK = CeilDivision(k, 64) * 2;
-        // K 数据 NZ 仍按 S 向 64 对齐画布（与 KScale 轴向无关）
+        // [QFA 对齐] K 数据 NZ 画布为 S 向 16 对齐（QFA actSingleLoopS2SizeAlign 语义，
+        //   与 zN layout 实际画布一致；原 64 对齐在 curBaseTileSize%64!=0 时会跳错 k-chunk）。
+        //   s2Align64 仅遗留给 gather 形参（其内部未使用）。
         uint32_t s2Align64 = CeilAlign(curBaseTileSize, 64);
-        uint32_t mAlignL1 = CeilAlign(m, 16);
-        uint32_t mAlignL0 = mAlignL1;
+        uint32_t s2Align16 = CeilAlign(curBaseTileSize, 16);
+        // [QFA 对齐] Q(M) 方向全链路 pad 到 Q_M_PAD=128：L0B 加载 / Mmad n / Fixpipe nSize
+        uint32_t mAlignL1 = Q_M_PAD;
+        uint32_t mAlignL0 = Q_M_PAD;
         uint32_t alignK = CeilAlign(k, 64);
-        uint32_t scaleMAlignL1 = CeilAlign(m, 16);
+        uint32_t scaleMAlignL1 = Q_M_PAD;
         uint32_t l1BBufId = 0;               // Step4.5 仍单 buffer；Step6 再开 DB
         // Step7：QK 统一使用 event slot 2/3，避免与其他模块默认低位 event 交叉。
         // 注意：保持单缓冲串行语义，仅做 event 编号整理，不引入 DB/ping-pong。
@@ -570,23 +584,26 @@ public:
             // AscendC::printf("[MM1] nSub=%u nCur=%u rowStart=%u m=%u k=%u\n",
             //     (unsigned)nSub, (unsigned)nCur, (unsigned)nSubRowStart, (unsigned)m, (unsigned)k);
             // Q 常驻 L0B：循环外只搬一次（Step2 成果），n 子循环内复用（Q 不随 nSub 变）
+            // [QFA 对齐] m 方向按 Q_M_PAD=128 加载（mStep=8/xStep=8，与 QFA LoadQToL0 一致）
             LoadQToL0B(mAlignL1, alignK, mAlignL0, scaleMAlignL1, scaleK);           // Q-scale 仍 D 向
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
             // 本子块 K+KScale(D向)：L1[nSubRowStart : +nCur] -> L0A
-            LoadKToL0A(nSubRowStart, nCur, alignK, s2Align64, scaleK);
+            LoadKToL0A(nSubRowStart, nCur, alignK, s2Align16, scaleK);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
-            // C=[nCur, m]，落在同一 QK_L0C（≤128×128 不溢出）
-            MatmulQK(nCur, m, k);
+            // [QFA 对齐] C=[nCur, Q_M_PAD]：Mmad n 恒 128（QFA mmadParams.n=actMSizeAlign128 语义）
+            MatmulQK(nCur, Q_M_PAD, k);
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             // AscendC::DumpTensor(l0CTensor[0], 6660 + nSub, 128);
             AscendC::PipeBarrier<PIPE_ALL>();
-            // 写到 ubS 的第 nSubRowStart 行起：GetTile 继承父视图行 stride=256
+            // [QFA 对齐] Fixpipe nSize=Q_M_PAD(满足 32B 倍数约束)、mSize=nCur 偶数对齐
+            // （QFA (actS2Size+1)>>1<<1 语义）；写到 ubS 第 nSubRowStart 行起，行 stride=256
+            uint32_t nCurEven = (nCur + 1) >> 1 << 1;
             auto ubSSubTla = GetTile(
-                ubSTensorTla, tla::MakeCoord(nSubRowStart, 0), tla::MakeShape(nCur, m));
-            FixpipeMm1(m, nCur, ubSSubTla, subBlockIdx != 0);
+                ubSTensorTla, tla::MakeCoord(nSubRowStart, 0), tla::MakeShape(nCurEven, Q_M_PAD));
+            FixpipeMm1(Q_M_PAD, nCur, ubSSubTla, subBlockIdx != 0);
             AscendC::PipeBarrier<PIPE_ALL>();
         }
     }
