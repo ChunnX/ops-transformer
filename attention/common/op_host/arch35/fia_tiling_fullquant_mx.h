@@ -23,7 +23,6 @@
 #include "../../op_kernel/arch35/fia_tiling_data_fullquant.h"
 #include "../split_core_v2.h"
 #include "../../../fused_infer_attention_score/op_kernel/fused_infer_attention_score_template_tiling_key.h"
-#include "../../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_tiling_regbase.h"
 
 namespace optiling {
 constexpr int64_t SPARSE_MODE_INT_MAX = 2147483647;
@@ -59,7 +58,9 @@ struct FiaPlatFormInfo {
 
 class FiaTilingFullQuantMxArch35 : public FiaTilingBase {
 public:
-    explicit FiaTilingFullQuantMxArch35(gert::TilingContext *context) : FiaTilingBase(context) {}
+    explicit FiaTilingFullQuantMxArch35(gert::TilingContext *context) : FiaTilingBase(context)
+    {
+    }
     ~FiaTilingFullQuantMxArch35() override = default;
 
 protected:

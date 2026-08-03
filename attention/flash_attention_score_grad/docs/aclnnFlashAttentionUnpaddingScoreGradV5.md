@@ -2,52 +2,66 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     √      |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √      |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
 - 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。增加`sinkInOptional`可选输入。
+
+  <!-- npu="950" id7 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：暂不支持sinkInOptional参数。
 
+  <!-- end id7 -->
+
 - 计算公式：
-  
+
   已知注意力的正向计算公式为：
-  
+
   $$
   =Dropout(Softmax(Mask(\frac{QK^T+pse}{\sqrt{d}}),atten\_mask),keep\_prob)V
   $$
-  
+
   为方便表达，以变量$S$和$P$表示计算公式：
-  
+
   $$
   =Mask(\frac{QK^T+pse}{\sqrt{d}}),atten\_mask
   $$
-  
+
   $$
   =Dropout(Softmax(S),keep\_prob)
   $$
-  
+
   $$
   =PV
   $$
-  
+
   则注意力的反向计算公式为：
-  
+
   $$
   V=P^TdY
   $$
-  
+
   $$
   Q=\frac{((dS)*K)}{\sqrt{d}}
   $$
-  
+
   $$
   K=\frac{((dS)^T*Q)}{\sqrt{d}}
   $$
@@ -72,49 +86,49 @@ $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize”接口或者“aclnnFlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionUnpaddingScoreGradV5”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize”接口或者“aclnnFlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionUnpaddingScoreGradV5”接口执行计算。
 
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize(
-	const aclTensor   *query, 
-	const aclTensor   *queryRope, 
-	const aclTensor   *keyIn, 
-	const aclTensor   *keyInRope, 
-	const aclTensor   *value, 
-	const aclTensor   *dy, 
-	const aclTensor   *pseShiftOptional, 
-	const aclTensor   *dropMaskOptional, 
-	const aclTensor   *paddingMaskOptional, 
-	const aclTensor   *attenMaskOptional, 
-	const aclTensor   *softmaxMaxOptional, 
-	const aclTensor   *softmaxSumOptional, 
-	const aclTensor   *softmaxInOptional, 
-	const aclTensor   *attentionInOptional, 
-	const aclTensor   *sinkInOptional, 
-	const aclIntArray *prefixOptional, 
-	const aclIntArray *actualSeqQLenOptional, 
-	const aclIntArray *actualSeqKvLenOptional, 
-	const aclIntArray *qStartIdxOptional, 
-	const aclIntArray *kvStartIdxOptional, 
-	double             scaleValue, 
-	double             keepProb, 
-	int64_t            preTokens, 
-	int64_t            nextTokens, 
-	int64_t            headNum, 
-	char              *inputLayout, 
-	int64_t            innerPrecise, 
-	int64_t            sparseMode, 
-	int64_t            pseType, 
-	char              *softmaxInLayout, 
-	const aclTensor   *dqOut, 
-	const aclTensor   *dqRopeOut, 
-	const aclTensor   *dkOut, 
-	const aclTensor   *dkRopeOut, 
-	const aclTensor   *dvOut, 
-	const aclTensor   *dpseOut, 
-	const aclTensor   *dsinkOut, 
-	uint64_t          *workspaceSize, 
-	aclOpExecutor    **executor);
+ const aclTensor   *query, 
+ const aclTensor   *queryRope, 
+ const aclTensor   *keyIn, 
+ const aclTensor   *keyInRope, 
+ const aclTensor   *value, 
+ const aclTensor   *dy, 
+ const aclTensor   *pseShiftOptional, 
+ const aclTensor   *dropMaskOptional, 
+ const aclTensor   *paddingMaskOptional, 
+ const aclTensor   *attenMaskOptional, 
+ const aclTensor   *softmaxMaxOptional, 
+ const aclTensor   *softmaxSumOptional, 
+ const aclTensor   *softmaxInOptional, 
+ const aclTensor   *attentionInOptional, 
+ const aclTensor   *sinkInOptional, 
+ const aclIntArray *prefixOptional, 
+ const aclIntArray *actualSeqQLenOptional, 
+ const aclIntArray *actualSeqKvLenOptional, 
+ const aclIntArray *qStartIdxOptional, 
+ const aclIntArray *kvStartIdxOptional, 
+ double             scaleValue, 
+ double             keepProb, 
+ int64_t            preTokens, 
+ int64_t            nextTokens, 
+ int64_t            headNum, 
+ char              *inputLayout, 
+ int64_t            innerPrecise, 
+ int64_t            sparseMode, 
+ int64_t            pseType, 
+ char              *softmaxInLayout, 
+ const aclTensor   *dqOut, 
+ const aclTensor   *dqRopeOut, 
+ const aclTensor   *dkOut, 
+ const aclTensor   *dkRopeOut, 
+ const aclTensor   *dvOut, 
+ const aclTensor   *dpseOut, 
+ const aclTensor   *dsinkOut, 
+ uint64_t          *workspaceSize, 
+ aclOpExecutor    **executor);
 ```
 
 ```c++
@@ -140,22 +154,22 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize(
     const aclIntArray *qStartIdxOptional,
     const aclIntArray *kvStartIdxOptional,
     double scaleValue,
-    double keepProb, 
-    int64_t preTokens, 
-    int64_t nextTokens, 
+    double keepProb,
+    int64_t preTokens,
+    int64_t nextTokens,
     int64_t headNum,
-    char *inputLayout, 
-    int64_t innerPrecise, 
-    int64_t sparseMode, 
+    char *inputLayout,
+    int64_t innerPrecise,
+    int64_t sparseMode,
     int64_t pseType,
-    char *softmaxInLayout, 
-    const aclTensor *dqOut, 
-    const aclTensor *dqRopeOut, 
-    const aclTensor *dkOut, 
-    const aclTensor *dkRopeOut, 
-    const aclTensor *dvOut, 
+    char *softmaxInLayout,
+    const aclTensor *dqOut,
+    const aclTensor *dqRopeOut,
+    const aclTensor *dkOut,
+    const aclTensor *dkRopeOut,
+    const aclTensor *dvOut,
     const aclTensor *dpseOut,
-    const aclTensor *dsinkOut, 
+    const aclTensor *dsinkOut,
     uint64_t *workspaceSize,
     aclOpExecutor **executor);
 ```
@@ -182,7 +196,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
     <col style="width: 146px">
     </colgroup>
     <thead>
-      <tr>  
+      <tr>
         <th>参数名</th>
         <th>输入/输出</th>
         <th>描述</th>
@@ -568,7 +582,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed;width: 1202px"><colgroup>
@@ -640,7 +654,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -666,7 +680,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
 - pseShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可开启alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
-  - TND场景下，每个batch段内部仍按[N, Sq_i, Skv_i]生成，但存储与传参时统一flatten。若第i个batch段的真实query长度为Sq_i、真实key/value长度为Skv_i，则该段PSE元素个数为N * Sq_i * Skv_i，整段PSE总长度pseTotalLen为sum_i(N * Sq_i * Skv_i)。
+  - TND场景下，每个batch段内部仍按[N, Sq_i, Skv_i]生成，但存储与传参时统一flatten。若第i个batch段的真实query长度为Sq_i、真实key/value长度为Skv_i，则该段PSE元素个数为N *Sq_i* Skv_i，整段PSE总长度pseTotalLen为sum_i(N *Sq_i* Skv_i)。
   - 如果pseType为2或3的时候，数据类型需为FLOAT32,对应shape支持范围是[B,N]或[N]。
   - 如果不开启该参数，pseShiftOptional需要传入nullptr，pseType需要传入1。
 - pseType各个取值含义
@@ -678,15 +692,15 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
   | 2 | 内部生成pse先mul再add | - |
   | 3 | 内部生成pse先mul再add再sqrt | - |
 
-- sparseMode的约束如下: 
+- sparseMode的约束如下:
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
   - 配置为1、2、3时，用户配置的preTokens、nextTokens不会生效；
   - sparseMode配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
   - 用户不特意指定时建议传入0。
-  - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
+  - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode_introduction.md)。
   - 配置为7时，不支持可选输入pseShiftOptional。
   - 配置为8时，当每个sequence的q、kv等长时支持可选输入pseShiftOptional，针对全局做pse生成。支持q方向进行外切，需要外切前每个sequence的q、kv等长，外切后传入的actualSeqQLenOptional[0] - actualSeqKvLenOptional[0] + qStartIdxOptional - kvStartIdxOptional == 0（本功能属实验性功能）。
-- 不同数据格式详情请参见[数据格式](../../../docs/zh/context/数据格式.md)。
+- 不同数据格式详情请参见[数据格式](../../../docs/zh/context/data_format.md)。
 - 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - prefixOptional稀疏计算仅支持压缩场景，sparseMode=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入pseShiftOptional。
@@ -697,7 +711,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -796,7 +810,7 @@ int main() {
   std::vector<int64_t> dqShape = {256, 1, 128};
   std::vector<int64_t> dkShape = {256, 1, 128};
   std::vector<int64_t> dvShape = {256, 1, 128};
-  std::vector<int64_t> dsinkShape = {1};  
+  std::vector<int64_t> dsinkShape = {1};
 
   void* qDeviceAddr = nullptr;
   void* kDeviceAddr = nullptr;
@@ -933,7 +947,7 @@ int main() {
   aclDestroyTensor(softmaxMax);
   aclDestroyTensor(softmaxSum);
   aclDestroyTensor(attentionIn);
-  aclDestroyTensor(sinkInOptional);  
+  aclDestroyTensor(sinkInOptional);
   aclDestroyTensor(dq);
   aclDestroyTensor(dk);
   aclDestroyTensor(dv);

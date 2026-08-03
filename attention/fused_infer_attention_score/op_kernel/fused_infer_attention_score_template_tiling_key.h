@@ -18,15 +18,7 @@
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
-#if __has_include("../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_tiling_regbase.h")
-#include "../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_template_tiling_key_enum.h"
-#include "../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_tiling_regbase.h"
-#include "../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_tiling_regbase.h"
-#else
-#include "../prompt_flash_attention/arch35/prompt_flash_attention_template_tiling_key_enum.h"
-#include "../prompt_flash_attention/arch35/prompt_flash_attention_tiling_regbase.h"
-#include "../incre_flash_attention/arch35/incre_flash_attention_tiling_regbase.h"
-#endif
+#include "arch35/fia_arch35_template_tiling_key_enum.h"
 
 #ifndef ORIG_DTYPE_QUERY
 #define ORIG_DTYPE_QUERY (DT_BF16)
@@ -2759,7 +2751,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(HasRope, 0, 1),
         ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_PA_BNBD,
                              KvLayoutType_PA_NZ),
-        ASCENDC_TPL_BOOL_SEL(IsFd, 0),
+        ASCENDC_TPL_BOOL_SEL(IsFd, 0, 1),
         ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
         ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false),
         ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
@@ -2798,7 +2790,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(HasRope, 0, 1),
         ASCENDC_TPL_UINT_SEL(KvLayoutType, ASCENDC_TPL_UI_LIST, KvLayoutType_NO_PA, KvLayoutType_PA_BNBD,
                              KvLayoutType_PA_NZ),
-        ASCENDC_TPL_BOOL_SEL(IsFd, 0),
+        ASCENDC_TPL_BOOL_SEL(IsFd, 0, 1),
         ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0),
         ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false),
         ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),

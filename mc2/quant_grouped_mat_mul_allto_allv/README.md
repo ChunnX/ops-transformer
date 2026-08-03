@@ -366,7 +366,7 @@
       </tbody>
   </table>
 
-  gmmXQuantMode、gmmWeightQuantMode、mmXQuantMode、mmWeightQuantMode、commQuantMode的枚举值跟[量化模式](../../docs/zh/context/量化介绍.md)关系如下:
+  gmmXQuantMode、gmmWeightQuantMode、mmXQuantMode、mmWeightQuantMode、commQuantMode的枚举值跟[量化模式](../../docs/zh/context/quant_mode_introduction.md)关系如下:
 
   * 0: 非量化--当前不支持
   * 1: pertensor

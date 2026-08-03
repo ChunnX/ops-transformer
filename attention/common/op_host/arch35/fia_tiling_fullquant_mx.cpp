@@ -24,7 +24,7 @@
 #include "../split_core_v2.h"
 #include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_utils.h"
 #include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_constants.h"
-#include "../../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_template_tiling_key_enum.h"
+#include "../../../fused_infer_attention_score/op_kernel/arch35/fia_arch35_template_tiling_key_enum.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -181,12 +181,15 @@ void FiaTilingFullQuantMxArch35::InitImplParam()
         actualSeqLenQFlag_ = false;
         actualSeqLenKVFlag_ = false;
     } else {
-        actSeqLenQDims = (actSeqLenQ != nullptr && actSeqLenQ->GetShapeSize() > 0)
-                            ? static_cast<uint32_t>(actSeqLenQ->GetShapeSize()) : 0U;
-        actSeqLenKVDims = (actSeqLenKV != nullptr && actSeqLenKV->GetShapeSize() > 0)
-                            ? static_cast<uint32_t>(actSeqLenKV->GetShapeSize()) : 0U;
-        actSharedPrefixLenDims = (actSharedPrefixLen != nullptr && actSharedPrefixLen->GetShapeSize() > 0)
-                                    ? static_cast<uint32_t>(actSharedPrefixLen->GetShapeSize()) : 0U;
+        actSeqLenQDims = (actSeqLenQ != nullptr && actSeqLenQ->GetShapeSize() > 0) ?
+                             static_cast<uint32_t>(actSeqLenQ->GetShapeSize()) :
+                             0U;
+        actSeqLenKVDims = (actSeqLenKV != nullptr && actSeqLenKV->GetShapeSize() > 0) ?
+                              static_cast<uint32_t>(actSeqLenKV->GetShapeSize()) :
+                              0U;
+        actSharedPrefixLenDims = (actSharedPrefixLen != nullptr && actSharedPrefixLen->GetShapeSize() > 0) ?
+                                     static_cast<uint32_t>(actSharedPrefixLen->GetShapeSize()) :
+                                     0U;
         actualSeqLenQFlag_ =
             !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int64_t>() == nullptr));
         actualSeqLenKVFlag_ =
@@ -421,7 +424,9 @@ void FiaTilingFullQuantMxArch35::CreateSplitInput(split_core_v2::BaseInfo &baseI
     splitParam.mBaseSize = sOuterFactor_ * CV_RATIO;
     splitParam.s2BaseSize = sInnerFactor_;
     splitParam.gS1BaseSizeOfFd = 8;
-    splitParam.streamK = false;
+    splitParam.streamK = decodeS1GMerge_; // decode场景开启FD
+    splitParam.fdTolerance = 10;          // 实验经验值
+    splitParam.fdLeastBlock = 2;          // 实验经验值
 }
 
 void FiaTilingFullQuantMxArch35::SetSplitOutput(const split_core_v2::FAMetaData &splitRes)
@@ -485,8 +490,8 @@ void FiaTilingFullQuantMxArch35::SplitPolicy()
         CalcNumBlocks(result.usedCoreNum);
         flashDecodeFlag_ = (result.fdRes.fdNum > 0);
     }
-    fiaInfo_->isExistRowInvalid = (fiaInfo_->needInit || IsExistRowInvalid(baseInfo) ||
-                                   IsActualSeqLengthsKVHasZero(baseInfo));
+    fiaInfo_->isExistRowInvalid =
+        (fiaInfo_->needInit || IsExistRowInvalid(baseInfo) || IsActualSeqLengthsKVHasZero(baseInfo));
 }
 
 bool FiaTilingFullQuantMxArch35::IsActualSeqLengthsKVHasZero(const split_core_v2::BaseInfo &baseInfo)
@@ -771,12 +776,10 @@ void FiaTilingFullQuantMxArch35::ComputeTilingData()
             maskBatch = fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(0);
         }
         tilingData_.baseTiling.fiaAttenMaskParams.attenMaskBatch = maskBatch;
-        maskS2Size = static_cast<uint64_t>(
-            std::max(fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 1),
-                     static_cast<int64_t>(0)));
-        maskS1Size = static_cast<uint64_t>(
-            std::max(fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 2),
-                     static_cast<int64_t>(0)));
+        maskS2Size = static_cast<uint64_t>(std::max(
+            fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 1), static_cast<int64_t>(0)));
+        maskS1Size = static_cast<uint64_t>(std::max(
+            fiaInfo_->opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 2), static_cast<int64_t>(0)));
         tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS1Size = static_cast<uint32_t>(maskS1Size);
         tilingData_.baseTiling.fiaAttenMaskParams.attenMaskS2Size = static_cast<uint32_t>(maskS2Size);
     } else {
@@ -816,13 +819,13 @@ void FiaTilingFullQuantMxArch35::SetFATilingData()
     tilingData_.baseTiling.fiaBaseParams.isSoftMaxLseEnable = fiaInfo_->softmaxLseFlag;
     tilingData_.baseTiling.fiaBaseParams.coreNum = numBlocks_;
     tilingData_.baseTiling.fiaBaseParams.outputLayout = static_cast<uint32_t>(fiaInfo_->outputLayout);
-    if (!fiaInfo_->isTensorV1) { // 只有tensorv2才会包含strides信息
+    if (fiaInfo_->hasViewStride) { // 只有tensorv2才会包含strides信息
         // fiaBaseParams增加strides参数，从fiaInfo获取strides值
         tilingData_.baseTiling.fiaBaseParams.keyStrides.bnStride = fiaInfo_->keyStrides->GetStride(0);
         tilingData_.baseTiling.fiaBaseParams.keyStrides.n2Stride = fiaInfo_->keyStrides->GetStride(1);
         tilingData_.baseTiling.fiaBaseParams.valueStrides.bnStride = fiaInfo_->valueStrides->GetStride(0);
         tilingData_.baseTiling.fiaBaseParams.valueStrides.n2Stride = fiaInfo_->valueStrides->GetStride(1);
-        if (fiaInfo_->ropeHeadDim != 0) {  // 传入了rope才赋值
+        if (fiaInfo_->ropeHeadDim != 0) { // 传入了rope才赋值
             tilingData_.baseTiling.fiaBaseParams.kRopeStrides.bnStride = fiaInfo_->kRopeStrides->GetStride(0);
             tilingData_.baseTiling.fiaBaseParams.kRopeStrides.n2Stride = fiaInfo_->kRopeStrides->GetStride(1);
         }

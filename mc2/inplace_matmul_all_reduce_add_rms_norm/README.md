@@ -9,7 +9,7 @@
 
 ## 功能说明
 
-- 算子功能：完成mm + all_reduce + add + rms_norm计算。
+- 算子功能：完成原地的mm + all_reduce + add + rms_norm计算。
 - 计算公式：
   - 情景一：
 
@@ -73,8 +73,8 @@
   <tbody>
     <tr>
       <td>x1</td>
-      <td>输入</td>
-      <td>MatMul左矩阵，即公式中的输入x1。</td>
+      <td>输入/输出</td>
+      <td>MatMul左矩阵，即公式中的输入x1，同时也是输出，公式中的y。</td>
       <td>FLOAT16、BFLOAT16、INT8</td>
       <td>ND</td>
     </tr>
@@ -125,13 +125,6 @@
       <td>可选输入</td>
       <td>mm计算后的全量化系数，公式中的输入dequantScale。</td>
       <td>FLOAT16、BFLOAT16、UINT64、INT64</td>
-      <td>ND</td>
-    </tr>
-    <tr>
-      <td>y</td>
-      <td>输出</td>
-      <td><ul><li>mm + all_reduce + add的结果。</li></ul></td>
-      <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
     </tr>
     <tr>

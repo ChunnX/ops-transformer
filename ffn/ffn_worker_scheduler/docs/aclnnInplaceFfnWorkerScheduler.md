@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     ×    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |    ×     |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -20,66 +30,66 @@
     1. 接收AttentionToFFN算子发送的数据。该数据以ScheduleContext结构体内存排布方式存储。其具体定义参见[调用示例](#调用示例)。该结构体包含CommonArea，ControlArea，AttentionArea，FfnArea域。本接口涉及CommonArea(用于存储配置信息，如session_num，micro_batch_num，micro_batch_size，selected_expert_num)，ControlArea(用于上层控制进程是否退出)，FfnArea域(负责管理本算子计算过程中所需的输入及输出缓冲区，其中token_info_buf字段用来存储该算子的输入信息)。
 
     2. 扫描token_info_buf存储的信息，当通信数据准备就绪时，本算子开始进行数据整理。整理如下图所示，将layer id， session id，micro batch id，expert ids分别写入layer_id_buf，session_id_buf，micro_batch_id_buf，expert_ids_buf的device内存上。
-    
-    ```mermaid
-    graph TB
-        %% 输入缓冲区
-        A[token_info_buf输入]
 
-        %% Session层级结构
-        A --> Session0
-        A --> Session1
+      ```mermaid
+      graph TB
+          %% 输入缓冲区
+          A[token_info_buf输入]
 
-        %% Session 0内部结构
-        subgraph Session0[session 0]
-            direction TB
-            S0_M1[micro batch id 0]:::micro
-            S0_L1[layer id 0]:::layer
-            S0_S1[session id 0]:::session0
-            S0_E1[expert ids 0]:::expert
-        end
+          %% Session层级结构
+          A --> Session0
+          A --> Session1
 
-        %% Session 1内部结构
-        subgraph Session1[session 1]
-            direction TB
-            S1_M1[micro batch id 0]:::micro
-            S1_L1[layer id 0]:::layer
-            S1_S1[session id 1]:::session1
-            S1_E1[expert ids 0]:::expert
-        end
+          %% Session 0内部结构
+          subgraph Session0[session 0]
+              direction TB
+              S0_M1[micro batch id 0]:::micro
+              S0_L1[layer id 0]:::layer
+              S0_S1[session id 0]:::session0
+              S0_E1[expert ids 0]:::expert
+          end
 
-        %% 输出缓冲区索引区域
-        subgraph Output[输出区域]
-            direction TB
-            O1[layer_ids_buf]:::layer
-            O2[session_ids_buf]:::output
-            O3[micro_batch_ids_buf]:::micro
-            O4[expert_ids_buf]:::expert
-        end
+          %% Session 1内部结构
+          subgraph Session1[session 1]
+              direction TB
+              S1_M1[micro batch id 0]:::micro
+              S1_L1[layer id 0]:::layer
+              S1_S1[session id 1]:::session1
+              S1_E1[expert ids 0]:::expert
+          end
 
-        %% 数据流向
-        S0_L1 -.-> O1
-        S0_S1 -.-> O2
-        S0_M1 -.-> O3
-        S0_E1 -.-> O4
+          %% 输出缓冲区索引区域
+          subgraph Output[输出区域]
+              direction TB
+              O1[layer_ids_buf]:::layer
+              O2[session_ids_buf]:::output
+              O3[micro_batch_ids_buf]:::micro
+              O4[expert_ids_buf]:::expert
+          end
 
-        S1_L1 -.-> O1
-        S1_S1 -.-> O2
-        S1_M1 -.-> O3
-        S1_E1 -.-> O4
+          %% 数据流向
+          S0_L1 -.-> O1
+          S0_S1 -.-> O2
+          S0_M1 -.-> O3
+          S0_E1 -.-> O4
 
-        classDef layer fill:#c8e6c9
-        classDef session0 fill:#ffcdd2
-        classDef session1 fill:#ffccbc
-        classDef output fill:#e3f2fd
-        classDef micro fill:#e1f5fe
-        classDef expert fill:#bbdefd
-        
-        %% 添加子图背景色样式
-        style Session0 fill:#fff3e0,stroke:#ff9800,stroke-width:2px
-        style Session1 fill:#fce4ec,stroke:#e91e63,stroke-width:2px
-        style Output fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
-    ```
+          S1_L1 -.-> O1
+          S1_S1 -.-> O2
+          S1_M1 -.-> O3
+          S1_E1 -.-> O4
+
+          classDef layer fill:#c8e6c9
+          classDef session0 fill:#ffcdd2
+          classDef session1 fill:#ffccbc
+          classDef output fill:#e3f2fd
+          classDef micro fill:#e1f5fe
+          classDef expert fill:#bbdefd
+
+          %% 添加子图背景色样式
+          style Session0 fill:#fff3e0,stroke:#ff9800,stroke-width:2px
+          style Session1 fill:#fce4ec,stroke:#e91e63,stroke-width:2px
+          style Output fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
+      ```
 
     3. 完成数据整理后，后续可供FFNWorkerBatching算子使用。
 
@@ -93,16 +103,16 @@ $$
 $$
 
 $$
-\text{Process} = 
+\text{Process} =
 \begin{cases}
 \text{check\_all\_session\_ready()} \quad \text{data\_reorganization()} & \text{if } \text{group\_num} = 1 \\
 \text{check\_all\_sessions\_of\_group\_ready()} \quad \text{data\_reorganization()} & \text{otherwise}
-\end{cases} 
-$$ 
-  
+\end{cases}
+$$
+
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnInplaceFfnWorkerSchedulerGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnInplaceFfnWorkerScheduler”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnInplaceFfnWorkerSchedulerGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnInplaceFfnWorkerScheduler”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnInplaceFfnWorkerSchedulerGetWorkspaceSize(
@@ -202,8 +212,8 @@ aclnnStatus aclnnInplaceFfnWorkerScheduler(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，出现以下场景时报错：
 
   <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
@@ -280,7 +290,7 @@ aclnnStatus aclnnInplaceFfnWorkerScheduler(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -288,7 +298,7 @@ aclnnStatus aclnnInplaceFfnWorkerScheduler(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -388,7 +398,7 @@ struct ScheduleContext {
     uint32_t session_num;  // Number of attention nodes
     uint32_t micro_batch_num;
     uint32_t micro_batch_size;
-    uint32_t selected_expert_num; 
+    uint32_t selected_expert_num;
     uint32_t expert_num; // Number of experts per layer, including routing experts and shared experts.
     uint32_t attn_to_ffn_token_size;  // Each token in the Ffn window data area has a space size aligned to 512 bytes.
     uint32_t ffn_to_attn_token_size;  // Each token in the Attention window data area has a space size aligned to 512 bytes.
@@ -599,7 +609,7 @@ int main() {
   schedule_context.control.run_flag = 1;
   schedule_context.common.schedule_mode = 0;
   schedule_context.ffn.polling_index = 1;
-  InitFfn(schedule_context); 
+  InitFfn(schedule_context);
   ret = aclrtMemcpy(selfHostData.data(), sizeof(ScheduleContext), &schedule_context, sizeof(ScheduleContext), ACL_MEMCPY_DEVICE_TO_HOST);
   if (ret != ACL_SUCCESS) {
     LOG_PRINT("copy schedule context to host failed. ERROR: %d\n", ret);
@@ -637,7 +647,7 @@ int main() {
   ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(int8_t), selfDeviceAddr, size * sizeof(int8_t),
                     ACL_MEMCPY_DEVICE_TO_HOST);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-  
+
   // 打印输出结果
   ScheduleContext *out_schedule_context = reinterpret_cast<ScheduleContext *>(resultData.data());
   LOG_PRINT("layer_ids_buf_size = %lu.\n", out_schedule_context->ffn.layer_ids_buf_size);

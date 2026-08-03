@@ -2,16 +2,21 @@
 
 ## 产品支持情况
 
-| 产品                                    | 是否支持 |
-| :-------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>  |    √     |
-| <term>Atlas A3训练系列产品</term>      |    √     |
-| <term>Atlas A3推理系列产品</term>      |    √     |
-| <term>Atlas A2训练系列产品</term>      |    √     |
-| <term>Atlas A2推理系列产品</term>      |    √     |
-| <term>Atlas 200I/500 A2推理产品</term> |    ×     |
-| <term>Atlas推理系列产品</term>         |    ×     |
-| <term>Atlas训练系列产品</term>         |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+- <term>Atlas A3训练系列产品</term>：支持
+- <term>Atlas A3推理系列产品</term>：支持
+- <term>Atlas A2训练系列产品</term>：支持
+- <term>Atlas A2推理系列产品</term>：支持
+- <term>Atlas 200I/500 A2推理产品</term>：不支持
+
+<!-- npu="310p" id2 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910" id3 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id3 -->
 
 ## 功能说明
 
@@ -98,7 +103,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnBSASelectBlockMaskGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBSASelectBlockMask"接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnBSASelectBlockMaskGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBSASelectBlockMask"接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnBSASelectBlockMaskGetWorkspaceSize(
@@ -219,7 +224,7 @@ aclnnStatus aclnnBSASelectBlockMask(
     <td>actualBlockLenQuery（aclIntArray*）</td>
     <td>输入</td>
     <td>每个query block内实际压缩的有效seq长度。<br>用于部分压缩场景（如末尾不完整块或仅压缩有效token）。</td>
-    <td><ul><li>可选输入：<ul><li>BNSD场景：shape为 [B, Xblocks]。</li><li>TND场景：shape为 [TotalBlockNum_Q]（各batch的Xblocks堆叠）。</li><li>每个元素取值范围 [0, blockShapeX]。</li><li>当actualBlockLen = 0时：对应block的q_cmp填0向量，不会被topK选中。</li><li>当actualBlockLen > 0时：仅对前actualBlockLen个token取均值。</li></ul></li>
+    <td><ul><li>可选输入：<ul><li>BNSD场景：shape为 [B, Xblocks]。</li><li>TND场景：shape为 [TotalBlockNum_Q]（各batch的实际有效Xblocks堆叠，vaildXblocks = ceil（actualSeqQ / blockShapeX））。</li><li>每个元素取值范围 [0, blockShapeX]。</li><li>当actualBlockLen = 0时：对应block的q_cmp填0向量，不会被topK选中。</li><li>当actualBlockLen > 0时：仅对前actualBlockLen个token取均值。</li></ul></li>
     <li>如不配置（传nullptr）：对query进行完整压缩（使用完整blockShapeX长度）。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
@@ -230,7 +235,7 @@ aclnnStatus aclnnBSASelectBlockMask(
     <td>actualBlockLenKey（aclIntArray*）</td>
     <td>输入</td>
     <td>每个key block内实际压缩的有效seq长度。<br>用于部分压缩场景（如末尾不完整块或仅压缩有效token）。</td>
-    <td><ul><li>可选输入：<ul><li>BNSD场景：shape为 [B, Yblocks]。</li><li>TND场景：shape为 [TotalBlockNum_KV]（各batch的Yblocks堆叠）。</li><li>每个元素取值范围 [0, blockShapeY]。</li><li>当actualBlockLen = 0时：对应block的k_cmp填0向量， 不会被topK选中。</li><li>当actualBlockLen > 0时：仅对前actualBlockLen个token取均值。</li></ul></li>
+    <td><ul><li>可选输入：<ul><li>BNSD场景：shape为 [B, Yblocks]。</li><li>TND场景：shape为 [TotalBlockNum_K]（各batch的实际有效Yblocks堆叠，vaildYblocks = ceil（actualSeqK / blockShapeY））。</li><li>每个元素取值范围 [0, blockShapeY]。</li><li>当actualBlockLen = 0时：对应block的k_cmp填0向量， 不会被topK选中。</li><li>当actualBlockLen > 0时：仅对前actualBlockLen个token取均值。</li></ul></li>
     <li>如不配置（传nullptr）：对key进行完整压缩（使用完整blockShapeY长度）。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
@@ -322,7 +327,7 @@ aclnnStatus aclnnBSASelectBlockMask(
 
 - **返回值**：
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -360,7 +365,7 @@ aclnnStatus aclnnBSASelectBlockMask(
     </tr>
   </tbody></table>
 
-## aclnnBSASelectBlockMask 
+## aclnnBSASelectBlockMask
 
 - **参数说明：**
 
@@ -401,7 +406,7 @@ aclnnStatus aclnnBSASelectBlockMask(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -419,7 +424,7 @@ aclnnStatus aclnnBSASelectBlockMask(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -477,25 +482,25 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
             return -1;
         }
     }
-    
+
     auto size = GetShapeSize(shape) * sizeof(T);
-    
+
     if (hostData.size() != static_cast<size_t>(GetShapeSize(shape))) {
-        LOG_PRINT("CreateAclTensor: ERROR - hostData size mismatch: %zu vs %ld\n", 
+        LOG_PRINT("CreateAclTensor: ERROR - hostData size mismatch: %zu vs %ld\n",
                   hostData.size(), GetShapeSize(shape));
         return -1;
     }
-    
+
     // 调用aclrtMalloc申请device侧内存
     *deviceAddr = nullptr;
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-    
+
     // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
     ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); 
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
               aclrtFree(*deviceAddr); *deviceAddr = nullptr; return ret);
-    
+
     // 计算连续tensor的strides
     std::vector<int64_t> strides(shape.size(), 1);
     if (shape.size() > 1) {
@@ -508,7 +513,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     *tensor = nullptr;
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
                                 shape.data(), shape.size(), *deviceAddr);
-    CHECK_RET(*tensor != nullptr, LOG_PRINT("aclCreateTensor failed - returned nullptr\n"); 
+    CHECK_RET(*tensor != nullptr, LOG_PRINT("aclCreateTensor failed - returned nullptr\n");
               aclrtFree(*deviceAddr); *deviceAddr = nullptr; return -1);
     return 0;
 }
@@ -546,7 +551,7 @@ int main() {
 
     std::vector<op::fp16_t> qData(qSize, 0.1f);
     std::vector<op::fp16_t> kData(kSize, 0.1f);
-    
+
     // mask输出初始化为0
     std::vector<int8_t> maskOutData(GetShapeSize(maskShape), 0);
 
@@ -575,8 +580,8 @@ int main() {
     // 调用aclnnBSASelectBlockMask第一段接口
     LOG_PRINT("Calling aclnnBSASelectBlockMaskGetWorkspaceSize...\n");
     ret = aclnnBSASelectBlockMaskGetWorkspaceSize(
-        qTensor, 
-        kTensor, 
+        qTensor,
+        kTensor,
         blockShapeArr,
         nullptr,
         nullptr,
@@ -586,10 +591,10 @@ int main() {
         queryLayoutBuffer,
         keyLayoutBuffer,
         static_cast<int64_t>(numKHeads),
-        scaleValue, 
-        sparsity, 
+        scaleValue,
+        sparsity,
         maskTensor,
-        &workspaceSize, 
+        &workspaceSize,
         &executor
     );
 
@@ -611,7 +616,7 @@ int main() {
 
     // 4.(固定写法)同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret); 
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
     // 5.获取输出的值，将device侧内存上的结果拷贝至host侧
     int64_t maskSize = GetShapeSize(maskShape);
@@ -629,7 +634,7 @@ int main() {
     aclDestroyTensor(qTensor);
     aclDestroyTensor(kTensor);
     aclDestroyTensor(maskTensor);
-    
+
     aclDestroyIntArray(blockShapeArr);
 
     // 7.释放device资源
@@ -639,7 +644,7 @@ int main() {
     if (workspaceAddr) {
       aclrtFree(workspaceAddr);
     }
-    
+
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
     aclFinalize();
