@@ -473,42 +473,50 @@ static ge::fusion::GraphUniqPtr
 BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
                   const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start to build replaceGraph EsGraphBuilder.");
-    auto replaceGraphBuilder = ge::es::EsGraphBuilder("replacement");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Start to build replaceGraph EsGraphBuilder.");
+    ge::fusion::GraphUniqPtr replaceGraph;
+    {
+        // BuildAndReset 后 graph 已从 builder 挪出；限制 builder/tensor holder 作用域，避免 return 时析构异常难定位
+        auto replaceGraphBuilder = ge::es::EsGraphBuilder("replacement");
 
-    ReplaceGraphInputs inputTensors;
-    if (!CreateReplaceGraphInputs(inputTensors, replaceGraphBuilder, subgraphInputs, matchResult)) {
-        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "CreateReplaceGraphInputs failed.");
-        return nullptr;
+        ReplaceGraphInputs inputTensors;
+        if (!CreateReplaceGraphInputs(inputTensors, replaceGraphBuilder, subgraphInputs, matchResult)) {
+            OPS_LOG_E(FUSION_PASS_NAME.c_str(), "CreateReplaceGraphInputs failed.");
+            return nullptr;
+        }
+
+        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start to GetCapturedMc2Node.");
+        ge::GNode mc2Node;
+        if (!GetCapturedMc2Node(matchResult, mc2Node)) {
+            return nullptr;
+        }
+        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End to GetCapturedMc2Node.");
+
+        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start to GetMc2ReplaceAttrs.");
+        Mc2ReplaceAttrs attrs;
+        if (!GetMc2ReplaceAttrs(mc2Node, attrs)) {
+            return nullptr;
+        }
+        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End to GetMc2ReplaceAttrs.");
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Start to AlltoAllMatmul group %s, comm_mode %s, alltoall_out_flag=%d.",
+                  attrs.group.GetString(), attrs.comm_mode.GetString(), static_cast<int>(attrs.alltoall_out_flag));
+        auto mc2 = ge::es::AlltoAllMatmul(
+            inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale, inputTensors.rX2Scale,
+            inputTensors.rCommScale, inputTensors.rX1Offset, inputTensors.rX2Offset, attrs.group.GetString(),
+            attrs.world_size, attrs.all2all_axes, attrs.y_dtype, attrs.x1_quant_mode, attrs.x2_quant_mode,
+            attrs.comm_quant_mode, attrs.x1_quant_dtype, attrs.comm_quant_dtype, attrs.transpose_x1, attrs.transpose_x2,
+            attrs.group_size, attrs.comm_mode.GetString(), attrs.alltoall_out_flag);
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "End to AlltoAllMatmul, all2all_out holder=%p.",
+                  static_cast<const void *>(mc2.all2all_out.GetCTensorHolder()));
+
+        // 与 MakePattern / MatmulAlltoAll 一致：只暴露 y
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Start BuildAndReset with y only.");
+        replaceGraph = replaceGraphBuilder.BuildAndReset({mc2.y});
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "End BuildAndReset, graph=%p.",
+                  static_cast<const void *>(replaceGraph.get()));
     }
-
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start to GetCapturedMc2Node.");
-    ge::GNode mc2Node;
-    if (!GetCapturedMc2Node(matchResult, mc2Node)) {
-        return nullptr;
-    }
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End to GetCapturedMc2Node.");
-
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start to GetMc2ReplaceAttrs.");
-    Mc2ReplaceAttrs attrs;
-    if (!GetMc2ReplaceAttrs(mc2Node, attrs)) {
-        return nullptr;
-    }
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End to GetMc2ReplaceAttrs.");
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start to AlltoAllMatmul group %s, comm_mode %s, alltoall_out_flag=%d.",
-              attrs.group.GetString(), attrs.comm_mode.GetString(), static_cast<int>(attrs.alltoall_out_flag));
-    auto mc2 = ge::es::AlltoAllMatmul(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
-                                      inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset, inputTensors.rX2Offset,
-                                      attrs.group.GetString(), attrs.world_size, attrs.all2all_axes, attrs.y_dtype, attrs.x1_quant_mode,
-                                      attrs.x2_quant_mode, attrs.comm_quant_mode, attrs.x1_quant_dtype, attrs.comm_quant_dtype,
-                                      attrs.transpose_x1, attrs.transpose_x2, attrs.group_size, attrs.comm_mode.GetString(), attrs.alltoall_out_flag);
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End to AlltoAllMatmul, all2all_out holder=%p.",
-              static_cast<const void *>(mc2.all2all_out.GetCTensorHolder()));
-
-    // 与 MakePattern / MatmulAlltoAll 一致：只暴露 y；强制挂 all2all_out 时 EsSetGraphOutput 可能对空 holder assert
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start BuildAndReset with y only.");
-    auto replaceGraph = replaceGraphBuilder.BuildAndReset({mc2.y});
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End BuildAndReset, graph=%p.", static_cast<const void *>(replaceGraph.get()));
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph scope exit ok, about to return graph=%p.",
+              static_cast<const void *>(replaceGraph.get()));
     return replaceGraph;
 }
 
@@ -610,17 +618,20 @@ ge::fusion::GraphUniqPtr AllToAllMatmulTransposeA5FusionPass::Replacement(
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Subgraph input size is %zu.", subgraphInputSize);
 
     // build replace graph after removing Transpose nodes
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Before BuildReplaceGraph.");
     ge::fusion::GraphUniqPtr replaceGraph = BuildReplaceGraph(subgraphInputs, matchResult);
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "After BuildReplaceGraph, graph=%p.",
+              static_cast<const void *>(replaceGraph.get()));
     if (replaceGraph == nullptr) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph failed in Replacement.");
         return nullptr;
     }
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start InferShapeReplaceGraph");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Start InferShapeReplaceGraph");
     if (!InferShapeReplaceGraph(replaceGraph, subgraphInputs)) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "InferShapeReplaceGraph failed in Replacement.");
         return nullptr;
     }
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End InferShapeReplaceGraph");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "End InferShapeReplaceGraph");
 
     return std::move(replaceGraph);
 }
