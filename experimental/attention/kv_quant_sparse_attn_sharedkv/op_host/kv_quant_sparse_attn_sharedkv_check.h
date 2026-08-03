@@ -308,6 +308,8 @@ public:
     SASLayout outLayout = SASLayout::BSND;
 };
 
+SASTemplateMode SelectSASTemplateMode(const KvQuantSASTilingInfo &sasInfo);
+
 class KvQuantSASInfoParser {
 public:
     explicit KvQuantSASInfoParser(gert::TilingContext *context) : context_(context) {}
