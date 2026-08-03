@@ -92,6 +92,9 @@ private:
     TBuf<TPosition::VECCALC> globalIndexBuf_;
     LocalTensor<uint32_t> globalIndexLocal_;
 
+    TBuf<TPosition::VECCALC> histogramBuf_;
+    LocalTensor<uint32_t> histogramLocal_;
+
     TBuf<TPosition::VECCALC> indiceLenBuf_;
     LocalTensor<uint32_t> indiceLenLocal_;
 
@@ -116,12 +119,12 @@ template <typename SIT>
 __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe, bool needCleanOutput)
 {
     needCleanOutput_ = needCleanOutput;
-    // 当前配置为2 * ((96 + 1) >> 1) * 256 * 4B = 96KB。
-    pipe->InitBuffer(resMm1Buf_, 2 * ((constInfo_.mBaseSize + 1U) >> 1U) * s2BaseSize_ * sizeof(QK_T));
+    // 三缓冲，每槽32KB；TopK histogram已拆为独立UB。
+    pipe->InitBuffer(resMm1Buf_, SICommon::MM1_RES_BUFFER_NUM * SICommon::MM1_RES_SLOT_BYTES);
     resMm1Local_ = resMm1Buf_.Get<QK_T>(); // qk
 
-    // 当前配置为2 * 256 * 4B = 2KB。
-    pipe->InitBuffer(vBiasBuf_, 2 * s2BaseSize_ * sizeof(float));
+    // vBias与MM1结果使用相同的三缓冲槽号。
+    pipe->InitBuffer(vBiasBuf_, SICommon::VBIAS_BUFFER_NUM * s2BaseSize_ * sizeof(float));
     vBiasLocal_ = vBiasBuf_.Get<float>(); // vBias
 
     // Topk
@@ -134,14 +137,19 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe, bool needCleanOut
     pipe->InitBuffer(globalIndexBuf_, ((constInfo_.mBaseSize + 1U) >> 1U) * MAX_TOPK_COUNT * sizeof(uint32_t));
     globalIndexLocal_ = globalIndexBuf_.Get<uint32_t>();
 
+    // TopK batch4 histogram独立申请，不再复用resMm1结果槽。
+    pipe->InitBuffer(histogramBuf_, SIKernel::StemIndexerTopk<SCORE_T>::HISTOGRAM_SIZE_U32 * sizeof(uint32_t));
+    histogramLocal_ = histogramBuf_.Get<uint32_t>();
+
     // indice_len
     // 每行长度独占一个32B槽位，满足UB地址对齐要求并支持多行连续搬出。
     pipe->InitBuffer(indiceLenBuf_, ((constInfo_.mBaseSize + 1U) >> 1U) * INDICE_LEN_ROW_STRIDE * sizeof(uint32_t));
     indiceLenLocal_ = indiceLenBuf_.Get<uint32_t>();
 
-    // 两个ping-pong槽初始均归Cube使用。
+    // 三个流水槽初始均归Cube使用。
     CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 0U);
     CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 1U);
+    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 2U);
     if (needCleanOutput_) {
         CleanOutput();
     }
@@ -206,6 +214,7 @@ __aicore__ inline void SIVector<SIT>::AllocEventID()
 {
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 0);
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 1);
+    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 2);
     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 }
 
@@ -214,6 +223,7 @@ __aicore__ inline void SIVector<SIT>::FreeEventID()
 {
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 0);
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 1);
+    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 2);
     WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 }
 
@@ -255,10 +265,10 @@ __aicore__ inline void SIVector<SIT>::InitSparseIndicesToNegOne(uint32_t gS1Idx,
 template <typename SIT>
 __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
 {
-    auto pingpong = info.loop & 1U;
+    auto bufferIdx = info.loop % SICommon::MM1_RES_BUFFER_NUM;
     int64_t gS1BasePerVecSize_ = (constInfo_.mBaseSize + 1U) >> 1U; // 当前每个vec核上分到的mbase/2行
     int64_t curS2Idx = info.s2Idx * s2BaseSize_;
-    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
+    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + bufferIdx);
     // vBiasGm --> vBiasLocal_ 搬运vBias
     uint64_t vBiasGmOffset = info.tensorVBiasOffset + curS2Idx;
     DataCopyPadExtParams<float> padVBiasParams{false, 0, 0, 0};
@@ -267,26 +277,26 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
     vBiasDataCopyExtParams.blockLen = info.actualSingleProcessSInnerSize * sizeof(float);
     vBiasDataCopyExtParams.srcStride = 0;
     vBiasDataCopyExtParams.dstStride = 0;
-    DataCopyPad(vBiasLocal_[pingpong * s2BaseSize_], vBiasGm[vBiasGmOffset], vBiasDataCopyExtParams, padVBiasParams);
+    DataCopyPad(vBiasLocal_[bufferIdx * s2BaseSize_], vBiasGm[vBiasGmOffset], vBiasDataCopyExtParams, padVBiasParams);
 
-    SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
-    WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
+    SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + bufferIdx);
+    WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + bufferIdx);
 
     if (info.isFirstS2InnerLoop) {
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     }
     // CV同步：V核等待C核完成mm1并将结果搬运到UB。
-    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_CV_EVENT + pingpong);
+    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_CV_EVENT + bufferIdx);
 
-    auto qkBase = resMm1Local_[pingpong * (gS1BasePerVecSize_ * s2BaseSize_)];
+    auto qkBase = resMm1Local_[bufferIdx * (SICommon::MM1_RES_SLOT_BYTES / sizeof(QK_T))];
     auto outBase = mrgValueLocal_[MAX_TOPK_COUNT];
-    auto vBiasBase = vBiasLocal_[pingpong * s2BaseSize_];
+    auto vBiasBase = vBiasLocal_[bufferIdx * s2BaseSize_];
 
     vector1::MulRSquareAndAddVBiasVF(outBase, qkBase, vBiasBase, constInfo_.rSquare, gS1BasePerVecSize_, s2BaseSize_,
                                      mrgRowStride_);
     PipeBarrier<PIPE_V>();
 
-    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
+    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + bufferIdx);
 }
 
 template <typename SIT>
@@ -433,12 +443,13 @@ SIVector<SIT>::RunTopKBatchRows(const SICommon::RunInfo &info, bool isFirstS2Inn
     uint32_t validLen = isFirstS2InnerLoop ? SICommon::TRUNK_LEN_256 : (TOPK_ALIGN_SIZE + SICommon::TRUNK_LEN_256);
 
     LocalTensor<uint32_t> reuseMm1ResLocal =
-        resMm1Local_[(info.loop & 1U) * (((constInfo_.mBaseSize + 1U) >> 1U) * s2BaseSize_)]
+        resMm1Local_[(info.loop % SICommon::MM1_RES_BUFFER_NUM) *
+                     (SICommon::MM1_RES_SLOT_BYTES / sizeof(QK_T))]
             .ReinterpretCast<uint32_t>();
     PipeBarrier<PIPE_V>();
 
-    topkOp_.Batch4Rows(mrgValueLocal_, reuseMm1ResLocal, globalIndexLocal_, rowIdx4, topkNum4, batchRowNum,
-                       mrgRowStride_, inputOffset, validLen, info.s2Idx, info.s2LoopEnd + 1);
+    topkOp_.Batch4Rows(mrgValueLocal_, reuseMm1ResLocal, histogramLocal_, globalIndexLocal_, rowIdx4, topkNum4,
+                       batchRowNum, mrgRowStride_, inputOffset, validLen, info.s2Idx, info.s2LoopEnd + 1);
 
     if (!isLastS2InnerLoop) {
         return;
@@ -574,7 +585,8 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(const SICommon::RunInfo &info,
                          curAivGS1Idx);
     }
     // TopK已不再访问当前resMm1Local_槽，先归还给Cube，使下一轮MM1可与最终MTE3搬出并行。
-    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + (info.loop & 1U));
+    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(
+        SICommon::CROSS_VC_EVENT + (info.loop % SICommon::MM1_RES_BUFFER_NUM));
     if (isLastS2InnerLoop) {
         CopyOutPackedResults(info, curAivGS1Idx, curAivGS1ProcNum);
     }

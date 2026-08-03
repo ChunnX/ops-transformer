@@ -27,8 +27,12 @@ enum class SI_LAYOUT : uint32_t {
 // Sync mode between Cube and Vector.
 constexpr uint32_t SI_SYNC_MODE4 = 4U;
 constexpr uint32_t AIV0_AIV1_OFFSET = 16U;
+constexpr uint32_t MM1_RES_BUFFER_NUM = 3U;
+constexpr uint32_t VBIAS_BUFFER_NUM = 3U;
+// M=64时每个AIV的QK结果为32KB；TopK histogram使用独立UB，不占用结果槽。
+constexpr uint32_t MM1_RES_SLOT_BYTES = 32U * 1024U;
 constexpr uint32_t CROSS_VC_EVENT = 0U;
-constexpr uint32_t CROSS_CV_EVENT = 2U;
+constexpr uint32_t CROSS_CV_EVENT = CROSS_VC_EVENT + MM1_RES_BUFFER_NUM;
 // Buffer size in bytes.
 constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32U;
 constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64U;

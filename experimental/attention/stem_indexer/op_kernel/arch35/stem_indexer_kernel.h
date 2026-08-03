@@ -52,6 +52,9 @@ public:
     static constexpr SI_LAYOUT Q_LAYOUT_T = SIT::layout;
 
     using SCORE_T = typename SIT::scoreType;
+    // Benchmark switch: keep only Cube MM1/Fixpipe and the minimum C/V buffer handshake.
+    // Sparse output is intentionally not produced while this switch is enabled.
+    static constexpr bool CUBE_ONLY_BENCHMARK = false;
 
     SIMatmul<SIT> matmulService;
     SIVector<SIT> vectorService;
@@ -150,7 +153,15 @@ template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::InitBuffers()
 {
     if ASCEND_IS_AIV {
-        vectorService.InitBuffers(pipe, needCleanOutput);
+        if constexpr (CUBE_ONLY_BENCHMARK) {
+            // Cube waits for all result slots before the first use. Seed the ownership
+            // flags here without allocating Vector UB or clearing the output.
+            CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 0U);
+            CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 1U);
+            CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 2U);
+        } else {
+            vectorService.InitBuffers(pipe, needCleanOutput);
+        }
     } else {
         matmulService.InitBuffers(pipe);
     }
@@ -496,6 +507,7 @@ __aicore__ inline void SIPreload<SIT>::Process()
         matmulService.FreeEventID();
         CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 0);
         CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 1);
+        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + 2);
     }
 }
 
@@ -535,12 +547,21 @@ __aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t 
     if ASCEND_IS_AIC {
         matmulService.ComputeMm1(runInfo);
     } else {
-        if (!needCleanOutput && runInfo.isFirstS2InnerLoop) {
-            vectorService.InitSparseIndicesToNegOne(runInfo.gS1Idx, runInfo.actMBaseSize, runInfo.actS1Size,
-                                                    runInfo.indiceOutOffset);
+        if constexpr (CUBE_ONLY_BENCHMARK) {
+            // Do not remove this handshake: Cube reuses each MM1 UB slot only after
+            // receiving VC[p] from both Vector tasks. Waiting for CV[p] also ensures
+            // the measured Cube work (including Fixpipe) has completed for this tile.
+            uint32_t bufferIdx = runInfo.loop % SICommon::MM1_RES_BUFFER_NUM;
+            CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_CV_EVENT + bufferIdx);
+            CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + bufferIdx);
+        } else {
+            if (!needCleanOutput && runInfo.isFirstS2InnerLoop) {
+                vectorService.InitSparseIndicesToNegOne(runInfo.gS1Idx, runInfo.actMBaseSize, runInfo.actS1Size,
+                                                        runInfo.indiceOutOffset);
+            }
+            vectorService.ProcessVec1(runInfo);
+            vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);
         }
-        vectorService.ProcessVec1(runInfo);
-        vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);
     }
 }
 
