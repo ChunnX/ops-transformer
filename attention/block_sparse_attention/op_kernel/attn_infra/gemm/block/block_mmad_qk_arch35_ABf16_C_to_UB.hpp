@@ -219,7 +219,7 @@ public:
         using CopyGmToL1B = typename TileCopy_::template CopyGmToL1B<TensorB>;
         CopyGmToL1B copyGmToL1B;
         if (effRowsCtx != nullptr && effRowsCtx->enabled) {
-            // K 为转置布局 [embed, N]，Transposed=true
+            // gather=true：FP16/BF16 跨块拼接；gather=false：FP8 单块直拷（srcOffset）
             EffRowsGatherCopy<true>(gBTensor, l1BTensorTla, gSparseBlockIdx, *effRowsCtx,
                                     yBlockNumRsvd, kvSeqlen, blockShapeY, embed,
                                     l1BTileNAct, copyGmToL1B);
