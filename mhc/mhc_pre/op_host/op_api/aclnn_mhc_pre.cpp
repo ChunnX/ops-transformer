@@ -261,10 +261,11 @@ static bool CheckOptionalOutputGroup(const MhcParamsBase &params)
     bool hasAllOptional =
         params.invRmsOptional != nullptr && params.hMixOptional != nullptr && params.hPreOptional != nullptr;
     if (hasAnyOptional && !hasAllOptional) {
-        const std::string pointerStates = std::string("invRmsOptional=") +
-                                          (params.invRmsOptional == nullptr ? "nullptr" : "non-null") + ", hMixOptional=" +
-                                          (params.hMixOptional == nullptr ? "nullptr" : "non-null") + ", hPreOptional=" +
-                                          (params.hPreOptional == nullptr ? "nullptr" : "non-null");
+        const std::string pointerStates =
+            std::string("invRmsOptional=") +
+            (params.invRmsOptional == nullptr ? "nullptr" : "non-null") + ", hMixOptional=" +
+            (params.hMixOptional == nullptr ? "nullptr" : "non-null") + ", hPreOptional=" +
+            (params.hPreOptional == nullptr ? "nullptr" : "non-null");
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(ACLNN_OP_NAME, "invRmsOptional, hMixOptional, hPreOptional",
                                                pointerStates.c_str(),
                                                "all optional outputs must be nullptr or all must be non-null");
@@ -619,7 +620,8 @@ static aclnnStatus mHCPreCommonProcess(MhcParamsBase &params, aclOpExecutor *exe
     int64_t outFlag = params.invRmsOptional != nullptr ? 1 : 0;
     auto outParams =
         l0op::MhcPre(params.xContiguous, params.phiContiguous, params.alphaContiguous, params.biasContiguous,
-                     params.gammaOptionalContiguous, outFlag, params.normEps, params.hcEps, params.opImplMode, executor);
+                     params.gammaOptionalContiguous, outFlag, params.normEps, params.hcEps, params.opImplMode,
+                     executor);
     CHECK_RET(outParams != std::tuple(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
     ret = CopyRequiredOutputs(std::get<0>(outParams), std::get<1>(outParams), std::get<2>(outParams), params, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);

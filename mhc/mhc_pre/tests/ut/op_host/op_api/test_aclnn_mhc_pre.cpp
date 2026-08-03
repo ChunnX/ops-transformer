@@ -387,7 +387,7 @@ TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_invalid_partial_optional_outputs)
 {
     auto tensors = MakeValidTensors();
 
-    EXPECT_EQ(RunMhcPrePartialOptional(*tensors.x, *tensors.phi, *tensors.alpha, *tensors.bias, *tensors.gamma, *tensors.hIn,
-                                       *tensors.hPost, *tensors.hRes, *tensors.invRms),
+    EXPECT_EQ(RunMhcPrePartialOptional(*tensors.x, *tensors.phi, *tensors.alpha, *tensors.bias, *tensors.gamma,
+                                       *tensors.hIn, *tensors.hPost, *tensors.hRes, *tensors.invRms),
               ACLNN_ERR_PARAM_INVALID);
 }
