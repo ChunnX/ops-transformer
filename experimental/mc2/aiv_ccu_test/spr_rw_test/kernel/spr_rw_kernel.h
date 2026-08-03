@@ -87,8 +87,8 @@ __aicore__ inline void SprRw<T>::WriteThenReadSelf()
         reinterpret_cast<__gm__ uint64_t *>(sprVaddrTable_)[aivId_]);
     __gm__ uint32_t *sprReg = reinterpret_cast<__gm__ uint32_t *>(selfSpr + SPR_DATA_MAIN_BASE_OFFSET);
 
-    // 1. 读取写前值 (通过 GM 读同一寄存器地址)
-    uint32_t readBefore = *sprReg;
+    // 1. 读取写前值 (ld_dev 读同一寄存器地址)
+    uint64_t readBefore = ld_dev(reinterpret_cast<__gm__ uint64_t *>(sprReg), 0);
 
     // 2. 解锁寄存器 (background.md 2.4)
     st_dev(SPR_UNLOCK_VAL, (__gm__ uint32_t *)(selfSpr + SPR_UNLOCK_OFFSET), 0);
@@ -100,8 +100,8 @@ __aicore__ inline void SprRw<T>::WriteThenReadSelf()
     // 4. 写 SPR (st_dev 写 +0x00D0)
     st_dev(SPR_TEST_WRITE_VAL, sprReg, 0);
 
-    // 5. 读取写后值 (同一寄存器地址)
-    uint32_t readAfter = *sprReg;
+    // 5. 读取写后值 (ld_dev 读同一寄存器地址)
+    uint64_t readAfter = ld_dev(reinterpret_cast<__gm__ uint64_t *>(sprReg), 0);
 
     // 6. 回写结果: 比较写后读值与写入值是否一致
     resultGm_.SetValue(0, sprVaddr_);
