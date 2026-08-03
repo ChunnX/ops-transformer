@@ -47,8 +47,10 @@ protected:
 private:
     ge::graphStatus SetTilingData();
     void DoUbTiling();
+    ge::graphStatus CheckShape3D(int64_t bs, int64_t n, int64_t c);
 
 private:
+    int64_t bs_{0};
     int64_t bsTaskCount_{0};
     int64_t tailBsTaskCount_{0};
     int64_t bsLoopDataLen_{0};
