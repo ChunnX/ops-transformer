@@ -71,6 +71,19 @@ static std::string LIDataTypeToSerialString(ge::DataType type)
     }
 }
 
+static std::string ToStringRaw(const gert::Shape &shape)
+{
+    std::ostringstream oss;
+    auto v = ToVector(shape);
+    if (v.size() > 0) {
+        for (size_t i = 0; i < v.size() - 1; ++i) {
+            oss << v[i] << ", ";
+        }
+        oss << v[v.size() - 1];
+    }
+    return oss.str();
+}
+
 ge::graphStatus LIInfoParser::CheckTensorShapes() const
 {
     OP_CHECK_IF(opParamInfo_.query.shape == nullptr,
@@ -562,13 +575,13 @@ ge::graphStatus LIInfoParser::GetN1Size()
                         n1Size_ != QUERY_HEAD_NUM_LIMIT_950_24 && n1Size_ != QUERY_HEAD_NUM_LIMIT_950_16 &&
                         n1Size_ != QUERY_HEAD_NUM_LIMIT_950_8,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName_, "query", Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+                        opName_, "query", ToStringRaw(opParamInfo_.query.shape->GetStorageShape()).c_str(),
                         "The head num of query must equal 64, 32, 24, 16 or 8"),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(n1Size_ > QUERY_HEAD_NUM_LIMIT,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName_, "query", Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+                        opName_, "query", ToStringRaw(opParamInfo_.query.shape->GetStorageShape()).c_str(),
                         "The head num of query must be no greater than " + std::to_string(QUERY_HEAD_NUM_LIMIT)),
                     return ge::GRAPH_FAILED);
     }
@@ -602,7 +615,7 @@ ge::graphStatus LIInfoParser::GetAndCheckN2Size()
     OP_LOGI(context_->GetNodeName(), "n2Size_ is %d", n2Size_);
     OP_CHECK_IF(n2Size_ != 1,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    opName_, "key", Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()).c_str(),
+                    opName_, "key", ToStringRaw(opParamInfo_.key.shape->GetStorageShape()).c_str(),
                     "The head num of key must be 1"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -612,7 +625,7 @@ ge::graphStatus LIInfoParser::GetGSize()
 {
     if (n1Size_ % n2Size_ != 0) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query",
-                                              Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+                                              ToStringRaw(opParamInfo_.query.shape->GetStorageShape()).c_str(),
                                               "The head num of query must be a multiple of the head num of key");
         return ge::GRAPH_FAILED;
     }
@@ -652,7 +665,7 @@ static ge::graphStatus LiGetHeadDim(const TilingRequiredParaInfo &liQuery, DataL
     liHeadDim = liQuery.shape->GetStorageShape().GetDim(liDIndex);
     OP_CHECK_IF(liHeadDim != HEAD_DIM_LIMIT,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(liOpName, "query",
-                                                      Ops::Base::ToString(liQuery.shape->GetStorageShape()).c_str(),
+                                                      ToStringRaw(liQuery.shape->GetStorageShape()).c_str(),
                                                       "The head num of query only supports 128"),
                 return ge::GRAPH_FAILED);
 
@@ -676,7 +689,7 @@ ge::graphStatus LIInfoParser::GetAndCheckBlockSize()
 
     OP_CHECK_IF(((blockSize_ % 16 != 0) || (blockSize_ == 0) || (blockSize_ > 1024)),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    opName_, "key", Ops::Base::ToString(opParamInfo_.key.shape->GetShape()).c_str(),
+                    opName_, "key", ToStringRaw(opParamInfo_.key.shape->GetShape()).c_str(),
                     "The block_size of key must be a multiple of 16 and be within the range (0, 1024]"),
                 return ge::GRAPH_FAILED);
 
@@ -688,7 +701,7 @@ ge::graphStatus LIInfoParser::CheckBlockCount()
     int32_t blockCount_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(0));
     OP_CHECK_IF((blockCount_ == 0),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
-                                                      Ops::Base::ToString(opParamInfo_.key.shape->GetShape()).c_str(),
+                                                      ToStringRaw(opParamInfo_.key.shape->GetShape()).c_str(),
                                                       "The block_count of key cannot be 0"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -950,7 +963,7 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatch()
     // -----------------------check sparse_count-------------------
     OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.sparseCount),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    opName_, "sparse_indices", Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
+                    opName_, "sparse_indices", ToStringRaw(opParamInfo_.attenOut.shape->GetStorageShape()),
                     "The last dim of sparse_indices and sparse_count are " +
                         std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1)) + ", " +
                         std::to_string(*opParamInfo_.sparseCount) + " respectively, they must be same"),
@@ -958,7 +971,7 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatch()
     OP_CHECK_IF((opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.sparseCount &&
                  (*opParamInfo_.returnValue)),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    opName_, "sparse_values", Ops::Base::ToString(opParamInfo_.valuesOut.shape->GetStorageShape()),
+                    opName_, "sparse_values", ToStringRaw(opParamInfo_.valuesOut.shape->GetStorageShape()),
                     "The last dim of sparse_values and sparse_count are " +
                         std::to_string(opParamInfo_.valuesOut.shape->GetStorageShape().GetDim(outN2Dim + 1)) + ", " +
                         std::to_string(*opParamInfo_.sparseCount) + " respectively, they must be same"),

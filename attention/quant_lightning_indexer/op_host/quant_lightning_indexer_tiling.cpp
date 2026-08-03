@@ -72,6 +72,19 @@ static std::string QLIDataTypeToSerialString(ge::DataType type)
     }
 }
 
+static std::string ToStringRaw(const gert::Shape &shape)
+{
+    std::ostringstream oss;
+    auto v = ToVector(shape);
+    if (v.size() > 0) {
+        for (size_t i = 0; i < v.size() - 1; ++i) {
+            oss << v[i] << ", ";
+        }
+        oss << v[v.size() - 1];
+    }
+    return oss.str();
+}
+
 ge::graphStatus QLIInfoParser::CheckTensorShapes() const
 {
     OP_CHECK_IF(opParamInfo_.query.shape == nullptr,
@@ -648,7 +661,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckN2Size()
     OP_LOGI(context_->GetNodeName(), "N2 is %d", n2Size_);
     OP_CHECK_IF(n2Size_ != 1,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    opName_, "key", Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+                    opName_, "key", ToStringRaw(opParamInfo_.query.shape->GetStorageShape()).c_str(),
                     "The head num of key must be 1"),
                 return ge::GRAPH_FAILED);
 
@@ -659,7 +672,7 @@ ge::graphStatus QLIInfoParser::GetGSize()
 {
     if (n1Size_ % n2Size_ != 0) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query",
-                                              Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+                                              ToStringRaw(opParamInfo_.query.shape->GetStorageShape()).c_str(),
                                               "The head num of query can not be a multiple of the head num of key");
         return ge::GRAPH_FAILED;
     }
@@ -669,14 +682,14 @@ ge::graphStatus QLIInfoParser::GetGSize()
         OP_CHECK_IF(gSize_ != G_SIZE_LIMIT_950 && gSize_ != G_SIZE_LIMIT && gSize_ != G_SIZE_LIMIT_32_950 &&
                         gSize_ != G_SIZE_LIMIT_16_950 && gSize_ != G_SIZE_LIMIT_8_950,
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName_, "query", Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+                        opName_, "query", ToStringRaw(opParamInfo_.query.shape->GetStorageShape()).c_str(),
                         "The head num of query divided by the head num of key must equal 64, 32, 24, 16 or 8"),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(
             gSize_ > G_SIZE_LIMIT,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                opName_, "query", Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+                opName_, "query", ToStringRaw(opParamInfo_.query.shape->GetStorageShape()).c_str(),
                 "The head num of query divided by the head num of key must <= " + std::to_string(G_SIZE_LIMIT)),
             return ge::GRAPH_FAILED);
     }
@@ -720,7 +733,7 @@ static ge::graphStatus QliGetHeadDim(const TilingRequiredParaInfo &qliQuery, Dat
     qliHeadDim = qliQuery.shape->GetStorageShape().GetDim(qliDIndex);
     OP_CHECK_IF(qliHeadDim != HEAD_DIM_LIMIT,
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(qliOpName, "query",
-                                                      Ops::Base::ToString(qliQuery.shape->GetStorageShape()).c_str(),
+                                                      ToStringRaw(qliQuery.shape->GetStorageShape()).c_str(),
                                                       "The last dim of query only support 128"),
                 return ge::GRAPH_FAILED);
 
@@ -744,7 +757,7 @@ ge::graphStatus QLIInfoParser::GetAndCheckBlockSize()
 
     OP_CHECK_IF(((blockSize_ % BLOCK_SIZE_FACTOR != 0) || (blockSize_ == 0) || (blockSize_ > BLOCK_SIZE_LIMIT)),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    opName_, "key", Ops::Base::ToString(opParamInfo_.key.shape->GetShape()).c_str(),
+                    opName_, "key", ToStringRaw(opParamInfo_.key.shape->GetShape()).c_str(),
                     "The block_size of key must be a multiple of 16 and be within the range (0, 1024]"),
                 return ge::GRAPH_FAILED);
 
@@ -760,7 +773,7 @@ ge::graphStatus QLIInfoParser::GetS2SizeForPageAttention()
     int32_t blockCount_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetShape().GetDim(0));
     OP_CHECK_IF((blockCount_ == 0),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
-                                                      Ops::Base::ToString(opParamInfo_.key.shape->GetShape()).c_str(),
+                                                      ToStringRaw(opParamInfo_.key.shape->GetShape()).c_str(),
                                                       "The block_count of key cannot be 0"),
                 return ge::GRAPH_FAILED);
 
