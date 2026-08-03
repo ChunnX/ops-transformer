@@ -197,6 +197,7 @@ public:
         __local_mem__ float *cache = (__local_mem__ float *)dstTensor.GetPhyAddr() + cacheId * stride;
         __local_mem__ float *src = (__local_mem__ float *)srcTensor.GetPhyAddr();
 
+        #pragma no_simd_vf_fusion
         __VEC_SCOPE__
         {
             uint32_t sreg = static_cast<uint32_t>(count);
@@ -221,6 +222,7 @@ public:
     {
         float reciprocal = this->reciprocal;
         float epsilon = this->epsilon;
+        #pragma no_simd_vf_fusion
         __VEC_SCOPE__
         {
             AscendC::MicroAPI::RegTensor<float> sumReg, vregX, vregGamma, vregTmp;
@@ -452,6 +454,7 @@ public:
     {
         float reciprocal = this->reciprocal;
         float epsilon = this->epsilon;
+        #pragma no_simd_vf_fusion
         __VEC_SCOPE__
         {
             AscendC::MicroAPI::RegTensor<float> sumReg, vregX, vregGamma, vregTmp;
@@ -616,6 +619,7 @@ public:
     {
         float reciprocal = this->reciprocal;
         float epsilon = this->epsilon;
+        #pragma no_simd_vf_fusion
         __VEC_SCOPE__
         {
             AscendC::MicroAPI::RegTensor<float> sumReg, vregX, vregGamma, vregTmp;
@@ -759,6 +763,7 @@ public:
     {
         float reciprocal = this->reciprocal;
         float epsilon = this->epsilon;
+        #pragma no_simd_vf_fusion
         __VEC_SCOPE__
         {
             AscendC::MicroAPI::RegTensor<float> sumReg, vregX, vregGamma, vregTmp;
@@ -912,6 +917,7 @@ public:
     {
         float reciprocal = this->reciprocal;
         float epsilon = this->epsilon;
+        #pragma no_simd_vf_fusion
         __VEC_SCOPE__
         {
             AscendC::MicroAPI::RegTensor<float> sumReg, vregX, vregGamma, vregTmp;
