@@ -128,7 +128,7 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
     if (size == 0) {
         return;
     }
-    DataCopyExtParams paramsOut{1, static_cast<uint32_t>(size * sizeof(DataTypeOut)), 0, 0, 0};
+    DataCopyExtParams paramsOut{1, static_cast<uint32_t>(size * sizeof(DataTypeOut)), 1, 1, 0};
     DataCopyPad(yGmAddr_[offset], yLocal, paramsOut);
 }
 
@@ -162,26 +162,22 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
         return;
     }
 
-    uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
-    uint32_t usedCoreNum = GetBlockNum();
-    uint64_t singleCount = CeilDiv(totalLen, static_cast<uint64_t>(usedCoreNum));
-    singleCount = CeilDiv(singleCount * sizeof(DataTypeOut), static_cast<uint64_t>(AscendC::ONE_BLK_SIZE)) *
-                  AscendC::ONE_BLK_SIZE / sizeof(DataTypeOut);
-    uint64_t realCoreNum = Min(CeilDiv(totalLen, singleCount), static_cast<uint64_t>(usedCoreNum));
+    uint64_t singleCount = CeilDiv(totalLen, static_cast<uint64_t>(vectorCoreNum_));
+    singleCount = CeilDiv(singleCount, static_cast<uint64_t>(ONE_CORE_ALIGN_LEN)) * ONE_CORE_ALIGN_LEN;
 
-    if (blockIdx >= realCoreNum) {
+    uint64_t baseOffset = static_cast<uint64_t>(GetBlockIdx()) * singleCount;
+    if (baseOffset >= totalLen) {
         return;
     }
 
-    uint64_t baseOffset = static_cast<uint64_t>(blockIdx) * singleCount;
-    singleCount = (blockIdx == realCoreNum - 1) ? (totalLen - baseOffset) : singleCount;
+    if (baseOffset + singleCount > totalLen) {
+        singleCount = totalLen - baseOffset;
+    }
 
     if (!isDataBlockInitialized_) {
         Duplicate<DataTypeOut>(initWithZero_, 0, UB_INIT_REZO_LEN);
         isDataBlockInitialized_ = true;
-        event_t eventIdVToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::V_MTE3));
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventIdVToMte3);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventIdVToMte3);
+        AscendC::PipeBarrier<PIPE_ALL>();
     }
     // the baseOffset addr of cur vector core, copy out to GM
     baseOffset += outOffset;
