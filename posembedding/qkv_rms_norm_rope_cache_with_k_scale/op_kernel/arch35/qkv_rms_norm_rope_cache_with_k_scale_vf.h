@@ -58,7 +58,7 @@ constexpr MicroAPI::CastTrait QKV_K_SCALE_CAST_FP16_TO_INT8 = {
     MicroAPI::RegLayout::ZERO,
     MicroAPI::SatMode::SAT,
     MicroAPI::MaskMergeMode::ZEROING,
-    RoundMode::CAST_TRUNC,
+    RoundMode::CAST_RINT,
 };
 
 __simd_callee__ inline void RmsNormBf16ToFp32D128(
@@ -170,14 +170,10 @@ __simd_callee__ inline void DynamicQuantD128(MicroAPI::RegTensor<QuantT> &qkLowQ
     MicroAPI::Div(qkLow, qkLow, scaleBroadcast, mask64);
     MicroAPI::Div(qkHigh, qkHigh, scaleBroadcast, mask64);
     if constexpr (std::is_same<QuantT, int8_t>::value) {
-        MicroAPI::RegTensor<float> lowRounded;
-        MicroAPI::RegTensor<float> highRounded;
         MicroAPI::RegTensor<half> lowHalf;
         MicroAPI::RegTensor<half> highHalf;
-        MicroAPI::Truncate<float, RoundMode::CAST_RINT>(lowRounded, qkLow, mask64);
-        MicroAPI::Truncate<float, RoundMode::CAST_RINT>(highRounded, qkHigh, mask64);
-        MicroAPI::Cast<half, float, QKV_K_SCALE_CAST_F32_TO_FP16>(lowHalf, lowRounded, mask64);
-        MicroAPI::Cast<half, float, QKV_K_SCALE_CAST_F32_TO_FP16>(highHalf, highRounded, mask64);
+        MicroAPI::Cast<half, float, QKV_K_SCALE_CAST_F32_TO_FP16>(lowHalf, qkLow, mask64);
+        MicroAPI::Cast<half, float, QKV_K_SCALE_CAST_F32_TO_FP16>(highHalf, qkHigh, mask64);
         MicroAPI::Cast<int8_t, half, QKV_K_SCALE_CAST_FP16_TO_INT8>(qkLowQuant, lowHalf, mask64);
         MicroAPI::Cast<int8_t, half, QKV_K_SCALE_CAST_FP16_TO_INT8>(qkHighQuant, highHalf, mask64);
     } else {
