@@ -114,7 +114,7 @@
   =(t,h,w).
   $$
 
-  $s_{\mathrm T}$只参与`mropeSectionOptional`的逐项值域校验，不参与lane选源；T路是half-lane的默认来源，H/W在各自覆盖范围内替换对应lane。对$0\leq\ell<D_{\mathrm{half}}$，定义
+  $s_{\mathrm T}$不参与lane选源，也不做独立lane容量上限校验；它仍须非负并参与三项总和校验。T路是half-lane的默认来源，H/W在各自覆盖范围内替换对应lane。对$0\leq\ell<D_{\mathrm{half}}$，定义
 
   $$
   r(\ell)=\left\lfloor\frac{\ell}{3}\right\rfloor,\qquad
@@ -661,11 +661,12 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
   - M-RoPE场景下`mropeSectionOptional=[t,h,w]`的长度必须为3。令$\boldsymbol{s}=(s_{\mathrm T},s_{\mathrm H},s_{\mathrm W})$，其中$i=0,1,2$依次对应T/H/W，则
 
     $$
-    0\leq s_i\leq C_i=\left\lfloor\frac{D/2+2-i}{3}\right\rfloor,
-    \qquad i\in\{0,1,2\}.
+    s_{\mathrm T}\geq 0,\qquad
+    0\leq s_i\leq C_i=\left\lfloor\frac{D/2+2-i}{3}\right\rfloor\ (i\in\{1,2\}),
+    \qquad s_{\mathrm T}+s_{\mathrm H}+s_{\mathrm W}\leq D/2.
     $$
 
-    当前`D=128`时，逐项上限为`[22,21,21]`；三项对应互不重叠的lane集合，因此总量由逐项约束自然不超过`D/2`。
+    当前`D=128`时，H/W上限均为21；$s_{\mathrm T}$没有独立lane上限，三项之和不得超过64。
 
 ## 调用示例
 

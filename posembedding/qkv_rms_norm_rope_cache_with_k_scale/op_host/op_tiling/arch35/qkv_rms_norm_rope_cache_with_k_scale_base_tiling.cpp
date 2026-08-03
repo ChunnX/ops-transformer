@@ -273,6 +273,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateMropeSection()
         return ge::GRAPH_FAILED);
 
     const int64_t halfHeadDim = static_cast<int64_t>(input_.headDim / 2);
+    int64_t sectionSum = 0;
     for (uint64_t axis = 0; axis < MROPE_SECTION_SIZE; ++axis) {
         const int64_t section = sectionData[axis];
         OP_CHECK_IF(section < 0,
@@ -280,17 +281,25 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateMropeSection()
                         opName_, "mrope_section", std::to_string(section).c_str(),
                         ("mrope_section[" + std::to_string(axis) + "] must be non-negative").c_str()),
                     return ge::GRAPH_FAILED);
-        const int64_t axisOffset = static_cast<int64_t>(axis);
-        const int64_t axisCapacity = halfHeadDim <= axisOffset ?
-                                         0 :
-                                         (halfHeadDim - 1 - axisOffset) / static_cast<int64_t>(MROPE_SECTION_SIZE) + 1;
-        OP_CHECK_IF(
-            sectionData[axis] > axisCapacity,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mrope_section", std::to_string(sectionData[axis]).c_str(),
-                                                  ("mrope_section[" + std::to_string(axis) +
-                                                   "] must be less than or equal to " + std::to_string(axisCapacity))
-                                                      .c_str()),
-            return ge::GRAPH_FAILED);
+        if (axis != 0U) {
+            const int64_t axisOffset = static_cast<int64_t>(axis);
+            const int64_t axisCapacity =
+                halfHeadDim <= axisOffset ?
+                    0 :
+                    (halfHeadDim - 1 - axisOffset) / static_cast<int64_t>(MROPE_SECTION_SIZE) + 1;
+            OP_CHECK_IF(section > axisCapacity,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            opName_, "mrope_section", std::to_string(section).c_str(),
+                            ("mrope_section[" + std::to_string(axis) + "] must be less than or equal to " +
+                             std::to_string(axisCapacity))
+                                .c_str()),
+                        return ge::GRAPH_FAILED);
+        }
+        OP_CHECK_IF(section > halfHeadDim - sectionSum,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mrope_section", "sum exceeds D/2",
+                                                          "the sum of mrope_section must not exceed D/2"),
+                    return ge::GRAPH_FAILED);
+        sectionSum += section;
     }
     mropeSectionH_ = static_cast<uint64_t>(sectionData[1]);
     mropeSectionW_ = static_cast<uint64_t>(sectionData[2]);

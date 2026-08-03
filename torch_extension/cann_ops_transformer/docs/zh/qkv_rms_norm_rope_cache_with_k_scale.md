@@ -81,7 +81,7 @@
   因此，`mrope_position` 的三列分别提供 T、H、W 三路位置，每一行对应一个token，而不是先拼接三份输出。
   将 `mrope_section=[t,h,w]` 记为
   $\boldsymbol{s}=(s_{\mathrm T},s_{\mathrm H},s_{\mathrm W})=(t,h,w)$；
-  其中 $s_{\mathrm T}$ 只参与取值域校验，不参与 lane 选源。对
+  其中 $s_{\mathrm T}$ 不参与 lane 选源，也不做独立 lane 容量上限校验；它仍须非负并参与三项总和校验。对
   $0\leq\ell<D_{\mathrm{half}}$，定义
 
   $$
@@ -276,7 +276,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
   | layout_qkv -> layout_q_out | NTD->NTD、TND->TND、TND->NTD | 仅TND->TND |
 
 - 仅支持`D=128`，`head_nums=[Nq,Nk,Nv]`必须满足`0<Nq<=64`、`Nq=8*Nk`、`Nk=Nv`。
-- M-RoPE场景下，`mrope_section=[t,h,w]`的取值范围依次为`[0,22]`、`[0,21]`、`[0,21]`；`mrope_position`的shape必须为`[T,3]`，每个位置索引必须满足`0 <= value < MaxSeqLen`。
+- M-RoPE场景下，`mrope_section=[t,h,w]`的三项必须非负，H/W范围均为`[0,21]`，T没有独立lane上限，且`t+h+w<=64`；`mrope_position`的shape必须为`[T,3]`，每个位置索引必须满足`0 <= value < MaxSeqLen`。
 - `k_cache`、`v_cache`和`k_scale_cache`的`BlockNum`和`BlockSize`必须一致，均为4维正stride且最后一维stride为1；`k_cache`和`v_cache`前三维stride必须一致。
 - RoPE场景中，`query_start_loc[0]`应为0，`query_start_loc[-1]`应等于`T`，`seq_lens`长度应等于`query_start_loc.shape[0]-1`，且`seq_lens[b] >= query_start_loc[b+1] - query_start_loc[b]`；`cos_sin`第一维需覆盖本次调用访问的所有位置。
 - `slot_mapping`取值范围应为`[0,BlockNum*BlockSize-1]`。同一次调用内多个token写入同一slot时，最终写入顺序和结果未定义。

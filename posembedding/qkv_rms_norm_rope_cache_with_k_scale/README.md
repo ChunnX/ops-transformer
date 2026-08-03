@@ -110,7 +110,7 @@
     `q_quant_mode=NoQuant`、`q_out_dtype=BF16`、公开`q_scale=None`，K Cache为INT8，且仅支持
     `layout_qkv="TND"`、`layout_q_out="TND"`。两组位置输入不能同时存在或同时缺失。
   - `v_scale`在RoPE场景的shape必须为`[Nv]`，在M-RoPE场景的shape必须为`[Nv,D]`。
-  - M-RoPE的`mrope_section`长度必须为3，D128时三项取值范围依次为`[0,22]`、`[0,21]`、`[0,21]`；`mrope_position`必须为INT32、rank 2、shape `[T,3]`。
+  - M-RoPE的`mrope_section`长度必须为3且三项非负；D128时H/W两项的范围均为`[0,21]`，第0项无独立lane上限，三项之和不得超过64；`mrope_position`必须为INT32、rank 2、shape `[T,3]`。
   - `layout_qkv`控制`qkv`的N/T轴布局，默认值为`"TND"`；`layout_q_out`控制`q_out`和`q_scale`的N/T轴布局，默认值为`"NTD"`：
     - `layout_qkv="TND"`，`layout_q_out="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`q_out=[T, Nq, D]`，`q_scale=[T, Nq]`。
     - `layout_qkv="TND"`，`layout_q_out="NTD"`：`qkv=[T, Nq+Nk+Nv, D]`，`q_out=[Nq, T, D]`，`q_scale=[Nq, T]`。

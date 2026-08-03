@@ -562,6 +562,7 @@ private:
         }
 
         const int64_t halfHeadDim = headDim / 2;
+        int64_t sectionSum = 0;
         for (uint64_t i = 0; i < MROPE_SECTION_SIZE; ++i) {
             const int64_t value = (*params_.mropeSectionOptional)[i];
             if (value < 0) {
@@ -571,16 +572,24 @@ private:
                                                       reason.c_str());
                 return ACLNN_ERR_PARAM_INVALID;
             }
-            const int64_t axisCapacity = GetMropeAxisCapacity(halfHeadDim, i);
-            if (value > axisCapacity) {
-                const std::string incorrectValue = std::to_string(value);
-                const std::string reason = "mropeSectionOptional[" + std::to_string(i) + "] must be in [0, " +
-                                           std::to_string(axisCapacity) +
-                                           "] according to lane = 3 * r + axis within D/2";
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "mropeSectionOptional", incorrectValue.c_str(),
-                                                      reason.c_str());
+            if (i != 0U) {
+                const int64_t axisCapacity = GetMropeAxisCapacity(halfHeadDim, i);
+                if (value > axisCapacity) {
+                    const std::string incorrectValue = std::to_string(value);
+                    const std::string reason = "mropeSectionOptional[" + std::to_string(i) + "] must be in [0, " +
+                                               std::to_string(axisCapacity) +
+                                               "] according to lane = 3 * r + axis within D/2";
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "mropeSectionOptional",
+                                                          incorrectValue.c_str(), reason.c_str());
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
+            }
+            if (value > halfHeadDim - sectionSum) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "mropeSectionOptional", "sum exceeds D/2",
+                                                      "the sum of mropeSectionOptional must not exceed D/2");
                 return ACLNN_ERR_PARAM_INVALID;
             }
+            sectionSum += value;
         }
         return ACLNN_SUCCESS;
     }
