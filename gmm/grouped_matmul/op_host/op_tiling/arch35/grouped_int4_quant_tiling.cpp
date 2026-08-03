@@ -253,12 +253,6 @@ bool GroupedA4W4IntQuantTiling::CheckA4W4Params()
                 OP_LOGE(context_->GetNodeName(), "A4W4 only supports single weight."), return false);
     OP_CHECK_IF(!inputParams_.isSingleY,
                 OP_LOGE(context_->GetNodeName(), "A4W4 only supports single y."), return false);
-    auto offsetDesc = context_->GetOptionalInputDesc(OFFSET_INDEX);
-    OP_CHECK_IF(offsetDesc != nullptr,
-                OP_LOGE(context_->GetNodeName(), "A4W4: offset must be nullptr (symmetric quant)."), return false);
-    auto biasDesc = context_->GetOptionalInputDesc(BIAS_INDEX);
-    OP_CHECK_IF(biasDesc != nullptr,
-                OP_LOGE(context_->GetNodeName(), "A4W4: bias must be nullptr."), return false);
     return true;
 }
 
