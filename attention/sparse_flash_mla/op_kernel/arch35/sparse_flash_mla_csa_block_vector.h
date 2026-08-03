@@ -1010,8 +1010,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                     vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0);
             }
             if (needIntraBlockReduce) {
-                // MergeStagedAndCurrentChunk waits for this Vec2 V work before MTE2 overwrites mmRes.
-                PipeBarrier<PIPE_V>();
                 SetFlag<HardEvent::V_MTE2>(intraPartialOVToMte2Id);
                 SetFlag<HardEvent::V_MTE2>(reduceMaxSumVToMte2Id);
                 ReduceIntraBlockAndStage(runInfo, constInfo, vec2ResUb, mmRes);
