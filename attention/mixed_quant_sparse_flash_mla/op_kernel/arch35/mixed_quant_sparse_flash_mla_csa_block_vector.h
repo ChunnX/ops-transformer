@@ -1100,10 +1100,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(
         ProcessNotSparseKv(outputL1, v0ResGm, runInfo, constInfo);
     }
     if constexpr (IS_SPLIT_G) {
-        if constexpr (IS_BATCH_CONSISTENCY) {
-            SetFlag<HardEvent::MTE3_V>(v0PairMte3ToVId);
-            WaitFlag<HardEvent::MTE3_V>(v0PairMte3ToVId);
-        }
         CrossCoreSetFlag<0, PIPE_MTE3>(15);
         CrossCoreWaitFlag<0, PIPE_MTE3>(15);
     }

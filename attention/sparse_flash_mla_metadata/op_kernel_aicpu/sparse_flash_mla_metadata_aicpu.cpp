@@ -876,6 +876,7 @@ void SparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const SplitC
         s1GCache.cmpS1GNormalBlockCost = 0;
         s1GCache.cmpS1GLastBlockCost = 0;
         s1GCache.s1GBlock = 0;
+        s1GCache.s2Loop = 0;
         s1GCache.s2Start = 0;
         s1GCache.cmpS2Start = 0;
         s1GCache.s2End = 0;
@@ -936,6 +937,9 @@ void SparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const SplitC
     CalcCmpS1GCache(s1GCache, splitInfo);
     // 汇总 ori 和 cmp 部分的 cost 和 block 信息
     GatherOriAndCmpCache(s1GCache);
+    s1GCache.s2Loop = static_cast<uint32_t>(
+        (static_cast<uint64_t>(s1GCache.actOriS2Size) + s2BaseSize_ - 1U) / s2BaseSize_ +
+        (static_cast<uint64_t>(s1GCache.actCmpS2Size) + s2BaseSize_ - 1U) / s2BaseSize_);
 }
 
 void SparseFlashMlaMetadataCpuKernel::CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext, CostInfo &costInfo)
@@ -944,6 +948,7 @@ void SparseFlashMlaMetadataCpuKernel::CalcBatchCost(uint32_t bIdx, const SplitCo
 
     costInfo.bN2CostOfEachBatch[bIdx] = 0;
     costInfo.bN2BlockOfEachBatch[bIdx] = 0U;
+    costInfo.bN2S2LoopOfEachBatch[bIdx] = 0U;
     costInfo.bN2LastBlockCostOfEachBatch[bIdx] = 0U;
 
     if (GetS1SeqSize(bIdx) == 0U) {
@@ -972,6 +977,7 @@ void SparseFlashMlaMetadataCpuKernel::CalcBatchCost(uint32_t bIdx, const SplitCo
         CalcS1GCache(s1GIdx, splitContext, bCache, s1GCache);
         costInfo.bN2CostOfEachBatch[bIdx] += s1GCache.s1GCost;
         costInfo.bN2BlockOfEachBatch[bIdx] += s1GCache.s1GBlock;
+        costInfo.bN2S2LoopOfEachBatch[bIdx] += s1GCache.s2Loop;
         // 更新最大S1G行开销
         if (s1GCache.s1GCost > costInfo.maxS1GCost) {
             costInfo.maxS1GCost = s1GCache.s1GCost;
@@ -1042,6 +1048,7 @@ void SparseFlashMlaMetadataCpuKernel::UpdateCursor(const SplitContext &splitCont
         CalcBatchCache(assignContext.curBIdx, splitContext, assignContext.batchCache);
         assignContext.bN2Cost = costInfo.bN2CostOfEachBatch[assignContext.curBIdx];
         assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
+        assignContext.bN2S2Loop = costInfo.bN2S2LoopOfEachBatch[assignContext.curBIdx];
     }
     if (UpdateS1G) {
         CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
@@ -1062,6 +1069,7 @@ void SparseFlashMlaMetadataCpuKernel::AssignByBatch(const SplitContext &splitCon
                              assignContext.coreCache.cost + assignContext.bN2Cost)) {
         assignContext.coreCache.cost += assignContext.bN2Cost;
         assignContext.coreCache.block += assignContext.bN2Block;
+        assignContext.coreCache.s2Loop += assignContext.bN2S2Loop;
         assignContext.curBN2Idx++;
         // to the end
         if (assignContext.curBN2Idx == batchSize_ * numHeadsKv_) {
@@ -1079,6 +1087,7 @@ void SparseFlashMlaMetadataCpuKernel::AssignByBatch(const SplitContext &splitCon
 
         assignContext.bN2Cost = costInfo.bN2CostOfEachBatch[assignContext.curBIdx];
         assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
+        assignContext.bN2S2Loop = costInfo.bN2S2LoopOfEachBatch[assignContext.curBIdx];
         assignContext.curS1GIdx = 0U;
         CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
         assignContext.curS2Idx = assignContext.s1GCache.s2Start;
@@ -1096,6 +1105,7 @@ void SparseFlashMlaMetadataCpuKernel::AssignByRow(const SplitContext &splitConte
                              assignContext.coreCache.cost + assignContext.s1GCache.s1GCost)) {
         assignContext.coreCache.cost += assignContext.s1GCache.s1GCost;
         assignContext.coreCache.block += assignContext.s1GCache.s1GBlock;
+        assignContext.coreCache.s2Loop += assignContext.s1GCache.s2Loop;
         // 当前batch被分配一行出去，更新剩余负载
         assignContext.bN2Cost = assignContext.bN2Cost > assignContext.s1GCache.s1GCost ?
                                     assignContext.bN2Cost - assignContext.s1GCache.s1GCost :
@@ -1103,6 +1113,9 @@ void SparseFlashMlaMetadataCpuKernel::AssignByRow(const SplitContext &splitConte
         assignContext.bN2Block = assignContext.bN2Block > assignContext.s1GCache.s1GBlock ?
                                      assignContext.bN2Block - assignContext.s1GCache.s1GBlock :
                                      0U;
+        assignContext.bN2S2Loop = assignContext.bN2S2Loop > assignContext.s1GCache.s2Loop ?
+                                      assignContext.bN2S2Loop - assignContext.s1GCache.s2Loop :
+                                      0U;
         // 计算新一行的信息
         do {
             assignContext.curS1GIdx++;
@@ -1129,6 +1142,23 @@ int64_t SparseFlashMlaMetadataCpuKernel::CalcCurBlockCost(const AssignContext &a
     return curCost;
 }
 
+uint32_t SparseFlashMlaMetadataCpuKernel::CalcCurBlockS2Loop(const AssignContext &assignContext)
+{
+    if (!isBatchConsistency_) {
+        return 1U;
+    }
+    const S1GCache &s1GCache = assignContext.s1GCache;
+    uint32_t blockSize = s1GCache.reductionBlockSize;
+    if (assignContext.curS2Idx < s1GCache.cmpS2Start) {
+        if (assignContext.curS2Idx + 1U == s1GCache.cmpS2Start && s1GCache.oriS2TailSize != 0) {
+            blockSize = static_cast<uint32_t>(s1GCache.oriS2TailSize);
+        }
+    } else if (assignContext.curS2Idx + 1U == s1GCache.s2End && s1GCache.cmpS2TailSize != 0) {
+        blockSize = static_cast<uint32_t>(s1GCache.cmpS2TailSize);
+    }
+    return (blockSize + s2BaseSize_ - 1U) / s2BaseSize_;
+}
+
 void SparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished || !supportFd_) {
@@ -1136,12 +1166,14 @@ void SparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext &splitCon
     }
 
     int64_t curCost = CalcCurBlockCost(assignContext);
+    uint32_t curS2Loop = CalcCurBlockS2Loop(assignContext);
 
     // (costLimit - curCostOnCore) * FA_TOLERANCE_RATIO > curCost；至少分配1块
     while (IsWithinTolerance(assignContext.coreCache.costLimit, curCost / FA_TOLERANCE_RATIO,
                              assignContext.coreCache.cost + curCost)) {
         assignContext.coreCache.cost += curCost;
         assignContext.coreCache.block++;
+        assignContext.coreCache.s2Loop += curS2Loop;
         assignContext.curS2Idx++;
         // 当前batch被分配一块出去，更新剩余负载
         assignContext.bN2Cost = assignContext.bN2Cost - curCost;
@@ -1149,7 +1181,12 @@ void SparseFlashMlaMetadataCpuKernel::AssignByBlock(const SplitContext &splitCon
         assignContext.s1GCache.s1GCost = assignContext.s1GCache.s1GCost - curCost;
         assignContext.bN2Block--;
         assignContext.s1GCache.s1GBlock--;
+        assignContext.bN2S2Loop =
+            assignContext.bN2S2Loop > curS2Loop ? assignContext.bN2S2Loop - curS2Loop : 0U;
+        assignContext.s1GCache.s2Loop =
+            assignContext.s1GCache.s2Loop > curS2Loop ? assignContext.s1GCache.s2Loop - curS2Loop : 0U;
         curCost = CalcCurBlockCost(assignContext);
+        curS2Loop = CalcCurBlockS2Loop(assignContext);
     }
 }
 
@@ -1160,16 +1197,22 @@ void SparseFlashMlaMetadataCpuKernel::ForceAssign(const SplitContext &splitConte
     }
 
     int64_t curCost = CalcCurBlockCost(assignContext);
+    uint32_t curS2Loop = CalcCurBlockS2Loop(assignContext);
 
     assignContext.coreCache.cost += curCost;
     assignContext.coreCache.block++;
+    assignContext.coreCache.s2Loop += curS2Loop;
     assignContext.curS2Idx++;
     // 当前batch被分配一块出去，更新剩余负载
     assignContext.bN2Cost = assignContext.bN2Cost - curCost;
     assignContext.bN2Block--;
+    assignContext.bN2S2Loop =
+        assignContext.bN2S2Loop > curS2Loop ? assignContext.bN2S2Loop - curS2Loop : 0U;
     // 当前行被分配一块出去，更新剩余负载
     assignContext.s1GCache.s1GCost = assignContext.s1GCache.s1GCost - curCost;
     assignContext.s1GCache.s1GBlock--;
+    assignContext.s1GCache.s2Loop =
+        assignContext.s1GCache.s2Loop > curS2Loop ? assignContext.s1GCache.s2Loop - curS2Loop : 0U;
     UpdateCursor(splitContext, assignContext);
 }
 
@@ -1256,7 +1299,7 @@ void SparseFlashMlaMetadataCpuKernel::AssignBlocksToCore(const SplitContext &spl
     result.s2End[assignContext.curCoreIdx] = assignContext.curS2Idx;
     result.maxCost = std::max(result.maxCost, assignContext.coreCache.cost);
     assignContext.unassignedCost -= assignContext.coreCache.cost;
-    result.maxS2GBaseNum = std::max(assignContext.coreCache.block, result.maxS2GBaseNum);
+    result.maxS2LoopNum = std::max(assignContext.coreCache.s2Loop, result.maxS2LoopNum);
     // 对之前的归约信息进行记录并清理
     if (IsNeedRecordFDInfo(assignContext, result)) {
         if (isBatchConsistency_ && remainedBlockNum_ > 0U) {
@@ -1302,6 +1345,7 @@ void SparseFlashMlaMetadataCpuKernel::CalcSplitPlan(int64_t costLimit, const Spl
     assignContext.unassignedCost = costInfo.totalCost;
     assignContext.bN2Cost = costInfo.bN2CostOfEachBatch[assignContext.curBIdx];
     assignContext.bN2Block = costInfo.bN2BlockOfEachBatch[assignContext.curBIdx];
+    assignContext.bN2S2Loop = costInfo.bN2S2LoopOfEachBatch[assignContext.curBIdx];
     CalcBatchCache(assignContext.curBIdx, splitContext, assignContext.batchCache);
     CalcS1GCache(assignContext.curS1GIdx, splitContext, assignContext.batchCache, assignContext.s1GCache);
     assignContext.curS2Idx = assignContext.s1GCache.s2Start;
@@ -1398,9 +1442,9 @@ bool SparseFlashMlaMetadataCpuKernel::GenMetadata(SplitResult &splitRes)
     // FA Metadata Generate
     if (isSplitG_) {
         for (size_t i = 0; i < aicCoreNum_; i++) {
-            // 单核s2基本块最大数量
-            metadataPtr->faMetadata[2 * i][FA_S2_MAX_NUM] = splitRes.maxS2GBaseNum;
-            metadataPtr->faMetadata[2 * i + 1][FA_S2_MAX_NUM] = splitRes.maxS2GBaseNum;
+            // 单核s2计算轮次最大数量
+            metadataPtr->faMetadata[2 * i][FA_S2_MAX_NUM] = splitRes.maxS2LoopNum;
+            metadataPtr->faMetadata[2 * i + 1][FA_S2_MAX_NUM] = splitRes.maxS2LoopNum;
 
             if (i >= splitRes.usedCoreNum) {
                 metadataPtr->faMetadata[2 * i][FA_CORE_ENABLE_INDEX] = 0;     // AIC disenable

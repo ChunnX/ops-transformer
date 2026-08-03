@@ -162,13 +162,8 @@ private:
     __aicore__ inline void DrainV0Mte3ForSplitG()
     {
         if constexpr (IS_SPLIT_G) {
-            if constexpr (IS_BATCH_CONSISTENCY) {
-                SetFlag<HardEvent::MTE3_V>(v0PairMte3ToVId);
-                WaitFlag<HardEvent::MTE3_V>(v0PairMte3ToVId);
-            } else {
-                CrossCoreSetFlag<0, PIPE_MTE3>(15);
-                CrossCoreWaitFlag<0, PIPE_MTE3>(15);
-            }
+            CrossCoreSetFlag<0, PIPE_MTE3>(15);
+            CrossCoreWaitFlag<0, PIPE_MTE3>(15);
         }
     }
 
@@ -304,7 +299,6 @@ private:
     TEventID mte3ToVAttnOutId; // 存放MTE3_V的eventId, 用于V2 attentionOut拷出阶段的同步
     TEventID vToMte3AttnOutId; // 存放V_MTE3的eventId, 用于V2 attentionOut拷出阶段的同步
     TEventID stageMte3ToVId;   // batch consistency staging 专用 MTE3_V event
-    TEventID v0PairMte3ToVId;  // batch consistency split-G V0 本核 MTE3 drain event
     TEventID mte3ToVLseOutId;  // 存放MTE3_V的eventId, 用于V1 LSE拷出阶段的同步
     TEventID vToMte3LseOutId;  // 存放V_MTE3的eventId, 用于V1 LSE拷出阶段的同步
     TEventID mte2ToMte3[2];
@@ -1341,7 +1335,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     mte3ToVLseOutId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     if constexpr (IS_BATCH_CONSISTENCY) {
         stageMte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-        v0PairMte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     }
     SetFlag<HardEvent::MTE3_V>(mte3ToVAttnOutId);
     SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
