@@ -31,6 +31,7 @@ namespace {
 // local constants (align GmmConstant; avoid pulling GroupedQmmTiling helper)
 constexpr uint32_t DB_SIZE = 2U;
 constexpr uint64_t CUBE_BLOCK = 16UL;
+constexpr uint64_t INT8_NZ_C0 = 32UL;
 constexpr uint32_t DATA_SIZE_L0C = 4U;  // int8xint8 -> int32 L0C accumulator
 constexpr uint64_t GMM_MAX_GROUP_LIST_SIZE = 1024UL;
 constexpr size_t LAST_FIRST_DIM_INDEX = 1;
