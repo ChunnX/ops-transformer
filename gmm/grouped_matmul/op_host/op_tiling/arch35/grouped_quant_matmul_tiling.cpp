@@ -216,11 +216,22 @@ bool GroupedQmmTiling::CheckTransposeAndFormatByGroupType() const
         inputParams_.transB,
         OP_LOGE_FOR_INVALID_VALUE(inputParams_.opType, "transpose_x2", inputParams_.transB ? "true" : "false", "false"),
         return false);
-    OP_CHECK_IF(inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ,
+    return true;
+}
+
+bool GroupedQmmTiling::CheckWeightNzRuntimeConstraints() const
+{
+    if (inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ) {
+        return true;
+    }
+    OP_CHECK_IF(inputParams_.groupType == SPLIT_K,
                 OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
                     inputParams_.opType, "weight", ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
                     "when group type is 2, format of weight must be within the range ND"),
                 return false);
+    const auto perTokenScaleDesc = context_->GetOptionalInputDesc(PER_TOKEN_SCALE_INDEX);
+    OP_CHECK_IF(!CheckDtypeForWeightNz(perTokenScaleDesc == nullptr),
+                OP_LOGE(inputParams_.opName, "CheckDtypeForWeightNz failed."), return false);
     return true;
 }
 
@@ -393,10 +404,6 @@ bool GroupedQmmTiling::AnalyzeDtype()
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PER_TOKEN_SCALE_INDEX);
     inputParams_.perTokenScaleDtype =
         pertokenScaleDesc != nullptr ? pertokenScaleDesc->GetDataType() : inputParams_.perTokenScaleDtype;
-    if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
-        OP_CHECK_IF(!CheckDtypeForWeightNz(nullptr == pertokenScaleDesc),
-                    OP_LOGE(inputParams_.opName, "CheckDtypeForWeightNz failed."), return false);
-    }
     if (inputParams_.hasBias) {
         OP_CHECK_IF(!CheckBiasDtype(), OP_LOGE(inputParams_.opName, "CheckBiasDtype failed."), return false);
     }
@@ -1141,7 +1148,7 @@ ge::graphStatus GroupedQmmTiling::GetShapeAttrsInfo()
         OP_LOGD(inputParams_.opName, "No need to get shape and attrs from tiling context again.");
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(!AnalyzeDtype() || !AnalyzeAttrs() || !AnalyzeInputs(),
+    OP_CHECK_IF(!AnalyzeDtype() || !AnalyzeAttrs() || !CheckWeightNzRuntimeConstraints() || !AnalyzeInputs(),
                 OP_LOGE(inputParams_.opName, "Failed to analyze context_ info."), return ge::GRAPH_FAILED);
     inputParams_.initFlag = true;
     return ge::GRAPH_SUCCESS;
