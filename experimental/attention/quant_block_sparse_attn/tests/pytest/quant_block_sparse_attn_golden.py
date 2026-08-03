@@ -19,6 +19,7 @@ import torch
 
 import check_valid_param
 import combined_kv_cache
+import custom_ops
 
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -31,6 +32,16 @@ FP8_E4M3_MAX = 448.0
 SCALE_EPSILON = 1e-8
 EMPTY_LSE = -3.4028234663852886e38
 MASK_VALUE = -10000.0
+_CUBE_COUNT_CHUNK_ELEMENTS = 4_000_000
+STEM_BLOCK_SIZE = 128
+STEM_STRIDE = 16
+STEM_ALPHA = 1.0
+STEM_INITIAL_BLOCKS = 4
+STEM_WINDOW_SIZE = 4
+STEM_K_BLOCK_NUM_RATE_MEDIUM = 0.2
+STEM_K_BLOCK_NUM_BIAS_MEDIUM = 30
+STEM_K_BLOCK_NUM_RATE_LARGE = 0.1
+STEM_K_BLOCK_NUM_BIAS_LARGE = 30
 
 
 def _fp8_dtype():
@@ -261,6 +272,151 @@ def _make_sparse_indices(case, q_lengths, kv_lengths, rng):
     return sparse_indices, sparse_seq_len
 
 
+def _ceil_div(value, factor):
+    return (int(value) + int(factor) - 1) // int(factor)
+
+
+def _query_to_bnsd(query, case, cu_seqlens_q, q_lengths):
+    batch = case["B"]
+    n1 = case["N1"]
+    head_dim = case["D"]
+    max_seqlen_q = max(q_lengths)
+    query_bnsd = torch.zeros((batch, n1, max_seqlen_q, head_dim), dtype=torch.bfloat16)
+    query_bf16 = query.float().to(torch.bfloat16)
+
+    for batch_idx, q_len in enumerate(q_lengths):
+        start = int(cu_seqlens_q[batch_idx].item())
+        end = start + int(q_len)
+        if case["layout_q"] == "NTD":
+            query_bnsd[batch_idx, :, :q_len] = query_bf16[:, start:end]
+        else:
+            query_bnsd[batch_idx, :, :q_len] = query_bf16[start:end].permute(1, 0, 2)
+    return query_bnsd.contiguous()
+
+
+def _dense_key_to_bnsd(dense_key, kv_lengths):
+    batch, _, n2, head_dim = dense_key.shape
+    max_seqlen_kv = max(kv_lengths)
+    key_bnsd = torch.zeros((batch, n2, max_seqlen_kv, head_dim), dtype=torch.bfloat16)
+    dense_key_bf16 = dense_key.float().to(torch.bfloat16)
+    for batch_idx, kv_len in enumerate(kv_lengths):
+        key_bnsd[batch_idx, :, :kv_len] = dense_key_bf16[
+            batch_idx, :kv_len
+        ].permute(1, 0, 2)
+    return key_bnsd.contiguous()
+
+
+def _bnsd_to_stem_flat(tensor_bnsd):
+    batch, heads, seq_len, head_dim = tensor_bnsd.shape
+    block_num = _ceil_div(seq_len, STEM_BLOCK_SIZE)
+    padded_seq_len = block_num * STEM_BLOCK_SIZE
+    if padded_seq_len != seq_len:
+        padded = torch.zeros(
+            (batch, heads, padded_seq_len, head_dim), dtype=tensor_bnsd.dtype
+        )
+        padded[:, :, :seq_len] = tensor_bnsd
+        tensor_bnsd = padded
+
+    tokens_per_stem = STEM_BLOCK_SIZE // STEM_STRIDE
+    stemmed = tensor_bnsd.reshape(
+        batch, heads, block_num, STEM_STRIDE, tokens_per_stem, head_dim
+    )
+    stemmed = stemmed.float().mean(dim=4).to(torch.bfloat16)
+    return stemmed.reshape(
+        batch, heads, block_num, STEM_STRIDE * head_dim
+    ).contiguous()
+
+
+def _make_stem_vbias(case, generator):
+    max_kb = _ceil_div(case["S2"], STEM_BLOCK_SIZE)
+    return (torch.rand((case["B"], case["N2"], max_kb), generator=generator) * 2 - 1).to(
+        torch.float32
+    )
+
+
+def _require_stem_indexer_runtime():
+    try:
+        import torch_npu
+    except ImportError as error:  # pragma: no cover - depends on NPU environment
+        raise RuntimeError(
+            "sparse_pattern='stem_indexer' requires torch_npu to call StemIndexer"
+        ) from error
+
+    missing = []
+    if not custom_ops.has_npu_stem_indexer_op():
+        missing.append("torch.ops.custom.npu_stem_indexer")
+    if not custom_ops.has_npu_stem_indexer_metadata_op():
+        missing.append("torch.ops.custom.npu_stem_indexer_metadata")
+    if missing:
+        detail = "; ".join(custom_ops.load_errors()[:3])
+        suffix = f" Load errors: {detail}" if detail else ""
+        raise RuntimeError(
+            "sparse_pattern='stem_indexer' requires registered "
+            f"{', '.join(missing)}.{suffix}"
+        )
+    return torch_npu
+
+
+def _make_sparse_indices_by_stem_indexer(
+    case, query, dense_key, cu_seqlens_q, q_lengths, kv_lengths, generator
+):
+    if (
+        case["sparse_q_block_size"] != STEM_BLOCK_SIZE
+        or case["sparse_kv_block_size"] != STEM_BLOCK_SIZE
+    ):
+        raise ValueError(
+            "stem_indexer sparse_pattern requires "
+            "sparse_q_block_size=sparse_kv_block_size=128"
+        )
+    if case["D"] != 128:
+        raise ValueError(f"stem_indexer sparse_pattern requires D=128, got {case['D']}")
+
+    torch_npu = _require_stem_indexer_runtime()
+    device_id = int(os.environ.get("DEVICE_ID", "0"))
+    torch_npu.npu.set_device(device_id)
+
+    qflat = _bnsd_to_stem_flat(_query_to_bnsd(query, case, cu_seqlens_q, q_lengths))
+    kflat = _bnsd_to_stem_flat(_dense_key_to_bnsd(dense_key, kv_lengths))
+    vbias = _make_stem_vbias(case, generator)
+    q_seq_lens = torch.tensor(q_lengths, dtype=torch.int32)
+    kv_seq_lens = torch.tensor(kv_lengths, dtype=torch.int32)
+    causal = case["mask_mode"] == 3
+
+    q_seq_lens_npu = q_seq_lens.npu()
+    kv_seq_lens_npu = kv_seq_lens.npu()
+    metadata = torch.ops.custom.npu_stem_indexer_metadata(
+        q_seq_lens_npu,
+        kv_seq_lens_npu,
+        case["N1"],
+        case["N2"],
+        causal=causal,
+        stem_block_size=STEM_BLOCK_SIZE,
+        dim_qkflat=case["D"],
+        window_size=STEM_WINDOW_SIZE,
+    )
+    sparse_indices, sparse_seq_len = torch.ops.custom.npu_stem_indexer(
+        qflat.npu(),
+        kflat.npu(),
+        vbias.npu(),
+        q_seq_lens_npu,
+        kv_seq_lens_npu,
+        num_prompt_tokens=kv_seq_lens_npu,
+        metadata=metadata,
+        causal=causal,
+        stem_block_size=STEM_BLOCK_SIZE,
+        stem_stride=STEM_STRIDE,
+        alpha=STEM_ALPHA,
+        initial_blocks=STEM_INITIAL_BLOCKS,
+        window_size=STEM_WINDOW_SIZE,
+        k_block_num_rate_medium=STEM_K_BLOCK_NUM_RATE_MEDIUM,
+        k_block_num_bias_medium=STEM_K_BLOCK_NUM_BIAS_MEDIUM,
+        k_block_num_rate_large=STEM_K_BLOCK_NUM_RATE_LARGE,
+        k_block_num_bias_large=STEM_K_BLOCK_NUM_BIAS_LARGE,
+    )
+    torch_npu.npu.synchronize()
+    return sparse_indices.cpu().to(torch.int32), sparse_seq_len.cpu().to(torch.int32)
+
+
 def _query_index(cu_seqlens_q, batch_idx, q_idx):
     return int(cu_seqlens_q[batch_idx].item()) + q_idx
 
@@ -362,6 +518,54 @@ def _count_mask_valid_pairs(case, q_start, q_end, kv_start, kv_end, q_len, kv_le
     return valid_pairs
 
 
+def _count_valid_sparse_blocks(
+    sparse_indices_cpu,
+    sparse_seq_len_cpu,
+    batch_idx,
+    head_count,
+    q_len,
+    kv_len,
+    q_block_size,
+    kv_block_size,
+    qb_limit,
+    kb_limit,
+):
+    if q_len <= 0 or kv_len <= 0 or kb_limit <= 0:
+        return 0
+
+    qb_count = min(qb_limit, math.ceil(q_len / q_block_size))
+    if qb_count <= 0:
+        return 0
+
+    valid_kv_block_count = math.ceil(kv_len / kv_block_size)
+    chunk_qb = max(
+        1,
+        _CUBE_COUNT_CHUNK_ELEMENTS // max(1, head_count * kb_limit),
+    )
+    sparse_positions = torch.arange(kb_limit, device=sparse_seq_len_cpu.device).view(
+        1, 1, kb_limit
+    )
+
+    valid_block_count = 0
+    for qb_start in range(0, qb_count, chunk_qb):
+        qb_end = min(qb_start + chunk_qb, qb_count)
+        block_counts = sparse_seq_len_cpu[
+            batch_idx, :head_count, qb_start:qb_end
+        ].to(torch.int64)
+        block_counts = torch.clamp(block_counts, min=0, max=kb_limit)
+        indices = sparse_indices_cpu[
+            batch_idx, :head_count, qb_start:qb_end, :kb_limit
+        ]
+        valid_slots = sparse_positions < block_counts.unsqueeze(-1)
+        valid_blocks = (
+            valid_slots
+            & (indices >= 0)
+            & (indices < valid_kv_block_count)
+        )
+        valid_block_count += int(valid_blocks.sum().item())
+    return valid_block_count
+
+
 def _calc_cube_compute_amount(
     case, q_lengths, kv_lengths, sparse_indices, sparse_seq_len
 ):
@@ -404,30 +608,18 @@ def _calc_cube_compute_amount(
     for batch_idx in range(batch):
         q_len = int(q_lengths[batch_idx])
         kv_len = int(kv_lengths[batch_idx])
-        qb_count = min(qb_limit, math.ceil(q_len / q_block_size))
-        for head_idx in range(n1):
-            for qb_idx in range(qb_count):
-                q_start = qb_idx * q_block_size
-                q_end = min(q_start + q_block_size, q_len)
-                if q_start >= q_end:
-                    continue
-                block_count = int(
-                    sparse_seq_len_cpu[batch_idx, head_idx, qb_idx].item()
-                )
-                block_count = max(0, min(block_count, kb_limit))
-                for sparse_idx in range(block_count):
-                    kv_block_idx = int(
-                        sparse_indices_cpu[
-                            batch_idx, head_idx, qb_idx, sparse_idx
-                        ].item()
-                    )
-                    if kv_block_idx < 0:
-                        continue
-                    kv_start = kv_block_idx * kv_block_size
-                    kv_end = min(kv_start + kv_block_size, kv_len)
-                    if kv_start >= kv_end:
-                        continue
-                    basic_block_count += 1
+        basic_block_count += _count_valid_sparse_blocks(
+            sparse_indices_cpu,
+            sparse_seq_len_cpu,
+            batch_idx,
+            n1,
+            q_len,
+            kv_len,
+            q_block_size,
+            kv_block_size,
+            qb_limit,
+            kb_limit,
+        )
 
     single_basic_block_compute = q_block_size * kv_block_size * head_dim
     multiply_add_compute = 2
@@ -487,48 +679,52 @@ def _log_cube_compute_amount(
     mfu_time = (
         compute_info["cube_compute_amount"] / capacity_info["cube_compute_capacity"]
     )
-    logger.info("case_name=%s", case_name)
-    logger.info("FLOPS计算过程量:")
-    logger.info("基本块数量: %d", compute_info["basic_block_count"])
-    logger.info(
-        "基本块的shape: q_block_size=%d, kv_block_size=%d, head_dim=%d",
-        basic_block_shape[0],
-        basic_block_shape[1],
-        basic_block_shape[2],
-    )
-    logger.info("单基本块计算量: %d", compute_info["single_basic_block_compute"])
-    logger.info(
-        "FLOPS计算公式: 基本块数(%d) * 单基本块计算量(%d) * 乘加计算(%d) * 两次bmm计算(%d) = %d",
-        compute_info["basic_block_count"],
-        compute_info["single_basic_block_compute"],
-        compute_info["multiply_add_compute"],
-        compute_info["bmm_compute_count"],
-        compute_info["cube_compute_amount"],
-    )
-    logger.info("算力计算过程量:")
-    logger.info(
-        "一轮cycle对应最小分型shape: m=%d, n=%d, k=%d(fp8为32)",
-        fractal_shape[0],
-        fractal_shape[1],
-        fractal_shape[2],
-    )
-    logger.info("一轮cycle对应最小分型计算量: %d", capacity_info["min_fractal_compute"])
-    logger.info(
-        "算力计算公式: 单位换算(%d) * (一轮cycle对应最小分型计算量(%d) * 频率GHz(%.2f) * "
-        "AIC数量(%d) * 乘加计算(%d)) = %.6f",
-        capacity_info["unit_conversion"],
-        capacity_info["min_fractal_compute"],
-        capacity_info["frequency_ghz"],
-        capacity_info["aic_count"],
-        capacity_info["multiply_add_compute"],
-        capacity_info["cube_compute_capacity"],
-    )
-    logger.info(
-        "MFU*时间计算公式: FLOPS(%d) / 算力(%.6f) = MFU * 时间(us) = %.6f",
-        compute_info["cube_compute_amount"],
-        capacity_info["cube_compute_capacity"],
-        mfu_time,
-    )
+    log_lines = [
+        f"case_name={case_name}",
+        "FLOPS计算过程量:",
+        f"基本块数量: {compute_info['basic_block_count']}",
+        (
+            "基本块的shape: "
+            f"q_block_size={basic_block_shape[0]}, "
+            f"kv_block_size={basic_block_shape[1]}, "
+            f"head_dim={basic_block_shape[2]}"
+        ),
+        f"单基本块计算量: {compute_info['single_basic_block_compute']}",
+        (
+            "FLOPS计算公式: "
+            f"基本块数({compute_info['basic_block_count']}) * "
+            f"单基本块计算量({compute_info['single_basic_block_compute']}) * "
+            f"乘加计算({compute_info['multiply_add_compute']}) * "
+            f"两次bmm计算({compute_info['bmm_compute_count']}) = "
+            f"{compute_info['cube_compute_amount']}"
+        ),
+        "算力计算过程量:",
+        (
+            "一轮cycle对应最小分型shape: "
+            f"m={fractal_shape[0]}, n={fractal_shape[1]}, "
+            f"k={fractal_shape[2]}(fp8为32)"
+        ),
+        f"一轮cycle对应最小分型计算量: {capacity_info['min_fractal_compute']}",
+        (
+            "算力计算公式: "
+            f"单位换算({capacity_info['unit_conversion']}) * "
+            f"(一轮cycle对应最小分型计算量({capacity_info['min_fractal_compute']}) * "
+            f"频率GHz({capacity_info['frequency_ghz']:.2f}) * "
+            f"AIC数量({capacity_info['aic_count']}) * "
+            f"乘加计算({capacity_info['multiply_add_compute']})) = "
+            f"{capacity_info['cube_compute_capacity']:.6f}"
+        ),
+        (
+            "MFU*时间计算公式: "
+            f"FLOPS({compute_info['cube_compute_amount']}) / "
+            f"算力({capacity_info['cube_compute_capacity']:.6f}) = "
+            f"MFU * 时间(us) = {mfu_time:.6f}"
+        ),
+    ]
+    for line in log_lines:
+        logger.info(line)
+    if os.environ.get("BSA_PRINT_COMPUTE_LOG", "").upper() in ("1", "TRUE", "YES"):
+        print("\n".join(log_lines), flush=True)
     return compute_info["cube_compute_amount"], mfu_time
 
 
@@ -785,7 +981,9 @@ def save_test_case(input_data, output_dir):
     return input_filepath
 
 
-def generate_and_save_testdata(params, save_pt=False, save_path=""):
+def generate_and_save_testdata(
+    params, save_pt=False, save_path="", generate_golden=True
+):
     case = _normalize_params(params)
     check_valid_param.check_valid_param(case)
 
@@ -835,9 +1033,14 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     )
     combined_kv_cache.assert_combined_kv_views(kv_cache_storage, kv_cache_meta)
     atten_mask = torch.tril(torch.ones((2048, 2048), dtype=torch.uint8)).T.contiguous()
-    sparse_indices, sparse_seq_len = _make_sparse_indices(
-        case, q_lengths, kv_lengths, rng
-    )
+    if case["sparse_pattern"] == "stem_indexer":
+        sparse_indices, sparse_seq_len = _make_sparse_indices_by_stem_indexer(
+            case, query, dense_key, cu_seqlens_q, q_lengths, kv_lengths, generator
+        )
+    else:
+        sparse_indices, sparse_seq_len = _make_sparse_indices(
+            case, q_lengths, kv_lengths, rng
+        )
 
     if case["Testcase_Name"] is None:
         mode = "prefill"
@@ -854,27 +1057,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         sparse_seq_len,
     )
 
-    attention_out, softmax_lse = _reference_attention(
-        case,
-        query,
-        dense_key,
-        dense_value,
-        q_scale,
-        k_scale,
-        v_scale,
-        p_scale,
-        sparse_indices,
-        sparse_seq_len,
-        cu_seqlens_q,
-        cu_seqlens_kv,
-        q_lengths,
-        kv_lengths,
-    )
-
-    golden = {
-        "attention_out": attention_out,
-        "softmax_lse": softmax_lse,
-    }
     input_data = {
         "Testcase_Name": case["Testcase_Name"],
         "params": case,
@@ -913,10 +1095,30 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "mask_mode": case["mask_mode"],
             "return_softmax_lse": case["return_softmax_lse"],
         },
-        "golden": golden,
-        "cpu_output": attention_out,
-        "cpu_softmax_lse": softmax_lse,
     }
+    if generate_golden:
+        attention_out, softmax_lse = _reference_attention(
+            case,
+            query,
+            dense_key,
+            dense_value,
+            q_scale,
+            k_scale,
+            v_scale,
+            p_scale,
+            sparse_indices,
+            sparse_seq_len,
+            cu_seqlens_q,
+            cu_seqlens_kv,
+            q_lengths,
+            kv_lengths,
+        )
+        input_data["golden"] = {
+            "attention_out": attention_out,
+            "softmax_lse": softmax_lse,
+        }
+        input_data["cpu_output"] = attention_out
+        input_data["cpu_softmax_lse"] = softmax_lse
 
     if save_pt:
         save_test_case(input_data, save_path)

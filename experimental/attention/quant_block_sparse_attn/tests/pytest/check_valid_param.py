@@ -15,7 +15,17 @@ import math
 import torch
 
 
-SUPPORTED_SPARSE_PATTERNS = {"sequential", "dense", "reverse", "tail", "random", "empty", "empty_tail", "causal"}
+SUPPORTED_SPARSE_PATTERNS = {
+    "sequential",
+    "dense",
+    "reverse",
+    "tail",
+    "random",
+    "empty",
+    "empty_tail",
+    "causal",
+    "stem_indexer",
+}
 SUPPORTED_BLOCK_TABLE_PATTERNS = {"sequential", "reverse", "random"}
 
 
@@ -86,6 +96,20 @@ def check_valid_param(params):
 
     if params["sparse_pattern"] not in SUPPORTED_SPARSE_PATTERNS:
         raise ValueError(f"unsupported sparse_pattern: {params['sparse_pattern']}")
+
+    if params["sparse_pattern"] == "stem_indexer":
+        if params["D"] != 128:
+            raise ValueError(
+                f"stem_indexer sparse_pattern requires D=128, got {params['D']}"
+            )
+        if params["N1"] not in (32, 64):
+            raise ValueError(
+                f"stem_indexer sparse_pattern requires N1 in (32, 64), got {params['N1']}"
+            )
+        if params["N2"] not in (2, 4, 8):
+            raise ValueError(
+                f"stem_indexer sparse_pattern requires N2 in (2, 4, 8), got {params['N2']}"
+            )
 
     if params["block_table_pattern"] not in SUPPORTED_BLOCK_TABLE_PATTERNS:
         raise ValueError(f"unsupported block_table_pattern: {params['block_table_pattern']}")

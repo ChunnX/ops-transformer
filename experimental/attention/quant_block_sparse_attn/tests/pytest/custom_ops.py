@@ -52,6 +52,23 @@ def _candidate_roots():
     return deduped
 
 
+def _stem_candidate_roots():
+    roots = []
+    value = os.environ.get("STEM_INDEXER_CUSTOM_OPS_PATH")
+    if value:
+        roots.extend(Path(part) for part in value.split(":") if part)
+    roots.append(Path(__file__).resolve().parents[3] / "stem_indexer" / "torch_ops_extension")
+    deduped = []
+    seen = set()
+    for root in roots:
+        root = root.expanduser()
+        if root in seen:
+            continue
+        seen.add(root)
+        deduped.append(root)
+    return deduped
+
+
 def _load_shared_libraries(root):
     if root.is_file() and root.suffix == ".so":
         candidates = [root]
@@ -69,8 +86,9 @@ def _load_python_package(root):
     if not init_file.exists():
         return
     try:
+        module_name = f"_bsa_external_custom_ops_{abs(hash(str(init_file.resolve())))}"
         spec = importlib.util.spec_from_file_location(
-            "_bsa_external_custom_ops",
+            module_name,
             init_file,
             submodule_search_locations=[str(init_file.parent)],
         )
@@ -106,6 +124,29 @@ def _load_converter(root):
             _LOAD_ERRORS.append(f"{converter_file}: {error}")
 
 
+def _load_stem_converter(root):
+    converter_names = [
+        "npu_stem_indexer.py",
+        "npu_stem_indexer_metadata.py",
+    ]
+    for converter_name in converter_names:
+        converter_file = root / "custom_ops" / "converter" / converter_name
+        if not converter_file.exists():
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location(
+                f"_bsa_stem_{converter_file.stem}_converter",
+                converter_file,
+            )
+            if spec is None or spec.loader is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+        except Exception as error:  # pragma: no cover - depends on local extension environment
+            _LOAD_ERRORS.append(f"{converter_file}: {error}")
+
+
 def _custom_opp_roots():
     repo_root = Path(__file__).resolve().parents[5]
     build_candidates = [
@@ -128,8 +169,7 @@ def _configure_custom_opp_paths():
     _prepend_env_path("LD_LIBRARY_PATH", [root / "op_api" / "lib" for root in custom_opp_roots])
 
 
-def _load_custom_ops():
-    _configure_custom_opp_paths()
+def _load_quant_block_sparse_attn_ops():
     if has_quant_block_sparse_attn_op() and has_quant_block_sparse_attn_metadata_op():
         for root in _candidate_roots():
             if root.exists():
@@ -148,6 +188,31 @@ def _load_custom_ops():
             return
 
 
+def _load_stem_indexer_ops():
+    if has_npu_stem_indexer_op() and has_npu_stem_indexer_metadata_op():
+        for root in _stem_candidate_roots():
+            if root.exists():
+                _load_stem_converter(root)
+                break
+        return
+    for root in _stem_candidate_roots():
+        if not root.exists():
+            continue
+        _load_shared_libraries(root)
+        if has_npu_stem_indexer_op() and has_npu_stem_indexer_metadata_op():
+            _load_stem_converter(root)
+            return
+        _load_python_package(root)
+        if has_npu_stem_indexer_op() and has_npu_stem_indexer_metadata_op():
+            return
+
+
+def _load_custom_ops():
+    _configure_custom_opp_paths()
+    _load_quant_block_sparse_attn_ops()
+    _load_stem_indexer_ops()
+
+
 def has_quant_block_sparse_attn_op():
     try:
         getattr(torch.ops.custom, "npu_quant_block_sparse_attn")
@@ -159,6 +224,22 @@ def has_quant_block_sparse_attn_op():
 def has_quant_block_sparse_attn_metadata_op():
     try:
         getattr(torch.ops.custom, "npu_quant_block_sparse_attn_metadata")
+    except AttributeError:
+        return False
+    return True
+
+
+def has_npu_stem_indexer_op():
+    try:
+        getattr(torch.ops.custom, "npu_stem_indexer")
+    except AttributeError:
+        return False
+    return True
+
+
+def has_npu_stem_indexer_metadata_op():
+    try:
+        getattr(torch.ops.custom, "npu_stem_indexer_metadata")
     except AttributeError:
         return False
     return True

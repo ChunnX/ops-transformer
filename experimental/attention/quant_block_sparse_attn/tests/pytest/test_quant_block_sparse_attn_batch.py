@@ -16,15 +16,33 @@ from pathlib import Path
 import pytest
 import torch
 
-import result_compare_method
-import utils
 from batch import quant_block_sparse_attn_process
 from batch.quant_block_sparse_attn_paramset_batch import load_cases_from_csv
 
 
-TESTCASE_PATH = "bsa_testcase"
-RESULT_PATH = Path("result.xlsx")
+TESTCASE_PATH = os.environ.get("BSA_TESTCASE_PATH", "bsa_testcase")
+RESULT_PATH = Path(os.environ.get("BSA_RESULT_PATH", "result.xlsx"))
 DEVICE_ID = 0
+SKIP_RESULT_COMPARE = os.environ.get("BSA_SKIP_RESULT_COMPARE", "").upper() in (
+    "1",
+    "TRUE",
+    "YES",
+)
+
+
+def _print_perf_case_info(test_data):
+    params = test_data.get("params", {})
+    print("===== 性能用例计算量信息 =====", flush=True)
+    print(f"case_name={test_data.get('Testcase_Name')}", flush=True)
+    print(f"FLOPS={params.get('FLOPS')}", flush=True)
+    print(f"MFU*时间(us)={params.get('MFU*时间')}", flush=True)
+    print(
+        "shape: "
+        f"B={params.get('B')}, N1={params.get('N1')}, N2={params.get('N2')}, "
+        f"S1={params.get('S1')}, S2={params.get('S2')}, D={params.get('D')}, "
+        f"sparse_count={params.get('sparse_count')}",
+        flush=True,
+    )
 
 
 def _testcase_files():
@@ -46,6 +64,23 @@ def _testcase_files():
 
 def bsa(testcase_file):
     test_data = torch.load(testcase_file, map_location="cpu")
+    if SKIP_RESULT_COMPARE:
+        _print_perf_case_info(test_data)
+        try:
+            quant_block_sparse_attn_process.test_quant_block_sparse_attn_process_perf(
+                test_data, device_id=DEVICE_ID
+            )
+        except pytest.skip.Exception:
+            raise
+        except Exception as error:
+            pytest.fail(
+                f"case failed: {test_data['Testcase_Name']}, NPU ERROR: {error}"
+            )
+        return
+
+    import result_compare_method
+    import utils
+
     try:
         npu_result, cpu_result = quant_block_sparse_attn_process.test_quant_block_sparse_attn_process_ci(
             test_data, device_id=DEVICE_ID)
