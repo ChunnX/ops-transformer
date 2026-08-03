@@ -1,0 +1,643 @@
+#!/usr/bin/env python3
+"""Adapt the current moe_test runner, capture raw y bytes, validate, and render."""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import datetime as dt
+import hashlib
+import html
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+from mega_moe_trace_contract import (
+    ContractError,
+    validate_capture_contract,
+    validate_timestamp_order,
+)
+
+
+ADAPTER_VERSION = 1
+TESTED_MOE_TEST_COMMIT = "90319bbd05993d2fbe7674d693395d5520732553"
+TESTED_SCRIPT_SHA256 = (
+    "35f600ca443782fd8f210a33af879af651a9dea011f32afa51191ae2bf9ee43e"
+)
+TESTED_GRAPH_SHA256 = "f050d695c5d4bde708e71f501ee587268c05ccbfef934b61f95dcd0b7e1fa13f"
+TRACE_ENV = "MEGA_MOE_CRITICAL_PATH_TRACE_CAPTURE"
+ARTIFACT_ENV = "MEGA_MOE_CRITICAL_PATH_TRACE_ARTIFACT_DIR"
+SOURCE_SHA_ENV = "MEGA_MOE_CRITICAL_PATH_TRACE_SOURCE_SHA256"
+ORIGINAL_DIR_ENV = "MEGA_MOE_CRITICAL_PATH_TRACE_ORIGINAL_SCRIPT_DIR"
+
+USER_OVERRIDABLE = {
+    "A8W8_is_NZ",
+    "bs",
+    "comm_quant_mode",
+    "core_num",
+    "graph_type",
+    "h",
+    "is_full_core",
+    "is_interleaved",
+    "k",
+    "local_moe_expert_num",
+    "n",
+    "quant_dtype",
+    "quant_mode",
+    "rank_per_dev",
+    "server_num",
+    "shared_expert_num",
+    "swiglu_quant_dtype",
+    "topk_weights_type",
+    "tp_world_size",
+    "weight_dtype",
+}
+FORCED_OVERRIDES = {"is_performance": 0, "loop_acc_time": 1}
+
+HELPER_INSERT_ANCHOR = "\ndef get_cascade_graph_model_class():\n"
+SCRIPT_DIR_ANCHOR = "script_dir = os.path.dirname(os.path.abspath(__file__))"
+FINAL_SYNC_ANCHOR = (
+    "    torch.npu.synchronize()\n"
+    "    print(f'rank {rank} epid {rank // tp_world_size} tpid {rank % tp_world_size} npu finished! \\n')"
+)
+MAIN_COMPARE_ANCHOR = "    result_mega_moe = {}"
+
+CAPTURE_HELPER = r"""
+
+def _critical_path_trace_atomic_write(path, data, binary=False):
+    tmp_path = f"{path}.tmp.{os.getpid()}"
+    mode = "wb" if binary else "w"
+    kwargs = {} if binary else {"encoding": "utf-8"}
+    with open(tmp_path, mode, **kwargs) as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(tmp_path, path)
+
+
+def _critical_path_trace_capture_y(y, rank):
+    artifact_dir = os.environ["MEGA_MOE_CRITICAL_PATH_TRACE_ARTIFACT_DIR"]
+    os.makedirs(artifact_dir, exist_ok=True)
+    y_cpu = y.detach().cpu().contiguous()
+    raw_bytes = y_cpu.view(torch.uint8).numpy().tobytes(order="C")
+    raw_path = os.path.join(artifact_dir, f"rank{rank}.raw")
+    metadata_path = os.path.join(artifact_dir, f"rank{rank}.runtime.json")
+    metadata = {
+        "adapter_version": 1,
+        "rank": int(rank),
+        "bs": int(bs),
+        "h": int(h),
+        "n": int(n),
+        "k": int(k),
+        "local_moe_expert_num": int(local_moe_expert_num),
+        "shared_expert_num": int(shared_expert_num),
+        "world_size": int(world_size),
+        "aic_core_num": int(aic_core_num),
+        "dispatch_quant_out_type": int(dispatch_quant_out_type),
+        "comm_quant_mode": int(comm_quant_mode),
+        "topk_weights_type": bool(topk_weights_type),
+        "is_interleaved": bool(is_interleaved),
+        "quant_mode": int(quant_mode),
+        "quant_dtype": str(quant_dtype),
+        "swiglu_quant_dtype": str(swiglu_quant_dtype),
+        "weight_dtype": str(weight_dtype),
+        "graph_type": int(graph_type),
+        "output_shape": list(y_cpu.shape),
+        "output_dtype": str(y_cpu.dtype),
+        "output_nbytes": len(raw_bytes),
+        "raw_sha256": hashlib.sha256(raw_bytes).hexdigest(),
+        "test_source_sha256": os.environ["MEGA_MOE_CRITICAL_PATH_TRACE_SOURCE_SHA256"],
+    }
+    _critical_path_trace_atomic_write(raw_path, raw_bytes, binary=True)
+    _critical_path_trace_atomic_write(
+        metadata_path,
+        json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+    )
+    print(f"[TRACE] rank {rank}: captured {len(raw_bytes)} raw y bytes to {raw_path}")
+"""
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def run_checked(
+    command: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None
+) -> None:
+    print("[RUN] " + " ".join(command), flush=True)
+    try:
+        subprocess.run(command, cwd=cwd, env=env, check=True)
+    except FileNotFoundError as exc:
+        raise ContractError(f"command not found: {command[0]}") from exc
+    except subprocess.CalledProcessError as exc:
+        raise ContractError(
+            f"command failed with exit code {exc.returncode}: {' '.join(command)}"
+        ) from exc
+
+
+def git_output(path: Path, *args: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), *args],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return None
+    return result.stdout.strip()
+
+
+def parse_override(text: str) -> tuple[str, bool | int | str]:
+    name, separator, value_text = text.partition("=")
+    name = name.strip()
+    value_text = value_text.strip()
+    if not separator or not name or not value_text:
+        raise ContractError(f"--set requires NAME=VALUE, got {text!r}")
+    if name not in USER_OVERRIDABLE:
+        allowed = ", ".join(sorted(USER_OVERRIDABLE))
+        raise ContractError(f"--set cannot change {name!r}; allowed names: {allowed}")
+    normalized = {"true": "True", "false": "False"}.get(value_text.lower(), value_text)
+    try:
+        value = ast.literal_eval(normalized)
+    except (SyntaxError, ValueError):
+        if re.fullmatch(r"[A-Za-z0-9_.-]+", value_text):
+            value = value_text
+        else:
+            raise ContractError(f"unsafe or unsupported --set value: {value_text!r}")
+    if isinstance(value, bool):
+        return name, value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return name, value
+    if isinstance(value, str):
+        return name, value
+    raise ContractError(
+        f"--set supports only bool, int, or string values, got {value!r}"
+    )
+
+
+def replace_top_level_assignments(
+    source: str, overrides: dict[str, bool | int | str]
+) -> str:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        raise ContractError(f"moe_test source is not valid Python: {exc}") from exc
+    assignments: dict[str, ast.Assign] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if isinstance(target, ast.Name) and target.id in overrides:
+            if target.id in assignments:
+                raise ContractError(f"top-level assignment {target.id!r} is not unique")
+            assignments[target.id] = node
+    missing = sorted(set(overrides) - set(assignments))
+    if missing:
+        raise ContractError(
+            f"moe_test source lacks required assignments: {', '.join(missing)}"
+        )
+
+    lines = source.splitlines(keepends=True)
+    replacements: list[tuple[int, int, str]] = []
+    for name, value in overrides.items():
+        node = assignments[name]
+        if node.end_lineno is None:
+            raise ContractError(f"cannot resolve assignment extent for {name}")
+        replacement = f"{name} = {value!r}  # critical-path trace adapter\n"
+        replacements.append((node.lineno - 1, node.end_lineno, replacement))
+    for start, end, replacement in sorted(replacements, reverse=True):
+        lines[start:end] = [replacement]
+    return "".join(lines)
+
+
+def replace_once(source: str, anchor: str, replacement: str, description: str) -> str:
+    count = source.count(anchor)
+    if count != 1:
+        raise ContractError(
+            f"{description} anchor must occur exactly once, found {count}: {anchor!r}"
+        )
+    return source.replace(anchor, replacement, 1)
+
+
+def adapt_test_source(
+    source: str,
+    *,
+    original_script_dir: Path,
+    overrides: dict[str, bool | int | str],
+) -> str:
+    transformed = replace_top_level_assignments(source, overrides)
+    transformed = replace_once(
+        transformed,
+        SCRIPT_DIR_ANCHOR,
+        f"script_dir = os.environ[{ORIGINAL_DIR_ENV!r}]",
+        "script directory",
+    )
+    transformed = replace_once(
+        transformed,
+        HELPER_INSERT_ANCHOR,
+        CAPTURE_HELPER + HELPER_INSERT_ANCHOR,
+        "capture helper insertion",
+    )
+    capture_and_return = (
+        "    torch.npu.synchronize()\n"
+        f"    if os.environ.get({TRACE_ENV!r}) == '1':\n"
+        "        _critical_path_trace_capture_y(y, rank)\n"
+        "        queue.put([rank, [None, None, None, None]])\n"
+        "        return\n"
+        "    print(f'rank {rank} epid {rank // tp_world_size} tpid {rank % tp_world_size} npu finished! \\n')"
+    )
+    transformed = replace_once(
+        transformed,
+        FINAL_SYNC_ANCHOR,
+        capture_and_return,
+        "post-MegaMoe synchronize/capture",
+    )
+    diagnostic_exit = (
+        f"    if os.environ.get({TRACE_ENV!r}) == '1':\n"
+        "        print('[TRACE] all local rank captures completed; accuracy comparison is intentionally skipped')\n"
+        "        raise SystemExit(0)\n\n" + MAIN_COMPARE_ANCHOR
+    )
+    transformed = replace_once(
+        transformed,
+        MAIN_COMPARE_ANCHOR,
+        diagnostic_exit,
+        "accuracy-comparison bypass",
+    )
+    try:
+        compile(transformed, "adapted_mega_moe.py", "exec")
+    except SyntaxError as exc:
+        raise ContractError(
+            f"adapted moe_test source is invalid Python: {exc}"
+        ) from exc
+    return transformed
+
+
+def validate_test_provenance(script: Path, *, allow_compatible: bool) -> dict[str, Any]:
+    if not script.is_file():
+        raise ContractError(f"moe_test script does not exist: {script}")
+    script_sha = sha256_file(script)
+    graph_path = script.with_name("graph.py")
+    graph_sha = sha256_file(graph_path) if graph_path.is_file() else None
+    git_root_text = git_output(script.parent, "rev-parse", "--show-toplevel")
+    git_root = Path(git_root_text) if git_root_text else None
+    git_head = git_output(script.parent, "rev-parse", "HEAD")
+    relative_script = (
+        str(script.resolve().relative_to(git_root.resolve()))
+        if git_root
+        else str(script)
+    )
+    tracked_status = (
+        git_output(git_root, "status", "--short", "--", relative_script)
+        if git_root
+        else None
+    )
+    exact = (
+        script_sha == TESTED_SCRIPT_SHA256
+        and graph_sha == TESTED_GRAPH_SHA256
+        and git_head == TESTED_MOE_TEST_COMMIT
+        and not tracked_status
+    )
+    if not exact and not allow_compatible:
+        raise ContractError(
+            "moe_test provenance differs from the audited snapshot; expected commit "
+            f"{TESTED_MOE_TEST_COMMIT}, mega_moe.py {TESTED_SCRIPT_SHA256}, graph.py "
+            f"{TESTED_GRAPH_SHA256}, clean tracked script; got commit {git_head}, "
+            f"mega_moe.py {script_sha}, graph.py {graph_sha}, status {tracked_status!r}. "
+            "Use --allow-compatible-test-script only after reviewing adapter anchors and current call ABI."
+        )
+    return {
+        "exact_audited_snapshot": exact,
+        "script": str(script.resolve()),
+        "script_sha256": script_sha,
+        "graph_sha256": graph_sha,
+        "git_root": str(git_root) if git_root else None,
+        "git_head": git_head,
+        "tracked_script_status": tracked_status,
+        "audited_commit": TESTED_MOE_TEST_COMMIT,
+        "audited_script_sha256": TESTED_SCRIPT_SHA256,
+        "audited_graph_sha256": TESTED_GRAPH_SHA256,
+    }
+
+
+def write_json(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def decode_artifacts(
+    *,
+    artifact_dir: Path,
+    spec_path: Path,
+    audit_path: Path,
+    trace_tool: Path,
+    python: str,
+    allow_truncated: bool,
+    expected_source_sha: str | None,
+) -> list[dict[str, Any]]:
+    raw_paths = sorted(
+        artifact_dir.glob("rank*.raw"),
+        key=lambda path: int(re.fullmatch(r"rank(\d+)\.raw", path.name).group(1))
+        if re.fullmatch(r"rank(\d+)\.raw", path.name)
+        else 1 << 30,
+    )
+    if not raw_paths:
+        raise ContractError(f"no rank*.raw captures found in {artifact_dir}")
+    results: list[dict[str, Any]] = []
+    for raw_path in raw_paths:
+        match = re.fullmatch(r"rank(\d+)\.raw", raw_path.name)
+        if not match:
+            continue
+        rank = int(match.group(1))
+        runtime_path = artifact_dir / f"rank{rank}.runtime.json"
+        contract, expected = validate_capture_contract(
+            raw_path=raw_path,
+            metadata_path=runtime_path,
+            spec_path=spec_path,
+            allow_truncated=allow_truncated,
+        )
+        if expected_source_sha is not None:
+            actual_source_sha = contract["metadata"].get("test_source_sha256")
+            if actual_source_sha != expected_source_sha:
+                raise ContractError(
+                    f"rank {rank} metadata source SHA {actual_source_sha!r} does not match "
+                    f"adapted source input {expected_source_sha}"
+                )
+        contract_path = artifact_dir / f"rank{rank}.contract-check.json"
+        write_json(contract_path, {"status": "passed", **contract})
+
+        normalized_path = artifact_dir / f"rank{rank}.normalized.json"
+        html_path = artifact_dir / f"rank{rank}.html"
+        decode_command = [
+            python,
+            str(trace_tool),
+            "decode",
+            "--spec",
+            str(spec_path),
+            "--raw",
+            str(raw_path),
+            "--output",
+            str(normalized_path),
+            "--reference-role",
+            "AIC",
+            "--reference-core",
+            "0",
+            "--reference-point",
+            "process_begin_S",
+            "--require-flags-mask",
+            "0xff",
+            "--require-flags-value",
+            "0xff",
+        ]
+        for name, value in expected.items():
+            if name in {
+                "aic_count",
+                "magic",
+                "version",
+                "schema_id",
+                "header_words",
+                "record_words",
+            }:
+                continue
+            decode_command.extend(["--expect-header", f"{name}={value}"])
+        for role in ("AIC", "AIV0", "AIV1"):
+            decode_command.extend(
+                ["--expect-role-count", f"{role}={expected['aic_count']}"]
+            )
+        if allow_truncated:
+            decode_command.append("--allow-truncated")
+        run_checked(decode_command)
+        order_check = validate_timestamp_order(normalized_path, spec_path)
+        order_path = artifact_dir / f"rank{rank}.order-check.json"
+        write_json(order_path, order_check)
+        render_command = [
+            python,
+            str(trace_tool),
+            "render",
+            "--spec",
+            str(spec_path),
+            "--trace",
+            str(normalized_path),
+            "--audit",
+            str(audit_path),
+            "--output",
+            str(html_path),
+        ]
+        run_checked(render_command)
+        results.append(
+            {
+                "rank": rank,
+                "raw": raw_path.name,
+                "runtime_metadata": runtime_path.name,
+                "contract_check": contract_path.name,
+                "normalized": normalized_path.name,
+                "order_check": order_path.name,
+                "html": html_path.name,
+                "raw_sha256": contract["raw_sha256"],
+                "required_trace_bytes": contract["required_trace_bytes"],
+                "available_carrier_bytes": contract["available_carrier_bytes"],
+            }
+        )
+    return results
+
+
+def write_index(
+    artifact_dir: Path, results: list[dict[str, Any]], manifest: dict[str, Any]
+) -> None:
+    rows = []
+    for result in results:
+        rows.append(
+            "<tr>"
+            f"<td>{result['rank']}</td>"
+            f'<td><a href="{html.escape(result["html"])}">timeline</a></td>'
+            f'<td><a href="{html.escape(result["normalized"])}">normalized JSON</a></td>'
+            f'<td><a href="{html.escape(result["contract_check"])}">contract check</a></td>'
+            f'<td><a href="{html.escape(result["order_check"])}">order check</a></td>'
+            f"<td>{result['required_trace_bytes']} / {result['available_carrier_bytes']}</td>"
+            "</tr>"
+        )
+    provenance = manifest.get("test_provenance", {})
+    capture_kind = manifest.get("capture_kind", "device runtime capture")
+    document = (
+        '<!doctype html><html><head><meta charset="utf-8"><title>MegaMoe critical-path traces</title>'
+        "<style>body{font-family:system-ui;margin:24px;color:#0f172a}table{border-collapse:collapse}"
+        "th,td{border:1px solid #cbd5e1;padding:7px;text-align:left}th{background:#f1f5f9}"
+        "code{white-space:pre-wrap}</style></head><body>"
+        "<h1>MegaMoe critical-path trace captures</h1>"
+        f"<p><strong>Capture kind:</strong> {html.escape(str(capture_kind))}</p>"
+        "<p>Diagnostic captures overwrite <code>y</code>; accuracy comparison was intentionally skipped.</p>"
+        f"<p>moe_test commit: <code>{html.escape(str(provenance.get('git_head')))}</code>; "
+        f"source SHA-256: <code>{html.escape(str(provenance.get('script_sha256')))}</code>.</p>"
+        "<table><thead><tr><th>Rank</th><th>HTML</th><th>Trace JSON</th>"
+        "<th>Header/config</th><th>Order/bounds</th><th>required/carrier bytes</th></tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table></body></html>"
+    )
+    (artifact_dir / "index.html").write_text(document, encoding="utf-8")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    repo_root = Path(__file__).resolve().parents[4]
+    default_test = Path("/home/mace/workspace/moe_test/mega_moe/mega_moe.py")
+    timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Fail-closed adapter for the audited moe_test MegaMoe runner. It captures raw y "
+            "before masking/comparison, validates the runtime header/config, and renders HTML."
+        )
+    )
+    parser.add_argument("--repo-root", type=Path, default=repo_root)
+    parser.add_argument("--test-script", type=Path, default=default_test)
+    parser.add_argument(
+        "--artifact-dir",
+        type=Path,
+        default=repo_root / "build" / "mega_moe_critical_path_trace" / timestamp,
+    )
+    parser.add_argument("--python", default=sys.executable)
+    parser.add_argument(
+        "--set",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="override one audited top-level moe_test case variable; repeat as needed",
+    )
+    parser.add_argument(
+        "--allow-compatible-test-script",
+        action="store_true",
+        help="accept a non-identical moe_test snapshot only if all fail-closed anchors still match",
+    )
+    parser.add_argument(
+        "--allow-truncated",
+        action="store_true",
+        help="accept more runtime waves than the four-wave capture capacity",
+    )
+    parser.add_argument(
+        "--check-only",
+        action="store_true",
+        help="validate provenance and adapter anchors, write the adapted script, but do not execute",
+    )
+    parser.add_argument(
+        "--decode-only",
+        action="store_true",
+        help="decode existing rank*.raw/rank*.runtime.json files without running moe_test",
+    )
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    repo_root = args.repo_root.expanduser().resolve()
+    artifact_dir = args.artifact_dir.expanduser().resolve()
+    spec_path = repo_root / "mc2/mega_moe/tools/critical_path_trace/trace-spec.json"
+    trace_tool = repo_root / "mc2/mega_moe/tools/critical_path_trace/trace_tool.py"
+    audit_path = (
+        repo_root
+        / "mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.json"
+    )
+    for required in (spec_path, trace_tool, audit_path):
+        if not required.is_file():
+            raise ContractError(f"required repository artifact is missing: {required}")
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    manifest: dict[str, Any] = {
+        "adapter_version": ADAPTER_VERSION,
+        "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "repo_root": str(repo_root),
+        "repo_commit": git_output(repo_root, "rev-parse", "HEAD"),
+        "artifact_dir": str(artifact_dir),
+        "trace_spec": str(spec_path),
+        "trace_spec_sha256": sha256_file(spec_path),
+        "trace_tool_sha256": sha256_file(trace_tool),
+        "forced_overrides": FORCED_OVERRIDES,
+        "user_overrides": {},
+        "mode": "decode-only"
+        if args.decode_only
+        else "check-only"
+        if args.check_only
+        else "run",
+    }
+    expected_source_sha: str | None = None
+
+    if not args.decode_only:
+        script = args.test_script.expanduser().resolve()
+        provenance = validate_test_provenance(
+            script, allow_compatible=args.allow_compatible_test_script
+        )
+        manifest["test_provenance"] = provenance
+        expected_source_sha = provenance["script_sha256"]
+        overrides: dict[str, bool | int | str] = dict(FORCED_OVERRIDES)
+        for item in args.set:
+            name, value = parse_override(item)
+            if name in overrides:
+                raise ContractError(
+                    f"--set repeats or conflicts with forced variable {name!r}"
+                )
+            overrides[name] = value
+            manifest["user_overrides"][name] = value
+        source = script.read_text(encoding="utf-8")
+        transformed = adapt_test_source(
+            source,
+            original_script_dir=script.parent,
+            overrides=overrides,
+        )
+        adapted_path = artifact_dir / "adapted_mega_moe.py"
+        adapted_path.write_text(transformed, encoding="utf-8")
+        manifest["adapted_script"] = str(adapted_path)
+        manifest["adapted_script_sha256"] = sha256_file(adapted_path)
+        write_json(artifact_dir / "run-manifest.json", manifest)
+        print(
+            f"[OK] moe_test adapter anchors/provenance passed; adapted source: {adapted_path}"
+        )
+        if args.check_only:
+            return 0
+
+        env = os.environ.copy()
+        env[TRACE_ENV] = "1"
+        env[ARTIFACT_ENV] = str(artifact_dir)
+        env[SOURCE_SHA_ENV] = expected_source_sha
+        env[ORIGINAL_DIR_ENV] = str(script.parent)
+        existing_pythonpath = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = (
+            str(script.parent)
+            if not existing_pythonpath
+            else str(script.parent) + os.pathsep + existing_pythonpath
+        )
+        run_checked([args.python, str(adapted_path)], cwd=script.parent, env=env)
+
+    results = decode_artifacts(
+        artifact_dir=artifact_dir,
+        spec_path=spec_path,
+        audit_path=audit_path,
+        trace_tool=trace_tool,
+        python=args.python,
+        allow_truncated=args.allow_truncated,
+        expected_source_sha=expected_source_sha,
+    )
+    manifest["captures"] = results
+    manifest["status"] = "passed"
+    write_json(artifact_dir / "run-manifest.json", manifest)
+    write_index(artifact_dir, results, manifest)
+    print(
+        f"[OK] validated and rendered {len(results)} rank capture(s); open {artifact_dir / 'index.html'}"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except ContractError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        raise SystemExit(2)

@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "status": "partially_verified_hardware_runtime_unavailable",
+  "baseline": {
+    "remote": "upstream",
+    "default_ref": "refs/heads/master",
+    "branch": "upstream/master",
+    "commit": "4b3d39658e1d4f5d1f5b60acedfe2df8201e08b2"
+  },
+  "implementation": {
+    "branch": "codex/mega-moe-critical-path-trace-20260803",
+    "worktree": "/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803",
+    "compile_switch": "MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE",
+    "compile_switch_default": 0,
+    "supported_path": "arch35 MTE A8W8 MegaMoeWave"
+  },
+  "moe_test_provenance": {
+    "commit": "90319bbd05993d2fbe7674d693395d5520732553",
+    "mega_moe_py_sha256": "35f600ca443782fd8f210a33af879af651a9dea011f32afa51191ae2bf9ee43e",
+    "graph_py_sha256": "f050d695c5d4bde708e71f501ee587268c05ccbfef934b61f95dcd0b7e1fa13f"
+  },
+  "checks": [
+    {
+      "name": "trace_spec_validation",
+      "status": "passed",
+      "scope": "machine-readable schema, roles, points, spans, and protocol"
+    },
+    {
+      "name": "plan_placement_audit",
+      "status": "passed",
+      "scope": "all 12 planned semantic anchors resolved before device edits"
+    },
+    {
+      "name": "implemented_placement_audit",
+      "status": "passed",
+      "scope": "all 12 markers resolved against their audited semantic anchors"
+    },
+    {
+      "name": "python_syntax",
+      "status": "passed",
+      "scope": "trace_tool, contract validator, runner adapter, tests, fixture generator, and trace-off verifier"
+    },
+    {
+      "name": "host_unit_tests",
+      "status": "passed",
+      "count": 5,
+      "scope": "valid raw-to-HTML path and fail-closed bad magic, config hash, one-sided span, and current adapter syntax"
+    },
+    {
+      "name": "current_moe_test_adapter_check",
+      "status": "passed",
+      "scope": "exact provenance, insertion anchors, and generated Python syntax; no execution"
+    },
+    {
+      "name": "synthetic_decode_order_render",
+      "status": "passed",
+      "scope": "8192-byte host-only synthetic raw through contract validation, decode, wrap-safe order/bounds checks, and HTML"
+    },
+    {
+      "name": "trace_off_source_equivalence",
+      "status": "passed",
+      "scope": "trace-only blocks removed and remaining tokens equal baseline for all three modified production device files"
+    },
+    {
+      "name": "ascend950_trace_off_opkernel_build",
+      "status": "passed",
+      "variants": 8,
+      "command": "bash build.sh --opkernel --ops=mega_moe --soc=ascend950 -j8"
+    },
+    {
+      "name": "ascend950_trace_on_opkernel_build",
+      "status": "passed",
+      "variants": 8,
+      "command": "bash build.sh --opkernel --ops=mega_moe --soc=ascend950 --ops-compile-options '-DMEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=1' -j8"
+    }
+  ],
+  "unavailable_checks": [
+    {
+      "name": "real_npu_execution_and_multirank_capture",
+      "reason": "npu-smi is not installed in the validation environment"
+    },
+    {
+      "name": "real_device_timestamp_order_and_boundary_review",
+      "reason": "requires raw captures from the target NPU server"
+    },
+    {
+      "name": "trace_off_numeric_accuracy_regression",
+      "reason": "Python torch is not installed and no NPU runtime is available"
+    }
+  ],
+  "evidence": {
+    "trace_spec": "trace-spec.json",
+    "plan_audit": "audit-plan/trace_point_audit.json",
+    "implemented_audit": "audit-implemented/trace_point_audit.json",
+    "synthetic_html": "artifacts/synthetic/index.html",
+    "synthetic_manifest": "artifacts/synthetic/run-manifest.json"
+  }
+}

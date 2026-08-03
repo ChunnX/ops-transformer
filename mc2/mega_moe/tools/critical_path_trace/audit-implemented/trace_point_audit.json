@@ -1,0 +1,1088 @@
+{
+  "audit_schema_version": 1,
+  "status": "pass",
+  "phase": "implemented",
+  "generated_at_utc": "2026-08-03T04:31:39.977199+00:00",
+  "trace_name": "mega-moe-wave-critical-path",
+  "repo_root": "/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803",
+  "git": {
+    "is_git_repository": true,
+    "revision": "4b3d39658e1d4f5d1f5b60acedfe2df8201e08b2",
+    "branch": "codex/mega-moe-critical-path-trace-20260803",
+    "dirty": true,
+    "status_short": [
+      "M  mc2/mega_moe/op_kernel/arch35/block_epilogue_swiglu_mx_quant.h",
+      "M  mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h",
+      "A  mc2/mega_moe/op_kernel/arch35/mega_moe_trace.h",
+      "M  mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+      "A  mc2/mega_moe/tools/critical_path_trace/README.md",
+      "A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/index.html",
+      "A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.contract-check.json",
+      "A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.html",
+      "A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.normalized.json",
+      "A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.order-check.json",
+      "A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.raw",
+      "A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.runtime.json",
+      "A  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/run-manifest.json",
+      "A  mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.json",
+      "A  mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.md",
+      "AM mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.json",
+      "AM mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.md",
+      "A  mc2/mega_moe/tools/critical_path_trace/generate_synthetic_fixture.py",
+      "A  mc2/mega_moe/tools/critical_path_trace/mega_moe_trace_contract.py",
+      "A  mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py",
+      "A  mc2/mega_moe/tools/critical_path_trace/test_critical_path_trace.py",
+      "A  mc2/mega_moe/tools/critical_path_trace/trace-spec.json",
+      "A  mc2/mega_moe/tools/critical_path_trace/trace_tool.py",
+      "A  mc2/mega_moe/tools/critical_path_trace/validation-report.json",
+      "A  mc2/mega_moe/tools/critical_path_trace/verify_trace_off.py"
+    ],
+    "status_truncated": false,
+    "tracked_diff_raw_sha256": "87eca0d8def95bc91c3110f84e5368855cec3e39ab71666ce1d801cda3b37b2d"
+  },
+  "spec": {
+    "path": "/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803/mc2/mega_moe/tools/critical_path_trace/trace-spec.json",
+    "sha256": "8e450ba62fba5c9499f47bf1bf624bc389d5c2b20ffd102abf7fee4e06cc6fd8",
+    "protocol_version": 5,
+    "schema_id": "0xd32d8a49"
+  },
+  "points": [
+    {
+      "id": "process_begin_S",
+      "stage": "process",
+      "edge": "begin",
+      "boundary_quality": "causal",
+      "roles": [
+        "AIC",
+        "AIV0",
+        "AIV1"
+      ],
+      "scope": "once at MegaMoeWave::Process entry per physical role/core record",
+      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+      "symbol": "MegaMoeWave::Process",
+      "placement": "before",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();"
+      },
+      "target_match_count": 1,
+      "target_line": 2622,
+      "target_context": {
+        "start_line": 2620,
+        "end_line": 2624,
+        "lines": [
+          {
+            "line": 2620,
+            "text": "#endif"
+          },
+          {
+            "line": 2621,
+            "text": "    // 保存入口时的溢出模式，并初始化输入准备阶段使用的 UB。"
+          },
+          {
+            "line": 2622,
+            "text": "    int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();"
+          },
+          {
+            "line": 2623,
+            "text": "    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);"
+          },
+          {
+            "line": 2624,
+            "text": "    SendMaskBufferConfig sendMaskBufferConfig = SendAndQuantBuffInit();"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: process_begin_S",
+      "marker_match_count": 1,
+      "marker_line": 2618,
+      "marker_context": {
+        "start_line": 2616,
+        "end_line": 2620,
+        "lines": [
+          {
+            "line": 2616,
+            "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
+          },
+          {
+            "line": 2617,
+            "text": "    if (CriticalPathTracePtr() != nullptr) {"
+          },
+          {
+            "line": 2618,
+            "text": "        criticalPathTrace_.processBegin = CriticalPathTrace::Now(); // TRACE_POINT: process_begin_S"
+          },
+          {
+            "line": 2619,
+            "text": "    }"
+          },
+          {
+            "line": 2620,
+            "text": "#endif"
+          }
+        ]
+      },
+      "max_line_distance": 4,
+      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "why": "Provides the one shared-axis per-rank reference and exposes role launch skew before input preparation.",
+      "semantics": "Scalar has entered the current MTE A8W8 MegaMoeWave Process body and no operator work has yet been issued by this role/core.",
+      "dependency": {
+        "precondition": "mixed-kernel task entry for this physical role/core",
+        "producer_pipeline": "kernel scheduler and Scalar control",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "none",
+        "proof": "The clock is the first diagnostic instruction immediately before the first Process statement."
+      },
+      "perturbation": "One 32-bit GetSystemCycle and one named Scalar assignment per role/core."
+    },
+    {
+      "id": "work_end_S",
+      "stage": "process",
+      "edge": "end",
+      "boundary_quality": "actual",
+      "roles": [
+        "AIC",
+        "AIV0",
+        "AIV1"
+      ],
+      "scope": "once after useful work and overflow-mode restoration per physical role/core record",
+      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+      "symbol": "MegaMoeWave::Process",
+      "placement": "after",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);"
+      },
+      "target_match_count": 1,
+      "target_line": 2675,
+      "target_context": {
+        "start_line": 2673,
+        "end_line": 2677,
+        "lines": [
+          {
+            "line": 2673,
+            "text": "    }"
+          },
+          {
+            "line": 2674,
+            "text": "    // 恢复入口时保存的溢出模式。"
+          },
+          {
+            "line": 2675,
+            "text": "    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);"
+          },
+          {
+            "line": 2676,
+            "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
+          },
+          {
+            "line": 2677,
+            "text": "    if (CriticalPathTracePtr() != nullptr) {"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: work_end_S",
+      "marker_match_count": 1,
+      "marker_line": 2678,
+      "marker_context": {
+        "start_line": 2676,
+        "end_line": 2680,
+        "lines": [
+          {
+            "line": 2676,
+            "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
+          },
+          {
+            "line": 2677,
+            "text": "    if (CriticalPathTracePtr() != nullptr) {"
+          },
+          {
+            "line": 2678,
+            "text": "        // TRACE_POINT: work_end_S"
+          },
+          {
+            "line": 2679,
+            "text": "        criticalPathTrace_.workEnd = CriticalPathTrace::Now();"
+          },
+          {
+            "line": 2680,
+            "text": "        SyncAll<false>();"
+          }
+        ]
+      },
+      "max_line_distance": 4,
+      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "why": "Separates the real role-local useful-work tail from the diagnostic rendezvous and y record emission overhead.",
+      "semantics": "All useful work owned by this role is complete; for AIV roles Unpermute has consumed its final MTE3_V completion event, and routed AIC publications already passed FIX_S.",
+      "dependency": {
+        "precondition": "role-local GMM/Combine completion and, on AIV, final Unpermute y store completion",
+        "producer_pipeline": "FIX and Scalar for AIC; MTE3, Vector, and Scalar for AIV",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "existing PublishGmm2Ready FIX_S and Unpermute final MTE3_V waits; no additional hot-path bridge",
+        "proof": "The sample is after ProcessRoutedExpertWaves, cross-rank completion, Unpermute's final MTE3_V wait, and control-state restoration, but before either trace rendezvous."
+      },
+      "perturbation": "One 32-bit GetSystemCycle and assignment before trace-only terminal synchronization."
+    },
+    {
+      "id": "dispatch_begin_S",
+      "stage": "dispatch",
+      "edge": "begin",
+      "boundary_quality": "causal",
+      "roles": [
+        "AIV1"
+      ],
+      "scope": "first dispatched expert per physical AIV1 core per captured routed-expert wave",
+      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+      "symbol": "MegaMoeWave::DispatchExpert",
+      "placement": "before",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "SendCntCal(static_cast<int32_t>(expertIdx), sendCnt);"
+      },
+      "target_match_count": 1,
+      "target_line": 1077,
+      "target_context": {
+        "start_line": 1075,
+        "end_line": 1079,
+        "lines": [
+          {
+            "line": 1075,
+            "text": "#endif"
+          },
+          {
+            "line": 1076,
+            "text": "        uint64_t sendCnt = 0;"
+          },
+          {
+            "line": 1077,
+            "text": "        SendCntCal(static_cast<int32_t>(expertIdx), sendCnt);"
+          },
+          {
+            "line": 1078,
+            "text": "        if (UpdateGroupParams<AddrUpdateMode::GMM1>(state, expertIdx, sendCnt)) {"
+          },
+          {
+            "line": 1079,
+            "text": "            UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmmAddrInfo, state);"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: dispatch_begin_S",
+      "marker_match_count": 1,
+      "marker_line": 1072,
+      "marker_context": {
+        "start_line": 1070,
+        "end_line": 1074,
+        "lines": [
+          {
+            "line": 1070,
+            "text": "        if (expertIdx == traceWave * expertsPerBatch_ && traceWave < CRITICAL_PATH_TRACE_MAX_WAVES &&"
+          },
+          {
+            "line": 1071,
+            "text": "            CriticalPathTracePtr() != nullptr) {"
+          },
+          {
+            "line": 1072,
+            "text": "            // TRACE_POINT: dispatch_begin_S"
+          },
+          {
+            "line": 1073,
+            "text": "            criticalPathTrace_.BeginDispatch(traceWave, CriticalPathTrace::Now());"
+          },
+          {
+            "line": 1074,
+            "text": "        }"
+          }
+        ]
+      },
+      "max_line_distance": 5,
+      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "why": "Measures the actual per-wave AIV1 prefetch window, including send-count calculation, rather than the outer wave that may prefetch two waves at once.",
+      "semantics": "The first expert in this dispatch wave is about to start SendCntCal on the AIV1 Scalar/control path.",
+      "dependency": {
+        "precondition": "the monotonic dispatch cursor selected this expert and any prior Combine ring reuse was drained by the preceding wave",
+        "producer_pipeline": "AIV1 Scalar control",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "none",
+        "proof": "DispatchExpert is invoked exactly once per expert by DispatchExpertsUntil; the first-expert test maps expertIdx to the current host-derived experts_per_wave."
+      },
+      "perturbation": "One first-wave-slot check plus one clock sample per active AIV1/wave."
+    },
+    {
+      "id": "dispatch_end_S",
+      "stage": "dispatch",
+      "edge": "end",
+      "boundary_quality": "actual",
+      "roles": [
+        "AIV1"
+      ],
+      "scope": "last dispatched expert per physical AIV1 core per captured routed-expert wave",
+      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+      "symbol": "MegaMoeWave::DispatchExpert",
+      "placement": "after",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "MetaInfoCalAndDispatch(gmmAddrInfo, static_cast<int32_t>(expertIdx), bufferConfig);"
+      },
+      "target_match_count": 1,
+      "target_line": 1080,
+      "target_context": {
+        "start_line": 1078,
+        "end_line": 1082,
+        "lines": [
+          {
+            "line": 1078,
+            "text": "        if (UpdateGroupParams<AddrUpdateMode::GMM1>(state, expertIdx, sendCnt)) {"
+          },
+          {
+            "line": 1079,
+            "text": "            UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmmAddrInfo, state);"
+          },
+          {
+            "line": 1080,
+            "text": "            MetaInfoCalAndDispatch(gmmAddrInfo, static_cast<int32_t>(expertIdx), bufferConfig);"
+          },
+          {
+            "line": 1081,
+            "text": "        }"
+          },
+          {
+            "line": 1082,
+            "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: dispatch_end_S",
+      "marker_match_count": 1,
+      "marker_line": 1087,
+      "marker_context": {
+        "start_line": 1085,
+        "end_line": 1089,
+        "lines": [
+          {
+            "line": 1085,
+            "text": "            AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);"
+          },
+          {
+            "line": 1086,
+            "text": "            AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);"
+          },
+          {
+            "line": 1087,
+            "text": "            criticalPathTrace_.EndDispatch(traceWave, CriticalPathTrace::Now()); // TRACE_POINT: dispatch_end_S"
+          },
+          {
+            "line": 1088,
+            "text": "        }"
+          },
+          {
+            "line": 1089,
+            "text": "#endif"
+          }
+        ]
+      },
+      "max_line_distance": 10,
+      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "why": "Proves when each AIV1 has completed the token/scale/meta-info writes that release GMM1 and permits direct comparison with GMM1 readiness.",
+      "semantics": "The last expert handled by this AIV1 in the wave has completed all Dispatch MTE3 writes and ready publications.",
+      "dependency": {
+        "precondition": "CopyGMToGMPerToken has recycled every dynamic ring slot and MetaInfoCalAndDispatch has issued its final publication",
+        "producer_pipeline": "MTE3",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "trace-only MTE3_S using recycled EVENT_ID0 on the last expert of the wave",
+        "proof": "All EVENT_ID0..5 Dispatch ring lifetimes are paired before MetaInfoCalAndDispatch returns; the added MTE3_S orders the last output/publication into Scalar before sampling."
+      },
+      "perturbation": "One MTE3-to-Scalar bridge and one clock sample per active AIV1/wave."
+    },
+    {
+      "id": "gmm1_begin_S",
+      "stage": "gmm1",
+      "edge": "begin",
+      "boundary_quality": "causal",
+      "roles": [
+        "AIC"
+      ],
+      "scope": "first actually assigned GMM1 tile per physical AIC core per captured routed-expert wave",
+      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h",
+      "symbol": "MegaMoeImpl::Detail::AicComputeGeneric",
+      "placement": "before",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),"
+      },
+      "target_match_count": 1,
+      "target_line": 487,
+      "target_context": {
+        "start_line": 485,
+        "end_line": 489,
+        "lines": [
+          {
+            "line": 485,
+            "text": "        }"
+          },
+          {
+            "line": 486,
+            "text": "#endif"
+          },
+          {
+            "line": 487,
+            "text": "        typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),"
+          },
+          {
+            "line": 488,
+            "text": "                                                   Get<K_VALUE>(actualShape), 0};"
+          },
+          {
+            "line": 489,
+            "text": ""
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: gmm1_begin_S",
+      "marker_match_count": 1,
+      "marker_line": 479,
+      "marker_context": {
+        "start_line": 477,
+        "end_line": 481,
+        "lines": [
+          {
+            "line": 477,
+            "text": "                AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);"
+          },
+          {
+            "line": 478,
+            "text": "                AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);"
+          },
+          {
+            "line": 479,
+            "text": "                // TRACE_POINT: gmm1_begin_S"
+          },
+          {
+            "line": 480,
+            "text": "                args.criticalPathTrace->BeginStage0(CriticalPathTrace::Now());"
+          },
+          {
+            "line": 481,
+            "text": "            }"
+          }
+        ]
+      },
+      "max_line_distance": 12,
+      "source_file_sha256": "c6ab40df3abbd4b814bfb026ee396c702a7b4582892510c319b2a1d81ae3d6c0",
+      "why": "Distinguishes Dispatch-ready and prior ping-pong dependency time from actual first GMM1 MMAD issue on each AIC.",
+      "semantics": "Dispatch GM readiness polling and any outstanding AIC-to-AIV0 acknowledgement have passed and the first GMM1 tile is about to construct and issue MMAD work.",
+      "dependency": {
+        "precondition": "WaitForUpstreamReady observed the complete Dispatch wave count and any WaitForVector dependency for this owner completed",
+        "producer_pipeline": "Scalar GM visibility and FIX",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "trace-only FIX_S using recycled EVENT_ID0 before the first sampled tile",
+        "proof": "The hook is after both upstream readiness and ping-pong waits in AicComputeGeneric; FIX_S transfers the FIX wait/completion dependency to Scalar before the clock."
+      },
+      "perturbation": "One conditional slot check, one FIX-to-Scalar bridge, and one clock per active AIC/wave."
+    },
+    {
+      "id": "gmm1_end_S",
+      "stage": "gmm1",
+      "edge": "end",
+      "boundary_quality": "actual",
+      "roles": [
+        "AIC"
+      ],
+      "scope": "after the last GMM1 tile assigned to each physical AIC core in a captured routed-expert wave",
+      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+      "symbol": "MegaMoeWave::ProcessRoutedExpertWaves",
+      "placement": "after",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "batchBegin, batchEnd, gmm1State, gmm1AddrInfo, vecSetSyncCom);"
+      },
+      "target_match_count": 1,
+      "target_line": 2435,
+      "target_context": {
+        "start_line": 2433,
+        "end_line": 2437,
+        "lines": [
+          {
+            "line": 2433,
+            "text": ""
+          },
+          {
+            "line": 2434,
+            "text": "        ProcessGmm1Wave("
+          },
+          {
+            "line": 2435,
+            "text": "            batchBegin, batchEnd, gmm1State, gmm1AddrInfo, vecSetSyncCom);"
+          },
+          {
+            "line": 2436,
+            "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
+          },
+          {
+            "line": 2437,
+            "text": "        if constexpr (g_coreType == AIC) {"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: gmm1_end_S",
+      "marker_match_count": 1,
+      "marker_line": 2441,
+      "marker_context": {
+        "start_line": 2439,
+        "end_line": 2443,
+        "lines": [
+          {
+            "line": 2439,
+            "text": "                AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);"
+          },
+          {
+            "line": 2440,
+            "text": "                AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);"
+          },
+          {
+            "line": 2441,
+            "text": "                // TRACE_POINT: gmm1_end_S"
+          },
+          {
+            "line": 2442,
+            "text": "                criticalPathTrace_.EndStage0(CriticalPathTrace::Now());"
+          },
+          {
+            "line": 2443,
+            "text": "            }"
+          }
+        ]
+      },
+      "max_line_distance": 10,
+      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "why": "Makes the GMM1 interval end at actual local FIX completion instead of helper return or AIV notification issue.",
+      "semantics": "All GMM1 FIX work assigned to this AIC in the wave is complete.",
+      "dependency": {
+        "precondition": "ProcessGmm1Wave returned after issuing every owned GMM1 tile",
+        "producer_pipeline": "FIX",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "trace-only FIX_S using recycled EVENT_ID0 when this core recorded GMM1 work",
+        "proof": "The bridge is after the complete wave loop and executes only for records with a causal begin, so its Scalar clock cannot run ahead of the final FIX operation."
+      },
+      "perturbation": "One FIX-to-Scalar completion bridge and clock per active AIC/wave."
+    },
+    {
+      "id": "swiglu_begin_S",
+      "stage": "swiglu",
+      "edge": "begin",
+      "boundary_quality": "causal",
+      "roles": [
+        "AIV0"
+      ],
+      "scope": "first non-empty epilogue tile per physical AIV0 core per captured routed-expert wave",
+      "file": "mc2/mega_moe/op_kernel/arch35/block_epilogue_swiglu_mx_quant.h",
+      "symbol": "BlockEpilogueSwigluMxQuant::operator()",
+      "placement": "before",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "vlForHalfNumber_ = AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t);"
+      },
+      "target_match_count": 1,
+      "target_line": 1156,
+      "target_context": {
+        "start_line": 1154,
+        "end_line": 1158,
+        "lines": [
+          {
+            "line": 1154,
+            "text": "    }"
+          },
+          {
+            "line": 1155,
+            "text": "#endif"
+          },
+          {
+            "line": 1156,
+            "text": "    vlForHalfNumber_ = AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t); // 256 / 2 = 128"
+          },
+          {
+            "line": 1157,
+            "text": "    UBBlockSize_ = BLOCK_SIZE;                                         // 32"
+          },
+          {
+            "line": 1158,
+            "text": "    elementAfterReduce_ = AscendC::VECTOR_REG_WIDTH / UBBlockSize_;    // 256 / 32 = 8"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: swiglu_begin_S",
+      "marker_match_count": 1,
+      "marker_line": 1152,
+      "marker_context": {
+        "start_line": 1150,
+        "end_line": 1154,
+        "lines": [
+          {
+            "line": 1150,
+            "text": "        AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);"
+          },
+          {
+            "line": 1151,
+            "text": "        AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);"
+          },
+          {
+            "line": 1152,
+            "text": "        // TRACE_POINT: swiglu_begin_S"
+          },
+          {
+            "line": 1153,
+            "text": "        criticalPathTrace_->BeginStage0(MegaMoeImpl::CriticalPathTrace::Now());"
+          },
+          {
+            "line": 1154,
+            "text": "    }"
+          }
+        ]
+      },
+      "max_line_distance": 8,
+      "source_file_sha256": "7ffbc82e32cc4b9e533fd09a427abd5de799855d5c5aef45b61c851bf336fe04",
+      "why": "Places the common SwiGLU begin after both non-prefetch WaitForCube and prefetch MTE2_V input readiness, regardless of the current epilogue branch.",
+      "semantics": "A non-empty epilogue invocation has all upstream GMM1/input dependencies ordered into Vector and is about to start SwiGLU/quant setup and Vector work.",
+      "dependency": {
+        "precondition": "the caller passed its AIC-to-AIV0 V wait or MTE2_V data-ready wait before entering the epilogue",
+        "producer_pipeline": "Vector",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "trace-only V_S using recycled EVENT_ID0 at the common epilogue entry",
+        "proof": "Every routed wave epilogue branch calls this operator only after its readiness wait; V_S orders those V-pipeline waits before the first recorded clock."
+      },
+      "perturbation": "One conditional slot check, one Vector-to-Scalar bridge, and one clock per active AIV0/wave."
+    },
+    {
+      "id": "swiglu_end_S",
+      "stage": "swiglu",
+      "edge": "end",
+      "boundary_quality": "actual",
+      "roles": [
+        "AIV0"
+      ],
+      "scope": "after the last epilogue tile assigned to each physical AIV0 core in a captured routed-expert wave",
+      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+      "symbol": "MegaMoeWave::ProcessRoutedExpertWaves",
+      "placement": "after",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "batchBegin, batchEnd, gmm1State, gmm1AddrInfo, vecSetSyncCom);"
+      },
+      "target_match_count": 1,
+      "target_line": 2435,
+      "target_context": {
+        "start_line": 2433,
+        "end_line": 2437,
+        "lines": [
+          {
+            "line": 2433,
+            "text": ""
+          },
+          {
+            "line": 2434,
+            "text": "        ProcessGmm1Wave("
+          },
+          {
+            "line": 2435,
+            "text": "            batchBegin, batchEnd, gmm1State, gmm1AddrInfo, vecSetSyncCom);"
+          },
+          {
+            "line": 2436,
+            "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
+          },
+          {
+            "line": 2437,
+            "text": "        if constexpr (g_coreType == AIC) {"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: swiglu_end_S",
+      "marker_match_count": 1,
+      "marker_line": 2446,
+      "marker_context": {
+        "start_line": 2444,
+        "end_line": 2448,
+        "lines": [
+          {
+            "line": 2444,
+            "text": "        } else if (subBlockIdx_ == 0U && CriticalPathTracePtr() != nullptr &&"
+          },
+          {
+            "line": 2445,
+            "text": "                   criticalPathTrace_.HasStage0Work()) {"
+          },
+          {
+            "line": 2446,
+            "text": "            // TRACE_POINT: swiglu_end_S"
+          },
+          {
+            "line": 2447,
+            "text": "            criticalPathTrace_.EndStage0(CriticalPathTrace::Now());"
+          },
+          {
+            "line": 2448,
+            "text": "        }"
+          }
+        ]
+      },
+      "max_line_distance": 14,
+      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "why": "Shows the actual AIV0 epilogue completion and its overlap with AIC GMM2 and AIV1 Dispatch/Combine.",
+      "semantics": "Every SwiGLU/quant GM output owned by this AIV0 in the wave has completed.",
+      "dependency": {
+        "precondition": "all BlockEpilogueSwigluMxQuant invocations assigned to the core returned",
+        "producer_pipeline": "MTE3",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "existing per-tile MTE3_S in BlockEpilogueSwigluMxQuant::operator(); no added end bridge",
+        "proof": "Each operator return consumes MTE3_V and MTE3_S after data/scale copies and then publishes its ready count; the outer wave return therefore follows the last actual GM completion."
+      },
+      "perturbation": "One clock and named assignment per active AIV0/wave; no additional completion serialization."
+    },
+    {
+      "id": "gmm2_begin_S",
+      "stage": "gmm2",
+      "edge": "begin",
+      "boundary_quality": "causal",
+      "roles": [
+        "AIC"
+      ],
+      "scope": "first actually assigned GMM2 tile per physical AIC core per captured routed-expert wave",
+      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h",
+      "symbol": "MegaMoeImpl::Detail::AicComputeGeneric",
+      "placement": "before",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),"
+      },
+      "target_match_count": 1,
+      "target_line": 487,
+      "target_context": {
+        "start_line": 485,
+        "end_line": 489,
+        "lines": [
+          {
+            "line": 485,
+            "text": "        }"
+          },
+          {
+            "line": 486,
+            "text": "#endif"
+          },
+          {
+            "line": 487,
+            "text": "        typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),"
+          },
+          {
+            "line": 488,
+            "text": "                                                   Get<K_VALUE>(actualShape), 0};"
+          },
+          {
+            "line": 489,
+            "text": ""
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: gmm2_begin_S",
+      "marker_match_count": 1,
+      "marker_line": 483,
+      "marker_context": {
+        "start_line": 481,
+        "end_line": 485,
+        "lines": [
+          {
+            "line": 481,
+            "text": "            }"
+          },
+          {
+            "line": 482,
+            "text": "        } else if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsStage1Begin()) {"
+          },
+          {
+            "line": 483,
+            "text": "            // TRACE_POINT: gmm2_begin_S"
+          },
+          {
+            "line": 484,
+            "text": "            args.criticalPathTrace->BeginStage1(CriticalPathTrace::Now());"
+          },
+          {
+            "line": 485,
+            "text": "        }"
+          }
+        ]
+      },
+      "max_line_distance": 16,
+      "source_file_sha256": "c6ab40df3abbd4b814bfb026ee396c702a7b4582892510c319b2a1d81ae3d6c0",
+      "why": "Measures GMM2 only after the current wave's SwiGLU-ready counter is visible, leaving publication-to-observation latency outside GMM2 compute.",
+      "semantics": "Scalar GM polling has observed the required SwiGLU-ready count for the first owned GMM2 wave tile and MMAD issue is next.",
+      "dependency": {
+        "precondition": "WaitForUpstreamReady observed the wave-grained swigluToGmm2Flag target",
+        "producer_pipeline": "MTE3 completion published through Scalar-visible GM AtomicAdd",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "none",
+        "proof": "The bypass GM polling loop runs on Scalar and returns only after epilogue MTE3_S and ready AtomicAdd; the immediately following Scalar clock is causally ordered without a cross-pipeline bridge."
+      },
+      "perturbation": "One conditional slot check and one clock per active AIC/wave."
+    },
+    {
+      "id": "gmm2_end_S",
+      "stage": "gmm2",
+      "edge": "end",
+      "boundary_quality": "actual",
+      "roles": [
+        "AIC"
+      ],
+      "scope": "after the last ready publication for GMM2 work assigned to each physical AIC core in a captured routed-expert wave",
+      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+      "symbol": "MegaMoeWave::ProcessRoutedExpertWaves",
+      "placement": "after",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "ProcessGmm2Wave(batchBegin, batchEnd, gmm2State, gmm2AddrInfo, vecSetSyncCom);"
+      },
+      "target_match_count": 1,
+      "target_line": 2452,
+      "target_context": {
+        "start_line": 2450,
+        "end_line": 2454,
+        "lines": [
+          {
+            "line": 2450,
+            "text": "        const uint32_t gmm1EndCursor = startBlockIdx_;"
+          },
+          {
+            "line": 2451,
+            "text": ""
+          },
+          {
+            "line": 2452,
+            "text": "        ProcessGmm2Wave(batchBegin, batchEnd, gmm2State, gmm2AddrInfo, vecSetSyncCom);"
+          },
+          {
+            "line": 2453,
+            "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
+          },
+          {
+            "line": 2454,
+            "text": "        if constexpr (g_coreType == AIC) {"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: gmm2_end_S",
+      "marker_match_count": 1,
+      "marker_line": 2456,
+      "marker_context": {
+        "start_line": 2454,
+        "end_line": 2458,
+        "lines": [
+          {
+            "line": 2454,
+            "text": "        if constexpr (g_coreType == AIC) {"
+          },
+          {
+            "line": 2455,
+            "text": "            if (CriticalPathTracePtr() != nullptr && criticalPathTrace_.HasStage1Work()) {"
+          },
+          {
+            "line": 2456,
+            "text": "                // TRACE_POINT: gmm2_end_S"
+          },
+          {
+            "line": 2457,
+            "text": "                criticalPathTrace_.EndStage1(CriticalPathTrace::Now());"
+          },
+          {
+            "line": 2458,
+            "text": "            }"
+          }
+        ]
+      },
+      "max_line_distance": 8,
+      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "why": "Proves local GMM2 direct-GM completion and ready publication timing while keeping remote AIV1 observation as a separate handoff gap.",
+      "semantics": "All owned GMM2 FIX writes for the wave are complete and the final per-expert ready publication has been issued by this AIC.",
+      "dependency": {
+        "precondition": "ProcessGmm2Wave completed every expert and PublishGmm2Ready ran after each expert",
+        "producer_pipeline": "FIX then Scalar bypass GM store",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "existing FIX_S inside PublishGmm2Ready; no extra bridge",
+        "proof": "PublishGmm2Ready executes FIX_S before WriteGmByPassDCache; the outer sample follows the last publication in source and Scalar order. It does not claim AIV1 has observed it."
+      },
+      "perturbation": "One clock and named assignment per active AIC/wave; existing production FIX_S publication semantics are reused."
+    },
+    {
+      "id": "combine_begin_S",
+      "stage": "combine",
+      "edge": "begin",
+      "boundary_quality": "causal",
+      "roles": [
+        "AIV1"
+      ],
+      "scope": "first non-empty token range per physical AIV1 core per captured routed-expert wave",
+      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+      "symbol": "MegaMoeWave::ProcessCombineExperts",
+      "placement": "after",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "WaitGmm2Ready(expertIdx);"
+      },
+      "target_match_count": 1,
+      "target_line": 2343,
+      "target_context": {
+        "start_line": 2341,
+        "end_line": 2345,
+        "lines": [
+          {
+            "line": 2341,
+            "text": "            GetCombineOwnedRange(currentExpertTokenNum);"
+          },
+          {
+            "line": 2342,
+            "text": "        if (currentCoreTokenRange.count != 0U) {"
+          },
+          {
+            "line": 2343,
+            "text": "            WaitGmm2Ready(expertIdx);"
+          },
+          {
+            "line": 2344,
+            "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
+          },
+          {
+            "line": 2345,
+            "text": "            if (CriticalPathTracePtr() != nullptr && criticalPathTrace_.NeedsStage1Begin()) {"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: combine_begin_S",
+      "marker_match_count": 1,
+      "marker_line": 2346,
+      "marker_context": {
+        "start_line": 2344,
+        "end_line": 2348,
+        "lines": [
+          {
+            "line": 2344,
+            "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
+          },
+          {
+            "line": 2345,
+            "text": "            if (CriticalPathTracePtr() != nullptr && criticalPathTrace_.NeedsStage1Begin()) {"
+          },
+          {
+            "line": 2346,
+            "text": "                // TRACE_POINT: combine_begin_S"
+          },
+          {
+            "line": 2347,
+            "text": "                criticalPathTrace_.BeginStage1(CriticalPathTrace::Now());"
+          },
+          {
+            "line": 2348,
+            "text": "            }"
+          }
+        ]
+      },
+      "max_line_distance": 8,
+      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "why": "Exposes the publication-to-ready-observation handoff and starts Combine only after the full AIC fan-in is proven.",
+      "semantics": "This AIV1 owns at least one token and its first expert's GMM2-ready scan has observed all AIC publications; meta-info load and first row send follow.",
+      "dependency": {
+        "precondition": "WaitGmm2Ready reduced all per-AIC ready cache lines to at least blockNum",
+        "producer_pipeline": "MTE2 then Vector reduction",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "existing MTE2_V and V_S in WaitGmm2Ready",
+        "proof": "WaitGmm2Ready returns only after the V_S-ordered sum is read on Scalar and meets the all-AIC target; the marker is immediately after that return."
+      },
+      "perturbation": "One conditional slot check and one clock per active AIV1/wave."
+    },
+    {
+      "id": "combine_end_S",
+      "stage": "combine",
+      "edge": "end",
+      "boundary_quality": "actual",
+      "roles": [
+        "AIV1"
+      ],
+      "scope": "after the final remote-send ring drain per physical AIV1 core per captured routed-expert wave",
+      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+      "symbol": "MegaMoeWave::ProcessCombineExperts",
+      "placement": "after",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "DrainCombineRowRing(rowSequence);"
+      },
+      "target_match_count": 1,
+      "target_line": 2371,
+      "target_context": {
+        "start_line": 2369,
+        "end_line": 2373,
+        "lines": [
+          {
+            "line": 2369,
+            "text": ""
+          },
+          {
+            "line": 2370,
+            "text": "    // 下一 wave 的 dispatch 会复用同一片 UB 和事件编号，离开前必须回收所有已使用槽位。"
+          },
+          {
+            "line": 2371,
+            "text": "    DrainCombineRowRing(rowSequence);"
+          },
+          {
+            "line": 2372,
+            "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
+          },
+          {
+            "line": 2373,
+            "text": "    if (rowSequence != 0U && CriticalPathTracePtr() != nullptr && criticalPathTrace_.HasStage1Work()) {"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: combine_end_S",
+      "marker_match_count": 1,
+      "marker_line": 2376,
+      "marker_context": {
+        "start_line": 2374,
+        "end_line": 2378,
+        "lines": [
+          {
+            "line": 2374,
+            "text": "        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);"
+          },
+          {
+            "line": 2375,
+            "text": "        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);"
+          },
+          {
+            "line": 2376,
+            "text": "        // TRACE_POINT: combine_end_S"
+          },
+          {
+            "line": 2377,
+            "text": "        criticalPathTrace_.EndStage1(CriticalPathTrace::Now());"
+          },
+          {
+            "line": 2378,
+            "text": "    }"
+          }
+        ]
+      },
+      "max_line_distance": 8,
+      "source_file_sha256": "7066bb0b6b7d6cfb2f93c5106e30158f413f914cb9702923e9e8d37b47865709",
+      "why": "Ends Combine at actual remote MTE3 send completion rather than at Scalar issue or ring-drain enqueue time.",
+      "semantics": "Every token row issued by this AIV1 for the wave has completed its remote MTE3 send.",
+      "dependency": {
+        "precondition": "DrainCombineRowRing consumed every MTE3_MTE2 event for each actually used row slot",
+        "producer_pipeline": "MTE3 completion dependency held by MTE2",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "trace-only MTE2_S using recycled EVENT_ID0 after the drain",
+        "proof": "The ring drain waits only the slots that were issued; MTE2_S transfers those completed MTE3 dependencies to Scalar before sampling."
+      },
+      "perturbation": "One MTE2-to-Scalar bridge and one clock per active AIV1/wave."
+    }
+  ],
+  "errors": []
+}

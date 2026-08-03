@@ -1,0 +1,29 @@
+{
+  "adapter_version": 1,
+  "aic_core_num": 36,
+  "bs": 1,
+  "comm_quant_mode": 0,
+  "dispatch_quant_out_type": 24,
+  "graph_type": 0,
+  "h": 4096,
+  "is_interleaved": false,
+  "k": 6,
+  "local_moe_expert_num": 4,
+  "n": 1024,
+  "output_dtype": "torch.bfloat16",
+  "output_nbytes": 8192,
+  "output_shape": [
+    1,
+    4096
+  ],
+  "quant_dtype": "float8_e4m3fn",
+  "quant_mode": 4,
+  "rank": 0,
+  "raw_sha256": "84926c9df62ed933f1357f0a0a6cc5bdbed6ab7d0f8688c36ea7be6f93724b5b",
+  "shared_expert_num": 0,
+  "swiglu_quant_dtype": "float8_e4m3fn",
+  "test_source_sha256": "synthetic-fixture",
+  "topk_weights_type": false,
+  "weight_dtype": "float8_e4m3fn",
+  "world_size": 2
+}

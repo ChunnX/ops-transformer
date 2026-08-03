@@ -22,6 +22,7 @@
 #include "lib/matmul_intf.h"
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_base.h"
+#include "mega_moe_trace.h"
 
 #include "tensor_api/tensor.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
@@ -470,6 +471,19 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
             }
         }
 
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if constexpr (Policy::IS_GMM1) {
+            if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsStage0Begin()) {
+                AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
+                // TRACE_POINT: gmm1_begin_S
+                args.criticalPathTrace->BeginStage0(CriticalPathTrace::Now());
+            }
+        } else if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsStage1Begin()) {
+            // TRACE_POINT: gmm2_begin_S
+            args.criticalPathTrace->BeginStage1(CriticalPathTrace::Now());
+        }
+#endif
         typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
                                                    Get<K_VALUE>(actualShape), 0};
 
@@ -830,12 +844,18 @@ struct Gmm1ArgsGeneric {
     uint32_t expertBeforeCnt{0};
     uint32_t expertIdx{0}; // prefetch 软同步：当前 expert 索引，roundTag = expertIdx + 1
     uint16_t &pingpongIdx;
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    CriticalPathTrace *criticalPathTrace{nullptr};
+#endif
 };
 
 struct Gmm2ArgsGeneric {
     int32_t &vecSetSyncCom2;
     uint32_t groupCnt;
     uint16_t &pingpongIdx;
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    CriticalPathTrace *criticalPathTrace{nullptr};
+#endif
 };
 
 template <typename Scheduler, typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
@@ -952,11 +972,21 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                                L1_TILE_N, TopkWeightsPrefetch, IsGmm1Interleaved, IsWaveFlagGrained> &epilogueOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, uint32_t expertBeforeCnt,
-    uint32_t expertIdx, uint16_t &pingpongIdx)
+    uint32_t expertIdx, uint16_t &pingpongIdx
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    ,
+    CriticalPathTrace *criticalPathTrace = nullptr
+#endif
+)
 {
     using SwigluQuantOpType = std::remove_reference_t<decltype(epilogueOp)>;
     Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{
-        epilogueOp, vecSetSyncCom, expertBeforeCnt, expertIdx, pingpongIdx};
+        epilogueOp, vecSetSyncCom, expertBeforeCnt, expertIdx, pingpongIdx
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        ,
+        criticalPathTrace
+#endif
+    };
     Detail::GroupMatmulImplGeneric<Detail::Gmm1Policy, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, false, Gmm1TileM, TopkWeightsPrefetch, IsShared,
                                    IsGmm1Interleaved, IsWaveFlagGrained>(
@@ -992,9 +1022,19 @@ template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typena
 __aicore__ inline void GroupMatmul2(const Params &params,
                                     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
-                                    uint32_t groupCnt, uint16_t &pingpongIdx)
+                                    uint32_t groupCnt, uint16_t &pingpongIdx
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                    ,
+                                    CriticalPathTrace *criticalPathTrace = nullptr
+#endif
+)
 {
-    Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx};
+    Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                 ,
+                                 criticalPathTrace
+#endif
+    };
     Detail::GroupMatmulImplGeneric<Detail::Gmm2Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared,
                                    IsGmm1Interleaved, IsWaveFlagGrained>(
