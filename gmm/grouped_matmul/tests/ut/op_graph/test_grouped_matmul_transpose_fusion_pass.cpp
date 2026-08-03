@@ -121,6 +121,9 @@ DataType ParseDataType(const std::string &value)
     if (value == "DT_FLOAT8_E8M0") {
         return DT_FLOAT8_E8M0;
     }
+    if (value == "DT_FLOAT4_E2M1") {
+        return DT_FLOAT4_E2M1;
+    }
     throw std::runtime_error("Unsupported data type: " + value);
 }
 
@@ -395,7 +398,9 @@ GraphPtr BuildGraph(const GroupedMatmulTransposeFusionPassParam &param)
                param.scenario == "scale_reshape_unknown" || param.scenario == "scale_reshape_unknown_invalid" ||
                param.scenario == "scale_reshape_all_unknown" ||
                param.scenario == "mx_scale_reshape_unknown" ||
-               param.scenario == "mx_scale_reshape_unknown_invalid") {
+               param.scenario == "mx_scale_reshape_unknown_invalid" ||
+               param.scenario == "mxfp4_scale_reshape_all_unknown" ||
+               param.scenario == "mxfp4_scale_reshape_all_unknown_invalid") {
         std::vector<int64_t> inputShape = {2, 1, 64};
         std::vector<int64_t> outputShape = {2, 64, 1};
         DataType scaleDtype = DT_FLOAT;
@@ -418,6 +423,14 @@ GraphPtr BuildGraph(const GroupedMatmulTransposeFusionPassParam &param)
             inputShape = {2, -1, 1, 2};
             outputShape = {-1, 1, 2, 2};
             scaleDtype = DT_FLOAT8_E8M0;
+        } else if (param.scenario == "mxfp4_scale_reshape_all_unknown") {
+            inputShape = {-1, -1, 1, -1};
+            outputShape = {-1, -1, -1, -1};
+            scaleDtype = DT_INT8;
+        } else if (param.scenario == "mxfp4_scale_reshape_all_unknown_invalid") {
+            inputShape = {-1, -1, 2, -1};
+            outputShape = {-1, -1, -1, -1};
+            scaleDtype = DT_INT8;
         }
         auto scaleDesc = MakeTensorDesc(inputShape, scaleDtype);
         auto scaleTensor =

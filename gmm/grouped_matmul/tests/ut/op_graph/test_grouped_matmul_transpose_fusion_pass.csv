@@ -12,6 +12,8 @@ gmm_with_invalid_scale_reshape,scale_reshape_invalid,TransposeD,1,1,32:16,DT_FLO
 gmm_with_unknown_scale_reshape,scale_reshape_unknown,TransposeD,1,1,32:16,DT_FLOAT16,2:64:16,DT_FLOAT16,32:64,DT_FLOAT16,0,1,,0:2:1,0,0,SUCCESS,0,0,0,0,1,32:16,2:64:16,DT_FLOAT16
 gmm_with_invalid_unknown_scale_reshape,scale_reshape_unknown_invalid,TransposeD,1,1,32:16,DT_FLOAT16,2:64:16,DT_FLOAT16,32:64,DT_FLOAT16,0,1,,0:2:1,0,0,GRAPH_NOT_CHANGED,1,1,0,0,0,32:16,2:16:64,DT_FLOAT16
 gmm_with_all_unknown_scale_reshape,scale_reshape_all_unknown,TransposeD,1,1,32:16,DT_FLOAT16,2:64:16,DT_FLOAT16,32:64,DT_FLOAT16,0,1,,0:2:1,0,0,GRAPH_NOT_CHANGED,1,1,0,0,0,32:16,2:16:64,DT_FLOAT16
+gmm_with_mxfp4_all_unknown_scale_reshape,mxfp4_scale_reshape_all_unknown,TransposeD,1,1,32:16,DT_FLOAT4_E2M1,2:64:16,DT_FLOAT4_E2M1,32:64,DT_FLOAT16,0,1,,0:2:1,0,0,SUCCESS,0,0,0,0,1,32:16,2:64:16,DT_FLOAT4_E2M1
+gmm_with_invalid_mxfp4_all_unknown_scale_reshape,mxfp4_scale_reshape_all_unknown_invalid,TransposeD,1,1,32:16,DT_FLOAT4_E2M1,2:64:16,DT_FLOAT4_E2M1,32:64,DT_FLOAT16,0,1,,0:2:1,0,0,GRAPH_NOT_CHANGED,1,1,0,0,0,32:16,2:16:64,DT_FLOAT4_E2M1
 gmm_with_unknown_mx_scale_reshape,mx_scale_reshape_unknown,TransposeD,1,1,32:16,DT_FLOAT16,2:64:16,DT_FLOAT16,32:64,DT_FLOAT16,0,1,,0:2:1,0,0,SUCCESS,0,0,0,0,1,32:16,2:64:16,DT_FLOAT16
 gmm_with_invalid_unknown_mx_scale_reshape,mx_scale_reshape_unknown_invalid,TransposeD,1,1,32:16,DT_FLOAT16,2:64:16,DT_FLOAT16,32:64,DT_FLOAT16,0,1,,0:2:1,0,0,GRAPH_NOT_CHANGED,1,1,0,0,0,32:16,2:16:64,DT_FLOAT16
 gmm_with_bitcast,bitcast,TransposeD,1,1,32:16,DT_FLOAT16,2:64:16,DT_INT8,32:64,DT_FLOAT16,0,1,,0:2:1,0,0,SUCCESS,0,0,1,0,1,32:16,2:64:16,DT_HIFLOAT8

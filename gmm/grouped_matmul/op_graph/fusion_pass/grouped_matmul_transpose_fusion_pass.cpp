@@ -153,6 +153,20 @@ bool IsSameOrBothUnknown(int64_t lhs, int64_t rhs)
     return lhs == rhs || (IsUnknownDim(lhs) && IsUnknownDim(rhs));
 }
 
+bool IsFloat4DataType(DataType dataType)
+{
+    return dataType == DT_FLOAT4_E1M2 || dataType == DT_FLOAT4_E2M1;
+}
+
+bool IsMxFp4QuantMode(const GNode& groupedMatmulNode)
+{
+    TensorDesc xDesc;
+    TensorDesc weightDesc;
+    return groupedMatmulNode.GetInputDesc(kXIndex, xDesc) == GRAPH_SUCCESS &&
+           groupedMatmulNode.GetInputDesc(kWeightIndex, weightDesc) == GRAPH_SUCCESS &&
+           IsFloat4DataType(xDesc.GetDataType()) && IsFloat4DataType(weightDesc.GetDataType());
+}
+
 bool CheckPlatformIsDav3510ForGmm()
 {
     fe::PlatformInfo platformInfo;
@@ -209,7 +223,8 @@ bool IsMxWeightQuantMode(const GNode& groupedMatmulNode)
            antiquantScaleDesc.GetDataType() == DT_FLOAT8_E8M0;
 }
 
-bool IsReshapeTransForScale(int32_t index, const GNodePtr& nodePerInput)
+bool IsReshapeTransForScale(
+    int32_t index, const GNodePtr& nodePerInput, bool isMxQuantMode, bool allowFullyDynamicMxFp4Scale)
 {
     if (!IsType(nodePerInput, kOpTypeReshape) || index == kXIndex || index == kWeightIndex ||
         index == kAntiquantScaleIndex) {
@@ -230,7 +245,8 @@ bool IsReshapeTransForScale(int32_t index, const GNodePtr& nodePerInput)
 
     std::size_t firstTransposeAxis = expectedOutputDims.size() - kMiniShapeLen;
     std::size_t secondTransposeAxis = expectedOutputDims.size() - 1;
-    const bool isMxScale = index == kScaleIndex && inputDesc.GetDataType() == DT_FLOAT8_E8M0;
+    const bool isMxScale =
+        index == kScaleIndex && (isMxQuantMode || inputDesc.GetDataType() == DT_FLOAT8_E8M0);
     const bool isMxPertokenScale = index == kPertokenScaleIndex && inputDesc.GetDataType() == DT_FLOAT8_E8M0;
     if (isMxScale) {
         if (expectedOutputDims.size() < kPermScale.size()) {
@@ -247,6 +263,14 @@ bool IsReshapeTransForScale(int32_t index, const GNodePtr& nodePerInput)
         return false;
     }
     std::swap(expectedOutputDims[firstTransposeAxis], expectedOutputDims[secondTransposeAxis]);
+    const bool isFullyDynamicOutput =
+        std::all_of(outputDims.begin(), outputDims.end(), [](int64_t dim) { return IsUnknownDim(dim); });
+    // A dynamic MXFP4 graph loses all Reshape output dimensions before this pass. This exception is only enabled
+    // when the caller has already matched a valid Weight Transpose and the Scale source still proves a unit axis.
+    if (allowFullyDynamicMxFp4Scale && isMxScale && expectedOutputDims.size() == kPermScale.size() &&
+        isFullyDynamicOutput) {
+        return true;
+    }
     for (std::size_t i = 0; i < expectedOutputDims.size(); ++i) {
         if (!IsSameOrBothUnknown(expectedOutputDims[i], outputDims[i])) {
             return false;
@@ -553,10 +577,6 @@ bool CheckEquivalentTransposeNode(GNode& groupedMatmulNode, int32_t index,
         OP_LOGD(kPassName, "Bitcast output must be used by only one node.");
         return false;
     }
-    if (IsReshapeTransForScale(index, pattern.transposeNode)) {
-        return GetOutputConsumerNum(pattern.transposeNode) == 1;
-    }
-
     TensorDesc xDesc;
     TensorDesc weightDesc;
     if (groupedMatmulNode.GetInputDesc(kXIndex, xDesc) != GRAPH_SUCCESS ||
@@ -565,8 +585,12 @@ bool CheckEquivalentTransposeNode(GNode& groupedMatmulNode, int32_t index,
     }
     const bool isWeightQuant =
         ge::GetSizeByDataType(xDesc.GetDataType()) != ge::GetSizeByDataType(weightDesc.GetDataType());
-    const bool isMxQuantMode =
-        isWeightQuant ? IsMxWeightQuantMode(groupedMatmulNode) : IsMxQuantMode(groupedMatmulNode);
+    const bool isMxFp4QuantMode = IsMxFp4QuantMode(groupedMatmulNode);
+    const bool isMxQuantMode = isMxFp4QuantMode ||
+        (isWeightQuant ? IsMxWeightQuantMode(groupedMatmulNode) : IsMxQuantMode(groupedMatmulNode));
+    if (IsReshapeTransForScale(index, pattern.transposeNode, isMxQuantMode, isMxFp4QuantMode)) {
+        return GetOutputConsumerNum(pattern.transposeNode) == 1;
+    }
     return CheckFusionNodePara(pattern.transposeNode, groupedMatmulNode, index) &&
            CheckTransposePara(pattern.transposeNode, index, reshapePattern, isMxQuantMode);
 }
