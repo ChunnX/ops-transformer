@@ -613,30 +613,9 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>传入参数是必选输入、输出或者必选属性，且是空指针。</td>
     </tr>
     <tr>
-      <td rowspan="8">ACLNN_ERR_PARAM_INVALID</td>
-      <td rowspan="8">161002</td>
-      <td>输入变量的数据类型和数据格式不在支持的范围内。</td>
-    </tr>
-    <tr>
-      <td>qN不在[2,4,8,16,32,64,128]范围内，或kvN不为1。</td>
-    </tr>
-    <tr>
-      <td>qD不为512。</td>
-    </tr>
-    <tr>
-      <td>quantMode不为1或2。</td>
-    </tr>
-    <tr>
-      <td>oriMaskMode不为0/3/4，或cmpMaskMode不为0/3。</td>
-    </tr>
-    <tr>
-      <td>oriWinLeft和oriWinRight不在-1或非负数范围内。</td>
-    </tr>
-    <tr>
-      <td>SWA场景cmpRatio不为1，或cmpRatio在CSA/HCA场景下范围不在1到128内。</td>
-    </tr>
-    <tr>
-      <td>layoutQOptional、layoutKvOptional、topkValueMode、cmpSparseIndicesOptional、metadataOptional、sinksOptional、cuSeqlens或seqused相关参数规格不在支持范围内。</td>
+      <td rowspan="1">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="1">161002</td>
+      <td>输入变量的数据类型、数据格式、属性值不在支持的范围内。</td>
     </tr>
   </tbody>
   </table>
