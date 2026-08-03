@@ -489,16 +489,11 @@ def main():
     else:
         cases = REDLINE_CASES
 
-    # Override dataType
-    for c in cases:
-        c["dataType"] = args.dataType
-
     device = f"npu:{DEVICE_ID}"
     torch.npu.set_device(device)
 
     print("=" * 70)
-    print(f"Compressor Grad (unified kernel) — {len(cases)} case(s), "
-          f"dtype={args.dataType}")
+    print(f"Compressor Grad (unified kernel) — {len(cases)} case(s)")
     print(f"  Checks: d_wkv={ENABLE_DWKV_CHECK}  d_wgate={ENABLE_DWGATE_CHECK}  "
           f"d_ape={ENABLE_APE_CHECK}  d_x={ENABLE_DX_CHECK}")
     print("=" * 70)
