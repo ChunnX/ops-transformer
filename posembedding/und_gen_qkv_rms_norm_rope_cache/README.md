@@ -112,5 +112,18 @@
 | Tiling 多核 / UB 切分 | **待实现**（见 `op_host/*_tiling.cpp` 的 TODO） |
 | Kernel 计算实现 | **待实现**（见 `op_kernel/arch35/*_regbase.h` 的 TODO） |
 | aclnn L0/L2 接口 | 已完成 |
-| UT（infershape / tiling / kernel 拉起） | 已完成 |
+| UT（infershape / tiling / aclnn / kernel 拉起） | 已完成 |
 | ST（ATK） | 待补（golden 已就绪，见 `tests/golden.py`） |
+
+> **golden 的正确性依据**：`tests/golden.py` 与需求来源的外部参考实现逐比特一致。
+> 该参考实现属于外部代码、不入本仓，对拍脚本按路径加载它，缺失时自动 SKIP：
+>
+> ```bash
+> export UND_GEN_REF_FILE=/path/to/test_fused_qk_rmsnorm_mrope_store_kv_fp8.py
+> python3 tests/test_golden_vs_reference.py          # T ≤ 10752 的 10 个 case
+> python3 tests/test_golden_vs_reference.py --full   # 追加 T=64K
+> ```
+>
+> 对拍范围限于 `golden_dense` 的 Q/K/V（KV Cache scatter 之前）；scatter 用的
+> `slot_mapping` 方案与参考实现的 block_ids/num_seqlen/q_index 接口不同，无外部基准。
+> 改动 golden 语义后请重跑此脚本。
