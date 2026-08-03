@@ -242,7 +242,7 @@ cann_ops_transformer.quant_flash_attn(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | attn_out | Tensor | 必选 | quant_flash_attn的计算输出。 | bfloat16 | ND | (Q_T, Q_N, D) | × |
-| softmax_lse | Tensor | 可选 | softmax的LSE结果。`return_softmax_lse`为True时，输出shape为(Q_N, Q_T)的Tensor；`return_softmax_lse`为False时，则输出shape为[1]的值为0的Tensor。 | float32 | ND | (Q_N, Q_T) | × |
+| softmax_lse | Tensor | 可选 | softmax的LSE结果。`return_softmax_lse`为True时，输出shape为(Q_N, Q_T)的Tensor；`return_softmax_lse`为False时，则输出空Tensor。 | float32 | ND | (Q_N, Q_T) | × |
 
 ## 约束说明
 
@@ -979,7 +979,7 @@ mask_mode参数解释
             <td>可选属性，默认值为False</td>
             <td rowspan="2">
                 <ul>
-                    <li>当return_softmax_lse为False时，输出shape为[1]的值为0的Tensor</li>
+                    <li>当return_softmax_lse为False时，输出空Tensor</li>
                     <li>当return_softmax_lse为True时，softmax_lse必须非空，输出shape见<a href="#layout匹配关系表">layout匹配关系表</a></li>
                 </ul>
             </td>
