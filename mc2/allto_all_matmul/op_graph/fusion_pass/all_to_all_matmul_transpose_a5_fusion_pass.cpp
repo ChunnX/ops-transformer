@@ -177,7 +177,8 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
                                       info.hasX2Scale ? x2Scale : nullptr, info.hasCommScale ? commScale : nullptr,
                                       info.hasX1Offset ? x1Offset : nullptr, info.hasX2Offset ? x2Offset : nullptr, group,
                                       worldSize);
-    auto graph = graphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
+    // all2all_out 为 OPTIONAL：pattern/replacement 只挂主输出 y，避免 SetOutput(null) assert
+    auto graph = graphBuilder.BuildAndReset({mc2.y});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
     pattern->CaptureTensor({*mc2.y.GetProducer(), 0}).CaptureTensor({*transpose.GetProducer(), 0});
     return pattern;
@@ -494,15 +495,21 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
         return nullptr;
     }
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End to GetMc2ReplaceAttrs.");
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start to AlltoAllMatmul group %s, comm_mode %s.", attrs.group.GetString(), attrs.comm_mode.GetString());
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start to AlltoAllMatmul group %s, comm_mode %s, alltoall_out_flag=%d.",
+              attrs.group.GetString(), attrs.comm_mode.GetString(), static_cast<int>(attrs.alltoall_out_flag));
     auto mc2 = ge::es::AlltoAllMatmul(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
                                       inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset, inputTensors.rX2Offset,
                                       attrs.group.GetString(), attrs.world_size, attrs.all2all_axes, attrs.y_dtype, attrs.x1_quant_mode,
                                       attrs.x2_quant_mode, attrs.comm_quant_mode, attrs.x1_quant_dtype, attrs.comm_quant_dtype,
                                       attrs.transpose_x1, attrs.transpose_x2, attrs.group_size, attrs.comm_mode.GetString(), attrs.alltoall_out_flag);
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End to AlltoAllMatmul.");
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End to AlltoAllMatmul, all2all_out holder=%p.",
+              static_cast<const void *>(mc2.all2all_out.GetCTensorHolder()));
 
-    return replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
+    // 与 MakePattern / MatmulAlltoAll 一致：只暴露 y；强制挂 all2all_out 时 EsSetGraphOutput 可能对空 holder assert
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start BuildAndReset with y only.");
+    auto replaceGraph = replaceGraphBuilder.BuildAndReset({mc2.y});
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End BuildAndReset, graph=%p.", static_cast<const void *>(replaceGraph.get()));
+    return replaceGraph;
 }
 
 static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
