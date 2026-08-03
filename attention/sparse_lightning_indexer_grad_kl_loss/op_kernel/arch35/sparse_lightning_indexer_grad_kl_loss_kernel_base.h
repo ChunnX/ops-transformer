@@ -123,14 +123,16 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
         const auto &baseInfo = tilingData->baseParams;
         int64_t t1Size = baseInfo.get_t1Size();
         int64_t t2Size = baseInfo.get_t2Size();
-        int64_t actualLen = actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
-        int64_t actualKLen = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
+        int64_t tlQryGmSize = actualSeqLengthsQueryGm.GetSize();
+        int64_t tlKeyGmSize = actualSeqLengthsKeyGm.GetSize();
+        int64_t actualLen = (tlQryGmSize > 0) ? actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1) : t1Size;
+        int64_t actualKLen = (tlKeyGmSize > 0) ? actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1) : t2Size;
         int64_t totalAivNum = baseInfo.get_totalAivNum();
 
         AscendC::PRINTF("[luo] slig_tail_pad core aivIdx=%u aicIdx=%u, t1Size=%ld actualLen=%ld t2Size=%ld actualKLen=%ld totalAivNum=%ld\n",
             constInfo.aivIdx, constInfo.aicIdx, t1Size, actualLen, t2Size, actualKLen, totalAivNum);
 
-        if (t1Size > actualLen) {
+        if (t1Size > actualLen && totalAivNum > 0) {
             int64_t t1PadLen = t1Size - actualLen;
             int64_t splitT1PadLen = t1PadLen / totalAivNum;
             int64_t remainT1PadLen = t1PadLen % totalAivNum;
@@ -165,7 +167,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
                         static_cast<int64_t>(constInfo.dSizeQueryIndex), dWOutputOffset);
             }
         }
-        if (t2Size > actualKLen) {
+        if (t2Size > actualKLen && totalAivNum > 0) {
             int64_t t2PadLen = t2Size - actualKLen;
             int64_t splitT2PadLen = t2PadLen / totalAivNum;
             int64_t remainT2PadLen = t2PadLen % totalAivNum;
@@ -758,7 +760,11 @@ SparseLightningIndexerGradKLLossKernelBase<CubeBlockType, VecBlockType>::InitWor
     offset += gatherSYOffset;
     scatterAddResGm.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
     if constexpr (LAYOUT_Q == SLILayout::TND) {
-        constInfo.totalCost = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
+        if (actualSeqLengthsKeyGm.GetSize() > 0) {
+            constInfo.totalCost = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
+        } else {
+            constInfo.totalCost = constInfo.bSize * constInfo.s2Size;
+        }
     } else if constexpr (LAYOUT_Q == SLILayout::BSND) {
         constInfo.totalCost = constInfo.bSize * constInfo.s2Size;
     }

@@ -181,10 +181,12 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Init(
         auto &baseInfo = tilingData->baseParams;
         int64_t t1Size = baseInfo.t1Size;
         int64_t t2Size = baseInfo.t2Size;
-        int64_t actualLen = actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
-        int64_t actuaKlLen = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
+        int64_t tlQryGmSize = actualSeqLengthsQueryGm.GetSize();
+        int64_t tlKeyGmSize = actualSeqLengthsKeyGm.GetSize();
+        int64_t actualLen = (tlQryGmSize > 0) ? actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1) : t1Size;
+        int64_t actuaKlLen = (tlKeyGmSize > 0) ? actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1) : t2Size;
         int64_t totalAivNum = baseInfo.totalAivNum;
-        if (t1Size > actualLen) {
+        if (t1Size > actualLen && totalAivNum > 0) {
             // init dq dw
             int64_t t1PadLen = t1Size - actualLen;
             int64_t splitT1PadLen = t1PadLen / totalAivNum;
@@ -197,7 +199,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Init(
             AscendC::InitOutput<OUT_T>(dQueryIndexGm[dQOutputOffset], currentCoreT1PadLen * constInfo.gSizeQueryIndex * constInfo.dSizeQueryIndex, 0);
             AscendC::InitOutput<W_T>(dWeightGm[dWOutputOffset], currentCoreT1PadLen * constInfo.gSizeQueryIndex, 0);
         }
-        if (t2Size > actuaKlLen) {
+        if (t2Size > actuaKlLen && totalAivNum > 0) {
             // init dk
             int64_t t2PadLen = t2Size - actuaKlLen;
             int64_t splitT2PadLen = t2PadLen / totalAivNum;
@@ -280,7 +282,11 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::InitWorkspace
 
     int64_t bS2Len = 0;
     if constexpr (LAYOUT_T == SLILayout::TND) {
-        bS2Len = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
+        if (actualSeqLengthsKeyGm.GetSize() > 0) {
+            bS2Len = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
+        } else {
+            bS2Len = constInfo.bSize * constInfo.s2Size;
+        }
     } else {
         bS2Len = constInfo.bSize * constInfo.s2Size;
     }
