@@ -118,7 +118,7 @@
 
 调用本算子前，请确保已本地下载代码仓，并安装好如下基础依赖、NPU驱动和固件已安装。
 
-本项目源码编译用到的依赖如下，请参考[算子调用](../../../docs/zh/invocation/quick_op_invocation.md)文档中的**前提条件**和**环境准备**章节，完成环境依赖的下载和CANN包的准备，其中，**环境准备**章节中的**安装社区版CANN ops-math包**部分可以跳过。
+本项目源码编译用到的依赖如下，请参考[算子调用](../../../docs/zh/invocation/quick_op_invocation.md)文档中的**前提条件**和**环境准备**章节，完成环境依赖的下载和CANN包的准备，其中，**环境准备**章节中的**安装最新版CANN ops-math包**部分可以跳过。
 
 **编译执行**
 
@@ -165,7 +165,7 @@
 
 - **执行算子样例**
 
-    - 本示例算子目前仅支持基于单算子API执行方式调用算子，即[两段式aclnn接口](../../../docs/zh/context/两段式接口.md)调用，本示例的aclnn接口定义在[op_api](../all_gather_add/op_host/op_api)路径下。
+    - 本示例算子目前仅支持基于单算子API执行方式调用算子，即[两段式aclnn接口](../../../docs/zh/context/two_phase_api.md)调用，本示例的aclnn接口定义在[op_api](../all_gather_add/op_host/op_api)路径下。
 
       如需执行该样例算子，需按以下步骤操作：
 
@@ -207,7 +207,7 @@
         [ERROR] HcclCommInit failed. ret = 4
         ```
 
-      此时需要设置[ASCEND_RT_VISIBLE_DEVICES](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/maintenref/envvar/envref_07_0028.html)环境变量来指定实际执行算子的昇腾AI处理器：
+      此时需要设置[ASCEND_RT_VISIBLE_DEVICES](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/maintenref/envvar/envref_07_0028.html)环境变量来指定实际执行算子的昇腾AI处理器：
 
         ```bash
         # 查看各Device运行情况

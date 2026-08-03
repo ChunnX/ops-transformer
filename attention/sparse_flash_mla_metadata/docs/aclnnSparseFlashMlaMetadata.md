@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-| 产品                                                     | 是否支持 |
-| :------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                   |    √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
-| <term>Atlas 推理系列产品</term>                          |    ×    |
-| <term>Atlas 训练系列产品</term>                          |    ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -63,7 +73,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnSparseFlashMlaMetadataGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnSparseFlashMlaMetadata`执行实际计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用`aclnnSparseFlashMlaMetadataGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnSparseFlashMlaMetadata`执行实际计算。
 
 ```c++
 aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
@@ -436,15 +446,21 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
   </tbody>
   </table>
 
+  <!-- npu="A3,910b" id7 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：numHeadsQ/numHeadsKv支持1、2、4、8、16、32、64、128，oriMaskMode仅支持4，cmpMaskMode仅支持3，oriWinLeft仅支持127，oriWinRight仅支持0。
+  <!-- end id7 -->
+  <!-- npu="950" id8 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：numHeadsQ/numHeadsKv不支持1，oriMaskMode仅支持4，cmpMaskMode仅支持3，oriWinLeft仅支持127，oriWinRight仅支持0。
+
+  <!-- end id8 -->
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
+  <!-- npu="A3,910b" id9 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
     <table style="undefined;table-layout: fixed;width: 1200px"><colgroup>
@@ -502,6 +518,8 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     </tbody>
     </table>
 
+  <!-- end id9 -->
+  <!-- npu="950" id10 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
 
     <table style="undefined;table-layout: fixed;width: 1200px"><colgroup>
@@ -556,6 +574,8 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     </tbody>
     </table>
 
+  <!-- end id10 -->
+
 ## aclnnSparseFlashMlaMetadata
 
 - **参数说明**
@@ -597,7 +617,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -614,10 +634,9 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
   - `cmpResidualKvOptional`为`aclnnSparseFlashMlaMetadata`和`aclnnSparseFlashMla`的可选输入，在CSA、HCA、cmpRatio不等于1且cmpMaskMode为3场景必传，用于恢复cmp侧mask使用的压缩前长度。
   - 该算子为AICPU算子，在Host侧CPU上执行，不占用NPU计算资源。
 
-
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 /**
@@ -742,7 +761,7 @@ struct ArgContext {
     Tensor metadata {};
 };
 
-int64_t GetShapeSize(const std::vector<int64_t>& shape) 
+int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -751,7 +770,7 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape)
     return shapeSize;
 }
 
-aclnnStatus Init(int32_t deviceId, aclrtStream* stream) 
+aclnnStatus Init(int32_t deviceId, aclrtStream* stream)
 {
     // 固定写法，初始化
     auto ret = aclInit(nullptr);
@@ -763,7 +782,7 @@ aclnnStatus Init(int32_t deviceId, aclrtStream* stream)
     return ACL_SUCCESS;
 }
 
-void Finalize(int32_t deviceId, aclrtStream stream) 
+void Finalize(int32_t deviceId, aclrtStream stream)
 {
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
@@ -916,7 +935,7 @@ int main() {
     ret = aclnnSparseFlashMlaMetadataGetWorkspaceSize(
         context.cuSeqlensQOptional.data, context.cuSeqlensOriKvOptional.data, context.cuSeqlensCmpKvOptional.data,
         context.sequsedQOptional.data, context.sequsedOriKvOptional.data, context.sequsedCmpKvOptional.data,
-        context.cmpResidualKvOptional.data, context.oriTopkLengthOptional.data, context.cmpTopkLengthOptional.data, 
+        context.cmpResidualKvOptional.data, context.oriTopkLengthOptional.data, context.cmpTopkLengthOptional.data,
         context.numHeadsQ, context.numHeadsKv, context.headDim, context.batchSize, context.maxSeqlenQ,
         context.maxSeqlenOriKv, context.maxSeqlenCmpKv, context.oriTopk, context.cmpTopk, context.cmpRatio,
         context.oriMaskMode, context.cmpMaskMode, context.oriWinLeft, context.oriWinRight, context.layoutQOptional,
@@ -934,7 +953,7 @@ int main() {
             workspaceAddr = nullptr;
         }
     });
-    
+
     // 调用aclnnSparseFlashMlaMetadata第二段接口
     ret = aclnnSparseFlashMlaMetadata(workspaceAddr, workspaceSize, executor, stream);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "aclnnSparseFlashMlaMetadata failed. ERROR: %d\n", ret);

@@ -26,32 +26,24 @@
 using namespace matmul;
 
 TEMPLATE_INTF
-__aicore__ inline int64_t CalculateActualS1Size(RunParamStr &runParam, const ConstInfo &constInfo, int32_t bIdx,
-                                                __gm__ int32_t *prefixSeqQlenAddr)
+__aicore__ inline int64_t CalculateActualS1Size(RunParamStr &, const ConstInfo &, int32_t bIdx,
+                                                __gm__ int32_t *cuSeqQlenAddr)
 {
     int64_t actualS1Size = 0;
     if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
-        if (constInfo.isActualLenDimsNull) {
-            actualS1Size = constInfo.s1Size;
-        } else {
-            actualS1Size = prefixSeqQlenAddr[bIdx + 1] - prefixSeqQlenAddr[bIdx];
-        }
+        actualS1Size = cuSeqQlenAddr[bIdx + 1] - cuSeqQlenAddr[bIdx];
     }
 
     return actualS1Size;
 }
 
 TEMPLATE_INTF
-__aicore__ inline int64_t CalculateActualS2Size(RunParamStr &runParam, const ConstInfo &constInfo, int32_t bIdx,
-                                                __gm__ int32_t *prefixSeqKvlenAddr)
+__aicore__ inline int64_t CalculateActualS2Size(RunParamStr &, const ConstInfo &, int32_t bIdx,
+                                                __gm__ int32_t *seqUsedKvlenAddr)
 {
     int64_t actualS2Size = 0;
     if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
-        if (constInfo.isActualLenDimsNull) {
-            actualS2Size = constInfo.s2Size;
-        } else {
-            actualS2Size = prefixSeqKvlenAddr[bIdx + 1] - prefixSeqKvlenAddr[bIdx];
-        }
+        actualS2Size = seqUsedKvlenAddr[bIdx];
     }
     return actualS2Size;
 }
@@ -59,13 +51,13 @@ __aicore__ inline int64_t CalculateActualS2Size(RunParamStr &runParam, const Con
 TEMPLATE_INTF
 __aicore__ inline void ComputeParamBatch(RunParamStr &runParam, const ConstInfo &constInfo,
                                          const AttenMaskInfo &attenMaskInfo, GlobalTensor<INPUT_T> &keyGm,
-                                         __gm__ int32_t *prefixSeqQlenAddr, __gm__ int32_t *prefixSeqKvlenAddr)
+                                         __gm__ int32_t *cuSeqQlenAddr, __gm__ int32_t *seqUsedKvlenAddr)
 {
     // 计算实际序列长度
     runParam.actualS1Size =
-        CalculateActualS1Size<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, prefixSeqQlenAddr);
+        CalculateActualS1Size<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, cuSeqQlenAddr);
     runParam.actualS2Size =
-        CalculateActualS2Size<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, prefixSeqKvlenAddr);
+        CalculateActualS2Size<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, seqUsedKvlenAddr);
 
     if constexpr (hasAtten) {
         runParam.preTokensPerBatch = attenMaskInfo.preTokens;
@@ -79,17 +71,13 @@ __aicore__ inline void ComputeParamBatch(RunParamStr &runParam, const ConstInfo 
     }
     // 计算query偏移量
     if constexpr (layout == BSALayout::TND) {
-        runParam.qBScalarOffset = prefixSeqQlenAddr[runParam.boIdx] * constInfo.n2G;
+        runParam.qBScalarOffset = cuSeqQlenAddr[runParam.boIdx] * constInfo.n2G;
         runParam.qBOffset = runParam.qBScalarOffset * constInfo.dSize;
     } else if constexpr (layout == BSALayout::NTD) {
         runParam.qBScalarOffset =
-            constInfo.t1Size * (runParam.n2oIdx * constInfo.gSize + runParam.goIdx) + prefixSeqQlenAddr[runParam.boIdx];
+            constInfo.t1Size * (runParam.n2oIdx * constInfo.gSize + runParam.goIdx) + cuSeqQlenAddr[runParam.boIdx];
         runParam.qBOffset = runParam.qBScalarOffset * constInfo.dSize;
     }
-
-    // 暂时用不到，但保留的参数计算
-    runParam.b1SSAttenMaskOffset =
-        runParam.boIdx * (uint64_t)attenMaskInfo.attenMaskS1Size * (uint64_t)attenMaskInfo.attenMaskS2Size;
 }
 
 TEMPLATE_INTF
@@ -135,9 +123,9 @@ __aicore__ inline void ComputeSouterParam(RunParamStr &runParam, const ConstInfo
 
 TEMPLATE_INTF
 __aicore__ inline void LoopSOuterOffsetInit(RunParamStr &runParam, const ConstInfo &constInfo, int32_t bIdx,
-                                            __gm__ int32_t *prefixSeqQlenAddr)
+                                            __gm__ int32_t *cuSeqQlenAddr)
 {
-    int64_t seqOffset = prefixSeqQlenAddr[bIdx];
+    int64_t seqOffset = cuSeqQlenAddr[bIdx];
 
     if ASCEND_IS_AIC {
         if constexpr (layout == BSALayout::TND) {
@@ -155,12 +143,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr &runParam, const ConstIn
                                           runParam.n2oIdx * constInfo.gDv + runParam.goIdx * constInfo.dSizeV;
         }
         if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
-            if (constInfo.isGqa) {
-                runParam.softmaxLseOffset = runParam.n1oIdx * constInfo.t1Size + seqOffset + runParam.sOuterOffset;
-            } else {
-                runParam.softmaxLseOffset = seqOffset * constInfo.n2G + runParam.sOuterOffset * constInfo.n2G +
-                                            runParam.n2oIdx * constInfo.gSize + runParam.goIdx;
-            }
+            runParam.softmaxLseOffset = runParam.n1oIdx * constInfo.t1Size + seqOffset + runParam.sOuterOffset;
         }
     }
 }
@@ -175,11 +158,11 @@ __aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minVa
 
 TEMPLATE_INTF
 __aicore__ inline void ComputeParamS1(RunParamStr &runParam, const ConstInfo &constInfo, uint32_t sOuterLoopIdx,
-                                      __gm__ int32_t *prefixSeqQlenAddr)
+                                      __gm__ int32_t *cuSeqQlenAddr)
 {
     // 后续的函数依赖 sOuterOffset
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);
-    LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, prefixSeqQlenAddr);
+    LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, cuSeqQlenAddr);
 }
 
 TEMPLATE_INTF
@@ -198,7 +181,6 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr &runParam, RunInfo &
     runInfo.boIdx = runParam.boIdx;
     runInfo.preTokensPerBatch = runParam.preTokensPerBatch;
     runInfo.nextTokensPerBatch = runParam.nextTokensPerBatch;
-    runInfo.b1SSAttenMaskOffset = runParam.b1SSAttenMaskOffset;
     runInfo.actualS1Size = runParam.actualS1Size;
     runInfo.actualS2Size = runParam.actualS2Size;
     runInfo.softmaxLseOffset = runParam.softmaxLseOffset;

@@ -22,11 +22,14 @@
 #include "../engram_fetch_tiling_data.h"
 #include "../engram_fetch_tiling_key.h"
 #include "engram_fetch_arch35.h"
+#include "engram_fetch_train_arch35.h"
 
 using namespace Mc2Kernel;
 
 template <uint32_t EngramFetchMode>
-__global__ __aicore__ void engram_fetch(GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched, GM_ADDR workspaceGM,
+__global__ __aicore__ void engram_fetch(GM_ADDR commContext, GM_ADDR indices, GM_ADDR localStorageAddr, GM_ADDR fetched,
+                                        GM_ADDR permOut, GM_ADDR sendCountsOut, GM_ADDR recvCountsOut,
+                                        GM_ADDR recvLocalEntryOut, GM_ADDR numRecvOut, GM_ADDR workspaceGM,
                                         GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(EngramFetchTilingData);
@@ -36,6 +39,12 @@ __global__ __aicore__ void engram_fetch(GM_ADDR commContext, GM_ADDR indices, GM
         AscendC::TPipe pipe;
         EngramFetchArch35 op;
         op.Init(commContext, indices, fetched, workspaceGM, &pipe, &tilingData);
+        op.Process();
+    } else if constexpr (EngramFetchMode == ENGRAM_FETCH_TRAIN_MODE) {
+        AscendC::TPipe pipe;
+        EngramFetchTrainArch35 op;
+        op.Init(commContext, indices, fetched, permOut, sendCountsOut, recvCountsOut, recvLocalEntryOut, numRecvOut,
+                workspaceGM, localStorageAddr, &pipe, &tilingData);
         op.Process();
     }
 }

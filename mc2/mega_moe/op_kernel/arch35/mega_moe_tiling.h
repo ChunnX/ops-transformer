@@ -79,8 +79,9 @@ constexpr uint32_t DEQUANT_FP32_SCALE_EXPANSION = 4U;
  * 保守验证。分别取各 tensor 的独立上限时：
  *   recvFixedBytes             <= 32 + 8192 + 32768 + 4096 = 45088B；
  *   route batch tensor         = 12288 / 8 + 2 * 12288 * 4 = 99840B；
- *   6 个 dispatch slot         = 6 * (8448 + 32) = 50880B；
- *   合计 195808B，约 191.2KB；当前支持平台动态获取的 UB 预算可容纳该布局。
+ *   6 个 dispatch slot         <= 6 * (8192B token + 256B scale + 128B weight + 32B triple)
+ *                               = 51648B；
+ *   合计 196576B，约 192KB；当前支持平台动态获取的 UB 预算可容纳该布局。
  * 因此该基准在所有合法规格下至少支持双 buffer，且最坏规格也能支持当前上限 6 个 buffer。若修改
  * MAX_H、MAX_MOE_EXPERT_NUM、worldSize/expertPerRank 上限、DispatchBuffInit 固定 tensor 布局或
  * dispatch buffer 数量上限，必须重新验证该前提。
@@ -107,12 +108,12 @@ constexpr int32_t BASE_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
  * 12288 的成立前提按最坏合法规格 k=8192、moeExpertNum=2048、N=6 保守验证：
  *   resetTensor                 <= 8KB；
  *   mxTempTensor                = 2KB；
- *   2 个 xOutTensor             = 2 * (8192B data + 256B scale) = 16.5KB；
+ *   2 个 xOutTensor             <= 2 * (8192B token + 256B scale + 128B weight) = 17152B；
  *   2 个 xInTensor              = 2 * 8192 * sizeof(bfloat16_t) = 32KB；
  *   sendCntAccTensor            <= Align32(2048 * sizeof(int32_t)) = 8KB；
  *   2 个 route int32 tensor     = 2 * 12288 * sizeof(int32_t) = 96KB；
  *   6 个 mask buffer            = 6 * (12288 / 8 + 32) = 9408B；
- *   合计 175808B，约 172KB；当前支持平台动态获取的 UB 预算可容纳该布局。
+ *   合计 176064B，约 172KB；当前支持平台动态获取的 UB 预算可容纳该布局。
  * 因此基准 batch 在所有合法规格下至少支持双 buffer，且最坏规格也能支持当前上限 6 个 buffer。
  * 若修改 MAX_H、MAX_MOE_EXPERT_NUM、DISPATCH_RESET_BATCH、Quant buffer 布局或 mask buffer 数量上限，
  * 必须重新验证该前提。
@@ -132,6 +133,9 @@ constexpr int32_t BASE_SEND_ROUTE_ITEMS_PER_BATCH = 12288;
  * 元素类型，需要按 targetResetUbBytes / sizeof(elementType) 重新计算。
  */
 constexpr int32_t DISPATCH_RESET_BATCH = 2048;
+
+// GMM2 M 方向的一个 tile 对应一个 combine token group；同步 slot 的粒度必须与该 tile 保持一致。
+constexpr uint32_t COMBINE_TOKEN_GROUP_SIZE = 256U;
 
 // Adaptive buffer configs written by host tiling and consumed by the kernel.
 struct MegaMoeUnpermuteBufferConfig {
@@ -156,7 +160,6 @@ struct MegaMoeSendMaskBufferConfig {
     int32_t bufferCount;
     uint32_t bufferBytes;
 };
-
 struct MegaMoeTilingData {
     uint32_t expertPerRank;    // 本卡 routed weight 容量，可大于实际参与路由的专家数
     uint32_t moeExpertPerRank; // 本卡实际参与 topK 路由的 MoE 专家数
@@ -175,6 +178,9 @@ struct MegaMoeTilingData {
     int64_t topoType;
     uint32_t sharedExpertNum; // 独立 dense 路径的共享专家数，不进入 topK/SendMask expert id 空间
 
+    // 每个 routed MoE expert 固定预留的 GMM2 -> Combine 同步 slot 数。
+    uint64_t combineSyncSlotCountPerExpert;
+
     // Dispatch 的分核不改变 UB 布局，所有 AIV core 共用一套配置；对应 kernel DispatchBuffInit。
     MegaMoeDispatchBufferConfig dispatchBufferConfig;
     // SendMask 按 expertId = aivCoreId + n * blockAivNum 分核，前 remainder 个 core 会多处理一个 expert；
@@ -187,5 +193,13 @@ struct MegaMoeTilingData {
     MegaMoeUnpermuteBufferConfig unpermuteConfigForFullTokenChunk;
     MegaMoeUnpermuteBufferConfig unpermuteConfigForTailTokenChunk;
     uint32_t unpermuteFullTokenChunkCoreCount;
+    // Keep scheduling extensions at the tail to preserve every existing field offset.
+    int32_t topkWeightsPrefetch;
+    uint32_t maxTilesPerExpert; // GMM1 tile 状态位区每 expert 的容量，按交织调度的完整 N 上界预留
+    uint8_t actMode;            // 激活模式：0=swiglu, 1=situ
+    uint8_t actSubMode;         // 激活子选项：situ下 0=默认, 1=linear; swiglu下忽略
+    float activationAlpha;      // linear_beta, 默认 1.0
+    float activationBeta;       // beta, 默认 1.0
+    uint32_t expertsPerBatch;
 };
 #endif

@@ -193,15 +193,13 @@ public:
                     cg.length = tiling_->maxGroupLength;
                 }
                 bool useInitialState = (pos == seqStart);
-                auto curState = (useInitialState) ?
-                                initState_[bid * tiling_->stateStride0] :
-                                finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
+                auto curState = (useInitialState) ? initState_[bid * tiling_->stateStride0] :
+                                                    finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk];
                 // compute this chunk group
                 RunStage1(cg);
                 SyncAll<false>();
 
-                RunStage2(cg, curState,
-                          finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk], useInitialState);
+                RunStage2(cg, curState, finalState_[bid * tiling_->nv * tiling_->dv * tiling_->dk], useInitialState);
                 SyncAll<false>();
 
                 RunStage3(cg);
@@ -211,19 +209,19 @@ public:
     }
 
 private:
-    __aicore__ inline void RunStage1(const ChunkGroup& cg)
+    __aicore__ inline void RunStage1(const ChunkGroup &cg)
     {
-        GDRStageOneInitParams<vInnerType> initStageOneParams {query_, key_, value_, beta_, g_,
-                                                gCum_, kCumDecay_, vInner_, qPrime_, kg_, qkt_,
-                                                stageWsAddr_, stageOneMask_, cg, gFlag_};
+        GDRStageOneInitParams<vInnerType> initStageOneParams{query_, key_,         value_,        beta_,   g_,
+                                                             gCum_,  kCumDecay_,   vInner_,       qPrime_, kg_,
+                                                             qkt_,   stageWsAddr_, stageOneMask_, cg,      gFlag_};
         stageOneOp_.Init(initStageOneParams, pipe_, tiling_);
         stageOneOp_.Process();
         pipe_->Reset();
     }
 
     template <typename sType>
-    __aicore__ inline void RunStage2(ChunkGroup& cg, GlobalTensor<sType> stateIn,
-                                     GlobalTensor<sType> stateOut, bool isFirstGroup)
+    __aicore__ inline void RunStage2(ChunkGroup &cg, GlobalTensor<sType> stateIn, GlobalTensor<sType> stateOut,
+                                     bool isFirstGroup)
     {
         Stage2<sType> stageTwoOp;
         StageTwoParams<sType> initStageTwoParams;
@@ -261,7 +259,7 @@ private:
         pipe_->Reset();
     }
 
-    __aicore__ inline void RunStage3(ChunkGroup& cg)
+    __aicore__ inline void RunStage3(ChunkGroup &cg)
     {
         if ASCEND_IS_AIC {
             stage3Mm_.Init(&tiling_->matmulTilingFp32, pipe_);
@@ -274,11 +272,14 @@ private:
         }
         Stage3 stageThreeOp;
         StageThreeParams initStageThreeParams{
-            qkt_, gCum_, vInnerBf16,
-            stageThreeMask_[int(GetBlockIdx() / 2) * tiling_->chunkSize * tiling_->chunkSize],
+            qkt_,         gCum_,
+            vInnerBf16,   stageThreeMask_[int(GetBlockIdx() / 2) * tiling_->chunkSize * tiling_->chunkSize],
             stageWsAddr_, out_[cg.startPos * tiling_->nv * tiling_->dv],
-            &stage3Mm_, pipe_, &cg, tiling_->scale,
-            tiling_->nv, tiling_->nk, tiling_->dv, tiling_->dk, gFlag_};
+            &stage3Mm_,   pipe_,
+            &cg,          tiling_->scale,
+            tiling_->nv,  tiling_->nk,
+            tiling_->dv,  tiling_->dk,
+            gFlag_};
         stageThreeOp.Init(&initStageThreeParams, tiling_->aiCoreNum);
         stageThreeOp.Process();
         pipe_->Reset();
@@ -299,21 +300,21 @@ private:
     GlobalTensor<int32_t> actualSeqLens_;
 
     GlobalTensor<lowType> curStateBf16_;
-    GlobalTensor<lowType> vInnerBf16_;   // (Nv, maxGroupLength, Dv) BF16 vInner for stage3 (FP32 path only)
+    GlobalTensor<lowType> vInnerBf16_; // (Nv, maxGroupLength, Dv) BF16 vInner for stage3 (FP32 path only)
 
-    GlobalTensor<highType> gCum_;      // (Nv, maxGroupLength)
-    GlobalTensor<lowType> kCumDecay_;     // (Nv, maxGroupLength, Dk)
-    GlobalTensor<vInnerType> vInner_;     // (Nv, maxGroupLength, Dv) primary vInner
-    GlobalTensor<lowType> qPrime_;        // (Nv, maxGroupLength, Dk)
-    GlobalTensor<lowType> attnInter_;    // (Nv, maxGroupLength, Dv)
-    GlobalTensor<lowType> kg_;           // (Nv, maxGroupLength, Dk)
-    GlobalTensor<lowType> qkt_;          // (Nv, maxGroupLength, C)
+    GlobalTensor<highType> gCum_;     // (Nv, maxGroupLength)
+    GlobalTensor<lowType> kCumDecay_; // (Nv, maxGroupLength, Dk)
+    GlobalTensor<vInnerType> vInner_; // (Nv, maxGroupLength, Dv) primary vInner
+    GlobalTensor<lowType> qPrime_;    // (Nv, maxGroupLength, Dk)
+    GlobalTensor<lowType> attnInter_; // (Nv, maxGroupLength, Dv)
+    GlobalTensor<lowType> kg_;        // (Nv, maxGroupLength, Dk)
+    GlobalTensor<lowType> qkt_;       // (Nv, maxGroupLength, C)
     // mask矩阵
-    GlobalTensor<highType> stageOneMask_;          // (Nv, maxGroupLength, C)
-    GlobalTensor<highType> stageThreeMask_;          // (Nv, maxGroupLength, C)
-    GM_ADDR stageWsAddr_;                 // temporary space addr for stages
+    GlobalTensor<highType> stageOneMask_;   // (Nv, maxGroupLength, C)
+    GlobalTensor<highType> stageThreeMask_; // (Nv, maxGroupLength, C)
+    GM_ADDR stageWsAddr_;                   // temporary space addr for stages
 
-    TBuf<TPosition::VECCALC> tmpBuff_;  // 构造mask矩阵
+    TBuf<TPosition::VECCALC> tmpBuff_; // 构造mask矩阵
 
     // Matmul objects
     StageOneMTT<bfloat16_t> stage1MmBf16_;
@@ -328,4 +329,4 @@ private:
 };
 
 } // namespace ChunkGatedDeltaRule
-#endif  // CHUNK_GATED_DELTA_RULE_H
+#endif // CHUNK_GATED_DELTA_RULE_H

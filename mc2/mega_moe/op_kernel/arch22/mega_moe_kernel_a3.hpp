@@ -980,16 +980,24 @@ private:
     CATLASS_DEVICE
     void ResetTokenPerExpert(int32_t num)
     {
-        if (coreIdx != coreNum - 1) {
+        if (coreIdx != coreNum - 1 || num <= 0) {
             return;
         }
+        // The full EP-by-padded-expert region can exceed UB, so reuse one UB-sized zero tile for all GM chunks.
+        int32_t resetNumPerLoop = num < UB_MOVE_NUM ? num : UB_MOVE_NUM;
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
         AscendC::LocalTensor<int32_t> tmp = resource.ubBuf.template GetBufferByByte<int32_t>(0);
-        AscendC::Duplicate(tmp, 0, num);
+        AscendC::Duplicate(tmp, 0, resetNumPerLoop);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        AscendC::DataCopy(tokenPerExpert, tmp, num);
+        for (int32_t offset = 0; offset < num; offset += resetNumPerLoop) {
+            int32_t remainingNum = num - offset;
+            int32_t currentNum = remainingNum < resetNumPerLoop ? remainingNum : resetNumPerLoop;
+            AscendC::DataCopy(tokenPerExpert[offset], tmp, currentNum);
+        }
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
     }
 
     CATLASS_DEVICE
@@ -1516,7 +1524,7 @@ private:
                     GemmCoord realTileShape{actualm, actualBlockShape.n(), 1};
                     if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
                         blockEpilogue(gmC2, gmPerTokenScale2, reinterpret_cast<__gm__ float *>(params.ptrBias2),
-                                      realTileCoord, realTileShape, groupIdx, preSrcExpertSum, preSumBeforeRank,
+                                      realTileCoord, realTileShape, groupIdx, preSrcExpertSum * 2, preSumBeforeRank,
                                       params.listLen);
                     } else if constexpr (std::is_same_v<ElementB, int8_t>) {
                         blockEpilogue(gmC2, gmPerTokenScale2, realTileCoord, realTileShape, groupIdx, preSrcExpertSum,
@@ -1528,7 +1536,11 @@ private:
                 }
             }
 
-            preSrcExpertSum += currentExpertM;
+            if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
+                preSrcExpertSum += currentExpertM / 2;
+            } else {
+                preSrcExpertSum += currentExpertM;
+            }
             startCoreIdx = (startCoreIdx + coreLoops) % aicCoreNum;
         }
 
@@ -1644,8 +1656,8 @@ private:
 
             // 尾部：CrossRankSync + tokenPerExpert
             int64_t tailSyncSize = static_cast<int64_t>(shmem.TailReservedSize());
-            int64_t tokenPerExpertSize =
-                EP * AlignUp(EP * MAX_EXPERTS_PER_RANK, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
+            int64_t tokenPerExpertSize = EP * AlignUp(EP * MAX_EXPERTS_PER_RANK + 1, ALIGN_128) *
+                static_cast<int64_t>(sizeof(int32_t));
 
             // A: dispatch 数据区（量化时含行内 scale）
             int64_t offsetASize = bs * topK * (RoutingIsQuant ? (h + ALIGN_512) : h * sizeof(int16_t));

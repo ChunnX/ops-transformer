@@ -33,7 +33,15 @@ const aclTensor *GroupedMatmulFinalizeRouting(const aclTensor *x1, const aclTens
     DataType outType = DataType::DT_FLOAT;
 
     Format format = Format::FORMAT_ND;
+    if (executor == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_CREATE_EXECUTOR, "GroupedMatmulFinalizeRouting executor is nullptr.");
+        return nullptr;
+    }
     auto output = executor->AllocTensor(outType, format, format);
+    if (output == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensor for GroupedMatmulFinalizeRouting output failed.");
+        return nullptr;
+    }
 
     // 适配原型接口 offset//作为grouplist
     auto ret = INFER_SHAPE(GroupedMatmulFinalizeRouting,

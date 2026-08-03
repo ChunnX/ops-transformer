@@ -38,15 +38,15 @@ constexpr uint32_t OUTPUT_INDEX_1 = 1;
 constexpr uint32_t OUTPUT_INDEX_2 = 2;
 
 ge::graphStatus InferShapeSparseFlashAttention(gert::InferShapeContext *context)
-{  
-    OP_CHECK_IF(context == nullptr, OP_LOGE_WITH_INVALID_INPUT("SparseFlashAttention", "InferShapeContext"),
-               return ge::GRAPH_FAILED);
+{
+    OP_CHECK_IF(context == nullptr, OP_LOGE("SparseFlashAttention", "InferShapeContext is nullptr"),
+                return ge::GRAPH_FAILED);
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
 
     const gert::Shape *keyShape = context->GetInputShape(KEY_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
-    
+
     gert::Shape *attentionOutShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, attentionOutShape);
     *attentionOutShape = *queryShape;
@@ -56,7 +56,7 @@ ge::graphStatus InferShapeSparseFlashAttention(gert::InferShapeContext *context)
 
     gert::Shape *softmaxSumShape = context->GetOutputShape(2);
     OP_CHECK_NULL_WITH_CONTEXT(context, softmaxSumShape);
-    
+
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const char *inputLayoutKeyPtr = attrs->GetAttrPointer<char>(LAYOUT_KEY_ATTR_INDEX);
@@ -64,10 +64,10 @@ ge::graphStatus InferShapeSparseFlashAttention(gert::InferShapeContext *context)
     std::string inputLayoutKeyPtrStr = std::string(inputLayoutKeyPtr);
     const bool *lse_flag = attrs->GetAttrPointer<bool>(RETURN_SOFTMAX_LSE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, lse_flag);
-    bool return_softmax_lse = (lse_flag != nullptr)? *lse_flag : false;
+    bool return_softmax_lse = (lse_flag != nullptr) ? *lse_flag : false;
 
-    if(return_softmax_lse){
-        if(queryShape->GetDimNum() == DIM_NUM_3){
+    if (return_softmax_lse) {
+        if (queryShape->GetDimNum() == DIM_NUM_3) {
             if (inputLayoutKeyPtrStr == "PA_BSND") {
                 softmaxMaxShape->SetDimNum(DIM_NUM_3);
                 softmaxMaxShape->SetDim(DIM_INDEX_0, keyShape->GetDim(DIM_INDEX_2));
@@ -114,8 +114,8 @@ ge::graphStatus InferShapeSparseFlashAttention(gert::InferShapeContext *context)
 
 ge::graphStatus InferDataTypeSparseFlashAttention(gert::InferDataTypeContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE_WITH_INVALID_INPUT("SparseFlashAttention", "InferShapeContext"),
-               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr, OP_LOGE("SparseFlashAttention", "InferShapeContext is nullptr"),
+                return ge::GRAPH_FAILED);
     const auto inputDataType = context->GetInputDataType(QUERY_INPUT_INDEX);
     context->SetOutputDataType(OUTPUT_INDEX_0, inputDataType);
     context->SetOutputDataType(OUTPUT_INDEX_1, ge::DT_FLOAT);
@@ -127,4 +127,3 @@ IMPL_OP_INFERSHAPE(SparseFlashAttention)
     .InferShape(InferShapeSparseFlashAttention)
     .InferDataType(InferDataTypeSparseFlashAttention);
 } // namespace ops
-  

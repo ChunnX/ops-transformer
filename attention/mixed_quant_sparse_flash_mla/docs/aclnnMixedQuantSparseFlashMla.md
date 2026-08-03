@@ -2,14 +2,24 @@
 
 ## 产品支持情况
 
-| 产品                                                     | 是否支持 |
-| :------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                   |    √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    ×    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×    |
-| <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
-| <term>Atlas 推理系列产品</term>                          |    ×    |
-| <term>Atlas 训练系列产品</term>                          |    ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -85,7 +95,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnMixedQuantSparseFlashMlaGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMixedQuantSparseFlashMla`执行实际计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用`aclnnMixedQuantSparseFlashMlaGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMixedQuantSparseFlashMla`执行实际计算。
 
 ```Cpp
 aclnnStatus aclnnMixedQuantSparseFlashMlaGetWorkspaceSize(
@@ -428,7 +438,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>oriWinLeft（int64_t）</td>
       <td>输入</td>
       <td>q和oriKv计算中，在因果边界基础上向左多看的token数。</td>
-      <td>仅支持127。</td>
+      <td>支持-1或非负数，-1表示左侧窗口不受限。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -438,7 +448,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>oriWinRight（int64_t）</td>
       <td>输入</td>
       <td>q和oriKv计算中，在因果边界基础上向右多看的token数。</td>
-      <td>仅支持0。</td>
+      <td>支持-1或非负数，-1表示右侧窗口不受限。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -533,11 +543,14 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
   </tbody>
   </table>
 
+  <!-- npu="950" id7 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：N1/N2支持2、4、8、16、32、64、128，不支持1。
+
+  <!-- end id7 -->
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -574,10 +587,10 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
       <td>quantMode不为1或2。</td>
     </tr>
     <tr>
-      <td>oriMaskMode不为4，或cmpMaskMode不为3。</td>
+      <td>oriMaskMode不为4且不为3，或cmpMaskMode不为3。</td>
     </tr>
     <tr>
-      <td>oriWinLeft不为127，或oriWinRight不为0。</td>
+      <td>oriWinLeft或oriWinRight小于-1。</td>
     </tr>
     <tr>
       <td>SWA场景cmpRatio不为1，或cmpRatio与CSA/HCA场景不匹配。</td>
@@ -629,7 +642,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -644,7 +657,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
   - `metadataOptional`参数必须传入，由`aclnnMixedQuantSparseFlashMlaMetadata`算子生成，shape固定为(1024,)。
   - `cmpResidualKvOptional`为主算子和`aclnnMixedQuantSparseFlashMlaMetadata`的可选入参；传入后用于按`cmp_len * cmpRatio + residual`恢复cmp侧mask使用的压缩前长度。
   - `ropeHeadDim`仅支持64。
-  - `oriMaskMode`仅支持4，`cmpMaskMode`仅支持3，`oriWinLeft`仅支持127，`oriWinRight`仅支持0。
+  - `oriMaskMode`支持4和3，`cmpMaskMode`仅支持3，`oriWinLeft`和`oriWinRight`支持-1或非负数，-1表示对应方向不受限。
 
 - 三种Attention场景输入要求
 
@@ -667,7 +680,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMla(
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 /**

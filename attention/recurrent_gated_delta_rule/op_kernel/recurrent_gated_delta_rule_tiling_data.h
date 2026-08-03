@@ -39,6 +39,6 @@ struct alignas(8) RecurrentGatedDeltaRuleTilingData { // alignas(8)确保8字节
     uint64_t stateStride1;
 };
 #pragma pack(pop)
-} // RecurrentGatedDeltaRule
+} // namespace RecurrentGatedDeltaRule
 
 #endif // RECURRENT_GATED_DELTA_RULE_TILING_DATA_H

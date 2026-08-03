@@ -2036,20 +2036,25 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
             tilingDataA8W4.hpTilingData.set_output_type(1);
         }
 
-        size_t workspaceSize =
-            M * N * sizeof(int16_t) + (static_cast<size_t>(SixteenAlign(M, true)) * K / TWO * sizeof(uint8_t));
+        size_t workspaceSize = static_cast<size_t>(M) * static_cast<size_t>(N) * sizeof(int16_t) +
+                               (static_cast<size_t>(SixteenAlign(M, true)) * static_cast<size_t>(K) / TWO *
+                                sizeof(uint8_t));
         context->SetScheduleMode(1); // set as batchmod for template using SyncAll
-        context->SetTilingKey(
-            GET_TPL_TILING_KEY(GMM_TPL_INT8, GMM_TPL_INT4, yDtype, 0, 0, GROUPED_MATMUL_GROUP_LIST_TYPE_COUNT, 0,
-                               GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_AUTOTILING,
-                               GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE, GROUPED_MATMUL_AIV_AIC_RATIO_2, 0));
+        context->SetTilingKey(GET_TPL_TILING_KEY(GMM_TPL_INT8, GMM_TPL_INT4, yDtype, 0, 0,
+                                                  GROUPED_MATMUL_GROUP_LIST_TYPE_COUNT, 0,
+                                                 GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_AUTOTILING,
+                                                 GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE,
+                                                 GROUPED_MATMUL_AIV_AIC_RATIO_2, 0));
 
         size_t *workspaces = context->GetWorkspaceSizes(1); // get second variable
+        OP_CHECK_NULL_WITH_CONTEXT(context, workspaces);
         workspaces[0] = SYS_WORKSPACE_SIZE;                 // default size
         workspaces[0] += workspaceSize;
 
-        tilingDataA8W4.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
-        context->GetRawTilingData()->SetDataSize(tilingDataA8W4.GetDataSize());
+        auto rawTilingData = context->GetRawTilingData();
+        OP_CHECK_NULL_WITH_CONTEXT(context, rawTilingData);
+        tilingDataA8W4.SaveToBuffer(rawTilingData->GetData(), rawTilingData->GetCapacity());
+        rawTilingData->SetDataSize(tilingDataA8W4.GetDataSize());
         PrintA8W4HPTiling(context, &tilingDataA8W4.hpTilingData);
         return ge::GRAPH_SUCCESS;
     } else {

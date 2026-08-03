@@ -61,21 +61,26 @@ constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
 } // namespace
 
 using namespace AscendC;
-template <class ProblemShape_, class BlockMmadBuilder_, class BlockPrologue_, class BlockEpilogue_, class BlockScheduler_,
-          typename Enable_ = void>
+template <class ProblemShape_, class BlockMmadBuilder_, class BlockPrologue_, class BlockEpilogue_,
+          class BlockScheduler_, typename Enable_ = void>
 class KernelGmmFinalizeRouting {
     static_assert(AscendC::Std::always_false_v<BlockScheduler_>,
                   "KernelGmmFinalizeRouting is not implemented for this scheduler");
 };
 
-template <class ProblemShape_, class BlockMmadBuilder_, class BlockPrologue_, class BlockEpilogue_, class BlockScheduler_>
+template <class ProblemShape_, class BlockMmadBuilder_, class BlockPrologue_, class BlockEpilogue_,
+          class BlockScheduler_>
 class KernelGmmFinalizeRouting<
     ProblemShape_, BlockMmadBuilder_, BlockPrologue_, BlockEpilogue_, BlockScheduler_,
     AscendC::Std::enable_if_t<AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtWithTailSplitScheduler>>> {
 public:
-    __aicore__ inline KernelGmmFinalizeRouting() {}
+    __aicore__ inline KernelGmmFinalizeRouting()
+    {
+    }
 
-    __aicore__ inline ~KernelGmmFinalizeRouting() {}
+    __aicore__ inline ~KernelGmmFinalizeRouting()
+    {
+    }
 
     using BlockPrologue = BlockPrologue_;
     using BlockEpilogue = BlockEpilogue_;
@@ -140,12 +145,16 @@ public:
         int32_t baseN;
         int32_t baseK;
         uint8_t hasBias;
-        const TCubeTiling* __restrict matmulTiling;
-        __aicore__ GMMTiling() {}
-        __aicore__ GMMTiling(uint32_t groupNum_, uint8_t groupListType_, int32_t baseM_, int32_t baseN_,
-                             int32_t baseK_, uint8_t hasBias_) :
-            groupNum(groupNum_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_), baseK(baseK_), hasBias(hasBias_)
-        {}
+        const TCubeTiling *__restrict matmulTiling;
+        __aicore__ GMMTiling()
+        {
+        }
+        __aicore__ GMMTiling(uint32_t groupNum_, uint8_t groupListType_, int32_t baseM_, int32_t baseN_, int32_t baseK_,
+                             uint8_t hasBias_)
+            : groupNum(groupNum_), groupListType(groupListType_), baseM(baseM_), baseN(baseN_), baseK(baseK_),
+              hasBias(hasBias_)
+        {
+        }
     };
 
     struct Arguments {
@@ -207,16 +216,18 @@ public:
         return splitValue;
     }
 
-    __aicore__ inline void UpdateGlobalBuffer(const Params& params)
+    __aicore__ inline void UpdateGlobalBuffer(const Params &params)
     {
         if ASCEND_IS_AIC {
-            aGlobal_.SetGlobalBuffer((__gm__ AType*)params.mmadParams.aGmAddr + Get<IDX_A_OFFSET>(baseOffset_));
-            bGlobal_.SetGlobalBuffer((__gm__ BType*)params.mmadParams.bGmAddr + Get<IDX_B_OFFSET>(baseOffset_));
-            x1ScaleGlobal_.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t*)params.mmadParams.x1ScaleGmAddr + Get<IDX_X1SCALE_OFFSET>(baseOffset_));
-            x2ScaleGlobal_.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t*)params.mmadParams.x2ScaleGmAddr + Get<IDX_X2SCALE_OFFSET>(baseOffset_));
-            if (params.gmmParams.hasBias == 1)
-            {
-                biasGlobal_.SetGlobalBuffer((__gm__ bfloat16_t*)params.mmadParams.biasGmAddr + Get<IDX_BIAS_OFFSET>(baseOffset_));
+            aGlobal_.SetGlobalBuffer((__gm__ AType *)params.mmadParams.aGmAddr + Get<IDX_A_OFFSET>(baseOffset_));
+            bGlobal_.SetGlobalBuffer((__gm__ BType *)params.mmadParams.bGmAddr + Get<IDX_B_OFFSET>(baseOffset_));
+            x1ScaleGlobal_.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t *)params.mmadParams.x1ScaleGmAddr +
+                                           Get<IDX_X1SCALE_OFFSET>(baseOffset_));
+            x2ScaleGlobal_.SetGlobalBuffer((__gm__ AscendC::fp8_e8m0_t *)params.mmadParams.x2ScaleGmAddr +
+                                           Get<IDX_X2SCALE_OFFSET>(baseOffset_));
+            if (params.gmmParams.hasBias == 1) {
+                biasGlobal_.SetGlobalBuffer((__gm__ bfloat16_t *)params.mmadParams.biasGmAddr +
+                                            Get<IDX_BIAS_OFFSET>(baseOffset_));
             }
         }
         if ASCEND_IS_AIV {
@@ -252,7 +263,7 @@ public:
         Get<IDX_LOGIT_OFFSET>(baseOffset_) += m;
     }
 
-    __aicore__ inline bool UpdateGroupParams(const Params& params, uint32_t groupIdx)
+    __aicore__ inline bool UpdateGroupParams(const Params &params, uint32_t groupIdx)
     {
         UpdateOffset(groupIdx);
         int32_t splitValue = GetSplitValueFromGroupList(groupIdx, params.gmmParams.groupListType);
@@ -264,14 +275,14 @@ public:
         return true;
     }
 
-    __aicore__ inline void InitParamsAndTensor(const Params& params)
+    __aicore__ inline void InitParamsAndTensor(const Params &params)
     {
         Get<MNK_N>(problemShape_) = params.gmmParams.matmulTiling->N;
         Get<MNK_K>(problemShape_) = params.gmmParams.matmulTiling->Ka;
-        groupListGm_.SetGlobalBuffer((__gm__ int64_t*)params.mmadParams.groupListGmAddr);
+        groupListGm_.SetGlobalBuffer((__gm__ int64_t *)params.mmadParams.groupListGmAddr);
     }
 
-    __aicore__ inline void ProcessSingleGroup(const Params& params, BlockSchedulerOp& bs, uint32_t groupIdx)
+    __aicore__ inline void ProcessSingleGroup(const Params &params, BlockSchedulerOp &bs, uint32_t groupIdx)
     {
         int64_t m = Get<MNK_M>(problemShape_);
         int64_t n = Get<MNK_N>(problemShape_);
@@ -287,21 +298,21 @@ public:
                 Get<IDX_M_TILEIDX>(tileIdx), Get<IDX_N_TILEIDX>(tileIdx), Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape),
                 Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape));
             if ASCEND_IS_AIC {
-                if (isVecSetSyncCom_)
-                {
+                if (isVecSetSyncCom_) {
                     WaitForVector();
                 }
                 AscendC::Std::tuple<int32_t, int32_t, int32_t> mmSingleShape{Get<MNK_M>(singleShape),
                                                                              Get<MNK_N>(singleShape), k};
-                if (params.gmmParams.hasBias == 1)
-                {
+                if (params.gmmParams.hasBias == 1) {
                     mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[Get<IDX_B_OFFSET>(blockOffset_)],
-                            x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)], x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)],
+                            x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)],
+                            x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)],
                             biasGlobal_[Get<IDX_BIAS_OFFSET>(blockOffset_)], l0cOutUb_, mmSingleShape, transA, transB);
                 } else {
                     mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[Get<IDX_B_OFFSET>(blockOffset_)],
-                            x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)], x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)],
-                            l0cOutUb_, mmSingleShape, transA, transB);
+                            x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)],
+                            x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)], l0cOutUb_, mmSingleShape, transA,
+                            transB);
                 }
                 NotifyVector();
             }
@@ -321,31 +332,26 @@ public:
         }
     }
 
-    __aicore__ inline void operator()(const Params& params)
+    __aicore__ inline void operator()(const Params &params)
     {
-        if ASCEND_IS_AIV
-        {
+        if ASCEND_IS_AIV {
             prologueOp_.Init(params.prologueParams);
             prologueOp_();
         }
-        if ASCEND_IS_AIC
-        {
-            mmadOp_.Init(const_cast<TCubeTiling* __restrict>(params.gmmParams.matmulTiling), GetTPipePtr());
+        if ASCEND_IS_AIC {
+            mmadOp_.Init(const_cast<TCubeTiling *__restrict>(params.gmmParams.matmulTiling), GetTPipePtr());
             l0cOutUb_ = epilogueOp_.GetL0c2UbTensor();
         }
         InitParamsAndTensor(params);
         BlockSchedulerOp bs(params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
         SyncAll();
-        if ASCEND_IS_AIV
-        {
+        if ASCEND_IS_AIV {
             AscendC::CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE3>(AIV_SYNC_AIC_FLAG);
         }
-        if ASCEND_IS_AIC
-        {
+        if ASCEND_IS_AIC {
             WaitForVector();
         }
-        if ASCEND_IS_AIV
-        {
+        if ASCEND_IS_AIV {
             epilogueOp_.Init(params.epilogueParams);
         }
         uint32_t groupNum = params.gmmParams.groupNum;

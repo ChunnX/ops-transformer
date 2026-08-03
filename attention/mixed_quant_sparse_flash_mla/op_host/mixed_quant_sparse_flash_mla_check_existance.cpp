@@ -33,9 +33,12 @@ ge::graphStatus MQSMLATilingCheck::CheckParaExistenceAntiquant() const
     if (kvLayout_ == MQSMLALayout::BSND) {
         return ge::GRAPH_SUCCESS;
     } else if (kvLayout_ == MQSMLALayout::PA_BBND) {
-        OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
-                    OP_LOGE(opName_, "when layout_kv is PA_BBND, sequsedOriKv must not be null."),
-                    return ge::GRAPH_FAILED);
+        if (perfMode_ != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
+            perfMode_ != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+            OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
+                        OP_LOGE(opName_, "when layout_kv is PA_BBND, sequsedOriKv must not be null."),
+                        return ge::GRAPH_FAILED);
+        }
         OP_CHECK_IF(opParamInfo_.oriBlockTable.tensor == nullptr,
                     OP_LOGE(opName_, "when layout_kv is PA_BBND, oriBlockTable must not be null."),
                     return ge::GRAPH_FAILED);
@@ -47,18 +50,9 @@ ge::graphStatus MQSMLATilingCheck::CheckParaExistence()
 {
     if (ge::GRAPH_SUCCESS != CheckCmpSparseIndicesExistence() || ge::GRAPH_SUCCESS != CheckSWAExistence() ||
         ge::GRAPH_SUCCESS != CheckHCAExistence() || ge::GRAPH_SUCCESS != CheckCSAExistence() ||
-        ge::GRAPH_SUCCESS != CheckCmpRatioExistence() || ge::GRAPH_SUCCESS != CheckUnrequiredParaExistence() ||
-        ge::GRAPH_SUCCESS != CheckParaExistenceAntiquant()) {
+        ge::GRAPH_SUCCESS != CheckCmpRatioExistence() || ge::GRAPH_SUCCESS != CheckParaExistenceAntiquant()) {
         return ge::GRAPH_FAILED;
     }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MQSMLATilingCheck::CheckUnrequiredParaExistence() const
-{
-    OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor != nullptr || opParamInfo_.oriSparseIndices.desc != nullptr,
-                OP_LOGE(opName_, "oriSparseIndices is not supported now, it must be nullptr."),
-                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -104,9 +98,6 @@ ge::graphStatus MQSMLATilingCheck::CheckCmpSparseIndicesExistence()
 
 ge::graphStatus MQSMLATilingCheck::CheckSWAExistence()
 {
-    if (perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
-        return ge::GRAPH_SUCCESS;
-    }
     OP_CHECK_IF(
         opParamInfo_.oriKv.tensor != nullptr && opParamInfo_.oriBlockTable.tensor == nullptr &&
             kvLayout_ == MQSMLALayout::PA_BBND,

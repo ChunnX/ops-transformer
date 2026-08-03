@@ -304,9 +304,8 @@ void FlashAttnTilingImpl::SetFATilingData()
     tilingData_.baseTiling.flashAttnBaseParams.dSize = faInfo_->qkHeadDim;
     tilingData_.baseTiling.flashAttnBaseParams.dSizeV = faInfo_->vHeadDim;
     tilingData_.baseTiling.flashAttnBaseParams.scaleValue = faInfo_->softmaxScale;
-    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensQSize = faInfo_->qLayout == FaLayout::TND ? faInfo_->bSize : 0;
-    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensKVSize =
-        faInfo_->kvLayout == FaLayout::TND ? faInfo_->bSize : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensQSize = faInfo_->qLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
+    tilingData_.baseTiling.flashAttnBaseParams.cuSeqLensKVSize = faInfo_->kvLayout == FaLayout::TND ? (faInfo_->bSize + 1) : 0;
     tilingData_.baseTiling.flashAttnBaseParams.seqUsedQSize = seqUsedQFlag_ ? faInfo_->bSize : 0;
     tilingData_.baseTiling.flashAttnBaseParams.seqUsedKvSize = seqUsedKvFlag_ ? faInfo_->bSize : 0;
     tilingData_.baseTiling.flashAttnBaseParams.isKvContinuous = true;

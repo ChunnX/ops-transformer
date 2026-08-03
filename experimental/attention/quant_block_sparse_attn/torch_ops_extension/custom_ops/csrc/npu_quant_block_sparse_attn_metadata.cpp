@@ -14,7 +14,19 @@
 namespace custom {
 using namespace at_npu::native;
 
-constexpr int64_t QBSA_METADATA_OUTPUT_SIZE = 2048;
+constexpr uint64_t QBSA_HEAD_METADATA_SIZE = 8;
+constexpr uint64_t QBSA_AIC_CORE_NUM = 36;
+constexpr uint64_t QBSA_AIV_CORE_NUM = 72;
+constexpr uint64_t QBSA_METADATA_SIZE = 8;
+constexpr uint64_t QBSA_FD_METADATA_SIZE = 8;
+
+uint64_t GetQbsaMetadataOutputSize(int64_t batchSize, int64_t numHeadsQ)
+{
+    return QBSA_HEAD_METADATA_SIZE +
+        static_cast<uint64_t>(batchSize) * static_cast<uint64_t>(numHeadsQ) *
+        QBSA_AIC_CORE_NUM * QBSA_METADATA_SIZE +
+        QBSA_AIV_CORE_NUM * QBSA_FD_METADATA_SIZE;
+}
 
 c10::optional<at::Tensor> get_qbsa_valid_tensor(
     const c10::optional<at::Tensor> &tensorOpt, const at::Device &device)
@@ -30,11 +42,11 @@ at::Tensor npu_quant_block_sparse_attn_metadata_npu(
     const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensKv,
     const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedKv,
     int64_t batchSize, int64_t sparseBlockSizeQ, int64_t sparseBlockSizeK, int64_t quantMode, int64_t maskMode,
-    int64_t maxSeqlenQ, int64_t maxSeqlenKv, c10::string_view layoutQ, c10::string_view layoutKv,
-    c10::string_view layoutSparseIndices)
+    c10::string_view layoutQ, c10::string_view layoutKv, c10::string_view layoutSparseIndices)
 {
     at::Device outputDevice = sparseSeqLen.device();
-    at::Tensor output = torch::empty({QBSA_METADATA_OUTPUT_SIZE}, torch::dtype(torch::kInt32).device(outputDevice));
+    uint64_t metadata_size = GetQbsaMetadataOutputSize(batchSize, numHeadsQ);
+    at::Tensor output = torch::empty({metadata_size}, torch::dtype(torch::kInt32).device(outputDevice));
 
     auto cuSeqlensQValue = get_qbsa_valid_tensor(cuSeqlensQ, outputDevice);
     auto cuSeqlensKvValue = get_qbsa_valid_tensor(cuSeqlensKv, outputDevice);
@@ -51,7 +63,7 @@ at::Tensor npu_quant_block_sparse_attn_metadata_npu(
     EXEC_NPU_CMD_V1(aclnnQuantBlockSparseAttnMetadata,
         sparseSeqLen, cuSeqlensQValue, cuSeqlensKvValue, sequsedQValue, sequsedKvValue,
         batchSize, numHeadsQ, numHeadsKv, headDim, sparseBlockSizeQ, sparseBlockSizeK, quantMode, maskMode,
-        maxSeqlenQ, maxSeqlenKv, layoutQPtr, layoutKvPtr, layoutSparseIndicesPtr, output);
+        layoutQPtr, layoutKvPtr, layoutSparseIndicesPtr, output);
     return output;
 }
 
@@ -60,10 +72,10 @@ at::Tensor npu_quant_block_sparse_attn_metadata_meta(
     const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensKv,
     const c10::optional<at::Tensor> &sequsedQ, const c10::optional<at::Tensor> &sequsedKv,
     int64_t batchSize, int64_t sparseBlockSizeQ, int64_t sparseBlockSizeK, int64_t quantMode, int64_t maskMode,
-    int64_t maxSeqlenQ, int64_t maxSeqlenKv, c10::string_view layoutQ, c10::string_view layoutKv,
-    c10::string_view layoutSparseIndices)
+    c10::string_view layoutQ, c10::string_view layoutKv, c10::string_view layoutSparseIndices)
 {
-    return torch::empty({QBSA_METADATA_OUTPUT_SIZE}, sparseSeqLen.options().dtype(torch::kInt32));
+    uint64_t metadata_size = GetQbsaMetadataOutputSize(batchSize, numHeadsQ);
+    return torch::empty({metadata_size}, sparseSeqLen.options().dtype(torch::kInt32));
 }
 } // namespace custom
 

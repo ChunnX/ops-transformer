@@ -52,6 +52,7 @@ private:
 
     ge::graphStatus CheckBlockTableShape(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckBlockSizeSupport(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckNonContiguousSupport(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckKVLayout(const FiaTilingInfo &fiaInfo) const;
 
     ge::graphStatus CheckPACacheShape3D(const FiaTilingInfo &fiaInfo, const gert::Shape &tempShape,

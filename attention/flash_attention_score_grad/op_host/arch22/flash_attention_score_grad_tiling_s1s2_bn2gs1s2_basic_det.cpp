@@ -56,14 +56,11 @@ ge::graphStatus FlashAttentionScoreGraTilingBasicDet::GetShapeAttrsInfo()
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
-
     ret = SetBaseInfo();
-
     if(fBaseParams.sparseMode == RIGHT_DOWN_CAUSAL){
         fBaseParams.preTockens = fBaseParams.s2;
         fBaseParams.nextTockens = 0;
     }
-
     return ret;
 }
 
@@ -146,35 +143,34 @@ ge::graphStatus FlashAttentionScoreGraTilingBasicDet::SetBaseInfo()
         fBaseParams.t1 = fBaseParams.b * fBaseParams.s1;
         return ge::GRAPH_SUCCESS;
     } else if(strcmp(fBaseParams.inputLayout, TND_STR) == 0) {
+        auto actualSeqQLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
+        auto actualSeqKvLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
+        auto qStartTensor = context_->GetOptionalInputTensor(Q_START_IDX);
+        auto kvStartTensor = context_->GetOptionalInputTensor(KV_START_IDX);
+
+        if (actualSeqQLenTensor == nullptr || actualSeqKvLenTensor == nullptr) {
+            OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [actualSeqQLenTensor or actualSeqKvLenTensor is null]");
+            return ge::GRAPH_FAILED;
+        }
+        if (qStartTensor != nullptr || kvStartTensor != nullptr) {
+            OP_LOGI(context_, "FlashAttentionScoreGraTilingBasicDet not support q_start_idx or kv_start_idx.");
+            return ge::GRAPH_PARAM_INVALID;
+        }
+        const size_t seqQShapeSize = static_cast<size_t>(actualSeqQLenTensor->GetShapeSize());
+        const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvLenTensor->GetShapeSize());
+        OP_CHECK_IF((seqQShapeSize != kvSeqShapeSize),
+                OP_LOGE(context_,
+                        "In op [FlashAttentionScoreGrad], the tensor shapes of [actualSeqQLenTensor, actualSeqKvLenTensor] are mismatched, "
+                        "the reason is: [actualSeqQLenTensor shape size and actualSeqKvLenTensor shape size should be same, "
+                        "actualSeqQLenTensor shape size=%zu, actualSeqKvLenTensor shape size=%zu]",
+                        seqQShapeSize, kvSeqShapeSize),
+                return ge::GRAPH_FAILED);
         if (!isMaxWorkspace_) {
-            auto actualSeqQLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
-            auto actualSeqKvLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
-            auto qStartTensor = context_->GetOptionalInputTensor(Q_START_IDX);
-            auto kvStartTensor = context_->GetOptionalInputTensor(KV_START_IDX);
-
-            if (actualSeqQLenTensor == nullptr || actualSeqKvLenTensor == nullptr) {
-                OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [actualSeqQLenTensor or actualSeqKvLenTensor is null]");
-                return ge::GRAPH_FAILED;
-            }
-            if (qStartTensor != nullptr || kvStartTensor != nullptr) {
-                OP_LOGI(context_, "FlashAttentionScoreGraTilingBasicDet not support q_start_idx or kv_start_idx.");
-                return ge::GRAPH_PARAM_INVALID;
-            }
-
             const int64_t *qValue = actualSeqQLenTensor->GetData<int64_t>();
             const int64_t *kvValue = actualSeqKvLenTensor->GetData<int64_t>();
-            const size_t seqQShapeSize = static_cast<size_t>(actualSeqQLenTensor->GetShapeSize());
-            const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvLenTensor->GetShapeSize());
 
             OP_CHECK_IF((qValue == nullptr || kvValue == nullptr),
                     OP_LOGE(context_, "The op [FlashAttentionScoreGrad] received bad params, the reason is: [qValue or kvValue is null]."), return ge::GRAPH_FAILED);
-            OP_CHECK_IF((seqQShapeSize != kvSeqShapeSize),
-                    OP_LOGE(context_,
-                            "In op [FlashAttentionScoreGrad], the tensor shapes of [actualSeqQLenTensor, actualSeqKvLenTensor] are mismatched, "
-                            "the reason is: [actualSeqQLenTensor shape size and actualSeqKvLenTensor shape size should be same, "
-                            "actualSeqQLenTensor shape size=%zu, actualSeqKvLenTensor shape size=%zu]",
-                            seqQShapeSize, kvSeqShapeSize),
-                    return ge::GRAPH_FAILED);
 
             for (size_t i = 0; i < seqQShapeSize; i++) {
                 int64_t qSeqLen = (i == 0 ? qValue[i] : std::max(int64_t(0), qValue[i] - qValue[i - 1]));
@@ -504,7 +500,6 @@ ge::graphStatus FlashAttentionScoreGraTilingBasicDet::GetWorkspaceSize()
     tilingData->basicDetTensorTilingData.set_sfmgWorkspaceOffset(workspaceOffset);
     workspaceOffset = (workspaceOffset + tilingData->basicDetTensorTilingData.get_sfmgSize() * sizeof(float) + GM_ALIGN) /
                       GM_ALIGN * GM_ALIGN;
-
     // matmal1/matmal2 workspace size
     tilingData->basicDetTensorTilingData.set_mm1WorkspaceOffset(workspaceOffset);
     workspaceOffset =
