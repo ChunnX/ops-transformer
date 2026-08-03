@@ -193,7 +193,7 @@ def backward(ctx, dout, *grads):
         dout, x, wkv, wgate, softmax_score, kv, 
         cu_seqlens, seqused, start_pos, cmp_ratio, coff
     )
-    return d_x, d_wkv, d_wgate, d_ape, *((None, ) * 8)
+    return d_x, d_wkv, d_wgate, None, d_ape, *((None, ) * 8)
     
 
 _compressor_forward.register_autograd(backward, setup_context=setup_context)
