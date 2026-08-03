@@ -41,6 +41,16 @@ static constexpr AscendC::MicroAPI::CastTrait CAST_BF16_FP16_TO_FP32 = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::UNKNOWN};
 
+__aicore__ inline uint16_t FloatToBf16Bits(float value)
+{
+    union {
+        float f;
+        uint32_t u;
+    } converter{value};
+    uint32_t roundingBias = 0x7FFFU + ((converter.u >> 16) & 1U);
+    return static_cast<uint16_t>((converter.u + roundingBias) >> 16);
+}
+
 #define BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS template <typename DataTypeOut_, typename DataTypeIn_>
 #define BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS DataTypeOut_, DataTypeIn_
 
@@ -61,7 +71,6 @@ public:
         int32_t n;
         uint32_t batch;
         float residualScale = 1.0;
-        uint16_t residualScaleBf16 = 0x3F80;
         Arguments() = default;
     };
 
@@ -78,7 +87,7 @@ private:
     __aicore__ inline void CopyInShareInput(LocalTensor<DataTypeIn> &residualLocal, uint64_t offset, uint64_t size);
     __aicore__ inline void CopyOutShareInput(LocalTensor<DataTypeOut> &yLocal, uint64_t offset, uint64_t size);
     __aicore__ inline void VFDoSharedCastAndMuls(__ubuf__ DataTypeOut *dstPtr, __ubuf__ DataTypeIn *residualLocalUbAddr,
-                                                 float sharedWeight, uint16_t sharedWeightBf16, uint64_t curCount);
+                                                 float sharedWeight, uint64_t curCount);
 
 private:
     const Params *params_;
@@ -199,8 +208,7 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
 BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
 __aicore__ inline void
 BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::VFDoSharedCastAndMuls(
-    __ubuf__ DataTypeOut *dstPtr, __ubuf__ DataTypeIn *residualLocalUbAddr, float sharedWeight,
-    uint16_t sharedWeightBf16, uint64_t curCount)
+    __ubuf__ DataTypeOut *dstPtr, __ubuf__ DataTypeIn *residualLocalUbAddr, float sharedWeight, uint64_t curCount)
 {
     constexpr uint32_t vectorRegLen =
         IsSameType<DataTypeOut, bfloat16_t>::value ? VECTOR_REG_WIDTH / sizeof(float) :
@@ -211,8 +219,9 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
         uint32_t elementNum = static_cast<uint32_t>(curCount);
         AscendC::MicroAPI::MaskReg mask;
         uint16_t oneRepeatSize = vectorRegLen;
-        for (uint16_t i = 0; i < loopNum; ++i) {
-            if constexpr (IsSameType<DataTypeOut, bfloat16_t>::value) {
+        if constexpr (IsSameType<DataTypeOut, bfloat16_t>::value) {
+            uint16_t sharedWeightBf16 = FloatToBf16Bits(sharedWeight);
+            for (uint16_t i = 0; i < loopNum; ++i) {
                 mask = AscendC::MicroAPI::UpdateMask<float>(elementNum);
                 AscendC::MicroAPI::RegTensor<DataTypeIn> vSrcReg;
                 AscendC::MicroAPI::RegTensor<uint16_t> vSharedWeightReg;
@@ -225,7 +234,9 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
                     vDstReg, vSrcReg, (AscendC::MicroAPI::RegTensor<bfloat16_t> &)vSharedWeightReg, mask);
                 AscendC::MicroAPI::DataCopy<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(
                     dstPtr + i * oneRepeatSize, vDstReg, mask);
-            } else {
+            }
+        } else {
+            for (uint16_t i = 0; i < loopNum; ++i) {
                 mask = AscendC::MicroAPI::UpdateMask<DataTypeOut>(elementNum);
                 AscendC::MicroAPI::RegTensor<DataTypeIn> vSrcReg;
                 AscendC::MicroAPI::RegTensor<DataTypeOut> vRegCast;
@@ -263,8 +274,7 @@ __aicore__ inline void BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZ
         __ubuf__ DataTypeOut *outUbAddr = (__ubuf__ DataTypeOut *)yLocal->GetPhyAddr();
         // before vector compute,need wait MTE3 copyout finished
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(pingPongID);
-        VFDoSharedCastAndMuls(outUbAddr, residualLocalUbAddr, params_->residualScale, params_->residualScaleBf16,
-                              curCount);
+        VFDoSharedCastAndMuls(outUbAddr, residualLocalUbAddr, params_->residualScale, curCount);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(pingPongID);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(pingPongID);
         CopyOutShareInput(*yLocal, outOffset + offset, curCount);

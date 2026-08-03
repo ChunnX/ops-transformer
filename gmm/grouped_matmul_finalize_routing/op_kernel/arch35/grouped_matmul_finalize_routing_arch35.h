@@ -85,7 +85,7 @@ __aicore__ inline void grouped_matmul_finalize_routing_mx(GM_ADDR x, GM_ADDR w, 
          bias}, // BlockMmadParams   {aGmAdd,bGmAddr,cGmAddr,biasGmAddr,groupListGmAddr,bias}
         {share_input, y, gmmFinalizeRoutingQuantParams_.sharedInputOffset,
          gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N, gmmFinalizeRoutingQuantParams_.batch,
-         gmmFinalizeRoutingQuantParams_.residualScale, tilingData.residualScaleBf16}, // prologue
+         gmmFinalizeRoutingQuantParams_.residualScale}, // prologue
                               // params{sharedInputGmaddr,yGMAddr,shareInputOffset,shareInputLen,n,batch,residualScale}
         {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM,
          matmulTiling_

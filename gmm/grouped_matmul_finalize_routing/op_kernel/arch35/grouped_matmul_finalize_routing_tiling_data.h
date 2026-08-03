@@ -43,9 +43,12 @@ struct GMMFinalizeRoutingDataParams {
 struct GMMFinalizeRoutingTilingData {
     GMMFinalizeRoutingDataParams gmmFinalizeRoutingDataParams;
     TCubeTiling matmulTiling;
-    uint16_t residualScaleBf16 = 0x3F80;
-    uint16_t reserved[3] = {0, 0, 0};
 };
 #pragma pack(pop)
+
+#ifndef __CCE_AICORE__
+static_assert(sizeof(GMMFinalizeRoutingTilingData) % sizeof(uint64_t) == 0,
+              "GMMFinalizeRoutingTilingData must be 8-byte aligned.");
+#endif
 } // namespace GMMFinalizeRoutingArch35Tiling
 #endif // GROUPED_MATMUL_FINALIZE_ROUTING_TILING_DATA_H
