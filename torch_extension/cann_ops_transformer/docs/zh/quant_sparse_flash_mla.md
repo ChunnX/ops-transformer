@@ -157,7 +157,7 @@ cann_ops_transformer.quant_sparse_flash_mla(
 | head_dim | int | 必选 | 表示每个注意力头的维度 | int32 | - | -
 | quant_mode | int | 必选 | 表示量化模式，当前仅支持1。1表示Q、K、V为per-tensor量化，数据类型为hifloat8。 | int32 | - | -
 | cu_seqlens_q | tensor | 可选 | 表示输入q处理的变长序列的累积序列长度 | int32 | ND | <ul><li>(b+1,)</li></ul>
-| cu_seqlens_ori_kv | tensor | 可选 | 表示输入ori_kv处理变长序列的累积序列长度 | int32 | ND |<ul><li>(b+1,)</li></ul>
+| cu_seqlens_ori_kv | tensor | 可选 | 表示输入ori_kv处理变长序列的累积序列长度 | int32 | ND | <ul><li>(b+1,)</li></ul>
 | cu_seqlens_cmp_kv | tensor | 可选 | 表示输入cmp_kv处理变长序列的累积序列长度 | int32 | ND | <ul><li>(b+1,)</li></ul>
 | seqused_q | tensor | 可选 | 表示输入q每batch中实际参与运算的序列长度 | int32 | ND | <ul><li>(b,)</li></ul>
 | seqused_ori_kv | tensor | 可选 | 表示输入ori_kv每batch中实际参与运算的序列长度 | int32 | ND | <ul><li>(b,)</li></ul>
@@ -185,13 +185,13 @@ cann_ops_transformer.quant_sparse_flash_mla(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度
 | :--- | :--- | :--- | :--- | :--- | :--- | :---
-| q | tensor | 必选 | 表示公式中的q | hifloat8 | ND |  <ul><li>(b, q_s, q_n, q_d)</li><li>(q_t, q_n, q_d)</li></ul>
+| q | tensor | 必选 | 表示公式中的q | hifloat8 | ND | <ul><li>(b, q_s, q_n, q_d)</li><li>(q_t, q_n, q_d)</li></ul>
 | quant_mode | int | 必选 | 表示量化模式，当前仅支持1。1表示Q、K、V为per-tensor量化，数据类型为hifloat8。 | int32 | - | -
 | ori_kv | tensor | 可选 | 表示原始量化KV输入，Key和Value共享同一份数据 | hifloat8 | ND | <ul><li>(b, ori_kv_s, kv_n, kv_d)</li><li>(ori_kv_t, kv_n, kv_d)</li><li>(ori_kv_block_nums, ori_kv_block_size, kv_n, kv_d)</li></ul>
 | cmp_kv | tensor | 可选 | 表示压缩量化KV输入，Key和Value共享同一份数据 | hifloat8 | ND | <ul><li>(b, cmp_kv_s, kv_n, kv_d)</li><li>(cmp_kv_t, kv_n, kv_d)</li><li>(cmp_kv_block_nums, cmp_kv_block_size, kv_n, kv_d)</li></ul>
-| q_descale | tensor | 可选 | q对应的量化参数 | float32 | ND |  <ul><li>[1]</li></ul>
-| ori_kv_descale | tensor | 可选 | ori_kv对应的量化参数 | float32 | ND |  <ul><li>[1]</li></ul>
-| cmp_kv_descale | tensor | 可选 | cmp_kv对应的量化参数 | float32 | ND |  <ul><li>[1]</li></ul>
+| q_descale | tensor | 可选 | q对应的量化参数 | float32 | ND | <ul><li>[1]</li></ul>
+| ori_kv_descale | tensor | 可选 | ori_kv对应的量化参数 | float32 | ND | <ul><li>[1]</li></ul>
+| cmp_kv_descale | tensor | 可选 | cmp_kv对应的量化参数 | float32 | ND | <ul><li>[1]</li></ul>
 | ori_sparse_indices | tensor | 可选 | 表示原始KV topK索引，无效位置填-1 | int32 | ND | <ul><li>(q_t, kv_n, ori_kv_k)</li><li>(b, q_s, kv_n, ori_kv_k)</li></ul>
 | cmp_sparse_indices | tensor | 可选 | 表示压缩KV topK索引，无效位置填-1 | int32 | ND | <ul><li>(q_t, kv_n, cmp_kv_k)</li><li>(b, q_s, kv_n, cmp_kv_k)</li></ul>
 | ori_block_table | tensor | 可选 | 表示PageAttention场景下ori_kv使用的block映射表 | int32 | ND | <ul><li>(b, ceil(ori_kv_s_max/ori_kv_block_size))</li></ul>
@@ -224,7 +224,7 @@ cann_ops_transformer.quant_sparse_flash_mla(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度
 | :--- | :--- | :--- | :--- | :--- | :--- | :---
-| metadata | tensor | 必选 | quant_sparse_flash_mla的分核信息 | int32 | ND |<ul><li>(1024,)</li></ul>
+| metadata | tensor | 必选 | quant_sparse_flash_mla的分核信息 | int32 | ND | <ul><li>(1024,)</li></ul>
 
 ### quant_sparse_flash_mla
 
@@ -272,8 +272,8 @@ cann_ops_transformer.quant_sparse_flash_mla(
 #### 公共参数组
 
 - 入参为空的场景处理：
-    - 空tensor指必选输入、某调用场景下必传输入和输出的shape size为0，即有任意轴为0。
-    - 触发空tensor的用例将全部拦截报错。
+  - 空tensor指必选输入、某调用场景下必传输入和输出的shape size为0，即有任意轴为0。
+  - 触发空tensor的用例将全部拦截报错。
 
 - q、ori_kv、cmp_kv、attention_out校验
 
