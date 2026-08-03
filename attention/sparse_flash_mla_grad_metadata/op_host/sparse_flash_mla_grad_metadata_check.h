@@ -225,8 +225,8 @@ aclnnStatus CheckSingleParamSmlag(int64_t batchSize, int64_t maxSeqlenQ, int64_t
     // 校验 layout_q 为 BSND 时，max_seqlen_q 必须大于 0
     if (strcmp(layoutQOptional, "BSND") == 0 && maxSeqlenQ <= 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLAG_ACLNN_OP_NAME, "max_seqlen_q", std::to_string(maxSeqlenQ),
-                                              "When layout_q is BSND, the value of max_seqlen_q cannnot be 0, "
-                                              "it must be equal to the size of the second axis of q");
+                                              "When layout_q is BSND, the value of max_seqlen_q "
+                                              "must be equal to the size of the second axis of q");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 校验 has_ori_kv 且 layout_kv 为 BSND 时，max_seqlen_ori_kv 必须大于 0
@@ -234,8 +234,8 @@ aclnnStatus CheckSingleParamSmlag(int64_t batchSize, int64_t maxSeqlenQ, int64_t
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLAG_ACLNN_OP_NAME, "max_seqlen_ori_kv",
                                               std::to_string(maxSeqlenOriKv),
                                               "When has_ori_kv is true and layout_kv is BSND, "
-                                              "the value of max_seqlen_ori_kv cannnot be 0, "
-                                              "it must be equal to the size of the second axis of ori_kv");
+                                              "the value of max_seqlen_ori_kv "
+                                              "must be equal to the size of the second axis of ori_kv");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 校验 has_cmp_kv 且 layout_kv 为 BSND 时，max_seqlen_cmp_kv 必须大于 0
@@ -243,8 +243,8 @@ aclnnStatus CheckSingleParamSmlag(int64_t batchSize, int64_t maxSeqlenQ, int64_t
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLAG_ACLNN_OP_NAME, "max_seqlen_cmp_kv",
                                               std::to_string(maxSeqlenCmpKv),
                                               "When has_cmp_kv is true and layout_kv is BSND, "
-                                              "the value of max_seqlen_cmp_kv cannnot be 0, "
-                                              "it must be equal to the size of the second axis of cmp_kv");
+                                              "the value of max_seqlen_cmp_kv "
+                                              "must be equal to the size of the second axis of cmp_kv");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 核数校验
