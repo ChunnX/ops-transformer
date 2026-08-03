@@ -61,6 +61,9 @@ target_include_directories(test_spr_rw PRIVATE
     ${ASCEND_CANN_PACKAGE_PATH}/include
 )
 
+# 防止不链接hcom，hccl库
+target_link_options(test_spr_rw PRIVATE -Wl,--no-as-needed)
+
 # ascend_hal (halResMap) 在 driver 目录下, set_env.sh 未包含此路径
 if(NOT DEFINED ASCEND_DRIVER_PATH)
     set(ASCEND_DRIVER_PATH "/usr/local/Ascend/driver"
