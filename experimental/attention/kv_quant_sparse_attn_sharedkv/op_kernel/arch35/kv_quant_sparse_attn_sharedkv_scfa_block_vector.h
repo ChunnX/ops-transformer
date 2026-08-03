@@ -48,11 +48,16 @@ public:
     static constexpr uint32_t dVTemplateType = 512;
     static constexpr uint32_t dTemplateAlign64 = Align64Func(dVTemplateType);
     static constexpr uint32_t dVTemplateTypeInput = 640;
+    static constexpr uint32_t combineKvInputBytes = dVTemplateTypeInput;
+    static constexpr uint32_t combineKvInputAlignBytes =
+        ((combineKvInputBytes + BUFFER_SIZE_BYTE_32B - 1) / BUFFER_SIZE_BYTE_32B) * BUFFER_SIZE_BYTE_32B;
+    static constexpr uint32_t sparseCopyTokenNum = 8;
     static constexpr float R0 = 1.0f;
     static constexpr uint32_t blkTableBufId = 0;
     static constexpr uint32_t sparseIdxBufId = 1;
     static constexpr uint32_t kvPhyAddrBufId = 2;
     static constexpr uint32_t syncSinksBufId = 6;
+    static constexpr uint32_t stage2OutBufBufId = 6;
 
     // ==================== Functions ======================
     __aicore__ inline SCFABlockVec() {};
@@ -98,9 +103,9 @@ private:
     __aicore__ inline void CalProcSize(const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline int64_t GetkeyOffset(int64_t s2Idx, const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void GetRealCmpS2Idx(int64_t *tokenData, int64_t s2IdxInBase,
-        const RunInfo &runInfo, ConstInfo &constInfo);
+        uint64_t topkBaseIdx, uint64_t topkKBase, uint32_t sparseBlockCount, int64_t procS2EndLocal);
     __aicore__ inline void GetRealS2Addr(int64_t *tokenData, int64_t s2IdxInBase,
-        const RunInfo &runInfo, ConstInfo &constInfo);
+        uint64_t topkBaseIdx, uint64_t topkKBase, uint32_t sparseBlockCount, int64_t procS2EndLocal);
     __aicore__ inline void CopyInKvNotSparse(LocalTensor<KV_T> kvMergUb, int64_t dealRow,
         int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline uint32_t CopyInKvSparse(LocalTensor<KV_T> kvInUb, int64_t startRow, int64_t *tokenData,
@@ -153,10 +158,6 @@ private:
     TBuf<> sinksBuf;
     TBuf<> stage1OutBuf[2]; // 2份表示可能存在pingpong
     TBuf<> stage2OutBuf;
-    uint32_t stage0InBufBufId[2] = {0, 1};
-    uint32_t stage0OutBufBufId[2] = {2, 3};
-    uint32_t stage1OutBufBufId[2] = {4, 5};
-    uint32_t stage2OutBufBufId = 6;
     TBuf<> softmaxMaxBuf[2];
     TBuf<> softmaxSumBuf[2];
     TBuf<> softmaxExpBuf[2]; 
@@ -176,21 +177,13 @@ private:
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t *tokenData,
-    int64_t s2IdxInBase, const RunInfo &runInfo, ConstInfo &constInfo)
+    int64_t s2IdxInBase, uint64_t topkBaseIdx, uint64_t topkKBase, uint32_t sparseBlockCount,
+    int64_t procS2EndLocal)
 {
-    uint64_t topkBS1Idx = 0;
-    if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
-        uint64_t actualSeqQPrefixSum = cuSeqlensQGm.GetValue(runInfo.boIdx);
-        topkBS1Idx += (actualSeqQPrefixSum + runInfo.s1oIdx) * constInfo.sparseBlockCount; // T, N2(1), K
-    } else {
-        topkBS1Idx += runInfo.boIdx * constInfo.s1Size * constInfo.sparseBlockCount +
-            runInfo.s1oIdx * constInfo.sparseBlockCount; // B, S1, N2(1), K
-    }
-    int64_t cmpS2LoopCnt = runInfo.s2LoopCount - runInfo.oriKvLoopEndIdx;
-    uint64_t topkKIdx = s2IdxInBase + cmpS2LoopCnt * constInfo.s2BaseSize;
-    for (uint64_t i = 0; i < 8; ++i) {
-        uint64_t idx = topkBS1Idx + runInfo.s2StartIdx + topkKIdx + i;
-        if (likely((topkKIdx + i < constInfo.sparseBlockCount) && (s2IdxInBase + i < procS2End))) {
+    uint64_t topkKIdx = s2IdxInBase + topkKBase;
+    for (uint64_t i = 0; i < sparseCopyTokenNum; ++i) {
+        uint64_t idx = topkBaseIdx + s2IdxInBase + i;
+        if (likely((topkKIdx + i < sparseBlockCount) && (s2IdxInBase + i < procS2EndLocal))) {
             tokenData[i] = cmpSparseIndicesGm.GetValue(idx);
         } else {
             break;
@@ -200,22 +193,14 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t *tok
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetRealS2Addr(int64_t *tokenData,
-    int64_t s2IdxInBase, const RunInfo &runInfo, ConstInfo &constInfo)
+    int64_t s2IdxInBase, uint64_t topkBaseIdx, uint64_t topkKBase, uint32_t sparseBlockCount,
+    int64_t procS2EndLocal)
 {
-    uint64_t topkBS1Idx = 0;
-    if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
-        uint64_t actualSeqQPrefixSum = cuSeqlensQGm.GetValue(runInfo.boIdx);
-        topkBS1Idx += (actualSeqQPrefixSum + runInfo.s1oIdx) * constInfo.sparseBlockCount; // T, N2(1), K
-    } else {
-        topkBS1Idx += runInfo.boIdx * constInfo.s1Size * constInfo.sparseBlockCount +
-            runInfo.s1oIdx * constInfo.sparseBlockCount; // B, S1, N2(1), K
-    }
-    int64_t cmpS2LoopCnt = runInfo.s2LoopCount - runInfo.oriKvLoopEndIdx;
-    uint64_t topkKIdx = s2IdxInBase + cmpS2LoopCnt * constInfo.s2BaseSize;
+    uint64_t topkKIdx = s2IdxInBase + topkKBase;
     GlobalTensor<int64_t> kvPhyAddrGm64 = kvPhyAddrGm.template ReinterpretCast<int64_t>();
-    for (uint64_t i = 0; i < 8; ++i) {
-        uint64_t idx = topkBS1Idx + runInfo.s2StartIdx + topkKIdx + i;
-        if (likely((topkKIdx + i < constInfo.sparseBlockCount) && (s2IdxInBase + i < procS2End))) {
+    for (uint64_t i = 0; i < sparseCopyTokenNum; ++i) {
+        uint64_t idx = topkBaseIdx + s2IdxInBase + i;
+        if (likely((topkKIdx + i < sparseBlockCount) && (s2IdxInBase + i < procS2EndLocal))) {
             tokenData[i] = kvPhyAddrGm64.GetValue(idx);
         } else {
             break;
@@ -235,7 +220,7 @@ __aicore__ inline int64_t SCFABlockVec<TEMPLATE_ARGS>::GetkeyOffset(int64_t s2Id
         int64_t blkTableOffset = s2Idx % blockSize;
         int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKvStride : constInfo.oriKvStride;
         realkeyOffset = blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) *
-            paBlockStride + blkTableOffset * constInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
+            paBlockStride + blkTableOffset * combineKvInputBytes; // BlockNum, BlockSize, N(1), D
     } else {
         realkeyOffset = runInfo.boIdx * constInfo.s2Size + s2Idx; // BSN(1)D
     }
@@ -255,11 +240,10 @@ SCFABlockVec<TEMPLATE_ARGS>::CopyInSingleKv(LocalTensor<KV_T> kvInUb, int64_t st
     intriParams.dstStride = 0;
     intriParams.srcStride = 0;
     DataCopyPadExtParams<KV_T> padParams;
-    // 当前仅支持COMBINE模式
-    uint32_t combineBytes = 640;
+    constexpr uint32_t combineBytes = combineKvInputBytes;
+    constexpr uint32_t combineDim = combineKvInputBytes / sizeof(KV_T);
+    constexpr uint32_t combineDimAlign = combineKvInputAlignBytes / sizeof(KV_T);
     intriParams.blockLen = combineBytes;
-    uint32_t combineDim = combineBytes / sizeof(KV_T);
-    uint32_t combineDimAlign = CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
     padParams.isPad = true;
     padParams.leftPadding = 0;
     padParams.rightPadding = combineDimAlign - combineDim;
@@ -271,10 +255,21 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTensor<KV_T> kvInUb , int64_t startRow,
     int64_t *tokenData, const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    int64_t s2IdLimit = runInfo.s2RealSize;
-    s2IdLimit = (runInfo.s2RealSize - runInfo.actualS1Size + runInfo.s1oIdx + 1) / constInfo.cmpRatio;
+    // 当前仅支持COMBINE模式
+    constexpr uint32_t combineBytes = combineKvInputBytes;
+    constexpr uint32_t combineDim = combineKvInputBytes / sizeof(KV_T);
+    constexpr uint32_t combineDimAlign = combineKvInputAlignBytes / sizeof(KV_T);
+    const uint32_t sparseBlockSize = constInfo.sparseBlockSize;
+    DataCopyExtParams intriParams;
+    intriParams.blockLen = combineBytes;
+    intriParams.dstStride = 0;
+    DataCopyPadExtParams<KV_T> padParams;
+    padParams.isPad = true;
+    padParams.leftPadding = 0;
+    padParams.rightPadding = combineDimAlign - combineDim;
+    padParams.paddingValue = 0;
     uint32_t dealRow = 0;
-    for (uint32_t i = 0; i < 8; i += 2) {
+    for (uint32_t i = 0; i < sparseCopyTokenNum; i += 2) {
         int64_t keyOffset0 = 0;
         int64_t keyOffset1 = 0;
         if constexpr (IS_VEC_S2PHYADDR) {
@@ -288,34 +283,22 @@ __aicore__ inline uint32_t SCFABlockVec<TEMPLATE_ARGS>::CopyInKvSparse(LocalTens
         if (unlikely(keyOffset0 < 0 && keyOffset1 < 0)) {
             return dealRow;
         }
-        uint32_t combineBytes = constInfo.dSizeVInput;
         int64_t keySrcStride = (keyOffset0 > keyOffset1 ? (keyOffset0 - keyOffset1) :
             (keyOffset1 - keyOffset0)) - combineBytes;
         if (unlikely(keySrcStride >= INT32_MAX || keySrcStride < 0) ||
-            constInfo.sparseBlockSize > 1) {
+            sparseBlockSize > 1) {
             // stride溢出、stride为负数、s2超长等异常场景，还原成2条搬运指令
             CopyInSingleKv(kvInUb, startRow, keyOffset0);
             CopyInSingleKv(kvInUb, startRow + 1, keyOffset1);
         } else {
-            DataCopyExtParams intriParams;
             intriParams.blockCount = (keyOffset0 >= 0) + (keyOffset1 >= 0);
-            intriParams.blockLen = combineBytes;
-            intriParams.dstStride = 0;
             intriParams.srcStride = keySrcStride;
-            DataCopyPadExtParams<KV_T> padParams;
 
             int64_t keyOffset = keyOffset0 > -1 ? keyOffset0 : keyOffset1;
             if (keyOffset1 > -1 && keyOffset1 < keyOffset0) {
                 keyOffset = keyOffset1;
             }
 
-            // 当前仅支持COMBINE模式
-            uint32_t combineDim = combineBytes / sizeof(KV_T);
-            uint32_t combineDimAlign = CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
-            padParams.isPad = true;
-            padParams.leftPadding = 0;
-            padParams.rightPadding = combineDimAlign - combineDim;
-            padParams.paddingValue = 0;
             DataCopyPad(kvInUb[startRow *  combineDimAlign], keyGm[keyOffset], intriParams, padParams);
         }
         dealRow += (keyOffset0 >= 0) + (keyOffset1 >= 0);
@@ -499,11 +482,12 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyOutKvUb2Gm(
 {
     GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
     uint64_t blockElementNum = 16;
+    const int64_t s2RealSize = runInfo.s2RealSize;
     DataCopyParams dataCopyParams;
     dataCopyParams.blockCount = (constInfo.dSizeNope + constInfo.dSizeRope) / blockElementNum;
     dataCopyParams.blockLen = dealRow;
     dataCopyParams.srcGap = blockElementNum + 1 - dealRow;
-    dataCopyParams.dstGap = Align16Func(runInfo.s2RealSize) - dealRow;
+    dataCopyParams.dstGap = Align16Func(s2RealSize) - dealRow;
     DataCopy(v0ResGmTensor[s2StartIdx * blockElementNum], antiKvTensorAsB16, dataCopyParams);
 }
 
@@ -512,42 +496,46 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessNotSparseKv(
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
     const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    if (procSize == 0) {
+    const int64_t procSizeLocal = procSize;
+    if (procSizeLocal == 0) {
         return;
     }
     int64_t v0ProcessBase = 16;
     int64_t v0ProcessSize = v0ProcessBase;
-    int64_t loopTimes = (procSize + v0ProcessBase -1) / v0ProcessBase;
+    int64_t loopTimes = (procSizeLocal + v0ProcessBase - 1) / v0ProcessBase;
     for (uint32_t i = 0; i < loopTimes; i++) {
         int64_t s2StartIdx = procS2Start + i * v0ProcessBase;
         if (i == loopTimes  - 1) {
-            v0ProcessSize = procSize - i * v0ProcessBase;
+            v0ProcessSize = procSizeLocal - i * v0ProcessBase;
         }
 
-        get_buf(PIPE_MTE2, stage0InBufBufId[pingPongV0], false);
-        rls_buf(PIPE_MTE2, stage0InBufBufId[pingPongV0], false);
-        LocalTensor<KV_T> kvInUb = stage0InBuf[pingPongV0].Get<KV_T>();
+        const uint32_t pp = pingPongV0;
+        const uint32_t stage0InId = pp;
+        const uint32_t stage0OutId = pp + 2; // 输入ping-pong占用ID 0/1，输出使用独立的ID 2/3
+        get_buf(PIPE_MTE2, stage0InId, false);
+        rls_buf(PIPE_MTE2, stage0InId, false);
+        LocalTensor<KV_T> kvInUb = stage0InBuf[pp].Get<KV_T>();
         CopyInKvNotSparse(kvInUb, v0ProcessSize, s2StartIdx, runInfo, constInfo);
-        get_buf(PIPE_MTE2, stage0InBufBufId[pingPongV0], true);
-        rls_buf(PIPE_MTE2, stage0InBufBufId[pingPongV0], true);
-        get_buf(PIPE_V, stage0InBufBufId[pingPongV0], false);
-        rls_buf(PIPE_V, stage0InBufBufId[pingPongV0], false);
+        get_buf(PIPE_MTE2, stage0InId, true);
+        rls_buf(PIPE_MTE2, stage0InId, true);
+        get_buf(PIPE_V, stage0InId, false);
+        rls_buf(PIPE_V, stage0InId, false);
         // 2、dequant by vf
-        get_buf(PIPE_V, stage0OutBufBufId[pingPongV0], false);
-        rls_buf(PIPE_V, stage0OutBufBufId[pingPongV0], false);
-        LocalTensor<Q_T> kvDequantOutUb = stage0OutBuf[pingPongV0].Get<Q_T>();
+        get_buf(PIPE_V, stage0OutId, false);
+        rls_buf(PIPE_V, stage0OutId, false);
+        LocalTensor<Q_T> kvDequantOutUb = stage0OutBuf[pp].Get<Q_T>();
         DequantKv(kvDequantOutUb, kvInUb, v0ProcessSize, constInfo);
-        get_buf(PIPE_V, stage0InBufBufId[pingPongV0], true);
-        rls_buf(PIPE_V, stage0InBufBufId[pingPongV0], true);
+        get_buf(PIPE_V, stage0InId, true);
+        rls_buf(PIPE_V, stage0InId, true);
 
         // 3、copy kv out, ub -> l1
-        get_buf(PIPE_V, stage0OutBufBufId[pingPongV0], true);
-        rls_buf(PIPE_V, stage0OutBufBufId[pingPongV0], true);
-        get_buf(PIPE_MTE3, stage0OutBufBufId[pingPongV0], false);
-        rls_buf(PIPE_MTE3, stage0OutBufBufId[pingPongV0], false);
+        get_buf(PIPE_V, stage0OutId, true);
+        rls_buf(PIPE_V, stage0OutId, true);
+        get_buf(PIPE_MTE3, stage0OutId, false);
+        rls_buf(PIPE_MTE3, stage0OutId, false);
         CopyOutKvUb2Gm(v0ResGm, kvDequantOutUb, v0ProcessSize, s2StartIdx, runInfo, constInfo);
-        get_buf(PIPE_MTE3, stage0OutBufBufId[pingPongV0], true);
-        rls_buf(PIPE_MTE3, stage0OutBufBufId[pingPongV0], true);
+        get_buf(PIPE_MTE3, stage0OutId, true);
+        rls_buf(PIPE_MTE3, stage0OutId, true);
         pingPongV0 ^= 1;
     }
 }
@@ -556,12 +544,16 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTensor<KV_T> kvMergUb,
     int64_t dealRow, int64_t s2StartOffset, const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    int64_t s2LoopCount = (runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx) ? \
-        (runInfo.s2LoopCount - runInfo.oriKvLoopEndIdx) : runInfo.s2LoopCount;
-    int64_t s2Idx = s2StartOffset + s2LoopCount * constInfo.s2BaseSize + runInfo.s2StartIdx;
-    uint32_t combineBytes = constInfo.dSizeVInput;
-    uint32_t combineDim = combineBytes / sizeof(KV_T);
-    uint32_t combineDimAlign = CeilAlign(combineBytes, BUFFER_SIZE_BYTE_32B) / sizeof(KV_T);
+    const int64_t runS2LoopCount = runInfo.s2LoopCount;
+    const int64_t oriKvLoopEndIdx = runInfo.oriKvLoopEndIdx;
+    const int64_t s2BaseSizeLocal = constInfo.s2BaseSize;
+    const int64_t s2StartIdx = runInfo.s2StartIdx;
+    int64_t s2LoopCount = (runS2LoopCount >= oriKvLoopEndIdx) ? \
+        (runS2LoopCount - oriKvLoopEndIdx) : runS2LoopCount;
+    int64_t s2Idx = s2StartOffset + s2LoopCount * s2BaseSizeLocal + s2StartIdx;
+    constexpr uint32_t combineBytes = combineKvInputBytes;
+    constexpr uint32_t combineDim = combineKvInputBytes / sizeof(KV_T);
+    constexpr uint32_t combineDimAlign = combineKvInputAlignBytes / sizeof(KV_T);
     DataCopyExtParams intriParams;
     intriParams.blockCount = dealRow;
     intriParams.blockLen = combineBytes;
@@ -573,21 +565,24 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTenso
     padParams.rightPadding = combineDimAlign - combineDim;
     padParams.paddingValue = 0;
     if constexpr (isPa) {
-        uint64_t blockTableBaseOffset = runInfo.boIdx * maxBlockNumPerBatch;
+        const uint64_t blockTableBaseOffset = runInfo.boIdx * maxBlockNumPerBatch;
+        const uint32_t blockSizeLocal = blockSize;
+        const uint64_t n2Size = constInfo.n2Size;
+        const uint64_t n2oIdx = runInfo.n2oIdx;
+        const int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKvStride : constInfo.oriKvStride;
         uint64_t dstOffset = 0;
         uint32_t copyFinishElmenCnt = 0;
         uint32_t curSequence = s2Idx;
-        int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKvStride : constInfo.oriKvStride;
         while (copyFinishElmenCnt < dealRow) {
-            uint64_t blockIdOffset = curSequence / blockSize;
-            uint64_t remainElmenCnt = curSequence % blockSize;
+            uint64_t blockIdOffset = curSequence / blockSizeLocal;
+            uint64_t remainElmenCnt = curSequence % blockSizeLocal;
             uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset);
-            uint32_t copyElmenCnt = blockSize - remainElmenCnt;
+            uint32_t copyElmenCnt = blockSizeLocal - remainElmenCnt;
             if (copyElmenCnt + copyFinishElmenCnt > dealRow) {
                 copyElmenCnt = dealRow - copyFinishElmenCnt;
             }
             uint64_t srcOffset = idInBlockTable * paBlockStride +
-                remainElmenCnt * constInfo.n2Size * combineBytes + (uint64_t)(runInfo.n2oIdx * combineBytes); // BlockNum, BlockSize, N, D
+                remainElmenCnt * n2Size * combineBytes + static_cast<uint64_t>(n2oIdx * combineBytes); // BlockNum, BlockSize, N, D
             intriParams.blockCount = copyElmenCnt; // base s2 size
             DataCopyPad(kvMergUb[dstOffset * combineDimAlign], keyGm[srcOffset], intriParams, padParams);
             dstOffset += copyElmenCnt;
@@ -671,7 +666,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
     const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    if (procSize == 0) {
+    const int64_t procSizeLocal = procSize;
+    if (procSizeLocal == 0) {
         return;
     }
 
@@ -681,21 +677,39 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
     // 4x + 2 = (2x + 2) + (2x)
     // 4x + 3 = (2x + 2) + (2x + 1)
     bool meetEnd = false;
+    const int64_t procS2EndLocal = procS2End;
     int64_t s2Start = procS2Start;
     int64_t s2 = procS2Start;
+    const uint32_t sparseBlockCount = constInfo.sparseBlockCount;
+    const int64_t s2LoopCount = runInfo.s2LoopCount;
+    const int64_t oriKvLoopEndIdx = runInfo.oriKvLoopEndIdx;
+    const uint64_t topkKBase =
+        static_cast<uint64_t>(s2LoopCount - oriKvLoopEndIdx) * static_cast<uint64_t>(constInfo.s2BaseSize);
+    uint64_t topkBS1Idx = 0;
+    if constexpr (LAYOUT_T == SAS_LAYOUT::TND) {
+        uint64_t actualSeqQPrefixSum = cuSeqlensQGm.GetValue(runInfo.boIdx);
+        topkBS1Idx += (actualSeqQPrefixSum + runInfo.s1oIdx) * sparseBlockCount; // T, N2(1), K
+    } else {
+        topkBS1Idx += runInfo.boIdx * constInfo.s1Size * sparseBlockCount +
+            runInfo.s1oIdx * sparseBlockCount; // B, S1, N2(1), K
+    }
+    const uint64_t topkBaseIdx = topkBS1Idx + runInfo.s2StartIdx + topkKBase;
     // 处理一个s2的base块
-    while ((s2 < procS2End) && !meetEnd) { // 拷贝到s2End或者遇到-1
+    while ((s2 < procS2EndLocal) && !meetEnd) { // 拷贝到s2End或者遇到-1
         int64_t dealRow = 0;
+        const uint32_t pp = pingPongV0;
+        const uint32_t stage0InId = pp;
+        const uint32_t stage0OutId = pp + 2; // 输入ping-pong占用ID 0/1，输出使用独立的ID 2/3
         // 1、copy kv in, gm ->ub
-        get_buf(PIPE_MTE2, stage0InBufBufId[pingPongV0], false);
-        rls_buf(PIPE_MTE2, stage0InBufBufId[pingPongV0], false);
-        LocalTensor<KV_T> kvInUb = stage0InBuf[pingPongV0].Get<KV_T>();
-        while (dealRow < Min(16, procSize) && s2 < procS2End) { // 拷贝满16行或者遇到-1
+        get_buf(PIPE_MTE2, stage0InId, false);
+        rls_buf(PIPE_MTE2, stage0InId, false);
+        LocalTensor<KV_T> kvInUb = stage0InBuf[pp].Get<KV_T>();
+        while (dealRow < Min(16, procSizeLocal) && s2 < procS2EndLocal) { // 拷贝满16行或者遇到-1
             int64_t tokenData[8] = {-1, -1, -1, -1, -1, -1, -1, -1}; // 拷贝进入的8个token的index
             if constexpr (IS_VEC_S2PHYADDR) {
-                GetRealS2Addr(tokenData, s2, runInfo, constInfo);
+                GetRealS2Addr(tokenData, s2, topkBaseIdx, topkKBase, sparseBlockCount, procS2EndLocal);
             } else {
-                GetRealCmpS2Idx(tokenData, s2, runInfo, constInfo);
+                GetRealCmpS2Idx(tokenData, s2, topkBaseIdx, topkKBase, sparseBlockCount, procS2EndLocal);
             }
             s2 += 8; // 每次搬运8行
             if (tokenData[0] == -1 && tokenData[1] == -1 && tokenData[2] == -1 && tokenData[3] == -1 &&
@@ -710,29 +724,29 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
             }
         }
         if (dealRow == 0) {
-            get_buf(PIPE_V, stage0InBufBufId[pingPongV0], true);
-            rls_buf(PIPE_V, stage0InBufBufId[pingPongV0], true);
+            get_buf(PIPE_V, stage0InId, true);
+            rls_buf(PIPE_V, stage0InId, true);
             return;
         }
-        get_buf(PIPE_MTE2, stage0InBufBufId[pingPongV0], true);
-        rls_buf(PIPE_MTE2, stage0InBufBufId[pingPongV0], true);
-        get_buf(PIPE_V, stage0InBufBufId[pingPongV0], false);
-        rls_buf(PIPE_V, stage0InBufBufId[pingPongV0], false);
+        get_buf(PIPE_MTE2, stage0InId, true);
+        rls_buf(PIPE_MTE2, stage0InId, true);
+        get_buf(PIPE_V, stage0InId, false);
+        rls_buf(PIPE_V, stage0InId, false);
         // 2、dequant by vf
-        get_buf(PIPE_V, stage0OutBufBufId[pingPongV0], false);
-        rls_buf(PIPE_V, stage0OutBufBufId[pingPongV0], false);
-        LocalTensor<Q_T> kvDequantOutUb = stage0OutBuf[pingPongV0].Get<Q_T>();
+        get_buf(PIPE_V, stage0OutId, false);
+        rls_buf(PIPE_V, stage0OutId, false);
+        LocalTensor<Q_T> kvDequantOutUb = stage0OutBuf[pp].Get<Q_T>();
         DequantKv(kvDequantOutUb, kvInUb, dealRow, constInfo);
-        get_buf(PIPE_V, stage0InBufBufId[pingPongV0], true);
-        rls_buf(PIPE_V, stage0InBufBufId[pingPongV0], true);
+        get_buf(PIPE_V, stage0InId, true);
+        rls_buf(PIPE_V, stage0InId, true);
         // 3、copy kv out, ub -> l1
-        get_buf(PIPE_V, stage0OutBufBufId[pingPongV0], true);
-        rls_buf(PIPE_V, stage0OutBufBufId[pingPongV0], true);
-        get_buf(PIPE_MTE3, stage0OutBufBufId[pingPongV0], false);
-        rls_buf(PIPE_MTE3, stage0OutBufBufId[pingPongV0], false);
+        get_buf(PIPE_V, stage0OutId, true);
+        rls_buf(PIPE_V, stage0OutId, true);
+        get_buf(PIPE_MTE3, stage0OutId, false);
+        rls_buf(PIPE_MTE3, stage0OutId, false);
         CopyOutKvUb2Gm(v0ResGm, kvDequantOutUb, dealRow, s2Start, runInfo, constInfo);
-        get_buf(PIPE_MTE3, stage0OutBufBufId[pingPongV0], true);
-        rls_buf(PIPE_MTE3, stage0OutBufBufId[pingPongV0], true);
+        get_buf(PIPE_MTE3, stage0OutId, true);
+        rls_buf(PIPE_MTE3, stage0OutId, true);
         s2Start += dealRow;
         pingPongV0 ^= 1;
     }
@@ -746,38 +760,44 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
 {
     bmm1ResBuf.WaitCrossCore();
 
-    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-    LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-    LocalTensor<float> expUb = this->softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
-    int64_t stage1Offset = runInfo.taskIdMod2;
-    get_buf(PIPE_V, stage1OutBufBufId[stage1Offset], false);
-    rls_buf(PIPE_V, stage1OutBufBufId[stage1Offset], false);
+    const uint32_t softmaxOffset = runInfo.multiCoreIdxMod2;
+    const int64_t s2LoopCount = runInfo.s2LoopCount;
+    const int64_t s2RealSize = runInfo.s2RealSize;
+    const int64_t halfMRealSize = runInfo.halfMRealSize;
+    const T softmaxScale = static_cast<T>(constInfo.softmaxScale);
+    LocalTensor<float> sumUb = this->softmaxSumBuf[softmaxOffset].template Get<float>();
+    LocalTensor<float> maxUb = this->softmaxMaxBuf[softmaxOffset].template Get<float>();
+    const uint32_t stage1Offset = runInfo.taskIdMod2;
+    const uint32_t stage1BufId = stage1Offset + 4;
+    LocalTensor<float> expUb = this->softmaxExpBuf[stage1Offset].template Get<T>();
+    get_buf(PIPE_V, stage1BufId, false);
+    rls_buf(PIPE_V, stage1BufId, false);
     LocalTensor<Q_T> stage1CastTensor = this->stage1OutBuf[stage1Offset].template Get<Q_T>();
 
     LocalTensor<T> apiTmpBuffer = this->commonTBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
 
     // loopCount = 0 但传入sinks时走update分支，maxUb通过sinks初始化，sumUb初始化为1.0
-    if (runInfo.s2LoopCount == 0 && !isSinks) {
-        if (likely(runInfo.s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
+    if (s2LoopCount == 0 && !isSinks) {
+        if (likely(s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, SCFaVectorApi::OriginNRange::EQ_128_SCFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
-        } else if(runInfo.s2RealSize <= 64) { // s2RealSize小于等于64分档, VF内常量化减少if判断
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, halfMRealSize, s2RealSize,
+                softmaxScale, negativeFloatScalar);
+        } else if(s2RealSize <= 64) { // s2RealSize小于等于64分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, SCFaVectorApi::OriginNRange::GT_0_AND_LTE_64_SCFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
-        } else if(runInfo.s2RealSize < 128) { // s2RealSize小于128分档, VF内常量化减少if判断
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, halfMRealSize, s2RealSize,
+                softmaxScale, negativeFloatScalar);
+        } else if(s2RealSize < 128) { // s2RealSize小于128分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, SCFaVectorApi::OriginNRange::GT_64_AND_LTE_128_SCFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, halfMRealSize, s2RealSize,
+                softmaxScale, negativeFloatScalar);
         }
     } else {
-        if (runInfo.s2LoopCount == 0 && isSinks) {
+        if (s2LoopCount == 0 && isSinks) {
             // s1切1,vec0: 0 ~ halfMRealSize - 1, vec1: gSize - halfMRealSize ~ gSize
             int64_t sinksOffset = 0;
             if constexpr (!IS_SPLIT_G) {
-                sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : constInfo.gSize - runInfo.halfMRealSize;
+                sinksOffset = GetBlockIdx() % 2 == 0 ? 0 : constInfo.gSize - halfMRealSize;
             } else {
                 switch (constInfo.aivIdx % 4) {
                     case 0:
@@ -797,47 +817,47 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
                 }
             }
             LocalTensor<T> sinksUb = this->sinksBuf.template Get<T>();
-            DataCopy(maxUb, sinksUb[sinksOffset], runInfo.halfMRealSize);
-            DuplicateSumWithR0<T>(sumUb, R0, runInfo.halfMRealSize);
+            DataCopy(maxUb, sinksUb[sinksOffset], halfMRealSize);
+            DuplicateSumWithR0<T>(sumUb, R0, halfMRealSize);
         }
-        if (likely(runInfo.s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
+        if (likely(s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, SCFaVectorApi::OriginNRange::EQ_128_SCFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
-        } else if (runInfo.s2RealSize <= 64) { // s2RealSize小于等于64分档, VF内常量化减少if判断
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, halfMRealSize, s2RealSize,
+                softmaxScale, negativeFloatScalar);
+        } else if (s2RealSize <= 64) { // s2RealSize小于等于64分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, SCFaVectorApi::OriginNRange::GT_0_AND_LTE_64_SCFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
-        } else if(runInfo.s2RealSize < 128) { // s2RealSize小于128分档, VF内常量化减少if判断
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, halfMRealSize, s2RealSize,
+                softmaxScale, negativeFloatScalar);
+        } else if(s2RealSize < 128) { // s2RealSize小于128分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, true, s1BaseSize, s2BaseSize, SCFaVectorApi::OriginNRange::GT_64_AND_LTE_128_SCFA>(
-                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize, runInfo.s2RealSize,
-                static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
+                stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, halfMRealSize, s2RealSize,
+                softmaxScale, negativeFloatScalar);
         }
     }
     bmm1ResBuf.SetCrossCore();
 
     // ===================DataCopy to L1 ====================
-    get_buf(PIPE_V, stage1OutBufBufId[stage1Offset], true);
-    rls_buf(PIPE_V, stage1OutBufBufId[stage1Offset], true);
-    get_buf(PIPE_MTE3, stage1OutBufBufId[stage1Offset], false);
-    rls_buf(PIPE_MTE3, stage1OutBufBufId[stage1Offset], false);
+    get_buf(PIPE_V, stage1BufId, true);
+    rls_buf(PIPE_V, stage1BufId, true);
+    get_buf(PIPE_MTE3, stage1BufId, false);
+    rls_buf(PIPE_MTE3, stage1BufId, false);
 
     outputBuf.WaitCrossCore();
     LocalTensor<Q_T> mm2AL1Tensor = outputBuf.GetTensor<Q_T>();
-    if (likely(runInfo.halfMRealSize != 0)) {
-        DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (BLOCK_BYTE / sizeof(Q_T)) * (runInfo.mRealSize - runInfo.halfMRealSize)],
-            stage1CastTensor, {s2BaseSize / 16, (uint16_t)runInfo.halfMRealSize,
-            (uint16_t)(vec1Srcstride - runInfo.halfMRealSize),
-            (uint16_t)(s1BaseSize - runInfo.halfMRealSize)});
+    if (likely(halfMRealSize != 0)) {
+        DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (BLOCK_BYTE / sizeof(Q_T)) * (runInfo.mRealSize - halfMRealSize)],
+            stage1CastTensor, {s2BaseSize / 16, (uint16_t)halfMRealSize,
+            (uint16_t)(vec1Srcstride - halfMRealSize),
+            (uint16_t)(s1BaseSize - halfMRealSize)});
     }
 
-    get_buf(PIPE_MTE3, stage1OutBufBufId[stage1Offset], true);
-    rls_buf(PIPE_MTE3, stage1OutBufBufId[stage1Offset], true);
+    get_buf(PIPE_MTE3, stage1BufId, true);
+    rls_buf(PIPE_MTE3, stage1BufId, true);
 
     outputBuf.SetCrossCore();
     // ======================================================
-    if (runInfo.s2LoopCount != 0 || (runInfo.s2LoopCount == 0 && isSinks)) {
-        SCFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
+    if (s2LoopCount != 0 || (s2LoopCount == 0 && isSinks)) {
+        SCFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, halfMRealSize);
     }
 }
 
@@ -852,32 +872,36 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec2(
         return;
     }
     
+    const int64_t s2LoopCount = runInfo.s2LoopCount;
+    const int64_t s2LoopLimit = runInfo.s2LoopLimit;
+    const int64_t vec2MBaseSize = runInfo.vec2MBaseSize;
     runInfo.vec2S1RealSize = runInfo.vec2S1BaseSize;
-    runInfo.vec2MRealSize = runInfo.vec2MBaseSize;
-    int64_t vec2CalcSize = runInfo.vec2MRealSize * dTemplateAlign64;
+    runInfo.vec2MRealSize = vec2MBaseSize;
+    int64_t vec2CalcSize = vec2MBaseSize * dTemplateAlign64;
 
     LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
     get_buf(PIPE_V, stage2OutBufBufId, false);
     rls_buf(PIPE_V, stage2OutBufBufId, false);
-    if (unlikely(runInfo.s2LoopCount == 0)) {
+    if (unlikely(s2LoopCount == 0)) {
         DataCopy(vec2ResUb, mmRes, vec2CalcSize);
     } else {
-        LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
-        if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
-            FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, mmRes, vec2ResUb, expUb, runInfo.vec2MRealSize);
+        const uint32_t softmaxExpOffset = runInfo.taskIdMod2;
+        LocalTensor<T> expUb = softmaxExpBuf[softmaxExpOffset].template Get<T>();
+        if (s2LoopCount < s2LoopLimit) {
+            FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, mmRes, vec2ResUb, expUb, vec2MBaseSize);
         } else {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
             FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64>(
-                vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, runInfo.vec2MRealSize);
+                vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, vec2MBaseSize);
         }
     }
 
     bmm2ResBuf.SetCrossCore();
-    if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
-        if (unlikely(runInfo.s2LoopCount == 0)) {
+    if (s2LoopCount == s2LoopLimit) {
+        if (unlikely(s2LoopCount == 0)) {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-            LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize);
+            LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, vec2ResUb, sumUb, vec2MBaseSize);
         }
 
         this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
