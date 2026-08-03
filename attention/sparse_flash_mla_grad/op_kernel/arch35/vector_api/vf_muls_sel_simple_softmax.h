@@ -64,6 +64,7 @@ MulsSelVFPseType1(uint64_t srcLocalInt, uint64_t dstLocalInt, uint64_t softmaxL1
     RegTensor<float> vregExpTail;
     RegTensor<float> vregDivTail;
     RegTensor<float> vregReduceSumMulsTail;
+    RegTensor<float> vregPscalar;
 
     RegTensor<float> vregSel;
     RegTensor<float> vregSelTail;
@@ -84,6 +85,7 @@ MulsSelVFPseType1(uint64_t srcLocalInt, uint64_t dstLocalInt, uint64_t softmaxL1
     Duplicate(vregMin, minValue);
     Duplicate(vregReduceSumMuls, 0.0f);
     Duplicate(vregReduceSumMulsTail, 0.0f);
+    Duplicate(vregPscalar, pScalar);
 
     // 64 * 128 max/sum: 64 * 8
     for (uint16_t m = 0; m < static_cast<uint16_t>(srcM); m++) {
@@ -120,10 +122,10 @@ MulsSelVFPseType1(uint64_t srcLocalInt, uint64_t dstLocalInt, uint64_t softmaxL1
     }
     if constexpr (IsSparseIndicesExist) {
         for (uint16_t n = 0; n < repeatTimes; n++) {
-            Muls(vregReduceSumMuls, vregReduceSumMuls, pScalar, pregFullExe);
+            Div(vregReduceSumMuls, vregReduceSumMuls, vregPscalar, pregFullExe);
             StoreAlign<float>(((__ubuf__ float *&)softmaxL1LocalInt), vregReduceSumMuls, pregFullExe);
         }
-        Muls(vregReduceSumMulsTail, vregReduceSumMulsTail, pScalar, pregTailExe);
+        Div(vregReduceSumMulsTail, vregReduceSumMulsTail, vregPscalar, pregTailExe);
         StoreAlign<float>(((__ubuf__ float *&)softmaxL1LocalIntTail), vregReduceSumMulsTail, pregFullExe);
     }
 }
