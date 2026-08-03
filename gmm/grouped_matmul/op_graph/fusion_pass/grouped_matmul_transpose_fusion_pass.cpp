@@ -143,12 +143,14 @@ std::size_t GetOutputConsumerNum(const GNodePtr& node)
     return node->GetOutDataNodesAndPortIndexs(0).size();
 }
 
-bool IsUnknownShape(const Shape& shape)
+bool IsUnknownDim(int64_t dim)
 {
-    const auto dims = shape.GetDims();
-    return std::any_of(dims.begin(), dims.end(), [](int64_t dim) {
-        return dim == ge::UNKNOWN_DIM || dim == ge::UNKNOWN_DIM_NUM || dim < 0;
-    });
+    return dim == ge::UNKNOWN_DIM || dim == ge::UNKNOWN_DIM_NUM || dim < 0;
+}
+
+bool IsSameOrBothUnknown(int64_t lhs, int64_t rhs)
+{
+    return lhs == rhs || (IsUnknownDim(lhs) && IsUnknownDim(rhs));
 }
 
 bool CheckPlatformIsDav3510ForGmm()
@@ -220,23 +222,37 @@ bool IsReshapeTransForScale(int32_t index, const GNodePtr& nodePerInput)
         nodePerInput->GetOutputDesc(0, outputDesc) != GRAPH_SUCCESS) {
         return false;
     }
-    const auto inputShape = inputDesc.GetShape();
-    const auto outputShape = outputDesc.GetShape();
-    if (IsUnknownShape(inputShape) || IsUnknownShape(outputShape)) {
-        return false;
-    }
-    auto expectedOutputDims = inputShape.GetDims();
-    const auto outputDims = outputShape.GetDims();
+    auto expectedOutputDims = inputDesc.GetShape().GetDims();
+    const auto outputDims = outputDesc.GetShape().GetDims();
     if (expectedOutputDims.size() < kMiniShapeLen || expectedOutputDims.size() != outputDims.size()) {
         return false;
     }
-    const auto lastIndex = expectedOutputDims.size() - 1;
-    const auto penultimateIndex = expectedOutputDims.size() - kMiniShapeLen;
-    if (expectedOutputDims[lastIndex] != 1 && expectedOutputDims[penultimateIndex] != 1) {
+
+    std::size_t firstTransposeAxis = expectedOutputDims.size() - kMiniShapeLen;
+    std::size_t secondTransposeAxis = expectedOutputDims.size() - 1;
+    const bool isMxScale = index == kScaleIndex && inputDesc.GetDataType() == DT_FLOAT8_E8M0;
+    const bool isMxPertokenScale = index == kPertokenScaleIndex && inputDesc.GetDataType() == DT_FLOAT8_E8M0;
+    if (isMxScale) {
+        if (expectedOutputDims.size() < kPermScale.size()) {
+            return false;
+        }
+        firstTransposeAxis = expectedOutputDims.size() - 3;
+        secondTransposeAxis = expectedOutputDims.size() - 2;
+    } else if (isMxPertokenScale) {
+        firstTransposeAxis = 0;
+        secondTransposeAxis = 1;
+    }
+
+    if (expectedOutputDims[firstTransposeAxis] != 1 && expectedOutputDims[secondTransposeAxis] != 1) {
         return false;
     }
-    std::swap(expectedOutputDims[lastIndex], expectedOutputDims[penultimateIndex]);
-    return expectedOutputDims == outputDims;
+    std::swap(expectedOutputDims[firstTransposeAxis], expectedOutputDims[secondTransposeAxis]);
+    for (std::size_t i = 0; i < expectedOutputDims.size(); ++i) {
+        if (!IsSameOrBothUnknown(expectedOutputDims[i], outputDims[i])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 bool GetTransposePerm(const GNodePtr& transposeNode, std::vector<int64_t>& perm)

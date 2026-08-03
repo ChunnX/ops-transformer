@@ -392,21 +392,36 @@ GraphPtr BuildGraph(const GroupedMatmulTransposeFusionPassParam &param)
             extraOutputs.emplace_back(sharedOutput.tensor);
         }
     } else if (param.scenario == "scale_reshape_valid" || param.scenario == "scale_reshape_invalid" ||
-               param.scenario == "scale_reshape_unknown") {
+               param.scenario == "scale_reshape_unknown" || param.scenario == "scale_reshape_unknown_invalid" ||
+               param.scenario == "mx_scale_reshape_unknown" ||
+               param.scenario == "mx_scale_reshape_unknown_invalid") {
         std::vector<int64_t> inputShape = {2, 1, 64};
         std::vector<int64_t> outputShape = {2, 64, 1};
+        DataType scaleDtype = DT_FLOAT;
         if (param.scenario == "scale_reshape_invalid") {
             outputShape = {1, 2, 64};
         } else if (param.scenario == "scale_reshape_unknown") {
             inputShape = {2, -1, 1};
             outputShape = {2, 1, -1};
+        } else if (param.scenario == "scale_reshape_unknown_invalid") {
+            inputShape = {2, -1, 1};
+            outputShape = {-1, 1, 2};
+        } else if (param.scenario == "mx_scale_reshape_unknown") {
+            inputShape = {2, -1, 1, 2};
+            outputShape = {2, 1, -1, 2};
+            scaleDtype = DT_FLOAT8_E8M0;
+        } else if (param.scenario == "mx_scale_reshape_unknown_invalid") {
+            inputShape = {2, -1, 1, 2};
+            outputShape = {-1, 1, 2, 2};
+            scaleDtype = DT_FLOAT8_E8M0;
         }
-        auto scaleDesc = MakeTensorDesc(inputShape, DT_FLOAT);
-        auto scaleTensor = graphBuilder.CreateInput(graphInputIndex++, "dataScale", DT_FLOAT, FORMAT_ND, inputShape);
+        auto scaleDesc = MakeTensorDesc(inputShape, scaleDtype);
+        auto scaleTensor =
+            graphBuilder.CreateInput(graphInputIndex++, "dataScale", scaleDtype, FORMAT_ND, inputShape);
         scaleTensor.GetProducer()->UpdateOutputDesc(0, scaleDesc);
         TensorWithDesc scaleInput{scaleTensor, scaleDesc};
         AddUnaryNode(graph, graphBuilder, scaleInput, kReshapeType, "reshapeScale",
-                     MakeTensorDesc(outputShape, DT_FLOAT));
+                     MakeTensorDesc(outputShape, scaleDtype));
         optionalInputs.emplace_back("scale", scaleInput);
     } else if (param.scenario == "mx_per_token") {
         const std::vector<int64_t> scaleShape = {2, 1, 64, 2};
