@@ -127,7 +127,29 @@ const static int64_t DROP_MODE_TILINGKEY_BASE = 100LL;
 const static uint64_t EMPTY_TENSOR_TILINGKEY = 3000000ULL;
 const static int64_t KEY_VALUE_MODE_DIM0_NUM = 2LL;
 
-inline static int64_t CeilLog4(int64_t x) { return static_cast<int64_t>(std::ceil(std::log(x) / std::log(NUM_FOUR))); }
+// CountingSort 性能模板 TilingKey 基址
+const static int64_t CS_FULLLOAD_UNQUANT_TILINGKEY_BASE = 400000LL;       // 模板1 非量化
+const static int64_t CS_FULLLOAD_STATIC_QUANT_TILINGKEY_BASE = 410000LL;  // 模板1 静态量化
+const static int64_t CS_FULLLOAD_DYNAMIC_QUANT_TILINGKEY_BASE = 420000LL; // 模板1 动态量化
+const static int64_t CS_CUTORIGIN_UNQUANT_TILINGKEY_BASE = 500000LL;      // 模板2 非量化
+const static int64_t CS_CUTORIGIN_STATIC_QUANT_TILINGKEY_BASE = 510000LL; // 模板2 静态量化
+const static int64_t CS_CUTORIGIN_DYNAMIC_QUANT_TILINGKEY_BASE = 520000LL;// 模板2 动态量化
+
+// CountingSort 适用性常量
+const static int64_t CS_MIN_N = 256LL;
+const static int64_t CS_MAX_N = 1024LL * 1024LL;
+const static int64_t CS_FILTER_CHUNK_SIZE = 4096LL;
+// 与 kernel MoeV3CountingSortCutOriginBase::CS_DB_BATCH_CAP(=512) 对应的 rowIdx staging 字节数
+const static int64_t CS_DB_BATCH_CAP_BYTES = 512LL * static_cast<int64_t>(sizeof(int32_t));
+const static int64_t CS_MAX_PER_LOOP_COLS_BYTES = 64LL * 1024LL;
+const static int64_t CS_MAX_ACTUAL_EXPERT_NUM = 256LL;
+const static int64_t CS_ONE_BLOCK_ELEMENT = 8LL;
+const static int64_t CS_HISTOGRAM_BIN_SIZE = 128LL; // Histogram BIN0[0-127]/BIN1[128-255]
+
+inline static int64_t CeilLog4(int64_t x)
+{
+    return static_cast<int64_t>(std::ceil(std::log(x) / std::log(NUM_FOUR)));
+}
 
 inline static int64_t Align(int64_t elementNum, int64_t bytes)
 {
@@ -280,6 +302,12 @@ private:
     void SetLastCoreIndicesTiling(MoeV3Arch35GatherOutComputeTilingData *gatherOutTiling,
                                   int64_t lastCoreIndicesElements, int64_t perLoopMaxIndicesElements);
 
+    // CountingSort 性能模板（模板1 FullLoad / 模板2 CutOrigin）
+    bool IsCountingSortApplicable();
+    int64_t EstimateArch35CountingSortFullLoadUB(int64_t perCoreTokens);
+    void ComputeArch35CountingSortFullLoadTiling();
+    void ComputeArch35CountingSortCutOriginTiling();
+
     // DropPad模式Tiling计算函数
     void SetCoreSplitParams4SrcToDstDropPad(int64_t &needCoreNum, int64_t &perCoreRows, int64_t &lastCoreRows);
     void SetLoopParams4SrcToDstDropPad(int64_t perCoreRows, int64_t lastCoreRows);
@@ -406,6 +434,9 @@ private:
     bool isEmptyTensor_ = false;
     int64_t ep_ = 0LL;
 
+    // CountingSort 性能模板标志：0=未启用, 1=FullLoad, 2=CutOrigin
+    int64_t countingSortMode_ = 0LL;
+
     // input attrs
     int64_t activeNum_ = -1LL;
     int64_t expertCapacity_ = -1LL;
@@ -522,7 +553,29 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
     Tiling4ExpertTokensCountCompute();
 
     isFullload_ = IsFullLoad();
-    ComputeUseGatherCopy();
+
+    // CountingSort 性能模板判定：仅当未命中 FullLoad 且场景适配时尝试
+    // 命中场景：n ∈ [256, 1M]、expertNum ≤ 1024、非动态量化（含 int8/int4）、LE 满足约束
+    countingSortMode_ = 0;
+    tilingDataPtr_->countingSortParamsOp.countingSortMode = 0;
+    if (!isFullload_ && IsCountingSortApplicable()) {
+        // 先尝试模板1（FullLoad UB 全载），UB 预算不足时回退到模板2（CutOrigin）
+        int64_t perCoreTokensEst = Ops::Base::CeilDiv(n_, aivCoreNum_);
+        int64_t estUb = EstimateArch35CountingSortFullLoadUB(perCoreTokensEst);
+        if (estUb > 0 && estUb <= availUbSize_ - LENGTH_1024) {
+            countingSortMode_ = 1;
+            ComputeArch35CountingSortFullLoadTiling();
+        } else {
+            countingSortMode_ = 2;
+            ComputeArch35CountingSortCutOriginTiling();
+            // 模板2 若 colsLoops>1 且非 UN_QUANT 不启用（置 0 回退到分阶段）
+            if (tilingDataPtr_->countingSortParamsOp.countingSortMode == 0) {
+                countingSortMode_ = 0;
+            }
+        }
+    }
+    tilingDataPtr_->countingSortParamsOp.countingSortMode = countingSortMode_;
+
     if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN ||
         quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 || quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN ||
         quantMode_ == QUANT_MODE_MXFP4_E2M1) {
@@ -559,6 +612,22 @@ uint64_t MoeInitRoutingV3Arch35TilingClass::GetTilingKey() const
         return static_cast<uint64_t>(FULLLOAD_TILINGKEY_BASE + quantModeFactor * QUANT_MODE_TILINGKEY_BASE);
     }
 
+    // CountingSort 性能模板
+    if (countingSortMode_ == 1 || countingSortMode_ == 2) {
+        int64_t base = (countingSortMode_ == 1) ? CS_FULLLOAD_UNQUANT_TILINGKEY_BASE
+                                                  : CS_CUTORIGIN_UNQUANT_TILINGKEY_BASE;
+        if (quantMode_ == QUANT_MODE_STATIC) {
+            base = (countingSortMode_ == 1) ? CS_FULLLOAD_STATIC_QUANT_TILINGKEY_BASE
+                                             : CS_CUTORIGIN_STATIC_QUANT_TILINGKEY_BASE;
+        } else if (quantMode_ == QUANT_MODE_DYNAMIC) {
+            base = (countingSortMode_ == 1) ? CS_FULLLOAD_DYNAMIC_QUANT_TILINGKEY_BASE
+                                             : CS_CUTORIGIN_DYNAMIC_QUANT_TILINGKEY_BASE;
+        }
+        // rowIdxType + dropPadMode 编码到低三位
+        return static_cast<uint64_t>(base + rowIdxType_ * ROWIDX_TYPE_TILINGKEY_BASE +
+                                     dropPadMode_ * DROP_MODE_TILINGKEY_BASE);
+    }
+
     if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN) {
         // 对于MXFP8量化，两种模式在TilingKey体现的QuantMode都为3。
         // 其余非量化为0，静态量化为1，动态量化为2，即都是quantMode_+1
@@ -586,6 +655,22 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
     if (isEmptyTensor_) {
         return GetEmptyTensorWorkspaceSize();
     }
+
+    // CountingSort 性能模板的 workspace：核间专家计数归约表
+    if (countingSortMode_ == 1 || countingSortMode_ == 2) {
+        int64_t filterNeedCoreNum = tilingDataPtr_->countingSortParamsOp.filterNeedCoreNum;
+        int64_t expertCountStride = tilingDataPtr_->countingSortParamsOp.expertCountStride;
+        int64_t csWorkspace = filterNeedCoreNum * expertCountStride * static_cast<int64_t>(sizeof(int32_t));
+        // 框架开销
+        csWorkspace += SIZE_16 * LENGTH_1024 * LENGTH_1024;
+        workspaceSize_ = static_cast<uint32_t>(csWorkspace);
+        OP_LOGD(context_, "CountingSort workspace size = %u bytes", workspaceSize_);
+        auto *wsPtr = context_->GetWorkspaceSizes(1);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, wsPtr);
+        wsPtr[0] = workspaceSize_;
+        return ge::GRAPH_SUCCESS;
+    }
+
     // 计算workspace大小
     workspaceSize_ = 0;
     int64_t sortWorkspaceSize =
@@ -2196,31 +2281,227 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
     return remainUb > 0;
 }
 
-bool MoeInitRoutingV3Arch35TilingClass::IsSupportGatherCopyKernels() const
+bool MoeInitRoutingV3Arch35TilingClass::IsCountingSortApplicable()
 {
-    if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
+    // n 范围
+    if (n_ < CS_MIN_N || n_ > CS_MAX_N) {
         return false;
     }
-    if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN ||
-        quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 || quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN ||
-        quantMode_ == QUANT_MODE_FP8_GROUP_E5M2 || quantMode_ == QUANT_MODE_FP8_GROUP_E4M3FN ||
-        quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E5M2 || quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E4M3FN) {
-        return true;
+    // expertNum 上限（Histogram 256 bin）
+    if (expertNum_ > 1024LL) {
+        return false;
     }
-    if (IsMXFP8NoQuantCase(quantMode_, xDtype_)) {
-        return true;
+    // 动态量化场景不支持 CountingSort（含 int8/int4）：
+    // 1) 与 A3 ShouldEnableCountingSortByShape 对齐（quantValid = quantMode_ != DYNAMIC_QUANT，动态量化走
+    //    sort + per-token absmax 分段路径）；
+    // 2) A5 实测 CutOrigin 动态量化（ti=20 9000×7168，smooth 输入）即使重建双缓冲仍 700µs vs 原路径 178µs
+    //    (+292%)——瓶颈在 per-token absmax 两趟 VF 的串行链，DMA 重叠只是副项，双缓冲无法追平。
+    //    关闭后 ti=20/37 回落到原代码路径（~178µs）。
+    if (IsAnyDynamicQuantCase()) {
+        return false;
     }
-    return false;
+    int64_t actualExpertNum = expertEnd_ - expertStart_;
+    if (actualExpertNum <= 0 || actualExpertNum > CS_MAX_ACTUAL_EXPERT_NUM) {
+        return false;
+    }
+    // dropless 时要求 actualExpertNum*2 <= expertNum（实际专家数不超过一半，计数排序才有收益）
+    // 例外：actualExpertNum == expertNum（全专家范围，对齐文档 §3.1 le == expertNum_）时也走计数排序
+    if (dropPadMode_ == DROP_PAD_MODE_DROPLESS) {
+        if (actualExpertNum != expertNum_ && actualExpertNum * NUM_TWO > expertNum_) {
+            return false;
+        }
+    } else if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
+        // dropPad 时 n >= 512
+        if (n_ < 512LL) {
+            return false;
+        }
+    }
+    // 非量化时 expertIdx 值域检查：必须能映射到 uint8（actualExpertNum ≤ 256）
+    if (actualExpertNum > 256LL) {
+        return false;
+    }
+    return true;
 }
 
-void MoeInitRoutingV3Arch35TilingClass::ComputeUseGatherCopy()
+int64_t MoeInitRoutingV3Arch35TilingClass::EstimateArch35CountingSortFullLoadUB(int64_t perCoreTokens)
 {
-    if (IsSupportGatherCopyKernels()) {
-        // gather搬运收益与有效专家比例、专家数k成正比，当前阈值取3。
-        tilingDataPtr_->useGatherCopy = ((expertEnd_ - expertStart_) * k_ > expertNum_ * NUM_THREE);
-    } else {
-        tilingDataPtr_->useGatherCopy = 0;
+    // 模板1 UB 叠加模型（借鉴 A3 EstimateCountingSortFullLoadUB，SIMT DCache 已在 availUbSize_ 扣除）
+    if (perCoreTokens <= 0) {
+        return -1;
     }
+    int64_t coreEntries = perCoreTokens * k_;
+    int64_t entriesAligned = Ops::Base::CeilDiv(coreEntries, static_cast<int64_t>(64)) * 64;
+    int64_t maskBytes = Ops::Base::CeilAlign(Ops::Base::CeilDiv(entriesAligned, static_cast<int64_t>(8)), UB_BLOCK_SIZE);
+    int64_t expertCountStride = Ops::Base::CeilAlign(expertEnd_ - expertStart_, CS_ONE_BLOCK_ELEMENT);
+    int64_t colsAligned = Ops::Base::CeilAlign(cols_ * inputXDtypeSize_, UB_BLOCK_SIZE) / inputXDtypeSize_;
+
+    int64_t total = 0;
+    // x 行全载
+    total += Ops::Base::CeilAlign(perCoreTokens * colsAligned * inputXDtypeSize_, UB_BLOCK_SIZE);
+    // expertIdx 全载
+    total += Ops::Base::CeilAlign(coreEntries * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+    // scale 全载：per-token 标量缓冲仅非量化透传路径需要；动态量化的 (LE,H) smooth 走单行缓冲（下方量化临时区）
+    if (isInputScale_ == 1 && quantMode_ != QUANT_MODE_DYNAMIC) {
+        total += Ops::Base::CeilAlign(perCoreTokens * (UB_BLOCK_SIZE / static_cast<int64_t>(sizeof(float))) *
+                                          static_cast<int64_t>(sizeof(float)),
+                                      UB_BLOCK_SIZE);
+    }
+    // expertCount 本核
+    total += Ops::Base::CeilAlign(expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+    // allCoreExpertCount（Phase B）
+    total += Ops::Base::CeilAlign(aivCoreNum_ * expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+    // expertTokens
+    total += Ops::Base::CeilAlign((expertEnd_ - expertStart_) * static_cast<int64_t>(sizeof(int64_t)), UB_BLOCK_SIZE);
+    // prefixSum
+    total += Ops::Base::CeilAlign(expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+    // filteredPairs (pairs)
+    total += Ops::Base::CeilAlign(coreEntries * NUM_TWO * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+    // expertIdxFp32
+    total += Ops::Base::CeilAlign(entriesAligned * static_cast<int64_t>(sizeof(float)), UB_BLOCK_SIZE);
+    // 3 个 mask
+    total += maskBytes * NUM_THREE;
+    // gatheredExpert / flatIdx / gatheredIdx
+    total += Ops::Base::CeilAlign(entriesAligned * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE) * NUM_THREE;
+#ifdef MOE_CS_FULLLOAD_USE_HISTOGRAM
+    // Histograms 专属：uint8 源（coreEntries 对齐 256）+ uint16 bins（256 个，BIN0 128 + BIN1 128）。
+    // 镜像 kernel ComputeCommonUbLayout 的 #ifdef MOE_CS_FULLLOAD_USE_HISTOGRAM 分支。
+    total += Ops::Base::CeilAlign(
+        Ops::Base::CeilDiv(coreEntries, static_cast<int64_t>(256)) * 256 * static_cast<int64_t>(sizeof(uint8_t)),
+        UB_BLOCK_SIZE);
+    total += Ops::Base::CeilAlign(256 * static_cast<int64_t>(sizeof(uint16_t)), UB_BLOCK_SIZE);
+#endif
+    // 量化临时区（quantMode_ != UNQUANT）：单行 int8 + scale slot（scaleSlotSize=8 floats=32B），
+    // 与 kernel ComputeUbLayout 镜像，避免 mode-1 UB 预算偏小被静默降级到 mode-2
+    if (quantMode_ != QUANT_MODE_UNQUANT) {
+        total += Ops::Base::CeilAlign(colsAligned * static_cast<int64_t>(sizeof(int8_t)), UB_BLOCK_SIZE);
+        total += Ops::Base::CeilAlign(CS_ONE_BLOCK_ELEMENT * static_cast<int64_t>(sizeof(float)), UB_BLOCK_SIZE);
+        // 动态量化 per-expert smooth 单行缓冲（(LE,H) 取一行 H 列）
+        if (quantMode_ == QUANT_MODE_DYNAMIC && isInputScale_ == 1) {
+            total += Ops::Base::CeilAlign(colsAligned * static_cast<int64_t>(sizeof(float)), UB_BLOCK_SIZE);
+        }
+    }
+    return total;
+}
+
+void MoeInitRoutingV3Arch35TilingClass::ComputeArch35CountingSortFullLoadTiling()
+{
+    auto *cs = &tilingDataPtr_->countingSortParamsOp;
+    cs->countingSortMode = 1;
+
+    int64_t perCoreTokens = Ops::Base::CeilDiv(n_, aivCoreNum_);
+    int64_t needCoreNum = Ops::Base::CeilDiv(n_, perCoreTokens);
+    int64_t lastCoreTokens = n_ - perCoreTokens * (needCoreNum - 1);
+    // UB 预算校验：不通过则降级到模板2
+    int64_t estUb = EstimateArch35CountingSortFullLoadUB(perCoreTokens);
+    if (estUb <= 0 || estUb > availUbSize_ - LENGTH_1024) {
+        cs->countingSortMode = 0;
+        return;
+    }
+
+    cs->filterNeedCoreNum = needCoreNum;
+    cs->filterPerCoreTokens = perCoreTokens;
+    cs->lastCoreTokens = lastCoreTokens;
+    cs->coreEntries = perCoreTokens * k_;
+    cs->expertCountStride = Ops::Base::CeilAlign(expertEnd_ - expertStart_, CS_ONE_BLOCK_ELEMENT);
+    cs->filterChunkSize = 0; // FullLoad 不使用 chunk
+    cs->csPerLoopCols = cols_;
+    cs->csColsLoops = 1;
+    cs->csLastLoopCols = cols_;
+    cs->maxPerLoopEntries = cs->coreEntries;
+
+    OP_LOGD(context_, "CountingSort FullLoad: needCoreNum=%ld, perCoreTokens=%ld, coreEntries=%ld, estUb=%ld",
+            needCoreNum, perCoreTokens, cs->coreEntries, estUb);
+}
+
+void MoeInitRoutingV3Arch35TilingClass::ComputeArch35CountingSortCutOriginTiling()
+{
+    auto *cs = &tilingDataPtr_->countingSortParamsOp;
+    cs->countingSortMode = 2;
+
+    int64_t perCoreTokens = Ops::Base::CeilDiv(n_, aivCoreNum_);
+    int64_t needCoreNum = Ops::Base::CeilDiv(n_, perCoreTokens);
+    int64_t lastCoreTokens = n_ - perCoreTokens * (needCoreNum - 1);
+    int64_t coreEntries = perCoreTokens * k_;
+    int64_t expertCountStride = Ops::Base::CeilAlign(expertEnd_ - expertStart_, CS_ONE_BLOCK_ELEMENT);
+
+    // Phase C 列方向不切分（colsLoops 恒 1；csColsLoops 字段复用为双缓冲使能信号，见下）
+    int64_t perLoopCols = cols_;
+
+    // UB 安全网：精确镜像 kernel ComputeCommonUbLayout（含 Phase C 双缓冲布局，已固化为默认实现）+ 子类量化区。
+    // 注意：不能叠加与 kernel 实占无关的保守项（会把可容纳用例挤回旧路径）；镜像必须 >= kernel InitBuffer 实占。
+    // 双缓冲追加区装不下时降级为串行 CutOrigin（csColsLoops=0 信号 kernel 走单 slot 布局 + 串行 GatherAndWrite），
+    // 仍优于整体回退旧路径（如 cols=32768 大列场景）。
+    int64_t idxBytes = Ops::Base::CeilAlign(coreEntries * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+    int64_t strideBytes = Ops::Base::CeilAlign(expertCountStride * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+    int64_t pairsBytes =
+        Ops::Base::CeilAlign(coreEntries * NUM_TWO * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE);
+    int64_t colsRowBytes = Ops::Base::CeilAlign(cols_ * inputXDtypeSize_, UB_BLOCK_SIZE);
+    int64_t serialBytes = idxBytes;                     // expertIdxLocal（coreEntries 全载）
+    serialBytes += strideBytes;                         // expertCountLocal
+    serialBytes += needCoreNum * strideBytes;           // allCoreExpertCountLocal（Phase B）
+    serialBytes += Ops::Base::CeilAlign((expertEnd_ - expertStart_) * NUM_TWO * static_cast<int64_t>(sizeof(int64_t)),
+                                        UB_BLOCK_SIZE); // expertTokensLocal（KEY_VALUE 上界 2 倍）
+    serialBytes += strideBytes;                         // prefixSumLocal
+    serialBytes += pairsBytes;                          // filteredPairsLocal
+    serialBytes += colsRowBytes;                        // xLocal（双缓冲 slot0 复用此区）
+    serialBytes += UB_BLOCK_SIZE;                       // scaleLocal（isInputScale 非动态路径，按上界恒计）
+    // 向量过滤计数缓冲（kernel MOE_CS_CUTORIGIN_VECTOR_FILTER / MOE_CS_USE_HISTOGRAM 共用布局）：
+    // fp32 + 3 mask + gatheredExpert/gatheredIdx/flatIdx（整个 coreEntries 对齐 64）。恒计（对齐 DB 区恒算模式）。
+    {
+        int64_t entriesAligned = Ops::Base::CeilDiv(coreEntries, static_cast<int64_t>(64)) * 64;
+        int64_t maskBytes = Ops::Base::CeilAlign(Ops::Base::CeilDiv(entriesAligned, static_cast<int64_t>(8)),
+                                                 UB_BLOCK_SIZE);
+        serialBytes += Ops::Base::CeilAlign(entriesAligned * static_cast<int64_t>(sizeof(float)), UB_BLOCK_SIZE);
+        serialBytes += maskBytes * NUM_THREE;
+        serialBytes += Ops::Base::CeilAlign(entriesAligned * static_cast<int64_t>(sizeof(int32_t)), UB_BLOCK_SIZE) *
+                       NUM_THREE;
+#ifdef MOE_CS_USE_HISTOGRAM
+        // Histograms 专属：uint8 源（coreEntries 对齐 256）+ uint16 bins（256 个，BIN0 128 + BIN1 128）。
+        // 镜像 kernel ComputeCommonUbLayout L348-355 的 #ifdef MOE_CS_USE_HISTOGRAM 分支。
+        serialBytes += Ops::Base::CeilAlign(
+            Ops::Base::CeilDiv(coreEntries, static_cast<int64_t>(256)) * 256 * static_cast<int64_t>(sizeof(uint8_t)),
+            UB_BLOCK_SIZE);
+        serialBytes += Ops::Base::CeilAlign(256 * static_cast<int64_t>(sizeof(uint16_t)), UB_BLOCK_SIZE);
+#endif
+    }
+    // 子类量化单 slot 区（int8 slot + scale slot + 动态量化 smooth 单行）
+    int64_t quantSlotBytes = 0;
+    if (quantMode_ != QUANT_MODE_UNQUANT) {
+        quantSlotBytes += Ops::Base::CeilAlign(cols_ * static_cast<int64_t>(sizeof(int8_t)), UB_BLOCK_SIZE);
+        quantSlotBytes += UB_BLOCK_SIZE;
+        if (quantMode_ == QUANT_MODE_DYNAMIC && isInputScale_ == 1) {
+            quantSlotBytes += Ops::Base::CeilAlign(cols_ * static_cast<int64_t>(sizeof(float)), UB_BLOCK_SIZE);
+        }
+    }
+    serialBytes += quantSlotBytes;
+    // 双缓冲追加区：xBuf slot1 + rowIdx 双 slot + rowIdx staging(512 int32) + scale 第二 slot(上界恒计)
+    // + 量化第二 slot（kernel Phase C 双缓冲默认实现）
+    int64_t dbExtraBytes =
+        colsRowBytes + UB_BLOCK_SIZE * NUM_TWO + CS_DB_BATCH_CAP_BYTES + UB_BLOCK_SIZE + quantSlotBytes;
+    int64_t csDbEnable = 1;
+    if (serialBytes + dbExtraBytes + LENGTH_1024 > availUbSize_) {
+        csDbEnable = 0; // 双缓冲装不下，降级串行 CutOrigin
+        if (serialBytes + LENGTH_1024 > availUbSize_) {
+            // 串行也不够，不启用
+            cs->countingSortMode = 0;
+            return;
+        }
+    }
+
+    cs->filterNeedCoreNum = needCoreNum;
+    cs->filterPerCoreTokens = perCoreTokens;
+    cs->lastCoreTokens = lastCoreTokens;
+    cs->coreEntries = coreEntries;
+    cs->expertCountStride = expertCountStride;
+    cs->filterChunkSize = CS_FILTER_CHUNK_SIZE;
+    cs->csPerLoopCols = perLoopCols;
+    // csColsLoops 复用为 Phase C 双缓冲使能信号：1=双缓冲 UB 可容纳；0=降级串行单 slot（kernel 据此选布局与路径）
+    cs->csColsLoops = csDbEnable;
+    cs->csLastLoopCols = perLoopCols;
+    cs->maxPerLoopEntries = CS_FILTER_CHUNK_SIZE;
+
+    OP_LOGD(context_, "CountingSort CutOrigin: needCoreNum=%ld, perCoreTokens=%ld, coreEntries=%ld, chunkSize=%ld, "
+            "dbEnable=%ld", needCoreNum, perCoreTokens, coreEntries, CS_FILTER_CHUNK_SIZE, csDbEnable);
 }
 
 void MoeInitRoutingV3Arch35TilingClass::SetLoopParams4SrcToDstDropPad(int64_t perCoreRows, int64_t lastCoreRows)
