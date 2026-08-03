@@ -70,6 +70,8 @@ GlobalTensor<float> deterGm;
     bool isFirstBlock = false;
     typename std::conditional<IS_DETER_NEW(DETER_SPARSE_TYPE), CoordinateInfo[2], std::nullptr_t>::type coordinateInfos{};
     typename std::conditional<DETER_SPARSE_TYPE == DETER_BAND, BandInfo, std::nullptr_t>::type bandInfo;
+    typename std::conditional<DETER_SPARSE_TYPE == DETER_BAND, BandColumnContiguousGroupCache,
+                              std::nullptr_t>::type bandColumnContiguousGroupCache;
     bool isMm3NeedWait = false;
     typename std::conditional<IS_DETER_OLD(DETER_SPARSE_TYPE), bool[2], std::nullptr_t>::type dqIsNeedDeter{};
     typename std::conditional<IS_DETER_OLD(DETER_SPARSE_TYPE), bool[2], std::nullptr_t>::type dkDvIsNeedDeter{};
@@ -500,7 +502,13 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalBandDeterInd
                 int64_t k = static_cast<int64_t>(this->tilingData->s1s2BNGS1S2BaseParams.coreNum / NUM_TWO);
                 int64_t m = this->bandInfo.m;
                 int64_t n = this->bandInfo.n;
-                CalCausalSwizzleIndex(k, m, n, b, j, r, coordinateInfo);
+                if (this->constInfo.sparseMode == BAND) {
+                    CalBandColumnContiguousSwizzleIndex(
+                        k, m, n, this->bandInfo.p, this->bandInfo.q, b, j, r, coordinateInfo,
+                        this->bandInfo.columnContiguousRoundsPerBatch, &this->bandColumnContiguousGroupCache);
+                } else {
+                    CalCausalSwizzleIndex(k, m, n, b, j, r, coordinateInfo);
+                }
             } else {
                 CalBandIndex(this->bandInfo, j, r, coordinateInfo);
             }
@@ -596,7 +604,8 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
 
     if constexpr (BaseClass::DETER_SPARSE_TYPE == DETER_BAND) {
         if constexpr (BaseClass::IS_N_EQUAL) {
-            if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx)) {
+            if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx) &&
+                this->constInfo.sparseMode == RIGHT_DOWN_CAUSAL) {
                 int64_t mNew = 0;
                 int64_t nNew = 0;
                 if (m < n) {
@@ -651,7 +660,36 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
                 mOffset = 0;
                 nOffset = 0;
         }
- 
+
+        if constexpr (BaseClass::IS_N_EQUAL) {
+            if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx) &&
+                this->constInfo.sparseMode == BAND) {
+                this->bandInfo.k = k;
+                this->bandInfo.m = actualM;
+                this->bandInfo.n = actualN;
+                this->bandInfo.p = actualP;
+                this->bandInfo.q = actualQ;
+                this->bandInfo.b = b;
+                InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, mOffset, nOffset,
+                                   this->coordinateInfos[0]);
+                InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, mOffset, nOffset,
+                                   this->coordinateInfos[1]);
+
+                int64_t logicalMaxRound = this->tilingData->baseDeterParam.deterMaxRound;
+                if constexpr (BaseClass::DETER_TILING_SPLIT_MODE) {
+                    logicalMaxRound /= NUM_TWO;
+                }
+                this->bandInfo.columnContiguousRoundsPerBatch =
+                    (b > 0 && logicalMaxRound > 0 && logicalMaxRound % b == 0) ? logicalMaxRound / b :
+                    GetBandColumnContiguousRoundsPerBatch(k, actualM, actualN, actualP, actualQ);
+                deterLoopMax = b * this->bandInfo.columnContiguousRoundsPerBatch;
+                if constexpr (BaseClass::DETER_TILING_SPLIT_MODE) {
+                    deterLoopMax *= NUM_TWO;
+                }
+                return deterLoopMax;
+            }
+        }
+
         if constexpr(BaseClass::IS_N_EQUAL) {
             GenBandInfo(k, actualM, actualN, actualP, actualQ, b, this->bandInfo);
             int64_t convertedMaxRound = BaseClass::DETER_TILING_SPLIT_MODE ?

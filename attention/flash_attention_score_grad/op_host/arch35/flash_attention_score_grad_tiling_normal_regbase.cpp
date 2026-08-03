@@ -23,6 +23,51 @@ using namespace optiling::fag;
 namespace optiling {
 namespace fag {
 
+namespace {
+
+int64_t GetBandColumnContiguousIntervalOverlap(int64_t left, int64_t right, int64_t windowStart, int64_t windowSize)
+{
+    int64_t overlapLeft = std::max(left, windowStart);
+    int64_t overlapRight = std::min(right, windowStart + windowSize - 1);
+    return std::max(static_cast<int64_t>(0), overlapRight - overlapLeft + 1);
+}
+
+int64_t GetBandColumnContiguousGroupRoundCount(int64_t m, int64_t p, int64_t q, int64_t groupStartY,
+                                               int64_t groupSize)
+{
+    if (m <= 0 || p <= 0 || q <= 0 || groupSize <= 0) {
+        return 0;
+    }
+
+    int64_t diagonalCount = p + q - 1;
+    int64_t groupEndY = groupStartY + groupSize - 1;
+    int64_t rowWindowStart = std::min(std::max(groupStartY, 2 - p), m - p + 1);
+    int64_t maxRowDegree =
+        GetBandColumnContiguousIntervalOverlap(groupStartY, groupEndY, rowWindowStart, diagonalCount);
+    int64_t columnWindowStart =
+        std::min(std::max(static_cast<int64_t>(1), groupStartY + 1 - q), groupEndY + 1 - q);
+    int64_t maxColumnDegree =
+        GetBandColumnContiguousIntervalOverlap(1, m, columnWindowStart, diagonalCount);
+    return std::max(maxRowDegree, maxColumnDegree);
+}
+
+int64_t GetBandColumnContiguousRoundsPerBatch(int64_t k, int64_t m, int64_t n, int64_t p, int64_t q)
+{
+    int64_t effectiveN = std::min(n, m + q - 1);
+    if (k <= 0 || m <= 0 || effectiveN <= 0 || p <= 0 || q <= 0) {
+        return 0;
+    }
+
+    int64_t roundsPerBatch = 0;
+    for (int64_t groupStartY = 1; groupStartY <= effectiveN; groupStartY += k) {
+        int64_t groupSize = std::min(k, effectiveN - groupStartY + 1);
+        roundsPerBatch += GetBandColumnContiguousGroupRoundCount(m, p, q, groupStartY, groupSize);
+    }
+    return roundsPerBatch;
+}
+
+} // namespace
+
 bool IsSameShape(const gert::StorageShape *aShape, const gert::StorageShape *bShape)
 {
     OP_CHECK_IF((aShape == nullptr) || (bShape == nullptr),
@@ -1876,17 +1921,50 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::SaveToTilingData()
         fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 &&
         (fBaseParams.s1Inner * fBaseParams.s1CvRatio == fBaseParams.s2Inner * fBaseParams.s2CvRatio &&
          fBaseParams.sparseType != static_cast<uint8_t>(SparseType::UNSUPPORTED));
+    bool isColumnContiguousBand = false;
+    int64_t bandM = fBaseParams.s1Outer;
+    int64_t bandN = fBaseParams.s2Outer;
+    int64_t bandP = 0;
+    int64_t bandQ = 0;
     // 确定性计算支持swizzle的一些条件
     if (fBaseParams.isDeterministic) {
         bool casualCond = (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL) &&
                            fBaseParams.isS1S2Same);
+        // The column-contiguous formula uses a positive block band. Shifted bands keep the existing deterministic
+        // path because negative tokens have different boundary semantics. The kernel derives k from AIV / 2, so the
+        // platform core ratio must also agree with the host AIC count.
+        if (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) &&
+            fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::BAND) && fBaseParams.s1Token >= 0 &&
+            fBaseParams.s2Token >= 0 && fBaseParams.coreNum == fBaseParams.aicNum * NUM_TWO) {
+            int64_t serializedS1Token = std::min(fBaseParams.s1Token, static_cast<int64_t>(INT32_MAX));
+            int64_t serializedS2Token = std::min(fBaseParams.s2Token, static_cast<int64_t>(INT32_MAX));
+            bandP = CeilDivideBy(serializedS1Token,
+                                 static_cast<int64_t>(fBaseParams.s1Inner * fBaseParams.s1CvRatio)) + 1;
+            bandQ = CeilDivideBy(serializedS2Token,
+                                 static_cast<int64_t>(fBaseParams.s2Inner * fBaseParams.s2CvRatio)) + 1;
+            bandP = std::min(bandP, bandM);
+            bandQ = std::min(bandQ, bandN);
+            isColumnContiguousBand = bandP > 0 && bandQ > 0;
+        }
         bool bandCond = (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) &&
-                         fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL));
+                         (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL) ||
+                          isColumnContiguousBand));
+        bool batchPlaneCond = isColumnContiguousBand || (((fBaseParams.b * fBaseParams.n2) & 1) == 0);
         isSplitByBlockIdx =
-            (isSplitByBlockIdx && (((fBaseParams.b * fBaseParams.n2) & 1) == 0) && fBaseParams.g == 1 &&
+            (isSplitByBlockIdx && batchPlaneCond && fBaseParams.g == 1 &&
              fBaseParams.s1 >= fBaseParams.aicNum * static_cast<uint32_t>(ConstAxisTemplateNum::NUM128)) &&
             (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) || casualCond ||
              bandCond);
+    }
+    if (isSplitByBlockIdx && isColumnContiguousBand) {
+        int64_t roundsPerBatch =
+            GetBandColumnContiguousRoundsPerBatch(fBaseParams.aicNum, bandM, bandN, bandP, bandQ);
+        int64_t batchCount = (fBaseParams.b - fBaseParams.tailZeroCount) * fBaseParams.n2;
+        fBaseParams.deterMaxRound = batchCount * roundsPerBatch;
+        OP_LOGI(context_,
+                "SparseMode4 column-contiguous schedule: m=[%ld], n=[%ld], p=[%ld], q=[%ld], "
+                "roundsPerBatch=[%ld], totalRounds=[%ld]",
+                bandM, bandN, bandP, bandQ, roundsPerBatch, fBaseParams.deterMaxRound);
     }
     OP_LOGI(context_, "Determine whether to swizzle, get isSplitByBlockIdx=[%d]", static_cast<int>(isSplitByBlockIdx));
     s1s2BNGS1S2BaseParams_->set_isSplitByBlockIdx(isSplitByBlockIdx);
