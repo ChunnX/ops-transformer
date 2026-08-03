@@ -336,7 +336,8 @@ ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::DoLibApiTiling()
     if (inputParams_.mSize >= GmmConstant::BASIC_BLOCK_SIZE_256) {
         basicTiling_.baseM = TENSOR_API_LARGE_M_BASE_M;
     }
-    if (inputParams_.nSize > GmmConstant::BASIC_BLOCK_SIZE_256 && inputParams_.kSize >= GmmConstant::BASIC_BLOCK_SIZE_128) {
+    if (inputParams_.nSize > GmmConstant::BASIC_BLOCK_SIZE_256 &&
+        inputParams_.kSize >= GmmConstant::BASIC_BLOCK_SIZE_128) {
         basicTiling_.baseN = TENSOR_API_LARGE_N_BASE_N;
     }
 
