@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# coding: utf-8
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
 """Adapt the current moe_test runner, capture raw y bytes, validate, and render."""
 
 from __future__ import annotations
@@ -23,7 +33,7 @@ from mega_moe_trace_contract import (
 )
 
 
-ADAPTER_VERSION = 1
+ADAPTER_VERSION = 2
 TESTED_MOE_TEST_COMMIT = "90319bbd05993d2fbe7674d693395d5520732553"
 TESTED_SCRIPT_SHA256 = (
     "35f600ca443782fd8f210a33af879af651a9dea011f32afa51191ae2bf9ee43e"
@@ -56,7 +66,11 @@ USER_OVERRIDABLE = {
     "tp_world_size",
     "weight_dtype",
 }
-FORCED_OVERRIDES = {"is_performance": 0, "loop_acc_time": 1}
+DEFAULT_TRACE_ITERATIONS = 100
+FORCED_OVERRIDES = {
+    "is_performance": 0,
+    "loop_acc_time": DEFAULT_TRACE_ITERATIONS,
+}
 
 HELPER_INSERT_ANCHOR = "\ndef get_cascade_graph_model_class():\n"
 SCRIPT_DIR_ANCHOR = "script_dir = os.path.dirname(os.path.abspath(__file__))"
@@ -87,7 +101,10 @@ def _critical_path_trace_capture_y(y, rank):
     raw_path = os.path.join(artifact_dir, f"rank{rank}.raw")
     metadata_path = os.path.join(artifact_dir, f"rank{rank}.runtime.json")
     metadata = {
-        "adapter_version": 1,
+        "adapter_version": 2,
+        "capture_policy": "last_iteration_only",
+        "executed_iterations": int(loop_acc_time),
+        "captured_iteration": int(loop_acc_time),
         "rank": int(rank),
         "bs": int(bs),
         "h": int(h),
@@ -514,6 +531,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="override one audited top-level moe_test case variable; repeat as needed",
     )
     parser.add_argument(
+        "--iterations",
+        type=int,
+        default=DEFAULT_TRACE_ITERATIONS,
+        help=(
+            "run this many synchronized MegaMoe iterations and capture only the final "
+            f"iteration (default: {DEFAULT_TRACE_ITERATIONS})"
+        ),
+    )
+    parser.add_argument(
         "--allow-compatible-test-script",
         action="store_true",
         help="accept a non-identical moe_test snapshot only if all fail-closed anchors still match",
@@ -571,13 +597,26 @@ def main() -> int:
     expected_source_sha: str | None = None
 
     if not args.decode_only:
+        if args.iterations < 1:
+            raise ContractError(f"--iterations must be >= 1, got {args.iterations}")
         script = args.test_script.expanduser().resolve()
         provenance = validate_test_provenance(
             script, allow_compatible=args.allow_compatible_test_script
         )
         manifest["test_provenance"] = provenance
         expected_source_sha = provenance["script_sha256"]
-        overrides: dict[str, bool | int | str] = dict(FORCED_OVERRIDES)
+        forced_overrides = {
+            **FORCED_OVERRIDES,
+            "loop_acc_time": args.iterations,
+        }
+        manifest["forced_overrides"] = forced_overrides
+        manifest["capture_policy"] = {
+            "executed_iterations": args.iterations,
+            "captured_iteration": args.iterations,
+            "selection": "last_iteration_only",
+            "per_iteration_host_sync": False,
+        }
+        overrides: dict[str, bool | int | str] = dict(forced_overrides)
         for item in args.set:
             name, value = parse_override(item)
             if name in overrides:

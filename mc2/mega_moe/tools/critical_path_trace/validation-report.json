@@ -49,7 +49,7 @@
     {
       "name": "current_moe_test_adapter_check",
       "status": "passed",
-      "scope": "exact provenance, insertion anchors, and generated Python syntax; no execution"
+      "scope": "exact provenance, insertion anchors, generated Python syntax, and 100-iteration final-only capture policy; no execution"
     },
     {
       "name": "synthetic_decode_order_render",

@@ -109,10 +109,14 @@ python3 mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py \
 ```
 
 适配器不会修改 `moe_test` checkout：它验证 commit、`mega_moe.py`/`graph.py`
-哈希和唯一 AST/文本锚点，在 artifact 目录生成临时脚本，并强制
-`is_performance=0, loop_acc_time=1`。每个 rank 输出 `rankN.raw` 和
-`rankN.runtime.json`，随后严格校验 header/config/hash/容量/截断/时间顺序，
-生成 `rankN.normalized.json`、检查 JSON、`rankN.html` 及总览 `index.html`。
+哈希和唯一 AST/文本锚点，在 artifact 目录生成可直接运行的临时脚本，并强制
+`is_performance=0`。默认连续执行 100 轮 MegaMoe，不在轮间执行 host
+同步或 D2H；第 100 轮完成后的既有最终同步之后，只保存最后一轮的 `y`。可用
+`--iterations N` 调整执行轮数。runtime metadata 明确记录执行轮数、采集轮次和
+`last_iteration_only` 策略；它表示预热稳定后的最后一轮，不声称是 N 轮最优值。
+每个 rank 输出 `rankN.raw` 和 `rankN.runtime.json`，随后严格校验
+header/config/hash/容量/截断/时间顺序，生成 `rankN.normalized.json`、检查 JSON、
+`rankN.html` 及总览 `index.html`。
 
 若服务器上的脚本不是上述精确快照，先人工复核当前 ABI 和插入锚点，再显式加
 `--allow-compatible-test-script`；锚点不唯一或缺失仍会失败。可用重复的
