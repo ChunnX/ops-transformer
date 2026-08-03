@@ -84,8 +84,8 @@ bash build.sh --jit --soc=ascend910b --ops=<op_name> -j16
 bash build.sh --pkg --experimental --soc=ascend910b
 
 # 脚手架：新建一个算子目录
-bash build.sh --genop <op_name>
-bash build.sh --genop_aicpu <op_name>   # AI CPU 变体
+bash build.sh --genop <op_name>            # 或 --genop=<module>/<op_name>
+bash build.sh --genop_aicpu <op_name>      # AI CPU 变体
 
 # 清理构建产物
 bash build.sh --make_clean
@@ -93,7 +93,7 @@ bash build.sh --make_clean
 
 `--noexec` 只编译 UT 不执行。`--cov` / `--asan` / `--valgrind` / `--oom` 分别开启覆盖率、AddressSanitizer（host 侧）、valgrind、kernel 侧 OOM。`--ops=` / `--module=` 用逗号分隔；合法 module：`mc2,attention,moe,ffn,mhc,posembedding,gmm,mamba`。
 
-**`--pkg` 行为**：不带 `--ops`/`--module` 时编 built-in 包；带 `--ops`/`--module` 时编 custom vendor 包。默认 vendor 名 `custom`（产物装到 `$ASCEND_HOME_PATH/opp/vendors/custom_transformer/`），用 `--vendor_name=<name>` 覆盖。`--module=mc2` 会自动并入 `gmm`。CMake `ENABLE_CCACHE` 默认 ON（自动探测 ccache）。`--ops` 用 snake_case 算子名。
+**`--pkg` 行为**：不带 `--ops`/`--module` 时编 built-in 包；带 `--ops`/`--module` 时编 custom vendor 包。默认 vendor 名 `custom`（产物装到 `$ASCEND_HOME_PATH/opp/vendors/custom_transformer/`），用 `--vendor_name=<name>` 覆盖。`--module=mc2` 会自动并入 `gmm`。CMake `ENABLE_CCACHE` 默认 ON（自动探测 ccache）。`--ops` 用 snake_case 算子名。`torch_extension/` PyTorch 扩展随 `--pkg` 自动编译。
 
 ### 安装与运行构建产物
 
@@ -201,11 +201,15 @@ Device 侧 kernel 使用 **Ascend C** 编程模型（`AscendC::` 命名空间）
 
 > 本节状态易变，记录当前 D256 边界 bug 的调查进度。调查前先读这里，避免重做已验证无效的二分。
 
-**基线**：V1 修复前 master pass rate ≈ 25%；V1 修复（`x_exp_1=32`，commit `6dd2100ad`，已合入 master）后 25.18%，T=0..31 全对。剩余 T=32 边界 bug 在 C2（FixpipeMm2）。（注：commit hash 为快照，随 master 演进。）
+**状态（2026-08-03）**：✅ **D256 KVS128 已 100% pass**。V1（`x_exp_1=32`，`6dd2100ad`，25%→25.18%）+ V2（P UB→L1 DataCopy stride 翻倍，`14185b26e`，25.18%→100%）两步修复完成。下方历史调查记录保留供回溯，但「剩余 T=32 边界 bug」**已解决**。
 
-**测试用例**：`TND_B1_QS128_KVS128_Nq8_Nkv8_D256_SP0`，位于 `attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/`。
+**修复链**：
+- V1（softmax 侧）：`6dd2100ad` — MxFP8 fp8 路径 `x_exp_1` 从 `ubN*4` 改回 `32`，修 P 数据 gap，25%→25.18%，T=0..31 全对。
+- V2（P UB→L1 stride）：`14185b26e` — `fia_block_vec_fullquant_mx.h` P DataCopy 三处配套（`strideMul`/`subBlk1Mul`/`srcOffset`），D256 stride 翻倍让 P 落到 0x2000 grid，25.18%→100%。移植自 A5 `cann/ops-transformer` `d256-debug` 仓 commit `d3d78567`（该仓 KVS128 100%）。
 
-**错误模式**（V1 修复后）：
+**测试用例**：`TND_B1_QS128_KVS128_Nq8_Nkv8_D256_SP0`，位于 `attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/`。A5（116 容器 `wanjian-docker`，ascend950）实测 PASSED。
+
+**历史错误模式**（V1 修复后、V2 修复前）：
 - T=0..31：全对（65536 元素，first_fail_idx=65536）
 - T=32..127：全错（axis0 range=[32,127]，96/128 errors）
 - 8 个 head 全受影响，256 个 D 维全受影响
@@ -225,7 +229,7 @@ C1(AIC) → [BMM1结果 UB] → V1(AIV) → [P数据 UB] → C2(AIC) → [BMM2�
 
 > 注：扩展分支 `21a3ac09a` 曾有一个"revert"提交（`ef4424a03`）想把 x_exp_1 改回 32，但 diff 方向反了（重新应用了 ubN*4 而非回退到 32），修复直到现在才真正落地。
 
-**C2 bug（剩余）**：T=32 边界错。P 数据已确认正确（fp8 roundtrip 后 5792/8192 与 golden P 匹配，其余 2400 个零是 NZ padding，DataCopy 不读）。bug 在 `FixpipeMm2` `dualDstCtl=1`（M-split）。
+**C2 bug（已修，见 V2）**：T=32 边界错。P 数据已确认正确（fp8 roundtrip 后 5792/8192 与 golden P 匹配，其余 2400 个零是 NZ padding，DataCopy 不读）。**真因不在 `FixpipeMm2` `dualDstCtl=1`**——dump 三证合一（行错位 + 50/50 零 + axis0 range=[32,127]）指向的"dualDstCtl 第二目标落点偏 32 行"是**症状非根因**。真因是 P 从 UB 拷到 L1 时落到 0x1000 grid（应为 0x2000，LoadData 读 L1 用固定 0x2000 stride），BMM2 从错误位置读 P。修复 `14185b26e`（V2）。
 
 #### dump 实测结论（2026-07-28，A5 @ bc86ac703，25.18% 构建）
 
@@ -294,6 +298,7 @@ D=128 能过是因为 `nSize == mBaseSize == 128`（巧合）；D=256 `nSize=256
 | 11 | x_exp_1 ubN*4→32（MxFP8 路径） | **修复 V1，25%→25.18%**（保留） | `6dd2100ad` |
 | 12 | srcOffset 65→vec1BlockStride | 更差（25%→23.27%，65 是 M 派生非 N 派生） | `0522bccac`→`5f212e89e` |
 | 13 | bmm2Buffers SingleBuffer→DB + 2× UB + 双 Set/WaitCrossCore（对齐 noquant） | **507015 崩**（健康设备 0 稳定复现，非探针/非瞬态；回退后回 25.18% 不崩，对照确证 DB 是崩因）。DB 乒乓与 MX PRELOAD 同步冲突或 UB 溢出。"分配/2"假设未验证 | `8fa0bbc8b`→`09b799b5d` |
+| 14 | P UB→L1 DataCopy stride 翻倍（`strideMul`/`subBlk1Mul`/`srcOffset` 三处配套） | **修复 V2，25.18%→100%**（保留）。移植自 A5 `cann/ops-transformer` `d256-debug` 仓 commit `d3d78567`。与 #54 区别：#54 只改 srcOffset 65→33 致 23.27%（更差），本处三处一起改方生效 | `14185b26e` |
 
 ### DumpTensor 探针（已移除）
 
@@ -302,17 +307,20 @@ D=128 能过是因为 `nSize == mBaseSize == 128`（巧合）；D=256 `nSize=256
 ### 关键文件（调试）
 
 - `attention/common/op_kernel/arch35/fia_block_cube_fullquant_mx.h` —— IterateBmm2Dn、FixpipeMm2（C2 bug 位置）
-- `attention/common/op_kernel/arch35/fia_block_vec_fullquant_mx.h` —— ProcessVec1Dn（V1 已修）、ProcessVec2OnUb（V2）、P copy UB→L1、DumpTensor 探针
+- `attention/common/op_kernel/arch35/fia_block_vec_fullquant_mx.h` —— ProcessVec1Dn（V1 已修）、ProcessVec2OnUb、**P copy UB→L1（V2 修复 `14185b26e`，`strideMul`/`subBlk1Mul`/`srcOffset` 三处）**、DumpTensor 探针
 - `attention/common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h` —— VF softmax、x_exp_1 offset（V1 修复）、StoreAlign 写入模式
 - `attention/common/op_kernel/arch35/fia_template_dispatcher.h` —— 模板分发、useDn、bmm2Write2Ub、D-gate 位置
 - `attention/fused_infer_attention_score/op_host/arch35/fused_infer_attention_score_tiling_impl.cpp:1246` —— `sInnerFactor_ = (vHeadDim==DSIZE_256) ? SINNER_256 : SINNER_512`
 
-### 下一步待试（按新 dump 结论收敛）
+### 已解决（2026-08-03）
 
-1. **查 `dualDstCtl=1` 第二目标 offset**（主攻）——dump 症状指向 M-split 第二半落在 32×256 而非 64×256。需确认第二目标地址如何由 dstTensor/dstStride/mSize/nSize 派生（可能是硬件固定），以及为何 nSize=256 时偏 2×。可加一个 desc 在 `IterateBmm2Dn` fixpipe 前后分别 dump `outputBuf`，对比 subBlock0/subBlock1 区域的实际写入 offset。
-2. **dump L0C 源布局**——在 `FixpipeMm2` 前 dump `mm2ResL0C`，确认 `MatmulFullMX` 产出的 L0C NZ 形态是否与 fixpipe `srcStride=mBaseSize` 的假设一致（D128 vs D256 对比）。
-3. **D-gate 止血**（保底，带 host+kernel 修复重试 #9）——对 D=256 禁用 DN 走 ND 路径（noquant 已证 ND l0Split 能跑 D256）。但 MX prefill 的 MXFP8 scale/布局需同步改 AIV 侧，非简单 gate（#9 即因单边改挂掉）。
-4. **咨询华为支持**——`dualDstCtl=1` 第二目标的硬件寻址规则、`MatmulFullMX` 的 L0C 输出 NZ 布局、以及 nSize≠mBaseSize 时 M-split 的正确配置。
+D256 KVS128 MxFP8 prefill **100% pass**。根因 = P 从 UB 拷到 L1 时落到 0x1000 grid（应为 0x2000，LoadData 读 L1 用固定 0x2000 stride），BMM2 从错误位置读 P。`dualDstCtl=1` 第二目标落点偏移是此根因的症状。修复 `14185b26e`（V2，移植自 A5 `d3d78567`）。原「下一步」1-4（查 dualDstCtl offset / dump L0C / 咨询华为 / D-gate）随根因解决撤销。
+
+### 残留待办（非阻塞）
+
+1. **x_exp_1 非 MxFP8 collateral**（见记忆 `d256-x-exp-1-nonmxfp8-collateral`）——`vf_mul_sel_softmaxflashv2_cast_nz_dn.h` 7 个非 MxFP8 VF 函数 fp8 分支被 #48/#50 错改为 `ubN*4` 未恢复（原始 `32`）。D256 MxFP8 prefill 不受影响（走 MxFP8 函数已修），但非 MxFP8 量化路径（per-token/causal/…）T2 为 fp8 时会复现 V1 bug。当前测试集未覆盖故未暴露。
+2. **D256 KVS>128（多子轮）/ decode / SP3 / D64 D128 回归**——V2 修在单子轮 SP0，多子轮与 decode 路径未验证；D128 数值等价（`strideMul`=32/`subBlk1Mul`=1/`srcOffset`=65<<5 与原公式相同）理论无回归但需跑确认。
+3. **A5 d256-debug 仓未提交改动**——`subLoopOffset` 从 `s2BaseSizeCur*mBaseSize` 改 `s2BaseSize*mBaseSize`（D256: 16384→32768/subLoop），我们未移植；多子轮场景若 100% 失败可能需此行。
 
 ## 仓库全局代码位置
 
