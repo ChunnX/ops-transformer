@@ -77,7 +77,7 @@ aclnnStatus aclnnSparseFlashMlaMetadataGetWorkspaceSize(
     if (aclRet != ACL_SUCCESS) {
         OP_LOGW("aclnnSparseFlashMlaMetadata unable to get system param batch consistency level.");
     }
-    bool isBatchConsistency = true;
+    bool isBatchConsistency = (batchConsistencyLevel == BATCH_CONSISTENCY_LEVEL);
     auto ret = ParamsCheck(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                            sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
                            cmpTopkLengthOptional, numHeadsQ, numHeadsKv, headDim, batchSize, maxSeqlenQ, maxSeqlenOriKv,
