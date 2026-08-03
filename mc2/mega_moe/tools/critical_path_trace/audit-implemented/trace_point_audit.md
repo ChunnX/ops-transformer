@@ -4,263 +4,288 @@
 - Phase: `implemented`
 - Trace: `mega-moe-wave-critical-path`
 - Repository: `/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803`
-- Revision: `e1b6e44d75bb9d432a49c55339d4319671986b20`
+- Revision: `1f7c40b5d95ef8804a39b31f4f87905d02c2b038`
 - Branch: `codex/mega-moe-critical-path-trace-20260803`
 - Dirty: `True`
-- Spec SHA-256: `973da3277c3e7a3529fdf664ff6e821e7ab4e3dc8c885ccbdd66107da644ddfd`
+- Spec SHA-256: `b6980f1facbce6d0f210bdfabe75fa6ae4af963457c691c15fbf49a754ecabb7`
 
 ## Placement summary
 
 | Point | Roles | Resolved location | Target line | Placement | Boundary | Bridge | Why |
 |---|---|---|---:|---|---|---|---|
-| process_begin_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2618 | 2622 | before | causal | none | Provides one local shared-axis reference for AIC, AIV0, and AIV1 inside the same physical AI Block, without asserting clock alignment across AI Blocks or ranks; also exposes role launch skew before input preparation. |
-| work_end_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2678 | 2675 | after | actual | existing PublishGmm2Ready FIX_S and Unpermute final MTE3_V waits; no additional hot-path bridge | Separates the real role-local useful-work tail from the diagnostic rendezvous and y record emission overhead. |
-| dispatch_begin_S | AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:1072 | 1077 | before | causal | none | Measures the actual per-wave AIV1 prefetch window, including send-count calculation, rather than the outer wave that may prefetch two waves at once. |
-| dispatch_end_S | AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:1087 | 1080 | after | actual | trace-only MTE3_S using recycled EVENT_ID0 on the last expert of the wave | Proves when each AIV1 has completed the token/scale/meta-info writes that release GMM1 and permits direct comparison with GMM1 readiness. |
-| gmm1_begin_S | AIC | mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h:479 | 487 | before | causal | trace-only FIX_S using recycled EVENT_ID0 before the first sampled tile | Distinguishes Dispatch-ready and prior ping-pong dependency time from actual first GMM1 MMAD issue on each AIC. |
-| gmm1_end_S | AIC | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2441 | 2435 | after | actual | trace-only FIX_S using recycled EVENT_ID0 when this core recorded GMM1 work | Makes the GMM1 interval end at actual local FIX completion instead of helper return or AIV notification issue. |
-| swiglu_begin_S | AIV0 | mc2/mega_moe/op_kernel/arch35/block_epilogue_swiglu_mx_quant.h:1152 | 1156 | before | causal | trace-only V_S using recycled EVENT_ID0 at the common epilogue entry | Places the common SwiGLU begin after both non-prefetch WaitForCube and prefetch MTE2_V input readiness, regardless of the current epilogue branch. |
-| swiglu_end_S | AIV0 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2446 | 2435 | after | actual | existing per-tile MTE3_S in BlockEpilogueSwigluMxQuant::operator(); no added end bridge | Shows the actual AIV0 epilogue completion and its overlap with AIC GMM2 and AIV1 Dispatch/Combine. |
-| gmm2_begin_S | AIC | mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h:483 | 487 | before | causal | none | Measures GMM2 only after the current wave's SwiGLU-ready counter is visible, leaving publication-to-observation latency outside GMM2 compute. |
-| gmm2_end_S | AIC | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2456 | 2452 | after | actual | existing FIX_S inside PublishGmm2Ready; no extra bridge | Proves local GMM2 direct-GM completion and ready publication timing while keeping remote AIV1 observation as a separate handoff gap. |
-| combine_begin_S | AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2346 | 2343 | after | causal | existing MTE2_V and V_S in WaitGmm2Ready | Exposes the publication-to-ready-observation handoff and starts Combine only after the full AIC fan-in is proven. |
-| combine_end_S | AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2376 | 2371 | after | actual | trace-only MTE2_S using recycled EVENT_ID0 after the drain | Ends Combine at actual remote MTE3 send completion rather than at Scalar issue or ring-drain enqueue time. |
+| process_begin_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2644 | 2648 | before | causal | none | Provides one local shared-axis reference for AIC, AIV0, and AIV1 inside the same physical AI Block, without asserting clock alignment across AI Blocks or ranks; also exposes role launch skew before input preparation. |
+| work_end_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2704 | 2701 | after | actual | existing PublishGmm2Ready FIX_S and Unpermute final MTE3_V waits; no additional hot-path bridge | Separates the real role-local useful-work tail from the diagnostic rendezvous and y record emission overhead. |
+| dispatch_begin_S | AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:1045 | 1050 | before | causal | none | Measures the actual per-wave AIV1 prefetch window, including send-count calculation, rather than the outer wave that may prefetch two waves at once. |
+| dispatch_end_S | AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:1060 | 1053 | after | actual | trace-only MTE3_S using recycled EVENT_ID0 on the last expert of the wave | Proves when each AIV1 has completed the token/scale/meta-info writes that release GMM1 and permits direct comparison with GMM1 readiness. |
+| gmm1_expert_begin_S | AIC | mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h:482 | 467 | after | causal | trace-only FIX_S using recycled EVENT_ID0 before the first sampled tile | 把一批专家的长 GMM1 外框拆成逐专家 issue 区间，使同一 wave 内专家间的 FIX 尾部和依赖等待可以单独显示。 |
+| gmm1_expert_end_S | AIC | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2273 | 2267 | after | issue | none; intentionally issue-only | 给逐专家 GMM1 一个低扰动结束边界；与下一专家 causal begin 之间显示 FIX 尾部、等待和调度间隙。 |
+| swiglu_expert_begin_S | AIV0 | mc2/mega_moe/op_kernel/arch35/block_epilogue_swiglu_mx_quant.h:1156 | 1175 | before | causal | trace-only V_S using recycled EVENT_ID0 at the common epilogue entry | 把一批专家合并的 SwiGLU 长外框拆开，避免把专家间 WaitForCube/输入等待误认为 SwiGLU 计算。 |
+| swiglu_expert_end_S | AIV0 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2277 | 2267 | after | actual | existing per-tile MTE3_S; no added end bridge | 标出每个专家真实 SwiGLU/MX 输出完成点，使后续到下一专家 causal begin 的等待/调度间隙可见。 |
+| gmm2_expert_begin_S | AIC | mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h:486 | 467 | after | causal | none | 拆出逐专家 GMM2，使 SwiGLU-ready 等待不再被一批专家的外框吞入；也可验证 GMM2 是否确实近似连续输出 GM。 |
+| gmm2_expert_end_S | AIC | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2318 | 2312 | after | actual | existing FIX_S inside PublishGmm2Ready; no extra bridge | 逐专家证明 GMM2 直写 GM 与 ready 发布完成，并把到下一专家 begin 的等待/调度间隙独立显示。 |
+| combine_begin_S | AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2358 | 2355 | after | causal | existing MTE2_V and V_S in WaitGmm2Ready | Exposes the publication-to-ready-observation handoff and starts Combine only after the full AIC fan-in is proven. |
+| combine_end_S | AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2388 | 2383 | after | actual | trace-only MTE2_S using recycled EVENT_ID0 after the drain | Ends Combine at actual remote MTE3 send completion rather than at Scalar issue or ring-drain enqueue time. |
 
 ## Point evidence
 
 ### `process_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2618` in `MegaMoeWave::Process`; `before` target line `2622`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2644` in `MegaMoeWave::Process`; `before` target line `2648`.
 - Cardinality: once at MegaMoeWave::Process entry per physical role/core record
 - Boundary claim: `causal` — Scalar has entered the current MTE A8W8 MegaMoeWave Process body and no operator work has yet been issued by this role/core.
 - Why: Provides one local shared-axis reference for AIC, AIV0, and AIV1 inside the same physical AI Block, without asserting clock alignment across AI Blocks or ranks; also exposes role launch skew before input preparation.
 - Dependency: mixed-kernel task entry for this physical role/core
 - Pipeline proof: `kernel scheduler and Scalar control` → `Scalar` using `none` — The clock is the first diagnostic instruction immediately before the first Process statement.
 - Perturbation: One 32-bit GetSystemCycle and one named Scalar assignment per role/core.
-- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
+- Source SHA-256: `9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6`
 
 ```text
-  2616  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  2617      if (CriticalPathTracePtr() != nullptr) {
-  2618          criticalPathTrace_.processBegin = CriticalPathTrace::Now(); // TRACE_POINT: process_begin_S
-  2619      }
-  2620  #endif
+  2642  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  2643      if (CriticalPathTracePtr() != nullptr) {
+  2644          criticalPathTrace_.processBegin = CriticalPathTrace::Now(); // TRACE_POINT: process_begin_S
+  2645      }
+  2646  #endif
 ```
 
 ### `work_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2678` in `MegaMoeWave::Process`; `after` target line `2675`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2704` in `MegaMoeWave::Process`; `after` target line `2701`.
 - Cardinality: once after useful work and overflow-mode restoration per physical role/core record
 - Boundary claim: `actual` — All useful work owned by this role is complete; for AIV roles Unpermute has consumed its final MTE3_V completion event, and routed AIC publications already passed FIX_S.
 - Why: Separates the real role-local useful-work tail from the diagnostic rendezvous and y record emission overhead.
 - Dependency: role-local GMM/Combine completion and, on AIV, final Unpermute y store completion
 - Pipeline proof: `FIX and Scalar for AIC; MTE3, Vector, and Scalar for AIV` → `Scalar` using `existing PublishGmm2Ready FIX_S and Unpermute final MTE3_V waits; no additional hot-path bridge` — The sample is after ProcessRoutedExpertWaves, cross-rank completion, Unpermute's final MTE3_V wait, and control-state restoration, but before either trace rendezvous.
 - Perturbation: One 32-bit GetSystemCycle and assignment before trace-only terminal synchronization.
-- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
+- Source SHA-256: `9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6`
 
 ```text
-  2676  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  2677      if (CriticalPathTracePtr() != nullptr) {
-  2678          // TRACE_POINT: work_end_S
-  2679          criticalPathTrace_.workEnd = CriticalPathTrace::Now();
-  2680          SyncAll<false>();
+  2702  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  2703      if (CriticalPathTracePtr() != nullptr) {
+  2704          // TRACE_POINT: work_end_S
+  2705          criticalPathTrace_.workEnd = CriticalPathTrace::Now();
+  2706          SyncAll<false>();
 ```
 
 ### `dispatch_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:1072` in `MegaMoeWave::DispatchExpert`; `before` target line `1077`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:1045` in `MegaMoeWave::DispatchExpert`; `before` target line `1050`.
 - Cardinality: first dispatched expert per physical AIV1 core per captured routed-expert wave
 - Boundary claim: `causal` — The first expert in this dispatch wave is about to start SendCntCal on the AIV1 Scalar/control path.
 - Why: Measures the actual per-wave AIV1 prefetch window, including send-count calculation, rather than the outer wave that may prefetch two waves at once.
 - Dependency: the monotonic dispatch cursor selected this expert and any prior Combine ring reuse was drained by the preceding wave
 - Pipeline proof: `AIV1 Scalar control` → `Scalar` using `none` — DispatchExpert is invoked exactly once per expert by DispatchExpertsUntil; the first-expert test maps expertIdx to the current host-derived experts_per_wave.
 - Perturbation: One first-wave-slot check plus one clock sample per active AIV1/wave.
-- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
+- Source SHA-256: `9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6`
 
 ```text
-  1070          if (expertIdx == traceWave * expertsPerBatch_ && traceWave < CRITICAL_PATH_TRACE_MAX_WAVES &&
-  1071              CriticalPathTracePtr() != nullptr) {
-  1072              // TRACE_POINT: dispatch_begin_S
-  1073              criticalPathTrace_.BeginDispatch(traceWave, CriticalPathTrace::Now());
-  1074          }
+  1043          if (expertIdx == traceWave * expertsPerBatch_ && traceWave < CRITICAL_PATH_TRACE_MAX_WAVES &&
+  1044              CriticalPathTracePtr() != nullptr) {
+  1045              // TRACE_POINT: dispatch_begin_S
+  1046              criticalPathTrace_.BeginDispatch(traceWave, CriticalPathTrace::Now());
+  1047          }
 ```
 
 ### `dispatch_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:1087` in `MegaMoeWave::DispatchExpert`; `after` target line `1080`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:1060` in `MegaMoeWave::DispatchExpert`; `after` target line `1053`.
 - Cardinality: last dispatched expert per physical AIV1 core per captured routed-expert wave
 - Boundary claim: `actual` — The last expert handled by this AIV1 in the wave has completed all Dispatch MTE3 writes and ready publications.
 - Why: Proves when each AIV1 has completed the token/scale/meta-info writes that release GMM1 and permits direct comparison with GMM1 readiness.
 - Dependency: CopyGMToGMPerToken has recycled every dynamic ring slot and MetaInfoCalAndDispatch has issued its final publication
 - Pipeline proof: `MTE3` → `Scalar` using `trace-only MTE3_S using recycled EVENT_ID0 on the last expert of the wave` — All EVENT_ID0..5 Dispatch ring lifetimes are paired before MetaInfoCalAndDispatch returns; the added MTE3_S orders the last output/publication into Scalar before sampling.
 - Perturbation: One MTE3-to-Scalar bridge and one clock sample per active AIV1/wave.
-- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
+- Source SHA-256: `9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6`
 
 ```text
-  1085              AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
-  1086              AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
-  1087              criticalPathTrace_.EndDispatch(traceWave, CriticalPathTrace::Now()); // TRACE_POINT: dispatch_end_S
-  1088          }
-  1089  #endif
+  1058              AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+  1059              AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+  1060              criticalPathTrace_.EndDispatch(traceWave, CriticalPathTrace::Now()); // TRACE_POINT: dispatch_end_S
+  1061          }
+  1062  #endif
 ```
 
-### `gmm1_begin_S`
+### `gmm1_expert_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h:479` in `MegaMoeImpl::Detail::AicComputeGeneric`; `before` target line `487`.
-- Cardinality: first actually assigned GMM1 tile per physical AIC core per captured routed-expert wave
-- Boundary claim: `causal` — Dispatch GM readiness polling and any outstanding AIC-to-AIV0 acknowledgement have passed and the first GMM1 tile is about to construct and issue MMAD work.
-- Why: Distinguishes Dispatch-ready and prior ping-pong dependency time from actual first GMM1 MMAD issue on each AIC.
-- Dependency: WaitForUpstreamReady observed the complete Dispatch wave count and any WaitForVector dependency for this owner completed
-- Pipeline proof: `Scalar GM visibility and FIX` → `Scalar` using `trace-only FIX_S using recycled EVENT_ID0 before the first sampled tile` — The hook is after both upstream readiness and ping-pong waits in AicComputeGeneric; FIX_S transfers the FIX wait/completion dependency to Scalar before the clock.
-- Perturbation: One conditional slot check, one FIX-to-Scalar bridge, and one clock per active AIC/wave.
-- Source SHA-256: `c6ab40df3abbd4b814bfb026ee396c702a7b4582892510c319b2a1d81ae3d6c0`
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h:482` in `MegaMoeImpl::Detail::AicComputeGeneric`; `after` target line `467`.
+- Cardinality: 每个物理 AIC 按执行顺序捕获最多四个实际分配到 tile 的 routed expert；尾部元数据记录所属 wave
+- Boundary claim: `causal` — 当前专家的 Dispatch GM readiness 与前序 ping-pong 依赖已满足，本核第一个 GMM1 tile 即将发出 MMAD。
+- Why: 把一批专家的长 GMM1 外框拆成逐专家 issue 区间，使同一 wave 内专家间的 FIX 尾部和依赖等待可以单独显示。
+- Dependency: WaitForUpstreamReady 已观察当前专家 Dispatch wave count，且需要时 WaitForVector 已完成
+- Pipeline proof: `Scalar GM visibility and FIX` → `Scalar` using `trace-only FIX_S using recycled EVENT_ID0 before the first sampled tile` — 打点位于 AicComputeGeneric 的 readiness/ping-pong waits 之后；FIX_S 仅把该 causal begin 依赖传到 Scalar。
+- Perturbation: 每个被捕获活跃专家一次槽检查、一次 FIX→Scalar causal bridge 和一次时钟读取；最多四槽，溢出由尾部元数据显式标记。
+- Source SHA-256: `5e8084d1de9143df589dbad8084b4f2626bf6c8732852881f918048c21fd3cab`
 
 ```text
-   477                  AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
-   478                  AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
-   479                  // TRACE_POINT: gmm1_begin_S
-   480                  args.criticalPathTrace->BeginStage0(CriticalPathTrace::Now());
-   481              }
+   480                  AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
+   481                  AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
+   482                  // TRACE_POINT: gmm1_expert_begin_S
+   483                  args.criticalPathTrace->BeginExpertStage0(CriticalPathTrace::Now());
+   484              }
 ```
 
-### `gmm1_end_S`
+### `gmm1_expert_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2441` in `MegaMoeWave::ProcessRoutedExpertWaves`; `after` target line `2435`.
-- Cardinality: after the last GMM1 tile assigned to each physical AIC core in a captured routed-expert wave
-- Boundary claim: `actual` — All GMM1 FIX work assigned to this AIC in the wave is complete.
-- Why: Makes the GMM1 interval end at actual local FIX completion instead of helper return or AIV notification issue.
-- Dependency: ProcessGmm1Wave returned after issuing every owned GMM1 tile
-- Pipeline proof: `FIX` → `Scalar` using `trace-only FIX_S using recycled EVENT_ID0 when this core recorded GMM1 work` — The bridge is after the complete wave loop and executes only for records with a causal begin, so its Scalar clock cannot run ahead of the final FIX operation.
-- Perturbation: One FIX-to-Scalar completion bridge and clock per active AIC/wave.
-- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2273` in `MegaMoeWave::ProcessGmm1Wave`; `after` target line `2267`.
+- Cardinality: 每个已捕获且本核实际参与的 routed expert，在 GroupMatmulWithSwigluQuant 返回后记录一次
+- Boundary claim: `issue` — 当前专家本核所有 GMM1 MMAD/NotifyVector 已发出，但不额外声称 FIX 已完成。
+- Why: 给逐专家 GMM1 一个低扰动结束边界；与下一专家 causal begin 之间显示 FIX 尾部、等待和调度间隙。
+- Dependency: GroupMatmulWithSwigluQuant 已返回，当前专家分配给本核的 tile 已全部发出
+- Pipeline proof: `Scalar issue state; FIX may still be pending` → `Scalar` using `none; intentionally issue-only` — 采样紧跟当前专家 helper 返回；不增加逐专家 FIX_S，避免把原本可流水的 FIX 尾部强制串行化。
+- Perturbation: 每个被捕获活跃专家一次时钟读取和槽写；无新增完成 bridge。该 span 以 issue/半透明显示。
+- Source SHA-256: `9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6`
 
 ```text
-  2439                  AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
-  2440                  AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
-  2441                  // TRACE_POINT: gmm1_end_S
-  2442                  criticalPathTrace_.EndStage0(CriticalPathTrace::Now());
-  2443              }
+  2271              if constexpr (g_coreType == AIC) {
+  2272                  if (criticalPathTrace_.HasExpertStage0Work()) {
+  2273                      // TRACE_POINT: gmm1_expert_end_S
+  2274                      criticalPathTrace_.EndExpertStage0(CriticalPathTrace::Now());
+  2275                  }
 ```
 
-### `swiglu_begin_S`
+### `swiglu_expert_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/block_epilogue_swiglu_mx_quant.h:1152` in `BlockEpilogueSwigluMxQuant::operator()`; `before` target line `1156`.
-- Cardinality: first non-empty epilogue tile per physical AIV0 core per captured routed-expert wave
-- Boundary claim: `causal` — A non-empty epilogue invocation has all upstream GMM1/input dependencies ordered into Vector and is about to start SwiGLU/quant setup and Vector work.
-- Why: Places the common SwiGLU begin after both non-prefetch WaitForCube and prefetch MTE2_V input readiness, regardless of the current epilogue branch.
+- Where: `mc2/mega_moe/op_kernel/arch35/block_epilogue_swiglu_mx_quant.h:1156` in `BlockEpilogueSwigluMxQuant::operator()`; `before` target line `1175`.
+- Cardinality: 每个物理 AIV0 按执行顺序捕获最多四个实际执行 epilogue 的 routed expert；同一专家的后续 tile 复用该槽
+- Boundary claim: `causal` — 当前专家首个非空 epilogue 已完成上游 GMM1/输入就绪等待，并即将开始 SwiGLU 与 MX 量化。
+- Why: 把一批专家合并的 SwiGLU 长外框拆开，避免把专家间 WaitForCube/输入等待误认为 SwiGLU 计算。
 - Dependency: the caller passed its AIC-to-AIV0 V wait or MTE2_V data-ready wait before entering the epilogue
 - Pipeline proof: `Vector` → `Scalar` using `trace-only V_S using recycled EVENT_ID0 at the common epilogue entry` — Every routed wave epilogue branch calls this operator only after its readiness wait; V_S orders those V-pipeline waits before the first recorded clock.
-- Perturbation: One conditional slot check, one Vector-to-Scalar bridge, and one clock per active AIV0/wave.
-- Source SHA-256: `7ffbc82e32cc4b9e533fd09a427abd5de799855d5c5aef45b61c851bf336fe04`
+- Perturbation: 每个被捕获活跃专家一次槽检查、一次 V→Scalar causal bridge 和一次时钟读取；同专家后续 tile 不重复 begin。
+- Source SHA-256: `36c3efd3d9a096b605f12d30e6577a0448a602d8cb6ee30c4ccde9400280dc85`
 
 ```text
-  1150          AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
-  1151          AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
-  1152          // TRACE_POINT: swiglu_begin_S
-  1153          criticalPathTrace_->BeginStage0(MegaMoeImpl::CriticalPathTrace::Now());
-  1154      }
+  1154          AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+  1155          AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+  1156          // TRACE_POINT: swiglu_expert_begin_S
+  1157          criticalPathTrace_->BeginExpertStage0(MegaMoeImpl::CriticalPathTrace::Now());
+  1158      }
 ```
 
-### `swiglu_end_S`
+### `swiglu_expert_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2446` in `MegaMoeWave::ProcessRoutedExpertWaves`; `after` target line `2435`.
-- Cardinality: after the last epilogue tile assigned to each physical AIV0 core in a captured routed-expert wave
-- Boundary claim: `actual` — Every SwiGLU/quant GM output owned by this AIV0 in the wave has completed.
-- Why: Shows the actual AIV0 epilogue completion and its overlap with AIC GMM2 and AIV1 Dispatch/Combine.
-- Dependency: all BlockEpilogueSwigluMxQuant invocations assigned to the core returned
-- Pipeline proof: `MTE3` → `Scalar` using `existing per-tile MTE3_S in BlockEpilogueSwigluMxQuant::operator(); no added end bridge` — Each operator return consumes MTE3_V and MTE3_S after data/scale copies and then publishes its ready count; the outer wave return therefore follows the last actual GM completion.
-- Perturbation: One clock and named assignment per active AIV0/wave; no additional completion serialization.
-- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2277` in `MegaMoeWave::ProcessGmm1Wave`; `after` target line `2267`.
+- Cardinality: 每个已捕获且本核实际执行 epilogue 的 routed expert，在 GroupMatmulWithSwigluQuant 返回后记录一次
+- Boundary claim: `actual` — 当前专家在本 AIV0 上的全部 epilogue tile 已返回；其量化 data/scale MTE3 写回均已完成且 ready 均已发布。
+- Why: 标出每个专家真实 SwiGLU/MX 输出完成点，使后续到下一专家 causal begin 的等待/调度间隙可见。
+- Dependency: 当前专家的全部 BlockEpilogueSwigluMxQuant::operator() 调用已返回
+- Pipeline proof: `MTE3 completion and Scalar ready publication` → `Scalar` using `existing per-tile MTE3_S; no added end bridge` — 每个 operator 返回前已有 MTE3_S 并随后发布 ready；helper 返回后的 Scalar 时钟因此晚于当前专家最后一个 tile 的完成与发布。
+- Perturbation: 每个被捕获活跃专家一次条件检查和结束时钟；不新增 MTE3 bridge，不再逐 tile 重复采样。
+- Source SHA-256: `9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6`
 
 ```text
-  2444          } else if (subBlockIdx_ == 0U && CriticalPathTracePtr() != nullptr &&
-  2445                     criticalPathTrace_.HasStage0Work()) {
-  2446              // TRACE_POINT: swiglu_end_S
-  2447              criticalPathTrace_.EndStage0(CriticalPathTrace::Now());
-  2448          }
+  2275                  }
+  2276              } else if (subBlockIdx_ == 0U && criticalPathTrace_.HasExpertStage0Work()) {
+  2277                  // TRACE_POINT: swiglu_expert_end_S
+  2278                  criticalPathTrace_.EndExpertStage0(CriticalPathTrace::Now());
+  2279              }
 ```
 
-### `gmm2_begin_S`
+### `gmm2_expert_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h:483` in `MegaMoeImpl::Detail::AicComputeGeneric`; `before` target line `487`.
-- Cardinality: first actually assigned GMM2 tile per physical AIC core per captured routed-expert wave
-- Boundary claim: `causal` — Scalar GM polling has observed the required SwiGLU-ready count for the first owned GMM2 wave tile and MMAD issue is next.
-- Why: Measures GMM2 only after the current wave's SwiGLU-ready counter is visible, leaving publication-to-observation latency outside GMM2 compute.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h:486` in `MegaMoeImpl::Detail::AicComputeGeneric`; `after` target line `467`.
+- Cardinality: 每个物理 AIC 按执行顺序捕获最多四个实际分配到 GMM2 tile 的 routed expert；尾部元数据记录所属 wave
+- Boundary claim: `causal` — 当前专家的 SwiGLU-ready counter 已被 Scalar 观察，本核第一个 GMM2 MMAD 即将发出。
+- Why: 拆出逐专家 GMM2，使 SwiGLU-ready 等待不再被一批专家的外框吞入；也可验证 GMM2 是否确实近似连续输出 GM。
 - Dependency: WaitForUpstreamReady observed the wave-grained swigluToGmm2Flag target
 - Pipeline proof: `MTE3 completion published through Scalar-visible GM AtomicAdd` → `Scalar` using `none` — The bypass GM polling loop runs on Scalar and returns only after epilogue MTE3_S and ready AtomicAdd; the immediately following Scalar clock is causally ordered without a cross-pipeline bridge.
-- Perturbation: One conditional slot check and one clock per active AIC/wave.
-- Source SHA-256: `c6ab40df3abbd4b814bfb026ee396c702a7b4582892510c319b2a1d81ae3d6c0`
+- Perturbation: 每个被捕获活跃专家一次槽检查和时钟读取；不新增跨流水 bridge。
+- Source SHA-256: `5e8084d1de9143df589dbad8084b4f2626bf6c8732852881f918048c21fd3cab`
 
 ```text
-   481              }
-   482          } else if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsStage1Begin()) {
-   483              // TRACE_POINT: gmm2_begin_S
-   484              args.criticalPathTrace->BeginStage1(CriticalPathTrace::Now());
-   485          }
+   484              }
+   485          } else if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsExpertStage1Begin()) {
+   486              // TRACE_POINT: gmm2_expert_begin_S
+   487              args.criticalPathTrace->BeginExpertStage1(CriticalPathTrace::Now());
+   488          }
 ```
 
-### `gmm2_end_S`
+### `gmm2_expert_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2456` in `MegaMoeWave::ProcessRoutedExpertWaves`; `after` target line `2452`.
-- Cardinality: after the last ready publication for GMM2 work assigned to each physical AIC core in a captured routed-expert wave
-- Boundary claim: `actual` — All owned GMM2 FIX writes for the wave are complete and the final per-expert ready publication has been issued by this AIC.
-- Why: Proves local GMM2 direct-GM completion and ready publication timing while keeping remote AIV1 observation as a separate handoff gap.
-- Dependency: ProcessGmm2Wave completed every expert and PublishGmm2Ready ran after each expert
-- Pipeline proof: `FIX then Scalar bypass GM store` → `Scalar` using `existing FIX_S inside PublishGmm2Ready; no extra bridge` — PublishGmm2Ready executes FIX_S before WriteGmByPassDCache; the outer sample follows the last publication in source and Scalar order. It does not claim AIV1 has observed it.
-- Perturbation: One clock and named assignment per active AIC/wave; existing production FIX_S publication semantics are reused.
-- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2318` in `MegaMoeWave::ProcessGmm2Wave`; `after` target line `2312`.
+- Cardinality: 每个已捕获且本核实际参与的 routed expert，在 PublishGmm2Ready 后记录实际完成
+- Boundary claim: `actual` — 当前专家本核所有 GMM2 FIX 直写已完成，且该 AIC 的 per-expert ready 已发布。
+- Why: 逐专家证明 GMM2 直写 GM 与 ready 发布完成，并把到下一专家 begin 的等待/调度间隙独立显示。
+- Dependency: GroupMatmulGmm2 已发出当前专家所有 tile，PublishGmm2Ready 随后执行
+- Pipeline proof: `FIX then Scalar bypass GM store` → `Scalar` using `existing FIX_S inside PublishGmm2Ready; no extra bridge` — PublishGmm2Ready 内现有 FIX_S 在 WriteGmByPassDCache 前证明本核 FIX 完成；紧随其后的 Scalar 时钟不声称 AIV1 已观察 ready。
+- Perturbation: 每个被捕获活跃专家一次时钟读取和槽写；复用生产路径已有 FIX_S，不新增 completion bridge。
+- Source SHA-256: `9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6`
 
 ```text
-  2454          if constexpr (g_coreType == AIC) {
-  2455              if (CriticalPathTracePtr() != nullptr && criticalPathTrace_.HasStage1Work()) {
-  2456                  // TRACE_POINT: gmm2_end_S
-  2457                  criticalPathTrace_.EndStage1(CriticalPathTrace::Now());
-  2458              }
+  2316              if constexpr (g_coreType == AIC) {
+  2317                  if (criticalPathTrace_.HasExpertStage1Work()) {
+  2318                      // TRACE_POINT: gmm2_expert_end_S
+  2319                      criticalPathTrace_.EndExpertStage1(CriticalPathTrace::Now());
+  2320                  }
 ```
 
 ### `combine_begin_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2346` in `MegaMoeWave::ProcessCombineExperts`; `after` target line `2343`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2358` in `MegaMoeWave::ProcessCombineExperts`; `after` target line `2355`.
 - Cardinality: first non-empty token range per physical AIV1 core per captured routed-expert wave
 - Boundary claim: `causal` — This AIV1 owns at least one token and its first expert's GMM2-ready scan has observed all AIC publications; meta-info load and first row send follow.
 - Why: Exposes the publication-to-ready-observation handoff and starts Combine only after the full AIC fan-in is proven.
 - Dependency: WaitGmm2Ready reduced all per-AIC ready cache lines to at least blockNum
 - Pipeline proof: `MTE2 then Vector reduction` → `Scalar` using `existing MTE2_V and V_S in WaitGmm2Ready` — WaitGmm2Ready returns only after the V_S-ordered sum is read on Scalar and meets the all-AIC target; the marker is immediately after that return.
 - Perturbation: One conditional slot check and one clock per active AIV1/wave.
-- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
+- Source SHA-256: `9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6`
 
 ```text
-  2344  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-  2345              if (CriticalPathTracePtr() != nullptr && criticalPathTrace_.NeedsStage1Begin()) {
-  2346                  // TRACE_POINT: combine_begin_S
-  2347                  criticalPathTrace_.BeginStage1(CriticalPathTrace::Now());
-  2348              }
+  2356  #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+  2357              if (CriticalPathTracePtr() != nullptr && criticalPathTrace_.NeedsStage1Begin()) {
+  2358                  // TRACE_POINT: combine_begin_S
+  2359                  criticalPathTrace_.BeginStage1(CriticalPathTrace::Now());
+  2360              }
 ```
 
 ### `combine_end_S`
 
-- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2376` in `MegaMoeWave::ProcessCombineExperts`; `after` target line `2371`.
+- Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2388` in `MegaMoeWave::ProcessCombineExperts`; `after` target line `2383`.
 - Cardinality: after the final remote-send ring drain per physical AIV1 core per captured routed-expert wave
 - Boundary claim: `actual` — Every token row issued by this AIV1 for the wave has completed its remote MTE3 send.
 - Why: Ends Combine at actual remote MTE3 send completion rather than at Scalar issue or ring-drain enqueue time.
 - Dependency: DrainCombineRowRing consumed every MTE3_MTE2 event for each actually used row slot
 - Pipeline proof: `MTE3 completion dependency held by MTE2` → `Scalar` using `trace-only MTE2_S using recycled EVENT_ID0 after the drain` — The ring drain waits only the slots that were issued; MTE2_S transfers those completed MTE3 dependencies to Scalar before sampling.
 - Perturbation: One MTE2-to-Scalar bridge and one clock per active AIV1/wave.
-- Source SHA-256: `fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c`
+- Source SHA-256: `9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6`
 
 ```text
-  2374          AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
-  2375          AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
-  2376          // TRACE_POINT: combine_end_S
-  2377          criticalPathTrace_.EndStage1(CriticalPathTrace::Now());
-  2378      }
+  2386          AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+  2387          AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+  2388          // TRACE_POINT: combine_end_S
+  2389          criticalPathTrace_.EndStage1(CriticalPathTrace::Now());
+  2390      }
 ```
 
 ## Working tree status
 
 ```text
-M mc2/mega_moe/op_kernel/arch35/mega_moe_trace.h
- M mc2/mega_moe/tools/critical_path_trace/README.md
- M mc2/mega_moe/tools/critical_path_trace/trace-spec.json
- M mc2/mega_moe/tools/critical_path_trace/trace_tool.py
+M  mc2/mega_moe/op_kernel/arch35/block_epilogue_swiglu_mx_quant.h
+M  mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h
+MM mc2/mega_moe/op_kernel/arch35/mega_moe_trace.h
+M  mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h
+M  mc2/mega_moe/tools/critical_path_trace/README.md
+M  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/index.html
+M  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.contract-check.json
+M  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.html
+M  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.normalized.json
+M  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.order-check.json
+M  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.raw
+M  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.runtime.json
+M  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/run-manifest.json
+A  mc2/mega_moe/tools/critical_path_trace/audit-implemented-coarse-v5/trace_point_audit.json
+A  mc2/mega_moe/tools/critical_path_trace/audit-implemented-coarse-v5/trace_point_audit.md
+M  mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.json
+M  mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.md
+A  mc2/mega_moe/tools/critical_path_trace/audit-plan-coarse-v5/trace_point_audit.json
+A  mc2/mega_moe/tools/critical_path_trace/audit-plan-coarse-v5/trace_point_audit.md
+M  mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.json
+M  mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.md
+MM mc2/mega_moe/tools/critical_path_trace/mega_moe_trace_contract.py
+MM mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py
+MM mc2/mega_moe/tools/critical_path_trace/test_critical_path_trace.py
+A  mc2/mega_moe/tools/critical_path_trace/trace-spec-coarse-v5.json
+M  mc2/mega_moe/tools/critical_path_trace/trace-spec.json
+MM mc2/mega_moe/tools/critical_path_trace/trace_tool.py
+M  mc2/mega_moe/tools/critical_path_trace/validation-report.json
+MM mc2/mega_moe/tools/critical_path_trace/verify_trace_off.py
 ```

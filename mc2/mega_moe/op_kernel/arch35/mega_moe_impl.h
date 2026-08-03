@@ -471,7 +471,22 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
             }
         }
 
-#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \
+    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+        typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
+                                                   Get<K_VALUE>(actualShape), 0};
+        if constexpr (Policy::IS_GMM1) {
+            if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsExpertStage0Begin()) {
+                AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
+                // TRACE_POINT: gmm1_expert_begin_S
+                args.criticalPathTrace->BeginExpertStage0(CriticalPathTrace::Now());
+            }
+        } else if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsExpertStage1Begin()) {
+            // TRACE_POINT: gmm2_expert_begin_S
+            args.criticalPathTrace->BeginExpertStage1(CriticalPathTrace::Now());
+        }
+#elif MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
         if constexpr (Policy::IS_GMM1) {
             if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsStage0Begin()) {
                 AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
@@ -483,9 +498,12 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
             // TRACE_POINT: gmm2_begin_S
             args.criticalPathTrace->BeginStage1(CriticalPathTrace::Now());
         }
-#endif
         typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
                                                    Get<K_VALUE>(actualShape), 0};
+#else
+        typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
+                                                   Get<K_VALUE>(actualShape), 0};
+#endif
 
         if constexpr (Policy::IS_GMM1) {
             if constexpr (TopkWeightsPrefetch) {

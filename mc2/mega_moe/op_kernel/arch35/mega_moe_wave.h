@@ -415,7 +415,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
     criticalPathTraceCarrierWords_ = carrierBytes / sizeof(uint32_t);
     const uint64_t requiredWords = static_cast<uint64_t>(CRITICAL_PATH_TRACE_HEADER_WORDS) +
                                    static_cast<uint64_t>(CRITICAL_PATH_TRACE_ROLE_COUNT) * aicNum_ *
-                                       CRITICAL_PATH_TRACE_RECORD_WORDS;
+                                       CRITICAL_PATH_TRACE_RECORD_WORDS +
+                                   static_cast<uint64_t>(aicNum_) *
+                                       CRITICAL_PATH_TRACE_FINE_TAIL_WORDS_PER_CORE;
     criticalPathTraceCarrierValid_ =
         criticalPathTraceCarrierWords_ >= requiredWords && criticalPathTraceCarrierWords_ <= 0xFFFFFFFFULL;
     epilogueOp_.SetCriticalPathTrace(CriticalPathTracePtr());
@@ -2270,9 +2272,30 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave
         if (!UpdateGroupParams<AddrUpdateMode::GMM1>(gmm1State, expertIdx)) {
             continue;
         }
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \
+    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+        if (CriticalPathTracePtr() != nullptr) {
+            criticalPathTrace_.PrepareExpertStage0();
+        }
+#endif
         UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, gmm1State, expertIdx);
         GroupMatmulWithSwigluQuant(
             epilogueOp_, gmm1AddrInfo, gmm1State, expertIdx, vecSetSyncCom);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \
+    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+        if (CriticalPathTracePtr() != nullptr) {
+            if constexpr (g_coreType == AIC) {
+                if (criticalPathTrace_.HasExpertStage0Work()) {
+                    // TRACE_POINT: gmm1_expert_end_S
+                    criticalPathTrace_.EndExpertStage0(CriticalPathTrace::Now());
+                }
+            } else if (subBlockIdx_ == 0U && criticalPathTrace_.HasExpertStage0Work()) {
+                // TRACE_POINT: swiglu_expert_end_S
+                criticalPathTrace_.EndExpertStage0(CriticalPathTrace::Now());
+            }
+            criticalPathTrace_.FinishExpertStage0();
+        }
+#endif
     }
 }
 
@@ -2294,9 +2317,27 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
         if (!UpdateGroupParams<AddrUpdateMode::GMM2>(gmm2State, expertIdx)) {
             continue;
         }
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \
+    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+        if (CriticalPathTracePtr() != nullptr) {
+            criticalPathTrace_.PrepareExpertStage1();
+        }
+#endif
         UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, gmm2State, expertIdx);
         GroupMatmulGmm2(gmm2AddrInfo, gmm2State, vecSetSyncCom);
         PublishGmm2Ready(expertIdx);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \
+    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+        if (CriticalPathTracePtr() != nullptr) {
+            if constexpr (g_coreType == AIC) {
+                if (criticalPathTrace_.HasExpertStage1Work()) {
+                    // TRACE_POINT: gmm2_expert_end_S
+                    criticalPathTrace_.EndExpertStage1(CriticalPathTrace::Now());
+                }
+            }
+            criticalPathTrace_.FinishExpertStage1();
+        }
+#endif
     }
 }
 
@@ -2420,7 +2461,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
 
         ProcessGmm1Wave(
             batchBegin, batchEnd, gmm1State, gmm1AddrInfo, vecSetSyncCom);
-#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \
+    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE == 0
         if constexpr (g_coreType == AIC) {
             if (CriticalPathTracePtr() != nullptr && criticalPathTrace_.HasStage0Work()) {
                 AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
@@ -2437,7 +2479,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
         const uint32_t gmm1EndCursor = startBlockIdx_;
 
         ProcessGmm2Wave(batchBegin, batchEnd, gmm2State, gmm2AddrInfo, vecSetSyncCom);
-#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \
+    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE == 0
         if constexpr (g_coreType == AIC) {
             if (CriticalPathTracePtr() != nullptr && criticalPathTrace_.HasStage1Work()) {
                 // TRACE_POINT: gmm2_end_S
@@ -2544,8 +2587,20 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::WriteCriticalPa
     __gm__ uint32_t *record = traceOut + CRITICAL_PATH_TRACE_HEADER_WORDS +
                               static_cast<uint64_t>(recordIdx) * CRITICAL_PATH_TRACE_RECORD_WORDS;
     criticalPathTrace_.WriteRecord(record);
+#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+    __gm__ uint32_t *fineMeta =
+        traceOut + CRITICAL_PATH_TRACE_HEADER_WORDS +
+        static_cast<uint64_t>(CRITICAL_PATH_TRACE_ROLE_COUNT) * aicNum_ *
+            CRITICAL_PATH_TRACE_RECORD_WORDS +
+        static_cast<uint64_t>(blockIdx_) * CRITICAL_PATH_TRACE_FINE_TAIL_WORDS_PER_CORE;
+    if constexpr (g_coreType == AIC) {
+        AscendC::WriteGmByPassDCache(fineMeta + 0U, criticalPathTrace_.PackAicFineMeta());
+    } else if (subBlockIdx_ == 0U) {
+        AscendC::WriteGmByPassDCache(fineMeta + 1U, criticalPathTrace_.PackAiv0FineMeta());
+    }
+#endif
 
-    // Every record must be globally issued before AIC0 publishes a valid header.
+    // Every record and fine metadata tail word must be globally issued before AIC0 publishes a valid header.
     SyncAll<false>();
     if constexpr (g_coreType == AIC) {
         if (blockIdx_ != 0U) {

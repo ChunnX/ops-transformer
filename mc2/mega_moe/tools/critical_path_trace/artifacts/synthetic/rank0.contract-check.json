@@ -8,7 +8,7 @@
     "combine_quant_mode": 0,
     "dispatch_quant_out_key": 4,
     "experts_per_wave": 4,
-    "flags": 255,
+    "flags": 511,
     "h": 4096,
     "header_words": 30,
     "hidden_dim": 1024,
@@ -25,12 +25,12 @@
       36
     ],
     "runtime_config_hash": 2807985227,
-    "schema_id": 3542977097,
+    "schema_id": 1277395837,
     "shared_expert_count": 0,
     "top_k": 6,
     "topk_weights_prefetch": 0,
     "truncated": 0,
-    "version": 5,
+    "version": 6,
     "weight1_interleaved": 0,
     "world_size": 2
   },
@@ -55,7 +55,7 @@
     "quant_dtype": "float8_e4m3fn",
     "quant_mode": 4,
     "rank": 0,
-    "raw_sha256": "84926c9df62ed933f1357f0a0a6cc5bdbed6ab7d0f8688c36ea7be6f93724b5b",
+    "raw_sha256": "91ea4db7037ab12242067ea3a484c9a98698cf59760e6e981d9d9765167302f2",
     "shared_expert_num": 0,
     "swiglu_quant_dtype": "float8_e4m3fn",
     "test_source_sha256": "synthetic-fixture",
@@ -63,7 +63,7 @@
     "weight_dtype": "float8_e4m3fn",
     "world_size": 2
   },
-  "raw_sha256": "84926c9df62ed933f1357f0a0a6cc5bdbed6ab7d0f8688c36ea7be6f93724b5b",
-  "required_trace_bytes": 7896,
+  "raw_sha256": "91ea4db7037ab12242067ea3a484c9a98698cf59760e6e981d9d9765167302f2",
+  "required_trace_bytes": 8184,
   "status": "passed"
 }

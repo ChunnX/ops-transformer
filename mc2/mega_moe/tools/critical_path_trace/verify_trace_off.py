@@ -20,44 +20,54 @@ import sys
 from pathlib import Path
 
 
-DEFAULT_BASELINE = "4b3d39658e1d4f5d1f5b60acedfe2df8201e08b2"
+DEFAULT_BASELINE = "8fc42341f11425e4e82f123f59c7ef97cd7210b0"
 FILES = (
     "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
     "mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h",
     "mc2/mega_moe/op_kernel/arch35/block_epilogue_swiglu_mx_quant.h",
 )
-TRACE_IF = "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
-TRACE_INCLUDE = '#include "mega_moe_trace.h"'
 
 
 class VerificationError(RuntimeError):
     pass
 
 
-def strip_disabled_trace_blocks(source: str) -> str:
-    result: list[str] = []
-    dropping_depth = 0
-    for line_number, line in enumerate(source.splitlines(keepends=True), 1):
-        stripped = line.strip()
-        if dropping_depth:
-            if stripped.startswith("#if"):
-                dropping_depth += 1
-            elif stripped.startswith("#endif"):
-                dropping_depth -= 1
-            elif stripped.startswith("#else") and dropping_depth == 1:
-                raise VerificationError(
-                    f"trace-only block has an unsupported #else at line {line_number}"
-                )
-            continue
-        if stripped == TRACE_IF:
-            dropping_depth = 1
-            continue
-        if stripped == TRACE_INCLUDE:
-            continue
-        result.append(line)
-    if dropping_depth:
-        raise VerificationError("unterminated trace-only preprocessor block")
-    return "".join(result)
+def preprocess_trace_off(source: str, description: str) -> str:
+    # Includes are unnecessary for conditional evaluation and would make this
+    # proof depend on a configured CANN include environment.  cpp still evaluates
+    # every nested #if/#elif/#else exactly with both trace switches forced off.
+    source_without_includes = "".join(
+        line
+        for line in source.splitlines(keepends=True)
+        if not line.lstrip().startswith("#include")
+    )
+    try:
+        result = subprocess.run(
+            [
+                "cpp",
+                "-x",
+                "c++",
+                "-P",
+                "-undef",
+                "-D__DAV_C310__=1",
+                "-DASC_DEVKIT_MAJOR=9",
+                "-DMEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=0",
+                "-DMEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE=0",
+                "-",
+            ],
+            input=source_without_includes,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+    except FileNotFoundError as exc:
+        raise VerificationError("cpp is required for the trace-off proof") from exc
+    except subprocess.CalledProcessError as exc:
+        raise VerificationError(
+            f"cannot preprocess {description}: {exc.stderr.strip()}"
+        ) from exc
+    return result.stdout
 
 
 TOKEN_RE = re.compile(
@@ -116,13 +126,16 @@ def main() -> int:
     failures: list[str] = []
     for relative_path in FILES:
         current_source = (repo_root / relative_path).read_text(encoding="utf-8-sig")
-        disabled_source = strip_disabled_trace_blocks(current_source)
+        disabled_source = preprocess_trace_off(current_source, relative_path)
         if "CriticalPathTrace" in disabled_source or "TRACE_POINT:" in disabled_source:
             failures.append(
                 f"{relative_path}: trace token survives switch-off stripping"
             )
             continue
-        baseline_source = git_show(repo_root, args.baseline, relative_path)
+        baseline_source = preprocess_trace_off(
+            git_show(repo_root, args.baseline, relative_path),
+            f"{args.baseline}:{relative_path}",
+        )
         current_tokens = cpp_tokens(disabled_source)
         baseline_tokens = cpp_tokens(baseline_source)
         if current_tokens != baseline_tokens:

@@ -1145,17 +1145,32 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
         return;
     }
 
-#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \
+    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+    vlForHalfNumber_ = AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t); // 256 / 2 = 128
+    UBBlockSize_ = BLOCK_SIZE;                                         // 32
+    elementAfterReduce_ = AscendC::VECTOR_REG_WIDTH / UBBlockSize_;    // 256 / 32 = 8
+    if (criticalPathTrace_ != nullptr && criticalPathTrace_->NeedsExpertStage0Begin()) {
+        AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+        // TRACE_POINT: swiglu_expert_begin_S
+        criticalPathTrace_->BeginExpertStage0(MegaMoeImpl::CriticalPathTrace::Now());
+    }
+#elif MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
     if (criticalPathTrace_ != nullptr && criticalPathTrace_->NeedsStage0Begin()) {
         AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
         // TRACE_POINT: swiglu_begin_S
         criticalPathTrace_->BeginStage0(MegaMoeImpl::CriticalPathTrace::Now());
     }
-#endif
     vlForHalfNumber_ = AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t); // 256 / 2 = 128
     UBBlockSize_ = BLOCK_SIZE;                                         // 32
     elementAfterReduce_ = AscendC::VECTOR_REG_WIDTH / UBBlockSize_;    // 256 / 32 = 8
+#else
+    vlForHalfNumber_ = AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t); // 256 / 2 = 128
+    UBBlockSize_ = BLOCK_SIZE;                                         // 32
+    elementAfterReduce_ = AscendC::VECTOR_REG_WIDTH / UBBlockSize_;    // 256 / 32 = 8
+#endif
 
     uint64_t yOffset = Get<Y_IDX>(blockCoord);
     uint64_t yScaleOffset = Get<Y_SCALE_IDX>(blockCoord);

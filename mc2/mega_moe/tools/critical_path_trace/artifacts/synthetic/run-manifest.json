@@ -7,11 +7,14 @@
       "html": "rank0.html",
       "normalized": "rank0.normalized.json",
       "order_check": "rank0.order-check.json",
+      "protocol_version": 6,
       "rank": 0,
       "raw": "rank0.raw",
-      "raw_sha256": "84926c9df62ed933f1357f0a0a6cc5bdbed6ab7d0f8688c36ea7be6f93724b5b",
-      "required_trace_bytes": 7896,
-      "runtime_metadata": "rank0.runtime.json"
+      "raw_sha256": "91ea4db7037ab12242067ea3a484c9a98698cf59760e6e981d9d9765167302f2",
+      "required_trace_bytes": 8184,
+      "runtime_metadata": "rank0.runtime.json",
+      "schema_id": "0x4c23837d",
+      "trace_spec": "trace-spec.json"
     }
   ],
   "purpose": "exercise raw decode, header/config checks, wrap-safe order/bounds checks, and HTML rendering",

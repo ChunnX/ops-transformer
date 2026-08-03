@@ -1,113 +1,160 @@
 # MegaMoe 关键路径 tracing
 
-本目录提供 Ascend 950 `MegaMoeWave` 的诊断态关键路径打点、输出协议、当前
-`moe_test` 适配器、严格解码与人工可读 HTML。它只支持当前 arch35 MTE A8W8
-路径；不是通用 MegaMoe profiler。
+本目录提供 Ascend 950 `MegaMoeWave` 的诊断态关键路径打点、`moe_test` 适配器、
+严格解码和中文 HTML。默认打点粒度已经从“一批专家一个长框”细化为“本物理核
+实际参与的专家”，并把同一 wave 内相邻专家区间之间的间隙单独画出。它只支持
+当前 arch35 MTE A8W8 路径，不是通用 MegaMoe profiler。
 
-## 审计基线与适用路径
+## 基线与适用路径
 
-- 远端默认主线：`upstream/master`（`upstream/HEAD` 指向 `refs/heads/master`）。
-- 实施基线：`4b3d39658e1d4f5d1f5b60acedfe2df8201e08b2`。
+- 远端默认主线：`upstream/master`（`upstream/HEAD -> upstream/master`）。
+- 建立独立 worktree 时记录的基线：
+  `4b3d39658e1d4f5d1f5b60acedfe2df8201e08b2`。
+- 最终集成并验证的最新主线：
+  `8fc42341f11425e4e82f123f59c7ef97cd7210b0`。
 - 分支：`codex/mega-moe-critical-path-trace-20260803`。
-- 独立 worktree：`/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803`。
-- 运行脚本审计快照：`moe_test` commit
+- 独立 worktree：
+  `/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803`。
+- `moe_test` 审计快照：commit
   `90319bbd05993d2fbe7674d693395d5520732553`；`mega_moe.py` SHA-256
-  `35f600ca443782fd8f210a33af879af651a9dea011f32afa51191ae2bf9ee43e`，
+  `35f600ca443782fd8f210a33af879af651a9dea011f32afa51191ae2bf9ee43e`；
   `graph.py` SHA-256
   `f050d695c5d4bde708e71f501ee587268c05ccbfef934b61f95dcd0b7e1fa13f`。
 
-当前 `mega_moe_apt.cpp` 根据通信模式和 dtype 选择实现：MTE+A8W8 进入
+当前 `mega_moe_apt.cpp` 仍按通信模式和 dtype 选择实现：MTE+A8W8 进入
 `MegaMoeWave`，MTE 非 A8W8 进入 `MegaMoe`，URMA 进入 `MegaMoeLayered`。
-被审计脚本的默认配置是 `graph_type=0, quant_mode=4, comm_quant_mode=0,
-bs=1, h=4096, n=1024, k=6, local_moe_expert_num=4,
-shared_expert_num=0, world_size=2`，输入、SwiGLU 与权重均为 E4M3，因此命中
-MTE A8W8 `MegaMoeWave`。设备 header 的 path/config hash、dtype key、shape、
-核数和量化配置不一致时，解析器会拒绝结果。
+适配器会用设备 header 的 path/config hash、dtype key、shape、核数和量化配置
+确认实际运行命中了所审计路径。0717 分支只作为历史案例；本实现没有复用旧行号、
+旧时间点或旧输出布局。
 
-0717 分支仅用于识别历史上出现过的边界和输出布局错误；本实现的符号、语义
-锚点、时间点、协议和脚本插入位置全部由上述主线及当前 `moe_test` 重新推导，
-没有沿用旧行号或旧 ABI。
+## 两级诊断宏与 ABI
 
-## 当前并行依赖与时间点
+```cpp
+#define MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE 1
+#define MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE 1
+```
 
-稳态波次的因果链是：AIV1 Dispatch(B/B+1) 发布输入，AIC GMM1(B) 消费，
-AIV0 SwiGLU+MX quant(B) 发布，AIC GMM2(B) 直接写 GM 并发布 ready，AIV1 在
-全部 AIC ready fan-in 后 Combine(B)；同时下一波 Dispatch 可与当前波的
-GMM1/SwiGLU/GMM2/Combine 重叠。因此时间点落在实际生产/观察边界，而不是
-外层循环或函数返回的近似位置。
+- 两个宏默认都是 1：启用细粒度 protocol v6，schema
+  `0x4c23837d`，flags `0x1ff`。
+- 仅将 `MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE=0`：保留原来的一批专家/
+  wave 粒度、时间点、桥接和 wire layout，输出 protocol v5，schema
+  `0xd32d8a49`，flags `0xff`。
+- 将 `MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=0`：所有 tracing 设备逻辑消失，恢复
+  生产行为；细粒度宏值不再产生作用。
 
-| 时间点 | 角色与符号 | 语义、证明关系与主要扰动 |
+v6 继续使用每条 18-word record 中原有的四个 occurrence，但对 AIC 的
+GMM1/GMM2 和 AIV0 的 SwiGLU 将它们解释为“本物理核按执行顺序捕获的前四个
+活跃专家槽”。AIV1 的 Dispatch/Combine 仍是 wave 粒度。每个 AI Block 末尾
+追加两个压缩 `uint32_t`：
+
+- AIC meta：四个 GMM1 槽的 wave id、四个 GMM2 槽的 wave id、两级 captured
+  count、两级 truncation 标志和 fine-enabled 标志。
+- AIV0 meta：四个 SwiGLU 槽的 wave id、captured count、truncation 标志和
+  fine-enabled 标志。
+
+每个阶段每个物理核最多记录四个实际活跃专家。超过四个时设备不会越界，而是在
+meta 中置 truncation；解析默认失败，只有明确接受局部视图时才使用
+`--allow-truncated`。这个限制与 header 中最多四个 routed wave 的原有捕获限制
+分别校验。
+
+运行器会根据 raw header 自动选择 v6 细粒度规范或 v5 粗粒度规范。因此旧的 v5
+包仍可用当前 host 脚本解析，不再出现“runtime v5、expected v6”的误报；但要获得
+新的逐专家打点和间隙，必须重新编译并安装默认 v6 kernel。其他 version/schema
+仍然 fail closed。
+
+## 当前依赖与时间点
+
+稳态因果链是：AIV1 Dispatch 发布输入，AIC GMM1 消费，AIV0 SwiGLU+MX quant
+发布，AIC GMM2 直接写 GM 并发布 ready，AIV1 在全部 AIC ready fan-in 后
+Combine；下一 wave 的 Dispatch 可以与当前 wave 的计算重叠。
+
+| 时间点 | 文件与函数/符号 | 什么时候打、为什么打及主要扰动 |
 |---|---|---|
-| `process_begin_S` | 全角色，`MegaMoeWave::Process` | 进入当前实现且尚未发出工作；给出同一 AI Block 内的公共参考轴。一次 Scalar 时钟读取。 |
-| `work_end_S` | 全角色，`MegaMoeWave::Process` | 角色本地有效工作已完成，且在诊断 rendezvous 前；区分真实尾部与落盘开销。一次时钟读取。 |
-| `dispatch_begin_S` | AIV1，`DispatchExpert` | 当前波首个专家即将执行 `SendCntCal`；覆盖真实预取窗口。每个活跃波一次条件检查和时钟。 |
-| `dispatch_end_S` | AIV1，`DispatchExpert` | 末个专家的 token/scale/meta GM 写入与发布已完成；可与 GMM1 ready 观察比较。增加一次 MTE3→Scalar bridge 和时钟。 |
-| `gmm1_begin_S` | AIC，`Detail::AicComputeGeneric` | Dispatch readiness 与 ping-pong 依赖已满足，首个 MMAD 即将发出；把等待从 GMM1 计算中分离。增加一次 FIX→Scalar bridge 和时钟。 |
-| `gmm1_end_S` | AIC，`ProcessRoutedExpertWaves` | 本核当前波全部 GMM1 FIX 工作实际完成。增加一次 FIX→Scalar bridge 和时钟。 |
-| `swiglu_begin_S` | AIV0，`BlockEpilogueSwigluMxQuant::operator()` | 公共 epilogue 入口，GMM1/输入依赖已进入 Vector，SwiGLU 即将开始。增加一次 Vector→Scalar bridge 和时钟。 |
-| `swiglu_end_S` | AIV0，`ProcessRoutedExpertWaves` | 本核最后一个 epilogue 的 GM 输出完成；证明与 GMM2/Dispatch/Combine 的重叠。复用现有 MTE3_S，仅增加时钟。 |
-| `gmm2_begin_S` | AIC，`Detail::AicComputeGeneric` | 已观察到 SwiGLU ready，首个 GMM2 MMAD 即将发出；发布到观察的等待不计入 GMM2。条件检查和时钟。 |
-| `gmm2_end_S` | AIC，`ProcessRoutedExpertWaves` | 本核 GMM2 FIX 写入完成且最终 ready 已发布；与 AIV1 的观察时刻分开。复用现有 FIX_S，仅增加时钟。 |
-| `combine_begin_S` | AIV1，`ProcessCombineExperts` | `WaitGmm2Ready` 已观察完整 AIC fan-in，首个非空 Combine 即将开始。复用现有 MTE2_V/V_S，仅增加时钟。 |
-| `combine_end_S` | AIV1，`ProcessCombineExperts` | ring drain 后所有远端 MTE3 send 实际完成。增加一次 MTE2→Scalar bridge 和时钟。 |
+| `process_begin_S` | `mega_moe_wave.h` / `MegaMoeWave::Process` | 各角色尚未发出工作时建立本 AI Block 的参考轴；一次 Scalar 时钟读取。 |
+| `work_end_S` | `mega_moe_wave.h` / `MegaMoeWave::Process` | 角色本地有效工作和正常输出已结束、tracing rendezvous 尚未开始；把诊断落盘开销排除在外。 |
+| `dispatch_begin_S` | `mega_moe_wave.h` / `DispatchExpert` | 当前 wave 首个专家即将执行 `SendCntCal`；每活跃 wave 一次条件检查和时钟。 |
+| `dispatch_end_S` | `mega_moe_wave.h` / `DispatchExpert` | 当前 wave 最后一个专家的 token/scale/meta 写入和发布完成；增加一次 MTE3→Scalar bridge。 |
+| `gmm1_expert_begin_S` | `mega_moe_impl.h` / `Detail::AicComputeGeneric` | 当前专家 readiness/ping-pong 等待已完成，首个 GMM1 MMAD 即将发出；每个被捕获专家增加一次 FIX→Scalar causal bridge 和时钟。 |
+| `gmm1_expert_end_S` | `mega_moe_wave.h` / `ProcessGmm1Wave` | 当前专家本核 MMAD/NotifyVector 已全部发出；故意不增加逐专家 FIX drain，避免把可重叠尾部串行化。它是低扰动 issue 边界。 |
+| `swiglu_expert_begin_S` | `block_epilogue_swiglu_mx_quant.h` / `BlockEpilogueSwigluMxQuant::operator()` | 当前专家首个非空 epilogue 的上游依赖已进入 Vector，SwiGLU 即将开始；每个被捕获专家一次 V→Scalar bridge 和时钟。 |
+| `swiglu_expert_end_S` | `mega_moe_wave.h` / `ProcessGmm1Wave` | 当前专家全部 epilogue tile 返回，data/scale GM 写回完成且 ready 已发布；复用每 tile 现有 MTE3_S，每专家只增加一次条件检查和时钟。 |
+| `gmm2_expert_begin_S` | `mega_moe_impl.h` / `Detail::AicComputeGeneric` | 当前专家的 SwiGLU-ready 已被 Scalar 观察，首个 GMM2 MMAD 即将发出；无新增跨流水 bridge。 |
+| `gmm2_expert_end_S` | `mega_moe_wave.h` / `ProcessGmm2Wave` | 当前专家 FIX 写回完成且 ready 已发布；复用 `PublishGmm2Ready` 中现有 FIX_S，只增加时钟。 |
+| `combine_begin_S` | `mega_moe_wave.h` / `ProcessCombineExperts` | 当前 wave 的完整 AIC ready fan-in 已观察，首个非空 Combine 即将开始；复用既有依赖。 |
+| `combine_end_S` | `mega_moe_wave.h` / `ProcessCombineExperts` | ring drain 后远端 MTE3 send 完成；增加一次 MTE2→Scalar bridge和时钟。 |
 
-完整的文件、函数/符号、稳定语义锚点、解析出的行号、边界等级、打点原因、
-依赖证明、性能关系、潜在扰动及上下文片段见
-[`audit-implemented/trace_point_audit.md`](audit-implemented/trace_point_audit.md)。机器可读
-规范是 [`trace-spec.json`](trace-spec.json)，计划态与实现态 audit 分别在
-`audit-plan/` 和 `audit-implemented/`。所有六个 span 都由成对边界组成；没有
-用缺失值补造跨度。
+完整的文件、函数/符号、唯一语义锚点、解析行号、边界等级、原因、性能关系、
+依赖证明和潜在扰动见：
 
-时间戳是 `AscendC::GetSystemCycle()` 的低 32 位 cycle。同一物理 AI Block
-（相同 paired `blockIdx`）内的 AIC/AIV0/AIV1 共用时钟域，可以直接对齐；不同
-AI Block 可能存在时钟偏移，不得比较原始绝对时间戳，rank 之间同样不得相减。
-HTML 按 AI Block 分组，每组固定排列 AIC、AIV0、AIV1，并以本组 AIC 的
-`process_begin_S` 独立归零。实际采样为零时重映射为 1，零专用于“该核/该波无
-工作”。顺序检查采用 32 位环绕差，并拒绝大于等于半周期的歧义区间。
+- v6 机器规范：[`trace-spec.json`](trace-spec.json)
+- v6 计划/实现审计：[`audit-plan/`](audit-plan/) 与
+  [`audit-implemented/`](audit-implemented/)
+- v5 回退规范：[`trace-spec-coarse-v5.json`](trace-spec-coarse-v5.json)
+- v5 计划/实现审计：[`audit-plan-coarse-v5/`](audit-plan-coarse-v5/) 与
+  [`audit-implemented-coarse-v5/`](audit-implemented-coarse-v5/)
 
-AI Block 分组、独立归零和中文说明属于 host 侧可视化策略，不改变设备记录字段
-或 wire bytes，因此继续兼容 protocol v5 / schema `0xd32d8a49`。若已经安装本
-分支此前生成的 v5 tracing-on 包，只更新本目录解析脚本即可，无需因 HTML 修改
-重新编译 kernel；runtime header 仍会严格拒绝真正不兼容的布局或算子版本。
+## HTML 如何表示“空等”
+
+同一物理 AI Block 的 AIC、AIV0、AIV1 使用同一时钟域，HTML 将三者放在一组，
+并以该组 AIC 的 `process_begin_S` 独立归零。不同 AI Block 可能存在时间戳固定
+偏移，禁止横向比较不同组的绝对位置；rank 之间也不得相减。
+
+细粒度 HTML 对 GMM1、SwiGLU、GMM2 分别画逐专家区间，并在同一 wave 的相邻
+专家之间画橙色“推断间隙”：
+
+- SwiGLU 间隙是前一专家实际 output/ready 完成到下一专家 causal begin，主要
+  包含 `WaitForCube`/输入就绪等待和少量调度。
+- GMM2 间隙是前一专家 FIX+ready 完成到下一专家 causal begin，可直接观察它
+  是否如预期接近连续输出。
+- GMM1 end 是 issue 边界，所以其间隙还包含前一专家的 FIX 尾部。
+
+这些橙色区间是两个已证明边界之差，不是硬件“wait 指令自身耗时”。它可能同时
+包含流水尾部、真实依赖等待和少量 Scalar 调度；HTML tooltip 和中文说明会明确
+这一点。这样不会再把整批专家之间的等待全部塞进一个 83us 的 SwiGLU 长框，
+但也不会把推断间隙伪称为纯空等。
 
 ## `y` 载体证明
 
-Tracing 仅在编译宏 `MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=1` 时存在，当前诊断
-分支默认值为 1。诊断态在最终 `Unpermute` 的 MTE3_V 完成后执行混合 AIC/AIV rendezvous，
-此时正常 BF16 `y` 已不再被 kernel 消费，才把 `y` 重用为小端 `uint32` 原始
-记录。每个角色写唯一 role-major record；第二次混合 rendezvous 后 AIC0 写
-header 字段、`PIPE_ALL` 排序，并最后发布 magic。
+Tracing 只在诊断宏打开时复用最终 BF16 `y`。第一次混合 AIC/AIV rendezvous
+保证所有正常 Unpermute MTE3 写回完成，此后 kernel 不再读取正常 `y`；各角色才
+按小端 `uint32_t` 写诊断数据。第二次 rendezvous 等待所有 record 和 fine meta，
+AIC0 再写 header、执行 `PIPE_ALL`，最后发布 magic。
 
-- dtype/shape：当前路径输出是 BF16 `[bs, h]`，载体字节数为
-  `bs * h * sizeof(OutputType)`；runner 要求 `torch.bfloat16` 和精确 shape。
-- 对齐：以 `y` 的 GM 基地址按 `uint32` 写入，长度按 `floor(bytes / 4)` 计。
-- 布局：30 个 header word；每个物理 AIC、AIV0、AIV1 各一个 18-word record；
-  需求为 `(30 + 3 * aicNum * 18) * 4` bytes。
-- 默认例：`aicNum=36` 时需求 `7896` bytes；`[1,4096]` BF16 提供 `8192`
-  bytes，余量 `296` bytes。
-- 容量：设备使用 64 位中间量先检查容量；不足时不采样、不同步、不写 record/
-  header/magic。解析器同时核对 raw 长度、header `carrier_words`、record 数量与
-  runtime metadata，不能把未写入的正常 `y` 误判成 trace。
-- 生命周期：诊断态会覆盖用户输出，所以 runner 在最终 NPU synchronize 后、
-  mask/精度比较前按原始字节保存 `y`，并明确跳过精度比较。正常业务不得消费
-  tracing 打开的 `y`。
-- 捕获容量：最多四个 routed-expert wave；超出时 header 置 `truncated=1`，
-  默认解析失败，只有人工确认接受部分分析时才使用 `--allow-truncated`。
+- dtype/shape：当前路径输出 BF16 `[bs, h]`，容量是
+  `bs * h * sizeof(OutputType)`；适配器要求实际输出 dtype/shape 精确匹配。
+- v6 布局：`30 + 3 * aicNum * 18 + 2 * aicNum` 个 word。
+- `aicNum=36` 时 v6 需要 `2046 * 4 = 8184` bytes；最小受支持
+  `[1,4096]` BF16 `y` 提供 `8192` bytes，余量 8 bytes。
+- v5 回退需要 7896 bytes，余量 296 bytes。
+- 设备用 64 位中间量检查容量；不足时不采样、不 rendezvous、不写 record/meta/
+  header/magic。host 再核对 raw 长度、`carrier_words`、record 数和 tail 大小。
+- 诊断态会覆盖正常输出，适配器在最终 NPU synchronize 后按原始字节保存最后
+  一轮 `y`，并跳过精度比较。业务不得消费 tracing-on 的 `y`。
+- tracing 全关时不复用 `y`；预处理 token 等价检查以最新集成主线为基线。
 
-## 服务器构建、运行与解析
+## 构建、运行与 case 修改
 
-从干净构建目录生成 tracing 算子包：
+默认细粒度诊断包：
 
 ```bash
 bash build.sh --pkg --soc=ascend950 --ops=mega_moe -j8
 ```
 
-不传该宏即使用默认 tracing-on；也可显式传
-`--ops-compile-options '-DMEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=1'`。
+保留原 v5 批专家粒度：
 
-按仓库安装指南安装 `build_out/` 下生成的 run 包；若使用自定义安装路径，还需
-source 对应 vendor 的 `bin/set_env.bash`。确认当前 Python 环境加载的是这次
-安装的 tracing 包后，在源码仓外创建独立运行目录，并通过绝对路径调用适配器：
+```bash
+bash build.sh --pkg --soc=ascend950 --ops=mega_moe \
+  --ops-compile-options '-DMEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE=0' -j8
+```
+
+生产包必须显式关闭 tracing 并重新构建：
+
+```bash
+bash build.sh --pkg --soc=ascend950 --ops=mega_moe \
+  --ops-compile-options '-DMEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=0' -j8
+```
+
+安装本次 run 包并确认 Python 环境加载到它后，在两个源码仓之外建立运行目录：
 
 ```bash
 mkdir -p /path/to/mega-moe-trace-workspace
@@ -116,55 +163,40 @@ python3 /path/to/ops-transformer/mc2/mega_moe/tools/critical_path_trace/run_crit
   --test-script /path/to/moe_test/mega_moe/mega_moe.py
 ```
 
-不传 `--artifact-dir` 时，产物默认写入当前工作目录的
-`artifacts/YYYYMMDD_HHMMSS/`，而不是写回 `ops-transformer` 源码仓。run/check
-模式会拒绝任何位于源码仓内的 artifact 路径；`--decode-only` 仍可读取仓内已有
-fixture。适配器自身和子进程都禁用 Python bytecode 落盘，运行子进程的 cwd 也
-设为本次 artifact 目录；`moe_test` 的 Torch extension cache 和 golden cache
-也重定向到 artifact 下的 `runtime-cache/`，两个源码 checkout 都只读。
+命令会直接执行。默认运行 100 轮，仅保存既有最终同步之后的第 100 轮 `y`；轮间
+不增加 D2H 或 host synchronize。可用 `--iterations N` 改轮数。它选择的是预热
+后的最后一轮，不声称是 100 轮中的最优轮。
 
-适配器不会修改 `moe_test` checkout：它验证 commit、`mega_moe.py`/`graph.py`
-哈希和唯一 AST/文本锚点，在 artifact 目录生成可直接运行的临时脚本，并强制
-`is_performance=0`。默认连续执行 100 轮 MegaMoe，不在轮间执行 host
-同步或 D2H；第 100 轮完成后的既有最终同步之后，只保存最后一轮的 `y`。可用
-`--iterations N` 调整执行轮数。runtime metadata 明确记录执行轮数、采集轮次和
-`last_iteration_only` 策略；它表示预热稳定后的最后一轮，不声称是 N 轮最优值。
-每个 rank 输出 `rankN.raw` 和 `rankN.runtime.json`，随后严格校验
-header/config/hash/容量/截断/时间顺序，生成 `rankN.normalized.json`、检查 JSON、
-`rankN.html` 及总览 `index.html`。HTML 的打点位置、打点时机、打点原因、依赖
-证明和潜在扰动均使用中文说明。
+不传 `--artifact-dir` 时，产物写入命令执行目录下的
+`artifacts/YYYYMMDD_HHMMSS/`。run/check 模式拒绝将 artifact 写进
+ops-transformer 源码仓，避免旧 `rankN.raw` 与本次 rank 集合混入；指定一个新的
+外部目录也可以。适配器和运行子进程的 cwd、Torch extension cache、golden cache
+都重定向到本次 artifact，两个源码 checkout 不被改写。
 
-若服务器上的脚本不是上述精确快照，先人工复核当前 ABI 和插入锚点，再显式加
-`--allow-compatible-test-script`；锚点不唯一或缺失仍会失败。可用重复的
-`--set NAME=VALUE` 修改白名单内的 case 参数。已有 raw 与 metadata 可用：
+case shape 可以直接改：建议复制一份 `moe_test`，直接编辑其中顶部的 `bs`、`h`、
+`n`、`k`、专家数等，再加 `--allow-compatible-test-script`。该选项只放宽已人工
+复核过的脚本 hash/commit，唯一 AST/文本锚点仍然严格检查；适配器仍强制
+`is_performance=0` 和 `loop_acc_time=iterations`。少量临时参数也可用重复的
+`--set NAME=VALUE`。
+
+每个 rank 生成 `rankN.raw`、`rankN.runtime.json`、`rankN.normalized.json`、
+contract/order 检查 JSON 和 `rankN.html`，并生成总览 `index.html`。已有产物可
+只解析：
 
 ```bash
-python3 mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py \
+python3 /path/to/ops-transformer/mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py \
   --decode-only --artifact-dir /path/to/trace-artifacts
 ```
 
-关闭 tracing 的生产包必须显式传 0 重新构建并安装：
+## 已完成与仍需服务器完成的验证
 
-```bash
-bash build.sh --pkg --soc=ascend950 --ops=mega_moe \
-  --ops-compile-options '-DMEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=0' -j8
-```
+本 worktree 已完成：v6/v5 机器规范校验、两套计划/实现锚点审计、Python 语法、
+host 单测、当前 `moe_test` 适配检查、v6/v5 合成 raw 的 contract/decode/order/
+中文 HTML 链路、细粒度 truncation fail-closed、trace-off token 等价，以及 Ascend
+950 默认细粒度、v5 回退、tracing 全关三种 opkernel 构建（每种 8 个变体）。
+结构化结果见 [`validation-report.json`](validation-report.json)。
 
-当前诊断分支默认宏为 1；显式置 0 后，修改的三个生产 device 文件在剥离
-trace-only 预处理块后与主线基线 token 完全相同。不要把默认构建的 tracing 包
-留作生产包。
-
-## 本地验证与边界
-
-在本 worktree 已完成以下真实检查：机器规范校验、计划/实现位置 audit、Python
-语法检查、5 个 host 单测、当前 `moe_test` fail-closed 适配检查、合成 raw 的
-完整 decode/order/render 链路、trace-off token 等价检查，以及 Ascend 950
-MegaMoe 的默认开启和显式关闭两组 opkernel 构建（每组 8 个变体）。合成 HTML
-入口是 [`artifacts/synthetic/index.html`](artifacts/synthetic/index.html)，其中
-明确标记为 host-only synthetic，不是设备结果。结构化结果见
-[`validation-report.json`](validation-report.json)。
-
-当前环境没有 `npu-smi`，Python 也没有 `torch`，所以**没有**声称完成真实 NPU
-执行、真实多 rank raw 捕获、真实设备时间戳顺序/边界验证或 trace-off 数值精度
-回归。必须在目标服务器按上节执行，只有每 rank contract/order 均通过且生成的
-HTML 经人工核验后，设备运行验证才算完成；静态检查和合成 fixture 不能替代它。
+当前环境没有 NPU，因而没有声称完成真实多 rank 执行、真实 raw 捕获、实际设备
+时间戳顺序/边界核验、真实 tracing 扰动测量或 trace-off 数值精度回归。必须在
+目标服务器运行上述命令，确认所有 rank 的 contract/order 通过，并人工查看
+SwiGLU/GMM1/GMM2 专家槽与橙色间隙后，硬件运行验证才算完成。

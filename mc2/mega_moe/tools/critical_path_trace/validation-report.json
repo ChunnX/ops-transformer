@@ -1,17 +1,33 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "status": "partially_verified_hardware_runtime_unavailable",
   "baseline": {
     "remote": "upstream",
     "default_ref": "refs/heads/master",
     "branch": "upstream/master",
-    "commit": "4b3d39658e1d4f5d1f5b60acedfe2df8201e08b2"
+    "worktree_creation_commit": "4b3d39658e1d4f5d1f5b60acedfe2df8201e08b2",
+    "latest_integrated_commit": "8fc42341f11425e4e82f123f59c7ef97cd7210b0"
   },
   "implementation": {
     "branch": "codex/mega-moe-critical-path-trace-20260803",
     "worktree": "/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803",
     "compile_switch": "MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE",
     "compile_switch_default": 1,
+    "fine_grained_compile_switch": "MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE",
+    "fine_grained_compile_switch_default": 1,
+    "fine_protocol": {
+      "version": 6,
+      "schema_id": "0x4c23837d",
+      "flags": "0x1ff",
+      "required_bytes_at_36_aic": 8184,
+      "available_bytes_for_bf16_1x4096": 8192
+    },
+    "coarse_fallback_protocol": {
+      "version": 5,
+      "schema_id": "0xd32d8a49",
+      "flags": "0xff",
+      "required_bytes_at_36_aic": 7896
+    },
     "supported_path": "arch35 MTE A8W8 MegaMoeWave"
   },
   "moe_test_provenance": {
@@ -21,77 +37,96 @@
   },
   "checks": [
     {
-      "name": "trace_spec_validation",
+      "name": "fine_trace_spec_validation",
       "status": "passed",
-      "scope": "machine-readable roles, points, spans, protocol-v5 wire compatibility, and host-only per-AI-Block visualization policy"
+      "scope": "protocol-v6 roles, points, expert-slot record semantics, two-word-per-AI-Block metadata tail, derived same-wave gaps, deterministic schema, and 8184-byte capacity proof"
     },
     {
-      "name": "plan_placement_audit",
+      "name": "coarse_trace_spec_validation",
       "status": "passed",
-      "scope": "all 12 planned semantic anchors resolved before device edits"
+      "scope": "fine switch off retains protocol-v5/schema-0xd32d8a49 batch-expert wire and placement contract"
     },
     {
-      "name": "implemented_placement_audit",
+      "name": "plan_and_implemented_placement_audits",
       "status": "passed",
-      "scope": "all 12 markers resolved against their audited semantic anchors"
+      "point_count_per_mode": 12,
+      "modes": [
+        "fine-v6",
+        "coarse-v5"
+      ],
+      "scope": "every semantic anchor and instrumentation marker resolves uniquely with placement, dependency proof, reason, performance relation, and perturbation"
     },
     {
       "name": "python_syntax",
       "status": "passed",
-      "scope": "trace_tool, contract validator, runner adapter, tests, fixture generator, and trace-off verifier"
+      "scope": "trace tool, contract validator, runner adapter, tests, fixture generator, and trace-off verifier"
     },
     {
       "name": "host_unit_tests",
       "status": "passed",
-      "count": 6,
-      "scope": "valid raw-to-HTML path, per-AI-Block AIC/AIV0/AIV1 grouping with Chinese descriptions, and fail-closed bad magic, config hash, one-sided span, artifact isolation, and current adapter syntax"
+      "count": 9,
+      "scope": "v6 raw-to-HTML, v5 automatic fallback, Chinese per-AI-Block grouping and gaps, fine-slot truncation reject/allow, default macro checks, bad magic, config hash, one-sided span, artifact isolation, and adapter syntax"
     },
     {
       "name": "current_moe_test_adapter_check",
       "status": "passed",
-      "scope": "exact provenance, insertion anchors, generated Python syntax, external artifact isolation, and 100-iteration final-only capture policy; no execution"
+      "scope": "exact provenance, insertion anchors, generated Python syntax, external artifact isolation, and 100-iteration final-only capture policy; no NPU execution"
     },
     {
       "name": "synthetic_decode_order_render",
       "status": "passed",
-      "scope": "8192-byte protocol-v5 host-only synthetic raw through contract validation, decode, wrap-safe order/bounds checks, grouped Chinese HTML"
+      "scope": "8192-byte protocol-v6 and protocol-v5 host-only raw through contract validation, decode, wrap-safe order/bounds checks, fine metadata validation, and grouped Chinese HTML"
     },
     {
       "name": "trace_off_source_equivalence",
       "status": "passed",
-      "scope": "trace-only blocks removed and remaining tokens equal baseline for all three modified production device files"
+      "baseline": "8fc42341f11425e4e82f123f59c7ef97cd7210b0",
+      "scope": "both trace switches forced to zero by cpp; remaining tokens equal the latest integrated upstream/master for all three modified production device files"
+    },
+    {
+      "name": "ascend950_fine_v6_opkernel_build",
+      "status": "passed",
+      "variants": 8,
+      "command": "bash build.sh --opkernel --ops=mega_moe --soc=ascend950 -j8"
+    },
+    {
+      "name": "ascend950_coarse_v5_opkernel_build",
+      "status": "passed",
+      "variants": 8,
+      "command": "bash build.sh --opkernel --ops=mega_moe --soc=ascend950 --ops-compile-options '-DMEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE=0' -j8"
     },
     {
       "name": "ascend950_trace_off_opkernel_build",
       "status": "passed",
       "variants": 8,
       "command": "bash build.sh --opkernel --ops=mega_moe --soc=ascend950 --ops-compile-options '-DMEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=0' -j8"
-    },
-    {
-      "name": "ascend950_trace_on_opkernel_build",
-      "status": "passed",
-      "variants": 8,
-      "command": "bash build.sh --opkernel --ops=mega_moe --soc=ascend950 -j8"
     }
   ],
   "unavailable_checks": [
     {
       "name": "real_npu_execution_and_multirank_capture",
-      "reason": "npu-smi is not installed in the validation environment"
+      "reason": "no NPU device/runtime is available in the validation environment"
     },
     {
       "name": "real_device_timestamp_order_and_boundary_review",
-      "reason": "requires raw captures from the target NPU server"
+      "reason": "requires per-rank raw captures from the target NPU server"
+    },
+    {
+      "name": "observed_trace_perturbation_and_83us_swiglu_decomposition",
+      "reason": "requires repeated target-hardware runs and manual inspection of actual expert spans and inferred gaps"
     },
     {
       "name": "trace_off_numeric_accuracy_regression",
-      "reason": "Python torch is not installed and no NPU runtime is available"
+      "reason": "no NPU execution environment is available"
     }
   ],
   "evidence": {
-    "trace_spec": "trace-spec.json",
-    "plan_audit": "audit-plan/trace_point_audit.json",
-    "implemented_audit": "audit-implemented/trace_point_audit.json",
+    "fine_trace_spec": "trace-spec.json",
+    "coarse_trace_spec": "trace-spec-coarse-v5.json",
+    "fine_plan_audit": "audit-plan/trace_point_audit.json",
+    "fine_implemented_audit": "audit-implemented/trace_point_audit.json",
+    "coarse_plan_audit": "audit-plan-coarse-v5/trace_point_audit.json",
+    "coarse_implemented_audit": "audit-implemented-coarse-v5/trace_point_audit.json",
     "synthetic_html": "artifacts/synthetic/index.html",
     "synthetic_manifest": "artifacts/synthetic/run-manifest.json"
   }

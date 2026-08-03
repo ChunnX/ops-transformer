@@ -4,8 +4,10 @@
     "all record-local process boundaries are present and forward within the 32-bit half-range",
     "every populated stage has a paired begin/end and a forward duration",
     "every populated timestamp lies inside its role-local useful-work interval",
-    "uncaptured wave slots retain the zero missing sentinel"
+    "uncaptured wave/expert slots retain the zero missing sentinel",
+    "fine expert counts, wave ids, monotonic slot order, and per-record truncation metadata agree"
   ],
+  "fine_truncated_records": [],
   "record_count": 108,
   "runtime_waves": 1,
   "span_summary": {
@@ -19,25 +21,25 @@
       "max_cycles": 500,
       "min_cycles": 500
     },
-    "gmm1": {
-      "count": 8,
-      "max_cycles": 600,
-      "min_cycles": 600
+    "gmm1_expert": {
+      "count": 16,
+      "max_cycles": 200,
+      "min_cycles": 200
     },
-    "gmm2": {
-      "count": 36,
-      "max_cycles": 1200,
-      "min_cycles": 1200
+    "gmm2_expert": {
+      "count": 44,
+      "max_cycles": 300,
+      "min_cycles": 300
     },
     "process": {
       "count": 108,
       "max_cycles": 5000,
       "min_cycles": 5000
     },
-    "swiglu": {
-      "count": 8,
-      "max_cycles": 600,
-      "min_cycles": 600
+    "swiglu_expert": {
+      "count": 16,
+      "max_cycles": 200,
+      "min_cycles": 200
     }
   },
   "status": "passed"

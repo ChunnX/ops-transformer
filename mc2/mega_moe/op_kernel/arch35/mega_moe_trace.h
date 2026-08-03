@@ -26,21 +26,41 @@
 #error "MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE must be 0 or 1"
 #endif
 
+#ifndef MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE
+#define MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE 1
+#endif
+
+#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0 && \
+    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 1
+#error "MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE must be 0 or 1"
+#endif
+
 namespace MegaMoeImpl {
 
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
 
 static constexpr bool CRITICAL_PATH_TRACE_ENABLED =
     static_cast<bool>(MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE);
+static constexpr bool CRITICAL_PATH_FINE_TRACE_ENABLED =
+    static_cast<bool>(MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE);
 static constexpr uint32_t CRITICAL_PATH_TRACE_MAGIC = 0x43505452U;
+#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+static constexpr uint32_t CRITICAL_PATH_TRACE_PROTOCOL_VERSION = 6U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_SCHEMA_ID = 0x4C23837DU;
+static constexpr uint32_t CRITICAL_PATH_TRACE_FLAGS = 0x1FFU;
+static constexpr uint32_t CRITICAL_PATH_TRACE_FINE_TAIL_WORDS_PER_CORE = 2U;
+#else
 static constexpr uint32_t CRITICAL_PATH_TRACE_PROTOCOL_VERSION = 5U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_SCHEMA_ID = 0xD32D8A49U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_FLAGS = 0xFFU;
+static constexpr uint32_t CRITICAL_PATH_TRACE_FINE_TAIL_WORDS_PER_CORE = 0U;
+#endif
 static constexpr uint32_t CRITICAL_PATH_TRACE_HEADER_WORDS = 30U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_RECORD_WORDS = 18U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_ROLE_COUNT = 3U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_MAX_WAVES = 4U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_MAX_FINE_EXPERTS = 4U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_PATH_MTE_A8W8_WAVE = 1U;
-static constexpr uint32_t CRITICAL_PATH_TRACE_FLAGS = 0xFFU;
 
 // Word-wise FNV-1a. The repository runner recomputes this from checked header
 // fields, so a stale installed kernel or a different path/config fails closed.
@@ -92,6 +112,23 @@ struct CriticalPathTrace {
     CriticalPathWaveTrace wave1{};
     CriticalPathWaveTrace wave2{};
     CriticalPathWaveTrace wave3{};
+#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+    static constexpr uint32_t INVALID_FINE_SLOT = 0xFFFFFFFFU;
+    uint32_t stage0ActiveSlot = INVALID_FINE_SLOT;
+    uint32_t stage1ActiveSlot = INVALID_FINE_SLOT;
+    uint32_t stage0CapturedCount = 0U;
+    uint32_t stage1CapturedCount = 0U;
+    uint32_t stage0Truncated = 0U;
+    uint32_t stage1Truncated = 0U;
+    uint32_t stage0Wave0 = 0U;
+    uint32_t stage0Wave1 = 0U;
+    uint32_t stage0Wave2 = 0U;
+    uint32_t stage0Wave3 = 0U;
+    uint32_t stage1Wave0 = 0U;
+    uint32_t stage1Wave1 = 0U;
+    uint32_t stage1Wave2 = 0U;
+    uint32_t stage1Wave3 = 0U;
+#endif
 
     static __aicore__ inline uint32_t Now()
     {
@@ -119,6 +156,179 @@ struct CriticalPathTrace {
     {
         activeWave = wave;
     }
+
+#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+    __aicore__ inline void SetFineSlotWave(bool stage1, uint32_t slot, uint32_t wave)
+    {
+        uint32_t waveId = wave & 0x3U;
+        if (stage1) {
+            switch (slot) {
+                case 0U:
+                    stage1Wave0 = waveId;
+                    break;
+                case 1U:
+                    stage1Wave1 = waveId;
+                    break;
+                case 2U:
+                    stage1Wave2 = waveId;
+                    break;
+                case 3U:
+                    stage1Wave3 = waveId;
+                    break;
+                default:
+                    break;
+            }
+        } else {
+            switch (slot) {
+                case 0U:
+                    stage0Wave0 = waveId;
+                    break;
+                case 1U:
+                    stage0Wave1 = waveId;
+                    break;
+                case 2U:
+                    stage0Wave2 = waveId;
+                    break;
+                case 3U:
+                    stage0Wave3 = waveId;
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    __aicore__ inline void PrepareExpertStage0()
+    {
+        stage0ActiveSlot = INVALID_FINE_SLOT;
+    }
+
+    __aicore__ inline void PrepareExpertStage1()
+    {
+        stage1ActiveSlot = INVALID_FINE_SLOT;
+    }
+
+    __aicore__ inline bool NeedsExpertStage0Begin()
+    {
+        if (stage0ActiveSlot == INVALID_FINE_SLOT) {
+            if (stage0CapturedCount >= CRITICAL_PATH_TRACE_MAX_FINE_EXPERTS ||
+                activeWave >= CRITICAL_PATH_TRACE_MAX_WAVES) {
+                stage0Truncated = 1U;
+                return false;
+            }
+            return true;
+        }
+        CriticalPathWaveTrace *slot = Wave(stage0ActiveSlot);
+        return slot != nullptr && slot->stage0Begin == 0U;
+    }
+
+    __aicore__ inline bool NeedsExpertStage1Begin()
+    {
+        if (stage1ActiveSlot == INVALID_FINE_SLOT) {
+            if (stage1CapturedCount >= CRITICAL_PATH_TRACE_MAX_FINE_EXPERTS ||
+                activeWave >= CRITICAL_PATH_TRACE_MAX_WAVES) {
+                stage1Truncated = 1U;
+                return false;
+            }
+            return true;
+        }
+        CriticalPathWaveTrace *slot = Wave(stage1ActiveSlot);
+        return slot != nullptr && slot->stage1Begin == 0U;
+    }
+
+    __aicore__ inline void BeginExpertStage0(uint32_t value)
+    {
+        if (stage0ActiveSlot == INVALID_FINE_SLOT) {
+            if (stage0CapturedCount >= CRITICAL_PATH_TRACE_MAX_FINE_EXPERTS ||
+                activeWave >= CRITICAL_PATH_TRACE_MAX_WAVES) {
+                stage0Truncated = 1U;
+                return;
+            }
+            stage0ActiveSlot = stage0CapturedCount++;
+            SetFineSlotWave(false, stage0ActiveSlot, activeWave);
+        }
+        CriticalPathWaveTrace *slot = Wave(stage0ActiveSlot);
+        if (slot != nullptr && slot->stage0Begin == 0U) {
+            slot->stage0Begin = value;
+        }
+    }
+
+    __aicore__ inline void EndExpertStage0(uint32_t value)
+    {
+        CriticalPathWaveTrace *slot = Wave(stage0ActiveSlot);
+        if (slot != nullptr && slot->stage0Begin != 0U) {
+            slot->stage0End = value;
+        }
+    }
+
+    __aicore__ inline bool HasExpertStage0Work() const
+    {
+        return stage0ActiveSlot != INVALID_FINE_SLOT;
+    }
+
+    __aicore__ inline void FinishExpertStage0()
+    {
+        stage0ActiveSlot = INVALID_FINE_SLOT;
+    }
+
+    __aicore__ inline void BeginExpertStage1(uint32_t value)
+    {
+        if (stage1ActiveSlot == INVALID_FINE_SLOT) {
+            if (stage1CapturedCount >= CRITICAL_PATH_TRACE_MAX_FINE_EXPERTS ||
+                activeWave >= CRITICAL_PATH_TRACE_MAX_WAVES) {
+                stage1Truncated = 1U;
+                return;
+            }
+            stage1ActiveSlot = stage1CapturedCount++;
+            SetFineSlotWave(true, stage1ActiveSlot, activeWave);
+        }
+        CriticalPathWaveTrace *slot = Wave(stage1ActiveSlot);
+        if (slot != nullptr && slot->stage1Begin == 0U) {
+            slot->stage1Begin = value;
+        }
+    }
+
+    __aicore__ inline void EndExpertStage1(uint32_t value)
+    {
+        CriticalPathWaveTrace *slot = Wave(stage1ActiveSlot);
+        if (slot != nullptr && slot->stage1Begin != 0U) {
+            slot->stage1End = value;
+        }
+    }
+
+    __aicore__ inline bool HasExpertStage1Work() const
+    {
+        return stage1ActiveSlot != INVALID_FINE_SLOT;
+    }
+
+    __aicore__ inline void FinishExpertStage1()
+    {
+        stage1ActiveSlot = INVALID_FINE_SLOT;
+    }
+
+    __aicore__ inline uint32_t PackStage0WaveIds() const
+    {
+        return stage0Wave0 | (stage0Wave1 << 2U) | (stage0Wave2 << 4U) | (stage0Wave3 << 6U);
+    }
+
+    __aicore__ inline uint32_t PackStage1WaveIds() const
+    {
+        return stage1Wave0 | (stage1Wave1 << 2U) | (stage1Wave2 << 4U) | (stage1Wave3 << 6U);
+    }
+
+    __aicore__ inline uint32_t PackAicFineMeta() const
+    {
+        return PackStage0WaveIds() | (PackStage1WaveIds() << 8U) |
+               ((stage0CapturedCount & 0x7U) << 16U) | ((stage1CapturedCount & 0x7U) << 19U) |
+               ((stage0Truncated & 0x1U) << 22U) | ((stage1Truncated & 0x1U) << 23U) | (1U << 24U);
+    }
+
+    __aicore__ inline uint32_t PackAiv0FineMeta() const
+    {
+        return PackStage0WaveIds() | ((stage0CapturedCount & 0x7U) << 8U) |
+               ((stage0Truncated & 0x1U) << 11U) | (1U << 12U);
+    }
+#endif
 
     __aicore__ inline bool NeedsStage0Begin()
     {

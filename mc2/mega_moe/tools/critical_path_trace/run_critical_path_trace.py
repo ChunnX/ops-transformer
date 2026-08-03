@@ -35,7 +35,7 @@ from mega_moe_trace_contract import (
 )
 
 
-ADAPTER_VERSION = 2
+ADAPTER_VERSION = 3
 TESTED_MOE_TEST_COMMIT = "90319bbd05993d2fbe7674d693395d5520732553"
 TESTED_SCRIPT_SHA256 = (
     "35f600ca443782fd8f210a33af879af651a9dea011f32afa51191ae2bf9ee43e"
@@ -73,6 +73,10 @@ FORCED_OVERRIDES = {
     "is_performance": 0,
     "loop_acc_time": DEFAULT_TRACE_ITERATIONS,
 }
+TRACE_SWITCH_DEFAULTS = {
+    "MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE": 1,
+    "MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE": 1,
+}
 
 HELPER_INSERT_ANCHOR = "\ndef get_cascade_graph_model_class():\n"
 SCRIPT_DIR_ANCHOR = "script_dir = os.path.dirname(os.path.abspath(__file__))"
@@ -105,7 +109,7 @@ def _critical_path_trace_capture_y(y, rank):
     raw_path = os.path.join(artifact_dir, f"rank{rank}.raw")
     metadata_path = os.path.join(artifact_dir, f"rank{rank}.runtime.json")
     metadata = {
-        "adapter_version": 2,
+        "adapter_version": 3,
         "capture_policy": "last_iteration_only",
         "executed_iterations": int(loop_acc_time),
         "captured_iteration": int(loop_acc_time),
@@ -386,6 +390,59 @@ def validate_artifact_destination(
     )
 
 
+def validate_trace_source_defaults(repo_root: Path) -> dict[str, Any]:
+    header = repo_root / "mc2/mega_moe/op_kernel/arch35/mega_moe_trace.h"
+    if not header.is_file():
+        raise ContractError(f"trace source header is missing: {header}")
+    source = header.read_text(encoding="utf-8")
+    for name, expected in TRACE_SWITCH_DEFAULTS.items():
+        pattern = re.compile(
+            rf"^#ifndef {re.escape(name)}\s*$\n"
+            rf"^#define {re.escape(name)} {expected}\s*$",
+            re.MULTILINE,
+        )
+        matches = pattern.findall(source)
+        if len(matches) != 1:
+            raise ContractError(
+                f"trace source must define {name}={expected} exactly once behind its #ifndef; "
+                f"found {len(matches)} matches in {header}"
+            )
+    return {
+        "header": str(header),
+        "header_sha256": sha256_file(header),
+        "defaults": TRACE_SWITCH_DEFAULTS,
+        "note": "runtime header remains authoritative for the actually installed kernel build",
+    }
+
+
+def select_capture_spec(
+    raw_path: Path,
+    candidates: list[tuple[Path, Path]],
+) -> tuple[Path, Path]:
+    raw_prefix = raw_path.read_bytes()[:12]
+    if len(raw_prefix) < 12:
+        raise ContractError(f"{raw_path} is too short to identify its trace protocol")
+    runtime_version = int.from_bytes(raw_prefix[4:8], "little")
+    runtime_schema = int.from_bytes(raw_prefix[8:12], "little")
+    for spec_path, audit_path in candidates:
+        spec = json.loads(spec_path.read_text(encoding="utf-8"))
+        protocol = spec["trace"]["protocol"]
+        if (
+            int(protocol["version"]) == runtime_version
+            and int(protocol["schema_id"], 0) == runtime_schema
+        ):
+            return spec_path, audit_path
+    expected = ", ".join(
+        f"v{json.loads(spec_path.read_text(encoding='utf-8'))['trace']['protocol']['version']}/"
+        f"{json.loads(spec_path.read_text(encoding='utf-8'))['trace']['protocol']['schema_id']}"
+        for spec_path, _ in candidates
+    )
+    raise ContractError(
+        f"runtime header/config mismatch version={runtime_version}, "
+        f"schema_id={runtime_schema} (0x{runtime_schema:08x}); expected one of {expected}"
+    )
+
+
 def decode_artifacts(
     *,
     artifact_dir: Path,
@@ -395,6 +452,8 @@ def decode_artifacts(
     python: str,
     allow_truncated: bool,
     expected_source_sha: str | None,
+    coarse_spec_path: Path | None = None,
+    coarse_audit_path: Path | None = None,
 ) -> list[dict[str, Any]]:
     raw_paths = sorted(
         artifact_dir.glob("rank*.raw"),
@@ -410,11 +469,15 @@ def decode_artifacts(
         if not match:
             continue
         rank = int(match.group(1))
+        candidates = [(spec_path, audit_path)]
+        if coarse_spec_path is not None and coarse_audit_path is not None:
+            candidates.append((coarse_spec_path, coarse_audit_path))
+        active_spec_path, active_audit_path = select_capture_spec(raw_path, candidates)
         runtime_path = artifact_dir / f"rank{rank}.runtime.json"
         contract, expected = validate_capture_contract(
             raw_path=raw_path,
             metadata_path=runtime_path,
-            spec_path=spec_path,
+            spec_path=active_spec_path,
             allow_truncated=allow_truncated,
         )
         if expected_source_sha is not None:
@@ -434,7 +497,7 @@ def decode_artifacts(
             str(trace_tool),
             "decode",
             "--spec",
-            str(spec_path),
+            str(active_spec_path),
             "--raw",
             str(raw_path),
             "--output",
@@ -446,9 +509,9 @@ def decode_artifacts(
             "--reference-point",
             "process_begin_S",
             "--require-flags-mask",
-            "0xff",
+            f"0x{expected['flags']:x}",
             "--require-flags-value",
-            "0xff",
+            f"0x{expected['flags']:x}",
         ]
         for name, value in expected.items():
             if name in {
@@ -468,7 +531,9 @@ def decode_artifacts(
         if allow_truncated:
             decode_command.append("--allow-truncated")
         run_checked(decode_command)
-        order_check = validate_timestamp_order(normalized_path, spec_path)
+        order_check = validate_timestamp_order(
+            normalized_path, active_spec_path, allow_truncated=allow_truncated
+        )
         order_path = artifact_dir / f"rank{rank}.order-check.json"
         write_json(order_path, order_check)
         render_command = [
@@ -476,11 +541,11 @@ def decode_artifacts(
             str(trace_tool),
             "render",
             "--spec",
-            str(spec_path),
+            str(active_spec_path),
             "--trace",
             str(normalized_path),
             "--audit",
-            str(audit_path),
+            str(active_audit_path),
             "--output",
             str(html_path),
         ]
@@ -497,6 +562,9 @@ def decode_artifacts(
                 "raw_sha256": contract["raw_sha256"],
                 "required_trace_bytes": contract["required_trace_bytes"],
                 "available_carrier_bytes": contract["available_carrier_bytes"],
+                "protocol_version": expected["version"],
+                "schema_id": f"0x{expected['schema_id']:08x}",
+                "trace_spec": active_spec_path.name,
             }
         )
     return results
@@ -605,14 +673,28 @@ def main() -> int:
     artifact_dir = args.artifact_dir.expanduser().resolve()
     validate_artifact_destination(artifact_dir, repo_root, decode_only=args.decode_only)
     spec_path = repo_root / "mc2/mega_moe/tools/critical_path_trace/trace-spec.json"
+    coarse_spec_path = (
+        repo_root / "mc2/mega_moe/tools/critical_path_trace/trace-spec-coarse-v5.json"
+    )
     trace_tool = repo_root / "mc2/mega_moe/tools/critical_path_trace/trace_tool.py"
     audit_path = (
         repo_root
         / "mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.json"
     )
-    for required in (spec_path, trace_tool, audit_path):
+    coarse_audit_path = (
+        repo_root
+        / "mc2/mega_moe/tools/critical_path_trace/audit-implemented-coarse-v5/trace_point_audit.json"
+    )
+    for required in (
+        spec_path,
+        coarse_spec_path,
+        trace_tool,
+        audit_path,
+        coarse_audit_path,
+    ):
         if not required.is_file():
             raise ContractError(f"required repository artifact is missing: {required}")
+    source_defaults = validate_trace_source_defaults(repo_root)
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
     manifest: dict[str, Any] = {
@@ -623,7 +705,10 @@ def main() -> int:
         "artifact_dir": str(artifact_dir),
         "trace_spec": str(spec_path),
         "trace_spec_sha256": sha256_file(spec_path),
+        "coarse_trace_spec": str(coarse_spec_path),
+        "coarse_trace_spec_sha256": sha256_file(coarse_spec_path),
         "trace_tool_sha256": sha256_file(trace_tool),
+        "trace_source_defaults": source_defaults,
         "forced_overrides": FORCED_OVERRIDES,
         "user_overrides": {},
         "mode": "decode-only"
@@ -702,6 +787,8 @@ def main() -> int:
         python=args.python,
         allow_truncated=args.allow_truncated,
         expected_source_sha=expected_source_sha,
+        coarse_spec_path=coarse_spec_path,
+        coarse_audit_path=coarse_audit_path,
     )
     manifest["captures"] = results
     manifest["status"] = "passed"

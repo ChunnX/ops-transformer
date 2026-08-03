@@ -116,6 +116,42 @@ POINT_TEXT_ZH = {
         "proof": "PublishGmm2Ready 在 bypass GM 写之前执行 FIX_S；外层采样位于最后一次发布之后，但不宣称 AIV1 已经观察到。",
         "perturbation": "每个有效 AIC/wave 增加一次时钟采样；复用生产路径已有的 FIX_S 发布语义。",
     },
+    "gmm1_expert_begin_S": {
+        "when": "当前专家的 Dispatch ready 与前序 ping-pong 依赖已满足，本核第一个 GMM1 tile 即将发出 MMAD。",
+        "why": "把批专家级长框拆成逐专家区间，单独暴露同一 wave 内的 FIX 尾部和依赖等待。",
+        "proof": "打点位于 upstream-ready 与 WaitForVector 之后，FIX_S 仅把 causal begin 依赖传到 Scalar。",
+        "perturbation": "每个被捕获活跃专家增加一次槽检查、一次 FIX→Scalar causal bridge 和一次时钟采样。",
+    },
+    "gmm1_expert_end_S": {
+        "when": "当前专家分配给本核的 GMM1 MMAD/NotifyVector 已全部发出；FIX 可能仍在尾部执行。",
+        "why": "提供低扰动逐专家结束边界，并把到下一专家 causal begin 的 FIX 尾部/等待显示为独立间隙。",
+        "proof": "采样紧跟 GroupMatmulWithSwigluQuant 返回，不增加逐专家 FIX_S，因此明确标记为 issue 而不是 actual。",
+        "perturbation": "每个被捕获活跃专家增加一次时钟采样；不新增完成 bridge，避免强制串行化 FIX 尾部。",
+    },
+    "swiglu_expert_begin_S": {
+        "when": "当前专家首个非空 epilogue 已完成 GMM1/输入就绪等待，即将开始 SwiGLU 与 MX 量化。",
+        "why": "避免把多个专家之间的 WaitForCube/输入等待误认为 SwiGLU 计算。",
+        "proof": "所有 epilogue 分支均在 readiness wait 后进入公共 operator；V_S 再把 Vector 依赖传到 Scalar。",
+        "perturbation": "每个被捕获活跃专家增加一次槽检查、一次 V→Scalar bridge 和一次 begin 时钟。",
+    },
+    "swiglu_expert_end_S": {
+        "when": "当前专家在本 AIV0 上的全部 epilogue tile 已返回，量化 data/scale 已写回 GM 且 ready 已发布。",
+        "why": "标出逐专家真实输出尾部，让下一专家前的等待/调度间隙可见。",
+        "proof": "每个 operator 返回前都复用已有 MTE3_V/MTE3_S 完成依赖并发布 ready；helper 返回后的时钟晚于最后一个 tile。",
+        "perturbation": "每个被捕获活跃专家增加一次条件判断和结束时钟；不新增 MTE3 bridge。",
+    },
+    "gmm2_expert_begin_S": {
+        "when": "当前专家的 SwiGLU-ready counter 已被 Scalar 观察，本核第一个 GMM2 MMAD 即将发出。",
+        "why": "逐专家区分 GMM2 计算与 ready 等待，并验证 GMM2 是否近似连续向 GM 输出。",
+        "proof": "bypass-GM 轮询在 ready 可见后返回，紧随其后的 Scalar 时钟无需跨流水 bridge。",
+        "perturbation": "每个被捕获活跃专家增加一次槽检查和一次时钟采样。",
+    },
+    "gmm2_expert_end_S": {
+        "when": "当前专家本核全部 GMM2 FIX 直写完成，且该 AIC 的 per-expert ready 已发布。",
+        "why": "逐专家显示 GMM2 实际完成，并把到下一专家 begin 的 ready 等待/调度间隙独立画出。",
+        "proof": "PublishGmm2Ready 内已有 FIX_S 先证明本核写回完成，再执行 bypass-GM ready 发布。",
+        "perturbation": "每个被捕获活跃专家增加一次时钟采样；复用生产路径已有 FIX_S。",
+    },
     "combine_begin_S": {
         "when": "该 AIV1 拥有非空 token，且首个专家的 WaitGmm2Ready 已观察到完整 AIC fan-in；随后开始 meta-info 加载和发送。",
         "why": "显式展示 GMM2 发布到 AIV1 观察的 handoff，并保证 Combine 从完整 fan-in 之后计时。",
@@ -136,6 +172,9 @@ SPAN_LABEL_ZH = {
     "gmm1": "GMM1",
     "swiglu": "SwiGLU + MX 量化",
     "gmm2": "GMM2 + ready 发布",
+    "gmm1_expert": "GMM1（逐专家 issue）",
+    "swiglu_expert": "SwiGLU + MX 量化（逐专家）",
+    "gmm2_expert": "GMM2 + ready 发布（逐专家）",
     "combine": "ready 汇聚 + Combine",
 }
 
@@ -171,6 +210,23 @@ def _expected_schema_id(spec: dict[str, Any]) -> int:
     """Derive a stable uint32 id from wire and timeline semantics, not source lines."""
     trace = spec.get("trace", {})
     protocol = trace.get("protocol", {})
+    protocol_contract = {
+        key: protocol.get(key)
+        for key in (
+            "magic",
+            "version",
+            "word_bits",
+            "endianness",
+            "header_words",
+            "record_words",
+            "record_order",
+            "record_order_description",
+            "header_fields",
+            "record_fields",
+        )
+    }
+    if "fine_metadata_tail" in protocol:
+        protocol_contract["fine_metadata_tail"] = protocol["fine_metadata_tail"]
     payload = {
         "trace_name": trace.get("name"),
         "roles": trace.get("roles"),
@@ -185,21 +241,7 @@ def _expected_schema_id(spec: dict[str, Any]) -> int:
                 "missing_value",
             )
         },
-        "protocol": {
-            key: protocol.get(key)
-            for key in (
-                "magic",
-                "version",
-                "word_bits",
-                "endianness",
-                "header_words",
-                "record_words",
-                "record_order",
-                "record_order_description",
-                "header_fields",
-                "record_fields",
-            )
-        },
+        "protocol": protocol_contract,
         "points": [
             {
                 key: point.get(key)
@@ -228,6 +270,8 @@ def _expected_schema_id(spec: dict[str, Any]) -> int:
             for span in spec.get("spans", [])
         ],
     }
+    if "fine_grained_compile_switch" in trace:
+        payload["fine_grained_compile_switch"] = trace["fine_grained_compile_switch"]
     return zlib.crc32(_canonical_json_bytes(payload)) & 0xFFFFFFFF
 
 
@@ -295,6 +339,14 @@ def _validate_spec(spec: Any) -> list[str]:
     compile_switch = _required_string(trace, "compile_switch", "$.trace", errors)
     if compile_switch and not COMPILE_SWITCH_RE.fullmatch(compile_switch):
         errors.append("$.trace.compile_switch must be a C/C++ identifier")
+    fine_compile_switch = trace.get("fine_grained_compile_switch")
+    if fine_compile_switch is not None and (
+        not isinstance(fine_compile_switch, str)
+        or not COMPILE_SWITCH_RE.fullmatch(fine_compile_switch)
+    ):
+        errors.append(
+            "$.trace.fine_grained_compile_switch must be a C/C++ identifier when set"
+        )
 
     roles = trace.get("roles")
     if (
@@ -400,6 +452,106 @@ def _validate_spec(spec: Any) -> list[str]:
     if record_order and record_order not in ("role-major", "custom"):
         errors.append("$.trace.protocol.record_order must be role-major or custom")
     _required_string(protocol, "record_order_description", "$.trace.protocol", errors)
+
+    fine_tail = protocol.get("fine_metadata_tail")
+    if fine_tail is not None:
+        tail_loc = "$.trace.protocol.fine_metadata_tail"
+        if not isinstance(fine_tail, dict):
+            errors.append(f"{tail_loc} must be an object when set")
+        else:
+            words_per_core = fine_tail.get("words_per_core")
+            core_stride_words = fine_tail.get("core_stride_words")
+            if (
+                not isinstance(words_per_core, int)
+                or isinstance(words_per_core, bool)
+                or words_per_core <= 0
+            ):
+                errors.append(f"{tail_loc}.words_per_core must be a positive integer")
+            if core_stride_words != words_per_core:
+                errors.append(f"{tail_loc}.core_stride_words must equal words_per_core")
+            for key in ("base_word_formula", "total_words_formula"):
+                _required_string(fine_tail, key, tail_loc, errors)
+            tail_fields = fine_tail.get("fields")
+            if not isinstance(tail_fields, list) or not tail_fields:
+                errors.append(f"{tail_loc}.fields must be a non-empty list")
+                tail_fields = []
+            occupied_tail_words: dict[int, str] = {}
+            for field_index, tail_field in enumerate(tail_fields):
+                field_loc = f"{tail_loc}.fields[{field_index}]"
+                if not isinstance(tail_field, dict):
+                    errors.append(f"{field_loc} must be an object")
+                    continue
+                field_name = _required_string(tail_field, "name", field_loc, errors)
+                writer_role = tail_field.get("writer_role")
+                if writer_role not in role_set:
+                    errors.append(f"{field_loc}.writer_role must name a trace role")
+                word_in_core = tail_field.get("word_in_core")
+                if (
+                    not isinstance(word_in_core, int)
+                    or isinstance(word_in_core, bool)
+                    or word_in_core < 0
+                    or not isinstance(words_per_core, int)
+                    or word_in_core >= words_per_core
+                ):
+                    errors.append(
+                        f"{field_loc}.word_in_core must be inside words_per_core"
+                    )
+                elif word_in_core in occupied_tail_words:
+                    errors.append(
+                        f"{field_loc} overlaps tail word {word_in_core} used by "
+                        f"{occupied_tail_words[word_in_core]}"
+                    )
+                elif field_name:
+                    occupied_tail_words[word_in_core] = field_name
+                packing = tail_field.get("packing")
+                if not isinstance(packing, list) or not packing:
+                    errors.append(f"{field_loc}.packing must be a non-empty list")
+                    continue
+                occupied_bits: set[int] = set()
+                for packed_index, packed in enumerate(packing):
+                    packed_loc = f"{field_loc}.packing[{packed_index}]"
+                    if not isinstance(packed, dict):
+                        errors.append(f"{packed_loc} must be an object")
+                        continue
+                    _required_string(packed, "name", packed_loc, errors)
+                    bit = packed.get("bit")
+                    width = packed.get("width")
+                    if (
+                        not isinstance(bit, int)
+                        or isinstance(bit, bool)
+                        or bit < 0
+                        or not isinstance(width, int)
+                        or isinstance(width, bool)
+                        or width <= 0
+                        or bit + width > 32
+                    ):
+                        errors.append(f"{packed_loc} must fit inside one uint32 word")
+                        continue
+                    for occupied_bit in range(bit, bit + width):
+                        if occupied_bit in occupied_bits:
+                            errors.append(f"{packed_loc} overlaps bit {occupied_bit}")
+                        occupied_bits.add(occupied_bit)
+                    count = packed.get("count")
+                    element_bits = packed.get("element_bits")
+                    if (count is None) != (element_bits is None):
+                        errors.append(
+                            f"{packed_loc}.count and element_bits must be supplied together"
+                        )
+                    elif count is not None and (
+                        not isinstance(count, int)
+                        or isinstance(count, bool)
+                        or count <= 0
+                        or not isinstance(element_bits, int)
+                        or isinstance(element_bits, bool)
+                        or element_bits <= 0
+                        or count * element_bits != width
+                        or not isinstance(packed.get("normalized_prefix"), str)
+                        or not packed["normalized_prefix"]
+                    ):
+                        errors.append(
+                            f"{packed_loc} repeated field must have positive count/element_bits, "
+                            "count*element_bits=width, and normalized_prefix"
+                        )
 
     header_fields = protocol.get("header_fields")
     if not isinstance(header_fields, list) or not header_fields:
@@ -734,6 +886,50 @@ def _validate_spec(spec: Any) -> list[str]:
                 )
             if any(role not in end_point.get("roles", []) for role in span_roles):
                 errors.append(f"{loc}.roles are not all supported by end point {end!r}")
+
+    fine_visualization = visualization.get("fine_grained")
+    if fine_visualization is not None:
+        fine_loc = "$.trace.visualization.fine_grained"
+        if not isinstance(fine_visualization, dict):
+            errors.append(f"{fine_loc} must be an object when set")
+        else:
+            _required_string(fine_visualization, "enabled_by", fine_loc, errors)
+            derived_gaps = fine_visualization.get("derived_idle_gaps")
+            if not isinstance(derived_gaps, list) or not derived_gaps:
+                errors.append(f"{fine_loc}.derived_idle_gaps must be a non-empty list")
+            else:
+                seen_gap_spans: set[str] = set()
+                for gap_index, gap in enumerate(derived_gaps):
+                    gap_loc = f"{fine_loc}.derived_idle_gaps[{gap_index}]"
+                    if not isinstance(gap, dict):
+                        errors.append(f"{gap_loc} must be an object")
+                        continue
+                    gap_span = _required_string(gap, "span", gap_loc, errors)
+                    if gap_span and gap_span not in span_ids:
+                        errors.append(
+                            f"{gap_loc}.span references unknown span {gap_span!r}"
+                        )
+                    if gap_span in seen_gap_spans:
+                        errors.append(f"{gap_loc}.span is duplicated")
+                    elif gap_span:
+                        seen_gap_spans.add(gap_span)
+                    if gap.get("same_wave_only") is not True:
+                        errors.append(f"{gap_loc}.same_wave_only must be true")
+                    for key in (
+                        "wave_counter_prefix",
+                        "captured_count_counter",
+                        "truncated_counter",
+                        "label",
+                        "caveat",
+                    ):
+                        _required_string(gap, key, gap_loc, errors)
+                    if gap.get("quality") != "inferred":
+                        errors.append(f"{gap_loc}.quality must be inferred")
+                    gap_color = _required_string(gap, "color", gap_loc, errors)
+                    if gap_color and not COLOR_RE.fullmatch(gap_color):
+                        errors.append(
+                            f"{gap_loc}.color must be a six-digit #RRGGBB value"
+                        )
 
     if not todo_paths:
         try:
@@ -1353,6 +1549,15 @@ def _render_html(
         )
     role_order = {role: index for index, role in enumerate(trace_spec["roles"])}
     comparison_group = trace_spec.get("visualization", {}).get("comparison_group")
+    fine_visualization = trace_spec.get("visualization", {}).get("fine_grained")
+    derived_gap_by_span = {
+        gap["span"]: gap
+        for gap in (
+            fine_visualization.get("derived_idle_gaps", [])
+            if isinstance(fine_visualization, dict)
+            else []
+        )
+    }
     grouped_by_ai_block = (
         isinstance(comparison_group, dict)
         and comparison_group.get("kind") == "shared-core-index"
@@ -1474,15 +1679,59 @@ def _render_html(
                 begin_delta = _relative(begin, raw_reference, bits)
                 end_delta = begin_delta + duration
                 plotted.extend((begin_delta, end_delta))
+                gap_contract = derived_gap_by_span.get(span["id"])
+                wave_id = (
+                    record["counters"].get(
+                        f"{gap_contract['wave_counter_prefix']}_{occurrence}"
+                    )
+                    if gap_contract is not None
+                    else None
+                )
                 row_spans.append(
                     {
                         "span": span,
                         "occurrence": occurrence,
+                        "wave_id": wave_id,
+                        "derived_gap": None,
                         "begin_raw": begin,
                         "end_raw": end,
                         "begin": begin_delta,
                         "end": end_delta,
                         "duration": duration,
+                    }
+                )
+        for span_id, gap_contract in derived_gap_by_span.items():
+            stage_spans = sorted(
+                (
+                    rendered
+                    for rendered in row_spans
+                    if rendered["span"]["id"] == span_id
+                ),
+                key=lambda rendered: rendered["occurrence"],
+            )
+            for previous, current in zip(stage_spans, stage_spans[1:]):
+                if previous["wave_id"] != current["wave_id"]:
+                    continue
+                gap_duration = current["begin"] - previous["end"]
+                if gap_duration <= 0:
+                    continue
+                plotted.extend((previous["end"], current["begin"]))
+                row_spans.append(
+                    {
+                        "span": {
+                            "id": f"{span_id}_idle_gap",
+                            "label": gap_contract["label"],
+                            "quality": gap_contract["quality"],
+                            "color": gap_contract["color"],
+                        },
+                        "occurrence": current["occurrence"],
+                        "wave_id": current["wave_id"],
+                        "derived_gap": gap_contract,
+                        "begin_raw": previous["end_raw"],
+                        "end_raw": current["begin_raw"],
+                        "begin": previous["end"],
+                        "end": current["begin"],
+                        "duration": gap_duration,
                     }
                 )
         rendered_spans[record_key] = row_spans
@@ -1537,6 +1786,18 @@ def _render_html(
             f'<text x="{legend_x + 16}" y="57" font-size="9">{html.escape(label)}（{quality_label}）</text>'
         )
         legend_x += 76 + len(label) * 10
+    rendered_gap_labels: set[str] = set()
+    for gap in derived_gap_by_span.values():
+        if gap["label"] in rendered_gap_labels:
+            continue
+        rendered_gap_labels.add(gap["label"])
+        svg.append(
+            f'<rect class="nonexact" x="{legend_x}" y="49" width="12" height="9" '
+            f'fill="{gap["color"]}" opacity="0.46"/>'
+            f'<text x="{legend_x + 16}" y="57" font-size="9">'
+            f"{html.escape(gap['label'])}（推断间隙）</text>"
+        )
+        legend_x += 90 + len(gap["label"]) * 10
 
     for tick_index in range(11):
         cycle = min_cycle + cycle_range * tick_index // 10
@@ -1576,20 +1837,34 @@ def _render_html(
 
         for rendered in rendered_spans[(record["role"], record["core"])]:
             span = rendered["span"]
-            begin_text = POINT_TEXT_ZH[span["begin"]]
-            end_text = POINT_TEXT_ZH[span["end"]]
             span_label = SPAN_LABEL_ZH.get(span["id"], span["label"])
             x_begin = x_pos(rendered["begin"])
             width = max(1.0, x_pos(rendered["end"]) - x_begin)
             exact = span["quality"] == "exact"
             css_class = "" if exact else "nonexact"
             opacity = "0.92" if exact else "0.42"
-            title = html.escape(
-                f"{span_label}[{rendered['occurrence']}]：{rendered['begin']} → "
-                f"{rendered['end']} cycle（持续 {rendered['duration']} cycle）；"
-                f"开始时机：{begin_text['when']}；结束时机：{end_text['when']}；"
-                f"为什么打点：{begin_text['why']} / {end_text['why']}"
+            wave_label = (
+                f"wave {rendered['wave_id']} / 本核活跃专家槽 {rendered['occurrence']}"
+                if rendered["wave_id"] is not None
+                else f"槽 {rendered['occurrence']}"
             )
+            if rendered["derived_gap"] is not None:
+                gap = rendered["derived_gap"]
+                title = html.escape(
+                    f"{span_label}（{wave_label}）：{rendered['begin']} → "
+                    f"{rendered['end']} cycle（持续 {rendered['duration']} cycle）；"
+                    f"边界性质：推断间隙；注意：{gap['caveat']}"
+                )
+                opacity = "0.46"
+            else:
+                begin_text = POINT_TEXT_ZH[span["begin"]]
+                end_text = POINT_TEXT_ZH[span["end"]]
+                title = html.escape(
+                    f"{span_label}（{wave_label}）：{rendered['begin']} → "
+                    f"{rendered['end']} cycle（持续 {rendered['duration']} cycle）；"
+                    f"开始时机：{begin_text['when']}；结束时机：{end_text['when']}；"
+                    f"为什么打点：{begin_text['why']} / {end_text['why']}"
+                )
             svg.append(
                 f'<rect class="{css_class}" x="{x_begin:.2f}" y="{y + 7}" width="{width:.2f}" '
                 f'height="16" rx="2" fill="{span["color"]}" opacity="{opacity}"><title>{title}</title></rect>'
@@ -1615,12 +1890,34 @@ def _render_html(
                     f'<line class="marker" x1="{x:.2f}" y1="{y + 4}" x2="{x:.2f}" y2="{y + 26}"><title>{title}</title></line>'
                 )
 
-        counter_text = (
-            " ".join(
-                f"{key}={value}" for key, value in sorted(record["counters"].items())
+        fine_counter_names: set[str] = set()
+        fine_counter_parts: list[str] = []
+        for gap in derived_gap_by_span.values():
+            count_name = gap["captured_count_counter"]
+            truncated_name = gap["truncated_counter"]
+            prefix = gap["wave_counter_prefix"]
+            if count_name not in record["counters"]:
+                continue
+            captured_count = int(record["counters"][count_name])
+            waves = [
+                int(record["counters"].get(f"{prefix}_{index}", 0))
+                for index in range(captured_count)
+            ]
+            stage_label = SPAN_LABEL_ZH.get(gap["span"], gap["span"])
+            truncated_label = (
+                "，已截断" if record["counters"].get(truncated_name) else ""
             )
-            or "无计数器"
-        )
+            fine_counter_parts.append(
+                f"{stage_label}: 专家槽={captured_count}, waves={waves}{truncated_label}"
+            )
+            fine_counter_names.update({count_name, truncated_name})
+            fine_counter_names.update(f"{prefix}_{index}" for index in range(4))
+        remaining_counters = [
+            f"{key}={value}"
+            for key, value in sorted(record["counters"].items())
+            if key not in fine_counter_names and key != "fine_enabled"
+        ]
+        counter_text = "；".join(fine_counter_parts + remaining_counters) or "无计数器"
         svg.append(
             f'<text class="counter" x="{label_width + plot_width + 8}" y="{y + 19}">{html.escape(counter_text)}</text>'
         )
@@ -1631,6 +1928,16 @@ def _render_html(
         for key, value in sorted(trace_data.get("metadata", {}).items())
     )
     protocol = trace_spec["protocol"]
+    fine_tail = protocol.get("fine_metadata_tail")
+    protocol_layout = (
+        f"{protocol['endianness']} uint{protocol['word_bits']}; "
+        f"header={protocol['header_words']} words, record={protocol['record_words']} words"
+    )
+    if fine_tail is not None:
+        protocol_layout += f", fine-tail={fine_tail['words_per_core']} words / AI Block"
+    write_payload = "records"
+    if fine_tail is not None:
+        write_payload += " 与细粒度元数据尾部"
     overview_rows = "".join(
         f"<tr><th>{html.escape(key)}</th><td><code>{html.escape(str(value))}</code></td></tr>"
         for key, value in (
@@ -1640,8 +1947,7 @@ def _render_html(
             ("角色", ", ".join(trace_spec["roles"])),
             (
                 "线协议布局",
-                f"{protocol['endianness']} uint{protocol['word_bits']}; "
-                f"header={protocol['header_words']} words, record={protocol['record_words']} words",
+                protocol_layout,
             ),
             ("线协议记录顺序", protocol["record_order"]),
             (
@@ -1659,11 +1965,12 @@ def _render_html(
             ),
             (
                 "写入阶段",
-                "有效工作和最终 Unpermute 写回完成后：先写 records，再写 header，最后发布 magic",
+                f"有效工作和最终 Unpermute 写回完成后：先写 {write_payload}，"
+                "再写 header，最后发布 magic",
             ),
             (
                 "终结同步",
-                "两次混合 AIC/AIV rendezvous：先保护 y 生命周期，再等待全部 records",
+                f"两次混合 AIC/AIV rendezvous：先保护 y 生命周期，再等待全部 {write_payload}",
             ),
         )
     )
@@ -1717,6 +2024,14 @@ def _render_html(
             '<div class="warning">不同记录的时钟不可直接比较；每行已经独立归零，'
             "禁止推断跨行 handoff 间隔。</div>"
         )
+    if derived_gap_by_span:
+        warning += (
+            '<div class="warning"><strong>细粒度边界：</strong>GMM1/GMM2/SwiGLU '
+            "按本核实际参与的专家槽显示，最多四槽；尾部元数据标明每槽所属 wave。"
+            "橙色只连接同一 wave 的相邻专家：它由前一专家 end 与后一专家 causal begin 推断，"
+            "包含流水尾部、真实依赖等待和少量 Scalar 调度，不能解释为纯等待指令耗时。"
+            "GMM1 专家 end 是低扰动 issue 边界，采用半透明虚线。</div>"
+        )
     return (
         '<!doctype html><html><head><meta charset="utf-8">'
         f"<title>{html.escape(trace_spec['name'])} 关键路径</title>"
@@ -1759,6 +2074,60 @@ def _decode_header_field(
     return _combine_protocol_words(
         selected, protocol["word_bits"], protocol["endianness"]
     )
+
+
+def _fine_tail_word_count(protocol: dict[str, Any], role_counts: list[int]) -> int:
+    fine_tail = protocol.get("fine_metadata_tail")
+    if fine_tail is None:
+        return 0
+    if not role_counts or any(count != role_counts[0] for count in role_counts):
+        raise ContractError(
+            "fine metadata tail requires identical paired-core counts for all roles"
+        )
+    return int(fine_tail["words_per_core"]) * role_counts[0]
+
+
+def _decode_fine_metadata_tail(
+    *,
+    words: list[int],
+    protocol: dict[str, Any],
+    role_counts: list[int],
+    record_count: int,
+    records: list[dict[str, Any]],
+) -> int:
+    fine_tail = protocol.get("fine_metadata_tail")
+    if fine_tail is None:
+        return 0
+    tail_words = _fine_tail_word_count(protocol, role_counts)
+    tail_base = protocol["header_words"] + record_count * protocol["record_words"]
+    records_by_key = {(record["role"], record["core"]): record for record in records}
+    core_count = role_counts[0]
+    stride = int(fine_tail["core_stride_words"])
+    for core in range(core_count):
+        for field in fine_tail["fields"]:
+            role = field["writer_role"]
+            record = records_by_key.get((role, core))
+            if record is None:
+                raise ContractError(
+                    f"fine metadata tail lacks paired record {role}/{core}"
+                )
+            packed_word = words[tail_base + core * stride + int(field["word_in_core"])]
+            for packed in field["packing"]:
+                bit = int(packed["bit"])
+                width = int(packed["width"])
+                packed_value = (packed_word >> bit) & ((1 << width) - 1)
+                if "count" in packed:
+                    count = int(packed["count"])
+                    element_bits = int(packed["element_bits"])
+                    element_mask = (1 << element_bits) - 1
+                    prefix = packed["normalized_prefix"]
+                    for index in range(count):
+                        record["counters"][f"{prefix}_{index}"] = (
+                            packed_value >> (index * element_bits)
+                        ) & element_mask
+                else:
+                    record["counters"][packed["name"]] = packed_value
+    return tail_words
 
 
 def _parse_assignments(values: list[str], option: str) -> dict[str, str]:
@@ -1922,7 +2291,12 @@ def _cmd_decode(args: argparse.Namespace) -> int:
                 f"do not equal 0x{expected_flags:08x}"
             )
 
-    required_words = protocol["header_words"] + record_count * protocol["record_words"]
+    fine_tail_words = _fine_tail_word_count(protocol, role_counts)
+    required_words = (
+        protocol["header_words"]
+        + record_count * protocol["record_words"]
+        + fine_tail_words
+    )
     required_bytes = required_words * word_bytes
     if len(payload) < required_bytes:
         raise ContractError(
@@ -1964,6 +2338,16 @@ def _cmd_decode(args: argparse.Namespace) -> int:
             )
             record_index += 1
 
+    decoded_tail_words = _decode_fine_metadata_tail(
+        words=words,
+        protocol=protocol,
+        role_counts=role_counts,
+        record_count=record_count,
+        records=records,
+    )
+    if decoded_tail_words != fine_tail_words:
+        raise ContractError("decoded fine metadata tail size disagrees with layout")
+
     normalized = {
         "schema_version": TRACE_SCHEMA_VERSION,
         "trace_name": trace_spec["name"],
@@ -1980,6 +2364,7 @@ def _cmd_decode(args: argparse.Namespace) -> int:
             "raw_sha256": _sha256_bytes(raw),
             "byte_offset": args.byte_offset,
             "required_trace_bytes": required_bytes,
+            "fine_metadata_tail_words": fine_tail_words,
             "available_bytes_after_offset": len(payload),
             "header": header,
             "spec_sha256": _spec_sha256(spec),

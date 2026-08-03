@@ -15,8 +15,8 @@ class ContractError(RuntimeError):
 
 DISPATCH_API_TO_TILING_KEY = {23: 3, 24: 4, 296: 5}
 EXPECTED_PATH_ID = 1
-EXPECTED_FLAGS = 0xFF
 EXPECTED_CAPTURE_CAPACITY = 4
+EXPECTED_FLAGS_BY_PROTOCOL = {5: 0xFF, 6: 0x1FF}
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -142,7 +142,7 @@ def _required_meta_int(metadata: dict[str, Any], name: str) -> int:
 
 
 def expected_header_from_metadata(
-    metadata: dict[str, Any], raw_bytes: int
+    metadata: dict[str, Any], raw_bytes: int, spec: dict[str, Any]
 ) -> dict[str, int]:
     bs = _required_meta_int(metadata, "bs")
     h = _required_meta_int(metadata, "h")
@@ -177,6 +177,13 @@ def expected_header_from_metadata(
     topk_prefetch = int(bool(metadata.get("topk_weights_type", False)))
     interleaved = int(bool(metadata.get("is_interleaved", False)))
     carrier_words = raw_bytes // 4
+    protocol_version = int(spec["trace"]["protocol"]["version"])
+    try:
+        expected_flags = EXPECTED_FLAGS_BY_PROTOCOL[protocol_version]
+    except KeyError as exc:
+        raise ContractError(
+            f"unsupported MegaMoe trace protocol version {protocol_version}"
+        ) from exc
     values_for_hash = [
         EXPECTED_PATH_ID,
         bs,
@@ -199,7 +206,7 @@ def expected_header_from_metadata(
         "repetition_count": repetitions,
         "capture_capacity": EXPECTED_CAPTURE_CAPACITY,
         "truncated": int(repetitions > EXPECTED_CAPTURE_CAPACITY),
-        "flags": EXPECTED_FLAGS,
+        "flags": expected_flags,
         "rank": rank,
         "runtime_config_hash": config_hash(values_for_hash),
         "path_id": EXPECTED_PATH_ID,
@@ -235,7 +242,7 @@ def validate_capture_contract(
         "header_words": int(protocol["header_words"]),
         "record_words": int(protocol["record_words"]),
     }
-    expected = expected_header_from_metadata(metadata, len(raw))
+    expected = expected_header_from_metadata(metadata, len(raw), spec)
     expected.update(protocol_expected)
 
     mismatches: list[str] = []
@@ -268,6 +275,9 @@ def validate_capture_contract(
     required_words = int(protocol["header_words"]) + expected["record_count"] * int(
         protocol["record_words"]
     )
+    fine_tail = protocol.get("fine_metadata_tail")
+    if fine_tail is not None:
+        required_words += expected["aic_count"] * int(fine_tail["words_per_core"])
     if required_words > expected["carrier_words"]:
         raise ContractError(
             f"trace requires {required_words * 4} bytes but y carries only {len(raw)} bytes"
@@ -306,7 +316,9 @@ def _modular_delta(begin: int, end: int, bits: int) -> int:
     return (end - begin) & ((1 << bits) - 1)
 
 
-def validate_timestamp_order(normalized_path: Path, spec_path: Path) -> dict[str, Any]:
+def validate_timestamp_order(
+    normalized_path: Path, spec_path: Path, allow_truncated: bool = False
+) -> dict[str, Any]:
     normalized = load_json(normalized_path)
     spec = load_json(spec_path)
     records = normalized.get("records")
@@ -321,8 +333,24 @@ def validate_timestamp_order(normalized_path: Path, spec_path: Path) -> dict[str
     capacity = int(header.get("capture_capacity", 0))
     captured = min(repetitions, capacity)
     spans = spec["trace"].get("spans", spec.get("spans", []))
+    fine_visualization = spec["trace"].get("visualization", {}).get("fine_grained")
+    fine_gap_by_span = {
+        gap["span"]: gap
+        for gap in (
+            fine_visualization.get("derived_idle_gaps", [])
+            if isinstance(fine_visualization, dict)
+            else []
+        )
+    }
+    fine_point_ids = {
+        point_id
+        for span in spans
+        if span["id"] in fine_gap_by_span
+        for point_id in (span["begin"], span["end"])
+    }
     span_counts = {span["id"]: 0 for span in spans}
     span_durations: dict[str, list[int]] = {span["id"]: [] for span in spans}
+    fine_truncated_records: list[str] = []
 
     for record in records:
         label = record.get("label", "unknown")
@@ -346,7 +374,11 @@ def validate_timestamp_order(normalized_path: Path, spec_path: Path) -> dict[str
                     raise ContractError(
                         f"{label} {point}[{occurrence}] lies outside process_begin_S..work_end_S"
                     )
-                if len(values) > 1 and occurrence >= captured:
+                if (
+                    point not in fine_point_ids
+                    and len(values) > 1
+                    and occurrence >= captured
+                ):
                     raise ContractError(
                         f"{label} {point}[{occurrence}] is populated beyond captured wave count {captured}"
                     )
@@ -360,6 +392,63 @@ def validate_timestamp_order(normalized_path: Path, spec_path: Path) -> dict[str
                 raise ContractError(
                     f"{label} {span['id']} begin/end occurrence counts differ"
                 )
+            gap_contract = fine_gap_by_span.get(span["id"])
+            if gap_contract is not None:
+                counters = record.get("counters", {})
+                if counters.get("fine_enabled") != 1:
+                    raise ContractError(
+                        f"{label} lacks enabled fine metadata for {span['id']}"
+                    )
+                captured_count = counters.get(gap_contract["captured_count_counter"])
+                if (
+                    not isinstance(captured_count, int)
+                    or isinstance(captured_count, bool)
+                    or captured_count < 0
+                    or captured_count > len(begins)
+                ):
+                    raise ContractError(
+                        f"{label} has invalid captured count for {span['id']}: {captured_count!r}"
+                    )
+                truncated_name = gap_contract["truncated_counter"]
+                fine_truncated = counters.get(truncated_name)
+                if fine_truncated not in (0, 1):
+                    raise ContractError(
+                        f"{label} has invalid {truncated_name}={fine_truncated!r}"
+                    )
+                if fine_truncated:
+                    fine_truncated_records.append(f"{label}/{span['id']}")
+                    if not allow_truncated:
+                        raise ContractError(
+                            f"{label} {span['id']} exceeded its {len(begins)} active-expert slots; "
+                            "pass --allow-truncated only for intentional partial analysis"
+                        )
+                wave_prefix = gap_contract["wave_counter_prefix"]
+                previous_wave = -1
+                for occurrence in range(captured_count):
+                    if begins[occurrence] == missing or ends[occurrence] == missing:
+                        raise ContractError(
+                            f"{label} {span['id']}[{occurrence}] is missing inside captured_count={captured_count}"
+                        )
+                    wave_id = counters.get(f"{wave_prefix}_{occurrence}")
+                    if (
+                        not isinstance(wave_id, int)
+                        or isinstance(wave_id, bool)
+                        or wave_id < 0
+                        or wave_id >= captured
+                    ):
+                        raise ContractError(
+                            f"{label} {span['id']}[{occurrence}] has invalid captured wave id {wave_id!r}"
+                        )
+                    if wave_id < previous_wave:
+                        raise ContractError(
+                            f"{label} {span['id']} fine slot wave ids are not monotonic"
+                        )
+                    previous_wave = wave_id
+                for occurrence in range(captured_count, len(begins)):
+                    if begins[occurrence] != missing or ends[occurrence] != missing:
+                        raise ContractError(
+                            f"{label} {span['id']}[{occurrence}] is populated beyond captured_count={captured_count}"
+                        )
             for occurrence, (begin, end) in enumerate(zip(begins, ends)):
                 if (begin == missing) != (end == missing):
                     raise ContractError(
@@ -393,10 +482,12 @@ def validate_timestamp_order(normalized_path: Path, spec_path: Path) -> dict[str
             "all record-local process boundaries are present and forward within the 32-bit half-range",
             "every populated stage has a paired begin/end and a forward duration",
             "every populated timestamp lies inside its role-local useful-work interval",
-            "uncaptured wave slots retain the zero missing sentinel",
+            "uncaptured wave/expert slots retain the zero missing sentinel",
+            "fine expert counts, wave ids, monotonic slot order, and per-record truncation metadata agree",
         ],
         "record_count": len(records),
         "runtime_waves": repetitions,
         "captured_waves": captured,
+        "fine_truncated_records": fine_truncated_records,
         "span_summary": duration_summary,
     }
