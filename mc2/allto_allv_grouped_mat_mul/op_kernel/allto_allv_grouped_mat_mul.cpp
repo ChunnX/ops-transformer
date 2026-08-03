@@ -21,6 +21,7 @@
 #include "allto_allv_grouped_mat_mul_tiling_key.h"
 #include "../../allto_allv_quant_grouped_mat_mul/op_kernel/mc2_templates/mc2_templates.h"
 
+
 using namespace AscendC;
 using namespace MC2KernelTemplate;
 using namespace Mc2GroupedMatmulTilingData;
