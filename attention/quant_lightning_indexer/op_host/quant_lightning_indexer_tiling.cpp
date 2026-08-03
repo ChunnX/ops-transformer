@@ -1085,8 +1085,11 @@ ge::graphStatus QLIInfoParser::CheckContiguous()
     }
     OP_CHECK_IF(
         keyNonContiguous || scaleNonContiguous,
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "key/key_dequant_scale",
-            "key and key_dequant_scale only supports non-contiguous tensor on the 0-axis in PA scenarios"),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            opName_, "key and key_dequant_scale",
+            Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()) + " and " +
+                Ops::Base::ToString(opParamInfo_.key_dequant_scale.shape->GetStorageShape()),
+            "Key and key_dequant_scale only supports non-contiguous tensor on the 0-axis in PA scenarios"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
