@@ -140,16 +140,19 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
                 int64_t dQOutputOffset = (t1PadLenSum + actualLen) *
                     static_cast<int64_t>(constInfo.gSizeQueryIndex) *
                     static_cast<int64_t>(constInfo.dSizeQueryIndex);
-                AscendC::InitOutput<INPUT_T>(
-                    reinterpret_cast<__gm__ INPUT_T *>(dQueryIndex) + dQOutputOffset,
+                GlobalTensor<INPUT_T> tmpDQ;
+                tmpDQ.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(dQueryIndex) + dQOutputOffset,
                     currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex) *
-                        static_cast<int64_t>(constInfo.dSizeQueryIndex), 0);
+                        static_cast<int64_t>(constInfo.dSizeQueryIndex));
+                AscendC::Fill(tmpDQ, currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex) *
+                    static_cast<int64_t>(constInfo.dSizeQueryIndex), static_cast<INPUT_T>(0));
 
                 int64_t dWOutputOffset = (t1PadLenSum + actualLen) *
                     static_cast<int64_t>(constInfo.gSizeQueryIndex);
-                AscendC::InitOutput<WEIGHT_T>(
-                    reinterpret_cast<__gm__ WEIGHT_T *>(dWeight) + dWOutputOffset,
-                    currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex), 0);
+                GlobalTensor<WEIGHT_T> tmpDW;
+                tmpDW.SetGlobalBuffer(reinterpret_cast<__gm__ WEIGHT_T *>(dWeight) + dWOutputOffset,
+                    currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex));
+                AscendC::Fill(tmpDW, currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex), static_cast<WEIGHT_T>(0));
             }
         }
         if (t2Size > actualKLen) {
@@ -164,9 +167,10 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
             if ASCEND_IS_AIV {
                 int64_t dKOutputOffset = (t2PadLenSum + actualKLen) *
                     static_cast<int64_t>(constInfo.dSizeQueryIndex);
-                AscendC::InitOutput<INPUT_T>(
-                    reinterpret_cast<__gm__ INPUT_T *>(dKeyIndex) + dKOutputOffset,
-                    currentCoreT2PadLen * static_cast<int64_t>(constInfo.dSizeQueryIndex), 0);
+                GlobalTensor<INPUT_T> tmpDK;
+                tmpDK.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(dKeyIndex) + dKOutputOffset,
+                    currentCoreT2PadLen * static_cast<int64_t>(constInfo.dSizeQueryIndex));
+                AscendC::Fill(tmpDK, currentCoreT2PadLen * static_cast<int64_t>(constInfo.dSizeQueryIndex), static_cast<INPUT_T>(0));
             }
         }
     }
