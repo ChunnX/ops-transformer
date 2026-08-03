@@ -54,6 +54,16 @@ inline auto Align(T num, T rnd) -> T
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
+// RoPE 开关（ropeSin/ropeCos 可空）仅 DAV_3510 生效。
+inline bool IsDav3510Platform(fe::PlatFormInfos *platformInfo)
+{
+    if (platformInfo == nullptr) {
+        return false;
+    }
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    return ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510;
+}
+
 NpuArch MlaPrologTiling::GetCurNpuArch() const
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->platformInfo);
@@ -203,8 +213,20 @@ ge::graphStatus MlaPrologTiling::SetShapeInfo()
             weightDqAxisSize_ * context_->weightDq.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_0);
     }
     baseShapeInfo_.nSize = context_->weightUk.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_0);
-    baseShapeInfo_.drSize =
-        context_->ropeCos.shape->GetStorageShape().GetDim(context_->ropeCos.shape->GetStorageShape().GetDimNum() - 1);
+    if (context_->ropeCos.shape != nullptr) {
+        baseShapeInfo_.drSize = context_->ropeCos.shape->GetStorageShape().GetDim(
+            context_->ropeCos.shape->GetStorageShape().GetDimNum() - 1);
+    } else if (GetCurNpuArch() == NpuArch::DAV_3510) {
+        // Ascend950 RoPE off: infer Dr from kr_cache last dim.
+        OP_CHECK_IF(context_->krCache.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->opName, "krCache"),
+                    return ge::GRAPH_FAILED);
+        const auto &krShape = context_->krCache.shape->GetStorageShape();
+        baseShapeInfo_.drSize = static_cast<uint32_t>(krShape.GetDim(krShape.GetDimNum() - 1));
+    } else {
+        // DAV_2201：rope 为必选，不允许为空
+        OP_LOGE_WITH_INVALID_INPUT(context_->opName, "ropeCos");
+        return ge::GRAPH_FAILED;
+    }
     baseShapeInfo_.dSize = context_->weightUk.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_1);
     baseShapeInfo_.headSizeQc = baseShapeInfo_.dSize * baseShapeInfo_.nSize;
     baseShapeInfo_.headSizeQr = baseShapeInfo_.drSize * baseShapeInfo_.nSize;
@@ -261,8 +283,8 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
         (scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_BSND || scenarioInfo_.cacheMode_ == CACHE_MODE::PA_BLK_NZ)) {
         OP_CHECK_IF(context_->actualSeqLen.shape == nullptr,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->opName, "actualSeqLen", "null",
-                                                             "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX "
-                                                             "shape dim num is 2, actualSeqLen should not be null"),
+                                                          "When cacheMode in {PA_BLK_BSND, PA_BLK_NZ} and tokenX "
+                                                          "shape dim num is 2, actualSeqLen should not be null"),
                     return GRAPH_FAILED);
         baseShapeInfo_.bSize = context_->actualSeqLen.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_0);
         scenarioInfo_.actualSeqMode_ = ACTUAL_SEQ_MODE::EN_Q_LEN;
@@ -272,8 +294,8 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
     uint32_t cvRatio = aivNum_ / aicNum_;
     // 当前仅在BS>=8K且数据类型为MXFP8时路由到切M模板，其他情况均路由到切N模板
     scenarioInfo_.splitMFlag_ = 0U;
-    if (scenarioInfo_.weightQuantMode_ == WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT &&
-        baseShapeInfo_.tSize >= 8192 && cvRatio == 2) { // 8192：BS >= 8K
+    if (scenarioInfo_.weightQuantMode_ == WEIGHT_QUANT_MODE::MXFP8_FULL_QUANT && baseShapeInfo_.tSize >= 8192 &&
+        cvRatio == 2) { // 8192：BS >= 8K
         if ((baseShapeInfo_.heSize == HEAD_SIZE1 || baseShapeInfo_.heSize == HEAD_SIZE2) &&
             baseShapeInfo_.nSize == 128) { // 128：N为128时路由到切M模板
             scenarioInfo_.splitMFlag_ = 1U;
@@ -298,6 +320,11 @@ ge::graphStatus MlaPrologTiling::SetAttrInfo()
         tileSize_ = static_cast<uint32_t>(*(context_->tileSize));
         qcQrScale_ = *(context_->qcQrScale);
         kcScale_ = *(context_->kcScale);
+    }
+    // rope开关仅对 MlaPrologV3 + DAV_3510 生效，其他场景强制开启
+    enableRope_ = true;
+    if (GetCurNpuArch() == NpuArch::DAV_3510 && context_->doRope != nullptr) {
+        enableRope_ = *(context_->doRope);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -557,7 +584,7 @@ ge::graphStatus MlaPrologTiling::CalcWorkSpace()
     // SplitM非pertile量化场景下 mmQcQrResDequant使用两份workspace
     if (scenarioInfo_.splitMFlag_ == 1U &&
         (scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
-        scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR)) {
+         scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR)) {
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.nSize) *
                           static_cast<size_t>(baseShapeInfo_.dSize) * mm3Mult * static_cast<size_t>(NUM_BYTES_BF16);
     }
@@ -603,23 +630,23 @@ ge::graphStatus MlaPrologTiling::GenTilingKey() const
     }
 
     if (scenarioInfo_.emptyTensorMode_ == EMPTY_TENSOR_MODE::EMPTY_QUERY) {
-        context_->tilingKey = GET_TPL_TILING_KEY(0, 0, 0, false, false,
-                                                 static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), 0, 0, cvMode);
+        context_->tilingKey = GET_TPL_TILING_KEY(
+            0, 0, 0, false, false, static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), 0, 0, cvMode, true);
     } else {
         uint8_t cacheMode =
             scenarioInfo_.cacheMode_ == CACHE_MODE::TND ? 0 : static_cast<uint8_t>(scenarioInfo_.cacheMode_);
         context_->tilingKey = GET_TPL_TILING_KEY(
             static_cast<uint8_t>(cacheMode), typeValue, quantType, enableDequantOpt_, enableGroupComputeOpt_,
             static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), static_cast<uint8_t>(scenarioInfo_.actualSeqMode_),
-            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), cvMode);
+            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), cvMode, enableRope_);
         OP_LOGI(
             context_->opName,
             "MlaProlog tilingKey args: "
             "CACHE_MODE:%u, SCENARIO:%u, QUANT_MODE:%u, ENABLE_DEQUANT_OPTIONAL:%u, ENABLE_GROUP_COMPUTE_OPTIONAL:%u, "
-            "EMPTY_TENSOR_MODE:%u, ACTUAL_SEQ_LEN_MODE:%u, SPLIT_M_MODE:%u, CV_MODE:%u",
+            "EMPTY_TENSOR_MODE:%u, ACTUAL_SEQ_LEN_MODE:%u, SPLIT_M_MODE:%u, CV_MODE:%u, ENABLE_ROPE:%u",
             static_cast<uint8_t>(cacheMode), typeValue, quantType, enableDequantOpt_, enableGroupComputeOpt_,
             static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), static_cast<uint8_t>(scenarioInfo_.actualSeqMode_),
-            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), cvMode);
+            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), cvMode, static_cast<uint8_t>(enableRope_));
     }
     OP_LOGI(context_->opName, "MlaProlog tilingKey:%lu", context_->tilingKey);
     return ge::GRAPH_SUCCESS;
@@ -706,6 +733,22 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
         mlaPrologContext.tileSize = attrs->GetAttrPointer<int64_t>(TILE_SIZE_ATTR_INDEX);
         mlaPrologContext.qcQrScale = attrs->GetAttrPointer<float>(QC_QR_SCALE_ATTR_INDEX);
         mlaPrologContext.kcScale = attrs->GetAttrPointer<float>(KC_SCALE_ATTR_INDEX);
+        // RoPE 开关仅 DAV_3510：由 ropeSin/ropeCos 是否为空推断。
+        // DAV_2201：保持原逻辑，RoPE 始终开启。
+        if (IsDav3510Platform(mlaPrologContext.platformInfo)) {
+            const bool ropeSinNull = (mlaPrologContext.ropeSin.shape == nullptr);
+            const bool ropeCosNull = (mlaPrologContext.ropeCos.shape == nullptr);
+            OP_CHECK_IF(ropeSinNull != ropeCosNull,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            mlaPrologContext.opName, "ropeSin / ropeCos", "(one null, one non-null)",
+                            "ropeSin and ropeCos must both be null (RoPE off) or both non-null (RoPE on)"),
+                        return ge::GRAPH_FAILED);
+            mlaPrologContext.doRopeValue = !ropeSinNull;
+            mlaPrologContext.doRope = &mlaPrologContext.doRopeValue;
+        } else {
+            mlaPrologContext.doRopeValue = true;
+            mlaPrologContext.doRope = nullptr;
+        }
     } else {
         mlaPrologContext.queryNormFlag = nullptr;
         mlaPrologContext.weightQuantMode = nullptr;
@@ -716,6 +759,9 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
         mlaPrologContext.tileSize = nullptr;
         mlaPrologContext.qcQrScale = nullptr;
         mlaPrologContext.kcScale = nullptr;
+        // 非 V3：RoPE 始终开启（rope 为必选输入）
+        mlaPrologContext.doRopeValue = true;
+        mlaPrologContext.doRope = nullptr;
     }
 
     OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
@@ -741,10 +787,19 @@ void MlaPrologTiling::ConvertRequiredParams(gert::TilingContext &context, MlaPro
     mlaPrologContext.rmsnormGammaCq.shape = context.GetRequiredInputShape(RMSNORM_GAMMA_CQ_INPUT_INDEX);
     mlaPrologContext.rmsnormGammaCkv.desc = context.GetRequiredInputDesc(RMS_NORM_GAMMA_CKV_INPUT_INDEX);
     mlaPrologContext.rmsnormGammaCkv.shape = context.GetRequiredInputShape(RMS_NORM_GAMMA_CKV_INPUT_INDEX);
-    mlaPrologContext.ropeSin.desc = context.GetRequiredInputDesc(ROPE_SIN_INPUT_INDEX);
-    mlaPrologContext.ropeSin.shape = context.GetRequiredInputShape(ROPE_SIN_INPUT_INDEX);
-    mlaPrologContext.ropeCos.desc = context.GetRequiredInputDesc(ROPE_COS_INPUT_INDEX);
-    mlaPrologContext.ropeCos.shape = context.GetRequiredInputShape(ROPE_COS_INPUT_INDEX);
+    // V3 + DAV_3510：rope 可选（null → RoPE off）。DAV_2201 与非 V3：rope 必选。
+    if (std::strncmp(mlaPrologContext.opType, V3_OP_NAME, OP_NAME_LEN) == 0 &&
+        IsDav3510Platform(mlaPrologContext.platformInfo)) {
+        mlaPrologContext.ropeSin.desc = context.GetOptionalInputDesc(ROPE_SIN_INPUT_INDEX);
+        mlaPrologContext.ropeSin.shape = context.GetOptionalInputShape(ROPE_SIN_INPUT_INDEX);
+        mlaPrologContext.ropeCos.desc = context.GetOptionalInputDesc(ROPE_COS_INPUT_INDEX);
+        mlaPrologContext.ropeCos.shape = context.GetOptionalInputShape(ROPE_COS_INPUT_INDEX);
+    } else {
+        mlaPrologContext.ropeSin.desc = context.GetRequiredInputDesc(ROPE_SIN_INPUT_INDEX);
+        mlaPrologContext.ropeSin.shape = context.GetRequiredInputShape(ROPE_SIN_INPUT_INDEX);
+        mlaPrologContext.ropeCos.desc = context.GetRequiredInputDesc(ROPE_COS_INPUT_INDEX);
+        mlaPrologContext.ropeCos.shape = context.GetRequiredInputShape(ROPE_COS_INPUT_INDEX);
+    }
 
     if (std::strncmp(mlaPrologContext.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         mlaPrologContext.kvCache.desc = context.GetRequiredInputDesc(KV_CACHE_INPUT_INDEX_V3);
