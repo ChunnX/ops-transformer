@@ -70,29 +70,25 @@ def mqsmla_aclgraph(testcase_files):
     try:
         npu_result, cpu_quant_result, npu_lse, cpu_lse = mixed_quant_sparse_flash_mla_process.test_mqsmla_quant_process_graph(
             test_data, device_id=device_id)
-        attn_result, attn_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
-        lse_res, lse_pct = None, None
+        
+        attn_result, attn_pct = result_compare_method.check_result(cpu_quant_result, npu_result)
+        lse_result, lse_pct = None, 0.0
         fail_info = []
-        min_fulfill = main_pct
+        min_fulfill = attn_pct
+
+        if attn_result != "PASS":
+            fail_info.append(f"MAIN_FAILED:{attn_result}")
 
         if test_data['params'].get('return_softmax_lse'):
             print("return_softmax_lse is true!!!")
-            lse_result, lse_percent = result_compare_method.check_result(cpu_lse, npu_lse)
-        
-        if main_res != "PASS":
-            fail_info.append(f"MAIN_FAILED:{main_res}")
-        # LSE失败记录
-        if lse_res is not None and lse_res != "PASS":
-            fail_info.append(f"LSE_FAILED:{lse_res}")
+            lse_result, lse_pct = result_compare_method.check_result(cpu_lse, npu_lse)
             min_fulfill = min(min_fulfill, lse_pct)
+            if lse_result != "PASS":
+                fail_info.append(f"LSE_FAILED:{lse_result}")
 
-        # 整合最终结果
-        if fail_info:
-            result = "; ".join(fail_info)
-            fulfill_percent = min_fulfill
-        else:
-            result = "PASS"
-            fulfill_percent = min_fulfill
+        fulfill_percent = min_fulfill
+        result = "; ".join(fail_info) if fail_info else "PASS"
+
     except Exception as e:
         npu_error_msg = str(e)
         print("NPU ERROR：", npu_error_msg)

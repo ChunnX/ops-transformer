@@ -131,23 +131,22 @@ def mqsmla(param_combinations):
         attn_result, attn_percent = result_compare_method.check_result(
             cpu_quant_result, npu_result
         )
-        lse_res, lse_pct = None, None
+        lse_result, lse_percent = None, None
         fail_info = []
-        min_fulfill = main_pct
+        min_fulfill = attn_percent
 
         if test_data["params"].get("return_softmax_lse"):
             print("return_softmax_lse is true!!!")
             lse_result, lse_percent = result_compare_method.check_result(
                 cpu_lse, npu_lse
             )
-        if main_res != "PASS":
-            fail_info.append(f"MAIN_FAILED:{main_res}")
-        # LSE失败记录
-        if lse_res is not None and lse_res != "PASS":
-            fail_info.append(f"LSE_FAILED:{lse_res}")
-            min_fulfill = min(min_fulfill, lse_pct)
+            min_fulfill = min(min_fulfill, lse_percent)
 
-        # 整合最终结果
+        if attn_result != "PASS":
+            fail_info.append(f"MAIN_FAILED:{attn_result}")
+        if lse_result is not None and lse_result != "PASS":
+            fail_info.append(f"LSE_FAILED:{lse_result}")
+
         if fail_info:
             result = "; ".join(fail_info)
             fulfill_percent = min_fulfill
