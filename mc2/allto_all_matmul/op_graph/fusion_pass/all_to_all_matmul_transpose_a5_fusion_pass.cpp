@@ -503,10 +503,9 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
                                       attrs.comm_quant_mode, attrs.x1_quant_dtype, attrs.comm_quant_dtype,
                                       attrs.transpose_x1, attrs.transpose_x2, attrs.group_size,
                                       attrs.comm_mode.c_str(), attrs.alltoall_out_flag);
-    if (attrs.alltoall_out_flag) {
-        return replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
-    }
-    return replaceGraphBuilder.BuildAndReset({mc2.y});
+    // 与 MakePattern / AllGatherMatmulV2 一致：ES 侧 all2all_out 为 Required，须一并挂上，
+    // 仅 BuildAndReset({y}) 会在 builder 析构时踩坏堆（表现为 shared_ptr<string> 析构 SIGSEGV）。
+    return replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
 }
 
 static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
