@@ -28,7 +28,7 @@ task_build()
         --soc="$SOC" \
         --ops="$OPERATOR" \
         --vendor_name="$GMM_VENDOR" \
-        -j16
+        -j2
 }
 
 task_select_package()

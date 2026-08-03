@@ -20,6 +20,8 @@ vendor: xwqtju_dev
 example: gmm/grouped_matmul/examples/arch35/test_aclnn_grouped_matmul_v5_noquant.cpp
 ```
 
+打包阶段固定使用 `-j2`，避免 GMM 大量内核并发编译耗尽服务器 B 的宿主机内存。日志中成批出现 `Killed` 和 `Error 137` 表示进程被系统杀死；应先释放内存，必要时进一步降为 `-j1`。
+
 ## 服务器 B 执行
 
 服务器 A 每次交付时会提供完整 40 位 commit。服务器 B 只粘贴一条命令：
