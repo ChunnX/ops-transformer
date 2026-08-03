@@ -78,6 +78,7 @@ struct AntiquantTaskParamBaseAPI {
     bool isPertensor;
     bool isPerHead;
     bool isKvCacheNz;
+    uint32_t kvCacheNzD0;
     uint32_t kvCacheBlockSize;
     uint32_t maxBlockNumPerSeq;
     uint32_t paKvShapeType;

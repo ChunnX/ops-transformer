@@ -375,6 +375,8 @@ FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType
         this->constInfo.blockSize = inputParamsRegbase.blockSize;
         this->constInfo.paLayoutType = inputParamsRegbase.paLayoutType;
         this->constInfo.paBlockNumSum = inputParamsRegbase.paBlockNumSum;
+        this->constInfo.kvCacheNzD0 = inputParamsRegbase.kvCacheNzD0;
+        printf("constInfo.kvCacheNzD0:%u\n",constInfo.kvCacheNzD0);
     }
 
     this->constInfo.transposeLayout = inputParamsRegbase.transposeLayout;

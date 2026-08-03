@@ -581,8 +581,10 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::setConstAntiTaskParam(ConstInfo<is
     taskParam.sInnerLoopSize = constInfo.sInnerLoopSize;
     taskParam.antiqSeqSize = antiqSeqSize;
     taskParam.isKvCacheNz = false;
+    taskParam.kvCacheNzD0 = 0;
     if constexpr (isPa) {
         taskParam.isKvCacheNz = taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_NZ);
+        taskParam.kvCacheNzD0 = constInfo.kvCacheNzD0;
     }
 }
 
