@@ -143,8 +143,14 @@ private:
 
         const LocalTensor<bfloat16_t> kSegmentL1Nz = aRotL1Nz[NzMatrixElements(qRows)];
         uint32_t l0aBufferUseId = 0U;
-        ComputeSegmentToL0C(qRows, aRotL1Nz, bufferId, 0U, l0aBufferUseId);
-        ComputeSegmentToL0C(kRows, kSegmentL1Nz, bufferId, kL0cOffset, l0aBufferUseId);
+        if constexpr (IS_MROPE) {
+            // unitFlag pairs MMAD and Fixpipe in issue order; M-RoPE consumes K before Q.
+            ComputeSegmentToL0C(kRows, kSegmentL1Nz, bufferId, kL0cOffset, l0aBufferUseId);
+            ComputeSegmentToL0C(qRows, aRotL1Nz, bufferId, 0U, l0aBufferUseId);
+        } else {
+            ComputeSegmentToL0C(qRows, aRotL1Nz, bufferId, 0U, l0aBufferUseId);
+            ComputeSegmentToL0C(kRows, kSegmentL1Nz, bufferId, kL0cOffset, l0aBufferUseId);
+        }
     }
 
     __aicore__ inline void ComputeSegmentToL0C(uint64_t segmentRows, const LocalTensor<bfloat16_t> &segmentL1Nz,
