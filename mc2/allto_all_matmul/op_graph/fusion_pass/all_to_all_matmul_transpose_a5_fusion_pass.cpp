@@ -494,12 +494,14 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
         return nullptr;
     }
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End to GetMc2ReplaceAttrs.");
-
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start to AlltoAllMatmul group %s, comm_mode %s.", attrs.group.GetString(), attrs.comm_mode.GetString());
     auto mc2 = ge::es::AlltoAllMatmul(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
                                       inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset, inputTensors.rX2Offset,
                                       attrs.group.GetString(), attrs.world_size, attrs.all2all_axes, attrs.y_dtype, attrs.x1_quant_mode,
                                       attrs.x2_quant_mode, attrs.comm_quant_mode, attrs.x1_quant_dtype, attrs.comm_quant_dtype,
                                       attrs.transpose_x1, attrs.transpose_x2, attrs.group_size, attrs.comm_mode.GetString(), attrs.alltoall_out_flag);
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End to AlltoAllMatmul.");
+
     return replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
 }
 
