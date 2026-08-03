@@ -25,8 +25,10 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 
-DATA_RANGE_LEFT = -1.0
-DATA_RANGE_RIGHT = 1.0
+DATA_RANGE_LEFT = -1000
+DATA_RANGE_RIGHT = 1000
+FP8_E4M3_MAX = 448.0
+SCALE_EPSILON = 1e-8
 EMPTY_LSE = -3.4028234663852886e38
 MASK_VALUE = -10000.0
 
@@ -65,7 +67,6 @@ def _normalize_params(params):
     normalized.setdefault("S1EQS2", False)
     normalized.setdefault("seed", 0)
     normalized.setdefault("sparse_pattern", "sequential")
-    normalized.setdefault("scale_pattern", "ones")
     normalized.setdefault("block_table_pattern", "sequential")
     normalized.setdefault("pa_block_padding_bytes", 0)
     normalized.setdefault("p_scale_value", 1.0)
@@ -111,14 +112,46 @@ def _prefix(lengths):
     return torch.tensor(values, dtype=torch.int32)
 
 
-def _rand_float(shape, generator):
-    return torch.empty(shape, dtype=torch.float32).uniform_(
-        DATA_RANGE_LEFT, DATA_RANGE_RIGHT, generator=generator
-    )
+def _source_absmax():
+    return max(max(abs(DATA_RANGE_LEFT), abs(DATA_RANGE_RIGHT)), 1.0)
 
 
-def _rand_fp8(shape, generator):
-    return _rand_float(shape, generator).to(_fp8_dtype())
+def _log_uniform_amplitude(shape, low, high, generator):
+    high = max(float(high), SCALE_EPSILON)
+    low = max(min(float(low), high), SCALE_EPSILON)
+    log_low = math.log10(low)
+    log_high = math.log10(high)
+    exponent = torch.empty(shape, dtype=torch.float32).uniform_(log_low, log_high, generator=generator)
+    return torch.pow(torch.tensor(10.0, dtype=torch.float32), exponent)
+
+
+def _rand_fullquant_source(shape, amp_low, amp_high, generator, amp_shape=None):
+    base = torch.empty(shape, dtype=torch.float32).uniform_(-1.0, 1.0, generator=generator)
+    if amp_shape is None:
+        amp_shape = shape[:-1] + (1,)
+    amps = _log_uniform_amplitude(amp_shape, amp_low, amp_high, generator)
+    return base * amps
+
+
+def _quant_fp32_to_fp8(tensor, quant_scale):
+    quantized = tensor.to(torch.float32) * quant_scale
+    quantized = torch.clamp(quantized, -FP8_E4M3_MAX, FP8_E4M3_MAX)
+    return quantized.to(_fp8_dtype()).contiguous()
+
+
+def _quantize_per_token_head(tensor):
+    row_max = torch.abs(tensor).amax(dim=-1, keepdim=True)
+    row_max = torch.maximum(row_max, torch.tensor(SCALE_EPSILON, dtype=torch.float32, device=tensor.device))
+    quant_scale = FP8_E4M3_MAX / row_max
+    return _quant_fp32_to_fp8(tensor, quant_scale), (1.0 / quant_scale).squeeze(-1).contiguous()
+
+
+def _quantize_value_per_head(tensor):
+    head_max = torch.abs(tensor).amax(dim=(0, 1, 3), keepdim=True)
+    head_max = torch.maximum(head_max, torch.tensor(SCALE_EPSILON, dtype=torch.float32, device=tensor.device))
+    quant_scale = FP8_E4M3_MAX / head_max
+    value = _quant_fp32_to_fp8(tensor, quant_scale)
+    return value, (1.0 / quant_scale).reshape(tensor.shape[2]).contiguous()
 
 
 def _physical_ids(start, count, pattern, rng):
@@ -240,37 +273,41 @@ def _set_lse(softmax_lse, cu_seqlens_q, batch_idx, q_idx, head_idx, value):
     token_idx = _query_index(cu_seqlens_q, batch_idx, q_idx)
     softmax_lse[head_idx, token_idx] = value
 
-
-def _make_scale_tensor(shape, pattern):
-    if pattern == "ones":
-        return torch.ones(shape, dtype=torch.float32)
-    numel = math.prod(shape)
-    values = torch.linspace(0.25, 2.0, steps=numel, dtype=torch.float32)
-    return values.reshape(shape)
-
-
-def _make_scales(case, cu_seqlens_q, cu_seqlens_kv, kv_lengths):
+def _make_fullquant_tensors(case, cu_seqlens_q, cu_seqlens_kv, kv_lengths, generator):
     layout_q = case["layout_q"]
-    if layout_q == "NTD":
-        q_shape = (case["N1"], int(cu_seqlens_q[-1].item()))
-    else:
-        q_shape = (int(cu_seqlens_q[-1].item()), case["N1"])
-    k_shape = (int(cu_seqlens_kv[-1].item()), case["N2"])
+    total_q = int(cu_seqlens_q[-1].item())
+    total_kv = int(cu_seqlens_kv[-1].item())
+    batch = case["B"]
+    n1 = case["N1"]
+    n2 = case["N2"]
+    head_dim = case["D"]
+    amp_high = _source_absmax()
 
-    q_scale = _make_scale_tensor(q_shape, case["scale_pattern"])
-    k_scale = _make_scale_tensor(k_shape, case["scale_pattern"])
-    dense_k_scale = torch.zeros(
-        (case["B"], case["S2"], case["N2"]), dtype=torch.float32
-    )
+    if layout_q == "NTD":
+        query_source = _rand_fullquant_source((n1, total_q, head_dim), amp_high * 0.01, amp_high, generator)
+    else:
+        query_source = _rand_fullquant_source((total_q, n1, head_dim), amp_high * 0.01, amp_high, generator)
+    query, q_scale = _quantize_per_token_head(query_source)
+
+    dense_key_source = _rand_fullquant_source((batch, case["S2"], n2, head_dim), 1.0, amp_high, generator)
+    dense_key, dense_k_scale_base = _quantize_per_token_head(dense_key_source)
+    k_scale = torch.zeros((total_kv, n2), dtype=torch.float32)
     for batch_idx, kv_len in enumerate(kv_lengths):
         start = int(cu_seqlens_kv[batch_idx].item())
-        dense_k_scale[batch_idx, :kv_len] = k_scale[start : start + kv_len]
-    if case["scale_pattern"] == "ones":
-        v_scale = torch.ones((case["N2"],), dtype=torch.float32)
-    else:
-        v_scale = torch.linspace(0.5, 1.75, steps=case["N2"], dtype=torch.float32)
+        k_scale[start:start + kv_len] = dense_k_scale_base[batch_idx, :kv_len]
+
+    dense_k_scale = torch.zeros((batch, case["S2"], n2), dtype=torch.float32)
+    for batch_idx, kv_len in enumerate(kv_lengths):
+        start = int(cu_seqlens_kv[batch_idx].item())
+        dense_k_scale[batch_idx, :kv_len] = k_scale[start:start + kv_len]
+
+    dense_value_source = _rand_fullquant_source(
+        (batch, case["S2"], n2, head_dim), 1.0, amp_high, generator, amp_shape=(batch, 1, n2, 1))
+    dense_value, v_scale = _quantize_value_per_head(dense_value_source)
+    v_scale = v_scale.contiguous()
+
     p_scale = torch.tensor([float(case["p_scale_value"])], dtype=torch.float32)
-    return q_scale, k_scale, dense_k_scale, v_scale, p_scale
+    return query, dense_key, dense_value, q_scale, k_scale, dense_k_scale, v_scale, p_scale
 
 
 def _mask_positions(case, q_idx, positions, q_len, kv_len):
@@ -532,6 +569,11 @@ def _reference_attention(
     fp8_dtype = _fp8_dtype()
     softmax_scale = float(case["softmax_scale"])
     p_scale_value = float(p_scale[0].item())
+    ln_p_scale = (
+        torch.log(torch.tensor(p_scale_value, dtype=torch.float32)).item()
+        if p_scale_value > 0
+        else 0.0
+    )
     sparse_q_block_size = case["sparse_q_block_size"]
     neg_inf = float("-inf")
 
@@ -610,22 +652,33 @@ def _reference_attention(
                     raise ValueError(f"unsupported mask_mode: {case['mask_mode']}")
 
                 # scores: (nq, npos)，标度在 matmul 之后施加（保持 FP8 桶一致）
+                # 与 kernel 对齐乘法顺序：先将 q_scale 乘以 softmax_scale(dScale)，
+                # 再乘到 QK 结果上，最后乘 k_scale，避免浮点非结合律导致的量化边界差异
                 scores = torch.matmul(q_block, k_mat.transpose(0, 1))
                 scores = (
                     scores
-                    * q_scale_block.view(nq, 1)
+                    * (q_scale_block.view(nq, 1) * softmax_scale)
                     * k_scale_vec.view(1, npos)
-                    * softmax_scale
                 )
                 scores = torch.where(
                     valid_mask, scores, torch.full_like(scores, MASK_VALUE)
                 )
 
                 # 按 2-block chunk 的 online/flash FP8 数据流，向量化到 q 维
+                # p_scale 通过 ln(pScale) 编入 max（与 kernel FusedExpSub 路径对齐），
+                # 使 exp 的数值路径与 kernel 一致：exp(score - (actual_max - ln(pScale))) = p_c * pScale
+                # v_scale 乘入时机与 kernel 对齐：
+                #   chunk 0 (DataCopy): acc = pv_raw（不含 v_scale）
+                #   chunk 1 (isUpdatePre=true): acc = acc * rescale * v_scale + pv_raw * v_scale
+                #   chunk >1 (isUpdatePre=false): acc = acc * rescale + pv_raw * v_scale
+                #   单 chunk 最后除法 (LastDivNew): output = pv_raw * v_scale / sum
                 m_run = torch.full((nq,), neg_inf, dtype=torch.float32)
+                m_run_offset = torch.full((nq,), neg_inf, dtype=torch.float32)
                 l_run = torch.zeros((nq,), dtype=torch.float32)
                 acc = torch.zeros((nq, head_dim), dtype=torch.float32)
                 offset = 0
+                chunk_idx = 0
+                chunk_count = len(chunk_positions)
                 for chunk_pos_list in chunk_positions:
                     c0 = offset
                     c1 = offset + len(chunk_pos_list)
@@ -645,35 +698,65 @@ def _reference_attention(
                     )
                     # 该 chunk 对此行无有效位置 -> 此行本轮不更新
                     m_new = torch.where(chunk_has, m_new, m_run)
+                    # 编入 ln(pScale)，与 kernel 的 max0 = actual_max - ln(pScale) 对齐
+                    m_new_offset = m_new - ln_p_scale
+                    # 与 kernel FusedExpSub 对齐：kernel 的 FusedExpSub(x, y) 计算 exp(x - y) 时，
+                    # 减法在硬件内部以更高精度完成（融合，无 float32 中间舍入）。
+                    # golden 用 float64 减法模拟该融合减法，避免 float32 减法舍入导致
+                    # exp 结果落在 FP8 量化边界的错误一侧。
                     rescale = torch.where(
-                        run_started, torch.exp(m_run - m_new), torch.zeros_like(m_run)
+                        run_started,
+                        torch.exp(m_run_offset.double() - m_new_offset.double()).float(),
+                        torch.zeros_like(m_run),
                     )
                     rescale = torch.where(
                         torch.isfinite(rescale), rescale, torch.zeros_like(rescale)
                     )
-                    p_c = torch.exp(s_c - m_new.view(nq, 1))
-                    p_c = torch.where(vm_c, p_c, torch.zeros_like(p_c))
+                    # FusedExpSub 等价：exp(score - (actual_max - ln(pScale))) = p_c * pScale
+                    p_scaled = torch.exp(
+                        s_c.double() - m_new_offset.double().view(nq, 1)
+                    ).float()
+                    p_scaled = torch.where(vm_c, p_scaled, torch.zeros_like(p_scaled))
                     # 仅对本轮有有效位置的行参与量化累加；其余行贡献 0
-                    p_c = torch.where(chunk_has.view(nq, 1), p_c, torch.zeros_like(p_c))
-                    p_quant = (p_c * p_scale_value).to(fp8_dtype).to(torch.float32)
-                    pv = (
-                        torch.matmul(p_quant, v_mat[c0:c1])
-                        / p_scale_value
-                        * v_scale_value
-                    )  # (nq, D)
-                    acc = acc * rescale.view(nq, 1) + pv
-                    l_run = l_run * rescale + p_c.sum(dim=-1)
+                    p_scaled = torch.where(chunk_has.view(nq, 1), p_scaled, torch.zeros_like(p_scaled))
+                    # FP8 量化：p_scaled 已含 pScale 因子，直接 cast（与 kernel 一致）
+                    p_quant = p_scaled.to(fp8_dtype).to(torch.float32)
+                    # BMM2：不除 pScale（与 kernel 一致，pScale 在分子分母中同时出现，数学上约掉）
+                    pv_raw = torch.matmul(p_quant, v_mat[c0:c1])  # (nq, D)，不含 v_scale
+                    # 与 kernel FlashUpdate/FlashUpdateLast 的 isUpdatePre 逻辑对齐 v_scale 乘入时机
+                    if chunk_idx == 0:
+                        # 第一个 chunk：acc = pv_raw（与 kernel DataCopy 一致，不含 v_scale）
+                        acc = pv_raw
+                    elif chunk_idx == 1:
+                        # 第二个 chunk（isUpdatePre=true）：acc * rescale * v_scale + pv_raw * v_scale
+                        acc = acc * rescale.view(nq, 1) * v_scale_value + pv_raw * v_scale_value
+                    else:
+                        # 后续 chunk（isUpdatePre=false）：acc * rescale + pv_raw * v_scale
+                        acc = acc * rescale.view(nq, 1) + pv_raw * v_scale_value
+                    # sum 累加含 pScale 因子的值（与 kernel 一致）
+                    l_run = l_run * rescale + p_scaled.sum(dim=-1)
                     m_run = torch.where(chunk_has, m_new, m_run)
+                    m_run_offset = torch.where(chunk_has, m_new_offset, m_run_offset)
+                    chunk_idx += 1
 
                 # any_valid 行：写回 attn=acc/l_run；空行保持 0 / EMPTY_LSE
                 any_valid = valid_mask.any(dim=-1)  # (nq,)
                 safe_l = torch.where(l_run > 0, l_run, torch.ones_like(l_run))
-                attn = acc / safe_l.view(nq, 1)  # (nq, D)
-                # lse = logsumexp(scores[valid]) per row
-                lse_scores = torch.where(
-                    valid_mask, scores, torch.full_like(scores, neg_inf)
-                )
-                lse = torch.logsumexp(lse_scores, dim=-1)  # (nq,)
+                if chunk_count <= 1:
+                    # 单 chunk：acc 不含 v_scale，与 kernel LastDivNew 对齐
+                    # output = pv_raw * v_scale / sum
+                    attn = acc * v_scale_value / safe_l.view(nq, 1)
+                else:
+                    # 多 chunk：acc 在第二个 chunk 已乘入 v_scale（isUpdatePre）
+                    attn = acc / safe_l.view(nq, 1)
+                # 与 kernel 对齐 lse 计算路径：lse = log(sum) + max
+                # kernel 中 sum 含 pScale 因子（exp(score - (actual_max - ln(pScale))) 之和），
+                # max 存储的是 actual_max - ln(pScale)。
+                # golden 中 l_run 含 pScale 因子，m_run_offset = actual_max - ln(pScale)，
+                # 故 lse = log(l_run) + m_run_offset 与 kernel 的 log(sum)+max 浮点路径一致，
+                # 避免与 torch.logsumexp 的不同浮点路径产生 1-2 ULP 差异导致量化边界问题。
+                safe_l_lse = torch.where(l_run > 0, l_run, torch.ones_like(l_run))
+                lse = torch.log(safe_l_lse) + m_run_offset  # (nq,)
 
                 for li, q_idx in enumerate(q_indices):
                     if not bool(any_valid[li].item()):
@@ -730,21 +813,17 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     seqused_q = torch.tensor(q_lengths, dtype=torch.int32)
     seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
 
-    if case["layout_q"] == "NTD":
-        query = _rand_fp8((n1, int(cu_seqlens_q[-1].item()), head_dim), generator)
-    else:
-        query = _rand_fp8((int(cu_seqlens_q[-1].item()), n1, head_dim), generator)
     cu_seqlens_q_input = cu_seqlens_q
     cu_seqlens_kv_input = cu_seqlens_kv
 
-    dense_key = _rand_fp8((batch, s2, n2, head_dim), generator)
-    dense_value = _rand_fp8((batch, s2, n2, head_dim), generator)
-    block_table = _make_block_table(
-        batch, s2, sparse_kv_block_size, case["block_table_pattern"], rng
-    )
-    q_scale, k_scale, dense_k_scale, v_scale, p_scale = _make_scales(
-        case, cu_seqlens_q, cu_seqlens_kv, kv_lengths
-    )
+    block_table = _make_block_table(batch, s2, sparse_kv_block_size, case["block_table_pattern"], rng)
+    case["data_generation_mode"] = "fia_style_fullquant"
+    case["data_range_left"] = DATA_RANGE_LEFT
+    case["data_range_right"] = DATA_RANGE_RIGHT
+    case["source_absmax"] = _source_absmax()
+    case["raw_fp8_absmax"] = FP8_E4M3_MAX
+    query, dense_key, dense_value, q_scale, k_scale, dense_k_scale, v_scale, p_scale = _make_fullquant_tensors(
+        case, cu_seqlens_q, cu_seqlens_kv, kv_lengths, generator)
     kv_cache_storage, kv_cache_meta = combined_kv_cache.pack_combined_kv_cache(
         dense_key,
         dense_value,
@@ -755,7 +834,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         case["layout_kv"],
     )
     combined_kv_cache.assert_combined_kv_views(kv_cache_storage, kv_cache_meta)
-    case["pa_block_stride"] = kv_cache_meta["pa_block_stride"]
     atten_mask = torch.tril(torch.ones((2048, 2048), dtype=torch.uint8)).T.contiguous()
     sparse_indices, sparse_seq_len = _make_sparse_indices(
         case, q_lengths, kv_lengths, rng
@@ -793,11 +871,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         kv_lengths,
     )
 
-    max_seqlen_q = max(q_lengths)
-    max_seqlen_kv = max(kv_lengths)
-    case["max_seqlen_q"] = max_seqlen_q
-    case["max_seqlen_kv"] = max_seqlen_kv
-
     golden = {
         "attention_out": attention_out,
         "softmax_lse": softmax_lse,
@@ -810,11 +883,8 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "num_heads_kv": n2,
             "head_dim": head_dim,
             "batch_size": batch,
-            "max_seqlen_q": max_seqlen_q,
-            "max_seqlen_kv": max_seqlen_kv,
             "layout_q": case["layout_q"],
             "layout_kv": case["layout_kv"],
-            "pa_block_stride": kv_cache_meta["pa_block_stride"],
         },
         "input": {
             "query": query,
@@ -832,12 +902,9 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "block_table": block_table,
             "atten_mask": atten_mask,
             "metadata": None,
-            "max_seqlen_q": max_seqlen_q,
-            "max_seqlen_kv": max_seqlen_kv,
             "softmax_scale": case["softmax_scale"],
             "sparse_q_block_size": sparse_q_block_size,
             "sparse_kv_block_size": sparse_kv_block_size,
-            "pa_block_stride": kv_cache_meta["pa_block_stride"],
             "layout_kv": case["layout_kv"],
             "layout_q": case["layout_q"],
             "layout_sparse_indices": case["layout_sparse_indices"],
