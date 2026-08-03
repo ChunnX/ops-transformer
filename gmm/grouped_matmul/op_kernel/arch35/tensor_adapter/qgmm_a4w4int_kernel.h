@@ -138,9 +138,23 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     //   16MB 系统保留区后的用户段基址，不能直接对原始 workspace 形参加偏移。
     // ============================================================
     constexpr uint64_t A4W4_MMOUT_PIPELINE = 4UL;  // 与 host A4W4_MMOUT_PIPELINE 一致
+    // reserved: bit0=weightIsNz, bit1=transB (host PostTiling 下发)。
+    const uint64_t weightFmtFlags = gmmBaseParams->reserved;
+    const bool weightIsNz = (weightFmtFlags & 1ULL) != 0;
+    const bool transB = (weightFmtFlags & 2ULL) != 0;
     // int4->int8 展开后体积: int4(0.5B/元素) -> int8(1B/元素)。weight[E,K,N], x[M,K]。
+    // NZ 展开后的 INT8 物理布局按 K/16、N/32 补齐，必须与 weight preprocess 的
+    // nzOutputNarrowBlockCount/nzOutputWideBlockCount 完全一致，避免后续 X workspace 重叠。
+    constexpr uint64_t INT8_NZ_K_ALIGN = 16UL;
+    constexpr uint64_t INT8_NZ_N_ALIGN = 32UL;
+    const uint64_t int8WeightK = weightIsNz
+        ? (static_cast<uint64_t>(gmmBaseParams->k) + INT8_NZ_K_ALIGN - 1UL) / INT8_NZ_K_ALIGN * INT8_NZ_K_ALIGN
+        : static_cast<uint64_t>(gmmBaseParams->k);
+    const uint64_t int8WeightN = weightIsNz
+        ? (static_cast<uint64_t>(gmmBaseParams->n) + INT8_NZ_N_ALIGN - 1UL) / INT8_NZ_N_ALIGN * INT8_NZ_N_ALIGN
+        : static_cast<uint64_t>(gmmBaseParams->n);
     const uint64_t int8WeightWs = static_cast<uint64_t>(gmmBaseParams->groupNum) *
-                                  static_cast<uint64_t>(gmmBaseParams->k) * gmmBaseParams->n;  // int8 字节
+                                  int8WeightK * int8WeightN;  // int8 字节
     const uint64_t int8XWs = static_cast<uint64_t>(gmmBaseParams->m) *
                              static_cast<uint64_t>(gmmBaseParams->k);  // int8 字节
     const uint64_t mmOutWs = A4W4_MMOUT_PIPELINE * gmmBaseParams->baseM * gmmBaseParams->baseN *
@@ -178,9 +192,6 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     // inputTransposedNz: weight 为 NZ 且 transB 时, weightPreprocessOp_ 走 ConvertTransposedNzTile
     // ([E,N,K] int4 NZ -> [E,K,N] int8 NZ); 否则走标准 NZ/ND 路径。
     // host tiling 通过 GMMBaseParamsA4W4.reserved 下发: bit0=weightIsNz, bit1=transB。
-    const uint64_t weightFmtFlags = gmmBaseParams->reserved;
-    const bool weightIsNz = (weightFmtFlags & 1ULL) != 0;
-    const bool transB = (weightFmtFlags & 2ULL) != 0;
     weightPreprocessParams.inputTransposedNz = weightIsNz && transB;
 
     // XPreprocess: int4 x -> int8 workspace(AIV, A4W4 独有)。
