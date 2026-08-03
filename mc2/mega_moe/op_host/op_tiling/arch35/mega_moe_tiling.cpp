@@ -177,6 +177,8 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
     auto combineQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrCombineQuantModeIndex));
     auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrCommAlgIndex));
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
+    auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrActivationIndex));
+    auto activationParamsPtr = attrs->GetListFloat(config.attrActivationParamsIndex);
 
     OP_TILING_CHECK(moeExpertNumPtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "moeExpertNum"), return ge::GRAPH_FAILED);
@@ -184,18 +186,36 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "epWorldSize"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(cclBufferSizePtr == nullptr || *cclBufferSizePtr < 0,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "cclBufferSize"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(maxRecvTokenNumPtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "maxRecvTokenNum"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(dispatchQuantModePtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "dispatchQuantMode"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(dispatchQuantOutDtypePtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "dispatchQuantOutDtype"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(combineQuantModePtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "combineQuantMode"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(commAlgPtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "commAlg"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "numMaxTokensPerRank"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(maxRecvTokenNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "maxRecvTokenNum"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(dispatchQuantModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "dispatchQuantMode"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(dispatchQuantOutDtypePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "dispatchQuantOutDtype"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(combineQuantModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "combineQuantMode"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(commAlgPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "commAlg"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "numMaxTokensPerRank"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(activationPtr == nullptr || std::strcmp(activationPtr, "swiglu") != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr == nullptr ? "null" : activationPtr,
+                                              "A5 only supports swiglu"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(activationParamsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParams"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(activationParamsPtr->GetSize() != 1U,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationParamsSize",
+                                              std::to_string(activationParamsPtr->GetSize()).c_str(),
+                                              "should be 1 for swiglu"),
+                    return ge::GRAPH_FAILED);
+    const float *activationParams = activationParamsPtr->GetData();
+    OP_TILING_CHECK(activationParams == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParamsData"),
+                    return ge::GRAPH_FAILED);
+    const float activationClamp = activationParams[0];
+    OP_TILING_CHECK(activationClamp < 0 || std::isnan(activationClamp),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationClamp", std::to_string(activationClamp).c_str(),
+                                              "should be >= 0 and not NAN"),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -343,6 +363,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
 
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>((config.attrEpWorldSizeIndex));
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
+    auto activationParamsPtr = attrs->GetListFloat(config.attrActivationParamsIndex);
 
     tilingData->epWorldSize = *epWorldSizePtr;
     tilingData->maxOutputSize = *maxRecvTokenNumPtr != 0 ?
@@ -350,7 +371,12 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         tilingData->bs * tilingData->epWorldSize *
         std::min(tilingData->topK, tilingData->expertPerRank);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
-    tilingData->dispatchRows = 2;
+    tilingData->combineQuantMode = GetCombineQuantModeByAttr(context, config);
+    tilingData->clampLimit = activationParamsPtr->GetData()[0];
+    tilingData->actMode = 0U;    // ACT_MODE_SWIGLU, 功能关闭
+    tilingData->actSubMode = 0U; // ACT_SUB_MODE_DEFAULT
+    tilingData->activationAlpha = 1.0f;
+    tilingData->activationBeta = 1.0f;
 
     return ge::GRAPH_SUCCESS;
 }

@@ -126,6 +126,9 @@ public:
         // `expertPerRank - 1`; BF16 path historically uses `expertPerRank - 2`.
         uint32_t epilogueGranularity{0};
         float swigluLimit;
+        uint32_t activationCode{0};
+        float activationParams1{Epilogue::SwigluOaiActivation::DEFAULT_ALPHA};
+        float activationParams2{Epilogue::SituActivation::DEFAULT_BETA};
         GM_ADDR contextGM{nullptr};
         GM_ADDR tilingGM{nullptr};
         MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
@@ -144,18 +147,18 @@ public:
                GM_ADDR moeInitRoutingQuantV2Scale_, GM_ADDR moeInitRoutingQuantV2Offset_,
                GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
-               MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_,
-               uint32_t epilogueGranularity_ = 0,
-               float swigluLimit_ = std::numeric_limits<float>::infinity(), GM_ADDR tilingGM_ = nullptr)
-            : problemShape(problemShape_), EP(EP_), listLen(listLen_),
-              expertPerRank(expertPerRank_), maxOutputSize(maxOutputSize_), topK(topK_),
-              initRoutingQuantTilingKey(initRoutingQuantTilingKey_), epilogueCoreNum(epilogueCoreNum_),
-              epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_), contextGM(contextGM_),
-              tilingGM(tilingGM_),
-              ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
-              layoutA(layoutA_), layoutA2(layoutA2_),
-              ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)), layoutB1(layoutB1_),
-              ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
+               MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_, uint32_t epilogueGranularity_ = 0,
+               float swigluLimit_ = std::numeric_limits<float>::infinity(), uint32_t activationCode_ = 0,
+               float activationParams1_ = Epilogue::SwigluOaiActivation::DEFAULT_ALPHA,
+               float activationParams2_ = Epilogue::SituActivation::DEFAULT_BETA, GM_ADDR tilingGM_ = nullptr)
+            : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
+              maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
+              epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
+              activationCode(activationCode_), activationParams1(activationParams1_),
+              activationParams2(activationParams2_),
+              contextGM(contextGM_), tilingGM(tilingGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
+              layoutA(layoutA_), layoutA2(layoutA2_), ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
+              layoutB1(layoutB1_), ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
               ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)), layoutB2(layoutB2_),
               ptrBias2(reinterpret_cast<__gm__ float *>(ptrBias2_)),
               ptrScale1(reinterpret_cast<__gm__ ElementScale *>(ptrScale1_)), layoutScale1(layoutScale1_),
@@ -879,22 +882,30 @@ private:
     }
 
     CATLASS_DEVICE
+    void ResetGmBuffer(AscendC::GlobalTensor<int32_t> &dst, AscendC::LocalTensor<int32_t> &zeroBuffer, int32_t num)
+    {
+        for (int32_t offset = 0; offset < num; offset += UB_MOVE_NUM) {
+            int32_t remainingNum = num - offset;
+            int32_t currentNum = remainingNum < UB_MOVE_NUM ? remainingNum : UB_MOVE_NUM;
+            AscendC::DataCopy(dst[offset], zeroBuffer, currentNum);
+        }
+    }
+
+    CATLASS_DEVICE
     void ResetTokenPerExpert(const Params &params, int32_t num)
     {
-        if (coreIdx != coreNum - 1) {
+        if (coreNum == 0 || coreIdx != coreNum - 1 || num <= 0) {
             return;
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
         AscendC::LocalTensor<int32_t> tmp = resource.ubBuf.template GetBufferByByte<int32_t>(0);
-        AscendC::Duplicate(tmp, 0, num);
+        AscendC::Duplicate(tmp, 0, UB_MOVE_NUM);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
 
         // 1) tokenPerExpert winIn
-        AscendC::DataCopy(tokenPerExpert, tmp, num);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        ResetGmBuffer(tokenPerExpert, tmp, num);
 
         // 2) tokenPerExpert winOut
         AscendC::GlobalTensor<int32_t> tokenPerExpertWinOut;
@@ -1338,11 +1349,13 @@ private:
                 int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
                 blockEpilogue1(gmC[gmOffsetC * 2], shapeC, gmPerTokenScale1[rowStartThisCore],
                     reinterpret_cast<__gm__ float *>(params.ptrBias1), gmA2I4_I8[gmOffsetD],
-                    cumsumMM[tokenPerExpertLayout(
-                        params.EP - 1, RuntimeRank(params), 0) - tokenPerExpertLayout(0, params.EP - 1, 0)],
+                               cumsumMM[tokenPerExpertLayout(params.EP - 1, RuntimeRank(params), 0) -
+                                        tokenPerExpertLayout(0, params.EP - 1, 0)],
                     rowStartThisCore, gmPerTokenScale2[rowStartThisCore], params.expertPerRank, params.EP,
-                    RuntimeRank(params), params.listLen, resource,
-                    params.epilogueCoreNum, params.swigluLimit, params.gmmOutPreRowStride);
+                               RuntimeRank(params), params.listLen, resource, params.epilogueCoreNum,
+                               params.swigluLimit, params.activationCode, params.activationParams1,
+                               params.activationParams2,
+                               params.gmmOutPreRowStride);
             }
             AscendC::SyncAll<true>();
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAGV2C);

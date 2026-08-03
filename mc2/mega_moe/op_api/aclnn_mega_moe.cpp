@@ -9,6 +9,9 @@
  */
 
 #include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <limits>
 #include <vector>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
@@ -78,14 +81,101 @@ static void CreateEmptyTensor(aclDataType dataType, const aclTensorList *&ioList
     }
 }
 
+static void CreateEmptyTensorWithFormat(aclDataType dataType, ge::Format format, const aclTensorList *&ioList,
+                                        aclTensorList *&outList, aclOpExecutor *executor)
+{
+    if (ioList == nullptr) {
+        std::vector<aclTensor *> emptyTensors;
+        aclTensor *emptyTensor = executor->AllocTensor({0}, static_cast<op::DataType>(dataType));
+        emptyTensor->SetStorageFormat(format);
+        emptyTensor->SetViewFormat(format);
+        emptyTensors.emplace_back(emptyTensor);
+        outList = executor->AllocTensorList(emptyTensors.data(), emptyTensors.size());
+        ioList = outList;
+    }
+}
+
+static bool IsValidActivationClamp(float value)
+{
+    return value >= 0.0f && !std::isnan(value);
+}
+
+static bool IsFiniteActivationParam(float value)
+{
+    return std::isfinite(value);
+}
+
+static bool IsValidSituScale(float value)
+{
+    return std::isfinite(value) && value != 0.0f;
+}
+
+static bool CheckActivationParams(const char *activation, const aclFloatArray *activationParams)
+{
+    const size_t paramCount = activationParams->Size();
+    const float *params = activationParams->GetData();
+    if (params == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "activationParams data must not be null.");
+        return false;
+    }
+
+    const bool isSwiglu = std::strcmp(activation, "swiglu") == 0;
+    const bool isSwigluStep = std::strcmp(activation, "swiglustep") == 0;
+    const bool isSwigluOai = std::strcmp(activation, "swigluoai") == 0;
+    const bool isSituGlu = std::strcmp(activation, "situglu") == 0;
+
+    if (!isSwiglu && !isSwigluStep && !isSwigluOai && !isSituGlu) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported activation '%s'.", activation);
+        return false;
+    }
+    if ((isSwiglu || isSwigluStep) && paramCount != 1U) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s expects activationParams=[clamp], but got %zu values.", activation,
+                paramCount);
+        return false;
+    }
+    if (isSwigluOai && paramCount != 3U) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "swigluoai expects activationParams=[clamp, alpha, beta], but got %zu values.",
+                paramCount);
+        return false;
+    }
+    if (isSituGlu && (paramCount < 1U || paramCount > 2U)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "situglu expects activationParams=[beta] or [beta, linear_beta], but got %zu values.", paramCount);
+        return false;
+    }
+
+    if (!isSituGlu && !IsValidActivationClamp(params[0])) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "activation clamp must be >= 0 and not NAN, but got %f.", params[0]);
+        return false;
+    }
+    if (isSwigluOai && !IsFiniteActivationParam(params[1])) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "activation alpha must be finite, but got %f.", params[1]);
+        return false;
+    }
+    if (isSwigluOai && !IsFiniteActivationParam(params[2])) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "swigluoai beta must be finite, but got %f.", params[2]);
+        return false;
+    }
+    if (isSituGlu && !IsValidSituScale(params[0])) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "situglu beta must be finite and non-zero, but got %f.", params[0]);
+        return false;
+    }
+    if (isSituGlu && paramCount == 2U && !IsValidSituScale(params[1])) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "situglu linear_beta must be finite and non-zero, but got %f.", params[1]);
+        return false;
+    }
+    return true;
+}
+
 aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *topkIds, const aclTensor *topkWeights,
     const aclTensorList *weight1, const aclTensorList *weight2, const aclTensorList *weightScales1Optional,
     const aclTensorList *weightScales2Optional, const aclTensorList *bias1Optional, const aclTensorList *bias2Optional,
     const aclTensor *xActiveMaskOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
-    const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp, aclTensor *yOut,
-    aclTensor *expertTokenNumsOut, uint64_t *workspaceSize, aclOpExecutor **executor)
+    const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, const aclFloatArray *activationParams,
+    int64_t topoType, int64_t rankNumPerServer, int64_t topkWeightsType, aclTensor *yOut, aclTensor *expertTokenNumsOut,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
 
@@ -95,15 +185,17 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     OP_CHECK_NULL(topkWeights, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(weight1, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(weight2, return ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_COND(activation != nullptr, ACLNN_ERR_PARAM_NULLPTR, "activation must not be nullptr.");
+    OP_CHECK_NULL(activationParams, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(yOut, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(expertTokenNumsOut, return ACLNN_ERR_PARAM_NULLPTR);
 
-    CHECK_COND(moeExpertNum > 0, ACLNN_ERR_PARAM_INVALID,
-        "moeExpertNum must be > 0, got %ld.", moeExpertNum);
-    CHECK_COND(epWorldSize > 0, ACLNN_ERR_PARAM_INVALID,
-        "epWorldSize must be > 0, got %ld.", epWorldSize);
-    CHECK_COND(maxRecvTokenNum >= 0, ACLNN_ERR_PARAM_INVALID,
-        "maxRecvTokenNum must be >= 0, got %ld.", maxRecvTokenNum);
+    CHECK_COND(moeExpertNum > 0, ACLNN_ERR_PARAM_INVALID, "moeExpertNum must be > 0, got %ld.", moeExpertNum);
+    CHECK_COND(epWorldSize > 0, ACLNN_ERR_PARAM_INVALID, "epWorldSize must be > 0, got %ld.", epWorldSize);
+    CHECK_COND(maxRecvTokenNum >= 0, ACLNN_ERR_PARAM_INVALID, "maxRecvTokenNum must be >= 0, got %ld.",
+               maxRecvTokenNum);
+    CHECK_COND(CheckActivationParams(activation, activationParams), ACLNN_ERR_PARAM_INVALID,
+               "activationParams is invalid for activation '%s'.", activation);
 
     // 确保 executor 已创建，以便调用 CreateEmptyTensor
     if (*executor == nullptr) {
@@ -130,11 +222,12 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     }
 
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
-        context, x, topkIds, topkWeights, weight1, weight2,
-        weightScales1Optional, weightScales2Optional, bias1Optional, bias2Optional,
-        xActiveMaskOptional, nullptr, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
-        dispatchQuantMode, dispatchQuantOutDtype, combineQuantMode, const_cast<char *>(commAlg), 0,
-        const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, yOut, expertTokenNumsOut,
+        context, x, topkIds, topkWeights, weight1, weight2, weightScales1Optional, weightScales2Optional, bias1Optional,
+        bias2Optional, xActiveMaskOptional, nullptr, sharedWeight1Optional, sharedWeight2Optional,
+        sharedWeightScales1Optional, sharedWeightScales2Optional, sharedBias1Optional, sharedBias2Optional,
+        moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantOutDtype,
+        combineQuantMode, const_cast<char *>(commAlg), 0, const_cast<char *>(activation), activationParams,
+        ge::DT_UNDEFINED, false, false, 0, topoType, rankNumPerServer, topkWeightsType, yOut, expertTokenNumsOut,
         workspaceSize, executor);
 
     return getWorkspaceSizesRes;

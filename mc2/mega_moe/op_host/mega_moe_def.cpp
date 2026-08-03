@@ -102,11 +102,14 @@ public:
     this->Attr("comm_alg").AttrType(OPTIONAL).String("");
     this->Attr("num_max_tokens_per_rank").AttrType(OPTIONAL).Int(0);
     this->Attr("activation").AttrType(OPTIONAL).String("swiglu");
-    this->Attr("activation_clamp").AttrType(OPTIONAL).Float(std::numeric_limits<float>::max());
+        this->Attr("activation_params").AttrType(OPTIONAL).ListFloat({std::numeric_limits<float>::max()});
     this->Attr("activation_out_dtype").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
     this->Attr("transpose_weight1").AttrType(OPTIONAL).Bool(false);
     this->Attr("transpose_weight2").AttrType(OPTIONAL).Bool(false);
     this->Attr("weight1_interleave").AttrType(OPTIONAL).Int(0);
+        this->Attr("topo_type").AttrType(OPTIONAL).Int(0);
+        this->Attr("rank_num_per_server").AttrType(OPTIONAL).Int(2); // 最少2个rank
+        this->Attr("topk_weights_type").AttrType(OPTIONAL).Int(0);
 
     OpAICoreConfig aicore_config;
     aicore_config.DynamicCompileStaticFlag(true)
