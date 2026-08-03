@@ -29,8 +29,7 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
            const c10::optional<std::vector<at::Tensor>> &sharedBias1,
            const c10::optional<std::vector<at::Tensor>> &sharedBias2, int64_t maxRecvTokenNum,
            int64_t dispatchQuantMode, int64_t combineQuantMode, std::string commAlg, int64_t numMaxTokensPerRank,
-           std::string activation, c10::optional<float> activationClamp, float activationAlpha, float activationBeta,
-           c10::optional<float> activationLinearBeta, c10::optional<int64_t> dispatchQuantOutDtype,
+           std::string activation, const py::dict &activationParamsDict, c10::optional<int64_t> dispatchQuantOutDtype,
            c10::optional<int64_t> weight1Type, c10::optional<int64_t> weight2Type, c10::optional<int64_t> topoType,
            c10::optional<int64_t> rankNumPerServer, int64_t topkWeightsType)
 {
@@ -94,16 +93,23 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     std::string activationStr = std::string(activation);
     char *activationPtr = const_cast<char *>(activationStr.c_str());
 
-    float activationClampValue = activationClamp.value_or(std::numeric_limits<float>::max());
+    auto getActivationParam = [&activationParamsDict](const char *name, float defaultValue) {
+        auto key = py::str(name);
+        return activationParamsDict.contains(key) ? py::cast<float>(activationParamsDict[key]) : defaultValue;
+    };
+    float activationClamp = getActivationParam("clamp", std::numeric_limits<float>::max());
+    float activationAlpha = getActivationParam("alpha", 1.702f);
+    float activationBeta = getActivationParam("beta", 1.0f);
     std::vector<float> activationParams;
     if (activationStr == "swiglu" || activationStr == "swiglustep") {
-        activationParams = {activationClampValue};
+        activationParams = {activationClamp};
     } else if (activationStr == "swigluoai") {
-        activationParams = {activationClampValue, activationAlpha, activationBeta};
+        activationParams = {activationClamp, activationAlpha, activationBeta};
     } else if (activationStr == "situglu") {
         activationParams = {activationBeta};
-        if (activationLinearBeta.has_value()) {
-            activationParams.emplace_back(activationLinearBeta.value());
+        auto linearBetaKey = py::str("linearbeta");
+        if (activationParamsDict.contains(linearBetaKey)) {
+            activationParams.emplace_back(py::cast<float>(activationParamsDict[linearBetaKey]));
         }
     } else {
         TORCH_CHECK(false, "Unsupported activation: ", activationStr);

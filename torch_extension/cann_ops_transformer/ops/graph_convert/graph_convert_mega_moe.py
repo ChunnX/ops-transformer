@@ -226,31 +226,30 @@ if _TORCHAIR_AVAILABLE:
         comm_alg: str = "",
         num_max_tokens_per_rank: int = 0,
         activation: str = "swiglu",
-        activation_clamp: Optional[float] = None,
-        activation_alpha: float = 1.702,
-        activation_beta: float = 1.0,
-        activation_linear_beta: Optional[float] = None,
+        activation_params: Optional[Dict[str, float]] = None,
         dispatch_quant_out_dtype: int = 28,
         weight1_type: int = 28,
         weight2_type: int = 28,
         topk_weights_type: int = 0,
         meta_outputs: TensorSpec = None,
     ):
-        activation_clamp_value = (
-            3.4028234663852886e38 if activation_clamp is None else activation_clamp
-        )
+        activation_params = activation_params or {}
+        activation_clamp = activation_params.get("clamp", 3.4028234663852886e38)
+        activation_alpha = activation_params.get("alpha", 1.702)
+        activation_beta = activation_params.get("beta", 1.0)
+        activation_linear_beta = activation_params.get("linearbeta")
         if activation in ("swiglu", "swiglustep"):
-            activation_params = [activation_clamp_value]
+            activation_values = [activation_clamp]
         elif activation == "swigluoai":
-            activation_params = [
-                activation_clamp_value,
+            activation_values = [
+                activation_clamp,
                 activation_alpha,
                 activation_beta,
             ]
         elif activation == "situglu":
-            activation_params = [activation_beta]
+            activation_values = [activation_beta]
             if activation_linear_beta is not None:
-                activation_params.append(activation_linear_beta)
+                activation_values.append(activation_linear_beta)
         else:
             raise ValueError(f"Unsupported activation: {activation}")
         return MegaMoe(
@@ -275,6 +274,6 @@ if _TORCHAIR_AVAILABLE:
             comm_alg=comm_alg,
             num_max_tokens_per_rank=num_max_tokens_per_rank,
             activation=activation,
-            activation_params=activation_params,
+            activation_params=activation_values,
             topk_weights_type=topk_weights_type,
         )
