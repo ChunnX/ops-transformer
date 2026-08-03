@@ -10,6 +10,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import json
 import os
 import torch
 import torch_npu
@@ -21,6 +22,83 @@ import math
 import cann_ops_transformer
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
+
+
+def dump_metadata(metadata, output_path="mixed_quant_sparse_flash_mla_metadata.json"):
+    fa_field_names = (
+        "core_enable",
+        "bn2_start_idx",
+        "m_start_idx",
+        "s2_start_idx",
+        "bn2_end_idx",
+        "m_end_idx",
+        "s2_end_idx",
+        "first_fd_data_workspace_idx",
+        "s2_max_num",
+    )
+    fd_field_names = (
+        "core_enable",
+        "bn2_idx",
+        "m_idx",
+        "workspace_idx",
+        "workspace_num",
+        "m_start_idx",
+        "m_num",
+        "reserved",
+    )
+    aic_core_num = 36
+    aiv_core_num = 72
+    fa_offset = 0
+    fd_offset = aic_core_num * len(fa_field_names)
+    required_elements = fd_offset + aiv_core_num * len(fd_field_names)
+
+    metadata_values = [
+        int(value) & 0xFFFFFFFF
+        for value in metadata.detach().cpu().reshape(-1).tolist()
+    ]
+    if len(metadata_values) < required_elements:
+        raise ValueError(
+            f"metadata has {len(metadata_values)} elements, expected at least "
+            f"{required_elements}"
+        )
+
+    parsed_metadata = {
+        "fa": [
+            {
+                "aic_idx": core_idx,
+                **dict(
+                    zip(
+                        fa_field_names,
+                        metadata_values[
+                            fa_offset
+                            + core_idx * len(fa_field_names) : fa_offset
+                            + (core_idx + 1) * len(fa_field_names)
+                        ],
+                    )
+                ),
+            }
+            for core_idx in range(aic_core_num)
+        ],
+        "fd": [
+            {
+                "aiv_idx": core_idx,
+                **dict(
+                    zip(
+                        fd_field_names,
+                        metadata_values[
+                            fd_offset
+                            + core_idx * len(fd_field_names) : fd_offset
+                            + (core_idx + 1) * len(fd_field_names)
+                        ],
+                    )
+                ),
+            }
+            for core_idx in range(aiv_core_num)
+        ],
+    }
+    with open(output_path, "w", encoding="utf-8") as metadata_file:
+        json.dump(parsed_metadata, metadata_file, indent=2)
+    print(f"parsed metadata saved to {os.path.abspath(output_path)}")
 
 
 class Network(torch.nn.Module):
@@ -259,7 +337,6 @@ def test_mqsmla_quant_process_ci(test_data, device_id=0):
     cpu_output = test_data["cpu_output"]
     cpu_lse = test_data.get("cpu_lse")
     torch_npu.npu.set_device(device_id)
-
     print("test_data:", params)
     print("mixed_quant_sparse_flash_mla_metadata...")
     metadata = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(
@@ -321,6 +398,7 @@ def test_mqsmla_quant_process_ci(test_data, device_id=0):
     )
     torch.npu.synchronize()
     metadata.npu()
+    dump_metadata(metadata)
     print("mixed_quant_sparse_flash_mla...")
     npu_result, npu_lse = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
         q=op_input["q"].npu() if op_input["q"] is not None else None,

@@ -212,7 +212,7 @@ class GeneralizedSFAQuant:
         s2_base_size = 128
 
         for i_B in range(B):
-            print(f"i_B = {i_B}/{B}")
+            print(f"i_B = {i_B + 1}/{B}")
             cur_act_q = act_q[i_B]
             cur_ori_act_kv = seqused_ori_kv[i_B]
             cur_cmp_act_kv = seqused_cmp_kv[i_B] if seqused_cmp_kv is not None else 0
@@ -288,7 +288,13 @@ class GeneralizedSFAQuant:
                         )
                     elif self.template_run_mode == "HCA":
                         empty_flag, cur_cmp_k = self.mask_cmp_kv(
-                            cmp_k_bnsd, i_B, i_N2, i_S1, cur_ori_act_kv, cur_act_q
+                            cmp_k_bnsd,
+                            i_B,
+                            i_N2,
+                            i_S1,
+                            cur_ori_act_kv,
+                            cur_cmp_act_kv,
+                            cur_act_q,
                         )
                     elif (
                         self.template_run_mode == "ORI_SPARSE"
@@ -539,12 +545,13 @@ class GeneralizedSFAQuant:
             k_sparse = k_tensor[i_B, i_N2, s2_sparse, :]
         return empty_flag, k_sparse
 
-    def mask_cmp_kv(self, k_tensor, i_B, i_N2, i_S1, cur_act_kv, cur_act_q):
+    def mask_cmp_kv(self, k_tensor, i_B, i_N2, i_S1, cur_act_kv, cur_act_cmp_kv, cur_act_q):
         threshold = 0
         if self.cmp_mask_mode == 3:
             threshold = (cur_act_kv - cur_act_q + i_S1 + 1) // self.cmp_ratio
         elif self.cmp_mask_mode == 0:
             threshold = cur_act_kv // self.cmp_ratio
+        threshold = min(threshold, cur_act_cmp_kv)
         empty_flag = True
         k_sparse = []
         if threshold > 0:
@@ -2125,6 +2132,10 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     return test_data
     """
 
+    torch.manual_seed(0)
+    np.random.seed(0)
+    random.seed(0)
+
     Testcase_Name = params["Testcase_Name"]
     layout_q = params["layout_q"]
     layout_kv = params["layout_kv"]
@@ -2270,7 +2281,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     sinks = torch.tensor(
         np.random.uniform(q_datarange[0] / 10, q_datarange[1] / 10, (N1))
     ).to(torch.float)
-
+    # sinks = torch.full((N1,), float("-inf"), dtype=torch.float)
     # generate ori_kv tensor
     if quant_mode == 1:
         (
