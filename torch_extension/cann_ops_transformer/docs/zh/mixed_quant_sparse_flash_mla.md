@@ -505,7 +505,7 @@ metadata校验
                               <li>当cmp_kv不传时，ori_mask_mode为3、4</li>
                               <li>当ori_mask_mode为3时，cmp_mask_mode必须为3</li>
                               <li>当ori_mask_mode为4时，cmp_mask_mode必须为3</li>
-                      <ul>
+                     </ul>
             </td>
         </tr>
         <tr>
