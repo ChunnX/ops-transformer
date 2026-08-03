@@ -42,6 +42,9 @@ constexpr char kTransposeType[] = "Transpose";
 constexpr char kTransposeDType[] = "TransposeD";
 constexpr char kReshapeType[] = "Reshape";
 constexpr char kBitcastType[] = "Bitcast";
+constexpr char kShapeType[] = "Shape";
+constexpr char kGatherType[] = "Gather";
+constexpr char kPackType[] = "Pack";
 constexpr char kTestCsvFile[] = "test_grouped_matmul_transpose_fusion_pass.csv";
 constexpr size_t kCaseFieldNum = 26;
 bool gVersionKeyValid = false;
@@ -123,6 +126,9 @@ DataType ParseDataType(const std::string &value)
     }
     if (value == "DT_FLOAT4_E2M1") {
         return DT_FLOAT4_E2M1;
+    }
+    if (value == "DT_FLOAT8_E4M3FN") {
+        return DT_FLOAT8_E4M3FN;
     }
     throw std::runtime_error("Unsupported data type: " + value);
 }
@@ -328,6 +334,82 @@ void AddUnaryNode(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, TensorWith
     LinkUnaryNode(graph, graphBuilder, input, node, outputDesc);
 }
 
+GNode BuildInt64ScalarConst(Graph *graph, const char *name, int64_t value)
+{
+    auto desc = MakeTensorDesc({}, DT_INT64);
+    auto constNode = ge::es::CompliantNodeBuilder(graph)
+                         .OpType("Const")
+                         .Name(name)
+                         .IrDefOutputs({{"y", ge::es::CompliantNodeBuilder::kEsIrOutputRequired, ""}})
+                         .Build();
+    constNode.UpdateOutputDesc(0, desc);
+    Tensor tensor(desc, reinterpret_cast<const uint8_t *>(&value), sizeof(value));
+    constNode.SetAttr("value", tensor);
+    return constNode;
+}
+
+void AddDynamicSwapReshape(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, TensorWithDesc &input,
+                           bool validSwap)
+{
+    auto shapeDesc = MakeTensorDesc({2}, DT_INT64);
+    auto shapeNode = ge::es::CompliantNodeBuilder(graph)
+                         .OpType(kShapeType)
+                         .Name("shapePerToken")
+                         .IrDefInputs({{"x", ge::es::CompliantNodeBuilder::kEsIrInputRequired, ""}})
+                         .IrDefOutputs({{"y", ge::es::CompliantNodeBuilder::kEsIrOutputRequired, ""}})
+                         .Build();
+    ge::es::AddEdgeAndUpdatePeerDesc(
+        *graph, *input.tensor.GetProducer(), input.tensor.GetProducerOutIndex(), shapeNode, 0);
+    shapeNode.UpdateInputDesc(0, input.desc);
+    shapeNode.UpdateOutputDesc(0, shapeDesc);
+
+    auto gatherNode = ge::es::CompliantNodeBuilder(graph)
+                          .OpType(kGatherType)
+                          .Name("gatherPerTokenDim")
+                          .IrDefInputs({{"x", ge::es::CompliantNodeBuilder::kEsIrInputRequired, ""},
+                                        {"indices", ge::es::CompliantNodeBuilder::kEsIrInputRequired, ""}})
+                          .IrDefOutputs({{"y", ge::es::CompliantNodeBuilder::kEsIrOutputRequired, ""}})
+                          .Build();
+    auto gatherIndexNode = BuildInt64ScalarConst(graph, "gatherPerTokenIndex", validSwap ? 1 : 0);
+    auto scalarDesc = MakeTensorDesc({}, DT_INT64);
+    ge::es::AddEdgeAndUpdatePeerDesc(*graph, shapeNode, 0, gatherNode, 0);
+    ge::es::AddEdgeAndUpdatePeerDesc(*graph, gatherIndexNode, 0, gatherNode, 1);
+    gatherNode.UpdateInputDesc(0, shapeDesc);
+    gatherNode.UpdateInputDesc(1, scalarDesc);
+    gatherNode.UpdateOutputDesc(0, scalarDesc);
+
+    auto packNode = ge::es::CompliantNodeBuilder(graph)
+                        .OpType(kPackType)
+                        .Name("packPerTokenShape")
+                        .IrDefInputs({{"x", ge::es::CompliantNodeBuilder::kEsIrInputDynamic, ""}})
+                        .IrDefOutputs({{"y", ge::es::CompliantNodeBuilder::kEsIrOutputRequired, ""}})
+                        .InstanceDynamicInputNum("x", 2)
+                        .Build();
+    auto unitNode = BuildInt64ScalarConst(graph, "perTokenUnitDim", 1);
+    ge::es::AddEdgeAndUpdatePeerDesc(*graph, gatherNode, 0, packNode, 0);
+    ge::es::AddEdgeAndUpdatePeerDesc(*graph, unitNode, 0, packNode, 1);
+    packNode.UpdateInputDesc(0, scalarDesc);
+    packNode.UpdateInputDesc(1, scalarDesc);
+    packNode.UpdateOutputDesc(0, shapeDesc);
+
+    auto outputDesc = MakeTensorDesc({-1, -1}, input.desc.GetDataType());
+    auto reshapeNode = ge::es::CompliantNodeBuilder(graph)
+                           .OpType(kReshapeType)
+                           .Name("reshapePerTokenDynamicSwap")
+                           .IrDefInputs({{"x", ge::es::CompliantNodeBuilder::kEsIrInputRequired, ""},
+                                         {"shape", ge::es::CompliantNodeBuilder::kEsIrInputRequired, ""}})
+                           .IrDefOutputs({{"y", ge::es::CompliantNodeBuilder::kEsIrOutputRequired, ""}})
+                           .Build();
+    ge::es::AddEdgeAndUpdatePeerDesc(
+        *graph, *input.tensor.GetProducer(), input.tensor.GetProducerOutIndex(), reshapeNode, 0);
+    ge::es::AddEdgeAndUpdatePeerDesc(*graph, packNode, 0, reshapeNode, 1);
+    reshapeNode.UpdateInputDesc(0, input.desc);
+    reshapeNode.UpdateInputDesc(1, shapeDesc);
+    reshapeNode.UpdateOutputDesc(0, outputDesc);
+    input.tensor = ge::es::EsTensorHolder(graphBuilder.GetCGraphBuilder()->GetTensorHolderFromNode(reshapeNode, 0));
+    input.desc = outputDesc;
+}
+
 void AddTransposeIfNeeded(Graph *graph, ge::es::EsGraphBuilder &graphBuilder, TensorWithDesc &input, bool enabled,
                           const char *opType, const char *name, const std::vector<int64_t> &perm)
 {
@@ -440,6 +522,17 @@ GraphPtr BuildGraph(const GroupedMatmulTransposeFusionPassParam &param)
         AddUnaryNode(graph, graphBuilder, scaleInput, kReshapeType, "reshapeScale",
                      MakeTensorDesc(outputShape, scaleDtype));
         optionalInputs.emplace_back("scale", scaleInput);
+    } else if (param.scenario == "per_token_dynamic_swap" ||
+               param.scenario == "per_token_dynamic_swap_invalid") {
+        const std::vector<int64_t> sourceShape = {1, -1};
+        auto perTokenDesc = MakeTensorDesc(sourceShape, DT_FLOAT);
+        auto perTokenTensor = graphBuilder.CreateInput(
+            graphInputIndex++, "dataPerTokenScale", DT_FLOAT, FORMAT_ND, sourceShape);
+        perTokenTensor.GetProducer()->UpdateOutputDesc(0, perTokenDesc);
+        TensorWithDesc perTokenInput{perTokenTensor, perTokenDesc};
+        AddDynamicSwapReshape(
+            graph, graphBuilder, perTokenInput, param.scenario == "per_token_dynamic_swap");
+        optionalInputs.emplace_back("per_token_scale", perTokenInput);
     } else if (param.scenario == "mx_per_token") {
         const std::vector<int64_t> scaleShape = {2, 1, 64, 2};
         auto scaleDesc = MakeTensorDesc(scaleShape, DT_FLOAT8_E8M0);

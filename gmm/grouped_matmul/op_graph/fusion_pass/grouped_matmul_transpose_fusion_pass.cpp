@@ -52,6 +52,9 @@ constexpr char kOpTypeTransposeD[] = "TransposeD";
 constexpr char kOpTypeReshape[] = "Reshape";
 constexpr char kOpTypeBitcast[] = "Bitcast";
 constexpr char kOpTypeConst[] = "Const";
+constexpr char kOpTypeShape[] = "Shape";
+constexpr char kOpTypeGather[] = "Gather";
+constexpr char kOpTypePack[] = "Pack";
 constexpr char kTransposeXAttr[] = "transpose_x";
 constexpr char kTransposeWeightAttr[] = "transpose_weight";
 constexpr char kXInputName[] = "x";
@@ -151,6 +154,78 @@ bool IsUnknownDim(int64_t dim)
 bool IsSameOrBothUnknown(int64_t lhs, int64_t rhs)
 {
     return lhs == rhs || (IsUnknownDim(lhs) && IsUnknownDim(rhs));
+}
+
+bool GetConstScalar(const GNode& node, int32_t inputIndex, int64_t& value)
+{
+    Tensor tensor;
+    TensorDesc desc;
+    if (node.GetInputConstData(inputIndex, tensor) != GRAPH_SUCCESS ||
+        node.GetInputDesc(inputIndex, desc) != GRAPH_SUCCESS || tensor.GetData() == nullptr) {
+        return false;
+    }
+    if (desc.GetDataType() == DT_INT32 && tensor.GetSize() >= sizeof(int32_t)) {
+        value = static_cast<int64_t>(*reinterpret_cast<const int32_t*>(tensor.GetData()));
+        return true;
+    }
+    if (desc.GetDataType() == DT_INT64 && tensor.GetSize() >= sizeof(int64_t)) {
+        value = *reinterpret_cast<const int64_t*>(tensor.GetData());
+        return true;
+    }
+    return false;
+}
+
+bool IsSameNode(const GNodePtr& lhs, const GNodePtr& rhs)
+{
+    if (lhs == nullptr || rhs == nullptr) {
+        return false;
+    }
+    AscendString lhsName;
+    AscendString rhsName;
+    return lhs->GetName(lhsName) == GRAPH_SUCCESS && rhs->GetName(rhsName) == GRAPH_SUCCESS &&
+           lhsName.GetString() != nullptr && rhsName.GetString() != nullptr &&
+           std::string(lhsName.GetString()) == rhsName.GetString();
+}
+
+bool IsGatherOfSourceDim(const GNodePtr& gatherNode, const GNodePtr& sourceNode, int64_t dimIndex)
+{
+    if (!IsType(gatherNode, kOpTypeGather)) {
+        return false;
+    }
+    auto shapeNode = GetInputNode(*gatherNode, 0);
+    auto shapeSourceNode = shapeNode == nullptr ? nullptr : GetInputNode(*shapeNode, 0);
+    int64_t actualDimIndex = 0;
+    return IsType(shapeNode, kOpTypeShape) && IsSameNode(shapeSourceNode, sourceNode) &&
+           GetConstScalar(*gatherNode, 1, actualDimIndex) && actualDimIndex == dimIndex;
+}
+
+bool IsDynamicLastTwoAxisSwapReshape(const GNodePtr& reshapeNode)
+{
+    if (!IsType(reshapeNode, kOpTypeReshape)) {
+        return false;
+    }
+    auto sourceNode = GetInputNode(*reshapeNode, 0);
+    auto packNode = GetInputNode(*reshapeNode, 1);
+    if (sourceNode == nullptr || !IsType(packNode, kOpTypePack)) {
+        return false;
+    }
+    TensorDesc inputDesc;
+    if (reshapeNode->GetInputDesc(0, inputDesc) != GRAPH_SUCCESS ||
+        inputDesc.GetShape().GetDimNum() != kMiniShapeLen) {
+        return false;
+    }
+
+    auto firstShapeInput = GetInputNode(*packNode, 0);
+    auto secondShapeInput = GetInputNode(*packNode, 1);
+    if (firstShapeInput == nullptr || secondShapeInput == nullptr) {
+        return false;
+    }
+    int64_t firstConstValue = 0;
+    int64_t secondConstValue = 0;
+    const bool firstIsUnit = GetConstScalar(*packNode, 0, firstConstValue) && firstConstValue == 1;
+    const bool secondIsUnit = GetConstScalar(*packNode, 1, secondConstValue) && secondConstValue == 1;
+    return (IsGatherOfSourceDim(firstShapeInput, sourceNode, 1) && secondIsUnit) ||
+           (firstIsUnit && IsGatherOfSourceDim(secondShapeInput, sourceNode, 0));
 }
 
 bool IsFloat4DataType(DataType dataType)
@@ -261,6 +336,9 @@ bool IsReshapeTransForScale(
 
     if (expectedOutputDims[firstTransposeAxis] != 1 && expectedOutputDims[secondTransposeAxis] != 1) {
         return false;
+    }
+    if (index == kPertokenScaleIndex && IsDynamicLastTwoAxisSwapReshape(nodePerInput)) {
+        return true;
     }
     std::swap(expectedOutputDims[firstTransposeAxis], expectedOutputDims[secondTransposeAxis]);
     const bool isFullyDynamicOutput =
@@ -778,6 +856,23 @@ Status FusionNodeX(GraphPtr& graph, GNode& groupedMatmulNode,
 {
     if (!CheckPlatformIsDav3510ForGmm() || IsWeightQuant(groupedMatmulNode)) {
         return GRAPH_NOT_CHANGED;
+    }
+
+    GmmInputPattern xPattern;
+    if (!BuildInputPattern(groupedMatmulNode, kXIndex, reshapePattern, xPattern) ||
+        !CheckEquivalentTransposeNode(groupedMatmulNode, kXIndex, reshapePattern, xPattern)) {
+        return GRAPH_NOT_CHANGED;
+    }
+    auto pertokenScaleInput = GetInputNode(groupedMatmulNode, kPertokenScaleIndex);
+    if (IsType(pertokenScaleInput, kOpTypeReshape)) {
+        GmmInputPattern pertokenScalePattern;
+        if (!BuildInputPattern(groupedMatmulNode, kPertokenScaleIndex, reshapePattern, pertokenScalePattern) ||
+            !CheckEquivalentTransposeNode(
+                groupedMatmulNode, kPertokenScaleIndex, reshapePattern, pertokenScalePattern)) {
+            OP_LOGD(kPassName,
+                "Skip x fusion because its per-token scale reshape cannot be proven transpose-equivalent.");
+            return GRAPH_NOT_CHANGED;
+        }
     }
 
     auto fusionNodeXResult = FusionTransposeNode(graph, groupedMatmulNode, kXIndex, reshapePattern, fusedPatterns);
