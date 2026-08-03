@@ -360,6 +360,15 @@ namespace BSA {
             gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize));
             AscendC::GlobalTensor<float> gDv;
             gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize));
+            uint8_t deterministic = tilingData->deterministic;
+            uint64_t gradSize = tilingData->gradSize;
+            uint64_t maxPartialSize = tilingData->maxPartialSize;
+            uint32_t maxPartialsPerCore = tilingData->maxPartialsPerCore;
+            uint64_t detDkGroupBase = sOutSize + dPOutSize + dQOutSize + dKOutSize + dVOutSize + gradSize;
+            uint64_t detDvGroupBase = detDkGroupBase + tilingData->detDkGroupSize;
+            uint64_t detMetaBase = detDvGroupBase + tilingData->detDvGroupSize;
+            AscendC::GlobalTensor<float> gDkDet;
+            AscendC::GlobalTensor<float> gDvDet;
 
             TaskInfo taskInfo[2];
             TaskInfo preTaskInfo;
@@ -380,6 +389,7 @@ namespace BSA {
             BlockMmadBSAG1 blockMmad1(resource);
             BlockMmadBSAG2 blockMmad2(resource, L1_SIZE_OFFSET, PINGPONG_OFFSET_2, true);
             BlockMmadBSAG3 blockMmad3(resource, L1_SIZE_OFFSET * 2, PINGPONG_OFFSET_4, true);
+            BlockMmadBSAG3 blockMmad3Det(resource, L1_SIZE_OFFSET * 2, PINGPONG_OFFSET_4, false);
             uint32_t count = 0;
             uint32_t pingpongFlag = 0;
             uint64_t gSOffset = coreIdx * WORKSPACE_BLOCK_SIZE_DB;
@@ -474,23 +484,32 @@ namespace BSA {
                                     actualShape2,
                                     mmadFlag);
 
-                                blockMmad3(gP[preTaskInfo.sOffset],
-                                    gDout[preTaskInfo.qOffset],
-                                    gDv[preTaskInfo.kvOffset],
-                                    layoutA3,
-                                    layoutB3,
-                                    layoutC3,
-                                    actualShape3,
-                                    mmadFlag);
-
-                                blockMmad3(gDs[preTaskInfo.sOffset],
-                                    gQ[preTaskInfo.qOffset],
-                                    gDk[preTaskInfo.kvOffset],
-                                    layoutA3,
-                                    layoutB3,
-                                    layoutC3,
-                                    actualShape3,
-                                    mmadFlag);
+                                if (deterministic) {
+                                    uint32_t slotIdx = (count - 1) * coreNum + coreIdx;
+                                    uint64_t slotOffset = (uint64_t)slotIdx * maxPartialSize * sizeof(float);
+                                    gDvDet.SetGlobalBuffer((__gm__ float *)(params.workspace + detDvGroupBase + slotOffset));
+                                    gDkDet.SetGlobalBuffer((__gm__ float *)(params.workspace + detDkGroupBase + slotOffset));
+                                    LayoutC3 flatLayoutC3(preTaskInfo.curCalKVSize, headDim);
+                                    blockMmad3(gP[preTaskInfo.sOffset], gDout[preTaskInfo.qOffset], gDvDet, layoutA3, layoutB3, flatLayoutC3, actualShape3, mmadFlag);
+                                    blockMmad3(gDs[preTaskInfo.sOffset], gQ[preTaskInfo.qOffset], gDkDet, layoutA3, layoutB3, flatLayoutC3, actualShape3, mmadFlag);
+                                    LocalTensor<uint32_t> metaUb32 = resource.ubBuf.template GetBufferByByte<uint32_t>(0);
+                                    uint64_t kvOff = preTaskInfo.kvOffset;
+                                    metaUb32.SetValue(0, (uint32_t)(kvOff & 0xFFFFFFFF));
+                                    metaUb32.SetValue(1, (uint32_t)(kvOff >> 32));
+                                    metaUb32.SetValue(2, preTaskInfo.curCalKVSize);
+                                    metaUb32.SetValue(3, 1);
+                                    AscendC::PipeBarrier<PIPE_V>();
+                                    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID5);
+                                    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID5);
+                                    AscendC::GlobalTensor<uint32_t> metaGm32;
+                                    metaGm32.SetGlobalBuffer((__gm__ uint32_t*)(params.workspace + detMetaBase + (uint64_t)slotIdx * 16));
+                                    AscendC::DataCopy(metaGm32, metaUb32, 4);
+                                    AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID5);
+                                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID5);
+                                } else {
+                                    blockMmad3(gP[preTaskInfo.sOffset], gDout[preTaskInfo.qOffset], gDv[preTaskInfo.kvOffset], layoutA3, layoutB3, layoutC3, actualShape3, mmadFlag);
+                                    blockMmad3(gDs[preTaskInfo.sOffset], gQ[preTaskInfo.qOffset], gDk[preTaskInfo.kvOffset], layoutA3, layoutB3, layoutC3, actualShape3, mmadFlag);
+                                }
                             }
                             preTaskInfo = curInfo;
                             preTaskInfo.sOffset = curInfo.sOffset * 2; // float32偏移转成bf16/half偏移
@@ -537,22 +556,35 @@ namespace BSA {
                     layoutC2,
                     actualShape2,
                     mmadFlag);
-                blockMmad3(gP[preTaskInfo.sOffset],
-                    gDout[preTaskInfo.qOffset],
-                    gDv[preTaskInfo.kvOffset],
-                    layoutA3,
-                    layoutB3,
-                    layoutC3,
-                    actualShape3,
-                    mmadFlag);
-                blockMmad3(gDs[preTaskInfo.sOffset],
-                    gQ[preTaskInfo.qOffset],
-                    gDk[preTaskInfo.kvOffset],
-                    layoutA3,
-                    layoutB3,
-                    layoutC3,
-                    actualShape3,
-                    mmadFlag);
+                if (deterministic) {
+                    uint32_t slotIdx = (count - 1) * coreNum + coreIdx;
+                    uint64_t slotOffset = (uint64_t)slotIdx * maxPartialSize * sizeof(float);
+                    gDvDet.SetGlobalBuffer((__gm__ float *)(params.workspace + detDvGroupBase + slotOffset));
+                    gDkDet.SetGlobalBuffer((__gm__ float *)(params.workspace + detDkGroupBase + slotOffset));
+                    LayoutC3 flatLayoutC3(preTaskInfo.curCalKVSize, headDim);
+                    blockMmad3(gP[preTaskInfo.sOffset], gDout[preTaskInfo.qOffset], gDvDet, layoutA3, layoutB3, flatLayoutC3, actualShape3, mmadFlag);
+                    blockMmad3(gDs[preTaskInfo.sOffset], gQ[preTaskInfo.qOffset], gDkDet, layoutA3, layoutB3, flatLayoutC3, actualShape3, mmadFlag);
+                    LocalTensor<uint32_t> metaUb32 = resource.ubBuf.template GetBufferByByte<uint32_t>(0);
+                    uint64_t kvOff = preTaskInfo.kvOffset;
+                    metaUb32.SetValue(0, (uint32_t)(kvOff & 0xFFFFFFFF));
+                    metaUb32.SetValue(1, (uint32_t)(kvOff >> 32));
+                    metaUb32.SetValue(2, preTaskInfo.curCalKVSize);
+                    metaUb32.SetValue(3, 1);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID5);
+                    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID5);
+                    AscendC::GlobalTensor<uint32_t> metaGm32;
+                    metaGm32.SetGlobalBuffer((__gm__ uint32_t*)(params.workspace + detMetaBase + (uint64_t)slotIdx * 16));
+                    AscendC::DataCopy(metaGm32, metaUb32, 4);
+                    AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID5);
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID5);
+                } else {
+                    blockMmad3(gP[preTaskInfo.sOffset], gDout[preTaskInfo.qOffset], gDv[preTaskInfo.kvOffset], layoutA3, layoutB3, layoutC3, actualShape3, mmadFlag);
+                    blockMmad3(gDs[preTaskInfo.sOffset], gQ[preTaskInfo.qOffset], gDk[preTaskInfo.kvOffset], layoutA3, layoutB3, layoutC3, actualShape3, mmadFlag);
+                }
+            }
+            if (deterministic) {
+                AscendC::PipeBarrier<PIPE_FIX>();
             }
             AscendC::CrossCoreSetFlag<2, PIPE_FIX>(CUBE2POST);
             WaitFlag();
@@ -572,6 +604,10 @@ namespace BSA {
 
             AscendC::WaitEvent(CUBE2POST);
             AscendC::SyncAll<true>();
+
+            if (tilingData->deterministic) {
+                DetReduceAll(params);
+            }
 
             // post
             VecPost(params);
@@ -778,7 +814,7 @@ namespace BSA {
             uint64_t dQOutSize = tilingData->dQOutSize;
             uint64_t dKOutSize = tilingData->dKOutSize;
             uint64_t dVOutSize = tilingData->dVOutSize;
-
+            uint64_t gradSize = tilingData->gradSize;
 
             GM_ADDR gDqWrkGm = params.workspace + sOutSize + dPOutSize;
             GM_ADDR gDkWrkGm = params.workspace + sOutSize + dPOutSize + dQOutSize;
@@ -787,6 +823,201 @@ namespace BSA {
             PreParams preParms(gDqWrkGm, gDkWrkGm, gDvWrkGm, params.tiling);
             EpilogueFAGPre vecPre(preParms);
             vecPre();
+
+            if (tilingData->deterministic) {
+                // Ensure EpilogueFAGPre's MTE3 writes complete before ZeroDetWorkspace
+                AscendC::PipeBarrier<PIPE_MTE3>();
+                ZeroDetWorkspace(params);
+            }
+        }
+
+        __aicore__ inline
+        void ZeroDetWorkspace(Params const &params)
+        {
+            __gm__ BlockSparseAttentionGradTilingData *tilingData = reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
+            uint32_t vecCoreIdx = AscendC::GetBlockIdx();
+            uint32_t usedCoreNum = tilingData->usedVecCoreNum;
+            if (vecCoreIdx >= usedCoreNum) { return; }
+            uint64_t sOutSize = tilingData->sOutSize;
+            uint64_t dPOutSize = tilingData->dPOutSize;
+            uint64_t dQOutSize = tilingData->dQOutSize;
+            uint64_t dKOutSize = tilingData->dKOutSize;
+            uint64_t dVOutSize = tilingData->dVOutSize;
+            uint64_t gradSize = tilingData->gradSize;
+            uint64_t detDkGroupBase = sOutSize + dPOutSize + dQOutSize + dKOutSize + dVOutSize + gradSize;
+            uint64_t detDvGroupBase = detDkGroupBase + tilingData->detDkGroupSize;
+            uint64_t detMetaBase = detDvGroupBase + tilingData->detDvGroupSize;
+            uint64_t detTotalBytes = tilingData->detDkGroupSize + tilingData->detDvGroupSize + tilingData->detMetaSize;
+            if (detTotalBytes == 0) return;
+            // Simple partition: each core handles detTotalBytes/usedCoreNum bytes
+            // This guarantees ALL bytes are covered (no gaps)
+            uint64_t bytesPerCore = (detTotalBytes + usedCoreNum - 1) / usedCoreNum;
+            uint64_t offset = vecCoreIdx * bytesPerCore;
+            if (offset >= detTotalBytes) { return; }
+            uint64_t initBytes = (offset + bytesPerCore > detTotalBytes) ? (detTotalBytes - offset) : bytesPerCore;
+            // Align to 32 bytes for DataCopy (pad with zeros)
+            uint64_t blockFactor = bytesPerCore;
+            uint64_t ubSizeAvail = tilingData->ubSize;
+            uint64_t maxDataCount = ubSizeAvail / sizeof(float);
+            maxDataCount = maxDataCount / 8 * 8;
+            LocalTensor<float> zeroTensor = resource.ubBuf.template GetBufferByByte<float>(0);
+            AscendC::Duplicate(zeroTensor, (float)0.0, maxDataCount);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+            AscendC::GlobalTensor<float> detZeroGm;
+            detZeroGm.SetGlobalBuffer((__gm__ float *)(params.workspace + detDkGroupBase + offset));
+            uint64_t cOutElement = initBytes / sizeof(float);
+            uint64_t totalLoop = cOutElement / maxDataCount;
+            uint64_t remainOutNum = cOutElement % maxDataCount;
+            for (uint64_t i = 0; i < totalLoop; i++) {
+                AscendC::DataCopy(detZeroGm[i * maxDataCount], zeroTensor, maxDataCount);
+            }
+            if (remainOutNum > 0) {
+                if (remainOutNum * sizeof(float) % 32 == 0) {
+                    AscendC::DataCopy(detZeroGm[totalLoop * maxDataCount], zeroTensor, remainOutNum);
+                } else {
+                    AscendC::DataCopyExtParams copyParams{1, (uint32_t)(remainOutNum * sizeof(float)), 0, 0, 0};
+                    AscendC::DataCopyPad(detZeroGm[totalLoop * maxDataCount], zeroTensor, copyParams);
+                }
+            }
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+
+
+        }
+
+        __aicore__ inline
+        void DetReduceAll(Params const &params)
+        {
+            __gm__ BlockSparseAttentionGradTilingData *tilingData = reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
+            uint32_t vecCoreIdx = AscendC::GetBlockIdx();
+            uint32_t usedCoreNum = tilingData->usedVecCoreNum;
+            if (vecCoreIdx >= usedCoreNum) return;
+            uint32_t cubeNum = tilingData->usedVecCoreNum / 2;
+            uint32_t headDim = tilingData->headDim;
+            uint64_t maxPartialSize = tilingData->maxPartialSize;
+            uint32_t maxPartialsPerCore = tilingData->maxPartialsPerCore;
+            uint64_t sOutSize = tilingData->sOutSize;
+            uint64_t dPOutSize = tilingData->dPOutSize;
+            uint64_t dQOutSize = tilingData->dQOutSize;
+            uint64_t dKOutSize = tilingData->dKOutSize;
+            uint64_t dVOutSize = tilingData->dVOutSize;
+            uint64_t gradSize = tilingData->gradSize;
+            uint64_t dkvSize = tilingData->dkvSize;
+            uint64_t detDkGroupBase = sOutSize + dPOutSize + dQOutSize + dKOutSize + dVOutSize + gradSize;
+            uint64_t detDvGroupBase = detDkGroupBase + tilingData->detDkGroupSize;
+            uint64_t detMetaBase = detDvGroupBase + tilingData->detDvGroupSize;
+            uint32_t totalSlots = maxPartialsPerCore * cubeNum;
+            AscendC::GlobalTensor<float> sharedDkGm;
+            sharedDkGm.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize));
+            AscendC::GlobalTensor<float> sharedDvGm;
+            sharedDvGm.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize));
+            AscendC::GlobalTensor<float> detDkGm;
+            detDkGm.SetGlobalBuffer((__gm__ float *)(params.workspace + detDkGroupBase));
+            AscendC::GlobalTensor<float> detDvGm;
+            detDvGm.SetGlobalBuffer((__gm__ float *)(params.workspace + detDvGroupBase));
+            // Partition dk/dv elements (same as VecPost)
+            uint64_t kvPostSize = dkvSize / headDim;
+            uint64_t kvPostBlockEachCore = kvPostSize / usedCoreNum;
+            uint64_t kvPostBlockNumEachCore = kvPostBlockEachCore * headDim;
+            uint64_t kvPostTailNum = kvPostSize % usedCoreNum;
+            uint64_t computeS2 = (vecCoreIdx == usedCoreNum - 1) ? (kvPostBlockEachCore + kvPostTailNum) : kvPostBlockEachCore;
+            uint64_t dkvOffset = vecCoreIdx * kvPostBlockNumEachCore;
+            uint64_t totalElements = computeS2 * headDim;
+            uint64_t ubSizeAvail = tilingData->ubSize;
+            uint64_t maxDataCount = (ubSizeAvail - 1024) / sizeof(float) / 2;
+            maxDataCount = maxDataCount / 8 * 8;
+            if (maxDataCount == 0) maxDataCount = 8;
+            LocalTensor<float> accumUb = resource.ubBuf.template GetBufferByByte<float>(0);
+            LocalTensor<float> tempUb = resource.ubBuf.template GetBufferByByte<float>(maxDataCount * sizeof(float));
+            LocalTensor<uint32_t> metaUb32R = resource.ubBuf.template GetBufferByByte<uint32_t>(maxDataCount * sizeof(float) + 256);
+
+            // Process DK and DV
+            for (int dvPass = 0; dvPass < 2; dvPass++) {
+                AscendC::GlobalTensor<float>* sharedGm = (dvPass == 0) ? &sharedDkGm : &sharedDvGm;
+                AscendC::GlobalTensor<float>* detGm = (dvPass == 0) ? &detDkGm : &detDvGm;
+
+                uint64_t totalLoop = totalElements / maxDataCount;
+                uint64_t remainNum = totalElements % maxDataCount;
+
+                for (uint64_t loop = 0; loop < totalLoop; loop++) {
+                    uint64_t curOffset = dkvOffset + loop * maxDataCount;
+                    // Init accumUb to zero
+                    AscendC::Duplicate(accumUb, (float)0.0, maxDataCount);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    // Scan all slots
+                    for (uint32_t slot = 0; slot < totalSlots; slot++) {
+                        __gm__ uint32_t* metaPtr = (__gm__ uint32_t*)(params.workspace + detMetaBase + (uint64_t)slot * 16);
+                        uint32_t valid = metaPtr[3];
+                        if (valid == 0) continue;
+                        uint64_t kvOffset = (uint64_t)metaPtr[0] | ((uint64_t)metaPtr[1] << 32);
+                        uint32_t curCalKVSize = metaPtr[2];
+                        uint64_t partialElements = (uint64_t)curCalKVSize * headDim;
+                        if (curOffset >= kvOffset + partialElements || curOffset + maxDataCount <= kvOffset) continue;
+                        uint64_t readStart = (curOffset > kvOffset) ? curOffset : kvOffset;
+                        uint64_t readEnd = (curOffset + maxDataCount < kvOffset + partialElements) ? curOffset + maxDataCount : kvOffset + partialElements;
+                        uint64_t readCount = readEnd - readStart;
+                        uint64_t readAlign = (readCount + 7) / 8 * 8;
+                        uint64_t detSlotOffset = (uint64_t)slot * maxPartialSize + (readStart - kvOffset);
+                        uint64_t accumOffset = readStart - curOffset;
+                        if (readCount * sizeof(float) % 32 == 0) {
+                            AscendC::DataCopy(tempUb, (*detGm)[detSlotOffset], readCount);
+                        } else {
+                            AscendC::DataCopyExtParams cp{1, (uint32_t)(readCount * sizeof(float)), 0, 0, 0};
+                            AscendC::DataCopyPadExtParams<float> pp{true, 0, 0, 0};
+                            AscendC::DataCopyPad(tempUb, (*detGm)[detSlotOffset], cp, pp);
+                        }
+                        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                        AscendC::Add(accumUb[accumOffset], accumUb[accumOffset], tempUb, readAlign);
+                        AscendC::PipeBarrier<PIPE_V>();
+                    }
+                    // Write back
+                    AscendC::DataCopy((*sharedGm)[curOffset], accumUb, maxDataCount);
+                    AscendC::PipeBarrier<PIPE_MTE3>();
+                }
+                // Remainder
+                if (remainNum > 0) {
+                    uint64_t curOffset = dkvOffset + totalLoop * maxDataCount;
+                    uint64_t remainAlign = (remainNum + 7) / 8 * 8;
+                    AscendC::Duplicate(accumUb, (float)0.0, remainAlign);
+                    AscendC::PipeBarrier<PIPE_V>();
+                    for (uint32_t slot = 0; slot < totalSlots; slot++) {
+                        __gm__ uint32_t* metaPtr = (__gm__ uint32_t*)(params.workspace + detMetaBase + (uint64_t)slot * 16);
+                        uint32_t valid = metaPtr[3];
+                        if (valid == 0) continue;
+                        uint64_t kvOffset = (uint64_t)metaPtr[0] | ((uint64_t)metaPtr[1] << 32);
+                        uint32_t curCalKVSize = metaPtr[2];
+                        uint64_t partialElements = (uint64_t)curCalKVSize * headDim;
+                        if (curOffset >= kvOffset + partialElements || curOffset + remainNum <= kvOffset) continue;
+                        uint64_t readStart = (curOffset > kvOffset) ? curOffset : kvOffset;
+                        uint64_t readEnd = (curOffset + remainNum < kvOffset + partialElements) ? curOffset + remainNum : kvOffset + partialElements;
+                        uint64_t readCount = readEnd - readStart;
+                        uint64_t readAlign = (readCount + 7) / 8 * 8;
+                        uint64_t detSlotOffset = (uint64_t)slot * maxPartialSize + (readStart - kvOffset);
+                        uint64_t accumOffset = readStart - curOffset;
+                        if (readCount * sizeof(float) % 32 == 0) {
+                            AscendC::DataCopy(tempUb, (*detGm)[detSlotOffset], readCount);
+                        } else {
+                            AscendC::DataCopyExtParams cp{1, (uint32_t)(readCount * sizeof(float)), 0, 0, 0};
+                            AscendC::DataCopyPadExtParams<float> pp{true, 0, 0, 0};
+                            AscendC::DataCopyPad(tempUb, (*detGm)[detSlotOffset], cp, pp);
+                        }
+                        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                        AscendC::Add(accumUb[accumOffset], accumUb[accumOffset], tempUb, readAlign);
+                        AscendC::PipeBarrier<PIPE_V>();
+                    }
+                    if (remainNum * sizeof(float) % 32 == 0) {
+                        AscendC::DataCopy((*sharedGm)[curOffset], accumUb, remainNum);
+                    } else {
+                        AscendC::DataCopyExtParams cp{1, (uint32_t)(remainNum * sizeof(float)), 0, 0, 0};
+                        AscendC::DataCopyPad((*sharedGm)[curOffset], accumUb, cp);
+                    }
+                    AscendC::PipeBarrier<PIPE_MTE3>();
+                }
+            }
         }
 
     private:

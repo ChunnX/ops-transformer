@@ -11,6 +11,8 @@
 #include "../block_sparse_attention_grad_tiling.h"
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
+#include <string>
 #include "log/log.h"
 
 #include <cstdint>
@@ -260,6 +262,8 @@ ge::graphStatus BSAGradTiling::ProcessInput(gert::TilingContext *context)
         }
     }
 
+    const char* detEnv = std::getenv("BSAG_DETERMINISTIC");
+    deterministic_ = (detEnv != nullptr && std::string(detEnv) == "1");
     return ProcessAttrs(context);
 }
 
@@ -431,7 +435,16 @@ ge::graphStatus BSAGradTiling::CalculateWorkSpace(gert::TilingContext *context)
         gradSize_ = batch_ * numHeads_ * maxQSeqlen_ * ONEBLOCK_FLOAT_NUM * sizeof(float);
     }
 
-    workSpaceSize_ = libapiSize_ + sOutSize_ + dPOutSize_ + dQOutSize_ + dKOutSize_ + dVOutSize_ + gradSize_;
+    uint64_t maxPartialSize_ = (uint64_t)BASIC_BLOCK_SIZE * headDim_;
+    uint32_t maxKvBlocksPerTask = CeilDiv(maxKvSeqlen_, BASIC_BLOCK_SIZE);
+    if (maxKvBlocksPerTask == 0) maxKvBlocksPerTask = 1;
+    uint32_t maxPartialsPerCore_ = (taskNumPerCore_ + 1) * maxKvBlocksPerTask;
+    if (maxPartialsPerCore_ == 0) maxPartialsPerCore_ = 1;
+    uint64_t detDkGroupSize_ = deterministic_ ? ((uint64_t)maxPartialsPerCore_ * aicNum_ * maxPartialSize_ * sizeof(float)) : 0;
+    uint64_t detDvGroupSize_ = deterministic_ ? ((uint64_t)maxPartialsPerCore_ * aicNum_ * maxPartialSize_ * sizeof(float)) : 0;
+    uint64_t detMetaSize_ = deterministic_ ? ((uint64_t)maxPartialsPerCore_ * aicNum_ * 16) : 0;
+    workSpaceSize_ = libapiSize_ + sOutSize_ + dPOutSize_ + dQOutSize_ + dKOutSize_ + dVOutSize_ + gradSize_
+                     + detDkGroupSize_ + detDvGroupSize_ + detMetaSize_;
     context->GetWorkspaceSizes(1)[0] = workSpaceSize_;
     
     return ge::GRAPH_SUCCESS;
@@ -480,8 +493,23 @@ ge::graphStatus BSAGradTiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_kvTotalSeqlen(kvTotalSeqlen_);
     tilingData_->set_dqSize(dqSize_);
     tilingData_->set_dkvSize(dkvSize_);
+    tilingData_->set_gradSize(gradSize_);
     tilingData_->set_postUbBaseSize(postUbBaseSize_);
     tilingData_->set_ubSize(ubSize_ - sizeof(BlockSparseAttentionGradTilingData) - 2 * 1024);
+    uint64_t maxPartialSize_ = (uint64_t)BASIC_BLOCK_SIZE * headDim_;
+    uint32_t maxKvBlocksPerTask = CeilDiv(maxKvSeqlen_, BASIC_BLOCK_SIZE);
+    if (maxKvBlocksPerTask == 0) maxKvBlocksPerTask = 1;
+    uint32_t maxPartialsPerCore_ = (taskNumPerCore_ + 1) * maxKvBlocksPerTask;
+    if (maxPartialsPerCore_ == 0) maxPartialsPerCore_ = 1;
+    uint64_t detDkGroupSize_ = deterministic_ ? ((uint64_t)maxPartialsPerCore_ * aicNum_ * maxPartialSize_ * sizeof(float)) : 0;
+    uint64_t detDvGroupSize_ = deterministic_ ? ((uint64_t)maxPartialsPerCore_ * aicNum_ * maxPartialSize_ * sizeof(float)) : 0;
+    uint64_t detMetaSize_ = deterministic_ ? ((uint64_t)maxPartialsPerCore_ * aicNum_ * 16) : 0;
+    tilingData_->set_detDkGroupSize(detDkGroupSize_);
+    tilingData_->set_detDvGroupSize(detDvGroupSize_);
+    tilingData_->set_detMetaSize(detMetaSize_);
+    tilingData_->set_maxPartialSize(maxPartialSize_);
+    tilingData_->set_maxPartialsPerCore(maxPartialsPerCore_);
+    tilingData_->set_deterministic(deterministic_ ? 1 : 0);
     return ge::GRAPH_SUCCESS;
 }
 
