@@ -30,8 +30,8 @@ struct MoeGatingTopKBackwardA5TilingData {
     int64_t gradYDtypeSize;
     int64_t renorm;
     int64_t normType;
-    float  routedScalingFactor;
-    float  eps;
+    float routedScalingFactor;
+    float eps;
 };
 
 #endif // MOE_GATING_TOP_K_BACKWARD_STRUCT_H

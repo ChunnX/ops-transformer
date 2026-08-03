@@ -29,7 +29,7 @@ using MicroAPI::RegTensor;
 template <typename T>
 class MoeGatingTopKBackward {
 public:
-    __aicore__ inline MoeGatingTopKBackward() {};
+    __aicore__ inline MoeGatingTopKBackward(){};
     __aicore__ inline void Init(GM_ADDR xNorm, GM_ADDR gradY, GM_ADDR expertIdx, GM_ADDR gradX,
                                 const MoeGatingTopKBackwardA5TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
@@ -65,7 +65,7 @@ private:
 
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackward<T>::Init(GM_ADDR xNorm, GM_ADDR gradY, GM_ADDR expertIdx, GM_ADDR gradX,
-                                                       const MoeGatingTopKBackwardA5TilingData *tilingData, TPipe *tPipe)
+                                                      const MoeGatingTopKBackwardA5TilingData *tilingData, TPipe *tPipe)
 {
     tilingData_ = tilingData;
     pipe_ = tPipe;
@@ -171,7 +171,7 @@ __aicore__ inline void MoeGatingTopKBackward<T>::CopyInExpertIdx(int64_t loopIdx
     copyParams.dstStride = static_cast<uint32_t>(0);
     DataCopyPadExtParams<int32_t> padParams{true, 0, static_cast<uint8_t>(kAlign_ - tilingData_->k), 0};
     DataCopyPad(expertIdxLocal_, expertIdxGm_[loopIdx * tilingData_->baseRows * tilingData_->k], copyParams,
-               padParams);
+                padParams);
     indicesQue_.EnQue(expertIdxLocal_);
     expertIdxLocal_ = indicesQue_.DeQue<int32_t>();
 }

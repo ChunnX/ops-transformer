@@ -353,8 +353,8 @@ __aicore__ inline void CallCastGradYRowsVF(LocalTensor<T> gradYSrc, LocalTensor<
 //   assumed unique within each row (see SigmoidRenormBackwardVF comment).
 // ============================================================================
 __aicore__ inline void CallSigmoidRenormBackwardVF(LocalTensor<float> xNorm, LocalTensor<int32_t> expertIdx,
-                                                    LocalTensor<float> gradY, LocalTensor<float> gradNormX, float eps,
-                                                    uint16_t curRows, uint16_t k, uint16_t kAlign, uint16_t n)
+                                                   LocalTensor<float> gradY, LocalTensor<float> gradNormX, float eps,
+                                                   uint16_t curRows, uint16_t k, uint16_t kAlign, uint16_t n)
 {
     __ubuf__ float *xNormAddr = (__ubuf__ float *)xNorm.GetPhyAddr();
     __ubuf__ int32_t *expertIdxAddr = (__ubuf__ int32_t *)expertIdx.GetPhyAddr();

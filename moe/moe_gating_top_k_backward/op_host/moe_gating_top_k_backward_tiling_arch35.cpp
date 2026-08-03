@@ -180,7 +180,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingRegbase::CheckXNorm()
     auto xNormDimSize = xNormShapePtr->GetOriginShape().GetDimNum();
     if (xNormDimSize != X_NORM_INPUT_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "x_norm",
-            std::to_string(xNormDimSize) + "D", "The shape of x_norm must be 2D");
+                                                 std::to_string(xNormDimSize) + "D", "The shape of x_norm must be 2D");
         return ge::GRAPH_FAILED;
     }
 
@@ -190,15 +190,15 @@ ge::graphStatus MoeGatingTopKBackwardTilingRegbase::CheckXNorm()
         std::string incorrectShape = "[" + std::to_string(tokenCount_) + ", " +
                                      std::to_string(expertCount_) + "]";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x_norm",
-            incorrectShape.c_str(), "x_norm cannot be an empty tensor");
+                                              incorrectShape.c_str(), "x_norm cannot be an empty tensor");
         return ge::GRAPH_FAILED;
     }
     if (expertCount_ < 2 || expertCount_ > MAX_EXPERT_COUNT) {
         std::string incorrectShape = "[" + std::to_string(tokenCount_) + ", " +
                                      std::to_string(expertCount_) + "]";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "x_norm",
-            incorrectShape.c_str(),
-            "Shape [1] of this parameter must be within the range [2, 2048]");
+                                              incorrectShape.c_str(),
+                                              "Shape [1] of this parameter must be within the range [2, 2048]");
         return ge::GRAPH_FAILED;
     }
 
@@ -207,8 +207,8 @@ ge::graphStatus MoeGatingTopKBackwardTilingRegbase::CheckXNorm()
     auto xNormDtype = xNormDesc->GetDataType();
     if (xNormDtype != ge::DataType::DT_FLOAT) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "x_norm",
-            ge::TypeUtils::DataTypeToSerialString(xNormDtype).c_str(),
-            "The dtype of x_norm must be float32");
+                                              ge::TypeUtils::DataTypeToSerialString(xNormDtype).c_str(),
+                                              "The dtype of x_norm must be float32");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -221,27 +221,27 @@ ge::graphStatus MoeGatingTopKBackwardTilingRegbase::CheckGradY()
     auto gradYDimSize = gradYShapePtr->GetOriginShape().GetDimNum();
     if (gradYDimSize != GRAD_Y_INPUT_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "grad_y",
-            std::to_string(gradYDimSize) + "D", "The shape of grad_y must be 2D");
+                                                 std::to_string(gradYDimSize) + "D", "The shape of grad_y must be 2D");
         return ge::GRAPH_FAILED;
     }
 
     if (gradYShapePtr->GetOriginShape().GetDim(DIM_ZERO) != tokenCount_) {
         std::string incorrectShapes = "[" + std::to_string(gradYShapePtr->GetOriginShape().GetDim(DIM_ZERO)) +
-            ", " + std::to_string(gradYShapePtr->GetOriginShape().GetDim(DIM_ONE)) + "] and [" +
-            std::to_string(tokenCount_) + ", " + std::to_string(expertCount_) + "]";
+                                      ", " + std::to_string(gradYShapePtr->GetOriginShape().GetDim(DIM_ONE)) + "] and [" +
+                                      std::to_string(tokenCount_) + ", " + std::to_string(expertCount_) + "]";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "grad_y and x_norm",
-            incorrectShapes.c_str(),
-            "Shape [0] of grad_y must be equal to shape [0] of x_norm");
+                                               incorrectShapes.c_str(),
+                                               "Shape [0] of grad_y must be equal to shape [0] of x_norm");
         return ge::GRAPH_FAILED;
     }
     k_ = gradYShapePtr->GetOriginShape().GetDim(DIM_ONE);
     if (k_ < 1 || k_ > expertCount_) {
         std::string incorrectShape = "[" + std::to_string(gradYShapePtr->GetOriginShape().GetDim(DIM_ZERO)) +
-            ", " + std::to_string(k_) + "]";
+                                     ", " + std::to_string(k_) + "]";
         std::string reason = "Shape [1] of this parameter must be within the range [1, " +
-            std::to_string(expertCount_) + "]";
+                             std::to_string(expertCount_) + "]";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "grad_y",
-            incorrectShape.c_str(), reason.c_str());
+                                              incorrectShape.c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -251,8 +251,8 @@ ge::graphStatus MoeGatingTopKBackwardTilingRegbase::CheckGradY()
     if (gradYDtype_ != ge::DataType::DT_FLOAT && gradYDtype_ != ge::DataType::DT_FLOAT16 &&
         gradYDtype_ != ge::DataType::DT_BF16) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "grad_y",
-            ge::TypeUtils::DataTypeToSerialString(gradYDtype_).c_str(),
-            "The dtype of grad_y must be within the range [float32, float16, bfloat16]");
+                                              ge::TypeUtils::DataTypeToSerialString(gradYDtype_).c_str(),
+                                              "The dtype of grad_y must be within the range [float32, float16, bfloat16]");
         return ge::GRAPH_FAILED;
     }
     gradYDtypeSize_ = gradYDtype_ == ge::DataType::DT_FLOAT ? NUM_BYTES_FOUR : NUM_BYTES_TWO;
@@ -266,26 +266,26 @@ ge::graphStatus MoeGatingTopKBackwardTilingRegbase::CheckExpertIdx()
     auto expertIdxDimSize = expertIdxShapePtr->GetOriginShape().GetDimNum();
     if (expertIdxDimSize != EXPERT_IDX_INPUT_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "expert_idx",
-            std::to_string(expertIdxDimSize) + "D", "The shape of expert_idx must be 2D");
+                                                 std::to_string(expertIdxDimSize) + "D", "The shape of expert_idx must be 2D");
         return ge::GRAPH_FAILED;
     }
 
     if (expertIdxShapePtr->GetOriginShape().GetDim(DIM_ZERO) != tokenCount_) {
         std::string incorrectShapes = "[" + std::to_string(expertIdxShapePtr->GetOriginShape().GetDim(DIM_ZERO)) +
-            ", " + std::to_string(expertIdxShapePtr->GetOriginShape().GetDim(DIM_ONE)) + "] and [" +
-            std::to_string(tokenCount_) + ", " + std::to_string(expertCount_) + "]";
+                                      ", " + std::to_string(expertIdxShapePtr->GetOriginShape().GetDim(DIM_ONE)) + "] and [" +
+                                      std::to_string(tokenCount_) + ", " + std::to_string(expertCount_) + "]";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "expert_idx and x_norm",
-            incorrectShapes.c_str(),
-            "Shape [0] of expert_idx must be equal to shape [0] of x_norm");
+                                               incorrectShapes.c_str(),
+                                               "Shape [0] of expert_idx must be equal to shape [0] of x_norm");
         return ge::GRAPH_FAILED;
     }
     if (expertIdxShapePtr->GetOriginShape().GetDim(DIM_ONE) != k_) {
         std::string incorrectShapes = "[" + std::to_string(expertIdxShapePtr->GetOriginShape().GetDim(DIM_ZERO)) +
-            ", " + std::to_string(expertIdxShapePtr->GetOriginShape().GetDim(DIM_ONE)) + "] and [" +
-            std::to_string(tokenCount_) + ", " + std::to_string(k_) + "]";
+                                      ", " + std::to_string(expertIdxShapePtr->GetOriginShape().GetDim(DIM_ONE)) + "] and [" +
+                                      std::to_string(tokenCount_) + ", " + std::to_string(k_) + "]";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "expert_idx and grad_y",
-            incorrectShapes.c_str(),
-            "Shape [1] of expert_idx must be equal to shape [1] of grad_y");
+                                               incorrectShapes.c_str(),
+                                               "Shape [1] of expert_idx must be equal to shape [1] of grad_y");
         return ge::GRAPH_FAILED;
     }
 
@@ -294,8 +294,8 @@ ge::graphStatus MoeGatingTopKBackwardTilingRegbase::CheckExpertIdx()
     auto expertIdxDtype = expertIdxDesc->GetDataType();
     if (expertIdxDtype != ge::DataType::DT_INT32) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context_->GetNodeName(), "expert_idx",
-            ge::TypeUtils::DataTypeToSerialString(expertIdxDtype).c_str(),
-            "The dtype of expert_idx must be int32");
+                                              ge::TypeUtils::DataTypeToSerialString(expertIdxDtype).c_str(),
+                                              "The dtype of expert_idx must be int32");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -319,8 +319,8 @@ ge::graphStatus MoeGatingTopKBackwardTilingRegbase::CheckAttr()
     OP_LOGI(context_, "Attr normType: %ld.", normType_);
     if (normType_ != NORM_TYPE_SIGMOID) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "norm_type",
-            std::to_string(normType_).c_str(),
-            "The value of norm_type must be 1");
+                                              std::to_string(normType_).c_str(),
+                                              "The value of norm_type must be 1");
         return ge::GRAPH_FAILED;
     }
 
@@ -346,26 +346,26 @@ ge::graphStatus MoeGatingTopKBackwardTilingRegbase::CheckOutShape()
     auto gradXDimSize = gradXShapePtr->GetOriginShape().GetDimNum();
     if (gradXDimSize != GRAD_X_OUTPUT_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "grad_x",
-            std::to_string(gradXDimSize) + "D", "The shape of grad_x must be 2D");
+                                                 std::to_string(gradXDimSize) + "D", "The shape of grad_x must be 2D");
         return ge::GRAPH_FAILED;
     }
 
     if (gradXShapePtr->GetOriginShape().GetDim(DIM_ZERO) != tokenCount_) {
         std::string incorrectShapes = "[" + std::to_string(gradXShapePtr->GetOriginShape().GetDim(DIM_ZERO)) +
-            ", " + std::to_string(gradXShapePtr->GetOriginShape().GetDim(DIM_ONE)) + "] and [" +
-            std::to_string(tokenCount_) + ", " + std::to_string(expertCount_) + "]";
+                                      ", " + std::to_string(gradXShapePtr->GetOriginShape().GetDim(DIM_ONE)) + "] and [" +
+                                      std::to_string(tokenCount_) + ", " + std::to_string(expertCount_) + "]";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "grad_x and x_norm",
-            incorrectShapes.c_str(),
-            "Shape [0] of grad_x must be equal to shape [0] of x_norm");
+                                               incorrectShapes.c_str(),
+                                               "Shape [0] of grad_x must be equal to shape [0] of x_norm");
         return ge::GRAPH_FAILED;
     }
     if (gradXShapePtr->GetOriginShape().GetDim(DIM_ONE) != expertCount_) {
         std::string incorrectShapes = "[" + std::to_string(gradXShapePtr->GetOriginShape().GetDim(DIM_ZERO)) +
-            ", " + std::to_string(gradXShapePtr->GetOriginShape().GetDim(DIM_ONE)) + "] and [" +
-            std::to_string(tokenCount_) + ", " + std::to_string(expertCount_) + "]";
+                                      ", " + std::to_string(gradXShapePtr->GetOriginShape().GetDim(DIM_ONE)) + "] and [" +
+                                      std::to_string(tokenCount_) + ", " + std::to_string(expertCount_) + "]";
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "grad_x and x_norm",
-            incorrectShapes.c_str(),
-            "Shape [1] of grad_x must be equal to shape [1] of x_norm");
+                                               incorrectShapes.c_str(),
+                                               "Shape [1] of grad_x must be equal to shape [1] of x_norm");
         return ge::GRAPH_FAILED;
     }
 
@@ -374,10 +374,10 @@ ge::graphStatus MoeGatingTopKBackwardTilingRegbase::CheckOutShape()
     auto gradXDtype = gradXDesc->GetDataType();
     if (gradXDtype != gradYDtype_) {
         std::string incorrectDtypes = std::string(ge::TypeUtils::DataTypeToSerialString(gradYDtype_)) +
-            " and " + ge::TypeUtils::DataTypeToSerialString(gradXDtype);
+                                      " and " + ge::TypeUtils::DataTypeToSerialString(gradXDtype);
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), "grad_x and grad_y",
-            incorrectDtypes.c_str(),
-            "The dtypes of grad_x and grad_y must be the same");
+                                               incorrectDtypes.c_str(),
+                                               "The dtypes of grad_x and grad_y must be the same");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -441,7 +441,8 @@ ge::graphStatus MoeGatingTopKBackwardTilingRegbase::SplitRows()
 
     if (baseRows_ <= 0) {
         OP_LOGE(context_->GetNodeName(), "UB space is not enough to fit a single token row, "
-            "baseRows must be greater than 0, but got %ld. Please reduce N or K.", baseRows_);
+                                         "baseRows must be greater than 0, but got %ld. Please reduce N or K.",
+                baseRows_);
         return ge::GRAPH_FAILED;
     }
 
