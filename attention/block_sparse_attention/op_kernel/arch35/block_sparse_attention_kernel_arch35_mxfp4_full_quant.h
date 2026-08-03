@@ -197,6 +197,13 @@ public:
 
 
         int64_t oBOffset = 0;
+        // [BSND/TND stride 修复] 头内 per-token/per-group gather stride 因子: BNSD=1(头内连续);
+        //   BSND/TND=kvHeads_/qHeads_(头内 token 隔 N*D)。原 gather layout 烧死 embed_=D(仅 BNSD 对),
+        //   BSND/TND 头内越界 507015(开发者 :236 TODO)。修法=「乘 extent」hack:
+        //   ColumnMajor(rows)/RowMajor(cols)/MxScale(rows) 乘此因子, col/row/group-stride 自动变对,
+        //   extent 超估对 GetTile(按真实 extent 取子块)无害。
+        const uint32_t kvHeadMul = (kvFormat == Format::BNSD) ? 1u : kvHeads_;
+        const uint32_t qHeadMul = (qFormat == Format::BNSD) ? 1u : qHeads_;
 
         while (coreTaskId < coreTaskNum || delay20CoreTaskId < coreTaskNum || delay3CoreTaskId < coreTaskNum)
         {
@@ -233,12 +240,11 @@ public:
                     }
                     // ComputeMm2(delay20TileInfo);
 
-                    // todo,这里有点问题，如果在bsnd和tnd场景下
-                    // [tla化] V 的 GM 张量：ColumnMajor(D, S2)，故 rows=embed_、cols=kvBaseTile_。
-                    //   依据布局定论：V 物理 row-major [S2,D]，tla 须以 ColumnMajor(D,S2) 表达
-                    //   （原实参 (kvBaseTile_, embed_)=(S2,D) 顺序反了，已修正为 (embed_, kvBaseTile_)）。
-                    //   raw gather 走 .data()，此 layout 暂不消费。
-                    auto gmVLayoutTla = tla::MakeLayout<ElementV, LayoutV>(embed_, kvBaseTile_);
+                    // [BSND/TND stride 修复] V GM col-stride(头内 token-stride): BNSD=embed_(D, 头内连续);
+                    //   BSND/TND=kvHeadMul*embed_(=N*D, 头内 token 隔 N*D)。原 :236 todo 已修——
+                    //   乘 kvHeadMul(BNSD=1) 使 col-stride 变为 N*D; extent 超估对 GetTile(读 embed_) 无害。
+                    //   物理: V BSND row-major [S,N,D] 头内 token-stride=N*D; BNSD [N,S,D] 头内=D。
+                    auto gmVLayoutTla = tla::MakeLayout<ElementV, LayoutV>(kvHeadMul * embed_, kvBaseTile_);
                     auto gmVTensorTla = tla::MakeTensor(gV[delay20TaskInfo.gmOffsetV], gmVLayoutTla, Arch::PositionGM{});
 
                     // [catlass化] UB Oᵀ 实际存储布局：rows=embed_+1（D 行 Oᵀ + 1 行 rowsum）、
@@ -263,7 +269,7 @@ public:
                         actualBlockShapePV,
                         delay20TileInfo,  // gatheredKvSTileIdx
                         delay20TaskInfo,
-                        kvBaseTile_, blockShapeY_);
+                        kvBaseTile_, blockShapeY_, kvHeadMul);
 
                     if (delay20TileInfo.isUpdatePScale) {
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2);
@@ -274,7 +280,15 @@ public:
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
                         // AscendC::DumpTensor(ubOTmpTensor, 130, 128);
                         ComputeVec2(delay20TileInfo);
-                        auto gmOLayoutTla = tla::MakeLayout<ElementO, LayoutO>(qBaseTile_, delay20TaskInfo.oShapeCol);
+                        // [BSND root fix] O GM layout: cols=embed_(D, 每 token 元素数) + row-stride=oShapeCol(=strideOS_, token-stride)。
+                        //   原 RowMajor(qBaseTile, oShapeCol) 把 cols-extent 与 row-stride 都设成 oShapeCol(=strideOS_):
+                        //   BNSD 二者都=D 过; BSND oShapeCol=strideOS_=N*D -> cols 放大 -> epilogue get<1>(shape)=N*D
+                        //   -> copyUbToGmO 每 token 写 N*D 元素(128 真+128 垃圾) -> 输出错乱 1.147%。
+                        //   hand-build 分离: cols=embed_(D, extent 正确)、row-stride=oShapeCol(strideOS_, token-stride 正确);
+                        //   isRowMajor(stride<1>=1) 仍成立 -> dispatch 不变; epilogue get<1>(shape) 自然=embed_=D, 无需 epilogue 侧特判。
+                        auto gmOLayoutTla = tla::MakeLayout(
+                            tla::MakeShape(qBaseTile_, embed_),
+                            tla::MakeStride(delay20TaskInfo.oShapeCol, tla::Int<1>{}));
                         auto gmOTensorTla = tla::MakeTensor(gO[delay20TaskInfo.gmOffsetO], gmOLayoutTla, Arch::PositionGM{});
                         GemmCoord actualBlockShapeVPT{embed_, delay20TaskInfo.qsActBaseTile, delay20TileInfo.kvsActBaseTile};
                         epilogueRescaleO(
@@ -339,7 +353,7 @@ public:
                         curTaskInfo.yBlockNumAval, curTaskInfo.yBlockNumRsvd,
                         curTileInfo.isFirstKvsTile,
                         curTileInfo.isLastKvsTile, 
-                        subBlockIdx);
+                        subBlockIdx, kvHeadMul, qHeadMul);
                     AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
                 } else {
 #ifdef __DAV_VEC__
