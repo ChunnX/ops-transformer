@@ -98,7 +98,6 @@ struct SliMetadata {
         assert(metaIdx < FA_METADATA_STRIDE);
         return faMetadata[AIC_CORE_NUM * FA_METADATA_STRIDE * sectionIdx + FA_METADATA_STRIDE * aicIdx + metaIdx];
     }
-
 };
 } // namespace detail
 
