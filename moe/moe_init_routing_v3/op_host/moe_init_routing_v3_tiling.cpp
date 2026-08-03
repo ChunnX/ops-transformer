@@ -1153,7 +1153,7 @@ ge::graphStatus MoeInitRountingV3TilingBase::DoOpTiling()
     Tiling4GatherOutCompute();
     isFullload_ = IsFullLoad();
     if (!isFullload_ && !IsPerformanceMode_X_1_7168_EXPERT_IDX_1_8_SCALE_256_7168()) {
-        ComputeCountingSortTiling();
+        // ComputeCountingSortTiling();
     }
     ShowTilingData();
     return ge::GRAPH_SUCCESS;
