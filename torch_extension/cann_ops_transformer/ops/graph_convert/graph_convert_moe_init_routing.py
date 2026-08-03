@@ -17,10 +17,11 @@ try:
     from torchair._ge_concrete_graph.fx2ge_converter import register_fx_node_ge_converter
     from torchair._ge_concrete_graph.supported_declaration import Support
     from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
+    from torchair._ge_concrete_graph.utils import dtype_promote
     from torchair.ge._ge_graph import DataType, auto_convert_to_tensor
     from torchair.ge._ge_graph import get_default_ge_graph, next_unique_name
     from torchair.ge import attr
-    from typing import Optional
+    from typing import Optional, Union
     _TORCHAIR_AVAILABLE = True
 except ImportError:
     _TORCHAIR_AVAILABLE = False
@@ -122,7 +123,7 @@ if _TORCHAIR_AVAILABLE:
         scale: Tensor = None,
         offset: Tensor = None,
         topk_weight: Tensor = None,
-        active_num: int = -1,
+        active_num: Union[int, Tensor] = -1,
         expert_capacity: int = -1,
         expert_num: int = -1,
         drop_pad_mode: int = 0,
@@ -134,7 +135,7 @@ if _TORCHAIR_AVAILABLE:
         x_dtype: int = None,
         meta_outputs: TensorSpec = None):
 
-        active_num_tensor = ge.Const(active_num, dtype=DataType.DT_INT64)
+        active_num_tensor = dtype_promote(active_num, target_dtype=DataType.DT_INT64)
 
         return MoeInitRoutingV4(
             x=x,
