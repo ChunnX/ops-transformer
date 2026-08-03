@@ -220,8 +220,9 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
             }
             // A5 treats -1 as unlimited window
             if (oriWinLeft < -1 || oriWinRight < -1) {
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(SMLA_ACLNN_OP_NAME, "ori_win_left, ori_win_right",
-                                                       std::to_string(oriWinLeft) + ", " + std::to_string(oriWinRight),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(SMLA_ACLNN_OP_NAME, "ori_win_left and ori_win_right",
+                                                       std::to_string(oriWinLeft) + " and " +
+                                                       std::to_string(oriWinRight),
                                                        "When has_ori_kv is true, the value of ori_win_left, "
                                                        "ori_win_right must be greater than or equal to -1");
                 return ACLNN_ERR_PARAM_INVALID;
@@ -233,8 +234,9 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
                 return ACLNN_ERR_PARAM_INVALID;
             }
             if (oriWinLeft != 127 || oriWinRight != 0) {
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(SMLA_ACLNN_OP_NAME, "ori_win_left, ori_win_right",
-                                                       std::to_string(oriWinLeft) + ", " + std::to_string(oriWinRight),
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(SMLA_ACLNN_OP_NAME, "ori_win_left and ori_win_right",
+                                                       std::to_string(oriWinLeft) + " and " +
+                                                       std::to_string(oriWinRight),
                                                        "When has_ori_kv is true, the value of ori_win_left "
                                                        "must be 127 and the value of ori_win_right must be 0");
                 return ACLNN_ERR_PARAM_INVALID;
@@ -331,6 +333,31 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
             "When layout_kv is not PA_BBND, the values of layout_q, layout_kv must be the same");
         return ACLNN_ERR_PARAM_INVALID;
     }
+    // 校验 layout_q 为 BSND 时，max_seqlen_q 必须大于 0
+    if (strcmp(layoutQOptional, "BSND") == 0 && maxSeqlenQ <= 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "max_seqlen_q", std::to_string(maxSeqlenQ),
+                                              "When layout_q is BSND, the value of max_seqlen_q cannnot be 0, "
+                                              "it must be equal to the size of the second axis of q");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // 校验 has_ori_kv 且 layout_kv 为 BSND 时，max_seqlen_ori_kv 必须大于 0
+    if (hasOriKv && strcmp(layoutKvOptional, "BSND") == 0 && maxSeqlenOriKv <= 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "max_seqlen_ori_kv",
+                                              std::to_string(maxSeqlenOriKv),
+                                              "When has_ori_kv is true and layout_kv is BSND, "
+                                              "the value of max_seqlen_ori_kv cannnot be 0, "
+                                              "it must be equal to the size of the second axis of ori_kv");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // 校验 has_cmp_kv 且 layout_kv 为 BSND 时，max_seqlen_cmp_kv 必须大于 0
+    if (hasCmpKv && strcmp(layoutKvOptional, "BSND") == 0 && maxSeqlenCmpKv <= 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "max_seqlen_cmp_kv",
+                                              std::to_string(maxSeqlenCmpKv),
+                                              "When has_cmp_kv is true and layout_kv is BSND, "
+                                              "the value of max_seqlen_cmp_kv cannnot be 0, "
+                                              "it must be equal to the size of the second axis of cmp_kv");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // 核数校验
     if (aicCoreNum == 0) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(SMLA_ACLNN_OP_NAME, "aic_core_num", std::to_string(aicCoreNum),
@@ -374,9 +401,9 @@ aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqlensQOptional, const aclTen
                                const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedOriKvOptional,
                                const aclTensor *sequsedCmpKvOptional, const aclTensor *cmpResidualKvOptional,
                                const aclTensor *oriTopkLengthOptional, const aclTensor *cmpTopkLengthOptional,
-                               int64_t oriTopk, int64_t cmpTopk, int64_t cmpRatio, int64_t oriMaskMode,
-                               int64_t cmpMaskMode, bool hasOriKv, bool hasCmpKv, const char *layoutQOptional,
-                               const char *layoutKvOptional, const char *socVersion, const aclTensor *metadata)
+                                int64_t oriTopk, int64_t cmpTopk, int64_t cmpRatio, int64_t oriMaskMode,
+                                int64_t cmpMaskMode, bool hasOriKv, bool hasCmpKv, const char *layoutQOptional,
+                                const char *layoutKvOptional, const char *socVersion, const aclTensor *metadata)
 {
     // cu_seqlens_q 存在性校验
     if (strcmp(layoutQOptional, "TND") == 0) {
@@ -540,9 +567,10 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
                                  const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional,
                                  const aclTensor *sequsedOriKvOptional, const aclTensor *sequsedCmpKvOptional,
                                  const aclTensor *cmpResidualKvOptional, const aclTensor *oriTopkLengthOptional,
-                                 const aclTensor *cmpTopkLengthOptional, int64_t batchSize, const char *layoutQOptional,
-                                 const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, const char *socVersion,
-                                 const aclTensor *metadata)
+                                  const aclTensor *cmpTopkLengthOptional, int64_t batchSize, const char *layoutQOptional,
+                                  const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, int64_t oriTopk,
+                                  int64_t cmpTopk, int64_t oriMaskMode, int64_t cmpMaskMode, int64_t maxSeqlenQ,
+                                  int64_t numHeadsKv, const char *socVersion, const aclTensor *metadata)
 {
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     int64_t dimNum = -1;
@@ -622,7 +650,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             }
         }
         // 校验 ori_topk_length
-        if ((socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) &&
+        if (oriTopk != 0 && oriMaskMode == static_cast<int64_t>(SparseModeSmla::DEFAULT_MASK) &&
             IsTensorExistSmla(oriTopkLengthOptional)) {
             // 校验 ori_topk_length 维度
             dimNum = GetDimNumSmla(oriTopkLengthOptional);
@@ -709,7 +737,7 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             }
         }
         // 校验 cmp_topk_length
-        if ((socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) &&
+        if (cmpTopk != 0 && cmpMaskMode == static_cast<int64_t>(SparseModeSmla::DEFAULT_MASK) &&
             IsTensorExistSmla(cmpTopkLengthOptional)) {
             // 校验 cmp_topk_length 维度
             dimNum = GetDimNumSmla(cmpTopkLengthOptional);
@@ -821,6 +849,59 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
+        // 校验 ori_topk_length 维度一致性
+        if (oriTopk != 0 &&
+            oriMaskMode == static_cast<int64_t>(SparseModeSmla::DEFAULT_MASK) &&
+            IsTensorExistSmla(oriTopkLengthOptional)) {
+            if (strcmp(layoutQOptional, "BSND") == 0) {
+                // 校验 ori_topk_length 第一个维度
+                if (oriTopkLengthOptional->GetViewShape().GetDim(0) != queryBatchSize) {
+                    if (IsTensorSourceSmla(querySource)) {
+                        OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
+                            SMLA_ACLNN_OP_NAME, "ori_topk_length and " + querySource,
+                            std::to_string(oriTopkLengthOptional->GetViewShape().GetDim(0)) + " and " +
+                                std::to_string(GetRawShapeSizeSmla(querySource, queryBatchSize)),
+                            "When layout_q is BSND, the size of the first axis of ori_topk_length must be equal to " +
+                                GetSourceDescSmla(querySource));
+                    } else {
+                        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+                            SMLA_ACLNN_OP_NAME, "ori_topk_length",
+                            std::to_string(oriTopkLengthOptional->GetViewShape().GetDim(0)),
+                            "When layout_q is BSND, the size of the first axis of ori_topk_length must be equal to "
+                            "batch_size");
+                    }
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
+                // 校验 ori_topk_length 第二个维度
+                if (oriTopkLengthOptional->GetViewShape().GetDim(1) != maxSeqlenQ) {
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+                        SMLA_ACLNN_OP_NAME, "ori_topk_length",
+                        std::to_string(oriTopkLengthOptional->GetViewShape().GetDim(1)),
+                        "When layout_q is BSND, the size of the second axis of ori_topk_length must be equal to "
+                        "max_seqlen_q");
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
+                // 校验 ori_topk_length 第三个维度
+                if (oriTopkLengthOptional->GetViewShape().GetDim(2) != numHeadsKv) {
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+                        SMLA_ACLNN_OP_NAME, "ori_topk_length",
+                        std::to_string(oriTopkLengthOptional->GetViewShape().GetDim(2)),
+                        "When layout_q is BSND, the size of the third axis of ori_topk_length must be equal to "
+                        "num_heads_kv");
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
+            } else if (strcmp(layoutQOptional, "TND") == 0) {
+                // 校验 ori_topk_length 第二个维度
+                if (oriTopkLengthOptional->GetViewShape().GetDim(1) != numHeadsKv) {
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+                        SMLA_ACLNN_OP_NAME, "ori_topk_length",
+                        std::to_string(oriTopkLengthOptional->GetViewShape().GetDim(1)),
+                        "When layout_q is TND, the size of the second axis of ori_topk_length must be equal to "
+                        "num_heads_kv");
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
+            }
+        }
     }
     if (hasCmpKv) {
         std::string cmpKvSource;
@@ -881,6 +962,59 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
+        // 校验 cmp_topk_length 维度一致性
+        if (cmpTopk != 0 &&
+            cmpMaskMode == static_cast<int64_t>(SparseModeSmla::DEFAULT_MASK) &&
+            IsTensorExistSmla(cmpTopkLengthOptional)) {
+            if (strcmp(layoutQOptional, "BSND") == 0) {
+                // 校验 cmp_topk_length 第一个维度
+                if (cmpTopkLengthOptional->GetViewShape().GetDim(0) != queryBatchSize) {
+                    if (IsTensorSourceSmla(querySource)) {
+                        OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
+                            SMLA_ACLNN_OP_NAME, "cmp_topk_length and " + querySource,
+                            std::to_string(cmpTopkLengthOptional->GetViewShape().GetDim(0)) + " and " +
+                                std::to_string(GetRawShapeSizeSmla(querySource, queryBatchSize)),
+                            "When layout_q is BSND, the size of the first axis of cmp_topk_length must be equal to " +
+                                GetSourceDescSmla(querySource));
+                    } else {
+                        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+                            SMLA_ACLNN_OP_NAME, "cmp_topk_length",
+                            std::to_string(cmpTopkLengthOptional->GetViewShape().GetDim(0)),
+                            "When layout_q is BSND, the size of the first axis of cmp_topk_length must be equal to "
+                            "batch_size");
+                    }
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
+                // 校验 cmp_topk_length 第二个维度
+                if (cmpTopkLengthOptional->GetViewShape().GetDim(1) != maxSeqlenQ) {
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+                        SMLA_ACLNN_OP_NAME, "cmp_topk_length",
+                        std::to_string(cmpTopkLengthOptional->GetViewShape().GetDim(1)),
+                        "When layout_q is BSND, the size of the second axis of cmp_topk_length must be equal to "
+                        "max_seqlen_q");
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
+                // 校验 cmp_topk_length 第三个维度
+                if (cmpTopkLengthOptional->GetViewShape().GetDim(2) != numHeadsKv) {
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+                        SMLA_ACLNN_OP_NAME, "cmp_topk_length",
+                        std::to_string(cmpTopkLengthOptional->GetViewShape().GetDim(2)),
+                        "When layout_q is BSND, the size of the third axis of cmp_topk_length must be equal to "
+                        "num_heads_kv");
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
+            } else if (strcmp(layoutQOptional, "TND") == 0) {
+                // 校验 cmp_topk_length 第二个维度
+                if (cmpTopkLengthOptional->GetViewShape().GetDim(1) != numHeadsKv) {
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+                        SMLA_ACLNN_OP_NAME, "cmp_topk_length",
+                        std::to_string(cmpTopkLengthOptional->GetViewShape().GetDim(1)),
+                        "When layout_q is TND, the size of the second axis of cmp_topk_length must be equal to "
+                        "num_heads_kv");
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
+            }
+        }
     }
     return ACLNN_SUCCESS;
 }
@@ -908,7 +1042,8 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
         CheckConsistencySmla(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                              sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
                              cmpTopkLengthOptional, batchSize, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv,
-                             socVersion, metaData) == ACLNN_SUCCESS) {
+                             oriTopk, cmpTopk, oriMaskMode, cmpMaskMode, maxSeqlenQ, numHeadsKv, socVersion,
+                             metaData) == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
         return ACLNN_ERR_PARAM_INVALID;
