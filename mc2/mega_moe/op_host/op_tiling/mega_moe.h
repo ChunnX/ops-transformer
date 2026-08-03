@@ -49,7 +49,7 @@ struct MegaMoeConfig {
     uint32_t attrCommAlgIndex = 7U;
     uint32_t attrNumMaxTokensPerRankIndex = 8U;
     uint32_t attrActivationIndex = 9U;
-    uint32_t attrActivationClampIndex = 10U;
+    uint32_t attrActivationParamsIndex = 10U;
     uint32_t attrActivationOutDtypeIndex = 11U;
     uint32_t attrTransposeWeight1Index = 12U;
     uint32_t attrTransposeWeight2Index = 13U;
@@ -58,8 +58,8 @@ struct MegaMoeConfig {
 };
 using namespace Ops::Transformer::OpTiling;
 
-ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext* context, MegaMoeConfig& config);
+ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMoeConfig &config);
 
-}
+} // namespace optiling
 
 #endif
