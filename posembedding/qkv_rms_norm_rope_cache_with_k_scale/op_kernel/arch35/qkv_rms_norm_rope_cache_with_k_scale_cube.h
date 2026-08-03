@@ -36,22 +36,12 @@ public:
         for (uint32_t bufferId = 0U; bufferId < AIC_L0A_BUFFER_NUM; ++bufferId) {
             SetFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId));
         }
-        if constexpr (IS_MROPE) {
-            for (uint32_t bufferId = 0U; bufferId < AIC_L0C_BUFFER_NUM; ++bufferId) {
-                SetFlag<HardEvent::FIX_M>(static_cast<event_t>(EVT_FIX_TO_MMAD_L0_BASE + bufferId));
-            }
-        }
     }
 
     __aicore__ inline void EndIntraCoreEvents()
     {
         for (uint32_t bufferId = 0U; bufferId < AIC_L0A_BUFFER_NUM; ++bufferId) {
             WaitFlag<HardEvent::M_MTE1>(static_cast<event_t>(EVT_MMAD_TO_MTE1_L0_BASE + bufferId));
-        }
-        if constexpr (IS_MROPE) {
-            for (uint32_t bufferId = 0U; bufferId < AIC_L0C_BUFFER_NUM; ++bufferId) {
-                WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(EVT_FIX_TO_MMAD_L0_BASE + bufferId));
-            }
         }
     }
 
@@ -69,18 +59,12 @@ public:
                                        LocalTensor<float> qkAfterCubeUb)
     {
         const uint32_t l0cBufferId = static_cast<uint32_t>(l0cBufferUseId_ % AIC_L0C_BUFFER_NUM);
-        if constexpr (IS_MROPE) {
-            WaitFlag<HardEvent::FIX_M>(static_cast<event_t>(EVT_FIX_TO_MMAD_L0_BASE + l0cBufferId));
-        }
         const uint64_t qRows = tile.cubeTokenSize * qHeadNum_;
         const uint64_t kRows = tile.cubeTokenSize * kvHeadNum_;
         const uint64_t qRowsPerAiv = tile.cubeHalfTokenSize * qHeadNum_;
         const uint64_t kL0cOffset = AlignUp(qRows, QKV_K_SCALE_NZ_C0) * QKV_K_SCALE_HEAD_DIM_D128;
         ComputePreprocessedQkToL0C(aRotL1Nz, qRows, kRows, l0cBufferId, kL0cOffset);
-        if constexpr (IS_MROPE) {
-            SetFlag<HardEvent::M_FIX>(static_cast<event_t>(EVT_MMAD_TO_FIX_L0_BASE + l0cBufferId));
-            WaitFlag<HardEvent::M_FIX>(static_cast<event_t>(EVT_MMAD_TO_FIX_L0_BASE + l0cBufferId));
-        } else {
+        if constexpr (!IS_MROPE) {
             FixpipeSegmentToAivUb(qRows, 0U, l0cBufferId, 0U, qkAfterCubeUb);
         }
         if constexpr (IS_MROPE) {
@@ -103,7 +87,6 @@ public:
         const uint64_t validQRows = tile.tokenSize * qHeadNum_;
         const uint64_t qOutBaseRow = tile.tokenOffset * qHeadNum_;
         FixpipeQSegmentToGm(validQRows, qOutBaseRow, qRows, l0cBufferId);
-        SetFlag<HardEvent::FIX_M>(static_cast<event_t>(EVT_FIX_TO_MMAD_L0_BASE + l0cBufferId));
     }
 
 private:
@@ -122,8 +105,6 @@ private:
     static constexpr uint32_t EVT_MTE1_TO_MMAD_ROTATION_READY = 5U;
     static constexpr uint32_t EVT_MTE1_TO_MMAD_L0_BASE = 3U;
     static constexpr uint32_t EVT_MMAD_TO_MTE1_L0_BASE = 3U;
-    static constexpr uint32_t EVT_FIX_TO_MMAD_L0_BASE = 0U;
-    static constexpr uint32_t EVT_MMAD_TO_FIX_L0_BASE = 0U;
 
     __aicore__ inline void CopyRotationGmToL1Nz()
     {
