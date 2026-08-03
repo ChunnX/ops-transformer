@@ -288,6 +288,7 @@ static bool CollectSubgraphInputsInfo(const std::vector<ge::fusion::SubgraphInpu
                                       std::vector<ge::Shape> &inputShapes, std::vector<ge::DataType> &inputDTypes,
                                       std::vector<ge::Format> &inputFormats)
 {
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Begin CollectSubgraphInputsInfo.");
     inputShapes.clear();
     inputDTypes.clear();
     inputFormats.clear();
@@ -307,6 +308,7 @@ static bool CollectSubgraphInputsInfo(const std::vector<ge::fusion::SubgraphInpu
         inputDTypes.emplace_back(tmpDesc.GetDataType());
         inputFormats.emplace_back(tmpDesc.GetOriginFormat());
     }
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End CollectSubgraphInputsInfo.");
     return true;
 }
 
@@ -374,6 +376,7 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraph
     if (!ValidateSubgraphInputNum(patternNameStr, inputShapes.size())) {
         return false;
     }
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Begin create input to index.");
     int64_t inputIdx = 0;
     inputs.rX1 = replaceGraphBuilder.CreateInput(inputIdx, "x1", inputDTypes[inputIdx], inputFormats[inputIdx],
                                                  inputShapes[inputIdx].GetDims());
@@ -416,6 +419,7 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraph
         inputs.rX2Offset = replaceGraphBuilder.CreateInput(inputIdx, "x2_offset", inputDTypes[inputIdx],
                                                            inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
     }
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End to create inputs in Replacement.");
     return true;
 }
 
