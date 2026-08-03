@@ -25,7 +25,7 @@
 #include "grouped_matmul_swiglu_quant_v2_fusion_tiling.h"
 #include "grouped_matmul_swiglu_quant_v2_base_tiling.h"
 #include "arch35/grouped_matmul_swiglu_quant_v2_basic_tiling.h"
-#include "arch35/grouped_matmul_swiglu_quant_v2_tensor_api_tiling.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_basic_api_tiling.h"
 #include "arch35/grouped_matmul_swiglu_quant_v2_weight_quant_tiling.h"
 #include "platform/platform_infos_def.h"
 
@@ -52,7 +52,7 @@ REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuan
     GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE);
 
 constexpr int64_t GMMSQ_TENSOR_API_TILING_TEMPLATE = 4;
-REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2TensorApiTiling950,
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2BasicApiTiling950,
     GMMSQ_TENSOR_API_TILING_TEMPLATE);
 
 static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext *context)

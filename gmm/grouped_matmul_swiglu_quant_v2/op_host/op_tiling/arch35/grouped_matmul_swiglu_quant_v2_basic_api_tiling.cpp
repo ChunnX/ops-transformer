@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file grouped_matmul_swiglu_quant_v2_tensor_api_tiling.cpp
- * \brief Ascend950 tiling template for the MX FP8 Tensor API kernel.
+ * \file grouped_matmul_swiglu_quant_v2_basic_api_tiling.cpp
+ * \brief
  */
 
-#include "grouped_matmul_swiglu_quant_v2_tensor_api_tiling.h"
+#include "grouped_matmul_swiglu_quant_v2_basic_api_tiling.h"
 
 #include <algorithm>
 #include "log/log.h"
@@ -39,7 +39,7 @@ constexpr uint64_t AIC_AIV_CORE_RATIO = 2UL;
 
 } // namespace
 
-void GroupedMatmulSwigluQuantV2TensorApiTiling950::Reset()
+void GroupedMatmulSwigluQuantV2BasicApiTiling950::Reset()
 {
     tilingData_ = {};
     basicTiling_ = GQmmBasicTiling();
@@ -53,7 +53,7 @@ void GroupedMatmulSwigluQuantV2TensorApiTiling950::Reset()
     return;
 }
 
-ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::GetPlatformInfo()
+ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
@@ -84,7 +84,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::GetShapeAttrsInfo()
+ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::GetShapeAttrsInfo()
 {
     inputParams_.Reset();
     inputParams_.opName = context_->GetNodeName();
@@ -96,7 +96,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::GetShapeAttrsInfo(
     return ge::GRAPH_SUCCESS;
 }
 
-bool GroupedMatmulSwigluQuantV2TensorApiTiling950::AnalyzeDtype()
+bool GroupedMatmulSwigluQuantV2BasicApiTiling950::AnalyzeDtype()
 {
     auto xDesc = context_->GetInputDesc(X_INDEX);
     auto xScaleDesc = context_->GetInputDesc(X_SCALE_INDEX);
@@ -139,7 +139,7 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::AnalyzeDtype()
     return true;
 }
 
-bool GroupedMatmulSwigluQuantV2TensorApiTiling950::AnalyzeAttrs()
+bool GroupedMatmulSwigluQuantV2BasicApiTiling950::AnalyzeAttrs()
 {
     auto attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "Attrs is nullptr."), return false);
@@ -169,7 +169,7 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::AnalyzeAttrs()
     return true;
 }
 
-bool GroupedMatmulSwigluQuantV2TensorApiTiling950::AnalyzeInputs()
+bool GroupedMatmulSwigluQuantV2BasicApiTiling950::AnalyzeInputs()
 {
     auto xStorageShape = context_->GetInputShape(X_INDEX);
     auto weightStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
@@ -211,12 +211,12 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::AnalyzeInputs()
     return true;
 }
 
-bool GroupedMatmulSwigluQuantV2TensorApiTiling950::IsFp8(ge::DataType dtype) const
+bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsFp8(ge::DataType dtype) const
 {
     return dtype == ge::DT_FLOAT8_E4M3FN || dtype == ge::DT_FLOAT8_E5M2;
 }
 
-size_t GroupedMatmulSwigluQuantV2TensorApiTiling950::GetDynamicInputCount(uint32_t inputIndex) const
+size_t GroupedMatmulSwigluQuantV2BasicApiTiling950::GetDynamicInputCount(uint32_t inputIndex) const
 {
     size_t count = 0U;
     while (count < GmmConstant::GMM_MAX_GROUP_LIST_SIZE &&
@@ -226,7 +226,7 @@ size_t GroupedMatmulSwigluQuantV2TensorApiTiling950::GetDynamicInputCount(uint32
     return count;
 }
 
-bool GroupedMatmulSwigluQuantV2TensorApiTiling950::CheckTensorApiShapes() const
+bool GroupedMatmulSwigluQuantV2BasicApiTiling950::CheckTensorApiShapes() const
 {
     auto xShapePtr = context_->GetInputShape(X_INDEX);
     auto weightShapePtr = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
@@ -245,7 +245,7 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::CheckTensorApiShapes() const
             weightShape.GetDim(0) == static_cast<int64_t>(inputParams_.groupNum));
 }
 
-bool GroupedMatmulSwigluQuantV2TensorApiTiling950::CheckTensorApiScaleShapes() const
+bool GroupedMatmulSwigluQuantV2BasicApiTiling950::CheckTensorApiScaleShapes() const
 {
     auto xScaleShapePtr = context_->GetInputShape(X_SCALE_INDEX);
     auto weightScaleShapePtr = context_->GetDynamicInputShape(WEIGHT_SCALE_INDEX, 0);
@@ -271,7 +271,7 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::CheckTensorApiScaleShapes() c
            weightScaleShape.GetDim(3) == SHAPE_DIM_TWO;
 }
 
-bool GroupedMatmulSwigluQuantV2TensorApiTiling950::IsCapable()
+bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsCapable()
 {
     if (!platformMemoryReady_) {
         return false;
@@ -315,7 +315,7 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::IsCapable()
     return capable;
 }
 
-ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::DoOpTiling()
+ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::DoOpTiling()
 {
     auto &params = tilingData_.gmmQuantParams;
     params.groupNum = static_cast<uint32_t>(inputParams_.groupNum);
@@ -330,7 +330,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::DoLibApiTiling()
+ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::DoLibApiTiling()
 {
     GroupedQmmTiling::CalBasicBlock();
     OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
@@ -363,7 +363,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::DoLibApiTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::GetWorkspaceSize()
+ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::GetWorkspaceSize()
 {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
@@ -371,14 +371,14 @@ ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t GroupedMatmulSwigluQuantV2TensorApiTiling950::GetTilingKey() const
+uint64_t GroupedMatmulSwigluQuantV2BasicApiTiling950::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB),
                               static_cast<uint64_t>(inputParams_.transA),
                               static_cast<uint64_t>(GMM_SWIGLU_QUANT_TENSOR_LEVEL_KERNEL_TYPE));
 }
 
-ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::PostTiling()
+ge::graphStatus GroupedMatmulSwigluQuantV2BasicApiTiling950::PostTiling()
 {
     context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
     return SaveTilingDataToContext(tilingData_);

@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file grouped_matmul_swiglu_quant_v2_tensor_api_tiling.h
- * \brief Ascend950 tiling template for the MX FP8 Tensor API kernel.
+ * \file grouped_matmul_swiglu_quant_v2_basic_api_tiling.h
+ * \brief
  */
 
-#ifndef GROUPED_MATMUL_SWIGLU_QUANT_V2_TENSOR_API_TILING_H
-#define GROUPED_MATMUL_SWIGLU_QUANT_V2_TENSOR_API_TILING_H
+#ifndef GROUPED_MATMUL_SWIGLU_QUANT_V2_BASIC_API_TILING_H
+#define GROUPED_MATMUL_SWIGLU_QUANT_V2_BASIC_API_TILING_H
 
 #include <cstddef>
 #include <exe_graph/runtime/tiling_context.h>
@@ -27,14 +27,14 @@
 #include "../grouped_matmul_swiglu_quant_v2_tiling.h"
 
 namespace optiling {
-class GroupedMatmulSwigluQuantV2TensorApiTiling950 : public GroupedQmmBasicApiTiling {
+class GroupedMatmulSwigluQuantV2BasicApiTiling950 : public GroupedQmmBasicApiTiling {
 public:
-    explicit GroupedMatmulSwigluQuantV2TensorApiTiling950(gert::TilingContext *context)
+    explicit GroupedMatmulSwigluQuantV2BasicApiTiling950(gert::TilingContext *context)
         : GroupedQmmBasicApiTiling(context)
     {
         Reset();
     }
-    ~GroupedMatmulSwigluQuantV2TensorApiTiling950() override = default;
+    ~GroupedMatmulSwigluQuantV2BasicApiTiling950() override = default;
 
     void Reset(gert::TilingContext *context) override
     {
@@ -78,4 +78,4 @@ private:
 };
 } // namespace optiling
 
-#endif // GROUPED_MATMUL_SWIGLU_QUANT_V2_TENSOR_API_TILING_H
+#endif // GROUPED_MATMUL_SWIGLU_QUANT_V2_BASIC_API_TILING_H
