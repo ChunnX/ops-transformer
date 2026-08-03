@@ -456,7 +456,13 @@ ge::graphStatus GroupedA4W4IntQuantTiling::DoLibApiTiling()
 ge::graphStatus GroupedA4W4IntQuantTiling::CalWorkspaceA4W4()
 {
     // int4->int8 预转换：weight 与 x 均落 workspace（体积翻倍 int4 0.5B -> int8 1B）
-    int8WeightWs_ = static_cast<uint64_t>(a4w4Tiling_.groupNum) * a4w4Tiling_.k * a4w4Tiling_.n * sizeof(int8_t);
+    // NZ INT4 uses C0=64, while the expanded INT8 NZ workspace uses C0=32.
+    // Therefore its physical [K,N] size must include K/16 and N/32 padding;
+    // using logical K*N makes the following X workspace overlap the weight tail.
+    const bool weightIsNz = inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ;
+    const uint64_t weightK = weightIsNz ? CeilAlign(a4w4Tiling_.k, CUBE_BLOCK) : a4w4Tiling_.k;
+    const uint64_t weightN = weightIsNz ? CeilAlign(a4w4Tiling_.n, INT8_NZ_C0) : a4w4Tiling_.n;
+    int8WeightWs_ = static_cast<uint64_t>(a4w4Tiling_.groupNum) * weightK * weightN * sizeof(int8_t);
     int8XWs_ = static_cast<uint64_t>(a4w4Tiling_.m) * a4w4Tiling_.k * sizeof(int8_t);  // m=totalM (single x)
     mmOutWs_ = static_cast<uint64_t>(A4W4_MMOUT_PIPELINE) * a4w4Tiling_.baseM * a4w4Tiling_.baseN *
                a4w4Tiling_.usedCoreNum * sizeof(uint16_t);
