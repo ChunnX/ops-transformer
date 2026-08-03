@@ -55,13 +55,12 @@ constexpr int64_t D_ALIGNMENT = 16;
 constexpr int64_t ALPHA_DIM_SIZE_3 = 3;
 constexpr int64_t ALPHA_DIM_SIZE_2 = 2;
 constexpr int64_t PHI_DIM_OFFSET = 2;
-constexpr int64_t MHC_PRE_DEFAULT = 0;
+constexpr int64_t MHC_PRE_USE_FP32 = 0;
 constexpr int64_t MHC_PRE_USE_HF32 = 1;
 
 static bool CheckAlphaShape(const aclTensor *alphaTensor);
 static bool ValidateNDParams(int64_t n, int64_t d);
 static bool CheckTensorShape(const aclTensor *tensor, std::initializer_list<int64_t> expectedShape, const char *name);
-
 
 static std::string TensorShapeToString(const aclTensor *tensor)
 {
@@ -132,7 +131,7 @@ struct MhcParamsBase {
     const aclTensor *gammaOptional = nullptr;
     double normEps;
     double hcEps;
-    int64_t implMode = MHC_PRE_DEFAULT;
+    int64_t opImplMode = MHC_PRE_USE_FP32;
     aclTensor *hIn = nullptr;
     aclTensor *hPost = nullptr;
     aclTensor *hRes = nullptr;
@@ -169,11 +168,11 @@ public:
         return *this;
     }
 
-    MhcBuilder &SetAttr(double normEps, double hcEps, int64_t implMode)
+    MhcBuilder &SetAttr(double normEps, double hcEps, int64_t opImplMode)
     {
         obj_.normEps = normEps;
         obj_.hcEps = hcEps;
-        obj_.implMode = implMode;
+        obj_.opImplMode = opImplMode;
         return *this;
     }
 
@@ -263,9 +262,9 @@ static bool CheckOptionalOutputGroup(const MhcParamsBase &params)
         params.invRmsOptional != nullptr && params.hMixOptional != nullptr && params.hPreOptional != nullptr;
     if (hasAnyOptional && !hasAllOptional) {
         const std::string pointerStates = std::string("invRmsOptional=") +
-            (params.invRmsOptional == nullptr ? "nullptr" : "non-null") + ", hMixOptional=" +
-            (params.hMixOptional == nullptr ? "nullptr" : "non-null") + ", hPreOptional=" +
-            (params.hPreOptional == nullptr ? "nullptr" : "non-null");
+                                          (params.invRmsOptional == nullptr ? "nullptr" : "non-null") + ", hMixOptional=" +
+                                          (params.hMixOptional == nullptr ? "nullptr" : "non-null") + ", hPreOptional=" +
+                                          (params.hPreOptional == nullptr ? "nullptr" : "non-null");
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(ACLNN_OP_NAME, "invRmsOptional, hMixOptional, hPreOptional",
                                                pointerStates.c_str(),
                                                "all optional outputs must be nullptr or all must be non-null");
@@ -273,7 +272,6 @@ static bool CheckOptionalOutputGroup(const MhcParamsBase &params)
     }
     return true;
 }
-
 
 static bool CheckOptionalOutputDims(const MhcParamsBase &params)
 {
@@ -434,7 +432,6 @@ static bool ValidateNDParams(int64_t n, int64_t d)
     return true;
 }
 
-
 static bool CheckInputDtype(const MhcParamsBase &params)
 {
     const std::initializer_list<DataType> X_SUPPORT_DTYPE_LIST = {DataType::DT_BF16, DataType::DT_FLOAT16};
@@ -532,11 +529,12 @@ static bool CheckFormat(const MhcParamsBase &params)
     return CheckInputFormat(params) && CheckOutputFormat(params) && CheckOptionalOutputFormat(params);
 }
 
-static bool CheckImplMode(const MhcParamsBase &params)
+static bool CheckOpImplMode(const MhcParamsBase &params)
 {
-    if (params.implMode != MHC_PRE_DEFAULT && params.implMode != MHC_PRE_USE_HF32) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "implMode", std::to_string(params.implMode).c_str(),
-                                              "must be 0 (MHC_PRE_DEFAULT) or 1 (MHC_PRE_USE_HF32)");
+    if (params.opImplMode != MHC_PRE_USE_FP32 && params.opImplMode != MHC_PRE_USE_HF32) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "opImplMode",
+                                              std::to_string(params.opImplMode).c_str(),
+                                              "must be 0 (MHC_PRE_USE_FP32) or 1 (MHC_PRE_USE_HF32)");
         return false;
     }
     return true;
@@ -553,7 +551,7 @@ static aclnnStatus CheckParams(const MhcParamsBase &params)
     CHECK_RET(CheckInputOutShape(params), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckDtypeValid(params), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckFormat(params), ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckImplMode(params), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckOpImplMode(params), ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 
@@ -621,7 +619,7 @@ static aclnnStatus mHCPreCommonProcess(MhcParamsBase &params, aclOpExecutor *exe
     int64_t outFlag = params.invRmsOptional != nullptr ? 1 : 0;
     auto outParams =
         l0op::MhcPre(params.xContiguous, params.phiContiguous, params.alphaContiguous, params.biasContiguous,
-                     params.gammaOptionalContiguous, outFlag, params.normEps, params.hcEps, params.implMode, executor);
+                     params.gammaOptionalContiguous, outFlag, params.normEps, params.hcEps, params.opImplMode, executor);
     CHECK_RET(outParams != std::tuple(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
     ret = CopyRequiredOutputs(std::get<0>(outParams), std::get<1>(outParams), std::get<2>(outParams), params, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -631,7 +629,7 @@ static aclnnStatus mHCPreCommonProcess(MhcParamsBase &params, aclOpExecutor *exe
 
 static aclnnStatus MhcPreGetWorkspaceSizeCommon(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
-    const aclTensor *gammaOptional, double normEps, double hcEps, int64_t implMode, aclTensor *hIn,
+    const aclTensor *gammaOptional, double normEps, double hcEps, int64_t opImplMode, aclTensor *hIn,
     aclTensor *hPost, aclTensor *hRes, aclTensor *invRmsOptional, aclTensor *hMixOptional, aclTensor *hPreOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
@@ -649,7 +647,7 @@ static aclnnStatus MhcPreGetWorkspaceSizeCommon(
 
     MhcParamsBase params = MhcBuilder::Create()
                                .SetInput(x, phi, alpha, bias, gammaOptional)
-                               .SetAttr(normEps, hcEps, implMode)
+                               .SetAttr(normEps, hcEps, opImplMode)
                                .SetOutput(hIn, hPost, hRes)
                                .SetOptionalOutput(invRmsOptional, hMixOptional, hPreOptional)
                                .Build();
@@ -662,7 +660,6 @@ static aclnnStatus MhcPreGetWorkspaceSizeCommon(
     return ACLNN_SUCCESS;
 }
 
-
 aclnnStatus aclnnMhcPreGetWorkspaceSize(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
                                         const aclTensor *bias, const aclTensor *gammaOptional, double normEps,
                                         double hcEps, aclTensor *hIn, aclTensor *hPost, aclTensor *hRes,
@@ -671,21 +668,21 @@ aclnnStatus aclnnMhcPreGetWorkspaceSize(const aclTensor *x, const aclTensor *phi
 {
     L2_DFX_PHASE_1(aclnnMhcPre, DFX_IN(x, phi, alpha, bias, gammaOptional, normEps, hcEps),
                    DFX_OUT(hIn, hPost, hRes, invRmsOptional, hMixOptional, hPreOptional));
-    return MhcPreGetWorkspaceSizeCommon(x, phi, alpha, bias, gammaOptional, normEps, hcEps, MHC_PRE_DEFAULT, hIn,
+    return MhcPreGetWorkspaceSizeCommon(x, phi, alpha, bias, gammaOptional, normEps, hcEps, MHC_PRE_USE_FP32, hIn,
                                         hPost, hRes, invRmsOptional, hMixOptional, hPreOptional, workspaceSize,
                                         executor);
 }
 
 aclnnStatus aclnnMhcPreV2GetWorkspaceSize(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
-    const aclTensor *gammaOptional, double normEps, double hcEps, int64_t implMode, aclTensor *hIn,
+    const aclTensor *gammaOptional, double normEps, double hcEps, int64_t opImplMode, aclTensor *hIn,
     aclTensor *hPost, aclTensor *hRes, aclTensor *invRmsOptional, aclTensor *hMixOptional, aclTensor *hPreOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    L2_DFX_PHASE_1(aclnnMhcPreV2, DFX_IN(x, phi, alpha, bias, gammaOptional, normEps, hcEps, implMode),
+    L2_DFX_PHASE_1(aclnnMhcPreV2, DFX_IN(x, phi, alpha, bias, gammaOptional, normEps, hcEps, opImplMode),
                    DFX_OUT(hIn, hPost, hRes, invRmsOptional, hMixOptional, hPreOptional));
-    return MhcPreGetWorkspaceSizeCommon(x, phi, alpha, bias, gammaOptional, normEps, hcEps, implMode, hIn, hPost, hRes,
-                                        invRmsOptional, hMixOptional, hPreOptional, workspaceSize, executor);
+    return MhcPreGetWorkspaceSizeCommon(x, phi, alpha, bias, gammaOptional, normEps, hcEps, opImplMode, hIn, hPost,
+                                        hRes, invRmsOptional, hMixOptional, hPreOptional, workspaceSize, executor);
 }
 aclnnStatus aclnnMhcPre(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
