@@ -137,6 +137,7 @@ __aicore__ inline void NotifyCombineConsumersOfTileCompletion(uint32_t rowTileOf
                                                               __gm__ int32_t *expertCounterBase)
 {
     AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB01]: combine FIX_S SetFlag -> WaitFlag
     AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
 
     uint32_t tokenGroupIndex = rowTileOffset / COMBINE_TOKEN_GROUP_SIZE;
@@ -155,6 +156,7 @@ __aicore__ inline void NotifySharedExpertTileCompletion(uint32_t rowTileOffset,
                                                         __gm__ int32_t *sharedExpertCounterBase)
 {
     AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB02]: shared FIX_S SetFlag -> WaitFlag
     AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
 
     uint32_t tokenGroupIndex = rowTileOffset / COMBINE_TOKEN_GROUP_SIZE;
@@ -463,6 +465,7 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                 // prefetch 软同步：写 tile 状态位通知 AIV0（roundTag = expertIdx + 1）
                 // FIX_S 同步确保 blockMmad 的 L0C→GM Fixpipe 传输完成后才写状态位
                 AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB03]: generic FIX_S SetFlag -> WaitFlag
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
                 __gm__ int32_t *statusAddr =
                     reinterpret_cast<__gm__ int32_t *>(workSet.params.workspaceInfo.gmm1TileStatusPtr) +
@@ -553,6 +556,7 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
             uint64_t metaInfoMLoc0 = args.expertBeforeCnt + mLoc;
             AscendC::DataCopy(swigluOp.weightUb_, swigluOp.metaInfoGm_[metaInfoMLoc0 * INT32_PER_256B],
                               static_cast<uint32_t>(mLen < SUB_TILE_M ? mLen : SUB_TILE_M) * INT32_PER_256B);
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB04]: first weight MTE2 -> ping-pong prime
 
             auto gmC = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(
                                           reinterpret_cast<__gm__ ElementC *>(workSet.gmmAddrInfo.gmm1OutGlobal)),
@@ -572,6 +576,7 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
             // Set<V_MTE2> 排在 V(802) 之后，MTE2 只等 V 不等 MTE3_S/AtomicAdd，省 MTE3+S 延迟。
             // 严格配对：prime Set(循环前) → 每轮 Wait(循环头)+Set(epilogue后) → 末轮 Set 由循环后 Wait 清理。
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB05]: generic V_MTE2 prime -> sub-tile loop
             for (uint32_t subOff = 0; subOff < mLen; subOff += SUB_TILE_M) {
                 uint32_t subM = (mLen - subOff < SUB_TILE_M) ? (mLen - subOff) : SUB_TILE_M;
                 uint32_t subMLoc = mLoc + subOff;
@@ -584,6 +589,7 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
                 if (subOff != 0) {
                     AscendC::DataCopy(swigluOp.weightUb_, swigluOp.metaInfoGm_[metaInfoMLoc * INT32_PER_256B],
                                       subM * INT32_PER_256B);
+                    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB06]: weight MTE2 -> GMM1 output MTE2
                 }
 
                 auto tensorBlockGmFirst =
@@ -592,8 +598,11 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
                                                      Te::MakeShape(subM, Get<N_VALUE>(actualShape)));
 
                 AscendC::Te::Copy(copyGM2UB, tensorBlockUbFirst, tensorBlockGmFirst);
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB07]: first GMM1 half MTE2 -> second half MTE2
                 AscendC::Te::Copy(copyGM2UB, tensorBlockUbSecond, tensorBlockGmSecond);
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB08]: second GMM1 half MTE2 -> MTE2_V SetFlag
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0); // 权重+GMM1 都搬完才通知 V
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB09]: generic MTE2_V SetFlag -> WaitFlag
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
 
                 Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{subM, Get<N_VALUE>(actualShape), 0, 0};
@@ -608,6 +617,7 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
                 AscendC::SetCtrlSpr<60, 60>(0);
                 args.swigluQuantOp(epilogueShape, epilogueOffset);
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB10]: generic V_MTE2 release -> next sub-tile
             }
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
             // prefetch 路径无需 NotifyCube（单向软同步，AIC 不等 AIV0）
@@ -648,7 +658,9 @@ __aicore__ inline void AivGmm2PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
 
         auto l0cOutUbGMM2 = args.pingpongIdx == 0 ? l0cOutUbGMM2First : l0cOutUbGMM2Second;
         WaitForCube(args.pingpongIdx);
+        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB11]: GMM2 cube wait -> slot release sync
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB12]: GMM2 V_MTE2 SetFlag -> WaitFlag
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
         AscendC::GlobalTensor<int32_t> metaInfoGm;
         int32_t lenTile = Get<M_VALUE>(actualShape);
@@ -657,11 +669,15 @@ __aicore__ inline void AivGmm2PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
         metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
             workSet.params.workspaceInfo.metaInfoPtr + (args.groupCnt + mLoc) * META_INFO_SIZE * sizeof(int32_t)));
         AscendC::DataCopy(metaInfoTensor, metaInfoGm, lenTile * META_INFO_SIZE);
+        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB13]: GMM2 metadata MTE2 -> legacy combine
         MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(mLoc, nLoc, workSet.config.n, metaInfoTensor,
                                                                            l0cOutUbGMM2, actualShape, workSet.params);
+        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB14]: legacy combine -> MTE3_V SetFlag
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
+        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB15]: GMM2 MTE3_V SetFlag -> WaitFlag
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
         NotifyCube(args.pingpongIdx);
+        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB16]: GMM2 cube notification -> ping-pong update
         args.pingpongIdx = 1 - args.pingpongIdx;
     }
 }
@@ -875,6 +891,7 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
                 auto tensorBlockGm = l0cOutGm.Slice(
                     Te::MakeCoord(mLoc, nOffset), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
                 blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB25]: A8W4 split GMM tile -> next split
             }
         } else {
             auto gmBlockScaleB =
@@ -882,6 +899,7 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
             auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
                                                 Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
             blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB26]: A8W4 GMM tile -> completion publication
             if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
                 NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
             } else if constexpr (IsShared) {
@@ -896,16 +914,20 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
                 // prefetch 软同步：写 tile 状态位通知 AIV1（roundTag = expertIdx + 1）
                 // FIX_S 同步确保 blockMmad 的 L0C→GM Fixpipe 传输完成后才写状态位
                 AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB27]: A8W4 FIX_S SetFlag -> WaitFlag
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
                 __gm__ int32_t *statusAddr =
                     reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm1TileStatusPtr) +
                     static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert + loopIdx;
                 AscendC::WriteGmByPassDCache(statusAddr, static_cast<int32_t>(expertIdx + 1));
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB28]: A8W4 status publication -> next tile
             } else {
                 // Publish only after Fixpipe commits the tile to GM. AIC does not wait for AIV1 and may run ahead.
                 AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB29]: A8W4 epilogue FIX_S SetFlag -> WaitFlag
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
                 AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++gmTileSequence);
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB30]: A8W4 epilogue flag publication -> next tile
             }
         }
     }
@@ -967,6 +989,7 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
             uint64_t metaInfoMLoc0 = expertBeforeCnt + mLoc;
             AscendC::DataCopy(swigluQuantOp.weightUb_, swigluQuantOp.metaInfoGm_[metaInfoMLoc0 * INT32_PER_256B],
                               static_cast<uint32_t>(mLen < SUB_TILE_M ? mLen : SUB_TILE_M) * INT32_PER_256B);
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB31]: A8W4 first weight MTE2 -> ping-pong prime
 
             auto layoutL0cUB = MakeLayoutC{}(SUB_TILE_M, L1_TILE_N);
             int64_t ubOffsetFirst = 0;
@@ -979,6 +1002,7 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
 
             // V_MTE2 ping-pong：V 读完 UB 后通知 MTE2 可覆盖
             AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB32]: A8W4 V_MTE2 prime -> sub-tile loop
             for (uint32_t subOff = 0; subOff < mLen; subOff += SUB_TILE_M) {
                 uint32_t subM = (mLen - subOff < SUB_TILE_M) ? (mLen - subOff) : SUB_TILE_M;
                 uint32_t subMLoc = mLoc + subOff;
@@ -991,6 +1015,7 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
                 if (subOff != 0) {
                     AscendC::DataCopy(swigluQuantOp.weightUb_, swigluQuantOp.metaInfoGm_[metaInfoMLoc * INT32_PER_256B],
                                       subM * INT32_PER_256B);
+                    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB33]: A8W4 weight MTE2 -> output MTE2
                 }
 
                 auto tensorBlockGmFirst =
@@ -999,8 +1024,11 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
                                                           Te::MakeShape(subM, Get<N_VALUE>(actualShape)));
 
                 AscendC::Te::Copy(copyGM2UB, tensorBlockUbFirst, tensorBlockGmFirst);
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB34]: A8W4 first half MTE2 -> second half
                 AscendC::Te::Copy(copyGM2UB, tensorBlockUbSecond, tensorBlockGmSecond);
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB35]: A8W4 second half MTE2 -> MTE2_V SetFlag
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0); // 权重+GMM1 都搬完才通知 V
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB36]: A8W4 MTE2_V SetFlag -> WaitFlag
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
 
                 Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{subM, Get<N_VALUE>(actualShape), 0, 0};
@@ -1015,6 +1043,7 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
                 AscendC::SetCtrlSpr<60, 60>(0);
                 swigluQuantOp(epilogueShape, epilogueOffset);
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
+                AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB37]: A8W4 V_MTE2 release -> next sub-tile
             }
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
         } else {
@@ -1025,6 +1054,7 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
                 }
             }
             AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB38]: A8W4 S_MTE2 SetFlag -> WaitFlag
             AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
             auto tensorBlockGmFirst = l0cOutGm.Slice(
                 Te::MakeCoord(mLoc, nLoc), Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
@@ -1043,8 +1073,11 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
                 Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetSecond), layoutL0cUB);
             auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
             AscendC::Te::Copy(copyGM2UB, tensorBlockUbFirst, tensorBlockGmFirst);
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB39]: A8W4 first GM2UB -> second GM2UB
             AscendC::Te::Copy(copyGM2UB, tensorBlockUbSecond, tensorBlockGmSecond);
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB40]: A8W4 second GM2UB -> MTE2_V SetFlag
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(0);
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB41]: A8W4 non-prefetch MTE2_V SetFlag -> WaitFlag
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
             Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<M_VALUE>(actualShape),
                                                                          Get<N_VALUE>(actualShape), 0, 0};
@@ -1060,6 +1093,7 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
             AscendC::SetCtrlSpr<60, 60>(0);
             swigluQuantOp(epilogueShape, epilogueOffset);
             AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
+            AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB42]: A8W4 sequence S_MTE2 SetFlag -> WaitFlag
             AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
             gmTileSequence = expectedReadySequence;
         }
@@ -1092,6 +1126,7 @@ __aicore__ inline void AivGmm2PostA8W4(Scheduler &scheduler, TensorC &l0cOutGm, 
             LocalTensor<ElementC>(TPosition::VECIN, ubOffset, config.tileM * L1_TILE_N);
         auto copyGM2UB = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2UB{});
         AscendC::Te::Copy(copyGM2UB, tensorBlockUb, tensorBlockGm);
+        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB43]: A8W4 GMM2 GM2UB -> metadata MTE2
 
         AscendC::GlobalTensor<int32_t> metaInfoGm;
         int32_t lenTile = Get<M_VALUE>(actualShape);
@@ -1100,9 +1135,12 @@ __aicore__ inline void AivGmm2PostA8W4(Scheduler &scheduler, TensorC &l0cOutGm, 
         metaInfoGm.SetGlobalBuffer(
             reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.metaInfoPtr + (groupCnt + mLoc) * 32));
         AscendC::DataCopy(metaInfoTensor, metaInfoGm, lenTile * 8);
+        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB44]: A8W4 GMM2 metadata MTE2 -> legacy combine
         MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(mLoc, nLoc, config.n, metaInfoTensor,
                                                                            l0cOutUbGMM2, actualShape, params);
+        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB45]: A8W4 legacy combine -> MTE3_MTE2 SetFlag
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB46]: A8W4 MTE3_MTE2 SetFlag -> WaitFlag
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         gmTileSequence = expectedReadySequence;
     }
