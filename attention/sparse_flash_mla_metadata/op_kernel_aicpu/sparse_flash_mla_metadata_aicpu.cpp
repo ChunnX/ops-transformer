@@ -192,7 +192,8 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsCheck()
             }
         }
         // 校验 ori_topk_length 元素
-        if (oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
+        if (oriTopK_ != 0 && oriMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK) &&
+            oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
             // 校验 ori_topk_length 元素数量
             int32_t sumOfQuerySeq = GetSumOfQuerySeq();
             const int32_t *oriTopkLengthPtr = static_cast<const int32_t *>(oriTopkLength_->GetData());
@@ -284,7 +285,8 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsCheck()
             }
         }
         // 校验 cmp_topk_length 元素
-        if (cmpTopkLength_ != nullptr && cmpTopkLength_->GetData() != nullptr) {
+        if (cmpTopK_ != 0 && cmpMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK) &&
+            cmpTopkLength_ != nullptr && cmpTopkLength_->GetData() != nullptr) {
             // 校验 cmp_topk_length 元素数量
             int32_t sumOfQuerySeq = GetSumOfQuerySeq();
             const int32_t *cmpTopkLengthPtr = static_cast<const int32_t *>(cmpTopkLength_->GetData());
@@ -472,7 +474,8 @@ uint32_t SparseFlashMlaMetadataCpuKernel::GetBsStride(uint32_t bIdx, uint32_t s1
 uint32_t SparseFlashMlaMetadataCpuKernel::GetOriTopkLength(uint32_t bsStride)
 {
     // 尝试使用 oriTopkLength_
-    if (oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
+    if (oriTopK_ != 0 && oriMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK) &&
+        oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
         const int32_t *oriTopkPtr = static_cast<const int32_t *>(oriTopkLength_->GetData());
         return static_cast<uint32_t>(oriTopkPtr[bsStride]);
     }
@@ -483,7 +486,8 @@ uint32_t SparseFlashMlaMetadataCpuKernel::GetOriTopkLength(uint32_t bsStride)
 uint32_t SparseFlashMlaMetadataCpuKernel::GetCmpTopkLength(uint32_t bsStride)
 {
     // 尝试使用 cmpTopkLength_
-    if (cmpTopkLength_ != nullptr && cmpTopkLength_->GetData() != nullptr) {
+    if (cmpTopK_ != 0 && cmpMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK) &&
+        cmpTopkLength_ != nullptr && cmpTopkLength_->GetData() != nullptr) {
         const int32_t *cmpTopkPtr = static_cast<const int32_t *>(cmpTopkLength_->GetData());
         return static_cast<uint32_t>(cmpTopkPtr[bsStride]);
     }
