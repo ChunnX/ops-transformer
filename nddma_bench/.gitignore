@@ -1,0 +1,10 @@
+# PTA benchmark harness throwaway artifacts (build residue, caches, profiler output)
+**/pta/build/
+**/__pycache__/
+*.pyc
+# parsed msprof outputs written next to matrix dirs
+**/pta/*.json
+# raw msprof capture dirs
+**/PROF_*/
+*.log
+*.err
