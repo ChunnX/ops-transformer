@@ -79,8 +79,9 @@ __aicore__ inline void GmmActivationMxQuant(GM_ADDR x, GM_ADDR weight, GM_ADDR w
                         mmTilingData_.scaleKBL1,
                         mmTilingData_.isBias,
                         mmTilingData_.dbL0C,
+                        static_cast<uint8_t>(Blaze::Gemm::DOUBLE_BUFFER_COUNT),
                         static_cast<int8_t>(0),
-                        gmmActivationQuantParams_.groupListType,
+                        static_cast<uint8_t>(gmmActivationQuantParams_.groupListType),
                         static_cast<uint8_t>(1)};
     GM_ADDR weightData = reinterpret_cast<GM_ADDR>(GetFirstTensorAddr<BType>(weight));
     GM_ADDR weightScaleData =
