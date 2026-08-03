@@ -107,6 +107,8 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
                 OP_LOGE(context_->GetNodeName(), "CheckPositionsValid failed."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckCatIndicesValid() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CheckCatIndicesValid failed."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CheckOutputShapeValid() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "CheckOutputShapeValid failed."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckSupportRange() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CheckSupportRange failed."), return ge::GRAPH_FAILED);
 
@@ -170,6 +172,51 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckDtypeValid()
                             ge::TypeUtils::DataTypeToSerialString(spec.expect).c_str(),
                             ge::TypeUtils::DataTypeToSerialString(dtype).c_str()),
                     return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckOutputShapeValid()
+{
+    // 输出 buffer 由调用方分配（aclnn 单算子路径上 InferShape 不会替调用方重新开），
+    // 这里不校验的话，q 开小一行 kernel 就会按 TilingData 里的 T 写满而静默越界。
+    auto qShapePtr = context_->GetOutputShape(Q_OUT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, qShapePtr);
+    auto& qShape = qShapePtr->GetStorageShape();
+    OP_CHECK_IF(qShape.GetDimNum() != DIM_NUM_THREE,
+                OP_LOGE(context_->GetNodeName(), "output q must be 3D tensor [T, Hq, D], got %zu dims.",
+                        qShape.GetDimNum()),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(qShape.GetDim(DIM_ZERO) != totalTokens_ || qShape.GetDim(DIM_ONE) != numHeadQ_ ||
+                    qShape.GetDim(DIM_TWO) != headDim_,
+                OP_LOGE(context_->GetNodeName(), "output q shape must be [%ld, %ld, %ld], got [%ld, %ld, %ld].",
+                        totalTokens_, numHeadQ_, headDim_, qShape.GetDim(DIM_ZERO), qShape.GetDim(DIM_ONE),
+                        qShape.GetDim(DIM_TWO)),
+                return ge::GRAPH_FAILED);
+
+    // k_cache/v_cache 是原地写入的输入输出，输出 shape 必须与对应输入逐维一致
+    const int64_t cachePairs[][DIM_NUM_TWO] = {{K_CACHE_INDEX, K_CACHE_OUT_INDEX},
+                                               {V_CACHE_INDEX, V_CACHE_OUT_INDEX}};
+    const char* cacheNames[] = {"k_cache", "v_cache"};
+    for (size_t i = 0; i < sizeof(cacheNames) / sizeof(cacheNames[0]); ++i) {
+        auto inShapePtr = context_->GetInputShape(cachePairs[i][DIM_ZERO]);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, inShapePtr);
+        auto outShapePtr = context_->GetOutputShape(cachePairs[i][DIM_ONE]);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, outShapePtr);
+        auto& inShape = inShapePtr->GetStorageShape();
+        auto& outShape = outShapePtr->GetStorageShape();
+        OP_CHECK_IF(outShape.GetDimNum() != inShape.GetDimNum(),
+                    OP_LOGE(context_->GetNodeName(),
+                            "output %s dim num must match input (%zu), got %zu.", cacheNames[i], inShape.GetDimNum(),
+                            outShape.GetDimNum()),
+                    return ge::GRAPH_FAILED);
+        for (size_t dim = 0; dim < inShape.GetDimNum(); ++dim) {
+            OP_CHECK_IF(outShape.GetDim(dim) != inShape.GetDim(dim),
+                        OP_LOGE(context_->GetNodeName(),
+                                "output %s dim %zu must match input (%ld), got %ld.", cacheNames[i], dim,
+                                inShape.GetDim(dim), outShape.GetDim(dim)),
+                        return ge::GRAPH_FAILED);
+        }
     }
     return ge::GRAPH_SUCCESS;
 }

@@ -176,6 +176,7 @@ protected:
     uint64_t GetTilingKey() const override;
 
     ge::graphStatus CheckDtypeValid();
+    ge::graphStatus CheckOutputShapeValid();
     ge::graphStatus CheckSupportRange();
     ge::graphStatus CheckUndGenQkvValid();
     ge::graphStatus CheckWeightsValid();
