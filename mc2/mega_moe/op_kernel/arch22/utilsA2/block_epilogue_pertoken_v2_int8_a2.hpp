@@ -234,8 +234,8 @@ public:
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(event_id);
     }
-private:
 
+private:
     Params params;
     AscendC::LocalTensor<ElementC> ubCList[UB_STAGES];
     AscendC::LocalTensor<ElementD> ubDList[UB_STAGES];
@@ -256,5 +256,5 @@ private:
     AscendC::GlobalTensor<int32_t> tokenPerExpert;
     Layout3D tokenPerExpertLayout;
 };
-}
+} // namespace Catlass::Epilogue::Block
 #endif  // CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_INT8_A2_HPP

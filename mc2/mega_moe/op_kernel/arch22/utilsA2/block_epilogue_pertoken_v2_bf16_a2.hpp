@@ -230,5 +230,5 @@ private:
     AscendC::GlobalTensor<int32_t> tokenPerExpert;
     Layout3D tokenPerExpertLayout;
 };
-}
+} // namespace Catlass::Epilogue::Block
 #endif  // CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_V2_BF16_A2_HPP
