@@ -224,8 +224,8 @@ ge::graphStatus QLIV2InfoParser::GetAttrParaInfo()
     opParamInfo_.sparseMode = attrs->GetAttrPointer<int32_t>(ATTR_MASK_MODE_INDEX);
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<int32_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.returnValue = attrs->GetAttrPointer<int32_t>(ATTR_RETURN_VALUE_INDEX);
-    auto *keyStrides = context_->GetRequiredInputStride(KEY_INDEX);
-    auto *keyDequantScaleStrides = context_->GetRequiredInputStride(KEY_DEQUANT_SCALE_INDEX);
+    auto keyStrides = context_->GetDynamicInputStride(KEY_INDEX, 0);
+    auto keyDequantScaleStrides = context_->GetDynamicInputStride(KEY_DEQUANT_SCALE_INDEX, 0);
     if (keyStrides != nullptr && keyStrides->GetDimNum() > 0) {
         for (size_t i = 0; i < keyStrides->GetDimNum(); i++) {
             keyStridesVec_.push_back(keyStrides->GetStride(i));
@@ -1368,15 +1368,6 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
             keyStride0 /= MXFP4_PACK_NUM;
         }
         QLIV2Info.keyStride0 = keyStride0;
-    } else if (kLayout_ == DataLayout::PA_BBND) {
-        // A contiguous tensor may not carry view-stride metadata. Preserve PA physical block addressing
-        // by deriving its contiguous physical stride instead of leaving stride0 at zero.
-        uint32_t physicalHeadDim = static_cast<uint32_t>(headDim_);
-        if (*opParamInfo_.quantMode == QUANT_MODE_MXFP4) {
-            physicalHeadDim /= MXFP4_PACK_NUM;
-        }
-        QLIV2Info.keyStride0 =
-            static_cast<uint32_t>(blockSize_) * static_cast<uint32_t>(n2Size_) * physicalHeadDim;
     } else {
         QLIV2Info.keyStride0 = 0; // 非PA无需使用stride
     }
@@ -1385,11 +1376,6 @@ void QLIV2InfoParser::GenerateInfo(QLIV2TilingInfo &QLIV2Info)
     } else if ((*opParamInfo_.quantMode == QUANT_MODE_MXFP8) || (*opParamInfo_.quantMode == QUANT_MODE_MXFP4)) {
         QLIV2Info.keyDequantScaleStride0 =
             static_cast<uint32_t>(blockSize_) * static_cast<uint32_t>(n2Size_) * (headDim_ / MX_SCALE_GROUP_SIZE);
-    } else if (kLayout_ == DataLayout::PA_BBND &&
-               *opParamInfo_.quantMode != QUANT_MODE_HIFLOAT8) {
-        // Per-token scale shape is [blockNum, blockSize, N2] for non-MX PA.
-        QLIV2Info.keyDequantScaleStride0 =
-            static_cast<uint32_t>(blockSize_) * static_cast<uint32_t>(n2Size_);
     } else {
         QLIV2Info.keyDequantScaleStride0 = 0;
     }
