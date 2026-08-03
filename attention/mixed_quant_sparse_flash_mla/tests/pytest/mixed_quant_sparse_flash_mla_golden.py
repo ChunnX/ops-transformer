@@ -2275,6 +2275,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     sinks = torch.tensor(
         np.random.uniform(q_datarange[0] / 10, q_datarange[1] / 10, (N1))
     ).to(torch.float)
+    # sinks = torch.full((N1,), float("-inf"), dtype=torch.float)
     # generate ori_kv tensor
     if quant_mode == 1:
         (

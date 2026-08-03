@@ -523,12 +523,12 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
 {
     uint32_t hasLoad = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_CORE_ENABLE_INDEX, false));
     int64_t maxS2LoopCnt = 0;
-    if constexpr (IS_SPLIT_G) {
+    if constexpr (IS_SPLIT_G && !IS_BATCH_CONSISTENCY) {
         maxS2LoopCnt = static_cast<int64_t>(metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_MAX_NUM, false)));
     }
     if (hasLoad == 0) {
         if ASCEND_IS_AIV {
-            if constexpr (IS_SPLIT_G) {
+            if constexpr (IS_SPLIT_G && !IS_BATCH_CONSISTENCY) {
                 for (int64_t loopCnt = 0; loopCnt < maxS2LoopCnt; loopCnt++) {
                     CrossCoreSetFlag<0, PIPE_MTE3>(15);
                     CrossCoreWaitFlag<0, PIPE_MTE3>(15);
@@ -628,7 +628,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
                     }
                 }
                 s2LoopLimit = runParam.s2LoopEndIdx - 1;
-                if constexpr (IS_SPLIT_G) {
+                if constexpr (IS_SPLIT_G && !IS_BATCH_CONSISTENCY) {
                     maxS2LoopCnt -= (s2LoopLimit + 1);
                 }
             } else {
@@ -657,7 +657,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
                         }
                     } else {
                         if ASCEND_IS_AIV {
-                            if constexpr (IS_SPLIT_G) {
+                            if constexpr (IS_SPLIT_G && !IS_BATCH_CONSISTENCY) {
                                 if (maxS2LoopCnt > 0) {
                                     maxS2LoopCnt--;
                                     CrossCoreSetFlag<0, PIPE_MTE3>(15);
@@ -691,7 +691,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
         gS1StartIdx = 0;
     }
     if ASCEND_IS_AIV {
-        if constexpr (IS_SPLIT_G) {
+        if constexpr (IS_SPLIT_G && !IS_BATCH_CONSISTENCY) {
             for (int64_t loopCnt = 0; loopCnt < maxS2LoopCnt; loopCnt++) {
                 CrossCoreSetFlag<0, PIPE_MTE3>(15);
                 CrossCoreWaitFlag<0, PIPE_MTE3>(15);
