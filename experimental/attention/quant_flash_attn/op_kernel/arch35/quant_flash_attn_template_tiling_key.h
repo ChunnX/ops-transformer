@@ -48,7 +48,7 @@ struct QFAType {
     static constexpr bool pageAttention = PAGE_ATTENTION;
     static constexpr QFA_LAYOUT qLayout = LAYOUT_T;
     static constexpr QFA_LAYOUT kvLayout = KV_LAYOUT_T;
-    static constexpr QFA_LAYOUT outLayout = KV_LAYOUT_T;
+    static constexpr QFA_LAYOUT outLayout = OUT_LAYOUT_T;
     static constexpr bool hasMask = HAS_MASK;
 };
 
