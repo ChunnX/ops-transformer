@@ -981,7 +981,7 @@ class TestBSAMxfp4Golden(TestCase):
                 block_shape=[128, 128], mask_kind='sparse')
 
     @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bnsd_gqa_sparse_b1_qn8_kvn5_g2_qs256_kvs511_d128(self, device="npu"):
+    def test_bsa_mxfp4_bnsd_gqa_sparse_b1_qn8_kvn4_g2_qs256_kvs511_d128(self, device="npu"):
         """GQA sparse g2 qn8/kvn5, s2=511 尾块, 验证 n2=5 + K 尾 1 行 sparse。"""
         self._run(b=1, n1=8, n2=5, g=2, s1=256, s2=511, qk_d=128,
                 block_shape=[128, 128], mask_kind='sparse')
