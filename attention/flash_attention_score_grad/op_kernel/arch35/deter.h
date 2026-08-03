@@ -699,6 +699,80 @@ __aicore__ inline void CalCausalSwizzleIndex(int64_t k, int64_t m, int64_t n, in
     }
 }
 
+__aicore__ inline int64_t GetBandBatchFirstRotationStride(int64_t k)
+{
+    if (k <= 1) {
+        return 0;
+    }
+
+    int64_t stride = k / NUM_TWO + 1;
+    while (Gcd(stride, k) != 1) {
+        ++stride;
+    }
+    return stride % k;
+}
+
+__aicore__ inline int64_t GetBandBatchFirstMaxRound(int64_t k, int64_t m, int64_t n, int64_t p, int64_t q,
+                                                    int64_t b)
+{
+    // Columns after m + q - 1 cannot intersect 1 - q <= x - y <= p - 1.
+    int64_t effectiveN = Min(n, m + q - 1);
+    int64_t diagonalCount = p + q - 1;
+    if (k <= 0 || effectiveN <= 0 || diagonalCount <= 0 || b <= 0) {
+        return 0;
+    }
+    return b * Ceil<int64_t>(effectiveN, k) * diagonalCount;
+}
+
+__aicore__ inline void CalBandBatchFirstSwizzleIndex(int64_t k, int64_t m, int64_t n, int64_t p, int64_t q,
+                                                      int64_t b, int64_t j, int64_t r,
+                                                      CoordinateInfo &coordinate)
+{
+    coordinate.batchId = -1;
+    int64_t effectiveN = Min(n, m + q - 1);
+    int64_t diagonalCount = p + q - 1;
+    int64_t maxRound = GetBandBatchFirstMaxRound(k, m, n, p, q, b);
+    if (j < 1 || j > k || r < 1 || r > maxRound) {
+        return;
+    }
+
+    int64_t columnGroupCount = Ceil<int64_t>(effectiveN, k);
+    int64_t roundsPerBatch = columnGroupCount * diagonalCount;
+    int64_t round0 = r - 1;
+    // Each batch owns one contiguous interval of columnGroupCount * diagonalCount rounds.
+    int64_t batch0 = round0 / roundsPerBatch;
+    int64_t roundInBatch = round0 % roundsPerBatch;
+    int64_t groupInBatch = roundInBatch / diagonalCount;
+    int64_t diagonalId = roundInBatch % diagonalCount;
+
+    int64_t groupStartY0 = groupInBatch * k;
+    int64_t groupSize = Min(k, effectiveN - groupStartY0);
+    if (groupSize <= 0) {
+        return;
+    }
+
+    int64_t rotationStride = GetBandBatchFirstRotationStride(k);
+    // Snake adjacent column groups and rotate each batch/group pair to spread boundary-column load.
+    int64_t pairRotation =
+        (batch0 * rotationStride + (groupInBatch / NUM_TWO) * rotationStride) % k;
+    int64_t permutedCore = (j - 1 - pairRotation + k) % k;
+    int64_t localSlot = groupInBatch % NUM_TWO == 0 ? permutedCore : k - 1 - permutedCore;
+    if (localSlot >= groupSize) {
+        return;
+    }
+
+    int64_t y = groupStartY0 + localSlot + 1;
+    int64_t diagonal = 1 - q + diagonalId;
+    int64_t x = y + diagonal;
+    if (x < 1 || x > m || y < 1 || y > n || diagonal < 1 - q || diagonal > p - 1) {
+        return;
+    }
+
+    coordinate.batchId = batch0 + 1;
+    coordinate.s1Idx = x;
+    coordinate.s2Idx = y;
+}
+
 __aicore__ inline void CalGQACausalIndex(int64_t k, int64_t m, int64_t n, int64_t b, int64_t j, int64_t r, int64_t g,
                                          CoordinateInfo &coordinate)
 {
