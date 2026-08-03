@@ -1739,6 +1739,14 @@ void FiaInfoParser::GenerateLayoutInfo(FiaTilingInfo &fiaInfo)
     fiaInfo.inputKvLayout = MapStringToLayout(kvLayout_);
     fiaInfo.inputLayout = MapStringToLayout(qLayout_);
     fiaInfo.outputLayout = MapStringToLayout(outLayout_);
+
+    if (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION && kvLayout_ == FiaLayout::NZ &&
+        !kCache_.empty() && kCache_[0] != nullptr) {
+        uint32_t keyDimNum = kCache_[0]->GetStorageShape().GetDimNum();
+        if (keyDimNum == 5U) {
+            fiaInfo.kvCacheNzD0 = static_cast<uint32_t>(kCache_[0]->GetStorageShape().GetDim(4));
+        }
+    }
 }
 
 void FiaInfoParser::GenerateInfo(FiaTilingInfo &fiaInfo)
