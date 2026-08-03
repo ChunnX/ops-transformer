@@ -1279,9 +1279,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
         hcomm_.ReadNbi<true>(channel, scratchAddr, remoteFlagAddr, flagSnapshotBytes);
         PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA26]: flag ReadNbi submit -> Drain
         hcomm_.Drain(channel);
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA27]: flag Drain -> existing drain barrier
         SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID1>();
         // flag 在 win/L2 中按 bs * sizeof(uint64_t) 紧凑存放；搬入 UB 时由 DataCopyPad 处理非 32B 尾块。
         DataCopyPad(relayFlagTensor_, scratchFlagGlobalTensor, flagCopyParams, flagCopyPadParams);
+        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA28]: flag snapshot MTE2 -> existing MTE2_S sync
         SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID1>();
 
         for (int32_t copyIdx = 0; copyIdx < copyNum; ++copyIdx) {
@@ -1312,6 +1314,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyToken
         SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID1>();
     }
     hcomm_.Drain(channel);
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA31]: payload Drain -> existing drain barrier
 }
 
 // ============================================================================
@@ -1355,6 +1358,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::CopyGMToG
 
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
     DataCopy(metaInfoGlobalTensor_[rowDstOffsetInCore * INT32_PER_256B], metaInfoTensor_, copyNum * INT32_PER_256B);
+    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA32]: metadata MTE3 -> existing MTE3_S sync
     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID3>();
 }
 
@@ -1419,6 +1423,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::MetaInfoC
                 roundMaskSrc.SetGlobalBuffer(rankMaskBasePtr + roundMaskByteOffset);
                 SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
                 DataCopy(gatherMaskTensor_, roundMaskSrc, curRoundMaskBytes);
+                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA33]: dispatch mask MTE2 -> existing MTE2_V sync
                 SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 
                 CreateVecIndex(topkIndexTensor_, static_cast<int32_t>(roundStart), topkIndexTensorElemCount);
@@ -1429,6 +1434,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::MetaInfoC
                 LocalTensor<uint32_t> rankMaskSlice = gatherMaskInt32Tensor_[0];
                 GatherMask(validTopkIndexTensor_, topkIndexTensor_, rankMaskSlice, true, roundLen, {1, 1, 0, 0},
                            roundTokenCnt);
+                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA35]: dispatch gather V -> existing V_S sync
                 SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
                 if (roundTokenCnt == 0) {
                     continue;
