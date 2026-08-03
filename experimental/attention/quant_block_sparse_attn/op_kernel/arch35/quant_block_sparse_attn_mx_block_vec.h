@@ -314,8 +314,10 @@ private:
 
     __aicore__ inline float DecodeE8M0Scale(uint8_t scale) const
     {
-        // e8m0 字节对应 fp32 的 exponent bits[30:23]。
-        uint32_t bits = static_cast<uint32_t>(scale) << 23;
+        // E8M0 exponent 0 represents 2^-127.  It cannot be produced by only
+        // copying the exponent field into fp32 (that bit pattern is +0), so
+        // materialize the corresponding fp32 subnormal explicitly.
+        uint32_t bits = scale == 0U ? (1U << 22) : (static_cast<uint32_t>(scale) << 23);
         return *((float *)&bits);
     }
 
