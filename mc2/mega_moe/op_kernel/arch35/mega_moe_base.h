@@ -159,7 +159,6 @@ __aicore__ inline void EndSync(int32_t &vecSetSyncCom)
     }
     if constexpr (g_coreType == AIC) {
         WaitForVector();
-        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB21]: EndSync vector wait -> caller
     }
 }
 
@@ -172,12 +171,9 @@ __aicore__ inline void EndGMM2Sync(int32_t &vecSetSyncCom, uint16_t gmm2PingPong
         return;
     } else if (vecSetSyncCom == 1) {
         WaitForVector();
-        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB22]: single GMM2 vector wait -> caller
     } else {
         WaitForVector(gmm2PingPongIdx);
-        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB23]: first GMM2 vector wait -> second wait
         WaitForVector(1 - gmm2PingPongIdx);
-        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB24]: second GMM2 vector wait -> caller
     }
 }
 
@@ -245,9 +241,7 @@ __aicore__ inline void SyncFuncStatic()
 {
     // static_assert(eventId >= 0 && eventId <= 5, "SyncFuncStatic eventId must be [0, 5]!");
     AscendC::SetFlag<event>(static_cast<event_t>(eventId));
-    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FC01]: every SyncFuncStatic SetFlag -> WaitFlag
     AscendC::WaitFlag<event>(static_cast<event_t>(eventId));
-    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FC02]: every SyncFuncStatic WaitFlag -> caller
 }
 
 #endif
