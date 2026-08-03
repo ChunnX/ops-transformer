@@ -136,7 +136,7 @@ def moe_init_routing(
     scale: Optional[torch.Tensor] = None,
     offset: Optional[torch.Tensor] = None,
     topk_weight: Optional[torch.Tensor] = None,
-    active_num: int = -1,
+    active_num: Union[int, torch.SymInt] = -1,
     expert_capacity: int = -1,
     expert_num: int = -1,
     drop_pad_mode: int = 0,
@@ -170,7 +170,7 @@ def moe_init_routing(
     - 输入shape为(NUM\_ROWS, K)，数据类型仅支持`float32`，数据格式要求为$ND$。
     - 与`expanded\_topk\_weight`联动：必须同时传入或同时不传入。
 
-- **active\_num** (`int`)：可选参数，默认值为-1，表示总的最大处理row数，输出`expanded\_x`只有这么多行是有效的，入参校验需大于等于0，0表示Dropless场景，大于0时表示Active场景，约束所有专家共同处理tokens总量。
+- **active\_num** (`Union[int, torch.SymInt]`)：可选参数，默认值为-1，表示总的最大处理row数，输出`expanded\_x`只有这么多行是有效的，入参校验需大于等于0，0表示Dropless场景，大于0时表示Active场景，约束所有专家共同处理tokens总量。支持`int`或`torch.SymInt`类型，图模式下传入`torch.SymInt`（如`x.size(0) * k`）可避免被固化为常量，实现动态shape编译缓存复用。eager模式下传入`int`即可，上层调用脚本无需感知类型差异，同一份代码在两种模式下均可正常运行。
 - **expert\_capacity** (`int`)：可选参数，默认值为-1，表示每个专家能够处理的tokens数，入参校验大于0小于NUM\_ROWS。
 - **expert\_num** (`int`)：可选参数，默认值为-1，表示专家数。`expert\_tokens\_num\_type`为key\_value模式时，取值范围为[0, 5120]；其他模式取值范围为[0, 10240]。
 - **drop\_pad\_mode** (`int`)：可选参数，默认值为0，表示是否为drop\_pad场景。0表示Dropless场景，该场景下不校验`expert\_capacity`。1表示Drop\_Pad场景。
