@@ -299,6 +299,9 @@ protected:
     bool isEmptyTensor_ = false;
     int64_t ep_ = 0LL;
 
+    // CountingSort 性能模板标志：0=未启用, 1=FullLoad, 2=CutOrigin
+    int64_t countingSortMode_ = 0LL;
+
     // input attrs
     int64_t activeNum_ = -1LL;
     int64_t expertCapacity_ = -1LL;
@@ -414,6 +417,12 @@ private:
                                         int64_t lastCoreIndicesElements);
     void SetLastCoreIndicesTiling(MoeV3Arch35GatherOutComputeTilingData *gatherOutTiling,
                                   int64_t lastCoreIndicesElements, int64_t perLoopMaxIndicesElements);
+
+    // CountingSort 性能模板（模板1 FullLoad / 模板2 CutOrigin）
+    bool IsCountingSortApplicable();
+    int64_t EstimateArch35CountingSortFullLoadUB(int64_t perCoreTokens);
+    void ComputeArch35CountingSortFullLoadTiling();
+    void ComputeArch35CountingSortCutOriginTiling();
 
     // DropPad模式Tiling计算函数
     void SetCoreSplitParams4SrcToDstDropPad(int64_t &needCoreNum, int64_t &perCoreRows, int64_t &lastCoreRows);
