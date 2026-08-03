@@ -679,7 +679,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ExpertTok
     DataCopyExtParams copyParams{1U, static_cast<uint32_t>(moeExpertPerRank_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPad(expertTokenNumsOut_, expertTokenNumsOutTensor_, copyParams);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
-    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FC03]: expert-count MTE3_MTE2 SetFlag -> WaitFlag
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
 }
 
@@ -1085,7 +1084,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchS
             cursor = UpdateDispatchTokenCnt(targetServerForSender, cursor, endCount);
             if (cursor != oldCursor) {
                 WriteGmByPassDCache(cursorPtr + targetServerForSender, cursor);
-                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FC04]: dispatch cursor publication -> completion check
             }
             if (DispatchSyncWithCompute(realComputeCoreNum, roundTag) && cursor == ReadGmByPassDCache(countPtr)) {
                 break;
@@ -1476,7 +1474,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::MetaInfoC
                     int32_t lo = roundRowStartLocal > waveStartLocal ? roundRowStartLocal : waveStartLocal;
                     int32_t hi = roundRowEndLocal < waveEndLocal ? roundRowEndLocal : waveEndLocal;
                     AtomicAdd(flagBase + w, int32_t(hi - lo));
-                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA36]: GMM1 progress AtomicAdd -> next wave
                 }
                 accumulatedRowSrcOffset += static_cast<int32_t>(roundTokenCnt);
             }
@@ -2045,18 +2042,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
         auto dataInFp32 = (sharedIdx % DOUBLE_BUFFER == 0) ? dataIn0Fp32 : dataIn1Fp32;
         WaitFlag<AscendC::HardEvent::V_MTE2>(event);
         DataCopy(dataInBf16, sharedResult[(sharedIdx * m_ + tokenIdx) * k_], k_);
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA37]: shared expert MTE2 -> MTE2_V SetFlag
         SetFlag<AscendC::HardEvent::MTE2_V>(event);
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA38]: shared expert MTE2_V SetFlag -> WaitFlag
         WaitFlag<AscendC::HardEvent::MTE2_V>(event);
         SetFlag<AscendC::HardEvent::S_V>(event);
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA39]: shared expert S_V SetFlag -> WaitFlag
         WaitFlag<AscendC::HardEvent::S_V>(event);
         Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA40]: shared expert Cast -> Add
         PipeBarrier<PIPE_V>();
         Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA41]: shared expert Add -> slot release
         PipeBarrier<PIPE_V>();
         SetFlag<AscendC::HardEvent::V_MTE2>(event);
     }
@@ -2075,9 +2067,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
     GlobalTensor<bfloat16_t> output;
     output.SetGlobalBuffer((__gm__ bfloat16_t *)params_.y2GmAddr);
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA42]: unpermute first slot prime -> second slot prime
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
-    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA43]: unpermute slot primes -> chunk loop
     for (int32_t chunkStart = coreOffset; chunkStart < coreLen + coreOffset;) {
         int32_t chunkEnd = chunkStart + static_cast<int32_t>(topKWeightsChunkLen_);
         if (chunkEnd > coreLen + coreOffset) {
@@ -2092,7 +2082,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
             DataCopyPadExtParams<float> copyPadParams{false, 0U, 0U, 0U};
             SyncFuncStatic<AscendC::HardEvent::S_MTE2, SYNC_EVENT_ID2>();
             DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_[chunkStart * topK_], copyParams, copyPadParams);
-            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA44]: float topk MTE2 -> existing MTE2_S sync
             SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
         }
         if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
@@ -2107,10 +2096,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
             DataCopyPadExtParams<bfloat16_t> copyPadParams{false, 0U, 0U, 0U};
             SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID2>();
             DataCopyPad(tempLocal, topkWeightsGlobalTensor[chunkStart * topK_], copyParams, copyPadParams);
-            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA45]: bf16 topk MTE2 -> existing MTE2_V sync
             SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID2>();
             Cast(topKWeightsTensor_, tempLocal, AscendC::RoundMode::CAST_NONE, chunkTokenCnt * topK_);
-            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA46]: topk Cast -> existing V_S sync
             SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
         }
         for (int32_t tokenIdx = chunkStart; tokenIdx < chunkEnd; tokenIdx++) {
@@ -2128,48 +2115,36 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
                 if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
                     WaitFlag<AscendC::HardEvent::V_MTE2>(event);
                     DataCopy(dataInBf16, expandedX[(tokenIdx * topK_ + expId) * k_], k_);
-                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA47]: expert bf16 MTE2 -> MTE2_V SetFlag
                     SetFlag<AscendC::HardEvent::MTE2_V>(event);
-                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA48]: expert MTE2_V SetFlag -> WaitFlag
                     WaitFlag<AscendC::HardEvent::MTE2_V>(event);
                     SetFlag<AscendC::HardEvent::S_V>(event);
-                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA49]: expert S_V SetFlag -> WaitFlag
                     WaitFlag<AscendC::HardEvent::S_V>(event);
                     Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
-                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA50]: expert bf16 Cast -> scaling
                 } else {
                     uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
                     uint32_t quantTokenSize = k_ + nScale;
                     uint32_t quantEleNum = quantTokenSize / sizeof(bfloat16_t);
                     WaitFlag<AscendC::HardEvent::V_MTE2>(event);
                     DataCopy(dataInBf16, expandedX[(tokenIdx * topK_ + expId) * quantEleNum], quantEleNum);
-                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA51]: expert quant MTE2 -> MTE2_V SetFlag
                     SetFlag<AscendC::HardEvent::MTE2_V>(event);
-                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA52]: quant MTE2_V SetFlag -> WaitFlag
                     WaitFlag<AscendC::HardEvent::MTE2_V>(event);
                     using Fp8Type = typename std::conditional<CombineQuantMode == MXFP8_E4M3_COMM_QUANT, fp8_e4m3fn_t,
                                                               fp8_e5m2_t>::type;
                     SetFlag<AscendC::HardEvent::S_V>(event);
-                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA53]: quant S_V SetFlag -> WaitFlag
                     WaitFlag<AscendC::HardEvent::S_V>(event);
                     MegaMoeCombineImpl::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32, bf16ScaleTensor_,
                                                                           fp32ScaleTensor_, nScale, k_);
-                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA54]: expert dequant -> scaling
                 }
                 PipeBarrier<PIPE_V>();
                 if (expId == 0) {
                     Muls(dataResFp32Tensor_, dataInFp32, expScale, k_);
-                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA55]: first expert scale -> slot release
                 } else {
                     Muls(dataInFp32, dataInFp32, expScale, k_);
-                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA56]: expert scale -> accumulation Add
                     PipeBarrier<PIPE_V>();
                     Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
-                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA57]: expert Add -> slot release
                     PipeBarrier<PIPE_V>();
                 }
                 SetFlag<AscendC::HardEvent::V_MTE2>(event);
-                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA58]: expert slot release SetFlag -> next expert
             }
             // 共享专家结果累加（直接加，不乘 topk_weight）
             if (sharedExpertNum_ > 0) {
@@ -2263,7 +2238,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SharedExp
     DataCopyParams xCopyInParams = {1U, static_cast<uint16_t>(H * sizeof(bfloat16_t)), 0U, 0U};
     DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA59]: shared-input first slot prime -> second slot prime
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     for (int32_t index = 0; index < curentNum; index++) {
         int32_t tokenIdx = curentOffset + index;
@@ -2276,7 +2250,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SharedExp
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
         DataCopyPad(xInBuf, srcGlobalTensor, xCopyInParams, xCopyInPadParams);
         SetFlag<AscendC::HardEvent::MTE2_V>(event);
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FC05]: shared input MTE2_V SetFlag -> WaitFlag
         WaitFlag<AscendC::HardEvent::MTE2_V>(event);
 
         __ubuf__ bfloat16_t *srcAddr = reinterpret_cast<__ubuf__ bfloat16_t *>(xInBuf.GetPhyAddr());
@@ -2289,31 +2262,24 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SharedExp
             reinterpret_cast<__ubuf__ uint16_t *>(xOutBuf[mxQuantTokenAlignBytes_].GetPhyAddr());
 
         Quant::ComputeMaxExp(srcAddr, maxExpAddr, H);
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA60]: shared max-exp V -> scale V
         Quant::ComputeScale<QuantOutType>(maxExpAddr, mxScaleAddr, halfScaleAddr, mxQuantScaleNumAlignPerToken_);
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA61]: shared scale V -> data quant V
         if constexpr (QuantMode == E2M1_QUANT) {
             Quant::ComputeFp4Data<bfloat16_t, QuantOutType, AscendC::RoundMode::CAST_TRUNC,
                                   AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleAddr, outDataAddr, H);
-            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA62]: shared FP4 quant V -> output sync
         } else {
             Quant::ComputeFp8Data<bfloat16_t, QuantOutType, AscendC::RoundMode::CAST_TRUNC,
                                   AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleAddr, outDataAddr, H);
-            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA63]: shared FP8 quant V -> output sync
         }
 
         SetFlag<AscendC::HardEvent::V_MTE3>(event);
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FC06]: shared input V_MTE3 SetFlag -> WaitFlag
         WaitFlag<AscendC::HardEvent::V_MTE3>(event);
         LocalTensor<QuantScaleOutType> bufScale =
             xOutBuf[mxQuantTokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
         DataCopyPad(dataDstGlobalTensor[tokenIdx * widthA], xOutBuf,
                     {1, static_cast<uint16_t>(widthA * sizeof(ActivationType)), 0U, 0U, 0U});
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA64]: shared data MTE3 -> scale MTE3
         DataCopyPad(scaleDstGlobalTensor[tokenIdx * widthAScale], bufScale,
                     {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FC07]: shared input MTE3_MTE2 SetFlag -> loop backedge
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
