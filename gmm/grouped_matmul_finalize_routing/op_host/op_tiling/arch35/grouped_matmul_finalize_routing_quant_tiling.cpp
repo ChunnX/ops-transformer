@@ -27,18 +27,6 @@ using namespace GMMFinalizeRoutingArch35Tiling;
 
 namespace optiling {
 
-namespace {
-uint16_t FloatToBf16Bits(float value)
-{
-    union {
-        float f;
-        uint32_t u;
-    } converter{value};
-    uint32_t roundingBias = 0x7FFFU + ((converter.u >> 16) & 1U);
-    return static_cast<uint16_t>((converter.u + roundingBias) >> 16);
-}
-} // namespace
-
 void GroupedMatmulFinalizeRoutingQuantTiling::Reset()
 {
     tilingData_ = GMMFinalizeRoutingTilingData();
@@ -541,7 +529,6 @@ ge::graphStatus GroupedMatmulFinalizeRoutingQuantTiling::DoOpTiling()
     tilingData_.gmmFinalizeRoutingDataParams.sharedInputOffset = static_cast<uint32_t>(sharedInputOffset_);
     tilingData_.gmmFinalizeRoutingDataParams.sharedInputLen = static_cast<uint32_t>(sharedInputLen_);
     tilingData_.gmmFinalizeRoutingDataParams.residualScale = static_cast<float>(sharedInputWeight_);
-    tilingData_.residualScaleBf16 = FloatToBf16Bits(sharedInputWeight_);
     tilingData_.gmmFinalizeRoutingDataParams.aQuantMode = static_cast<uint32_t>(inputParams_.aQuantMode);
     tilingData_.gmmFinalizeRoutingDataParams.bQuantMode = static_cast<uint32_t>(inputParams_.bQuantMode);
     tilingData_.gmmFinalizeRoutingDataParams.biasDtype = static_cast<uint32_t>(inputParams_.biasDtype);
