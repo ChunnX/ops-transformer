@@ -769,11 +769,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
                     winDstGlobal.SetGlobalBuffer(
                         (__gm__ uint8_t *)(GetRankWinAddrWithOffset(rankId_, dstOffset + roundByteOffset)));
                     DataCopyPad(winDstGlobal, maskBuf, partialMaskCopyParams);
+                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA07]: local mask MTE3 -> round completion
                 } else {
                     GlobalTensor<uint8_t> wsDstGlobal;
                     wsDstGlobal.SetGlobalBuffer(
                         (__gm__ uint8_t *)(params_.workspaceInfo.maskSlotPtr + srcOffset + roundByteOffset));
                     DataCopyPad(wsDstGlobal, maskBuf, partialMaskCopyParams);
+                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA07]: local mask MTE3 -> round completion
                 }
                 PipeBarrier<PIPE_ALL>();
             }
