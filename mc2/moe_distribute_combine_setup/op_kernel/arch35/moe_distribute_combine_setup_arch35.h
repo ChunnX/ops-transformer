@@ -137,18 +137,18 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
     epRankId_ = mc2Context_->epRankId;
 
-    // combine 使用独立 dataState（COMBINE_STATE_WIN_OFFSET），不与 dispatch 共用开关；
-    // 状态写在 bank[S_c]+0。联跑时 S_c 与 D 本层使用的 S_d 相同，复用 D 已 clear 的 bank。
+    // 与 dispatch 共用 STATE_WIN_OFFSET 的 dataState（对齐 arch22）：D teardown 翻转后
+    // C 自然落到另一 bank，避免同层复用 bank0 时被跨卡 D clear 误清 flag。
     GlobalTensor<int32_t> selfDataStatusTensor;
     statusDataSpaceGM_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
-    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGM_ + COMBINE_STATE_WIN_OFFSET +
+    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGM_ + STATE_WIN_OFFSET +
         STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_)));
 
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
 
-    dataState_ = selfDataStatusTensor(0); // combine 侧 win 状态区的0/1标识
+    dataState_ = selfDataStatusTensor(0); // 与 dispatch 共用的 win 0/1 标识
 
-    // 本卡准备状态flag源：每个核在dataState标识后的32B位置写入float 1.0，供远端WriteNbi使用
+    // 本卡准备状态flag源（仅作 WriteNbi 本地源，不占用 dataState 开关位）
     statusFlagGM_ = statusDataSpaceGM_ + COMBINE_STATE_WIN_OFFSET +
         STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_) + UB_ALIGN;
     GlobalTensor<int32_t> statusFlagTensor;

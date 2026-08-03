@@ -137,15 +137,15 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(G
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
     epRankId_ = mc2Context_->epRankId;
 
-    // combine 独立 dataState；本层用当前值写/等状态，随后翻转供下一层。
-    // 与 dispatch 串行时复用同一 bank 基址（COMBINE_STATE_OFFSET=0），不依赖 64KB 硬隔离。
+    // 与 dispatch 共用 STATE_WIN_OFFSET 的 dataState（对齐 arch22）：本层用 D 已翻转后的
+    // 值写/等状态，再翻转供下一层；COMBINE_STATE_OFFSET=0，不依赖 64KB 硬隔离。
     GlobalTensor<int32_t> selfDataStatusTensor;
     GM_ADDR statusDataSpaceGm = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
-    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGm + COMBINE_STATE_WIN_OFFSET +
+    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGm + STATE_WIN_OFFSET +
                                                             STATE_SIZE_PER_CORE * static_cast<uint64_t>(coreIdx_)));
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
 
-    dataState_ = selfDataStatusTensor(0);      // combine 侧 win 状态区的0/1标识
+    dataState_ = selfDataStatusTensor(0);      // 与 dispatch 共用的 win 0/1 标识
     selfDataStatusTensor(0) = 1U - dataState_; // 切换0/1区标识
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
 
