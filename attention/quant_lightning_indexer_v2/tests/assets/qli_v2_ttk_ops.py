@@ -19,6 +19,41 @@ import torch
 import cann_ops_transformer
 
 
+QUANT_MODE_MXFP4 = 5
+QUANT_MODE_MXFP8 = 3
+FP4_PACK_NUM = 2
+
+
+def restore_mx_storage_dtype(tensor, dtype_name):
+    """Restore a packed uint8 test tensor to its semantic MX dtype."""
+    if tensor is None or tensor.dtype != torch.uint8:
+        return tensor
+    dtype = getattr(torch, dtype_name, None)
+    if dtype is None:
+        raise RuntimeError(f"current PyTorch does not provide {dtype_name}")
+    return tensor.view(dtype)
+
+
+def restore_mx_input_dtypes(query, key, query_dequant_scale,
+                            key_dequant_scale, quant_mode):
+    """Restore semantic MX dtypes while preserving tensor view metadata."""
+    quant_mode = int(quant_mode)
+    if quant_mode == QUANT_MODE_MXFP8:
+        query = restore_mx_storage_dtype(query, "float8_e4m3fn")
+        key = restore_mx_storage_dtype(key, "float8_e4m3fn")
+    elif quant_mode == QUANT_MODE_MXFP4:
+        query = restore_mx_storage_dtype(query, "float4_e2m1fn_x2")
+        key = restore_mx_storage_dtype(key, "float4_e2m1fn_x2")
+    if quant_mode in (QUANT_MODE_MXFP8, QUANT_MODE_MXFP4):
+        query_dequant_scale = restore_mx_storage_dtype(
+            query_dequant_scale, "float8_e8m0fnu"
+        )
+        key_dequant_scale = restore_mx_storage_dtype(
+            key_dequant_scale, "float8_e8m0fnu"
+        )
+    return query, key, query_dequant_scale, key_dequant_scale
+
+
 class QuantLightningIndexerMetadataBuilder:
     """Derive and create the metadata consumed by the main operator."""
 
@@ -41,6 +76,13 @@ class QuantLightningIndexerMetadataBuilder:
             return max(int(cu_seqlens_q.numel()) - 1, 0)
         return 0
 
+    @staticmethod
+    def head_dim(query, quant_mode):
+        physical_head_dim = int(query.shape[-1])
+        if int(quant_mode) == QUANT_MODE_MXFP4:
+            return physical_head_dim * FP4_PACK_NUM
+        return physical_head_dim
+
     @classmethod
     def build(cls, query, key, *, cu_seqlens_q=None, cu_seqlens_k=None,
               seqused_q=None, seqused_k=None, cmp_residual_k=None,
@@ -53,7 +95,7 @@ class QuantLightningIndexerMetadataBuilder:
         metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
             num_heads_q=q_head_num,
             num_heads_k=k_head_num,
-            head_dim=int(query.shape[-1]),
+            head_dim=cls.head_dim(query, quant_mode),
             topk=int(sparse_count),
             quant_mode=int(quant_mode),
             cu_seqlens_q=cu_seqlens_q,
@@ -97,6 +139,15 @@ def quant_lightning_indexer_v2(
     cmp_ratio: int = 1,
     return_value: int = 0,
 ):
+    query, key, query_dequant_scale, key_dequant_scale = (
+        restore_mx_input_dtypes(
+            query,
+            key,
+            query_dequant_scale,
+            key_dequant_scale,
+            quant_mode,
+        )
+    )
     metadata = QuantLightningIndexerMetadataBuilder.build(
         query,
         key,
