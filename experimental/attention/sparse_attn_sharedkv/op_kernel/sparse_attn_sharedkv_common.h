@@ -170,15 +170,8 @@ __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  // l1
         LocalTensor<T> tmpDstTensor = dstTensor[copyFinishRowCnt * blockElementCnt];
         GlobalTensor<T> tmpSrcTensor = srcTensor[offset];
 
-        // DataCopyGmNDToL1<T>(tmpDstTensor, tmpSrcTensor, copyRowCnt, shape.copyRowNumAlign, dValue, srcDValue);
-
-        uint32_t totalElements = copyRowCnt * dValue; // 注意：这里的 dValue 需要是 NZ 格式下实际的列数
-        uint32_t totalBytes = totalElements * sizeof(T);
-        uint32_t blockLen = (totalBytes + 31) / 32;
-        DataCopyParams copyParams;
-        copyParams.blockCount = 1;
-        copyParams.blockLen = blockLen;
-        DataCopy(tmpDstTensor, tmpSrcTensor, copyParams);
+        // 恢复 ND→NZ 随路转换（原来注释掉的逻辑）
+        DataCopyGmNDToL1<T>(tmpDstTensor, tmpSrcTensor, copyRowCnt, shape.copyRowNumAlign, dValue, srcDValue);
 
         copyFinishRowCnt += copyRowCnt;
         curS2Idx += copyRowCnt;
@@ -266,31 +259,6 @@ __aicore__ inline void Nd2NzInAiv(
     // 同步：确保重排完成后再进行后续操作
     AscendC::PipeBarrier<PIPE_V>();
 }
-
-
-template <typename T>
-__aicore__ inline void Nd2NzPrep(
-    GlobalTensor<T>& dstGm,           // 目标 GM（NZ 格式）
-    const GlobalTensor<T>& srcGm,     // 源 GM（ND 格式）
-    uint32_t rowCount,                // 行数
-    uint32_t colCount,                // 列数
-    AscendC::TBuf<...>& ubBuf)        // UB 缓冲区
-{
-    if (!ASCEND_IS_AIV) return;
-    
-    // 1. 从 GM 纯搬运 ND 数据到 UB
-    DataCopyParams copyParams;
-    copyParams.blockCount = 1;
-    copyParams.blockLen = (rowCount * colCount * sizeof(T) + 31) / 32;
-    DataCopy(ub, srcGm, copyParams);
-    
-    // 2. AIV 上做 ND→NZ 转换（调用 Nd2NzInAiv）
-    Nd2NzInAiv(ub, ub, rowCount, colCount);
-    
-    // 3. 将 NZ 数据写回 GM
-    DataCopy(dstGm, ub, copyParams);
-}
-
 
 struct RunInfo {
     uint32_t loop = 0;
@@ -454,3 +422,4 @@ struct MSplitInfo {
 };
 } // namespace SASKernel
 #endif // SPARSE_ATTN_SHAREDKV_COMMON_H
+
