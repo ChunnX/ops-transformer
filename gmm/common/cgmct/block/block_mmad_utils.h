@@ -155,23 +155,6 @@ __aicore__ inline constexpr bool IsFp4Fp4F32()
 }
 
 /**
- * @brief Check if matrix A and B are Fp4 and matrix C is BF16
- * @param [in] AType: type of matrix A
- * @param [in] BType: type of matrix B
- * @param [in] CType: type of matrix C
- * @return Return true if matrix A and B are Fp4 and matrix C is BF16, otherwise false
- */
-template <class AType, class BType, class CType>
-__aicore__ inline constexpr bool IsFp4Fp4BF16()
-{
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    return IsF4<AType>() && IsF4<BType>() && AscendC::IsSameTypeV<typename CType::T, bfloat16_t>;
-#else
-    return false;
-#endif
-}
-
-/**
  * @brief Check if the matrix type is F8
  * @param [in] MatmulType: matrix type
  * @return Return true if the matrix type is F8, otherwise false
@@ -199,23 +182,6 @@ __aicore__ inline constexpr bool IsFp8Fp8F32()
 {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     return IsF8<AType>() && IsF8<BType>() && AscendC::IsSameTypeV<typename CType::T, float>;
-#else
-    return false;
-#endif
-}
-
-/**
- * @brief Check if matrix A and B are Fp8 and matrix C is BF16
- * @param [in] AType: type of matrix A
- * @param [in] BType: type of matrix B
- * @param [in] CType: type of matrix C
- * @return Return true if matrix A and B are Fp8 and matrix C is BF16, otherwise false
- */
-template <class AType, class BType, class CType>
-__aicore__ inline constexpr bool IsFp8Fp8BF16()
-{
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    return IsF8<AType>() && IsF8<BType>() && AscendC::IsSameTypeV<typename CType::T, bfloat16_t>;
 #else
     return false;
 #endif
