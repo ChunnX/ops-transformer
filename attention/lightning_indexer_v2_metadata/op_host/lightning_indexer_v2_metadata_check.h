@@ -143,14 +143,14 @@ aclnnStatus CheckSingleParamLiV2(int64_t numHeadsQ, int64_t numHeadsK, int64_t h
     // 校验 layout_q 为 BSND 时，max_seqlen_q 必须大于 0
     if (strcmp(layoutQOptional, "BSND") == 0) {
         CHECK_COND(maxSeqlenQ > 0, ACLNN_ERR_PARAM_INVALID,
-            "When layout_q is BSND, the value of max_seqlen_q cannnot be 0, "
-            "it must be equal to the size of the second axis of q, but got %lld", maxSeqlenQ);
+            "When layout_q is BSND, the value of max_seqlen_q "
+            "must be equal to the size of the second axis of q, but got %lld", maxSeqlenQ);
     }
     // 校验 layout_k 为 BSND 时，max_seqlen_k 必须大于 0
     if (strcmp(layoutKOptional, "BSND") == 0) {
         CHECK_COND(maxSeqlenK > 0, ACLNN_ERR_PARAM_INVALID,
-            "When layout_k is BSND, the value of max_seqlen_k cannnot be 0, "
-            "it must be equal to the size of the second axis of k, but got %lld", maxSeqlenK);
+            "When layout_k is BSND, the value of max_seqlen_k "
+            "must be equal to the size of the second axis of k, but got %lld", maxSeqlenK);
     }
     // 核心数校验
     CHECK_COND(aicCoreNum > 0, ACLNN_ERR_PARAM_INVALID, "AIC num should be larger than 0, but got %u", aicCoreNum);
