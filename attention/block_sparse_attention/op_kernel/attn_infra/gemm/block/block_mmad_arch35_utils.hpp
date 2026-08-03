@@ -77,7 +77,7 @@ namespace MXFP4 {
 
     static constexpr uint32_t L0C_PV_BUF_CNT = 1;
     static constexpr uint32_t L0C_PV_BUF_SIZE = 72 * KB_BYTE;
-    static constexpr uint32_t L0C_PV_BUF_OFFSET = 64 * KB_BYTE;
+    static constexpr uint32_t L0C_PV_BUF_OFFSET = 128 * KB_BYTE;
 
     static constexpr uint32_t BLOCK_SIZE = 32; 
 
