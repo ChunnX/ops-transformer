@@ -528,13 +528,21 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: attrs ok, alltoall_out_flag=%d",
                   static_cast<int>(attrs.alltoall_out_flag));
 
+        // MakePattern 使用默认 alltoall_out_flag=true 时，BuildAndReset 后析构 EsGraphBuilder 正常；
+        // 传入 false 时会在 scope 析构路径 SIGSEGV（见 after BuildAndReset 之后无 after scope destroy）。
+        // 因此 ES 构图始终用 true，再按真实 attr 写回节点。
+        const bool realAlltoallOutFlag = attrs.alltoall_out_flag;
         auto mc2 = ge::es::AlltoAllMatmul(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
                                           inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
                                           inputTensors.rX2Offset, attrs.group.c_str(), attrs.world_size,
                                           attrs.all2all_axes, attrs.y_dtype, attrs.x1_quant_mode, attrs.x2_quant_mode,
                                           attrs.comm_quant_mode, attrs.x1_quant_dtype, attrs.comm_quant_dtype,
                                           attrs.transpose_x1, attrs.transpose_x2, attrs.group_size,
-                                          attrs.comm_mode.c_str(), attrs.alltoall_out_flag);
+                                          attrs.comm_mode.c_str(), true);
+        if (!realAlltoallOutFlag) {
+            OP_LOGE_IF(mc2.y.SetAttrForNode("alltoall_out_flag", false) != ge::SUCCESS, nullptr,
+                       FUSION_PASS_NAME.c_str(), "SetAttr alltoall_out_flag failed.");
+        }
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: before BuildAndReset");
         replaceGraph = replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after BuildAndReset, graph=%p", replaceGraph.get());
