@@ -127,6 +127,9 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
         int64_t actualKLen = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
         int64_t totalAivNum = baseInfo.get_totalAivNum();
 
+        AscendC::PRINTF("[luo] slig_tail_pad core aivIdx=%u aicIdx=%u, t1Size=%ld actualLen=%ld t2Size=%ld actualKLen=%ld totalAivNum=%ld\n",
+            constInfo.aivIdx, constInfo.aicIdx, t1Size, actualLen, t2Size, actualKLen, totalAivNum);
+
         if (t1Size > actualLen) {
             int64_t t1PadLen = t1Size - actualLen;
             int64_t splitT1PadLen = t1PadLen / totalAivNum;
@@ -135,6 +138,9 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
                 (static_cast<int64_t>(constInfo.aivIdx) < remainT1PadLen ? 1 : 0);
             int64_t t1PadLenSum = static_cast<int64_t>(constInfo.aivIdx) * splitT1PadLen +
                 Min(static_cast<int64_t>(constInfo.aivIdx), remainT1PadLen);
+
+            AscendC::PRINTF("[luo] slig_t1_pad t1PadLen=%ld split=%ld remain=%ld core=%ld sum=%ld\n",
+                t1PadLen, splitT1PadLen, remainT1PadLen, currentCoreT1PadLen, t1PadLenSum);
 
             if ASCEND_IS_AIV {
                 int64_t dQOutputOffset = (t1PadLenSum + actualLen) *
@@ -153,6 +159,10 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
                 tmpDW.SetGlobalBuffer(reinterpret_cast<__gm__ WEIGHT_T *>(dWeight) + dWOutputOffset,
                     currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex));
                 AscendC::Fill(tmpDW, currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex), static_cast<WEIGHT_T>(0));
+
+                AscendC::PRINTF("[luo] slig_t1_pad_fill done: dQOffset=%ld fillCnt=%ld dWOffset=%ld\n",
+                    dQOutputOffset, currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex) *
+                        static_cast<int64_t>(constInfo.dSizeQueryIndex), dWOutputOffset);
             }
         }
         if (t2Size > actualKLen) {
@@ -164,6 +174,9 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
             int64_t t2PadLenSum = static_cast<int64_t>(constInfo.aivIdx) * splitT2PadLen +
                 Min(static_cast<int64_t>(constInfo.aivIdx), remainT2PadLen);
 
+            AscendC::PRINTF("[luo] slig_t2_pad t2PadLen=%ld split=%ld remain=%ld core=%ld sum=%ld\n",
+                t2PadLen, splitT2PadLen, remainT2PadLen, currentCoreT2PadLen, t2PadLenSum);
+
             if ASCEND_IS_AIV {
                 int64_t dKOutputOffset = (t2PadLenSum + actualKLen) *
                     static_cast<int64_t>(constInfo.dSizeQueryIndex);
@@ -171,7 +184,12 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
                 tmpDK.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(dKeyIndex) + dKOutputOffset,
                     currentCoreT2PadLen * static_cast<int64_t>(constInfo.dSizeQueryIndex));
                 AscendC::Fill(tmpDK, currentCoreT2PadLen * static_cast<int64_t>(constInfo.dSizeQueryIndex), static_cast<INPUT_T>(0));
+
+                AscendC::PRINTF("[luo] slig_t2_pad_fill done: dKOffset=%ld fillCnt=%ld\n",
+                    dKOutputOffset, currentCoreT2PadLen * static_cast<int64_t>(constInfo.dSizeQueryIndex));
             }
+        } else {
+            AscendC::PRINTF("[luo] slig_t2_pad skip: t2Size(%ld) <= actualKLen(%ld)\n", t2Size, actualKLen);
         }
     }
 
@@ -647,6 +665,8 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
         constInfo.subBlockIdx = constInfo.aivIdx % MODE_NUM_2;
     } else {
         constInfo.aicIdx = GetBlockIdx();
+        constInfo.aivIdx = 0;
+        constInfo.subBlockIdx = 0;
     }
 
     auto &baseInfo = tilingData->baseParams;
