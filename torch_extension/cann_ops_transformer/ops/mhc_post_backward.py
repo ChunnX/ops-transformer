@@ -45,6 +45,12 @@ mhc_post_backward_op_builder = MhcPostBackwardOpBuilder()
 
 
 @impl(AS_LIBRARY, mhc_post_backward_op_builder.name, "PrivateUse1")
-def mhc_post_backward(grad_output, x, h_res, h_out, h_post):
+def _mhc_post_backward_dispatch(grad_output, x, h_res, h_out, h_post):
     op_module = mhc_post_backward_op_builder.load()
     return op_module.mhc_post_backward(grad_output, x, h_res, h_out, h_post)
+
+
+def mhc_post_backward(grad_output, x, h_res, h_out, h_post):
+    return torch.ops.cann_ops_transformer.mhc_post_backward(
+        grad_output, x, h_res, h_out, h_post
+    )
