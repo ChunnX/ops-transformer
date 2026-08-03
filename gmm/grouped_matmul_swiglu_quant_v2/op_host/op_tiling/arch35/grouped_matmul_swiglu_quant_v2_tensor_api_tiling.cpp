@@ -24,6 +24,10 @@ namespace optiling {
 namespace {
 using namespace GroupedMatmulSwigluQuantV2Tiling;
 
+constexpr size_t SHAPE_DIM_ONE = 1;
+constexpr size_t SHAPE_DIM_TWO = 2;
+constexpr size_t SHAPE_DIM_THREE = 3;
+constexpr size_t SHAPE_DIM_FOUR = 4;
 constexpr uint64_t TENSOR_API_FP8_N_ALIGN = 128UL;
 constexpr uint64_t TENSOR_API_M_MIN = 128UL;
 constexpr uint64_t TENSOR_API_B_NOTRANS_M_LOWER_LIMIT = 512UL;
@@ -176,9 +180,9 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::AnalyzeInputs()
     const auto &xShape = xStorageShape->GetOriginShape();
     const auto &weightShape = weightStorageShape->GetOriginShape();
     const auto &groupListShape = groupListStorageShape->GetStorageShape();
-    OP_CHECK_IF(xShape.GetDimNum() < 2 || weightShape.GetDimNum() < 2,
+    OP_CHECK_IF(xShape.GetDimNum() < SHAPE_DIM_TWO || weightShape.GetDimNum() < SHAPE_DIM_TWO,
                 OP_LOGE(context_->GetNodeName(), "x and weight must have at least two dimensions."), return false);
-    OP_CHECK_IF(groupListShape.GetDimNum() != 1,
+    OP_CHECK_IF(groupListShape.GetDimNum() != SHAPE_DIM_ONE,
                 OP_LOGE(context_->GetNodeName(), "group_list must be one-dimensional."), return false);
 
     const size_t xDimNum = xShape.GetDimNum();
@@ -232,12 +236,12 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::CheckTensorApiShapes() const
     }
     const auto &xShape = xShapePtr->GetOriginShape();
     const auto &weightShape = weightShapePtr->GetOriginShape();
-    if (xShape.GetDimNum() != 2 ||
-        (weightShape.GetDimNum() != 2 && weightShape.GetDimNum() != 3)) {
+    if (xShape.GetDimNum() != SHAPE_DIM_TWO ||
+        (weightShape.GetDimNum() != SHAPE_DIM_TWO && weightShape.GetDimNum() != SHAPE_DIM_THREE)) {
         return false;
     }
-    return (weightShape.GetDimNum() == 2 && inputParams_.groupNum == 1U) ||
-           (weightShape.GetDimNum() == 3 &&
+    return (weightShape.GetDimNum() == SHAPE_DIM_TWO && inputParams_.groupNum == 1U) ||
+           (weightShape.GetDimNum() == SHAPE_DIM_THREE &&
             weightShape.GetDim(0) == static_cast<int64_t>(inputParams_.groupNum));
 }
 
@@ -250,21 +254,21 @@ bool GroupedMatmulSwigluQuantV2TensorApiTiling950::CheckTensorApiScaleShapes() c
     }
     const auto &xScaleShape = xScaleShapePtr->GetOriginShape();
     const auto &weightScaleShape = weightScaleShapePtr->GetOriginShape();
-    if (xScaleShape.GetDimNum() != 3 || weightScaleShape.GetDimNum() != 4) {
+    if (xScaleShape.GetDimNum() != SHAPE_DIM_THREE || weightScaleShape.GetDimNum() != SHAPE_DIM_FOUR) {
         return false;
     }
 
     const int64_t kBlocks =
         static_cast<int64_t>(GroupedMatmul::CeilDiv(inputParams_.kSize, MX_SCALE_K_ALIGN));
     if (xScaleShape.GetDim(0) != static_cast<int64_t>(inputParams_.mSize) ||
-        xScaleShape.GetDim(1) != kBlocks || xScaleShape.GetDim(2) != 2) {
+        xScaleShape.GetDim(1) != kBlocks || xScaleShape.GetDim(2) != SHAPE_DIM_TWO) {
         return false;
     }
     const int64_t weightScaleN = inputParams_.transB ? weightScaleShape.GetDim(1) : weightScaleShape.GetDim(2);
     const int64_t weightScaleK = inputParams_.transB ? weightScaleShape.GetDim(2) : weightScaleShape.GetDim(1);
     return weightScaleShape.GetDim(0) == static_cast<int64_t>(inputParams_.groupNum) &&
            weightScaleN == static_cast<int64_t>(inputParams_.nSize) && weightScaleK == kBlocks &&
-           weightScaleShape.GetDim(3) == 2;
+           weightScaleShape.GetDim(3) == SHAPE_DIM_TWO;
 }
 
 bool GroupedMatmulSwigluQuantV2TensorApiTiling950::IsCapable()
@@ -329,8 +333,6 @@ ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::DoOpTiling()
 ge::graphStatus GroupedMatmulSwigluQuantV2TensorApiTiling950::DoLibApiTiling()
 {
     GroupedQmmTiling::CalBasicBlock();
-    // auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(GmmConstant::BASIC_BLOCK_SIZE_128));
-    // basicTiling_.baseM = GroupedMatmul::CeilAlign(baseM_modified, GmmConstant::CUBE_BLOCK);
     OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
     if (inputParams_.mSize >= GmmConstant::BASIC_BLOCK_SIZE_256) {
