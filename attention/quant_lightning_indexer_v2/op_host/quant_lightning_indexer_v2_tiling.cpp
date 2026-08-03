@@ -1275,6 +1275,15 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
                 }
             }
         }
+        // 仅用于错误上报：定位首个不匹配轴，不改动上面的判断结果
+        for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
+            if (i < keyStridesVec_.size() && keyStridesVec_[i] != expectedStrides[i]) {
+                keyReportAxis = static_cast<uint32_t>(i);
+                keyReportActual = keyStridesVec_[i];
+                keyReportExpected = expectedStrides[i];
+                break;
+            }
+        }
     }
     bool isMxQuantMode = (*opParamInfo_.quantMode == QUANT_MODE_MXFP8) || (*opParamInfo_.quantMode == QUANT_MODE_MXFP4);
     if ((*opParamInfo_.quantMode != QUANT_MODE_HIFLOAT8) && !keyDequantScaleStridesVec_.empty() &&
@@ -1305,6 +1314,15 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
                 if (keyDequantScaleStridesVec_[i] != expectedStrides[i]) {
                     scaleNonContiguous = true;
                 }
+            }
+        }
+        // 仅用于错误上报：定位首个不匹配轴，不改动上面的判断结果
+        for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
+            if (i < keyDequantScaleStridesVec_.size() && keyDequantScaleStridesVec_[i] != expectedStrides[i]) {
+                scaleReportAxis = static_cast<uint32_t>(i);
+                scaleReportActual = keyDequantScaleStridesVec_[i];
+                scaleReportExpected = expectedStrides[i];
+                break;
             }
         }
     }
