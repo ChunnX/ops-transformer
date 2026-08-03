@@ -162,7 +162,39 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
         patternName += PATTERN_X2_OFFSET;
     }
     auto graphBuilder = ge::es::EsGraphBuilder(patternName.c_str());
-    auto [x1, x2, bias, x1Scale, x2Scale, commScale, x1Offset, x2Offset] = graphBuilder.CreateInputs<8>();
+    // 只创建实际会连上的 Data，避免 CreateInputs<8> 留下未使用输入
+    const size_t inputNum = 2U + static_cast<size_t>(info.hasBias) + static_cast<size_t>(info.hasX1Scale) +
+                            static_cast<size_t>(info.hasX2Scale) + static_cast<size_t>(info.hasCommScale) +
+                            static_cast<size_t>(info.hasX1Offset) + static_cast<size_t>(info.hasX2Offset);
+    auto inputs = graphBuilder.CreateInputs(inputNum);
+    size_t idx = 0;
+    auto x1 = inputs[idx++];
+    auto x2 = inputs[idx++];
+    ge::es::EsTensorHolder bias = nullptr;
+    ge::es::EsTensorHolder x1Scale = nullptr;
+    ge::es::EsTensorHolder x2Scale = nullptr;
+    ge::es::EsTensorHolder commScale = nullptr;
+    ge::es::EsTensorHolder x1Offset = nullptr;
+    ge::es::EsTensorHolder x2Offset = nullptr;
+    if (info.hasBias) {
+        bias = inputs[idx++];
+    }
+    if (info.hasX1Scale) {
+        x1Scale = inputs[idx++];
+    }
+    if (info.hasX2Scale) {
+        x2Scale = inputs[idx++];
+    }
+    if (info.hasCommScale) {
+        commScale = inputs[idx++];
+    }
+    if (info.hasX1Offset) {
+        x1Offset = inputs[idx++];
+    }
+    if (info.hasX2Offset) {
+        x2Offset = inputs[idx++];
+    }
+
     ge::es::EsTensorHolder transpose;
     if (info.node == TransposeNode::Transpose) {
         transpose = TransposeDL(x2, ge::es::EsTensorLike(std::vector<int64_t>{1, 0}));
@@ -170,13 +202,9 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
         transpose = ge::es::TransposeD(x2, std::vector<int64_t>{1, 0});
     }
 
-    // attr
     const char *group = "";
     int64_t worldSize = 0;
-
-    auto mc2 = ge::es::AlltoAllMatmul(x1, transpose, info.hasBias ? bias : nullptr, info.hasX1Scale ? x1Scale : nullptr,
-                                      info.hasX2Scale ? x2Scale : nullptr, info.hasCommScale ? commScale : nullptr,
-                                      info.hasX1Offset ? x1Offset : nullptr, info.hasX2Offset ? x2Offset : nullptr, group,
+    auto mc2 = ge::es::AlltoAllMatmul(x1, transpose, bias, x1Scale, x2Scale, commScale, x1Offset, x2Offset, group,
                                       worldSize);
     auto graph = graphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
@@ -477,35 +505,42 @@ static ge::fusion::GraphUniqPtr
 BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
                   const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start to build replaceGraph EsGraphBuilder.");
-    auto replaceGraphBuilder = ge::es::EsGraphBuilder("replacement");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: enter");
+    ge::fusion::GraphUniqPtr replaceGraph;
+    {
+        auto replaceGraphBuilder = ge::es::EsGraphBuilder("replacement");
 
-    ReplaceGraphInputs inputTensors;
-    if (!CreateReplaceGraphInputs(inputTensors, replaceGraphBuilder, subgraphInputs, matchResult)) {
-        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "CreateReplaceGraphInputs failed.");
-        return nullptr;
-    }
+        ReplaceGraphInputs inputTensors;
+        if (!CreateReplaceGraphInputs(inputTensors, replaceGraphBuilder, subgraphInputs, matchResult)) {
+            OPS_LOG_E(FUSION_PASS_NAME.c_str(), "CreateReplaceGraphInputs failed.");
+            return nullptr;
+        }
 
-    ge::GNode mc2Node;
-    if (!GetCapturedMc2Node(matchResult, mc2Node)) {
-        return nullptr;
-    }
+        ge::GNode mc2Node;
+        if (!GetCapturedMc2Node(matchResult, mc2Node)) {
+            return nullptr;
+        }
 
-    Mc2ReplaceAttrs attrs;
-    if (!GetMc2ReplaceAttrs(mc2Node, attrs)) {
-        return nullptr;
-    }
+        Mc2ReplaceAttrs attrs;
+        if (!GetMc2ReplaceAttrs(mc2Node, attrs)) {
+            return nullptr;
+        }
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: attrs ok, alltoall_out_flag=%d",
+                  static_cast<int>(attrs.alltoall_out_flag));
 
-    auto mc2 = ge::es::AlltoAllMatmul(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
-                                      inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
-                                      inputTensors.rX2Offset, attrs.group.c_str(), attrs.world_size,
-                                      attrs.all2all_axes, attrs.y_dtype, attrs.x1_quant_mode, attrs.x2_quant_mode,
-                                      attrs.comm_quant_mode, attrs.x1_quant_dtype, attrs.comm_quant_dtype,
-                                      attrs.transpose_x1, attrs.transpose_x2, attrs.group_size,
-                                      attrs.comm_mode.c_str(), attrs.alltoall_out_flag);
-    // 与 MakePattern / AllGatherMatmulV2 一致：ES 侧 all2all_out 为 Required，须一并挂上，
-    // 仅 BuildAndReset({y}) 会在 builder 析构时踩坏堆（表现为 shared_ptr<string> 析构 SIGSEGV）。
-    return replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
+        auto mc2 = ge::es::AlltoAllMatmul(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
+                                          inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
+                                          inputTensors.rX2Offset, attrs.group.c_str(), attrs.world_size,
+                                          attrs.all2all_axes, attrs.y_dtype, attrs.x1_quant_mode, attrs.x2_quant_mode,
+                                          attrs.comm_quant_mode, attrs.x1_quant_dtype, attrs.comm_quant_dtype,
+                                          attrs.transpose_x1, attrs.transpose_x2, attrs.group_size,
+                                          attrs.comm_mode.c_str(), attrs.alltoall_out_flag);
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: before BuildAndReset");
+        replaceGraph = replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after BuildAndReset, graph=%p", replaceGraph.get());
+    } // EsGraphBuilder / mc2 / attrs 在此析构
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after scope destroy, about to return");
+    return replaceGraph;
 }
 
 static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
@@ -607,6 +642,7 @@ ge::fusion::GraphUniqPtr AllToAllMatmulTransposeA5FusionPass::Replacement(
 
     // build replace graph after removing Transpose nodes
     ge::fusion::GraphUniqPtr replaceGraph = BuildReplaceGraph(subgraphInputs, matchResult);
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: after BuildReplaceGraph, graph=%p", replaceGraph.get());
     if (replaceGraph == nullptr) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph failed in Replacement.");
         return nullptr;
@@ -615,6 +651,7 @@ ge::fusion::GraphUniqPtr AllToAllMatmulTransposeA5FusionPass::Replacement(
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "InferShapeReplaceGraph failed in Replacement.");
         return nullptr;
     }
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: InferShape ok, about to return");
 
     return std::move(replaceGraph);
 }
