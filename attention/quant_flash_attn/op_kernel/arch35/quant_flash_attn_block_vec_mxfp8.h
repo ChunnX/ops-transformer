@@ -163,7 +163,7 @@ public:
     float pScaleValue{1.0f};
     bool isSkipMask{false};
     bool isFullMask{false};
-    uint32_t minValue{NEGATIVE_MIN_VALUE_FP32};
+    uint32_t minValue{NEGATIVE_MIN_VALUE_FP32_LN2};
 
     // ==================== Functions ======================
     __aicore__ inline FAFullQuantMxBlockVec(ConstInfoX &constInfo)
@@ -175,9 +175,12 @@ public:
                                         __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
     {
         tPipe = pipe;
-        uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
+        uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32_LN2;
         this->negativeFloatScalar = *((T *)&tmp1);
-        UpdateMinCheckValue();
+        if constexpr (USE_DN) {
+            minValue = NEGATIVE_MIN_VALUE_FP32;
+            UpdateMinCheckValue();
+        }
 
         InitVecInput(actualSeqQlenAddr, actualSeqKvlenAddr, pScale, attenMask, softmaxLse, attentionOut, workspace);
     }
@@ -823,6 +826,23 @@ public:
     __aicore__ inline void RowInvalid(LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t mStartVec, int64_t mDealSize,
                                       RunInfoX &runInfo, int64_t dSizeAligned64)
     {
+        // actS2Size == 0 时所有行均为无效行，需要全部清零
+        if (runInfo.actS2Size == 0) {
+            LocalTensor<float> maxTensor =
+                softmaxMaxBuf[runInfo.mloop % (PRELOAD_N + 1)].template Get<float>()[mStartVec];
+            if constexpr (!POST_QUANT) {
+                RowInvalidUpdateVF<float>(vec2ResUb, maxTensor, mDealSize, constInfo.dSizeV,
+                                          static_cast<uint32_t>(dSizeAligned64), minValue);
+            } else {
+                uint32_t dStride =
+                    CeilDiv(static_cast<uint32_t>(static_cast<uint32_t>(dSizeAligned64)), sizeof(float));
+                uint16_t dSize = CeilDiv(constInfo.dSizeV, sizeof(float)); // w8后量化后的处理长度
+                RowInvalidUpdateVF<float>(*((LocalTensor<float> *)&vec2ResUb), maxTensor, mDealSize, dSize, dStride,
+                                          minValue);
+            }
+            return;
+        }
+
         if constexpr (HAS_MASK) {
             int64_t s1FirstValidToken =
                 AttentionCommon::Min(AttentionCommon::Max(-runInfo.nextTokensLeftUp, 0), runInfo.actS1Size);
