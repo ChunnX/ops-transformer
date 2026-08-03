@@ -22,7 +22,11 @@ using namespace AscendC;
 
 #include "kernel_operator.h"
 
-#include "../../common/op_kernel/moe_distribute_base.h"
+#if __has_include("../../common/moe_distribute_base.h")
+#include "../../common/moe_distribute_base.h"
+#else
+#include "../../../common/op_kernel/moe_distribute_base.h"
+#endif
 
 #include "mega_moe_tiling_a2a3.h"
 #include "moe_init_routing_v2/moe_init_routing_v2_tiling.h"
@@ -73,8 +77,7 @@ using namespace Mc2Tiling;
 //   TB2_   : transpose_weight2 attribute
 //   Nz_    : whether weight1/2 is in FRACTAL_NZ format (both are the same)
 //   IS_A2_ : whether running on Atlas A2 (910B); false means A3 (910_93)
-#define MegaMoeClassA2                                                                                                \
-    typename AType_, typename BType_, typename CType_, bool TB1_, bool TB2_, bool Nz_, bool IS_A2_
+#define MegaMoeClassA2 typename AType_, typename BType_, typename CType_, bool TB1_, bool TB2_, bool Nz_, bool IS_A2_
 #define MegaMoeFuncA2 AType_, BType_, CType_, TB1_, TB2_, Nz_, IS_A2_
 
 using namespace AscendC;
@@ -106,27 +109,30 @@ private:
     GM_ADDR workspaceGM_;
     GM_ADDR tilingGM_{nullptr};
 
-    GM_ADDR moeInitRoutingQuantV2Scale = nullptr;
-    GM_ADDR moeInitRoutingQuantV2Offset = nullptr;
-    GM_ADDR expertTokensBeforeCapacity = nullptr;
+    GM_ADDR moeInitRoutingQuantV2Scale_ = nullptr;
+    GM_ADDR moeInitRoutingQuantV2Offset_ = nullptr;
+    GM_ADDR expertTokensBeforeCapacity_ = nullptr;
 
     TBuf<AscendC::TPosition::VECCALC> uBuf_;
 
-    int32_t rank;
-    int32_t rankSize;
-    int32_t aivNum;
+    int32_t rank_;
+    int32_t rankSize_;
+    int32_t aivNum_;
 
     static constexpr int32_t UB_MOVE_NUM = 16 * 1024;
 
-    int32_t m;
-    int32_t k;
-    int32_t n;
-    int32_t topK;
-    int32_t expertPerRank;
-    uint64_t maxOutputSize;
-    int32_t EP;
-    int32_t listLen;
-    float activationClamp;
+    int32_t m_;
+    int32_t k_;
+    int32_t n_;
+    int32_t topK_;
+    int32_t expertPerRank_;
+    uint64_t maxOutputSize_;
+    int32_t epWorldSize_;
+    int32_t listLen_;
+    uint32_t activationCode_;
+    float activationClamp_;
+    float activationParams1_;
+    float activationParams2_;
 
     MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
     MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
@@ -165,17 +171,20 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Init(
         auto tiling = (__gm__ MegaMoeTilingDataQuant *)tilingGM;
         GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataQuant, tilingData, tilingGM);
 
-        aivNum = tilingData.common.aivNum;
-        m = tilingData.common.M;
-        k = tilingData.common.K;
-        n = tilingData.common.N;
-        EP = tilingData.common.worldSize;
-        topK = tilingData.common.topK;
-        expertPerRank = tilingData.common.expertPerRank;
-        maxOutputSize = tilingData.common.maxRecvTokenNum;
-        listLen = tilingData.common.listLen;
+        aivNum_ = tilingData.common.aivNum;
+        m_ = tilingData.common.M;
+        k_ = tilingData.common.K;
+        n_ = tilingData.common.N;
+        epWorldSize_ = tilingData.common.worldSize;
+        topK_ = tilingData.common.topK;
+        expertPerRank_ = tilingData.common.expertPerRank;
+        maxOutputSize_ = tilingData.common.maxRecvTokenNum;
+        listLen_ = tilingData.common.listLen;
 
-        activationClamp = tilingData.common.activationClamp;
+        activationCode_ = tilingData.common.activationCode;
+        activationClamp_ = tilingData.common.activationClamp;
+        activationParams1_ = tilingData.common.activationParams1;
+        activationParams2_ = tilingData.common.activationParams2;
 
         moeInitRoutingQuantV2TilingData = tilingData.moeInitRoutingQuantV2TilingData;
         initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
@@ -183,17 +192,20 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Init(
         auto tiling = (__gm__ MegaMoeTilingDataNonQuant *)tilingGM;
         GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataNonQuant, tilingData, tilingGM);
 
-        aivNum = tilingData.common.aivNum;
-        m = tilingData.common.M;
-        k = tilingData.common.K;
-        n = tilingData.common.N;
-        EP = tilingData.common.worldSize;
-        topK = tilingData.common.topK;
-        expertPerRank = tilingData.common.expertPerRank;
-        maxOutputSize = tilingData.common.maxRecvTokenNum;
-        listLen = tilingData.common.listLen;
+        aivNum_ = tilingData.common.aivNum;
+        m_ = tilingData.common.M;
+        k_ = tilingData.common.K;
+        n_ = tilingData.common.N;
+        epWorldSize_ = tilingData.common.worldSize;
+        topK_ = tilingData.common.topK;
+        expertPerRank_ = tilingData.common.expertPerRank;
+        maxOutputSize_ = tilingData.common.maxRecvTokenNum;
+        listLen_ = tilingData.common.listLen;
 
-        activationClamp = tilingData.common.activationClamp;
+        activationCode_ = tilingData.common.activationCode;
+        activationClamp_ = tilingData.common.activationClamp;
+        activationParams1_ = tilingData.common.activationParams1;
+        activationParams2_ = tilingData.common.activationParams2;
 
         moeInitRoutingV2TilingData = tilingData.moeInitRoutingV2TilingData;
         initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
@@ -215,12 +227,12 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
     using CElement = std::conditional_t<isW4A8 || isInt8, float16_t, CType_>;
     using D1Element = std::conditional_t<isW4A8 || isInt8, int8_t, CType_>;
 
-    uint32_t k2 = n / 2;
-    uint32_t n2 = k;
+    uint32_t k2 = n_ / 2;
+    uint32_t n2 = k_;
 
     int64_t activeNum = 0;
     int64_t expertCapacity = 0;
-    int64_t expertNum = expertPerRank * EP;
+    int64_t expertNum = expertPerRank_ * epWorldSize_;
     int64_t dropPadMode = 0;
     int64_t expertTokensCountOrCumsumFlag = 2;
     bool expertTokensBeforeCapacityFlag = false;
@@ -233,7 +245,7 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
         typename std::conditional<TB1_, layout::ColumnMajor, layout::RowMajor>::type
     >::type;
 
-    LayoutB layoutB1 = LayoutBInitializer<LayoutB, BElement>::create(k, n);
+    LayoutB layoutB1 = LayoutBInitializer<LayoutB, BElement>::create(k_, n_);
     LayoutB layoutB2 = LayoutBInitializer<LayoutB, BElement>::create(k2, n2);
     using LayoutC = layout::RowMajor;
 
@@ -316,15 +328,15 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
     // W4A8 reuses this workspace for GMM1 input and SwiGLU/GMM2 input. Pad only
     // the GMM1 token slot; SwiGLU/GMM2 keeps its native packed k2 layout.
     uint32_t layoutA1RowStride =
-        isW4A8 ? static_cast<uint32_t>(k > k2 ? k : k2) : static_cast<uint32_t>(k);
-    LayoutA layoutA1{static_cast<uint32_t>(m), static_cast<uint32_t>(k), layoutA1RowStride};
-    LayoutA layoutA2{static_cast<uint32_t>(m), static_cast<uint32_t>(k2)};
-    layout::VectorLayout layoutScale1{static_cast<uint32_t>(n)};
+        isW4A8 ? static_cast<uint32_t>(k_ > k2 ? k_ : k2) : static_cast<uint32_t>(k_);
+    LayoutA layoutA1{static_cast<uint32_t>(m_), static_cast<uint32_t>(k_), layoutA1RowStride};
+    LayoutA layoutA2{static_cast<uint32_t>(m_), static_cast<uint32_t>(k2)};
+    layout::VectorLayout layoutScale1{static_cast<uint32_t>(n_)};
     layout::VectorLayout layoutScale2{static_cast<uint32_t>(n2)};
-    layout::RowMajor layoutD1{static_cast<uint32_t>(maxOutputSize), static_cast<uint32_t>(k2)};
-    layout::RowMajor layoutD2{static_cast<uint32_t>(m * topK), static_cast<uint32_t>(n2)};
+    layout::RowMajor layoutD1{static_cast<uint32_t>(maxOutputSize_), static_cast<uint32_t>(k2)};
+    layout::RowMajor layoutD2{static_cast<uint32_t>(m_ * topK_), static_cast<uint32_t>(n2)};
 
-    GemmCoord problemShape{static_cast<uint32_t>(m), static_cast<uint32_t>(n), static_cast<uint32_t>(k)};
+    GemmCoord problemShape{static_cast<uint32_t>(m_), static_cast<uint32_t>(n_), static_cast<uint32_t>(k_)};
 
     uint32_t epilogueCoreNum;
     uint32_t epilogueGranularity;
@@ -333,73 +345,147 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
         using MatmulKernel =
             Gemm::Kernel::MegaMoeKernelA2Bf16W4A8<BlockMmad, BlockScheduler, ElementGroupList,
                                                     BlockEpilogue1, BlockEpilogue2>;
-        epilogueCoreNum = static_cast<uint32_t>(aivNum);
+        epilogueCoreNum = static_cast<uint32_t>(aivNum_);
         epilogueGranularity = 0U;
-        typename MatmulKernel::Params params = typename MatmulKernel::Params{
-            problemShape, static_cast<uint32_t>(EP), static_cast<uint32_t>(listLen),
-            static_cast<uint32_t>(expertPerRank), static_cast<uint64_t>(maxOutputSize),
-            static_cast<uint32_t>(topK), initRoutingQuantTilingKey,
+        typename MatmulKernel::Params params = typename MatmulKernel::Params{problemShape,
+                                                                             static_cast<uint32_t>(epWorldSize_),
+                                                                             static_cast<uint32_t>(listLen_),
+                                                                             static_cast<uint32_t>(expertPerRank_),
+                                                                             static_cast<uint64_t>(maxOutputSize_),
+                                                                             static_cast<uint32_t>(topK_),
+                                                                             initRoutingQuantTilingKey,
             epilogueCoreNum,
-            contextGM_, xGM_, layoutA1, layoutA2,
-            weight1GM_, layoutB1, bias1GM_,
-            weight2GM_, layoutB2, bias2GM_,
-            weightScales1GM_, layoutScale1,
-            weightScales2GM_, layoutScale2,
-            yGM_, layoutD1, layoutD2,
-            topkIdsGM_, moeInitRoutingQuantV2Scale, moeInitRoutingQuantV2Offset,
-            expertTokensBeforeCapacity, topkWeightsGM_,
-            workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_,
+                                                                             contextGM_,
+                                                                             xGM_,
+                                                                             layoutA1,
+                                                                             layoutA2,
+                                                                             weight1GM_,
+                                                                             layoutB1,
+                                                                             bias1GM_,
+                                                                             weight2GM_,
+                                                                             layoutB2,
+                                                                             bias2GM_,
+                                                                             weightScales1GM_,
+                                                                             layoutScale1,
+                                                                             weightScales2GM_,
+                                                                             layoutScale2,
+                                                                             yGM_,
+                                                                             layoutD1,
+                                                                             layoutD2,
+                                                                             topkIdsGM_,
+                                                                             moeInitRoutingQuantV2Scale_,
+                                                                             moeInitRoutingQuantV2Offset_,
+                                                                             expertTokensBeforeCapacity_,
+                                                                             topkWeightsGM_,
+                                                                             workspaceGM_,
+                                                                             gmExpertTokenNums_,
+                                                                             xActiveMaskGM_,
+                                                                             scalesGM_,
             moeInitRoutingQuantV2TilingData,
-            epilogueGranularity, activationClamp, tilingGM_};
+                                                                              epilogueGranularity,
+                                                                              activationClamp_,
+                                                                              activationCode_,
+                                                                              activationParams1_,
+                                                                              activationParams2_,
+                                                                              tilingGM_};
         MatmulKernel kernel(params);
         kernel(params);
-    }
-    else if constexpr (isInt8) {
-        epilogueCoreNum = aivNum / 2; // INT8 场景仅使用一半 AIV 参与 epilogue
-        epilogueGranularity = (expertPerRank > 1) ? static_cast<uint32_t>(expertPerRank - 1) : 1u;
+    } else if constexpr (isInt8) {
+        epilogueCoreNum = aivNum_ / 2; // INT8 场景仅使用一半 AIV 参与 epilogue
+        epilogueGranularity = (expertPerRank_ > 1) ? static_cast<uint32_t>(expertPerRank_ - 1) : 1u;
 
         using MatmulKernel = Gemm::Kernel::MegaMoeKernelA2Int8<BlockMmad, BlockScheduler, ElementGroupList,
                                                                            BlockEpilogue1, BlockEpilogue2>;
-        typename MatmulKernel::Params params{
-            problemShape, static_cast<uint32_t>(EP), static_cast<uint32_t>(listLen),
-            static_cast<uint32_t>(expertPerRank), static_cast<uint64_t>(maxOutputSize),
-            static_cast<uint32_t>(topK), initRoutingQuantTilingKey,
+        typename MatmulKernel::Params params{problemShape,
+                                             static_cast<uint32_t>(epWorldSize_),
+                                             static_cast<uint32_t>(listLen_),
+                                             static_cast<uint32_t>(expertPerRank_),
+                                             static_cast<uint64_t>(maxOutputSize_),
+                                             static_cast<uint32_t>(topK_),
+                                             initRoutingQuantTilingKey,
             epilogueCoreNum,
-            contextGM_, xGM_, layoutA1, layoutA2,
-            weight1GM_, layoutB1, bias1GM_,
-            weight2GM_, layoutB2, bias2GM_,
-            weightScales1GM_, layoutScale1,
-            weightScales2GM_, layoutScale2,
-            yGM_, layoutD1, layoutD2,
-            topkIdsGM_, moeInitRoutingQuantV2Scale, moeInitRoutingQuantV2Offset,
-            expertTokensBeforeCapacity, topkWeightsGM_,
-            workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_,
+                                             contextGM_,
+                                             xGM_,
+                                             layoutA1,
+                                             layoutA2,
+                                             weight1GM_,
+                                             layoutB1,
+                                             bias1GM_,
+                                             weight2GM_,
+                                             layoutB2,
+                                             bias2GM_,
+                                             weightScales1GM_,
+                                             layoutScale1,
+                                             weightScales2GM_,
+                                             layoutScale2,
+                                             yGM_,
+                                             layoutD1,
+                                             layoutD2,
+                                             topkIdsGM_,
+                                             moeInitRoutingQuantV2Scale_,
+                                             moeInitRoutingQuantV2Offset_,
+                                             expertTokensBeforeCapacity_,
+                                             topkWeightsGM_,
+                                             workspaceGM_,
+                                             gmExpertTokenNums_,
+                                             xActiveMaskGM_,
+                                             scalesGM_,
             moeInitRoutingQuantV2TilingData,
-            epilogueGranularity, activationClamp, tilingGM_};
+                                              epilogueGranularity,
+                                              activationClamp_,
+                                              activationCode_,
+                                              activationParams1_,
+                                              activationParams2_,
+                                              tilingGM_};
 
         MatmulKernel kernel(params);
         kernel(params);
     } else {
-        epilogueCoreNum = static_cast<uint32_t>(aivNum); // 所有 AIV 参与
-        epilogueGranularity = (expertPerRank > 2) ? static_cast<uint32_t>(expertPerRank - 2) : 1u;
+        epilogueCoreNum = static_cast<uint32_t>(aivNum_); // 所有 AIV 参与
+        epilogueGranularity = (expertPerRank_ > 2) ? static_cast<uint32_t>(expertPerRank_ - 2) : 1u;
         using MatmulKernel = Gemm::Kernel::MegaMoeKernelA2BF16<BlockMmad, BlockScheduler, ElementGroupList,
                                                                            BlockEpilogue1, BlockEpilogue2>;
-        typename MatmulKernel::Params params{
-            problemShape, static_cast<uint32_t>(EP), static_cast<uint32_t>(listLen),
-            static_cast<uint32_t>(expertPerRank), static_cast<uint64_t>(maxOutputSize),
-            static_cast<uint32_t>(topK), initRoutingQuantTilingKey,
+        typename MatmulKernel::Params params{problemShape,
+                                             static_cast<uint32_t>(epWorldSize_),
+                                             static_cast<uint32_t>(listLen_),
+                                             static_cast<uint32_t>(expertPerRank_),
+                                             static_cast<uint64_t>(maxOutputSize_),
+                                             static_cast<uint32_t>(topK_),
+                                             initRoutingQuantTilingKey,
             epilogueCoreNum,
-            contextGM_, xGM_, layoutA1, layoutA2,
-            weight1GM_, layoutB1, bias1GM_,
-            weight2GM_, layoutB2, bias2GM_,
-            weightScales1GM_, layoutScale1,
-            weightScales2GM_, layoutScale2,
-            yGM_, layoutD1, layoutD2,
-            topkIdsGM_, moeInitRoutingQuantV2Scale, moeInitRoutingQuantV2Offset,
-            expertTokensBeforeCapacity, topkWeightsGM_,
-            workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_,
+                                             contextGM_,
+                                             xGM_,
+                                             layoutA1,
+                                             layoutA2,
+                                             weight1GM_,
+                                             layoutB1,
+                                             bias1GM_,
+                                             weight2GM_,
+                                             layoutB2,
+                                             bias2GM_,
+                                             weightScales1GM_,
+                                             layoutScale1,
+                                             weightScales2GM_,
+                                             layoutScale2,
+                                             yGM_,
+                                             layoutD1,
+                                             layoutD2,
+                                             topkIdsGM_,
+                                             moeInitRoutingQuantV2Scale_,
+                                             moeInitRoutingQuantV2Offset_,
+                                             expertTokensBeforeCapacity_,
+                                             topkWeightsGM_,
+                                             workspaceGM_,
+                                             gmExpertTokenNums_,
+                                             xActiveMaskGM_,
+                                             scalesGM_,
             moeInitRoutingV2TilingData,
-            epilogueGranularity, activationClamp, tilingGM_};
+                                              epilogueGranularity,
+                                              activationClamp_,
+                                              activationCode_,
+                                              activationParams1_,
+                                              activationParams2_,
+                                              tilingGM_};
 
         MatmulKernel kernel(params);
         kernel(params);
