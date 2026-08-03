@@ -376,6 +376,9 @@ export BASE_PATH=$(
     pwd
 )
 export BUILD_PATH="${BASE_PATH}/build"
+# source SoC 名称校验库, 并复用 SUPPORT_COMPUTE_UNIT_SHORT 作为唯一支持列表(单一数据源)
+source "${BASE_PATH}/scripts/util/soc_validator.sh"
+SUPPORTED_SOC_LIST=("${SUPPORT_COMPUTE_UNIT_SHORT[@]}")
 function log() {
     local current_time=`date +"%Y-%m-%d %H:%M:%S"`
     echo "[$current_time] "$1
@@ -880,11 +883,20 @@ function process_soc_input(){
     local value_part="${input_string#*=}"
     ASCEND_SOC_UNITS="${value_part//,/;}"
 
+    # 校验 --soc 输入的每个 SoC 名称, 任一非法立即报错退出
+    if ! validate_soc_list "${ASCEND_SOC_UNITS}"; then
+        echo "[ERROR] The input soc ${INVALID_SOC_ITEM} is not supported. Please use one of: $(get_supported_soc_text)"
+        exit 1
+    fi
+
     declare -A SOC_HARDWARE_MAP=(
         [ascend910b]="Atlas A2"
         [ascend910_93]="Atlas A3"
         [ascend310p]="Atlas Inference"
         [ascend950]="Ascend 950PR/Ascend 950DT"
+        [kirinx90]="Kirin X90"
+        [kirin9030]="Kirin 9030"
+        [mc62]="MC62"
     )
 
     if [[ ${SOC_HARDWARE_MAP[$ASCEND_SOC_UNITS]} ]]; then
@@ -1544,6 +1556,11 @@ if [[ "$ENABLE_EXPERIMENTAL" == "TRUE" ]]; then
 fi
 
 if [ -n "${ascend_compute_unit}" ];then
+    # 校验 -c/--compute-unit 输入的 SoC 名称, 任一非法立即报错退出
+    if ! validate_soc_list "${ascend_compute_unit}"; then
+        echo "[ERROR] The input soc ${INVALID_SOC_ITEM} is not supported. Please use one of: $(get_supported_soc_text)"
+        exit 1
+    fi
     CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_COMPUTE_UNIT=${ascend_compute_unit}"
 fi
 
@@ -1785,35 +1802,32 @@ fi
 
 # 非打包命令调用，打包模式会打进同一个包里
 function set_compute_unit_option() {
-    local IS_SUPPORT_SOC_INPUT=false
-    for support_unit in "${SUPPORT_COMPUTE_UNIT_SHORT[@]}"; do
-        lowercase_word=$(echo "$ASCEND_SOC_UNITS" | tr '[:upper:]' '[:lower:]')
-        if [[ "$lowercase_word" == "$support_unit" ]]; then
-            IS_SUPPORT_SOC_INPUT=true
-            break
-        fi
-    done
-    if [[ "${IS_SUPPORT_SOC_INPUT}" == "true" ]]; then
-        CUSTOM_OPTION="$CUSTOM_OPTION -DASCEND_COMPUTE_UNIT=$ASCEND_SOC_UNITS"
-    else
-        echo "[ERROR] The input soc $ASCEND_SOC_UNITS is not supported."
+    # 使用共享校验库逐项校验 SoC 列表(支持逗号/分号分隔的多个 soc), 替换原有的整串精确匹配
+    if ! validate_soc_list "${ASCEND_SOC_UNITS}"; then
+        echo "[ERROR] The input soc ${INVALID_SOC_ITEM} is not supported. Please use one of: $(get_supported_soc_text)"
         exit 1
     fi
+    CUSTOM_OPTION="$CUSTOM_OPTION -DASCEND_COMPUTE_UNIT=$ASCEND_SOC_UNITS"
 }
 
 # 上面的set_compute_unit_option修改成只能传入一个soc后导致ut有问题，现在复制一份旧的支持多个soc传入，用于ut
 function set_compute_unit_option_ut() {
     IFS=';' read -ra SOC_ARRAY <<< "$ASCEND_SOC_UNITS"  # 分割字符串为数组
     local COMPUTE_UNIT_SHORT=""
+    local soc=""
+    local trimmed_soc=""
     for soc in "${SOC_ARRAY[@]}"; do
-    for support_unit in "${SUPPORT_COMPUTE_UNIT_SHORT[@]}"; do
-        lowercase_word=$(echo "$soc" | tr '[:upper:]' '[:lower:]')
-        if [[ "$lowercase_word" == *"$support_unit"* ]]; then
-        COMPUTE_UNIT_SHORT="$COMPUTE_UNIT_SHORT$support_unit;"
-        break
+        # 裁剪前后空白后, 通过共享校验库逐项精确匹配(替换原有错误的子串匹配逻辑)
+        trimmed_soc="${soc#"${soc%%[![:space:]]*}"}"
+        trimmed_soc="${trimmed_soc%"${trimmed_soc##*[![:space:]]}"}"
+        if soc_is_supported "${trimmed_soc}"; then
+            COMPUTE_UNIT_SHORT="${COMPUTE_UNIT_SHORT}${trimmed_soc,,};"
         fi
     done
-    done
+    if [[ -z "${COMPUTE_UNIT_SHORT}" ]]; then
+        echo "[ERROR] The input soc ${ASCEND_SOC_UNITS} is not supported. Please use one of: $(get_supported_soc_text)"
+        exit 1
+    fi
     CUSTOM_OPTION="$CUSTOM_OPTION -DASCEND_COMPUTE_UNIT=$COMPUTE_UNIT_SHORT"
  }
 
