@@ -18,21 +18,21 @@
 #include "flash_attention_noquant_block_cube.h"
 #include "flash_attention_noquant_block_vec_train.h"
 #include "flash_attention_noquant_block_vec_infer.h"
-#include "../../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
 #include "kernel_operator.h"
 #endif
-#include "../../../../common/op_kernel/arch35/attenmask.h"
+#include "../../../common/op_kernel/arch35/attenmask.h"
 
 // 线上编包
 #include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/FixpipeOut.h"
 #include "../../../common/op_kernel/CopyInL1.h"
 
-#include "../../../../common/op_kernel/arch35/pse.h"
-#include "../../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
+#include "../../../common/op_kernel/arch35/pse.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "adv_api/utils/init_global_memory.h"
 
