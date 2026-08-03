@@ -7,8 +7,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-from typing import Optional
-
 import torch
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
@@ -47,18 +45,6 @@ mhc_post_backward_op_builder = MhcPostBackwardOpBuilder()
 
 
 @impl(AS_LIBRARY, mhc_post_backward_op_builder.name, "PrivateUse1")
-def _mhc_post_backward_dispatch(grad_output, x, h_res, h_out, h_post):
+def mhc_post_backward(grad_output, x, h_res, h_out, h_post):
     op_module = mhc_post_backward_op_builder.load()
     return op_module.mhc_post_backward(grad_output, x, h_res, h_out, h_post)
-
-
-def mhc_post_backward(
-    grad_output: torch.Tensor,
-    x: torch.Tensor,
-    h_res: Optional[torch.Tensor],
-    h_out: torch.Tensor,
-    h_post: torch.Tensor,
-):
-    return torch.ops.cann_ops_transformer.mhc_post_backward(
-        grad_output, x, h_res, h_out, h_post
-    )
