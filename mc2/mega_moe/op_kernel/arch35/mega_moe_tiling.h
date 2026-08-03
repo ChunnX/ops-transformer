@@ -161,8 +161,8 @@ struct MegaMoeSendMaskBufferConfig {
     uint32_t bufferBytes;
 };
 struct MegaMoeTilingData {
-    uint32_t expertPerRank;    // 本卡 routed weight 容量，可大于实际参与路由的专家数
-    uint32_t moeExpertPerRank; // 本卡实际参与 topK 路由的 MoE 专家数
+    uint32_t expertPerRank;    // 从 weight1 专家维度得到的本卡 MoE 专家数
+    uint32_t moeExpertPerRank; // 由 moeExpertNum / epWorldSize 得到的本卡 MoE 专家数
     uint32_t bs;
     uint32_t h;
     uint32_t hiddenDim;
@@ -201,5 +201,7 @@ struct MegaMoeTilingData {
     float activationAlpha;      // linear_beta, 默认 1.0
     float activationBeta;       // beta, 默认 1.0
     uint32_t expertsPerBatch;
+    // MoE 和共享专家使用相同布局：true 表示每个专家一个二维 tensor，false 表示单个三维堆叠 tensor。
+    bool isPerExpertWeightTensor;
 };
 #endif
