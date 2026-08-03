@@ -450,37 +450,32 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
 template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
 __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType>::InitBuffer()
 {
-    if ASCEND_IS_AIC {
-        /*Init Cube and Vec Common L1 Buffer*/
-        l1BufferManager.Init(pipe, 524288); // 524288 is 512 * 1024
-        mm2AL1Buffers.Init(l1BufferManager, mm2LeftSize);
-        kvAntiquantRes.Init(l1BufferManager, kvAntiquantResSize);
-        this->cubeBlock.SetCrossCoreFlag();
-        /*Init Cube Local Buffer*/
-        this->cubeBlock.InitLocalBuffer();
-    } else {
-        /*Init Cube and Vec Common UB Buffer*/
-        this->pipe->InitBuffer(this->bmm1ResBuf[0], mm1ResultSize);
-        this->pipe->InitBuffer(this->bmm1ResBuf[1], mm1ResultSize);
-        this->pipe->InitBuffer(this->bmm2ResBuf[0], mm2ResultSize);
-        this->pipe->InitBuffer(this->bmm2ResBuf[1], mm2ResultSize);
-        this->vecBlock.SetCrossCoreFlag();
-        /*Init Vec Local Buffer*/
-        this->vecBlock.InitLocalBuffer(this->constInfo);
-    }
+    /*Init Cube and Vec Common L1 Buffer*/
+    l1BufferManager.Init(pipe, 524288); // 524288 is 512 * 1024
+    mm2AL1Buffers.Init(l1BufferManager, mm2LeftSize);
+    kvAntiquantRes.Init(l1BufferManager, kvAntiquantResSize);
+    this->cubeBlock.SetCrossCoreFlag();
+    /*Init Cube Local Buffer*/
+    this->cubeBlock.InitLocalBuffer();
+    /*Init Cube and Vec Common UB Buffer*/
+    this->pipe->InitBuffer(this->bmm1ResBuf[0], mm1ResultSize);
+    this->pipe->InitBuffer(this->bmm1ResBuf[1], mm1ResultSize);
+    this->pipe->InitBuffer(this->bmm2ResBuf[0], mm2ResultSize);
+    this->pipe->InitBuffer(this->bmm2ResBuf[1], mm2ResultSize);
+    this->vecBlock.SetCrossCoreFlag();
+    /*Init Vec Local Buffer*/
+    this->vecBlock.InitLocalBuffer(this->constInfo);
 }
 
 template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
 __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType, AntiquantVecBlockType>::UninitBuffer()
 {
-    if ASCEND_IS_AIC {
-        mm2AL1Buffers.Uninit(l1BufferManager);
-        kvAntiquantRes.Uninit(l1BufferManager);
-        this->cubeBlock.UninitLocalBuffer();
-        this->cubeBlock.WaitCrossCoreFlag();
-    } else {
-        this->vecBlock.WaitCrossCoreFlag();
-    }
+    mm2AL1Buffers.Uninit(l1BufferManager);
+    kvAntiquantRes.Uninit(l1BufferManager);
+    this->cubeBlock.UninitLocalBuffer();
+    this->cubeBlock.WaitCrossCoreFlag();
+    this->vecBlock.WaitCrossCoreFlag();
+
 }
 
 template <typename AntiquantCubeBlockType, typename AntiquantVecBlockType>
