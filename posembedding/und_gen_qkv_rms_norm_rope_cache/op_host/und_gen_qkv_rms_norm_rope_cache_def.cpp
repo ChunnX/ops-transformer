@@ -24,50 +24,42 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("und_weights_q")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("und_weights_k")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("cos_sin_cache")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
             .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("k_cache")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("v_cache")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16})
             .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("slot_mapping")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT64})
             .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("positions")
             .ParamType(REQUIRED)
             .DataType({ge::DT_INT64})
             .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .UnknownShapeFormat({ge::FORMAT_ND});
 
         // ---------------- 可选输入（4 个）----------------
         // NOTE: 当前实现要求这 4 个输入必须全部提供，缺省场景由 tiling 的 CheckSupportRange 拦截；
@@ -76,26 +68,22 @@ public:
             .ParamType(OPTIONAL)
             .DataType({ge::DT_BF16})
             .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("gen_weights_q")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_BF16})
             .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("gen_weights_k")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_BF16})
             .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .UnknownShapeFormat({ge::FORMAT_ND});
         this->Input("cat_indices")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT64})
             .Format({ge::FORMAT_ND})
-            .UnknownShapeFormat({ge::FORMAT_ND})
-            .AutoContiguous();
+            .UnknownShapeFormat({ge::FORMAT_ND});
 
         // ---------------- 输出（3 个，k_cache/v_cache 与输入同地址原地写入）----------------
         this->Output("q")
@@ -122,7 +110,10 @@ public:
         this->Attr("mrope_section").AttrType(OPTIONAL).ListInt({});
 
         // 仅支持 Ascend 950（DAV_3510, arch35）
-        this->AICore().AddConfig("ascend950");
+        // 不开 DynamicRankSupportFlag：InferShape 依赖 und_qkv 为 3D [und_len, N, D]，未知 rank 推导不出 q
+        OpAICoreConfig regbaseCfg;
+        regbaseCfg.DynamicCompileStaticFlag(true).DynamicShapeSupportFlag(true);
+        this->AICore().AddConfig("ascend950", regbaseCfg);
     }
 };
 

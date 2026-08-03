@@ -176,22 +176,22 @@
                 {
                     "name": "num_heads_q",
                     "dtype": "int",
-                    "value": 8
+                    "value": null
                 },
                 {
                     "name": "num_heads_k",
                     "dtype": "int",
-                    "value": 1
+                    "value": null
                 },
                 {
                     "name": "num_heads_v",
                     "dtype": "int",
-                    "value": 1
+                    "value": null
                 },
                 {
                     "name": "norm_eps",
                     "dtype": "float",
-                    "value": 1e-06
+                    "value": null
                 },
                 {
                     "name": "mrope_section",
