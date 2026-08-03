@@ -100,7 +100,7 @@
     <tr>
       <td>num_heads_q</td>
       <td>属性</td>
-      <td>表示Query的head个数，当前支持[1, 128]</td>
+      <td>表示Query的head个数，当前支持[1, 128]。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -177,7 +177,7 @@
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示对cmp_kv的压缩率，默认值为1，当前支持[1, 128]</td>
+      <td>表示对cmp_kv的压缩率，默认值为1，当前支持[1, 128]。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -256,6 +256,8 @@
 - 参数cmp_residual_kv需满足cmp_residual_kv[i] < cmp_ratio。
 - ori_mask_mode及cmp_mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../docs/zh/context/sparse_mode_introduction.md)。
 - 非PA场景layout_q、layout_kv须相同。
+- has_ori_kv为true，且ori_topk不为0且ori_mask_mode为0时，ori_topk_length必须传入。
+- has_cmp_kv为true，且cmp_top不为0且cmp_mask_mode为0时，cmp_topk_length必须传入。
 - layout_q=BSND场景
   - seqused_q和max_seqlen_q至少需要传入1个。
   - ori_topk不为0且传入ori_topk_length时，或cmp_topk不为0且传入cmp_topk_length时，max_seqlen_q必须传入query shape中的S值。
@@ -263,13 +265,13 @@
   - has_ori_kv为true，且ori_topk为0时，seqused_ori_kv和max_seqlen_ori_kv至少需要传入1个。
   - has_cmp_kv为true，且cmp_topk为0时，seqused_cmp_kv和max_seqlen_cmp_kv至少需要传入1个。
 - layout_q=TND场景
-  - cu_seqlens_q必需传入。
+  - cu_seqlens_q必须传入。
 - layout_kv=TND场景
-  - has_ori_kv为true时，cu_seqlens_ori_kv必需传入。
-  - has_cmp_kv为true，cu_seqlens_cmp_kv必需传入。
+  - has_ori_kv为true时，cu_seqlens_ori_kv必须传入。
+  - has_cmp_kv为true，cu_seqlens_cmp_kv必须传入。
 - layout_kv=PA_BBND场景
-  - has_ori_kv为true，且ori_mask_mode不为0或ori_topk为0时，必传seqused_ori_kv参数。
-  - has_cmp_kv为true，且cmp_mask_mode不为0或cmp_topk为0时，必传seqused_cmp_kv参数。
+  - has_ori_kv为true，且ori_mask_mode不为0或ori_topk为0时，seqused_ori_kv必须传入。
+  - has_cmp_kv为true，且cmp_mask_mode不为0或cmp_topk为0时，seqused_cmp_kv必须传入。
 - Batch取值规则
   - layout_q为BSND时，优先通过seqused_q的shape推导batch，seqused_q未传入则通过batch_size获取batch数。
   - layout_q为TND时，优先通过seqused_q的shape推导batch，seqused_q未传入则通过cu_seqlens_q的shape推导batch。

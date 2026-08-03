@@ -39,7 +39,7 @@
     <tr>
       <td>num_heads_q</td>
       <td>属性</td>
-      <td>表示`q`的头数，支持[1, 128]</td>
+      <td>表示`q`的头数，支持[1, 128]。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
@@ -234,7 +234,10 @@
     </tr>
   </tbody>
 </table>
-<ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> ：num_heads_q/num_heads_kv仅支持1、2、4、8、16、32、64、128，不支持seqused_q、ori_topk_length、cmp_topk_length，ori_topk仅支持0，cmp_topk仅支持0、512、1024，ori_mask_mode仅支持4，cmp_mask_mode仅支持3，ori_win_left仅支持127，ori_win_right仅支持0，cmp_ratio仅支持1、4、128。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：num_heads_q/num_heads_kv仅支持1、2、4、8、16、32、64、128，不支持seqused_q、ori_topk_length、cmp_topk_length，ori_topk仅支持0，cmp_topk仅支持0、512、1024，ori_mask_mode仅支持4，cmp_mask_mode仅支持3，ori_win_left仅支持127，ori_win_right仅支持0，cmp_ratio仅支持1、4、128。</li></ul>
+<ul>
+  <li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> ：num_heads_q/num_heads_kv仅支持1、2、4、8、16、32、64、128，不支持seqused_q、ori_topk_length、cmp_topk_length，ori_topk仅支持0，cmp_topk仅支持0、512、1024，ori_mask_mode仅支持4，cmp_mask_mode仅支持3，ori_win_left仅支持127，ori_win_right仅支持0，cmp_ratio仅支持1、4、128。</li>
+  <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：num_heads_q/num_heads_kv仅支持1、2、4、8、16、32、64、128，不支持seqused_q、ori_topk_length、cmp_topk_length，ori_topk仅支持0，cmp_topk仅支持0、512、1024，ori_mask_mode仅支持4，cmp_mask_mode仅支持3，ori_win_left仅支持127，ori_win_right仅支持0，cmp_ratio仅支持1、4、128。</li>
+</ul>
 
 ## 约束说明
 
@@ -247,6 +250,8 @@
   - `layout_q`和`layout_kv`组合仅支持"BSND"/"BSND"、"TND"/"TND"、"BSND"/"PA_BBND"、"TND"/"PA_BBND"；非PA_BBND场景下`layout_q`和`layout_kv`必须一致。
   - 参数`cmp_residual_kv`需满足`cmp_residual_kv`[i] < `cmp_ratio`。
 - Ascend 950PR/Ascend 950DT约束：
+  - has_ori_kv为true，且ori_topk不为0且ori_mask_mode为0时，ori_topk_length必须传入。
+  - has_cmp_kv为true，且cmp_top不为0且cmp_mask_mode为0时，cmp_topk_length必须传入。
   - layout_q=BSND场景
     - seqused_q和max_seqlen_q至少需要传入1个。
     - ori_topk不为0且传入ori_topk_length时，或cmp_topk不为0且传入cmp_topk_length时，max_seqlen_q必须传入query shape中的S值。
@@ -254,10 +259,10 @@
     - has_ori_kv为true，且ori_topk为0时，seqused_ori_kv和max_seqlen_ori_kv至少需要传入1个。
     - has_cmp_kv为true，且cmp_topk为0时，seqused_cmp_kv和max_seqlen_cmp_kv至少需要传入1个。
   - layout_q=TND场景
-    - cu_seqlens_q必需传入。
+    - cu_seqlens_q必须传入。
   - layout_kv=TND场景
-    - has_ori_kv为true时，cu_seqlens_ori_kv必需传入。
-    - has_cmp_kv为true，cu_seqlens_cmp_kv必需传入。
+    - has_ori_kv为true时，cu_seqlens_ori_kv必须传入。
+    - has_cmp_kv为true，cu_seqlens_cmp_kv必须传入。
   - layout_kv=PA_BBND场景
     - has_ori_kv为true，且ori_mask_mode不为0或ori_topk为0时，必传seqused_ori_kv参数。
     - has_cmp_kv为true，且cmp_mask_mode不为0或cmp_topk为0时，必传seqused_cmp_kv参数。

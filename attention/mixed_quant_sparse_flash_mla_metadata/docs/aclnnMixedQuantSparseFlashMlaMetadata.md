@@ -200,7 +200,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>numHeadsQ（int64_t）</td>
       <td>输入</td>
       <td>表示Query的head个数。</td>
-      <td>当前支持[1, 128]</td>
+      <td>当前支持[1, 128]。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -300,7 +300,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>rope_head_dim（int64_t）</td>
       <td>输入</td>
       <td>rope头的维度。</td>
-      <td><ul><li>支持非负数。</li><li>建议值为64。</li></ul></td>
+      <td><ul><li>当前仅支持64。</li><li>建议值为64。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -310,7 +310,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>表示对cmp_kv的压缩率。</td>
-      <td><ul><li>当前支持[1, 128]</li><li>建议值1，表示无压缩。</li></ul></td>
+      <td><ul><li>当前支持[1, 128]。</li><li>建议值1，表示无压缩。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -320,7 +320,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>oriMaskMode（int64_t）</td>
       <td>输入</td>
       <td>表示q和ori_kv计算的mask模式。</td>
-      <td><ul><li>0: No Mask。</li><li>3: RightDownCausal模式。</li><li>4: Band模式。</li><li>建议值为0。</li></ul></td>
+      <td><ul><li>0: No Mask。</li><li>3: RightDownCausal模式。</li><li>4: sliding window模式。</li><li>建议值为0。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -518,6 +518,8 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
   - 非PA场景layoutQOptional、layoutKvOptional须相同。
   - 参数cmpResidualKvOptional需满足cmpResidualKvOptional[i] < cmpRatio。
   - numHeadsQ必须能被numHeadsKv整除。
+  - hasOriKv为true，且oriTopk不为0且oriMaskMode为0时，oriTopkLengthOptional必须传入。
+  - hasCmpKv为true，且cmpTopk不为0且cmpMaskMode为0时，cmpTopkLengthOptional必须传入。
   - layoutQOptional=BSND场景
     - sequsedQOptional和maxSeqlenQ至少需要传入1个。
     - oriTopk不为0且传入oriTopkLengthOptional时，或cmpTopk不为0且传入cmpTopkLengthOptional时，maxSeqlenQ必须传入query shape中的S值。
@@ -525,13 +527,13 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
     - hasOriKv为true，且oriTopk为0时，sequsedOriKvOptional和maxSeqlenOriKv至少需要传入1个。
     - hasCmpKv为true，且cmpTopk为0时，sequsedCmpKvOptional和maxSeqlenCmpKv至少需要传入1个。
   - layoutQOptional=TND场景
-    - cuSeqlensQOptional必需传入。
+    - cuSeqlensQOptional必须传入。
   - layoutKvOptional=TND场景
-    - hasOriKv为true时，cuSeqlensOriKvOptional必需传入。
-    - hasCmpKv为true，cuSeqlensCmpKvOptional必需传入。
+    - hasOriKv为true时，cuSeqlensOriKvOptional必须传入。
+    - hasCmpKv为true，cuSeqlensCmpKvOptional必须传入。
   - layoutKvOptional=PA_BBND场景
-    - hasOriKv为true，且oriMaskMode不为0或oriTopk为0时，必传sequsedOriKvOptional参数。
-    - hasCmpKv为true，且cmpMaskMode不为0或cmpTopk为0时，必传sequsedCmpKvOptional参数。
+    - hasOriKv为true，且oriMaskMode不为0或oriTopk为0时，sequsedOriKvOptional必须传入。
+    - hasCmpKv为true，且cmpMaskMode不为0或cmpTopk为0时，sequsedCmpKvOptional必须传入。
   - Batch取值规则
     - layoutQOptional为BSND时，优先通过sequsedQOptional的shape推导batch，sequsedQOptional未传入则通过batch_size获取batch数。
     - layoutQOptional为TND时，优先通过sequsedQOptional的shape推导batch，sequsedQOptional未传入则通过cuSeqlensQOptional的shape推导batch。

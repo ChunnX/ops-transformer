@@ -72,7 +72,7 @@
     <tr>
       <td>num_heads_q</td>
       <td>属性</td>
-      <td>表示Query的head个数，当前支持[1, 64]</td>
+      <td>表示Query的head个数，当前支持[1, 64]。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -93,7 +93,7 @@
     <tr>
       <td>topk</td>
       <td>属性</td>
-      <td>表示从Query中筛选出的关键稀疏token的个数，当前仅支持[1, 8192]</td>
+      <td>表示从Query中筛选出的关键稀疏token的个数，当前仅支持[1, 8192]。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>

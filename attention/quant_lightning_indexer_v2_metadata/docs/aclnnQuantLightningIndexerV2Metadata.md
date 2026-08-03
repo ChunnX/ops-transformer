@@ -148,7 +148,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
       <td>numHeadsQ（int64_t）</td>
       <td>输入</td>
       <td>表示Query的head个数。</td>
-      <td>当前支持[1, 64]</td>
+      <td>当前支持[1, 64]。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -178,7 +178,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
       <td>topk（int64_t）</td>
       <td>输入</td>
       <td>表示从Query中筛选出的关键稀疏token的个数。</td>
-      <td>当前仅支持[1, 8192]</td>
+      <td>当前仅支持[1, 8192]。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -258,7 +258,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>表示Key的压缩率。</td>
-      <td><ul><li>取值范围[1，128]</li><li>建议值1，表示无压缩。</li></ul></td>
+      <td><ul><li>取值范围[1，128]。</li><li>建议值1，表示无压缩。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -297,7 +297,14 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
   </tbody>
   </table>
 
-  <ul><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> ：numHeadsQ仅支持64，不支持quantMode = 1/3/4/5，topk仅支持[1, 2048]，不支持layoutKOptional = BSND/TND，不支持cmpRatio在[1，128]任意取值，仅支持cmpRatio = 1/2/4/8/16/32/64/128。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：numHeadsQ仅支持64，不支持quantMode = 1/3/4/5，topk仅支持[1, 2048]，不支持layoutKOptional = BSND/TND，不支持cmpRatio在[1，128]任意取值，仅支持cmpRatio = 1/2/4/8/16/32/64/128。</li></ul>
+  <ul>
+    <!-- npu="A3" id7 -->
+    <li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> ：numHeadsQ仅支持64，不支持quantMode = 1/3/4/5，topk仅支持[1, 2048]，不支持layoutKOptional = BSND/TND，不支持cmpRatio在[1，128]任意取值，仅支持cmpRatio = 1/2/4/8/16/32/64/128。</li>
+    <!-- end id7 -->
+    <!-- npu="910b" id8 -->
+    <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：numHeadsQ仅支持64，不支持quantMode = 1/3/4/5，topk仅支持[1, 2048]，不支持layoutKOptional = BSND/TND，不支持cmpRatio在[1，128]任意取值，仅支持cmpRatio = 1/2/4/8/16/32/64/128。</li>
+    <!-- end id8 -->
+  </ul>
 
 - **返回值：**
 

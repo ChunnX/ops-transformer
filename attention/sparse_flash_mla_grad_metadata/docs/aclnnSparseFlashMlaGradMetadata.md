@@ -198,7 +198,7 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
       <td>numHeadsQ（int64_t）</td>
       <td>输入</td>
       <td>表示Query的head个数。</td>
-      <td>当前支持[1, 128]</td>
+      <td>当前支持[1, 128]。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -288,7 +288,7 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>表示对cmp_kv的压缩率。</td>
-      <td><ul><li>当前支持[1, 128]</li><li>建议值1，表示无压缩。</li></ul></td>
+      <td><ul><li>当前支持[1, 128]。</li><li>建议值1，表示无压缩。</li></ul></td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -507,9 +507,6 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
   - layoutKvOptional=TND场景
     - hasOriKv为true时，cuSeqlensOriKvOptional必需传入。
     - hasCmpKv为true，cuSeqlensCmpKvOptional必需传入。
-  - layoutKvOptional=PA_BBND场景
-    - hasOriKv为true，且oriMaskMode不为0或oriTopk为0时，必传sequsedOriKvOptional参数。
-    - hasCmpKv为true，且cmpMaskMode不为0或cmpTopk为0时，必传sequsedCmpKvOptional参数。
   - Batch取值规则
     - 如果layoutQOptional为BSND，则优先通过seqUsedQOptional的shape推导batch，seqUsedQOptional未传入则通过batchSize获取batch数。
     - 如果layoutQOptional为TND，则优先通过seqUsedQOptional的shape推导batch，seqUsedQOptional未传入则通过cuSeqLensQOptional的shape推导batch。

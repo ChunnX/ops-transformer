@@ -100,7 +100,7 @@
     <tr>
       <td>num_heads_q</td>
       <td>属性</td>
-      <td>表示Query的head个数，当前支持[1, 128]</td>
+      <td>表示Query的head个数，当前支持[1, 128]。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -163,7 +163,7 @@
     <tr>
       <td>cmp_ratio</td>
       <td>可选属性</td>
-      <td>表示对cmp_kv的压缩率，默认值为1，当前支持[1, 128]</td>
+      <td>表示对cmp_kv的压缩率，默认值为1，当前支持[1, 128]。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
@@ -253,9 +253,6 @@
 - layout_kv=TND场景
   - has_ori_kv为true时，cu_seqlens_ori_kv必需传入。
   - has_cmp_kv为true，cu_seqlens_cmp_kv必需传入。
-- layout_kv=PA_BBND场景
-  - has_ori_kv为true，且ori_mask_mode不为0或ori_topk为0时，必传seqused_ori_kv参数。
-  - has_cmp_kv为true，且cmp_mask_mode不为0或cmp_topk为0时，必传seqused_cmp_kv参数。
 - Batch取值规则
   - layout_q为BSND时，优先通过seqused_q的shape推导batch，seqused_q未传入则通过batch_size获取batch数。
   - layout_q为TND时，优先通过seqused_q的shape推导batch，seqused_q未传入则通过cu_seqlens_q的shape推导batch。
