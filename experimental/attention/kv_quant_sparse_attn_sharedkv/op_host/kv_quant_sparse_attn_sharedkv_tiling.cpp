@@ -573,11 +573,13 @@ ge::graphStatus KvQuantSparseAttnSharedkvTiling::DoOpTiling(KvQuantSASTilingInfo
         OP_CHECK_IF(tilingInfo->opParamInfo.cmpSparseIndices.tensor != nullptr,
             OP_LOGE("KvQuantSparseAttnSharedkv", "cmpSparseIndices must be empty when cmpKv is not provided."),
             return ge::GRAPH_FAILED);
-        perfMode_ = SASTemplateMode::SWA_TEMPLATE_MODE;
-    } else if (tilingInfo->opParamInfo.cmpSparseIndices.tensor != nullptr) {
-        perfMode_ = SASTemplateMode::SCFA_TEMPLATE_MODE;
-    } else {
-        perfMode_ = SASTemplateMode::CFA_TEMPLATE_MODE;
+    }
+    perfMode_ = SelectSASTemplateMode(*tilingInfo);
+    if (tilingInfo->opParamInfo.cmpSparseIndices.tensor != nullptr &&
+        perfMode_ == SASTemplateMode::CFA_TEMPLATE_MODE) {
+        OP_LOGI(tilingInfo->opName,
+            "TopK %ld covers all compressed tokens for max KV length %ld and cmpRatio %ld; use CFA template.",
+            tilingInfo->sparseBlockCount, tilingInfo->s2Size, tilingInfo->cmpRatio);
     }
     // -------------set blockdim-----------------
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);

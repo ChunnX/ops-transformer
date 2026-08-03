@@ -43,6 +43,31 @@ std::string KvQuantSASLayoutToSerialString(SASLayout layout)
     }
 }
 
+SASTemplateMode SelectSASTemplateMode(const KvQuantSASTilingInfo &sasInfo)
+{
+    if (sasInfo.opParamInfo.cmpKv.tensor == nullptr) {
+        return SASTemplateMode::SWA_TEMPLATE_MODE;
+    }
+    if (sasInfo.opParamInfo.cmpSparseIndices.tensor == nullptr) {
+        return SASTemplateMode::CFA_TEMPLATE_MODE;
+    }
+
+    // QLI returns the complete compressed-token set when the candidate count
+    // does not exceed TopK. In that case only the traversal order differs, so
+    // CFA can skip sparse-index copies and address gathering. Compute the
+    // coverage from runtime attributes because both TopK and cmpRatio are
+    // model parameters. The kernel uses floor(s2 / cmpRatio) for cmp tokens.
+    if (sasInfo.s2Size >= 0 && sasInfo.sparseBlockCount > 0 && sasInfo.cmpRatio > 0) {
+        const uint64_t s2Size = static_cast<uint64_t>(sasInfo.s2Size);
+        const uint64_t cmpRatio = static_cast<uint64_t>(sasInfo.cmpRatio);
+        const uint64_t maxCmpTokenCount = s2Size / cmpRatio;
+        if (maxCmpTokenCount <= static_cast<uint64_t>(sasInfo.sparseBlockCount)) {
+            return SASTemplateMode::CFA_TEMPLATE_MODE;
+        }
+    }
+    return SASTemplateMode::SCFA_TEMPLATE_MODE;
+}
+
 std::string GetShapeStr(gert::Shape shape)
 {
     std::ostringstream oss;
@@ -145,13 +170,7 @@ void KvQuantSASTilingCheck::Init()
     kvLayout_ = sasInfo_.kvLayout;
     outLayout_ = sasInfo_.outLayout;
 
-    if (opParamInfo_.cmpKv.tensor == nullptr) {
-        perfMode_ = SASTemplateMode::SWA_TEMPLATE_MODE;
-    } else if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
-        perfMode_ = SASTemplateMode::SCFA_TEMPLATE_MODE;
-    } else {
-        perfMode_ = SASTemplateMode::CFA_TEMPLATE_MODE;
-    }
+    perfMode_ = SelectSASTemplateMode(sasInfo_);
 }
 
 ge::graphStatus KvQuantSASTilingCheck::Process()
