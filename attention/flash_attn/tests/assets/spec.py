@@ -59,9 +59,7 @@ class FlashAttnSpec:
     def compare(*outputs, **kwargs):
         return _load_impl_module("compare").compare(*outputs, **kwargs)
 
-    @staticmethod
-    def torch_graph(*args, **kwargs):
-        return _load_impl_module("graph").FlashAttnAclGraph(*args, **kwargs)
+    torch_graph = _load_impl_module("graph").FlashAttnAclGraph
 
 
 __spec__ = {
