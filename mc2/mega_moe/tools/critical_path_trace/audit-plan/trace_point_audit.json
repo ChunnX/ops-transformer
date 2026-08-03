@@ -2,25 +2,42 @@
   "audit_schema_version": 1,
   "status": "pass",
   "phase": "plan",
-  "generated_at_utc": "2026-08-03T07:43:40.224938+00:00",
+  "generated_at_utc": "2026-08-03T09:46:25.023480+00:00",
   "trace_name": "mega-moe-wave-critical-path",
   "repo_root": "/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803",
   "git": {
     "is_git_repository": true,
-    "revision": "db81b2b3b3d8fe453cc0dca1512d21474e9c78b3",
+    "revision": "55b702591a62157725bb9e7f604fc54aa58aa405",
     "branch": "codex/mega-moe-critical-path-trace-20260803",
     "dirty": true,
     "status_short": [
-      "M mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h"
+      "M mc2/mega_moe/op_kernel/arch35/mega_moe_trace.h",
+      " M mc2/mega_moe/tools/critical_path_trace/README.md",
+      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/index.html",
+      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.contract-check.json",
+      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.html",
+      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.normalized.json",
+      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.raw",
+      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.runtime.json",
+      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/run-manifest.json",
+      " M mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.json",
+      " M mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.md",
+      " M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.json",
+      " M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.md",
+      " M mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py",
+      " M mc2/mega_moe/tools/critical_path_trace/test_critical_path_trace.py",
+      " M mc2/mega_moe/tools/critical_path_trace/trace-spec.json",
+      " M mc2/mega_moe/tools/critical_path_trace/trace_tool.py",
+      " M mc2/mega_moe/tools/critical_path_trace/validation-report.json"
     ],
     "status_truncated": false,
-    "tracked_diff_raw_sha256": "f53d0de72a49acd08ee687ba8e44e2e50e1d001914e56ecaf83b580fe70ffccd"
+    "tracked_diff_raw_sha256": "a1c0fa14914c83524abff036a05e7e730dec9b958a6f07e1e5bd5e660c9a24ce"
   },
   "spec": {
     "path": "/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803/mc2/mega_moe/tools/critical_path_trace/trace-spec.json",
-    "sha256": "8e450ba62fba5c9499f47bf1bf624bc389d5c2b20ffd102abf7fee4e06cc6fd8",
-    "protocol_version": 5,
-    "schema_id": "0xd32d8a49"
+    "sha256": "4f4c3543f118652a677d1aecbffad739e535f8279855e2d11e80953f4c5b84ab",
+    "protocol_version": 6,
+    "schema_id": "0x30d7c60e"
   },
   "points": [
     {
@@ -75,7 +92,7 @@
       "marker_context": null,
       "max_line_distance": 4,
       "source_file_sha256": "fee591b188a3cfd166276d23ec223598644a3f5d78a871d118487c32dcb2252c",
-      "why": "Provides the one shared-axis per-rank reference and exposes role launch skew before input preparation.",
+      "why": "Provides one local shared-axis reference for AIC, AIV0, and AIV1 inside the same physical AI Block, without asserting clock alignment across AI Blocks or ranks; also exposes role launch skew before input preparation.",
       "semantics": "Scalar has entered the current MTE A8W8 MegaMoeWave Process body and no operator work has yet been issued by this role/core.",
       "dependency": {
         "precondition": "mixed-kernel task entry for this physical role/core",

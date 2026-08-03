@@ -13,15 +13,22 @@
       "unit": "cycle",
       "bits": 32,
       "timestamp_pipeline": "Scalar",
-      "scope": "one device/rank; AIC, AIV0, and AIV1 use the same device system-cycle domain; ranks are decoded separately",
-      "comparable_across_records": true,
+      "scope": "one physical AI Block identified by paired core index; AIC, AIV0, and AIV1 inside that block share a clock, while different AI Blocks and ranks are normalized separately",
+      "comparable_across_records": false,
+      "comparison_group": {
+        "kind": "shared-core-index",
+        "key": "core",
+        "label": "AI Block",
+        "roles": ["AIC", "AIV0", "AIV1"],
+        "reference_role": "AIC"
+      },
       "missing_value": 0,
       "zero_handling": "a sampled low-32 system-cycle value of zero is remapped to one so zero remains an unambiguous missing sentinel"
     },
     "protocol": {
       "magic": "0x43505452",
-      "version": 5,
-      "schema_id": "0xd32d8a49",
+      "version": 6,
+      "schema_id": "0x30d7c60e",
       "word_bits": 32,
       "endianness": "little",
       "header_words": 30,
@@ -198,7 +205,7 @@
         "marker": "TRACE_POINT: process_begin_S",
         "max_line_distance": 4
       },
-      "why": "Provides the one shared-axis per-rank reference and exposes role launch skew before input preparation.",
+      "why": "Provides one local shared-axis reference for AIC, AIV0, and AIV1 inside the same physical AI Block, without asserting clock alignment across AI Blocks or ranks; also exposes role launch skew before input preparation.",
       "semantics": "Scalar has entered the current MTE A8W8 MegaMoeWave Process body and no operator work has yet been issued by this role/core.",
       "dependency": {
         "precondition": "mixed-kernel task entry for this physical role/core",

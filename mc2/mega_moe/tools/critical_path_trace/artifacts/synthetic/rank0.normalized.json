@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "trace_name": "mega-moe-wave-critical-path",
-  "protocol_version": 5,
-  "schema_id": "0xd32d8a49",
+  "protocol_version": 6,
+  "schema_id": "0x30d7c60e",
   "metadata": {
     "rank": 0,
     "runtime_config_hash": "0xa75e744b",
@@ -11,14 +11,14 @@
     "trace_truncated": false,
     "flags": "0x000000ff",
     "raw_artifact": "rank0.raw",
-    "raw_sha256": "84926c9df62ed933f1357f0a0a6cc5bdbed6ab7d0f8688c36ea7be6f93724b5b",
+    "raw_sha256": "9d030493f0e1f4857b7f2fc48e19bb6e66266844972879a5bc66036294490b84",
     "byte_offset": 0,
     "required_trace_bytes": 7896,
     "available_bytes_after_offset": 8192,
     "header": {
       "magic": 1129337938,
-      "version": 5,
-      "schema_id": 3542977097,
+      "version": 6,
+      "schema_id": 819447310,
       "header_words": 30,
       "record_words": 18,
       "record_count": 108,
@@ -49,7 +49,7 @@
       "weight1_interleaved": 0,
       "carrier_words": 2048
     },
-    "spec_sha256": "8e450ba62fba5c9499f47bf1bf624bc389d5c2b20ffd102abf7fee4e06cc6fd8",
+    "spec_sha256": "4f4c3543f118652a677d1aecbffad739e535f8279855e2d11e80953f4c5b84ab",
     "capture_kind": "synthetic host-only contract fixture; NOT a device execution result"
   },
   "reference": {

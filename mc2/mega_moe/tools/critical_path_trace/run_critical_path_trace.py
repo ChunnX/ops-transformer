@@ -510,27 +510,27 @@ def write_index(
         rows.append(
             "<tr>"
             f"<td>{result['rank']}</td>"
-            f'<td><a href="{html.escape(result["html"])}">timeline</a></td>'
-            f'<td><a href="{html.escape(result["normalized"])}">normalized JSON</a></td>'
-            f'<td><a href="{html.escape(result["contract_check"])}">contract check</a></td>'
-            f'<td><a href="{html.escape(result["order_check"])}">order check</a></td>'
+            f'<td><a href="{html.escape(result["html"])}">时间轴</a></td>'
+            f'<td><a href="{html.escape(result["normalized"])}">标准化 JSON</a></td>'
+            f'<td><a href="{html.escape(result["contract_check"])}">协议检查</a></td>'
+            f'<td><a href="{html.escape(result["order_check"])}">顺序检查</a></td>'
             f"<td>{result['required_trace_bytes']} / {result['available_carrier_bytes']}</td>"
             "</tr>"
         )
     provenance = manifest.get("test_provenance", {})
     capture_kind = manifest.get("capture_kind", "device runtime capture")
     document = (
-        '<!doctype html><html><head><meta charset="utf-8"><title>MegaMoe critical-path traces</title>'
+        '<!doctype html><html><head><meta charset="utf-8"><title>MegaMoe 关键路径 tracing</title>'
         "<style>body{font-family:system-ui;margin:24px;color:#0f172a}table{border-collapse:collapse}"
         "th,td{border:1px solid #cbd5e1;padding:7px;text-align:left}th{background:#f1f5f9}"
         "code{white-space:pre-wrap}</style></head><body>"
-        "<h1>MegaMoe critical-path trace captures</h1>"
-        f"<p><strong>Capture kind:</strong> {html.escape(str(capture_kind))}</p>"
-        "<p>Diagnostic captures overwrite <code>y</code>; accuracy comparison was intentionally skipped.</p>"
-        f"<p>moe_test commit: <code>{html.escape(str(provenance.get('git_head')))}</code>; "
-        f"source SHA-256: <code>{html.escape(str(provenance.get('script_sha256')))}</code>.</p>"
+        "<h1>MegaMoe 关键路径 tracing 结果</h1>"
+        f"<p><strong>采集类型：</strong>{html.escape(str(capture_kind))}</p>"
+        "<p>诊断采集会覆盖 <code>y</code>，因此有意跳过精度比较。</p>"
+        f"<p>moe_test commit：<code>{html.escape(str(provenance.get('git_head')))}</code>；"
+        f"源码 SHA-256：<code>{html.escape(str(provenance.get('script_sha256')))}</code>。</p>"
         "<table><thead><tr><th>Rank</th><th>HTML</th><th>Trace JSON</th>"
-        "<th>Header/config</th><th>Order/bounds</th><th>required/carrier bytes</th></tr></thead><tbody>"
+        "<th>Header/配置</th><th>顺序/边界</th><th>所需/载体字节</th></tr></thead><tbody>"
         + "".join(rows)
         + "</tbody></table></body></html>"
     )

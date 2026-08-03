@@ -4,16 +4,16 @@
 - Phase: `implemented`
 - Trace: `mega-moe-wave-critical-path`
 - Repository: `/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803`
-- Revision: `db81b2b3b3d8fe453cc0dca1512d21474e9c78b3`
+- Revision: `55b702591a62157725bb9e7f604fc54aa58aa405`
 - Branch: `codex/mega-moe-critical-path-trace-20260803`
 - Dirty: `True`
-- Spec SHA-256: `8e450ba62fba5c9499f47bf1bf624bc389d5c2b20ffd102abf7fee4e06cc6fd8`
+- Spec SHA-256: `4f4c3543f118652a677d1aecbffad739e535f8279855e2d11e80953f4c5b84ab`
 
 ## Placement summary
 
 | Point | Roles | Resolved location | Target line | Placement | Boundary | Bridge | Why |
 |---|---|---|---:|---|---|---|---|
-| process_begin_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2618 | 2622 | before | causal | none | Provides the one shared-axis per-rank reference and exposes role launch skew before input preparation. |
+| process_begin_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2618 | 2622 | before | causal | none | Provides one local shared-axis reference for AIC, AIV0, and AIV1 inside the same physical AI Block, without asserting clock alignment across AI Blocks or ranks; also exposes role launch skew before input preparation. |
 | work_end_S | AIC, AIV0, AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2678 | 2675 | after | actual | existing PublishGmm2Ready FIX_S and Unpermute final MTE3_V waits; no additional hot-path bridge | Separates the real role-local useful-work tail from the diagnostic rendezvous and y record emission overhead. |
 | dispatch_begin_S | AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:1072 | 1077 | before | causal | none | Measures the actual per-wave AIV1 prefetch window, including send-count calculation, rather than the outer wave that may prefetch two waves at once. |
 | dispatch_end_S | AIV1 | mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:1087 | 1080 | after | actual | trace-only MTE3_S using recycled EVENT_ID0 on the last expert of the wave | Proves when each AIV1 has completed the token/scale/meta-info writes that release GMM1 and permits direct comparison with GMM1 readiness. |
@@ -33,7 +33,7 @@
 - Where: `mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h:2618` in `MegaMoeWave::Process`; `before` target line `2622`.
 - Cardinality: once at MegaMoeWave::Process entry per physical role/core record
 - Boundary claim: `causal` — Scalar has entered the current MTE A8W8 MegaMoeWave Process body and no operator work has yet been issued by this role/core.
-- Why: Provides the one shared-axis per-rank reference and exposes role launch skew before input preparation.
+- Why: Provides one local shared-axis reference for AIC, AIV0, and AIV1 inside the same physical AI Block, without asserting clock alignment across AI Blocks or ranks; also exposes role launch skew before input preparation.
 - Dependency: mixed-kernel task entry for this physical role/core
 - Pipeline proof: `kernel scheduler and Scalar control` → `Scalar` using `none` — The clock is the first diagnostic instruction immediately before the first Process statement.
 - Perturbation: One 32-bit GetSystemCycle and one named Scalar assignment per role/core.
@@ -259,7 +259,22 @@
 ## Working tree status
 
 ```text
-M mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h
+M mc2/mega_moe/op_kernel/arch35/mega_moe_trace.h
+ M mc2/mega_moe/tools/critical_path_trace/README.md
+ M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/index.html
+ M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.contract-check.json
+ M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.html
+ M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.normalized.json
+ M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.raw
+ M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.runtime.json
+ M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/run-manifest.json
+ M mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.json
+ M mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.md
  M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.json
  M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.md
+ M mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py
+ M mc2/mega_moe/tools/critical_path_trace/test_critical_path_trace.py
+ M mc2/mega_moe/tools/critical_path_trace/trace-spec.json
+ M mc2/mega_moe/tools/critical_path_trace/trace_tool.py
+ M mc2/mega_moe/tools/critical_path_trace/validation-report.json
 ```

@@ -38,7 +38,7 @@ GMM1/SwiGLU/GMM2/Combine 重叠。因此时间点落在实际生产/观察边界
 
 | 时间点 | 角色与符号 | 语义、证明关系与主要扰动 |
 |---|---|---|
-| `process_begin_S` | 全角色，`MegaMoeWave::Process` | 进入当前实现且尚未发出工作；给出同 rank 公共参考轴。一次 Scalar 时钟读取。 |
+| `process_begin_S` | 全角色，`MegaMoeWave::Process` | 进入当前实现且尚未发出工作；给出同一 AI Block 内的公共参考轴。一次 Scalar 时钟读取。 |
 | `work_end_S` | 全角色，`MegaMoeWave::Process` | 角色本地有效工作已完成，且在诊断 rendezvous 前；区分真实尾部与落盘开销。一次时钟读取。 |
 | `dispatch_begin_S` | AIV1，`DispatchExpert` | 当前波首个专家即将执行 `SendCntCal`；覆盖真实预取窗口。每个活跃波一次条件检查和时钟。 |
 | `dispatch_end_S` | AIV1，`DispatchExpert` | 末个专家的 token/scale/meta GM 写入与发布已完成；可与 GMM1 ready 观察比较。增加一次 MTE3→Scalar bridge 和时钟。 |
@@ -58,10 +58,12 @@ GMM1/SwiGLU/GMM2/Combine 重叠。因此时间点落在实际生产/观察边界
 `audit-plan/` 和 `audit-implemented/`。所有六个 span 都由成对边界组成；没有
 用缺失值补造跨度。
 
-时间戳是 `AscendC::GetSystemCycle()` 的低 32 位 cycle，同一设备/rank 内的
-AIC/AIV0/AIV1 共用时钟域；不同 rank 必须分别解码，不能直接相减。实际采样为
-零时重映射为 1，零专用于“该核/该波无工作”。顺序检查采用 32 位环绕差，并
-拒绝大于等于半周期的歧义区间。
+时间戳是 `AscendC::GetSystemCycle()` 的低 32 位 cycle。同一物理 AI Block
+（相同 paired `blockIdx`）内的 AIC/AIV0/AIV1 共用时钟域，可以直接对齐；不同
+AI Block 可能存在时钟偏移，不得比较原始绝对时间戳，rank 之间同样不得相减。
+HTML 按 AI Block 分组，每组固定排列 AIC、AIV0、AIV1，并以本组 AIC 的
+`process_begin_S` 独立归零。实际采样为零时重映射为 1，零专用于“该核/该波无
+工作”。顺序检查采用 32 位环绕差，并拒绝大于等于半周期的歧义区间。
 
 ## `y` 载体证明
 
@@ -124,7 +126,8 @@ fixture。适配器自身和子进程都禁用 Python bytecode 落盘，运行�
 `last_iteration_only` 策略；它表示预热稳定后的最后一轮，不声称是 N 轮最优值。
 每个 rank 输出 `rankN.raw` 和 `rankN.runtime.json`，随后严格校验
 header/config/hash/容量/截断/时间顺序，生成 `rankN.normalized.json`、检查 JSON、
-`rankN.html` 及总览 `index.html`。
+`rankN.html` 及总览 `index.html`。HTML 的打点位置、打点时机、打点原因、依赖
+证明和潜在扰动均使用中文说明。
 
 若服务器上的脚本不是上述精确快照，先人工复核当前 ABI 和插入锚点，再显式加
 `--allow-compatible-test-script`；锚点不唯一或缺失仍会失败。可用重复的

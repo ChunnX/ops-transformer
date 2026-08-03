@@ -25,12 +25,12 @@
       36
     ],
     "runtime_config_hash": 2807985227,
-    "schema_id": 3542977097,
+    "schema_id": 819447310,
     "shared_expert_count": 0,
     "top_k": 6,
     "topk_weights_prefetch": 0,
     "truncated": 0,
-    "version": 5,
+    "version": 6,
     "weight1_interleaved": 0,
     "world_size": 2
   },
@@ -55,7 +55,7 @@
     "quant_dtype": "float8_e4m3fn",
     "quant_mode": 4,
     "rank": 0,
-    "raw_sha256": "84926c9df62ed933f1357f0a0a6cc5bdbed6ab7d0f8688c36ea7be6f93724b5b",
+    "raw_sha256": "9d030493f0e1f4857b7f2fc48e19bb6e66266844972879a5bc66036294490b84",
     "shared_expert_num": 0,
     "swiglu_quant_dtype": "float8_e4m3fn",
     "test_source_sha256": "synthetic-fixture",
@@ -63,7 +63,7 @@
     "weight_dtype": "float8_e4m3fn",
     "world_size": 2
   },
-  "raw_sha256": "84926c9df62ed933f1357f0a0a6cc5bdbed6ab7d0f8688c36ea7be6f93724b5b",
+  "raw_sha256": "9d030493f0e1f4857b7f2fc48e19bb6e66266844972879a5bc66036294490b84",
   "required_trace_bytes": 7896,
   "status": "passed"
 }

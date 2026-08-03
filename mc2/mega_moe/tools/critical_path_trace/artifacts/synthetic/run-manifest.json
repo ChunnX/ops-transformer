@@ -9,7 +9,7 @@
       "order_check": "rank0.order-check.json",
       "rank": 0,
       "raw": "rank0.raw",
-      "raw_sha256": "84926c9df62ed933f1357f0a0a6cc5bdbed6ab7d0f8688c36ea7be6f93724b5b",
+      "raw_sha256": "9d030493f0e1f4857b7f2fc48e19bb6e66266844972879a5bc66036294490b84",
       "required_trace_bytes": 7896,
       "runtime_metadata": "rank0.runtime.json"
     }

@@ -43,8 +43,8 @@
     {
       "name": "host_unit_tests",
       "status": "passed",
-      "count": 5,
-      "scope": "valid raw-to-HTML path and fail-closed bad magic, config hash, one-sided span, and current adapter syntax"
+      "count": 6,
+      "scope": "valid raw-to-HTML path, per-AI-Block AIC/AIV0/AIV1 grouping with Chinese descriptions, and fail-closed bad magic, config hash, one-sided span, artifact isolation, and current adapter syntax"
     },
     {
       "name": "current_moe_test_adapter_check",

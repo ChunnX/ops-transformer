@@ -55,6 +55,90 @@ REQUIRED_HEADER_FIELDS = {
     "runtime_config_hash",
 }
 
+POINT_TEXT_ZH = {
+    "process_begin_S": {
+        "when": "该物理 AI Block 的对应角色刚进入 MegaMoeWave::Process，尚未发出本角色的算子工作。",
+        "why": "为同一 AI Block 内的 AIC、AIV0、AIV1 提供局部参考起点，并观察三个角色的启动偏差。",
+        "proof": "该读时钟位于 Process 第一条正常语句之前，是本角色执行的第一条诊断指令。",
+        "perturbation": "每个角色/核增加一次 32 位 GetSystemCycle 和一次 Scalar 赋值。",
+    },
+    "work_end_S": {
+        "when": "本角色的有效工作已经完成，但尚未进入 tracing 专用的终结同步和 y 落盘。AIV 侧已等到最终 Unpermute 写回，AIC 侧的发布已越过 FIX_S。",
+        "why": "把真实有效工作的尾部与 tracing rendezvous、记录写回等诊断开销分开。",
+        "proof": "采样位于 routed wave、跨 rank 完成、最终 Unpermute MTE3_V 等待和控制状态恢复之后，同时早于两次 tracing rendezvous。",
+        "perturbation": "终结同步之前增加一次 32 位 GetSystemCycle 和一次 Scalar 赋值。",
+    },
+    "dispatch_begin_S": {
+        "when": "当前 wave 的第一个专家即将在 AIV1 Scalar 路径执行 SendCntCal。",
+        "why": "覆盖真实的逐 wave Dispatch 预取窗口，避免用可能一次预取多个 wave 的外层循环近似。",
+        "proof": "DispatchExpert 对每个专家只执行一次；首专家判断把 expertIdx 映射到当前 experts_per_wave。",
+        "perturbation": "每个有效 AIV1/wave 增加一次首 slot 条件判断和一次时钟采样。",
+    },
+    "dispatch_end_S": {
+        "when": "当前 wave 的最后一个专家已完成 token、scale、meta-info 的 MTE3 写入和 ready 发布。",
+        "why": "证明 Dispatch 何时真正释放 GMM1，并可与同一 AI Block 内的 GMM1 起点直接比较。",
+        "proof": "最后一个专家复用已回收的 EVENT_ID0 增加 MTE3_S，把最终写入和发布依赖传到 Scalar 后再读时钟。",
+        "perturbation": "每个有效 AIV1/wave 增加一次 MTE3→Scalar 桥接和一次时钟采样。",
+    },
+    "gmm1_begin_S": {
+        "when": "AIC 已观察到 Dispatch ready，并完成前序 ping-pong 依赖等待；第一个 GMM1 tile 即将发出 MMAD。",
+        "why": "把 Dispatch-ready/前序依赖等待与真正的 GMM1 计算区间分开。",
+        "proof": "打点位于 upstream ready 和 WaitForVector 之后；复用 EVENT_ID0 的 FIX_S 把 FIX 依赖传到 Scalar。",
+        "perturbation": "每个有效 AIC/wave 增加一次条件判断、一次 FIX→Scalar 桥接和一次时钟采样。",
+    },
+    "gmm1_end_S": {
+        "when": "当前 wave 分配给该 AIC 的所有 GMM1 FIX 工作均已完成。",
+        "why": "让 GMM1 结束边界落在实际 FIX 完成，而不是 helper 返回或通知发出时刻。",
+        "proof": "完整 tile 循环结束后执行 FIX_S，且只有记录过 begin 的核才采样，因此时钟不会早于最后一个 FIX。",
+        "perturbation": "每个有效 AIC/wave 增加一次 FIX→Scalar 完成桥接和一次时钟采样。",
+    },
+    "swiglu_begin_S": {
+        "when": "非空 epilogue 的 GMM1/输入依赖已经有序进入 Vector，马上开始 SwiGLU、MX 量化设置和 Vector 工作。",
+        "why": "统一覆盖非预取 WaitForCube 和预取 MTE2_V 两条分支之后的真实 SwiGLU 起点。",
+        "proof": "所有 routed-wave epilogue 分支都在各自 readiness wait 后进入公共 operator；V_S 再把 Vector 依赖传到 Scalar。",
+        "perturbation": "每个有效 AIV0/wave 增加一次条件判断、一次 Vector→Scalar 桥接和一次时钟采样。",
+    },
+    "swiglu_end_S": {
+        "when": "当前 wave 分配给该 AIV0 的全部 SwiGLU/MX 量化 GM 输出已经完成。",
+        "why": "观察真实 AIV0 epilogue 尾部，以及它与同组 GMM2、Dispatch、Combine 的重叠。",
+        "proof": "每个 epilogue 返回前已经消费 MTE3_V/MTE3_S 并发布 ready；外层 wave 返回必然晚于最后一次 GM 完成。",
+        "perturbation": "每个有效 AIV0/wave 只增加一次时钟采样，不额外串行化完成路径。",
+    },
+    "gmm2_begin_S": {
+        "when": "AIC 的 Scalar 轮询已经观察到当前 wave 的 SwiGLU-ready 计数，第一个 GMM2 MMAD 即将发出。",
+        "why": "让 GMM2 区间从 ready 被观察之后开始，把发布到观察的等待留在计算区间之外。",
+        "proof": "bypass GM 轮询只会在 epilogue MTE3_S 和 ready AtomicAdd 完成后返回；随后同一 Scalar 顺序直接读时钟。",
+        "perturbation": "每个有效 AIC/wave 增加一次条件判断和一次时钟采样。",
+    },
+    "gmm2_end_S": {
+        "when": "当前 wave 分配给该 AIC 的全部 GMM2 FIX 写入已完成，最后一次 per-expert ready 也已发布。",
+        "why": "证明本地 GMM2 完成和 ready 发布时刻，并把 AIV1 的远端观察保留为独立 handoff。",
+        "proof": "PublishGmm2Ready 在 bypass GM 写之前执行 FIX_S；外层采样位于最后一次发布之后，但不宣称 AIV1 已经观察到。",
+        "perturbation": "每个有效 AIC/wave 增加一次时钟采样；复用生产路径已有的 FIX_S 发布语义。",
+    },
+    "combine_begin_S": {
+        "when": "该 AIV1 拥有非空 token，且首个专家的 WaitGmm2Ready 已观察到完整 AIC fan-in；随后开始 meta-info 加载和发送。",
+        "why": "显式展示 GMM2 发布到 AIV1 观察的 handoff，并保证 Combine 从完整 fan-in 之后计时。",
+        "proof": "WaitGmm2Ready 只有在 MTE2_V/V_S 有序的归约结果达到全部 AIC 目标后才返回，打点紧随其后。",
+        "perturbation": "每个有效 AIV1/wave 增加一次条件判断和一次时钟采样。",
+    },
+    "combine_end_S": {
+        "when": "当前 wave 由该 AIV1 发出的全部远端 token row 已完成 MTE3 send。",
+        "why": "让 Combine 在实际远端发送完成时结束，而不是停在 Scalar 发出或 drain 入队时刻。",
+        "proof": "ring drain 等待所有实际使用 slot 的 MTE3_MTE2 事件，再用复用 EVENT_ID0 的 MTE2_S 把完成依赖传到 Scalar。",
+        "perturbation": "每个有效 AIV1/wave 增加一次 MTE2→Scalar 桥接和一次时钟采样。",
+    },
+}
+
+SPAN_LABEL_ZH = {
+    "process": "角色有效工作",
+    "dispatch": "Dispatch",
+    "gmm1": "GMM1",
+    "swiglu": "SwiGLU + MX 量化",
+    "gmm2": "GMM2 + ready 发布",
+    "combine": "ready 汇聚 + Combine",
+}
+
 
 class ContractError(RuntimeError):
     """Raised when a spec, source audit, or normalized trace is unsafe."""
@@ -100,6 +184,9 @@ def _expected_schema_id(spec: dict[str, Any]) -> int:
                 "comparable_across_records",
                 "missing_value",
             )
+        }
+        | {
+            "comparison_group": trace.get("clock", {}).get("comparison_group"),
         },
         "protocol": {
             key: protocol.get(key)
@@ -235,6 +322,32 @@ def _validate_spec(spec: Any) -> list[str]:
         errors.append("$.trace.clock.bits must be 32 or 64")
     if not isinstance(clock.get("comparable_across_records"), bool):
         errors.append("$.trace.clock.comparable_across_records must be boolean")
+    comparison_group = clock.get("comparison_group")
+    if comparison_group is not None:
+        if not isinstance(comparison_group, dict):
+            errors.append("$.trace.clock.comparison_group must be an object")
+        else:
+            if comparison_group.get("kind") != "shared-core-index":
+                errors.append(
+                    "$.trace.clock.comparison_group.kind must be shared-core-index"
+                )
+            if comparison_group.get("key") != "core":
+                errors.append("$.trace.clock.comparison_group.key must be core")
+            _required_string(
+                comparison_group,
+                "label",
+                "$.trace.clock.comparison_group",
+                errors,
+            )
+            group_roles = comparison_group.get("roles")
+            if group_roles != roles:
+                errors.append(
+                    "$.trace.clock.comparison_group.roles must exactly match trace.roles"
+                )
+            if comparison_group.get("reference_role") not in role_set:
+                errors.append(
+                    "$.trace.clock.comparison_group.reference_role must name a trace role"
+                )
     missing = clock.get("missing_value")
     if missing is not None and isinstance(bits, int):
         try:
@@ -1226,13 +1339,64 @@ def _render_html(
     bits = clock["bits"]
     missing_value = clock.get("missing_value")
     comparable = clock["comparable_across_records"]
-    point_by_id = {point["id"]: point for point in spec["points"]}
+    point_ids = {point["id"] for point in spec["points"]}
+    missing_chinese = sorted(point_ids - set(POINT_TEXT_ZH))
+    if missing_chinese:
+        raise ContractError(
+            "renderer lacks Chinese descriptions for points: "
+            + ", ".join(missing_chinese)
+        )
     role_order = {role: index for index, role in enumerate(trace_spec["roles"])}
+    comparison_group = clock.get("comparison_group")
+    grouped_by_ai_block = (
+        isinstance(comparison_group, dict)
+        and comparison_group.get("kind") == "shared-core-index"
+    )
     records = sorted(
-        records, key=lambda record: (role_order[record["role"]], record["core"])
+        records,
+        key=(
+            lambda record: (record["core"], role_order[record["role"]])
+            if grouped_by_ai_block
+            else (role_order[record["role"]], record["core"])
+        ),
     )
 
-    if comparable:
+    if grouped_by_ai_block:
+        group_roles = comparison_group["roles"]
+        reference_role = comparison_group["reference_role"]
+        records_by_key = {
+            (record["role"], record["core"]): record for record in records
+        }
+        cores = sorted({record["core"] for record in records})
+        row_references = {}
+        for core in cores:
+            missing_roles = [
+                role for role in group_roles if (role, core) not in records_by_key
+            ]
+            if missing_roles:
+                raise ContractError(
+                    f"AI Block {core} lacks role records: {', '.join(missing_roles)}"
+                )
+            reference_record = records_by_key[(reference_role, core)]
+            group_reference = _get_timestamp(
+                reference_record,
+                reference["point"],
+                reference["occurrence"],
+                missing_value,
+            )
+            if group_reference is None:
+                raise ContractError(
+                    f"AI Block {core} reference {reference_role}/{reference['point']} "
+                    "is missing"
+                )
+            for role in group_roles:
+                row_references[(role, core)] = group_reference
+        axis_note = (
+            f"每个 AI Block 以本组 {reference_role}/{reference['point']}"
+            f"[{reference['occurrence']}] 独立归零；组内 AIC/AIV0/AIV1 可直接对齐，"
+            "不同 AI Block 的绝对时间戳不比较"
+        )
+    elif comparable:
         reference_record = next(
             (
                 record
@@ -1253,7 +1417,7 @@ def _render_html(
             (record["role"], record["core"]): shared_reference for record in records
         }
         axis_note = (
-            f"shared {clock['scope']} {clock['unit']} clock; reference "
+            f"共享 {clock['unit']} 时钟；参考点为 "
             f"{reference_record['label']}/{reference['point']}[{reference['occurrence']}]"
         )
     else:
@@ -1268,8 +1432,8 @@ def _render_html(
                 )
             row_references[(record["role"], record["core"])] = raw_reference
         axis_note = (
-            f"per-record local {clock['unit']} axes normalized at "
-            f"{reference['point']}[{reference['occurrence']}]; cross-record gaps are invalid"
+            f"每条记录以 {reference['point']}[{reference['occurrence']}] 独立归零；"
+            "不同记录之间的空隙不可比较"
         )
 
     plotted: list[int] = []
@@ -1333,7 +1497,7 @@ def _render_html(
         max_cycle += 1
     cycle_range = max_cycle - min_cycle
 
-    label_width = 138
+    label_width = 210 if grouped_by_ai_block else 138
     plot_width = 1500
     counter_width = 420
     row_height = 30
@@ -1354,19 +1518,20 @@ def _render_html(
         ".marker{stroke:#111827;stroke-width:.65;opacity:.38}.nonexact{stroke:#475569;stroke-dasharray:3 2}",
         "</style>",
         '<rect width="100%" height="100%" fill="#fff"/>',
-        f'<text x="8" y="20" font-size="16" font-weight="700">{html.escape(trace_spec["name"])} critical path</text>',
+        f'<text x="8" y="20" font-size="16" font-weight="700">{html.escape(trace_spec["name"])} 关键路径</text>',
         f'<text x="8" y="40" font-size="10">{html.escape(axis_note)}</text>',
     ]
 
     legend_x = 8
     for span in spec["spans"]:
-        label = span["label"]
+        label = SPAN_LABEL_ZH.get(span["id"], span["label"])
         opacity = "0.92" if span["quality"] == "exact" else "0.42"
+        quality_label = "精确边界" if span["quality"] == "exact" else "近似边界"
         svg.append(
             f'<rect x="{legend_x}" y="49" width="12" height="9" fill="{span["color"]}" opacity="{opacity}"/>'
-            f'<text x="{legend_x + 16}" y="57" font-size="9">{html.escape(label)} ({span["quality"]})</text>'
+            f'<text x="{legend_x + 16}" y="57" font-size="9">{html.escape(label)}（{quality_label}）</text>'
         )
-        legend_x += 34 + len(label) * 6 + len(span["quality"]) * 6
+        legend_x += 76 + len(label) * 10
 
     for tick_index in range(11):
         cycle = min_cycle + cycle_range * tick_index // 10
@@ -1376,39 +1541,49 @@ def _render_html(
             f'<text class="axis" x="{x:.2f}" y="{svg_height - 8}" text-anchor="middle">{cycle}</text>'
         )
 
-    previous_role: str | None = None
+    previous_group: int | str | None = None
     points_in_spans = {
         point_id for span in spec["spans"] for point_id in (span["begin"], span["end"])
     }
     for row_index, record in enumerate(records):
         y = top + row_index * row_height
-        if record["role"] != previous_role:
+        current_group: int | str = (
+            record["core"] if grouped_by_ai_block else record["role"]
+        )
+        if current_group != previous_group:
             svg.append(
                 f'<line class="group" x1="0" y1="{y}" x2="{svg_width}" y2="{y}"/>'
             )
-        previous_role = record["role"]
-        shade = "#f8fafc" if row_index % 2 else "#ffffff"
+        previous_group = current_group
+        shade_index = record["core"] if grouped_by_ai_block else row_index
+        shade = "#f1f5f9" if shade_index % 2 else "#ffffff"
         svg.append(
             f'<rect x="0" y="{y}" width="{svg_width}" height="{row_height}" fill="{shade}"/>'
         )
+        display_label = (
+            f"AI Block {record['core']:02d} / {record['role']}"
+            if grouped_by_ai_block
+            else record["label"]
+        )
         svg.append(
-            f'<text class="label" x="6" y="{y + 20}">{html.escape(record["label"])}</text>'
+            f'<text class="label" x="6" y="{y + 20}">{html.escape(display_label)}</text>'
         )
 
         for rendered in rendered_spans[(record["role"], record["core"])]:
             span = rendered["span"]
-            begin_point = point_by_id[span["begin"]]
-            end_point = point_by_id[span["end"]]
+            begin_text = POINT_TEXT_ZH[span["begin"]]
+            end_text = POINT_TEXT_ZH[span["end"]]
+            span_label = SPAN_LABEL_ZH.get(span["id"], span["label"])
             x_begin = x_pos(rendered["begin"])
             width = max(1.0, x_pos(rendered["end"]) - x_begin)
             exact = span["quality"] == "exact"
             css_class = "" if exact else "nonexact"
             opacity = "0.92" if exact else "0.42"
             title = html.escape(
-                f"{span['label']}[{rendered['occurrence']}]: {rendered['begin']} -> "
-                f"{rendered['end']} {clock['unit']} (duration {rendered['duration']}); "
-                f"begin={begin_point['semantics']}; end={end_point['semantics']}; "
-                f"why={begin_point['why']} / {end_point['why']}"
+                f"{span_label}[{rendered['occurrence']}]：{rendered['begin']} → "
+                f"{rendered['end']} cycle（持续 {rendered['duration']} cycle）；"
+                f"开始时机：{begin_text['when']}；结束时机：{end_text['when']}；"
+                f"为什么打点：{begin_text['why']} / {end_text['why']}"
             )
             svg.append(
                 f'<rect class="{css_class}" x="{x_begin:.2f}" y="{y + 7}" width="{width:.2f}" '
@@ -1419,7 +1594,7 @@ def _render_html(
         for point_id, values in record["timestamps"].items():
             if point_id in points_in_spans:
                 continue
-            point = point_by_id[point_id]
+            point_text = POINT_TEXT_ZH[point_id]
             for occurrence, value in enumerate(values):
                 if value is None or (
                     missing_value is not None and value == missing_value
@@ -1428,8 +1603,8 @@ def _render_html(
                 delta = _relative(value, raw_reference, bits)
                 x = x_pos(delta)
                 title = html.escape(
-                    f"{point_id}[{occurrence}]={delta} {clock['unit']}; "
-                    f"{point['boundary_quality']}: {point['semantics']}; why={point['why']}"
+                    f"{point_id}[{occurrence}]={delta} cycle；"
+                    f"打点时机：{point_text['when']}；为什么打点：{point_text['why']}"
                 )
                 svg.append(
                     f'<line class="marker" x1="{x:.2f}" y1="{y + 4}" x2="{x:.2f}" y2="{y + 26}"><title>{title}</title></line>'
@@ -1439,7 +1614,7 @@ def _render_html(
             " ".join(
                 f"{key}={value}" for key, value in sorted(record["counters"].items())
             )
-            or "no counters"
+            or "无计数器"
         )
         svg.append(
             f'<text class="counter" x="{label_width + plot_width + 8}" y="{y + 19}">{html.escape(counter_text)}</text>'
@@ -1454,25 +1629,37 @@ def _render_html(
     overview_rows = "".join(
         f"<tr><th>{html.escape(key)}</th><td><code>{html.escape(str(value))}</code></td></tr>"
         for key, value in (
-            ("trace", trace_spec["name"]),
-            ("protocol version", protocol["version"]),
-            ("schema id", protocol["schema_id"]),
-            ("roles", ", ".join(trace_spec["roles"])),
+            ("Trace 名称", trace_spec["name"]),
+            ("协议版本", protocol["version"]),
+            ("Schema ID", protocol["schema_id"]),
+            ("角色", ", ".join(trace_spec["roles"])),
             (
-                "wire layout",
+                "线协议布局",
                 f"{protocol['endianness']} uint{protocol['word_bits']}; "
                 f"header={protocol['header_words']} words, record={protocol['record_words']} words",
             ),
-            ("record order", protocol["record_order"]),
+            ("线协议记录顺序", protocol["record_order"]),
             (
-                "clock",
+                "时间戳作用域",
                 f"{clock['api']} / {clock['bits']}-bit {clock['unit']} / {clock['scope']}",
             ),
-            ("carrier", trace_spec["output"]["carrier"]),
-            ("overwrites user output", trace_spec["output"]["overwrites_user_output"]),
-            ("capacity check", trace_spec["output"]["capacity_check"]),
-            ("write phase", trace_spec["output"]["write_phase"]),
-            ("rendezvous", trace_spec["output"]["rendezvous"]),
+            (
+                "输出载体",
+                "正常 BF16 y 完成后，将 y 的原始字节临时复用为诊断记录载体",
+            ),
+            ("是否覆盖正常输出", trace_spec["output"]["overwrites_user_output"]),
+            (
+                "容量检查",
+                "设备端和解析端同时核对 y 容量；不足时不得发布有效 magic",
+            ),
+            (
+                "写入阶段",
+                "有效工作和最终 Unpermute 写回完成后：先写 records，再写 header，最后发布 magic",
+            ),
+            (
+                "终结同步",
+                "两次混合 AIC/AIV rendezvous：先保护 y 生命周期，再等待全部 records",
+            ),
         )
     )
 
@@ -1481,34 +1668,53 @@ def _render_html(
     )
     audit_rows: list[str] = []
     for point in spec["points"]:
+        point_text = POINT_TEXT_ZH[point["id"]]
         evidence = audit_by_id.get(point["id"])
         location = (
             f"{evidence['file']}:{evidence['marker_line'] or evidence['target_line']}"
             if evidence
-            else f"{point['source']['file']} (unresolved; no implemented audit supplied)"
+            else f"{point['source']['file']}（未提供 implemented audit，行号未解析）"
         )
         dependency = point["dependency"]
+        placement_zh = {"before": "锚点之前", "after": "锚点之后", "at": "锚点同行"}[
+            point["source"]["placement"]
+        ]
+        quality_zh = {
+            "causal": "因果起点",
+            "actual": "实际完成",
+            "issue": "发出边界",
+            "inferred": "推断边界",
+        }[point["boundary_quality"]]
         audit_rows.append(
             "<tr>"
             f"<td><code>{html.escape(point['id'])}</code></td>"
             f"<td>{html.escape(', '.join(point['roles']))}</td>"
-            f"<td><code>{html.escape(location)}</code><br>{html.escape(point['source']['placement'])} "
-            f"in <code>{html.escape(point['source']['symbol'])}</code></td>"
-            f"<td><code>{html.escape(point['boundary_quality'])}</code><br>{html.escape(point['semantics'])}</td>"
-            f"<td><code>{html.escape(dependency['bridge'])}</code><br>{html.escape(dependency['proof'])}</td>"
-            f"<td>{html.escape(point['why'])}</td>"
-            f"<td>{html.escape(point['perturbation'])}</td>"
+            f"<td><code>{html.escape(location)}</code><br>{placement_zh}，函数/符号 "
+            f"<code>{html.escape(point['source']['symbol'])}</code></td>"
+            f"<td><code>{quality_zh}</code><br>{html.escape(point_text['when'])}</td>"
+            f"<td><strong>桥接：</strong><code>{html.escape(dependency['bridge'])}</code><br>"
+            f"<strong>证明：</strong>{html.escape(point_text['proof'])}</td>"
+            f"<td>{html.escape(point_text['why'])}</td>"
+            f"<td>{html.escape(point_text['perturbation'])}</td>"
             "</tr>"
         )
 
-    warning = (
-        ""
-        if comparable
-        else '<div class="warning">Clock domains are not comparable across records. Rows are locally normalized; do not infer cross-row handoff gaps.</div>'
-    )
+    if grouped_by_ai_block:
+        warning = (
+            '<div class="warning"><strong>时间戳边界：</strong>同一 AI Block 内的 '
+            "AIC、AIV0、AIV1 使用同一时钟并可直接对齐；不同 AI Block 可能存在固定偏移，"
+            "因此每组单独归零，禁止从不同组的横向位置推断绝对先后或 handoff 间隔。</div>"
+        )
+    elif comparable:
+        warning = ""
+    else:
+        warning = (
+            '<div class="warning">不同记录的时钟不可直接比较；每行已经独立归零，'
+            "禁止推断跨行 handoff 间隔。</div>"
+        )
     return (
         '<!doctype html><html><head><meta charset="utf-8">'
-        f"<title>{html.escape(trace_spec['name'])} critical path</title>"
+        f"<title>{html.escape(trace_spec['name'])} 关键路径</title>"
         "<style>body{margin:0;background:#e2e8f0;color:#0f172a;font-family:system-ui,sans-serif}"
         "main{padding:14px}.panel{background:#fff;border-radius:9px;box-shadow:0 1px 6px #64748b;"
         "padding:12px;margin-bottom:14px;overflow:auto}h1,h2{margin:.2em 0 .6em}"
@@ -1517,11 +1723,11 @@ def _render_html(
         "border:1px solid #f59e0b;padding:9px;border-radius:6px;margin-bottom:10px}code{white-space:pre-wrap}"
         "</style></head><body><main>"
         f"<h1>{html.escape(trace_spec['name'])}</h1>{warning}"
-        f'<section class="panel"><h2>Contract and runtime metadata</h2><table>{overview_rows}{metadata_rows}</table></section>'
+        f'<section class="panel"><h2>协议与运行信息</h2><table>{overview_rows}{metadata_rows}</table></section>'
         f'<section class="panel">{"".join(svg)}</section>'
-        '<section class="panel"><h2>Trace-point placement audit</h2>'
-        "<table><thead><tr><th>Point</th><th>Roles</th><th>Where</th><th>Boundary claim</th>"
-        "<th>Pipeline bridge/proof</th><th>Why</th><th>Perturbation</th></tr></thead><tbody>"
+        '<section class="panel"><h2>打点位置与语义说明</h2>'
+        "<table><thead><tr><th>时间点</th><th>角色</th><th>打点位置</th><th>什么时候打</th>"
+        "<th>流水同步与证明</th><th>为什么打点</th><th>潜在扰动</th></tr></thead><tbody>"
         f"{''.join(audit_rows)}</tbody></table></section>"
         "</main></body></html>"
     )
