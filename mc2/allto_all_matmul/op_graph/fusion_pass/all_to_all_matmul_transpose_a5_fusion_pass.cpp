@@ -44,6 +44,16 @@ const size_t PERM_SIZE_ONE = 1;
 const size_t PERM_SIZE_TWO = 2;
 const size_t PERM_SIZE_THREE = 3;
 
+// AlltoAllMatmul IR 输入下标
+const int32_t IR_X1 = 0;
+const int32_t IR_X2 = 1;
+const int32_t IR_BIAS = 2;
+const int32_t IR_X1_SCALE = 3;
+const int32_t IR_X2_SCALE = 4;
+const int32_t IR_COMM_SCALE = 5;
+const int32_t IR_X1_OFFSET = 6;
+const int32_t IR_X2_OFFSET = 7;
+
 enum class TransposeNode {
     Transpose,
     TransposeD
@@ -324,49 +334,32 @@ static bool CollectSubgraphInputsInfo(const std::vector<ge::fusion::SubgraphInpu
     return true;
 }
 
-static size_t GetMinRequiredSubgraphInputNum(const std::string &patternNameStr)
+static bool GetCapturedMc2Node(const std::unique_ptr<ge::fusion::MatchResult> &matchResult, ge::GNode &mc2Node);
+
+static bool IsMc2InputConnected(const ge::GNode &mc2Node, int32_t index)
 {
-    bool hasBias = patternNameStr.find(PATTERN_BIAS) != std::string::npos;
-    bool hasX1Scale = patternNameStr.find(PATTERN_X1_SCALE) != std::string::npos;
-    bool hasX2Scale = patternNameStr.find(PATTERN_X2_SCALE) != std::string::npos;
-    bool hasCommScale = patternNameStr.find(PATTERN_COMM_SCALE) != std::string::npos;
-    bool hasX1Offset = patternNameStr.find(PATTERN_X1_OFFSET) != std::string::npos;
-    bool hasX2Offset = patternNameStr.find(PATTERN_X2_OFFSET) != std::string::npos;
-
-    // required input x1,x2
-    size_t inputNum = 2;
-    if (hasBias) {
-        inputNum++;
-    }
-    if (hasX1Scale) {
-        inputNum++;
-    }
-    if (hasX2Scale) {
-        inputNum++;
-    }
-    if (hasCommScale) {
-        inputNum++;
-    }
-    if (hasX1Offset) {
-        inputNum++;
-    }
-    if (hasX2Offset) {
-        inputNum++;
-    }
-
-    return inputNum;
+    const auto peer = mc2Node.GetInDataNodesAndPortIndexs(index);
+    return peer.first != nullptr;
 }
 
-static bool ValidateSubgraphInputNum(const std::string &patternNameStr, size_t inputNum)
+static const char *IrInputName(int32_t irIndex)
 {
-    const size_t minRequiredInputs = GetMinRequiredSubgraphInputNum(patternNameStr);
-    if (inputNum < minRequiredInputs) {
-        OPS_LOG_E(FUSION_PASS_NAME.c_str(),
-                  "Subgraph input nums do not meet requirement, expect at least %zu but got %zu.", minRequiredInputs,
-                  inputNum);
-        return false;
+    switch (irIndex) {
+        case IR_BIAS:
+            return "bias";
+        case IR_X1_SCALE:
+            return "x1_scale";
+        case IR_X2_SCALE:
+            return "x2_scale";
+        case IR_COMM_SCALE:
+            return "comm_scale";
+        case IR_X1_OFFSET:
+            return "x1_offset";
+        case IR_X2_OFFSET:
+            return "x2_offset";
+        default:
+            return "unknown";
     }
-    return true;
 }
 
 static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraphBuilder &replaceGraphBuilder,
@@ -382,13 +375,27 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraph
         return false;
     }
 
-    ge::AscendString patternName = "";
-    matchResult->GetPatternGraph().GetName(patternName);
-    std::string patternNameStr = patternName.GetString();
-    if (!ValidateSubgraphInputNum(patternNameStr, inputShapes.size())) {
+    ge::GNode mc2Node;
+    if (!GetCapturedMc2Node(matchResult, mc2Node)) {
         return false;
     }
-    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Begin create input to index.");
+
+    // 按原 AlltoAllMatmul 实际已连接的 optional IR 口构造，避免仅靠 pattern 名字符串误映射
+    // （误把 x1_scale 的 DT_FLOAT8_E8M0 接到 x1_offset 上会导致 EZ3002）
+    std::vector<int32_t> connectedOptionalIrs;
+    for (int32_t irIndex : {IR_BIAS, IR_X1_SCALE, IR_X2_SCALE, IR_COMM_SCALE, IR_X1_OFFSET, IR_X2_OFFSET}) {
+        if (IsMc2InputConnected(mc2Node, irIndex)) {
+            connectedOptionalIrs.push_back(irIndex);
+        }
+    }
+    const size_t expectInputNum = 2U + connectedOptionalIrs.size();
+    if (inputShapes.size() < expectInputNum) {
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(),
+                  "Subgraph input nums do not meet requirement, expect at least %zu but got %zu.", expectInputNum,
+                  inputShapes.size());
+        return false;
+    }
+
     int64_t inputIdx = 0;
     inputs.rX1 = replaceGraphBuilder.CreateInput(inputIdx, "x1", inputDTypes[inputIdx], inputFormats[inputIdx],
                                                  inputShapes[inputIdx].GetDims());
@@ -396,40 +403,39 @@ static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraph
     inputs.rX2 = replaceGraphBuilder.CreateInput(inputIdx, "x2", inputDTypes[inputIdx], inputFormats[inputIdx],
                                                  inputShapes[inputIdx].GetDims());
     ++inputIdx;
+
     inputs.rBias = nullptr;
-    if (patternNameStr.find(PATTERN_BIAS) != std::string::npos) {
-        inputs.rBias = replaceGraphBuilder.CreateInput(inputIdx, "bias", inputDTypes[inputIdx], inputFormats[inputIdx],
-                                                       inputShapes[inputIdx].GetDims());
-        ++inputIdx;
-    }
     inputs.rX1Scale = nullptr;
-    if (patternNameStr.find(PATTERN_X1_SCALE) != std::string::npos) {
-        inputs.rX1Scale = replaceGraphBuilder.CreateInput(inputIdx, "x1_scale", inputDTypes[inputIdx],
-                                                          inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
-        ++inputIdx;
-    }
     inputs.rX2Scale = nullptr;
-    if (patternNameStr.find(PATTERN_X2_SCALE) != std::string::npos) {
-        inputs.rX2Scale = replaceGraphBuilder.CreateInput(inputIdx, "x2_scale", inputDTypes[inputIdx],
-                                                          inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
-        ++inputIdx;
-    }
     inputs.rCommScale = nullptr;
-    if (patternNameStr.find(PATTERN_COMM_SCALE) != std::string::npos) {
-        inputs.rCommScale = replaceGraphBuilder.CreateInput(inputIdx, "comm_scale", inputDTypes[inputIdx],
-                                                            inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
-        ++inputIdx;
-    }
     inputs.rX1Offset = nullptr;
-    if (patternNameStr.find(PATTERN_X1_OFFSET) != std::string::npos) {
-        inputs.rX1Offset = replaceGraphBuilder.CreateInput(inputIdx, "x1_offset", inputDTypes[inputIdx],
-                                                           inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
-        ++inputIdx;
-    }
     inputs.rX2Offset = nullptr;
-    if (patternNameStr.find(PATTERN_X2_OFFSET) != std::string::npos) {
-        inputs.rX2Offset = replaceGraphBuilder.CreateInput(inputIdx, "x2_offset", inputDTypes[inputIdx],
-                                                           inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
+    for (int32_t irIndex : connectedOptionalIrs) {
+        auto holder = replaceGraphBuilder.CreateInput(inputIdx, IrInputName(irIndex), inputDTypes[inputIdx],
+                                                      inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
+        switch (irIndex) {
+            case IR_BIAS:
+                inputs.rBias = holder;
+                break;
+            case IR_X1_SCALE:
+                inputs.rX1Scale = holder;
+                break;
+            case IR_X2_SCALE:
+                inputs.rX2Scale = holder;
+                break;
+            case IR_COMM_SCALE:
+                inputs.rCommScale = holder;
+                break;
+            case IR_X1_OFFSET:
+                inputs.rX1Offset = holder;
+                break;
+            case IR_X2_OFFSET:
+                inputs.rX2Offset = holder;
+                break;
+            default:
+                break;
+        }
+        ++inputIdx;
     }
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "End to create inputs in Replacement.");
     return true;
@@ -448,7 +454,7 @@ static ge::fusion::GraphUniqPtr
 BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
                   const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: enter");
+    OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Start to build replaceGraph EsGraphBuilder.");
     auto replaceGraphBuilder = ge::es::EsGraphBuilder("replacement");
 
     ReplaceGraphInputs inputTensors;
@@ -456,14 +462,13 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "CreateReplaceGraphInputs failed.");
         return nullptr;
     }
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: inputs ok");
 
     ge::GNode mc2Node;
     if (!GetCapturedMc2Node(matchResult, mc2Node)) {
         return nullptr;
     }
 
-    // 与 MatmulAlltoAll fusion 一致：attr 全部用局部变量，不经过额外 struct
+    // 与 MatmulAlltoAll fusion 一致：attr 全部用局部变量
     ge::AscendString group;
     OP_LOGE_IF(mc2Node.GetAttr("group", group) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
                "Get Attr group failed.");
@@ -521,20 +526,13 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
     bool alltoallOutFlag = true;
     OP_LOGE_IF(mc2Node.GetAttr("alltoall_out_flag", alltoallOutFlag) != ge::GRAPH_SUCCESS, nullptr,
                FUSION_PASS_NAME.c_str(), "Get Attr alltoall_out_flag failed.");
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: attrs ok, alltoall_out_flag=%d",
-              static_cast<int>(alltoallOutFlag));
 
     auto mc2 = ge::es::AlltoAllMatmul(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
                                       inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
                                       inputTensors.rX2Offset, group.GetString(), worldSize, all2allAxes, yDtype,
                                       x1QuantMode, x2QuantMode, commQuantMode, x1QuantDtype, commQuantDtype,
                                       transposeX1, transposeX2, groupSize, commMode.GetString(), alltoallOutFlag);
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after AlltoAllMatmul");
-
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: before BuildAndReset");
-    auto replaceGraph = replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after BuildAndReset, graph=%p", replaceGraph.get());
-    return replaceGraph;
+    return replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
 }
 
 static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
@@ -636,7 +634,6 @@ ge::fusion::GraphUniqPtr AllToAllMatmulTransposeA5FusionPass::Replacement(
 
     // build replace graph after removing Transpose nodes
     ge::fusion::GraphUniqPtr replaceGraph = BuildReplaceGraph(subgraphInputs, matchResult);
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: after BuildReplaceGraph, graph=%p", replaceGraph.get());
     if (replaceGraph == nullptr) {
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph failed in Replacement.");
         return nullptr;
@@ -645,7 +642,6 @@ ge::fusion::GraphUniqPtr AllToAllMatmulTransposeA5FusionPass::Replacement(
         OPS_LOG_E(FUSION_PASS_NAME.c_str(), "InferShapeReplaceGraph failed in Replacement.");
         return nullptr;
     }
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Replacement: InferShape ok, about to return");
 
     return std::move(replaceGraph);
 }
