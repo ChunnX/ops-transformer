@@ -1103,10 +1103,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(
         if constexpr (IS_BATCH_CONSISTENCY) {
             SetFlag<HardEvent::MTE3_V>(v0PairMte3ToVId);
             WaitFlag<HardEvent::MTE3_V>(v0PairMte3ToVId);
-        } else {
-            CrossCoreSetFlag<0, PIPE_MTE3>(15);
-            CrossCoreWaitFlag<0, PIPE_MTE3>(15);
         }
+        CrossCoreSetFlag<0, PIPE_MTE3>(15);
+        CrossCoreWaitFlag<0, PIPE_MTE3>(15);
     }
 
     if constexpr (IS_SPLIT_G) {
