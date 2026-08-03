@@ -80,17 +80,17 @@ def mqsmla(testcase_files):
             lse_res, lse_pct = result_compare_method.check_result(cpu_lse, npu_lse)
             min_fulfill = min(min_fulfill, lse_pct)
         
-        if attn_result != "PASS":
+        if attn_result != "Pass":
             fail_info.append(f"MAIN_FAILED:{attn_result}")
         # LSE失败记录
-        if lse_res is not None and lse_res != "PASS":
+        if lse_res is not None and lse_res != "Pass":
             fail_info.append(f"LSE_FAILED:{lse_res}")
 
         if fail_info:
             result = "; ".join(fail_info)
             fulfill_percent = min_fulfill
         else:
-            result = "PASS"
+            result = "Pass"
             fulfill_percent = min_fulfill
     except Exception as e:
         npu_error_msg = str(e)

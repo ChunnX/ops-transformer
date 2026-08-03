@@ -76,18 +76,18 @@ def mqsmla_aclgraph(testcase_files):
         fail_info = []
         min_fulfill = attn_pct
 
-        if attn_result != "PASS":
+        if attn_result != "Pass":
             fail_info.append(f"MAIN_FAILED:{attn_result}")
 
         if test_data['params'].get('return_softmax_lse'):
             print("return_softmax_lse is true!!!")
             lse_result, lse_pct = result_compare_method.check_result(cpu_lse, npu_lse)
             min_fulfill = min(min_fulfill, lse_pct)
-            if lse_result != "PASS":
+            if lse_result != "Pass":
                 fail_info.append(f"LSE_FAILED:{lse_result}")
 
         fulfill_percent = min_fulfill
-        result = "; ".join(fail_info) if fail_info else "PASS"
+        result = "; ".join(fail_info) if fail_info else "Pass"
 
     except Exception as e:
         npu_error_msg = str(e)
