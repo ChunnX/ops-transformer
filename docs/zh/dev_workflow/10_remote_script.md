@@ -12,21 +12,28 @@ scripts/dev_workflow/remote_operator.sh
 
 ## 首次准备
 
+仓库可以克隆到任意允许使用的目录，不要假设它一定位于当前登录用户的 `$HOME`：
+
 ```bash
-git clone https://gitcode.com/xwqtju/ops-transformer.git "$HOME/ops-transformer"
-cd "$HOME/ops-transformer"
+git clone https://gitcode.com/xwqtju/ops-transformer.git "/home/<user>/cann/ops-transformer"
+cd "/home/<user>/cann/ops-transformer"
 scripts/dev_workflow/remote_operator.sh --help
 ```
 
-已克隆时执行 `git pull --ff-only`。然后设置本次参数：
+已克隆时，先进入实际仓库再执行 `git pull --ff-only origin master`。然后从 Git 自动获得绝对路径：
 
 ```bash
-export OPS_SCRIPT="$HOME/ops-transformer/scripts/dev_workflow/remote_operator.sh"
-export OPS_WORKSPACE="$HOME/ops-workspace"
+export OPS_REPO="$(git rev-parse --show-toplevel)"
+export OPS_BASE="$(dirname "$OPS_REPO")"
+export OPS_SCRIPT="$OPS_REPO/scripts/dev_workflow/remote_operator.sh"
+export OPS_WORKSPACE="$OPS_BASE/ops-workspace"
+export OPS_INSTALL_BASE="$OPS_BASE/cann-operator-dev"
 export OPS_OPERATOR="<operator_name>"
 export OPS_COMMIT="<full-commit-id>"
 export OPS_ARTIFACT_DIR="$OPS_WORKSPACE/artifacts/$OPS_OPERATOR/$OPS_COMMIT"
 ```
+
+例如以 `root` 登录时 `$HOME` 是 `/root`，但仓库可能位于 `/home/x00961093/cann/ops-transformer`。此时 `$HOME/ops-transformer` 是错误路径，应使用 `git rev-parse --show-toplevel`。
 
 ## 1. 环境检查
 
@@ -34,7 +41,7 @@ export OPS_ARTIFACT_DIR="$OPS_WORKSPACE/artifacts/$OPS_OPERATOR/$OPS_COMMIT"
 "$OPS_SCRIPT" check-env --output-dir "$OPS_WORKSPACE/environment"
 ```
 
-CANN 环境脚本不在默认路径时增加 `--cann-env "<actual-set-env-path>"`。报告保存在 `~/ops-workspace/environment/remote_environment.txt`。
+CANN 环境脚本不在默认路径时增加 `--cann-env "<actual-set-env-path>"`。报告保存在 `$OPS_WORKSPACE/environment/remote_environment.txt`。
 
 ## 2. 校验与安装算子包
 
@@ -43,7 +50,7 @@ CANN 环境脚本不在默认路径时增加 `--cann-env "<actual-set-env-path>"
 
 "$OPS_SCRIPT" install \
   --artifact-dir "$OPS_ARTIFACT_DIR" \
-  --install-root "$HOME/cann-operator-dev/$OPS_OPERATOR/$OPS_COMMIT"
+  --install-root "$OPS_INSTALL_BASE/$OPS_OPERATOR/$OPS_COMMIT"
 ```
 
 存在多个 `.run` 包时增加 `--package "<exact-package-name>.run"`。当前安装包不支持 `--install-path` 时省略 `--install-root`，并参考 [安装说明](05_remote_install_operator.md)。
@@ -53,15 +60,15 @@ CANN 环境脚本不在默认路径时增加 `--cann-env "<actual-set-env-path>"
 首次部署或接口/ABI 变化时执行：
 
 ```bash
-cd "$HOME/ops-transformer"
+cd "$OPS_REPO"
 git fetch origin --prune
 git switch --detach "$OPS_COMMIT"
 
-find "$HOME/cann-operator-dev/$OPS_OPERATOR/$OPS_COMMIT" -name set_env.bash -print
+find "$OPS_INSTALL_BASE/$OPS_OPERATOR/$OPS_COMMIT" -name set_env.bash -print
 export OPS_CUSTOM_ENV="<path-returned-above>"
 
 "$OPS_SCRIPT" build \
-  --source-dir "$HOME/ops-transformer" \
+  --source-dir "$OPS_REPO" \
   --artifact-dir "$OPS_ARTIFACT_DIR" \
   --custom-env "$OPS_CUSTOM_ENV" \
   -- bash build.sh --run_example "$OPS_OPERATOR" eager cust --vendor_name=xwqtju_dev

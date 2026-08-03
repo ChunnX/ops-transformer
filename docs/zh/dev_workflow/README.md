@@ -33,16 +33,25 @@
 下列变量在文档中反复使用。每次打开新 shell 后先根据实际环境设置：
 
 ```bash
-export OPS_REPO="$HOME/ops-transformer"
+cd "<实际的ops-transformer仓库路径>"
+export OPS_REPO="$(git rev-parse --show-toplevel)"
+export OPS_BASE="$(dirname "$OPS_REPO")"
+export OPS_SCRIPT="$OPS_REPO/scripts/dev_workflow/remote_operator.sh"
+export OPS_WORKSPACE="$OPS_BASE/ops-workspace"
+export OPS_INSTALL_BASE="$OPS_BASE/cann-operator-dev"
+
 export OPS_OPERATOR="<operator_name>"
 export OPS_SOC="ascend910b"
 export OPS_VENDOR="xwqtju_dev"
 export OPS_REMOTE="<user>@<remote-host>"
-export OPS_REMOTE_ROOT="$HOME/ops-workspace"
+export OPS_REMOTE_ROOT="<远端ops-workspace绝对路径>"
 export OPS_CANN_ENV="/usr/local/Ascend/cann/set_env.sh"
 ```
 
-`OPS_REMOTE_ROOT` 在本地 shell 中应当填远端的绝对路径，例如 `/home/user/ops-workspace`，不要依赖远端 shell 对 `$HOME` 的二次展开。
+不要假设仓库一定在 `$HOME/ops-transformer`。尤其是以 `root` 登录但仓库位于普通用户目录时，`$HOME` 会解析为 `/root`。应先进入实际仓库，再使用 `git rev-parse --show-toplevel` 获取路径。
+
+`OPS_REMOTE_ROOT` 在本地 shell 中应当填远端的绝对路径，例如 `/home/user/cann/ops-workspace`，不要依赖远端 shell 对 `$HOME` 的二次展开。
+
 
 ## 不可混用的三类内容
 

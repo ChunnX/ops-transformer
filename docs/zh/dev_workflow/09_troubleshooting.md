@@ -1,5 +1,28 @@
 # 09 常见问题
 
+## 脚本存在，但使用 `$HOME/ops-transformer` 时提示不存在
+
+`$HOME` 属于当前登录用户，不代表仓库所在目录。例如以 `root` 登录时 `$HOME` 为 `/root`，但仓库可能位于 `/home/<user>/cann/ops-transformer`。
+
+先进入实际仓库，然后从 Git 自动解析路径：
+
+```bash
+cd "/home/<user>/cann/ops-transformer"
+export OPS_REPO="$(git rev-parse --show-toplevel)"
+export OPS_BASE="$(dirname "$OPS_REPO")"
+export OPS_SCRIPT="$OPS_REPO/scripts/dev_workflow/remote_operator.sh"
+export OPS_WORKSPACE="$OPS_BASE/ops-workspace"
+
+"$OPS_SCRIPT" check-env --output-dir "$OPS_WORKSPACE/environment"
+cat "$OPS_WORKSPACE/environment/remote_environment.txt"
+```
+
+若仓库位于 `/home/x00961093/cann/ops-transformer`，报告将位于：
+
+```text
+/home/x00961093/cann/ops-workspace/environment/remote_environment.txt
+```
+
 ## `.run` 包无法在远端安装或运行
 
 依次检查：
@@ -65,7 +88,7 @@ ldd <runner-path> | grep 'not found'
 
 ```bash
 export OPS_COMMIT="$(cat "$OPS_ARTIFACT_DIR/git-commit.txt")"
-cd "$HOME/ops-transformer"
+cd "$OPS_REPO"
 git fetch origin --prune
 git switch --detach "$OPS_COMMIT"
 test "$(git rev-parse HEAD)" = "$OPS_COMMIT"
