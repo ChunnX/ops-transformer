@@ -1086,26 +1086,26 @@ class TestBSAMxfp4Golden(TestCase):
 
     # 验证: B=2 首个 B>1 BSND; 批间步幅累加 × N=2 stride 同时生效(非退化)。
     @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bsnd_mha_dense_b2_qn2_kvn2_g1_qs256_kvs1024_d128(self, device="npu"):
+    def test_bsa_mxfp4_bsnd_mha_dense_b2_qn2_kvn2_g1_qs256_kvs16385_d128(self, device="npu"):
         """④ BSND multi-batch: b=2, n1=n2=2/g1, s1=256 + s2=1024
         (strideKVDataB_=S*N2*D / strideQDataB_=S1*N1*D 批间 offset 累加, N=2 stride 同步)。"""
-        self._run(b=2, n1=2, n2=2, g=1, s1=256, s2=1024, qk_d=128,
+        self._run(b=2, n1=2, n2=2, g=1, s1=256, s2=16385, qk_d=128,
                   block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
 
     # 验证: B=8(最大 batch) + g=2 + qHeadMul=4 + kvHeadMul=2 三者叠加, 暴露 batch-offset × stride × 头映射 交叉。
     @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bsnd_gqa_dense_b8_qn4_kvn2_g2_qs128_kvs512_d128(self, device="npu"):
+    def test_bsa_mxfp4_bsnd_gqa_dense_b8_qn4_kvn2_g2_qs128_kvs8192_d128(self, device="npu"):
         """④ BSND 多 batch 小形状: b=8, n1=4/n2=2/g2(q0,q1->kv0; q2,q3->kv1),
         s1=128 + s2=512 四 kv tile(8 batch offset 累加 + kvHeadMul=2 + qHeadMul=4 同时)。"""
-        self._run(b=8, n1=4, n2=2, g=2, s1=128, s2=512, qk_d=128,
+        self._run(b=8, n1=4, n2=2, g=2, s1=128, s2=8192, qk_d=128,
                   block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
 
-    # 验证: 首个 BSND sparse; sparse 块索引 gather 路径下 kvHeadMul=2 stride 生效(s2=1024/8 tile 选择性 gather + rescale)。
+    # 验证: 首个 BSND sparse; sparse 块索引 gather 路径下 kvHeadMul=2 stride 生效(s2=4096/8 tile 选择性 gather + rescale)。
     @SkipIfNotGteCANNVersion("9.0.0")
-    def test_bsa_mxfp4_bsnd_mha_sparse_b1_qn2_kvn2_g1_qs128_kvs1024_d128(self, device="npu"):
+    def test_bsa_mxfp4_bsnd_mha_sparse_b1_qn2_kvn2_g1_qs128_kvs4096_d128(self, device="npu"):
         """⑤ BSND sparse mask N=2: 首个 sparse BSND 用例, s2=1024/8 kv tile 稀疏块选择
         (gather stride hack 在 sparse 块索引路径, 非仅 dense 顺序路径, kvHeadMul=2 + rescale)。"""
-        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=1024, qk_d=128,
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=4096, qk_d=128,
                   block_shape=[128, 128], mask_kind='sparse', input_layout='BSND')
 
 
