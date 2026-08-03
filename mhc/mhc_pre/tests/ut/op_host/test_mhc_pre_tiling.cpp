@@ -1860,8 +1860,7 @@ TEST_F(MhcPreTiling, Ut_Check_MK_Fallback_SmallK)
 
 TEST_F(MhcPreTiling, Ut_Check_MK_DeterministicLevels)
 {
-    // Ordinary deterministic and strong-consistency modes keep the fixed-order
-    // M-K reduction. Level 3 is rejected by CanUseMk to match sinkhorn.
+    // Levels represented by the legacy UT context keep the fixed-order M-K reduction.
     CheckMkGeneralizedTiling(256U, 4U, 5120U, 2, 1);
     CheckMkGeneralizedTiling(1024U, 4U, 5120U, 2, 1);
     CheckMkGeneralizedTiling(256U, 4U, 5120U, 2, 2);

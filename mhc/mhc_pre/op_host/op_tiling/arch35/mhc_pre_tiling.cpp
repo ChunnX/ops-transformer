@@ -640,7 +640,7 @@ bool MhcPreBaseTiling::CanUseMk() const
     // Each M-K AIC owns one M tile; reject shapes that cannot be covered by all active AICs.
     uint64_t maxCoveredM = activeCoreNum * M_K_M_L1_MAX_SIZE;
     return supportedN && totalLength_ <= M_K_MAX_VALIDATED_TOTAL_LENGTH && totalLength_ <= maxCoveredM &&
-           matK_ >= M_K_MIN_MAT_K && context_->GetDeterministicLevel() != BATCH_CONSISTENCY_LEVEL;
+           matK_ >= M_K_MIN_MAT_K;
 }
 
 uint32_t MhcPreBaseTiling::SelectMkStage() const
@@ -652,8 +652,10 @@ uint32_t MhcPreBaseTiling::SelectMkStage() const
     return useL1Stage ? M_K_USE_L1_STAGE : M_K_USE_GM_STAGE;
 }
 
-void MhcPreBaseTiling::FillBsTilingData()
+ge::graphStatus MhcPreBaseTiling::CalculateBsTiling()
 {
+    usedCoreNum_ = blockDim_;
+    scaleMean_ = 1.0f / static_cast<float>(matK_);
     auto roundUp = [](uint64_t value, uint64_t align) -> uint32_t {
         return static_cast<uint32_t>(((value + align - 1U) / align) * align);
     };
@@ -662,14 +664,32 @@ void MhcPreBaseTiling::FillBsTilingData()
     tilingData_.set_kUbSize(BASIC_API_K_UB_SIZE);
     tilingData_.set_kL1Size(BASIC_API_K_L1_SIZE);
     tilingData_.set_fusionAlign(fusionAlign);
+
+    chunkTSize_ = (((totalLength_ + blockDim_ - 1U) / blockDim_) + CHUNK_T_CALC_FACTOR - 1U) /
+                  CHUNK_T_CALC_FACTOR * CHUNK_T_CALC_FACTOR;
+    chunkTSize_ = std::min(chunkTSize_, CHUNK_T_MAX);
+    v1ChunkDSize_ = V1_CHUNK_D_SIZE;
+
+    // BS user workspace layout:
+    //   [0, xStageWorkspaceSize): two FP32 X slots per AIC, [2, blockDim, chunkTSize, 256].
+    //   [xStageWorkspaceSize, ...): compact FP32 hMix [M, fusionSize], only when outFlag is false.
+    // SYSTEM_WORKSPACE follows the user workspace and is reserved for the runtime.
+    size_t xStageWorkspaceSize = static_cast<size_t>(chunkTSize_) * BASIC_API_K_UB_SIZE *
+                                 BASIC_API_X_STAGE_BUFFER_COUNT * sizeof(float) * blockDim_;
+    size_t hMixWorkspaceSize =
+        outFlag_ ? 0U : static_cast<size_t>(matM_) * static_cast<size_t>(matN_) * sizeof(float);
+    workspaceSize_ = xStageWorkspaceSize + hMixWorkspaceSize + SYSTEM_WORKSPACE;
+    return CheckUbBufferSize();
 }
 
-void MhcPreBaseTiling::FillMkTilingData()
+ge::graphStatus MhcPreBaseTiling::CalculateMkTiling()
 {
     auto ceilDiv = [](uint64_t value, uint64_t divisor) -> uint64_t { return (value + divisor - 1U) / divisor; };
     auto roundUp = [&ceilDiv](uint64_t value, uint64_t align) -> uint64_t { return ceilDiv(value, align) * align; };
 
     uint64_t activeCoreNum = std::min<uint64_t>(blockDim_, aivBlockDim_ / 2U);
+    usedCoreNum_ = static_cast<uint32_t>(activeCoreNum);
+    scaleMean_ = 1.0f / static_cast<float>(matK_);
     uint64_t minMDim = std::min<uint64_t>(activeCoreNum, ceilDiv(totalLength_, M_K_M_L1_MAX_SIZE));
     uint64_t kDim = activeCoreNum / minMDim;
     // Fill otherwise idle AIC slots without reducing K parallelism. For example,
@@ -713,6 +733,13 @@ void MhcPreBaseTiling::FillMkTilingData()
     tilingData_.set_stage2RowsPerCore(static_cast<uint32_t>(stage2RowsPerCore));
 
     uint64_t mmWorkspaceGroupK = useSequentialKPartials ? workspaceGroupK : actualKBlockNum;
+    // M-K user workspace layout, with every region boundary aligned to M_K_WORKSPACE_ALIGN:
+    //   [mmOffset, rmsOffset): FP32 matmul partials [mmWorkspaceGroupK, M, fusionSize].
+    //   [rmsOffset, finalOffset): FP32 RMS partials [actualKBlockNum, M].
+    //   [finalOffset, ...): optional ping-pong X staging
+    //       [mDim * actualKBlockNum, 2, mL1Size, kL1Size], used only by the GM staging path.
+    // Part2 reads the first two regions into UB; its reduced hMix stays in UB or goes to the optional output.
+    // SYSTEM_WORKSPACE follows the user workspace and is reserved for the runtime.
     size_t partialMmBytes = static_cast<size_t>(mmWorkspaceGroupK) * totalLength_ * matN_ * sizeof(float);
     size_t partialRmsBytes = static_cast<size_t>(actualKBlockNum) * totalLength_ * sizeof(float);
     size_t mmOffset = 0;
@@ -721,13 +748,45 @@ void MhcPreBaseTiling::FillMkTilingData()
     tilingData_.set_mkWorkspaceMmOffset(static_cast<uint32_t>(mmOffset));
     tilingData_.set_mkWorkspaceRmsOffset(static_cast<uint32_t>(rmsOffset));
     tilingData_.set_mkWorkspaceFinalOffset(static_cast<uint32_t>(finalOffset));
-    tilingData_.set_mkUseGmStage(SelectMkStage());
+    uint32_t mkStage = SelectMkStage();
+    tilingData_.set_mkUseGmStage(mkStage);
+
+    chunkTSize_ = static_cast<uint32_t>(mL1Size);
+    v1ChunkDSize_ = V1_CHUNK_D_SIZE;
+    size_t xStageBytes = mkStage == M_K_USE_L1_STAGE ?
+                             0U :
+                             static_cast<size_t>(mDim) * actualKBlockNum * BASIC_API_X_STAGE_BUFFER_COUNT *
+                                 mL1Size * kL1Size * sizeof(float);
+    workspaceSize_ = finalOffset + xStageBytes + SYSTEM_WORKSPACE;
+    return CheckUbBufferSize();
+}
+
+ge::graphStatus MhcPreBaseTiling::CalculateNdTiling()
+{
+    usedCoreNum_ = blockDim_;
+    scaleMean_ = 1.0f / static_cast<float>(matK_);
+    chunkTSize_ = DECODE_CHUNK_T_SIZE;
+    v1ChunkDSize_ = V1_CHUNK_D_SIZE;
+
+    // ND user workspace layout:
+    //   [0, xFloatWorkspaceSize): complete FP32 X [M, K], padded to DECODE_WORKSPACE_ALIGN.
+    //   [xFloatWorkspaceSize, ...): FP32 matmul partials [mmResBlockNum, M, fusionSize].
+    // AIV reduces the second region in UB, so no separate final hMix workspace is required.
+    // SYSTEM_WORKSPACE follows the user workspace and is reserved for the runtime.
+    size_t xFloatWorkspaceSizeRaw = static_cast<size_t>(matM_) * static_cast<size_t>(matK_) * sizeof(float);
+    size_t xFloatWorkspaceSize =
+        (xFloatWorkspaceSizeRaw + DECODE_WORKSPACE_ALIGN - 1U) / DECODE_WORKSPACE_ALIGN * DECODE_WORKSPACE_ALIGN;
+    uint64_t chunkNd = (matK_ + blockDim_ - 1U) / blockDim_;
+    uint64_t mmResBlockNum = (matK_ + chunkNd - 1U) / chunkNd;
+    size_t mmResWorkspaceSize = static_cast<size_t>(mmResBlockNum) * static_cast<size_t>(matM_) *
+                                static_cast<size_t>(matN_) * sizeof(float);
+    workspaceSize_ = xFloatWorkspaceSize + mmResWorkspaceSize + SYSTEM_WORKSPACE;
+    return CheckUbBufferSize();
 }
 
 void MhcPreBaseTiling::FillTilingData()
 {
-    uint32_t coreNum = tilingMode_ == TilingMode::SPLIT_M_K ? std::min(blockDim_, aivBlockDim_ / 2U) : blockDim_;
-    tilingData_.set_coreNum(coreNum);
+    tilingData_.set_coreNum(usedCoreNum_);
     tilingData_.set_totalLength(totalLength_);
     tilingData_.set_nD(matK_);
     tilingData_.set_fusionSize(matN_);
@@ -742,82 +801,31 @@ void MhcPreBaseTiling::FillTilingData()
     tilingData_.set_hasResi(hasResi_);
     tilingData_.set_implMode(implMode_);
 
-    float scaleMean = 1.0f / static_cast<float>(matK_);
-    tilingData_.set_scaleMean(scaleMean);
-
-    if (tilingMode_ == TilingMode::SPLIT_BS) {
-        FillBsTilingData();
-    } else if (tilingMode_ == TilingMode::SPLIT_M_K) {
-        FillMkTilingData();
-    }
+    tilingData_.set_scaleMean(scaleMean_);
 }
 
 ge::graphStatus MhcPreBaseTiling::TilingProcess()
 {
-    // ND remains available for small-K and shape-specific fallbacks. SPLIT_BS
-    // is the low-level implementation; the legacy high-level kernel is gone.
-    tilingMode_ = (totalLength_ <= DECODE_BS_THRESHOLD) ? TilingMode::SPLIT_ND : TilingMode::SPLIT_BS;
-    if (CanUseMk()) {
+    // Batch-consistency level 3 requires the BS accumulation order. Other modes prefer M-K when the shape is
+    // supported, then fall back to the ND/BS threshold policy.
+    if (context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL) {
+        tilingMode_ = TilingMode::SPLIT_BS;
+    } else if (CanUseMk()) {
         tilingMode_ = TilingMode::SPLIT_M_K;
-        FillMkTilingData();
-    }
-
-    if (tilingMode_ == TilingMode::SPLIT_M_K) {
-        chunkTSize_ = tilingData_.get_mL1Size();
-        v1ChunkDSize_ = V1_CHUNK_D_SIZE;
-    } else if (tilingMode_ == TilingMode::SPLIT_ND) {
-        chunkTSize_ = DECODE_CHUNK_T_SIZE;
-        v1ChunkDSize_ = V1_CHUNK_D_SIZE;
     } else {
-        chunkTSize_ = (((totalLength_ + blockDim_ - 1) / blockDim_) + CHUNK_T_CALC_FACTOR - 1) / CHUNK_T_CALC_FACTOR *
-                      CHUNK_T_CALC_FACTOR;
-        if (chunkTSize_ > CHUNK_T_MAX) {
-            chunkTSize_ = CHUNK_T_MAX;
-        }
-        v1ChunkDSize_ = V1_CHUNK_D_SIZE;
+        tilingMode_ = totalLength_ <= DECODE_BS_THRESHOLD ? TilingMode::SPLIT_ND : TilingMode::SPLIT_BS;
     }
 
-    size_t userWorkspaceSize;
-    size_t systemWorkspaceSize = SYSTEM_WORKSPACE;
-
-    if (tilingMode_ == TilingMode::SPLIT_M_K) {
-        size_t mkXStageBytes = tilingData_.get_mkUseGmStage() == 0U ?
-                                   0U :
-                                   static_cast<size_t>(tilingData_.get_cubeBlockDimM()) *
-                                       tilingData_.get_cubeBlockDimK() * 2U * tilingData_.get_mL1Size() *
-                                       tilingData_.get_kL1Size() * sizeof(float);
-        userWorkspaceSize = static_cast<size_t>(tilingData_.get_mkWorkspaceFinalOffset()) + mkXStageBytes;
-    } else if (tilingMode_ == TilingMode::SPLIT_ND) {
-        size_t xFloatWorkspaceSizeRaw = static_cast<size_t>(matM_) * static_cast<size_t>(matK_) * sizeof(float);
-        size_t xFloatWorkspaceSize =
-            (xFloatWorkspaceSizeRaw + DECODE_WORKSPACE_ALIGN - 1U) / DECODE_WORKSPACE_ALIGN * DECODE_WORKSPACE_ALIGN;
-        size_t mmResWorkspaceSize = 0;
-
-        uint64_t chunkNd = (matK_ + blockDim_ - 1) / blockDim_;
-        uint64_t mmResBlockNum = (matK_ + chunkNd - 1) / chunkNd;
-        mmResWorkspaceSize = static_cast<size_t>(mmResBlockNum) * static_cast<size_t>(matM_) *
-                             static_cast<size_t>(matN_) * sizeof(float);
-
-        userWorkspaceSize = xFloatWorkspaceSize + mmResWorkspaceSize;
-    } else {
-        // BS stages two X tiles per AIC. When hMix is not an optional output,
-        // the kernel stores the complete compact [M, fusionSize] result after
-        // the staging area and reads it back during vector postprocessing.
-        // Size both regions from the actual tiling instead of the legacy fixed
-        // allocation, which was too small for long M and corrupted system workspace.
-        size_t xStageWorkspaceSize = static_cast<size_t>(chunkTSize_) * BASIC_API_K_UB_SIZE *
-                                     BASIC_API_X_STAGE_BUFFER_COUNT * sizeof(float) * blockDim_;
-        size_t hMixWorkspaceSize =
-            outFlag_ ? 0U : static_cast<size_t>(matM_) * static_cast<size_t>(matN_) * sizeof(float);
-        userWorkspaceSize = xStageWorkspaceSize + hMixWorkspaceSize;
+    switch (tilingMode_) {
+        case TilingMode::SPLIT_BS:
+            return CalculateBsTiling();
+        case TilingMode::SPLIT_ND:
+            return CalculateNdTiling();
+        case TilingMode::SPLIT_M_K:
+            return CalculateMkTiling();
+        default:
+            return ge::GRAPH_FAILED;
     }
-    workspaceSize_ = userWorkspaceSize + systemWorkspaceSize;
-
-    if (CheckUbBufferSize() != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-
-    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
