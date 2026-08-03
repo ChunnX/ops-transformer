@@ -20,6 +20,9 @@ import random
 import math
 import ast
 import cann_ops_transformer
+from qliv2_test_utils import restore_float8_block_fusion
+
+QUANT_MODE_MXFP4 = 5
 
 
 def test_qliv2_process(filepath, device_id=0):
@@ -33,11 +36,17 @@ def test_qliv2_process(filepath, device_id=0):
     print("执行用例：", filepath)
     torch_npu.npu.set_device(device_id)
 
-    if params[10] == "FLOAT8_E4M3FN":
+    quant_mode = test_data["quant_mode"]
+    if quant_mode == QUANT_MODE_MXFP4:
+        query = test_data["query"].view(torch.uint8).npu()
+        key = test_data["key"].view(torch.uint8).npu()
+        if "blockFusion" in test_data and test_data["blockFusion"] is not None:
+            blockFusion = test_data["blockFusion"].view(torch.uint8).npu()
+    elif params[10] == "FLOAT8_E4M3FN" or params[10] == torch.float8_e4m3fn:
         query = test_data["query"].to(dtype=torch.float8_e4m3fn).npu()
         key = test_data["key"].to(dtype=torch.float8_e4m3fn).npu()
         if "blockFusion" in test_data and test_data["blockFusion"] is not None:
-            blockFusion = test_data["blockFusion"].to(dtype=torch.float8_e4m3fn).npu()
+            blockFusion = restore_float8_block_fusion(test_data).npu()
     else:
         query = test_data["query"].npu()
         key = test_data["key"].npu()
@@ -97,7 +106,6 @@ def test_qliv2_process(filepath, device_id=0):
         block_table = test_data["block_table"].npu()
     else:
         block_table = None
-    quant_mode = test_data["quant_mode"]
     layout_query = test_data["layout_query"]
     layout_key = test_data["layout_key"]
     sparse_count = test_data["sparse_count"]
@@ -157,8 +165,15 @@ def test_qliv2_process(filepath, device_id=0):
     )
 
     torch.npu.synchronize()
-    npu_topk_value, npu_sort_order = npu_value.sort(dim=-1, descending=True)
-    npu_result = torch.gather(npu_result, dim=-1, index=npu_sort_order)
+    npu_topk_value = npu_value
+    if return_value:
+        if npu_topk_value.shape != npu_result.shape:
+            raise RuntimeError(
+                "sparse_values and sparse_indices must have the same shape when return_value=1, "
+                f"but got {tuple(npu_topk_value.shape)} and {tuple(npu_result.shape)}"
+            )
+        npu_topk_value, npu_sort_order = npu_topk_value.sort(dim=-1, descending=True)
+        npu_result = torch.gather(npu_result, dim=-1, index=npu_sort_order)
     return (
         cpu_result,
         npu_result,

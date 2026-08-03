@@ -19,6 +19,7 @@ import torch.nn as nn
 from torchair.configs.compiler_config import CompilerConfig
 import cann_ops_transformer
 import quant_lightning_indexer_v2_golden
+from qliv2_test_utils import restore_float8_block_fusion
 
 QUANT_MODE_MXFP4 = 5
 
@@ -95,7 +96,7 @@ def _qliv2_prepare_tensors_and_metadata(params, tensor_dict):
         query = tensor_dict["query"].to(dtype=torch.float8_e4m3fn).npu()
         key = tensor_dict["key"].to(dtype=torch.float8_e4m3fn).npu()
         if "blockFusion" in tensor_dict and tensor_dict["blockFusion"] is not None:
-            blockFusion = tensor_dict["blockFusion"].to(dtype=torch.float8_e4m3fn).npu()
+            blockFusion = restore_float8_block_fusion(tensor_dict).npu()
     else:
         query = tensor_dict["query"].npu()
         key = tensor_dict["key"].npu()

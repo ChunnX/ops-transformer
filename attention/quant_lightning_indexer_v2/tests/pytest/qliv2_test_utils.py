@@ -55,6 +55,27 @@ PARAM_NAMES = (
 )
 
 
+def restore_float8_block_fusion(tensor_dict):
+    """Restore packed float8 key/scale bytes without corrupting scale bit patterns."""
+    import torch
+
+    stored = tensor_dict.get("blockFusion")
+    if stored is None:
+        return None
+    if stored.dtype == torch.float8_e4m3fn:
+        return stored
+    if stored.dtype == torch.uint8:
+        return stored.contiguous().view(torch.float8_e4m3fn)
+
+    key = tensor_dict["key"].to(dtype=torch.float8_e4m3fn)
+    scale = tensor_dict["key_dequant_scale"].contiguous()
+    block_num = key.shape[0]
+    key_bytes = key.view(torch.uint8).reshape(block_num, -1)
+    scale_bytes = scale.view(torch.uint8).reshape(block_num, -1)
+    fused_bytes = torch.cat((key_bytes, scale_bytes), dim=1)
+    return fused_bytes.view(torch.float8_e4m3fn)
+
+
 def ensure_comparison_passed(
     case_name,
     result,
