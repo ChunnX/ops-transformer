@@ -25,7 +25,8 @@ NPU 调用参考 test_pv_systematic.py: cann_ops_transformer.ops.block_sparse_at
 注: 本文件盲写(无 NPU 环境)。已据 aclnnBlockSparseAttentionV3.md (L678-684) 核实:
   - quantMode=2 仅 Ascend 950PR/950DT 支持; blockShapeX 仅 64/128; D 仅 64/128;
     不支持 attenMask/PagedAttention/softmaxLse (故 softmax_lse_flag=False, 只比 out 不比 lse)。
-  - e8m0 形状与 doc L46-64 一致: q/k [B,N,S,D//64,2]、v [B,N2,S2//64,D,2], dtype float8_e8m0fnu。
+  - e8m0 形状与 doc L46-64 一致: q/k [B,N,S,D//64,2]、v [B,N2,ceil(S2/64),D,2], dtype float8_e8m0fnu
+    (ceil(S2/32) 为奇时 _e8m0_v_to_v3 先 pad 1 个 e8m0=127 block, 对齐 qfa golden L551-558)。
   - NPU 调用签名经 test_pv_systematic.py + test_verify_pv_correctness.py 双重核对一致。
   - qfa dtype 流已逐行核对(flash_attention_cpu_golden.py L685-774): S=fp16, P_eff=fp16(量化网格在
     fp16 命中), sum(P)/PV=fp32(P_fp32=P_eff_s.float())。本 golden 默认 s_dtype='fp16' 对齐之。
@@ -646,8 +647,16 @@ def _e8m0_qk_to_v3(e8m0_uint8):
 
 
 def _e8m0_v_to_v3(e8m0_uint8):
-    """v e8m0 [B,N2,S2//32,D] -> [B,N2,S2//64,D,2] (连续配对 + 2 维挪到 D 后)。"""
+    """v e8m0 [B,N2,ceil(S2/32),D] -> [B,N2,ceil(S2/64),D,2] (连续配对 + 2 维挪到 D 后)。
+    ceil(S2/32) 为奇数时(s2 落在 (64k, 64k+32], 如 129/160/200)先 pad 1 个 e8m0=127
+    (scale=2^0=1.0) 的 32-block 再配对——对齐 qfa_mxfp4_golden.py L551-558;
+    host 校验 CeilDiv(maxKvSeqlen,64) 组(tiling ValidateMxfp4DequantScale),
+    pad 后形状恰好一致; pad 值必须 127(e8m0 无 0 值语义, 0 byte 在 NPU 侧是 NaN)。"""
     B, N2, nb, D = e8m0_uint8.shape
+    if nb % 2 != 0:
+        pad_block = torch.full((B, N2, 1, D), E8M0_BIAS, dtype=torch.uint8)
+        e8m0_uint8 = torch.cat([e8m0_uint8, pad_block], dim=2)
+        nb += 1
     return e8m0_uint8.reshape(B, N2, nb // 2, 2, D).permute(0, 1, 2, 4, 3).contiguous().view(torch.float8_e8m0fnu)
 
 
@@ -862,6 +871,14 @@ class TestBSAMxfp4Golden(TestCase):
     def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs1_kvs2048_d128(self, device="npu"):
         """② S1=1 长 KV (16 tile, online softmax rescale 路径)。"""
         self._run(b=1, n1=1, n2=1, g=1, s1=1, s2=2048, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn1_kvn1_g1_qs1_kvs129_d128(self, device="npu"):
+        """② S1=1 + 奇数 K 尾块 (gathered=129 -> 尾 tile kvsActBaseTile=1,
+           验证 Fixpipe mSize 偶数对齐 (nCur+1)>>1<<1;
+           v-scale ceil(129/32)=5 奇数 -> _e8m0_v_to_v3 pad 1 个 127 block)。"""
+        self._run(b=1, n1=1, n2=1, g=1, s1=1, s2=129, qk_d=128,
                   block_shape=[128, 128], mask_kind='dense')
 
     @SkipIfNotGteCANNVersion("9.0.0")
