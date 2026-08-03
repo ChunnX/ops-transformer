@@ -78,6 +78,10 @@ for params in ENABLED_PARAMS:
         "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", ["full"]),
         "ori_topk_length": params.get("ori_topk_length", [None]),
         "cmp_topk_length": params.get("cmp_topk_length", [None]),
+        "topk_value_mode": params.get("topk_value_mode", [1]),
+        "q_datarange": params.get("q_datarange", [None]),
+        "ori_kv_datarange": params.get("ori_kv_datarange", [None]),
+        "cmp_kv_datarange": params.get("cmp_kv_datarange", [None]),
     }
 
     param_names = list(param_values.keys())
