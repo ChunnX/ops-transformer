@@ -48,6 +48,7 @@ struct UndGenQkvRmsNormRopeCacheTilingData {
     float epsilon;
     float reciprocal;
     int64_t usedCoreNum;
+    int64_t formerCoreNum;
     int64_t blockFactor;
     int64_t tailBlockFactor;
     int64_t ubFactor;

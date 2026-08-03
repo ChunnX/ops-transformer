@@ -109,7 +109,7 @@
 | :--- | :--- |
 | OpDef / REG_OP / InferShape / InferDataType | 已完成 |
 | Tiling 参数解析与校验 | 已完成 |
-| Tiling 多核 / UB 切分 | **待实现**（见 `op_host/*_tiling.cpp` 的 TODO） |
+| Tiling 多核 / UB 切分 | 已完成（切分策略与 UB 划分见 `op_host/*_tiling.h` 注释） |
 | Kernel 计算实现 | **待实现**（见 `op_kernel/arch35/*_regbase.h` 的 TODO） |
 | aclnn L0/L2 接口 | 已完成 |
 | UT（infershape / tiling / aclnn / kernel 拉起） | 已完成 |

@@ -43,11 +43,12 @@ TILING_DATA_FIELD_DEF(int64_t, mropeSectionW);
 // ---- 标量参数 ----
 TILING_DATA_FIELD_DEF(float, epsilon);         // RMSNorm eps
 TILING_DATA_FIELD_DEF(float, reciprocal);      // 1 / D
-// ---- 切分结果（TODO: 由 DoOpTiling 的多核/UB 切分填写）----
+// ---- 切分结果 ----
 TILING_DATA_FIELD_DEF(int64_t, usedCoreNum);
-TILING_DATA_FIELD_DEF(int64_t, blockFactor);   // 每核处理的 token 数
-TILING_DATA_FIELD_DEF(int64_t, tailBlockFactor);
-TILING_DATA_FIELD_DEF(int64_t, ubFactor);      // 单次 UB 内处理的 token 数
+TILING_DATA_FIELD_DEF(int64_t, formerCoreNum);  // 前 formerCoreNum 个核多处理 1 个 token
+TILING_DATA_FIELD_DEF(int64_t, blockFactor);    // 前 formerCoreNum 个核的 token 数
+TILING_DATA_FIELD_DEF(int64_t, tailBlockFactor);// 其余核的 token 数
+TILING_DATA_FIELD_DEF(int64_t, ubFactor);       // 单次 UB 内处理的 token 数
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(UndGenQkvRmsNormRopeCache, UndGenQkvRmsNormRopeCacheTilingData)
@@ -102,6 +103,30 @@ constexpr int64_t MROPE_AXIS_NUM = 3;
 constexpr int64_t BF16_BYTES = 2;
 constexpr int64_t FLOAT32_BYTES = 4;
 constexpr int64_t DOUBLE_BUFFER = 2;
+constexpr int64_t BLOCK_ALIGN_BYTES = 32;
+constexpr int64_t WEIGHT_NUM = 4;           // und_q / und_k / gen_q / gen_k
+constexpr int64_t WEIGHT_VARIANT_NUM = 2;   // 按头展开的权重要 und / gen 各存一份
+constexpr int64_t REDUCE_TMP_BYTES = 4096;  // ReduceSum 的 sharedTmpBuffer 下限
+
+/* UB 划分（kernel 侧必须按同一套公式分配，改这里要同步改 kernel）
+ *
+ * 记 N = Hq+Hk+Hv、H2 = Hq+Hk（V 不参与 RMSNorm/RoPE）、D = headDim、u = ubFactor。
+ * CopyIn 按 tile 批量搬 u 个 token，计算与写出逐 token，因此计算区不随 u 变化。
+ *
+ * 计算区（TBuf，与 u 无关）:
+ *   wBf16Buf         WEIGHT_NUM * D * 2            4 个权重原始 bf16
+ *   wExpandBuf       2 * H2 * D * 4                und/gen 各一份按头展开的 float 权重，Init 建好
+ *   cosSinExpandBuf  H2 * D * 4                    合并后的 cos_sin 按头展开，每头 [cos(0:D/2)|sin(0:D/2)]
+ *   ropeTmpBuf       H2 * (D/2) * 4                RoPE 半宽中间量
+ *   qkvFp32Buf       N * D * 4                     单 token 的 Q/K/V float32
+ *   reduceTmpBuf     REDUCE_TMP_BYTES              ReduceSum sharedTmpBuffer
+ *   rmsInvBuf        align32(H2 * 4)               每头 rsqrt(mean+eps)
+ *
+ * 队列（随 u，均开 DoubleBuffer）:
+ *   qkvInQue    VECIN   2 * u * N * D * 2
+ *   cosSinInQue VECIN   2 * u * MROPE_AXIS_NUM * D * 4
+ *   outQue      VECOUT  2 * u * N * D * 2          UB 内按 [u*q | u*k | u*v] 分段，便于 q 一笔连续写出
+ */
 
 class UndGenQkvRmsNormRopeCacheTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:

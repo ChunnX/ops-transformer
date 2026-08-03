@@ -132,10 +132,14 @@ void RunTestWithConfig(const TestConfig& cfg)
     tilingData->mropeSectionW = cfg.mropeSection[2];
     tilingData->epsilon = 1e-6f;
     tilingData->reciprocal = 1.0f / static_cast<float>(HEAD_DIM);
-    // TODO(tiling): 切分实现后，这里改用 host tiling 产出的 usedCoreNum/blockFactor/ubFactor
-    tilingData->usedCoreNum = cfg.blockDim;
-    tilingData->blockFactor = CeilDiv(total, static_cast<int64_t>(cfg.blockDim));
-    tilingData->tailBlockFactor = total - tilingData->blockFactor * (cfg.blockDim - 1);
+    // 与 host CalBlockTiling 一致的余数分配：前 formerCoreNum 个核多处理 1 个 token
+    const int64_t usedCoreNum = std::min(static_cast<int64_t>(cfg.blockDim), total);
+    const int64_t baseFactor = total / usedCoreNum;
+    const int64_t formerCoreNum = total % usedCoreNum;
+    tilingData->usedCoreNum = usedCoreNum;
+    tilingData->formerCoreNum = formerCoreNum;
+    tilingData->blockFactor = formerCoreNum > 0 ? baseFactor + 1 : baseFactor;
+    tilingData->tailBlockFactor = baseFactor;
     tilingData->ubFactor = 1;
 
     ICPU_SET_TILING_KEY(0);
