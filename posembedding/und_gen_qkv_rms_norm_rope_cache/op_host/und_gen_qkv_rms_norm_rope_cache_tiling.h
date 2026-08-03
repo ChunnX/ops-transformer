@@ -94,6 +94,14 @@ constexpr int64_t DIM_NUM_THREE = 3;
 constexpr int64_t DIM_NUM_FOUR = 4;
 
 constexpr int64_t SUPPORTED_HEAD_DIM = 128;
+// DAV_3510 的矢量寄存器是 256B，一个 float VL 就是 64 个元素。kernel 的 VF 段
+// （op_kernel/arch35/..._mrope_vf.h）把「headDim/2 恰好等于一个满 VL」写死了，
+// 没有分段循环也没有尾块 mask。下面的 static_assert 把这个不变量钉在编译期：
+// 放宽 SUPPORTED_HEAD_DIM 会直接编译失败，提醒先去补 VF 的分段与尾块处理。
+constexpr int64_t VL_FP32_LANES = 64;
+static_assert(SUPPORTED_HEAD_DIM / 2 == VL_FP32_LANES,
+              "VF kernel assumes headDim/2 == one float VL; add tail-mask handling in "
+              "op_kernel/arch35/und_gen_qkv_rms_norm_rope_cache_mrope_vf.h before relaxing SUPPORTED_HEAD_DIM");
 constexpr int64_t SUPPORTED_BLOCK_SIZE = 128;
 constexpr int64_t MAX_TOTAL_TOKENS = 64 * 1024;
 // 本期支持的 (Hq, Hk, Hv) 组合，需要放宽时改这里即可
@@ -102,30 +110,37 @@ constexpr int64_t SUPPORTED_HEAD_COMBOS[SUPPORTED_HEAD_COMBO_NUM][3] = {{8, 1, 1
 constexpr int64_t MROPE_AXIS_NUM = 3;
 constexpr int64_t BF16_BYTES = 2;
 constexpr int64_t FLOAT32_BYTES = 4;
+constexpr int64_t UINT32_BYTES = 4;
 constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr int64_t BLOCK_ALIGN_BYTES = 32;
 constexpr int64_t WEIGHT_NUM = 4;           // und_q / und_k / gen_q / gen_k
-constexpr int64_t WEIGHT_VARIANT_NUM = 2;   // 按头展开的权重要 und / gen 各存一份
-constexpr int64_t REDUCE_TMP_BYTES = 4096;  // ReduceSum 的 sharedTmpBuffer 下限
+constexpr int64_t GAMMA_TILE_NUM = 2;       // 按 token 铺平的 gamma tile：Q 一份、K 一份
 
 /* UB 划分（kernel 侧必须按同一套公式分配，改这里要同步改 kernel）
  *
  * 记 N = Hq+Hk+Hv、H2 = Hq+Hk（V 不参与 RMSNorm/RoPE）、D = headDim、u = ubFactor。
- * CopyIn 按 tile 批量搬 u 个 token，计算与写出逐 token，因此计算区不随 u 变化。
+ * CopyIn 按 tile 批量搬 u 个 token，一个 tile 内 Q/K 各发一次 VF。
+ *
+ * RMSNorm + MRoPE 融合在一个 VF 段里完成（op_kernel/arch35/..._mrope_vf.h）：
+ * bf16->fp32 的 x、Gather 合并后的 cos/sin、RoPE 交叉项都只存在 vreg 里，
+ * 所以计算区不再有 cosSinExpand / ropeTmp / qkvFp32 / reduceTmp / rmsInv 这些中间 buffer。
+ *
+ * gammaTileBuf 是随 u 的：cat_indices 可以把 und/gen 任意交错，同一 tile 内相邻 token
+ * 的 gamma 可能不同，VF 里按 token 索引 gamma，所以要先把每 token 该用的那份铺平。
+ * 它写完就在同一次 Compute 里消费掉，不需要 DoubleBuffer。
  *
  * 计算区（TBuf，与 u 无关）:
- *   wBf16Buf         WEIGHT_NUM * D * 2            4 个权重原始 bf16
- *   wExpandBuf       2 * H2 * D * 4                und/gen 各一份按头展开的 float 权重，Init 建好
- *   cosSinExpandBuf  H2 * D * 4                    合并后的 cos_sin 按头展开，每头 [cos(0:D/2)|sin(0:D/2)]
- *   ropeTmpBuf       H2 * (D/2) * 4                RoPE 半宽中间量
- *   qkvFp32Buf       N * D * 4                     单 token 的 Q/K/V float32
- *   reduceTmpBuf     REDUCE_TMP_BYTES              ReduceSum sharedTmpBuffer
- *   rmsInvBuf        align32(H2 * 4)               每头 rsqrt(mean+eps)
+ *   wBf16Buf         WEIGHT_NUM * D * 2            4 个 gamma 原始 bf16
+ *   wFp32Buf         WEIGHT_NUM * D * 4            4 个 gamma 的 float 版本，作为 gamma tile 的源
+ *   gatherIdxBuf     align32((D/2) * 4)            axisLut 展开的 uint32 元素索引，每核建一次
  *
- * 队列（随 u，均开 DoubleBuffer）:
- *   qkvInQue    VECIN   2 * u * N * D * 2
- *   cosSinInQue VECIN   2 * u * MROPE_AXIS_NUM * D * 4
- *   outQue      VECOUT  2 * u * N * D * 2          UB 内按 [u*q | u*k | u*v] 分段，便于 q 一笔连续写出
+ * 随 u 的部分:
+ *   qkvInQue     VECIN   2 * u * N * D * 2
+ *   cosSinInQue  VECIN   2 * u * MROPE_AXIS_NUM * D * 4
+ *   outQue       VECOUT  2 * u * N * D * 2         UB 内按 [u*q | u*k | u*v] 分段，便于 q 一笔连续写出
+ *   gammaTileBuf VECCALC GAMMA_TILE_NUM * u * D * 4  单 buffer，按 token 交织
+ *                        [t0 q gamma | t0 k gamma | t1 q gamma | t1 k gamma | ...]，
+ *                        与 VF 里 gammaRow = base + t*2D、k gamma 在 +D 的取法对应
  */
 
 class UndGenQkvRmsNormRopeCacheTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {

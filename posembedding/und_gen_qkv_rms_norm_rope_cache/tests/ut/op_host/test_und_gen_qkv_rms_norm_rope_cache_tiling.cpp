@@ -156,16 +156,12 @@ const TilingDataMirror* AsTilingData(const TilingInfo& tilingInfo)
 int64_t ExpectedUbFactor(int64_t numHeadQ, int64_t numHeadK, int64_t numHeadV, int64_t blockFactor)
 {
     const int64_t n = numHeadQ + numHeadK + numHeadV;
-    const int64_t h2 = numHeadQ + numHeadK;
     const int64_t d = HEAD_DIM;
-    const int64_t resident = 4 * d * 2 +          // wBf16Buf
-                             2 * h2 * d * 4 +     // wExpandBuf(und/gen)
-                             h2 * d * 4 +         // cosSinExpandBuf
-                             h2 * (d / 2) * 4 +   // ropeTmpBuf
-                             n * d * 4 +          // qkvFp32Buf
-                             4096 +               // reduceTmpBuf
-                             ((h2 * 4 + 31) / 32) * 32; // rmsInvBuf
-    const int64_t perToken = 2 * n * d * 2 + 2 * MROPE_AXIS_NUM * d * 4 + 2 * n * d * 2;
+    const int64_t resident = 4 * d * 2 +                       // wBf16Buf
+                             4 * d * 4 +                       // wFp32Buf
+                             (((d / 2) * 4 + 31) / 32) * 32;   // gatherIdxBuf
+    const int64_t perToken = 2 * n * d * 2 + 2 * MROPE_AXIS_NUM * d * 4 + 2 * n * d * 2 +
+                             2 * d * 4; // gammaTileBuf(Q/K，单 buffer)
     return std::min((PLATFORM_UB_BYTES - resident) / perToken, blockFactor);
 }
 
