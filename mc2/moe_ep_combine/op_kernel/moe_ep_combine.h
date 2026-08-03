@@ -455,30 +455,30 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
 
         for (uint32_t i = 0; i < curChunkTokens; ++i) {
             uint32_t tokenIndex = static_cast<uint32_t>(chunkStart) + i;
-            int32_t src_rank = metadataLocal.GetValue(i * RECV_META_FIELDS + 0);
-            if (src_rank < 0 || src_rank >= static_cast<int32_t>(epWorldSize_)) {
+            int32_t srcRank = metadataLocal.GetValue(i * RECV_META_FIELDS + 0);
+            if (srcRank < 0 || srcRank >= static_cast<int32_t>(epWorldSize_)) {
                 continue;
             }
             if (splitRankTokens) {
-                if (src_rank != static_cast<int32_t>(targetRank)) {
+                if (srcRank != static_cast<int32_t>(targetRank)) {
                     continue;
                 }
-            } else if (static_cast<uint32_t>(src_rank) % activeAivNum != aivId_) {
+            } else if (static_cast<uint32_t>(srcRank) % activeAivNum != aivId_) {
                 continue;
             }
-            int32_t src_token_idx = metadataLocal.GetValue(i * RECV_META_FIELDS + 1);
-            int32_t src_topK_idx = metadataLocal.GetValue(i * RECV_META_FIELDS + 2);
-            if (src_rank == static_cast<int32_t>(rankId_) && !statusInitialized) {
+            int32_t srcTokenIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 1);
+            int32_t srcTopKIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 2);
+            if (srcRank == static_cast<int32_t>(rankId_) && !statusInitialized) {
                 Duplicate<uint32_t>(statusTensor_, (uint32_t)1, FLOAT_PER_UB_ALIGN);
                 SyncFunc<AscendC::HardEvent::V_MTE3>();
                 statusInitialized = true;
             }
-            SendQueuedToken(tokenIndex, src_rank, src_token_idx, src_topK_idx, channelIndex);
+            SendQueuedToken(tokenIndex, srcRank, srcTokenIdx, srcTopKIdx, channelIndex);
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>(); // 确保本轮 Scalar GetValue 读完，下一块 DataCopyPad 才可覆盖
                                                 // metadataLocal
     }
-    
+
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
 }
 
