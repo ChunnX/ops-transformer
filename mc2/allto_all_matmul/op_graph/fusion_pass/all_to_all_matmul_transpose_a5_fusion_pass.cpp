@@ -498,13 +498,13 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
                                       attrs.comm_quant_mode, attrs.x1_quant_dtype, attrs.comm_quant_dtype,
                                       attrs.transpose_x1, attrs.transpose_x2, attrs.group_size,
                                       attrs.comm_mode.GetString(), attrs.alltoall_out_flag);
-    if (mc2.y == nullptr) {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "mc2.y == nullptr");
+    if (attrs.alltoall_out_flag) {
+        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "out has all2all_out.");
+        return replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
+    } else {
+        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "out not all2all_out.");
+        return replaceGraphBuilder.BuildAndReset({mc2.y});
     }
-    if (mc2.all2all_out == nullptr) {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "mc2.all2all_out == nullptr");
-    }
-    return replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
 }
 
 static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
