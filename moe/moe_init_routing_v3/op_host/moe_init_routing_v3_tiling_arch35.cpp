@@ -212,8 +212,8 @@ private:
     ge::graphStatus ValidateRowIdxType();
     // 校验输入Tensor的Shape、Dtype
     ge::graphStatus CheckSetInputs();
-    // 空tensor场景判定与相关tiling字段设置（含activeNum校验）
-    ge::graphStatus CheckSetEmptyTensor();
+    // 空tensor相关tiling字段设置（含activeNum校验）
+    ge::graphStatus SetEmptyTensor();
     // 校验输出Tensor的Shape、Dtype
     ge::graphStatus CheckOutputs();
     // 空tensor场景的workspace大小计算
@@ -506,7 +506,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
     MIRV3_CHECK_GE_RET(CheckSetAttrs());
     MIRV3_CHECK_GE_RET(CheckSetListAttrs());
     MIRV3_CHECK_GE_RET(CheckSetInputs());
-    MIRV3_CHECK_GE_RET(CheckSetEmptyTensor());
+    MIRV3_CHECK_GE_RET(SetEmptyTensor());
     MIRV3_CHECK_GE_RET(CheckOutputs());
 
     // 空tensor快速返回，跳过后续tiling计算
@@ -1162,9 +1162,9 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()
+ge::graphStatus MoeInitRoutingV3Arch35TilingClass::SetEmptyTensor()
 {
-    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()");
+    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::SetEmptyTensor()");
 
     // A zero-width dropless input still needs row-index routing when indices are non-empty.
     if (n_ == 0 || k_ == 0 || (cols_ == 0 && !IsIndexOnlyRouting())) {
