@@ -52,10 +52,13 @@ constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
 constexpr int COMM_PROTOCOL_UBC_CTP_VALUE = 4;
 constexpr int COMM_PROTOCOL_UBC_TP_VALUE = 5;
+constexpr int64_t NETWORK_DIRECT = 0;
+constexpr int64_t NETWORK_HYBRID = 1;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
 constexpr int DIM_TWO = 2;
 constexpr uint32_t MOE_CHANNEL_HANDLE_NUM = 72U;
 constexpr uint32_t MOE_CHANNEL_NOTIFY_NUM = 3U;
+constexpr int64_t SEND_COUNTS_ALIGN_FACTOR = 8;
 
 // RAII guard for multi-step host buffer allocation
 struct HostBufferGuard {
@@ -110,6 +113,7 @@ static inline void NpuStreamWait(aclrtStream waitStream, aclrtStream recordStrea
     TORCH_CHECK(ret == ACL_SUCCESS, "aclrtDestroyEvent failed, ret: ", ret);
 }
 
+// CommContext structure for HCCL communication
 struct EngramCommContext {
     uint32_t rankId = 0;
     uint32_t rankSize = 0;
@@ -131,6 +135,7 @@ struct EngramContextResources {
     HcclMemHandle memHandle = nullptr;
     void *hostBufPtr = nullptr;
     void *deviceBufPtr = nullptr;
+    int64_t commBufferSize = 0;
     EngramCommContext context;
     at::Tensor contextTensor;
 };
@@ -204,8 +209,9 @@ protected:
 
 class EngramContextBuilder : public HcclContextBuilderBase {
 public:
-    EngramContextResources Build(const std::string &groupName, int64_t numCpuBytes)
+    EngramContextResources Build(const std::string &groupName, int64_t numCpuBytes, bool withGrad)
     {
+        withGrad_ = withGrad;
         EngramContextResources resources;
         AcquireHcclHandle(groupName, resources.hcclComm);
 
@@ -220,6 +226,8 @@ public:
     }
 
 private:
+    bool withGrad_ = false;
+
     static void ValidateRankSize(uint32_t rankSize)
     {
         TORCH_CHECK(rankSize >= HCCL_MIN_RANK_SIZE, "rankSize must be at least HCCL_MIN_RANK_SIZE, got ", rankSize,
@@ -360,7 +368,6 @@ private:
             auto hcclRet = HcclChannelGetRemoteMemsFunc(commHandle, resources.context.hcommHandle[i * channelsPerRank],
                                                         &memNum, &remoteMems, &memTags);
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetRemoteMems(peer=", i, ") failed, ret=", hcclRet);
-            // 取自己注册的buffer作为通信buffer
             bool hasTargetMem = false;
             for (uint32_t j = 0; j < memNum; j++) {
                 if (memTags == nullptr || remoteMems == nullptr) {
@@ -379,8 +386,49 @@ private:
         }
     }
 
-    static void CreateContext(EngramContextResources &resources, const std::string &contextTag, int64_t numCpuBytes,
-                              HostBufferGuard &guard)
+    static void QueryHcclBufferResource(const HcclComm &commHandle, EngramContextResources &resources)
+    {
+        uint32_t rankId = resources.context.rankId;
+        constexpr uint32_t channelsPerPeer = 2U;
+        resources.context.channelsPerRank = channelsPerPeer;
+        ChannelHandle handlesByRank[HCCL_MAX_RANK_SIZE * 2] = {};
+        GetHcclCommChannel(commHandle, resources.context.rankSize, rankId, channelsPerPeer,
+                           resources.memHandle, handlesByRank);
+        for (uint32_t peer = 0; peer < resources.context.rankSize; ++peer) {
+            if (peer == rankId)
+                continue;
+            for (uint32_t ch = 0; ch < channelsPerPeer; ++ch) {
+                resources.context.hcommHandle[peer * channelsPerPeer + ch] = handlesByRank[peer * channelsPerPeer + ch];
+            }
+        }
+
+        void *localBuffer = nullptr;
+        uint64_t localBufferSize = 0;
+        auto hcclRet = HcclGetHcclBufferFunc(commHandle, &localBuffer, &localBufferSize);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclGetHcclBuffer failed, ret=", hcclRet);
+        TORCH_CHECK(localBuffer != nullptr && localBufferSize > 0,
+                    "HCCL default buffer is null or empty, size=", localBufferSize);
+
+        resources.commBufferSize = static_cast<int64_t>(localBufferSize);
+        resources.context.virtualAddrList[rankId] = reinterpret_cast<uint64_t>(localBuffer);
+
+        for (uint32_t i = 0; i < resources.context.rankSize; ++i) {
+            if (i == rankId) {
+                continue;
+            }
+            void *remoteBuffer = nullptr;
+            uint64_t remoteBufSize = 0;
+            hcclRet = HcclChannelGetHcclBufferFunc(commHandle,
+                                                   resources.context.hcommHandle[i * channelsPerPeer],
+                                                   &remoteBuffer, &remoteBufSize);
+            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetHcclBuffer(peer=", i, ") failed, ret=", hcclRet);
+            TORCH_CHECK(remoteBuffer != nullptr, "HCCL remote buffer is null for peer=", i);
+            resources.context.virtualAddrList[i] = reinterpret_cast<uint64_t>(remoteBuffer);
+        }
+    }
+
+    void CreateContext(EngramContextResources &resources, const std::string &contextTag, int64_t numCpuBytes,
+                       HostBufferGuard &guard)
     {
         uint64_t contextSize = sizeof(EngramCommContext);
         void *ctx = nullptr;
@@ -395,7 +443,12 @@ private:
 
         std::string memBufferTag = contextTag + "_buffer";
         AllocateAndRegisterBuffer(resources.hcclComm, memBufferTag, numCpuBytes, resources, guard);
-        GetHcclCommResource(resources.hcclComm, resources, memBufferTag);
+
+        if (withGrad_) {
+            QueryHcclBufferResource(resources.hcclComm, resources);
+        } else {
+            GetHcclCommResource(resources.hcclComm, resources, memBufferTag);
+        }
 
         CopyContextToDevice(resources.hcclComm, contextTag, CommEngine::COMM_ENGINE_AIV, &resources.context,
                             contextSize);
@@ -404,7 +457,7 @@ private:
 
 class MoeContextBuilder : public HcclContextBuilderBase {
 public:
-    at::Tensor Build(const std::string &groupName, int64_t &cclBufferSize)
+    at::Tensor Build(const std::string &groupName, int64_t &cclBufferSize, uint32_t &rankSizePerServer)
     {
         InitHcclEngineCtxFunctions();
 
@@ -417,7 +470,9 @@ public:
         MoeCommContext context;
         BuildContext(hcclComm, groupName, "moe_dispatch_combine_multi_channel", protocol, context, cclBufferSize);
         rankNumPerServer_ = rankNumPerUbDomain_;
+        TORCH_CHECK(rankNumPerServer_ > 0, "rank_num_per_server must be positive after building MoE context");
         context.rankSizePerServer = rankNumPerServer_;
+        rankSizePerServer = rankNumPerServer_;
 
         return CreateCommContextTensor(context);
     }
@@ -696,7 +751,8 @@ private:
 // ElasticBuffer class - unified interface for Engram storage and MoE EP kernels
 class ElasticBuffer {
 public:
-    ElasticBuffer(const std::string &groupName, int64_t numCpuBytes);
+    ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank = 0,
+                  bool withGrad = false);
     ~ElasticBuffer();
 
     void EngramWrite(const at::Tensor &storage);
@@ -704,17 +760,34 @@ public:
     void Destroy();
 
     int64_t GetHostBufPtr() const { return reinterpret_cast<int64_t>(engramHostBufPtr_); }
-
     const at::Tensor &GetContextTensor() const { return engramContextTensor_; }
+    const at::Tensor &GetLocalStorageAddrTensor() const { return localStorageAddrTensor_; }
+    int64_t GetCommBufferSize() const { return commBufferSize_; }
+    uint32_t GetRankSize() const { return engramCommContext_.rankSize; }
 
     static at::Tensor EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
                                   int64_t numEntries, int64_t dtypeEnum);
+    using EngramFetchTrainOutput =
+        std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
+    static EngramFetchTrainOutput EngramFetchTrain(const at::Tensor &context, const at::Tensor &indices,
+                                                   int64_t hiddenSize, int64_t numEntries, int64_t dtypeEnum,
+                                                   const at::Tensor &localStorageAddr, int64_t numMaxTokensPerRank,
+                                                   int64_t commBufferSize, int64_t rankSize);
     static at::Tensor EngramFetchWait(const at::Tensor &context, const at::Tensor &fetched);
+
+    std::tuple<at::Tensor, at::Tensor> EngramFetchGrad(
+        const at::Tensor &gradFetched,
+        const at::Tensor &perm, const at::Tensor &sendCounts,
+        const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry,
+        const at::Tensor &numRecv);
+
+    bool IsWithGrad() const { return withGrad_; }
 
     static int64_t GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
                                             at::ScalarType dtype = at::kBFloat16);
 
-    using DispatchTensorList = std::tuple<at::Tensor, at::Tensor, at::Tensor>;
+    using DispatchTensorList =
+        std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>;
     using DispatchEpilogueTensorList =
         std::tuple<at::Tensor, at::Tensor, c10::optional<at::Tensor>, c10::optional<at::Tensor>>;
     using CombineTensorList = std::tuple<at::Tensor, c10::optional<at::Tensor>>;
@@ -722,38 +795,47 @@ public:
     DispatchTensorList MoeEpDispatch(const at::Tensor &x, const at::Tensor &topkIdx,
                                      const c10::optional<at::Tensor> &topkWeights,
                                      const c10::optional<at::Tensor> &scales,
-                                     const c10::optional<at::Tensor> &cachedHandleDstBufferSlotIdx, int64_t epWorldSize,
-                                     int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank,
-                                     int64_t expertAlignment, bool doCpuSync, int64_t hostPinnedCounterAddr);
+                                     const c10::optional<at::Tensor> &cachedDstSlotIdx,
+                                     const c10::optional<at::Tensor> &cachedRouteCount,
+                                     const c10::optional<at::Tensor> &cachedRouteDstScaleout,
+                                     const c10::optional<at::Tensor> &cachedRouteScaleoutSlot,
+                                     int64_t epWorldSize, int64_t epRankId, int64_t numExperts,
+                                     int64_t numMaxTokensPerRank, int64_t expertAlignment, bool doCpuSync,
+                                     int64_t hostPinnedCounterAddr);
     DispatchEpilogueTensorList MoeEpDispatchEpilogue(
         const at::Tensor &dstBufferSlotIdx, const at::Tensor &numRecvPerRank, const at::Tensor &numRecvPerExpert,
         const c10::optional<at::Tensor> &cachedRecvSrcMetadata, int64_t epWorldSize, int64_t epRankId,
-        int64_t numExperts, int64_t numMaxTokensPerRank, int64_t expertAlignment, at::Tensor &recvX,
-        at::Tensor &recvSrcMetadata, const c10::optional<at::Tensor> &recvTopkWeightsOpt,
-        const c10::optional<at::Tensor> &recvScalesOpt);
+        int64_t numExperts, int64_t numMaxTokensPerRank, at::Tensor &recvX, at::Tensor &recvSrcMetadata,
+        const c10::optional<at::Tensor> &recvTopkWeightsOpt, const c10::optional<at::Tensor> &recvScalesOpt);
     CombineTensorList MoeEpCombine(const at::Tensor &x, const at::Tensor &topkIdx, const at::Tensor &recvSrcMetadata,
                                    const at::Tensor &numRecvTokensPerExpert,
-                                   const c10::optional<at::Tensor> &topkWeights, const c10::optional<at::Tensor> &bias0,
-                                   const c10::optional<at::Tensor> &bias1, int64_t epWorldSize, int64_t epRankId,
+                                   const c10::optional<at::Tensor> &topkWeights, int64_t epWorldSize, int64_t epRankId,
                                    int64_t numExperts, int64_t numMaxTokensPerRank);
 
 private:
     void EnsureEngramContext();
     void EnsureMoeContext();
+    int64_t ResolveRankNumPerServer(int64_t epWorldSize) const;
+    int64_t ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerServer) const;
 
     std::string groupName_;
     int64_t engramNumCpuBytes_;
+    int64_t numMaxTokensPerRank_ = 0;
+    bool withGrad_ = false;
 
     void *engramHostBufPtr_ = nullptr;
     void *engramDeviceBufPtr_ = nullptr;
     HcclMemHandle engramMemHandle_ = nullptr;
+    int64_t commBufferSize_ = 0; // HCCL 默认 buffer 大小（从 HcclGetHcclBufferFunc 查询，训练 a2a 收发缓冲）
     HcclComm engramHcclComm_ = nullptr;
     EngramCommContext engramCommContext_;
-    at::Tensor engramContextTensor_; // Cached Engram context tensor
+    at::Tensor engramContextTensor_;    // Cached Engram context tensor
+    at::Tensor localStorageAddrTensor_; // int64 scalar tensor, stores deviceBufPtr_ address
     bool engramContextInitialized_ = false;
 
     at::Tensor moeContextTensor_;
     int64_t moeCclBufferSize_ = 0;
+    uint32_t moeRankSizePerServer_ = 2;
     bool moeContextInitialized_ = false;
 
     int64_t engramHiddenSize_ = 0;
@@ -766,8 +848,15 @@ private:
 };
 
 // Constructor
-ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes)
-    : groupName_(groupName), engramNumCpuBytes_(numCpuBytes)
+
+ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank,
+                             bool withGrad)
+    : groupName_(groupName),
+      engramNumCpuBytes_(numCpuBytes),
+      destroyed_(false),
+      engramWriteCalled_(false),
+      numMaxTokensPerRank_(numMaxTokensPerRank),
+      withGrad_(withGrad)
 {
     InitHcclEngineCtxFunctions();
     InitHcclFunctions();
@@ -792,13 +881,17 @@ void ElasticBuffer::EnsureEngramContext()
     commStream_ = c10_npu::getNPUStreamFromPool().stream(false);
     TORCH_CHECK(commStream_ != nullptr, "Failed to get NPU stream from pool for comm stream");
     EngramContextBuilder builder;
-    EngramContextResources resources = builder.Build(groupName_, engramNumCpuBytes_);
+    EngramContextResources resources = builder.Build(groupName_, engramNumCpuBytes_, withGrad_);
     engramHcclComm_ = resources.hcclComm;
     engramMemHandle_ = resources.memHandle;
     engramHostBufPtr_ = resources.hostBufPtr;
     engramDeviceBufPtr_ = resources.deviceBufPtr;
     engramCommContext_ = resources.context;
     engramContextTensor_ = resources.contextTensor;
+    commBufferSize_ = resources.commBufferSize;
+    int64_t addrValue = reinterpret_cast<int64_t>(engramDeviceBufPtr_);
+    auto hostAddrTensor = at::full({1}, addrValue, at::TensorOptions().dtype(at::kLong));
+    localStorageAddrTensor_ = hostAddrTensor.to(c10::DeviceType::PrivateUse1);
     engramContextInitialized_ = true;
 }
 
@@ -809,8 +902,22 @@ void ElasticBuffer::EnsureMoeContext()
         return;
     }
     MoeContextBuilder builder;
-    moeContextTensor_ = builder.Build(groupName_, moeCclBufferSize_);
+    moeContextTensor_ = builder.Build(groupName_, moeCclBufferSize_, moeRankSizePerServer_);
     moeContextInitialized_ = true;
+}
+
+int64_t ElasticBuffer::ResolveRankNumPerServer(int64_t epWorldSize) const
+{
+    int64_t rankNumPerServer = static_cast<int64_t>(moeRankSizePerServer_);
+    TORCH_CHECK(rankNumPerServer > 0, "rank_num_per_server must be positive, got ", rankNumPerServer);
+    TORCH_CHECK(epWorldSize % rankNumPerServer == 0, "ep_world_size must be divisible by rank_num_per_server, got ",
+                epWorldSize, " and ", rankNumPerServer);
+    return rankNumPerServer;
+}
+
+int64_t ElasticBuffer::ResolveTopoType(int64_t epWorldSize, int64_t rankNumPerServer) const
+{
+    return (epWorldSize / rankNumPerServer > 1) ? NETWORK_HYBRID : NETWORK_DIRECT;
 }
 
 // EngramWrite - write data with automatic barrier
@@ -873,6 +980,37 @@ at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tenso
     return fetched;
 }
 
+// EngramFetchTrain - stateless static method for training forward (graph-mode compatible).
+// Outputs: fetched + save-for-backward ctx tensors (perm, sendCounts, recvCounts, recvLocalEntry, numRecv).
+ElasticBuffer::EngramFetchTrainOutput ElasticBuffer::EngramFetchTrain(const at::Tensor &context,
+                                                                      const at::Tensor &indices, int64_t hiddenSize,
+                                                                      int64_t numEntries, int64_t dtypeEnum,
+                                                                      const at::Tensor &localStorageAddr,
+                                                                      int64_t numMaxTokensPerRank,
+                                                                      int64_t commBufferSize, int64_t rankSize)
+{
+    auto dtype = static_cast<at::ScalarType>(dtypeEnum);
+    int64_t numTokens = indices.size(0);
+    auto fetched = at::empty({numTokens, hiddenSize}, at::TensorOptions().dtype(dtype).device(indices.device()));
+    auto intOpts = at::TensorOptions().dtype(at::kInt).device(indices.device());
+    TORCH_CHECK(rankSize > 0 && numMaxTokensPerRank <= INT64_MAX / rankSize,
+                "numMaxTokensPerRank * rankSize overflow, got numMaxTokensPerRank=", numMaxTokensPerRank,
+                ", rankSize=", rankSize);
+    int64_t maxR = numMaxTokensPerRank * rankSize;
+    at::Tensor perm = at::empty({numTokens}, intOpts);
+    at::Tensor sendCounts = at::empty({rankSize * SEND_COUNTS_ALIGN_FACTOR}, intOpts); // 32b对齐
+    at::Tensor recvCounts = at::empty({rankSize}, intOpts);
+    at::Tensor recvLocalEntry = at::empty({maxR}, intOpts);
+    at::Tensor numRecv = at::empty({1}, intOpts);
+
+    if (numTokens > 0) {
+        constexpr int64_t withGrad = 1;
+        ACLNN_CMD(aclnnEngramFetch, context, indices, localStorageAddr, fetched, perm, sendCounts, recvCounts,
+                  recvLocalEntry, numRecv, hiddenSize, numEntries, numMaxTokensPerRank, commBufferSize, withGrad);
+    }
+    return std::make_tuple(fetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv);
+}
+
 // EngramFetchWait - stateless static method for torch CustomOp registration.
 at::Tensor ElasticBuffer::EngramFetchWait(const at::Tensor &context, const at::Tensor &fetched)
 {
@@ -881,6 +1019,46 @@ at::Tensor ElasticBuffer::EngramFetchWait(const at::Tensor &context, const at::T
     }
     ACLNN_CMD(aclnnEngramFetchWait, context, fetched);
     return fetched;
+}
+
+// EngramFetchGrad - training backward: produce gradUnique, uniqueLocalEntry (sparse index).。
+std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(
+    const at::Tensor &gradFetched,
+    const at::Tensor &perm, const at::Tensor &sendCounts,
+    const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry,
+    const at::Tensor &numRecv)
+{
+    EnsureEngramContext();
+    TORCH_CHECK(!destroyed_, "engram_fetch_grad cannot be called after destroy");
+    TORCH_CHECK(withGrad_, "engram_fetch_grad requires with_grad=True");
+    TORCH_CHECK(engramWriteCalled_, "engram_fetch_grad must be called after at least one engram_write");
+
+    int64_t hidden = gradFetched.size(1);
+    uint32_t rankSize = engramCommContext_.rankSize;
+    int64_t rankSizeI64 = static_cast<int64_t>(rankSize);
+    TORCH_CHECK(rankSizeI64 > 0 && numMaxTokensPerRank_ <= INT64_MAX / rankSizeI64,
+                "numMaxTokensPerRank_ * rankSize overflow, got numMaxTokensPerRank_=", numMaxTokensPerRank_,
+                ", rankSize=", rankSize);
+    int64_t maxR = numMaxTokensPerRank_ * rankSizeI64;
+
+    auto gradUnique = at::empty({maxR, hidden},
+                                at::TensorOptions().dtype(gradFetched.dtype()).device(gradFetched.device()));
+    auto uniqueLocalEntry = at::empty({maxR},
+                                      at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
+    auto numUnique = at::empty({1},
+                               at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
+
+    ACLNN_CMD(aclnnEngramFetchGrad, engramContextTensor_, gradFetched,
+              perm, sendCounts, recvCounts, recvLocalEntry, numRecv,
+              gradUnique, uniqueLocalEntry, numUnique,
+              engramNumEntries_, commBufferSize_);
+
+    int64_t actualK = static_cast<int64_t>(numUnique.item<int32_t>());
+    if (actualK < maxR) {
+        gradUnique = gradUnique.narrow(0, 0, actualK);
+        uniqueLocalEntry = uniqueLocalEntry.narrow(0, 0, actualK);
+    }
+    return {gradUnique, uniqueLocalEntry};
 }
 
 // EngramBarrier - cross-rank synchronization
@@ -929,6 +1107,9 @@ void ElasticBuffer::Destroy()
         ASCEND_LOGE("EngramBarrier in Destroy failed: %s", e.what());
     }
 
+    // HCCL 默认 buffer 由框架管理，无需手动释放
+    commBufferSize_ = 0;
+
     if (engramHostBufPtr_ != nullptr) {
         aclError ret = aclrtHostUnregister(engramHostBufPtr_);
         TORCH_CHECK(ret == ACL_SUCCESS, "aclrtHostUnregister failed, ret: ", ret);
@@ -940,6 +1121,7 @@ void ElasticBuffer::Destroy()
     engramContextInitialized_ = false;
     moeContextInitialized_ = false;
     engramContextTensor_ = at::Tensor();
+    localStorageAddrTensor_ = at::Tensor();
     moeContextTensor_ = at::Tensor();
 
     destroyed_ = true;
@@ -957,7 +1139,6 @@ int64_t ElasticBuffer::GetEngramStorageSizeHint(int64_t numEntries, int64_t hidd
     TORCH_CHECK(numBytesPerEntry > 0 && numEntries <= INT64_MAX / numBytesPerEntry,
                 "numBytesPerEntry * numEntries overflow");
     int64_t numCpuBytes = AlignTo(numBytesPerEntry * numEntries, BUFFER_ALIGNMENT);
-
     return numCpuBytes;
 }
 
@@ -1022,29 +1203,48 @@ private:
 
 Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
     const at::Tensor &x, const at::Tensor &topkIdx, const c10::optional<at::Tensor> &topkWeights,
-    const c10::optional<at::Tensor> &scales, const c10::optional<at::Tensor> &cachedHandleDstBufferSlotIdx,
-    int64_t epWorldSize, int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank, int64_t expertAlignment,
-    bool doCpuSync, int64_t hostPinnedCounterAddr)
+    const c10::optional<at::Tensor> &scales, const c10::optional<at::Tensor> &cachedDstSlotIdx,
+    const c10::optional<at::Tensor> &cachedRouteCount, const c10::optional<at::Tensor> &cachedRouteDstScaleout,
+    const c10::optional<at::Tensor> &cachedRouteScaleoutSlot, int64_t epWorldSize, int64_t epRankId,
+    int64_t numExperts, int64_t numMaxTokensPerRank, int64_t expertAlignment, bool doCpuSync,
+    int64_t hostPinnedCounterAddr)
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
     EnsureMoeContext();
+    int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
+    int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
 
-    bool anyCached = cachedHandleDstBufferSlotIdx.has_value();
+    bool anyCached = cachedDstSlotIdx.has_value();
     TORCH_CHECK(!(anyCached && doCpuSync), "cached mode is incompatible with do_cpu_sync=True");
+    bool anyCachedRoute = cachedRouteCount.has_value() || cachedRouteDstScaleout.has_value() ||
+                          cachedRouteScaleoutSlot.has_value();
+    bool allCachedRoute = cachedRouteCount.has_value() && cachedRouteDstScaleout.has_value() &&
+                          cachedRouteScaleoutSlot.has_value();
+    TORCH_CHECK(!anyCachedRoute || allCachedRoute, "cached route tensors must be all present or all absent");
+    bool hybridCached = anyCached && topoType == NETWORK_HYBRID;
+    TORCH_CHECK(!hybridCached || allCachedRoute, "hybrid cached dispatch requires all cached route tensors");
 
     auto xSize = x.sizes();
     int64_t numTokens = xSize[0];
     int64_t topK = topkIdx.size(1);
     int64_t numLocalExperts = numExperts / epWorldSize;
+    int64_t routeCapacity = topK;
 
     at::Tensor numRecvPerRank = at::empty({epWorldSize}, x.options().dtype(at::kInt));
     at::Tensor numRecvPerExpert = at::empty({numLocalExperts}, x.options().dtype(at::kLong));
     at::Tensor dstSlot = at::empty({numTokens, topK}, x.options().dtype(at::kInt));
+    at::Tensor routeCount = at::zeros({numTokens}, x.options().dtype(at::kInt));
+    at::Tensor routeDstScaleout = at::full({numTokens, routeCapacity}, -1, x.options().dtype(at::kInt));
+    at::Tensor routeScaleoutSlot = at::full({numTokens, routeCapacity}, -1, x.options().dtype(at::kInt));
 
     at::Tensor topkWeightsTensor = topkWeights.has_value() ? *topkWeights : at::Tensor();
-    at::Tensor cachedSlotTensor =
-        cachedHandleDstBufferSlotIdx.has_value() ? *cachedHandleDstBufferSlotIdx : at::Tensor();
+    at::Tensor cachedSlotTensor = cachedDstSlotIdx.has_value() ? *cachedDstSlotIdx : at::Tensor();
+    at::Tensor cachedRouteCountTensor = cachedRouteCount.has_value() ? *cachedRouteCount : at::Tensor();
+    at::Tensor cachedRouteDstScaleoutTensor =
+        cachedRouteDstScaleout.has_value() ? *cachedRouteDstScaleout : at::Tensor();
+    at::Tensor cachedRouteScaleoutSlotTensor =
+        cachedRouteScaleoutSlot.has_value() ? *cachedRouteScaleoutSlot : at::Tensor();
 
     at::Tensor scalesTensor = scales.has_value() ? *scales : at::Tensor();
     aclDataType scalesDtype = (scales.has_value() && scalesTensor.scalar_type() == at::kByte) ?
@@ -1053,34 +1253,44 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
     TensorWrapper scalesWrapper = TensorWrapper{scalesTensor, scalesDtype};
 
     ACLNN_CMD(aclnnMoeEpDispatch, moeContextTensor_, x, topkIdx, topkWeightsTensor, scalesWrapper, cachedSlotTensor,
+              cachedRouteCountTensor, cachedRouteDstScaleoutTensor, cachedRouteScaleoutSlotTensor,
               epWorldSize, epRankId, numExperts, numMaxTokensPerRank, moeCclBufferSize_, expertAlignment, doCpuSync,
-              hostPinnedCounterAddr, numRecvPerRank, numRecvPerExpert, dstSlot);
+              hostPinnedCounterAddr, topoType, rankNumPerServer, numRecvPerRank, numRecvPerExpert, dstSlot,
+              routeCount, routeDstScaleout, routeScaleoutSlot);
 
-    return std::tie(numRecvPerRank, numRecvPerExpert, dstSlot);
+    return std::make_tuple(
+        numRecvPerRank, numRecvPerExpert, dstSlot, routeCount, routeDstScaleout, routeScaleoutSlot);
 }
 
 Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDispatchEpilogue(
     const at::Tensor &dstBufferSlotIdx, const at::Tensor &numRecvPerRank, const at::Tensor &numRecvPerExpert,
     const c10::optional<at::Tensor> &cachedRecvSrcMetadata, int64_t epWorldSize, int64_t epRankId, int64_t numExperts,
-    int64_t numMaxTokensPerRank, int64_t expertAlignment, at::Tensor &recvX, at::Tensor &recvSrcMetadata,
+    int64_t numMaxTokensPerRank, at::Tensor &recvX, at::Tensor &recvSrcMetadata,
     const c10::optional<at::Tensor> &recvTopkWeightsOpt, const c10::optional<at::Tensor> &recvScalesOpt)
 {
     EnsureMoeContext();
+    int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
+    int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
 
     at::Tensor cachedRecvSrcMetadataTensor = cachedRecvSrcMetadata.has_value() ? *cachedRecvSrcMetadata : at::Tensor();
 
-    at::Tensor recvScalesTensor = recvScalesOpt.has_value() ? *recvScalesOpt : at::Tensor();
-    aclDataType recvScalesDtype =
-        (recvScalesOpt.has_value() && recvScalesTensor.scalar_type() == at::kByte) ?
-            aclDataType::ACL_FLOAT8_E8M0 :
-            ConvertToAclDataType(recvScalesOpt.has_value() ? recvScalesTensor.scalar_type() : at::kFloat);
+    aclDataType recvScalesDtype = aclDataType::ACL_FLOAT;
+    at::Tensor recvScalesTensor =
+        recvScalesOpt.has_value() ? *recvScalesOpt : at::empty({1}, recvX.options().dtype(at::kFloat));
+    if (recvScalesOpt.has_value() && recvScalesTensor.scalar_type() == at::kByte) {
+        recvScalesDtype = aclDataType::ACL_FLOAT8_E8M0;
+    }
+
     TensorWrapper recvScalesWrapper = TensorWrapper{recvScalesTensor, recvScalesDtype};
 
-    at::Tensor recvTopkWeightsTensor = recvTopkWeightsOpt.has_value() ? *recvTopkWeightsOpt : at::Tensor();
+    at::Tensor recvTopkWeightsTensor =
+        recvTopkWeightsOpt.has_value() ? *recvTopkWeightsOpt : at::empty({1}, recvX.options().dtype(at::kFloat));
+    bool hasTopkWeights = recvTopkWeightsOpt.has_value();
 
     ACLNN_CMD(aclnnMoeEpDispatchEpilogue, moeContextTensor_, dstBufferSlotIdx, numRecvPerRank, numRecvPerExpert,
               cachedRecvSrcMetadataTensor, epWorldSize, epRankId, numExperts, numMaxTokensPerRank, moeCclBufferSize_,
-              expertAlignment, recvX, recvSrcMetadata, recvTopkWeightsTensor, recvScalesWrapper);
+              hasTopkWeights, topoType, rankNumPerServer, recvX, recvSrcMetadata, recvTopkWeightsTensor,
+              recvScalesWrapper);
 
     c10::optional<at::Tensor> recvTopkWeightsOutput;
     if (recvTopkWeightsOpt.has_value()) {
@@ -1093,15 +1303,17 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
     return std::make_tuple(recvX, recvSrcMetadata, recvTopkWeightsOutput, recvScalesOutput);
 }
 
-Mc2Api::ElasticBuffer::CombineTensorList Mc2Api::ElasticBuffer::MoeEpCombine(
-    const at::Tensor &x, const at::Tensor &topkIdx, const at::Tensor &recvSrcMetadata,
-    const at::Tensor &numRecvTokensPerExpert, const c10::optional<at::Tensor> &topkWeights,
-    const c10::optional<at::Tensor> &bias0, const c10::optional<at::Tensor> &bias1, int64_t epWorldSize,
-    int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank)
+Mc2Api::ElasticBuffer::CombineTensorList
+Mc2Api::ElasticBuffer::MoeEpCombine(const at::Tensor &x, const at::Tensor &topkIdx, const at::Tensor &recvSrcMetadata,
+                                    const at::Tensor &numRecvTokensPerExpert,
+                                    const c10::optional<at::Tensor> &topkWeights, int64_t epWorldSize, int64_t epRankId,
+                                    int64_t numExperts, int64_t numMaxTokensPerRank)
 {
     TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
     TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
     EnsureMoeContext();
+    int64_t rankNumPerServer = ResolveRankNumPerServer(epWorldSize);
+    int64_t topoType = ResolveTopoType(epWorldSize, rankNumPerServer);
 
     int64_t numTokens = topkIdx.size(0);
     int64_t hidden = x.size(1);
@@ -1116,12 +1328,10 @@ Mc2Api::ElasticBuffer::CombineTensorList Mc2Api::ElasticBuffer::MoeEpCombine(
     }
 
     c10::optional<at::Tensor> topkWeightsOpt = topkWeights;
-    c10::optional<at::Tensor> bias0Opt = c10::optional<at::Tensor>();
-    c10::optional<at::Tensor> bias1Opt = c10::optional<at::Tensor>();
 
     ACLNN_CMD(aclnnMoeEpCombine, moeContextTensor_, x, topkIdx, recvSrcMetadata, numRecvTokensPerExpert, topkWeightsOpt,
-              bias0Opt, bias1Opt, epWorldSize, epRankId, numExperts, numMaxTokensPerRank, moeCclBufferSize_, combinedX,
-              combinedTopkWeights);
+              epWorldSize, epRankId, numExperts, numMaxTokensPerRank, moeCclBufferSize_, topoType, rankNumPerServer,
+              combinedX, combinedTopkWeights);
 
     c10::optional<at::Tensor> combinedTopkWeightsOpt;
     if (topkWeights.has_value()) {
@@ -1141,21 +1351,40 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("host_ptr", &OpApi::HostPinnedCounter::HostPtr);
 
     pybind11::class_<Mc2Api::ElasticBuffer>(m, "ElasticBuffer")
-        .def(pybind11::init<const std::string &, int64_t>(), pybind11::arg("groupName"), pybind11::arg("numCpuBytes"))
+        .def(pybind11::init<const std::string &, int64_t, int64_t, bool>(),
+             pybind11::arg("groupName"),
+             pybind11::arg("numCpuBytes"),
+             pybind11::arg("numMaxTokensPerRank") = 0,
+             pybind11::arg("withGrad") = false)
         .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert())
-        .def_static("engram_fetch", &Mc2Api::ElasticBuffer::EngramFetch, pybind11::arg("context"),
+        .def_static("engram_fetch",
+                    static_cast<at::Tensor (*)(const at::Tensor &, const at::Tensor &, int64_t, int64_t, int64_t)>(
+                        &Mc2Api::ElasticBuffer::EngramFetch),
+                    pybind11::arg("context"), pybind11::arg("indices"), pybind11::arg("hidden_size"),
+                    pybind11::arg("num_entries"), pybind11::arg("dtype"))
+        .def_static("engram_fetch_train", &Mc2Api::ElasticBuffer::EngramFetchTrain, pybind11::arg("context"),
                     pybind11::arg("indices"), pybind11::arg("hidden_size"), pybind11::arg("num_entries"),
-                    pybind11::arg("dtype"))
+                    pybind11::arg("dtype"), pybind11::arg("local_storage_addr"),
+                    pybind11::arg("num_max_tokens_per_rank"), pybind11::arg("comm_buffer_size"),
+                    pybind11::arg("rank_size"))
         .def_static("engram_fetch_wait", &Mc2Api::ElasticBuffer::EngramFetchWait, pybind11::arg("context"),
                     pybind11::arg("fetched"))
+        .def("engram_fetch_grad", &Mc2Api::ElasticBuffer::EngramFetchGrad, pybind11::arg("gradFetched").noconvert(),
+             pybind11::arg("perm").noconvert(), pybind11::arg("sendCounts").noconvert(),
+             pybind11::arg("recvCounts").noconvert(), pybind11::arg("recvLocalEntry").noconvert(),
+             pybind11::arg("numRecv").noconvert())
         .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("useCommStream") = true,
              pybind11::arg("withCpuSync") = false)
         .def("destroy", &Mc2Api::ElasticBuffer::Destroy)
         .def("get_host_buf_ptr", &Mc2Api::ElasticBuffer::GetHostBufPtr)
         .def("get_context_tensor", &Mc2Api::ElasticBuffer::GetContextTensor)
+        .def("get_local_storage_addr", &Mc2Api::ElasticBuffer::GetLocalStorageAddrTensor)
+        .def("get_comm_buffer_size", &Mc2Api::ElasticBuffer::GetCommBufferSize)
+        .def("get_rank_size", &Mc2Api::ElasticBuffer::GetRankSize)
         .def("moe_ep_dispatch", &Mc2Api::ElasticBuffer::MoeEpDispatch)
         .def("moe_ep_dispatch_epilogue", &Mc2Api::ElasticBuffer::MoeEpDispatchEpilogue)
         .def("moe_ep_combine", &Mc2Api::ElasticBuffer::MoeEpCombine)
         .def_static("get_engram_storage_size_hint", &Mc2Api::ElasticBuffer::GetEngramStorageSizeHint,
-                    pybind11::arg("numEntries"), pybind11::arg("hiddenSize"), pybind11::arg("dtype") = at::kBFloat16);
+                    pybind11::arg("numEntries"), pybind11::arg("hiddenSize"),
+                    pybind11::arg("dtype") = at::kBFloat16);
 }

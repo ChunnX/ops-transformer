@@ -238,7 +238,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
             <td>输入</td>
             <td>表示每个batch S2 // cmpRatio后的余数。</td>
             <td>
-            当k不为空且maskMode=3时必须传入。
+            maskMode=3且cmpRatio!=1时必须传入。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -280,7 +280,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
             建议值：公式中d开根号的倒数。
             </td>
             <td>FLOAT32</td>
-            <td>N/A</td>
+            <td>-</td>
             <td>-</td>
             <td>-</td>
         </tr>
@@ -292,7 +292,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
             取值范围：1~128。
             </td>
             <td>INT64</td>
-            <td>N/A</td>
+            <td>-</td>
             <td>-</td>
             <td>-</td>
         </tr>
@@ -306,7 +306,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
               </ul>
         </td>
         <td>INT64</td>
-        <td>N/A</td>
+        <td>-</td>
         <td>-</td>
         <td>-</td>
         </tr>
@@ -318,7 +318,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
             支持"BSND"、"TND"。需与layoutKOptional一致。
             </td>
             <td>STRING</td>
-            <td>N/A</td>
+            <td>-</td>
             <td>-</td>
             <td>-</td>
         </tr>
@@ -330,7 +330,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
             支持"BSND"、"TND"。需与layoutQOptional一致。
             </td>
             <td>STRING</td>
-            <td>N/A</td>
+            <td>-</td>
             <td>-</td>
             <td>-</td>
         </tr>
@@ -376,7 +376,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
                 <td>161002</td>
-                <td>输入变量，如q、k……的数据类型和数据格式不在支持的范围内。</td>
+                <td>输入变量的数据类型和数据格式不在支持的范围内。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_RUNTIME_ERROR</td>
