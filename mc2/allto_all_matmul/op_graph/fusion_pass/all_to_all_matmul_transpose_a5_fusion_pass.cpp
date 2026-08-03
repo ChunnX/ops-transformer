@@ -21,6 +21,7 @@
 #include <dlfcn.h>      // dlopen 动态加载
 #include "acl/acl_rt.h" // 运行时判断cann ver
 #include <set>
+#include <string>
 #include <tuple>
 
 namespace ops {
@@ -78,7 +79,7 @@ struct ReplaceGraphInputs {
 };
 
 struct Mc2ReplaceAttrs {
-    ge::AscendString group;
+    std::string group;
     int64_t world_size;
     std::vector<int64_t> all2all_axes;
     int64_t y_dtype;
@@ -90,7 +91,7 @@ struct Mc2ReplaceAttrs {
     bool transpose_x1;
     bool transpose_x2;
     int64_t group_size;
-    ge::AscendString comm_mode;
+    std::string comm_mode;
     bool alltoall_out_flag;
 };
 
@@ -434,8 +435,11 @@ static bool GetCapturedMc2Node(const std::unique_ptr<ge::fusion::MatchResult> &m
 
 static bool GetMc2ReplaceAttrs(const ge::GNode &mc2Node, Mc2ReplaceAttrs &attrs)
 {
-    OP_LOGE_IF(mc2Node.GetAttr("group", attrs.group) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
+    ge::AscendString group;
+    ge::AscendString commMode;
+    OP_LOGE_IF(mc2Node.GetAttr("group", group) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
                "Get Attr group failed.");
+    attrs.group = group.GetString() != nullptr ? group.GetString() : "";
     OP_LOGE_IF(mc2Node.GetAttr("world_size", attrs.world_size) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
                "Get Attr world_size failed.");
     OP_LOGE_IF(mc2Node.GetAttr("all2all_axes", attrs.all2all_axes) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
@@ -458,8 +462,9 @@ static bool GetMc2ReplaceAttrs(const ge::GNode &mc2Node, Mc2ReplaceAttrs &attrs)
                "Get Attr transpose_x2 failed.");
     OP_LOGE_IF(mc2Node.GetAttr("group_size", attrs.group_size) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
                "Get Attr group_size failed.");
-    OP_LOGE_IF(mc2Node.GetAttr("comm_mode", attrs.comm_mode) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
+    OP_LOGE_IF(mc2Node.GetAttr("comm_mode", commMode) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
                "Get Attr comm_mode failed.");
+    attrs.comm_mode = commMode.GetString() != nullptr ? commMode.GetString() : "";
     OP_LOGE_IF(mc2Node.GetAttr("alltoall_out_flag", attrs.alltoall_out_flag) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
                "Get Attr alltoall_out_flag failed.");
 
@@ -493,18 +498,15 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
 
     auto mc2 = ge::es::AlltoAllMatmul(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
                                       inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
-                                      inputTensors.rX2Offset, attrs.group.GetString(), attrs.world_size,
+                                      inputTensors.rX2Offset, attrs.group.c_str(), attrs.world_size,
                                       attrs.all2all_axes, attrs.y_dtype, attrs.x1_quant_mode, attrs.x2_quant_mode,
                                       attrs.comm_quant_mode, attrs.x1_quant_dtype, attrs.comm_quant_dtype,
                                       attrs.transpose_x1, attrs.transpose_x2, attrs.group_size,
-                                      attrs.comm_mode.GetString(), attrs.alltoall_out_flag);
+                                      attrs.comm_mode.c_str(), attrs.alltoall_out_flag);
     if (attrs.alltoall_out_flag) {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "out has all2all_out.");
         return replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
-    } else {
-        OPS_LOG_D(FUSION_PASS_NAME.c_str(), "out not all2all_out.");
-        return replaceGraphBuilder.BuildAndReset({mc2.y});
     }
+    return replaceGraphBuilder.BuildAndReset({mc2.y});
 }
 
 static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
