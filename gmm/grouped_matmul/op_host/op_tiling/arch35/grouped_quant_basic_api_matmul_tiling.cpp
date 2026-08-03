@@ -161,12 +161,27 @@ ge::graphStatus GroupedQmmBasicApiTiling::CalL1Depth(uint64_t leftL1Size)
     const uint64_t initialDepthA1 = basicTiling_.depthA1;
     const uint64_t initialDepthB1 = basicTiling_.depthB1;
 
-    // 先使用初始 stepK 判断是否可以开启 3-buffer。初始值不满足时，保持原有的 depth 放大逻辑。
+    // 先使用初始 stepK 判断是否可以开启 3-buffer。初始值不满足时，先尝试缩小 depthA1。
     OP_CHECK_IF(FinalizeStepAndScale() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "Finalize initial stepK and scale factor failed"),
                 return ge::GRAPH_FAILED);
     const GQmmBasicTiling initialTiling = basicTiling_;
     if (!CanEnableThreeL1Buffer()) {
+        // 初始 stepK 不满足 3-buffer 时，逐级缩小 depthA1，优先保留能开启 3-buffer 的最大值。
+        uint64_t candidateDepthA1 = initialTiling.depthA1;
+        while (IsMicroScaling() && !inputParams_.transA && candidateDepthA1 > DB_SIZE) {
+            candidateDepthA1 = std::max(candidateDepthA1 / POWER_OF_TWO, static_cast<uint64_t>(DB_SIZE));
+            basicTiling_ = initialTiling;
+            basicTiling_.depthA1 = candidateDepthA1;
+            if (FinalizeStepAndScale() != ge::GRAPH_SUCCESS) {
+                break;
+            }
+            if (CanEnableThreeL1Buffer()) {
+                return ge::GRAPH_SUCCESS;
+            }
+        }
+
+        // depthA1 缩小到最小值仍无法开启 3-buffer 时，恢复初始 depth 并执行原有放大逻辑。
         basicTiling_.depthA1 = initialDepthA1;
         basicTiling_.depthB1 = initialDepthB1;
         ModifyDepthForUnalign(leftL1Size, baseASize, baseBSize, baseScaleASize + baseScaleBSize);
