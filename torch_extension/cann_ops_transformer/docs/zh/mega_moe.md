@@ -612,7 +612,7 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
 ```
 
 ```python
-mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_weights_sf=None, l2_weights_sf=None, l1_bias=None, l2_bias=None, x_active_mask=None, activation="swiglu", activation_clamp=None, activation_alpha=1.702, activation_beta=1.0, activation_linear_beta=None, weight1_type=None, weight2_type=None, shared_l1_weights=None, shared_l2_weights=None, shared_l1_weights_sf=None, shared_l2_weights_sf=None, shared_l1_bias=None, shared_l2_bias=None) -> (Tensor, Tensor)
+mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_weights_sf=None, l2_weights_sf=None, l1_bias=None, l2_bias=None, x_active_mask=None, activation="swiglu", activation_clamp=None, activation_params=None, weight1_type=None, weight2_type=None, shared_l1_weights=None, shared_l2_weights=None, shared_l1_weights_sf=None, shared_l2_weights_sf=None, shared_l1_bias=None, shared_l2_bias=None) -> (Tensor, Tensor)
 ```
 
 ## 参数说明
@@ -911,34 +911,16 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation_clamp</td>
         <td>float</td>
         <td>可选</td>
-        <td>"swiglu"、"swiglustep"和"swigluoai"的截断值；None使用float最大值。"situglu"忽略此参数。值需≥0且不能为NaN。</td>
+        <td>"swiglu"、"swiglustep"和"swigluoai"的截断值，也可以通过activation_params中的"clamp"配置。两处同时配置时值必须相同；均未配置时使用float最大值。"situglu"忽略该值。值需≥0且不能为NaN。</td>
         <td>float</td>
         <td>不涉及</td>
         <td>不涉及</td>
     </tr>
     <tr>
-        <td>activation_alpha</td>
-        <td>float</td>
+        <td>activation_params</td>
+        <td>dict[str, float]</td>
         <td>可选</td>
-        <td>"swigluoai"的sigmoid增益。默认值为1.702，值需为有限值。</td>
-        <td>float</td>
-        <td>不涉及</td>
-        <td>不涉及</td>
-    </tr>
-    <tr>
-        <td>activation_beta</td>
-        <td>float</td>
-        <td>可选</td>
-        <td>"swigluoai"的up分支偏置，值需为有限值；"situglu"的gate分支beta，作为除数需为有限非零值。默认值为1.0。</td>
-        <td>float</td>
-        <td>不涉及</td>
-        <td>不涉及</td>
-    </tr>
-    <tr>
-        <td>activation_linear_beta</td>
-        <td>float</td>
-        <td>可选</td>
-        <td>"situglu"的up分支linear_beta；None表示不传递linear_beta并保持up不变，否则需为有限非零值。其他激活忽略此参数。</td>
+        <td>激活函数参数字典，支持键"clamp"、"alpha"、"beta"和"linearbeta"。"clamp"与activation_clamp含义相同，两处同时配置时值必须相同；"alpha"用于"swigluoai"的sigmoid增益，默认值为1.702；"beta"用于"swigluoai"的up分支偏置或"situglu"的gate分支除数，默认值为1.0；"linearbeta"用于"situglu"的up分支，未配置时保持up不变。</td>
         <td>float</td>
         <td>不涉及</td>
         <td>不涉及</td>
