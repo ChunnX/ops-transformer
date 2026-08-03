@@ -99,6 +99,15 @@ constexpr uint16_t BF16_EXP_INVSUB = 0x7f00;
 constexpr uint16_t NEW_MANTISSA = 0x0008;
 constexpr int64_t EXERPT_TOKENS_COUNT = 1;
 constexpr int64_t EXERPT_TOKENS_KEY_VALUE = 2;
+constexpr int64_t EXERPT_TOKENS_NONE = 0;
+
+// CountingSort 性能模板相关常量
+constexpr int64_t COUNTING_SORT_MIN_N = 256LL;
+constexpr int64_t COUNTING_SORT_MAX_N = 1024LL * 1024LL;
+constexpr int64_t COUNTING_SORT_FILTER_CHUNK_SIZE = 4096LL;
+constexpr int64_t COUNTING_SORT_MAX_PER_LOOP_COLS_BYTES = 64LL * 1024LL;
+constexpr int64_t COUNTING_SORT_MAX_ACTUAL_EXPERT_NUM = 128LL;
+constexpr int64_t COUNTING_SORT_ONE_BLOCK_ELEMENT = 8LL;
 
 __aicore__ inline int64_t Ceil(int64_t a, int64_t b)
 {
@@ -131,6 +140,15 @@ __aicore__ inline int64_t Align(int64_t elementNum, int64_t bytes)
 __aicore__ inline int64_t AlignBytes(int64_t elementNum, int64_t bytes)
 {
     return (elementNum * bytes + BLOCK_BYTES - 1) / BLOCK_BYTES * BLOCK_BYTES;
+}
+
+// 元素级对齐（例如将 actualExpertNum 对齐到 8）：返回对齐后的元素数
+__aicore__ inline int64_t AlignElem(int64_t elementNum, int64_t elementAlign)
+{
+    if (elementAlign <= 0) {
+        return elementNum;
+    }
+    return (elementNum + elementAlign - 1) / elementAlign * elementAlign;
 }
 
 template <HardEvent event>
