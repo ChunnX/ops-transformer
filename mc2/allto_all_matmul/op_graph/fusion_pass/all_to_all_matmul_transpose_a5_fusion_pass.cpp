@@ -78,23 +78,6 @@ struct ReplaceGraphInputs {
     ge::es::EsTensorHolder rX2Offset;
 };
 
-struct Mc2ReplaceAttrs {
-    std::string group;
-    int64_t world_size;
-    std::vector<int64_t> all2all_axes;
-    int64_t y_dtype;
-    int64_t x1_quant_mode;
-    int64_t x2_quant_mode;
-    int64_t comm_quant_mode;
-    int64_t x1_quant_dtype;
-    int64_t comm_quant_dtype;
-    bool transpose_x1;
-    bool transpose_x2;
-    int64_t group_size;
-    std::string comm_mode;
-    bool alltoall_out_flag;
-};
-
 // 加载 EsTranspose 符号
 namespace {
 typedef EsCTensorHolder *(*EsTransposeFunc)(EsCTensorHolder *, EsCTensorHolder *);
@@ -461,132 +444,96 @@ static bool GetCapturedMc2Node(const std::unique_ptr<ge::fusion::MatchResult> &m
     return true;
 }
 
-static bool GetMc2ReplaceAttrs(const ge::GNode &mc2Node, Mc2ReplaceAttrs &attrs)
-{
-    ge::AscendString group;
-    ge::AscendString commMode;
-    OP_LOGE_IF(mc2Node.GetAttr("group", group) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "Get Attr group failed.");
-    attrs.group = group.GetString() != nullptr ? group.GetString() : "";
-    OP_LOGE_IF(mc2Node.GetAttr("world_size", attrs.world_size) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "Get Attr world_size failed.");
-    OP_LOGE_IF(mc2Node.GetAttr("all2all_axes", attrs.all2all_axes) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "Get Attr all2all_axes failed.");
-    OP_LOGE_IF(mc2Node.GetAttr("y_dtype", attrs.y_dtype) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "Get Attr y_dtype failed.");
-    OP_LOGE_IF(mc2Node.GetAttr("x1_quant_mode", attrs.x1_quant_mode) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "Get Attr x1_quant_mode failed.");
-    OP_LOGE_IF(mc2Node.GetAttr("x2_quant_mode", attrs.x2_quant_mode) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "Get Attr x2_quant_mode failed.");
-    OP_LOGE_IF(mc2Node.GetAttr("comm_quant_mode", attrs.comm_quant_mode) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "Get Attr comm_quant_mode failed.");
-    OP_LOGE_IF(mc2Node.GetAttr("x1_quant_dtype", attrs.x1_quant_dtype) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "Get Attr x1_quant_dtype failed.");
-    OP_LOGE_IF(mc2Node.GetAttr("comm_quant_dtype", attrs.comm_quant_dtype) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "Get Attr comm_quant_dtype failed.");
-    OP_LOGE_IF(mc2Node.GetAttr("transpose_x1", attrs.transpose_x1) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "Get Attr transpose_x1 failed.");
-    OP_LOGE_IF(mc2Node.GetAttr("transpose_x2", attrs.transpose_x2) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "Get Attr transpose_x2 failed.");
-    OP_LOGE_IF(mc2Node.GetAttr("group_size", attrs.group_size) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "Get Attr group_size failed.");
-    OP_LOGE_IF(mc2Node.GetAttr("comm_mode", commMode) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "Get Attr comm_mode failed.");
-    attrs.comm_mode = commMode.GetString() != nullptr ? commMode.GetString() : "";
-    OP_LOGE_IF(mc2Node.GetAttr("alltoall_out_flag", attrs.alltoall_out_flag) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
-               "Get Attr alltoall_out_flag failed.");
-
-    // 移除 Transpose 节点后，transpose_x2 置反
-    attrs.transpose_x2 = !attrs.transpose_x2;
-    return true;
-}
-
 static ge::fusion::GraphUniqPtr
 BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
                   const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: enter");
-    ge::fusion::GraphUniqPtr replaceGraph;
-    {
-        auto replaceGraphBuilder = ge::es::EsGraphBuilder("replacement");
+    auto replaceGraphBuilder = ge::es::EsGraphBuilder("replacement");
 
-        ReplaceGraphInputs inputTensors;
-        if (!CreateReplaceGraphInputs(inputTensors, replaceGraphBuilder, subgraphInputs, matchResult)) {
-            OPS_LOG_E(FUSION_PASS_NAME.c_str(), "CreateReplaceGraphInputs failed.");
-            return nullptr;
-        }
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: inputs ok");
-
-        ge::GNode originMc2Node;
-        if (!GetCapturedMc2Node(matchResult, originMc2Node)) {
-            return nullptr;
-        }
-
-        // 先取出字段到局部变量，立刻销毁 Mc2ReplaceAttrs，验证是否 GetAttr 阶段已弄脏 attrs
-        std::string group;
-        int64_t worldSize = 0;
-        std::vector<int64_t> all2allAxes;
-        int64_t yDtype = 0;
-        int64_t x1QuantMode = 0;
-        int64_t x2QuantMode = 0;
-        int64_t commQuantMode = 0;
-        int64_t x1QuantDtype = 0;
-        int64_t commQuantDtype = 0;
-        bool transposeX1 = false;
-        bool transposeX2 = false;
-        int64_t groupSize = 0;
-        std::string commMode;
-        bool alltoallOutFlag = true;
-        {
-            Mc2ReplaceAttrs attrs;
-            if (!GetMc2ReplaceAttrs(originMc2Node, attrs)) {
-                return nullptr;
-            }
-            OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: attrs ok, alltoall_out_flag=%d",
-                      static_cast<int>(attrs.alltoall_out_flag));
-            group = attrs.group;
-            worldSize = attrs.world_size;
-            all2allAxes = attrs.all2all_axes;
-            yDtype = attrs.y_dtype;
-            x1QuantMode = attrs.x1_quant_mode;
-            x2QuantMode = attrs.x2_quant_mode;
-            commQuantMode = attrs.comm_quant_mode;
-            x1QuantDtype = attrs.x1_quant_dtype;
-            commQuantDtype = attrs.comm_quant_dtype;
-            transposeX1 = attrs.transpose_x1;
-            transposeX2 = attrs.transpose_x2;
-            groupSize = attrs.group_size;
-            commMode = attrs.comm_mode;
-            alltoallOutFlag = attrs.alltoall_out_flag;
-        }
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after destroy attrs (right after GetAttr)");
-
-        // 对齐 matmul：直接把 attr 传给 ES（局部变量，不再经 Mc2ReplaceAttrs 析构）
-        auto mc2 = ge::es::AlltoAllMatmul(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
-                                          inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
-                                          inputTensors.rX2Offset, group.c_str(), worldSize, all2allAxes, yDtype,
-                                          x1QuantMode, x2QuantMode, commQuantMode, x1QuantDtype, commQuantDtype,
-                                          transposeX1, transposeX2, groupSize, commMode.c_str(), alltoallOutFlag);
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after AlltoAllMatmul");
-
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: before BuildAndReset");
-        replaceGraph = replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after BuildAndReset, graph=%p", replaceGraph.get());
-
-        {
-            auto deadMc2 = std::move(mc2);
-        }
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after destroy mc2");
-        {
-            auto deadNode = std::move(originMc2Node);
-        }
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after destroy originMc2Node");
-        {
-            auto deadInputs = std::move(inputTensors);
-        }
-        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after destroy inputTensors");
+    ReplaceGraphInputs inputTensors;
+    if (!CreateReplaceGraphInputs(inputTensors, replaceGraphBuilder, subgraphInputs, matchResult)) {
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "CreateReplaceGraphInputs failed.");
+        return nullptr;
     }
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after scope destroy (builder), about to return");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: inputs ok");
+
+    ge::GNode mc2Node;
+    if (!GetCapturedMc2Node(matchResult, mc2Node)) {
+        return nullptr;
+    }
+
+    // 与 MatmulAlltoAll fusion 一致：attr 全部用局部变量，不经过额外 struct
+    ge::AscendString group;
+    OP_LOGE_IF(mc2Node.GetAttr("group", group) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr group failed.");
+
+    int64_t worldSize = 0;
+    OP_LOGE_IF(mc2Node.GetAttr("world_size", worldSize) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr world_size failed.");
+
+    std::vector<int64_t> all2allAxes = {-2, -1};
+    OP_LOGE_IF(mc2Node.GetAttr("all2all_axes", all2allAxes) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr all2all_axes failed.");
+
+    int64_t yDtype = 28;
+    OP_LOGE_IF(mc2Node.GetAttr("y_dtype", yDtype) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr y_dtype failed.");
+
+    int64_t x1QuantMode = 0;
+    OP_LOGE_IF(mc2Node.GetAttr("x1_quant_mode", x1QuantMode) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr x1_quant_mode failed.");
+
+    int64_t x2QuantMode = 0;
+    OP_LOGE_IF(mc2Node.GetAttr("x2_quant_mode", x2QuantMode) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr x2_quant_mode failed.");
+
+    int64_t commQuantMode = 0;
+    OP_LOGE_IF(mc2Node.GetAttr("comm_quant_mode", commQuantMode) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr comm_quant_mode failed.");
+
+    int64_t x1QuantDtype = 28;
+    OP_LOGE_IF(mc2Node.GetAttr("x1_quant_dtype", x1QuantDtype) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr x1_quant_dtype failed.");
+
+    int64_t commQuantDtype = 28;
+    OP_LOGE_IF(mc2Node.GetAttr("comm_quant_dtype", commQuantDtype) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr comm_quant_dtype failed.");
+
+    bool transposeX1 = false;
+    OP_LOGE_IF(mc2Node.GetAttr("transpose_x1", transposeX1) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr transpose_x1 failed.");
+
+    bool transposeX2 = false;
+    OP_LOGE_IF(mc2Node.GetAttr("transpose_x2", transposeX2) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr transpose_x2 failed.");
+    // 移除 Transpose 节点后，transpose_x2 置反
+    transposeX2 = !transposeX2;
+
+    int64_t groupSize = 0;
+    OP_LOGE_IF(mc2Node.GetAttr("group_size", groupSize) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr group_size failed.");
+
+    ge::AscendString commMode;
+    OP_LOGE_IF(mc2Node.GetAttr("comm_mode", commMode) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr comm_mode failed.");
+
+    bool alltoallOutFlag = true;
+    OP_LOGE_IF(mc2Node.GetAttr("alltoall_out_flag", alltoallOutFlag) != ge::GRAPH_SUCCESS, nullptr,
+               FUSION_PASS_NAME.c_str(), "Get Attr alltoall_out_flag failed.");
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: attrs ok, alltoall_out_flag=%d",
+              static_cast<int>(alltoallOutFlag));
+
+    auto mc2 = ge::es::AlltoAllMatmul(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
+                                      inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
+                                      inputTensors.rX2Offset, group.GetString(), worldSize, all2allAxes, yDtype,
+                                      x1QuantMode, x2QuantMode, commQuantMode, x1QuantDtype, commQuantDtype,
+                                      transposeX1, transposeX2, groupSize, commMode.GetString(), alltoallOutFlag);
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after AlltoAllMatmul");
+
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: before BuildAndReset");
+    auto replaceGraph = replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after BuildAndReset, graph=%p", replaceGraph.get());
     return replaceGraph;
 }
 
