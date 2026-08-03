@@ -606,16 +606,16 @@ static bool CheckMxA8W4InputShape(gert::TilingContext *context)
                 OP_LOGE(context->GetNodeName(), "ValidateGroupListShape failed."), return false);
 
     // 4. Validate row_index shape
-    OP_CHECK_IF(!ValidateRowIndexShape(context, mSize), OP_LOGE(context->GetNodeName(), "ValidateRowIndexShape failed."),
-                return false);
+    OP_CHECK_IF(!ValidateRowIndexShape(context, mSize),
+                OP_LOGE(context->GetNodeName(), "ValidateRowIndexShape failed."), return false);
 
     // 5. Validate logit shape
     OP_CHECK_IF(!ValidateLogitShape(context, mSize), OP_LOGE(context->GetNodeName(), "ValidateLogitShape failed."),
                 return false);
 
     // 6. Validate bias shape
-    OP_CHECK_IF(!ValidateBiasShape(context, eFromW, nSize), OP_LOGE(context->GetNodeName(), "ValidateBiasShape failed."),
-                return false);
+    OP_CHECK_IF(!ValidateBiasShape(context, eFromW, nSize),
+                OP_LOGE(context->GetNodeName(), "ValidateBiasShape failed."), return false);
 
     // Calculate CeilDiv(K, 64) for scale validation
     int64_t kCeilDiv64 = (kSize + MX_SCALE_BLOCK_SIZE - 1) / MX_SCALE_BLOCK_SIZE;
@@ -842,13 +842,13 @@ static bool SetMxA8W4NzInput(gert::TilingContext *context, GMMFRWeightQuantInput
     OP_LOGD(context->GetNodeName(), "Start extracting all inputs.");
 
     OP_CHECK_IF(!SetWFormat(context, inputParams), OP_LOGE(context->GetNodeName(), "SetWFormat failed."), return false);
-    OP_CHECK_IF(!ExtractXDimensions(context, inputParams), OP_LOGE(context->GetNodeName(), "ExtractXDimensions failed."),
-                return false);
-    OP_CHECK_IF(!ExtractWDimensions(context, inputParams), OP_LOGE(context->GetNodeName(), "ExtractWDimensions failed."),
-                return false);
+    OP_CHECK_IF(!ExtractXDimensions(context, inputParams),
+                OP_LOGE(context->GetNodeName(), "ExtractXDimensions failed."), return false);
+    OP_CHECK_IF(!ExtractWDimensions(context, inputParams),
+                OP_LOGE(context->GetNodeName(), "ExtractWDimensions failed."), return false);
     SetBiasInfo(context, inputParams);
-    OP_CHECK_IF(!SetSharedInputInfo(context, inputParams), OP_LOGE(context->GetNodeName(), "SetSharedInputInfo failed."),
-                return false);
+    OP_CHECK_IF(!SetSharedInputInfo(context, inputParams),
+                OP_LOGE(context->GetNodeName(), "SetSharedInputInfo failed."), return false);
 
     OP_LOGD(context->GetNodeName(), "All inputs extracted successfully.");
     return true;
