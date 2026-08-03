@@ -1266,13 +1266,15 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
             expectedStrides = {shape.GetDim(1) * shape.GetDim(2), shape.GetDim(2), 1};
         }
         for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
-            keyReportAxis = static_cast<uint32_t>(i);
-            if (i < keyStridesVec_.size()) {
+            if (i >= keyStridesVec_.size()) {
+                continue;
+            }
+            if (keyStridesVec_[i] != expectedStrides[i]) {
+                keyNonContiguous = true;
+                keyReportAxis = static_cast<uint32_t>(i);
                 keyReportActual = keyStridesVec_[i];
                 keyReportExpected = expectedStrides[i];
-                if (keyStridesVec_[i] != expectedStrides[i]) {
-                    keyNonContiguous = true;
-                }
+                break;
             }
         }
     }
@@ -1298,13 +1300,15 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
             }
         }
         for (size_t i = checkStartIdx; i < expectedStrides.size(); ++i) {
-            scaleReportAxis = static_cast<uint32_t>(i);
-            if (i < keyDequantScaleStridesVec_.size()) {
+            if (i >= keyDequantScaleStridesVec_.size()) {
+                continue;
+            }
+            if (keyDequantScaleStridesVec_[i] != expectedStrides[i]) {
+                scaleNonContiguous = true;
+                scaleReportAxis = static_cast<uint32_t>(i);
                 scaleReportActual = keyDequantScaleStridesVec_[i];
                 scaleReportExpected = expectedStrides[i];
-                if (keyDequantScaleStridesVec_[i] != expectedStrides[i]) {
-                    scaleNonContiguous = true;
-                }
+                break;
             }
         }
     }
