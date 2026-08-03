@@ -28,6 +28,27 @@ using bT3 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t, true>;
 using cT3 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
 using StageThreeMT = matmul::MatmulImpl<aT3, bT3, cT3>;
 
+__aicore__ constexpr MatmulConfig GetStage3StcConfig()
+{
+    MatmulConfig cfg = CFG_NORM;
+    cfg.basicM = 64;
+    cfg.basicN = 128;
+    cfg.basicK = 64;
+    cfg.singleCoreM = 64;
+    cfg.singleCoreN = 128;
+    cfg.singleCoreK = 64;
+    cfg.enableSetBias = false;
+    cfg.enableQuantVector = false;
+    cfg.enableSetDefineData = false;
+    cfg.enableGetTensorC = false;
+    cfg.enableSetTail = false;
+    return cfg;
+}
+constexpr MatmulConfig S3_MM_CFG = GetStage3StcConfig();
+constexpr MatmulApiStaticTiling S3_MM_TILING =
+    matmul::GetMatmulApiTiling<aT3, bT3, cT3, cT3>(S3_MM_CFG);
+using StageThreeStcMT = matmul::MatmulImpl<aT3, bT3, cT3, cT3, S3_MM_TILING>;
+
 struct StageThreeParams {
     GlobalTensor<bfloat16_t> qkt; // (Nv, Sp, Dk)
     GlobalTensor<float> gCumExp;  // (Nv, Sp)
@@ -36,6 +57,7 @@ struct StageThreeParams {
     GM_ADDR ws;
     GlobalTensor<bfloat16_t> attnOut;
     StageThreeMT *mm3;
+    StageThreeStcMT *mm3Stc;
     TPipe *pipe;
     ChunkGroup *cg;
     float scale;
@@ -170,6 +192,15 @@ public:
                                       GlobalTensor<bfloat16_t> attnInter)
     {
         // masked_qkt @ v_inner
+        if (Dv_ == 128 && chunkSize_ == 64 && curChunkSize_ == chunkSize_) {
+            sTP_->mm3Stc->SetOrgShape(curChunkSize_, Dv_, curChunkSize_, curChunkSize_, Nv_ * Dv_);
+            sTP_->mm3Stc->SetSingleShape(curChunkSize_, Dv_, curChunkSize_);
+            sTP_->mm3Stc->SetTensorA(tmpGM);
+            sTP_->mm3Stc->SetTensorB(vInner);
+            sTP_->mm3Stc->IterateAll(attnInter, 1);
+            sTP_->mm3Stc->End();
+            return;
+        }
         sTP_->mm3->SetOrgShape(curChunkSize_, Dv_, curChunkSize_, curChunkSize_, Nv_ * Dv_); // MNK
         sTP_->mm3->SetSingleShape(curChunkSize_, Dv_, curChunkSize_);                        // SingleCoreMNK
         sTP_->mm3->SetTensorA(tmpGM);
