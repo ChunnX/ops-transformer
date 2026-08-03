@@ -53,13 +53,18 @@ at::Tensor UndGenQkvRmsNormRopeCache(const at::Tensor &undQkv, const at::Tensor 
 
     at::Tensor q = at::empty({total, numHeadsQ, HEAD_DIM}, undQkv.options());
 
-    // NOTE: 这里必须传 at::Tensor 而非 StorageShapeTensor —— ACLNN_CMD 的 DecodeDevice
-    //       只从 at::Tensor / at::TensorList 参数里取 device，全部包成 StorageShapeTensor
-    //       会导致它拿到未定义 tensor 并抛 "tensor does not have a device"。
-    //       本算子输入输出均为连续 ND，普通 ConvertType 已足够。
-    ACLNN_CMD(aclnnUndGenQkvRmsNormRopeCache, undQkv, undWeightsQ, undWeightsK, cosSinCache, kCache, vCache,
-              slotMapping, positions, genQkv, genWeightsQ, genWeightsK, catIndices, numHeadsQ, numHeadsK, numHeadsV,
-              normEps, mropeSection, q, kCache, vCache);
+    // k_cache/v_cache 必须包成 StorageShapeTensor：普通 ConvertType 对 base format 张量把
+    // storageDims 填成一维的 {总元素数}，而 aclnn 不对它们做 Contiguous（原地写入不能走副本），
+    // 于是 tiling 侧 GetStorageShape() 拿到的是 1D，直接被 "k_cache must be 4D" 拦下。
+    // 其余输入都经过 l0op::Contiguous 重建，storage shape 与 view shape 一致，无需包装。
+    // NOTE: 不能把所有实参都包成 StorageShapeTensor —— ACLNN_CMD 的 DecodeDevice 只从
+    //       at::Tensor / at::TensorList 参数里取 device，全包会拿到未定义 tensor 并抛
+    //       "tensor does not have a device"。undQkv / q 保持裸 at::Tensor 即可满足它。
+    StorageShapeTensor kCacheWrapped{kCache};
+    StorageShapeTensor vCacheWrapped{vCache};
+    ACLNN_CMD(aclnnUndGenQkvRmsNormRopeCache, undQkv, undWeightsQ, undWeightsK, cosSinCache, kCacheWrapped,
+              vCacheWrapped, slotMapping, positions, genQkv, genWeightsQ, genWeightsK, catIndices, numHeadsQ,
+              numHeadsK, numHeadsV, normEps, mropeSection, q, kCacheWrapped, vCacheWrapped);
 
     return q;
 }
