@@ -737,19 +737,16 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
                 DataCopyExtParams roundLoadParams{1U, static_cast<uint32_t>(roundLen * sizeof(int32_t)), 0U, 0U, 0U};
                 DataCopyPadExtParams<int32_t> roundLoadPad{false, 0U, 0U, 0U};
                 DataCopyPad(topkIdsTensor_, roundSrcGlobal, roundLoadParams, roundLoadPad);
-                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA04]: topk round load -> existing MTE2_V sync
                 SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 
                 // Phase 2: CompareScalar → 本轮部分 mask + GatherMask 累加 count
                 LocalTensor<uint8_t> maskBuf = sendMaskTensor_[roundIdx % DOUBLE_BUFFER];
                 LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
                 CompareScalar(maskBuf, topkIdsTensor_, curExpertId, AscendC::CMPMODE::EQ, curRoundCompareCount);
-                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA05]: mask compare -> gather preparation
                 PipeBarrier<PIPE_V>();
                 uint64_t roundSendCnt = 0;
                 GatherMask(sendGatherOutTensor_, topkIdsTensor_, maskBufU32, true, static_cast<uint32_t>(roundLen),
                            {1, 1, 0, 0}, roundSendCnt);
-                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA06]: mask gather -> existing V_S sync
                 SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
                 totalSendCnt += roundSendCnt;
                 SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
@@ -769,13 +766,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
                     winDstGlobal.SetGlobalBuffer(
                         (__gm__ uint8_t *)(GetRankWinAddrWithOffset(rankId_, dstOffset + roundByteOffset)));
                     DataCopyPad(winDstGlobal, maskBuf, partialMaskCopyParams);
-                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA07]: local mask MTE3 -> round completion
                 } else {
                     GlobalTensor<uint8_t> wsDstGlobal;
                     wsDstGlobal.SetGlobalBuffer(
                         (__gm__ uint8_t *)(params_.workspaceInfo.maskSlotPtr + srcOffset + roundByteOffset));
                     DataCopyPad(wsDstGlobal, maskBuf, partialMaskCopyParams);
-                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA08]: remote-source mask MTE3 -> round completion
                 }
                 PipeBarrier<PIPE_ALL>();
             }
