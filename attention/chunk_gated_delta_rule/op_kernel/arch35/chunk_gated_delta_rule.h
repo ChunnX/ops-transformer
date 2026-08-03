@@ -58,6 +58,9 @@ public:
     {
         if ASCEND_IS_AIC {
             stage1MmBf16_.Init(&tiling_->matmulTilingFp32, pipe_);
+            stage1MmInv_.Init(&tiling_->matmulTilingFp32, pipe_);
+            stage1MmKK_.Init(&tiling_->matmulTilingFp32, pipe_);
+            stage1MmKcd_.Init(&tiling_->matmulTilingFp32, pipe_);
             if constexpr (kStateIsFp32) {
                 stage1MmVInner_.Init(&tiling_->matmulTilingFp32C, pipe_);
             } else {
@@ -68,6 +71,7 @@ public:
                 stage2MmFp32_.Init(&tiling_->matmulTilingFp32C, pipe_);
             }
             stage3Mm_.Init(&tiling_->matmulTilingFp32, pipe_);
+            stage3MmStc_.Init(&tiling_->matmulTilingFp32, pipe_);
         }
     }
 
@@ -213,6 +217,8 @@ private:
         GDRStageOneInitParams<vInnerType> initStageOneParams{query_, key_,         value_,        beta_,   g_,
                                                              gCum_,  kCumDecay_,   vInner_,       qPrime_, kg_,
                                                              qkt_,   stageWsAddr_, stageOneMask_, cg};
+        stageOneOp_.SetInvMatmul(&stage1MmInv_);
+        stageOneOp_.SetStcMatmul(&stage1MmKK_, &stage1MmKcd_);
         stageOneOp_.Init(initStageOneParams, pipe_, tiling_);
         stageOneOp_.Process();
         pipe_->Reset();
@@ -261,6 +267,7 @@ private:
     {
         if ASCEND_IS_AIC {
             stage3Mm_.Init(&tiling_->matmulTilingFp32, pipe_);
+            stage3MmStc_.Init(&tiling_->matmulTilingFp32, pipe_);
         }
         GlobalTensor<lowType> vInnerBf16;
         if constexpr (kStateIsFp32) {
@@ -273,7 +280,7 @@ private:
             qkt_,         gCum_,
             vInnerBf16,   stageThreeMask_[int(GetBlockIdx() / 2) * tiling_->chunkSize * tiling_->chunkSize],
             stageWsAddr_, out_[cg.startPos * tiling_->nv * tiling_->dv],
-            &stage3Mm_,   pipe_,
+            &stage3Mm_,   &stage3MmStc_, pipe_,
             &cg,          tiling_->scale,
             tiling_->nv,  tiling_->nk,
             tiling_->dv,  tiling_->dk};
@@ -315,10 +322,14 @@ private:
 
     // Matmul objects
     StageOneMTT<bfloat16_t> stage1MmBf16_;
+    StageOneInvMT stage1MmInv_;
+    StageOneKKMT stage1MmKK_;
+    StageOneKcdMT stage1MmKcd_;
     StageOneMmVInner stage1MmVInner_;
     StageTwoMT stage2MmBf16_;
     StageTwoMTFp32C stage2MmFp32_;
     StageThreeMT stage3Mm_;
+    StageThreeStcMT stage3MmStc_;
 
     // Stage operators
     Stage1<kStateIsFp32, gOptional> stageOneOp_;
