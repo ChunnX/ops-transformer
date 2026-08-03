@@ -425,7 +425,7 @@ private:
         resources.commBufferSize = static_cast<int64_t>(localBufferSize);
         resources.context.virtualAddrList[rankId] = reinterpret_cast<uint64_t>(localBuffer);
 
-        for (uint32_t i = 0; i < resources.context.rankSize; ++i) {
+        for (uint32_t i = 0; i < rankSize; ++i) {
             if (i == rankId) {
                 continue;
             }
