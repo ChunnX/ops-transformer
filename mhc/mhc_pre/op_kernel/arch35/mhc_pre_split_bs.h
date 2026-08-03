@@ -130,8 +130,7 @@ private:
         uint32_t invRmsRows =
             (vector_.curSingleT_ + vector_.kHalfSplitDivisor - 1U) / vector_.kHalfSplitDivisor;
         uint32_t invRmsBytes = MhcPreAlign(
-                                   invRmsRows, vector_.kAlignmentBytes / sizeof(P)) *
-                               sizeof(P);
+            invRmsRows, vector_.kAlignmentBytes / sizeof(P)) * sizeof(P);
         vector_.pipe_->InitBuffer(vector_.invRmsOutQueue_, vector_.kSingleBufferCount, invRmsBytes);
 
         if (vector_.hasGamma_) {
