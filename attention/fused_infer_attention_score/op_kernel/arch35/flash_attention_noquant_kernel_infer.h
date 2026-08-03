@@ -16,8 +16,8 @@
 #ifndef FLASH_ATTENTION_NOQUANT_KERNEL_INFER_H_
 #define FLASH_ATTENTION_NOQUANT_KERNEL_INFER_H_
 #include "./flash_attention_noquant_kernel_base.h"
-#include "../../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
-#include "../../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
 #include "./infer_flash_attention_kvcache.h"
 #include "./infer_flash_attention_sparse.h"
 

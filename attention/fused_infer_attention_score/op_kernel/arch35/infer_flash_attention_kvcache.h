@@ -21,7 +21,7 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_operator_list_tensor_intf.h"
-#include "../../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
 #include "infer_flash_attention_sparse.h"
 #define NUM_128 128
 using namespace matmul;

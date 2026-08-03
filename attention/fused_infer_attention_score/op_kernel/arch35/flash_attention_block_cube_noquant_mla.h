@@ -19,8 +19,8 @@
 #include "kernel_operator.h"
 #include "../../../common/op_kernel/matmul.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "../../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
-#include "../../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "flash_attention_score_block_cube.h"
 
 using namespace fa_base_matmul;

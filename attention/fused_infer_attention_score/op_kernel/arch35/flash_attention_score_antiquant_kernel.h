@@ -24,22 +24,22 @@ const int VC_L1_EVENT[2] = {6, 7};
 const int VC_MM1RES_EVENT[2] = {8, 9};
 const int VC_MM2RES_EVENT[2] = {10, 15};
 
-#include "../../../../common/op_kernel/arch35/util_regbase.h"
+#include "../../../common/op_kernel/arch35/util_regbase.h"
 
 #include "../../../common/op_kernel/matmul.h"
 #include "../../../common/op_kernel/FixpipeOut.h"
 #include "../../../common/op_kernel/CopyInL1.h"
 
-#include "../../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
-#include "../../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_operator.h"
 #include "flash_attention_score_antiquant_block_vec.h"
 #include "flash_attention_score_antiquant_block_cube.h"
 #include "infer_flash_attention_kvcache.h"
 #include "infer_flash_attention_sparse.h"
-#include "../../../../common/op_kernel/arch35/pse.h"
-#include "../../../../common/op_kernel/arch35/attenmask.h"
+#include "../../../common/op_kernel/arch35/pse.h"
+#include "../../../common/op_kernel/arch35/attenmask.h"
 
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
