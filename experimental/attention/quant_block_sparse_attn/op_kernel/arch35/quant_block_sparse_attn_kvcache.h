@@ -178,11 +178,6 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr &runParam, const ConstInfo 
 TEMPLATE_INTF
 __aicore__ inline void InitTaskParamByRun(const RunParamStr &runParam, RunInfo &runInfo)
 {
-    runInfo.boIdx = runParam.boIdx;
-    runInfo.preTokensPerBatch = runParam.preTokensPerBatch;
-    runInfo.nextTokensPerBatch = runParam.nextTokensPerBatch;
-    runInfo.actualS1Size = runParam.actualS1Size;
-    runInfo.actualS2Size = runParam.actualS2Size;
     runInfo.softmaxLseOffset = runParam.softmaxLseOffset;
 }
 

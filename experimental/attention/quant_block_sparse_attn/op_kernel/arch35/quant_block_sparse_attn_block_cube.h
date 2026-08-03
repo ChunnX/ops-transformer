@@ -68,10 +68,7 @@ template <typename INPUT_T, uint32_t s2BaseSize, uint32_t dBaseSize>
 struct KVL1BuffSel {
     constexpr static bool isFP8DType = std::is_same_v<INPUT_T, fp8_e4m3fn_t> || std::is_same_v<INPUT_T, fp8_e5m2_t> ||
                                        std::is_same_v<INPUT_T, hifloat8_t>;
-    using Type = std::conditional_t<
-        (isFP8DType && s2BaseSize == 128 && dBaseSize == 576), BuffersPolicy4buff<BufferType::L1>,
-        std::conditional_t<(!(isFP8DType) && s2BaseSize == 256 && dBaseSize > 128),
-                           BuffersPolicySingleBuffer<BufferType::L1>, BuffersPolicyDB<BufferType::L1>>>;
+    using Type = BuffersPolicy3buff<BufferType::L1>;
 };
 
 /* ============确定L0A的类型============= */
@@ -467,7 +464,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
     LocalTensor<INPUT_T> mm1ATensor = mm1A.GetTensor<INPUT_T>();
     int32_t remainBlocks = runInfo.actSparseLen - runInfo.s2LoopCount * 2;
     uint32_t actualS2RealSize = (uint32_t)runInfo.s2SparseBlk1RealSize;
-    if (remainBlocks >= 2) {
+    if (likely(remainBlocks >= 2)) {
         actualS2RealSize += (uint32_t)runInfo.s2SparseBlk2RealSize;
     }
     if constexpr (isPa) {
