@@ -229,14 +229,14 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         hitCountStride_ = Ceil(numLocalExperts_, ELEM_ALIGN) * ELEM_ALIGN;
         paddedMetaElems_ = Ceil(META_TOPK_SECTION * axisKAlign_ + META_EXTRA_FIELDS, ELEM_ALIGN) * ELEM_ALIGN;
         paddedTopkElems_ = axisKAlign_;
-        uint32_t ubHitCountBytes = hitCountStride_ * sizeof(int32_t);
-        uint32_t ubRowStartBytes = hitCountStride_ * sizeof(int64_t);
+        uint32_t ubHitCountBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+        uint32_t ubRowStartBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
         uint32_t ubMetaBytes =
             Ceil((uint32_t)(SLOTS_TILE * paddedMetaElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
         uint32_t ubTopkIdsBytes =
             Ceil((uint32_t)(SLOTS_TILE * paddedTopkElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
         uint32_t ubRecvCntBytes = Ceil((uint32_t)(epWorldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
-        uint32_t ubHitCountRowI64Bytes = hitCountStride_ * sizeof(int64_t);
+        uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
         uint32_t ubStageMetaBytes = axisK_ * UB_ALIGN;
         uint32_t ubStageWeightsBytes = axisK_ * UB_ALIGN;
         uint32_t ubHitListBytes = Ceil((uint32_t)(axisK_ * HIT_ENTRY_SIZE * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
@@ -409,7 +409,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 Duplicate<uint32_t>(sharedTmpInt32, 0, calCntAlign);
                 CompareScalar(sharedTmpInt8, ubTopkIds_, static_cast<int32_t>(targetExpertId), AscendC::CMPMODE::EQ,
                               calCntAlign);
-                GatherMask(ubTargetExpertId_, ubTopkIds_, sharedTmpInt32, true, calCntAlign, {1, 1, 0, 0}, rsvdCnt);
+                GatherMask(ubTargetExpertId_, ubTopkIds_, sharedTmpInt32, true, calCnt, {1, 1, 0, 0}, rsvdCnt);
                 SyncFunc<AscendC::HardEvent::V_S>();
                 int32_t curExpertCnt = rsvdCnt;
                 int32_t currentHits = ubHitCount_.GetValue(localExpertId);
@@ -431,16 +431,16 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     DataCopyExtParams hitCountOneCopyParams{1U, static_cast<uint32_t>(numLocalExperts_ * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> hitCountOnePadParams{false, 0U, 0U, 0};
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-    Adds(ubRowStart_, ubExpertPfx_, static_cast<int64_t>(0), hitCountStride_);
+    Adds(ubRowStart_, ubExpertPfx_, static_cast<int64_t>(0), numLocalExperts_);
     for (uint32_t aiv = 0; aiv < aivId_; ++aiv) {
         DataCopyPad(ubHitCount_, hitCountGm_[(int64_t)aiv * hitCountStride_], hitCountOneCopyParams,
                     hitCountOnePadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
-        Cast(ubHitCountRowI64_, ubHitCount_, RoundMode::CAST_NONE, hitCountStride_);
-        Add(ubRowStart_, ubRowStart_, ubHitCountRowI64_, hitCountStride_);
+        Cast(ubHitCountRowI64_, ubHitCount_, RoundMode::CAST_NONE, numLocalExperts_);
+        Add(ubRowStart_, ubRowStart_, ubHitCountRowI64_, numLocalExperts_);
         SyncFunc<AscendC::HardEvent::V_MTE2>();
     }
-    Duplicate(ubLocalCursor_, (int32_t)0, hitCountStride_);
+    Duplicate(ubLocalCursor_, (int32_t)0, numLocalExperts_);
     SyncFunc<AscendC::HardEvent::V_S>();
     DataCopyPadExtParams<int32_t> metaPadParams{false, 0, 0, 0};
     DataCopyParams tokenCopyParams{1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
