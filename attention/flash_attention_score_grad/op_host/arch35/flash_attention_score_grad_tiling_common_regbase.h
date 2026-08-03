@@ -311,7 +311,8 @@ enum class DeterSparseType : uint32_t {
     DETER_OLD = 1, // 确定性老实现方案
     DETER_DENSE = 2,
     DETER_CAUSAL = 3,
-    DETER_BAND = 4
+    DETER_BAND = 4, 
+    DETER_RIGHT_DOWN_CAUSAL = 5 
 };
 
 struct DeterPrefixData {
@@ -444,6 +445,7 @@ struct FuzzyBaseInfoParamsRegbase { // 频繁使用的基础参数
 
     DtypeEnum inputDtype;
     bool isDeterministic = false;
+    bool enableDeterTndSwizzle = false; 
     uint32_t deterSparseType;
     uint8_t sparseType;
     bool isS1S2Same = false;

@@ -274,7 +274,6 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::SetRunInfoDeter
     runInfo.commonRunInfo.s2StartIdx = runInfo.s2CvBegin;
     runInfo.commonRunInfo.vecCoreOffset = this->vSubBlockIdx * runInfo.commonRunInfo.firstHalfS1RealSize;
     runInfo.commonRunInfo.s2AlignedSize = AlignTo16(runInfo.commonRunInfo.s2RealSize);
-    runInfo.s1AlignedSize = AlignTo16(runInfo.commonRunInfo.s1RealSize);
     
     runInfo.isS2IdxNoChange = (this->lastS2oCvDimIdx == runInfo.s2oIdx && this->lastBdimIdx == runInfo.commonRunInfo.boIdx &&
                                this->lastN2dimIdx == runInfo.commonRunInfo.n2oIdx);
@@ -372,11 +371,20 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalCausalDeterI
     } else {
         TransDeterRound<BaseClass::DETER_TILING_SPLIT_MODE>(r, useEven, deterLoopMax / NUM_TWO);
         if constexpr (BaseClass::IS_N_EQUAL) {
-            CalTNDCausalIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
-                this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
-                this->tilingData->deterParam.deterPrefix1, this->tilingData->deterParam.deterPrefix2,
-                this->constInfo.bSize, this->constInfo.n2Size, k, j, r,
-                this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
+            if constexpr (IS_TND_SWIZZLE) {
+                CalTNDCausalSwizzleIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN,
+                                         BaseClass::DETER_SPARSE_TYPE>(
+                    this->actualSeqQlenAddr, this->actualSeqKvlenAddr,
+                    this->tilingData->tndSwizzleParam.tndS2BlockPrefixSum, this->constInfo.bSize,
+                    this->constInfo.n2Size, k, j, r, this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
+                mGap = coordinateInfo.mOffset;
+            } else {
+                CalTNDCausalIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
+                    this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
+                    this->tilingData->deterParam.deterPrefix1, this->tilingData->deterParam.deterPrefix2,
+                    this->constInfo.bSize, this->constInfo.n2Size, k, j, r,
+                    this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
+            }
         } else {
             CalTNDGQACausalIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
                 this->actualSeqQlenAddr, this->actualSeqKvlenAddr,
@@ -512,11 +520,17 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalBandDeterInd
         coordinateInfo.p = this->constInfo.s1Token;
         coordinateInfo.q = this->constInfo.s2Token;
         if constexpr (BaseClass::IS_N_EQUAL) {
-            CalTNDBandIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
-                this->actualSeqQlenAddr, this->actualSeqKvlenAddr,
-                this->tilingData->deterParam.deterPrefix0,
-                this->tilingData->deterParam.deterPrefix1, this->constInfo.bSize, this->constInfo.n2Size,
-                k, j, r, this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
+            if constexpr (IS_TND_SWIZZLE) {
+                CalTNDBandSwizzleIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
+                    this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->tndSwizzleParam.tndS2BlockPrefixSum, 
+                    this->constInfo.bSize, this->constInfo.n2Size, k, j, r, 
+                    this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
+            } else {
+                CalTNDBandIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
+                    this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0, 
+                    this->tilingData->deterParam.deterPrefix1, this->constInfo.bSize, this->constInfo.n2Size, k, j, r, 
+                    this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
+            }
         } else {
             CalTNDGQABandIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
                 this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
@@ -697,7 +711,7 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterIndex(
     for (uint32_t currentRoundId = roundId; currentRoundId < maxLoopNum; currentRoundId++) {
         if constexpr (BaseClass::DETER_SPARSE_TYPE == DETER_BAND) {
             nextValidIndex = CalBandDeterIndex(currentRoundId, coordinateInfo);
-        } else if constexpr (BaseClass::DETER_SPARSE_TYPE == DETER_CAUSAL) {
+        } else if constexpr (BaseClass::DETER_SPARSE_TYPE == DETER_CAUSAL || BaseClass::DETER_SPARSE_TYPE == DETER_RIGHT_DOWN_CAUSAL) {
             nextValidIndex = CalCausalDeterIndex(currentRoundId, coordinateInfo);
         } else {
             nextValidIndex = CalDenseDeterIndex(currentRoundId, coordinateInfo);

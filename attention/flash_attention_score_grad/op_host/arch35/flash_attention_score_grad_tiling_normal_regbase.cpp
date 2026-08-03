@@ -451,8 +451,7 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
         fBaseParams.enableSwizzle && fBaseParams.s1 >= NZ_OUT_MIN_S_SIZE && fBaseParams.s2 >= NZ_OUT_MIN_S_SIZE;
     // tnd场景下 仅确定性计算+BN2GS1S2模板 以及 非确定性计算+BN2S2模板 支持swizzle优化
     bool templateSupportCond =
-        (fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2GS1S2 &&
-         fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE) && false) ||
+        (fBaseParams.isDeterministic && fBaseParams.enableDeterTndSwizzle) ||
         (!fBaseParams.isDeterministic && fBaseParams.splitAxis == SplitAxisEnum::BN2S2 &&
          (fBaseParams.s1 >= TND_SWIZZLE_MIN_S1_SIZE ||
           (fBaseParams.s2 > static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) &&
@@ -461,6 +460,18 @@ ge::graphStatus FlashAttentionScoreGradTilingNormalRegbase::DoOpTiling()
     tndBaseInfo.isTndSwizzle = fBaseParams.enableSwizzle && fBaseParams.layoutType == INPUT_FORMAT_TND &&
                                templateSupportCond && fBaseParams.b < TND_SWIZZLE_PREFIX_NUM &&
                                !tndBaseInfo.isSeqExistZero && fBaseParams.tailZeroCount == 0;
+    if (fBaseParams.isDeterministic && tndBaseInfo.isTndSwizzle) {
+        fBaseParams.splitAxis = SplitAxisEnum::BN2GS1S2;
+    }
+    if (tndBaseInfo.isTndSwizzle && fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_BAND) &&
+        fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL)) {
+        fBaseParams.deterSparseType = static_cast<uint32_t>(DeterSparseType::DETER_RIGHT_DOWN_CAUSAL);
+        OP_LOGD(context_, "Change deterSparseType to DETER_RIGHT_DOWN_CAUSAL([%d])", fBaseParams.deterSparseType);
+    }
+    // Swizzle 路径以 tndS2BlockPrefixSum 为轮次权威来源，覆盖旧 Dense/Causal/Band deter 公式算出的 deterMaxRound
+    if (fBaseParams.isDeterministic && tndBaseInfo.isTndSwizzle) {
+        fBaseParams.deterMaxRound = static_cast<int64_t>(tndBaseInfo.tndS2BlockPrefixSum[fBaseParams.b]);
+    }
     OP_LOGI(context_, "isExceedL2Cache=[%d], sparseType=[%d], enableSwizzle=[%d], isTndSwizzle = [%d], isNzOut = [%d].",
             static_cast<int>(isExceedL2Cache), static_cast<int>(fBaseParams.sparseType),
             static_cast<int>(fBaseParams.enableSwizzle), tndBaseInfo.isTndSwizzle, fBaseParams.isNzOut);
@@ -1136,9 +1147,8 @@ void FlashAttentionScoreGradTilingNormalRegbase::DoPreTiling()
     uint64_t singleCoreNum = AlignTo(CeilDivideBy(maskSize, static_cast<uint64_t>(fBaseParams.blockOuter)),
                                      static_cast<uint64_t>(BOOL_BLOCK_NUMS));
     uint64_t maskUsedCoreNum = 0;
-    bool presfmgLimit = !(fBaseParams.d <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM128) &&
-                          fBaseParams.s2 <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM256) &&
-                          fBaseParams.b * fBaseParams.n1 * fBaseParams.s1Outer >= MAX_BASIC_BLOCK_SIZE);
+    bool presfmgLimit = !(fBaseParams.s2 <= static_cast<uint32_t>(ConstAxisTemplateNum::NUM256) &&
+        fBaseParams.b * fBaseParams.n1 * fBaseParams.s1Outer >= MAX_BASIC_BLOCK_SIZE);
     fBaseParams.enablePreSfmg =
         (fBaseParams.queryType == ge::DT_HIFLOAT8) ||
         ((fBaseParams.queryType == ge::DT_BF16 || fBaseParams.queryType == ge::DT_FLOAT16) &&

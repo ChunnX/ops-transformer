@@ -65,18 +65,37 @@ protected:
         if (fBaseParams.b >= TND_SWIZZLE_PREFIX_NUM) {
             return;
         }
+        fBaseParams.enableDeterTndSwizzle = (fBaseParams.deterSparseType >= static_cast<uint32_t>(DeterSparseType::DETER_DENSE) && 
+                                             fBaseParams.g == 1);
+        int64_t balancedBatchCount = fBaseParams.b;
         for (int64_t bIdx = 0; bIdx < fBaseParams.b; bIdx++) {
             int64_t s1OuterTmp = (fBaseParams.actualSeqQlen[bIdx] + fBaseParams.s1Inner * S1CV_RATIO_DEFAULT - 1) /
                                  (fBaseParams.s1Inner * S1CV_RATIO_DEFAULT);
             int64_t s2OuterTmp = (fBaseParams.actualSeqKvlen[bIdx] + fBaseParams.s2Inner * S2CV_RATIO_DEFAULT - 1) /
                                  (fBaseParams.s2Inner * S2CV_RATIO_DEFAULT);
-            tndBaseInfo.tndS2BlockPrefixSum[bIdx + 1] =
-                tndBaseInfo.tndS2BlockPrefixSum[bIdx] +
-                CeilDivideBy(fBaseParams.n2 * fBaseParams.g * s2OuterTmp, static_cast<int64_t>(fBaseParams.aicNum)) *
-                    s1OuterTmp;
+            int64_t s2BlockPrefix = 0;
+            if (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_DENSE)) {
+                s2BlockPrefix = CalcTNDDenseSwizzleParam(s1OuterTmp, s2OuterTmp);
+            } else if (fBaseParams.deterSparseType == static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL)) {
+                s2BlockPrefix = CalcTNDLeftUpCausalSwizzleParam(balancedBatchCount, s1OuterTmp, s2OuterTmp);
+            } else {
+                if (fBaseParams.sparseMode == static_cast<uint32_t>(SparseMode::RIGHT_DOWN_CAUSAL)) {
+                    s2BlockPrefix = CalcTNDRightDownCausalSwizzleParam(balancedBatchCount, bIdx, s1OuterTmp, s2OuterTmp);
+                } else {
+                    s2BlockPrefix = CalcTNDBandSwizzleParam(bIdx, s1OuterTmp, s2OuterTmp);
+                }
+            }
+            tndBaseInfo.tndS2BlockPrefixSum[bIdx + 1] = tndBaseInfo.tndS2BlockPrefixSum[bIdx] + s2BlockPrefix;
             OP_LOGD("CalcTNDSwizzleParam", " bIdx = %ld: tndS2BlockPrefixSum = %ld", bIdx + 1,
                     tndBaseInfo.tndS2BlockPrefixSum[bIdx + 1]);
         }
+        if (balancedBatchCount <= static_cast<int64_t>(fBaseParams.b * 0.8)) {
+            OP_LOGD("CalcTNDSwizzleParam", "balancedBatchCount=%ld below 0.8*b=%ld, keep enableDeterTndSwizzle=%d",
+                    balancedBatchCount, static_cast<int64_t>(fBaseParams.b * 0.8),
+                    static_cast<int>(fBaseParams.enableDeterTndSwizzle));
+        }
+        OP_LOGD("CalcTNDSwizzleParam", "enableDeterTndSwizzle=%d, deterSparseType=%u, g=%ld",
+                static_cast<int>(fBaseParams.enableDeterTndSwizzle), fBaseParams.deterSparseType, fBaseParams.g);
     }
 
     void CalcleTNDDenseDeterParam()
@@ -1409,6 +1428,134 @@ protected:
             }
         }
         return true;
+    }
+
+private:
+    int64_t CalcTNDDenseSwizzleParam(int64_t s1OuterTmp, int64_t s2OuterTmp) {
+        return CeilDivideBy(fBaseParams.n2 * fBaseParams.g * s2OuterTmp, static_cast<int64_t>(fBaseParams.aicNum)) * s1OuterTmp;
+    }
+
+    int64_t CalcTNDLeftUpCausalSwizzleParam(int64_t &balancedBatchCount, int64_t s1OuterTmp, int64_t s2OuterTmp) {
+        s2OuterTmp = s1OuterTmp < s2OuterTmp ? s1OuterTmp : s2OuterTmp;
+        if (s2OuterTmp <= fBaseParams.aicNum * 0.8) {
+            balancedBatchCount -= 1;
+        }
+        int64_t pairBatchCount = fBaseParams.n1 % 2 == 0 ? fBaseParams.n1 : fBaseParams.n1 - 1;
+        int64_t pairRounds = 0;
+        if (pairBatchCount > 0) {
+            int64_t pairCount = pairBatchCount / 2;
+            pairRounds = CeilDivideBy(s2OuterTmp * pairCount, static_cast<int64_t>(fBaseParams.aicNum)) * (2 * s1OuterTmp - s2OuterTmp + 1);
+        } 
+        int64_t singleRounds = fBaseParams.n1 % 2 == 1 ? CalcSingleCausalRounds(s1OuterTmp, s2OuterTmp) : 0;
+        return pairRounds + singleRounds;
+    }
+
+    int64_t CalcTNDRightDownCausalSwizzleParam(int64_t &balancedBatchCount, int64_t bIdx, int64_t s1OuterTmp, int64_t s2OuterTmp) {
+        UpdateRightDownCausalMN(bIdx, s1OuterTmp, s2OuterTmp);
+        if (s2OuterTmp <= fBaseParams.aicNum * 0.8) {
+            balancedBatchCount -= 1;
+        }
+        int64_t pairBatchCount = fBaseParams.n1 % 2 == 0 ? fBaseParams.n1 : fBaseParams.n1 - 1;
+        int64_t pairRounds = 0;
+        if (pairBatchCount > 0) {
+            int64_t pairCount = pairBatchCount / 2;
+            int64_t newS2OuterTmp = s1OuterTmp == s2OuterTmp ? s2OuterTmp + 1 : 2 * s2OuterTmp - s1OuterTmp + 3;
+            pairRounds = CeilDivideBy(newS2OuterTmp * pairCount, static_cast<int64_t>(fBaseParams.aicNum)) * s1OuterTmp;
+        } 
+        int64_t singleRounds = fBaseParams.n1 % 2 == 1 ? CalcRightDownCausalSingleCausalRounds(s1OuterTmp, s2OuterTmp) : 0;
+        return pairRounds + singleRounds;
+    }
+
+    int64_t CalcTNDBandSwizzleParam(int64_t bIdx, int64_t m, int64_t n) {
+        int64_t actualCalcS1Token, actualCalcS2Token;
+        CalcleActualToken(fBaseParams, bIdx, actualCalcS1Token, actualCalcS2Token);
+        int64_t p = CeilDivideBy(actualCalcS1Token, fBaseParams.s1Inner * S1CV_RATIO_DEFAULT) + 1;
+        int64_t q = CeilDivideBy(actualCalcS2Token, fBaseParams.s2Inner * S2CV_RATIO_DEFAULT) + 1;
+
+        p = p > m ? m : p;
+        q = q > n ? n : q;
+
+        if (p < 0) {
+            n = n + p;
+            q = p + q;
+            p = 1;
+        } else if (q < 0) {
+            m = m + q;
+            p = p + q;
+            q = 1;
+        }
+
+        int64_t L1{0}, L2{0}, L3{0}, m_new{0}, n_new{0}, rounds{0};
+        if (p + q <= m) {
+            L1 = q - 1;
+            L2 = std::min(n - q + 1, m + 2 - p - q);
+            L3 = std::max(static_cast<int64_t>(0), std::min(p + n - m - 1, p + q - 2));
+            int64_t overlap = 0;
+            if (L3 == 0) {
+                m_new = p + q + L2 - 2;
+            } else {
+                m_new = m;
+                if (p <= L3) {
+                    overlap = std::min(L3 - p + 1, L1);
+                }
+            }
+            n_new = L1 + L2 + L3;
+            rounds = (p + q - 1) * CeilDivideBy(((n_new - overlap) * fBaseParams.n1 + overlap), static_cast<int64_t>(fBaseParams.aicNum));
+        } else {
+            n_new = std::min(m - 1 + q, n);
+            L1 = m - p;
+            L2 = p + q - m;
+            L3 = n_new - L1 - L2;
+            rounds = CeilDivideBy((n_new - std::max(static_cast<int64_t>(0), L3 - p + 1)) * fBaseParams.n1, static_cast<int64_t>(fBaseParams.aicNum)) * m;
+        }
+
+        return rounds;
+    }
+
+    void UpdateRightDownCausalMN(int64_t bIdx, int64_t &s1OuterTmp, int64_t &s2OuterTmp) {
+        int64_t m1 = fBaseParams.actualSeqQlen[bIdx] - (s1OuterTmp - 1) * fBaseParams.s1Inner * fBaseParams.s1CvRatio; 
+        int64_t n1 = fBaseParams.actualSeqKvlen[bIdx] - (s2OuterTmp - 1) * fBaseParams.s2Inner * fBaseParams.s2CvRatio;
+        if (m1 < n1) {
+            s2OuterTmp = s2OuterTmp + 1;
+        }
+        if (s1OuterTmp > s2OuterTmp) {
+            s1OuterTmp = s2OuterTmp;
+        }
+    }
+
+    int64_t CalcRightDownCausalSingleCausalRounds(int64_t s1OuterTmp, int64_t s2OuterTmp) {
+        return CeilDivideBy(s2OuterTmp, static_cast<int64_t>(fBaseParams.aicNum)) * s1OuterTmp;
+    }
+
+    int64_t CalcSingleCausalRounds(int64_t s1OuterTmp, int64_t s2OuterTmp) {
+        // 单独一个下三角batch
+        int64_t k = static_cast<int64_t>(fBaseParams.aicNum);
+        int64_t m{s1OuterTmp}, n{s2OuterTmp};
+        int64_t t = n / (2 * k);
+        int64_t ell = n % (2 * k);
+        int64_t rounds_2k = (2 * m + 1) * t - 2 * k * t * t;
+        if (ell == 0) {
+            return rounds_2k;
+        }
+
+        int64_t L = m - 2 * k * t;
+        if (t == 0) {
+            if (n <= 0) {
+                return 0;
+            }
+            if (2 * k < m + 1 && k < n) {
+                return std::max(static_cast<int64_t>(0), 2 * m - 2 * k + 1);
+            }
+            return m;
+        }
+
+        int64_t phaseCount = CeilDivideBy(ell, k);
+        int rounds_tail = 0;
+        for (int s = 0; s < phaseCount; s++) {
+            rounds_tail += std::max(static_cast<int64_t>(0), L - s * k);
+        }
+
+        return rounds_2k + rounds_tail;
     }
 };
 

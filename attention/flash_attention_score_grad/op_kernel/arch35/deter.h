@@ -2490,5 +2490,472 @@ __aicore__ inline void CalGQABandIndex(const BandInfo &bandInfo, int64_t j, int6
     coordinate.batchId = -1;
     return;
 }
+
+__aicore__ inline bool GetDenseLinePosition(int64_t k, int64_t m, int64_t n, int64_t b, int64_t j, int64_t r,
+                                            CoordinateInfo &coordinateInfo)
+{
+    coordinateInfo.batchId = -1;
+    if (j < 1 || j > k || r < 1 || b <= 0 || m <= 0 || n <= 0) {
+        return false;
+    }
+
+    int64_t delta = r - 1;
+    int64_t y1 = (delta / m) * k + j;
+    if (y1 > n * b) {
+        return false;
+    }
+
+    int64_t y = (y1 - 1) % n + 1;
+    int64_t x = (y + delta - 1) % m + 1;
+    coordinateInfo.batchId = (y1 - 1) / n + 1;
+    coordinateInfo.s1Idx = x;
+    coordinateInfo.s2Idx = y;
+    return true;
+}
+
+__aicore__ inline bool CalcPosSingleCausal(int64_t k, int64_t m, int64_t n, int64_t coreId, int64_t roundId,
+                                           CoordinateInfo &coordinateInfo)
+{
+    coordinateInfo.batchId = -1;
+    if (coreId < 1 || coreId > k || roundId < 1) {
+        return false;
+    }
+
+    int64_t t = n / (NUM_TWO * k);
+    int64_t ell = n % (NUM_TWO * k);
+    int64_t bound2k = (NUM_TWO * m + 1) * t - NUM_TWO * k * t * t;
+    int64_t offset = 0;
+
+    if (roundId <= bound2k) {
+        int64_t a = roundId;
+        for (int64_t i = 0; i < t; i++) {
+            int64_t L = m - offset;
+            int64_t blockRounds = NUM_TWO * L - NUM_TWO * k + 1;
+            if (a <= blockRounds) {
+                CalCausalG2kSingleBatchDeterIndex(k, coreId, a, L, offset, coordinateInfo);
+                if (coordinateInfo.s2Idx >= 1 && coordinateInfo.s2Idx <= n &&
+                    coordinateInfo.s2Idx <= coordinateInfo.s1Idx && coordinateInfo.s1Idx <= m) {
+                    return true;
+                }
+                coordinateInfo.batchId = -1;
+                return false;
+            }
+            a -= blockRounds;
+            offset += NUM_TWO * k;
+        }
+        return false;
+    }
+
+    int64_t a = roundId - bound2k;
+    if (ell == 0) {
+        return false;
+    }
+
+    offset = NUM_TWO * k * t;
+    int64_t L = m - offset;
+    if (t == 0) {
+        CalCausalRecSingleBatchDeterIndex(k, m, n, coreId, a, coordinateInfo);
+        return coordinateInfo.batchId >= 0;
+    }
+
+    int64_t phaseCount = Ceil<int64_t>(ell, k);
+    for (int64_t s = 0; s < phaseCount; s++) {
+        int64_t phaseRounds = Max(static_cast<int64_t>(0), L - s * k);
+        if (a <= phaseRounds) {
+            int64_t yLocal = s * k + coreId;
+            if (yLocal > ell) {
+                return false;
+            }
+            int64_t xLocal = yLocal + a - 1;
+            if (yLocal >= 1 && yLocal <= ell && yLocal <= xLocal && xLocal <= L) {
+                coordinateInfo.batchId = 0;
+                coordinateInfo.s1Idx = offset + xLocal;
+                coordinateInfo.s2Idx = offset + yLocal;
+                return true;
+            }
+            return false;
+        }
+        a -= phaseRounds;
+    }
+    return false;
+}
+
+__aicore__ inline bool CalcPosSingleSparse03(int64_t k, int64_t m, int64_t n, int64_t coreId, int64_t roundId,
+                                             CoordinateInfo &coordinateInfo)
+{
+    if (!GetDenseLinePosition(k, m, n, 1, coreId, roundId, coordinateInfo)) {
+        return false;
+    }
+    int64_t x = coordinateInfo.s1Idx;
+    int64_t y = coordinateInfo.s2Idx;
+    if (1 <= x && x <= m && 1 <= y && y <= n && y <= x + n - m + 1) {
+        return true;
+    }
+    coordinateInfo.batchId = -1;
+    return false;
+}
+
+__aicore__ inline bool GetPairedSparse03Position(int64_t k, int64_t m, int64_t n, int64_t pairBatchCount,
+                                                 int64_t coreId, int64_t roundId, CoordinateInfo &coordinateInfo)
+{
+    int64_t pairCount = pairBatchCount / NUM_TWO;
+    if (pairCount <= 0) {
+        return false;
+    }
+
+    int64_t nNew = (m == n) ? (n + 1) : (NUM_TWO * n - m + 3);
+    if (!GetDenseLinePosition(k, m, nNew, pairCount, coreId, roundId, coordinateInfo)) {
+        return false;
+    }
+
+    int64_t pairId = coordinateInfo.batchId;
+    int64_t x = coordinateInfo.s1Idx;
+    int64_t y = coordinateInfo.s2Idx;
+    int64_t n1Id = 0;
+
+    if (m == n) {
+        if (y >= x + 1) {
+            y = m + NUM_TWO - y;
+            x = m + 1 - x;
+            n1Id = NUM_TWO * pairId;
+        } else {
+            n1Id = NUM_TWO * pairId - 1;
+        }
+    } else {
+        int64_t nExt = n + 1;
+        if (y >= x + nExt - m + 1) {
+            y = NUM_TWO * nExt - m - y + NUM_TWO;
+            x = m + 1 - x;
+            n1Id = NUM_TWO * pairId;
+        } else {
+            n1Id = NUM_TWO * pairId - 1;
+        }
+        if (x == m && y == nExt) {
+            coordinateInfo.batchId = -1;
+            return false;
+        }
+    }
+
+    if (1 <= n1Id && n1Id <= pairBatchCount && 1 <= x && x <= m && 1 <= y && y <= n && y <= x + n - m + 1) {
+        coordinateInfo.batchId = n1Id;
+        coordinateInfo.s1Idx = x;
+        coordinateInfo.s2Idx = y;
+        return true;
+    }
+    coordinateInfo.batchId = -1;
+    return false;
+}
+
+__aicore__ inline bool GetPairedSparse02Position(int64_t k, int64_t m, int64_t n, int64_t pairBatchCount,
+                                                 int64_t coreId, int64_t roundId, CoordinateInfo &coordinateInfo)
+{
+    int64_t pairCount = pairBatchCount / NUM_TWO;
+    if (pairCount <= 0) {
+        return false;
+    }
+
+    int64_t mNew = NUM_TWO * m - n + 1;
+    if (!GetDenseLinePosition(k, mNew, n, pairCount, coreId, roundId, coordinateInfo)) {
+        return false;
+    }
+
+    int64_t pairId = coordinateInfo.batchId;
+    int64_t x = coordinateInfo.s1Idx;
+    int64_t y = coordinateInfo.s2Idx;
+    int64_t n1Id = 0;
+    if (x > m) {
+        y = n + 1 - y;
+        x = NUM_TWO * m + 1 - x;
+        n1Id = NUM_TWO * pairId;
+    } else if (x < y) {
+        y = n + 1 - y;
+        x = n - x;
+        n1Id = NUM_TWO * pairId;
+    } else {
+        n1Id = NUM_TWO * pairId - 1;
+    }
+
+    if (1 <= n1Id && n1Id <= pairBatchCount && 1 <= y && y <= n && y <= x && x <= m) {
+        coordinateInfo.batchId = n1Id;
+        coordinateInfo.s1Idx = x;
+        coordinateInfo.s2Idx = y;
+        return true;
+    }
+    coordinateInfo.batchId = -1;
+    return false;
+}
+
+__aicore__ inline int64_t CalcSingleCausalRounds(int64_t coreNum, int64_t s1OuterTmp, int64_t s2OuterTmp)
+{
+    int64_t k = coreNum;
+    int64_t m = s1OuterTmp;
+    int64_t n = s2OuterTmp;
+    int64_t t = n / (NUM_TWO * k);
+    int64_t ell = n % (NUM_TWO * k);
+    int64_t rounds2k = (NUM_TWO * m + 1) * t - NUM_TWO * k * t * t;
+    if (ell == 0) {
+        return rounds2k;
+    }
+
+    int64_t L = m - NUM_TWO * k * t;
+    if (t == 0) {
+        if (n <= 0) {
+            return 0;
+        }
+        if (NUM_TWO * k < m + 1 && k < n) {
+            return Max(static_cast<int64_t>(0), NUM_TWO * m - NUM_TWO * k + 1);
+        }
+        return m;
+    }
+
+    int64_t phaseCount = Ceil<int64_t>(ell, k);
+    int64_t roundsTail = 0;
+    for (int64_t s = 0; s < phaseCount; s++) {
+        roundsTail += Max(static_cast<int64_t>(0), L - s * k);
+    }
+    return rounds2k + roundsTail;
+}
+
+__aicore__ inline void CalcTNDLeftUpCausalSwizzleParam(int64_t coreNum, int64_t s1OuterTmp, int64_t s2OuterTmp,
+                                                       int64_t pairBatchCount, int64_t n1, int64_t &pairRounds,
+                                                       int64_t &singleRounds)
+{
+    pairRounds = 0;
+    singleRounds = 0;
+    if (pairBatchCount > 0) {
+        int64_t pairCount = pairBatchCount / NUM_TWO;
+        pairRounds = Ceil<int64_t>(s2OuterTmp * pairCount, coreNum) * (NUM_TWO * s1OuterTmp - s2OuterTmp + 1);
+    }
+    if (n1 % NUM_TWO == 1) {
+        singleRounds = CalcSingleCausalRounds(coreNum, s1OuterTmp, s2OuterTmp);
+    }
+}
+
+__aicore__ inline int64_t CalcRightDownCausalSingleCausalRounds(int64_t coreNum, int64_t s1OuterTmp, int64_t s2OuterTmp)
+{
+    return Ceil<int64_t>(s2OuterTmp, coreNum) * s1OuterTmp;
+}
+
+__aicore__ inline void CalcTNDRightDownCausalSwizzleParam(int64_t coreNum, int64_t s1OuterTmp, int64_t s2OuterTmp,
+                                                          int64_t pairBatchCount, int64_t n1, int64_t &pairRounds,
+                                                          int64_t &singleRounds)
+{
+    pairRounds = 0;
+    singleRounds = 0;
+    if (pairBatchCount > 0) {
+        int64_t pairCount = pairBatchCount / NUM_TWO;
+        int64_t newS2OuterTmp = (s1OuterTmp == s2OuterTmp) ? (s2OuterTmp + 1) : (NUM_TWO * s2OuterTmp - s1OuterTmp + 3);
+        pairRounds = Ceil<int64_t>(newS2OuterTmp * pairCount, coreNum) * s1OuterTmp;
+    }
+    if (n1 % NUM_TWO == 1) {
+        singleRounds = CalcRightDownCausalSingleCausalRounds(coreNum, s1OuterTmp, s2OuterTmp);
+    }
+}
+
+template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN, const uint8_t DETER_SPARSE_TYPE>
+__aicore__ inline void UpdateTNDCausalMN(int64_t &m, int64_t &n, CoordinateInfo &coordinateInfo)
+{
+    if constexpr (DETER_SPARSE_TYPE == DETER_CAUSAL) {
+        n = m < n ? m : n;
+        coordinateInfo.mOffset = 0;
+    } else {
+        int64_t m1 = coordinateInfo.actualS1Len - (m - 1) * CUBE_BASEM;
+        int64_t n1 = coordinateInfo.actualS2Len - (n - 1) * CUBE_BASEN;
+        if (m1 < n1) {
+            n = n + 1;
+        }
+        if (m > n) {
+            coordinateInfo.mOffset = m - n;
+            m = n;
+        } else {
+            coordinateInfo.mOffset = 0;
+        }
+    }
+}
+
+template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN, const uint8_t DETER_SPARSE_TYPE>
+__aicore__ inline void CalTNDCausalSwizzleIndex(const __gm__ uint8_t *actualSeqQlenAddr,
+                                                const __gm__ uint8_t *actualSeqKvlenAddr,
+                                                const __gm__ uint64_t *tndS2BlockPrefixSum, int64_t b, int64_t n1,
+                                                int64_t k, int64_t j, int64_t r, int64_t step,
+                                                CoordinateInfo &coordinateInfo)
+{
+    (void)step;
+    coordinateInfo.batchId = -1;
+
+    for (int64_t bIdx = 0; bIdx < b; bIdx++) {
+        if (!(r > static_cast<int64_t>(tndS2BlockPrefixSum[bIdx]) &&
+              r <= static_cast<int64_t>(tndS2BlockPrefixSum[bIdx + 1]))) {
+            continue;
+        }
+
+        int64_t actualS1Len = 0;
+        int64_t actualS2Len = 0;
+        GetSeqQlenKvlenByBidx(actualSeqQlenAddr, actualSeqKvlenAddr, bIdx, actualS1Len, actualS2Len);
+
+        int64_t m = (actualS1Len + CUBE_BASEM - 1) / CUBE_BASEM;
+        int64_t n = (actualS2Len + CUBE_BASEN - 1) / CUBE_BASEN;
+        coordinateInfo.s1Outer = m;
+        coordinateInfo.s2Outer = n;
+        coordinateInfo.actualS1Len = actualS1Len;
+        coordinateInfo.actualS2Len = actualS2Len;
+        UpdateTNDCausalMN<CUBE_BASEM, CUBE_BASEN, DETER_SPARSE_TYPE>(m, n, coordinateInfo);
+
+        int64_t pairBatchCount = (n1 % NUM_TWO == 0) ? n1 : (n1 - 1);
+        int64_t pairRounds = 0;
+        int64_t singleRounds = 0;
+        if constexpr (DETER_SPARSE_TYPE == DETER_CAUSAL) {
+            CalcTNDLeftUpCausalSwizzleParam(k, m, n, pairBatchCount, n1, pairRounds, singleRounds);
+        } else {
+            CalcTNDRightDownCausalSwizzleParam(k, m, n, pairBatchCount, n1, pairRounds, singleRounds);
+        }
+
+        int64_t localRound = r - static_cast<int64_t>(tndS2BlockPrefixSum[bIdx]);
+        if (localRound <= pairRounds && pairBatchCount > 0) {
+            bool isValid = false;
+            if constexpr (DETER_SPARSE_TYPE == DETER_CAUSAL) {
+                isValid = GetPairedSparse02Position(k, m, n, pairBatchCount, j, localRound, coordinateInfo);
+            } else {
+                isValid = GetPairedSparse03Position(k, m, n, pairBatchCount, j, localRound, coordinateInfo);
+            }
+            if (!isValid) {
+                return;
+            }
+            coordinateInfo.batchId = bIdx * n1 + coordinateInfo.batchId;
+            return;
+        }
+
+        if (n1 % NUM_TWO == 1) {
+            int64_t singleRound = localRound - pairRounds;
+            if (1 <= singleRound && singleRound <= singleRounds) {
+                bool isValid = false;
+                if constexpr (DETER_SPARSE_TYPE == DETER_CAUSAL) {
+                    isValid = CalcPosSingleCausal(k, m, n, j, singleRound, coordinateInfo);
+                } else {
+                    isValid = CalcPosSingleSparse03(k, m, n, j, singleRound, coordinateInfo);
+                }
+                if (!isValid) {
+                    return;
+                }
+                coordinateInfo.batchId = bIdx * n1 + n1;
+                return;
+            }
+        }
+        break;
+    }
+}
+
+template <const int64_t CUBE_BASEM, const int64_t CUBE_BASEN>
+__aicore__ inline bool CalTNDBandSwizzleIndex(const __gm__ uint8_t *actualSeqQlenAddr,
+                                              const __gm__ uint8_t *actualSeqKvlenAddr,
+                                              const __gm__ uint64_t *tndS2BlockPrefixSum, int64_t b, int64_t n1,
+                                              int64_t k, int64_t j, int64_t r, int64_t step,
+                                              CoordinateInfo &coordinateInfo)
+{
+    (void)step;
+    coordinateInfo.batchId = -1;
+    int64_t actualCalcS1Token = coordinateInfo.p;
+    int64_t actualCalcS2Token = coordinateInfo.q;
+
+    for (int64_t bIdx = 0; bIdx < b; bIdx++) {
+        if (!(r > static_cast<int64_t>(tndS2BlockPrefixSum[bIdx]) &&
+              r <= static_cast<int64_t>(tndS2BlockPrefixSum[bIdx + 1]))) {
+            continue;
+        }
+
+        int64_t m = 0;
+        int64_t n = 0;
+        GetSeqQlenKvlenByBidx(actualSeqQlenAddr, actualSeqKvlenAddr, bIdx, coordinateInfo.actualS1Len,
+                              coordinateInfo.actualS2Len);
+        coordinateInfo.s1Outer = (coordinateInfo.actualS1Len + CUBE_BASEM - 1) / CUBE_BASEM;
+        coordinateInfo.s2Outer = (coordinateInfo.actualS2Len + CUBE_BASEN - 1) / CUBE_BASEN;
+
+        UpdateMNPQ<CUBE_BASEM, CUBE_BASEN, false, true>(actualCalcS1Token, actualCalcS2Token, coordinateInfo, m, n);
+        int64_t p = coordinateInfo.p;
+        int64_t q = coordinateInfo.q;
+        int64_t a = r - static_cast<int64_t>(tndS2BlockPrefixSum[bIdx]);
+
+        if (p + q > m) {
+            int64_t L1 = m - p;
+            int64_t L2 = p + q - m;
+            int64_t L3 = n - L1 - L2;
+            int64_t foldCols = Max(static_cast<int64_t>(0), L3 - p + 1);
+            if (!GetDenseLinePosition(k, m, n - foldCols, n1, j, a, coordinateInfo)) {
+                return false;
+            }
+
+            int64_t w = coordinateInfo.batchId;
+            int64_t x = coordinateInfo.s1Idx;
+            int64_t y = coordinateInfo.s2Idx;
+            if (foldCols > 0 && y <= foldCols && x >= p + y) {
+                y = n - foldCols + y;
+            } else if (y <= L1 && x >= p + y) {
+                coordinateInfo.batchId = -1;
+                return false;
+            }
+
+            if (y > L1 + L2 && x <= y - L1 - L2) {
+                coordinateInfo.batchId = -1;
+                return false;
+            }
+            if (1 <= w && w <= n1 && 1 <= x && x <= m && 1 <= y && y <= n) {
+                coordinateInfo.batchId = bIdx * n1 + w;
+                coordinateInfo.s1Idx = x;
+                coordinateInfo.s2Idx = y;
+                return true;
+            }
+            coordinateInfo.batchId = -1;
+            return false;
+        }
+
+        // p + q <= m
+        int64_t L3 = Max(static_cast<int64_t>(0), Min(p + n - m - 1, p + q - NUM_TWO));
+        int64_t seg = p + q - 1;
+        int64_t a1 = Ceil<int64_t>(a, seg);
+        int64_t a2 = a % seg;
+        a2 = a2 ? a2 : seg;
+
+        int64_t w = 0;
+        int64_t x = 0;
+        int64_t y = 0;
+        if (L3 == 0 || n - m < 1) {
+            int64_t idx = (a1 - 1) * k + j;
+            w = Ceil<int64_t>(idx, n);
+            y = idx % n;
+            y = y ? y : n;
+            x = y + a2 - q;
+            if (1 <= w && w <= n1 && 1 <= x && x <= m && 1 <= y && y <= n) {
+                coordinateInfo.batchId = bIdx * n1 + w;
+                coordinateInfo.s1Idx = x;
+                coordinateInfo.s2Idx = y;
+                return true;
+            }
+            coordinateInfo.batchId = -1;
+            return false;
+        }
+
+        int64_t xTmp = (a1 - 1) * k + j + a2 - q;
+        if (xTmp < 1) {
+            coordinateInfo.batchId = -1;
+            return false;
+        }
+
+        w = Ceil<int64_t>(xTmp, m);
+        x = xTmp % m;
+        x = x ? x : m;
+        y = x + q - a2;
+        if (1 <= w && w <= n1 && 1 <= x && x <= m && 1 <= y && y <= n) {
+            coordinateInfo.batchId = bIdx * n1 + w;
+            coordinateInfo.s1Idx = x;
+            coordinateInfo.s2Idx = y;
+            return true;
+        }
+        coordinateInfo.batchId = -1;
+        return false;
+    }
+    return false;
+}
+
+
 }
 #endif // _FLASH_ATTENTION_SCORE_GRAD_DETER_H_

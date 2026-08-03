@@ -667,7 +667,7 @@ int64_t FindBandIdx(FuzzyBaseInfoParamsRegbase& fBaseParams)
 bool IsNewDeter(const FuzzyBaseInfoParamsRegbase& fBaseParams)
 {
     return fBaseParams.deterSparseType >= static_cast<uint32_t>(DeterSparseType::DETER_DENSE) &&
-           fBaseParams.deterSparseType <= static_cast<uint32_t>(DeterSparseType::DETER_BAND) && 
+           fBaseParams.deterSparseType <= static_cast<uint32_t>(DeterSparseType::DETER_RIGHT_DOWN_CAUSAL) && 
            (fBaseParams.layoutType == INPUT_FORMAT_TND);
 }
 
