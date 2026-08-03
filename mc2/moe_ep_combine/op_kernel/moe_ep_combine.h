@@ -84,7 +84,7 @@ private:
                                        uint32_t &endTokenId, uint32_t &tokenPerAivNum);
     __aicore__ inline void CopyTokenToQueue(uint32_t tokenIndex);
     __aicore__ inline void CopyTokenFromQueue(GM_ADDR writeAddr);
-    __aicore__ inline void SendQueuedToken(uint32_t tokenIndex, int32_t srcRank, int32_t srcTokenIdx,
+    __aicore__ inline void SendSlot(uint32_t tokenIndex, int32_t srcRank, int32_t srcTokenIdx,
                                            int32_t srcTopKIdx, uint32_t channelIndex);
     __aicore__ inline bool WaitDispatch(uint32_t tokenIndex, uint32_t copyCount);
     __aicore__ inline void ProcessTopKToken(uint32_t tokenIndex);
@@ -328,43 +328,34 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::CopyTokenFrom
 }
 
 template <TemplateMoeEpCombineTypeClass>
-__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendQueuedToken(
+__aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendSlot(
     uint32_t tokenIndex, int32_t srcRank, int32_t srcTokenIdx, int32_t srcTopKIdx, uint32_t channelIndex)
 {
-    uint64_t slotOffset = (static_cast<uint64_t>(srcTokenIdx) * topK_ + srcTopKIdx) * perSlotBytes_;
-    GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(srcRank, combineDataWinOffset_) + slotOffset;
-    GM_ADDR remoteRankStateAddr = GetUrmaStateAddrByRankId(srcRank, combineStateWinOffset_) +
-                                  (srcTokenIdx * topK_ + srcTopKIdx) * WIN_ADDR_ALIGN;
-    if constexpr (HasTopkWeight == 1) {
-        CopyTokenToQueue(tokenIndex);
-        if (srcRank != static_cast<int32_t>(rankId_)) {
-            GM_ADDR localSendDataWorkspaceAddr = GetLocalSendDataWorkspaceAddr(srcRank) + slotOffset;
-            CopyTokenFromQueue(localSendDataWorkspaceAddr);
-            uint64_t commHandle = GetCommHandle(srcRank, channelIndex);
-            hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, DEFAULT_WQE_CONFIG>(commHandle, remoteRankWinAddr,
-                                     localSendDataWorkspaceAddr, XTypeAlign32Size_, remoteRankStateAddr, 1);
-            hcomm_.Drain(commHandle);
-        } else {
-            CopyTokenFromQueue(remoteRankWinAddr);
-            GlobalTensor<uint32_t> state;
-            state.SetGlobalBuffer((__gm__ uint32_t *)remoteRankStateAddr);
-            DataCopy(state, statusTensor_, FLOAT_PER_UB_ALIGN);
-        }
-    } else {
-        if (srcRank == static_cast<int32_t>(rankId_)) {
-            CopyTokenToQueue(tokenIndex);
-            CopyTokenFromQueue(remoteRankWinAddr);
-            GlobalTensor<uint32_t> state;
-            state.SetGlobalBuffer((__gm__ uint32_t *)remoteRankStateAddr);
-            DataCopy(state, statusTensor_, FLOAT_PER_UB_ALIGN);
-            return;
-        }
+    uint64_t sendTokenOffset = (static_cast<uint64_t>(srcTokenIdx) * topK_ + srcTopKIdx) * perSlotBytes_;
+    uint64_t recvStateOffset = (srcTokenIdx * topK_ + srcTopKIdx) * WIN_ADDR_ALIGN;
+    uint64_t sendWeightOffset = sendTokenOffset + hAlignSize_;
 
+    uint64_t commHandle = GetCommHandle(srcRank, channelIndex);
+    GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(srcRank, combineDataWinOffset_);
+    GM_ADDR remoteRankStateAddr = GetUrmaStateAddrByRankId(srcRank, combineStateWinOffset_);
+    
+    if (srcRank != static_cast<int32_t>(rankId_)) {
+        if constexpr (HasTopkWeight) {
+            GM_ADDR weightAddr = (GM_ADDR)topkWeightsOptionalGm_.GetPhyAddr(tokenIndex);
+            hcomm_.WriteNbi(commHandle, remoteRankWinAddr + sendWeightOffset, weightAddr, sizeof(float));
+            hcomm_.Drain(commHandle);
+        }
         GM_ADDR tokenAddr = (GM_ADDR)xGm_.GetPhyAddr(tokenIndex * axisH_);
         uint64_t commHandle = GetCommHandle(srcRank, channelIndex);
-        hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, DEFAULT_WQE_CONFIG>(commHandle, remoteRankWinAddr,
-                                 tokenAddr, axisH_ * sizeof(XType), remoteRankStateAddr, 1);
+        hcomm_.WriteWithNotifyNbi<true, PIPE_S, PIPE_MTE3, DEFAULT_WQE_CONFIG>(commHandle, remoteRankWinAddr + sendTokenOffset, tokenAddr, axisH_ * sizeof(XType),
+                                  remoteRankStateAddr + recvStateOffset, 1);
         hcomm_.Drain(commHandle);
+    } else {
+        CopyTokenToQueue(tokenIndex);
+        CopyTokenFromQueue(remoteRankWinAddr + sendTokenOffset);
+        GlobalTensor<uint32_t> state;
+        state.SetGlobalBuffer((__gm__ uint32_t *)(remoteRankStateAddr + recvStateOffset));
+        DataCopy(state, statusTensor_, FLOAT_PER_UB_ALIGN);
     }
 }
 
@@ -467,14 +458,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             } else if (static_cast<uint32_t>(srcRank) % activeAivNum != aivId_) {
                 continue;
             }
-            int32_t srcTokenIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 1);
-            int32_t srcTopKIdx = metadataLocal.GetValue(i * RECV_META_FIELDS + 2);
-            if (srcRank == static_cast<int32_t>(rankId_) && !statusInitialized) {
-                Duplicate<uint32_t>(statusTensor_, (uint32_t)1, FLOAT_PER_UB_ALIGN);
-                SyncFunc<AscendC::HardEvent::V_MTE3>();
-                statusInitialized = true;
-            }
-            SendQueuedToken(tokenIndex, srcRank, srcTokenIdx, srcTopKIdx, channelIndex);
+            SendSlot(tokenIndex, src_rank, src_token_idx, src_topK_idx, channelIndex);
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>(); // 确保本轮 Scalar GetValue 读完，下一块 DataCopyPad 才可覆盖
                                                 // metadataLocal
