@@ -306,8 +306,7 @@ def _make_fullquant_tensors(case, cu_seqlens_q, cu_seqlens_kv, kv_lengths, gener
     dense_value, v_scale = _quantize_value_per_head(dense_value_source)
     v_scale = v_scale.contiguous()
 
-    p_scale_value = case.get("p_scale_value", 1.0)
-    p_scale = None if p_scale_value == "none" or p_scale_value is None else torch.tensor([float(p_scale_value)], dtype=torch.float32)
+    p_scale = torch.tensor([float(case["p_scale_value"])], dtype=torch.float32)
     return query, dense_key, dense_value, q_scale, k_scale, dense_k_scale, v_scale, p_scale
 
 
@@ -569,8 +568,12 @@ def _reference_attention(
     output_dtype = case["output_dtype"]
     fp8_dtype = _fp8_dtype()
     softmax_scale = float(case["softmax_scale"])
-    p_scale_value = 1.0 if p_scale is None else float(p_scale[0].item())
-    ln_p_scale = math.log(p_scale_value) if p_scale_value > 0 else 0.0
+    p_scale_value = float(p_scale[0].item())
+    ln_p_scale = (
+        torch.log(torch.tensor(p_scale_value, dtype=torch.float32)).item()
+        if p_scale_value > 0
+        else 0.0
+    )
     sparse_q_block_size = case["sparse_q_block_size"]
     neg_inf = float("-inf")
 

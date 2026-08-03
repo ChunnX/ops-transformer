@@ -158,7 +158,7 @@ def _call_npu_quant_block_sparse_attn(test_data, device_id):
         _to_npu(inputs["q_descale"]),
         k_descale,
         _to_npu(inputs["v_descale"]),
-        _to_npu(inputs["p_scale"]) if inputs.get("p_scale") is not None else None,
+        _to_npu(inputs["p_scale"]),
         _to_npu(inputs["sparse_indices"]),
         _to_npu(inputs["sparse_seq_len"]),
         _to_npu(inputs.get("atten_mask")),
@@ -192,7 +192,7 @@ class _QuantBlockSparseAttnGraph(torch.nn.Module):
         super().__init__()
         self.inputs = inputs
 
-    def forward(self, query, key, value, q_descale, k_descale, v_descale, p_scale=None, sparse_indices,
+    def forward(self, query, key, value, q_descale, k_descale, v_descale, p_scale, sparse_indices,
                 sparse_seq_len, atten_mask, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
                 block_table, metadata):
         return torch.ops.custom.npu_quant_block_sparse_attn(
@@ -222,7 +222,7 @@ def test_quant_block_sparse_attn_process_graph(test_data, device_id=0):
         _QuantBlockSparseAttnGraph(inputs).npu(), fullgraph=True, backend=npu_backend, dynamic=False)
     output = model(
         _to_npu(inputs["query"]), key, value, _to_npu(inputs["q_descale"]), k_descale,
-        _to_npu(inputs["v_descale"]), _to_npu(inputs["p_scale"]) if inputs.get("p_scale") is not None else None, _to_npu(inputs["sparse_indices"]),
+        _to_npu(inputs["v_descale"]), _to_npu(inputs["p_scale"]), _to_npu(inputs["sparse_indices"]),
         _to_npu(inputs["sparse_seq_len"]), _to_npu(inputs.get("atten_mask")), _to_npu(inputs["cu_seqlens_q"]),
         _to_npu(inputs["cu_seqlens_kv"]), _to_npu(inputs["seqused_q"]), _to_npu(inputs["seqused_kv"]),
         _to_npu(inputs["block_table"]), metadata)

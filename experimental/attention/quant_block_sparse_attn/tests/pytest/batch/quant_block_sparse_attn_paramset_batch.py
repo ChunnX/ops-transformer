@@ -85,7 +85,7 @@ def _parse_int(val):
 
 
 def _parse_float(val):
-    if val is None or str(val).strip().lower() == "none":
+    if val is None:
         return None
     return float(val)
 
