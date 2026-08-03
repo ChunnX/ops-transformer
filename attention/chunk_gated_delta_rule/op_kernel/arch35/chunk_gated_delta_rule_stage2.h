@@ -53,11 +53,10 @@ struct StageTwoParams {
     int64_t Dk;
     int64_t stateStride1;
     bool useInitialState;
-    bool gOptional;
     bool isFirstGroup;
 };
 
-template <typename stateType = bfloat16_t>
+template <typename stateType = bfloat16_t, bool gOptional = false>
 class Stage2 {
 public:
     static constexpr bool kIsFp32 = std::is_same_v<stateType, float>;
@@ -79,7 +78,6 @@ public:
         curChunkSize_ = chunkSize_;
         useInitialState_ = sTP_->useInitialState;
         stateStride1_ = (useInitialState_) ? sTP_->stateStride1 : Dv_ * Dk_;
-        gOptional_ = sTP_->gOptional;
         isFirstGroup_ = sTP_->isFirstGroup;
         InitLocalBuffers();
     }
@@ -159,15 +157,11 @@ public:
             auto stateIn = inQueue_.DeQue<float>();
             DataCopy(stateFp32Ub_, stateIn, Dv_ * curDk_);
             inQueue_.FreeTensor(stateIn);
-            SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
-            WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
             auto bf16State = outQueue_.AllocTensor<bfloat16_t>();
             Cast(bf16State, stateFp32Ub_, RoundMode::CAST_RINT, Dv_ * curDk_);
             outQueue_.EnQue(bf16State);
             CopyOut<bfloat16_t>(sTP_->curStateBf16[nvId * Dv_ * Dk_], Dv_, Dk_, false, curDk_);
             CalGCumExpFp32(sTP_->gCum[nvId * Sp_ + length]);
-            SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
-            WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT);
             PipeBarrier<PIPE_MTE3>();
             auto fp32Local = outQueue_.AllocTensor<float>();
             DataCopy(fp32Local, stateFp32Ub_, Dv_ * curDk_);
@@ -221,15 +215,15 @@ public:
             CalStateNew(sTP_->vInnerBf16[mm_offset1], sTP_->kg[mm_offset0], stateOut);
         } else {
             CalStateNew(sTP_->vInner[mm_offset1], sTP_->kg[mm_offset0], stateOut);
+            SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
+            WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
         }
-        SetFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
-        WaitFlag<HardEvent::FIX_MTE2>(FIX_MTE2_EVENT);
         CrossCoreSetFlag<0x2, PIPE_FIX>(0x4);
     }
 
     __aicore__ inline void CalGCumExpFp32(GlobalTensor<float> gCum)
     {
-        if (!gOptional_) {
+        if constexpr (!gOptional) {
             return;
         }
         DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
@@ -247,7 +241,7 @@ public:
 
     __aicore__ inline void CalGCumExpBf16(GlobalTensor<float> gCum)
     {
-        if (gOptional_) {
+        if constexpr (gOptional) {
             DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
                 gCum[curChunkSize_ - 1]);
             float tmpFloat = gCum.GetValue(curChunkSize_ - 1);
@@ -443,7 +437,6 @@ private:
     int32_t coreNum_;
     int64_t stateStride1_;
     bool useInitialState_;
-    bool gOptional_;
     bool isFirstGroup_;
 };
 } // namespace ChunkGatedDeltaRule

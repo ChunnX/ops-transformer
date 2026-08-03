@@ -76,7 +76,7 @@ public:
     static constexpr bool PAGE_ATTENTION = QLIV2T::pageAttention;
     static constexpr LI_LAYOUT Q_LAYOUT_T = QLIV2T::layout;
     static constexpr LI_LAYOUT K_LAYOUT_T = QLIV2T::keyLayout;
-
+    using W_T = typename QLIV2T::weightType;
     using SCORE_T = typename QLIV2T::scoreType;
     using SCALE_T = typename QLIV2T::scaleType;
     using WEIGHT_T = typename QLIV2T::weightType;
@@ -90,12 +90,14 @@ public:
     static constexpr uint32_t SYNC_V1_C1_FLAG = 5;
 
     static constexpr uint32_t M_BASE_SIZE = 256;
+    static constexpr uint32_t M_BASE_SIZE_SMALL = 128;
     static constexpr uint32_t S1_BASE_SIZE = 4;
+    static constexpr uint32_t S1_BASE_SIZE_SMALL = 2;
     static constexpr uint32_t S2_BASE_SIZE = 128;
     static constexpr uint32_t HEAD_DIM = 128;
     static constexpr uint32_t K_HEAD_NUM = 1;
     static constexpr uint32_t GM_ALIGN_BYTES = 512;
-
+    static constexpr uint32_t TOPK_6K = 6144;
     static constexpr int64_t LD_PREFETCH_LEN = 2;
     // for workspace double
     static constexpr uint32_t WS_DOUBLE = 2;
@@ -125,6 +127,8 @@ protected:
     GlobalTensor<WEIGHT_T> weightsGm;
     GlobalTensor<bfloat16_t> mxQueryScaleGmBf16;
     GlobalTensor<bfloat16_t> mxKeyScaleGmBf16;
+    GlobalTensor<SCALE_T> qScaleGm;
+    GlobalTensor<SCALE_T> kScaleGm;
     GlobalTensor<uint32_t> metadataGm;
 
     GlobalTensor<int32_t> indiceOutGm;
@@ -210,10 +214,15 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::InitTilingData(const QLIV2TilingDat
 
     constInfo.kHeadNum = K_HEAD_NUM;
     constInfo.headDim = HEAD_DIM;
-
-    constInfo.mBaseSize = S1_BASE_SIZE * constInfo.gSize;
+    if (constInfo.sparseCount > TOPK_6K) {
+        constInfo.s1BaseSize = S1_BASE_SIZE_SMALL;
+        constInfo.mBaseSizeMax = M_BASE_SIZE_SMALL;
+    } else {
+        constInfo.s1BaseSize = S1_BASE_SIZE;
+        constInfo.mBaseSizeMax = M_BASE_SIZE;
+    }
+    constInfo.mBaseSize = constInfo.s1BaseSize * constInfo.gSize;
     constInfo.s2BaseSize = S2_BASE_SIZE;
-    constInfo.s1BaseSize = S1_BASE_SIZE;
     constInfo.returnValue = tilingData->returnValue;
 }
 
@@ -514,10 +523,10 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(
         if constexpr (IS_MX) {
             vectorService.InitVecInputTensor(weightsGm, indiceOutGm, blockTableGm, valueOutGm, outputIdxOffsetGm);
         } else {
-            GlobalTensor<float> qScaleGmForVec;
-            GlobalTensor<float> kScaleGmForVec;
-            qScaleGmForVec.SetGlobalBuffer((__gm__ float *)queryScale);
-            kScaleGmForVec.SetGlobalBuffer((__gm__ float *)keyScale);
+            GlobalTensor<SCALE_T> qScaleGmForVec;
+            GlobalTensor<SCALE_T> kScaleGmForVec;
+            qScaleGmForVec.SetGlobalBuffer((__gm__ SCALE_T *)queryScale);
+            kScaleGmForVec.SetGlobalBuffer((__gm__ SCALE_T *)keyScale);
             vectorService.InitVecInputTensor(weightsGm, indiceOutGm, blockTableGm, valueOutGm, outputIdxOffsetGm,
                                              qScaleGmForVec, kScaleGmForVec);
         }

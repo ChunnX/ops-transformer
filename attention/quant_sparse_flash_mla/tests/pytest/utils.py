@@ -114,7 +114,11 @@ def parse_list_param(value):
         if s.startswith("[") and s.endswith("]"):
             s = s[1:-1]
         try:
-            return [int(x.strip()) for x in s.split(",") if x.strip() != ""]
+            return [
+                (int(x.strip()) if "." not in s else float(x.strip()))
+                for x in s.split(",")
+                if x.strip() != ""
+            ]
         except ValueError:
             return None
     return None
@@ -134,6 +138,36 @@ def gen_cu_seqlens_from_seqused(seqused):
     for s in seqused:
         cu_seqlens.append(cu_seqlens[-1] + s)
     return cu_seqlens
+
+
+def gen_cu_seqlens_cmp_kv(
+    cu_seqlens_ori_kv, seqused_cmp_kv, cmp_ratio, layout_kv="TND"
+):
+    """Generate compressed prefixes for TND storage or PA actual lengths."""
+    if layout_kv == "PA_BBND":
+        return gen_cu_seqlens_from_seqused(seqused_cmp_kv)
+
+    capacities = [
+        math.floor(
+            (cu_seqlens_ori_kv[index + 1] - cu_seqlens_ori_kv[index])
+            / cmp_ratio
+        )
+        for index in range(len(cu_seqlens_ori_kv) - 1)
+    ]
+    inferred = gen_cu_seqlens_from_seqused(capacities)
+    if all(capacity >= actual for capacity, actual in zip(capacities, seqused_cmp_kv)):
+        return inferred
+
+    required = sum(seqused_cmp_kv)
+    total = inferred[-1]
+    if required > total:
+        raise ValueError(
+            f"compressed actual lengths require {required} elements, "
+            f"but inferred T3 capacity is {total}"
+        )
+    adjusted = list(seqused_cmp_kv)
+    adjusted[-1] += total - required
+    return gen_cu_seqlens_from_seqused(adjusted)
 
 
 def calc_block_num(seqused_ori_kv, seqused_cmp_kv, block_size1, block_size2, cmp_ratio):
@@ -325,7 +359,9 @@ def fill_none_params(params_dict):
         if seqused_cmp_kv is None:
             seqused_cmp_kv = gen_seqused_cmp_kv(seqused_ori_kv, cmp_ratio)
         if cu_seqlens_cmp_kv is None:
-            cu_seqlens_cmp_kv = [math.floor(c / cmp_ratio) for c in cu_seqlens_ori_kv]
+            cu_seqlens_cmp_kv = gen_cu_seqlens_cmp_kv(
+                cu_seqlens_ori_kv, seqused_cmp_kv, cmp_ratio, params_dict["layout_kv"]
+            )
         if cmp_residual_kv is None:
             cmp_residual_kv = (
                 [s % cmp_ratio for s in seqused_ori_kv] if cmp_mask_mode != 0 else None
@@ -375,6 +411,14 @@ def fill_none_params(params_dict):
     if cmp_kv_datarange is None:
         cmp_kv_datarange = [-5, 5]
 
+    ori_mask_mode = params_dict.get("ori_mask_mode")
+    ori_kv_topk_mode = params_dict.get("ori_kv_topk_mode")
+    if ori_kv_topk_mode is None:
+        ori_kv_topk_mode = "fullK" if ori_mask_mode == 0 else "no"
+    cmp_kv_topk_mode = params_dict.get("cmp_kv_topk_mode")
+    if cmp_kv_topk_mode is None:
+        cmp_kv_topk_mode = "fullK" if cmp_mask_mode == 0 else "no"
+
     # 构建完整参数字典
     filled_params = {
         "Testcase_Name": params_dict.get("Testcase_Name"),
@@ -417,8 +461,8 @@ def fill_none_params(params_dict):
         "ori_kv_datarange": ori_kv_datarange,
         "cmp_kv_datarange": cmp_kv_datarange,
         "K1": params_dict.get("K1"),
-        "ori_kv_topk_mode": params_dict.get("ori_kv_topk_mode", "fullK"),
-        "cmp_kv_topk_mode": params_dict.get("cmp_kv_topk_mode", "fullK"),
+        "ori_kv_topk_mode": ori_kv_topk_mode,
+        "cmp_kv_topk_mode": cmp_kv_topk_mode,
         "ori_sparse_indices_mode": params_dict.get("ori_sparse_indices_mode", "full"),
         "cmp_sparse_indices_mode": params_dict.get("cmp_sparse_indices_mode", "full"),
         "ori_topk_length": params_dict.get("ori_topk_length", None),

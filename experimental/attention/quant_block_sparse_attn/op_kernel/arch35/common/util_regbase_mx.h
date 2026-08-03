@@ -97,6 +97,7 @@ struct MxPageAttentionConstInfo {
     uint32_t paBlockStride = 0U;
     uint32_t qSparseBlockSize = 0U;
     uint32_t kvSparseBlockSize = 0U;
+    uint32_t paBlockSize = 0U;
 };
 
 // B_N_Qb_Kb sparse 参数。
@@ -113,17 +114,10 @@ struct MxScaleConstInfo {
     uint32_t valueScaleDSize = 0U;
 };
 
-// MX kernel 使用的特性开关。
-struct MxFeatureConstInfo {
-    bool isActualLenDimsNull = false;
-    bool isActualLenDimsKVNull = false;
-};
-
 struct MxConstInfo : MxBaseConstInfo,
                      MxPageAttentionConstInfo,
                      MxSparseConstInfo,
-                     MxScaleConstInfo,
-                     MxFeatureConstInfo {};
+                     MxScaleConstInfo {};
 } // namespace regbasemx
 
 #endif // QUANT_BLOCK_SPARSE_ATTN_COMMON_UTIL_REGBASE_MX_H_
