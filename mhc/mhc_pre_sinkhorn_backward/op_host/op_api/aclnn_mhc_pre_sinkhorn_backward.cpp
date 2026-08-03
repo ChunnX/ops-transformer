@@ -165,6 +165,15 @@ static bool CheckDimNum(const aclTensor *tensor, size_t expected, const char *na
 
 static bool CheckInputDims(const AclnnMhcPreSinkhornBackwardParams &params)
 {
+    bool is3D = params.x->GetViewShape().GetDimNum() == 3;
+    if (is3D) {
+        return CheckDimNum(params.gradHin, 2, "gradHin") && CheckDimNum(params.gradHPost, 2, "gradHPost") &&
+               CheckDimNum(params.gradHRes, 3, "gradHRes", true, 2) && CheckDimNum(params.x, 3, "x") &&
+               CheckDimNum(params.phi, 2, "phi") && CheckDimNum(params.alpha, 1, "alpha") &&
+               CheckDimNum(params.bias, 1, "bias") && CheckDimNum(params.hPre, 2, "hPre") &&
+               CheckDimNum(params.hcBeforeNorm, 2, "hcBeforeNorm") && CheckDimNum(params.invRms, 2, "invRms") &&
+               CheckDimNum(params.sumOut, 3, "sumOut") && CheckDimNum(params.normOut, 4, "normOut");
+    }
     return CheckDimNum(params.gradHin, 3, "gradHin") && CheckDimNum(params.gradHPost, 3, "gradHPost") &&
            CheckDimNum(params.gradHRes, 4, "gradHRes", true, 3) && CheckDimNum(params.x, 4, "x") &&
            CheckDimNum(params.phi, 2, "phi") && CheckDimNum(params.alpha, 1, "alpha") &&
@@ -175,7 +184,9 @@ static bool CheckInputDims(const AclnnMhcPreSinkhornBackwardParams &params)
 
 static bool CheckOutputDims(const AclnnMhcPreSinkhornBackwardParams &params)
 {
-    return CheckDimNum(params.gradX, 4, "gradX") && CheckDimNum(params.gradPhi, 2, "gradPhi") &&
+    bool is3D = params.x->GetViewShape().GetDimNum() == 3;
+    size_t gradXExpected = is3D ? 3 : 4;
+    return CheckDimNum(params.gradX, gradXExpected, "gradX") && CheckDimNum(params.gradPhi, 2, "gradPhi") &&
            CheckDimNum(params.gradAlpha, 1, "gradAlpha") && CheckDimNum(params.gradBias, 1, "gradBias");
 }
 
@@ -196,6 +207,10 @@ static bool CheckShapeDim(const gert::Shape &shape, uint64_t index, uint64_t exp
 
 static bool CheckShape(const AclnnMhcPreSinkhornBackwardParams &params)
 {
+    if (params.x->GetViewShape().GetDimNum() == 3) {
+        return true;
+    }
+
     auto &gradHInShape = params.gradHin->GetViewShape();
     uint64_t batch = gradHInShape.GetDim(0);
     uint64_t sequence = gradHInShape.GetDim(1);
@@ -449,6 +464,8 @@ aclnnStatus aclnnMhcPreSinkhornBackwardGetWorkspaceSize(
         DFX_IN(gradHin, gradHPost, gradHRes, x, phi, alpha, bias, hPre, hcBeforeNorm, invRms, sumOut, normOut),
         DFX_OUT(gradX, gradPhi, gradAlpha, gradBias));
     auto uniqueExecutor = CREATE_EXECUTOR();
+    CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+
     AclnnMhcPreSinkhornBackwardParams params = AclnnMhcPreSinkhornBackward::Create()
                                                    .SetGradInput(gradHin, gradHPost, gradHRes)
                                                    .SetInput(x, phi, alpha, bias)
@@ -456,8 +473,35 @@ aclnnStatus aclnnMhcPreSinkhornBackwardGetWorkspaceSize(
                                                    .SetAttr(hcEps)
                                                    .SetOutput(gradX, gradPhi, gradAlpha, gradBias)
                                                    .Build();
-    auto ret = mhcPreSinkhornBackwardCommonProcess(params, uniqueExecutor.get());
+
+    auto ret = CheckParams(params);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
+    // Check if input tensors are empty
+    if (gradHin->IsEmpty() || gradHPost->IsEmpty() || gradHRes->IsEmpty() || x->IsEmpty() ||
+        hPre->IsEmpty() || hcBeforeNorm->IsEmpty() || invRms->IsEmpty() || sumOut->IsEmpty() ||
+        normOut->IsEmpty()) {
+        OP_LOGW("[aclnnMhcPreSinkhornBackward] Input tensor is empty, skip computation and return success.");
+        *workspaceSize = 0;
+        uniqueExecutor.ReleaseTo(executor);
+        return ACLNN_SUCCESS;
+    }
+
+    ret = MhcSinkhornGradCovertDataContiguous(params, uniqueExecutor.get());
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
+    auto outParams = l0op::MhcPreSinkhornBackward(
+        params.gradHinContiguous, params.gradHPostContiguous, params.gradHResContiguous, params.xContiguous,
+        params.phiContiguous, params.alphaContiguous, params.biasContiguous, params.hPreContiguous,
+        params.hcBeforeNormContiguous, params.invRmsContiguous, params.sumOutContiguous, params.normOutContiguous,
+        static_cast<float>(params.hcEps), uniqueExecutor.get());
+    CHECK_RET(outParams != std::tuple(nullptr, nullptr, nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
+
+    CHECK_RET(CopyOutput(std::get<0>(outParams), params.gradX, uniqueExecutor.get()), ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(CopyOutput(std::get<1>(outParams), params.gradPhi, uniqueExecutor.get()), ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(CopyOutput(std::get<2>(outParams), params.gradAlpha, uniqueExecutor.get()), ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(CopyOutput(std::get<3>(outParams), params.gradBias, uniqueExecutor.get()), ACLNN_ERR_INNER_NULLPTR);
+
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
     return ACLNN_SUCCESS;
