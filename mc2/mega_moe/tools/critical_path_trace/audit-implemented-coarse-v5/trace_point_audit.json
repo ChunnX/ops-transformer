@@ -2,51 +2,50 @@
   "audit_schema_version": 1,
   "status": "pass",
   "phase": "implemented",
-  "generated_at_utc": "2026-08-03T13:29:00.206882+00:00",
+  "generated_at_utc": "2026-08-03T14:54:01.664704+00:00",
   "trace_name": "mega-moe-wave-critical-path",
   "repo_root": "/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803",
   "git": {
     "is_git_repository": true,
-    "revision": "1f7c40b5d95ef8804a39b31f4f87905d02c2b038",
+    "revision": "b25081aa4d333037c7fc898b678e98c74eafdaf7",
     "branch": "codex/mega-moe-critical-path-trace-20260803",
     "dirty": true,
     "status_short": [
-      "M  mc2/mega_moe/op_kernel/arch35/block_epilogue_swiglu_mx_quant.h",
-      "M  mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h",
-      "MM mc2/mega_moe/op_kernel/arch35/mega_moe_trace.h",
-      "M  mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
-      "M  mc2/mega_moe/tools/critical_path_trace/README.md",
-      "M  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/index.html",
-      "M  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.contract-check.json",
-      "M  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.html",
-      "M  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.normalized.json",
-      "M  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.order-check.json",
-      "M  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.raw",
-      "M  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.runtime.json",
-      "M  mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/run-manifest.json",
-      "A  mc2/mega_moe/tools/critical_path_trace/audit-implemented-coarse-v5/trace_point_audit.json",
-      "A  mc2/mega_moe/tools/critical_path_trace/audit-implemented-coarse-v5/trace_point_audit.md",
-      "M  mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.json",
-      "M  mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.md",
-      "A  mc2/mega_moe/tools/critical_path_trace/audit-plan-coarse-v5/trace_point_audit.json",
-      "A  mc2/mega_moe/tools/critical_path_trace/audit-plan-coarse-v5/trace_point_audit.md",
-      "M  mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.json",
-      "M  mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.md",
-      "MM mc2/mega_moe/tools/critical_path_trace/mega_moe_trace_contract.py",
-      "MM mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py",
-      "MM mc2/mega_moe/tools/critical_path_trace/test_critical_path_trace.py",
-      "A  mc2/mega_moe/tools/critical_path_trace/trace-spec-coarse-v5.json",
-      "M  mc2/mega_moe/tools/critical_path_trace/trace-spec.json",
-      "MM mc2/mega_moe/tools/critical_path_trace/trace_tool.py",
-      "M  mc2/mega_moe/tools/critical_path_trace/validation-report.json",
-      "MM mc2/mega_moe/tools/critical_path_trace/verify_trace_off.py"
+      "M mc2/mega_moe/op_kernel/arch35/mega_moe_trace.h",
+      " M mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+      " M mc2/mega_moe/tools/critical_path_trace/README.md",
+      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/index.html",
+      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.contract-check.json",
+      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.html",
+      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.normalized.json",
+      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.order-check.json",
+      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.raw",
+      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/rank0.runtime.json",
+      " M mc2/mega_moe/tools/critical_path_trace/artifacts/synthetic/run-manifest.json",
+      " M mc2/mega_moe/tools/critical_path_trace/audit-implemented-coarse-v5/trace_point_audit.json",
+      " M mc2/mega_moe/tools/critical_path_trace/audit-implemented-coarse-v5/trace_point_audit.md",
+      " M mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.json",
+      " M mc2/mega_moe/tools/critical_path_trace/audit-implemented/trace_point_audit.md",
+      " M mc2/mega_moe/tools/critical_path_trace/audit-plan-coarse-v5/trace_point_audit.json",
+      " M mc2/mega_moe/tools/critical_path_trace/audit-plan-coarse-v5/trace_point_audit.md",
+      " M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.json",
+      " M mc2/mega_moe/tools/critical_path_trace/audit-plan/trace_point_audit.md",
+      " M mc2/mega_moe/tools/critical_path_trace/mega_moe_trace_contract.py",
+      " M mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py",
+      " M mc2/mega_moe/tools/critical_path_trace/test_critical_path_trace.py",
+      " M mc2/mega_moe/tools/critical_path_trace/trace-spec-coarse-v5.json",
+      " M mc2/mega_moe/tools/critical_path_trace/trace-spec.json",
+      " M mc2/mega_moe/tools/critical_path_trace/trace_tool.py",
+      " M mc2/mega_moe/tools/critical_path_trace/validation-report.json",
+      " M mc2/mega_moe/tools/critical_path_trace/verify_trace_off.py",
+      "?? mc2/mega_moe/docs/"
     ],
     "status_truncated": false,
-    "tracked_diff_raw_sha256": "e207f3687eaead26f783e43e013e0fec829f1fae54b613d383f31c369de1851d"
+    "tracked_diff_raw_sha256": "02128856e9e5716cbd60f3d3e6b3dc20ac2886dc178ac3a6cd6c32a2aeb0af97"
   },
   "spec": {
     "path": "/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803/mc2/mega_moe/tools/critical_path_trace/trace-spec-coarse-v5.json",
-    "sha256": "29e5071d180c61f07f8a9f736b80ba6ef49d691d814bce13e5e47c5c484f7f07",
+    "sha256": "6304575de97a3d24cc2d8a54a425c0438aac5292731c5f36ac89c6884b8eb70e",
     "protocol_version": 5,
     "schema_id": "0xd32d8a49"
   },
@@ -70,64 +69,64 @@
         "pattern": "int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();"
       },
       "target_match_count": 1,
-      "target_line": 2648,
+      "target_line": 2719,
       "target_context": {
-        "start_line": 2646,
-        "end_line": 2650,
+        "start_line": 2717,
+        "end_line": 2721,
         "lines": [
           {
-            "line": 2646,
+            "line": 2717,
             "text": "#endif"
           },
           {
-            "line": 2647,
+            "line": 2718,
             "text": "    // 保存入口时的溢出模式，并初始化输入准备阶段使用的 UB。"
           },
           {
-            "line": 2648,
+            "line": 2719,
             "text": "    int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();"
           },
           {
-            "line": 2649,
+            "line": 2720,
             "text": "    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);"
           },
           {
-            "line": 2650,
+            "line": 2721,
             "text": "    SendMaskBufferConfig sendMaskBufferConfig = SendAndQuantBuffInit();"
           }
         ]
       },
       "marker": "TRACE_POINT: process_begin_S",
       "marker_match_count": 1,
-      "marker_line": 2644,
+      "marker_line": 2715,
       "marker_context": {
-        "start_line": 2642,
-        "end_line": 2646,
+        "start_line": 2713,
+        "end_line": 2717,
         "lines": [
           {
-            "line": 2642,
+            "line": 2713,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 2643,
+            "line": 2714,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 2644,
+            "line": 2715,
             "text": "        criticalPathTrace_.processBegin = CriticalPathTrace::Now(); // TRACE_POINT: process_begin_S"
           },
           {
-            "line": 2645,
+            "line": 2716,
             "text": "    }"
           },
           {
-            "line": 2646,
+            "line": 2717,
             "text": "#endif"
           }
         ]
       },
       "max_line_distance": 4,
-      "source_file_sha256": "9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6",
+      "source_file_sha256": "27bc1f7ee949ab4aa22a73df3014dd0ccf441670309250ea4ab8f6367b9ab00a",
       "why": "Provides one local shared-axis reference for AIC, AIV0, and AIV1 inside the same physical AI Block, without asserting clock alignment across AI Blocks or ranks; also exposes role launch skew before input preparation.",
       "semantics": "Scalar has entered the current MTE A8W8 MegaMoeWave Process body and no operator work has yet been issued by this role/core.",
       "dependency": {
@@ -158,64 +157,64 @@
         "pattern": "SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);"
       },
       "target_match_count": 1,
-      "target_line": 2701,
+      "target_line": 2772,
       "target_context": {
-        "start_line": 2699,
-        "end_line": 2703,
+        "start_line": 2770,
+        "end_line": 2774,
         "lines": [
           {
-            "line": 2699,
+            "line": 2770,
             "text": "    }"
           },
           {
-            "line": 2700,
+            "line": 2771,
             "text": "    // 恢复入口时保存的溢出模式。"
           },
           {
-            "line": 2701,
+            "line": 2772,
             "text": "    SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);"
           },
           {
-            "line": 2702,
+            "line": 2773,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 2703,
+            "line": 2774,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           }
         ]
       },
       "marker": "TRACE_POINT: work_end_S",
       "marker_match_count": 1,
-      "marker_line": 2704,
+      "marker_line": 2775,
       "marker_context": {
-        "start_line": 2702,
-        "end_line": 2706,
+        "start_line": 2773,
+        "end_line": 2777,
         "lines": [
           {
-            "line": 2702,
+            "line": 2773,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 2703,
+            "line": 2774,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 2704,
+            "line": 2775,
             "text": "        // TRACE_POINT: work_end_S"
           },
           {
-            "line": 2705,
+            "line": 2776,
             "text": "        criticalPathTrace_.workEnd = CriticalPathTrace::Now();"
           },
           {
-            "line": 2706,
+            "line": 2777,
             "text": "        SyncAll<false>();"
           }
         ]
       },
       "max_line_distance": 4,
-      "source_file_sha256": "9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6",
+      "source_file_sha256": "27bc1f7ee949ab4aa22a73df3014dd0ccf441670309250ea4ab8f6367b9ab00a",
       "why": "Separates the real role-local useful-work tail from the diagnostic rendezvous and y record emission overhead.",
       "semantics": "All useful work owned by this role is complete; for AIV roles Unpermute has consumed its final MTE3_V completion event, and routed AIC publications already passed FIX_S.",
       "dependency": {
@@ -244,64 +243,64 @@
         "pattern": "SendCntCal(static_cast<int32_t>(expertIdx), sendCnt);"
       },
       "target_match_count": 1,
-      "target_line": 1050,
+      "target_line": 1083,
       "target_context": {
-        "start_line": 1048,
-        "end_line": 1052,
+        "start_line": 1081,
+        "end_line": 1085,
         "lines": [
           {
-            "line": 1048,
+            "line": 1081,
             "text": "#endif"
           },
           {
-            "line": 1049,
+            "line": 1082,
             "text": "        uint64_t sendCnt = 0;"
           },
           {
-            "line": 1050,
+            "line": 1083,
             "text": "        SendCntCal(static_cast<int32_t>(expertIdx), sendCnt);"
           },
           {
-            "line": 1051,
+            "line": 1084,
             "text": "        if (UpdateGroupParams<AddrUpdateMode::GMM1>(state, expertIdx, sendCnt)) {"
           },
           {
-            "line": 1052,
+            "line": 1085,
             "text": "            UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmmAddrInfo, state);"
           }
         ]
       },
       "marker": "TRACE_POINT: dispatch_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1045,
+      "marker_line": 1064,
       "marker_context": {
-        "start_line": 1043,
-        "end_line": 1047,
+        "start_line": 1062,
+        "end_line": 1066,
         "lines": [
           {
-            "line": 1043,
-            "text": "        if (expertIdx == traceWave * expertsPerBatch_ && traceWave < CRITICAL_PATH_TRACE_MAX_WAVES &&"
-          },
-          {
-            "line": 1044,
-            "text": "            CriticalPathTracePtr() != nullptr) {"
-          },
-          {
-            "line": 1045,
-            "text": "            // TRACE_POINT: dispatch_begin_S"
-          },
-          {
-            "line": 1046,
-            "text": "            criticalPathTrace_.BeginDispatch(traceWave, CriticalPathTrace::Now());"
-          },
-          {
-            "line": 1047,
+            "line": 1062,
             "text": "        }"
+          },
+          {
+            "line": 1063,
+            "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
+          },
+          {
+            "line": 1064,
+            "text": "        // TRACE_POINT: dispatch_begin_S"
+          },
+          {
+            "line": 1065,
+            "text": "#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0"
+          },
+          {
+            "line": 1066,
+            "text": "        if (CriticalPathTracePtr() != nullptr && expertIdx == criticalPathDispatchWaveEnd_) {"
           }
         ]
       },
-      "max_line_distance": 5,
-      "source_file_sha256": "9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6",
+      "max_line_distance": 24,
+      "source_file_sha256": "27bc1f7ee949ab4aa22a73df3014dd0ccf441670309250ea4ab8f6367b9ab00a",
       "why": "Measures the actual per-wave AIV1 prefetch window, including send-count calculation, rather than the outer wave that may prefetch two waves at once.",
       "semantics": "The first expert in this dispatch wave is about to start SendCntCal on the AIV1 Scalar/control path.",
       "dependency": {
@@ -330,64 +329,64 @@
         "pattern": "MetaInfoCalAndDispatch(gmmAddrInfo, static_cast<int32_t>(expertIdx), bufferConfig);"
       },
       "target_match_count": 1,
-      "target_line": 1053,
+      "target_line": 1086,
       "target_context": {
-        "start_line": 1051,
-        "end_line": 1055,
+        "start_line": 1084,
+        "end_line": 1088,
         "lines": [
           {
-            "line": 1051,
+            "line": 1084,
             "text": "        if (UpdateGroupParams<AddrUpdateMode::GMM1>(state, expertIdx, sendCnt)) {"
           },
           {
-            "line": 1052,
+            "line": 1085,
             "text": "            UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmmAddrInfo, state);"
           },
           {
-            "line": 1053,
+            "line": 1086,
             "text": "            MetaInfoCalAndDispatch(gmmAddrInfo, static_cast<int32_t>(expertIdx), bufferConfig);"
           },
           {
-            "line": 1054,
+            "line": 1087,
             "text": "        }"
           },
           {
-            "line": 1055,
+            "line": 1088,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           }
         ]
       },
       "marker": "TRACE_POINT: dispatch_end_S",
       "marker_match_count": 1,
-      "marker_line": 1060,
+      "marker_line": 1089,
       "marker_context": {
-        "start_line": 1058,
-        "end_line": 1062,
+        "start_line": 1087,
+        "end_line": 1091,
         "lines": [
           {
-            "line": 1058,
-            "text": "            AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);"
-          },
-          {
-            "line": 1059,
-            "text": "            AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);"
-          },
-          {
-            "line": 1060,
-            "text": "            criticalPathTrace_.EndDispatch(traceWave, CriticalPathTrace::Now()); // TRACE_POINT: dispatch_end_S"
-          },
-          {
-            "line": 1061,
+            "line": 1087,
             "text": "        }"
           },
           {
-            "line": 1062,
-            "text": "#endif"
+            "line": 1088,
+            "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
+          },
+          {
+            "line": 1089,
+            "text": "        // TRACE_POINT: dispatch_end_S"
+          },
+          {
+            "line": 1090,
+            "text": "#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0"
+          },
+          {
+            "line": 1091,
+            "text": "        if (expertIdx + 1U == criticalPathDispatchWaveEnd_ && CriticalPathTracePtr() != nullptr &&"
           }
         ]
       },
       "max_line_distance": 10,
-      "source_file_sha256": "9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6",
+      "source_file_sha256": "27bc1f7ee949ab4aa22a73df3014dd0ccf441670309250ea4ab8f6367b9ab00a",
       "why": "Proves when each AIV1 has completed the token/scale/meta-info writes that release GMM1 and permits direct comparison with GMM1 readiness.",
       "semantics": "The last expert handled by this AIV1 in the wave has completed all Dispatch MTE3 writes and ready publications.",
       "dependency": {
@@ -502,64 +501,64 @@
         "pattern": "batchBegin, batchEnd, gmm1State, gmm1AddrInfo, vecSetSyncCom);"
       },
       "target_match_count": 1,
-      "target_line": 2447,
+      "target_line": 2519,
       "target_context": {
-        "start_line": 2445,
-        "end_line": 2449,
+        "start_line": 2517,
+        "end_line": 2521,
         "lines": [
           {
-            "line": 2445,
+            "line": 2517,
             "text": ""
           },
           {
-            "line": 2446,
+            "line": 2518,
             "text": "        ProcessGmm1Wave("
           },
           {
-            "line": 2447,
+            "line": 2519,
             "text": "            batchBegin, batchEnd, gmm1State, gmm1AddrInfo, vecSetSyncCom);"
           },
           {
-            "line": 2448,
+            "line": 2520,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \\"
           },
           {
-            "line": 2449,
+            "line": 2521,
             "text": "    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE == 0"
           }
         ]
       },
       "marker": "TRACE_POINT: gmm1_end_S",
       "marker_match_count": 1,
-      "marker_line": 2454,
+      "marker_line": 2526,
       "marker_context": {
-        "start_line": 2452,
-        "end_line": 2456,
+        "start_line": 2524,
+        "end_line": 2528,
         "lines": [
           {
-            "line": 2452,
+            "line": 2524,
             "text": "                AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);"
           },
           {
-            "line": 2453,
+            "line": 2525,
             "text": "                AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);"
           },
           {
-            "line": 2454,
+            "line": 2526,
             "text": "                // TRACE_POINT: gmm1_end_S"
           },
           {
-            "line": 2455,
+            "line": 2527,
             "text": "                criticalPathTrace_.EndStage0(CriticalPathTrace::Now());"
           },
           {
-            "line": 2456,
+            "line": 2528,
             "text": "            }"
           }
         ]
       },
       "max_line_distance": 10,
-      "source_file_sha256": "9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6",
+      "source_file_sha256": "27bc1f7ee949ab4aa22a73df3014dd0ccf441670309250ea4ab8f6367b9ab00a",
       "why": "Makes the GMM1 interval end at actual local FIX completion instead of helper return or AIV notification issue.",
       "semantics": "All GMM1 FIX work assigned to this AIC in the wave is complete.",
       "dependency": {
@@ -674,64 +673,64 @@
         "pattern": "batchBegin, batchEnd, gmm1State, gmm1AddrInfo, vecSetSyncCom);"
       },
       "target_match_count": 1,
-      "target_line": 2447,
+      "target_line": 2519,
       "target_context": {
-        "start_line": 2445,
-        "end_line": 2449,
+        "start_line": 2517,
+        "end_line": 2521,
         "lines": [
           {
-            "line": 2445,
+            "line": 2517,
             "text": ""
           },
           {
-            "line": 2446,
+            "line": 2518,
             "text": "        ProcessGmm1Wave("
           },
           {
-            "line": 2447,
+            "line": 2519,
             "text": "            batchBegin, batchEnd, gmm1State, gmm1AddrInfo, vecSetSyncCom);"
           },
           {
-            "line": 2448,
+            "line": 2520,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \\"
           },
           {
-            "line": 2449,
+            "line": 2521,
             "text": "    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE == 0"
           }
         ]
       },
       "marker": "TRACE_POINT: swiglu_end_S",
       "marker_match_count": 1,
-      "marker_line": 2459,
+      "marker_line": 2531,
       "marker_context": {
-        "start_line": 2457,
-        "end_line": 2461,
+        "start_line": 2529,
+        "end_line": 2533,
         "lines": [
           {
-            "line": 2457,
+            "line": 2529,
             "text": "        } else if (subBlockIdx_ == 0U && CriticalPathTracePtr() != nullptr &&"
           },
           {
-            "line": 2458,
+            "line": 2530,
             "text": "                   criticalPathTrace_.HasStage0Work()) {"
           },
           {
-            "line": 2459,
+            "line": 2531,
             "text": "            // TRACE_POINT: swiglu_end_S"
           },
           {
-            "line": 2460,
+            "line": 2532,
             "text": "            criticalPathTrace_.EndStage0(CriticalPathTrace::Now());"
           },
           {
-            "line": 2461,
+            "line": 2533,
             "text": "        }"
           }
         ]
       },
       "max_line_distance": 14,
-      "source_file_sha256": "9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6",
+      "source_file_sha256": "27bc1f7ee949ab4aa22a73df3014dd0ccf441670309250ea4ab8f6367b9ab00a",
       "why": "Shows the actual AIV0 epilogue completion and its overlap with AIC GMM2 and AIV1 Dispatch/Combine.",
       "semantics": "Every SwiGLU/quant GM output owned by this AIV0 in the wave has completed.",
       "dependency": {
@@ -846,64 +845,64 @@
         "pattern": "ProcessGmm2Wave(batchBegin, batchEnd, gmm2State, gmm2AddrInfo, vecSetSyncCom);"
       },
       "target_match_count": 1,
-      "target_line": 2465,
+      "target_line": 2537,
       "target_context": {
-        "start_line": 2463,
-        "end_line": 2467,
+        "start_line": 2535,
+        "end_line": 2539,
         "lines": [
           {
-            "line": 2463,
+            "line": 2535,
             "text": "        const uint32_t gmm1EndCursor = startBlockIdx_;"
           },
           {
-            "line": 2464,
+            "line": 2536,
             "text": ""
           },
           {
-            "line": 2465,
+            "line": 2537,
             "text": "        ProcessGmm2Wave(batchBegin, batchEnd, gmm2State, gmm2AddrInfo, vecSetSyncCom);"
           },
           {
-            "line": 2466,
+            "line": 2538,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \\"
           },
           {
-            "line": 2467,
+            "line": 2539,
             "text": "    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE == 0"
           }
         ]
       },
       "marker": "TRACE_POINT: gmm2_end_S",
       "marker_match_count": 1,
-      "marker_line": 2470,
+      "marker_line": 2542,
       "marker_context": {
-        "start_line": 2468,
-        "end_line": 2472,
+        "start_line": 2540,
+        "end_line": 2544,
         "lines": [
           {
-            "line": 2468,
+            "line": 2540,
             "text": "        if constexpr (g_coreType == AIC) {"
           },
           {
-            "line": 2469,
+            "line": 2541,
             "text": "            if (CriticalPathTracePtr() != nullptr && criticalPathTrace_.HasStage1Work()) {"
           },
           {
-            "line": 2470,
+            "line": 2542,
             "text": "                // TRACE_POINT: gmm2_end_S"
           },
           {
-            "line": 2471,
+            "line": 2543,
             "text": "                criticalPathTrace_.EndStage1(CriticalPathTrace::Now());"
           },
           {
-            "line": 2472,
+            "line": 2544,
             "text": "            }"
           }
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6",
+      "source_file_sha256": "27bc1f7ee949ab4aa22a73df3014dd0ccf441670309250ea4ab8f6367b9ab00a",
       "why": "Proves local GMM2 direct-GM completion and ready publication timing while keeping remote AIV1 observation as a separate handoff gap.",
       "semantics": "All owned GMM2 FIX writes for the wave are complete and the final per-expert ready publication has been issued by this AIC.",
       "dependency": {
@@ -932,64 +931,64 @@
         "pattern": "WaitGmm2Ready(expertIdx);"
       },
       "target_match_count": 1,
-      "target_line": 2355,
+      "target_line": 2407,
       "target_context": {
-        "start_line": 2353,
-        "end_line": 2357,
+        "start_line": 2405,
+        "end_line": 2409,
         "lines": [
           {
-            "line": 2353,
+            "line": 2405,
             "text": "            GetCombineOwnedRange(currentExpertTokenNum);"
           },
           {
-            "line": 2354,
+            "line": 2406,
             "text": "        if (currentCoreTokenRange.count != 0U) {"
           },
           {
-            "line": 2355,
+            "line": 2407,
             "text": "            WaitGmm2Ready(expertIdx);"
           },
           {
-            "line": 2356,
+            "line": 2408,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 2357,
-            "text": "            if (CriticalPathTracePtr() != nullptr && criticalPathTrace_.NeedsStage1Begin()) {"
+            "line": 2409,
+            "text": "            // TRACE_POINT: combine_begin_S"
           }
         ]
       },
       "marker": "TRACE_POINT: combine_begin_S",
       "marker_match_count": 1,
-      "marker_line": 2358,
+      "marker_line": 2409,
       "marker_context": {
-        "start_line": 2356,
-        "end_line": 2360,
+        "start_line": 2407,
+        "end_line": 2411,
         "lines": [
           {
-            "line": 2356,
+            "line": 2407,
+            "text": "            WaitGmm2Ready(expertIdx);"
+          },
+          {
+            "line": 2408,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 2357,
-            "text": "            if (CriticalPathTracePtr() != nullptr && criticalPathTrace_.NeedsStage1Begin()) {"
+            "line": 2409,
+            "text": "            // TRACE_POINT: combine_begin_S"
           },
           {
-            "line": 2358,
-            "text": "                // TRACE_POINT: combine_begin_S"
+            "line": 2410,
+            "text": "#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 2359,
-            "text": "                criticalPathTrace_.BeginStage1(CriticalPathTrace::Now());"
-          },
-          {
-            "line": 2360,
-            "text": "            }"
+            "line": 2411,
+            "text": "            if (CriticalPathTracePtr() != nullptr && criticalPathTrace_.NeedsExpertStage1Begin()) {"
           }
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6",
+      "source_file_sha256": "27bc1f7ee949ab4aa22a73df3014dd0ccf441670309250ea4ab8f6367b9ab00a",
       "why": "Exposes the publication-to-ready-observation handoff and starts Combine only after the full AIC fan-in is proven.",
       "semantics": "This AIV1 owns at least one token and its first expert's GMM2-ready scan has observed all AIC publications; meta-info load and first row send follow.",
       "dependency": {
@@ -1018,64 +1017,64 @@
         "pattern": "DrainCombineRowRing(rowSequence);"
       },
       "target_match_count": 1,
-      "target_line": 2383,
+      "target_line": 2441,
       "target_context": {
-        "start_line": 2381,
-        "end_line": 2385,
+        "start_line": 2439,
+        "end_line": 2443,
         "lines": [
           {
-            "line": 2381,
+            "line": 2439,
             "text": ""
           },
           {
-            "line": 2382,
+            "line": 2440,
             "text": "    // 下一 wave 的 dispatch 会复用同一片 UB 和事件编号，离开前必须回收所有已使用槽位。"
           },
           {
-            "line": 2383,
+            "line": 2441,
             "text": "    DrainCombineRowRing(rowSequence);"
           },
           {
-            "line": 2384,
+            "line": 2442,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 2385,
-            "text": "    if (rowSequence != 0U && CriticalPathTracePtr() != nullptr && criticalPathTrace_.HasStage1Work()) {"
+            "line": 2443,
+            "text": "    // TRACE_POINT: combine_end_S"
           }
         ]
       },
       "marker": "TRACE_POINT: combine_end_S",
       "marker_match_count": 1,
-      "marker_line": 2388,
+      "marker_line": 2443,
       "marker_context": {
-        "start_line": 2386,
-        "end_line": 2390,
+        "start_line": 2441,
+        "end_line": 2445,
         "lines": [
           {
-            "line": 2386,
-            "text": "        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);"
+            "line": 2441,
+            "text": "    DrainCombineRowRing(rowSequence);"
           },
           {
-            "line": 2387,
-            "text": "        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);"
+            "line": 2442,
+            "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 2388,
-            "text": "        // TRACE_POINT: combine_end_S"
+            "line": 2443,
+            "text": "    // TRACE_POINT: combine_end_S"
           },
           {
-            "line": 2389,
-            "text": "        criticalPathTrace_.EndStage1(CriticalPathTrace::Now());"
+            "line": 2444,
+            "text": "#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 2390,
-            "text": "    }"
+            "line": 2445,
+            "text": "    if (rowSequence != 0U && CriticalPathTracePtr() != nullptr &&"
           }
         ]
       },
       "max_line_distance": 8,
-      "source_file_sha256": "9cde3e648b8fc6f23215e35dbb9c4552c0b25437a81fc31ea1967ca63a6195a6",
+      "source_file_sha256": "27bc1f7ee949ab4aa22a73df3014dd0ccf441670309250ea4ab8f6367b9ab00a",
       "why": "Ends Combine at actual remote MTE3 send completion rather than at Scalar issue or ring-drain enqueue time.",
       "semantics": "Every token row issued by this AIV1 for the wave has completed its remote MTE3 send.",
       "dependency": {

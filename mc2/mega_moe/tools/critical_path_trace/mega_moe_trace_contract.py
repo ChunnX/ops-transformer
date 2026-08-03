@@ -15,8 +15,8 @@ class ContractError(RuntimeError):
 
 DISPATCH_API_TO_TILING_KEY = {23: 3, 24: 4, 296: 5}
 EXPECTED_PATH_ID = 1
-EXPECTED_CAPTURE_CAPACITY = 4
-EXPECTED_FLAGS_BY_PROTOCOL = {5: 0xFF, 6: 0x1FF}
+EXPECTED_COARSE_CAPTURE_CAPACITY = 4
+EXPECTED_FLAGS_BY_PROTOCOL = {5: 0xFF, 6: 0x1FF, 7: 0x3FF}
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -112,6 +112,46 @@ def ceil_div(value: int, divisor: int) -> int:
     return (value + divisor - 1) // divisor
 
 
+def get_wave_expert_count(
+    wave_begin: int, expert_count: int, experts_per_wave: int
+) -> int:
+    """Mirror arch35 GetWaveExpertCount, including small-tail absorption."""
+    if wave_begin >= expert_count:
+        return 0
+    remaining = expert_count - wave_begin
+    if experts_per_wave <= 0 or remaining <= experts_per_wave:
+        return remaining
+    tail = remaining - experts_per_wave
+    return (
+        remaining
+        if tail < experts_per_wave and 2 * tail < experts_per_wave
+        else experts_per_wave
+    )
+
+
+def count_expert_waves(expert_count: int, experts_per_wave: int) -> int:
+    waves = 0
+    begin = 0
+    while begin < expert_count:
+        count = get_wave_expert_count(begin, expert_count, experts_per_wave)
+        if count <= 0:
+            raise ContractError("cannot derive routed-wave count")
+        begin += count
+        waves += 1
+    return waves
+
+
+def resolve_record_words(protocol: dict[str, Any], expert_count: int) -> int:
+    layout = protocol["record_words"]
+    if isinstance(layout, int) and not isinstance(layout, bool):
+        return layout
+    if not isinstance(layout, dict):
+        raise ContractError("protocol record_words is neither fixed nor dynamic")
+    if layout.get("count_header_field") != "moe_experts_per_rank":
+        raise ContractError("unsupported dynamic record_words count header field")
+    return int(layout["base_words"]) + int(layout["words_per_count"]) * expert_count
+
+
 def calc_experts_per_wave(
     *,
     bs: int,
@@ -173,7 +213,7 @@ def expected_header_from_metadata(
         hidden_dim=hidden_dim,
         aic_count=aic_count,
     )
-    repetitions = ceil_div(moe_experts, experts_per_wave) if moe_experts else 0
+    repetitions = count_expert_waves(moe_experts, experts_per_wave)
     topk_prefetch = int(bool(metadata.get("topk_weights_type", False)))
     interleaved = int(bool(metadata.get("is_interleaved", False)))
     carrier_words = raw_bytes // 4
@@ -200,12 +240,17 @@ def expected_header_from_metadata(
         topk_prefetch,
         interleaved,
     ]
+    fine_dynamic = protocol_version >= 7
     return {
         "record_count": 3 * aic_count,
         "clock_bits": 32,
         "repetition_count": repetitions,
-        "capture_capacity": EXPECTED_CAPTURE_CAPACITY,
-        "truncated": int(repetitions > EXPECTED_CAPTURE_CAPACITY),
+        "capture_capacity": moe_experts
+        if fine_dynamic
+        else EXPECTED_COARSE_CAPTURE_CAPACITY,
+        "truncated": 0
+        if fine_dynamic
+        else int(repetitions > EXPECTED_COARSE_CAPTURE_CAPACITY),
         "flags": expected_flags,
         "rank": rank,
         "runtime_config_hash": config_hash(values_for_hash),
@@ -240,7 +285,9 @@ def validate_capture_contract(
         "version": int(protocol["version"]),
         "schema_id": parse_uint(protocol["schema_id"], "protocol schema_id"),
         "header_words": int(protocol["header_words"]),
-        "record_words": int(protocol["record_words"]),
+        "record_words": resolve_record_words(
+            protocol, _required_meta_int(metadata, "local_moe_expert_num")
+        ),
     }
     expected = expected_header_from_metadata(metadata, len(raw), spec)
     expected.update(protocol_expected)
@@ -272,8 +319,9 @@ def validate_capture_contract(
             f"capture has {expected['repetition_count']} waves but capacity is "
             f"{expected['capture_capacity']}; pass --allow-truncated only for intentional partial analysis"
         )
-    required_words = int(protocol["header_words"]) + expected["record_count"] * int(
-        protocol["record_words"]
+    required_words = (
+        int(protocol["header_words"])
+        + expected["record_count"] * expected["record_words"]
     )
     fine_tail = protocol.get("fine_metadata_tail")
     if fine_tail is not None:
@@ -282,6 +330,28 @@ def validate_capture_contract(
         raise ContractError(
             f"trace requires {required_words * 4} bytes but y carries only {len(raw)} bytes"
         )
+    if int(protocol["version"]) >= 7:
+        preflight = metadata.get("capacity_preflight")
+        if not isinstance(preflight, dict):
+            raise ContractError("runtime metadata lacks adapter capacity_preflight")
+        wanted_preflight = {
+            "protocol_version": int(protocol["version"]),
+            "aic_core_num": expected["aic_count"],
+            "local_moe_expert_num": expected["moe_experts_per_rank"],
+            "record_words": expected["record_words"],
+            "required_y_bytes": required_words * 4,
+            "available_y_bytes": len(raw),
+        }
+        mismatched_preflight = [
+            f"{name}={preflight.get(name)!r}, expected {wanted}"
+            for name, wanted in wanted_preflight.items()
+            if preflight.get(name) != wanted
+        ]
+        if mismatched_preflight:
+            raise ContractError(
+                "adapter capacity_preflight mismatch: "
+                + "; ".join(mismatched_preflight)
+            )
     if metadata.get("output_dtype") != "torch.bfloat16":
         raise ContractError(
             f"trace carrier dtype must be torch.bfloat16, got {metadata.get('output_dtype')!r}"
@@ -342,6 +412,21 @@ def validate_timestamp_order(
             else []
         )
     }
+    dynamic_fine = int(normalized.get("protocol_version", 0)) >= 7
+    wave_starts: set[int] = set()
+    if dynamic_fine:
+        expert_count = int(header.get("moe_experts_per_rank", 0))
+        experts_per_wave = int(header.get("experts_per_wave", 0))
+        wave_begin = 0
+        while wave_begin < expert_count:
+            wave_starts.add(wave_begin)
+            wave_begin += get_wave_expert_count(
+                wave_begin, expert_count, experts_per_wave
+            )
+        if len(wave_starts) != repetitions:
+            raise ContractError(
+                "dynamic fine wave partition disagrees with repetition_count"
+            )
     fine_point_ids = {
         point_id
         for span in spans
@@ -363,6 +448,29 @@ def validate_timestamp_order(
         if process_duration >= half_range:
             raise ContractError(f"{label} has backward/ambiguous process interval")
 
+        if dynamic_fine and record.get("role") == "AIV1":
+            dispatch_begins = timestamps.get("dispatch_begin_S", [])
+            dispatch_ends = timestamps.get("dispatch_end_S", [])
+            combine_begins = timestamps.get("combine_begin_S", [])
+            combine_ends = timestamps.get("combine_end_S", [])
+            for expert in range(len(dispatch_begins)):
+                dispatch_present = (
+                    dispatch_begins[expert] != missing
+                    and dispatch_ends[expert] != missing
+                )
+                if dispatch_present != (expert in wave_starts):
+                    raise ContractError(
+                        f"{label} dispatch slot {expert} disagrees with routed-wave starts "
+                        f"{sorted(wave_starts)}"
+                    )
+                combine_present = (
+                    combine_begins[expert] != missing or combine_ends[expert] != missing
+                )
+                if combine_present and expert not in wave_starts:
+                    raise ContractError(
+                        f"{label} combine slot {expert} is not a routed-wave start"
+                    )
+
         for point, values in timestamps.items():
             if not isinstance(values, list):
                 raise ContractError(f"{label} point {point} is not an occurrence list")
@@ -375,7 +483,8 @@ def validate_timestamp_order(
                         f"{label} {point}[{occurrence}] lies outside process_begin_S..work_end_S"
                     )
                 if (
-                    point not in fine_point_ids
+                    not dynamic_fine
+                    and point not in fine_point_ids
                     and len(values) > 1
                     and occurrence >= captured
                 ):
@@ -394,61 +503,81 @@ def validate_timestamp_order(
                 )
             gap_contract = fine_gap_by_span.get(span["id"])
             if gap_contract is not None:
-                counters = record.get("counters", {})
-                if counters.get("fine_enabled") != 1:
-                    raise ContractError(
-                        f"{label} lacks enabled fine metadata for {span['id']}"
-                    )
-                captured_count = counters.get(gap_contract["captured_count_counter"])
-                if (
-                    not isinstance(captured_count, int)
-                    or isinstance(captured_count, bool)
-                    or captured_count < 0
-                    or captured_count > len(begins)
-                ):
-                    raise ContractError(
-                        f"{label} has invalid captured count for {span['id']}: {captured_count!r}"
-                    )
-                truncated_name = gap_contract["truncated_counter"]
-                fine_truncated = counters.get(truncated_name)
-                if fine_truncated not in (0, 1):
-                    raise ContractError(
-                        f"{label} has invalid {truncated_name}={fine_truncated!r}"
-                    )
-                if fine_truncated:
-                    fine_truncated_records.append(f"{label}/{span['id']}")
-                    if not allow_truncated:
+                if dynamic_fine:
+                    if len(begins) != int(header.get("moe_experts_per_rank", 0)):
                         raise ContractError(
-                            f"{label} {span['id']} exceeded its {len(begins)} active-expert slots; "
-                            "pass --allow-truncated only for intentional partial analysis"
+                            f"{label} {span['id']} does not expose one slot per routed expert"
                         )
-                wave_prefix = gap_contract["wave_counter_prefix"]
-                previous_wave = -1
-                for occurrence in range(captured_count):
-                    if begins[occurrence] == missing or ends[occurrence] == missing:
+                    previous_begin_delta = -1
+                    for occurrence, (begin, end) in enumerate(zip(begins, ends)):
+                        if begin == missing or end == missing:
+                            continue
+                        begin_delta = _modular_delta(process_begin, begin, bits)
+                        if begin_delta < previous_begin_delta:
+                            raise ContractError(
+                                f"{label} {span['id']} active expert indices are not time-monotonic"
+                            )
+                        previous_begin_delta = begin_delta
+                else:
+                    counters = record.get("counters", {})
+                    if counters.get("fine_enabled") != 1:
                         raise ContractError(
-                            f"{label} {span['id']}[{occurrence}] is missing inside captured_count={captured_count}"
+                            f"{label} lacks enabled fine metadata for {span['id']}"
                         )
-                    wave_id = counters.get(f"{wave_prefix}_{occurrence}")
+                    captured_count = counters.get(
+                        gap_contract["captured_count_counter"]
+                    )
                     if (
-                        not isinstance(wave_id, int)
-                        or isinstance(wave_id, bool)
-                        or wave_id < 0
-                        or wave_id >= captured
+                        not isinstance(captured_count, int)
+                        or isinstance(captured_count, bool)
+                        or captured_count < 0
+                        or captured_count > len(begins)
                     ):
                         raise ContractError(
-                            f"{label} {span['id']}[{occurrence}] has invalid captured wave id {wave_id!r}"
+                            f"{label} has invalid captured count for {span['id']}: {captured_count!r}"
                         )
-                    if wave_id < previous_wave:
+                    truncated_name = gap_contract["truncated_counter"]
+                    fine_truncated = counters.get(truncated_name)
+                    if fine_truncated not in (0, 1):
                         raise ContractError(
-                            f"{label} {span['id']} fine slot wave ids are not monotonic"
+                            f"{label} has invalid {truncated_name}={fine_truncated!r}"
                         )
-                    previous_wave = wave_id
-                for occurrence in range(captured_count, len(begins)):
-                    if begins[occurrence] != missing or ends[occurrence] != missing:
-                        raise ContractError(
-                            f"{label} {span['id']}[{occurrence}] is populated beyond captured_count={captured_count}"
-                        )
+                    if fine_truncated:
+                        fine_truncated_records.append(f"{label}/{span['id']}")
+                        if not allow_truncated:
+                            raise ContractError(
+                                f"{label} {span['id']} exceeded its {len(begins)} active-expert slots; "
+                                "pass --allow-truncated only for intentional partial analysis"
+                            )
+                    wave_prefix = gap_contract["wave_counter_prefix"]
+                    previous_wave = -1
+                    for occurrence in range(captured_count):
+                        if begins[occurrence] == missing or ends[occurrence] == missing:
+                            raise ContractError(
+                                f"{label} {span['id']}[{occurrence}] is missing inside "
+                                f"captured_count={captured_count}"
+                            )
+                        wave_id = counters.get(f"{wave_prefix}_{occurrence}")
+                        if (
+                            not isinstance(wave_id, int)
+                            or isinstance(wave_id, bool)
+                            or wave_id < 0
+                            or wave_id >= captured
+                        ):
+                            raise ContractError(
+                                f"{label} {span['id']}[{occurrence}] has invalid captured wave id {wave_id!r}"
+                            )
+                        if wave_id < previous_wave:
+                            raise ContractError(
+                                f"{label} {span['id']} fine slot wave ids are not monotonic"
+                            )
+                        previous_wave = wave_id
+                    for occurrence in range(captured_count, len(begins)):
+                        if begins[occurrence] != missing or ends[occurrence] != missing:
+                            raise ContractError(
+                                f"{label} {span['id']}[{occurrence}] is populated beyond "
+                                f"captured_count={captured_count}"
+                            )
             for occurrence, (begin, end) in enumerate(zip(begins, ends)):
                 if (begin == missing) != (end == missing):
                     raise ContractError(
@@ -483,7 +612,8 @@ def validate_timestamp_order(
             "every populated stage has a paired begin/end and a forward duration",
             "every populated timestamp lies inside its role-local useful-work interval",
             "uncaptured wave/expert slots retain the zero missing sentinel",
-            "fine expert counts, wave ids, monotonic slot order, and per-record truncation metadata agree",
+            "dynamic fine records expose every routed expert index and active intervals are time-monotonic",
+            "AIV1 Dispatch is present exactly at every derived routed-wave start and Combine cannot use non-start slots",
         ],
         "record_count": len(records),
         "runtime_waves": repetitions,

@@ -11,7 +11,7 @@
 - 建立独立 worktree 时记录的基线：
   `4b3d39658e1d4f5d1f5b60acedfe2df8201e08b2`。
 - 最终集成并验证的最新主线：
-  `8fc42341f11425e4e82f123f59c7ef97cd7210b0`。
+  `27455755e`（分支中的主线 merge commit 为 `b25081aa4`）。
 - 分支：`codex/mega-moe-critical-path-trace-20260803`。
 - 独立 worktree：
   `/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803`。
@@ -34,32 +34,30 @@
 #define MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE 1
 ```
 
-- 两个宏默认都是 1：启用细粒度 protocol v6，schema
-  `0x4c23837d`，flags `0x1ff`。
+- 两个宏默认都是 1：启用细粒度 protocol v7，schema
+  `0x3eb1c6b3`，flags `0x3ff`。
 - 仅将 `MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE=0`：保留原来的一批专家/
   wave 粒度、时间点、桥接和 wire layout，输出 protocol v5，schema
   `0xd32d8a49`，flags `0xff`。
 - 将 `MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=0`：所有 tracing 设备逻辑消失，恢复
   生产行为；细粒度宏值不再产生作用。
 
-v6 继续使用每条 18-word record 中原有的四个 occurrence，但对 AIC 的
-GMM1/GMM2 和 AIV0 的 SwiGLU 将它们解释为“本物理核按执行顺序捕获的前四个
-活跃专家槽”。AIV1 的 Dispatch/Combine 仍是 wave 粒度。每个 AI Block 末尾
-追加两个压缩 `uint32_t`：
+v7 不再预留固定四槽。每条 record 的 word 数由运行时每卡 routed expert 数决定：
+`record_words = 2 + 4 * moeExpertPerRank`。word 0/1 是 process begin/work end；
+随后每个 expert index 固定占四个 word。AIC 将四 word 解释为 GMM1 begin/end、
+GMM2 begin/end，AIV0 使用前两个 word 表示 SwiGLU，AIV1 在每个 wave 首 expert
+index 写 Dispatch 与 Combine。未参与该专家的核保持 0，不再有 captured count、
+truncation meta 或 `--allow-truncated` 需求。wave ID 由 header 中专家数、
+`experts_per_wave` 和主线当前 `GetWaveExpertCount` 小尾波合并规则推导。
 
-- AIC meta：四个 GMM1 槽的 wave id、四个 GMM2 槽的 wave id、两级 captured
-  count、两级 truncation 标志和 fine-enabled 标志。
-- AIV0 meta：四个 SwiGLU 槽的 wave id、captured count、truncation 标志和
-  fine-enabled 标志。
+热路径不能使用动态 LocalTensor/栈数组，因此每个 role/core 先把
+`[expertIndex, begin, end]` 写入 `WorkspaceInfo::workspaceSize` 后的 50 MiB tiling
+保留区；有效工作结束后再按 expert index 整理进 y。设备按实际专家数检查 y 与
+workspace 两种容量，adapter 还会在第一次算子执行之前做同公式的 Python 预检。
 
-每个阶段每个物理核最多记录四个实际活跃专家。超过四个时设备不会越界，而是在
-meta 中置 truncation；解析默认失败，只有明确接受局部视图时才使用
-`--allow-truncated`。这个限制与 header 中最多四个 routed wave 的原有捕获限制
-分别校验。
-
-运行器会根据 raw header 自动选择 v6 细粒度规范或 v5 粗粒度规范。因此旧的 v5
-包仍可用当前 host 脚本解析，不再出现“runtime v5、expected v6”的误报；但要获得
-新的逐专家打点和间隙，必须重新编译并安装默认 v6 kernel。其他 version/schema
+运行器会根据 raw header 自动选择 v7 细粒度规范或 v5 粗粒度规范。因此旧的 v5
+包仍可用当前 host 脚本解析，不再出现“runtime v5、expected v7”的误报；但要获得
+新的逐专家打点和间隙，必须重新编译并安装默认 v7 kernel。其他 version/schema
 仍然 fail closed。
 
 ## 当前依赖与时间点
@@ -86,8 +84,8 @@ Combine；下一 wave 的 Dispatch 可以与当前 wave 的计算重叠。
 完整的文件、函数/符号、唯一语义锚点、解析行号、边界等级、原因、性能关系、
 依赖证明和潜在扰动见：
 
-- v6 机器规范：[`trace-spec.json`](trace-spec.json)
-- v6 计划/实现审计：[`audit-plan/`](audit-plan/) 与
+- v7 机器规范：[`trace-spec.json`](trace-spec.json)
+- v7 计划/实现审计：[`audit-plan/`](audit-plan/) 与
   [`audit-implemented/`](audit-implemented/)
 - v5 回退规范：[`trace-spec-coarse-v5.json`](trace-spec-coarse-v5.json)
 - v5 计划/实现审计：[`audit-plan-coarse-v5/`](audit-plan-coarse-v5/) 与
@@ -115,19 +113,25 @@ Combine；下一 wave 的 Dispatch 可以与当前 wave 的计算重叠。
 
 ## `y` 载体证明
 
-Tracing 只在诊断宏打开时复用最终 BF16 `y`。第一次混合 AIC/AIV rendezvous
-保证所有正常 Unpermute MTE3 写回完成，此后 kernel 不再读取正常 `y`；各角色才
-按小端 `uint32_t` 写诊断数据。第二次 rendezvous 等待所有 record 和 fine meta，
+Tracing 只在诊断宏打开时复用最终 BF16 `y`。热路径时间戳先写入正常 workspace
+布局末尾的诊断保留区，不与 y 的正常生命周期冲突。第一次混合 AIC/AIV
+rendezvous 保证所有正常 Unpermute MTE3 写回完成，此后 kernel 不再读取正常 `y`；
+各角色才按小端 `uint32_t` 整理动态 record。第二次 rendezvous 等待所有 record，
 AIC0 再写 header、执行 `PIPE_ALL`，最后发布 magic。
 
 - dtype/shape：当前路径输出 BF16 `[bs, h]`，容量是
   `bs * h * sizeof(OutputType)`；适配器要求实际输出 dtype/shape 精确匹配。
-- v6 布局：`30 + 3 * aicNum * 18 + 2 * aicNum` 个 word。
-- `aicNum=36` 时 v6 需要 `2046 * 4 = 8184` bytes；最小受支持
-  `[1,4096]` BF16 `y` 提供 `8192` bytes，余量 8 bytes。
-- v5 回退需要 7896 bytes，余量 296 bytes。
-- 设备用 64 位中间量检查容量；不足时不采样、不 rendezvous、不写 record/meta/
-  header/magic。host 再核对 raw 长度、`carrier_words`、record 数和 tail 大小。
+- v7 布局：`30 + 3 * aicNum * (2 + 4 * moeExpertPerRank)` 个 word，不含固定
+  专家上限。
+- 用户 case `bs=24, h=6144, aicNum=36, moeExpertPerRank=8` 时，record 为
+  34 words，最终 trace 需要 `14808` bytes；BF16 y 有 `294912` bytes。
+- 同一 case 的热路径 workspace scratch 为
+  `3 * 36 * 2 * 3 * 8 * 4 = 20736` bytes，远小于 tiling 固定追加且尚未被
+  `WorkspaceInfo` 使用的 50 MiB reserve。合法最大 1024 专家也小于该 reserve。
+- 36 个 AIC 的 v5 固定布局需要 7896 bytes。
+- adapter 在算子执行前按当前脚本里的 `bs/h/aic_core_num/local_moe_expert_num/
+  out_dtype` 打印 required/available 并失败关闭；设备再用 64 位中间量独立检查
+  y 与 scratch。host 解码时第三次核对 header、record 数和 raw 长度。
 - 诊断态会覆盖正常输出，适配器在最终 NPU synchronize 后按原始字节保存最后
   一轮 `y`，并跳过精度比较。业务不得消费 tracing-on 的 `y`。
 - tracing 全关时不复用 `y`；预处理 token 等价检查以最新集成主线为基线。
@@ -190,9 +194,9 @@ python3 /path/to/ops-transformer/mc2/mega_moe/tools/critical_path_trace/run_crit
 
 ## 已完成与仍需服务器完成的验证
 
-本 worktree 已完成：v6/v5 机器规范校验、两套计划/实现锚点审计、Python 语法、
-host 单测、当前 `moe_test` 适配检查、v6/v5 合成 raw 的 contract/decode/order/
-中文 HTML 链路、细粒度 truncation fail-closed、trace-off token 等价，以及 Ascend
+本 worktree 已完成：v7/v5 机器规范校验、两套计划/实现锚点审计、Python 语法、
+host 单测、当前 `moe_test` 适配检查、8 专家 v7/v5 合成 raw 的
+contract/decode/order/中文 HTML 链路、动态容量 fail-closed、trace-off token 等价，以及 Ascend
 950 默认细粒度、v5 回退、tracing 全关三种 opkernel 构建（每种 8 个变体）。
 结构化结果见 [`validation-report.json`](validation-report.json)。
 

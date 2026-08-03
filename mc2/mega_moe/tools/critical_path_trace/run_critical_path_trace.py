@@ -35,7 +35,7 @@ from mega_moe_trace_contract import (
 )
 
 
-ADAPTER_VERSION = 3
+ADAPTER_VERSION = 4
 TESTED_MOE_TEST_COMMIT = "90319bbd05993d2fbe7674d693395d5520732553"
 TESTED_SCRIPT_SHA256 = (
     "35f600ca443782fd8f210a33af879af651a9dea011f32afa51191ae2bf9ee43e"
@@ -90,6 +90,57 @@ MAIN_COMPARE_ANCHOR = "    result_mega_moe = {}"
 
 CAPTURE_HELPER = r"""
 
+_critical_path_trace_capacity = {}
+
+
+def _critical_path_trace_validate_capacity():
+    global _critical_path_trace_capacity
+    if out_dtype != torch.bfloat16:
+        raise RuntimeError(
+            f"critical-path trace requires BF16 y carrier, got out_dtype={out_dtype}"
+        )
+    expert_count = int(local_moe_expert_num)
+    aic_count = int(aic_core_num)
+    output_bytes = int(bs) * int(h) * torch.empty((), dtype=out_dtype).element_size()
+    record_words = 2 + 4 * expert_count
+    required_y_bytes = 4 * (30 + 3 * aic_count * record_words)
+    scratch_bytes = 4 * 3 * aic_count * 2 * 3 * expert_count
+    scratch_reserve_bytes = 50 * 1024 * 1024
+    _critical_path_trace_capacity = {
+        "protocol_version": 7,
+        "formula": "4 * (30 + 3 * aic_core_num * (2 + 4 * local_moe_expert_num))",
+        "bs": int(bs),
+        "h": int(h),
+        "aic_core_num": aic_count,
+        "local_moe_expert_num": expert_count,
+        "record_words": record_words,
+        "required_y_bytes": required_y_bytes,
+        "available_y_bytes": output_bytes,
+        "scratch_required_bytes": scratch_bytes,
+        "scratch_reserve_bytes": scratch_reserve_bytes,
+    }
+    if expert_count <= 0 or aic_count <= 0:
+        raise RuntimeError(
+            "critical-path trace requires positive local_moe_expert_num and aic_core_num"
+        )
+    if required_y_bytes > output_bytes:
+        raise RuntimeError(
+            "critical-path trace y capacity is insufficient: "
+            f"required={required_y_bytes} bytes, available={output_bytes} bytes; "
+            f"record_words=2+4*{expert_count}={record_words}, AIC={aic_count}"
+        )
+    if scratch_bytes > scratch_reserve_bytes:
+        raise RuntimeError(
+            "critical-path trace workspace scratch is insufficient: "
+            f"required={scratch_bytes} bytes, reserve={scratch_reserve_bytes} bytes"
+        )
+    print(
+        "[TRACE] capacity preflight passed: "
+        f"y={required_y_bytes}/{output_bytes} bytes, "
+        f"workspace-scratch={scratch_bytes}/{scratch_reserve_bytes} bytes, "
+        f"experts={expert_count}, AIC={aic_count}"
+    )
+
 def _critical_path_trace_atomic_write(path, data, binary=False):
     tmp_path = f"{path}.tmp.{os.getpid()}"
     mode = "wb" if binary else "w"
@@ -109,7 +160,7 @@ def _critical_path_trace_capture_y(y, rank):
     raw_path = os.path.join(artifact_dir, f"rank{rank}.raw")
     metadata_path = os.path.join(artifact_dir, f"rank{rank}.runtime.json")
     metadata = {
-        "adapter_version": 3,
+        "adapter_version": 4,
         "capture_policy": "last_iteration_only",
         "executed_iterations": int(loop_acc_time),
         "captured_iteration": int(loop_acc_time),
@@ -136,6 +187,7 @@ def _critical_path_trace_capture_y(y, rank):
         "output_nbytes": len(raw_bytes),
         "raw_sha256": hashlib.sha256(raw_bytes).hexdigest(),
         "test_source_sha256": os.environ["MEGA_MOE_CRITICAL_PATH_TRACE_SOURCE_SHA256"],
+        "capacity_preflight": _critical_path_trace_capacity,
     }
     _critical_path_trace_atomic_write(raw_path, raw_bytes, binary=True)
     _critical_path_trace_atomic_write(
@@ -254,6 +306,25 @@ def replace_once(source: str, anchor: str, replacement: str, description: str) -
     return source.replace(anchor, replacement, 1)
 
 
+def insert_after_top_level_assignment(source: str, name: str, insertion: str) -> str:
+    tree = ast.parse(source)
+    matches = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id == name
+    ]
+    if len(matches) != 1 or matches[0].end_lineno is None:
+        raise ContractError(
+            f"top-level assignment {name!r} must occur exactly once for capacity preflight"
+        )
+    lines = source.splitlines(keepends=True)
+    lines[matches[0].end_lineno : matches[0].end_lineno] = [insertion]
+    return "".join(lines)
+
+
 def adapt_test_source(
     source: str,
     *,
@@ -284,6 +355,12 @@ def adapt_test_source(
         HELPER_INSERT_ANCHOR,
         CAPTURE_HELPER + HELPER_INSERT_ANCHOR,
         "capture helper insertion",
+    )
+    transformed = insert_after_top_level_assignment(
+        transformed,
+        "out_dtype",
+        f"\nif os.environ.get({TRACE_ENV!r}) == '1':\n"
+        "    _critical_path_trace_validate_capacity()\n",
     )
     capture_and_return = (
         "    torch.npu.synchronize()\n"
@@ -652,7 +729,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--allow-truncated",
         action="store_true",
-        help="accept more runtime waves than the four-wave capture capacity",
+        help="accept intentional partial capture from the legacy coarse v5 protocol",
     )
     parser.add_argument(
         "--check-only",

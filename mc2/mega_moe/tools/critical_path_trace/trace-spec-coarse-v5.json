@@ -267,7 +267,7 @@
         },
         "placement": "before",
         "marker": "TRACE_POINT: dispatch_begin_S",
-        "max_line_distance": 5
+        "max_line_distance": 24
       },
       "why": "Measures the actual per-wave AIV1 prefetch window, including send-count calculation, rather than the outer wave that may prefetch two waves at once.",
       "semantics": "The first expert in this dispatch wave is about to start SendCntCal on the AIV1 Scalar/control path.",

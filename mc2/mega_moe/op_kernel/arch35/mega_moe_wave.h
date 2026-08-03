@@ -216,6 +216,10 @@ private:
     CriticalPathTrace criticalPathTrace_{};
     uint64_t criticalPathTraceCarrierWords_ = 0U;
     bool criticalPathTraceCarrierValid_ = false;
+    uint32_t criticalPathDispatchWaveEnd_ = 0U;
+#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE == 0
+    uint32_t criticalPathDispatchWaveIdx_ = 0U;
+#endif
 #endif
 
     GlobalTensor<int32_t> swigluToGmm2FlagGm_;
@@ -413,13 +417,37 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
     const uint64_t carrierBytes = static_cast<uint64_t>(m_) * static_cast<uint64_t>(k_) * sizeof(OutputType);
     criticalPathTraceCarrierWords_ = carrierBytes / sizeof(uint32_t);
+    const uint32_t traceRecordWords = CriticalPathTraceRecordWords(moeExpertPerRank_);
     const uint64_t requiredWords = static_cast<uint64_t>(CRITICAL_PATH_TRACE_HEADER_WORDS) +
                                    static_cast<uint64_t>(CRITICAL_PATH_TRACE_ROLE_COUNT) * aicNum_ *
-                                       CRITICAL_PATH_TRACE_RECORD_WORDS +
-                                   static_cast<uint64_t>(aicNum_) *
-                                       CRITICAL_PATH_TRACE_FINE_TAIL_WORDS_PER_CORE;
+                                       traceRecordWords;
+#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+    const uint64_t scratchRecordWords = CriticalPathTraceScratchRecordWords(moeExpertPerRank_);
+    const uint64_t scratchRequiredBytes = static_cast<uint64_t>(CRITICAL_PATH_TRACE_ROLE_COUNT) * aicNum_ *
+                                          scratchRecordWords * sizeof(uint32_t);
+#else
+    const uint64_t scratchRequiredBytes = 0U;
+#endif
     criticalPathTraceCarrierValid_ =
-        criticalPathTraceCarrierWords_ >= requiredWords && criticalPathTraceCarrierWords_ <= 0xFFFFFFFFULL;
+        criticalPathTraceCarrierWords_ >= requiredWords && criticalPathTraceCarrierWords_ <= 0xFFFFFFFFULL &&
+        scratchRequiredBytes <= CRITICAL_PATH_TRACE_SCRATCH_RESERVED_BYTES;
+#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+    if (criticalPathTraceCarrierValid_) {
+        uint32_t traceRecordIdx = 0U;
+        if constexpr (g_coreType == AIC) {
+            traceRecordIdx = blockIdx_;
+        } else if (subBlockIdx_ == 0U) {
+            traceRecordIdx = aicNum_ + blockIdx_;
+        } else {
+            traceRecordIdx = 2U * aicNum_ + blockIdx_;
+        }
+        __gm__ uint32_t *traceScratchBase = reinterpret_cast<__gm__ uint32_t *>(
+            workspaceGM + params_.workspaceInfo.workspaceSize);
+        __gm__ uint32_t *traceScratchRecord =
+            traceScratchBase + static_cast<uint64_t>(traceRecordIdx) * scratchRecordWords;
+        criticalPathTrace_.Init(traceScratchRecord, moeExpertPerRank_);
+    }
+#endif
     epilogueOp_.SetCriticalPathTrace(CriticalPathTracePtr());
 #endif
     // 各 win 区相对 win 基址(rankSyncInWorldPtr)的偏移; 所有卡 win 布局一致, 跨卡读写用同一偏移。
@@ -1033,16 +1061,23 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchExpert(
             return;
         }
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-        const uint32_t traceWave = expertIdx / expertsPerBatch_;
-        const uint32_t traceWaveEnd =
-            (traceWave + 1U) * expertsPerBatch_ < moeExpertPerRank_ ?
-                (traceWave + 1U) * expertsPerBatch_ :
-                moeExpertPerRank_;
-        if (expertIdx == traceWave * expertsPerBatch_ && traceWave < CRITICAL_PATH_TRACE_MAX_WAVES &&
-            CriticalPathTracePtr() != nullptr) {
-            // TRACE_POINT: dispatch_begin_S
-            criticalPathTrace_.BeginDispatch(traceWave, CriticalPathTrace::Now());
+        // TRACE_POINT: dispatch_begin_S
+#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+        if (CriticalPathTracePtr() != nullptr && expertIdx == criticalPathDispatchWaveEnd_) {
+            criticalPathTrace_.PrepareExpertStage0(expertIdx);
+            criticalPathDispatchWaveEnd_ =
+                expertIdx + MegaMoeImpl::GetWaveExpertCount(expertIdx, moeExpertPerRank_, expertsPerBatch_);
+            criticalPathTrace_.BeginExpertStage0(CriticalPathTrace::Now());
         }
+#else
+        if (CriticalPathTracePtr() != nullptr && expertIdx == criticalPathDispatchWaveEnd_) {
+            criticalPathDispatchWaveEnd_ =
+                expertIdx + MegaMoeImpl::GetWaveExpertCount(expertIdx, moeExpertPerRank_, expertsPerBatch_);
+            if (criticalPathDispatchWaveIdx_ < CRITICAL_PATH_TRACE_COARSE_MAX_WAVES) {
+                criticalPathTrace_.BeginDispatch(criticalPathDispatchWaveIdx_, CriticalPathTrace::Now());
+            }
+        }
+#endif
 #endif
         uint64_t sendCnt = 0;
         SendCntCal(static_cast<int32_t>(expertIdx), sendCnt);
@@ -1051,12 +1086,25 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchExpert(
             MetaInfoCalAndDispatch(gmmAddrInfo, static_cast<int32_t>(expertIdx), bufferConfig);
         }
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
-        if (expertIdx + 1U == traceWaveEnd && traceWave < CRITICAL_PATH_TRACE_MAX_WAVES &&
-            CriticalPathTracePtr() != nullptr) {
+        // TRACE_POINT: dispatch_end_S
+#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+        if (expertIdx + 1U == criticalPathDispatchWaveEnd_ && CriticalPathTracePtr() != nullptr &&
+            criticalPathTrace_.HasExpertStage0Work()) {
             AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
-            criticalPathTrace_.EndDispatch(traceWave, CriticalPathTrace::Now()); // TRACE_POINT: dispatch_end_S
+            criticalPathTrace_.EndExpertStage0(CriticalPathTrace::Now());
+            criticalPathTrace_.FinishExpertStage0();
         }
+#else
+        if (expertIdx + 1U == criticalPathDispatchWaveEnd_ && CriticalPathTracePtr() != nullptr) {
+            if (criticalPathDispatchWaveIdx_ < CRITICAL_PATH_TRACE_COARSE_MAX_WAVES) {
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+                criticalPathTrace_.EndDispatch(criticalPathDispatchWaveIdx_, CriticalPathTrace::Now());
+            }
+            ++criticalPathDispatchWaveIdx_;
+        }
+#endif
 #endif
     }
 }
@@ -2275,7 +2323,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \
     MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
         if (CriticalPathTracePtr() != nullptr) {
-            criticalPathTrace_.PrepareExpertStage0();
+            criticalPathTrace_.PrepareExpertStage0(expertIdx);
         }
 #endif
         UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, gmm1State, expertIdx);
@@ -2320,7 +2368,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \
     MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
         if (CriticalPathTracePtr() != nullptr) {
-            criticalPathTrace_.PrepareExpertStage1();
+            criticalPathTrace_.PrepareExpertStage1(expertIdx);
         }
 #endif
         UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, gmm2State, expertIdx);
@@ -2358,6 +2406,12 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineE
     }
 
     uint32_t rowSequence = 0U;
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \
+    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+    if (CriticalPathTracePtr() != nullptr) {
+        criticalPathTrace_.PrepareExpertStage1(batchBegin);
+    }
+#endif
     for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
         if (!UpdateGroupParams<AddrUpdateMode::GMM2>(combineState, expertIdx)) {
             continue;
@@ -2370,10 +2424,16 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineE
         if (currentCoreTokenRange.count != 0U) {
             WaitGmm2Ready(expertIdx);
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+            // TRACE_POINT: combine_begin_S
+#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+            if (CriticalPathTracePtr() != nullptr && criticalPathTrace_.NeedsExpertStage1Begin()) {
+                criticalPathTrace_.BeginExpertStage1(CriticalPathTrace::Now());
+            }
+#else
             if (CriticalPathTracePtr() != nullptr && criticalPathTrace_.NeedsStage1Begin()) {
-                // TRACE_POINT: combine_begin_S
                 criticalPathTrace_.BeginStage1(CriticalPathTrace::Now());
             }
+#endif
 #endif
         }
 
@@ -2398,12 +2458,24 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineE
     // 下一 wave 的 dispatch 会复用同一片 UB 和事件编号，离开前必须回收所有已使用槽位。
     DrainCombineRowRing(rowSequence);
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    // TRACE_POINT: combine_end_S
+#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+    if (rowSequence != 0U && CriticalPathTracePtr() != nullptr &&
+        criticalPathTrace_.HasExpertStage1Work()) {
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+        criticalPathTrace_.EndExpertStage1(CriticalPathTrace::Now());
+    }
+    if (CriticalPathTracePtr() != nullptr) {
+        criticalPathTrace_.FinishExpertStage1();
+    }
+#else
     if (rowSequence != 0U && CriticalPathTracePtr() != nullptr && criticalPathTrace_.HasStage1Work()) {
         AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
-        // TRACE_POINT: combine_end_S
         criticalPathTrace_.EndStage1(CriticalPathTrace::Now());
     }
+#endif
 #endif
 }
 
@@ -2436,12 +2508,14 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
 
     uint32_t nextDispatchExpert = 0U;
     uint32_t currentWaveExpertNum = 0U;
-#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \
+    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE == 0
     uint32_t traceWaveIdx = 0U;
 #endif
     for (uint32_t batchBegin = 0U; batchBegin < moeExpertPerRank_;
          batchBegin += currentWaveExpertNum) {
-#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \
+    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE == 0
         if (CriticalPathTracePtr() != nullptr) {
             criticalPathTrace_.SetActiveWave(traceWaveIdx);
         }
@@ -2501,7 +2575,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
 
         ProcessCombineExperts(
             batchBegin, batchEnd, combineState, combineAddrInfo, combineBufferConfig);
-#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \
+    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE == 0
         ++traceWaveIdx;
 #endif
     }
@@ -2584,31 +2659,24 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::WriteCriticalPa
         recordIdx = 2U * aicNum_ + blockIdx_;
     }
 
+    const uint32_t recordWords = CriticalPathTraceRecordWords(moeExpertPerRank_);
     __gm__ uint32_t *record = traceOut + CRITICAL_PATH_TRACE_HEADER_WORDS +
-                              static_cast<uint64_t>(recordIdx) * CRITICAL_PATH_TRACE_RECORD_WORDS;
+                              static_cast<uint64_t>(recordIdx) * recordWords;
     criticalPathTrace_.WriteRecord(record);
-#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
-    __gm__ uint32_t *fineMeta =
-        traceOut + CRITICAL_PATH_TRACE_HEADER_WORDS +
-        static_cast<uint64_t>(CRITICAL_PATH_TRACE_ROLE_COUNT) * aicNum_ *
-            CRITICAL_PATH_TRACE_RECORD_WORDS +
-        static_cast<uint64_t>(blockIdx_) * CRITICAL_PATH_TRACE_FINE_TAIL_WORDS_PER_CORE;
-    if constexpr (g_coreType == AIC) {
-        AscendC::WriteGmByPassDCache(fineMeta + 0U, criticalPathTrace_.PackAicFineMeta());
-    } else if (subBlockIdx_ == 0U) {
-        AscendC::WriteGmByPassDCache(fineMeta + 1U, criticalPathTrace_.PackAiv0FineMeta());
-    }
-#endif
 
-    // Every record and fine metadata tail word must be globally issued before AIC0 publishes a valid header.
+    // Every dynamic record must be globally issued before AIC0 publishes a valid header.
     SyncAll<false>();
     if constexpr (g_coreType == AIC) {
         if (blockIdx_ != 0U) {
             return;
         }
-        const uint32_t repetitionCount = expertsPerBatch_ == 0U ?
-                                             0U :
-                                             (moeExpertPerRank_ + expertsPerBatch_ - 1U) / expertsPerBatch_;
+        uint32_t repetitionCount = 0U;
+        uint32_t waveBegin = 0U;
+        while (waveBegin < moeExpertPerRank_) {
+            waveBegin += MegaMoeImpl::GetWaveExpertCount(
+                waveBegin, moeExpertPerRank_, expertsPerBatch_);
+            ++repetitionCount;
+        }
         const uint32_t configHash = CriticalPathTraceConfigHash(
             CRITICAL_PATH_TRACE_PATH_MTE_A8W8_WAVE, m_, k_, static_cast<uint32_t>(hiddenDim_), topK_,
             moeExpertPerRank_, sharedExpertNum_, expertsPerBatch_, worldSize_, aicNum_, QuantMode,
@@ -2618,16 +2686,21 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::WriteCriticalPa
         AscendC::WriteGmByPassDCache(traceOut + 1U, CRITICAL_PATH_TRACE_PROTOCOL_VERSION);
         AscendC::WriteGmByPassDCache(traceOut + 2U, CRITICAL_PATH_TRACE_SCHEMA_ID);
         AscendC::WriteGmByPassDCache(traceOut + 3U, CRITICAL_PATH_TRACE_HEADER_WORDS);
-        AscendC::WriteGmByPassDCache(traceOut + 4U, CRITICAL_PATH_TRACE_RECORD_WORDS);
+        AscendC::WriteGmByPassDCache(traceOut + 4U, recordWords);
         AscendC::WriteGmByPassDCache(traceOut + 5U, CRITICAL_PATH_TRACE_ROLE_COUNT * aicNum_);
         AscendC::WriteGmByPassDCache(traceOut + 6U, aicNum_);
         AscendC::WriteGmByPassDCache(traceOut + 7U, aicNum_);
         AscendC::WriteGmByPassDCache(traceOut + 8U, aicNum_);
         AscendC::WriteGmByPassDCache(traceOut + 9U, 32U);
         AscendC::WriteGmByPassDCache(traceOut + 10U, repetitionCount);
-        AscendC::WriteGmByPassDCache(traceOut + 11U, CRITICAL_PATH_TRACE_MAX_WAVES);
+#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+        AscendC::WriteGmByPassDCache(traceOut + 11U, moeExpertPerRank_);
+        AscendC::WriteGmByPassDCache(traceOut + 12U, 0U);
+#else
+        AscendC::WriteGmByPassDCache(traceOut + 11U, CRITICAL_PATH_TRACE_COARSE_MAX_WAVES);
         AscendC::WriteGmByPassDCache(
-            traceOut + 12U, static_cast<uint32_t>(repetitionCount > CRITICAL_PATH_TRACE_MAX_WAVES));
+            traceOut + 12U, static_cast<uint32_t>(repetitionCount > CRITICAL_PATH_TRACE_COARSE_MAX_WAVES));
+#endif
         AscendC::WriteGmByPassDCache(traceOut + 13U, CRITICAL_PATH_TRACE_FLAGS);
         AscendC::WriteGmByPassDCache(traceOut + 14U, rankId_);
         AscendC::WriteGmByPassDCache(traceOut + 15U, configHash);

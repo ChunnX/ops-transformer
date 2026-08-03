@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 
-DEFAULT_BASELINE = "8fc42341f11425e4e82f123f59c7ef97cd7210b0"
+DEFAULT_BASELINE = "27455755e"
 FILES = (
     "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
     "mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h",

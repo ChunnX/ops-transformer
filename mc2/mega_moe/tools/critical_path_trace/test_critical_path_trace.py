@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import subprocess
@@ -28,6 +29,7 @@ from mega_moe_trace_contract import (
     ContractError,
     expected_header_from_metadata,
     load_json,
+    resolve_record_words,
     validate_capture_contract,
     validate_timestamp_order,
 )
@@ -60,15 +62,15 @@ def make_synthetic_capture(
 ) -> tuple[Path, Path]:
     spec = load_json(spec_path)
     protocol = spec["trace"]["protocol"]
-    fine_grained = int(protocol["version"]) == 6
+    fine_grained = int(protocol["version"]) >= 7
     metadata = {
-        "adapter_version": 1,
+        "adapter_version": 4,
         "rank": 0,
-        "bs": 1,
-        "h": 4096,
-        "n": 1024,
-        "k": 6,
-        "local_moe_expert_num": 4,
+        "bs": 24,
+        "h": 6144,
+        "n": 12288,
+        "k": 8,
+        "local_moe_expert_num": 8,
         "shared_expert_num": 0,
         "world_size": 2,
         "aic_core_num": 36,
@@ -81,12 +83,25 @@ def make_synthetic_capture(
         "swiglu_quant_dtype": "float8_e4m3fn",
         "weight_dtype": "float8_e4m3fn",
         "graph_type": 0,
-        "output_shape": [1, 4096],
+        "output_shape": [24, 6144],
         "output_dtype": "torch.bfloat16",
-        "output_nbytes": 8192,
+        "output_nbytes": 24 * 6144 * 2,
         "test_source_sha256": "synthetic-fixture",
     }
     expected = expected_header_from_metadata(metadata, metadata["output_nbytes"], spec)
+    record_words = resolve_record_words(protocol, metadata["local_moe_expert_num"])
+    if fine_grained:
+        metadata["capacity_preflight"] = {
+            "protocol_version": int(protocol["version"]),
+            "aic_core_num": metadata["aic_core_num"],
+            "local_moe_expert_num": metadata["local_moe_expert_num"],
+            "record_words": record_words,
+            "required_y_bytes": 4
+            * (int(protocol["header_words"]) + expected["record_count"] * record_words),
+            "available_y_bytes": metadata["output_nbytes"],
+            "scratch_required_bytes": 4 * 3 * 36 * 2 * 3 * 8,
+            "scratch_reserve_bytes": 50 * 1024 * 1024,
+        }
     word_count = metadata["output_nbytes"] // 4
     words = [0] * word_count
     header_values = {
@@ -95,7 +110,7 @@ def make_synthetic_capture(
         "version": int(protocol["version"]),
         "schema_id": int(protocol["schema_id"], 0),
         "header_words": int(protocol["header_words"]),
-        "record_words": int(protocol["record_words"]),
+        "record_words": record_words,
         "role_counts": [expected["aic_count"]] * 3,
     }
     for field in protocol["header_fields"]:
@@ -107,7 +122,6 @@ def make_synthetic_capture(
             words[int(field["word"])] = value
 
     header_words = int(protocol["header_words"])
-    record_words = int(protocol["record_words"])
     aic_count = expected["aic_count"]
     for record_index in range(expected["record_count"]):
         role_index = record_index // aic_count
@@ -115,44 +129,62 @@ def make_synthetic_capture(
         base = header_words + record_index * record_words
         process_begin = (0xFFFFF000 + core * 3 + role_index) & 0xFFFFFFFF
         words[base + 0] = process_begin
-        words[base + 1] = (process_begin + 5000) & 0xFFFFFFFF
-        if role_index == 0:
-            if core < 8:
-                words[base + 2] = (process_begin + 300) & 0xFFFFFFFF
-                words[base + 3] = (process_begin + 500) & 0xFFFFFFFF
-                if fine_grained:
-                    words[base + 6] = (process_begin + 800) & 0xFFFFFFFF
-                    words[base + 7] = (process_begin + 1000) & 0xFFFFFFFF
-            words[base + 4] = (process_begin + 1300) & 0xFFFFFFFF
-            words[base + 5] = (process_begin + 1600) & 0xFFFFFFFF
-            if fine_grained and core < 8:
-                words[base + 8] = (process_begin + 1700) & 0xFFFFFFFF
-                words[base + 9] = (process_begin + 2000) & 0xFFFFFFFF
-        elif role_index == 1 and core < 8:
-            words[base + 2] = (process_begin + 650) & 0xFFFFFFFF
-            words[base + 3] = (process_begin + 850) & 0xFFFFFFFF
-            if fine_grained:
-                words[base + 6] = (process_begin + 1050) & 0xFFFFFFFF
-                words[base + 7] = (process_begin + 1250) & 0xFFFFFFFF
+        words[base + 1] = (process_begin + 6000) & 0xFFFFFFFF
+        if fine_grained:
+            if role_index == 0 and core < 2:
+                for expert in range(8):
+                    words[base + 2 + 4 * expert] = (
+                        process_begin + 200 + 300 * expert
+                    ) & 0xFFFFFFFF
+                    words[base + 3 + 4 * expert] = (
+                        process_begin + 300 + 300 * expert
+                    ) & 0xFFFFFFFF
+                    words[base + 4 + 4 * expert] = (
+                        process_begin + 2800 + 300 * expert
+                    ) & 0xFFFFFFFF
+                    words[base + 5 + 4 * expert] = (
+                        process_begin + 2950 + 300 * expert
+                    ) & 0xFFFFFFFF
+            elif role_index == 1 and core < 2:
+                for expert in range(8):
+                    words[base + 2 + 4 * expert] = (
+                        process_begin + 350 + 300 * expert
+                    ) & 0xFFFFFFFF
+                    words[base + 3 + 4 * expert] = (
+                        process_begin + 500 + 300 * expert
+                    ) & 0xFFFFFFFF
+            elif role_index == 2:
+                for expert, begin, end in ((0, 100, 900), (4, 950, 1750)):
+                    words[base + 2 + 4 * expert] = (process_begin + begin) & 0xFFFFFFFF
+                    words[base + 3 + 4 * expert] = (process_begin + end) & 0xFFFFFFFF
+                if core < 6:
+                    for expert, begin, end in ((0, 3600, 4300), (4, 4400, 5200)):
+                        words[base + 4 + 4 * expert] = (
+                            process_begin + begin
+                        ) & 0xFFFFFFFF
+                        words[base + 5 + 4 * expert] = (
+                            process_begin + end
+                        ) & 0xFFFFFFFF
+        elif role_index == 0:
+            for wave, begin in enumerate((300, 1600)):
+                words[base + 2 + 4 * wave] = (process_begin + begin) & 0xFFFFFFFF
+                words[base + 3 + 4 * wave] = (process_begin + begin + 500) & 0xFFFFFFFF
+                words[base + 4 + 4 * wave] = (process_begin + begin + 700) & 0xFFFFFFFF
+                words[base + 5 + 4 * wave] = (process_begin + begin + 1100) & 0xFFFFFFFF
+        elif role_index == 1:
+            for wave, begin in enumerate((650, 1950)):
+                words[base + 2 + 4 * wave] = (process_begin + begin) & 0xFFFFFFFF
+                words[base + 3 + 4 * wave] = (process_begin + begin + 450) & 0xFFFFFFFF
         elif role_index == 2:
-            words[base + 2] = (process_begin + 100) & 0xFFFFFFFF
-            words[base + 3] = (process_begin + 600) & 0xFFFFFFFF
-            if core < 6:
-                words[base + 4] = (process_begin + 2300) & 0xFFFFFFFF
-                words[base + 5] = (process_begin + 3600) & 0xFFFFFFFF
-
-    fine_tail = protocol.get("fine_metadata_tail")
-    if fine_tail is not None:
-        tail_base = header_words + expected["record_count"] * record_words
-        stride = int(fine_tail["core_stride_words"])
-        for core in range(aic_count):
-            gmm1_count = 2 if core < 8 else 0
-            gmm2_count = 2 if core < 8 else 1
-            aic_meta = (gmm1_count << 16) | (gmm2_count << 19) | (1 << 24)
-            swiglu_count = 2 if core < 8 else 0
-            aiv0_meta = (swiglu_count << 8) | (1 << 12)
-            words[tail_base + core * stride] = aic_meta
-            words[tail_base + core * stride + 1] = aiv0_meta
+            for wave, begin in enumerate((100, 1200)):
+                words[base + 2 + 4 * wave] = (process_begin + begin) & 0xFFFFFFFF
+                words[base + 3 + 4 * wave] = (process_begin + begin + 700) & 0xFFFFFFFF
+                words[base + 4 + 4 * wave] = (
+                    process_begin + 3000 + 900 * wave
+                ) & 0xFFFFFFFF
+                words[base + 5 + 4 * wave] = (
+                    process_begin + 3600 + 900 * wave
+                ) & 0xFFFFFFFF
 
     raw = b"".join(word.to_bytes(4, "little") for word in words)
     metadata["raw_sha256"] = hashlib.sha256(raw).hexdigest()
@@ -223,10 +255,15 @@ class TraceContractTests(unittest.TestCase):
             self.assertLess(block0_aiv1, block1_aic)
             self.assertNotIn("Trace-point placement audit", rendered_html)
             normalized = load_json(directory / "rank0.normalized.json")
-            self.assertEqual(normalized["protocol_version"], 6)
-            self.assertEqual(normalized["schema_id"], "0x4c23837d")
+            self.assertEqual(normalized["protocol_version"], 7)
+            self.assertEqual(normalized["schema_id"], "0x3eb1c6b3")
+            self.assertEqual(normalized["metadata"]["resolved_record_words"], 34)
+            self.assertEqual(normalized["metadata"]["header"]["capture_capacity"], 8)
+            self.assertFalse(normalized["metadata"]["trace_truncated"])
             self.assertIn("SwiGLU 等待/调度间隙", rendered_html)
             self.assertIn("推断间隙", rendered_html)
+            self.assertIn("专家 7", rendered_html)
+            self.assertNotIn("最多四槽", rendered_html)
             order = load_json(directory / "rank0.order-check.json")
             self.assertEqual(order["status"], "passed")
             self.assertEqual(order["span_summary"]["process"]["count"], 108)
@@ -320,56 +357,144 @@ class TraceContractTests(unittest.TestCase):
             value = load_json(normalized)
             value["records"][0]["timestamps"]["gmm1_expert_end_S"][0] = 0
             _write_json(normalized, value)
-            with self.assertRaisesRegex(ContractError, "missing inside captured_count"):
+            with self.assertRaisesRegex(ContractError, "only one boundary"):
                 validate_timestamp_order(normalized, SPEC)
 
-    def test_fine_expert_slot_truncation_fails_closed(self) -> None:
+    def test_missing_second_dispatch_wave_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
-            raw_path, metadata_path = make_synthetic_capture(directory)
-            spec = load_json(SPEC)
-            protocol = spec["trace"]["protocol"]
-            tail_word = int(protocol["header_words"]) + 108 * int(
-                protocol["record_words"]
+            make_synthetic_capture(directory)
+            normalized = directory / "rank0.normalized.json"
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(TRACE_TOOL),
+                    "decode",
+                    "--spec",
+                    str(SPEC),
+                    "--raw",
+                    str(directory / "rank0.raw"),
+                    "--output",
+                    str(normalized),
+                    "--reference-role",
+                    "AIC",
+                    "--reference-core",
+                    "0",
+                    "--reference-point",
+                    "process_begin_S",
+                ],
+                check=True,
             )
-            raw = bytearray(raw_path.read_bytes())
-            offset = tail_word * 4
-            meta = int.from_bytes(raw[offset : offset + 4], "little")
-            raw[offset : offset + 4] = (meta | (1 << 22)).to_bytes(4, "little")
-            raw_path.write_bytes(raw)
-            metadata = load_json(metadata_path)
-            metadata["raw_sha256"] = hashlib.sha256(raw).hexdigest()
-            _write_json(metadata_path, metadata)
+            value = load_json(normalized)
+            aiv1_core0 = next(
+                record
+                for record in value["records"]
+                if record["role"] == "AIV1" and record["core"] == 0
+            )
+            aiv1_core0["timestamps"]["dispatch_begin_S"][4] = 0
+            aiv1_core0["timestamps"]["dispatch_end_S"][4] = 0
+            _write_json(normalized, value)
+            with self.assertRaisesRegex(ContractError, "dispatch slot 4"):
+                validate_timestamp_order(normalized, SPEC)
 
-            with self.assertRaisesRegex(
-                ContractError, "exceeded its 4 active-expert slots"
-            ):
-                decode_artifacts(
-                    artifact_dir=directory,
-                    spec_path=SPEC,
-                    audit_path=AUDIT,
-                    trace_tool=TRACE_TOOL,
-                    python=sys.executable,
-                    allow_truncated=False,
-                    expected_source_sha="synthetic-fixture",
-                    coarse_spec_path=COARSE_SPEC,
-                    coarse_audit_path=COARSE_AUDIT,
-                )
-
+    def test_dynamic_eight_expert_layout_has_no_fixed_slot_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            make_synthetic_capture(directory)
             results = decode_artifacts(
                 artifact_dir=directory,
                 spec_path=SPEC,
                 audit_path=AUDIT,
                 trace_tool=TRACE_TOOL,
                 python=sys.executable,
-                allow_truncated=True,
+                allow_truncated=False,
                 expected_source_sha="synthetic-fixture",
                 coarse_spec_path=COARSE_SPEC,
                 coarse_audit_path=COARSE_AUDIT,
             )
             self.assertEqual(len(results), 1)
+            normalized = load_json(directory / "rank0.normalized.json")
+            self.assertEqual(
+                len(normalized["records"][0]["timestamps"]["gmm1_expert_begin_S"]),
+                8,
+            )
+            self.assertEqual(normalized["metadata"]["required_trace_bytes"], 14808)
             order = load_json(directory / "rank0.order-check.json")
-            self.assertIn("AIC-00/gmm1_expert", order["fine_truncated_records"])
+            self.assertEqual(order["fine_truncated_records"], [])
+
+    def test_capacity_preflight_metadata_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            raw_path, metadata_path = make_synthetic_capture(directory)
+            metadata = load_json(metadata_path)
+            metadata["capacity_preflight"]["required_y_bytes"] += 4
+            _write_json(metadata_path, metadata)
+            with self.assertRaisesRegex(ContractError, "capacity_preflight mismatch"):
+                validate_capture_contract(
+                    raw_path=raw_path,
+                    metadata_path=metadata_path,
+                    spec_path=SPEC,
+                    allow_truncated=False,
+                )
+
+    @unittest.skipUnless(
+        MOE_TEST.is_file(), "audited moe_test checkout is not available"
+    )
+    def test_adapter_contains_pre_operator_dynamic_capacity_check(self) -> None:
+        source = MOE_TEST.read_text(encoding="utf-8")
+        transformed = adapt_test_source(
+            source,
+            original_script_dir=MOE_TEST.parent,
+            overrides=FORCED_OVERRIDES,
+        )
+        call = "_critical_path_trace_validate_capacity()"
+        self.assertIn("record_words = 2 + 4 * expert_count", transformed)
+        self.assertIn(call, transformed)
+        self.assertLess(
+            transformed.index(call, transformed.index("out_dtype =")),
+            transformed.index("def run_cascade_npu"),
+        )
+
+        tree = ast.parse(transformed)
+        helper = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_critical_path_trace_validate_capacity"
+        )
+
+        class _Scalar:
+            @staticmethod
+            def element_size() -> int:
+                return 2
+
+        class _TorchStub:
+            bfloat16 = object()
+
+            @staticmethod
+            def empty(*_args, **_kwargs):
+                return _Scalar()
+
+        namespace = {
+            "torch": _TorchStub,
+            "out_dtype": _TorchStub.bfloat16,
+            "local_moe_expert_num": 8,
+            "aic_core_num": 36,
+            "bs": 24,
+            "h": 6144,
+            "_critical_path_trace_capacity": {},
+        }
+        helper_module = ast.fix_missing_locations(
+            ast.Module(body=[helper], type_ignores=[])
+        )
+        exec(compile(helper_module, "adapter_capacity_helper.py", "exec"), namespace)
+        namespace["_critical_path_trace_validate_capacity"]()
+        capacity = namespace["_critical_path_trace_capacity"]
+        self.assertEqual(capacity["record_words"], 34)
+        self.assertEqual(capacity["required_y_bytes"], 14808)
+        self.assertEqual(capacity["available_y_bytes"], 294912)
+        self.assertEqual(capacity["scratch_required_bytes"], 20736)
+        self.assertEqual(capacity["scratch_reserve_bytes"], 50 * 1024 * 1024)
 
     @unittest.skipUnless(
         MOE_TEST.is_file(), "audited moe_test checkout is not available"
@@ -388,6 +513,7 @@ class TraceContractTests(unittest.TestCase):
         self.assertIn("'runtime-cache', 'torch_extensions'", transformed)
         self.assertIn("'runtime-cache', 'golden_cache'", transformed)
         self.assertIn("accuracy comparison is intentionally skipped", transformed)
+        self.assertIn("capacity preflight passed", transformed)
         compile(transformed, "adapted_mega_moe.py", "exec")
 
 

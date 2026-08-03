@@ -72,13 +72,13 @@ POINT_TEXT_ZH = {
         "when": "当前 wave 的第一个专家即将在 AIV1 Scalar 路径执行 SendCntCal。",
         "why": "覆盖真实的逐 wave Dispatch 预取窗口，避免用可能一次预取多个 wave 的外层循环近似。",
         "proof": "DispatchExpert 对每个专家只执行一次；首专家判断把 expertIdx 映射到当前 experts_per_wave。",
-        "perturbation": "每个有效 AIV1/wave 增加一次首 slot 条件判断和一次时钟采样。",
+        "perturbation": "每个有效 AIV1/wave 增加一次动态边界判断和一次时钟采样。",
     },
     "dispatch_end_S": {
         "when": "当前 wave 的最后一个专家已完成 token、scale、meta-info 的 MTE3 写入和 ready 发布。",
         "why": "证明 Dispatch 何时真正释放 GMM1，并可与同一 AI Block 内的 GMM1 起点直接比较。",
         "proof": "最后一个专家复用已回收的 EVENT_ID0 增加 MTE3_S，把最终写入和发布依赖传到 Scalar 后再读时钟。",
-        "perturbation": "每个有效 AIV1/wave 增加一次 MTE3→Scalar 桥接和一次时钟采样。",
+        "perturbation": "每个有效 AIV1/wave 增加一次 MTE3→Scalar 桥接、一次时钟采样和三次独占 workspace 标量写。",
     },
     "gmm1_begin_S": {
         "when": "AIC 已观察到 Dispatch ready，并完成前序 ping-pong 依赖等待；第一个 GMM1 tile 即将发出 MMAD。",
@@ -120,37 +120,37 @@ POINT_TEXT_ZH = {
         "when": "当前专家的 Dispatch ready 与前序 ping-pong 依赖已满足，本核第一个 GMM1 tile 即将发出 MMAD。",
         "why": "把批专家级长框拆成逐专家区间，单独暴露同一 wave 内的 FIX 尾部和依赖等待。",
         "proof": "打点位于 upstream-ready 与 WaitForVector 之后，FIX_S 仅把 causal begin 依赖传到 Scalar。",
-        "perturbation": "每个被捕获活跃专家增加一次槽检查、一次 FIX→Scalar causal bridge 和一次时钟采样。",
+        "perturbation": "每个活跃专家增加一次动态状态检查、一次 FIX→Scalar causal bridge 和一次时钟采样。",
     },
     "gmm1_expert_end_S": {
         "when": "当前专家分配给本核的 GMM1 MMAD/NotifyVector 已全部发出；FIX 可能仍在尾部执行。",
         "why": "提供低扰动逐专家结束边界，并把到下一专家 causal begin 的 FIX 尾部/等待显示为独立间隙。",
         "proof": "采样紧跟 GroupMatmulWithSwigluQuant 返回，不增加逐专家 FIX_S，因此明确标记为 issue 而不是 actual。",
-        "perturbation": "每个被捕获活跃专家增加一次时钟采样；不新增完成 bridge，避免强制串行化 FIX 尾部。",
+        "perturbation": "每个活跃专家增加一次时钟采样和三次独占 workspace 标量写；不新增完成 bridge，避免强制串行化 FIX 尾部。",
     },
     "swiglu_expert_begin_S": {
         "when": "当前专家首个非空 epilogue 已完成 GMM1/输入就绪等待，即将开始 SwiGLU 与 MX 量化。",
         "why": "避免把多个专家之间的 WaitForCube/输入等待误认为 SwiGLU 计算。",
         "proof": "所有 epilogue 分支均在 readiness wait 后进入公共 operator；V_S 再把 Vector 依赖传到 Scalar。",
-        "perturbation": "每个被捕获活跃专家增加一次槽检查、一次 V→Scalar bridge 和一次 begin 时钟。",
+        "perturbation": "每个活跃专家增加一次动态状态检查、一次 V→Scalar bridge 和一次 begin 时钟。",
     },
     "swiglu_expert_end_S": {
         "when": "当前专家在本 AIV0 上的全部 epilogue tile 已返回，量化 data/scale 已写回 GM 且 ready 已发布。",
         "why": "标出逐专家真实输出尾部，让下一专家前的等待/调度间隙可见。",
         "proof": "每个 operator 返回前都复用已有 MTE3_V/MTE3_S 完成依赖并发布 ready；helper 返回后的时钟晚于最后一个 tile。",
-        "perturbation": "每个被捕获活跃专家增加一次条件判断和结束时钟；不新增 MTE3 bridge。",
+        "perturbation": "每个活跃专家增加一次条件判断、结束时钟和三次独占 workspace 标量写；不新增 MTE3 bridge。",
     },
     "gmm2_expert_begin_S": {
         "when": "当前专家的 SwiGLU-ready counter 已被 Scalar 观察，本核第一个 GMM2 MMAD 即将发出。",
         "why": "逐专家区分 GMM2 计算与 ready 等待，并验证 GMM2 是否近似连续向 GM 输出。",
         "proof": "bypass-GM 轮询在 ready 可见后返回，紧随其后的 Scalar 时钟无需跨流水 bridge。",
-        "perturbation": "每个被捕获活跃专家增加一次槽检查和一次时钟采样。",
+        "perturbation": "每个活跃专家增加一次动态状态检查和一次时钟采样。",
     },
     "gmm2_expert_end_S": {
         "when": "当前专家本核全部 GMM2 FIX 直写完成，且该 AIC 的 per-expert ready 已发布。",
         "why": "逐专家显示 GMM2 实际完成，并把到下一专家 begin 的 ready 等待/调度间隙独立画出。",
         "proof": "PublishGmm2Ready 内已有 FIX_S 先证明本核写回完成，再执行 bypass-GM ready 发布。",
-        "perturbation": "每个被捕获活跃专家增加一次时钟采样；复用生产路径已有 FIX_S。",
+        "perturbation": "每个活跃专家增加一次时钟采样和三次独占 workspace 标量写；复用生产路径已有 FIX_S。",
     },
     "combine_begin_S": {
         "when": "该 AIV1 拥有非空 token，且首个专家的 WaitGmm2Ready 已观察到完整 AIC fan-in；随后开始 meta-info 加载和发送。",
@@ -162,7 +162,7 @@ POINT_TEXT_ZH = {
         "when": "当前 wave 由该 AIV1 发出的全部远端 token row 已完成 MTE3 send。",
         "why": "让 Combine 在实际远端发送完成时结束，而不是停在 Scalar 发出或 drain 入队时刻。",
         "proof": "ring drain 等待所有实际使用 slot 的 MTE3_MTE2 事件，再用复用 EVENT_ID0 的 MTE2_S 把完成依赖传到 Scalar。",
-        "perturbation": "每个有效 AIV1/wave 增加一次 MTE2→Scalar 桥接和一次时钟采样。",
+        "perturbation": "每个有效 AIV1/wave 增加一次 MTE2→Scalar 桥接、一次时钟采样和三次独占 workspace 标量写。",
     },
 }
 
@@ -298,6 +298,77 @@ def _parse_uint(value: Any, field: str, bits: int = 32) -> int:
     if parsed < 0 or parsed >= (1 << bits):
         raise ContractError(f"{field}={parsed} does not fit uint{bits}")
     return parsed
+
+
+def _resolve_record_words(
+    protocol: dict[str, Any], header: dict[str, Any], location: str = "record_words"
+) -> int:
+    layout = protocol.get("record_words")
+    if isinstance(layout, int) and not isinstance(layout, bool) and layout > 0:
+        return layout
+    if not isinstance(layout, dict):
+        raise ContractError(f"{location} must be a positive integer or dynamic layout")
+    base = layout.get("base_words")
+    per_count = layout.get("words_per_count")
+    count_field = layout.get("count_header_field")
+    if (
+        not isinstance(base, int)
+        or isinstance(base, bool)
+        or base < 0
+        or not isinstance(per_count, int)
+        or isinstance(per_count, bool)
+        or per_count <= 0
+        or not isinstance(count_field, str)
+        or not count_field
+    ):
+        raise ContractError(
+            f"{location} dynamic layout requires non-negative base_words, positive "
+            "words_per_count, and count_header_field"
+        )
+    count = header.get(count_field)
+    if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+        raise ContractError(
+            f"{location} cannot resolve positive header field {count_field!r}: {count!r}"
+        )
+    return base + per_count * count
+
+
+def _resolve_field_count(
+    field: dict[str, Any], header: dict[str, Any], location: str = "record field count"
+) -> int:
+    count_layout = field.get("count")
+    if (
+        isinstance(count_layout, int)
+        and not isinstance(count_layout, bool)
+        and count_layout > 0
+    ):
+        return count_layout
+    if not isinstance(count_layout, dict):
+        raise ContractError(f"{location} must be a positive integer or dynamic count")
+    count_field = count_layout.get("header_field")
+    if not isinstance(count_field, str) or not count_field:
+        raise ContractError(f"{location} dynamic count requires header_field")
+    count = header.get(count_field)
+    if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+        raise ContractError(
+            f"{location} cannot resolve positive header field {count_field!r}: {count!r}"
+        )
+    return count
+
+
+def _record_words_text(
+    protocol: dict[str, Any], header: dict[str, Any] | None = None
+) -> str:
+    layout = protocol["record_words"]
+    if isinstance(layout, int):
+        return str(layout)
+    formula = (
+        f"{layout['base_words']} + {layout['words_per_count']} × "
+        f"header.{layout['count_header_field']}"
+    )
+    if header is None:
+        return formula
+    return f"{_resolve_record_words(protocol, header)}（{formula}）"
 
 
 def _required_string(
@@ -440,12 +511,19 @@ def _validate_spec(spec: Any) -> list[str]:
     ):
         errors.append("$.trace.protocol.header_words must be a positive integer")
     record_words = protocol.get("record_words")
-    if (
-        not isinstance(record_words, int)
-        or isinstance(record_words, bool)
-        or record_words <= 0
-    ):
-        errors.append("$.trace.protocol.record_words must be a positive integer")
+    validation_record_header = (
+        {record_words.get("count_header_field", ""): 3}
+        if isinstance(record_words, dict)
+        else {}
+    )
+    try:
+        _resolve_record_words(
+            protocol,
+            validation_record_header,
+            "$.trace.protocol.record_words",
+        )
+    except ContractError as exc:
+        errors.append(str(exc))
     record_order = _required_string(
         protocol, "record_order", "$.trace.protocol", errors
     )
@@ -612,6 +690,18 @@ def _validate_spec(spec: Any) -> list[str]:
             "$.trace.protocol.header_fields field 'role_counts' must have width_words "
             f"equal to len(trace.roles)={len(roles)}"
         )
+    dynamic_record_count_field = (
+        record_words.get("count_header_field")
+        if isinstance(record_words, dict)
+        else None
+    )
+    if (
+        dynamic_record_count_field is not None
+        and dynamic_record_count_field not in header_names
+    ):
+        errors.append(
+            "$.trace.protocol.record_words.count_header_field must name a header field"
+        )
 
     output = trace.get("output")
     if not isinstance(output, dict):
@@ -775,8 +865,18 @@ def _validate_spec(spec: Any) -> list[str]:
 
         word = field.get("word")
         width = field.get("width_words")
-        count = field.get("count")
+        count_layout = field.get("count")
         stride = field.get("stride_words")
+        validation_header = {name: 3 for name in header_names}
+        try:
+            count = _resolve_field_count(field, validation_header, f"{loc}.count")
+        except ContractError as exc:
+            errors.append(str(exc))
+            count = None
+        if isinstance(count_layout, dict):
+            count_field = count_layout.get("header_field")
+            if count_field not in header_names:
+                errors.append(f"{loc}.count.header_field must name a header field")
         integers = (
             isinstance(word, int) and not isinstance(word, bool) and word >= 0,
             isinstance(width, int) and not isinstance(width, bool) and width > 0,
@@ -808,8 +908,16 @@ def _validate_spec(spec: Any) -> list[str]:
                 f"{loc}.width_words={width} cannot hold a {bits}-bit timestamp in {word_bits}-bit words"
             )
         last_end = word + (count - 1) * stride + width
-        if isinstance(record_words, int) and last_end > record_words:
-            errors.append(f"{loc} exceeds record_words={record_words}")
+        try:
+            validation_record_words = _resolve_record_words(
+                protocol, validation_header, "$.trace.protocol.record_words"
+            )
+        except ContractError:
+            validation_record_words = None
+        if validation_record_words is not None and last_end > validation_record_words:
+            errors.append(
+                f"{loc} exceeds resolved record_words={validation_record_words}"
+            )
         for role in field_roles:
             role_occupied = occupied_record_words.setdefault(role, {})
             for repetition in range(count):
@@ -894,6 +1002,16 @@ def _validate_spec(spec: Any) -> list[str]:
             errors.append(f"{fine_loc} must be an object when set")
         else:
             _required_string(fine_visualization, "enabled_by", fine_loc, errors)
+            if fine_visualization.get("occurrence_kind") != "expert-index":
+                errors.append(f"{fine_loc}.occurrence_kind must be expert-index")
+            for key in (
+                "expert_count_header_field",
+                "experts_per_wave_header_field",
+                "wave_partition",
+            ):
+                value = _required_string(fine_visualization, key, fine_loc, errors)
+                if key.endswith("header_field") and value and value not in header_names:
+                    errors.append(f"{fine_loc}.{key} must name a header field")
             derived_gaps = fine_visualization.get("derived_idle_gaps")
             if not isinstance(derived_gaps, list) or not derived_gaps:
                 errors.append(f"{fine_loc}.derived_idle_gaps must be a non-empty list")
@@ -915,13 +1033,7 @@ def _validate_spec(spec: Any) -> list[str]:
                         seen_gap_spans.add(gap_span)
                     if gap.get("same_wave_only") is not True:
                         errors.append(f"{gap_loc}.same_wave_only must be true")
-                    for key in (
-                        "wave_counter_prefix",
-                        "captured_count_counter",
-                        "truncated_counter",
-                        "label",
-                        "caveat",
-                    ):
+                    for key in ("label", "caveat"):
                         _required_string(gap, key, gap_loc, errors)
                     if gap.get("quality") != "inferred":
                         errors.append(f"{gap_loc}.quality must be inferred")
@@ -1367,13 +1479,18 @@ def _validate_normalized_trace(
     metadata = trace_data.get("metadata", {})
     if not isinstance(metadata, dict):
         raise ContractError("$.metadata must be an object when set")
+    runtime_header = metadata.get("header", {})
+    if not isinstance(runtime_header, dict):
+        raise ContractError("$.metadata.header must be an object")
 
     bits = trace_spec["clock"]["bits"]
     roles = trace_spec["roles"]
     point_by_id = {point["id"]: point for point in spec["points"]}
     point_ids = set(point_by_id)
     timestamp_field_counts = {
-        (role, field["name"]): field["count"]
+        (role, field["name"]): _resolve_field_count(
+            field, runtime_header, f"record field {field['name']} count"
+        )
         for field in trace_spec["protocol"]["record_fields"]
         if field["kind"] == "timestamp"
         for role in field["roles"]
@@ -1502,6 +1619,41 @@ def _modular_span(begin: int, end: int, bits: int) -> int:
     return (end - begin) & ((1 << bits) - 1)
 
 
+def _wave_expert_count(
+    wave_begin: int, expert_count: int, experts_per_wave: int
+) -> int:
+    if wave_begin >= expert_count:
+        return 0
+    remaining = expert_count - wave_begin
+    if experts_per_wave <= 0 or remaining <= experts_per_wave:
+        return remaining
+    tail = remaining - experts_per_wave
+    return (
+        remaining
+        if tail < experts_per_wave and 2 * tail < experts_per_wave
+        else experts_per_wave
+    )
+
+
+def _expert_wave_ids(header: dict[str, Any]) -> list[int]:
+    expert_count = int(header.get("moe_experts_per_rank", 0))
+    experts_per_wave = int(header.get("experts_per_wave", 0))
+    result = [-1] * expert_count
+    wave_begin = 0
+    wave_id = 0
+    while wave_begin < expert_count:
+        count = _wave_expert_count(wave_begin, expert_count, experts_per_wave)
+        if count <= 0:
+            raise ContractError(
+                "cannot derive routed-wave partition from runtime header"
+            )
+        for expert in range(wave_begin, wave_begin + count):
+            result[expert] = wave_id
+        wave_begin += count
+        wave_id += 1
+    return result
+
+
 def _load_audit(path: Path | None, spec: dict[str, Any]) -> dict[str, Any] | None:
     if path is None:
         return None
@@ -1550,6 +1702,12 @@ def _render_html(
     role_order = {role: index for index, role in enumerate(trace_spec["roles"])}
     comparison_group = trace_spec.get("visualization", {}).get("comparison_group")
     fine_visualization = trace_spec.get("visualization", {}).get("fine_grained")
+    runtime_header = trace_data.get("metadata", {}).get("header", {})
+    if not isinstance(runtime_header, dict):
+        raise ContractError("renderer requires metadata.header")
+    expert_wave_ids = (
+        _expert_wave_ids(runtime_header) if isinstance(fine_visualization, dict) else []
+    )
     derived_gap_by_span = {
         gap["span"]: gap
         for gap in (
@@ -1680,13 +1838,10 @@ def _render_html(
                 end_delta = begin_delta + duration
                 plotted.extend((begin_delta, end_delta))
                 gap_contract = derived_gap_by_span.get(span["id"])
-                wave_id = (
-                    record["counters"].get(
-                        f"{gap_contract['wave_counter_prefix']}_{occurrence}"
-                    )
-                    if gap_contract is not None
-                    else None
+                expert_indexed = span["id"] != "process" and occurrence < len(
+                    expert_wave_ids
                 )
+                wave_id = expert_wave_ids[occurrence] if expert_indexed else None
                 row_spans.append(
                     {
                         "span": span,
@@ -1844,9 +1999,9 @@ def _render_html(
             css_class = "" if exact else "nonexact"
             opacity = "0.92" if exact else "0.42"
             wave_label = (
-                f"wave {rendered['wave_id']} / 本核活跃专家槽 {rendered['occurrence']}"
+                f"wave {rendered['wave_id']} / 专家 {rendered['occurrence']}"
                 if rendered["wave_id"] is not None
-                else f"槽 {rendered['occurrence']}"
+                else f"记录项 {rendered['occurrence']}"
             )
             if rendered["derived_gap"] is not None:
                 gap = rendered["derived_gap"]
@@ -1890,32 +2045,28 @@ def _render_html(
                     f'<line class="marker" x1="{x:.2f}" y1="{y + 4}" x2="{x:.2f}" y2="{y + 26}"><title>{title}</title></line>'
                 )
 
-        fine_counter_names: set[str] = set()
         fine_counter_parts: list[str] = []
         for gap in derived_gap_by_span.values():
-            count_name = gap["captured_count_counter"]
-            truncated_name = gap["truncated_counter"]
-            prefix = gap["wave_counter_prefix"]
-            if count_name not in record["counters"]:
+            span = next(
+                (item for item in spec["spans"] if item["id"] == gap["span"]), None
+            )
+            if span is None or record["role"] not in span["roles"]:
                 continue
-            captured_count = int(record["counters"][count_name])
-            waves = [
-                int(record["counters"].get(f"{prefix}_{index}", 0))
-                for index in range(captured_count)
+            begins = record["timestamps"].get(span["begin"], [])
+            ends = record["timestamps"].get(span["end"], [])
+            active_experts = [
+                index
+                for index, (begin, end) in enumerate(zip(begins, ends))
+                if begin not in (None, missing_value)
+                and end not in (None, missing_value)
             ]
+            waves = [expert_wave_ids[index] for index in active_experts]
             stage_label = SPAN_LABEL_ZH.get(gap["span"], gap["span"])
-            truncated_label = (
-                "，已截断" if record["counters"].get(truncated_name) else ""
-            )
             fine_counter_parts.append(
-                f"{stage_label}: 专家槽={captured_count}, waves={waves}{truncated_label}"
+                f"{stage_label}: 活跃专家={active_experts}, waves={waves}"
             )
-            fine_counter_names.update({count_name, truncated_name})
-            fine_counter_names.update(f"{prefix}_{index}" for index in range(4))
         remaining_counters = [
-            f"{key}={value}"
-            for key, value in sorted(record["counters"].items())
-            if key not in fine_counter_names and key != "fine_enabled"
+            f"{key}={value}" for key, value in sorted(record["counters"].items())
         ]
         counter_text = "；".join(fine_counter_parts + remaining_counters) or "无计数器"
         svg.append(
@@ -1931,7 +2082,8 @@ def _render_html(
     fine_tail = protocol.get("fine_metadata_tail")
     protocol_layout = (
         f"{protocol['endianness']} uint{protocol['word_bits']}; "
-        f"header={protocol['header_words']} words, record={protocol['record_words']} words"
+        f"header={protocol['header_words']} words, "
+        f"record={_record_words_text(protocol, runtime_header)} words"
     )
     if fine_tail is not None:
         protocol_layout += f", fine-tail={fine_tail['words_per_core']} words / AI Block"
@@ -2027,7 +2179,8 @@ def _render_html(
     if derived_gap_by_span:
         warning += (
             '<div class="warning"><strong>细粒度边界：</strong>GMM1/GMM2/SwiGLU '
-            "按本核实际参与的专家槽显示，最多四槽；尾部元数据标明每槽所属 wave。"
+            "按本卡 routed expert index 展开，设备记录长度由 header 中的专家数动态决定；"
+            "未参与该专家的物理核保留空槽，wave 归属由已校验的运行时分组规则推导。"
             "橙色只连接同一 wave 的相邻专家：它由前一专家 end 与后一专家 causal begin 推断，"
             "包含流水尾部、真实依赖等待和少量 Scalar 调度，不能解释为纯等待指令耗时。"
             "GMM1 专家 end 是低扰动 issue 边界，采用半透明虚线。</div>"
@@ -2093,13 +2246,14 @@ def _decode_fine_metadata_tail(
     protocol: dict[str, Any],
     role_counts: list[int],
     record_count: int,
+    record_words: int,
     records: list[dict[str, Any]],
 ) -> int:
     fine_tail = protocol.get("fine_metadata_tail")
     if fine_tail is None:
         return 0
     tail_words = _fine_tail_word_count(protocol, role_counts)
-    tail_base = protocol["header_words"] + record_count * protocol["record_words"]
+    tail_base = protocol["header_words"] + record_count * record_words
     records_by_key = {(record["role"], record["core"]): record for record in records}
     core_count = role_counts[0]
     stride = int(fine_tail["core_stride_words"])
@@ -2187,13 +2341,16 @@ def _cmd_decode(args: argparse.Namespace) -> int:
         field["name"]: _decode_header_field(header_words, field, protocol)
         for field in protocol["header_fields"]
     }
+    runtime_record_words = _resolve_record_words(
+        protocol, header, "$.trace.protocol.record_words"
+    )
 
     expected_header_values = {
         "magic": _parse_uint(protocol["magic"], "$.trace.protocol.magic"),
         "version": protocol["version"],
         "schema_id": _parse_uint(protocol["schema_id"], "$.trace.protocol.schema_id"),
         "header_words": protocol["header_words"],
-        "record_words": protocol["record_words"],
+        "record_words": runtime_record_words,
         "clock_bits": trace_spec["clock"]["bits"],
     }
     mismatches = [
@@ -2293,9 +2450,7 @@ def _cmd_decode(args: argparse.Namespace) -> int:
 
     fine_tail_words = _fine_tail_word_count(protocol, role_counts)
     required_words = (
-        protocol["header_words"]
-        + record_count * protocol["record_words"]
-        + fine_tail_words
+        protocol["header_words"] + record_count * runtime_record_words + fine_tail_words
     )
     required_bytes = required_words * word_bytes
     if len(payload) < required_bytes:
@@ -2307,15 +2462,18 @@ def _cmd_decode(args: argparse.Namespace) -> int:
     record_index = 0
     for role, role_count in zip(trace_spec["roles"], role_counts):
         for core in range(role_count):
-            base = protocol["header_words"] + record_index * protocol["record_words"]
-            record_words = words[base : base + protocol["record_words"]]
+            base = protocol["header_words"] + record_index * runtime_record_words
+            record_words = words[base : base + runtime_record_words]
             timestamps: dict[str, list[int]] = {}
             counters: dict[str, int] = {}
             for field in protocol["record_fields"]:
                 if role not in field["roles"]:
                     continue
                 values: list[int] = []
-                for repetition in range(field["count"]):
+                field_count = _resolve_field_count(
+                    field, header, f"record field {field['name']} count"
+                )
+                for repetition in range(field_count):
                     start = field["word"] + repetition * field["stride_words"]
                     selected = record_words[start : start + field["width_words"]]
                     values.append(
@@ -2343,6 +2501,7 @@ def _cmd_decode(args: argparse.Namespace) -> int:
         protocol=protocol,
         role_counts=role_counts,
         record_count=record_count,
+        record_words=runtime_record_words,
         records=records,
     )
     if decoded_tail_words != fine_tail_words:
@@ -2364,6 +2523,7 @@ def _cmd_decode(args: argparse.Namespace) -> int:
             "raw_sha256": _sha256_bytes(raw),
             "byte_offset": args.byte_offset,
             "required_trace_bytes": required_bytes,
+            "resolved_record_words": runtime_record_words,
             "fine_metadata_tail_words": fine_tail_words,
             "available_bytes_after_offset": len(payload),
             "header": header,
