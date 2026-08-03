@@ -26,9 +26,13 @@ struct EffRowsCtx {
     bool enabled = false;
     uint32_t *curBlockIdx = nullptr;
     uint32_t *curBlockCopied = nullptr;
+    // true=FP16/BF16 跨块拼接（用游标逐块搬）；false=FP8 单块直拷（用 srcOffset）
+    bool gather = true;
+    // gather=false 时当前 tile 在原始 K/V 中的源偏移（块首+块内偏移），-1 表示无效
+    int32_t srcOffset = -1;
 };
 
-// effRows 模式下的 gather 拷贝：按 effectiveY 逐 block 搬移填充目标 tile
+// effRows 模式的搬运：按 effectiveY 逐 block 搬移填充目标 tile
 // Transposed=true  用于 K（L1B 布局为 [embed, N]，tile 坐标 (0, dealtLenAccum)）
 // Transposed=false 用于 V（L1B 布局为 [N, embed]，tile 坐标 (dealtLenAccum, 0)）
 // 返回实际填充的累积长度 dealtLenAccum
@@ -43,6 +47,24 @@ uint32_t EffRowsGatherCopy(TensorB &gBTensor, TensorL1B &l1BTensorTla,
 {
     if (!ctx.enabled || ctx.curBlockIdx == nullptr || ctx.curBlockCopied == nullptr) {
         return 0;
+    }
+    if (!ctx.gather) {
+        // FP8：tile 不跨块（dequantScale 逐块唯一），直接从 srcOffset 单块拷 targetLen 行
+        uint32_t oriStartOffset = static_cast<uint32_t>(ctx.srcOffset);
+        if constexpr (Transposed) {
+            auto l1BTile = tla::GetTile(l1BTensorTla,
+                tla::MakeCoord(0, 0), tla::MakeShape(embed, targetLen));
+            auto gBTile = tla::GetTile(gBTensor,
+                tla::MakeCoord(0, oriStartOffset), tla::MakeShape(embed, targetLen));
+            copyFn(l1BTile, gBTile);
+        } else {
+            auto l1BTile = tla::GetTile(l1BTensorTla,
+                tla::MakeCoord(0, 0), tla::MakeShape(targetLen, embed));
+            auto gBTile = tla::GetTile(gBTensor,
+                tla::MakeCoord(oriStartOffset, 0), tla::MakeShape(targetLen, embed));
+            copyFn(l1BTile, gBTile);
+        }
+        return targetLen;
     }
     uint32_t dealtLenAccum = 0;
     while (dealtLenAccum < targetLen && (*ctx.curBlockIdx) < yBlockNumRsvd) {
