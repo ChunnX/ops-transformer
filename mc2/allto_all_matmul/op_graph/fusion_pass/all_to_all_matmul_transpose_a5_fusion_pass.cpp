@@ -501,6 +501,38 @@ static bool GetMc2ReplaceAttrs(const ge::GNode &mc2Node, Mc2ReplaceAttrs &attrs)
     return true;
 }
 
+static bool ApplyMc2ReplaceAttrsToNode(ge::GNode &node, Mc2ReplaceAttrs &attrs)
+{
+    // group / world_size 已在 EsAlltoAllMatmul 必选路径写入；其余用 GNode::SetAttr，
+    // 避开 Es 侧 IrDefAttrs(V1, 含 std::string) 的非 ABI 安全路径。
+    OP_LOGE_IF(node.SetAttr("all2all_axes", attrs.all2all_axes) != ge::GRAPH_SUCCESS, false,
+               FUSION_PASS_NAME.c_str(), "SetAttr all2all_axes failed.");
+    OP_LOGE_IF(node.SetAttr("y_dtype", attrs.y_dtype) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
+               "SetAttr y_dtype failed.");
+    OP_LOGE_IF(node.SetAttr("x1_quant_mode", attrs.x1_quant_mode) != ge::GRAPH_SUCCESS, false,
+               FUSION_PASS_NAME.c_str(), "SetAttr x1_quant_mode failed.");
+    OP_LOGE_IF(node.SetAttr("x2_quant_mode", attrs.x2_quant_mode) != ge::GRAPH_SUCCESS, false,
+               FUSION_PASS_NAME.c_str(), "SetAttr x2_quant_mode failed.");
+    OP_LOGE_IF(node.SetAttr("comm_quant_mode", attrs.comm_quant_mode) != ge::GRAPH_SUCCESS, false,
+               FUSION_PASS_NAME.c_str(), "SetAttr comm_quant_mode failed.");
+    OP_LOGE_IF(node.SetAttr("x1_quant_dtype", attrs.x1_quant_dtype) != ge::GRAPH_SUCCESS, false,
+               FUSION_PASS_NAME.c_str(), "SetAttr x1_quant_dtype failed.");
+    OP_LOGE_IF(node.SetAttr("comm_quant_dtype", attrs.comm_quant_dtype) != ge::GRAPH_SUCCESS, false,
+               FUSION_PASS_NAME.c_str(), "SetAttr comm_quant_dtype failed.");
+    OP_LOGE_IF(node.SetAttr("transpose_x1", attrs.transpose_x1) != ge::GRAPH_SUCCESS, false,
+               FUSION_PASS_NAME.c_str(), "SetAttr transpose_x1 failed.");
+    OP_LOGE_IF(node.SetAttr("transpose_x2", attrs.transpose_x2) != ge::GRAPH_SUCCESS, false,
+               FUSION_PASS_NAME.c_str(), "SetAttr transpose_x2 failed.");
+    OP_LOGE_IF(node.SetAttr("group_size", attrs.group_size) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
+               "SetAttr group_size failed.");
+    ge::AscendString commMode(attrs.comm_mode.c_str());
+    OP_LOGE_IF(node.SetAttr("comm_mode", commMode) != ge::GRAPH_SUCCESS, false, FUSION_PASS_NAME.c_str(),
+               "SetAttr comm_mode failed.");
+    OP_LOGE_IF(node.SetAttr("alltoall_out_flag", attrs.alltoall_out_flag) != ge::GRAPH_SUCCESS, false,
+               FUSION_PASS_NAME.c_str(), "SetAttr alltoall_out_flag failed.");
+    return true;
+}
+
 static ge::fusion::GraphUniqPtr
 BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
                   const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
@@ -515,6 +547,7 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
             OPS_LOG_E(FUSION_PASS_NAME.c_str(), "CreateReplaceGraphInputs failed.");
             return nullptr;
         }
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: inputs ok");
 
         ge::GNode mc2Node;
         if (!GetCapturedMc2Node(matchResult, mc2Node)) {
@@ -528,26 +561,39 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: attrs ok, alltoall_out_flag=%d",
                   static_cast<int>(attrs.alltoall_out_flag));
 
-        // MakePattern 使用默认 alltoall_out_flag=true 时，BuildAndReset 后析构 EsGraphBuilder 正常；
-        // 传入 false 时会在 scope 析构路径 SIGSEGV（见 after BuildAndReset 之后无 after scope destroy）。
-        // 因此 ES 构图始终用 true，再按真实 attr 写回节点。
-        const bool realAlltoallOutFlag = attrs.alltoall_out_flag;
+        // 与 MakePattern 一致：ES 只传必选 group/world_size，避免 IrDefAttrs(V1) 填一堆 optional
         auto mc2 = ge::es::AlltoAllMatmul(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
                                           inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
-                                          inputTensors.rX2Offset, attrs.group.c_str(), attrs.world_size,
-                                          attrs.all2all_axes, attrs.y_dtype, attrs.x1_quant_mode, attrs.x2_quant_mode,
-                                          attrs.comm_quant_mode, attrs.x1_quant_dtype, attrs.comm_quant_dtype,
-                                          attrs.transpose_x1, attrs.transpose_x2, attrs.group_size,
-                                          attrs.comm_mode.c_str(), true);
-        if (!realAlltoallOutFlag) {
-            OP_LOGE_IF(mc2.y.SetAttrForNode("alltoall_out_flag", false) != ge::SUCCESS, nullptr,
-                       FUSION_PASS_NAME.c_str(), "SetAttr alltoall_out_flag failed.");
+                                          inputTensors.rX2Offset, attrs.group.c_str(), attrs.world_size);
+        ge::GNode *replaceMc2Node = mc2.y.GetProducer();
+        OP_LOGE_IF(replaceMc2Node == nullptr, nullptr, FUSION_PASS_NAME.c_str(), "GetProducer of replace mc2 failed.");
+        if (!ApplyMc2ReplaceAttrsToNode(*replaceMc2Node, attrs)) {
+            OPS_LOG_E(FUSION_PASS_NAME.c_str(), "ApplyMc2ReplaceAttrsToNode failed.");
+            return nullptr;
         }
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: before BuildAndReset");
         replaceGraph = replaceGraphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
         OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after BuildAndReset, graph=%p", replaceGraph.get());
-    } // EsGraphBuilder / mc2 / attrs 在此析构
-    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after scope destroy, about to return");
+
+        // 分段析构，定位是哪个对象崩
+        {
+            auto deadMc2 = std::move(mc2);
+        }
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after destroy mc2");
+        {
+            auto deadAttrs = std::move(attrs);
+        }
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after destroy attrs");
+        {
+            auto deadNode = std::move(mc2Node);
+        }
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after destroy mc2Node");
+        {
+            auto deadInputs = std::move(inputTensors);
+        }
+        OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after destroy inputTensors");
+    } // replaceGraphBuilder 在此析构
+    OPS_LOG_I(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph: after scope destroy (builder), about to return");
     return replaceGraph;
 }
 
