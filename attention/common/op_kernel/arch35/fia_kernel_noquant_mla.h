@@ -382,7 +382,13 @@ public:
         if (constInfo_.enableS1OutSplit) {
             return coreGS1Loops_ < varlenCalcTimes_;
         }
-        return ((bN2Cur != constInfo_.bN2End) || (gS1Cur != constInfo_.gS1OEnd) || (s2Cur != constInfo_.s2OEnd));
+        if (bN2Cur != constInfo_.bN2End) {
+            return bN2Cur < constInfo_.bN2End;
+        }
+        if (gS1Cur != constInfo_.gS1OEnd) {
+            return gS1Cur < constInfo_.gS1OEnd;
+        }
+        return s2Cur < constInfo_.s2OEnd;
     }
 
     __aicore__ inline bool ShouldExecuteTask(RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
