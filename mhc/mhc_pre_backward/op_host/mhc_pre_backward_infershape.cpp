@@ -70,12 +70,21 @@ ge::graphStatus GetInputShapes(InferShapeContext *context, const gert::Shape *&g
 
 ge::graphStatus ValidateInputDims(int64_t gradHInDimNum, int64_t gradHPostDimNum, int64_t gradHResDimNum)
 {
-    if ((gradHInDimNum != BSD_DIM_NUM && gradHInDimNum != TD_DIM_NUM) ||
-        (gradHPostDimNum != BSD_DIM_NUM && gradHPostDimNum != TN_DIM_NUM) ||
-        (gradHResDimNum != BSNN_DIM_NUM && gradHResDimNum != TNN_DIM_NUM)) {
+    // Valid combinations:
+    //   BSND: gradHIn=3D, gradHPost=3D, gradHRes=4D(BSNN) or 3D(BSN!)
+    //   TND:  gradHIn=2D, gradHPost=2D, gradHRes=3D(TNN)  or 2D(TN!)
+    if (gradHInDimNum != gradHPostDimNum) {
         return GRAPH_FAILED;
     }
-    if (gradHInDimNum != gradHPostDimNum) {
+    if (gradHInDimNum == BSD_DIM_NUM) {
+        if (gradHResDimNum != BSNN_DIM_NUM && gradHResDimNum != TNN_DIM_NUM) {
+            return GRAPH_FAILED;
+        }
+    } else if (gradHInDimNum == TD_DIM_NUM) {
+        if (gradHResDimNum != TNN_DIM_NUM && gradHResDimNum != TN_DIM_NUM) {
+            return GRAPH_FAILED;
+        }
+    } else {
         return GRAPH_FAILED;
     }
     return GRAPH_SUCCESS;
