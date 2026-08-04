@@ -1105,7 +1105,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnNBs, ACTLEN_T> {
     __aicore__ inline OffsetCalculatorImpl() = default;
 
     __aicore__ inline void Init(uint32_t n, uint32_t blockSize, GlobalTensor<int32_t> blockTableGm,
-                                uint32_t maxblockNumPerBatch)
+                                uint32_t maxblockNumPerBatch, uint64_t bn2Stride = 0, uint64_t n2Stride = 0)
     {
         blockTableParser.Init(blockTableGm, maxblockNumPerBatch);
         gmLayout.MakeLayout(n, blockSize);
