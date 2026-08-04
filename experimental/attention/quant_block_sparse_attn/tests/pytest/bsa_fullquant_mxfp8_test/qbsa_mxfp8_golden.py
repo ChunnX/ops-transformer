@@ -913,7 +913,7 @@ def convert_v_scale_to_pa(scale_bnsd, seq_lens, group_size=32):
 
 
 def _generate_reference_style_mxfp8_inputs():
-    """Generate test inputs with paired fp8 + descale (FIA-style).
+    """Generate test inputs with paired fp8 + descale.
 
     流程: fp32 随机 → 从 fp32 算 descale → fp8 = clamp(fp32/descale)
     fp8 和 descale 配套生成，保证 fp8 × descale ≈ 原始 fp32，反量化不溢出。
