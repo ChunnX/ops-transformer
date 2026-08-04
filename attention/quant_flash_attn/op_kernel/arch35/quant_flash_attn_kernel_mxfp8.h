@@ -37,13 +37,6 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 
 namespace BaseApi {
-__aicore__ inline int64_t ClipSInnerToken(int64_t sInnerToken, int64_t minValue, int64_t maxValue)
-{
-    sInnerToken = sInnerToken > minValue ? sInnerToken : minValue;
-    sInnerToken = sInnerToken < maxValue ? sInnerToken : maxValue;
-    return sInnerToken;
-}
-
 template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
 class QuantFlashAttnKernelMxfp8 {
 public:
