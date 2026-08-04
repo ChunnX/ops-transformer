@@ -16,13 +16,12 @@
 #include <graph/utils/type_utils.h>
 #include <register/op_impl_registry.h>
 #include "err/ops_err.h"
-#include "quant_sparse_flash_mla_check.h"
+#include "qsmla_tiling_common.h"
 
 using namespace optiling;
 using namespace ge;
 
 namespace ops {
-constexpr uint32_t QUERY_INPUT_INDEX = 0;
 
 ge::graphStatus InferShapeQuantSparseFlashMla(gert::InferShapeContext *context)
 {
@@ -30,7 +29,7 @@ ge::graphStatus InferShapeQuantSparseFlashMla(gert::InferShapeContext *context)
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("QuantSparseFlashMla", "InferShapeContext",
                                                          "InferShapeContext is nullptr"),
                 return ge::GRAPH_FAILED);
-    const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
+    const gert::Shape *queryShape = context->GetInputShape(Q_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
     gert::Shape *attentionOutShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, attentionOutShape);
