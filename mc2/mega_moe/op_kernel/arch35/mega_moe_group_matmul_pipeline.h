@@ -18,10 +18,12 @@
 namespace MegaMoeImpl {
 namespace Detail {
 
-__aicore__ inline void WaitGmm1TileStatus(const Params &params, uint32_t expertIdx, uint32_t loopIdx)
+__aicore__ inline void WaitGmm1TileStatus(const Params &params, const GMMAddrInfo &gmmAddrInfo,
+                                          uint32_t expertIdx, uint32_t loopIdx)
 {
     __gm__ int32_t *statusAddr = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm1TileStatusPtr) +
-                                 (static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert + loopIdx) *
+                                 (static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert +
+                                  gmmAddrInfo.gmm1TileOffsetInExpert + loopIdx) *
                                      INT_CACHELINE;
     int32_t roundTag = static_cast<int32_t>(expertIdx + 1);
     while (AscendC::ReadGmByPassDCache(statusAddr) != roundTag) {
@@ -31,10 +33,12 @@ __aicore__ inline void WaitGmm1TileStatus(const Params &params, uint32_t expertI
     }
 }
 
-__aicore__ inline void NotifyGmm1TileStatus(const Params &params, uint32_t expertIdx, uint32_t loopIdx)
+__aicore__ inline void NotifyGmm1TileStatus(const Params &params, const GMMAddrInfo &gmmAddrInfo,
+                                            uint32_t expertIdx, uint32_t loopIdx)
 {
     __gm__ int32_t *statusAddr = reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm1TileStatusPtr) +
-                                 (static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert + loopIdx) *
+                                 (static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert +
+                                  gmmAddrInfo.gmm1TileOffsetInExpert + loopIdx) *
                                      INT_CACHELINE;
     AscendC::WriteGmByPassDCache(statusAddr, static_cast<int32_t>(expertIdx + 1));
 }
@@ -100,7 +104,7 @@ __aicore__ inline void ControlGmm1SwigluPipelineGeneric(WorkSet &workSet, uint32
             if constexpr (TopkWeightsPrefetch) {
                 AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-                NotifyGmm1TileStatus(workSet.params, args.expertIdx, loopIdx);
+                NotifyGmm1TileStatus(workSet.params, workSet.gmmAddrInfo, args.expertIdx, loopIdx);
             } else {
                 if constexpr (IsGmm1Interleaved) {
                     NotifyVector(args.pingpongIdx);
@@ -119,7 +123,7 @@ __aicore__ inline void ControlGmm1SwigluPipelineGeneric(WorkSet &workSet, uint32
             uint32_t mLoc = Get<M_VALUE>(blockCoord);
             uint32_t nLoc = Get<N_VALUE>(blockCoord);
             if constexpr (TopkWeightsPrefetch) {
-                WaitGmm1TileStatus(workSet.params, args.expertIdx, loopIdx);
+                WaitGmm1TileStatus(workSet.params, workSet.gmmAddrInfo, args.expertIdx, loopIdx);
             } else if constexpr (IsGmm1Interleaved) {
                 WaitForCube(args.pingpongIdx);
             } else {
@@ -198,7 +202,7 @@ __aicore__ inline void ControlGmm1SwigluPipelineA8W4(WorkSet &workSet, const Par
             if constexpr (TopkWeightsPrefetch) {
                 AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-                NotifyGmm1TileStatus(params, args.expertIdx, loopIdx);
+                NotifyGmm1TileStatus(params, gmmAddrInfo, args.expertIdx, loopIdx);
             } else {
                 AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
@@ -216,7 +220,7 @@ __aicore__ inline void ControlGmm1SwigluPipelineA8W4(WorkSet &workSet, const Par
             uint32_t nLoc = Get<N_VALUE>(blockCoord);
             int32_t expectedReadySequence = gmTileSequence;
             if constexpr (TopkWeightsPrefetch) {
-                WaitGmm1TileStatus(params, args.expertIdx, loopIdx);
+                WaitGmm1TileStatus(params, gmmAddrInfo, args.expertIdx, loopIdx);
             } else {
                 expectedReadySequence = gmTileSequence + 1;
                 while (AscendC::ReadGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag) < expectedReadySequence) {

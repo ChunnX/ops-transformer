@@ -111,7 +111,8 @@ template <typename ActivationType, typename WeightType, typename SwigluOutType, 
           bool EnableA8W4, bool TopkWeightsPrefetch, typename BlockEpilogue>
 __aicore__ inline void UpdateGmm1GlobalBuffer(
     const Gmm1SwigluContext &context, const Gmm1SwigluArgs &args, BlockEpilogue &epilogueOp,
-    GMMAddrInfo &gmmAddrInfo, const Gmm1ExpertLoopState &state, uint32_t expertIdx)
+    GMMAddrInfo &gmmAddrInfo, const Gmm1ExpertLoopState &state, uint32_t expertIdx,
+    uint32_t expertMGroupOffset = 0U, uint32_t gmm1TilesPerMGroup = 0U)
 {
     if constexpr (g_coreType == AIV && !EnableA8W4) {
         if (GetSubBlockIdx() != 0) {
@@ -150,7 +151,7 @@ __aicore__ inline void UpdateGmm1GlobalBuffer(
             AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
                 state.rowOffset * n / SWIGLU_N_HALF / outputElementsPerByte,
                 state.rowOffset * scaleN,
-                expertOffset * context.swigluFlagSlotsPerExpert / INT_CACHELINE,
+                expertOffset * context.swigluFlagSlotsPerExpert / INT_CACHELINE + expertMGroupOffset,
                 0L,
                 0L,
                 0L};
@@ -159,8 +160,11 @@ __aicore__ inline void UpdateGmm1GlobalBuffer(
     }
     if constexpr (g_coreType == AIC) {
         gmmAddrInfo.dispatchToGmm1Flag = reinterpret_cast<__gm__ int32_t *>(args.dispatchToGmm1FlagPtr) +
-                                         expertOffset * context.dispatchFlagSlotsPerExpert;
+                                         expertOffset * context.dispatchFlagSlotsPerExpert +
+                                         expertMGroupOffset * INT_CACHELINE;
     }
+    // 分段 GMM1 内的 tile 编号从 0 重新开始；映射回完整专家的预取状态槽。
+    gmmAddrInfo.gmm1TileOffsetInExpert = expertMGroupOffset * gmm1TilesPerMGroup;
     if constexpr (EnableA8W4) {
         gmmAddrInfo.gmmToEpilogueFlag = reinterpret_cast<__gm__ int32_t *>(args.gmmToEpilogueFlagPtr);
     }

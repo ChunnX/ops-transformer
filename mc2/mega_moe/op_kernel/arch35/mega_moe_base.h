@@ -42,6 +42,9 @@ struct GMMAddrInfo {
     __gm__ int32_t *gmm2CombineSyncCounter;
     __gm__ int32_t *gmmToEpilogueFlag;
     __gm__ int32_t *sharedExpertGmm2TileCounter;
+    // 分段 GMM1 每次都会从局部 tile 0 重新调度；该偏移将局部 tile 映射回完整专家的状态槽。
+    // legacy、layered 和 shared 路径不切分专家，保持默认值 0 即可沿用原地址公式。
+    uint32_t gmm1TileOffsetInExpert = 0;
 };
 
 struct PeermemInfo {
