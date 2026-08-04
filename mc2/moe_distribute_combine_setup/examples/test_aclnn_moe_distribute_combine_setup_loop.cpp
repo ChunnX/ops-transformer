@@ -14,6 +14,9 @@
  *
  * 用法: ./test_aclnn_moe_distribute_combine_setup_loop [loop_count]
  *       loop_count 默认 3
+ *
+ * 若 stream 同步超时，会 dump 本卡 HCCL window 的 dataState / status flag
+ *（host 侧 aclrtMemcpy，不依赖 device printf），用于定位 WaitDispatch 卡死。
  */
 
 #include <thread>
@@ -22,10 +25,20 @@
 #include <vector>
 #include <cstring>
 #include <cstdlib>
+#include <cstdint>
 #include "acl/acl.h"
 #include "hccl/hccl.h"
 #include "aclnnop/aclnn_moe_distribute_combine_setup.h"
 #include "aclnnop/aclnn_moe_distribute_combine_teardown.h"
+
+// 与 kernel moe_distribute_base.h / combine_teardown STATE_OFFSET 对齐
+constexpr uint64_t WIN_STATE_OFFSET = 350ULL * 1024ULL;
+constexpr uint64_t STATE_WIN_OFFSET = 950ULL * 1024ULL;
+constexpr uint64_t STATE_OFFSET = 512ULL;
+constexpr uint32_t DUMP_AIV_NUM = 8U; // 打印前若干 aiv 的 dataState
+
+// 部分 hccl.h 未导出该符号；与 libhccl 链接时可用
+extern "C" HcclResult HcclGetHcclBuffer(HcclComm comm, void **buffer, uint64_t *size);
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \
@@ -114,6 +127,83 @@ void FreeDeviceAddr(void *deviceAddr)
     }
 }
 
+// host 超时后 dump 本卡 EP window 状态区（方法 2）
+// layout:
+//   dataState[aiv] = *(int32_t*)(win + 950KB + aiv*512)
+//   bank[S] base  = win + S*350KB + COMBINE_STATE_OFFSET(0)
+//   flag[r]       = *(float*)(bank[S] + r*512)   // 1.0=combine, 2.0=dispatch
+void DumpEpCombineStatus(HcclComm comm, uint32_t epRankId, int64_t epWorldSize, int iter, const char *stage)
+{
+    void *winAddr = nullptr;
+    uint64_t winSize = 0;
+    HcclResult hcclRet = HcclGetHcclBuffer(comm, &winAddr, &winSize);
+    if (hcclRet != HCCL_SUCCESS || winAddr == nullptr) {
+        LOG_PRINT("[DUMP] %s iter=%d rank=%u HcclGetHcclBuffer failed. ret=%d win=%p\n", stage, iter, epRankId,
+                  static_cast<int>(hcclRet), winAddr);
+        return;
+    }
+    if (winSize < STATE_WIN_OFFSET + DUMP_AIV_NUM * STATE_OFFSET) {
+        LOG_PRINT("[DUMP] %s iter=%d rank=%u winSize too small: %llu\n", stage, iter, epRankId,
+                  static_cast<unsigned long long>(winSize));
+        return;
+    }
+
+    auto *winBase = static_cast<uint8_t *>(winAddr);
+    LOG_PRINT("[DUMP] ===== %s timeout dump rank=%u iter=%d win=%p size=%llu =====\n", stage, epRankId, iter, winAddr,
+              static_cast<unsigned long long>(winSize));
+
+    int32_t dataState0 = 0;
+    for (uint32_t aiv = 0; aiv < DUMP_AIV_NUM; ++aiv) {
+        int32_t dataState = 0;
+        void *src = winBase + STATE_WIN_OFFSET + static_cast<uint64_t>(aiv) * STATE_OFFSET;
+        aclError ret = aclrtMemcpy(&dataState, sizeof(dataState), src, sizeof(dataState), ACL_MEMCPY_DEVICE_TO_HOST);
+        if (ret != ACL_SUCCESS) {
+            LOG_PRINT("[DUMP] read dataState aiv=%u failed. ret=%d\n", aiv, ret);
+            continue;
+        }
+        if (aiv == 0U) {
+            dataState0 = dataState;
+        }
+        LOG_PRINT("[DUMP] dataState[aiv=%u]=%d\n", aiv, dataState);
+    }
+
+    // 两个 bank 都打：便于判断 flag 是否落错半区
+    for (uint32_t bank = 0; bank < 2U; ++bank) {
+        const char *tag = (static_cast<int32_t>(bank) == dataState0) ? "current" : "other";
+        float sum = 0.0f;
+        uint32_t cntOne = 0U;
+        uint32_t cntTwo = 0U;
+        uint32_t cntZero = 0U;
+        LOG_PRINT("[DUMP] --- bank=%u (%s) base=win+%uKB ---\n", bank, tag,
+                  static_cast<unsigned>(bank * (WIN_STATE_OFFSET / 1024ULL)));
+        for (int64_t r = 0; r < epWorldSize; ++r) {
+            float flag = 0.0f;
+            void *slot = winBase + static_cast<uint64_t>(bank) * WIN_STATE_OFFSET +
+                         static_cast<uint64_t>(r) * STATE_OFFSET;
+            aclError ret = aclrtMemcpy(&flag, sizeof(flag), slot, sizeof(flag), ACL_MEMCPY_DEVICE_TO_HOST);
+            if (ret != ACL_SUCCESS) {
+                LOG_PRINT("[DUMP]   src=%lld memcpy failed. ret=%d\n", static_cast<long long>(r), ret);
+                continue;
+            }
+            uint32_t raw = 0U;
+            static_assert(sizeof(raw) == sizeof(flag), "float/uint32 size mismatch");
+            std::memcpy(&raw, &flag, sizeof(raw));
+            sum += flag;
+            if (raw == 0x00000000U) {
+                ++cntZero;
+            } else if (raw == 0x3f800000U) {
+                ++cntOne; // 1.0 combine
+            } else if (raw == 0x40000000U) {
+                ++cntTwo; // 2.0 dispatch
+            }
+            LOG_PRINT("[DUMP]   src=%lld flag=%f raw=0x%08x\n", static_cast<long long>(r), flag, raw);
+        }
+        LOG_PRINT("[DUMP] bank=%u sum=%f target~=%lld zero=%u one(1.0)=%u two(2.0)=%u\n", bank, sum,
+                  static_cast<long long>(epWorldSize), cntZero, cntOne, cntTwo);
+    }
+    LOG_PRINT("[DUMP] ===== end dump rank=%u =====\n", epRankId);
+}
+
 int RunOneIteration(Args &args, const char *hcomEpName, aclTensor *expandX, aclTensor *expertIds,
                     aclTensor *assistInfoForCombineOut, aclTensor *quantExpandXOut, aclTensor *commCmdInfoOutforCombine,
                     aclTensor *expertScales, aclTensor *expandIdx, aclTensor *xOut, int64_t epWorldSize,
@@ -145,9 +235,12 @@ int RunOneIteration(Args &args, const char *hcomEpName, aclTensor *expandX, aclT
               FreeDeviceAddr(workspaceAddr); return ret);
 
     ret = aclrtSynchronizeStreamWithTimeout(args.combinesetupstream, timeOut);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("[ERROR] iter=%d CombineSetup sync failed. ret = %d\n", iter, ret);
-              FreeDeviceAddr(workspaceAddr); return ret);
+    if (ret != ACL_SUCCESS) {
+        LOG_PRINT("[ERROR] iter=%d CombineSetup sync failed. ret = %d\n", iter, ret);
+        DumpEpCombineStatus(args.hcclEpComm, args.epRankId, epWorldSize, iter, "CombineSetup");
+        FreeDeviceAddr(workspaceAddr);
+        return ret;
+    }
     FreeDeviceAddr(workspaceAddr);
     workspaceAddr = nullptr;
     workspaceSize = 0;
@@ -173,9 +266,13 @@ int RunOneIteration(Args &args, const char *hcomEpName, aclTensor *expandX, aclT
               FreeDeviceAddr(workspaceAddr); return ret);
 
     ret = aclrtSynchronizeStreamWithTimeout(args.combineteardownstream, timeOut);
-    CHECK_RET(ret == ACL_SUCCESS,
-              LOG_PRINT("[ERROR] iter=%d CombineTeardown sync failed. ret = %d\n", iter, ret);
-              FreeDeviceAddr(workspaceAddr); return ret);
+    if (ret != ACL_SUCCESS) {
+        LOG_PRINT("[ERROR] iter=%d CombineTeardown sync failed. ret = %d\n", iter, ret);
+        // WaitDispatch 卡死时优先看这里：dataState + bank flag（0 / 1.0 / 2.0）
+        DumpEpCombineStatus(args.hcclEpComm, args.epRankId, epWorldSize, iter, "CombineTeardown");
+        FreeDeviceAddr(workspaceAddr);
+        return ret;
+    }
     FreeDeviceAddr(workspaceAddr);
 
     LOG_PRINT("[INFO] device_%d iter=%d CombineSetup+Teardown ok (same EP domain reused).\n", args.rankId, iter);
