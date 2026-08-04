@@ -129,6 +129,8 @@ protected:
 
         td->localMatmul = precisionMode_;
 
+        OP_LOGI("AlltoAllMatmulApace", "precisionMode=%u", precisionMode_);
+
         return ge::GRAPH_SUCCESS;
     }
 
