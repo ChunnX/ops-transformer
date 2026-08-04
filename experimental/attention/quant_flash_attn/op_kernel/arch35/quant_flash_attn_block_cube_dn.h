@@ -491,19 +491,14 @@ public:
         LocalTensor<half> localGlobalMax1 = localGlobalMaxL1[runInfo.tileMaxIdx * 256 + L1_SINGLE_GLOBAL_MAX_SIZE];
         LocalTensor<half> peerGlobalMax = peerGlobalMaxUB[runInfo.tileMaxIdx * 128];
 
-
-        __cbuf__ half *localGlobalMax0Cbuf = (__cbuf__ half *)localGlobalMax0.GetPhyAddr();
-        __cbuf__ half *localGlobalMax1Cbuf = (__cbuf__ half *)localGlobalMax1.GetPhyAddr();
-        __ubuf__ half *peerGlobalMaxUBUbuf = (__ubuf__ half *)peerGlobalMax.GetPhyAddr();
-
         DataCopyParams intriParams;
         intriParams.blockCount = 1;
         intriParams.blockLen = 8;
         intriParams.srcGap = 0;
         intriParams.dstGap = 0;
 
-        DataCopyL1ToUB<half, VEC0>(peerGlobalMaxUBUbuf, localGlobalMax0Cbuf, intriParams);
-        DataCopyL1ToUB<half, VEC1>(peerGlobalMaxUBUbuf, localGlobalMax1Cbuf, intriParams);
+        DataCopyL1ToUB<half, VEC0>(peerGlobalMax, localGlobalMax0, intriParams);
+        DataCopyL1ToUB<half, VEC1>(peerGlobalMax, localGlobalMax1, intriParams);
     }
 
 private:
