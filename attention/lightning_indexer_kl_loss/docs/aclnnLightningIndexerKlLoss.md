@@ -409,3 +409,71 @@ int main() {
 }
 ```
 
+## 实现说明（不对外）
+
+
+## 附录
+### 1. 归属领域
+transformer/attention
+
+### 2. Pytorch AtenIR
+lightning_indexer_kl_loss(Tensor target_score, Tensor index_probs, float eps, str weight_type) -> Tensor
+
+参考：
+
+aclnnStatus aclnnLightningIndexerKLLossGetWorkspaceSize(const aclTensor *targetScore, const aclTensor *indexProbs, double eps, const char *weightType, const aclTensor *loss, uint64_t *workspaceSize, aclOpExecutor **executor)
+
+### 3. AtenIR参数描述
+
+| 类型 | 名称 | 描述 | 支持的数据类型 |
+|:---|:---|:---|:---|
+| 输入 | target_score | teacher 未归一化的原始主注意力分数 | FLOAT16、BFLOAT16、FLOAT |
+| 输入 | index_probs | student softmax 后的概率分布 | FLOAT16、BFLOAT16、FLOAT |
+| 属性 | eps | 数值稳定常数，默认 1e-9，用于防止 log(0) 导致 NaN | double |
+| 属性 | weight_type | 外层权重选择，'logits'（默认）用原始 y 作为外层权重，'probs' 用归一化概率 p 作为外层权重 | string |
+| 输出 | loss | 损失函数值，标量，shape 为 (1,) | FLOAT16、BFLOAT16、FLOAT |
+
+### 4. HostAPI接口约束
+功能维度	已支持	应支持但未支持
+数据类型	FLOAT16、BFLOAT16(Ascend910B)、FLOAT	NA
+数据格式	ND	NA
+空Tensor	不支持（输入/输出均为非空）	NA
+非连续Tensor	支持输入非连续、支持输出非连续	NA
+
+低性能场景：
+
+当前算子为 Vector 计算密集型，UB 流水线掩盖搬运延迟，无 AICPU 回退路径。数据类型 FLOAT16/BFLOAT16 需额外 Cast 到 FLOAT 进行计算，存在少量类型转换开销，但整体性能与 FLOAT 基本持平。
+
+边界值场景说明：
+
+- eps 默认值 1e-9，建议实际使用时 ≥ 1e-7，过小可能导致 log(0) 溢出。
+- 当输入 targetScore 包含 NaN 时，输出为 NaN。
+- 当 K 维全为 0 时，sum(y)=0，除以 eps 后取 log 得到 -log(eps)，可正常计算。
+- 当计算结果超过 float 范围时，结果为 inf。
+
+### 5. HostAPI异常处理
+以下场景会出现参数校验异常：
+
+- 传入的 targetScore、indexProbs、loss 是空指针时。
+- targetScore 和 indexProbs 的 shape 不一致。
+- targetScore 和 indexProbs 的数据类型不在支持的范围之内。
+- targetScore 和 indexProbs 的数据类型不一致。
+- loss 的数据类型与 targetScore 不一致。
+- loss 的 shape 不是 (1,)。
+- weightType 取值不是 "logits" 或 "probs"。
+- eps 为 NaN 或 Inf。
+
+### 6. 兼容性说明
+功能兼容性：兼容 Lightning Indexer 论文定义及 PyTorch 参考实现；
+
+平台兼容性：已支持的芯片版本，功能无差异；
+
+接口兼容性：新增接口；
+
+行为兼容性：新增接口；
+
+性能兼容性：新增接口；
+
+资源兼容性：新增接口；
+
+错误处理兼容性：新增接口；
