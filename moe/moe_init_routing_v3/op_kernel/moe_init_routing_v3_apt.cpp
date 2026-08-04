@@ -445,9 +445,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         }
     }
 
-    const bool isIndexOnlyRouting = t->n > 0 && t->k > 0 && t->cols == 0 && t->quantMode == -1 &&
-                                    t->isInputScale == 0 && t->dropPadMode == 0;
-    if (isIndexOnlyRouting) {
+    // Tiling marks index-only routing with no GatherOut work.
+    if (t->gatherOutComputeParamsOp.needCoreNum == 0) {
         return;
     }
 

@@ -1859,11 +1859,13 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()");
 
-    auto *gatherOutTiling = &(tilingDataPtr_->gatherOutComputeParamsOp);
     // Index-only routing finishes after RowIdxGather, so no column-loop tiling is required.
     if (IsIndexOnlyRouting()) {
+        // needCoreNum == 0 is passed to kernel to indicate that GatherOut has no work to do.
+        tilingDataPtr_->gatherOutComputeParamsOp.needCoreNum = 0;
         return;
     }
+    auto *gatherOutTiling = &(tilingDataPtr_->gatherOutComputeParamsOp);
     int64_t perCoreIndicesElements = Ops::Base::CeilDiv(totalLength_, aivCoreNum_);
     if (perCoreIndicesElements <= 0) {
         gatherOutTiling->needCoreNum = 0;
