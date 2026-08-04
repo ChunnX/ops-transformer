@@ -137,7 +137,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
     <tr>
       <td>cmpResidualKOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同Batch中cmp_k压缩后Sequence Length的余数，配合cmpRatio实现cmp_k部分的mask和负载计算。</td>
+      <td>表示不同Batch中k压缩后Sequence Length的余数，配合cmpRatio实现mask和负载计算。</td>
       <td><ul><li>支持空Tensor。</li><li>cmpRatio不为1，且mask为3场景下必传。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>

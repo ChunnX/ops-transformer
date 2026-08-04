@@ -65,7 +65,7 @@
     <tr>
       <td>cmp_residual_k</td>
       <td>可选输入</td>
-      <td>表示不同Batch中cmp_k压缩后Sequence Length的余数，配合cmp_ratio实现cmp_k部分的mask和负载计算，shape为(B, )。cmp_ratio不为1且mask_mode为3场景下必传。</td>
+      <td>表示不同Batch中k压缩后Sequence Length的余数，配合cmp_ratio实现mask和负载计算，shape为(B, )。cmp_ratio不为1且mask_mode为3场景下必传。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
