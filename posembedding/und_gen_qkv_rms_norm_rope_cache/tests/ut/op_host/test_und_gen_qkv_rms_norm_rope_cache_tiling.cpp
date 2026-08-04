@@ -148,7 +148,7 @@ constexpr int64_t PLATFORM_UB_BYTES = 256 * 1024;
 const TilingDataMirror* AsTilingData(const TilingInfo& tilingInfo)
 {
     EXPECT_EQ(tilingInfo.tilingDataSize, sizeof(TilingDataMirror))
-        << "TilingData 布局已变，同步更新本文件与 tests/ut/op_kernel/arch35 下的镜像结构";
+        << "TilingData 布局已变，同步更新本文件的 TilingDataMirror";
     return reinterpret_cast<const TilingDataMirror*>(tilingInfo.tilingData.get());
 }
 
@@ -427,11 +427,33 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_head_combo_unsupported)
     ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
-TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_block_size_unsupported)
+// block_size 不参与任何寻址与切分：cache 强制连续 BBND，slot 直接当扁平行号用，
+// 所以 Bs 取什么都该过。这里连 2 的幂都不要求（100），并顺带确认 tilingData 原样透传。
+TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_success_with_various_block_size)
 {
-    // block_size 只支持 128
-    auto para = BuildTilingContext(7, 1, 8, 1, 1, HEAD_DIM, 64);
-    ExecuteTestCase(para, ge::GRAPH_FAILED);
+    const std::vector<int64_t> blockSizes{1, 16, 64, 100, 256, 512};
+    for (int64_t bs : blockSizes) {
+        auto para = BuildTilingContext(7, 1, 8, 1, 1, HEAD_DIM, bs);
+        TilingInfo tilingInfo;
+        ASSERT_TRUE(ExecuteTiling(para, tilingInfo)) << "block_size=" << bs << " 应当支持";
+        const auto* td = AsTilingData(tilingInfo);
+        ASSERT_NE(td, nullptr);
+        EXPECT_EQ(td->blockSize, bs);
+        // 切分只看 total 与 UB，与 Bs 无关
+        EXPECT_EQ(td->totalTokens, 8);
+        EXPECT_GT(td->ubFactor, 0);
+    }
+}
+
+// Bs 唯一的真实约束是容量：Bn * Bs 必须够放下 T
+TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_small_block_size_lacks_capacity)
+{
+    auto para = BuildTilingContext(7, 1, 8, 1, 1, HEAD_DIM, 2);
+    auto badPara = para;
+    // Bn=1, Bs=2 只能放 2 个 token，而 total=8
+    badPara.inputTensorDesc_[4] = {{{1, 2, 1, HEAD_DIM}, {1, 2, 1, HEAD_DIM}}, ge::DT_BF16, ge::FORMAT_ND};
+    badPara.inputTensorDesc_[5] = {{{1, 2, 1, HEAD_DIM}, {1, 2, 1, HEAD_DIM}}, ge::DT_BF16, ge::FORMAT_ND};
+    ExecuteTestCase(badPara, ge::GRAPH_FAILED);
 }
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_fail_when_kv_cache_head_num_mismatch_attr)

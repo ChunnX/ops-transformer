@@ -102,7 +102,6 @@ constexpr int64_t VL_FP32_LANES = 64;
 static_assert(SUPPORTED_HEAD_DIM / 2 == VL_FP32_LANES,
               "VF kernel assumes headDim/2 == one float VL; add tail-mask handling in "
               "op_kernel/arch35/und_gen_qkv_rms_norm_rope_cache_mrope_vf.h before relaxing SUPPORTED_HEAD_DIM");
-constexpr int64_t SUPPORTED_BLOCK_SIZE = 128;
 // NOTE: T (= und_len + gen_len) 不设上限。多核切分是按 T 取余数分摊、UB 切分只切 token 数，
 //       两者都与 T 的绝对大小无关；host/kernel 侧所有 GM 偏移与 tiling 字段一律 int64_t，
 //       kernel 里的 uint32_t 只用于 UB 内的 gather 索引与 tile 内 stride（被 UB 容量兜住）。
@@ -141,10 +140,11 @@ static_assert(MAX_UB_FACTOR <= UND_MASK_BITS,
  * 排布，VF 按 undMask 位图算出本 token 该用的基址（gammaRow = base + (1-undBit)*2D）
  * 直接取，所以 cat_indices 怎么交错都不影响 UB 占用。
  *
- * 计算区（TBuf，与 u 无关）:
- *   wBf16Buf         WEIGHT_NUM * D * 2            4 个 gamma 原始 bf16
- *   wFp32Buf         WEIGHT_NUM * D * 4            4 个 gamma 的 float 版本，VF 直接从这里取
- *   gatherIdxBuf     align32((D/2) * 4)            axisLut 展开的 uint32 元素索引，每核建一次
+ * 常驻区（与 u 无关，名字与 kernel 的 InitUbBuffers 一一对应）:
+ *   wInQue       VECIN   1 * WEIGHT_NUM * D * 2    4 个 gamma 原始 bf16。走 TQue 而不是 TBuf，
+ *                                                  是为了拿 EnQue/DeQue 的 MTE2->V 同步
+ *   wFp32Buf     TBuf    WEIGHT_NUM * D * 4        4 个 gamma 的 float 版本，VF 直接从这里取
+ *   gatherIdxBuf TBuf    align32((D/2) * 4)        axisLut 展开的 uint32 元素索引，每核建一次
  *
  * 随 u 的部分:
  *   qkvInQue     VECIN   2 * u * N * D * 2

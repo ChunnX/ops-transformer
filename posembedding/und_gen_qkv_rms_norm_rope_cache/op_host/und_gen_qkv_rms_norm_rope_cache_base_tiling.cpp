@@ -223,12 +223,13 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckOutputShapeValid()
 
 ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckSupportRange()
 {
-    // 本期支持范围（设计说明书 §2.3）：headDim=128、block_size=128、
+    // 本期支持范围（设计说明书 §2.3）：headDim=128、
     // (Hq, Hk, Hv) ∈ {(8,1,1), (16,2,2)}；需要放宽时改 tiling.h 里的常量即可。
-    OP_CHECK_IF(blockSize_ != SUPPORTED_BLOCK_SIZE,
-                OP_LOGE(context_->GetNodeName(), "block_size only supports %ld, got %ld.", SUPPORTED_BLOCK_SIZE,
-                        blockSize_),
-                return ge::GRAPH_FAILED);
+    //
+    // block_size 不设限：cache 强制连续 BBND，[Bn, Bs, N, D] 展平即 [Bn*Bs, N, D]，
+    // kernel 直接拿 slot 当扁平行号写（kCacheGm_[slot * Hk*D]），Bs 不进任何地址计算，
+    // 也不进多核/UB 切分。写出粒度 Hk*D*2B = 256*Hk 恒为 32B 整数倍，对齐由 headDim
+    // 与 Hk 保证，同样与 Bs 无关。Bs 的唯一约束是容量，由 CheckKvCacheValid 负责。
     // T 只要求为正：不设人为上限，真实上限由 KV Cache 容量（blockNum * blockSize >= T）决定，
     // 见 CheckKvCacheValid。切分与偏移计算全部 int64_t，对 T 的绝对大小无假设。
     OP_CHECK_IF(totalTokens_ <= 0,
@@ -299,7 +300,13 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckAttrsValid()
     OP_CHECK_IF(epsilon_ <= 0.0f, OP_LOGE(context_->GetNodeName(), "norm_eps must be positive, got %f.", epsilon_),
                 return ge::GRAPH_FAILED);
 
-    // mrope_section 为空时退化为 [D/2, 0, 0]，即标准 RoPE（三轴同源）
+    // mrope_section 为空时退化为 [D/2, 0, 0]，即标准 RoPE（三轴同源）。
+    //
+    // 这三个数**不是**对 half 的划分：轴映射（kernel 的 BuildMropeGatherIndex，规则抄自
+    // 参考实现 _mrope）只读 sec[1]/sec[2]，sec[0] 从不参与计算，T 是"其余全归它"的兜底轴。
+    // 所以 [16,16,16] 实际得到 T/H/W = 32/16/16，[64,16,16] 与 [0,16,16] 的轴映射逐位相同。
+    // 下面的 sum <= half 因此只是挡手误的粗筛，不是语义要求——参考实现没有这条约束，
+    // 它自己的用例就是 sum=48。要放宽得连 tests/golden.py:mrope_axis_map 的同名 assert 一起改。
     int64_t half = headDim_ / DIM_NUM_TWO;
     mropeSection_[DIM_ZERO] = half;
     mropeSection_[DIM_ONE] = 0;
