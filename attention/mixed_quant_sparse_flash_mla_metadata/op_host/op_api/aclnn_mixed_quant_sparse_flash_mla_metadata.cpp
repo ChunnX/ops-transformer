@@ -77,7 +77,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadataGetWorkspaceSize(
     if (aclRet != ACL_SUCCESS) {
         OP_LOGW("aclnnMixedQuantSparseFlashMlaMetadata unable to get system param batch consistency level.");
     }
-    OP_LOGD("aclnnMixedQuantSparseFlashMlaMetadata", "deterministic_level=%d", deterministicLevel);
+    OP_LOGD("deterministic_level=%d", deterministicLevel);
     bool isBatchConsistency = (deterministicLevel == BATCH_CONSISTENCY_LEVEL);
 
     auto ret = ParamsCheck(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
