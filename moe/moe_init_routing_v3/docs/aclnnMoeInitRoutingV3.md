@@ -598,7 +598,8 @@ aclnnStatus aclnnMoeInitRoutingV3(
     </table>
 
 - 空tensor处理：
-  - 当输入的x首个维度的值为0时，DropPadMode必须为0,进入空tensor模板。expandedXOut、expandedRowIdxOut和expandedScaleOut的返回值为空tensor，expertTokensCountOrCumsumOut返回全0的tensor。
+  - 当x的首个维度为0，或expertIdx的第二维为0时，DropPadMode必须为0，进入空tensor模板。expandedXOut、expandedRowIdxOut和expandedScaleOut的返回值为空tensor，expertTokensCountOrCumsumOut返回全0的tensor。
+  - Ascend 950PR/Ascend 950DT下，当x的shape为[N, 0]（N>0）、expertIdx的shape为[N, K]（K>0）时，仅支持dropPadMode=0、quantMode=-1且不输入scaleOptional的索引路由。算子会生成expandedRowIdxOut和expertTokensCountOrCumsumOut；expandedXOut沿H维为空，不执行特征搬运。
 
 - 不支持输入为inf/-inf/nan。
 
