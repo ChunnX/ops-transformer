@@ -11,6 +11,12 @@
 /*!
  * \file msa_index_score_def.cpp
  * \brief MsaIndexScore 算子原型注册。
+ *
+ * dtype 组合（按列表下标对齐）：
+ *   0: query=bf16, key=bf16  （非量化）
+ *   1: query=fp16, key=fp16  （非量化）
+ *   2: query=bf16, key=int8  （前融合 int8，scale 为反量化系数）
+ *   3: query=fp16, key=int8  （前融合 int8）
  */
 
 #include <cstdint>
@@ -24,52 +30,53 @@ public:
         // index query, TND: [totalQ, numQHeads, headDim]
         this->Input("query")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_FLOAT16})
-            .FormatList({ge::FORMAT_ND})
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         // paged index key cache, BSND: [numBlocks, blockSize, numKvHeads, headDim]
         this->Input("key_cache")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_FLOAT16})
-            .FormatList({ge::FORMAT_ND})
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         // [batch, maxBlocksPerBatch], 逻辑 block -> 物理 page
         this->Input("block_table")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        // per-token per-head 正缩放, [totalQ, numQHeads]
+        // 非量化：必须为空。
+        // int8 量化：key 的 per-token(+per-head) 反量化系数，shape [NP, N_kv, block_size]。
         this->Input("scale")
             .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         // query 长度前缀和 (cumsum), [batch + 1]
         this->Input("actual_seq_lengths_query")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         // 每个请求可见的 kv 长度, [batch]
         this->Input("actual_seq_lengths_key")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         // 每个请求首个 query token 在自身 kv 序列中的位置, [batch]
         this->Input("start_loc")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
+            .DataType({ge::DT_INT32, ge::DT_INT32, ge::DT_INT32})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         // [numQHeads, totalQ, scoreBlockStride]
         this->Output("score")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND});
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
-        this->Attr("block_size").AttrType(OPTIONAL).Int(128);       // 128: 一个 sparse block / page 的 token 数
+        this->Attr("block_size").AttrType(OPTIONAL).Int(128); // 128: sparse block / page token 数
         this->Attr("fill_invalid_tail").AttrType(OPTIONAL).Bool(true);
 
         OpAICoreConfig aicoreConfig;
