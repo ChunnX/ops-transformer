@@ -63,7 +63,7 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheRegbaseTiling::CalUbTiling()
     // RMSNorm + MRoPE 融合在 VF 里做，fp32 的 x、合并后的 cos/sin、RoPE 交叉项全部留在 vreg，
     // 计算区只剩 4 份 gamma 的 float 版本和 gather 索引两块小 buffer。
     const int64_t residentBytes =
-        WEIGHT_NUM * headDim_ * BF16_BYTES +                                       // wBf16Buf
+        WEIGHT_NUM * headDim_ * BF16_BYTES +                                       // wInQue（单 buffer）
         WEIGHT_NUM * headDim_ * FLOAT32_BYTES +                                    // wFp32Buf
         Ops::Base::CeilAlign(halfDim * UINT32_BYTES, BLOCK_ALIGN_BYTES);           // gatherIdxBuf
 

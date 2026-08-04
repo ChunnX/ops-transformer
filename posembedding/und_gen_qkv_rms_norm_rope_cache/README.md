@@ -72,8 +72,10 @@
 - 仅支持 <term>Ascend 950PR/Ascend 950DT</term>（DAV_3510, arch35）。
 - headDim 固定为 128。
 - (Hq, Hk, Hv) 支持 (8, 1, 1) 与 (16, 2, 2) 两种组合。
-- cache block_size 为 128；T = und_len + gen_len 不设上限，只要求为正，
-  真实上限是 KV Cache 容量（要求 `Bn * Bs >= T`）。上板已验证到 T = 64K。
+- cache block_size 不设限：Bs 不参与任何寻址与切分（cache 强制连续 BBND，slot 直接当扁平行号用），
+  唯一约束是容量。上板已验证 Bs ∈ {16, 64, 100, 128, 256, 512}，含非 2 的幂。
+- T = und_len + gen_len 不设上限，只要求为正，真实上限是 KV Cache 容量（要求 `Bn * Bs >= T`）。
+  上板已验证到 T = 64K。
 - `slot_mapping` 的取值必须唯一且落在 [0, Bn*Bs)，重复 slot 在多核下结果不确定。
 - **当前实现要求 `gen_qkv`、`gen_weights_q`、`gen_weights_k`、`cat_indices` 四个可选输入全部提供，
   且 `gen_len > 0`**；缺省的退化路径（纯 prefill、单序列恒等映射）暂不支持，tiling 会直接拦截。
@@ -96,7 +98,7 @@
 | :-- | :------- |
 | aclnn L2 | 仅空指针类：必选张量非空；`genQkv` 提供时 `genWeightsQ`/`genWeightsK` 必须成对提供 |
 | InferShape / InferDataType | 仅推导前提：`und_qkv`/`gen_qkv` 为 3D、属性 `num_heads_q` 可取；dtype 透传不校验 |
-| **Tiling** | `CheckDtypeValid`（12 输入 + 3 输出逐个查）、`CheckAttrsValid`（头数正数与求和==N、eps>0、mrope_section 长度与求和）、7 组 shape 校验（und/gen 的 N/D 一致、weights 长度、cos_sin_cache、k/v_cache 的 Bn/Bs/Hk/Hv/D 与容量、slot_mapping / positions / cat_indices 长度）、`CheckSupportRange`（headDim=128、block_size=128、T > 0、head 组合白名单、4 个可选输入必须全部提供） |
+| **Tiling** | `CheckDtypeValid`（12 输入 + 3 输出逐个查）、`CheckAttrsValid`（头数正数与求和==N、eps>0、mrope_section 长度与求和）、7 组 shape 校验（und/gen 的 N/D 一致、weights 长度、cos_sin_cache、k/v_cache 的 Bn/Bs/Hk/Hv/D 与容量、slot_mapping / positions / cat_indices 长度）、`CheckSupportRange`（headDim=128、T > 0、head 组合白名单、4 个可选输入必须全部提供） |
 
 > aclnn 单算子路径和图模式最终都会走 tiling，所以 tiling 侧的校验对两条路径都生效；
 > 代价是非法入参在 `aclnnXxxGetWorkspaceSize` 阶段不报错，而是在执行阶段由 tiling 返回失败。
@@ -113,8 +115,8 @@
 | Tiling 多核 / UB 切分 | 已完成（切分策略与 UB 划分见 `op_host/*_tiling.h` 注释） |
 | Kernel 计算实现 | 已完成（RMSNorm + MRoPE 在 `op_kernel/arch35/*_mrope_vf.h` 的单个 `__VEC_SCOPE__` 内完成，中间量驻留 vreg） |
 | aclnn L0/L2 接口 | 已完成 |
-| UT（infershape / tiling / aclnn） | 已完成（op_host 37 例、op_api 4 例） |
-| 上板精度验证 | 已完成：2026-08-03 在 A5（Ascend950PR_9579）跑 `tests/test_und_gen_qkv_rms_norm_rope_cache_torch.py`，对 golden **12/12 PASS**（含两个 T=64K 大 case） |
+| UT（infershape / tiling / aclnn） | 已完成（op_host 39 例 = infershape 4 + tiling 35、op_api 4 例） |
+| 上板精度验证 | 已完成：在 A5（Ascend950PR_9579）跑 `tests/test_und_gen_qkv_rms_norm_rope_cache_torch.py`，对 golden **15/15 PASS**（默认集，含 5 条 block_size 覆盖用例）；`--full` 追加的两个 T=64K 大 case 亦 PASS |
 | ST（ATK） | 待补（golden 已就绪，见 `tests/golden.py`） |
 
 > **golden 的正确性依据**：`tests/golden.py` 与需求来源的外部参考实现逐比特一致。

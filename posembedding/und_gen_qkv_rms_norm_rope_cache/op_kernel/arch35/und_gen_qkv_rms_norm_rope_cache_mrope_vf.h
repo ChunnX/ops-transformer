@@ -39,17 +39,7 @@
 #define UND_GEN_QKV_RMS_NORM_ROPE_CACHE_MROPE_VF_H_
 
 #include "kernel_operator.h"
-// 复用的 kv_rms_norm_rope_cache/arch35/platform.h 没有 include guard，
-// 本 header 与 ..._regbase.h 互不依赖顺序，所以两边共用下面这个哨兵避免重复定义
-#ifndef UND_GEN_QKV_RMS_NORM_ROPE_CACHE_PLATFORM_INCLUDED
-#define UND_GEN_QKV_RMS_NORM_ROPE_CACHE_PLATFORM_INCLUDED
-#ifdef __CCE_UT_TEST__
-#include "../../../kv_rms_norm_rope_cache/op_kernel/arch35/platform.h"
-#include "../../../../third_party/opbase/include/op_common/op_kernel/platform_util.h"
-#else
 #include "op_kernel/platform_util.h"
-#endif
-#endif
 
 namespace UndGenQkvRmsNormRopeCache {
 namespace MicroAPI = AscendC::MicroAPI;

@@ -12,7 +12,7 @@
 """UndGenQkvRmsNormRopeCache torch 接口测试（NPU 上板）。
 
 用例集与精度基准都取自同目录的 golden.py（本算子唯一 golden 实现），
-覆盖 headDim=128、(Hq,Hk,Hv) ∈ {(8,1,1),(16,2,2)}、block_size=128、T=1~64K
+覆盖 headDim=128、(Hq,Hk,Hv) ∈ {(8,1,1),(16,2,2)}、block_size=16~512、T=1~64K
 （T 本身算子侧不设上限，case 集覆盖到 64K）。
 
 前置条件：
@@ -46,7 +46,6 @@ import torch_npu
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from golden import (  # noqa: E402
     HEAD_DIM,
-    BLOCK_SIZE,
     TYPICAL_CASES,
     build_case,
     gather_cache_rows,
@@ -114,14 +113,14 @@ def run_case(spec, verbose=True):
 
     # k_cache/v_cache 未被 slot_mapping 命中的位置必须保持入参原值
     slot = case["slot_mapping"]
-    untouched = torch.ones(meta["num_blocks"] * BLOCK_SIZE, dtype=torch.bool)
+    untouched = torch.ones(meta["num_blocks"] * meta["block_size"], dtype=torch.bool)
     untouched[slot] = False
     k_out_rows = k_cache.cpu().reshape(-1, hk, HEAD_DIM)
     k_in_rows = k_cache_in.reshape(-1, hk, HEAD_DIM)
     untouched_ok = torch.equal(k_out_rows[untouched], k_in_rows[untouched])
 
     if verbose:
-        print(f"  [{meta['name']:<22}] 接口 OK  T={total:<6} heads=({hq},{hk},{hv}) "
+        print(f"  [{meta['name']:<22}] 接口 OK  T={total:<6} heads=({hq},{hk},{hv}) bs={meta['block_size']:<4} "
               f"q={tuple(q.shape)} k_cache={tuple(k_cache.shape)} 未命中槽保持原值={untouched_ok}")
 
     # ---- 数值精度（对 golden）----

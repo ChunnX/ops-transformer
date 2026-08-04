@@ -34,7 +34,7 @@
   * mrope_section 为空时退化为 [half, 0, 0]（等价标准 RoPE）。
   * 全向量化：原 golden 逐 token、逐 half 的 Python 双循环在 total=64k 时不可用。
   * 典型 case 集：headDim=128 固定，(Hq,Hk,Hv) ∈ {(8,1,1), (16,2,2)}，
-    T 不设上限，case 集覆盖 1 ~ 64K，block_size=128（见 TYPICAL_CASES）。
+    T 不设上限，case 集覆盖 1 ~ 64K；block_size 不设限，case 集覆盖 16~512（见 TYPICAL_CASES）。
 
 约定（与《算子需求分析和方案设计说明书》一致）
   und_qkv       bf16 [und_len, N, D]，N = Hq+Hk+Hv，D = head_dim = 128
@@ -88,15 +88,21 @@ def make_cos_sin_cache(max_pos, head_dim, device="cpu", base=10000.0):
 def mrope_axis_map(head_dim, mrope_section):
     """预计算 half 个索引各自取哪一轴的 cos/sin（Host Tiling 下发的 axisLut）。
 
-    规则（与竞品 _mrope 完全一致，注意 mrope_section[0] 并不参与判断）：
+    规则（与竞品 _mrope 完全一致）：
         axis = 0
         if i % 3 == 1 and i < 3 * sec[1]: axis = 1
         if i % 3 == 2 and i < 3 * sec[2]: axis = 2
+
+    这三个数**不是**对 half 的划分：只有 sec[1]/sec[2] 被读，sec[0] 从不参与计算，
+    T 是"其余全归它"的兜底轴。所以 [16,16,16] 实际得到 T/H/W = 32/16/16 而不是
+    16/16/16，[64,16,16] 与 [0,16,16] 的轴映射逐位相同。
     """
     half = head_dim // 2
     if mrope_section is None or len(mrope_section) == 0:
         mrope_section = [half, 0, 0]
     assert len(mrope_section) == 3, "mrope_section 必须是长度 3 的列表"
+    # 只是挡手误的粗筛，不是语义要求：参考实现没有这条约束，它自己的用例就是 sum=48。
+    # 要放宽得连 op_host/..._base_tiling.cpp 的 CheckAttrsValid 一起改。
     assert sum(mrope_section) <= half, "mrope_section 三轴之和不能超过 head_dim/2"
 
     idx = torch.arange(half, dtype=torch.int64)
@@ -356,6 +362,17 @@ TYPICAL_CASES = (
          cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False),
     dict(name="t10752_typical_h16", heads=(16, 2, 2), und_len=6652, gen_len=4100,
          cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False),
+    # block_size 覆盖：算子对 Bs 无假设，这几条把 2 的幂与非 2 的幂、小块与大块都过一遍
+    dict(name="t64_bs16",          heads=(8, 1, 1),  und_len=40,    gen_len=24,
+         cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False, block_size=16),
+    dict(name="t200_bs64",         heads=(16, 2, 2), und_len=150,   gen_len=50,
+         cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False, block_size=64),
+    dict(name="t300_bs100",        heads=(8, 1, 1),  und_len=200,   gen_len=100,
+         cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False, block_size=100),
+    dict(name="t512_bs256",        heads=(8, 1, 1),  und_len=256,   gen_len=256,
+         cat="identity", slot_mode="contiguous", mrope_section=[16, 16, 16], big=False, block_size=256),
+    dict(name="t1024_bs512",       heads=(16, 2, 2), und_len=512,   gen_len=512,
+         cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=False, block_size=512),
     dict(name="t65536_h8",         heads=(8, 1, 1),  und_len=32768, gen_len=32768,
          cat="shuffled", slot_mode="shuffled",   mrope_section=[16, 16, 16], big=True),
     dict(name="t65536_h16",        heads=(16, 2, 2), und_len=32768, gen_len=32768,
@@ -379,8 +396,12 @@ def build_case(spec, device="cpu", seed=7, max_pos=4096, init_cache="randn"):
     assert total >= 1, "T 必须为正"
 
     # KV Cache 预留：按 block_size 向上取整再多给 2 个 block，制造未命中位置
-    num_blocks = (total + BLOCK_SIZE - 1) // BLOCK_SIZE + 2
-    k_shape, v_shape = (num_blocks, BLOCK_SIZE, hk, d), (num_blocks, BLOCK_SIZE, hv, d)  # 连续 BBND
+    # block_size 由 case 指定（默认 BLOCK_SIZE）：算子不限制 Bs，cache 展平后 slot 直接
+    # 当行号用，Bs 只影响 [Bn, Bs, ...] 怎么切分同一片连续内存
+    bs = int(spec.get("block_size", BLOCK_SIZE))
+    assert bs >= 1, "block_size 必须为正"
+    num_blocks = (total + bs - 1) // bs + 2
+    k_shape, v_shape = (num_blocks, bs, hk, d), (num_blocks, bs, hv, d)  # 连续 BBND
     init = torch.randn if init_cache == "randn" else torch.zeros
 
     if spec["cat"] == "none":
@@ -394,7 +415,7 @@ def build_case(spec, device="cpu", seed=7, max_pos=4096, init_cache="randn"):
     if spec["slot_mode"] == "contiguous":
         slot_mapping = torch.arange(total, dtype=torch.int64, device=device)
     else:
-        slot_mapping = torch.randperm(num_blocks * BLOCK_SIZE, device=device)[:total].to(torch.int64)
+        slot_mapping = torch.randperm(num_blocks * bs, device=device)[:total].to(torch.int64)
 
     case = dict(
         und_qkv=torch.randn(und_len, n, d, dtype=torch.bfloat16, device=device),
@@ -417,7 +438,7 @@ def build_case(spec, device="cpu", seed=7, max_pos=4096, init_cache="randn"):
         mrope_section=spec["mrope_section"],
     )
     case["_meta"] = dict(name=spec["name"], total=total, heads=(hq, hk, hv),
-                         num_blocks=num_blocks, block_size=BLOCK_SIZE)
+                         num_blocks=num_blocks, block_size=bs)
     return case
 
 

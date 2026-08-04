@@ -20,11 +20,12 @@
  *
  * 每个 out_t 的计算流程：
  *   1) src_t = cat_indices[out_t]；isUnd = (src_t < undLen)
- *   2) 从 und_qkv / gen_qkv 取 [N, D] 行 -> Cast bf16->float32 -> 按 N 维拆 Q/K/V
+ *   2) 从 und_qkv / gen_qkv 取 [N, D] 行，按 N 维拆 Q/K/V；只有 Q/K 逐 head
+ *      Cast bf16->float32 参与后续计算，V 全程 bf16 不做任何转换
  *   3) Q/K 做 RMSNorm（und/gen 两套权重按 isUnd 选择）
  *   4) 读 positions[0..2, out_t]，三轴 cos_sin 原样搬进 UB 的 [3, D] 窗口，
  *      VF 里用 Gather + axisLut 在寄存器内合并，再对 Q/K 做标准 RoPE；V 不参与 norm/rope
- *   5) Q Cast float32->bf16 写 q[out_t]；K/V Cast 后按 slot = slot_mapping[out_t]
+ *   5) Q/K Cast float32->bf16，V 直接透传；Q 写 q[out_t]，K/V 按 slot = slot_mapping[out_t]
  *      写入 k_cache/v_cache 的第 slot 行
  *
  * RMSNorm + MRoPE 融合在一个 VF 段里完成，见 und_gen_qkv_rms_norm_rope_cache_mrope_vf.h。
@@ -35,15 +36,7 @@
 #define UND_GEN_QKV_RMS_NORM_ROPE_CACHE_REGBASE_H_
 
 #include "kernel_operator.h"
-#ifndef UND_GEN_QKV_RMS_NORM_ROPE_CACHE_PLATFORM_INCLUDED
-#define UND_GEN_QKV_RMS_NORM_ROPE_CACHE_PLATFORM_INCLUDED
-#ifdef __CCE_UT_TEST__
-#include "../../../kv_rms_norm_rope_cache/op_kernel/arch35/platform.h"
-#include "../../../../third_party/opbase/include/op_common/op_kernel/platform_util.h"
-#else
 #include "op_kernel/platform_util.h"
-#endif
-#endif
 #include "und_gen_qkv_rms_norm_rope_cache_mrope_vf.h"
 
 namespace UndGenQkvRmsNormRopeCache {
@@ -373,10 +366,14 @@ private:
     TPipe* pipe_ = nullptr;
     const UndGenQkvRmsNormRopeCacheTilingData* tiling_ = nullptr;
 
-    TQue<QuePosition::VECIN, BUFFER_NUM_DB> qkvInQue_;
-    TQue<QuePosition::VECIN, BUFFER_NUM_DB> cosSinInQue_;
-    TQue<QuePosition::VECOUT, BUFFER_NUM_DB> outQue_;
-    TQue<QuePosition::VECIN, BUFFER_NUM_SINGLE> wInQue_;
+    // 模板参数是 queue depth（同时"已 EnQue 未 DeQue"的句柄数），不是 buffer 数。
+    // 本 kernel 每轮 CopyIn -> Compute -> CopyOut 最多 1 个 outstanding EnQue，故取 1；
+    // 双缓冲由 InitUbBuffers 里 InitBuffer 的 BUFFER_NUM_DB 开，两者互不影响。
+    // 将来若改成"预取下一 tile"（见 CopyIn 的 TODO），outstanding 会变 2，depth 必须同步加大
+    TQue<QuePosition::VECIN, 1> qkvInQue_;
+    TQue<QuePosition::VECIN, 1> cosSinInQue_;
+    TQue<QuePosition::VECOUT, 1> outQue_;
+    TQue<QuePosition::VECIN, 1> wInQue_;
 
     TBuf<TPosition::VECCALC> wFp32Buf_;
     TBuf<TPosition::VECCALC> gatherIdxBuf_;
