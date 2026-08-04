@@ -268,6 +268,7 @@ private:
     uint32_t maxKvSeqlen_ = 0;  // BNSD/BSND格式KV的S维度
     int64_t totalTokensT_ = 0;  // TND格式Q的第一维（T维度，总token数）
     int64_t totalTokensKv_ = 0;  // TND格式KV的第一维（T维度，总token数）
+    uint32_t btKvTokens_ = 0;  // [TND mxfp4] BTkv = sum_b CeilDiv(S2_b, 64), V-scale TND dim0(ParseSeqlensInTND 累加)
 
     // mask2idx tile info
     uint32_t xBlockNumAligned_;
