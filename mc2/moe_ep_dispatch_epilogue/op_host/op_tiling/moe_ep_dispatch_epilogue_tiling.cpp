@@ -17,6 +17,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
@@ -80,8 +82,34 @@ constexpr int64_t SCALES_ALIGN_EVEN = 2; // fp8 align 2
 constexpr uint32_t NETWORK_DIRECT = 0U;
 constexpr uint32_t NETWORK_HYBRID = 1U;
 
-static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchEpilogueInfo &info)
+static uint32_t ApplyDebugNetworkModeOverride(uint32_t networkMode, const char *nodeName)
 {
+    const char *envValue = std::getenv("MOE_EP_DEBUG_FORCE_NETWORK_MODE");
+    if (envValue == nullptr || envValue[0] == '\0') {
+        return networkMode;
+    }
+    if ((std::strcmp(envValue, "0") == 0) || (std::strcmp(envValue, "direct") == 0) ||
+        (std::strcmp(envValue, "DIRECT") == 0)) {
+        OP_LOGI(nodeName, "MOE_EP_DEBUG_FORCE_NETWORK_MODE overrides networkMode from %u to %u.", networkMode,
+                NETWORK_DIRECT);
+        return NETWORK_DIRECT;
+    }
+    if ((std::strcmp(envValue, "1") == 0) || (std::strcmp(envValue, "hybrid") == 0) ||
+        (std::strcmp(envValue, "HYBRID") == 0)) {
+        OP_LOGI(nodeName, "MOE_EP_DEBUG_FORCE_NETWORK_MODE overrides networkMode from %u to %u.", networkMode,
+                NETWORK_HYBRID);
+        return NETWORK_HYBRID;
+    }
+    OP_LOGW(nodeName, "Ignore invalid MOE_EP_DEBUG_FORCE_NETWORK_MODE=%s, expected 0/direct or 1/hybrid.", envValue);
+    return networkMode;
+}
+
+static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchEpilogueInfo &info,
+                                uint32_t networkMode, uint32_t serverNum)
+{
+    OP_LOGI(nodeName,
+            "MOE_EP_DEBUG: RANK_NUM_PER_SERVER=%u, EP_WORLD_SIZE=%u, NUM_SCALEOUT_RANKS=%u, NETWORK_MODE=%u.",
+            info.cfg.epWorldSize / serverNum, info.cfg.epWorldSize, serverNum, networkMode);
     OP_LOGD(nodeName, "epWorldSize=%u, epRankId=%u, numExperts=%u, numLocalExperts=%u", info.cfg.epWorldSize,
             info.cfg.epRankId, info.cfg.numExperts, info.cfg.numLocalExperts);
     OP_LOGD(nodeName, "hidden=%u, topK=%u, numTokens=%u, numMaxTokensPerRank=%u, perSlotBytes=%u", info.cfg.hidden,
@@ -163,6 +191,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, const
     serverNum = static_cast<uint32_t>(epWorldSize / rankNumPerServer);
     networkMode = (requestedNetworkMode == NETWORK_HYBRID && serverNum > 1U) ?
         NETWORK_HYBRID : NETWORK_DIRECT;
+    networkMode = ApplyDebugNetworkModeOverride(networkMode, nodeName);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -579,7 +608,7 @@ static ge::graphStatus MoeEpDispatchEpilogueTilingFunc(gert::TilingContext *cont
     OP_LOGD(nodeName, "tilingKey=%lu, blockDim=%u, aivNum=%u, cached=%u, hasTopkWeights=%u, isMxQuant=%u", tilingKey,
             blockDim, aivNum, info.cached, hasTopkWeights ? 1U : 0U, info.isMxQuant);
 
-    PrintTilingDataInfo(nodeName, info);
+    PrintTilingDataInfo(nodeName, info, networkMode, serverNum);
     return ge::GRAPH_SUCCESS;
 }
 
