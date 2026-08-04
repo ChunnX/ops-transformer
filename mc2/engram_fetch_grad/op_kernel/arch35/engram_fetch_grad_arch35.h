@@ -131,6 +131,11 @@ private:
     GM_ADDR segUniqueEntryGM_{0};
     GM_ADDR segCountGM_{0};
 
+    uint64_t exchangeSendBytes_{0};
+    uint64_t exchangeRecvBytes_{0};
+    uint64_t exchangeSendCycles_{0};
+    uint64_t exchangeRecvCycles_{0};
+
     TBuf<> pingBuf_;
     TBuf<> pongBuf_;
     int32_t ppEvtMte2ToMte3_[2] = {0, 0};
@@ -408,10 +413,21 @@ __aicore__ inline void EngramFetchGradArch35::UnsortGrad()
 
 __aicore__ inline void EngramFetchGradArch35::ExchangeGrad()
 {
+    exchangeSendBytes_ = 0;
+    exchangeRecvBytes_ = 0;
+    exchangeSendCycles_ = 0;
+    exchangeRecvCycles_ = 0;
     GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
 
+    uint64_t sendStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
     SendGradToPeers();
+    uint64_t sendEnd = static_cast<uint64_t>(AscendC::GetSystemCycle());
+    exchangeSendCycles_ = sendEnd - sendStart;
+
+    uint64_t recvStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
     RecvGradFromPeers();
+    uint64_t recvEnd = static_cast<uint64_t>(AscendC::GetSystemCycle());
+    exchangeRecvCycles_ = recvEnd - recvStart;
 
     if (isFlagCore_) {
         GM_ADDR localFlagBase = localWinBase + tokenFlagOffset_;
@@ -445,9 +461,11 @@ __aicore__ inline void EngramFetchGradArch35::SendGradToPeers()
 
         if (dstRank == rankId_) {
             SendGradLocal(sendCount, sdispl, localWinBase);
+            exchangeSendBytes_ += static_cast<uint64_t>(sendCount) * static_cast<uint64_t>(hiddenBytes_);
             continue;
         }
         SendGradRemote(dstRank, sendCount, sdispl, localWinBase);
+        exchangeSendBytes_ += static_cast<uint64_t>(sendCount) * static_cast<uint64_t>(hiddenBytes_);
     }
 }
 
@@ -535,6 +553,7 @@ __aicore__ inline void EngramFetchGradArch35::RecvGradFromPeers()
         rSlotGM.SetGlobalBuffer((__gm__ int32_t *)rSlot);
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(rSlotGM);
         int32_t recvCount = rSlotGM.GetValue(0);
+        exchangeRecvBytes_ += static_cast<uint64_t>(recvCount) * static_cast<uint64_t>(hiddenBytes_);
 
         GM_ADDR rDisplSlot = rdisplsGM_ + srcRank * UB_ALIGN;
         GlobalTensor<int64_t> rDisplSlotGM;
@@ -972,16 +991,41 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrier()
 __aicore__ inline void EngramFetchGradArch35::Process()
 {
     if ASCEND_IS_AIV {
+        uint64_t cycleStartInit = static_cast<uint64_t>(AscendC::GetSystemCycle());
         InitFlagsAndDispls();
+        uint64_t cycleEndInit = static_cast<uint64_t>(AscendC::GetSystemCycle());
         SyncAll<true>();
 
+        uint64_t cycleStartClear = static_cast<uint64_t>(AscendC::GetSystemCycle());
         ClearWinCounters();
+        uint64_t cycleEndClear = static_cast<uint64_t>(AscendC::GetSystemCycle());
         SyncAll<true>();
 
+        uint64_t cycleStartBarrier = static_cast<uint64_t>(AscendC::GetSystemCycle());
         CrossRankBarrier();
+        uint64_t cycleEndBarrier = static_cast<uint64_t>(AscendC::GetSystemCycle());
 
+        uint64_t cycleStart1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         UnsortGrad();
+        uint64_t cycleEnd1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        uint64_t cycleStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
         ExchangeGrad();
+        uint64_t cycleEnd = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        uint64_t cycleDelta = cycleEnd - cycleStart;
+        printf("[EngramFetchGrad] rankId=%u, aivId=%u, InitFlagsAndDispls cycles=%llu, ClearWinCounters cycles=%llu, "
+               "CrossRankBarrier cycles=%llu, UnsortGrad cycles=%llu, ExchangeGrad cycles=%llu, "
+               "sendCycles=%llu, sendBytes=%llu (%llu KB), recvCycles=%llu, recvBytes=%llu (%llu KB)\n",
+               rankId_, aivId_, static_cast<unsigned long long>(cycleEndInit - cycleStartInit),
+               static_cast<unsigned long long>(cycleEndClear - cycleStartClear),
+               static_cast<unsigned long long>(cycleEndBarrier - cycleStartBarrier),
+               static_cast<unsigned long long>(cycleEnd1 - cycleStart1),
+               static_cast<unsigned long long>(cycleDelta),
+               static_cast<unsigned long long>(exchangeSendCycles_),
+               static_cast<unsigned long long>(exchangeSendBytes_),
+               static_cast<unsigned long long>(exchangeSendBytes_ / 1024),
+               static_cast<unsigned long long>(exchangeRecvCycles_),
+               static_cast<unsigned long long>(exchangeRecvBytes_),
+               static_cast<unsigned long long>(exchangeRecvBytes_ / 1024));
         UniqueScatterAdd();
     }
 }
