@@ -121,6 +121,7 @@ const int g_toAclOffset = 256;
     _(at::ScalarType::Int6, ACL_DT_UNDEFINED)                                                                          \
     _(at::ScalarType::Int7, ACL_DT_UNDEFINED)                                                                          \
     _(at::ScalarType::Float8_e8m0fnu, ACL_FLOAT8_E8M0)                                                                \
+    _(at::ScalarType::Float4_e2m1fn_x2, ACL_FLOAT4_E2M1) \
     _(at::ScalarType::Undefined, ACL_DT_UNDEFINED)                                                                     \
     _(at::ScalarType::NumOptions, ACL_DT_UNDEFINED)
 
@@ -175,7 +176,7 @@ inline c10::SmallVector<int64_t, SIZE> array_to_small_vector(c10::IntArrayRef sh
     }
     return shape_small_vec;
 }
-}
+} // namespace op_infer
 
 typedef struct {
     const at::Tensor& tensor_;
@@ -190,6 +191,18 @@ typedef struct {
 inline bool Is4BitDtype(const aclDataType acl_data_type)
 {
     return acl_data_type == ACL_FLOAT4_E2M1 || acl_data_type == ACL_FLOAT4_E1M2 || acl_data_type == ACL_INT4;
+}
+
+inline int64_t ConvertToAclStorageOffset(const at::Tensor &at_tensor, const aclDataType acl_data_type)
+{
+    int64_t storageOffset = at_tensor.storage_offset();
+    if (Is4BitDtype(acl_data_type)) {
+        // ACL 4-bit descriptors express offsets in logical nibble elements.
+        TORCH_CHECK(storageOffset <= INT64_MAX / FP4_IN_INT8,
+                    "4-bit tensor storage offset is too large to convert to logical elements: ", storageOffset);
+        storageOffset *= FP4_IN_INT8;
+    }
+    return storageOffset;
 }
 
 static std::unordered_map<aclFormat, aclFormat> FORMAT_FAKE_TO_REAL {
@@ -248,6 +261,7 @@ enum QuantMode {
     QUANT_MODE_PERTOKEN = 2,
     QUANT_MODE_PERGROUP = 3,
     QUANT_MODE_MX = 4,
+    QUANT_MODE_MX_CLIP = 5,
 };
 
 #define GET_OP_API_FUNC(apiName) reinterpret_cast<_##apiName>(GetOpApiFuncAddr(#apiName))
@@ -290,10 +304,9 @@ inline const char *GetOpApiLibName(void)
     return "libopapi.so";
 }
 
-inline const char *GetCustOpApiLibName(void)
-{
-    return "libcust_opapi.so";
-}
+inline const char *GetTransformerOpApiLibName(void) { return "libopapi_transformer.so"; }
+
+inline const char *GetCustOpApiLibName(void) { return "libcust_opapi.so"; }
 
 inline void *GetOpApiFuncAddrInLib(void *handler, const char *libName, const char *apiName)
 {
@@ -358,6 +371,13 @@ inline void *GetOpApiFuncAddr(const char *apiName)
         }
     }
 
+    static auto transformerOpApiHandler = GetOpApiLibHandler(GetTransformerOpApiLibName());
+    if (transformerOpApiHandler != nullptr) {
+        auto funcAddr = GetOpApiFuncAddrInLib(transformerOpApiHandler, GetTransformerOpApiLibName(), apiName);
+        if (funcAddr != nullptr) {
+            return funcAddr;
+        }
+    }
     static auto opApiHandler = GetOpApiLibHandler(GetOpApiLibName());
     if (opApiHandler == nullptr) {
         return nullptr;
@@ -491,9 +511,51 @@ inline aclTensor *ConvertType(const at::Tensor &at_tensor)
 
     auto acl_tensor =
         aclCreateTensor(wrapperShape.data(), at_tensor.sizes().size(), acl_data_type, wrapperStride.data(),
+                        ConvertToAclStorageOffset(at_tensor, acl_data_type), format, storageDims.data(),
+                        storageDims.size(), const_cast<void *>(at_tensor.storage().data()));
+    return acl_tensor;
+}
+
+typedef struct {
+    const at::Tensor &tensor_;
+} StorageShapeTensor;
+
+inline aclTensor *ConvertType(const StorageShapeTensor &storage_shape_tensor)
+{
+    const at::Tensor &at_tensor = storage_shape_tensor.tensor_;
+    if (!at_tensor.defined()) {
+        return nullptr;
+    }
+    aclDataType acl_data_type = ConvertToAclDataType(at_tensor.scalar_type());
+    if (!at_tensor.is_contiguous() || !IsOpInputBaseFormat(at_tensor) || Is4BitDtype(acl_data_type)) {
+        return ConvertType(at_tensor);
+    }
+    static const auto aclCreateTensor = GET_OP_API_FUNC(aclCreateTensor);
+    if (aclCreateTensor == nullptr) {
+        return nullptr;
+    }
+    TORCH_CHECK(acl_data_type != ACL_DT_UNDEFINED,
+                std::string(c10::toString(at_tensor.scalar_type())) + " has not been supported")
+    c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperStride = op_infer::array_to_small_vector(at_tensor.strides());
+    c10::SmallVector<int64_t, MAX_DIM_NUM> wrapperShape = op_infer::array_to_small_vector(at_tensor.sizes());
+    std::vector<int64_t> storageDims(at_tensor.sizes().begin(), at_tensor.sizes().end());
+    aclFormat format = ACL_FORMAT_ND;
+    switch (at_tensor.sizes().size()) {
+        case 3:
+            format = ACL_FORMAT_NCL;
+            break;
+        case 4:
+            format = ACL_FORMAT_NCHW;
+            break;
+        case 5:
+            format = ACL_FORMAT_NCDHW;
+            break;
+        default:
+            format = ACL_FORMAT_ND;
+    }
+    return aclCreateTensor(wrapperShape.data(), at_tensor.sizes().size(), acl_data_type, wrapperStride.data(),
                         at_tensor.storage_offset(), format, storageDims.data(), storageDims.size(),
                         const_cast<void *>(at_tensor.storage().data()));
-    return acl_tensor;
 }
 
 inline aclScalar *ConvertType(const at::Scalar &at_scalar)
@@ -544,6 +606,15 @@ inline aclIntArray *ConvertType(const at::IntArrayRef &at_array)
     }
     auto array = aclCreateIntArray(at_array.data(), at_array.size());
     return array;
+}
+
+inline aclFloatArray *ConvertType(const std::vector<float> &value)
+{
+    static const auto aclCreateFloatArray = GET_OP_API_FUNC(aclCreateFloatArray);
+    if (aclCreateFloatArray == nullptr) {
+        return nullptr;
+    }
+    return aclCreateFloatArray(value.data(), value.size());
 }
 
 template <std::size_t N>
@@ -680,8 +751,8 @@ aclTensor *ConvertType(const TensorWrapper &tensor_r)
 
     auto acl_tensor =
         aclCreateTensor(wrapperShape.data(), at_tensor.sizes().size(), acl_data_type, wrapperStride.data(),
-                        at_tensor.storage_offset(), format, storageDims.data(), storageDims.size(),
-                        const_cast<void *>(at_tensor.storage().data()));
+                        ConvertToAclStorageOffset(at_tensor, acl_data_type), format, storageDims.data(),
+                        storageDims.size(), const_cast<void *>(at_tensor.storage().data()));
     return acl_tensor;
 }
 
@@ -751,6 +822,16 @@ inline void Release(aclIntArray *p)
     }
 
     aclDestroyIntArray(p);
+}
+
+inline void Release(aclFloatArray *p)
+{
+    static const auto aclDestroyFloatArray = GET_OP_API_FUNC(aclDestroyFloatArray);
+    if (aclDestroyFloatArray == nullptr) {
+        return;
+    }
+
+    aclDestroyFloatArray(p);
 }
 
 inline void Release(aclBoolArray *p)
@@ -901,6 +982,52 @@ auto DecodeDevice(Ts&... args) -> at::Device
     return ft.device();
 }
 
+// 弱符号签名须与 torch_npu >= 2.9.0.post3 一致，返回类型不参与名字修饰，修改前请核对对应版本头文件：
+//   uint32_t c10_npu::GetDeterministicLevel();                                    (NPUFunctions.h)
+//   void at_npu::native::ApplyDeterministicLevel(int64_t, bool, bool);            (op_plugin 内部导出符号)
+namespace at_npu {
+namespace native {
+__attribute__((weak)) void ApplyDeterministicLevel(int64_t level, bool deterministicAlgorithmsStatus, bool isOpapi);
+} // namespace native
+} // namespace at_npu
+
+namespace c10_npu {
+__attribute__((weak)) uint32_t GetDeterministicLevel();
+} // namespace c10_npu
+
+inline void ApplyDeterministicConfig()
+{
+    constexpr bool kUseOpApiPath = true; // isOpapi=true: 走 opapi 路径下发，aclnn_common.h 全场景均为 opapi
+    auto deterministicAlgorithmsStatus = at::globalContext().deterministicAlgorithms();
+    auto applyLevelFn = at_npu::native::ApplyDeterministicLevel;
+    auto getLevelFn = c10_npu::GetDeterministicLevel;
+    if (applyLevelFn != nullptr && getLevelFn != nullptr) {
+        int64_t level = static_cast<int64_t>(getLevelFn());
+        applyLevelFn(level, deterministicAlgorithmsStatus, kUseOpApiPath);
+        return;
+    }
+    static bool fallbackWarned = false;
+    if (!fallbackWarned) {
+        fallbackWarned = true;
+        if (applyLevelFn == nullptr && getLevelFn == nullptr) {
+            ASCEND_LOGW("ApplyDeterministicLevel and GetDeterministicLevel are both missing in torch_npu, "
+                        "fallback to ACL_OPT_DETERMINISTIC binary switch, deterministic_level will be ignored.");
+        } else if (applyLevelFn == nullptr) {
+            ASCEND_LOGW("ApplyDeterministicLevel is missing in torch_npu, "
+                        "fallback to ACL_OPT_DETERMINISTIC binary switch, deterministic_level will be ignored.");
+        } else {
+            ASCEND_LOGW("GetDeterministicLevel is missing in torch_npu, "
+                        "fallback to ACL_OPT_DETERMINISTIC binary switch, deterministic_level will be ignored.");
+        }
+    }
+    aclError ret = aclrtCtxSetSysParamOpt(aclSysParamOpt::ACL_OPT_DETERMINISTIC, deterministicAlgorithmsStatus ? 1 : 0);
+    if (ret != ACL_SUCCESS) {
+        ASCEND_LOGW("aclrtCtxSetSysParamOpt(ACL_OPT_DETERMINISTIC) failed, ret=%d, "
+                    "deterministic config may be incorrect.",
+                    static_cast<int>(ret));
+    }
+}
+
 #define ACLNN_CMD(aclnn_api, ...)                                                                           \
     do {                                                                                                    \
         auto device = DecodeDevice(__VA_ARGS__);                                                            \
@@ -910,15 +1037,9 @@ auto DecodeDevice(Ts&... args) -> at::Device
         static const auto initMemAddr = GetOpApiFuncAddr("InitHugeMemThreadLocal");                         \
         static const auto unInitMemAddr = GetOpApiFuncAddr("UnInitHugeMemThreadLocal");                     \
         static const auto releaseMemAddr = GetOpApiFuncAddr("ReleaseHugeMem");                              \
-        TORCH_CHECK(getWorkspaceSizeFuncAddr != nullptr && opApiFuncAddr != nullptr,                        \
-            #aclnn_api,                                                                                     \
-            " or ",                                                                                         \
-            #aclnn_api "GetWorkspaceSize",                                                                  \
-            " not in ",                                                                                     \
-            GetOpApiLibName(),                                                                              \
-            ", or ",                                                                                        \
-            GetOpApiLibName(),                                                                              \
-            "not found.");                                                                                  \
+        TORCH_CHECK(getWorkspaceSizeFuncAddr != nullptr && opApiFuncAddr != nullptr, #aclnn_api, " or ", \
+                    #aclnn_api "GetWorkspaceSize", " not in ", GetOpApiLibName(), ", or ", GetOpApiLibName(), ", or ", \
+                    GetTransformerOpApiLibName(), "not found."); \
         auto acl_stream = c10_npu::getCurrentNPUStream().stream(false);                                     \
         uint64_t workspace_size = 0;                                                                        \
         uint64_t *workspace_size_addr = &workspace_size;                                                    \
@@ -929,6 +1050,7 @@ auto DecodeDevice(Ts&... args) -> at::Device
         if (initMemFunc) {                                                                                  \
             initMemFunc(nullptr, false);                                                                    \
         }                                                                                                   \
+        ApplyDeterministicConfig(); \
         auto converted_params = ConvertTypes(__VA_ARGS__, workspace_size_addr, executor_addr);              \
         static auto getWorkspaceSizeFunc = ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr);  \
         auto workspace_status = call(getWorkspaceSizeFunc, converted_params);                               \
