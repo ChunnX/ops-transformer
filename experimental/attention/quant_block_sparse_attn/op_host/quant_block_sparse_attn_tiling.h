@@ -37,6 +37,7 @@ constexpr uint32_t BSA_MASK_MODE_NONE = 0U;
 constexpr uint32_t BSA_MASK_MODE_CAUSAL = 3U;
 constexpr uint32_t BSA_MASK_MODE_MAX = 4U;
 constexpr uint32_t BSA_MXFP8_S2_BASE_SIZE = 512U;
+constexpr uint32_t BSA_MXFP8_MAX_PA_BLOCK_SIZE = 1024U;
 constexpr uint32_t BSA_MXFP8_SPARSE_BLOCK_SIZE_128 = 128U;
 constexpr uint32_t BSA_MXFP8_SPARSE_BLOCK_SIZE_64 = 64U;
 constexpr uint32_t BSA_MXFP8_SCALE_GROUP_SIZE = 64U;
@@ -121,7 +122,6 @@ TILING_DATA_FIELD_DEF(uint32_t, paLayoutType)
 TILING_DATA_FIELD_DEF(uint32_t, kvBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, qBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, paBlockStride)
-TILING_DATA_FIELD_DEF(int32_t, attenMaskS1Size)
 TILING_DATA_FIELD_DEF(uint8_t, isRowInvalid)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttnPaParamsOp, QuantBlockSparseAttnPaParams)
@@ -135,11 +135,8 @@ REGISTER_TILING_DATA_CLASS(QuantBlockSparseAttnSparseParamsOp, QuantBlockSparseA
 BEGIN_TILING_DATA_DEF(QuantBlockSparseAttnInputParamsRegbase)
 TILING_DATA_FIELD_DEF(int64_t, bSize)
 TILING_DATA_FIELD_DEF(int64_t, t1Size)
-TILING_DATA_FIELD_DEF(int64_t, t2Size)
 TILING_DATA_FIELD_DEF(int64_t, n2Size)
 TILING_DATA_FIELD_DEF(int64_t, gSize)
-TILING_DATA_FIELD_DEF(int64_t, s1Size)
-TILING_DATA_FIELD_DEF(int64_t, s2Size)
 TILING_DATA_FIELD_DEF(int64_t, dSize)
 TILING_DATA_FIELD_DEF(int64_t, dSizeV)
 TILING_DATA_FIELD_DEF(float, scaleValue)
@@ -147,11 +144,8 @@ TILING_DATA_FIELD_DEF(int64_t, preTokens)
 TILING_DATA_FIELD_DEF(int64_t, nextTokens)
 TILING_DATA_FIELD_DEF(uint32_t, bandIndex)
 TILING_DATA_FIELD_DEF(uint8_t, layoutType)
-TILING_DATA_FIELD_DEF(uint8_t, attenMaskShapeType)
 TILING_DATA_FIELD_DEF(uint8_t, attenMaskCompressMode)
 TILING_DATA_FIELD_DEF(uint32_t, attenMaskS2Size)
-TILING_DATA_FIELD_DEF(uint8_t, isSeqUsedQlenNull)
-TILING_DATA_FIELD_DEF(uint8_t, isSeqUsedKvlenNull)
 TILING_DATA_FIELD_DEF(uint32_t, seqUsedQlenSize)
 TILING_DATA_FIELD_DEF(uint32_t, seqUsedKvlenSize)
 TILING_DATA_FIELD_DEF(uint8_t, isKvContinuous)

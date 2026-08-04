@@ -34,7 +34,7 @@ CASE_DATA = CaseDataStore()
 
 def cpu_sparse_flash_mla(q, *, return_softmax_lse=False, testcase_name=None,
                          layout_q="BSND", **kwargs):
-    del q, kwargs
+    del q, layout_q, kwargs
     data = CASE_DATA.get(testcase_name)
     if data is None:
         raise RuntimeError(
@@ -43,7 +43,4 @@ def cpu_sparse_flash_mla(q, *, return_softmax_lse=False, testcase_name=None,
     lse = data.get("softmax_lse")
     if lse is None or not bool(return_softmax_lse):
         lse = None
-    elif layout_q == "TND" and lse.ndim == 3:
-        # Pytest returns (T1, N2, G), while the operator contract is (N2, T1, G).
-        lse = lse.permute(1, 0, 2).contiguous()
     return data["cpu_output"], lse
