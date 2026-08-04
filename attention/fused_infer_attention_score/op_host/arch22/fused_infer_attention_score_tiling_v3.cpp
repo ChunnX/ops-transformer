@@ -1370,10 +1370,11 @@ bool IsLegacyTemplatePreferred(int64_t queryD, int64_t valueD, int64_t queryRope
 
 bool RouteToFia(gert::TilingContext *context)
 {
+    OP_LOGD(context->GetNodeName(), "hello wangsong!! RouteToFia is %u.", 0);
     if (!CheckRouteToFiaPrerequisites(context)) {
         return false;
     }
-
+    OP_LOGD(context->GetNodeName(), "hello wangsong!! RouteToFia is %u.", 1);
     ge::DataType qDataType = context->GetInputDesc(QUERY_INDEX)->GetDataType();
     ge::DataType kDataType = context->GetInputDesc(KEY_INDEX)->GetDataType();
     bool isRopeSplit = (context->GetOptionalInputTensor(QUERY_ROPE_INDEX) != nullptr &&
@@ -1382,7 +1383,7 @@ bool RouteToFia(gert::TilingContext *context)
     if ((qDataType != ge::DT_FLOAT16 && qDataType != ge::DT_BF16) || (qDataType != kDataType)) {
         return false;
     }
-
+    OP_LOGD(context->GetNodeName(), "hello wangsong!! RouteToFia is %u.", 2);
     auto attrs = context->GetAttrs();
     int64_t headNum = *(attrs->GetAttrPointer<int64_t>(ATTR_N_INDEX));
     int64_t kvHeadNum = *(attrs->GetAttrPointer<int64_t>(ATTR_NUM_KV_HEADS_INDEX));
@@ -1398,22 +1399,25 @@ bool RouteToFia(gert::TilingContext *context)
     if (!GetQkvD(context, queryD, queryRopeD, valueD)) {
         return false;
     }
+    OP_LOGD(context->GetNodeName(), "hello wangsong!! RouteToFia is %u.", 3);
     if (!GetQS(context, queryS)) {
         return false;
     }
-
+    OP_LOGD(context->GetNodeName(), "hello wangsong!! RouteToFia is %u.", 4);
     const std::string inputLayoutStr =
         std::string(context->GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
     if (IsLegacyTemplatePreferred(queryD, valueD, queryRopeD,
         queryS, inputLayoutStr, isPrefix, isMha, isPageAttention)) {
         return false;
     }
+    OP_LOGD(context->GetNodeName(), "hello wangsong!! RouteToFia is %u.", 5);
     if (!isRopeSplit) {
         if (CheckSpecConditions(context)) {
             return false;
         }
     }
-    if (inputLayoutStr == "NSD" || inputLayoutStr == "TND") {
+    OP_LOGD(context->GetNodeName(), "hello wangsong!! RouteToFia is %u.", 6);
+    if (inputLayoutStr == "NSD") {
         return false;
     }
     return true;
