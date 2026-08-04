@@ -132,13 +132,20 @@ static constexpr ConfigParams ConfigValue[] = {
      inferDTemplateType::Aligned64},
     {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned512, inferDTemplateType::Aligned128,
      inferDTemplateType::Aligned128},
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned64,
+     inferDTemplateType::Aligned64},
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned128,
+     inferDTemplateType::Aligned128},
 };
 
 #define Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 0
 #define Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 1
+#define Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64 2
+#define Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128 3
 
 #define QFA_MXFP8_FP32_PREFILL 1
 #define QFA_MXFP8_FP32_DECODE 2
+#define QFA_HIF8_FP32_PREFILL 7
 
 #define false 0
 #define true 1
