@@ -73,21 +73,31 @@ std::string LIV2DataTypeToSerialString(ge::DataType type)
 // --------------------------LIV2InfoParser类成员函数定义-------------------------------------
 ge::graphStatus LIV2InfoParser::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.query.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor query"),
+    OP_CHECK_IF(opParamInfo_.query.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "q", "The shape of q is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.query.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor query"),
+    OP_CHECK_IF(opParamInfo_.query.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "q", "The desc of q is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor k"),
+    OP_CHECK_IF(opParamInfo_.key.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "k", "The shape of k is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor k"),
+    OP_CHECK_IF(opParamInfo_.key.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "k", "The desc of k is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.weights.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor value"),
+    OP_CHECK_IF(opParamInfo_.weights.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "w", "The shape of w is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.weights.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor value"),
+    OP_CHECK_IF(opParamInfo_.weights.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "w", "The desc of w is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor output"),
+    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_indices",
+                    "The shape of sparse_indices is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor output"),
+    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_indices",
+                    "The desc of sparse_indices is nullptr"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -95,16 +105,20 @@ ge::graphStatus LIV2InfoParser::CheckRequiredInOutExistence() const
 
 ge::graphStatus LIV2InfoParser::CheckRequiredAttrExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.layOut == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attr layout_query"),
+    OP_CHECK_IF(opParamInfo_.layOut == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_q", "Layout_q is nullptr"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.layOutKey == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attr layout_key"),
+    OP_CHECK_IF(opParamInfo_.layOutKey == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_k", "Layout_k is nullptr"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.topk == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attr topk"),
+    OP_CHECK_IF(opParamInfo_.topk == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "topk", "Topk is nullptr"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.maskMode == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attr mask_mode"),
+    OP_CHECK_IF(opParamInfo_.maskMode == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "mask_mode", "Mask_mode is nullptr"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
