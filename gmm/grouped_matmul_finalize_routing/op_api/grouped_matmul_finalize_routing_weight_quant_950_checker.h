@@ -71,10 +71,34 @@ public:
         CHECK_RET(CheckTranspose() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         // 4. 校验输入、输出参数维度
         CHECK_RET(CheckInputOutDims() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+        CHECK_RET(CheckAttrs() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         // 5. 校验输入、输出shape参数
         CHECK_RET(CheckInputOutShape(), ACLNN_ERR_PARAM_INVALID);
         // 6. 检查数据形状是否支持
         CHECK_RET(CheckFormat(), ACLNN_ERR_PARAM_INVALID);
+        return ACLNN_SUCCESS;
+    }
+
+    aclnnStatus CheckAttrs()
+    {
+        if (unlikely(gmmParams_.groupListType != 0 && gmmParams_.groupListType != 1)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "groupListType",
+                std::to_string(gmmParams_.groupListType), "Attr groupListType must be 0 or 1");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (unlikely(gmmParams_.shareInputOffset < 0)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "sharedInputOffset",
+                std::to_string(gmmParams_.shareInputOffset),
+                "sharedInputOffset must be greater than or equal to 0");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        int64_t batch = gmmParams_.out->GetViewShape().GetDim(0);
+        if (unlikely(gmmParams_.shareInputOffset > batch)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "sharedInputOffset",
+                std::to_string(gmmParams_.shareInputOffset),
+                "sharedInputOffset must be less than or equal to batch(" + std::to_string(batch) + ")");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
         return ACLNN_SUCCESS;
     }
 
