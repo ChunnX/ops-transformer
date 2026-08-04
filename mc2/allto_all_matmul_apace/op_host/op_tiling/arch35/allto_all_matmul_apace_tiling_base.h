@@ -52,7 +52,7 @@ protected:
     static constexpr size_t IDX_INPUT_X1 = 1;
     static constexpr size_t IDX_INPUT_X2 = 2;
     static constexpr size_t IDX_ATTR_WORLD_SIZE = 1;
-    static constexpr size_t IDX_ATTR_PRECISION_MODE = 13;
+    static constexpr size_t IDX_ATTR_PRECISION_MODE = 14;
 
     ge::graphStatus GetShapeAttrsInfo() override
     {
