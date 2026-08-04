@@ -15,7 +15,7 @@
 #ifndef FLASH_ATTENTION_BLOCK_CUBE_DN_H_
 #define FLASH_ATTENTION_BLOCK_CUBE_DN_H_
 
-#include "../utils/flash_attn_block_cube_comm.h"
+#include "../utils/flash_attn_type.h"
 #include "../../../common/op_kernel/matmul.h"
 
 using namespace fa_base_matmul;
