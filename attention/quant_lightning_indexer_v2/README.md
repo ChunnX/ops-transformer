@@ -29,8 +29,8 @@
 | query                     | 输入      | 公式中的$Q_{index}^{Quant}\in\R^{g\times d}$，表示输入Index Query，不支持非连续。| INT8、FLOAT8_e4m3fn、HIFLOAT8、FLOAT4_e2m1 | ND         |
 | key                   | 输入      | 公式中的$K_{index}^{Quant}\in\R^{S_{k}\times d}$，表示压缩后的输入Index Key，支持0轴非连续。| INT8、FLOAT8_e4m3fn、HIFLOAT8、FLOAT4_e2m1 | ND |
 | weights                 | 输入      | 公式中的$W$，表示权重系数，不支持非连续。 | FLOAT16、FLOAT32 | ND |
-| query_dequant_scale             | 输入      | 公式中的$Scale_Q$，表示Index Query的反量化系数，不支持非连续。非MX场景shape与weights一致；`quant_mode`为3/5时，shape为将`query`的D轴替换为(D/64, 2) | FLOAT16、FLOAT32、FLOAT8_e8m0     | ND         |
-| key_dequant_scale            | 输入      | 公式中的$Scale_K$，表示Index Key的反量化系数，支持0轴非连续。`quant_mode`为3/5时，shape为将`key`的D轴替换为(D/64, 2) | FLOAT16、FLOAT32、FLOAT8_e8m0       | ND         |
+| query_dequant_scale             | 输入      | 公式中的$Scale_Q$，表示Index Query的反量化系数，不支持非连续。`quant_mode`为3/5时，BSND场景shape为(B,S1,N1,D/64,2)，TND场景shape为(T1,N1,D/64,2)；其他场景shape与weights一致。 | FLOAT16、FLOAT32、FLOAT8_e8m0     | ND         |
+| key_dequant_scale            | 输入      | 公式中的$Scale_K$，表示Index Key的反量化系数，支持0轴非连续。`quant_mode`为3/5时，BSND场景shape为(B,S2,N2,D/64,2)，TND场景shape为(T2,N2,D/64,2)，PA_BSND场景shape为(block_num,block_size,N2,D/64,2)；其他场景shape与key去掉D轴后的shape一致。 | FLOAT16、FLOAT32、FLOAT8_e8m0       | ND         |
 | cu_seqlens_q                    | 可选输入      | layout_q为TND时必须传入，表示每个Batch中`query`的有效token数前缀和。；layout_q为BSND时不能传入 | INT32       | ND         |
 | cu_seqlens_k                    | 可选输入      | layout_k为TND时必须传入，表示每个Batch中`key`的有效token数前缀和；layout_k为PA_BSND或BSND时不能传入 | INT32       | ND         |
 | seqused_q                    | 可选输入      | layout_q为BSND时可选传入，表示每个Batch中`query`的有效token数，可传入None表示与query的S长度相同 | INT32       | ND         |
@@ -39,7 +39,7 @@
 | block_table                    | 可选输入      | 表示PageAttention中KV存储使用的block映射表。 | INT32       | ND         |
 | output_idx_offset                    | 可选输入      | 输出索引的偏移量 | INT32       | ND         |
 | metadata                    | 可选输入      | QuantLightningIndexerV2Metadata算子传入的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。 | INT32       | ND         |
-| quant_mode                 | 属性      | 用于标识输入的量化模式。 | INT32          | -         |
+| quant_mode                 | 属性      | 用于标识输入的量化模式。1表示FLOAT8_e4m3fn量化，2表示Per-Token-Head量化，3表示MXFP8量化，4表示HIFLOAT8量化，5表示MXFP4量化。 | INT32          | -         |
 | max_seqlen_q                 | 可选属性| Query的最大序列长度，默认值-1表示任意可能长度 | INT32 | -         |
 | layout_q                 | 可选属性| 用于标识输入`query`的数据排布格式，默认值"BSND"。 | STRING | -         |
 | layout_k      | 可选属性      | 用于标识输入`key`的数据排布格式，默认值"BSND"。| STRING          | -         |
@@ -54,7 +54,9 @@
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
   - `query`、`key`在`quant_mode`为1/3时支持FLOAT8_e4m3fn，`quant_mode`为4时支持HIFLOAT8，`quant_mode`为5时支持FLOAT4_e2m1，不支持INT8。
-  - `quant_mode`为3/5时，`query_dequant_scale`和`key_dequant_scale`仅支持FLOAT8_e8m0。
+  - `query_dequant_scale`和`key_dequant_scale`在`quant_mode`为1/4时支持FLOAT32，在`quant_mode`为3/5时支持FLOAT8_e8m0。
+  - `weights`支持FLOAT32，不支持FLOAT16。
+  - `quant_mode`为3/5时，`query_dequant_scale`和`key_dequant_scale`的维数分别比`query`和`key`多1，前缀维度保持一致，末两维为(D/64,2)；D必须为64的倍数，每个scale对应连续32个D轴逻辑元素。
   - `quant_mode`为5时，`query`和`key`的逻辑数据类型为FLOAT4_e2m1，每个物理字节打包两个E2M1逻辑元素。
 
 ## 调用示例
