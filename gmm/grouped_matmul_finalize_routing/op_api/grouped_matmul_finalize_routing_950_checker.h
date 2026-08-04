@@ -453,13 +453,19 @@ public:
             GMMFR_CHECK_DTYPE(gmmParams_.shareInput, "shareInput", SHARED_INPUT_TYPE_SUPPORT_LIST, return false);
         }
         GMMFR_CHECK_DTYPE(gmmParams_.out, "y", OUT_TYPE_SUPPORT_LIST_MX, return false);
-        if (gmmParams_.dtype == OUT_DTYPE_BF16) {
+        bool isBf16Output = gmmParams_.dtype == OUT_DTYPE_BF16 ||
+                            gmmParams_.out->GetDataType() == DataType::DT_BF16;
+        if (isBf16Output) {
             GMMFR_CHECK_DTYPE(gmmParams_.logit, "logit", LOGIT_TYPE_SUPPORT_LIST_BF16, return false);
+            GMMFR_CHECK_REPORT(gmmParams_.dtype == OUT_DTYPE_FLOAT32 || gmmParams_.dtype == OUT_DTYPE_BF16,
+                               return false,
+                               OP_LOGE_FOR_INVALID_VALUE(
+                                   GMMFR_ACLNN_OP_NAME, "dtype", std::to_string(gmmParams_.dtype), "0 or 2"));
             GMMFR_CHECK_REPORT(gmmParams_.out->GetDataType() == DataType::DT_BF16, return false,
                                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                                    GMMFR_ACLNN_OP_NAME, "y",
                                    op::ToString(gmmParams_.out->GetDataType()).GetString(),
-                                   "when dtype is 2, y must be DT_BF16"));
+                                   "when dtype is 2 or y is BF16, y must be DT_BF16"));
         } else {
             GMMFR_CHECK_DTYPE(gmmParams_.logit, "logit", LOGIT_TYPE_SUPPORT_LIST, return false);
             GMMFR_CHECK_REPORT(gmmParams_.dtype == OUT_DTYPE_FLOAT32, return false,
