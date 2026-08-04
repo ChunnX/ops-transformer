@@ -505,7 +505,9 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     <!-- npu="950,910b" id7 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持FLOAT16、BFLOAT16、INT8
     <!-- end id7 -->
+    <!-- npu="310p" id19 -->
     - Atlas 推理系列产品：数据类型仅支持FLOAT16
+    <!-- end id19 -->
 
 - pseShift功能使用限制如下：
 
@@ -515,7 +517,9 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     <!-- npu="950,910b" id8 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持FLOAT16、BFLOAT16
     <!-- end id8 -->
+    <!-- npu="310p" id20 -->
     - Atlas 推理系列产品：仅支持nullptr
+    <!-- end id20 -->
 
 - attenMask功能使用限制如下：
 
@@ -525,7 +529,9 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     <!-- npu="950,910b" id9 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持BOOL、INT8和UINT8。
     <!-- end id9 -->
+    <!-- npu="310p" id21 -->
     - Atlas 推理系列产品：仅支持BOOL。
+    <!-- end id21 -->
   - 当attenMask数据类型取INT8、UINT8时，其tensor中的值需要为0或1。
 
 - actualSeqLengths，actualSeqLengthsKv输入，功能使用限制如下：
@@ -539,7 +545,9 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     <!-- npu="950,910b" id10 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT64。
     <!-- end id10 -->
+    <!-- npu="310p" id22 -->
     - Atlas 推理系列产品：数据类型支持INT64。
+    <!-- end id22 -->
 
 - deqScale1，deqScale2输入，功能使用限制如下：
 
@@ -548,7 +556,9 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     <!-- npu="950,910b" id11 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持UINT64、FLOAT32。
     <!-- end id11 -->
+    <!-- npu="310p" id23 -->
     - Atlas 推理系列产品：仅支持nullptr。
+    <!-- end id23 -->
 
 - quantScale1输入，功能使用限制如下：
 
@@ -557,7 +567,9 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     <!-- npu="950,910b" id12 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持FLOAT32。
     <!-- end id12 -->
+    <!-- npu="310p" id24 -->
     - Atlas 推理系列产品：仅支持nullptr。
+    <!-- end id24 -->
 
 - quantScale2，quantOffset2输入，功能使用限制如下：
 
@@ -566,7 +578,9 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     <!-- npu="950,910b" id13 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持FLOAT32和BFLOAT16。
     <!-- end id13 -->
+    <!-- npu="310p" id25 -->
     - Atlas 推理系列产品：仅支持nullptr。
+    <!-- end id25 -->
 
 - preTokens输入，功能使用限制如下：
 
@@ -575,8 +589,9 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     <!-- npu="950,910b" id14 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT64。
     <!-- end id14 -->
+    <!-- npu="310p" id26 -->
     - Atlas 推理系列产品：仅支持取值2147483647。
-
+    <!-- end id26 -->
 - nextTokens输入，功能使用限制如下：
 
   - 输入数据类型限制：
@@ -584,8 +599,9 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     <!-- npu="950,910b" id15 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT64。
     <!-- end id15 -->
+    <!-- npu="310p" id27 -->
     - Atlas 推理系列产品：仅支持取值0和2147483647。
-
+    <!-- end id27 -->
 - inputLayout输入，功能使用限制如下：
 
   - 输入数据类型限制：
@@ -600,7 +616,9 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     <!-- npu="950,910b" id16 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT64。
     <!-- end id16 -->
+    <!-- npu="310p" id28 -->
     - Atlas 推理系列产品：仅支持取值0。
+    <!-- end id28 -->
 
 - sparseMode输入，功能使用限制如下：
 
@@ -614,7 +632,9 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     - sparseMode为5、6、7、8时，分别代表prefix、global、dilated、block_local，**均暂不支持**。用户不特意指定时建议传入0。
 
   <!-- end id17 -->
+  <!-- npu="310p" id29 -->
   - Atlas 推理系列产品：仅支持取值0
+  <!-- end id29 -->
 
 - attentionOut输出，功能使用限制如下：
 
@@ -624,7 +644,9 @@ aclnnStatus aclnnPromptFlashAttentionV2(
     <!-- npu="950,910b" id18 -->
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持FLOAT16、BFLOAT16、INT8。
     <!-- end id18 -->
+    <!-- npu="310p" id30 -->
     - Atlas 推理系列产品：仅支持FLOAT16。
+    <!-- end id30 -->
 
 - 其它约束：
   - int8量化相关入参数量与输入、输出数据格式的综合限制：
