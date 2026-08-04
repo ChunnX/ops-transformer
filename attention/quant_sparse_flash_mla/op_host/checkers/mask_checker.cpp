@@ -92,27 +92,12 @@ ge::graphStatus MaskChecker::CheckCrossFeature(const QSMLATilingInfo &info) cons
         }
     }
 
-    if (info.opParamInfo.cmpKv.tensor == nullptr) {
-        const vector<uint64_t> noCmpKvSupport = {MASK_MODE_CAUSAL, MASK_MODE_SLIDING_WINDOW};
-        if (CheckValueSupport(info.oriMaskMode, noCmpKvSupport, "ori_mask_mode when cmp_kv is None") !=
-            ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-
-    if (info.oriMaskMode == MASK_MODE_CAUSAL) {
-        OP_CHECK_IF(info.cmpMaskMode != MASK_MODE_CAUSAL,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "cmp_mask_mode",
-                                                          to_string(info.cmpMaskMode).c_str(),
-                                                          "When ori_mask_mode=3, cmp_mask_mode must be 3"),
-                    return ge::GRAPH_FAILED);
-    }
-
-    if (info.oriMaskMode == MASK_MODE_SLIDING_WINDOW) {
-        OP_CHECK_IF(info.cmpMaskMode != MASK_MODE_CAUSAL,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "cmp_mask_mode",
-                                                          to_string(info.cmpMaskMode).c_str(),
-                                                          "When ori_mask_mode=4, cmp_mask_mode must be 3"),
+    if (info.templateMode == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
+        OP_CHECK_IF(info.cmpMaskMode != MASK_MODE_NO_MASK,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        info.opName, "cmp_mask_mode",
+                        (to_string(info.cmpMaskMode)).c_str(),
+                        "In SWA mode, cmp_mask_mode only support 0"),
                     return ge::GRAPH_FAILED);
     }
 
