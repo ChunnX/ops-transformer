@@ -568,17 +568,39 @@ private:
         WaitFlag<HardEvent::MTE3_V>(EVENT_ID7);
     }
 
+    // 单条向量指令的 repeat 上限为 255，int32 每 repeat 处理 64 个元素，
+    // 因此「按数据量」的向量接口一次最多覆盖 255*64 = 16320 个 int32。
+    static constexpr uint32_t kVecI32MaxCalCount = 255U * 64U;
+
+    // 沿 rank 维（EP 维）对 tokenPerExpert 做 inclusive 前缀和，结果密排写入 result(cumsumMM)。
+    //
+    // 语义：tokenPerExpert(srcRank, dstRank, e) = srcRank 发给 dstRank 的第 e 号本地专家的 token 数。
+    //       本函数只取 dstRank == rankId 的那一列切片，得到 EP × expertPerRank 的矩阵
+    //       cnt[i][e]，然后逐列做前缀和：result[i][e] = Σ_{j<=i} cnt[j][e]。
+    //       消费方：result[(EP-1)*epr + g] = 本 rank 第 g 号专家的总行数；
+    //               result[(i-1)*epr + g]  = 第 i 个源 rank 在该专家内的起始行号。
+    //
+    // 性能：原实现是 EP-1 次「单行 Add + PipeBarrier<PIPE_V>」，依赖链长度 O(EP)
+    //       （EP=16 时 15 次全 V 流水排空，只为累加 16 个 int32，是全 kernel 性价比最低的一段）。
+    //       这里改成 Hillis-Steele 倍增扫描，依赖链降到 ceil(log2(EP))（EP=16 → 4 步），
+    //       且每步用「整段多行」的向量指令一次覆盖 (EP-d) 行，指令条数 15 → 2*4。
+    //       用 bufA/bufB ping-pong 避免 dst 与 src 部分重叠（AscendC 向量接口只允许完全重叠）。
     CATLASS_DEVICE
     void GetCumsumForMMAIV(AscendC::GlobalTensor<int32_t> &tokenPerExpert, AscendC::GlobalTensor<int32_t> &result,
-                           uint32_t expertPerRank, uint32_t rankId, uint32_t EP)
+                           AscendC::GlobalTensor<int32_t> &expertTokenNums, uint32_t expertPerRank, uint32_t rankId,
+                           uint32_t EP)
     {
-        int32_t expertPerRankAligned = (expertPerRank + 8 - 1) / 8 * 8;
-        AscendC::LocalTensor<int32_t> tmpBuffer1 = resource.ubBuf.template GetBufferByByte<int32_t>(0);
-        AscendC::LocalTensor<int32_t> tmpResult =
-            resource.ubBuf.template GetBufferByByte<int32_t>(EP * expertPerRank * sizeof(int32_t));
+        // DataCopyPad(GM->UB) 的 dstStride=0 会把每个 block 落到下一个 32B 对齐位置，
+        // 因此第 i 个 rank 的行首恰好落在 i * expertPerRankAligned（int32 元素）处。
+        const uint32_t expertPerRankAligned = (expertPerRank + 8 - 1) / 8 * 8;
+        const uint32_t rowsTotal = EP * expertPerRankAligned; // ping-pong 单块元素数（32B 对齐）
+
+        AscendC::LocalTensor<int32_t> bufA = resource.ubBuf.template GetBufferByByte<int32_t>(0);
+        AscendC::LocalTensor<int32_t> bufB =
+            resource.ubBuf.template GetBufferByByte<int32_t>(rowsTotal * sizeof(int32_t));
 #define U16(x) static_cast<uint16_t>(x)
 
-        AscendC::DataCopyPad(tmpBuffer1, tokenPerExpert[rankId * expertPerRank],
+        AscendC::DataCopyPad(bufA, tokenPerExpert[rankId * expertPerRank],
                              {U16(EP), U16(expertPerRank * sizeof(int32_t)),
                               U16((paddedExpertNumAligned - expertPerRank) * sizeof(int32_t)), 0},
                              {});
@@ -586,16 +608,40 @@ private:
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
 
-        for (uint32_t i = 1; i < EP; ++i) {
-            AscendC::Add(tmpBuffer1[i * expertPerRankAligned], tmpBuffer1[i * expertPerRankAligned],
-                         tmpBuffer1[(i - 1) * expertPerRankAligned], expertPerRank);
+        // 倍增扫描：step d 满足 dst[i] = src[i] + src[i-d] (i>=d)，dst[i] = src[i] (i<d)。
+        // 走完 d = 1,2,4,...(<EP) 共 ceil(log2(EP)) 步后即为 inclusive 前缀和。
+        // 行尾 padding lane（expertPerRank..expertPerRankAligned）也会被一并相加，但
+        // 最终 DataCopyPad(UB->GM) 只取每行前 expertPerRank 个元素，padding 不会写出去。
+        AscendC::LocalTensor<int32_t> src = bufA;
+        AscendC::LocalTensor<int32_t> dst = bufB;
+        for (uint32_t d = 1; d < EP; d <<= 1) {
+            const uint32_t head = d * expertPerRankAligned;
+            // 前 d 行本步不变，原样带到 ping-pong 的另一块（Adds 与 Add 同在 PIPE_V，共用一次 barrier）
+            for (uint32_t off = 0; off < head; off += kVecI32MaxCalCount) {
+                uint32_t n = head - off;
+                n = (n > kVecI32MaxCalCount) ? kVecI32MaxCalCount : n;
+                AscendC::Adds(dst[off], src[off], 0, static_cast<int32_t>(n));
+            }
+            // 其余行做 dst[i] = src[i] + src[i-d]；src/dst 分属两块 UB，无地址重叠
+            for (uint32_t off = head; off < rowsTotal; off += kVecI32MaxCalCount) {
+                uint32_t n = rowsTotal - off;
+                n = (n > kVecI32MaxCalCount) ? kVecI32MaxCalCount : n;
+                AscendC::Add(dst[off], src[off], src[off - head], static_cast<int32_t>(n));
+            }
             AscendC::PipeBarrier<PIPE_V>();
+            AscendC::LocalTensor<int32_t> swapTmp = src;
+            src = dst;
+            dst = swapTmp;
         }
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
 
-        AscendC::DataCopyPad(result, tmpBuffer1, {U16(EP), U16((expertPerRank) * sizeof(int32_t)), 0, 0});
+        AscendC::DataCopyPad(result, src, {U16(EP), U16((expertPerRank) * sizeof(int32_t)), 0, 0});
+        // ExpertTokenNums 就是最后一行（全 rank 汇总），直接从 UB 写出，
+        // 省掉原先「SyncAll 之后再 CopyGMToGM(cumsumMM -> ExpertTokenNums)」的 GM->UB->GM 往返。
+        AscendC::DataCopyPad(expertTokenNums, src[(EP - 1) * expertPerRankAligned],
+                             {1, U16(expertPerRank * sizeof(int32_t)), 0, 0});
     }
 
     CATLASS_DEVICE
@@ -1127,17 +1173,15 @@ private:
 
         if (coreIdx == 0) {
             exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::CUMSUM_TOKEN_PER_EXPERT);
-            GetCumsumForMMAIV(tokenPerExpert, cumsumMM, params.expertPerRank, runtimeRank, params.EP);
+            // ExpertTokenNums（cumsum 最后一行）由 GetCumsumForMMAIV 直接从 UB 写出，
+            // 不再走「SyncAll 之后 CopyGMToGM(cumsumMM -> ExpertTokenNums)」的 GM->UB->GM 往返。
+            AscendC::GlobalTensor<int32_t> expertTokenNums;
+            expertTokenNums.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.ptrExpertTokenNums));
+            GetCumsumForMMAIV(tokenPerExpert, cumsumMM, expertTokenNums, params.expertPerRank, runtimeRank, params.EP);
         }
 
         AscendC::SyncAll<true>();
 
-        AscendC::GlobalTensor<int32_t> ExpertTokenNums;
-        ExpertTokenNums.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params.ptrExpertTokenNums));
-        if (coreIdx == 0) {
-            CopyGMToGM(ExpertTokenNums, cumsumMM[(params.EP - 1) * params.expertPerRank], params.expertPerRank,
-                       UB_MOVE_NUM);
-        }
         uint16_t syncgmm1Idx = 0;
         AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(syncgmm1Idx / CROSS_CORE_FLAG_MAX_SET_COUNT);
         syncgmm1Idx++;
