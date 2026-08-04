@@ -7,39 +7,35 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-import torch
-from torch.library import impl
-from cann_ops_transformer.op_builder.builder import OpBuilder
-from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+"""mhc_post_backward 兼容转发模块。
 
+mhc_post_backward 的 torch_extension 代码已独立到
+mhc/mhc_post_backward/torch_extension/ 目录，本模块保留以兼容
+旧导入路径 `cann_ops_transformer.ops.mhc_post_backward`（如 mhc_post 前向的 backward）。
+"""
 
-class MhcPostBackwardOpBuilder(OpBuilder):
-    def __init__(self):
-        super(MhcPostBackwardOpBuilder, self).__init__("mhc_post_backward")
+import importlib.util
+import os
 
-    def sources(self):
-        return ["ops/csrc/mhc_post_backward.cpp"]
+_MHC_POST_BACKWARD_TE_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    os.pardir,
+    os.pardir,
+    os.pardir,
+    "mhc",
+    "mhc_post_backward",
+    "torch_extension",
+)
+_MHC_POST_BACKWARD_FILE = os.path.join(
+    _MHC_POST_BACKWARD_TE_DIR, "mhc_post_backward.py"
+)
 
-    def schema(self) -> str:
-        return (
-            "mhc_post_backward(Tensor gradOutput, Tensor x, Tensor hRes, Tensor hOut, Tensor hPost) -> "
-            "(Tensor, Tensor, Tensor, Tensor)"
-        )
+_spec = importlib.util.spec_from_file_location(
+    "mhc_post_backward_impl", _MHC_POST_BACKWARD_FILE
+)
+_mhc_post_backward_impl = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_mhc_post_backward_impl)
 
-    def register_meta(self):
-        @impl(AS_LIBRARY, self.name, "Meta")
-        def mhc_post_backward_meta(grad_output, x, h_res, h_out, h_post):
-            grad_x = torch.empty_like(x)
-            grad_h_res = torch.empty_like(h_res)
-            grad_h_out = torch.empty_like(h_out)
-            grad_h_post = torch.empty_like(h_post)
-            return (grad_x, grad_h_res, grad_h_out, grad_h_post)
-
-
-mhc_post_backward_op_builder = MhcPostBackwardOpBuilder()
-
-
-@impl(AS_LIBRARY, mhc_post_backward_op_builder.name, "PrivateUse1")
-def mhc_post_backward(grad_output, x, h_res, h_out, h_post):
-    op_module = mhc_post_backward_op_builder.load()
-    return op_module.mhc_post_backward(grad_output, x, h_res, h_out, h_post)
+mhc_post_backward = _mhc_post_backward_impl.mhc_post_backward
+_mhc_post_backward_dispatch = _mhc_post_backward_impl._mhc_post_backward_dispatch
+mhc_post_backward_op_builder = _mhc_post_backward_impl.mhc_post_backward_op_builder
