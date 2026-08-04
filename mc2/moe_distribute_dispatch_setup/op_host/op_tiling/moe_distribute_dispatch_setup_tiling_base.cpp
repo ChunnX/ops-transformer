@@ -17,25 +17,30 @@
 #include "moe_distribute_dispatch_setup_tiling_base.h"
 
 namespace {
-constexpr uint32_t X_INDEX = 0U;
-constexpr uint32_t EXPERT_IDS_INDEX = 1U;
-constexpr uint32_t SCALES_INDEX = 2U;
-constexpr uint32_t X_ACTIVE_MASK_INDEX = 3U;
-constexpr uint32_t OUTPUT_Y_INDEX = 0U;
-constexpr uint32_t OUTPUT_EXPAND_IDX_INDEX = 1U;
-constexpr uint32_t OUTPUT_COMM_CMD_INFO_INDEX = 2U;
+// -----------------------------aclnnInner接口参数列表----------------------------- //
+constexpr uint32_t CONTEXT_INDEX = 0;
+constexpr uint32_t X_INDEX = 1;
+constexpr uint32_t EXPERT_IDS_INDEX = 2;
+constexpr uint32_t SCALES_INDEX = 3;
+constexpr uint32_t X_ACTIVE_MASK_INDEX = 4;
 
-constexpr uint32_t ATTR_GROUP_EP_INDEX = 0U;
-constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1U;
-constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 2U;
-constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 3U;
-constexpr uint32_t ATTR_EXPERT_SHARD_TYPE_INDEX = 4U;
-constexpr uint32_t ATTR_SHARED_EXPERT_NUM_INDEX = 5U;
-constexpr uint32_t ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 6U;
-constexpr uint32_t ATTR_QUANT_MODE_INDEX = 7U;
-constexpr uint32_t ATTR_GLOBAL_BS_INDEX = 8U;
-constexpr uint32_t ATTR_COMM_TYPE_INDEX = 9U;
-constexpr uint32_t ATTR_COMM_ALG_INDEX = 10U;
+constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 0;
+constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;
+constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 2;
+constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 3;
+constexpr uint32_t ATTR_EXPERT_SHARD_TYPE_INDEX = 4;
+constexpr uint32_t ATTR_SHARED_EXPERT_NUM_INDEX = 5;
+constexpr uint32_t ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 6;
+constexpr uint32_t ATTR_QUANT_MODE_INDEX = 7;
+constexpr uint32_t ATTR_GLOBAL_BS_INDEX = 8;
+constexpr uint32_t ATTR_COMM_TYPE_INDEX = 9;
+constexpr uint32_t ATTR_COMM_ALG_INDEX = 10;
+constexpr uint32_t ATTR_Y_DTYPE_INDEX = 11;
+
+constexpr uint32_t OUTPUT_Y_INDEX = 0;
+constexpr uint32_t OUTPUT_EXPAND_IDX_INDEX = 1;
+constexpr uint32_t OUTPUT_COMM_CMD_INFO_INDEX = 2;
+// -----------------------------aclnnInner接口参数列表----------------------------- //
 
 constexpr uint32_t ONE_DIMS = 1U;
 constexpr uint32_t TWO_DIMS = 2U;
@@ -126,32 +131,29 @@ const void MoeDistributeDispatchSetupTilingBase::PrintTilingDataInfo()
 const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckRequiredAttrValue()
 {
     auto attrs = context_->GetAttrs();
-    auto groupEpPtr = attrs->GetAttrPointer<char>(ATTR_GROUP_EP_INDEX);
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     auto epRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_RANK_ID_INDEX);
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
 
-    OP_TILING_CHECK(((strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
-                     (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH)),
-                    OP_LOGE_WITH_INVALID_ATTR(
-                        nodeName_, "groupEp",
-                        (std::string("length=") + std::to_string(strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH))).c_str(),
-                        "valid group name length"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(((*epWorldSizePtr < MIN_GROUP_EP_SIZE) || (*epWorldSizePtr > MAX_GROUP_EP_SIZE)),
-                    OP_LOGE_WITH_INVALID_ATTR(nodeName_, "epWorldSize", std::to_string(*epWorldSizePtr).c_str(),
-                                              (std::string("[") + std::to_string(MIN_GROUP_EP_SIZE) + ", " +
-                                               std::to_string(MAX_GROUP_EP_SIZE) + "]")
-                                                  .c_str()),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(((*epRankIdPtr < 0) || (*epRankIdPtr >= *epWorldSizePtr)),
-                    OP_LOGE_WITH_INVALID_ATTR(nodeName_, "epRankId", std::to_string(*epRankIdPtr).c_str(),
-                                              (std::string("[0, ") + std::to_string(*epWorldSizePtr) + ")").c_str()),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(((*moeExpertNumPtr <= 0) || (*moeExpertNumPtr > MAX_MOE_EXPERT_NUM)),
-                    OP_LOGE_WITH_INVALID_ATTR(nodeName_, "moeExpertNum", std::to_string(*moeExpertNumPtr).c_str(),
-                                              (std::string("(0, ") + std::to_string(MAX_MOE_EXPERT_NUM) + "]").c_str()),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        ((*epWorldSizePtr < MIN_GROUP_EP_SIZE) || (*epWorldSizePtr > MAX_GROUP_EP_SIZE)),
+        OP_LOGE_WITH_INVALID_ATTR(nodeName_, "epWorldSize",
+            std::to_string(*epWorldSizePtr).c_str(),
+            (std::string("[") + std::to_string(MIN_GROUP_EP_SIZE) + ", " +
+             std::to_string(MAX_GROUP_EP_SIZE) + "]").c_str()),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        ((*epRankIdPtr < 0) || (*epRankIdPtr >= *epWorldSizePtr)),
+        OP_LOGE_WITH_INVALID_ATTR(nodeName_, "epRankId",
+            std::to_string(*epRankIdPtr).c_str(),
+            (std::string("[0, ") + std::to_string(*epWorldSizePtr) + ")").c_str()),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        ((*moeExpertNumPtr <= 0) || (*moeExpertNumPtr > MAX_MOE_EXPERT_NUM)),
+        OP_LOGE_WITH_INVALID_ATTR(nodeName_, "moeExpertNum",
+            std::to_string(*moeExpertNumPtr).c_str(),
+            (std::string("(0, ") + std::to_string(MAX_MOE_EXPERT_NUM) + "]").c_str()),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -161,25 +163,23 @@ ge::graphStatus MoeDistributeDispatchSetupTilingBase::GetRequiredAttrAndSetTilin
     auto attrs = context_->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "attrs"), return ge::GRAPH_FAILED);
 
-    auto groupEpPtr = attrs->GetAttrPointer<char>(ATTR_GROUP_EP_INDEX);
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_EXPERT_NUM_INDEX);
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     auto epRankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_RANK_ID_INDEX);
 
     // 判空
-    OP_TILING_CHECK(groupEpPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "groupEp"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(epWorldSizePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "epWorldSize"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(epRankIdPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "epRankId"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(moeExpertNumPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName_, "moeExpertNum"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epWorldSizePtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName_, "epWorldSize"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(epRankIdPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName_, "epRankId"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(moeExpertNumPtr == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName_, "moeExpertNum"), return ge::GRAPH_FAILED);
 
     if (CheckRequiredAttrValue() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
     // 设置 tilingdata
-    groupEp_ = string(groupEpPtr);
     tilingData_->moeDistributeDispatchSetupInfo.epWorldSize = static_cast<uint32_t>(*epWorldSizePtr);
     tilingData_->moeDistributeDispatchSetupInfo.epRankId = static_cast<uint32_t>(*epRankIdPtr);
     tilingData_->moeDistributeDispatchSetupInfo.moeExpertNum = static_cast<uint32_t>(*moeExpertNumPtr);

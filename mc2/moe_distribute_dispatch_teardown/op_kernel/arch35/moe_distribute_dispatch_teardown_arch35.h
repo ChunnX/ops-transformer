@@ -17,6 +17,7 @@
 #define MOE_DISTRIBUTE_DISPATCH_TEARDOWN_H
 
 #include "adv_api/reduce/sum.h"
+#include "adv_api/hcomm/hcomm.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_dispatch_teardown_tiling.h"
 #if __has_include("../../common/mc2_kernel_utils.h")
@@ -28,6 +29,7 @@
 #include "../../../moe_distribute_dispatch_setup/op_kernel/common.h"
 #include "../../../common/op_kernel/mc2_kernel_utils.h"
 #endif
+#include "../../../common/op_kernel/mc2_moe_context.h"
 
 namespace Mc2Kernel {
 constexpr uint8_t BUFFER_NUM = 2;       // 多buf
@@ -48,14 +50,16 @@ constexpr uint32_t MX_QUANT = 4;
 #define TemplateMC2TypeFunc XType, ExpandXOutType, QuantMode, IsSmoothScaleExist, IsShareExpertRank
 
 using namespace AscendC;
+using namespace Mc2Aclnn;
+
 template <TemplateMC2TypeClass>
 class MoeDistributeDispatchTeardown {
 public:
     __aicore__ inline MoeDistributeDispatchTeardown(){};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR y, GM_ADDR expertIds, GM_ADDR commCmdInfo, GM_ADDR expandXOut,
-                                GM_ADDR dynamicScalesOut, GM_ADDR assistInfoForCombineOut, GM_ADDR expertTokenNumsOut,
-                                GM_ADDR workspaceGM, TPipe *pipe,
-                                const MoeDistributeDispatchTeardownTilingData *tilingData);
+    __aicore__ inline void Init(
+        GM_ADDR context, GM_ADDR x, GM_ADDR y, GM_ADDR expertIds, GM_ADDR commCmdInfo, GM_ADDR expandXOut,
+        GM_ADDR dynamicScalesOut, GM_ADDR assistInfoForCombineOut, GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM,
+        TPipe* pipe, const MoeDistributeDispatchTeardownTilingData* tilingData);
     __aicore__ inline void Process();
 
 private:
@@ -74,12 +78,12 @@ private:
                                          LocalTensor<float> &statusSumOutTensor);
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)((winContext_->windowsIn[rankId]) + winDataSizeOffset_);
+        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId] + STATE_SIZE + winDataSizeOffset_);
     }
 
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)((winContext_->windowsOut[rankId]) + dataState_ * WIN_STATE_OFFSET);
+        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET);
     }
 
     __aicore__ inline uint32_t MIN(uint32_t x, uint32_t y)
@@ -164,7 +168,7 @@ private:
     uint32_t remainderRankNum_{0};
     uint32_t startStatusIndex_{0};
     uint32_t scaleOutBytes_{0};
-    __gm__ HcclCombinOpParam *winContext_ = nullptr;
+    __gm__ Mc2MoeContext* mc2Context_{nullptr};
 
     DataCopyExtParams floatDataCopyParams_;
     DataCopyExtParams expandXCopyParams_;
@@ -173,18 +177,19 @@ private:
 
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
-    GM_ADDR x, GM_ADDR y, GM_ADDR expertIds, GM_ADDR commCmdInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut,
-    GM_ADDR assistInfoForCombineOut, GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, TPipe *pipe,
-    const MoeDistributeDispatchTeardownTilingData *tilingData)
+    GM_ADDR context, GM_ADDR x, GM_ADDR y, GM_ADDR expertIds, GM_ADDR commCmdInfo, GM_ADDR expandXOut,
+    GM_ADDR dynamicScalesOut, GM_ADDR assistInfoForCombineOut, GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM,
+    TPipe* pipe, const MoeDistributeDispatchTeardownTilingData* tilingData)
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
     aivNum_ = tilingData->moeDistributeDispatchTeardownInfo.aivNum;
     epRankId_ = tilingData->moeDistributeDispatchTeardownInfo.epRankId;
     auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    winContext_ = (__gm__ HcclCombinOpParam *)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+    mc2Context_ = (__gm__ Mc2MoeContext* )context;
+
     GlobalTensor<int32_t> selfDataStatusTensor;
-    GM_ADDR statusDataSpaceGm = (GM_ADDR)(winContext_->windowsOut[epRankId_]);
+    GM_ADDR statusDataSpaceGm = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
     selfDataStatusTensor.SetGlobalBuffer(
         (__gm__ int32_t *)(statusDataSpaceGm + STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
 

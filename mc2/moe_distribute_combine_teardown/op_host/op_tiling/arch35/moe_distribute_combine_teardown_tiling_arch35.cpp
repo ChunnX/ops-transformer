@@ -18,13 +18,32 @@
 #include "register/op_impl_registry.h"
 #include "op_host/tiling_templates_registry.h"
 namespace {
-constexpr uint32_t ATTR_GROUP_EP_INDEX = 0;
-constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1;
-constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 2;
-constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 3;
+//-----------------------------aclnnInner接口参数列表-----------------------------//
+constexpr uint32_t CONTEXT_INDEX = 0;
+constexpr uint32_t EXPAND_X_INDEX = 1;
+constexpr uint32_t QUANT_EXPAND_X_INDEX = 2;
+constexpr uint32_t EXPERT_IDS_INDEX = 3;
+constexpr uint32_t EXPAND_IDX_INDEX = 4;
+constexpr uint32_t EXPERT_SCALES_INDEX = 5;
+constexpr uint32_t COMM_CMD_INFO_INDEX = 6;
+constexpr uint32_t X_ACTIVE_MASK_INDEX = 7;
+constexpr uint32_t SHARED_EXPERT_X_INDEX = 8;
+
+constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 0;
+constexpr uint32_t ATTR_EP_RANK_ID_INDEX = 1;
+constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 2;
+constexpr uint32_t ATTR_CCL_BUFFER_SIZE_INDEX = 3;
+constexpr uint32_t ATTR_EXPERT_SHARD_TYPE_INDEX = 4;
 constexpr uint32_t ATTR_SHARED_EXPERT_NUM_INDEX = 5;
 constexpr uint32_t ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 6;
+constexpr uint32_t ATTR_GLOBAL_BS_INDEX = 7;
 constexpr uint32_t ATTR_COMM_QUANT_MODE_INDEX = 8;
+constexpr uint32_t ATTR_COMM_TYPE_INDEX = 9;
+constexpr uint32_t ATTR_COMM_ALG_INDEX = 10;
+
+constexpr uint32_t X_OUT_INDEX = 0;
+//-----------------------------aclnnInner接口参数列表-----------------------------//
+
 constexpr size_t MAX_GROUP_NAME_LENGTH = 128UL;
 constexpr int64_t NON_QUANT = 0;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8U;
@@ -76,23 +95,14 @@ ge::graphStatus MoeDistributeCombineTeardownTilingA5::CheckAttrsWithoutRelation(
 {
     auto attrs = context_->GetAttrs();
 
-    auto groupEpPtr = attrs->GetAttrPointer<char>(ATTR_GROUP_EP_INDEX);
     auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
     auto sharedExpertNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_SHARED_EXPERT_NUM_INDEX);
     auto quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_QUANT_MODE_INDEX);
 
-    OP_TILING_CHECK((strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
-                        (strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
-                    OP_LOGE_FOR_INVALID_VALUE(
-                        nodeName_, "groupEp", std::to_string(strnlen(groupEpPtr, MAX_GROUP_NAME_LENGTH)).c_str(),
-                        (std::string("[1, ") + std::to_string(MAX_GROUP_NAME_LENGTH) + ")").c_str()),
+    OP_TILING_CHECK(!((*epWorldSizePtr == GROUP_EP_SIZE_2) || (*epWorldSizePtr == GROUP_EP_SIZE_4) ||
+                      (*epWorldSizePtr == GROUP_EP_SIZE_8)),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName_, "epWorldSize", std::to_string(*epWorldSizePtr).c_str(), "2, 4, or 8"),
                     return ge::GRAPH_FAILED);
-
-    OP_TILING_CHECK(
-        !((*epWorldSizePtr == GROUP_EP_SIZE_2) || (*epWorldSizePtr == GROUP_EP_SIZE_4) ||
-          (*epWorldSizePtr == GROUP_EP_SIZE_8)),
-        OP_LOGE_FOR_INVALID_VALUE(nodeName_, "epWorldSize", std::to_string(*epWorldSizePtr).c_str(), "2, 4, or 8"),
-        return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(
         (*sharedExpertNumPtr != 0),
