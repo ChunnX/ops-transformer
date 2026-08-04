@@ -46,15 +46,15 @@ public:
         if ASCEND_IS_AIV {
             cubeCoreId = blockIdx / CV_RATIO;
             int64_t maxBsPerLoop = 32;
-            int64_t xQueSize = maxBsPerLoop * tilingData->stage1NcFactor;
+            int64_t xQueSize = maxBsPerLoop * stage1NcFactor;
             pipe->InitBuffer(xQue, NUM_TWO, xQueSize * sizeof(T));
             pipe->InitBuffer(xCastQue, NUM_TWO, xQueSize * sizeof(float));
-            pipe->InitBuffer(tmpQue, maxBsPerLoop * tilingData->stage1NcFactor * sizeof(float));
+            pipe->InitBuffer(tmpQue, maxBsPerLoop * stage1NcFactor * sizeof(float));
             pipe->InitBuffer(sumQue, maxBsPerLoop * sizeof(float));
             LocalTensor<float> sumLocal = sumQue.Get<float>();
             pipe->InitBuffer(invRmsQue, NUM_TWO, maxBsPerLoop * sizeof(float));
             if (hasGamma_) {
-                pipe->InitBuffer(gammaBuf, tilingData->stage1NcFactor * sizeof(float));
+                pipe->InitBuffer(gammaQue, 1, stage1NcFactor * sizeof(float));
             }
         }
 
@@ -81,14 +81,28 @@ public:
         if ASCEND_IS_AIC {
             // 根据 needGrad 决定输出地址
             if (needGrad_) {
-                cubeCompute_.Init(xCastWsGm, phiGm, hcBeforeNormGm,
-                                 tilingData->stage1BsFactor, hcMult, d, tilingData->stage1VecCoreNum);
+                cubeCompute_.Init(xCastWsGm, phiGm, hcBeforeNormGm, stage1BsFactor, hcMult, d,
+                                  stage1VecCoreNum);
             } else {
-                cubeCompute_.Init(xCastWsGm, phiGm, hcBeforeNormWsGm,
-                                 tilingData->stage1BsFactor, hcMult, d, tilingData->stage1VecCoreNum);
+                cubeCompute_.Init(xCastWsGm, phiGm, hcBeforeNormWsGm, stage1BsFactor, hcMult, d,
+                                  stage1VecCoreNum);
             }
             return;
         }
+    }
+
+    __aicore__ inline void InitTilingParams(const MhcPreMembaseTilingData *tilingDataPtr)
+    {
+        tilingData = tilingDataPtr;
+        needGrad_ = tilingData->needGrad;
+        hcMult = tilingData->hcMult;
+        stage1XCastWsSize = tilingData->stage1XCastWsSize;
+        bs = tilingData->bs;
+        d = tilingData->d;
+        stage1NcFactor = tilingData->stage1NcFactor;
+        stage1BsFactor = tilingData->stage1BsFactor;
+        stage1VecCoreNum = tilingData->stage1VecCoreNum;
+        stage1NcLoop = tilingData->stage1NcLoop;
     }
 
     __aicore__ inline void Process()
@@ -104,14 +118,14 @@ public:
 
         // 循环处理 BS（每轮最多 32 个）
         // ASCEND_IS_AIC 直接根据总BS数，计算当前处理的BS数
-        int32_t totalTasksAligned_ = AlignUp(bs, tilingData->stage1VecCoreNum * tilingData->stage1BsFactor);
+        int32_t totalTasksAligned_ = AlignUp(bs, stage1VecCoreNum * stage1BsFactor);
 
         // Cube Core 流程
         if ASCEND_IS_AIC {
-            for (int32_t taskOffset = blockIdx * 2 * tilingData->stage1BsFactor; taskOffset < totalTasksAligned_;
-                 taskOffset += tilingData->stage1CubeCoreNum * 2 * tilingData->stage1BsFactor) {
-                int32_t tileTaskCount = min(static_cast<int32_t>(2 * tilingData->stage1BsFactor),
-                                            static_cast<int32_t>(bs - taskOffset));
+            for (int32_t taskOffset = blockIdx * 2 * stage1BsFactor; taskOffset < totalTasksAligned_;
+                 taskOffset += tilingData->stage1CubeCoreNum * 2 * stage1BsFactor) {
+                int32_t tileTaskCount =
+                    min(static_cast<int32_t>(2 * stage1BsFactor), static_cast<int32_t>(bs - taskOffset));
                 // 等待 Vector Core 完成 Cast
                 CrossCoreWaitFlag(SYNC_AIV_TO_AIC_FLAG);
                 // 执行矩阵乘
@@ -125,11 +139,11 @@ public:
 
         if ASCEND_IS_AIV {
             int64_t ncSize = hcMult * d;
-            for (int32_t taskOffset = blockIdx * tilingData->stage1BsFactor; taskOffset < totalTasksAligned_;
-                 taskOffset += tilingData->stage1VecCoreNum * tilingData->stage1BsFactor) {
+            for (int32_t taskOffset = blockIdx * stage1BsFactor; taskOffset < totalTasksAligned_;
+                 taskOffset += stage1VecCoreNum * stage1BsFactor) {
                 CrossCoreWaitFlag(SYNC_AIC_TO_AIV_FLAG);
-                int32_t curBs = min(static_cast<int32_t>(tilingData->stage1BsFactor),
-                                            static_cast<int32_t>(bs - taskOffset));
+                int32_t curBs =
+                    min(static_cast<int32_t>(stage1BsFactor), static_cast<int32_t>(bs - taskOffset));
                 if (curBs > 0) {
                     int64_t curBsOffset = taskOffset;
                     // 初始化 sum 为 0
@@ -139,11 +153,10 @@ public:
                     Duplicate(sumLocal, 0.0f, curBs);
 
                     // 分段 ReduceSum
-                    for (int64_t ncIdx = 0; ncIdx < tilingData->stage1NcLoop; ncIdx++) {
-                        int64_t curNcSize = (ncIdx == tilingData->stage1NcLoop - 1)
-                                            ? tilingData->stage1TailNcFactor
-                                            : tilingData->stage1NcFactor;
-                        int64_t ncOffset = ncIdx * tilingData->stage1NcFactor;
+                    for (int64_t ncIdx = 0; ncIdx < stage1NcLoop; ncIdx++) {
+                        int64_t curNcSize = (ncIdx == stage1NcLoop - 1) ? tilingData->stage1TailNcFactor :
+                                                                                      stage1NcFactor;
+                        int64_t ncOffset = ncIdx * stage1NcFactor;
                         int64_t curNcSizeAlign = AlignUp(static_cast<uint64_t>(curNcSize), ELEMENTS_SIZE_PER_BLOCK);
 
                         // 1. CopyIn X (BF16)
@@ -176,17 +189,22 @@ public:
 
                         // 4. gamma (AFTER square, BEFORE CopyOut)
                         if (hasGamma_) {
-                            LocalTensor<float> gammaLocal = gammaBuf.Get<float>();
+                            LocalTensor<float> gammaLocal = gammaQue.AllocTensor<float>();
                             CopyIn(gammaGm[ncOffset], gammaLocal, 1, curNcSize);
+                            gammaQue.EnQue(gammaLocal);
+                            gammaLocal = gammaQue.DeQue<float>();
                             for (int64_t bsIdx = 0; bsIdx < curBs; bsIdx++) {
-                                Mul(xCastLocal[bsIdx * curNcSizeAlign], xCastLocal[bsIdx * curNcSizeAlign],
-                                    gammaLocal, curNcSizeAlign);
+                                Mul(xCastLocal[bsIdx * curNcSizeAlign], xCastLocal[bsIdx * curNcSizeAlign], gammaLocal,
+                                    curNcSizeAlign);
                             }
                             PipeBarrier<PIPE_V>();
+                            gammaQue.FreeTensor(gammaLocal);
                         }
 
                         // 5. CopyOut X_cast to workspace (gamma*x if hasGamma, else original x)
-                        int64_t xCastoffset = blockIdx * tilingData->stage1BsFactor * ncSize + ping4vec * tilingData->stage1VecCoreNum * tilingData->stage1BsFactor *  ncSize;
+                        int64_t xCastoffset =
+                            blockIdx * stage1BsFactor * ncSize +
+                            ping4vec * stage1VecCoreNum * stage1BsFactor * ncSize;
                         CopyOut(xCastLocal, xCastWsGm[xCastoffset + ncOffset], curBs, curNcSize, ncSize - curNcSize);
                         xCastQue.FreeTensor(xCastLocal);
                     }
@@ -242,7 +260,7 @@ public:
     TBuf<QuePosition::VECCALC> sumAddQue;      // sum 队列
     TBuf<QuePosition::VECCALC> sumQue;         // sum 队列
     TQue<QuePosition::VECOUT, NUM_TWO> invRmsQue;   // inv_rms 队列
-    TBuf<QuePosition::VECCALC> gammaBuf;     // gamma UB buffer (per nc segment)
+    TQue<QuePosition::VECIN, 1> gammaQue;     // gamma UB buffer (per nc segment)
 
     // Cube Compute
     HcCubeCompute<float, isFac> cubeCompute_;
@@ -251,6 +269,14 @@ public:
     bool needGrad_ = true;
     bool hasGamma_ = false;
     uint64_t ping4vec = 1;
+    int64_t hcMult = 0;
+    int64_t stage1XCastWsSize = 0;
+    int64_t bs = 0;
+    int64_t d = 0;
+    int64_t stage1NcFactor = 0;
+    int64_t stage1BsFactor = 0;
+    int64_t stage1VecCoreNum = 0;
+    int64_t stage1NcLoop = 0;
 
     // 同步标志
     static constexpr uint64_t SYNC_AIV_TO_AIC_FLAG = 8;
@@ -298,7 +324,7 @@ public:
             hcBeforeNormGm.SetGlobalBuffer((__gm__ float *)workspace + xCastWsTotalSize + invRmsWsTotalSize);
         }
         // InQue
-        int64_t mixesQue01Size =  stage2RowFactor * hcMultAlign * NUM_TWO * sizeof(float);
+        int64_t mixesQue01Size = stage2RowFactor * hcMultAlign * NUM_TWO * sizeof(float);
         pipe->InitBuffer(mixesQue01, NUM_TWO, mixesQue01Size);
         pipe->InitBuffer(mixesQue2, NUM_TWO, stage2RowFactor * hcMult * hcMultAlign * sizeof(float));
         pipe->InitBuffer(squareSumQue, NUM_TWO, stage2RowFactor * SQUARE_SUM_SIZE * sizeof(float));
@@ -307,12 +333,10 @@ public:
         // OutQue
         pipe->InitBuffer(yQue, NUM_TWO, stage2RowFactor * RoundUp<T>(dFactor) * sizeof(T));
         pipe->InitBuffer(postQue, NUM_TWO, stage2RowFactor * hcMultAlign * sizeof(float));
-        pipe->InitBuffer(combFragQue, NUM_TWO,
-                         stage2RowFactor * resSize * sizeof(float));
+        pipe->InitBuffer(combFragQue, NUM_TWO, stage2RowFactor * resSize * sizeof(float));
         pipe->InitBuffer(reduceQue, NUM_TWO, stage2RowFactor * hcMultAlign * sizeof(float));
         // TBuf
-        pipe->InitBuffer(combFragBuf,
-                         stage2RowFactor * resSize * NUM_TWO * sizeof(float));
+        pipe->InitBuffer(combFragBuf, stage2RowFactor * resSize * NUM_TWO * sizeof(float));
         pipe->InitBuffer(hcBaseBuf0, hcMultAlign * sizeof(float));
         pipe->InitBuffer(hcBaseBuf1, hcMultAlign * sizeof(float));
         pipe->InitBuffer(hcBaseBuf2, resSize * sizeof(float));
@@ -357,12 +381,16 @@ public:
         isTailBsLoop_ = isTailBsLoop;
         
         int64_t curRowOfFormerBlock = isTailBsLoop ? tilingData->tailBsRowOfFormerBlock : tilingData->rowOfFormerBlock;
-        int64_t curRowLoopOfFormerBlock = isTailBsLoop ? tilingData->tailBsRowLoopOfFormerBlock : tilingData->rowLoopOfFormerBlock;
-        int64_t curRowLoopOfTailBlock = isTailBsLoop ? tilingData->tailBsRowLoopOfTailBlock : tilingData->rowLoopOfTailBlock;
+        int64_t curRowLoopOfFormerBlock =
+            isTailBsLoop ? tilingData->tailBsRowLoopOfFormerBlock : tilingData->rowLoopOfFormerBlock;
+        int64_t curRowLoopOfTailBlock =
+            isTailBsLoop ? tilingData->tailBsRowLoopOfTailBlock : tilingData->rowLoopOfTailBlock;
         int64_t curSecondUsedCoreNum = isTailBsLoop ? tilingData->tailBsUsedCoreNum : tilingData->secondUsedCoreNum;
         int64_t curStage2RowFactor = isTailBsLoop ? tilingData->tailBsRowFactor : stage2RowFactor;
-        int64_t curTailRowFactorOfFormerBlock = isTailBsLoop ? tilingData->tailBsTailRowFactorOfFormerBlock : tilingData->tailRowFactorOfFormerBlock;
-        int64_t curTailRowFactorOfTailBlock = isTailBsLoop ? tilingData->tailBsTailRowFactorOfTailBlock : tilingData->tailRowFactorOfTailBlock;
+        int64_t curTailRowFactorOfFormerBlock =
+            isTailBsLoop ? tilingData->tailBsTailRowFactorOfFormerBlock : tilingData->tailRowFactorOfFormerBlock;
+        int64_t curTailRowFactorOfTailBlock =
+            isTailBsLoop ? tilingData->tailBsTailRowFactorOfTailBlock : tilingData->tailRowFactorOfTailBlock;
         int64_t curML1Size = isTailBsLoop ? tilingData->tailBsML1Size : tilingData->mL1Size;
         
         if ASCEND_IS_AIV {
@@ -373,9 +401,12 @@ public:
                 return;
             }
             int64_t mmLastAxisSize = CeilAlign(hcMix, MM_CACHE_LINE_BYTES / sizeof(float));
-            int64_t xCastFp32BufSize = curML1Size * CeilAlign(tilingData->cvLoopKSize, MM_CACHE_LINE_BYTES / sizeof(float)) * sizeof(float);
+            int64_t xCastFp32BufSize =
+                curML1Size * CeilAlign(tilingData->cvLoopKSize, MM_CACHE_LINE_BYTES / sizeof(float)) * sizeof(float);
             int64_t workspaceSize1 = (tilingData->cubeCoreNum * DOUBLE_BUFFER * xCastFp32BufSize) / sizeof(float);
-            int64_t workspaceSize2 = CeilAlign(stage1UsedCoreNum * bs * mmLastAxisSize * sizeof(float), WORKSPACE_ALIGN_SIZE) / sizeof(float);
+            int64_t workspaceSize2 =
+                CeilAlign(stage1UsedCoreNum * bs * mmLastAxisSize * sizeof(float), WORKSPACE_ALIGN_SIZE) /
+                sizeof(float);
             CopyIn(hcBaseGm, hcBase0Local, 1, hcMult);
             CopyIn(hcBaseGm[hcMult], hcBase1Local, 1, hcMult);
             if constexpr (isFac) {
@@ -389,8 +420,8 @@ public:
 
             int64_t rowOuterLoop =
                 (stage2BlockIdx == stage2UsedCoreNum - 1) ? curRowLoopOfTailBlock : curRowLoopOfFormerBlock;
-            int64_t tailRowFactor = (stage2BlockIdx == stage2UsedCoreNum - 1) ? curTailRowFactorOfTailBlock :
-                                                                        curTailRowFactorOfFormerBlock;
+            int64_t tailRowFactor =
+                (stage2BlockIdx == stage2UsedCoreNum - 1) ? curTailRowFactorOfTailBlock : curTailRowFactorOfFormerBlock;
             int64_t xGmBlockBaseOffsetPart2 = stage2BlockIdx * curRowOfFormerBlock * hcMult * d;
             uint64_t mixBaseOffset = 0;
             for (int64_t rowOuterIdx = 0; rowOuterIdx < rowOuterLoop; rowOuterIdx++) {
@@ -401,32 +432,29 @@ public:
                 Duplicate(rowBrcbLocal0, static_cast<float>(1.0f), curRowFactor);
 
                 CopyIn(invRmsGm[stage2BlockIdx * curRowOfFormerBlock + rowOuterIdx * curStage2RowFactor],
-                        squareSumOutLocal, 1, curRowFactor);
+                       squareSumOutLocal, 1, curRowFactor);
                 
                 squareSumQue.EnQue(squareSumOutLocal);
                 squareSumOutLocal = squareSumQue.DeQue<float>();
-                // 搬运矩阵乘的前两段结果--> 内存格式的变更： 连续地址改为 bs *n ; bs *n ,n为4 非对齐，则需要pad出对齐的8
+                // 搬运矩阵乘的前两段结果--> 内存格式的变更： 连续地址改为 bs *n ; bs *n ,n为4
+                // 非对齐，则需要pad出对齐的8
                 mxies01Local = mixesQue01.AllocTensor<float>();
 
-                mixBaseOffset = stage2BlockIdx * curRowOfFormerBlock * hcMix +
-                                            rowOuterIdx * curStage2RowFactor * hcMix;
-                CopyInWithOuterFor(hcBeforeNormGm[mixBaseOffset], mxies01Local, 1, curRowFactor, hcMult,
-                                bs, hcMix);
-                CopyInWithOuterFor(hcBeforeNormGm[mixBaseOffset + hcMult],
-                                mxies01Local[curRowFactor * hcMultAlign],
-                                1, curRowFactor, hcMult, bs,
-                                hcMix);
+                mixBaseOffset = stage2BlockIdx * curRowOfFormerBlock * hcMix + rowOuterIdx * curStage2RowFactor * hcMix;
+                CopyInWithOuterFor(hcBeforeNormGm[mixBaseOffset], mxies01Local, 1, curRowFactor, hcMult, bs, hcMix);
+                CopyInWithOuterFor(hcBeforeNormGm[mixBaseOffset + hcMult], mxies01Local[curRowFactor * hcMultAlign], 1,
+                                   curRowFactor, hcMult, bs, hcMix);
                 // // wk:[2, kcorenum, bs, n^2 +2n]
                 // // mx0[2,kcorenum, curRowfator, n]
                 mixesQue01.EnQue(mxies01Local);
                 mxies01Local = mixesQue01.DeQue<float>();
 
-                ProcessPre(mxies01ReduceLocal, mxies01Local, hcBase0Local, squareSumOutLocal, rowBrcbLocal0, hcBrcbLocal1,
-                            hcScaleGm.GetValue(0), tilingData->hcEps, curRowFactor, hcMult);
+                ProcessPre(mxies01ReduceLocal, mxies01Local, hcBase0Local, squareSumOutLocal, rowBrcbLocal0,
+                           hcBrcbLocal1, hcScaleGm.GetValue(0), tilingData->hcEps, curRowFactor, hcMult);
 
                 if (needGrad_) {
-                    int64_t hPreBaseOffset = stage2BlockIdx * curRowOfFormerBlock * hcMult +
-                                             rowOuterIdx * curStage2RowFactor * hcMult;
+                    int64_t hPreBaseOffset =
+                        stage2BlockIdx * curRowOfFormerBlock * hcMult + rowOuterIdx * curStage2RowFactor * hcMult;
                     VToMTE3Sync();
                     CopyOut(mxies01ReduceLocal, hPreGm[hPreBaseOffset], curRowFactor, hcMult);
                     MTE3ToVSync();
@@ -434,71 +462,63 @@ public:
                 int64_t dLoop = tilingData->dLoop;
                 // --- pre --
                 for (int64_t dLoopIdx = 0; dLoopIdx < dLoop; dLoopIdx++) {
-                    int64_t curDFactor =
-                        (dLoopIdx == dLoop - 1) ? tilingData->tailDFactor : dFactor;
+                    int64_t curDFactor = (dLoopIdx == dLoop - 1) ? tilingData->tailDFactor : dFactor;
                     xLocal = xQue.template AllocTensor<T>();
-                    CopyIn(xGm[xGmBlockBaseOffsetPart2 + xGmBsBaseOffsetPart2 +
-                                dLoopIdx * dFactor],
-                            xLocal, curRowFactor * hcMult, curDFactor, d - curDFactor);
+                    CopyIn(xGm[xGmBlockBaseOffsetPart2 + xGmBsBaseOffsetPart2 + dLoopIdx * dFactor], xLocal,
+                           curRowFactor * hcMult, curDFactor, d - curDFactor);
                     xQue.template EnQue(xLocal);
                     xLocal = xQue.template DeQue<T>();
                     yLocal = yQue.template AllocTensor<T>();
 
                     ProcessY(yLocal, xLocal, mxies01ReduceLocal, hcBrcbLocal1, xCastLocal, yCastLocal, curRowFactor,
-                                hcMult, curDFactor);
+                             hcMult, curDFactor);
                     xQue.template FreeTensor(xLocal);
                     yQue.template EnQue(yLocal);
                     yLocal = yQue.template DeQue<T>();
-                    
+
                     CopyOut(yLocal,
-                            yGm[stage2BlockIdx * curRowOfFormerBlock * d +
-                                rowOuterIdx * curStage2RowFactor * d + dLoopIdx * dFactor],
+                            yGm[stage2BlockIdx * curRowOfFormerBlock * d + rowOuterIdx * curStage2RowFactor * d +
+                                dLoopIdx * dFactor],
                             curRowFactor, curDFactor, d - curDFactor);
                     yQue.template FreeTensor(yLocal);
                 }
                 // post
                 postLocal = postQue.AllocTensor<float>();
-                ProcessPost(postLocal, mxies01Local[curRowFactor * hcMultAlign], hcBase1Local,
-                            squareSumOutLocal, rowBrcbLocal0, hcBrcbLocal1, hcScaleGm.GetValue(1), curRowFactor,
-                            hcMult);
+                ProcessPost(postLocal, mxies01Local[curRowFactor * hcMultAlign], hcBase1Local, squareSumOutLocal,
+                            rowBrcbLocal0, hcBrcbLocal1, hcScaleGm.GetValue(1), curRowFactor, hcMult);
                 mixesQue01.FreeTensor(mxies01Local); // 这里对应的申请在上面
                 postQue.EnQue(postLocal);
                 postLocal = postQue.DeQue<float>();
 
-                CopyOut(postLocal,
-                        postGm[stage2BlockIdx * curRowOfFormerBlock * hcMult +
-                                rowOuterIdx * curStage2RowFactor * hcMult],
-                        curRowFactor, hcMult);
+                CopyOut(
+                    postLocal,
+                    postGm[stage2BlockIdx * curRowOfFormerBlock * hcMult + rowOuterIdx * curStage2RowFactor * hcMult],
+                    curRowFactor, hcMult);
                 postQue.FreeTensor(postLocal);
 
                 // hRes
                 mixes2Local = mixesQue2.AllocTensor<float>();
-                mixBaseOffset = stage2BlockIdx * curRowOfFormerBlock * hcMix +
-                                rowOuterIdx * curStage2RowFactor * hcMix;
+                mixBaseOffset = stage2BlockIdx * curRowOfFormerBlock * hcMix + rowOuterIdx * curStage2RowFactor * hcMix;
                 for (int64_t j = 0; j < curRowFactor; ++j) {
                     if constexpr (isFac) {
-                        CopyIn(hcBeforeNormGm[mixBaseOffset + j * hcMix + hcMult * NUM_TWO],
-                           mixes2Local[j * resSize], 1,
-                           resSize);
+                        CopyIn(hcBeforeNormGm[mixBaseOffset + j * hcMix + hcMult * NUM_TWO], mixes2Local[j * resSize],
+                               1, resSize);
                     } else {
                         CopyIn(hcBeforeNormGm[mixBaseOffset + j * hcMix + hcMult * NUM_TWO],
-                           mixes2Local[j * hcMult * hcMultAlign], hcMult,
-                           hcMult);
+                               mixes2Local[j * hcMult * hcMultAlign], hcMult, hcMult);
                     }
-                    
                 }
                 mixesQue2.EnQue(mixes2Local);
                 mixes2Local = mixesQue2.DeQue<float>();
 
                 combFragLocal = combFragQue.AllocTensor<float>();
-                MulABLastDimBrcInline<float, false>(mxies02ReduceLocal, mixes2Local, rsqrtLocal, rowBrcbLocal0, curRowFactor,
-                                                    resSize);
+                MulABLastDimBrcInline<float, false>(mxies02ReduceLocal, mixes2Local, rsqrtLocal, rowBrcbLocal0,
+                                                    curRowFactor, resSize);
                 mixesQue2.FreeTensor(mixes2Local);
-                Muls(mxies02ReduceLocal, mxies02ReduceLocal, hcScaleGm.GetValue(NUM_TWO),
-                        curRowFactor * resSize);
+                Muls(mxies02ReduceLocal, mxies02ReduceLocal, hcScaleGm.GetValue(NUM_TWO), curRowFactor * resSize);
                 PipeBarrier<PIPE_V>();
                 AddBAFirstDimBrcInline<float>(mxies02ReduceLocal, mxies02ReduceLocal, hcBase2Local, curRowFactor,
-                                                resSize);
+                                              resSize);
                 Copy(combFragLocal, mxies02ReduceLocal, curRowFactor * resSize, 1, {1, 1, 0, 0});
                 PipeBarrier<PIPE_V>();
                 squareSumQue.template FreeTensor(squareSumOutLocal);
@@ -507,14 +527,14 @@ public:
                 combFragLocal = combFragQue.DeQue<float>();
                 if constexpr (isFac) {
                     CopyOut(combFragLocal,
-                        hResGm[stage2BlockIdx * curRowOfFormerBlock * resSize +
-                                    rowOuterIdx * curStage2RowFactor * resSize],
-                        curRowFactor, resSize);
+                            hResGm[stage2BlockIdx * curRowOfFormerBlock * resSize +
+                                   rowOuterIdx * curStage2RowFactor * resSize],
+                            curRowFactor, resSize);
                 } else {
                     CopyOut(combFragLocal,
-                        hResGm[stage2BlockIdx * curRowOfFormerBlock * hcMult * hcMult +
-                                    rowOuterIdx * curStage2RowFactor * hcMult * hcMult],
-                        curRowFactor * hcMult, hcMult);
+                            hResGm[stage2BlockIdx * curRowOfFormerBlock * hcMult * hcMult +
+                                   rowOuterIdx * curStage2RowFactor * hcMult * hcMult],
+                            curRowFactor * hcMult, hcMult);
                 }
                 combFragQue.FreeTensor(combFragLocal);
             }
@@ -594,6 +614,14 @@ private:
     LocalTensor<float> combFragBufLocal;
 
     int64_t resSize = 0;
+    int64_t hcMult = 0;
+    int64_t hcMultAlign = 0;
+    int64_t stage1XCastWsSize = 0;
+    int64_t bs = 0;
+    int64_t stage2RowFactor = 0;
+    int64_t dFactor = 0;
+    int64_t hcMix = 0;
+    int64_t d = 0;
 };
 
 } // namespace MhcPre

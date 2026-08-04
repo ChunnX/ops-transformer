@@ -50,7 +50,9 @@ constexpr int64_t DIM_IDX_2 = 2;
 constexpr int64_t DIM_IDX_3 = 3;
 
 constexpr int64_t N_VALID_VALUES[] = {4, 6, 8};
+constexpr int64_t N_VALID_VALUE_A2 = 4;
 constexpr int64_t D_ALIGNMENT = 16;
+constexpr int64_t D_ALIGNMENT_A2 = 128;
 constexpr int64_t ALPHA_DIM_SIZE_3 = 3;
 constexpr int64_t ALPHA_DIM_SIZE_2 = 2;
 constexpr int64_t PHI_DIM_OFFSET = 2;
@@ -67,8 +69,6 @@ static int64_t Factorial(int64_t n)
 static bool CheckAlphaShape(const aclTensor *alphaTensor);
 static bool ValidateNDParams(int64_t n, int64_t d);
 static bool CheckTensorShape(const aclTensor *tensor, std::initializer_list<int64_t> expectedShape, const char *name);
-static bool CheckPhiShape(const aclTensor *phiTensor, int64_t n, int64_t nD, int64_t alphaSize);
-static bool CheckBiasShape(const aclTensor *biasTensor, int64_t n, int64_t alphaSize);
 
 
 static std::string TensorShapeToString(const aclTensor *tensor)
@@ -237,28 +237,57 @@ static bool CheckEmptyTensor(const MhcParamsBase &params)
 
 static bool CheckInputDims(const MhcParamsBase &params)
 {
+    // x dims must be 3 or 4
     auto xDimNum = params.x->GetViewShape().GetDimNum();
     if (xDimNum != DIM_NUM_3 && xDimNum != DIM_NUM_4) {
         OP_LOGE_FOR_INVALID_SHAPEDIM(ACLNN_OP_NAME, "x", std::to_string(xDimNum).c_str(), "3 or 4");
         return false;
     }
+    // phi dims must be 2,  alpha dims must be 1, bias dims must be 1, 
     if (!CheckTensorRank(params.phi, "phi", DIM_NUM_2) || !CheckTensorRank(params.alpha, "alpha", DIM_NUM_1) ||
         !CheckTensorRank(params.bias, "bias", DIM_NUM_1)) {
         return false;
     }
-    return params.gammaOptional == nullptr || CheckTensorRank(params.gammaOptional, "gammaOptional", DIM_NUM_2);
+
+    if (!(params.gammaOptional == nullptr || CheckTensorRank(params.gammaOptional, "gammaOptional", DIM_NUM_2))) {
+        return false;
+    }
+
+    return true;
 }
 
 static bool CheckOutputDims(const MhcParamsBase &params)
 {
-    auto xDimNum = params.x->GetViewShape().GetDimNum();
+    auto xShape = params.x->GetViewShape();
+    auto phiShape = params.phi->GetViewShape();
+    auto xDimNum = xShape.GetDimNum();
+    int64_t n = 0;
+    if (xDimNum == DIM_NUM_4) {
+        n = xShape.GetDim(2);
+    } else if (xDimNum == DIM_NUM_3) {
+        n = xShape.GetDim(1);
+    }
+    
     size_t outputDimNum = xDimNum == DIM_NUM_4 ? DIM_NUM_3 : DIM_NUM_2;
     if (!CheckTensorRank(params.hIn, "hIn", outputDimNum) ||
         !CheckTensorRank(params.hPost, "hPost", outputDimNum)) {
         return false;
     }
     int64_t alphaSize = params.alpha->GetViewShape().GetDim(0);
-    return alphaSize != ALPHA_DIM_SIZE_3 || CheckTensorRank(params.hRes, "hRes", xDimNum);
+    int64_t expectedPhiRows_factorial = Factorial(n) + 2 * n;
+    int64_t expectedPhiRows_pow = n * n + 2 * n;
+    // alpha is 3, hRes not null,
+    // hres shape should be [b,s,n,n] [t,n,n] [b,s, n!] [t, n!]
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+        if (alphaSize == ALPHA_DIM_SIZE_3 && phiShape.GetDim(0) == expectedPhiRows_factorial) {
+            return CheckTensorRank(params.hRes, "hRes", DIM_NUM_3) || CheckTensorRank(params.hRes, "hRes", DIM_NUM_2);
+        } else if (alphaSize == ALPHA_DIM_SIZE_3 && phiShape.GetDim(0) == expectedPhiRows_pow) {
+            return CheckTensorRank(params.hRes, "hRes", xDimNum);
+        }
+    } else {
+        return alphaSize != ALPHA_DIM_SIZE_3 || CheckTensorRank(params.hRes, "hRes", xDimNum);
+    }
+    return true;
 }
 
 static bool CheckOptionalOutputGroup(const MhcParamsBase &params)
@@ -309,10 +338,47 @@ static void GetXShapeInfo(const MhcParamsBase &params, int64_t &n, int64_t &d, i
 }
 
 static bool CheckParamShapes(const MhcParamsBase &params, int64_t n, int64_t d, int64_t nD,
-                             int64_t expectedParamRows)
+                             int64_t expectedParamRows, int64_t alphaSize)
 {
-    if (!ValidateNDParams(n, d) || !CheckTensorShape(params.phi, {expectedParamRows, nD}, "phi") ||
-        !CheckTensorShape(params.bias, {expectedParamRows}, "bias")) {
+    // n,d must bigger than 0  || n must be 4,6,8 ||  d must align to 16/128
+    if (!ValidateNDParams(n, d)) {
+        return false;
+    }
+
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+        auto phiShape = params.phi->GetViewShape();
+        auto biasShape = params.bias->GetViewShape();
+        if (alphaSize == ALPHA_DIM_SIZE_2) {
+            int64_t expectedPhiRows = 2 * n;
+            if (phiShape.GetDim(0) != expectedPhiRows) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor first dim must be %ld, but got %ld", expectedPhiRows,
+                        phiShape.GetDim(0));
+                return false;
+            }
+            if (biasShape.GetDim(0) != expectedPhiRows) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dim must be %ld, but got %ld", expectedPhiRows,
+                    biasShape.GetDim(0));
+                return false;
+            }
+        } else {
+            int64_t expectedPhiRows_pow = n * n + 2 * n;
+            int64_t expectedPhiRows_factorial = Factorial(n) + 2 * n;
+            if (phiShape.GetDim(0) != expectedPhiRows_pow && phiShape.GetDim(0) != expectedPhiRows_factorial) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor first dim must be %ld or %ld, but got %ld", expectedPhiRows_pow, expectedPhiRows_factorial,
+                        phiShape.GetDim(0));
+                return false;
+            }
+            if (biasShape.GetDim(0) != expectedParamRows && biasShape.GetDim(0) != expectedPhiRows_factorial) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dim must be %ld or %ld, but got %ld", expectedParamRows, expectedPhiRows_factorial,
+                        biasShape.GetDim(0));
+                return false;
+            }
+        }
+        if (phiShape.GetDim(1) != nD) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor second dim must be nD=%ld, but got %ld", nD, phiShape.GetDim(1));
+            return false;
+        }
+    } else if (!CheckTensorShape(params.phi, {expectedParamRows, nD}, "phi") || !CheckTensorShape(params.bias, {expectedParamRows}, "bias")) {
         return false;
     }
     return params.gammaOptional == nullptr || CheckTensorShape(params.gammaOptional, {n, d}, "gammaOptional");
@@ -327,14 +393,25 @@ static bool CheckOutputShape4D(const MhcParamsBase &params, int64_t n, int64_t d
     if (!CheckTensorShape(params.hIn, {b, s, d}, "hIn") || !CheckTensorShape(params.hPost, {b, s, n}, "hPost")) {
         return false;
     }
-    if (alphaSize == ALPHA_DIM_SIZE_3 && !CheckTensorShape(params.hRes, {b, s, n, n}, "hRes")) {
-        return false;
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+        if (alphaSize == ALPHA_DIM_SIZE_3 && (!CheckTensorShape(params.hRes, {b, s, n, n}, "hRes") && !CheckTensorShape(params.hRes, {b, s, Factorial(n)}, "hRes"))) {
+            return false;
+        }
+        if (!CheckTensorShape(params.hMixOptional, {b, s, expectedPhiRows}, "hMixOptional") && (alphaSize == ALPHA_DIM_SIZE_3 && !CheckTensorShape(params.hMixOptional, {b, s, Factorial(n) + 2 * n}, "hMixOptional"))) {
+            return false;
+        }
+    } else {
+        if (alphaSize == ALPHA_DIM_SIZE_3 && !CheckTensorShape(params.hRes, {b, s, n, n}, "hRes")) {
+            return false;
+        }
+        if (!CheckTensorShape(params.hMixOptional, {b, s, expectedPhiRows}, "hMixOptional")) {
+            return false;
+        }
     }
     if (params.invRmsOptional == nullptr) {
         return true;
     }
     return CheckTensorShape(params.invRmsOptional, {b, s}, "invRmsOptional") &&
-           CheckTensorShape(params.hMixOptional, {b, s, expectedPhiRows}, "hMixOptional") &&
            CheckTensorShape(params.hPreOptional, {b, s, n}, "hPreOptional");
 }
 
@@ -346,43 +423,44 @@ static bool CheckOutputShape3D(const MhcParamsBase &params, int64_t n, int64_t d
     if (!CheckTensorShape(params.hIn, {t, d}, "hIn") || !CheckTensorShape(params.hPost, {t, n}, "hPost")) {
         return false;
     }
-    if (alphaSize == ALPHA_DIM_SIZE_3 && !CheckTensorShape(params.hRes, {t, n, n}, "hRes")) {
-        return false;
+
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+        if (alphaSize == ALPHA_DIM_SIZE_3 && (!CheckTensorShape(params.hRes, {t, n, n}, "hRes") && !CheckTensorShape(params.hRes, {t, Factorial(n)}, "hRes"))) {
+            return false;
+        }
+        if (!CheckTensorShape(params.hMixOptional, {t, expectedPhiRows}, "hMixOptional") && (alphaSize == ALPHA_DIM_SIZE_3 && !CheckTensorShape(params.hMixOptional, {t, Factorial(n) + 2 * n}, "hMixOptional"))) {
+            return false;
+        }
+    } else {
+        if (alphaSize == ALPHA_DIM_SIZE_3 && !CheckTensorShape(params.hRes, {t, n, n}, "hRes")) {
+            return false;
+        }
+        if (!CheckTensorShape(params.hMixOptional, {t, expectedPhiRows}, "hMixOptional")) {
+            return false;
+        }
     }
     if (params.invRmsOptional == nullptr) {
         return true;
     }
     return CheckTensorShape(params.invRmsOptional, {t}, "invRmsOptional") &&
-           CheckTensorShape(params.hMixOptional, {t, expectedPhiRows}, "hMixOptional") &&
            CheckTensorShape(params.hPreOptional, {t, n}, "hPreOptional");
 }
 
 static bool CheckInputOutShape(const MhcParamsBase &params)
 {
-    auto xShape = params.x->GetViewShape();
     int64_t n = 0;
     int64_t d = 0;
     int64_t nD = 0;
-    auto xDimNum = xShape.GetDimNum();
-    if (xDimNum == DIM_NUM_4) {
-        n = xShape.GetDim(2);
-        d = xShape.GetDim(3);
-        nD = n * d;
-    } else if (xDimNum == DIM_NUM_3) {
-        n = xShape.GetDim(1);
-        d = xShape.GetDim(2);
-        nD = n * d;
-    }
-    int64_t alphaSize = params.alpha->GetViewShape().GetDim(0);
-
-    if (!(CheckPhiShape(params.phi, n, nD, alphaSize))) {
+    GetXShapeInfo(params, n, d, nD);
+    const int64_t alphaSize = params.alpha->GetViewShape().GetDim(DIM_IDX_0);
+    const int64_t expectedParamRows = alphaSize == ALPHA_DIM_SIZE_2 ? 2 * n : n * n + 2 * n;
+    if (!CheckParamShapes(params, n, d, nD, expectedParamRows, alphaSize)) {
         return false;
     }
-
-    if (!CheckBiasShape(params.bias, n, alphaSize)) {
-        return false;
+    if (params.x->GetViewShape().GetDimNum() == DIM_NUM_4) {
+        return CheckOutputShape4D(params, n, d, expectedParamRows);
     }
-    return true;
+    return CheckOutputShape3D(params, n, d, expectedParamRows);
 }
 
 static bool CheckTensorShape(const aclTensor *tensor, std::initializer_list<int64_t> expectedShape, const char *name)
@@ -431,68 +509,36 @@ static bool ValidateNDParams(int64_t n, int64_t d)
                                               "D in x shape must be positive");
         return false;
     }
-    bool isValidN = false;
-    for (size_t i = 0; i < sizeof(N_VALID_VALUES) / sizeof(N_VALID_VALUES[0]); ++i) {
-        if (n == N_VALID_VALUES[i]) {
-            isValidN = true;
-            break;
+    // 910 only support n = 4
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
+        if (n != N_VALID_VALUE_A2) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "n", std::to_string(n).c_str(),
+                                              "n in x shape must be 4");
+            return false;
         }
-    }
-    if (!isValidN) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "n", std::to_string(n).c_str(),
-                                              "n in x shape must be 4, 6 or 8");
-        return false;
-    }
-    if (d % D_ALIGNMENT != 0) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "D", std::to_string(d).c_str(),
-                                              "D in x shape must be aligned to 16 elements");
-        return false;
-    }
-    return true;
-}
 
-static bool CheckPhiShape(const aclTensor *phiTensor, int64_t n, int64_t nD, int64_t alphaSize)
-{
-    auto phiShape = phiTensor->GetViewShape();
-    if (alphaSize == ALPHA_DIM_SIZE_2) {
-        int64_t expectedPhiRows = 2 * n;
-        if (phiShape.GetDim(0) != expectedPhiRows) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor first dim must be %ld, but got %ld", expectedPhiRows,
-                    phiShape.GetDim(0));
+        if (d % D_ALIGNMENT_A2 != 0) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "D", std::to_string(d).c_str(),
+                                                "D in x shape must be aligned to 128 elements");
             return false;
         }
     } else {
-        int64_t expectedPhiRows_pow = n * n + 2 * n;
-        int64_t expectedPhiRows_factorial = Factorial(n) + 2 * n;
-        if (phiShape.GetDim(0) != expectedPhiRows_pow && phiShape.GetDim(0) != expectedPhiRows_factorial) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor first dim must be %ld or %ld, but got %ld", expectedPhiRows_pow, expectedPhiRows_factorial,
-                    phiShape.GetDim(0));
+        bool isValidN = false;
+        for (size_t i = 0; i < sizeof(N_VALID_VALUES) / sizeof(N_VALID_VALUES[0]); ++i) {
+            if (n == N_VALID_VALUES[i]) {
+                isValidN = true;
+                break;
+            }
+        }
+        if (!isValidN) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "n", std::to_string(n).c_str(),
+                                                "n in x shape must be 4, 6 or 8");
             return false;
         }
-    }
-    if (phiShape.GetDim(1) != nD) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor second dim must be nD=%ld, but got %ld", nD, phiShape.GetDim(1));
-        return false;
-    }
-    return true;
-}
 
-static bool CheckBiasShape(const aclTensor *biasTensor, int64_t n, int64_t alphaSize)
-{
-    auto biasShape = biasTensor->GetViewShape();
-    if (alphaSize == ALPHA_DIM_SIZE_2) {
-        int64_t expectedBiasRows = 2 * n;
-        if (biasShape.GetDim(0) != expectedBiasRows) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dim must be %ld, but got %ld", expectedBiasRows,
-                biasShape.GetDim(0));
-            return false;
-        }
-    } else {
-        int64_t expectedBiasSize_pow = n * n + 2 * n;
-        int64_t expectedBiasSize_factorial = Factorial(n) + 2 * n;
-        if (biasShape.GetDim(0) != expectedBiasSize_pow && biasShape.GetDim(0) != expectedBiasSize_factorial) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dim must be %ld or %ld, but got %ld", expectedBiasSize_pow, expectedBiasSize_factorial,
-                    biasShape.GetDim(0));
+        if (d % D_ALIGNMENT != 0) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "D", std::to_string(d).c_str(),
+                                                "D in x shape must be aligned to 16 elements");
             return false;
         }
     }
