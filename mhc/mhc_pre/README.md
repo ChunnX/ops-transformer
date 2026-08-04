@@ -114,7 +114,7 @@ $$
       <tr>
         <td>op_impl_mode</td>
         <td>可选属性</td>
-        <td>矩阵乘的计算精度模式，0表示FP32模式，1表示HF32模式，默认值为0。</td>
+        <td>指定MhcPre算子的计算模式，0表示Cube使用FP32模式计算，1表示Cube使用HF32模式计算，默认值为0。</td>
         <td>INT64</td>
         <td>-</td>
       </tr>
@@ -167,11 +167,10 @@ $$
 
 - n目前支持4、6、8。
 - D支持1~16384范围以内，需满足D为16对齐。
-- op_impl_mode仅支持0或1，其中0表示FP32模式，1表示HF32模式。
 
 ## 调用说明
 
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
 | aclnn调用 | [test_aclnn_mhc_pre](examples/test_aclnn_mhc_pre.cpp) | 通过[aclnnMhcPre](docs/aclnnMhcPre.md)接口方式调用MhcPre算子。 |
-| aclnn调用 | [test_aclnn_mhc_pre_v2](examples/test_aclnn_mhc_pre_v2.cpp) | 通过[aclnnMhcPreV2](docs/aclnnMhcPreV2.md)接口选择FP32或HF32模式。 |
+| aclnn调用 | [test_aclnn_mhc_pre_v2](examples/test_aclnn_mhc_pre_v2.cpp) | 通过[aclnnMhcPreV2](docs/aclnnMhcPreV2.md)接口方式调用MhcPre算子，并通过opImplMode选择Cube的FP32或HF32计算模式。 |
