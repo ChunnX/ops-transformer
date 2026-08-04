@@ -144,7 +144,7 @@ void QuantFlashAttnFp8TilingImpl::UpdateTilingKeyKvLayout()
     if (qfaInfo_->kvLayout == QfaLayout::PA_BNBD) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
     } else if (qfaInfo_->kvLayout == QfaLayout::PA_BBND) {
-        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BBH;
+        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
     } else if (qfaInfo_->kvLayout == QfaLayout::PA_NZ) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_NZ;
     } else {
