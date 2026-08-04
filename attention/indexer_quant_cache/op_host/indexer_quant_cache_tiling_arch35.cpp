@@ -280,6 +280,22 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
     if (ValidateCache4D(INPUT_CACHE_IDX, "cache", cacheLastDim) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    // MX-FP4 每字节打包 2 个 fp4 元素, headDim 为奇数时行首会落在字节的高/低半字节,
+    // 现有 kernel 仅支持整字节寻址(GlobalTensor<int8_t> + 整字节 CopyOut), 无法表达半字节偏移,
+    // 因此在此处直接拒绝, 而非产出错误数据(与 ScatterPaKvCache 对 fp4 head_size 的校验一致)。
+    auto checkMxfp4EvenStride = [this](int64_t stride, const char* name) -> ge::graphStatus {
+        if (quantMode_ == MXFP4_QUANT_MODE && stride % FP4_PACK_NUM != 0) {
+            OP_LOGE(context_->GetNodeName(),
+                    "cache %s=%ld (fp4 elements) must be an even number when quant_mode is MX-FP4(3)",
+                    name, stride);
+            return ge::GRAPH_FAILED;
+        }
+        return ge::GRAPH_SUCCESS;
+    };
+    if (checkMxfp4EvenStride(cacheLastDim, "headDim") != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
     // 转为 kernel 寻址单位: MX-FP4 字节寻址打包 cache (÷2); 其余模式元素==字节, 直接取末维。
     cacheRowStride_ = (quantMode_ == MXFP4_QUANT_MODE) ? (cacheLastDim / FP4_PACK_NUM) : cacheLastDim;
 
@@ -317,6 +333,12 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
         // cache (int8 GM), so convert the cache strides to BYTES (÷2). scale (e8m0, 1 byte) is
         // already byte-equal so it is left unchanged.
         if (quantMode_ == MXFP4_QUANT_MODE) {
+            // 分页 view 下同样以整字节寻址, row/block stride(fp4 元素)必须为偶数, 否则半字节偏移
+            // 无法表达(与上面连续场景 cacheLastDim 的校验同理)。
+            if (checkMxfp4EvenStride(cacheRowStride_, "paged-view row stride") != ge::GRAPH_SUCCESS ||
+                checkMxfp4EvenStride(cacheBlockStride_, "paged-view block stride") != ge::GRAPH_SUCCESS) {
+                return ge::GRAPH_FAILED;
+            }
             cacheRowStride_ = cacheRowStride_ / FP4_PACK_NUM;
             cacheBlockStride_ = cacheBlockStride_ / FP4_PACK_NUM;
         }
