@@ -27,9 +27,9 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
            const c10::optional<std::vector<at::Tensor>> &sharedWeightScales1,
            const c10::optional<std::vector<at::Tensor>> &sharedWeightScales2,
            const c10::optional<std::vector<at::Tensor>> &sharedBias1,
-           const c10::optional<std::vector<at::Tensor>> &sharedBias2, int64_t maxRecvTokenNum,
-           int64_t dispatchQuantMode, int64_t combineQuantMode, std::string commAlg, int64_t numMaxTokensPerRank,
-           std::string activation, std::vector<float> activationParams,
+           const c10::optional<std::vector<at::Tensor>> &sharedBias2, const c10::optional<at::Tensor> &maskBuffer,
+           int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t combineQuantMode, std::string commAlg,
+           int64_t numMaxTokensPerRank, std::string activation, std::vector<float> activationParams,
            c10::optional<int64_t> dispatchQuantOutDtype, c10::optional<int64_t> weight1Type,
            c10::optional<int64_t> weight2Type, c10::optional<int64_t> topoType, c10::optional<int64_t> rankNumPerServer,
            int64_t topkWeightsType)
@@ -39,6 +39,13 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     TORCH_CHECK(((x.scalar_type() == at::kBFloat16) || (x.scalar_type() == at::kHalf)) &&
                     (topkIds.scalar_type() == at::kInt),
                 "dtype of x should be bfloat16, float16, dtype of topk_ids should be int.");
+    if (maskBuffer.has_value()) {
+        const at::Tensor &mask = maskBuffer.value();
+        TORCH_CHECK(mask.scalar_type() == at::kBool, "mask_buffer dtype must be bool.");
+        TORCH_CHECK(mask.dim() == 1 && mask.numel() == epWorldSize, "mask_buffer shape must be [ep_world_size].");
+        TORCH_CHECK(mask.device() == x.device(), "mask_buffer must be on the same device as x.");
+        TORCH_CHECK(mask.is_contiguous(), "mask_buffer must be contiguous.");
+    }
 
     at::TensorList weight1Ref = weight1;
     at::TensorList weight2Ref = weight2;
@@ -128,9 +135,9 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     ACLNN_CMD(aclnnMegaMoe, context, x, topkIds, topkWeights, weight1Wrapper, weight2Wrapper, weightScales1Wrapper,
               weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask, sharedWeight1Wrapper, sharedWeight2Wrapper,
               sharedWeightScales1Wrapper, sharedWeightScales2Wrapper, sharedBias1Wrapper, sharedBias2Wrapper,
-              moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType,
-              combineQuantMode, commAlgPtr, numMaxTokensPerRank, activationPtr, activationParams, topoTypeValue,
-              rankNumPerServerValue, topkWeightsType, y, expertTokenNums);
+              maskBuffer, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode,
+              dispatchQuantResultType, combineQuantMode, commAlgPtr, numMaxTokensPerRank, activationPtr,
+              activationParams, topoTypeValue, rankNumPerServerValue, topkWeightsType, y, expertTokenNums);
 
     return std::tie(y, expertTokenNums);
 }
