@@ -40,8 +40,6 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
     using MatmulKernel = Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, BlockMmad, void, BlockScheduler>;
     using GroupedKernel = Blaze::Gemm::Kernel::GroupedMatmulMixWeightPrologue<MatmulKernel>;
 
-    constexpr uint64_t MX_GROUP_SIZE = 32U;
-    constexpr uint64_t UB_K_SIZE = 32U;
     constexpr uint64_t L1_BUFFER_NUM = 4U;
     const int64_t m = 1;
     const int64_t n = static_cast<int64_t>(gmmTiling->nSize);
@@ -49,7 +47,16 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
     const int64_t baseM = static_cast<int64_t>(mmTiling->baseM);
     const int64_t baseN = static_cast<int64_t>(mmTiling->baseN);
     const int64_t baseK = static_cast<int64_t>(mmTiling->baseK);
-    const int64_t kL1Size = baseK > 0 ? baseK : static_cast<int64_t>(MX_GROUP_SIZE);
+    if (n <= 0 || k <= 0 || baseM <= 0 || baseN <= 0 || baseK <= 0) {
+        return;
+    }
+
+    // For NZ weight, two AIV sub-blocks split one L1 K tile.  Derive the UB tile
+    // from the host tiling instead of relying on baseK being fixed at 64.
+    constexpr uint64_t K_UB_ALIGNMENT = 64U;
+    const uint64_t kL1Size = static_cast<uint64_t>(baseK);
+    const uint64_t kBubSize =
+        ((kL1Size + 1U) / 2U + K_UB_ALIGNMENT - 1U) / K_UB_ALIGNMENT * K_UB_ALIGNMENT;
 
     GM_ADDR xAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<XType>(0, x));
     GM_ADDR yAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
@@ -57,9 +64,9 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
     typename GroupedKernel::Params params{
         {{m, n, k},
          {xAddr, perTokenScale, nullptr, yAddr,
-          AscendC::Te::MakeShape(baseM, baseN, kL1Size, kL1Size),
+          AscendC::Te::MakeShape(baseM, baseN, static_cast<int64_t>(kL1Size), static_cast<int64_t>(kL1Size)),
           AscendC::Te::MakeShape(baseM, baseN, baseK), L1_BUFFER_NUM, gmmTiling->hasBias != 0U},
-         {nullptr, nullptr, UB_K_SIZE, static_cast<uint64_t>(baseN)},
+         {nullptr, nullptr, kBubSize, static_cast<uint64_t>(baseN)},
          {static_cast<uint64_t>(baseM), static_cast<uint64_t>(baseN), 1U, 1U, 1U, 1U, 0U, 0U}},
         {gmmTiling->groupNum, gmmTiling->groupListType, gmmTiling->hasBias != 0U},
         weight, antiquantScale, bias, groupList};
