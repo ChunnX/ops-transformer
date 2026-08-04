@@ -279,6 +279,41 @@ struct WorkSetGeneric {
     const LayoutBundle &layouts;
 };
 
+// 与单 Matmul 的 full-M-block 判定一致：只有一个 problem 能覆盖完整 M、且 M 方向只有一个 tile 时，
+// B/scaleB 才不会被后续 M tile 再读，可以用 CACHE_MODE_DISABLE 做一次性 streaming 读取。
+// Wave 还必须由调用方证明当前 problem 覆盖完整专家；热点专家被切到多个 Wave 时不能绕过 L2。
+// B 与 scaleB 的物理行跨度不同，二者必须独立判定 128B cache-line 对齐，不能共用一个结果。
+template <bool IsWeightNz, typename MatmulConfig, typename TensorB, typename TensorScaleB>
+__aicore__ inline void SetWaveWeightL2CacheHint(const typename MatmulConfig::ProblemConfig &config,
+                                                bool allowWeightL2Bypass, TensorB &gmB, TensorScaleB &gmScaleB)
+{
+    constexpr uint64_t cacheLineBytes = 128U;
+    // allowWeightL2Bypass 表示调用方确认这是完整专家，而 m <= tileM 表示 M 方向仅有一个 tile。
+    // 两者同时成立，才等价于普通小 Matmul 中的 fullMBlock，权重在本 kernel 内只流读一次。
+    bool streamWeightOnce = allowWeightL2Bypass && config.m <= config.tileM;
+
+    // NZ 已由分形布局保证物理块对齐。ND/DN(transB) 的连续维是 K，每一行的起点只有在
+    // K 方向物理字节数为 128B 整数倍时才能安全 streaming。统一要求 256 个 logical element：
+    // packed FP4 恰为 128B，FP8 为 256B；对 FP8 比最低 128-element 要求更保守，但不会误开 bypass。
+    bool bypassWeightL2 = streamWeightOnce;
+    if constexpr (!IsWeightNz) {
+        bypassWeightL2 = bypassWeightL2 && config.k % 256U == 0U;
+    }
+    gmB.SetL2CacheHint(
+        bypassWeightL2 ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
+
+    // ScaleBDN 的连续维是 N，每个 logical N 含 C0_SIZE_SCALE 个 scale。这里检查完整 N 行跨度；
+    // tile-N 固定为 256，其 tile 行跨度天然满足 128B 对齐，因此无需再做动态 baseN 检查。
+    constexpr uint64_t scaleTileNStrideBytes = static_cast<uint64_t>(L1_TILE_N) * MatmulConfig::C0_SIZE_SCALE *
+                                               sizeof(typename MatmulConfig::ElementMxScaleBType);
+    static_assert(scaleTileNStrideBytes % cacheLineBytes == 0U, "ScaleB tile-N stride must be cache-line aligned");
+    uint64_t scaleNStrideBytes = static_cast<uint64_t>(config.n) * MatmulConfig::C0_SIZE_SCALE *
+                                 sizeof(typename MatmulConfig::ElementMxScaleBType);
+    bool bypassScaleL2 = streamWeightOnce && scaleNStrideBytes % cacheLineBytes == 0U;
+    gmScaleB.SetL2CacheHint(
+        bypassScaleL2 ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
+}
+
 template <typename Policy, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false,
           uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false, bool IsShared = false,
@@ -288,7 +323,8 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
                                               const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                               const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                               const BlockJobContext &blockJob, ExtraArgs &args,
-                                              PersistentContext *persistentContext)
+                                              PersistentContext *persistentContext,
+                                              bool allowWeightL2Bypass = false)
 {
     using Config = Config<false, Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
                           ElementMxScaleB, IsWeightNZ, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsLayered,
@@ -333,6 +369,10 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
     auto gmScaleB = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB *>(gmmAddrInfo.bScaleGlobal)),
         layouts.scaleB);
+    if constexpr (IsWaveFlagGrained && g_coreType == AscendC::AIC) {
+        Detail::SetWaveWeightL2CacheHint<IsWeightNZ, Config>(
+            config, allowWeightL2Bypass, gmB, gmScaleB);
+    }
     auto gmBias =
         Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType *>(0UL)), layouts.bias);
 
@@ -359,7 +399,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, const BlockJobContext &blockJob,
     uint32_t expertBeforeCnt, uint32_t expertIdx, uint16_t &pingpongIdx,
-    PersistentContext *persistentContext)
+    PersistentContext *persistentContext, bool allowWeightL2Bypass = false)
 {
     using SwigluQuantOpType = std::remove_reference_t<decltype(epilogueOp)>;
     Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{
@@ -367,7 +407,8 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     Detail::GroupMatmulImplGeneric<Detail::Gmm1Policy, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, false, Gmm1TileM, TopkWeightsPrefetch, IsShared,
                                    IsGmm1Interleaved, IsWaveFlagGrained>(
-        params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args, persistentContext);
+        params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args, persistentContext,
+        allowWeightL2Bypass);
 }
 
 template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
@@ -401,13 +442,15 @@ __aicore__ inline void GroupMatmul2(const Params &params,
                                     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
                                     const BlockJobContext &blockJob, uint32_t groupCnt, uint16_t &pingpongIdx,
-                                    PersistentContext *persistentContext)
+                                    PersistentContext *persistentContext,
+                                    bool allowWeightL2Bypass = false)
 {
     Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx};
     Detail::GroupMatmulImplGeneric<Detail::Gmm2Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared,
                                    IsGmm1Interleaved, IsWaveFlagGrained>(
-        params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args, persistentContext);
+        params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args, persistentContext,
+        allowWeightL2Bypass);
 }
 
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,

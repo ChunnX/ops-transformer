@@ -107,7 +107,8 @@ __aicore__ inline void RunSharedExpertGmm1SwigluStage(const SharedExpertGmm1Swig
                                                       const SharedExpertGmm1ProblemShape &problemShape,
                                                       SharedExpertGmm1SwigluState &runtimeState,
                                                       uint32_t sharedExpertIdx,
-                                                      void *blockMmadContext)
+                                                      void *blockMmadContext,
+                                                      bool allowWeightL2Bypass = false)
 {
     uint32_t expertBeforeCnt = sharedExpertIdx * context.tokenNum;
     if constexpr (EnableA8W4) {
@@ -134,7 +135,7 @@ __aicore__ inline void RunSharedExpertGmm1SwigluStage(const SharedExpertGmm1Swig
             IsWaveFlagGrained>(
             epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
             runtimeState.vecSetSyncCom, context.blockJob, expertBeforeCnt, sharedExpertIdx,
-            runtimeState.pingpongIdx, persistentContext);
+            runtimeState.pingpongIdx, persistentContext, allowWeightL2Bypass);
     } else {
         using GmmConfig = Detail::Config<
             false, Detail::Gmm1Policy, COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t,
@@ -148,7 +149,7 @@ __aicore__ inline void RunSharedExpertGmm1SwigluStage(const SharedExpertGmm1Swig
             IsWaveFlagGrained>(
             epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
             runtimeState.vecSetSyncCom, context.blockJob, expertBeforeCnt, sharedExpertIdx,
-            runtimeState.pingpongIdx, persistentContext);
+            runtimeState.pingpongIdx, persistentContext, allowWeightL2Bypass);
     }
 }
 
@@ -159,7 +160,7 @@ template <typename QuantOutType, typename ActivationType, typename WeightType, t
 __aicore__ inline void ControlSharedExpertGmm1SwigluPipeline(
     const SharedExpertGmm1SwigluContext &context, const SharedExpertGmm1SwigluArgs &args,
     const Params &gmmParams, BlockEpilogue &epilogueOp, SharedExpertGmm1SwigluState &runtimeState,
-    void *blockMmadContext)
+    void *blockMmadContext, bool allowWeightL2Bypass = false)
 {
     if (context.blockJob.totalJobs == 0U || context.blockJob.jobIndex >= context.blockJob.totalJobs ||
         context.sharedExpertNum == 0U) {
@@ -183,7 +184,7 @@ __aicore__ inline void ControlSharedExpertGmm1SwigluPipeline(
         RunSharedExpertGmm1SwigluStage<QuantOutType, WeightType, SwigluOutType, QuantScaleType, EnableA8W4,
                                        Gmm1TileM, IsGmm1Interleaved, IsWaveFlagGrained>(
             context, gmmParams, epilogueOp, gmmAddrInfo, problemShape, runtimeState, sharedExpertIdx,
-            blockMmadContext);
+            blockMmadContext, allowWeightL2Bypass);
     }
     EndSync<IsGmm1Interleaved>(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
 }

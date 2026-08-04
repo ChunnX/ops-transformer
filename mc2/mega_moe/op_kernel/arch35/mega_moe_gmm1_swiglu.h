@@ -176,7 +176,7 @@ template <typename QuantOutType, typename WeightType, typename SwigluOutType, ty
 __aicore__ inline void ControlGmm1SwigluPipelineByMode(
     const Gmm1SwigluContext &context, const Params &gmmParams, BlockEpilogue &epilogueOp,
     const GMMAddrInfo &gmmAddrInfo, const Gmm1ExpertLoopState &state, Gmm1SwigluState &runtimeState,
-    uint32_t expertIdx, void *blockMmadContext)
+    uint32_t expertIdx, void *blockMmadContext, bool allowWeightL2Bypass = false)
 {
     if constexpr (EnableA8W4) {
         using GmmConfig = Detail::Config<
@@ -203,7 +203,7 @@ __aicore__ inline void ControlGmm1SwigluPipelineByMode(
             IsWaveFlagGrained>(
             epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
             runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
-            runtimeState.pingpongIdx, persistentContext);
+            runtimeState.pingpongIdx, persistentContext, allowWeightL2Bypass);
     } else {
         using GmmConfig = Detail::Config<
             false, Detail::Gmm1Policy, COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t,
@@ -217,7 +217,7 @@ __aicore__ inline void ControlGmm1SwigluPipelineByMode(
             IsWaveFlagGrained>(
             epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
             runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
-            runtimeState.pingpongIdx, persistentContext);
+            runtimeState.pingpongIdx, persistentContext, allowWeightL2Bypass);
     }
 }
 
