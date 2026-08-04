@@ -19,7 +19,7 @@
  *   cos == sin。cos 的 N == 1，cos 的 B ∈ {1, grad_query_embed.B}，S/D 与 grad_query_embed 一致。
  *   query == grad_query_embed, key == grad_key_embed。grad_cos == cos, grad_sin == sin。
  *   layout attr: {1=BSND, 2=SBND, 3=BNSD, 4=TND}
- *   → internal Layout: BSND(=0, 含 TND) → BAB; SBND(=1) → AB; BNSD(=2, 预留)
+ *   → internal Layout: BSND(=0, 含 TND) → BAB; SBND(=1) → AB; BNSD(=2, 预留); NO_BROADCAST(=3) → A
  */
 #include <cmath>
 #include <graph/utils/type_utils.h>
@@ -154,39 +154,79 @@ ge::graphStatus ApplyRopeGradRegbaseTilingClass::CheckShapeDim() const
 }
 
 // ==========================================================================
-// J 函数: TND 时提取 dim, 4D 照常
-// ==========================================================================
-static inline int64_t D(const gert::Shape& s, int i, bool tnd) {
-    if (tnd) { if (i==0) return 1; else return s.GetDim(i-1); }
-    else return s.GetDim(i);
-}
-// N dim index: TND→1, 4D→2
-static constexpr int64_t NIDX(bool tnd) { return tnd ? 1 : 2; }
-
-// ==========================================================================
 // JudgeLayoutByShape
-// 新约束: cos N==1, cos 其余维 == grad_query_embed → 只有三种可能:
-//   B=1 且 B==cosB → cos (1,S,1,D) → BSND
-//   B>1     → cos (B,S,1,D) → SBND (BS1D 模式)
-//   BNSD   → cos (B,1,S,D) 或 (1,1,S,D) → BNSD 预留
-//   TND    → cos (T,1,D) → B=1,S=T → BSND
+// 新约束:
+//   cos/sin shape 与 grad_query_embed、grad_key_embed 完全一致 → NO_BROADCAST → A
+//   cos N==1, cos 其余维 == grad_query_embed → 广播模板
+//   layout attr 只用于解释物理维度:
+//     1=BSND: (B,S,N,D), cos 支持 (1,S,1,D)/(B,S,1,D)
+//     2=SBND: (S,B,N,D), cos 支持 (S,1,1,D)/(S,B,1,D)
+//     3=BNSD: 预留, 当前不支持
+//     4=TND : (T,N,D),   cos 支持 (T,1,D)
 // ==========================================================================
 ge::graphStatus ApplyRopeGradRegbaseTilingClass::JudgeLayoutByShape(
-    const gert::Shape& dyQShape, const gert::Shape& cosShape)
+    const gert::Shape& dyQShape, const gert::Shape& dyKShape, const gert::Shape& cosShape, int64_t layoutVal)
 {
-    isTndLayout_ = (dyQShape.GetDimNum() == D_3);
-
-    // 提取 cos N 维, 检查是否 == 1
-    int64_t cosN = D(cosShape, NIDX(isTndLayout_), isTndLayout_);
-    if (cosN != 1) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cos",
-            ToString(cosShape).c_str(), "The N dim of cos must be 1");
+    if (layoutVal < 1 || layoutVal > 4) {
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "layout",
+            std::to_string(layoutVal).c_str(), "1(BSND), 2(SBND), 3(BNSD) or 4(TND)");
+        return ge::GRAPH_FAILED;
+    }
+    if (layoutVal == 3) {
+        OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "layout",
+            std::to_string(layoutVal).c_str(), "BNSD is reserved and not supported in this implementation");
         return ge::GRAPH_FAILED;
     }
 
-    // 检查 cos 除 N 外各维是否与 grad_query_embed 一致
+    isTndLayout_ = (layoutVal == 4);
+    int64_t expectDimNum = isTndLayout_ ? D_3 : D_4;
+    if (dyQShape.GetDimNum() != expectDimNum || dyKShape.GetDimNum() != expectDimNum ||
+        cosShape.GetDimNum() != expectDimNum) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "tensor",
+            std::to_string(dyQShape.GetDimNum()).c_str(), isTndLayout_ ? "3D for TND" : "4D for BSND/SBND");
+        return ge::GRAPH_FAILED;
+    }
+
+    if (dyQShape == dyKShape && dyQShape == cosShape) {
+        layout_ = ApplyRopeLayout::NO_BROADCAST;
+        if (isTndLayout_) {
+            cosb_ = 1;
+        } else if (layoutVal == 2) {
+            cosb_ = cosShape.GetDim(D_1);
+        } else {
+            cosb_ = cosShape.GetDim(D_0);
+        }
+        return ge::GRAPH_SUCCESS;
+    }
+
+    int64_t xB = 1;
+    int64_t xS = 1;
+    int64_t cosB = 1;
+    int64_t cosS = 1;
+    int64_t cosN = 1;
     int64_t dyD = isTndLayout_ ? dyQShape.GetDim(D_2) : dyQShape.GetDim(D_3I);
     int64_t cosD = isTndLayout_ ? cosShape.GetDim(D_2) : cosShape.GetDim(D_3I);
+
+    if (layoutVal == 1) { // BSND
+        xB = dyQShape.GetDim(D_0);
+        xS = dyQShape.GetDim(D_1);
+        cosB = cosShape.GetDim(D_0);
+        cosS = cosShape.GetDim(D_1);
+        cosN = cosShape.GetDim(D_2);
+    } else if (layoutVal == 2) { // SBND
+        xS = dyQShape.GetDim(D_0);
+        xB = dyQShape.GetDim(D_1);
+        cosS = cosShape.GetDim(D_0);
+        cosB = cosShape.GetDim(D_1);
+        cosN = cosShape.GetDim(D_2);
+    } else { // TND
+        xB = 1;
+        xS = dyQShape.GetDim(D_0);
+        cosB = 1;
+        cosS = cosShape.GetDim(D_0);
+        cosN = cosShape.GetDim(D_1);
+    }
+
     if (cosD != dyD) {
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "cos and grad_query_embed",
             (ToString(cosShape) + " and " + ToString(dyQShape)).c_str(),
@@ -194,12 +234,11 @@ ge::graphStatus ApplyRopeGradRegbaseTilingClass::JudgeLayoutByShape(
         return ge::GRAPH_FAILED;
     }
 
-    // 提取 B, S, N(dy) 维度
-    int64_t xB = D(dyQShape, 0, isTndLayout_);
-    int64_t xS = D(dyQShape, 1, isTndLayout_);
-    int64_t xN = D(dyQShape, 2, isTndLayout_); // N dimension of dy
-    int64_t cosB = D(cosShape, 0, isTndLayout_);
-    int64_t cosS = D(cosShape, 1, isTndLayout_);
+    if (cosN != 1) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "cos",
+            ToString(cosShape).c_str(), "The N dim of cos must be 1 unless cos shape equals grad shape");
+        return ge::GRAPH_FAILED;
+    }
 
     // cos B 可以 =1 或 =dy B，但 cos S 和 cos D 必须和 dy 一致（N 已检查为 1）
     if (cosS != xS) {
@@ -215,25 +254,11 @@ ge::graphStatus ApplyRopeGradRegbaseTilingClass::JudgeLayoutByShape(
         return ge::GRAPH_FAILED;
     }
 
-    // Layout 判定
-    if (xN == 1 && cosB == xB && cosS == xS) {
-        // dy N == 1, cosB==dyB: cos == grad_query_embed 全同 → NO_BROADCAST → A(205)
-        layout_ = ApplyRopeLayout::NO_BROADCAST;
-    } else if (cosS == xS && cosB == 1 && xB == 1) {
-        // B=1 且 cosB=1: BSND (1S1D) → BAB
+    // internal layout 只表示 kernel 模板选择，不表示原始物理 layout。
+    if (layoutVal == 4 || (layoutVal == 1 && xB == 1 && cosB == 1)) {
         layout_ = ApplyRopeLayout::BSND;
-    } else if (cosS == xS && cosB == 1) {
-        // cosB=1 但 dy B>1: SBND → AB (BS1D 模式)
-        layout_ = ApplyRopeLayout::SBND;
-    } else if (cosS == xS && cosB == xB) {
-        // cosB==dy B: 全部维度一致(除 N) → BSND (B=1) 或 SBND (B>1)
-        if (xB == 1) layout_ = ApplyRopeLayout::BSND;
-        else layout_ = ApplyRopeLayout::SBND;
     } else {
-        // 其他 broadcast 模式 → BNSD 预留
-        layout_ = ApplyRopeLayout::BNSD;
-    }
-    cosb_ = cosB;
+        layout_ = ApplyRopeLayout::SBND;
     }
     cosb_ = cosB;
     return ge::GRAPH_SUCCESS;
@@ -412,40 +437,31 @@ ge::graphStatus ApplyRopeGradRegbaseTilingClass::GetShapeAttrsInfo()
     auto dyQShape = context_->GetInputShape(GQ_IDX)->GetStorageShape();
     auto dyKShape = context_->GetInputShape(GK_IDX)->GetStorageShape();
     auto cosShape = context_->GetInputShape(COS_IDX)->GetStorageShape();
-    CHK(JudgeLayoutByShape(dyQShape, cosShape));
+    CHK(JudgeLayoutByShape(dyQShape, dyKShape, cosShape, layoutVal));
 
-    d_ = isTndLayout_ ? dyQShape.GetDim(D_2) : dyQShape.GetDim(D_3I);
-    if (isTndLayout_) {
-        // TND: B=1, S=T, N=N → 映射后必然 BSND(B=1) → BAB
+    if (layoutVal == 4) {
+        // TND: (T, N, D) -> b=1, s=T, n=N, d=D.
+        d_ = dyQShape.GetDim(D_2);
         b_ = 1;
         s_ = dyQShape.GetDim(D_0);
         nQ_ = dyQShape.GetDim(D_1);
         nK_ = dyKShape.GetDim(D_1);
-    } else if (layout_ == ApplyRopeLayout::BSND) {
-        b_ = dyQShape.GetDim(D_0);
-        s_ = dyQShape.GetDim(D_1);
+        cosb_ = 1;
+    } else if (layoutVal == 2) {
+        // SBND: (S, B, N, D) -> internal b=B, s=S, n=N, d=D.
+        d_ = dyQShape.GetDim(D_3I);
+        s_ = dyQShape.GetDim(D_0);
+        b_ = dyQShape.GetDim(D_1);
         nQ_ = dyQShape.GetDim(D_2);
         nK_ = dyKShape.GetDim(D_2);
-        cosb_ = cosShape.GetDim(D_0);
-    } else if (layout_ == ApplyRopeLayout::SBND) {
-        b_ = dyQShape.GetDim(D_0);
-        s_ = dyQShape.GetDim(D_1);
-        nQ_ = dyQShape.GetDim(D_2);
-        nK_ = dyKShape.GetDim(D_2);
-        cosb_ = cosShape.GetDim(D_0);
-    } else if (layout_ == ApplyRopeLayout::NO_BROADCAST) {
-        // cos == grad_query_embed (N=1, 全同) → BNSD 格式提取, MergeDim 会合并 B*N*S
-        b_ = dyQShape.GetDim(D_0);
-        nQ_ = dyQShape.GetDim(D_1);
-        nK_ = dyKShape.GetDim(D_1);
-        s_ = dyQShape.GetDim(D_2);
-        cosb_ = cosShape.GetDim(D_0);
+        cosb_ = cosShape.GetDim(D_1);
     } else {
-        // BNSD — 预留
+        // BSND: (B, S, N, D) -> internal b=B, s=S, n=N, d=D.
+        d_ = dyQShape.GetDim(D_3I);
         b_ = dyQShape.GetDim(D_0);
-        nQ_ = dyQShape.GetDim(D_1);
-        nK_ = dyKShape.GetDim(D_1);
-        s_ = dyQShape.GetDim(D_2);
+        s_ = dyQShape.GetDim(D_1);
+        nQ_ = dyQShape.GetDim(D_2);
+        nK_ = dyKShape.GetDim(D_2);
         cosb_ = cosShape.GetDim(D_0);
     }
     return ge::GRAPH_SUCCESS;
@@ -513,10 +529,12 @@ ge::graphStatus ApplyRopeGradRegbaseTilingClass::SetTilingKeyBlockDim(uint32_t d
         key_.patternID, dxTilingKey, dCosFlag_, layout, tilingKey_);
     context_->SetBlockDim(std::max(usedCoreNum_, static_cast<int64_t>(context_->GetBlockDim())));
     context_->SetTilingKey(tilingKey_);
-    auto workspaces = context_->GetWorkspaceSizes(1);
-    int64_t totalN = nQ_ + nK_;
-    workspaces[0] += b_ * s_ * totalN * d_ * ge::GetSizeByDataType(dtype_);
-    if (dCosFlag_ == 1) context_->SetScheduleMode(1);
+    if (dCosFlag_ == 1 && layout_ != ApplyRopeLayout::NO_BROADCAST) {
+        auto workspaces = context_->GetWorkspaceSizes(1);
+        int64_t totalN = nQ_ + nK_;
+        workspaces[0] += b_ * s_ * totalN * d_ * ge::GetSizeByDataType(dtype_);
+        context_->SetScheduleMode(1);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
