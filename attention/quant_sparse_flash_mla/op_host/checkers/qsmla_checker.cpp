@@ -55,7 +55,6 @@ ge::graphStatus QSMLAChecker::Process(const QSMLATilingInfo &info)
     pagedAttentionChecker_ = std::make_unique<PagedAttentionChecker>();
     sinksChecker_ = std::make_unique<SinksChecker>();
     softmaxLseChecker_ = std::make_unique<SoftmaxLseChecker>();
-
     // Phase 1: CheckSinglePara — dtype / shape / format per tensor, value per attribute
     if (commonChecker_->CheckSinglePara(mutableInfo) != ge::GRAPH_SUCCESS ||
         maskChecker_->CheckSinglePara(mutableInfo) != ge::GRAPH_SUCCESS ||
@@ -66,7 +65,6 @@ ge::graphStatus QSMLAChecker::Process(const QSMLATilingInfo &info)
         softmaxLseChecker_->CheckSinglePara(mutableInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-
     // Phase 2: CheckParaExistence — required / optional / forbidden rules
     if (commonChecker_->CheckParaExistence(mutableInfo) != ge::GRAPH_SUCCESS ||
         maskChecker_->CheckParaExistence(mutableInfo) != ge::GRAPH_SUCCESS ||
@@ -77,7 +75,6 @@ ge::graphStatus QSMLAChecker::Process(const QSMLATilingInfo &info)
         softmaxLseChecker_->CheckParaExistence(mutableInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-
     // Phase 3: CheckCrossFeature — cross-parameter feature constraints
     if (commonChecker_->CheckCrossFeature(mutableInfo) != ge::GRAPH_SUCCESS ||
         maskChecker_->CheckCrossFeature(mutableInfo) != ge::GRAPH_SUCCESS ||
@@ -88,7 +85,6 @@ ge::graphStatus QSMLAChecker::Process(const QSMLATilingInfo &info)
         softmaxLseChecker_->CheckCrossFeature(mutableInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-
     // Phase 4: CheckMultiParaConsistency — multi-parameter shape/dtype matching
     if (commonChecker_->CheckMultiParaConsistency(mutableInfo) != ge::GRAPH_SUCCESS ||
         maskChecker_->CheckMultiParaConsistency(mutableInfo) != ge::GRAPH_SUCCESS ||

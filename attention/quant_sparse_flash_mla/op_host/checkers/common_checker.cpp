@@ -142,7 +142,6 @@ ge::graphStatus CommonChecker::CheckDescale(const QSMLATilingInfo &info) const
         const vector<size_t> expectDims = {DIM_NUM_ONE};
         return CheckDimNumSupport(&tensor->GetShape(), expectDims, name);
     };
-
     if (checkOne(qDescale.desc, qDescale.tensor, Q_DESCALE_NAME) != ge::GRAPH_SUCCESS ||
         checkOne(oriKvDescale.desc, oriKvDescale.tensor, ORI_KV_DESCALE_NAME) != ge::GRAPH_SUCCESS ||
         checkOne(cmpKvDescale.desc, cmpKvDescale.tensor, CMP_KV_DESCALE_NAME) != ge::GRAPH_SUCCESS) {
@@ -395,7 +394,6 @@ ge::graphStatus CommonChecker::CheckKvContiguous(const QSMLATilingInfo &info) co
         }
         return ge::GRAPH_SUCCESS;
     };
-
     if (validateContiguous(info.oriKvStrides, info.oriKvStorageShape, info.kvLayout, ORI_KV_NAME) !=
         ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;

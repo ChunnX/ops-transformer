@@ -278,7 +278,6 @@ ge::graphStatus SparseCompressChecker::CheckSparseIndicesShapeMatchQ(const QSMLA
         }
         return ge::GRAPH_SUCCESS;
     };
-
     if (checkOne(info.opParamInfo.oriSparseIndices.tensor, ORI_SPARSE_INDICES_NAME) != ge::GRAPH_SUCCESS ||
         checkOne(info.opParamInfo.cmpSparseIndices.tensor, CMP_SPARSE_INDICES_NAME) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -312,7 +311,6 @@ ge::graphStatus SparseCompressChecker::CheckTopkLengthShapeMatchQ(const QSMLATil
         }
         return ge::GRAPH_SUCCESS;
     };
-
     if (checkOne(info.opParamInfo.oriTopkLength.tensor, ORI_TOPK_LENGTH_NAME) != ge::GRAPH_SUCCESS ||
         checkOne(info.opParamInfo.cmpTopkLength.tensor, CMP_TOPK_LENGTH_NAME) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -334,7 +332,6 @@ ge::graphStatus SparseCompressChecker::CheckN2Consistency(const QSMLATilingInfo 
                     return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     };
-
     if (checkN2(info.opParamInfo.oriSparseIndices.tensor, ORI_SPARSE_INDICES_NAME) != ge::GRAPH_SUCCESS ||
         checkN2(info.opParamInfo.cmpSparseIndices.tensor, CMP_SPARSE_INDICES_NAME) != ge::GRAPH_SUCCESS ||
         checkN2(info.opParamInfo.oriTopkLength.tensor, ORI_TOPK_LENGTH_NAME) != ge::GRAPH_SUCCESS ||
