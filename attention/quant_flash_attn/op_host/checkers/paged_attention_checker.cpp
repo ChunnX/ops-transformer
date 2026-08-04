@@ -133,6 +133,14 @@ ge::graphStatus PagedAttentionChecker::CheckFeature(const QfaTilingInfo &qfaInfo
                             "When quant_mode is MxFP8, block_size must be in [64, 128, 256, 512, 1024]"),
                         return ge::GRAPH_FAILED);
         }
+        // GQA FP8 fullquant 场景: blockSize 固定 128
+        if (qfaInfo.quantMode == QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
+            OP_CHECK_IF(qfaInfo.blockSize != 128,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "block_size",
+                            std::to_string(qfaInfo.blockSize).c_str(),
+                            "When quant_mode is GQA_FP8_FULLQUANT, block_size must be 128"),
+                        return ge::GRAPH_FAILED);
+        }
     } else {
         // 非 PA 场景: block_table 不应传入
         OP_CHECK_IF(blockTableTensor != nullptr,

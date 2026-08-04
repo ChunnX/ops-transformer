@@ -40,15 +40,16 @@ using namespace Ops::Base;
 
 ge::graphStatus CommonChecker::CheckSingleParaLayout(const QfaTilingInfo &qfaInfo)
 {
-    const std::vector<QfaLayout> supportedQLayouts = {QfaLayout::BSND, QfaLayout::BNSD, QfaLayout::TND};
-    const std::vector<QfaLayout> supportedKvLayouts = {QfaLayout::BSND,    QfaLayout::BNSD,    QfaLayout::TND,
+    const std::vector<QfaLayout> supportedQLayouts = {QfaLayout::BSND, QfaLayout::BNSD, QfaLayout::TND,
+                                                       QfaLayout::NTD};
+    const std::vector<QfaLayout> supportedKvLayouts = {QfaLayout::BSND, QfaLayout::BNSD, QfaLayout::TND,
                                                        QfaLayout::PA_BBND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ};
     const std::vector<QfaLayout> supportedOutLayouts = {QfaLayout::BSND, QfaLayout::BNSD, QfaLayout::TND};
 
     if (std::find(supportedQLayouts.begin(), supportedQLayouts.end(), qfaInfo.qLayout) == supportedQLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, "layout_q",
                                               QfaLayoutToSerialString(qfaInfo.qLayout).c_str(),
-                                              "The value of layout_q must be in BSND/BNSD/TND");
+                                              "The value of layout_q must be in BSND/BNSD/TND/NTD");
         return ge::GRAPH_FAILED;
     }
 
