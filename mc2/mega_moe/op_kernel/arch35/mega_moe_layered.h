@@ -1554,8 +1554,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::MetaInfoC
                     uint32_t metaInfoTensorSize = chunkRows * ALIGN_32;
                     metaInfoTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, metaInfoTensorAddr,
                                                            metaInfoTensorSize / sizeof(int32_t));
+                    SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
                     CopyGMToGMPerToken(rowDstOffsetInCore, dstRankIdx, chunkSrcIdx, chunkRows);
                 }
+                PipeBarrier<PIPE_ALL>();
                 int32_t roundRowStartLocal = rowStartIdxInDst + accumulatedRowSrcOffset - priorExpertCumsum;
                 int32_t roundRowEndLocal = roundRowStartLocal + roundCopyCnt;
                 int32_t waveLo = roundRowStartLocal / L1_TILE_M_I32;
