@@ -1809,16 +1809,17 @@ void MoeInitRoutingV3Arch35TilingClass::SetPerLoopParams4NoQuantDropPad(const Mu
                                                                         PerLoopParams &perLoopParams,
                                                                         const int64_t perCoreIndicesElements)
 {
-    perLoopParams.perLoopMaxIndicesElements =
-        (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
-         UB_BLOCK_SIZE * NUM_TWO) /
-        multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
-    while (perLoopParams.perLoopMaxIndicesElements <= 0 && perLoopParams.perLoopCols > 1) {
-        perLoopParams.perLoopCols = Ops::Base::CeilDiv(perLoopParams.perLoopCols, NUM_TWO);
+    const int64_t minPerLoopCols = IsInt4DynamicQuantCase() ? NUM_TWO : 1;
+    while (true) {
+        AlignInt4DynamicQuantPerLoopCols(perLoopParams);
         perLoopParams.perLoopMaxIndicesElements =
             (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
              UB_BLOCK_SIZE * NUM_TWO) /
             multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
+        if (perLoopParams.perLoopMaxIndicesElements > 0 || perLoopParams.perLoopCols <= minPerLoopCols) {
+            break;
+        }
+        perLoopParams.perLoopCols = Ops::Base::CeilDiv(perLoopParams.perLoopCols, NUM_TWO);
     }
     perLoopParams.perLoopMaxIndicesElements = std::min(perLoopParams.perLoopMaxIndicesElements, perCoreIndicesElements);
 
@@ -1876,12 +1877,6 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
 
     MultipleParams multipleParams = GetMultipleParams();
     PerLoopParams perLoopParams = GetPerLoopParams(multipleParams, perCoreIndicesElements);
-    int64_t originPerLoopCols = perLoopParams.perLoopCols;
-    AlignInt4DynamicQuantPerLoopCols(perLoopParams);
-    if (perLoopParams.perLoopCols != originPerLoopCols) {
-        SetPerLoopParams4NoQuantDropPad(multipleParams, perLoopParams, perCoreIndicesElements);
-        AlignInt4DynamicQuantPerLoopCols(perLoopParams);
-    }
 
     int64_t colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopParams.perLoopCols);
     int64_t lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopParams.perLoopCols;
