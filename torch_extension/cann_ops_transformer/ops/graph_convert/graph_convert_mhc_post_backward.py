@@ -11,23 +11,26 @@
 
 try:
     import torch
-    from torchair.ge._ge_graph import Tensor, TensorSpec, auto_convert_to_tensor
+    import torch_npu
+    import torchair
+    from torchair.ge._ge_graph import Tensor, TensorSpec
+    from torchair.ge._ge_graph import auto_convert_to_tensor
     from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
     from torchair._ge_concrete_graph.fx2ge_converter import (
         register_fx_node_ge_converter,
     )
+    from torchair.ge import attr
 
     _TORCHAIR_AVAILABLE = True
 except ImportError:
     _TORCHAIR_AVAILABLE = False
-
 
 if _TORCHAIR_AVAILABLE:
 
     @auto_convert_to_tensor(
         [False, False, False, False, False], [False, False, False, False, False]
     )
-    def mhc_post_backward_ge(
+    def MhcPostBackward(
         grad_output: Tensor,
         x: Tensor,
         h_res: Tensor,
@@ -37,22 +40,42 @@ if _TORCHAIR_AVAILABLE:
         dependencies=None,
         node_name=None,
     ):
+        """REG_OP(MhcPostBackward)\n
+        .INPUT(grad_y, TensorType({DT_BF16, DT_FLOAT16}))\n
+        .INPUT(x, TensorType({DT_BF16, DT_FLOAT16}))\n
+        .INPUT(h_res, TensorType({DT_FLOAT}))\n
+        .INPUT(h_out, TensorType({DT_BF16, DT_FLOAT16}))\n
+        .INPUT(h_post, TensorType({DT_FLOAT}))\n
+        .OUTPUT(grad_x, TensorType({DT_BF16, DT_FLOAT16}))\n
+        .OUTPUT(grad_h_res, TensorType({DT_FLOAT}))\n
+        .OUTPUT(grad_h_out, TensorType({DT_BF16, DT_FLOAT16}))\n
+        .OUTPUT(grad_h_post, TensorType({DT_FLOAT}))\n
+        """
         if dependencies is None:
             dependencies = []
+        inputs = {
+            "grad_y": grad_output,
+            "x": x,
+            "h_res": h_res,
+            "h_out": h_out,
+            "h_post": h_post,
+        }
+
+        attrs = {}
+
+        outputs = [
+            "grad_x",
+            "grad_h_res",
+            "grad_h_out",
+            "grad_h_post",
+        ]
 
         return ge_op(
             op_type="MhcPostBackward",
-            inputs={
-                "grad_y": grad_output,
-                "x": x,
-                "h_res": h_res,
-                "h_out": h_out,
-                "h_post": h_post,
-            },
-            attrs={},
-            outputs=["grad_x", "grad_h_res", "grad_h_out", "grad_h_post"],
+            inputs=inputs,
+            attrs=attrs,
+            outputs=outputs,
             dependencies=dependencies,
-            node_name=node_name,
             ir=IrDef("MhcPostBackward")
             .input("grad_y", "DT_BF16, DT_FLOAT16")
             .input("x", "DT_BF16, DT_FLOAT16")
@@ -74,25 +97,8 @@ if _TORCHAIR_AVAILABLE:
         h_res: Tensor,
         h_out: Tensor,
         h_post: Tensor,
-        *,
         meta_outputs: TensorSpec = None,
     ):
-        if h_res is None:
-            raise RuntimeError(
-                "mhc_post_backward graph mode does not support h_res=None; "
-                "the underlying IR defines h_res as REQUIRED."
-            )
-        return mhc_post_backward_ge(
-            grad_output=grad_output,
-            x=x,
-            h_res=h_res,
-            h_out=h_out,
-            h_post=h_post,
-        )
-
-else:
-
-    def convert_mhc_post_backward(*args, **kwargs):
-        raise RuntimeError(
-            "GE converter requires torchair, but torchair is not available."
+        return MhcPostBackward(
+            grad_output=grad_output, x=x, h_res=h_res, h_out=h_out, h_post=h_post
         )
