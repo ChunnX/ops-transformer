@@ -692,9 +692,6 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
     } else {
         uint32_t nSize = CeilAlign(s2L0RealSize, static_cast<uint64_t>(UB_BLOCK / sizeof(QK_T)));
         // 有效数据不足16行，只需输出部分行即可; L0C上bmm1结果矩阵M方向size必须是偶数
-        // Split the effective M rows between the two AIVs. s1gL0RealSize is
-        // padded to a cube block (for example 2 * G=114 becomes 128); using
-        // that padded size would split 64/64 and shift AIV1 by seven groups.
         uint32_t mSize = s1gSizeAlign2G;
         // L0C上matmul结果相邻连续数据片断间隔, 单位为16 * sizeof(T)
         uint32_t srcStride = ((mSize + 15) / 16) * 16;
