@@ -308,12 +308,9 @@ public:
         // 前置：确定本卡所在 UB 域（从最内层开始连续支持入参协议的若干层）
         LayerRanks ubDomain;
         if (!FindUbDomain(commHandle, layerList, layerNum, protocol, srcRankId, ubDomain)) {
-            // 边界：无法判定 UB 域，保守按单域处理
-            ASCEND_LOGW("Failed to determine UB domain for rank %u, treat as single domain, rankSize: %u", srcRankId,
-                        rankSize);
-            rankNumPerUbDomain_ = rankSize;
-            topoType_ = TopoType::INTRA_SUPER_NODE;
-            return;
+            // 本卡必属于某个 UB 域（全部卡同域或多域），无法判定即视为组网异常
+            TORCH_CHECK(false, "Failed to determine UB domain for rank ", srcRankId,
+                        ", rank has no peer supporting protocol ", static_cast<int>(protocol));
         }
         rankNumPerUbDomain_ = static_cast<uint32_t>(ubDomain.ranks.size());
         ASCEND_LOGI("Layer %u is current rank's UB domain, rankNumPerUbDomain_: %u", ubDomain.layer,
