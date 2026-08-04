@@ -500,7 +500,12 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalBandDeterInd
                 int64_t k = static_cast<int64_t>(this->tilingData->s1s2BNGS1S2BaseParams.coreNum / NUM_TWO);
                 int64_t m = this->bandInfo.m;
                 int64_t n = this->bandInfo.n;
-                CalCausalSwizzleIndex(k, m, n, b, j, r, coordinateInfo);
+                if (this->constInfo.sparseMode == BAND) {
+                    CalBandBalanceFirstSwizzleIndex(k, m, n, this->bandInfo.p, this->bandInfo.q, b, j, r,
+                                                    coordinateInfo);
+                } else {
+                    CalCausalSwizzleIndex(k, m, n, b, j, r, coordinateInfo);
+                }
             } else {
                 CalBandIndex(this->bandInfo, j, r, coordinateInfo);
             }
@@ -596,7 +601,8 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
 
     if constexpr (BaseClass::DETER_SPARSE_TYPE == DETER_BAND) {
         if constexpr (BaseClass::IS_N_EQUAL) {
-            if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx)) {
+            if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx) &&
+                this->constInfo.sparseMode == RIGHT_DOWN_CAUSAL) {
                 int64_t mNew = 0;
                 int64_t nNew = 0;
                 if (m < n) {
@@ -627,6 +633,28 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalDeterMaxLoop
         int64_t q = Ceil<int64_t>(this->constInfo.s2Token, this->DETER_CUBE_BASEN) + 1;
         p = p > s1Outer ? s1Outer : p;
         q = q > s2Outer ? s2Outer : q;
+        if constexpr (BaseClass::IS_N_EQUAL) {
+            if (unlikely(this->tilingData->s1s2BNGS1S2BaseParams.isSplitByBlockIdx) &&
+                this->constInfo.sparseMode == BAND) {
+                // The balance-first mapping supports the original signed p/q band directly.
+                this->bandInfo.k = k;
+                this->bandInfo.m = m;
+                this->bandInfo.n = n;
+                this->bandInfo.p = p;
+                this->bandInfo.q = q;
+                this->bandInfo.b = b;
+                InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, 0, 0,
+                                   this->coordinateInfos[0]);
+                InitCoordinateInfo(this->constInfo.s1Outer, this->constInfo.s2Outer, 0, 0,
+                                   this->coordinateInfos[1]);
+                int64_t maxRound = GetBandBalanceFirstMaxRound(k, m, n, p, q, b);
+                if constexpr (BaseClass::DETER_TILING_SPLIT_MODE) {
+                    maxRound *= NUM_TWO;
+                }
+                return maxRound;
+            }
+        }
+
         int64_t actualM, actualN, actualP, actualQ;
         int64_t mOffset, nOffset;
         if (p < 0) {

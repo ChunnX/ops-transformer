@@ -699,6 +699,77 @@ __aicore__ inline void CalCausalSwizzleIndex(int64_t k, int64_t m, int64_t n, in
     }
 }
 
+__aicore__ inline int64_t GetBandBalanceFirstRotationStride(int64_t k)
+{
+    if (k <= 1) {
+        return 0;
+    }
+
+    int64_t stride = k / NUM_TWO + 1;
+    while (Gcd(stride, k) != 1) {
+        ++stride;
+    }
+    return stride % k;
+}
+
+__aicore__ inline int64_t GetBandBalanceFirstMaxRound(int64_t k, int64_t m, int64_t n, int64_t p, int64_t q,
+                                                      int64_t b)
+{
+    // Columns after m + q - 1 cannot intersect 1 - q <= x - y <= p - 1.
+    int64_t effectiveN = Min(n, m + q - 1);
+    int64_t diagonalCount = p + q - 1;
+    if (k <= 0 || effectiveN <= 0 || diagonalCount <= 0 || b <= 0) {
+        return 0;
+    }
+    return Ceil<int64_t>(b * effectiveN, k) * diagonalCount;
+}
+
+__aicore__ inline void CalBandBalanceFirstSwizzleIndex(int64_t k, int64_t m, int64_t n, int64_t p, int64_t q,
+                                                        int64_t b, int64_t j, int64_t r,
+                                                        CoordinateInfo &coordinate)
+{
+    coordinate.batchId = -1;
+    int64_t effectiveN = Min(n, m + q - 1);
+    int64_t diagonalCount = p + q - 1;
+    int64_t logicalColumnCount = b * effectiveN;
+    int64_t maxRound = GetBandBalanceFirstMaxRound(k, m, n, p, q, b);
+    if (j < 1 || j > k || r < 1 || r > maxRound) {
+        return;
+    }
+
+    int64_t round0 = r - 1;
+    int64_t groupId = round0 / diagonalCount;
+    int64_t diagonalId = round0 % diagonalCount;
+    int64_t groupStart = groupId * k;
+    int64_t groupSize = Min(k, logicalColumnCount - groupStart);
+    if (groupSize <= 0) {
+        return;
+    }
+
+    // Snake adjacent logical-column groups and rotate every pair to spread boundary-column load.
+    int64_t rotationStride = GetBandBalanceFirstRotationStride(k);
+    int64_t pairRotation = ((groupId / NUM_TWO) * rotationStride) % k;
+    int64_t permutedCore = (j - 1 - pairRotation + k) % k;
+    int64_t localSlot = groupId % NUM_TWO == 0 ? permutedCore : k - 1 - permutedCore;
+    if (localSlot >= groupSize) {
+        return;
+    }
+
+    // Logical columns use y-major, batch-minor order: (y=1,b=1..B), (y=2,b=1..B), ...
+    int64_t logicalColumnId = groupStart + localSlot;
+    int64_t y = logicalColumnId / b + 1;
+    int64_t w = logicalColumnId % b + 1;
+    int64_t diagonal = 1 - q + diagonalId;
+    int64_t x = y + diagonal;
+    if (x < 1 || x > m || y < 1 || y > n || diagonal < 1 - q || diagonal > p - 1) {
+        return;
+    }
+
+    coordinate.batchId = w;
+    coordinate.s1Idx = x;
+    coordinate.s2Idx = y;
+}
+
 __aicore__ inline void CalGQACausalIndex(int64_t k, int64_t m, int64_t n, int64_t b, int64_t j, int64_t r, int64_t g,
                                          CoordinateInfo &coordinate)
 {
