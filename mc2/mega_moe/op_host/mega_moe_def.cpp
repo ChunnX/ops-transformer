@@ -10,8 +10,16 @@
 
 /*!
  * \file mega_moe_def.cpp
- * \brief
  */
+
+#if __has_include("version/asc_devkit_version.h")
+#include "version/asc_devkit_version.h"
+#if ASC_DEVKIT_MAJOR > 9 || (ASC_DEVKIT_MAJOR == 9 && ASC_DEVKIT_MINOR > 0)
+#define ENABLE_FORMAT_NZ_C0_32
+#endif
+#else
+#define ENABLE_FORMAT_NZ_C0_32
+#endif
 
 #include "register/op_def_registry.h"
 
@@ -24,12 +32,7 @@ public:
         .DataTypeList({ge::DT_INT32})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
-    this->Input("x")
-        .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,
-                        ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
-        .FormatList({ge::FORMAT_ND})
-        .AutoContiguous();
+        this->Input("x").ParamType(REQUIRED).DataTypeList({ge::DT_BF16}).FormatList({ge::FORMAT_ND}).AutoContiguous();
     this->Input("topk_ids")
         .ParamType(REQUIRED)
         .DataTypeList({ge::DT_INT32})
@@ -37,30 +40,48 @@ public:
         .AutoContiguous();
     this->Input("topk_weights")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_FLOAT, ge::DT_BF16})
+            .DataTypeList({ge::DT_BF16, ge::DT_FLOAT})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("weight1")
         .ParamType(DYNAMIC)
-        .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_INT4, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, 
-                    ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND,
-                    ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .DataType({
+                ge::DT_FLOAT8_E5M2,                         // E5M2 (ND)
+                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, // E4M3FN (ND/NZ)
+                ge::DT_FLOAT4_E2M1,                         // E2M1 (ND)
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1 // E2M1 (NZ / NZ_C0_32)
+#endif
+            })
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND,
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ_C0_32
+#endif
+            });
     this->Input("weight2")
         .ParamType(DYNAMIC)
-        .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_INT4, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, 
-                    ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2})
-        .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND,
-                    ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+            .DataType({
+                ge::DT_FLOAT8_E5M2,                         // E5M2 (ND)
+                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, // E4M3FN (ND/NZ)
+                ge::DT_FLOAT4_E2M1,                         // E2M1 (ND)
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1 // E2M1 (NZ_C0_32 / NZ_C0_32)
+#endif
+            })
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND,
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                     ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32
+#endif
+            });
     this->Input("weight_scales1")
         .ParamType(DYNAMIC)
-        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
-        .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataTypeList({ge::DT_FLOAT8_E8M0})
+            .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("weight_scales2")
         .ParamType(DYNAMIC)
-        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
-        .FormatList({ge::FORMAT_ND, ge::FORMAT_ND})
+            .DataTypeList({ge::DT_FLOAT8_E8M0})
+            .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("bias1")
         .ParamType(DYNAMIC)
@@ -79,18 +100,62 @@ public:
         .AutoContiguous();
     this->Input("scales")
         .ParamType(OPTIONAL)
-        .DataTypeList({ge::DT_FLOAT, ge::DT_FLOAT8_E8M0})
+            .DataTypeList({ge::DT_FLOAT8_E8M0})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("shared_weight1")
+            .ParamType(DYNAMIC)
+            .DataType({
+                ge::DT_FLOAT8_E5M2,                         // E5M2 (ND)
+                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, // E4M3FN (ND/NZ)
+                ge::DT_FLOAT4_E2M1,                         // E2M1 (ND)
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1 // E2M1 (NZ / NZ_C0_32)
+#endif
+            })
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND,
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ_C0_32
+#endif
+            });
+        this->Input("shared_weight2")
+            .ParamType(DYNAMIC)
+            .DataType({
+                ge::DT_FLOAT8_E5M2,                         // E5M2 (ND)
+                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, // E4M3FN (ND/NZ)
+                ge::DT_FLOAT4_E2M1,                         // E2M1 (ND)
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1 // E2M1 (NZ_C0_32 / NZ_C0_32)
+#endif
+            })
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND,
+#ifdef ENABLE_FORMAT_NZ_C0_32
+                     ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32
+#endif
+            });
+        this->Input("shared_weight_scales1")
+            .ParamType(DYNAMIC)
+            .DataTypeList({ge::DT_FLOAT8_E8M0})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("shared_weight_scales2")
+            .ParamType(DYNAMIC)
+            .DataTypeList({ge::DT_FLOAT8_E8M0})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("shared_bias1")
+            .ParamType(DYNAMIC)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("shared_bias2")
+            .ParamType(DYNAMIC)
+            .DataTypeList({ge::DT_FLOAT})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
 
-    this->Output("y")
-        .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
-        .FormatList({ge::FORMAT_ND});
-    this->Output("expert_token_nums")
-        .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_INT32})
-        .FormatList({ge::FORMAT_ND});
+        this->Output("y").ParamType(REQUIRED).DataTypeList({ge::DT_BF16}).FormatList({ge::FORMAT_ND});
+        this->Output("expert_token_nums").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
 
     this->Attr("moe_expert_num").AttrType(REQUIRED).Int();
     this->Attr("ep_world_size").AttrType(REQUIRED).Int();
@@ -102,11 +167,14 @@ public:
     this->Attr("comm_alg").AttrType(OPTIONAL).String("");
     this->Attr("num_max_tokens_per_rank").AttrType(OPTIONAL).Int(0);
     this->Attr("activation").AttrType(OPTIONAL).String("swiglu");
-    this->Attr("activation_clamp").AttrType(OPTIONAL).Float(std::numeric_limits<float>::max());
+        this->Attr("activation_params").AttrType(OPTIONAL).ListFloat({std::numeric_limits<float>::max()});
     this->Attr("activation_out_dtype").AttrType(OPTIONAL).Int(static_cast<int>(ge::DT_UNDEFINED));
     this->Attr("transpose_weight1").AttrType(OPTIONAL).Bool(false);
     this->Attr("transpose_weight2").AttrType(OPTIONAL).Bool(false);
     this->Attr("weight1_interleave").AttrType(OPTIONAL).Int(0);
+        this->Attr("topo_type").AttrType(OPTIONAL).Int(0);
+        this->Attr("rank_num_per_server").AttrType(OPTIONAL).Int(2); // 最少2个rank
+        this->Attr("topk_weights_type").AttrType(OPTIONAL).Int(0);
 
     OpAICoreConfig aicore_config;
     aicore_config.DynamicCompileStaticFlag(true)
@@ -214,6 +282,46 @@ public:
         .DataTypeList({ge::DT_FLOAT})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
+        aicore_config_arch22.Input("shared_weight1")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_INT4, ge::DT_INT4, ge::DT_INT4, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_FLOAT16,
+                       ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8,
+                       ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
+            .Format({ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ})
+            .IgnoreContiguous();
+        aicore_config_arch22.Input("shared_weight2")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_INT4, ge::DT_INT4, ge::DT_INT4, ge::DT_INT32, ge::DT_INT32, ge::DT_INT32, ge::DT_FLOAT16,
+                       ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8,
+                       ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8})
+            .Format({ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ})
+            .IgnoreContiguous();
+        aicore_config_arch22.Input("shared_weight_scales1")
+            .ParamType(DYNAMIC)
+            .DataTypeList({ge::DT_UINT64})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_arch22.Input("shared_weight_scales2")
+            .ParamType(DYNAMIC)
+            .DataTypeList({ge::DT_UINT64})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_arch22.Input("shared_bias1")
+            .ParamType(DYNAMIC)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_config_arch22.Input("shared_bias2")
+            .ParamType(DYNAMIC)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
 
     aicore_config_arch22.Output("y")
         .ParamType(REQUIRED)

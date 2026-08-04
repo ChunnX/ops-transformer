@@ -19,18 +19,14 @@ if (BUILD_OPEN_PROJECT)  # custom
         OPTYPE mega_moe ACLNNTYPE aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
-    set(mega_moe_depends mc2/common mc2/3rd mc2/moe_distribute_dispatch_v2 mc2/moe_distribute_dispatch_v3 PARENT_SCOPE)
+    set(mega_moe_depends mc2/common mc2/3rd  PARENT_SCOPE)
+    set(mega_moe_apt_depends mc2/common mc2/3rd mc2/moe_distribute_dispatch_v2 mc2/moe_distribute_dispatch_v3 PARENT_SCOPE)
 
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if ("${CONDITION_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
             OP_NAME MegaMoe
             OPTIONS --cce-auto-sync=off
-            OPTIONS -I${OPTENSOR_INCLUDE_ROOT}
-            OPTIONS -I${TENSOR_API_INCLUDE_ROOT}
-            OPTIONS -I${TENSOR_API_IMPL_INCLUDE_ROOT}
-            OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd
-            OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../../
         )
     else()
         add_ops_compile_options(
