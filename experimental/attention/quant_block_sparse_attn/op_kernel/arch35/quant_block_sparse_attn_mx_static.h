@@ -48,20 +48,17 @@ static_assert(2U * L0C_SLOT_BYTES <= L0C_CAPACITY, "MX L0C exceeds capacity");
 
 constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
 constexpr uint32_t MX_AIV0_AIV1_OFFSET = 16U;
-// Keep the same allocation order as the former BufferManager implementation.
-// MAKE_ID starts at 1: three L1-P forward events are followed by two BMM1
-// ready/free pairs and one BMM2 ready/free pair.  Cross-core event IDs 6/7 are
-// valid here; the static-Tensor reservation of local hard-event IDs 6/7 does
-// not apply to mode-4 cross-core flags.
-constexpr uint32_t CC_L1P_READY_EVENT_ID0 = 1U;
-constexpr uint32_t CC_L1P_READY_EVENT_ID1 = 2U;
-constexpr uint32_t CC_L1P_READY_EVENT_ID2 = 3U;
-constexpr uint32_t CC_BMM1_READY_EVENT_ID0 = 4U;
-constexpr uint32_t CC_BMM1_FREE_EVENT_ID0 = 5U;
-constexpr uint32_t CC_BMM1_READY_EVENT_ID1 = 6U;
-constexpr uint32_t CC_BMM1_FREE_EVENT_ID1 = 7U;
-constexpr uint32_t CC_BMM2_READY_EVENT_ID = 8U;
-constexpr uint32_t CC_BMM2_FREE_EVENT_ID = 9U;
+// Static Tensor reserves event IDs 6 and 7. Keep ready/free counters distinct,
+// and place all mode-4 cross-core events in the remaining safe ID range.
+constexpr uint32_t CC_BMM1_READY_EVENT_ID0 = 0U;
+constexpr uint32_t CC_BMM1_FREE_EVENT_ID0 = 1U;
+constexpr uint32_t CC_BMM1_READY_EVENT_ID1 = 2U;
+constexpr uint32_t CC_BMM1_FREE_EVENT_ID1 = 3U;
+constexpr uint32_t CC_BMM2_READY_EVENT_ID = 4U;
+constexpr uint32_t CC_BMM2_FREE_EVENT_ID = 5U;
+constexpr uint32_t CC_L1P_READY_EVENT_ID0 = 8U;
+constexpr uint32_t CC_L1P_READY_EVENT_ID1 = 9U;
+constexpr uint32_t CC_L1P_READY_EVENT_ID2 = 10U;
 
 constexpr AscendC::TEventID L1_Q_EVENT_ID0 = 0U;
 constexpr AscendC::TEventID L1_Q_EVENT_ID1 = 1U;
