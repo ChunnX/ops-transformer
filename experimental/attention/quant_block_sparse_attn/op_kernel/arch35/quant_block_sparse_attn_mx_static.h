@@ -86,9 +86,6 @@ constexpr AscendC::TEventID LSE_EVENT_ID = 4U;
 constexpr AscendC::TEventID INIT_OUTPUT_FREE_EVENT_ID = 5U;
 constexpr AscendC::TEventID INIT_OUTPUT_READY_EVENT_ID = 10U;
 constexpr AscendC::TEventID MASK_EVENT_ID = 0U;
-// UB->UB DataCopy of the first C2 tile is issued on MTE2 and consumed by V. It needs an explicit
-// MTE2_V dependency after replacing the queue/mutex-managed tensor with a raw static tensor.
-constexpr AscendC::TEventID STAGE2_COPY_EVENT_ID = 1U;
 
 __aicore__ inline uint32_t Bmm1ReadyEventId(uint32_t slot)
 {

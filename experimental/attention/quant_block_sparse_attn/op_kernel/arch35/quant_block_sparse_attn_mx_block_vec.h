@@ -326,13 +326,11 @@ public:
         LocalTensor<MM_T> mmRes = bmm2ResBuf.ReinterpretCast<MM_T>();
         WaitFlag<HardEvent::MTE3_V>(MxStatic::STAGE2_EVENT_ID);
         if (unlikely(isFirstS2Loop)) {
-            // 首个 S2 tile 直接作为累计值。
-            DataCopy(vec2ResUb, mmRes, vec2CalcSize);
-            // DataCopy is executed by MTE2 while LastDiv/FlashUpdate and the following task consume stage2OutBuf_
-            // on V. TQue/Mutex supplied this dependency before the static-tensor conversion; raw LocalTensor does
-            // not, so make the MTE2->V hand-off explicit.
-            SetFlag<HardEvent::MTE2_V>(MxStatic::STAGE2_COPY_EVENT_ID);
-            WaitFlag<HardEvent::MTE2_V>(MxStatic::STAGE2_COPY_EVENT_ID);
+            // 首个 S2 tile 直接作为累计值。这里必须使用 V 指令完成 UB->UB 拷贝：静态 LocalTensor 不再有
+            // TBuf/TQue 隐式依赖，而通用 DataCopy 的执行流水取决于地址类型；若按 MTE2_V 强制同步，短尾
+            // task 下可能在真实拷贝完成前就进入 LastDiv/FlashUpdate，进而把上一 task 的 stage2 数据写出。
+            // Adds(..., 0) 与后续归一化、跨核 free flag 同属 V 流水，天然保证顺序且不改变数值。
+            Adds<MM_T>(vec2ResUb, mmRes, static_cast<MM_T>(0.0F), vec2CalcSize);
         } else {
             LocalTensor<MM_T> expUb = softmaxExpBuf_[loopIdx];
             if (!isLastS2Loop) {
