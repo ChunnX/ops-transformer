@@ -15,14 +15,12 @@
 #ifndef FLASH_ATTENTION_BLOCK_CUBE_COMM_H_
 #define FLASH_ATTENTION_BLOCK_CUBE_COMM_H_
 
-#include "../../../common/op_kernel/matmul.h"
 #include "../arch35/memory_copy_arch35.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
-using namespace fa_base_matmul;
 
 namespace BaseApi {
 

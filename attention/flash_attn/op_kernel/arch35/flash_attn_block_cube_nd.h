@@ -16,6 +16,9 @@
 #define FLASH_ATTENTION_BLOCK_CUBE_ND_H_
 
 #include "../utils/flash_attn_block_cube_comm.h"
+#include "../../../common/op_kernel/matmul.h"
+
+using namespace fa_base_matmul;
 
 namespace BaseApi {
 
