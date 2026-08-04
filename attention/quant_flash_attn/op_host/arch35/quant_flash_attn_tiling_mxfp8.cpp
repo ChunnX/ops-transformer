@@ -40,7 +40,8 @@ bool QuantFlashAttnTilingImpl::IsCapable()
     if (qfaInfo_ == nullptr) {
         return false;
     }
-    if (qfaInfo_->quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
+    if (qfaInfo_->quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32 &&
+        qfaInfo_->quantMode != QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32) {
         return false;
     }
     return true;
@@ -119,7 +120,11 @@ void QuantFlashAttnTilingImpl::InitImplParam()
 void QuantFlashAttnTilingImpl::SplitPolicy()
 {
     sOuterFactor_ = SOUTER_64;
-    sInnerFactor_ = SINNER_512;
+    if (qfaInfo_->quantMode == QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32) {
+        sInnerFactor_ = SINNER_256;
+    } else {
+        sInnerFactor_ = SINNER_512;
+    }
     CalcNumBlocks(platformInfo_.aicNum);
     flashDecodeFlag_ = false;
 }
@@ -157,6 +162,12 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyConfig()
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64;
     } else if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_64 && dVsize == DSIZE_64) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned64_DVAligned64;
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128;
+    } else if (qfaInfo_->quantMode == QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128;
     } else {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
     }
@@ -198,8 +209,13 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyInfo()
 
 void QuantFlashAttnTilingImpl::UpdateTilingKeyQuantMode()
 {
-    tilingKeyInfo_.quantMode =
-        decodeS1GMerge_ ? static_cast<uint64_t>(QFA_MXFP8_FP32_DECODE) : static_cast<uint64_t>(QFA_MXFP8_FP32_PREFILL);
+    if (qfaInfo_->quantMode == QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32) {
+        tilingKeyInfo_.quantMode = static_cast<uint64_t>(QFA_HIF8_FP32_PREFILL);
+    } else {
+        tilingKeyInfo_.quantMode = decodeS1GMerge_
+            ? static_cast<uint64_t>(QFA_MXFP8_FP32_DECODE)
+            : static_cast<uint64_t>(QFA_MXFP8_FP32_PREFILL);
+    }
 }
 
 void QuantFlashAttnTilingImpl::GenTilingKey()
