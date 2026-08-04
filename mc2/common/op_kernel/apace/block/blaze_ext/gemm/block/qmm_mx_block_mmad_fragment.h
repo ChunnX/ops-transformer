@@ -168,7 +168,7 @@ public:
         bL1OneBuffer_ = (baseN_ * kL1_) >> sizeShift;
         scaleBL1OneBuffer_ = baseN_ * Blaze::Gemm::CeilDiv(scaleKL1_, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         biasL1OneBuffer_ = isBias_ ? baseN_ * sizeof(BiasType) : 0;
-        if constexpr (DispatchPolicy::FULL_LOAD_MODE == 0) {
+        if constexpr (DispatchPolicy::fullLoadMode == 0) {
             aL1OneBuffer_ = (baseM_ * Blaze::Gemm::CeilAlign(kL1_, MXFP_DIVISOR_SIZE)) >> sizeShift;
             scaleAL1OneBuffer_ = baseM_ * Blaze::Gemm::CeilDiv(scaleKL1_, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
             for (int32_t bufferId = 0; bufferId < l1BufNum_; bufferId++) {
@@ -219,7 +219,7 @@ public:
             AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, fp8_e8m0_t>(
                 l1BufferScaleBOffset_[scaleL1BufId]), layoutScaleBL1);
         auto CopyScaleGM2L1 = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2L1{});
-        if constexpr (DispatchPolicy::FULL_LOAD_MODE == 0) {
+        if constexpr (DispatchPolicy::fullLoadMode == 0) {
             auto layoutScaleAL1 = AscendC::Te::MakeFrameLayout<AscendC::Te::ZZLayoutPtn, AscendC::Std::Int<SCALE_C0>>(
                 tileL1L0Param.curM, Blaze::Gemm::CeilDiv(scaleKL1_, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE);
             auto tensorScaleAL1 = AscendC::Te::MakeTensor(
@@ -276,7 +276,7 @@ public:
     __aicore__ inline auto CopyAInL1(TensorA const& gmA, TileL1L0Param& tileL1L0Param, uint64_t l1BufId, uint64_t iter0)
     {
         auto copyGM2L1 = AscendC::Te::MakeCopy(AscendC::Te::CopyGM2L1{});
-        if constexpr (DispatchPolicy::FULL_LOAD_MODE == 0) {
+        if constexpr (DispatchPolicy::fullLoadMode == 0) {
             auto layoutAL1 = MakeLayoutAL1{}(tileL1L0Param.curM, tileL1L0Param.curPadAKL1);
             auto tensorAL1 = AscendC::Te::MakeTensor(
                 AscendC::Te::MakeMemPtr<AscendC::Te::Location::L1, AType>(l1BufferAOffset_[l1BufId]), layoutAL1);
@@ -318,7 +318,7 @@ public:
         auto coordScaleKL1 = (iter0 % (scaleKL1_ / kL1_)) * scaleKL1Len;
         auto tensorBlockScaleBL1 = tensorScaleBL1.Slice(
             AscendC::Te::MakeCoord(coordScaleKL1, 0), AscendC::Te::MakeShape(scaleKL1Len, tileL1L0Param.curN));
-        if constexpr (DispatchPolicy::FULL_LOAD_MODE != 0) {
+        if constexpr (DispatchPolicy::fullLoadMode != 0) {
             coordScaleKL1 = iter0 * scaleKL1Len;
         }
         auto tensorBlockScaleAL1 = tensorScaleAL1.Slice(

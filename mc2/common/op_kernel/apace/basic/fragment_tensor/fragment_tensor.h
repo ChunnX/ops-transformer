@@ -304,7 +304,7 @@ private:
     uint64_t sliceShape_[Dims]{};
 };
 
-template<bool copyRealSize, bool isScatter, typename CopyHandle, typename TensorType,
+template<bool isScatter, typename CopyHandle, typename TensorType,
          uint32_t Dims, uint32_t MaxF, typename GmLayoutF, typename ElemT>
 __aicore__ inline void FragmentSliceCopy(
     CopyHandle copyHandle,
@@ -318,7 +318,7 @@ __aicore__ inline void FragmentSliceCopy(
     for (uint32_t idx = 0; idx < composition.totalFragmentCnt; ++idx) {
         auto info = fragmentTensor.GetFragmentInfo(idx, composition);
 
-        if constexpr (copyRealSize) {
+        if constexpr (isScatter) {
             const uint64_t realFragmentSize = fragmentTensor.GetRealFragmentSize();
             if (info.fragCoord[assembleAxis] >= realFragmentSize) { continue; }
             uint64_t remain = realFragmentSize - info.fragCoord[assembleAxis];
