@@ -55,9 +55,9 @@ public:
     using DispatchPolicy = MmadAtlasA5BsaQK<true>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using TileCopy = TileCopy_;
-    using ElementA = ElementA_;
-    using ElementB = ElementB_;
-    using ElementC = ElementC_;
+    using ElementA = ElementA_;  // Q
+    using ElementB = ElementB_;  // K
+    using ElementC = ElementC_;  // S
 
     using TileMmad = TileMmad_;
 
@@ -102,12 +102,12 @@ public:
 
         // Q 数据 占 L1_Q_SIZE * L1_Q_BUFCNT = 16K
         for (uint32_t i = 0; i < MXFP4::L1_Q_BUF_CNT; i++) {
-            l1ATensor[i] = resource.l1Buf.template GetBufferByByte<ElementA>(MXFP4::L1_Q_BUF_OFFSET + MXFP4::L1_Q_BUF_SIZE * i);
+            l1BTensor[i] = resource.l1Buf.template GetBufferByByte<ElementA>(MXFP4::L1_Q_BUF_OFFSET + MXFP4::L1_Q_BUF_SIZE * i);
         }
 
         // Q-scale：数据 占 L1_Q_DESCALE_SIZE * L1_Q_BUFCNT = 1K
         for (uint32_t i = 0; i < MXFP4::L1_Q_BUF_CNT; i++) {
-            l1AScaleTensor[i] = resource.l1Buf.template GetBufferByByte<uint8_t>(MXFP4::L1_Q_DESCALE_BUF_OFFSET + MXFP4::L1_Q_DESCALE_BUF_SIZE * i);
+            l1BScaleTensor[i] = resource.l1Buf.template GetBufferByByte<uint8_t>(MXFP4::L1_Q_DESCALE_BUF_OFFSET + MXFP4::L1_Q_DESCALE_BUF_SIZE * i);
         }
 
         // 【K V 内存分离】V 数据用
@@ -115,7 +115,7 @@ public:
         addrL1Start += MXFP4::L1_KV_BUF_SIZE * MXFP4::L1_KV_BUF_CNT;
         // 【K V 内存分离】K 数据：l1BTensor(B=K), L1_KV_SIZE * 2 = 64K
         for (uint32_t i = 0; i < MXFP4::L1_KV_BUF_CNT; i++) {
-            l1BTensor[i] = resource.l1Buf.template GetBufferByByte<ElementB>(addrL1Start + MXFP4::L1_KV_BUF_SIZE * i);
+            l1ATensor[i] = resource.l1Buf.template GetBufferByByte<ElementB>(addrL1Start + MXFP4::L1_KV_BUF_SIZE * i);
         }
 
         // 【K V 内存分离】V-scale 数据用
@@ -123,7 +123,7 @@ public:
         addrL1Start += MXFP4::L1_KV_DESCALE_BUF_SIZE * MXFP4::L1_KV_DESCALE_BUF_CNT;
         // 【K V 内存分离】K-scale：l1BScaleTensor(K-scale)，占 L1_KV_DESCALE_SIZE * 2 = 4K
         for (uint32_t i = 0; i < MXFP4::L1_KV_DESCALE_BUF_CNT; i++) {
-            l1BScaleTensor[i] = resource.l1Buf.template GetBufferByByte<uint8_t>(addrL1Start + MXFP4::L1_KV_DESCALE_BUF_SIZE * i);
+            l1AScaleTensor[i] = resource.l1Buf.template GetBufferByByte<uint8_t>(addrL1Start + MXFP4::L1_KV_DESCALE_BUF_SIZE * i);
         }
 
         // L0A 区域顺序  QK 数据 | PV 数据
@@ -214,7 +214,7 @@ public:
         auto gQLayout = tla::MakeLayout<ElementA, layout::RowMajor>(m, qHeadMul * k);
         auto gQTensorTla = tla::MakeTensor(gQTensor, gQLayout, Arch::PositionGM{});
         auto l1QLayout = tla::MakeLayout<ElementA, layout::zN>(Q_M_PAD, k);
-        auto l1QTensorTla = tla::MakeTensor(l1ATensor[qBufId], l1QLayout, Arch::PositionL1{});
+        auto l1QTensorTla = tla::MakeTensor(l1BTensor[qBufId], l1QLayout, Arch::PositionL1{});
         auto l1QTileTla = GetTile(l1QTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(m, k));
         // [BSND stride 修复] GetTile src 到 (m,k): tile shape 给 dValue=k(正解, 否则整个 gQTensorTla
         //   shape (m, qHeadMul*k) 会让 RowMajor→zN 的 dValue=get<1>(shape)=qHeadMul*k 放大→每 token
@@ -237,7 +237,7 @@ public:
                                             AscendC::GlobalTensor<uint8_t> &gQDequantScale,
                                             uint32_t qBufId)
     {
-        copyGmToL1MxScaleDn2Nz(l1AScaleTensor[qBufId], gQDequantScale, m, scaleK);
+        copyGmToL1MxScaleDn2Nz(l1BScaleTensor[qBufId], gQDequantScale, m, scaleK);
     }
 
 
@@ -277,7 +277,7 @@ public:
         auto gKLayout = tla::MakeLayout<ElementA, layout::RowMajor>(kvSeqlen, kvHeadMul * embed);  // [BSND stride 修复] row-stride=kvHeadMul*embed(BNSD=embed)
         auto gKTensorTla = tla::MakeTensor(gK, gKLayout, Arch::PositionGM{});
         auto l1KLayout = tla::MakeLayout<ElementA, layout::zN>(curBaseTileSize, embed);
-        auto l1KTensorTla = tla::MakeTensor(l1BTensor[kBufId], l1KLayout, Arch::PositionL1{});
+        auto l1KTensorTla = tla::MakeTensor(l1ATensor[kBufId], l1KLayout, Arch::PositionL1{});
         using CopyGmToL1K = Tile::TileCopyTla<ArchTag, decltype(gKTensorTla), decltype(l1KTensorTla)>;
         CopyGmToL1K copyGmToL1K;
 
@@ -362,7 +362,7 @@ public:
             //     (unsigned)oriStartOffset, (unsigned)curDealtLen, (unsigned)dealtLenAccum,
             //     (unsigned)scaleK, (unsigned)srcB16Off, (unsigned)dstB16Off);
             copyGmToL1MxScaleDn2Nz(
-                l1BScaleTensor[kBufId], gKScale, curDealtLen, scaleK, srcB16Off, dstB16Off);
+                l1AScaleTensor[kBufId], gKScale, curDealtLen, scaleK, srcB16Off, dstB16Off);
 
             dealtLenAccum += curDealtLen;
             gatheredStartOffset += curDealtLen;
@@ -390,8 +390,8 @@ public:
     {
         copyL1ToL0BMxQk(
             l0BTensor[qkL0abBufId].template ReinterpretCast<fp4x2_e2m1_t>(),
-            l1ATensor[qBufId].template ReinterpretCast<fp4x2_e2m1_t>(),
-            l1AScaleTensor[qBufId].template ReinterpretCast<AscendC::fp8_e8m0_t>(),
+            l1BTensor[qBufId].template ReinterpretCast<fp4x2_e2m1_t>(),
+            l1BScaleTensor[qBufId].template ReinterpretCast<AscendC::fp8_e8m0_t>(),
             mAlignL1, alignK, mAlignL0, scaleMAlignL1, scaleK);
     }
 
@@ -415,8 +415,8 @@ public:
         //     (unsigned)(scaleK / 2), (unsigned)scaleK);
         copyL1ToL0AMxQk(
             l0ATensor[qkL0abBufId].template ReinterpretCast<fp4x2_e2m1_t>(),
-            l1BTensor[kBufId].template ReinterpretCast<fp4x2_e2m1_t>(),
-            l1BScaleTensor[kBufId].template ReinterpretCast<AscendC::fp8_e8m0_t>(),
+            l1ATensor[kBufId].template ReinterpretCast<fp4x2_e2m1_t>(),
+            l1AScaleTensor[kBufId].template ReinterpretCast<AscendC::fp8_e8m0_t>(),
             nSubRowStart, nCur, alignK, s2Align16Full, scaleK);
     }
 
@@ -603,8 +603,8 @@ public:
 
 protected:
     // L1：Q 用 2 份，k 用 4 份
-    AscendC::LocalTensor<ElementA> l1ATensor[MXFP4::L1_Q_BUF_CNT];
-    AscendC::LocalTensor<ElementB> l1BTensor[MXFP4::L1_KV_BUF_CNT];
+    AscendC::LocalTensor<ElementB> l1ATensor[MXFP4::L1_KV_BUF_CNT];
+    AscendC::LocalTensor<ElementA> l1BTensor[MXFP4::L1_Q_BUF_CNT];
 
     // L0：A/B 各 2 份 ，C 2 份
     AscendC::LocalTensor<ElementB> l0ATensor[MXFP4::L0A_QK_BUF_CNT];
@@ -612,8 +612,8 @@ protected:
     AscendC::LocalTensor<float> l0CTensor[MXFP4::L0C_QK_BUF_CNT];
 
     // MXFP4 专用：E8M0 scale 的 L1 buffer（Q-scale 2 份，K-scale 4 份）+ MX 版 L1->L0 拷贝器
-    AscendC::LocalTensor<uint8_t> l1AScaleTensor[MXFP4::L1_Q_BUF_CNT];
-    AscendC::LocalTensor<uint8_t> l1BScaleTensor[MXFP4::L1_KV_BUF_CNT];
+    AscendC::LocalTensor<uint8_t> l1AScaleTensor[MXFP4::L1_KV_BUF_CNT];
+    AscendC::LocalTensor<uint8_t> l1BScaleTensor[MXFP4::L1_Q_BUF_CNT];
 
     // [Step2] QK 非转置 mx L1→L0 functor（勿与 PV 的 CopyL1ToL0*MxA5 混淆）
     Tile::CopyL1ToL0AMxQKA5 copyL1ToL0AMxQk;  // K: L1→L0A，ifTranspose=false
