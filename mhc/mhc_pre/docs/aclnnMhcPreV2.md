@@ -17,9 +17,9 @@
 
 - 接口功能：基于一系列计算得到MHC架构中hidden层的$H^{res}$和$H^{post}$投影矩阵以及Attention或MLP层的输入矩阵$h^{in}$。
 
-- 相较于[aclnnMhcPre](aclnnMhcPre.md)接口，此接口新增`opImplMode`参数，用于选择矩阵乘的计算精度模式：
-  - `opImplMode=0`：使用FP32模式计算。
-  - `opImplMode=1`：使用HF32模式计算。
+- 相较于[aclnnMhcPre](aclnnMhcPre.md)接口，此接口新增`opImplMode`参数，用于指定MhcPre算子的计算模式：
+  - `opImplMode=0`：在Cube中使用FP32模式计算。
+  - `opImplMode=1`：在Cube中使用HF32模式计算。
 
 - 计算公式：
 
@@ -179,8 +179,11 @@ aclnnStatus aclnnMhcPreV2(
   <tr>
       <td>opImplMode</td>
       <td>输入</td>
-      <td>矩阵乘的计算精度模式。</td>
-      <td>取值为0或1。0表示FP32模式，1表示HF32模式。</td>
+      <td>指定MhcPre算子的计算模式。</td>
+      <td>支持的枚举值如下：<ul>
+        <li>0：建议值，在Cube中使用FP32模式计算。</li>
+        <li>1：在Cube中使用HF32模式计算。</li>
+      </ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -362,7 +365,6 @@ aclnnStatus aclnnMhcPreV2(
 - 规格约束：
   - n目前支持4、6、8。
   - D支持1~16384范围以内，需满足D为16对齐。
-  - opImplMode仅支持0或1，其中0表示FP32模式，1表示HF32模式。
   - 当alpha=[3]时，支持hRes输出，必须满足以下条件：输入phi=[n^2+2n, nD],bias=[n^2+2n]，输出hMixOptional=[B,S,n^2+2n] 或 [T,n^2+2n]；当alpha=[2]时，hRes输出为0，必须满足以下条件：输入phi=[2n, nD],bias=[2n]，输出hMixOptional=[B,S,2n] 或 [T,2n]。
   - 可选输出 invRmsOptional、hMixOptional、hPreOptional 为互存关系，需同时输出或全部不输出，不支持仅返回其中部分，输出条件：invRmsOptional!=nullptr && hMixOptional!=nullptr && hPreOptional!=nullptr。
 
