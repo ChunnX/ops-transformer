@@ -234,7 +234,7 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     int64_t combineOut = CeilAlign(numMaxTokensPerRank * hidden * numTopk * 2, 512);
 
     int64_t totalBytes = peermemDataOffset + maskRecvSize + quantTokenScaleSize + combineOut;
-
+    totalBytes = totalBytes * 2;
     return totalBytes;
 }
 } // namespace
