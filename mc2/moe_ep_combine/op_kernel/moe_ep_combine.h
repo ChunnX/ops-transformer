@@ -421,6 +421,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     bool statusInitialized = false;
 
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
+    constexpr uint32_t metaWarmupChunkTokenMax = 128U; // 首块仅搬2KB metadata，缩短首个token的发送等待
     constexpr uint32_t metaChunkTokenMax = 8192U; // 分块上限，平衡UB占用与搬运次数（128KB，A5 UB 256KB余量充足）
 
     uint32_t metaChunkTokens = (actualA_ < metaChunkTokenMax) ? actualA_ : metaChunkTokenMax;
@@ -446,8 +447,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
     }
 
-    for (uint64_t chunkStart = scanStart; chunkStart < scanEnd; chunkStart += metaChunkTokens) {
-        uint64_t chunkEnd = (chunkStart + metaChunkTokens > scanEnd) ? scanEnd : (chunkStart + metaChunkTokens);
+    for (uint64_t chunkStart = scanStart; chunkStart < scanEnd;) {
+        uint32_t curChunkTokenMax = (chunkStart == scanStart) ? metaWarmupChunkTokenMax : metaChunkTokens;
+        uint64_t chunkEnd = (chunkStart + curChunkTokenMax > scanEnd) ? scanEnd : (chunkStart + curChunkTokenMax);
         uint32_t curChunkTokens = static_cast<uint32_t>(chunkEnd - chunkStart);
 
         DataCopyExtParams metaCopyParams{1U, curChunkTokens * metaBytesPerToken, 0U, 0U, 0U};
@@ -478,6 +480,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>(); // 确保本轮 Scalar GetValue 读完，下一块 DataCopyPad 才可覆盖
                                                 // metadataLocal
+        chunkStart = chunkEnd;
     }
 
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
