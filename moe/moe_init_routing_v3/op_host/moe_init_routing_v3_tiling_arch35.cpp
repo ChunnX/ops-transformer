@@ -212,8 +212,8 @@ private:
     ge::graphStatus ValidateRowIdxType();
     // 校验输入Tensor的Shape、Dtype
     ge::graphStatus CheckSetInputs();
-    // 空tensor场景判定与相关tiling字段设置（含activeNum校验）
-    ge::graphStatus CheckSetEmptyTensor();
+    // 空tensor相关tiling字段设置（含activeNum校验）
+    ge::graphStatus SetEmptyTensor();
     // 校验输出Tensor的Shape、Dtype
     ge::graphStatus CheckOutputs();
     // 空tensor场景的workspace大小计算
@@ -272,6 +272,7 @@ private:
     int64_t CalcMaxRowIdxPerLoopMxQuant(int64_t perLoopCols);
     int64_t CalcMaxRowIdxPerLoopFP8Quant(int64_t perLoopCols);
     int64_t CalcMaxRowIdxPerLoopFP8GroupQuant(int64_t perLoopCols);
+    bool IsIndexOnlyRouting() const;
     bool IsFullLoad();
     bool IsSupportGatherCopyKernels() const;
     void ComputeUseGatherCopy();
@@ -505,7 +506,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
     MIRV3_CHECK_GE_RET(CheckSetAttrs());
     MIRV3_CHECK_GE_RET(CheckSetListAttrs());
     MIRV3_CHECK_GE_RET(CheckSetInputs());
-    MIRV3_CHECK_GE_RET(CheckSetEmptyTensor());
+    MIRV3_CHECK_GE_RET(SetEmptyTensor());
     MIRV3_CHECK_GE_RET(CheckOutputs());
 
     // 空tensor快速返回，跳过后续tiling计算
@@ -1161,12 +1162,12 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetInputs()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()
+ge::graphStatus MoeInitRoutingV3Arch35TilingClass::SetEmptyTensor()
 {
-    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()");
+    OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::SetEmptyTensor()");
 
-    // 空tensor场景：n_==0、k_==0、cols_==0
-    if (n_ == 0 || k_ == 0 || cols_ == 0) {
+    // A zero-width dropless input still needs row-index routing when indices are non-empty.
+    if (n_ == 0 || k_ == 0 || (cols_ == 0 && !IsIndexOnlyRouting())) {
         isEmptyTensor_ = true;
     }
 
@@ -1858,6 +1859,12 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()");
 
+    // Index-only routing finishes after RowIdxGather, so no column-loop tiling is required.
+    if (IsIndexOnlyRouting()) {
+        // needCoreNum == 0 is passed to kernel to indicate that GatherOut has no work to do.
+        tilingDataPtr_->gatherOutComputeParamsOp.needCoreNum = 0;
+        return;
+    }
     auto *gatherOutTiling = &(tilingDataPtr_->gatherOutComputeParamsOp);
     int64_t perCoreIndicesElements = Ops::Base::CeilDiv(totalLength_, aivCoreNum_);
     if (perCoreIndicesElements <= 0) {
@@ -2115,8 +2122,17 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutFP8Quant()
     return;
 }
 
+bool MoeInitRoutingV3Arch35TilingClass::IsIndexOnlyRouting() const
+{
+    return n_ > 0 && k_ > 0 && cols_ == 0 && quantMode_ == QUANT_MODE_UNQUANT && isInputScale_ == 0 &&
+           dropPadMode_ == DROP_PAD_MODE_DROPLESS;
+}
+
 bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
 {
+    if (IsIndexOnlyRouting()) {
+        return false;
+    }
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
         return false;
     }
