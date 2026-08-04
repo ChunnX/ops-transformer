@@ -322,8 +322,8 @@ public:
             return;
         }
 
-        // 跨超场景：UB 域大小必须能被 rankSize 整除
-        TORCH_CHECK(rankSize % rankNumPerUbDomain_ == 0,
+        // 跨超场景：UB 域大小不得超过总卡数，且必须能被 rankSize 整除
+        TORCH_CHECK(rankSize >= rankNumPerUbDomain_ && rankSize % rankNumPerUbDomain_ == 0,
                     "rankNumPerUbDomain_ must be less than rankSize and divisible, rankNumPerUbDomain_: ",
                     rankNumPerUbDomain_, ", rankSize: ", rankSize);
 
@@ -431,7 +431,7 @@ public:
 
     bool IsSingleUbDomain(const LayerRanks &ubDomain, uint32_t rankSize) const
     {
-        return ubDomain.ranks.size() >= rankSize;
+        return ubDomain.ranks.size() == rankSize;
     }
 
     // 跨超检查失败时回退为超节点内保守路径：按 UB 域判定时收集的层重建域内拓扑，跨域信息清空
