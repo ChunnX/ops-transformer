@@ -378,31 +378,3 @@ bool ExecuteTiling(const gert::TilingContextPara &tilingContextPara, TilingInfo 
 
     return true;
 }
-<<<<<<< HEAD
-
-bool ExecuteTiling(
-    const gert::TilingContextPara& tilingContextPara, TilingInfo& tilingInfo, TilingFunc tilingFuncOverride)
-{
-    DO_TILING_WITH_FUNC(tilingContextPara, tilingFuncOverride);
-
-    if (tilingRet != ge::GRAPH_SUCCESS) {
-        return false;
-    }
-
-    tilingInfo.tilingKey = tilingContext->GetTilingKey();
-    tilingInfo.blockNum = tilingContext->GetBlockDim();
-    size_t workspaceCount = tilingContext->GetWorkspaceNum();
-    if (workspaceCount > 0) {
-        auto workSpaceSizes = tilingContext->GetWorkspaceSizes(workspaceCount);
-        for (size_t i = 0; i < workspaceCount; i++) {
-            tilingInfo.workspaceSizes.push_back(workSpaceSizes[i]);
-        }
-    }
-    auto rawTilingData = tilingContext->GetRawTilingData();
-    tilingInfo.tilingData = std::make_unique<uint8_t[]>(rawTilingData->GetDataSize());
-    tilingInfo.tilingDataSize = rawTilingData->GetDataSize();
-    std::memcpy(tilingInfo.tilingData.get(), rawTilingData->GetData(), rawTilingData->GetDataSize());
-    return true;
-}
-=======
->>>>>>> cd8c6c35d (Pre-Commit 规范整改 — 公共)
