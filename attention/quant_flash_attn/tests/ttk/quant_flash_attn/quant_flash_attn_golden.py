@@ -122,6 +122,9 @@ SOFTMAX_SCALE = None
 KV_CACHE_LAYOUT = None
 
 IS_CONTIGUOUS = None
+# 8 维列表，分别对应 q, k, v, q_descale, k_descale, v_descale, block_table, attn_mask
+# -1=连续, 0=0轴非连续, 1=0,1轴非连续, 以此类推（仅在 PA 场景生效）
+UNCONTIGUOUS_DIMS = [-1, -1, -1, -1, -1, -1, -1, -1]
 
 ENABLE_LSE = None
 
@@ -1620,6 +1623,23 @@ def _build_causal_mask():
         return None
     return torch.triu(torch.ones(2048, 2048, dtype=torch.int8), diagonal=1).npu()
 
+def _make_uncontiguous(tensor, dim):
+    """沿指定 dim 用 stack([real, fake], dim) + 切片构造非连续 view。
+    dim=-1 表示保持连续（直接返回原 tensor，已 .npu()）。
+    dim 为要做成非连续的最高轴号，例如 dim=1 表示 0,1 两轴区域非连续。
+    实际实现：沿 dim 轴 stack 一个 fake tensor，再切片取 [:,...,0,...]，
+    切片结果在该 dim 上 stride 与 stack tensor 一致 → 非连续。"""
+    if dim is None or dim < 0:
+        return tensor
+    tensor = tensor.cpu()
+    stack_dim = dim + 1
+    # dim 不能超过 tensor 维度（在 dim 处插入新轴做 stack，切片取第 0 份）
+    fake = torch.ones_like(tensor)
+    stacked = torch.stack([tensor, fake], dim=stack_dim).npu()
+    # 构造切片：在 dim 位置取 0
+    idx = [slice(None)] * stacked.dim()
+    idx[stack_dim] = 0
+    return stacked[tuple(idx)].npu()
 
 def prepare_npu_inputs(
     q_fp8,
@@ -1662,27 +1682,33 @@ def prepare_npu_inputs(
     mask_arg = _build_causal_mask()
 
     if ENABLE_PA:
+        # PA 场景下按 UNCONTIGUOUS_DIMS 列表分别构造 8 个 tensor 的非连续 view
+        # 顺序: [q, k, v, q_descale, k_descale, v_descale, block_table, attn_mask]
+        ud = UNCONTIGUOUS_DIMS if UNCONTIGUOUS_DIMS is not None else [-1] * 8
+        # 0: q
+        q_npu = _make_uncontiguous(q_npu, ud[0])
+        # 3: q_descale
+        deq_q_npu = _make_uncontiguous(deq_q_npu, ud[3])
+        # 7: attn_mask (可能为 None)
+        if mask_arg is not None:
+            mask_arg = _make_uncontiguous(mask_arg, ud[7])
+
         k_npu = k_fp8.contiguous().view(FP8_DTYPE).npu()
         v_npu = v_fp8.contiguous().view(FP8_DTYPE).npu()
         deq_k_npu = dequant_scale_k.npu()
         deq_v_npu = dequant_scale_v.npu()
 
-        if not IS_CONTIGUOUS:
-            kv_cache = torch.stack([k_fp8, v_fp8], dim=2)
-            kv_cache = kv_cache.npu()
-            k_npu = kv_cache[:, :, 0]
-            v_npu = kv_cache[:, :, 1]
+        # 1: k, 2: v —— 按 UNCONTIGUOUS_DIMS 指定 dim 构造非连续
+        k_npu = _make_uncontiguous(k_npu, ud[1])
+        v_npu = _make_uncontiguous(v_npu, ud[2])
+        if ud[1] >= 0 or ud[2] >= 0:
             logger.info(
                 f"[NPU] key is_contiguous={k_npu.is_contiguous()}, value is_contiguous={v_npu.is_contiguous()}"
             )
-            fake_kscale_tensor = torch.ones_like(dequant_scale_k)
-            fake_vscale_tensor = torch.ones_like(dequant_scale_v)
-            double_kscale = torch.stack([dequant_scale_k, fake_kscale_tensor], dim=2)
-            double_vscale = torch.stack([dequant_scale_v, fake_vscale_tensor], dim=2)
-            double_kscale = double_kscale.npu()
-            double_vscale = double_vscale.npu()
-            deq_k_npu = double_kscale[:, :, 0]
-            deq_v_npu = double_vscale[:, :, 0]
+        # 4: k_descale, 5: v_descale
+        deq_k_npu = _make_uncontiguous(deq_k_npu, ud[4])
+        deq_v_npu = _make_uncontiguous(deq_v_npu, ud[5])
+        if ud[4] >= 0 or ud[5] >= 0:
             logger.info(
                 f"[NPU] deq_k_scale is_contiguous={deq_k_npu.is_contiguous()}, deq_v_scale is_contiguous={deq_v_npu.is_contiguous()}"
             )
@@ -1696,6 +1722,8 @@ def prepare_npu_inputs(
             if isinstance(block_table_torch, torch.Tensor)
             else torch.as_tensor(block_table_torch, dtype=torch.int32).npu()
         )
+        # 6: block_table
+        block_table_npu = _make_uncontiguous(block_table_npu, ud[6])
 
         _pa_layout_kv_map = {"BnNBsD": "PA_BNBD", "PA_NZ": "PA_NZ"}
         pa_layout_kv = _pa_layout_kv_map.get(KV_CACHE_LAYOUT, "PA_BNBD")
