@@ -424,7 +424,6 @@ __aicore__ inline void EngramFetchTrainArch35::WaitAllStatusFlags(GM_ADDR status
     flagGM.SetGlobalBuffer((__gm__ int32_t *)statusWinBase);
 
     int32_t sumOfFlag = 0;
-
     while (sumOfFlag != compareFlag) {
         DataCopy(flagLocal, flagGM, flagCount);
         EngramFetchTrainSyncFunc<HardEvent::MTE2_S>();
@@ -750,19 +749,30 @@ __aicore__ inline void EngramFetchTrainArch35::RecvIndicesFromPeers()
                 TimeoutCheck(startTime);
             }
 
+            uint32_t availableSlots = static_cast<uint32_t>(remoteWriteCnt) - localReadCnt;
+            if (availableSlots > NUM_SLOTS) {
+                availableSlots = NUM_SLOTS;
+            }
+            uint32_t slotIdxStart = localReadCnt % NUM_SLOTS;
+            uint32_t contiguousSlots = NUM_SLOTS - slotIdxStart;
+            if (contiguousSlots > availableSlots) {
+                contiguousSlots = availableSlots;
+            }
             uint32_t remaining = static_cast<uint32_t>(recvCount) - totalReceived;
-            uint32_t chunkLen = (remaining > maxIndicesPerSlot_) ? maxIndicesPerSlot_ : remaining;
+            uint32_t availableItems = contiguousSlots * maxIndicesPerSlot_;
+            uint32_t readItems = (remaining < availableItems) ? remaining : availableItems;
 
             uint64_t slotOffset = indicesDataOffset_ + srcRank * NUM_SLOTS * indicesSlotSize_ +
-                                  (localReadCnt % NUM_SLOTS) * indicesSlotSize_;
+                                  slotIdxStart * indicesSlotSize_;
             GM_ADDR localSlotAddr = localWinBase + slotOffset;
-            uint64_t dataBytes = static_cast<uint64_t>(chunkLen) * sizeof(int32_t);
+            uint64_t dataBytes = static_cast<uint64_t>(readItems) * sizeof(int32_t);
 
             LocalCopySlice(recvLocalEntryOutGM_ + static_cast<uint64_t>(rdispl + totalReceived) * sizeof(int32_t),
                            localSlotAddr, dataBytes);
 
-            localReadCnt++;
-            totalReceived += chunkLen;
+            uint32_t readSlots = (readItems + maxIndicesPerSlot_ - 1U) / maxIndicesPerSlot_;
+            localReadCnt += readSlots;
+            totalReceived += readItems;
             WriteRemoteCounter(srcRank, indicesReadOffset_, static_cast<int32_t>(localReadCnt));
         }
         ClearCountersAfterRecv(localWinBase, srcRank, indicesWriteOffset_, indicesReadOffset_);
@@ -887,18 +897,29 @@ __aicore__ inline void EngramFetchTrainArch35::RecvTokensFromPeers()
                 TimeoutCheck(startTime);
             }
 
+            uint32_t availableSlots = static_cast<uint32_t>(remoteWriteCnt) - localReadCnt;
+            if (availableSlots > NUM_SLOTS) {
+                availableSlots = NUM_SLOTS;
+            }
+            uint32_t slotIdxStart = localReadCnt % NUM_SLOTS;
+            uint32_t contiguousSlots = NUM_SLOTS - slotIdxStart;
+            if (contiguousSlots > availableSlots) {
+                contiguousSlots = availableSlots;
+            }
             uint32_t remaining = static_cast<uint32_t>(recvCount) - totalReceived;
-            uint32_t chunkLen = (remaining > maxTokensPerSlot_) ? maxTokensPerSlot_ : remaining;
+            uint32_t availableItems = contiguousSlots * maxTokensPerSlot_;
+            uint32_t readItems = (remaining < availableItems) ? remaining : availableItems;
 
             uint64_t slotOffset =
-                tokenDataOffset_ + srcRank * NUM_SLOTS * tokenSlotSize_ + (localReadCnt % NUM_SLOTS) * tokenSlotSize_;
+                tokenDataOffset_ + srcRank * NUM_SLOTS * tokenSlotSize_ + slotIdxStart * tokenSlotSize_;
             GM_ADDR localSlotAddr = localWinBase + slotOffset;
-            uint64_t dataBytes = static_cast<uint64_t>(chunkLen) * hiddenBytes_;
+            uint64_t dataBytes = static_cast<uint64_t>(readItems) * hiddenBytes_;
 
             LocalCopySlice(recvDataGM_ + (sdispl + totalReceived) * hiddenBytes_, localSlotAddr, dataBytes);
 
-            localReadCnt++;
-            totalReceived += chunkLen;
+            uint32_t readSlots = (readItems + maxTokensPerSlot_ - 1U) / maxTokensPerSlot_;
+            localReadCnt += readSlots;
+            totalReceived += readItems;
             WriteRemoteCounter(srcRank, tokenReadOffset_, static_cast<int32_t>(localReadCnt));
         }
         ClearCountersAfterRecv(localWinBase, srcRank, tokenWriteOffset_, tokenReadOffset_);
