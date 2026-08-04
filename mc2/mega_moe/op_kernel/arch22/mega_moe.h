@@ -205,7 +205,7 @@ template <MegaMoeClass>
 __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
 {
     using ArchTag = Arch::AtlasA2;
-    constexpr bool enableUnitFlag = false;
+    constexpr bool enableUnitFlag = true;
     constexpr bool enableShuffleK = true;
 
     constexpr bool isW4A8 = std::is_same_v<BType_, AscendC::int4b_t> || std::is_same_v<BType_, int32_t>;

@@ -194,51 +194,91 @@ __aicore__ inline void MoeV2FullLoad<T>::CopyOutIdx()
     expandedRowIdxCopyOutQueue_.EnQue(expandedRowIdx);
 }
 
+// 统计每个专家的 token 数（EXERPT_TOKENS_COUNT）或其前缀和（EXERPT_TOKENS_CUMSUM）。
+//
+// 【原实现的问题】原本这段由 `sortNeedCoreNum_ - 1` 号核**一个核**串行完成：先
+// Duplicate 清零 expertNum 个 int32，再对全部 totalLength 个已排序专家 id 逐元素
+// 做标量 GetValue，中间穿插按专家推进的标量 SetValue（CUMSUM 模式尾部还要再按
+// expertNum 规模标量填充一遍）。其余核全部在调用侧的 SyncAll 上干等。
+// 实测（A3 ws16 decode，BF16）：dec16 4.00us / dec32 6.54us / dec64 11.34us，
+// 约 22ns/元素——瓶颈不是算法复杂度，而是 O(totalLength + expertNum) 次标量
+// GetValue/SetValue 的 UB 往返。且该段位于 AIC 头部空闲窗口内（此时 HBM 空闲、
+// MTE2 为 0% 忙），省下的每一微秒都是净收益，不会被带宽吸收。
+//
+// 【本实现】把工作按**专家区间**切给所有 sort 核并行做。两个关键前提：
+//  1) fullload 形态下，每个 `blockIdx_ < sortNeedCoreNum_` 的核都在 SortCompute()
+//     里冗余地排出了一份**完整**的 expandedExpertIdx，数据本来就在各核自己的 UB
+//     里——分核统计不需要任何额外的数据搬运。
+//  2) 切分的是**输出域**（专家），各核写出的 GM 切片互不重叠，天然无需跨核归约，
+//     因此**不新增任何同步点**。调用侧（mega_moe_kernel_a3.hpp / a2_bf16.hpp）在
+//     moe_init_routing_v2 返回后本就有一次 `SyncAll<true>`，足以保证后续
+//     ALLGATHER 读到全部核的写出。
+// 于是每核只需：① 二分定位本区间的第一个 token（O(log2 totalLength) 次标量读）；
+// ② 线性扫过落在本区间内的 token；③ 写出本区间的专家计数。
+// 单核 O(totalLength + expertNum) 降为每核约 O(totalLength/N + expertNum/N + log2 totalLength)。
+//
+// 输出逐位不变：每核对区间内每个专家都显式写值（故不再需要 Duplicate 清零），
+// 各核区间的并集恰为 [0, expertNum)，写出字节数与原实现完全一致。
 template <typename T>
 __aicore__ inline void MoeV2FullLoad<T>::ComputeExpertTokenCountOrCumsum()
 {
     LocalTensor<int32_t> expandedExpertIdx = expandedExpertIdxCopyOutQueue_.DeQue<int32_t>();
-    LocalTensor<int32_t> expertTokensCount = expertTokensCopyOutQueue_.AllocTensor<int32_t>();
 
-    int64_t expertNumAlign = Align(this->expertNum, sizeof(int32_t));
-    Duplicate(expertTokensCount, 0, expertNumAlign);
-    SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
-
-    int32_t lastExpertId = expandedExpertIdx.GetValue(0);
-#ifdef __CCE_KT_TEST__
-    // CPU孪生调试无法使用多核同步，可能导致lastExpertId为未初始化的脏数据，因此需要特殊处理
-    if (lastExpertId > expertTokensCount.GetSize()) {
+    // 每核负责的专家个数按 8（= 32B / sizeof(int32_t)）向上对齐，
+    // 保证各核写出的 GM 切片起始地址 32B 对齐且互不重叠。
+    int64_t perCoreExperts = Align(Ceil(this->expertNum, this->sortNeedCoreNum_), sizeof(int32_t));
+    int64_t expertLo = this->blockIdx_ * perCoreExperts;
+    if (expertLo >= this->expertNum) {
+        // 本核没有分到专家（expertNum 小于核数时会出现），不写出任何数据。
+        expandedExpertIdxCopyOutQueue_.FreeTensor(expandedExpertIdx);
         return;
     }
-#endif
-    int64_t tokenCount = 0;
-    int64_t lastExpertCount = 0;
-    for (int64_t i = 0; i < this->totalLength; i++) {
-        int32_t curExpertId = expandedExpertIdx.GetValue(i);
-        tokenCount++;
-        while (lastExpertId < curExpertId) {
-            expertTokensCount.SetValue(lastExpertId, tokenCount - 1);
-            if (this->expertTokensCountOrCumsumFlag == EXERPT_TOKENS_COUNT) {
-                tokenCount = 1;
-            }
-            lastExpertId++;
+    int64_t expertHi = Min(expertLo + perCoreExperts, this->expertNum);
+
+    LocalTensor<int32_t> expertTokensCount = expertTokensCopyOutQueue_.AllocTensor<int32_t>();
+
+    // 二分找到第一个满足 expandedExpertIdx[i] >= expertLo 的位置。
+    // expandedExpertIdx 是 Sort2 的输出，沿 token 维已按专家 id 升序排列，
+    // 因此 lower_bound 成立；tokenIdx 同时就是 #{i : idx[i] < expertLo}，
+    // 即「本区间之前所有专家的 token 总数」，正是 CUMSUM 模式所需的起始累加值。
+    int64_t left = 0;
+    int64_t right = this->totalLength;
+    while (left < right) {
+        int64_t mid = (left + right) >> 1;
+        if (static_cast<int64_t>(expandedExpertIdx.GetValue(mid)) < expertLo) {
+            left = mid + 1;
+        } else {
+            right = mid;
         }
     }
-    expertTokensCount.SetValue(lastExpertId, tokenCount);
-    if (this->expertTokensCountOrCumsumFlag == EXERPT_TOKENS_CUMSUM) {
-        lastExpertId++;
-        while (lastExpertId < this->expertNum) {
-            expertTokensCount.SetValue(lastExpertId, tokenCount);
-            lastExpertId++;
+    int64_t tokenIdx = left;
+    int64_t acc = tokenIdx;
+
+    for (int64_t e = expertLo; e < expertHi; e++) {
+        int64_t tokenCount = 0;
+        // 已排序，故等于 e 的 token 必然连续；扫到第一个 > e 的元素即停。
+        while (tokenIdx < this->totalLength &&
+               static_cast<int64_t>(expandedExpertIdx.GetValue(tokenIdx)) <= e) {
+            tokenIdx++;
+            tokenCount++;
         }
+        acc += tokenCount;
+        // COUNT：本专家独立 token 数；CUMSUM：截至本专家（含）的 token 总数。
+        // 专家无 token 时 tokenCount 为 0、acc 保持不变，与原实现（Duplicate 清零后
+        // 不写 / 尾部用总数填充）逐位一致。
+        expertTokensCount.SetValue(e - expertLo, static_cast<int32_t>(
+            this->expertTokensCountOrCumsumFlag == EXERPT_TOKENS_CUMSUM ? acc : tokenCount));
     }
-    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(this->expertNum * sizeof(int32_t)), 0,
-                                 0, 0};
+
+    DataCopyExtParams copyParams{static_cast<uint16_t>(1),
+                                 static_cast<uint32_t>((expertHi - expertLo) * sizeof(int32_t)), 0, 0, 0};
     if (this->expertTokensCountOrCumsumFlag > 0) {
+        SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 200
-        DataCopyCustom(expertTokensCountOrCumsumGm, expertTokensCount, copyParams.blockCount, copyParams.blockLen);
+        DataCopyCustom(expertTokensCountOrCumsumGm[expertLo], expertTokensCount, copyParams.blockCount,
+                       copyParams.blockLen);
 #else
-        DataCopyPad(expertTokensCountOrCumsumGm, expertTokensCount, copyParams);
+        DataCopyPad(expertTokensCountOrCumsumGm[expertLo], expertTokensCount, copyParams);
 #endif
     }
     expertTokensCopyOutQueue_.FreeTensor(expertTokensCount);
@@ -368,7 +408,11 @@ __aicore__ inline void MoeV2FullLoad<T>::Process()
         if (this->blockIdx_ == 0) {
             CopyOutIdx();
         }
-        if (this->blockIdx_ == this->sortNeedCoreNum_ - 1 && this->expertTokensCountOrCumsumFlag > EXERPT_TOKENS_NONE) {
+        // ComputeExpertTokenCountOrCumsum 现在按专家区间分摊到**所有** sort 核并行执行
+        // （原本只有最后一个核做，其余核在调用侧的 SyncAll 上干等）。各核写出的 GM
+        // 切片互不重叠，不需要新增同步点。注意仍要保证每个走到这里的核都恰好
+        // DeQue 一次 expandedExpertIdxCopyOutQueue_，否则队列状态会失配。
+        if (this->expertTokensCountOrCumsumFlag > EXERPT_TOKENS_NONE) {
             ComputeExpertTokenCountOrCumsum();
         } else {
             CopyOutEmpty();
