@@ -31,33 +31,6 @@
 
 namespace NpuArch::Gemm::Block {
 
-// struct Mm1L1TileHelper {
-//     uint32_t mm1L1TileM;
-//     uint32_t mm1L1TileN;
-//     uint32_t mm1L1TileKLeft;
-//     uint32_t mm1L1TileKRight;
-//     uint32_t qL1BufNum;
-//     uint32_t kL1BufNum;
-
-//     __aicore__ inline
-//     Mm1L1TileHelper() {}
-
-//     __aicore__ inline
-//     Mm1L1TileHelper(
-//         uint32_t m,
-//         uint32_t n,
-//         uint32_t kl,
-//         uint32_t kr,
-//         uint32_t pbn,
-//         uint32_t vbn) :
-//         mm1L1TileM(m),
-//         mm1L1TileN(n),
-//         mm1L1TileKLeft(kl),
-//         mm1L1TileKRight(kr),
-//         qL1BufNum(pbn),
-//         kL1BufNum(vbn) {}
-// };
-
 template <
     class L1TileShape_,
     class L0TileShape_,
@@ -102,40 +75,12 @@ public:
     static constexpr uint32_t L0_TILE_N = tla::get<1>(L0TileShape_{});
     static constexpr uint32_t L0_TILE_K = tla::get<2>(L0TileShape_{});
 
-    // L1 各区单份字节数（fp4 两元素占 1 字节；scale 为 E8M0，每 32 元素 1 字节？？）
-    static constexpr uint32_t L1_Q_SIZE = 128 * 128 / 2;                                          // Q 数据：8K
-    static constexpr uint32_t L1_Q_DESCALE_SIZE = 128 * (128 / 32) * sizeof(AscendC::fp8_e8m0_t); // Q-scale：0.5K
-    static constexpr uint32_t L1_KV_SIZE = 512 * 128 / 2;                                         // KV/V 数据：32K
-    static constexpr uint32_t L1_KV_DESCALE_SIZE = 512 * (128 / 32) * sizeof(AscendC::fp8_e8m0_t);// KV/V-scale：2K
-    static constexpr uint32_t L1_P_SIZE = 128 * 256 / 2;                                          // P 数据：16K
-    static constexpr uint32_t L1_P_DESCALE_SIZE = 128 * 2 * (256 / 64 + 1) * sizeof(AscendC::fp8_e8m0_t); // P-scale：1.25K
-    static constexpr uint32_t L1_Q_BUFCNT = 2;    // Q 区份数
-    static constexpr uint32_t L1_KV_BUFCNT = 2;   // KV/V 区份数
-    static constexpr uint32_t L1_P_BUFCNT = 20;   // P 区份数
-
-    static constexpr uint32_t L1_SINGLE_GLOBAL_MAX_SIZE = 128;
-
     // [QFA 对齐] Q(M) 方向全程 pad 到 128（QFA actMSizeAlign128 语义）：
     //   L1 画布 / L0B 加载 mStep/xStep / Mmad n / Fixpipe nSize 统一用 128；
     //   有效行仅 rowNumQ，其余为残留垃圾列，vec 侧只读有效列（与 QFA 相同）。
     //   原实现对齐到 CeilAlign(m,16)，S1<128 时 Fixpipe nSize=m 违反 32B 倍数约束导致全错。
     static constexpr uint32_t Q_M_PAD = 128;
 
-    // L0 各区单份字节数
-    static constexpr uint32_t QK_L0A_SIZE = 128 * 128 / 2;              // QK 用 L0A：8K
-    static constexpr uint32_t QK_L0B_SIZE = 128 * 128 / 2;              // QK 用 L0B：8K
-    static constexpr uint32_t QK_L0C_SIZE = 128 * 128 * sizeof(float);  // QK 用 L0C：64K
-    static constexpr uint32_t QK_L0AB_BUFCNT = 2;
-    static constexpr uint32_t QK_L0C_BUFCNT = 2;
-    static constexpr uint32_t PV_L0A_SIZE = 256 * (128 + 16) / 2;             // PV 用 L0A(=V, D+16 行)：18K
-    static constexpr uint32_t PV_L0B_SIZE = 256 * (128 + 16) / 2;            // PV 用 L0B(=P)：18K
-    static constexpr uint32_t PV_L0C_SIZE = (128 + 16) * 128 * sizeof(float); // PV 用 L0C(=Oᵀ)：72K
-    static constexpr uint32_t V_SCALE_L0A_SIZE = (256 / 64) * ((128 + 16) / 16) * 32 ;
-    static constexpr uint32_t P_SCALE_L0B_SIZE = (256 / 64) * ((128 + 16) / 16) * 32 ;
-    
-    static constexpr uint32_t PV_L0AB_BUFCNT = 2;                    // mm2 L0A/B 双缓冲
-    static constexpr uint32_t PV_L0C_BUFCNT = 1;                     // mm2 L0C 单缓冲（原地累加）
-                                              // P 数据：16K
     static constexpr AscendC::FixpipeConfig CFG_ROW_MAJOR_UB = {AscendC::CO2Layout::ROW_MAJOR, true};
 
     // L1 Q（MTE1_MTE2 / MTE2_MTE1）
@@ -154,56 +99,45 @@ public:
     
     __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource) {
         // L1 区域顺序（与 QFA 一致）：P 数据 | P-scale | Q 数据 | Q-scale | KV(=V) 数据 | KV(=V)-scale
-        uint32_t addrL1Start = 0;
-        // P 数据：l1BTensor(B=P)，L1_P_SIZE * 20 = 320K
-        addrL1Start += L1_P_SIZE * L1_P_BUFCNT;
-        // P-scale：l1BScaleTensor，占 L1_P_DESCALE_SIZE * 20 = 25K
-        addrL1Start += L1_P_DESCALE_SIZE * L1_P_BUFCNT;
 
         // Q 数据 占 L1_Q_SIZE * L1_Q_BUFCNT = 16K
-        for (uint32_t i = 0; i < L1_Q_BUFCNT; i++) {
-            l1ATensor[i] = resource.l1Buf.template GetBufferByByte<ElementA>(addrL1Start + L1_Q_SIZE * i);
+        for (uint32_t i = 0; i < MXFP4::L1_Q_BUF_CNT; i++) {
+            l1ATensor[i] = resource.l1Buf.template GetBufferByByte<ElementA>(MXFP4::L1_Q_BUF_OFFSET + MXFP4::L1_Q_BUF_SIZE * i);
         }
-        addrL1Start += L1_Q_SIZE * L1_Q_BUFCNT;
 
         // Q-scale：数据 占 L1_Q_DESCALE_SIZE * L1_Q_BUFCNT = 1K
-        for (uint32_t i = 0; i < L1_Q_BUFCNT; i++) {
-            l1AScaleTensor[i] = resource.l1Buf.template GetBufferByByte<uint8_t>(addrL1Start + L1_Q_DESCALE_SIZE * i);
+        for (uint32_t i = 0; i < MXFP4::L1_Q_BUF_CNT; i++) {
+            l1AScaleTensor[i] = resource.l1Buf.template GetBufferByByte<uint8_t>(MXFP4::L1_Q_DESCALE_BUF_OFFSET + MXFP4::L1_Q_DESCALE_BUF_SIZE * i);
         }
-        addrL1Start += L1_Q_DESCALE_SIZE * L1_Q_BUFCNT;
 
         // 【K V 内存分离】V 数据用
-        addrL1Start += L1_KV_SIZE * L1_KV_BUFCNT;
-
+        uint32_t addrL1Start = MXFP4::L1_KV_BUF_OFFSET;
+        addrL1Start += MXFP4::L1_KV_BUF_SIZE * MXFP4::L1_KV_BUF_CNT;
         // 【K V 内存分离】K 数据：l1BTensor(B=K), L1_KV_SIZE * 2 = 64K
-        for (uint32_t i = 0; i < L1_KV_BUFCNT; i++) {
-            l1BTensor[i] = resource.l1Buf.template GetBufferByByte<ElementB>(addrL1Start + L1_KV_SIZE * i);
+        for (uint32_t i = 0; i < MXFP4::L1_KV_BUF_CNT; i++) {
+            l1BTensor[i] = resource.l1Buf.template GetBufferByByte<ElementB>(addrL1Start + MXFP4::L1_KV_BUF_SIZE * i);
         }
-        addrL1Start += L1_KV_SIZE * L1_KV_BUFCNT;
 
         // 【K V 内存分离】V-scale 数据用
-        addrL1Start += L1_KV_DESCALE_SIZE * L1_KV_BUFCNT;
-        
+        addrL1Start = MXFP4::L1_KV_DESCALE_BUF_OFFSET; 
+        addrL1Start += MXFP4::L1_KV_DESCALE_BUF_SIZE * MXFP4::L1_KV_DESCALE_BUF_CNT;
         // 【K V 内存分离】K-scale：l1BScaleTensor(K-scale)，占 L1_KV_DESCALE_SIZE * 2 = 4K
-        for (uint32_t i = 0; i < L1_KV_BUFCNT; i++) {
-            l1BScaleTensor[i] = resource.l1Buf.template GetBufferByByte<uint8_t>(addrL1Start + L1_KV_DESCALE_SIZE * i);
+        for (uint32_t i = 0; i < MXFP4::L1_KV_DESCALE_BUF_CNT; i++) {
+            l1BScaleTensor[i] = resource.l1Buf.template GetBufferByByte<uint8_t>(addrL1Start + MXFP4::L1_KV_DESCALE_BUF_SIZE * i);
         }
-        addrL1Start += L1_KV_SIZE * L1_KV_BUFCNT;
 
         // L0A 区域顺序  QK 数据 | PV 数据
-        uint32_t addrL0AStart = 0;
-        for (uint32_t i = 0; i < QK_L0AB_BUFCNT; i++) {
-            l0ATensor[i] = resource.l0ABuf.template GetBufferByByte<ElementB>(addrL0AStart + QK_L0A_SIZE * i);
+        for (uint32_t i = 0; i < MXFP4::L0A_QK_BUF_CNT; i++) {
+            l0ATensor[i] = resource.l0ABuf.template GetBufferByByte<ElementB>(MXFP4::L0A_QK_BUF_OFFSET + MXFP4::L0A_QK_BUF_SIZE * i);
         }
 
         // L0B 区域顺序  QK 数据 | PV 数据
-        uint32_t addrL0BStart = 0;
-        for (uint32_t i = 0; i < QK_L0AB_BUFCNT; i++) {
-            l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementA>(addrL0BStart + QK_L0B_SIZE * i);
+        for (uint32_t i = 0; i < MXFP4::L0B_QK_BUF_CNT; i++) {
+            l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementA>(MXFP4::L0B_QK_BUF_OFFSET + MXFP4::L0B_QK_BUF_SIZE * i);
         }
 
         // L0C：QK 双缓冲 [0,128K)=2×64K；PV 在 MXFP4::L0C_PV_BUF_OFFSET=128K（勿再叠到 64K）
-        for (uint32_t i = 0; i < QK_L0C_BUFCNT; i++) {
+        for (uint32_t i = 0; i < MXFP4::L0C_QK_BUF_CNT; i++) {
             l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<float>(
                 MXFP4::L0C_QK_BUF_OFFSET + MXFP4::L0C_QK_BUF_SIZE * i);
         }
@@ -640,7 +574,7 @@ public:
                 // 等该 L0C 槽空闲（Alloc 预置 / 上次 Fixpipe 归还）→ Mmad 写入
                 MatmulQK(nCur, Q_M_PAD, k, qkL0cBufId, qkL0abBufId); 
                 AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId); 
-                qkL0abBufId = (qkL0abBufId + 1) % QK_L0AB_BUFCNT;
+                qkL0abBufId = (qkL0abBufId + 1) % MXFP4::L0A_QK_BUF_CNT;
             }
             
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
@@ -655,31 +589,31 @@ public:
             FixpipeMm1(Q_M_PAD, nCur, ubSSubTla, subBlockIdx != 0, qkL0cBufId);
             // Fixpipe 完成，归还 L0C 槽并翻转 ping-pong
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
-            qkL0cBufId = (qkL0cBufId + 1) % QK_L0C_BUFCNT;
+            qkL0cBufId = (qkL0cBufId + 1) % MXFP4::L0C_QK_BUF_CNT;
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1KEventId);
-        kBufId = (kBufId + 1) % L1_KV_BUFCNT;
+        kBufId = (kBufId + 1) % MXFP4::L1_KV_BUF_CNT;
 
         if (unlikely(isLastKvsTile)) {
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1QEventId); 
-            qBufId = (qBufId + 1) % L1_Q_BUFCNT;
+            qBufId = (qBufId + 1) % MXFP4::L1_Q_BUF_CNT;
         }
     }
     
 
 protected:
     // L1：Q 用 2 份，k 用 4 份
-    AscendC::LocalTensor<ElementA> l1ATensor[L1_Q_BUFCNT];
-    AscendC::LocalTensor<ElementB> l1BTensor[L1_KV_BUFCNT];
+    AscendC::LocalTensor<ElementA> l1ATensor[MXFP4::L1_Q_BUF_CNT];
+    AscendC::LocalTensor<ElementB> l1BTensor[MXFP4::L1_KV_BUF_CNT];
 
     // L0：A/B 各 2 份 ，C 2 份
-    AscendC::LocalTensor<ElementB> l0ATensor[QK_L0AB_BUFCNT];
-    AscendC::LocalTensor<ElementA> l0BTensor[QK_L0AB_BUFCNT];
-    AscendC::LocalTensor<float> l0CTensor[QK_L0C_BUFCNT];
+    AscendC::LocalTensor<ElementB> l0ATensor[MXFP4::L0A_QK_BUF_CNT];
+    AscendC::LocalTensor<ElementA> l0BTensor[MXFP4::L0A_QK_BUF_CNT];
+    AscendC::LocalTensor<float> l0CTensor[MXFP4::L0C_QK_BUF_CNT];
 
     // MXFP4 专用：E8M0 scale 的 L1 buffer（Q-scale 2 份，K-scale 4 份）+ MX 版 L1->L0 拷贝器
-    AscendC::LocalTensor<uint8_t> l1AScaleTensor[L1_Q_BUFCNT];
-    AscendC::LocalTensor<uint8_t> l1BScaleTensor[L1_KV_BUFCNT];
+    AscendC::LocalTensor<uint8_t> l1AScaleTensor[MXFP4::L1_Q_BUF_CNT];
+    AscendC::LocalTensor<uint8_t> l1BScaleTensor[MXFP4::L1_KV_BUF_CNT];
 
     // [Step2] QK 非转置 mx L1→L0 functor（勿与 PV 的 CopyL1ToL0*MxA5 混淆）
     Tile::CopyL1ToL0AMxQKA5 copyL1ToL0AMxQk;  // K: L1→L0A，ifTranspose=false
