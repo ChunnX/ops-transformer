@@ -263,10 +263,11 @@ ge::graphStatus QfaInfoParser::GetQuantMode()
         return ge::GRAPH_FAILED;
     }
     int64_t quantModeVal = *opParamInfo_.quantMode;
-    if (quantModeVal != static_cast<int64_t>(QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32)) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_mode", std::to_string(quantModeVal).c_str(),
-                                              "quant_mode must be 1 "
-                                              "(A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32)");
+    if (quantModeVal != static_cast<int64_t>(QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) &&
+        quantModeVal != static_cast<int64_t>(QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_mode",
+            std::to_string(quantModeVal).c_str(),
+            "quant_mode must be 1 (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) or 7 (A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32)");
         return ge::GRAPH_FAILED;
     }
     quantMode_ = static_cast<QfaQuantMode>(quantModeVal);
@@ -608,6 +609,11 @@ ge::graphStatus QfaInfoParser::ParseAxisInfo()
         return ge::GRAPH_FAILED;
     }
 
+    // HIF8 per-tensor: q_descale is 1D with shape (1,), skip MXFP8 dim check
+    if (quantMode_ == QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32) {
+        return ge::GRAPH_SUCCESS;
+    }
+
     uint32_t qDescaleDimNum = opParamInfo_.qDescale.shape->GetStorageShape().GetDimNum();
     bool isDecode = (layoutQDescale_ == QfaLayout::N2TGD);
     if (isDecode && qDescaleDimNum != 5) {
@@ -639,10 +645,6 @@ ge::graphStatus QfaInfoParser::ParseFeatureInfo()
     maxSeqQ_ = (opParamInfo_.maxSeqlenQ == nullptr) ? -1 : *opParamInfo_.maxSeqlenQ;
     maxSeqKv_ = (opParamInfo_.maxSeqlenKV == nullptr) ? -1 : *opParamInfo_.maxSeqlenKV;
 
-    if (ge::GRAPH_SUCCESS != GetQuantMode()) {
-        return ge::GRAPH_FAILED;
-    }
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -659,6 +661,10 @@ ge::graphStatus QfaInfoParser::Parse(QfaTilingInfo &qfaInfo)
         return ge::GRAPH_FAILED;
     }
     GetInOutDataType();
+
+    if (ge::GRAPH_SUCCESS != GetQuantMode()) {
+        return ge::GRAPH_FAILED;
+    }
 
     if (ge::GRAPH_SUCCESS != GetInAndOutLayout()) {
         return ge::GRAPH_FAILED;

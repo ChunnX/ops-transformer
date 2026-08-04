@@ -76,45 +76,66 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const QfaTilingInfo &qfaInf
 
 ge::graphStatus CommonChecker::CheckSingleParaDtype(const QfaTilingInfo &qfaInfo)
 {
-    // q: tensor_type 仅支持 FLOAT8_E4M3FN
+    // q: tensor_type supports FLOAT8_E4M3FN (MXFP8) or HIFLOAT8 (HIF8)
+    bool isMxfp8Mode = (qfaInfo.quantMode == QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32);
+    bool isHif8Mode = (qfaInfo.quantMode == QfaQuantMode::A8C8_QKV_HIF8_P_PER_TENSOR_SOFTMAX_FP32);
     const gert::CompileTimeTensorDesc *queryDesc = qfaInfo.opParamInfo.query.desc;
     if (queryDesc != nullptr) {
-        OP_CHECK_IF(
-            queryDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN,
-            OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, QUERY_NAME.c_str(),
-                                      DataTypeToSerialString(queryDesc->GetDataType()).c_str(), "FLOAT8_E4M3FN"),
-            return ge::GRAPH_FAILED);
+        if (isMxfp8Mode) {
+            OP_CHECK_IF(queryDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN,
+                        OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, QUERY_NAME.c_str(),
+                            DataTypeToSerialString(queryDesc->GetDataType()).c_str(), "FLOAT8_E4M3FN"),
+                        return ge::GRAPH_FAILED);
+        } else if (isHif8Mode) {
+            OP_CHECK_IF(queryDesc->GetDataType() != ge::DT_HIFLOAT8,
+                        OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, QUERY_NAME.c_str(),
+                            DataTypeToSerialString(queryDesc->GetDataType()).c_str(), "HIFLOAT8"),
+                        return ge::GRAPH_FAILED);
+        }
         if (CheckFormatSupport(queryDesc, QUERY_NAME) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
 
-    // k: tensor_type 仅支持 FLOAT8_E4M3FN
+    // k: same dtype constraint as q
     const gert::CompileTimeTensorDesc *keyDesc = qfaInfo.opParamInfo.key.desc;
     if (keyDesc != nullptr) {
-        OP_CHECK_IF(keyDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN,
-                    OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, KEY_NAME.c_str(),
-                                              DataTypeToSerialString(keyDesc->GetDataType()).c_str(), "FLOAT8_E4M3FN"),
-                    return ge::GRAPH_FAILED);
+        if (isMxfp8Mode) {
+            OP_CHECK_IF(keyDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN,
+                        OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, KEY_NAME.c_str(),
+                            DataTypeToSerialString(keyDesc->GetDataType()).c_str(), "FLOAT8_E4M3FN"),
+                        return ge::GRAPH_FAILED);
+        } else if (isHif8Mode) {
+            OP_CHECK_IF(keyDesc->GetDataType() != ge::DT_HIFLOAT8,
+                        OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, KEY_NAME.c_str(),
+                            DataTypeToSerialString(keyDesc->GetDataType()).c_str(), "HIFLOAT8"),
+                        return ge::GRAPH_FAILED);
+        }
         if (CheckFormatSupport(keyDesc, KEY_NAME) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
 
-    // v: tensor_type 仅支持 FLOAT8_E4M3FN
+    // v: same dtype constraint as q
     const gert::CompileTimeTensorDesc *valueDesc = qfaInfo.opParamInfo.value.desc;
     if (valueDesc != nullptr) {
-        OP_CHECK_IF(
-            valueDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN,
-            OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, VALUE_NAME.c_str(),
-                                      DataTypeToSerialString(valueDesc->GetDataType()).c_str(), "FLOAT8_E4M3FN"),
-            return ge::GRAPH_FAILED);
+        if (isMxfp8Mode) {
+            OP_CHECK_IF(valueDesc->GetDataType() != ge::DT_FLOAT8_E4M3FN,
+                        OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, VALUE_NAME.c_str(),
+                            DataTypeToSerialString(valueDesc->GetDataType()).c_str(), "FLOAT8_E4M3FN"),
+                        return ge::GRAPH_FAILED);
+        } else if (isHif8Mode) {
+            OP_CHECK_IF(valueDesc->GetDataType() != ge::DT_HIFLOAT8,
+                        OP_LOGE_FOR_INVALID_DTYPE(qfaInfo.opName, VALUE_NAME.c_str(),
+                            DataTypeToSerialString(valueDesc->GetDataType()).c_str(), "HIFLOAT8"),
+                        return ge::GRAPH_FAILED);
+        }
         if (CheckFormatSupport(valueDesc, VALUE_NAME) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
 
-    // attn_out: data_type 仅支持 BFLOAT16
+    // attn_out: data_type only supports BFLOAT16
     const gert::CompileTimeTensorDesc *attnOutDesc = qfaInfo.opParamInfo.attnOut.desc;
     if (attnOutDesc != nullptr) {
         OP_CHECK_IF(attnOutDesc->GetDataType() != ge::DT_BF16,
