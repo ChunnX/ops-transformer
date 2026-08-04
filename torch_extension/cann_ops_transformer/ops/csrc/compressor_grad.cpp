@@ -26,8 +26,9 @@ const int64_t VALUE_1 = 1;
 const int64_t VALUE_2 = 2;
 const int64_t VALUE_128 = 128;
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> ConstructCompressorGradOutputTensor(const at::Tensor &x, const at::Tensor &wkv,
-                                               const at::Tensor &softmaxScore, int64_t cmpRatio, int64_t coff)
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> ConstructCompressorGradOutputTensor(
+    const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &softmaxScore,
+    int64_t cmpRatio, int64_t coff)
 {
     TORCH_CHECK(x.defined(), "Check x != nullptr failed");
     auto xDim = x.dim();
@@ -78,10 +79,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> ConstructCompressorGr
     return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>(dX, dWkv, dWgate, dApe);
 }
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> CompressorGrad(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate,
-                      const at::Tensor &dCmpKv, const at::Tensor &softmaxScore, const at::Tensor &kv, int64_t cmpRatio, int64_t coff,
-                      const c10::optional<at::Tensor> &cuSeqlens, const c10::optional<at::Tensor> &seqused,
-                      const c10::optional<at::Tensor> &startPos)
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> CompressorGrad(
+    const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate,
+    const at::Tensor &dCmpKv, const at::Tensor &softmaxScore, const at::Tensor &kv, int64_t cmpRatio, int64_t coff,
+    const c10::optional<at::Tensor> &cuSeqlens, const c10::optional<at::Tensor> &seqused,
+    const c10::optional<at::Tensor> &startPos)
 {
     TORCH_CHECK(x.defined(), "Check x != nullptr failed");
     auto xDim = x.dim();
