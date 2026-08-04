@@ -191,13 +191,14 @@ ge::graphStatus SeqLenChecker::CheckCuSeqlensLayoutConsistency(const QfaTilingIn
     //   - cu_seqlens_kv: 当 layout_kv 为 TND 时，必须传入；当 layout_kv 不为 TND 时，不支持传入
     bool cuSeqlensQExists =
         (qfaInfo.opParamInfo.cuSeqlensQ.tensor != nullptr && qfaInfo.opParamInfo.cuSeqlensQ.desc != nullptr);
-    if (qfaInfo.qLayout == QfaLayout::TND) {
+    if (qfaInfo.qLayout == QfaLayout::TND || qfaInfo.qLayout == QfaLayout::NTD) {
         OP_CHECK_IF(!cuSeqlensQExists, OP_LOGE_WITH_INVALID_INPUT(qfaInfo.opName, CU_SEQLENS_Q_NAME.c_str()),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(cuSeqlensQExists,
                     OP_LOGE(qfaInfo.opName,
-                            "cu_seqlens_q should not be provided when layout_q is %s, only supported in TND layout.",
+                            "cu_seqlens_q should not be provided when layout_q is %s, "
+                            "only supported in TND and NTDlayout.",
                             QfaLayoutToSerialString(qfaInfo.qLayout).c_str()),
                     return ge::GRAPH_FAILED);
     }
