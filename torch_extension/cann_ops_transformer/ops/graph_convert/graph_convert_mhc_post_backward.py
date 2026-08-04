@@ -77,11 +77,6 @@ if _TORCHAIR_AVAILABLE:
         *,
         meta_outputs: TensorSpec = None,
     ):
-        if h_res is None:
-            raise RuntimeError(
-                "mhc_post_backward graph mode does not support h_res=None; "
-                "the underlying IR defines h_res as REQUIRED."
-            )
         return mhc_post_backward_ge(
             grad_output=grad_output,
             x=x,
