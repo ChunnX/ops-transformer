@@ -39,6 +39,7 @@ PARAM_NAMES = [
     "quant_mode",
     "device_id",
     "is_contiguous",
+    "input_fill_mode",
 ]
 
 TEST_PARAMS_DEFAULTS = {
@@ -53,6 +54,7 @@ TEST_PARAMS_DEFAULTS = {
     "quant_mode": [1],
     "device_id": [0],
     "is_contiguous": [True],
+    "input_fill_mode": ["rand"],
 }
 
 

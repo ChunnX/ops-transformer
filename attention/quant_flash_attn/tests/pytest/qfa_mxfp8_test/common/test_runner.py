@@ -44,6 +44,7 @@ PARAM_MAP = {
     "quant_mode": None,  # quant_mode 用于新接口，golden 中不需要设置全局变量
     "device_id": "DEVICE_ID",
     "is_contiguous": "IS_CONTIGUOUS",
+    "input_fill_mode": "INPUT_FILL_MODE",
 }
 
 

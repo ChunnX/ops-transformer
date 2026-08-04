@@ -124,6 +124,9 @@ DATA_RANGE_V = 1.0
 DATA_RANGE_QR = 1.0
 DATA_RANGE_KR = 1.0
 
+# 输入填充模式: "rand" 随机生成 [-DATA_RANGE, DATA_RANGE]; "ones" 全 1 填充
+INPUT_FILL_MODE = "rand"
+
 DEVICE_ID = 0
 
 
@@ -817,25 +820,40 @@ def generate_data():
     logger.info("[INFO] max_sq=%d, max_skv=%d", max_sq, max_skv)
 
     torch.manual_seed(SEED_Q)
-    q_fp16 = (torch.rand(B, N_q, max_sq, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_Q
+    if INPUT_FILL_MODE == "ones":
+        q_fp16 = torch.ones(B, N_q, max_sq, D, dtype=torch.float16) * DATA_RANGE_Q
+    else:
+        q_fp16 = (torch.rand(B, N_q, max_sq, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_Q
 
     torch.manual_seed(SEED_K)
-    k_fp16 = (
-        torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
-    ) * DATA_RANGE_K
+    if INPUT_FILL_MODE == "ones":
+        k_fp16 = torch.ones(B, N_kv, max_skv, D, dtype=torch.float16) * DATA_RANGE_K
+    else:
+        k_fp16 = (
+            torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+        ) * DATA_RANGE_K
 
     torch.manual_seed(SEED_V)
-    v_fp16 = (
-        torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
-    ) * DATA_RANGE_V
+    if INPUT_FILL_MODE == "ones":
+        v_fp16 = torch.ones(B, N_kv, max_skv, D, dtype=torch.float16) * DATA_RANGE_V
+    else:
+        v_fp16 = (
+            torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1
+        ) * DATA_RANGE_V
 
     qr_bf16 = None
     kr_bf16 = None
     if ENABLE_ROPE and D_rope > 0:
         torch.manual_seed(SEED_QR)
-        qr_bf16 = (torch.rand(B, N_q, max_sq, D_rope, dtype=torch.bfloat16) * 2 - 1) * DATA_RANGE_QR
+        if INPUT_FILL_MODE == "ones":
+            qr_bf16 = torch.ones(B, N_q, max_sq, D_rope, dtype=torch.bfloat16) * DATA_RANGE_QR
+        else:
+            qr_bf16 = (torch.rand(B, N_q, max_sq, D_rope, dtype=torch.bfloat16) * 2 - 1) * DATA_RANGE_QR
         torch.manual_seed(SEED_KR)
-        kr_bf16 = (torch.rand(B, N_kv, max_skv, D_rope, dtype=torch.bfloat16) * 2 - 1) * DATA_RANGE_KR
+        if INPUT_FILL_MODE == "ones":
+            kr_bf16 = torch.ones(B, N_kv, max_skv, D_rope, dtype=torch.bfloat16) * DATA_RANGE_KR
+        else:
+            kr_bf16 = (torch.rand(B, N_kv, max_skv, D_rope, dtype=torch.bfloat16) * 2 - 1) * DATA_RANGE_KR
 
     logger.info(
         "[INFO] q_fp16=%s, k_fp16=%s, v_fp16=%s",
@@ -853,6 +871,11 @@ def generate_data():
     quant_scale_v = get_mxfp8_per_channel_group_quant_scale(
         v_fp16, FP8_DTYPE, QUANT_GROUP_SIZE
     )
+
+    if INPUT_FILL_MODE == "ones":
+        quant_scale_q = torch.ones_like(quant_scale_q)
+        quant_scale_k = torch.ones_like(quant_scale_k)
+        quant_scale_v = torch.ones_like(quant_scale_v)
 
     dequant_scale_q = quant_scale_q
     dequant_scale_k = quant_scale_k
