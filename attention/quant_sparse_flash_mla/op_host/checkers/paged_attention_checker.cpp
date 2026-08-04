@@ -92,18 +92,6 @@ ge::graphStatus PagedAttentionChecker::CheckParaExistence(const QSMLATilingInfo 
 
 ge::graphStatus PagedAttentionChecker::CheckCrossFeature(const QSMLATilingInfo &info) const
 {
-    if (info.opParamInfo.oriBlockTable.tensor != nullptr) {
-        OP_CHECK_IF(info.opParamInfo.sequsedOriKv.tensor == nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                        info.opName, "seqused_ori_kv", "seqused_ori_kv must be provided when ori_block_table exists"),
-                    return ge::GRAPH_FAILED);
-    }
-    if (info.opParamInfo.cmpBlockTable.tensor != nullptr) {
-        OP_CHECK_IF(info.opParamInfo.sequsedCmpKv.tensor == nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
-                        info.opName, "seqused_cmp_kv", "seqused_cmp_kv must be provided when cmp_block_table exists"),
-                    return ge::GRAPH_FAILED);
-    }
     return ge::GRAPH_SUCCESS;
 }
 
