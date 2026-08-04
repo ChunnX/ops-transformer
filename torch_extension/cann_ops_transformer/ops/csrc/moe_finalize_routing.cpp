@@ -8,6 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+/*!
+ * \file moe_finalize_routing.cpp
+ * \brief ACLNN Wrapper for aclnnMoeFinalizeRoutingV4
+ */
+
 #include <torch/extension.h>
 #include "aclnn_common.h"
 
@@ -63,5 +68,4 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("moe_finalize_routing", &MoeFinalizeRouting, "moe_finalize_routing");
 }
-
 } // namespace op_api
