@@ -85,6 +85,14 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheRegbaseTiling::CalUbTiling()
     OP_CHECK_IF(ubFactor <= 0,
                 OP_LOGE(context_->GetNodeName(), "ubFactor must be positive, got %ld.", ubFactor),
                 return ge::GRAPH_FAILED);
+    // 上面的 min 已经保证不会超，这里再复核一次：kernel 侧 undMask_ 是 uint64_t，
+    // ubFactor 一旦大于位图宽度，CopyIn 的 1ULL << i 就是未定义行为且不会报错，
+    // 板上表现为 gamma 选错、精度随机劣化。宁可在 tiling 阶段就失败。
+    OP_CHECK_IF(ubFactor > MAX_UB_FACTOR,
+                OP_LOGE(context_->GetNodeName(),
+                        "ubFactor(%ld) exceeds the und/gen bitmap width(%ld) used by the kernel.", ubFactor,
+                        MAX_UB_FACTOR),
+                return ge::GRAPH_FAILED);
     tilingData_.set_ubFactor(ubFactor);
     return ge::GRAPH_SUCCESS;
 }
