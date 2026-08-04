@@ -22,7 +22,9 @@
  *        最后通过 GetCommPolicy().state_ = &commState_ 将 WaitPolicy 绑定到通信状态。
  *
  * Run():
- *   AIC: MatmulProcess() -> commState_.hccl_.Finalize()
+ *   AIC: local块前置 — 若 localMatmul != 0，先执行 MatmulProcess(LOCAL) 计算本 rank 数据，
+ *        再执行 MatmulProcess(REMOTE) 计算通信收到的远端数据，以 local 计算掩盖通信延迟；
+ *        最后 commState_.hccl_.Finalize()。
  *        kernel 内逐 tile 通过 commPolicy_.WaitTile() → state_->hccl_.Wait(handle) 等待通信完成，
  *        首次 wait 紧挨 data wait 之前执行 hccl->Wait(scaleHandle_)（每核仅一次，掩盖 matmul 头开销）。
  *
@@ -144,8 +146,9 @@ private:
     static constexpr uint64_t MXFP_MULTI_BASE_SIZE = 2UL;
     static constexpr uint64_t ALIGN_NUM = 512UL;
 
-    __aicore__ inline void SetupParams(Params &out);
-    __aicore__ inline void MatmulProcess();
+    // local块前置：SetupParams/MatmulProcess 按 matmulMode 区分 LOCAL（本rank）与 REMOTE（远端）计算
+    __aicore__ inline void SetupParams(Params &out, MatmulMode matmulMode);
+    __aicore__ inline void MatmulProcess(MatmulMode matmulMode);
 };
 
 template <typename X1Type, typename X2Type, typename YType, typename CommDataTypeX1,
@@ -218,7 +221,11 @@ __aicore__ inline void
 AllToAllMxMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
                           AlltoAllMatmulTilingDataType, IsMxFp4>::Run()
 {
-    MatmulProcess();
+    // local块前置：先计算本rank的local数据（无需等待通信），再计算remote数据，用local计算掩盖通信延迟
+    if (tilingData_->localMatmul != 0) {
+        MatmulProcess(MatmulMode::LOCAL);
+    }
+    MatmulProcess(MatmulMode::REMOTE);
     AscendC::SyncAll();
     commState_.hccl_.Finalize();
 }
@@ -227,7 +234,7 @@ template <typename X1Type, typename X2Type, typename YType, typename CommDataTyp
           typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
 __aicore__ inline void
 AllToAllMxMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
-                          AlltoAllMatmulTilingDataType, IsMxFp4>::SetupParams(Params &out)
+                          AlltoAllMatmulTilingDataType, IsMxFp4>::SetupParams(Params &out, MatmulMode matmulMode)
 {
     auto &&commTiling = tilingData_->commTilingData;
     const auto &mmTile = tilingData_->tileQbmmTilingData;
@@ -242,8 +249,18 @@ AllToAllMxMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
     mmadParams.cGmAddr = y_;
     mmadParams.biasGmAddr = bias_;
 
+    // local块前置：LOCAL模式仅计算本rank数据(splitKNum=1)，REMOTE模式排除local块后计算剩余rank
+    uint32_t splitKNum;
+    if (matmulMode == MatmulMode::LOCAL) {
+        splitKNum = 1;
+    } else if (tilingData_->localMatmul != 0) {
+        splitKNum = rankDim_ - 1;
+    } else {
+        splitKNum = rankDim_;
+    }
+
     LocalParams localParams{rankId_, rankDim_, splitAxisSize_, x1_, x1Scale_,
-                            tilingData_->localMatmul, rankDim_, MatmulMode::REMOTE,
+                            tilingData_->localMatmul, splitKNum, matmulMode,
                             static_cast<uint32_t>(commTiling.splitAxisTileSize)};
 
     L1Params l1Params{static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK, mmTile.scaleKL1,
@@ -262,10 +279,10 @@ template <typename X1Type, typename X2Type, typename YType, typename CommDataTyp
           typename AlltoAllMatmulTilingDataType, bool IsMxFp4>
 __aicore__ inline void
 AllToAllMxMatmulHcommImpl<X1Type, X2Type, YType, CommDataTypeX1,
-                          AlltoAllMatmulTilingDataType, IsMxFp4>::MatmulProcess()
+                          AlltoAllMatmulTilingDataType, IsMxFp4>::MatmulProcess(MatmulMode matmulMode)
 {
     Params params;
-    SetupParams(params);
+    SetupParams(params, matmulMode);
     quantMatmulKernelImpl_(params);
 }
 
