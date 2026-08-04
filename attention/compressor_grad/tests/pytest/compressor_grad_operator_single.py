@@ -32,11 +32,7 @@ class Generalized_operator():
                 softmax_score,
                 kv,
                 cmp_ratio,
-                layout_x,
-                layout_d_cmp_kv,
-                layout_softmax_score,
-                layout_kv,
-                layout_d_x,
+                layout,
                 cu_seqlens,
                 seqused,
                 start_pos,
@@ -44,17 +40,17 @@ class Generalized_operator():
 
         return run_compressor_grad_eager(
             x, wkv, wgate, d_cmp_kv, softmax_score, kv, cmp_ratio,
-            layout_x, layout_d_cmp_kv, layout_softmax_score, layout_kv, layout_d_x,
+            layout,
             cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos, coff=coff)
 
 def output_operator(params):
     #构造输入
     batch_size, hidden_size, Seq_len, head_dim, block_size, cmp_ratio, coff, \
-    layout_x, layout_d_cmp_kv, layout_softmax_score, layout_kv, layout_d_x, data_type, cu_seqlens, seqused, start_pos, \
+    layout, data_type, cu_seqlens, seqused, start_pos, \
     x_datarange, wkv_datarange,  wgate_datarange, d_cmp_kv_datarange, softmax_score_datarange, kv_datarange = params
 
     bs_combine_flag = False
-    if layout_x == "TH":
+    if layout == "TH":
         bs_combine_flag = True
         if cu_seqlens is None:
             T = batch_size * Seq_len
@@ -80,7 +76,7 @@ def output_operator(params):
             S_max = Seq_len
     print(f"params = {params}")
 
-    run_compressor_grad_eager(batch_size, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, layout_x, layout_d_cmp_kv, layout_softmax_score, layout_kv, layout_d_x, \
+    run_compressor_grad_eager(batch_size, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, layout, \
     S = Seq_len, start_pos = start_pos, \
     seqused = seqused, cu_seqlens = cu_seqlens, block_size = block_size, data_type = data_type, \
     hidden_size = hidden_size, \
