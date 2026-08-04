@@ -1108,7 +1108,7 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnNBs, ACTLEN_T> {
                                 uint32_t maxblockNumPerBatch, uint64_t bn2Stride = 0, uint64_t n2Stride = 0)
     {
         blockTableParser.Init(blockTableGm, maxblockNumPerBatch);
-        gmLayout.MakeLayout(n, blockSize);
+        gmLayout.MakeLayout(n, blockSize, bn2Stride, n2Stride);
     }
 
     __aicore__ inline uint64_t GetOffset(uint32_t bIdx, uint32_t nIdx, uint32_t sIdx)
