@@ -25,6 +25,7 @@
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
+namespace {
 
 void CompressorTiling::ConvertRequiredParams(gert::TilingContext &context, CompressorContext &compressorContext)
 {
@@ -895,7 +896,9 @@ ge::graphStatus CompressorTiling::CheckMultiParaConsistency() const
     return ge::GRAPH_SUCCESS;
 }
 
-CMP_EXTERN_C ge::graphStatus TilingCompressor(gert::TilingContext *context)
+} // namespace anonymous
+
+CMP_EXTERN_C ge::graphStatus TilingCompressorArch22(gert::TilingContext *context)
 {
     OP_CHECK_IF(context == nullptr,
                 OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("Compressor", "context", "is nullptr"),
@@ -925,11 +928,4 @@ CMP_EXTERN_C ge::graphStatus TilingCompressor(gert::TilingContext *context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPrepareForCompressor(gert::TilingParseContext *context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
-IMPL_OP_OPTILING(Compressor).Tiling(TilingCompressor).TilingParse<CompressorCompileInfo>(TilingPrepareForCompressor);
 } // namespace optiling
