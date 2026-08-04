@@ -747,6 +747,14 @@ function build_torch_extension_whl() {
     local original_dir=$(pwd)
     if [ -d "${torch_ext_dir}" ]; then
         log "[INFO] Building torch_extension whl package..."
+
+        # 同步算子目录下的 torch_extension 代码到包内
+        for op_te_dir in "${CURRENT_DIR}"/*/torch_extension "${CURRENT_DIR}"/*/*/torch_extension; do
+            if [ -d "${op_te_dir}" ]; then
+                cp -rf "${op_te_dir}/"* "${torch_ext_dir}/cann_ops_transformer/ops/" 2>/dev/null
+            fi
+        done
+
         cd "${torch_ext_dir}"
 
         # 检查 build 模块是否可用
