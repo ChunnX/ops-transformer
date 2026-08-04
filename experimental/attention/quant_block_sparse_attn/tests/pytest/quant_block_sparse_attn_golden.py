@@ -235,10 +235,12 @@ def _make_block_table(batch, seq_len, block_size, pattern, rng, blocknum=None, q
         return block_table
 
     if blocknum < width:
-        raise ValueError(
-            f"blocknum={blocknum} should be at least {width} "
-            f"(=ceil(s2/block_size)*ceil(s1/block_size)) to keep each batch's own blocks distinct"
-        )
+        # 物理块池小于每 batch 的逻辑块数：block_table 前几列重复（0,1,2,... 循环），
+        # 所有 batch 行一致，总物理块数精确等于 blocknum。
+        block_table = torch.empty((batch, width), dtype=torch.int32)
+        for col in range(width):
+            block_table[:, col] = col % blocknum
+        return block_table
 
     # 物理块池小于每个 batch 独占所需总数（batch * ceil(s1/block_size) * ceil(s2/block_size)），
     # 说明部分物理块被跨 batch 共用。共享块放在每行头部：
