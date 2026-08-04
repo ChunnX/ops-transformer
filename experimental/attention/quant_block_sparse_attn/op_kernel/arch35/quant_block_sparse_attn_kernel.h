@@ -371,21 +371,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     }
 
     // 判断当前sparse块是否需要计算
-    int64_t delta = runParam.nextTokensPerBatch;
-    uint32_t sparseBlk1S1Offset = runParam.s1oIdx * constInfo.s1BaseSize;
-    uint32_t sparseBlk2S1Offset = sparseBlk1S1Offset;
-    if (likely(runInfo.sparseBlkIdx1 >= 0)) {
-        uint32_t sparseBlk1S2Offset = runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
-        AttentionMaskFullProcessingOrRequired(sparseBlk1S1Offset, sparseBlk1S2Offset, delta,
-                                              runInfo.s2SparseBlk1RealSize, runInfo.sparseBlkIdx1,
-                                              runInfo.sparseBlk1PartialMask);
-    }
-    if (likely(runInfo.sparseBlkIdx2 >= 0)) {
-        uint32_t sparseBlk2S2Offset = runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
-        AttentionMaskFullProcessingOrRequired(sparseBlk2S1Offset, sparseBlk2S2Offset, delta,
-                                              runInfo.s2SparseBlk2RealSize, runInfo.sparseBlkIdx2,
-                                              runInfo.sparseBlk2PartialMask);
-    }
+    runInfo.nextTokensPerBatch = runParam.nextTokensPerBatch;
 
     // 将sparseBlkIdx映射为phyBlkNumIdx  并按照phyBlkNumIdx的大小顺序排列
     if constexpr (isPa) {
@@ -394,7 +380,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
             runInfo.sparseBlkIdx1 == -1 ? -1 : blockTableGm.GetValue(blockTableBaseOffset + runInfo.sparseBlkIdx1);
         runInfo.phyBlkNumIdx2 =
             runInfo.sparseBlkIdx2 == -1 ? -1 : blockTableGm.GetValue(blockTableBaseOffset + runInfo.sparseBlkIdx2);
-        // IdxSortBySparseIdx(runInfo);
+        IdxSortBySparseIdx(runInfo);
     }
 }
 
@@ -556,6 +542,22 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                                          sparseBase);
                         if ASCEND_IS_AIC {
                             this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo1, this->constInfo);
+                        }
+                        if ASCEND_IS_AIV {
+                            uint32_t sparseBlk1S1Offset = runInfo.s1oIdx * constInfo.s1BaseSize;
+                            uint32_t sparseBlk2S1Offset = sparseBlk1S1Offset;
+                            if (likely(runInfo.sparseBlkIdx1 >= 0)) {
+                                uint32_t sparseBlk1S2Offset = runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
+                                AttentionMaskFullProcessingOrRequired(sparseBlk1S1Offset, sparseBlk1S2Offset, delta,
+                                                                    runInfo.s2SparseBlk1RealSize, runInfo.sparseBlkIdx1,
+                                                                    runInfo.sparseBlk1PartialMask);
+                            }
+                            if (likely(runInfo.sparseBlkIdx2 >= 0)) {
+                                uint32_t sparseBlk2S2Offset = runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
+                                AttentionMaskFullProcessingOrRequired(sparseBlk2S1Offset, sparseBlk2S2Offset, delta,
+                                                                    runInfo.s2SparseBlk2RealSize, runInfo.sparseBlkIdx2,
+                                                                    runInfo.sparseBlk2PartialMask);
+                            }
                         }
                     }
                     if (likely(taskId > 0 && notLastTwoLoop)) {
