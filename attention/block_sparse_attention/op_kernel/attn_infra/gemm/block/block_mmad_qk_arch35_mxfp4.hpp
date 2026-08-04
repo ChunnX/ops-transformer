@@ -204,17 +204,13 @@ public:
     //   shape cols = k(fp4 元素个数)；特化内 dValue/srcDValue /=2 → 与裸 packedK Nd2Nz 对齐
     //   [QFA 对齐] L1 画布恒为 Q_M_PAD=128 行（dstNzC0Stride=128，对齐 QFA rowCount=128）；
     //   GetTile(m,k) 只搬 m 行有效数据，m..127 行为残留垃圾（与 QFA 语义一致）
+    template <class TensorQ, class TensorL1Q>
     __aicore__ inline void CopyQGmToL1(uint32_t m,
                                        uint32_t k,   // embed：fp4 元素个数（非 packedK）
-                                       AscendC::GlobalTensor<fp4x2_e2m1_t> &gQTensor,
-                                       uint32_t qBufId,
-                                       uint32_t qHeadMul)   // [BSND stride 修复] Q 头内 token-stride 因子
+                                       TensorQ gQTensorTla,
+                                       TensorL1Q l1QTensorTla)  
     {
         // [BSND stride 修复] Q GM row-stride(头内 token-stride)=qHeadMul*k(BNSD=k); RowMajor cols→row-stride
-        auto gQLayout = tla::MakeLayout<ElementA, layout::RowMajor>(m, qHeadMul * k);
-        auto gQTensorTla = tla::MakeTensor(gQTensor, gQLayout, Arch::PositionGM{});
-        auto l1QLayout = tla::MakeLayout<ElementA, layout::zN>(Q_M_PAD, k);
-        auto l1QTensorTla = tla::MakeTensor(l1BTensor[qBufId], l1QLayout, Arch::PositionL1{});
         auto l1QTileTla = GetTile(l1QTensorTla, tla::MakeCoord(0, 0), tla::MakeShape(m, k));
         // [BSND stride 修复] GetTile src 到 (m,k): tile shape 给 dValue=k(正解, 否则整个 gQTensorTla
         //   shape (m, qHeadMul*k) 会让 RowMajor→zN 的 dValue=get<1>(shape)=qHeadMul*k 放大→每 token
@@ -251,9 +247,11 @@ public:
     // 依赖公共 fp4 粒度修正：
     //   layout/copy_gm_to_l1 按 SizeOfBits 计算 ELE_NUM_PER_C0(=64 for fp4)。
     // 分段映射保持与 baseline 一致：gathered->ori Y-block，段内 RowMajor->zN 搬运。
+    template <class TensorK, class TensorL1K>
     __aicore__ inline
     void SparseKBaseTileL1FullLoad(
-        AscendC::GlobalTensor<fp4x2_e2m1_t> gK,         // 已带 batch+head 偏移
+        TensorK gKTensorTla, 
+        TensorL1K l1KTensorTla, 
         AscendC::GlobalTensor<int32_t> gSparseBlockIdx, // 本 task 行：有效 KV 列下标表
         uint32_t gatheredKvSTileIdx,                   // gathered 序列上第几个 kvBaseTile
         int64_t kvSeqlen,                              // 原始 KV 序列长度（末块截断）
@@ -262,9 +260,7 @@ public:
         uint32_t yBlockNumAval,                        // 原始有效 Y-block 数
         uint32_t yBlockNumRsvd,                        // gathered 行宽（含 reserved）
         uint32_t curBaseTileSize,                      // 本 tile 实际 K 行数
-        uint32_t embed,                                // head dim D（fp4 元素）
-        uint32_t s2Align64,
-        uint32_t kBufId, uint32_t kvHeadMul)                            // CeilAlign(n,64) / [BSND stride 修复]K 头内 token-stride 因子
+        uint32_t embed)                            
     {
         uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile;
         uint32_t baseTileEndOffset   = baseTileStartOffset + curBaseTileSize;
@@ -274,10 +270,6 @@ public:
         uint32_t oriYBlockIdx   = gSparseBlockIdx.GetValue(gatheredYBlockIdx);
         uint32_t oriStartOffset = oriYBlockIdx * blockShapeY + yBlockInnerStart;
         uint32_t dealtLenAccum  = 0;
-        auto gKLayout = tla::MakeLayout<ElementA, layout::RowMajor>(kvSeqlen, kvHeadMul * embed);  // [BSND stride 修复] row-stride=kvHeadMul*embed(BNSD=embed)
-        auto gKTensorTla = tla::MakeTensor(gK, gKLayout, Arch::PositionGM{});
-        auto l1KLayout = tla::MakeLayout<ElementA, layout::zN>(curBaseTileSize, embed);
-        auto l1KTensorTla = tla::MakeTensor(l1ATensor[kBufId], l1KLayout, Arch::PositionL1{});
         using CopyGmToL1K = Tile::TileCopyTla<ArchTag, decltype(gKTensorTla), decltype(l1KTensorTla)>;
         CopyGmToL1K copyGmToL1K;
 
@@ -465,10 +457,10 @@ public:
     //        n 侧 s2Align64 仅用于 K 数据 NZ；LoadKToL0A 的 MX 轴向见 Step3 改造。
     // UB S：kernel 传入当前 ping-pong 槽的 TLA 视图（行 stride=256）；nSub 再 GetTile。
     // subBlockIdx：Fixpipe 目标 AIV（= loop%2，与 Vec 消费核一致）。
-    template <class TensorUB>
+    template <class TensorQ, class TensorK, class TensorUB>
     __aicore__ inline
-    void operator()(AscendC::GlobalTensor<fp4x2_e2m1_t> gQ,          // 已带本 task Q 偏移
-                    AscendC::GlobalTensor<fp4x2_e2m1_t> gK,          // 已带 batch+head 偏移
+    void operator()(TensorQ gQTensorTla,
+                    TensorK gKTensorTla, 
                     AscendC::GlobalTensor<uint8_t> gQDequantScale,   // 已带 Q-scale task 偏移（Host 沿 D）
                     AscendC::GlobalTensor<uint8_t> gKDequantScale,   // 已带 K-scale batch+head（Host 沿 D）
                     AscendC::GlobalTensor<int32_t> gSparseBlockIdx,  // 本 task 行有效 KV 列下标（Step3 gather 用）
@@ -500,8 +492,6 @@ public:
         uint32_t scaleK = CeilDivision(k, 64) * 2;
         // [QFA 对齐] K 数据 NZ 画布为 S 向 16 对齐（QFA actSingleLoopS2SizeAlign 语义，
         //   与 zN layout 实际画布一致；原 64 对齐在 curBaseTileSize%64!=0 时会跳错 k-chunk）。
-        //   s2Align64 仅遗留给 gather 形参（其内部未使用）。
-        uint32_t s2Align64 = CeilAlign(curBaseTileSize, 64);
         uint32_t s2Align16 = CeilAlign(curBaseTileSize, 16);
         // [QFA 对齐] Q(M) 方向全链路 pad 到 Q_M_PAD=128：L0B 加载 / Mmad n / Fixpipe nSize
         uint32_t mAlignL1 = Q_M_PAD;
@@ -525,7 +515,10 @@ public:
             // AscendC::printf("[Q-LOAD] gatheredIdx=%u m=%u k=%u (task first tile)\n",
             //     (unsigned)gatheredKvSTileIdx, (unsigned)m, (unsigned)k);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1QEventId); 
-            CopyQGmToL1(m, k, gQ, qBufId, qHeadMul);                       // k=embed（fp4 元素），非 packedK
+            
+            auto l1QLayout = tla::MakeLayout<ElementA, layout::zN>(Q_M_PAD, k);
+            auto l1QTensorTla = tla::MakeTensor(l1BTensor[qBufId], l1QLayout, Arch::PositionL1{});
+            CopyQGmToL1(m, k, gQTensorTla, l1QTensorTla);                       // k=embed（fp4 元素），非 packedK
             CopyQScaleGmToL1(m, scaleK, gQDequantScale, qBufId);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);  // 通知 MTE1: Q 就绪
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);
@@ -539,9 +532,11 @@ public:
         // Step3：每 tile 按 gSparseBlockIdx 稀疏 gather 整个 K / KScale（≤512 行）到 L1（替代稠密 CopyK*）
         // KScale：Host 沿 D [S,D//64,2]；与 SparseK 同行映射（Step2）
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1KEventId);
+        auto l1KLayout = tla::MakeLayout<ElementA, layout::zN>(curBaseTileSize, embed);
+        auto l1KTensorTla = tla::MakeTensor(l1ATensor[kBufId], l1KLayout, Arch::PositionL1{});
         SparseKBaseTileL1FullLoad(
-            gK, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
-            yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embed, s2Align64, kBufId, kvHeadMul);
+            gKTensorTla, l1KTensorTla, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
+            yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embed);
         SparseKScaleBaseTileL1FullLoad(
             gKDequantScale, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
             yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embed, kBufId, kvHeadMul);
