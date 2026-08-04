@@ -1215,6 +1215,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::CopyGMToGMPerTo
 //       间均分，得到 expert-local 行区间 [coreExpertRowBegin, coreExpertRowEnd)；再线性扫描 cumsumInfo
 //       定位该区间覆盖的 source rank 区间 [firstRankIdx, lastRankIdx]，对每个覆盖的 rank 按段内命中序号
 //       区间做逐 batch 的 mask 交集搬运。负载与单个 rank 的 token 贡献解耦，只与 expert 总行数成正比。
+//       GMM1 flag 按 rank 段增量更新：每搬完一个段即累加该段覆盖的 wave，让早期 wave 尽早补满。
 // ====================================================================================================
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void
@@ -1267,7 +1268,6 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndDispatch(GMMAddrInfo &gm
         }
     }
 
-    int32_t dispatchedRowCount = 0; // 当前 core 已实际 dispatch 的总行数
     for (int32_t remoteRankIdx = firstRankIdx; remoteRankIdx <= lastRankIdx; ++remoteRankIdx) {
         // 当前 expert 从该 source rank 接收的 token，在 dispatch workspace 中占据一个连续的 row segment。
         int32_t rankSegmentDstRowBegin =
@@ -1290,6 +1290,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndDispatch(GMMAddrInfo &gm
 
         GlobalTensor<uint8_t> remoteRankMaskGlobal; // 当前 expert/source rank 对应的 route mask GM 视图
         int32_t matchedRouteCount = 0;              // 已扫描 batch 的累计命中数，即下一 batch 的首个 match ordinal
+        int32_t dispatchedRowCount = 0;             // 当前 rank 段已实际 dispatch 的总行数
         for (int32_t batchIdx = 0; batchIdx < recvRouteBatchCount_ && matchedRouteCount < coreMatchOrdinalEnd;
              ++batchIdx) {
             int32_t batchRouteBegin = batchIdx * recvRouteItemsPerBatch_; // 当前 batch 在原始 route 数组中的起始下标
@@ -1334,24 +1335,25 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndDispatch(GMMAddrInfo &gm
             }
             matchedRouteCount = batchMatchOrdinalEnd;
         }
-    }
 
-    if (dispatchedRowCount > 0) {
-        SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
-        // GMM1 flag 按 expert 内的 wave 计数；[coreExpertRowBegin, coreExpertRowEnd) 已处于 expert-local 坐标系。
-        int32_t coreExpertRowEnd = coreExpertRowBegin + dispatchedRowCount; // 当前 core 的 expert-local 半开区间
-        int32_t firstWaveIdx = coreExpertRowBegin / GMM1_WAVE_ROW_COUNT;    // 该区间触达的首个 GMM1 wave
-        int32_t lastWaveIdx = (coreExpertRowEnd - 1) / GMM1_WAVE_ROW_COUNT; // 该区间触达的末个 GMM1 wave
-        __gm__ int32_t *flagBase = gmmAddrInfo.dispatchToGmm1Flag;
-        for (int32_t waveIdx = firstWaveIdx; waveIdx <= lastWaveIdx; ++waveIdx) {
-            int32_t waveExpertRowBegin = waveIdx * GMM1_WAVE_ROW_COUNT;
-            int32_t waveExpertRowEnd = waveExpertRowBegin + GMM1_WAVE_ROW_COUNT;
-            int32_t overlapRowBegin =
-                coreExpertRowBegin > waveExpertRowBegin ? coreExpertRowBegin : waveExpertRowBegin;
-            int32_t overlapRowEnd = coreExpertRowEnd < waveExpertRowEnd ? coreExpertRowEnd : waveExpertRowEnd;
-            // 每个 core 只累加自己与该 wave 的重叠行数；计数达到 wave 行数后 GMM1 才能消费。
-            AtomicAdd(flagBase + static_cast<int64_t>(waveIdx) * INT_CACHELINE,
-                      int32_t(overlapRowEnd - overlapRowBegin));
+        if (dispatchedRowCount > 0) {
+            SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
+            // 本 core 在该 rank 段内的搬运区间（expert-local）；ordinal 与该 segment 内的相对 row index 一一对应。
+            int32_t segExpertRowBegin = rankSegRowBegin + coreMatchOrdinalBegin;
+            int32_t segExpertRowEnd = segExpertRowBegin + dispatchedRowCount; // 当前 core 在该段内的 expert-local 半开区间
+            int32_t firstWaveIdx = segExpertRowBegin / GMM1_WAVE_ROW_COUNT;    // 该区间触达的首个 GMM1 wave
+            int32_t lastWaveIdx = (segExpertRowEnd - 1) / GMM1_WAVE_ROW_COUNT; // 该区间触达的末个 GMM1 wave
+            __gm__ int32_t *flagBase = gmmAddrInfo.dispatchToGmm1Flag;
+            for (int32_t waveIdx = firstWaveIdx; waveIdx <= lastWaveIdx; ++waveIdx) {
+                int32_t waveExpertRowBegin = waveIdx * GMM1_WAVE_ROW_COUNT;
+                int32_t waveExpertRowEnd = waveExpertRowBegin + GMM1_WAVE_ROW_COUNT;
+                int32_t overlapRowBegin =
+                    segExpertRowBegin > waveExpertRowBegin ? segExpertRowBegin : waveExpertRowBegin;
+                int32_t overlapRowEnd = segExpertRowEnd < waveExpertRowEnd ? segExpertRowEnd : waveExpertRowEnd;
+                // 每个 core 只累加自己与该 wave 的重叠行数；计数达到 wave 行数后 GMM1 才能消费。
+                AtomicAdd(flagBase + static_cast<int64_t>(waveIdx) * INT_CACHELINE,
+                          int32_t(overlapRowEnd - overlapRowBegin));
+            }
         }
     }
 }
