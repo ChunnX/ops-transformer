@@ -111,9 +111,10 @@
 | OpDef / REG_OP / InferShape / InferDataType | 已完成 |
 | Tiling 参数解析与校验 | 已完成 |
 | Tiling 多核 / UB 切分 | 已完成（切分策略与 UB 划分见 `op_host/*_tiling.h` 注释） |
-| Kernel 计算实现 | **待实现**（见 `op_kernel/arch35/*_regbase.h` 的 TODO） |
+| Kernel 计算实现 | 已完成（RMSNorm + MRoPE 在 `op_kernel/arch35/*_mrope_vf.h` 的单个 `__VEC_SCOPE__` 内完成，中间量驻留 vreg） |
 | aclnn L0/L2 接口 | 已完成 |
-| UT（infershape / tiling / aclnn / kernel 拉起） | 已完成 |
+| UT（infershape / tiling / aclnn） | 已完成（op_host 37 例、op_api 4 例） |
+| 上板精度验证 | 已完成：2026-08-03 在 A5（Ascend950PR_9579）跑 `tests/test_und_gen_qkv_rms_norm_rope_cache_torch.py`，对 golden **12/12 PASS**（含两个 T=64K 大 case） |
 | ST（ATK） | 待补（golden 已就绪，见 `tests/golden.py`） |
 
 > **golden 的正确性依据**：`tests/golden.py` 与需求来源的外部参考实现逐比特一致。
