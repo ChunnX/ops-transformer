@@ -19,6 +19,8 @@ using namespace std;
 
 namespace {
 constexpr int64_t HEAD_DIM = 128;
+// 算子不限制 block_size，这里只是 BuildTilingContext 的默认值；
+// 取值覆盖见 tiling_success_with_various_block_size
 constexpr int64_t BLOCK_SIZE = 128;
 constexpr int64_t MROPE_AXIS_NUM = 3;
 constexpr float NORM_EPS = 1e-6f;
