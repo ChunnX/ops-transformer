@@ -154,10 +154,6 @@ private:
     uint32_t scalesBytes_{0};
     uint32_t perSlotBytes_{0};
     uint32_t moeExpertNum_{0};
-    uint32_t numScaleupRanks_{0};
-    uint32_t numScaleoutRanks_{0};
-    uint32_t numAivStage1_{0};
-    uint32_t numAivStage2_{0};
     uint32_t aivNum_{0};
     uint32_t epRankId_{0};
     uint32_t aivId_{0};
@@ -212,17 +208,13 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Init(
     moeExpertNum_ = info.cfg.numExperts;
     moeExpertNumPerRank_ = info.cfg.numLocalExperts;
     axisMaxBS_ = info.cfg.numMaxTokensPerRank;
-    scalesBytes_ = info.cfg.scalesBytes;
-    perSlotBytes_ = info.cfg.perSlotBytes;
-    numScaleupRanks_ = info.numScaleupRanks;
-    numScaleoutRanks_ = info.numScaleoutRanks;
-    numAivStage1_ = info.numAivStage1;
-    numAivStage2_ = info.numAivStage2;
+    scalesBytes_ = info.scalesBytes;
+    perSlotBytes_ = info.perSlotBytes;
     aivNum_ = info.aivNum;
-    cntWinStateOffset_ = info.cntWinStateOffset;
-    slotWinStateOffset_ = info.slotWinStateOffset;
-    winDataOffset_ = info.winDataOffset;
-    dispatchSendWinOffset_ = info.dispatchSendWinOffset;
+    cntWinStateOffset_ = info.window.cntWinStateOffset;
+    slotWinStateOffset_ = info.window.slotWinStateOffset;
+    winDataOffset_ = info.window.winDataOffset;
+    dispatchSendWinOffset_ = info.window.dispatchSendWinOffset;
     hostPinnedCounterAddrGM_ = reinterpret_cast<GM_ADDR>(info.hostPinnedCounterAddr);
 
     hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
