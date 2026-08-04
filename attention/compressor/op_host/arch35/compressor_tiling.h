@@ -180,7 +180,7 @@ enum class LayoutType { LAYOUT_BSH, LAYOUT_TH };
 
 enum class TemplateId : uint8_t { NORMAL = 0, EMPTY_X = 1, FULL_LOAD = 2 };
 
-CMP_EXTERN_C ge::graphStatus TilingCompressor(gert::TilingContext *context);
+CMP_EXTERN_C ge::graphStatus TilingCompressorArch35(gert::TilingContext *context);
 struct CompressorBaseShapeInfo {
     uint32_t bSize = 0;    // B
     uint32_t sSize = 0;    // S
@@ -231,10 +231,10 @@ struct CompressorContext {
     uint32_t blockDim;
 };
 
-class CompressorTiling {
+class CompressorTilingArch35 {
 public:
-    explicit CompressorTiling(CompressorContext *context) : context_(context) {}
-    ~CompressorTiling() = default;
+    explicit CompressorTilingArch35(CompressorContext *context) : context_(context) {}
+    ~CompressorTilingArch35() = default;
 
     static ge::graphStatus ConvertContext(gert::TilingContext &context, CompressorContext &compressorContext);
     ge::graphStatus RunBigKernelTiling(CompressorTilingData *tilingData);

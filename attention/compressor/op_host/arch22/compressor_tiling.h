@@ -179,7 +179,7 @@ enum class LayoutType { LAYOUT_BSH, LAYOUT_TH };
 
 enum class TemplateId : uint8_t { NORMAL = 0, EMPTY_X = 1, FULL_LOAD = 2 };
 
-CMP_EXTERN_C ge::graphStatus TilingCompressor(gert::TilingContext *context);
+CMP_EXTERN_C ge::graphStatus TilingCompressorArch22(gert::TilingContext *context);
 struct CompressorBaseShapeInfo {
     uint32_t bSize = 0;    // B
     uint32_t sSize = 0;    // S
