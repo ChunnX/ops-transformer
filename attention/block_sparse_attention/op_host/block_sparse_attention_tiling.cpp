@@ -580,9 +580,11 @@ ge::graphStatus BSATiling::ParseSeqlensInTND(gert::TilingContext *bsaContext)
     }
     qSeqLenList_ = actualSeqLengths->GetData<int64_t>();
     kvSeqLenList_ = actualSeqLengthsKv->GetData<int64_t>();
+    btKvTokens_ = 0;  // [TND mxfp4] 重置(防御复用), 累加 sum_b CeilDiv(S2_b, 64) 供 V-scale TND 校验
     for (uint32_t bIdx = 0; bIdx < batch_; bIdx++) {
         maxQSeqlen_ = (qSeqLenList_[bIdx] > maxQSeqlen_) ? qSeqLenList_[bIdx] : maxQSeqlen_;
         maxKvSeqlen_ = (kvSeqLenList_[bIdx] > maxKvSeqlen_) ? kvSeqLenList_[bIdx] : maxKvSeqlen_;
+        btKvTokens_ += static_cast<uint32_t>((kvSeqLenList_[bIdx] + NUM_64 - 1) / NUM_64);  // CeilDiv(S2_b, 64)
     }
     useUniformQSeqlen_ = false;
     useUniformKvSeqlen_ = false;
@@ -829,26 +831,57 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
 //   VScale:  BNSD=[B,N2,S2//64,D,2]  BSND=[B,S2//64,N2,D,2]  (S2//64 向上取整)
 ge::graphStatus BSATiling::ValidateMxfp4DequantScale(gert::TilingContext *bsaContext, const int parameterIndex)
 {
-    if (qInputLayout_ == BSAQInputLayout::TND_Q) {
-        OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3) mxfp4 dequantScale not support TND layout.");
-        return ge::GRAPH_FAILED;
-    }
     const auto *scaleShape = bsaContext->GetOptionalInputShape(parameterIndex);
     if (scaleShape == nullptr) {
         OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3) mxfp4 dequantScale (index=%d) must not be nullptr.", parameterIndex);
         return ge::GRAPH_FAILED;
     }
     auto &storageShape = scaleShape->GetStorageShape();
-    if (storageShape.GetDimNum() != DIM_NUM_5) {
-        OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3) mxfp4  scale must be 5D, got %zuD.", storageShape.GetDimNum());
-        return ge::GRAPH_FAILED;
+
+    bool isTND = (qInputLayout_ == BSAQInputLayout::TND_Q);
+    bool isBNSD = (qInputLayout_ == BSAQInputLayout::BNSD_Q);
+    const char *layoutName = isTND ? "TND" : (isBNSD ? "BNSD" : "BSND");
+    uint32_t dDiv64 = embeddingSize_ / NUM_64;
+
+    auto checkDim = [&](uint32_t expected, int idx) -> bool {
+        uint32_t actual = static_cast<uint32_t>(storageShape.GetDim(idx));
+        if (actual != expected) {
+            OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3) mxfp4 scale dim[%d] mismatch (layout=%s, index=%d): expected %u, got %u.",
+                    idx, layoutName, parameterIndex, expected, actual);
+            return false;
+        }
+        return true;
+    };
+
+    if (isTND) {
+        // [TND mxfp4] 4D scale shapes(无 batch 维, T/BTkv 在 dim0), 对齐 V3 doc:
+        //   QScale=[Tq,Nq,D//64,2]  KScale=[Tkv,Nkv,D//64,2]  VScale=[BTkv,Nkv,D,2]
+        //   Tq=totalTokensT_, Tkv=totalTokensKv_, BTkv=btKvTokens_(sum_b CeilDiv(S2_b,64), ParseSeqlensInTND 累加)
+        if (storageShape.GetDimNum() != DIM_NUM_4) {
+            OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3) mxfp4 TND scale must be 4D, got %zuD.", storageShape.GetDimNum());
+            return ge::GRAPH_FAILED;
+        }
+        uint32_t expDim0, expDim1, expDim2;
+        if (parameterIndex == Q_DEQUANT_SCALE_INDEX) {
+            expDim0 = static_cast<uint32_t>(totalTokensT_);  expDim1 = numHeads_;  expDim2 = dDiv64;
+        } else if (parameterIndex == V_DEQUANT_SCALE_INDEX) {
+            expDim0 = btKvTokens_;                            expDim1 = kvHeads_;   expDim2 = embeddingSize_;
+        } else {  // K_DEQUANT_SCALE_INDEX
+            expDim0 = static_cast<uint32_t>(totalTokensKv_); expDim1 = kvHeads_;   expDim2 = dDiv64;
+        }
+        if (!checkDim(expDim0, 0) || !checkDim(expDim1, 1) || !checkDim(expDim2, 2) || !checkDim(NUM_2, 3)) {
+            return ge::GRAPH_FAILED;
+        }
+        return ge::GRAPH_SUCCESS;
     }
 
-    bool isBNSD = (qInputLayout_ == BSAQInputLayout::BNSD_Q);
-    uint32_t kvsDiv64 = (maxKvSeqlen_ + NUM_64 - 1) / NUM_64;  // CeilDiv(KVS, 64)
-    uint32_t dDiv64 = embeddingSize_ / NUM_64;
+    // BNSD/BSND: 5D scale shapes (existing)
+    if (storageShape.GetDimNum() != DIM_NUM_5) {
+        OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3) mxfp4 scale must be 5D, got %zuD.", storageShape.GetDimNum());
+        return ge::GRAPH_FAILED;
+    }
+    uint32_t kvsDiv64 = (maxKvSeqlen_ + NUM_64 - 1) / NUM_64;  // CeilDiv(maxKVS, 64); BNSD/BSND uniform 用 max
     uint32_t expDim1, expDim2, expDim3;
-
     if (parameterIndex == Q_DEQUANT_SCALE_INDEX) {
         // QScale: BNSD=[B,QN,QS,D//64,2]  BSND=[B,QS,QN,D//64,2]
         expDim1 = isBNSD ? numHeads_   : maxQSeqlen_;
@@ -865,16 +898,6 @@ ge::graphStatus BSATiling::ValidateMxfp4DequantScale(gert::TilingContext *bsaCon
         expDim2 = isBNSD ? maxKvSeqlen_ : kvHeads_;
         expDim3 = dDiv64;
     }
-
-    auto checkDim = [&](uint32_t expected, int idx) -> bool {
-        uint32_t actual = static_cast<uint32_t>(storageShape.GetDim(idx));
-        if (actual != expected) {
-            OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3) mxfp4 scale dim[%d] mismatch (layout=%s, index=%d): expected %u, got %u.",
-                    idx, isBNSD ? "BNSD" : "BSND", parameterIndex, expected, actual);
-            return false;
-        }
-        return true;
-    };
     if (!checkDim(batch_, 0) || !checkDim(expDim1, 1) || !checkDim(expDim2, 2) ||
         !checkDim(expDim3, 3) || !checkDim(NUM_2, 4)) {
         return ge::GRAPH_FAILED;
