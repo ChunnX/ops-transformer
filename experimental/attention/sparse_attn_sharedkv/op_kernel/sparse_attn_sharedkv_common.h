@@ -170,10 +170,91 @@ __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  // l1
         LocalTensor<T> tmpDstTensor = dstTensor[copyFinishRowCnt * blockElementCnt];
         GlobalTensor<T> tmpSrcTensor = srcTensor[offset];
 
+        // 恢复 ND→NZ 随路转换（原来注释掉的逻辑）
         DataCopyGmNDToL1<T>(tmpDstTensor, tmpSrcTensor, copyRowCnt, shape.copyRowNumAlign, dValue, srcDValue);
+
         copyFinishRowCnt += copyRowCnt;
         curS2Idx += copyRowCnt;
     }
+}
+
+
+// ============================================================
+// AIV 核上的 ND→NZ 格式转换（通用工具函数）
+// 要求：输入数据在 UB/L1 中按 ND 格式连续排列（行连续），
+//       输出仍放在 UB/L1 中，按 NZ 格式排列（16×16 分形块连续）。
+// 注意：该函数仅在 AIV 核上有效。
+// ============================================================
+template <typename T>
+__aicore__ inline void Nd2NzInAiv(
+    AscendC::LocalTensor<T>& dstUb,        // 目标 UB（NZ 格式）
+    const AscendC::LocalTensor<T>& srcUb,  // 源 UB（ND 格式）
+    uint32_t rowCount,                     // 实际行数（≤ 16，若 >16 需分块）
+    uint32_t colCount)                     // 实际列数（通常 512）
+{
+    constexpr uint64_t c0Size = 16;                 // NZ 格式的 C0 块大小
+    constexpr uint64_t SINGLE_COPY_SIZE = 256;      // 单次 Copy 最大字节数
+    constexpr uint64_t REPEAT_TIMES_MAX = 255;      // Copy 指令最大重复次数
+
+    // 计算每次 Copy 搬运的元素数（一次搬运 SINGLE_COPY_SIZE 字节）
+    uint32_t nRepeat = SINGLE_COPY_SIZE / sizeof(T);   // 128 for half/bfloat16
+    // 列方向 C0 块数
+    uint32_t nRowBlock = colCount / c0Size;            // 512/16 = 32
+
+    // 行方向分块（由于 rowCount ≤ 16，通常 numIterI = 0, heightTail = rowCount）
+    uint32_t numIterI = rowCount / REPEAT_TIMES_MAX;   // 0 (rowCount ≤ 255)
+    uint32_t heightTail = rowCount % REPEAT_TIMES_MAX; // rowCount (0~16)
+
+    // 列方向分块
+    uint32_t numIterJ = colCount / nRepeat;            // 512/128 = 4
+    uint32_t widthTail = colCount % nRepeat;           // 512%128 = 0
+
+    // ============ 核心重排 ============
+    // 使用 Copy 指令的 stride 参数，将 ND 格式（行连续）转置为 NZ 格式（C0 块连续）
+    // 原理：每次从 srcUb 中读取 nRepeat 个元素（一行的一部分），
+    //       写入 dstUb 中对应的 C0 块位置，通过 dstRepStride 跳跃到下一个 C0 块。
+    for (uint32_t i = 0; i < numIterI; ++i) {
+        for (uint32_t j = 0; j < numIterJ; ++j) {
+            AscendC::Copy(
+                dstUb[rowCount * nRepeat * j + i * REPEAT_TIMES_MAX * c0Size],
+                srcUb[nRepeat * j + i * REPEAT_TIMES_MAX * colCount],
+                nRepeat, REPEAT_TIMES_MAX,
+                {static_cast<uint16_t>(rowCount), 1, 1, static_cast<uint16_t>(nRowBlock)}
+            );
+        }
+        // 处理列方向尾块（如果 widthTail > 0）
+        if (widthTail) {
+            AscendC::Copy(
+                dstUb[rowCount * nRepeat * numIterJ + i * REPEAT_TIMES_MAX * c0Size],
+                srcUb[nRepeat * numIterJ + i * REPEAT_TIMES_MAX * colCount],
+                widthTail, REPEAT_TIMES_MAX,
+                {static_cast<uint16_t>(rowCount), 1, 1, static_cast<uint16_t>(nRowBlock)}
+            );
+        }
+    }
+
+    // 处理行方向尾块（heightTail > 0）
+    if (heightTail) {
+        for (uint32_t j = 0; j < numIterJ; ++j) {
+            AscendC::Copy(
+                dstUb[rowCount * nRepeat * j + numIterI * REPEAT_TIMES_MAX * c0Size],
+                srcUb[nRepeat * j + numIterI * REPEAT_TIMES_MAX * colCount],
+                nRepeat, heightTail,
+                {static_cast<uint16_t>(rowCount), 1, 1, static_cast<uint16_t>(nRowBlock)}
+            );
+        }
+        if (widthTail) {
+            AscendC::Copy(
+                dstUb[rowCount * nRepeat * numIterJ + numIterI * REPEAT_TIMES_MAX * c0Size],
+                srcUb[nRepeat * numIterJ + numIterI * REPEAT_TIMES_MAX * colCount],
+                widthTail, heightTail,
+                {static_cast<uint16_t>(rowCount), 1, 1, static_cast<uint16_t>(nRowBlock)}
+            );
+        }
+    }
+
+    // 同步：确保重排完成后再进行后续操作
+    AscendC::PipeBarrier<PIPE_V>();
 }
 
 struct RunInfo {
@@ -338,3 +419,4 @@ struct MSplitInfo {
 };
 } // namespace SASKernel
 #endif // SPARSE_ATTN_SHAREDKV_COMMON_H
+

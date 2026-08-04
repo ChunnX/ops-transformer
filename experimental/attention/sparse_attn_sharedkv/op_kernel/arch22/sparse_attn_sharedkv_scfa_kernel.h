@@ -156,6 +156,7 @@ private:
     GlobalTensor<KV_T> vec1ResGm;
     GlobalTensor<MM2_OUT_T> mm2ResGm;
     GlobalTensor<KV_T> kvMergeGm_;
+    GlobalTensor<KV_T> kvNzWorkspaceGm_;
 
     GlobalTensor<UPDATE_T> vec2ResGm;
 
@@ -472,9 +473,13 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::Init(
         aiCoreIdx * 512 * 512 * MERGE_CACHE_GM_BUF_NUM * sizeof(KV_T)));
     offset += GetBlockNum() * 512 * 512 * 4 * sizeof(KV_T);
 
+    kvNzWorkspaceGm_.SetGlobalBuffer((__gm__ KV_T *)(workspace + offset + \
+        aiCoreIdx * 512 * 512 * MERGE_CACHE_GM_BUF_NUM * sizeof(KV_T)));
+    offset += GetBlockNum() * 512 * 512 * 4 * sizeof(KV_T);
+
     if ASCEND_IS_AIV {
         vectorBlock.InitParams(constInfo, tilingData);
-        vectorBlock.InitVec0GlobalTensor(kvMergeGm_, oriKvGm, cmpKvGm, oriBlockTableGm,
+        vectorBlock.InitVec0GlobalTensor(kvMergeGm_, kvNzWorkspaceGm_, oriKvGm, cmpKvGm, oriBlockTableGm,
                                          cmpBlockTableGm);
         vectorBlock.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, actualSeqLengthsQGm, actualSeqLengthsKVGm, topKGm,
                                          sinksGm, softmaxLseGm);
@@ -485,7 +490,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::Init(
         cubeBlock.InitParams(constInfo);
         cubeBlock.InitMm1GlobalTensor(queryGm, oriKvGm, cmpKvGm, mm1ResGm);
         cubeBlock.InitMm2GlobalTensor(vec1ResGm, mm2ResGm, attentionOutGm);
-        cubeBlock.InitPageAttentionInfo(oriKvGm, kvMergeGm_, oriBlockTableGm, cmpBlockTableGm);
+        cubeBlock.InitPageAttentionInfo(oriKvGm, kvMergeGm_, oriBlockTableGm, cmpBlockTableGm, kvNzWorkspaceGm_);
     }
     // 要在InitParams之后执行
     if (pipe != nullptr) {
