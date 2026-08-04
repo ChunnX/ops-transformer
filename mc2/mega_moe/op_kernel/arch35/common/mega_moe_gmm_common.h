@@ -195,6 +195,29 @@ struct Config {
     }
 };
 
+// Wave 流程可持有同一个 BlockMmad，避免在 wave 边界反复构造和析构。
+template <typename T>
+struct PersistentBlockMmadContext {
+    T blockMmad;
+    uint32_t initializedK = 0U;
+    bool initialized = false;
+};
+
+// GMM1 与 GMM2 的逻辑 K 可能不同；仅在首次使用或 K 改变时刷新 Generic 配置。
+template <typename PersistentContext, typename ProblemConfig>
+__aicore__ inline void InitBlockMmad(PersistentContext &context, const ProblemConfig &config)
+{
+    using BlockMmad = decltype(context.blockMmad);
+    if (!context.initialized || context.initializedK != config.k) {
+        typename BlockMmad::BlockShape l0TileShape{config.tileM, L1_TILE_N, L0_TILE_K, 0};
+        typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
+        constexpr bool enableL0CPingPong = false;
+        context.blockMmad.Init(matmulShape, l0TileShape, config.l1Params, false, enableL0CPingPong);
+        context.initializedK = config.k;
+        context.initialized = true;
+    }
+}
+
 // 保存 GMM 执行所需的全部 tensor；当 bias 或 C 无实际存储时，调用方传入零地址占位 tensor。
 template <typename Scheduler, typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
           typename TensorBias, typename TensorC>
