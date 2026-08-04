@@ -258,14 +258,19 @@ __aicore__ inline void QkRmsNormMropeTileVF(const QkvMropeTileAddr& addr, const 
             MicroAPI::Muls(regs.sinNeg, regs.sinValue, -1.0f, pFull);
 
             // 选 gamma：und 组在 gammaAll 开头，gen 组在 +2*D 处。用位图算偏移，
-            // 不做分支也不做 Select——选择整个降级成一次标量地址算术
+            // 不做分支也不做 Select——选择整个降级成一次标量地址算术。
+            // 组内四份（q低|q高|k低|k高）在 UB 上连续，同一个指针连推 4 次 halfDim 取完，
+            // 不用逐条算偏移；最后一次自增走出组尾，下个 token 会重新定基址，丢掉即可
             const uint32_t undBit = static_cast<uint32_t>((undMask >> t) & 1ULL);
-            __ubuf__ float* gammaRow = addr.gammaAll + (1U - undBit) * genGammaOffset;
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regs.qGammaLow, gammaRow);
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regs.qGammaHigh, gammaRow + shape.halfDim);
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regs.kGammaLow, gammaRow + shape.headStride);
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(
-                regs.kGammaHigh, gammaRow + shape.headStride + shape.halfDim);
+            __ubuf__ float* gammaPtr = addr.gammaAll + (1U - undBit) * genGammaOffset;
+            MicroAPI::LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
+                regs.qGammaLow, gammaPtr, halfStep);
+            MicroAPI::LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
+                regs.qGammaHigh, gammaPtr, halfStep);
+            MicroAPI::LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
+                regs.kGammaLow, gammaPtr, halfStep);
+            MicroAPI::LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
+                regs.kGammaHigh, gammaPtr, halfStep);
 
             for (uint16_t h = 0; h < shape.qHeadNum; ++h) {
                 RmsNormRopeOneHead(inPtr, qOutPtr, regs.qGammaLow, regs.qGammaHigh, regs, shape, pFull);
