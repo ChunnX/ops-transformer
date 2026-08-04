@@ -135,23 +135,27 @@ def npu_test(case, device):
 
     tokenSize = batchSize * seqSize
     if layoutId == 1:  # TH
-        tokenSize = seqlens_list_q[-1]
-
-    scKvRowCount = coff * cmpRatio
-
-    # ── Build cu_seqlens / seqused / start_pos ──
-    if layoutId == 1:  # TH
+        # ── 构造 cu_seqlens（统一来源）──
+        # seqlens_list_q 两种格式：每 batch 序列长（B 项）→ [0]+cumsum；
+        #                         累积形式（B+1 项且首项 0）→ 直用
         seqlens_list = case.get('seqlens_list_q')
         if seqlens_list is not None:
-            # 兼容两种数据格式：[0, s1, ...]（含前导 0）与 [s1, ...]（缺前导 0）
-            if len(seqlens_list) == 0 or seqlens_list[0] != 0:
-                seqlens_list = [0] + list(seqlens_list)
-            cuNpu = torch.tensor(seqlens_list, dtype=torch.int32)
+            if len(seqlens_list) == batchSize:
+                cuNpu = torch.tensor([0] + list(torch.tensor(seqlens_list).cumsum(0).tolist()),
+                                     dtype=torch.int32)
+            else:
+                cuNpu = torch.tensor(seqlens_list, dtype=torch.int32)
+        elif sqs is not None:
+            cuNpu = torch.tensor([0] + torch.tensor(sqs).cumsum(0).tolist(),
+                                 dtype=torch.int32)
         else:
-            cuNpu = torch.tensor([0] + torch.tensor(sqs).cumsum(0).tolist(), 
-                                device=device, dtype=torch.int32)
+            cuNpu = torch.zeros(batchSize + 1, dtype=torch.int32)
+        tokenSize = int(cuNpu[-1])
     else:  # BSH
         cuNpu = None
+        tokenSize = batchSize * seqSize
+
+    scKvRowCount = coff * cmpRatio
 
     if layoutId == 1:  # TH
         outputRows = min(tokenSize, (tokenSize // cmpRatio) + batchSize)
@@ -173,7 +177,8 @@ def npu_test(case, device):
             sq = tokenSize if layoutId == 1 else tokenSize // batchSize
         cmpLimit = (sp + sq) // cmpRatio * cmpRatio
         if cmpLimit > sp:
-            totalValid += (cmpLimit - sp) // cmpRatio
+            # startPos%cmpRatio!=0 时首块为部分块但仍计 1 块 → 向上取整（与 kernel 一致）
+            totalValid += (cmpLimit - sp + cmpRatio - 1) // cmpRatio
 
     scKvRowCount = coff * cmpRatio
 
@@ -197,10 +202,8 @@ def npu_test(case, device):
     # ── Generate random inputs ──
     torch.manual_seed(seed)
     dcNpu  = torch.randn(outputRows, headDim, device=device, dtype=ioDtype)
-    kvNpu  = torch.randn(outputRows, scKvRowCount, headDim, device=device,
-                         dtype=torch.float32)
-    smNpu  = torch.softmax(
-        torch.randn(outputRows, scKvRowCount, headDim, device="npu:0"), dim=1)
+    # 注：autograd 路径下 kernel 与 golden 实际使用前向计算的真实 kv/softmax_score
+    #（见 backend.compute 的 saved tensors），此处不生成占位（避免与真实值不一致的误导）
 
     # ── Output tensors ──
     # d_x/d_wkv/d_wgate: Phase 2/3 写入，当前仅占位
@@ -256,13 +259,8 @@ def npu_test(case, device):
         block_size = case.get("block_size", 128)
         # S_max 计算因 BSH/TH 布局而异
         if layoutId == 1:  # TH
-            cu_lens = case.get('seqlens_list_q')
-            if cu_lens is None:
-                # 与上方 cuNpu 构造保持一致：用 sqs (seqused_q) 累积和
-                if sqs:
-                    cu_lens = [0] + torch.tensor(sqs).cumsum(0).tolist()
-                else:
-                    cu_lens = [0] * (batchSize + 1)
+            # 统一用修复后的 cuNpu（与 kernel 侧一致）
+            cu_lens = cuNpu.tolist() if cuNpu is not None else [0] * (batchSize + 1)
             if sps:
                 S_max = max(sps[i] + (cu_lens[i + 1] - cu_lens[i])
                             for i in range(batchSize)) if batchSize > 0 else 0
@@ -287,10 +285,9 @@ def npu_test(case, device):
         if layoutId == 1:  # TH
             if sqs:
                 S_for_bs = max(sqs)
-            elif seqlens_list_q is not None:
-                diffs = [seqlens_list_q[i + 1] - seqlens_list_q[i]
-                         for i in range(batchSize)]
-                S_for_bs = max(diffs) if diffs else 0
+            elif cuNpu is not None:
+                S_for_bs = max(int(cuNpu[i + 1]) - int(cuNpu[i])
+                               for i in range(batchSize)) if batchSize > 0 else 0
             else:
                 S_for_bs = seqSize
         else:  # BSH
@@ -389,17 +386,12 @@ def npu_test(case, device):
 
     # ── CPU Golden: 使用 compressor_grad.py 作为完整反向参考 ──
     dcCpu  = dcNpu.cpu().float()
-    smCpu  = npu_result["softmax_score"].cpu()
-    kvCpu  = npu_result["kv"].cpu()
     spGolden = sps if sps else None
     if spGolden is not None and not isinstance(spGolden, torch.Tensor):
         spGolden = torch.tensor(spGolden, dtype=torch.int32)
     sqGolden = sqNpu.cpu() if sqNpu is not None else None
+    # golden 与 kernel 共用同一份 cuNpu（统一来源）
     cuGolden = cuNpu.cpu() if cuNpu is not None else None
-    # golden 的 compressor_grad 用 cu_seqlens 判断 TH/BSH 布局，
-    # 而 noCu 测试用例不传 cu_seqlens 给 kernel，需为 golden 单独构造
-    if layoutId == 1 and cuGolden is None and sqs is not None:
-        cuGolden = torch.tensor([0] + torch.tensor(sqs).cumsum(0).tolist(), dtype=torch.int32)
 
     # x 输入：TH 布局为 (T, H)，BSH 布局为 (B, S, H)
     xCpu = xNpu.cpu()
@@ -410,13 +402,23 @@ def npu_test(case, device):
 
     dXGold, dWkvGold, dWgateGold, apeGold = compressor_grad_golden(
         x=xCpu, wkv=wkvCpu, wgate=wgateCpu,
-        d_cpm_kv=dcCpu, softmax_score=smCpu, kv=kvCpu,
+        d_cpm_kv=dcCpu,
+        # golden 输入需与 kernel（autograd）一致：用前向真实输出，而非占位 randn
+        softmax_score=npu_result["softmax_score"].cpu(),
+        kv=npu_result["kv"].cpu(),
         cu_seqlens=cuGolden, seqused=sqGolden, start_pos=spGolden,
         cmp_ratio=cmpRatio, coff=coff,
     )
     
     # ── Phase 3 writes d_ape directly ──
     apeNp = dapeOutNpu.cpu().view(cmpRatio, coff * headDim)
+
+    # [临时诊断] golden 输出统计
+    for _n, _g in (("d_wkv gold", dWkvGold), ("d_wgate gold", dWgateGold),
+                   ("d_ape gold", apeGold), ("d_x gold", dXGold)):
+        _g = _g.detach().cpu().float() if torch.is_tensor(_g) else torch.tensor(_g)
+        _nz = (_g != 0).sum().item(); _nan = torch.isnan(_g).sum().item()
+        print(f"[DIAG] {_n}: 非零={_nz}/{_g.numel()} NaN={_nan} min={_g.min().item():.4f} max={_g.max().item():.4f}", flush=True)
 
     result = dict(name=name, totalValid=totalValid,
                   coff=coff, cmpRatio=cmpRatio, headDim=headDim,

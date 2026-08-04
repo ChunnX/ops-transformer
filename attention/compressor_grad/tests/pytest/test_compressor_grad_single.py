@@ -28,7 +28,7 @@ for _, params in enumerate(ENABLED_PARAMS):
     # 生成所有参数组合
     param_names = [
         "batch_size", "hidden_size", "Seq_len", "head_dim", "block_num", "block_size", "cmp_ratio",
-        "coff", "layout_x", "layout_d_cmp_kv", "layout_softmax_score", "layout_kv", "layout_d_x", "data_type", "cu_seqlens", "seqused", "start_pos",
+        "coff", "layout", "data_type", "cu_seqlens", "seqused", "start_pos",
         "x_datarange", "wkv_datarange", "wgate_datarange", "d_cmp_kv_datarange", "softmax_score_datarange", "kv_datarange"
     ]
 
@@ -41,11 +41,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_block_size"],
         locals()["param_cmp_ratio"],
         locals()["param_coff"],
-        locals()["param_layout_x"],
-        locals()["param_layout_d_cmp_kv"],
-        locals()["param_layout_softmax_score"],
-        locals()["param_layout_kv"],
-        locals()["param_layout_d_x"],
+        locals()["param_layout"],
         locals()["param_data_type"],
         locals()["param_cu_seqlens"],
         locals()["param_seqused"],
@@ -75,11 +71,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         block_size = param_combinations['block_size']
         cmp_ratio = param_combinations['cmp_ratio']
         coff = param_combinations['coff']
-        layout_x = param_combinations['layout_x']
-        layout_d_cmp_kv = param_combinations['layout_d_cmp_kv']
-        layout_softmax_score = param_combinations['layout_softmax_score']
-        layout_kv = param_combinations['layout_kv']
-        layout_d_x = param_combinations['layout_d_x']
+        layout = param_combinations['layout']
         data_type = param_combinations['data_type']
         cu_seqlens = param_combinations['cu_seqlens']
         seqused = param_combinations['seqused']
@@ -92,7 +84,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         kv_datarange = param_combinations['kv_datarange']
 
         test_data = batch_size, hidden_size, Seq_len, head_dim, block_size, cmp_ratio, coff, \
-                    layout_x, layout_d_cmp_kv, layout_softmax_score, layout_kv, layout_d_x, data_type, cu_seqlens, seqused, start_pos, \
+                    layout, data_type, cu_seqlens, seqused, start_pos, \
                     x_datarange, wkv_datarange,  wgate_datarange, d_cmp_kv_datarange, softmax_score_datarange, kv_datarange
 
         torch_npu.npu.set_device(0)
