@@ -18,7 +18,8 @@
 namespace ops {
 class QuantSparseFlashMla : public OpDef {
 public:
-    explicit QuantSparseFlashMla(const char *name) : OpDef(name)
+    explicit QuantSparseFlashMla(const char *name)
+        : OpDef(name)
     {
         this->Input("q")
             .ParamType(REQUIRED)
@@ -135,10 +136,10 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Attr("quant_mode").AttrType(REQUIRED).Int();
         this->Attr("softmax_scale").AttrType(OPTIONAL).Float();
-        this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1); // 默认值为1
-        this->Attr("ori_mask_mode").AttrType(OPTIONAL).Int(0); // 默认值为0
-        this->Attr("cmp_mask_mode").AttrType(OPTIONAL).Int(0); // 默认值为0
-        this->Attr("ori_win_left").AttrType(OPTIONAL).Int(-1); // ori_win_left默认值-1
+        this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);      // 默认值为1
+        this->Attr("ori_mask_mode").AttrType(OPTIONAL).Int(0);  // 默认值为0
+        this->Attr("cmp_mask_mode").AttrType(OPTIONAL).Int(0);  // 默认值为0
+        this->Attr("ori_win_left").AttrType(OPTIONAL).Int(-1);  // ori_win_left默认值-1
         this->Attr("ori_win_right").AttrType(OPTIONAL).Int(-1); // ori_win_right默认值-1
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
         this->Attr("layout_kv").AttrType(OPTIONAL).String("BSND");
