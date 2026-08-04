@@ -898,7 +898,6 @@ constexpr uint32_t NZ_D0_IDX = 4;
 constexpr uint32_t TND_NTD_D_IDX = 2;
 constexpr int64_t HEAD_DIM_192 = 192;
 constexpr int64_t HEAD_DIM_64 = 64;
-constexpr int64_t HEAD_DIM_512 = 512;
 
 FIA_EXTERN_C ge::graphStatus TilingFusedInferAttentionScoreV3(gert::TilingContext *context)
 {
@@ -1165,7 +1164,7 @@ bool CheckGqaFeatureSupport(const gert::TilingContext *context)
 
 bool CheckSpecCondNoPA(int64_t tempQD, int64_t tempKD, int64_t tempVD)
 {
-    bool isFAIDSize = (tempQD <= HEAD_DIM_512 && tempKD <= HEAD_DIM_512 && tempVD <= HEAD_DIM_512) &&
+    bool isFAIDSize = (tempQD <= 512 && tempKD <= 512 && tempVD <= 512) &&
         (tempQD == tempKD && tempQD == tempVD);
     return isFAIDSize;
 }
@@ -1178,7 +1177,7 @@ bool CheckSpecCondPA3Dim(int64_t tempQD, const gert::Shape &kShape,
     int64_t blockSize = kShape.GetDim(DIM_1);
     constexpr int64_t BLOCKSIZE_ALIGN_16 = 16;
     constexpr int64_t MAX_BLOCKSIZE = 512;
-    bool isFAIDSize = (tempQD <= HEAD_DIM_512 && tempKD <= HEAD_DIM_512 && tempVD <= HEAD_DIM_512) &&
+    bool isFAIDSize = (tempQD <= 512 && tempKD <= 512 && tempVD <= 512) &&
         (tempQD == tempKD && tempQD == tempVD);
     bool blockSizeSupported = (blockSize % BLOCKSIZE_ALIGN_16 == 0) && (blockSize <= MAX_BLOCKSIZE);
     return isFAIDSize && blockSizeSupported;
@@ -1192,7 +1191,7 @@ bool CheckSpecCondPA5Dim(int64_t tempQD, const gert::Shape &kShape,
     int64_t blockSize = kShape.GetDim(DIM_3);
     constexpr int64_t BLOCKSIZE_ALIGN_16 = 16;
     constexpr int64_t MAX_BLOCKSIZE = 512;
-    bool isFAIDSize = (tempQD <= HEAD_DIM_512 && tempKD <= HEAD_DIM_512 && tempVD <= HEAD_DIM_512) &&
+    bool isFAIDSize = (tempQD <= 512 && tempKD <= 512 && tempVD <= 512) &&
             (tempQD == tempKD && tempQD == tempVD) && (tempQD % BLOCKSIZE_ALIGN_16 == 0);
     isFAIDSize = isFAIDSize && !(tempQD == 64U || tempQD == 128U);
     bool blockSizeSupported = (blockSize % BLOCKSIZE_ALIGN_16 == 0) && (blockSize <= MAX_BLOCKSIZE);
