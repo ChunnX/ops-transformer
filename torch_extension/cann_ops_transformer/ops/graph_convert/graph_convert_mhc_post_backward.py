@@ -13,7 +13,7 @@ try:
     import torch
     import torch_npu
     import torchair
-    from torchair.ge._ge_graph import Tensor, TensorSpec
+    from torchair.ge._ge_graph import Tensor
     from torchair.ge._ge_graph import auto_convert_to_tensor
     from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
     from torchair._ge_concrete_graph.fx2ge_converter import (
@@ -97,7 +97,6 @@ if _TORCHAIR_AVAILABLE:
         h_res: Tensor,
         h_out: Tensor,
         h_post: Tensor,
-        meta_outputs: TensorSpec = None,
     ):
         return mhc_post_backward_ge(
             grad_output=grad_output, x=x, h_res=h_res, h_out=h_out, h_post=h_post
