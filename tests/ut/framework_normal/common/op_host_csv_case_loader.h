@@ -178,6 +178,38 @@ inline int GetTensorGE(const csv_map &csvMap, const std::string &shapeKey, const
     return 1;
 }
 
+inline gert::Stride ParseStride(const std::string &strideStr, const gert::StorageShape &shape)
+{
+    gert::Stride stride;
+    if (strideStr.empty()) {
+        return stride;
+    }
+    std::vector<int64_t> strides;
+    std::istringstream iss(strideStr);
+    int64_t val;
+    while (iss >> val) {
+        strides.push_back(val);
+    }
+    if (strides.empty()) {
+        return stride;
+    }
+    for (size_t i = 0; i < strides.size() && i < gert::Stride::kMaxDimNum; i++) {
+        stride.SetStride(i, strides[i]);
+    }
+    return stride;
+}
+
+template <typename T>
+inline void ApplyStrideFromCsv(const csv_map &csvMap, const std::string &strideKey, T &desc)
+{
+    std::string strideStr = ReadMap(csvMap, strideKey);
+    if (strideStr.empty()) {
+        return;
+    }
+    desc.stride_ = ParseStride(strideStr, desc.shape_);
+    desc.hasStride_ = true;
+}
+
 inline std::vector<std::string> SplitByDelim(const std::string &str, char delim)
 {
     std::vector<std::string> parts;
