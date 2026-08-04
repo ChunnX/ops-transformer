@@ -126,19 +126,25 @@ struct MropeTokenRegs {
  * 每 head 省 3 条 ALU（18 -> 15），并省掉 squareHigh / cross 两个中间 RegTensor。
  * 低半的 RoPE 需要的是 dst -= a*b，而只有加法版，所以用 regs.sinNeg——那是每 token
  * 取一次负，摊到 Hq+Hk 个 head 上可忽略。
+ *
+ * NOTE: inHead / outHead 按引用传入，函数内用 post-update 访存把它们推到**下一个 head**。
+ *       低半、高半两次访存各推 halfDim，两次之后正好走过 headStride（= D = 2*halfDim），
+ *       所以调用方的 head 循环不需要再算 h * headStride，直接反复调用即可。
  */
-__aicore__ inline void RmsNormRopeOneHead(__ubuf__ bfloat16_t* inHead, __ubuf__ bfloat16_t* outHead,
+__aicore__ inline void RmsNormRopeOneHead(__ubuf__ bfloat16_t*& inHead, __ubuf__ bfloat16_t*& outHead,
                                           MicroAPI::RegTensor<float>& gammaLow, MicroAPI::RegTensor<float>& gammaHigh,
                                           MropeTokenRegs& regs, const QkvMropeTileShape& shape,
                                           MicroAPI::MaskReg pFull)
 {
-    const uint32_t halfDim = shape.halfDim;
+    const int32_t halfStep = static_cast<int32_t>(shape.halfDim);
     MicroAPI::RegTensor<bfloat16_t> xLowB16;
     MicroAPI::RegTensor<bfloat16_t> xHighB16;
     MicroAPI::RegTensor<float> xLow;
     MicroAPI::RegTensor<float> xHigh;
-    MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(xLowB16, inHead);
-    MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(xHighB16, inHead + halfDim);
+    MicroAPI::LoadAlign<bfloat16_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_UNPACK_B16>(
+        xLowB16, inHead, halfStep);
+    MicroAPI::LoadAlign<bfloat16_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_UNPACK_B16>(
+        xHighB16, inHead, halfStep); // 两次之后 inHead 已落到下一个 head
     MicroAPI::Cast<float, bfloat16_t, CAST_B16_TO_B32>(xLow, xLowB16, pFull);
     MicroAPI::Cast<float, bfloat16_t, CAST_B16_TO_B32>(xHigh, xHighB16, pFull);
 
@@ -172,8 +178,10 @@ __aicore__ inline void RmsNormRopeOneHead(__ubuf__ bfloat16_t* inHead, __ubuf__ 
     MicroAPI::RegTensor<bfloat16_t> outHighB16;
     MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_B16>(outLowB16, outLow, pFull);
     MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_B16>(outHighB16, outHigh, pFull);
-    MicroAPI::StoreAlign<bfloat16_t, MicroAPI::StoreDist::DIST_PACK_B32>(outHead, outLowB16, pFull);
-    MicroAPI::StoreAlign<bfloat16_t, MicroAPI::StoreDist::DIST_PACK_B32>(outHead + halfDim, outHighB16, pFull);
+    MicroAPI::StoreAlign<bfloat16_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::StoreDist::DIST_PACK_B32>(
+        outHead, outLowB16, halfStep, pFull);
+    MicroAPI::StoreAlign<bfloat16_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::StoreDist::DIST_PACK_B32>(
+        outHead, outHighB16, halfStep, pFull); // 两次之后 outHead 已落到下一个 head
 }
 
 /**
@@ -202,8 +210,8 @@ __aicore__ inline void QkRmsNormMropeTileVF(const QkvMropeTileAddr& addr, const 
     if (tokenSize == 0) {
         return;
     }
-    const uint32_t headStride = shape.headStride;
-    const uint32_t halfDim = shape.halfDim;
+    const int32_t halfStep = static_cast<int32_t>(shape.halfDim);
+    const int32_t headStep = static_cast<int32_t>(shape.headStride);
 
     __VEC_SCOPE__
     {
@@ -215,49 +223,60 @@ __aicore__ inline void QkRmsNormMropeTileVF(const QkvMropeTileAddr& addr, const 
         // gather 索引与 token 无关，整个 tile 只加载一次
         MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(mropeIndex, addr.gatherIndex);
 
+        // 地址一律用 post-update 自走，循环体内没有任何 t*stride / h*stride 计算：
+        //   inPtr    每 head 推 headStride，一个 token 走完 Q/K/V 三段正好是 (Hq+Hk+Hv)*D
+        //            = inTokenStride，直接落到下一个 token 的行首，整个 tile 不用重取基址
+        //   qOut/kOut/vOutPtr 各推自己那段的 head 数，一个 token 正好走过各自的 TokenStride
+        //   gammaPtr 每 token 连推 4 次 halfDim = 2*D = gammaTokenStride
+        // 例外：cos_sin 用 Gather，而 Gather 只有 (dst, baseAddr, index, mask) 一个原型，
+        //       既没有 post-update 也没有 AddrReg 重载，只能保留显式指针每 token 推一次。
+        __ubuf__ bfloat16_t* inPtr = addr.qkvIn;
+        __ubuf__ bfloat16_t* qOutPtr = addr.qOut;
+        __ubuf__ bfloat16_t* kOutPtr = addr.kOut;
+        __ubuf__ bfloat16_t* vOutPtr = addr.vOut;
+        __ubuf__ float* gammaPtr = addr.gammaTile;
+        __ubuf__ float* cosSinPtr = addr.rawCosSin;
+
         for (uint16_t t = 0; t < tokenSize; ++t) {
             MropeTokenRegs regs;
 
             // 三轴合并：一条 Gather 从 [3, D] 窗口里按 axisLut 挑出 D/2 个 lane。
             // 本 token 的 Q、K 所有 head 共用这一份 cos/sin
-            __ubuf__ float* rawToken = addr.rawCosSin + t * shape.cosSinTokenStride;
-            MicroAPI::Gather(regs.cosValue, rawToken, mropeIndex, pFull);
-            MicroAPI::Gather(regs.sinValue, rawToken + halfDim, mropeIndex, pFull);
+            MicroAPI::Gather(regs.cosValue, cosSinPtr, mropeIndex, pFull);
+            MicroAPI::Gather(regs.sinValue, cosSinPtr + shape.halfDim, mropeIndex, pFull);
+            cosSinPtr += shape.cosSinTokenStride;
             // 低半 RoPE 是 out_lo = x_lo*cos - x_hi*sin，而乘加原语只有加法版；
             // 这里取一次负，让 head 内可以用 MulAddDst 把减法折进乘加。
             // 每 token 一条，摊到 Hq+Hk 个 head 上可忽略
             MicroAPI::Muls(regs.sinNeg, regs.sinValue, -1.0f, pFull);
 
-            // gamma 按 token 取：und / gen 两份权重在 tile 里已经按 token 展开好
-            __ubuf__ float* gammaRow = addr.gammaTile + t * shape.gammaTokenStride;
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regs.qGammaLow, gammaRow);
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regs.qGammaHigh, gammaRow + halfDim);
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regs.kGammaLow, gammaRow + headStride);
-            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regs.kGammaHigh, gammaRow + headStride + halfDim);
+            // gamma 按 token 取：und / gen 两份权重在 tile 里已经按 token 展开好。
+            // 四份在 UB 上连续（q低|q高|k低|k高），各推 halfDim 即可顺次取到
+            MicroAPI::LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
+                regs.qGammaLow, gammaPtr, halfStep);
+            MicroAPI::LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
+                regs.qGammaHigh, gammaPtr, halfStep);
+            MicroAPI::LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
+                regs.kGammaLow, gammaPtr, halfStep);
+            MicroAPI::LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
+                regs.kGammaHigh, gammaPtr, halfStep);
 
-            __ubuf__ bfloat16_t* qInRow = addr.qkvIn + t * shape.inTokenStride;
-            __ubuf__ bfloat16_t* qOutRow = addr.qOut + t * shape.qOutTokenStride;
             for (uint16_t h = 0; h < shape.qHeadNum; ++h) {
-                RmsNormRopeOneHead(qInRow + h * headStride, qOutRow + h * headStride, regs.qGammaLow, regs.qGammaHigh,
-                                   regs, shape, pFull);
+                RmsNormRopeOneHead(inPtr, qOutPtr, regs.qGammaLow, regs.qGammaHigh, regs, shape, pFull);
             }
 
-            // K 头在同一行 token 内紧跟 Q 头之后
-            __ubuf__ bfloat16_t* kInRow = qInRow + shape.qHeadNum * headStride;
-            __ubuf__ bfloat16_t* kOutRow = addr.kOut + t * shape.kOutTokenStride;
+            // K 头在同一行 token 内紧跟 Q 头之后，inPtr 已经停在那里
             for (uint16_t h = 0; h < shape.kHeadNum; ++h) {
-                RmsNormRopeOneHead(kInRow + h * headStride, kOutRow + h * headStride, regs.kGammaLow, regs.kGammaHigh,
-                                   regs, shape, pFull);
+                RmsNormRopeOneHead(inPtr, kOutPtr, regs.kGammaLow, regs.kGammaHigh, regs, shape, pFull);
             }
 
             // V 头紧跟 K 头之后，不参与 norm/rope：一个 head 恰好一个满 bf16 VL，直接搬
-            __ubuf__ bfloat16_t* vInRow = kInRow + shape.kHeadNum * headStride;
-            __ubuf__ bfloat16_t* vOutRow = addr.vOut + t * shape.vOutTokenStride;
             for (uint16_t h = 0; h < shape.vHeadNum; ++h) {
                 MicroAPI::RegTensor<bfloat16_t> vValue;
-                MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_NORM>(vValue, vInRow + h * headStride);
-                MicroAPI::StoreAlign<bfloat16_t, MicroAPI::StoreDist::DIST_NORM_B16>(vOutRow + h * headStride, vValue,
-                                                                                    pFullB16);
+                MicroAPI::LoadAlign<bfloat16_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
+                    vValue, inPtr, headStep);
+                MicroAPI::StoreAlign<bfloat16_t, MicroAPI::PostLiteral::POST_MODE_UPDATE,
+                                     MicroAPI::StoreDist::DIST_NORM_B16>(vOutPtr, vValue, headStep, pFullB16);
             }
         }
     }
