@@ -336,6 +336,40 @@ void ExpectArch35MxFP8NoQuantUseGatherCopy(int64_t n, int64_t h, int64_t k, int6
     const auto *tilingData = reinterpret_cast<const MoeInitRoutingV3Arch35TilingData *>(tilingInfo.tilingData.get());
     EXPECT_EQ(tilingData->useGatherCopy, expectedUseGatherCopy);
 }
+
+void ExpectArch35IndexOnlyRoutingTilingData()
+{
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 262144, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara = MakeArch35ExtendedTilingContextPara(
+        3, 0, 8, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, ge::DT_FLOAT, {0, EXPERT_NUM},
+        ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto, &compileInfo);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    EXPECT_EQ(tilingInfo.tilingKey, 10000000);
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(MoeInitRoutingV3Arch35TilingData));
+    const auto *tilingData = reinterpret_cast<const MoeInitRoutingV3Arch35TilingData *>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tilingData->gatherOutComputeParamsOp.needCoreNum, 0);
+}
+
+void ExpectArch35Int4DynamicQuantTilingCols(int64_t h, int64_t expectedPerLoopCols, int64_t expectedColsLoops,
+                                            int64_t expectedLastLoopCols)
+{
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 262144, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara = MakeArch35ExtendedTilingContextPara(
+        1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_INT4_DYNAMIC, ge::DT_FLOAT, {0, EXPERT_NUM},
+        ROW_IDX_TYPE_GATHER, {1, h}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto, &compileInfo);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(MoeInitRoutingV3Arch35TilingData));
+    const auto *tilingData = reinterpret_cast<const MoeInitRoutingV3Arch35TilingData *>(tilingInfo.tilingData.get());
+    const auto &gatherOutTiling = tilingData->gatherOutComputeParamsOp;
+    EXPECT_EQ(gatherOutTiling.perLoopCols, expectedPerLoopCols);
+    EXPECT_EQ(gatherOutTiling.colsLoops, expectedColsLoops);
+    EXPECT_EQ(gatherOutTiling.lastLoopCols, expectedLastLoopCols);
+    EXPECT_EQ(gatherOutTiling.perLoopCols % 2, 0);
+}
 } // namespace
 
 class MoeInitRoutingV3Tiling : public testing::Test {
@@ -799,6 +833,11 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_int4_dynamic)
                               kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
 }
 
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_int4_dynamic_align_per_loop_cols)
+{
+    ExpectArch35Int4DynamicQuantTilingCols(18706, 9352, 3, 2);
+}
+
 // static quant success with scale and offset
 TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_static_success)
 {
@@ -891,12 +930,18 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_empty_tensor_k
                               kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
 }
 
-// 空tensor场景：cols_==0（x第1维为0，如[3,0]）
-TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_empty_tensor_cols_zero)
+// 零宽输入、非空indices时，仍需生成路由索引。
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_index_only_cols_zero)
 {
-    RunArch35ExtendedTestcase(3, 0, 8, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, ge::DT_FLOAT,
-                              {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
-                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+    ExpectArch35IndexOnlyRoutingTilingData();
+}
+
+// 零宽输入、非空indices时，仍需生成路由索引。
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_index_only_cols_zero_large)
+{
+    RunArch35ExtendedTestcase(17, 0, 115, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT,
+                              ge::DT_FLOAT, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {},
+                              ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS, 10000000);
 }
 
 // 空tensor场景：k_==0 + key_value模式
