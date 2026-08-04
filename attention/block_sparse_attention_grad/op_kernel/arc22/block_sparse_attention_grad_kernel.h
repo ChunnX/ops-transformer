@@ -487,7 +487,8 @@ namespace BSA {
                                     actualShape2,
                                     mmadFlag);
 
-                                if (deterministic) gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + detDvBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
+                                if (deterministic) gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + detDvBaseCore +
+                                (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
                                 blockMmad3(gP[preTaskInfo.sOffset],
                                     gDout[preTaskInfo.qOffset],
                                     gDv[preTaskInfo.kvOffset],
@@ -497,7 +498,8 @@ namespace BSA {
                                     actualShape3,
                                     mmadFlag);
 
-                                if (deterministic) gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + detDkBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
+                                if (deterministic) gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + detDkBaseCore +
+                                (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
                                 blockMmad3(gDs[preTaskInfo.sOffset],
                                     gQ[preTaskInfo.qOffset],
                                     gDk[preTaskInfo.kvOffset],
@@ -552,7 +554,8 @@ namespace BSA {
                     layoutC2,
                     actualShape2,
                     mmadFlag);
-                if (deterministic) gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + detDvBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
+                if (deterministic) gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + detDvBaseCore +
+                (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
                 blockMmad3(gP[preTaskInfo.sOffset],
                     gDout[preTaskInfo.qOffset],
                     gDv[preTaskInfo.kvOffset],
@@ -561,7 +564,8 @@ namespace BSA {
                     layoutC3,
                     actualShape3,
                     mmadFlag);
-                if (deterministic) gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + detDkBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
+                if (deterministic) gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + detDkBaseCore +
+                (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
                 blockMmad3(gDs[preTaskInfo.sOffset],
                     gQ[preTaskInfo.qOffset],
                     gDk[preTaskInfo.kvOffset],
@@ -817,7 +821,8 @@ namespace BSA {
         __aicore__ inline
         void ZeroDetWorkspace(Params const &params)
         {
-            __gm__ BlockSparseAttentionGradTilingData *tilingData = reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
+            __gm__ BlockSparseAttentionGradTilingData *tilingData =
+            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
             uint32_t vecCoreIdx = AscendC::GetBlockIdx();
             uint32_t usedCoreNum = tilingData->usedVecCoreNum;
             if (vecCoreIdx >= usedCoreNum) { return; }
@@ -870,7 +875,10 @@ namespace BSA {
                 if (remainOutNum * sizeof(float) % 32 == 0) {
                     AscendC::DataCopy(detDkGm[offset + totalLoop * maxDataCount], zeroTensor, remainOutNum);
                 } else {
-                    AscendC::DataCopyExtParams copyParams{1, static_cast<uint32_t>(remainOutNum * sizeof(float)), 0, 0, 0};
+                    AscendC::DataCopyExtParams copyParams{
+                        1, static_cast<uint32_t>(remainOutNum * sizeof(float)),
+                        0, 0, 0
+                    };
                     AscendC::DataCopyPad(detDkGm[offset + totalLoop * maxDataCount], zeroTensor, copyParams);
                 }
             }
@@ -885,7 +893,10 @@ namespace BSA {
                 if (remainOutNum * sizeof(float) % 32 == 0) {
                     AscendC::DataCopy(detDvGm[offset + totalLoop * maxDataCount], zeroTensor, remainOutNum);
                 } else {
-                    AscendC::DataCopyExtParams copyParams{1, static_cast<uint32_t>(remainOutNum * sizeof(float)), 0, 0, 0};
+                    AscendC::DataCopyExtParams copyParams{
+                        1, static_cast<uint32_t>(remainOutNum * sizeof(float)),
+                        0, 0, 0
+                    };
                     AscendC::DataCopyPad(detDvGm[offset + totalLoop * maxDataCount], zeroTensor, copyParams);
                 }
             }
@@ -953,7 +964,8 @@ namespace BSA {
                     } else {
                         AscendC::DataCopyExtParams copyParams{1, static_cast<uint32_t>(remainNum * sizeof(float)), 0, 0, 0};
                         AscendC::DataCopyPadExtParams<float> padParams{true, 0, 0, 0};
-                        AscendC::DataCopyPad(tempUb, detGm[(uint64_t)aicIdx * dkvSize + curOffset], copyParams, padParams);
+                        AscendC::DataCopyPad(
+                            tempUb, detGm[(uint64_t)aicIdx * dkvSize + curOffset], copyParams, padParams);
                     }
                     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
@@ -978,7 +990,8 @@ namespace BSA {
         __aicore__ inline
         void VecDeterReduce(Params const &params)
         {
-            __gm__ BlockSparseAttentionGradTilingData *tilingData = reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
+            __gm__ BlockSparseAttentionGradTilingData *tilingData =
+            reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(params.tiling);
             uint32_t vecCoreIdx = AscendC::GetBlockIdx();
             uint32_t usedCoreNum = tilingData->usedVecCoreNum;
             if (vecCoreIdx >= usedCoreNum) { return; }
@@ -1002,7 +1015,8 @@ namespace BSA {
             AscendC::GlobalTensor<float> sharedDkGm;
             sharedDkGm.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize));
             AscendC::GlobalTensor<float> sharedDvGm;
-            sharedDvGm.SetGlobalBuffer((__gm__ float *)(params.workspace + sOutSize + dPOutSize + dQOutSize + dKOutSize));
+            sharedDvGm.SetGlobalBuffer((__gm__ float *)(params.workspace +
+            sOutSize + dPOutSize + dQOutSize + dKOutSize));
 
             // Per-core workspace
             AscendC::GlobalTensor<float> detDkGm;
@@ -1030,9 +1044,11 @@ namespace BSA {
             LocalTensor<float> tempUb = resource.ubBuf.template GetBufferByByte<float>(maxDataCount * sizeof(float));
 
             // Reduce dk
-            VecDeterReduceKernel(detDkGm, sharedDkGm, accumUb, tempUb, totalSlots, dkvSize, dkvOffset, totalElements, maxDataCount);
+            VecDeterReduceKernel(detDkGm, sharedDkGm,
+            accumUb, tempUb, totalSlots, dkvSize, dkvOffset, totalElements, maxDataCount);
             // Reduce dv
-            VecDeterReduceKernel(detDvGm, sharedDvGm, accumUb, tempUb, totalSlots, dkvSize, dkvOffset, totalElements, maxDataCount);
+            VecDeterReduceKernel(detDvGm, sharedDvGm,
+            accumUb, tempUb, totalSlots, dkvSize, dkvOffset, totalElements, maxDataCount);
         }
 
     private:

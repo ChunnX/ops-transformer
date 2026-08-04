@@ -439,9 +439,12 @@ ge::graphStatus BSAGradTiling::CalculateWorkSpace(gert::TilingContext *context)
     uint32_t batchSizeForDet_ = 40;
     uint32_t KForDet_ = (aicNum_ > 0) ? ((batchSizeForDet_ + aicNum_ - 1) / aicNum_) : 1;
     if (KForDet_ < 1) KForDet_ = 1;
-    uint64_t detDkWorkspaceSize_ = deterministic_ ? ((uint64_t)aicNum_ * groupSizeForDet_ * dkvSize_ * sizeof(float)) : 0;
-    uint64_t detDvWorkspaceSize_ = deterministic_ ? ((uint64_t)aicNum_ * groupSizeForDet_ * dkvSize_ * sizeof(float)) : 0;
-    workSpaceSize_ = libapiSize_ + sOutSize_ + dPOutSize_ + dQOutSize_ + dKOutSize_ + dVOutSize_ + gradSize_ + detDkWorkspaceSize_ + detDvWorkspaceSize_;
+    uint64_t detDkWorkspaceSize_ = deterministic_ ? ((uint64_t)aicNum_ *
+    groupSizeForDet_ * dkvSize_ * sizeof(float)) : 0;
+    uint64_t detDvWorkspaceSize_ = deterministic_ ? ((uint64_t)aicNum_ *
+    groupSizeForDet_ * dkvSize_ * sizeof(float)) : 0;
+    workSpaceSize_ = libapiSize_ + sOutSize_ + dPOutSize_ + dQOutSize_ +
+    dKOutSize_ + dVOutSize_ + gradSize_ + detDkWorkspaceSize_ + detDvWorkspaceSize_;
     context->GetWorkspaceSizes(1)[0] = workSpaceSize_;
     
     return ge::GRAPH_SUCCESS;
