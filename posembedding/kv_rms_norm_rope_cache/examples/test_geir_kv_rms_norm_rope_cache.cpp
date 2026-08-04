@@ -30,6 +30,7 @@
 #include "ge_api.h"
 #include "array_ops.h"
 #include "ge_ir_build.h"
+#include "acl/acl.h"
 
 #include "nn_other.h"
 #include "../op_graph/kv_rms_norm_rope_cache_proto.h"
@@ -329,9 +330,9 @@ int main(int argc, char *argv[])
         uint32_t data_size = output_shape * GetDataTypeSize(output[i].GetTensorDesc().GetDataType());
         WriteDataToFile((const char *)output_file.c_str(), data_size, output_data_i);
 
-        int8_t *resultData = (int8_t*)output_data_i;
+        aclFloat16 *resultData = (aclFloat16*)output_data_i;
         for (int64_t j = 0; j < output_shape; j+=64) {
-            LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
+            LOG_PRINT("result[%ld] is: %f\n", j, aclFloat16ToFloat(resultData[j]));
         }
     }
 
