@@ -227,23 +227,6 @@ ElasticBuffer.engram_fetch_grad(grad_fetched, fetch_ctx) -> (Tensor, Tensor)
 - **grad_unique** (`Tensor`)：NPU tensor，shape为 `(K, hidden)`，数据类型与 `grad_fetched` 相同（kernel内部按FP32累加后转回输出dtype），数据格式为 $ND$。其中 `K` 为去重后的local entry数量（运行时决定），前 `K` 行有效。
 - **unique_local_entry** (`Tensor`)：NPU tensor，shape为 `(K,)`，数据类型为 `int32`，数据格式为 $ND$。表示 `grad_unique` 每行对应的local entry索引，用于优化器按索引更新 `storage[unique_local_entry] -= lr × grad_unique`。
 
-### barrier
-
-**功能**：跨卡同步。
-
-**函数原型**：
-
-```python
-ElasticBuffer.barrier(use_comm_stream=True, with_cpu_sync=False) -> None
-```
-
-**输入参数**：
-
-- **use_comm_stream** (`bool`)：可选参数，表示是否使用专用通信stream执行barrier。默认值为 `True`，使用专用通信stream，barrier前后通过event同步计算流与通信流；设为 `False` 时使用当前计算stream。
-- **with_cpu_sync** (`bool`)：可选参数，表示是否在barrier前后同步设备。默认值为 `False`。设为 `True` 时，在barrier前后各调用一次 `aclrtSynchronizeDevice`，确保设备侧操作完成。
-
-**输出说明**：无返回值。
-
 ### get_engram_storage_size_hint（静态方法）
 
 **功能**：计算Engram存储所需的CPU buffer大小。
