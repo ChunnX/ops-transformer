@@ -21,6 +21,7 @@ from qliv2_test_utils import (
     QliV2CaseSelector,
     QliV2ResultWriter,
     ensure_comparison_passed,
+    restore_float8_block_fusion,
 )
 
 
@@ -48,14 +49,14 @@ def test_case_selector_rejects_ambiguous_or_invalid_selection(tmp_path):
 
 def test_result_writer_uses_readable_name_and_migrates_legacy_result(tmp_path):
     params = list(range(len(PARAM_NAMES)))
-    params[10] = "INT8"
-    params[20] = "BSND"
-    params[21] = "PA_BBND"
+    params[PARAM_NAMES.index("qk_dtype")] = "INT8"
+    params[PARAM_NAMES.index("layout_query")] = "BSND"
+    params[PARAM_NAMES.index("layout_key")] = "PA_BBND"
     name = QliV2ResultWriter.case_name(params)
     assert name == QliV2ResultWriter.case_name(params)
     assert name == (
         "QLI_B0_S11_S22_N15_N26_D7_BSND_PA_BBND_INT8_"
-        "QM19_SM23_CR29_K22_RV30"
+        "QM20_SM24_CR30_K23_RV31"
     )
     assert QliV2ResultWriter.case_name(
         params,
@@ -71,7 +72,7 @@ def test_result_writer_uses_readable_name_and_migrates_legacy_result(tmp_path):
     result = pd.read_excel(output)
     assert list(result.columns) == list(row.keys())
     assert len(result) == 2
-    assert result.iloc[1]["return_value"] == params[30]
+    assert result.iloc[1]["return_value"] == params[PARAM_NAMES.index("return_value")]
 
 
 def test_comparison_failure_raises_serializable_assertion():
@@ -84,3 +85,30 @@ def test_comparison_failure_raises_serializable_assertion():
 
     with pytest.raises(AssertionError, match="case_value_fail.*value result=Failed"):
         ensure_comparison_passed("case_value_fail", "Pass", 100.0, "Failed", 90.0)
+
+
+def test_restore_float8_block_fusion_preserves_scale_bytes():
+    import torch
+
+    key = torch.tensor([1.0, -2.0], dtype=torch.float16).reshape(1, 1, 1, 2)
+    scale = torch.tensor([1.25], dtype=torch.float32).reshape(1, 1, 1)
+    key_bytes = key.to(torch.float8_e4m3fn).view(torch.uint8).reshape(1, -1)
+    scale_bytes = scale.view(torch.uint8).reshape(1, -1)
+    expected_bytes = torch.cat((key_bytes, scale_bytes), dim=1)
+
+    legacy = torch.zeros(expected_bytes.shape, dtype=torch.float16)
+    restored_legacy = restore_float8_block_fusion(
+        {
+            "key": key,
+            "key_dequant_scale": scale,
+            "blockFusion": legacy,
+        }
+    )
+    assert restored_legacy.dtype == torch.float8_e4m3fn
+    assert torch.equal(restored_legacy.view(torch.uint8), expected_bytes)
+
+    restored_packed = restore_float8_block_fusion(
+        {"blockFusion": expected_bytes}
+    )
+    assert restored_packed.dtype == torch.float8_e4m3fn
+    assert torch.equal(restored_packed.view(torch.uint8), expected_bytes)

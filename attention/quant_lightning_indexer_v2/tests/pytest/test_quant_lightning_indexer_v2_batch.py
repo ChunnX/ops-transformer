@@ -21,6 +21,7 @@ from batch import quant_lightning_indexer_v2_pt_loadprocess
 from qliv2_test_utils import (
     QliV2CaseSelector,
     QliV2ResultWriter,
+    ensure_comparison_passed,
 )
 
 TEST_INPUT_PATH_ENV = os.environ.get("QLIV2_TESTCASE_DIR", "").strip()
@@ -36,6 +37,8 @@ SINGLE_CASE_PATH = os.environ.get("QLIV2_TESTCASE_PATH", "").strip()
 IS_ISOLATED_MODE = bool(SINGLE_CASE_PATH)
 # flag：运行模式 eager / graph（通过环境变量 QLIV2_RUN_MODE 或命令行参数设置，默认 eager）
 RUN_MODE = os.environ.get("QLIV2_RUN_MODE", "eager").strip().lower()
+if RUN_MODE not in ("eager", "graph"):
+    raise ValueError(f"unsupported run_mode: {RUN_MODE}")
 # 支持通过环境变量 QLIV2_PT_FILE_LIST 指定用例文件列表（逗号分隔），用于从 Excel 筛选的 batch_exec 模式
 PT_FILE_LIST = os.environ.get("QLIV2_PT_FILE_LIST", "").strip()
 CASE_NAMES = os.environ.get("QLIV2_CASE_NAMES", "").strip()
@@ -145,6 +148,19 @@ def qliv2(testcase_file):
         fulfill_precent_return_value,
     )
     QliV2ResultWriter.append(RESULT_PATH, row_data)
+
+    case_name = Path(testcase_file).stem
+    if result != "NPU ERROR":
+        try:
+            ensure_comparison_passed(
+                case_name,
+                result,
+                fulfill_percent,
+                result_return_value,
+                fulfill_precent_return_value,
+            )
+        except AssertionError as error:
+            return str(error)
 
     if result == "NPU ERROR":
         return f"用例执行失败:{Path(testcase_file).stem}"

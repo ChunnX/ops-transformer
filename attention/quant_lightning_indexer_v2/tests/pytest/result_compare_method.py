@@ -395,6 +395,41 @@ def trans_tnd_actseq(list):
     return list_new
 
 
+def _reshape_topk_values_for_compare(
+    topk_values,
+    total_rows,
+    sparse_count,
+    layout_query,
+    batch_size,
+    cu_seqlens_q,
+):
+    expected_size = total_rows * sparse_count
+    if topk_values.numel() == expected_size:
+        return topk_values.reshape(total_rows, sparse_count)
+    if layout_query != "TND" or topk_values.ndim != 4:
+        raise ValueError(
+            "topk value shape does not match output rows: "
+            f"shape={tuple(topk_values.shape)}, rows={total_rows}, topk={sparse_count}"
+        )
+
+    query_prefix = _get_tnd_query_prefix(cu_seqlens_q, batch_size)
+    compact_values = []
+    for batch_idx in range(batch_size):
+        query_count = int(query_prefix[batch_idx + 1] - query_prefix[batch_idx])
+        compact_values.append(
+            topk_values[batch_idx, :, :query_count, :]
+            .permute(1, 0, 2)
+            .reshape(-1, sparse_count)
+        )
+    compact_values = torch.cat(compact_values, dim=0)
+    if compact_values.numel() != expected_size:
+        raise ValueError(
+            "compacted TND topk value shape does not match output rows: "
+            f"shape={tuple(compact_values.shape)}, rows={total_rows}, topk={sparse_count}"
+        )
+    return compact_values.reshape(total_rows, sparse_count)
+
+
 def check_result(
     expect,
     result,
@@ -525,21 +560,9 @@ def check_result(
     elif seqused_k is not None:
         seqused_k = ast.literal_eval(seqused_k)
     npu_pass = True
-    max_error = 0
-    max_re = 0
     thres = 0.0001
-    diff_thd = 0.01
-    pct_thd = 0.05
-    max_diff_hd = 0.1
-    rtol = 0.005
-    atol = 0.000025
-    max_error_idx = 10000000
     cpu_output = expect.cpu().numpy()
     npu_output = result.cpu().numpy()
-    real_data = result.cpu().numpy()
-    data_compe = expect.cpu().numpy()
-    real_data = npu_output.flatten()
-    data_compe = cpu_output.flatten()
     diff_cpu = []
     diff_npu = []
 
@@ -556,8 +579,22 @@ def check_result(
     npu_reshape = npu_output.reshape([total_rows, sparse_count])
     cpu_reshape = cpu_output.reshape([total_rows, sparse_count])
     if return_value:
-        cpu_topk_value = cpu_topk_value.reshape([total_rows, sparse_count])
-        npu_topk_value = npu_topk_value.reshape([total_rows, sparse_count])
+        cpu_topk_value = _reshape_topk_values_for_compare(
+            cpu_topk_value,
+            total_rows,
+            sparse_count,
+            layout_query,
+            batch_size,
+            cu_seqlens_q,
+        )
+        npu_topk_value = _reshape_topk_values_for_compare(
+            npu_topk_value,
+            total_rows,
+            sparse_count,
+            layout_query,
+            batch_size,
+            cu_seqlens_q,
+        )
     start_time = time()
     invalid_data = cpu_reshape != -1
     valid_lens = invalid_data.sum(axis=-1)  # (total_rows,)
@@ -577,6 +614,8 @@ def check_result(
         print(f"需要进行第二步比较的batch有{num_rows}")
     else:
         print("有效值集合相同，无需进行比较")
+    exact_set_rows = total_rows - num_rows
+    semantic_pass_rows = exact_set_rows
     for t_id in rows:
         bsn = np.unravel_index(t_id, sp)
         npu_topk_output_value = None
@@ -606,7 +645,9 @@ def check_result(
             cu_seqlens_q,
             q_seq,
         )
-        if not npu_pass_t:
+        if npu_pass_t:
+            semantic_pass_rows += 1
+        else:
             npu_pass = False
     end_time = time()
     print(f"耗时：{end_time - start_time:.6f} 秒")
@@ -616,49 +657,23 @@ def check_result(
     else:
         print("[fail]TopK精度失败")
     print(f"npu_pass is {npu_pass}")
-    if real_data.size == 0 and real_data.size == data_compe.size:
-        print_log(
-            'The npu_output is [],and it is same as bm_output, the result of data_compare is "Pass"'
-        )
-        return "Pass", 100.0, 0
-    start = 0
-    end = real_data.size - 1
-    if end < start:
-        end = start
-    diff_result = np.isclose(
-        real_data, data_compe, rtol=rtol, atol=atol, equal_nan=True
+    fulfill_percent = (
+        float(semantic_pass_rows) / float(total_rows) * 100.0
+        if total_rows
+        else 100.0
     )
-    err_idx = np.where(diff_result != np.array((True,)))[0]
-    diff_abs = abs(data_compe - real_data)
-    b1 = np.maximum(np.abs(real_data), (np.abs(data_compe)))
-    b2 = float((1.0 / (1 << 14)) / diff_thd)
-    b = np.add(np.maximum(b1, b2), 10e-10)
-    eps = 10e-10
-    err_diff = diff_abs / (b + eps)
-    err_diff = err_diff[err_idx]
-    split_count = int(end - start + 1) if end != start else 1
-    print_log("split_count:%s; max_diff_hd:%s;" % (float(split_count), max_diff_hd))
-    fulfill_percent = float(split_count - err_idx.size) / float(split_count) * 100.0
-    display_output_np_isclose(real_data, data_compe, start, end)
-    pct_thd = (1 - pct_thd) * 100.0
     result = "Pass" if (npu_pass or topk_precision) else "Failed"
     print_log(
         "---------------------------------------------------------------------------------------"
     )
-    print_log("Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result")
+    print_log("Rows   \t ExactSetRows   \t SemanticPassRows   \t TopKPct   \t Result")
     print_log(
         "---------------------------------------------------------------------------------------"
     )
     print_log(
-        "%.4f    \t %.6f  \t %.2f%%   \t %.6f%%   \t %s"
-        % (rtol, atol, pct_thd, fulfill_percent, result)
+        "%d    \t %d           \t %d               \t %.6f%%   \t %s"
+        % (total_rows, exact_set_rows, semantic_pass_rows, fulfill_percent, result)
     )
-    if len(err_diff) > 0:
-        print_log(
-            "Max-RelativeError is: %s. Threshold is: %s." % (max_error, max_diff_hd)
-        )
-    if result == "Failed":
-        display_error_output(real_data, data_compe, err_idx, err_diff[0:max_error_idx])
     return result, fulfill_percent
 
 
@@ -780,13 +795,9 @@ def check_result_return_value(
         _,
     ) = params
 
-    npu_pass = True
-    max_error = 0
-    max_re = 0
-    thres = 0.0001
     diff_thd = 0.01
     pct_thd = 0.05
-    max_diff_hd = 0.1
+    row_pct_thd = 0.005
     rtol = 0.005
     atol = 0.000025
     max_error_idx = 10000000
@@ -797,46 +808,28 @@ def check_result_return_value(
         cpu_output, invalid_index = _gather_return_values_by_index(
             topk_value, result_indices, params, output_idx_offset
         )
+        valid_output = result_indices.detach().cpu().numpy() >= 0
     else:
         cpu_output = expect.cpu().float().numpy()
         invalid_index = np.zeros(cpu_output.shape, dtype=bool)
-    real_data = npu_output.flatten()
-    data_compe = cpu_output.flatten()
+        valid_output = np.ones(cpu_output.shape, dtype=bool)
 
     if layout_query in ["BSND"]:
-        sp = (batch_size, q_seq, k_head_num)
         total_rows = batch_size * q_seq * k_head_num
     elif layout_query in ["TND"]:
-        sp = (q_t_size, k_head_num)
         total_rows = q_t_size * k_head_num
     else:
         total_rows = 0
-        sp = (0, 0)
     print(f"total_line is {total_rows}")
-    npu_reshape = npu_output.reshape([total_rows, sparse_count])
-    cpu_reshape = cpu_output.reshape([total_rows, sparse_count])
-    invalid_index_reshape = invalid_index.reshape([total_rows, sparse_count])
-
     start_time = time()
-
-    for t_id in range(total_rows):
-        cur_cpu_output_value = cpu_reshape[t_id, :]
-        cur_npu_output_value = npu_reshape[t_id, :]
-        npu_pass_t, max_re_t = compare_return_value(
-            cur_npu_output_value, cur_cpu_output_value
-        )
-        if np.any(invalid_index_reshape[t_id]):
-            npu_pass_t = False
-        if not npu_pass_t:
-            npu_pass = False
-    end_time = time()
-    print(f"耗时：{end_time - start_time:.6f} 秒")
-    print(f"npu_pass is {npu_pass}")
+    has_invalid_index = bool(np.any(invalid_index))
+    valid_flat = valid_output.reshape(-1)
+    real_data = npu_output.reshape(-1)[valid_flat]
+    data_compe = cpu_output.reshape(-1)[valid_flat]
     if real_data.size == 0 and real_data.size == data_compe.size:
-        print_log(
-            'The npu_output is [],and it is same as bm_output, the result of data_compare is "Pass"'
-        )
-        return "Pass", 100.0, 0
+        result = "Failed" if has_invalid_index else "Pass"
+        print_log(f'No valid return values, result is "{result}"')
+        return result, 100.0
     start = 0
     end = real_data.size - 1
     if end < start:
@@ -852,11 +845,44 @@ def check_result_return_value(
     eps = 10e-10
     err_diff = diff_abs / (b + eps)
     err_diff = err_diff[err_idx]
+    max_relative_error = float(np.max(err_diff)) if len(err_diff) > 0 else 0.0
     split_count = int(end - start + 1) if end != start else 1
-    print_log("split_count:%s; max_diff_hd:%s;" % (float(split_count), max_diff_hd))
+    row_valid = valid_output.reshape(total_rows, sparse_count)
+    row_close = np.isclose(
+        npu_output.reshape(total_rows, sparse_count),
+        cpu_output.reshape(total_rows, sparse_count),
+        rtol=rtol,
+        atol=atol,
+        equal_nan=True,
+    )
+    row_valid_count = np.sum(row_valid, axis=1)
+    row_close_count = np.sum(row_close & row_valid, axis=1)
+    row_error_count = row_valid_count - row_close_count
+    row_integrity_percent = (
+        (sparse_count - row_error_count) / sparse_count * 100.0
+        if sparse_count
+        else np.full(total_rows, 100.0, dtype=np.float64)
+    )
+    worst_row = int(np.argmin(row_integrity_percent)) if total_rows else -1
+    min_row_integrity_percent = (
+        float(row_integrity_percent[worst_row]) if worst_row >= 0 else 100.0
+    )
+    print_log(
+        "split_count:%s; min_row_integrity_percent:%s; worst_row:%s;"
+        % (float(split_count), min_row_integrity_percent, worst_row)
+    )
     fulfill_percent = float(split_count - err_idx.size) / float(split_count) * 100.0
     display_output_np_isclose(real_data, data_compe, start, end)
     pct_thd = (1 - pct_thd) * 100.0
+    row_pct_thd = (1 - row_pct_thd) * 100.0
+    npu_pass = (
+        not has_invalid_index
+        and fulfill_percent >= pct_thd
+        and min_row_integrity_percent >= row_pct_thd
+    )
+    end_time = time()
+    print(f"耗时：{end_time - start_time:.6f} 秒")
+    print(f"npu_pass is {npu_pass}")
     result = "Pass" if npu_pass else "Failed"
     print_log(
         "---------------------------------------------------------------------------------------"
@@ -871,7 +897,14 @@ def check_result_return_value(
     )
     if len(err_diff) > 0:
         print_log(
-            "Max-RelativeError is: %s. Threshold is: %s." % (max_error, max_diff_hd)
+            "Max-NormalizedError is: %s (diagnostic only). "
+            "Min-Row-Integrity is: %s%% at row %s. Threshold is: %s%%."
+            % (
+                max_relative_error,
+                min_row_integrity_percent,
+                worst_row,
+                row_pct_thd,
+            )
         )
     if result == "Failed":
         display_error_output(real_data, data_compe, err_idx, err_diff[0:max_error_idx])

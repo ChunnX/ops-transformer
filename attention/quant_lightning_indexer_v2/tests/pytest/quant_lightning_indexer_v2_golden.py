@@ -835,30 +835,29 @@ class GeneralizedQLIV2:
         cur_k_scale = self.cur_k_scale.to(dtype=torch.float32)
         sparse_count = self.sparse_count
         sparse_mode = self.sparse_mode
-        if is_mxfp4_quant_mode(self.quant_mode):
+        is_mxfp4 = is_mxfp4_quant_mode(self.quant_mode)
+        if is_mxfp4:
             head_dim = cur_q.shape[-1]
             if head_dim % MX_SCALE_GROUP_SIZE != 0:
                 raise ValueError(
                     f"MXFP4 head_dim must be divisible by {MX_SCALE_GROUP_SIZE}, but got {head_dim}"
                 )
 
-            cur_q = cur_q * cur_q_scale
-            cur_k = cur_k * cur_k_scale
-            qk_bmm_res = torch.bmm(
-                cur_q.squeeze(0), cur_k.permute(0, 1, 3, 2).squeeze(0)
-            ).unsqueeze(0)
+        # MXFP4 and MXFP8 share the same Cube model: broadcast each 32-D
+        # E8M0 scale group to D, then run one complete-K BMM.
+        cur_q = cur_q * cur_q_scale
+        cur_k = cur_k * cur_k_scale
+        qk_bmm_res = torch.bmm(
+            cur_q.squeeze(0), cur_k.permute(0, 1, 3, 2).squeeze(0)
+        ).unsqueeze(0)
 
+        if is_mxfp4:
             qk_relu_out = qk_bmm_res.clamp_min(0.0).to(torch.bfloat16)
             weight_matrix = cur_wt.to(torch.bfloat16).permute(0, 2, 3, 1).squeeze(0)
             qk_matrix = qk_relu_out.permute(0, 2, 1, 3).squeeze(0)
             brc_vmul_matrix = reduce_mxfp4_weighted_qk(weight_matrix, qk_matrix)
             brc_vmul = brc_vmul_matrix.unsqueeze(0)
         else:
-            cur_q = cur_q * cur_q_scale
-            cur_k = cur_k * cur_k_scale
-            qk_bmm_res = torch.bmm(
-                cur_q.squeeze(0), cur_k.permute(0, 1, 3, 2).squeeze(0)
-            ).unsqueeze(0)
             qk_relu_out = qk_bmm_res.to(dtype=torch.float32).clamp_min(0.0)
             weight_matrix = cur_wt.permute(0, 2, 3, 1).squeeze(0)
             qk_matrix = qk_relu_out.permute(0, 2, 1, 3).squeeze(0)
@@ -2140,7 +2139,7 @@ def qliv2_output_single(
             query = query.to(dtype=torch.float16)
             key = key.to(dtype=torch.float16)
             if blockFusion is not None:
-                blockFusion = blockFusion.to(dtype=torch.float16)
+                blockFusion = blockFusion.view(torch.uint8)
 
         output_tensors = {
             "params": params,
