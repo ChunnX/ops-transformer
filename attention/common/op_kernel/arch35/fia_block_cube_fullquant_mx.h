@@ -868,7 +868,7 @@ public:
         mm1A.Set<HardEvent::MTE1_MTE2>();   // 释放L1B
         mm1ResL0C.Set<HardEvent::M_FIX>();  // 通知
         mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
-        #ifdef FIA_DUMP_INTERMEDIATE
+        #if 0  // 0802 strip BMM1-S probes desc628-647 (stall source codebase-facts:66) keep BMM2 L0C desc621-627
             DumpTensor<T>(mm1ResL0C.GetTensor<T>(), 628, 256);   // x47: S(BMM1 Q@K^T) front r0c0 rows0-15 cols0-15 pre-fixpipe
             DumpTensor<T>(mm1ResL0C.GetTensor<T>(1024), 629, 256);  // x47: S back-M r4c0 rows64-79 cols0-15
             DumpTensor<T>(mm1ResL0C.GetTensor<T>(1792), 631, 256);  // x47: S back-M r7c0 rows112-127 cols0-15 (row127 block)
@@ -1004,6 +1004,7 @@ public:
 
 #ifdef FIA_DUMP_INTERMEDIATE
         DumpTensor<INPUT_T>(mm2A.GetTensor<INPUT_T>(), 637, 16384);  // add11e: L1 P (BMM2 A-input) post-DataCopy(UB->L1) pre-L0A/Mmad; full head [128,128]=16384; compare desc636 UB P
+        DumpTensor<INPUT_T>(mm2A.GetTensor<INPUT_T>(16384), 648, 16384);  // desc637-blindspot L1P-backhalf offset16384 dump-rerun
 #endif
 
         constexpr uint32_t pScaleOffset = mBaseSize * s2BaseSize;
@@ -1015,7 +1016,7 @@ public:
                 {1, mBaseSize * s2SplitSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / blockBytes, 0, 0x7f7f});
             // DIAGNOSTIC: zero PScale at C2 read position. If branch taken, output will change.
             LocalTensor<int16_t> diagZero = mm2A.GetTensor<int16_t>(pScaleOffset / sizeOfInt16);
-            InitConstValue(diagZero, {1, mBaseSize * s2SplitSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / blockBytes, 0, 0x0000});
+            InitConstValue(diagZero, {1, mBaseSize * s2SplitSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / blockBytes, 0, 0x7f7f});
         }
         LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(pScaleOffset);
 #ifdef FIA_DUMP_INTERMEDIATE

@@ -419,7 +419,7 @@ public:
         this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
 
         LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
-        int64_t subLoopOffset = s2BaseSizeCur * mBaseSize * subLoop;
+        int64_t subLoopOffset = s2BaseSizeCur * 32 * subLoop;
         constexpr uint16_t elementSize = 32;
         constexpr uint32_t singleProcessSOuterSize = mBaseSize >> 1;
         constexpr uint32_t actCopyCount = (singleProcessSOuterSize + elementSize - 1) / elementSize;
