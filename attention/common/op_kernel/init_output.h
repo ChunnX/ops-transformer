@@ -35,7 +35,7 @@ __aicore__ inline void InitOutput(GlobalTensor<T> outGm, uint64_t totalElementNu
         uint64_t gmOffset = tmpBlockIdx * singleCoreMaxElementNum;
         if (gmOffset < totalElementNum) {
             uint64_t singleCoreActualElementNum = (gmOffset + singleCoreMaxElementNum > totalElementNum) ?
-                                                  (otalElementNum - gmOffset) : singleCoreMaxElementNum;
+                                                  (totalElementNum - gmOffset) : singleCoreMaxElementNum;
             LocalTensor<T> popBuffer =
                 AscendC::LocalTensor<uint8_t>(TPosition::VECIN, POP_BUF_START_ADDR, POP_BUF_ELE_SIZE * sizeof(T))
                     .template ReinterpretCast<T>();
