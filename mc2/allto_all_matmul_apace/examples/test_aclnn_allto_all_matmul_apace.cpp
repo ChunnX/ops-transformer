@@ -220,8 +220,8 @@ int runOneRank(int rankNum, int rankId, int mPerRank, int kTotal, int n, const s
     uint64_t wsSize = 0;
     aclOpExecutor *exec = nullptr;
     aclnnStatus ret = aclnnAlltoAllMatmulApaceGetWorkspaceSize(
-        ctxTensor, tX1, tX2, nullptr, tS1, tS2, nullptr, nullptr, nullptr, "", worldSize, nullptr, 28, 6, 6, 0, 28, 28,
-        false, true, 0, false, commMode, 0, tOut, nullptr, &wsSize, &exec);
+        ctxTensor, tX1, tX2, nullptr, tS1, tS2, nullptr, nullptr, nullptr, "", worldSize, 0, nullptr, 28, 6, 6, 0, 28,
+        28, false, true, 0, false, commMode, 0, tOut, nullptr, &wsSize, &exec);
     if (ret != 0) {
         ERROR_LOG("rank %d GetWorkspaceSize failed ret=%d", rankId, (int)ret);
         return -1;

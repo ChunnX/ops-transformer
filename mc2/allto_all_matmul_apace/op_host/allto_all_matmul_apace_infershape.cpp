@@ -56,7 +56,7 @@ ge::graphStatus AlltoAllMatmulApaceInferShape(gert::InferShapeContext *context)
     int64_t m = x1Shape->GetDim(0U);
     int64_t ka = x1Shape->GetDim(1U); // per-rank K dim (Ka = K_total / world_size)
     // x2 shape: TransB=true → [N,K_total], TransB=false → [K_total,N]
-    constexpr size_t IDX_ATTR_TRANSPOSE_X2 = 10;
+    constexpr size_t IDX_ATTR_TRANSPOSE_X2 = 11;
     auto *tx2 = context->GetAttrs()->GetAttrPointer<bool>(IDX_ATTR_TRANSPOSE_X2);
     bool transX2 = tx2 ? *tx2 : true;
     int64_t n = transX2 ? x2Shape->GetDim(0U) : x2Shape->GetDim(1U);

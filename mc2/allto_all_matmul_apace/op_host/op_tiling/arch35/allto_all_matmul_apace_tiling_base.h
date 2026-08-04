@@ -56,8 +56,8 @@ protected:
     static constexpr size_t IDX_INPUT_X2_SCALE = 5;
     static constexpr size_t IDX_OUTPUT_Y = 0;
     static constexpr size_t IDX_ATTR_WORLD_SIZE = 1;
-    static constexpr size_t IDX_ATTR_PRECISION_MODE = 14;
-    static constexpr size_t IDX_ATTR_TRANSPOSE_X2 = 10;
+    static constexpr size_t IDX_ATTR_PRECISION_MODE = 15;
+    static constexpr size_t IDX_ATTR_TRANSPOSE_X2 = 11;
     static constexpr uint64_t MX_SCALE_ALIGN = 64;
     static constexpr uint64_t SCALE_LAST_DIM = 2;
     static constexpr uint64_t SCALE_DIM_NUM = 3;

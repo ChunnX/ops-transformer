@@ -72,6 +72,7 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("world_size").AttrType(REQUIRED).Int();
+        this->Attr("hccl_buffer_size").AttrType(REQUIRED).Int();
         this->Attr("all2all_axes").AttrType(OPTIONAL).ListInt({-2, -1});
         this->Attr("y_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_BF16));
         this->Attr("x1_quant_mode").AttrType(OPTIONAL).Int(0);
