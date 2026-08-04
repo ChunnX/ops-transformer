@@ -68,3 +68,8 @@ from .dense_lightning_indexer_softmax_lse import (
 from .moe_init_routing import moe_init_routing
 from .moe_re_routing import moe_re_routing
 from . import graph_convert as _graph_convert
+
+# mhc_post_backward torch_extension 代码独立到算子目录，通过兼容转发模块导出
+from . import mhc_post_backward as _mhc_post_backward
+
+mhc_post_backward = _mhc_post_backward.mhc_post_backward
