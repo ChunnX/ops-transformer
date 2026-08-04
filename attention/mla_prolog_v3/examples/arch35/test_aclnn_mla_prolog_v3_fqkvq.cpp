@@ -116,6 +116,10 @@ int TransToNZShape(std::vector<int64_t> &shapeND, size_t typeSize) {
 
 template <typename T>
 int FillHostDataAndCopy(void *deviceAddr, void *hostAddr, int64_t num, T value) {
+    if (hostAddr == nullptr || deviceAddr == nullptr){
+        LOG_PRINT("FillHostDataAndCopy: null address.\n");
+        return -1;
+    }
     auto *hostData = static_cast<T *>(hostAddr);
     for (int64_t i = 0; i < num; ++i) {
         hostData[i] = value;
@@ -246,60 +250,60 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 设置tokenX数据
     ret = FillHostDataAndCopy(tokenXDeviceAddr, tokenXHostAddr, GetShapeSize(tokenXShape), op::Float8E4M3FN(1.0f));
-    CHECK_RET(ret == 0, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建weightDq aclTensor
     ret = CreateAclTensorNZ(weightDqShape, &weightDqDeviceAddr, &weightDqHostAddr, aclDataType::ACL_FLOAT8_E4M3FN, &weightDq);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 设置weightDq数据
     ret =
         FillHostDataAndCopy(weightDqDeviceAddr, weightDqHostAddr, GetShapeSize(weightDqShape), op::Float8E4M3FN(1.0f));
-    CHECK_RET(ret == 0, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建weightUqQr aclTensor
     ret = CreateAclTensorNZ(weightUqQrShape, &weightUqQrDeviceAddr, &weightUqQrHostAddr, aclDataType::ACL_FLOAT8_E4M3FN, &weightUqQr);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 设置weightUqQr数据
     ret = FillHostDataAndCopy(weightUqQrDeviceAddr, weightUqQrHostAddr, GetShapeSize(weightUqQrShape),
                               op::Float8E4M3FN(1.0f));
-    CHECK_RET(ret == 0, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建weightUk aclTensor
     ret = CreateAclTensorND(weightUkShape, &weightUkDeviceAddr, &weightUkHostAddr, aclDataType::ACL_BF16, &weightUk);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 设置weightUk数据
     ret = FillHostDataAndCopy(weightUkDeviceAddr, weightUkHostAddr, GetShapeSize(weightUkShape), op::bfloat16(1.0f));
-    CHECK_RET(ret == 0, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建weightDkvKr aclTensor
     ret = CreateAclTensorNZ(weightDkvKrShape, &weightDkvKrDeviceAddr, &weightDkvKrHostAddr, aclDataType::ACL_FLOAT8_E4M3FN, &weightDkvKr);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 设置weightDkvKr数据
     ret = FillHostDataAndCopy(weightDkvKrDeviceAddr, weightDkvKrHostAddr, GetShapeSize(weightDkvKrShape),
                               op::Float8E4M3FN(1.0f));
-    CHECK_RET(ret == 0, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建rmsnormGammaCq aclTensor
     ret = CreateAclTensorND(rmsnormGammaCqShape, &rmsnormGammaCqDeviceAddr, &rmsnormGammaCqHostAddr, aclDataType::ACL_BF16, &rmsnormGammaCq);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 设置rmsnormGammaCq数据
     ret = FillHostDataAndCopy(rmsnormGammaCqDeviceAddr, rmsnormGammaCqHostAddr, GetShapeSize(rmsnormGammaCqShape),
                               op::bfloat16(1.0f));
-    CHECK_RET(ret == 0, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建rmsnormGammaCkv aclTensor
     ret = CreateAclTensorND(rmsnormGammaCkvShape, &rmsnormGammaCkvDeviceAddr, &rmsnormGammaCkvHostAddr, aclDataType::ACL_BF16, &rmsnormGammaCkv);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 设置rmsnormGammaCkv数据
     ret = FillHostDataAndCopy(rmsnormGammaCkvDeviceAddr, rmsnormGammaCkvHostAddr, GetShapeSize(rmsnormGammaCkvShape),
                               op::bfloat16(1.0f));
-    CHECK_RET(ret == 0, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建ropeSin aclTensor
     ret = CreateAclTensorND(ropeSinShape, &ropeSinDeviceAddr, &ropeSinHostAddr, aclDataType::ACL_BF16, &ropeSin);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 设置ropeSin数据
     ret = FillHostDataAndCopy(ropeSinDeviceAddr, ropeSinHostAddr, GetShapeSize(ropeSinShape), op::bfloat16(0.5f));
-    CHECK_RET(ret == 0, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建ropeCos aclTensor
     ret = CreateAclTensorND(ropeCosShape, &ropeCosDeviceAddr, &ropeCosHostAddr, aclDataType::ACL_BF16, &ropeCos);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 设置ropeCos数据
     ret = FillHostDataAndCopy(ropeCosDeviceAddr, ropeCosHostAddr, GetShapeSize(ropeCosShape), op::bfloat16(0.5f));
-    CHECK_RET(ret == 0, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建cacheIndex aclTensor
     ret = CreateAclTensorND(cacheIndexShape, &cacheIndexDeviceAddr, &cacheIndexHostAddr, aclDataType::ACL_INT64, &cacheIndex);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -317,47 +321,47 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 设置kvCache数据
     ret = FillHostDataAndCopy(kvCacheDeviceAddr, kvCacheHostAddr, GetShapeSize(kvCacheShape), op::Float8E4M3FN(1.0f));
-    CHECK_RET(ret == 0, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建krCache aclTensor
     ret = CreateAclTensorND(krCacheShape, &krCacheDeviceAddr, &krCacheHostAddr, aclDataType::ACL_BF16, &krCache);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 设置krCache数据
     ret = FillHostDataAndCopy(krCacheDeviceAddr, krCacheHostAddr, GetShapeSize(krCacheShape), op::bfloat16(1.0f));
-    CHECK_RET(ret == 0, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建dequantScaleX aclTensor
     ret = CreateAclTensorND(dequantScaleXShape, &dequantScaleXDeviceAddr, &dequantScaleXHostAddr, aclDataType::ACL_FLOAT8_E8M0, &dequantScaleX);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 设置dequantScaleX数据
     ret = FillHostDataAndCopy(dequantScaleXDeviceAddr, dequantScaleXHostAddr, GetShapeSize(dequantScaleXShape),
                               op::Float8E8M0(1.0f));
-    CHECK_RET(ret == 0, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建dequantScaleWDq aclTensor
     ret = CreateAclTensorND(dequantScaleWDqShape, &dequantScaleWDqDeviceAddr, &dequantScaleWDqHostAddr, aclDataType::ACL_FLOAT8_E8M0, &dequantScaleWDq);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 设置dequantScaleWDq数据
     ret = FillHostDataAndCopy(dequantScaleWDqDeviceAddr, dequantScaleWDqHostAddr, GetShapeSize(dequantScaleWDqShape),
                               op::Float8E8M0(1.0f));
-    CHECK_RET(ret == 0, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建dequantScaleWUqQr aclTensor
     ret = CreateAclTensorND(dequantScaleWUqQrShape, &dequantScaleWUqQrDeviceAddr, &dequantScaleWUqQrHostAddr, aclDataType::ACL_FLOAT8_E8M0, &dequantScaleWUqQr);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 设置dequantScaleWUqQr数据
     ret = FillHostDataAndCopy(dequantScaleWUqQrDeviceAddr, dequantScaleWUqQrHostAddr,
                               GetShapeSize(dequantScaleWUqQrShape), op::Float8E8M0(1.0f));
-    CHECK_RET(ret == 0, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建dequantScaleWDkvKr aclTensor
     ret = CreateAclTensorND(dequantScaleWDkvKrShape, &dequantScaleWDkvKrDeviceAddr, &dequantScaleWDkvKrHostAddr, aclDataType::ACL_FLOAT8_E8M0, &dequantScaleWDkvKr);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 设置dequantScaleWDkvKr数据
     ret = FillHostDataAndCopy(dequantScaleWDkvKrDeviceAddr, dequantScaleWDkvKrHostAddr,
                               GetShapeSize(dequantScaleWDkvKrShape), op::Float8E8M0(1.0f));
-    CHECK_RET(ret == 0, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建quantScaleCkv aclTensor
     ret = CreateAclTensorND(quantScaleCkvShape, &quantScaleCkvDeviceAddr, &quantScaleCkvHostAddr, aclDataType::ACL_FLOAT, &quantScaleCkv);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 设置quantScaleCkv数据
     ret = FillHostDataAndCopy(quantScaleCkvDeviceAddr, quantScaleCkvHostAddr, GetShapeSize(quantScaleCkvShape), 1.0f);
-    CHECK_RET(ret == 0, return ret);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建query aclTensor
     ret = CreateAclTensorND(queryShape, &queryDeviceAddr, &queryHostAddr, aclDataType::ACL_FLOAT8_E4M3FN, &query);
     CHECK_RET(ret == ACL_SUCCESS, return ret);

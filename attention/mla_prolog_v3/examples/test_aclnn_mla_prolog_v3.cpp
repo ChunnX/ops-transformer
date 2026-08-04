@@ -114,6 +114,10 @@ int TransToNZShape(std::vector<int64_t> &shapeND, size_t typeSize) {
 
 template <typename T>
 int FillHostDataAndCopy(void *deviceAddr, void *hostAddr, int64_t num, T value) {
+    if (hostAddr == nullptr || deviceAddr == nullptr){
+        LOG_PRINT("FillHostDataAndCopy: null address.\n");
+        return -1;
+    }
     auto *hostData = static_cast<T *>(hostAddr);
     for (int64_t i = 0; i < num; ++i) {
         hostData[i] = value;
