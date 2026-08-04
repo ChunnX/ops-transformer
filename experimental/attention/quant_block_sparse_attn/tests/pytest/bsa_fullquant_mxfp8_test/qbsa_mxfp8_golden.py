@@ -400,11 +400,10 @@ def quantize_mxfp8_qk(tensor_fp32, fp8_dtype, group_size=32):
     grouped = tensor_fp32.reshape(*tensor_fp32.shape[:-1], num_groups, group_size)
     all_zero_mask = torch.all(grouped == 0, dim=-1)
     max_vals = torch.max(torch.abs(grouped), dim=-1)[0].clamp(min=1e-12)
-    # Choose the smallest power-of-two descale that keeps every finite value
-    # inside E4M3FN's real maximum.  ``floor(log2(max)) - emax`` is not safe
-    # for E4M3FN because its maximum is 448 rather than 2**9: values in the
-    # upper 1/8 of a power-of-two interval would be clipped to +/-448.
-    fp8_max = float(torch.finfo(fp8_dtype).max)
+    # Choose the smallest power-of-two descale that keeps the whole group in
+    # the finite E4M3 range.  floor(log2(max)) - emax only accounts for the
+    # exponent bits and can still overflow values between 256 and 448.
+    fp8_max = torch.finfo(fp8_dtype).max
     shared_exp = torch.ceil(torch.log2(max_vals / fp8_max))
     descale = torch.where(all_zero_mask, torch.ones_like(shared_exp), 2 ** shared_exp).to(torch.float32)
 
@@ -431,10 +430,7 @@ def quantize_mxfp8_v(tensor_fp32, fp8_dtype, group_size=32):
     grouped = tensor_fp32.reshape(batch, num_groups, group_size, num_heads, head_dim)
     all_zero_mask = torch.all(grouped == 0, dim=2)
     max_vals = torch.max(torch.abs(grouped), dim=2)[0].clamp(min=1e-12)
-    # V uses the same overflow-free E4M3FN scale selection as Q/K.  Avoiding
-    # saturation here is especially important because a saturated V value is
-    # propagated directly by a sharply peaked attention row.
-    fp8_max = float(torch.finfo(fp8_dtype).max)
+    fp8_max = torch.finfo(fp8_dtype).max
     shared_exp = torch.ceil(torch.log2(max_vals / fp8_max))
     descale = torch.where(all_zero_mask, torch.ones_like(shared_exp), 2 ** shared_exp).to(torch.float32)
 
@@ -1065,7 +1061,10 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
 
                             pv += torch.matmul(
                                 p_quant_subloop * subloop_rescale.view(nq, 1), v_dequant)
-                            round_sum += p_subloop.sum(dim=-1) * subloop_rescale
+                            # C2 consumes the E4M3-quantized P.  Normalize with
+                            # that same P so quantization does not become a
+                            # query-row-wide output scale error.
+                            round_sum += p_quant_subloop.sum(dim=-1) * subloop_rescale
 
                         acc = acc * history_rescale.view(nq, 1) + pv
                         l_run = l_run * history_rescale + round_sum
@@ -1143,8 +1142,6 @@ def _call_npu_fa_op(q, k, v, mask, q_lengths, kv_lengths, cu_seqlens_q, cu_seqle
         sparse_block_size_k=SPARSE_BLOCK_SIZE,
         quant_mode=QUANT_MODE_MXFP8,
         mask_mode=MASK_MODE,
-        max_seqlen_q=max_sq,
-        max_seqlen_kv=max_skv,
         layout_q=layout_q,
         layout_kv=layout_kv,
         layout_sparse_indices=SPARSE_INDICES_LAYOUT,
@@ -1171,9 +1168,6 @@ def _call_npu_fa_op(q, k, v, mask, q_lengths, kv_lengths, cu_seqlens_q, cu_seqle
         seqused_kv=seqused_kv,
         block_table=block_table,
         metadata=metadata,
-        max_seqlen_q=max_sq,
-        max_seqlen_kv=max_skv,
-        pa_block_stride=0,
         layout_kv=layout_kv,
         layout_q=layout_q,
         layout_sparse_indices=SPARSE_INDICES_LAYOUT,
