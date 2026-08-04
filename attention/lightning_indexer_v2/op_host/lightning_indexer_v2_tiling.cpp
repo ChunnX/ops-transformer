@@ -73,21 +73,31 @@ std::string LIV2DataTypeToSerialString(ge::DataType type)
 // --------------------------LIV2InfoParser类成员函数定义-------------------------------------
 ge::graphStatus LIV2InfoParser::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.query.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor query"),
+    OP_CHECK_IF(opParamInfo_.query.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "q", "The shape of q is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.query.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor query"),
+    OP_CHECK_IF(opParamInfo_.query.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "q", "The desc of q is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor k"),
+    OP_CHECK_IF(opParamInfo_.key.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "k", "The shape of k is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor k"),
+    OP_CHECK_IF(opParamInfo_.key.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "k", "The desc of k is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.weights.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor value"),
+    OP_CHECK_IF(opParamInfo_.weights.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "w", "The shape of w is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.weights.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor value"),
+    OP_CHECK_IF(opParamInfo_.weights.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "w", "The desc of w is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor output"),
+    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_indices",
+                    "The shape of sparse_indices is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor output"),
+    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_indices",
+                    "The desc of sparse_indices is nullptr"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -95,16 +105,20 @@ ge::graphStatus LIV2InfoParser::CheckRequiredInOutExistence() const
 
 ge::graphStatus LIV2InfoParser::CheckRequiredAttrExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.layOut == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attr layout_query"),
+    OP_CHECK_IF(opParamInfo_.layOut == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_q", "Layout_q is nullptr"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.layOutKey == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attr layout_key"),
+    OP_CHECK_IF(opParamInfo_.layOutKey == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layout_k", "Layout_k is nullptr"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.topk == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attr topk"),
+    OP_CHECK_IF(opParamInfo_.topk == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "topk", "Topk is nullptr"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(opParamInfo_.maskMode == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "attr mask_mode"),
+    OP_CHECK_IF(opParamInfo_.maskMode == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "mask_mode", "Mask_mode is nullptr"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -122,7 +136,7 @@ ge::graphStatus LIV2InfoParser::CheckRequiredParaExistence() const
 ge::graphStatus LIV2InfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("LightningIndexerV2", "opName got from TilingContext");
+        OP_LOGE("LightningIndexerV2", "opName got from TilingContext is nullptr");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
@@ -145,7 +159,7 @@ ge::graphStatus LIV2InfoParser::GetNpuInfo()
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
-    OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr, OP_LOGE(opName_, "workSpaceSize got from ge is nullptr"),
+    OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr, OP_LOGE(opName_, "workSpaceSize got from GE is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetRawTilingData() == nullptr,
                 OP_LOGE(context_->GetNodeName(), "RawTilingData got from GE context is nullptr."),
@@ -239,19 +253,20 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
     OP_CHECK_IF(
         ((std::string(opParamInfo_.layOutKey) != "PA_BBND") &&
          (std::string(opParamInfo_.layOut) != std::string(opParamInfo_.layOutKey))),
-        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
-            opName_, "query and key", std::string(opParamInfo_.layOut) + " and " + std::string(opParamInfo_.layOutKey),
-            "under non-PA conditions, layout_query and layout_key should be equal"),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            opName_, "layout_query and layout_key",
+            std::string(opParamInfo_.layOut) + " and " + std::string(opParamInfo_.layOutKey),
+            "When layout_key is non-PA, layout_query and layout_key must be same"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(((std::string(opParamInfo_.layOutKey) != "PA_BBND") &&
                  (std::string(opParamInfo_.layOutKey) != "BSND") && (std::string(opParamInfo_.layOutKey) != "TND")),
-                OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(opName_, "key", std::string(opParamInfo_.layOutKey),
-                                                       "input attr layout_key only supported PA_BBND, BSND or TND"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_key", std::string(opParamInfo_.layOutKey).c_str(),
+            "Layout_key only supports PA_BBND, BSND or TND"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(((std::string(opParamInfo_.layOut) != "BSND") && (std::string(opParamInfo_.layOut) != "TND")),
-                OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(opName_, "query", std::string(opParamInfo_.layOut),
-                                                       "input attr layout_query only supported BSND or TND"),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_query", std::string(opParamInfo_.layOut).c_str(),
+            "Layout_query only supports BSND or TND"),
+        return ge::GRAPH_FAILED);
     if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF(((std::string(opParamInfo_.layOutKey) != "PA_BBND") &&
                      (std::string(opParamInfo_.layOut)) != (std::string(opParamInfo_.layOutKey))),
@@ -275,15 +290,15 @@ ge::graphStatus LIV2InfoParser::GetAndCheckAttrParaInfo()
     }
     OP_CHECK_IF((!((*opParamInfo_.topk > 0) && (*opParamInfo_.topk <= TOPK_MAX))),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "topk", std::to_string(*opParamInfo_.topk),
-                                                      "input attr topk must > 0 and <= 8192"),
+                                                      "Topk must > 0 and <= 8192"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!((*opParamInfo_.maskMode == 0) || (*opParamInfo_.maskMode == SPARSE_MODE_LOWER)),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "mask_mode", std::to_string(*opParamInfo_.maskMode),
-                                                      "input attr mask_mode only supported 0 or 3"),
+                                                      "Mask_mode only supported 0 or 3"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((*opParamInfo_.cmpRatio <= 0) || (*opParamInfo_.cmpRatio > 128),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "cmpRatio", std::to_string(*opParamInfo_.cmpRatio),
-                                                      "input attr cmpRatio must > 0 and <= 128"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "cmp_ratio", std::to_string(*opParamInfo_.cmpRatio),
+                                                      "Cmp_ratio must > 0 and <= 128"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
