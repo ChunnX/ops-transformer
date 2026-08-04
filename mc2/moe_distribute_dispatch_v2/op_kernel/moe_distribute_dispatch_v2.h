@@ -494,7 +494,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     uint32_t xActivateMaskSize = axisBS_ * (Ceil(axisK_ * sizeof(bool), UB_ALIGN) * UB_ALIGN) * sizeof(half);
     uint32_t bsAlign256 = Ceil(axisBS_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256;
     uint32_t bsKAlign256 = Ceil(expertIdsCnt_ * sizeof(half), ALIGNED_LEN_256) * ALIGNED_LEN_256;
-    uint32_t expertIdsBufSize = expertIdsSize > bsAlign256 ? expertIdsSize : bsAlign256;
+    uint32_t expertIdsBufSize = Ceil(expertIdsSize > bsAlign256 ? expertIdsSize : bsAlign256, ALIGNED_LEN_256) *
+                                ALIGNED_LEN_256; // 256B 对齐：支持 CalTokenSendExpertCnt 的 CompareScalar 256 对齐 compareCount
     expertIdsSize = Ceil(expertIdsSize, UB_ALIGN) * UB_ALIGN;
     maxSize_ = hFp32Size > expertIdsSize ? hFp32Size : expertIdsSize;
     maxSize_ = maxSize_ > xActivateMaskSize ? maxSize_ : xActivateMaskSize;
@@ -697,29 +698,20 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::CalT
                                                                                                   int32_t calCnt,
                                                                                                   int32_t &curExpertCnt)
 {
+    // CompareScalar(EQ) 建 bitmask + GatherMask 位计数，替代 Duplicate→Sub→Abs→Mins→ReduceSum 5-op 归约。
+    // count 由 GatherMask 的 mask 形参(=calCnt)限定在 [0,calCnt)，不依赖 expertIdsTensor_ 尾部哨兵（对标 full_mesh CalExpertSendNum）。
+    // SetStatus(每专家总数) 与 SendToMoeExpert(逐 token 的 [0,index) 槽位) 均适用：mask=calCnt 限定计数范围。
     SyncFunc<AscendC::HardEvent::S_V>();
-    Duplicate<int32_t>(dstExpIdTensor_, dstExpertId, calCnt);
+    LocalTensor<uint8_t> maskU8 = gatherMaskTBuf_.Get<uint8_t>();
+    LocalTensor<uint32_t> maskU32 = gatherMaskTBuf_.Get<uint32_t>();
+    LocalTensor<int32_t> gatherTmp = dstExpBuf_.Get<int32_t>(); // GatherMask dst scratch
+    uint32_t compareCount = Ceil(calCnt * sizeof(int32_t), ALIGNED_LEN_256) * ALIGNED_LEN_256 / sizeof(int32_t);
+    CompareScalar(maskU8, expertIdsTensor_, static_cast<int32_t>(dstExpertId), AscendC::CMPMODE::EQ, compareCount);
     PipeBarrier<PIPE_V>();
-    Sub(subExpIdTensor_, expertIdsTensor_, dstExpIdTensor_, calCnt);
-    PipeBarrier<PIPE_V>();
-    LocalTensor<float> tmpFp32 = subExpIdTensor_.ReinterpretCast<float>();
-    LocalTensor<float> tmpoutFp32 = dstExpIdTensor_.ReinterpretCast<float>();
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 2201)
-    Abs(tmpoutFp32, tmpFp32, calCnt);
-#else
-    Abs(dstExpIdTensor_, subExpIdTensor_, calCnt);
-#endif
-    PipeBarrier<PIPE_V>();
-    Mins(subExpIdTensor_, dstExpIdTensor_, 1, calCnt);
-    PipeBarrier<PIPE_V>();
-    ReduceSum<float>(tmpoutFp32, tmpFp32, workLocalTensor_, calCnt);
+    uint64_t rsvdCnt = 0;
+    GatherMask(gatherTmp, expertIdsTensor_, maskU32, true, static_cast<uint32_t>(calCnt), {1, 1, 0, 0}, rsvdCnt);
     SyncFunc<AscendC::HardEvent::V_S>();
-    int32_t curOtherExpertCnt = dstExpIdTensor_(0);
-    if (calCnt >= curOtherExpertCnt) {
-        curExpertCnt = calCnt - curOtherExpertCnt;
-    } else {
-        curExpertCnt = 0;
-    }
+    curExpertCnt = static_cast<int32_t>(rsvdCnt);
 }
 
 template <TemplateDispatchV2TypeClass>
