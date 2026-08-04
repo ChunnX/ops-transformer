@@ -82,19 +82,19 @@ __aicore__ inline uint64_t GetCommHandle(__gm__ Mc2Aclnn::MoeCommContext *contex
 }
 
 // For Hybrid
-__aicore__ inline uint32_t GetCurrentServerIndex(uint32_t epRankId, uint32_t rankSizePerServer)
+__aicore__ inline uint32_t GetCurrentServerIndex(uint32_t epRankId, uint32_t rankNumPerServer)
 {
-    return rankSizePerServer == 0U ? 0U : epRankId / rankSizePerServer;
+    return rankNumPerServer == 0U ? 0U : epRankId / rankNumPerServer;
 }
 
-__aicore__ inline uint32_t GetServerStartRank(uint32_t epRankId, uint32_t rankSizePerServer)
+__aicore__ inline uint32_t GetServerStartRank(uint32_t epRankId, uint32_t rankNumPerServer)
 {
-    return GetCurrentServerIndex(epRankId, rankSizePerServer) * rankSizePerServer;
+    return GetCurrentServerIndex(epRankId, rankNumPerServer) * rankNumPerServer;
 }
 
-__aicore__ inline uint32_t GetServerEndRank(uint32_t epRankId, uint32_t rankSizePerServer, uint32_t epWorldSize)
+__aicore__ inline uint32_t GetServerEndRank(uint32_t epRankId, uint32_t rankNumPerServer, uint32_t epWorldSize)
 {
-    uint32_t serverEndRank = GetServerStartRank(epRankId, rankSizePerServer) + rankSizePerServer;
+    uint32_t serverEndRank = GetServerStartRank(epRankId, rankNumPerServer) + rankNumPerServer;
     return serverEndRank > epWorldSize ? epWorldSize : serverEndRank;
 }
 
