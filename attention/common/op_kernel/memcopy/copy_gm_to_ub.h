@@ -166,6 +166,7 @@ private:
 template <typename T, GmFormat GM_FORMAT>
 class CopyQueryScaleGmToUb {
 public:
+    template <typename FaGmTensorType>
     __aicore__ inline void operator()(FaUbTensor<T> &dstTensor, FaGmTensorType &srcTensor, GmCoord &gmCoord)
     {
         if constexpr (GM_FORMAT == GmFormat::NGT) {
