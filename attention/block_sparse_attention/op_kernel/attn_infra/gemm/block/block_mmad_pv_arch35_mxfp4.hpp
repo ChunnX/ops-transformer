@@ -513,13 +513,13 @@ public:
         uint32_t mMmad = embedReal + MXFP4::ROW_SUM_PAD_NUM;   // m = D+16（含 rowsum seed 行）
 
         // --- P 尾部补零（S2 对齐 32 但没到 64 → P pad 到 align64）---
-        if (curBaseTileSize != delay20TileInfo.kvsActBaseTileAlign64) {
-            PadPS2NotAlign64(delay20TileInfo.kvsActBaseTileAlign64, curBaseTileSize, embedReal, pSlot);
-        }
-        // [TODO] 目前为了单体测试正确性，正确内容如下
-        // if (delay20TileInfo.kvsActBaseTileAlign32 != delay20TileInfo.kvsActBaseTileAlign64) {
-        //     PadPS2NotAlign64(delay20TileInfo.kvsActBaseTileAlign64, delay20TileInfo.kvsActBaseTileAlign32, embedReal, pSlot);
+        // if (curBaseTileSize != delay20TileInfo.kvsActBaseTileAlign64) {
+        //     PadPS2NotAlign64(delay20TileInfo.kvsActBaseTileAlign64, curBaseTileSize, embedReal, pSlot);
         // }
+        // [TODO] 目前为了单体测试正确性，正确内容如下
+        if (delay20TileInfo.kvsActBaseTileAlign32 != delay20TileInfo.kvsActBaseTileAlign64) {
+            PadPS2NotAlign64(delay20TileInfo.kvsActBaseTileAlign64, delay20TileInfo.kvsActBaseTileAlign32, embedReal, pSlot);
+        }
 
         // AscendC::PipeBarrier<PIPE_ALL>();
         // // --- V 尾部补零（S2 没到 64 对齐 → V pad 到 align64）---
