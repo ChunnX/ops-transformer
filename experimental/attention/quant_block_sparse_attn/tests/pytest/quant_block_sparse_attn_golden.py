@@ -221,7 +221,16 @@ def _make_block_table(batch, seq_len, block_size, pattern, rng, blocknum=None, q
         return block_table
 
     if batch <= 1:
-        raise ValueError(f"blocknum sharing requires batch > 1, got batch={batch}")
+        # 单 batch：共享退化为行内复用 —— block_table 前几个 index 均指向物理块 0，
+        # 其余 index 指向互不相同的物理块，使总物理块数精确等于 blocknum。
+        shared_cols = width - blocknum + 1
+        if shared_cols <= 0 or shared_cols > width:
+            raise ValueError(f"blocknum={blocknum} out of range [1, {width}] for a single batch")
+        block_table = torch.zeros((1, width), dtype=torch.int32)
+        for block_idx in range(shared_cols, width):
+            block_table[0, block_idx] = block_idx - shared_cols + 1
+        return block_table
+
     if blocknum < width:
         raise ValueError(
             f"blocknum={blocknum} should be at least {width} "
