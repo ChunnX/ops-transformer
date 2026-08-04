@@ -514,7 +514,8 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
                 __gm__ int32_t *statusAddr =
                     reinterpret_cast<__gm__ int32_t *>(workSet.params.workspaceInfo.gmm1TileStatusPtr) +
-                    (static_cast<int64_t>(args.expertIdx) * workSet.params.tilingData->maxTilesPerExpert + loopIdx) *
+                    (static_cast<int64_t>(args.expertIdx) * workSet.params.tilingData->maxTilesPerExpert +
+                     workSet.gmmAddrInfo.gmm1TileOffsetInExpert + loopIdx) *
                         INT_CACHELINE;
                 AscendC::WriteGmByPassDCache(statusAddr, static_cast<int32_t>(args.expertIdx + 1));
             } else {
@@ -621,7 +622,8 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
                 auto &swigluOp = args.swigluQuantOp;
                 __gm__ int32_t *statusAddr =
                     reinterpret_cast<__gm__ int32_t *>(workSet.params.workspaceInfo.gmm1TileStatusPtr) +
-                    (static_cast<int64_t>(args.expertIdx) * workSet.params.tilingData->maxTilesPerExpert + loopIdx) *
+                    (static_cast<int64_t>(args.expertIdx) * workSet.params.tilingData->maxTilesPerExpert +
+                     workSet.gmmAddrInfo.gmm1TileOffsetInExpert + loopIdx) *
                         INT_CACHELINE;
                 int32_t roundTag = static_cast<int32_t>(args.expertIdx + 1);
                 while (AscendC::ReadGmByPassDCache(statusAddr) != roundTag) {
@@ -682,7 +684,8 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
                 // 轮询通过后 metaInfo GM 中的权重数据才确定可见。
                 __gm__ int32_t *statusAddr =
                     reinterpret_cast<__gm__ int32_t *>(workSet.params.workspaceInfo.gmm1TileStatusPtr) +
-                    (static_cast<int64_t>(args.expertIdx) * workSet.params.tilingData->maxTilesPerExpert + loopIdx) *
+                    (static_cast<int64_t>(args.expertIdx) * workSet.params.tilingData->maxTilesPerExpert +
+                     workSet.gmmAddrInfo.gmm1TileOffsetInExpert + loopIdx) *
                         INT_CACHELINE;
                 int32_t roundTag = static_cast<int32_t>(args.expertIdx + 1);
                 while (AscendC::ReadGmByPassDCache(statusAddr) != roundTag) {
@@ -1094,7 +1097,9 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
                 __gm__ int32_t *statusAddr =
                     reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm1TileStatusPtr) +
-                    (static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert + loopIdx) * INT_CACHELINE;
+                    (static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert +
+                     gmmAddrInfo.gmm1TileOffsetInExpert + loopIdx) *
+                        INT_CACHELINE;
                 AscendC::WriteGmByPassDCache(statusAddr, static_cast<int32_t>(expertIdx + 1));
             } else {
                 // Publish only after Fixpipe commits the tile to GM. AIC does not wait for AIV1 and may run ahead.
@@ -1150,7 +1155,9 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
             // 轮询通过后 metaInfo GM 中的权重数据才确定可见。
             __gm__ int32_t *statusAddr =
                 reinterpret_cast<__gm__ int32_t *>(params.workspaceInfo.gmm1TileStatusPtr) +
-                (static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert + loopIdx) * INT_CACHELINE;
+                (static_cast<int64_t>(expertIdx) * params.tilingData->maxTilesPerExpert +
+                 gmmAddrInfo.gmm1TileOffsetInExpert + loopIdx) *
+                    INT_CACHELINE;
             int32_t roundTag = static_cast<int32_t>(expertIdx + 1);
             while (AscendC::ReadGmByPassDCache(statusAddr) != roundTag) {
                 int64_t st = AscendC::GetSystemCycle();

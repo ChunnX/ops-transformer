@@ -78,10 +78,15 @@ public:
     using QuantScaleOutType = typename std::conditional<(QuantMode >= E5M2_QUANT), fp8_e8m0_t, float>::type;
     using ActivationType = QuantOutType;
     struct ExpertLoopState {
+        // 这里始终保存“完整专家”的形状和首地址，只在首次进入下一个专家时整体推进一次。
+        // 热点专家切段时复制出临时状态，避免反复推进权重地址或累计行偏移。
         TupleShape problemShape;
         BlockOffset baseOffset;
         // 每个游标独立记录当前专家之前的累计行数，用于解耦 dispatch 与 GMM 的预取状态。
         uint32_t expertBeforeCnt = 0;
+        // 当前行段在专家内的 256-row 分组起点。完整专家状态始终保持为 0，
+        // 仅传给 GMM 的行段副本设置该字段。
+        uint32_t expertMGroupOffset = 0;
     };
     __aicore__ inline MegaMoeWave(){};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1,
@@ -103,6 +108,12 @@ private:
         uint32_t slotStrideBytes = 0;
         uint32_t quantTempElements = 0;
     };
+    struct ExpertRowCursor {
+        // 指向下一行尚未处理的数据位置，采用半开区间语义。专家处理完后立即规范化为
+        // (nextExpert, 0)，全部专家处理完后为 (moeExpertPerRank_, 0)。
+        uint32_t expertIdx = 0;
+        uint32_t rowOffsetInExpert = 0;
+    };
 
     __aicore__ inline DispatchBufferConfig DispatchBuffInit();
     __aicore__ inline CombineBufferConfig CombineBuffInit();
@@ -111,11 +122,12 @@ private:
     __aicore__ inline void ResetFlagList();
     __aicore__ inline void SendMaskCal(const SendMaskBufferConfig &bufferConfig);
     __aicore__ inline void SendCntCal(int32_t localExpertId, uint64_t &sendCnt);
-    __aicore__ inline void DispatchExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx,
-                                          const DispatchBufferConfig &bufferConfig);
-    __aicore__ inline void DispatchExpertsUntil(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
-                                                uint32_t &nextDispatchExpert, uint32_t dispatchEnd,
-                                                const DispatchBufferConfig &bufferConfig);
+    __aicore__ inline uint64_t DispatchExpert(ExpertLoopState &dispatchState, GMMAddrInfo &dispatchAddrInfo,
+                                              uint32_t expertIdx, const DispatchBufferConfig &bufferConfig);
+    __aicore__ inline ExpertRowCursor DispatchWaveAndGetEndCursor(ExpertLoopState &dispatchState,
+                                                                  GMMAddrInfo &dispatchAddrInfo,
+                                                                  ExpertRowCursor &dispatchCursor,
+                                                                  const DispatchBufferConfig &bufferConfig);
     __aicore__ inline void MetaInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo, int32_t localExpertId,
                                                   const DispatchBufferConfig &bufferConfig);
     template <AddrUpdateMode Mode>
@@ -125,6 +137,11 @@ private:
     __aicore__ inline void UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
     template <AddrUpdateMode Mode>
     __aicore__ inline void UpdateSharedGlobalBuffer(GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
+    __aicore__ inline ExpertLoopState BuildExpertSegmentState(const ExpertLoopState &fullExpertState,
+                                                              uint32_t segmentStartRow,
+                                                              uint32_t segmentRowCount);
+    __aicore__ inline bool IsSameExpertRowCursor(const ExpertRowCursor &currentCursor,
+                                                 const ExpertRowCursor &targetCursor) const;
     __aicore__ inline void Unpermute();
     __aicore__ inline UnpermuteBufferConfig UnpermuteBuffInit();
     __aicore__ inline void UnpermuteLoadWeights(int32_t coreOffset, int32_t batchTokenOffset, int32_t batchTokenCount,
@@ -151,10 +168,11 @@ private:
     __aicore__ inline void ProcessCombineGm(GM_ADDR gmm2OutGlobal, uint32_t tokenStart, uint32_t tokenCount,
                                             uint32_t metaInfoUbTokenOffset,
                                             const CombineBufferConfig &bufferConfig, uint32_t &rowSequence);
-    __aicore__ inline void ProcessGmm1Wave(uint32_t batchBegin, uint32_t batchEnd,
-                                           ExpertLoopState &gmm1State, GMMAddrInfo &gmm1AddrInfo,
-                                           int32_t &vecSetSyncCom);
-    __aicore__ inline void ProcessGmm2Wave(uint32_t batchBegin, uint32_t batchEnd,
+    __aicore__ inline ExpertRowCursor ProcessGmm1Wave(ExpertRowCursor &gmm1Cursor,
+                                                      ExpertLoopState &gmm1State,
+                                                      GMMAddrInfo &gmm1AddrInfo, int32_t &vecSetSyncCom);
+    __aicore__ inline void ProcessGmm2Wave(ExpertRowCursor &gmm2Cursor,
+                                           const ExpertRowCursor &waveEndCursor,
                                            ExpertLoopState &gmm2State, GMMAddrInfo &gmm2AddrInfo,
                                            int32_t &vecSetSyncCom);
     __aicore__ inline void ProcessCombineExperts(uint32_t batchBegin, uint32_t batchEnd,
@@ -214,7 +232,10 @@ private:
     uint32_t topK_ = 0;
     uint32_t rankId_ = 0;
     uint32_t worldSize_ = 0;
-    uint32_t expertsPerBatch_ = 1;
+    // 一个 256-row M 分组沿 GMM1 的 N 方向产生多少个调度任务。
+    uint32_t gmm1TilesPerMGroup_ = 1;
+    // 每个计算 Wave 固定消费的专家内 256-row 分组数。
+    uint32_t mGroupsPerWave_ = 1;
     int64_t hiddenDim_ = 0;
     uint64_t maxOutputSize_ = 0;
     uint16_t gmm1PingPongIdx_ = 0;
@@ -319,6 +340,9 @@ private:
     LocalTensor<bfloat16_t> topKWeightsBf16Tensor_; // Unpermute bf16 weight 搬运中转
 
     static constexpr uint32_t GMM1_TILE_M = MegaMoeImpl::L1_TILE_M_256;
+    // 保持两种模式相近的物理 GMM1 深度：非交织模式每核至少两个 gate/up 成对任务，
+    // 交织模式每核至少四个独立 N-tile 任务。
+    static constexpr uint32_t GMM1_MIN_TILE_TASKS_PER_CORE = GMM1_INTERLEAVED ? 4U : 2U;
     static constexpr uint32_t EPILOGUE_TILE_M =
         TopkWeightsPrefetch ? MegaMoeImpl::L1_TILE_M_128 : MegaMoeImpl::L1_TILE_M_256;
 
@@ -351,10 +375,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
     worldSize_ = tilingData->epWorldSize;
     moeExpertPerRank_ = tilingData->moeExpertPerRank;
     sharedExpertNum_ = tilingData->sharedExpertNum;
-    expertsPerBatch_ = tilingData->expertsPerBatch == 0U ? 1U : tilingData->expertsPerBatch;
-    if (expertsPerBatch_ > moeExpertPerRank_) {
-        expertsPerBatch_ = moeExpertPerRank_;
-    }
     blockNumPerRank_ = tilingData->blockNumPerEP;
     maxOutputSize_ = tilingData->maxOutputSize;
     // 与 WorkspaceInfo 构造里 flagDispatchToGmm1Ptr 的分配公式保持一致。
@@ -363,6 +383,17 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
     dispatchFlagSlotsPerExpert_ = maxWavesPerExpert_ * INT_CACHELINE;
     swigluFlagSlotsPerExpert_ = dispatchFlagSlotsPerExpert_;
     hiddenDim_ = tilingData->hiddenDim;
+    // 必须与 GroupMatmul 实际使用的 schedulerN 一致：非交织模式的一个任务成对处理 gate/up，
+    // 调度宽度取输出宽度的一半；交织模式沿完整的 GMM1 输出宽度调度。
+    uint32_t gmm1SchedulerWidth = GMM1_INTERLEAVED ? static_cast<uint32_t>(hiddenDim_) :
+                                                     static_cast<uint32_t>(hiddenDim_) / SWIGLU_N_HALF;
+    // 一个 M 分组分别产生 gmm1TilesPerMGroup_ 和 gmm2TilesPerMGroup 个任务。
+    // mGroupsPerWave_ 取两级铺核需求的较大值，使同一个 Wave 同时满足 GMM1 流水深度
+    // 和 GMM2 全核覆盖需求。
+    gmm1TilesPerMGroup_ = Ops::Base::CeilDiv(gmm1SchedulerWidth, MegaMoeImpl::L1_TILE_N);
+    uint32_t gmm2TilesPerMGroup = Ops::Base::CeilDiv(k_, MegaMoeImpl::L1_TILE_N);
+    mGroupsPerWave_ = MegaMoeImpl::GetMGroupsPerWave(
+        blockNum_, gmm1TilesPerMGroup_, gmm2TilesPerMGroup, GMM1_MIN_TILE_TASKS_PER_CORE);
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
     rankId_ = mc2Context_->epRankId;
     for (int i = 0; i < worldSize_; i++) {
@@ -991,40 +1022,72 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::SendCntCal(int3
     AscendC::AtomicAdd(sendCntFlag, static_cast<int32_t>(1));
 }
 
-// AIV1 专职执行 dispatch。将状态推进集中在此函数中，保证滚动调度器对每个专家只推进一次 dispatch 游标。
+// AIV1 专职执行 Dispatch。SendCntCal 得到当前专家的完整行数，UpdateGroupParams 将完整专家状态
+// 推进一次，随后一次性发送该专家的全部数据；后续计算 Wave 即使切开该专家也不会重复进入这里。
 template <TemplateMegaMoeWaveTypeClass>
-__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchExpert(
-    ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx,
+__aicore__ inline uint64_t MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchExpert(
+    ExpertLoopState &dispatchState, GMMAddrInfo &dispatchAddrInfo, uint32_t expertIdx,
+    const DispatchBufferConfig &bufferConfig)
+{
+    uint64_t expertTokenCount = 0;
+    if constexpr (g_coreType == AIV) {
+        if (subBlockIdx_ != 1) {
+            return expertTokenCount;
+        }
+        SendCntCal(static_cast<int32_t>(expertIdx), expertTokenCount);
+        if (UpdateGroupParams<AddrUpdateMode::GMM1>(dispatchState, expertIdx, expertTokenCount)) {
+            UpdateGlobalBuffer<AddrUpdateMode::GMM1>(dispatchAddrInfo, dispatchState);
+            MetaInfoCalAndDispatch(dispatchAddrInfo, static_cast<int32_t>(expertIdx), bufferConfig);
+        }
+    }
+    return expertTokenCount;
+}
+
+// AIV1 仍按完整专家执行一次 Dispatch，但 Wave 游标按专家内 256-row 分组前进。这里计算的是
+// 计算流水的逻辑终点，不是实际通信的数据终点：热点专家首次进入时已被完整发送，跨 Wave 后
+// 仅推进其余行的逻辑游标，不会重复 SendCntCal 或 Dispatch。
+template <TemplateMegaMoeWaveTypeClass>
+__aicore__ inline typename MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ExpertRowCursor
+MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
+    ExpertLoopState &dispatchState, GMMAddrInfo &dispatchAddrInfo, ExpertRowCursor &dispatchCursor,
     const DispatchBufferConfig &bufferConfig)
 {
     if constexpr (g_coreType == AIV) {
         if (subBlockIdx_ != 1) {
-            return;
+            return dispatchCursor;
         }
-        uint64_t sendCnt = 0;
-        SendCntCal(static_cast<int32_t>(expertIdx), sendCnt);
-        if (UpdateGroupParams<AddrUpdateMode::GMM1>(state, expertIdx, sendCnt)) {
-            UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmmAddrInfo, state);
-            MetaInfoCalAndDispatch(gmmAddrInfo, static_cast<int32_t>(expertIdx), bufferConfig);
-        }
-    }
-}
 
-// 推进 AIV1 的 dispatch 流，确保区间 [nextDispatchExpert, dispatchEnd) 内每个专家只处理一次；
-// 其他核角色不维护 dispatch 状态。
-template <TemplateMegaMoeWaveTypeClass>
-__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchExpertsUntil(
-    ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t &nextDispatchExpert,
-    uint32_t dispatchEnd, const DispatchBufferConfig &bufferConfig)
-{
-    if constexpr (g_coreType == AIV) {
-        if (subBlockIdx_ != 1) {
-            return;
-        }
-        for (; nextDispatchExpert < dispatchEnd; ++nextDispatchExpert) {
-            DispatchExpert(state, gmmAddrInfo, nextDispatchExpert, bufferConfig);
+        // 该计数器只统计本次调用规划的分组数；达到 mGroupsPerWave_ 后，
+        // dispatchCursor 即为当前 Wave 的半开终点。
+        uint32_t plannedMGroupCount = 0U;
+        while (dispatchCursor.expertIdx < moeExpertPerRank_ && plannedMGroupCount < mGroupsPerWave_) {
+            if (dispatchCursor.rowOffsetInExpert == 0U) {
+                // 仅首次进入专家时发送完整专家；专家中部续接时 dispatchState 仍保留完整 M 和基址。
+                DispatchExpert(dispatchState, dispatchAddrInfo, dispatchCursor.expertIdx, bufferConfig);
+            }
+
+            uint64_t expertRowCount = Get<M_VALUE>(dispatchState.problemShape);
+            if (expertRowCount == 0U || dispatchCursor.rowOffsetInExpert >= expertRowCount) {
+                // 零行专家不占用分组预算；统一规范化为下一个专家的第 0 行，避免原地循环。
+                ++dispatchCursor.expertIdx;
+                dispatchCursor.rowOffsetInExpert = 0U;
+                continue;
+            }
+
+            // 只规划能放入当前 Wave 剩余 M 分组预算的连续行段；这里不再触发任何数据发送。
+            uint32_t remainingMGroupCount = mGroupsPerWave_ - plannedMGroupCount;
+            uint32_t segmentRowCount = MegaMoeImpl::GetWaveSegmentRowCount(
+                expertRowCount, dispatchCursor.rowOffsetInExpert, remainingMGroupCount, GMM1_TILE_M);
+            plannedMGroupCount += MegaMoeImpl::GetMGroupCountForRows(segmentRowCount, GMM1_TILE_M);
+            dispatchCursor.rowOffsetInExpert += segmentRowCount;
+            if (dispatchCursor.rowOffsetInExpert >= expertRowCount) {
+                // 专家尾统一表示成 (nextExpert, 0)，使 Wave 终点始终指向下一行尚未规划的数据。
+                ++dispatchCursor.expertIdx;
+                dispatchCursor.rowOffsetInExpert = 0U;
+            }
         }
     }
+    return dispatchCursor;
 }
 
 // ============================================================================
@@ -1432,6 +1495,53 @@ __aicore__ inline bool MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UpdateSharedGro
 }
 
 // ==================================================================================
+// BuildExpertSegmentState：从完整专家状态构造一个连续行段。权重地址保持在当前专家，
+// 只有所有按 M 展开的输入、输出、元数据和每 256 行标志位视图随 segmentStartRow 平移。
+// ==================================================================================
+template <TemplateMegaMoeWaveTypeClass>
+__aicore__ inline typename MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ExpertLoopState
+MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::BuildExpertSegmentState(
+    const ExpertLoopState &fullExpertState, uint32_t segmentStartRow, uint32_t segmentRowCount)
+{
+    ExpertLoopState expertSegmentState = fullExpertState;
+    uint64_t outputWidth = Get<N_VALUE>(expertSegmentState.problemShape);
+    uint64_t inputWidth = Get<K_VALUE>(expertSegmentState.problemShape);
+    uint64_t inputScaleWidth =
+        Ops::Base::CeilDiv(inputWidth, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+    uint64_t swigluOutputWidth = outputWidth / SWIGLU_N_HALF;
+    uint64_t swigluScaleWidth =
+        Ops::Base::CeilDiv(swigluOutputWidth, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+
+    // 先把专家内行号换算到全局 token 行和专家内分组号，供元数据与同步槽寻址。
+    expertSegmentState.expertBeforeCnt += segmentStartRow;
+    expertSegmentState.expertMGroupOffset = segmentStartRow / GMM1_TILE_M;
+    Get<M_VALUE>(expertSegmentState.problemShape) = segmentRowCount;
+    // A、C、Y 和两级 GMM 临时输出都按 M 连续展开，只移动这些行相关视图。
+    // B/B2 及其 scale 不做平移，因为该行段仍复用当前专家的两级权重。
+    Get<IDX_A_OFFSET>(expertSegmentState.baseOffset) += static_cast<uint64_t>(segmentStartRow) * inputWidth;
+    Get<IDX_A_SCALE_OFFSET>(expertSegmentState.baseOffset) +=
+        static_cast<uint64_t>(segmentStartRow) * inputScaleWidth;
+    Get<IDX_C_OFFSET>(expertSegmentState.baseOffset) +=
+        static_cast<uint64_t>(segmentStartRow) * swigluOutputWidth;
+    Get<IDX_C_SCALE_OFFSET>(expertSegmentState.baseOffset) +=
+        static_cast<uint64_t>(segmentStartRow) * swigluScaleWidth;
+    Get<IDX_Y2_OFFSET>(expertSegmentState.baseOffset) += static_cast<uint64_t>(segmentStartRow) * inputWidth;
+    Get<IDX_M_OFFSET>(expertSegmentState.baseOffset) += segmentStartRow;
+    Get<IDX_GMM1_OFFSET>(expertSegmentState.baseOffset) += static_cast<uint64_t>(segmentStartRow) * outputWidth;
+    Get<IDX_GMM2_OFFSET>(expertSegmentState.baseOffset) += static_cast<uint64_t>(segmentStartRow) * inputWidth;
+    return expertSegmentState;
+}
+
+template <TemplateMegaMoeWaveTypeClass>
+__aicore__ inline bool MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::IsSameExpertRowCursor(
+    const ExpertRowCursor &currentCursor, const ExpertRowCursor &targetCursor) const
+{
+    // expertIdx 相同但 rowOffsetInExpert 不同仍表示同一热点专家内的不同处理进度。
+    return currentCursor.expertIdx == targetCursor.expertIdx &&
+           currentCursor.rowOffsetInExpert == targetCursor.rowOffsetInExpert;
+}
+
+// ==================================================================================
 // UpdateGlobalBuffer：更新当前 expert 的 GMM 地址视图。
 // ==================================================================================
 template <TemplateMegaMoeWaveTypeClass>
@@ -1457,7 +1567,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UpdateGlobalBuf
             AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
                 Get<IDX_C_OFFSET>(state.baseOffset),
                 Get<IDX_C_SCALE_OFFSET>(state.baseOffset),
-                Get<IDX_FLAG_OFFSET>(state.baseOffset) * swigluFlagSlotsPerExpert_ / INT_CACHELINE,
+                Get<IDX_FLAG_OFFSET>(state.baseOffset) * swigluFlagSlotsPerExpert_ / INT_CACHELINE +
+                    state.expertMGroupOffset,
                 0L,
                 0L,
                 0L};
@@ -1474,11 +1585,16 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::UpdateGlobalBuf
         gmmAddrInfo.bScaleGlobal =
             params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
     }
+    // 分段调用内的 tile/flag 下标会重新从 0 开始，必须加上专家内分组偏移，
+    // 才能继续访问完整专家预留区中与当前行段对应的状态槽。
+    gmmAddrInfo.gmm1TileOffsetInExpert = state.expertMGroupOffset * gmm1TilesPerMGroup_;
     gmmAddrInfo.swigluToGmm2Flag = (__gm__ int32_t *)params_.workspaceInfo.flagSwiGluToGmm2Ptr +
-                                   Get<IDX_FLAG_OFFSET>(state.baseOffset) * swigluFlagSlotsPerExpert_;
+                                   Get<IDX_FLAG_OFFSET>(state.baseOffset) * swigluFlagSlotsPerExpert_ +
+                                   state.expertMGroupOffset * INT_CACHELINE;
     // wave 流水中的每个 ready flag 独占一条 64B cache line，避免不同核轮询时发生伪共享。
     gmmAddrInfo.dispatchToGmm1Flag = (__gm__ int32_t *)params_.workspaceInfo.flagDispatchToGmm1Ptr +
-                                     Get<IDX_FLAG_OFFSET>(state.baseOffset) * dispatchFlagSlotsPerExpert_;
+                                     Get<IDX_FLAG_OFFSET>(state.baseOffset) * dispatchFlagSlotsPerExpert_ +
+                                     state.expertMGroupOffset * INT_CACHELINE;
 }
 
 // ==================================================================================
@@ -2107,7 +2223,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulWith
         AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
             Get<IDX_C_OFFSET>(state.baseOffset),
             Get<IDX_C_SCALE_OFFSET>(state.baseOffset),
-            Get<IDX_FLAG_OFFSET>(state.baseOffset) * swigluFlagSlotsPerExpert_ / INT_CACHELINE,
+            Get<IDX_FLAG_OFFSET>(state.baseOffset) * swigluFlagSlotsPerExpert_ / INT_CACHELINE +
+                state.expertMGroupOffset,
             0L,
             0L,
             0L};
@@ -2171,36 +2288,71 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulGmm2
 }
 
 // ==================================================================================
-// ProcessGmm1Wave：AIC/AIV0 执行 GMM1/SwiGLU 调度；AIV1 专职 dispatch/combine，
-// 不参与 GMM 调度及其虚拟 tile 轮转。
+// ProcessGmm1Wave：消费 mGroupsPerWave_ 个专家内 256-row 分组。一个 Wave 可以在专家内部结束；
+// 同一专家落在当前 Wave 的连续分组合并成一个行段，只建立并执行一次 GMM problem。
 // ==================================================================================
 template <TemplateMegaMoeWaveTypeClass>
-__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave(
-    uint32_t batchBegin, uint32_t batchEnd, ExpertLoopState &gmm1State,
-    GMMAddrInfo &gmm1AddrInfo, int32_t &vecSetSyncCom)
+__aicore__ inline typename MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ExpertRowCursor
+MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave(
+    ExpertRowCursor &gmm1Cursor, ExpertLoopState &gmm1State, GMMAddrInfo &gmm1AddrInfo,
+    int32_t &vecSetSyncCom)
 {
     if constexpr (g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
-            return;
+            return gmm1Cursor;
         }
     }
-    for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
-        if (!UpdateGroupParams<AddrUpdateMode::GMM1>(gmm1State, expertIdx)) {
+
+    // processedMGroupCount 每次调用从 0 开始，表示当前 Wave 已实际执行的分组数。
+    uint32_t processedMGroupCount = 0U;
+    while (gmm1Cursor.expertIdx < moeExpertPerRank_ && processedMGroupCount < mGroupsPerWave_) {
+        if (gmm1Cursor.rowOffsetInExpert == 0U) {
+            // 完整专家状态只在专家入口推进一次。热点专家跨 Wave 时继续复用该状态，
+            // 防止权重地址和前序专家累计行数被重复推进。
+            UpdateGroupParams<AddrUpdateMode::GMM1>(gmm1State, gmm1Cursor.expertIdx);
+        }
+
+        uint64_t expertRowCount = Get<M_VALUE>(gmm1State.problemShape);
+        if (expertRowCount == 0U || gmm1Cursor.rowOffsetInExpert >= expertRowCount) {
+            // 零行专家不生成 GMM problem，也不消耗本轮 M 分组预算；直接规范化到下一个专家。
+            ++gmm1Cursor.expertIdx;
+            gmm1Cursor.rowOffsetInExpert = 0U;
             continue;
         }
-        UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, gmm1State);
+
+        // 在“当前专家剩余行”和“当前 Wave 剩余 M 分组数 × 256 行”之间取较小值。
+        // 不同专家不能共享权重，因此跨专家时会分别生成行段和 GMM problem。
+        uint32_t remainingMGroupCount = mGroupsPerWave_ - processedMGroupCount;
+        uint32_t segmentRowCount = MegaMoeImpl::GetWaveSegmentRowCount(
+            expertRowCount, gmm1Cursor.rowOffsetInExpert, remainingMGroupCount, GMM1_TILE_M);
+        // expertSegmentState 只平移当前行段的 M 向地址；gmm1State 继续保存完整专家状态。
+        ExpertLoopState expertSegmentState =
+            BuildExpertSegmentState(gmm1State, gmm1Cursor.rowOffsetInExpert, segmentRowCount);
+        UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, expertSegmentState);
         GroupMatmulWithSwigluQuant(
-            epilogueOp_, gmm1AddrInfo, gmm1State, expertIdx, vecSetSyncCom);
+            epilogueOp_, gmm1AddrInfo, expertSegmentState, gmm1Cursor.expertIdx, vecSetSyncCom);
+
+        // 行段可能包含多个完整分组，也可能是专家尾部不足 256 行的单个分组。
+        processedMGroupCount += MegaMoeImpl::GetMGroupCountForRows(segmentRowCount, GMM1_TILE_M);
+        gmm1Cursor.rowOffsetInExpert += segmentRowCount;
+        if (gmm1Cursor.rowOffsetInExpert >= expertRowCount) {
+            // 专家结束位置统一写成 (nextExpert, 0)，否则保留 (expert, nextRow) 供下一 Wave 续接。
+            ++gmm1Cursor.expertIdx;
+            gmm1Cursor.rowOffsetInExpert = 0U;
+        }
     }
+    // 返回值采用半开区间语义，表示当前 Wave 之后第一行尚未处理的数据位置。
+    return gmm1Cursor;
 }
 
 // ==================================================================================
-// ProcessGmm2Wave：AIC 计算当前 wave 的全部专家；AIV0 只推进与 AIC 对齐的虚拟 GMM2 调度游标，
-// 使下一轮 GMM1/SwiGLU 的核归属保持一致。AIV1 专职 dispatch/combine，不参与两级 GMM 调度。
+// ProcessGmm2Wave：按 GMM1 已确定的 Wave 终点重放完全相同的行段范围，
+// 不再独立计算每个 Wave 的 M 分组数。
+// 只有专家最后一个行段完成后才发布专家 ready，Combine 因此仍保持完整专家粒度。
 // ==================================================================================
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave(
-    uint32_t batchBegin, uint32_t batchEnd, ExpertLoopState &gmm2State,
+    ExpertRowCursor &gmm2Cursor, const ExpertRowCursor &waveEndCursor, ExpertLoopState &gmm2State,
     GMMAddrInfo &gmm2AddrInfo, int32_t &vecSetSyncCom)
 {
     if constexpr (g_coreType == AIV) {
@@ -2208,19 +2360,47 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
             return;
         }
     }
-    for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
-        if (!UpdateGroupParams<AddrUpdateMode::GMM2>(gmm2State, expertIdx)) {
+
+    // gmm2Cursor 是 GMM2 自己的持久进度；waveEndCursor 是本轮 GMM1 已完成范围的半开终点。
+    while (!IsSameExpertRowCursor(gmm2Cursor, waveEndCursor) &&
+           gmm2Cursor.expertIdx < moeExpertPerRank_) {
+        if (gmm2Cursor.rowOffsetInExpert == 0U) {
+            // 与 GMM1 相同，完整专家状态只在进入专家时推进一次。
+            UpdateGroupParams<AddrUpdateMode::GMM2>(gmm2State, gmm2Cursor.expertIdx);
+        }
+
+        uint64_t expertRowCount = Get<M_VALUE>(gmm2State.problemShape);
+        if (expertRowCount == 0U || gmm2Cursor.rowOffsetInExpert >= expertRowCount) {
+            // 零行专家没有 GMM2 和 ready 发布需求，直接跳到下一个专家。
+            ++gmm2Cursor.expertIdx;
+            gmm2Cursor.rowOffsetInExpert = 0U;
             continue;
         }
-        UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, gmm2State);
-        GroupMatmulGmm2(gmm2AddrInfo, gmm2State, vecSetSyncCom);
-        PublishGmm2Ready(expertIdx);
+
+        // waveEndCursor 落在当前热点专家内部时只重放到指定行；此前完整专家都重放到专家尾。
+        uint32_t segmentEndRowOffset = static_cast<uint32_t>(expertRowCount);
+        if (gmm2Cursor.expertIdx == waveEndCursor.expertIdx) {
+            segmentEndRowOffset = waveEndCursor.rowOffsetInExpert;
+        }
+        uint32_t segmentRowCount = segmentEndRowOffset - gmm2Cursor.rowOffsetInExpert;
+        ExpertLoopState expertSegmentState =
+            BuildExpertSegmentState(gmm2State, gmm2Cursor.rowOffsetInExpert, segmentRowCount);
+        UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, expertSegmentState);
+        GroupMatmulGmm2(gmm2AddrInfo, expertSegmentState, vecSetSyncCom);
+
+        gmm2Cursor.rowOffsetInExpert = segmentEndRowOffset;
+        if (gmm2Cursor.rowOffsetInExpert >= expertRowCount) {
+            // 只有完整专家的全部 GMM2 行可见后才通知 AIV1，部分热点专家不能提前 Combine。
+            PublishGmm2Ready(gmm2Cursor.expertIdx);
+            ++gmm2Cursor.expertIdx;
+            gmm2Cursor.rowOffsetInExpert = 0U;
+        }
     }
 }
 
 // ==================================================================================
-// ProcessCombineExperts：GMM2-ready 扇入完成后，AIV1 消费一个路由专家 wave。
-// token 分核、metaInfo 分批和行环形缓冲区均封装在此，使主调度函数只描述阶段顺序。
+// ProcessCombineExperts：GMM2 ready 扇入完成后，AIV1 消费一段完整专家区间。
+// token 分核、元数据分批和行环形缓冲区均封装在此，使主调度函数只描述阶段顺序。
 // ==================================================================================
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineExperts(
@@ -2272,10 +2452,10 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessCombineE
 
 // ==================================================================================
 // 路由专家滚动流水：
-//   AIC  ：GMM1(B) -> GMM2(B) 直写 GM -> GMM1(B+1)
-//   AIV0 ：SwiGLU(B) -> SwiGLU(B+1)，不进入 Combine 或 GMM2-ready
-//   AIV1 ：完整预取 Dispatch(B+1)，再按需量化并执行 Combine(B)
-// 不设置批次级全局 barrier；每个 wave 仅依靠已有的 dispatch/SwiGLU 依赖和专家粒度 GMM2-ready 扇入推进。
+//   AIC  ：GMM1(分组 Wave B) -> GMM2(分组 Wave B) -> B+1
+//   AIV0 ：与 AIC 对齐执行 SwiGLU，并虚拟推进 GMM2 的分核起点
+//   AIV1 ：完整预取分组 Wave B+1 的 Dispatch，再 Combine 已完成的完整专家
+// Wave 边界只由 mGroupsPerWave_ 决定，可以落在热点专家内部；不新增全局屏障。
 // ==================================================================================
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedExpertWaves(
@@ -2290,48 +2470,69 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessRoutedEx
     Get<N_VALUE>(initShape) = hiddenDim_;
     Get<K_VALUE>(initShape) = k_;
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    ExpertLoopState dispatchState{initShape, initOffset, 0};
-    ExpertLoopState gmm1State{initShape, initOffset, 0};
-    ExpertLoopState gmm2State{initShape, initOffset, 0};
-    ExpertLoopState combineState{initShape, initOffset, 0};
+    ExpertLoopState dispatchState{initShape, initOffset, 0, 0};
+    ExpertLoopState gmm1State{initShape, initOffset, 0, 0};
+    ExpertLoopState gmm2State{initShape, initOffset, 0, 0};
+    ExpertLoopState combineState{initShape, initOffset, 0, 0};
 
-    const uint32_t expertsPerWave = expertsPerBatch_;
+    // 四条流水分别维护自己的进度，避免 AIV1 的提前 Dispatch 推动 AIC/AIV0 的矩阵地址状态。
+    // dispatchCursor、gmm1Cursor、gmm2Cursor 都表示下一行尚未处理的位置，
+    // 三者按同一专家行数和 mGroupsPerWave_ 独立计算终点。
+    ExpertRowCursor waveBeginCursor{};
+    ExpertRowCursor dispatchCursor{};
+    ExpertRowCursor gmm1Cursor{};
+    ExpertRowCursor gmm2Cursor{};
+    // AIV1 会在当前 Combine 前先规划并完整 Dispatch 下一 Wave，稳态直接复用这个缓存终点。
+    ExpertRowCursor preparedWaveEndCursor{};
+    bool hasPreparedWave = false;
+    // Combine 仍按完整专家推进，因此只需保存第一个尚未 Combine 的专家编号。
+    uint32_t combineBeginExpertIndex = 0U;
+    while (waveBeginCursor.expertIdx < moeExpertPerRank_) {
+        // [waveBeginCursor, waveEndCursor) 是本轮两级 GMM 覆盖的半开行区间；终点允许落在专家中部。
+        ExpertRowCursor waveEndCursor = waveBeginCursor;
+        // 该变量记录物理 AIC 的 tile 轮转相位，不是 (expertIdx, rowOffsetInExpert) 数据游标。
+        const uint32_t waveStartBlockIndex = startBlockIdx_;
+        if constexpr (g_coreType == AIV) {
+            if (subBlockIdx_ == 1) {
+                // 首轮生成当前 Wave；稳态直接复用上一轮已完整 Dispatch 的终点。
+                if (hasPreparedWave) {
+                    waveEndCursor = preparedWaveEndCursor;
+                } else {
+                    waveEndCursor = DispatchWaveAndGetEndCursor(
+                        dispatchState, dispatchAddrInfo, dispatchCursor, dispatchBufferConfig);
+                }
+                // Dispatch 与 Combine 复用 UB，进入 Combine 前仍完整预取下一分组 Wave。
+                preparedWaveEndCursor = DispatchWaveAndGetEndCursor(
+                    dispatchState, dispatchAddrInfo, dispatchCursor, dispatchBufferConfig);
+                hasPreparedWave = true;
+            } else {
+                waveEndCursor = ProcessGmm1Wave(gmm1Cursor, gmm1State, gmm1AddrInfo, vecSetSyncCom);
+            }
+        } else {
+            waveEndCursor = ProcessGmm1Wave(gmm1Cursor, gmm1State, gmm1AddrInfo, vecSetSyncCom);
+        }
+        const uint32_t gmm1EndBlockIndex = startBlockIdx_;
 
-    uint32_t nextDispatchExpert = 0U;
-    uint32_t currentWaveExpertNum = 0U;
-    for (uint32_t batchBegin = 0U; batchBegin < moeExpertPerRank_;
-         batchBegin += currentWaveExpertNum) {
-        currentWaveExpertNum =
-            MegaMoeImpl::GetWaveExpertCount(batchBegin, moeExpertPerRank_, expertsPerWave);
-        const uint32_t batchEnd = batchBegin + currentWaveExpertNum;
-        const uint32_t waveBeginCursor = startBlockIdx_;
-
-        // AIV1 在 Combine(B) 前连续完成当前 wave 与下一 wave 的 dispatch，因为 dispatch 与 combine
-        // 复用同一片 UB 和事件资源。进入稳态后，游标会跳过已预取的当前 wave，只处理新出现的下一 wave。
-        const uint32_t nextWaveExpertNum =
-            MegaMoeImpl::GetWaveExpertCount(batchEnd, moeExpertPerRank_, expertsPerWave);
-        const uint32_t nextBatchEnd = batchEnd + nextWaveExpertNum;
-        DispatchExpertsUntil(
-            dispatchState, dispatchAddrInfo, nextDispatchExpert, nextBatchEnd, dispatchBufferConfig);
-
-        ProcessGmm1Wave(
-            batchBegin, batchEnd, gmm1State, gmm1AddrInfo, vecSetSyncCom);
-        const uint32_t gmm1EndCursor = startBlockIdx_;
-
-        ProcessGmm2Wave(batchBegin, batchEnd, gmm2State, gmm2AddrInfo, vecSetSyncCom);
+        ProcessGmm2Wave(gmm2Cursor, waveEndCursor, gmm2State, gmm2AddrInfo, vecSetSyncCom);
         // AIC 与 AIV0 共同推进真实/虚拟 GMM tile 游标。若完整 wave 执行后游标回到入口位置，但 GMM1
         // 结束游标不同，说明 GMM2 恰好抵消了 GMM1 的核归属余数；下一 wave 的两级 GMM 会固定到同一组
         // 物理核。此时恢复到 GMM1 结束游标，可保留当前 wave 内的 GMM1->GMM2 映射，仅改变下一 wave
         // 的核归属相位。AIV1 跳过两级 GMM 调度，其本地游标不会触发该条件。
-        const bool hasNextWave = batchEnd < moeExpertPerRank_;
-        const bool fixedRoleResonance =
-            startBlockIdx_ == waveBeginCursor && gmm1EndCursor != waveBeginCursor;
-        if (hasNextWave && fixedRoleResonance) {
-            startBlockIdx_ = gmm1EndCursor;
+        const bool hasNextWave = waveEndCursor.expertIdx < moeExpertPerRank_;
+        const bool wouldRepeatSameCoreAssignment =
+            startBlockIdx_ == waveStartBlockIndex && gmm1EndBlockIndex != waveStartBlockIndex;
+        if (hasNextWave && wouldRepeatSameCoreAssignment) {
+            startBlockIdx_ = gmm1EndBlockIndex;
         }
 
+        // waveEndCursor.expertIdx 之前的专家已经完成最后一个 GMM2 行段；若终点位于
+        // 某热点专家内部，该专家保留到后续 Wave 完成后再整体 Combine。
+        uint32_t combineEndExpertIndex = waveEndCursor.expertIdx;
         ProcessCombineExperts(
-            batchBegin, batchEnd, combineState, combineAddrInfo, combineBufferConfig);
+            combineBeginExpertIndex, combineEndExpertIndex, combineState, combineAddrInfo, combineBufferConfig);
+        combineBeginExpertIndex = combineEndExpertIndex;
+        // 当前 Wave 的半开终点就是下一 Wave 的起点。
+        waveBeginCursor = waveEndCursor;
     }
 
     // 非预取路径仍有一次 AIC->AIV0 的 UB 消费确认需要回收；预取路径改用逐 tile 的 GM 状态位。
