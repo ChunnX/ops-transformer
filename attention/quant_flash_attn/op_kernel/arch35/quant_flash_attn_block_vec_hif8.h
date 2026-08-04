@@ -69,13 +69,13 @@ public:
     static constexpr bool isFp8 = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                   IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr uint32_t DB = 2;
-    static constexpr uint32_t PRELOAD_N = 2;
+    static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C2
     static constexpr uint32_t s2SplitSize = 256U;
     static constexpr uint32_t MXFP_GROUP_SIZE = 32U;
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
 
-    static constexpr uint32_t initOutputEventId = 0U;
+    static constexpr uint32_t initOutputEventId = 0U; // attenOut和lse，刷无效行会用到剩余ub，需加同步
 
     static constexpr ActualSeqLensMode Q_MODE = GetQActSeqMode<layout>();
     static constexpr MaskFormat MASK_LAYOUT = MaskFormat::SG;
@@ -85,7 +85,7 @@ public:
     static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value &&
                                        !IsSameType<OUTPUT_T, float>::value;
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0;
-    uint32_t negativeIntScalar__ = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
+    uint32_t negativeIntScalar_ = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
 
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
 
@@ -110,24 +110,21 @@ public:
                                   ActualSeqLensParser<Q_MODE, int32_t>>::type;
     QSeqParserType *qActSeqLensParser_ = nullptr;
 
-    __aicore__ inline void SetCuSeqLensParser(QSeqParserType &qParser)
-    {
-        this->qActSeqLensParser_ = &qParser;
-    }
+    __aicore__ inline void SetCuSeqLensParser(QSeqParserType &qParser) { this->qActSeqLensParser_ = &qParser; }
 
     attenMaskGmType attenMaskGmInt_;
     flashdecodeGmType accumOutGm_;
     flashdecodeGmType softmaxFDSumGm_;
     flashdecodeGmType softmaxFDMaxGm_;
 
-    TBuf<> commonTBuf_;
+    TBuf<> commonTBuf_; // common的复用空间
     // ub
     TQue<QuePosition::VECOUT, 1> stage1OutQue_[2];
     TQue<QuePosition::VECOUT, 1> pScaleSubLoop0Que_;
     TQue<QuePosition::VECIN, 1> attenMaskInQue_[2];
     TBuf<> stage2OutBuf_;
-    TEventID mte3ToVId_[2];
-    TEventID vToMte3Id_[2];
+    TEventID mte3ToVId_[2]; // 存放MTE3_V的eventId, 2份表示可能存在pingpong
+    TEventID vToMte3Id_[2]; // 存放V_MTE3的eventId, 2份表示可能存在pingpong
     TBuf<> softmaxMaxBuf_[PRELOAD_N + 1];
     TBuf<> softmaxSumBuf_[PRELOAD_N + 1];
     TBuf<> softmaxExpBuf_[PRELOAD_N + 1];
@@ -146,11 +143,11 @@ public:
 
     const ConstInfoX &constInfo_;
     T negativeFloatScalar_;
-    float pScaleValue_ { 1.0f };
-    float descaleQKValue_ { 1.0f };
-    float vScaleValue_ { 1.0f };
-    bool isSkipMask_ { false };
-    uint32_t minValue_ { NEGATIVE_MIN_VALUE_FP32 };
+    float pScaleValue_{1.0f};
+    float descaleQKValue_{1.0f};
+    float vScaleValue_{1.0f};
+    bool isSkipMask_{false};
+    uint32_t minValue_{NEGATIVE_MIN_VALUE_FP32};
 
     __aicore__ inline QuantFlashAttnBlockVecHif8(ConstInfoX &constInfo) : constInfo_(constInfo){};
 
