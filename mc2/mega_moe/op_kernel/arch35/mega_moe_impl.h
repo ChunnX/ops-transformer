@@ -279,6 +279,30 @@ struct WorkSetGeneric {
     const LayoutBundle &layouts;
 };
 
+// 仅对完整落在一个 M tile 内、后续不再复用同一专家权重的问题使用 streaming 读取。
+// B 与 scaleB 的物理步长约束不同，必须分别选择 cache mode：ND B 的 K 维按
+// 256 logical elements 对齐可同时覆盖 FP8/packed FP4，scaleB 则要求行跨度满足 128B。
+template <bool IsWeightNz, typename MatmulConfig, typename TensorB, typename TensorScaleB>
+__aicore__ inline void SetWaveWeightL2CacheHint(const typename MatmulConfig::ProblemConfig &config,
+                                                bool allowWeightL2Bypass, TensorB &gmB, TensorScaleB &gmScaleB)
+{
+    constexpr uint64_t cacheLineBytes = 128U;
+    bool streamWeightOnce = allowWeightL2Bypass && config.m <= config.tileM;
+
+    bool bypassWeightL2 = streamWeightOnce;
+    if constexpr (!IsWeightNz) {
+        bypassWeightL2 = bypassWeightL2 && config.k % 256U == 0U;
+    }
+    gmB.SetL2CacheHint(
+        bypassWeightL2 ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
+
+    uint64_t scaleNStrideBytes = static_cast<uint64_t>(config.n) * MatmulConfig::C0_SIZE_SCALE *
+                                 sizeof(typename MatmulConfig::ElementMxScaleBType);
+    bool bypassScaleL2 = streamWeightOnce && scaleNStrideBytes % cacheLineBytes == 0U;
+    gmScaleB.SetL2CacheHint(
+        bypassScaleL2 ? Te::CacheMode::CACHE_MODE_DISABLE : Te::CacheMode::CACHE_MODE_NORMAL);
+}
+
 template <typename Policy, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false,
           uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false, bool IsShared = false,
@@ -288,7 +312,8 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
                                               const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                               const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                               const BlockJobContext &blockJob, ExtraArgs &args,
-                                              PersistentContext *persistentContext = nullptr)
+                                              PersistentContext *persistentContext = nullptr,
+                                              bool allowWeightL2Bypass = false)
 {
     using Config = Config<false, Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
                           ElementMxScaleB, IsWeightNZ, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsLayered,
@@ -333,6 +358,10 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
     auto gmScaleB = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ ElementMxScaleB *>(gmmAddrInfo.bScaleGlobal)),
         layouts.scaleB);
+    if constexpr (IsWaveFlagGrained && g_coreType == AscendC::AIC) {
+        Detail::SetWaveWeightL2CacheHint<IsWeightNZ, Config>(
+            config, allowWeightL2Bypass, gmB, gmScaleB);
+    }
     auto gmBias =
         Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(reinterpret_cast<__gm__ BiasType *>(0UL)), layouts.bias);
 
@@ -374,7 +403,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, const BlockJobContext &blockJob,
     uint32_t expertBeforeCnt, uint32_t expertIdx, uint16_t &pingpongIdx,
-    PersistentContext *persistentContext = nullptr)
+    PersistentContext *persistentContext = nullptr, bool allowWeightL2Bypass = false)
 {
     using SwigluQuantOpType = std::remove_reference_t<decltype(epilogueOp)>;
     Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{
@@ -382,7 +411,8 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     Detail::GroupMatmulImplGeneric<Detail::Gmm1Policy, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, false, Gmm1TileM, TopkWeightsPrefetch, IsShared,
                                    IsGmm1Interleaved, IsWaveFlagGrained>(
-        params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args, persistentContext);
+        params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args, persistentContext,
+        allowWeightL2Bypass);
 }
 
 template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
@@ -416,13 +446,15 @@ __aicore__ inline void GroupMatmul2(const Params &params,
                                     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
                                     const BlockJobContext &blockJob, uint32_t groupCnt, uint16_t &pingpongIdx,
-                                    PersistentContext *persistentContext = nullptr)
+                                    PersistentContext *persistentContext = nullptr,
+                                    bool allowWeightL2Bypass = false)
 {
     Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx};
     Detail::GroupMatmulImplGeneric<Detail::Gmm2Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared,
                                    IsGmm1Interleaved, IsWaveFlagGrained>(
-        params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args, persistentContext);
+        params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args, persistentContext,
+        allowWeightL2Bypass);
 }
 
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
