@@ -253,6 +253,20 @@ public:
         WaitFlag<HardEvent::MTE3_V>(stage1EventId);
         WaitFlag<HardEvent::MTE3_V>(MxStatic::PSCALE_EVENT_ID);
 
+        // The queue implementation used before the static-tensor conversion owned the complete lifetime of these
+        // two temporary buffers.  A raw LocalTensor keeps its previous contents across tasks.  The MX VF only
+        // overwrites the valid DN lanes; tail columns, tail rows and the DN reorder padding can therefore retain
+        // bytes from an earlier task.  CopyPToL1/CopyPScaleToL1 subsequently move the packed region as a whole, so
+        // those stale bytes are consumed as P or, more seriously, as an E8M0 exponent by C2.  This is why the
+        // failure follows physical cores and can be amplified by powers of two while LSE remains exact.
+        //
+        // Initialise the whole reusable regions before the VF writes the valid lanes.  E8M0 0x7f represents 1.0;
+        // it is the neutral scale for zero-filled P padding.  Both operations are on PIPE_V and are ordered after
+        // the MTE3->V free tokens above and before the V->MTE3 fences in the copy helpers below.
+        Duplicate<uint8_t>(stage1CastTensor.template ReinterpretCast<uint8_t>(), 0U, STAGE1_OUT_UB_SIZE);
+        Duplicate<uint8_t>(pScaleSubLoopTensor.template ReinterpretCast<uint8_t>(), 0x7fU,
+                           PSCALE_SUB_LOOP_UB_SIZE);
+
         const uint32_t s2CalcSize = GetSubLoopS2Size(runInfo, subLoop);
         LocalTensor<uint8_t> attenMaskUb;
         if constexpr (HAS_ATTEN) {

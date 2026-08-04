@@ -276,8 +276,11 @@ public:
             SetFlag<HardEvent::MTE2_MTE1>(vEventId);
             WaitFlag<HardEvent::MTE2_MTE1>(vEventId);
 
-            MMParam param =
-                MxMakeMMParam(M_BASE, constInfo.dSizeV, AlignUp64(realK), true, false, kIdx == 0U, kIdx == 0U);
+            // Restrict the M dimension for an S1 tail.  With raw static L1 buffers, rows outside actMSize are not
+            // producer-owned data and must not be loaded into the MX scale path.  Full 128-row tasks keep exactly
+            // the previous parameters.
+            MMParam param = MxMakeMMParam(M_BASE, constInfo.dSizeV, AlignUp64(realK), true, false, kIdx == 0U,
+                                          kIdx == 0U, 0U, runInfo.actMSize);
             // P 转置，V 保持 KN。
             MxStatic::MxMatmulFullStatic<INPUT_T, INPUT_T, MM_T, SCALE_T, SCALE_T, mx_fp8_e4m3_t,
                                          mx_fp8_e4m3_t>(pBuf.ReinterpretCast<INPUT_T>()[kIdx * l1BaseKOffset],
