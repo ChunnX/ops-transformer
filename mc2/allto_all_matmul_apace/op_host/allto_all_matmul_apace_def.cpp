@@ -27,23 +27,27 @@ public:
             .AutoContiguous();
         this->Input("x1")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN})
+            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("x2")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN})
+            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2})
             .FormatList({ge::FORMAT_ND})
             .IgnoreContiguous();
-        this->Input("bias").ParamType(OPTIONAL).DataType({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND}).AutoContiguous();
+        this->Input("bias")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("x1_scale")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E8M0})
+            .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("x2_scale")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E8M0})
+            .DataType({ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("comm_scale")
@@ -61,22 +65,25 @@ public:
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Output("y").ParamType(REQUIRED).DataType({ge::DT_BF16}).FormatList({ge::FORMAT_ND});
-        this->Output("all2all_out").ParamType(OPTIONAL).DataType({ge::DT_FLOAT8_E4M3FN}).FormatList({ge::FORMAT_ND});
+        this->Output("y").ParamType(REQUIRED).DataType({ge::DT_BF16, ge::DT_BF16}).FormatList({ge::FORMAT_ND});
+        this->Output("all2all_out")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2})
+            .FormatList({ge::FORMAT_ND});
         this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("world_size").AttrType(REQUIRED).Int();
         this->Attr("all2all_axes").AttrType(OPTIONAL).ListInt({-2, -1});
-        this->Attr("y_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_UNDEFINED));
+        this->Attr("y_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_BF16));
         this->Attr("x1_quant_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("x2_quant_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("comm_quant_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("x1_quant_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_UNDEFINED));
         this->Attr("comm_quant_dtype").AttrType(OPTIONAL).Int(static_cast<int64_t>(ge::DT_UNDEFINED));
         this->Attr("transpose_x1").AttrType(OPTIONAL).Bool(false);
-        this->Attr("transpose_x2").AttrType(OPTIONAL).Bool(false);
+        this->Attr("transpose_x2").AttrType(OPTIONAL).Bool(true);
         this->Attr("group_size").AttrType(OPTIONAL).Int(0);
         this->Attr("alltoall_out_flag").AttrType(OPTIONAL).Bool(true);
-        this->Attr("comm_mode").AttrType(OPTIONAL).String("ai_cpu");
+        this->Attr("comm_mode").AttrType(OPTIONAL).String("udma");
         this->Attr("precision_mode").AttrType(OPTIONAL).Int(0);
 
         this->MC2().HcclGroup("group");
