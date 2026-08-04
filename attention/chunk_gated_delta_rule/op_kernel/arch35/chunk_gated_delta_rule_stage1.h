@@ -18,6 +18,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "chunk_gated_delta_rule_utils.h"
 #include "../chunk_gated_delta_rule_tiling_data.h"
+#include "vf/chunk_gated_delta_rule_stage1_vf.h"
 
 namespace ChunkGatedDeltaRule {
 using namespace AscendC;
@@ -529,12 +530,23 @@ private:
         PipeBarrier<PIPE_V>();
 
         Muls(inverseRes_, attnUbFloat_, static_cast<float>(-1.0), curVecLen);
+        Duplicate(inverseBuffer_, static_cast<float>(0.0), INVERSE_SHAPE * chunkSize_);
         PipeBarrier<PIPE_V>();
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::V_S));
         SetFlag<HardEvent::V_S>(eventID);
         WaitFlag<HardEvent::V_S>(eventID);
+        for (uint32_t j = 0; j < INVERSE_SHAPE; ++j) {
+            inverseBuffer_.SetValue(j * chunkSize_ + j, static_cast<float>(1.0));
+        }
+        eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
+        SetFlag<HardEvent::S_V>(eventID);
+        WaitFlag<HardEvent::S_V>(eventID);
 
-        InverseAIV(subOffset_, INVERSE_SHAPE);
+        InverseAIVVF<INVERSE_SHAPE>(reinterpret_cast<__ubuf__ float *>(attnUbFloat_.GetPhyAddr()),
+                                    reinterpret_cast<__ubuf__ float *>(inverseRes_.GetPhyAddr()),
+                                    reinterpret_cast<__ubuf__ float *>(inverseBuffer_.GetPhyAddr()),
+                                    subOffset_, chunkSize_);
+        PipeBarrier<PIPE_V>();
         auto tmp = outQueue_.AllocTensor<bfloat16_t>();
         Cast(tmp, inverseRes_, RoundMode::CAST_RINT, curVecLen);
         outQueue_.EnQue(tmp);
