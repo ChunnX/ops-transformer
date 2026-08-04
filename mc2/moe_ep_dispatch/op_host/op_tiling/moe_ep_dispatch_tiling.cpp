@@ -17,6 +17,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <vector>
 
 #include "mc2_log.h"
@@ -86,8 +88,33 @@ constexpr uint64_t NOTIFY_CNT_ALIGN = 15000UL;
 constexpr uint32_t NETWORK_DIRECT = 0U;
 constexpr uint32_t NETWORK_HYBRID = 1U;
 
+static uint32_t ApplyDebugNetworkModeOverride(uint32_t networkMode, const char *nodeName)
+{
+    const char *envValue = std::getenv("MOE_EP_DEBUG_FORCE_NETWORK_MODE");
+    if (envValue == nullptr || envValue[0] == '\0') {
+        return networkMode;
+    }
+    if ((std::strcmp(envValue, "0") == 0) || (std::strcmp(envValue, "direct") == 0) ||
+        (std::strcmp(envValue, "DIRECT") == 0)) {
+        OP_LOGI(nodeName, "MOE_EP_DEBUG_FORCE_NETWORK_MODE overrides networkMode from %u to %u.", networkMode,
+                NETWORK_DIRECT);
+        return NETWORK_DIRECT;
+    }
+    if ((std::strcmp(envValue, "1") == 0) || (std::strcmp(envValue, "hybrid") == 0) ||
+        (std::strcmp(envValue, "HYBRID") == 0)) {
+        OP_LOGI(nodeName, "MOE_EP_DEBUG_FORCE_NETWORK_MODE overrides networkMode from %u to %u.", networkMode,
+                NETWORK_HYBRID);
+        return NETWORK_HYBRID;
+    }
+    OP_LOGW(nodeName, "Ignore invalid MOE_EP_DEBUG_FORCE_NETWORK_MODE=%s, expected 0/direct or 1/hybrid.", envValue);
+    return networkMode;
+}
+
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchInfo &info)
 {
+    OP_LOGI(nodeName,
+            "MOE_EP_DEBUG: RANK_NUM_PER_SERVER=%u, EP_WORLD_SIZE=%u, NUM_SCALEOUT_RANKS=%u, NETWORK_MODE=%u.",
+            info.hybrid.rankNumPerServer, info.cfg.epWorldSize, info.hybrid.serverNum, info.networkMode);
     OP_LOGD(nodeName, "epWorldSize is %u.", info.cfg.epWorldSize);
     OP_LOGD(nodeName, "epRankId is %u.", info.cfg.epRankId);
     OP_LOGD(nodeName, "numExperts is %u.", info.cfg.numExperts);
@@ -646,6 +673,7 @@ static ge::graphStatus CheckCommAttr(const gert::TilingContext *context, const c
     info.hybrid.serverNum = static_cast<uint32_t>(epWorldSize / rankNumPerServer);
     info.networkMode = (requestedNetworkMode == NETWORK_HYBRID && info.hybrid.serverNum > 1U) ?
         NETWORK_HYBRID : NETWORK_DIRECT;
+    info.networkMode = ApplyDebugNetworkModeOverride(info.networkMode, nodeName);
     return ge::GRAPH_SUCCESS;
 }
 
