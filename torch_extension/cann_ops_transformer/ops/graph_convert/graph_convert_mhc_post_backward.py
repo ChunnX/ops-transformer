@@ -56,7 +56,7 @@ if _TORCHAIR_AVAILABLE:
             ir=IrDef("MhcPostBackward")
             .input("grad_y", "DT_BF16, DT_FLOAT16")
             .input("x", "DT_BF16, DT_FLOAT16")
-            .input("h_res", "DT_FLOAT")
+            .optional_input("h_res", "DT_FLOAT")
             .input("h_out", "DT_BF16, DT_FLOAT16")
             .input("h_post", "DT_FLOAT")
             .output("grad_x", "DT_BF16, DT_FLOAT16")
@@ -77,11 +77,6 @@ if _TORCHAIR_AVAILABLE:
         *,
         meta_outputs: TensorSpec = None,
     ):
-        if h_res is None:
-            raise RuntimeError(
-                "mhc_post_backward graph mode does not support h_res=None; "
-                "the underlying IR defines h_res as REQUIRED."
-            )
         return mhc_post_backward_ge(
             grad_output=grad_output,
             x=x,

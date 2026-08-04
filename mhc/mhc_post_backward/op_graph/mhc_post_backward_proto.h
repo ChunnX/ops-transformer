@@ -42,7 +42,7 @@ namespace ge {
 REG_OP(MhcPostBackward)
     .INPUT(grad_y, TensorType({DT_FLOAT16, DT_BF16}))
     .INPUT(x, TensorType({DT_FLOAT16, DT_BF16}))
-    .INPUT(h_res, TensorType({DT_FLOAT}))
+    .OPTIONAL_INPUT(h_res, TensorType({DT_FLOAT}))
     .INPUT(h_out, TensorType({DT_FLOAT16, DT_BF16}))
     .INPUT(h_post, TensorType({DT_FLOAT}))
     .OUTPUT(grad_x, TensorType({DT_FLOAT16, DT_BF16}))
