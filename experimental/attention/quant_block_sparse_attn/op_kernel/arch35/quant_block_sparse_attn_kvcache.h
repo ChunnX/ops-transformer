@@ -247,14 +247,14 @@ __aicore__ inline void SwapSparseBlockSlots(RunInfo &runInfo)
 
 __aicore__ inline void IdxSortBySparseIdx(RunInfo &runInfo)
 {
-    if (runInfo.sparseBlkIdx1 == -1 && runInfo.sparseBlkIdx2 == -1) {
+    if (unlikely(runInfo.sparseBlkIdx1 == -1 && runInfo.sparseBlkIdx2 == -1)) {
         return;
     }
-    if (runInfo.sparseBlkIdx1 == -1) {
+    if (unlikely(runInfo.sparseBlkIdx1 == -1)) {
         SwapSparseBlockSlots(runInfo);
         return;
     }
-    if (runInfo.sparseBlkIdx2 == -1) {
+    if (unlikely(runInfo.sparseBlkIdx2 == -1)) {
         return;
     }
     if (runInfo.sparseBlkIdx1 > runInfo.sparseBlkIdx2) {
