@@ -70,7 +70,7 @@ constexpr static MicroAPI::CastTrait CAST_FP32_TO_B16 = {
  */
 struct QkvMropeTileAddr {
     __ubuf__ bfloat16_t* qkvIn;      // tile 内首 token 的输入行首，[token][N][D]
-    __ubuf__ float* gammaTile;       // 按 token 铺好的 gamma，[token][2][D]（先 Q 后 K）
+    __ubuf__ float* gammaAll;        // 4 份常驻 gamma，[undQ|undK|genQ|genK][D]，各 D 个 float
     __ubuf__ float* rawCosSin;       // 首 token 的三轴原始 cos_sin，[token][3][D]
     __ubuf__ uint32_t* gatherIndex;  // axisLut 展开成的元素索引，[D/2]
     __ubuf__ bfloat16_t* qOut;       // 输出 q 段起址，[token][Hq][D]
@@ -89,7 +89,6 @@ struct QkvMropeTileShape {
     uint16_t kHeadNum;           // Hk
     uint16_t vHeadNum;           // Hv
     uint32_t inTokenStride;      // 输入 token 步长 = N*D
-    uint32_t gammaTokenStride;   // gamma tile token 步长 = 2*D
     uint32_t cosSinTokenStride;  // cos_sin token 步长 = 3*D
     uint32_t qOutTokenStride;    // q 段 token 步长 = Hq*D
     uint32_t kOutTokenStride;    // k 段 token 步长 = Hk*D
@@ -195,17 +194,23 @@ __aicore__ inline void RmsNormRopeOneHead(__ubuf__ bfloat16_t*& inHead, __ubuf__
  * 目的地址就在输出 tile 的 v 段，放进来可以省掉 VF 之外那趟独立的 UB->UB 搬运循环，
  * 每 token 的输入行也只需要遍历一次。T_QKV 与 T_CACHE 同为 bf16，纯直通不做任何转换。
  *
- * gamma 逐 token 加载：cat_indices 可以把 und/gen 任意交错（竞品用例就是
- * [0,5,1,6,2,7,3,4] 这种），同一 tile 内相邻 token 的 gamma 可能不同，所以调用方
- * 要先按 token 铺好 [tokenSize, 2, D] 的 gamma tile（每 token 先 Q gamma 后 K gamma）。
- * 这样无论怎么交错，一个 tile 都只发一次 VF，不会退化成逐 token 调用。
+ * gamma 逐 token 选择：cat_indices 可以把 und/gen 任意交错（竞品用例就是
+ * [0,5,1,6,2,7,3,4] 这种），同一 tile 内相邻 token 的 gamma 可能不同。
+ * 但 gamma 只有 und/gen 两套、在 UB 上又是 [undQ|undK|genQ|genK] 连续排布，
+ * 所以不需要预先按 token 铺平，也不需要 Select 在两组寄存器间挑：
+ * 直接用 undMask 的第 t 位算出本 token 的 gamma 基址即可
+ *     gammaRow = gammaAll + (1 - undBit) * 2 * headStride
+ * 这样「选 gamma」降级成一次标量地址算术，VF 里既没有分支也没有额外的向量指令。
  *
  * @param addr      本 tile 的 UB 起址，见 QkvMropeTileAddr
  * @param shape     head 数、步长与 RMSNorm 标量，见 QkvMropeTileShape（Init 期填一次）
  * @param tokenSize tile 内 token 数，尾块可小于 ubFactor
+ * @param undMask   tile 内各 token 的 und/gen 标志位图，bit t = 1 表示第 t 个 token 取
+ *                  und 的 gamma。由 CopyIn 顺带产出（那里本来就要读 cat_indices 算源行），
+ *                  所以这里不再重复读一次 GM。tokenSize <= 64 由 host tiling 保证
  */
 __aicore__ inline void QkRmsNormMropeTileVF(const QkvMropeTileAddr& addr, const QkvMropeTileShape& shape,
-                                            uint16_t tokenSize)
+                                            uint16_t tokenSize, uint64_t undMask)
 {
     if (tokenSize == 0) {
         return;
@@ -227,15 +232,17 @@ __aicore__ inline void QkRmsNormMropeTileVF(const QkvMropeTileAddr& addr, const 
         //   inPtr    每 head 推 headStride，一个 token 走完 Q/K/V 三段正好是 (Hq+Hk+Hv)*D
         //            = inTokenStride，直接落到下一个 token 的行首，整个 tile 不用重取基址
         //   qOut/kOut/vOutPtr 各推自己那段的 head 数，一个 token 正好走过各自的 TokenStride
-        //   gammaPtr 每 token 连推 4 次 halfDim = 2*D = gammaTokenStride
-        // 例外：cos_sin 用 Gather，而 Gather 只有 (dst, baseAddr, index, mask) 一个原型，
-        //       既没有 post-update 也没有 AddrReg 重载，只能保留显式指针每 token 推一次。
+        // 例外两处：
+        //   1) cos_sin 用 Gather，而 Gather 只有 (dst, baseAddr, index, mask) 一个原型，
+        //      既没有 post-update 也没有 AddrReg 重载，只能保留显式指针每 token 推一次；
+        //   2) gamma 的基址由 undMask 决定，不是单调前进，同样只能显式算。
         __ubuf__ bfloat16_t* inPtr = addr.qkvIn;
         __ubuf__ bfloat16_t* qOutPtr = addr.qOut;
         __ubuf__ bfloat16_t* kOutPtr = addr.kOut;
         __ubuf__ bfloat16_t* vOutPtr = addr.vOut;
-        __ubuf__ float* gammaPtr = addr.gammaTile;
         __ubuf__ float* cosSinPtr = addr.rawCosSin;
+        // gen 的 gamma 在 UB 上正好排在 und 之后 2*D 处（[undQ|undK|genQ|genK]）
+        const uint32_t genGammaOffset = static_cast<uint32_t>(headStep) * 2U;
 
         for (uint16_t t = 0; t < tokenSize; ++t) {
             MropeTokenRegs regs;
@@ -250,16 +257,15 @@ __aicore__ inline void QkRmsNormMropeTileVF(const QkvMropeTileAddr& addr, const 
             // 每 token 一条，摊到 Hq+Hk 个 head 上可忽略
             MicroAPI::Muls(regs.sinNeg, regs.sinValue, -1.0f, pFull);
 
-            // gamma 按 token 取：und / gen 两份权重在 tile 里已经按 token 展开好。
-            // 四份在 UB 上连续（q低|q高|k低|k高），各推 halfDim 即可顺次取到
-            MicroAPI::LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
-                regs.qGammaLow, gammaPtr, halfStep);
-            MicroAPI::LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
-                regs.qGammaHigh, gammaPtr, halfStep);
-            MicroAPI::LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
-                regs.kGammaLow, gammaPtr, halfStep);
-            MicroAPI::LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
-                regs.kGammaHigh, gammaPtr, halfStep);
+            // 选 gamma：und 组在 gammaAll 开头，gen 组在 +2*D 处。用位图算偏移，
+            // 不做分支也不做 Select——选择整个降级成一次标量地址算术
+            const uint32_t undBit = static_cast<uint32_t>((undMask >> t) & 1ULL);
+            __ubuf__ float* gammaRow = addr.gammaAll + (1U - undBit) * genGammaOffset;
+            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regs.qGammaLow, gammaRow);
+            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regs.qGammaHigh, gammaRow + shape.halfDim);
+            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(regs.kGammaLow, gammaRow + shape.headStride);
+            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(
+                regs.kGammaHigh, gammaRow + shape.headStride + shape.halfDim);
 
             for (uint16_t h = 0; h < shape.qHeadNum; ++h) {
                 RmsNormRopeOneHead(inPtr, qOutPtr, regs.qGammaLow, regs.qGammaHigh, regs, shape, pFull);

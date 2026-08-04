@@ -117,7 +117,9 @@ constexpr int64_t UINT32_BYTES = 4;
 constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr int64_t BLOCK_ALIGN_BYTES = 32;
 constexpr int64_t WEIGHT_NUM = 4;           // und_q / und_k / gen_q / gen_k
-constexpr int64_t GAMMA_TILE_NUM = 2;       // 按 token 铺平的 gamma tile：Q 一份、K 一份
+// kernel 用一个 uint64_t 位图把 tile 内各 token 的 und/gen 标志带给 VF（见 regbase 的 undMask_），
+// 所以 ubFactor 不能超过位图宽度。当前 UB 预算下 N=10 档也只有 19，离上限很远
+constexpr int64_t MAX_UB_FACTOR = 64;
 
 /* UB 划分（kernel 侧必须按同一套公式分配，改这里要同步改 kernel）
  *
@@ -128,22 +130,19 @@ constexpr int64_t GAMMA_TILE_NUM = 2;       // 按 token 铺平的 gamma tile：
  * bf16->fp32 的 x、Gather 合并后的 cos/sin、RoPE 交叉项都只存在 vreg 里，
  * 所以计算区不再有 cosSinExpand / ropeTmp / qkvFp32 / reduceTmp / rmsInv 这些中间 buffer。
  *
- * gammaTileBuf 是随 u 的：cat_indices 可以把 und/gen 任意交错，同一 tile 内相邻 token
- * 的 gamma 可能不同，VF 里按 token 索引 gamma，所以要先把每 token 该用的那份铺平。
- * 它写完就在同一次 Compute 里消费掉，不需要 DoubleBuffer。
+ * gamma 不随 u：cat_indices 虽然能把 und/gen 任意交错，但 gamma 一共只有 und/gen 两套、
+ * 在 wFp32Buf 里又是 [undQ|undK|genQ|genK] 连续排布，VF 直接按 undMask 位图算出本 token
+ * 的基址即可（gammaRow = base + (1-undBit)*2D），不需要按 token 铺平成 tile。
  *
  * 计算区（TBuf，与 u 无关）:
  *   wBf16Buf         WEIGHT_NUM * D * 2            4 个 gamma 原始 bf16
- *   wFp32Buf         WEIGHT_NUM * D * 4            4 个 gamma 的 float 版本，作为 gamma tile 的源
+ *   wFp32Buf         WEIGHT_NUM * D * 4            4 个 gamma 的 float 版本，VF 直接从这里取
  *   gatherIdxBuf     align32((D/2) * 4)            axisLut 展开的 uint32 元素索引，每核建一次
  *
  * 随 u 的部分:
  *   qkvInQue     VECIN   2 * u * N * D * 2
  *   cosSinInQue  VECIN   2 * u * MROPE_AXIS_NUM * D * 4
  *   outQue       VECOUT  2 * u * N * D * 2         UB 内按 [u*q | u*k | u*v] 分段，便于 q 一笔连续写出
- *   gammaTileBuf VECCALC GAMMA_TILE_NUM * u * D * 4  单 buffer，按 token 交织
- *                        [t0 q gamma | t0 k gamma | t1 q gamma | t1 k gamma | ...]，
- *                        与 VF 里 gammaRow = base + t*2D、k gamma 在 +D 的取法对应
  */
 
 class UndGenQkvRmsNormRopeCacheTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {

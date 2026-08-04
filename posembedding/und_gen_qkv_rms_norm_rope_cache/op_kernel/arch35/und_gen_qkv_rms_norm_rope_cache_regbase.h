@@ -147,7 +147,6 @@ private:
         vfShape_.kHeadNum = static_cast<uint16_t>(numHeadK_);
         vfShape_.vHeadNum = static_cast<uint16_t>(numHeadV_);
         vfShape_.inTokenStride = static_cast<uint32_t>(rowElems_);
-        vfShape_.gammaTokenStride = static_cast<uint32_t>(DIGIT_TWO * headDim_);
         vfShape_.cosSinTokenStride = static_cast<uint32_t>(MROPE_AXIS_NUM * headDim_);
         vfShape_.qOutTokenStride = static_cast<uint32_t>(numHeadQ_ * headDim_);
         vfShape_.kOutTokenStride = static_cast<uint32_t>(numHeadK_ * headDim_);
@@ -211,16 +210,13 @@ private:
         pipe_->InitBuffer(outQue_, BUFFER_NUM_DB, ubFactor_ * rowElems_ * sizeof(T_QKV));
         pipe_->InitBuffer(wInQue_, BUFFER_NUM_SINGLE, WEIGHT_NUM * headDim_ * sizeof(T_QKV));
 
-        // 计算区：4 份 gamma 的 float 版本 + gather 索引（与 token 无关），
-        // 外加按 token 铺平的 gamma tile [ubFactor, 2, D]（随 ubFactor，单 buffer 即可，
-        // 因为它在同一次 Compute 里写完就被消费掉）
+        // 计算区只剩两块与 token 无关的小 buffer：4 份 gamma 的 float 版本 + gather 索引。
+        // gamma 不再按 token 铺平——VF 直接按 undMask 算基址取 und/gen 那一组
         pipe_->InitBuffer(wFp32Buf_, WEIGHT_NUM * headDim_ * sizeof(float));
         pipe_->InitBuffer(gatherIdxBuf_, AlignUp(halfDim_ * sizeof(uint32_t), BLOCK_ALIGN_BYTES));
-        pipe_->InitBuffer(gammaTileBuf_, DIGIT_TWO * ubFactor_ * headDim_ * sizeof(float));
 
         wFp32Local_ = wFp32Buf_.Get<float>();
         gatherIdxLocal_ = gatherIdxBuf_.Get<uint32_t>();
-        gammaTileLocal_ = gammaTileBuf_.Get<float>();
     }
 
     // 4 个 gamma 一次性搬入并 Cast 成 float 常驻。不再按头展开成 [headNumQK, D]：
@@ -282,9 +278,13 @@ private:
     __aicore__ inline void CopyIn(int64_t tileStart, int64_t tokenNum)
     {
         LocalTensor<T_QKV> qkvLocal = qkvInQue_.AllocTensor<T_QKV>();
+        // 顺带产出本 tile 的 und/gen 位图给 VF 选 gamma 用：srcT 这里本来就要读，
+        // 不必在别处再读一次 cat_indices
+        undMask_ = 0;
         for (int64_t i = 0; i < tokenNum; ++i) {
             int64_t srcT = GetSrcIndex(tileStart + i);
             if (srcT < undLen_) {
+                undMask_ |= (static_cast<uint64_t>(1) << i);
                 DataCopy(qkvLocal[i * rowElems_], undQkvGm_[srcT * rowElems_], rowElems_);
             } else {
                 DataCopy(qkvLocal[i * rowElems_], genQkvGm_[(srcT - undLen_) * rowElems_], rowElems_);
@@ -310,15 +310,13 @@ private:
 
     // 整个 tile 只发一次 VF：Q/K 在 UB 上本就是同一行 token 内相邻的 head，
     // 合在一个 VF 里 token 循环只走一趟、cos/sin 只 Gather 一次。
-    // und/gen 的差异靠 BuildGammaTile 预先按 token 铺平，不需要按 isUnd 切段
+    // und/gen 的差异靠 undMask 在 VF 里按 token 算 gamma 基址解决，不需要按 isUnd 切段
     // ——cat_indices 可以任意交错，切段在最坏情况下会退化成逐 token 调 VF。
     __aicore__ inline void Compute(int64_t tileStart, int64_t tokenNum)
     {
         LocalTensor<T_QKV> qkvLocal = qkvInQue_.DeQue<T_QKV>();
         LocalTensor<float> cosSinLocal = cosSinInQue_.DeQue<float>();
         LocalTensor<T_QKV> outLocal = outQue_.AllocTensor<T_QKV>();
-
-        BuildGammaTile(tileStart, tokenNum);
 
         const int64_t kSegBase = ubFactor_ * numHeadQ_ * headDim_;
         const int64_t vSegBase = ubFactor_ * headNumQK_ * headDim_;
@@ -327,36 +325,17 @@ private:
         // shape 参数在 ParseTiling 就填好了，这里只组本 tile 的地址
         QkvMropeTileAddr addr;
         addr.qkvIn = (__ubuf__ bfloat16_t*)qkvLocal.GetPhyAddr();
-        addr.gammaTile = (__ubuf__ float*)gammaTileLocal_.GetPhyAddr();
+        addr.gammaAll = (__ubuf__ float*)wFp32Local_.GetPhyAddr();
         addr.rawCosSin = (__ubuf__ float*)cosSinLocal.GetPhyAddr();
         addr.gatherIndex = (__ubuf__ uint32_t*)gatherIdxLocal_.GetPhyAddr();
         addr.qOut = (__ubuf__ bfloat16_t*)outLocal.GetPhyAddr();
         addr.kOut = (__ubuf__ bfloat16_t*)outLocal[kSegBase].GetPhyAddr();
         addr.vOut = (__ubuf__ bfloat16_t*)outLocal[vSegBase].GetPhyAddr();
-        QkRmsNormMropeTileVF(addr, vfShape_, static_cast<uint16_t>(tokenNum));
+        QkRmsNormMropeTileVF(addr, vfShape_, static_cast<uint16_t>(tokenNum), undMask_);
 
         outQue_.EnQue(outLocal);
         qkvInQue_.FreeTensor(qkvLocal);
         cosSinInQue_.FreeTensor(cosSinLocal);
-    }
-
-    // 把 tile 内每个 token 该用的 gamma 铺成 [tokenNum, 2, D]：每 token 先 Q gamma 后 K gamma，
-    // 与 VF 里 gammaRow / gammaRow + headStride 的取法对应。
-    // 源是 Init 时就 Cast 好的 4 份常驻 float gamma，这里只是 UB->UB 选行，
-    // 每 token 两笔 D*4B，相对 tile 内 (Hq+Hk) 个 head 的计算量可以忽略。
-    // TODO(perf): 只有两种取值，可改成把 und/gen 两份 gamma 常驻在 vreg，
-    //             VF 内按 token 的 isUnd 标志做 Select，省掉这里的 UB->UB 搬运。
-    __aicore__ inline void BuildGammaTile(int64_t tileStart, int64_t tokenNum)
-    {
-        for (int64_t i = 0; i < tokenNum; ++i) {
-            const bool isUnd = GetSrcIndex(tileStart + i) < undLen_;
-            const int64_t qGammaIdx = isUnd ? WEIGHT_IDX_UND_Q : WEIGHT_IDX_GEN_Q;
-            const int64_t kGammaIdx = isUnd ? WEIGHT_IDX_UND_K : WEIGHT_IDX_GEN_K;
-            DataCopy(gammaTileLocal_[(i * DIGIT_TWO) * headDim_], wFp32Local_[qGammaIdx * headDim_], headDim_);
-            DataCopy(gammaTileLocal_[(i * DIGIT_TWO + 1) * headDim_], wFp32Local_[kGammaIdx * headDim_], headDim_);
-        }
-        // UB->UB 搬运与随后 VF 的读之间要挡一下
-        PipeBarrier<PIPE_V>();
     }
 
     // outLocal 按 [ubFactor 个 q | ubFactor 个 k | ubFactor 个 v] 分段：
@@ -401,14 +380,12 @@ private:
 
     TBuf<TPosition::VECCALC> wFp32Buf_;
     TBuf<TPosition::VECCALC> gatherIdxBuf_;
-    TBuf<TPosition::VECCALC> gammaTileBuf_;
 
     // 常驻 LocalTensor：权重来自 wInQue_（Process 开头 DeQue、结束时 Free），
     // 其余是 TBuf 的视图，Init 时取一次，整个 Process 复用
     LocalTensor<T_QKV> wBf16Local_;
     LocalTensor<float> wFp32Local_;
     LocalTensor<uint32_t> gatherIdxLocal_;
-    LocalTensor<float> gammaTileLocal_;
 
     GlobalTensor<T_QKV> undQkvGm_;
     GlobalTensor<T_QKV> genQkvGm_;
@@ -452,6 +429,8 @@ private:
 
     // VF 的 shape 入参，ParseTiling 期填一次，整个 Process 复用
     QkvMropeTileShape vfShape_ = {};
+    // 本 tile 各 token 的 und/gen 标志位图，CopyIn 产出、Compute 消费（同一轮循环内，无跨 tile 竞争）
+    uint64_t undMask_ = 0;
 
     // 派生量
     int64_t headNumQK_ = 0;

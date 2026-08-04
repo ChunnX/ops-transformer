@@ -70,8 +70,7 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheRegbaseTiling::CalUbTiling()
     const int64_t perTokenBytes =
         DOUBLE_BUFFER * numHead_ * headDim_ * BF16_BYTES +                      // qkvInQue
         DOUBLE_BUFFER * MROPE_AXIS_NUM * headDim_ * FLOAT32_BYTES +             // cosSinInQue
-        DOUBLE_BUFFER * numHead_ * headDim_ * BF16_BYTES +                      // outQue
-        GAMMA_TILE_NUM * headDim_ * FLOAT32_BYTES;                              // gammaTileBuf(Q/K，单 buffer)
+        DOUBLE_BUFFER * numHead_ * headDim_ * BF16_BYTES;                       // outQue
 
     OP_CHECK_IF(residentBytes + perTokenBytes > ubSize_,
                 OP_LOGE(context_->GetNodeName(),
@@ -80,7 +79,9 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheRegbaseTiling::CalUbTiling()
                 return ge::GRAPH_FAILED);
 
     // 每核最多也只处理 blockFactor 个 token，ubFactor 再大也用不上
-    const int64_t ubFactor = std::min((ubSize_ - residentBytes) / perTokenBytes, tilingData_.get_blockFactor());
+    // 上限 MAX_UB_FACTOR 来自 kernel 侧 und/gen 位图的宽度，见 tiling.h
+    const int64_t ubFactor =
+        std::min({(ubSize_ - residentBytes) / perTokenBytes, tilingData_.get_blockFactor(), MAX_UB_FACTOR});
     OP_CHECK_IF(ubFactor <= 0,
                 OP_LOGE(context_->GetNodeName(), "ubFactor must be positive, got %ld.", ubFactor),
                 return ge::GRAPH_FAILED);
