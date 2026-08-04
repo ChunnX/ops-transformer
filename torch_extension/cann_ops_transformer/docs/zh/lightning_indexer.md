@@ -182,6 +182,386 @@ cann_ops_transformer.lightning_indexer(
   - 参数metadata必须传入。
 <!-- end id8 -->
 
+### 特性参数组
+
+|      特性参数组      |     参数字段名称     |    字段分组    |  字段类型  |
+| :-------------------: | :-------------------: | :-------------: | :--------: |
+|      公共参数组      |         q         |      INPUT      |   Tensor   |
+|                      |          k          |      INPUT      | Tensor |
+|                      |          w          |      INPUT      | Tensor |
+|                      |         metadata        |      INPUT(OPTIONAL)      | Tensor |
+|                      |         output_idx_offset  |      INPUT(OPTIONAL)      | Tensor |
+|                      |      topk      | ATTR(OPTIONAL) |   int   |
+|                      |      layout_q      | ATTR(OPTIONAL) |   string   |
+|                      |      layout_k      | ATTR(OPTIONAL) |   string   |
+|                      |     sparse_indices     |     OUTPUT     |   Tensor   |
+|                      |     sparse_values     |     OUTPUT     |   Tensor   |
+|      Mask参数组      |       mask_mode       | ATTR(OPTIONAL) |   int   |
+| SeqLens参数组  |   cu_seqlens_q   | INPUT(OPTIONAL) |  Tensor  |
+|                      |  cu_seqlens_k  | INPUT(OPTIONAL) |  Tensor  |
+|                      |  seqused_q  | INPUT(OPTIONAL) |  Tensor  |
+|                      |  seqused_k  | INPUT(OPTIONAL) |  Tensor  |
+|                      |  max_seqlen_q  | ATTR(OPTIONAL) |  int  |
+| Paged Attention参数组 |      block_table      | INPUT(OPTIONAL) |   Tensor   |
+|   compress参数组   |    cmp_ratio    | ATTR(OPTIONAL) |    int    |
+|                      |      cmp_residual_k      |     INPUT(OPTIONAL)     |   Tensor   |
+
+### 基准信息说明
+
+资料约束中，常见字段释义如下：
+
+|    命名    |                            含义                            |
+| :---------: | :---------------------------------------------------------: |
+|      B      |                Batch,表示输入样本批量大小                |
+|     Q_N     |        输入q tensor的头数，对应q shape中的N        |
+|    K_N    |    输入k tensor的头数，对应k/v shape中的N    |
+|     Q_S     |      输入q tensor的序列长度，对应q shape中的S      |
+|    K_S    |  输入k tensor的序列长度，对应k/v shape中的S  |
+|     Q_T     |          输入q tensor所有batch序列长度的累加和          |
+|     K_T     |          输入k tensor所有batch序列长度的累加和          |
+|     D     |          输入q/k tensor隐藏层最小的单元尺寸headdim         |
+|     topk     |          表示输出前topk个索引         |
+
+### 参数组约束
+
+#### 公共参数组
+- 入参为空的场景处理：
+    - 空Tensor指必选输入和输出的shape size为0,即有任意轴为0。
+    - 触发空tensor的用例将全部拦截报错。
+
+- q、k、sparse_indices、sparse_values校验
+<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
+<col style="width: 147px">
+<col style="width: 232px">
+<col style="width: 232px">
+<col style="width: 293px">
+<col style="width: 185px">
+</colgroup>
+<thead>
+<tr>
+    <th>参数</th>
+    <th>单参数校验</th>
+    <th>存在性校验</th>
+    <th>一致性校验</th>
+    <th>特性交叉校验</th>
+</tr>
+</thead>
+<tbody>
+    <tr>
+        <td>q</td>
+        <td>
+            <ul>
+                <li>tensor_type支持BFLOAT16和FLOAT16</li>
+                <li>BSND -> (B, S_Q, N_Q, D)</li>
+                <li>TND -> (T_Q, N_Q, D)</li>
+            </ul>
+        </td>
+        <td rowspan="4">
+            必须存在
+        </td>
+        <td rowspan="4">
+            <ul>
+                <li>q、k的数据类型需相同</li>
+                <li>Layout校验规则见layout匹配关系表</li>
+            </ul>
+        </td>
+        <td rowspan="4">
+            轴校验：
+            <ul>
+                <li>65536 > B > 0</li>
+                <li>Q_T > 0</li>
+                <li>K_T > 0</li>
+                <li>Q_N > 0</li>
+                <li>K_N = 1</li>
+                <li>Q_S > 0</li>
+                <li>K_S > 0</li>
+                <li>D = 128</li>
+                <li>Q_N % K_N == 0且Q_N / K_N > 0</li>
+                <li>1 <= topk <= 8192</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <td>k</td>
+        <td rowspan="1">
+            <ul>
+                <li>tensor_type支持BFLOAT16和FLOAT16</li>
+                <li>BSND -> (B, S_K, N_K, D)</li>
+                <li>TND -> (T_K, N_K, D)</li>
+                <li>PA_BBND -> (num_blocks, block_size, K_N, D)</li>
+                <li>1024 >= block_size >= 16，block_size % 16 == 0</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <td>sparse_indices</td>
+        <td rowspan="1">
+            <ul>
+                <li>tensor_type支持INT32</li>
+                <li>layout_q为BSND时，sparse_indices的shape为(B, Q_S, K_N, topk)</li>
+                <li>layout_q为TND时，sparse_indices的shape为(Q_T, K_N, topk)</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <td>sparse_values</td>
+        <td rowspan="1">
+            <ul>
+                <li>tensor_type支持BFLOAT16</li>
+                <li>layout_q为BSND时，sparse_indices的shape为(B, Q_S, K_N, topk)</li>
+                <li>layout_q为TND时，sparse_indices的shape为(Q_T, K_N, topk)</li>
+            </ul>
+        </td>
+    </tr>
+</tbody>
+</table>
+
+
+layout匹配关系表：
+<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
+<col style="width: 247px">
+<col style="width: 132px">
+<col style="width: 232px">
+<col style="width: 293px">
+<col style="width: 185px">
+<col style="width: 119px">
+<col style="width: 272px">
+<col style="width: 145px">
+</colgroup>
+<thead>
+<tr>
+    <th>layout_q</th>
+    <th>layout_k</th>
+    <th>layout_out</th>
+</tr>
+</thead>
+<tbody>
+    <tr>
+        <td>BSND</td>
+        <td>
+          <li>BSND</li>
+          <li>PA_BBND</li>
+        </td>
+        <td>BSND</td>
+    </tr>
+    <tr>
+        <td>TND</td>
+        <td>
+          <li>TND</li>
+          <li>PA_BBND</li>
+        </td>
+        <td>TND</td>
+    </tr>
+</tbody>
+</table>
+
+metadata校验
+<table style="undefined;table-layout: fixed; width:1625px">
+    <colgroup>
+        <col style="width: 147px">
+        <col style="width: 232px">
+        <col style="width: 232px">
+        <col style="width: 293px">
+        <col style="width: 185px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>参数</th>
+            <th>单参数校验</th>
+            <th>存在性校验</th>
+            <th>一致性校验</th>
+            <th>特性交叉校验</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>metadata</td>
+            <td>
+                <ul>
+                    <li>tensor_type仅支持INT32</li>
+                    <li>shape由lightning_indexer_v2_metadata动态计算</li>
+                    <li>当前不支持不传入，未传入将发出拦截报警</li>
+                </ul>
+            </td>
+            <td>可选参数</td>
+            <td>无</td>
+            <td>传入时需与lightning_indexer_v2_metadata生成的结果一致</td>
+        </tr>
+    </tbody>
+</table>
+
+mask_mode参数解释
+<ul>
+    <li>mask_mode=0，全计算模式（默认值）</li>
+    <li>mask_mode=3，Causal模式</li>
+</ul>
+
+<table style="undefined;table-layout: fixed; width:1625px">
+    <colgroup>
+        <col style="width: 147px">
+        <col style="width: 232px">
+        <col style="width: 232px">
+        <col style="width: 293px">
+        <col style="width: 185px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>参数</th>
+            <th>单参数校验</th>
+            <th>存在性校验</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>mask_mode</td>
+            <td>
+                <ul>
+                    <li>data_type支持INT</li>
+                    <li>支持输入范围仅为0、3，默认值为0</li>
+                </ul>
+            </td>
+            <td>
+                可选输入，如果不传该参数，默认值为0
+            </td>
+        </tr>
+    </tbody>
+</table>
+
+#### SeqLengths参数组
+
+<table style="undefined;table-layout: fixed; width:1625px">
+    <colgroup>
+        <col style="width: 147px">
+        <col style="width: 232px">
+        <col style="width: 232px">
+        <col style="width: 293px">
+        <col style="width: 185px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>参数</th>
+            <th>单参数校验</th>
+            <th>存在性校验</th>
+            <th>一致性校验</th>
+            <th>特性交叉校验</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>seqused_q</td>
+            <td rowspan="2">
+                <ul>
+                    <li>tensor_type支持INT32</li>
+                    <li>tensor_shape为(B,)</li>
+                    <li>仅支持非负整数</li>
+                    <li>seqused_q中的值需小于等于Q_S</li>
+                    <li>seqused_k中的值需小于等于K_S</li>
+                </ul>
+            </td>
+            <td rowspan="6">可选参数</td>
+            <td rowspan="6">无</td>
+            <td rowspan="2">无</td>
+        </tr>
+        <tr>
+            <td>seqused_k</td>
+        </tr>
+        <tr>
+            <td>cu_seqlens_q</td>
+            <td>
+                <ul>
+                    <li>tensor_type支持INT32</li>
+                    <li>tensor_shape为(B+1,)</li>
+                    <li>值仅支持非负整数</li>
+                    <li>其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于Q_T</li>
+                </ul>
+            </td>
+            <td>
+                <ul>
+                    <li>当layout_q为TND时，必须传入</li>
+                    <li>当layout_q不为TND时，不支持传入</li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>cu_seqlens_k</td>
+            <td>
+                <ul>
+                    <li>tensor_type支持INT32</li>
+                    <li>tensor_shape为(B+1,)</li>
+                    <li>值仅支持非负整数</li>
+                    <li>其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于K_T</li>
+                </ul>
+            </td>
+            <td>
+                <ul>
+                    <li>当layout_k为TND时，必须传入</li>
+                    <li>当layout_k不为TND时，不支持传入</li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>max_seqlen_q</td>
+            <td rowspan="2">
+                <ul>
+                    <li>data_type支持INT</li>
+                    <li>暂不生效，仅支持-1</li>
+                    <li>默认值为-1</li>
+                </ul>
+            </td>
+            <td rowspan="2">
+                <ul>
+                    <li>暂不生效，仅支持传入-1</li>
+                </ul>
+            </td>
+        </tr>
+        <tr>
+            <td>max_seqlen_k</td>
+        </tr>
+    </tbody>
+</table>
+
+#### Paged Attention参数组
+当block_table不为空时，开启Paged Attention
+<table style="undefined;table-layout: fixed; width:1625px">
+    <colgroup>
+        <col style="width: 147px">
+        <col style="width: 232px">
+        <col style="width: 232px">
+        <col style="width: 293px">
+        <col style="width: 185px">
+    </colgroup>
+    <thead>
+        <tr>
+            <th>参数</th>
+            <th>单参数校验</th>
+            <th>存在性校验</th>
+            <th>一致性校验</th>
+            <th>特性交叉校验</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>block_table</td>
+            <td>
+                <ul>
+                    <li>tensor_type仅支持INT32</li>
+                    <li>tensor_shape为(B, max_num_blocks_per_seq)</li>
+                    <li>值只能为正整数</li>
+                </ul>
+            </td>
+            <td>可选参数</td>
+            <td>无</td>
+            <td>
+                <ul>
+                    <li>PagedAttention开启情况下，必须传入seqused_k</li>
+                    <li>PagedAttention开启情况下，block_table必须不为空</li>
+                </ul>
+            </td>
+        </tr>
+    </tbody>
+</table>
+
+
 ## 确定性计算
 
 默认支持确定性计算。
