@@ -117,9 +117,16 @@ constexpr int64_t UINT32_BYTES = 4;
 constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr int64_t BLOCK_ALIGN_BYTES = 32;
 constexpr int64_t WEIGHT_NUM = 4;           // und_q / und_k / gen_q / gen_k
-// kernel 用一个 uint64_t 位图把 tile 内各 token 的 und/gen 标志带给 VF（见 regbase 的 undMask_），
-// 所以 ubFactor 不能超过位图宽度。当前 UB 预算下 N=10 档也只有 19，离上限很远
-constexpr int64_t MAX_UB_FACTOR = 64;
+// kernel 用一个 uint64_t 位图把 tile 内各 token 的 und/gen 标志带给 VF
+// （见 regbase 的 undMask_，CopyIn 里做 undMask_ |= 1ULL << i，i 取 [0, ubFactor)），
+// 所以 ubFactor 不能超过位图宽度，否则移位越界且是静默的。
+// 当前 UB 预算下 N=10 档也只有 19，离上限很远；CalUbTiling 里既夹取也复核。
+constexpr int64_t UND_MASK_BITS = 64;
+constexpr int64_t MAX_UB_FACTOR = UND_MASK_BITS;
+// 把「常量 <= 位图宽度」钉在编译期：放宽 MAX_UB_FACTOR 而不同步换掉 kernel 侧
+// undMask_ 的类型会直接编译失败，而不是等到板上出随机结果
+static_assert(MAX_UB_FACTOR <= UND_MASK_BITS,
+              "ubFactor is carried to the VF as a uint64_t bitmap (regbase undMask_); widen that type first");
 
 /* UB 划分（kernel 侧必须按同一套公式分配，改这里要同步改 kernel）
  *

@@ -244,6 +244,25 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_success_when_total_tokens_far_exc
     EXPECT_EQ(td->ubFactor, ExpectedUbFactor(16, 2, 2, td->blockFactor));
 }
 
+// kernel 把 tile 内各 token 的 und/gen 标志压进一个 uint64_t 位图带给 VF，
+// ubFactor 超过位图宽度会让 CopyIn 的 1ULL << i 越界且不报错。CalUbTiling 已夹取，
+// 这里再钉一道：UB 预算若哪天变大到能容纳 >64 个 token，这条会先失败。
+// NOTE: 当前预算下 ubFactor 最大也只有 19，所以这是防回归的绊线而非能触发的用例。
+TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_ub_factor_never_exceeds_und_mask_width)
+{
+    const std::vector<std::vector<int64_t>> headCombos{{8, 1, 1}, {16, 2, 2}};
+    for (const auto& heads : headCombos) {
+        auto para = BuildTilingContext(30000, 30000, heads[0], heads[1], heads[2]);
+        TilingInfo tilingInfo;
+        ASSERT_TRUE(ExecuteTiling(para, tilingInfo));
+        const auto* td = AsTilingData(tilingInfo);
+        ASSERT_NE(td, nullptr);
+        EXPECT_GT(td->ubFactor, 0);
+        EXPECT_LE(td->ubFactor, optiling::MAX_UB_FACTOR)
+            << "ubFactor 超过 kernel 侧 undMask 的位宽，会导致 gamma 选错";
+    }
+}
+
 // total 略大于核数：ceil 切法会大幅少用核，余数分配必须把核数拉满
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_block_split_uses_all_cores_when_total_slightly_exceeds_cores)
 {
