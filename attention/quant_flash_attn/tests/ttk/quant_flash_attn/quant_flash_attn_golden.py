@@ -1969,8 +1969,9 @@ def mxfp8_fa_torch_npu(
         # aclgraph: 直接使用 npugraph_ex backend
         logger.info("[NPU] 调用 aclgraph (npugraph_ex)...")
         npu_backend = "npugraph_ex"
+        options = {"clone_input": False}
         npu_mode = torch.compile(
-            npu_mode, fullgraph=False, backend=npu_backend, dynamic=False
+            npu_mode, fullgraph=False, options=options, backend=npu_backend, dynamic=False
         )
         # mark_static 标记所有 tensor 输入
         for t in (
