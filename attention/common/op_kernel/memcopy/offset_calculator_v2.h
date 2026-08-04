@@ -1113,8 +1113,8 @@ struct OffsetCalculatorImpl<FORMAT, FormatCategory::GM_ANTIQ_BnNBs, ACTLEN_T> {
 
     __aicore__ inline uint64_t GetOffset(uint32_t bIdx, uint32_t nIdx, uint32_t sIdx)
     {
-        uint64_t blockIdxInBatch = sIdx / GetStrideBlockSize(); // 获取block table上的索引
-        uint64_t bsIdx = sIdx % GetStrideBlockSize();           // 获取在单个块上超出的行数
+        uint64_t blockIdxInBatch = sIdx / GetDimBlockSize(); // 获取block table上的索引
+        uint64_t bsIdx = sIdx % GetDimBlockSize();           // 获取在单个块上超出的行数
         int32_t blockIdx = blockTableParser.GetBlockIdx(bIdx, blockIdxInBatch);
         uint64_t offset = blockIdx * GetStrideBlockNum() + nIdx * GetStrideN() + bsIdx * GetStrideBlockSize();
 
