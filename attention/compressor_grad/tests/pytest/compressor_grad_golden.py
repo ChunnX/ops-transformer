@@ -32,7 +32,7 @@ torch.npu.config.allow_internal_format = True
 logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
 logger = logging.getLogger(__name__)
 
-def run_compressor_grad_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, layout_x, layout_d_cmp_kv, layout_softmax_score, layout_kv, layout_d_x,
+def run_compressor_grad_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, layout,
                          S = 0, start_pos=None, seqused=None, cu_seqlens=None,
                          block_size = 128, data_type = torch.bfloat16, hidden_size = 4096,
                          x_datarange = [-10, 10], wkv_datarange = [-10, 10], wgate_datarange = [-10, 10],
