@@ -217,7 +217,11 @@ class SparseFlashMlaInputAdapter:
             "seqused_cmp_kv": seq_cmp,
             "cmp_residual_kv": residual,
             "template_mode": mode,
-            "cmp_ratio": kwargs.get("cmp_ratio"),
+            "cmp_ratio": (
+                kwargs.get("pytest_cmp_ratio")
+                if "pytest_cmp_ratio" in kwargs
+                else kwargs.get("cmp_ratio")
+            ),
             "cmp_mask_mode": kwargs.get("cmp_mask_mode"),
         })
         params.update({name: value for name, value in data_ranges.items() if value is not None})
@@ -270,11 +274,9 @@ class SparseFlashMlaInputAdapter:
             if op_input.get("ori_sparse_indices") is not None else 0,
             "cmp_topk": metadata_input["K"]
             if op_input.get("cmp_sparse_indices") is not None else 0,
-            "cmp_ratio": metadata_input["cmp_ratio"]
-            if metadata_input["cmp_ratio"] is not None else 1,
+            "cmp_ratio": metadata_input["cmp_ratio"],
             "ori_mask_mode": metadata_input["ori_mask_mode"],
-            "cmp_mask_mode": metadata_input["cmp_mask_mode"]
-            if metadata_input["cmp_mask_mode"] is not None else 3,
+            "cmp_mask_mode": metadata_input["cmp_mask_mode"],
             "layout_q": metadata_input["layout_q"],
             "layout_kv": metadata_input["layout_kv"],
             "has_ori_kv": op_input.get("ori_kv") is not None,
@@ -373,6 +375,8 @@ def generate_sparse_flash_mla_inputs(
         ("sinks", sinks),
     ):
         source = op_input.get(name)
+        if name == "cu_seqlens_q" and layout_q != "TND":
+            source = None
         if name in ("ori_topk_length", "cmp_topk_length") and source is None:
             source = metadata_input.get(name)
         INPUT_ADAPTER.copy_tensor(tensor, source, name)

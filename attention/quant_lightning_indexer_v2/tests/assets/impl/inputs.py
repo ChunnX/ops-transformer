@@ -12,9 +12,11 @@
 
 """Input customization for QuantLightningIndexer V2 TTK cases."""
 
+import fcntl
 import importlib.util
 import inspect
 import sys
+import tempfile
 from pathlib import Path
 
 import torch
@@ -34,6 +36,7 @@ class QuantLightningIndexerV2InputAdapter:
     def __init__(self):
         self.pytest_golden = None
         self.pytest_normalizer = None
+        self.metadata_runtime_ready = False
 
     @staticmethod
     def load_golden_store():
@@ -276,10 +279,28 @@ class QuantLightningIndexerV2InputAdapter:
             name: value.npu() if torch.is_tensor(value) else value
             for name, value in metadata_input.items()
         }
-        metadata = torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
-            **device_input
-        )
+        metadata = self.call_metadata(device_input)
         self.copy_tensor(dst, metadata, "metadata")
+
+    def call_metadata(self, device_input):
+        if self.metadata_runtime_ready:
+            return torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
+                **device_input
+            )
+
+        lock_path = Path(tempfile.gettempdir()) / "ttk_qli_v2_metadata_build.lock"
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                metadata = (
+                    torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
+                        **device_input
+                    )
+                )
+                self.metadata_runtime_ready = True
+                return metadata
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     @staticmethod
     def golden_data(data, layout_query, cu_seqlens_q):
