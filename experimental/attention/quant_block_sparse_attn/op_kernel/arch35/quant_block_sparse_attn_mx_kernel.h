@@ -22,8 +22,7 @@
 #include "quant_block_sparse_attn_kvcache.h"
 #include "quant_block_sparse_attn_mx_block_cube.h"
 #include "quant_block_sparse_attn_mx_block_vec.h"
-#include "common/buffer_manager.h"
-#include "common/buffers_policy.h"
+#include "quant_block_sparse_attn_mx_static.h"
 #include "common/util_regbase_mx.h"
 
 using namespace AscendC;
@@ -66,11 +65,9 @@ public:
                                 __gm__ uint8_t *, __gm__ uint8_t *seqUsedKv, __gm__ uint8_t *blockTable,
                                 __gm__ uint8_t *qScale, __gm__ uint8_t *kScale, __gm__ uint8_t *vScale,
                                 __gm__ uint8_t *pScale, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-                                __gm__ uint8_t *, const QuantBlockSparseAttnMxTilingData *__restrict tiling,
-                                TPipe *tPipe)
+                                __gm__ uint8_t *, const QuantBlockSparseAttnMxTilingData *__restrict tiling)
     {
         // Q/K/V 在 cube 中结合 block_table 完成 PA 搬运。
-        pipe = tPipe;
         tilingData = tiling;
         queryPtr = query;
         keyPtr = key;
@@ -85,8 +82,8 @@ public:
         dc_preload(reinterpret_cast<__gm__ uint64_t *>(seqUsedKv), 0);
         InitConstInfo();
         InitMMResBuf();
-        cubeBlock.Init(pipe, &l1BufferManager, queryPtr, keyPtr, valuePtr, blockTable, qScale, kScale, vScale);
-        vecBlock.Init(pipe, pScale, softmaxLse, attentionOut, attenMask, tilingData->attenMaskParams.attenMaskS2Size);
+        cubeBlock.Init(queryPtr, keyPtr, valuePtr, blockTable, qScale, kScale, vScale);
+        vecBlock.Init(pScale, softmaxLse, attentionOut, attenMask, tilingData->attenMaskParams.attenMaskS2Size);
     }
 
     __aicore__ inline void Process()
@@ -94,14 +91,22 @@ public:
         if (constInfo.aicIdx >= constInfo.coreNum || constInfo.aicIdx >= QBSA_FA_AIC_CORE_NUM) {
             return;
         }
-        CrossCoreBufferInit();
         if ASCEND_IS_AIC {
             cubeBlock.InitBuffers();
         } else {
             vecBlock.InitBuffers();
             vecBlock.ClearOutput(tilingData->emptyTensorParams, constInfo);
+            vecBlock.InitEvents();
         }
+        // ClearOutput contains SyncAll. Cross-core free tokens must be produced after that synchronization,
+        // matching the lifecycle used by the static-tensor FlashAttention implementation.
+        CrossCoreBufferInit();
         ProcessMainLoop();
+        if ASCEND_IS_AIC {
+            cubeBlock.FinalizeBuffers();
+        } else {
+            vecBlock.FinalizeBuffers();
+        }
         CrossCoreBufferUninit();
     }
 
@@ -157,30 +162,31 @@ private:
         // C1 UB 为 [64,256] fp32，C2 UB 为 [64,128] fp32。
         constexpr uint32_t mm1ResultSize = M_BASE / CV_RATIO * S2_BASE * sizeof(MM_T) / 2U;
         constexpr uint32_t mm2ResultSize = M_BASE / CV_RATIO * DV_BASE * sizeof(MM_T);
-        // L1 连续保存 P(e4m3) 和 PScale(e8m0)，供 C2 随路反量化。
-        constexpr uint32_t mm2LeftSize = M_BASE * S2_BASE * sizeof(INPUT_T) + M_BASE * S2_BASE / 32U;
-        l1BufferManager.Init(pipe, 512U * 1024U);
-        l1PBuffers.Init(l1BufferManager, mm2LeftSize);
-        ubBufferManager.Init(pipe, mm1ResultSize * 2U + mm2ResultSize);
-        bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
-        bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
+        static_assert(mm1ResultSize == MxStatic::BMM1_UB_SLOT_BYTES, "Unexpected MX BMM1 UB size");
+        static_assert(mm2ResultSize == MxStatic::BMM2_UB_SLOT_BYTES, "Unexpected MX BMM2 UB size");
+        bmm1Ub_[0] = LocalTensor<uint8_t>(TPosition::VECIN, MxStatic::BMM1_UB_ADDR0, mm1ResultSize);
+        bmm1Ub_[1] = LocalTensor<uint8_t>(TPosition::VECIN, MxStatic::BMM1_UB_ADDR1, mm1ResultSize);
+        bmm2Ub_ = LocalTensor<uint8_t>(TPosition::VECIN, MxStatic::BMM2_UB_ADDR, mm2ResultSize);
+        l1P_[0] = LocalTensor<uint8_t>(TPosition::A1, MxStatic::L1_P_ADDR0, MxStatic::L1_P_SLOT_BYTES);
+        l1P_[1] = LocalTensor<uint8_t>(TPosition::A1, MxStatic::L1_P_ADDR1, MxStatic::L1_P_SLOT_BYTES);
+        l1P_[2] = LocalTensor<uint8_t>(TPosition::A1, MxStatic::L1_P_ADDR2, MxStatic::L1_P_SLOT_BYTES);
     }
 
     __aicore__ inline void CrossCoreBufferInit()
     {
         if ASCEND_IS_AIV {
-            bmm1Buffers.Get().SetCrossCore();
-            bmm1Buffers.Get().SetCrossCore();
-            bmm2Buffers.Get().SetCrossCore();
+            MxStatic::AivSetUbFree(MxStatic::CC_BMM1_EVENT_ID0);
+            MxStatic::AivSetUbFree(MxStatic::CC_BMM1_EVENT_ID1);
+            MxStatic::AivSetUbFree(MxStatic::CC_BMM2_EVENT_ID);
         }
     }
 
     __aicore__ inline void CrossCoreBufferUninit()
     {
         if ASCEND_IS_AIC {
-            bmm1Buffers.Get().WaitCrossCore();
-            bmm1Buffers.Get().WaitCrossCore();
-            bmm2Buffers.Get().WaitCrossCore();
+            MxStatic::AicWaitUbFree(MxStatic::CC_BMM1_EVENT_ID0);
+            MxStatic::AicWaitUbFree(MxStatic::CC_BMM1_EVENT_ID1);
+            MxStatic::AicWaitUbFree(MxStatic::CC_BMM2_EVENT_ID);
         }
     }
 
@@ -241,10 +247,36 @@ private:
         }
     }
 
+    __aicore__ inline uint32_t FindLastValidS2Loop(uint32_t sparseLen, uint32_t sparseBlocksPerTask,
+                                                   uint64_t sparseBase, uint32_t actualS2Size) const
+    {
+        // sparseSeqLen may include negative or out-of-range tail entries. Find the final group that contributes
+        // at least one real KV token so that the last executed task, rather than the last metadata group, owns
+        // Q-buffer release and output finalization.
+        uint32_t s2LoopIdx = (sparseLen - 1U) / sparseBlocksPerTask * sparseBlocksPerTask;
+        while (true) {
+            const uint32_t remainSparseBlockCount = sparseLen - s2LoopIdx;
+            const uint32_t sparseBlockCount =
+                remainSparseBlockCount > sparseBlocksPerTask ? sparseBlocksPerTask : remainSparseBlockCount;
+            for (uint32_t i = 0U; i < sparseBlockCount; ++i) {
+                const int64_t sparseBlockIdx = sparseIndicesGm.GetValue(sparseBase + s2LoopIdx + i);
+                if (sparseBlockIdx >= 0 &&
+                    static_cast<uint64_t>(sparseBlockIdx) * constInfo.kvSparseBlockSize < actualS2Size) {
+                    return s2LoopIdx;
+                }
+            }
+            if (s2LoopIdx == 0U) {
+                break;
+            }
+            s2LoopIdx -= sparseBlocksPerTask;
+        }
+        return sparseLen;
+    }
+
     __aicore__ inline void FillRunInfo(MxRunInfo &runInfo, uint64_t loop, uint32_t mLoop, uint32_t bIdx, uint32_t n1Idx,
                                        uint32_t n2Idx, uint32_t queryTokenBase, uint32_t actualS1Size,
                                        uint32_t actualS2Size, uint32_t s1OuterIdx, uint32_t s2LoopIdx,
-                                       uint32_t s2LoopEnd, uint32_t sparseBlockCount, uint64_t sparseBase,
+                                       uint32_t lastValidS2Loop, uint32_t sparseBlockCount, uint64_t sparseBase,
                                        bool isFirstValidS2Loop)
     {
         // 构造一个 512-token logical S2 tile 的运行参数。
@@ -309,7 +341,7 @@ private:
         }
         runInfo.actSingleLoopS2SizeAlign = (runInfo.actSingleLoopS2Size + 63U) >> 6 << 6;
         runInfo.isFirstS2Loop = isFirstValidS2Loop;
-        runInfo.isLastS2Loop = s2LoopIdx + runInfo.sparseBlockCount - 1U >= s2LoopEnd;
+        runInfo.isLastS2Loop = s2LoopIdx == lastValidS2Loop;
         runInfo.queryOffset =
             (runInfo.queryTokenBase + runInfo.s1Idx) * constInfo.n2GD + runInfo.realN2Idx * constInfo.dSize;
         runInfo.queryScaleOffset = (runInfo.queryTokenBase + runInfo.s1Idx) * constInfo.qScaleN1D +
@@ -333,22 +365,30 @@ private:
         MxRunInfo &runInfoPre = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE];
         if (likely(runInfoCur.isValid)) {
             const uint32_t c1v1Loop = (runInfoCur.actSingleLoopS2Size + S2_SPLIT - 1U) / S2_SPLIT;
+            const uint32_t l1PSlot = runInfoCur.loop % PRELOAD_TASK_CACHE_SIZE;
             if ASCEND_IS_AIC {
                 for (uint32_t subLoop = 0U; subLoop < c1v1Loop; ++subLoop) {
-                    cubeBlock.IterateBmm1(bmm1Buffers.Get(), runInfoCur, constInfo, subLoop);
+                    const uint32_t bmm1Slot = bmm1Cursor_;
+                    bmm1Cursor_ ^= 1U;
+                    cubeBlock.IterateBmm1(bmm1Ub_[bmm1Slot], MxStatic::Bmm1EventId(bmm1Slot), runInfoCur,
+                                          constInfo, subLoop);
                 }
             } else {
-                Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &pBuf = l1PBuffers.GetVec();
                 for (uint32_t subLoop = 0U; subLoop < c1v1Loop; ++subLoop) {
-                    vecBlock.ProcessVec1(pBuf, bmm1Buffers.Get(), runInfoCur, constInfo, subLoop);
+                    const uint32_t bmm1Slot = bmm1Cursor_;
+                    bmm1Cursor_ ^= 1U;
+                    vecBlock.ProcessVec1(l1P_[l1PSlot], MxStatic::L1PEventId(l1PSlot), bmm1Ub_[bmm1Slot],
+                                         MxStatic::Bmm1EventId(bmm1Slot), runInfoCur, constInfo, subLoop);
                 }
             }
         }
         if (likely(loop >= PRELOAD_N && runInfoPre.isValid)) {
+            const uint32_t l1PSlot = runInfoPre.loop % PRELOAD_TASK_CACHE_SIZE;
             if ASCEND_IS_AIC {
-                cubeBlock.IterateBmm2(bmm2Buffers.Get(), l1PBuffers, runInfoPre, constInfo);
+                cubeBlock.IterateBmm2(bmm2Ub_, MxStatic::CC_BMM2_EVENT_ID, l1P_[l1PSlot],
+                                      MxStatic::L1PEventId(l1PSlot), runInfoPre, constInfo);
             } else {
-                vecBlock.ProcessVec2(bmm2Buffers.Get(), runInfoPre, constInfo);
+                vecBlock.ProcessVec2(bmm2Ub_, MxStatic::CC_BMM2_EVENT_ID, runInfoPre, constInfo);
             }
             runInfoPre.isValid = false;
         }
@@ -401,6 +441,8 @@ private:
                                                     constInfo.maxQb * constInfo.maxKb +
                                                 static_cast<uint64_t>(s1OuterIdx) * constInfo.maxKb;
                     const uint32_t s2LoopEnd = static_cast<uint32_t>(sparseLen - 1);
+                    const uint32_t lastValidS2Loop = FindLastValidS2Loop(
+                        static_cast<uint32_t>(sparseLen), sparseBlocksPerTask, sparseBase, actualS2Size);
                     bool hasValidS2Task = false;
                     for (uint32_t s2LoopIdx = 0U; s2LoopIdx <= s2LoopEnd; s2LoopIdx += sparseBlocksPerTask) {
                         MxRunInfo &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
@@ -408,7 +450,7 @@ private:
                         const uint32_t sparseBlockCount =
                             remainSparseBlockCount > sparseBlocksPerTask ? sparseBlocksPerTask : remainSparseBlockCount;
                         FillRunInfo(runInfo, loop, mLoop, bIdx, n1Idx, n2Idx, queryTokenBase, actualS1Size,
-                                    actualS2Size, s1OuterIdx, s2LoopIdx, s2LoopEnd, sparseBlockCount, sparseBase,
+                                    actualS2Size, s1OuterIdx, s2LoopIdx, lastValidS2Loop, sparseBlockCount, sparseBase,
                                     !hasValidS2Task);
                         if (likely(runInfo.actSingleLoopS2Size != 0U && runInfo.actMSize != 0U)) {
                             ExecuteTask(loop, taskRunInfo);
@@ -429,7 +471,6 @@ private:
         }
     }
 
-    TPipe *pipe = nullptr;
     const QuantBlockSparseAttnMxTilingData *__restrict tilingData = nullptr;
     regbasemx::MxConstInfo constInfo;
     __gm__ uint8_t *queryPtr = nullptr;
@@ -440,11 +481,10 @@ private:
     GlobalTensor<int32_t> metadataGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
     GlobalTensor<int32_t> seqUsedKvGm;
-    BufferManager<BufferType::UB> ubBufferManager;
-    BufferManager<BufferType::L1> l1BufferManager;
-    BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
-    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
+    LocalTensor<uint8_t> bmm1Ub_[2];
+    LocalTensor<uint8_t> bmm2Ub_;
+    LocalTensor<uint8_t> l1P_[PRELOAD_TASK_CACHE_SIZE];
+    uint32_t bmm1Cursor_ = 1U;
     QuantBlockSparseAttnMxBlockCube<INPUT_T, MM_T, OUTPUT_T, LAYOUT, KV_LAYOUT, s1TemplateType, s2TemplateType,
                                     dTemplateType, dVTemplateType, IS_PA, USE_DN>
         cubeBlock;

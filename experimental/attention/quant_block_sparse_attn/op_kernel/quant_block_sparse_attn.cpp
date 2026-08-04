@@ -60,7 +60,7 @@ using namespace optiling;
         BaseApi::QuantBlockSparseAttnMxKernel<__VA_ARGS__> op; \
         op.Init(query, key, value, sparseIndices, sparseSeqLen, attenMask, metadata, cuSeqlensQ, cuSeqlensKv, \
                 seqUsedQ, seqUsedKv, blockTable, qScale, kScale, vScale, pScale, softmaxLse, attentionOut, user, \
-                tilingDataPtr, &tPipe); \
+                tilingDataPtr); \
         op.Process(); \
     } while (0)
 
@@ -83,7 +83,6 @@ __global__ __aicore__ void quant_block_sparse_attn(
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
     // mask 模式 / softmaxLse 使能同时进入 tilingKey 与 tilingData；LSE 已改为编译期模板参数。
-    TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
     constexpr QBSALayout layout = static_cast<QBSALayout>(LAYOUT_T);
@@ -93,6 +92,7 @@ __global__ __aicore__ void quant_block_sparse_attn(
     constexpr bool bsaUseDn = BaseApi::IsDn();
     constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
     if constexpr (QUANT_MODE == MXFullQuantMode) {
+        InitSocState();
         // MX 当前支持 TND + PA BNBD，S2 logical tile 为 512。
         static_assert(Config == Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
                       "MXFullQuantMode must use S1=128, S2=512, D=128, DV=128 config");
@@ -100,6 +100,7 @@ __global__ __aicore__ void quant_block_sparse_attn(
                        S2TemplateType::Aligned512, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
                        RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
     } else {
+        TPipe tPipe;
         static_assert(Config == Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128,
                       "FP8QuantMode must use S1=128, S2=256, D=128, DV=128 config");
         QBSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,

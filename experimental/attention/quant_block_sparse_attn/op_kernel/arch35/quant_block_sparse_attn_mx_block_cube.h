@@ -17,11 +17,10 @@
 
 #include "kernel_operator.h"
 #include "quant_block_sparse_attn_common_arch35.h"
+#include "quant_block_sparse_attn_mx_static.h"
+#include "quant_block_sparse_attn_mx_static_matmul.h"
 #include "common/CopyInL1.h"
 #include "common/FixpipeOut.h"
-#include "common/buffer_manager.h"
-#include "common/buffers_policy.h"
-#include "common/matmul.h"
 #include "common/util_regbase_mx.h"
 
 using namespace AscendC;
@@ -38,7 +37,6 @@ public:
     using INPUT_T = inputType;
     using SCALE_T = fp8_e8m0_t;
     using MM_T = mmType;
-    using MxBmm2Buf = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
 
     static constexpr bool USE_DN = useDn;
     static constexpr bool IS_PA = isPa;
@@ -60,13 +58,11 @@ public:
     static constexpr uint32_t MX_SCALE_LAST_DIM = 2U;
     static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, true};
 
-    __aicore__ inline void Init(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query,
-                                __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
+    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+                                __gm__ uint8_t *blockTable,
                                 __gm__ uint8_t *qScale, __gm__ uint8_t *kScale, __gm__ uint8_t *vScale)
     {
         if ASCEND_IS_AIC {
-            tPipe_ = pipe;
-            l1BufferManager_ = l1BuffMgr;
             queryGm_.SetGlobalBuffer((__gm__ INPUT_T *)query);
             keyGm_.SetGlobalBuffer((__gm__ INPUT_T *)key);
             valueGm_.SetGlobalBuffer((__gm__ INPUT_T *)value);
@@ -91,137 +87,211 @@ public:
                 (S2_SPLIT / MX_TOKEN_GROUP) * DV_BASE * MX_SCALE_LAST_DIM * sizeof(SCALE_T);
 
             // Q 双 buffer；K 四 buffer；V 双 buffer。
-            l1QBuffers_.Init(*l1BufferManager_, qSize + qScaleSize);
-            l1KVBuffers_.Init(*l1BufferManager_, kvSize + kvScaleSize);
-            l1VBuffers_.Init(*l1BufferManager_, kvSize + valueScaleSize);
+            constexpr uint32_t qSlotBytes = qSize + qScaleSize;
+            constexpr uint32_t kSlotBytes = kvSize + kvScaleSize;
+            constexpr uint32_t vSlotBytes = kvSize + valueScaleSize;
+            constexpr uint32_t qBytes = 2U * qSlotBytes;
+            // Static Tensor reserves event IDs 6/7. Use a K double buffer so Q/K/V
+            // reusable L1 slots fit in the valid MTE1<->MTE2 event range 0..5.
+            constexpr uint32_t kBytes = 2U * kSlotBytes;
+            constexpr uint32_t vBytes = 2U * vSlotBytes;
+            constexpr uint32_t qAddr = MxStatic::CUBE_PRIVATE_L1_BASE;
+            constexpr uint32_t kAddr = qAddr + qBytes;
+            constexpr uint32_t vAddr = kAddr + kBytes;
+            constexpr uint32_t l1End = vAddr + vBytes;
+            static_assert(l1End <= MxStatic::L1_CAPACITY, "MX cube L1 layout exceeds capacity");
+
+            l1QTensor_ = LocalTensor<uint8_t>(TPosition::A1, qAddr, qBytes);
+            l1KTensor_ = LocalTensor<uint8_t>(TPosition::A1, kAddr, kBytes);
+            l1VTensor_ = LocalTensor<uint8_t>(TPosition::A1, vAddr, vBytes);
 
             // L0A/L0B 双 buffer；L0C 双 buffer。C1 最大输出为 [256,128] fp32，需要 128KB。
-            l0aBufferManager_.Init(tPipe_, 64U * 1024U);
-            l0bBufferManager_.Init(tPipe_, 64U * 1024U);
-            l0cBufferManager_.Init(tPipe_, 256U * 1024U);
-            mmL0ABuffers_.Init(l0aBufferManager_, 32U * 1024U);
-            mmL0BBuffers_.Init(l0bBufferManager_, 32U * 1024U);
-            mmL0CBuffers_.Init(l0cBufferManager_, 128U * 1024U);
+            for (uint32_t i = 0U; i < 2U; ++i) {
+                l0aTensor_[i] = LocalTensor<uint8_t>(TPosition::A2, i * MxStatic::L0_SLOT_BYTES,
+                                                     MxStatic::L0_SLOT_BYTES);
+                l0bTensor_[i] = LocalTensor<uint8_t>(TPosition::B2, i * MxStatic::L0_SLOT_BYTES,
+                                                     MxStatic::L0_SLOT_BYTES);
+                l0cTensor_[i] = LocalTensor<uint8_t>(TPosition::CO1, i * MxStatic::L0C_SLOT_BYTES,
+                                                     MxStatic::L0C_SLOT_BYTES);
+            }
+
+            SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_Q_EVENT_ID0);
+            SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_Q_EVENT_ID1);
+            SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID0);
+            SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID1);
+            SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_V_EVENT_ID0);
+            SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_V_EVENT_ID1);
+            SetFlag<HardEvent::M_MTE1>(MxStatic::L0A_EVENT_ID0);
+            SetFlag<HardEvent::M_MTE1>(MxStatic::L0A_EVENT_ID1);
+            SetFlag<HardEvent::M_MTE1>(MxStatic::L0B_EVENT_ID0);
+            SetFlag<HardEvent::M_MTE1>(MxStatic::L0B_EVENT_ID1);
+            SetFlag<HardEvent::FIX_M>(MxStatic::L0C_EVENT_ID0);
+            SetFlag<HardEvent::FIX_M>(MxStatic::L0C_EVENT_ID1);
         }
     }
 
-    __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+    __aicore__ inline void FinalizeBuffers()
+    {
+        if ASCEND_IS_AIC {
+            WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_Q_EVENT_ID0);
+            WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_Q_EVENT_ID1);
+            WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID0);
+            WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID1);
+            WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_V_EVENT_ID0);
+            WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_V_EVENT_ID1);
+            WaitFlag<HardEvent::M_MTE1>(MxStatic::L0A_EVENT_ID0);
+            WaitFlag<HardEvent::M_MTE1>(MxStatic::L0A_EVENT_ID1);
+            WaitFlag<HardEvent::M_MTE1>(MxStatic::L0B_EVENT_ID0);
+            WaitFlag<HardEvent::M_MTE1>(MxStatic::L0B_EVENT_ID1);
+            WaitFlag<HardEvent::FIX_M>(MxStatic::L0C_EVENT_ID0);
+            WaitFlag<HardEvent::FIX_M>(MxStatic::L0C_EVENT_ID1);
+        }
+    }
+
+    __aicore__ inline void IterateBmm1(LocalTensor<uint8_t> &outputBuf, uint32_t outputEventId,
                                        MxRunInfo &runInfo, const MxConstInfo &constInfo, uint32_t subLoop)
     {
         // C1: K[256,D] x Q^T[D,128]；K 由多个 sparse block 拼接。
         const uint32_t s2CalcSize = GetSubLoopS2Size(runInfo, subLoop);
 
-        Buffer<BufferType::L1> qBuf;
+        constexpr uint32_t qSlotBytes = M_BASE * D_BASE * sizeof(INPUT_T) +
+                                        M_BASE * D_BASE / MX_SCALE_GROUP * sizeof(SCALE_T);
+        uint32_t qSlot = currentQSlot_;
+        TEventID qEventId = qSlot == 0U ? MxStatic::L1_Q_EVENT_ID0 : MxStatic::L1_Q_EVENT_ID1;
+        LocalTensor<uint8_t> qBuf;
         const uint64_t qScaleOffset = static_cast<uint64_t>(AlignUp32(runInfo.actMSize)) * constInfo.dSize;
         if (unlikely(runInfo.isFirstS2Loop && subLoop == 0U)) {
             // Q 用 ND2NZ，QScale 用 DN2NZ；后续 S2 loop 复用。
-            qBuf = l1QBuffers_.Get();
-            qBuf.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<INPUT_T> qTensor = qBuf.GetTensor<INPUT_T>();
+            qSlot = qCursor_;
+            qCursor_ ^= 1U;
+            currentQSlot_ = qSlot;
+            qEventId = qSlot == 0U ? MxStatic::L1_Q_EVENT_ID0 : MxStatic::L1_Q_EVENT_ID1;
+            qBuf = l1QTensor_[qSlot * qSlotBytes];
+            WaitFlag<HardEvent::MTE1_MTE2>(qEventId);
+            LocalTensor<INPUT_T> qTensor = qBuf.ReinterpretCast<INPUT_T>();
             CopyToL1Nd2Nz<INPUT_T>(qTensor, queryGm_[runInfo.queryOffset], runInfo.actMSize, constInfo.dSize,
                                    constInfo.n2GD);
 
-            LocalTensor<SCALE_T> qScaleTensor = qBuf.GetTensor<SCALE_T>(qScaleOffset);
+            LocalTensor<SCALE_T> qScaleTensor = qBuf.ReinterpretCast<SCALE_T>()[qScaleOffset];
             MxCopyScaleToL1Dn2Nz<SCALE_T>(qScaleTensor, qScaleGm_[runInfo.queryScaleOffset],
                                           constInfo.queryScaleDSize * constInfo.scaleLastDim, runInfo.actMSize,
                                           constInfo.qScaleN1D);
-            qBuf.Set<HardEvent::MTE2_MTE1>();
+            SetFlag<HardEvent::MTE2_MTE1>(qEventId);
         } else {
-            qBuf = l1QBuffers_.GetPre();
-            qBuf.Set<HardEvent::MTE2_MTE1>();
+            qBuf = l1QTensor_[qSlot * qSlotBytes];
+            SetFlag<HardEvent::MTE2_MTE1>(qEventId);
         }
 
-        Buffer<BufferType::L1> kBuf = l1KVBuffers_.Get();
-        kBuf.Wait<HardEvent::MTE1_MTE2>();
-        LocalTensor<INPUT_T> kTensor = kBuf.GetTensor<INPUT_T>();
+        constexpr uint32_t kSlotBytes = S2_SPLIT * D_BASE * sizeof(INPUT_T) +
+                                        S2_SPLIT * D_BASE / MX_SCALE_GROUP * sizeof(SCALE_T);
+        const uint32_t kSlot = kCursor_;
+        kCursor_ ^= 1U;
+        const TEventID kEventId = static_cast<TEventID>(MxStatic::L1_K_EVENT_ID0 + kSlot);
+        LocalTensor<uint8_t> kBuf = l1KTensor_[kSlot * kSlotBytes];
+        WaitFlag<HardEvent::MTE1_MTE2>(kEventId);
+        LocalTensor<INPUT_T> kTensor = kBuf.ReinterpretCast<INPUT_T>();
         const uint64_t kScaleOffset = static_cast<uint64_t>(AlignUp32(s2CalcSize)) * constInfo.dSize;
-        LocalTensor<SCALE_T> kScaleTensor = kBuf.GetTensor<SCALE_T>(kScaleOffset);
+        LocalTensor<SCALE_T> kScaleTensor = kBuf.ReinterpretCast<SCALE_T>()[kScaleOffset];
         // K/KScale 共用 sparse overlap 计算，分别发起 PA data 与 scale 搬运。
         CopyKeyAndScaleToL1(kTensor, kScaleTensor, runInfo, constInfo, s2CalcSize, subLoop);
-        kBuf.Set<HardEvent::MTE2_MTE1>();
+        SetFlag<HardEvent::MTE2_MTE1>(kEventId);
 
-        kBuf.Wait<HardEvent::MTE2_MTE1>();
-        qBuf.Wait<HardEvent::MTE2_MTE1>();
+        WaitFlag<HardEvent::MTE2_MTE1>(kEventId);
+        WaitFlag<HardEvent::MTE2_MTE1>(qEventId);
 
-        Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers_.Get();
-        mm1ResL0C.Wait<HardEvent::FIX_M>();
+        const uint32_t l0cSlot = l0cCursor_;
+        l0cCursor_ ^= 1U;
+        const TEventID l0cEventId = l0cSlot == 0U ? MxStatic::L0C_EVENT_ID0 : MxStatic::L0C_EVENT_ID1;
+        LocalTensor<MM_T> mm1ResL0C = l0cTensor_[l0cSlot].ReinterpretCast<MM_T>();
+        WaitFlag<HardEvent::FIX_M>(l0cEventId);
         // MxMatmulFull 同时消费 fp8 data 与 e8m0 scale。
         MMParam param = MxMakeMMParam(s2CalcSize, runInfo.actMSize, constInfo.dSize, false, true);
-        MxMatmulFull<INPUT_T, INPUT_T, MM_T, S2_SPLIT, M_BASE, D_BASE, ABLayout::MK, ABLayout::KN,
-                     BuffersPolicyDB<BufferType::L0A>, BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T,
-                     mx_fp8_e4m3_t, mx_fp8_e4m3_t>(kTensor, qBuf.GetTensor<INPUT_T>(), mmL0ABuffers_, mmL0BBuffers_,
-                                                   mm1ResL0C.GetTensor<MM_T>(), param, kScaleTensor,
-                                                   qBuf.GetTensor<SCALE_T>(qScaleOffset));
+        MxStatic::MxMatmulFullStatic<INPUT_T, INPUT_T, MM_T, SCALE_T, SCALE_T, mx_fp8_e4m3_t,
+                                     mx_fp8_e4m3_t>(kTensor, qBuf.ReinterpretCast<INPUT_T>(), l0aTensor_, l0bTensor_,
+                                                    l0aCursor_, l0bCursor_, mm1ResL0C, param, kScaleTensor,
+                                                    qBuf.ReinterpretCast<SCALE_T>()[qScaleOffset]);
 
         if (unlikely(runInfo.isLastS2Loop && IsLastSubLoop(runInfo, subLoop))) {
-            qBuf.Set<HardEvent::MTE1_MTE2>();
+            SetFlag<HardEvent::MTE1_MTE2>(qEventId);
         }
-        kBuf.Set<HardEvent::MTE1_MTE2>();
-        mm1ResL0C.Set<HardEvent::M_FIX>();
-        mm1ResL0C.Wait<HardEvent::M_FIX>();
+        SetFlag<HardEvent::MTE1_MTE2>(kEventId);
+        SetFlag<HardEvent::M_FIX>(l0cEventId);
+        WaitFlag<HardEvent::M_FIX>(l0cEventId);
 
-        outputBuf.WaitCrossCore();
-        FixpipeMm1(outputBuf.GetTensor<MM_T>(), mm1ResL0C.GetTensor<MM_T>(), runInfo, s2CalcSize);
-        mm1ResL0C.Set<HardEvent::FIX_M>();
-        outputBuf.SetCrossCore();
+        MxStatic::AicWaitUbFree(outputEventId);
+        FixpipeMm1(outputBuf.ReinterpretCast<MM_T>(), mm1ResL0C, runInfo, s2CalcSize);
+        SetFlag<HardEvent::FIX_M>(l0cEventId);
+        MxStatic::AicSetUbReady(outputEventId);
     }
 
-    __aicore__ inline void IterateBmm2(MxBmm2Buf &outputBuf,
-                                       BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
-                                       MxRunInfo &runInfo, const MxConstInfo &constInfo)
+    __aicore__ inline void IterateBmm2(LocalTensor<uint8_t> &outputBuf, uint32_t outputEventId,
+                                       LocalTensor<uint8_t> &pBuf, uint32_t pEventId, MxRunInfo &runInfo,
+                                       const MxConstInfo &constInfo)
     {
         // C2: P[128,512] x V[512,DV]，P/V 均携带 e8m0 scale。
-        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> pBuf = inputBuf.GetCube();
-        pBuf.WaitCrossCore();
+        MxStatic::AicWaitL1PReady(pEventId);
         constexpr uint64_t pScaleOffset = static_cast<uint64_t>(M_BASE) * S2_BASE;
         if (runInfo.actSingleLoopS2Size > S2_SPLIT) {
             // tail PScale 填 e8m0(1.0)。
             constexpr uint32_t int16Bytes = 2U;
             LocalTensor<int16_t> pScalePadTensor =
-                pBuf.GetTensor<int16_t>(pScaleOffset / int16Bytes + M_BASE * S2_SPLIT / MX_SCALE_GROUP / int16Bytes);
+                pBuf.ReinterpretCast<int16_t>()[pScaleOffset / int16Bytes +
+                                                M_BASE * S2_SPLIT / MX_SCALE_GROUP / int16Bytes];
             InitConstValue(pScalePadTensor, {1, M_BASE * S2_SPLIT / MX_SCALE_GROUP * sizeof(SCALE_T) / 32U, 0, 0x7f7f});
         }
-        LocalTensor<SCALE_T> pScaleTensor = pBuf.GetTensor<SCALE_T>(pScaleOffset);
+        LocalTensor<SCALE_T> pScaleTensor = pBuf.ReinterpretCast<SCALE_T>()[pScaleOffset];
 
-        Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers_.Get();
-        mm2ResL0C.Wait<HardEvent::FIX_M>();
+        const uint32_t l0cSlot = l0cCursor_;
+        l0cCursor_ ^= 1U;
+        const TEventID l0cEventId = l0cSlot == 0U ? MxStatic::L0C_EVENT_ID0 : MxStatic::L0C_EVENT_ID1;
+        LocalTensor<MM_T> mm2ResL0C = l0cTensor_[l0cSlot].ReinterpretCast<MM_T>();
+        WaitFlag<HardEvent::FIX_M>(l0cEventId);
         constexpr uint32_t baseK = S2_SPLIT;
         constexpr uint64_t l1BaseKOffset = static_cast<uint64_t>(baseK) * M_BASE;
         constexpr uint64_t l1ScaleOffset = l1BaseKOffset / MX_SCALE_GROUP;
         const uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1U) / baseK;
         for (uint32_t kIdx = 0U; kIdx < kLoops; ++kIdx) {
             const uint32_t realK = (kIdx == kLoops - 1U) ? runInfo.actSingleLoopS2Size - kIdx * baseK : baseK;
-            Buffer<BufferType::L1> vBuf = l1VBuffers_.Get();
-            vBuf.Wait<HardEvent::MTE1_MTE2>();
-            LocalTensor<INPUT_T> vTensor = vBuf.GetTensor<INPUT_T>();
+            constexpr uint32_t vSlotBytes = S2_SPLIT * D_BASE * sizeof(INPUT_T) +
+                                            (S2_SPLIT / MX_TOKEN_GROUP) * DV_BASE * MX_SCALE_LAST_DIM *
+                                                sizeof(SCALE_T);
+            const uint32_t vSlot = vCursor_;
+            vCursor_ ^= 1U;
+            const TEventID vEventId = vSlot == 0U ? MxStatic::L1_V_EVENT_ID0 : MxStatic::L1_V_EVENT_ID1;
+            LocalTensor<uint8_t> vBuf = l1VTensor_[vSlot * vSlotBytes];
+            WaitFlag<HardEvent::MTE1_MTE2>(vEventId);
+            LocalTensor<INPUT_T> vTensor = vBuf.ReinterpretCast<INPUT_T>();
             // V 使用 ND2NZ，tail 补零到 64-token 对齐。
             InitValuePadding(vTensor, realK, constInfo.dSizeV);
             CopyValueToL1(vTensor, runInfo, constInfo, realK, kIdx);
 
             const uint64_t vScaleOffset = static_cast<uint64_t>(AlignUp64(realK)) * constInfo.dSizeV;
-            LocalTensor<SCALE_T> vScaleTensor = vBuf.GetTensor<SCALE_T>(vScaleOffset);
+            LocalTensor<SCALE_T> vScaleTensor = vBuf.ReinterpretCast<SCALE_T>()[vScaleOffset];
             // VScale 按 64-token group 寻址。
             CopyValueScaleToL1(vScaleTensor, runInfo, constInfo, realK, kIdx);
-            vBuf.Set<HardEvent::MTE2_MTE1>();
-            vBuf.Wait<HardEvent::MTE2_MTE1>();
+            SetFlag<HardEvent::MTE2_MTE1>(vEventId);
+            WaitFlag<HardEvent::MTE2_MTE1>(vEventId);
 
             MMParam param =
                 MxMakeMMParam(M_BASE, constInfo.dSizeV, AlignUp64(realK), true, false, kIdx == 0U, kIdx == 0U);
+            // PScale remains packed as a fixed 256-column tile even when the current K tail is only 64/128/192.
+            // LoadData2DMx expresses this stride in pairs of E8M0 scales (64 P elements per unit).
+            param.mxScaleASrcStride = S2_SPLIT / MX_TOKEN_GROUP;
             // P 转置，V 保持 KN。
-            MxMatmulFull<INPUT_T, INPUT_T, MM_T, M_BASE, DV_BASE, baseK, ABLayout::MK, ABLayout::KN,
-                         BuffersPolicyDB<BufferType::L0A>, BuffersPolicyDB<BufferType::L0B>, SCALE_T, SCALE_T,
-                         mx_fp8_e4m3_t, mx_fp8_e4m3_t>(pBuf.GetTensor<INPUT_T>()[kIdx * l1BaseKOffset], vTensor,
-                                                       mmL0ABuffers_, mmL0BBuffers_, mm2ResL0C.GetTensor<MM_T>(), param,
-                                                       pScaleTensor[kIdx * l1ScaleOffset], vScaleTensor);
-            vBuf.Set<HardEvent::MTE1_MTE2>();
+            MxStatic::MxMatmulFullStatic<INPUT_T, INPUT_T, MM_T, SCALE_T, SCALE_T, mx_fp8_e4m3_t,
+                                         mx_fp8_e4m3_t>(pBuf.ReinterpretCast<INPUT_T>()[kIdx * l1BaseKOffset],
+                                                        vTensor, l0aTensor_, l0bTensor_, l0aCursor_, l0bCursor_,
+                                                        mm2ResL0C, param, pScaleTensor[kIdx * l1ScaleOffset],
+                                                        vScaleTensor);
+            SetFlag<HardEvent::MTE1_MTE2>(vEventId);
         }
 
-        mm2ResL0C.Set<HardEvent::M_FIX>();
-        mm2ResL0C.Wait<HardEvent::M_FIX>();
-        outputBuf.WaitCrossCore();
-        FixpipeMm2(outputBuf.GetTensor<MM_T>(), mm2ResL0C.GetTensor<MM_T>(), runInfo, constInfo);
-        mm2ResL0C.Set<HardEvent::FIX_M>();
-        outputBuf.SetCrossCore();
+        SetFlag<HardEvent::M_FIX>(l0cEventId);
+        WaitFlag<HardEvent::M_FIX>(l0cEventId);
+        MxStatic::AicWaitUbFree(outputEventId);
+        FixpipeMm2(outputBuf.ReinterpretCast<MM_T>(), mm2ResL0C, runInfo, constInfo);
+        SetFlag<HardEvent::FIX_M>(l0cEventId);
+        MxStatic::AicSetUbReady(outputEventId);
     }
 
 private:
@@ -455,8 +525,6 @@ private:
         InitConstValue(valueL1.template ReinterpretCast<half>()[realK << 4U], initConstValueParams);
     }
 
-    TPipe *tPipe_ = nullptr;
-    BufferManager<BufferType::L1> *l1BufferManager_ = nullptr;
     GlobalTensor<INPUT_T> queryGm_;
     GlobalTensor<INPUT_T> keyGm_;
     GlobalTensor<INPUT_T> valueGm_;
@@ -465,15 +533,19 @@ private:
     GlobalTensor<SCALE_T> vScaleGm_;
     GlobalTensor<int32_t> blockTableGm_;
 
-    BufferManager<BufferType::L0A> l0aBufferManager_;
-    BufferManager<BufferType::L0B> l0bBufferManager_;
-    BufferManager<BufferType::L0C> l0cBufferManager_;
-    BuffersPolicyDB<BufferType::L1> l1QBuffers_;
-    BuffersPolicy4buff<BufferType::L1> l1KVBuffers_;
-    BuffersPolicyDB<BufferType::L1> l1VBuffers_;
-    BuffersPolicyDB<BufferType::L0A> mmL0ABuffers_;
-    BuffersPolicyDB<BufferType::L0B> mmL0BBuffers_;
-    BuffersPolicyDB<BufferType::L0C> mmL0CBuffers_;
+    LocalTensor<uint8_t> l1QTensor_;
+    LocalTensor<uint8_t> l1KTensor_;
+    LocalTensor<uint8_t> l1VTensor_;
+    LocalTensor<uint8_t> l0aTensor_[2];
+    LocalTensor<uint8_t> l0bTensor_[2];
+    LocalTensor<uint8_t> l0cTensor_[2];
+    uint32_t qCursor_ = 0U;
+    uint32_t currentQSlot_ = 0U;
+    uint32_t kCursor_ = 0U;
+    uint32_t vCursor_ = 0U;
+    uint32_t l0aCursor_ = 0U;
+    uint32_t l0bCursor_ = 0U;
+    uint32_t l0cCursor_ = 0U;
 };
 } // namespace BaseApi
 
