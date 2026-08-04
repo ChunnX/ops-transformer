@@ -307,23 +307,24 @@ private:
 
         const int64_t qSegElems = numHeadQ_ * headDim_;
         const int64_t kSegElems = numHeadK_ * headDim_;
+        const int64_t vSegElems = numHeadV_ * headDim_;
         const int64_t kSegBase = ubFactor_ * qSegElems;
+        const int64_t vSegBase = ubFactor_ * headNumQK_ * headDim_;
 
+        // V 段也在这次 VF 里完成（直通，不参与 norm/rope），不再另起一趟 UB->UB 搬运
         QkRmsNormMropeTileVF((__local_mem__ bfloat16_t*)qkvLocal.GetPhyAddr(),
                              (__local_mem__ float*)gammaTileLocal_.GetPhyAddr(),
                              (__local_mem__ float*)cosSinLocal.GetPhyAddr(),
                              (__local_mem__ uint32_t*)gatherIdxLocal_.GetPhyAddr(),
                              (__local_mem__ bfloat16_t*)outLocal.GetPhyAddr(),
                              (__local_mem__ bfloat16_t*)outLocal[kSegBase].GetPhyAddr(),
+                             (__local_mem__ bfloat16_t*)outLocal[vSegBase].GetPhyAddr(),
                              static_cast<uint16_t>(tokenNum), static_cast<uint16_t>(numHeadQ_),
-                             static_cast<uint16_t>(numHeadK_), static_cast<uint32_t>(rowElems_),
-                             static_cast<uint32_t>(DIGIT_TWO * headDim_),
+                             static_cast<uint16_t>(numHeadK_), static_cast<uint16_t>(numHeadV_),
+                             static_cast<uint32_t>(rowElems_), static_cast<uint32_t>(DIGIT_TWO * headDim_),
                              static_cast<uint32_t>(MROPE_AXIS_NUM * headDim_), static_cast<uint32_t>(qSegElems),
-                             static_cast<uint32_t>(kSegElems), static_cast<uint32_t>(headDim_),
-                             static_cast<uint32_t>(halfDim_), epsilon_, reciprocal_);
-
-        // V 不参与 norm/rope，且 T_QKV 与 T_CACHE 同为 bf16，纯搬运
-        CopyVSegment(qkvLocal, outLocal, tokenNum);
+                             static_cast<uint32_t>(kSegElems), static_cast<uint32_t>(vSegElems),
+                             static_cast<uint32_t>(headDim_), static_cast<uint32_t>(halfDim_), epsilon_, reciprocal_);
 
         outQue_.EnQue(outLocal);
         qkvInQue_.FreeTensor(qkvLocal);
@@ -347,19 +348,6 @@ private:
         }
         // UB->UB 搬运与随后 VF 的读之间要挡一下
         PipeBarrier<PIPE_V>();
-    }
-
-    // TODO(perf): V 段是 UB->UB 纯搬运，可以省掉 outLocal 的 v 段直接在 CopyOut 里
-    //             从 qkvInQue 写 GM，代价是输入 buffer 生命周期要延到 CopyOut 之后。
-    __aicore__ inline void CopyVSegment(const LocalTensor<T_QKV>& qkvLocal, const LocalTensor<T_QKV>& outLocal,
-                                        int64_t tokenNum)
-    {
-        const int64_t vSegElems = numHeadV_ * headDim_;
-        const int64_t vSegBase = ubFactor_ * headNumQK_ * headDim_;
-        const int64_t vInOffset = headNumQK_ * headDim_;
-        for (int64_t i = 0; i < tokenNum; ++i) {
-            DataCopy(outLocal[vSegBase + i * vSegElems], qkvLocal[i * rowElems_ + vInOffset], vSegElems);
-        }
     }
 
     // outLocal 按 [ubFactor 个 q | ubFactor 个 k | ubFactor 个 v] 分段：
