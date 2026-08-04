@@ -117,38 +117,38 @@ namespace KernelCommon {
                 actualKvseqlen(actualKvseqlen_), o(o_), lse(lse_), workSpace(workSpace_), tiling(tiling_), sink(sink_) {}
     };
 
-    __aicore__ inline uint32_t GetQNBlockTile(uint32_t qSeqlen, uint32_t groupSize)
+    __aicore__ inline uint32_t GetQNBlockTile(uint32_t qSeqlen, uint32_t groupSize, uint32_t qTileCeil = Q_TILE_CEIL)
     {
         uint32_t qNBlockTile = (qSeqlen != 0) ?
-            (Q_TILE_CEIL / qSeqlen) / N_SPLIT_HELPER * N_SPLIT_HELPER : Q_TILE_CEIL;
+            (qTileCeil / qSeqlen) / N_SPLIT_HELPER * N_SPLIT_HELPER : qTileCeil;
         qNBlockTile = qNBlockTile < groupSize ? qNBlockTile : groupSize;
         qNBlockTile = qNBlockTile < 1 ? 1 : qNBlockTile;
         return qNBlockTile;
     }
 
-    __aicore__ inline uint32_t GetKvNBlockTile(uint32_t rowNumPerQSGTile, uint32_t kvHead)
+    __aicore__ inline uint32_t GetKvNBlockTile(uint32_t rowNumPerQSGTile, uint32_t kvHead, uint32_t qTileCeil = Q_TILE_CEIL)
     {
-        uint32_t rowNumCeilPerQSGKvNTile = Q_TILE_CEIL;
+        uint32_t rowNumCeilPerQSGKvNTile = qTileCeil;
         uint32_t kvNBlockTile = rowNumCeilPerQSGKvNTile / rowNumPerQSGTile;
         kvNBlockTile = kvNBlockTile < kvHead ? kvNBlockTile : kvHead;
         kvNBlockTile = kvNBlockTile < 1 ? 1 : kvNBlockTile;
         return kvNBlockTile;
     }
 
-    __aicore__ inline uint32_t GetQSBlockTile(uint32_t kvSeqlen)
+    __aicore__ inline uint32_t GetQSBlockTile(uint32_t kvSeqlen, uint32_t qTileCeil = Q_TILE_CEIL)
     {
-        uint32_t qSBlockTile = Q_TILE_CEIL;
+        uint32_t qSBlockTile = qTileCeil;
         return qSBlockTile;
     }
 
-    __aicore__ inline uint32_t GetQSBlockTileDecode(uint32_t qSeqlen)
+    __aicore__ inline uint32_t GetQSBlockTileDecode(uint32_t qSeqlen, uint32_t qTileCeil = Q_TILE_CEIL)
     {
-        uint32_t qSBlockTile = Q_TILE_CEIL < qSeqlen ? Q_TILE_CEIL : qSeqlen;
+        uint32_t qSBlockTile = qTileCeil < qSeqlen ? qTileCeil : qSeqlen;
         return qSBlockTile;
     }
-    __aicore__ inline uint32_t GetKSBlockTile(uint32_t kvSeqlen)
+    __aicore__ inline uint32_t GetKSBlockTile(uint32_t kvSeqlen, uint32_t maxKvStackLen = MAX_KV_STACK_LEN)
     {
-        uint32_t kSBlockTile = MAX_KV_STACK_LEN;
+        uint32_t kSBlockTile = maxKvStackLen;
         return kSBlockTile;
     }
 }

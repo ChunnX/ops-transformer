@@ -83,6 +83,8 @@ namespace optiling{
     TILING_DATA_FIELD_DEF(uint32_t, tailStartBatch)
     TILING_DATA_FIELD_DEF(uint32_t, tailStartN2)
     TILING_DATA_FIELD_DEF(uint32_t, tailKvNBlockTile)
+    TILING_DATA_FIELD_DEF(uint32_t, qTileCeil)
+    TILING_DATA_FIELD_DEF(uint32_t, maxKvStackLen)
     TILING_DATA_FIELD_DEF_STRUCT(coreNode, coreInfo)
     TILING_DATA_FIELD_DEF_STRUCT(splitNode, splitInfo)
     END_TILING_DATA_DEF
@@ -92,11 +94,19 @@ namespace optiling{
     const uint32_t N_SPLIT_HELPER = 2;
     const uint32_t MAX_KV_STACK_LEN = 512;
     const uint32_t Q_TILE_CEIL = 128;
-    const uint32_t WORKSPACE_BLOCK_SIZE_DB = Q_TILE_CEIL * MAX_KV_STACK_LEN;
+    uint32_t WORKSPACE_BLOCK_SIZE_DB = Q_TILE_CEIL * MAX_KV_STACK_LEN;
     const uint32_t BASE_KV_SIZE = 128;
     const uint32_t PRELANCH_NUM = 3;
     const int64_t SPARSE_MODE_INT_MAX = 2147483647;
     const uint32_t TAIL_TASK_DIVISOR = 2;
+    // L1 memory budget and tiling helpers for headDim>256 halving strategy
+    const uint32_t L1_MAX_SIZE = 524288;       // 512KB L1
+    const uint32_t L1_DOUBLE_BUFFER = 2;
+    const uint32_t L1_NUM_32 = 32;
+    const uint32_t L1_NUM_128 = 128;
+    const uint32_t L1_NUM_256 = 256;
+    const uint32_t Q_TILE_CEIL_MIN = 64;       // halving floor for QBasicTile
+    const uint32_t MAX_KV_STACK_LEN_MIN = 128; // halving floor for KSeqStackTile
 
     enum class MaskType : uint32_t {
         NO_MASK = 0,
@@ -196,18 +206,22 @@ namespace optiling{
             uint32_t coreIdx, int32_t &splitIdx, int32_t &prevBIdx,
             int32_t &prevN1Idx, int32_t &prevS1Idx,
             int64_t &currentLseTaskOffset, int64_t &currentOTaskOffset);
+        bool ResolveDynamicTiling();
+        uint32_t CalculateL1Usage(uint32_t qTileCeil, uint32_t maxKvStackLen) const;
     private:
         FAInferContext faInfo_;
         uint32_t blockNum_;
+        uint32_t qTileCeil_ = Q_TILE_CEIL;
+        uint32_t maxKvStackLen_ = MAX_KV_STACK_LEN;
     };
 
     FAInferTiling::FAInferTiling(const FAInferContext &faInfo): faInfo_(faInfo) {}
 
     uint32_t FAInferTiling::GetQNBlockTile(uint32_t qSeqlen, uint32_t groupSize)
     {
-        uint32_t qRowNumCeil = Q_TILE_CEIL;
+        uint32_t qRowNumCeil = qTileCeil_;
         uint32_t qNBlockTile = (qSeqlen != 0) ?
-            (qRowNumCeil / qSeqlen) / N_SPLIT_HELPER * N_SPLIT_HELPER : Q_TILE_CEIL;
+            (qRowNumCeil / qSeqlen) / N_SPLIT_HELPER * N_SPLIT_HELPER : qTileCeil_;
         qNBlockTile = std::min(qNBlockTile, groupSize);
         qNBlockTile = std::max(qNBlockTile, static_cast<uint32_t>(1));
         return qNBlockTile;
@@ -215,19 +229,19 @@ namespace optiling{
 
     uint32_t FAInferTiling::GetQSBlockTile(int64_t kvSeqlen)
     {
-        uint32_t qSBlockTile = Q_TILE_CEIL;
+        uint32_t qSBlockTile = qTileCeil_;
         return qSBlockTile;
     }
 
     uint32_t FAInferTiling::GetQSBlockTileDecode(int64_t qSeqlen)
     {
-        uint32_t qSBlockTile = std::min(Q_TILE_CEIL, static_cast<uint32_t>(qSeqlen));
+        uint32_t qSBlockTile = std::min(qTileCeil_, static_cast<uint32_t>(qSeqlen));
         return qSBlockTile;
     }
 
     uint32_t FAInferTiling::GetKvNBlockTile(uint32_t rowNumPerQSGTile, uint32_t kvHead)
     {
-        uint32_t rowNumCeilPerQSGKvNTile = Q_TILE_CEIL;
+        uint32_t rowNumCeilPerQSGKvNTile = qTileCeil_;
         uint32_t kvNBlockTile = rowNumCeilPerQSGKvNTile / rowNumPerQSGTile;
         kvNBlockTile = std::min(kvNBlockTile, kvHead);
         kvNBlockTile = std::max(kvNBlockTile, static_cast<uint32_t>(1));
@@ -235,7 +249,7 @@ namespace optiling{
     }
     uint32_t FAInferTiling::GetKSBlockTile(int64_t kvSeqlen)
     {
-        uint32_t kSBlockTile = MAX_KV_STACK_LEN;
+        uint32_t kSBlockTile = maxKvStackLen_;
         return kSBlockTile;
     }
 
@@ -326,20 +340,21 @@ namespace optiling{
 
     void FAInferTiling::FillWorkSpaceTilingData(FAInferTilingData &faTilingData)
     {
-        uint64_t mm1OutSize = static_cast<uint64_t>(blockNum_) * WORKSPACE_BLOCK_SIZE_DB *
+        uint32_t workspaceBlockSizeDb = qTileCeil_ * maxKvStackLen_;
+        uint64_t mm1OutSize = static_cast<uint64_t>(blockNum_) * workspaceBlockSizeDb *
             SIZE_OF_32BIT * PRELANCH_NUM;
-        uint64_t smOnlineOutSize = static_cast<uint64_t>(blockNum_) * WORKSPACE_BLOCK_SIZE_DB *
+        uint64_t smOnlineOutSize = static_cast<uint64_t>(blockNum_) * workspaceBlockSizeDb *
             SIZE_OF_16BIT * PRELANCH_NUM;
-        uint64_t mm2OutSize = static_cast<uint64_t>(blockNum_) * WORKSPACE_BLOCK_SIZE_DB *
+        uint64_t mm2OutSize = static_cast<uint64_t>(blockNum_) * workspaceBlockSizeDb *
             SIZE_OF_32BIT * PRELANCH_NUM;
-        uint64_t UpdateSize = static_cast<uint64_t>(blockNum_) * WORKSPACE_BLOCK_SIZE_DB *
+        uint64_t UpdateSize = static_cast<uint64_t>(blockNum_) * workspaceBlockSizeDb *
             SIZE_OF_32BIT * PRELANCH_NUM;
         uint64_t splitLseTotalSize = 0;
         uint64_t splitOTotalSize = 0;
         if (faInfo_.isTilingSink) {
-            splitLseTotalSize = 2 * static_cast<uint64_t>(blockNum_) * Q_TILE_CEIL * SIZE_OF_32BIT * faInfo_.numHeads;
+            splitLseTotalSize = 2 * static_cast<uint64_t>(blockNum_) * qTileCeil_ * SIZE_OF_32BIT * faInfo_.numHeads;
             uint32_t embeddingSizeV = static_cast<uint32_t>(faInfo_.embeddingSizeV);
-            splitOTotalSize = 2 * static_cast<uint64_t>(blockNum_) * Q_TILE_CEIL * embeddingSizeV * SIZE_OF_32BIT * faInfo_.numHeads;
+            splitOTotalSize = 2 * static_cast<uint64_t>(blockNum_) * qTileCeil_ * embeddingSizeV * SIZE_OF_32BIT * faInfo_.numHeads;
             faTilingData.set_splitLseTotalSize(splitLseTotalSize);
             faTilingData.set_splitOTotalSize(splitOTotalSize);
             faTilingData.set_needCoreNum(blockNum_);
@@ -739,6 +754,9 @@ namespace optiling{
 
     ge::graphStatus FAInferTiling::DoTiling(FAInferTilingData &tilingdata)
     {
+        if (!ResolveDynamicTiling()) {
+            return ge::GRAPH_FAILED;
+        }
         FillBasicTilingData(tilingdata);
         if (!faInfo_.isTilingSink) {
             FillSplitCoreTilingData(tilingdata);
@@ -749,7 +767,45 @@ namespace optiling{
             }
         }
         FillWorkSpaceTilingData(tilingdata);
+        tilingdata.set_qTileCeil(qTileCeil_);
+        tilingdata.set_maxKvStackLen(maxKvStackLen_);
+        WORKSPACE_BLOCK_SIZE_DB = qTileCeil_ * maxKvStackLen_;
         return ge::GRAPH_SUCCESS;
+    }
+
+    uint32_t FAInferTiling::CalculateL1Usage(uint32_t qTileCeil, uint32_t maxKvStackLen) const
+    {
+        // Mirror kernel L1 model: V reservation + Q buffer + K buffer (double-buffered, min nDyn=32)
+        uint32_t embed = static_cast<uint32_t>(faInfo_.embeddingSize);
+        uint32_t embedV = static_cast<uint32_t>(faInfo_.embeddingSizeV);
+        uint32_t kDynNum = ((embed + L1_NUM_128 - 1) / L1_NUM_128) * L1_NUM_128;
+        kDynNum = kDynNum < L1_NUM_256 ? L1_NUM_256 : kDynNum;
+        uint32_t vBufSize = embedV * maxKvStackLen * SIZE_OF_16BIT;
+        uint32_t qBufSize = qTileCeil * kDynNum * SIZE_OF_16BIT;
+        uint32_t minKBufSize = L1_NUM_32 * kDynNum * SIZE_OF_16BIT * L1_DOUBLE_BUFFER;
+        return vBufSize + qBufSize + minKBufSize;
+    }
+
+    bool FAInferTiling::ResolveDynamicTiling()
+    {
+        qTileCeil_ = Q_TILE_CEIL;
+        maxKvStackLen_ = MAX_KV_STACK_LEN;
+        // Only apply halving when headDim > 256 (embeddingSize or embeddingSizeV)
+        if (static_cast<uint32_t>(faInfo_.embeddingSize) <= L1_NUM_256 &&
+            static_cast<uint32_t>(faInfo_.embeddingSizeV) <= L1_NUM_256) {
+            return true;
+        }
+        // Halve Q_TILE_CEIL first, then MAX_KV_STACK_LEN, until L1 fits
+        while (CalculateL1Usage(qTileCeil_, maxKvStackLen_) > L1_MAX_SIZE) {
+            if (qTileCeil_ > Q_TILE_CEIL_MIN) {
+                qTileCeil_ /= 2;
+            } else if (maxKvStackLen_ > MAX_KV_STACK_LEN_MIN) {
+                maxKvStackLen_ /= 2;
+            } else {
+                return false; // cannot satisfy L1 budget even at minimum tiling
+            }
+        }
+        return true;
     }
 }
 #endif

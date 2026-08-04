@@ -1203,9 +1203,9 @@ ge::graphStatus CheckFAISinglePara(const gert::TilingContext *context, bool isPa
     OP_CHECK_IF((tempQD != tempKD) || (tempQD != tempVD),
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "HeadDim of Q, K, and V must be consistent"),
             return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tempQD > 256U,
+    OP_CHECK_IF(tempQD > 512U,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-            "When input layout is TND, headDim shall not exceed 256"),
+            "When input layout is TND, headDim shall not exceed 512"),
             return ge::GRAPH_FAILED);
     
     if (isLearnableSinkFlag) {
@@ -1532,7 +1532,7 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
 
 static bool CheckFAIDSizeNoPA(int64_t tempD, int64_t tempKD, int64_t tempVD)
 {
-    return (tempD <= 256 && tempKD <= 256 && tempVD <= 256) && // 256: FAI max D
+    return (tempD <= 512 && tempKD <= 512 && tempVD <= 512) && // 512: FAI max D
            (tempD == tempKD && tempD == tempVD);
 }
 
@@ -1543,7 +1543,7 @@ static bool CheckFAIDSizePA3Dim(int64_t tempD, const gert::Shape *tempKShape,
     int64_t tempVD = tempVShape->GetDim(DIM_2) / kvHeadNum;
     int64_t blockSize = tempKShape->GetDim(DIM_1);
     constexpr int64_t BLOCK_SIZE_ALIGN_16 = 16;
-    bool isFAIDSize = (tempD <= 256 && tempKD <= 256 && tempVD <= 256) &&
+    bool isFAIDSize = (tempD <= 512 && tempKD <= 512 && tempVD <= 512) &&
             (tempD == tempKD && tempD == tempVD);
     bool blockSizeSupported = (blockSize % BLOCK_SIZE_ALIGN_16 == 0) &&
             (blockSize <= MAX_BLOCK_SIZE);
@@ -1557,7 +1557,7 @@ static bool CheckFAIDSizePA5Dim(int64_t tempD, const gert::Shape *tempKShape,
     int64_t tempVD = tempVShape->GetDim(DIM_2) * 16;
     int64_t blockSize = tempKShape->GetDim(DIM_3);
     constexpr int64_t BLOCK_SIZE_ALIGN_16 = 16;
-    bool isFAIDSize = (tempD <= 256U && tempKD <= 256 && tempVD <= 256) &&
+    bool isFAIDSize = (tempD <= 512 && tempKD <= 512 && tempVD <= 512) &&
             (tempD == tempKD && tempD == tempVD) && (blockSize % BLOCK_SIZE_ALIGN_16 == 0);
     // D=64 and D=128 are excluded as they use other optimized paths
     isFAIDSize = isFAIDSize && !(tempD == 64 || tempD == 128);
@@ -2195,10 +2195,11 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
         OP_LOGE("FusedInferAttentionScore", "tiling context is nullptr!");
         return ge::GRAPH_FAILED;
     }
-
+    OP_LOGD(context->GetNodeName(), "hello wangsong!! TilingFusedInferAttentionScore is %u.", 0);
     if (RouteToFia(context)) {
         return TilingFusedInferAttentionScoreV3(context);
     }
+    OP_LOGD(context->GetNodeName(), "hello wangsong!! TilingFusedInferAttentionScore is %u.", 1);
     
     OP_CHECK_IF(CheckQKV(*context) != ge::GRAPH_SUCCESS,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check query/key/value failed"), return ge::GRAPH_FAILED);
@@ -2234,6 +2235,8 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
     // 是否路由到IFA
     bool usingIFA = IsUsingIFA(*context, inputLayoutStr, queryD, queryS);
     bool usingFAI = IsUsingFAI(*context, inputLayoutStr, queryD);
+    OP_LOGD(context->GetNodeName(), "hello wangsong!! TilingFusedInferAttentionScore IsUsingIFA is %u.", usingIFA);
+    OP_LOGD(context->GetNodeName(), "hello wangsong!! TilingFusedInferAttentionScore IsUsingFAI is %u.", usingFAI);
     if (usingFAI) {
         OP_CHECK_IF(TilingProcess4SplitFuse(context) != ge::GRAPH_SUCCESS,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for split fuse failed"),
