@@ -540,13 +540,15 @@ private:
     LocalTensor<uint8_t> l0aTensor_[2];
     LocalTensor<uint8_t> l0bTensor_[2];
     LocalTensor<uint8_t> l0cTensor_[2];
-    uint32_t qCursor_ = 0U;
+    // BuffersPolicyDB starts from pong; preserving the initial slot keeps the
+    // static pipeline and its event sequence identical to the original path.
+    uint32_t qCursor_ = 1U;
     uint32_t currentQSlot_ = 0U;
     uint32_t kCursor_ = 0U;
-    uint32_t vCursor_ = 0U;
-    uint32_t l0aCursor_ = 0U;
-    uint32_t l0bCursor_ = 0U;
-    uint32_t l0cCursor_ = 0U;
+    uint32_t vCursor_ = 1U;
+    uint32_t l0aCursor_ = 1U;
+    uint32_t l0bCursor_ = 1U;
+    uint32_t l0cCursor_ = 1U;
 };
 } // namespace BaseApi
 

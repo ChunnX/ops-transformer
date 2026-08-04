@@ -463,7 +463,12 @@ private:
                             runInfo.isValid = false;
                         }
                     }
-                    ++mLoop;
+                    // mLoop indexes the three-slot online-softmax state.  It must only advance when this
+                    // logical S1 block really emitted a C1/V1 task.  Advancing it for an all-invalid sparse
+                    // list can recycle the state of a task whose delayed C2/V2 is still in flight.
+                    if (hasValidS2Task) {
+                        ++mLoop;
+                    }
                 }
             }
         }
@@ -487,6 +492,7 @@ private:
     LocalTensor<uint8_t> bmm1Ub_[2];
     LocalTensor<uint8_t> bmm2Ub_;
     LocalTensor<uint8_t> l1P_[PRELOAD_TASK_CACHE_SIZE];
+    // Match BuffersPolicyDB: its first Get() returns pong (slot 1).
     uint32_t bmm1Cursor_ = 1U;
     QuantBlockSparseAttnMxBlockCube<INPUT_T, MM_T, OUTPUT_T, LAYOUT, KV_LAYOUT, s1TemplateType, s2TemplateType,
                                     dTemplateType, dVTemplateType, IS_PA, USE_DN>
