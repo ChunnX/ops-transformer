@@ -224,12 +224,13 @@ public:
 
     // V1：C1[128,256] -> P/PScale；两个 subLoop 写成 P[128,512]。
     __aicore__ inline void ProcessVec1(LocalTensor<uint8_t> &outputBuf, uint32_t outputEventId,
-                                       LocalTensor<uint8_t> &bmm1ResBuf, uint32_t bmm1EventId,
+                                       LocalTensor<uint8_t> &bmm1ResBuf, uint32_t bmm1ReadyEventId,
+                                       uint32_t bmm1FreeEventId,
                                        MxRunInfo &runInfo, const MxConstInfo &constInfo, uint32_t subLoop)
     {
         if (unlikely(runInfo.actVecMSize == 0U)) {
-            MxStatic::AivWaitUbReady(bmm1EventId);
-            MxStatic::AivSetUbFree(bmm1EventId);
+            MxStatic::AivWaitUbReady(bmm1ReadyEventId);
+            MxStatic::AivSetUbFree(bmm1FreeEventId);
             if (IsLastSubLoop(runInfo, subLoop)) {
                 MxStatic::AivSetL1PReady(outputEventId);
             }
@@ -258,7 +259,7 @@ public:
             attenMaskUb = CopyAttenMaskToUb(runInfo, subLoop, s2CalcSize);
         }
         // 先搬 mask，再等待 C1，以重叠 MTE2 与 BMM1。
-        MxStatic::AivWaitUbReady(bmm1EventId);
+        MxStatic::AivWaitUbReady(bmm1ReadyEventId);
         constexpr float descaleQK = 1.0f;
         // Q/K scale 已在 C1 随路消费，因此 descaleQK=1。
         if constexpr (USE_DN) {
@@ -281,7 +282,7 @@ public:
             static_assert(USE_DN, "MXFullQuantMode vector currently implements DN VF only; "
                                   "use_dn=false is reserved for future extension");
         }
-        MxStatic::AivSetUbFree(bmm1EventId);
+        MxStatic::AivSetUbFree(bmm1FreeEventId);
         if constexpr (HAS_ATTEN) {
             SetFlag<HardEvent::V_MTE2>(MxStatic::MASK_EVENT_ID);
         }
@@ -305,12 +306,13 @@ public:
     }
 
     // V2：更新 C2[128,DV]，最后归一化并写回 bf16。
-    __aicore__ inline void ProcessVec2(LocalTensor<uint8_t> &bmm2ResBuf, uint32_t bmm2EventId,
+    __aicore__ inline void ProcessVec2(LocalTensor<uint8_t> &bmm2ResBuf, uint32_t bmm2ReadyEventId,
+                                       uint32_t bmm2FreeEventId,
                                        MxRunInfo &runInfo, const MxConstInfo &constInfo)
     {
-        MxStatic::AivWaitUbReady(bmm2EventId);
+        MxStatic::AivWaitUbReady(bmm2ReadyEventId);
         if (unlikely(runInfo.actVecMSize == 0U)) {
-            MxStatic::AivSetUbFree(bmm2EventId);
+            MxStatic::AivSetUbFree(bmm2FreeEventId);
             return;
         }
 
@@ -344,7 +346,7 @@ public:
                     vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
             }
         }
-        MxStatic::AivSetUbFree(bmm2EventId);
+        MxStatic::AivSetUbFree(bmm2FreeEventId);
         if (isLastS2Loop) {
             if (unlikely(isFirstS2Loop)) {
                 // 单 tile 场景单独归一化。

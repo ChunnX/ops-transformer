@@ -175,18 +175,18 @@ private:
     __aicore__ inline void CrossCoreBufferInit()
     {
         if ASCEND_IS_AIV {
-            MxStatic::AivSetUbFree(MxStatic::CC_BMM1_EVENT_ID0);
-            MxStatic::AivSetUbFree(MxStatic::CC_BMM1_EVENT_ID1);
-            MxStatic::AivSetUbFree(MxStatic::CC_BMM2_EVENT_ID);
+            MxStatic::AivSetUbFree(MxStatic::CC_BMM1_FREE_EVENT_ID0);
+            MxStatic::AivSetUbFree(MxStatic::CC_BMM1_FREE_EVENT_ID1);
+            MxStatic::AivSetUbFree(MxStatic::CC_BMM2_FREE_EVENT_ID);
         }
     }
 
     __aicore__ inline void CrossCoreBufferUninit()
     {
         if ASCEND_IS_AIC {
-            MxStatic::AicWaitUbFree(MxStatic::CC_BMM1_EVENT_ID0);
-            MxStatic::AicWaitUbFree(MxStatic::CC_BMM1_EVENT_ID1);
-            MxStatic::AicWaitUbFree(MxStatic::CC_BMM2_EVENT_ID);
+            MxStatic::AicWaitUbFree(MxStatic::CC_BMM1_FREE_EVENT_ID0);
+            MxStatic::AicWaitUbFree(MxStatic::CC_BMM1_FREE_EVENT_ID1);
+            MxStatic::AicWaitUbFree(MxStatic::CC_BMM2_FREE_EVENT_ID);
         }
     }
 
@@ -370,25 +370,28 @@ private:
                 for (uint32_t subLoop = 0U; subLoop < c1v1Loop; ++subLoop) {
                     const uint32_t bmm1Slot = bmm1Cursor_;
                     bmm1Cursor_ ^= 1U;
-                    cubeBlock.IterateBmm1(bmm1Ub_[bmm1Slot], MxStatic::Bmm1EventId(bmm1Slot), runInfoCur,
-                                          constInfo, subLoop);
+                    cubeBlock.IterateBmm1(bmm1Ub_[bmm1Slot], MxStatic::Bmm1ReadyEventId(bmm1Slot),
+                                          MxStatic::Bmm1FreeEventId(bmm1Slot), runInfoCur, constInfo, subLoop);
                 }
             } else {
                 for (uint32_t subLoop = 0U; subLoop < c1v1Loop; ++subLoop) {
                     const uint32_t bmm1Slot = bmm1Cursor_;
                     bmm1Cursor_ ^= 1U;
                     vecBlock.ProcessVec1(l1P_[l1PSlot], MxStatic::L1PEventId(l1PSlot), bmm1Ub_[bmm1Slot],
-                                         MxStatic::Bmm1EventId(bmm1Slot), runInfoCur, constInfo, subLoop);
+                                         MxStatic::Bmm1ReadyEventId(bmm1Slot),
+                                         MxStatic::Bmm1FreeEventId(bmm1Slot), runInfoCur, constInfo, subLoop);
                 }
             }
         }
         if (likely(loop >= PRELOAD_N && runInfoPre.isValid)) {
             const uint32_t l1PSlot = runInfoPre.loop % PRELOAD_TASK_CACHE_SIZE;
             if ASCEND_IS_AIC {
-                cubeBlock.IterateBmm2(bmm2Ub_, MxStatic::CC_BMM2_EVENT_ID, l1P_[l1PSlot],
+                cubeBlock.IterateBmm2(bmm2Ub_, MxStatic::CC_BMM2_READY_EVENT_ID,
+                                      MxStatic::CC_BMM2_FREE_EVENT_ID, l1P_[l1PSlot],
                                       MxStatic::L1PEventId(l1PSlot), runInfoPre, constInfo);
             } else {
-                vecBlock.ProcessVec2(bmm2Ub_, MxStatic::CC_BMM2_EVENT_ID, runInfoPre, constInfo);
+                vecBlock.ProcessVec2(bmm2Ub_, MxStatic::CC_BMM2_READY_EVENT_ID,
+                                     MxStatic::CC_BMM2_FREE_EVENT_ID, runInfoPre, constInfo);
             }
             runInfoPre.isValid = false;
         }

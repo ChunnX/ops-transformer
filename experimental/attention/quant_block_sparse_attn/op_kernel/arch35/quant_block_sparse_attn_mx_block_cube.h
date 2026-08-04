@@ -150,7 +150,8 @@ public:
         }
     }
 
-    __aicore__ inline void IterateBmm1(LocalTensor<uint8_t> &outputBuf, uint32_t outputEventId,
+    __aicore__ inline void IterateBmm1(LocalTensor<uint8_t> &outputBuf, uint32_t outputReadyEventId,
+                                       uint32_t outputFreeEventId,
                                        MxRunInfo &runInfo, const MxConstInfo &constInfo, uint32_t subLoop)
     {
         // C1: K[256,D] x Q^T[D,128]；K 由多个 sparse block 拼接。
@@ -220,13 +221,14 @@ public:
         SetFlag<HardEvent::M_FIX>(l0cEventId);
         WaitFlag<HardEvent::M_FIX>(l0cEventId);
 
-        MxStatic::AicWaitUbFree(outputEventId);
+        MxStatic::AicWaitUbFree(outputFreeEventId);
         FixpipeMm1(outputBuf.ReinterpretCast<MM_T>(), mm1ResL0C, runInfo, s2CalcSize);
         SetFlag<HardEvent::FIX_M>(l0cEventId);
-        MxStatic::AicSetUbReady(outputEventId);
+        MxStatic::AicSetUbReady(outputReadyEventId);
     }
 
-    __aicore__ inline void IterateBmm2(LocalTensor<uint8_t> &outputBuf, uint32_t outputEventId,
+    __aicore__ inline void IterateBmm2(LocalTensor<uint8_t> &outputBuf, uint32_t outputReadyEventId,
+                                       uint32_t outputFreeEventId,
                                        LocalTensor<uint8_t> &pBuf, uint32_t pEventId, MxRunInfo &runInfo,
                                        const MxConstInfo &constInfo)
     {
@@ -287,10 +289,10 @@ public:
 
         SetFlag<HardEvent::M_FIX>(l0cEventId);
         WaitFlag<HardEvent::M_FIX>(l0cEventId);
-        MxStatic::AicWaitUbFree(outputEventId);
+        MxStatic::AicWaitUbFree(outputFreeEventId);
         FixpipeMm2(outputBuf.ReinterpretCast<MM_T>(), mm2ResL0C, runInfo, constInfo);
         SetFlag<HardEvent::FIX_M>(l0cEventId);
-        MxStatic::AicSetUbReady(outputEventId);
+        MxStatic::AicSetUbReady(outputReadyEventId);
     }
 
 private:
