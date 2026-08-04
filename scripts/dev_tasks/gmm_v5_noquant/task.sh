@@ -61,7 +61,9 @@ task_run()
         return 1
     fi
     # shellcheck disable=SC1090
+    set +u
     source "$custom_env"
+    set -u
     bash build.sh \
         --run_example "$OPERATOR" eager cust \
         --vendor_name="$GMM_VENDOR" \

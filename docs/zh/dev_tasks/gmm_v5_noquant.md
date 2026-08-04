@@ -63,6 +63,12 @@ tail -200 <result-dir>/run.log
 
 如果 build 阶段失败，`install.log` 和 `run.log` 不会生成；如果 install 阶段失败，`run.log` 不会生成。
 
+如果 build 和 install 已成功，仅 run 阶段失败，可复用已有安装目录而不重新编译：
+
+```bash
+bash scripts/dev_workflow/server_b_task.sh --repo /home/x00961093/cann/ops-transformer --commit <完整40位commit> --task scripts/dev_tasks/gmm_v5_noquant/task.sh --resume-run-dir <此前成功安装的result-dir>
+```
+
 ## 相关文件
 
 - 任务定义：`scripts/dev_tasks/gmm_v5_noquant/task.sh`

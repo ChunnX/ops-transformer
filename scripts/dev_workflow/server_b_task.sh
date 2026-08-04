@@ -19,10 +19,14 @@ usage()
     cat <<EOF
 Usage:
   $SCRIPT_NAME --commit FULL_SHA --task TASK_FILE [--repo REPO] [--run-root DIR]
+  $SCRIPT_NAME --commit FULL_SHA --task TASK_FILE --resume-run-dir DIR [--repo REPO] [--run-root DIR]
 
 Fetches and checks out an exact task commit, sources TASK_FILE from that commit,
 builds and installs the operator, optionally runs its runner, archives logs,
 then restores the original checkout and stashed local/untracked changes.
+
+With --resume-run-dir, reuses that run installation and executes only the
+runner while retaining the same checkout, logging and restore safeguards.
 EOF
 }
 
@@ -120,6 +124,7 @@ main()
     local task_file=""
     local requested_repo=""
     local requested_run_root=""
+    local requested_resume_run_dir=""
 
     while [[ "$#" -gt 0 ]]; do
         case "$1" in
@@ -127,6 +132,7 @@ main()
             --task) need_value "$1" "${2:-}"; task_file="$2"; shift 2 ;;
             --repo) need_value "$1" "${2:-}"; requested_repo="$2"; shift 2 ;;
             --run-root) need_value "$1" "${2:-}"; requested_run_root="$2"; shift 2 ;;
+            --resume-run-dir) need_value "$1" "${2:-}"; requested_resume_run_dir="$2"; shift 2 ;;
             -h | --help) usage; exit 0 ;;
             *) die "unknown option: $1" ;;
         esac
@@ -149,6 +155,18 @@ main()
     [[ "$RUN_ROOT" = /* ]] || die "run root must be an absolute path"
     mkdir -p "$RUN_ROOT"
 
+    local resume_install_root=""
+    if [[ -n "$requested_resume_run_dir" ]]; then
+        [[ "$requested_resume_run_dir" = /* ]] || die "resume run directory must be an absolute path"
+        requested_resume_run_dir="$(realpath -e "$requested_resume_run_dir")"
+        case "$requested_resume_run_dir" in
+            "$RUN_ROOT"/run-*) ;;
+            *) die "resume run directory must be an existing run under: $RUN_ROOT" ;;
+        esac
+        resume_install_root="$requested_resume_run_dir/install"
+        [[ -d "$resume_install_root" ]] || die "resume install directory not found: $resume_install_root"
+    fi
+
     cd "$REPO"
     ORIGINAL_HEAD="$(git rev-parse HEAD)"
     ORIGINAL_BRANCH="$(git branch --show-current)"
@@ -167,6 +185,7 @@ main()
         echo "original_branch=${ORIGINAL_BRANCH:-DETACHED}"
         echo "started_at=$(date --iso-8601=seconds)"
         echo "architecture=$(uname -m)"
+        echo "resume_run_dir=${requested_resume_run_dir:-NONE}"
     } > "$RUN_DIR/metadata.txt"
     git remote -v > "$RUN_DIR/git-remotes.txt"
     git status --short --branch > "$RUN_DIR/git-status-before.txt"
@@ -218,16 +237,22 @@ main()
     echo "ASCEND_HOME_PATH=${ASCEND_HOME_PATH:-NOT_SET}" > "$RUN_DIR/cann-environment.txt"
     command -v npu-smi >/dev/null 2>&1 && npu-smi info > "$RUN_DIR/npu-info.txt" 2>&1 || true
 
-    run_logged build task_build
-    local package_path
-    package_path="$(task_select_package)"
-    [[ -f "$package_path" ]] || die "task_select_package did not return a package file: $package_path"
-    sha256sum "$package_path" > "$RUN_DIR/package-sha256.txt"
-    printf '%s\n' "$package_path" > "$RUN_DIR/package-path.txt"
+    local install_root
+    if [[ -n "$resume_install_root" ]]; then
+        install_root="$resume_install_root"
+        echo "[INFO] resuming runner with install directory: $install_root" | tee -a "$RUN_DIR/summary.log"
+    else
+        run_logged build task_build
+        local package_path
+        package_path="$(task_select_package)"
+        [[ -f "$package_path" ]] || die "task_select_package did not return a package file: $package_path"
+        sha256sum "$package_path" > "$RUN_DIR/package-sha256.txt"
+        printf '%s\n' "$package_path" > "$RUN_DIR/package-path.txt"
 
-    local install_root="$RUN_DIR/install"
-    mkdir -p "$install_root"
-    run_logged install task_install "$package_path" "$install_root"
+        install_root="$RUN_DIR/install"
+        mkdir -p "$install_root"
+        run_logged install task_install "$package_path" "$install_root"
+    fi
 
     if [[ "$TASK_HAS_RUNNER" == "1" ]]; then
         run_logged run task_run "$install_root"
