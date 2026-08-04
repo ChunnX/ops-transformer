@@ -1166,13 +1166,12 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::SetEmptyTensor()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::SetEmptyTensor()");
 
-    // A zero-width dropless input still needs row-index routing when indices are non-empty.
-    if (n_ == 0 || k_ == 0 || (cols_ == 0 && !IsIndexOnlyRouting())) {
+    // cols_ == 0 still needs row-index routing when indices are non-empty.
+    if (n_ == 0 || k_ == 0) {
         isEmptyTensor_ = true;
     }
 
-    // 空tensor场景下activeNum无实际意义（如cols_==0但n_*k_>0时，调用方可能传入0），跳过校验并
-    // 归一化为totalLength_，与非arch35版本保持一致，避免语义上合法的空输入误失败。
+    // 空tensor场景下activeNum无实际意义，跳过校验并归一化为totalLength_。
     if (isEmptyTensor_) {
         tilingDataPtr_->activeNum = totalLength_;
     } else if (activeNum_ != ACTIVE_NUM_MIN_VALUE) {
