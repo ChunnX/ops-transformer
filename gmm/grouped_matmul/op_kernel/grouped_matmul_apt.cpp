@@ -387,7 +387,7 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                   ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
 #if IS_BLAZE
         if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
-            zzzlog("now is tensor api");
+            AscendC::printf("now is tensor api\n");
         }
         INVOKE_GMM_WEIGHT_QUANT_MXA8W4_TENSOR_API_IMPL();
 #else
