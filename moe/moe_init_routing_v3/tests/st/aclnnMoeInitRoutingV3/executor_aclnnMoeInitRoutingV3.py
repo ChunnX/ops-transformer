@@ -65,6 +65,8 @@ class FunctionMoeInitRoutingV3Api(BaseApi):
         row_idx_type = input_data.kwargs['row_idx_type']
         drop_pad_mode = input_data.kwargs['drop_pad_mode']
         quant_mode = input_data.kwargs['quant_mode']
+        if h == 0 and quant_mode == -1 and drop_pad_mode == 0:
+            scale = None
         expert_idx_in = expert_idx.copy().reshape(-1)
         actual_expert_total_num = np.sum((expert_idx >= expert_start) & (expert_idx < expert_end))
 
@@ -229,7 +231,12 @@ class PyAclnnMoeInitRoutingV3(AclnnBaseApi): # SampleApi类型仅需设置唯一
         AclTensorPtr = ctypes.POINTER(AclTensor)  # tensor指针类型
         null_void_ptr = ctypes.c_void_p(None)  # 声明一个空指针
         null_tensor_ptr = ctypes.cast(null_void_ptr, AclTensorPtr)  # 把这个空指针类型转换为tensor指针类型
-        if input_data.kwargs["quant_mode"] == -1 and input_data.kwargs["drop_pad_mode"] == 1:
+        is_index_only_routing = (
+            input_data.kwargs["x"].shape[1] == 0 and input_data.kwargs["quant_mode"] == -1 and
+            input_data.kwargs["drop_pad_mode"] == 0
+        )
+        if ((input_data.kwargs["quant_mode"] == -1 and input_data.kwargs["drop_pad_mode"] == 1) or
+                is_index_only_routing):
             input_args[2] = null_tensor_ptr  # 赋值给第3个参数
         return input_args, output_packages
        
