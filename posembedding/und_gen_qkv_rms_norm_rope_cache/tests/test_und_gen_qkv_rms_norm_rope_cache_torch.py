@@ -21,13 +21,19 @@
   2. torch_extension 已安装：cd torch_extension && python3 -m build --wheel -n
                             && pip install dist/*.whl --force-reinstall --no-deps
   3. export LD_LIBRARY_PATH=$ASCEND_HOME_PATH/opp/vendors/custom_transformer/op_api/lib/:$LD_LIBRARY_PATH
+  4. CANN 自带的 python/site-packages 里有一份同名旧包，会遮蔽新装的 wheel，
+     跑之前要把 venv 的 site-packages 前置：
+     export PYTHONPATH=<venv>/lib/python3.12/site-packages:$PYTHONPATH
+  5. 若环境里的 torchair 与 torch 版本不兼容（import cann_ops_transformer.ops 直接抛
+     torch_npu.dynamo._ImportError），需在 import 前把 torchair 及其子模块桩进 sys.modules；
+     本算子走 aclnn 直调，不经过 torchair。
 
 用法：
   python3 test_und_gen_qkv_rms_norm_rope_cache_torch.py           # 默认 case 集（T ≤ 10752）
   python3 test_und_gen_qkv_rms_norm_rope_cache_torch.py --full    # 追加 T=64K
   python3 test_und_gen_qkv_rms_norm_rope_cache_torch.py --case t10752_typical_h8
 
-NOTE: kernel 计算实现尚未完成，当前"接口连通性"应全通过、"数值精度"预期全不通过。
+基线：2026-08-03 在 A5（Ascend950PR_9579）上 12/12 全 PASS（含 --full 的两个 T=64K）。
 """
 
 import argparse
@@ -151,7 +157,7 @@ def main():
     results = [run_case(s) for s in specs]
     print(f"\n接口连通性: {len(results)}/{len(results)} PASS")
     print(f"数值精度:   {sum(results)}/{len(results)} PASS"
-          f"{'' if all(results) else '（kernel 计算实现完成前预期为 0）'}")
+          f"{'' if all(results) else '  <-- 预期全 PASS，出现 FAIL 即为回退'}")
     return 0 if all(results) else 1
 
 
