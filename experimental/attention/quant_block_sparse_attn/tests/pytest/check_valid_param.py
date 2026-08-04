@@ -58,6 +58,14 @@ def check_valid_param(params):
     if not isinstance(pa_block_padding_bytes, int) or pa_block_padding_bytes != 0:
         raise ValueError(f"pa_block_padding_bytes should be 0 for segmented KV cache, got {pa_block_padding_bytes}")
 
+    blocknum = params.get("blocknum")
+    if blocknum is not None:
+        if isinstance(blocknum, float) and blocknum.is_integer():
+            blocknum = int(blocknum)
+            params["blocknum"] = blocknum
+        if not isinstance(blocknum, int) or blocknum <= 0:
+            raise ValueError(f"blocknum should be a positive int or None, got {blocknum}")
+
     if params["layout_q"] not in ("TND", "NTD"):
         raise ValueError(f"unsupported layout_q: {params['layout_q']}")
 
