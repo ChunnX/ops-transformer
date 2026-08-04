@@ -91,13 +91,16 @@ public:
         if (constInfo.aicIdx >= constInfo.coreNum || constInfo.aicIdx >= BSA_FA_AIC_CORE_NUM) {
             return;
         }
-        CrossCoreBufferInit();
         if ASCEND_IS_AIC {
             cubeBlock.InitBuffers();
         } else {
             vecBlock.InitBuffers();
             vecBlock.ClearOutput(tilingData->emptyTensorParams, constInfo);
+            vecBlock.InitEvents();
         }
+        // ClearOutput contains SyncAll. Cross-core free tokens must be produced after that synchronization,
+        // matching the lifecycle used by the static-tensor FlashAttention implementation.
+        CrossCoreBufferInit();
         ProcessMainLoop();
         if ASCEND_IS_AIC {
             cubeBlock.FinalizeBuffers();
@@ -244,10 +247,36 @@ private:
         }
     }
 
+    __aicore__ inline uint32_t FindLastValidS2Loop(uint32_t sparseLen, uint32_t sparseBlocksPerTask,
+                                                   uint64_t sparseBase, uint32_t actualS2Size) const
+    {
+        // sparseSeqLen may include negative or out-of-range tail entries. Find the final group that contributes
+        // at least one real KV token so that the last executed task, rather than the last metadata group, owns
+        // Q-buffer release and output finalization.
+        uint32_t s2LoopIdx = (sparseLen - 1U) / sparseBlocksPerTask * sparseBlocksPerTask;
+        while (true) {
+            const uint32_t remainSparseBlockCount = sparseLen - s2LoopIdx;
+            const uint32_t sparseBlockCount =
+                remainSparseBlockCount > sparseBlocksPerTask ? sparseBlocksPerTask : remainSparseBlockCount;
+            for (uint32_t i = 0U; i < sparseBlockCount; ++i) {
+                const int64_t sparseBlockIdx = sparseIndicesGm.GetValue(sparseBase + s2LoopIdx + i);
+                if (sparseBlockIdx >= 0 &&
+                    static_cast<uint64_t>(sparseBlockIdx) * constInfo.kvSparseBlockSize < actualS2Size) {
+                    return s2LoopIdx;
+                }
+            }
+            if (s2LoopIdx == 0U) {
+                break;
+            }
+            s2LoopIdx -= sparseBlocksPerTask;
+        }
+        return sparseLen;
+    }
+
     __aicore__ inline void FillRunInfo(MxRunInfo &runInfo, uint64_t loop, uint32_t mLoop, uint32_t bIdx, uint32_t n1Idx,
                                        uint32_t n2Idx, uint32_t queryTokenBase, uint32_t actualS1Size,
                                        uint32_t actualS2Size, uint32_t s1OuterIdx, uint32_t s2LoopIdx,
-                                       uint32_t s2LoopEnd, uint32_t sparseBlockCount, uint64_t sparseBase,
+                                       uint32_t lastValidS2Loop, uint32_t sparseBlockCount, uint64_t sparseBase,
                                        bool isFirstValidS2Loop)
     {
         // 构造一个 512-token logical S2 tile 的运行参数。
@@ -312,7 +341,7 @@ private:
         }
         runInfo.actSingleLoopS2SizeAlign = (runInfo.actSingleLoopS2Size + 63U) >> 6 << 6;
         runInfo.isFirstS2Loop = isFirstValidS2Loop;
-        runInfo.isLastS2Loop = s2LoopIdx + runInfo.sparseBlockCount - 1U >= s2LoopEnd;
+        runInfo.isLastS2Loop = s2LoopIdx == lastValidS2Loop;
         runInfo.queryOffset =
             (runInfo.queryTokenBase + runInfo.s1Idx) * constInfo.n2GD + runInfo.realN2Idx * constInfo.dSize;
         runInfo.queryScaleOffset = (runInfo.queryTokenBase + runInfo.s1Idx) * constInfo.qScaleN1D +
@@ -412,6 +441,8 @@ private:
                                                     constInfo.maxQb * constInfo.maxKb +
                                                 static_cast<uint64_t>(s1OuterIdx) * constInfo.maxKb;
                     const uint32_t s2LoopEnd = static_cast<uint32_t>(sparseLen - 1);
+                    const uint32_t lastValidS2Loop = FindLastValidS2Loop(
+                        static_cast<uint32_t>(sparseLen), sparseBlocksPerTask, sparseBase, actualS2Size);
                     bool hasValidS2Task = false;
                     for (uint32_t s2LoopIdx = 0U; s2LoopIdx <= s2LoopEnd; s2LoopIdx += sparseBlocksPerTask) {
                         MxRunInfo &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
@@ -419,7 +450,7 @@ private:
                         const uint32_t sparseBlockCount =
                             remainSparseBlockCount > sparseBlocksPerTask ? sparseBlocksPerTask : remainSparseBlockCount;
                         FillRunInfo(runInfo, loop, mLoop, bIdx, n1Idx, n2Idx, queryTokenBase, actualS1Size,
-                                    actualS2Size, s1OuterIdx, s2LoopIdx, s2LoopEnd, sparseBlockCount, sparseBase,
+                                    actualS2Size, s1OuterIdx, s2LoopIdx, lastValidS2Loop, sparseBlockCount, sparseBase,
                                     !hasValidS2Task);
                         if (likely(runInfo.actSingleLoopS2Size != 0U && runInfo.actMSize != 0U)) {
                             ExecuteTask(loop, taskRunInfo);

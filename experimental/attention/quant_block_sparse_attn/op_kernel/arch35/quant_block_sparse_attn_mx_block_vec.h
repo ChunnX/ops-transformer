@@ -167,7 +167,14 @@ public:
                 }
             }
 
-            // 同步 V2 cast 与 GM copy。
+        }
+    }
+
+    __aicore__ inline void InitEvents()
+    {
+        if ASCEND_IS_AIV {
+            // ClearOutput contains SyncAll. Seed reusable events only after that barrier; otherwise the first
+            // compute task may wait for a token that was produced before the global synchronization phase.
             SetFlag<HardEvent::MTE3_V>(MxStatic::STAGE1_EVENT_ID0);
             SetFlag<HardEvent::MTE3_V>(MxStatic::STAGE1_EVENT_ID1);
             SetFlag<HardEvent::MTE3_V>(MxStatic::PSCALE_EVENT_ID);
