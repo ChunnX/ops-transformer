@@ -68,7 +68,7 @@ constexpr static MicroAPI::CastTrait CAST_FP32_TO_B16 = {
  * Q 和 K 的差别只在 gamma 与输出位置，计算本身完全一样，抽出来给两个 head
  * 循环共用。cos/sin 与 gamma 由调用方在 token 层加载好后按引用传进来。
  */
-__aicore__ inline void RmsNormRopeOneHead(__local_mem__ bfloat16_t* inHead, __local_mem__ bfloat16_t* outHead,
+__aicore__ inline void RmsNormRopeOneHead(__ubuf__ bfloat16_t* inHead, __ubuf__ bfloat16_t* outHead,
                                           MicroAPI::RegTensor<float>& gammaLow, MicroAPI::RegTensor<float>& gammaHigh,
                                           MicroAPI::RegTensor<float>& cosValue, MicroAPI::RegTensor<float>& sinValue,
                                           MicroAPI::MaskReg pFull, uint32_t halfDim, float epsilon, float reciprocal)
@@ -77,8 +77,8 @@ __aicore__ inline void RmsNormRopeOneHead(__local_mem__ bfloat16_t* inHead, __lo
     MicroAPI::RegTensor<bfloat16_t> xHighB16;
     MicroAPI::RegTensor<float> xLow;
     MicroAPI::RegTensor<float> xHigh;
-    MicroAPI::DataCopy<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(xLowB16, inHead);
-    MicroAPI::DataCopy<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(xHighB16, inHead + halfDim);
+    MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(xLowB16, inHead);
+    MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_UNPACK_B16>(xHighB16, inHead + halfDim);
     MicroAPI::Cast<float, bfloat16_t, CAST_B16_TO_B32>(xLow, xLowB16, pFull);
     MicroAPI::Cast<float, bfloat16_t, CAST_B16_TO_B32>(xHigh, xHighB16, pFull);
 
@@ -117,8 +117,8 @@ __aicore__ inline void RmsNormRopeOneHead(__local_mem__ bfloat16_t* inHead, __lo
     MicroAPI::RegTensor<bfloat16_t> outHighB16;
     MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_B16>(outLowB16, outLow, pFull);
     MicroAPI::Cast<bfloat16_t, float, CAST_FP32_TO_B16>(outHighB16, outHigh, pFull);
-    MicroAPI::DataCopy<bfloat16_t, MicroAPI::StoreDist::DIST_PACK_B32>(outHead, outLowB16, pFull);
-    MicroAPI::DataCopy<bfloat16_t, MicroAPI::StoreDist::DIST_PACK_B32>(outHead + halfDim, outHighB16, pFull);
+    MicroAPI::StoreAlign<bfloat16_t, MicroAPI::StoreDist::DIST_PACK_B32>(outHead, outLowB16, pFull);
+    MicroAPI::StoreAlign<bfloat16_t, MicroAPI::StoreDist::DIST_PACK_B32>(outHead + halfDim, outHighB16, pFull);
 }
 
 /**
@@ -159,10 +159,10 @@ __aicore__ inline void RmsNormRopeOneHead(__local_mem__ bfloat16_t* inHead, __lo
  * @param epsilon     RMSNorm eps
  * @param reciprocal  1/D
  */
-__aicore__ inline void QkRmsNormMropeTileVF(__local_mem__ bfloat16_t* qkvBf16, __local_mem__ float* gammaTile,
-                                            __local_mem__ float* rawCosSin, __local_mem__ uint32_t* gatherIndex,
-                                            __local_mem__ bfloat16_t* qOutBf16, __local_mem__ bfloat16_t* kOutBf16,
-                                            __local_mem__ bfloat16_t* vOutBf16, uint16_t tokenSize,
+__aicore__ inline void QkRmsNormMropeTileVF(__ubuf__ bfloat16_t* qkvBf16, __ubuf__ float* gammaTile,
+                                            __ubuf__ float* rawCosSin, __ubuf__ uint32_t* gatherIndex,
+                                            __ubuf__ bfloat16_t* qOutBf16, __ubuf__ bfloat16_t* kOutBf16,
+                                            __ubuf__ bfloat16_t* vOutBf16, uint16_t tokenSize,
                                             uint16_t qHeadSize, uint16_t kHeadSize, uint16_t vHeadSize,
                                             uint32_t inTokenStride, uint32_t gammaTokenStride,
                                             uint32_t cosSinTokenStride, uint32_t qOutTokenStride,
@@ -181,7 +181,7 @@ __aicore__ inline void QkRmsNormMropeTileVF(__local_mem__ bfloat16_t* qkvBf16, _
         MicroAPI::RegTensor<uint32_t> mropeIndex;
 
         // gather 索引与 token 无关，整个 tile 只加载一次
-        MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_NORM>(mropeIndex, gatherIndex);
+        MicroAPI::LoadAlign<uint32_t, MicroAPI::LoadDist::DIST_NORM>(mropeIndex, gatherIndex);
 
         for (uint16_t t = 0; t < tokenSize; ++t) {
             MicroAPI::RegTensor<float> cosValue;
@@ -193,39 +193,39 @@ __aicore__ inline void QkRmsNormMropeTileVF(__local_mem__ bfloat16_t* qkvBf16, _
 
             // 三轴合并：一条 Gather 从 [3, D] 窗口里按 axisLut 挑出 D/2 个 lane。
             // 本 token 的 Q、K 所有 head 共用这一份 cos/sin
-            __local_mem__ float* rawToken = rawCosSin + t * cosSinTokenStride;
+            __ubuf__ float* rawToken = rawCosSin + t * cosSinTokenStride;
             MicroAPI::Gather(cosValue, rawToken, mropeIndex, pFull);
             MicroAPI::Gather(sinValue, rawToken + halfDim, mropeIndex, pFull);
 
             // gamma 按 token 取：und / gen 两份权重在 tile 里已经按 token 展开好
-            __local_mem__ float* gammaRow = gammaTile + t * gammaTokenStride;
-            MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_NORM>(qGammaLow, gammaRow);
-            MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_NORM>(qGammaHigh, gammaRow + halfDim);
-            MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_NORM>(kGammaLow, gammaRow + headStride);
-            MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_NORM>(kGammaHigh, gammaRow + headStride + halfDim);
+            __ubuf__ float* gammaRow = gammaTile + t * gammaTokenStride;
+            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(qGammaLow, gammaRow);
+            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(qGammaHigh, gammaRow + halfDim);
+            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(kGammaLow, gammaRow + headStride);
+            MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_NORM>(kGammaHigh, gammaRow + headStride + halfDim);
 
-            __local_mem__ bfloat16_t* qInRow = qkvBf16 + t * inTokenStride;
-            __local_mem__ bfloat16_t* qOutRow = qOutBf16 + t * qOutTokenStride;
+            __ubuf__ bfloat16_t* qInRow = qkvBf16 + t * inTokenStride;
+            __ubuf__ bfloat16_t* qOutRow = qOutBf16 + t * qOutTokenStride;
             for (uint16_t h = 0; h < qHeadSize; ++h) {
                 RmsNormRopeOneHead(qInRow + h * headStride, qOutRow + h * headStride, qGammaLow, qGammaHigh, cosValue,
                                    sinValue, pFull, halfDim, epsilon, reciprocal);
             }
 
             // K 头在同一行 token 内紧跟 Q 头之后
-            __local_mem__ bfloat16_t* kInRow = qInRow + qHeadSize * headStride;
-            __local_mem__ bfloat16_t* kOutRow = kOutBf16 + t * kOutTokenStride;
+            __ubuf__ bfloat16_t* kInRow = qInRow + qHeadSize * headStride;
+            __ubuf__ bfloat16_t* kOutRow = kOutBf16 + t * kOutTokenStride;
             for (uint16_t h = 0; h < kHeadSize; ++h) {
                 RmsNormRopeOneHead(kInRow + h * headStride, kOutRow + h * headStride, kGammaLow, kGammaHigh, cosValue,
                                    sinValue, pFull, halfDim, epsilon, reciprocal);
             }
 
             // V 头紧跟 K 头之后，不参与 norm/rope：一个 head 恰好一个满 bf16 VL，直接搬
-            __local_mem__ bfloat16_t* vInRow = kInRow + kHeadSize * headStride;
-            __local_mem__ bfloat16_t* vOutRow = vOutBf16 + t * vOutTokenStride;
+            __ubuf__ bfloat16_t* vInRow = kInRow + kHeadSize * headStride;
+            __ubuf__ bfloat16_t* vOutRow = vOutBf16 + t * vOutTokenStride;
             for (uint16_t h = 0; h < vHeadSize; ++h) {
                 MicroAPI::RegTensor<bfloat16_t> vValue;
-                MicroAPI::DataCopy<bfloat16_t, MicroAPI::LoadDist::DIST_NORM>(vValue, vInRow + h * headStride);
-                MicroAPI::DataCopy<bfloat16_t, MicroAPI::StoreDist::DIST_NORM_B16>(vOutRow + h * headStride, vValue,
+                MicroAPI::LoadAlign<bfloat16_t, MicroAPI::LoadDist::DIST_NORM>(vValue, vInRow + h * headStride);
+                MicroAPI::StoreAlign<bfloat16_t, MicroAPI::StoreDist::DIST_NORM_B16>(vOutRow + h * headStride, vValue,
                                                                                    pFullB16);
             }
         }

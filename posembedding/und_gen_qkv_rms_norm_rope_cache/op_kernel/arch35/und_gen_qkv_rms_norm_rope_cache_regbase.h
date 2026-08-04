@@ -312,13 +312,13 @@ private:
         const int64_t vSegBase = ubFactor_ * headNumQK_ * headDim_;
 
         // V 段也在这次 VF 里完成（直通，不参与 norm/rope），不再另起一趟 UB->UB 搬运
-        QkRmsNormMropeTileVF((__local_mem__ bfloat16_t*)qkvLocal.GetPhyAddr(),
-                             (__local_mem__ float*)gammaTileLocal_.GetPhyAddr(),
-                             (__local_mem__ float*)cosSinLocal.GetPhyAddr(),
-                             (__local_mem__ uint32_t*)gatherIdxLocal_.GetPhyAddr(),
-                             (__local_mem__ bfloat16_t*)outLocal.GetPhyAddr(),
-                             (__local_mem__ bfloat16_t*)outLocal[kSegBase].GetPhyAddr(),
-                             (__local_mem__ bfloat16_t*)outLocal[vSegBase].GetPhyAddr(),
+        QkRmsNormMropeTileVF((__ubuf__ bfloat16_t*)qkvLocal.GetPhyAddr(),
+                             (__ubuf__ float*)gammaTileLocal_.GetPhyAddr(),
+                             (__ubuf__ float*)cosSinLocal.GetPhyAddr(),
+                             (__ubuf__ uint32_t*)gatherIdxLocal_.GetPhyAddr(),
+                             (__ubuf__ bfloat16_t*)outLocal.GetPhyAddr(),
+                             (__ubuf__ bfloat16_t*)outLocal[kSegBase].GetPhyAddr(),
+                             (__ubuf__ bfloat16_t*)outLocal[vSegBase].GetPhyAddr(),
                              static_cast<uint16_t>(tokenNum), static_cast<uint16_t>(numHeadQ_),
                              static_cast<uint16_t>(numHeadK_), static_cast<uint16_t>(numHeadV_),
                              static_cast<uint32_t>(rowElems_), static_cast<uint32_t>(DIGIT_TWO * headDim_),
