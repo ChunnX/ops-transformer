@@ -219,7 +219,7 @@
     <tr>
       <td>layout_kv</td>
       <td>可选属性</td>
-      <td>表示Key的排列格式，支持BSND、TND、PA_BBND，默认值为BSND。</td>
+      <td>表示Key和Value的排列格式，支持BSND、TND、PA_BBND，默认值为BSND。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>

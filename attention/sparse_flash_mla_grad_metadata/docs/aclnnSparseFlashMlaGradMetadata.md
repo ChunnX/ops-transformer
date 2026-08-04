@@ -347,7 +347,7 @@ aclnnStatus aclnnSparseFlashMlaGradMetadata(
     <tr>
       <td>layoutKvOptional（char*）</td>
       <td>输入</td>
-      <td>表示Key的排列格式。</td>
+      <td>表示Key和Value的排列格式。</td>
       <td><ul><li>支持 BSND、TND。</li><li>建议值为BSND。</li></ul></td>
       <td>-</td>
       <td>-</td>
