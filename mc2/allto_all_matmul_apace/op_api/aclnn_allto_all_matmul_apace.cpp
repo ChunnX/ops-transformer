@@ -64,7 +64,7 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulApaceGetWorkspaceSize(
     aclnnStatus ret = aclnnInnerAlltoAllMatmulApaceGetWorkspaceSize(
         context, x1, x2, biasOptional, x1ScaleOptional, x2ScaleOptional, commScaleOptional, x1OffsetOptional,
         x2OffsetOptional, const_cast<char *>(group), worldSize, hcclBufferSize, alltoAllAxesOptional, x1QuantMode,
-        x2QuantMode, commQuantMode, commQuantDtype, x1QuantDtype, transposeX1, transposeX2, groupSize,
+        x2QuantMode, commQuantMode, x1QuantDtype, commQuantDtype, transposeX1, transposeX2, groupSize,
         const_cast<char *>(commMode ? commMode : "ai_cpu"), precisionMode, output, alltoAllOutOptional, workspaceSize,
         executor);
 
