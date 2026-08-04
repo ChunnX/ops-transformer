@@ -444,6 +444,15 @@ def _resolve_s_dtype(s_dtype):
         raise ValueError(f"s_dtype must be one of {list(_S_DTYPE_MAP)}, got '{s_dtype}'")
     return _S_DTYPE_MAP[s_dtype]
 
+# 输出 dtype 映射(out_dtype): golden 最终 cast + NPU attention_out_dtype 用。
+_OUT_DTYPE_MAP = {'bfloat16': torch.bfloat16, 'float16': torch.float16}
+
+def _resolve_out_dtype(out_dtype):
+    """字符串 out_dtype('bfloat16'/'float16') -> torch dtype。golden return cast + NPU attention_out_dtype 用。"""
+    if out_dtype not in _OUT_DTYPE_MAP:
+        raise ValueError(f"out_dtype must be one of {list(_OUT_DTYPE_MAP)}, got '{out_dtype}'")
+    return _OUT_DTYPE_MAP[out_dtype]
+
 # 数值稳定的 log(sum(exp))，供 lse 参考输出
 def _logsumexp_np(scores):
     """log(sum(exp(scores))), 数值稳定(先减 max)。全 mask(max<=-1e9)直接返回 m。
@@ -477,7 +486,7 @@ def rand_range(shape, data_range=[-10, 10], dtype=torch.bfloat16, device=None):
 def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(query, key, value, block_sparse_mask,
                                                     block_shape, scale_value, num_kv_heads,
                                                     p_quant='snap_local', s_dtype='fp16',
-                                                    dump=False):
+                                                    dump=False, out_dtype='bfloat16'):
     """CPU 标杆(BNSD, MXFP4, 分块 flash), 对齐 qfa flash golden 的 dtype 流 + kernel tile 结构:
        Q/K/V mxfp4 qdq(fp32); per q-block + 2-kv-block chunk + online softmax;
        S fp32 matmul -> s_dtype -> scale; P 量化(snap_local)与 P 本身在 s_dtype; sum/PV 在 fp32。
@@ -587,7 +596,7 @@ def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(query, key, value, block_spar
                     lse_q = torch.where(l_lse > 0, m_lse + torch.log(l_lse),
                                         torch.full_like(m_lse, float('-inf')))
                     lse[b, n, q_lo:q_hi, 0] = lse_q
-        return out.to(torch.bfloat16), lse.to(torch.float32)
+        return out.to(_resolve_out_dtype(out_dtype)), lse.to(torch.float32)
     finally:
         if dump:
             _enable_dump(False)
@@ -607,6 +616,10 @@ def check_result(expect, result, data_type, pct_thd=0.005):
         return 0.0, "Failed"
     if data_type == 'bfloat16':
         rtol, atol, max_diff_hd = 0.0078125, 0.0001, 10.0      # 1/128
+    elif data_type == 'float16':
+        # mxfp4: drift 是 mxfp4 P-quant + fp16-softmax 累积(非 fp16 量化噪声), 同 bf16 级;
+        # fp16 输出量化(1/1024)远小于此 drift, fp16 输出暴露 bf16 掩盖的 drift, 故 fp16 不该比 bf16 严。
+        rtol, atol, max_diff_hd = 0.0078125, 0.0001, 10.0      # 1/128(同 bf16)
     else:
         rtol, atol, max_diff_hd = 0.005, 0.000025, 10.0
     diff_result = np.isclose(real_data.astype(np.float32), data_compe.astype(np.float32),
@@ -675,6 +688,15 @@ def _build_block_sparse_mask(b, n1, ceil_q, ceil_kv, kind='dense'):
             idx = torch.randperm(ceil_kv)[:n_attend]                # 随机打乱取前 n_attend 个
             m[:, :, i, idx] = 1
         return m
+    if kind == 'all_masked_one_qb':  # dense 但中间一个 q-block 全 0(无 kv attended, kernel 0-rsvd gather 边界)
+        m = torch.ones(b, n1, ceil_q, ceil_kv, dtype=torch.int8)
+        m[:, :, ceil_q // 2, :] = 0  # 中间 q-block attend 无 kv -> out=0/lse=-inf
+        return m
+    if kind == 'gap_sparse':  # 每 q-block 仅 attend kv-block 0 + 末块(大 gap, 跨块 rescale + 非连续 gather)
+        m = torch.zeros(b, n1, ceil_q, ceil_kv, dtype=torch.int8)
+        m[:, :, :, 0] = 1
+        m[:, :, :, ceil_kv - 1] = 1
+        return m
     raise ValueError(f"unsupported mask kind: {kind}")
 
 
@@ -709,7 +731,8 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
                         inner_precise=4, quant_mode=2,
                         p_quant='snap_local', s_dtype='fp16',
                         dump=False, device_id=0,
-                        s1_list=None, s2_list=None):
+                        s1_list=None, s2_list=None,
+                        data_x=1.0):
     """qfa 风格: fp32 造数据 -> mxfp4 打包 -> CPU golden -> NPU -> check_result.
        p_quant: 'snap_local'|'none'; s_dtype: 'fp16'(默认)|'bf16'|'fp32'; dump: 落盘中间结果。
        input_layout: 'BNSD'(默认)|'BSND'|'TND'; BSND/TND 对齐 QFA 哲学——golden 保持 BNSD 不动, 仅 NPU I/O
@@ -725,6 +748,7 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
     assert qk_d in (64, 128), f"MXFP4 D 仅支持 64/128, 当前 {qk_d}"
     if v_d is None:
         v_d = qk_d
+    assert v_d == qk_d, f"v_d must == qk_d (doc L517/L653: attentionOut shape==query, D 须一致), got v_d={v_d} qk_d={qk_d}"
     if False :
         print(f"[run_bsa_mxfp4_eager] shapes: b={b} n1={n1} n2={n2} g={g} "
           f"s1={s1} s2={s2} qk_d={qk_d} v_d={v_d} block_shape={block_shape} "
@@ -743,9 +767,9 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
         assert len(act_q) == b and len(act_kv) == b, "s1_list/s2_list 长度须 == b"
         mask = _build_block_sparse_mask_varlen(b, n1, act_q, act_kv, block_shape, mask_kind)
         # per-batch BNSD 造数(变长, TND 无 padding); 同一份 q_b/k_b/v_b 供 golden + 打包(mxfp4 噪声一致)
-        q_list = [randn_x((1, n1, act_q[bi], qk_d), 1.0).to(torch.float32) for bi in range(b)]
-        k_list = [randn_x((1, n2, act_kv[bi], qk_d), 1.0).to(torch.float32) for bi in range(b)]
-        v_list = [randn_x((1, n2, act_kv[bi], v_d), 1.0).to(torch.float32) for bi in range(b)]
+        q_list = [randn_x((1, n1, act_q[bi], qk_d), data_x).to(torch.float32) for bi in range(b)]
+        k_list = [randn_x((1, n2, act_kv[bi], qk_d), data_x).to(torch.float32) for bi in range(b)]
+        v_list = [randn_x((1, n2, act_kv[bi], v_d), data_x).to(torch.float32) for bi in range(b)]
         # golden per-batch(B=1, S=S_b, mask 切到实际) -> BNSD permute+flatten -> concat TND [Tq,N,D]
         print("cpu calc start")
         cpu_chunks = []
@@ -755,7 +779,7 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
             mask_b = mask[bi:bi + 1, :, :cq_b, :ck_b]
             out_b, _ = cpu_block_sparse_attention_bnsd_mxfp4_with_lse(
                 q_list[bi], k_list[bi], v_list[bi], mask_b, block_shape, scale, n2,
-                p_quant=p_quant, s_dtype=s_dtype, dump=dump)
+                p_quant=p_quant, s_dtype=s_dtype, dump=dump, out_dtype=out_dtype)
             cpu_chunks.append(out_b.permute(0, 2, 1, 3).flatten(0, 1))  # [S1_b, N, D] bf16
         cpu_out = torch.cat(cpu_chunks, dim=0).contiguous()  # [Tq, N, D] bf16
         print("golden calc end")
@@ -792,7 +816,7 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
             pre_tokens=2147483647, next_tokens=2147483647,
             softmax_lse_flag=False, quant_mode=quant_mode, dst_type_max=0,
             q_dequant_scale=q_scale.npu(), k_dequant_scale=k_scale.npu(), v_dequant_scale=v_scale.npu(),
-            attention_out_dtype=torch.bfloat16,
+            attention_out_dtype=_resolve_out_dtype(out_dtype),
         )
         torch_npu.npu.synchronize()
         fulfill_percent, result = compare(cpu_out, npu_out, src_dtype)
@@ -802,9 +826,9 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
     assert s1 is not None and s2 is not None, "uniform 路径需 s1/s2(变长 TND 用 s1_list/s2_list)"
 
     # 1. 造 fp32 数据(qfa 风格 randn, 固定种子)
-    query = randn_x((b, n1, s1, qk_d), 1.0).to(torch.float32)
-    key = randn_x((b, n2, s2, qk_d), 1.0).to(torch.float32)
-    value = randn_x((b, n2, s2, v_d), 1.0).to(torch.float32)
+    query = randn_x((b, n1, s1, qk_d), data_x).to(torch.float32)
+    key = randn_x((b, n2, s2, qk_d), data_x).to(torch.float32)
+    value = randn_x((b, n2, s2, v_d), data_x).to(torch.float32)
 
     # 2. 官方 block_sparse_mask 网格
     block_x, block_y = int(block_shape[0]), int(block_shape[1])
@@ -816,7 +840,7 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
     print("cpu calc start")
     cpu_out, _ = cpu_block_sparse_attention_bnsd_mxfp4_with_lse(
         query, key, value, mask, block_shape, scale, n2,
-        p_quant=p_quant, s_dtype=s_dtype, dump=dump)
+        p_quant=p_quant, s_dtype=s_dtype, dump=dump, out_dtype=out_dtype)
     print("golden calc end")
     # BSND/TND: golden 保持 BNSD 计算(QFA 哲学: 仅 NPU I/O 层), 输出重排到目标布局与 NPU out 比对。
     if input_layout == 'BSND':
@@ -882,7 +906,7 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
         pre_tokens=2147483647, next_tokens=2147483647,
         softmax_lse_flag=False, quant_mode=quant_mode, dst_type_max=0,
         q_dequant_scale=q_scale.npu(), k_dequant_scale=k_scale.npu(), v_dequant_scale=v_scale.npu(),
-        attention_out_dtype=torch.bfloat16,
+        attention_out_dtype=_resolve_out_dtype(out_dtype),
     )
     torch_npu.npu.synchronize()
 
@@ -1289,6 +1313,261 @@ class TestBSAMxfp4Golden(TestCase):
         self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
                   block_shape=[128, 128], mask_kind='dense', input_layout='TND',
                   s1_list=[128, 256], s2_list=[1024, 2048])
+
+    # =====================================================================
+    # 边界条件用例: 验证 kernel 在极端/边界 shape 下的正确性。
+    #   S1<blockShapeX(Q-pad 半块) / S1>blockShapeX(2 q-block 尾1) /
+    #   S2<blockShapeY(部分 kv-block) / S2 奇 nb(V-scale pad) /
+    #   decode+max-rescale(s2=8192,64tile) / 多 batch(B=4) / block 变体 / TND varlen 边界。
+    # =====================================================================
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs64_kvs128_d128(self, device="npu"):
+        """⑧ BSND S1=64<blockShapeX=128: Q-pad 半块(ceil_q=1, 1 q-block of 64 padded to 128), N=2。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=64, s2=128, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs129_kvs512_d128(self, device="npu"):
+        """⑧ BSND S1=129>blockShapeX: 2 q-block(第2块仅1 token, Q 尾块非对齐), N=2, s2=512(4 kv tile)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=129, s2=512, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs64_d128(self, device="npu"):
+        """⑧ BSND S2=64<blockShapeY=128: 1 部分 kv-block(64 行, ceil_kv=1), K 尾块最小, N=2。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=64, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs193_d128(self, device="npu"):
+        """⑧ BSND S2=193: K 尾块(ceil_kv=2, 第2块65行) + V-scale ceil(193/32)=7 奇 nb->pad, N=2。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=193, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs1_kvs8192_d128(self, device="npu"):
+        """⑧ BSND S1=1 decode + s2=8192(64 kv tile, online softmax rescale 极限累积), N=2(较慢)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=1, s2=8192, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b4_qn2_kvn2_g1_qs256_kvs512_d128(self, device="npu"):
+        """⑧ BSND B=4 多 batch: b=4, n1=n2=2/g1, s1=256 + s2=512(4 batch offset 累加 + N=2 stride)。"""
+        self._run(b=4, n1=2, n2=2, g=1, s1=256, s2=512, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d128_blk64x128(self, device="npu"):
+        """⑧ BSND block=[64,128] D=128: blockShapeX=64(Q tile 64 行, ceil_q=2), 验证小 Q-block tiling。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[64, 128], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d128_blk128x256(self, device="npu"):
+        """⑧ BSND block=[128,256] D=128: blockShapeY=256(KV tile 256 行, ceil_kv=1), 验证大 KV-block tiling。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 256], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_dense_b2_qn2_kvn2_g1_s1_1_1_s2_128_512_d128(self, device="npu"):
+        """⑧ TND varlen 双 decode: b=2, s1=[1,1] s2=[128,512](两 batch 均 S1=1 decode + Q-pad,
+        Tq=2; 验证 varlen 下双 decode batch 的 Q-pad + base-offset 累加)。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[1, 1], s2_list=[128, 512])
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_dense_b2_qn2_kvn2_g1_s1_128_256_s2_64_512_d128(self, device="npu"):
+        """⑧ TND varlen 部分-kv: b=2, s1=[128,256] s2=[64,512](batch0 S2=64<blockShapeY=128, 1 部分 kv-block;
+        BTkv=CeilDiv(64,64)+CeilDiv(512,64)=1+8=9; 验证 varlen 下 S2<blockShapeY 的 K 尾 + V-scale)。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[128, 256], s2_list=[64, 512])
+
+    # =====================================================================
+    # 非对齐场景用例(重点 TND varlen): 每 batch 的 S1/S2 故意不齐 blockShapeX/Y/64/32/16。
+    #   验证 kernel 在 Q-pad / Q-tail / K-tail / V-scale pad / Fixpipe m 非16 等 非对齐路径。
+    # =====================================================================
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_dense_b2_qn2_kvn2_g1_s1_127_129_s2_256_256_d128(self, device="npu"):
+        """⑨ TND varlen 两 batch S1 均非-128 对齐: s1=[127,129](127=1块pad, 129=2块尾1), s2=[256,256]对齐。
+        验证 Q-pad + Q-tail 在 varlen per-batch(Tq=127+129=256)。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[127, 129], s2_list=[256, 256])
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_dense_b2_qn2_kvn2_g1_s1_15_47_s2_128_128_d128(self, device="npu"):
+        """⑨ TND varlen 两 batch S1 均非-16(Fixpipe m): s1=[15,47](15%16!=0, 47%16!=0), s2=[128,128]对齐。
+        验证 Fixpipe nSize 偶数对齐 + Nd2Nz 非满 fractal 行数 在 varlen(Tq=15+47=62)。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[15, 47], s2_list=[128, 128])
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_dense_b2_qn2_kvn2_g1_s1_128_128_s2_129_193_d128(self, device="npu"):
+        """⑨ TND varlen 两 batch S2 均奇 nb(V-scale pad): s2=[129,193](nb=5/7 奇->pad), s1=[128,128]对齐。
+        BTkv=CeilDiv(129,64)+CeilDiv(193,64)=3+4=7; 验证 per-batch V-scale pad + concat 后 BTkv sum。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[128, 128], s2_list=[129, 193])
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_dense_b2_qn2_kvn2_g1_s1_128_128_s2_255_400_d128(self, device="npu"):
+        """⑨ TND varlen 两 batch S2 K-tail 非-128/64/32 混合: s2=[255,400](255=127尾, nb=8偶; 400=16尾, nb=13奇pad)。
+        BTkv=CeilDiv(255,64)+CeilDiv(400,64)=4+7=11; 验证 K-tail + 奇/偶 nb 混合 concat。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[128, 128], s2_list=[255, 400])
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_dense_b2_qn2_kvn2_g1_s1_128_129_s2_256_129_d128(self, device="npu"):
+        """⑨ TND varlen 对齐+非对齐 batch 混: batch0 s1=128/s2=256(全对齐), batch1 s1=129/s2=129(全非对齐)。
+        验证 kernel 同时处理对齐 batch + 非对齐 batch(尾块 + V-scale pad)的 base-offset 累加。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[128, 129], s2_list=[256, 129])
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_dense_b2_qn2_kvn2_g1_s1_1_128_s2_1_128_d128(self, device="npu"):
+        """⑨ TND varlen S2=1 极小非对齐: batch0 s1=1/s2=1(1 kv-token, ceil_kv=1, V-scale ceil(1/32)=1奇->pad),
+        batch1 s1=128/s2=128(对齐)。BTkv=CeilDiv(1,64)+CeilDiv(128,64)=1+2=3。验证 S2=1 极端 K 尾 + V-scale pad。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[1, 128], s2_list=[1, 128])
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_dense_b3_qn2_kvn2_g1_s1_127_15_129_s2_129_255_400_d128(self, device="npu"):
+        """⑨ TND varlen b3 全不同非对齐: s1=[127,15,129] s2=[129,255,400](3 batch 各不同非对齐组合)。
+        Tq=127+15+129=271, BTkv=3+4+7=14; 验证 3 batch 累加下混合非对齐(Q-pad/tail + Fixpipe m + K-tail + V-scale pad)。"""
+        self._run(b=3, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[127, 15, 129], s2_list=[129, 255, 400])
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs15_kvs255_d128(self, device="npu"):
+        """⑨ BSND S1=15(非16, Fixpipe m) + s2=255(K-tail 127 + nb=8偶): 双重非对齐叠加, N=2。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=15, s2=255, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs255_kvs129_d128(self, device="npu"):
+        """⑨ BSND S1=255(2块, 127尾, Q-tail) + s2=129(K-tail 1 + nb=5奇pad): S1/S2 双非对齐, N=2。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=255, s2=129, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
+
+    # =====================================================================
+    # 补充场景用例: GQA g=8(单 kv-head, 非对称 stride) / sparse S1=1(decode 稀疏) / 大 B(b16) / fp16 out。
+    # =====================================================================
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_gqa_dense_b1_qn8_kvn1_g8_qs256_kvs1024_d128(self, device="npu"):
+        """⑩ BSND GQA g=8: qn8/kvn1/g8(单 kv-head, qHeadMul=8 ≠ kvHeadMul=1, 非对称 stride),
+        s1=256 + s2=1024。验证 Q stride factor 8 vs K/V stride factor 1(单 kv-head, V-scale BTkv 无头交织)。"""
+        self._run(b=1, n1=8, n2=1, g=8, s1=256, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_gqa_dense_b2_qn8_kvn1_g8_s1_128_256_s2_512_256_d128(self, device="npu"):
+        """⑩ TND varlen GQA g=8: b=2, qn8/kvn1/g8, s1=[128,256] s2=[512,256](单 kv-head + varlen,
+        qHeadMul=8/kvHeadMul=1; Tq=384, Tkv=768, BTkv=8+4=12)。非对称 stride × varlen 累加。"""
+        self._run(b=2, n1=8, n2=1, g=8, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[128, 256], s2_list=[512, 256])
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_sparse_b1_qn2_kvn2_g1_qs1_kvs1024_d128(self, device="npu"):
+        """⑩ BSND sparse S1=1: decode 单 q-block + 稀疏 kv 选择(ceil_q=1, 8 kv tile 选择性 gather),
+        N=2。验证 sparse gather 在 Q-pad 路径下。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=1, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_tnd_varlen_mha_sparse_b2_qn2_kvn2_g1_s1_1_1_s2_512_256_d128(self, device="npu"):
+        """⑩ TND varlen sparse 双 decode: b=2, s1=[1,1] s2=[512,256](两 batch 均 decode + 稀疏 kv 选择,
+        Tq=2; 验证 varlen 下 sparse gather + Q-pad per-batch)。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='TND',
+                  s1_list=[1, 1], s2_list=[512, 256])
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b16_qn2_kvn2_g1_qs128_kvs256_d128(self, device="npu"):
+        """⑩ BSND B=16 大 batch: b=16, n1=n2=2/g1, s1=128 + s2=256(16 batch offset 累加 + N=2 stride,
+        批间 strideKVDataB_=S*N2*D 累加 16 次 stress)。"""
+        self._run(b=16, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
+
+    # [已知 kernel bug, 注释] fp16 输出: processOutVF(vf_attenOut_dn_mxfp4.h:79-99) Cast 硬编码 bfloat16_t,
+    #   不随 ElementO 模板变 -> OF16(fp16 输出)路径 fp32->bf16 cast 后以 fp16 布局拷贝(bit 错位)-> 输出垃圾。
+    #   kernel 修法: processOutVF 的 Cast/CreateMask/RegTensor 按 ElementO 模板化。待 kernel 修后启用。
+#     @SkipIfNotGteCANNVersion("9.0.0")
+#     def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs512_d128_fp16out(self, device="npu"):
+#         """⑩ BSND fp16 out: out_dtype='float16'(NPU attention_out_dtype=float16, golden->float16),
+#         b1/qn2/kvn2/g1/s128/kvs512。验证 NPU fp16 输出路径(golden fp32->fp16 cast, rtol=1/200 更严)。"""
+#         self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=512, qk_d=128,
+#                   block_shape=[128, 128], mask_kind='dense', input_layout='BSND',
+#                   out_dtype='float16')
+
+    # =====================================================================
+    # 审计补充用例(P1+P3): all-masked q-block(kernel 0-rsvd 边界) / gap-sparse(大 gap rescale) /
+    #   fp16-out TND-varlen / block64+S1-odd / S2=32(min e8m0 块) / extreme 值(FP4 饱和) / zero 值(退化)。
+    # =====================================================================
+    # [已知 kernel bug, 注释待修] all-masked q-block: kernel 0-rsvd gather 路径死锁(无 empty-gather guard)。
+    #   golden 已处理(if not sel_j: continue -> out=0/lse=-inf), 但 kernel 卡住。待 kernel 补 0-rsvd guard 后启用。
+    # @SkipIfNotGteCANNVersion("9.0.0")
+    # def test_bsa_mxfp4_bsnd_mha_allmasked_qb_b1_qn2_kvn2_g1_qs256_kvs512_d128(self, device="npu"):
+    #     """⑪ BSND all-masked q-block: 中间 q-block 全 0(无 kv attended), s1=256(2 q-block)/s2=512。
+    #     验证 kernel 0-rsvd gather 边界(out=0/lse=-inf, 不 OOB/NaN)。golden 已处理(if not sel_j: continue)。"""
+    #     self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=512, qk_d=128,
+    #               block_shape=[128, 128], mask_kind='all_masked_one_qb', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_gap_sparse_b1_qn2_kvn2_g1_qs128_kvs512_d128(self, device="npu"):
+        """⑪ BSND gap-sparse: 每 q-block 仅 attend kv-block 0+末(大 gap, 跨块 alpha rescale + 非连续 gather),
+        s1=128/s2=512(4 kv tile)。验证 online-softmax 跨大 K_diff rescale + snap_local corr 不下溢。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=512, qk_d=128,
+                  block_shape=[128, 128], mask_kind='gap_sparse', input_layout='BSND')
+
+    # [已知 kernel bug, 注释] fp16 输出: processOutVF(vf_attenOut_dn_mxfp4.h:79-99) Cast 硬编码 bfloat16_t,
+    #   不随 ElementO 模板变 -> OF16(fp16 输出)路径 fp32->bf16 cast 后以 fp16 布局拷贝(bit 错位)-> 输出垃圾。
+    #   kernel 修法: processOutVF 的 Cast/CreateMask/RegTensor 按 ElementO 模板化。待 kernel 修后启用。
+#     @SkipIfNotGteCANNVersion("9.0.0")
+#     def test_bsa_mxfp4_tnd_varlen_mha_dense_b2_qn2_kvn2_g1_s1_128_256_s2_256_128_d128_fp16out(self, device="npu"):
+#         """⑪ TND varlen fp16-out: b=2, s1=[128,256] s2=[256,128], out_dtype='float16'。
+#         验证 TND-varlen 路径(唯一正确接 out_dtype 的)的 fp16 输出(golden->fp16, NPU attention_out_dtype=float16)。"""
+#         self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
+#                   block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+#                   s1_list=[128, 256], s2_list=[256, 128], out_dtype='float16')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs127_kvs256_d128_blk64x128(self, device="npu"):
+        """⑪ BSND block=[64,128] + S1=127(非 64 倍): blockShapeX=64, ceil_q=2(第2块 63 token Q-pad),
+        验证小 Q-block 下 S1 非 64 对齐的 Q-pad + Nd2Nz 画布。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=127, s2=256, qk_d=128,
+                  block_shape=[64, 128], mask_kind='dense', input_layout='BSND')
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs32_d128(self, device="npu"):
+        """⑪ BSND S2=32: 最小完整 e8m0 块(ceil(32/32)=1, nb 偶, 无 V-scale pad), ceil_kv=1(部分 kv-block 32<128)。
+        验证最小 KV + 无 pad V-scale 路径。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=32, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND')
+
+    # [已知数值极限, 注释] extreme 值 data_x=50: S=Q@K^T 极大 -> snap_local K_block 极大 -> e8m0 P-scale
+    #   钳到 254(clamp) -> golden/NPU 在 clamp 边界分歧(drift>1/128, 连 bf16 都挂)。待查 NPU P-scale
+    #   clamp 语义后启用(或用 data_x<=3 避免 S 过大导致 P-scale clamp)。
+    # @SkipIfNotGteCANNVersion("9.0.0")
+    # def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d128_satval(self, device="npu"):
+    #     """⑪ BSND extreme 值(FP4 饱和): data_x=50(Q/K/V ∈ [-50,50], FP4 max=6.0, E8M0 scale floor 模式允许饱和)。
+    #     验证 E8M0 scale 选择 + 6.0 clip 边界 golden/NPU 一致。"""
+    #     self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+    #               block_shape=[128, 128], mask_kind='dense', input_layout='BSND', data_x=50.0)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d128_zero(self, device="npu"):
+        """⑪ BSND 全零 Q/K/V(data_x=0): 退化输入, E8M0 scale max_abs<1e-30->scale=1.0, P 全等(均匀 softmax),
+        out=0。验证 degenerate 路径无 NaN/Inf。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND', data_x=0.0)
 
 
 if __name__ == "__main__":
