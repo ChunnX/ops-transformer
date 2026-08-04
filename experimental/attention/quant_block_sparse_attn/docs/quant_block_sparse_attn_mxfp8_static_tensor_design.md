@@ -1,9 +1,9 @@
 # QuantBlockSparseAttn MXFP8 静态 Tensor 改造与同步设计
 
-> 适用分支：`opt_tensor_gpt`  
-> 基线提交：`b078d6a38b976a9ee145cfbb31bdda9ff81d0731`  
-> 当前已验证提交：`a784dce56`  
-> 硬件目标：Ascend 950 / Arch35  
+> 适用分支：`opt_tensor_gpt`
+> 基线提交：`b078d6a38b976a9ee145cfbb31bdda9ff81d0731`
+> 当前已验证提交：`a784dce56`
+> 硬件目标：Ascend 950 / Arch35
 > 改造范围：仅 QuantBlockSparseAttn 的 MXFP8 路径；普通 FP8 路径不在本文范围内。
 
 本文记录 QBS MXFP8 从 `TPipe`、`TBuf/TQue`、`BufferManager` 动态管理改造成静态 `LocalTensor` 后的最终设计。重点说明静态地址、Event ID 分配、事件初始化与回收、AIC/AIV 跨核握手及完整任务流水，供后续功能扩展、性能优化和故障定位使用。
