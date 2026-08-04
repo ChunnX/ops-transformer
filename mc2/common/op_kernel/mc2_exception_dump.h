@@ -68,6 +68,27 @@ struct alignas(8) DumpParams {
 
 using namespace AscendC;
 
+// ---------------------------------------------------------------------------
+// 阶段插桩（UpdateStage）编译期使能探测
+// ---------------------------------------------------------------------------
+// UpdateStage 属于纯调试设施：每个 AIV 核在每个阶段都要执行
+// GetSystemCycle + GM 写 + DCCI（cacheline flush），是与数据量无关的固定串行开销。
+// 允许 Policy 通过 `static constexpr bool kEnableStageTrace = false;` 在编译期关闭。
+// 未声明该常量的 Policy 默认为“开启”，保持原有行为，因此对其它算子零影响。
+// 该开关只作用于 UpdateStage，不影响 Init/Dump/DumpTilingData 的异常转储能力。
+template <typename...>
+using VoidT = void;
+
+template <typename Policy, typename = void>
+struct StageTraceEnabled {
+    static constexpr bool value = true; // Policy 未声明开关 -> 保持原行为（开启插桩）
+};
+
+template <typename Policy>
+struct StageTraceEnabled<Policy, VoidT<decltype(Policy::kEnableStageTrace)>> {
+    static constexpr bool value = Policy::kEnableStageTrace; // Policy 显式声明 -> 以其为准
+};
+
 template <typename Policy>
 class ExceptionDump {
 public:
@@ -119,17 +140,25 @@ public:
 
     __aicore__ inline void UpdateStage(typename Policy::StageEnumT stage)
     {
-        if ASCEND_IS_NOT_AIV {
+        // 编译期总开关：Policy::kEnableStageTrace == false 时，函数体（else 分支）被丢弃，
+        // 展开后为零指令，彻底消除 GetSystemCycle + GM 写 + DCCI 的运行时开销。
+        if constexpr (!StageTraceEnabled<Policy>::value) {
+            (void)stage;
             return;
-        }
-        if (unlikely(blockStage_ == nullptr)) {
-            return;
-        }
-        uint32_t stageId = static_cast<uint32_t>(stage);
-        if (likely(stageId < static_cast<uint32_t>(StageEnumT::END))) {
-            blockStage_->currentStage = stageId;
-            blockStage_->stageCycle[stageId] = GetSystemCycle();
-            DataCacheCleanAndInvalid<uint8_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(blockStageGlobal_);
+        } else {
+            if ASCEND_IS_NOT_AIV {
+                return;
+            }
+            if (unlikely(blockStage_ == nullptr)) {
+                return;
+            }
+            uint32_t stageId = static_cast<uint32_t>(stage);
+            if (likely(stageId < static_cast<uint32_t>(StageEnumT::END))) {
+                blockStage_->currentStage = stageId;
+                blockStage_->stageCycle[stageId] = GetSystemCycle();
+                DataCacheCleanAndInvalid<uint8_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+                    blockStageGlobal_);
+            }
         }
     }
 
