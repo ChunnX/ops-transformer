@@ -26,7 +26,7 @@ namespace ge {
 * @li expert_token_num_per_rank: A 2D tensor, represents numbers of tokens belong to an expert on specific rank.
       Type is Int32 or Int64. Shape supports (N, E). Format supports ND.
 * @li per_token_scales: A 1D, 2D or 3D tensor, optional, represents tokens scale in rank-order.
-      Type is Float32, DT_FLOAT8_E8M0. 
+      Type is Float32, DT_FLOAT8_E8M0.
       Shape supports (A), (A,S) or (A,K/64,2). Format supports ND. If tokens is FLOAT8,
       per_token_scales must be DT_FLOAT8_E8M0. \n
   Ascend 950PR/Ascend 950DT support 1D, 2D or 3D (3D only for FP8 tokens). \n
@@ -35,7 +35,7 @@ namespace ge {
       permute_topk_weight: either both provided or neither. \n
 * @par Outputs:
 * @li permute_tokens: A 2D tensor, represents tokens in expert-order. Type is BFloat16, Float16,
-      Int8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1 or DT_FLOAT4_E1M2. Shape supports (A, H). 
+      Int8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1 or DT_FLOAT4_E1M2. Shape supports (A, H).
   Format supports ND.
 * @li permute_per_token_scales: A 1D, 2D or 3D tensor, represents tokens scale in expert-order.
       Type is Float32, DT_FLOAT8_E8M0. Shape supports (A), (A,S) or (A,K/64,2). Format supports ND.
