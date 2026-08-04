@@ -7,6 +7,9 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+import os  # noqa: E402
+import sys  # noqa: E402
+
 from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_metadata
 from .moe_finalize_routing import moe_finalize_routing
 from .moe_token_permute import moe_token_permute
@@ -65,3 +68,18 @@ from .dense_lightning_indexer_softmax_lse import (
     dense_lightning_indexer_softmax_lse,
     dense_lightning_indexer_softmax_lse_metadata,
 )
+
+# mhc_post_backward torch_extension 代码独立到算子目录，延迟到主包初始化完成后导入
+_MHC_POST_BACKWARD_TE_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    os.pardir,
+    os.pardir,
+    os.pardir,
+    "mhc",
+    "mhc_post_backward",
+    "torch_extension",
+)
+if _MHC_POST_BACKWARD_TE_DIR not in sys.path:
+    sys.path.insert(0, _MHC_POST_BACKWARD_TE_DIR)
+
+from mhc_post_backward import mhc_post_backward  # noqa: E402,F401

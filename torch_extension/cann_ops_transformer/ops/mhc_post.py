@@ -24,7 +24,7 @@ class MhcPostFunction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         x, h_res, h_out, h_post = ctx.saved_tensors
-        from cann_ops_transformer.ops.mhc_post_backward import mhc_post_backward
+        from mhc_post_backward import mhc_post_backward
 
         grad_x, grad_h_res, grad_h_out, grad_h_post = mhc_post_backward(
             grad_output, x, h_res, h_out, h_post
