@@ -48,14 +48,14 @@ def test_case_selector_rejects_ambiguous_or_invalid_selection(tmp_path):
 
 def test_result_writer_uses_readable_name_and_migrates_legacy_result(tmp_path):
     params = list(range(len(PARAM_NAMES)))
-    params[10] = "INT8"
-    params[20] = "BSND"
-    params[21] = "PA_BBND"
+    params[PARAM_NAMES.index("qk_dtype")] = "INT8"
+    params[PARAM_NAMES.index("layout_query")] = "BSND"
+    params[PARAM_NAMES.index("layout_key")] = "PA_BBND"
     name = QliV2ResultWriter.case_name(params)
     assert name == QliV2ResultWriter.case_name(params)
     assert name == (
         "QLI_B0_S11_S22_N15_N26_D7_BSND_PA_BBND_INT8_"
-        "QM19_SM23_CR29_K22_RV30"
+        "QM20_SM24_CR30_K23_RV31"
     )
     assert QliV2ResultWriter.case_name(
         params,
@@ -71,7 +71,7 @@ def test_result_writer_uses_readable_name_and_migrates_legacy_result(tmp_path):
     result = pd.read_excel(output)
     assert list(result.columns) == list(row.keys())
     assert len(result) == 2
-    assert result.iloc[1]["return_value"] == params[30]
+    assert result.iloc[1]["return_value"] == params[PARAM_NAMES.index("return_value")]
 
 
 def test_comparison_failure_raises_serializable_assertion():
