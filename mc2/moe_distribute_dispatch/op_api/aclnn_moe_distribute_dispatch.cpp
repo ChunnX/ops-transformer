@@ -36,8 +36,8 @@ enum NnopbaseHcclServerType {
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // check nullptr
-static bool CheckNotNull(const aclTensor *x, const aclTensor *expertIds, const char *groupEp, aclTensor *expandX,
-                         aclTensor *expandIdx, aclTensor *expertTokensNums, aclTensor *epRecvCounts)
+static bool CheckNotNull(const aclTensor *x, const aclTensor *expertIds, const char *groupEp, const aclTensor *expandX,
+                         const aclTensor *expandIdx, const aclTensor *expertTokensNums, const aclTensor *epRecvCounts)
 {
     OP_LOGD("aclnn_moe_distribute_dispatch CheckNotNull start");
     OP_CHECK_NULL(x, return false);
@@ -54,10 +54,18 @@ static bool CheckNotNull(const aclTensor *x, const aclTensor *expertIds, const c
     return true;
 }
 
+static inline void SafeCopyGroupBuf(char *dst, size_t dstSize, const char *src, size_t maxCopyLen)
+{
+    if (src != nullptr) {
+        (void)strncpy_s(dst, dstSize, src, maxCopyLen);
+    }
+}
+
 // 入参校验
 static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *expertIds, const char *groupEp, const char *groupTp,
-                               int64_t quantMode, aclTensor *expandX, aclTensor *dynamicScales, aclTensor *expandIdx,
-                               aclTensor *expertTokensNums, aclTensor *epRecvCounts)
+                               int64_t quantMode, const aclTensor *expandX, const aclTensor *dynamicScales,
+                               const aclTensor *expandIdx, const aclTensor *expertTokensNums,
+                               const aclTensor *epRecvCounts)
 {
     OP_LOGD("aclnn_moe_distribute_dispatch CheckParams start");
     CHECK_RET(CheckNotNull(x, expertIds, groupEp, expandX, expandIdx, expertTokensNums, epRecvCounts),
@@ -104,9 +112,14 @@ aclnnStatus MoeDistributeDispatchGetWorkspaceSize(
                                  expertTokensNums, epRecvCounts);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
+    char groupEpBuf[HCCL_GROUP_NAME_MAX] = {0};
+    SafeCopyGroupBuf(groupEpBuf, HCCL_GROUP_NAME_MAX, groupEp, HCCL_GROUP_NAME_MAX - 1);
+    char groupTpBuf[HCCL_GROUP_NAME_MAX] = {0};
+    SafeCopyGroupBuf(groupTpBuf, HCCL_GROUP_NAME_MAX, groupTp, HCCL_GROUP_NAME_MAX - 1);
+
     aclnnStatus ret = aclnnInnerMoeDistributeDispatchGetWorkspaceSize(
-        x, expertIds, scales, xActiveMask, expertScales, const_cast<char *>(groupEp), epWorldSize, epRankId,
-        moeExpertNum, const_cast<char *>(groupTp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+        x, expertIds, scales, xActiveMask, expertScales, groupEpBuf, epWorldSize, epRankId,
+        moeExpertNum, groupTpBuf, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
         shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, expandX, dynamicScales, expandIdx,
         expertTokensNums, epRecvCounts, tpRecvCounts, expandScales, workspaceSize, executor);
     return ret;
