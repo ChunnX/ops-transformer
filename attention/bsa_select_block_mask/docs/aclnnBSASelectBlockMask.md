@@ -5,7 +5,7 @@
 <!-- npu="950" id1 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：支持
 <!-- end id1 -->
-- Atlas A3训练系列产品：支持<!--下面4个不符合术语要求不需要加term标记对>
+- Atlas A3训练系列产品：支持<!--下面4个不符合术语要求不需要加term标记对-->
 - Atlas A3推理系列产品：支持
 - Atlas A2训练系列产品：支持
 - Atlas A2推理系列产品：支持
