@@ -579,17 +579,25 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
         int64_t numTokens = tilingData.numTokens;
         int64_t hiddenBytes = tilingData.hiddenBytes;
         int64_t totalRecv = tilingData.totalRecv;
+        int64_t aivNum = static_cast<int64_t>(tilingData.aivNum);
 
         int64_t wsSdispls = AlignTo(numRanks * static_cast<int64_t>(sizeof(int64_t)), UB_ALIGN);
         int64_t wsRdispls = AlignTo(numRanks * static_cast<int64_t>(sizeof(int64_t)), UB_ALIGN);
         int64_t wsSortedIndices = AlignTo(numTokens * static_cast<int64_t>(sizeof(int32_t)), UB_ALIGN);
+        int64_t slotSize = AlignTo(tilingData.numMaxTokensPerRank * static_cast<int64_t>(sizeof(int32_t)), UB_ALIGN);
+        if (slotSize == 0) { slotSize = UB_ALIGN; }
+        int64_t numOwnerRanksMax = (numRanks + aivNum - 1) / aivNum;
+        if (numOwnerRanksMax == 0) { numOwnerRanksMax = 1; }
+        int64_t perCoreTempSize = numOwnerRanksMax * slotSize;
+        int64_t wsSortedIndicesTemp = aivNum * perCoreTempSize;
+        int64_t wsPermOutTemp = aivNum * perCoreTempSize;
         int64_t wsLocalData = totalRecv * hiddenBytes;
         int64_t wsRecvData = numTokens * hiddenBytes;
-        int64_t wsCounterScratch = static_cast<int64_t>(tilingData.aivNum) * UB_ALIGN;
+        int64_t wsCounterScratch = aivNum * UB_ALIGN;
         int64_t wsFlagScratch = FLAG_SCRATCH_SIZE;
 
-        int64_t wsTotal =
-            wsSdispls + wsRdispls + wsSortedIndices + wsLocalData + wsRecvData + wsCounterScratch + wsFlagScratch;
+        int64_t wsTotal = wsSdispls + wsRdispls + wsSortedIndices + wsSortedIndicesTemp + wsPermOutTemp +
+                          wsLocalData + wsRecvData + wsCounterScratch + wsFlagScratch;
         wsTotal = ((wsTotal + WORKSPACE_ALIGN_2MB - 1) / WORKSPACE_ALIGN_2MB) * WORKSPACE_ALIGN_2MB;
         wsTotal += SYSTEM_NEED_WORKSPACE;
         workSpaces[0] = static_cast<size_t>(wsTotal);
