@@ -1196,6 +1196,10 @@ __simd_vf__ void AntiqScalePerTokenGroupByVFImpl(__ubuf__ uint8_t *ub_src_addr, 
     MicroAPI::Duplicate(e8m0_zero, 0x0);
     MicroAPI::Duplicate(e8m0_nan, 0x7f80); // 0xff << 7
     for (uint16_t i = 0; i < static_cast<uint16_t>(loop_cnt); i++) {
+        // The last VF iteration may cover only part of a 128-element register.  The raw UB
+        // allocation contains the full register, but only valid parameter entries may affect the result.
+        uint32_t curLoopSize = (i == loop_cnt - 1 && tailSize != 0) ? tailSize : 128;
+        preg_135 = MicroAPI::UpdateMask<Q_T>(curLoopSize);
         MicroAPI::LoadAlign<uint8_t, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_UNPACK_B8>(
             (MicroAPI::RegTensor<uint8_t> &)w_nd_s8, ub_src_addr, 128);
         MicroAPI::ShiftLefts((MicroAPI::RegTensor<uint16_t> &)w_nd_bf16, (MicroAPI::RegTensor<uint16_t> &)w_nd_s8,
@@ -1274,12 +1278,13 @@ __aicore__ inline void AntiqOffsetByVF(LocalTensor<Q_T> offsetInUb, LocalTensor<
 
 template <typename Q_T>
 __simd_vf__ void AntiqOffsetByVFNzImpl(__ubuf__ Q_T *ub_src_addr, __ubuf__ bfloat16_t *ub_dst_addr,
-                                       uint16_t loop_cnt)
+                                       uint16_t loop_cnt, uint32_t tailSize)
 {
     MicroAPI::RegTensor<Q_T> vOffset;
     MicroAPI::RegTensor<bfloat16_t> w_nd_bf16;
-    MicroAPI::MaskReg preg_all = MicroAPI::CreateMask<Q_T, MicroAPI::MaskPattern::ALL>();
     for (uint16_t i = 0; i < loop_cnt; i++) {
+        uint32_t curLoopSize = (i == loop_cnt - 1 && tailSize != 0) ? tailSize : 128;
+        MicroAPI::MaskReg preg_all = MicroAPI::UpdateMask<Q_T>(curLoopSize);
         MicroAPI::LoadAlign<Q_T, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
             vOffset, ub_src_addr, 128);
         if constexpr (std::is_same<Q_T, bfloat16_t>::value) {
@@ -1304,7 +1309,7 @@ __aicore__ inline void AntiqOffsetByVFNz(LocalTensor<Q_T> offsetInUb, LocalTenso
     if (tailSize != 0) {
         loop_cnt = loop_cnt + 1;
     }
-    AntiqOffsetByVFNzImpl<Q_T>(ub_src_addr, ub_dst_addr, loop_cnt);
+    AntiqOffsetByVFNzImpl<Q_T>(ub_src_addr, ub_dst_addr, loop_cnt, tailSize);
 }
 
 }; // namespace FaVectorApi

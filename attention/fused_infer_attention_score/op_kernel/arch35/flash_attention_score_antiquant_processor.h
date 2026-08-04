@@ -15,6 +15,8 @@
 #ifndef FLASH_ATTENTION_SCORE_ANTIQUANT_PROCESSOR_H
 #define FLASH_ATTENTION_SCORE_ANTIQUANT_PROCESSOR_H
 
+#include <type_traits>
+
 #include "../../../common/op_kernel/arch35/vf/vf_antiquant_w4.h"
 #include "../../../common/op_kernel/arch35/vf/vf_antiquant_w8.h"
 
@@ -115,6 +117,10 @@ public:
     __aicore__ inline void CopyAntiqScaleE8M0Nz(LocalTensor<Q_T> dstLocal, GlobalTensor<uint8_t> &srcGm,
                                                 uint64_t offset, uint32_t rowCnt, uint32_t grpNum,
                                                 uint32_t s2RealSize);
+    template <typename PARAM_T>
+    __aicore__ inline void CopyAntiqParamPageAttentionNz(
+        LocalTensor<Q_T> dstLocal, GlobalTensor<PARAM_T> &srcGm, GlobalTensor<int32_t> &blockTableGm,
+        const AntiquantTaskParamBaseAPI &taskParam, uint32_t grpNum, uint32_t s2Aligned);
     __aicore__ inline void CopyAntiqE8M0PageAttention(LocalTensor<Q_T> dstLocal, GlobalTensor<uint8_t> &srcGm,
                                                       GlobalTensor<int32_t> &blockTableGm,
                                                       const AntiquantTaskParamBaseAPI &taskParam, uint32_t grpNum);
@@ -272,6 +278,57 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
     DataCopyPad(dstLocal.template ReinterpretCast<uint8_t>(), srcGm[offset], copyInParams, copyInPadParams);
 }
 
+// PA_NZ parameter GM layout is [P, N, G, Bs]. Each physical page is selected by blockTable,
+// while the UB layout required by the NZ VF path is [G, AlignUp(copyTotalS, 32)]. PARAM_T keeps
+// scale as raw E8M0 bytes and offset as Q_T without sharing either their GM type or byte strides.
+template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
+template <typename PARAM_T>
+__aicore__ inline void
+AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAntiqParamPageAttentionNz(
+    LocalTensor<Q_T> dstLocal, GlobalTensor<PARAM_T> &srcGm, GlobalTensor<int32_t> &blockTableGm,
+    const AntiquantTaskParamBaseAPI &taskParam, uint32_t grpNum, uint32_t s2Aligned)
+{
+    const uint64_t blockTableBaseOffset = taskParam.bIdx * taskParam.maxBlockNumPerSeq;
+    uint32_t copiedTokenNum = 0;
+    uint32_t curSequence = taskParam.s2BatchOffset;
+
+    DataCopyExtParams copyInParams;
+    DataCopyPadExtParams<PARAM_T> copyInPadParams{};
+    while (copiedTokenNum < taskParam.copyTotalS) {
+        const uint64_t logicalBlockId = curSequence / taskParam.kvCacheBlockSize;
+        const uint32_t tokenInBlock = curSequence % taskParam.kvCacheBlockSize;
+        const uint64_t physicalBlockId = blockTableGm.GetValue(blockTableBaseOffset + logicalBlockId);
+        uint32_t copyTokenNum = taskParam.kvCacheBlockSize - tokenInBlock;
+        if (copyTokenNum + copiedTokenNum > taskParam.copyTotalS) {
+            copyTokenNum = taskParam.copyTotalS - copiedTokenNum;
+        }
+
+        // [P, N, G, Bs]: a page group plane is contiguous, whereas the destination planes are
+        // [G, SAlign]. Do one contiguous copy per group: a partial first/last page need not
+        // have a 32-byte-aligned gap, so it must not be encoded as a DataCopyPad dstStride.
+        const uint64_t srcElemOffset =
+            ((physicalBlockId * taskParam.kvHeadNum + taskParam.n2Idx) * grpNum * taskParam.kvCacheBlockSize) +
+            tokenInBlock;
+        copyInParams.blockCount = 1;
+        copyInParams.blockLen = copyTokenNum * sizeof(PARAM_T);
+        copyInParams.srcStride = 0;
+        copyInParams.dstStride = 0;
+        for (uint32_t groupIdx = 0; groupIdx < grpNum; ++groupIdx) {
+            const uint64_t groupSrcElemOffset = srcElemOffset + groupIdx * taskParam.kvCacheBlockSize;
+            const uint32_t groupDstElemOffset = groupIdx * s2Aligned + copiedTokenNum;
+            if constexpr (std::is_same<PARAM_T, uint8_t>::value) {
+                DataCopyPad(dstLocal.template ReinterpretCast<uint8_t>()[groupDstElemOffset], srcGm[groupSrcElemOffset],
+                            copyInParams, copyInPadParams);
+            } else {
+                DataCopyPad(dstLocal[groupDstElemOffset], srcGm[groupSrcElemOffset], copyInParams, copyInPadParams);
+            }
+        }
+
+        copiedTokenNum += copyTokenNum;
+        curSequence += copyTokenNum;
+    }
+}
+
 template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
 __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAntiqOffset(
     LocalTensor<Q_T> dstLocal, GlobalTensor<Q_T> &srcGm, uint64_t offset, uint32_t rowCnt, uint32_t grpNum)
@@ -398,7 +455,31 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::LoadAnt
 
     // 字节/元素单位均为grpNum/token，scale(E8M0字节)与offset(Q_T元素)的偏移数值一致
     uint64_t scaleOffset = 0;
-    if (taskParam.isKvCacheNz) {
+    if (taskParam.isPageAttentionAntiquant && taskParam.isKvCacheNz) {
+        const uint32_t s2Aligned = AlignUp32(taskParam.copyTotalS);
+        LocalTensor<Q_T> antiqScaleE8M0Ub = antiqScaleInputQue.template AllocTensor<Q_T>();
+        CopyAntiqParamPageAttentionNz<uint8_t>(antiqScaleE8M0Ub, antiqScaleGm, blockTableGm, taskParam, grpNum,
+                                                s2Aligned);
+        antiqScaleInputQue.template EnQue(antiqScaleE8M0Ub);
+        antiqScaleE8M0Ub = antiqScaleInputQue.DeQue<Q_T>();
+
+        antiqScale = kvAntiqMxScaleRes.Get<ANTIQ_PARAMS_T>();
+        FaVectorApi::AntiqScalePerTokenGroupByVF<Q_T, ANTIQ_PARAMS_T>(antiqScaleE8M0Ub, antiqScale,
+                                                                       taskParam.copyTotalS, grpNum);
+        antiqScaleInputQue.FreeTensor(antiqScaleE8M0Ub);
+
+        if (taskParam.isExistOffset) {
+            LocalTensor<Q_T> antiqOffsetQTUbtmp = antiqOffsetInputQue.template AllocTensor<Q_T>();
+            CopyAntiqParamPageAttentionNz<Q_T>(antiqOffsetQTUbtmp, antiqOffsetGm, blockTableGm, taskParam, grpNum,
+                                                s2Aligned);
+            antiqOffsetInputQue.template EnQue(antiqOffsetQTUbtmp);
+            antiqOffsetQTUbtmp = antiqOffsetInputQue.DeQue<Q_T>();
+
+            antiqOffset = kvOffsetBuf.Get<ANTIQ_PARAMS_T>();
+            FaVectorApi::AntiqOffsetByVFNz<Q_T>(antiqOffsetQTUbtmp, antiqOffset, taskParam.copyTotalS, grpNum);
+            antiqOffsetInputQue.FreeTensor(antiqOffsetQTUbtmp);
+        }
+    } else if (taskParam.isKvCacheNz) {
         scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.seqSize * grpNum +
                       taskParam.n2Idx * taskParam.seqSize * grpNum + taskParam.s2Idx * taskParam.singleSInnerSize +
                       taskParam.kvPaddingBeginOffset + subBlockIdx * GetRealDealSize(s2RealSize);

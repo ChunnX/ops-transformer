@@ -1889,7 +1889,8 @@ void FusedInferAttentionScoreTilingImpl::SetFATilingDataInputParams(const FiaTil
                                          fiaInfo.keyAntiquantMode == 5);
     inputParams.set_antiquantPageAttentionFlag(fiaInfo.keyAntiquantMode == 4 || fiaInfo.keyAntiquantMode == 5 ||
                                                (fiaInfo.keyAntiquantMode == 6 &&
-                                                fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION));
+                                                fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION &&
+                                                fiaInfo.kvLayout == FiaLayout::NZ));
     inputParams.set_isActualSeqLengthsNull(!actualSeqLenQFlag_);
     inputParams.set_isActualSeqLengthsKVNull(!actualSeqLenKVFlag_);
     inputParams.set_isActualSharedPrefixLenNull(!actualSharedPrefixLenFlag_);

@@ -2282,8 +2282,6 @@ ge::graphStatus DequantChecker::CheckFeaturePAForAntiquant(const FiaTilingInfo &
     }
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
     auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
-    auto &keyAntiquantOffsetTensor = fiaInfo.opParamInfo.keyAntiquantOffset.tensor;
-    auto &valueAntiquantOffsetTensor = fiaInfo.opParamInfo.valueAntiquantOffset.tensor;
     int32_t blockSize = fiaInfo.blockSize;
     uint32_t maxBlockNumPerBatch = fiaInfo.maxBlockNumPerBatch;
 
@@ -2342,62 +2340,19 @@ ge::graphStatus DequantChecker::CheckFeaturePAForAntiquant(const FiaTilingInfo &
             return ge::GRAPH_FAILED;
         }
     }
-    // per-token-group模式，page attention时antiquantScale按block分页布局存储，与kernel寻址一致
-    // BNBD布局shape为[blockNum, blockSize*headDim/32]，blockNum需要大于等于maxBlockNumPerBatch
-    // NZ布局shape为[B, N, S, headDim/32]，线性存储
+    // 本变更仅支持 PA_NZ。mode 6 的参数 GM 布局为 [P, N, G, Bs]，
+    // 其中 P 是物理页数、G = D / 32、Bs 是 page block size；kernel 会按 blockTable 取页。
     if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
-        // BBH页式布局(BnBsH)下无法按 [B,N,S,grpNum] 定位scale/offset，显式拒绝
-        OP_CHECK_IF((fiaInfo.kvLayout == FiaLayout::BnBsH),
+        OP_CHECK_IF((fiaInfo.kvLayout != FiaLayout::NZ),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                         fiaInfo.opName, "input_layout", LayoutToSerialString(fiaInfo.kvLayout).c_str(),
-                        "per-token-group mode does not support BBH kv cache layout"),
+                        "per-token-group PageAttention currently supports only PA_NZ kv cache layout"),
                     return ge::GRAPH_FAILED);
-        const uint32_t keyDim = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
-        uint32_t dimNum = keyAntiquantScaleTensor->GetStorageShape().GetDimNum();
-        if (keyDim == DIM_NUM_5) { // PA_NZ
-            if (dimNum != DIM_NUM_4 ||
-                keyAntiquantScaleTensor->GetStorageShape().GetDim(DIM_NUM_4 - 1) <
-                    (int64_t)(fiaInfo.qkHeadDim / 32)) {
-                std::string shapeStr = ToStringRaw(keyAntiquantScaleTensor->GetStorageShape());
-                std::string reasonMsg =
-                    "The shape of key_antiquant_scale should be 4D [B, N, S, headDim/32] when keyAntiquantMode and "
-                    "valueAntiquantMode are per-token-group mode and kv cache layout is PA_NZ";
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", shapeStr.c_str(),
-                                                      reasonMsg.c_str());
-                return ge::GRAPH_FAILED;
-            }
-            if (valueAntiquantScaleTensor->GetStorageShape().GetDimNum() != DIM_NUM_4 ||
-                valueAntiquantScaleTensor->GetStorageShape().GetDim(DIM_NUM_4 - 1) <
-                    (int64_t)(fiaInfo.qkHeadDim / 32)) {
-                std::string shapeStr = ToStringRaw(valueAntiquantScaleTensor->GetStorageShape());
-                std::string reasonMsg =
-                    "The shape of value_antiquant_scale should be 4D [B, N, S, headDim/32] when keyAntiquantMode and "
-                    "valueAntiquantMode are per-token-group mode and kv cache layout is PA_NZ";
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "value_antiquant_scale", shapeStr.c_str(),
-                                                      reasonMsg.c_str());
-                return ge::GRAPH_FAILED;
-            }
-        } else {
-            if (dimNum < DIM_NUM_2) {
-                std::string shapeStr = ToStringRaw(keyAntiquantScaleTensor->GetStorageShape());
-                std::string reasonMsg = "The shape of key_antiquant_scale should be 2D [blockNum, "
-                                        "blockSize*headDim/32] "
-                                        "when keyAntiquantMode and valueAntiquantMode are per-token-group mode "
-                                        "and keyAntiquant/valueAntiquant is splited";
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", shapeStr.c_str(),
-                                                      reasonMsg.c_str());
-                return ge::GRAPH_FAILED;
-            }
-            if (keyAntiquantScaleTensor->GetStorageShape().GetDim(0) < maxBlockNumPerBatch) {
-                std::string shapeStr = ToStringRaw(keyAntiquantScaleTensor->GetStorageShape());
-                std::string reasonMsg = "The first dimension of key_antiquant_scale should be >= maxBlockNumPerBatch "
-                                        "when keyAntiquantMode and valueAntiquantMode are per-token-group mode "
-                                        "and keyAntiquant/valueAntiquant is splited";
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", shapeStr.c_str(),
-                                                      reasonMsg.c_str());
-                return ge::GRAPH_FAILED;
-            }
-        }
+        OP_CHECK_IF((fiaInfo.qkHeadDim % 32) != 0,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        fiaInfo.opName, "head_dim", std::to_string(fiaInfo.qkHeadDim).c_str(),
+                        "head_dim must be divisible by 32 in per-token-group PageAttention mode"),
+                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -3044,48 +2999,31 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenGroupPAMode(const Fia
 {
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
     gert::Shape keyAntiquantScaleTensorShape = keyAntiquantScaleTensor->GetStorageShape();
-    uint32_t keyAntiquantScaleTensorDimNum = keyAntiquantScaleTensorShape.GetDimNum();
-    uint32_t blockNum = fiaInfo.totalBlockNum;
-    uint32_t blockSize = fiaInfo.blockSize;
-    uint32_t headDim = fiaInfo.qkHeadDim;
-    const uint32_t keyDim = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
-    // per-token-group模式使用page attention管理scale/offset
-    // BNBD布局shape为[blockNum, N*blockSize*headDim/32]（block内按head平铺，与kernel寻址一致）
-    // NZ布局shape为[B, N, S, headDim/32]（线性存储，与kernel寻址一致）
-    if (keyDim == DIM_NUM_5) { // PA_NZ
-        if (keyAntiquantScaleTensorDimNum != DIM_NUM_4 ||
-            keyAntiquantScaleTensorShape.GetDim(DIM_NUM_0) != fiaInfo.bSize ||
-            keyAntiquantScaleTensorShape.GetDim(DIM_NUM_1) != fiaInfo.n2Size ||
-            keyAntiquantScaleTensorShape.GetDim(DIM_NUM_2) < fiaInfo.s2Size ||
-            keyAntiquantScaleTensorShape.GetDim(DIM_NUM_3) != headDim / 32) {
-            std::string actualShape = ToStringRaw(keyAntiquantScaleTensorShape);
-            std::string reasonMsg =
-                "The shape of keyAntiquantScale must be [B(" + std::to_string(fiaInfo.bSize) +
-                "), N(" + std::to_string(fiaInfo.n2Size) + "), >=S(" + std::to_string(fiaInfo.s2Size) +
-                "), D/32(" + std::to_string(headDim / 32) +
-                ")] when keyAntiquantMode is per-token-group-pa mode and kv cache layout is PA_NZ";
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", actualShape.c_str(),
-                                                  reasonMsg.c_str());
-            return ge::GRAPH_FAILED;
-        }
-        return ge::GRAPH_SUCCESS;
+    OP_CHECK_IF((fiaInfo.kvLayout != FiaLayout::NZ),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    fiaInfo.opName, "input_layout", LayoutToSerialString(fiaInfo.kvLayout).c_str(),
+                    "per-token-group PageAttention currently supports only PA_NZ kv cache layout"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((fiaInfo.qkHeadDim % 32) != 0,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    fiaInfo.opName, "head_dim", std::to_string(fiaInfo.qkHeadDim).c_str(),
+                    "head_dim must be divisible by 32 in per-token-group PageAttention mode"),
+                return ge::GRAPH_FAILED);
+
+    const uint32_t grpNum = fiaInfo.qkHeadDim / 32;
+    gert::Shape expectedShape = gert::Shape({fiaInfo.totalBlockNum, fiaInfo.n2Size, grpNum, fiaInfo.blockSize});
+    if (keyAntiquantScaleTensorShape != expectedShape) {
+        std::string actualShape = ToStringRaw(keyAntiquantScaleTensorShape);
+        std::string reasonMsg =
+            "The shape of keyAntiquantScale must be [P(" + std::to_string(fiaInfo.totalBlockNum) + "), N(" +
+            std::to_string(fiaInfo.n2Size) + "), G=D/32(" + std::to_string(grpNum) + "), Bs(" +
+            std::to_string(fiaInfo.blockSize) +
+            ")] when keyAntiquantMode is per-token-group PageAttention PA_NZ mode";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", actualShape.c_str(),
+                                              reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
     }
-    if (keyAntiquantScaleTensorDimNum == DIM_NUM_2) {
-        gert::Shape expectedShape = gert::Shape({blockNum, blockSize * headDim / 32 * fiaInfo.n2Size});
-        if (keyAntiquantScaleTensorShape != expectedShape) {
-            std::string actualShape = ToStringRaw(keyAntiquantScaleTensorShape);
-            std::string reasonMsg =
-                "The shape of keyAntiquantScale must be [blockNum(" + std::to_string(blockNum) + "), N*blockSize*headDim/32(" +
-                std::to_string(blockSize * headDim / 32 * fiaInfo.n2Size) + ")] when keyAntiquantMode is per-token-group-pa mode";
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", actualShape.c_str(),
-                                                  reasonMsg.c_str());
-            return ge::GRAPH_FAILED;
-        }
-        return ge::GRAPH_SUCCESS;
-    }
-    std::string dimStr = std::to_string(keyAntiquantScaleTensorDimNum) + "D";
-    OP_LOGE_FOR_INVALID_SHAPEDIM(fiaInfo.opName, "key_antiquant_scale", dimStr.c_str(), "2D");
-    return ge::GRAPH_FAILED;
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenGroupMode(const FiaTilingInfo &fiaInfo) const
