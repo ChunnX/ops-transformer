@@ -131,8 +131,7 @@ class NPUBackend:
             x, wkv, wgate, state_cache, ape,
             state_block_table=block_table,
             cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos,
-            cmp_ratio=cmp_ratio, coff=coff, cache_mode=cache_mode,
-            grad_enabled=False
+            cmp_ratio=cmp_ratio, coff=coff, cache_mode=cache_mode
         )
         torch.npu.synchronize()
 
