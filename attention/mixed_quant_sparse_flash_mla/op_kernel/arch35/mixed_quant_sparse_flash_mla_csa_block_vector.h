@@ -181,19 +181,16 @@ private:
                 return AttentionCommon::FD_MAX_S2_SPLIT_NUM * GetBlockNum();
             }
         } else {
-            if (isInner) {  // 核内
-                if constexpr (IS_SPLIT_G) {
+            if constexpr (IS_SPLIT_G) {
+                if (isInner) {  // 核内
                     return GetBlockNum();
-                } else {
+                }
+                return BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM * (GetBlockNum() >> 1U);  // 核间
+            } else {
+                if (isInner) {  // 核内
                     return GetBlockNum() << 1U;
                 }
-            } else {
-                // 核间
-                if constexpr (IS_SPLIT_G) {
-                    return BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM * (GetBlockNum() >> 1U);
-                } else {
-                    return BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM * GetBlockNum();
-                }
+                return BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM * GetBlockNum();  // 核间
             }
         }
     }
@@ -1212,7 +1209,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
         }
     } else {
         if (isFirstSoftmaxBase && isSinks) {
-            bool includeSink = !runInfo.isCrossCoreSplit || runInfo.isFirstS2SplitCore;
+            bool includeSink = (!runInfo.isCrossCoreSplit) || runInfo.isFirstS2SplitCore;
             if constexpr (IS_BATCH_CONSISTENCY) {
                 includeSink = includeSink && runInfo.reduceBlockId == 0;
             }

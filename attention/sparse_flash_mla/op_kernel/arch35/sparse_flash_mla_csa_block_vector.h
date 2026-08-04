@@ -667,7 +667,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitVec1SoftmaxFromSinks(
     LocalTensor<float> &sumUb, LocalTensor<float> &maxUb, RunInfo &runInfo, ConstInfo &constInfo)
 {
-    bool includeSink = !runInfo.isCrossCoreSplit || runInfo.isFirstS2SplitCore;
+    bool includeSink = (!runInfo.isCrossCoreSplit) || runInfo.isFirstS2SplitCore;
     if constexpr (IS_BATCH_CONSISTENCY) {
         includeSink = includeSink && (runInfo.reduceBlockId == 0);
     }
