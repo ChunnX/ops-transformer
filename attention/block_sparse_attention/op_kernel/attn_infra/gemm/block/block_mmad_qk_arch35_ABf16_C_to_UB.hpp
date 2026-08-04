@@ -408,6 +408,10 @@ public:
                 // valid rows in AIV0: [0, mFixPAligned8 / 2 - 1]
                 // valid rows in AIV1: [mFixPAligned8 / 2, rowNum - 1]
                 uint32_t mFixPAligned8 = RoundUp(rowNum, 8);
+                if constexpr (FULL_QUANT_FP8) {
+                    // fp8 Fixpipe 双核拆分要求每核 mSize>=16，rowNum 过小时提升到 32 行整搬
+                    mFixPAligned8 = (mFixPAligned8 < 32) ? 32 : mFixPAligned8;
+                }
                 uint32_t mPerSubCore = mFixPAligned8 / 2;
                 uint32_t nFixPAligned16 = RoundUp(l0TileNAct, 16);
                 auto ubCTensorTlaTile = GetTile(ubCTensor,
