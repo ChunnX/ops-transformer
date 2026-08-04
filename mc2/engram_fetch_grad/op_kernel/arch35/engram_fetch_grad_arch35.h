@@ -238,12 +238,27 @@ __aicore__ inline void EngramFetchGradArch35::ClearStatusFlags(GM_ADDR statusWin
 
 __aicore__ inline void EngramFetchGradArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len)
 {
-    LocalTensor<uint8_t> tmp0 = pingBuf_.Get<uint8_t>();
-    LocalTensor<uint8_t> tmp1 = pongBuf_.Get<uint8_t>();
     GlobalTensor<uint8_t> srcGm;
     GlobalTensor<uint8_t> dstGm;
     srcGm.SetGlobalBuffer((__gm__ uint8_t *)src);
     dstGm.SetGlobalBuffer((__gm__ uint8_t *)dst);
+
+    if (len <= 2U * TILE_BYTES) {
+        LocalTensor<uint8_t> tmp = pingBuf_.Get<uint8_t>();
+        DataCopyExtParams mte2Params{1U, static_cast<uint32_t>(len), 0U, 0U, 0U};
+        DataCopyPadExtParams<uint8_t> mte2Pad{false, 0, 0, 0};
+        DataCopyPad(tmp, srcGm, mte2Params, mte2Pad);
+        AscendC::SetFlag<HardEvent::MTE2_MTE3>(ppEvtMte2ToMte3_[0]);
+        AscendC::WaitFlag<HardEvent::MTE2_MTE3>(ppEvtMte2ToMte3_[0]);
+        DataCopyExtParams mte3Params{1U, static_cast<uint32_t>(len), 0U, 0U, 0U};
+        DataCopyPad(dstGm, tmp, mte3Params);
+        AscendC::SetFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[0]);
+        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[0]);
+        return;
+    }
+
+    LocalTensor<uint8_t> tmp0 = pingBuf_.Get<uint8_t>();
+    LocalTensor<uint8_t> tmp1 = pongBuf_.Get<uint8_t>();
     uint32_t tileLen = TILE_BYTES;
     uint64_t off = 0;
     uint32_t tileIdx = 0;
@@ -345,7 +360,7 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     LocalTensor<uint8_t> hcommTensor = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor, HCOMM_INIT_SIZE);
 
-    tpipe_->InitBuffer(pingBuf_, TILE_BYTES);
+    tpipe_->InitBuffer(pingBuf_, 2U * TILE_BYTES);
     tpipe_->InitBuffer(pongBuf_, TILE_BYTES);
     ppEvtMte2ToMte3_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
     ppEvtMte2ToMte3_[1] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
@@ -980,8 +995,15 @@ __aicore__ inline void EngramFetchGradArch35::Process()
 
         CrossRankBarrier();
 
+        uint64_t cycleStart1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
         UnsortGrad();
+        uint64_t cycleEnd1 = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        uint64_t cycleStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
         ExchangeGrad();
+        uint64_t cycleEnd = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        uint64_t cycleDelta = cycleEnd - cycleStart;
+        printf("[EngramFetchGrad] rankId=%u, aivId=%u, ExchangeGrad cycles=%llu, UnsortGrad cycles=%llu\n",
+               rankId_, aivId_, static_cast<unsigned long long>(cycleDelta), cycleEnd1 - cycleStart1);
         UniqueScatterAdd();
     }
 }
