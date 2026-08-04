@@ -118,39 +118,36 @@ public:
             constexpr uint32_t ubEnd = indexesAddr + DN_VSELR_INDEX_SIZE;
             static_assert(ubEnd <= MxStatic::UB_CAPACITY, "MX vector UB layout exceeds capacity");
 
-            // Static UB tensors use one canonical position. Queue-era VECOUT/VECCALC tags describe
-            // producer/consumer roles, but raw address tensors must not give the compiler conflicting
-            // position attributes for the same physical UB address.
-            stage2OutBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, stage2Addr, stage2Bytes)
+            stage2OutBuf_ = LocalTensor<uint8_t>(TPosition::VECCALC, stage2Addr, stage2Bytes)
                                 .ReinterpretCast<MM_T>();
-            initOutputScratch_ = LocalTensor<uint8_t>(TPosition::VECIN, stage2Addr,
+            initOutputScratch_ = LocalTensor<uint8_t>(TPosition::VECOUT, stage2Addr,
                                                        MxStatic::INIT_OUTPUT_SCRATCH_BYTES);
             // V1 DN packed P 使用双队列。
-            stage1OutBuf_[0] = LocalTensor<uint8_t>(TPosition::VECIN, stage1Addr0, STAGE1_OUT_UB_SIZE)
+            stage1OutBuf_[0] = LocalTensor<uint8_t>(TPosition::VECOUT, stage1Addr0, STAGE1_OUT_UB_SIZE)
                                    .ReinterpretCast<INPUT_T>();
-            stage1OutBuf_[1] = LocalTensor<uint8_t>(TPosition::VECIN, stage1Addr1, STAGE1_OUT_UB_SIZE)
+            stage1OutBuf_[1] = LocalTensor<uint8_t>(TPosition::VECOUT, stage1Addr1, STAGE1_OUT_UB_SIZE)
                                    .ReinterpretCast<INPUT_T>();
             // 单个 256-column subLoop 的 e8m0 PScale。
-            pScaleSubLoopBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, pScaleAddr, PSCALE_SUB_LOOP_UB_SIZE)
+            pScaleSubLoopBuf_ = LocalTensor<uint8_t>(TPosition::VECOUT, pScaleAddr, PSCALE_SUB_LOOP_UB_SIZE)
                                     .ReinterpretCast<SCALE_T>();
             // 三槽 softmax 状态对应 PRELOAD_N+1 环形流水。
             for (uint32_t i = 0U; i < 3U; ++i) {
-                softmaxSumBuf_[i] = LocalTensor<uint8_t>(TPosition::VECIN,
+                softmaxSumBuf_[i] = LocalTensor<uint8_t>(TPosition::VECCALC,
                     sumAddr + i * SOFTMAX_STATE_UB_SIZE, SOFTMAX_STATE_UB_SIZE).ReinterpretCast<float>();
-                softmaxMaxBuf_[i] = LocalTensor<uint8_t>(TPosition::VECIN,
+                softmaxMaxBuf_[i] = LocalTensor<uint8_t>(TPosition::VECCALC,
                     maxAddr + i * SOFTMAX_STATE_UB_SIZE, SOFTMAX_STATE_UB_SIZE).ReinterpretCast<float>();
-                softmaxExpBuf_[i] = LocalTensor<uint8_t>(TPosition::VECIN,
+                softmaxExpBuf_[i] = LocalTensor<uint8_t>(TPosition::VECCALC,
                     expAddr + i * SOFTMAX_STATE_UB_SIZE, SOFTMAX_STATE_UB_SIZE).ReinterpretCast<MM_T>();
             }
             // online softmax update 临时状态。
-            preLoopMaxBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, preMaxAddr, SOFTMAX_STATE_UB_SIZE)
+            preLoopMaxBuf_ = LocalTensor<uint8_t>(TPosition::VECCALC, preMaxAddr, SOFTMAX_STATE_UB_SIZE)
                                  .ReinterpretCast<float>();
-            preLoopSumBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, preSumAddr, SOFTMAX_STATE_UB_SIZE)
+            preLoopSumBuf_ = LocalTensor<uint8_t>(TPosition::VECCALC, preSumAddr, SOFTMAX_STATE_UB_SIZE)
                                  .ReinterpretCast<float>();
-            firstLoopSumBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, firstSumAddr, SOFTMAX_STATE_UB_SIZE)
+            firstLoopSumBuf_ = LocalTensor<uint8_t>(TPosition::VECCALC, firstSumAddr, SOFTMAX_STATE_UB_SIZE)
                                    .ReinterpretCast<float>();
             if constexpr (HAS_LSE) {
-                softmaxLseBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, lseAddr, lseBytes)
+                softmaxLseBuf_ = LocalTensor<uint8_t>(TPosition::VECOUT, lseAddr, lseBytes)
                                      .ReinterpretCast<float>();
             }
             if constexpr (HAS_ATTEN) {
@@ -160,7 +157,7 @@ public:
             // DN VF lane 重排索引；保留 USE_DN 分支，便于后续补充非 DN 索引表。
             if constexpr (USE_DN) {
                 vselrIndexesBuf_[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)] =
-                    LocalTensor<uint8_t>(TPosition::VECIN, indexesAddr, DN_VSELR_INDEX_SIZE);
+                    LocalTensor<uint8_t>(TPosition::VECCALC, indexesAddr, DN_VSELR_INDEX_SIZE);
                 LocalTensor<uint8_t> vselrIndexesTensor =
                     vselrIndexesBuf_[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)];
                 for (uint32_t i = 0U; i < DN_VSELR_GROUP_NUM; ++i) {

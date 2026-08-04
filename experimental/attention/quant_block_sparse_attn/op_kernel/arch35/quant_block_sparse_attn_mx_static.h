@@ -48,8 +48,10 @@ static_assert(2U * L0C_SLOT_BYTES <= L0C_CAPACITY, "MX L0C exceeds capacity");
 
 constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
 constexpr uint32_t MX_AIV0_AIV1_OFFSET = 16U;
-// Static Tensor reserves event IDs 6 and 7. Keep ready/free counters distinct,
-// and place all mode-4 cross-core events in the remaining safe ID range.
+// CROSS_CORE_SYNC_BOTH requires independent producer->consumer (ready) and
+// consumer->producer (free) counters. Sharing one counter lets a ready token
+// satisfy the producer's free wait, so the AIC can overwrite UB before both
+// AIVs have consumed it. Event IDs 6 and 7 are reserved by static Tensor.
 constexpr uint32_t CC_BMM1_READY_EVENT_ID0 = 0U;
 constexpr uint32_t CC_BMM1_FREE_EVENT_ID0 = 1U;
 constexpr uint32_t CC_BMM1_READY_EVENT_ID1 = 2U;
@@ -79,10 +81,8 @@ constexpr AscendC::TEventID L0C_EVENT_ID1 = 1U;
 constexpr AscendC::TEventID STAGE1_EVENT_ID0 = 0U;
 constexpr AscendC::TEventID STAGE1_EVENT_ID1 = 1U;
 constexpr AscendC::TEventID PSCALE_EVENT_ID = 2U;
-// VECOUT queues were allocated in stage1[0], stage1[1], pScale, LSE order;
-// the standalone stage2 event was allocated afterwards.
-constexpr AscendC::TEventID LSE_EVENT_ID = 3U;
-constexpr AscendC::TEventID STAGE2_EVENT_ID = 4U;
+constexpr AscendC::TEventID STAGE2_EVENT_ID = 3U;
+constexpr AscendC::TEventID LSE_EVENT_ID = 4U;
 constexpr AscendC::TEventID INIT_OUTPUT_FREE_EVENT_ID = 5U;
 constexpr AscendC::TEventID INIT_OUTPUT_READY_EVENT_ID = 10U;
 constexpr AscendC::TEventID MASK_EVENT_ID = 0U;
