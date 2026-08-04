@@ -38,7 +38,6 @@ extern "C" {
  * @param [in] worldSize: Number of ranks.
  * @param [in] hcclBufferSize: HCCL communication buffer size (required, currently unused).
  * @param [in] all2allAxesOptional: AlltoAll axes. Default {-2, -1}.
- * @param [in] yDtype: Output data type. Default DT_UNDEFINED (inferred).
  * @param [in] x1QuantMode: x1 quantization mode. Default 0.
  * @param [in] x2QuantMode: x2 quantization mode. Default 0.
  * @param [in] commQuantMode: Communication quantization mode. Default 0.
@@ -47,7 +46,6 @@ extern "C" {
  * @param [in] transposeX1: Whether x1 is transposed. Default false.
  * @param [in] transposeX2: Whether x2 is transposed. Default false.
  * @param [in] groupSize: Group size for quantization. Default 0.
- * @param [in] alltoallOutFlag: Whether to output all2all intermediate. Default true.
  * @param [in] commMode: Communication mode. Default "ai_cpu".
  * @param [in] precisionMode: Precision mode. Default 0.
  * @param [out] output: Output tensor. Type: bf16.
@@ -60,10 +58,10 @@ __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllMatmulApaceGetWo
     const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
     const aclTensor *x1ScaleOptional, const aclTensor *x2ScaleOptional, const aclTensor *commScaleOptional,
     const aclTensor *x1OffsetOptional, const aclTensor *x2OffsetOptional, const char *group, int64_t worldSize,
-    int64_t hcclBufferSize, const aclIntArray *alltoAllAxesOptional, int64_t yDtype, int64_t x1QuantMode,
-    int64_t x2QuantMode, int64_t commQuantMode, int64_t x1QuantDtype, int64_t commQuantDtype, bool transposeX1,
-    bool transposeX2, int64_t groupSize, bool alltoallOutFlag, const char *commMode, int64_t precisionMode,
-    const aclTensor *output, const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
+    int64_t hcclBufferSize, const aclIntArray *alltoAllAxesOptional, int64_t x1QuantMode, int64_t x2QuantMode,
+    int64_t commQuantMode, int64_t commQuantDtype, int64_t x1QuantDtype, bool transposeX1, bool transposeX2,
+    int64_t groupSize, const char *commMode, int64_t precisionMode, const aclTensor *output,
+    const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief Phase 2: execute AlltoAllMatmulApace on the given stream.

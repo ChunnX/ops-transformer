@@ -29,10 +29,10 @@ extern "C" aclnnStatus aclnnInnerAlltoAllMatmulApaceGetWorkspaceSize(
     const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
     const aclTensor *x1Scale, const aclTensor *x2Scale, const aclTensor *commScaleOptional,
     const aclTensor *x1OffsetOptional, const aclTensor *x2OffsetOptional, char *group, int64_t worldSize,
-    int64_t hcclBufferSize, const aclIntArray *all2allAxesOptional, int64_t yDtype, int64_t x1QuantMode,
-    int64_t x2QuantMode, int64_t commQuantMode, int64_t x1QuantDtype, int64_t commQuantDtype, bool transposeX1,
-    bool transposeX2, int64_t groupSize, bool alltoallOutFlag, char *commMode, int64_t precisionMode,
-    const aclTensor *yOut, const aclTensor *all2allOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
+    int64_t hcclBufferSize, const aclIntArray *all2allAxesOptional, int64_t x1QuantMode, int64_t x2QuantMode,
+    int64_t commQuantMode, int64_t commQuantDtype, int64_t x1QuantDtype, bool transposeX1, bool transposeX2,
+    int64_t groupSize, char *commMode, int64_t precisionMode, const aclTensor *yOut,
+    const aclTensor *all2allOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern "C" aclnnStatus aclnnInnerAlltoAllMatmulApace(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                      aclrtStream stream);
@@ -41,10 +41,10 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulApaceGetWorkspaceSize(
     const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
     const aclTensor *x1ScaleOptional, const aclTensor *x2ScaleOptional, const aclTensor *commScaleOptional,
     const aclTensor *x1OffsetOptional, const aclTensor *x2OffsetOptional, const char *group, int64_t worldSize,
-    int64_t hcclBufferSize, const aclIntArray *alltoAllAxesOptional, int64_t yDtype, int64_t x1QuantMode,
-    int64_t x2QuantMode, int64_t commQuantMode, int64_t x1QuantDtype, int64_t commQuantDtype, bool transposeX1,
-    bool transposeX2, int64_t groupSize, bool alltoallOutFlag, const char *commMode, int64_t precisionMode,
-    const aclTensor *output, const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+    int64_t hcclBufferSize, const aclIntArray *alltoAllAxesOptional, int64_t x1QuantMode, int64_t x2QuantMode,
+    int64_t commQuantMode, int64_t commQuantDtype, int64_t x1QuantDtype, bool transposeX1, bool transposeX2,
+    int64_t groupSize, const char *commMode, int64_t precisionMode, const aclTensor *output,
+    const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnnAlltoAllMatmulApaceGetWorkspaceSize start");
     (void)biasOptional;
@@ -63,10 +63,10 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulApaceGetWorkspaceSize(
 
     aclnnStatus ret = aclnnInnerAlltoAllMatmulApaceGetWorkspaceSize(
         context, x1, x2, biasOptional, x1ScaleOptional, x2ScaleOptional, commScaleOptional, x1OffsetOptional,
-        x2OffsetOptional, const_cast<char *>(group), worldSize, hcclBufferSize, alltoAllAxesOptional, yDtype,
-        x1QuantMode, x2QuantMode, commQuantMode, x1QuantDtype, commQuantDtype, transposeX1, transposeX2, groupSize,
-        alltoallOutFlag, const_cast<char *>(commMode ? commMode : "ai_cpu"), precisionMode, output, alltoAllOutOptional,
-        workspaceSize, executor);
+        x2OffsetOptional, const_cast<char *>(group), worldSize, hcclBufferSize, alltoAllAxesOptional, x1QuantMode,
+        x2QuantMode, commQuantMode, commQuantDtype, x1QuantDtype, transposeX1, transposeX2, groupSize,
+        const_cast<char *>(commMode ? commMode : "ai_cpu"), precisionMode, output, alltoAllOutOptional, workspaceSize,
+        executor);
 
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "aclnnInnerAlltoAllMatmulApaceGetWorkspaceSize failed, ret=%d", ret);
