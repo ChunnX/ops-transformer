@@ -20,12 +20,14 @@
 #include "mega_moe_tiling.h"
 #include "op_kernel/math_util.h"
 #include "mega_moe_workspace_info.h"
+#include "adv_api/hcomm/hcomm.h"
 
 struct Mc2MoeContext {
-    uint32_t epRankId;
-    uint32_t epRankSize;
-    uint64_t winSize;
-    uint64_t epHcclBuffer[1024];
+    uint32_t epRankId = 0;
+    uint32_t rankSizePerServer = 0;
+    uint64_t kfcContextAddr = 0; // 通信API所需的地址
+    uint64_t epHcclBuffer[HCCL_MAX_RANK_SIZE] = {};
+    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE] = {}; // 支持ROCE或者URMA
 };
 
 struct GMMAddrInfo {
@@ -33,17 +35,25 @@ struct GMMAddrInfo {
     GM_ADDR bGlobal;
     GM_ADDR aScaleGlobal;
     GM_ADDR bScaleGlobal;
-    __gm__ int32_t* groupFlagList;
-    __gm__ int32_t* groupFlagList2;
+    GM_ADDR gmm1OutGlobal;
+    GM_ADDR gmm2OutGlobal;
+    __gm__ int32_t *swigluToGmm2Flag;
+    __gm__ int32_t *dispatchToGmm1Flag;
+    __gm__ int32_t *gmm2CombineSyncCounter;
+    __gm__ int32_t *gmmToEpilogueFlag;
+    __gm__ int32_t *sharedExpertGmm2TileCounter;
 };
 
 struct PeermemInfo {
     GM_ADDR rankSyncInWorldPtr;
-    GM_ADDR maskRecvPtr;             // 源卡算好的 send-mask 接收区, 布局 [localExpert][srcRank]
-    GM_ADDR quantTokenScalePtr;      // 量化结果，包括data+scale
+    GM_ADDR maskRecvPtr;        // 源卡算好的 send-mask 接收区, 布局 [localExpert][srcRank]
+    GM_ADDR quantTokenScalePtr; // 量化结果，包括data+scale
+    GM_ADDR dispatchRecivePtr;  // dispatch 一级通信数据区，仅保存 token + scale
+    GM_ADDR dispatchFlagPtr;    // dispatch ready flag 区，布局 [sourceServer][tokenId] uint64_t
     GM_ADDR combineSendPtr;
     __aicore__ inline PeermemInfo() = default;
-    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData)
+    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1,
+                                  uint32_t serverNum = 1)
     {
         rankSyncInWorldPtr = base;
         int64_t offset = PEERMEM_DATA_OFFSET;
@@ -53,21 +63,51 @@ struct PeermemInfo {
         // 与 mega_moe.h FirstBuffInit 的 maskSlotSize_ 一致; 接收端直接读 count, 不再 GatherMask 计数。
         int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
         int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) /
-            (int64_t)sizeof(int32_t);
+                               (int64_t)sizeof(int32_t);
         int64_t maskAlignSize = Ops::Base::CeilAlign(compareCount / 8, (int64_t)ALIGN_32);
-        int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32;  // mask + 32B count
+        int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32; // mask + 32B count
         // 整个 mask 区按 512 对齐, 保证后续 quantTokenScalePtr 仍 512 对齐(CopyGMToGMPerToken 用普通 DataCopy 读)。
-        offset += Ops::Base::CeilAlign(
-            (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
+        offset += Ops::Base::CeilAlign((int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize,
+                                       (int64_t)ALIGN_512);
 
-        quantTokenScalePtr = base + offset;
-        uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
-        uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
-        uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
-        uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
-        offset += Ops::Base::CeilAlign((int64_t)(tilingData->bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
+        if (tilingData->topoType == TOPO_TYPE_MTE) {
+            quantTokenScalePtr = base + offset;
+            uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
+            uint32_t dataBytes =
+                Ops::Base::CeilAlign(tilingData->h / elemsPerByte, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
+            uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
+            uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+            if (tilingData->topkWeightsPrefetch == 1) {
+                uint32_t weightBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)),
+                                                            static_cast<uint32_t>(ALIGN_32));
+                tokenBytes = Ops::Base::CeilAlign(tokenBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
+            }
+            offset += Ops::Base::CeilAlign(
+                (int64_t)(static_cast<int64_t>(tilingData->bs) * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
+        } else {
+            dispatchRecivePtr = base + offset;
+            uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
+            uint32_t dataBytes =
+                Ops::Base::CeilAlign(tilingData->h / elemsPerByte, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
+            uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
+            uint32_t tokenScaleBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+            uint32_t relayRecordBytes = Ops::Base::CeilAlign(tokenScaleBytes, static_cast<uint32_t>(ALIGN_512));
+            offset += Ops::Base::CeilAlign((int64_t)(static_cast<int64_t>(tilingData->bs) * relayRecordBytes *
+                                                     sizeof(int8_t) * static_cast<int64_t>(serverNum)),
+                                           (int64_t)ALIGN_512);
+            dispatchFlagPtr = base + offset;
+            offset += Ops::Base::CeilAlign(
+                static_cast<int64_t>(serverNum) * tilingData->bs * static_cast<int64_t>(sizeof(uint64_t)),
+                static_cast<int64_t>(ALIGN_512));
+        }
         combineSendPtr = base + offset;
     }
+};
+
+struct CombineCommParams {
+    uint32_t rankId;
+    Hcomm<COMM_PROTOCOL_UBC_CTP> *hcomm;
+    __gm__ Mc2MoeContext *mc2Context;
 };
 
 struct Params {
@@ -77,18 +117,20 @@ struct Params {
     GM_ADDR bScaleGmAddr;
     GM_ADDR b2GmAddr;
     GM_ADDR b2ScaleGmAddr;
+    GM_ADDR sharedBGmAddr;
+    GM_ADDR sharedBScaleGmAddr;
+    GM_ADDR sharedB2GmAddr;
+    GM_ADDR sharedB2ScaleGmAddr;
     GM_ADDR probsGmAddr;
     GM_ADDR y2GmAddr;
     GM_ADDR expertTokenNumsOutGmAddr;
     WorkspaceInfo workspaceInfo;
     PeermemInfo peermemInfo;
     MegaMoeTilingData *tilingData;
+    CombineCommParams combineCommParams;
 };
 
-enum class AddrUpdateMode : int32_t {
-    kGmm1,
-    kGmm2
-};
+enum class AddrUpdateMode : int32_t { GMM1, GMM2 };
 
 __aicore__ inline void NotifyCube(uint16_t value = 0)
 {
@@ -110,19 +152,19 @@ __aicore__ inline void WaitForCube(uint16_t value = 0)
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + value);
 }
 
-__aicore__ inline void EndSync(int32_t& vecSetSyncCom)
+__aicore__ inline void EndSync(int32_t &vecSetSyncCom)
 {
     if (vecSetSyncCom == 0) {
         return;
     }
-    if constexpr(g_coreType == AIC) {
+    if constexpr (g_coreType == AIC) {
         WaitForVector();
     }
 }
 
-__aicore__ inline void EndGMM2Sync(int32_t& vecSetSyncCom, uint16_t gmm2PingPongIdx)
+__aicore__ inline void EndGMM2Sync(int32_t &vecSetSyncCom, uint16_t gmm2PingPongIdx)
 {
-    if constexpr(g_coreType == AIV) {
+    if constexpr (g_coreType == AIV) {
         return;
     }
     if (vecSetSyncCom <= 0) {
@@ -135,8 +177,7 @@ __aicore__ inline void EndGMM2Sync(int32_t& vecSetSyncCom, uint16_t gmm2PingPong
     }
 }
 
-__aicore__ inline void TilingByCore(int32_t totalLen, int32_t &coreLen,
-    int32_t& coreOffset, int32_t align = ALIGN_32)
+__aicore__ inline void TilingByCore(int32_t totalLen, int32_t &coreLen, int32_t &coreOffset, int32_t align = ALIGN_32)
 {
     int32_t coreIdx = GetBlockIdx();
     int32_t coreNum = GetBlockNum() * 2; // 取到vec核总数
@@ -161,6 +202,12 @@ __aicore__ inline void GmSignalWaitBarrier(__gm__ int32_t *sig_addr, int32_t cmp
     } while (true);
 }
 
+__aicore__ inline uint64_t GetUrmaCommHandle(__gm__ Mc2MoeContext *mc2Context_, uint32_t rankId, uint32_t epRankId)
+{
+    uint32_t index = rankId > epRankId ? rankId - 1 : rankId;
+    return mc2Context_->hcommHandle[index];
+}
+
 inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
 __aicore__ inline GM_ADDR GetRankWinAddrWithOffset(uint32_t rankId, uint64_t offset)
 {
@@ -169,27 +216,27 @@ __aicore__ inline GM_ADDR GetRankWinAddrWithOffset(uint32_t rankId, uint64_t off
 
 __aicore__ inline GM_ADDR GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
 {
-    __gm__ uint64_t* dataAddr = reinterpret_cast<__gm__ uint64_t*>(tensorPtr);
+    __gm__ uint64_t *dataAddr = reinterpret_cast<__gm__ uint64_t *>(tensorPtr);
     uint64_t tensorPtrOffset = *dataAddr;
-    __gm__ uint64_t* retPtr = dataAddr + (tensorPtrOffset >> 3);
+    __gm__ uint64_t *retPtr = dataAddr + (tensorPtrOffset >> 3);
     return reinterpret_cast<GM_ADDR>(*(retPtr + index));
 }
 
 // Base template: handles single-index case
 template <size_t I, typename T>
-__aicore__ constexpr inline decltype(auto) Get(T&& t)
+__aicore__ constexpr inline decltype(auto) Get(T &&t)
 {
     return AscendC::Std::get<I>(AscendC::Std::forward<T>(t));
 }
 
 // Recursive template: handles multiple index cases
 template <size_t First, size_t Second, size_t... Rest, typename T>
-__aicore__ constexpr inline decltype(auto) Get(T&& t)
+__aicore__ constexpr inline decltype(auto) Get(T &&t)
 {
     return Get<Second, Rest...>(AscendC::Std::get<First>(AscendC::Std::forward<T>(t)));
 }
 
-template<AscendC::HardEvent event, int32_t eventId>
+template <AscendC::HardEvent event, int32_t eventId>
 __aicore__ inline void SyncFuncStatic()
 {
     // static_assert(eventId >= 0 && eventId <= 5, "SyncFuncStatic eventId must be [0, 5]!");
