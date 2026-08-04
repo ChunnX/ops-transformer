@@ -52,6 +52,15 @@ struct MegaMoeExceptionDumpPolicy {
     using TilingDataT = std::conditional_t<kIsQuantRouting, MegaMoeTilingDataQuant, MegaMoeTilingDataNonQuant>;
     using StageEnumT = Stage;
     static constexpr MC2ExceptionDump::OpType OP_TYPE = MC2ExceptionDump::OpType::OP_TYPE_MEGA_MOE;
+
+    // 阶段插桩（UpdateStage）编译期开关：
+    //   false = 关闭。UpdateStage 编译后为零指令，消除每核每阶段的
+    //           GetSystemCycle + GM 写 + DCCI（cacheline flush）固定开销。
+    //           decode 小 shape 场景下该开销与权重量无关，属于纯串行 overhead。
+    //   true  = 开启（原行为），BlockStage 区记录各阶段时钟周期，供卡死定位。
+    // 注意：只影响阶段时间戳插桩，Init/Dump/DumpTilingData 的异常转储能力保持不变；
+    //       未声明该常量的其它 Policy 由 StageTraceEnabled 默认按开启处理，行为不变。
+    static constexpr bool kEnableStageTrace = false;
 };
 
 // 引擎实例类型别名（供 kernel 直接使用）
