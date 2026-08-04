@@ -113,7 +113,7 @@ $$
       </tr>
       <tr>
         <td>op_impl_mode</td>
-        <td>可选属性</td>
+        <td>可选输入</td>
         <td>指定MhcPre算子的计算模式，0表示Cube使用FP32模式计算，1表示Cube使用HF32模式计算，默认值为0。</td>
         <td>INT64</td>
         <td>-</td>
