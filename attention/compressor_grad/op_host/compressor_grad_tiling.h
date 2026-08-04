@@ -28,7 +28,7 @@ constexpr uint32_t TOKEN_X_INPUT_INDEX = 0;
 constexpr uint32_t WEIGHT_KV_INPUT_INDEX = 1;
 constexpr uint32_t WEIGHT_WGATE_INPUT_INDEX = 2;
 
-constexpr uint32_t D_CMP_KV_INPUT_INDEX = 3; 
+constexpr uint32_t D_CMP_KV_INPUT_INDEX = 3;
 
 constexpr uint32_t SOFTMAX_SCORE_INPUT_INDEX = 4;
 
@@ -212,8 +212,8 @@ struct CompressorGradContext {
     const uint32_t *cmpRatio;
     TemplateId templateId;
 
-    ge::DataType dtype = ge::DT_BF16; 
-    LayoutType layout = LayoutType::LAYOUT_BSH; 
+    ge::DataType dtype = ge::DT_BF16;
+    LayoutType layout = LayoutType::LAYOUT_BSH;
 
     size_t *workSpaces;
     uint64_t tilingKey;
@@ -227,7 +227,7 @@ struct CompressorGradSplitCoreParams {
         uint32_t nEnd;
         uint32_t kStart;
         uint32_t kEnd;
-    };
+};
 
 // 1. 基础参数结构体
 struct CompressorGradBaseParams {   

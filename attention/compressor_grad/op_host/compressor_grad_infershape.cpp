@@ -20,7 +20,7 @@ namespace ops {
     constexpr uint32_t TOKEN_X_INPUT_INDEX = 0;
     constexpr uint32_t WEIGHT_KV_INPUT_INDEX = 1;
     constexpr uint32_t WEIGHT_WGATE_INPUT_INDEX = 2;
-    constexpr uint32_t D_CMP_KV_INPUT_INDEX = 3; 
+    constexpr uint32_t D_CMP_KV_INPUT_INDEX = 3;
     constexpr uint32_t SOFTMAX_SCORE_INPUT_INDEX = 4;
     constexpr uint32_t KV_INPUT_INDEX = 5;
 
@@ -63,7 +63,8 @@ constexpr uint32_t DIM_INDEX_1 = 1;
 constexpr uint32_t DIM_INDEX_2 = 2;
 constexpr uint32_t DIM_INDEX_3 = 3;
 
-ge::graphStatus GetCompressorGradShapeDim(const gert::InferShapeContext* context, CompressorGradProtoShapeParam &shapeParam)
+ge::graphStatus GetCompressorGradShapeDim(const gert::InferShapeContext* context,
+                                          CompressorGradProtoShapeParam &shapeParam)
 {
     auto xShape = context->GetRequiredInputShape(TOKEN_X_INPUT_INDEX);      // (B, S, H) | (T, H)
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
@@ -97,7 +98,8 @@ ge::graphStatus GetCompressorGradShapeDim(const gert::InferShapeContext* context
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus SetCompressorGradShapeDim(const CompressorGradProtoShapeParam &shapeParam, gert::InferShapeContext* context)
+ge::graphStatus SetCompressorGradShapeDim(const CompressorGradProtoShapeParam &shapeParam,
+                                          gert::InferShapeContext* context)
 {
     // query: (B, S, N, Hckv) | (T, N, Hckv)
     auto dxShape = context->GetOutputShape(D_X_OUTPUT_INDEX);
