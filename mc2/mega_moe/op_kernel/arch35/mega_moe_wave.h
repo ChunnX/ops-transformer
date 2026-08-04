@@ -1211,10 +1211,10 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::CopyGMToGMPerTo
 // 坐标系：match ordinal 是当前 expert/source rank 内的命中序号；dst row 是跨 expert 累加的 workspace 行号；
 // expert row 是当前 expert 内的行号，用于更新 GMM1 wave flag。
 // 数据流：route mask -> 压缩后的路由索引 -> 命中序号 -> 目标行 -> 专家内行号/GMM1 wave。
-// 分核：本 core(block) 负责的区间按当前 expert 实际总 token 数(expertRowCount) 在所有 dispatch core
-//       (blockNum_) 间均分，得到 expert-local 行区间 [coreRowBegin, coreRowEnd)；再线性扫描 cumsumInfo
-//       定位该区间覆盖的 source rank 区间 [rankLo, rankHi]，对每个覆盖的 rank 按段内 ordinal 区间做
-//       逐 batch 的 mask 交集搬运。负载与单个 rank 的 token 贡献解耦，只与 expert 总行数成正比。
+// 分核：本 core(block) 负责的区间按当前 expert 实际总行数(expertRowCount) 在所有 dispatch core(blockNum_)
+//       间均分，得到 expert-local 行区间 [coreExpertRowBegin, coreExpertRowEnd)；再线性扫描 cumsumInfo
+//       定位该区间覆盖的 source rank 区间 [firstRankIdx, lastRankIdx]，对每个覆盖的 rank 按段内命中序号
+//       区间做逐 batch 的 mask 交集搬运。负载与单个 rank 的 token 贡献解耦，只与 expert 总行数成正比。
 // ====================================================================================================
 template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void
@@ -1228,54 +1228,61 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndDispatch(GMMAddrInfo &gm
     if (static_cast<uint64_t>(expertGlobalRowBegin) >= maxOutputSize_) {
         return; // 当前 expert 已超出 workspace 行数上限，无需 dispatch
     }
-    // 当前 expert 的原始总行数，及受 maxOutputSize_ 截断后的实际可写行数。
-    int32_t realExpertRowCount =
+    // expertTokenCount 是当前 expert 从所有 source rank 收到的原始总行数；
+    // expertRowCount 是受 maxOutputSize_ 截断后的实际可写行数。
+    int32_t expertTokenCount =
         cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + worldSize_ - 1) - expertGlobalRowBegin;
-    int32_t remainingWorkspaceRows =
+    int32_t remainingWorkspaceRowCount =
         static_cast<int32_t>(maxOutputSize_ - static_cast<uint64_t>(expertGlobalRowBegin));
-    int32_t expertRowCount = (realExpertRowCount < remainingWorkspaceRows) ? realExpertRowCount : remainingWorkspaceRows;
+    int32_t expertRowCount =
+        (expertTokenCount < remainingWorkspaceRowCount) ? expertTokenCount : remainingWorkspaceRowCount;
     if (expertRowCount <= 0) {
         return;
     }
 
-    // 所有 dispatch core 数 = blockNum_；按行均分，本 core 负责 [coreRowBegin, coreRowEnd)（expert-local）。
-    int32_t coreNum = static_cast<int32_t>(blockNum_);
-    int32_t rowsPerCore = Ops::Base::CeilDiv(expertRowCount, coreNum);
-    int32_t coreRowBegin = static_cast<int32_t>(blockIdx_) * rowsPerCore;
-    int32_t coreRowEnd = (coreRowBegin + rowsPerCore > expertRowCount) ? expertRowCount : coreRowBegin + rowsPerCore;
-    if (coreRowBegin >= coreRowEnd) {
+    // 所有 dispatch core 数 = blockNum_；按行均分，本 core 负责 [coreExpertRowBegin, coreExpertRowEnd)（expert-local）。
+    int32_t dispatchCoreCount = static_cast<int32_t>(blockNum_);
+    int32_t rowsPerCore = Ops::Base::CeilDiv(expertRowCount, dispatchCoreCount);
+    int32_t coreExpertRowBegin = static_cast<int32_t>(blockIdx_) * rowsPerCore;
+    int32_t coreExpertRowEnd =
+        (coreExpertRowBegin + rowsPerCore > expertRowCount) ? expertRowCount : coreExpertRowBegin + rowsPerCore;
+    if (coreExpertRowBegin >= coreExpertRowEnd) {
         return;
     }
 
-    // 线性扫描 cumsumInfo 定位 [coreRowBegin, coreRowEnd) 覆盖的 source rank 区间 [rankLo, rankHi]：
-    // rankLo 是首个 C_r > coreRowBegin 的 rank，rankHi 是首个 C_r >= coreRowEnd 的 rank（C_r 为 expert-local 前缀）。
-    int32_t rankLo = static_cast<int32_t>(worldSize_);
-    int32_t rankHi = -1;
-    for (int32_t rankIdx = 0; rankIdx < static_cast<int32_t>(worldSize_); ++rankIdx) {
-        int32_t curCum = cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + rankIdx) - expertGlobalRowBegin;
-        if (rankLo == static_cast<int32_t>(worldSize_) && curCum > coreRowBegin) {
-            rankLo = rankIdx;
+    // 线性扫描 cumsumInfo 定位 [coreExpertRowBegin, coreExpertRowEnd) 覆盖的 source rank 区间：
+    // firstRankIdx 是首个前缀行数 > coreExpertRowBegin 的 rank，lastRankIdx 是首个前缀行数 >= coreExpertRowEnd
+    // 的 rank（前缀行数为当前 expert 的 expert-local 坐标）。
+    int32_t firstRankIdx = static_cast<int32_t>(worldSize_);
+    int32_t lastRankIdx = -1;
+    for (int32_t remoteRankIdx = 0; remoteRankIdx < static_cast<int32_t>(worldSize_); ++remoteRankIdx) {
+        int32_t rankPrefixRowCount =
+            cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + remoteRankIdx) - expertGlobalRowBegin;
+        if (firstRankIdx == static_cast<int32_t>(worldSize_) && rankPrefixRowCount > coreExpertRowBegin) {
+            firstRankIdx = remoteRankIdx;
         }
-        if (curCum >= coreRowEnd) {
-            rankHi = rankIdx;
+        if (rankPrefixRowCount >= coreExpertRowEnd) {
+            lastRankIdx = remoteRankIdx;
             break;
         }
     }
 
     int32_t dispatchedRowCount = 0; // 当前 core 已实际 dispatch 的总行数
-    for (int32_t rankIdx = rankLo; rankIdx <= rankHi; ++rankIdx) {
+    for (int32_t remoteRankIdx = firstRankIdx; remoteRankIdx <= lastRankIdx; ++remoteRankIdx) {
         // 当前 expert 从该 source rank 接收的 token，在 dispatch workspace 中占据一个连续的 row segment。
         int32_t rankSegmentDstRowBegin =
-            ((rankIdx == 0 && localExpertId == 0) ?
+            ((remoteRankIdx == 0 && localExpertId == 0) ?
                  0 :
-                 cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + rankIdx - 1));
-        int32_t rankSegLo = rankSegmentDstRowBegin - expertGlobalRowBegin; // 段在 expert-local 坐标中的起点
-        int32_t rankSegHi = cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + rankIdx) - expertGlobalRowBegin;
+                 cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + remoteRankIdx - 1));
+        int32_t rankSegRowBegin = rankSegmentDstRowBegin - expertGlobalRowBegin; // 段在 expert-local 坐标中的起点
+        int32_t rankSegRowEnd =
+            cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + remoteRankIdx) - expertGlobalRowBegin;
         // 本 core 在该 rank segment 中的命中序号区间 [coreMatchOrdinalBegin, coreMatchOrdinalEnd)。
-        int32_t coreMatchOrdinalBegin = (coreRowBegin > rankSegLo) ? coreRowBegin - rankSegLo : 0;
-        int32_t coreMatchOrdinalEnd = coreRowEnd - rankSegLo;
-        if (coreMatchOrdinalEnd > rankSegHi - rankSegLo) {
-            coreMatchOrdinalEnd = rankSegHi - rankSegLo; // 尾段可能不足，裁剪到 segment 实际末尾
+        int32_t coreMatchOrdinalBegin =
+            (coreExpertRowBegin > rankSegRowBegin) ? coreExpertRowBegin - rankSegRowBegin : 0;
+        int32_t coreMatchOrdinalEnd = coreExpertRowEnd - rankSegRowBegin;
+        if (coreMatchOrdinalEnd > rankSegRowEnd - rankSegRowBegin) {
+            coreMatchOrdinalEnd = rankSegRowEnd - rankSegRowBegin; // 尾段可能不足，裁剪到 segment 实际末尾
         }
         if (coreMatchOrdinalEnd <= coreMatchOrdinalBegin) {
             continue; // 该 rank 段与本 core 区间无交集
@@ -1297,7 +1304,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndDispatch(GMMAddrInfo &gm
             }
             remoteRankMaskGlobal.SetGlobalBuffer(
                 (__gm__ uint8_t *)(params_.peermemInfo.maskRecvPtr +
-                                   (static_cast<uint64_t>(localExpertId) * worldSize_ + rankIdx) * maskSlotSize_ +
+                                   (static_cast<uint64_t>(localExpertId) * worldSize_ + remoteRankIdx) * maskSlotSize_ +
                                    static_cast<uint64_t>(batchRouteBegin / 8)));
             DataCopy(maskBatchTensor_, remoteRankMaskGlobal, static_cast<uint32_t>(maskSliceBytes));
             SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
@@ -1321,7 +1328,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndDispatch(GMMAddrInfo &gm
                 int32_t batchDispatchRowCount =
                     dispatchMatchOrdinalEnd - dispatchMatchOrdinalBegin; // 本次从该 batch dispatch 的行数
                 int32_t dispatchDstRowBegin = rankSegmentDstRowBegin + dispatchMatchOrdinalBegin;
-                CopyGMToGMPerToken(dispatchDstRowBegin, rankIdx, batchLocalMatchBegin, batchDispatchRowCount,
+                CopyGMToGMPerToken(dispatchDstRowBegin, remoteRankIdx, batchLocalMatchBegin, batchDispatchRowCount,
                                    bufferConfig);
                 dispatchedRowCount += batchDispatchRowCount;
             }
@@ -1331,9 +1338,8 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndDispatch(GMMAddrInfo &gm
 
     if (dispatchedRowCount > 0) {
         SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
-        // GMM1 flag 按 expert 内的 wave 计数；[coreRowBegin, coreRowEnd) 已处于 expert-local 坐标系。
-        int32_t coreExpertRowBegin = coreRowBegin;
-        int32_t coreExpertRowEnd = coreRowBegin + dispatchedRowCount; // 当前 core 的 expert-local 半开区间
+        // GMM1 flag 按 expert 内的 wave 计数；[coreExpertRowBegin, coreExpertRowEnd) 已处于 expert-local 坐标系。
+        int32_t coreExpertRowEnd = coreExpertRowBegin + dispatchedRowCount; // 当前 core 的 expert-local 半开区间
         int32_t firstWaveIdx = coreExpertRowBegin / GMM1_WAVE_ROW_COUNT;    // 该区间触达的首个 GMM1 wave
         int32_t lastWaveIdx = (coreExpertRowEnd - 1) / GMM1_WAVE_ROW_COUNT; // 该区间触达的末个 GMM1 wave
         __gm__ int32_t *flagBase = gmmAddrInfo.dispatchToGmm1Flag;
