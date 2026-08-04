@@ -908,9 +908,9 @@ def compressor_grad(
     wgate:          pl.Ptr[pl.DT_UINT8],     # (C, hiddenSize)       
 
     # ── 输入（前向中间变量 / 上游梯度） ──
-    dCmpKv:       pl.Ptr[pl.DT_UINT8],     # (cmpKvRows, headDim)           
+    dCmpKv:       pl.Ptr[pl.DT_UINT8],     # (cmpKvRows, headDim)
+    softmaxScore: pl.Ptr[pl.DT_UINT8],     # (cmpKvRows, cmpRowCnt, headDim) FP32
     kv:             pl.Ptr[pl.DT_UINT8],     # (cmpKvRows, cmpRowCnt, headDim) FP32
-    softmaxScore:  pl.Ptr[pl.DT_UINT8],     # (cmpKvRows, cmpRowCnt, headDim) FP32
 
     # ── 位置 / 序列参数 ──
     cuSeqlens:     pl.Ptr[pl.DT_UINT8],
@@ -995,6 +995,9 @@ def compressor_grad(
     dealScNum      = tiling.dealScNum
     totalScNumPerRound      = tiling.totalScNumPerRound
     roundCnt          = _ceil_div(compressedCnt, totalScNumPerRound)
+    # 单轮实际块数上限 = 首轮块数（各轮最大值）：归约侧有效行数依据
+    #（不满轮时空闲 group 的 ws 区域未写，归约只读写过数据的行）
+    maxRoundBlocks    = min(totalScNumPerRound, compressedCnt)
 
     # ── Vec 子函数共享 ctx（int64 稳定值，派生配置经 tiling 传入）──
     vecCtx = pl.struct("VecCtx",
@@ -1364,11 +1367,13 @@ def compressor_grad(
                            startPos, seqUsed, cuSeqlens, seq_ctx)
 
                 # ── 末轮：dApe/dW 一次性跨核归约（生产者侧已按轮累加至 ws 固定槽）──
-                # roundBlocks 传 totalScNumPerRound：validRows 覆盖固定槽全部行（groupNum·coffCoef / groupNum）
+                # roundBlocks 传 maxRoundBlocks：validRows 只覆盖写过数据的行
+                #（不满轮时 groupIdx >= ceil(maxRoundBlocks/groupDealScNum) 的核未执行
+                #  Phase 1/2 写入，其 ws 区域是初始值，不能参与归约）
                 if roundIdx == roundCnt:
-                    _reduce_ape(vecCtx, coreIdx, groupIdx, 0, totalScNumPerRound,
+                    _reduce_ape(vecCtx, coreIdx, groupIdx, 0, maxRoundBlocks,
                                 reduce_acc, reduceLoadTileGroup, tensorDApeFlat, tensorDApeWsFlat)
-                    _reduce_d_weight(vecCtx, coreIdx, groupIdx, 0, totalScNumPerRound,
+                    _reduce_d_weight(vecCtx, coreIdx, groupIdx, 0, maxRoundBlocks,
                                      reduce_acc, reduceLoadTileGroup, p3_cast,
                                      tensorDWKvFlat, tensorDWKvWsFlat, tensorDWGateFlat, tensorDWGateWsFlat)
 
