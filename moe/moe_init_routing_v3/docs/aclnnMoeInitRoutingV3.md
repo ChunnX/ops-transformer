@@ -598,7 +598,9 @@ aclnnStatus aclnnMoeInitRoutingV3(
     </table>
 
 - 空tensor处理：
-  - 当输入的x首个维度的值为0时，DropPadMode必须为0,进入空tensor模板。expandedXOut、expandedRowIdxOut和expandedScaleOut的返回值为空tensor，expertTokensCountOrCumsumOut返回全0的tensor。
+  - 当x的首个维度为0，或expertIdx的第二维为0时，DropPadMode必须为0，进入空tensor模板。expandedXOut、expandedRowIdxOut和expandedScaleOut的返回值为空tensor，expertTokensCountOrCumsumOut返回全0的tensor。
+  - 当x的shape为[N, 0]（N>0）、expertIdx的shape为[N, K]（K>0）时，仅在dropPadMode=0、quantMode=-1且未输入scaleOptional的条件下支持索引路由：算子仍会生成expandedRowIdxOut和expertTokensCountOrCumsumOut，expandedXOut的shape为[N*K, 0]，expandedScaleOut为空tensor。
+  - 上述零宽索引路由不支持量化或DropPad。量化场景需要沿H维计算量化结果及scale，DropPad场景的行索引生成与expandedXOut的填充使用同一处理流程。
 
 - 不支持输入为inf/-inf/nan。
 
