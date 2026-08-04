@@ -682,7 +682,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedEx
                                        QuantScaleOutType, false, GMM1_TILE_M,
                                        GMM1_INTERLEAVED, true>(
             gmm1Config_, params_, sharedEpilogueOp_, gmmAddrInfo, problemShape,
-            runtimeState, sharedExpertIdx, persistentBlockMmadContext_);
+            runtimeState, sharedExpertIdx, persistentBlockMmadContext_, true);
     }
     EndSync<GMM1_INTERLEAVED>(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
     vecSetSyncCom = 0;
@@ -704,7 +704,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedEx
                                  QuantScaleOutType, false, false, GMM1_TILE_M,
                                  TopkWeightsPrefetch, GMM1_INTERLEAVED, true>(
             gmm2Config_, params_, sharedWeightTensorListAddrs_, state, gmmAddrInfo,
-            runtimeState, sharedExpertIdx, persistentBlockMmadContext_);
+            runtimeState, sharedExpertIdx, persistentBlockMmadContext_, true);
     }
 }
 
@@ -926,11 +926,15 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave(
             gmm1Config_, params_.workspaceInfo, moeWeightTensorListAddrs_, epilogueOp_,
             gmm1AddrInfo, segmentState, gmm1Cursor.expertIdx,
             expertMGroupOffset, gmm1TilesPerMGroup_);
+        // 只有该 problem 从第 0 行覆盖到专家尾，后续 Wave 才不会再次读取同一份 GMM1 权重。
+        // 热点专家的任一分段都为 false，即使本段不足 256 行也保留正常 L2 cache。
+        bool isWholeExpert =
+            gmm1Cursor.rowOffsetInExpert == 0U && static_cast<uint64_t>(segmentRowCount) == expertRowCount;
         RunGmm1SwigluByMode<QuantOutType, Weight1Type, ActivationType, QuantScaleOutType,
                             false, GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch,
                             GMM1_INTERLEAVED, true>(
             gmm1Config_, params_, epilogueOp_, gmm1AddrInfo, segmentState,
-            runtimeState, gmm1Cursor.expertIdx, persistentBlockMmadContext_);
+            runtimeState, gmm1Cursor.expertIdx, persistentBlockMmadContext_, isWholeExpert);
 
         processedMGroupCount += GetMGroupCountForRows(segmentRowCount, GMM1_TILE_M);
         gmm1Cursor.rowOffsetInExpert += segmentRowCount;
@@ -980,12 +984,15 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
                                   true, false, false>(
             gmm2Config_, params_.workspaceInfo, moeWeightTensorListAddrs_,
             gmm2AddrInfo, segmentState, gmm2Cursor.expertIdx, expertMGroupOffset);
+        // GMM2 与 GMM1 使用相同保护：只有完整专家 problem 才允许进一步判断是否绕过 L2。
+        bool isWholeExpert =
+            gmm2Cursor.rowOffsetInExpert == 0U && static_cast<uint64_t>(segmentRowCount) == expertRowCount;
         RunMoeExpertGmm2Stage<COMBINE_NO_QUANT, QuantOutType, ActivationType,
                               Weight1Type, QuantScaleOutType, false, false,
                               GMM1_TILE_M, TopkWeightsPrefetch,
                               GMM1_INTERLEAVED, true>(
             gmm2Config_, params_, gmm2AddrInfo, segmentState, runtimeState,
-            persistentBlockMmadContext_);
+            persistentBlockMmadContext_, isWholeExpert);
 
         gmm2Cursor.rowOffsetInExpert = segmentEndRowOffset;
         if (gmm2Cursor.rowOffsetInExpert >= expertRowCount) {
