@@ -1902,7 +1902,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     tpipe_->Reset();
     uint32_t transferScratchBytes =
         (aivNum_ > STATUS_CLEAR_BATCH_RECORDS ? aivNum_ : STATUS_CLEAR_BATCH_RECORDS) * UB_ALIGN;
-    tpipe_->InitBuffer(perSlotQueue_, 1, perSlotBytes_);
+    tpipe_->InitBuffer(perSlotQueue_, BUFFER_NUM, perSlotBytes_);
     tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
     tpipe_->InitBuffer(sendEntryReadBuf_, UB_ALIGN);
     tpipe_->InitBuffer(routeInfoBuf_, 2U * kAlignSize_);
