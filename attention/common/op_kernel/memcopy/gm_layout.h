@@ -448,6 +448,10 @@ struct GmLayout<GmFormat::PA_BnNBs> {
         uint64_t bsStride = 1;
         uint64_t nStride = bsStride * blockSize;
         uint64_t bnStride = nStride * n; // blockSize * kvHeadNum
+        if (bn2Stride != 0 && n2Stride != 0) {
+            bnStride = bn2Stride;
+            nStride = n2Stride;
+        }
         stride = AscendC::MakeStride(bnStride, nStride, bsStride);
     }
 };
