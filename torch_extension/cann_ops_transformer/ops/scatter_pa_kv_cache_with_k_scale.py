@@ -73,20 +73,7 @@ class ScatterPaKvCacheWithKScaleOpBuilder(OpBuilder):
             *,
             cache_layout="BNBD",
         ):
-            # 输出shape与输入cache相同
-            key_cache_out = torch.empty(
-                key_cache.size(), dtype=key_cache.dtype, device="meta"
-            )
-
-            value_cache_out = torch.empty(
-                value_cache.size(), dtype=value_cache.dtype, device="meta"
-            )
-
-            key_scale_cache_out = torch.empty(
-                key_scale_cache.size(), dtype=key_scale_cache.dtype, device="meta"
-            )
-
-            return (key_cache_out, value_cache_out, key_scale_cache_out)
+            return (key_cache, value_cache, key_scale_cache)
 
 
 # 实例化OpBuilder
