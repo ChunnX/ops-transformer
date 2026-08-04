@@ -65,3 +65,8 @@ from .dense_lightning_indexer_softmax_lse import (
     dense_lightning_indexer_softmax_lse,
     dense_lightning_indexer_softmax_lse_metadata,
 )
+
+# mhc_post_backward torch_extension 代码独立到算子目录，通过兼容转发模块导出
+from . import mhc_post_backward as _mhc_post_backward  # noqa: E402,F401
+
+mhc_post_backward = _mhc_post_backward.mhc_post_backward
