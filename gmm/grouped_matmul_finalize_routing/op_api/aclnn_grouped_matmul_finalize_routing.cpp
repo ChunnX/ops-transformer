@@ -561,6 +561,16 @@ static bool IsMxA8W4(const GroupedMatmulParams &params)
            params.x2->GetDataType() == DataType::DT_FLOAT4_E2M1;
 }
 
+static bool IsMxFullQuant(const aclTensor *x, const aclTensor *w)
+{
+    auto xDtype = x->GetDataType();
+    auto wDtype = w->GetDataType();
+    bool isMxFp4 = xDtype == DataType::DT_FLOAT4_E2M1 && wDtype == DataType::DT_FLOAT4_E2M1;
+    bool isMxFp8 = (xDtype == DataType::DT_FLOAT8_E4M3FN || xDtype == DataType::DT_FLOAT8_E5M2) &&
+                   (wDtype == DataType::DT_FLOAT8_E4M3FN || wDtype == DataType::DT_FLOAT8_E5M2);
+    return isMxFp4 || isMxFp8;
+}
+
 static aclnnStatus CheckParams(GroupedMatmulParams &params)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
@@ -1553,6 +1563,11 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
                 dtype);
         return ACLNN_ERR_PARAM_INVALID;
     }
+    int64_t effectiveDtype = dtype;
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && IsMxFullQuant(x1, tmpWeightV3) &&
+        logitOptional != nullptr && logitOptional->GetDataType() == DataType::DT_BF16) {
+        effectiveDtype = ACLNN_OUT_DTYPE_BF16;
+    }
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, x2, out)
@@ -1566,7 +1581,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
                                      .SetOffset(offsetOptional)
                                      .SetTuningConfig(tuningConfigOptional)
                                      .SetNumbers(sharedInputWeight, sharedInputOffset, groupListType)
-                                     .SetDtype(dtype)
+                                     .SetDtype(effectiveDtype)
                                      .SetTranspose(transposeX1, transposeX2)
                                      .Build();
     auto ret = aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProcess(params, uniqueExecutor.get());

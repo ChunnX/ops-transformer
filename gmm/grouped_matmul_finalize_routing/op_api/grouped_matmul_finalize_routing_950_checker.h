@@ -416,7 +416,8 @@ public:
         }
         GMMFR_CHECK_DTYPE(gmmParams_.out, "y", OUT_TYPE_SUPPORT_LIST_MX, return false);
         bool isBf16Output = gmmParams_.dtype == OUT_DTYPE_BF16 ||
-                            gmmParams_.out->GetDataType() == DataType::DT_BF16;
+                            gmmParams_.out->GetDataType() == DataType::DT_BF16 ||
+                            gmmParams_.logit->GetDataType() == DataType::DT_BF16;
         if (isBf16Output) {
             GMMFR_CHECK_DTYPE(gmmParams_.logit, "logit", LOGIT_TYPE_SUPPORT_LIST_BF16, return false);
             GMMFR_CHECK_REPORT(gmmParams_.dtype == OUT_DTYPE_FLOAT32 || gmmParams_.dtype == OUT_DTYPE_BF16,
