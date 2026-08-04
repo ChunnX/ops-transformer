@@ -213,12 +213,12 @@ def compressor(
     start_pos: Optional[torch.Tensor] = None,
     coff: Optional[int] = 1,
     cache_mode: Optional[int] = 1,
-    grad_enabled: Optional[bool] = False
 ) -> Tuple[torch.Tensor]:
     """
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    grad_enabled = x.requires_grad
     cmp_kv, softmax_score, kv =  _compressor_forward(
         x,
         wkv,
