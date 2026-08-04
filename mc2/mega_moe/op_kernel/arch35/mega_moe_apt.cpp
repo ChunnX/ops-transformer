@@ -20,7 +20,6 @@
 
 #ifdef ENABLE_TENSOR_API
 #include "mega_moe.h"
-#include "mega_moe_layered.h"
 #endif
 
 #include "mega_moe_tiling.h"
@@ -53,16 +52,6 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
             MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType, CombineQuantOutType,
                     TopkWeightsPrefetch>
-                op;
-            op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
-                    scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2, yOut,
-                    expertTokenNumsOut, workspaceGM, &tilingData);
-            op.Process();
-        }
-    } else if constexpr (CommModeType == TILINGKEY_TPL_URMA) {
-        if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
-            MegaMoeLayered<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType,
-                           CombineQuantOutType>
                 op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
                     scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2, yOut,
