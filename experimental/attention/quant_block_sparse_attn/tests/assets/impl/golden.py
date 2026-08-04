@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2024 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -21,6 +20,7 @@ from pathlib import Path
 import torch
 
 PYTEST_GOLDEN_MODULE = None
+PYTEST_MXFP8_GOLDEN_MODULE = None
 
 
 def load_pytest_golden_module():
@@ -42,6 +42,30 @@ def load_pytest_golden_module():
         except ValueError:
             pass
     PYTEST_GOLDEN_MODULE = module
+    return module
+
+
+def load_pytest_mxfp8_golden_module():
+    global PYTEST_MXFP8_GOLDEN_MODULE
+    if PYTEST_MXFP8_GOLDEN_MODULE is not None:
+        return PYTEST_MXFP8_GOLDEN_MODULE
+    pytest_dir = (
+        Path(__file__).resolve().parents[2] / "pytest" / "bsa_fullquant_mxfp8_test"
+    )
+    module_path = pytest_dir / "qbsa_mxfp8_golden.py"
+    sys.path.insert(0, str(pytest_dir))
+    try:
+        spec = importlib.util.spec_from_file_location(
+            f"bsa_mxfp8_pytest_golden_{abs(hash(module_path))}", module_path
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        try:
+            sys.path.remove(str(pytest_dir))
+        except ValueError:
+            pass
+    PYTEST_MXFP8_GOLDEN_MODULE = module
     return module
 
 
@@ -151,6 +175,206 @@ def _pa_to_dense(pa_tensor, block_table, B, S2, dim_perm, block_size):
     return dense
 
 
+def _cpu_mxfp8_golden(
+    query,
+    key,
+    value,
+    q_descale,
+    k_descale,
+    v_descale,
+    p_scale,
+    sparse_indices,
+    sparse_seq_len,
+    atten_mask,
+    softmax_scale,
+    sparse_q_block_size,
+    sparse_kv_block_size,
+    cu_seqlens_q=None,
+    cu_seqlens_kv=None,
+    seqused_q=None,
+    seqused_kv=None,
+    block_table=None,
+    metadata=None,
+    max_seqlen_q=0,
+    max_seqlen_kv=0,
+    layout_kv="PA_BNSD",
+    layout_q="BSND",
+    layout_sparse_indices="B_N_Qb_Kb",
+    layout_out="TND",
+    mask_mode=3,
+    return_softmax_lse=False,
+    **kwargs,
+):
+    """CPU reference implementation wrapping the MXFP8 pytest golden."""
+    golden_module = load_pytest_mxfp8_golden_module()
+
+    quant_group_size = int(kwargs.get("quant_group_size", 32))
+    sparse_count = int(kwargs.get("sparse_count", 0))
+    sparse_pattern = str(kwargs.get("sparse_pattern", "sequential"))
+    block_table_pattern = str(kwargs.get("block_table_pattern", "sequential"))
+    p_scale_value = float(kwargs.get("p_scale_value", 1.0))
+    seed = int(kwargs.get("seed", 0))
+    s2_base_size = int(kwargs.get("s2_base_size", 512))
+
+    q_cpu = to_cpu(query)
+    key_cpu = to_cpu(key)
+    value_cpu = to_cpu(value)
+    q_descale_cpu = to_cpu(q_descale)
+    k_descale_cpu = to_cpu(k_descale)
+    v_descale_cpu = to_cpu(v_descale)
+    p_scale_cpu = to_cpu(p_scale)
+    sparse_indices_cpu = to_cpu(sparse_indices)
+    sparse_seq_len_cpu = to_cpu(sparse_seq_len)
+
+    B = int(sparse_indices_cpu.shape[0])
+    N1 = int(q_cpu.shape[1])
+    N2 = int(key_cpu.shape[1])
+    D = int(q_cpu.shape[-1])
+    S1 = int(max_seqlen_q) if max_seqlen_q > 0 else B * int(q_cpu.shape[0]) // B
+    S2 = (
+        int(max_seqlen_kv)
+        if max_seqlen_kv > 0
+        else int(key_cpu.shape[0]) * int(key_cpu.shape[2])
+    )
+    block_size = int(sparse_q_block_size)
+
+    q_lengths = [S1] * B
+    kv_lengths = [S2] * B
+
+    cu_seqlens_q = _lengths_to_prefix(q_lengths)
+
+    num_blocks = int(key_cpu.shape[0])
+    dense_key_bnsd = torch.zeros((B, N2, S2, D), dtype=key_cpu.dtype)
+    dense_value_bnsd = torch.zeros((B, N2, S2, D), dtype=value_cpu.dtype)
+
+    bt_pattern = (
+        block_table_pattern
+        if block_table_pattern in ("sequential", "reverse", "random")
+        else "sequential"
+    )
+    bt_rng = random.Random(seed)
+    block_table_cpu = golden_module._make_reference_block_table(
+        B, kv_lengths, block_size, bt_pattern, bt_rng
+    )
+
+    for b in range(B):
+        for lb in range(block_table_cpu.shape[1]):
+            phys = int(block_table_cpu[b, lb].item())
+            start = lb * block_size
+            end = min(start + block_size, S2)
+            cnt = end - start
+            if cnt <= 0:
+                continue
+            dense_key_bnsd[b, :, :cnt] = key_cpu[phys, :, :cnt]
+            dense_value_bnsd[b, :, :cnt] = value_cpu[phys, :, :cnt]
+
+    k_scale_d = D // quant_group_size
+    dense_k_scale_bnsd = torch.zeros((B, N2, S2, k_scale_d), dtype=torch.float32)
+    k_descale_unpacked = k_descale_cpu.reshape(
+        num_blocks, N2, block_size, k_scale_d // 2, 2
+    )
+    k_descale_flat = k_descale_unpacked.reshape(
+        num_blocks, N2, block_size, k_scale_d
+    ).float()
+    for b in range(B):
+        for lb in range(block_table_cpu.shape[1]):
+            phys = int(block_table_cpu[b, lb].item())
+            start = lb * block_size
+            end = min(start + block_size, S2)
+            cnt = end - start
+            if cnt <= 0:
+                continue
+            dense_k_scale_bnsd[b, :, :cnt] = k_descale_flat[phys, :, :cnt]
+
+    v_scale_bs = block_size // quant_group_size
+    v_scale_bs_packed = v_scale_bs // 2
+    v_sg = math.ceil(S2 / quant_group_size)
+    dense_v_scale_bnsd = torch.zeros((B, N2, v_sg, D), dtype=torch.float32)
+    v_descale_unpacked = v_descale_cpu.reshape(num_blocks, N2, v_scale_bs_packed, D, 2).float()
+    for b in range(B):
+        for lb in range(block_table_cpu.shape[1]):
+            phys = int(block_table_cpu[b, lb].item())
+            start = lb * v_scale_bs_packed
+            end = min(start + v_scale_bs_packed, v_sg)
+            cnt = end - start
+            if cnt <= 0:
+                continue
+            for i in range(cnt):
+                src_idx = i
+                dst_idx1 = start * 2 + i * 2
+                dst_idx2 = start * 2 + i * 2 + 1
+                if dst_idx1 < v_sg:
+                    dense_v_scale_bnsd[b, :, dst_idx1, :] = v_descale_unpacked[
+                        phys, :, src_idx, :, 0
+                    ]
+                if dst_idx2 < v_sg:
+                    dense_v_scale_bnsd[b, :, dst_idx2, :] = v_descale_unpacked[
+                        phys, :, src_idx, :, 1
+                    ]
+
+    q_descale_unpacked = q_descale_cpu.reshape(B * S1, N1, k_scale_d // 2, 2).float()
+    q_descale_flat = q_descale_unpacked.reshape(B * S1, N1, k_scale_d)
+
+    p_scale_fp32 = p_scale_cpu.float()
+
+    case = {
+        "B": B,
+        "N1": N1,
+        "N2": N2,
+        "D": D,
+        "S1": S1,
+        "S2": S2,
+        "actual_seq_q": q_lengths,
+        "actual_seq_kv": kv_lengths,
+        "block_size": block_size,
+        "mask_mode": mask_mode,
+        "fp8_dtype": torch.float8_e4m3fn,
+        "scale_dtype": torch.float8_e8m0fnu,
+        "quant_group_size": quant_group_size,
+        "layout_q": layout_q,
+        "layout_kv": layout_kv,
+        "layout_sparse_indices": layout_sparse_indices,
+        "layout_out": layout_out,
+        "kv_cache_layout": "BnNBsD",
+        "is_contiguous": True,
+        "p_scale_value": p_scale_value,
+        "softmax_scale": float(softmax_scale) if softmax_scale else 1.0 / math.sqrt(D),
+        "return_softmax_lse": return_softmax_lse,
+        "seed": seed,
+        "data_range_q": 1.0,
+        "data_range_k": 1.0,
+        "data_range_v": 1.0,
+        "device_id": 0,
+        "sparse_q_block_size": sparse_q_block_size,
+        "sparse_kv_block_size": sparse_kv_block_size,
+        "sparse_count": sparse_count,
+        "sparse_pattern": sparse_pattern,
+        "block_table_pattern": block_table_pattern,
+        "quant_mode": 2,
+        "s2_base_size": s2_base_size,
+    }
+    golden_module.set_active_case(case)
+
+    attention_out, softmax_lse = golden_module.cpu_mxfp8_golden(
+        q_cpu,
+        dense_key_bnsd,
+        dense_value_bnsd,
+        q_descale_flat,
+        dense_k_scale_bnsd,
+        dense_v_scale_bnsd,
+        p_scale_fp32,
+        q_lengths,
+        kv_lengths,
+        cu_seqlens_q,
+        sparse_indices_cpu,
+        sparse_seq_len_cpu,
+    )
+
+    if return_softmax_lse:
+        return [attention_out.to(torch.bfloat16), softmax_lse]
+    return [attention_out.to(torch.bfloat16)]
+
+
 def cpu_quant_block_sparse_attn(
     query,
     key,
@@ -183,6 +407,38 @@ def cpu_quant_block_sparse_attn(
     **kwargs,
 ):
     """CPU reference implementation wrapping the existing pytest golden."""
+    if quant_mode == 2:
+        return _cpu_mxfp8_golden(
+            query,
+            key,
+            value,
+            q_descale,
+            k_descale,
+            v_descale,
+            p_scale,
+            sparse_indices,
+            sparse_seq_len,
+            atten_mask,
+            softmax_scale,
+            sparse_q_block_size,
+            sparse_kv_block_size,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_kv=cu_seqlens_kv,
+            seqused_q=seqused_q,
+            seqused_kv=seqused_kv,
+            block_table=block_table,
+            metadata=metadata,
+            max_seqlen_q=max_seqlen_q,
+            max_seqlen_kv=max_seqlen_kv,
+            layout_kv=layout_kv,
+            layout_q=layout_q,
+            layout_sparse_indices=layout_sparse_indices,
+            layout_out=layout_out,
+            mask_mode=mask_mode,
+            return_softmax_lse=return_softmax_lse,
+            **kwargs,
+        )
+
     golden_module = load_pytest_golden_module()
 
     q_cpu = to_cpu(query)
