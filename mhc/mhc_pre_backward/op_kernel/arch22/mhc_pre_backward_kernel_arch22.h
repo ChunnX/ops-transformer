@@ -357,9 +357,9 @@ private:
                                 tileCoreBS_ * n_ * ELEMENTS_SIZE_PER_BLOCK * sizeof(float) +
                                 tileCoreBS_ * n_ * c0_ * sizeof(float) / 8 * 2 + ubSizeRemain;
 
-            eventIdVToMTE3XCast = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
-            eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
-            eventIdVToMTE2 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
+            // eventIdVToMTE3XCast = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::V_MTE3>());
+            // eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::MTE2_V>());
+            // eventIdVToMTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::V_MTE2>());
             dPrePostTempLocal_ = fusedGradHPre2AndGradHPost2Buf_.Get<T>();
             hcBaseLocal_ = hcBaseBuf_.Get<T>();
             onesLocal_ = onesBuf_.Get<T>();
@@ -436,6 +436,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Get
     hcScalePre_ = hcScaleGlobal_.GetValue(0);  // α_pre
     hcScalePost_ = hcScaleGlobal_.GetValue(1); // α_post
     hcScaleRes_ = hcScaleGlobal_.GetValue(2);  // α_res
+
     event_t eventIDSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
     SetFlag<HardEvent::S_V>(eventIDSToV);
     WaitFlag<HardEvent::S_V>(eventIDSToV);
@@ -544,6 +545,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
              0, static_cast<uint8_t>(fusionSize_)});
     }
     PipeBarrier<PIPE_V>();
+    eventIdVToMTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::V_MTE2>());
     SetFlag<HardEvent::V_MTE2>(eventIdVToMTE2);
     WaitFlag<HardEvent::V_MTE2>(eventIdVToMTE2);
     // 新增: 加载正向输出 h_pre 、 h_post和反向的grad_h_res
@@ -557,6 +559,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
                 {true, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0, 0});
     // DumpTensor(hatLocal[ELEMENTS_SIZE_PER_BLOCK * tileTaskCount], 2, tileTaskCount * 8);
 
+    eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::MTE2_V>());
     SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
     WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
 
@@ -856,6 +859,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
                         {static_cast<uint16_t>(n_), static_cast<uint32_t>(copyLen * sizeof(float)),
                          static_cast<uint32_t>((c_ - copyLen) * sizeof(float)), 0, 0},
                         {isPad, 0, padLen, 0});
+            eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::MTE2_V>());
             SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
             WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
 
@@ -863,23 +867,44 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
             Mul(xCastLocal_, xCastLocal_, gradXCubeLocal_, ubAlignC * n_ * tileTaskCount);
             PipeBarrier<PIPE_V>();
 
+            // if (loopIdC == 13) {
+            //     printf("copyLen = %d\n", copyLen);
+            //     printf("ubAlignC = %d\n", ubAlignC);
+            //     printf("tileTaskCount = %d\n", tileTaskCount);
+            //     printf("xCastLocal_ value = \n");
+            //     for(int i = 0; i < 2; i++) {
+            //         int index = i * ubAlignC * n_;
+            //         printf("[%d] %f\t", index, xCastLocal_.GetValue(index));
+            //     }
+            //     printf("-----------------------\n");
+            // }
+
             // 跨 tileTaskCount 归约 (BS 维度)
             for (int32_t bs = 1; bs < tileTaskCount; bs++) {
                 Add(xCastLocal_, xCastLocal_, xCastLocal_[bs * n_ * ubAlignC], n_ * ubAlignC);
                 PipeBarrier<PIPE_V>();
             }
-
+            eventIdVToMTE3XCast = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::V_MTE3>());
+            SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
+            WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
             // V→MTE3 同步，写回 gradGammaWSGlobal_
             // 第一次外层迭代的第一次内层调用直接写入，后续使用 AtomicAdd 累加
+
+            // if (loopIdC == 13) {
+            //     printf("blkIdx_ * (n_ * c_) + c0_ * loopIdC = %d\n", blkIdx_ * (n_ * c_) + c0_ * loopIdC);
+            //     printf("copyLen = %d\n", copyLen);
+            //     printf("xCastLocal_ value = \n");
+            //     int index = 0;
+            //     printf("[%d] %f\t", index, xCastLocal_.GetValue(index));
+
+            //     printf("-----------------------\n");
+            // }
+            // PipeBarrier<PIPE_ALL>();
             if (innerId == 0 && taskOffset == blkIdx_ * tileCoreBS_) {
-                SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
-                WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
                 DataCopyPad(gradGammaWSGlobal_[blkIdx_ * (n_ * c_) + c0_ * loopIdC], xCastLocal_,
                             {static_cast<uint16_t>(n_), static_cast<uint32_t>(copyLen * sizeof(float)), 0,
                              static_cast<uint32_t>((c_ - copyLen) * sizeof(float)), 0});
             } else {
-                SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
-                WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
                 SetAtomicAdd<T>();
                 DataCopyPad(gradGammaWSGlobal_[blkIdx_ * (n_ * c_) + c0_ * loopIdC], xCastLocal_,
                             {static_cast<uint16_t>(n_), static_cast<uint32_t>(copyLen * sizeof(float)), 0,
@@ -887,6 +912,15 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
                 SetAtomicNone();
             }
             PipeBarrier<PIPE_V>();
+
+            // if (loopIdC == 13) {
+            //     printf("blkIdx_ * (n_ * c_) + c0_ * loopIdC = %d\n", blkIdx_ * (n_ * c_) + c0_ * loopIdC);
+            //     printf("gradGammaWSGlobal_ value = \n");
+            //     for(int i = 0; i < 16; i++) {
+            //         printf("[%d] %x\t", 3328 + i, gradGammaWSGlobal_.GetValue(blkIdx_ * (n_ * c_) + i));
+            //     }
+            //     printf("-----------------------\n");
+            // }
 
             // gradXCubeLocal_ *= gamma (x_grad_mm *= gamma)
             for (int32_t loopIdN = 0; loopIdN < n_; loopIdN += 1) {
@@ -900,6 +934,9 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
                 }
             }
             PipeBarrier<PIPE_V>();
+            auto eventIdMTE3toV = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::MTE3_V>());
+            SetFlag<HardEvent::MTE3_V>(eventIdMTE3toV);
+            WaitFlag<HardEvent::MTE3_V>(eventIdMTE3toV);
         }
 
         // --- [公式6] x_grad = x_grad_vec3 + x_grad_vec1 + x_grad_mm ---
@@ -1052,6 +1089,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
                         {static_cast<uint16_t>(n_), static_cast<uint32_t>(copyLen * sizeof(float)),
                          static_cast<uint32_t>((c_ - copyLen) * sizeof(float)), 0, 0},
                         {isPad, 0, padLen, 0});
+            eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::MTE2_V>());
             SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
             WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
 
@@ -1066,7 +1104,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
                 }
             }
             PipeBarrier<PIPE_V>();
-
+            eventIdVToMTE3XCast = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::V_MTE3>());
             SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
             WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
         }
@@ -1186,6 +1224,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
         Add(dScaleLocal, dScaleLocal, dScaleLocal[bsCount * fusionSize_], bsCount * fusionSize_);
         PipeBarrier<PIPE_V>();
     }
+    eventIdVToMTE3XCast = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::V_MTE3>());
     SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
     WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
     LocalTensor<T> dscaleOut = tempBuf_.GetWithOffset<T>(ELEMENTS_SIZE_PER_BLOCK, 0);
@@ -1214,6 +1253,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
     WholeReduceSum(dscaleOut[2], dScaleLocal[8], 8, 1, 1, 3, 8);
     WholeReduceSum(dscaleOut[3], dScaleLocal, 8, 1, 1, 3, 8);
 
+    eventIdVToMTE3XCast = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::V_MTE3>());
     SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
     WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
     if constexpr (DETERMINISTIC == false) {
@@ -1343,9 +1383,9 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
         // [公式2][3][4] bias_grad 和 α_grad 最终归约
         tileRepeatTimes_ = Ops::Base::CeilDiv(tileCoreBS_ * 2 * n_, static_cast<int64_t>(ELEMENTS_SIZE_PER_REPEAT));
         ComputeScaleBias();
-        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
-        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(eventIdMTE2ToV);
-        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(eventIdVToMTE2);
+        // GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
+        // GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(eventIdMTE2ToV);
+        // GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(eventIdVToMTE2);
         // printf("aiv end\n");
     }
 
