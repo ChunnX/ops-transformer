@@ -39,13 +39,13 @@ namespace MXFP4 {
 
     // kvL1Tensor: 32K, 512*D*sizeof(e2m1), BUFCNT=4
     // todo 先用2块，避免qk、pv同步冲突
-    static constexpr uint32_t L1_KV_BUF_CNT = 2;
+    static constexpr uint32_t L1_KV_BUF_CNT = 4;
     static constexpr uint32_t L1_KV_BUF_SIZE = 32 * KB_BYTE;
     static constexpr uint32_t L1_KV_BUF_OFFSET = 362 * KB_BYTE;
 
     // kvDescaleL1Tensor: 2K, 512*D/32*sizeof(e8m0), BUFCNT=4
     // todo 先用2块，避免qk、pv同步冲突
-    static constexpr uint32_t L1_KV_DESCALE_BUF_CNT = 2;
+    static constexpr uint32_t L1_KV_DESCALE_BUF_CNT = 4;
     static constexpr uint32_t L1_KV_DESCALE_BUF_SIZE = 2 * KB_BYTE;
     static constexpr uint32_t L1_KV_DESCALE_BUF_OFFSET = 490 * KB_BYTE;
 
@@ -53,6 +53,20 @@ namespace MXFP4 {
     static constexpr uint32_t L1_LOCAL_GLOBAL_MAX_BUF_CNT = 4;
     static constexpr uint32_t L1_LOCAL_GLOBAL_MAX_BUF_SIZE = 512;
     static constexpr uint32_t L1_LOCAL_GLOBAL_MAX_BUF_OFFSET = 498 * KB_BYTE;
+
+    
+    // [QK/PV 共享 KV 池] event ID：4 路 MTE1_MTE2（MTE2 gather 写 ↔ MTE1 L1→L0 LoadData 读）。
+    //   QK(K) 与 PV(V) 共用同一组 ID——角色无关门不问槽装 K/V/seed，只保证「MTE1 读完→MTE2 才能覆写」。
+    //   与 PV 的 PV_L0AB(M_MTE1, 4/5)/PV_L0C(M_FIX, 4) 数值复用，不同 HardEvent 类型独立 flag 存储(结论#7)。
+    static constexpr uint32_t KV_EVENT0 = 4;
+    static constexpr uint32_t KV_EVENT1 = 5;
+    static constexpr uint32_t KV_EVENT2 = 6;
+    static constexpr uint32_t KV_EVENT3 = 7;
+
+    // [QK/PV 共享调试] true=打印槽位地址别名(GetPhyAddr)+游标/门轨迹；生产前改 false(if constexpr 编译期消除)。
+    static constexpr bool KV_SHARE_DEBUG = true;
+    // 每个 block 前 N 个 tile 打详细轨迹(ctor 别名打印不受此限)，避免长用例刷屏。
+    static constexpr uint32_t KV_TRACE_TILES = 40;
 
     // L0 分配
     static constexpr uint32_t L0A_QK_BUF_CNT = 2;
