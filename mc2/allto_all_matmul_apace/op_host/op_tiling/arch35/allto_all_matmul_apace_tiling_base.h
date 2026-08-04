@@ -114,6 +114,19 @@ protected:
         td->scaleCommTilingData.splitAxisTailCnt = tailTileCnt;
         td->scaleCommTilingData.nonSplitAxisSize = ka / 32;
 
+        OP_LOGI("AlltoAllMatmulApace",
+                "commTilingData: splitAxisTileSize=%lu, splitAxisTileCnt=%lu, splitAxisTailSize=%lu, "
+                "splitAxisTailCnt=%lu, nonSplitAxisSize=%lu",
+                td->commTilingData.splitAxisTileSize, td->commTilingData.splitAxisTileCnt,
+                td->commTilingData.splitAxisTailSize, td->commTilingData.splitAxisTailCnt,
+                td->commTilingData.nonSplitAxisSize);
+        OP_LOGI("AlltoAllMatmulApace",
+                "scaleCommTilingData: splitAxisTileSize=%lu, splitAxisTileCnt=%lu, splitAxisTailSize=%lu, "
+                "splitAxisTailCnt=%lu, nonSplitAxisSize=%lu",
+                td->scaleCommTilingData.splitAxisTileSize, td->scaleCommTilingData.splitAxisTileCnt,
+                td->scaleCommTilingData.splitAxisTailSize, td->scaleCommTilingData.splitAxisTailCnt,
+                td->scaleCommTilingData.nonSplitAxisSize);
+
         td->localMatmul = precisionMode_;
 
         return ge::GRAPH_SUCCESS;
