@@ -655,6 +655,10 @@ def _reference_attention(
     kv_key, kv_value, kv_k_scale = combined_kv_cache.make_combined_kv_views(
         kv_cache_storage, kv_cache_meta
     )
+    # fp8 视图不支持张量索引（"index_cpu" not implemented for float8_e4m3），
+    # 先在循环外整体转成 float32（fp8->fp32 无损）再按索引取值
+    kv_key = kv_key.to(torch.float32)
+    kv_value = kv_value.to(torch.float32)
 
     layout_q = case["layout_q"]
     batch = case["B"]
