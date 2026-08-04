@@ -298,6 +298,7 @@ private:
     uint64_t winDataOffset_{0};
     uint64_t scaleoutRecvDataOffset_{0};
     uint64_t scaleoutRecvStatusOffset_{0};
+    uint32_t dispatchNotifyCount_{1};
     bool sendEntryWritePending_{false};
 
     DataCopyParams statusCopyParams_;
@@ -365,6 +366,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     winDataOffset_ = info.window.winDataOffset;
     scaleoutRecvDataOffset_ = info.window.scaleoutRecvDataOffset;
     scaleoutRecvStatusOffset_ = info.window.scaleoutRecvStatusOffset;
+    dispatchNotifyCount_ = info.dispatchNotifyCount;
     hostPinnedCounterAddrGM_ = (GM_ADDR)info.hostPinnedCounterAddr;
     moeExpertNum_ = moeExpertNumPerRank_ * epWorldSize_;
 
@@ -1611,23 +1613,29 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::WriteFinalReadyStatusToRank(
     uint32_t srcRankId, uint32_t dstRankId)
 {
-    GM_ADDR notifyAddr =
+    GM_ADDR notifyBase =
         MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, dstRankId, slotWinStateOffset_) +
-        static_cast<uint64_t>(srcRankId) * WIN_ADDR_ALIGN;
+        static_cast<uint64_t>(srcRankId) * dispatchNotifyCount_ * WIN_ADDR_ALIGN;
     if (dstRankId == epRankId_) {
         SyncFunc<AscendC::HardEvent::MTE3_S>();
-        GlobalTensor<int32_t> statusTensor;
-        statusTensor.SetGlobalBuffer((__gm__ int32_t *)notifyAddr);
-        statusTensor.SetValue(0, 1);
-        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(statusTensor);
+        for (uint32_t notifyIndex = 0U; notifyIndex < dispatchNotifyCount_; notifyIndex++) {
+            GlobalTensor<int32_t> statusTensor;
+            statusTensor.SetGlobalBuffer(
+                (__gm__ int32_t *)(notifyBase + static_cast<uint64_t>(notifyIndex) * WIN_ADDR_ALIGN));
+            statusTensor.SetValue(0, 1);
+            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(statusTensor);
+        }
         return;
     }
 
     uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
     GM_ADDR readySourceAddr = sendCntWorkspaceAddr_ + dstRankId * WIN_ADDR_ALIGN;
-    GM_ADDR unusedNotifyAddr = notifyAddr + UB_ALIGN;
-    hcomm_.WriteWithNotifyNbi(commHandle, notifyAddr, readySourceAddr, sizeof(uint64_t),
-                              unusedNotifyAddr, 1U);
+    for (uint32_t notifyIndex = 0U; notifyIndex < dispatchNotifyCount_; notifyIndex++) {
+        GM_ADDR notifyAddr = notifyBase + static_cast<uint64_t>(notifyIndex) * WIN_ADDR_ALIGN;
+        GM_ADDR unusedNotifyAddr = notifyAddr + UB_ALIGN;
+        hcomm_.WriteWithNotifyNbi(commHandle, notifyAddr, readySourceAddr, sizeof(uint64_t),
+                                  unusedNotifyAddr, 1U);
+    }
     hcomm_.Drain(commHandle);
 }
 
