@@ -43,22 +43,41 @@ __aicore__ inline void NotifyGmm1TileStatus(const Params &params, const GMMAddrI
     AscendC::WriteGmByPassDCache(statusAddr, static_cast<int32_t>(expertIdx + 1));
 }
 
+// BlockMmad is owned by the outer execution scope. Only its K-dependent setup is
+// refreshed here, so expert and wave boundaries do not construct or destroy it.
+template <typename PersistentContext, typename Config>
+__aicore__ inline void EnsurePersistentBlockMmadInitialized(PersistentContext &context, const Config &config)
+{
+    using BlockMmad = decltype(context.blockMmad);
+    if (!context.initialized || context.initializedK != config.k) {
+        typename BlockMmad::BlockShape l0TileShape{config.tileM, L1_TILE_N, L0_TILE_K, 0};
+        typename BlockMmad::ProblemShape matmulShape{
+            config.m, Config::IS_A8W4 ? config.outputN : config.n, config.k, 0};
+        if constexpr (Config::IS_A8W4) {
+            context.blockMmad.Init(matmulShape, l0TileShape, config.l1Params);
+        } else {
+            constexpr bool enableL0CPingPong = false;
+            context.blockMmad.Init(matmulShape, l0TileShape, config.l1Params, false, enableL0CPingPong);
+        }
+        context.initializedK = config.k;
+        context.initialized = true;
+    }
+}
+
 // Controls the current generic GMM1/SwiGLU tile pipeline. Cross-stage waits remain here;
 // ComputeSwigluTileGeneric publishes each completed tile immediately after the dependency-free
 // SwiGLU operator returns so the original GMM1/GMM2 overlap is preserved.
-template <typename Policy, typename BlockMmad, typename ElementC, typename MakeLayoutC, bool TopkWeightsPrefetch,
-          bool IsShared, bool IsGmm1Interleaved, typename WorkSet, typename ExtraArgs>
+template <typename Policy, typename PersistentContext, typename ElementC, typename MakeLayoutC,
+          bool TopkWeightsPrefetch, bool IsShared, bool IsGmm1Interleaved, typename WorkSet, typename ExtraArgs>
 __aicore__ inline void ControlGmm1SwigluPipelineGeneric(WorkSet &workSet, uint32_t startLoopIdx,
-                                                        uint32_t tileNum, ExtraArgs &args)
+                                                        uint32_t tileNum, ExtraArgs &args,
+                                                        PersistentContext *persistentContext)
 {
     const auto &config = workSet.config;
     if constexpr (g_coreType == AscendC::AIC) {
-        BlockMmad blockMmad;
-        bool enableL0CPingPong = false;
-        typename BlockMmad::BlockShape l0TileShape{config.tileM, L1_TILE_N, L0_TILE_K, 0};
-        typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
-        blockMmad.Init(matmulShape, l0TileShape, config.l1Params, false, enableL0CPingPong);
-
+        using BlockMmad = decltype(persistentContext->blockMmad);
+        EnsurePersistentBlockMmadInitialized(*persistentContext, config);
+        auto &blockMmad = persistentContext->blockMmad;
         uint32_t ubBufSize =
             config.tileM == L1_TILE_M_128 ? MAX_SINGLE_MN_ALIGN32_NUM_128 : MAX_SINGLE_MN_ALIGN32_NUM_256;
         int64_t ubOffsetFirst = 0;
@@ -147,42 +166,42 @@ __aicore__ inline void ControlGmm1SwigluPipelineGeneric(WorkSet &workSet, uint32
 }
 
 // Prototype: GroupMatmulExecGeneric. Dispatches one generic GMM stage to its AIC or AIV implementation.
-template <typename Policy, uint8_t CombineQuantMode, typename BlockMmad, typename ElementC, typename MakeLayoutC,
-          bool TopkWeightsPrefetch, bool IsLayered = false, bool IsShared = false,
-          bool IsGmm1Interleaved = false, typename WorkSet, typename ExtraArgs>
+template <typename Policy, uint8_t CombineQuantMode, typename PersistentContext, typename ElementC,
+          typename MakeLayoutC, bool TopkWeightsPrefetch,
+          bool IsLayered = false, bool IsShared = false, bool IsGmm1Interleaved = false,
+          typename WorkSet, typename ExtraArgs>
 __aicore__ inline void GroupMatmulExecGeneric(WorkSet &workSet, uint32_t startLoopIdx, uint32_t tileNum,
-                                              ExtraArgs &args)
+                                              ExtraArgs &args, PersistentContext *persistentContext)
 {
     if constexpr (Policy::IS_GMM1) {
-        ControlGmm1SwigluPipelineGeneric<Policy, BlockMmad, ElementC, MakeLayoutC, TopkWeightsPrefetch, IsShared,
-                                         IsGmm1Interleaved>(workSet, startLoopIdx, tileNum, args);
+        ControlGmm1SwigluPipelineGeneric<Policy, PersistentContext, ElementC, MakeLayoutC,
+                                         TopkWeightsPrefetch, IsShared, IsGmm1Interleaved>(
+            workSet, startLoopIdx, tileNum, args, persistentContext);
     } else if constexpr (g_coreType == AscendC::AIC) {
-        BlockMmad blockMmad;
-        bool enableL0CPingPong = false;
-        typename BlockMmad::BlockShape l0TileShape{workSet.config.tileM, L1_TILE_N, L0_TILE_K, 0};
-        typename BlockMmad::ProblemShape matmulShape{workSet.config.m, workSet.config.n, workSet.config.k, 0};
-        blockMmad.Init(matmulShape, l0TileShape, workSet.config.l1Params, false, enableL0CPingPong);
-
-        AicComputeGmm2Generic<CombineQuantMode, Policy, BlockMmad, ElementC, IsShared, TopkWeightsPrefetch, IsLayered>(
-            blockMmad, workSet, startLoopIdx, tileNum, args);
+        using BlockMmad = decltype(persistentContext->blockMmad);
+        EnsurePersistentBlockMmadInitialized(*persistentContext, workSet.config);
+        AicComputeGmm2Generic<CombineQuantMode, Policy, BlockMmad, ElementC, IsShared,
+                              TopkWeightsPrefetch, IsLayered>(
+            persistentContext->blockMmad, workSet, startLoopIdx, tileNum, args);
     }
 }
 
 // Controls the current A8W4 GMM1/SwiGLU tile pipeline. The AIV0 weight prologue and
 // AIC MMAD keep their Blaze-internal handshake; stage-boundary synchronization and
 // downstream completion publication are owned here.
-template <typename Policy, typename BlockMmad, typename BlockPrologue, typename ElementC, typename MakeLayoutC,
-          bool IsShared, typename WorkSet, typename Config, bool TopkWeightsPrefetch, typename ExtraArgs>
+template <typename Policy, typename PersistentContext, typename BlockPrologue, typename ElementC,
+          typename MakeLayoutC, bool IsShared, typename WorkSet, typename Config, bool TopkWeightsPrefetch,
+          typename ExtraArgs>
 __aicore__ inline void ControlGmm1SwigluPipelineA8W4(WorkSet &workSet, const Params &params,
                                                      const GMMAddrInfo &gmmAddrInfo, const Config &config,
                                                      uint32_t startLoopIdx, uint32_t tileNum,
-                                                     int32_t &gmTileSequence, ExtraArgs &args)
+                                                     int32_t &gmTileSequence, ExtraArgs &args,
+                                                     PersistentContext *persistentContext)
 {
     if constexpr (g_coreType == AscendC::AIC) {
-        BlockMmad blockMmad{};
-        typename BlockMmad::BlockShape l0TileShape{config.tileM, L1_TILE_N, L0_TILE_K, 0};
-        typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
-        blockMmad.Init(matmulShape, l0TileShape, config.l1Params);
+        using BlockMmad = decltype(persistentContext->blockMmad);
+        EnsurePersistentBlockMmadInitialized(*persistentContext, config);
+        auto &blockMmad = persistentContext->blockMmad;
         uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
 
         for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
@@ -241,27 +260,27 @@ __aicore__ inline void ControlGmm1SwigluPipelineA8W4(WorkSet &workSet, const Par
 }
 
 // Prototype: GroupMatmulExecA8W4. Dispatches one A8W4 GMM stage across the block's AIC and two AIVs.
-template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typename BlockPrologue, typename ElementC,
-          typename MakeLayoutC, bool IsShared, bool IsLayered = false, typename WorkSet, typename Config,
-          bool TopkWeightsPrefetch, typename ExtraArgs>
+template <uint8_t CombineQuantMode, typename Policy, typename PersistentContext, typename BlockPrologue,
+          typename ElementC, typename MakeLayoutC, bool IsShared, bool IsLayered = false,
+          typename WorkSet, typename Config, bool TopkWeightsPrefetch, typename ExtraArgs>
 __aicore__ inline void GroupMatmulExecA8W4(WorkSet &workSet, const Params &params, const GMMAddrInfo &gmmAddrInfo,
                                            const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
-                                           int32_t &gmTileSequence, ExtraArgs &args)
+                                           int32_t &gmTileSequence, ExtraArgs &args,
+                                           PersistentContext *persistentContext)
 {
     if constexpr (Policy::IS_GMM1) {
-        ControlGmm1SwigluPipelineA8W4<Policy, BlockMmad, BlockPrologue, ElementC, MakeLayoutC, IsShared,
-                                      WorkSet, Config, TopkWeightsPrefetch>(
-            workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, args);
+        ControlGmm1SwigluPipelineA8W4<Policy, PersistentContext, BlockPrologue, ElementC,
+                                      MakeLayoutC, IsShared, WorkSet, Config, TopkWeightsPrefetch>(
+            workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, args,
+            persistentContext);
     } else if constexpr (g_coreType == AscendC::AIC) {
-        BlockMmad blockMmad{};
-        typename BlockMmad::BlockShape l0TileShape{config.tileM, L1_TILE_N, L0_TILE_K, 0};
-        typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
-        blockMmad.Init(matmulShape, l0TileShape, config.l1Params);
+        using BlockMmad = decltype(persistentContext->blockMmad);
+        EnsurePersistentBlockMmadInitialized(*persistentContext, config);
         AicComputeGmm2A8W4<CombineQuantMode, Policy, IsShared, IsLayered, BlockMmad, decltype(workSet.scheduler),
                            decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
                            decltype(workSet.l0cOutGm), Config, TopkWeightsPrefetch>(
-            blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.l0cOutGm,
-            gmmAddrInfo, gmTileSequence, config, startLoopIdx, tileNum);
+            persistentContext->blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB,
+            workSet.l0cOutGm, gmmAddrInfo, gmTileSequence, config, startLoopIdx, tileNum);
     } else {
         if (GetSubBlockIdx() == 0) {
             BlockPrologue blockPrologue;
