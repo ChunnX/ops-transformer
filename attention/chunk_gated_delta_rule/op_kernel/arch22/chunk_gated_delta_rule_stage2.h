@@ -45,9 +45,9 @@ struct StageTwoParams {
     int64_t Nk;
     int64_t Dv;
     int64_t Dk;
-    bool gOptional;
 };
 
+template <bool gOptional = false>
 class Stage2 {
 public:
     __aicore__ inline void Init(StageTwoParams *initParams, int32_t coreNum)
@@ -65,7 +65,6 @@ public:
         Dk_ = sTP_->Dk;
         curDk_ = Ceil(Dk_, BLOCK_SIZE / sizeof(bfloat16_t)) * (BLOCK_SIZE / sizeof(bfloat16_t));
         curChunkSize_ = chunkSize_;
-        gOptional_ = sTP_->gOptional;
         InitLocalBuffers();
     }
 
@@ -139,7 +138,7 @@ public:
 
     __aicore__ inline void CalGCumExp(GlobalTensor<float> gCum)
     {
-        if (gOptional_) {
+        if constexpr (gOptional) {
             // 刷新cache
             DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
                 gCum[curChunkSize_ - 1]);
@@ -259,7 +258,6 @@ private:
     int64_t Sp_;
     int32_t chunkNum_;
     int32_t coreNum_;
-    bool gOptional_;
 };
 } // namespace ChunkGatedDeltaRule
 #endif // CHUNK_GATED_DELTA_RULE_STAGE2_H
