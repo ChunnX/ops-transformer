@@ -241,7 +241,7 @@ def golden_test_worker(queue, rank, args, world_size):
         # 2. Warmup
         for i in range(args.warmup):
             print(f"[INFO] rank {rank} warmup iter {i}/{args.warmup}: calling allto_all_matmul ...", flush=True)
-            y, all2all_out = cann_ops_transformer.allto_all_matmul(
+            y, all2all_out = cann_ops_transformer.all_to_all_quant_matmul(
                 x1,
                 x2,
                 group,
@@ -254,7 +254,7 @@ def golden_test_worker(queue, rank, args, world_size):
                 group_sizes=MX_GROUP_SIZES,
                 x1_scale_dtype=SCALE_DTYPE_FP8_E8M0,
                 x2_scale_dtype=SCALE_DTYPE_FP8_E8M0,
-                comm_mode="ai_cpu",
+                comm_mode="udma",
                 alltoall_out_flag=True,
             )
             torch.npu.synchronize()
@@ -263,7 +263,7 @@ def golden_test_worker(queue, rank, args, world_size):
 
         # 3. Golden comparison run
         print(f"[INFO] rank {rank} golden comparison run ...", flush=True)
-        y, all2all_out = cann_ops_transformer.allto_all_matmul(
+        y, all2all_out = cann_ops_transformer.all_to_all_quant_matmul(
             x1,
             x2,
             group,

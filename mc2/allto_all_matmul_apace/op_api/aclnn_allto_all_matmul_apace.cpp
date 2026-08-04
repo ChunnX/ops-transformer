@@ -60,7 +60,8 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulApaceGetWorkspaceSize(
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "aclnnAlltoAllMatmulApace: null pointer in input parameters.");
         return ACLNN_ERR_PARAM_NULLPTR;
     }
-
+    alltoAllAxesOptional = nullptr;
+    transposeX2 = true;
     aclnnStatus ret = aclnnInnerAlltoAllMatmulApaceGetWorkspaceSize(
         context, x1, x2, biasOptional, x1ScaleOptional, x2ScaleOptional, commScaleOptional, x1OffsetOptional,
         x2OffsetOptional, const_cast<char *>(group), worldSize, hcclBufferSize, alltoAllAxesOptional, x1QuantMode,

@@ -26,19 +26,23 @@ class CommChannelBuilderManagerOpBuilder(OpBuilder):
 
     def include_paths(self):
         paths = super().include_paths()
-        # vendor path goes first
-        vendor_path = os.path.join(
-            self._cann_path,
-            "opp/vendors/custom_transformer/op_impl/ai_core/tbe/custom_transformer_impl/ascendc/common"
-        )
-        built_in_path = os.path.join(
-            self._cann_path,
-            "opp/built-in/op_impl/ai_core/tbe/impl/ops_transformer/ascendc/common"
-        )
-        if os.path.isdir(vendor_path):
-            paths.append(vendor_path)
-        elif os.path.isdir(built_in_path):
-            paths.append(built_in_path)
+        candidate_paths = [
+            os.path.join(
+                self._cann_path,
+                "opp/vendors/custom_transformer/op_impl/ai_core/tbe/custom_transformer_impl/ascendc/common"
+            ),
+            os.path.join(
+                self._cann_path,
+                "vendors/custom_transformer/op_impl/ai_core/tbe/custom_transformer_impl/ascendc/common"
+            ),
+            os.path.join(
+                self._cann_path,
+                "opp/built-in/op_impl/ai_core/tbe/impl/ops_transformer/ascendc/common"
+            ),
+        ]
+        for path in candidate_paths:
+            if os.path.isdir(path):
+                paths.append(path)
         return paths
 
 
