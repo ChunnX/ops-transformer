@@ -60,22 +60,14 @@ def _fill_block_table(block_table, seqused_kv, block_size):
     block_table.copy_(bt.to(dtype=block_table.dtype, device=block_table.device))
 
 
-def _fill_attn_mask(attn_mask, mask_mode):
+def _fill_attn_mask(attn_mask, mask_mode, win_left=-1, win_right=-1):
     if attn_mask is None or not torch.is_tensor(attn_mask):
         return
     if mask_mode == 0:
         return
 
-    shape = tuple(attn_mask.shape)
-    if len(shape) < 2:
-        return
-    s1, s2 = shape[-2], shape[-1]
-
-    if mask_mode == 3:
-        mask = torch.triu(torch.ones(s1, s2), diagonal=s2 - s1 + 1)
-    else:
-        return
-
+    # mask_mode=3/4: attn_mask 固定为 2048x2048 上三角矩阵, 对角线全 0
+    mask = torch.triu(torch.ones(2048, 2048), diagonal=1)
     attn_mask.copy_(mask.to(dtype=attn_mask.dtype, device=attn_mask.device))
 
 
@@ -115,5 +107,5 @@ def customize_inputs(
     if torch.is_tensor(block_table):
         _fill_block_table(block_table, seqused_kv, block_size)
 
-    if mask_mode == 3:
-        _fill_attn_mask(attn_mask, mask_mode)
+    if mask_mode in (3, 4):
+        _fill_attn_mask(attn_mask, mask_mode, win_left, win_right)

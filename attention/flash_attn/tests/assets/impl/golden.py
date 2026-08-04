@@ -6,13 +6,13 @@
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
 """CPU golden adapter for FlashAttn TTK cases.
 
-Uses FlashAttentionGolden from ops-transformer-perf.
+Uses FlashAttnGolden from ops-transformer-perf.
 """
 
 import importlib.util
@@ -50,16 +50,6 @@ def _to_cpu(value):
     return value
 
 
-def _to_int_list(value):
-    if value is None:
-        return None
-    if torch.is_tensor(value):
-        return [int(x) for x in value.detach().cpu().reshape(-1).tolist()]
-    if isinstance(value, (list, tuple)):
-        return [int(x) for x in value]
-    return [int(value)]
-
-
 def _derive_head_dims(q, k, layout_q, layout_kv):
     head_dim = int(q.shape[-1])
     if layout_q == "TND":
@@ -78,18 +68,6 @@ def _derive_head_dims(q, k, layout_q, layout_kv):
     else:
         num_heads_kv = int(k.shape[2])
     return num_heads_q, num_heads_kv, head_dim
-
-
-def _build_sliding_window_mask(sq, skv, win_left, win_right, device):
-    effective_win_right = skv if win_right == -1 else win_right
-    effective_win_left = sq if win_left == -1 else win_left
-    mask_u = torch.triu(
-        torch.ones(sq, skv, device=device), diagonal=effective_win_right + 1 + skv - sq
-    )
-    mask_l = torch.tril(
-        torch.ones(sq, skv, device=device), diagonal=-effective_win_left - 1 + skv - sq
-    )
-    return (mask_u + mask_l).bool()
 
 
 def cpu_flash_attn(
@@ -118,9 +96,9 @@ def cpu_flash_attn(
     return_softmax_lse: bool = False,
     **_unused,
 ):
-    """Compute CPU golden reference using FlashAttentionGolden."""
+    """Compute CPU golden reference using FlashAttnGolden."""
     golden_module = _load_golden_module()
-    FlashAttentionGolden = golden_module.FlashAttentionGolden
+    FlashAttnGolden = golden_module.FlashAttnGolden
 
     q_cpu = _to_cpu(q)
     k_cpu = _to_cpu(k)
@@ -137,44 +115,12 @@ def cpu_flash_attn(
         q_cpu, k_cpu, layout_q, layout_kv
     )
 
-    golden = FlashAttentionGolden(
+    golden = FlashAttnGolden(
         num_heads_q=num_heads_q,
         num_heads_kv=num_heads_kv,
         head_dim=head_dim,
         softmax_scale=float(softmax_scale),
     )
-
-    golden_mask_mode = int(mask_mode)
-    golden_attn_mask = attn_mask_cpu
-
-    if mask_mode == 4 and attn_mask_cpu is None:
-        if sq_cpu is not None:
-            q_lens = _to_int_list(sq_cpu)
-        elif cu_q_cpu is not None:
-            cu_q_list = _to_int_list(cu_q_cpu)
-            q_lens = [
-                cu_q_list[i + 1] - cu_q_list[i] for i in range(len(cu_q_list) - 1)
-            ]
-        else:
-            q_lens = None
-
-        if skv_cpu is not None:
-            kv_lens = _to_int_list(skv_cpu)
-        elif cu_kv_cpu is not None:
-            cu_kv_list = _to_int_list(cu_kv_cpu)
-            kv_lens = [
-                cu_kv_list[i + 1] - cu_kv_list[i] for i in range(len(cu_kv_list) - 1)
-            ]
-        else:
-            kv_lens = None
-
-        if q_lens and kv_lens:
-            max_sq = max(q_lens)
-            max_skv = max(kv_lens)
-            golden_attn_mask = _build_sliding_window_mask(
-                max_sq, max_skv, win_left, win_right, q_cpu.device
-            )
-        golden_mask_mode = 0
 
     out, lse = golden.forward_golden(
         q_cpu,
@@ -186,13 +132,17 @@ def cpu_flash_attn(
         seqused_q=sq_cpu,
         seqused_kv=skv_cpu,
         sinks=sinks_cpu,
+        attn_mask=attn_mask_cpu,
         softmax_scale=float(softmax_scale),
-        mask_mode=golden_mask_mode,
-        attn_mask=golden_attn_mask,
+        mask_mode=int(mask_mode),
+        win_left=int(win_left),
+        win_right=int(win_right),
+        max_seqlen_q=int(max_seqlen_q) if max_seqlen_q is not None else -1,
+        max_seqlen_kv=int(max_seqlen_kv) if max_seqlen_kv is not None else -1,
         layout_q=layout_q,
         layout_kv=layout_kv,
         layout_out=layout_out,
-        return_softmax_lse=int(bool(return_softmax_lse)),
+        return_softmax_lse=bool(return_softmax_lse),
         device_mode="cpu",
         compute_mode="full",
     )
