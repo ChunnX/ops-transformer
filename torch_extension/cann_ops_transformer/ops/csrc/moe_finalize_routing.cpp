@@ -8,6 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+/*!
+ * \file moe_finalize_routing.cpp
+ * \brief ACLNN Wrapper for aclnnMoeFinalizeRoutingV4
+ */
+
 #include <torch/extension.h>
 #include "aclnn_common.h"
 
@@ -43,8 +48,14 @@ at::Tensor MoeFinalizeRouting(const at::Tensor &expandedX, const at::Tensor &exp
     if (expandedX.dim() == DIM_THREE) {
         dim1Index = INDEX_TWO;
     }
-    at::Tensor result = at::empty({dim0, expandedX.size(dim1Index)}, expandedX.options());
     int64_t mode = c10::value_or_else(dropPadMode, [] { return 0; });
+
+    at::Tensor result;
+    {
+        auto localDevice = c10::Device(expandedX.device());
+        const c10::OptionalDeviceGuard deviceGuard(localDevice);
+        result = at::empty({dim0, expandedX.size(dim1Index)}, expandedX.options());
+    }
 
     std::vector<int64_t> zeroVec = zeroExpertRange.value_or(std::vector<int64_t>{});
     std::vector<int64_t> copyVec = copyExpertRange.value_or(std::vector<int64_t>{});
@@ -63,5 +74,4 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("moe_finalize_routing", &MoeFinalizeRouting, "moe_finalize_routing");
 }
-
 } // namespace op_api
