@@ -353,11 +353,11 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     int32_t remainingSparseBlocks = runParam.actSparseLen - static_cast<int32_t>(s2LoopCount * 2);
     runInfo.sparseBlkIdx1 = remainingSparseBlocks > 0 ? sparseIndicesGm.GetValue(sparseLoopCountOffset) : -1;
     runInfo.sparseBlkIdx2 = remainingSparseBlocks > 1 ? sparseIndicesGm.GetValue(sparseLoopCountOffset + 1) : -1;
-    if (unlikely((runInfo.sparseBlkIdx1 < 0) || 
-                 (runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize >= runParam.actualS2Size))) {
-        runInfo.s2SparseBlk1RealSize = 0;
-        runInfo.s2SparseBlk1RealAlignedSize = 0;
-        runInfo.sparseBlk1PartialMask = false;
+
+    if (unlikely(runInfo.sparseBlkIdx1 < 0)) { 
+        runInfo.s2SparseBlk1RealSize = 0; 
+        runInfo.s2SparseBlk1RealAlignedSize = 0; 
+        runInfo.sparseBlk1PartialMask = false; 
     } else if (unlikely((runInfo.sparseBlkIdx1 + 1) * constInfo.kvSparseBlockSize > runParam.actualS2Size)) {
         runInfo.s2SparseBlk1RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
         runInfo.s2SparseBlk1RealAlignedSize = Align(runInfo.s2SparseBlk1RealSize);
@@ -365,8 +365,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
         runInfo.s2SparseBlk1RealSize = constInfo.kvSparseBlockSize;
         runInfo.s2SparseBlk1RealAlignedSize = runInfo.s2SparseBlk1RealSize;
     }
-    if (unlikely((runInfo.sparseBlkIdx2 < 0) || 
-                 (runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize >= runParam.actualS2Size))) {
+    if (unlikely(runInfo.sparseBlkIdx2 < 0)) {
         runInfo.s2SparseBlk2RealSize = 0;
         runInfo.s2SparseBlk2RealAlignedSize = 0;
         runInfo.sparseBlk2PartialMask = false;
@@ -378,18 +377,8 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
         runInfo.s2SparseBlk2RealAlignedSize = runInfo.s2SparseBlk2RealSize;
     }
 
-    // 判断当前sparse块是否需要计算
-    runInfo.nextTokensPerBatch = runParam.nextTokensPerBatch;
-
     // 将sparseBlkIdx映射为phyBlkNumIdx  并按照phyBlkNumIdx的大小顺序排列
-    if constexpr (isPa) {
-        uint64_t blockTableBaseOffset = runInfo.boIdx * constInfo.maxBlockNumPerBatch;
-        runInfo.phyBlkNumIdx1 =
-            runInfo.sparseBlkIdx1 == -1 ? -1 : blockTableGm.GetValue(blockTableBaseOffset + runInfo.sparseBlkIdx1);
-        runInfo.phyBlkNumIdx2 =
-            runInfo.sparseBlkIdx2 == -1 ? -1 : blockTableGm.GetValue(blockTableBaseOffset + runInfo.sparseBlkIdx2);
-        IdxSortBySparseIdx(runInfo);
-    }
+    IdxSortBySparseIdx(runInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
