@@ -76,8 +76,11 @@ public:
     static constexpr bool KEY_ANTIQUANT_PER_TOKEN = (antiquantMode == AntiquantTypeEnum::K_PER_TOKEN);
     static constexpr bool VALUE_ANTIQUANT_PER_TOKEN = (antiquantMode == AntiquantTypeEnum::K_PER_TOKEN ||
                                                        antiquantMode == AntiquantTypeEnum::K_PER_CHANNEL_V_PER_TOKEN);
-    using KEY_ANTIQ_PARAMS_T = typename std::conditional<KEY_ANTIQUANT_PER_TOKEN, T, Q_T>::type;
-    using VALUE_ANTIQ_PARAMS_T = typename std::conditional<VALUE_ANTIQUANT_PER_TOKEN, T, Q_T>::type;
+    using KEY_ANTIQ_PARAMS_T = typename std::conditional<KEY_ANTIQUANT_PER_TOKEN && !KVFP4, T, Q_T>::type;
+    using VALUE_ANTIQ_PARAMS_T = typename std::conditional<VALUE_ANTIQUANT_PER_TOKEN && !KVFP4, T, Q_T>::type;
+    // mode 6时scale在GM上是E8M0字节流，禁止fp16 alias
+    using KEY_SCALE_GM_T = typename std::conditional<KVFP4, uint8_t, KEY_ANTIQ_PARAMS_T>::type;
+    using VALUE_SCALE_GM_T = typename std::conditional<KVFP4, uint8_t, VALUE_ANTIQ_PARAMS_T>::type;
     static constexpr bool KVINT4 = IsSameType<KV_T, int4b_t>::value;
     static constexpr bool POST_QUANT = !IsSameType<OUTPUT_T, half>::value && !IsSameType<OUTPUT_T, bfloat16_t>::value &&
                                        !IsSameType<OUTPUT_T, float>::value;
@@ -201,6 +204,7 @@ protected:
     TQue<QuePosition::VECIN, 1> valueAntiqScaleInputQue;
     TQue<QuePosition::VECIN, 1> valueAntiqOffsetInputQue;
     TBuf<> kvAntiqMxScaleRes; // for w4
+    TBuf<> kvOffsetBuf; // for w4 offset
     TBuf<> softmaxMaxBuf[3];
     TBuf<> softmaxSumBuf[3];
     TBuf<> softmaxExpBuf[3];
@@ -222,9 +226,9 @@ protected:
     TQue<QuePosition::VECIN, 1> postQuantOffsetQue;
     /*伪量化参数*/
     GlobalTensor<KEY_ANTIQ_PARAMS_T> keyAntiquantOffsetGm;
-    GlobalTensor<KEY_ANTIQ_PARAMS_T> keyAntiqScaleGm;
+    GlobalTensor<KEY_SCALE_GM_T> keyAntiqScaleGm;
     GlobalTensor<VALUE_ANTIQ_PARAMS_T> valueAntiquantOffsetGm;
-    GlobalTensor<VALUE_ANTIQ_PARAMS_T> valueAntiqScaleGm;
+    GlobalTensor<VALUE_SCALE_GM_T> valueAntiqScaleGm;
     bool antiqOffsetExistFlag;
     bool isBeforeHalf;
     AntiquantTaskParamBaseAPI taskParam;
@@ -383,11 +387,12 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitAntiqua
     this->tPipe->InitBuffer(kvInputQue, 3, kvInputSize);        // 3 buffer
     this->tPipe->InitBuffer(kvOutputQue, 2, kvOutSize);         // 2 buffer
     this->tPipe->InitBuffer(keyAntiqScaleInputQue, 1, 3072);    // 3072 is 3 * 1024, deal the tail
-    this->tPipe->InitBuffer(keyAntiqOffsetInputQue, 1, 3072);   // 3072 is 3 * 1024, deal the tail
+    this->tPipe->InitBuffer(keyAntiqOffsetInputQue, 1, 6144);   // mode 6 offset为Q_T，2倍字节
     this->tPipe->InitBuffer(valueAntiqScaleInputQue, 1, 3072);  // 3072 is 3 * 1024, deal the tail
-    this->tPipe->InitBuffer(valueAntiqOffsetInputQue, 1, 3072); // 3072 is 3 * 1024, deal the tail
+    this->tPipe->InitBuffer(valueAntiqOffsetInputQue, 1, 6144); // mode 6 offset为Q_T，2倍字节
     if constexpr (KVFP4) {
         this->tPipe->InitBuffer(kvAntiqMxScaleRes, BUFFER_SIZE_BYTE_5K_ANTIQUANT);
+        this->tPipe->InitBuffer(kvOffsetBuf, BUFFER_SIZE_BYTE_5K_ANTIQUANT);
     }
 }
 
@@ -463,8 +468,9 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitQuant(
         if (keyAntiquantScale == nullptr) {
             int64_t antiValueOffsetInitPos = constInfo.n2D;
             if constexpr (KVFP4) {
+                // E8M0字节视图下V段起始 = B*N*S*D/64 * 2 = B*N*S*grpNum(字节)；offset同为Q_T元素数
                 antiValueOffsetInitPos =
-                    (uint64_t)(this->tilingData->inputParamsRegbase.bSize) * constInfo.n2S2D >> SHIFT_NUM_6;
+                    (uint64_t)(this->tilingData->inputParamsRegbase.bSize) * constInfo.n2S2D >> SHIFT_NUM_6 << 1;
             }
             if constexpr (KEY_ANTIQUANT_PER_TOKEN) {
                 antiValueOffsetInitPos = (uint64_t)(this->tilingData->inputParamsRegbase.bSize) * antiqSeqSize;
@@ -472,8 +478,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitQuant(
             if (antiquantPerTensorFlag) {
                 antiValueOffsetInitPos = 1;
             }
-            keyAntiqScaleGm.SetGlobalBuffer((__gm__ KEY_ANTIQ_PARAMS_T *)antiquantScale);
-            valueAntiqScaleGm.SetGlobalBuffer(((__gm__ VALUE_ANTIQ_PARAMS_T *)antiquantScale) + antiValueOffsetInitPos);
+            keyAntiqScaleGm.SetGlobalBuffer((__gm__ KEY_SCALE_GM_T *)antiquantScale);
+            valueAntiqScaleGm.SetGlobalBuffer(((__gm__ VALUE_SCALE_GM_T *)antiquantScale) + antiValueOffsetInitPos);
             antiqOffsetExistFlag = (antiquantOffset != nullptr);
             if (antiqOffsetExistFlag) {
                 keyAntiquantOffsetGm.SetGlobalBuffer((__gm__ KEY_ANTIQ_PARAMS_T *)antiquantOffset);
@@ -481,8 +487,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitQuant(
                                                        antiValueOffsetInitPos);
             }
         } else {
-            keyAntiqScaleGm.SetGlobalBuffer((__gm__ KEY_ANTIQ_PARAMS_T *)keyAntiquantScale);
-            valueAntiqScaleGm.SetGlobalBuffer((__gm__ VALUE_ANTIQ_PARAMS_T *)valueAntiquantScale);
+            keyAntiqScaleGm.SetGlobalBuffer((__gm__ KEY_SCALE_GM_T *)keyAntiquantScale);
+            valueAntiqScaleGm.SetGlobalBuffer((__gm__ VALUE_SCALE_GM_T *)valueAntiquantScale);
             antiqOffsetExistFlag = (keyAntiquantOffset != nullptr);
             if (antiqOffsetExistFlag) {
                 keyAntiquantOffsetGm.SetGlobalBuffer((__gm__ KEY_ANTIQ_PARAMS_T *)keyAntiquantOffset);
@@ -609,7 +615,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantKe
     }
     keyAntiquantProcessor.ProcessBaseAPI(outBufAntiKey, tempKeyGm, keyAntiqScaleGm, keyAntiquantOffsetGm, blockTableGm,
                                          kvInputQue, kvOutputQue, keyAntiqScaleInputQue, keyAntiqOffsetInputQue,
-                                         kvAntiqMxScaleRes, taskParam, subTaskId, isBeforeHalf, runInfo.s2RealSize);
+                                         kvAntiqMxScaleRes, kvOffsetBuf, taskParam, subTaskId, isBeforeHalf,
+                                         runInfo.s2RealSize);
 }
 
 
@@ -634,8 +641,12 @@ FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SetAntiqParamCommon(const RunInfo<
     }
     taskParam.kvGmOffset = kvOffset + constInfo.subBlockIdx * GetRealDealSize(runInfo.s2RealSize) * taskParam.kvStep;
     taskParam.s2BatchOffset = curSequence;
-    taskParam.kvPaddingBeginOffset = runInfo.kvLeftPaddingSize;
-    taskParam.antiqParamOffset = runInfo.n2oIdx * taskParam.headDim;
+    if constexpr (KVFP4) {
+        // per-token-group模式：B/N/S段偏移由antiquant processor按grpNum统一计算
+        taskParam.antiqParamOffset = 0;
+    } else {
+        taskParam.antiqParamOffset = runInfo.n2oIdx * taskParam.headDim;
+    }
     taskParam.bIdx = runInfo.boIdx;
     taskParam.n2Idx = runInfo.n2oIdx;
     taskParam.s2Idx = runInfo.s2LoopCount;
@@ -956,8 +967,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantVa
     }
     valueAntiquantProcessor.ProcessBaseAPI(outBufAntiValue, tempValueGm, valueAntiqScaleGm, valueAntiquantOffsetGm,
                                            blockTableGm, kvInputQue, kvOutputQue, valueAntiqScaleInputQue,
-                                           valueAntiqOffsetInputQue, kvAntiqMxScaleRes, taskParam, subTaskId,
-                                           isBeforeHalf, runInfo.s2RealSize);
+                                           valueAntiqOffsetInputQue, kvAntiqMxScaleRes, kvOffsetBuf, taskParam,
+                                           subTaskId, isBeforeHalf, runInfo.s2RealSize);
 }
 
 ANTIQUANT_TEMPLATES_DEF_NO_DEFAULT

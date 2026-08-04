@@ -1394,6 +1394,7 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyQuantMode(const FiaTilin
             case 3: // AntiquantMode_PER_TOKEN_HEAD
             case 4: // AntiquantMode_PER_TOKEN_PAGE_ATTENTION
             case 5: // AntiquantMode_PER_TOKEN_HEAD_PAGE_ATTENTION
+            case 6: // K_PER_TOKEN (MXFP4等)
                 tilingKeyInfo_.quantMode = AntiquantMode_K_PER_TOKEN;
                 break;
             default:
@@ -1886,7 +1887,10 @@ void FusedInferAttentionScoreTilingImpl::SetFATilingDataInputParams(const FiaTil
     inputParams.set_antiquantParaSeqSize(fiaInfo.antiqSeqSize);
     inputParams.set_antiquantPerHeadFlag(fiaInfo.keyAntiquantMode == 2 || fiaInfo.keyAntiquantMode == 3 ||
                                          fiaInfo.keyAntiquantMode == 5);
-    inputParams.set_antiquantPageAttentionFlag(fiaInfo.keyAntiquantMode == 4 || fiaInfo.keyAntiquantMode == 5);
+    inputParams.set_antiquantPageAttentionFlag(fiaInfo.keyAntiquantMode == 4 || fiaInfo.keyAntiquantMode == 5 ||
+                                               (fiaInfo.keyAntiquantMode == 6 &&
+                                                fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION &&
+                                                fiaInfo.kvLayout == FiaLayout::NZ));
     inputParams.set_isActualSeqLengthsNull(!actualSeqLenQFlag_);
     inputParams.set_isActualSeqLengthsKVNull(!actualSeqLenKVFlag_);
     inputParams.set_isActualSharedPrefixLenNull(!actualSharedPrefixLenFlag_);

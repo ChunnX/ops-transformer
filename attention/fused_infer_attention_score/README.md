@@ -179,3 +179,9 @@
   | 调用方式  | 样例代码                                                     | 说明                                                         |
   | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
   | aclnn接口 | [test_aclnn_FusedInferAttentionScoreV5](./examples/arch35/test_aclnn_fused_infer_attention_score_v5.cpp) | 通过[aclnnFusedInferAttentionScoreV5](./docs/aclnnFusedInferAttentionScoreV5.md)调用FusedInferAttentionScore算子 |
+
+  - `FLOAT4_E2M1`、key/value mode 6、PageAttention NZ 的直调数值校验见 [test_aclnn_fused_infer_attention_score_v5_antiquant_mxfp4_pa_nz.cpp](./examples/arch35/test_aclnn_fused_infer_attention_score_v5_antiquant_mxfp4_pa_nz.cpp)。该样例覆盖 FP16/BF16、对称/非对称量化、单页/两页/三页以及非连续 `blockTable` 页映射。按[编译与运行样例](../../docs/zh/invocation/quick_op_invocation.md)准备环境后，可只编译并运行该样例：
+
+    ```bash
+    bash build.sh --run_example fused_infer_attention_score eager cust --vendor_name=custom --soc=ascend950 --example_name=fused_infer_attention_score_v5_antiquant_mxfp4_pa_nz
+    ```

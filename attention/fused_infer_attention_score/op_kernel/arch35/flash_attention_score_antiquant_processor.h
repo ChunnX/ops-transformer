@@ -15,6 +15,8 @@
 #ifndef FLASH_ATTENTION_SCORE_ANTIQUANT_PROCESSOR_H
 #define FLASH_ATTENTION_SCORE_ANTIQUANT_PROCESSOR_H
 
+#include <type_traits>
+
 #include "../../../common/op_kernel/arch35/vf/vf_antiquant_w4.h"
 #include "../../../common/op_kernel/arch35/vf/vf_antiquant_w8.h"
 
@@ -94,26 +96,48 @@ public:
     static constexpr bool FLASH_DECODE = isFd;
     static constexpr bool KVFP4 = (IsSameType<KV_T, fp4x2_e1m2_t>::value || IsSameType<KV_T, fp4x2_e2m1_t>::value);
     static constexpr bool KVINT4 = IsSameType<KV_T, int4b_t>::value;
-    using ANTIQ_PARAMS_T = typename std::conditional<ANTIQUANT_PER_TOKEN, T, Q_T>::type;
+    using ANTIQ_PARAMS_T = typename std::conditional<ANTIQUANT_PER_TOKEN && !KVFP4, T, Q_T>::type;
+    // mode 6(per-token-group)时scale在GM上是E8M0字节流，必须按字节寻址，禁止fp16 alias
+    using SCALE_GM_T = typename std::conditional<KVFP4, uint8_t, ANTIQ_PARAMS_T>::type;
     static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
 
     __aicore__ inline AntiquantProcessorBaseAPI(){};
 
     __aicore__ inline void
     ProcessBaseAPI(Buffer<BufferType::L1> &outBufAntiRes, GlobalTensor<KV_T> &kvGm,
-                   GlobalTensor<ANTIQ_PARAMS_T> &antiqScaleGm, GlobalTensor<ANTIQ_PARAMS_T> &antiqOffsetGm,
+                   GlobalTensor<SCALE_GM_T> &antiqScaleGm, GlobalTensor<ANTIQ_PARAMS_T> &antiqOffsetGm,
                    GlobalTensor<int32_t> &blockTableGm, TQue<QuePosition::VECIN, 1> &kvInputQue,
                    TQue<QuePosition::VECOUT, 1> &kvOutputQue, TQue<QuePosition::VECIN, 1> &antiqScaleInputQue,
                    TQue<QuePosition::VECIN, 1> &antiqOffsetInputQue, TBuf<> kvAntiqMxScaleRes,
+                   TBuf<> kvOffsetBuf,
                    const AntiquantTaskParamBaseAPI &taskParam, int32_t taskId, bool isBeforeHalf, int32_t s2RealSize);
 
-    __aicore__ inline void CopyAntiqScaleE8M0(LocalTensor<Q_T> dstLocal, GlobalTensor<Q_T> &srcGm, uint64_t offset,
+    __aicore__ inline void CopyAntiqScaleE8M0(LocalTensor<Q_T> dstLocal, GlobalTensor<uint8_t> &srcGm, uint64_t offset,
                                               uint32_t rowCnt, uint32_t grpNum);
-    __aicore__ inline void CopyAntiqScaleE8M0Nz(LocalTensor<Q_T> dstLocal, GlobalTensor<Q_T> &srcGm, uint64_t offset,
-                                                uint32_t rowCnt, uint32_t grpNum, uint32_t s2RealSize);
-    __aicore__ inline void LoadAntiquantParamsPerTokenGroup(GlobalTensor<ANTIQ_PARAMS_T> &antiqScaleGm,
+    __aicore__ inline void CopyAntiqScaleE8M0Nz(LocalTensor<Q_T> dstLocal, GlobalTensor<uint8_t> &srcGm,
+                                                uint64_t offset, uint32_t rowCnt, uint32_t grpNum,
+                                                uint32_t s2RealSize);
+    template <typename PARAM_T>
+    __aicore__ inline void CopyAntiqParamPageAttentionNz(
+        LocalTensor<Q_T> dstLocal, GlobalTensor<PARAM_T> &srcGm, GlobalTensor<int32_t> &blockTableGm,
+        const AntiquantTaskParamBaseAPI &taskParam, uint32_t grpNum, uint32_t s2Aligned);
+    __aicore__ inline void CopyAntiqE8M0PageAttention(LocalTensor<Q_T> dstLocal, GlobalTensor<uint8_t> &srcGm,
+                                                      GlobalTensor<int32_t> &blockTableGm,
+                                                      const AntiquantTaskParamBaseAPI &taskParam, uint32_t grpNum);
+    __aicore__ inline void CopyAntiqOffset(LocalTensor<Q_T> dstLocal, GlobalTensor<Q_T> &srcGm, uint64_t offset,
+                                           uint32_t rowCnt, uint32_t grpNum);
+    __aicore__ inline void CopyAntiqOffsetNz(LocalTensor<Q_T> dstLocal, GlobalTensor<Q_T> &srcGm, uint64_t offset,
+                                             uint32_t rowCnt, uint32_t grpNum, uint32_t s2RealSize);
+    __aicore__ inline void CopyAntiqOffsetPageAttention(LocalTensor<Q_T> dstLocal, GlobalTensor<Q_T> &srcGm,
+                                                        GlobalTensor<int32_t> &blockTableGm,
+                                                        const AntiquantTaskParamBaseAPI &taskParam, uint32_t grpNum);
+    __aicore__ inline void LoadAntiquantParamsPerTokenGroup(GlobalTensor<SCALE_GM_T> &antiqScaleGm,
+                                                            GlobalTensor<ANTIQ_PARAMS_T> &antiqOffsetGm,
+                                                            GlobalTensor<int32_t> &blockTableGm,
                                                             TQue<QuePosition::VECIN, 1> &antiqScaleInputQue,
+                                                            TQue<QuePosition::VECIN, 1> &antiqOffsetInputQue,
                                                             TBuf<> kvAntiqMxScaleRes,
+                                                            TBuf<> kvOffsetBuf,
                                                             const AntiquantTaskParamBaseAPI &taskParam,
                                                             bool isBeforeHalf, int32_t s2RealSize);
     __aicore__ inline void
@@ -172,17 +196,18 @@ private:
 
 template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
 __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::ProcessBaseAPI(
-    Buffer<BufferType::L1> &outBufAntiRes, GlobalTensor<KV_T> &kvGm, GlobalTensor<ANTIQ_PARAMS_T> &antiqScaleGm,
+    Buffer<BufferType::L1> &outBufAntiRes, GlobalTensor<KV_T> &kvGm, GlobalTensor<SCALE_GM_T> &antiqScaleGm,
     GlobalTensor<ANTIQ_PARAMS_T> &antiqOffsetGm, GlobalTensor<int32_t> &blockTableGm,
     TQue<QuePosition::VECIN, 1> &kvInputQue, TQue<QuePosition::VECOUT, 1> &kvOutputQue,
     TQue<QuePosition::VECIN, 1> &antiqScaleInputQue, TQue<QuePosition::VECIN, 1> &antiqOffsetInputQue,
-    TBuf<> kvAntiqMxScaleRes, const AntiquantTaskParamBaseAPI &taskParam, int32_t taskId, bool isBeforeHalf,
-    int32_t s2RealSize)
+    TBuf<> kvAntiqMxScaleRes, TBuf<> kvOffsetBuf, const AntiquantTaskParamBaseAPI &taskParam, int32_t taskId,
+    bool isBeforeHalf, int32_t s2RealSize)
 {
     if (taskParam.isLoadAntiqParam) {
         if constexpr (KVFP4) {
             if (likely(taskParam.copyTotalS > 0)) {
-                LoadAntiquantParamsPerTokenGroup(antiqScaleGm, antiqScaleInputQue, kvAntiqMxScaleRes, taskParam,
+                LoadAntiquantParamsPerTokenGroup(antiqScaleGm, antiqOffsetGm, blockTableGm, antiqScaleInputQue,
+                                                 antiqOffsetInputQue, kvAntiqMxScaleRes, kvOffsetBuf, taskParam,
                                                  isBeforeHalf, s2RealSize);
             }
         } else if constexpr (ANTIQUANT_PER_TOKEN) {
@@ -218,8 +243,7 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
     }
     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE3>(VC_L1_EVENT[taskId % 2]);
     if (taskParam.isFreeAntiqParam) {
-        if constexpr (KVFP4) {
-        } else {
+        if constexpr (!KVFP4 && !ANTIQUANT_PER_TOKEN) {
             FreeAntiquantParams(antiqScaleInputQue, antiqOffsetInputQue, taskParam);
         }
     }
@@ -227,19 +251,99 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
 
 template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
 __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAntiqScaleE8M0(
+    LocalTensor<Q_T> dstLocal, GlobalTensor<uint8_t> &srcGm, uint64_t offset, uint32_t rowCnt, uint32_t grpNum)
+{
+    DataCopyExtParams copyInParams;
+    DataCopyPadExtParams<uint8_t> copyInPadParams{};
+    copyInParams.blockCount = 1;
+    copyInParams.dstStride = 0;
+    // E8M0字节流按uint8拷贝，GM为ACL_FLOAT8_E8M0（每元素1字节）
+    copyInParams.blockLen = grpNum * rowCnt;
+    copyInParams.srcStride = 0;
+    DataCopyPad(dstLocal.template ReinterpretCast<uint8_t>(), srcGm[offset], copyInParams, copyInPadParams);
+}
+
+template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
+__aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAntiqScaleE8M0Nz(
+    LocalTensor<Q_T> dstLocal, GlobalTensor<uint8_t> &srcGm, uint64_t offset, uint32_t rowCnt, uint32_t grpNum,
+    uint32_t s2RealSize)
+{
+    DataCopyExtParams copyInParams;
+    DataCopyPadExtParams<uint8_t> copyInPadParams{};
+    copyInParams.blockCount = grpNum;
+    copyInParams.dstStride = 0;
+    // E8M0字节流按uint8拷贝，GM为ACL_FLOAT8_E8M0（每元素1字节）
+    copyInParams.blockLen = rowCnt;
+    copyInParams.srcStride = s2RealSize - rowCnt;
+    DataCopyPad(dstLocal.template ReinterpretCast<uint8_t>(), srcGm[offset], copyInParams, copyInPadParams);
+}
+
+// PA_NZ parameter GM layout is [P, N, G, Bs]. Each physical page is selected by blockTable,
+// while the UB layout required by the NZ VF path is [G, AlignUp(copyTotalS, 32)]. PARAM_T keeps
+// scale as raw E8M0 bytes and offset as Q_T without sharing either their GM type or byte strides.
+template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
+template <typename PARAM_T>
+__aicore__ inline void
+AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAntiqParamPageAttentionNz(
+    LocalTensor<Q_T> dstLocal, GlobalTensor<PARAM_T> &srcGm, GlobalTensor<int32_t> &blockTableGm,
+    const AntiquantTaskParamBaseAPI &taskParam, uint32_t grpNum, uint32_t s2Aligned)
+{
+    const uint64_t blockTableBaseOffset = taskParam.bIdx * taskParam.maxBlockNumPerSeq;
+    uint32_t copiedTokenNum = 0;
+    uint32_t curSequence = taskParam.s2BatchOffset;
+
+    DataCopyExtParams copyInParams;
+    DataCopyPadExtParams<PARAM_T> copyInPadParams{};
+    while (copiedTokenNum < taskParam.copyTotalS) {
+        const uint64_t logicalBlockId = curSequence / taskParam.kvCacheBlockSize;
+        const uint32_t tokenInBlock = curSequence % taskParam.kvCacheBlockSize;
+        const uint64_t physicalBlockId = blockTableGm.GetValue(blockTableBaseOffset + logicalBlockId);
+        uint32_t copyTokenNum = taskParam.kvCacheBlockSize - tokenInBlock;
+        if (copyTokenNum + copiedTokenNum > taskParam.copyTotalS) {
+            copyTokenNum = taskParam.copyTotalS - copiedTokenNum;
+        }
+
+        // [P, N, G, Bs]: a page group plane is contiguous, whereas the destination planes are
+        // [G, SAlign]. Do one contiguous copy per group: a partial first/last page need not
+        // have a 32-byte-aligned gap, so it must not be encoded as a DataCopyPad dstStride.
+        const uint64_t srcElemOffset =
+            ((physicalBlockId * taskParam.kvHeadNum + taskParam.n2Idx) * grpNum * taskParam.kvCacheBlockSize) +
+            tokenInBlock;
+        copyInParams.blockCount = 1;
+        copyInParams.blockLen = copyTokenNum * sizeof(PARAM_T);
+        copyInParams.srcStride = 0;
+        copyInParams.dstStride = 0;
+        for (uint32_t groupIdx = 0; groupIdx < grpNum; ++groupIdx) {
+            const uint64_t groupSrcElemOffset = srcElemOffset + groupIdx * taskParam.kvCacheBlockSize;
+            const uint32_t groupDstElemOffset = groupIdx * s2Aligned + copiedTokenNum;
+            if constexpr (std::is_same<PARAM_T, uint8_t>::value) {
+                DataCopyPad(dstLocal.template ReinterpretCast<uint8_t>()[groupDstElemOffset], srcGm[groupSrcElemOffset],
+                            copyInParams, copyInPadParams);
+            } else {
+                DataCopyPad(dstLocal[groupDstElemOffset], srcGm[groupSrcElemOffset], copyInParams, copyInPadParams);
+            }
+        }
+
+        copiedTokenNum += copyTokenNum;
+        curSequence += copyTokenNum;
+    }
+}
+
+template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
+__aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAntiqOffset(
     LocalTensor<Q_T> dstLocal, GlobalTensor<Q_T> &srcGm, uint64_t offset, uint32_t rowCnt, uint32_t grpNum)
 {
     DataCopyExtParams copyInParams;
     DataCopyPadExtParams<Q_T> copyInPadParams{};
     copyInParams.blockCount = 1;
     copyInParams.dstStride = 0;
-    copyInParams.blockLen = grpNum * rowCnt * sizeof(int8_t);
+    copyInParams.blockLen = grpNum * rowCnt * sizeof(Q_T);
     copyInParams.srcStride = 0;
     DataCopyPad(dstLocal, srcGm[offset], copyInParams, copyInPadParams);
 }
 
 template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
-__aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAntiqScaleE8M0Nz(
+__aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAntiqOffsetNz(
     LocalTensor<Q_T> dstLocal, GlobalTensor<Q_T> &srcGm, uint64_t offset, uint32_t rowCnt, uint32_t grpNum,
     uint32_t s2RealSize)
 {
@@ -247,16 +351,92 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
     DataCopyPadExtParams<Q_T> copyInPadParams{};
     copyInParams.blockCount = grpNum;
     copyInParams.dstStride = 0;
-    copyInParams.blockLen = rowCnt * sizeof(int8_t);
+    copyInParams.blockLen = rowCnt * sizeof(Q_T);
     copyInParams.srcStride = s2RealSize - rowCnt;
     DataCopyPad(dstLocal, srcGm[offset], copyInParams, copyInPadParams);
 }
 
 template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
 __aicore__ inline void
+AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAntiqE8M0PageAttention(
+    LocalTensor<Q_T> dstLocal, GlobalTensor<uint8_t> &srcGm, GlobalTensor<int32_t> &blockTableGm,
+    const AntiquantTaskParamBaseAPI &taskParam, uint32_t grpNum)
+{
+    // mode 6按head独立量化，PA时head位于物理block内(BNBD布局)，头项无条件生效
+    uint64_t blockTableBaseOffset = taskParam.bIdx * taskParam.maxBlockNumPerSeq;
+    uint64_t dstByteOffset = 0;
+    uint32_t copyFinishElmenCnt = 0;
+    uint32_t curSequence = taskParam.s2BatchOffset;
+
+    DataCopyExtParams copyInParams;
+    DataCopyPadExtParams<uint8_t> copyInPadParams{};
+    copyInParams.blockCount = 1;
+    copyInParams.dstStride = 0;
+    copyInParams.srcStride = 0;
+
+    while (copyFinishElmenCnt < taskParam.copyTotalS) {
+        uint64_t blockIdOffset = curSequence / taskParam.kvCacheBlockSize;
+        uint64_t remainElmenCnt = curSequence % taskParam.kvCacheBlockSize;
+        uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset);
+        uint32_t copyElmenCnt = taskParam.kvCacheBlockSize - remainElmenCnt;
+        if (copyElmenCnt + copyFinishElmenCnt > taskParam.copyTotalS) {
+            copyElmenCnt = taskParam.copyTotalS - copyFinishElmenCnt;
+        }
+        // E8M0字节流：每token每group 1字节，字节寻址，GM为ACL_FLOAT8_E8M0
+        uint64_t srcByteOffset = idInBlockTable * taskParam.kvCacheBlockSize * grpNum * taskParam.kvHeadNum +
+                                 taskParam.kvCacheBlockSize * grpNum * taskParam.n2Idx + remainElmenCnt * grpNum;
+        copyInParams.blockLen = copyElmenCnt * grpNum;
+        DataCopyPad(dstLocal.template ReinterpretCast<uint8_t>() [dstByteOffset], srcGm[srcByteOffset], copyInParams,
+                    copyInPadParams);
+        dstByteOffset += copyElmenCnt * grpNum;
+        copyFinishElmenCnt += copyElmenCnt;
+        curSequence += copyElmenCnt;
+    }
+}
+
+template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
+__aicore__ inline void
+AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAntiqOffsetPageAttention(
+    LocalTensor<Q_T> dstLocal, GlobalTensor<Q_T> &srcGm, GlobalTensor<int32_t> &blockTableGm,
+    const AntiquantTaskParamBaseAPI &taskParam, uint32_t grpNum)
+{
+    // offset按Q_T元素寻址，head项无条件生效
+    uint64_t blockTableBaseOffset = taskParam.bIdx * taskParam.maxBlockNumPerSeq;
+    uint64_t dstElemOffset = 0;
+    uint32_t copyFinishElmenCnt = 0;
+    uint32_t curSequence = taskParam.s2BatchOffset;
+
+    DataCopyExtParams copyInParams;
+    DataCopyPadExtParams<Q_T> copyInPadParams{};
+    copyInParams.blockCount = 1;
+    copyInParams.dstStride = 0;
+    copyInParams.srcStride = 0;
+
+    while (copyFinishElmenCnt < taskParam.copyTotalS) {
+        uint64_t blockIdOffset = curSequence / taskParam.kvCacheBlockSize;
+        uint64_t remainElmenCnt = curSequence % taskParam.kvCacheBlockSize;
+        uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset);
+        uint32_t copyElmenCnt = taskParam.kvCacheBlockSize - remainElmenCnt;
+        if (copyElmenCnt + copyFinishElmenCnt > taskParam.copyTotalS) {
+            copyElmenCnt = taskParam.copyTotalS - copyFinishElmenCnt;
+        }
+        uint64_t srcElemOffset = idInBlockTable * taskParam.kvCacheBlockSize * grpNum * taskParam.kvHeadNum +
+                                 taskParam.kvCacheBlockSize * grpNum * taskParam.n2Idx + remainElmenCnt * grpNum;
+        copyInParams.blockLen = copyElmenCnt * grpNum * sizeof(Q_T);
+        DataCopyPad(dstLocal[dstElemOffset], srcGm[srcElemOffset], copyInParams, copyInPadParams);
+        dstElemOffset += copyElmenCnt * grpNum;
+        copyFinishElmenCnt += copyElmenCnt;
+        curSequence += copyElmenCnt;
+    }
+}
+
+template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
+__aicore__ inline void
 AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::LoadAntiquantParamsPerTokenGroup(
-    GlobalTensor<ANTIQ_PARAMS_T> &antiqScaleGm, TQue<QuePosition::VECIN, 1> &antiqScaleInputQue,
-    TBuf<> kvAntiqMxScaleRes, const AntiquantTaskParamBaseAPI &taskParam, bool isBeforeHalf, int32_t s2RealSize)
+    GlobalTensor<SCALE_GM_T> &antiqScaleGm, GlobalTensor<ANTIQ_PARAMS_T> &antiqOffsetGm,
+    GlobalTensor<int32_t> &blockTableGm, TQue<QuePosition::VECIN, 1> &antiqScaleInputQue,
+    TQue<QuePosition::VECIN, 1> &antiqOffsetInputQue, TBuf<> kvAntiqMxScaleRes, TBuf<> kvOffsetBuf,
+    const AntiquantTaskParamBaseAPI &taskParam, bool isBeforeHalf, int32_t s2RealSize)
 {
     int32_t subBlockIdx;
     if (isBeforeHalf) {
@@ -266,26 +446,72 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::LoadAnt
     }
     uint32_t grpSize = 32;
     uint32_t grpNum = taskParam.headDim / grpSize;
+
+    DataCopyExtParams copyInParams;
+    DataCopyPadExtParams<Q_T> copyInPadParams{};
+    copyInParams.blockCount = 1;
+    copyInParams.dstStride = 0;
+    copyInParams.srcStride = 0;
+
+    // 字节/元素单位均为grpNum/token，scale(E8M0字节)与offset(Q_T元素)的偏移数值一致
     uint64_t scaleOffset = 0;
-    if (taskParam.isKvCacheNz) {
+    if (taskParam.isPageAttentionAntiquant && taskParam.isKvCacheNz) {
+        const uint32_t s2Aligned = AlignUp32(taskParam.copyTotalS);
+        LocalTensor<Q_T> antiqScaleE8M0Ub = antiqScaleInputQue.template AllocTensor<Q_T>();
+        CopyAntiqParamPageAttentionNz<uint8_t>(antiqScaleE8M0Ub, antiqScaleGm, blockTableGm, taskParam, grpNum,
+                                                s2Aligned);
+        antiqScaleInputQue.template EnQue(antiqScaleE8M0Ub);
+        antiqScaleE8M0Ub = antiqScaleInputQue.DeQue<Q_T>();
+
+        antiqScale = kvAntiqMxScaleRes.Get<ANTIQ_PARAMS_T>();
+        FaVectorApi::AntiqScalePerTokenGroupByVF<Q_T, ANTIQ_PARAMS_T>(antiqScaleE8M0Ub, antiqScale,
+                                                                       taskParam.copyTotalS, grpNum);
+        antiqScaleInputQue.FreeTensor(antiqScaleE8M0Ub);
+
+        if (taskParam.isExistOffset) {
+            LocalTensor<Q_T> antiqOffsetQTUbtmp = antiqOffsetInputQue.template AllocTensor<Q_T>();
+            CopyAntiqParamPageAttentionNz<Q_T>(antiqOffsetQTUbtmp, antiqOffsetGm, blockTableGm, taskParam, grpNum,
+                                                s2Aligned);
+            antiqOffsetInputQue.template EnQue(antiqOffsetQTUbtmp);
+            antiqOffsetQTUbtmp = antiqOffsetInputQue.DeQue<Q_T>();
+
+            antiqOffset = kvOffsetBuf.Get<ANTIQ_PARAMS_T>();
+            FaVectorApi::AntiqOffsetByVFNz<Q_T>(antiqOffsetQTUbtmp, antiqOffset, taskParam.copyTotalS, grpNum);
+            antiqOffsetInputQue.FreeTensor(antiqOffsetQTUbtmp);
+        }
+    } else if (taskParam.isKvCacheNz) {
         scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.seqSize * grpNum +
-                      taskParam.n2Idx * taskParam.seqSize * grpNum + taskParam.s2Idx * taskParam.singleSInnerSize * 1 +
-                      taskParam.kvPaddingBeginOffset * 1 + subBlockIdx * GetRealDealSize(s2RealSize) * 1;
+                      taskParam.n2Idx * taskParam.seqSize * grpNum + taskParam.s2Idx * taskParam.singleSInnerSize +
+                      taskParam.kvPaddingBeginOffset + subBlockIdx * GetRealDealSize(s2RealSize);
         if constexpr (FLASH_DECODE) {
-            scaleOffset += taskParam.flashDecodeS2Idx * taskParam.sInnerLoopSize * 1;
+            scaleOffset += taskParam.flashDecodeS2Idx * taskParam.sInnerLoopSize;
         }
 
         LocalTensor<Q_T> antiqScaleE8M0Ub = antiqScaleInputQue.template AllocTensor<Q_T>();
-        CopyAntiqScaleE8M0Nz(antiqScaleE8M0Ub, antiqScaleGm, scaleOffset / 2, AlignUp32(taskParam.copyTotalS), grpNum,
+        CopyAntiqScaleE8M0Nz(antiqScaleE8M0Ub, antiqScaleGm, scaleOffset, AlignUp32(taskParam.copyTotalS), grpNum,
                              taskParam.seqSize);
         antiqScaleInputQue.template EnQue(antiqScaleE8M0Ub);
         antiqScaleE8M0Ub = antiqScaleInputQue.DeQue<Q_T>();
 
         antiqScale = kvAntiqMxScaleRes.Get<ANTIQ_PARAMS_T>();
         FaVectorApi::AntiqScalePerTokenGroupByVF<Q_T, ANTIQ_PARAMS_T>(antiqScaleE8M0Ub, antiqScale,
-                                                                      taskParam.copyTotalS, grpNum);
+                                                                       taskParam.copyTotalS, grpNum);
         antiqScaleInputQue.FreeTensor(antiqScaleE8M0Ub);
+
+        if (taskParam.isExistOffset) {
+            // offset是Q_T元素，NZ布局与scale一致，拷贝后经VF展开为bf16
+            LocalTensor<Q_T> antiqOffsetQTUbtmp = antiqOffsetInputQue.template AllocTensor<Q_T>();
+            CopyAntiqOffsetNz(antiqOffsetQTUbtmp, antiqOffsetGm, scaleOffset, AlignUp32(taskParam.copyTotalS), grpNum,
+                              taskParam.seqSize);
+            antiqOffsetInputQue.template EnQue(antiqOffsetQTUbtmp);
+            antiqOffsetQTUbtmp = antiqOffsetInputQue.DeQue<Q_T>();
+
+            antiqOffset = kvOffsetBuf.Get<ANTIQ_PARAMS_T>();
+            FaVectorApi::AntiqOffsetByVFNz<Q_T>(antiqOffsetQTUbtmp, antiqOffset, taskParam.copyTotalS, grpNum);
+            antiqOffsetInputQue.FreeTensor(antiqOffsetQTUbtmp);
+        }
     } else {
+        // mode 6按head独立量化，非PA的5D布局[1,B,N,S,D/32]也含N，head项无条件生效
         if constexpr (enableKVPrefix) {
             if (taskParam.isPrefixLoop) {
                 scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.antiqSeqSize * grpNum +
@@ -299,26 +525,48 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::LoadAnt
                     taskParam.n2Idx * taskParam.antiqSeqSize * grpNum +
                     (taskParam.s2Idx * taskParam.singleSInnerSize + (taskParam.antiqSeqSize - taskParam.seqSize)) *
                         grpNum +
-                    taskParam.kvPaddingBeginOffset * grpNum + subBlockIdx * GetRealDealSize(s2RealSize) * grpNum;
+                    taskParam.kvPaddingBeginOffset * grpNum +
+                    subBlockIdx * GetRealDealSize(s2RealSize) * grpNum;
             }
         } else {
             scaleOffset = taskParam.bIdx * taskParam.kvHeadNum * taskParam.seqSize * grpNum +
                           taskParam.n2Idx * taskParam.seqSize * grpNum +
                           taskParam.s2Idx * taskParam.singleSInnerSize * grpNum +
-                          taskParam.kvPaddingBeginOffset * grpNum + subBlockIdx * GetRealDealSize(s2RealSize) * grpNum;
+                          taskParam.kvPaddingBeginOffset * grpNum +
+                          subBlockIdx * GetRealDealSize(s2RealSize) * grpNum;
         }
         if constexpr (FLASH_DECODE) {
             scaleOffset += taskParam.flashDecodeS2Idx * taskParam.sInnerLoopSize * grpNum;
         }
 
         LocalTensor<Q_T> antiqScaleE8M0Ub = antiqScaleInputQue.template AllocTensor<Q_T>();
-        CopyAntiqScaleE8M0(antiqScaleE8M0Ub, antiqScaleGm, scaleOffset / 2, taskParam.copyTotalS, grpNum);
+        if (taskParam.isPageAttentionAntiquant) {
+            CopyAntiqE8M0PageAttention(antiqScaleE8M0Ub, antiqScaleGm, blockTableGm, taskParam, grpNum);
+        } else {
+            CopyAntiqScaleE8M0(antiqScaleE8M0Ub, antiqScaleGm, scaleOffset, taskParam.copyTotalS, grpNum);
+        }
         antiqScaleInputQue.template EnQue(antiqScaleE8M0Ub);
         antiqScaleE8M0Ub = antiqScaleInputQue.DeQue<Q_T>();
 
         antiqScale = kvAntiqMxScaleRes.Get<ANTIQ_PARAMS_T>();
         FaVectorApi::AntiqScaleByVF<Q_T, ANTIQ_PARAMS_T>(antiqScaleE8M0Ub, antiqScale, taskParam.copyTotalS, grpNum);
         antiqScaleInputQue.FreeTensor(antiqScaleE8M0Ub);
+
+        if (taskParam.isExistOffset) {
+            // offset为Q_T(与query同dtype)，拷贝后经VF展开为bf16并复制成与scale解包一致的布局
+            LocalTensor<Q_T> antiqOffsetQTUbtmp = antiqOffsetInputQue.template AllocTensor<Q_T>();
+            if (taskParam.isPageAttentionAntiquant) {
+                CopyAntiqOffsetPageAttention(antiqOffsetQTUbtmp, antiqOffsetGm, blockTableGm, taskParam, grpNum);
+            } else {
+                CopyAntiqOffset(antiqOffsetQTUbtmp, antiqOffsetGm, scaleOffset, taskParam.copyTotalS, grpNum);
+            }
+            antiqOffsetInputQue.template EnQue(antiqOffsetQTUbtmp);
+            antiqOffsetQTUbtmp = antiqOffsetInputQue.DeQue<Q_T>();
+
+            antiqOffset = kvOffsetBuf.Get<ANTIQ_PARAMS_T>();
+            FaVectorApi::AntiqOffsetByVF<Q_T>(antiqOffsetQTUbtmp, antiqOffset, taskParam.copyTotalS, grpNum);
+            antiqOffsetInputQue.FreeTensor(antiqOffsetQTUbtmp);
+        }
     }
 }
 
@@ -675,8 +923,14 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
             perTokenScaleOffset = copyLoopIdx * taskParam.copySplitS;
         }
         LocalTensor<ANTIQ_PARAMS_T> antiqScaleWithOffset = antiqScale[perTokenScaleOffset];
-        CallAntiquantVF<false, false>(antiqResUb, antiqInUb, antiqOffset, antiqScaleWithOffset, dealRowCount,
-                                      taskParam);
+        if (taskParam.isExistOffset) {
+            LocalTensor<ANTIQ_PARAMS_T> antiqOffsetWithOffset = antiqOffset[perTokenScaleOffset];
+            CallAntiquantVF<true, false>(antiqResUb, antiqInUb, antiqOffsetWithOffset, antiqScaleWithOffset,
+                                         dealRowCount, taskParam);
+        } else {
+            CallAntiquantVF<false, false>(antiqResUb, antiqInUb, antiqOffset, antiqScaleWithOffset, dealRowCount,
+                                          taskParam);
+        }
     } else if constexpr (ANTIQUANT_PER_TOKEN) {
         uint32_t perTokenScaleOffset = copyLoopIdx * taskParam.copySplitS;
         if (taskParam.isKvCacheNz) {

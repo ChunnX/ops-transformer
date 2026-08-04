@@ -2158,19 +2158,19 @@ ge::graphStatus DequantChecker::CheckOffsetExistenceForAntiquant(const FiaTiling
                     fiaInfo.opName, "key_antiquant_offset and value_antiquant_offset",
                     "When keyAntiquantOffsetTensor is empty, valueAntiquantOffsetDesc must be empty"),
                 return ge::GRAPH_FAILED);
-    // key、value的datatype为FLOAT8_E4M3FN、HIFLOAT8和FLOAT4_E2M1时，不支持Offset
-    if (inputKvType == ge::DT_FLOAT8_E4M3FN || inputKvType == ge::DT_HIFLOAT8 || inputKvType == ge::DT_FLOAT4_E2M1) {
+    // key、value的datatype为FLOAT8_E4M3FN、HIFLOAT8时，不支持Offset
+    if (inputKvType == ge::DT_FLOAT8_E4M3FN || inputKvType == ge::DT_HIFLOAT8) {
         OP_CHECK_IF((keyAntiquantOffsetTensor != nullptr),
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                         fiaInfo.opName, "key_antiquant_offset",
-                        "When the dtype is FLOAT8_E4M3FN/HIFLOAT8/FLOAT4_E2M1, key_antiquant_offset must be empty"),
+                        "When the dtype is FLOAT8_E4M3FN/HIFLOAT8, key_antiquant_offset must be empty"),
                     return ge::GRAPH_FAILED);
     }
-    if (inputKvType == ge::DT_FLOAT8_E4M3FN || inputKvType == ge::DT_HIFLOAT8 || inputKvType == ge::DT_FLOAT4_E2M1) {
+    if (inputKvType == ge::DT_FLOAT8_E4M3FN || inputKvType == ge::DT_HIFLOAT8) {
         OP_CHECK_IF((valueAntiquantOffsetTensor != nullptr),
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
                         fiaInfo.opName, "value_antiquant_offset",
-                        "When the dtype is FLOAT8_E4M3FN/HIFLOAT8/FLOAT4_E2M1, value_antiquant_offset must be empty"),
+                        "When the dtype is FLOAT8_E4M3FN/HIFLOAT8, value_antiquant_offset must be empty"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -2282,8 +2282,6 @@ ge::graphStatus DequantChecker::CheckFeaturePAForAntiquant(const FiaTilingInfo &
     }
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
     auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
-    auto &keyAntiquantOffsetTensor = fiaInfo.opParamInfo.keyAntiquantOffset.tensor;
-    auto &valueAntiquantOffsetTensor = fiaInfo.opParamInfo.valueAntiquantOffset.tensor;
     int32_t blockSize = fiaInfo.blockSize;
     uint32_t maxBlockNumPerBatch = fiaInfo.maxBlockNumPerBatch;
 
@@ -2342,19 +2340,19 @@ ge::graphStatus DequantChecker::CheckFeaturePAForAntiquant(const FiaTilingInfo &
             return ge::GRAPH_FAILED;
         }
     }
-    // per-token-group模式，antiquantScale输入倒数第二维需要大于等于maxBlockNumPerSeq * blockSize
-    // shape为(1,B,N,S,D/32)
+    // 本变更仅支持 PA_NZ。mode 6 的参数 GM 布局为 [P, N, G, Bs]，
+    // 其中 P 是物理页数、G = D / 32、Bs 是 page block size；kernel 会按 blockTable 取页。
     if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
-        uint32_t dimNum = keyAntiquantScaleTensor->GetStorageShape().GetDimNum();
-        if (keyAntiquantScaleTensor->GetStorageShape().GetDim(dimNum - 2) < maxBlockNumPerBatch * blockSize) {
-            std::string shapeStr = ToStringRaw(keyAntiquantScaleTensor->GetStorageShape());
-            std::string reasonMsg = "The second-to-last dimension of key_antiquant_scale should be >= "
-                                    "maxBlockNumPerBatch * blockSize when keyAntiquantMode and valueAntiquantMode are "
-                                    "per-token-group mode and keyAntiquant/valueAntiquant is splited";
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", shapeStr.c_str(),
-                                                  reasonMsg.c_str());
-            return ge::GRAPH_FAILED;
-        }
+        OP_CHECK_IF((fiaInfo.kvLayout != FiaLayout::NZ),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        fiaInfo.opName, "input_layout", LayoutToSerialString(fiaInfo.kvLayout).c_str(),
+                        "per-token-group PageAttention currently supports only PA_NZ kv cache layout"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF((fiaInfo.qkHeadDim % 32) != 0,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        fiaInfo.opName, "head_dim", std::to_string(fiaInfo.qkHeadDim).c_str(),
+                        "head_dim must be divisible by 32 in per-token-group PageAttention mode"),
+                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -2613,7 +2611,11 @@ ge::graphStatus DequantChecker::CheckScaleShapeForAntiquant(const FiaTilingInfo 
         }
     }
     if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
-        if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenGroupMode(fiaInfo)) {
+        if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
+            if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenGroupPAMode(fiaInfo)) {
+                return ge::GRAPH_FAILED;
+            }
+        } else if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerTokenGroupMode(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -2640,6 +2642,41 @@ ge::graphStatus DequantChecker::CheckOffsetTypeForAntiquant(const FiaTilingInfo 
     // 校验offset矩阵的datatype的合法性
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
     auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
+
+    int64_t keyAntiquantMode = 0;
+    int64_t valueAntiquantMode = 0;
+    if (fiaInfo.opParamInfo.keyAntiquantMode != nullptr) {
+        keyAntiquantMode = *fiaInfo.opParamInfo.keyAntiquantMode;
+    }
+    if (fiaInfo.opParamInfo.valueAntiquantMode != nullptr) {
+        valueAntiquantMode = *fiaInfo.opParamInfo.valueAntiquantMode;
+    }
+    auto &queryDesc = fiaInfo.opParamInfo.query.desc;
+    if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
+        // per-token-group模式（MXFP4非对称）：offset的数据类型与query一致
+        auto &keyAntiquantOffsetDesc = fiaInfo.opParamInfo.keyAntiquantOffset.desc;
+        if (keyAntiquantOffsetDesc != nullptr) {
+            OP_CHECK_IF((keyAntiquantOffsetDesc->GetDataType() != queryDesc->GetDataType()),
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                            fiaInfo.opName, "key_antiquant_offset",
+                            ToString(keyAntiquantOffsetDesc->GetDataType()).c_str(),
+                            "The dtype of key_antiquant_offset must be the same as query "
+                            "when keyAntiquantMode is per-token-group mode"),
+                        return ge::GRAPH_FAILED);
+        }
+        auto &valueAntiquantOffsetDesc = fiaInfo.opParamInfo.valueAntiquantOffset.desc;
+        if (valueAntiquantOffsetDesc != nullptr) {
+            OP_CHECK_IF(
+                (valueAntiquantOffsetDesc->GetDataType() != queryDesc->GetDataType()),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                    fiaInfo.opName, "value_antiquant_offset",
+                    ToString(valueAntiquantOffsetDesc->GetDataType()).c_str(),
+                    "The dtype of value_antiquant_offset must be the same as query "
+                    "when valueAntiquantMode is per-token-group mode"),
+                return ge::GRAPH_FAILED);
+        }
+        return ge::GRAPH_SUCCESS;
+    }
 
     // keyAntiquantOffset的datatype与keyAntiquantScale一致
     auto &keyAntiquantOffsetDesc = fiaInfo.opParamInfo.keyAntiquantOffset.desc;
@@ -2956,6 +2993,37 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenHeadPAMode(const FiaT
     std::string dimStr = std::to_string(keyAntiquantScaleTensorDimNum) + "D";
     OP_LOGE_FOR_INVALID_SHAPEDIM(fiaInfo.opName, "key_antiquant_scale", dimStr.c_str(), "3D");
     return ge::GRAPH_FAILED;
+}
+
+ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenGroupPAMode(const FiaTilingInfo &fiaInfo) const
+{
+    auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
+    gert::Shape keyAntiquantScaleTensorShape = keyAntiquantScaleTensor->GetStorageShape();
+    OP_CHECK_IF((fiaInfo.kvLayout != FiaLayout::NZ),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    fiaInfo.opName, "input_layout", LayoutToSerialString(fiaInfo.kvLayout).c_str(),
+                    "per-token-group PageAttention currently supports only PA_NZ kv cache layout"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((fiaInfo.qkHeadDim % 32) != 0,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    fiaInfo.opName, "head_dim", std::to_string(fiaInfo.qkHeadDim).c_str(),
+                    "head_dim must be divisible by 32 in per-token-group PageAttention mode"),
+                return ge::GRAPH_FAILED);
+
+    const uint32_t grpNum = fiaInfo.qkHeadDim / 32;
+    gert::Shape expectedShape = gert::Shape({fiaInfo.totalBlockNum, fiaInfo.n2Size, grpNum, fiaInfo.blockSize});
+    if (keyAntiquantScaleTensorShape != expectedShape) {
+        std::string actualShape = ToStringRaw(keyAntiquantScaleTensorShape);
+        std::string reasonMsg =
+            "The shape of keyAntiquantScale must be [P(" + std::to_string(fiaInfo.totalBlockNum) + "), N(" +
+            std::to_string(fiaInfo.n2Size) + "), G=D/32(" + std::to_string(grpNum) + "), Bs(" +
+            std::to_string(fiaInfo.blockSize) +
+            ")] when keyAntiquantMode is per-token-group PageAttention PA_NZ mode";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", actualShape.c_str(),
+                                              reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenGroupMode(const FiaTilingInfo &fiaInfo) const
