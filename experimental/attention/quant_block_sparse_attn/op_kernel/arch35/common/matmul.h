@@ -50,6 +50,8 @@ struct MMParam {
                            // 3：enable: 行为在切K接口中（MatmulK），在k的最后一轮循环，会将mmadParams.unitFlag设置为
                            // 0b11 外部使用时，在外层k循环的最后一轮将该参数配置为3
     uint32_t realM = 0; // bmm2以s1realsize为M轴，不赋值时不影响现有代码逻辑
+    // Optional MX scale row stride. Zero keeps the original compact layout derived from singleK.
+    uint32_t mxScaleASrcStride = 0;
 };
 
 __aicore__ inline MMParam MxMakeMMParam(uint32_t singleM, uint32_t singleN, uint32_t singleK, bool isLeftTranspose,
@@ -216,7 +218,8 @@ __aicore__ inline void LoadDataToL0AMx(LocalTensor<U> &aL0Tensor, const LocalTen
     loadData2DMxParamsA.yStartPosition = 0;
     loadData2DMxParamsA.xStep = ((mSplitSize + 15) >> 4 << 4) >> 4;
     loadData2DMxParamsA.yStep = (kSplitSize + 63) >> 5 >> 1;
-    loadData2DMxParamsA.srcStride = loadData2DMxParamsA.yStep;
+    loadData2DMxParamsA.srcStride =
+        mmParam.mxScaleASrcStride != 0U ? mmParam.mxScaleASrcStride : loadData2DMxParamsA.yStep;
     loadData2DMxParamsA.dstStride = loadData2DMxParamsA.yStep;
     if (mmParam.realM != 0) {
         loadData2DParamsA.mStep = ((mmParam.realM + 15) >> 4 << 4) >> 4;

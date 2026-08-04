@@ -278,6 +278,9 @@ public:
 
             MMParam param =
                 MxMakeMMParam(M_BASE, constInfo.dSizeV, AlignUp64(realK), true, false, kIdx == 0U, kIdx == 0U);
+            // PScale remains packed as a fixed 256-column tile even when the current K tail is only 64/128/192.
+            // LoadData2DMx expresses this stride in pairs of E8M0 scales (64 P elements per unit).
+            param.mxScaleASrcStride = S2_SPLIT / MX_TOKEN_GROUP;
             // P 转置，V 保持 KN。
             MxStatic::MxMatmulFullStatic<INPUT_T, INPUT_T, MM_T, SCALE_T, SCALE_T, mx_fp8_e4m3_t,
                                          mx_fp8_e4m3_t>(pBuf.ReinterpretCast<INPUT_T>()[kIdx * l1BaseKOffset],
