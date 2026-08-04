@@ -45,6 +45,7 @@ import torch_npu
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from golden import (  # noqa: E402
+    GENERALIZED_CASES,
     HEAD_DIM,
     TYPICAL_CASES,
     build_case,
@@ -120,8 +121,22 @@ def run_case(spec, verbose=True):
     untouched_ok = torch.equal(k_out_rows[untouched], k_in_rows[untouched])
 
     if verbose:
+        # 只打印偏离默认的维度，默认集的输出保持原样不被噪声淹没
+        extra = []
+        if meta["mrope_section"] != [16, 16, 16]:
+            extra.append(f"sec={meta['mrope_section']}")
+        if meta["cat"] != "shuffled":
+            extra.append(f"cat={meta['cat']}")
+        if meta["slot_mode"] != "shuffled":
+            extra.append(f"slot={meta['slot_mode']}")
+        if meta["seed"] != 7:
+            extra.append(f"seed={meta['seed']}")
+        if meta["norm_eps"] != 1e-6:
+            extra.append(f"eps={meta['norm_eps']:g}")
+        if meta["max_pos"] != 4096:
+            extra.append(f"max_pos={meta['max_pos']}")
         print(f"  [{meta['name']:<22}] 接口 OK  T={total:<6} heads=({hq},{hk},{hv}) bs={meta['block_size']:<4} "
-              f"q={tuple(q.shape)} k_cache={tuple(k_cache.shape)} 未命中槽保持原值={untouched_ok}")
+              f"未命中槽保持原值={untouched_ok}  {' '.join(extra)}")
 
     # ---- 数值精度（对 golden）----
     results = [
@@ -141,11 +156,20 @@ def main():
     parser = argparse.ArgumentParser(description="UndGenQkvRmsNormRopeCache torch 接口测试")
     parser.add_argument("--full", action="store_true", help="包含 T=64K 的大 case")
     parser.add_argument("--case", default=None, help="只跑指定 case 名")
+    parser.add_argument("--generalized", action="store_true",
+                        help="只跑泛化集（mrope_section / cat / slot / seed / eps / max_pos 的覆盖补充）")
+    parser.add_argument("--all-sets", action="store_true", help="典型集 + 泛化集一起跑")
     args = parser.parse_args()
 
     print(f"device: {torch.npu.get_device_name(0)}, torch {torch.__version__}, "
           f"torch_npu {torch_npu.__version__}")
-    specs = [s for s in TYPICAL_CASES if (args.case is None or s["name"] == args.case)]
+    if args.generalized:
+        pool = list(GENERALIZED_CASES)
+    elif args.all_sets:
+        pool = list(TYPICAL_CASES) + list(GENERALIZED_CASES)
+    else:
+        pool = list(TYPICAL_CASES)
+    specs = [s for s in pool if (args.case is None or s["name"] == args.case)]
     if args.case is None and not args.full:
         skipped = [s["name"] for s in specs if s["big"]]
         specs = [s for s in specs if not s["big"]]
