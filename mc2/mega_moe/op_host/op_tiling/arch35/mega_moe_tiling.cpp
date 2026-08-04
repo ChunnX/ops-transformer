@@ -75,11 +75,10 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
     OP_LOGD(nodeName, "shape: bs=%u, h=%u, hiddenDim=%u, topK=%u, maxOutputSize=%u", tilingData->bs, tilingData->h,
             tilingData->hiddenDim, tilingData->topK, tilingData->maxOutputSize);
     OP_LOGD(nodeName,
-            "topology: expertPerRank=%u, moeExpertPerRank=%u, sharedExpertNum=%u, epWorldSize=%u, aicNum=%u, "
+            "topology: moeExpertPerRank=%u, sharedExpertNum=%u, epWorldSize=%u, aicNum=%u, "
             "blockAivNum=%u, blockNumPerEP=%u, topoType=%ld",
-            tilingData->expertPerRank, tilingData->moeExpertPerRank, tilingData->sharedExpertNum,
-            tilingData->epWorldSize, tilingData->aicNum, tilingData->blockAivNum, tilingData->blockNumPerEP,
-            tilingData->topoType);
+            tilingData->moeExpertPerRank, tilingData->sharedExpertNum, tilingData->epWorldSize, tilingData->aicNum,
+            tilingData->blockAivNum, tilingData->blockNumPerEP, tilingData->topoType);
     OP_LOGD(nodeName, "mode: groupedMatmulMode=%u, combineQuantMode=%ld, clampLimit=%f",
             static_cast<uint32_t>(tilingData->groupedMatmulMode), tilingData->combineQuantMode, tilingData->clampLimit);
     OP_LOGD(nodeName, "combineSync: slotCountPerExpert=%lu", tilingData->combineSyncSlotCountPerExpert);
@@ -147,8 +146,8 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
         ops::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) / (int64_t)sizeof(int32_t);
     int64_t maskAlignSize = ops::CeilAlign(compareCount / 8, (int64_t)ALIGN_32);
     int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32; // mask + 32B count
-    int64_t maskRecvSize =
-        ops::CeilAlign((int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
+    int64_t maskRecvSize = ops::CeilAlign(
+        (int64_t)tilingData->moeExpertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
     OP_LOGD(nodeName, "maskRecvSize: {%ld}\n", maskRecvSize);
     uint32_t mxScaleNum = ops::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
     uint32_t dataBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
@@ -325,7 +324,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
     int64_t h = xStorageShape->GetStorageShape().GetDim(1);
     int64_t topK = topkIdsStorageShape->GetStorageShape().GetDim(1);
-    int64_t expertPerRank = weightOneStorageShape->GetStorageShape().GetDim(0);
+    int64_t weightExpertPerRank = weightOneStorageShape->GetStorageShape().GetDim(0);
     int64_t n = weightOneStorageShape->GetStorageShape().GetDim(1);
 
     ge::DataType yDtype = yDesc->GetDataType();
@@ -352,10 +351,10 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
 
     int64_t moeExpertPerRank = moeExpertNum / epWorldSize;
     OP_TILING_CHECK(
-        expertPerRank < moeExpertPerRank,
+        weightExpertPerRank != moeExpertPerRank,
         OP_LOGE_FOR_INVALID_VALUE(
-            nodeName, "expertPerRank", std::to_string(expertPerRank).c_str(),
-            (std::string("should >= moeExpertNum/epWorldSize = ") + std::to_string(moeExpertPerRank)).c_str()),
+            nodeName, "weight1 dim0", std::to_string(weightExpertPerRank).c_str(),
+            (std::string("should equal moeExpertNum/epWorldSize = ") + std::to_string(moeExpertPerRank)).c_str()),
         return ge::GRAPH_FAILED);
 
     // maskRecv Size
@@ -363,7 +362,7 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
         ops::CeilAlign((int64_t)(bs * topK * sizeof(int32_t)), (int64_t)(ALIGN_256)) / (int64_t)sizeof(int32_t);
     int64_t maskAlignSize = ops::CeilAlign(compareCount / 8, (int64_t)ALIGN_32); // 8 = block_32 / sizeof(int32_t)
     int64_t maskSlotSize = maskAlignSize + ALIGN_32;                             // mask + 32B count
-    int64_t maskRecvSize = ops::CeilAlign(expertPerRank * epWorldSize * maskSlotSize, ALIGN_512);
+    int64_t maskRecvSize = ops::CeilAlign(moeExpertPerRank * epWorldSize * maskSlotSize, ALIGN_512);
     // quantTokenScale Size
     uint32_t mxScaleNum = ops::CeilDiv(h, static_cast<int64_t>(ALIGN_32));
     uint32_t dataBytes = ops::CeilAlign(h, static_cast<int64_t>(ALIGN_256)) * sizeof(int8_t);
@@ -396,10 +395,10 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
 
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
     int64_t maxRecvTokenNum = static_cast<int64_t>(*maxRecvTokenNumPtr);
-    OP_TILING_CHECK(maxRecvTokenNum < 0 || maxRecvTokenNum > bs * epWorldSize * std::min(topK, expertPerRank),
+    OP_TILING_CHECK(maxRecvTokenNum < 0 || maxRecvTokenNum > bs * epWorldSize * std::min(topK, moeExpertPerRank),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(),
                                               (std::string("should in [0, ") +
-                                               std::to_string(bs * epWorldSize * std::min(topK, expertPerRank)) + "]")
+                                               std::to_string(bs * epWorldSize * std::min(topK, moeExpertPerRank)) + "]")
                                                   .c_str()),
                     return ge::GRAPH_FAILED);
 
@@ -513,9 +512,13 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     auto activationBetaPtr = attrs->GetAttrPointer<float>((config.attrActivationBetaIndex));
 
     tilingData->epWorldSize = *epWorldSizePtr;
+    auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMoeExpertNumIndex));
+    int64_t moeExpertNum = static_cast<int64_t>(*moeExpertNumPtr);
+    int64_t moeExpertPerRank = moeExpertNum / static_cast<int64_t>(tilingData->epWorldSize);
+    tilingData->moeExpertPerRank = static_cast<uint32_t>(moeExpertPerRank);
     tilingData->maxOutputSize = *maxRecvTokenNumPtr != 0 ? *maxRecvTokenNumPtr :
                                                            tilingData->bs * tilingData->epWorldSize *
-                                                               std::min(tilingData->topK, tilingData->expertPerRank);
+                                                               std::min(tilingData->topK, tilingData->moeExpertPerRank);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
     tilingData->combineQuantMode = GetCombineQuantModeByAttr(context, config);
     tilingData->clampLimit = *activationClampPtr;
@@ -536,10 +539,6 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         tilingData->actSubMode = ACT_SUB_MODE_DEFAULT;
     }
 
-    auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMoeExpertNumIndex));
-    int64_t moeExpertNum = static_cast<int64_t>(*moeExpertNumPtr);
-    int64_t moeExpertPerRank = moeExpertNum / static_cast<int64_t>(tilingData->epWorldSize);
-    tilingData->moeExpertPerRank = static_cast<uint32_t>(moeExpertPerRank);
     auto sharedWeight1StorageShape = context->GetDynamicInputShape(config.sharedWeight1Index, 0);
     if (sharedWeight1StorageShape != nullptr) {
         tilingData->sharedExpertNum = static_cast<uint32_t>(sharedWeight1StorageShape->GetStorageShape().GetDim(0));
@@ -619,10 +618,11 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
     uint32_t fixedBufferBytes =
         static_cast<uint32_t>(ALIGN_32) +
         static_cast<uint32_t>(
-            ops::CeilAlign(static_cast<uint64_t>(tilingData->epWorldSize) * tilingData->expertPerRank * sizeof(int32_t),
+            ops::CeilAlign(static_cast<uint64_t>(tilingData->epWorldSize) * tilingData->moeExpertPerRank *
+                               sizeof(int32_t),
                            static_cast<uint64_t>(ALIGN_32))) +
         tilingData->epWorldSize * static_cast<uint32_t>(ALIGN_32) +
-        static_cast<uint32_t>(ops::CeilAlign(static_cast<uint64_t>(tilingData->expertPerRank) * sizeof(int32_t),
+        static_cast<uint32_t>(ops::CeilAlign(static_cast<uint64_t>(tilingData->moeExpertPerRank) * sizeof(int32_t),
                                              static_cast<uint64_t>(ALIGN_32)));
     uint32_t maskBufferBytes = static_cast<uint32_t>(bufferConfig.routeItemsPerBatch / 8);
     // routeIndexBufferBytes 是单个 int32 route index tensor 的大小。
@@ -877,10 +877,9 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
             ops::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
     }
     uint32_t quantInputBufferBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_128)) * sizeof(uint16_t);
-    // sendCntAccTensor_ 按本卡 weight 容量分配，与 kernel 地址布局一致；实际 mask push 次数按 routed MoE
-    // expert 数计算，不包含共享专家和未参与路由的预留 weight。
+    // sendCntAccTensor_ 按本卡 routed MoE expert 数分配，与 kernel 地址布局一致。
     uint32_t maxExpertCountPerCore =
-        ops::CeilDiv(tilingData->epWorldSize * tilingData->expertPerRank, tilingData->blockAivNum);
+        ops::CeilDiv(tilingData->epWorldSize * tilingData->moeExpertPerRank, tilingData->blockAivNum);
     uint32_t sendCountAccumulatorBytes = static_cast<uint32_t>(ops::CeilAlign(
         static_cast<uint64_t>(maxExpertCountPerCore) * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32)));
     // mxTempTensor_ 占 2KB，xOutTensor_ 和 xInTensor_ 各使用双 buffer。
@@ -896,7 +895,7 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
      * 若修改 SendMaskCal 的 expert 分核方式、ownedExpertCount 或 maskPushCount 计算，必须同步更新
      * 这里的两类 core 划分和 kernel 配置选择条件。
      */
-    // SendMaskCal 只遍历 routed MoE 专家；expertPerRank 是本卡 weight 容量，可能包含未参与路由的预留项。
+    // SendMaskCal 只遍历 routed MoE 专家，不包含独立处理的共享专家。
     uint32_t totalExpertCount = tilingData->epWorldSize * tilingData->moeExpertPerRank;
     uint32_t expertCountPerCoreWithoutExtraExpert = totalExpertCount / tilingData->blockAivNum;
     tilingData->sendMaskCoreCountWithExtraExpert = totalExpertCount % tilingData->blockAivNum;
@@ -1199,8 +1198,6 @@ static ge::graphStatus CheckOutputTensorDim(const gert::TilingContext *context, 
 
     int64_t bs = xStorageShape->GetStorageShape().GetDim(0);
     int64_t h = xStorageShape->GetStorageShape().GetDim(1);
-    int64_t expertPerRank = weightOneStorageShape->GetStorageShape().GetDim(0);
-
     auto yStorageShape = context->GetOutputShape(config.yIndex);
     OP_CHECK_NULL_WITH_CONTEXT(context, yStorageShape);
     OP_TILING_CHECK(
@@ -1637,7 +1634,7 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
     OP_CHECK_NULL_WITH_CONTEXT(context, weightOneStorageShape);
     int64_t weightOneDim0 = weightOneStorageShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK(weightOneDim0 < MIN_EXPERT_PER_RANK || weightOneDim0 > MAX_EXPERT_PER_RANK,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertPerRank", std::to_string(weightOneDim0).c_str(),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "weight1 dim0", std::to_string(weightOneDim0).c_str(),
                                               (std::string("should in [") + std::to_string(MIN_EXPERT_PER_RANK) + ", " +
                                                std::to_string(MAX_EXPERT_PER_RANK) + "]")
                                                   .c_str()),
@@ -1671,15 +1668,12 @@ static ge::graphStatus SetInputParam(const gert::TilingContext *context, MegaMoe
 
     auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightOneStorageShape);
-    int64_t expertPerRank = weightOneStorageShape->GetStorageShape().GetDim(0);
     int64_t hiddenDim = weightOneStorageShape->GetStorageShape().GetDim(1);
 
     tilingData->bs = static_cast<uint32_t>(bs);
     tilingData->h = static_cast<uint32_t>(h);
     tilingData->hiddenDim = static_cast<uint32_t>(hiddenDim);
     tilingData->topK = static_cast<uint32_t>(topK);
-    tilingData->expertPerRank = static_cast<uint32_t>(expertPerRank);
-
     return ge::GRAPH_SUCCESS;
 }
 

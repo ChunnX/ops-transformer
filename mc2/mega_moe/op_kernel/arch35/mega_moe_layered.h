@@ -177,7 +177,6 @@ private:
     uint32_t serverNum_ = 0;
     uint32_t serverId_ = 0;
     uint32_t rankIdInServer_ = 0;
-    uint32_t expertPerRank_ = 0;
     int64_t hiddenDim_ = 0;
     uint64_t maxOutputSize_ = 0;
     uint32_t startBlockIdx_ = 0;
@@ -296,7 +295,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     topK_ = tilingData->topK;
     sendTotalNum_ = m_ * topK_;
     worldSize_ = tilingData->epWorldSize;
-    expertPerRank_ = tilingData->expertPerRank;
     moeExpertPerRank_ = tilingData->moeExpertPerRank;
     sharedExpertNum_ = tilingData->sharedExpertNum;
     blockNumPerRank_ = tilingData->blockNumPerEP;
@@ -349,7 +347,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     // 每个 block 负责一个专家，cumsumInfo 中每个专家占 worldSize 个
     // int32_t 存 rank 维度的 cumsum 结果，blockIdx 决定了负责哪个专家。
     uint64_t cumsumStride =
-        Ops::Base::CeilAlign(static_cast<int64_t>(worldSize_ * expertPerRank_ * sizeof(int32_t)), ALIGN_32);
+        Ops::Base::CeilAlign(static_cast<int64_t>(worldSize_ * moeExpertPerRank_ * sizeof(int32_t)), ALIGN_32);
     cumsumInfoGlobalTensor_.SetGlobalBuffer(
         reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.cumsumInfoPtr + cumsumStride * blockIdx_));
     epilogueOp_.Init({params_.workspaceInfo.swigluQuantDataPtr, params_.workspaceInfo.swigluQuantScalePtr,
@@ -401,7 +399,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchB
         LocalTensor<int32_t>(TPosition::VECCALC, expertTokenCntTensorAddr, expertTokenCntTensorSize / sizeof(int32_t));
     uint32_t cumsumInfoTensorAddr = expertTokenCntTensorAddr + expertTokenCntTensorSize;
     uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(worldSize_ * expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
+        static_cast<int64_t>(worldSize_ * moeExpertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     cumsumInfoTensor_ =
         LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorAddr, cumsumInfoTensorSize / sizeof(int32_t));
     // 分轮次参数计算：validTopkIndexTensor_ + topkIndexTensor_ + gatherMaskTensor_ 均为 round-sized
@@ -422,7 +420,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchB
         dispatchFixedCost = relayAndCopyTmpBytes + SEND_DEDUP_MASK_UB_BYTES + MX_QUANT_TEMP_UB_BYTES +
                             mxQuantTokenScaleAlignBytes_ +
                             Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t) +
-                            Ops::Base::CeilAlign(static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)),
+                            Ops::Base::CeilAlign(static_cast<int64_t>(moeExpertPerRank_ * sizeof(int32_t)),
                                                  static_cast<int64_t>(ALIGN_32)) +
                             static_cast<uint32_t>(MegaMoeImpl::L1_TILE_M_256) * static_cast<uint32_t>(ALIGN_32);
     }
@@ -517,10 +515,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchB
     xInTensor1_ =
         LocalTensor<bfloat16_t>(TPosition::VECCALC, urmaXInTensorAddr, urmaXInTensorSize / sizeof(bfloat16_t));
     // Tensor用处：ExpertTokenNumCopyOut 函数中本卡各专家收到的tokenCnt数；
-    // Tensor大小：expertPerRank_ * sizeof(int32_t) 对齐至32字节；
+    // Tensor大小：moeExpertPerRank_ * sizeof(int32_t) 对齐至32字节；
     uint32_t expertTokenNumsOutTensorAddr = urmaXInTensorAddr + urmaXInTensorSize;
     uint32_t expertTokenNumsOutTensorSize =
-        Ops::Base::CeilAlign(static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
+        Ops::Base::CeilAlign(static_cast<int64_t>(moeExpertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     expertTokenNumsOutTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, expertTokenNumsOutTensorAddr,
                                                      expertTokenNumsOutTensorSize / sizeof(int32_t));
     // 记录当前已被使用的ub地址，用于后续MetaInfoCalAndDispatch函数中分核后神申请metaInfoTensor_
@@ -553,7 +551,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendAndQu
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         totalFlagInt32 += static_cast<uint64_t>(aicNum_) * INT_CACHELINE;
     }
-    int64_t tokenGroupResetSize = static_cast<int64_t>(expertPerRank_) * blockAivNum_ * INT_CACHELINE;
+    int64_t tokenGroupResetSize = static_cast<int64_t>(moeExpertPerRank_) * blockAivNum_ * INT_CACHELINE;
     totalFlagInt32 = (static_cast<int64_t>(totalFlagInt32) > tokenGroupResetSize) ?
                          static_cast<int64_t>(totalFlagInt32) :
                          tokenGroupResetSize;
@@ -920,10 +918,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchC
 {
     for (uint32_t topkIdx = 0; topkIdx < topK_; ++topkIdx) {
         int32_t globalExpertId = topkIdsGlobal.GetValue(tokenIdx * topK_ + topkIdx);
-        if ((globalExpertId % static_cast<int32_t>(expertPerRank_)) != localExpertId) {
+        if ((globalExpertId % static_cast<int32_t>(moeExpertPerRank_)) != localExpertId) {
             continue;
         }
-        uint32_t targetRank = static_cast<uint32_t>(globalExpertId) / expertPerRank_;
+        uint32_t targetRank = static_cast<uint32_t>(globalExpertId) / moeExpertPerRank_;
         uint32_t targetServer = targetRank / rankPerServer_;
         uint32_t localTokenIdx = tokenIdx - tokenStart;
         uint32_t targetDedupWordIdx =
@@ -1907,7 +1905,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessCo
     uint32_t endRankId = 0;
     ProcessCombineGroups(gmmAddrInfo, gmm2State, expertIdx, startRankId, endRankId);
 
-    if (expertIdx == expertPerRank_ - 1) {
+    if (expertIdx == moeExpertPerRank_ - 1) {
         DrainCombineChannels(startRankId, endRankId);
     }
 }
@@ -1922,7 +1920,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Unpermute
                                                     static_cast<uint32_t>(ALIGN_32));
     int32_t num =
         worldSize_ *
-        Ops::Base::CeilAlign(static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128)) *
+        Ops::Base::CeilAlign(static_cast<uint32_t>(worldSize_ * moeExpertPerRank_), static_cast<uint32_t>(ALIGN_128)) *
         sizeof(int32_t);
     uint32_t dataResFp32BufAlign = dataResBufAlign * HALF_TO_FP32;
     uint32_t fixedUbBeforeTopK = dataResBufAlign + dataResFp32BufAlign;
