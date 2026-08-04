@@ -96,9 +96,9 @@ struct PeermemInfo {
                                                      sizeof(int8_t) * static_cast<int64_t>(serverNum)),
                                            (int64_t)ALIGN_512);
             dispatchFlagPtr = base + offset;
-            offset += Ops::Base::CeilAlign(
-                static_cast<int64_t>(serverNum) * tilingData->bs * static_cast<int64_t>(sizeof(uint64_t)),
-                static_cast<int64_t>(ALIGN_512));
+            offset += Ops::Base::CeilAlign(static_cast<int64_t>(serverNum) * tilingData->bs *
+                                               static_cast<int64_t>(sizeof(uint64_t)),
+                                           static_cast<int64_t>(ALIGN_512));
         }
         combineSendPtr = base + offset;
     }
@@ -108,6 +108,13 @@ struct CombineCommParams {
     uint32_t rankId;
     Hcomm<COMM_PROTOCOL_UBC_CTP> *hcomm;
     __gm__ Mc2MoeContext *mc2Context;
+};
+
+struct ExpertWeightTensorListAddrs {
+    GM_ADDR weight1 = nullptr;
+    GM_ADDR weightScales1 = nullptr;
+    GM_ADDR weight2 = nullptr;
+    GM_ADDR weightScales2 = nullptr;
 };
 
 struct Params {
@@ -130,7 +137,10 @@ struct Params {
     CombineCommParams combineCommParams;
 };
 
-enum class AddrUpdateMode : int32_t { GMM1, GMM2 };
+enum class AddrUpdateMode : int32_t {
+    GMM1,
+    GMM2
+};
 
 __aicore__ inline void NotifyCube(uint16_t value = 0)
 {
@@ -220,6 +230,18 @@ __aicore__ inline GM_ADDR GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
     uint64_t tensorPtrOffset = *dataAddr;
     __gm__ uint64_t *retPtr = dataAddr + (tensorPtrOffset >> 3);
     return reinterpret_cast<GM_ADDR>(*(retPtr + index));
+}
+
+template <typename ElementType>
+__aicore__ inline GM_ADDR GetExpertWeightAddr(GM_ADDR tensorListAddr, bool isPerExpertWeightTensor, uint32_t expertIdx,
+                                              uint64_t elementOffset)
+{
+    uint16_t tensorIdx = isPerExpertWeightTensor ? static_cast<uint16_t>(expertIdx) : 0U;
+    GM_ADDR tensorAddr = GetTensorAddr(tensorIdx, tensorListAddr);
+    if (isPerExpertWeightTensor) {
+        return tensorAddr;
+    }
+    return tensorAddr + elementOffset * sizeof(ElementType);
 }
 
 // Base template: handles single-index case
