@@ -108,6 +108,11 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
     tilingData = tiling;
     SetConstInfo();
 
+    AscendC::PRINTF("[luo] slig_init_ptr seqQ=%d seqK=%d bSize=%u n2=%u gQ=%u gQI=%u dQ=%u dQI=%u k=%u\n",
+        (actualSeqLengthsQuery != nullptr), (actualSeqLengthsKey != nullptr),
+        constInfo.bSize, constInfo.n2Size, constInfo.gSizeQuery, constInfo.gSizeQueryIndex,
+        constInfo.dSizeQuery, constInfo.dSizeQueryIndex, constInfo.kSize);
+
     if (actualSeqLengthsQuery != nullptr) {
         actualSeqLengthsQueryGm.SetGlobalBuffer((__gm__ int64_t *)actualSeqLengthsQuery, constInfo.bSize);
     } else {
@@ -131,6 +136,8 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
 
         AscendC::PRINTF("[luo] slig_tail_pad core aivIdx=%u aicIdx=%u, t1Size=%ld actualLen=%ld t2Size=%ld actualKLen=%ld totalAivNum=%ld\n",
             constInfo.aivIdx, constInfo.aicIdx, t1Size, actualLen, t2Size, actualKLen, totalAivNum);
+        AscendC::PRINTF("[luo] slig_gm_sizes query=%ld key=%ld bSize=%u\n",
+            tlQryGmSize, tlKeyGmSize, constInfo.bSize);
 
         if (t1Size > actualLen && totalAivNum > 0) {
             int64_t t1PadLen = t1Size - actualLen;
@@ -168,6 +175,8 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
                             static_cast<int64_t>(constInfo.dSizeQueryIndex), dWOutputOffset);
                 }
             }
+        } else {
+            AscendC::PRINTF("[luo] slig_t1_pad skip: t1Size(%ld) <= actualLen(%ld) or totalAivNum(%ld) == 0\n", t1Size, actualLen, totalAivNum);
         }
         if (t2Size > actualKLen && totalAivNum > 0) {
             int64_t t2PadLen = t2Size - actualKLen;
@@ -769,6 +778,8 @@ SparseLightningIndexerGradKLLossKernelBase<CubeBlockType, VecBlockType>::InitWor
         } else {
             constInfo.totalCost = constInfo.bSize * constInfo.s2Size;
         }
+        AscendC::PRINTF("[luo] slig_workspace_tnd totalCost=%ld keyGmSize=%ld bSize=%u s2Size=%u\n",
+            constInfo.totalCost, actualSeqLengthsKeyGm.GetSize(), constInfo.bSize, constInfo.s2Size);
     } else if constexpr (LAYOUT_Q == SLILayout::BSND) {
         constInfo.totalCost = constInfo.bSize * constInfo.s2Size;
     }
