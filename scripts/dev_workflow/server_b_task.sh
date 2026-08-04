@@ -214,7 +214,11 @@ main()
     [[ -n "${SOC:-}" ]] || die "task file must set SOC"
     [[ -n "${CANN_ENV:-}" ]] || die "task file must set CANN_ENV"
     [[ "$SOC" == "ascend950" ]] || die "server B is Ascend950PR; task SOC must be ascend950"
-    [[ "$CANN_ENV" == "/usr/local/Ascend/cann-9.2.0/set_env.sh" ]] || die "task must use server B CANN 9.2.0 environment"
+    case "$CANN_ENV" in
+        "/usr/local/Ascend/cann-9.2.0/set_env.sh" | \
+        "/home/l00803537/CANN90/cann-9.0.0/set_env.sh") ;;
+        *) die "task CANN environment is not allowlisted for server B: $CANN_ENV" ;;
+    esac
     declare -F task_build >/dev/null || die "task file must define task_build"
     declare -F task_select_package >/dev/null || die "task file must define task_select_package"
     declare -F task_install >/dev/null || die "task file must define task_install"
