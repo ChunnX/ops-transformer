@@ -62,7 +62,7 @@ protected:
     static constexpr uint64_t SCALE_LAST_DIM = 2;
     static constexpr uint64_t SCALE_DIM_NUM = 3;
 
-    ge::graphStatus CheckOpInputInfo()
+    ge::graphStatus CheckTensorAttrs()
     {
         const char *opName = "AlltoAllMatmulApace";
 
@@ -129,6 +129,13 @@ protected:
             return ge::GRAPH_FAILED;
         }
 
+        return ge::GRAPH_SUCCESS;
+    }
+
+    ge::graphStatus CheckTensorShapes()
+    {
+        const char *opName = "AlltoAllMatmulApace";
+
         auto *x1Shape = context_->GetInputShape(IDX_INPUT_X1);
         auto *x2Shape = context_->GetInputShape(IDX_INPUT_X2);
         if (!x1Shape || !x2Shape) {
@@ -176,6 +183,17 @@ protected:
             return ge::GRAPH_FAILED;
         }
 
+        return ge::GRAPH_SUCCESS;
+    }
+
+    ge::graphStatus CheckOpInputInfo()
+    {
+        if (CheckTensorAttrs() != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+        if (CheckTensorShapes() != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
         return ge::GRAPH_SUCCESS;
     }
 
