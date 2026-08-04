@@ -18,8 +18,8 @@
 
 namespace optiling {
 
-using std::vector;
 using std::to_string;
+using std::vector;
 
 ge::graphStatus MaskChecker::CheckOriMaskMode(const QSMLATilingInfo &info) const
 {
@@ -35,7 +35,8 @@ ge::graphStatus MaskChecker::CheckCmpMaskMode(const QSMLATilingInfo &info) const
     if (info.templateMode == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         OP_CHECK_IF(info.cmpMaskMode != MASK_MODE_NO_MASK,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "cmp_mask_mode",
-                                                          to_string(info.cmpMaskMode).c_str(), "cmp_mask_mode only support 0 in SWA mode"),
+                                                          to_string(info.cmpMaskMode).c_str(),
+                                                          "cmp_mask_mode only support 0 in SWA mode"),
                     return ge::GRAPH_FAILED);
     } else {
         const vector<uint64_t> supportList = {MASK_MODE_NO_MASK, MASK_MODE_CAUSAL};
@@ -49,20 +50,19 @@ ge::graphStatus MaskChecker::CheckCmpMaskMode(const QSMLATilingInfo &info) const
 ge::graphStatus MaskChecker::CheckOriWinLeftRight(const QSMLATilingInfo &info) const
 {
     OP_CHECK_IF(info.oriWinLeft != WIN_LEFT_RIGHT_UNLIMITED && info.oriWinLeft < 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "ori_win_left",
-                                                      to_string(info.oriWinLeft).c_str(), "ori_win_left only support -1 or non-negative"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "ori_win_left", to_string(info.oriWinLeft).c_str(),
+                                                      "ori_win_left only support -1 or non-negative"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(info.oriWinRight != WIN_LEFT_RIGHT_UNLIMITED && info.oriWinRight < 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "ori_win_right",
-                                                      to_string(info.oriWinRight).c_str(), "ori_win_right only support -1 or non-negative"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(info.opName, "ori_win_right", to_string(info.oriWinRight).c_str(),
+                                                      "ori_win_right only support -1 or non-negative"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus MaskChecker::CheckSinglePara(const QSMLATilingInfo &info) const
 {
-    if (CheckOriMaskMode(info) != ge::GRAPH_SUCCESS ||
-        CheckCmpMaskMode(info) != ge::GRAPH_SUCCESS ||
+    if (CheckOriMaskMode(info) != ge::GRAPH_SUCCESS || CheckCmpMaskMode(info) != ge::GRAPH_SUCCESS ||
         CheckOriWinLeftRight(info) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -78,9 +78,10 @@ ge::graphStatus MaskChecker::CheckCrossFeature(const QSMLATilingInfo &info) cons
 {
     if (info.templateMode == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         OP_CHECK_IF(info.cmpMaskMode != MASK_MODE_NO_MASK || info.oriMaskMode != MASK_MODE_NO_MASK,
-                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(info.opName, "ori_mask_mode and cmp_mask_mode",
-                                                           (to_string(info.oriMaskMode) + " and " + to_string(info.cmpMaskMode)).c_str(),
-                                                           "In ori-only sparse scenario, both ori_mask_mode and cmp_mask_mode must be 0"),
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                        info.opName, "ori_mask_mode and cmp_mask_mode",
+                        (to_string(info.oriMaskMode) + " and " + to_string(info.cmpMaskMode)).c_str(),
+                        "In ori-only sparse scenario, both ori_mask_mode and cmp_mask_mode must be 0"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -93,7 +94,8 @@ ge::graphStatus MaskChecker::CheckCrossFeature(const QSMLATilingInfo &info) cons
 
     if (info.opParamInfo.cmpKv.tensor == nullptr) {
         const vector<uint64_t> noCmpKvSupport = {MASK_MODE_CAUSAL, MASK_MODE_SLIDING_WINDOW};
-        if (CheckValueSupport(info.oriMaskMode, noCmpKvSupport, "ori_mask_mode when cmp_kv is None") != ge::GRAPH_SUCCESS) {
+        if (CheckValueSupport(info.oriMaskMode, noCmpKvSupport, "ori_mask_mode when cmp_kv is None") !=
+            ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -116,9 +118,10 @@ ge::graphStatus MaskChecker::CheckCrossFeature(const QSMLATilingInfo &info) cons
 
     if (info.oriMaskMode != MASK_MODE_SLIDING_WINDOW) {
         OP_CHECK_IF(info.oriWinLeft >= 0 || info.oriWinRight >= 0,
-                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(info.opName, "ori_win_left and ori_win_right",
-                                                           (to_string(info.oriWinLeft) + " and " + to_string(info.oriWinRight)).c_str(),
-                                                           "ori_win_left/ori_win_right can be >= 0 only when ori_mask_mode=4"),
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                        info.opName, "ori_win_left and ori_win_right",
+                        (to_string(info.oriWinLeft) + " and " + to_string(info.oriWinRight)).c_str(),
+                        "ori_win_left/ori_win_right can be >= 0 only when ori_mask_mode=4"),
                     return ge::GRAPH_FAILED);
     }
 

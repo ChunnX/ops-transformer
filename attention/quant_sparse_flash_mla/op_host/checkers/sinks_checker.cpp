@@ -18,9 +18,9 @@
 
 namespace optiling {
 
-using std::vector;
 using std::string;
 using std::to_string;
+using std::vector;
 
 ge::graphStatus SinksChecker::CheckSinglePara(const QSMLATilingInfo &info) const
 {
@@ -56,9 +56,9 @@ ge::graphStatus SinksChecker::CheckCrossFeature(const QSMLATilingInfo &info) con
 ge::graphStatus SinksChecker::CheckMultiParaConsistency(const QSMLATilingInfo &info) const
 {
     OP_CHECK_IF(info.opParamInfo.sinks.tensor->GetShapeSize() != static_cast<int64_t>(info.n1Size),
-                OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(info.opName, "sinks",
-                                                          to_string(info.opParamInfo.sinks.tensor->GetShapeSize()).c_str(),
-                                                          ("sinks shapeSize should equal q_head_num(" + to_string(info.n1Size) + ")").c_str()),
+                OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+                    info.opName, "sinks", to_string(info.opParamInfo.sinks.tensor->GetShapeSize()).c_str(),
+                    ("sinks shapeSize should equal q_head_num(" + to_string(info.n1Size) + ")").c_str()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

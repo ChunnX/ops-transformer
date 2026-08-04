@@ -20,8 +20,8 @@
 namespace optiling {
 
 using std::string;
-using std::vector;
 using std::to_string;
+using std::vector;
 using namespace ge;
 
 static const char *QSMLA_OP_NAME = "QuantSparseFlashMla";
@@ -34,10 +34,11 @@ ge::graphStatus QSMLABaseChecker::CheckDtypeSupport(const gert::CompileTimeTenso
         return ge::GRAPH_SUCCESS;
     }
     const auto &it = DTYPE_SUPPORT_MAP.find(name);
-    OP_CHECK_IF(it == DTYPE_SUPPORT_MAP.end(),
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(QSMLA_OP_NAME, name.c_str(),
-                                                         ("dtype support list not found in DTYPE_SUPPORT_MAP for " + name).c_str()),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        it == DTYPE_SUPPORT_MAP.end(),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+            QSMLA_OP_NAME, name.c_str(), ("dtype support list not found in DTYPE_SUPPORT_MAP for " + name).c_str()),
+        return ge::GRAPH_FAILED);
     const auto &expectList = it->second;
     if (std::find(expectList.begin(), expectList.end(), desc->GetDataType()) == expectList.end()) {
         LogErrorDtypeSupport(expectList, desc->GetDataType(), name);
@@ -77,8 +78,8 @@ ge::graphStatus QSMLABaseChecker::CheckDimNumSupport(const gert::StorageShape *s
             if (i < expectList.size() - 1)
                 expectStr += ", ";
         }
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(QSMLA_OP_NAME, name.c_str(),
-                                                 to_string(actualDimNum).c_str(), ("dim num should be [" + expectStr + "]").c_str());
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(QSMLA_OP_NAME, name.c_str(), to_string(actualDimNum).c_str(),
+                                                 ("dim num should be [" + expectStr + "]").c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -93,17 +94,17 @@ ge::graphStatus QSMLABaseChecker::CheckDimNumInLayoutSupport(QSMLALayout layout,
     }
     const auto &dimIt = QSMLA_LAYOUT_DIM_MAP.find(layout);
     if (dimIt == QSMLA_LAYOUT_DIM_MAP.end()) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(QSMLA_OP_NAME, name.c_str(),
-                                                 ("layout " + LayoutToSerialString(layout) + " not found in QSMLA_LAYOUT_DIM_MAP").c_str());
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+            QSMLA_OP_NAME, name.c_str(),
+            ("layout " + LayoutToSerialString(layout) + " not found in QSMLA_LAYOUT_DIM_MAP").c_str());
         return ge::GRAPH_FAILED;
     }
     size_t expected = dimIt->second;
     size_t actual = shape->GetStorageShape().GetDimNum();
     OP_CHECK_IF(actual != expected,
-                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(QSMLA_OP_NAME, name.c_str(),
-                                                         to_string(actual).c_str(),
-                                                         ("When layout is " + LayoutToSerialString(layout) + ", " + name +
-                                                          " dim should be " + to_string(expected))
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(QSMLA_OP_NAME, name.c_str(), to_string(actual).c_str(),
+                                                         ("When layout is " + LayoutToSerialString(layout) + ", " +
+                                                          name + " dim should be " + to_string(expected))
                                                              .c_str()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -123,8 +124,7 @@ ge::graphStatus QSMLABaseChecker::CheckShapeSizeNonZero(const gert::Tensor *tens
 }
 
 // ---- Shape size non-zero (required tensor): checks tensor is not empty ----
-ge::graphStatus QSMLABaseChecker::CheckShapeSizeNonZero(const gert::StorageShape *shape,
-                                                        const std::string &name) const
+ge::graphStatus QSMLABaseChecker::CheckShapeSizeNonZero(const gert::StorageShape *shape, const std::string &name) const
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -148,8 +148,8 @@ ge::graphStatus QSMLABaseChecker::CheckValueSupport(const T value, const std::ve
             if (i < expectList.size() - 1)
                 expectStr += ", ";
         }
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QSMLA_OP_NAME, name.c_str(),
-                                              to_string(value).c_str(), ("only support [" + expectStr + "]").c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QSMLA_OP_NAME, name.c_str(), to_string(value).c_str(),
+                                              ("only support [" + expectStr + "]").c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -227,8 +227,8 @@ void QSMLABaseChecker::LogErrorDtypeSupport(const std::vector<ge::DataType> &exp
         if (i < expectList.size() - 1)
             oss << ", ";
     }
-    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(QSMLA_OP_NAME, name.c_str(),
-                                          DataTypeToSerialString(actual).c_str(), ("only support [" + oss.str() + "]").c_str());
+    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(QSMLA_OP_NAME, name.c_str(), DataTypeToSerialString(actual).c_str(),
+                                          ("only support [" + oss.str() + "]").c_str());
 }
 
 void QSMLABaseChecker::LogErrorLayoutSupport(const std::vector<QSMLALayout> &expectList, QSMLALayout actual,
@@ -240,18 +240,23 @@ void QSMLABaseChecker::LogErrorLayoutSupport(const std::vector<QSMLALayout> &exp
         if (i < expectList.size() - 1)
             oss << ", ";
     }
-    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(QSMLA_OP_NAME, name.c_str(),
-                                             ("only support layout [" + oss.str() + "], but got " + LayoutToSerialString(actual)).c_str());
+    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+        QSMLA_OP_NAME, name.c_str(),
+        ("only support layout [" + oss.str() + "], but got " + LayoutToSerialString(actual)).c_str());
 }
 
 // explicit instantiation
 template ge::graphStatus QSMLABaseChecker::CheckValueSupport(const int64_t value,
-                                                             const std::vector<int64_t> &expectList, const std::string &name) const;
+                                                             const std::vector<int64_t> &expectList,
+                                                             const std::string &name) const;
 template ge::graphStatus QSMLABaseChecker::CheckValueSupport(const uint32_t value,
-                                                             const std::vector<uint32_t> &expectList, const std::string &name) const;
+                                                             const std::vector<uint32_t> &expectList,
+                                                             const std::string &name) const;
 template ge::graphStatus QSMLABaseChecker::CheckValueSupport(const int32_t value,
-                                                             const std::vector<int32_t> &expectList, const std::string &name) const;
+                                                             const std::vector<int32_t> &expectList,
+                                                             const std::string &name) const;
 template ge::graphStatus QSMLABaseChecker::CheckValueSupport(const uint64_t value,
-                                                             const std::vector<uint64_t> &expectList, const std::string &name) const;
+                                                             const std::vector<uint64_t> &expectList,
+                                                             const std::string &name) const;
 
 } // namespace optiling

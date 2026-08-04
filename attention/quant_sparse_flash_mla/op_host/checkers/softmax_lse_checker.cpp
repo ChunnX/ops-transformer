@@ -18,9 +18,9 @@
 
 namespace optiling {
 
-using std::vector;
 using std::string;
 using std::to_string;
+using std::vector;
 
 ge::graphStatus SoftmaxLseChecker::CheckSinglePara(const QSMLATilingInfo &info) const
 {
@@ -51,9 +51,9 @@ ge::graphStatus SoftmaxLseChecker::CheckMultiParaConsistency(const QSMLATilingIn
 
     if (!info.returnSoftmaxLse) {
         OP_CHECK_IF(lse.shape->GetStorageShape().GetShapeSize() != 1,
-                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(info.opName, "softmax_lse",
-                                                              to_string(lse.shape->GetStorageShape().GetShapeSize()).c_str(),
-                                                              "softmax_lse shapeSize should be 1 when return_softmax_lse=false"),
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+                        info.opName, "softmax_lse", to_string(lse.shape->GetStorageShape().GetShapeSize()).c_str(),
+                        "softmax_lse shapeSize should be 1 when return_softmax_lse=false"),
                     return ge::GRAPH_FAILED);
     } else {
         const auto &lseShape = lse.shape->GetStorageShape();
@@ -64,9 +64,9 @@ ge::graphStatus SoftmaxLseChecker::CheckMultiParaConsistency(const QSMLATilingIn
                                                                  "softmax_lse should be 4D when layout_q=BSND"),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(lseShape.GetDim(DIM_0) != static_cast<int64_t>(info.bSize),
-                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, "softmax_lse",
-                                                              GetShapeStr(lseShape).c_str(),
-                                                              ("softmax_lse B should equal q B(" + to_string(info.bSize) + ")").c_str()),
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                            info.opName, "softmax_lse", GetShapeStr(lseShape).c_str(),
+                            ("softmax_lse B should equal q B(" + to_string(info.bSize) + ")").c_str()),
                         return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(lseShape.GetDimNum() != DIM_NUM_THREE,

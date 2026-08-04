@@ -22,9 +22,9 @@ namespace optiling {
 
 class QSMLAInfoParser {
 public:
-    explicit QSMLAInfoParser(gert::TilingContext *context)
-        : context_(context)
-    {}
+    explicit QSMLAInfoParser(gert::TilingContext *context) : context_(context)
+    {
+    }
     ~QSMLAInfoParser() = default;
 
     ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor, QSMLALayout &layout,

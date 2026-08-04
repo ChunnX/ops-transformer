@@ -36,10 +36,11 @@ static ge::graphStatus TilingPrepareForQuantSparseFlashMla(gert::TilingParseCont
 ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInfo)
 {
     if (tilingInfo->opParamInfo.cmpKv.tensor == nullptr) {
-        OP_CHECK_IF(tilingInfo->opParamInfo.cmpSparseIndices.tensor != nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("QuantSparseFlashMla", "cmp_sparse_indices",
-                                                             "cmpSparseIndices must be empty when cmpKv is not provided"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            tilingInfo->opParamInfo.cmpSparseIndices.tensor != nullptr,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("QuantSparseFlashMla", "cmp_sparse_indices",
+                                                     "cmpSparseIndices must be empty when cmpKv is not provided"),
+            return ge::GRAPH_FAILED);
         if (tilingInfo->opParamInfo.oriSparseIndices.tensor != nullptr) {
             perfMode_ = QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE;
         } else {

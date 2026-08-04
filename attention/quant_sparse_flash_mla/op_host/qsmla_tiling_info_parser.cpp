@@ -39,18 +39,22 @@ ge::graphStatus QSMLAInfoParser::GetOpName()
 ge::graphStatus QSMLAInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();
-    OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "platformInfo", "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(platformInfo_ == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "platformInfo", "GetPlatformInfo is nullptr."),
+                return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    OP_CHECK_IF(aicNum == 0 || aivNum == 0, OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "core_num", "num of core obtained is 0."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(aicNum == 0 || aivNum == 0,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "core_num", "num of core obtained is 0."),
+                return ge::GRAPH_FAILED);
 
     socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
     if (npuArch_ != NpuArch::DAV_3510) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "NpuArch",
-                                              std::to_string(static_cast<int32_t>(npuArch_)).c_str(), "NpuArch is not support");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName_, "NpuArch", std::to_string(static_cast<int32_t>(npuArch_)).c_str(), "NpuArch is not support");
         return GRAPH_FAILED;
     }
 
@@ -497,8 +501,7 @@ ge::graphStatus QSMLAInfoParser::Parse(QSMLATilingInfo &qsmlaInfo)
         return ge::GRAPH_FAILED;
     }
 
-    if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() ||
-        ge::GRAPH_SUCCESS != GetOpParaInfo()) {
+    if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo()) {
         return ge::GRAPH_FAILED;
     }
 

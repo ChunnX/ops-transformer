@@ -18,9 +18,9 @@
 
 namespace optiling {
 
-using std::vector;
 using std::string;
 using std::to_string;
+using std::vector;
 
 ge::graphStatus PagedAttentionChecker::CheckOriBlockTable(const QSMLATilingInfo &info) const
 {
@@ -52,8 +52,7 @@ ge::graphStatus PagedAttentionChecker::CheckCmpBlockTable(const QSMLATilingInfo 
 
 ge::graphStatus PagedAttentionChecker::CheckSinglePara(const QSMLATilingInfo &info) const
 {
-    if (CheckOriBlockTable(info) != ge::GRAPH_SUCCESS ||
-        CheckCmpBlockTable(info) != ge::GRAPH_SUCCESS) {
+    if (CheckOriBlockTable(info) != ge::GRAPH_SUCCESS || CheckCmpBlockTable(info) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -63,28 +62,29 @@ ge::graphStatus PagedAttentionChecker::CheckParaExistence(const QSMLATilingInfo 
 {
     if (info.kvLayout == QSMLALayout::PA_BBND) {
         OP_CHECK_IF(info.opParamInfo.oriBlockTable.tensor == nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "ori_block_table",
-                                                             "ori_block_table must not be empty when layout_kv is PA_BBND"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        info.opName, "ori_block_table", "ori_block_table must not be empty when layout_kv is PA_BBND"),
                     return ge::GRAPH_FAILED);
         if (info.opParamInfo.cmpKv.tensor != nullptr) {
             OP_CHECK_IF(info.opParamInfo.cmpBlockTable.tensor == nullptr,
-                        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "cmp_block_table",
-                                                                 "cmp_block_table must not be empty when layout_kv is PA_BBND and cmp_kv is provided"),
+                        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                            info.opName, "cmp_block_table",
+                            "cmp_block_table must not be empty when layout_kv is PA_BBND and cmp_kv is provided"),
                         return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(info.opParamInfo.cmpBlockTable.tensor != nullptr,
-                        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "cmp_block_table",
-                                                                 "cmp_block_table is not supported when cmp_kv is None"),
+                        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                            info.opName, "cmp_block_table", "cmp_block_table is not supported when cmp_kv is None"),
                         return ge::GRAPH_FAILED);
         }
     } else {
         OP_CHECK_IF(info.opParamInfo.oriBlockTable.tensor != nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "ori_block_table",
-                                                             "ori_block_table should be null when layout_kv is not PA_BBND"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        info.opName, "ori_block_table", "ori_block_table should be null when layout_kv is not PA_BBND"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(info.opParamInfo.cmpBlockTable.tensor != nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "cmp_block_table",
-                                                             "cmp_block_table should be null when layout_kv is not PA_BBND"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        info.opName, "cmp_block_table", "cmp_block_table should be null when layout_kv is not PA_BBND"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -94,14 +94,14 @@ ge::graphStatus PagedAttentionChecker::CheckCrossFeature(const QSMLATilingInfo &
 {
     if (info.opParamInfo.oriBlockTable.tensor != nullptr) {
         OP_CHECK_IF(info.opParamInfo.sequsedOriKv.tensor == nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "seqused_ori_kv",
-                                                             "seqused_ori_kv must be provided when ori_block_table exists"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        info.opName, "seqused_ori_kv", "seqused_ori_kv must be provided when ori_block_table exists"),
                     return ge::GRAPH_FAILED);
     }
     if (info.opParamInfo.cmpBlockTable.tensor != nullptr) {
         OP_CHECK_IF(info.opParamInfo.sequsedCmpKv.tensor == nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "seqused_cmp_kv",
-                                                             "seqused_cmp_kv must be provided when cmp_block_table exists"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        info.opName, "seqused_cmp_kv", "seqused_cmp_kv must be provided when cmp_block_table exists"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -110,17 +110,21 @@ ge::graphStatus PagedAttentionChecker::CheckCrossFeature(const QSMLATilingInfo &
 ge::graphStatus PagedAttentionChecker::CheckMultiParaConsistency(const QSMLATilingInfo &info) const
 {
     if (info.opParamInfo.oriBlockTable.tensor != nullptr) {
-        OP_CHECK_IF(info.opParamInfo.oriBlockTable.tensor->GetStorageShape().GetDim(DIM_0) != static_cast<int64_t>(info.bSize),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, "ori_block_table",
-                                                          GetShapeStr(info.opParamInfo.oriBlockTable.tensor->GetStorageShape()).c_str(),
-                                                          ("ori_block_table B should equal q B(" + to_string(info.bSize) + ")").c_str()),
+        OP_CHECK_IF(info.opParamInfo.oriBlockTable.tensor->GetStorageShape().GetDim(DIM_0) !=
+                        static_cast<int64_t>(info.bSize),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        info.opName, "ori_block_table",
+                        GetShapeStr(info.opParamInfo.oriBlockTable.tensor->GetStorageShape()).c_str(),
+                        ("ori_block_table B should equal q B(" + to_string(info.bSize) + ")").c_str()),
                     return ge::GRAPH_FAILED);
     }
     if (info.opParamInfo.cmpBlockTable.tensor != nullptr) {
-        OP_CHECK_IF(info.opParamInfo.cmpBlockTable.tensor->GetStorageShape().GetDim(DIM_0) != static_cast<int64_t>(info.bSize),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(info.opName, "cmp_block_table",
-                                                          GetShapeStr(info.opParamInfo.cmpBlockTable.tensor->GetStorageShape()).c_str(),
-                                                          ("cmp_block_table B should equal q B(" + to_string(info.bSize) + ")").c_str()),
+        OP_CHECK_IF(info.opParamInfo.cmpBlockTable.tensor->GetStorageShape().GetDim(DIM_0) !=
+                        static_cast<int64_t>(info.bSize),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        info.opName, "cmp_block_table",
+                        GetShapeStr(info.opParamInfo.cmpBlockTable.tensor->GetStorageShape()).c_str(),
+                        ("cmp_block_table B should equal q B(" + to_string(info.bSize) + ")").c_str()),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;

@@ -18,9 +18,9 @@
 
 namespace optiling {
 
-using std::vector;
 using std::string;
 using std::to_string;
+using std::vector;
 
 ge::graphStatus SeqLensChecker::CheckCuSeqLensQ(const QSMLATilingInfo &info) const
 {
@@ -108,12 +108,9 @@ ge::graphStatus SeqLensChecker::CheckSequsedCmpKv(const QSMLATilingInfo &info) c
 
 ge::graphStatus SeqLensChecker::CheckSinglePara(const QSMLATilingInfo &info) const
 {
-    if (CheckCuSeqLensQ(info) != ge::GRAPH_SUCCESS ||
-        CheckCuSeqLensOriKv(info) != ge::GRAPH_SUCCESS ||
-        CheckCuSeqLensCmpKv(info) != ge::GRAPH_SUCCESS ||
-        CheckSequsedQ(info) != ge::GRAPH_SUCCESS ||
-        CheckSequsedOriKv(info) != ge::GRAPH_SUCCESS ||
-        CheckSequsedCmpKv(info) != ge::GRAPH_SUCCESS) {
+    if (CheckCuSeqLensQ(info) != ge::GRAPH_SUCCESS || CheckCuSeqLensOriKv(info) != ge::GRAPH_SUCCESS ||
+        CheckCuSeqLensCmpKv(info) != ge::GRAPH_SUCCESS || CheckSequsedQ(info) != ge::GRAPH_SUCCESS ||
+        CheckSequsedOriKv(info) != ge::GRAPH_SUCCESS || CheckSequsedCmpKv(info) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -135,39 +132,43 @@ ge::graphStatus SeqLensChecker::CheckParaExistence(const QSMLATilingInfo &info) 
 
     if (info.kvLayout == QSMLALayout::TND) {
         OP_CHECK_IF(info.opParamInfo.cuSeqLensOriKv.tensor == nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "cu_seqlens_ori_kv",
-                                                             "cu_seqlens_ori_kv must be provided when layout_kv is TND"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        info.opName, "cu_seqlens_ori_kv", "cu_seqlens_ori_kv must be provided when layout_kv is TND"),
                     return ge::GRAPH_FAILED);
         if (info.opParamInfo.cmpKv.tensor != nullptr) {
             OP_CHECK_IF(info.opParamInfo.cuSeqLensCmpKv.tensor == nullptr,
-                        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "cu_seqlens_cmp_kv",
-                                                                 "cu_seqlens_cmp_kv must be provided when layout_kv is TND and cmp_kv is provided"),
+                        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                            info.opName, "cu_seqlens_cmp_kv",
+                            "cu_seqlens_cmp_kv must be provided when layout_kv is TND and cmp_kv is provided"),
                         return ge::GRAPH_FAILED);
         }
     } else {
-        OP_CHECK_IF(info.opParamInfo.cuSeqLensOriKv.tensor != nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "cu_seqlens_ori_kv",
-                                                             "cu_seqlens_ori_kv is not supported when layout_kv is not TND"),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(info.opParamInfo.cuSeqLensCmpKv.tensor != nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "cu_seqlens_cmp_kv",
-                                                             "cu_seqlens_cmp_kv is not supported when layout_kv is not TND"),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            info.opParamInfo.cuSeqLensOriKv.tensor != nullptr,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "cu_seqlens_ori_kv",
+                                                     "cu_seqlens_ori_kv is not supported when layout_kv is not TND"),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            info.opParamInfo.cuSeqLensCmpKv.tensor != nullptr,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "cu_seqlens_cmp_kv",
+                                                     "cu_seqlens_cmp_kv is not supported when layout_kv is not TND"),
+            return ge::GRAPH_FAILED);
     }
 
-    if (info.kvLayout == QSMLALayout::PA_BBND &&
-        info.templateMode != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
+    if (info.kvLayout == QSMLALayout::PA_BBND && info.templateMode != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
         info.templateMode != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         OP_CHECK_IF(info.opParamInfo.sequsedOriKv.tensor == nullptr && info.opParamInfo.oriTopkLength.tensor == nullptr,
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "seqused_ori_kv",
-                                                             "seqused_ori_kv must be provided when layout_kv is PA_BBND (or ori_topk_length)"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        info.opName, "seqused_ori_kv",
+                        "seqused_ori_kv must be provided when layout_kv is PA_BBND (or ori_topk_length)"),
                     return ge::GRAPH_FAILED);
     }
 
     if (info.kvLayout == QSMLALayout::PA_BBND && info.opParamInfo.cmpKv.tensor != nullptr) {
         OP_CHECK_IF(info.opParamInfo.sequsedCmpKv.tensor == nullptr && info.opParamInfo.cmpTopkLength.tensor == nullptr,
                     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(info.opName, "seqused_cmp_kv",
-                                                             "seqused_cmp_kv must be provided when layout_kv is PA_BBND and cmp_kv is provided (or cmp_topk_length)"),
+                                                             "seqused_cmp_kv must be provided when layout_kv is "
+                                                             "PA_BBND and cmp_kv is provided (or cmp_topk_length)"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -185,9 +186,9 @@ ge::graphStatus SeqLensChecker::CheckMultiParaConsistency(const QSMLATilingInfo 
         if (tensor == nullptr)
             return ge::GRAPH_SUCCESS;
         OP_CHECK_IF(tensor->GetShapeSize() != static_cast<int64_t>(info.bSize + 1),
-                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(info.opName, name.c_str(),
-                                                              to_string(tensor->GetShapeSize()).c_str(),
-                                                              (name + " shapeSize should be B+1(" + to_string(info.bSize + 1) + ")").c_str()),
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+                        info.opName, name.c_str(), to_string(tensor->GetShapeSize()).c_str(),
+                        (name + " shapeSize should be B+1(" + to_string(info.bSize + 1) + ")").c_str()),
                     return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     };
@@ -196,9 +197,9 @@ ge::graphStatus SeqLensChecker::CheckMultiParaConsistency(const QSMLATilingInfo 
         if (tensor == nullptr)
             return ge::GRAPH_SUCCESS;
         OP_CHECK_IF(tensor->GetShapeSize() != static_cast<int64_t>(info.bSize),
-                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(info.opName, name.c_str(),
-                                                              to_string(tensor->GetShapeSize()).c_str(),
-                                                              (name + " shapeSize should be B(" + to_string(info.bSize) + ")").c_str()),
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+                        info.opName, name.c_str(), to_string(tensor->GetShapeSize()).c_str(),
+                        (name + " shapeSize should be B(" + to_string(info.bSize) + ")").c_str()),
                     return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     };
