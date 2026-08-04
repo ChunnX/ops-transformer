@@ -15,9 +15,9 @@
 import numpy as np
 import torch
 
-_BF16_RTOL = 0.01
-_BF16_ATOL = 0.001
-_FAIL_RATIO_LIMIT = 0.05
+_BF16_RTOL = 0.005
+_BF16_ATOL = 0.000025
+_FAIL_RATIO_LIMIT = 0.005
 
 
 def as_numpy(value):
@@ -108,14 +108,19 @@ def lse_compare(npu_out, golden_out):
         return {"pass": True, "precision": 100.0}
 
     abs_diff = np.abs(npu_f32 - golden_f32)
+    denom = np.maximum(np.abs(golden_f32), 1e-10)
+    rel_diff = abs_diff / denom
+    valid_mismatch = (rel_diff > _BF16_RTOL) & (abs_diff > _BF16_ATOL) & valid_mask
+    diff_count = int(np.sum(valid_mismatch))
+    fail_ratio = diff_count / max(int(np.sum(valid_mask)), 1)
+    passed = fail_ratio <= _FAIL_RATIO_LIMIT
     max_abs_diff = float(np.max(abs_diff[valid_mask]))
-    passed = max_abs_diff < 0.01
 
     return {
         "pass": passed,
         "precision": 100.0 if passed else 0.0,
-        "error_info": None if passed else f"lse max_abs_diff={max_abs_diff:.6g}",
-        "metrics": {"max_abs_diff": max_abs_diff},
+        "error_info": None if passed else f"lse max_abs_diff={max_abs_diff:.6g}, fail_ratio={fail_ratio:.6g}",
+        "metrics": {"max_abs_diff": max_abs_diff, "fail_ratio": fail_ratio},
     }
 
 
