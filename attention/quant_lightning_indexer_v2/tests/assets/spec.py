@@ -44,7 +44,6 @@ def load_impl_module(stem):
 golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
 compare_module = load_impl_module("compare")
-graph_module = load_impl_module("graph")
 
 
 class QuantLightningIndexerV2Spec:
@@ -67,9 +66,6 @@ class QuantLightningIndexerV2Spec:
             golden_module.set_compare_data(compare_context.testcase_name, data)
         return compare_module.compare(*outputs, compare_data=data)
 
-    torch_graph = graph_module.QuantLightningIndexerV2AclGraph
-
-
 __spec__ = {
-    "qli_v2_ttk_ops.quant_lightning_indexer_v2": "QuantLightningIndexerV2Spec",
+    "torch.ops.cann_ops_transformer.quant_lightning_indexer": "QuantLightningIndexerV2Spec",
 }
