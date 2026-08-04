@@ -184,9 +184,10 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
     aivNum_ = tilingData->moeDistributeDispatchTeardownInfo.aivNum;
-    epRankId_ = tilingData->moeDistributeDispatchTeardownInfo.epRankId;
     auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
+    // 与 setup/combine 保持一致，统一从 Mc2MoeContext 取 epRankId，避免 tiling 与 context 不一致导致等/清错 buffer
+    epRankId_ = mc2Context_->epRankId;
 
     GlobalTensor<int32_t> selfDataStatusTensor;
     GM_ADDR statusDataSpaceGm = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);

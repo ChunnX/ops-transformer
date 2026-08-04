@@ -61,6 +61,7 @@ public:
 
 private:
     __aicore__ inline void SplitCoreCal();
+    __aicore__ inline void ClearLocalCombineStatus();
     __aicore__ inline void CurRankComm(const LocalTensor<int32_t> &assistInfoForCombineLocal,
         uint32_t curRankExpertNum);
     __aicore__ inline void Communication();
@@ -185,6 +186,23 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
 #endif
 
     SplitCoreCal(); // 分核计算
+}
+
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::ClearLocalCombineStatus()
+{
+    // 仅 aiv0 清本卡本层 bank 上 combine 按源卡使用的状态槽，去掉历史 2.0/脏数据
+    if (aivId_ != 0U) {
+        return;
+    }
+    const uint32_t epWorldSize = moeDistributeCombineSetupInfo_->epWorldSize;
+    for (uint32_t rankId = 0U; rankId < epWorldSize; ++rankId) {
+        GlobalTensor<int32_t> statusTensor;
+        statusTensor.SetGlobalBuffer(
+            (__gm__ int32_t *)(epStatusSpaceGM_ + static_cast<uint64_t>(rankId) * stateOffset_));
+        statusTensor.SetValue(0, 0);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(statusTensor);
+    }
 }
 
 template <TemplateMC2TypeClass>
@@ -371,6 +389,9 @@ template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
+        // 先清本层 bank 再通信，避免联跑时 bank 上残留 dispatch 的 2.0 导致 teardown 卡死
+        ClearLocalCombineStatus();
+        SyncAll<true>();
         if (startRankId_ >= moeDistributeCombineSetupInfo_->epWorldSize) {
             // 空闲核，直接返回
             return;
