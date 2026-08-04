@@ -48,8 +48,14 @@ at::Tensor MoeFinalizeRouting(const at::Tensor &expandedX, const at::Tensor &exp
     if (expandedX.dim() == DIM_THREE) {
         dim1Index = INDEX_TWO;
     }
-    at::Tensor result = at::empty({dim0, expandedX.size(dim1Index)}, expandedX.options());
     int64_t mode = c10::value_or_else(dropPadMode, [] { return 0; });
+
+    at::Tensor result;
+    {
+        auto localDevice = c10::Device(expandedX.device());
+        const c10::OptionalDeviceGuard deviceGuard(localDevice);
+        result = at::empty({dim0, expandedX.size(dim1Index)}, expandedX.options());
+    }
 
     std::vector<int64_t> zeroVec = zeroExpertRange.value_or(std::vector<int64_t>{});
     std::vector<int64_t> copyVec = copyExpertRange.value_or(std::vector<int64_t>{});

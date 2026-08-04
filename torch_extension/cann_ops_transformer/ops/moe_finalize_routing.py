@@ -132,6 +132,14 @@ def _has_value(t):
     return t is not None and t.numel() > 0
 
 
+def _is_valid_expert_range(r):
+    """A range like [start, end) is valid (non-empty) only when start >= 0 and end > start.
+    The sentinel [-1, -1] means 'no such experts' and is treated as invalid."""
+    if r is None or len(r) < 2:
+        return False
+    return r[0] >= 0 and r[1] > r[0]
+
+
 def _compute_grad_bias(grad_out, scales, expert_idx, bias):
     """grad_bias[e, j] = sum_{(i,k): expert_idx[i,k]=e} scales[i,k] * grad_out[i, j]."""
     if not _has_value(expert_idx):
@@ -139,12 +147,11 @@ def _compute_grad_bias(grad_out, scales, expert_idx, bias):
     R, H = grad_out.shape[0], bias.shape[1]
     K = scales.shape[1] if _has_value(scales) else 1
     flat_idx = expert_idx.reshape(-1).to(torch.int64)
-    row_idx = torch.arange(R, device=grad_out.device).repeat_interleave(K)
     if _has_value(scales):
-        scales_flat = scales.reshape(-1, 1)
+        # (R, K, 1) * (R, 1, H) -> (R, K, H) -> (R*K, H) via broadcasting
+        contrib = (scales.reshape(R, K, 1) * grad_out.unsqueeze(1)).reshape(R * K, H)
     else:
-        scales_flat = torch.ones(R * K, 1, dtype=grad_out.dtype, device=grad_out.device)
-    contrib = scales_flat * grad_out[row_idx]
+        contrib = grad_out.repeat_interleave(K, dim=0)
     grad_bias = torch.zeros(bias.shape[0], H, dtype=bias.dtype, device=grad_out.device)
     grad_bias.scatter_add_(0, flat_idx.unsqueeze(-1).expand(-1, H), contrib)
     return grad_bias
@@ -181,9 +188,11 @@ class MoeFinalizeRoutingFn(torch.autograd.Function):
         ctx.has_scales = _has_value(scales)
         ctx.has_expert_idx = _has_value(expert_idx)
         # V4-specific inputs — when present, autograd is not supported.
+        # zero_expert_range uses [-1, -1] as sentinel for "no zero experts";
+        # _is_valid_expert_range treats that as inactive.
         ctx.has_v4_extras = (
             _has_value(x) or _has_value(alpha1) or _has_value(alpha2) or _has_value(v)
-            or (zero_expert_range is not None and len(zero_expert_range) > 0)
+            or _is_valid_expert_range(zero_expert_range)
         )
         ctx.save_for_backward(
             expanded_x, expanded_row_idx,
@@ -220,10 +229,22 @@ class MoeFinalizeRoutingFn(torch.autograd.Function):
         else:
             grad_row_idx = expanded_row_idx
 
+        # When scales was not provided in forward but K > 1, the grad op cannot
+        # infer K from scales.  Synthesize a ones tensor so the grad op sees a
+        # valid (R, K) scales — mathematically equivalent since the implicit
+        # scale is 1.0.
+        eff_scales = scales
+        if scales is None and K > 1:
+            eff_scales = torch.ones(R, K, dtype=grad_out.dtype, device=grad_out.device)
+
         grad_expanded_x, grad_scales = torch.ops.cann_ops_transformer.moe_finalize_routing_grad(
-            grad_out, grad_row_idx, expanded_x, scales, expert_idx, bias,
+            grad_out, grad_row_idx, expanded_x, eff_scales, expert_idx, bias,
             drop_pad_mode, 0, 0, 0)
 
+        # For grad_bias, use eff_scales (which is correct for both cases):
+        # - scales provided: eff_scales == scales
+        # - scales=None, K>1: eff_scales is ones(R,K), so grad_bias sums all K slots
+        # - scales=None, K=1: eff_scales is None, _compute_grad_bias uses K=1
         needs = ctx.needs_input_grad
         # 16 inputs: expanded_x, row_idx, x1, x2, bias, scales, expert_idx,
         #            x, alpha1, alpha2, v, drop_pad_mode,
@@ -231,7 +252,7 @@ class MoeFinalizeRoutingFn(torch.autograd.Function):
         grad_expanded_x = grad_expanded_x if needs[0] else None
         grad_x1 = grad_out if ctx.has_x1 and needs[2] else None
         grad_x2 = grad_out if ctx.has_x2 and needs[3] else None
-        grad_bias = _compute_grad_bias(grad_out, scales, expert_idx, bias) if ctx.has_bias and needs[4] else None
+        grad_bias = _compute_grad_bias(grad_out, eff_scales, expert_idx, bias) if ctx.has_bias and needs[4] else None
         grad_scales = grad_scales if ctx.has_scales and needs[5] else None
         return (grad_expanded_x, None, grad_x1, grad_x2, grad_bias, grad_scales, None,
                 None, None, None, None, None, None, None, None, None)
