@@ -1254,29 +1254,35 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndDispatch(GMMAddrInfo &gm
     // 线性扫描 cumsumInfo 定位 [coreExpertRowBegin, coreExpertRowEnd) 覆盖的 source rank 区间：
     // firstRankIdx 是首个前缀行数 > coreExpertRowBegin 的 rank，lastRankIdx 是首个前缀行数 >= coreExpertRowEnd
     // 的 rank（前缀行数为当前 expert 的 expert-local 坐标）。
+    // 扫描同时带出首段全局起点 firstSegRowBeginGlobal(=C_{firstRankIdx-1})，供段循环复用。
     int32_t firstRankIdx = static_cast<int32_t>(worldSize_);
     int32_t lastRankIdx = -1;
+    int32_t firstSegRowBeginGlobal = expertGlobalRowBegin; // 首个覆盖段的全局起点，初始为 C_{-1}=expertGlobalRowBegin
+    int32_t prevRankPrefixGlobalRowCount = expertGlobalRowBegin; // 上一轮读到的 C_{remoteRankIdx-1}
     for (int32_t remoteRankIdx = 0; remoteRankIdx < static_cast<int32_t>(worldSize_); ++remoteRankIdx) {
-        int32_t rankPrefixRowCount =
-            cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + remoteRankIdx) - expertGlobalRowBegin;
-        if (firstRankIdx == static_cast<int32_t>(worldSize_) && rankPrefixRowCount > coreExpertRowBegin) {
+        int32_t rankPrefixGlobalRowCount =
+            cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + remoteRankIdx);
+        if (firstRankIdx == static_cast<int32_t>(worldSize_) &&
+            rankPrefixGlobalRowCount - expertGlobalRowBegin > coreExpertRowBegin) {
             firstRankIdx = remoteRankIdx;
+            firstSegRowBeginGlobal = prevRankPrefixGlobalRowCount;
         }
-        if (rankPrefixRowCount >= coreExpertRowEnd) {
+        if (rankPrefixGlobalRowCount - expertGlobalRowBegin >= coreExpertRowEnd) {
             lastRankIdx = remoteRankIdx;
             break;
         }
+        prevRankPrefixGlobalRowCount = rankPrefixGlobalRowCount;
     }
 
+    int32_t rankSegRowBegin = firstSegRowBeginGlobal - expertGlobalRowBegin; // 段在 expert-local 坐标中的起点
+    int32_t rankSegRowEnd = 0;
     for (int32_t remoteRankIdx = firstRankIdx; remoteRankIdx <= lastRankIdx; ++remoteRankIdx) {
         // 当前 expert 从该 source rank 接收的 token，在 dispatch workspace 中占据一个连续的 row segment。
-        int32_t rankSegmentDstRowBegin =
-            ((remoteRankIdx == 0 && localExpertId == 0) ?
-                 0 :
-                 cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + remoteRankIdx - 1));
-        int32_t rankSegRowBegin = rankSegmentDstRowBegin - expertGlobalRowBegin; // 段在 expert-local 坐标中的起点
-        int32_t rankSegRowEnd =
-            cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + remoteRankIdx) - expertGlobalRowBegin;
+        // 段终点每段只读一次 cumsumInfo；下一段的起点即本段终点，避免每段两次 GetValue。
+        if (remoteRankIdx > firstRankIdx) {
+            rankSegRowBegin = rankSegRowEnd;
+        }
+        rankSegRowEnd = cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + remoteRankIdx) - expertGlobalRowBegin;
         // 本 core 在该 rank segment 中的命中序号区间 [coreMatchOrdinalBegin, coreMatchOrdinalEnd)。
         int32_t coreMatchOrdinalBegin =
             (coreExpertRowBegin > rankSegRowBegin) ? coreExpertRowBegin - rankSegRowBegin : 0;
@@ -1328,7 +1334,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndDispatch(GMMAddrInfo &gm
                     dispatchMatchOrdinalBegin - batchMatchOrdinalBegin; // 交集在 validTopkIndexTensor_ 中的起点
                 int32_t batchDispatchRowCount =
                     dispatchMatchOrdinalEnd - dispatchMatchOrdinalBegin; // 本次从该 batch dispatch 的行数
-                int32_t dispatchDstRowBegin = rankSegmentDstRowBegin + dispatchMatchOrdinalBegin;
+                int32_t dispatchDstRowBegin = rankSegRowBegin + expertGlobalRowBegin + dispatchMatchOrdinalBegin;
                 CopyGMToGMPerToken(dispatchDstRowBegin, remoteRankIdx, batchLocalMatchBegin, batchDispatchRowCount,
                                    bufferConfig);
                 dispatchedRowCount += batchDispatchRowCount;
