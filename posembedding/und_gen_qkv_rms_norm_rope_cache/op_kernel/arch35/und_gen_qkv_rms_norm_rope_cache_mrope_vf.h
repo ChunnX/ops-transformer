@@ -25,8 +25,12 @@
  *      布局就是 [cos(0:D/2) | sin(0:D/2)]。
  *   3) 合并结果只存在 vreg 里，不占 UB，也不需要 cosSinExpand / ropeTmp 这类中间 buffer。
  *
+ * V 段（不参与 norm/rope）也并在同一个 VF 里：它与 Q/K 共用同一趟 token 循环，
+ * 单个 V head 恰好是一个满的 bf16 VL（D=128 个 bf16 = 256B），一次 Load + 一次 Store 直通。
+ *
  * 约束：本文件假定 D/2 恰好等于一个 float VL（950 上 VL=256B → 64 个 float，即 D=128），
  *       所有 RegTensor 操作都按「半宽 = 一个满 VL」写死，没有分段循环也没有尾块 mask。
+ *       V 段的「一个 head = 一个满 bf16 VL」是同一个不变量的等价表述（D = 2 * (D/2)）。
  *       该不变量由 host 侧的 static_assert 绑定，见 op_host/..._tiling.h 的 VL_FP32_LANES；
  *       放宽 headDim 前必须先在这里补分段循环与尾块 mask。
  */
@@ -118,11 +122,15 @@ __aicore__ inline void RmsNormRopeOneHead(__local_mem__ bfloat16_t* inHead, __lo
 }
 
 /**
- * @brief 对一个 tile 的 Q/K 做 "RMSNorm -> MRoPE -> Cast bf16" 融合计算，整 tile 一次 VF
+ * @brief 对一个 tile 的 Q/K/V 做 "RMSNorm -> MRoPE -> Cast bf16"（V 直通）融合计算，整 tile 一次 VF
  *
  * Q 和 K 放在同一个 VF 里：它们在 UB 上本来就是同一行 token 内相邻的 head，
  * 拆成两次调用会让每 token 的 cos/sin Gather 做两遍。合到一起后 token 循环只走一趟，
  * cos/sin 只 Gather 一次，Q/K 两段 head 循环共用。
+ *
+ * V 段紧跟在同一趟 token 循环里：它虽然不参与 norm/rope，但源地址就在 Q/K 之后、
+ * 目的地址就在输出 tile 的 v 段，放进来可以省掉 VF 之外那趟独立的 UB->UB 搬运循环，
+ * 每 token 的输入行也只需要遍历一次。T_QKV 与 T_CACHE 同为 bf16，纯直通不做任何转换。
  *
  * gamma 逐 token 加载：cat_indices 可以把 und/gen 任意交错（竞品用例就是
  * [0,5,1,6,2,7,3,4] 这种），同一 tile 内相邻 token 的 gamma 可能不同，所以调用方
@@ -135,14 +143,17 @@ __aicore__ inline void RmsNormRopeOneHead(__local_mem__ bfloat16_t* inHead, __lo
  * @param gatherIndex axisLut 展开成的元素索引，uint32 [D/2]，32B 对齐
  * @param qOutBf16    输出 q 段起址（bf16，[token][Hq][D]）
  * @param kOutBf16    输出 k 段起址（bf16，[token][Hk][D]）
+ * @param vOutBf16    输出 v 段起址（bf16，[token][Hv][D]），V 直通不做计算
  * @param tokenSize   tile 内 token 数
  * @param qHeadSize   Hq
  * @param kHeadSize   Hk
+ * @param vHeadSize   Hv
  * @param inTokenStride     输入 token 步长（元素）= N*D
  * @param gammaTokenStride  gamma tile token 步长（元素）= 2*D
  * @param cosSinTokenStride cos_sin token 步长（元素）= 3*D
  * @param qOutTokenStride   q 段 token 步长（元素）= Hq*D
  * @param kOutTokenStride   k 段 token 步长（元素）= Hk*D
+ * @param vOutTokenStride   v 段 token 步长（元素）= Hv*D
  * @param headStride  head 步长（元素）= D，输入与输出相同
  * @param halfDim     D/2，必须等于 VL_FP32
  * @param epsilon     RMSNorm eps
@@ -151,11 +162,12 @@ __aicore__ inline void RmsNormRopeOneHead(__local_mem__ bfloat16_t* inHead, __lo
 __aicore__ inline void QkRmsNormMropeTileVF(__local_mem__ bfloat16_t* qkvBf16, __local_mem__ float* gammaTile,
                                             __local_mem__ float* rawCosSin, __local_mem__ uint32_t* gatherIndex,
                                             __local_mem__ bfloat16_t* qOutBf16, __local_mem__ bfloat16_t* kOutBf16,
-                                            uint16_t tokenSize, uint16_t qHeadSize, uint16_t kHeadSize,
+                                            __local_mem__ bfloat16_t* vOutBf16, uint16_t tokenSize,
+                                            uint16_t qHeadSize, uint16_t kHeadSize, uint16_t vHeadSize,
                                             uint32_t inTokenStride, uint32_t gammaTokenStride,
                                             uint32_t cosSinTokenStride, uint32_t qOutTokenStride,
-                                            uint32_t kOutTokenStride, uint32_t headStride, uint32_t halfDim,
-                                            float epsilon, float reciprocal)
+                                            uint32_t kOutTokenStride, uint32_t vOutTokenStride, uint32_t headStride,
+                                            uint32_t halfDim, float epsilon, float reciprocal)
 {
     if (tokenSize == 0) {
         return;
@@ -164,6 +176,8 @@ __aicore__ inline void QkRmsNormMropeTileVF(__local_mem__ bfloat16_t* qkvBf16, _
     __VEC_SCOPE__
     {
         MicroAPI::MaskReg pFull = MicroAPI::CreateMask<float, MicroAPI::MaskPattern::ALL>();
+        // V 段按 bf16 原宽处理：一个 head = D 个 bf16 = 一个满 VL，掩码 lane 数是 pFull 的两倍
+        MicroAPI::MaskReg pFullB16 = MicroAPI::CreateMask<bfloat16_t, MicroAPI::MaskPattern::ALL>();
         MicroAPI::RegTensor<uint32_t> mropeIndex;
 
         // gather 索引与 token 无关，整个 tile 只加载一次
@@ -203,6 +217,16 @@ __aicore__ inline void QkRmsNormMropeTileVF(__local_mem__ bfloat16_t* qkvBf16, _
             for (uint16_t h = 0; h < kHeadSize; ++h) {
                 RmsNormRopeOneHead(kInRow + h * headStride, kOutRow + h * headStride, kGammaLow, kGammaHigh, cosValue,
                                    sinValue, pFull, halfDim, epsilon, reciprocal);
+            }
+
+            // V 头紧跟 K 头之后，不参与 norm/rope：一个 head 恰好一个满 bf16 VL，直接搬
+            __local_mem__ bfloat16_t* vInRow = kInRow + kHeadSize * headStride;
+            __local_mem__ bfloat16_t* vOutRow = vOutBf16 + t * vOutTokenStride;
+            for (uint16_t h = 0; h < vHeadSize; ++h) {
+                MicroAPI::RegTensor<bfloat16_t> vValue;
+                MicroAPI::DataCopy<bfloat16_t, MicroAPI::LoadDist::DIST_NORM>(vValue, vInRow + h * headStride);
+                MicroAPI::DataCopy<bfloat16_t, MicroAPI::StoreDist::DIST_NORM_B16>(vOutRow + h * headStride, vValue,
+                                                                                   pFullB16);
             }
         }
     }
