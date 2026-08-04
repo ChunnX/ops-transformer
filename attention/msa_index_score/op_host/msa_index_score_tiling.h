@@ -46,23 +46,24 @@ TILING_DATA_FIELD_DEF(uint32_t, blockSize)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlocksPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, scoreBlockStride)
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
-TILING_DATA_FIELD_DEF(uint32_t, hasScale)
+TILING_DATA_FIELD_DEF(uint32_t, isQuant) // 1: key_cache 为 int8，scale 为反量化系数
 TILING_DATA_FIELD_DEF(uint32_t, fillInvalidTail)
+TILING_DATA_FIELD_DEF(uint32_t, numPages) // key_cache / scale 的物理 page 数 NP
 // 以元素为单位的 stride
 TILING_DATA_FIELD_DEF(uint32_t, strideQt)
 TILING_DATA_FIELD_DEF(uint32_t, strideQn)
 TILING_DATA_FIELD_DEF(uint32_t, strideKvBlock)
 TILING_DATA_FIELD_DEF(uint32_t, strideKvToken)
-TILING_DATA_FIELD_DEF(uint32_t, strideScaleT)
-TILING_DATA_FIELD_DEF(uint32_t, strideScaleN)
+TILING_DATA_FIELD_DEF(uint32_t, strideScalePage) // NP 维 stride = N_kv * block_size
+TILING_DATA_FIELD_DEF(uint32_t, strideScaleHead) // N_kv 维 stride = block_size
 TILING_DATA_FIELD_DEF(uint32_t, strideOutHead)
 TILING_DATA_FIELD_DEF(uint32_t, strideOutToken)
+TILING_DATA_FIELD_DEF(uint32_t, kScratchOffsetElems) // userWs 内 K cast 暂存相对 float 基址的元素偏移
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(MsaIndexScore, MsaIndexScoreTilingData)
 
 struct MsaIndexScoreCompileInfo {};
 
-// 从 TilingContext 解析出的形状 / 属性信息。
 struct MsaIndexScoreInfo {
     fe::PlatFormInfos *platformInfo = nullptr;
     uint32_t batch = 0;
@@ -72,9 +73,11 @@ struct MsaIndexScoreInfo {
     uint32_t headDim = 0;
     uint32_t blockSize = 0;
     uint32_t maxBlocksPerBatch = 0;
-    bool hasScale = false;
+    uint32_t numPages = 0;
+    bool isQuant = false;
     bool fillInvalidTail = true;
     ge::DataType queryDtype = ge::DT_BF16;
+    ge::DataType keyDtype = ge::DT_BF16;
 };
 
 } // namespace optiling

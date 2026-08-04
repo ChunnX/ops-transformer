@@ -20,9 +20,9 @@
 
 using namespace MsaIndexScoreNs;
 
-#define MSA_INVOKE_KERNEL(ElementType)                                                                        \
+#define MSA_INVOKE_KERNEL(ElementQ, IsQuant)                                                                  \
     do {                                                                                                      \
-        MsaIndexScoreKernel<ElementType> op;                                                                  \
+        MsaIndexScoreKernel<ElementQ, IsQuant> op;                                                            \
         op.Init(query, keyCache, blockTable, scale, actualSeqLengthsQuery, actualSeqLengthsKey, startLoc,      \
                 score, userWs, tilingData);                                                                   \
         op.Process();                                                                                         \
@@ -42,8 +42,10 @@ extern "C" __global__ __aicore__ void msa_index_score(GM_ADDR query, GM_ADDR key
     const MsaIndexScoreTilingData *__restrict tilingData = &tilingDataIn;
 
     if (TILING_KEY_IS(MSA_TILING_KEY_BF16)) {
-        MSA_INVOKE_KERNEL(bfloat16_t);
+        MSA_INVOKE_KERNEL(bfloat16_t, false);
     } else if (TILING_KEY_IS(MSA_TILING_KEY_FP16)) {
-        MSA_INVOKE_KERNEL(half);
+        MSA_INVOKE_KERNEL(half, false);
+    } else if (TILING_KEY_IS(MSA_TILING_KEY_FP16_INT8)) {
+        MSA_INVOKE_KERNEL(half, true);
     }
 }

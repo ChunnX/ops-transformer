@@ -18,12 +18,19 @@ endif()
 
 # MsaIndexScore 的 device 侧实现直接依赖 3rdparty/catlass 的头文件模板库。
 # Catlass 为 header-only，只需把 include 根目录注入 kernel 编译选项即可。
+#
+# MSA_INDEX_SCORE_DEBUG=1 打开 device 侧 printf/DumpTensor（默认开启便于联调；
+# 正式交付可改为 0 或删掉相关 -D 选项）。
 add_ops_compile_options(
     OP_NAME MsaIndexScore
     OPTIONS --cce-auto-sync=off
             -Wno-deprecated-declarations
             -fpermissive
     OPTIONS -I${CMAKE_SOURCE_DIR}/3rdparty/catlass/include
+    OPTIONS -DMSA_INDEX_SCORE_DEBUG=0
+            -DENABLE_ASCENDC_DUMP
+            -DASCENDC_DUMP=1
+            -DASCENDC_DEBUG
 )
 
 if (NOT BUILD_OPS_RTY_KERNEL)

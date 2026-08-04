@@ -10,15 +10,14 @@
 
 /*!
  * \file msa_index_score_epilogue.h
- * \brief AIV 侧 Epilogue：mask -> 分段 RowMax -> scale -> 写回。
+ * \brief AIV 侧 Epilogue：可选 key 反量化列乘 -> mask -> 分段 RowMax -> 写回。
  *
  * Atlas A2 没有 L0C->UB 直通路径，Cube 产出的 S 必须经 GM workspace 中转，
  * 本 Epilogue 从 workspace 读取 S tile 并完成后续全部矢量计算。
  *
- * 归约的段长恰等于 sparse block 宽度（MSA_BLOCK_SIZE），且一个 S tile 的
- * [rows, BLOCKS, BLOCK_SIZE] 在内存上等价于 [rows*BLOCKS, BLOCK_SIZE]，
- * 因此"逐 block 求最大值"退化为对该二维视图做一次标准行归约，
- * 归约结果天然按 [row][block] 行主序排布，可直接整块写回。
+ * 非量化：score 侧不再乘 scale（与 HF L572-580 / Triton index_score 一致）。
+ * int8 量化：Cube 先对 K 做 int8→fp 的 cast，本 Epilogue 在 mask 前按
+ * scale[page, h_kv, token] 对 S 做列乘，完成 per-token 反量化。
  */
 
 #ifndef MSA_INDEX_SCORE_EPILOGUE_H
@@ -30,6 +29,7 @@
 #include "catlass/arch/resource.hpp"
 
 #include "../msa_index_score_common.h"
+#include "../msa_index_score_debug.h"
 #include "msa_index_score_task.h"
 
 namespace MsaIndexScoreNs {
@@ -47,11 +47,10 @@ public:
     static constexpr uint32_t UB_SIZE_T8 = MSA_REDUCE_ROWS * MSA_FP32_PER_BLOCK * sizeof(float);
     static constexpr uint32_t UB_OFF_ROWMAX = UB_OFF_T8 + UB_SIZE_T8;
     static constexpr uint32_t UB_SIZE_ROWMAX = 512;
-    static constexpr uint32_t UB_OFF_SCALE = UB_OFF_ROWMAX + UB_SIZE_ROWMAX;
-    static constexpr uint32_t UB_SIZE_SCALE = 512;
-    static constexpr uint32_t UB_OFF_SCALE_BRC = UB_OFF_SCALE + UB_SIZE_SCALE;
-    static constexpr uint32_t UB_SIZE_SCALE_BRC = 512;
-    static constexpr uint32_t UB_TOTAL = UB_OFF_SCALE_BRC + UB_SIZE_SCALE_BRC;
+    // 反量化 scale 一页：block_size 个 fp32 = 512B。
+    static constexpr uint32_t UB_OFF_DEQ = UB_OFF_ROWMAX + UB_SIZE_ROWMAX;
+    static constexpr uint32_t UB_SIZE_DEQ = MSA_BLOCK_SIZE * sizeof(float);
+    static constexpr uint32_t UB_TOTAL = UB_OFF_DEQ + UB_SIZE_DEQ;
     static_assert(UB_TOTAL <= ArchTag::UB_SIZE, "MsaSegRowMaxEpilogue UB out of bounds");
 
     static constexpr uint32_t STILE_WIDTH = MSA_BLOCKS_PER_STILE * MSA_BLOCK_SIZE;
@@ -59,31 +58,34 @@ public:
     __aicore__ inline MsaSegRowMaxEpilogue() {}
 
     __aicore__ inline void Init(Catlass::Arch::Resource<ArchTag> &resource, uint32_t numQHeads,
-                                uint32_t strideOutHead, uint32_t strideOutToken, uint32_t strideScaleT,
-                                uint32_t strideScaleN, bool hasScale,
+                                uint32_t strideOutHead, uint32_t strideOutToken, uint32_t maxBlocksPerBatch,
+                                uint32_t strideScalePage, uint32_t strideScaleHead, bool isQuant,
                                 const AscendC::GlobalTensor<float> &gScore,
-                                const AscendC::GlobalTensor<float> &gScale)
+                                const AscendC::GlobalTensor<float> &gScale,
+                                const AscendC::GlobalTensor<int32_t> &gBlockTable)
     {
         numQHeads_ = numQHeads;
         strideOutHead_ = strideOutHead;
         strideOutToken_ = strideOutToken;
-        strideScaleT_ = strideScaleT;
-        strideScaleN_ = strideScaleN;
-        hasScale_ = hasScale;
+        maxBlocksPerBatch_ = maxBlocksPerBatch;
+        strideScalePage_ = strideScalePage;
+        strideScaleHead_ = strideScaleHead;
+        isQuant_ = isQuant;
         gScore_ = gScore;
         gScale_ = gScale;
+        gBlockTable_ = gBlockTable;
 
         ubS_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_S);
         ubT64_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_T64);
         ubT8_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_T8);
         ubRowMax_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_ROWMAX);
-        ubScale_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_SCALE);
-        ubScaleBrc_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_SCALE_BRC);
+        ubDeqScale_ = resource.ubBuf.template GetBufferByByte<float>(UB_OFF_DEQ);
     }
 
     /// 处理一个 S tile（MSA_BLOCKS_PER_STILE 个 sparse block）中属于本 subcore 的行。
     __aicore__ inline void ProcessSTile(const AscendC::GlobalTensor<float> &gS, const MsaTask &task,
-                                        uint32_t blkBase, uint32_t subIdx, uint32_t subBlockNum)
+                                        uint32_t blkBase, uint32_t subIdx, uint32_t subBlockNum,
+                                        bool dumpDebug = false)
     {
         const uint32_t subM = MsaCeilDiv(task.mActual, subBlockNum);
         const uint32_t mOff = subIdx * subM;
@@ -92,35 +94,162 @@ public:
         }
         const uint32_t mSub = MsaMinU32(subM, task.mActual - mOff);
 
+#if MSA_INDEX_SCORE_DEBUG
+        if (dumpDebug) {
+            AscendC::printf(
+                "[MSA_DBG][AIV] ProcessSTile blkBase=%u subIdx=%u mOff=%u mSub=%u "
+                "fullEndBlk=%u visibleEndBlk=%u isQuant=%u\n",
+                blkBase, subIdx, mOff, mSub, task.fullEndBlk, task.visibleEndBlk,
+                static_cast<uint32_t>(isQuant_));
+        }
+#endif
+
         for (uint32_t p0 = 0; p0 < mSub; p0 += MSA_ROWS_PER_PASS) {
             const uint32_t rows = MsaMinU32(MSA_ROWS_PER_PASS, mSub - p0);
-            ProcessPass(gS, task, blkBase, mOff + p0, rows);
+            ProcessPass(gS, task, blkBase, mOff + p0, rows, dumpDebug && (p0 == 0));
         }
     }
 
 private:
     /// 处理一个 pass（最多 MSA_ROWS_PER_PASS 行 × MSA_BLOCKS_PER_STILE 个 block）。
     __aicore__ inline void ProcessPass(const AscendC::GlobalTensor<float> &gS, const MsaTask &task,
-                                       uint32_t blkBase, uint32_t rowOff, uint32_t rows)
+                                       uint32_t blkBase, uint32_t rowOff, uint32_t rows, bool dumpDebug)
     {
         const bool allInvalid = (blkBase >= task.visibleEndBlk);
 
+#if MSA_INDEX_SCORE_DEBUG
+        if (dumpDebug) {
+            AscendC::printf(
+                "[MSA_DBG][AIV] ProcessPass rowOff=%u rows=%u allInvalid=%u STILE_WIDTH=%u\n", rowOff,
+                rows, static_cast<uint32_t>(allInvalid), STILE_WIDTH);
+        }
+#endif
+
         if (!allInvalid) {
+#if MSA_INDEX_SCORE_DEBUG
+            uint32_t sDumpN = MSA_DEBUG_DUMP_ELEMS;
+            if (task.kvLen > 0 && task.kvLen <= 8) {
+                sDumpN = static_cast<uint32_t>(task.kvLen) + 3U;
+            }
+#endif
             AscendC::DataCopy(ubS_, gS[static_cast<uint64_t>(rowOff) * STILE_WIDTH], rows * STILE_WIDTH);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
 
+#if MSA_INDEX_SCORE_DEBUG
+            if (dumpDebug) {
+                AscendC::printf(
+                    "[MSA_DBG][AIV] after DOT load S ub (row0, blk0 first %u fp32):\n", sDumpN);
+                MsaDumpUbSample(ubS_, MSA_DUMP_DESC_S_DOT, sDumpN);
+                AscendC::printf("[MSA_DBG][AIV] S_after_dot:");
+                MsaPrintUbFloats(ubS_, sDumpN);
+            }
+#endif
+
+            if (isQuant_) {
+                ApplyDequantScale(task, blkBase, rows);
+#if MSA_INDEX_SCORE_DEBUG
+                if (dumpDebug) {
+                    AscendC::printf("[MSA_DBG][AIV] S_after_dequant:");
+                    MsaPrintUbFloats(ubS_, sDumpN);
+                }
+#endif
+            }
+
             ApplyMask(task, blkBase, rowOff, rows);
+
+#if MSA_INDEX_SCORE_DEBUG
+            if (dumpDebug) {
+                AscendC::printf(
+                    "[MSA_DBG][AIV] after MASK S ub (row0, blk0 first %u fp32), "
+                    "maskRange=[fullEndBlk,visibleEndBlk)=[%u,%u):\n",
+                    sDumpN, task.fullEndBlk, task.visibleEndBlk);
+                MsaDumpUbSample(ubS_, MSA_DUMP_DESC_S_MASK, sDumpN);
+                AscendC::printf("[MSA_DBG][AIV] S_after_mask:");
+                MsaPrintUbFloats(ubS_, sDumpN);
+
+                // 逐行打印本 pass 的 validCount，核对 MASK 切分点。
+                for (uint32_t r = 0; r < rows && r < 8U; ++r) {
+                    const uint32_t rowInReq = task.mStart + rowOff + r;
+                    const uint32_t tOff = rowInReq / numQHeads_;
+                    const int32_t qPos = task.startLoc + static_cast<int32_t>(tOff);
+                    int32_t visibleKeyEnd = (qPos + 1) < task.kvLen ? (qPos + 1) : task.kvLen;
+                    if (visibleKeyEnd < 0) {
+                        visibleKeyEnd = 0;
+                    }
+                    const uint32_t blk = blkBase; // 小用例通常只有 blk0
+                    int32_t validCount = visibleKeyEnd - static_cast<int32_t>(blk * MSA_BLOCK_SIZE);
+                    if (validCount < 0) {
+                        validCount = 0;
+                    }
+                    if (validCount > static_cast<int32_t>(MSA_BLOCK_SIZE)) {
+                        validCount = static_cast<int32_t>(MSA_BLOCK_SIZE);
+                    }
+                    AscendC::printf(
+                        "[MSA_DBG][AIV] row r=%u flat=%u tokenOff=%u qPos=%d validCount=%d\n", r,
+                        rowInReq, tOff, qPos, validCount);
+                    if (validCount < static_cast<int32_t>(MSA_BLOCK_SIZE) && validCount >= 0) {
+                        const uint32_t base = (r * MSA_BLOCKS_PER_STILE) * MSA_BLOCK_SIZE;
+                        const uint32_t lo = (validCount >= 2) ? static_cast<uint32_t>(validCount - 2) : 0U;
+                        const uint32_t hi = static_cast<uint32_t>(validCount) + 3U;
+                        AscendC::printf("[MSA_DBG][AIV]   S_after_mask[%u:%u]:", lo, hi);
+                        AscendC::PipeBarrier<PIPE_ALL>();
+                        for (uint32_t i = lo; i < hi && i < MSA_BLOCK_SIZE; ++i) {
+                            AscendC::printf(" %f", ubS_.GetValue(base + i));
+                        }
+                        AscendC::printf("\n");
+                    }
+                }
+            }
+#endif
+
             SegRowMax();
+
+#if MSA_INDEX_SCORE_DEBUG
+            if (dumpDebug) {
+                AscendC::printf(
+                    "[MSA_DBG][AIV] after MAX rowmax (rows[0:%u) x %u blocks):\n", rows,
+                    MSA_BLOCKS_PER_STILE);
+                MsaDumpUbSample(ubRowMax_, MSA_DUMP_DESC_SCORE_MAX, rows * MSA_BLOCKS_PER_STILE);
+                for (uint32_t r = 0; r < rows && r < 8U; ++r) {
+                    AscendC::printf("[MSA_DBG][AIV] score_after_max[r=%u]:", r);
+                    AscendC::PipeBarrier<PIPE_ALL>();
+                    for (uint32_t j = 0; j < MSA_BLOCKS_PER_STILE; ++j) {
+                        AscendC::printf(" %f", ubRowMax_.GetValue(r * MSA_BLOCKS_PER_STILE + j));
+                    }
+                    AscendC::printf("\n");
+                }
+            }
+#endif
         } else {
             AscendC::Duplicate(ubRowMax_, MSA_FILL_VALUE, MSA_REDUCE_ROWS);
             AscendC::PipeBarrier<PIPE_V>();
+#if MSA_INDEX_SCORE_DEBUG
+            if (dumpDebug) {
+                AscendC::printf("[MSA_DBG][AIV] allInvalid stile -> fill score with -inf\n");
+            }
+#endif
         }
 
-        if (hasScale_) {
-            ApplyScale(task, rowOff, rows);
-        }
         FillInvalidBlocks(task, blkBase);
+
+#if MSA_INDEX_SCORE_DEBUG
+        if (dumpDebug) {
+            AscendC::printf(
+                "[MSA_DBG][AIV] final score before store (after fillInvalid), "
+                "rows[0:%u) x %u blocks:\n",
+                rows, MSA_BLOCKS_PER_STILE);
+            MsaDumpUbSample(ubRowMax_, MSA_DUMP_DESC_SCORE_FINAL, rows * MSA_BLOCKS_PER_STILE);
+            for (uint32_t r = 0; r < rows && r < 8U; ++r) {
+                AscendC::printf("[MSA_DBG][AIV] score_final[r=%u]:", r);
+                AscendC::PipeBarrier<PIPE_ALL>();
+                for (uint32_t j = 0; j < MSA_BLOCKS_PER_STILE; ++j) {
+                    AscendC::printf(" %f", ubRowMax_.GetValue(r * MSA_BLOCKS_PER_STILE + j));
+                }
+                AscendC::printf("\n");
+            }
+        }
+#endif
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
@@ -188,6 +317,30 @@ private:
         }
     }
 
+    /// int8 路径：S 已是 Q · cast(K_int8)，再按列乘 scale[page,0,n] 完成反量化。
+    /// 数学上 Q·(K_int8*s) = (Q·cast(K_int8))*s（int8→fp 对整数精确）。
+    __aicore__ inline void ApplyDequantScale(const MsaTask &task, uint32_t blkBase, uint32_t rows)
+    {
+        for (uint32_t j = 0; j < MSA_BLOCKS_PER_STILE; ++j) {
+            const uint32_t blk = blkBase + j;
+            if (blk >= task.visibleEndBlk) {
+                break;
+            }
+            const int32_t page = gBlockTable_.GetValue(task.batchIdx * maxBlocksPerBatch_ + blk);
+            // Hkv==1：取 scale[page, 0, :]
+            const uint64_t scaleOff = static_cast<uint64_t>(page) * strideScalePage_;
+            AscendC::DataCopy(ubDeqScale_, gScale_[scaleOff], MSA_BLOCK_SIZE);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
+
+            for (uint32_t r = 0; r < rows; ++r) {
+                const uint32_t base = r * STILE_WIDTH + j * MSA_BLOCK_SIZE;
+                AscendC::Mul(ubS_[base], ubS_[base], ubDeqScale_, static_cast<int32_t>(MSA_BLOCK_SIZE));
+            }
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+    }
+
     /// 把 ubS_ 视作 [MSA_REDUCE_ROWS, MSA_BLOCK_SIZE] 做行归约，结果落在 ubRowMax_[MSA_REDUCE_ROWS]，
     /// 其排布恰为 [MSA_ROWS_PER_PASS][MSA_BLOCKS_PER_STILE] 行主序。
     __aicore__ inline void SegRowMax()
@@ -196,54 +349,22 @@ private:
         constexpr uint8_t SRC_REP_BLK = MSA_BLOCK_SIZE / MSA_FP32_PER_BLOCK; // 16
         constexpr uint8_t DST_REP_BLK = HALF_BLOCK / MSA_FP32_PER_BLOCK;     // 8
 
-        // 128 -> 64：两半取 max，一次 repeat 覆盖一行的前/后 64 个元素。
         AscendC::Max<float>(ubT64_, ubS_, ubS_[HALF_BLOCK], static_cast<int32_t>(MSA_FP32_PER_REPEAT),
                             static_cast<uint8_t>(MSA_REDUCE_ROWS),
                             AscendC::BinaryRepeatParams(1, 1, 1, DST_REP_BLK, SRC_REP_BLK, SRC_REP_BLK));
         AscendC::PipeBarrier<PIPE_V>();
 
-        // 64 -> 8：每个 32B datablock 归约成 1 个。
         AscendC::BlockReduceMax<float, true>(ubT8_, ubT64_, static_cast<uint8_t>(MSA_REDUCE_ROWS),
                                              static_cast<int32_t>(MSA_FP32_PER_REPEAT), 1, 1, DST_REP_BLK);
         AscendC::PipeBarrier<PIPE_V>();
 
-        // 8 -> 1：一行的 8 个中间值恰好占满一个 datablock。
         AscendC::BlockReduceMax<float, true>(ubRowMax_, ubT8_,
                                              static_cast<uint8_t>(MSA_REDUCE_ROWS / MSA_FP32_PER_BLOCK),
                                              static_cast<int32_t>(MSA_FP32_PER_REPEAT), 1, 1, DST_REP_BLK);
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    /// scale 为 per-token per-head 正值，max 具有正齐次性，故在归约之后施加，
-    /// 作用对象从 [rows, BLOCK_SIZE*BLOCKS] 缩小到 [rows, BLOCKS]。
-    __aicore__ inline void ApplyScale(const MsaTask &task, uint32_t rowOff, uint32_t rows)
-    {
-        const uint32_t rowBase = task.globalRowBase + rowOff;
-        if (strideScaleN_ == 1) {
-            AscendC::DataCopyExtParams params{1, rows * static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-            AscendC::DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
-            AscendC::DataCopyPad(ubScale_, gScale_[rowBase], params, padParams);
-        } else {
-            for (uint32_t r = 0; r < rows; ++r) {
-                const uint32_t rowInReq = task.mStart + rowOff + r;
-                const uint32_t tOff = rowInReq / numQHeads_;
-                const uint32_t h = rowInReq - tOff * numQHeads_;
-                const uint64_t off = static_cast<uint64_t>(task.cuQStart + tOff) * strideScaleT_ +
-                                     static_cast<uint64_t>(h) * strideScaleN_;
-                ubScale_.SetValue(r, gScale_.GetValue(off));
-            }
-        }
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
-
-        AscendC::Brcb(ubScaleBrc_, ubScale_, static_cast<uint8_t>(MsaCeilDiv(rows, MSA_FP32_PER_BLOCK)),
-                      AscendC::BrcbRepeatParams(1, MSA_FP32_PER_BLOCK));
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Mul(ubRowMax_, ubRowMax_, ubScaleBrc_, static_cast<int32_t>(rows * MSA_BLOCKS_PER_STILE));
-        AscendC::PipeBarrier<PIPE_V>();
-    }
-
-    /// blk >= visibleEndBlk 的位置整体置为 -inf（在 scale 之后，避免被缩放污染）。
+    /// blk >= visibleEndBlk 的位置整体置为 -inf。
     __aicore__ inline void FillInvalidBlocks(const MsaTask &task, uint32_t blkBase)
     {
         const uint32_t invStart = (task.visibleEndBlk > blkBase) ? (task.visibleEndBlk - blkBase) : 0;
@@ -255,7 +376,6 @@ private:
             AscendC::PipeBarrier<PIPE_V>();
             return;
         }
-        // 一个 repeat 覆盖 MSA_FP32_PER_REPEAT 个元素 = 8 行输出，按 (idx % BLOCKS) >= invStart 置位。
         uint64_t groupBits = 0;
         for (uint32_t k = invStart; k < MSA_BLOCKS_PER_STILE; ++k) {
             groupBits |= (1ULL << k);
@@ -271,8 +391,6 @@ private:
         AscendC::PipeBarrier<PIPE_V>();
     }
 
-    /// 每行的 MSA_BLOCKS_PER_STILE 个结果恰好 32B，且 GM 目的地址天然 32B 对齐，
-    /// 因此可以用整块 DataCopy 写回，无需 DataCopyPad。
     __aicore__ inline void StoreScore(const MsaTask &task, uint32_t blkBase, uint32_t rowOff, uint32_t rows)
     {
         for (uint32_t r = 0; r < rows; ++r) {
@@ -287,19 +405,20 @@ private:
 
     AscendC::GlobalTensor<float> gScore_;
     AscendC::GlobalTensor<float> gScale_;
+    AscendC::GlobalTensor<int32_t> gBlockTable_;
     AscendC::LocalTensor<float> ubS_;
     AscendC::LocalTensor<float> ubT64_;
     AscendC::LocalTensor<float> ubT8_;
     AscendC::LocalTensor<float> ubRowMax_;
-    AscendC::LocalTensor<float> ubScale_;
-    AscendC::LocalTensor<float> ubScaleBrc_;
+    AscendC::LocalTensor<float> ubDeqScale_;
 
     uint32_t numQHeads_ = 1;
     uint32_t strideOutHead_ = 0;
     uint32_t strideOutToken_ = 0;
-    uint32_t strideScaleT_ = 0;
-    uint32_t strideScaleN_ = 1;
-    bool hasScale_ = false;
+    uint32_t maxBlocksPerBatch_ = 0;
+    uint32_t strideScalePage_ = 0;
+    uint32_t strideScaleHead_ = 1;
+    bool isQuant_ = false;
 };
 
 } // namespace MsaIndexScoreNs

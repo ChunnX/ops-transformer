@@ -24,30 +24,29 @@ q_{\text{pos}}(t) = \texttt{start\_loc}[b] + \bigl(t - \texttt{cu\_seq\_q}[b]\bi
 $$
 
 $$
-\texttt{score}[h, t, \beta] = \sigma[t, h]\cdot
+\texttt{score}[h, t, \beta] =
 \max_{\substack{j \in [\beta P,\ \beta P + P) \\ j \le q_{\text{pos}}(t),\ j < \texttt{kv\_len}[b]}}
-\bigl\langle \mathbf{q}_{t,h},\ \mathbf{k}_{j} \bigr\rangle
+\bigl\langle \mathbf{q}_{t,h},\ \tilde{\mathbf{k}}_{j} \bigr\rangle
 $$
 
-  其中 $P$ = `block_size`，$\mathbf{k}_j = \texttt{key\_cache}\bigl[\texttt{block\_table}[b, \lfloor j/P\rfloor],\ j \bmod P,\ 0,\ :\bigr]$，
-  $\sigma$ 为 per-token / per-head 的正缩放。窗口内无可见 $j$ 时输出 $-\infty$。
-
-  由于 $\sigma>0$ 时 $\max$ 具有正齐次性，实现中 scale 在归约**之后**施加；
-  这也意味着正的 scale 不改变同一 $(h,t)$ 行内的 block 排序，不影响下游 `topk` 结果。
+  其中 $P$ = `block_size`。非量化：$\tilde{\mathbf{k}}_j = \texttt{key\_cache}[\texttt{block\_table}[b,\lfloor j/P\rfloor], j\bmod P, 0, :]$。
+  int8 前融合：$\tilde{\mathbf{k}}_j = \mathrm{cast}(\texttt{key\_cache}[\ldots])\cdot
+  \texttt{scale}[\texttt{page}, 0, j\bmod P]$，`scale` shape 为 $[NP, N_{kv}, P]$。
+  窗口内无可见 $j$ 时输出 $-\infty$。**非量化路径不在 score 上再乘 scale。**
 
 ## 参数说明
 
 > **说明：**
 > $T$ = `total_q`（varlen 扁平后的 query token 总数），$B$ = batch，
-> $H_q$ = `num_q_heads`，$H_{kv}$ = `num_kv_heads`，$D$ = `head_dim`，
+> $H_q$ = `num_q_heads`（index heads），$H_{kv}$ = `num_kv_heads`，$D$ = `head_dim`，
 > $P$ = `block_size`，$NP$ = KV cache 的物理 page 数，$MB$ = 每 batch 最大 block 数。
 
 | 参数名 | 输入/输出/属性 | 描述 | 数据类型 | 数据格式 |
 |--------|----------------|------|----------|----------|
 | query | 输入 | index query，shape $[T, H_q, D]$ | BFLOAT16, FLOAT16 | ND (TND) |
-| key_cache | 输入 | 分页 index key cache，shape $[NP, P, H_{kv}, D]$ | 同 query | ND (BSND) |
+| key_cache | 输入 | 分页 index key cache，shape $[NP, P, H_{kv}, D]$ | 同 query，或 INT8（前融合量化） | ND (BSND) |
 | block_table | 输入 | 逻辑 block → 物理 page 映射，shape $[B, MB]$ | INT32 | ND |
-| scale | 可选输入 | per-token / per-head 正缩放，shape $[T, H_q]$；缺省等价于全 1 | FLOAT | ND |
+| scale | 可选输入 | **仅 int8 路径**：反量化系数 $[NP, N_{kv}, P]$；非量化必须为空 | FLOAT | ND |
 | actual_seq_lengths_query | 输入 | query 长度前缀和（cumsum），shape $[B+1]$，首元素为 0 | INT32 | ND |
 | actual_seq_lengths_key | 输入 | 每个请求可见的 kv 长度，shape $[B]$ | INT32 | ND |
 | start_loc | 输入 | 每个请求首个 query token 在自身 kv 序列中的位置，shape $[B]$ | INT32 | ND |
@@ -67,14 +66,11 @@ $$
 
 - `block_size` 当前仅支持 **128**，且必须与 `key_cache` 的第 1 维一致。
 - `num_kv_heads` 当前仅支持 **1**（MSA 的 index K 为全 head 共享单头）。
-  `num_kv_heads > 1` 的通用 GQA 需要多段 Nd2Nz 搬运 Q，见"后续规划"。
 - `head_dim` 必须是 16 的正整数倍，且当前不超过 128。`head_dim == 1` 的标量特化不支持。
 - `num_q_heads` 必须能被 `num_kv_heads` 整除。
-- `scale` 若提供，必须逐元素为正数（依赖 $\max$ 的正齐次性）。
-- 输出末维是 **block 数**而非 kv token 数：maxpool 已把一个 block 内的 `block_size` 个 token
-  归约成 1 个分数。
-- `key_cache` 支持 BSND 布局下按 kv head 的跨步访问（page 内 token stride = $H_{kv}\cdot D$）；
-  要求最内维 $D$ 连续。
+- **非量化**：`key_cache` dtype 与 `query` 相同，**不得**传入 `scale`。
+- **int8 前融合**：`key_cache` 为 INT8，必须传入 `scale`，shape `$[NP, N_{kv}, P]$`（与 key 物理 page 对齐）。
+- 输出末维是 **block 数**而非 kv token 数。
 - 本算子**不包含** `topk`，输出止于 block score。
 
 ## 调用示例
@@ -110,6 +106,35 @@ bash build.sh --run_example msa_index_score eager cust --vendor_name=custom
 
 catlass 通过 `op_host/CMakeLists.txt` 的 `add_ops_compile_options(... OPTIONS -I<repo>/3rdparty/catlass/include)`
 注入 kernel 编译选项，不拷贝到 `op_kernel/` 下。
+
+## Device 侧调试打印
+
+`op_host/CMakeLists.txt` 默认打开：
+
+```
+-DMSA_INDEX_SCORE_DEBUG=1 -DENABLE_ASCENDC_DUMP -DASCENDC_DUMP=1 -DASCENDC_DEBUG
+```
+
+会在 **core0 / 首个 task / 首个 S-tile / 首个 pass** 打印：
+
+| 阶段 | 位置 | 内容 |
+|------|------|------|
+| tiling / task 参数 | AIC+AIV | batch、Hq、D、fullEndBlk、visibleEndBlk 等 |
+| 输入 Q / K | AIC | `DumpTensor` 各取前 16 个元素 |
+| 点乘后 S | AIC workspace + AIV UB | fp32，前 16 个 |
+| mask 后 S | AIV UB | 同窗口；边界 block 另打尾部看 `-inf` |
+| max 后 score | AIV UB | 一行 × 8 个 sparse block |
+| scale/fill 后最终 score | AIV UB | 写回前的结果 |
+
+example 默认只跑小尺寸 `L0-debug-trace`（`Hq=2, D=16, qLen=2, kvLen=5, startLoc=3`）：
+host 侧会逐步打印 Q/K → DOT → MASK → MAX → scale → device 输出；device 侧 dump
+也会把完整 Q 行、可见 K、以及 mask 切分点附近的 S 打出来。完整矩阵：
+
+```bash
+MSA_INDEX_SCORE_RUN_ALL=1 bash build.sh --run_example msa_index_score eager cust --vendor_name=custom
+```
+
+正式交付前把 CMake 里的 `-DMSA_INDEX_SCORE_DEBUG=1` 改为 `0`（或删掉 dump 相关 `-D`）即可关闭。
 
 **关键实现要点**
 

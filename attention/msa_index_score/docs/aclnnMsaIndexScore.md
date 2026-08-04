@@ -11,19 +11,20 @@
 
 - **算子功能**：计算 MSA（MiniMax Sparse Attention）Lightning Indexer 的 block score。
   对每个 query token 与每个 KV sparse block，取该 block 内所有因果可见 token 的
-  `index_q · index_k` 点乘最大值，再乘以 per-token / per-head 的正缩放。
+  `index_q · index_k`（可选 int8 反量化）点乘最大值。
   输出供下游 `topk` 选块使用。Prefill 与 Decode 由同一接口承载。
 
-- **计算公式**：
+- **计算公式**（非量化：$\tilde{\mathbf{k}}=\mathbf{k}$；int8：$\tilde{\mathbf{k}}=\mathrm{cast}(\mathbf{k}_{\mathrm{int8}})\cdot\texttt{scale}[\mathrm{page},h_{kv},j\bmod P]$）：
 
 $$
-\texttt{score}[h, t, \beta] = \sigma[t, h]\cdot
+\texttt{score}[h, t, \beta] =
 \max_{\substack{j \in [\beta P,\ \beta P + P) \\ j \le q_{\text{pos}}(t),\ j < \texttt{kv\_len}[b]}}
-\bigl\langle \mathbf{q}_{t,h},\ \mathbf{k}_{j} \bigr\rangle,
+\bigl\langle \mathbf{q}_{t,h},\ \tilde{\mathbf{k}}_{j} \bigr\rangle,
 \qquad
 q_{\text{pos}}(t) = \texttt{start\_loc}[b] + \bigl(t - \texttt{cu\_seq\_q}[b]\bigr)
 $$
 
+  非量化路径**不得**传入 `scaleOptional`；int8 路径必选 `scaleOptional` shape $[NP,N_{kv},P]$。输出仍为 fp32。
 ## 函数原型
 
 每个算子分为[两段式接口](https://hiascend.com/document/redirect/CannCommunityAscendCInVorkflow)，
@@ -61,9 +62,9 @@ aclnnStatus aclnnMsaIndexScore(
 | 参数名 | 输入/输出 | 描述 | 使用说明 | 数据类型 | 数据格式 | 维度 |
 |--------|-----------|------|----------|----------|----------|------|
 | query | 输入 | index query | varlen 扁平布局，$T$ 为所有请求 query token 之和 | BFLOAT16, FLOAT16 | ND | 3（$[T, H_q, D]$）|
-| keyCache | 输入 | 分页 index key cache | 与 query 同 dtype；$H_{kv}$ 当前必须为 1 | BFLOAT16, FLOAT16 | ND | 4（$[NP, P, H_{kv}, D]$）|
+| keyCache | 输入 | 分页 index key cache | 非量化与 query 同 dtype；int8 前融合为 INT8，$H_{kv}=1$ | BFLOAT16, FLOAT16, INT8 | ND | 4（$[NP, P, H_{kv}, D]$）|
 | blockTable | 输入 | 逻辑 block → 物理 page 映射 | 元素取值需落在 $[0, NP)$ | INT32 | ND | 2（$[B, MB]$）|
-| scaleOptional | 输入 | per-token / per-head 缩放 | 可为 `nullptr`（等价全 1）；非空时须逐元素为正 | FLOAT | ND | 2（$[T, H_q]$）|
+| scaleOptional | 输入 | int8 反量化系数 | 非量化必须为 `nullptr`；int8 时必选，$[NP, N_{kv}, P]$ | FLOAT | ND | 3（$[NP, N_{kv}, P]$）|
 | actualSeqLengthsQuery | 输入 | query 长度前缀和 | 单调不减，首元素为 0，末元素为 $T$ | INT32 | ND | 1（$[B+1]$）|
 | actualSeqLengthsKey | 输入 | 每请求可见 kv 长度 | 需满足 $\lceil \texttt{kv\_len}/P \rceil \le MB$ | INT32 | ND | 1（$[B]$）|
 | startLoc | 输入 | 首个 query token 在 kv 序列中的位置 | Prefill 为 prefix 长度，Decode 为 `seq_len - q_len` | INT32 | ND | 1（$[B]$）|
@@ -105,7 +106,8 @@ aclnnStatus aclnnMsaIndexScore(
 - `keyCache` 的 `numKvHeads` 当前仅支持 1（MSA index K 为全 head 共享的单头）。
 - `headDim` 必须是 16 的正整数倍，且当前不超过 128；不支持 `headDim == 1`。
 - `numQHeads` 必须能被 `numKvHeads` 整除。
-- `scaleOptional` 非空时必须逐元素为正。
+- 非量化：`keyCache` dtype 与 `query` 相同，且 `scaleOptional` 必须为 `nullptr`。
+- int8 前融合：`keyCache` 为 INT8，`scaleOptional` 必选且 shape 为 $[NP, N_{kv}, blockSize]$。
 - 输出 `out` 的末维必须等于 $\text{RoundUp}(MB, 16)$，与 InferShape 推导一致。
 - 本接口输出止于 block score，**不包含** `topk`。
 

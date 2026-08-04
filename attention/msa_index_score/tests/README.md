@@ -29,24 +29,32 @@ bash build.sh --run_example msa_index_score eager cust --vendor_name=custom
 | `L1-decode-lq1` | 6 个请求 `q_len=1`，`kv_len ∈ {1,4,128,129,512,900,4096}` | 长度截断、单 partial block、小 M |
 | `L1-decode-speculative` | `q_len ∈ {2,4}` | 投机解码下 head-minor 打包的 `q_pos` 推导 |
 | `L1-long-seq-multi-stile` | `kv_len=4096` → 32 个 block → 多个 S-tile | workspace 三级轮转、cross-core flag 计数配对 |
-| `L1-bf16` | bf16 输入 | dtype 分支（TilingKey 0） |
-| `L1-no-scale` | 不传 `scale` | 可选输入缺省分支 |
+| `L1-bf16` | bf16 输入（非量化） | dtype 分支（TilingKey 0） |
+| `L0-int8-dequant-trace` | fp16 Q + int8 K + `scale[NP,1,P]` | 前融合反量化主路径 |
+| `L1-int8-dequant` | 多 batch varlen + int8 | 反量化 × mask × 多 tile |
 | `L1-head-dim-64` | `head_dim=64 < L1TileShape::K` | BlockMmad 的 K 尾块路径 |
 | `L1-heads-16` | `num_q_heads=16` | M-tile 跨 token 边界的行映射 |
 | `L2-tiny-kv` | `kv_len ∈ {1,3}`，`q_len=1` | 极小值边界、无效尾填充 |
 
+默认只跑 `L0-debug-trace`（非量化、无 scale）与 `L0-int8-dequant-trace`；
+全矩阵：`MSA_INDEX_SCORE_RUN_ALL=1`。
+
 所有用例的 `block_table` 都被刻意打乱，用于验证 paged 间接寻址。
+**非量化不得传 scale**；**int8 必须传** `[NP,N_kv,P]` 反量化 scale。
 
 ## 3. Python 参考实现
 
 `tests/golden/msa_index_score_golden.py` 提供与 kernel 数值路径一致的 numpy 参考实现
-（fp32 累加 → 逐 block max → 乘 scale）与双标准比对函数，可用于接入仓上 pytest / ATK 框架。
+（非量化：点乘→mask→max；int8：`cast(K)*scale`→点乘→mask→max）与比对函数。
 
 ```python
 from msa_index_score_golden import msa_index_score_golden, compare
 
-golden = msa_index_score_golden(query, key_cache, block_table, cu_seq_q, kv_len, start_loc,
-                                block_size=128, scale=scale)
+# 非量化：scale=None
+golden = msa_index_score_golden(query, key_cache, block_table, cu_seq_q, kv_len, start_loc)
+# int8：scale shape [NP, N_kv, P]
+golden_q = msa_index_score_golden(query, key_i8, block_table, cu_seq_q, kv_len, start_loc,
+                                  scale=dequant_scale)
 ok, msg = compare(actual, golden)
 ```
 
