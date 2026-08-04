@@ -30,6 +30,7 @@ def _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q):
 def _calculate_metadata_size(batch_size, num_heads_kv):
     """计算 metadata tensor 的对齐后大小"""
     metadata_size = ((36 + 72) * batch_size * num_heads_kv + 1) * 16
+    metadata_size += 116  # FAG (Flash Attn Grad) metadata size
     return ((metadata_size + 4095) // 4096) * 4096
 
 

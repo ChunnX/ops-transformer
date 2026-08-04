@@ -154,7 +154,8 @@ int main() {
     int32_t attentionMode = 0;
     bool return_softmax_lse = false;
 
-    int64_t metadataSize = ((36 + 72) * batchSize * numKeyValueHeads + 1) * 16;
+    int64_t faSize = ((36 + 72) * batchSize * numKeyValueHeads + 1) * 16;
+    int64_t metadataSize = faSize + 116;  // 116: FAG (Flash Attn Grad) metadata size
     int64_t alignedSize = ((metadataSize + 4095) / 4096) * 4096;
 
     std::vector<int64_t> actualSeqLengthsQueryShape = {batchSize};

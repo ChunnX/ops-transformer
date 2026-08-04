@@ -21,6 +21,7 @@
 #include <cmath>
 #include "flash_attn_metadata.h"
 #include "flash_attn_metadata_aicpu.h"
+#include "flash_attn_grad_metadata_split.h"
 #include "../../common/op_kernel/aicpu_common.h"
 #include "../../flash_attn/op_host/fa_adjust_sinner_souter.h"
 
@@ -41,6 +42,16 @@ uint32_t FlashAttnMetadataCpuKernel::Compute(CpuKernelContext &ctx)
 
     success = GenMetadata(splitRes);
     KERNEL_CHECK_FALSE(success, FA_KERNEL_STATUS_PARAM_INVALID, "Generate balance result failed!");
+
+    // ===== FAG metadata start =====
+    // FAG (Flash Attn Grad) metadata: always executed, appended after FA data.
+    // InitFagParams initializes split parameters (s1Inner, s2Inner, sparseMode, etc.)
+    // DoFagSparse dispatches to Dense/TND/Sparse split scenarios
+    // GenFagMetadata serializes results to the tail of the metadata tensor
+    InitFagParams();
+    DoFagSparse();
+    GenFagMetadata(splitRes.sectionNum);
+    // ===== FAG metadata end =====
 
     return FA_KERNEL_STATUS_OK;
 }
