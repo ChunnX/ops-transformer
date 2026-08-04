@@ -216,16 +216,14 @@ __aicore__ inline void Gmm1AicMmadTileA8W4(BlockMmad &blockMmad, TensorA &gmA, T
 }
 
 // Prefetch 路径的 AIC 将 GMM1 tile 写入 GM，并通知 AIV 后处理。
-template <typename BlockMmad, bool IsShared, bool IsGmm1Interleaved, typename WorkSet, typename Config>
+template <typename PersistentContext, bool IsShared, bool IsGmm1Interleaved, typename WorkSet, typename Config>
 __aicore__ inline void Gmm1AicPrefetchMmadGeneric(
     WorkSet &workSet, const Params &params, const GMMAddrInfo &gmmAddrInfo, const Config &config,
-    uint32_t startLoopIdx, uint32_t tileNum, uint32_t expertIdx)
+    uint32_t startLoopIdx, uint32_t tileNum, uint32_t expertIdx, PersistentContext *persistentContext)
 {
-    BlockMmad blockMmad;
-    bool enableL0CPingPong = false;
-    typename BlockMmad::BlockShape l0TileShape{config.tileM, L1_TILE_N, L0_TILE_K, 0};
-    typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
-    blockMmad.Init(matmulShape, l0TileShape, config.l1Params, false, enableL0CPingPong);
+    using BlockMmad = decltype(persistentContext->blockMmad);
+    EnsurePersistentBlockMmadInitialized(*persistentContext, config);
+    auto &blockMmad = persistentContext->blockMmad;
 
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
@@ -254,16 +252,15 @@ __aicore__ inline void Gmm1AicPrefetchMmadGeneric(
 }
 
 // 非 Prefetch 路径的 AIC 将 GMM1 tile 写入 UB，并维持与 AIV 的 ping-pong 同步。
-template <typename BlockMmad, bool IsShared, bool IsGmm1Interleaved, typename WorkSet, typename Config>
+template <typename PersistentContext, bool IsShared, bool IsGmm1Interleaved, typename WorkSet, typename Config>
 __aicore__ inline void Gmm1AicMmadGeneric(
     WorkSet &workSet, const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t startLoopIdx,
-    uint32_t tileNum, int32_t &vecSetSyncCom, uint16_t &pingpongIdx)
+    uint32_t tileNum, int32_t &vecSetSyncCom, uint16_t &pingpongIdx,
+    PersistentContext *persistentContext)
 {
-    BlockMmad blockMmad;
-    bool enableL0CPingPong = false;
-    typename BlockMmad::BlockShape l0TileShape{config.tileM, L1_TILE_N, L0_TILE_K, 0};
-    typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
-    blockMmad.Init(matmulShape, l0TileShape, config.l1Params, false, enableL0CPingPong);
+    using BlockMmad = decltype(persistentContext->blockMmad);
+    EnsurePersistentBlockMmadInitialized(*persistentContext, config);
+    auto &blockMmad = persistentContext->blockMmad;
 
     using KernelConfig = typename Config::KernelConfig;
     using ElementC = typename KernelConfig::ElementCType;
@@ -317,15 +314,14 @@ __aicore__ inline void Gmm1AicMmadGeneric(
 }
 
 // 执行 A8W4 GMM1 AIC tile 循环，并维持 Dispatch/GMM1 和 GMM1/SwiGLU 的同步关系。
-template <typename BlockMmad, bool IsShared, bool TopkWeightsPrefetch, typename WorkSet, typename Config>
+template <typename PersistentContext, bool IsShared, bool TopkWeightsPrefetch, typename WorkSet, typename Config>
 __aicore__ inline void Gmm1AicMmadA8W4(
     WorkSet &workSet, const Params &params, const GMMAddrInfo &gmmAddrInfo, const Config &config,
-    uint32_t startLoopIdx, uint32_t tileNum, int32_t &gmTileSequence, uint32_t expertIdx)
+    uint32_t startLoopIdx, uint32_t tileNum, int32_t &gmTileSequence, uint32_t expertIdx,
+    PersistentContext *persistentContext)
 {
-    BlockMmad blockMmad{};
-    typename BlockMmad::BlockShape l0TileShape{config.tileM, L1_TILE_N, L0_TILE_K, 0};
-    typename BlockMmad::ProblemShape matmulShape{config.m, config.outputN, config.k, 0};
-    blockMmad.Init(matmulShape, l0TileShape, config.l1Params);
+    EnsurePersistentBlockMmadInitialized(*persistentContext, config);
+    auto &blockMmad = persistentContext->blockMmad;
 
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
@@ -720,7 +716,8 @@ template <typename BlockMmad, typename ElementC, typename MakeLayoutC, bool Topk
 __aicore__ inline void Gmm1ExecGeneric(
     Scheduler &scheduler, const Params &params, const GMMAddrInfo &gmmAddrInfo, const Config &config,
     uint32_t startLoopIdx, uint32_t tileNum, SwigluQuantOp &swigluQuantOp, int32_t &vecSetSyncCom,
-    uint32_t expertBeforeCnt, uint32_t expertIdx, uint16_t &pingpongIdx)
+    uint32_t expertBeforeCnt, uint32_t expertIdx, uint16_t &pingpongIdx,
+    PersistentBlockMmadContext<BlockMmad> *persistentContext)
 {
     using KernelConfig = typename Config::KernelConfig;
     using ElementA = typename KernelConfig::ElementAType;
@@ -758,11 +755,12 @@ __aicore__ inline void Gmm1ExecGeneric(
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias, gmC, metaInfoGm};
     if constexpr (g_coreType == AscendC::AIC) {
         if constexpr (TopkWeightsPrefetch) {
-            Gmm1AicPrefetchMmadGeneric<BlockMmad, IsShared, IsGmm1Interleaved>(
-                workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, expertIdx);
+            Gmm1AicPrefetchMmadGeneric<PersistentBlockMmadContext<BlockMmad>, IsShared, IsGmm1Interleaved>(
+                workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, expertIdx, persistentContext);
         } else {
-            Gmm1AicMmadGeneric<BlockMmad, IsShared, IsGmm1Interleaved>(
-                workSet, gmmAddrInfo, config, startLoopIdx, tileNum, vecSetSyncCom, pingpongIdx);
+            Gmm1AicMmadGeneric<PersistentBlockMmadContext<BlockMmad>, IsShared, IsGmm1Interleaved>(
+                workSet, gmmAddrInfo, config, startLoopIdx, tileNum, vecSetSyncCom, pingpongIdx,
+                persistentContext);
         }
     } else {
         // AIV1 在入口处提前退出。
@@ -828,7 +826,8 @@ template <typename BlockMmad, typename BlockPrologue, typename ElementC, typenam
 __aicore__ inline void Gmm1ExecA8W4(
     Scheduler &scheduler, const Params &params, const GMMAddrInfo &gmmAddrInfo, const Config &config,
     uint32_t startLoopIdx, uint32_t tileNum, int32_t &gmTileSequence, SwigluQuantOp &swigluQuantOp,
-    uint32_t expertBeforeCnt, uint32_t expertIdx)
+    uint32_t expertBeforeCnt, uint32_t expertIdx,
+    PersistentBlockMmadContext<BlockMmad> *persistentContext)
 {
     using KernelConfig = typename Config::KernelConfig;
     using ElementA = typename KernelConfig::ElementAType;
@@ -862,8 +861,9 @@ __aicore__ inline void Gmm1ExecA8W4(
                                     decltype(gmScaleB), decltype(gmBias), decltype(gmC), decltype(metaInfoGm)>;
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias, gmC, metaInfoGm};
     if constexpr (g_coreType == AscendC::AIC) {
-        Gmm1AicMmadA8W4<BlockMmad, IsShared, TopkWeightsPrefetch>(
-            workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, expertIdx);
+        Gmm1AicMmadA8W4<PersistentBlockMmadContext<BlockMmad>, IsShared, TopkWeightsPrefetch>(
+            workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, expertIdx,
+            persistentContext);
     } else if (GetSubBlockIdx() == 0) {
         Gmm1Aiv0PrologueA8W4<BlockPrologue>(workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
     } else {
@@ -889,7 +889,8 @@ __aicore__ inline void RunGmm1Generic(
                                L1_TILE_N, TopkWeightsPrefetch, IsGmm1Interleaved> &epilogueOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, const BlockJobContext &blockJob,
-    uint32_t expertBeforeCnt, uint32_t expertIdx, uint16_t &pingpongIdx)
+    uint32_t expertBeforeCnt, uint32_t expertIdx, uint16_t &pingpongIdx,
+    void *persistentBlockMmadContext)
 {
     using GmmConfig = GmmKernel::Config<false, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
                                         ElementMxScaleB, IsWeightNZ, TopkWeightsPrefetch, IsShared,
@@ -913,11 +914,13 @@ __aicore__ inline void RunGmm1Generic(
     uint32_t startLoopIdx =
         (config.blockIdx < startBlockIdx ? config.blockIdx + config.blockNum : config.blockIdx) - startBlockIdx;
     using BlockMmad = typename GmmConfig::BlockMmad;
+    using PersistentContext = GmmKernel::PersistentBlockMmadContext<BlockMmad>;
+    auto *persistentContext = reinterpret_cast<PersistentContext *>(persistentBlockMmadContext);
     using MakeLayoutC = typename GmmConfig::MakeLayoutC;
     GmmKernel::Gmm1ExecGeneric<BlockMmad, ElementC, MakeLayoutC, TopkWeightsPrefetch, IsShared,
                                IsGmm1Interleaved, IsWaveFlagGrained>(
         scheduler, params, gmmAddrInfo, config, startLoopIdx, tileNum, epilogueOp, vecSetSyncCom, expertBeforeCnt,
-        expertIdx, pingpongIdx);
+        expertIdx, pingpongIdx, persistentContext);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
@@ -931,7 +934,7 @@ __aicore__ inline void RunGmm1Generic(
                                L1_TILE_N, TopkWeightsPrefetch, IsGmm1Interleaved> &epilogueOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, uint32_t expertBeforeCnt,
-    uint32_t expertIdx, uint16_t &pingpongIdx)
+    uint32_t expertIdx, uint16_t &pingpongIdx, void *persistentBlockMmadContext)
 {
     BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
                              static_cast<uint32_t>(GetBlockNum())};
@@ -939,7 +942,7 @@ __aicore__ inline void RunGmm1Generic(
                    IsWeightNZ, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared,
                    IsGmm1Interleaved, IsWaveFlagGrained>(
         epilogueOp, params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom, blockJob, expertBeforeCnt,
-        expertIdx, pingpongIdx);
+        expertIdx, pingpongIdx, persistentBlockMmadContext);
 }
 
 // RunGmm1A8W4：执行 A8W4 prologue（W4→W8）、GMM1、SwiGLU 和量化。
@@ -952,7 +955,7 @@ __aicore__ inline void RunGmm1A8W4(
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence,
     const BlockJobContext &blockJob,
-    uint32_t expertBeforeCnt, uint32_t expertIdx = 0)
+    uint32_t expertBeforeCnt, uint32_t expertIdx, void *persistentBlockMmadContext)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
@@ -966,6 +969,8 @@ __aicore__ inline void RunGmm1A8W4(
     }
 
     using BlockMmad = typename GmmConfig::BlockMmad;
+    using PersistentContext = GmmKernel::PersistentBlockMmadContext<BlockMmad>;
+    auto *persistentContext = reinterpret_cast<PersistentContext *>(persistentBlockMmadContext);
     using BlockPrologue = typename GmmConfig::BlockPrologue;
     using MakeLayoutC = typename GmmConfig::MakeLayoutC;
 
@@ -984,7 +989,7 @@ __aicore__ inline void RunGmm1A8W4(
     GmmKernel::Gmm1ExecA8W4<BlockMmad, BlockPrologue, ElementC, MakeLayoutC, IsShared,
                             GmmKernel::BlockScheduler, decltype(config), TopkWeightsPrefetch, IsWaveFlagGrained>(
         scheduler, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, swigluQuantOp, expertBeforeCnt,
-        expertIdx);
+        expertIdx, persistentContext);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
@@ -997,14 +1002,14 @@ __aicore__ inline void RunGmm1A8W4(
                                TopkWeightsPrefetch> &swigluQuantOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence, uint32_t expertBeforeCnt,
-    uint32_t expertIdx = 0)
+    uint32_t expertIdx, void *persistentBlockMmadContext)
 {
     BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
                              static_cast<uint32_t>(GetBlockNum())};
     RunGmm1A8W4<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, Gmm1TileM, EpilogueTileM,
                 TopkWeightsPrefetch, IsShared, IsWaveFlagGrained>(
         swigluQuantOp, params, problemShape, gmmAddrInfo, startBlockIdx, gmTileSequence, blockJob, expertBeforeCnt,
-        expertIdx);
+        expertIdx, persistentBlockMmadContext);
 }
 
 __aicore__ inline Gmm1ExpertLoopState CreateGmm1ExpertLoopState(const Gmm1SwigluConfig &context)
@@ -1145,26 +1150,27 @@ template <typename QuantOutType, typename WeightType, typename SwigluOutType, ty
 __aicore__ inline void RunGmm1SwigluByMode(
     const Gmm1SwigluConfig &context, const Params &gmmParams, BlockEpilogue &epilogueOp,
     const GMMAddrInfo &gmmAddrInfo, const Gmm1ExpertLoopState &state, Gmm1SwigluState &runtimeState,
-    uint32_t expertIdx)
+    uint32_t expertIdx, void *persistentBlockMmadContext)
 {
     if constexpr (EnableA8W4) {
         RunGmm1A8W4<QuantOutType, WeightType, bfloat16_t, QuantScaleType, QuantScaleType, Gmm1TileM,
                     EpilogueTileM, TopkWeightsPrefetch, false, IsWaveFlagGrained>(
             epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
-            runtimeState.gmTileSequence, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx);
+            runtimeState.gmTileSequence, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
+            persistentBlockMmadContext);
     } else if (context.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                context.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
         RunGmm1Generic<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, true,
                        Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, false, IsGmm1Interleaved, IsWaveFlagGrained>(
             epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
             runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
-            runtimeState.pingpongIdx);
+            runtimeState.pingpongIdx, persistentBlockMmadContext);
     } else {
         RunGmm1Generic<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, false,
                        Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, false, IsGmm1Interleaved, IsWaveFlagGrained>(
             epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
             runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
-            runtimeState.pingpongIdx);
+            runtimeState.pingpongIdx, persistentBlockMmadContext);
     }
 }
 
@@ -1231,7 +1237,8 @@ __aicore__ inline void RunSharedExpertGmm1SwigluStage(const Gmm1SwigluConfig &co
                                                       const GMMAddrInfo &gmmAddrInfo,
                                                       const SharedExpertGmm1ProblemShape &problemShape,
                                                       SharedExpertGmm1SwigluState &runtimeState,
-                                                      uint32_t sharedExpertIdx)
+                                                      uint32_t sharedExpertIdx,
+                                                      void *persistentBlockMmadContext)
 {
     uint32_t expertBeforeCnt = sharedExpertIdx * context.common.tokenNum;
     if constexpr (EnableA8W4) {
@@ -1239,18 +1246,20 @@ __aicore__ inline void RunSharedExpertGmm1SwigluStage(const Gmm1SwigluConfig &co
                     false, true, IsWaveFlagGrained>(
             epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
             runtimeState.gmTileSequence,
-            context.blockJob, expertBeforeCnt, sharedExpertIdx);
+            context.blockJob, expertBeforeCnt, sharedExpertIdx, persistentBlockMmadContext);
     } else if (context.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                context.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
         RunGmm1Generic<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, true,
                        Gmm1TileM, L1_TILE_M_256, false, true, IsGmm1Interleaved, IsWaveFlagGrained>(
             epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
-            context.blockJob, expertBeforeCnt, sharedExpertIdx, runtimeState.pingpongIdx);
+            context.blockJob, expertBeforeCnt, sharedExpertIdx, runtimeState.pingpongIdx,
+            persistentBlockMmadContext);
     } else {
         RunGmm1Generic<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, false,
                        Gmm1TileM, L1_TILE_M_256, false, true, IsGmm1Interleaved, IsWaveFlagGrained>(
             epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
-            context.blockJob, expertBeforeCnt, sharedExpertIdx, runtimeState.pingpongIdx);
+            context.blockJob, expertBeforeCnt, sharedExpertIdx, runtimeState.pingpongIdx,
+            persistentBlockMmadContext);
     }
 }
 
@@ -1261,7 +1270,8 @@ template <typename QuantOutType, typename ActivationType, typename WeightType, t
 __aicore__ inline void RunMoeExpertGmm1SwigluStage(
     const Gmm1SwigluConfig &context, const Params &gmmParams, const ExpertWeightTensorListAddrs &weights,
     BlockEpilogue &epilogueOp, Gmm1SwigluScratch &scratch, Gmm1ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo,
-    Gmm1SwigluState &runtimeState, uint32_t expertIdx, uint64_t sendCnt)
+    Gmm1SwigluState &runtimeState, uint32_t expertIdx, uint64_t sendCnt,
+    void *persistentBlockMmadContext)
 {
     if (!PrepareMoeExpertGmm1State<EnableA8W4>(
             context, gmmParams.workspaceInfo, scratch, state, expertIdx, sendCnt)) {
@@ -1274,7 +1284,8 @@ __aicore__ inline void RunMoeExpertGmm1SwigluStage(
     RunGmm1SwigluByMode<QuantOutType, WeightType, SwigluOutType, QuantScaleType, EnableA8W4,
                         Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch,
                         IsGmm1Interleaved, IsWaveFlagGrained>(
-        context, gmmParams, epilogueOp, gmmAddrInfo, state, runtimeState, expertIdx);
+        context, gmmParams, epilogueOp, gmmAddrInfo, state, runtimeState, expertIdx,
+        persistentBlockMmadContext);
 }
 
 // 完成 MoE GMM1/SwiGLU 阶段的末尾同步。

@@ -151,6 +151,9 @@ private:
                                                    int32_t &gmTileSequence);
     __aicore__ inline void ProcessSharedExpertGmm2(const TupleShape &initShape, const BlockOffset &initOffset,
                                                    int32_t &gmTileSequence);
+    __aicore__ inline void ProcessImpl();
+    template <bool IsWeightNz>
+    __aicore__ inline void ProcessWithGenericBlockMmad();
     __aicore__ inline void UnpermuteSharedExpert(int32_t tokenIdx);
     __aicore__ inline void LoadTopkWeightsToUb(const LocalTensor<ActivationType> &xOutTensor, int32_t curentOffset,
                                                int32_t index, TEventID event);
@@ -302,6 +305,21 @@ private:
     static constexpr uint32_t EPILOGUE_TILE_M =
         TopkWeightsPrefetch ? L1_TILE_M_128 : L1_TILE_M_256;
 
+    template <bool IsWeightNz>
+    using GenericGmmConfig =
+        GmmKernel::Config<false, COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t,
+                          QuantScaleOutType, QuantScaleOutType, IsWeightNz, TopkWeightsPrefetch,
+                          false, true>;
+    template <bool IsWeightNz>
+    using GenericBlockMmadContext =
+        GmmKernel::PersistentBlockMmadContext<typename GenericGmmConfig<IsWeightNz>::BlockMmad>;
+    using A8W4GmmConfig =
+        GmmKernel::Config<true, COMBINE_NO_QUANT, SwigluQuantOutType, Weight1Type, bfloat16_t,
+                          QuantScaleOutType, QuantScaleOutType, false, TopkWeightsPrefetch,
+                          false, true>;
+    using A8W4BlockMmadContext =
+        GmmKernel::PersistentBlockMmadContext<typename A8W4GmmConfig::BlockMmad>;
+
     using BlockEpilogue =
         BlockEpilogueSwigluMxQuant<SwigluQuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
                                    EPILOGUE_TILE_M, L1_TILE_N, TopkWeightsPrefetch>;
@@ -310,6 +328,8 @@ private:
                                    L1_TILE_M_256, L1_TILE_N, false>;
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
+    void *genericBlockMmadContext_ = nullptr;
+    void *a8w4BlockMmadContext_ = nullptr;
 };
 
 // ========================
@@ -2447,19 +2467,19 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
             RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
                         L1_TILE_M_256, false, IsShared>(sharedEpilogueOp_, params_, state.problemShape, gmmAddrInfo,
                                                         startBlockIdx_, vecSetSyncCom, state.expertBeforeCnt,
-                                                        expertIdx);
+                                                        expertIdx, a8w4BlockMmadContext_);
         } else {
             if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                 params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
                 RunGmm1Generic<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                                QuantScaleOutType, true, GMM1_TILE_M, L1_TILE_M_256, false, IsShared, false>(
                     sharedEpilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-                    state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
+                    state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_, genericBlockMmadContext_);
             } else {
                 RunGmm1Generic<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                                QuantScaleOutType, false, GMM1_TILE_M, L1_TILE_M_256, false, IsShared, false>(
                     sharedEpilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-                    state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
+                    state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_, genericBlockMmadContext_);
             }
         }
     } else {
@@ -2468,7 +2488,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
             RunGmm1A8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, GMM1_TILE_M,
                         EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared>(
                 epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-                state.expertBeforeCnt, expertIdx);
+                state.expertBeforeCnt, expertIdx, a8w4BlockMmadContext_);
         } else {
             if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                 params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
@@ -2477,14 +2497,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
                                QuantScaleOutType, true, GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared,
                                false>(
                     epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-                    state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
+                    state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_, genericBlockMmadContext_);
             } else {
                 // Generic: fp8/fp4 activation × fp8/fp4 weight in ND format (includes A4W4 ND)
                 RunGmm1Generic<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                                QuantScaleOutType, false, GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch, IsShared,
                                false>(
                     epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-                    state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_);
+                    state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_, genericBlockMmadContext_);
             }
         }
     }
@@ -2502,17 +2522,18 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         RunGmm2A8W4<CombineQuantMode, SwigluQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
                     QuantScaleOutType, L1_TILE_M_256, TopkWeightsPrefetch, IsShared, true>(
-            params_, state.problemShape, gmmAddrInfo, startBlockIdx_, gmTileSequence);
+            params_, state.problemShape, gmmAddrInfo, startBlockIdx_, gmTileSequence,
+            a8w4BlockMmadContext_);
     } else {
         // A8W8_NZ / Generic 共用 RunGmm2Generic，仅 LayoutB 不同（ZN/ND）。
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
             RunGmm2Generic<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                            QuantScaleOutType, true, true, L1_TILE_M_256, TopkWeightsPrefetch, IsShared>(
-                state.problemShape, gmmAddrInfo, startBlockIdx_);
+                state.problemShape, gmmAddrInfo, startBlockIdx_, genericBlockMmadContext_);
         } else {
             RunGmm2Generic<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                            QuantScaleOutType, false, true, L1_TILE_M_256, TopkWeightsPrefetch, IsShared>(
-                state.problemShape, gmmAddrInfo, startBlockIdx_);
+                state.problemShape, gmmAddrInfo, startBlockIdx_, genericBlockMmadContext_);
         }
     }
     if constexpr (g_coreType == AIV && !IsShared) {
@@ -2566,7 +2587,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSh
 }
 
 template <TemplateMegaMoeLayeredTypeClass>
-__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessImpl()
 {
     // 1.本卡数据处理
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
@@ -2705,6 +2726,44 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
         Unpermute();
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+}
+
+template <TemplateMegaMoeLayeredTypeClass>
+template <bool IsWeightNz>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessWithGenericBlockMmad()
+{
+    GenericBlockMmadContext<IsWeightNz> blockMmadContext;
+    genericBlockMmadContext_ = &blockMmadContext;
+    ProcessImpl();
+    genericBlockMmadContext_ = nullptr;
+}
+
+template <TemplateMegaMoeLayeredTypeClass>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
+{
+    if constexpr (g_coreType == AIC) {
+        if constexpr (ENABLE_A8W4) {
+            A8W4BlockMmadContext blockMmadContext;
+            a8w4BlockMmadContext_ = &blockMmadContext;
+            ProcessImpl();
+            a8w4BlockMmadContext_ = nullptr;
+        } else if constexpr (ENABLE_A4W4) {
+            A8W4BlockMmadContext blockMmadContext;
+            a8w4BlockMmadContext_ = &blockMmadContext;
+            if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+                ProcessWithGenericBlockMmad<true>();
+            } else {
+                ProcessWithGenericBlockMmad<false>();
+            }
+            a8w4BlockMmadContext_ = nullptr;
+        } else if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
+            ProcessWithGenericBlockMmad<true>();
+        } else {
+            ProcessWithGenericBlockMmad<false>();
+        }
+    } else {
+        ProcessImpl();
+    }
 }
 
 #endif

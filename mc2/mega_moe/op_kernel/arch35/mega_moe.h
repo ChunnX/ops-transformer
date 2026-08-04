@@ -99,6 +99,9 @@ private:
     __aicore__ inline void ProcessSharedExpertGmm1(int32_t &gmTileSequence);
     __aicore__ inline void ProcessMoeExpertStages(int32_t &gmTileSequence);
     __aicore__ inline void ProcessSharedExpertGmm2(int32_t &gmTileSequence);
+    __aicore__ inline void ProcessImpl();
+    template <bool IsWeightNz>
+    __aicore__ inline void ProcessWithGenericBlockMmad();
     __aicore__ inline void CrossRankSyncInWorldSize();
 
     __gm__ Mc2MoeContext *mc2Context_{nullptr};
@@ -157,6 +160,19 @@ private:
     // SwigluQuant 输出的元素字节密度：fp4 时为 2elem/B，fp8 时为 1elem/B。
     static constexpr uint32_t C_ELEMS_PER_BYTE = PackedElementTraits<SwigluQuantOutType>::ELEMENTS_PER_BYTE;
 
+    template <bool IsWeightNz>
+    using GenericGmmConfig =
+        GmmKernel::Config<false, COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t,
+                          QuantScaleOutType, QuantScaleOutType, IsWeightNz, TopkWeightsPrefetch>;
+    template <bool IsWeightNz>
+    using GenericBlockMmadContext =
+        GmmKernel::PersistentBlockMmadContext<typename GenericGmmConfig<IsWeightNz>::BlockMmad>;
+    using A8W4GmmConfig =
+        GmmKernel::Config<true, COMBINE_NO_QUANT, SwigluQuantOutType, Weight1Type, bfloat16_t,
+                          QuantScaleOutType, QuantScaleOutType, false, TopkWeightsPrefetch>;
+    using A8W4BlockMmadContext =
+        GmmKernel::PersistentBlockMmadContext<typename A8W4GmmConfig::BlockMmad>;
+
     using BlockEpilogue =
         BlockEpilogueSwigluMxQuant<SwigluQuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
                                    EPILOGUE_TILE_M, L1_TILE_N, TopkWeightsPrefetch>;
@@ -165,6 +181,8 @@ private:
                                    L1_TILE_M_256, L1_TILE_N, false>;
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
+    void *genericBlockMmadContext_ = nullptr;
+    void *a8w4BlockMmadContext_ = nullptr;
     TokenDispatchScratch<ActivationType> tokenDispatchScratch_;
     Gmm1SwigluScratch gmm1SwigluScratch_;
     Gmm2Scratch gmm2Scratch_;
@@ -665,7 +683,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
         RunSharedExpertGmm1SwigluStage<QuantOutType, Weight1Type, SwigluQuantOutType,
                                        QuantScaleOutType, ENABLE_A8W4, GMM1_TILE_M>(
             gmm1Config_, params_, sharedEpilogueOp_, gmmAddrInfo, problemShape,
-            runtimeState, sharedExpertIdx);
+            runtimeState, sharedExpertIdx,
+            ENABLE_A8W4 ? a8w4BlockMmadContext_ : genericBlockMmadContext_);
     }
     EndSync(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
 }
@@ -684,7 +703,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2
                                  QuantScaleOutType, ENABLE_A8W4, ENABLE_A4W4,
                                  GMM1_TILE_M, false, false, false>(
             gmm2Config_, params_, sharedWeightTensorListAddrs_, state, gmmAddrInfo,
-            runtimeState, sharedExpertIdx);
+            runtimeState, sharedExpertIdx,
+            (ENABLE_A8W4 || ENABLE_A4W4) ? a8w4BlockMmadContext_ : genericBlockMmadContext_);
     }
 }
 
@@ -718,7 +738,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(
                                     QuantScaleOutType, ENABLE_A8W4, GMM1_TILE_M, EPILOGUE_TILE_M,
                                     TopkWeightsPrefetch, false, false>(
             gmm1Config_, params_, moeWeightTensorListAddrs_, epilogueOp_, gmm1SwigluScratch_, gmm1State, gmm1AddrInfo,
-            gmm1RuntimeState, expertIdx, currentSendCnt);
+            gmm1RuntimeState, expertIdx, currentSendCnt,
+            ENABLE_A8W4 ? a8w4BlockMmadContext_ : genericBlockMmadContext_);
     }
     FinishMoeGmm1SwigluStage<ENABLE_A8W4, TopkWeightsPrefetch>(
         gmm1Config_, params_.workspaceInfo, gmm1RuntimeState);
@@ -757,7 +778,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(
         RunMoeExpertGmm2Stage<CombineQuantMode, QuantOutType, SwigluQuantOutType,
                               Weight1Type, QuantScaleOutType, ENABLE_A8W4, ENABLE_A4W4,
                               GMM1_TILE_M, TopkWeightsPrefetch, false, false>(
-            gmm2Config_, params_, gmm2AddrInfo, gmm2State, gmm2RuntimeState);
+            gmm2Config_, params_, gmm2AddrInfo, gmm2State, gmm2RuntimeState,
+            (ENABLE_A8W4 || ENABLE_A4W4) ? a8w4BlockMmadContext_ : genericBlockMmadContext_);
         ScheduleQuantizedMoeExpertCombine<CombineQuantMode>(
             quantCombineConfig_, quantCombineBufferConfig_, params_, gmm2AddrInfo,
             static_cast<uint32_t>(Get<M_VALUE>(gmm2State.problemShape)),
@@ -769,7 +791,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessMoeExpertStages(
 }
 
 template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessImpl()
 {
     // 1.本卡数据处理
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
@@ -818,6 +840,44 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             tokenUnpermuteConfig_, params_, tokenUnpermuteScratch_, unpermuteBufferConfig);
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+}
+
+template <TemplateMegaMoeTypeClass>
+template <bool IsWeightNz>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessWithGenericBlockMmad()
+{
+    GenericBlockMmadContext<IsWeightNz> blockMmadContext;
+    genericBlockMmadContext_ = &blockMmadContext;
+    ProcessImpl();
+    genericBlockMmadContext_ = nullptr;
+}
+
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
+{
+    if constexpr (g_coreType == AIC) {
+        if constexpr (ENABLE_A8W4) {
+            A8W4BlockMmadContext blockMmadContext;
+            a8w4BlockMmadContext_ = &blockMmadContext;
+            ProcessImpl();
+            a8w4BlockMmadContext_ = nullptr;
+        } else if constexpr (ENABLE_A4W4) {
+            A8W4BlockMmadContext blockMmadContext;
+            a8w4BlockMmadContext_ = &blockMmadContext;
+            if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+                ProcessWithGenericBlockMmad<true>();
+            } else {
+                ProcessWithGenericBlockMmad<false>();
+            }
+            a8w4BlockMmadContext_ = nullptr;
+        } else if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
+            ProcessWithGenericBlockMmad<true>();
+        } else {
+            ProcessWithGenericBlockMmad<false>();
+        }
+    } else {
+        ProcessImpl();
+    }
 }
 
 } // namespace MegaMoeImpl
