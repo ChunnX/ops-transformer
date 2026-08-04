@@ -54,7 +54,7 @@ public:
     using ElementLocalGlobalMax = typename EpilogueCopyGlobalMaxUbToL1::ElementLocalGlobalMax;
 
     using LayoutQ = layout::RowMajor;
-    using LayoutK = layout::ColumnMajor;
+    using LayoutK = layout::RowMajor;
     using LayoutS = layout::RowMajor;
     using LayoutPL1 = typename EpilogueOnlineSoftmax::LayoutPL1;
     using LayoutV = layout::ColumnMajor;
@@ -333,13 +333,20 @@ public:
                 if ASCEND_IS_AIC {
                     AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
                     // todo mm1
+                    auto gQLayoutTla = tla::MakeLayout<ElementQ, LayoutQ>(
+                        curTaskInfo.qsActBaseTile,   // rows = S1 实际 tile
+                        qHeadMul * embed_);          // cols → row-stride（BNSD 时 qHeadMul=1，即 embed_）
+                    auto gQTensorTla = tla::MakeTensor(
+                         gQ[curTaskInfo.gmOffsetQ], gQLayoutTla, Arch::PositionGM{});
+                    auto gKLayout = tla::MakeLayout<ElementK, LayoutK>(curTaskInfo.kvSeqlen, kvHeadMul * embed_);  // [BSND stride 修复] row-stride=kvHeadMul*embed(BNSD=embed)
+                    auto gKTensorTla = tla::MakeTensor(gK[curTaskInfo.gmOffsetK], gKLayout, Arch::PositionGM{});
                     auto curUBSTensorTla = GetTile(ubSTensorTla, MakeCoord(0, EpMXFP4::QS_BASE_SIZE * mm1ResBufId), MakeShape(EpMXFP4::KVS_BASE_SIZE, EpMXFP4::QS_BASE_SIZE));
 
                     ComputeMm1(curTileInfo);
                     // QK：UB S 传当前 ping-pong 槽 TLA；Fixpipe 按 subBlockIdx 写到对应 AIV。
                     blockMmadQK(
-                        gQ[curTaskInfo.gmOffsetQ],
-                        gK[curTaskInfo.gmOffsetK],
+                        gQTensorTla,
+                        gKTensorTla, 
                         gQDequantScale[curTaskInfo.gmOffsetQScale],
                         gKDequantScale[curTaskInfo.gmOffsetKScale],
                         gSparseIdx[curTaskInfo.gmOffsetSparseIdx],
