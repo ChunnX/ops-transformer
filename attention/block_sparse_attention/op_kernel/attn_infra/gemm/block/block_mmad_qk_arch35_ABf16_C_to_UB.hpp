@@ -329,7 +329,12 @@ public:
                 uint32_t l0CLoopCounter = GetCurLoopCounter(nLoopCounterL1, nL0LoopNum, nL0Itr);
                 uint32_t l0CBufId = l0CLoopCounter % L0_STAGES;
                 uint32_t l0CEventId = l0CBufId;
-                auto l0CLayoutTla = tla::MakeLayoutL0C(rowNum, l0TileNAct);
+                // fp8 Fixpipe 双核拆分需要 L0C 至少 32 行，L0C fractal 布局行数必须与 mmad M 一致
+                uint32_t mCalc = RoundUp(rowNum, 16);
+                if constexpr (FULL_QUANT_FP8) {
+                    mCalc = (mCalc < 32) ? 32 : mCalc;
+                }
+                auto l0CLayoutTla = tla::MakeLayoutL0C(mCalc, l0TileNAct);
                 auto l0CTensorTla = tla::MakeTensor(l0CTensor[l0CBufId], l0CLayoutTla, Arch::PositionL0C{});
                 for (uint32_t mL0Itr = 0; mL0Itr < mL0LoopNum; mL0Itr++) {
                     uint32_t l0TileMAct = (mL0Itr == mL0LoopNum - 1) ? (rowNum - mL0Itr * L0_TILE_M) : L0_TILE_M;
@@ -375,6 +380,10 @@ public:
 
                         bool initMmad = (kL0Itr == 0);
                         uint32_t l0TileMAligned = RoundUp(l0TileMAct, 16);
+                        if constexpr (FULL_QUANT_FP8) {
+                            // fp8 Fixpipe 需要 L0C 至少有 32 行数据，mmad M 同步提升避免越界读
+                            l0TileMAligned = (l0TileMAligned < 32) ? 32 : l0TileMAligned;
+                        }
                         if (l1ToL0ANoRepeatFlag && (nL1Itr == 0) && (nL0Itr == 0)) {
                             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
                         }
@@ -408,6 +417,10 @@ public:
                 // valid rows in AIV0: [0, mFixPAligned8 / 2 - 1]
                 // valid rows in AIV1: [mFixPAligned8 / 2, rowNum - 1]
                 uint32_t mFixPAligned8 = RoundUp(rowNum, 8);
+                if constexpr (FULL_QUANT_FP8) {
+                    // fp8 Fixpipe 双核拆分要求每核 mSize>=16，rowNum 过小时提升到 32 行整搬
+                    mFixPAligned8 = (mFixPAligned8 < 32) ? 32 : mFixPAligned8;
+                }
                 uint32_t mPerSubCore = mFixPAligned8 / 2;
                 uint32_t nFixPAligned16 = RoundUp(l0TileNAct, 16);
                 auto ubCTensorTlaTile = GetTile(ubCTensor,
