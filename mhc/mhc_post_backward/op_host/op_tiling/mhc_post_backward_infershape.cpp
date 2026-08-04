@@ -147,7 +147,25 @@ static ge::graphStatus InferShapeForMhcPostBackward(gert::InferShapeContext *con
     }
 
     CopyShape(xShape, gradXShape);
-    CopyShape(hResShape, gradHresShape);
+
+    // grad_h_res: h_res active时复制h_res shape; nohres时从x派生 (B,S,n,n) 或 (T,n,n)
+    if (hResShape->GetShapeSize() != 0) {
+        CopyShape(hResShape, gradHresShape);
+    } else {
+        if (xDimNum == DIMS_FOUR) {
+            gradHresShape->SetDimNum(DIMS_FOUR);
+            gradHresShape->SetDim(0, xShape->GetDim(0));
+            gradHresShape->SetDim(1, xShape->GetDim(1));
+            gradHresShape->SetDim(2, xShape->GetDim(2));
+            gradHresShape->SetDim(3, xShape->GetDim(2));
+        } else {
+            gradHresShape->SetDimNum(DIMS_THREE);
+            gradHresShape->SetDim(0, xShape->GetDim(0));
+            gradHresShape->SetDim(1, xShape->GetDim(1));
+            gradHresShape->SetDim(2, xShape->GetDim(1));
+        }
+    }
+
     CopyShape(hOutShape, gradHoutShape);
     CopyShape(hPostShape, gradHpostShape);
 
