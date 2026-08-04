@@ -34,7 +34,16 @@ constexpr uint32_t MAX_RANK_NUM = 64U; // 最大卡数
 constexpr uint32_t MAX_OP_NUM = 8U;    // MC2最大通信算子数
 constexpr uint32_t WRITE_SQE_SIZE = 64U;
 constexpr uint32_t WRITE_WITH_NOTIFY_SQE_SIZE = 96U;
+// epHcclBuffer[rank] 前 1MB 控制区布局（arch35 dispatch/combine 联跑）：
+//   bank[S] = S * WIN_STATE_OFFSET (350KB)
+//     [0, COMBINE_STATE_OFFSET)              : dispatch status（2.0 / 专家槽）
+//     [COMBINE_STATE_OFFSET, WIN_STATE_OFFSET): combine status（1.0 / 源卡槽）
+//   [2*WIN_STATE_OFFSET, STATE_WIN_OFFSET)    : dispatch flag 源暂存
+//   [STATE_WIN_OFFSET, WIN_PICI_OFFSET)       : dataState + combine statusFlag 源
+//   [WIN_PICI_OFFSET, ...)                    : token data（再按 dataState 切两半）
 constexpr uint64_t WIN_STATE_OFFSET = 350U * 1024U;
+constexpr uint64_t COMBINE_STATE_OFFSET = 256U * 1024U; // bank 内 combine 相对 dispatch 的隔离偏移
+constexpr uint64_t DISPATCH_STATUS_STAGING_OFFSET = 2U * WIN_STATE_OFFSET; // 700KB
 constexpr uint64_t STATE_WIN_OFFSET = 950U * 1024U;
 constexpr uint64_t WIN_PICI_OFFSET = 1024U * 1024U;
 constexpr uint64_t PICI_WIN_SIZE = 512UL;

@@ -47,8 +47,8 @@ class MoeDistributeCombineSetup {
     constexpr static uint64_t STATE_OFFSET = 512U;        // 状态空间偏移地址
     constexpr static uint32_t STATE_SIZE = 1024U * 1024U; // 1M
     constexpr static uint32_t UB_ALIGN = 32U;             // UB按32字节对齐
-    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U;   // 数据和状态的0/1区标识占用空间
-    constexpr static uint64_t COMBINE_STATE_OFFSET = 0U;    // 本卡状态空间偏移地址，前面的地址给dispatch用
+    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U; // 数据和状态的0/1区标识占用空间
+    // COMBINE_STATE_OFFSET 取自 moe_distribute_base.h（256KB）：bank 内前段给 dispatch，后段给 combine
     constexpr static uint32_t STATE_COUNT_THRESHOLD = 512U; // moeExpertNumPerRank*epWorldSize状态数阈值
 
 public:
@@ -181,7 +181,9 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     epStatusSpaceGM_ = GetUrmaStateAddrByRankId(epRankId_);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType *)(epWindowGM_), moeDistributeCombineSetupInfo_->totalWinSize);
-    OOMCheckAddrRange<float>((__gm__ float *)(epStatusSpaceGM_), STATE_SIZE);
+    // combine 仅占用 bank 内 [COMBINE_STATE_OFFSET, WIN_STATE_OFFSET) 一段
+    OOMCheckAddrRange<float>((__gm__ float *)(epStatusSpaceGM_),
+                             WIN_STATE_OFFSET - COMBINE_STATE_OFFSET);
 #endif
 
     SplitCoreCal(); // 分核计算

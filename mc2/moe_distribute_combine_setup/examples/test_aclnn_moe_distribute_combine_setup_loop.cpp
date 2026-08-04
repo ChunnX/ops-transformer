@@ -31,8 +31,9 @@
 #include "aclnnop/aclnn_moe_distribute_combine_setup.h"
 #include "aclnnop/aclnn_moe_distribute_combine_teardown.h"
 
-// 与 kernel moe_distribute_base.h / combine_teardown STATE_OFFSET 对齐
+// 与 kernel moe_distribute_base.h 前 1MB 布局对齐
 constexpr uint64_t WIN_STATE_OFFSET = 350ULL * 1024ULL;
+constexpr uint64_t COMBINE_STATE_OFFSET = 256ULL * 1024ULL; // bank 内 combine 段
 constexpr uint64_t STATE_WIN_OFFSET = 950ULL * 1024ULL;
 constexpr uint64_t STATE_OFFSET = 512ULL;
 constexpr uint32_t DUMP_AIV_NUM = 8U; // 打印前若干 aiv 的 dataState
@@ -130,8 +131,8 @@ void FreeDeviceAddr(void *deviceAddr)
 // host 超时后 dump 本卡 EP window 状态区（方法 2）
 // layout:
 //   dataState[aiv] = *(int32_t*)(win + 950KB + aiv*512)
-//   bank[S] base  = win + S*350KB + COMBINE_STATE_OFFSET(0)
-//   flag[r]       = *(float*)(bank[S] + r*512)   // 1.0=combine, 2.0=dispatch
+//   combine bank[S] = win + S*350KB + COMBINE_STATE_OFFSET(256KB)
+//   flag[r]         = *(float*)(combineBank[S] + r*512)  // 1.0=combine
 void DumpEpCombineStatus(HcclComm comm, uint32_t epRankId, int64_t epWorldSize, int iter, const char *stage)
 {
     void *winAddr = nullptr;
@@ -174,11 +175,12 @@ void DumpEpCombineStatus(HcclComm comm, uint32_t epRankId, int64_t epWorldSize, 
         uint32_t cntOne = 0U;
         uint32_t cntTwo = 0U;
         uint32_t cntZero = 0U;
-        LOG_PRINT("[DUMP] --- bank=%u (%s) base=win+%uKB ---\n", bank, tag,
-                  static_cast<unsigned>(bank * (WIN_STATE_OFFSET / 1024ULL)));
+        LOG_PRINT("[DUMP] --- combine bank=%u (%s) base=win+%uKB+COMBINE(%uKB) ---\n", bank, tag,
+                  static_cast<unsigned>(bank * (WIN_STATE_OFFSET / 1024ULL)),
+                  static_cast<unsigned>(COMBINE_STATE_OFFSET / 1024ULL));
         for (int64_t r = 0; r < epWorldSize; ++r) {
             float flag = 0.0f;
-            void *slot = winBase + static_cast<uint64_t>(bank) * WIN_STATE_OFFSET +
+            void *slot = winBase + static_cast<uint64_t>(bank) * WIN_STATE_OFFSET + COMBINE_STATE_OFFSET +
                          static_cast<uint64_t>(r) * STATE_OFFSET;
             aclError ret = aclrtMemcpy(&flag, sizeof(flag), slot, sizeof(flag), ACL_MEMCPY_DEVICE_TO_HOST);
             if (ret != ACL_SUCCESS) {
