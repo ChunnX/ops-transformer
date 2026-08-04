@@ -326,6 +326,11 @@ public:
         if (unlikely(isFirstS2Loop)) {
             // 首个 S2 tile 直接作为累计值。
             DataCopy(vec2ResUb, mmRes, vec2CalcSize);
+            // DataCopy is executed by MTE2 while LastDiv/FlashUpdate and the following task consume stage2OutBuf_
+            // on V. TQue/Mutex supplied this dependency before the static-tensor conversion; raw LocalTensor does
+            // not, so make the MTE2->V hand-off explicit.
+            SetFlag<HardEvent::MTE2_V>(MxStatic::STAGE2_COPY_EVENT_ID);
+            WaitFlag<HardEvent::MTE2_V>(MxStatic::STAGE2_COPY_EVENT_ID);
         } else {
             LocalTensor<MM_T> expUb = softmaxExpBuf_[loopIdx];
             if (!isLastS2Loop) {
