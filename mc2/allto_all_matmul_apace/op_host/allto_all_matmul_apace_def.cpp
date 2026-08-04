@@ -82,7 +82,7 @@ public:
         this->Attr("transpose_x1").AttrType(OPTIONAL).Bool(false);
         this->Attr("transpose_x2").AttrType(OPTIONAL).Bool(true);
         this->Attr("group_size").AttrType(OPTIONAL).Int(0);
-        this->Attr("alltoall_out_flag").AttrType(OPTIONAL).Bool(true);
+        this->Attr("alltoall_out_flag").AttrType(OPTIONAL).Bool(false);
         this->Attr("comm_mode").AttrType(OPTIONAL).String("udma");
         this->Attr("precision_mode").AttrType(OPTIONAL).Int(0);
 
