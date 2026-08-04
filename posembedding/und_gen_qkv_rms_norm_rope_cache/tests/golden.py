@@ -71,8 +71,9 @@ __all__ = [
 
 # 本期支持范围（设计说明书 §2.3 典型 case shape）
 HEAD_DIM = 128
-BLOCK_SIZE = 128
 HEAD_COMBOS = ((8, 1, 1), (16, 2, 2))
+# 算子对 block_size 无约束，这只是 case 未指定 block_size 时的默认值
+BLOCK_SIZE = 128
 
 
 # --------------------------------------------------------------------------- #
@@ -334,9 +335,10 @@ def golden_und_gen_qkv_rms_norm_rope_cache(
 # --------------------------------------------------------------------------- #
 # 典型 case 集
 # --------------------------------------------------------------------------- #
-# headDim 固定 128；(Hq,Hk,Hv) 取 (8,1,1) / (16,2,2)；cache block_size=128；
+# headDim 固定 128；(Hq,Hk,Hv) 取 (8,1,1) / (16,2,2)。
 # T = und_len + gen_len 不设上限（算子侧只要求为正，真实上限是 KV Cache 容量）；
 # 下面的 case 集覆盖到 64K，再大只受跑用例的机器内存限制。
+# block_size 同样不设限，case 里用 block_size 键指定，缺省取 BLOCK_SIZE。
 # slot_mode: "shuffled"（分页乱序，默认）/ "contiguous"（顺序占位）
 # NOTE: 当前算子实现只支持 gen_qkv / gen_weights_q / gen_weights_k / cat_indices
 #       全部提供的场景，因此所有 case 均 gen_len > 0 且 cat_indices 非 None。
