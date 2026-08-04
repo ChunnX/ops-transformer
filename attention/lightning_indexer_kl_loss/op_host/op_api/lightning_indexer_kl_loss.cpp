@@ -24,7 +24,7 @@ OP_TYPE_REGISTER(LightningIndexerKLLoss);
 
 const aclTensor *LightningIndexerKLLoss(
     const aclTensor *targetScore, const aclTensor *indexProbs,
-    double eps, const char *weightType, aclOpExecutor *executor)
+    float eps, const char *weightType, aclOpExecutor *executor)
 {
     L0_DFX(LightningIndexerKLLoss, targetScore, indexProbs, eps, weightType);
     DataType outputDtype = targetScore->GetDataType();
@@ -33,8 +33,7 @@ const aclTensor *LightningIndexerKLLoss(
     auto ret = INFER_SHAPE(LightningIndexerKLLoss,
                            OP_INPUT(targetScore, indexProbs),
                            OP_OUTPUT(loss),
-                           OP_ATTR(eps, false),
-                           OP_ATTR(weightType, false));
+                           OP_ATTR(eps, weightType));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "LightningIndexerKLLoss InferShape failed.");
         return nullptr;
@@ -43,8 +42,7 @@ const aclTensor *LightningIndexerKLLoss(
     ret = ADD_TO_LAUNCHER_LIST_AICORE(LightningIndexerKLLoss,
                                       OP_INPUT(targetScore, indexProbs),
                                       OP_OUTPUT(loss),
-                                      OP_ATTR(eps, false),
-                                      OP_ATTR(weightType, false));
+                                      OP_ATTR(eps, weightType));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "LightningIndexerKLLoss launch kernel failed.");
         return nullptr;

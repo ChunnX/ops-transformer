@@ -4,7 +4,7 @@ source /root/data_nvme0n1/jzh/toolkit/9.0.0/cann/set_env.sh || { echo "Error: Fa
 # bash build.sh --pkg --soc=ascend910b --ops=lightning_indexer_kl_loss --op_debug_config ccec_g --op_debug_config "sanitizer" || { echo "Error: Failed to run build.sh"; exit 1; }
 bash build.sh --pkg --soc=ascend910b --ops=lightning_indexer_kl_loss --op_debug_config ccec_g || { echo "Error: Failed to run build.sh"; exit 1; }
 ./build/cann-ops-transformer-custom_linux-aarch64.run || { echo "Error: Failed to run installer"; exit 1; }
-export LD_LIBRARY_PATH=/root/data_nvme0n1/jzh/toolkit/9.0.0/cann-9.0.0/opp/vendors/custom_transformer/op_api/lib/:${LD_LIBRARY_PATH} || { echo "Error: Failed to export LD_LIBRARY_PATH"; exit 1; }
+# export LD_LIBRARY_PATH=/root/data_nvme0n1/jzh/toolkit/9.0.0/cann-9.0.0/opp/vendors/custom_transformer/op_api/lib/:${LD_LIBRARY_PATH} || { echo "Error: Failed to export LD_LIBRARY_PATH"; exit 1; }
 cd torch_extension/ || { echo "Error: Failed to change directory to torch_extension/"; exit 1; }
 python -m build --wheel -n || { echo "Error: Failed to build wheel"; exit 1; }
 python -m pip install dist/*.whl --force-reinstall --no-deps || { echo "Error: Failed to install wheel"; exit 1; }

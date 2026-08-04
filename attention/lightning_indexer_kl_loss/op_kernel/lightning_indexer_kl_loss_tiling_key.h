@@ -29,8 +29,7 @@ ASCENDC_TPL_ARGS_DECL(LightningIndexerKLLoss,
     //          0：FLOAT16
     //          1：FLOAT32
     //          2：BFLOAT16
-    //          3：FLOAT16_PRECISION
-    ASCENDC_TPL_UINT_DECL(DataType, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3),
+    ASCENDC_TPL_UINT_DECL(DataType, 2, ASCENDC_TPL_UI_LIST, 0, 1, 2),
     // bit: 4   DeterSparseType
     //          0：logits
     //          1：probs
@@ -40,7 +39,7 @@ ASCENDC_TPL_ARGS_DECL(LightningIndexerKLLoss,
 ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_BOOL_SEL(DeterType, 0, 1),
-        ASCENDC_TPL_UINT_SEL(DataType, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3),
+        ASCENDC_TPL_UINT_SEL(DataType, ASCENDC_TPL_UI_LIST, 0, 1, 2),
         ASCENDC_TPL_BOOL_SEL(WeightType, 0, 1)));
 
 #endif

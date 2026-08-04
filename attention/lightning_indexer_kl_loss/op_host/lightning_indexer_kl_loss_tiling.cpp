@@ -33,7 +33,7 @@ static ge::graphStatus GetPlatformInfo(gert::TilingContext* context, uint64_t& u
     return ge::GRAPH_SUCCESS;
 }
 
-static int64_t ComputeTileLength(int64_t K, int64_t ubSize, int64_t dtypeSize)
+static int64_t ComputeTileLength(int64_t K, int64_t ubSize)
 {
     // UB 划分为 7 块连续 buffer:
     // ub_target_score_in: tileLen * K * dtypeSize
@@ -45,9 +45,9 @@ static int64_t ComputeTileLength(int64_t K, int64_t ubSize, int64_t dtypeSize)
     // tmp_ub:             tileLen * K * dtypeSize
     // 总元素数 = tileLen * (5K + 8) + 8
     // 总内存占用 <= ubSize
-    int64_t totalElems = ubSize / dtypeSize;
+    int64_t totalElems = ubSize / sizeof(float);
     int64_t maxTileLen = (totalElems - 8) / (5 * K + 8);
-    return (maxTileLen > 1) ? maxTileLen : 1;
+    return maxTileLen;
 }
 
 // 先定义一个向上取整函数
@@ -101,8 +101,8 @@ static ge::graphStatus CheckInputDim(gert::TilingContext* context)
         return ge::GRAPH_FAILED;
     }
 
-    int64_t D = targetScoreOrigin.GetDim(dimNum - 1);
-    if (D > 8192) {
+    int64_t K = targetScoreOrigin.GetDim(dimNum - 1);
+    if (K > 8192) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "target_score",
             targetShapeStr.c_str(),
             "The last dim of input target_score should be less than 8192");
@@ -127,7 +127,7 @@ static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext* con
 
     auto inputShape = targetScoreShape->GetOriginShape();
     int64_t dimNum = static_cast<int64_t>(inputShape.GetDimNum());
-    int64_t D = inputShape.GetDim(dimNum - 1);
+    int64_t K = inputShape.GetDim(dimNum - 1);
     int64_t M = 1;
     for (int64_t i = 0; i < dimNum - 1; i++) {
         M *= inputShape.GetDim(i);
@@ -139,10 +139,10 @@ static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext* con
     uint64_t weightType = (weightTypeStr == "probs") ? 1 : 0;
     bool deterministic = context->GetDeterministic() == 1;
     // UB 统一按 fp32 划分
-    int64_t fp32Size = sizeof(float);
-    int64_t KAligned = (D + 7) / 8 * 8;
-    int64_t tileLength = ComputeTileLength(KAligned, ubSize, fp32Size);
+    int64_t KAligned = (K + 7) / 8 * 8;
+    int64_t tileLength = ComputeTileLength(KAligned, ubSize);
     // tileLength = std::min(tileLength, M);
+    printf("tileLength: %d\n", tileLength);
 
     // 计算 tile 块总数
     int64_t totalTileNum = (M + tileLength - 1) / tileLength;
@@ -158,7 +158,7 @@ static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext* con
         memset_s(tiling, sizeof(LightningIndexerKLLossTilingData), 0, sizeof(LightningIndexerKLLossTilingData)) != EOK,
         OP_LOGE(context, "set tiling data error"), return ge::GRAPH_FAILED);
     tiling->totalLength = M;
-    tiling->K = D;
+    tiling->K = K;
     tiling->KAligned = KAligned;
     tiling->formerNum = formerNum;
     tiling->formerTileNum = formerTileNum;

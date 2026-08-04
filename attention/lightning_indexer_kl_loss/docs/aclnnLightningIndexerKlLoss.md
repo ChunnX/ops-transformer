@@ -54,7 +54,7 @@
 aclnnStatus aclnnLightningIndexerKLLossGetWorkspaceSize(
   const aclTensor   *targetScore,
   const aclTensor   *indexProbs,
-  double             eps,
+  float             eps,
   const char        *weightType,
   const aclTensor   *loss,
   uint64_t          *workspaceSize,
@@ -122,7 +122,7 @@ aclnnStatus aclnnLightningIndexerKLLoss(
       <td>属性</td>
       <td>数值稳定常数。</td>
       <td>用于防止 log(0) 导致 NaN。</td>
-      <td>double</td>
+      <td>float</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -357,7 +357,7 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   // eps 参数
-  double eps = 1e-9;
+  float eps = 1e-9;
 
   // 3. 调用 C(A)NN 算子库 API
   uint64_t workspaceSize = 0;

@@ -14,30 +14,32 @@
 namespace op_api {
 
 at::Tensor lightning_indexer_kl_loss(
-    const at::Tensor &target_score,
-    const at::Tensor &index_probs,
-    double eps,
-    const std::string &weight_type)
+    const at::Tensor &targetScore,
+    const at::Tensor &indexProbs,
+    float eps,
+    const std::string &weightType)
 {
     TORCH_CHECK((eps > 0), "eps should be greater than 0, current is: ", eps);
-    TORCH_CHECK((weight_type == "logits" || weight_type == "probs"),
-        "weight_type must be 'logits' or 'probs', current is: ", weight_type);
-    TORCH_CHECK((target_score.scalar_type() == index_probs.scalar_type()),
-        "target_score and index_probs should have the same dtype.");
-    TORCH_CHECK((target_score.dim() >= 2 && target_score.dim() <= 3),
-        "target_score.dim() should be in [2, 3], current is: ", target_score.dim());
-    TORCH_CHECK((index_probs.dim() >= 2 && index_probs.dim() <= 3),
-        "index_probs.dim() should be in [2, 3], current is: ", index_probs.dim());
+    TORCH_CHECK((weightType == "logits" || weightType == "probs"),
+        "weightType must be 'logits' or 'probs', current is: ", weightType);
+    TORCH_CHECK((targetScore.scalar_type() == indexProbs.scalar_type()),
+        "targetScore and indexProbs should have the same dtype.");
+    TORCH_CHECK((targetScore.dim() >= 2 && targetScore.dim() <= 3),
+        "targetScore.dim() should be in [2, 3], current is: ", targetScore.dim());
+    TORCH_CHECK((indexProbs.dim() >= 2 && indexProbs.dim() <= 3),
+        "indexProbs.dim() should be in [2, 3], current is: ", indexProbs.dim());
 
     at::Tensor loss{nullptr};
     {
-        auto local_device = c10::Device(target_score.device());
+        auto local_device = c10::Device(targetScore.device());
         const c10::OptionalDeviceGuard device_guard(local_device);
         // 输出为标量，分配一个单元素 tensor
-        loss = at::empty({}, target_score.options());
+        loss = at::empty({}, targetScore.options());
     }
 
-    ACLNN_CMD(aclnnLightningIndexerKLLoss, target_score, index_probs, eps, weight_type, loss);
+    char *weightTypePtr = const_cast<char *>(weightType.c_str());
+    printf("csr weight_type:%s\n", weightTypePtr);
+    ACLNN_CMD(aclnnLightningIndexerKLLoss, targetScore, indexProbs, eps, weightTypePtr, loss);
 
     return loss;
 }

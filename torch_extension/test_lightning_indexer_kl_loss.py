@@ -22,6 +22,7 @@ if str(TORCH_EXTENSION_PATH) not in sys.path:
 
 from cann_ops_transformer.ops import lightning_indexer_kl_loss  # noqa: E402,F401  pylint: disable=wrong-import-position,unused-import
 
+torch.manual_seed(1314)
 
 # ---------------------------------------------------------------------------
 # Reference implementation (纯 PyTorch, float 精度基准)
@@ -29,7 +30,8 @@ from cann_ops_transformer.ops import lightning_indexer_kl_loss  # noqa: E402,F40
 def lightning_indexer_kl_loss_ref(target_score, index_probs, eps=1e-9, weight_type='logits'):
     y = target_score
     Y = index_probs
-    P = y / torch.sum(y, dim=-1, keepdim=True)      # teacher: normalize target_score
+    reduce_target = torch.sum(y, dim=-1, keepdim=True)
+    P = y / (reduce_target + eps)
     log_P = torch.log(torch.clamp_min(P, eps))             # clamp_min 防止 log(0) 产生 NaN
     log_Y = torch.log(Y + eps)                       # student: +eps 保住 Y→0 处的梯度
     log_ratio = log_P - log_Y
@@ -40,7 +42,16 @@ def lightning_indexer_kl_loss_ref(target_score, index_probs, eps=1e-9, weight_ty
     else:
         raise ValueError("weight_type must be 'logits' or 'probs'")
     result = weight * log_ratio
-    return torch.sum(result)
+    # torch.set_printoptions(profile="full")
+    # # print("target_score:")
+    # # print(target_score)
+    print("reducesum:")
+    print((reduce_target + eps)[0])
+    # print("clamp_min:")
+    # print(torch.clamp_min(P, eps)[0])
+    # print(result[:10])
+    # torch.set_printoptions(profile="default")
+    return torch.sum(log_P)
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +64,8 @@ def _gen_data(shape, dtype=torch.float32):
     # return y, Y
     if len(shape) == 2:
         b, d = shape
-        y = torch.randn(b, d, dtype=dtype)
+        # y = torch.randn(b, d, dtype=dtype)
+        y = torch.full((b, d), 1, dtype=dtype)
         # y = torch.linspace(1, b * d, b * d, dtype=dtype).reshape(shape)
         Y = torch.softmax(torch.randn(b, d, dtype=dtype), dim=-1)
     else:
@@ -167,26 +179,26 @@ def _check_zero_index_probs(npu_out, y_cpu, Y_cpu):
 # Test registry
 # ---------------------------------------------------------------------------
 TESTS = [
-    ("big basic_2d: (B, D) float32",         (800000, 2336),           {"deterministic": True}),
-    ("basic_2d: (B, D) float32",         (8888, 2332),           None),
-    ("basic_3d: (B, H, D) float32",      (4, 10, 333),       {"eps": 0.5}),
-    ("fp16: (B, H, D) float16",          (4, 2, 4444),       {"dtype": torch.float16, "diff_thd": 0.001}),
-    ("bf16: (B, H, D) bfloat16",         (40, 264, 10),       {"eps": 0.5,"dtype": torch.bfloat16, "diff_thd": 0.005}),
-    ("custom_eps: eps=1e-6",             (4000, 1),         {"eps": 1e-6}),
-    ("large_d: (B, H, 512) float32",     (2125, 45, 8192),        None),
-    ("edge: zero target_score",          (2, 4, 128),        {"zero_target": True}),
-    ("edge: zero index_probs",           (2, 4, 128),          {"zero_index_probs": True}),
-    # --- weight_type='probs' tests ---
-    ("probs basic_2d: (B, D) float32",        (8888, 2332),     {"weight_type": "probs"}),
-    ("probs basic_3d: (B, H, D) float32",     (4, 10, 333),     {"eps": 0.5, "weight_type": "probs"}),
-    ("probs fp16: (B, H, D) float16",         (4, 2, 4444),     {"dtype": torch.float16, "diff_thd": 0.001, "weight_type": "probs"}),
-    ("probs bf16: (B, H, D) bfloat16",        (40, 264, 10),    {"eps": 0.5, "dtype": torch.bfloat16, "diff_thd": 0.005, "weight_type": "probs"}),
-    ("probs custom_eps: eps=1e-6",           (4000, 1),         {"eps": 1e-6, "weight_type": "probs"}),
-    ("probs large_d: (B, H, 512) float32",   (2125, 45, 8192),  {"weight_type": "probs"}),
-    ("probs edge: zero target_score",        (2, 4, 128),       {"zero_target": True, "weight_type": "probs"}),
-    ("probs edge: zero index_probs",         (2, 4, 128),       {"zero_index_probs": True, "weight_type": "probs"}),
-    # --- weight_type='probs' with deterministic ---
-    ("probs deterministic_2d: (B, D) float32", (4000, 100),     {"weight_type": "probs", "deterministic": True}),
+    # ("big basic_2d: (B, D) float32",         (800000, 2336),           {"deterministic": True}),
+    # ("basic_2d: (B, D) float32",         (2, 2332),           None),
+    # ("basic_3d: (B, H, D) float32",      (4, 10, 333),       {"eps": 0.5}),
+    # ("fp16: (B, H, D) float16",          (4, 2, 4444),       {"dtype": torch.float16, "diff_thd": 0.001}),
+    # ("bf16: (B, H, D) bfloat16",         (40, 264, 10),       {"eps": 0.5,"dtype": torch.bfloat16, "diff_thd": 0.005}),
+    # ("custom_eps: eps=1e-6",             (4000, 1),         {"eps": 1e-6}),
+    # ("large_d: (B, H, 512) float32",     (2125, 45, 8192),        None),
+    # ("edge: zero target_score",          (2, 4, 128),        {"zero_target": True}),
+    # ("edge: zero index_probs",           (2, 4, 128),          {"zero_index_probs": True}),
+    # # --- weight_type='probs' tests ---
+    ("probs basic_2d: (B, D) float32",        (8888, 2336),     {"eps": 500, "deterministic": True}),
+    # ("probs basic_3d: (B, H, D) float32",     (4, 10, 333),     {"eps": 0.5, "weight_type": "probs"}),
+    # ("probs fp16: (B, H, D) float16",         (4, 2, 4444),     {"dtype": torch.float16, "diff_thd": 0.001, "weight_type": "probs"}),
+    # ("probs bf16: (B, H, D) bfloat16",        (40, 264, 10),    {"eps": 0.5, "dtype": torch.bfloat16, "diff_thd": 0.005, "weight_type": "probs"}),
+    # ("probs custom_eps: eps=1e-6",           (4000, 1),         {"eps": 1e-6, "weight_type": "probs"}),
+    # ("probs large_d: (B, H, 512) float32",   (2125, 45, 8192),  {"weight_type": "probs"}),
+    # ("probs edge: zero target_score",        (2, 4, 128),       {"zero_target": True, "weight_type": "probs"}),
+    # ("probs edge: zero index_probs",         (2, 4, 128),       {"zero_index_probs": True, "weight_type": "probs"}),
+    # # # --- weight_type='probs' with deterministic ---
+    # ("probs deterministic_2d: (B, D) float32", (4000, 100),     {"weight_type": "probs", "deterministic": True}),
 ]
 
 

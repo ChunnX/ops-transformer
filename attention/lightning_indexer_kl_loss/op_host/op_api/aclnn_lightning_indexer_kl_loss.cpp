@@ -34,8 +34,8 @@ extern "C" {
 struct LightningIndexerKLLossParams {
     const aclTensor *targetScore = nullptr;
     const aclTensor *indexProbs = nullptr;
-    double eps;
-    const char *weightType;
+    float eps;
+    const char *weightType = nullptr;
     const aclTensor *loss = nullptr;
 };
 
@@ -87,11 +87,11 @@ static aclnnStatus ContiguousAndLightningIndexerKLLoss(const LightningIndexerKLL
 
     auto indexProbsContiguous = l0op::Contiguous(params.indexProbs, executor);
     CHECK_RET(indexProbsContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
+    string weightTypeStr = op::ToString(params.weightType).GetString();
     // call l0 interface
     auto result = l0op::LightningIndexerKLLoss(
         targetScoreContiguous, indexProbsContiguous,
-        params.eps, params.weightType, executor);
+        params.eps, weightTypeStr.c_str(), executor);
 
     // convert output tensor to contiguous tensor
     CHECK_RET(result != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -103,14 +103,14 @@ static aclnnStatus ContiguousAndLightningIndexerKLLoss(const LightningIndexerKLL
 
 aclnnStatus aclnnLightningIndexerKLLossGetWorkspaceSize(
     const aclTensor *targetScore, const aclTensor *indexProbs,
-    double eps, const char *weightType,
+    float eps, const char *weightType,
     const aclTensor *loss, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    printf("aclnn weightType: %s %x\n", weightType, weightType);
     L2_DFX_PHASE_1(aclnnLightningIndexerKLLoss,
                    DFX_IN(targetScore, indexProbs, eps, weightType),
                    DFX_OUT(loss));
     LightningIndexerKLLossParams params{targetScore, indexProbs, eps, weightType, loss};
-
     // check params
     aclnnStatus ret = CheckParams(params);
     CHECK_COND(ret == ACLNN_SUCCESS, ret, "aclnnLightningIndexerKLLossGetWorkspaceSize checkParams failed.");
@@ -123,7 +123,7 @@ aclnnStatus aclnnLightningIndexerKLLossGetWorkspaceSize(
         uniqueExecutor.ReleaseTo(executor);
         return ACLNN_SUCCESS;
     }
-
+    std::string weightTypeStr = op::ToString(params.weightType).GetString();
     // call l0 interface
     ret = ContiguousAndLightningIndexerKLLoss(params, uniqueExecutor.get(), loss);
     CHECK_COND(ret == ACLNN_SUCCESS, ret, "ContiguousAndLightningIndexerKLLoss failed.");
