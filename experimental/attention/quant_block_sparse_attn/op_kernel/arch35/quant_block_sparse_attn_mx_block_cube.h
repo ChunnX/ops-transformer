@@ -91,7 +91,9 @@ public:
             constexpr uint32_t kSlotBytes = kvSize + kvScaleSize;
             constexpr uint32_t vSlotBytes = kvSize + valueScaleSize;
             constexpr uint32_t qBytes = 2U * qSlotBytes;
-            constexpr uint32_t kBytes = 4U * kSlotBytes;
+            // Static Tensor reserves event IDs 6/7. Use a K double buffer so Q/K/V
+            // reusable L1 slots fit in the valid MTE1<->MTE2 event range 0..5.
+            constexpr uint32_t kBytes = 2U * kSlotBytes;
             constexpr uint32_t vBytes = 2U * vSlotBytes;
             constexpr uint32_t qAddr = MxStatic::CUBE_PRIVATE_L1_BASE;
             constexpr uint32_t kAddr = qAddr + qBytes;
@@ -117,8 +119,6 @@ public:
             SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_Q_EVENT_ID1);
             SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID0);
             SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID1);
-            SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID2);
-            SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID3);
             SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_V_EVENT_ID0);
             SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_V_EVENT_ID1);
             SetFlag<HardEvent::M_MTE1>(MxStatic::L0A_EVENT_ID0);
@@ -137,8 +137,6 @@ public:
             WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_Q_EVENT_ID1);
             WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID0);
             WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID1);
-            WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID2);
-            WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID3);
             WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_V_EVENT_ID0);
             WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_V_EVENT_ID1);
             WaitFlag<HardEvent::M_MTE1>(MxStatic::L0A_EVENT_ID0);
@@ -187,7 +185,7 @@ public:
         constexpr uint32_t kSlotBytes = S2_SPLIT * D_BASE * sizeof(INPUT_T) +
                                         S2_SPLIT * D_BASE / MX_SCALE_GROUP * sizeof(SCALE_T);
         const uint32_t kSlot = kCursor_;
-        kCursor_ = (kCursor_ + 1U) & 3U;
+        kCursor_ ^= 1U;
         const TEventID kEventId = static_cast<TEventID>(MxStatic::L1_K_EVENT_ID0 + kSlot);
         LocalTensor<uint8_t> kBuf = l1KTensor_[kSlot * kSlotBytes];
         WaitFlag<HardEvent::MTE1_MTE2>(kEventId);

@@ -62,10 +62,8 @@ constexpr AscendC::TEventID L1_Q_EVENT_ID0 = 0U;
 constexpr AscendC::TEventID L1_Q_EVENT_ID1 = 1U;
 constexpr AscendC::TEventID L1_K_EVENT_ID0 = 2U;
 constexpr AscendC::TEventID L1_K_EVENT_ID1 = 3U;
-constexpr AscendC::TEventID L1_K_EVENT_ID2 = 4U;
-constexpr AscendC::TEventID L1_K_EVENT_ID3 = 5U;
-constexpr AscendC::TEventID L1_V_EVENT_ID0 = 8U;
-constexpr AscendC::TEventID L1_V_EVENT_ID1 = 9U;
+constexpr AscendC::TEventID L1_V_EVENT_ID0 = 4U;
+constexpr AscendC::TEventID L1_V_EVENT_ID1 = 5U;
 
 constexpr AscendC::TEventID L0A_EVENT_ID0 = 0U;
 constexpr AscendC::TEventID L0A_EVENT_ID1 = 1U;

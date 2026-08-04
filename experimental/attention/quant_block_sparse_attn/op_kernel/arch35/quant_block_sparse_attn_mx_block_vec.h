@@ -281,6 +281,9 @@ public:
             static_assert(USE_DN, "MXFullQuantMode vector currently implements DN VF only; "
                                   "use_dn=false is reserved for future extension");
         }
+        // Static LocalTensor has no TQue dependency to drain PIPE_V before the
+        // cross-core free token. Finish all reads from the shared UB first.
+        PipeBarrier<PIPE_V>();
         MxStatic::AivSetUbFree(bmm1EventId);
         if constexpr (HAS_ATTEN) {
             SetFlag<HardEvent::V_MTE2>(MxStatic::MASK_EVENT_ID);
@@ -342,6 +345,9 @@ public:
                     vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, vecMSize, dTemplateAlign64, 1.0f, 1.0f);
             }
         }
+        // FlashUpdate reads the shared BMM2 UB. Do not let AIC overwrite the
+        // slot until every vector instruction consuming the current tile ends.
+        PipeBarrier<PIPE_V>();
         MxStatic::AivSetUbFree(bmm2EventId);
         if (isLastS2Loop) {
             if (unlikely(isFirstS2Loop)) {
