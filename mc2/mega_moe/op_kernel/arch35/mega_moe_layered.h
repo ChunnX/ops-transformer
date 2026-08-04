@@ -972,7 +972,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::QuantToke
     DataCopyParams xCopyInParams = {1U, static_cast<uint16_t>(k_ * sizeof(bfloat16_t)), 0U, 0U};
     DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
     DataCopyPad(xInTensor1_, srcGlobalTensor, xCopyInParams, xCopyInPadParams);
-    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA10]: relay quant input MTE2 -> existing MTE2_V sync
     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
     LoadTopkWeightsToUb(xOutTensor1_, 0, tokenIdx, EVENT_ID0);
 
@@ -997,7 +996,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::QuantToke
 
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID1>();
     DataCopyPad(workspaceDstGlobal, xOutBytesTensor, {1U, mxQuantTokenScaleAlignBytes_, 0U, 0U, 0U});
-    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA11]: relay payload MTE3 -> existing MTE3_S sync
     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID3>();
     __gm__ uint64_t *readyFlag =
         reinterpret_cast<__gm__ uint64_t *>(params_.peermemInfo.dispatchFlagPtr + RelayFlagOffset(serverId_, tokenIdx));
@@ -1039,7 +1037,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchC
         __gm__ int32_t *countPtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr +
                                                                       SendWorkspaceServerOffset(targetServer));
         int32_t slotIdx = AtomicAdd(countPtr, int32_t(1));
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA12]: dispatch slot AtomicAdd -> slot metadata
         uint64_t metaOffset = SendWorkspaceServerOffset(targetServer) + ALIGN_32 +
                               static_cast<uint64_t>(slotIdx) * sendWorkspaceMetaBytes_;
         __gm__ int32_t *metaPtr =
@@ -1047,7 +1044,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchC
         WriteGmByPassDCache(metaPtr, static_cast<int32_t>(tokenIdx));
         // PipeBarrier<PIPE_ALL>();
         WriteGmByPassDCache(metaPtr + 1, int32_t(1));
-        PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA13]: READY publication -> dedup state
         sendDedupMaskTensor_.SetValue(targetDedupWordIdx, targetDedupWord | dedupBit);
     }
 }
@@ -1072,7 +1068,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchC
     }
     __gm__ int32_t *donePtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchDonePtr);
     WriteGmByPassDCache(donePtr + computeIdx, roundTag);
-    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA14]: round DONE publication -> compute exit
 }
 
 template <TemplateMegaMoeLayeredTypeClass>
@@ -1096,7 +1091,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::DispatchT
                              RelayFlagOffset(serverId_, static_cast<uint32_t>(tokenIdx));
     hcomm_.WriteWithNotifyNbi(channel, dstAddr, srcAddr, mxQuantTokenScaleAlignBytes_, remoteFlagAddr, uint64_t(1));
     WriteGmByPassDCache(srcMetaPtr + 1, int32_t(2));
-    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA15]: relay slot SENT publication -> sender loop
 }
 
 template <TemplateMegaMoeLayeredTypeClass>
@@ -1205,7 +1199,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::LoadToken
     GlobalTensor<ActivationType> relayGlobalTensor;
     relayGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType *>(localRecordAddr));
     DataCopy(copyTmpTensors_[bufferIdx], relayGlobalTensor, copyInNum);
-    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA16]: local relay MTE2 -> existing MTE2_V sync
     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 }
 
@@ -1227,7 +1220,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendCntCa
             DataCopyPad(cumsumInfoTensor_, cumsumInfoGlobalTensor_,
                         {1U, static_cast<uint32_t>(worldSize_ * localExpertId * sizeof(int32_t)), 0U, 0U, 0U},
                         {true, 0U, 0U, 0U});
-            PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA17]: cumsum prefetch MTE2 -> rank count scan
         }
     }
 
