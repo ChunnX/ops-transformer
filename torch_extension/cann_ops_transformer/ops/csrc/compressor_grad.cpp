@@ -101,31 +101,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> CompressorGrad(
     at::Tensor dWgate = std::get<2>(compressorGradResult);
     at::Tensor dApe = std::get<3>(compressorGradResult);
 
-    // ACLNN_CMD(aclnnCompressorGrad, x, wkv, wgate, dCmpKv, softmaxScore, kv, cmpRatio, coff, cuSeqlens, seqused, startPos, 
-    //         dX, dWkv, dWgate, dApe);
-
-    ACLNN_CMD(aclnnCompressorGrad, x, wkv, wgate, dCmpKv, softmaxScore, kv, cuSeqlens, seqused, startPos, cmpRatio, coff, dX, dWkv, dWgate, dApe);
+    ACLNN_CMD(aclnnCompressorGrad, x, wkv, wgate, dCmpKv, softmaxScore,
+              kv, cuSeqlens, seqused, startPos, cmpRatio, coff, dX, dWkv, dWgate, dApe);
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor>(dX, dWkv, dWgate, dApe);
 }
-
-// std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> CompressorGradMeta(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate, at::Tensor &dCmpKv,
-//                           const at::Tensor &softmaxScore, const at::Tensor &kv, int64_t cmpRatio, const c10::optional<at::Tensor> &cuSeqlens,
-//                           const c10::optional<at::Tensor> &seqused, const c10::optional<at::Tensor> &startPos,
-//                           std::string layoutX, std::string layoutDCmpKv, std::string layoutSoftmaxScore, std::string layoutKv,
-//                           std::string layoutDX, int64_t coff)
-// {
-//     TORCH_CHECK(x.defined(), "Check x != nullptr failed");
-//     auto xDim = x.dim();
-//     TORCH_CHECK(xDim == DIM_ONE, "CompressorGradMeta HYQ HYQ \n");
-//     TORCH_CHECK(xDim == DIM_TWO || xDim == DIM_THREE, "x dim num[", xDim, "] should be 2 or 3");
-
-//     TORCH_CHECK(cmpRatio >= VALUE_2 && cmpRatio <= VALUE_128, "cmp_ratio should be in range 2~128");
-
-//     TORCH_CHECK(coff == VALUE_1 || coff == VALUE_2, "coff value[", coff, "] should be 1 or 2");
-
-//     return ConstructCompressorGradOutputTensor(x, wkv, softmaxScore, cmpRatio, coff);
-// }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {

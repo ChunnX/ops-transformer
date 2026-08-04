@@ -800,7 +800,9 @@ ge::graphStatus CheckBlockDimConstrain(CompressorGradContext &compressorGradCont
 {
     uint32_t minBlockNum = compressorGradBaseParams.headDim / 64; // 64 is the largest dBaseSize
     OP_CHECK_IF(aicNum < minBlockNum,
-                OP_LOGE(compressorGradContext.opName, "aicNum is %u, which should not be less than %u", aicNum, minBlockNum),
+                OP_LOGE(compressorGradContext.opName,
+                        "aicNum is %u, which should not be less than %u",
+                        aicNum, minBlockNum),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
