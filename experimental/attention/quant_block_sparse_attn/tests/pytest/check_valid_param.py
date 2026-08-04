@@ -72,13 +72,16 @@ def check_valid_param(params):
             continue
         try:
             if isinstance(value, str):
+                s = value.strip()
+                if s.startswith("[") and s.endswith("]"):
+                    s = s[1:-1]
                 try:
-                    r = float(value.strip())
+                    r = float(s)
                     low, high = -r, r
                 except ValueError:
-                    parts = value.split(",")
+                    parts = s.split(",")
                     if len(parts) != 2:
-                        raise ValueError(f"expected 'low,high' or a number, got {value!r}")
+                        raise ValueError(f"expected like [-100,100], got {value!r}")
                     low = float(parts[0].strip())
                     high = float(parts[1].strip())
             elif isinstance(value, (int, float)):
@@ -91,7 +94,7 @@ def check_valid_param(params):
                 raise ValueError(f"unsupported format {value!r}")
         except (ValueError, TypeError) as error:
             raise ValueError(
-                f"{key} should be a 'low,high' string, a scalar, or a (low, high) pair, got {value}"
+                f"{key} should be like [-100,100], a scalar, or a (low, high) pair, got {value}"
             ) from error
         if low > high:
             raise ValueError(f"{key} should satisfy low <= high, got ({low}, {high})")
