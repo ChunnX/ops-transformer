@@ -106,7 +106,7 @@ public:
     
     static constexpr AscendC::FixpipeConfig CFG_ROW_MAJOR_UB = {AscendC::CO2Layout::ROW_MAJOR, true};
 
-    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource) {
+    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t& kvBufId) : l1ABufId(kvBufId) {
         // L1 区域顺序（与 QFA 一致）：P 数据 | P-scale | Q 数据 | Q-scale | KV(=V) 数据 | KV(=V)-scale
         uint32_t addrL1Start = 0;
         // P 数据：l1BTensor(B=P)，MXFP4::L1_P_BUF_SIZE * 20 = 320K
@@ -154,9 +154,8 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(PV_L0AB_EVENT1);
         // PV L0C 单缓冲（FIX_M：Fixpipe→M，预置可写）
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(PV_L0C_EVENT0);
-        // V L1 双路（MTE1_MTE2：LoadV→MTE2 gather，2 槽都预置）
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0);
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT1);
+        // [QK/PV 共享] KV 池 MTE1_MTE2 4 路由 QK 的 AllocEventID 统一预置（本处不重复）
+
     }
 
     // ============================================================================
@@ -167,8 +166,8 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(PV_L0AB_EVENT0);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(PV_L0AB_EVENT1);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(PV_L0C_EVENT0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT1);
+        // [QK/PV 共享] KV 池 MTE1_MTE2 4 路由 QK 的 FreeEventID 统一排空（本处不重复）
+
     }
 
     // [改造] V 的 L1->L0A 转置搬运改走 mx functor（原裸 LoadVToL0 的 5 参 mx LoadData 下沉到 policy）。
@@ -400,7 +399,6 @@ public:
         //   re-seed 调用时：l1ABufId 已轮转到 NEW slot（operator() 先 Set+rotate 再调这里），
         //     Wait 等 NEW slot 的上次 LoadV 完成
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + l1ABufId);
-
         // [#10] seed fill 值与 QFA 一致：
         //   V 数据 = 0x6666（fp4 4.0）、V scale = 0x7d7d（e8m0 0x25→2^(125-127)=0.25）→ 有效 4.0×0.25=1.0
         //   原 0x2222(1.0)×0x7f7f(1.0)=1.0 也是 1.0，但 QFA 用 4.0×0.25（规避 fp4 0x2 编码问题）
@@ -640,8 +638,8 @@ protected:
     Tile::CopyL1ToL0BMxA5 copyL1ToL0BMx;   // P: zN L1 -> nZ L0B 转置（带 P-scale）
 
     uint32_t pvL0abBufId = 0;   // [#3] L0A/B 双缓冲轮转索引（0/1），跨 operator() 调用持久化
-    uint32_t l1ABufId = 0;     // [#4] V L1 双路轮转索引（0/1），跨 operator() 调用持久化
-
+    uint32_t& l1ABufId;        // [QK/PV 共享] KV 槽游标——引用 kernel 的 kvBufId，与 QK kBufId 同址（0..3）
+    
     uint32_t l1ATileM;
     uint32_t l1BTileN;
     uint32_t l1ATileK;

@@ -161,8 +161,11 @@ public:
 
  #ifdef __DAV_CUBE__
         coreIdx = AscendC::GetBlockIdx();
-        BlockMmadQK blockMmadQK(resource);
-        BlockMmadPV blockMmadPV(resource);
+        // [QK/PV 共享] kernel 层单一 kvBufId，传引用进两 block ctor（QK 先构造预置 4 路 KV event；
+        //   PV 后构造、其 ctor 内 InitL0BufferForReduceSum 把 kvBufId 0→1，与 QFA cube 同构）
+        uint32_t kvBufId = 0;
+        BlockMmadQK blockMmadQK(resource, kvBufId);
+        BlockMmadPV blockMmadPV(resource, kvBufId);
         BlockMmadCopyGlobalMaxL1ToUB blockGMaxL1ToUb(resource);
  #endif	 
  #ifdef __DAV_VEC__
