@@ -176,28 +176,48 @@ template <typename QuantOutType, typename WeightType, typename SwigluOutType, ty
 __aicore__ inline void ControlGmm1SwigluPipelineByMode(
     const Gmm1SwigluContext &context, const Params &gmmParams, BlockEpilogue &epilogueOp,
     const GMMAddrInfo &gmmAddrInfo, const Gmm1ExpertLoopState &state, Gmm1SwigluState &runtimeState,
-    uint32_t expertIdx)
+    uint32_t expertIdx, void *blockMmadContext)
 {
     if constexpr (EnableA8W4) {
+        using GmmConfig = Detail::Config<
+            true, Detail::Gmm1Policy, COMBINE_NO_QUANT, QuantOutType, WeightType, bfloat16_t,
+            QuantScaleType, QuantScaleType, false, Gmm1TileM, TopkWeightsPrefetch>;
+        using BlockMmadContext = Detail::PersistentBlockMmadContext<typename GmmConfig::BlockMmad>;
+        auto *persistentContext = reinterpret_cast<BlockMmadContext *>(blockMmadContext);
         MegaMoeImpl::GroupMatmulSwigluQuantA8W4<QuantOutType, WeightType, bfloat16_t, QuantScaleType, QuantScaleType,
                                                 Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, false>(
             epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
-            runtimeState.gmTileSequence, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx);
+            runtimeState.gmTileSequence, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
+            persistentContext);
     } else if (context.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                context.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
-        MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType,
-                                            QuantScaleType, true, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch,
-                                            false, IsGmm1Interleaved, IsWaveFlagGrained>(
+        using GmmConfig = Detail::Config<
+            false, Detail::Gmm1Policy, COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t,
+            QuantScaleType, QuantScaleType, true, Gmm1TileM, TopkWeightsPrefetch, false, false,
+            IsGmm1Interleaved, IsWaveFlagGrained>;
+        using BlockMmadContext = Detail::PersistentBlockMmadContext<typename GmmConfig::BlockMmad>;
+        auto *persistentContext = reinterpret_cast<BlockMmadContext *>(blockMmadContext);
+        MegaMoeImpl::GroupMatmulSwigluQuant<
+            QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType,
+            true, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, false, IsGmm1Interleaved,
+            IsWaveFlagGrained>(
             epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
             runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
-            runtimeState.pingpongIdx);
+            runtimeState.pingpongIdx, persistentContext);
     } else {
-        MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType,
-                                            QuantScaleType, false, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch,
-                                            false, IsGmm1Interleaved, IsWaveFlagGrained>(
+        using GmmConfig = Detail::Config<
+            false, Detail::Gmm1Policy, COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t,
+            QuantScaleType, QuantScaleType, false, Gmm1TileM, TopkWeightsPrefetch, false, false,
+            IsGmm1Interleaved, IsWaveFlagGrained>;
+        using BlockMmadContext = Detail::PersistentBlockMmadContext<typename GmmConfig::BlockMmad>;
+        auto *persistentContext = reinterpret_cast<BlockMmadContext *>(blockMmadContext);
+        MegaMoeImpl::GroupMatmulSwigluQuant<
+            QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType,
+            false, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, false, IsGmm1Interleaved,
+            IsWaveFlagGrained>(
             epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
             runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
-            runtimeState.pingpongIdx);
+            runtimeState.pingpongIdx, persistentContext);
     }
 }
 

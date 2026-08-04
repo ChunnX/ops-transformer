@@ -255,6 +255,15 @@ struct Gmm2ArgsGeneric {
     uint16_t &pingpongIdx;
 };
 
+template <typename T>
+struct PersistentBlockMmadContext {
+    using BlockMmadType = T;
+
+    T blockMmad;
+    uint32_t problemK = 0U;
+    bool initialized = false;
+};
+
 template <typename Scheduler, typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
           typename TensorBias, typename Config, typename LayoutBundle>
 struct WorkSetGeneric {
@@ -273,11 +282,13 @@ struct WorkSetGeneric {
 template <typename Policy, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false,
           uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false, typename ExtraArgs>
+          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false, typename ExtraArgs,
+          typename PersistentContext>
 __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
                                               const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                               const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
-                                              const BlockJobContext &blockJob, ExtraArgs &args)
+                                              const BlockJobContext &blockJob, ExtraArgs &args,
+                                              PersistentContext *persistentContext)
 {
     using Config = Config<false, Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
                           ElementMxScaleB, IsWeightNZ, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsLayered,
@@ -330,8 +341,9 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias, gmmAddrInfo, params, config, layouts};
 
     using MakeLayoutC = typename Config::MakeLayoutC;
-    GroupMatmulExecGeneric<Policy, CombineQuantMode, BlockMmad, ElementC, MakeLayoutC, TopkWeightsPrefetch, IsLayered,
-                           IsShared, IsGmm1Interleaved>(workSet, startLoopIdx, tileNum, args);
+    GroupMatmulExecGeneric<Policy, CombineQuantMode, BlockMmad, PersistentContext, ElementC, MakeLayoutC,
+                           TopkWeightsPrefetch, IsLayered, IsShared, IsGmm1Interleaved>(
+        workSet, startLoopIdx, tileNum, args, persistentContext);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
@@ -340,13 +352,14 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
 template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
+          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false, typename PersistentContext>
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, EpilogueTileM,
                                L1_TILE_N, TopkWeightsPrefetch, IsGmm1Interleaved, IsWaveFlagGrained> &epilogueOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, const BlockJobContext &blockJob,
-    uint32_t expertBeforeCnt, uint32_t expertIdx, uint16_t &pingpongIdx)
+    uint32_t expertBeforeCnt, uint32_t expertIdx, uint16_t &pingpongIdx,
+    PersistentContext *persistentContext)
 {
     using SwigluQuantOpType = std::remove_reference_t<decltype(epilogueOp)>;
     Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{
@@ -354,19 +367,19 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     Detail::GroupMatmulImplGeneric<Detail::Gmm1Policy, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, false, Gmm1TileM, TopkWeightsPrefetch, IsShared,
                                    IsGmm1Interleaved, IsWaveFlagGrained>(
-        params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args);
+        params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args, persistentContext);
 }
 
 template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
+          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false, typename PersistentContext>
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, EpilogueTileM,
                                L1_TILE_N, TopkWeightsPrefetch, IsGmm1Interleaved, IsWaveFlagGrained> &epilogueOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, uint32_t expertBeforeCnt,
-    uint32_t expertIdx, uint16_t &pingpongIdx)
+    uint32_t expertIdx, uint16_t &pingpongIdx, PersistentContext *persistentContext)
 {
     BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
                              static_cast<uint32_t>(GetBlockNum())};
@@ -374,7 +387,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                            IsWeightNZ, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsShared,
                            IsGmm1Interleaved, IsWaveFlagGrained>(
         epilogueOp, params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom, blockJob, expertBeforeCnt,
-        expertIdx, pingpongIdx);
+        expertIdx, pingpongIdx, persistentContext);
 }
 
 // =================================================================================================
@@ -383,33 +396,35 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           bool TopkWeightsPrefetch = false, bool IsShared = false, bool IsGmm1Interleaved = false,
-          bool IsWaveFlagGrained = false>
+          bool IsWaveFlagGrained = false, typename PersistentContext>
 __aicore__ inline void GroupMatmul2(const Params &params,
                                     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
-                                    const BlockJobContext &blockJob, uint32_t groupCnt, uint16_t &pingpongIdx)
+                                    const BlockJobContext &blockJob, uint32_t groupCnt, uint16_t &pingpongIdx,
+                                    PersistentContext *persistentContext)
 {
     Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx};
     Detail::GroupMatmulImplGeneric<Detail::Gmm2Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared,
                                    IsGmm1Interleaved, IsWaveFlagGrained>(
-        params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args);
+        params, problemShape, gmmAddrInfo, startBlockIdx, blockJob, args, persistentContext);
 }
 
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false,
           uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
+          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false, typename PersistentContext>
 __aicore__ inline void GroupMatmul2(const Params &params,
                                     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
-                                    uint32_t groupCnt, uint16_t &pingpongIdx)
+                                    uint32_t groupCnt, uint16_t &pingpongIdx, PersistentContext *persistentContext)
 {
     BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
                              static_cast<uint32_t>(GetBlockNum())};
     GroupMatmul2<CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, IsWeightNZ,
                  IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsGmm1Interleaved, IsWaveFlagGrained>(
-        params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom2, blockJob, groupCnt, pingpongIdx);
+        params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom2, blockJob, groupCnt, pingpongIdx,
+        persistentContext);
 }
 
 // ==================================================================================
@@ -442,11 +457,13 @@ struct WorkSetA8W4 {
 
 template <uint8_t CombineQuantMode, typename Policy, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, uint32_t Gmm1TileM = L1_TILE_M_256,
-          bool TopkWeightsPrefetch = false, bool IsShared = false, bool IsLayered = false, typename ExtraArgs>
+          bool TopkWeightsPrefetch = false, bool IsShared = false, bool IsLayered = false, typename ExtraArgs,
+          typename PersistentContext>
 __aicore__ inline void GroupMatmulImplA8W4(const Params &params,
                                            const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                            const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
-                                           int32_t &gmTileSequence, const BlockJobContext &blockJob, ExtraArgs &args)
+                                           int32_t &gmTileSequence, const BlockJobContext &blockJob, ExtraArgs &args,
+                                           PersistentContext *persistentContext)
 {
     static_assert(std::is_same_v<ElementA, __fp8e4m3>, "Activation must be __fp8e4m3");
     static_assert(std::is_same_v<ElementB, __fp4e2m1x2>, "Weight must be __fp4e2m1x2");
@@ -492,9 +509,9 @@ __aicore__ inline void GroupMatmulImplA8W4(const Params &params,
     using WorkSetType = WorkSetA8W4<BlockScheduler, decltype(gmA), decltype(gmB), decltype(gmScaleA),
                                     decltype(gmScaleB), decltype(l0cOutGm)>;
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, l0cOutGm};
-    GroupMatmulExecA8W4<CombineQuantMode, Policy, BlockMmad, BlockPrologue, ElementC, MakeLayoutC, IsShared, IsLayered,
-                        WorkSetType, decltype(config), TopkWeightsPrefetch>(
-        workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, args);
+    GroupMatmulExecA8W4<CombineQuantMode, Policy, BlockMmad, PersistentContext, BlockPrologue, ElementC,
+                        MakeLayoutC, IsShared, IsLayered, WorkSetType, decltype(config), TopkWeightsPrefetch>(
+        workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, gmTileSequence, args, persistentContext);
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
@@ -504,69 +521,72 @@ __aicore__ inline void GroupMatmulImplA8W4(const Params &params,
 // GroupMatmulSwigluQuantA8W4 — A8W4 prologue（W4→W8）+ GMM1 + SwiGLU + 量化
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           uint32_t Gmm1TileM = L1_TILE_M_256, uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false,
-          bool IsShared = false>
+          bool IsShared = false, typename PersistentContext>
 __aicore__ inline void GroupMatmulSwigluQuantA8W4(
     BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, EpilogueTileM, L1_TILE_N,
                                TopkWeightsPrefetch> &swigluQuantOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence,
-    const BlockJobContext &blockJob,
-    uint32_t expertBeforeCnt, uint32_t expertIdx = 0)
+    const BlockJobContext &blockJob, uint32_t expertBeforeCnt, uint32_t expertIdx,
+    PersistentContext *persistentContext)
 {
     using SwigluQuantOpType = std::remove_reference_t<decltype(swigluQuantOp)>;
     Detail::Gmm1ArgsA8W4<SwigluQuantOpType> args{swigluQuantOp, expertBeforeCnt, expertIdx};
     Detail::GroupMatmulImplA8W4<COMBINE_NO_QUANT, Detail::Gmm1Policy, ElementA, ElementB, ElementC, ElementMxScaleA,
                                 ElementMxScaleB, Gmm1TileM, TopkWeightsPrefetch, IsShared>(
-        params, problemShape, gmmAddrInfo, startBlockIdx, gmTileSequence, blockJob, args);
+        params, problemShape, gmmAddrInfo, startBlockIdx, gmTileSequence, blockJob, args, persistentContext);
 }
 
 template <typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB,
           uint32_t Gmm1TileM = L1_TILE_M_256, uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false,
-          bool IsShared = false>
+          bool IsShared = false, typename PersistentContext>
 __aicore__ inline void GroupMatmulSwigluQuantA8W4(
     BlockEpilogueSwigluMxQuant<ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, EpilogueTileM, L1_TILE_N,
                                TopkWeightsPrefetch> &swigluQuantOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence, uint32_t expertBeforeCnt,
-    uint32_t expertIdx = 0)
+    uint32_t expertIdx, PersistentContext *persistentContext)
 {
     BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
                              static_cast<uint32_t>(GetBlockNum())};
     GroupMatmulSwigluQuantA8W4<ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, Gmm1TileM, EpilogueTileM,
                                TopkWeightsPrefetch, IsShared>(swigluQuantOp, params, problemShape, gmmAddrInfo,
                                                               startBlockIdx, gmTileSequence, blockJob, expertBeforeCnt,
-                                                              expertIdx);
+                                                              expertIdx, persistentContext);
 }
 
 // GroupMatmul2CombineA8W4 — A8W4 prologue（W4→W8）+ GMM2 + Combine
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false,
-          bool IsShared = false, bool IsLayered = false>
+          bool IsShared = false, bool IsLayered = false, typename PersistentContext>
 __aicore__ inline void GroupMatmul2CombineA8W4(const Params &params,
                                                const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                                const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
                                                int32_t &gmTileSequence, const BlockJobContext &blockJob,
-                                               uint32_t groupCnt, uint16_t &pingpongIdx)
+                                               uint32_t groupCnt, uint16_t &pingpongIdx,
+                                               PersistentContext *persistentContext)
 {
     Detail::Gmm2ArgsA8W4 args{groupCnt, pingpongIdx};
     Detail::GroupMatmulImplA8W4<CombineQuantMode, Detail::Gmm2Policy, ElementA, ElementB, ElementC, ElementMxScaleA,
                                 ElementMxScaleB, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsLayered>(
-        params, problemShape, gmmAddrInfo, startBlockIdx, gmTileSequence, blockJob, args);
+        params, problemShape, gmmAddrInfo, startBlockIdx, gmTileSequence, blockJob, args, persistentContext);
 }
 
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false,
-          bool IsShared = false, bool IsLayered = false>
+          bool IsShared = false, bool IsLayered = false, typename PersistentContext>
 __aicore__ inline void GroupMatmul2CombineA8W4(const Params &params,
                                                const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                                const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
-                                               int32_t &gmTileSequence, uint32_t groupCnt, uint16_t &pingpongIdx)
+                                               int32_t &gmTileSequence, uint32_t groupCnt, uint16_t &pingpongIdx,
+                                               PersistentContext *persistentContext)
 {
     BlockJobContext blockJob{static_cast<uint32_t>(GetBlockIdx() / GetTaskRation()),
                              static_cast<uint32_t>(GetBlockNum())};
     GroupMatmul2CombineA8W4<CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB, Gmm1TileM,
                             TopkWeightsPrefetch, IsShared, IsLayered>(
-        params, problemShape, gmmAddrInfo, startBlockIdx, gmTileSequence, blockJob, groupCnt, pingpongIdx);
+        params, problemShape, gmmAddrInfo, startBlockIdx, gmTileSequence, blockJob, groupCnt, pingpongIdx,
+        persistentContext);
 }
 
 } // namespace MegaMoeImpl

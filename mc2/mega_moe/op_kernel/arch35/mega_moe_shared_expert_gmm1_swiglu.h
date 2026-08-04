@@ -106,28 +106,49 @@ __aicore__ inline void RunSharedExpertGmm1SwigluStage(const SharedExpertGmm1Swig
                                                       const GMMAddrInfo &gmmAddrInfo,
                                                       const SharedExpertGmm1ProblemShape &problemShape,
                                                       SharedExpertGmm1SwigluState &runtimeState,
-                                                      uint32_t sharedExpertIdx)
+                                                      uint32_t sharedExpertIdx,
+                                                      void *blockMmadContext)
 {
     uint32_t expertBeforeCnt = sharedExpertIdx * context.tokenNum;
     if constexpr (EnableA8W4) {
+        using GmmConfig = Detail::Config<
+            true, Detail::Gmm1Policy, COMBINE_NO_QUANT, QuantOutType, WeightType, bfloat16_t,
+            QuantScaleType, QuantScaleType, false, Gmm1TileM, false, true>;
+        using BlockMmadContext = Detail::PersistentBlockMmadContext<typename GmmConfig::BlockMmad>;
+        auto *persistentContext = reinterpret_cast<BlockMmadContext *>(blockMmadContext);
         MegaMoeImpl::GroupMatmulSwigluQuantA8W4<QuantOutType, WeightType, bfloat16_t, QuantScaleType, QuantScaleType,
                                                 Gmm1TileM, MegaMoeImpl::L1_TILE_M_256, false, true>(
             epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
-            runtimeState.gmTileSequence,
-            context.blockJob, expertBeforeCnt, sharedExpertIdx);
+            runtimeState.gmTileSequence, context.blockJob, expertBeforeCnt, sharedExpertIdx, persistentContext);
     } else if (context.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                context.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
-        MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType,
-                                            QuantScaleType, true, Gmm1TileM, MegaMoeImpl::L1_TILE_M_256, false, true,
-                                            IsGmm1Interleaved, IsWaveFlagGrained>(
-            epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
-            context.blockJob, expertBeforeCnt, sharedExpertIdx, runtimeState.pingpongIdx);
+        using GmmConfig = Detail::Config<
+            false, Detail::Gmm1Policy, COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t,
+            QuantScaleType, QuantScaleType, true, Gmm1TileM, false, true, false,
+            IsGmm1Interleaved, IsWaveFlagGrained>;
+        using BlockMmadContext = Detail::PersistentBlockMmadContext<typename GmmConfig::BlockMmad>;
+        auto *persistentContext = reinterpret_cast<BlockMmadContext *>(blockMmadContext);
+        MegaMoeImpl::GroupMatmulSwigluQuant<
+            QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType,
+            true, Gmm1TileM, MegaMoeImpl::L1_TILE_M_256, false, true, IsGmm1Interleaved,
+            IsWaveFlagGrained>(
+            epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
+            runtimeState.vecSetSyncCom, context.blockJob, expertBeforeCnt, sharedExpertIdx,
+            runtimeState.pingpongIdx, persistentContext);
     } else {
-        MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType,
-                                            QuantScaleType, false, Gmm1TileM, MegaMoeImpl::L1_TILE_M_256, false, true,
-                                            IsGmm1Interleaved, IsWaveFlagGrained>(
-            epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx, runtimeState.vecSetSyncCom,
-            context.blockJob, expertBeforeCnt, sharedExpertIdx, runtimeState.pingpongIdx);
+        using GmmConfig = Detail::Config<
+            false, Detail::Gmm1Policy, COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t,
+            QuantScaleType, QuantScaleType, false, Gmm1TileM, false, true, false,
+            IsGmm1Interleaved, IsWaveFlagGrained>;
+        using BlockMmadContext = Detail::PersistentBlockMmadContext<typename GmmConfig::BlockMmad>;
+        auto *persistentContext = reinterpret_cast<BlockMmadContext *>(blockMmadContext);
+        MegaMoeImpl::GroupMatmulSwigluQuant<
+            QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType,
+            false, Gmm1TileM, MegaMoeImpl::L1_TILE_M_256, false, true, IsGmm1Interleaved,
+            IsWaveFlagGrained>(
+            epilogueOp, gmmParams, problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
+            runtimeState.vecSetSyncCom, context.blockJob, expertBeforeCnt, sharedExpertIdx,
+            runtimeState.pingpongIdx, persistentContext);
     }
 }
 
@@ -137,7 +158,8 @@ template <typename QuantOutType, typename ActivationType, typename WeightType, t
           bool IsWaveFlagGrained = false, typename BlockEpilogue>
 __aicore__ inline void ControlSharedExpertGmm1SwigluPipeline(
     const SharedExpertGmm1SwigluContext &context, const SharedExpertGmm1SwigluArgs &args,
-    const Params &gmmParams, BlockEpilogue &epilogueOp, SharedExpertGmm1SwigluState &runtimeState)
+    const Params &gmmParams, BlockEpilogue &epilogueOp, SharedExpertGmm1SwigluState &runtimeState,
+    void *blockMmadContext)
 {
     if (context.blockJob.totalJobs == 0U || context.blockJob.jobIndex >= context.blockJob.totalJobs ||
         context.sharedExpertNum == 0U) {
@@ -160,7 +182,8 @@ __aicore__ inline void ControlSharedExpertGmm1SwigluPipeline(
             context, args, epilogueOp, gmmAddrInfo, sharedExpertIdx);
         RunSharedExpertGmm1SwigluStage<QuantOutType, WeightType, SwigluOutType, QuantScaleType, EnableA8W4,
                                        Gmm1TileM, IsGmm1Interleaved, IsWaveFlagGrained>(
-            context, gmmParams, epilogueOp, gmmAddrInfo, problemShape, runtimeState, sharedExpertIdx);
+            context, gmmParams, epilogueOp, gmmAddrInfo, problemShape, runtimeState, sharedExpertIdx,
+            blockMmadContext);
     }
     EndSync<IsGmm1Interleaved>(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
 }

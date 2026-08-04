@@ -40,7 +40,7 @@ template <typename QuantOutType, typename ActivationType, typename WeightType, t
 __aicore__ inline void ControlDispatchGmm1SwigluPipeline(
     const DispatchGmm1SwigluContext &context, const DispatchGmm1SwigluArgs &args, const Params &gmmParams,
     BlockEpilogue &epilogueOp, TokenDispatchScratch<ActivationType> &dispatchScratch,
-    Gmm1SwigluScratch &gmm1Scratch, DispatchGmm1SwigluState &runtimeState)
+    Gmm1SwigluScratch &gmm1Scratch, DispatchGmm1SwigluState &runtimeState, void *blockMmadContext)
 {
     const TokenDispatchContext &dispatchContext = context.dispatch;
     const Gmm1SwigluContext &gmm1Context = context.gmm1;
@@ -96,7 +96,8 @@ __aicore__ inline void ControlDispatchGmm1SwigluPipeline(
             gmm1Context, args.gmm1, epilogueOp, gmm1AddrInfo, gmm1State, expertIdx);
         ControlGmm1SwigluPipelineByMode<QuantOutType, WeightType, SwigluOutType, QuantScaleType, EnableA8W4,
                                         PipelineTileM, EpilogueTileM, TopkWeightsPrefetch>(
-            gmm1Context, gmmParams, epilogueOp, gmm1AddrInfo, gmm1State, runtimeState, expertIdx);
+            gmm1Context, gmmParams, epilogueOp, gmm1AddrInfo, gmm1State, runtimeState, expertIdx,
+            blockMmadContext);
     }
 
     if constexpr (TopkWeightsPrefetch) {
