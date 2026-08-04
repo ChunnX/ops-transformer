@@ -160,9 +160,10 @@ int64_t ExpectedUbFactor(int64_t numHeadQ, int64_t numHeadK, int64_t numHeadV, i
     const int64_t resident = 4 * d * 2 +                       // wBf16Buf
                              4 * d * 4 +                       // wFp32Buf
                              (((d / 2) * 4 + 31) / 32) * 32;   // gatherIdxBuf
-    const int64_t perToken = 2 * n * d * 2 + 2 * MROPE_AXIS_NUM * d * 4 + 2 * n * d * 2 +
-                             2 * d * 4; // gammaTileBuf(Q/K，单 buffer)
-    return std::min((PLATFORM_UB_BYTES - resident) / perToken, blockFactor);
+    // gamma 不再按 token 铺平（VF 按 undMask 算基址直接取 wFp32Buf），perToken 只剩三个队列
+    const int64_t perToken = 2 * n * d * 2 + 2 * MROPE_AXIS_NUM * d * 4 + 2 * n * d * 2;
+    // MAX_UB_FACTOR 是 kernel 侧 und/gen 位图的宽度上限，见 op_host/..._tiling.h
+    return std::min({(PLATFORM_UB_BYTES - resident) / perToken, blockFactor, static_cast<int64_t>(64)});
 }
 
 // 校验多核切分：核数拉满、总量守恒、核间负载差 ≤ 1
