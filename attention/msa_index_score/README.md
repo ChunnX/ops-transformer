@@ -78,6 +78,7 @@ $$
 | 调用方式 | 样例代码 | 说明 |
 |----------|----------|------|
 | aclnn 单算子调用 | [test_aclnn_msa_index_score.cpp](./examples/test_aclnn_msa_index_score.cpp) | 内置 CPU golden 的端到端精度自验证 |
+| torch_extension | [test_msa_index_score.py](../../torch_extension/examples/test_msa_index_score.py) | `cann_ops_transformer.msa_index_score` Python 接口 |
 | 接口文档 | [aclnnMsaIndexScore.md](./docs/aclnnMsaIndexScore.md) | 两段式接口说明 |
 | 测试说明 | [tests/README.md](./tests/README.md) | 用例矩阵与运行方式 |
 
