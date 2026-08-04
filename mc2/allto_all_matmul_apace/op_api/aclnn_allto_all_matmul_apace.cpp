@@ -18,9 +18,10 @@
 #include "opdev/op_log.h"
 
 enum class NnopbaseHcclServerType : uint32_t {
-    NNOPBASE_HCCL_SERVER_TYPE_MTE = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 1,
-    NNOPBASE_HCCL_SERVER_TYPE_CCU = 2
+    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
+    NNOPBASE_HCCL_SERVER_TYPE_MTE,
+    NNOPBASE_HCCL_SERVER_TYPE_CCU,
+    NNOPBASE_HCCL_SERVER_TYPE_END
 };
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
