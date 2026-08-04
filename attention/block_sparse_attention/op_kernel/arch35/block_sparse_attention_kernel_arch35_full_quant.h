@@ -16,13 +16,13 @@ using namespace tla;
 
 namespace BsaKernelArch35 {
 
-template <	 
-    class EpilogueMask2Idx,	 
-    class BlockMmadQK, 
-    class EpilogueOnlineSoftmax, 
-    class BlockMmadPV, 
-    class EpilogueRescaleO, 
-    Format qFormat, 
+template <
+    class EpilogueMask2Idx,
+    class BlockMmadQK,
+    class EpilogueOnlineSoftmax,
+    class BlockMmadPV,
+    class EpilogueRescaleO,
+    Format qFormat,
     Format kvFormat>
 class BsaFullQuantKernelArch35 {
 public:
@@ -383,13 +383,13 @@ public:
 #ifdef __DAV_VEC__
                     // Stage 2: Online softmax (computed on VECTOR core)
                     // online softmax
-                    epilogueOnlineSoftmax(	 
-                        l1PTensorTla,	 
-                        actualBlockShapeQK, 
-                        (gatheredKvSTileIdx == 0), 
-                        ubSBufId, 
-                        l1PBufId, 
-                        mm1ToSmFlag, 
+                    epilogueOnlineSoftmax(
+                        l1PTensorTla,
+                        actualBlockShapeQK,
+                        (gatheredKvSTileIdx == 0),
+                        ubSBufId,
+                        l1PBufId,
+                        mm1ToSmFlag,
                         smToMm2Flag);
 #endif
                 }
