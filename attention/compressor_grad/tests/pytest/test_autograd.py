@@ -14,6 +14,7 @@ import argparse
 import random
 from dataclasses import dataclass
 
+import os
 import torch
 
 from test_cases import REDLINE_CASES
@@ -119,8 +120,6 @@ def npu_test(case, device):
     coff = case["coff"]
     layout = case["input_layout"]
     sps = case["start_pos"]
-    # 临时诊断：start_pos=None 在 aclnn 路径可能被转成空 tensor 导致 kernel 访问非法地址
-    # 先验证此假设（None → [0]*batchSize 等价语义）
     if sps is None:
         sps = [0] * case["B"]
     sqs = case["seqused_q"]
@@ -135,16 +134,11 @@ def npu_test(case, device):
 
     tokenSize = batchSize * seqSize
     if layoutId == 1:  # TH
-        # ── 构造 cu_seqlens（统一来源）──
-        # seqlens_list_q 两种格式：每 batch 序列长（B 项）→ [0]+cumsum；
-        #                         累积形式（B+1 项且首项 0）→ 直用
+        # ── 构造 cu_seqlens ──
+        # case 数据统一为"0 开始累加"的累积形式（B+1 项、首项 0），直用不再调整
         seqlens_list = case.get('seqlens_list_q')
         if seqlens_list is not None:
-            if len(seqlens_list) == batchSize:
-                cuNpu = torch.tensor([0] + list(torch.tensor(seqlens_list).cumsum(0).tolist()),
-                                     dtype=torch.int32)
-            else:
-                cuNpu = torch.tensor(seqlens_list, dtype=torch.int32)
+            cuNpu = torch.tensor(seqlens_list, dtype=torch.int32)
         elif sqs is not None:
             cuNpu = torch.tensor([0] + torch.tensor(sqs).cumsum(0).tolist(),
                                  dtype=torch.int32)
@@ -201,7 +195,11 @@ def npu_test(case, device):
 
     # ── Generate random inputs ──
     torch.manual_seed(seed)
-    dcNpu  = torch.randn(outputRows, headDim, device=device, dtype=ioDtype)
+    if layoutId == 0:  # BSH: dc 与 cmp_kv 同为 (B, blocks, D)，与 golden 约定一致；kernel 按扁平读兼容
+        dcNpu  = torch.randn(batchSize, (seqSize + cmpRatio - 1) // cmpRatio, headDim,
+                             device=device, dtype=ioDtype)
+    else:
+        dcNpu  = torch.randn(outputRows, headDim, device=device, dtype=ioDtype)
     # 注：autograd 路径下 kernel 与 golden 实际使用前向计算的真实 kv/softmax_score
     #（见 backend.compute 的 saved tensors），此处不生成占位（避免与真实值不一致的误导）
 
@@ -402,23 +400,17 @@ def npu_test(case, device):
 
     dXGold, dWkvGold, dWgateGold, apeGold = compressor_grad_golden(
         x=xCpu, wkv=wkvCpu, wgate=wgateCpu,
-        d_cpm_kv=dcCpu,
+        # golden 约定 dc 为 (B, blocks, D)；测试构造为扁平 (blocks, D)，BSH 时 view 对齐
+        d_cpm_kv=(dcCpu.view(batchSize, -1, headDim) if layoutId == 0 else dcCpu),
         # golden 输入需与 kernel（autograd）一致：用前向真实输出，而非占位 randn
         softmax_score=npu_result["softmax_score"].cpu(),
         kv=npu_result["kv"].cpu(),
         cu_seqlens=cuGolden, seqused=sqGolden, start_pos=spGolden,
         cmp_ratio=cmpRatio, coff=coff,
     )
-    
+
     # ── Phase 3 writes d_ape directly ──
     apeNp = dapeOutNpu.cpu().view(cmpRatio, coff * headDim)
-
-    # [临时诊断] golden 输出统计
-    for _n, _g in (("d_wkv gold", dWkvGold), ("d_wgate gold", dWgateGold),
-                   ("d_ape gold", apeGold), ("d_x gold", dXGold)):
-        _g = _g.detach().cpu().float() if torch.is_tensor(_g) else torch.tensor(_g)
-        _nz = (_g != 0).sum().item(); _nan = torch.isnan(_g).sum().item()
-        print(f"[DIAG] {_n}: 非零={_nz}/{_g.numel()} NaN={_nan} min={_g.min().item():.4f} max={_g.max().item():.4f}", flush=True)
 
     result = dict(name=name, totalValid=totalValid,
                   coff=coff, cmpRatio=cmpRatio, headDim=headDim,

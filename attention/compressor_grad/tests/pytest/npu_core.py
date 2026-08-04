@@ -131,13 +131,17 @@ class NPUBackend:
             x, wkv, wgate, state_cache, ape,
             state_block_table=block_table,
             cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos,
-            cmp_ratio=cmp_ratio, coff=coff, cache_mode=cache_mode
+            cmp_ratio=cmp_ratio, coff=coff, cache_mode=cache_mode,
+            grad_enabled=True
         )
+        # backward 会释放 autograd 保存的中间量（sm/kv）→ 提前 clone 脱离图
+        softmax_score_saved = softmax_score.detach().clone()
+        kv_saved = kv.detach().clone()
         torch.npu.synchronize()
 
         # 用上游梯度 d_cpm_kv 构造 loss → backward 自动调用 compressor_grad
         loss = (cmp_kv * d_cpm_kv).sum()
-        loss.backward()
+        loss.backward(retain_graph=True)
         torch.npu.synchronize()
 
         d_x = x.grad
@@ -160,6 +164,6 @@ class NPUBackend:
             "d_wgate": d_wgate,
             "d_ape": d_ape,
             "cmp_kv": cmp_kv.detach(),
-            "softmax_score": softmax_score.detach(),
-            "kv": kv.detach(),
+            "softmax_score": softmax_score_saved,
+            "kv": kv_saved,
         }
