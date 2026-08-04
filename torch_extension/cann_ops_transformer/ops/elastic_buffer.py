@@ -234,6 +234,16 @@ def _get_moe_ep_direct_window_bytes(
     )
 
 
+def _debug_int_env(name: str) -> Optional[int]:
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer, got {value!r}") from exc
+
+
 @dataclass
 class EPHandle:
     dst_buffer_slot_idx: torch.Tensor
@@ -402,6 +412,16 @@ class ElasticBuffer:
         )
         win_addr_align = 512
         state_dtype_size = 4
+        debug_rank_num_per_server = _debug_int_env("MOE_EP_DEBUG_RANK_NUM_PER_SERVER")
+        if debug_rank_num_per_server is not None:
+            torch._check(
+                (debug_rank_num_per_server > 0)
+                and (world_size % debug_rank_num_per_server == 0),
+                lambda: (
+                    "MOE_EP_DEBUG_RANK_NUM_PER_SERVER must be positive and divide world_size, "
+                    f"got rank_num_per_server={debug_rank_num_per_server} and {world_size=}."
+                ),
+            )
 
         def get_dispatch_buffer_size(rank_num_per_server):
             scaleout_rank_count = world_size // rank_num_per_server
@@ -425,12 +445,15 @@ class ElasticBuffer:
                 + payload_stash_size
             )
 
-        # Context topology is unavailable here, so reserve for the largest valid hybrid layout.
-        rank_num_per_server_candidates = [
-            rank_num_per_server
-            for rank_num_per_server in range(1, world_size + 1)
-            if world_size % rank_num_per_server == 0
-        ]
+        if debug_rank_num_per_server is None:
+            # Context topology is unavailable here, so reserve for the largest valid hybrid layout.
+            rank_num_per_server_candidates = [
+                rank_num_per_server
+                for rank_num_per_server in range(1, world_size + 1)
+                if world_size % rank_num_per_server == 0
+            ]
+        else:
+            rank_num_per_server_candidates = [debug_rank_num_per_server]
         dispatch_buffer_size = max(
             get_dispatch_buffer_size(rank_num_per_server)
             for rank_num_per_server in rank_num_per_server_candidates
