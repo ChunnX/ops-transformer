@@ -42,6 +42,7 @@ from .quant_lightning_indexer import (
     quant_lightning_indexer_metadata,
 )
 from .mhc_post import mhc_post
+from .mhc_post_backward import mhc_post_backward
 from .mhc_pre_sinkhorn import mhc_pre_sinkhorn
 from .mhc_pre_sinkhorn_backward import mhc_pre_sinkhorn_backward
 from .kv_compress_epilog import kv_compress_epilog

@@ -147,7 +147,14 @@ static ge::graphStatus InferShapeForMhcPostBackward(gert::InferShapeContext *con
     }
 
     CopyShape(xShape, gradXShape);
-    CopyShape(hResShape, gradHresShape);
+
+    if (hResShape->GetShapeSize() != 0) {
+        CopyShape(hResShape, gradHresShape);
+    } else {
+        CopyShape(xShape, gradHresShape);
+        gradHresShape->SetDim(xDimNum - 1, xShape->GetDim(xDimNum - 2));
+    }
+
     CopyShape(hOutShape, gradHoutShape);
     CopyShape(hPostShape, gradHpostShape);
 
