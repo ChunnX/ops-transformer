@@ -26,6 +26,8 @@ constexpr uint32_t LAYOUT_TND = 2;
 
 constexpr uint32_t SOUTER_64 = 64;
 constexpr uint32_t SINNER_512 = 512;
+constexpr uint32_t SINNER_256 = 256;
+constexpr uint32_t QUANT_MODE_HIF8_FP32 = 7;
 
 /**
  * @brief 根据算子参数决定 sOuter / sInner 切块大小，纯函数，不依赖任何类。
@@ -52,7 +54,11 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, int64_t maxSeqQ, int64_t ma
         maxSeqKv = MAX_SEQ_LEN_DEFAULT;
     }
     sOuterFactor = SOUTER_64;
-    sInnerFactor = SINNER_512;
+    if (quantMode == QUANT_MODE_HIF8_FP32) {
+        sInnerFactor = SINNER_256;
+    } else {
+        sInnerFactor = SINNER_512;
+    }
 }
 
 } // namespace qfa_tiling_util
