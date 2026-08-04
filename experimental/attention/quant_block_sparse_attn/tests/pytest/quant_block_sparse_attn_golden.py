@@ -123,14 +123,17 @@ def _source_absmax():
 
 def _parse_value_range(value):
     if isinstance(value, str):
+        s = value.strip()
+        if s.startswith("[") and s.endswith("]"):
+            s = s[1:-1]
         try:
-            r = float(value.strip())
+            r = float(s)
             return -r, r
         except ValueError:
             pass
-        parts = value.split(",")
+        parts = s.split(",")
         if len(parts) != 2:
-            raise ValueError(f"datarange string should be 'low,high' or a number, got {value!r}")
+            raise ValueError(f"datarange should be like [-100,100], got {value!r}")
         return float(parts[0].strip()), float(parts[1].strip())
     if isinstance(value, (int, float)):
         r = float(value)
