@@ -511,6 +511,21 @@ attention:
     options:
       - compressor
 
+  quant_compressor:
+    module: True
+    src:
+      - attention/quant_compressor
+    exclude:
+      - attention/quant_compressor/docs
+      - attention/quant_compressor/README.md
+    ut_cov_exclude:
+      - attention/quant_compressor/tests
+    test:
+      ut: True
+      examples: False
+    options:
+      - quant_compressor
+
 gmm:
   grouped_matmul:
     module: True
