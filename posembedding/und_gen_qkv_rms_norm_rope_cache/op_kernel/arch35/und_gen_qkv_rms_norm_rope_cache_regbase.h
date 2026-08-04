@@ -210,8 +210,8 @@ private:
         pipe_->InitBuffer(outQue_, BUFFER_NUM_DB, ubFactor_ * rowElems_ * sizeof(T_QKV));
         pipe_->InitBuffer(wInQue_, BUFFER_NUM_SINGLE, WEIGHT_NUM * headDim_ * sizeof(T_QKV));
 
-        // 计算区只剩两块与 token 无关的小 buffer：4 份 gamma 的 float 版本 + gather 索引。
-        // gamma 不再按 token 铺平——VF 直接按 undMask 算基址取 und/gen 那一组
+        // 计算区是两块与 token 无关的小 buffer：4 份 gamma 的 float 版本 + gather 索引。
+        // VF 按 undMask 算基址，直接从 wFp32Buf 取本 token 该用的那一组 gamma
         pipe_->InitBuffer(wFp32Buf_, WEIGHT_NUM * headDim_ * sizeof(float));
         pipe_->InitBuffer(gatherIdxBuf_, AlignUp(halfDim_ * sizeof(uint32_t), BLOCK_ALIGN_BYTES));
 
@@ -219,8 +219,8 @@ private:
         gatherIdxLocal_ = gatherIdxBuf_.Get<uint32_t>();
     }
 
-    // 4 个 gamma 一次性搬入并 Cast 成 float 常驻。不再按头展开成 [headNumQK, D]：
-    // VF 里 gamma 只加载一次、段内所有 head 共用，展开纯属浪费 UB。
+    // 4 个 gamma 一次性搬入并 Cast 成 float 常驻，按 [undQ|undK|genQ|genK] 排布。
+    // VF 里每 token 只加载一次，该段所有 head 共用同一份。
     __aicore__ inline void PrepareWeights()
     {
         LocalTensor<T_QKV> wBf16 = wInQue_.AllocTensor<T_QKV>();
@@ -310,8 +310,8 @@ private:
 
     // 整个 tile 只发一次 VF：Q/K 在 UB 上本就是同一行 token 内相邻的 head，
     // 合在一个 VF 里 token 循环只走一趟、cos/sin 只 Gather 一次。
-    // und/gen 的差异靠 undMask 在 VF 里按 token 算 gamma 基址解决，不需要按 isUnd 切段
-    // ——cat_indices 可以任意交错，切段在最坏情况下会退化成逐 token 调 VF。
+    // und/gen 的差异在 VF 内按 undMask 逐 token 算 gamma 基址解决，所以 cat_indices
+    // 无论怎么交错，一个 tile 始终只发一次 VF。
     __aicore__ inline void Compute(int64_t tileStart, int64_t tokenNum)
     {
         LocalTensor<T_QKV> qkvLocal = qkvInQue_.DeQue<T_QKV>();
@@ -321,7 +321,7 @@ private:
         const int64_t kSegBase = ubFactor_ * numHeadQ_ * headDim_;
         const int64_t vSegBase = ubFactor_ * headNumQK_ * headDim_;
 
-        // Q/K 的 RMSNorm+MRoPE 与 V 的直通都在这次 VF 里完成，不再另起一趟 UB->UB 搬运。
+        // Q/K 的 RMSNorm+MRoPE 与 V 的直通都在这次 VF 里完成。
         // shape 参数在 ParseTiling 就填好了，这里只组本 tile 的地址
         QkvMropeTileAddr addr;
         addr.qkvIn = (__ubuf__ bfloat16_t*)qkvLocal.GetPhyAddr();

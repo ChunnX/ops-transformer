@@ -135,11 +135,11 @@ static_assert(MAX_UB_FACTOR <= UND_MASK_BITS,
  *
  * RMSNorm + MRoPE 融合在一个 VF 段里完成（op_kernel/arch35/..._mrope_vf.h）：
  * bf16->fp32 的 x、Gather 合并后的 cos/sin、RoPE 交叉项都只存在 vreg 里，
- * 所以计算区不再有 cosSinExpand / ropeTmp / qkvFp32 / reduceTmp / rmsInv 这些中间 buffer。
+ * 所以计算区不含任何随 token 规模伸缩的中间 buffer。
  *
- * gamma 不随 u：cat_indices 虽然能把 und/gen 任意交错，但 gamma 一共只有 und/gen 两套、
- * 在 wFp32Buf 里又是 [undQ|undK|genQ|genK] 连续排布，VF 直接按 undMask 位图算出本 token
- * 的基址即可（gammaRow = base + (1-undBit)*2D），不需要按 token 铺平成 tile。
+ * gamma 不随 u：它一共只有 und/gen 两套，在 wFp32Buf 里是 [undQ|undK|genQ|genK] 连续
+ * 排布，VF 按 undMask 位图算出本 token 该用的基址（gammaRow = base + (1-undBit)*2D）
+ * 直接取，所以 cat_indices 怎么交错都不影响 UB 占用。
  *
  * 计算区（TBuf，与 u 无关）:
  *   wBf16Buf         WEIGHT_NUM * D * 2            4 个 gamma 原始 bf16
