@@ -1144,7 +1144,6 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     uint64_t mLoc = Get<M_LOC_IDX>(blockCoord);
     VFDoSwigluForMX(singleM_, pingpongIdx, mLoc); // switch(x)*y 计算quant quantScale
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
-    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB17]: epilogue V_MTE3 SetFlag -> WaitFlag
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
     // scale已按compact布局生成，直接copy到GM，省掉原先TransMxScaleLayout重排scale。
     if constexpr (IsInterleaved_) {
@@ -1163,10 +1162,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
         CopyScaleFromUb2GmCompact(singleM_, yScaleOffset, quantScaleOutput_);
     }
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
-    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB18]: epilogue MTE3_V SetFlag -> WaitFlag
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
-    AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB19]: epilogue MTE3_S SetFlag -> WaitFlag
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
     if (groupFlagListGmAddr_ != nullptr) {
         if constexpr (IsWaveFlagGrained_) {
@@ -1177,7 +1174,6 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
         } else {
             AscendC::AtomicAdd(groupFlagListGmAddr_, 1);
         }
-        AscendC::PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FB20]: epilogue progress AtomicAdd -> function exit
     }
     return;
 }
