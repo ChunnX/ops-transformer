@@ -14,8 +14,8 @@
       "outputs": [
         {"name": "grad_query", "index": 0, "dtype": "float16", "format": "ND", "paramType": "required", "shape": [-2]},
         {"name": "grad_key",   "index": 1, "dtype": "float16", "format": "ND", "paramType": "required", "shape": [-2]},
-        {"name": "grad_cos",           "index": 2, "dtype": "float16", "format": "ND", "paramType": "required", "shape": [-2]},
-        {"name": "grad_sin",           "index": 3, "dtype": "float16", "format": "ND", "paramType": "required", "shape": [-2]}
+        {"name": "grad_cos",           "index": 2, "dtype": "float16", "format": "ND", "paramType": "optional", "shape": [-2]},
+        {"name": "grad_sin",           "index": 3, "dtype": "float16", "format": "ND", "paramType": "optional", "shape": [-2]}
       ],
       "attrs": [
         {"name": "rotary_mode", "dtype": "string", "value": "half"},
@@ -35,8 +35,8 @@
       "outputs": [
         {"name": "grad_query", "index": 0, "dtype": "bfloat16", "format": "ND", "paramType": "required", "shape": [-2]},
         {"name": "grad_key",   "index": 1, "dtype": "bfloat16", "format": "ND", "paramType": "required", "shape": [-2]},
-        {"name": "grad_cos",           "index": 2, "dtype": "bfloat16", "format": "ND", "paramType": "required", "shape": [-2]},
-        {"name": "grad_sin",           "index": 3, "dtype": "bfloat16", "format": "ND", "paramType": "required", "shape": [-2]}
+        {"name": "grad_cos",           "index": 2, "dtype": "bfloat16", "format": "ND", "paramType": "optional", "shape": [-2]},
+        {"name": "grad_sin",           "index": 3, "dtype": "bfloat16", "format": "ND", "paramType": "optional", "shape": [-2]}
       ],
       "attrs": [
         {"name": "rotary_mode", "dtype": "string", "value": "half"},
@@ -56,8 +56,8 @@
       "outputs": [
         {"name": "grad_query", "index": 0, "dtype": "float32", "format": "ND", "paramType": "required", "shape": [-2]},
         {"name": "grad_key",   "index": 1, "dtype": "float32", "format": "ND", "paramType": "required", "shape": [-2]},
-        {"name": "grad_cos",           "index": 2, "dtype": "float32", "format": "ND", "paramType": "required", "shape": [-2]},
-        {"name": "grad_sin",           "index": 3, "dtype": "float32", "format": "ND", "paramType": "required", "shape": [-2]}
+        {"name": "grad_cos",           "index": 2, "dtype": "float32", "format": "ND", "paramType": "optional", "shape": [-2]},
+        {"name": "grad_sin",           "index": 3, "dtype": "float32", "format": "ND", "paramType": "optional", "shape": [-2]}
       ],
       "attrs": [
         {"name": "rotary_mode", "dtype": "string", "value": "half"},
