@@ -70,8 +70,8 @@ __aicore__ constexpr GmmsqUbBufferInfo GetGMMSQMxA8W4BufferInfo()
     };
 }
 
-#define GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM                                                                            \
-    template <typename xType, typename wType, typename yType, typename yScaleType, const WqmmConfig &wqmmConfig,       \
+#define GMMSQ_WQ_VEC_COMPUTE_TEMPLATE_PARAM \
+    template <typename xType, typename wType, typename yType, typename yScaleType, const WqmmConfig &wqmmConfig, \
               const VecAntiQuantConfig &vecConfig>
 
 #define GMMSQ_WQ_VEC_COMPUTE_CLASS GMMSQWeightQuantVecCompute<xType, wType, yType, yScaleType, wqmmConfig, vecConfig>

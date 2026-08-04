@@ -54,7 +54,6 @@ bool GMMFRWeightQuantTiling::IsCapable()
     return true;
 }
 
-
 bool GMMFRWeightQuantTiling::CheckCoreNum() const
 {
     OP_CHECK_IF(coreNum_ <= 0 || aivNum_ <= 0,
