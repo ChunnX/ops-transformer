@@ -86,9 +86,8 @@ public:
     // L1 Q（MTE1_MTE2 / MTE2_MTE1）
     static constexpr uint32_t Q_EVENT0 = 2;
     static constexpr uint32_t Q_EVENT1 = 3;
-    // L1 K（MTE1_MTE2 / MTE2_MTE1）
-    static constexpr uint32_t K_EVENT0 = 6;
-    static constexpr uint32_t K_EVENT1 = 7;
+    // [QK/PV 共享] L1 K 复用 MXFP4::KV_EVENT0..3(4/5/6/7)——与 PV(V) 同组 MTE1_MTE2 门，不再独占 6/7
+
     // L0A/B（M_MTE1 / MTE1_M）
     static constexpr uint32_t QK_L0AB_EVENT0 = 2;
     static constexpr uint32_t QK_L0AB_EVENT1 = 3;
@@ -97,7 +96,7 @@ public:
     static constexpr uint32_t QK_L0C_EVENT1 = 3;
 
     
-    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource) {
+    __aicore__ inline BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t& kvBufId) : kBufId(kvBufId) {
         // L1 区域顺序（与 QFA 一致）：P 数据 | P-scale | Q 数据 | Q-scale | KV(=V) 数据 | KV(=V)-scale
 
         // Q 数据 占 L1_Q_SIZE * L1_Q_BUFCNT = 16K
@@ -110,20 +109,15 @@ public:
             l1BScaleTensor[i] = resource.l1Buf.template GetBufferByByte<uint8_t>(MXFP4::L1_Q_DESCALE_BUF_OFFSET + MXFP4::L1_Q_DESCALE_BUF_SIZE * i);
         }
 
-        // 【K V 内存分离】V 数据用
-        uint32_t addrL1Start = MXFP4::L1_KV_BUF_OFFSET;
-        addrL1Start += MXFP4::L1_KV_BUF_SIZE * MXFP4::L1_KV_BUF_CNT;
-        // 【K V 内存分离】K 数据：l1BTensor(B=K), L1_KV_SIZE * 2 = 64K
+        // [QK/PV 共享] K 数据：l1BTensor(B=K) 与 PV 的 V(l1ATensor) 别名同一组 4 槽
+        //   直取 L1_KV_BUF_OFFSET（不再 +CNT 跳过 V 区），与 block_mmad_pv ctor :121-123 同式
         for (uint32_t i = 0; i < MXFP4::L1_KV_BUF_CNT; i++) {
-            l1ATensor[i] = resource.l1Buf.template GetBufferByByte<ElementB>(addrL1Start + MXFP4::L1_KV_BUF_SIZE * i);
+            l1ATensor[i] = resource.l1Buf.template GetBufferByByte<ElementB>(MXFP4::L1_KV_BUF_OFFSET + MXFP4::L1_KV_BUF_SIZE * i);
         }
 
-        // 【K V 内存分离】V-scale 数据用
-        addrL1Start = MXFP4::L1_KV_DESCALE_BUF_OFFSET; 
-        addrL1Start += MXFP4::L1_KV_DESCALE_BUF_SIZE * MXFP4::L1_KV_DESCALE_BUF_CNT;
-        // 【K V 内存分离】K-scale：l1BScaleTensor(K-scale)，占 L1_KV_DESCALE_SIZE * 2 = 4K
+        // [QK/PV 共享] K-scale 与 PV V-scale 别名同一组 4 槽（直取 L1_KV_DESCALE_BUF_OFFSET，不再用 addrL1Start）
         for (uint32_t i = 0; i < MXFP4::L1_KV_DESCALE_BUF_CNT; i++) {
-            l1AScaleTensor[i] = resource.l1Buf.template GetBufferByByte<uint8_t>(addrL1Start + MXFP4::L1_KV_DESCALE_BUF_SIZE * i);
+            l1AScaleTensor[i] = resource.l1Buf.template GetBufferByByte<uint8_t>(MXFP4::L1_KV_DESCALE_BUF_OFFSET + MXFP4::L1_KV_DESCALE_BUF_SIZE * i);
         }
 
         // L0A 区域顺序  QK 数据 | PV 数据
@@ -155,9 +149,11 @@ public:
         // L1 Q 双槽（MTE1_MTE2：LoadQ→MTE2 可覆盖写入）
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(Q_EVENT0);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(Q_EVENT1);
-        // L1 K 双槽（MTE1_MTE2：LoadK→MTE2 可覆盖写入）
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(K_EVENT0);
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(K_EVENT1);
+        // [QK/PV 共享] KV 池 4 路全预置（单一预置点；PV 的 AllocEventID 不再重复预置 KV）
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(MXFP4::KV_EVENT0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(MXFP4::KV_EVENT1);
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(MXFP4::KV_EVENT2);
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(MXFP4::KV_EVENT3);
         // L0A/B 双缓冲（M_MTE1：Mmad→MTE1 可覆盖写入）
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(QK_L0AB_EVENT0);
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(QK_L0AB_EVENT1);
@@ -174,8 +170,11 @@ public:
     {
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(Q_EVENT0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(Q_EVENT1);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(K_EVENT0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(K_EVENT1);
+        // [QK/PV 共享] KV 池 4 路全排空（PV 的 FreeEventID 不再排空 KV）
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(MXFP4::KV_EVENT0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(MXFP4::KV_EVENT1);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(MXFP4::KV_EVENT2);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(MXFP4::KV_EVENT3);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(QK_L0AB_EVENT0);
         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(QK_L0AB_EVENT1);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(QK_L0C_EVENT0);
@@ -507,7 +506,7 @@ public:
         uint32_t l0AEventId = QK_EVENT_SLOT_2;  // MTE1_M：K 的 L1->L0A
         uint32_t l0BEventId = QK_EVENT_SLOT_3;  // MTE1_M：Q 的 L1->L0B
         // uint32_t l0CEventId = QK_EVENT_SLOT_2;  // M_FIX ：L0C -> Fixpipe
-        uint32_t l1KEventId = K_EVENT0 + kBufId;
+        uint32_t l1KEventId = MXFP4::KV_EVENT0 + kBufId;   // [共享] K 用 KV_EVENT0+kBufId(共享游标)
         uint32_t l1QEventId = Q_EVENT0 + qBufId;
 
         // Step5：Q/QScale 仅在 task 首 KV tile 稠密搬 GM→L1（TileCopyTla + Dn2Nz；后续 tile 复用）
@@ -619,7 +618,7 @@ protected:
     Tile::CopyGmToL1MxScaleDn2NzA5 copyGmToL1MxScaleDn2Nz;
     // Double-buffer 槽位索引（跨 operator() 持久）
     uint32_t qBufId = 0;        // L1 Q 槽 [0, L1_Q_BUFCNT) —— Step4 轮转
-    uint32_t kBufId = 0;        // L1 K 槽 [0, L1_KV_BUFCNT) —— Step3 轮转
+    uint32_t& kBufId;          // [QK/PV 共享] KV 槽游标——引用 kernel 的 kvBufId，与 PV l1ABufId 同址
     uint32_t qkL0abBufId = 0;   // L0A/B 槽 [0, QK_L0AB_BUFCNT) —— Step2 轮转
     uint32_t qkL0cBufId = 0;    // L0C 槽 [0, QK_L0C_BUFCNT) —— Step1 已轮转
 };
