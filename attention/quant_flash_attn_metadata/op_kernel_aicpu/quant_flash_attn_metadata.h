@@ -21,8 +21,8 @@
 
 namespace optiling {
 
-constexpr uint32_t AIC_CORE_NUM = 36U;
-constexpr uint32_t AIV_CORE_NUM = 72U;
+constexpr uint32_t AIC_CORE_NUM = 64U;
+constexpr uint32_t AIV_CORE_NUM = 64U;
 constexpr uint32_t FA_META_SIZE = 1024U;
 using FA_METADATA_T = uint32_t;
 

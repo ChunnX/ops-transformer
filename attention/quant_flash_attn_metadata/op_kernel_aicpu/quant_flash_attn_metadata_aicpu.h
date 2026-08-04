@@ -80,8 +80,8 @@ private:
     std::string layoutKv_ = "BSND";
     std::string layoutOut_ = "BSND";
     std::string socVersion_ = "";
-    int32_t aicCoreNum_ = 36U;
-    int32_t aivCoreNum_ = 72U;
+    int32_t aicCoreNum_ = 64U;
+    int32_t aivCoreNum_ = 64U;
 
     uint32_t groupSize_ = 0;
     uint32_t mBaseSize_ = NUM_64;
