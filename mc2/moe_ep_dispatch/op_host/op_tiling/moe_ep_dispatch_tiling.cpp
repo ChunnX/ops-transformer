@@ -107,9 +107,7 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchInfo &i
     OP_LOGD(nodeName, "scaleupAivNum is %u.", info.hybrid.scaleupAivNum);
     OP_LOGD(nodeName, "aivNum is %u.", info.aivNum);
     OP_LOGD(nodeName, "scaleoutSlotAlignedBytes is %u.", info.window.scaleoutSlotAlignedBytes);
-    OP_LOGD(nodeName, "fanoutCountCoreBytes is %u.", info.workspace.fanoutCountCoreBytes);
     OP_LOGD(nodeName, "sendEntryTokenRangeBytes is %lu.", info.workspace.sendEntryTokenRangeBytes);
-    OP_LOGD(nodeName, "fanoutSendEntryCoreBytes is %lu.", info.workspace.fanoutSendEntryCoreBytes);
     OP_LOGD(nodeName, "hostPinnedCounterAddr is %lu.", info.hostPinnedCounterAddr);
     OP_LOGD(nodeName, "dispatchSendWinOffset is %lu.", info.window.dispatchSendWinOffset);
     OP_LOGD(nodeName, "routeWorkspaceOffset is %lu.", info.workspace.routeWorkspaceOffset);
@@ -737,15 +735,6 @@ static void SetSendEntryLayout(MoeEpDispatchInfo &info)
         (static_cast<uint64_t>(info.cfg.numMaxTokensPerRank) + info.aivNum - 1UL) / info.aivNum;
     info.workspace.sendEntryTokenRangeBytes =
         AlignUpUb(tokenRangeCapacity * MOE_EP_SEND_ENTRY_BYTES);
-
-    uint32_t fanoutProducerCount = info.hybrid.scaleupAivNum == 0U ? 1U : info.hybrid.scaleupAivNum;
-    uint64_t fanoutSlotCapacity =
-        (static_cast<uint64_t>(info.cfg.numMaxTokensPerRank) + fanoutProducerCount - 1UL) /
-        fanoutProducerCount;
-    info.workspace.fanoutSendEntryCoreBytes =
-        AlignUpUb(fanoutSlotCapacity * MOE_EP_SEND_ENTRY_BYTES);
-    // 每个目的rank占一个32B计数记录，避免不同生产核的计数搬出共享写块。
-    info.workspace.fanoutCountCoreBytes = info.hybrid.rankNumPerServer * UB_ALIGN;
 }
 
 static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
@@ -771,7 +760,6 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
     uint64_t globalABytes = UB_ALIGN;
     if (info.networkMode == NETWORK_HYBRID) {
         uint64_t remoteServerCount = superNodeCount - 1UL;
-        uint64_t fanoutProducerCount = info.hybrid.scaleupAivNum == 0U ? 1UL : info.hybrid.scaleupAivNum;
         info.workspace.routeWorkspaceOffset = sendCntBytes;
         uint64_t workspaceOffset = info.workspace.routeWorkspaceOffset + scaleoutCounterBytes;
         // 源端发送记录按 token 范围独立对齐，避免多个生产核写入同一个 32B 数据块。
@@ -780,19 +768,11 @@ static uint64_t BuildDispatchWorkspaceLayout(MoeEpDispatchInfo &info)
         info.workspace.scaleupSendEntryOffset = workspaceOffset;
         workspaceOffset += static_cast<uint64_t>(info.hybrid.rankNumPerServer) * aivNum *
                            info.workspace.sendEntryTokenRangeBytes;
-        // fanout 发送记录和计数按生产核分段，节点内 owner 在发送阶段汇总消费。
-        info.workspace.fanoutSendEntryOffset = workspaceOffset;
-        workspaceOffset += static_cast<uint64_t>(info.hybrid.rankNumPerServer) * remoteServerCount *
-                           fanoutProducerCount * info.workspace.fanoutSendEntryCoreBytes;
-        info.workspace.fanoutCountOffset = workspaceOffset;
-        workspaceOffset += remoteServerCount * fanoutProducerCount * info.workspace.fanoutCountCoreBytes;
         return SYSTEM_NEED_WORKSPACE + workspaceOffset + globalABytes;
     }
     info.workspace.routeWorkspaceOffset = 0UL;
     info.workspace.scaleoutSendEntryOffset = 0UL;
     info.workspace.scaleupSendEntryOffset = 0UL;
-    info.workspace.fanoutSendEntryOffset = 0UL;
-    info.workspace.fanoutCountOffset = 0UL;
     return SYSTEM_NEED_WORKSPACE + sendCntBytes + globalABytes;
 }
 
@@ -957,9 +937,7 @@ static ge::graphStatus MoeEpDispatchTilingFunc(gert::TilingContext *context)
     if (info.networkMode == NETWORK_HYBRID) {
         SetSendEntryLayout(info);
     } else {
-        info.workspace.fanoutCountCoreBytes = 0U;
         info.workspace.sendEntryTokenRangeBytes = 0UL;
-        info.workspace.fanoutSendEntryCoreBytes = 0UL;
     }
     OP_TILING_CHECK(BuildAndCheckWindowLayout(context, info, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check window size failed."), return ge::GRAPH_FAILED);
