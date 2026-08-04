@@ -951,6 +951,18 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
 
 def build_liv2_metadata_input(params, tensor_dict):
     """Return the canonical metadata arguments produced by the pytest case."""
+    seqused_q = tensor_dict["seqused_q"]
+    cu_seqlens_q = tensor_dict["cu_seqlens_q"]
+    if seqused_q is not None and seqused_q.numel() > 0:
+        metadata_max_seqlen_q = int(seqused_q.max().item())
+    elif cu_seqlens_q is not None and cu_seqlens_q.numel() > 1:
+        metadata_max_seqlen_q = int(
+            (cu_seqlens_q[1:] - cu_seqlens_q[:-1]).max().item()
+        )
+    elif tensor_dict["layout_query"] == "BSND":
+        metadata_max_seqlen_q = int(params[1])
+    else:
+        metadata_max_seqlen_q = int(tensor_dict["max_seqlen_q_meta"])
     return {
         "num_heads_q": int(params[5]),
         "num_heads_k": int(params[6]),
@@ -962,7 +974,7 @@ def build_liv2_metadata_input(params, tensor_dict):
         "seqused_k": tensor_dict["seqused_k"],
         "cmp_residual_k": tensor_dict["cmp_residual_k_for_npu"],
         "batch_size": int(params[0]),
-        "max_seqlen_q": int(tensor_dict["max_seqlen_q_meta"]),
+        "max_seqlen_q": metadata_max_seqlen_q,
         "max_seqlen_k": int(tensor_dict["max_seqlen_k_meta"]),
         "layout_q": tensor_dict["layout_query"],
         "layout_k": tensor_dict["layout_key"],
