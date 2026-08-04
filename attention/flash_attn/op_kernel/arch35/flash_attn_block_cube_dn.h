@@ -33,7 +33,7 @@ public:
     static constexpr FA_LAYOUT LAYOUT_OUT = FA_T::attnOutLayout;
     static constexpr bool PAGE_ATTENTION = FA_T::pageAttention;
 
-    static constexpr FixpipeConfig BMM2_FIXPIPE_CONFIG = {CO2Layout::ROW_MAJOR, true};
+    static constexpr FixpipeConfig FIXPIPE_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
 
     using Q_T = INPUT_T;
     using KV_T = INPUT_T;
@@ -297,7 +297,7 @@ public:
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<MM_T, MM_T, PFA_CFG_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
+        Fixpipe<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
     }
 
     __aicore__ inline void IterateBmm1Dn(LocalTensor<MM_T> &mm1ResUbTensor, RunInfoX &runInfo)
@@ -377,7 +377,7 @@ public:
         fixpipeParams.params.ndNum = 1;
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<MM_T, MM_T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
+        Fixpipe<MM_T, MM_T, FIXPIPE_ROW_MAJOR_UB>(dstTensor, l0C, fixpipeParams);
     }
 
     __aicore__ inline void IterateBmm2l0Split(LocalTensor<MM_T> &mm2ResUbTensor, LocalTensor<Q_T> &pL1Tensor,
