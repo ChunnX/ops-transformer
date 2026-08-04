@@ -329,16 +329,33 @@ private:
             pipe_->InitBuffer(inputXInQueue, 2, tileCoreBS_ * n_ * c0_ * sizeof(float) / 4);
             pipe_->InitBuffer(inputGradQueue, 1, tileCoreBS_ * n_ * ELEMENTS_SIZE_PER_BLOCK * sizeof(float));
             pipe_->InitBuffer(OutQueue, 2, tileCoreBS_ * n_ * c0_ * sizeof(float) / 8);
-            auto ubSizeRemain = Ops::Base::CeilDiv(tileCoreBS_, static_cast<int64_t>(ELEMENTS_SIZE_PER_BLOCK)) *
+
+            onceTask_ = tileCoreBS_ / INNER_SPILT_NUM;
+            // tempBuf_ 两阶段复用 (offset=0 重置), 取较大值
+            // 阶段1 (ComputeGradX1): preBrcbLocal_ + dRsqrtBrcbLocal_ + gradYCastLocal_ + gradXCastLocal_ + xCastLocal_
+            auto ubSizeStage1 = Ops::Base::CeilDiv(tileCoreBS_, static_cast<int64_t>(ELEMENTS_SIZE_PER_BLOCK)) *
                                     ELEMENTS_SIZE_PER_REPEAT * sizeof(float) +
                                 Ops::Base::CeilDiv(tileCoreBS_ * n_, static_cast<int64_t>(ELEMENTS_SIZE_PER_BLOCK)) *
                                     ELEMENTS_SIZE_PER_REPEAT * sizeof(float) +
                                 onceTask_ * n_ * c0_ * sizeof(float) * 2 + onceTask_ * c0_ * sizeof(float);
+            // 阶段2 (ComputeGradPre): dhatLocal_ + rsqrtbrcbLocal_ + hat2Scale + dhatBeforeNormLocal + hatLocal +
+            // rsqrtTempLocal_
+            auto brcbAlignS2 = Ops::Base::CeilDiv(tileCoreBS_, static_cast<int64_t>(ELEMENTS_SIZE_PER_BLOCK));
+            auto ubSizeStage2 = tileCoreBS_ * fusionSize_ * sizeof(float) * 2 +
+                                brcbAlignS2 * ELEMENTS_SIZE_PER_BLOCK * fusionSize_ * sizeof(float) +
+                                tileCoreBS_ * fusionSize_ * sizeof(float) * 4;
+            auto ubSizeRemain = ubSizeStage1 > ubSizeStage2 ? ubSizeStage1 : ubSizeStage2;
             if (withGamma_) {
                 ubSizeRemain += n_ * c0_ * sizeof(float);
             }
 
             pipe_->InitBuffer(tempBuf_, ubSizeRemain);
+            int64_t totalSize = tileCoreBS_ * n_ * 2 * sizeof(float) + tileCoreBS_ * fusionSize_ * sizeof(float) * 2 +
+                                2 * 2 * tileCoreBS_ * fusionSize_ * sizeof(float) +
+                                tileCoreBS_ * n_ * 2 * sizeof(float) + fusionSize_ * sizeof(float) +
+                                BYTE_SIZE_PER_BLOCK * 2 + tileCoreBS_ * n_ * c0_ * sizeof(float) / 4 * 2 +
+                                tileCoreBS_ * n_ * ELEMENTS_SIZE_PER_BLOCK * sizeof(float) +
+                                tileCoreBS_ * n_ * c0_ * sizeof(float) / 8 * 2 + ubSizeRemain;
 
             eventIdVToMTE3XCast = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
             eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
@@ -354,7 +371,6 @@ private:
             dScaleLocalTemp_ = dBiasLocalTemp_[tileCoreBS_ * fusionSize_];
             dBiasLocalList_[0] = dBiasLocal_;
             dBiasLocalList_[1] = dBiasLocalTemp_;
-            onceTask_ = tileCoreBS_ / INNER_SPILT_NUM;
 
             int32_t offset = 0;
             int32_t brcbAlign = static_cast<int32_t>(
@@ -370,10 +386,9 @@ private:
             gradXCastLocal_ = tempBuf_.GetWithOffset<T>(onceTask_ * n_ * c0_, offset);
             offset += onceTask_ * n_ * c0_ * sizeof(float);
             xCastLocal_ = tempBuf_.GetWithOffset<T>(onceTask_ * n_ * c0_, offset);
-            offset += onceTask_ * n_ * c0_ * sizeof(float);
             if (withGamma_) {
+                offset += onceTask_ * n_ * c0_ * sizeof(float);
                 gammaLocal_ = tempBuf_.GetWithOffset<T>(n_ * c0_, offset);
-                offset += n_ * c0_ * sizeof(float);
             }
             offset = 0;
             // ComputeGradPre
@@ -847,17 +862,30 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
             // gradGamma = sum_BS(x * x_grad_mm), 复用 xCastLocal_
             Mul(xCastLocal_, xCastLocal_, gradXCubeLocal_, ubAlignC * n_ * tileTaskCount);
             PipeBarrier<PIPE_V>();
+
             // 跨 tileTaskCount 归约 (BS 维度)
             for (int32_t bs = 1; bs < tileTaskCount; bs++) {
                 Add(xCastLocal_, xCastLocal_, xCastLocal_[bs * n_ * ubAlignC], n_ * ubAlignC);
                 PipeBarrier<PIPE_V>();
             }
+
             // V→MTE3 同步，写回 gradGammaWSGlobal_
-            SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
-            WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
-            DataCopyPad(gradGammaWSGlobal_[blkIdx_ * (n_ * c_) + c0_ * loopIdC], xCastLocal_,
-                        {static_cast<uint16_t>(n_), static_cast<uint32_t>(copyLen * sizeof(float)), 0,
-                         static_cast<uint32_t>((c_ - copyLen) * sizeof(float)), 0});
+            // 第一次外层迭代的第一次内层调用直接写入，后续使用 AtomicAdd 累加
+            if (innerId == 0 && taskOffset == blkIdx_ * tileCoreBS_) {
+                SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
+                WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
+                DataCopyPad(gradGammaWSGlobal_[blkIdx_ * (n_ * c_) + c0_ * loopIdC], xCastLocal_,
+                            {static_cast<uint16_t>(n_), static_cast<uint32_t>(copyLen * sizeof(float)), 0,
+                             static_cast<uint32_t>((c_ - copyLen) * sizeof(float)), 0});
+            } else {
+                SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
+                WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
+                SetAtomicAdd<T>();
+                DataCopyPad(gradGammaWSGlobal_[blkIdx_ * (n_ * c_) + c0_ * loopIdC], xCastLocal_,
+                            {static_cast<uint16_t>(n_), static_cast<uint32_t>(copyLen * sizeof(float)), 0,
+                             static_cast<uint32_t>((c_ - copyLen) * sizeof(float)), 0});
+                SetAtomicNone();
+            }
             PipeBarrier<PIPE_V>();
 
             // gradXCubeLocal_ *= gamma (x_grad_mm *= gamma)
@@ -866,8 +894,9 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
                     uint64_t mask = min(static_cast<uint64_t>(ELEMENTS_SIZE_PER_REPEAT),
                                         static_cast<uint64_t>(copyLen - loopOffsetC0));
                     Mul(gradXCubeLocal_[loopIdN * ubAlignC + loopOffsetC0],
-                        gradXCubeLocal_[loopIdN * ubAlignC + loopOffsetC0], gammaLocal_[loopIdN * c0_ + loopOffsetC0],
-                        mask, tileTaskCount, {1, 1, 0, blkStride2, blkStride2, blkStride1});
+                        gradXCubeLocal_[loopIdN * ubAlignC + loopOffsetC0],
+                        gammaLocal_[loopIdN * ubAlignC + loopOffsetC0], mask, tileTaskCount,
+                        {1, 1, 1, blkStride2, blkStride2, 0});
                 }
             }
             PipeBarrier<PIPE_V>();
@@ -1025,16 +1054,19 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
                         {isPad, 0, padLen, 0});
             SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
             WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
+
             for (int32_t loopIdN = 0; loopIdN < n_; loopIdN += 1) {
                 for (int32_t loopOffsetC0 = 0; loopOffsetC0 < copyLen; loopOffsetC0 += ELEMENTS_SIZE_PER_REPEAT) {
                     uint64_t mask = min(static_cast<uint64_t>(ELEMENTS_SIZE_PER_REPEAT),
                                         static_cast<uint64_t>(copyLen - loopOffsetC0));
                     Mul(xCastOutLocal[loopIdN * ubAlignC + loopOffsetC0],
-                        xCastOutLocal[loopIdN * ubAlignC + loopOffsetC0], gammaLocal_[loopIdN * c0_ + loopOffsetC0],
-                        mask, tileTaskCount, {1, 1, 0, blkStride3, blkStride3, blkStride});
+                        xCastOutLocal[loopIdN * ubAlignC + loopOffsetC0],
+                        gammaLocal_[loopIdN * ubAlignC + loopOffsetC0], mask, tileTaskCount,
+                        {1, 1, 1, blkStride3, blkStride3, 0});
                 }
             }
             PipeBarrier<PIPE_V>();
+
             SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
             WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
         }
@@ -1353,7 +1385,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
             int64_t useCoreNum = min(Ops::Base::CeilDiv(totalTasks_, tileCoreBS_), aivNum_);
             ComputeDeterministic(gradHcBaseWSGlobal_, gradHcBaseGlobal_, useCoreNum, fusionSize_);
             ComputeDeterministic(gradHcScaleWSGlobal_, gradHcScaleGlobal_, useCoreNum, 3);
-            if (false && withGamma_) { // BISECT: disabled gamma for grad_x_post validation
+            if (withGamma_) {
                 ComputeDeterministic(gradGammaWSGlobal_, gradGammaGlobal_, useCoreNum, n_ * c_);
             }
             useCoreNum = Ops::Base::CeilDiv(useCoreNum, static_cast<int64_t>(2));
@@ -1400,15 +1432,15 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
 
     // printf("gradH2Global_ value is \n");
     // for(int i = 0; i < mm2K; i++) {
-    //     int index = i * mm2M_ + 7;
-    //     printf("[%d] %x\t", index, gradH2Global_.GetValue(index));
+    //     int index = i * mm2M_ + 0;
+    //     printf("[%d] %f\t", index, gradH2Global_.GetValue(index));
     // }
     // printf("-----------------------\n");
 
     // printf("xWorkspaceGlobal_ value is \n");
     // for(int i = 0; i < mm2K; i++) {
-    //     int index = i * mm2N_ + 2624;
-    //     printf("[%d] %x\t", index, xWorkspaceGlobal_.GetValue(index));
+    //     int index = i * mm2N_ + 0;
+    //     printf("[%d] %f\t", index, xWorkspaceGlobal_.GetValue(index));
     // }
     // printf("-----------------------\n");
 
@@ -1425,10 +1457,15 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
     }
     mm2_.End();
 
-    // DumpTensor(gradWeightWSGlobal_[68581], 1, 16);
-    // printf("gradWeightWSGlobal_ value is %x\n", gradWeightWSGlobal_.GetValue(85056));
+    // DEBUG: print matmul output for first task on first AIC block
+    // if (blkIdx_ == 0 && taskOffset == 0) {
 
-    // DumpTensor(gradH2Global_[taskOffset * mm2M_], 3, 32, *);
+    //     printf("DBG KERNEL mm2 gradWeightWS[0:8]: ");
+    //     for (int i = 0; i < 8; i++) {
+    //         printf("%f ", gradWeightWSGlobal_.GetValue(i));
+    //     }
+    //     printf("\n");
+    // }
 }
 
 #endif // MHC_PRE_BACKWARD_OP_KERNEL_ARCH22_KERNEL_H

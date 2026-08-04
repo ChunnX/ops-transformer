@@ -412,7 +412,7 @@ ge::graphStatus TilingMhcPreBackwardArch22(gert::TilingContext *context)
     GET_TPL_TILING_KEY(isDeterministic);
     // if (isDeterministic) {
     // Check if optional inputs are provided (gamma: index 10, grad_x_post: index 11)
-    bool withGamma = false; // BISECT: force disable gamma for grad_x_post validation
+    bool withGamma = (context->GetInputDesc(10) != nullptr);
     bool withGradXPost = (context->GetInputDesc(11) != nullptr);
     tilingData->withGamma = withGamma ? 1 : 0;
     tilingData->withGradXPost = withGradXPost ? 1 : 0;
