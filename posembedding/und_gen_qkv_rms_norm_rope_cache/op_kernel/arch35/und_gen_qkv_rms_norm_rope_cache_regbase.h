@@ -141,6 +141,21 @@ private:
         halfDim_ = headDim_ / DIGIT_TWO;
         rowElems_ = numHead_ * headDim_;    // 单 token 的 QKV 元素数
         maxSlot_ = blockNum_ * blockSize_;  // slot_mapping 的合法上界（不含）
+
+        // VF 的 shape 参数全部由 shape/attr 决定，与 tile 无关，这里填一次给 Compute 复用
+        vfShape_.qHeadNum = static_cast<uint16_t>(numHeadQ_);
+        vfShape_.kHeadNum = static_cast<uint16_t>(numHeadK_);
+        vfShape_.vHeadNum = static_cast<uint16_t>(numHeadV_);
+        vfShape_.inTokenStride = static_cast<uint32_t>(rowElems_);
+        vfShape_.gammaTokenStride = static_cast<uint32_t>(DIGIT_TWO * headDim_);
+        vfShape_.cosSinTokenStride = static_cast<uint32_t>(MROPE_AXIS_NUM * headDim_);
+        vfShape_.qOutTokenStride = static_cast<uint32_t>(numHeadQ_ * headDim_);
+        vfShape_.kOutTokenStride = static_cast<uint32_t>(numHeadK_ * headDim_);
+        vfShape_.vOutTokenStride = static_cast<uint32_t>(numHeadV_ * headDim_);
+        vfShape_.headStride = static_cast<uint32_t>(headDim_);
+        vfShape_.halfDim = static_cast<uint32_t>(halfDim_);
+        vfShape_.epsilon = epsilon_;
+        vfShape_.reciprocal = reciprocal_;
     }
 
     __aicore__ inline void BindGlobalTensors(GM_ADDR undQkv, GM_ADDR undWeightsQ, GM_ADDR undWeightsK,
@@ -305,26 +320,20 @@ private:
 
         BuildGammaTile(tileStart, tokenNum);
 
-        const int64_t qSegElems = numHeadQ_ * headDim_;
-        const int64_t kSegElems = numHeadK_ * headDim_;
-        const int64_t vSegElems = numHeadV_ * headDim_;
-        const int64_t kSegBase = ubFactor_ * qSegElems;
+        const int64_t kSegBase = ubFactor_ * numHeadQ_ * headDim_;
         const int64_t vSegBase = ubFactor_ * headNumQK_ * headDim_;
 
-        // V 段也在这次 VF 里完成（直通，不参与 norm/rope），不再另起一趟 UB->UB 搬运
-        QkRmsNormMropeTileVF((__ubuf__ bfloat16_t*)qkvLocal.GetPhyAddr(),
-                             (__ubuf__ float*)gammaTileLocal_.GetPhyAddr(),
-                             (__ubuf__ float*)cosSinLocal.GetPhyAddr(),
-                             (__ubuf__ uint32_t*)gatherIdxLocal_.GetPhyAddr(),
-                             (__ubuf__ bfloat16_t*)outLocal.GetPhyAddr(),
-                             (__ubuf__ bfloat16_t*)outLocal[kSegBase].GetPhyAddr(),
-                             (__ubuf__ bfloat16_t*)outLocal[vSegBase].GetPhyAddr(),
-                             static_cast<uint16_t>(tokenNum), static_cast<uint16_t>(numHeadQ_),
-                             static_cast<uint16_t>(numHeadK_), static_cast<uint16_t>(numHeadV_),
-                             static_cast<uint32_t>(rowElems_), static_cast<uint32_t>(DIGIT_TWO * headDim_),
-                             static_cast<uint32_t>(MROPE_AXIS_NUM * headDim_), static_cast<uint32_t>(qSegElems),
-                             static_cast<uint32_t>(kSegElems), static_cast<uint32_t>(vSegElems),
-                             static_cast<uint32_t>(headDim_), static_cast<uint32_t>(halfDim_), epsilon_, reciprocal_);
+        // Q/K 的 RMSNorm+MRoPE 与 V 的直通都在这次 VF 里完成，不再另起一趟 UB->UB 搬运。
+        // shape 参数在 ParseTiling 就填好了，这里只组本 tile 的地址
+        QkvMropeTileAddr addr;
+        addr.qkvIn = (__ubuf__ bfloat16_t*)qkvLocal.GetPhyAddr();
+        addr.gammaTile = (__ubuf__ float*)gammaTileLocal_.GetPhyAddr();
+        addr.rawCosSin = (__ubuf__ float*)cosSinLocal.GetPhyAddr();
+        addr.gatherIndex = (__ubuf__ uint32_t*)gatherIdxLocal_.GetPhyAddr();
+        addr.qOut = (__ubuf__ bfloat16_t*)outLocal.GetPhyAddr();
+        addr.kOut = (__ubuf__ bfloat16_t*)outLocal[kSegBase].GetPhyAddr();
+        addr.vOut = (__ubuf__ bfloat16_t*)outLocal[vSegBase].GetPhyAddr();
+        QkRmsNormMropeTileVF(addr, vfShape_, static_cast<uint16_t>(tokenNum));
 
         outQue_.EnQue(outLocal);
         qkvInQue_.FreeTensor(qkvLocal);
@@ -440,6 +449,9 @@ private:
     int64_t ubFactor_ = 0;
     int64_t coreStart_ = 0;
     int64_t coreEnd_ = 0;
+
+    // VF 的 shape 入参，ParseTiling 期填一次，整个 Process 复用
+    QkvMropeTileShape vfShape_ = {};
 
     // 派生量
     int64_t headNumQK_ = 0;
