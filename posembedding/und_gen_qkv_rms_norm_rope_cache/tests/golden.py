@@ -43,7 +43,7 @@
   cos_sin_cache f32  [max_pos, D]，前半 cos 后半 sin
   positions     i64  [3, total]（或 [total]）
   cat_indices   i64  [total]，out_t -> src_t，可为 None
-  slot_mapping  i64  [total]，slot = block_num * block_size + row_idx（索引类张量统一 int64）
+  slot_mapping  i64  [total]，slot = block_idx * block_size + row_idx（索引类张量统一 int64）
   k_cache       bf16 [num_blocks, block_size, Hk, D]（逻辑 shape）
   v_cache       bf16 [num_blocks, block_size, Hv, D]（逻辑 shape）
   q             bf16 [total, Hq, D]

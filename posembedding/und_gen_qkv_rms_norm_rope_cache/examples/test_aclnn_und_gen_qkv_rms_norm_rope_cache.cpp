@@ -118,7 +118,7 @@ int main()
     std::vector<uint16_t> vCacheHost(GetShapeSize(vCacheShape), 0);
     std::vector<uint16_t> qHost(GetShapeSize(qShape), 0);
 
-    // slot_mapping 由调用方预计算：slot = blockNum * blockSize + rowIdx
+    // slot_mapping 由调用方预计算：slot = blockIdx * blockSize + rowIdx
     std::vector<int64_t> slotMappingHost(total);
     for (int64_t t = 0; t < total; ++t) {
         int64_t blockIdx = t / BLOCK_SIZE;

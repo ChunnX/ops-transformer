@@ -32,7 +32,7 @@
     und_weights_q: [D]   und_weights_k: [D]
     gen_weights_q: [D]   gen_weights_k: [D]  可选，与 gen_qkv 同进同出
     cos_sin_cache: [max_pos, D]              前半 cos、后半 sin
-    slot_mapping:  [T]                       slot = block_num * Bs + row_idx
+    slot_mapping:  [T]                       slot = block_idx * Bs + row_idx
     positions:     [3, T]
     cat_indices:   [T]                       当前必填（不传的恒等映射路径暂不支持）
     k_cache:       [Bn, Bs, Hk, D]           调用方预分配，原地写入
