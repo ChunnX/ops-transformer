@@ -24,16 +24,16 @@ _ACL_DTYPE_TO_TORCH_DTYPE = {
 }
 
 
-class _AlltoAllMatmulOpBuilder(OpBuilder):
+class _AllToAllQuantMatmulOpBuilder(OpBuilder):
     def __init__(self):
-        super(_AlltoAllMatmulOpBuilder, self).__init__("npu_allto_all_matmul")
+        super(_AllToAllQuantMatmulOpBuilder, self).__init__("npu_all_to_all_quant_matmul")
 
     def sources(self):
-        return ["ops/csrc/allto_all_matmul.cpp"]
+        return ["ops/csrc/all_to_all_quant_matmul.cpp"]
 
     def schema(self) -> str:
         return (
-            "npu_allto_all_matmul(Tensor context, Tensor x1, Tensor x2, int hccl_buffer_size, str group_name, int world_size, *, "
+            "npu_all_to_all_quant_matmul(Tensor context, Tensor x1, Tensor x2, int hccl_buffer_size, str group_name, int world_size, *, "
             "bool alltoall_out_flag=True, "
             "Tensor? bias=None, Tensor? x1_scale=None, Tensor? x2_scale=None, "
             "Tensor? comm_scale=None, Tensor? x1_offset=None, Tensor? x2_offset=None, "
@@ -49,7 +49,7 @@ class _AlltoAllMatmulOpBuilder(OpBuilder):
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_allto_all_matmul_meta(
+        def npu_all_to_all_quant_matmul_meta(
             context,
             x1,
             x2,
@@ -106,12 +106,12 @@ class _AlltoAllMatmulOpBuilder(OpBuilder):
             return (y, all2all_out)
 
 
-_allto_all_matmul_op_builder = _AlltoAllMatmulOpBuilder()
-_op_module = _allto_all_matmul_op_builder.load()
+_all_to_all_quant_matmul_op_builder = _AllToAllQuantMatmulOpBuilder()
+_op_module = _all_to_all_quant_matmul_op_builder.load()
 
 
-@impl(AS_LIBRARY, _allto_all_matmul_op_builder.name, "PrivateUse1")
-def _npu_allto_all_matmul(
+@impl(AS_LIBRARY, _all_to_all_quant_matmul_op_builder.name, "PrivateUse1")
+def _npu_all_to_all_quant_matmul(
     context,
     x1,
     x2,
@@ -142,7 +142,7 @@ def _npu_allto_all_matmul(
     comm_mode="ai_cpu",
     precision_mode=0,
 ):
-    result = _op_module.npu_allto_all_matmul(
+    result = _op_module.npu_all_to_all_quant_matmul(
         context,
         x1,
         x2,
@@ -176,7 +176,7 @@ def _npu_allto_all_matmul(
     return result
 
 
-def allto_all_matmul(
+def all_to_all_quant_matmul(
     x1: torch.Tensor,
     x2: torch.Tensor,
     group,
@@ -258,16 +258,14 @@ def allto_all_matmul(
         rank_id
     )
 
-    comm_mode = comm_mode if comm_mode is not None else "ai_cpu"
-
     channel_builder = CommChannelBuilderManager(group_name)
     ctx_tag = group_name + "allto_all_matmul"
     context = channel_builder.create_context(ctx_tag)
     hccl_buffer_size = channel_builder.get_hccl_buffer_size()
 
-    print(f"[allto_all_matmul] rank={rank_id}, world_size={world_size}, comm_mode={comm_mode}, "
-          f"calling npu_allto_all_matmul ...", flush=True)
-    result = torch.ops.cann_ops_transformer.npu_allto_all_matmul(
+    print(f"[all_to_all_quant_matmul] rank={rank_id}, world_size={world_size}, comm_mode={comm_mode}, "
+          f"calling npu_all_to_all_quant_matmul ...", flush=True)
+    result = torch.ops.cann_ops_transformer.npu_all_to_all_quant_matmul(
         context,
         x1,
         x2,
@@ -298,5 +296,6 @@ def allto_all_matmul(
         comm_mode=comm_mode,
         precision_mode=precision_mode,
     )
-    print(f"[allto_all_matmul] rank={rank_id}, npu_allto_all_matmul returned", flush=True)
+    print(f"[all_to_all_quant_matmul] rank={rank_id}, npu_all_to_all_quant_matmul returned", flush=True)
     return result
+

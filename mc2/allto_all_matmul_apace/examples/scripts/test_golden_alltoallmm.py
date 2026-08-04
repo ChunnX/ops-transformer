@@ -79,7 +79,7 @@ def generate_inputs(bs, h, n, world_size):
     Layout:
       x1 (per rank):     (BS, H),          fp8_e4m3fn
       x1_scale (per rank): (BS, ceil(H/64), 2), fp8_e8m0fnu
-      x2 (shared):       (H*world_size, N), fp8_e4m3fn
+      x2 (shared):       (N, H*world_size), fp8_e4m3fn
       x2_scale (shared): (N, ceil(H*world_size/64), 2), fp8_e8m0fnu
 
     Returns a dict containing numpy arrays for all ranks.
@@ -92,8 +92,9 @@ def generate_inputs(bs, h, n, world_size):
 
     np.random.seed(FIXED_SEED)
 
-    # x2 (shared): shape (K, N), fp8_e4m3fn
-    b_ori = np.random.uniform(1, 8, (k, n)).astype(np_fp8_e4m3fn)
+    # x2 (shared): shape (N, K), fp8_e4m3fn
+    b_ori = np.random.uniform(1, 8, (n, k)).astype(np_fp8_e4m3fn)
+    b_ori_transpose = np.swapaxes(b_ori, -1, -2)  # (K, N)
 
     # x2_scale: shape (N, ceil(K/64), 2), fp8_e8m0fnu
     b_scale_ori = np.random.uniform(1, 8, size=(n, math.ceil(k / 64), 2)).astype(np_fp8_e8m0fnu)
@@ -102,7 +103,7 @@ def generate_inputs(bs, h, n, world_size):
     b_scale_reshape = b_scale_ori.reshape(n, -1)  # (N, ceil(K/32))
     b_scale_broadcast = np.repeat(b_scale_reshape, MX_GROUP_SIZE, axis=-1)[..., :k]  # (N, K)
     b_scale_broadcast_transpose = np.swapaxes(b_scale_broadcast, -1, -2)  # (K, N)
-    b_dequant = b_ori.astype(np.float32) * b_scale_broadcast_transpose.astype(np.float32)
+    b_dequant = b_ori_transpose.astype(np.float32) * b_scale_broadcast_transpose.astype(np.float32)
 
     # x1 per rank: shape (BS, H), fp8_e4m3fn
     # x1_scale per rank: shape (BS, ceil(H/64), 2), fp8_e8m0fnu

@@ -197,8 +197,8 @@ if _TORCHAIR_AVAILABLE:
             ),
         )
 
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.npu_allto_all_matmul.default)
-    def convert_npu_allto_all_matmul(
+    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.npu_all_to_all_quant_matmul.default)
+    def convert_npu_all_to_all_quant_matmul(
         context: Tensor,
         x1: Tensor,
         x2: Tensor,

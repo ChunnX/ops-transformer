@@ -50,7 +50,7 @@ int64_t CheckAndGetGroupSize(at::IntArrayRef groupSizeList)
     return groups;
 }
 
-std::tuple<at::Tensor, at::Tensor> NpuAlltoAllMatmul(
+std::tuple<at::Tensor, at::Tensor> NpuAlltoAllQuantMatmul(
     const at::Tensor &context, const at::Tensor &x1, const at::Tensor &x2, int64_t hcclBufferSize, std::string group,
     int64_t worldSize, bool alltoallOutFlag, const c10::optional<at::Tensor> &biasOptional,
     const c10::optional<at::Tensor> &x1ScaleOptional, const c10::optional<at::Tensor> &x2ScaleOptional,
@@ -132,23 +132,28 @@ std::tuple<at::Tensor, at::Tensor> NpuAlltoAllMatmul(
             GetAclDataType(x2ScaleDtype.value()) :
             (x2ScaleReal.defined() ? ConvertToAclDataType(x2ScaleReal.scalar_type()) : ACL_DT_UNDEFINED);
 
-    TensorListWrapper x1Wrapper = {x1, x1AclDtype};
-    TensorListWrapper x2Wrapper = {x2, x2AclDtype};
-    TensorListWrapper x1ScaleWrapper = {x1ScaleReal, x1ScaleAclDtype};
-    TensorListWrapper x2ScaleWrapper = {x2ScaleReal, x2ScaleAclDtype};
-    TensorListWrapper alltoallOutWrapper = {alltoallOut, x1AclDtype};
+    TensorWrapper x1Wrapper = {x1, x1AclDtype};
+    TensorWrapper x2Wrapper = {x2, x2AclDtype};
+    TensorWrapper x1ScaleWrapper = {x1ScaleReal, x1ScaleAclDtype};
+    TensorWrapper x2ScaleWrapper = {x2ScaleReal, x2ScaleAclDtype};
+    TensorWrapper alltoallOutWrapper = {alltoallOut, x1AclDtype};
 
     int64_t groupSize = CheckAndGetGroupSize(groupSizes);
+
+    c10::optional<c10::IntArrayRef> alltoAllAxesOptionalNull = c10::nullopt; // temp set nullptr
 
     // 暂时没处理alltoallout flag，强制带出该可选出参
     ACLNN_CMD(aclnnAlltoAllMatmulApace, context, x1Wrapper, x2Wrapper, biasOptional, x1ScaleWrapper, x2ScaleWrapper,
               commScaleOptional, x1OffsetOptional, x2OffsetOptional, groupPtr, worldSize, hcclBufferSize,
-              alltoAllAxesOptional, x1QuantModeVal, x2QuantModeVal, commQuantModeVal, commQuantDtypeVal,
+              alltoAllAxesOptionalNull, x1QuantModeVal, x2QuantModeVal, commQuantModeVal, commQuantDtypeVal,
               x1QuantDtypeVal, transposeX1, transposeX2, groupSize, commModePtr, precisionMode, y, alltoallOutWrapper);
 
     return std::make_tuple(y, alltoallOut);
 }
 
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) { m.def("npu_allto_all_matmul", &NpuAlltoAllMatmul, "npu_allto_all_matmul"); }
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
+    m.def("npu_all_to_all_quant_matmul", &NpuAlltoAllQuantMatmul, "npu_all_to_all_quant_matmul");
+}
 
 } // namespace op_api
