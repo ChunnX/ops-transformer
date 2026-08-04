@@ -4,7 +4,7 @@
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -26,12 +26,12 @@
 namespace optiling {
 namespace quant_flash_attn {
 
-class QuantFlashAttnTilingFp8Impl : public FiaTilingBase {
+class QuantFlashAttnFp8TilingImpl : public FiaTilingBase {
 public:
-    explicit QuantFlashAttnTilingFp8Impl(gert::TilingContext *context) : FiaTilingBase(context)
+    explicit QuantFlashAttnFp8TilingImpl(gert::TilingContext *context) : FiaTilingBase(context)
     {
     }
-    ~QuantFlashAttnTilingFp8Impl() override = default;
+    ~QuantFlashAttnFp8TilingImpl() override = default;
 
     void InitTilingInfo(TilingInfo *tilingInfo) override;
     bool IsCapable() override;

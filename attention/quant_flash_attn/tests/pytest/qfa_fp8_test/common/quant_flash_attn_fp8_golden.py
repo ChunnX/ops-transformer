@@ -597,7 +597,6 @@ class Network(nn.Module):
         v,
         mask,
         cu_seqlens_q_t,
-        seqused_q_t,
         seqused_kv_t,
         dequant_scale_q,
         dequant_scale_v,
@@ -616,7 +615,7 @@ class Network(nn.Module):
             quant_mode=QUANT_MODE,
             cu_seqlens_q=cu_seqlens_q_t,
             cu_seqlens_kv=None,
-            seqused_q=seqused_q_t,
+            seqused_q=None,
             seqused_kv=seqused_kv_t,
             v_descale=dequant_scale_v,
             mask_mode=MASK_MODE,
@@ -640,7 +639,7 @@ class Network(nn.Module):
             p_scale=p_scale,
             cu_seqlens_q=cu_seqlens_q_t,
             cu_seqlens_kv=None,
-            seqused_q=seqused_q_t,
+            seqused_q=None,
             seqused_kv=seqused_kv_t,
             attn_mask=mask,
             metadata=metadata,
@@ -663,7 +662,6 @@ def _call_npu_qfa_op(
     v,
     mask,
     cu_seqlens_q,
-    seqused_q,
     seqused_kv,
     dequant_scale_q,
     dequant_scale_k,
@@ -688,11 +686,6 @@ def _call_npu_qfa_op(
         if cu_seqlens_q is not None
         else None
     )
-    seqused_q_t = (
-        torch.tensor(seqused_q, dtype=torch.int32).npu()
-        if seqused_q is not None
-        else None
-    )
     seqused_kv_t = (
         torch.tensor(seqused_kv, dtype=torch.int32).npu()
         if seqused_kv is not None
@@ -708,7 +701,7 @@ def _call_npu_qfa_op(
         quant_mode=QUANT_MODE,
         cu_seqlens_q=cu_seqlens_q_t,
         cu_seqlens_kv=None,
-        seqused_q=seqused_q_t,
+        seqused_q=None,
         seqused_kv=seqused_kv_t,
         v_descale=dequant_scale_v,
         mask_mode=MASK_MODE,
@@ -736,7 +729,7 @@ def _call_npu_qfa_op(
         p_scale=p_scale,
         cu_seqlens_q=cu_seqlens_q_t,
         cu_seqlens_kv=None,
-        seqused_q=seqused_q_t,
+        seqused_q=None,
         seqused_kv=seqused_kv_t,
         attn_mask=mask,
         metadata=metadata,
@@ -760,7 +753,6 @@ def qfa_fp8_torch_npu(
     v,
     mask,
     cu_seqlens_q,
-    seqused_q,
     seqused_kv,
     dequant_scale_q,
     dequant_scale_k,
@@ -782,7 +774,6 @@ def qfa_fp8_torch_npu(
             v,
             mask,
             cu_seqlens_q,
-            seqused_q,
             seqused_kv,
             dequant_scale_q,
             dequant_scale_k,
@@ -805,11 +796,6 @@ def qfa_fp8_torch_npu(
             if cu_seqlens_q is not None
             else None
         )
-        seqused_q_t = (
-            torch.tensor(seqused_q, dtype=torch.int32).npu()
-            if seqused_q is not None
-            else None
-        )
         seqused_kv_t = (
             torch.tensor(seqused_kv, dtype=torch.int32).npu()
             if seqused_kv is not None
@@ -822,7 +808,6 @@ def qfa_fp8_torch_npu(
             v,
             mask,
             cu_seqlens_q_t,
-            seqused_q_t,
             seqused_kv_t,
             dequant_scale_q,
             dequant_scale_v,
@@ -846,7 +831,6 @@ def qfa_fp8_torch_npu(
             v,
             mask,
             cu_seqlens_q_t,
-            seqused_q_t,
             seqused_kv_t,
             dequant_scale_q,
             dequant_scale_v,
@@ -869,90 +853,12 @@ def _build_mask():
     return torch.triu(torch.ones(2048, 2048, dtype=torch.int8), diagonal=1).npu()
 
 
-def prepare_npu_inputs_gqa_fp8(
-    q_fp8,
-    k_fp8,
-    v_fp8,
-    dequant_scale_q,
-    dequant_scale_k,
-    dequant_scale_v,
-    p_scale,
-    actual_seq_q,
-    actual_seq_kv,
-    block_table_torch=None,
-):
-    """准备 NPU 侧入参 (GQA FP8, 仅 PA).
-
-    返回 dict 的 key 与 fa_run_npu / _call_npu_qfa_op 形参名一一对应:
-      q, k, v, mask, cu_seqlens_q, seqused_q, seqused_kv,
-      dequant_scale_q, dequant_scale_k, dequant_scale_v,
-      p_scale, block_table, block_size, q_n, kv_n,
-      softmax_scale, max_seqlen_q, max_seqlen_kv
-    """
-    softmax_scale = 1.0 / math.sqrt(D)
-    cu_seqlens_q = make_cu_seqlens(actual_seq_q)
-    seqused_q = make_seqused(actual_seq_q)
-    seqused_kv = make_seqused(actual_seq_kv)
-    max_seqlen_q = max(actual_seq_q) if actual_seq_q else -1
-    max_seqlen_kv = max(actual_seq_kv) if actual_seq_kv else -1
-
-    q_npu = convert_q_bnsd_to_layout(q_fp8, actual_seq_q, LAYOUT_Q)
-    deq_q_npu = convert_scale_to_layout(dequant_scale_q, actual_seq_q, "deq_q")
-    deq_v_npu = convert_scale_to_layout(dequant_scale_v, actual_seq_kv, "deq_v")
-    mask_arg = _build_mask()
-
-    if block_table_torch is not None:
-        block_table = block_table_torch.cpu().numpy().astype(np.int32).copy()
-        block_table_tensor = torch.as_tensor(block_table, dtype=torch.int32)
-    else:
-        block_table = create_block_table(
-            actual_seq_kv, BLOCK_SIZE, num_blocks=NUM_BLOCKS
-        )
-        block_table_tensor = torch.as_tensor(block_table, dtype=torch.int32)
-
-    k_pa = bnsd_to_k_cache(
-        k_fp8, dequant_scale_k, actual_seq_kv, BLOCK_SIZE,
-        block_table, num_blocks=NUM_BLOCKS,
-    )
-    v_pa = bnsd_to_v_cache(
-        v_fp8, actual_seq_kv, BLOCK_SIZE, block_table, num_blocks=NUM_BLOCKS
-    )
-
-    if not IS_CONTIGUOUS:
-        kv_cache = torch.stack([k_pa, v_pa], dim=2)
-        kv_cache = kv_cache.npu()
-        k_pa = kv_cache[:, :, 0]
-        v_pa = kv_cache[:, :, 1]
-
-    return dict(
-        q=q_npu,
-        k=k_pa,
-        v=v_pa,
-        mask=mask_arg,
-        cu_seqlens_q=cu_seqlens_q,
-        seqused_q=seqused_q,
-        seqused_kv=seqused_kv,
-        dequant_scale_q=deq_q_npu,
-        dequant_scale_k=dequant_scale_k,
-        dequant_scale_v=deq_v_npu,
-        p_scale=p_scale,
-        block_table=block_table_tensor,
-        block_size=BLOCK_SIZE,
-        q_n=N_q,
-        kv_n=N_kv,
-        softmax_scale=softmax_scale,
-        max_seqlen_q=max_seqlen_q,
-        max_seqlen_kv=max_seqlen_kv,
-    )
-
-
 def fa_run_npu(
     q,
     k,
     v,
     mask,
     cu_seqlens_q,
-    seqused_q,
     seqused_kv,
     dequant_scale_q,
     dequant_scale_k,
@@ -1029,7 +935,6 @@ def fa_run_npu(
         v,
         mask,
         cu_seqlens_q,
-        seqused_q,
         seqused_kv,
         dequant_scale_q,
         dequant_scale_k,
@@ -1062,32 +967,78 @@ def npu_fp8_full_quant(
     block_table_torch=None,
 ):
     """主 NPU 量化函数 - 准备数据并调用 NPU QFA 双算子"""
-    if not ENABLE_PA:
+    softmax_scale = 1.0 / math.sqrt(D)
+    out_dtype = OUTPUT_DETYPE
+
+    # QFA 序列长度: Q=NTD 需 cu_seqlens_q, KV=PA 需 seqused_kv
+    cu_seqlens_q = make_cu_seqlens(actual_seq_q)
+    seqused_kv = make_seqused(actual_seq_kv)
+    max_seqlen_q = max(actual_seq_q) if actual_seq_q else -1
+    max_seqlen_kv = max(actual_seq_kv) if actual_seq_kv else -1
+
+    # Q layout 转换 (BNSD → NTD)
+    q_npu = convert_q_bnsd_to_layout(q_fp8, actual_seq_q, LAYOUT_Q)
+    deq_q_npu = convert_scale_to_layout(dequant_scale_q, actual_seq_q, "deq_q")
+    deq_v_npu = convert_scale_to_layout(dequant_scale_v, actual_seq_kv, "deq_v")
+
+    mask_arg = _build_mask()
+
+    if ENABLE_PA:
+        if block_table_torch is not None:
+            block_table = block_table_torch.cpu().numpy().astype(np.int32).copy()
+            block_table_tensor = torch.as_tensor(block_table, dtype=torch.int32)
+        else:
+            block_table = create_block_table(
+                actual_seq_kv, BLOCK_SIZE, num_blocks=NUM_BLOCKS
+            )
+            block_table_tensor = torch.as_tensor(block_table, dtype=torch.int32)
+
+        k_pa = bnsd_to_k_cache(
+            k_fp8,
+            dequant_scale_k,
+            actual_seq_kv,
+            BLOCK_SIZE,
+            block_table,
+            num_blocks=NUM_BLOCKS,
+        )
+        v_pa = bnsd_to_v_cache(
+            v_fp8, actual_seq_kv, BLOCK_SIZE, block_table, num_blocks=NUM_BLOCKS
+        )
+
+        cache_info = None
+        if NUM_BLOCKS != 0:
+            k_pa_for_golden = k_pa.clone()
+            v_pa_for_golden = v_pa.clone()
+            block_table_for_golden = block_table.copy()
+            cache_info = (k_pa_for_golden, v_pa_for_golden, block_table_for_golden)
+
+        if not IS_CONTIGUOUS:
+            kv_cache = torch.stack([k_pa, v_pa], dim=2)
+            kv_cache = kv_cache.npu()
+            k_pa = kv_cache[:, :, 0]
+            v_pa = kv_cache[:, :, 1]
+
+        output = fa_run_npu(
+            q_npu,
+            k_pa,
+            v_pa,
+            mask_arg,
+            cu_seqlens_q,
+            seqused_kv,
+            deq_q_npu,
+            dequant_scale_k,
+            deq_v_npu,
+            p_scale,
+            block_table_tensor,
+            BLOCK_SIZE,
+            N_q,
+            N_kv,
+            softmax_scale,
+            max_seqlen_q,
+            max_seqlen_kv,
+        )
+    else:
         raise NotImplementedError("QFA GQA 仅支持 PA 模式")
-
-    inputs = prepare_npu_inputs_gqa_fp8(
-        q_fp8, k_fp8, v_fp8,
-        dequant_scale_q, dequant_scale_k, dequant_scale_v,
-        p_scale, actual_seq_q, actual_seq_kv,
-        block_table_torch=block_table_torch,
-    )
-
-    # NUM_BLOCKS != 0 时需保留 cache 副本供 golden 重建
-    cache_info = None
-    if NUM_BLOCKS != 0:
-        k_pa_clone = inputs["k"].clone()
-        v_pa_clone = inputs["v"].clone()
-        bt_clone = inputs["block_table"].cpu().numpy().copy()
-        cache_info = (k_pa_clone, v_pa_clone, bt_clone)
-
-    output = fa_run_npu(
-        inputs["q"], inputs["k"], inputs["v"], inputs["mask"],
-        inputs["cu_seqlens_q"], inputs["seqused_q"], inputs["seqused_kv"],
-        inputs["dequant_scale_q"], inputs["dequant_scale_k"], inputs["dequant_scale_v"],
-        inputs["p_scale"], inputs["block_table"], inputs["block_size"],
-        inputs["q_n"], inputs["kv_n"], inputs["softmax_scale"],
-        inputs["max_seqlen_q"], inputs["max_seqlen_kv"],
-    )
 
     atten_out = output[0]
     T_actual = sum(actual_seq_q)

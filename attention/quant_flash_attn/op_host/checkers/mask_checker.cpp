@@ -163,10 +163,9 @@ ge::graphStatus MaskChecker::CheckMaskModeQuantMode(const QfaTilingInfo &qfaInfo
         qfaInfo.quantMode ==
         QfaQuantMode::A8C8_QK_FP8_E4M3_PER_TOKEN_HEAD_V_FP8_E4M3_PER_HEAD_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
         OP_CHECK_IF(qfaInfo.maskMode == static_cast<int64_t>(MaskMode::SLIDING_WINDOW),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, MASK_MODE_NAME.c_str(),
-                                                          std::to_string(qfaInfo.maskMode).c_str(), "Current quant_mode"
-                                                          " only supports mask_mode 0 (NO_MASK) and 3 (CAUSAL), "
-                                                          "SLIDING_WINDOW(4) is not supported"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        qfaInfo.opName, MASK_MODE_NAME.c_str(), std::to_string(qfaInfo.maskMode).c_str(),
+                        "Current quant_mode only supports mask_mode 0 (NO_MASK) and 3 (CAUSAL), SLIDING_WINDOW(4) is not supported"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;

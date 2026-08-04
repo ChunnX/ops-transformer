@@ -21,6 +21,7 @@
 #include "opdev/op_log.h"
 #include "opdev/tensor_view_utils.h"
 #include "aclnn_quant_flash_attn_inner.h"
+#include "opdev/tensor_view_utils.h"
 
 using namespace op;
 
@@ -33,11 +34,11 @@ static aclnnStatus CheckTensorContiguous(
     const aclTensor *kDescale, const aclTensor *vDescale)
 {
     if ((k != nullptr && !IsContiguous(k)) || (v != nullptr && !IsContiguous(v))) {
-        return ACLNN_ERR_INNER;
+        return ACLNN_ERR_INNER_TILING_ERROR;
     }
     if ((kDescale != nullptr && !IsContiguous(kDescale)) ||
         (vDescale != nullptr && !IsContiguous(vDescale))) {
-        return ACLNN_ERR_INNER;
+        return ACLNN_ERR_INNER_TILING_ERROR;
     }
     return ACLNN_SUCCESS;
 }
@@ -70,7 +71,7 @@ aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
 
     aclnnStatus ret = CheckTensorContiguous(k, v, kDescale, vDescale);
     if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER, "When tensor is not contiguous, opbase package version check failed");
+        OP_LOGE(ACLNN_ERR_INNER_TILING_ERROR, "When tensor is not contiguous, opbase package version check failed");
         return ret;
     }
     ret = aclnnInnerQuantFlashAttnGetWorkspaceSize(

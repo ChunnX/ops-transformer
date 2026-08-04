@@ -55,33 +55,50 @@ __aicore__ inline void quant_flash_attn_mxfp8(
     constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv);
 
     constexpr bool isFdConst = false;
+    constexpr PseTypeEnum pseModeConst = PseTypeEnum::PSE_NONE_TYPE;
+    constexpr bool enableKVPrefixConst = false;
+
+    constexpr TPosition bmm2OutPos =
+        BaseApi::GetC2Position(dVTemplateType,
+                               BaseApi::UbOutCondition<INPUT_T>(false, pseModeConst, hasAttenMask, false, false,
+                                                                (uint32_t)s1TemplateType == 64),
+                               ((uint32_t)s2TemplateType == 256 && (uint32_t)s1TemplateType == 64), false);
     constexpr bool useDn = (quantMode == QFA_MXFP8_FP32_PREFILL);
+    constexpr bool bmm2Write2Ub = (bmm2OutPos == TPosition::VECCALC);
+    constexpr bool splitD = ((uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256);
 
     using CubeBlock =
-        BaseApi::QuantFlashAttnBlockCubeMxfp8<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-            dTemplateType, dVTemplateType, KvLayoutType, useDn>;
+        BaseApi::FAFullQuantMxBlockCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType,
+                                        dVTemplateType, KvLayoutType, enableKVPrefixConst, useDn, bmm2Write2Ub, splitD>;
     using VecFaBlock =
-        BaseApi::QuantFlashAttnBlockVecMxfp8<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
-            s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, isFdConst, useDn>;
+        BaseApi::FAFullQuantMxBlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                       s2TemplateType, dTemplateType, dVTemplateType, pseModeConst, hasAttenMask, false,
+                                       KvLayoutType, isFdConst, enableKVPrefixConst, useDn, bmm2Write2Ub, splitD>;
     using VecFdBlock =
-        BaseApi::QuantFlashAttnBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-            s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, useDn>;
+        BaseApi::FiaBlockVecFlashDecodeFullQuant<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+                                                 s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                 pseModeConst, hasAttenMask, false, KvLayoutType, enableKVPrefixConst,
+                                                 useDn, bmm2Write2Ub, splitD>;
 
     using CubeBlockDummy =
-        BaseApi::QuantFlashAttnBlockCubeMxfp8Dummy<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-            dTemplateType, dVTemplateType, KvLayoutType, useDn>;
+        BaseApi::FAFullQuantMxBlockCubeDummy<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
+                                             dTemplateType, dVTemplateType, KvLayoutType, enableKVPrefixConst, useDn,
+                                             bmm2Write2Ub, splitD>;
     using VecFaBlockDummy =
-        BaseApi::QuantFlashAttnBlockVecMxfp8Dummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-            s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-            hasAttenMask, KvLayoutType, isFdConst, useDn>;
+        BaseApi::FAFullQuantMxBlockVecDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                            s2TemplateType, dTemplateType, dVTemplateType, pseModeConst, hasAttenMask,
+                                            false, KvLayoutType, isFdConst, enableKVPrefixConst, useDn, bmm2Write2Ub,
+                                            splitD>;
     using VecFdBlockDummy =
-        BaseApi::QuantFlashAttnBlockVecFlashDecodeDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-            s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, useDn>;
+        BaseApi::FiaBlockVecFlashDecodeFullQuantDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+                                                      s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                      pseModeConst, hasAttenMask, false, KvLayoutType,
+                                                      enableKVPrefixConst, useDn, bmm2Write2Ub, splitD>;
 
 #ifdef __DAV_C310_CUBE__
-    using Kernel = BaseApi::QuantFlashAttnKernelMxfp8<CubeBlock, VecFaBlockDummy, VecFdBlockDummy>;
+    using Kernel = BaseApi::FlashAttentionFullQuantMxKernel<CubeBlock, VecFaBlockDummy, VecFdBlockDummy>;
 #else
-    using Kernel = BaseApi::QuantFlashAttnKernelMxfp8<CubeBlockDummy, VecFaBlock, VecFdBlock>;
+    using Kernel = BaseApi::FlashAttentionFullQuantMxKernel<CubeBlockDummy, VecFaBlock, VecFdBlock>;
 #endif
 
     const __gm__ QuantFlashAttnTilingData *__restrict tilingData =
@@ -95,13 +112,13 @@ __aicore__ inline void quant_flash_attn_mxfp8(
     op.Process();
 }
 
-// ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // quant_flash_attn_kernel_run_gqa: GQA FP8 Fullquant
-// ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 template <typename INPUT_T, typename OUT_T, uint8_t inOutLayoutType, uint8_t KvLayoutType, bool hasAttenMask,
           uint8_t config>
 inline __aicore__ void
-quant_flash_attn_gqa_fp8(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+quant_flash_attn_fp8(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *qDescale, __gm__ uint8_t *kDescale, __gm__ uint8_t *vDescale,
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *pScale, __gm__ uint8_t *cuSeqLensQ,
                                 __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
@@ -120,34 +137,53 @@ quant_flash_attn_gqa_fp8(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint
     constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);
     constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv);
 
+    constexpr PseTypeEnum pseModeConst = PseTypeEnum::PSE_NONE_TYPE;
+    constexpr bool enableKVPrefixConst = false;
+
+    constexpr TPosition bmm2OutPos =
+        BaseApi::GetC2Position(dVTemplateType,
+                               BaseApi::UbOutCondition<INPUT_T>(false, pseModeConst, hasAttenMask, false, false,
+                                                                (uint32_t)s1TemplateType == 64),
+                               ((uint32_t)s2TemplateType == 256 && (uint32_t)s1TemplateType == 64), false);
+
     constexpr bool useDn = true;
+    constexpr bool bmm2Write2Ub = (bmm2OutPos == TPosition::VECCALC);
+    constexpr bool splitD = ((uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256);
 
     using Fp8CubeBlock =
-        BaseApi::QuantFlashAttnBlockCubeGqaFp8<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-                                         dTemplateType, dVTemplateType, KvLayoutType, useDn>;
+        BaseApi::FAFullQuantFp8BlockCube<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
+                                         dTemplateType, dVTemplateType, KvLayoutType,
+                                         enableKVPrefixConst, useDn, bmm2Write2Ub, splitD>;
     using Fp8VecFaBlock =
-        BaseApi::QuantFlashAttnBlockVecGqaFp8<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
-                                        s2TemplateType, dTemplateType, dVTemplateType,
-                                        hasAttenMask, KvLayoutType, false, useDn>;
+        BaseApi::FAFullQuantFp8BlockVec<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                        s2TemplateType, dTemplateType, dVTemplateType, pseModeConst,
+                                        hasAttenMask, false, KvLayoutType, false, enableKVPrefixConst, useDn,
+                                        bmm2Write2Ub, splitD>;
     using VecFdBlock =
-        BaseApi::QuantFlashAttnBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-            s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, useDn>;
+        BaseApi::FiaBlockVecFlashDecodeFullQuant<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+                                                 s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                 pseModeConst, hasAttenMask, false, KvLayoutType,
+                                                 enableKVPrefixConst, useDn, bmm2Write2Ub, splitD>;
 
     using Fp8CubeBlockDummy =
-        BaseApi::QuantFlashAttnBlockCubeGqaFp8Dummy<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-                                              dTemplateType, dVTemplateType, KvLayoutType, useDn>;
+        BaseApi::FAFullQuantFp8BlockCubeDummy<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
+                                              dTemplateType, dVTemplateType, KvLayoutType,
+                                              enableKVPrefixConst, useDn, bmm2Write2Ub, splitD>;
     using Fp8VecFaBlockDummy =
-        BaseApi::QuantFlashAttnBlockVecGqaFp8Dummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+        BaseApi::FAFullQuantFp8BlockVecDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
                                              s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                             hasAttenMask, KvLayoutType, false, useDn>;
+                                             pseModeConst, hasAttenMask, false, KvLayoutType, false,
+                                             enableKVPrefixConst, useDn, bmm2Write2Ub, splitD>;
     using VecFdBlockDummy =
-        BaseApi::QuantFlashAttnBlockVecFlashDecodeDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-            s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, useDn>;
+        BaseApi::FiaBlockVecFlashDecodeFullQuantDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
+                                                      s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
+                                                      pseModeConst, hasAttenMask, false, KvLayoutType,
+                                                      enableKVPrefixConst, useDn, bmm2Write2Ub, splitD>;
 
 #ifdef __DAV_C310_CUBE__
-    using Kernel = BaseApi::QuantFlashAttnKernelFp8<Fp8CubeBlock, Fp8VecFaBlockDummy, VecFdBlockDummy>;
+    using Kernel = BaseApi::FlashAttentionFullQuantFp8Kernel<Fp8CubeBlock, Fp8VecFaBlockDummy, VecFdBlockDummy>;
 #else
-    using Kernel = BaseApi::QuantFlashAttnKernelFp8<Fp8CubeBlockDummy, Fp8VecFaBlock, VecFdBlock>;
+    using Kernel = BaseApi::FlashAttentionFullQuantFp8Kernel<Fp8CubeBlockDummy, Fp8VecFaBlock, VecFdBlock>;
 #endif
 
     const __gm__ QuantFlashAttnTilingData *__restrict tilingData =
@@ -178,9 +214,8 @@ __global__ __aicore__ void quant_flash_attn(
         quant_flash_attn_mxfp8<inOutLayoutType, config, quantMode, hasAttenMask, KvLayoutType, isFd>(
             query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue, blockTable, pScale, cuSeqLensQ,
             cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata, attnOut, softmaxLse, workspace, tiling);
-    }
-    if constexpr (quantMode == QFA_GQA_FP8_FULLQUANT) {
-        quant_flash_attn_gqa_fp8<fp8_e4m3fn_t, bfloat16_t, inOutLayoutType, KvLayoutType, hasAttenMask,
+    } else {
+        quant_flash_attn_fp8<fp8_e4m3fn_t, bfloat16_t, inOutLayoutType, KvLayoutType, hasAttenMask,
                                         config>(
             query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue, blockTable, pScale,
             cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks, metadata, attnOut, softmaxLse,
