@@ -121,26 +121,37 @@ def _source_absmax():
     return max(max(abs(DATA_RANGE_LEFT), abs(DATA_RANGE_RIGHT)), 1.0)
 
 
-def _datarange(case, key, default_low, default_high):
-    value = case.get(key)
-    if value is None:
-        return default_low, default_high
+def _parse_value_range(value):
+    if isinstance(value, str):
+        try:
+            r = float(value.strip())
+            return -r, r
+        except ValueError:
+            pass
+        parts = value.split(",")
+        if len(parts) != 2:
+            raise ValueError(f"datarange string should be 'low,high' or a number, got {value!r}")
+        return float(parts[0].strip()), float(parts[1].strip())
     if isinstance(value, (int, float)):
-        # 单标量 r：生成均匀 [-r, r] 数据
-        low = high = max(float(value), SCALE_EPSILON)
-        return low, high
-    low = max(float(value[0]), SCALE_EPSILON)
-    high = max(float(value[1]), low)
-    return low, high
+        r = float(value)
+        return -r, r
+    return float(value[0]), float(value[1])
 
 
-def _datarange_max(case, key):
+def _rand_value_range(shape, low, high, generator):
+    return torch.empty(shape, dtype=torch.float32).uniform_(low, high, generator=generator)
+
+
+def _make_source(case, key, shape, default_low, default_high, generator, amp_shape=None):
     value = case.get(key)
     if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    return float(value[1])
+        source = _rand_fullquant_source(shape, default_low, default_high, generator, amp_shape=amp_shape)
+        return source, FP8_E4M3_MAX
+    low, high = _parse_value_range(value)
+    if low > high:
+        raise ValueError(f"{key} datarange should satisfy low <= high, got ({low}, {high})")
+    source = _rand_value_range(shape, low, high, generator)
+    return source, max(abs(low), abs(high))
 
 
 def _log_uniform_amplitude(shape, low, high, generator):
@@ -360,40 +371,26 @@ def _make_fullquant_tensors(case, cu_seqlens_q, seqused_kv, generator):
     amp_high = _source_absmax()
 
     if layout_q == "NTD":
-        query_source = _rand_fullquant_source(
-            (n1, total_q, head_dim),
-            *_datarange(case, "q_datarange", amp_high * 0.01, amp_high),
-            generator,
-        )
+        query_shape = (n1, total_q, head_dim)
     else:
-        query_source = _rand_fullquant_source(
-            (total_q, n1, head_dim),
-            *_datarange(case, "q_datarange", amp_high * 0.01, amp_high),
-            generator,
-        )
-    q_max = _datarange_max(case, "q_datarange") or FP8_E4M3_MAX
+        query_shape = (total_q, n1, head_dim)
+    query_source, q_max = _make_source(
+        case, "q_datarange", query_shape, amp_high * 0.01, amp_high, generator
+    )
     query, q_scale = _quantize_per_token_head(query_source, q_max)
 
     # KV 实际长度以 seqused_kv 为准（与 kernel 读取一致），不再依赖 cu_seqlens_kv 构造扁平化 k_scale
-    dense_key_source = _rand_fullquant_source(
-        (batch, case["S2"], n2, head_dim),
-        *_datarange(case, "k_datarange", 1.0, amp_high),
-        generator,
-    )
-    k_max = _datarange_max(case, "k_datarange") or FP8_E4M3_MAX
+    kv_shape = (batch, case["S2"], n2, head_dim)
+    dense_key_source, k_max = _make_source(case, "k_datarange", kv_shape, 1.0, amp_high, generator)
     dense_key, dense_k_scale_base = _quantize_per_token_head(dense_key_source, k_max)
     dense_k_scale = torch.zeros((batch, case["S2"], n2), dtype=torch.float32)
     for batch_idx in range(batch):
         kv_len = int(seqused_kv[batch_idx].item())
         dense_k_scale[batch_idx, :kv_len] = dense_k_scale_base[batch_idx, :kv_len]
 
-    dense_value_source = _rand_fullquant_source(
-        (batch, case["S2"], n2, head_dim),
-        *_datarange(case, "v_datarange", 1.0, amp_high),
-        generator,
-        amp_shape=(batch, 1, n2, 1),
+    dense_value_source, v_max = _make_source(
+        case, "v_datarange", kv_shape, 1.0, amp_high, generator, amp_shape=(batch, 1, n2, 1)
     )
-    v_max = _datarange_max(case, "v_datarange") or FP8_E4M3_MAX
     dense_value, v_scale = _quantize_value_per_head(dense_value_source, v_max)
     v_scale = v_scale.contiguous()
 

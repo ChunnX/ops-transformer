@@ -34,8 +34,7 @@ _INT_COLS = {"B", "N1", "N2", "S1", "S2", "D",
              "sparse_q_block_size", "sparse_kv_block_size",
              "sparse_count", "quant_mode", "mask_mode", "seed",
              "block_num"}
-_FLOAT_COLS = {"p_scale_value", "softmax_scale",
-               "q_datarange", "k_datarange", "v_datarange"}
+_FLOAT_COLS = {"p_scale_value", "softmax_scale"}
 _BOOL_COLS = {"return_softmax_lse"}
 
 
