@@ -39,10 +39,10 @@ bool IsMxFullQuant(const aclTensor *x1, const aclTensor *x2)
     return isMxFp4 || isMxFp8;
 }
 
-DataType GetOutputDataType(const aclTensor *x1, const aclTensor *x2, int64_t dtype)
+DataType GetOutputDataType(const aclTensor *x1, const aclTensor *x2, const aclTensor *logit, int64_t dtype)
 {
-    if (dtype == OUT_DTYPE_BF16 && op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-        IsMxFullQuant(x1, x2)) {
+    bool isBf16Output = dtype == OUT_DTYPE_BF16 || (logit != nullptr && logit->GetDataType() == DataType::DT_BF16);
+    if (isBf16Output && op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 && IsMxFullQuant(x1, x2)) {
         return DataType::DT_BF16;
     }
     return DataType::DT_FLOAT;
@@ -57,7 +57,7 @@ const aclTensor *GroupedMatmulFinalizeRouting(const aclTensor *x1, const aclTens
 {
     L0_DFX(GroupedMatmulFinalizeRouting, x1, x2, scale, bias, pertokenScale, groupList, shareInput, logit, rowIndex,
         dtype, sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, outputBS, groupListType);
-    DataType outType = GetOutputDataType(x1, x2, dtype);
+    DataType outType = GetOutputDataType(x1, x2, logit, dtype);
 
     Format format = Format::FORMAT_ND;
     if (executor == nullptr) {
