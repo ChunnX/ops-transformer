@@ -19,7 +19,8 @@ extern "C" {
 
 __attribute__((visibility("default"))) aclnnStatus aclnnQuantBlockSparseAttnGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *qDescale,
-    const aclTensor *kDescale, const aclTensor *vDescale, const aclTensor *pScaleOptional, const aclTensor *cuSeqlensQOptional,
+    const aclTensor *kDescale, const aclTensor *vDescale,
+    const aclTensor *pScaleOptional, const aclTensor *cuSeqlensQOptional,
     const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
     const aclTensor *sparseIndices, const aclTensor *sparseSeqLen, const aclTensor *blockTableOptional,
     const aclTensor *attenMaskOptional, const aclTensor *metadataOptional, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
