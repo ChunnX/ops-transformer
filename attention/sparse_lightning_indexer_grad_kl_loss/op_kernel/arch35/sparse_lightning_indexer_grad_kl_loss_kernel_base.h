@@ -145,26 +145,28 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
                 t1PadLen, splitT1PadLen, remainT1PadLen, currentCoreT1PadLen, t1PadLenSum);
 
             if ASCEND_IS_AIV {
-                int64_t dQOutputOffset = (t1PadLenSum + actualLen) *
-                    static_cast<int64_t>(constInfo.gSizeQueryIndex) *
-                    static_cast<int64_t>(constInfo.dSizeQueryIndex);
-                GlobalTensor<INPUT_T> tmpDQ;
-                tmpDQ.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(dQueryIndex) + dQOutputOffset,
-                    currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex) *
-                        static_cast<int64_t>(constInfo.dSizeQueryIndex));
-                AscendC::Fill(tmpDQ, currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex) *
-                    static_cast<int64_t>(constInfo.dSizeQueryIndex), static_cast<INPUT_T>(0));
+                if (currentCoreT1PadLen > 0) {
+                    int64_t dQOutputOffset = (t1PadLenSum + actualLen) *
+                        static_cast<int64_t>(constInfo.gSizeQueryIndex) *
+                        static_cast<int64_t>(constInfo.dSizeQueryIndex);
+                    GlobalTensor<INPUT_T> tmpDQ;
+                    tmpDQ.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(dQueryIndex) + dQOutputOffset,
+                        currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex) *
+                            static_cast<int64_t>(constInfo.dSizeQueryIndex));
+                    AscendC::Fill(tmpDQ, currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex) *
+                        static_cast<int64_t>(constInfo.dSizeQueryIndex), static_cast<INPUT_T>(0));
 
-                int64_t dWOutputOffset = (t1PadLenSum + actualLen) *
-                    static_cast<int64_t>(constInfo.gSizeQueryIndex);
-                GlobalTensor<WEIGHT_T> tmpDW;
-                tmpDW.SetGlobalBuffer(reinterpret_cast<__gm__ WEIGHT_T *>(dWeight) + dWOutputOffset,
-                    currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex));
-                AscendC::Fill(tmpDW, currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex), static_cast<WEIGHT_T>(0));
+                    int64_t dWOutputOffset = (t1PadLenSum + actualLen) *
+                        static_cast<int64_t>(constInfo.gSizeQueryIndex);
+                    GlobalTensor<WEIGHT_T> tmpDW;
+                    tmpDW.SetGlobalBuffer(reinterpret_cast<__gm__ WEIGHT_T *>(dWeight) + dWOutputOffset,
+                        currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex));
+                    AscendC::Fill(tmpDW, currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex), static_cast<WEIGHT_T>(0));
 
-                AscendC::PRINTF("[luo] slig_t1_pad_fill done: dQOffset=%ld fillCnt=%ld dWOffset=%ld\n",
-                    dQOutputOffset, currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex) *
-                        static_cast<int64_t>(constInfo.dSizeQueryIndex), dWOutputOffset);
+                    AscendC::PRINTF("[luo] slig_t1_pad_fill done: dQOffset=%ld fillCnt=%ld dWOffset=%ld\n",
+                        dQOutputOffset, currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex) *
+                            static_cast<int64_t>(constInfo.dSizeQueryIndex), dWOutputOffset);
+                }
             }
         }
         if (t2Size > actualKLen && totalAivNum > 0) {
@@ -180,15 +182,17 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
                 t2PadLen, splitT2PadLen, remainT2PadLen, currentCoreT2PadLen, t2PadLenSum);
 
             if ASCEND_IS_AIV {
-                int64_t dKOutputOffset = (t2PadLenSum + actualKLen) *
-                    static_cast<int64_t>(constInfo.dSizeQueryIndex);
-                GlobalTensor<INPUT_T> tmpDK;
-                tmpDK.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(dKeyIndex) + dKOutputOffset,
-                    currentCoreT2PadLen * static_cast<int64_t>(constInfo.dSizeQueryIndex));
-                AscendC::Fill(tmpDK, currentCoreT2PadLen * static_cast<int64_t>(constInfo.dSizeQueryIndex), static_cast<INPUT_T>(0));
+                if (currentCoreT2PadLen > 0) {
+                    int64_t dKOutputOffset = (t2PadLenSum + actualKLen) *
+                        static_cast<int64_t>(constInfo.dSizeQueryIndex);
+                    GlobalTensor<INPUT_T> tmpDK;
+                    tmpDK.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(dKeyIndex) + dKOutputOffset,
+                        currentCoreT2PadLen * static_cast<int64_t>(constInfo.dSizeQueryIndex));
+                    AscendC::Fill(tmpDK, currentCoreT2PadLen * static_cast<int64_t>(constInfo.dSizeQueryIndex), static_cast<INPUT_T>(0));
 
-                AscendC::PRINTF("[luo] slig_t2_pad_fill done: dKOffset=%ld fillCnt=%ld\n",
-                    dKOutputOffset, currentCoreT2PadLen * static_cast<int64_t>(constInfo.dSizeQueryIndex));
+                    AscendC::PRINTF("[luo] slig_t2_pad_fill done: dKOffset=%ld fillCnt=%ld\n",
+                        dKOutputOffset, currentCoreT2PadLen * static_cast<int64_t>(constInfo.dSizeQueryIndex));
+                }
             }
         } else {
             AscendC::PRINTF("[luo] slig_t2_pad skip: t2Size(%ld) <= actualKLen(%ld)\n", t2Size, actualKLen);
