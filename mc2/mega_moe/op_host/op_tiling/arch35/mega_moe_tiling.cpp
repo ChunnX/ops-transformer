@@ -510,32 +510,11 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertNum", std::to_string(sharedExpertNum).c_str(),
                                               "only support 0-4"),
                     return ge::GRAPH_FAILED);
-    auto topoTypePtr = attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
-    OP_TILING_CHECK(isPerExpertWeightTensor && *topoTypePtr == TOPO_TYPE_URMA,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "topoType", std::to_string(*topoTypePtr).c_str(),
-                                              "per-expert weight TensorList only supports MTE topology"),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(sharedExpertNum > 0 && *topoTypePtr == TOPO_TYPE_URMA,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "topoType", std::to_string(*topoTypePtr).c_str(),
-                                              "shared expert only support MTE topo type"),
-                    return ge::GRAPH_FAILED);
-
-    auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrActivationIndex));
-    OP_TILING_CHECK(*topoTypePtr == TOPO_TYPE_URMA && std::strcmp(activationPtr, "situ") == 0,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activation", activationPtr,
-                                              "situ activation is not supported with URMA topology, please use swiglu"),
-                    return ge::GRAPH_FAILED);
-
     int64_t topkWeightsType = *attrs->GetAttrPointer<int64_t>((config.attrTopkWeightsTypeIndex));
     OP_TILING_CHECK(topkWeightsType != 0 && topkWeightsType != 1,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "topkWeightsType", std::to_string(topkWeightsType).c_str(),
                                               "only support 0(disabled) or 1(enabled)"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(topkWeightsType == 1 && *topoTypePtr == TILINGKEY_TPL_URMA,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "topkWeightsType", "1",
-                                              "topk_weights_type=1 is not supported with URMA topology"),
-                    return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -565,8 +544,7 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     tilingData->activationBeta = *activationBetaPtr;
 
     auto activationPtr = attrs->GetAttrPointer<char>(static_cast<int>(config.attrActivationIndex));
-    auto topoTypePtr = attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
-    if (std::strcmp(activationPtr, "situ") == 0 && *topoTypePtr != TOPO_TYPE_URMA) {
+    if (std::strcmp(activationPtr, "situ") == 0) {
         tilingData->actMode = ACT_MODE_SITU;
         if (*activationAlphaPtr != 1.0f) {
             tilingData->actSubMode = ACT_SUB_MODE_LINEAR;
@@ -839,8 +817,7 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
 
 static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilingData)
 {
-    if (tilingData->combineQuantMode == COMBINE_NO_QUANT && tilingData->topoType != TOPO_TYPE_URMA ||
-        tilingData->moeExpertPerRank == 0U) {
+    if (tilingData->combineQuantMode == COMBINE_NO_QUANT || tilingData->moeExpertPerRank == 0U) {
         return 0U;
     }
 
@@ -1669,15 +1646,12 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
             nodeName, "H", std::to_string(xDim1).c_str(),
             (std::string("should in [") + std::to_string(MIN_H) + ", " + std::to_string(MAX_H) + "]").c_str()),
         return ge::GRAPH_FAILED);
-    auto attrs = context->GetAttrs();
-    auto topoTypePtr = attrs->GetAttrPointer<int64_t>(config.attrTopoTypeIndex);
     auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightOneDesc);
     bool isW4NzC0_32 = weightOneDesc->GetDataType() == ge::DT_FLOAT4_E2M1 &&
                        weightOneDesc->GetStorageFormat() == ge::FORMAT_FRACTAL_NZ_C0_32;
-    // URMA/Layered 保持 1K 对齐；W4 的 NZ_C0_32 分形要求 GMM K 按 64 对齐；其余 MTE 路径按 32 对齐。
-    int64_t requiredHAlignment =
-        *topoTypePtr == TOPO_TYPE_URMA ? HIDDEN_DIM_BASE : (isW4NzC0_32 ? W4_K_ALIGN : H_ALIGN);
+    // W4 的 NZ_C0_32 分形要求 GMM K 按 64 对齐；其余 MTE 路径按 32 对齐。
+    int64_t requiredHAlignment = isW4NzC0_32 ? W4_K_ALIGN : H_ALIGN;
     OP_TILING_CHECK(
         xDim1 % requiredHAlignment != 0,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "H", std::to_string(xDim1).c_str(),
