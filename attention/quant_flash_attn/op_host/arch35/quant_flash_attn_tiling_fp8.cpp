@@ -135,15 +135,7 @@ void QuantFlashAttnFp8TilingImpl::UpdateTilingKeyConfig()
 
 void QuantFlashAttnFp8TilingImpl::UpdateTilingKeyLayout()
 {
-    if (qfaInfo_->qLayout == QfaLayout::BNSD) {
-        tilingKeyInfo_.inputLayout = InOutLayoutType_BNSD_BNSD;
-    } else if (qfaInfo_->qLayout == QfaLayout::TND) {
-        tilingKeyInfo_.inputLayout = InOutLayoutType_TND_TND;
-    } else if (qfaInfo_->qLayout == QfaLayout::NTD) {
-        tilingKeyInfo_.inputLayout = InOutLayoutType_NTD_TND;
-    } else {
-        tilingKeyInfo_.inputLayout = InOutLayoutType_BSH_BSH;
-    }
+    tilingKeyInfo_.inputLayout = InOutLayoutType_NTD_TND;
 }
 
 void QuantFlashAttnFp8TilingImpl::UpdateTilingKeyKvLayout()
@@ -152,7 +144,7 @@ void QuantFlashAttnFp8TilingImpl::UpdateTilingKeyKvLayout()
     if (qfaInfo_->kvLayout == QfaLayout::PA_BNBD) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
     } else if (qfaInfo_->kvLayout == QfaLayout::PA_BBND) {
-        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BBH;
+        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
     } else if (qfaInfo_->kvLayout == QfaLayout::PA_NZ) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_NZ;
     } else {
