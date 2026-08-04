@@ -68,6 +68,7 @@ def _row_from_dict(params, result, fulfill_percent):
         "actlen_mode",
         "sparse_pattern",
         "block_table_pattern",
+        "blocknum",
         "pa_block_padding_bytes",
         "p_scale_value",
         "seed",
