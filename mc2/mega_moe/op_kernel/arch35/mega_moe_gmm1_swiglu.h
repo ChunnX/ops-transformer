@@ -176,7 +176,7 @@ template <typename QuantOutType, typename WeightType, typename SwigluOutType, ty
 __aicore__ inline void ControlGmm1SwigluPipelineByMode(
     const Gmm1SwigluContext &context, const Params &gmmParams, BlockEpilogue &epilogueOp,
     const GMMAddrInfo &gmmAddrInfo, const Gmm1ExpertLoopState &state, Gmm1SwigluState &runtimeState,
-    uint32_t expertIdx)
+    uint32_t expertIdx, void *persistentBlockMmadContext = nullptr)
 {
     if constexpr (EnableA8W4) {
         MegaMoeImpl::GroupMatmulSwigluQuantA8W4<QuantOutType, WeightType, bfloat16_t, QuantScaleType, QuantScaleType,
@@ -185,19 +185,53 @@ __aicore__ inline void ControlGmm1SwigluPipelineByMode(
             runtimeState.gmTileSequence, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx);
     } else if (context.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
                context.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
-        MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType,
-                                            QuantScaleType, true, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch,
-                                            false, IsGmm1Interleaved, IsWaveFlagGrained>(
-            epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
-            runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
-            runtimeState.pingpongIdx);
+        if (persistentBlockMmadContext != nullptr) {
+            using GmmConfig = Detail::Config<
+                false, Detail::Gmm1Policy, COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t,
+                QuantScaleType, QuantScaleType, true, Gmm1TileM, TopkWeightsPrefetch, false, false,
+                IsGmm1Interleaved, IsWaveFlagGrained>;
+            using PersistentContext = Detail::PersistentBlockMmadContext<typename GmmConfig::BlockMmad>;
+            auto *persistentContext = reinterpret_cast<PersistentContext *>(persistentBlockMmadContext);
+            MegaMoeImpl::GroupMatmulSwigluQuant<
+                QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType,
+                true, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, false, IsGmm1Interleaved,
+                IsWaveFlagGrained>(
+                epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
+                runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
+                runtimeState.pingpongIdx, persistentContext);
+        } else {
+            MegaMoeImpl::GroupMatmulSwigluQuant<
+                QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType,
+                true, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, false, IsGmm1Interleaved,
+                IsWaveFlagGrained>(
+                epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
+                runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
+                runtimeState.pingpongIdx);
+        }
     } else {
-        MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType,
-                                            QuantScaleType, false, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch,
-                                            false, IsGmm1Interleaved, IsWaveFlagGrained>(
-            epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
-            runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
-            runtimeState.pingpongIdx);
+        if (persistentBlockMmadContext != nullptr) {
+            using GmmConfig = Detail::Config<
+                false, Detail::Gmm1Policy, COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t,
+                QuantScaleType, QuantScaleType, false, Gmm1TileM, TopkWeightsPrefetch, false, false,
+                IsGmm1Interleaved, IsWaveFlagGrained>;
+            using PersistentContext = Detail::PersistentBlockMmadContext<typename GmmConfig::BlockMmad>;
+            auto *persistentContext = reinterpret_cast<PersistentContext *>(persistentBlockMmadContext);
+            MegaMoeImpl::GroupMatmulSwigluQuant<
+                QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType,
+                false, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, false, IsGmm1Interleaved,
+                IsWaveFlagGrained>(
+                epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
+                runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
+                runtimeState.pingpongIdx, persistentContext);
+        } else {
+            MegaMoeImpl::GroupMatmulSwigluQuant<
+                QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType,
+                false, Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, false, IsGmm1Interleaved,
+                IsWaveFlagGrained>(
+                epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
+                runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
+                runtimeState.pingpongIdx);
+        }
     }
 }
 

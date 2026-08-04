@@ -43,78 +43,105 @@ __aicore__ inline void NotifyGmm1TileStatus(const Params &params, const GMMAddrI
     AscendC::WriteGmByPassDCache(statusAddr, static_cast<int32_t>(expertIdx + 1));
 }
 
+template <typename Policy, typename BlockMmad, typename ElementC, bool TopkWeightsPrefetch,
+          bool IsShared, bool IsGmm1Interleaved, typename WorkSet, typename ExtraArgs>
+__aicore__ inline void RunGmm1AicPipelineGeneric(BlockMmad &blockMmad, WorkSet &workSet,
+                                                 uint32_t startLoopIdx, uint32_t tileNum, ExtraArgs &args)
+{
+    const auto &config = workSet.config;
+    uint32_t ubBufSize =
+        config.tileM == L1_TILE_M_128 ? MAX_SINGLE_MN_ALIGN32_NUM_128 : MAX_SINGLE_MN_ALIGN32_NUM_256;
+    int64_t ubOffsetFirst = 0;
+    int64_t ubOffsetSecond = static_cast<int64_t>(ubBufSize) * sizeof(ElementC);
+    auto l0cOutUbFirst =
+        Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetFirst), workSet.layouts.c);
+    auto l0cOutUbSecond =
+        Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetSecond), workSet.layouts.c);
+    uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
+
+    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
+        auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
+        auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
+        uint32_t mLoc = Get<M_VALUE>(blockCoord);
+        uint32_t nLoc = Get<N_VALUE>(blockCoord);
+        uint32_t kLoc = Get<K_VALUE>(blockCoord);
+        auto gmBlockA = workSet.gmA.Slice(
+            Te::MakeCoord(mLoc, kLoc),
+            Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
+        auto gmBlockScaleA = workSet.gmScaleA.Slice(
+            Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
+            Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
+        uint32_t waveIdx = mLoc / config.tileM;
+        if (waveIdx != lastWaveWaited) {
+            WaitForUpstreamReady<Policy, IsShared>(workSet.gmmAddrInfo, config, mLoc);
+            lastWaveWaited = waveIdx;
+        }
+        if constexpr (!TopkWeightsPrefetch) {
+            if constexpr (IsGmm1Interleaved) {
+                if (args.vecSetSyncCom >= 2) {
+                    WaitForVector(args.pingpongIdx);
+                }
+            } else if (args.vecSetSyncCom != 0) {
+                WaitForVector();
+            }
+        }
+
+        ComputeGmm1TileGeneric<BlockMmad, ElementC, TopkWeightsPrefetch, IsGmm1Interleaved>(
+            blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmBias,
+            workSet.gmmAddrInfo.gmm1OutGlobal, workSet.layouts.c, actualShape, mLoc, nLoc, kLoc, gmBlockA,
+            gmBlockScaleA, l0cOutUbFirst, l0cOutUbSecond, args.pingpongIdx);
+
+        if constexpr (TopkWeightsPrefetch) {
+            AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+            NotifyGmm1TileStatus(workSet.params, workSet.gmmAddrInfo, args.expertIdx, loopIdx);
+        } else {
+            if constexpr (IsGmm1Interleaved) {
+                NotifyVector(args.pingpongIdx);
+                args.vecSetSyncCom++;
+                args.pingpongIdx = 1U - args.pingpongIdx;
+            } else {
+                NotifyVector();
+                args.vecSetSyncCom = 1;
+            }
+        }
+    }
+}
+
 // Controls the current generic GMM1/SwiGLU tile pipeline. Cross-stage waits remain here;
 // ComputeSwigluTileGeneric publishes each completed tile immediately after the dependency-free
 // SwiGLU operator returns so the original GMM1/GMM2 overlap is preserved.
-template <typename Policy, typename BlockMmad, typename ElementC, typename MakeLayoutC, bool TopkWeightsPrefetch,
+template <typename Policy, typename BlockMmad, bool UsePersistentBlockMmad, typename PersistentContext,
+          typename ElementC, typename MakeLayoutC, bool TopkWeightsPrefetch,
           bool IsShared, bool IsGmm1Interleaved, typename WorkSet, typename ExtraArgs>
 __aicore__ inline void ControlGmm1SwigluPipelineGeneric(WorkSet &workSet, uint32_t startLoopIdx,
-                                                        uint32_t tileNum, ExtraArgs &args)
+                                                        uint32_t tileNum, ExtraArgs &args,
+                                                        PersistentContext *persistentContext)
 {
     const auto &config = workSet.config;
     if constexpr (g_coreType == AscendC::AIC) {
-        BlockMmad blockMmad;
-        bool enableL0CPingPong = false;
         typename BlockMmad::BlockShape l0TileShape{config.tileM, L1_TILE_N, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{config.m, config.n, config.k, 0};
-        blockMmad.Init(matmulShape, l0TileShape, config.l1Params, false, enableL0CPingPong);
-
-        uint32_t ubBufSize =
-            config.tileM == L1_TILE_M_128 ? MAX_SINGLE_MN_ALIGN32_NUM_128 : MAX_SINGLE_MN_ALIGN32_NUM_256;
-        int64_t ubOffsetFirst = 0;
-        int64_t ubOffsetSecond = static_cast<int64_t>(ubBufSize) * sizeof(ElementC);
-        auto l0cOutUbFirst =
-            Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetFirst), workSet.layouts.c);
-        auto l0cOutUbSecond =
-            Te::MakeTensor(Te::MakeMemPtr<Te::Location::UB, ElementC>(ubOffsetSecond), workSet.layouts.c);
-        uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
-
-        for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
-            auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
-            auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
-            uint32_t mLoc = Get<M_VALUE>(blockCoord);
-            uint32_t nLoc = Get<N_VALUE>(blockCoord);
-            uint32_t kLoc = Get<K_VALUE>(blockCoord);
-            auto gmBlockA = workSet.gmA.Slice(
-                Te::MakeCoord(mLoc, kLoc),
-                Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
-            auto gmBlockScaleA = workSet.gmScaleA.Slice(
-                Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
-                Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
-            uint32_t waveIdx = mLoc / config.tileM;
-            if (waveIdx != lastWaveWaited) {
-                WaitForUpstreamReady<Policy, IsShared>(workSet.gmmAddrInfo, config, mLoc);
-                lastWaveWaited = waveIdx;
+        if constexpr (UsePersistentBlockMmad) {
+            using PersistentBlockMmad = typename PersistentContext::BlockMmadType;
+            static_assert(std::is_same_v<PersistentBlockMmad, BlockMmad>, "Persistent BlockMmad type mismatch");
+            if (!persistentContext->initialized || persistentContext->problemK != config.k) {
+                constexpr bool enableL0CPingPong = false;
+                persistentContext->blockMmad.Init(
+                    matmulShape, l0TileShape, config.l1Params, false, enableL0CPingPong);
+                persistentContext->problemK = config.k;
+                persistentContext->initialized = true;
             }
-            if constexpr (!TopkWeightsPrefetch) {
-                if constexpr (IsGmm1Interleaved) {
-                    if (args.vecSetSyncCom >= 2) {
-                        WaitForVector(args.pingpongIdx);
-                    }
-                } else if (args.vecSetSyncCom != 0) {
-                    WaitForVector();
-                }
-            }
-
-            ComputeGmm1TileGeneric<BlockMmad, ElementC, TopkWeightsPrefetch, IsGmm1Interleaved>(
-                blockMmad, config, workSet.gmB, workSet.gmScaleB, workSet.gmBias,
-                workSet.gmmAddrInfo.gmm1OutGlobal, workSet.layouts.c, actualShape, mLoc, nLoc, kLoc, gmBlockA,
-                gmBlockScaleA, l0cOutUbFirst, l0cOutUbSecond, args.pingpongIdx);
-
-            if constexpr (TopkWeightsPrefetch) {
-                AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
-                AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
-                NotifyGmm1TileStatus(workSet.params, workSet.gmmAddrInfo, args.expertIdx, loopIdx);
-            } else {
-                if constexpr (IsGmm1Interleaved) {
-                    NotifyVector(args.pingpongIdx);
-                    args.vecSetSyncCom++;
-                    args.pingpongIdx = 1U - args.pingpongIdx;
-                } else {
-                    NotifyVector();
-                    args.vecSetSyncCom = 1;
-                }
-            }
+            RunGmm1AicPipelineGeneric<Policy, BlockMmad, ElementC, TopkWeightsPrefetch, IsShared,
+                                      IsGmm1Interleaved>(
+                persistentContext->blockMmad, workSet, startLoopIdx, tileNum, args);
+        } else {
+            BlockMmad blockMmad;
+            constexpr bool enableL0CPingPong = false;
+            blockMmad.Init(matmulShape, l0TileShape, config.l1Params, false, enableL0CPingPong);
+            RunGmm1AicPipelineGeneric<Policy, BlockMmad, ElementC, TopkWeightsPrefetch, IsShared,
+                                      IsGmm1Interleaved>(
+                blockMmad, workSet, startLoopIdx, tileNum, args);
         }
     } else {
         for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
@@ -147,24 +174,42 @@ __aicore__ inline void ControlGmm1SwigluPipelineGeneric(WorkSet &workSet, uint32
 }
 
 // Prototype: GroupMatmulExecGeneric. Dispatches one generic GMM stage to its AIC or AIV implementation.
-template <typename Policy, uint8_t CombineQuantMode, typename BlockMmad, typename ElementC, typename MakeLayoutC,
-          bool TopkWeightsPrefetch, bool IsLayered = false, bool IsShared = false,
-          bool IsGmm1Interleaved = false, typename WorkSet, typename ExtraArgs>
+template <typename Policy, uint8_t CombineQuantMode, typename BlockMmad, bool UsePersistentBlockMmad,
+          typename PersistentContext, typename ElementC, typename MakeLayoutC, bool TopkWeightsPrefetch,
+          bool IsLayered = false, bool IsShared = false, bool IsGmm1Interleaved = false,
+          typename WorkSet, typename ExtraArgs>
 __aicore__ inline void GroupMatmulExecGeneric(WorkSet &workSet, uint32_t startLoopIdx, uint32_t tileNum,
-                                              ExtraArgs &args)
+                                              ExtraArgs &args, PersistentContext *persistentContext)
 {
     if constexpr (Policy::IS_GMM1) {
-        ControlGmm1SwigluPipelineGeneric<Policy, BlockMmad, ElementC, MakeLayoutC, TopkWeightsPrefetch, IsShared,
-                                         IsGmm1Interleaved>(workSet, startLoopIdx, tileNum, args);
+        ControlGmm1SwigluPipelineGeneric<Policy, BlockMmad, UsePersistentBlockMmad, PersistentContext,
+                                         ElementC, MakeLayoutC, TopkWeightsPrefetch, IsShared,
+                                         IsGmm1Interleaved>(
+            workSet, startLoopIdx, tileNum, args, persistentContext);
     } else if constexpr (g_coreType == AscendC::AIC) {
-        BlockMmad blockMmad;
-        bool enableL0CPingPong = false;
         typename BlockMmad::BlockShape l0TileShape{workSet.config.tileM, L1_TILE_N, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{workSet.config.m, workSet.config.n, workSet.config.k, 0};
-        blockMmad.Init(matmulShape, l0TileShape, workSet.config.l1Params, false, enableL0CPingPong);
-
-        AicComputeGmm2Generic<CombineQuantMode, Policy, BlockMmad, ElementC, IsShared, TopkWeightsPrefetch, IsLayered>(
-            blockMmad, workSet, startLoopIdx, tileNum, args);
+        if constexpr (UsePersistentBlockMmad) {
+            using PersistentBlockMmad = typename PersistentContext::BlockMmadType;
+            static_assert(std::is_same_v<PersistentBlockMmad, BlockMmad>, "Persistent BlockMmad type mismatch");
+            if (!persistentContext->initialized || persistentContext->problemK != workSet.config.k) {
+                constexpr bool enableL0CPingPong = false;
+                persistentContext->blockMmad.Init(
+                    matmulShape, l0TileShape, workSet.config.l1Params, false, enableL0CPingPong);
+                persistentContext->problemK = workSet.config.k;
+                persistentContext->initialized = true;
+            }
+            AicComputeGmm2Generic<CombineQuantMode, Policy, BlockMmad, ElementC, IsShared,
+                                  TopkWeightsPrefetch, IsLayered>(
+                persistentContext->blockMmad, workSet, startLoopIdx, tileNum, args);
+        } else {
+            BlockMmad blockMmad;
+            constexpr bool enableL0CPingPong = false;
+            blockMmad.Init(matmulShape, l0TileShape, workSet.config.l1Params, false, enableL0CPingPong);
+            AicComputeGmm2Generic<CombineQuantMode, Policy, BlockMmad, ElementC, IsShared,
+                                  TopkWeightsPrefetch, IsLayered>(
+                blockMmad, workSet, startLoopIdx, tileNum, args);
+        }
     }
 }
 
