@@ -34,12 +34,15 @@ def _ensure_cann_ops():
 
 
 _FP32_BYTES = 4
+_E8M0_BYTES = 1
+_QUANT_GROUP_SIZE = 32
 
 
-def _pack_combined_kv(key, value, k_descale):
+def _pack_combined_kv(key, value, k_descale, v_descale=None, quant_mode=1):
     """Pack separate PA key/value/k_descale into a combined KV storage.
 
-    Layout per physical block: [key_segment (FP8)] [value_segment (FP8)] [k_scale_segment (FP32)]
+    FP8 (quant_mode=1): [key_segment (FP8)] [value_segment (FP8)] [k_scale_segment (FP32)]
+    MXFP8 (quant_mode=2): [key_segment (FP8)] [value_segment (FP8)] [k_scale (E8M0)] [v_scale (E8M0)]
     Returns 4D PA views whose shape matches the operator interface and whose block stride
     points at the full physical KV-cache block.
     """
@@ -53,14 +56,21 @@ def _pack_combined_kv(key, value, k_descale):
 
     key_seg = n2 * block_size * d
     value_seg = n2 * block_size * dv
-    k_scale_seg = n2 * block_size * _FP32_BYTES
-    pa_block_stride = key_seg + value_seg + k_scale_seg
+
+    if quant_mode == 2:
+        k_scale_d = d // _QUANT_GROUP_SIZE
+        v_scale_bs = block_size // _QUANT_GROUP_SIZE
+        k_scale_seg = n2 * block_size * (k_scale_d // 2) * 2 * _E8M0_BYTES
+        v_scale_seg = n2 * v_scale_bs * dv * 2 * _E8M0_BYTES
+        pa_block_stride = key_seg + value_seg + k_scale_seg + v_scale_seg
+    else:
+        k_scale_seg = n2 * block_size * _FP32_BYTES
+        pa_block_stride = key_seg + value_seg + k_scale_seg
 
     storage = torch.zeros(
         (num_blocks * pa_block_stride,), dtype=torch.uint8, device=key.device
     )
     fp8_storage = storage.view(torch.float8_e4m3fn)
-    fp32_storage = storage.view(torch.float32)
 
     key_view = torch.as_strided(
         fp8_storage, key.shape, (pa_block_stride, block_size * d, d, 1), 0
@@ -68,19 +78,36 @@ def _pack_combined_kv(key, value, k_descale):
     value_view = torch.as_strided(
         fp8_storage, value.shape, (pa_block_stride, block_size * dv, dv, 1), key_seg
     )
-    k_scale_shape = tuple(k_descale.shape) if k_descale.dim() == 4 else tuple(k_descale.shape) + (1,)
-    k_scale_view = torch.as_strided(
-        fp32_storage,
-        k_scale_shape,
-        (pa_block_stride // _FP32_BYTES, block_size, 1, 1),
-        (key_seg + value_seg) // _FP32_BYTES,
-    )
 
     key_view.copy_(key)
     value_view.copy_(value)
-    k_scale_view.copy_(k_descale if k_descale.dim() == 4 else k_descale.unsqueeze(-1))
 
-    return key_view, value_view, k_scale_view
+    if quant_mode == 2:
+        e8m0_storage = storage.view(torch.float8_e8m0fnu)
+        k_scale_stride = (pa_block_stride, block_size * (k_scale_d // 2) * 2,
+                          (k_scale_d // 2) * 2, 2, 1)
+        k_scale_offset = (key_seg + value_seg) // _E8M0_BYTES
+        k_scale_view = torch.as_strided(
+            e8m0_storage, k_descale.shape, k_scale_stride, k_scale_offset)
+        k_scale_view.copy_(k_descale)
+
+        v_scale_stride = (pa_block_stride, v_scale_bs * dv * 2, dv * 2, 2, 1)
+        v_scale_offset = (key_seg + value_seg + k_scale_seg) // _E8M0_BYTES
+        v_scale_view = torch.as_strided(
+            e8m0_storage, v_descale.shape, v_scale_stride, v_scale_offset)
+        v_scale_view.copy_(v_descale)
+        return key_view, value_view, k_scale_view, v_scale_view
+    else:
+        fp32_storage = storage.view(torch.float32)
+        k_scale_shape = tuple(k_descale.shape) if k_descale.dim() == 4 else tuple(k_descale.shape) + (1,)
+        k_scale_view = torch.as_strided(
+            fp32_storage,
+            k_scale_shape,
+            (pa_block_stride // _FP32_BYTES, block_size, 1, 1),
+            (key_seg + value_seg) // _FP32_BYTES,
+        )
+        k_scale_view.copy_(k_descale if k_descale.dim() == 4 else k_descale.unsqueeze(-1))
+        return key_view, value_view, k_scale_view
 
 
 def _auto_generate_params(
@@ -225,12 +252,6 @@ class QuantBlockSparseAttnMetadataBuilder:
             sparse_block_size_k=int(sparse_kv_block_size),
             quant_mode=int(quant_mode),
             mask_mode=int(mask_mode),
-            max_seqlen_q=cls.max_seq(
-                cu_seqlens_q, seqused_q, max_seqlen_q or q_fallback
-            ),
-            max_seqlen_kv=cls.max_seq(
-                cu_seqlens_kv, seqused_kv, max_seqlen_kv or kv_fallback
-            ),
             layout_q=layout_q,
             layout_kv=layout_kv,
             layout_sparse_indices=layout_sparse_indices,
@@ -321,8 +342,13 @@ def quant_block_sparse_attn(
             max_seqlen_kv=max_seqlen_kv,
         )
 
-    if key.dim() == 4 and int(quant_mode) != 2:
-        key, value, k_descale = _pack_combined_kv(key, value, k_descale)
+    if key.dim() == 4:
+        if int(quant_mode) == 2:
+            key, value, k_descale, v_descale = _pack_combined_kv(
+                key, value, k_descale, v_descale, quant_mode=2
+            )
+        else:
+            key, value, k_descale = _pack_combined_kv(key, value, k_descale)
     return torch.ops.custom.npu_quant_block_sparse_attn(
         query,
         key,
