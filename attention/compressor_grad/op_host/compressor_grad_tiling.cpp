@@ -10,7 +10,6 @@
 
 /*!
  * \file compressor_grad_tiling.cpp
- * \file compressor_grad_tiling.cpp
  * \brief
  */
 
@@ -656,17 +655,21 @@ ge::graphStatus CheckShapeConsistency(CompressorGradContext &compressorGradConte
                 LogErrorShapeConsistency("dCmpKv", compressorGradContext.dCmpKv.shape, COMPRESSOR_GRAD_DIM_INDEX_1,
                                          "headDim", compressorGradBaseParams.headDim, compressorGradContext.opName) ||
             ge::GRAPH_SUCCESS !=
-                LogErrorShapeConsistency("softmaxScore", compressorGradContext.softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_1,
-                                         "coff*cmp_ratio", coff * compressorGradBaseParams.cmpRatio, compressorGradContext.opName) ||
+                LogErrorShapeConsistency("softmaxScore", compressorGradContext.softmaxScore.shape,
+                                         COMPRESSOR_GRAD_DIM_INDEX_1, "coff*cmp_ratio",
+                                         coff * compressorGradBaseParams.cmpRatio, compressorGradContext.opName) ||
             ge::GRAPH_SUCCESS !=
-                LogErrorShapeConsistency("softmaxScore", compressorGradContext.softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_2,
-                                         "headDim", compressorGradBaseParams.headDim, compressorGradContext.opName) ||
+                LogErrorShapeConsistency("softmaxScore", compressorGradContext.softmaxScore.shape,
+                                         COMPRESSOR_GRAD_DIM_INDEX_2, "headDim",
+                                         compressorGradBaseParams.headDim, compressorGradContext.opName) ||
             ge::GRAPH_SUCCESS !=
-                LogErrorShapeConsistency("kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_1,
-                                         "coff*cmp_ratio", coff * compressorGradBaseParams.cmpRatio, compressorGradContext.opName) ||
+                LogErrorShapeConsistency("kv", compressorGradContext.kv.shape,
+                                         COMPRESSOR_GRAD_DIM_INDEX_1, "coff*cmp_ratio",
+                                         coff * compressorGradBaseParams.cmpRatio, compressorGradContext.opName) ||
             ge::GRAPH_SUCCESS !=
-                LogErrorShapeConsistency("kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_2,
-                                         "headDim", compressorGradBaseParams.headDim, compressorGradContext.opName)) {
+                LogErrorShapeConsistency("kv", compressorGradContext.kv.shape,
+                                         COMPRESSOR_GRAD_DIM_INDEX_2, "headDim",
+                                         compressorGradBaseParams.headDim, compressorGradContext.opName)) {
             return ge::GRAPH_FAILED;
         }
     }
@@ -676,28 +679,35 @@ ge::graphStatus CheckShapeConsistency(CompressorGradContext &compressorGradConte
         compressorGradContext.softmaxScore.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_4 &&
         compressorGradContext.kv.shape->GetStorageShape().GetDimNum() == COMPRESSOR_GRAD_DIM_NUM_4) {
         if (ge::GRAPH_SUCCESS !=
-                LogErrorShapeConsistency("dCmpKv", compressorGradContext.dCmpKv.shape, COMPRESSOR_GRAD_DIM_INDEX_0,
-                                        "batchSize", compressorGradBaseParams.batchSize, compressorGradContext.opName) ||
+                LogErrorShapeConsistency("dCmpKv", compressorGradContext.dCmpKv.shape,
+                                         COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize",
+                                         compressorGradBaseParams.batchSize, compressorGradContext.opName) ||
             ge::GRAPH_SUCCESS !=
-                LogErrorShapeConsistency("dCmpKv", compressorGradContext.dCmpKv.shape, COMPRESSOR_GRAD_DIM_INDEX_2,
-                                         "headDim", compressorGradBaseParams.headDim, compressorGradContext.opName) ||
+                LogErrorShapeConsistency("dCmpKv", compressorGradContext.dCmpKv.shape,
+                                         COMPRESSOR_GRAD_DIM_INDEX_2, "headDim",
+                                         compressorGradBaseParams.headDim, compressorGradContext.opName) ||
             ge::GRAPH_SUCCESS !=
-                LogErrorShapeConsistency("softmaxScore", compressorGradContext.softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_0,
-                                         "batchSize", compressorGradBaseParams.batchSize, compressorGradContext.opName) ||
+                LogErrorShapeConsistency("softmaxScore", compressorGradContext.softmaxScore.shape,
+                                         COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize",
+                                         compressorGradBaseParams.batchSize, compressorGradContext.opName) ||
             ge::GRAPH_SUCCESS !=
-                LogErrorShapeConsistency("softmaxScore", compressorGradContext.softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_2,
-                                         "coff*cmp_ratio", coff * compressorGradBaseParams.cmpRatio, compressorGradContext.opName) ||
+                LogErrorShapeConsistency("softmaxScore", compressorGradContext.softmaxScore.shape,
+                                         COMPRESSOR_GRAD_DIM_INDEX_2, "coff*cmp_ratio",
+                                         coff * compressorGradBaseParams.cmpRatio, compressorGradContext.opName) ||
             ge::GRAPH_SUCCESS !=
-                LogErrorShapeConsistency("softmaxScore", compressorGradContext.softmaxScore.shape, COMPRESSOR_GRAD_DIM_INDEX_3,
-                                         "headDim", compressorGradBaseParams.headDim, compressorGradContext.opName) ||
+                LogErrorShapeConsistency("softmaxScore", compressorGradContext.softmaxScore.shape,
+                                         COMPRESSOR_GRAD_DIM_INDEX_3, "headDim",
+                                         compressorGradBaseParams.headDim, compressorGradContext.opName) ||
             ge::GRAPH_SUCCESS !=
                 LogErrorShapeConsistency("kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_0, "batchSize",
                                          compressorGradBaseParams.batchSize, compressorGradContext.opName) ||
             ge::GRAPH_SUCCESS !=
-                LogErrorShapeConsistency("kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_2,
-                                         "coff*cmp_ratio", coff * compressorGradBaseParams.cmpRatio, compressorGradContext.opName) ||
+                LogErrorShapeConsistency("kv", compressorGradContext.kv.shape,
+                                         COMPRESSOR_GRAD_DIM_INDEX_2, "coff*cmp_ratio",
+                                         coff * compressorGradBaseParams.cmpRatio, compressorGradContext.opName) ||
             ge::GRAPH_SUCCESS !=
-                LogErrorShapeConsistency("kv", compressorGradContext.kv.shape, COMPRESSOR_GRAD_DIM_INDEX_3, "headDim",
+                LogErrorShapeConsistency("kv", compressorGradContext.kv.shape,
+                                         COMPRESSOR_GRAD_DIM_INDEX_3, "headDim",
                                          compressorGradBaseParams.headDim, compressorGradContext.opName)) {
                 return ge::GRAPH_FAILED;
         }
