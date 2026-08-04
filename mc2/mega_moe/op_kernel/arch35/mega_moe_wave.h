@@ -225,13 +225,13 @@ private:
                                    EpilogueTileM, MegaMoeImpl::L1_TILE_N, EnableTopkWeightsPrefetch,
                                    IsInterleaved, IsWaveFlagGrained> &currentEpilogueOp,
         const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx,
-        int32_t &vecSetSyncCom);
+        int32_t &vecSetSyncCom, bool allowWeightL2Bypass);
     template <GmmExpertMode Mode = GmmExpertMode::ROUTED>
     __aicore__ inline void GroupMatmulGmm2(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
-                                           int32_t &vecSetSyncCom);
+                                           int32_t &vecSetSyncCom, bool allowWeightL2Bypass);
     template <GmmExpertMode Mode, GmmWeightLayout Layout>
     __aicore__ inline void GroupMatmulGmm2Impl(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
-                                               int32_t &vecSetSyncCom);
+                                               int32_t &vecSetSyncCom, bool allowWeightL2Bypass);
 
     __gm__ Mc2MoeContext *mc2Context_{nullptr};
     Params params_{};
@@ -2402,7 +2402,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulWith
     BlockEpilogueSwigluMxQuant<ActivationType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
                                EpilogueTileM, MegaMoeImpl::L1_TILE_N, EnableTopkWeightsPrefetch,
                                IsInterleaved, IsWaveFlagGrained> &currentEpilogueOp,
-    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx, int32_t &vecSetSyncCom)
+    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx, int32_t &vecSetSyncCom,
+    bool allowWeightL2Bypass)
 {
     constexpr bool isShared = Mode == GmmExpertMode::SHARED;
     const BlockJobContext &blockJob =
@@ -2430,7 +2431,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulWith
             isWeightNz, GMM1_TILE_M, EpilogueTileM, EnableTopkWeightsPrefetch, isShared, IsInterleaved,
             IsWaveFlagGrained>(
             currentEpilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-            blockJob, state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_, blockMmadContext);
+            blockJob, state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_, blockMmadContext,
+            allowWeightL2Bypass);
     } else {
         constexpr bool isWeightNz = false;
         auto *blockMmadContext =
@@ -2440,14 +2442,16 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulWith
             isWeightNz, GMM1_TILE_M, EpilogueTileM, EnableTopkWeightsPrefetch, isShared, IsInterleaved,
             IsWaveFlagGrained>(
             currentEpilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
-            blockJob, state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_, blockMmadContext);
+            blockJob, state.expertBeforeCnt, expertIdx, gmm1PingPongIdx_, blockMmadContext,
+            allowWeightL2Bypass);
     }
 }
 
 template <TemplateMegaMoeWaveTypeClass>
 template <GmmExpertMode Mode, GmmWeightLayout Layout>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulGmm2Impl(
-    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, int32_t &vecSetSyncCom)
+    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, int32_t &vecSetSyncCom,
+    bool allowWeightL2Bypass)
 {
     constexpr bool isWeightNz = Layout == GmmWeightLayout::NZ;
     constexpr bool isShared = Mode == GmmExpertMode::SHARED;
@@ -2462,7 +2466,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulGmm2
         isWeightNz, isLayered, GMM1_TILE_M, TopkWeightsPrefetch, isShared, GMM1_INTERLEAVED,
         isWaveFlagGrained>(
         params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom, blockJob,
-        state.expertBeforeCnt, gmm2PingPongIdx_, blockMmadContext);
+        state.expertBeforeCnt, gmm2PingPongIdx_, blockMmadContext, allowWeightL2Bypass);
 }
 
 // ===============================================================
@@ -2472,14 +2476,17 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulGmm2
 template <TemplateMegaMoeWaveTypeClass>
 template <GmmExpertMode Mode>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::GroupMatmulGmm2(
-    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, int32_t &vecSetSyncCom)
+    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, int32_t &vecSetSyncCom,
+    bool allowWeightL2Bypass)
 {
     const bool isWeightNz =
         params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
     if (isWeightNz) {
-        GroupMatmulGmm2Impl<Mode, GmmWeightLayout::NZ>(gmmAddrInfo, state, vecSetSyncCom);
+        GroupMatmulGmm2Impl<Mode, GmmWeightLayout::NZ>(
+            gmmAddrInfo, state, vecSetSyncCom, allowWeightL2Bypass);
     } else {
-        GroupMatmulGmm2Impl<Mode, GmmWeightLayout::ND>(gmmAddrInfo, state, vecSetSyncCom);
+        GroupMatmulGmm2Impl<Mode, GmmWeightLayout::ND>(
+            gmmAddrInfo, state, vecSetSyncCom, allowWeightL2Bypass);
     }
 }
 
@@ -2529,11 +2536,13 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave(
                                TopkWeightsPrefetch>(
             gmm1Context_, gmm1Args_, epilogueOp_, gmm1AddrInfo, expertSegmentState,
             gmm1Cursor.expertIdx, expertMGroupOffset, gmm1TilesPerMGroup_);
+        bool isWholeExpert =
+            gmm1Cursor.rowOffsetInExpert == 0U && static_cast<uint64_t>(segmentRowCount) == expertRowCount;
         ControlGmm1SwigluPipelineByMode<QuantOutType, Weight1Type, ActivationType, QuantScaleOutType, false,
                                         GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch,
                                         GMM1_INTERLEAVED, true>(
             gmm1Context_, params_, epilogueOp_, gmm1AddrInfo, expertSegmentState, runtimeState,
-            gmm1Cursor.expertIdx, persistentBlockMmadContext_);
+            gmm1Cursor.expertIdx, persistentBlockMmadContext_, isWholeExpert);
 
         // 行段可能包含多个完整分组，也可能是专家尾部不足 256 行的单个分组。
         processedMGroupCount += MegaMoeImpl::GetMGroupCountForRows(segmentRowCount, GMM1_TILE_M);
@@ -2589,7 +2598,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
             BuildGmm2ExpertSegmentState(gmm2State, gmm2Cursor.rowOffsetInExpert, segmentRowCount);
         UpdateGlobalBuffer<AddrUpdateMode::GMM2>(
             gmm2AddrInfo, expertSegmentState, gmm2Cursor.expertIdx);
-        GroupMatmulGmm2(gmm2AddrInfo, expertSegmentState, vecSetSyncCom);
+        bool isWholeExpert =
+            gmm2Cursor.rowOffsetInExpert == 0U && static_cast<uint64_t>(segmentRowCount) == expertRowCount;
+        GroupMatmulGmm2(gmm2AddrInfo, expertSegmentState, vecSetSyncCom, isWholeExpert);
 
         gmm2Cursor.rowOffsetInExpert = segmentEndRowOffset;
         if (gmm2Cursor.rowOffsetInExpert >= expertRowCount) {
@@ -2771,7 +2782,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedEx
     ControlSharedExpertGmm1SwigluPipeline<QuantOutType, ActivationType, Weight1Type, ActivationType,
                                           QuantScaleOutType, false, GMM1_TILE_M, GMM1_INTERLEAVED, true>(
         sharedGmm1Context_, sharedGmm1Args_, params_, sharedEpilogueOp_, runtimeState,
-        persistentBlockMmadContext_);
+        persistentBlockMmadContext_, true);
     vecSetSyncCom = 0;
     gmm1PingPongIdx_ = 0;
     startBlockIdx_ = 0; // 共享专家 GMM1 修改了 startBlockIdx_，重置后供路由专家 GMM1 使用
@@ -2793,7 +2804,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedEx
             continue;
         }
         UpdateSharedGlobalBuffer<AddrUpdateMode::GMM2>(sharedGmm2AddrInfo, sharedGmm2State, sharedIdx);
-        GroupMatmulGmm2<GmmExpertMode::SHARED>(sharedGmm2AddrInfo, sharedGmm2State, vecSetSyncCom);
+        GroupMatmulGmm2<GmmExpertMode::SHARED>(
+            sharedGmm2AddrInfo, sharedGmm2State, vecSetSyncCom, true);
     }
 }
 

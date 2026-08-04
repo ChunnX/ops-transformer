@@ -176,7 +176,8 @@ template <typename QuantOutType, typename WeightType, typename SwigluOutType, ty
 __aicore__ inline void ControlGmm1SwigluPipelineByMode(
     const Gmm1SwigluContext &context, const Params &gmmParams, BlockEpilogue &epilogueOp,
     const GMMAddrInfo &gmmAddrInfo, const Gmm1ExpertLoopState &state, Gmm1SwigluState &runtimeState,
-    uint32_t expertIdx, void *persistentBlockMmadContext = nullptr)
+    uint32_t expertIdx, void *persistentBlockMmadContext = nullptr,
+    bool allowWeightL2Bypass = false)
 {
     if constexpr (EnableA8W4) {
         MegaMoeImpl::GroupMatmulSwigluQuantA8W4<QuantOutType, WeightType, bfloat16_t, QuantScaleType, QuantScaleType,
@@ -198,7 +199,7 @@ __aicore__ inline void ControlGmm1SwigluPipelineByMode(
                 IsWaveFlagGrained>(
                 epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
                 runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
-                runtimeState.pingpongIdx, persistentContext);
+                runtimeState.pingpongIdx, persistentContext, allowWeightL2Bypass);
         } else {
             MegaMoeImpl::GroupMatmulSwigluQuant<
                 QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType,
@@ -206,7 +207,7 @@ __aicore__ inline void ControlGmm1SwigluPipelineByMode(
                 IsWaveFlagGrained>(
                 epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
                 runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
-                runtimeState.pingpongIdx);
+                runtimeState.pingpongIdx, static_cast<void *>(nullptr), allowWeightL2Bypass);
         }
     } else {
         if (persistentBlockMmadContext != nullptr) {
@@ -222,7 +223,7 @@ __aicore__ inline void ControlGmm1SwigluPipelineByMode(
                 IsWaveFlagGrained>(
                 epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
                 runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
-                runtimeState.pingpongIdx, persistentContext);
+                runtimeState.pingpongIdx, persistentContext, allowWeightL2Bypass);
         } else {
             MegaMoeImpl::GroupMatmulSwigluQuant<
                 QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType,
@@ -230,7 +231,7 @@ __aicore__ inline void ControlGmm1SwigluPipelineByMode(
                 IsWaveFlagGrained>(
                 epilogueOp, gmmParams, state.problemShape, gmmAddrInfo, runtimeState.startBlockIdx,
                 runtimeState.vecSetSyncCom, context.blockJob, static_cast<uint32_t>(state.rowOffset), expertIdx,
-                runtimeState.pingpongIdx);
+                runtimeState.pingpongIdx, static_cast<void *>(nullptr), allowWeightL2Bypass);
         }
     }
 }
