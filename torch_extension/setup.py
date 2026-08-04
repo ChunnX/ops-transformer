@@ -14,6 +14,7 @@ __version__ = "1.0.0"
 __package_name__ = "cann_ops_transformer"
 
 import os
+import shutil
 import setuptools
 
 
@@ -26,6 +27,36 @@ def package_files(directory):
 
 
 src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), __package_name__)
+repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# 算子目录下的 torch_extension 代码（拆分目录）复制进包内对应位置
+_OP_TORCH_EXTENSION_DIRS = {
+    "mhc/mhc_post_backward": "ops",
+}
+
+
+def copy_op_torch_extension():
+    """将拆分到算子目录下的 torch_extension 文件同步到包内。"""
+    for op_dir, pkg_subdir in _OP_TORCH_EXTENSION_DIRS.items():
+        src_te = os.path.join(repo_root, op_dir, "torch_extension")
+        if not os.path.isdir(src_te):
+            continue
+        dst_te = os.path.join(src_path, pkg_subdir)
+        os.makedirs(dst_te, exist_ok=True)
+        for path, dirnames, filenames in os.walk(src_te):
+            dirnames[:] = [d for d in dirnames if d != "__pycache__"]
+            rel = os.path.relpath(path, src_te)
+            dst_dir = os.path.join(dst_te, rel) if rel != "." else dst_te
+            os.makedirs(dst_dir, exist_ok=True)
+            for filename in filenames:
+                if filename.endswith(".pyc"):
+                    continue
+                shutil.copy2(
+                    os.path.join(path, filename), os.path.join(dst_dir, filename)
+                )
+
+
+copy_op_torch_extension()
 
 setuptools.setup(
     name=__package_name__,
