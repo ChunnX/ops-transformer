@@ -67,11 +67,17 @@ constexpr static MicroAPI::CastTrait CAST_FP32_TO_B16 = {
  *
  * Q 和 K 的差别只在 gamma 与输出位置，计算本身完全一样，抽出来给两个 head
  * 循环共用。cos/sin 与 gamma 由调用方在 token 层加载好后按引用传进来。
+ *
+ * 乘加处一律用 MulAddDst（dst = src0 * src1 + dst）替掉 Mul + Add/Sub 两条，
+ * 每 head 省 3 条 ALU（18 -> 15），并省掉 squareHigh / cross 两个中间 RegTensor。
+ * 低半的 RoPE 需要的是 dst -= a*b，而只有加法版，所以调用方在 token 层预先把 sin
+ * 取负一份（sinNeg）传进来——那是每 token 一条，摊到 Hq+Hk 个 head 上可忽略。
  */
 __aicore__ inline void RmsNormRopeOneHead(__ubuf__ bfloat16_t* inHead, __ubuf__ bfloat16_t* outHead,
                                           MicroAPI::RegTensor<float>& gammaLow, MicroAPI::RegTensor<float>& gammaHigh,
                                           MicroAPI::RegTensor<float>& cosValue, MicroAPI::RegTensor<float>& sinValue,
-                                          MicroAPI::MaskReg pFull, uint32_t halfDim, float epsilon, float reciprocal)
+                                          MicroAPI::RegTensor<float>& sinNeg, MicroAPI::MaskReg pFull, uint32_t halfDim,
+                                          float epsilon, float reciprocal)
 {
     MicroAPI::RegTensor<bfloat16_t> xLowB16;
     MicroAPI::RegTensor<bfloat16_t> xHighB16;
@@ -84,11 +90,9 @@ __aicore__ inline void RmsNormRopeOneHead(__ubuf__ bfloat16_t* inHead, __ubuf__ 
 
     // ---- RMSNorm：x / sqrt(mean(x^2) + eps) * gamma，中间量全在 vreg ----
     MicroAPI::RegTensor<float> squareLow;
-    MicroAPI::RegTensor<float> squareHigh;
     MicroAPI::RegTensor<float> rms;
     MicroAPI::Mul(squareLow, xLow, xLow, pFull);
-    MicroAPI::Mul(squareHigh, xHigh, xHigh, pFull);
-    MicroAPI::Add(squareLow, squareLow, squareHigh, pFull);
+    MicroAPI::MulAddDst(squareLow, xHigh, xHigh, pFull); // squareLow += x_hi^2
     // 两个半宽相加后再归约，一次 Reduce 覆盖整个 D
     MicroAPI::ReduceSum(squareLow, squareLow, pFull);
     MicroAPI::Muls(squareLow, squareLow, reciprocal, pFull);
@@ -101,17 +105,14 @@ __aicore__ inline void RmsNormRopeOneHead(__ubuf__ bfloat16_t* inHead, __ubuf__ 
     MicroAPI::Mul(xHigh, xHigh, gammaHigh, pFull);
 
     // ---- MRoPE 旋转（half-split，cos/sin 已由 Gather 合并）----
-    //   out_lo = x_lo * cos - x_hi * sin
+    //   out_lo = x_lo * cos - x_hi * sin  ->  用 sinNeg 把减法折成乘加
     //   out_hi = x_hi * cos + x_lo * sin
     MicroAPI::RegTensor<float> outLow;
     MicroAPI::RegTensor<float> outHigh;
-    MicroAPI::RegTensor<float> cross;
     MicroAPI::Mul(outLow, xLow, cosValue, pFull);
-    MicroAPI::Mul(cross, xHigh, sinValue, pFull);
-    MicroAPI::Sub(outLow, outLow, cross, pFull);
+    MicroAPI::MulAddDst(outLow, xHigh, sinNeg, pFull); // outLow += x_hi * (-sin)
     MicroAPI::Mul(outHigh, xHigh, cosValue, pFull);
-    MicroAPI::Mul(cross, xLow, sinValue, pFull);
-    MicroAPI::Add(outHigh, outHigh, cross, pFull);
+    MicroAPI::MulAddDst(outHigh, xLow, sinValue, pFull); // outHigh += x_lo * sin
 
     MicroAPI::RegTensor<bfloat16_t> outLowB16;
     MicroAPI::RegTensor<bfloat16_t> outHighB16;
@@ -186,6 +187,7 @@ __aicore__ inline void QkRmsNormMropeTileVF(__ubuf__ bfloat16_t* qkvBf16, __ubuf
         for (uint16_t t = 0; t < tokenSize; ++t) {
             MicroAPI::RegTensor<float> cosValue;
             MicroAPI::RegTensor<float> sinValue;
+            MicroAPI::RegTensor<float> sinNeg;
             MicroAPI::RegTensor<float> qGammaLow;
             MicroAPI::RegTensor<float> qGammaHigh;
             MicroAPI::RegTensor<float> kGammaLow;
@@ -196,6 +198,10 @@ __aicore__ inline void QkRmsNormMropeTileVF(__ubuf__ bfloat16_t* qkvBf16, __ubuf
             __ubuf__ float* rawToken = rawCosSin + t * cosSinTokenStride;
             MicroAPI::Gather(cosValue, rawToken, mropeIndex, pFull);
             MicroAPI::Gather(sinValue, rawToken + halfDim, mropeIndex, pFull);
+            // 低半 RoPE 是 out_lo = x_lo*cos - x_hi*sin，而乘加原语只有加法版；
+            // 这里取一次负，让 head 内可以用 MulAddDst 把减法折进乘加。
+            // 每 token 一条，摊到 Hq+Hk 个 head 上可忽略
+            MicroAPI::Muls(sinNeg, sinValue, -1.0f, pFull);
 
             // gamma 按 token 取：und / gen 两份权重在 tile 里已经按 token 展开好
             __ubuf__ float* gammaRow = gammaTile + t * gammaTokenStride;
@@ -208,7 +214,7 @@ __aicore__ inline void QkRmsNormMropeTileVF(__ubuf__ bfloat16_t* qkvBf16, __ubuf
             __ubuf__ bfloat16_t* qOutRow = qOutBf16 + t * qOutTokenStride;
             for (uint16_t h = 0; h < qHeadSize; ++h) {
                 RmsNormRopeOneHead(qInRow + h * headStride, qOutRow + h * headStride, qGammaLow, qGammaHigh, cosValue,
-                                   sinValue, pFull, halfDim, epsilon, reciprocal);
+                                   sinValue, sinNeg, pFull, halfDim, epsilon, reciprocal);
             }
 
             // K 头在同一行 token 内紧跟 Q 头之后
@@ -216,7 +222,7 @@ __aicore__ inline void QkRmsNormMropeTileVF(__ubuf__ bfloat16_t* qkvBf16, __ubuf
             __ubuf__ bfloat16_t* kOutRow = kOutBf16 + t * kOutTokenStride;
             for (uint16_t h = 0; h < kHeadSize; ++h) {
                 RmsNormRopeOneHead(kInRow + h * headStride, kOutRow + h * headStride, kGammaLow, kGammaHigh, cosValue,
-                                   sinValue, pFull, halfDim, epsilon, reciprocal);
+                                   sinValue, sinNeg, pFull, halfDim, epsilon, reciprocal);
             }
 
             // V 头紧跟 K 头之后，不参与 norm/rope：一个 head 恰好一个满 bf16 VL，直接搬
