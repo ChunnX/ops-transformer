@@ -51,6 +51,9 @@ using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTili
 #include "arch35/weight_quant_basic_block/weight_quant_basic_block.h"
 #include "arch35/weight_quant_basic_block/weight_quant_vcv_basic_block.h"
 #include "arch35/weight_quant_basic_block/weight_quant_tiling_key.h"
+#if IS_BLAZE
+#include "arch35/weight_quant_basic_block/gmm_weight_quant_tensor_api_mx_kernel.h"
+#endif
 using WeightQuantBatchMatmulV2::Arch35::A16MXF4_NZKN;
 using WeightQuantBatchMatmulV2::Arch35::MXA8W4_NZNK;
 using WeightQuantBatchMatmulV2::Arch35::QuantType;
@@ -140,6 +143,15 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
         op.Init(x, weight, scale, antiquantScale, antiquantOffset, bias, groupList, perTokenScale, y, &gmmBaseParams_, \
                 &mmTilingData_, tiling, &tPipe);                                                                       \
         op.Process();                                                                                                  \
+    } while (0)
+
+#define INVOKE_GMM_WEIGHT_QUANT_MXA8W4_TENSOR_API_IMPL()                                                              \
+    do {                                                                                                               \
+        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, gmmWeightQuantParam, gmmBaseParams_, tiling);                 \
+        GET_TILING_DATA_MEMBER(GMMWeightQuantTilingData, mmTilingData, mmTilingData_, tiling);                         \
+        GmmWeightQuantTensorApiMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_ANTIQUANT_SCALE, DTYPE_PER_TOKEN_SCALE,          \
+                                         DTYPE_BIAS, DTYPE_Y>(                                                         \
+            x, weight, antiquantScale, bias, groupList, perTokenScale, y, &gmmBaseParams_, &mmTilingData_);            \
     } while (0)
 
 #define INVOKE_GMM_WEIGHT_QUANT_VCV_CONTROLLER_OP_IMPL(templateClass, ...)                                             \
@@ -372,8 +384,12 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                   WQ_A_TRANS == WQGMM_NO_TRANS && TEMPLATE_CUSTOM_SC == WQGMM_MTE2_INNER_SIZE_DYNAMIC_BUF_NUM_4 &&
                   ALGORITHM_SUB_CATEGORY == WQGMM_N_FIRST_TAIL_RESPLIT &&
                   ALGORITHM_CATEGORY == WQGMM_VECTOR_ANTIQUANT) {
+#if IS_BLAZE
+        INVOKE_GMM_WEIGHT_QUANT_MXA8W4_TENSOR_API_IMPL();
+#else
         INVOKE_GMM_WEIGHT_QUANT_MXA8W4_CONTROLLER_OP_IMPL(GMMWeightQuantResplitController, MXA8W4_NZNK,
                                                           VEC_ANTIQUANT_CONFIG_DYNAMIC);
+#endif
     }
 #elif ORIG_DTYPE_ANTIQUANT_SCALE == DT_FLOAT8_E8M0
     if constexpr (W_TYPE == WQGMM_FRACTAL_NZ &&
