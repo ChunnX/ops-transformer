@@ -90,6 +90,8 @@ public:
     // 4D-only 契约门禁: 校验 inputIdx 张量逻辑 shape 恰为 4D [blockNum, blockSize, 1, headDim]
     // (倒数第二维 == 1), 并回传其末维(headDim, 张量自身元素单位)。失败返回 GRAPH_FAILED。
     ge::graphStatus ValidateCache4D(size_t inputIdx, const char *name, int64_t &lastDim);
+    // MX-FP4 模式下校验 stride(fp4元素单位) 必须为偶数, 否则半字节偏移无法表达
+    ge::graphStatus CheckMxfp4EvenStride(int64_t stride, const char *name);
 private:
     gert::TilingContext *context_ = nullptr;
     IndexerQuantCacheTilingData tilingData_;

@@ -111,6 +111,32 @@ TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_mxfp4)
     ExecuteTestCase(optilingContextPara, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
 
+// mode3 MX-FP4: cache headDim(fp4元素)为奇数(129) -> GRAPH_FAILED。
+// FP4每字节打包2个元素, headDim为奇数时逐行起点会交替落在字节高/低半字节, 现有整字节寻址
+// 实现无法表达该偏移, 故直接拒绝而非产出错误数据。
+TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_mxfp4_odd_headdim_rejected)
+{
+    gert::TilingContextPara optilingContextPara("IndexerQuantCache",
+        {
+            {{{2048, 1, 1, 129}, {2048, 1, 1, 129}}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND},
+            {{{2048, 1, 1, 4}, {2048, 1, 1, 4}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+            {{{1024, 128}, {1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1024}, {1024}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND},
+        },
+        {
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"round_scale", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+            {"x_scale", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
+        },
+        nullptr, "Ascend950"
+    );
+    ExecuteTestCase(optilingContextPara, ge::GRAPH_FAILED, std::numeric_limits<uint64_t>::max());
+}
+
 // cache headDim > d (256 > 128) -> 成功 (Reading B: 行可更宽, 只写 d, 其余保留)。
 TEST_F(IndexerQuantCacheTiling, indexer_quant_cache_tiling_cache_wide_headdim_ok)
 {
