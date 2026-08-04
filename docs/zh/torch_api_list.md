@@ -46,6 +46,8 @@
 |[mhc_post](../../torch_extension/cann_ops_transformer/docs/zh/mhc_post.md)|实现MHC Post组件的前向计算，用于Transformer模型中多层残差连接的后处理阶段。该算子将残差矩阵变换与输出状态投影融合为单次计算，避免多次独立算子调用带来的额外开销。|默认确定性实现|-|
 |[mhc_pre_sinkhorn](../../torch_extension/cann_ops_transformer/docs/zh/mhc_pre_sinkhorn.md)|基于一系列计算得到MHC架构中hidden层的$\mathbf{H}'_{\text{res}}$和$\mathbf{H}_{\text{post}}$投影矩阵以及Attention或MLP层的输入矩阵$\mathbf{h}_{\text{in}}$。对$\mathbf{H}'_{\text{res}}$矩阵执行Sinkhorn迭代归一化变换，最终得到双随机矩阵$\mathbf{H}_{\text{res}}$；支持输出中间计算结果，用于反向梯度计算。|默认确定性实现|默认确定性实现|
 |[mixed_quant_sparse_flash_mla](../../torch_extension/cann_ops_transformer/docs/zh/mixed_quant_sparse_flash_mla.md)|量化场景下基于共享KV完成MixedQuantSparseFlashMla稀疏注意力计算。需与`mixed_quant_sparse_flash_mla_metadata`配套使用。|默认确定性实现|默认确定性实现|
+|[moe_init_routing](../../torch_extension/cann_ops_transformer/docs/zh/moe_init_routing.md)|MoE的routing计算，根据moe_gating_top_k_softmax的计算结果做routing处理，支持不量化、静态量化和动态量化模式。|默认确定性实现|默认确定性实现|
+|[moe_re_routing](../../torch_extension/cann_ops_transformer/docs/zh/moe_re_routing.md)|MoE网络中，进行AlltoAll操作从其他卡上拿到需要算的token后，将token按照专家顺序重新排列。支持对topkWeight重排。|默认确定性实现|默认确定性实现|
 |[moe_token_permute](../../torch_extension/cann_ops_transformer/docs/zh/moe_token_permute.md)|根据专家索引扩展并排序token。|默认支持确定性计算。|
 |[qkv_rms_norm_rope_cache_with_k_scale](../../torch_extension/cann_ops_transformer/docs/zh/qkv_rms_norm_rope_cache_with_k_scale.md)|融合Q/K/V拆分、Q/K RMSNorm、RoPE、共享rotation矩阵乘、FP8量化和KV Cache更新，返回更新后的cache副本。|-|默认支持确定性计算。|
 |[quant_flash_attn](../../torch_extension/cann_ops_transformer/docs/zh/quant_flash_attn.md)| 调用`QuantFlashAttn`算子完成MxFP8/HiF8/MxFP4量化场景下的全量化注意力计算，训练推理归一化。|默认支持确定性计算。|
