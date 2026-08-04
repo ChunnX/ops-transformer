@@ -2195,10 +2195,11 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
         OP_LOGE("FusedInferAttentionScore", "tiling context is nullptr!");
         return ge::GRAPH_FAILED;
     }
-
+    OP_LOGD(context->GetNodeName(), "hello wangsong!! TilingFusedInferAttentionScore is %u.", 0);
     if (RouteToFia(context)) {
         return TilingFusedInferAttentionScoreV3(context);
     }
+    OP_LOGD(context->GetNodeName(), "hello wangsong!! TilingFusedInferAttentionScore is %u.", 1);
     
     OP_CHECK_IF(CheckQKV(*context) != ge::GRAPH_SUCCESS,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check query/key/value failed"), return ge::GRAPH_FAILED);
@@ -2234,6 +2235,8 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
     // 是否路由到IFA
     bool usingIFA = IsUsingIFA(*context, inputLayoutStr, queryD, queryS);
     bool usingFAI = IsUsingFAI(*context, inputLayoutStr, queryD);
+    OP_LOGD(context->GetNodeName(), "hello wangsong!! TilingFusedInferAttentionScore IsUsingIFA is %u.", usingIFA);
+    OP_LOGD(context->GetNodeName(), "hello wangsong!! TilingFusedInferAttentionScore IsUsingFAI is %u.", usingFAI);
     if (usingFAI) {
         OP_CHECK_IF(TilingProcess4SplitFuse(context) != ge::GRAPH_SUCCESS,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for split fuse failed"),
