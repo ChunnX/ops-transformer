@@ -911,10 +911,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(
         }
         startRow += intraLayout.chunkRows;
     }
-    if (copyOutMergedLse) {
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
-        SetFlag<HardEvent::MTE3_V>(mte3ToVLseOutId);
-    }
 
     AttentionCommon::StageVec2PartialOAndWait<T>(intraLayout, intraCoreCombineGm, intraWorkspaceIdx,
         stagingMOffset, runInfo.vec2MRealSize, static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb,
