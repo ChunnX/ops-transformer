@@ -11,6 +11,7 @@
 #include <iostream>
 #include <gtest/gtest.h>
 #include "../../../../op_kernel/arch35/mega_moe_tiling.h"
+#include "../../../../op_kernel/arch35/mega_moe_utils.h"
 #include "mc2_tiling_case_executor.h"
 
 namespace MegaMoeUT {
@@ -27,6 +28,22 @@ protected:
         std::cout << "MegaMoeArch35TilingTest TearDown" << std::endl;
     }
 };
+
+static void ExecuteTilingAndCheckMGroupsPerWave(const gert::TilingContextPara &tilingContextPara,
+                                                const Mc2Hcom::MockValues &hcomTopologyMockValues,
+                                                uint64_t expectedTilingKey, uint32_t expectedMGroupsPerWave)
+{
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValues(hcomTopologyMockValues);
+    TilingInfo tilingInfo;
+    bool tilingSucceeded = ExecuteTiling(tilingContextPara, tilingInfo);
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().Reset();
+
+    ASSERT_TRUE(tilingSucceeded);
+    EXPECT_EQ(tilingInfo.tilingKey, expectedTilingKey);
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(MegaMoeTilingData));
+    const auto *tilingData = reinterpret_cast<const MegaMoeTilingData *>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tilingData->mGroupsPerWave, expectedMGroupsPerWave);
+}
 
 TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
 {
@@ -83,7 +100,7 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
     uint64_t expectTilingKey = 16UL;
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+    ExecuteTilingAndCheckMGroupsPerWave(tilingContextPara, hcomTopologyMockValues, expectTilingKey, 32U);
 }
 
 TEST_F(MegaMoeArch35TilingTest, H5120_BS256_FP8E5M2)
@@ -141,7 +158,7 @@ TEST_F(MegaMoeArch35TilingTest, H5120_BS256_FP8E5M2)
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 0UL;
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+    ExecuteTilingAndCheckMGroupsPerWave(tilingContextPara, hcomTopologyMockValues, expectTilingKey, 22U);
 }
 
 TEST_F(MegaMoeArch35TilingTest, H7168_BS512)
@@ -258,6 +275,21 @@ TEST_F(MegaMoeArch35TilingTest, DifferentNConfig)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
     uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+}
+
+TEST_F(MegaMoeArch35TilingTest, TokenGroupSegmentHelpers)
+{
+    EXPECT_EQ(MegaMoeImpl::GetMGroupCountForRows(0U, 256U), 0U);
+    EXPECT_EQ(MegaMoeImpl::GetMGroupCountForRows(256U, 0U), 0U);
+    EXPECT_EQ(MegaMoeImpl::GetMGroupCountForRows(1U, 256U), 1U);
+    EXPECT_EQ(MegaMoeImpl::GetMGroupCountForRows(256U, 256U), 1U);
+    EXPECT_EQ(MegaMoeImpl::GetMGroupCountForRows(257U, 256U), 2U);
+
+    EXPECT_EQ(MegaMoeImpl::GetWaveSegmentRowCount(800U, 0U, 2U, 256U), 512U);
+    EXPECT_EQ(MegaMoeImpl::GetWaveSegmentRowCount(800U, 512U, 2U, 256U), 288U);
+    EXPECT_EQ(MegaMoeImpl::GetWaveSegmentRowCount(800U, 256U, 1U, 256U), 256U);
+    EXPECT_EQ(MegaMoeImpl::GetWaveSegmentRowCount(800U, 800U, 1U, 256U), 0U);
+    EXPECT_EQ(MegaMoeImpl::GetWaveSegmentRowCount(800U, 0U, 1U, 0U), 0U);
 }
 
 } // namespace MegaMoeUT

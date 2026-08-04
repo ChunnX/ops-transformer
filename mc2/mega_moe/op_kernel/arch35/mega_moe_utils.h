@@ -30,21 +30,30 @@ struct TokenRange {
     uint32_t count = 0;
 };
 
-// Return the number of experts in the current wave. A final tail containing
-// strictly less than half a normal wave is absorbed by its preceding wave.
-MEGA_MOE_HOST_DEVICE_INLINE uint32_t GetWaveExpertCount(uint32_t waveBegin, uint32_t expertCount,
-                                                        uint32_t expertsPerWave)
+// 计算单个专家贡献的独立 M 分组数。不同专家使用不同权重，不能合并成一次矩阵乘，
+// 因此不同专家各自不足 rowsPerMGroup 的尾块也必须分别占用一个分组。
+MEGA_MOE_HOST_DEVICE_INLINE uint32_t GetMGroupCountForRows(uint64_t rowCount, uint32_t rowsPerMGroup)
 {
-    if (waveBegin >= expertCount) {
+    if (rowCount == 0U || rowsPerMGroup == 0U) {
         return 0U;
     }
-    uint32_t remainingExperts = expertCount - waveBegin;
-    if (expertsPerWave == 0U || remainingExperts <= expertsPerWave) {
-        return remainingExperts;
+    return static_cast<uint32_t>((rowCount - 1U) / rowsPerMGroup + 1U);
+}
+
+// 从当前专家截取能放入剩余分组预算的最大连续行段。除专家尾部外，segmentStartRow 始终按
+// rowsPerMGroup 对齐，因此本行段向上取整后的分组数正好等于它消耗的调度预算。
+MEGA_MOE_HOST_DEVICE_INLINE uint32_t GetWaveSegmentRowCount(uint64_t expertRowCount, uint32_t segmentStartRow,
+                                                            uint32_t remainingMGroupCount,
+                                                            uint32_t rowsPerMGroup)
+{
+    if (remainingMGroupCount == 0U || rowsPerMGroup == 0U || segmentStartRow >= expertRowCount) {
+        return 0U;
     }
-    uint32_t tailExperts = remainingExperts - expertsPerWave;
-    bool mergeSmallTail = tailExperts < expertsPerWave && 2U * tailExperts < expertsPerWave;
-    return mergeSmallTail ? remainingExperts : expertsPerWave;
+    uint64_t remainingExpertRowCount = expertRowCount - segmentStartRow;
+    uint64_t maxRowCountAllowedByWave = static_cast<uint64_t>(remainingMGroupCount) * rowsPerMGroup;
+    return static_cast<uint32_t>(remainingExpertRowCount < maxRowCountAllowedByWave ?
+                                     remainingExpertRowCount :
+                                     maxRowCountAllowedByWave);
 }
 
 // Balanced contiguous ownership. Every token belongs to exactly one worker;
