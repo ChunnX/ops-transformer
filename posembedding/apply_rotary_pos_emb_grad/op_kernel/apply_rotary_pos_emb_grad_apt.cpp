@@ -42,7 +42,9 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
     GM_ADDR workspace, GM_ADDR tiling)
 {
     if (g_coreType == AIC) return;
-    if (workspace == nullptr) return;
+    if constexpr (DxTilingKey != static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TK_A)) {
+        if (workspace == nullptr) return;
+    }
 
     REGISTER_TILING_DEFAULT(ApplyRopeGradTilingData);
     GET_TILING_DATA_WITH_STRUCT(ApplyRopeGradTilingData, tilingData, tiling);
@@ -80,7 +82,10 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
     if constexpr (DcosFlag) {
         // A template (NO_BROADCAST, N=1): 无广播轴, element-wise mul 直接出结果
         if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TK_A)) {
-            // TODO: ComputeADcosDsin<DTYPE_DY> with dual Q+K paths
+            ApplyRotaryPosEmbGrad::ApplyNoBroadcastDcosDsin<DTYPE_DY> opGrad(
+                &pipe, &tilingData.rotaryXParams);
+            opGrad.Init(grad_query_embed, grad_key_embed, query, key, grad_cos, grad_sin);
+            opGrad.Process();
         } else {
             PipeBarrier<PIPE_ALL>();
             SetSysWorkspace(workspace);

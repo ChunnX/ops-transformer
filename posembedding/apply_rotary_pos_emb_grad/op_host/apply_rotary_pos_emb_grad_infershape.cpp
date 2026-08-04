@@ -37,13 +37,17 @@ static ge::graphStatus InferShapeForApplyRotaryPosEmbGrad(gert::InferShapeContex
 
     gert::Shape* ogq = context->GetOutputShape(OGQ); OP_CHECK_NULL_WITH_CONTEXT(context, ogq);
     gert::Shape* ogk = context->GetOutputShape(OGK); OP_CHECK_NULL_WITH_CONTEXT(context, ogk);
-    gert::Shape* ogc = context->GetOutputShape(OGC); OP_CHECK_NULL_WITH_CONTEXT(context, ogc);
-    gert::Shape* ogs = context->GetOutputShape(OGS); OP_CHECK_NULL_WITH_CONTEXT(context, ogs);
+    gert::Shape* ogc = context->GetOutputShape(OGC);
+    gert::Shape* ogs = context->GetOutputShape(OGS);
 
     *ogq = *gq;
     *ogk = *gk;
-    *ogc = *cs;
-    *ogs = *sn;
+    if (ogc != nullptr) {
+        *ogc = *cs;
+    }
+    if (ogs != nullptr) {
+        *ogs = *sn;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -51,8 +55,12 @@ static graphStatus InferDataTypeForApplyRotaryPosEmbGrad(gert::InferDataTypeCont
 {
     context->SetOutputDataType(OGQ, context->GetInputDataType(IGQ));
     context->SetOutputDataType(OGK, context->GetInputDataType(IGK));
-    context->SetOutputDataType(OGC, context->GetInputDataType(ICS));
-    context->SetOutputDataType(OGS, context->GetInputDataType(ISN));
+    if (context->GetOutputShape(OGC) != nullptr) {
+        context->SetOutputDataType(OGC, context->GetInputDataType(ICS));
+    }
+    if (context->GetOutputShape(OGS) != nullptr) {
+        context->SetOutputDataType(OGS, context->GetInputDataType(ISN));
+    }
     return GRAPH_SUCCESS;
 }
 

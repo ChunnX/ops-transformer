@@ -12,7 +12,7 @@
  * \file apply_rotary_pos_emb_grad_tiling_a_and_b.cpp
  * \brief A template tiling (NO_BROADCAST → Layout=3, DxTilingKey=205)
  *
- * cos == grad_query_embed (N=1 时 B/S/D 全同), 无广播轴
+ * grad_query_embed/grad_key_embed/cos/sin shape 完全一致, 无广播轴
  * MergeDim: B×N×S 合并为 b_, cosb_=b_ (全同, cos 与 dy 一一对应)
  * 参照 rope_grad_regbase_tiling_a_and_b.cpp 的 A 分支
  */
@@ -53,9 +53,10 @@ private:
 
 ge::graphStatus ApplyRopeGradRegBaseTilingClassA::MergeDim()
 {
-    int64_t maxN = (nQ_ > nK_) ? nQ_ : nK_;
-    b_ = b_ * maxN * s_;
-    nQ_ = 1; nK_ = 1; s_ = 1;
+    b_ = b_ * nQ_ * s_;
+    nQ_ = 1;
+    nK_ = 1;
+    s_ = 1;
     // NO_BROADCAST: cos == dy → cosb_ = merged b_
     cosb_ = b_;
     return ge::GRAPH_SUCCESS;
@@ -81,6 +82,12 @@ ge::graphStatus ApplyRopeGradRegBaseTilingClassA::ComputeUbFactor()
     numDAvail /= UB_F;
     ubFactorB_ = std::min(blockFactorB_, numDAvail);
     ubFactorB_ = std::min(ubFactorB_, MAX_COPY_BLOCK_COUNT / dSplitCoef_);
+    ubFactorS_ = 1;
+    ubFactorN_ = 1;
+    ubLoopNumN_ = 1;
+    ubTailFactorN_ = 1;
+    blockNumS_ = 1;
+    blockFactorS_ = 1;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -90,7 +97,6 @@ ge::graphStatus ApplyRopeGradRegBaseTilingClassA::DoOpTiling()
     CHK(SplitCore());
     CHK(ComputeUbFactor());
     CHK(InitTilingData());
-    CHK(TilingReduce());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -114,12 +120,23 @@ void ApplyRopeGradRegBaseTilingClassA::SetTilingData()
     tilingData_->ropeGradParams.usedCoreNum = usedCoreNum_;
     tilingData_->ropeGradParams.coreNum = aicoreParams_.numBlocks;
     tilingData_->ropeGradParams.rotaryMode = rotaryMode_;
+    tilingData_->ropeGradParams.cosb = cosb_;
 }
 
 ge::graphStatus ApplyRopeGradRegBaseTilingClassA::PostTiling()
 {
     SetTilingData();
-    if (dCosFlag_ == 1) SetRotaryXTilingData();
+    tilingData_->rotaryXParams.b = b_;
+    tilingData_->rotaryXParams.s = 1;
+    tilingData_->rotaryXParams.d = d_;
+    tilingData_->rotaryXParams.nQ = 1;
+    tilingData_->rotaryXParams.nK = 1;
+    tilingData_->rotaryXParams.usedCoreNum = usedCoreNum_;
+    tilingData_->rotaryXParams.blockFactorN = blockFactorB_;
+    tilingData_->rotaryXParams.blockTailFactorN =
+        (b_ % blockFactorB_ == 0) ? blockFactorB_ : (b_ % blockFactorB_);
+    tilingData_->rotaryXParams.ubFactorN = ubFactorB_;
+    tilingData_->rotaryXParams.rotaryMode = rotaryMode_;
     SetTilingKeyBlockDim(static_cast<uint32_t>(ApplyDxTilingKey::KEY_A),
                          static_cast<uint32_t>(layout_));
     tilingData_->dCosFlag = dCosFlag_;

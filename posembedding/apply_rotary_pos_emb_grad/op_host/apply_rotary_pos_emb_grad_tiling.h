@@ -143,7 +143,8 @@ private:
     ge::graphStatus CheckShapeLimit();
     ge::graphStatus CheckOptionalInput() const;
     ge::graphStatus CheckShapeDim() const;
-    ge::graphStatus JudgeLayoutByShape(const gert::Shape& dyQShape, const gert::Shape& cosShape);
+    ge::graphStatus JudgeLayoutByShape(
+        const gert::Shape& dyQShape, const gert::Shape& dyKShape, const gert::Shape& cosShape, int64_t layoutVal);
     ge::graphStatus CheckRotaryModeShapeRelation(const int64_t d);
     ge::graphStatus GetInputParam(Ops::Base::ReduceOpInputParam& opInput, uint32_t inputIdx, uint32_t axesIdx);
     ge::graphStatus InitTilingData();

@@ -54,7 +54,7 @@ private:
     GlobalTensor<T> gqGm_, gkGm_, cosGm_, sinGm_, oqGm_, okGm_;
     TQue<QuePosition::VECIN, 1> gInQ_, cosInQ_, sinInQ_;
     TQue<QuePosition::VECOUT, 1> oOutQ_;
-    int64_t blkIdx_, bStart_, bLen_, ubB_, ubN_, D_, dAlign_, dSplit_;
+    int64_t blkIdx_, bStart_, bLen_, ubB_, ubN_, D_, dBuffer_, dSplit_;
 };
 
 template <typename T>
@@ -90,11 +90,11 @@ void ApplyRotaryPosEmbGradA<T>::InitAllBuffer()
 {
     ubB_ = tilingData_->ubFactorB; ubN_ = tilingData_->ubFactorN;
     D_ = tilingData_->d; dSplit_ = HALF_INTERLEAVE_COEF;
-    dAlign_ = CeilAlign<int64_t>(D_ / dSplit_, BLOCK_TYPE_SIZE / sizeof(T)) * dSplit_;
-    pipe_->InitBuffer(gInQ_, DOUBLE_BUFFER, ubB_ * ubN_ * dAlign_ * sizeof(T));
-    pipe_->InitBuffer(oOutQ_, DOUBLE_BUFFER, ubB_ * ubN_ * dAlign_ * sizeof(T));
-    pipe_->InitBuffer(cosInQ_, DOUBLE_BUFFER, ubB_ * dAlign_ * sizeof(T));
-    pipe_->InitBuffer(sinInQ_, DOUBLE_BUFFER, ubB_ * dAlign_ * sizeof(T));
+    dBuffer_ = CeilAlign<int64_t>(D_, BLOCK_TYPE_SIZE / sizeof(T));
+    pipe_->InitBuffer(gInQ_, DOUBLE_BUFFER, ubB_ * ubN_ * dBuffer_ * sizeof(T));
+    pipe_->InitBuffer(oOutQ_, DOUBLE_BUFFER, ubB_ * ubN_ * dBuffer_ * sizeof(T));
+    pipe_->InitBuffer(cosInQ_, DOUBLE_BUFFER, ubB_ * dBuffer_ * sizeof(T));
+    pipe_->InitBuffer(sinInQ_, DOUBLE_BUFFER, ubB_ * dBuffer_ * sizeof(T));
 }
 
 template <typename T>
@@ -137,7 +137,7 @@ void ApplyRotaryPosEmbGradA<T>::CopyInCosAndSin(int64_t pos, int64_t len)
 {
     LocalTensor<T> cU = cosInQ_.AllocTensor<T>();
     LocalTensor<T> sU = sinInQ_.AllocTensor<T>();
-    DataCopyExtParams ep{static_cast<uint16_t>(len * dSplit_), D_ * sizeof(T) / dSplit_, 0, 0, 0};
+    DataCopyExtParams ep{1, static_cast<uint32_t>(len * D_ * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> pp{false, 0, 0, 0};
     DataCopyPad(cU, cosGm_[pos * D_], ep, pp);
     DataCopyPad(sU, sinGm_[pos * D_], ep, pp);
@@ -148,7 +148,7 @@ template <typename T>
 void ApplyRotaryPosEmbGradA<T>::CopyIn(GlobalTensor<T>& src, int64_t pos, int64_t len, int64_t nSize)
 {
     LocalTensor<T> t = gInQ_.AllocTensor<T>();
-    DataCopyExtParams ep{static_cast<uint16_t>(len * dSplit_), D_ * sizeof(T) / dSplit_, 0, 0, 0};
+    DataCopyExtParams ep{1, static_cast<uint32_t>(len * nSize * D_ * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> pp{false, 0, 0, 0};
     DataCopyPad(t, src[pos * nSize * D_], ep, pp);
     gInQ_.EnQue(t);
@@ -158,7 +158,7 @@ template <typename T>
 void ApplyRotaryPosEmbGradA<T>::CopyOut(GlobalTensor<T>& dst, int64_t pos, int64_t len, int64_t nSize)
 {
     LocalTensor<T> s = oOutQ_.DeQue<T>();
-    DataCopyExtParams ep{static_cast<uint16_t>(len * dSplit_), D_ * sizeof(T) / dSplit_, 0, 0, 0};
+    DataCopyExtParams ep{1, static_cast<uint32_t>(len * nSize * D_ * sizeof(T)), 0, 0, 0};
     DataCopyPad(dst[pos * nSize * D_], s, ep);
     oOutQ_.FreeTensor(s);
 }
@@ -168,10 +168,10 @@ void ApplyRotaryPosEmbGradA<T>::Compute(LocalTensor<T>& cU, LocalTensor<T>& sU, 
 {
     LocalTensor<T> in = gInQ_.DeQue<T>();
     LocalTensor<T> out = oOutQ_.AllocTensor<T>();
-    BatchHalfGradAlignVF<T, false>(
+    BatchHalfGradContiguousVF<T, false>(
         (__local_mem__ T*)in.GetPhyAddr(), (__local_mem__ T*)cU.GetPhyAddr(),
         (__local_mem__ T*)sU.GetPhyAddr(), (__local_mem__ T*)out.GetPhyAddr(),
-        1, bL, nL, D_, dAlign_, ubB_, ubN_);
+        1, bL, nL, D_, ubB_, ubN_);
     gInQ_.FreeTensor(in);
     oOutQ_.EnQue(out);
 }
