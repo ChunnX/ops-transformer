@@ -86,8 +86,6 @@ public:
         this->Attr("comm_mode").AttrType(OPTIONAL).String("udma");
         this->Attr("precision_mode").AttrType(OPTIONAL).Int(0);
 
-        this->MC2().HcclGroup("group");
-
         OpAICoreConfig aicoreConfig_950;
         aicoreConfig_950.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)

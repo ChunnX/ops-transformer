@@ -17,6 +17,13 @@
 
 #include "opdev/op_log.h"
 
+enum class NnopbaseHcclServerType : uint32_t {
+    NNOPBASE_HCCL_SERVER_TYPE_MTE = 0,
+    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 1,
+    NNOPBASE_HCCL_SERVER_TYPE_CCU = 2
+};
+extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+
 extern "C" aclnnStatus aclnnInnerAlltoAllMatmulApaceGetWorkspaceSize(
     const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
     const aclTensor *x1Scale, const aclTensor *x2Scale, const aclTensor *commScaleOptional,
@@ -72,6 +79,7 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulApace(void *workspace, uint64_t worksp
 {
     OP_LOGD("aclnnAlltoAllMatmulApace start");
 
+    NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
     aclnnStatus ret = aclnnInnerAlltoAllMatmulApace(workspace, workspaceSize, executor, stream);
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "aclnnInnerAlltoAllMatmulApace failed, ret=%d", ret);
