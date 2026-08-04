@@ -68,7 +68,10 @@ def _normalize_params(params):
     normalized.setdefault("seed", 0)
     normalized.setdefault("sparse_pattern", "sequential")
     normalized.setdefault("block_table_pattern", "sequential")
-    normalized.setdefault("blocknum", None)
+    normalized.setdefault("block_num", None)
+    normalized.setdefault("q_datarange", None)
+    normalized.setdefault("k_datarange", None)
+    normalized.setdefault("v_datarange", None)
     normalized.setdefault("pa_block_padding_bytes", 0)
     normalized.setdefault("p_scale_value", 1.0)
     normalized["output_dtype"] = _torch_dtype(normalized["output_dtype"])
@@ -83,7 +86,7 @@ def _normalize_params(params):
         "sparse_kv_block_size",
         "sparse_count",
         "seed",
-        "blocknum",
+        "block_num",
         "pa_block_padding_bytes",
     ):
         if isinstance(normalized.get(key), float) and normalized[key].is_integer():
@@ -118,6 +121,28 @@ def _source_absmax():
     return max(max(abs(DATA_RANGE_LEFT), abs(DATA_RANGE_RIGHT)), 1.0)
 
 
+def _datarange(case, key, default_low, default_high):
+    value = case.get(key)
+    if value is None:
+        return default_low, default_high
+    if isinstance(value, (int, float)):
+        # 单标量 r：生成均匀 [-r, r] 数据
+        low = high = max(float(value), SCALE_EPSILON)
+        return low, high
+    low = max(float(value[0]), SCALE_EPSILON)
+    high = max(float(value[1]), low)
+    return low, high
+
+
+def _datarange_max(case, key):
+    value = case.get(key)
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return float(value[1])
+
+
 def _log_uniform_amplitude(shape, low, high, generator):
     high = max(float(high), SCALE_EPSILON)
     low = max(min(float(low), high), SCALE_EPSILON)
@@ -141,17 +166,19 @@ def _quant_fp32_to_fp8(tensor, quant_scale):
     return quantized.to(_fp8_dtype()).contiguous()
 
 
-def _quantize_per_token_head(tensor):
+def _quantize_per_token_head(tensor, max_abs=FP8_E4M3_MAX):
+    max_abs = min(float(max_abs), FP8_E4M3_MAX)
     row_max = torch.abs(tensor).amax(dim=-1, keepdim=True)
     row_max = torch.maximum(row_max, torch.tensor(SCALE_EPSILON, dtype=torch.float32, device=tensor.device))
-    quant_scale = FP8_E4M3_MAX / row_max
+    quant_scale = max_abs / row_max
     return _quant_fp32_to_fp8(tensor, quant_scale), (1.0 / quant_scale).squeeze(-1).contiguous()
 
 
-def _quantize_value_per_head(tensor):
+def _quantize_value_per_head(tensor, max_abs=FP8_E4M3_MAX):
+    max_abs = min(float(max_abs), FP8_E4M3_MAX)
     head_max = torch.abs(tensor).amax(dim=(0, 1, 3), keepdim=True)
     head_max = torch.maximum(head_max, torch.tensor(SCALE_EPSILON, dtype=torch.float32, device=tensor.device))
-    quant_scale = FP8_E4M3_MAX / head_max
+    quant_scale = max_abs / head_max
     value = _quant_fp32_to_fp8(tensor, quant_scale)
     return value, (1.0 / quant_scale).reshape(tensor.shape[2]).contiguous()
 
@@ -333,22 +360,41 @@ def _make_fullquant_tensors(case, cu_seqlens_q, seqused_kv, generator):
     amp_high = _source_absmax()
 
     if layout_q == "NTD":
-        query_source = _rand_fullquant_source((n1, total_q, head_dim), amp_high * 0.01, amp_high, generator)
+        query_source = _rand_fullquant_source(
+            (n1, total_q, head_dim),
+            *_datarange(case, "q_datarange", amp_high * 0.01, amp_high),
+            generator,
+        )
     else:
-        query_source = _rand_fullquant_source((total_q, n1, head_dim), amp_high * 0.01, amp_high, generator)
-    query, q_scale = _quantize_per_token_head(query_source)
+        query_source = _rand_fullquant_source(
+            (total_q, n1, head_dim),
+            *_datarange(case, "q_datarange", amp_high * 0.01, amp_high),
+            generator,
+        )
+    q_max = _datarange_max(case, "q_datarange") or FP8_E4M3_MAX
+    query, q_scale = _quantize_per_token_head(query_source, q_max)
 
     # KV 实际长度以 seqused_kv 为准（与 kernel 读取一致），不再依赖 cu_seqlens_kv 构造扁平化 k_scale
-    dense_key_source = _rand_fullquant_source((batch, case["S2"], n2, head_dim), 1.0, amp_high, generator)
-    dense_key, dense_k_scale_base = _quantize_per_token_head(dense_key_source)
+    dense_key_source = _rand_fullquant_source(
+        (batch, case["S2"], n2, head_dim),
+        *_datarange(case, "k_datarange", 1.0, amp_high),
+        generator,
+    )
+    k_max = _datarange_max(case, "k_datarange") or FP8_E4M3_MAX
+    dense_key, dense_k_scale_base = _quantize_per_token_head(dense_key_source, k_max)
     dense_k_scale = torch.zeros((batch, case["S2"], n2), dtype=torch.float32)
     for batch_idx in range(batch):
         kv_len = int(seqused_kv[batch_idx].item())
         dense_k_scale[batch_idx, :kv_len] = dense_k_scale_base[batch_idx, :kv_len]
 
     dense_value_source = _rand_fullquant_source(
-        (batch, case["S2"], n2, head_dim), 1.0, amp_high, generator, amp_shape=(batch, 1, n2, 1))
-    dense_value, v_scale = _quantize_value_per_head(dense_value_source)
+        (batch, case["S2"], n2, head_dim),
+        *_datarange(case, "v_datarange", 1.0, amp_high),
+        generator,
+        amp_shape=(batch, 1, n2, 1),
+    )
+    v_max = _datarange_max(case, "v_datarange") or FP8_E4M3_MAX
+    dense_value, v_scale = _quantize_value_per_head(dense_value_source, v_max)
     v_scale = v_scale.contiguous()
 
     p_scale = torch.tensor([float(case["p_scale_value"])], dtype=torch.float32)
@@ -864,7 +910,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
 
     block_table = _make_block_table(
         batch, s2, sparse_kv_block_size, case["block_table_pattern"], rng,
-        blocknum=case.get("blocknum"),
+        blocknum=case.get("block_num"),
         q_block_num=math.ceil(case["S1"] / case["sparse_q_block_size"]),
     )
     case["data_generation_mode"] = "fia_style_fullquant"

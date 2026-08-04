@@ -58,18 +58,37 @@ def check_valid_param(params):
     if not isinstance(pa_block_padding_bytes, int) or pa_block_padding_bytes != 0:
         raise ValueError(f"pa_block_padding_bytes should be 0 for segmented KV cache, got {pa_block_padding_bytes}")
 
-    blocknum = params.get("blocknum")
-    if blocknum is not None:
-        if isinstance(blocknum, float) and blocknum.is_integer():
-            blocknum = int(blocknum)
-            params["blocknum"] = blocknum
-        if not isinstance(blocknum, int) or blocknum <= 0:
-            raise ValueError(f"blocknum should be a positive int or None, got {blocknum}")
+    block_num = params.get("block_num")
+    if block_num is not None:
+        if isinstance(block_num, float) and block_num.is_integer():
+            block_num = int(block_num)
+            params["block_num"] = block_num
+        if not isinstance(block_num, int) or block_num <= 0:
+            raise ValueError(f"block_num should be a positive int or None, got {block_num}")
+
+    for key in ("q_datarange", "k_datarange", "v_datarange"):
+        value = params.get(key)
+        if value is None:
+            continue
+        if isinstance(value, (list, tuple)):
+            if len(value) != 2:
+                raise ValueError(f"{key} should be a (low, high) pair or a positive scalar, got {value}")
+            low = float(value[0])
+            high = float(value[1])
+            if low <= 0 or high < low:
+                raise ValueError(f"{key} should satisfy 0 < low <= high, got {value}")
+            params[key] = (low, high)
+        elif isinstance(value, (int, float)):
+            if value <= 0:
+                raise ValueError(f"{key} should be a positive number or None, got {value}")
+            params[key] = (float(value), float(value))
+        else:
+            raise ValueError(f"{key} should be a (low, high) pair, a positive scalar, or None, got {value}")
 
     if params["layout_q"] not in ("TND", "NTD"):
         raise ValueError(f"unsupported layout_q: {params['layout_q']}")
 
-    if params.get("layout_kv") != "PA_BNSD":
+    if params.get("layout_kv") != "PA_BNSD" and params.get("layout_out") != "PA_BNBD":
         raise ValueError(f"unsupported layout_kv: {params.get('layout_kv')}")
 
     if params.get("layout_sparse_indices") != "B_N_Qb_Kb":
