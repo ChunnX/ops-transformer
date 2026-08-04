@@ -222,7 +222,7 @@ public:
         customMemHandle_ = customMemHandle;
 
         HcclComm hcclHandle;
-        AcquireHcclHandle(group, hcclHandle);
+        GetHcclHandle(group, hcclHandle);
 
         CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
 
@@ -237,7 +237,7 @@ public:
         ASCEND_LOGI("Get CommContext Tensor Success, group: %s, ccl_buffer_size: %d", group.c_str(), cclBufferSize);
     }
 
-    void AcquireHcclHandle(const std::string &group, HcclComm &hcclHandle)
+    void GetHcclHandle(const std::string &group, HcclComm &hcclHandle)
     {
         auto aclnnRet = HcomGetCommHandleByGroupFunc(group.c_str(), &hcclHandle);
         TORCH_CHECK(aclnnRet == HCCL_SUCCESS, "Get HCCL handle failed, group: ", group.c_str(), ", ret: ", aclnnRet);
