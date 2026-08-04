@@ -204,15 +204,18 @@ ge::graphStatus CalcWorkSpace(CompressorGradContext &compressorGradContext, Comp
     uint32_t cmpSize = coff * cmpRatio * headDim;
     uint32_t totalHeadDim = coff * headDim;
     uint32_t coffCoef = 2 / coff;
-    uint32_t cubeMBaseSize = M_BASE_SIZE * coffCoef;
+    uint32_t dealScNum = 128 / cmpRatio;
+    uint32_t groupDealScNum = dealScNum * coffCoef;
+    uint32_t groupRowStride = groupDealScNum * cmpRatio + (coff - 1) * cmpRatio;  // 与 kernel 一致
     uint32_t dbRatio = compressorGradWorkspaceParams.dbWorkspaceRatio;
 
-    uint64_t apeWorkSpaceSize = static_cast<uint64_t>(dbRatio) * groupNum * cmpSize *coffCoef;
+    // 与 kernel 的 workspace 指针链逐分区对齐（元素数，FP32）:
+    //   ape / dWkv / dWgate 单缓冲（v3 kernel 无 dbIdx）；dX / x / dXCache 按 dbRatio=2 双缓冲
+    uint64_t apeWorkSpaceSize = static_cast<uint64_t>(groupNum) * cmpSize * coffCoef;
     uint64_t dXWorkSpaceSize = static_cast<uint64_t>(dbRatio) * cubeCoreNum * (M_BASE_SIZE * 2) * hiddenSize;
-    uint64_t dWeightWorkSpaceSize = static_cast<uint64_t>(dbRatio) * groupNum * totalHeadDim * hiddenSize;
+    uint64_t dWeightWorkSpaceSize = static_cast<uint64_t>(groupNum) * totalHeadDim * hiddenSize;
     // dWkv / dWGate 各占一份 dWeightWorkSpaceSize
-    uint64_t xWorkSpaceSize = static_cast<uint64_t>(dbRatio) * groupNum *
-        (cubeMBaseSize + (coff - 1) * cmpRatio) * hiddenSize;
+    uint64_t xWorkSpaceSize = static_cast<uint64_t>(dbRatio) * groupNum * groupRowStride * hiddenSize;
     uint64_t dXCacheWorkSpaceSize = static_cast<uint64_t>(dbRatio) * cmpRatio * hiddenSize;
 
     workspaceSize = libapiSize;
@@ -991,22 +994,25 @@ static ge::graphStatus CompressorGradTilingFunc(gert::TilingContext *context)
     tilingData->groupSize = compressorGradBaseParams.headDim / 128;
     tilingData->groupNum = compressorGradContext.blockDim / tilingData->groupSize;
     tilingData->cubeMBaseSize = 128 * (2 / coff);
-    tilingData->groupDealScNum = tilingData->cubeMBaseSize / compressorGradBaseParams.cmpRatio;
+    // coff=1 时每 group 每轮只布置 2*dealScNum 块（保证子槽 dealScNum*cmpRatio <= 128，不超 L1/L0 物理行）
     tilingData->dealScNum = 128 / compressorGradBaseParams.cmpRatio;
+    tilingData->groupDealScNum = tilingData->dealScNum * (2 / coff);
     tilingData->totalScNumPerRound = tilingData->groupNum * tilingData->groupDealScNum;
-    tilingData->dbRowCnt = tilingData->groupNum *
-        (tilingData->cubeMBaseSize + (coff - 1) * compressorGradBaseParams.cmpRatio);
+    // xArrangeGm 每 group 实际行数 = 数据行(gs 块 × cr) + coff=2 时 1 个 cr 头部（紧凑布局）
+    tilingData->groupRowStride = tilingData->groupDealScNum * compressorGradBaseParams.cmpRatio +
+                                 (coff - 1) * compressorGradBaseParams.cmpRatio;
+    tilingData->dbRowCnt = tilingData->groupNum * tilingData->groupRowStride;
     // ── 编译期派生（TilingKey 折叠值，与 kernel 内联算术恒等）──
     tilingData->coffCoef = 2 / coff;
     tilingData->dDealSize = 128 / coff;
     tilingData->mDealSize = 128 * coff;
-    // ── workspace 分区（FP32 元素数，dbRatio=2 双缓冲）──
-    tilingData->dapeWsSize = 2 * tilingData->groupNum * tilingData->cmpSize * tilingData->coffCoef;
+    // ── workspace 分区（FP32 元素数；ape/dW 单缓冲，dX/x/dXCache 双缓冲 dbRatio=2）──
+    tilingData->dapeWsSize = tilingData->groupNum * tilingData->cmpSize * tilingData->coffCoef;
     tilingData->dXWsSize = 2 * tilingData->cubeCoreNum * 256 * compressorGradBaseParams.hiddenSize;
-    tilingData->dWWeightWsSize = 2 * tilingData->groupNum * tilingData->totalHeadDim * compressorGradBaseParams.hiddenSize;
-    tilingData->xWsSize = 2 * tilingData->groupNum *
-        (tilingData->cubeMBaseSize + (coff - 1) * compressorGradBaseParams.cmpRatio) * compressorGradBaseParams.hiddenSize;
-    tilingData->dXCacheWsSize = 2 * compressorGradBaseParams.cmpRatio * compressorGradBaseParams.headDim;
+    tilingData->dWWeightWsSize = tilingData->groupNum * tilingData->totalHeadDim * compressorGradBaseParams.hiddenSize;
+    tilingData->xWsSize = 2 * tilingData->groupNum * tilingData->groupRowStride *
+        compressorGradBaseParams.hiddenSize;
+    tilingData->dXCacheWsSize = 2 * compressorGradBaseParams.cmpRatio * compressorGradBaseParams.hiddenSize;
 
     context->SetTilingKey(compressorGradContext.tilingKey);
     // context->SetBlockDim(compressorGradContext.blockDim);
