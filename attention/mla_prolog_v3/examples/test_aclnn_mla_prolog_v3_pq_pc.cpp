@@ -357,10 +357,15 @@ int main()
     // 创建actualSeqLen aclTensor
     ret = CreateAclTensorND(actualSeqLenShape, &actualSeqLenDeviceAddr, &actualSeqLenHostAddr, aclDataType::ACL_INT32, &actualSeqLen);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    // 设置actualSeqLen数据为1
-    ret =
-        FillHostDataAndCopy(actualSeqLenDeviceAddr, actualSeqLenHostAddr, GetShapeSize(actualSeqLenShape), int32_t(1));
-    CHECK_RET(ret == 0, return ret);
+    // 设置actualSeqLen数据为prefix sum [2,5,6,8]
+    int32_t *actualSeqLenData = static_cast<int32_t *>(actualSeqLenHostAddr);
+    int32_t prefixSum[4] = {2, 5, 6, 8};
+    for (int64_t i = 0; i < actualSeqLenShape[0]; ++i) {
+        actualSeqLenData[i] = prefixSum[i];
+    }
+    ret = aclrtMemcpy(actualSeqLenDeviceAddr, sizeof(int32_t) * actualSeqLenShape[0], actualSeqLenHostAddr,
+                    sizeof(int32_t) * actualSeqLenShape[0], ACL_MEMCPY_HOST_TO_DEVICE);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy actualSeqLen to device failed. ERROR: %d\n", ret); return ret);
     // 创建query aclTensor
     ret = CreateAclTensorND(queryShape, &queryDeviceAddr, &queryHostAddr, aclDataType::ACL_BF16, &query);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
