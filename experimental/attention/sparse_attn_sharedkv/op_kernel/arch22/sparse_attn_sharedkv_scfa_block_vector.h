@@ -646,18 +646,81 @@ __aicore__ inline void SASVectorBlock<SAST>::CopyOutMrgeResult(int64_t mte2Size,
     if (mte2Size <= mte3Size) {
         return;
     }
+
+    // 1. 同步等待上一次 DMA 完成（与原来一致）
     SetFlag<AscendC::HardEvent::MTE2_MTE3>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
     WaitFlag<AscendC::HardEvent::MTE2_MTE3>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
 
-    DataCopyExtParams dataCopyParams;
-    dataCopyParams.blockCount = mte2Size - mte3Size;
-    dataCopyParams.blockLen = constInfo.headDim * sizeof(KV_T);
-    dataCopyParams.srcStride = 0;
-    dataCopyParams.dstStride = 0;
+    // 2. 源数据：UB 中的 ND 格式（来自 inputBuff2）
+    uint32_t ubOffset = mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T);
+    LocalTensor<KV_T> srcNdUb = kvMergUb_[ubOffset];
+    uint32_t totalRows = mte2Size - mte3Size;  // 最大不超过 16（因阈值控制）
 
-    DataCopyPad(kvMergeGm_[runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM * 512 * 512 +
-                           (s2GmStartOffset + mte3Size) * constInfo.headDim],
-                kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T)], dataCopyParams);
+    // ============ 3. 判断是否在 AIV 核上 ============
+    if (ASCEND_IS_AIV) {
+        // ---------- AIV 路径：UB(ND) -> UB(NZ) -> GM(NZ) ----------
+
+        // 3.1 使用 tmpBuff1 作为 NZ 格式的临时输出缓冲区（物理隔离，防止覆盖源数据）
+        LocalTensor<KV_T> dstNzUb = tmpBuff1.Get<KV_T>();
+
+        // 3.2 调用 common.h 中的 Nd2NzInAiv 进行 UB 内重排
+        //     参数：目标UB，源UB，实际行数，实际列数（headDim）
+        Nd2NzInAiv<KV_T>(dstNzUb, srcNdUb, totalRows, constInfo.headDim);
+        PipeBarrier<PIPE_V>();   // 确保重排完成
+
+        // ===== 新增：尾块零填充 =====
+        if (totalRows % 16 != 0) {
+            uint32_t padRows = 16 - (totalRows % 16);
+            uint32_t padOffset = totalRows * constInfo.headDim;
+            // 将 dstNzUb 中尾块空洞部分置零
+            AscendC::Duplicate(dstNzUb[padOffset], (KV_T)0, padRows * constInfo.headDim);
+            PipeBarrier<PIPE_V>();
+        }
+
+        // 3.3 计算 NZ 格式的 GM 目标地址（列主序布局）
+        uint32_t currentAbsRow = s2GmStartOffset + mte3Size;        // 当前绝对行索引
+        uint32_t tileRow = currentAbsRow / 16;                     // 宏块行号
+        uint32_t rowInTile = currentAbsRow % 16;                   // 宏块内行偏移
+        uint32_t numTileRows = (constInfo.kvSeqSize + 15) / 16;   // 总宏块数（固定，由预留最大长度决定）
+        constexpr uint32_t MICRO_TILE_ELEMS = 16 * 16;             // 每个 16x16 微块元素数
+
+        // GM 基地址（第 tileRow 个宏块的第 rowInTile 行的起始位置）
+        uint64_t baseGmOffset = tileRow * MICRO_TILE_ELEMS + rowInTile * constInfo.headDim;
+
+        // 3.4 配置带步长的 DMA 搬运参数（按列微块跳跃）
+        //     列微块数：headDim / 16（例如 512/16 = 32）
+        uint32_t numTileCols = constInfo.headDim / 16;
+        // 每个列微块包含 totalRows 行 × 16 列 个元素（字节数）
+        uint32_t blockLenBytes = totalRows * 16 * sizeof(KV_T);
+        // 目标端步长：从当前列微块结束地址到下一个列微块起始地址的偏移
+        // 下一个列微块基址 = (tileCol+1) * numTileRows * MICRO_TILE_ELEMS * sizeof(KV_T)
+        // 当前块结束地址 = 当前基址 + blockLenBytes
+        // 步长 = 下一个基址 - 当前块结束地址
+        uint32_t colTileBytes = numTileRows * MICRO_TILE_ELEMS * sizeof(KV_T);
+        uint32_t dstStride = colTileBytes - blockLenBytes;  // 可能为 0，但通常 >0
+
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = numTileCols;       // 重复次数（列微块数）
+        dataCopyParams.blockLen = blockLenBytes;       // 每次搬运的字节数
+        dataCopyParams.srcStride = 0;                  // UB 内紧凑连续，无需跳转
+        dataCopyParams.dstStride = dstStride;          // GM 上跨列微块的跳跃步长
+
+        // 3.5 执行 DMA 写出
+        DataCopyPad(kvNzWorkspaceGm_[baseGmOffset], dstNzUb, dataCopyParams);
+
+    } else {
+        // ---------- 非 AIV 回退路径：保持 ND 格式直拷（与原逻辑一致） ----------
+        uint64_t ndGmOffset = (s2GmStartOffset + mte3Size) * constInfo.headDim;
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = 1;
+        dataCopyParams.blockLen = (totalRows * constInfo.headDim * sizeof(KV_T) + 31) / 32;
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = 0;
+        DataCopyPad(kvMergeGm_[ndGmOffset], srcNdUb, dataCopyParams);
+    }
+
+    // 4. 标记写出完成（与原来一致）
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
 }
 
 // b s1 k
@@ -703,6 +766,7 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec0L(const RunInfo &runInfo
             needWaitMte3ToMte2 = true;
         }
     }
+
     return;
 }
 
