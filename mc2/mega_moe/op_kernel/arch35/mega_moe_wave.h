@@ -106,6 +106,7 @@ private:
     __aicore__ inline void ProcessSharedExpertGmm1();
     __aicore__ inline void ProcessMoeExpertStages();
     __aicore__ inline void ProcessSharedExpertGmm2();
+    __aicore__ inline void ProcessGmmPipeline();
     __aicore__ inline ExpertRowCursor DispatchWaveAndGetEndCursor(
         ExpertRowCursor &dispatchWaveCursor, uint64_t &dispatchExpertRowCount);
     __aicore__ inline void SetGmm1ProblemState(
@@ -189,6 +190,15 @@ private:
     static constexpr uint32_t EPILOGUE_TILE_M =
         TopkWeightsPrefetch ? L1_TILE_M_128 : L1_TILE_M_256;
 
+    template <bool IsWeightNz>
+    using WaveGmmConfig =
+        GmmKernel::Config<false, COMBINE_NO_QUANT, QuantOutType, QuantOutType, bfloat16_t,
+                          QuantScaleOutType, QuantScaleOutType, IsWeightNz, TopkWeightsPrefetch,
+                          false, false, GMM1_INTERLEAVED, true>;
+    template <bool IsWeightNz>
+    using WaveBlockMmadContext =
+        GmmKernel::PersistentBlockMmadContext<typename WaveGmmConfig<IsWeightNz>::BlockMmad>;
+
     using BlockEpilogue =
         BlockEpilogueSwigluMxQuant<ActivationType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true,
                                    EPILOGUE_TILE_M, L1_TILE_N, TopkWeightsPrefetch, GMM1_INTERLEAVED>;
@@ -197,6 +207,7 @@ private:
                                    L1_TILE_M_256, L1_TILE_N, false, GMM1_INTERLEAVED>;
     BlockEpilogue epilogueOp_;
     SharedBlockEpilogue sharedEpilogueOp_;
+    void *persistentBlockMmadContext_ = nullptr;
 };
 
 template <TemplateMegaMoeWaveTypeClass>
@@ -673,7 +684,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedEx
                                        QuantScaleOutType, false, GMM1_TILE_M,
                                        GMM1_INTERLEAVED, true>(
             gmm1Config_, params_, sharedEpilogueOp_, gmmAddrInfo, problemShape,
-            runtimeState, sharedExpertIdx);
+            runtimeState, sharedExpertIdx, persistentBlockMmadContext_);
     }
     EndSync<GMM1_INTERLEAVED>(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
     vecSetSyncCom = 0;
@@ -695,7 +706,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedEx
                                  QuantScaleOutType, false, false, GMM1_TILE_M,
                                  TopkWeightsPrefetch, GMM1_INTERLEAVED, true>(
             gmm2Config_, params_, sharedWeightTensorListAddrs_, state, gmmAddrInfo,
-            runtimeState, sharedExpertIdx);
+            runtimeState, sharedExpertIdx, persistentBlockMmadContext_);
     }
 }
 
@@ -924,7 +935,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm1Wave(
                             false, GMM1_TILE_M, EPILOGUE_TILE_M, TopkWeightsPrefetch,
                             GMM1_INTERLEAVED, true>(
             gmm1Config_, params_, epilogueOp_, gmm1AddrInfo, gmm1ProblemState,
-            runtimeState, gmm1WaveCursor.expertIdx);
+            runtimeState, gmm1WaveCursor.expertIdx, persistentBlockMmadContext_);
 
         processedMGroupCount += GetMGroupCountForRows(waveRowCount, GMM1_TILE_M);
         gmm1WaveCursor.rowOffsetInExpert = waveEndRowOffsetInExpert;
@@ -978,7 +989,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2Wave
                               Weight1Type, QuantScaleOutType, false, false,
                               GMM1_TILE_M, TopkWeightsPrefetch,
                               GMM1_INTERLEAVED, true>(
-            gmm2Config_, params_, gmm2AddrInfo, gmm2ProblemState, runtimeState);
+            gmm2Config_, params_, gmm2AddrInfo, gmm2ProblemState, runtimeState,
+            persistentBlockMmadContext_);
 
         gmm2WaveCursor.rowOffsetInExpert = waveEndRowOffsetInExpert;
         if (gmm2WaveCursor.rowOffsetInExpert >= expertRowCount) {
@@ -1106,6 +1118,29 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessMoeExper
 }
 
 template <TemplateMegaMoeWaveTypeClass>
+__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmmPipeline()
+{
+    if (sharedExpertNum_ > 0) {
+        ProcessSharedExpertGmm1();
+    }
+
+    // 等待所有 rank 完成本轮输入准备，再读取远端 dispatch 数据。
+    CrossRankSyncInWorldSize();
+
+    // 按 wave 执行 MoE 专家 Dispatch、GMM1、SwiGLU、GMM2 与 Combine。
+    ProcessMoeExpertStages();
+
+    if constexpr (g_coreType == AIV) {
+        PipeBarrier<PIPE_ALL>();
+        SyncAll<true>();
+    }
+
+    if (sharedExpertNum_ > 0) {
+        ProcessSharedExpertGmm2();
+    }
+}
+
+template <TemplateMegaMoeWaveTypeClass>
 __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Process()
 {
     // 保存入口时的溢出模式，并初始化输入准备阶段使用的 UB。
@@ -1130,25 +1165,21 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Process()
     }
     SyncAll<false>(); // AIC 等待 AIV 完成输入准备与 flag 清零后再进入计算
 
-    // 可选：提前执行共享专家 GMM1 + SwiGLU，复用与 MoE 专家相同的计算实现。
-    if (sharedExpertNum_ > 0) {
-        ProcessSharedExpertGmm1();
-    }
-
-    // 等待所有 rank 完成本轮输入准备，再读取远端 dispatch 数据。
-    CrossRankSyncInWorldSize();
-
-    // 阶段 2：按 wave 执行 MoE 专家 Dispatch、GMM1、SwiGLU、GMM2 与 Combine。
-    ProcessMoeExpertStages();
-
-    if constexpr (g_coreType == AIV) {
-        PipeBarrier<PIPE_ALL>();
-        SyncAll<true>();
-    }
-
-    // 可选：MoE 专家流水结束后执行共享专家 GMM2。
-    if (sharedExpertNum_ > 0) {
-        ProcessSharedExpertGmm2();
+    if constexpr (g_coreType == AIC) {
+        const bool useWeightNz =
+            params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
+        if (useWeightNz) {
+            WaveBlockMmadContext<true> blockMmadContext;
+            persistentBlockMmadContext_ = &blockMmadContext;
+            ProcessGmmPipeline();
+        } else {
+            WaveBlockMmadContext<false> blockMmadContext;
+            persistentBlockMmadContext_ = &blockMmadContext;
+            ProcessGmmPipeline();
+        }
+        persistentBlockMmadContext_ = nullptr;
+    } else {
+        ProcessGmmPipeline();
     }
 
     // 阶段 3：等待所有 rank 的 Combine 发送完成，再执行本卡 Unpermute。

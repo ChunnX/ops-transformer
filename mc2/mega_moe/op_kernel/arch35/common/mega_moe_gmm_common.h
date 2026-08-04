@@ -61,6 +61,7 @@ template <bool IsA8W4, uint8_t CombineQuantMode, typename ElementA, typename Ele
           bool TopkWeightsPrefetch = false, bool IsShared = false,
           bool IsLayered = false, bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
 struct Config {
+    static constexpr bool IS_A8W4 = IsA8W4;
     static constexpr bool IS_SHARED = IsShared;
     static constexpr bool TOPK_WEIGHTS_PREFETCH = TopkWeightsPrefetch;
     using ElementAType = ElementA;
@@ -194,6 +195,36 @@ struct Config {
         return layouts;
     }
 };
+
+// BlockMmad 由外层完整 GMM 流程持有，避免在 expert/wave 边界反复构造和析构。
+template <typename T>
+struct PersistentBlockMmadContext {
+    T blockMmad;
+    uint32_t initializedK = 0U;
+    bool initialized = false;
+};
+
+// GMM1 与 GMM2 的逻辑 K 可能不同；仅在首次使用或 K 改变时刷新初始化配置。
+template <typename PersistentContext, typename ProblemConfig>
+__aicore__ inline void EnsurePersistentBlockMmadInitialized(PersistentContext &context,
+                                                            const ProblemConfig &config)
+{
+    using BlockMmad = decltype(context.blockMmad);
+    using KernelConfig = typename ProblemConfig::KernelConfig;
+    if (!context.initialized || context.initializedK != config.k) {
+        typename BlockMmad::BlockShape l0TileShape{config.tileM, L1_TILE_N, L0_TILE_K, 0};
+        typename BlockMmad::ProblemShape matmulShape{
+            config.m, KernelConfig::IS_A8W4 ? config.outputN : config.n, config.k, 0};
+        if constexpr (KernelConfig::IS_A8W4) {
+            context.blockMmad.Init(matmulShape, l0TileShape, config.l1Params);
+        } else {
+            constexpr bool enableL0CPingPong = false;
+            context.blockMmad.Init(matmulShape, l0TileShape, config.l1Params, false, enableL0CPingPong);
+        }
+        context.initializedK = config.k;
+        context.initialized = true;
+    }
+}
 
 // 保存 GMM 执行所需的全部 tensor；当 bias 或 C 无实际存储时，调用方传入零地址占位 tensor。
 template <typename Scheduler, typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
