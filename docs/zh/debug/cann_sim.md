@@ -30,7 +30,7 @@ CANN Simulator集成在CANN toolkit包里，参考[环境部署](../install/quic
 
 # 快速开始
 
-下面以[add_example](../../../examples/add_example/)为例，对算子仿真进行详细说明
+下面以[add_example](../../../examples/add_example/ )为例，对算子仿真进行详细说明
 
 ## 算子编译
 
@@ -52,7 +52,6 @@ cannsim record ./test_aclnn_add_example -s Ascend950 --gen-report
 ```
 
 仿真工具执行日志文件在examples/add_example/examples/build/bin/cannsim_*目录，执行日志文件为cannsim.log。
-
 
 从仿真工具日志文件可以看到示例中的打印信息：
 
