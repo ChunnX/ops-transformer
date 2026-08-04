@@ -165,7 +165,7 @@
 ## 约束说明
 
 - SparseLightningIndexerKLLossGradMetadata算子需要与SparseLightningIndexerKLLossGrad算子配套使用。
-- B（Batch）表示输入样本批量大小。
+- B（Batch）表示输入样本批量大小，S1表示layout_q=BSND时，q shape中的S轴的大小。
 - layout_q、layout_k须相同。
 - 参数cu_seqlens_q、cu_seqlens_k要求其值为当前Batch与前序Batch有效token数的累加值，第一个元素固定为0，后一个元素的值必须大于等于前一个元素的值。
 - 参数seqused_q、seqused_k要求其值表示每个Batch中的有效token数。
@@ -173,7 +173,7 @@
 - mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../docs/zh/context/sparse_mode_introduction.md)。
 - Ascend 950PR/Ascend 950DT约束：
   - layout_q=BSND场景
-    - seqused_q和max_seqlen_q至少需要传入1个。
+    - max_seqlen_q必须传入S1的值。
   - layout_q=TND场景
     - cu_seqlens_q必需传入。
 

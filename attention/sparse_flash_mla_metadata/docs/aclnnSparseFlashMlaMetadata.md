@@ -684,40 +684,41 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
   - aclnnSparseFlashMlaMetadata默认采用确定性实现，相同输入多次调用结果一致。
 
 - 通用规格约束
-  - B（Batch）表示输入样本批量大小。
+  - B（Batch）表示输入样本批量大小，S1表示layoutQOptional=BSND时，q shape中的S轴的大小，T1表示layoutQOptional=TND时，q shape中的T轴的大小，S2表示layoutKvOptional=BSND时，ori_kv shape中的S轴的大小，S3表示layoutKvOptional=BSND时，cmp_kv shape中的S轴的大小，N2表示ori_kv、cmp_kv shape中的N轴的大小。
   - 参数cuSeqlensQOptional、cuSeqlensOriKvOptional、cuSeqlensCmpKvOptional要求其值为当前Batch与前序Batch有效token数的累加值，第一个元素固定为0，后一个元素的值必须大于等于前一个元素的值。
   - 参数sequsedQOptional、sequsedOriKvOptional、sequsedCmpKvOptional要求其值表示每个Batch中的有效token数。
   - layoutQOptional和layoutKvOptional组合仅支持"BSND"/"BSND"、"TND"/"TND"、"BSND"/"PA_BBND"、"TND"/"PA_BBND"；非PA_BBND场景下layoutQOptional和layoutKvOptional必须一致。
   - 参数cmpResidualKvOptional需满足cmpResidualKvOptional[i] < cmpRatio。
 <!-- npu="950" id12 -->
 - Ascend 950PR/Ascend 950DT约束：
-  - hasOriKv为true，且oriTopk不为0且oriMaskMode为0时，oriTopkLengthOptional必须传入。
-  - hasCmpKv为true，且cmpTopk不为0且cmpMaskMode为0时，cmpTopkLengthOptional必须传入。
+  - hasOriKv为true时，oriTopk大于0认为ori_kv部分是稀疏的，oriTopk为0则认为ori_kv部分是非稀疏的。
+  - hasCmpKv为true时，cmpTopk大于0认为cmp_kv部分是稀疏的，cmpTopk为0则认为cmp_kv部分是非稀疏的。
+  - hasOriKv为true，oriTopk不为0且oriMaskMode为0时，oriTopkLengthOptional必须传入，此时取oriMaskMode规则与oriTopkLengthOptional元素的最小值作为当前q token对应的ori_kv的有效seqlen，其他ori_kv稀疏场景取oriMaskMode规则与oriTopk的最小值作为当前q token对应的ori_kv的有效seqlen。
+  - hasCmpKv为true，cmpTopk不为0且cmpMaskMode为0时，cmpTopkLengthOptional必须传入，此时取cmpMaskMode规则与cmpTopkLengthOptional元素的最小值作为当前q token对应的cmp_kv的有效seqlen，其他cmp_kv稀疏场景取cmpMaskMode规则与cmpTopk的最小值作为当前q token对应的cmp_kv的有效seqlen。
   - layoutQOptional=BSND场景
-    - sequsedQOptional和maxSeqlenQ至少需要传入1个。
-    - oriTopk不为0且传入oriTopkLengthOptional时，或cmpTopk不为0且传入cmpTopkLengthOptional时，maxSeqlenQ必须传入query shape中的S值。
+    - maxSeqlenQ必须传入S1的值。
   - layoutKvOptional=BSND场景
-    - hasOriKv为true，且oriTopk为0时，sequsedOriKvOptional和maxSeqlenOriKv至少需要传入1个。
-    - hasCmpKv为true，且cmpTopk为0时，sequsedCmpKvOptional和maxSeqlenCmpKv至少需要传入1个。
+    - hasOriKv为true时，maxSeqlenOriKv必须传入S2的值。
+    - hasCmpKv为true时，maxSeqlenCmpKv必须传入S3的值。
   - layoutQOptional=TND场景
     - cuSeqlensQOptional必须传入。
   - layoutKvOptional=TND场景
     - hasOriKv为true时，cuSeqlensOriKvOptional必须传入。
-    - hasCmpKv为true，cuSeqlensCmpKvOptional必须传入。
+    - hasCmpKv为true时，cuSeqlensCmpKvOptional必须传入。
   - layoutKvOptional=PA_BBND场景
     - hasOriKv为true，且oriMaskMode不为0或oriTopk为0时，sequsedOriKvOptional必须传入。
     - hasCmpKv为true，且cmpMaskMode不为0或cmpTopk为0时，sequsedCmpKvOptional必须传入。
   - Batch取值规则
     - layoutQOptional为BSND时，优先通过sequsedQOptional的shape推导batch，sequsedQOptional未传入则通过batch_size获取batch数。
     - layoutQOptional为TND时，优先通过sequsedQOptional的shape推导batch，sequsedQOptional未传入则通过cuSeqlensQOptional的shape推导batch。
-  - Query Seqlen取值规则
+  - Q Seqlen取值规则
     - layoutQOptional为BSND时，优先通过sequsedQOptional中的元素获取seqlen，sequsedQOptional未传入则通过maxSeqlenQ获取seqlen。
     - layoutQOptional为TND时，优先通过sequsedQOptional中的元素获取seqlen，sequsedQOptional未传入则通过cuSeqlensQOptional中的元素获取seqlen。
   - Ori_kv Seqlen取值规则
-    - layoutKvOptional为BSND时，优先通过sequsedOriKvOptional中的元素获取seqlen，sequsedOriKvOptional未传入则通过maxSeqlenOriKv获取seqlen，若maxSeqlenOriKv未传入且oriTopk不为0，则通过oriTopkLengthOptional或oriTopk获取seqlen（oriTopkLengthOptional优先级高于oriTopk）。
+    - layoutKvOptional为BSND时，优先通过sequsedOriKvOptional中的元素获取seqlen，sequsedOriKvOptional未传入则通过maxSeqlenOriKv获取seqlen，若maxSeqlenOriKv未传入且oriTopk不为0，则通过oriTopkLengthOptional或oriTopk获取seqlen。
     - layoutKvOptional为TND时，优先通过sequsedOriKvOptional中的元素获取seqlen，sequsedOriKvOptional未传入则通过cuSeqlensOriKvOptional中的元素获取seqlen。
   - Cmp_kv Seqlen取值规则
-    - layoutKvOptional为BSND时，优先通过sequsedCmpKvOptional中的元素获取seqlen，sequsedCmpKvOptional未传入则通过maxSeqlenCmpKv获取seqlen，若maxSeqlenCmpKv未传入且cmpTopk不为0，则通过cmpTopkLengthOptional或cmpTopk获取seqlen（cmpTopkLengthOptional优先级高于cmpTopk）。
+    - layoutKvOptional为BSND时，优先通过sequsedCmpKvOptional中的元素获取seqlen，sequsedCmpKvOptional未传入则通过maxSeqlenCmpKv获取seqlen，若maxSeqlenCmpKv未传入且cmpTopk不为0，则通过cmpTopkLengthOptional或cmpTopk获取seqlen。
     - layoutKvOptional为TND时，优先通过sequsedCmpKvOptional中的元素获取seqlen，sequsedCmpKvOptional未传入则通过cuSeqlensCmpKvOptional中的元素获取seqlen。
 <!-- end id12 -->
 <!-- npu="A3" id13 -->

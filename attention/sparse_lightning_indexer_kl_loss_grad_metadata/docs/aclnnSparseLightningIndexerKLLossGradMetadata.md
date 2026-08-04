@@ -380,7 +380,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
 ## 约束说明
 
   - aclnnSparseLightningIndexerKLLossGradMetadata为确定性实现，确定性计算配置不会改变其输出规则。
-  - B（Batch）表示输入样本批量大小。
+  - B（Batch）表示输入样本批量大小，S1表示layoutQOptional=BSND时，q shape中的S轴的大小。
   - 参数cuSeqlensQOptional、cuSeqlensKOptional要求其值为当前Batch与前序Batch有效token数的累加值，第一个元素固定为0，后一个元素的值必须大于等于前一个元素的值。
   - 参数sequsedQOptional、sequsedKOptional要求其值表示每个Batch中的有效token数。
   - 参数cmpResidualKOptional需满足cmpResidualKOptional[i] < cmpRatio。
@@ -389,7 +389,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
   <!-- npu="950" id10 -->
   - Ascend 950PR/Ascend 950DT约束：
     - layoutQOptional=BSND场景
-      - sequsedQOptional和maxSeqlenQ至少需要传入1个。
+      - maxSeqlenQ必须传入S1的值。
     - layoutQOptional=TND场景
       - cuSeqlensQOptional必需传入。
   <!-- end id10 -->
