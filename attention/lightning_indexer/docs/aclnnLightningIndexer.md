@@ -412,14 +412,17 @@ aclnnStatus aclnnLightningIndexer(
 
 ## 约束说明
 
-- 参数query中的N支持小于等于64，key的N支持1。
+- 参数key的N支持1。
 - headdim支持128。
 - block_size取值为16的倍数，最大支持1024。
 - 参数query、key的数据类型应保持一致。
 - 参数weights不为`float32`时，参数query、key、weights的数据类型应保持一致。
 - Ascend 950PR/Ascend 950DT：
+  - query的N仅支持8、16、24、32、64。
+  - 参数weights不支持`float32`类型。
   - 仅在layout_key为PA_BSND时，key支持0轴非连续。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - query的N支持小于等于64。
   - key不支持非连续。
 
 ## 调用示例
