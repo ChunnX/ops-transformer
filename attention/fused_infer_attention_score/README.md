@@ -179,3 +179,5 @@
   | 调用方式  | 样例代码                                                     | 说明                                                         |
   | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
   | aclnn接口 | [test_aclnn_FusedInferAttentionScoreV5](./examples/arch35/test_aclnn_fused_infer_attention_score_v5.cpp) | 通过[aclnnFusedInferAttentionScoreV5](./docs/aclnnFusedInferAttentionScoreV5.md)调用FusedInferAttentionScore算子 |
+
+  - `FLOAT4_E2M1`、key/value mode 6、PageAttention NZ 的数值校验样例见 [test_aclnn_fused_infer_attention_score_v5_antiquant_mxfp4_pa_nz.cpp](./examples/arch35/test_aclnn_fused_infer_attention_score_v5_antiquant_mxfp4_pa_nz.cpp)。它验证 FP16 对称、FP16 非对称和 BF16 非对称三种调用；按 [编译与运行样例](../../docs/zh/invocation/quick_op_invocation.md) 先安装当前源码构建的 custom 包后，设置 `FIA_CUSTOM_OPP_PATH=/path/to/vendors/custom_transformer` 并执行 `scripts/ci/run_fia_mxfp4_pa_nz_validation.sh` 可完成完整校验。

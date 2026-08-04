@@ -1665,7 +1665,8 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
         - ter-token叠加per-head模式并使用page attention管理scale/offset, shape应为(blockNum, N, blockSize)
         - key支持per-channel叠加value支持per-token，keyAntiquantScale的shape应为(1, N, 1, D)、(1, N, D)、(1, H)、(N, 1, D)、(N, D)、(H)
         - key支持per-channel叠加value支持per-token，valueAntiquantScale的shape应为(1, B, >=KV_S)、(B, >=KV_S)
-        - per-token-group，shape应为(1, B, N, >=KV_S, D/32)
+        - 非PagedAttention的per-token-group，shape应为(1, B, N, >=KV_S, D/32)
+        - PagedAttention且KV cache为NZ时，FLOAT4_E2M1的per-token-group（keyAntiquantMode和valueAntiquantMode均为6）shape应为(P, N, D/32, Bs)，其中P为物理KV block总数，Bs为blockSize。该布局按blockTable选择物理页，不能使用(B, N, S, D/32)的token-major布局。
     - 入参key和value应满足以下条件：
       - 入参的数据类型应满足以下条件：
         - per-tensor模式，其支持的数据类型为INT8
@@ -1700,8 +1701,8 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - 入参keyAntiquantOffset和valueAntiquantOffset应满足以下条件：
       - 传入keyAntiquantOffset时，必须传入valueAntiquantOffset
       - 传入valueAntiquantOffset时，必须传入keyAntiquantOffset
-      - 当key/value的数据类型为FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1时，不支持offset，不能传入keyAntiquantOffset
-      - 当key/value的数据类型为FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1时，不支持offset，不能传入valueAntiquantOffset
+      - 当key/value的数据类型为FLOAT8_E4M3FN、HIFLOAT8时，不支持offset，不能传入keyAntiquantOffset和valueAntiquantOffset。
+      - 当key/value的数据类型为FLOAT4_E2M1时，仅PagedAttention、KV cache为NZ且keyAntiquantMode/valueAntiquantMode均为6的per-token-group场景支持可选offset；key/value offset必须同时传入，dtype必须与query一致，shape必须与对应scale一致，即(P, N, D/32, Bs)。其余FLOAT4_E2M1场景不支持offset。
   - 全量化场景
     - Decode MLA全量化
       - dequantScaleQuery、keyAntiquantScale、valueAntiquantScale需同时存在
@@ -1743,7 +1744,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - tensor shape应满足以下条件：
         - per-token模式，shape的最后一维应大于等于maxBlockNumPerBatch * blockSize
         - per-token叠加per-head模式，shape的最后一维应大于等于maxBlockNumPerBatch * blockSize
-        - per-token-group模式，shape的倒数第二维应大于等于maxBlockNumPerBatch * blockSize
+        - per-token-group模式仅支持NZ KV cache，keyAntiquantScale和valueAntiquantScale的shape必须均为(P, N, D/32, Bs)，其中P为物理KV block总数，Bs为blockSize；可选的key/value offset遵循相同shape。
     - 不支持合并rope
   - 全量化场景
     - Decode MLA全量化

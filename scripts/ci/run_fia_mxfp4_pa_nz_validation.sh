@@ -10,11 +10,9 @@
 # -----------------------------------------------------------------------------------------------------------
 # Build and run the reproducible validation gates for FIA MXFP4 mode-6 PA_NZ.
 #
-# It intentionally separates three levels of proof:
-#   1. Python contract/address oracle;
-#   2. Ascend950 kernel compilation and Arch35 host/tiling gtest cases;
-#   3. an externally supplied device numerical command, when available.
-# The script never reports device numerical success unless that command ran.
+# The final gate is an ACLNN direct-call example, not a caller-supplied command.
+# It executes the newly built custom operator and compares NPU output with a CPU
+# golden for FP16 symmetric, FP16 asymmetric, and BF16 asymmetric PA_NZ cases.
 
 set -euo pipefail
 
@@ -24,18 +22,8 @@ readonly SOC="${SOC:-ascend950}"
 readonly JOBS="${JOBS:-8}"
 readonly REF_TEST="${REPO_ROOT}/attention/fused_infer_attention_score/tests/ut/op_host/arch35/test_mxfp4_pa_nz_reference.py"
 readonly GTEST_FILTER="FusedInferAttentionScore/FusedInferAttentionScoreArch35TilingTest.param/FusedInferAttentionScore_950_mxfp4_pa_nz_*"
-
-require_device=false
-for argument in "$@"; do
-    case "${argument}" in
-        --require-device) require_device=true ;;
-        *)
-            echo "unknown argument: ${argument}" >&2
-            echo "usage: $0 [--require-device]" >&2
-            exit 64
-            ;;
-    esac
-done
+readonly EXAMPLE_NAME="fused_infer_attention_score_v5_antiquant_mxfp4_pa_nz"
+readonly VENDOR_NAME="${FIA_VENDOR_NAME:-custom}"
 
 if [[ "${SOC}" != "ascend950" ]]; then
     echo "This change is Arch35-only; set SOC=ascend950." >&2
@@ -74,30 +62,41 @@ find_host_ut() {
     printf '%s\n' "${found[0]}"
 }
 
+require_custom_package() {
+    # build.sh --run_example ... cust links and dispatches through this directory.
+    # It must be the custom package produced from the same checkout, for example:
+    #   /work/custom_opp/vendors/custom_transformer
+    local custom_opp_path="${FIA_CUSTOM_OPP_PATH:-${ASCEND_CUSTOM_OPP_PATH%%:*}}"
+    if [[ -z "${custom_opp_path}" ]]; then
+        echo "Set FIA_CUSTOM_OPP_PATH to the installed custom vendor directory, e.g." >&2
+        echo "  /work/custom_opp/vendors/${VENDOR_NAME}_transformer" >&2
+        exit 2
+    fi
+    if [[ ! -f "${custom_opp_path}/op_api/lib/libcust_opapi.so" ]]; then
+        echo "${custom_opp_path} is not an installed ${VENDOR_NAME}_transformer custom package." >&2
+        exit 2
+    fi
+    export ASCEND_CUSTOM_OPP_PATH="${custom_opp_path}:${ASCEND_CUSTOM_OPP_PATH:-}"
+    export LD_LIBRARY_PATH="${custom_opp_path}/op_api/lib:${LD_LIBRARY_PATH:-}"
+    printf 'Using custom operator package: %s\n' "${custom_opp_path}"
+}
+
 load_cann_env
 
-echo '[1/4] PA_NZ producer/address/formula oracle'
+echo '[1/5] PA_NZ producer/address/formula oracle'
 python3 "${REF_TEST}"
 
-echo '[2/4] Ascend950 FIA kernel compilation'
+echo '[2/5] Ascend950 FIA kernel compilation'
 bash "${REPO_ROOT}/build.sh" --opkernel --soc="${SOC}" --ops="${OP_NAME}" -j"${JOBS}"
 
-echo '[3/4] Build Arch35 FIA host tiling UT without auto-executing the full suite'
+echo '[3/5] Build Arch35 FIA host tiling UT without auto-executing the full suite'
 bash "${REPO_ROOT}/build.sh" --ophost_test --soc="${SOC}" --ops="${OP_NAME}" --noexec -j"${JOBS}"
 
-echo '[4/4] Run only the four MXFP4 PA_NZ host/tiling cases'
+echo '[4/5] Run only the four MXFP4 PA_NZ host/tiling cases'
 HOST_UT="$(find_host_ut)"
 "${HOST_UT}" --gtest_filter="${GTEST_FILTER}" --gtest_color=yes
 
-if [[ -n "${FIA_DEVICE_TEST_CMD:-}" ]]; then
-    echo 'Running caller-provided device numerical test command'
-    bash -lc "${FIA_DEVICE_TEST_CMD}"
-elif [[ "${require_device}" == true ]]; then
-    echo 'FIA_DEVICE_TEST_CMD is required for --require-device.' >&2
-    echo 'It must execute a device test with non-identity blockTable, cross-page partial segment,' >&2
-    echo 'G>=2, N>=2, symmetric plus FP16/BF16 asymmetric offsets.' >&2
-    exit 2
-else
-    echo 'Host and compile gates passed. Device numerical test was not requested.'
-    echo 'For release evidence, rerun with --require-device and FIA_DEVICE_TEST_CMD=<device-test-command>.'
-fi
+echo '[5/5] ACLNN direct PA_NZ numerical example (custom package)'
+require_custom_package
+bash "${REPO_ROOT}/build.sh" --run_example "${OP_NAME}" eager cust --vendor_name="${VENDOR_NAME}" --soc="${SOC}" \
+    --example_name="${EXAMPLE_NAME}"

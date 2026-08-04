@@ -399,3 +399,14 @@ The oracle SHALL first reconstruct logical scale/offset from final PA-NZ `[P,N,G
 - K and V with different parameter values;
 - non-PA mode-6 regression;
 - expected rejection of BNBD, BBH, invalid `[P,N,G,Bs]`, invalid offset dtype and `D % 32 != 0`.
+
+The target-environment numerical gate is the direct ACLNN example
+`attention/fused_infer_attention_score/examples/arch35/test_aclnn_fused_infer_attention_score_v5_antiquant_mxfp4_pa_nz.cpp`.
+It uses `B=2`, `N=2`, `D=128`, `G=4`, `Bs=128`, `P=4`, actual KV lengths 130/129, and
+`blockTable=[[2,0],[3,1]]`. It executes FP16 symmetric, FP16 asymmetric and BF16 asymmetric calls. The KV cache
+is physical NZ `[P,N,D/16,Bs,16]`; K/V scales and optional offsets are independently filled in final
+`[P,N,G,Bs]` order with values unique by `(p,n,g,u)`, including negative offsets. Its CPU golden follows logical
+tokens through `blockTable`, exercises both packed FP4 nibbles, applies the BF16 antiquant arithmetic, and compares
+the returned output. The wrapper `scripts/ci/run_fia_mxfp4_pa_nz_validation.sh` invokes this example through
+`build.sh --run_example ... cust` and requires the caller to point `FIA_CUSTOM_OPP_PATH` at the custom package
+built from this exact checkout; it must never fall back to an installed stale `opapi_transformer` library.

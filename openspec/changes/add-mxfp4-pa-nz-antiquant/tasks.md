@@ -26,9 +26,10 @@
 
 ## 5. Tests and acceptance evidence
 
-- [ ] 5.1 Add a producer-side/reference helper that visibly executes `[B,N,S,G] -> [P,N,Bs,G] -> [P,N,G,Bs]` for scale and offset independently; unit-test its coordinates with a non-identity `blockTable`.
-- [ ] 5.2 Add a CPU/PyTorch oracle that reconstructs logical per-token-group values from final PA-NZ storage through `blockTable`, decodes both FP4 nibbles, converts operands according to the BF16 reference rule, and applies the symmetric/asymmetric formula.
-- [ ] 5.3 Add FIA symmetric FP16, asymmetric FP16 and asymmetric BF16 PA-NZ cases with `B>=2`, `N>=2`, `D>=64`, non-monotonic physical pages, cross-page `copyTotalS`, and a non-32-aligned tail.
-- [ ] 5.4 Use values distinct by `(p,n,g,u)` for K scale, V scale, K offset and V offset; include negative offsets so a wrong page/group, a missing Add or K/V alias is observable.
-- [ ] 5.5 Add FIA negative and regression tests: BNBD/BBH rejection, logical/token-major/flattened parameter shape rejection, bad offset dtype, `D % 32 != 0`, and unchanged non-PA mode 6 symmetric behavior.
-- [ ] 5.6 Compile the FIA target route in the target CANN environment, execute the full interface/correctness matrix, and record build logs, test commands, exit codes and numerical tolerances before declaring completion.
+- [x] 5.1 Add a producer-side/reference helper that visibly executes `[B,N,S,G] -> [P,N,Bs,G] -> [P,N,G,Bs]` for scale and offset independently; unit-test its coordinates with a non-identity `blockTable`.
+- [x] 5.2 Add an independent direct-example CPU oracle that reconstructs logical per-token-group values from final PA-NZ storage through `blockTable`, decodes both packed FP4 nibbles, applies BF16 operand arithmetic, and applies the symmetric/asymmetric formula.
+- [x] 5.3 Add FIA symmetric FP16, asymmetric FP16 and asymmetric BF16 PA-NZ direct calls with `B>=2`, `N>=2`, `D>=64`, non-monotonic physical pages, cross-page `copyTotalS`, and a non-32-aligned tail.
+- [x] 5.4 Use values distinct by `(p,n,g,u)` for K scale, V scale, K offset and V offset; include negative offsets so a wrong page/group, a missing Add or K/V alias is observable.
+- [x] 5.5 Add FIA negative and regression tests: BNBD/BBH rejection, logical/token-major/flattened parameter shape rejection, bad offset dtype, `D % 32 != 0`, and unchanged non-PA mode 6 symmetric behavior.
+- [x] 5.6 Add a one-command validation wrapper that builds the Arch35 kernel and host UT, then invokes the direct ACLNN example against an explicitly supplied custom package. It must fail rather than silently test an installed, stale operator package.
+- [ ] 5.7 Compile the direct ACLNN example in the target CANN environment and execute the full interface/correctness matrix. Record build logs, test commands, exit codes and numerical tolerances before declaring completion.
