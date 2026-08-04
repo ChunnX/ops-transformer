@@ -13,7 +13,6 @@
  * \brief
  */
 
-
 #include <vector>
 #include <map>
 #include <algorithm>
@@ -67,6 +66,7 @@ constexpr uint32_t BIAS1_INDEX = 8;          // GMM1 的 bias（OPTIONAL）
 constexpr uint32_t BIAS2_INDEX = 9;          // GMM2 的 bias（OPTIONAL）
 constexpr uint32_t X_ACTIVE_MASK_INDEX = 10; // token 活跃掩码（OPTIONAL）
 constexpr uint32_t SCALES_INDEX = 11;        // 额外 scale（OPTIONAL）
+constexpr uint32_t MASK_BUFFER_INDEX = 18;   // rank 通信掩码（OPTIONAL）
 
 // 输出 tensor 索引
 constexpr uint32_t OUTPUT_Y_INDEX = 0;                 // 输出 y，shape = [M, K]
@@ -389,6 +389,22 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
                     OP_LOGE(K_INNER_DEBUG, "CheckNumMaxTokensPerRankAttr failed."), return GRAPH_FAILED);
     info.numMaxTokensPerRank = static_cast<uint32_t>(*numMaxTokensPerRankPtr);
 
+    // Rank mask is an A3-only capability.
+    std::string socVersion = mc2tiling::GetSocVersion(context);
+    auto maskBuffer = context->GetOptionalInputTensor(MASK_BUFFER_INDEX);
+    OP_TILING_CHECK(socVersion != "Ascend910_93" && maskBuffer != nullptr,
+                    OP_LOGE(K_INNER_DEBUG, "mask_buffer is supported on A3 only."), return GRAPH_FAILED);
+    if (maskBuffer != nullptr) {
+        auto maskShape = context->GetOptionalInputShape(MASK_BUFFER_INDEX);
+        auto maskDesc = context->GetOptionalInputDesc(MASK_BUFFER_INDEX);
+        OP_TILING_CHECK(maskShape == nullptr || maskDesc == nullptr,
+                        OP_LOGE(K_INNER_DEBUG, "mask_buffer shape/desc is null."), return GRAPH_FAILED);
+        OP_TILING_CHECK(maskShape->GetStorageShape().GetDimNum() != ONE_DIM ||
+                            maskShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(info.epWorldSize),
+                        OP_LOGE(K_INNER_DEBUG, "mask_buffer shape must be [ep_world_size]."), return GRAPH_FAILED);
+        OP_TILING_CHECK(maskDesc->GetDataType() != ge::DT_BOOL,
+                        OP_LOGE(K_INNER_DEBUG, "mask_buffer dtype must be bool."), return GRAPH_FAILED);
+    }
     // 9. activation
     OP_TILING_CHECK(CheckActivationAttr(activationPtr) != ge::GRAPH_SUCCESS,
                     OP_LOGE(K_INNER_DEBUG, "CheckActivationAttr failed."), return GRAPH_FAILED);
@@ -1263,8 +1279,8 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
                                                  // cumsum + ptrSumBeforeRankForDispatch + ptrSumBeforeRankForCombine
                            paddedExpertNumAligned * (info.worldSize + 2UL) * sizeof(int32_t) +
                            info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t) + // GMM1&2 Out
-                           info.maxRecvTokenNum * std::max(info.K, k2) * swigluSize + // swiglu out & quantizedToken
-                           info.worldSize * sizeof(int32_t) * 16UL;                   // sync
+                           info.maxRecvTokenNum * std::max(info.K, k2) * swigluSize +      // swiglu out & quantizedToken
+                           info.worldSize * sizeof(int32_t) * 16UL;                        // sync
         if (info.isQuantRouting) {
             megeMoeWorkspace += info.maxRecvTokenNum * sizeof(float) * 2UL; // perTokenScale GMM1&2
         }
