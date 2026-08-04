@@ -268,6 +268,8 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
             durations[i] = std::chrono::duration<double, std::milli>(t1 - t0).count();
         }
 
+        ACL_CHECK(aclrtSynchronizeStream(stream));
+
         double sum = 0, minv = 1e9, maxv = 0;
         for (int i = 1; i < PERF_LOOP_COUNT; ++i) {
             sum += durations[i];
