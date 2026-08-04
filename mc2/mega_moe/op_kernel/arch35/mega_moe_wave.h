@@ -109,7 +109,6 @@ private:
     __aicore__ inline SendMaskBufferConfig SendAndQuantBuffInit();
     __aicore__ inline void ExpertTokenNumsBuffInit();
     __aicore__ inline void ResetFlagList();
-    __aicore__ inline void ResetSharedExpertGmm2TileCounters();
     __aicore__ inline void SendMaskCal(const SendMaskBufferConfig &bufferConfig);
     __aicore__ inline void SendCntCal(int32_t localExpertId, uint64_t &sendCnt);
     __aicore__ inline void DispatchExpert(ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx,
@@ -215,7 +214,6 @@ private:
     uint32_t topK_ = 0;
     uint32_t rankId_ = 0;
     uint32_t worldSize_ = 0;
-    uint32_t expertPerRank_ = 0;
     uint32_t expertsPerBatch_ = 1;
     int64_t hiddenDim_ = 0;
     uint64_t maxOutputSize_ = 0;
@@ -351,7 +349,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
     topK_ = tilingData->topK;
     sendTotalNum_ = static_cast<uint64_t>(m_) * topK_;
     worldSize_ = tilingData->epWorldSize;
-    expertPerRank_ = tilingData->expertPerRank;
     moeExpertPerRank_ = tilingData->moeExpertPerRank;
     sharedExpertNum_ = tilingData->sharedExpertNum;
     expertsPerBatch_ = tilingData->expertsPerBatch == 0U ? 1U : tilingData->expertsPerBatch;
@@ -439,7 +436,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchBuffInit()
     // 与 route batch 无关的固定占用
     uint32_t expertTokenCntTensorSize = ALIGN_32;
     uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(worldSize_ * expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
+        static_cast<int64_t>(worldSize_ * moeExpertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
     // sendCntTensor_: 每 src rank 一个 burst(32B), 共 worldsize*32B（stride 只读 count 跳过 mask 区）
     uint32_t sendCntTensorSize = worldSize_ * static_cast<uint32_t>(ALIGN_32);
     // Dispatch 的 UB 布局与 AIV 分核无关；对应 host CalcDispatchBufferConfig 的唯一配置。
@@ -454,7 +451,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchBuffInit()
     expertTokenCntTensor_ =
         LocalTensor<int32_t>(TPosition::VECCALC, expertTokenCntTensorAddr, expertTokenCntTensorSize / sizeof(int32_t));
     // Tensor 用途：在 SendCntCal 中记录本卡专家收到 token count 的前缀和；
-    // Tensor 大小：worldSize_ * expertPerRank_ * sizeof(int32_t)，向上对齐至 32 字节；
+    // Tensor 大小：worldSize_ * moeExpertPerRank_ * sizeof(int32_t)，向上对齐至 32 字节；
     uint32_t cumsumInfoTensorAddr = expertTokenCntTensorAddr + expertTokenCntTensorSize;
     cumsumInfoTensor_ =
         LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorAddr, cumsumInfoTensorSize / sizeof(int32_t));
@@ -577,7 +574,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::SendAndQuantBuffInit()
     // 单个 xOutTensor_ 槽位与 dispatch 的 token-scale-weight 通信记录使用相同布局。
     uint32_t xOutTensorSize = mxQuantTokenScaleAlignBytes_;
     uint32_t xInAlignSize = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
-    uint32_t expertPerCoreMax = Ops::Base::CeilDiv(worldSize_ * expertPerRank_, blockAivNum_);
+    uint32_t expertPerCoreMax = Ops::Base::CeilDiv(worldSize_ * moeExpertPerRank_, blockAivNum_);
     uint32_t sendCntAccSize =
         Ops::Base::CeilAlign(static_cast<int64_t>(expertPerCoreMax * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
 
@@ -653,15 +650,12 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ResetFlagList()
                                              0U, 0U};
         DataCopyPad(swigluToGmm2FlagGm_[coreOffset + resetElementOffset], resetTensor_, rankSyncCopyParams);
     }
-    if (sharedExpertNum_ > 0) {
-        ResetSharedExpertGmm2TileCounters();
-    }
     // 预取路径：清理 GMM1 tile 状态位区（含 allDone slot），避免上一轮残留导致软同步误判。
     if constexpr (TopkWeightsPrefetch) {
         GlobalTensor<int32_t> statusGm;
         statusGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm1TileStatusPtr));
         int32_t statusElementCount =
-            (static_cast<int32_t>(expertPerRank_) *
+            (static_cast<int32_t>(moeExpertPerRank_) *
                  static_cast<int32_t>(params_.tilingData->maxTilesPerExpert) +
              1) *
             INT_CACHELINE;
@@ -676,31 +670,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ResetFlagList()
                                                0U, 0U, 0U};
             DataCopyPad(statusGm[statusCoreOffset + resetElementOffset], resetTensor_, statusCopyParams);
         }
-    }
-}
-
-// ===============================================================
-// ResetSharedExpertGmm2TileCounters：清理共享专家 GMM2 tile counter
-// ===============================================================
-template <TemplateMegaMoeWaveTypeClass>
-__aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ResetSharedExpertGmm2TileCounters()
-{
-    uint32_t tokenGroupCount = Ops::Base::CeilDiv(m_, GMM1_TILE_M);
-    int32_t totalCounters = static_cast<int32_t>(
-        tokenGroupCount * sharedExpertNum_ * static_cast<uint64_t>(INT_CACHELINE));
-    int32_t coreLen, coreOffset;
-    TilingByCore(totalCounters, coreLen, coreOffset);
-    GlobalTensor<int32_t> sharedTileCounterGm;
-    sharedTileCounterGm.SetGlobalBuffer(
-        reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.sharedExpertGmm2TileCounterPtr));
-    for (int32_t resetElementOffset = 0; resetElementOffset < coreLen;
-         resetElementOffset += resetBatchElementCount_) {
-        int32_t currentBatchElementCount = coreLen - resetElementOffset < resetBatchElementCount_ ?
-                                               coreLen - resetElementOffset :
-                                               resetBatchElementCount_;
-        DataCopyExtParams resetCopyParams{
-            1U, static_cast<uint32_t>(currentBatchElementCount * sizeof(int32_t)), 0U, 0U, 0U};
-        DataCopyPad(sharedTileCounterGm[coreOffset + resetElementOffset], resetTensor_, resetCopyParams);
     }
 }
 
