@@ -22,6 +22,14 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 LOG_FILE="${RESULT_DIR}/run_${TIMESTAMP}.log"
 CSV_FILE="${RESULT_DIR}/result_${TIMESTAMP}.csv"
 
+if [ -n "${ASCEND_HOME_PATH:-}" ]; then
+    CUSTOM_TRANSFORMER_VENDOR="${ASCEND_HOME_PATH}/opp/vendors/custom_transformer"
+    if [ -d "${CUSTOM_TRANSFORMER_VENDOR}/op_api/lib" ]; then
+        export LD_LIBRARY_PATH="${CUSTOM_TRANSFORMER_VENDOR}/op_api/lib:${LD_LIBRARY_PATH:-}"
+        export ASCEND_CUSTOM_OPP_PATH="${CUSTOM_TRANSFORMER_VENDOR}:${ASCEND_CUSTOM_OPP_PATH:-}"
+    fi
+fi
+
 # ====================== msprof profile (一次跑所有用例) ======================
 
 # 从 op_summary 提取算子耗时并回填 CSV
