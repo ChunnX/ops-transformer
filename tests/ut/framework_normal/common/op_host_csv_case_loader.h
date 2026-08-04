@@ -153,6 +153,10 @@ inline gert::StorageShape GetStorageShape(const std::string &shapeArrStr)
             shape = gert::StorageShape({shapeArr[0], shapeArr[1], shapeArr[2], shapeArr[3], shapeArr[4]},
                                        {shapeArr[0], shapeArr[1], shapeArr[2], shapeArr[3], shapeArr[4]});
             break;
+        case 6:
+            shape = gert::StorageShape({shapeArr[0], shapeArr[1], shapeArr[2], shapeArr[3], shapeArr[4], shapeArr[5]},
+                                       {shapeArr[0], shapeArr[1], shapeArr[2], shapeArr[3], shapeArr[4], shapeArr[5]});
+            break;
         default:
             std::cout << "[ERROR] Shape " << shapeArr.size() << " not support!" << std::endl;
             break;
