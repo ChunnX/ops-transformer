@@ -179,8 +179,8 @@ private:
     static constexpr bool KV_IS_TND = IS_TND<LAYOUT_KV>();
     using COMPUTE_T = float;
     using DATA_T = uint8_t;
-    static constexpr uint32_t VEC0 = 0;
-    static constexpr uint32_t VEC1 = 1;
+    static constexpr uint8_t VEC0 = 0;
+    static constexpr uint8_t VEC1 = 1;
 
     const ConstInfo &constInfo;
     const SeqLensTool<LAYOUT_Q, SEQLEN_T> &qSeqLensTool;
@@ -496,8 +496,14 @@ public:
         __cbuf__ half *localGlobalMax1Cbuf = (__cbuf__ half *)localGlobalMax1.GetPhyAddr();
         __ubuf__ half *peerGlobalMaxUBUbuf = (__ubuf__ half *)peerGlobalMax.GetPhyAddr();
 
-        DataCopyL1ToUB(peerGlobalMaxUBUbuf, localGlobalMax0Cbuf, VEC0, 1, 8, 0, 0);
-        DataCopyL1ToUB(peerGlobalMaxUBUbuf, localGlobalMax1Cbuf, VEC1, 1, 8, 0, 0);
+        DataCopyParams intriParams;
+        intriParams.blockCount = 1;
+        intriParams.blockLen = 8;
+        intriParams.srcGap = 0;
+        intriParams.dstGap = 0;
+
+        DataCopyL1ToUB<half, VEC0>(peerGlobalMaxUBUbuf, localGlobalMax0Cbuf, intriParams);
+        DataCopyL1ToUB<half, VEC1>(peerGlobalMaxUBUbuf, localGlobalMax1Cbuf, intriParams);
     }
 
 private:

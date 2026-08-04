@@ -23,7 +23,6 @@
 #ifndef QUANT_FLASH_ATTN_COMMON_DEF_H_
 #define QUANT_FLASH_ATTN_COMMON_DEF_H_
 
-#include "asc_simd.h"
 #include "quant_flash_attn_template_tiling_key.h"
 #include "../../common/op_kernel/memcopy/parser.h"
 
@@ -193,12 +192,6 @@ public:
         }
     }
 };
-
-__aicore__ inline void DataCopyL1ToUB(__ubuf__ void *ub, __cbuf__ void *l1, uint64_t vecCoreId, uint64_t blockCount,
-                                      uint64_t blockNum, uint64_t srcGap, uint64_t destGap)
-{
-    asc_copy_l12ub_sync(ub, l1, vecCoreId, blockCount, blockNum, srcGap, destGap);
-}
 
 } // namespace QFA_KERNEL
 
