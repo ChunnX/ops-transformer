@@ -137,6 +137,7 @@ private:
     ge::graphStatus CheckKScaleShapeForPerTokenPAMode(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckKScaleShapeForPerTokenHeadPAMode(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckKScaleShapeForPerTokenGroupMode(const FiaTilingInfo &fiaInfo) const;
+    ge::graphStatus CheckKScaleShapeForPerTokenGroupPAMode(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckVScaleShapeForPerTokenMode(const FiaTilingInfo &fiaInfo) const;
     int64_t GetValueScaleActualKVlens4TNDNoPa(const FiaTilingInfo &fiaInfo) const;
 
