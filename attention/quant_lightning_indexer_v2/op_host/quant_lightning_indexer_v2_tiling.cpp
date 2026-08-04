@@ -309,7 +309,7 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
     }
 
     OP_CHECK_IF(((std::string(opParamInfo_.layOutQuery) != "BSND") &&
-                (std::string(opParamInfo_.layOutQuery) != "TND")),
+                 (std::string(opParamInfo_.layOutQuery) != "TND")),
                 OP_LOGE(opName_, "input attr layout_query only supported BSND or TND."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(((std::string(opParamInfo_.layOutKey) != "PA_BBND") &&
                  (std::string(opParamInfo_.layOutQuery)) != (std::string(opParamInfo_.layOutKey))),
@@ -327,9 +327,9 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                     return ge::GRAPH_FAILED);
     } else if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF((*opParamInfo_.quantMode != QUANT_MODE_FP8) && (*opParamInfo_.quantMode != QUANT_MODE_INT8) &&
-                    (*opParamInfo_.quantMode != QUANT_MODE_MXFP8) &&
-                    (*opParamInfo_.quantMode != QUANT_MODE_HIFLOAT8) &&
-                    (*opParamInfo_.quantMode != QUANT_MODE_MXFP4),
+                        (*opParamInfo_.quantMode != QUANT_MODE_MXFP8) &&
+                        (*opParamInfo_.quantMode != QUANT_MODE_HIFLOAT8) &&
+                        (*opParamInfo_.quantMode != QUANT_MODE_MXFP4),
                     OP_LOGE(opName_, "input attr quant_mode only supported 1, 2, 3, 4 and 5."),
                     return ge::GRAPH_FAILED);
     }
@@ -444,17 +444,17 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
     } else if (npuArch_ == NpuArch::DAV_3510) {
         if (inputQType_ == ge::DT_INT8) {
             OP_CHECK_IF(weightsType_ != ge::DT_FLOAT16,
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "weights",
-                    QLIV2DataTypeToSerialString(weightsType_).c_str(),
-                    "When data types of input query is int8, the data types of the input weights must be float16"),
-                return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "weights",
+                                                              QLIV2DataTypeToSerialString(weightsType_).c_str(),
+                                                              "When data types of input query is int8, the data types of the input weights must be float16"),
+                        return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(weightsType_ != ge::DT_FLOAT,
-                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "weights",
-                    QLIV2DataTypeToSerialString(weightsType_).c_str(),
-                    "When data types of input query is not int8, "
-                    "the data types of the input weights must be float"),
-                return ge::GRAPH_FAILED);
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "weights",
+                                                              QLIV2DataTypeToSerialString(weightsType_).c_str(),
+                                                              "When data types of input query is not int8, "
+                                                              "the data types of the input weights must be float"),
+                        return ge::GRAPH_FAILED);
         }
     }
 
@@ -1323,10 +1323,9 @@ ge::graphStatus QLIV2InfoParser::CheckKeyContiguous() const
     }
     OP_CHECK_IF(
         keyNonContiguous || scaleNonContiguous,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "keyNonContiguous and scaleNonContiguous",
-                                              std::string(keyNonContiguous ? "true" : "false") + " and " +
-                                                  std::string(scaleNonContiguous ? "true" : "false"),
-                                              "key and keyscale only support non-continuous keying on the 0-axis"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+            opName_, "key or key_dequant_scale",
+            "key and keyscale only support non-continuous keying on the 0-axis"),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
