@@ -160,7 +160,8 @@ int64_t ExpectedUbFactor(int64_t numHeadQ, int64_t numHeadK, int64_t numHeadV, i
     const int64_t resident = 4 * d * 2 +                       // wBf16Buf
                              4 * d * 4 +                       // wFp32Buf
                              (((d / 2) * 4 + 31) / 32) * 32;   // gatherIdxBuf
-    // gamma 不再按 token 铺平（VF 按 undMask 算基址直接取 wFp32Buf），perToken 只剩三个队列
+    // gamma 是 TBuf 常驻、不随 token 数伸缩（VF 按 undMask 算基址直接取 wFp32Buf），
+    // 所以 perToken 只有三个队列
     const int64_t perToken = 2 * n * d * 2 + 2 * MROPE_AXIS_NUM * d * 4 + 2 * n * d * 2;
     // MAX_UB_FACTOR 是 kernel 侧 und/gen 位图的宽度上限，见 op_host/..._tiling.h
     return std::min({(PLATFORM_UB_BYTES - resident) / perToken, blockFactor, static_cast<int64_t>(64)});
@@ -226,8 +227,8 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_success_h16_2_2)
     EXPECT_LT(td->ubFactor, td->blockFactor);
 }
 
-// T 曾被 MAX_TOTAL_TOKENS=64K 人为卡死，现已放开：切分与偏移全是 int64_t，对 T 的绝对
-// 大小没有假设，真实上限只有 KV Cache 容量。这里用 1M token 守住"不再有人为上限"。
+// T 不设人为上限：切分与偏移全是 int64_t，对 T 的绝对大小没有假设，真实上限只有
+// KV Cache 容量。这里用 1M token 守住这一点，谁再加回上限都会被这条挡下。
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_success_when_total_tokens_far_exceeds_64k)
 {
     constexpr int64_t undLen = 1000000;

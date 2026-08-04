@@ -23,7 +23,7 @@
  *        sin = Gather(rawToken + D/2,      gatherIndex)   // rawToken[axis*D + D/2 + lane]
  *      同一份索引复用于 cos 和 sin，靠基址 +D/2 区分——因为 cos_sin_cache 每行的
  *      布局就是 [cos(0:D/2) | sin(0:D/2)]。
- *   3) 合并结果只存在 vreg 里，不占 UB，也不需要 cosSinExpand / ropeTmp 这类中间 buffer。
+ *   3) 合并结果只存在 vreg 里，不占 UB。
  *
  * V 段（不参与 norm/rope）也并在同一个 VF 里：它与 Q/K 共用同一趟 token 循环，
  * 单个 V head 恰好是一个满的 bf16 VL（D=128 个 bf16 = 256B），一次 Load + 一次 Store 直通。
@@ -121,10 +121,10 @@ struct MropeTokenRegs {
  * Q 和 K 的差别只在 gamma 与输出位置，计算本身完全一样，抽出来给两个 head
  * 循环共用；gamma 用哪一份由调用方从 regs 里挑好后传进来。
  *
- * 乘加处一律用 MulAddDst（dst = src0 * src1 + dst）替掉 Mul + Add/Sub 两条，
- * 每 head 省 3 条 ALU（18 -> 15），并省掉 squareHigh / cross 两个中间 RegTensor。
- * 低半的 RoPE 需要的是 dst -= a*b，而只有加法版，所以用 regs.sinNeg——那是每 token
- * 取一次负，摊到 Hq+Hk 个 head 上可忽略。
+ * 乘加一律走 MulAddDst（dst = src0 * src1 + dst）：一条顶 Mul + Add/Sub 两条，
+ * 乘积保持全精度只舍入一次，中间量也少占一个 RegTensor。
+ * 低半的 RoPE 要的是 dst -= a*b 而乘加原语只有加法版，所以用 regs.sinNeg
+ * ——sin 取负是每 token 一次，摊到 Hq+Hk 个 head 上可忽略。
  *
  * NOTE: inHead / outHead 按引用传入，函数内用 post-update 访存把它们推到**下一个 head**。
  *       低半、高半两次访存各推 halfDim，两次之后正好走过 headStride（= D = 2*halfDim），
@@ -190,24 +190,23 @@ __aicore__ inline void RmsNormRopeOneHead(__ubuf__ bfloat16_t*& inHead, __ubuf__
  * 拆成两次调用会让每 token 的 cos/sin Gather 做两遍。合到一起后 token 循环只走一趟，
  * cos/sin 只 Gather 一次，Q/K 两段 head 循环共用。
  *
- * V 段紧跟在同一趟 token 循环里：它虽然不参与 norm/rope，但源地址就在 Q/K 之后、
- * 目的地址就在输出 tile 的 v 段，放进来可以省掉 VF 之外那趟独立的 UB->UB 搬运循环，
- * 每 token 的输入行也只需要遍历一次。T_QKV 与 T_CACHE 同为 bf16，纯直通不做任何转换。
+ * V 段并在同一趟 token 循环里：它不参与 norm/rope，但源地址就在 Q/K 之后、目的地址
+ * 就在输出 tile 的 v 段，放在这里每 token 的输入行只遍历一次就能处理完整行。
+ * T_QKV 与 T_CACHE 同为 bf16，纯直通不做任何转换。
  *
  * gamma 逐 token 选择：cat_indices 可以把 und/gen 任意交错（竞品用例就是
  * [0,5,1,6,2,7,3,4] 这种），同一 tile 内相邻 token 的 gamma 可能不同。
- * 但 gamma 只有 und/gen 两套、在 UB 上又是 [undQ|undK|genQ|genK] 连续排布，
- * 所以不需要预先按 token 铺平，也不需要 Select 在两组寄存器间挑：
- * 直接用 undMask 的第 t 位算出本 token 的 gamma 基址即可
+ * gamma 只有 und/gen 两套，在 UB 上是 [undQ|undK|genQ|genK] 连续排布，于是本 token
+ * 用哪一组只取决于 undMask 的第 t 位：
  *     gammaRow = gammaAll + (1 - undBit) * 2 * headStride
- * 这样「选 gamma」降级成一次标量地址算术，VF 里既没有分支也没有额外的向量指令。
+ * 「选 gamma」因此是一次标量地址算术，VF 里没有分支，也不占任何向量指令。
  *
  * @param addr      本 tile 的 UB 起址，见 QkvMropeTileAddr
  * @param shape     head 数、步长与 RMSNorm 标量，见 QkvMropeTileShape（Init 期填一次）
  * @param tokenSize tile 内 token 数，尾块可小于 ubFactor
  * @param undMask   tile 内各 token 的 und/gen 标志位图，bit t = 1 表示第 t 个 token 取
  *                  und 的 gamma。由 CopyIn 顺带产出（那里本来就要读 cat_indices 算源行），
- *                  所以这里不再重复读一次 GM。tokenSize <= 64 由 host tiling 保证
+ *                  省掉一次 GM 标量读。tokenSize <= 64 由 host tiling 保证
  */
 __aicore__ inline void QkRmsNormMropeTileVF(const QkvMropeTileAddr& addr, const QkvMropeTileShape& shape,
                                             uint16_t tokenSize, uint64_t undMask)
@@ -257,10 +256,9 @@ __aicore__ inline void QkRmsNormMropeTileVF(const QkvMropeTileAddr& addr, const 
             // 每 token 一条，摊到 Hq+Hk 个 head 上可忽略
             MicroAPI::Muls(regs.sinNeg, regs.sinValue, -1.0f, pFull);
 
-            // 选 gamma：und 组在 gammaAll 开头，gen 组在 +2*D 处。用位图算偏移，
-            // 不做分支也不做 Select——选择整个降级成一次标量地址算术。
-            // 组内四份（q低|q高|k低|k高）在 UB 上连续，同一个指针连推 4 次 halfDim 取完，
-            // 不用逐条算偏移；最后一次自增走出组尾，下个 token 会重新定基址，丢掉即可
+            // 选 gamma：und 组在 gammaAll 开头，gen 组在 +2*D 处，用位图算偏移即可，无需分支。
+            // 组内四份（q低|q高|k低|k高）在 UB 上连续，同一个指针连推 4 次 halfDim 取完；
+            // 最后一次自增走出组尾，下个 token 会重新定基址，丢掉即可
             const uint32_t undBit = static_cast<uint32_t>((undMask >> t) & 1ULL);
             __ubuf__ float* gammaPtr = addr.gammaAll + (1U - undBit) * genGammaOffset;
             MicroAPI::LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE, MicroAPI::LoadDist::DIST_NORM>(
