@@ -841,6 +841,15 @@ struct Gmm2ArgsGeneric {
     uint16_t &pingpongIdx;
 };
 
+template <typename T>
+struct PersistentBlockMmadContext {
+    using BlockMmadType = T;
+
+    T blockMmad;
+    uint32_t problemK = 0U;
+    bool initialized = false;
+};
+
 template <typename Scheduler, typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
           typename TensorBias, typename Config, typename LayoutBundle>
 struct WorkSetGeneric {
@@ -856,22 +865,36 @@ struct WorkSetGeneric {
     const LayoutBundle &layouts;
 };
 
-template <typename Policy, uint8_t CombineQuantMode, typename BlockMmad, typename ElementC, typename MakeLayoutC,
-          bool TopkWeightsPrefetch, bool IsLayered, bool IsShared, bool IsGmm1Interleaved, typename WorkSet,
-          typename ExtraArgs>
+template <typename Policy, uint8_t CombineQuantMode, typename BlockMmad, bool UsePersistentBlockMmad,
+          typename PersistentContext, typename ElementC, typename MakeLayoutC, bool TopkWeightsPrefetch,
+          bool IsLayered, bool IsShared, bool IsGmm1Interleaved, typename WorkSet, typename ExtraArgs>
 __aicore__ inline void GroupMatmulExecGeneric(WorkSet &workSet, uint32_t startLoopIdx, uint32_t tileNum,
-                                              ExtraArgs &args)
+                                              ExtraArgs &args, PersistentContext *persistentContext)
 {
     if constexpr (g_coreType == AscendC::AIC) {
-        BlockMmad blockMmad;
-        bool enableL0CPingPong = false;
         typename BlockMmad::BlockShape l0TileShape{workSet.config.tileM, L1_TILE_N, L0_TILE_K, 0};
         typename BlockMmad::ProblemShape matmulShape{workSet.config.m, workSet.config.n, workSet.config.k, 0};
-        blockMmad.Init(matmulShape, l0TileShape, workSet.config.l1Params, false, enableL0CPingPong);
-
-        AicComputeGeneric<CombineQuantMode, Policy, BlockMmad, ElementC, IsShared, TopkWeightsPrefetch, IsLayered,
-                          IsGmm1Interleaved>(
-            blockMmad, workSet, startLoopIdx, tileNum, args);
+        if constexpr (UsePersistentBlockMmad) {
+            using PersistentBlockMmad = typename PersistentContext::BlockMmadType;
+            static_assert(std::is_same_v<PersistentBlockMmad, BlockMmad>, "Persistent BlockMmad type mismatch");
+            if (!persistentContext->initialized || persistentContext->problemK != workSet.config.k) {
+                constexpr bool enableL0CPingPong = false;
+                persistentContext->blockMmad.Init(
+                    matmulShape, l0TileShape, workSet.config.l1Params, false, enableL0CPingPong);
+                persistentContext->problemK = workSet.config.k;
+                persistentContext->initialized = true;
+            }
+            AicComputeGeneric<CombineQuantMode, Policy, BlockMmad, ElementC, IsShared, TopkWeightsPrefetch, IsLayered,
+                              IsGmm1Interleaved>(
+                persistentContext->blockMmad, workSet, startLoopIdx, tileNum, args);
+        } else {
+            BlockMmad blockMmad;
+            constexpr bool enableL0CPingPong = false;
+            blockMmad.Init(matmulShape, l0TileShape, workSet.config.l1Params, false, enableL0CPingPong);
+            AicComputeGeneric<CombineQuantMode, Policy, BlockMmad, ElementC, IsShared, TopkWeightsPrefetch, IsLayered,
+                              IsGmm1Interleaved>(
+                blockMmad, workSet, startLoopIdx, tileNum, args);
+        }
     } else {
         if constexpr (Policy::IS_GMM1) {
             AivGmm1PostGeneric<MakeLayoutC, ElementC, TopkWeightsPrefetch, IsGmm1Interleaved>(
@@ -883,10 +906,12 @@ __aicore__ inline void GroupMatmulExecGeneric(WorkSet &workSet, uint32_t startLo
 template <typename Policy, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false,
           uint32_t Gmm1TileM = L1_TILE_M_256, bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false, typename ExtraArgs>
+          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false, typename ExtraArgs,
+          typename PersistentContext = void>
 __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
                                               const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
-                                              const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, ExtraArgs &args)
+                                              const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, ExtraArgs &args,
+                                              PersistentContext *persistentContext = nullptr)
 {
     using Config = Config<false, Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
                           ElementMxScaleB, IsWeightNZ, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsLayered,
@@ -939,8 +964,15 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias, gmmAddrInfo, params, config, layouts};
 
     using MakeLayoutC = typename Config::MakeLayoutC;
-    GroupMatmulExecGeneric<Policy, CombineQuantMode, BlockMmad, ElementC, MakeLayoutC, TopkWeightsPrefetch, IsLayered,
-                           IsShared, IsGmm1Interleaved>(workSet, startLoopIdx, tileNum, args);
+    if constexpr (std::is_same_v<PersistentContext, void>) {
+        GroupMatmulExecGeneric<Policy, CombineQuantMode, BlockMmad, false, void, ElementC, MakeLayoutC,
+                               TopkWeightsPrefetch, IsLayered, IsShared, IsGmm1Interleaved>(
+            workSet, startLoopIdx, tileNum, args, static_cast<void *>(nullptr));
+    } else {
+        GroupMatmulExecGeneric<Policy, CombineQuantMode, BlockMmad, true, PersistentContext, ElementC, MakeLayoutC,
+                               TopkWeightsPrefetch, IsLayered, IsShared, IsGmm1Interleaved>(
+            workSet, startLoopIdx, tileNum, args, persistentContext);
+    }
 
     startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
@@ -949,13 +981,13 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
 template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           uint32_t EpilogueTileM = Gmm1TileM, bool TopkWeightsPrefetch = false, bool IsShared = false,
-          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false>
+          bool IsGmm1Interleaved = false, bool IsWaveFlagGrained = false, typename PersistentContext = void>
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true, EpilogueTileM,
                                L1_TILE_N, TopkWeightsPrefetch, IsGmm1Interleaved, IsWaveFlagGrained> &epilogueOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, uint32_t expertBeforeCnt,
-    uint32_t expertIdx, uint16_t &pingpongIdx)
+    uint32_t expertIdx, uint16_t &pingpongIdx, PersistentContext *persistentContext = nullptr)
 {
     using SwigluQuantOpType = std::remove_reference_t<decltype(epilogueOp)>;
     Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{
@@ -963,7 +995,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     Detail::GroupMatmulImplGeneric<Detail::Gmm1Policy, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, false, Gmm1TileM, TopkWeightsPrefetch, IsShared,
                                    IsGmm1Interleaved, IsWaveFlagGrained>(
-        params, problemShape, gmmAddrInfo, startBlockIdx, args);
+        params, problemShape, gmmAddrInfo, startBlockIdx, args, persistentContext);
 }
 
 // Preserve the legacy/layered call contract. Only wave callers pass the
@@ -991,17 +1023,18 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false, uint32_t Gmm1TileM = L1_TILE_M_256,
           bool TopkWeightsPrefetch = false, bool IsShared = false, bool IsGmm1Interleaved = false,
-          bool IsWaveFlagGrained = false>
+          bool IsWaveFlagGrained = false, typename PersistentContext = void>
 __aicore__ inline void GroupMatmul2(const Params &params,
                                     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
-                                    uint32_t groupCnt, uint16_t &pingpongIdx)
+                                    uint32_t groupCnt, uint16_t &pingpongIdx,
+                                    PersistentContext *persistentContext = nullptr)
 {
     Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx};
     Detail::GroupMatmulImplGeneric<Detail::Gmm2Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared,
                                    IsGmm1Interleaved, IsWaveFlagGrained>(
-        params, problemShape, gmmAddrInfo, startBlockIdx, args);
+        params, problemShape, gmmAddrInfo, startBlockIdx, args, persistentContext);
 }
 
 // ==================================================================================
