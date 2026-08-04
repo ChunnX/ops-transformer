@@ -506,11 +506,12 @@ __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, i
                                                 static_cast<uint64_t>(localWriteCnt + 1));
         ascendc_assert(ret == 0, "WriteWithNotifyNbi failed, ret=%d, tag=ExTok_data, rankId=%u, dstRank=%u", ret,
                        rankId_, dstRank);
-        DrainChecked(handle);
 
         localWriteCnt++;
         totalSent += chunkLen;
     }
+
+    DrainChecked(handle);
 
     GM_ADDR remoteFlagAddr = GetRemoteWinAddr(dstRank, tokenFlagOffset_) + rankId_ * STATE_OFFSET;
     WriteNbiChecked(handle, remoteFlagAddr, flagScratchGM_, STATE_OFFSET);
@@ -981,7 +982,12 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         CrossRankBarrier();
 
         UnsortGrad();
+        uint64_t cycleStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
         ExchangeGrad();
+        uint64_t cycleEnd = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        uint64_t cycleDelta = cycleEnd - cycleStart;
+        printf("[EngramFetchGrad] rankId=%u, aivId=%u, ExchangeGrad cycles=%llu\n",
+               rankId_, aivId_, static_cast<unsigned long long>(cycleDelta));
         UniqueScatterAdd();
     }
 }
