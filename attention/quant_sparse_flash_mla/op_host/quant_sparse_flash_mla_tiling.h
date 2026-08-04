@@ -25,11 +25,9 @@
 #include "log/error_code.h"
 #include "err/ops_err.h"
 #include "platform/platform_info.h"
-#include "quant_sparse_flash_mla_check.h"
+#include "qsmla_tiling_info.h"
 
 namespace optiling {
-
-std::string QSMLALayoutToSerialString(QSMLALayout layout);
 
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(QuantSparseFlashMlaBaseParams)
