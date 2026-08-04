@@ -793,7 +793,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
                 uint64_t roundSendCnt = 0;
                 GatherMask(sendGatherOutTensor_, topkIdsTensor_, maskBufU32, true, static_cast<uint32_t>(roundLen),
                            {1, 1, 0, 0}, roundSendCnt);
-                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA06]: mask gather -> existing V_S sync
                 SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
                 totalSendCnt += roundSendCnt;
                 SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
@@ -813,13 +812,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
                     winDstGlobal.SetGlobalBuffer(
                         (__gm__ uint8_t *)(GetRankWinAddrWithOffset(rankId_, dstOffset + roundByteOffset)));
                     DataCopyPad(winDstGlobal, maskBuf, partialMaskCopyParams);
-                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA07]: local mask MTE3 -> round completion
                 } else {
                     GlobalTensor<uint8_t> wsDstGlobal;
                     wsDstGlobal.SetGlobalBuffer(
                         (__gm__ uint8_t *)(params_.workspaceInfo.maskSlotPtr + srcOffset + roundByteOffset));
                     DataCopyPad(wsDstGlobal, maskBuf, partialMaskCopyParams);
-                    PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA08]: remote-source mask MTE3 -> round completion
                 }
                 PipeBarrier<PIPE_ALL>();
             }
@@ -839,7 +836,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::SendMaskC
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
                 hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr, localGmAddr,
                                 maskSlotSize_);
-                PipeBarrier<PIPE_ALL>(); // SYNC_DIAG[FA09]: mask WriteNbi submit -> next expert
             }
         }
     }
