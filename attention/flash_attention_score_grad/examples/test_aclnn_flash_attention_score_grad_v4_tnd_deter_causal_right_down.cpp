@@ -83,10 +83,11 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
   // Case: causal_right_down, expect DeterType=5
+  // Unequal per-batch lens keep TND; S1!=S2; max S1>=2048 for swizzle.
   int64_t N1 = 1;
   int64_t N2 = 1;
-  int64_t T1 = 8192;
-  int64_t T2 = 16384;
+  int64_t T1 = 2560;  // 512 + 2048
+  int64_t T2 = 3072;  // 768 + 2304
   int64_t D = 128;
 
   int64_t q_size = T1 * N1 * D;
@@ -182,8 +183,8 @@ int main() {
   std::vector<int64_t> prefixOp = {0};
   std::vector<int64_t> qStartIdxOp = {0};
   std::vector<int64_t> kvStartIdxOp = {0};
-  std::vector<int64_t> actualSeqQLenOp = {4096, 8192};
-  std::vector<int64_t> actualSeqKVLenOp = {8192, 16384};
+  std::vector<int64_t> actualSeqQLenOp = {512, 2560};   // per-batch: 512, 2048
+  std::vector<int64_t> actualSeqKVLenOp = {768, 3072};  // per-batch: 768, 2304 (S1!=S2)
 
   aclIntArray *prefix = aclCreateIntArray(prefixOp.data(), 1);
   aclIntArray *qStartIdx = aclCreateIntArray(qStartIdxOp.data(), 1);

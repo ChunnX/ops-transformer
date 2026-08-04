@@ -83,10 +83,11 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
   // Case: band, expect DeterType=4
+  // Unequal per-batch lens keep TND; max S>=2048 for TND swizzle.
   int64_t N1 = 1;
   int64_t N2 = 1;
-  int64_t T1 = 8192;
-  int64_t T2 = 8192;
+  int64_t T1 = 2560;  // 512 + 2048
+  int64_t T2 = 2560;
   int64_t D = 128;
 
   int64_t q_size = T1 * N1 * D;
@@ -182,8 +183,8 @@ int main() {
   std::vector<int64_t> prefixOp = {0};
   std::vector<int64_t> qStartIdxOp = {0};
   std::vector<int64_t> kvStartIdxOp = {0};
-  std::vector<int64_t> actualSeqQLenOp = {4096, 8192};
-  std::vector<int64_t> actualSeqKVLenOp = {4096, 8192};
+  std::vector<int64_t> actualSeqQLenOp = {512, 2560};  // per-batch: 512, 2048
+  std::vector<int64_t> actualSeqKVLenOp = {512, 2560};
 
   aclIntArray *prefix = aclCreateIntArray(prefixOp.data(), 1);
   aclIntArray *qStartIdx = aclCreateIntArray(qStartIdxOp.data(), 1);
