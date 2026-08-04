@@ -263,6 +263,8 @@ def _build_attrs(p):
         cu_q = p.get("cu_seqlens_q")
         if cu_q:
             _set("batch_size", len(cu_q) - 1)
+    else:
+        _set("batch_size", int(p.get("B", 1)))
 
     cu_q = p.get("cu_seqlens_q")
     cu_kv = p.get("cu_seqlens_kv")
@@ -327,6 +329,9 @@ def _build_row(case_name, p):
     q_shape, k_shape, v_shape = _qkv_shapes(p)
     bt_shape, cu_q_shape, cu_kv_shape, sq_shape, skv_shape = _aux_shapes(p)
 
+    mask_mode = int(p.get("mask_mode", 0))
+    attn_mask_shape = (2048, 2048) if mask_mode in (3, 4) else None
+
     shapes = [
         q_shape,
         k_shape,
@@ -336,12 +341,19 @@ def _build_row(case_name, p):
         cu_kv_shape,
         sq_shape,
         skv_shape,
+        attn_mask_shape,
+        None,
     ]
     dtype_str = DTYPE_MAP.get(p.get("Dtype", "fp16"), "float16")
 
     dtypes = [dtype_str, dtype_str, dtype_str]
     for i in range(3, len(shapes)):
-        dtypes.append(INT_DTYPE if shapes[i] is not None else None)
+        if shapes[i] is None:
+            dtypes.append(None)
+        elif i == 8:
+            dtypes.append("int8")
+        else:
+            dtypes.append(INT_DTYPE)
 
     data_ranges = _data_ranges(p, len(shapes))
 
