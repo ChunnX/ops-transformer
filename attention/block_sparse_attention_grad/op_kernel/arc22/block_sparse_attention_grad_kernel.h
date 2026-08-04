@@ -487,8 +487,9 @@ namespace BSA {
                                     actualShape2,
                                     mmadFlag);
 
-                                if (deterministic) gDv.SetGlobalBuffer((__gm__ float *)(params.workspace + detDvBaseCore +
-                                (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
+                                if (deterministic) gDv.SetGlobalBuffer((__gm__ float *)(
+                                    params.workspace + detDvBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet)
+                                    * dkvElementSize * sizeof(float)));
                                 blockMmad3(gP[preTaskInfo.sOffset],
                                     gDout[preTaskInfo.qOffset],
                                     gDv[preTaskInfo.kvOffset],
@@ -498,8 +499,9 @@ namespace BSA {
                                     actualShape3,
                                     mmadFlag);
 
-                                if (deterministic) gDk.SetGlobalBuffer((__gm__ float *)(params.workspace + detDkBaseCore +
-                                (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet) * dkvElementSize * sizeof(float)));
+                                if (deterministic) gDk.SetGlobalBuffer((__gm__ float *)(
+                                    params.workspace + detDkBaseCore + (uint64_t)(preTaskInfo.curHeadIdx % groupSizeDet)
+                                    * dkvElementSize * sizeof(float)));
                                 blockMmad3(gDs[preTaskInfo.sOffset],
                                     gQ[preTaskInfo.qOffset],
                                     gDk[preTaskInfo.kvOffset],
@@ -962,7 +964,10 @@ namespace BSA {
                     if (remainNum * sizeof(float) % 32 == 0) {
                         AscendC::DataCopy(tempUb, detGm[(uint64_t)aicIdx * dkvSize + curOffset], remainNum);
                     } else {
-                        AscendC::DataCopyExtParams copyParams{1, static_cast<uint32_t>(remainNum * sizeof(float)), 0, 0, 0};
+                        AscendC::DataCopyExtParams copyParams{
+                            1, static_cast<uint32_t>(remainNum * sizeof(float)),
+                            0, 0, 0
+                        };
                         AscendC::DataCopyPadExtParams<float> padParams{true, 0, 0, 0};
                         AscendC::DataCopyPad(
                             tempUb, detGm[(uint64_t)aicIdx * dkvSize + curOffset], copyParams, padParams);
@@ -1045,10 +1050,22 @@ namespace BSA {
 
             // Reduce dk
             VecDeterReduceKernel(detDkGm, sharedDkGm,
-            accumUb, tempUb, totalSlots, dkvSize, dkvOffset, totalElements, maxDataCount);
+                accumUb,
+                tempUb,
+                totalSlots,
+                dkvSize,
+                dkvOffset,
+                totalElements,
+                maxDataCount);
             // Reduce dv
             VecDeterReduceKernel(detDvGm, sharedDvGm,
-            accumUb, tempUb, totalSlots, dkvSize, dkvOffset, totalElements, maxDataCount);
+                accumUb,
+                tempUb,
+                totalSlots,
+                dkvSize,
+                dkvOffset,
+                totalElements,
+                maxDataCount);
         }
 
     private:
