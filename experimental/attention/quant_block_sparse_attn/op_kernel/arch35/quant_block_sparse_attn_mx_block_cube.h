@@ -91,9 +91,7 @@ public:
             constexpr uint32_t kSlotBytes = kvSize + kvScaleSize;
             constexpr uint32_t vSlotBytes = kvSize + valueScaleSize;
             constexpr uint32_t qBytes = 2U * qSlotBytes;
-            // Static Tensor reserves local event IDs 6/7 and the hardware event range ends at 7. Keep Q/K/V
-            // within IDs 0..5 by using two K slots; each K slot is released after its Mmad completes.
-            constexpr uint32_t kBytes = 2U * kSlotBytes;
+            constexpr uint32_t kBytes = 4U * kSlotBytes;
             constexpr uint32_t vBytes = 2U * vSlotBytes;
             constexpr uint32_t qAddr = MxStatic::CUBE_PRIVATE_L1_BASE;
             constexpr uint32_t kAddr = qAddr + qBytes;
@@ -119,6 +117,8 @@ public:
             SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_Q_EVENT_ID1);
             SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID0);
             SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID1);
+            SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID2);
+            SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID3);
             SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_V_EVENT_ID0);
             SetFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_V_EVENT_ID1);
             SetFlag<HardEvent::M_MTE1>(MxStatic::L0A_EVENT_ID0);
@@ -137,6 +137,8 @@ public:
             WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_Q_EVENT_ID1);
             WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID0);
             WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID1);
+            WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID2);
+            WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_K_EVENT_ID3);
             WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_V_EVENT_ID0);
             WaitFlag<HardEvent::MTE1_MTE2>(MxStatic::L1_V_EVENT_ID1);
             WaitFlag<HardEvent::M_MTE1>(MxStatic::L0A_EVENT_ID0);
@@ -148,8 +150,7 @@ public:
         }
     }
 
-    __aicore__ inline void IterateBmm1(LocalTensor<uint8_t> &outputBuf, uint32_t outputReadyEventId,
-                                       uint32_t outputFreeEventId,
+    __aicore__ inline void IterateBmm1(LocalTensor<uint8_t> &outputBuf, uint32_t outputEventId,
                                        MxRunInfo &runInfo, const MxConstInfo &constInfo, uint32_t subLoop)
     {
         // C1: K[256,D] x Q^T[D,128]；K 由多个 sparse block 拼接。
@@ -186,7 +187,7 @@ public:
         constexpr uint32_t kSlotBytes = S2_SPLIT * D_BASE * sizeof(INPUT_T) +
                                         S2_SPLIT * D_BASE / MX_SCALE_GROUP * sizeof(SCALE_T);
         const uint32_t kSlot = kCursor_;
-        kCursor_ ^= 1U;
+        kCursor_ = (kCursor_ + 1U) & 3U;
         const TEventID kEventId = static_cast<TEventID>(MxStatic::L1_K_EVENT_ID0 + kSlot);
         LocalTensor<uint8_t> kBuf = l1KTensor_[kSlot * kSlotBytes];
         WaitFlag<HardEvent::MTE1_MTE2>(kEventId);
@@ -219,14 +220,13 @@ public:
         SetFlag<HardEvent::M_FIX>(l0cEventId);
         WaitFlag<HardEvent::M_FIX>(l0cEventId);
 
-        MxStatic::AicWaitUbFree(outputFreeEventId);
+        MxStatic::AicWaitUbFree(outputEventId);
         FixpipeMm1(outputBuf.ReinterpretCast<MM_T>(), mm1ResL0C, runInfo, s2CalcSize);
         SetFlag<HardEvent::FIX_M>(l0cEventId);
-        MxStatic::AicSetUbReady(outputReadyEventId);
+        MxStatic::AicSetUbReady(outputEventId);
     }
 
-    __aicore__ inline void IterateBmm2(LocalTensor<uint8_t> &outputBuf, uint32_t outputReadyEventId,
-                                       uint32_t outputFreeEventId,
+    __aicore__ inline void IterateBmm2(LocalTensor<uint8_t> &outputBuf, uint32_t outputEventId,
                                        LocalTensor<uint8_t> &pBuf, uint32_t pEventId, MxRunInfo &runInfo,
                                        const MxConstInfo &constInfo)
     {
@@ -290,10 +290,10 @@ public:
 
         SetFlag<HardEvent::M_FIX>(l0cEventId);
         WaitFlag<HardEvent::M_FIX>(l0cEventId);
-        MxStatic::AicWaitUbFree(outputFreeEventId);
+        MxStatic::AicWaitUbFree(outputEventId);
         FixpipeMm2(outputBuf.ReinterpretCast<MM_T>(), mm2ResL0C, runInfo, constInfo);
         SetFlag<HardEvent::FIX_M>(l0cEventId);
-        MxStatic::AicSetUbReady(outputReadyEventId);
+        MxStatic::AicSetUbReady(outputEventId);
     }
 
 private:

@@ -48,26 +48,24 @@ static_assert(2U * L0C_SLOT_BYTES <= L0C_CAPACITY, "MX L0C exceeds capacity");
 
 constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
 constexpr uint32_t MX_AIV0_AIV1_OFFSET = 16U;
-// CROSS_CORE_SYNC_BOTH requires independent producer->consumer (ready) and
-// consumer->producer (free) counters. Sharing one counter lets a ready token
-// satisfy the producer's free wait, so the AIC can overwrite UB before both
-// AIVs have consumed it. Event IDs 6 and 7 are reserved by static Tensor.
-constexpr uint32_t CC_BMM1_READY_EVENT_ID0 = 0U;
-constexpr uint32_t CC_BMM1_FREE_EVENT_ID0 = 1U;
-constexpr uint32_t CC_BMM1_READY_EVENT_ID1 = 2U;
-constexpr uint32_t CC_BMM1_FREE_EVENT_ID1 = 3U;
-constexpr uint32_t CC_BMM2_READY_EVENT_ID = 4U;
-constexpr uint32_t CC_BMM2_FREE_EVENT_ID = 5U;
-constexpr uint32_t CC_L1P_READY_EVENT_ID0 = 8U;
-constexpr uint32_t CC_L1P_READY_EVENT_ID1 = 9U;
-constexpr uint32_t CC_L1P_READY_EVENT_ID2 = 10U;
+// In sync mode 4 the AIC->AIV ready channel and AIV->AIC free channel are directional counters. The static
+// reference uses one event ID for both directions of the same UB slot. Keep IDs unique between buffers and skip
+// 6/7, which are reserved by static Tensor/SyncAll.
+constexpr uint32_t CC_BMM1_EVENT_ID0 = 0U;
+constexpr uint32_t CC_BMM1_EVENT_ID1 = 1U;
+constexpr uint32_t CC_BMM2_EVENT_ID = 2U;
+constexpr uint32_t CC_L1P_READY_EVENT_ID0 = 5U;
+constexpr uint32_t CC_L1P_READY_EVENT_ID1 = 8U;
+constexpr uint32_t CC_L1P_READY_EVENT_ID2 = 9U;
 
 constexpr AscendC::TEventID L1_Q_EVENT_ID0 = 0U;
 constexpr AscendC::TEventID L1_Q_EVENT_ID1 = 1U;
 constexpr AscendC::TEventID L1_K_EVENT_ID0 = 2U;
 constexpr AscendC::TEventID L1_K_EVENT_ID1 = 3U;
-constexpr AscendC::TEventID L1_V_EVENT_ID0 = 4U;
-constexpr AscendC::TEventID L1_V_EVENT_ID1 = 5U;
+constexpr AscendC::TEventID L1_K_EVENT_ID2 = 4U;
+constexpr AscendC::TEventID L1_K_EVENT_ID3 = 5U;
+constexpr AscendC::TEventID L1_V_EVENT_ID0 = 8U;
+constexpr AscendC::TEventID L1_V_EVENT_ID1 = 9U;
 
 constexpr AscendC::TEventID L0A_EVENT_ID0 = 0U;
 constexpr AscendC::TEventID L0A_EVENT_ID1 = 1U;
@@ -82,19 +80,12 @@ constexpr AscendC::TEventID PSCALE_EVENT_ID = 2U;
 constexpr AscendC::TEventID STAGE2_EVENT_ID = 3U;
 constexpr AscendC::TEventID LSE_EVENT_ID = 4U;
 constexpr AscendC::TEventID INIT_OUTPUT_FREE_EVENT_ID = 5U;
-// ClearOutput runs before the main-pipeline event seeds and consumes this V_MTE3 token immediately, so it can
-// safely reuse ID 0. Local SetFlag/WaitFlag IDs above 7 are invalid, and 6/7 are reserved in static mode.
-constexpr AscendC::TEventID INIT_OUTPUT_READY_EVENT_ID = 0U;
+constexpr AscendC::TEventID INIT_OUTPUT_READY_EVENT_ID = 10U;
 constexpr AscendC::TEventID MASK_EVENT_ID = 0U;
 
-__aicore__ inline uint32_t Bmm1ReadyEventId(uint32_t slot)
+__aicore__ inline uint32_t Bmm1EventId(uint32_t slot)
 {
-    return slot == 0U ? CC_BMM1_READY_EVENT_ID0 : CC_BMM1_READY_EVENT_ID1;
-}
-
-__aicore__ inline uint32_t Bmm1FreeEventId(uint32_t slot)
-{
-    return slot == 0U ? CC_BMM1_FREE_EVENT_ID0 : CC_BMM1_FREE_EVENT_ID1;
+    return slot == 0U ? CC_BMM1_EVENT_ID0 : CC_BMM1_EVENT_ID1;
 }
 
 __aicore__ inline AscendC::TEventID Stage1EventId(uint32_t slot)
