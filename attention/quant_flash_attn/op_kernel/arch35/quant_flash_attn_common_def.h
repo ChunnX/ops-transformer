@@ -121,7 +121,7 @@ static constexpr inferFaLayOutTypeEnum InOutLayoutTypeValue[4][2] = {
 #define InOutLayoutType_NTD_TND InOutLayoutType_NTD
 
 #define KvLayoutType_NO_PA 0
-#define KvLayoutType_PA_BBH 1
+#define KvLayoutType_PA_BBND 1
 #define KvLayoutType_PA_BNBD 2
 #define KvLayoutType_PA_NZ 3
 
