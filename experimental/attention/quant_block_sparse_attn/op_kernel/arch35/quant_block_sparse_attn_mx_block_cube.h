@@ -276,12 +276,8 @@ public:
             SetFlag<HardEvent::MTE2_MTE1>(vEventId);
             WaitFlag<HardEvent::MTE2_MTE1>(vEventId);
 
-            // Restrict the M dimension for an S1 tail, while preserving the 32-row alignment required by the
-            // transposed FP8/MX LoadData path.  Passing actMSize directly makes a one-row tail produce xStep=1,
-            // which is not a valid MX fractal transfer and raises an AICore exception.  V2 still writes only the
-            // original actMSize rows.
-            MMParam param = MxMakeMMParam(M_BASE, constInfo.dSizeV, AlignUp64(realK), true, false, kIdx == 0U,
-                                          kIdx == 0U, 0U, runInfo.actMSizeAlign32);
+            MMParam param =
+                MxMakeMMParam(M_BASE, constInfo.dSizeV, AlignUp64(realK), true, false, kIdx == 0U, kIdx == 0U);
             // P 转置，V 保持 KN。
             MxStatic::MxMatmulFullStatic<INPUT_T, INPUT_T, MM_T, SCALE_T, SCALE_T, mx_fp8_e4m3_t,
                                          mx_fp8_e4m3_t>(pBuf.ReinterpretCast<INPUT_T>()[kIdx * l1BaseKOffset],
