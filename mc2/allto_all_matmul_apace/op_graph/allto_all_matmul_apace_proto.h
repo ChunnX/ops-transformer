@@ -21,32 +21,35 @@
 namespace ge {
 /**
  * @brief AlltoAll+Matmul fusion operator (apace UDMA path, MX-quant FP8 only).
- *
- * @par Inputs:
- * @li x1: Left matrix. Type: float8_e4m3fn, float8_e5m2. Shape: [M, K]. Format: ND.
- * @li x2: Right matrix. Type: float8_e4m3fn, float8_e5m2. Shape: [N, K]. Format: ND.
- * @li x1_scale: MX scale for x1. Type: float8_e8m0. Shape: [M, Ceil(K/64), 2]. Format: ND.
- * @li x2_scale: MX scale for x2. Type: float8_e8m0. Shape: [N, Ceil(K/64), 2]. Format: ND.
- *
- * @par Outputs:
- * @li y: Output matrix. Type: bf16. Shape: [M/world_size, N]. Format: ND.
- *
- * @par Attributes:
- * @li group: A string. Communication domain identifier.
- * @li world_size: An int. Number of ranks (2, 4, 8, 16).
- * @li transpose_x2: A bool. Whether x2 is transposed. Default: true.
- * @li hccl_buffer_size: An int. HCCL buffer size.
  */
 REG_OP(AlltoAllMatmulApace)
+    .INPUT(context, TensorType({DT_INT32, DT_UINT8}))
     .INPUT(x1, TensorType({DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2}))
     .INPUT(x2, TensorType({DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2}))
-    .INPUT(x1_scale, TensorType({DT_FLOAT8_E8M0}))
-    .INPUT(x2_scale, TensorType({DT_FLOAT8_E8M0}))
+    .OPTIONAL_INPUT(bias, TensorType({DT_FLOAT}))
+    .OPTIONAL_INPUT(x1_scale, TensorType({DT_FLOAT8_E8M0}))
+    .OPTIONAL_INPUT(x2_scale, TensorType({DT_FLOAT8_E8M0}))
+    .OPTIONAL_INPUT(comm_scale, TensorType({DT_FLOAT}))
+    .OPTIONAL_INPUT(x1_offset, TensorType({DT_FLOAT}))
+    .OPTIONAL_INPUT(x2_offset, TensorType({DT_FLOAT}))
     .OUTPUT(y, TensorType({DT_BF16}))
+    .OUTPUT(all2all_out, TensorType({DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2}))
     .REQUIRED_ATTR(group, String)
     .REQUIRED_ATTR(world_size, Int)
-    .ATTR(hccl_buffer_size, Int, 0)
+    .REQUIRED_ATTR(hccl_buffer_size, Int)
+    .ATTR(all2all_axes, ListInt, {-2, -1})
+    .ATTR(y_dtype, Int, 27)
+    .ATTR(x1_quant_mode, Int, 0)
+    .ATTR(x2_quant_mode, Int, 0)
+    .ATTR(comm_quant_mode, Int, 0)
+    .ATTR(x1_quant_dtype, Int, 28)
+    .ATTR(comm_quant_dtype, Int, 28)
+    .ATTR(transpose_x1, Bool, false)
     .ATTR(transpose_x2, Bool, true)
+    .ATTR(group_size, Int, 0)
+    .ATTR(alltoall_out_flag, Bool, false)
+    .ATTR(comm_mode, String, "udma")
+    .ATTR(precision_mode, Int, 0)
     .OP_END_FACTORY_REG(AlltoAllMatmulApace)
 } // namespace ge
 

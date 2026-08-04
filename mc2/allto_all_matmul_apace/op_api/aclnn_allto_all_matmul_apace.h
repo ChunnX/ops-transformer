@@ -23,25 +23,36 @@ extern "C" {
 #endif
 
 /**
- * @brief aclnnAlltoAllMatmulApace 的第一段接口，根据具体的计算流程，计算workspace大小。
+ * @brief Phase 1: compute workspace size for AlltoAllMatmulApace.
  * @domain aclnn_ops_infer
- * @param [in] context: apace通信上下文张量，数据类型int32。
- * @param [in] x1: 左矩阵输入张量，数据类型支持FLOAT8_E4M3FN、FLOAT8_E5M2。
- * @param [in] x2: 右矩阵输入张量，数据类型支持FLOAT8_E4M3FN、FLOAT8_E5M2。
- * @param [in] biasOptional: 可选输入张量，偏置项，暂不支持，传入nullptr。
- * @param [in] x1Scale: 左矩阵的MX量化参数，数据类型FLOAT8_E8M0。
- * @param [in] x2Scale: 右矩阵的MX量化参数，数据类型FLOAT8_E8M0。
- * @param [in] group: 通信域标识。
- * @param [in] worldSize: 通信域大小。
- * @param [in] hcclBufferSize: HCCL共享buffer大小。
- * @param [in] transposeX2: 右矩阵是否转置。
- * @param [in] all2allAxesOptional: all2all方向，暂不支持，传入nullptr。
- * @param [out] output: 输出结果。
- * @param [out] all2allOutOptional: all-to-all通信的输出结果，暂不支持，传入nullptr。
- * @param [out] workspaceSize: workspace大小。
- * @param [out] executor: 执行器。
- *
- * @return aclnnStatus: 0成功。
+ * @param [in] context: apace communication context tensor. Type: int32/uint8.
+ * @param [in] x1: Left matrix. Type: float8_e4m3fn. Shape: [M, K].
+ * @param [in] x2: Right matrix. Type: float8_e4m3fn. Shape: [N, K].
+ * @param [in] biasOptional: Optional bias. Type: float.
+ * @param [in] x1Scale: MX scale for x1. Type: float8_e8m0.
+ * @param [in] x2Scale: MX scale for x2. Type: float8_e8m0.
+ * @param [in] commScaleOptional: Optional communication scale.
+ * @param [in] x1OffsetOptional: Optional x1 offset.
+ * @param [in] x2OffsetOptional: Optional x2 offset.
+ * @param [in] group: Communication group identifier.
+ * @param [in] worldSize: Number of ranks.
+ * @param [in] hcclBufferSize: HCCL communication buffer size (required, currently unused).
+ * @param [in] all2allAxesOptional: AlltoAll axes. Default {-2, -1}.
+ * @param [in] x1QuantMode: x1 quantization mode. Default 0.
+ * @param [in] x2QuantMode: x2 quantization mode. Default 0.
+ * @param [in] commQuantMode: Communication quantization mode. Default 0.
+ * @param [in] x1QuantDtype: x1 quantization data type. Default DT_UNDEFINED.
+ * @param [in] commQuantDtype: Communication quantization data type. Default DT_UNDEFINED.
+ * @param [in] transposeX1: Whether x1 is transposed. Default false.
+ * @param [in] transposeX2: Whether x2 is transposed. Default false.
+ * @param [in] groupSize: Group size for quantization. Default 0.
+ * @param [in] commMode: Communication mode. Default "ai_cpu".
+ * @param [in] precisionMode: Precision mode. Default 0.
+ * @param [out] output: Output tensor. Type: bf16.
+ * @param [out] all2allOutOptional: Optional all2all intermediate output.
+ * @param [out] workspaceSize: Computed workspace size.
+ * @param [out] executor: Executor handle.
+ * @return aclnnStatus: 0 on success.
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllMatmulApaceGetWorkspaceSize(
     const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
@@ -53,13 +64,12 @@ __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllMatmulApaceGetWo
     const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
- * @brief Second phase: execute AlltoAllMatmulApace on the given stream.
+ * @brief Phase 2: execute AlltoAllMatmulApace on the given stream.
  *
  * @param [in] workspace: Device workspace memory.
  * @param [in] workspaceSize: Workspace size (from GetWorkspaceSize).
  * @param [in] executor: Executor handle (from GetWorkspaceSize).
  * @param [in] stream: aclrtStream for kernel launch.
- *
  * @return aclnnStatus: 0 on success.
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllMatmulApace(void *workspace, uint64_t workspaceSize,

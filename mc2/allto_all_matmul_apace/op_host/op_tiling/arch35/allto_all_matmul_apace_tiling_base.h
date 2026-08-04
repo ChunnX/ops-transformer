@@ -51,8 +51,133 @@ protected:
 
     static constexpr size_t IDX_INPUT_X1 = 1;
     static constexpr size_t IDX_INPUT_X2 = 2;
+    static constexpr size_t IDX_INPUT_BIAS = 3;
+    static constexpr size_t IDX_INPUT_X1_SCALE = 4;
+    static constexpr size_t IDX_INPUT_X2_SCALE = 5;
+    static constexpr size_t IDX_OUTPUT_Y = 0;
     static constexpr size_t IDX_ATTR_WORLD_SIZE = 1;
-    static constexpr size_t IDX_ATTR_PRECISION_MODE = 13;
+    static constexpr size_t IDX_ATTR_PRECISION_MODE = 15;
+    static constexpr size_t IDX_ATTR_TRANSPOSE_X2 = 11;
+    static constexpr uint64_t MX_SCALE_ALIGN = 64;
+    static constexpr uint64_t SCALE_LAST_DIM = 2;
+    static constexpr uint64_t SCALE_DIM_NUM = 3;
+
+    ge::graphStatus CheckOpInputInfo()
+    {
+        const char *opName = "AlltoAllMatmulApace";
+
+        auto *x1Desc = context_->GetInputDesc(IDX_INPUT_X1);
+        auto *x2Desc = context_->GetInputDesc(IDX_INPUT_X2);
+        auto *yDesc = context_->GetOutputDesc(IDX_OUTPUT_Y);
+        if (!x1Desc || !x2Desc || !yDesc) {
+            OP_LOGE(opName, "Required input/output tensors missing.");
+            return ge::GRAPH_FAILED;
+        }
+
+        auto x1Fmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x1Desc->GetStorageFormat()));
+        auto x2Fmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x2Desc->GetStorageFormat()));
+        if (x1Fmt != ge::FORMAT_ND || x2Fmt != ge::FORMAT_ND) {
+            OP_LOGE(opName, "x1 or x2 format must be ND, got x1=%d x2=%d.", static_cast<int>(x1Fmt),
+                    static_cast<int>(x2Fmt));
+            return ge::GRAPH_FAILED;
+        }
+
+        auto *x1ScaleDesc = context_->GetOptionalInputDesc(IDX_INPUT_X1_SCALE);
+        auto *x2ScaleDesc = context_->GetOptionalInputDesc(IDX_INPUT_X2_SCALE);
+        if (!x1ScaleDesc || !x2ScaleDesc) {
+            OP_LOGE(opName, "x1_scale or x2_scale is required but missing.");
+            return ge::GRAPH_FAILED;
+        }
+
+        auto x1ScaleFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x1ScaleDesc->GetStorageFormat()));
+        auto x2ScaleFmt = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleDesc->GetStorageFormat()));
+        if (x1ScaleFmt != ge::FORMAT_ND || x2ScaleFmt != ge::FORMAT_ND) {
+            OP_LOGE(opName, "x1_scale or x2_scale format must be ND.");
+            return ge::GRAPH_FAILED;
+        }
+
+        auto *tx2 = context_->GetAttrs()->GetAttrPointer<bool>(IDX_ATTR_TRANSPOSE_X2);
+        if (!tx2 || !(*tx2)) {
+            OP_LOGE(opName, "transpose_x2 must be true.");
+            return ge::GRAPH_FAILED;
+        }
+
+        auto *biasDesc = context_->GetOptionalInputDesc(IDX_INPUT_BIAS);
+        if (biasDesc != nullptr) {
+            OP_LOGE(opName, "bias input must be empty.");
+            return ge::GRAPH_FAILED;
+        }
+
+        auto x1Dtype = x1Desc->GetDataType();
+        auto x2Dtype = x2Desc->GetDataType();
+        if ((x1Dtype != ge::DT_FLOAT8_E4M3FN && x1Dtype != ge::DT_FLOAT8_E5M2) ||
+            (x2Dtype != ge::DT_FLOAT8_E4M3FN && x2Dtype != ge::DT_FLOAT8_E5M2)) {
+            OP_LOGE(opName, "x1/x2 dtype must be FP8_E4M3 or FP8_E5M2.");
+            return ge::GRAPH_FAILED;
+        }
+
+        auto x1ScaleDtype = x1ScaleDesc->GetDataType();
+        auto x2ScaleDtype = x2ScaleDesc->GetDataType();
+        if (x1ScaleDtype != ge::DT_FLOAT8_E8M0 || x2ScaleDtype != ge::DT_FLOAT8_E8M0) {
+            OP_LOGE(opName, "x1_scale and x2_scale must be FP8_E8M0.");
+            return ge::GRAPH_FAILED;
+        }
+
+        auto yDtype = yDesc->GetDataType();
+        if (yDtype != ge::DT_BF16) {
+            OP_LOGE(opName, "y output must be BF16.");
+            return ge::GRAPH_FAILED;
+        }
+
+        auto *x1Shape = context_->GetInputShape(IDX_INPUT_X1);
+        auto *x2Shape = context_->GetInputShape(IDX_INPUT_X2);
+        if (!x1Shape || !x2Shape) {
+            return ge::GRAPH_FAILED;
+        }
+
+        uint64_t x1K = x1Shape->GetStorageShape().GetDim(1U);
+        uint64_t x2K = x2Shape->GetStorageShape().GetDim(1U);
+        if (x1K % MX_SCALE_ALIGN != 0 || x2K % MX_SCALE_ALIGN != 0) {
+            OP_LOGE(opName, "x1 and x2 K dim must be divisible by 64, got x1K=%lu x2K=%lu.", x1K, x2K);
+            return ge::GRAPH_FAILED;
+        }
+
+        auto *x1ScaleShape = context_->GetOptionalInputShape(IDX_INPUT_X1_SCALE);
+        auto *x2ScaleShape = context_->GetOptionalInputShape(IDX_INPUT_X2_SCALE);
+        if (!x1ScaleShape || !x2ScaleShape) {
+            return ge::GRAPH_FAILED;
+        }
+
+        uint64_t x1ScaleDimNum = x1ScaleShape->GetStorageShape().GetDimNum();
+        uint64_t x2ScaleDimNum = x2ScaleShape->GetStorageShape().GetDimNum();
+        if (x1ScaleDimNum != SCALE_DIM_NUM || x2ScaleDimNum != SCALE_DIM_NUM) {
+            OP_LOGE(opName, "x1_scale and x2_scale must be 3D, got %luD/%luD.", x1ScaleDimNum, x2ScaleDimNum);
+            return ge::GRAPH_FAILED;
+        }
+
+        uint64_t x1M = x1Shape->GetStorageShape().GetDim(0U);
+        uint64_t x2N = x2Shape->GetStorageShape().GetDim(0U);
+
+        uint64_t x1ScaleM = x1ScaleShape->GetStorageShape().GetDim(0U);
+        uint64_t x1ScaleK = x1ScaleShape->GetStorageShape().GetDim(1U);
+        uint64_t x1ScaleLast = x1ScaleShape->GetStorageShape().GetDim(2U);
+        uint64_t x2ScaleN = x2ScaleShape->GetStorageShape().GetDim(0U);
+        uint64_t x2ScaleK = x2ScaleShape->GetStorageShape().GetDim(1U);
+        uint64_t x2ScaleLast = x2ScaleShape->GetStorageShape().GetDim(2U);
+
+        if (x1ScaleM != x1M || x1ScaleK != x1K / MX_SCALE_ALIGN || x1ScaleLast != SCALE_LAST_DIM) {
+            OP_LOGE(opName, "x1_scale shape mismatch: expected [%lu,%lu,%lu], got [%lu,%lu,%lu].", x1M,
+                    x1K / MX_SCALE_ALIGN, SCALE_LAST_DIM, x1ScaleM, x1ScaleK, x1ScaleLast);
+            return ge::GRAPH_FAILED;
+        }
+        if (x2ScaleN != x2N || x2ScaleK != x2K / MX_SCALE_ALIGN || x2ScaleLast != SCALE_LAST_DIM) {
+            OP_LOGE(opName, "x2_scale shape mismatch: expected [%lu,%lu,%lu], got [%lu,%lu,%lu].", x2N,
+                    x2K / MX_SCALE_ALIGN, SCALE_LAST_DIM, x2ScaleN, x2ScaleK, x2ScaleLast);
+            return ge::GRAPH_FAILED;
+        }
+
+        return ge::GRAPH_SUCCESS;
+    }
 
     ge::graphStatus GetShapeAttrsInfo() override
     {
@@ -80,6 +205,9 @@ protected:
 
     ge::graphStatus DoOpTiling() override
     {
+        if (CheckOpInputInfo() != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
         if (m_ == 0 || k_ == 0)
             return ge::GRAPH_FAILED;
         uint64_t ka = k_; // Ka = per-rank K
@@ -114,7 +242,22 @@ protected:
         td->scaleCommTilingData.splitAxisTailCnt = tailTileCnt;
         td->scaleCommTilingData.nonSplitAxisSize = ka / 32;
 
+        OP_LOGI("AlltoAllMatmulApace",
+                "commTilingData: splitAxisTileSize=%lu, splitAxisTileCnt=%lu, splitAxisTailSize=%lu, "
+                "splitAxisTailCnt=%lu, nonSplitAxisSize=%lu",
+                td->commTilingData.splitAxisTileSize, td->commTilingData.splitAxisTileCnt,
+                td->commTilingData.splitAxisTailSize, td->commTilingData.splitAxisTailCnt,
+                td->commTilingData.nonSplitAxisSize);
+        OP_LOGI("AlltoAllMatmulApace",
+                "scaleCommTilingData: splitAxisTileSize=%lu, splitAxisTileCnt=%lu, splitAxisTailSize=%lu, "
+                "splitAxisTailCnt=%lu, nonSplitAxisSize=%lu",
+                td->scaleCommTilingData.splitAxisTileSize, td->scaleCommTilingData.splitAxisTileCnt,
+                td->scaleCommTilingData.splitAxisTailSize, td->scaleCommTilingData.splitAxisTailCnt,
+                td->scaleCommTilingData.nonSplitAxisSize);
+
         td->localMatmul = precisionMode_;
+
+        OP_LOGI("AlltoAllMatmulApace", "precisionMode=%u", precisionMode_);
 
         return ge::GRAPH_SUCCESS;
     }
