@@ -957,11 +957,11 @@ __aicore__ inline void AdvanceGmm2ExpertOffsets(Gmm2ExpertLoopState &state)
     Get<IDX_GMM2_OFFSET>(state.baseOffset) += m * k;
 }
 
-// 原型：MegaMoe::UpdateGmm2GroupParams。使用调用方选择的 workspace 槽更新一个 MoE 专家游标。
+// GMM2 沿用 GMM1 已确认就绪的专家 token 总数，并推进到当前 MoE 专家的完整状态。
 template <uint32_t ActivationElementsPerByte, uint32_t WeightElementsPerByte,
           uint32_t SwigluElementsPerByte>
-__aicore__ inline bool UpdateMoeGmm2GroupParams(const Gmm2Config &context, Gmm2Scratch &scratch,
-                                                Gmm2ExpertLoopState &state, uint32_t expertIdx)
+__aicore__ inline bool PrepareMoeExpertGmm2State(const Gmm2Config &context, Gmm2Scratch &scratch,
+                                                 Gmm2ExpertLoopState &state, uint32_t expertIdx)
 {
     if (expertIdx != 0U) {
         AdvanceGmm2ExpertOffsets<ActivationElementsPerByte, WeightElementsPerByte,
@@ -975,11 +975,11 @@ __aicore__ inline bool UpdateMoeGmm2GroupParams(const Gmm2Config &context, Gmm2S
     return Get<M_VALUE>(state.problemShape) != 0;
 }
 
-// 原型：MegaMoe::UpdateSharedGroupParams。使用固定 token 数推进一个共享专家。
+// 使用固定 token 数推进到当前共享专家的完整 GMM2 状态。
 template <uint32_t ActivationElementsPerByte, uint32_t WeightElementsPerByte,
           uint32_t SwigluElementsPerByte>
-__aicore__ inline bool UpdateSharedGmm2GroupParams(const Gmm2Config &context,
-                                                   Gmm2ExpertLoopState &state, uint32_t expertIdx)
+__aicore__ inline bool PrepareSharedExpertGmm2State(const Gmm2Config &context,
+                                                    Gmm2ExpertLoopState &state, uint32_t expertIdx)
 {
     if (expertIdx != 0U) {
         AdvanceGmm2ExpertOffsets<ActivationElementsPerByte, WeightElementsPerByte,
@@ -991,9 +991,11 @@ __aicore__ inline bool UpdateSharedGmm2GroupParams(const Gmm2Config &context,
 
 template <typename ActivationType, typename SwigluOutType, typename QuantScaleType,
           bool ConfigureGmm2Output, bool ConfigureCombineCounter, bool ConfigureGmmToEpilogue>
-__aicore__ inline void UpdateMoeGmm2GlobalBuffer(const Gmm2Config &context, const WorkspaceInfo &workspace,
-                                                 const ExpertWeightTensorListAddrs &weights, GMMAddrInfo &gmmAddrInfo,
-                                                 const Gmm2ExpertLoopState &state, uint32_t expertIdx)
+__aicore__ inline void UpdateMoeExpertGmm2GlobalBuffer(
+    const Gmm2Config &context, const WorkspaceInfo &workspace,
+    const ExpertWeightTensorListAddrs &weights, GMMAddrInfo &gmmAddrInfo,
+    const Gmm2ExpertLoopState &state, uint32_t expertIdx,
+    uint32_t expertMGroupOffset = 0U)
 {
     if constexpr (ConfigureGmm2Output) {
         gmmAddrInfo.gmm2OutGlobal =
@@ -1019,9 +1021,11 @@ __aicore__ inline void UpdateMoeGmm2GlobalBuffer(const Gmm2Config &context, cons
             expertSyncSlotOffset * static_cast<uint64_t>(INT_CACHELINE);
     }
     gmmAddrInfo.swigluToGmm2Flag = reinterpret_cast<__gm__ int32_t *>(workspace.flagSwiGluToGmm2Ptr) +
-                                   Get<IDX_FLAG_OFFSET>(state.baseOffset) * context.swigluFlagSlotsPerExpert;
+                                   Get<IDX_FLAG_OFFSET>(state.baseOffset) * context.swigluFlagSlotsPerExpert +
+                                   static_cast<uint64_t>(expertMGroupOffset) * INT_CACHELINE;
     gmmAddrInfo.dispatchToGmm1Flag = reinterpret_cast<__gm__ int32_t *>(workspace.flagDispatchToGmm1Ptr) +
-                                     Get<IDX_FLAG_OFFSET>(state.baseOffset) * context.dispatchFlagSlotsPerExpert;
+                                     Get<IDX_FLAG_OFFSET>(state.baseOffset) * context.dispatchFlagSlotsPerExpert +
+                                     static_cast<uint64_t>(expertMGroupOffset) * INT_CACHELINE;
     if constexpr (ConfigureGmmToEpilogue) {
         gmmAddrInfo.gmmToEpilogueFlag = nullptr;
         if (workspace.flagGmmToEpiloguePtr != nullptr) {
@@ -1034,10 +1038,10 @@ __aicore__ inline void UpdateMoeGmm2GlobalBuffer(const Gmm2Config &context, cons
 
 template <typename ActivationType, typename QuantScaleType, uint32_t Gmm1TileM,
           bool ConfigureGmmToEpilogue>
-__aicore__ inline void UpdateSharedGmm2GlobalBuffer(const Gmm2Config &context, const WorkspaceInfo &workspace,
-                                                    const ExpertWeightTensorListAddrs &weights,
-                                                    GMMAddrInfo &gmmAddrInfo,
-                                                    const Gmm2ExpertLoopState &state, uint32_t sharedExpertIdx)
+__aicore__ inline void UpdateSharedExpertGmm2GlobalBuffer(
+    const Gmm2Config &context, const WorkspaceInfo &workspace,
+    const ExpertWeightTensorListAddrs &weights, GMMAddrInfo &gmmAddrInfo,
+    const Gmm2ExpertLoopState &state, uint32_t sharedExpertIdx)
 {
     gmmAddrInfo.gmm2OutGlobal =
         workspace.sharedExpertResultPtr + Get<IDX_GMM2_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
@@ -1103,13 +1107,13 @@ __aicore__ inline bool PrepareMoeExpertGmm2Stage(
     const ExpertWeightTensorListAddrs &weights, Gmm2Scratch &scratch,
     Gmm2ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo, uint32_t expertIdx)
 {
-    if (!UpdateMoeGmm2GroupParams<ActivationElementsPerByte, WeightElementsPerByte,
-                                  SwigluElementsPerByte>(context, scratch, state, expertIdx)) {
+    if (!PrepareMoeExpertGmm2State<ActivationElementsPerByte, WeightElementsPerByte,
+                                   SwigluElementsPerByte>(context, scratch, state, expertIdx)) {
         return false;
     }
-    UpdateMoeGmm2GlobalBuffer<ActivationType, SwigluOutType, QuantScaleType,
-                              ConfigureGmm2Output, ConfigureCombineCounter,
-                              ConfigureGmmToEpilogue>(
+    UpdateMoeExpertGmm2GlobalBuffer<ActivationType, SwigluOutType, QuantScaleType,
+                                    ConfigureGmm2Output, ConfigureCombineCounter,
+                                    ConfigureGmmToEpilogue>(
         context, workspace, weights, gmmAddrInfo, state, expertIdx);
     return true;
 }
@@ -1138,14 +1142,14 @@ __aicore__ inline bool RunSharedExpertGmm2Stage(
     const ExpertWeightTensorListAddrs &weights, Gmm2ExpertLoopState &state,
     GMMAddrInfo &gmmAddrInfo, Gmm2RuntimeState &runtimeState, uint32_t sharedExpertIdx)
 {
-    if (!UpdateSharedGmm2GroupParams<PackedElementTraits<GenericElementA>::ELEMENTS_PER_BYTE,
-                                     PackedElementTraits<WeightType>::ELEMENTS_PER_BYTE,
-                                     PackedElementTraits<A8W4ElementA>::ELEMENTS_PER_BYTE>(
+    if (!PrepareSharedExpertGmm2State<PackedElementTraits<GenericElementA>::ELEMENTS_PER_BYTE,
+                                      PackedElementTraits<WeightType>::ELEMENTS_PER_BYTE,
+                                      PackedElementTraits<A8W4ElementA>::ELEMENTS_PER_BYTE>(
             context, state, sharedExpertIdx)) {
         return false;
     }
-    UpdateSharedGmm2GlobalBuffer<A8W4ElementA, QuantScaleType, Gmm1TileM,
-                                 EnableA8W4 || EnableA4W4>(
+    UpdateSharedExpertGmm2GlobalBuffer<A8W4ElementA, QuantScaleType, Gmm1TileM,
+                                       EnableA8W4 || EnableA4W4>(
         context, params.workspaceInfo, weights, gmmAddrInfo, state, sharedExpertIdx);
     RunGmm2ByMode<COMBINE_NO_QUANT, GenericElementA, A8W4ElementA, WeightType,
                   QuantScaleType, EnableA8W4, EnableA4W4, Gmm1TileM,
