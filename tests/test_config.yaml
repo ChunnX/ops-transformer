@@ -505,6 +505,7 @@ attention:
       - attention/compressor/README.md
     ut_cov_exclude:
       - attention/compressor/tests
+      - attention/compressor/examples
     test:
       ut: True
       examples: False
@@ -520,6 +521,7 @@ attention:
       - attention/quant_compressor/README.md
     ut_cov_exclude:
       - attention/quant_compressor/tests
+      - attention/quant_compressor/examples
     test:
       ut: True
       examples: False
