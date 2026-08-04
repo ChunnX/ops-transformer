@@ -412,7 +412,10 @@ cann_ops_transformer.quant_sparse_flash_mla(
             </ul>
         </td>
         <td>
-            当前版本必传
+            <ul>
+                <li>cmp_kv传入时，必须传入</li>
+                <li>cmp_kv为空时，不支持传入</li>
+            </ul>
         </td>
     </tr>
 </tbody>
