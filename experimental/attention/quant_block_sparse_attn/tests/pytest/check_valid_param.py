@@ -70,20 +70,32 @@ def check_valid_param(params):
         value = params.get(key)
         if value is None:
             continue
-        if isinstance(value, (list, tuple)):
-            if len(value) != 2:
-                raise ValueError(f"{key} should be a (low, high) pair or a positive scalar, got {value}")
-            low = float(value[0])
-            high = float(value[1])
-            if low <= 0 or high < low:
-                raise ValueError(f"{key} should satisfy 0 < low <= high, got {value}")
-            params[key] = (low, high)
-        elif isinstance(value, (int, float)):
-            if value <= 0:
-                raise ValueError(f"{key} should be a positive number or None, got {value}")
-            params[key] = (float(value), float(value))
-        else:
-            raise ValueError(f"{key} should be a (low, high) pair, a positive scalar, or None, got {value}")
+        try:
+            if isinstance(value, str):
+                try:
+                    r = float(value.strip())
+                    low, high = -r, r
+                except ValueError:
+                    parts = value.split(",")
+                    if len(parts) != 2:
+                        raise ValueError(f"expected 'low,high' or a number, got {value!r}")
+                    low = float(parts[0].strip())
+                    high = float(parts[1].strip())
+            elif isinstance(value, (int, float)):
+                r = float(value)
+                low, high = -r, r
+            elif isinstance(value, (list, tuple)) and len(value) == 2:
+                low = float(value[0])
+                high = float(value[1])
+            else:
+                raise ValueError(f"unsupported format {value!r}")
+        except (ValueError, TypeError) as error:
+            raise ValueError(
+                f"{key} should be a 'low,high' string, a scalar, or a (low, high) pair, got {value}"
+            ) from error
+        if low > high:
+            raise ValueError(f"{key} should satisfy low <= high, got ({low}, {high})")
+        params[key] = (low, high)
 
     if params["layout_q"] not in ("TND", "NTD"):
         raise ValueError(f"unsupported layout_q: {params['layout_q']}")
