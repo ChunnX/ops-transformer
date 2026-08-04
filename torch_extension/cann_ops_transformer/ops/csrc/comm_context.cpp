@@ -212,7 +212,7 @@ private:
 class HcclChannelContextBuilder {
 public:
     void Build(const std::string &group, int64_t worldSize, int64_t &cclBufferSize, at::Tensor &contextTensor,
-               const std::string &commAlg, const std::string &opName, int64_t customCclBufferSize = 0,
+               const std::string &opName, int64_t customCclBufferSize = 0,
                void **customDeviceBuffer = nullptr, HcclMemHandle *customMemHandle = nullptr)
     {
         ASCEND_LOGI("Start to get CommContext Tensor, group: %s", group.c_str());
@@ -224,12 +224,8 @@ public:
         HcclComm hcclHandle;
         AcquireHcclHandle(group, hcclHandle);
 
-        CommProtocol protocol;
-        if (commAlg == "urma") {
-            protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
-        } else {
-            protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
-        }
+        CommProtocol protocol = CommProtocol::COMM_PROTOCOL_UB_MEM;
+
         GetCommProtocol(hcclHandle, protocol);
 
         CommContext commContextStruct;
@@ -336,7 +332,7 @@ public:
             TORCH_CHECK(false, "Rank ", srcRankId, " does not support UBG with peers outside its UB domain");
         }
         // 校验所有远端卡的拓扑信息均已记录，避免建链时信息缺失
-        if (rankLinkMap_.size() < rankSize - 1) {
+        if (rankLinkMap_.size() != rankSize - 1) {
             TORCH_CHECK(false, "Incomplete topology info for rank ", srcRankId, ", recorded ", rankLinkMap_.size(),
                         " of ", rankSize - 1);
         }
@@ -719,9 +715,8 @@ public:
 class CommContextManager {
 public:
     CommContextManager(const std::string &group, int64_t worldSize, const py::object &backend = py::str("kfc"),
-                       const std::string &commAlg = "ub-mem", const std::string &opName = "moe_dispatch_ffn_combine",
-                       int64_t customCclBufferSize = 0)
-        : group_(group), worldSize_(worldSize), commAlg_(commAlg), opName_(opName), backend_(backend),
+                       const std::string &opName = "moe_dispatch_ffn_combine", int64_t customCclBufferSize = 0)
+        : group_(group), worldSize_(worldSize), opName_(opName), backend_(backend),
           mode_(BackendMode::UNINITIALIZED), cclBufferSize_(0), topoType_(TopoType::INTRA_SUPER_NODE),
           rankNumPerServer_(2), customCclBufferSize_(customCclBufferSize)
     {
@@ -809,8 +804,8 @@ private:
             case BackendMode::CHANNEL:
                 {
                     HcclChannelContextBuilder builder;
-                    builder.Build(group_, worldSize_, cclBufferSize_, tensor, commAlg_, opName_,
-                                  customCclBufferSize_, &customDeviceBuffer_, &customMemHandle_);
+                    builder.Build(group_, worldSize_, cclBufferSize_, tensor, opName_, customCclBufferSize_,
+                                  &customDeviceBuffer_, &customMemHandle_);
                     topoType_ = builder.GetTopoType();
                     rankNumPerServer_ = builder.GetRankNumPerServer();
                     return;
@@ -821,7 +816,6 @@ private:
     }
 
     std::string group_;
-    std::string commAlg_;
     std::string opName_;
     int64_t worldSize_;
     py::object backend_;
@@ -838,10 +832,9 @@ private:
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     py::class_<CommContextManager>(m, "CommContextManager")
-        .def(py::init<const std::string &, int64_t, const py::object &, const std::string &, const std::string &,
-                      int64_t>(),
+        .def(py::init<const std::string &, int64_t, const py::object &, const std::string &, int64_t>(),
              py::arg("group"), py::arg("worldSize"), py::arg("backend") = std::string("kfc"),
-             py::arg("commAlg") = std::string("ub-mem"), py::arg("opName") = std::string("moe_dispatch_ffn_combine"),
+             py::arg("opName") = std::string("moe_dispatch_ffn_combine"),
              py::arg("customCclBufferSize") = 0)
         .def("create_context", &CommContextManager::CreateContext)
         .def("update_group", &CommContextManager::UpdateGroup, py::arg("group"), py::arg("contextTensor").noconvert())
