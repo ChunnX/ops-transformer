@@ -305,7 +305,7 @@ public:
         rankLinkMap_.clear();
         rankNumPerUbDomain_ = 0;
 
-        // 前置：确定本卡所在 UB 域（最内层网络层，本卡与该层所有卡均支持入参协议）
+        // 前置：确定本卡所在 UB 域（从最内层开始连续支持入参协议的若干层）
         LayerRanks ubDomain;
         if (!FindUbDomain(commHandle, layerList, layerNum, protocol, srcRankId, ubDomain)) {
             // 边界：无法判定 UB 域，保守按单域处理
@@ -319,9 +319,8 @@ public:
         ASCEND_LOGI("Layer %u is current rank's UB domain, rankNumPerUbDomain_: %u", ubDomain.layer,
                     rankNumPerUbDomain_);
 
-        // 边界：单个 UB 域（无其他 UB 域），仅记录域内拓扑信息
+        // 边界：单个 UB 域（无其他 UB 域），域内拓扑信息已在 UB 域判定时记录
         if (IsSingleUbDomain(ubDomain, rankSize)) {
-            RecordUbDomainRanks(protocol, ubDomain, srcRankId);
             topoType_ = TopoType::INTRA_SUPER_NODE;
             return;
         }
@@ -332,20 +331,20 @@ public:
                     rankNumPerUbDomain_, ", rankSize: ", rankSize);
 
         // 第一步：本卡与所在 UB 域内其他所有卡之间须支持 UBC_CTP
-        if (!CheckIntraUbDomainProtocol(commHandle, ubDomain, srcRankId)) {
-            FallbackToIntraSuperNode(protocol, ubDomain, srcRankId);
+        if (!CheckIntraUbDomainProtocol(commHandle, srcRankId)) {
+            FallbackToIntraSuperNode(protocol, srcRankId);
             return;
         }
         // 第二步：本卡与其余 UB 域内所有卡之间须支持 UBG
         if (!CheckCrossUbDomainProtocols(commHandle, layerList, layerNum, srcRankId)) {
-            FallbackToIntraSuperNode(protocol, ubDomain, srcRankId);
+            FallbackToIntraSuperNode(protocol, srcRankId);
             return;
         }
         // 校验所有远端卡的拓扑信息均已记录，避免建链时信息缺失
         if (rankLinkMap_.size() < rankSize - 1) {
             ASCEND_LOGW("Incomplete topology info for rank %u, recorded %zu of %u", srcRankId, rankLinkMap_.size(),
                         rankSize - 1);
-            FallbackToIntraSuperNode(protocol, ubDomain, srcRankId);
+            FallbackToIntraSuperNode(protocol, srcRankId);
             return;
         }
 
@@ -353,34 +352,38 @@ public:
         ASCEND_LOGI("Cross-server confirmed, use UBC_CTP inside UB domain and UBG across UB domains");
     }
 
-    // UB 域为最内层网络层（layerList[0]）：检查本卡与该层所有卡之间是否均支持入参协议
+    // UB 域判定：层列表从内到外，从最内层开始逐层检查本卡与该层所有卡是否均支持入参协议，
+    // 连续收集所有全支持的层（ubDomainLayers_）；遇到某卡不支持的层即停止，UB 域即这些层覆盖的卡
     bool FindUbDomain(const HcclComm &commHandle, const uint32_t *layerList, uint32_t layerNum,
-                      const CommProtocol &domainProtocol, uint32_t srcRankId, LayerRanks &ubDomain) const
+                      const CommProtocol &domainProtocol, uint32_t srcRankId, LayerRanks &ubDomain)
     {
-        if (layerNum == 0) {
-            return false;
+        ubDomainLayers_.clear();
+        bool hasDomainLayer = false;
+        for (uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
+            LayerRanks layer = GetLayerRanks(commHandle, layerList[layerIndex]);
+            if (!SupportsDomainProtocolWithAllRanks(commHandle, layer, domainProtocol, srcRankId)) {
+                break;
+            }
+            RecordDomainLayerRanks(domainProtocol, layer, srcRankId);
+            ubDomainLayers_.push_back(layer);
+            ubDomain = std::move(layer);
+            hasDomainLayer = true;
         }
-        LayerRanks innerLayer = GetLayerRanks(commHandle, layerList[0]);
-        if (!SupportsDomainProtocolWithAllRanks(commHandle, innerLayer, domainProtocol, srcRankId)) {
-            return false;
-        }
-        ubDomain = std::move(innerLayer);
-        return true;
+        return hasDomainLayer;
     }
 
-    bool CheckIntraUbDomainProtocol(const HcclComm &commHandle, const LayerRanks &ubDomain, uint32_t srcRankId)
+    bool CheckIntraUbDomainProtocol(const HcclComm &commHandle, uint32_t srcRankId)
     {
-        for (uint32_t dstRank : ubDomain.ranks) {
-            if (dstRank == srcRankId) {
-                continue;
-            }
-            if (!SupportsProtocol(commHandle, ubDomain.layer, srcRankId, dstRank,
+        for (auto &linkEntry : rankLinkMap_) {
+            uint32_t dstRank = linkEntry.first;
+            uint32_t layer = linkEntry.second.layer;
+            if (!SupportsProtocol(commHandle, layer, srcRankId, dstRank,
                                   CommProtocol::COMM_PROTOCOL_UBC_CTP)) {
                 ASCEND_LOGW("Rank %u does not support UBC_CTP with rank %u in UB domain layer %u", srcRankId, dstRank,
-                            ubDomain.layer);
+                            layer);
                 return false;
             }
-            rankLinkMap_[dstRank] = {CommProtocol::COMM_PROTOCOL_UBC_CTP, ubDomain.layer};
+            linkEntry.second.protocol = CommProtocol::COMM_PROTOCOL_UBC_CTP;
         }
         return true;
     }
@@ -419,7 +422,7 @@ public:
                                             const CommProtocol &domainProtocol, uint32_t srcRankId) const
     {
         for (uint32_t dstRank : layer.ranks) {
-            if (dstRank == srcRankId) {
+            if (dstRank == srcRankId || rankLinkMap_.count(dstRank) > 0) {
                 continue;
             }
             if (!SupportsProtocol(commHandle, layer.layer, srcRankId, dstRank, domainProtocol)) {
@@ -434,20 +437,23 @@ public:
         return ubDomain.ranks.size() >= rankSize;
     }
 
-    // 跨超检查失败时回退为超节点内保守路径：仅保留 UB 域内拓扑信息，跨域信息清空
-    void FallbackToIntraSuperNode(const CommProtocol &protocol, const LayerRanks &ubDomain, uint32_t srcRankId)
+    // 跨超检查失败时回退为超节点内保守路径：按 UB 域判定时收集的层重建域内拓扑，跨域信息清空
+    void FallbackToIntraSuperNode(const CommProtocol &protocol, uint32_t srcRankId)
     {
         ASCEND_LOGW("Fallback to intra-super-node for rank %u, keep only UB domain topology", srcRankId);
-        RecordUbDomainRanks(protocol, ubDomain, srcRankId);
+        rankLinkMap_.clear();
+        for (const LayerRanks &layer : ubDomainLayers_) {
+            RecordDomainLayerRanks(protocol, layer, srcRankId);
+        }
         topoType_ = TopoType::INTRA_SUPER_NODE;
     }
 
-    void RecordUbDomainRanks(const CommProtocol &protocol, const LayerRanks &ubDomain, uint32_t srcRankId)
+    // 逐层记录域内卡拓扑：仅首次出现时记录，保证每张域内卡保留其最内层网络信息
+    void RecordDomainLayerRanks(const CommProtocol &protocol, const LayerRanks &layer, uint32_t srcRankId)
     {
-        rankLinkMap_.clear();
-        for (uint32_t dstRank : ubDomain.ranks) {
-            if (dstRank != srcRankId) {
-                rankLinkMap_[dstRank] = {protocol, ubDomain.layer};
+        for (uint32_t dstRank : layer.ranks) {
+            if (dstRank != srcRankId && rankLinkMap_.count(dstRank) == 0) {
+                rankLinkMap_[dstRank] = {protocol, layer.layer};
             }
         }
     }
@@ -719,6 +725,8 @@ public:
 
     // 记录本卡与其他卡的拓扑信息（协议类型+网络层数/跳数），key为其他卡的rankId，后续建链时使用
     std::unordered_map<uint32_t, RankLinkInfo> rankLinkMap_;
+    // UB 域判定阶段收集的全支持入参协议的层（从内到外），用于回退时重建域内拓扑
+    std::vector<LayerRanks> ubDomainLayers_;
     uint32_t rankNumPerUbDomain_ = 0;
     TopoType topoType_ = TopoType::INTRA_SUPER_NODE;
     int64_t rankNumPerServer_ = 2;
