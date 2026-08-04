@@ -62,6 +62,9 @@ constexpr static int64_t WEIGHT_IDX_UND_K = 1;
 constexpr static int64_t WEIGHT_IDX_GEN_Q = 2;
 constexpr static int64_t WEIGHT_IDX_GEN_K = 3;
 
+// 标量写 UB 后被向量读，需要显式 S->V 同步；这里只用一个事件号
+constexpr static event_t EVT_S_TO_V_INDEX_READY = EVENT_ID0;
+
 /**
  * @brief UndGenQkvRmsNormRopeCache regbase 模板
  * @tparam T_QKV   und_qkv/gen_qkv 与 q 输出的数据类型（bfloat16_t）
@@ -242,12 +245,6 @@ private:
     // 自动退化成标准 RoPE，不需要额外分支。
     __aicore__ inline void BuildMropeGatherIndex()
     {
-        // 标量写入的 UB 随后要被 VF 的 Gather 读，必须显式做一次 S->V 同步。
-        // 用 AllocMutexID 动态申请而不是写死事件号：本 kernel 有 4 个 TQue，框架的
-        // 事件是从同一个 g_bufId 池里取的，写死的号可能与框架已占用的撞上。
-        // 自定义 ID（0-27）虽然更快，但按文档明确「无法与 TQue 等接口配合使用」。
-        MutexID mutexId = AllocMutexID();
-        Mutex::Lock<PIPE_S>(mutexId);
         for (int64_t lane = 0; lane < halfDim_; ++lane) {
             const int64_t repeat = lane / MROPE_AXIS_NUM;
             const int64_t axisInGroup = lane % MROPE_AXIS_NUM;
@@ -259,13 +256,9 @@ private:
             }
             gatherIdxLocal_.SetValue(lane, static_cast<uint32_t>(axis * headDim_ + lane));
         }
-        Mutex::Unlock<PIPE_S>(mutexId);
-        // 真正的消费方是后续 Compute 里 VF 的 Gather。这里在 V 流水上加一次
-        // Lock/Unlock，作用是让其后所有 V 指令都等标量写落地，等价于原来的
-        // WaitFlag<HardEvent::S_V>；中间无需放任何 V 指令
-        Mutex::Lock<PIPE_V>(mutexId);
-        Mutex::Unlock<PIPE_V>(mutexId);
-        ReleaseMutexID(mutexId);
+        // 标量写入的 UB 要被 VF 读，必须显式同步，否则 Gather 可能读到旧值
+        SetFlag<HardEvent::S_V>(EVT_S_TO_V_INDEX_READY);
+        WaitFlag<HardEvent::S_V>(EVT_S_TO_V_INDEX_READY);
     }
 
     // 取 out_t 对应的源 token 下标；越界一律回落到 0，避免非法 GM 访问
