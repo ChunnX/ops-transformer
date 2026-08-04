@@ -375,6 +375,10 @@ public:
 
                         bool initMmad = (kL0Itr == 0);
                         uint32_t l0TileMAligned = RoundUp(l0TileMAct, 16);
+                        if constexpr (FULL_QUANT_FP8) {
+                            // fp8 Fixpipe 需要 L0C 至少有 32 行数据，mmad M 同步提升避免越界读
+                            l0TileMAligned = (l0TileMAligned < 32) ? 32 : l0TileMAligned;
+                        }
                         if (l1ToL0ANoRepeatFlag && (nL1Itr == 0) && (nL0Itr == 0)) {
                             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
                         }
@@ -408,6 +412,10 @@ public:
                 // valid rows in AIV0: [0, mFixPAligned8 / 2 - 1]
                 // valid rows in AIV1: [mFixPAligned8 / 2, rowNum - 1]
                 uint32_t mFixPAligned8 = RoundUp(rowNum, 8);
+                if constexpr (FULL_QUANT_FP8) {
+                    // fp8 Fixpipe 双核拆分要求每核 mSize>=16，rowNum 过小时提升到 32 行整搬
+                    mFixPAligned8 = (mFixPAligned8 < 32) ? 32 : mFixPAligned8;
+                }
                 uint32_t mPerSubCore = mFixPAligned8 / 2;
                 uint32_t nFixPAligned16 = RoundUp(l0TileNAct, 16);
                 auto ubCTensorTlaTile = GetTile(ubCTensor,
