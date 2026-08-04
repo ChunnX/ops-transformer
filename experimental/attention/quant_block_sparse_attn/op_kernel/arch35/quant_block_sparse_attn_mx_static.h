@@ -66,10 +66,8 @@ constexpr AscendC::TEventID L1_Q_EVENT_ID0 = 0U;
 constexpr AscendC::TEventID L1_Q_EVENT_ID1 = 1U;
 constexpr AscendC::TEventID L1_K_EVENT_ID0 = 2U;
 constexpr AscendC::TEventID L1_K_EVENT_ID1 = 3U;
-constexpr AscendC::TEventID L1_K_EVENT_ID2 = 4U;
-constexpr AscendC::TEventID L1_K_EVENT_ID3 = 5U;
-constexpr AscendC::TEventID L1_V_EVENT_ID0 = 8U;
-constexpr AscendC::TEventID L1_V_EVENT_ID1 = 9U;
+constexpr AscendC::TEventID L1_V_EVENT_ID0 = 4U;
+constexpr AscendC::TEventID L1_V_EVENT_ID1 = 5U;
 
 constexpr AscendC::TEventID L0A_EVENT_ID0 = 0U;
 constexpr AscendC::TEventID L0A_EVENT_ID1 = 1U;
@@ -84,7 +82,9 @@ constexpr AscendC::TEventID PSCALE_EVENT_ID = 2U;
 constexpr AscendC::TEventID STAGE2_EVENT_ID = 3U;
 constexpr AscendC::TEventID LSE_EVENT_ID = 4U;
 constexpr AscendC::TEventID INIT_OUTPUT_FREE_EVENT_ID = 5U;
-constexpr AscendC::TEventID INIT_OUTPUT_READY_EVENT_ID = 10U;
+// ClearOutput runs before the main-pipeline event seeds and consumes this V_MTE3 token immediately, so it can
+// safely reuse ID 0. Local SetFlag/WaitFlag IDs above 7 are invalid, and 6/7 are reserved in static mode.
+constexpr AscendC::TEventID INIT_OUTPUT_READY_EVENT_ID = 0U;
 constexpr AscendC::TEventID MASK_EVENT_ID = 0U;
 
 __aicore__ inline uint32_t Bmm1ReadyEventId(uint32_t slot)
