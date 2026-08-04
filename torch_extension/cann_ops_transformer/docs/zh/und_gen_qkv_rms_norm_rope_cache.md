@@ -29,7 +29,7 @@ q = torch.ops.cann_ops_transformer.und_gen_qkv_rms_norm_rope_cache(
 | cos_sin_cache | Tensor(float32) | [max_pos, D]，前半 cos、后半 sin |
 | k_cache | Tensor(bfloat16) | [Bn, Bs, Hk, D]，连续 BBND，原地写入 |
 | v_cache | Tensor(bfloat16) | [Bn, Bs, Hv, D]，连续 BBND，原地写入 |
-| slot_mapping | Tensor(int64) | [T]，slot = block_num * Bs + row_idx |
+| slot_mapping | Tensor(int64) | [T]，slot = block_idx * Bs + row_idx |
 | positions | Tensor(int64) | [3, T]，MRoPE 三轴位置 |
 | gen_qkv | Tensor(bfloat16)，可选 | [gen_len, N, D]，纯 prefill 时传 None |
 | gen_weights_q / gen_weights_k | Tensor(bfloat16)，可选 | [D]，与 gen_qkv 同进同出 |
