@@ -65,6 +65,7 @@ private:
     __aicore__ inline void SplitCoreCal();
     __aicore__ inline void TokenSplitCoreCal();
     __aicore__ inline void WaitDispatch();
+    __aicore__ inline void FlipDataState();
 
     __aicore__ GM_ADDR GetUrmaAddrByRankId(const int32_t rankId, const uint8_t expertLocalId = 0U)
     {
@@ -109,6 +110,7 @@ private:
     uint64_t expertPerSizeOnWin_{0};
     uint64_t sharedExpertDataSizeOffset_{0};
     uint32_t epRankId_{0};
+    GM_ADDR dataStateGM_{nullptr}; // 本核 dataState 0/1 标识地址，WaitDispatch 成功后再翻转
 
     TQue<QuePosition::VECIN, 1> moeSumQueue_;
     TQue<QuePosition::VECIN, 1> expertIdsQueue_;
@@ -140,16 +142,14 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(G
 
     // 获取win状态区地址，并保证数据一致
     // 在1M中选择512K偏移后的1.5k空间记录本卡历史状态
-    // 在teardown内进行状态切换，到setup内时，state即目标flag
+    // dataState 仅在 WaitDispatch 成功后再翻转，避免等待失败时通信域残留错位的 0/1 标识
     GlobalTensor<int32_t> selfDataStatusTensor;
     GM_ADDR statusDataSpaceGm = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
-    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGm + STATE_WIN_OFFSET +
-                                                            STATE_SIZE_PER_CORE * static_cast<uint64_t>(coreIdx_)));
+    dataStateGM_ = statusDataSpaceGm + STATE_WIN_OFFSET + STATE_SIZE_PER_CORE * static_cast<uint64_t>(coreIdx_);
+    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)dataStateGM_);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
 
-    dataState_ = selfDataStatusTensor(0);      // win状态区的0/1标识
-    selfDataStatusTensor(0) = 1U - dataState_; // 切换0/1区标识
-    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
+    dataState_ = selfDataStatusTensor(0); // win状态区的0/1标识，本轮仍使用该 bank
 
     expertIdsGlobal_.SetGlobalBuffer((__gm__ int32_t *)expertIds);
     expandIdxGlobal_.SetGlobalBuffer((__gm__ ExpandIdxType *)expandIdx);
@@ -293,6 +293,17 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
 }
 
 template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::FlipDataState()
+{
+    // WaitDispatch 成功（或空闲核跳过等待）后再切换 0/1 区，供下一轮 setup 使用
+    GlobalTensor<int32_t> selfDataStatusTensor;
+    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)dataStateGM_);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
+    selfDataStatusTensor(0) = static_cast<int32_t>(1U - dataState_);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
+}
+
+template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::CopyIn()
 {
     LocalTensor<ExpandIdxType> indexCountsTensor = indexCountsQueue_.AllocTensor<ExpandIdxType>();
@@ -380,6 +391,7 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Proces
     if ASCEND_IS_AIV { // 全aiv处理{
         AlltoAllBuffInit();
         WaitDispatch();
+        FlipDataState();
         SyncAll<true>();
 
         CopyIn();

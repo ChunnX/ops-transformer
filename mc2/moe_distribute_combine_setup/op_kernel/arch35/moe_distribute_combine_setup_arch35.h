@@ -291,6 +291,14 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         hcomm_.Commit(channelId);
     }
 
+    // 回收本核负责的 channel CQ，避免同通信域多轮复用时 SQ/CQ 堆积导致后续卡死
+    for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; ++dstRankId) {
+        if (unlikely(dstRankId == epRankId_)) {
+            continue;
+        }
+        hcomm_.Drain(GetCommHandle(dstRankId));
+    }
+
     assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);
 }
 
