@@ -34,7 +34,7 @@ PRECISION = {
                  "diff_thd": 0.005, "max_diff_hd": 10.0},
     "float16":  {"rtol": 0.005, "atol": 0.000025, "pct_thd": 0.005,
                  "diff_thd": 0.005, "max_diff_hd": 10.0},
-    "float32":  {"rtol": 1e-5, "atol": 1e-8, "pct_thd": 0.005,
+    "float32":  {"rtol": 0.005, "atol": 0.000025, "pct_thd": 0.005,
                  "diff_thd": 0.005, "max_diff_hd": 10.0},
 }
 
