@@ -993,7 +993,8 @@ template <typename ActivationType, typename SwigluOutType, typename QuantScaleTy
           bool ConfigureGmm2Output, bool ConfigureCombineCounter, bool ConfigureGmmToEpilogue>
 __aicore__ inline void UpdateMoeGmm2GlobalBuffer(const Gmm2Config &context, const WorkspaceInfo &workspace,
                                                  const ExpertWeightTensorListAddrs &weights, GMMAddrInfo &gmmAddrInfo,
-                                                 const Gmm2ExpertLoopState &state, uint32_t expertIdx)
+                                                 const Gmm2ExpertLoopState &state, uint32_t expertIdx,
+                                                 uint32_t expertMGroupOffset = 0U)
 {
     if constexpr (ConfigureGmm2Output) {
         gmmAddrInfo.gmm2OutGlobal =
@@ -1019,9 +1020,11 @@ __aicore__ inline void UpdateMoeGmm2GlobalBuffer(const Gmm2Config &context, cons
             expertSyncSlotOffset * static_cast<uint64_t>(INT_CACHELINE);
     }
     gmmAddrInfo.swigluToGmm2Flag = reinterpret_cast<__gm__ int32_t *>(workspace.flagSwiGluToGmm2Ptr) +
-                                   Get<IDX_FLAG_OFFSET>(state.baseOffset) * context.swigluFlagSlotsPerExpert;
+                                   Get<IDX_FLAG_OFFSET>(state.baseOffset) * context.swigluFlagSlotsPerExpert +
+                                   static_cast<uint64_t>(expertMGroupOffset) * INT_CACHELINE;
     gmmAddrInfo.dispatchToGmm1Flag = reinterpret_cast<__gm__ int32_t *>(workspace.flagDispatchToGmm1Ptr) +
-                                     Get<IDX_FLAG_OFFSET>(state.baseOffset) * context.dispatchFlagSlotsPerExpert;
+                                     Get<IDX_FLAG_OFFSET>(state.baseOffset) * context.dispatchFlagSlotsPerExpert +
+                                     static_cast<uint64_t>(expertMGroupOffset) * INT_CACHELINE;
     if constexpr (ConfigureGmmToEpilogue) {
         gmmAddrInfo.gmmToEpilogueFlag = nullptr;
         if (workspace.flagGmmToEpiloguePtr != nullptr) {

@@ -1058,7 +1058,8 @@ template <typename ActivationType, typename WeightType, typename SwigluOutType, 
 __aicore__ inline void UpdateGmm1GlobalBuffer(
     const Gmm1SwigluConfig &context, const WorkspaceInfo &workspace,
     const ExpertWeightTensorListAddrs &weights, BlockEpilogue &epilogueOp, GMMAddrInfo &gmmAddrInfo,
-    const Gmm1ExpertLoopState &state, uint32_t expertIdx)
+    const Gmm1ExpertLoopState &state, uint32_t expertIdx, uint32_t expertMGroupOffset = 0U,
+    uint32_t gmm1TilesPerMGroup = 0U)
 {
     if constexpr (g_coreType == AIV && !EnableA8W4) {
         if (GetSubBlockIdx() != 0) {
@@ -1078,11 +1079,14 @@ __aicore__ inline void UpdateGmm1GlobalBuffer(
     }
     if constexpr (TopkWeightsPrefetch) {
         gmmAddrInfo.gmm1TileStatus = reinterpret_cast<__gm__ int32_t *>(workspace.gmm1TileStatusPtr) +
-                                     static_cast<uint64_t>(expertIdx) * context.maxTilesPerExpert * INT_CACHELINE;
+                                     (static_cast<uint64_t>(expertIdx) * context.maxTilesPerExpert +
+                                      static_cast<uint64_t>(expertMGroupOffset) * gmm1TilesPerMGroup) *
+                                         INT_CACHELINE;
     }
     gmmAddrInfo.metaInfoGlobal = workspace.metaInfoPtr;
     gmmAddrInfo.swigluToGmm2Flag = reinterpret_cast<__gm__ int32_t *>(workspace.flagSwiGluToGmm2Ptr) +
-                                   expertOffset * context.swigluFlagSlotsPerExpert;
+                                   expertOffset * context.swigluFlagSlotsPerExpert +
+                                   static_cast<uint64_t>(expertMGroupOffset) * INT_CACHELINE;
     gmmAddrInfo.aGlobal =
         workspace.dispatchRevDataPtr + state.rowOffset * k / ActivationElementsPerByte * sizeof(ActivationType);
     gmmAddrInfo.aScaleGlobal = workspace.dispatchRevScalePtr + state.rowOffset * scaleK * sizeof(QuantScaleType);
@@ -1104,7 +1108,7 @@ __aicore__ inline void UpdateGmm1GlobalBuffer(
             AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
                 state.rowOffset * n / SWIGLU_N_HALF / outputElementsPerByte,
                 state.rowOffset * scaleN,
-                expertOffset * context.swigluFlagSlotsPerExpert / INT_CACHELINE,
+                expertOffset * context.swigluFlagSlotsPerExpert / INT_CACHELINE + expertMGroupOffset,
                 0L,
                 0L,
                 0L};
@@ -1113,7 +1117,8 @@ __aicore__ inline void UpdateGmm1GlobalBuffer(
     }
     if constexpr (g_coreType == AIC) {
         gmmAddrInfo.dispatchToGmm1Flag = reinterpret_cast<__gm__ int32_t *>(workspace.flagDispatchToGmm1Ptr) +
-                                         expertOffset * context.dispatchFlagSlotsPerExpert;
+                                         expertOffset * context.dispatchFlagSlotsPerExpert +
+                                         static_cast<uint64_t>(expertMGroupOffset) * INT_CACHELINE;
     }
     if constexpr (EnableA8W4) {
         gmmAddrInfo.gmmToEpilogueFlag = nullptr;
