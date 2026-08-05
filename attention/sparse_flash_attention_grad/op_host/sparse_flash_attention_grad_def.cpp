@@ -70,6 +70,14 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
 
+        // 【新增】oss-sink 输入 [N1] FP32，OPTIONAL；为空时 sink 路径编译期消除（tiling key bit35 HasSinks）
+        this->Input("sinks")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+
         this->Input("value")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16})
@@ -130,6 +138,13 @@ public:
         this->Output("d_key_rope")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+
+        // 【新增】sink 梯度 [N1] FP32，OPTIONAL；仅 sinks 存在时输出，否则返回空 Tensor（shape [0]）
+        this->Output("d_sinks")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
 

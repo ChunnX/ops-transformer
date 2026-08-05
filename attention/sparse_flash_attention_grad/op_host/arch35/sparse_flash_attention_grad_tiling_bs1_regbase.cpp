@@ -167,6 +167,15 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetWorkspaceSize()
     workspaces[0] += (mm4WorkspaceLen + mm5WorkspaceLen) * coreNum;
     workspaces[0] += dqWorkspaceLen + dkWorkspaceLen + dvWorkspaceLen;
 
+    // 【新增】dSink 跨核 reduce 中间 workspace：仅确定性 + HAS_SINKS 时分配（每 AIC 1 slot=MAX_N1×FP32=512B，无 DB）
+    // 非 deter 走 AtomicAdd 直写 dSinksGm，无需中间 workspace（len=0）
+    int64_t usedCoreNum = baseParams_->get_usedCoreNum();
+    tmpData.dSinkWorkSpaceLen = 0;
+    if (tmpData.hasSinks && tmpData.deterministic) {
+        tmpData.dSinkWorkSpaceLen = AlignData(usedCoreNum * MAX_N1 * B32, GM_ALIGN);
+    }
+    workspaces[0] += tmpData.dSinkWorkSpaceLen;
+
     baseParams_->set_selectedKWorkSpaceOffset(0);
     int64_t workspaceOffsets = selectedKWorkspaceLen * coreNum;
     baseParams_->set_mm4ResWorkSpaceOffset(workspaceOffsets);
@@ -178,6 +187,9 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetWorkspaceSize()
     postTilingData_->set_dkWorkSpaceOffset(workspaceOffsets);
     workspaceOffsets = workspaceOffsets + dkWorkspaceLen;
     postTilingData_->set_dvWorkSpaceOffset(workspaceOffsets);
+    workspaceOffsets = workspaceOffsets + dvWorkspaceLen;
+    // 【新增】dSinkWorkSpace 紧跟 dv 区之后（对齐 dq/dk/dv 偏移模式）
+    postTilingData_->set_dSinkWorkSpaceOffset(workspaceOffsets);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -189,11 +201,12 @@ uint64_t SparseFlashAttentionGradBs1Regbase::GetTilingKey() const
     uint64_t tilingKey = 0;
 
     OP_LOGI(context_,
-              "SparseFlashAttentionGrad get tilingkey, InputDType[%ld], IsTnd[%ld], GTemplateNum[%ld], S2TemplateNum[%ld], DTemplateNum[%ld], IsRope[%d], Deterministic[%d]",
-              inputDtypeSize, isTnd, tmpData.singleM, tmpData.singleN, tmpData.d, static_cast<uint8_t>(tmpData.ropeEnable), static_cast<uint8_t>(tmpData.deterministic));
-    // tmpData.singleM 为G方向上固定切分大小 tmpData.singleN为S2方向上固定切分大小 
-    tilingKey = GET_TPL_TILING_KEY(static_cast<uint8_t>(inputDtypeSize), static_cast<uint8_t>(isTnd), static_cast<uint16_t>(tmpData.singleM), 
-        static_cast<uint16_t>(tmpData.singleN), static_cast<uint16_t>(tmpData.d), static_cast<uint8_t>(tmpData.ropeEnable), static_cast<uint8_t>(tmpData.deterministic));
+              "SparseFlashAttentionGrad get tilingkey, InputDType[%ld], IsTnd[%ld], GTemplateNum[%ld], S2TemplateNum[%ld], DTemplateNum[%ld], IsRope[%d], Deterministic[%d], HasSinks[%d]",
+              inputDtypeSize, isTnd, tmpData.singleM, tmpData.singleN, tmpData.d, static_cast<uint8_t>(tmpData.ropeEnable), static_cast<uint8_t>(tmpData.deterministic), static_cast<uint8_t>(tmpData.hasSinks));
+    // tmpData.singleM 为G方向上固定切分大小 tmpData.singleN为S2方向上固定切分大小
+    tilingKey = GET_TPL_TILING_KEY(static_cast<uint8_t>(inputDtypeSize), static_cast<uint8_t>(isTnd), static_cast<uint16_t>(tmpData.singleM),
+        static_cast<uint16_t>(tmpData.singleN), static_cast<uint16_t>(tmpData.d), static_cast<uint8_t>(tmpData.ropeEnable), static_cast<uint8_t>(tmpData.deterministic),
+        static_cast<uint8_t>(tmpData.hasSinks));
 
     OP_LOGI(context_,
               "SparseFlashAttentionGrad DoTiling success, tilingkey is"
@@ -385,6 +398,9 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     const gert::Shape &indicesShape = context_->GetInputShape(static_cast<size_t>(InputIndex::TOPK_INDICES))->GetStorageShape();
     auto qRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::Q_ROPE));
     auto kRopeTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::K_ROPE));
+    // 【新增】sinks 输入（OPTIONAL, FP32, [N1]）：判空只在这一处，编入 tiling key bit35 HasSinks
+    auto sinksTensor = context_->GetOptionalInputTensor(static_cast<size_t>(InputIndex::SINKS));
+    tmpData.hasSinks = (sinksTensor != nullptr);
     const gert::Shape &dqShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DQ))->GetStorageShape();
     const gert::Shape &dkShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DK))->GetStorageShape();
     const gert::Shape &dvShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DV))->GetStorageShape();
@@ -510,6 +526,21 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     if (tmpData.n2 != 1 || n1 > 128 || !gSizeSupportList.count(n1)) {
         OP_LOGE(context_, "SparseFlashAttentionGrad only support n2=1 and n1=1/2/3/4/6/8/12/16/24/32/48/64/128, but got n2=%ld n1=%ld.", tmpData.n2, n1);
         return ge::GRAPH_FAILED;
+    }
+
+    // 【新增】sinks 校验：shape 必须为 [N1]（n1 = n2*g）、dtype 必须为 FP32
+    if (tmpData.hasSinks) {
+        const gert::Shape &sinksShape = sinksTensor->GetStorageShape();
+        if (sinksShape.GetDimNum() != 1 || sinksShape.GetDim(0) != n1) {
+            OP_LOGE(context_, "SparseFlashAttentionGrad sinks shape should be [N1]=[%ld], but got dimNum=%u dim0=%ld.",
+                     n1, static_cast<uint32_t>(sinksShape.GetDimNum()), sinksShape.GetDim(0));
+            return ge::GRAPH_FAILED;
+        }
+        auto sinksDtype = context_->GetOptionalInputDesc(static_cast<size_t>(InputIndex::SINKS))->GetDataType();
+        if (sinksDtype != ge::DT_FLOAT) {
+            OP_LOGE(context_, "SparseFlashAttentionGrad sinks dtype should be FP32, but got %d.", static_cast<int>(sinksDtype));
+            return ge::GRAPH_FAILED;
+        }
     }
 
     baseParams_->set_b(tmpData.b);
