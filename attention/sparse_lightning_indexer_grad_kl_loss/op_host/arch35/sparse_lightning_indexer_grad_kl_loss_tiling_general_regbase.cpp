@@ -360,7 +360,7 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDimLayout(const g
             }
             sliGradkllossBaseParams_->set_t1Size(t1Size);
             sliGradkllossBaseParams_->set_t2Size(t2Size);
-            OP_LOGI(context_, "[luo] slig_tnd_params t1Size=%ld actualAccumS1=%ld (pad=%ld), t2Size=%ld actualAccumS2=%ld (pad=%ld), aivNum=%u",
+            OP_LOGD(context_, "TND dim: T1[%ld] actual[%ld] pad[%ld], T2[%ld] actual[%ld] pad[%ld], aiv cores=%u",
                 t1Size, accumS1, t1Size - accumS1, t2Size, accumS2, t2Size - accumS2, aivNum);
             tilingData->baseParams.set_layoutType(static_cast<uint8_t>(LayoutTypeRegbase::LAYOUT_TND));
             tilingKeyLayout = LayoutTypeRegbase::LAYOUT_TND;
@@ -725,7 +725,7 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::GetPlatformIn
         aicoreParams_.l1Size = compileInfoPtr->l1Size;
         aicoreParams_.l0cSize = compileInfoPtr->l0cSize;
         l2CacheSize = compileInfoPtr->l2CacheSize;
-        OP_LOGI(context_, "[luo] slig_platform_info from compileInfo: aivNum=%u aicNum=%u ub=%lu l1=%lu l0c=%lu",
+        OP_LOGD(context_, "platform info from compileInfo: aiv[%u] aic[%u] ub[%lu] l1[%lu] l0c[%lu]",
             aivNum, aicNum, aicoreParams_.ubSize, aicoreParams_.l1Size, aicoreParams_.l0cSize);
     } else {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
@@ -1039,7 +1039,7 @@ void SparseLightningIndexerGradKLLossTilingBaseRegbase::InitOutputSplit()
     // 单个核均分元素数量
     singlecoresize = static_cast<uint32_t>(CeilDivision(totalsize, static_cast<int64_t>(aivNum))); // 输出k-index总大小TD或者BSD 除以 总的aiv核数 向上取整
     sliGradkllossBaseParams_->set_totalAivNum(static_cast<int32_t>(aivNum));
-    OP_LOGI(context_, "[luo] slig_init_output_split aivNum=%u totalOutputSize=%ld singleCoreSize=%u",
+    OP_LOGD(context_, "init output split: aiv[%u] outputSize[%ld] perCore[%u]",
         aivNum, totalsize, singlecoresize);
     initoutput->set_singleCoreSize(singlecoresize);
     initoutput->set_totalOutputSize(totalsize);
