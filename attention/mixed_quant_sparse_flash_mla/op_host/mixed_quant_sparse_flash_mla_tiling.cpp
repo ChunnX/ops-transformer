@@ -14,6 +14,7 @@
  */
 
 #include "mixed_quant_sparse_flash_mla_check.h"
+#include "checkers/mixed_quant_sparse_flash_mla_checker.h"
 #include "../op_kernel/mixed_quant_sparse_flash_mla_template_tiling_key.h"
 #include "mixed_quant_sparse_flash_mla_tiling.h"
 
@@ -25,6 +26,20 @@ using std::string;
 namespace optiling {
 
 constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
+
+std::string MQSMLALayoutToSerialString(MQSMLALayout layout)
+{
+    switch (layout) {
+        case MQSMLALayout::BSND:
+            return "BSND";
+        case MQSMLALayout::TND:
+            return "TND";
+        case MQSMLALayout::PA_BBND:
+            return "PA_BBND";
+        default:
+            return "UNKNOWN";
+    }
+}
 
 struct QSMLACompileInfo {
     int64_t core_num;
@@ -735,7 +750,7 @@ ge::graphStatus TilingMixedQuantSparseFlashMla(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    MQSMLATilingCheck qsmlaTilingChecker(qsmlaInfo);
+    MixedQuantSparseFlashMlaChecker qsmlaTilingChecker(qsmlaInfo);
     if (qsmlaTilingChecker.Process() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
