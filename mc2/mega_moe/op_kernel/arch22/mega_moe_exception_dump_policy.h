@@ -29,7 +29,7 @@ enum class Stage : uint32_t {
     INIT = 0,
     APPLY_XACTIVE_MASK = 1,
     MOE_INIT_ROUTING = 2,
-    ALLGATHER_TOKEN_PER_EXPERT = 3,       // CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2
+    ALLGATHER_TOKEN_PER_EXPERT = 3, // CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2
     CUMSUM_TOKEN_PER_EXPERT = 4,
     DISPATCH = 5,
     SWIGLU = 6,
@@ -37,7 +37,7 @@ enum class Stage : uint32_t {
     RESET_TOKEN_PER_EXPERT = 8,
     CROSS_RANK_SYNC = 9,
     UNPERMUTE = 10,
-    END = 11                   // 哨兵，表示阶段总数，供 ExceptionDump BlockStage 数组使用
+    END = 11 // 哨兵，表示阶段总数，供 ExceptionDump BlockStage 数组使用
 };
 
 // MegaMoe ExceptionDump Policy：提供算子专属类型与编译期常量
@@ -49,9 +49,7 @@ struct MegaMoeExceptionDumpPolicy {
     // 根据是否为 quant routing 选择完整 tiling 结构体
     // quant: MegaMoeTilingDataQuant（含 MoeInitRoutingQuantV2TilingData）
     // non-quant: MegaMoeTilingDataNonQuant（含 MoeInitRoutingV2TilingData）
-    using TilingDataT = std::conditional_t<kIsQuantRouting,
-                                           MegaMoeTilingDataQuant,
-                                           MegaMoeTilingDataNonQuant>;
+    using TilingDataT = std::conditional_t<kIsQuantRouting, MegaMoeTilingDataQuant, MegaMoeTilingDataNonQuant>;
     using StageEnumT = Stage;
     static constexpr MC2ExceptionDump::OpType OP_TYPE = MC2ExceptionDump::OpType::OP_TYPE_MEGA_MOE;
 };
@@ -61,4 +59,4 @@ struct MegaMoeExceptionDumpPolicy {
 template <bool kIsQuantRouting, typename ArchTag = void>
 using ExceptionDumpEngine = MC2ExceptionDump::ExceptionDump<MegaMoeExceptionDumpPolicy<kIsQuantRouting, ArchTag>>;
 } // namespace MC2MegaMoeAdump
-#endif  // MEGA_MOE_EXCEPTION_DUMP_POLICY
+#endif // MEGA_MOE_EXCEPTION_DUMP_POLICY

@@ -140,8 +140,8 @@ public:
 
         auto &ubC = ubCList[is_ping];
         auto &ubD = ubDList[is_ping];
-        int64_t gmCOffset = static_cast<int64_t>(preSrcExpertSum) * params.n2 +
-            blockCoord.m() * params.n2 + blockCoord.n();
+        int64_t gmCOffset =
+            static_cast<int64_t>(preSrcExpertSum) * params.n2 + blockCoord.m() * params.n2 + blockCoord.n();
         auto gmTileC = gmC[gmCOffset];
         auto &ubCFp32 = ubFp32List[is_ping];
         auto &scaleUb = scaleUbList[is_ping];

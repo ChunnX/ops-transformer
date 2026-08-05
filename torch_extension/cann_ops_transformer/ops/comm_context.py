@@ -7,8 +7,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-import torch
-import torch_npu
 from cann_ops_transformer.op_builder.builder import OpBuilder
 
 
@@ -17,13 +15,14 @@ class CommContextOpBuilder(OpBuilder):
         super(CommContextOpBuilder, self).__init__("comm_context")
 
     def sources(self):
-        return ['ops/csrc/comm_context.cpp']
+        return ["ops/csrc/comm_context.cpp"]
 
     def schema(self):
         return None
 
     def register_meta(self):
         pass
+
 
 comm_context_op_builder = CommContextOpBuilder()
 
