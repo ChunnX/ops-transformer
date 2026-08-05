@@ -14,6 +14,7 @@
  */
 
 #include "sparse_flash_mla_tiling.h"
+#include "checkers/sparse_flash_mla_checker.h"
 #include "../op_kernel/sparse_flash_mla_template_tiling_key.h"
 
 using namespace ge;
@@ -408,6 +409,8 @@ void SMLAInfoParser::GetOutputParaInfo()
 {
     opParamInfo_.attnOut.desc = context_->GetOutputDesc(ATTN_OUT_INDEX);
     opParamInfo_.attnOut.shape = context_->GetOutputShape(ATTN_OUT_INDEX);
+    opParamInfo_.softmaxLse.desc = context_->GetOutputDesc(SOFTMAX_LSE_INDEX);
+    opParamInfo_.softmaxLse.shape = context_->GetOutputShape(SOFTMAX_LSE_INDEX);
 }
 
 ge::graphStatus SMLAInfoParser::GetAttrParaInfo()
@@ -953,17 +956,6 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
             return ge::GRAPH_FAILED;
         }
     }
-    if (!IsA5Arch(npuArch_) && IsNonEmptyOptionalTensor(opParamInfo_.oriTopkLength.tensor)) {
-        OP_LOGE(opName_, "ori_topk_length is reserved and does not support non-empty tensor on %s.",
-                A2_A3_PLATFORM_LOG.c_str());
-        return ge::GRAPH_FAILED;
-    }
-    if (!IsA5Arch(npuArch_) && IsNonEmptyOptionalTensor(opParamInfo_.cmpTopkLength.tensor)) {
-        OP_LOGE(opName_, "cmp_topk_length is reserved and does not support non-empty tensor on %s.",
-                A2_A3_PLATFORM_LOG.c_str());
-        return ge::GRAPH_FAILED;
-    }
-
     if (kvLayout_ == SMLALayout::PA_BBND) {
         if (opParamInfo_.sequsedOriKv.tensor != nullptr) {
             if (qLayout_ == SMLALayout::BSND) {
@@ -2173,9 +2165,16 @@ ge::graphStatus TilingForSparseFlashMla(gert::TilingContext *context)
     if (smlaInfoParser.Parse(smlaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    SMLATilingCheck smlaTilingChecker(smlaInfo);
-    if (smlaTilingChecker.Process() != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
+    if (smlaInfo.npuArch == NpuArch::DAV_2201) {
+        SMLATilingCheck smlaTilingChecker(smlaInfo);
+        if (smlaTilingChecker.Process() != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    } else {
+        SparseFlashMlaChecker smlaTilingChecker(smlaInfo);
+        if (smlaTilingChecker.Process() != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
     }
     SparseFlashMlaTiling tiling(context);
     return tiling.DoOpTiling(&smlaInfo);
