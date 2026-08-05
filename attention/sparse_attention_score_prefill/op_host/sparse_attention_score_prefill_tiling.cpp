@@ -88,14 +88,14 @@ ge::graphStatus SASAPrefillTiling::ParseAttrs(gert::TilingContext *context)
 
 ge::graphStatus SASAPrefillTiling::ParseInputTensors(gert::TilingContext *context)
 {
-    printf("[SASAPrefillTiling] Enter ParseInputTensors\n");
+    // printf("[SASAPrefillTiling] Enter ParseInputTensors\n");
     // Query: [total_q_tokens, num_q_heads, D]
     auto qShape = context->GetInputShape(QUERY_INDEX);
     if (qShape == nullptr) { printf("[SASAPrefillTiling] qShape is null!\n"); return ge::GRAPH_FAILED; }
     totalQTokens_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(TND_DIM_T));
     numHeads_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(TND_DIM_N));
     embeddingSize_ = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(TND_DIM_D));
-    printf("[SASAPrefillTiling] totalQTokens=%u numHeads=%u D=%u\n", totalQTokens_, numHeads_, embeddingSize_);
+    // printf("[SASAPrefillTiling] totalQTokens=%u numHeads=%u D=%u\n", totalQTokens_, numHeads_, embeddingSize_);
 
     // KV: [num_physical_blocks, blockSize, kvHeads, D]
     auto kShape = context->GetInputShape(KEY_INDEX);
@@ -104,42 +104,53 @@ ge::graphStatus SASAPrefillTiling::ParseInputTensors(gert::TilingContext *contex
         kvHeads_ = static_cast<uint32_t>(kShape->GetStorageShape().GetDim(BLOCKED_KV_DIM_KV_HEAD));
     }
     groupSize_ = (kvHeads_ > 0) ? (numHeads_ / kvHeads_) : 1;
-    printf("[SASAPrefillTiling] kvHeads=%u groupSize=%u\n", kvHeads_, groupSize_);
+    // printf("[SASAPrefillTiling] kvHeads=%u groupSize=%u\n", kvHeads_, groupSize_);
 
     // block_table: [batch_size, max_num_blocks]
     auto btShape = context->GetInputShape(BLOCK_TABLE_INDEX);
     if (btShape == nullptr) { printf("[SASAPrefillTiling] btShape is null!\n"); return ge::GRAPH_FAILED; }
     batch_ = static_cast<uint32_t>(btShape->GetStorageShape().GetDim(0));
     maxBlocksPerBatch_ = static_cast<uint32_t>(btShape->GetStorageShape().GetDim(1));
-    printf("[SASAPrefillTiling] batch=%u maxBlocksPerBatch=%u\n", batch_, maxBlocksPerBatch_);
+    // printf("[SASAPrefillTiling] batch=%u maxBlocksPerBatch=%u\n", batch_, maxBlocksPerBatch_);
 
     // Data type
     auto qTensor = context->GetInputDesc(QUERY_INDEX);
     dataType_ = qTensor->GetDataType();
 
-    printf("[SASAPrefillTiling] ParseInputTensors done\n");
+    // printf("[SASAPrefillTiling] ParseInputTensors done\n");
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus SASAPrefillTiling::ParseSeqlens(gert::TilingContext *context)
 {
-    printf("[SASAPrefillTiling] Enter ParseSeqlens\n");
-    fflush(stdout);
+    // printf("[SASAPrefillTiling] Enter ParseSeqlens\n");
+    // fflush(stdout);
 
     auto k2qRowPtrShape = context->GetInputShape(K2Q_ROW_PTR_INDEX);
     if (k2qRowPtrShape == nullptr) {
         printf("[SASAPrefillTiling] k2qRowPtr shape is null!\n");
         return ge::GRAPH_FAILED;
     }
-    if (k2qRowPtrShape->GetStorageShape().GetDimNum() < 2) {
-        printf("[SASAPrefillTiling] k2qRowPtr must be rank-2 [kvHeads, totalRows + 1]\n");
+    // k2qRowPtr is a plain int32 tensor Input (shape [kvHeads, totalRows+1] or flat 1D — either,
+    // row-major so the linear layout is identical). flatSize = total element count; derive
+    // totalRows = flatSize / kvHeads - 1. Shape-only: no host value-read.
+    int64_t flatSize = k2qRowPtrShape->GetStorageShape().GetShapeSize();
+    if (flatSize <= 0 || kvHeads_ == 0U ||
+        static_cast<uint64_t>(flatSize) % static_cast<uint64_t>(kvHeads_) != 0U) {
+        printf("[SASAPrefillTiling] k2qRowPtr flat size %lld not divisible by kvHeads %u!\n",
+               static_cast<long long>(flatSize), kvHeads_);
         return ge::GRAPH_FAILED;
     }
-    numKvBlocks_ = static_cast<uint32_t>(k2qRowPtrShape->GetStorageShape().GetDim(1)) - 1;
-    uint32_t rowPtrDim0 = static_cast<uint32_t>(k2qRowPtrShape->GetStorageShape().GetDim(0));
-    printf("[SASAPrefillTiling] totalKvRows=%u k2qRowPtrHeads=%u kvHeads=%u\n",
-           numKvBlocks_, rowPtrDim0, kvHeads_);
-    fflush(stdout);
+    uint64_t perHead = static_cast<uint64_t>(flatSize) / static_cast<uint64_t>(kvHeads_);
+    if (perHead == 0U) {
+        printf("[SASAPrefillTiling] k2qRowPtr per-head size 0 (flatSize/kvHeads < 1)!\n");
+        return ge::GRAPH_FAILED;
+    }
+    numKvBlocks_ = static_cast<uint32_t>(perHead - 1U);
+    // numKvBlocks_ is derived from the k2qRowPtr Input SHAPE only (flatSize/kvHeads - 1). The
+    // strided row-outer partition in CalculateTaskSplit needs NO row_ptr values on host (shape-
+    // only); the kernel reads csrStart/csrEnd from the runtime GM tensor via GetValue.
+    // fflush(stdout);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -161,15 +172,19 @@ ge::graphStatus SASAPrefillTiling::CalculateReverseIndexMeta(gert::TilingContext
 
 ge::graphStatus SASAPrefillTiling::CalculateTaskSplit(gert::TilingContext *context)
 {
+    // STRIDED row-outer head-split partition (Phase1). taskIdx = packedRow*kvHeads + kvHeadIdx
+    // (row-outer); core coreIdx handles taskIdx in {coreIdx, coreIdx+coreNum, ...}. A row's
+    // kvHeads heads are co-hot -> they land on kvHeads DIFFERENT cores, balancing the head
+    // dimension for free (residual imbalance is row-level only; sim 1.44x on step3510, under the
+    // Phase2 Vec bottleneck). Shape-only: NO row_ptr value read on host (drops the GetData + nnz
+    // walk overhead the IntArray/const-fold path added). The kernel derives coreNum from
+    // GetBlockNum(); no per-core boundary arrays are serialized.
     (void)context;
-    uint32_t totalTaskP1 = numKvBlocks_ * kvHeads_;
-    uint32_t totalTaskP2 = totalQTokens_ * kvHeads_;
-    uint32_t totalTaskMax = std::max(totalTaskP1, totalTaskP2);
-    blockDim_ = std::min(totalTaskMax, aicNum_);
-    if (blockDim_ == 0) {
-        blockDim_ = 1;
-    }
-    printf("[SASAPrefillTiling] blockDim=%u\n", blockDim_);
+    uint32_t totalTasks = numKvBlocks_ * kvHeads_;        // Phase1 row-outer task count
+    uint32_t totalTaskP2 = totalQTokens_ * kvHeads_;     // Phase2 strided task count
+    // blockDim covers BOTH phases (strided): cores with no task simply skip the loop.
+    uint32_t totalTaskMax = std::max(totalTasks, totalTaskP2);
+    blockDim_ = (totalTaskMax == 0U) ? 1U : std::min(totalTaskMax, aicNum_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -280,14 +295,14 @@ ge::graphStatus SASAPrefillTiling::SetTilingData(gert::TilingContext *context,
 
 ASCENDC_EXTERN_C ge::graphStatus TilingSparseAttentionScorePrefill(gert::TilingContext* context)
 {
-    printf("[SASAPrefillTiling] ===== TilingSparseAttentionScorePrefill ENTER =====\n");
+    // printf("[SASAPrefillTiling] ===== TilingSparseAttentionScorePrefill ENTER =====\n");
     if (context == nullptr) { printf("[SASAPrefillTiling] context is null!\n"); return ge::GRAPH_FAILED; }
     SparseAttentionScorePrefillTilingData tilingData;
     SASAPrefillTiling tiling;
     if (tiling.GetTiling(context, tilingData) == ge::GRAPH_SUCCESS) {
-        printf("[SASAPrefillTiling] GetTiling success, calling SetTilingData\n");
+        // printf("[SASAPrefillTiling] GetTiling success, calling SetTilingData\n");
         tiling.SetTilingData(context, tilingData);
-        printf("[SASAPrefillTiling] ===== TilingSparseAttentionScorePrefill DONE =====\n");
+        // printf("[SASAPrefillTiling] ===== TilingSparseAttentionScorePrefill DONE =====\n");
         return ge::GRAPH_SUCCESS;
     }
     printf("[SASAPrefillTiling] GetTiling FAILED!\n");

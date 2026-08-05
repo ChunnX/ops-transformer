@@ -6,7 +6,7 @@
 
 目标实现如下数据流：
 
-1. Phase 1 在 Cube 侧完成 `QK + softmax + PV` 的 partial 计算。
+1. Phase 1 完成 `QK + softmax + PV` 的 partial 计算。
 2. Phase 1 以 `1 logical KV block × 1 KV head` 为 task 粒度。
 3. Q token 通过 host 提供的反向索引 gather，Q 在 GM 中可能非连续，因此 Q 需要逐行搬运到连续的片上临时区后参与 matmul。
 4. Phase 1 将每个 `(qToken, kvHead, slotK)` 的 `O_partial`（未归一化 P×V）、`rowMax`、`rowSum` 写入 workspace；**不在 Phase 1 做 `O / rowSum`**。

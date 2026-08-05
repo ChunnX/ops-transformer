@@ -498,6 +498,83 @@ private:
         }
     }
 
+    // Per-core nnz-balanced partition boundary. Replaces the size-33
+    // coreRowStart/coreQOffset array the old init built on EVERY core: the kernel
+    // is parallel, so each core needs ONLY its own [rowLo,offLo,rowHi,offHi).
+    // This walks row_ptr once and stops as soon as BOTH boundaries are found ->
+    // early cores terminate after a fraction of the walk (core 0 stops at row 0;
+    // only the last core walks the full prefix). Boundary semantics are identical
+    // to the old full-array build: target_c = c*totalNnz/activeCores; the boundary
+    // is the row CONTAINING target_c and the batchGroupsMax-aligned intra-row
+    // q-offset where core c STARTS (target==rowEndG defers to the next row, as
+    // before). Core 0 starts at (0,0); a core whose target is past totalNnz
+    // (degenerate totalNnz<activeCores) keeps rowHi=totalTasks -> empty slice,
+    // matching the old trailing-core fill. Deterministic -> every core derives
+    // the same two values it would have read from the array -> no cross-core sync.
+    __aicore__ inline
+    void ComputeCoreBounds(
+        uint32_t coreIdx, uint32_t activeCores, uint32_t batchGroupsMax,
+        AscendC::GlobalTensor<int32_t> const &gK2qRowPtr,
+        uint32_t &rowLo, uint32_t &offLo,
+        uint32_t &rowHi, uint32_t &offHi)
+    {
+        uint32_t totalTasks = totalKvRows_ * kvHeads_;
+        uint32_t headStride = totalKvRows_ + 1U;
+
+        // totalNnz = sum of each head's last-column (per-head cumsum terminal).
+        uint64_t totalNnz = 0U;
+        for (uint32_t h = 0U; h < kvHeads_; h++) {
+            totalNnz += static_cast<uint32_t>(
+                gK2qRowPtr.GetValue(static_cast<uint64_t>(h) * headStride + totalKvRows_));
+        }
+
+        uint64_t targetLo = static_cast<uint64_t>(coreIdx)      * totalNnz / activeCores;
+        uint64_t targetHi = static_cast<uint64_t>(coreIdx + 1U) * totalNnz / activeCores;
+
+        // Defaults: core 0 starts at task 0 offset 0; an unfound hi boundary
+        // (target past totalNnz) leaves rowHi=totalTasks -> past-the-end guard,
+        // the last core iterates [rowLo, totalTasks) with offHi=0 -> localEnd=csrEnd.
+        rowLo = 0U;
+        offLo = 0U;
+        rowHi = totalTasks;
+        offHi = 0U;
+        bool loFound = (coreIdx == 0U);
+        bool hiFound = false;
+
+        uint64_t cum = 0U;  // cumulative nnz before the current (h,r)
+        for (uint32_t h = 0U; h < kvHeads_ && !(loFound && hiFound); h++) {
+            for (uint32_t r = 0U; r < totalKvRows_ && !(loFound && hiFound); r++) {
+                uint32_t rs = static_cast<uint32_t>(
+                    gK2qRowPtr.GetValue(static_cast<uint64_t>(h) * headStride + r));
+                uint32_t re = static_cast<uint32_t>(
+                    gK2qRowPtr.GetValue(static_cast<uint64_t>(h) * headStride + r + 1U));
+                uint32_t rowNnz = (re > rs) ? (re - rs) : 0U;
+                uint64_t rowEndG = cum + rowNnz;
+                if (!loFound && targetLo < rowEndG) {
+                    uint64_t intra = targetLo - cum;  // targetLo >= cum (head-outer monotone)
+                    uint32_t intra8 = RoundUp(static_cast<uint32_t>(intra), batchGroupsMax);
+                    if (intra8 > rowNnz) {
+                        intra8 = rowNnz;  // row too small to split at batchGroupsMax -> no split
+                    }
+                    rowLo = h * totalKvRows_ + r;
+                    offLo = intra8;
+                    loFound = true;
+                }
+                if (!hiFound && targetHi < rowEndG) {
+                    uint64_t intra = targetHi - cum;
+                    uint32_t intra8 = RoundUp(static_cast<uint32_t>(intra), batchGroupsMax);
+                    if (intra8 > rowNnz) {
+                        intra8 = rowNnz;
+                    }
+                    rowHi = h * totalKvRows_ + r;
+                    offHi = intra8;
+                    hiFound = true;
+                }
+                cum = rowEndG;
+            }
+        }
+    }
+
     // Phase 1: KV-centric partial compute (Cube QK/PV + Vector softmax).
     __aicore__ inline
     void Phase1KvCentricCompute(
@@ -559,20 +636,51 @@ private:
         }
 #endif
 
-        // Eager seed: packedRow=0 -> (batchIdx=0, kvBlockIdx=0) for non-empty batch 0.
+        // Kernel-side nnz-balanced partition. row_ptr stays a plain runtime tensor
+        // (NO host value-read, NO .tolist/ConvertToTensor). Head-outer task index
+        // (task = h*totalKvRows + r) so a hot row's kvHeads heads land in DIFFERENT
+        // contiguous task ranges -> different cores (a row-outer contiguous range
+        // would pile a hot row's 4 heads on one core = the 4x worse
+        // "all-heads-per-core" trap). A boundary row may split at a batchGroupsMax-
+        // aligned (8) q-token offset so a hot row is shared by <=2 cores -> ~1.000x
+        // balance. AIV wall = Phase1-Vec + Phase2; Phase1-Vec is on the critical
+        // path (~62%) and partition-coupled, so this balance moves op wall, not just
+        // AIC. The kernel is parallel -> each core derives ONLY its own
+        // [rowLo,offLo,rowHi,offHi) via ComputeCoreBounds (walks row_ptr once,
+        // stops once both boundaries found) instead of materializing the full
+        // 33-boundary array on every core. Deterministic -> no cross-core sync.
+        uint32_t totalTasks = totalKvRows_ * kvHeads_;
+        uint32_t headStride = totalKvRows_ + 1U;
+        uint32_t activeCores = coreNum;
+        uint32_t rowLo;
+        uint32_t offLo;
+        uint32_t rowHi;
+        uint32_t offHi;
+        ComputeCoreBounds(coreIdx, activeCores, batchGroupsMax, gK2qRowPtr,
+                          rowLo, offLo, rowHi, offHi);
+
+        // Walker seed state (incremental round-robin packedRow -> (batchIdx, kvBlockIdx)).
+        // Head-outer: packedRow = taskIdx % totalKvRows is per-head row r, which RESETS to 0 at
+        // each head boundary, so the walker re-seeds at every head crossing. The (batchIdx,
+        // kvBlockIdx) decode is head-INDEPENDENT (global packedRow r -> same coord for all heads),
+        // so a re-seed to (0,0,0) + forward walk to r reproduces the right coord. prevHead init
+        // = kvHeads_ (invalid) forces the first task to re-seed.
         int32_t curPackedRow = 0;
         uint32_t batchIdx = 0;
         uint32_t kvBlockIdx = 0;
+        uint32_t prevHead = kvHeads_;
 
-        for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNumP1_; taskIdx += coreNum) {
-            uint32_t packedRow = taskIdx / kvHeads_;
-            uint32_t kvHeadIdx = taskIdx % kvHeads_;
-            if (packedRow >= totalKvRows_) {
-                continue;
+        for (uint32_t taskIdx = rowLo; taskIdx <= rowHi && taskIdx < totalTasks; ++taskIdx) {
+            uint32_t kvHeadIdx = taskIdx / totalKvRows_;
+            uint32_t packedRow = taskIdx % totalKvRows_;
+            if (kvHeadIdx != prevHead) {
+                curPackedRow = 0;
+                batchIdx = 0;
+                kvBlockIdx = 0;
+                prevHead = kvHeadIdx;
             }
-
             // Incremental round-robin decode of packedRow -> (batchIdx, kvBlockIdx).
-            // State persists across the strided task loop; Advance steps forward only.
+            // State persists within a head; Advance steps forward only.
             while (curPackedRow < static_cast<int32_t>(packedRow)) {
                 AdvancePackedRowCoord(batchIdx, kvBlockIdx);
                 curPackedRow++;
@@ -592,20 +700,26 @@ private:
             int32_t physicalBlockId = gBlockTable.GetValue(btOffset);
 
             uint32_t validSize = CalcKvBlockValidSize(kvSeqlenBatch, numBlocksB, localBlockIdx);
-            if (validSize == 0) {
-                continue;
-            }
 
-            uint64_t rowPtrBase = static_cast<uint64_t>(kvHeadIdx) * (totalKvRows_ + 1);
+            uint64_t rowPtrBase = static_cast<uint64_t>(kvHeadIdx) * headStride;
             uint32_t csrStart = static_cast<uint32_t>(
                 gK2qRowPtr.GetValue(rowPtrBase + packedRow));
             uint32_t csrEnd = static_cast<uint32_t>(
-                gK2qRowPtr.GetValue(rowPtrBase + packedRow + 1));
-            uint32_t numQTokens = csrEnd - csrStart;
-            if (numQTokens == 0) {
-                continue;
+                gK2qRowPtr.GetValue(rowPtrBase + packedRow + 1U));
+            // Per-row q-token clip at the core's [offLo, offHi) boundary (v2 split-row
+            // semantics): first row (taskIdx==rowLo) starts at csrStart+offLo, last row
+            // (taskIdx==rowHi) ends at csrStart+offHi, middle rows full [csrStart, csrEnd).
+            // A split row is visited by BOTH sharing cores, each taking its [localStart,
+            // localEnd) q-range -> distinct (q,slot) accumOut/stat slots, no overlap, no sync.
+            // myNumQ/myCsrStart feed the bf16/buffer body below byte-for-byte unchanged.
+            uint32_t localStart = (taskIdx == rowLo) ? (csrStart + offLo) : csrStart;
+            uint32_t localEnd = (taskIdx == rowHi) ? (csrStart + offHi) : csrEnd;
+            uint32_t myNumQ = (localEnd > localStart) ? (localEnd - localStart) : 0U;
+            if (validSize == 0U || myNumQ == 0U) {
+                continue;  // empty KV block / no q-tokens in this core's slice -> skip
             }
-            
+            uint32_t myCsrStart = localStart;
+
             uint64_t csrDataBase = static_cast<uint64_t>(kvHeadIdx) * k2qNnzUpperBound_;
             uint32_t kvStartPos = localBlockIdx * blockSize_;
 
@@ -623,11 +737,12 @@ private:
             blockMmadPV.LoadVResident(gmVTensor, validSize, embed_);
 #endif
 
-            // --- Batched QK/softmax/PV: group numQTokens into batches of batchGroupsMax ---
+            // --- Batched QK/softmax/PV: group myNumQ (the core's clipped q-token count for this
+            // row) into batches of batchGroupsMax ---
             // Input contract: every qToken listed for this kvBlock has causal overlap
-            // (causalValidLen >= 1), so numQTokens itself is the valid count -- no cvl==0
-            // pre-scan / skip needed. (numQTokens==0 already continued above.)
-            uint32_t numBatches = CeilDiv(numQTokens, batchGroupsMax);
+            // (causalValidLen >= 1), so myNumQ itself is the valid count -- no cvl==0
+            // pre-scan / skip needed. (myNumQ==0 / no-overlap already continued above.)
+            uint32_t numBatches = CeilDiv(myNumQ, batchGroupsMax);
 
             // qHeadStart is shared by the CUBE QK qBase computation below.
             uint32_t qHeadStart = kvHeadIdx * groupSize_;
@@ -655,7 +770,7 @@ private:
                 // QK + softmax for batch bi (collect + compute). Input guarantees every qToken
                 // has cvl>=1; batchGroupCount = batchGroupsMax except the tail batch (remainder).
                 if (bi < numBatches) {
-                    uint32_t rem = numQTokens - bi * batchGroupsMax;
+                    uint32_t rem = myNumQ - bi * batchGroupsMax;
                     uint32_t batchGroupCount = (rem < batchGroupsMax) ? rem : batchGroupsMax;
                     uint32_t batchM = batchGroupCount * groupSize_;
 #ifdef __DAV_VEC__
@@ -665,7 +780,7 @@ private:
                     uint32_t cvlArr[MAX_BATCH_GROUPS];
 #endif
                     for (uint32_t g = 0U; g < batchGroupCount; g++) {
-                        uint32_t csrIdx = csrStart + bi * batchGroupsMax + g;
+                        uint32_t csrIdx = myCsrStart + bi * batchGroupsMax + g;
                         batchQToken[stage][g] = static_cast<uint32_t>(
                             gK2qQIndices.GetValue(csrDataBase + csrIdx));
                         batchSlotK[stage][g] = static_cast<uint32_t>(
@@ -732,7 +847,7 @@ private:
                         Arch::CrossCoreFlag smToMm2Flag(smToMm2FlagId);
                         uint32_t stageDe = bDe % BATCH_RING_STAGES;
 #ifdef __DAV_CUBE__
-                        uint32_t pvRem = numQTokens - bDe * batchGroupsMax;
+                        uint32_t pvRem = myNumQ - bDe * batchGroupsMax;
                         uint32_t pvGrpCnt = (pvRem < batchGroupsMax) ? pvRem : batchGroupsMax;
                         blockMmadPV.SetL1PBuf(l1PBufIdDe);
                         blockMmadPV(gAccumOut, batchQToken[stageDe], batchSlotK[stageDe], pvGrpCnt,

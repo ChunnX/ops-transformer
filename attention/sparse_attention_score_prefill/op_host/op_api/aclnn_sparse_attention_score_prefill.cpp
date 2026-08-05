@@ -109,8 +109,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseAttentionScorePref
     auto *executorImpl = uniqueExecutor.get();
 
     aclnnStatus ret = MakeContiguous(query, key, value, blockTable,
-                                     k2qRowPtr, k2qQIndices,
-                                     k2qSlotIndices,
+                                     k2qRowPtr, k2qQIndices, k2qSlotIndices,
                                      actualSeqLengthsOptional, actualSeqLengthsKvOptional,
                                      executorImpl);
     if (ret != ACLNN_SUCCESS) {
