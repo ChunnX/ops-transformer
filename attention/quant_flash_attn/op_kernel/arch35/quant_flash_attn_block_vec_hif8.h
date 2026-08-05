@@ -120,7 +120,6 @@ public:
     TBuf<> commonTBuf_; // common的复用空间
     // ub
     TQue<QuePosition::VECOUT, 1> stage1OutQue_[2];
-    TQue<QuePosition::VECOUT, 1> pScaleSubLoop0Que_;
     TQue<QuePosition::VECIN, 1> attenMaskInQue_[2];
     TBuf<> stage2OutBuf_;
     TEventID mte3ToVId_[2]; // 存放MTE3_V的eventId, 2份表示可能存在pingpong
@@ -128,9 +127,6 @@ public:
     TBuf<> softmaxMaxBuf_[PRELOAD_N + 1];
     TBuf<> softmaxSumBuf_[PRELOAD_N + 1];
     TBuf<> softmaxExpBuf_[PRELOAD_N + 1];
-    TBuf<> preLoopMaxBuf_;
-    TBuf<> preLoopSumBuf_;
-    TBuf<> firstLoopSumBuf_;
     TBuf<> vselrIndexesBuf_[4];
     TBuf<> mm2InBuf_;
     /* 用来做Broadcast[S1,1]->[S2,8]的临时UB区域 */
@@ -317,16 +313,11 @@ public:
 
         LocalTensor<float> sumUb = this->softmaxSumBuf_[softmaxBufIdx].template Get<float>()[0];
         LocalTensor<float> maxUb = this->softmaxMaxBuf_[softmaxBufIdx].template Get<float>()[0];
-        LocalTensor<float> preLoopMaxUb = this->preLoopMaxBuf_.template Get<float>()[0];
-        LocalTensor<float> preLoopSumUb = this->preLoopSumBuf_.template Get<float>()[0];
-        LocalTensor<float> firstLoopSumUb = this->firstLoopSumBuf_.template Get<float>()[0];
         LocalTensor<float> expUb = this->softmaxExpBuf_[expBufIdx].template Get<T>()[0];
 
         LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
         auto stage1CastTensor = this->stage1OutQue_[stage1Offset].template AllocTensor<INPUT_T>();
-        auto pScaleSubLoop0Tensor = this->pScaleSubLoop0Que_.template AllocTensor<fp8_e8m0_t>();
 
-        float descaleQK = 1.0;
         static constexpr int32_t s2BaseSizeCur = s2BaseSize;
         uint32_t s2CalcSize = runInfo.actSingleLoopS2Size;
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
@@ -335,41 +326,37 @@ public:
 
         if (unlikely(runInfo.isFirstS2Loop)) {
             if (unlikely(!isSkipMask_)) {
-                FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, hasAtten, s2BaseSizeCur>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_, pScaleSubLoop0Tensor,
+                FaVectorApi::ProcessVec1VfDnHif8<T, INPUT_T, false, hasAtten, s2BaseSizeCur>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign,
-                    s2CalcSize, static_cast<T>(constInfo_.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
+                    s2CalcSize, static_cast<T>(constInfo_.scaleValue), descaleQKValue_, pScaleValue_, negativeFloatScalar_,
+                    0.0F, maskLine);
             } else {
-                FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, false, s2BaseSizeCur>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_, pScaleSubLoop0Tensor,
+                FaVectorApi::ProcessVec1VfDnHif8<T, INPUT_T, false, false, s2BaseSizeCur>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign,
-                    s2CalcSize, static_cast<T>(constInfo_.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
+                    s2CalcSize, static_cast<T>(constInfo_.scaleValue), descaleQKValue_, pScaleValue_, negativeFloatScalar_,
+                    0.0F, maskLine);
             }
         } else {
             if (unlikely(!isSkipMask_)) {
-                FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, hasAtten, s2BaseSizeCur>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_, pScaleSubLoop0Tensor,
+                FaVectorApi::ProcessVec1VfDnHif8<T, INPUT_T, true, hasAtten, s2BaseSizeCur>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign,
-                    s2CalcSize, static_cast<T>(constInfo_.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
+                    s2CalcSize, static_cast<T>(constInfo_.scaleValue), descaleQKValue_, pScaleValue_, negativeFloatScalar_,
+                    0.0F, maskLine);
             } else {
-                FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, true, false, s2BaseSizeCur>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_, pScaleSubLoop0Tensor,
+                FaVectorApi::ProcessVec1VfDnHif8<T, INPUT_T, true, false, s2BaseSizeCur>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf_,
                     ((runInfo.actMSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign,
-                    s2CalcSize, static_cast<T>(constInfo_.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop, maskLine);
+                    s2CalcSize, static_cast<T>(constInfo_.scaleValue), descaleQKValue_, pScaleValue_, negativeFloatScalar_,
+                    0.0F, maskLine);
             }
         }
         bmm1ResBuf.SetCrossCore();
 
         this->stage1OutQue_[stage1Offset].template EnQue(stage1CastTensor);
         this->stage1OutQue_[stage1Offset].template DeQue<INPUT_T>();
-
-        this->pScaleSubLoop0Que_.template EnQue(pScaleSubLoop0Tensor);
-        this->pScaleSubLoop0Que_.template DeQue<fp8_e8m0_t>();
-        this->pScaleSubLoop0Que_.template FreeTensor(pScaleSubLoop0Tensor);
 
         LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
         int64_t subLoopOffset = s2BaseSizeCur * mBaseSize * subLoop;
@@ -744,9 +731,6 @@ public:
         tPipe_->InitBuffer(softmaxExpBuf_[1], 256);
         tPipe_->InitBuffer(softmaxExpBuf_[2], 256);
 
-        tPipe_->InitBuffer(preLoopMaxBuf_, 256);
-        tPipe_->InitBuffer(preLoopSumBuf_, 256);
-        tPipe_->InitBuffer(firstLoopSumBuf_, 256);
 
         if constexpr (FLASH_DECODE) {
             tPipe_->InitBuffer(maxBrdcst_, 1, 2048);
@@ -762,7 +746,6 @@ public:
         tPipe_->InitBuffer(stage2OutBuf_, 64 * dTemplateAlign64 * sizeof(T));
         tPipe_->InitBuffer(stage1OutQue_[0], 1, 16640); // (32 + 1) * (256 / 32) * 64
         tPipe_->InitBuffer(stage1OutQue_[1], 1, 16640);
-        tPipe_->InitBuffer(pScaleSubLoop0Que_, 1, 512);
         tPipe_->InitBuffer(commonTBuf_, 512);
         if constexpr (HAS_MASK) {
             tPipe_->InitBuffer(attenMaskInQue_[0], 1, 16384); // 256 * 64
