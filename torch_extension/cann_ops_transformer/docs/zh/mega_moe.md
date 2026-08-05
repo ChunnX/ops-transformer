@@ -53,6 +53,47 @@
     - $\mathbb{Z}_4 = \{ x \in \mathbb{Z} \mid -8 \le x \le 7 \}, \quad \mathbb{Z}_8^{\text{sym}} = \{ x \in \mathbb{Z} \mid -127 \le x \le 127 \}, \quad \mathbb{Z}_{32} = \{ x \in \mathbb{Z} \mid -2^{31} \le x \le 2^{31}-1 \}$。其中 $\mathbb{Z}_8^{\text{sym}}$ 的上标 $\text{sym}$ 表示对称量化值域区间：其值域关于 $-127$ 与 $127$ 对称取整，与标准int8 的 $[-128, 127]$ 值域不同，故以 $\text{sym}$ 上标区分。
     - 张量切片操作采用Python风格的 `start:stop:step` 表示法，例如$[0::2, :]$ 代表取偶数行、$[1::2, :]$ 代表取奇数行。
     - $\mathrm{bitcast}_{T}(\mathbf{Z})$ 表示二进制重解释操作，将张量$\mathbf{Z}$的底层二进制数据按目标类型 $T$ 重新解释。
+  - 激活函数公式：
+    - 记 Linear1 输出拆分后的 gate 分支为 $g$，up 分支为 $u$，截断值为 $c$。定义上界截断函数 $U_c(z)$ 和对称截断函数 $C_c(z)$：
+      $$
+      U_c(z)=
+      \begin{cases}
+      \min(z,c), & c>0,\\
+      z, & c=0,
+      \end{cases}
+      \qquad
+      C_c(z)=
+      \begin{cases}
+      \max(-c,\min(z,c)), & c>0,\\
+      z, & c=0.
+      \end{cases}
+      $$
+    - `swiglu`：
+      $$
+      \operatorname{SwiGLU}(g,u)=\operatorname{SiLU}\!\left(U_c(g)\right)\odot C_c(u).
+      $$
+    - `swiglustep`：
+      $$
+      \operatorname{SwiGLUStep}(g,u)=U_c\!\left(\operatorname{SiLU}(g)\right)\odot C_c(u).
+      $$
+    - `swigluoai`：
+      $$
+      \operatorname{SwiGLUOAI}(g,u)=\left(C_c(u)+\beta\right)\odot U_c(g)\odot
+      \sigma\!\left(\alpha U_c(g)\right).
+      $$
+    - `situglu`：
+      $$
+      \operatorname{SiTUGLU}(g,u)=\beta\tanh\!\left(\frac{g}{\beta}\right)\odot\sigma(g)\odot L(u),
+      $$
+      其中
+      $$
+      L(u)=
+      \begin{cases}
+      u, & \text{未配置 linear\_beta},\\
+      \text{linear\_beta}\cdot\tanh\!\left(\dfrac{u}{\text{linear\_beta}}\right),
+      & \text{已配置 linear\_beta}.
+      \end{cases}
+      $$
 
 - 计算说明：
 
@@ -902,7 +943,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation</td>
         <td>str</td>
         <td>可选</td>
-        <td>激活函数类型，默认值为"swiglu"。A2/A3支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"；其中"swiglu"为通用SwiGLU，"swiglustep"对应Step 3.5，"swigluoai"对应MiniMax-M3，"situglu"对应Kimi K3。A5当前仅支持"swiglu"。</td>
+        <td>激活函数类型，默认值为"swiglu"。A2/A3的可选值为"swiglu"、"swiglustep"、"swigluoai"和"situglu"；A5的可选值仅为"swiglu"。</td>
         <td>str</td>
         <td>不涉及</td>
         <td>不涉及</td>
@@ -911,7 +952,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation_clamp</td>
         <td>float</td>
         <td>可选</td>
-        <td>"swiglu"、"swiglustep"和"swigluoai"的截断值，也可以通过activation_params中的"clamp"配置。两处同时配置时值必须相同；均未配置时使用float最大值。"situglu"忽略该值。值需≥0且不能为NaN。</td>
+        <td>"swiglu"、"swiglustep"和"swigluoai"的截断值，未配置时使用float最大值。"situglu"忽略该值。值需≥0且不能为NaN。</td>
         <td>float</td>
         <td>不涉及</td>
         <td>不涉及</td>
@@ -920,7 +961,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation_params</td>
         <td>dict[str, float]</td>
         <td>可选</td>
-        <td>激活函数参数字典，支持键"clamp"、"alpha"、"beta"和"linearbeta"。"clamp"与activation_clamp含义相同，两处同时配置时值必须相同；"alpha"用于"swigluoai"的sigmoid增益，默认值为1.702；"beta"用于"swigluoai"的up分支偏置或"situglu"的gate分支除数，默认值为1.0；"linearbeta"用于"situglu"的up分支，未配置时保持up不变。</td>
+        <td>激活函数参数字典，默认值为None。A2/A3场景下，"swiglu"和"swiglustep"无需设置；"swigluoai"支持"alpha"和"beta"，默认值分别为1.702和1.0；"situglu"支持"beta"和"linear_beta"，"beta"默认值为1.0，"linear_beta"未配置时保持up分支不变。A5仅支持"swiglu"，activation_params无需设置，截断值通过activation_clamp传入。</td>
         <td>float</td>
         <td>不涉及</td>
         <td>不涉及</td>

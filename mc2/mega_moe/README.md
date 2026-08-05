@@ -38,6 +38,47 @@
     - $\mathbb{Z}_4 = \{ x \in \mathbb{Z} \mid -8 \le x \le 7 \}, \quad \mathbb{Z}_8^{\text{sym}} = \{ x \in \mathbb{Z} \mid -127 \le x \le 127 \}, \quad \mathbb{Z}_{32} = \{ x \in \mathbb{Z} \mid -2^{31} \le x \le 2^{31}-1 \}$。其中 $\mathbb{Z}_8^{\text{sym}}$ 的上标 $\text{sym}$ 表示对称量化值域区间：其值域关于 $-127$ 与 $127$ 对称取整，与标准 INT8 的 $[-128, 127]$ 值域不同，故以 $\text{sym}$ 上标区分。
     - 张量切片操作采用Python风格的 `start:stop:step` 表示法，例如$[0::2, :]$ 代表取偶数行、$[1::2, :]$ 代表取奇数行。
     - $\mathrm{bitcast}_{T}(\mathbf{Z})$ 表示二进制重解释操作，将张量$\mathbf{Z}$的底层二进制数据按目标类型 $T$ 重新解释。
+  - 激活函数公式：
+    - 记 Linear1 输出拆分后的 gate 分支为 $g$，up 分支为 $u$，截断值为 $c$。定义上界截断函数 $U_c(z)$ 和对称截断函数 $C_c(z)$：
+      $$
+      U_c(z)=
+      \begin{cases}
+      \min(z,c), & c>0,\\
+      z, & c=0,
+      \end{cases}
+      \qquad
+      C_c(z)=
+      \begin{cases}
+      \max(-c,\min(z,c)), & c>0,\\
+      z, & c=0.
+      \end{cases}
+      $$
+    - `swiglu`：
+      $$
+      \operatorname{SwiGLU}(g,u)=\operatorname{SiLU}\!\left(U_c(g)\right)\odot C_c(u).
+      $$
+    - `swiglustep`：
+      $$
+      \operatorname{SwiGLUStep}(g,u)=U_c\!\left(\operatorname{SiLU}(g)\right)\odot C_c(u).
+      $$
+    - `swigluoai`：
+      $$
+      \operatorname{SwiGLUOAI}(g,u)=\left(C_c(u)+\beta\right)\odot U_c(g)\odot
+      \sigma\!\left(\alpha U_c(g)\right).
+      $$
+    - `situglu`：
+      $$
+      \operatorname{SiTUGLU}(g,u)=\beta\tanh\!\left(\frac{g}{\beta}\right)\odot\sigma(g)\odot L(u),
+      $$
+      其中
+      $$
+      L(u)=
+      \begin{cases}
+      u, & \text{未配置 linear\_beta},\\
+      \text{linear\_beta}\cdot\tanh\!\left(\dfrac{u}{\text{linear\_beta}}\right),
+      & \text{已配置 linear\_beta}.
+      \end{cases}
+      $$
 - 计算过程
 
     各产品支持的**Linear计算时**的激活矩阵A和权重矩阵W的数据类型如下：
@@ -792,14 +833,14 @@
   <tr>
    <td>activation</td>
    <td>可选属性</td>
-   <td>激活函数类型。默认值为"swiglu"。A2/A3支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"；其中"swiglu"为通用SwiGLU，"swiglustep"对应Step 3.5，"swigluoai"对应MiniMax-M3，"situglu"对应Kimi K3。A5当前仅支持"swiglu"。</td>
+   <td>激活函数类型。默认值为"swiglu"。A2/A3的可选值为"swiglu"、"swiglustep"、"swigluoai"和"situglu"；A5的可选值仅为"swiglu"。</td>
    <td>STRING</td>
    <td></td>
   </tr>
   <tr>
    <td>activation_params</td>
    <td>可选属性</td>
-   <td>激活函数参数列表，默认值为[float最大值]。参数顺序和数量由activation决定："swiglu"和"swiglustep"传[clamp]；"swigluoai"传[clamp, alpha, beta]；"situglu"在linear_beta为None时传[beta]，否则传[beta, linear_beta]。clamp需≥0且不能为NaN；alpha和swigluoai的beta需为有限值；situglu的beta和linear_beta作为除数，需为有限非零值。</td>
+   <td>激活函数参数列表，默认值为[]。参数顺序和数量由activation决定："swiglu"和"swiglustep"支持[]或[clamp]；"swigluoai"支持[]或[clamp, alpha, beta]；"situglu"支持[]、[beta]或[beta, linear_beta]。使用空列表时，clamp默认为float最大值，alpha默认为1.702，beta默认为1.0，linear_beta不启用。A5仅支持"swiglu"，因此activation_params仅支持[]或[clamp]。clamp需≥0且不能为NaN；alpha和swigluoai的beta需为有限值；situglu的beta和linear_beta作为除数，需为有限非零值。</td>
    <td>LIST_FLOAT</td>
    <td></td>
   </tr>
