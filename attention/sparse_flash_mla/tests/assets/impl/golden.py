@@ -44,3 +44,52 @@ def cpu_sparse_flash_mla(q, *, return_softmax_lse=False, testcase_name=None,
     if lse is None or not bool(return_softmax_lse):
         lse = None
     return data["cpu_output"], lse
+
+
+def cpu_aclnn_sparse_flash_mla(
+        q, ori_kv, cmp_kv, ori_sparse_indices, cmp_sparse_indices,
+        ori_block_table, cmp_block_table, cu_seqlens_q,
+        cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
+        seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv,
+        ori_topk_length, cmp_topk_length, sinks, metadata, softmax_scale,
+        cmp_ratio, ori_mask_mode, cmp_mask_mode, ori_win_left,
+        ori_win_right, layout_q, layout_kv, topk_value_mode,
+        return_softmax_lse, attn_out, softmax_lse_out,
+        testcase_name=None, **kwargs):
+    """Return the same pytest Golden for the ACLNN C API parameter order."""
+    del (
+        ori_kv,
+        cmp_kv,
+        ori_sparse_indices,
+        cmp_sparse_indices,
+        ori_block_table,
+        cmp_block_table,
+        cu_seqlens_q,
+        cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv,
+        seqused_q,
+        seqused_ori_kv,
+        seqused_cmp_kv,
+        cmp_residual_kv,
+        ori_topk_length,
+        cmp_topk_length,
+        sinks,
+        metadata,
+        softmax_scale,
+        cmp_ratio,
+        ori_mask_mode,
+        cmp_mask_mode,
+        ori_win_left,
+        ori_win_right,
+        layout_kv,
+        topk_value_mode,
+        attn_out,
+        softmax_lse_out,
+    )
+    return cpu_sparse_flash_mla(
+        q,
+        return_softmax_lse=return_softmax_lse,
+        testcase_name=testcase_name,
+        layout_q=layout_q,
+        **kwargs,
+    )
