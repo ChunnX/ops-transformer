@@ -225,14 +225,11 @@ bool GroupedQmmTiling::CheckWeightNzRuntimeConstraints() const
         return true;
     }
     OP_CHECK_IF(inputParams_.groupType == SPLIT_K,
-                OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(
-                    inputParams_.opType, "weight", ge::TypeUtils::FormatToSerialString(inputParams_.bFormat),
-                    "when group type is 2, format of weight must be within the range ND"),
+                OP_LOGE(inputParams_.opName,
+                        "In op [grouped_matmul], when groupType == 2(split-K), [weight NZ] is not supported."),
                 return false);
     const auto perTokenScaleDesc = context_->GetOptionalInputDesc(PER_TOKEN_SCALE_INDEX);
-    OP_CHECK_IF(!CheckDtypeForWeightNz(perTokenScaleDesc == nullptr),
-                OP_LOGE(inputParams_.opName, "CheckDtypeForWeightNz failed."), return false);
-    return true;
+    return CheckDtypeForWeightNz(perTokenScaleDesc == nullptr);
 }
 
 bool GroupedQmmTiling::CheckBiasDtype() const
@@ -293,7 +290,7 @@ bool GroupedQmmTiling::CheckDtypeForWeightNz(bool isPertokenScaleNull) const
             ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
                          ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
             "when the format of weight is FRACTAL_NZ, the dtypes of x and weight must be within the range INT8, "
-            "FLOAT8_E4M3FN or FLOAT4 (E2M1/E1M2)"),
+            "FLOAT8_E4M3FN, FLOAT4_E2M1, FLOAT4_E1M2"),
         return false);
     OP_CHECK_IF((isA8W8Int || isA8W8Fp || isA4W4Fp) && inputParams_.cDtype == ge::DT_INT8,
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opType, "y",
@@ -332,12 +329,13 @@ the dtype of pertokenScale should be FLOAT and the dtype of scale should be in {
     } else if (isA8W8Fp || isA4W4Fp) {
         OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT8_E8M0 ||
                         inputParams_.scaleDtype != ge::DT_FLOAT8_E8M0,
-                    OP_LOGE(context_->GetNodeName(),
-                            "When the weight is Nz format and x/weight's dtype are FLOAT8_E4M3 or "
-                            "FLOAT4 (E2M1/E1M2), the dtype "
-                            "of pertokenScale and scale should be FLOAT8_E8M0, actual are %s/%s.",
-                            ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str(),
-                            ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                        inputParams_.opType, "scale, perTokenScale",
+                        ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype),
+                                     ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype)),
+                        "when the format of weight is FRACTAL_NZ and when the dtypes of x and weight are "
+                        "FLOAT8_E4M3FN/FLOAT8_E4M3FN or FLOAT4_E2M1|FLOAT4_E1M2 combinations, the dtypes of "
+                        "scale and perTokenScale must be within the range FLOAT8_E8M0"),
                     return false);
     }
     return true;
