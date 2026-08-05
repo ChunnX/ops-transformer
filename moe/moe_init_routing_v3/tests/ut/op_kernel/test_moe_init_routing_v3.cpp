@@ -108,7 +108,217 @@ TEST_F(moe_init_routing_v3_test, test_case_8)
     AscendC::GmFree((void *)expandedScale);
     AscendC::GmFree((void *)workspace);
     AscendC::GmFree((void *)tiling);
-    system("cd ./moe_init_routing_v3_data/ && python3 compare.py float32 1 0");
+    system("cd ./moe_init_routing_v3_data/ && python3 compare.py int8 1 1");
+    free(path_);
+}
+
+// UNQUANTIZED_FULLLOAD with invalid expertIdx (-1), activeExpertRange is a subset
+TEST_F(moe_init_routing_v3_test, test_case_invalid_expert_idx_1)
+{
+    size_t num_rows = 78;
+    size_t cols = 2880;
+    size_t k = 4;
+    size_t expert_num = 946;
+    uint64_t tilingKey = 2100000;
+    uint32_t blockDim = 40;
+
+    size_t x_FileSize = num_rows * cols * sizeof(float);
+    size_t expertIdx_FileSize = num_rows * k * sizeof(int32_t);
+    size_t scale_FileSize = num_rows * sizeof(float);
+    size_t expandedX_FileSize = num_rows * k * cols * sizeof(float);
+    size_t expandedRowIdx_FileSize = num_rows * k * sizeof(int32_t);
+    size_t expertTokensCumsum_FileSize = expert_num * sizeof(int64_t);
+    size_t expandedScale_FileSize = num_rows * k * sizeof(float);
+    size_t workspace_FileSize = static_cast<size_t>(num_rows * k * 24 + blockDim * 32 * 2 + num_rows * k * 4 +
+                                                    expert_num * 4 + 32 + blockDim * cols * 4 + 16 * 1024 * 1024);
+    size_t tiling_FileSize = sizeof(MoeInitRoutingV3TilingData);
+
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(x_FileSize);
+    uint8_t *expertIdx = (uint8_t *)AscendC::GmAlloc(expertIdx_FileSize);
+    uint8_t *scale = (uint8_t *)AscendC::GmAlloc(scale_FileSize);
+    uint8_t *expandedX = (uint8_t *)AscendC::GmAlloc(expandedX_FileSize);
+    uint8_t *expandedRowIdx = (uint8_t *)AscendC::GmAlloc(expandedRowIdx_FileSize);
+    uint8_t *expertTokensCountOrCumsum = (uint8_t *)AscendC::GmAlloc(expertTokensCumsum_FileSize);
+    uint8_t *expandedScale = (uint8_t *)AscendC::GmAlloc(expandedScale_FileSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
+
+    system(
+        "cp -r "
+        "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
+        "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
+    system("ls -lh ./moe_init_routing_v3_data/");
+    system("cd ./moe_init_routing_v3_data/ && rm -rf ./*bin");
+    system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 78 2880 4 946 float32 -1 141 0 946 0 1 1 [873,889] 1 1 0.3");
+    system("cd ./moe_init_routing_v3_data/ && python3 gen_tiling.py case_invalid_1");
+
+    char *path_ = get_current_dir_name();
+    string path(path_);
+    ReadFile(path + "/moe_init_routing_v3_data/input_x.bin", x_FileSize, x, x_FileSize);
+    ReadFile(path + "/moe_init_routing_v3_data/input_expertIdx.bin", expertIdx_FileSize, expertIdx, expertIdx_FileSize);
+    ReadFile(path + "/moe_init_routing_v3_data/scale.bin", scale_FileSize, scale, scale_FileSize);
+    ReadFile(path + "/moe_init_routing_v3_data/tiling.bin", tiling_FileSize, tiling, tiling_FileSize);
+
+    AscendC::SetKernelMode(KernelMode::AIV_MODE);
+    ICPU_SET_TILING_KEY(tilingKey);
+    ICPU_RUN_KF(moe_init_routing_v3, blockDim, x, expertIdx, nullptr, nullptr, expandedX, expandedRowIdx,
+                expertTokensCountOrCumsum, expandedScale, workspace, tiling);
+
+    WriteFile(path + "/moe_init_routing_v3_data/output_expanded_x.bin", expandedX, expandedX_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expanded_row_idx.bin", expandedRowIdx, expandedRowIdx_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum, expertTokensCumsum_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expanded_scale.bin", expandedScale, expandedScale_FileSize);
+
+    AscendC::GmFree((void *)x);
+    AscendC::GmFree((void *)expertIdx);
+    AscendC::GmFree((void *)scale);
+    AscendC::GmFree((void *)expandedX);
+    AscendC::GmFree((void *)expandedRowIdx);
+    AscendC::GmFree((void *)expertTokensCountOrCumsum);
+    AscendC::GmFree((void *)expandedScale);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
+    system("cd ./moe_init_routing_v3_data/ && python3 compare.py float32 1 1");
+    free(path_);
+}
+
+// UNQUANTIZED_FULLLOAD with invalid expertIdx (-1), full range [0, expertNum)
+TEST_F(moe_init_routing_v3_test, test_case_invalid_expert_idx_2)
+{
+    size_t num_rows = 97;
+    size_t cols = 2880;
+    size_t k = 4;
+    size_t expert_num = 734;
+    uint64_t tilingKey = 2100000;
+    uint32_t blockDim = 40;
+
+    size_t x_FileSize = num_rows * cols * sizeof(float);
+    size_t expertIdx_FileSize = num_rows * k * sizeof(int32_t);
+    size_t scale_FileSize = num_rows * sizeof(float);
+    size_t expandedX_FileSize = num_rows * k * cols * sizeof(float);
+    size_t expandedRowIdx_FileSize = num_rows * k * sizeof(int32_t);
+    size_t expertTokensCumsum_FileSize = expert_num * sizeof(int64_t);
+    size_t expandedScale_FileSize = num_rows * k * sizeof(float);
+    size_t workspace_FileSize = static_cast<size_t>(num_rows * k * 24 + blockDim * 32 * 2 + num_rows * k * 4 +
+                                                    expert_num * 4 + 32 + blockDim * cols * 4 + 16 * 1024 * 1024);
+    size_t tiling_FileSize = sizeof(MoeInitRoutingV3TilingData);
+
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(x_FileSize);
+    uint8_t *expertIdx = (uint8_t *)AscendC::GmAlloc(expertIdx_FileSize);
+    uint8_t *scale = (uint8_t *)AscendC::GmAlloc(scale_FileSize);
+    uint8_t *expandedX = (uint8_t *)AscendC::GmAlloc(expandedX_FileSize);
+    uint8_t *expandedRowIdx = (uint8_t *)AscendC::GmAlloc(expandedRowIdx_FileSize);
+    uint8_t *expertTokensCountOrCumsum = (uint8_t *)AscendC::GmAlloc(expertTokensCumsum_FileSize);
+    uint8_t *expandedScale = (uint8_t *)AscendC::GmAlloc(expandedScale_FileSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
+
+    system(
+        "cp -r "
+        "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
+        "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
+    system("ls -lh ./moe_init_routing_v3_data/");
+    system("cd ./moe_init_routing_v3_data/ && rm -rf ./*bin");
+    system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 97 2880 4 734 float32 -1 734 0 313 0 1 1 [0,734] 1 1 0.3");
+    system("cd ./moe_init_routing_v3_data/ && python3 gen_tiling.py case_invalid_2");
+
+    char *path_ = get_current_dir_name();
+    string path(path_);
+    ReadFile(path + "/moe_init_routing_v3_data/input_x.bin", x_FileSize, x, x_FileSize);
+    ReadFile(path + "/moe_init_routing_v3_data/input_expertIdx.bin", expertIdx_FileSize, expertIdx, expertIdx_FileSize);
+    ReadFile(path + "/moe_init_routing_v3_data/scale.bin", scale_FileSize, scale, scale_FileSize);
+    ReadFile(path + "/moe_init_routing_v3_data/tiling.bin", tiling_FileSize, tiling, tiling_FileSize);
+
+    AscendC::SetKernelMode(KernelMode::AIV_MODE);
+    ICPU_SET_TILING_KEY(tilingKey);
+    ICPU_RUN_KF(moe_init_routing_v3, blockDim, x, expertIdx, scale, nullptr, expandedX, expandedRowIdx,
+                expertTokensCountOrCumsum, expandedScale, workspace, tiling);
+
+    WriteFile(path + "/moe_init_routing_v3_data/output_expanded_x.bin", expandedX, expandedX_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expanded_row_idx.bin", expandedRowIdx, expandedRowIdx_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum, expertTokensCumsum_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expanded_scale.bin", expandedScale, expandedScale_FileSize);
+
+    AscendC::GmFree((void *)x);
+    AscendC::GmFree((void *)expertIdx);
+    AscendC::GmFree((void *)scale);
+    AscendC::GmFree((void *)expandedX);
+    AscendC::GmFree((void *)expandedRowIdx);
+    AscendC::GmFree((void *)expertTokensCountOrCumsum);
+    AscendC::GmFree((void *)expandedScale);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
+    system("cd ./moe_init_routing_v3_data/ && python3 compare.py float32 1 1");
+    free(path_);
+}
+
+// UNQUANTIZED_FULLLOAD with invalid expertIdx (-1), count mode, activeExpertRange is a subset
+TEST_F(moe_init_routing_v3_test, test_case_invalid_expert_idx_3)
+{
+    size_t num_rows = 78;
+    size_t cols = 2880;
+    size_t k = 4;
+    size_t expert_num = 946;
+    uint64_t tilingKey = 2100000;
+    uint32_t blockDim = 40;
+
+    size_t x_FileSize = num_rows * cols * sizeof(float);
+    size_t expertIdx_FileSize = num_rows * k * sizeof(int32_t);
+    size_t scale_FileSize = num_rows * sizeof(float);
+    size_t expandedX_FileSize = num_rows * k * cols * sizeof(float);
+    size_t expandedRowIdx_FileSize = num_rows * k * sizeof(int32_t);
+    size_t expertTokensCumsum_FileSize = expert_num * sizeof(int64_t);
+    size_t expandedScale_FileSize = num_rows * k * sizeof(float);
+    size_t workspace_FileSize = static_cast<size_t>(num_rows * k * 24 + blockDim * 32 * 2 + num_rows * k * 4 +
+                                                    expert_num * 4 + 32 + blockDim * cols * 4 + 16 * 1024 * 1024);
+    size_t tiling_FileSize = sizeof(MoeInitRoutingV3TilingData);
+
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(x_FileSize);
+    uint8_t *expertIdx = (uint8_t *)AscendC::GmAlloc(expertIdx_FileSize);
+    uint8_t *scale = (uint8_t *)AscendC::GmAlloc(scale_FileSize);
+    uint8_t *expandedX = (uint8_t *)AscendC::GmAlloc(expandedX_FileSize);
+    uint8_t *expandedRowIdx = (uint8_t *)AscendC::GmAlloc(expandedRowIdx_FileSize);
+    uint8_t *expertTokensCountOrCumsum = (uint8_t *)AscendC::GmAlloc(expertTokensCumsum_FileSize);
+    uint8_t *expandedScale = (uint8_t *)AscendC::GmAlloc(expandedScale_FileSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
+
+    system(
+        "cp -r "
+        "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
+        "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
+    system("ls -lh ./moe_init_routing_v3_data/");
+    system("cd ./moe_init_routing_v3_data/ && rm -rf ./*bin");
+    system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 78 2880 4 946 float32 -1 141 0 946 0 0 1 [873,889] 1 1 0.3");
+    system("cd ./moe_init_routing_v3_data/ && python3 gen_tiling.py case_invalid_3");
+
+    char *path_ = get_current_dir_name();
+    string path(path_);
+    ReadFile(path + "/moe_init_routing_v3_data/input_x.bin", x_FileSize, x, x_FileSize);
+    ReadFile(path + "/moe_init_routing_v3_data/input_expertIdx.bin", expertIdx_FileSize, expertIdx, expertIdx_FileSize);
+    ReadFile(path + "/moe_init_routing_v3_data/scale.bin", scale_FileSize, scale, scale_FileSize);
+    ReadFile(path + "/moe_init_routing_v3_data/tiling.bin", tiling_FileSize, tiling, tiling_FileSize);
+
+    AscendC::SetKernelMode(KernelMode::AIV_MODE);
+    ICPU_SET_TILING_KEY(tilingKey);
+    ICPU_RUN_KF(moe_init_routing_v3, blockDim, x, expertIdx, nullptr, nullptr, expandedX, expandedRowIdx,
+                expertTokensCountOrCumsum, expandedScale, workspace, tiling);
+
+    WriteFile(path + "/moe_init_routing_v3_data/output_expanded_x.bin", expandedX, expandedX_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expanded_row_idx.bin", expandedRowIdx, expandedRowIdx_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum, expertTokensCumsum_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expanded_scale.bin", expandedScale, expandedScale_FileSize);
+
+    AscendC::GmFree((void *)x);
+    AscendC::GmFree((void *)expertIdx);
+    AscendC::GmFree((void *)scale);
+    AscendC::GmFree((void *)expandedX);
+    AscendC::GmFree((void *)expandedRowIdx);
+    AscendC::GmFree((void *)expertTokensCountOrCumsum);
+    AscendC::GmFree((void *)expandedScale);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
+    system("cd ./moe_init_routing_v3_data/ && python3 compare.py float32 0 1");
     free(path_);
 }
 
