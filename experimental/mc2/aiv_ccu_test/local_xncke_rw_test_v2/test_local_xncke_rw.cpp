@@ -11,10 +11,11 @@
 /*!
  * \file test_local_xncke_rw.cpp
  * \brief 本地读写 CCU Variable(XN)/Event(CKE) 测试 Host 侧代码
- *        使用 HcclCommQueryCcuIns 获取通信域绑定的 CCU 实例，
- *        再通过 HcommCcuVariableAlloc / HcommCcuEventAlloc /
- *        HcommCcuVariableGetAddr / HcommCcuEventGetAddr 接口获取资源地址，
+ *        使用 hcomm 的 HcommCcuInsCreateDefault / HcommCcuVariableAlloc / HcommCcuEventAlloc /
+ *        HcommCcuVariableGetAddr / HcommCcuEventGetAddr / HcommCcuInsDestroy 接口获取资源地址，
  *        然后通过 <<<>>> 直调 AIV kernel 做读写验证。
+ *        注意：通信域初始化时会创建 CCU 实例并占用 dieId=0 的资源，
+ *        因此本测试默认使用 dieId=1。
  */
 
 #include <cstdint>
@@ -25,7 +26,6 @@
 #include "acl/acl.h"
 #include "hccl/hccl.h"
 #include "hccl/hcom.h"
-#include "hccl/hccl_ccu_res.h"
 #include "hcomm/ccu/ccu_res.h"
 #include "securec.h"
 #include "./local_xncke_rw.h"
@@ -41,14 +41,6 @@ using namespace std;
     do {                                                                                                               \
         if (!(cond)) {                                                                                                 \
             return_expr;                                                                                               \
-        }                                                                                                              \
-    } while (0)
-
-#define CHECK_HCCL(hcclRet, msg, ...)                                                                                   \
-    do {                                                                                                               \
-        if ((hcclRet) != HCCL_SUCCESS) {                                                                               \
-            LOG_PRINT("[ERROR] " msg " ret: %d\n", ##__VA_ARGS__, static_cast<int32_t>(hcclRet));                      \
-            return -1;                                                                                                 \
         }                                                                                                              \
     } while (0)
 
@@ -83,7 +75,7 @@ int32_t g_ranksize = 1;
 uint32_t g_mode = TEST_MODE_WRITE_THEN_READ;
 uint32_t g_resKind = TEST_RES_BOTH;
 uint32_t g_enableWarmup = 0;
-uint32_t g_dieId = 0;
+uint32_t g_dieId = 1;
 uint32_t g_xnNum = 1;
 uint32_t g_xnIndex = 0;
 uint32_t g_ckeNum = 1;
@@ -243,20 +235,17 @@ int main(int argc, char *argv[])
     ret = aclrtSetCurrentContext(context);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret: %d\n", ret); return ret);
 
-    LOG_PRINT("[INFO] 查询通信域绑定的 CCU 实例 (HcclCommQueryCcuIns)...\n");
+    LOG_PRINT("[INFO] 创建 CCU 实例 (HcommCcuInsCreateDefault)...\n");
     CcuInsHandle ccuInsHandle = 0;
-    uint32_t insNum = 0;
-    ret = HcclCommQueryCcuIns(comms, &ccuInsHandle, &insNum);
-    CHECK_HCCL(ret, "HcclCommQueryCcuIns failed.");
-    CHECK_RET(insNum == 1, LOG_PRINT("[ERROR] unexpected insNum: %u\n", insNum); return -1);
+    CcuResult ccuRet = HcommCcuInsCreateDefault(nullptr, 0, &ccuInsHandle);
+    CHECK_CCU(ccuRet, "HcommCcuInsCreateDefault failed.");
     CHECK_RET(ccuInsHandle != 0, LOG_PRINT("[ERROR] ccuInsHandle is 0.\n"); return -1);
-    LOG_PRINT("[INFO] ccuInsHandle=0x%016lx, insNum=%u\n", static_cast<uint64_t>(ccuInsHandle), insNum);
+    LOG_PRINT("[INFO] ccuInsHandle=0x%016lx\n", static_cast<uint64_t>(ccuInsHandle));
 
     uint64_t xnAddr = 0;
     uint64_t ckeAddr = 0;
     CcuVariableHandle varHandle = 0;
     CcuEventHandle eventHandle = 0;
-    CcuResult ccuRet;
 
     if (NeedAccessXn()) {
         LOG_PRINT("[INFO] 申请 Variable(XN) 资源: dieId=%u, num=%u\n", g_dieId, g_xnNum);
@@ -336,6 +325,7 @@ int main(int argc, char *argv[])
     LOG_PRINT("===========================\n");
 
     aclrtFree(timeGm);
+    HcommCcuInsDestroy(ccuInsHandle);
     HcclCommDestroy(comms);
     aclrtDestroyStream(stream);
     aclrtDestroyContext(context);
