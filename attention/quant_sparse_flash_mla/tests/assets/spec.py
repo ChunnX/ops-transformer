@@ -44,7 +44,6 @@ def load_impl_module(stem):
 golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
 compare_module = load_impl_module("compare")
-graph_module = load_impl_module("graph")
 
 
 class QuantSparseFlashMlaSpec:
@@ -56,9 +55,14 @@ class QuantSparseFlashMlaSpec:
     }
 
     compare = staticmethod(compare_module.compare)
-    torch_graph = graph_module.QuantSparseFlashMlaAclGraph
+
+
+class AclnnQuantSparseFlashMlaSpec(QuantSparseFlashMlaSpec):
+    golden = golden_module.cpu_aclnn_quant_sparse_flash_mla
+    customize_inputs = inputs_module.generate_aclnn_quant_sparse_flash_mla_inputs
 
 
 __spec__ = {
-    "qsmla_ttk_ops.quant_sparse_flash_mla_ttk": "QuantSparseFlashMlaSpec",
+    "torch.ops.cann_ops_transformer.quant_sparse_flash_mla": "QuantSparseFlashMlaSpec",
+    "aclnnQuantSparseFlashMla": "AclnnQuantSparseFlashMlaSpec",
 }

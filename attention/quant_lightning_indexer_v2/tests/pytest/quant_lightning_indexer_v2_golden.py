@@ -2254,9 +2254,34 @@ def qliv2_output_single(
         return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value
 
 
+def build_qliv2_metadata_input(params, tensor_dict):
+    """Return the canonical metadata arguments produced by the pytest case."""
+    return {
+        "num_heads_q": int(params[5]),
+        "num_heads_k": int(params[6]),
+        "head_dim": int(params[7]),
+        "topk": int(tensor_dict["sparse_count"]),
+        "quant_mode": int(tensor_dict["quant_mode"]),
+        "cu_seqlens_q": tensor_dict["cu_seqlens_query"],
+        "cu_seqlens_k": tensor_dict["cu_seqlens_key"],
+        "seqused_q": tensor_dict["seqused_q"],
+        "seqused_k": tensor_dict["seqused_k"],
+        "cmp_residual_k": tensor_dict["cmp_residual_k_for_npu"],
+        "batch_size": int(params[0]),
+        "max_seqlen_q": int(tensor_dict["max_seqlen_q_meta"]),
+        "max_seqlen_k": int(tensor_dict["max_seqlen_k_meta"]),
+        "layout_q": tensor_dict["layout_query"],
+        "layout_k": tensor_dict["layout_key"],
+        "mask_mode": int(tensor_dict["sparse_mode"]),
+        "cmp_ratio": int(tensor_dict["cmp_ratio"]),
+    }
+
+
 def generate_qliv2_test_data(params, split_s1=DEFAULT_SPLIT_S1, s1size=DEFAULT_S1SIZE):
     """Generate QLI_V2 inputs and CPU golden without executing metadata or the main op."""
-    return qliv2_output_single(params, is_batch=True, split_s1=split_s1, s1size=s1size)
+    data = qliv2_output_single(params, is_batch=True, split_s1=split_s1, s1size=s1size)
+    data["metadata_input"] = build_qliv2_metadata_input(data["params"], data)
+    return data
 
 
 def fp32_ta_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
