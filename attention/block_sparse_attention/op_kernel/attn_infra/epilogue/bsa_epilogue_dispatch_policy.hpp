@@ -41,21 +41,26 @@ struct EpilogueBsaMask2Idx {
     using ArchTag = Arch::AtlasA5;
 };
 
-template <bool transposedMm1_ = false>
+template <bool transposedMm1_ = false, bool rescaleOnCube_ = false>
 struct EpilogueOnlineSoftmaxBsa {
     using ArchTag = Arch::AtlasA5;
     static constexpr bool transposedMm1 = transposedMm1_;
+    // true: 额外生成 diag(dm/vScale) 块写 L1（rescaleOnCube on cube，FP8 DN 场景）
+    static constexpr bool rescaleOnCube = rescaleOnCube_;
 };
 
 template <
     LseMode LSE_MODE_ = LseMode::NONE,
     LseFormat LSE_FORMAT_ = LseFormat::BNS1,
-    bool transposedMm1_ = false>
+    bool transposedMm1_ = false,
+    bool rescaleOnCube_ = false>
 struct EpilogueAtlasA5BsaRescaleO {
     using ArchTag = Arch::AtlasA5;
     static constexpr LseMode LSE_MODE = LSE_MODE_;
     static constexpr LseFormat LSE_FORMAT = LSE_FORMAT_;
     static constexpr bool transposedMm1 = transposedMm1_;
+    // true: rescale 已在 CUBE 完成，VEC 仅做末块 ÷gl（FP8 DN 场景）
+    static constexpr bool rescaleOnCube = rescaleOnCube_;
 };
 
 }  // namespace NpuArch::Epilogue

@@ -77,7 +77,8 @@ template <
 struct BlockMmadTla<
     // if transposedMm1, P is actually nZ in UB, and nZ in L1,
     // and is transposed to zN while loaded to L0A.
-    MmadAtlasA5BsaPV<transposedMm1>,
+    // rescaleOnCube=false: 常规 PV（rescale 上 CUBE 的融合版见 block_mmad_pv_transposed_rescale_arch35.hpp）
+    MmadAtlasA5BsaPV<transposedMm1, false>,
     L1TileShape_,
     L0TileShape_,
     ElementA_,
@@ -122,6 +123,7 @@ public:
     // static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16; // 核间同步mode4，AIC侧需要两个flagId分别对应两个AIV
     
     static constexpr bool FULL_QUANT_FP8 = AscendC::IsSameType<ElementA, fp8_e4m3fn_t>::value;
+    static constexpr bool rescaleOnCube = DispatchPolicy::rescaleOnCube;  // 常规 PV 恒 false
 
     __aicore__ inline
     BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart, Mm2L1TileHelper &mm2L1TileHelper)
@@ -149,6 +151,15 @@ public:
             l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(
                 L0C_HALF_BUF_SIZE + L0C_PINGPONG_BUF_SIZE * i);
         }
+    }
+
+    // rescaleOnCube on cube：full_quant kernel 统一 4 参调用（diag 块 L1 起始地址），旧路径忽略该参数
+    __aicore__ inline
+    BlockMmadTla(Arch::Resource<ArchTag> &resource, uint32_t l1BufAddrStart, uint32_t l1DiagAddrStart,
+                 Mm2L1TileHelper &mm2L1TileHelper)
+        : BlockMmadTla(resource, l1BufAddrStart, mm2L1TileHelper)
+    {
+        (void)l1DiagAddrStart;
     }
 
     /// Destructor

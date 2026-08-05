@@ -37,9 +37,10 @@ template <
     class OTmpSrcPos_, // the src TPosition of pv res, viable configurations: GM/L0C
     LseMode LSE_MODE_,
     LseFormat LSE_FORMAT_,
-    bool transposedMm1>
+    bool transposedMm1,
+    bool rescaleOnCube_>
 class BlockEpilogue<
-    EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_, transposedMm1>,
+    EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_, transposedMm1, rescaleOnCube_>,
     ElementO_,
     ElementOTmp_,
     ElementS_,
@@ -48,7 +49,7 @@ class BlockEpilogue<
     OTmpSrcPos_>
 {
 public:
-    using DispatchPolicy = EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_, transposedMm1>;
+    using DispatchPolicy = EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_, transposedMm1, rescaleOnCube_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementO = ElementO_;
     using ElementOTmp = ElementOTmp_;
@@ -101,15 +102,18 @@ public:
     __aicore__ inline
     BlockEpilogue(Arch::Resource<ArchTag> &resource, UBufTileHelper &uBufTileHelper)
     {
-        for (uint32_t i = 0; i < UB_OTMP_BUF_STAGES; i++) {
-            loUbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
-                uBufTileHelper.loStartOffset +
-                uBufTileHelper.qBaseTilePerSubCore * uBufTileHelper.embedPerSubCore * sizeof(ElementOTmp) * i);
-        }
-        for (uint32_t i = 0; i < UB_DM_BUF_MAX_STAGES; i++) {
-            dmUbTensor32[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
-                uBufTileHelper.dmStartOffset +
-                uBufTileHelper.qBaseTilePerSubCore * sizeof(float) * i);
+        if constexpr (!DispatchPolicy::rescaleOnCube) {
+            // rescaleOnCube on cube：lo/dm 缓冲不再驻留 UB（lo 的偏移在 full_quant kernel 中传 0）
+            for (uint32_t i = 0; i < UB_OTMP_BUF_STAGES; i++) {
+                loUbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
+                    uBufTileHelper.loStartOffset +
+                    uBufTileHelper.qBaseTilePerSubCore * uBufTileHelper.embedPerSubCore * sizeof(ElementOTmp) * i);
+            }
+            for (uint32_t i = 0; i < UB_DM_BUF_MAX_STAGES; i++) {
+                dmUbTensor32[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
+                    uBufTileHelper.dmStartOffset +
+                    uBufTileHelper.qBaseTilePerSubCore * sizeof(float) * i);
+            }
         }
         goUbTensor32 = resource.ubBuf.template GetBufferByByte<ElementOTmp>(uBufTileHelper.goStartOffset);
         goUbTensor16 = resource.ubBuf.template GetBufferByByte<ElementO>(uBufTileHelper.goStartOffset);
@@ -164,44 +168,55 @@ public:
         uint32_t dStages = CeilDiv(colNumCurSubCore, RESCALE_VREG_SIZE);
 
         __ubuf__ ElementOTmp *goUb = (__ubuf__ ElementOTmp *) goUbTensor32.GetPhyAddr();
-        __ubuf__ ElementOTmp *loUb = (__ubuf__ ElementOTmp *) loUbTensor[ubOTmpBufId].GetPhyAddr();
         __ubuf__ ElementOTmp *glUb = (__ubuf__ ElementOTmp *) glUbTensor32.GetPhyAddr();
-        __ubuf__ ElementOTmp *dmUb =
-            (__ubuf__ ElementOTmp *) dmUbTensor32[curTileMod].GetPhyAddr();
         __ubuf__ float *gmUb = (__ubuf__ float *) gmUbTensor32.GetPhyAddr();
         __ubuf__ float *lseUb = (__ubuf__ float *) lseUbTensor32.GetPhyAddr();
-        
+
         WaitCrossCoreSync<4, PIPE_V>(mm2ToReFlag);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
-        if (isFirstKvSTile) {
-            if (!isLastKvSTile) {
-                uint32_t totalCopyElems = rowNumCurSubCore * colStrideCurSubCore;
-                AscendC::DataCopy(goUbTensor32, loUbTensor[ubOTmpBufId], totalCopyElems);
-                AscendC::PipeBarrier<PIPE_V>();
-            } else {
-                if (dStages == 1) {
-                    DivFuncLastAndFirst<DRegSplitStages::ONE>(
-                        goUb, loUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
-                } else if (dStages == 2) {
-                    DivFuncLastAndFirst<DRegSplitStages::TWO>(
-                        goUb, loUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
-                }
-            }
-        } else if (!isLastKvSTile) {
+        if constexpr (DispatchPolicy::rescaleOnCube) {
+            // rescale 已在 CUBE 完成（PV^T + diag 累加 + NZ2DN 反量化搬入 go），VEC 仅 ÷gl
             if (dStages == 1) {
-                RescaleFunc<DRegSplitStages::ONE>(
-                    goUb, loUb, dmUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
-            } else if (dStages == 2) {
-                RescaleFunc<DRegSplitStages::TWO>(
-                    goUb, loUb, dmUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
+                GoDivFunc<DRegSplitStages::ONE>(
+                    goUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
+            } else {
+                GoDivFunc<DRegSplitStages::TWO>(
+                    goUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
             }
         } else {
-            if (dStages == 1) {
-                RescaleFuncLastNotFirst<DRegSplitStages::ONE>(
-                goUb, loUb, dmUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
-            } else if (dStages == 2) {
-                RescaleFuncLastNotFirst<DRegSplitStages::TWO>(
-                goUb, loUb, dmUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
+            __ubuf__ ElementOTmp *loUb = (__ubuf__ ElementOTmp *) loUbTensor[ubOTmpBufId].GetPhyAddr();
+            __ubuf__ ElementOTmp *dmUb =
+                (__ubuf__ ElementOTmp *) dmUbTensor32[curTileMod].GetPhyAddr();
+            if (isFirstKvSTile) {
+                if (!isLastKvSTile) {
+                    uint32_t totalCopyElems = rowNumCurSubCore * colStrideCurSubCore;
+                    AscendC::DataCopy(goUbTensor32, loUbTensor[ubOTmpBufId], totalCopyElems);
+                    AscendC::PipeBarrier<PIPE_V>();
+                } else {
+                    if (dStages == 1) {
+                        DivFuncLastAndFirst<DRegSplitStages::ONE>(
+                            goUb, loUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
+                    } else if (dStages == 2) {
+                        DivFuncLastAndFirst<DRegSplitStages::TWO>(
+                            goUb, loUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
+                    }
+                }
+            } else if (!isLastKvSTile) {
+                if (dStages == 1) {
+                    RescaleFunc<DRegSplitStages::ONE>(
+                        goUb, loUb, dmUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
+                } else if (dStages == 2) {
+                    RescaleFunc<DRegSplitStages::TWO>(
+                        goUb, loUb, dmUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
+                }
+            } else {
+                if (dStages == 1) {
+                    RescaleFuncLastNotFirst<DRegSplitStages::ONE>(
+                    goUb, loUb, dmUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
+                } else if (dStages == 2) {
+                    RescaleFuncLastNotFirst<DRegSplitStages::TWO>(
+                    goUb, loUb, dmUb, glUb, rowNumCurSubCore, colStrideCurSubCore, colTail, vlElemNum);
+                }
             }
         }
         // release lo buf
@@ -317,6 +332,65 @@ public:
                 goUb + i * colStride, goCurVreg0, pregFull);
             StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(
                 goUb + i * colStride + vlElemNum, goCurVreg1, pregTail);
+        }
+    }
+
+    // rescaleOnCube on cube 路径：go 已由 CUBE 完成累加（含 rescale 与 NZ2DN 反量化），仅 ÷gl
+    template <DRegSplitStages dRegSplitStages>
+    __simd_vf__ inline void GoDivFunc(__ubuf__ ElementOTmp *goUb, __ubuf__ ElementOTmp *glUb,
+                                      uint32_t row, uint32_t colStride,
+                                      uint32_t colTail, uint32_t vlElemNum)
+    {
+    }
+
+    template <>
+    __simd_vf__ inline void GoDivFunc<DRegSplitStages::ONE>(
+        __ubuf__ ElementOTmp *goUb, __ubuf__ ElementOTmp *glUb,
+        uint32_t row, uint32_t colStride,
+        uint32_t colTail, uint32_t vlElemNum)
+    {
+        using namespace AscendC::MicroAPI;
+        RegTensor<float> goVreg;
+        RegTensor<float> glVreg;
+        RegTensor<float> divVreg;
+        MaskReg pregTail = UpdateMask<float>(colTail);
+        for (uint16_t i = 0; i < row; i++) {
+            LoadAlign<ElementOTmp, LoadDist::DIST_BRC_B32>(glVreg, glUb + i);
+            LoadAlign<ElementOTmp, LoadDist::DIST_NORM>(goVreg, goUb + i * colStride);
+            Div(divVreg, goVreg, glVreg, pregTail);
+            if constexpr (FULL_QUANT_FP8) {
+                Muls(divVreg, divVreg, MAX_VALUE_RECIPROCAL_FP8, pregTail);
+            }
+            StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride, divVreg, pregTail);
+        }
+    }
+
+    template <>
+    __simd_vf__ inline void GoDivFunc<DRegSplitStages::TWO>(
+        __ubuf__ ElementOTmp *goUb, __ubuf__ ElementOTmp *glUb,
+        uint32_t row, uint32_t colStride,
+        uint32_t colTail, uint32_t vlElemNum)
+    {
+        using namespace AscendC::MicroAPI;
+        RegTensor<float> goVreg0;
+        RegTensor<float> goVreg1;
+        RegTensor<float> glVreg;
+        RegTensor<float> divVreg0;
+        RegTensor<float> divVreg1;
+        MaskReg pregFull = CreateMask<float, MaskPattern::ALL>();
+        MaskReg pregTail = UpdateMask<float>(colTail);
+        for (uint16_t i = 0; i < row; i++) {
+            LoadAlign<ElementOTmp, LoadDist::DIST_BRC_B32>(glVreg, glUb + i);
+            LoadAlign<ElementOTmp, LoadDist::DIST_NORM>(goVreg0, goUb + i * colStride);
+            LoadAlign<ElementOTmp, LoadDist::DIST_NORM>(goVreg1, goUb + i * colStride + vlElemNum);
+            Div(divVreg0, goVreg0, glVreg, pregFull);
+            Div(divVreg1, goVreg1, glVreg, pregTail);
+            if constexpr (FULL_QUANT_FP8) {
+                Muls(divVreg0, divVreg0, MAX_VALUE_RECIPROCAL_FP8, pregFull);
+                Muls(divVreg1, divVreg1, MAX_VALUE_RECIPROCAL_FP8, pregTail);
+            }
+            StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride, divVreg0, pregFull);
+            StoreAlign<ElementOTmp, StoreDist::DIST_NORM_B32>(goUb + i * colStride + vlElemNum, divVreg1, pregTail);
         }
     }
 

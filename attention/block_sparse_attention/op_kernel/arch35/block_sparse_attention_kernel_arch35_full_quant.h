@@ -45,7 +45,8 @@ public:
     using LayoutK = std::conditional_t<transposedMm1, layout::RowMajor, layout::ColumnMajor>;
     using LayoutS = layout::RowMajor;
     using LayoutP = layout::RowMajor;
-    using LayoutV = layout::RowMajor;
+    // V：rescaleOnCube 时以 ColumnMajor [D, kvS] 进 L1（A=(V)^T 直接读，与 Q 的 DN 加载同构）
+    using LayoutV = std::conditional_t<RESCALE_ON_CUBE, layout::ColumnMajor, layout::RowMajor>;
     using LayoutO = layout::RowMajor;
     using LayoutLse = layout::RowMajor;
     using LayoutOTmp = layout::RowMajor;
@@ -57,6 +58,9 @@ public:
     static constexpr uint32_t PRE_LAUNCH = 2;
     static constexpr uint32_t MAX_CROSS_CORE_BUF_STAGES = PRE_LAUNCH + 1;
     static constexpr uint32_t UB_S_OTMP_BUF_STAGES = 2;
+    // rescaleOnCube on cube 路径开关：仅 DN + FP8（新 PV 特化 <true,true>）生效；
+    // 其余（含 FP8 ND 12 键）回落旧路径（VEC rescaleO 逐 tile + lo/dm UB 缓冲）
+    static constexpr bool RESCALE_ON_CUBE = transposedMm1 && BlockMmadPV::rescaleOnCube;
 
     // Methods
     __aicore__ inline
@@ -100,8 +104,10 @@ public:
         // cross core data move dst buffers
         AscendC::LocalTensor<ElementP> l1PTensor[MAX_CROSS_CORE_BUF_STAGES];
         AscendC::LocalTensor<ElementS> ubSTensor[UB_S_OTMP_BUF_STAGES];
-        AscendC::LocalTensor<ElementOTmp> ubOTmpTensor[UB_S_OTMP_BUF_STAGES];
-        InitCrossCoreDstBuf(l1PTensor, ubSTensor, ubOTmpTensor);
+        AscendC::LocalTensor<ElementOTmp> ubGoTensor;      // rescaleOnCube on cube：仅末块（NZ2DN 搬入）
+        AscendC::LocalTensor<ElementOTmp> ubOTmpTensor[UB_S_OTMP_BUF_STAGES];  // 旧路径：lo 逐 tile 2 份轮转
+        AscendC::LocalTensor<float> l1DiagTensor[3];
+        InitCrossCoreDstBuf(l1PTensor, ubSTensor, ubGoTensor, ubOTmpTensor, l1DiagTensor);
         // core idx
         uint32_t coreIdx = AscendC::GetBlockIdx();
         uint32_t coreNum = AscendC::GetBlockNum();
@@ -118,7 +124,8 @@ public:
 #ifdef __DAV_CUBE__
         coreIdx = AscendC::GetBlockIdx();
         BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
-        BlockMmadPV blockMmadPV(resource, mm2L1AddrStart_, mm2L1TileHelper_);
+        // rescaleOnCube on cube：4 参（多 diag 块 L1 起始地址）；旧路径 3 参（l1DiagAddrStart_ 默认 0 被忽略）
+        BlockMmadPV blockMmadPV(resource, mm2L1AddrStart_, l1DiagAddrStart_, mm2L1TileHelper_);
 #endif
 #ifdef __DAV_VEC__
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
@@ -315,7 +322,13 @@ public:
                 kShapeRow = strideKVS;
                 vShapeCol = strideKVS;
             }
-            vShapeRow = kvBaseTile_;
+            if constexpr (RESCALE_ON_CUBE) {
+                // V 以 ColumnMajor [D, kvS] 进 L1（A=(V)^T 直接读，与 Q 的 DN 加载同构）
+                vShapeRow = strideKV;
+                vShapeCol = kvBaseTile_;
+            } else {
+                vShapeRow = kvBaseTile_;
+            }
             // if doing K * Q^t, switch Q/K row&col
             if constexpr (transposedMm1) {
                 qShapeRow = qShapeCol;
@@ -416,14 +429,34 @@ public:
 #ifdef __DAV_VEC__
                     // Stage 2: Online softmax (computed on VECTOR core)
                     // online softmax
-                    epilogueOnlineSoftmax(
-                        l1PTensorTla,
-                        actualBlockShapeQK,
-                        (gatheredKvSTileIdx == 0),
-                        ubSBufId,
-                        l1PBufId,
-                        mm1ToSmFlag,
-                        smToMm2Flag);
+                    if constexpr (RESCALE_ON_CUBE) {
+                        // vScale（当前索引，无 De）：生成 diag(dm/vScale) 使用
+                        uint32_t yBlockIndexOffsetSm = (gatheredKvSTileIdx * kvBaseTile_) / blockShapeY_;
+                        uint32_t yBlockIndexSm = gSparseIdx[gmOffsetSparseIdx].GetValue(yBlockIndexOffsetSm);
+                        uint32_t kvDequantScaleOffsetSm =
+                            curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndexSm;
+                        float vDequantScaleValueSm = gVDequantScale.GetValue(kvDequantScaleOffsetSm);
+                        epilogueOnlineSoftmax(
+                            l1PTensorTla,
+                            actualBlockShapeQK,
+                            (gatheredKvSTileIdx == 0),
+                            ubSBufId,
+                            l1PBufId,
+                            mm1ToSmFlag,
+                            smToMm2Flag,
+                            l1DiagTensor[l1PBufId],
+                            vDequantScaleValueSm);
+                    } else {
+                        // 旧路径（FP8 ND）：ND softmax 7 参签名，无 diag/vScale
+                        epilogueOnlineSoftmax(
+                            l1PTensorTla,
+                            actualBlockShapeQK,
+                            (gatheredKvSTileIdx == 0),
+                            ubSBufId,
+                            l1PBufId,
+                            mm1ToSmFlag,
+                            smToMm2Flag);
+                    }
 #endif
                 }
                 if (gatheredKvSTileIdx >= PRE_LAUNCH) {
@@ -433,18 +466,19 @@ public:
                     } else {
                         kvSTileSizeAct = kvBaseTile_;
                     }
-                    // PV
+                    // PV (transposed, rescale fused on cube)
                     GemmCoord actualBlockShapePV{rowNum, embed_, kvSTileSizeAct};
-                    uint32_t ubOTmpBufId = gatheredKvSTileIdxDe % UB_S_OTMP_BUF_STAGES;
                     // 核间同步flagId规律：每份dst对应一个id，从小到大顺序依次为qk->sm, sm->pv, pv->re
-                    uint32_t Mm2ToReFlagId = ubOTmpBufId + UB_S_OTMP_BUF_STAGES + pL1BufNum_;
+                    uint32_t Mm2ToReFlagId = UB_S_OTMP_BUF_STAGES + pL1BufNum_;
+                    uint32_t ubOTmpBufId = gatheredKvSTileIdxDe % UB_S_OTMP_BUF_STAGES;
+                    if constexpr (!RESCALE_ON_CUBE) {
+                        // 旧路径：lo 逐 tile 2 份轮转 -> flag id 随 ubOTmpBufId 交替（5/6）
+                        Mm2ToReFlagId += ubOTmpBufId;
+                    }
 #ifdef __DAV_CUBE__
                     uint32_t l1PBufId = gatheredKvSTileIdxDe % pL1BufNum_;
-                    auto ubOTmpLayoutTla = tla::MakeLayout<ElementOTmp, LayoutOTmp>(rowNumRound, embedRound);
-                    auto ubOTmpTensorTla = tla::MakeTensor(ubOTmpTensor[ubOTmpBufId],
-                        ubOTmpLayoutTla, Arch::PositionUB{});
                     uint32_t smToMm2FlagId = l1PBufId + UB_S_OTMP_BUF_STAGES;
-                    
+
                     Arch::CrossCoreFlag smToMm2Flag(smToMm2FlagId);
                     Arch::CrossCoreFlag mm2ToReFlag(Mm2ToReFlagId);
                     uint64_t prefixSumL0AStages = CalcCrossMm1Mm2PrefixSumL0ABStages(
@@ -457,20 +491,55 @@ public:
                     curBatch * kvHeads_ * yBlockNumAligned_ + kvHeadIdx * yBlockNumAligned_ + yBlockIndexDe;
                     float vDequantScaleValue = gVDequantScale.GetValue(kvDequantScaleOffsetDe);
                     uint64_t deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&vDequantScaleValue));
-                    blockMmadPV(gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapePV,
-                                gatheredKvSTileIdxDe, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
-                                prefixSumL0AStages, prefixSumL0BStages, smToMm2Flag, mm2ToReFlag, deqScalar);
+                    if constexpr (RESCALE_ON_CUBE) {
+                        // go 的 UB TLA：NZ2DN 输出为 ColumnMajor（DN）布局（仅末块实际使用，供 CopyL0CToDst<TensorC> 匹配特化）
+                        // 半区固定 64（与 S 的 sShapeCol=64 一致）：FixPipe 的 nSize 需 16 倍数，
+                        // 尾块实际列 < 64 时多搬的部分为 L0C dummy / go 缓冲固定分配区，无害
+                        auto ubGoLayoutTla = tla::MakeLayout<float, NpuArch::layout::ColumnMajor>(embed_, 64);
+                        auto ubGoTensorTla = tla::MakeTensor(ubGoTensor, ubGoLayoutTla, Arch::PositionUB{});
+                        // GO^T 的 L1 TLA：zN [D, qS]，固定 qBaseTile_ 保证 FixPipe 的 nSize 为 16 倍数（尾块实际列
+                        // < qBaseTile_ 时多搬的部分为 L0C dummy / GO^T 缓冲固定分配区，无害）；仅新 PV 使用，
+                        // 旧路径（FP8 ND）不构造（避免未使用告警与无谓寻址）
+                        AscendC::LocalTensor<float> l1GoTensor =
+                            resource.l1Buf.template GetBufferByByte<float>(l1GoAddrStart_);
+                        auto l1GoLayoutTla = tla::MakeLayout<float, NpuArch::layout::zN>(embed_, qBaseTile_);
+                        auto l1GoTensorTla = tla::MakeTensor(l1GoTensor, l1GoLayoutTla, Arch::PositionL1{});
+                        blockMmadPV(gmVTensorTla, ubGoTensorTla, l1GoTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapePV,
+                                    gatheredKvSTileIdxDe, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                                    prefixSumL0AStages, prefixSumL0BStages, smToMm2Flag, mm2ToReFlag,
+                                    (gatheredKvSTileIdxDe == 0), (gatheredKvSTileIdxDe == kvSLoopNum - 1), deqScalar);
+                    } else {
+                        // 旧路径（FP8 ND）：PV 结果逐 tile 搬 UB lo（2 份轮转），VEC 侧逐 tile rescale
+                        auto ubOTmpLayoutTla = tla::MakeLayout<ElementOTmp, LayoutOTmp>(rowNumRound, embedRound);
+                        auto ubOTmpTensorTla = tla::MakeTensor(ubOTmpTensor[ubOTmpBufId],
+                            ubOTmpLayoutTla, Arch::PositionUB{});
+                        blockMmadPV(gmVTensorTla, ubOTmpTensorTla, gSparseIdx[gmOffsetSparseIdx], actualBlockShapePV,
+                                    gatheredKvSTileIdxDe, kvSeqlen, kvBaseTile_, blockShapeY_, yBlockNumAval, yBlockNumRsvd,
+                                    prefixSumL0AStages, prefixSumL0BStages, smToMm2Flag, mm2ToReFlag, deqScalar);
+                    }
 #endif
 #ifdef __DAV_VEC__
-                    // rescale O
                     Arch::CrossCoreFlag mm2ToReFlag(Mm2ToReFlagId);
                     uint32_t curTileMod = gatheredKvSTileIdxDe % (PRE_LAUNCH + 1);
-                    epilogueRescaleO(
-                        gmOTensorTla, gmLseTensorTla, actualBlockShapePV,
-                        curTileMod, gatheredKvSTileIdxDe,
-                        (gatheredKvSTileIdxDe == 0),
-                        (gatheredKvSTileIdxDe == kvSLoopNum - 1),
-                        mm2ToReFlag);
+                    if constexpr (RESCALE_ON_CUBE) {
+                        // rescale O：仅末块（中间块的 rescale 已在 CUBE 完成）
+                        if (gatheredKvSTileIdxDe == kvSLoopNum - 1) {
+                            epilogueRescaleO(
+                                gmOTensorTla, gmLseTensorTla, actualBlockShapePV,
+                                curTileMod, gatheredKvSTileIdxDe,
+                                (gatheredKvSTileIdxDe == 0),
+                                true,
+                                mm2ToReFlag);
+                        }
+                    } else {
+                        // rescale O：每个 tile 都执行（VEC 维护 go 递推 + dm 系数乘）
+                        epilogueRescaleO(
+                            gmOTensorTla, gmLseTensorTla, actualBlockShapePV,
+                            curTileMod, gatheredKvSTileIdxDe,
+                            (gatheredKvSTileIdxDe == 0),
+                            (gatheredKvSTileIdxDe == kvSLoopNum - 1),
+                            mm2ToReFlag);
+                    }
 #endif
                 }
             }
@@ -530,6 +599,13 @@ public:
         mm2L1TileHelper_ = mm2L1TileHelper;
         mm2L1AddrStart_ = mm1L1TileM_ * mm1L1TileKLeft_ * qL1BufNum_ * sizeof(ElementQ) +
                           mm1L1TileKRight_ * mm1L1TileN_ * kL1BufNum_ * sizeof(ElementK);
+        if constexpr (RESCALE_ON_CUBE) {
+            // GO^T [qS, D] fp32 1 份 + diag 块 [qS/2, qS/2] fp32 3 份，追加在 V 段之后（旧路径不需要，不计算）
+            uint32_t mm2PTotalSize = mm2L1TileM_ * mm2L1TileKLeft_ * pL1BufNum_ * sizeof(ElementP);
+            uint32_t mm2VTotalSize = mm2L1TileKRight_ * mm2L1TileN_ * vL1BufNum_ * sizeof(ElementV);
+            l1GoAddrStart_ = mm2L1AddrStart_ + mm2PTotalSize + mm2VTotalSize;
+            l1DiagAddrStart_ = l1GoAddrStart_ + qBaseTile_ * embed_ * sizeof(float);
+        }
         if constexpr (transposedMm1) {
             mm1L0ATotalStages_ = (kvBaseTile_ / BlockMmadQK::L0_TILE_N) * (embed_ / BlockMmadQK::L0_TILE_K);
             mm1L0BTotalStages_ = (qBaseTile_ / BlockMmadQK::L0_TILE_N) * (embed_ / BlockMmadQK::L0_TILE_K);
@@ -537,8 +613,14 @@ public:
             mm1L0ATotalStages_ = (qBaseTile_ / BlockMmadQK::L0_TILE_M) * (embed_ / BlockMmadQK::L0_TILE_K);
             mm1L0BTotalStages_ = (kvBaseTile_ / BlockMmadQK::L0_TILE_N) * (embed_ / BlockMmadQK::L0_TILE_K);
         }
-        mm2L0ATotalStages_ = (qBaseTile_ / BlockMmadPV::L0_TILE_M) * (kvBaseTile_ / BlockMmadPV::L0_TILE_K);
-        mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) * (embed_ / BlockMmadPV::L0_TILE_N);
+        if constexpr (RESCALE_ON_CUBE) {
+            // 新 PV：每 tile L0A/L0B 用量 = PV^T 的 K 分块数 + RE 的 16 列块数（qS 上限）
+            mm2L0ATotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) + CeilDiv(qBaseTile_, 16);
+            mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) + CeilDiv(qBaseTile_, 16);
+        } else {
+            mm2L0ATotalStages_ = (qBaseTile_ / BlockMmadPV::L0_TILE_M) * (kvBaseTile_ / BlockMmadPV::L0_TILE_K);
+            mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) * (embed_ / BlockMmadPV::L0_TILE_N);
+        }
     }
 
     __aicore__ inline
@@ -554,13 +636,36 @@ public:
         }
         uint32_t sStartOffset = 0;
         uint32_t pStartOffset = sStartOffset + qBaseTilePerSubCore * kvBaseTilePerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES;
-        uint32_t loStartOffset = pStartOffset +
-            (qBaseTilePerSubCore * kvBaseTilePerSubCore + pExtraElemNum) * sizeof(ElementP) * UB_S_OTMP_BUF_STAGES;
-        uint32_t goStartOffset = loStartOffset + qBaseTilePerSubCore * embedPerSubCore * sizeof(ElementOTmp) * UB_S_OTMP_BUF_STAGES;
+        uint32_t pTotalSize = (qBaseTilePerSubCore * kvBaseTilePerSubCore + pExtraElemNum) *
+            sizeof(ElementP) * UB_S_OTMP_BUF_STAGES;
+        uint32_t loStartOffset;
+        uint32_t diagStartOffset;
+        uint32_t goStartOffset;
+        uint32_t dmStartOffset;
+        uint32_t llStartOffset;
+        if constexpr (RESCALE_ON_CUBE) {
+            // rescaleOnCube on cube：OTmp(lo)/dm 不再驻留 UB（偏移传 0）；diag 块中转 [qS/2, qS/2] fp32 单份
+            loStartOffset = 0;
+            diagStartOffset = pStartOffset + pTotalSize;
+            goStartOffset = diagStartOffset + qBaseTilePerSubCore * qBaseTilePerSubCore * sizeof(float);
+            dmStartOffset = 0;
+            llStartOffset = 0;
+        } else {
+            // 旧路径：lo 2 份轮转、dm 3 份轮转（偏移与 HEAD 一致）
+            loStartOffset = pStartOffset + pTotalSize;
+            diagStartOffset = 0;
+            goStartOffset = loStartOffset + qBaseTilePerSubCore * embedPerSubCore * sizeof(ElementOTmp) * UB_S_OTMP_BUF_STAGES;
+            dmStartOffset = 0;
+            llStartOffset = 0;
+        }
         uint32_t lmStartOffset = goStartOffset + qBaseTilePerSubCore * embedPerSubCore * sizeof(ElementOTmp);
         uint32_t gmStartOffset = lmStartOffset + qBaseTilePerSubCore * sizeof(float);
-        uint32_t dmStartOffset = gmStartOffset + qBaseTilePerSubCore * sizeof(float);
-        uint32_t llStartOffset = dmStartOffset + qBaseTilePerSubCore * (PRE_LAUNCH + 1) * sizeof(float);
+        if constexpr (!RESCALE_ON_CUBE) {
+            dmStartOffset = gmStartOffset + qBaseTilePerSubCore * sizeof(float);
+            llStartOffset = dmStartOffset + qBaseTilePerSubCore * (PRE_LAUNCH + 1) * sizeof(float);
+        } else {
+            llStartOffset = gmStartOffset + qBaseTilePerSubCore * sizeof(float);
+        }
         uint32_t glStartOffset = llStartOffset + qBaseTilePerSubCore * sizeof(float);
         uint32_t lseStartOffset = glStartOffset + qBaseTilePerSubCore * sizeof(float);
         uint32_t maskStartOffset = lseStartOffset + qBaseTilePerSubCore * (32 / sizeof(float)) * sizeof(float);
@@ -569,7 +674,7 @@ public:
             qBaseTilePerSubCore, kvBaseTilePerSubCore, embedPerSubCore,
             sStartOffset, pStartOffset, loStartOffset, goStartOffset,
             lmStartOffset, gmStartOffset, dmStartOffset, llStartOffset, glStartOffset,
-            lseStartOffset, maskStartOffset);
+            lseStartOffset, maskStartOffset, diagStartOffset);
         uBufTileHelper_ = uBufTileHelper;
     }
 
@@ -596,7 +701,9 @@ public:
     void InitCrossCoreDstBuf(
         AscendC::LocalTensor<ElementP> (&l1PTensor)[MAX_CROSS_CORE_BUF_STAGES],
         AscendC::LocalTensor<ElementS> (&ubSTensor)[UB_S_OTMP_BUF_STAGES],
-        AscendC::LocalTensor<ElementOTmp> (&ubOTmpTensor)[UB_S_OTMP_BUF_STAGES])
+        AscendC::LocalTensor<ElementOTmp> &ubGoTensor,
+        AscendC::LocalTensor<ElementOTmp> (&ubOTmpTensor)[UB_S_OTMP_BUF_STAGES],
+        AscendC::LocalTensor<float> (&l1DiagTensor)[3])
     {
         for (uint32_t i = 0; i < pL1BufNum_; i++) {
             l1PTensor[i] = resource.l1Buf.template GetBufferByByte<ElementP>(
@@ -606,9 +713,23 @@ public:
             ubSTensor[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
                 uBufTileHelper_.sStartOffset +
                 uBufTileHelper_.qBaseTilePerSubCore * uBufTileHelper_.kvBaseTilePerSubCore * sizeof(ElementS) * i);
-            ubOTmpTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
-                uBufTileHelper_.loStartOffset +
-                uBufTileHelper_.qBaseTilePerSubCore * uBufTileHelper_.embedPerSubCore * sizeof(ElementOTmp) * i);
+        }
+        if constexpr (RESCALE_ON_CUBE) {
+            // go 仅末块使用（NZ2DN 搬入），1 份
+            ubGoTensor = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
+                uBufTileHelper_.goStartOffset);
+            // diag 块 L1 缓冲（每 stage 双子核各一块 16KB，3 份轮转，VEC 写 / CUBE 读）
+            for (uint32_t i = 0; i < 3; i++) {
+                l1DiagTensor[i] = resource.l1Buf.template GetBufferByByte<float>(
+                    l1DiagAddrStart_ + 2 * 64 * 64 * sizeof(float) * i);
+            }
+        } else {
+            // 旧路径：lo 逐 tile 2 份轮转（VEC rescaleO 读取）
+            for (uint32_t i = 0; i < UB_S_OTMP_BUF_STAGES; i++) {
+                ubOTmpTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
+                    uBufTileHelper_.loStartOffset +
+                    uBufTileHelper_.qBaseTilePerSubCore * uBufTileHelper_.embedPerSubCore * sizeof(ElementOTmp) * i);
+            }
         }
     }
 
@@ -645,6 +766,16 @@ public:
             AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(Arch::FLAG_ID19);
             AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(Arch::FLAG_ID4);
             AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(Arch::FLAG_ID20);
+            if constexpr (RESCALE_ON_CUBE) {
+                // diag 块消费完成预置（CUBE 消费方，RE 读 diag 后 set / softmax 覆写前 wait）：6/7/8 + V1 侧 22/23/24
+                // 必须与 Release VEC 的 6/7/8 收尾成对守卫：旧路径 flag 6/22 是 MM2_RE lo 协议的 flag，不能预置占用
+                AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(Arch::FLAG_ID6);
+                AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(Arch::FLAG_ID22);
+                AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(Arch::FLAG_ID7);
+                AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(Arch::FLAG_ID23);
+                AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(Arch::FLAG_ID8);
+                AscendC::CrossCoreSetFlag<SM_MM2_MODE, PIPE_MTE1>(Arch::FLAG_ID24);
+            }
         }
 #endif
 #ifdef __DAV_VEC__
@@ -658,6 +789,10 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
         // rescale
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
+        if constexpr (RESCALE_ON_CUBE) {
+            // diag 中转缓冲的 MTE3 搬运围栏（softmax 每 tile wait/set 一次，与 Release VEC 的 EVENT_ID5 收尾成对）
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
+        }
 
         AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
@@ -668,7 +803,10 @@ public:
         }
         if constexpr (MM2_RE_MODE == Arch::CROSS_CORE_SYNC_MODE_4) {
             AscendC::CrossCoreSetFlag<MM2_RE_MODE, PIPE_V>(Arch::FLAG_ID5);
-            AscendC::CrossCoreSetFlag<MM2_RE_MODE, PIPE_V>(Arch::FLAG_ID6);
+            if constexpr (!RESCALE_ON_CUBE) {
+                // 旧路径：lo 2 份轮转（flag 5/6 交替）
+                AscendC::CrossCoreSetFlag<MM2_RE_MODE, PIPE_V>(Arch::FLAG_ID6);
+            }
         }
 #endif
     }
@@ -701,8 +839,11 @@ public:
         if constexpr (MM2_RE_MODE == Arch::CROSS_CORE_SYNC_MODE_4) {
             AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(Arch::FLAG_ID5);
             AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(Arch::FLAG_ID21);
-            AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(Arch::FLAG_ID6);
-            AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(Arch::FLAG_ID22);
+            if constexpr (!RESCALE_ON_CUBE) {
+                // 旧路径：lo 2 份轮转（flag 6/22 收尾）
+                AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(Arch::FLAG_ID6);
+                AscendC::CrossCoreWaitFlag<MM2_RE_MODE, PIPE_FIX>(Arch::FLAG_ID22);
+            }
         }
 #endif
 #ifdef __DAV_VEC__
@@ -713,6 +854,10 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
+        if constexpr (RESCALE_ON_CUBE) {
+            // diag 中转缓冲围栏收尾（与 Init VEC 的 EVENT_ID5 预置成对）
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
+        }
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
@@ -720,6 +865,13 @@ public:
             AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(Arch::FLAG_ID2);
             AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(Arch::FLAG_ID3);
             AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(Arch::FLAG_ID4);
+            if constexpr (RESCALE_ON_CUBE) {
+                // diag 块消费完成收尾（与 Init CUBE 的 6/22/7/23/8/24 预置成对；
+                // 旧路径 flag 6 属 MM2_RE lo 协议，不在 SM_MM2 组收尾）
+                AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(Arch::FLAG_ID6);
+                AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(Arch::FLAG_ID7);
+                AscendC::CrossCoreWaitFlag<SM_MM2_MODE, PIPE_MTE3>(Arch::FLAG_ID8);
+            }
         }
 #endif
         AscendC::PipeBarrier<PIPE_ALL>();
@@ -773,6 +925,8 @@ private:
     uint32_t mm2L0ATotalStages_;
     uint32_t mm2L0BTotalStages_;
     uint32_t mm2L1AddrStart_ = 0;
+    uint32_t l1GoAddrStart_ = 0;      // rescaleOnCube on cube：GO^T [D, qS] 在 L1 的起始地址
+    uint32_t l1DiagAddrStart_ = 0;    // rescaleOnCube on cube：diag 块 [qS/2, qS/2] 在 L1 的起始地址
     Gemm::Block::Mm1L1TileHelper mm1L1TileHelper_;
     Gemm::Block::Mm2L1TileHelper mm2L1TileHelper_;
     Epilogue::Block::UBufTileHelper uBufTileHelper_;

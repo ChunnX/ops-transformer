@@ -25,12 +25,13 @@ namespace NpuArch::Epilogue::Block {
 
 template <
     class OutputType_,
-    class LayoutS_>
+    class LayoutS_,
+    bool rescaleOnCube_ = false>
 class BlockEpilogue<
     // S is transposed, has shape [kvSTile, qSTile], softmax is done columnwise
     // P would be rearranged from [kvSTile, qSTile] to zN,
     // which can be viewed as from [qSTile, kvSTile] to nZ
-    EpilogueOnlineSoftmaxBsa<true>,
+    EpilogueOnlineSoftmaxBsa<true, rescaleOnCube_>,
     OutputType_,
     Gemm::GemmType<half, LayoutS_>>
 {
@@ -70,10 +71,15 @@ public:
                 (uBufTileHelper.qBaseTilePerSubCore * uBufTileHelper.kvBaseTilePerSubCore + pExtraElemNum) *
                 sizeof(ElementOutput) * i);
         }
-        for (uint32_t i = 0; i < UB_DM_BUF_MAX_STAGES; i++) {
-            dmUbTensor[i] = resource.ubBuf.template GetBufferByByte<float>(
-                uBufTileHelper.dmStartOffset +
-                uBufTileHelper.qBaseTilePerSubCore * sizeof(float) * i);
+        if constexpr (rescaleOnCube_) {
+            // rescaleOnCube on cube：dm 向量不再驻留 UB，diag 块中转 [qS/2, qS/2] fp32 单份（生成后 MTE3 搬 L1）
+            diagUbTensor = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.diagStartOffset);
+        } else {
+            for (uint32_t i = 0; i < UB_DM_BUF_MAX_STAGES; i++) {
+                dmUbTensor[i] = resource.ubBuf.template GetBufferByByte<float>(
+                    uBufTileHelper.dmStartOffset +
+                    uBufTileHelper.qBaseTilePerSubCore * sizeof(float) * i);
+            }
         }
         gmUbTensor = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.gmStartOffset);
         glUbTensor = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.glStartOffset);
@@ -90,7 +96,9 @@ public:
     __aicore__ inline
     void operator()(TensorP &l1PTensorTla, GemmCoord actualBlockShape,
         uint32_t isFirstKvSTile, uint32_t ubSBufId, uint32_t l1PBufId,
-         Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag)
+         Arch::CrossCoreFlag mm1ToSmFlag, Arch::CrossCoreFlag smToMm2Flag,
+         AscendC::LocalTensor<float> l1DiagTensor = AscendC::LocalTensor<float>(),
+         float vScale = 1.0f)
     {
         uint32_t nCopyOffset =
             FULL_QUANT_FP8 ? RoundUp(actualBlockShape.m(), 64) / 2 : RoundUp(actualBlockShape.m(), 32) / 2;
@@ -125,7 +133,13 @@ public:
         __ubuf__ half *lmUbAddr = (__ubuf__ half *)lmUbTensor.GetPhyAddr();
         __ubuf__ half *lmUbStartAddr = (__ubuf__ half *)lmUbTensor.GetPhyAddr();
         __ubuf__ half *llUbAddr = (__ubuf__ half *)llUbTensor.GetPhyAddr();
-        __ubuf__ float *dmUbAddr = (__ubuf__ float *)dmUbTensor[l1PBufId].GetPhyAddr();
+        __ubuf__ float *dmUbAddr = nullptr;
+        __ubuf__ float *diagUbAddr = nullptr;
+        if constexpr (rescaleOnCube_) {
+            diagUbAddr = (__ubuf__ float *)diagUbTensor.GetPhyAddr();
+        } else {
+            dmUbAddr = (__ubuf__ float *)dmUbTensor[l1PBufId].GetPhyAddr();
+        }
         // wait QK Fixpipe finish
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
 
@@ -213,7 +227,18 @@ public:
             // AscendC::printf("tkd glUbTensor\n");
             // AscendC::DumpTensor(glUbTensor, 1, 128);
         } else {
-            UpdateDeltaMaxGlobalMaxAndGlobalSum(lmUbAddr, gmUbAddr, llUbAddr, glUbAddr, dmUbAddr, tailN);
+            if constexpr (rescaleOnCube_) {
+                // rescaleOnCube on cube：等 CUBE 消费完同 buffer 的上一轮 diag 后，生成 diag(dm/vScale) 块搬 L1
+                Arch::CrossCoreFlag diagConsumedFlag(6 + l1PBufId);
+                WaitCrossCoreSync<4, PIPE_MTE3>(diagConsumedFlag);
+                // 等上一轮 diag 的 MTE3 搬运完成再覆写中转缓冲（单缓冲，防 VF 写与在飞 MTE3 读竞争）
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
+                // dm 暂存于 diag 中转缓冲开头 [0..64)
+                UpdateDeltaMaxGlobalMaxAndGlobalSum(lmUbAddr, gmUbAddr, llUbAddr, glUbAddr, diagUbAddr, tailN);
+                GenDiagBlockAndCopyL1(l1DiagTensor, vScale);
+            } else {
+                UpdateDeltaMaxGlobalMaxAndGlobalSum(lmUbAddr, gmUbAddr, llUbAddr, glUbAddr, dmUbAddr, tailN);
+            }
             // AscendC::printf("tkd UpdateDeltaMaxGlobalMaxAndGlobalSum\n");
             // AscendC::printf("tkd gmUbTensor\n");
             // AscendC::DumpTensor(gmUbTensor, 1, 128);
@@ -230,9 +255,36 @@ private:
     AscendC::LocalTensor<float> gmUbTensor;
     AscendC::LocalTensor<float> glUbTensor;
     AscendC::LocalTensor<float> dmUbTensor[UB_DM_BUF_MAX_STAGES];
+    AscendC::LocalTensor<float> diagUbTensor;  // rescaleOnCube on cube：diag 块中转（生成后 MTE3 搬 L1）
     AscendC::LocalTensor<ElementInput> lmUbTensor;
     AscendC::LocalTensor<ElementInput> llUbTensor;
     uint32_t subBlockIdx_;
+
+    // rescaleOnCube on cube：由 dm（暂存于 diagUbTensor[0..64)）生成 diag 块 [qS/2, qS/2] fp32（zN 布局），MTE3 搬 L1
+    __aicore__ inline
+    void GenDiagBlockAndCopyL1(AscendC::LocalTensor<float> l1DiagTensor, float vScale)
+    {
+        // 先读 dm（UpdateDeltaMax 暂存于中转缓冲开头），再清零整块
+        float dmTmp[64];
+        for (uint32_t i = 0; i < 64; i++) {
+            dmTmp[i] = diagUbTensor.GetValue(i);
+        }
+        AscendC::Duplicate(diagUbTensor, 0.0f, 64 * 64);
+        AscendC::PipeBarrier<PIPE_V>();
+        // 写主对角线：zN [64,64] fp32 元素 (i,i) 偏移 = (i/8)*512 + (i/16)*128 + (i%16)*8 + (i%8)
+        // fractal 列块 stride = RoundUp(64,16)*ELE_NUM_PER_C0(8) = 512；fractal 行 stride = 128；fractal 内行 stride = 8
+        float invVScale = 1.0f / vScale;
+        for (uint32_t i = 0; i < 64; i++) {
+            uint32_t zOff = (i / 8) * 512 + (i / 16) * 128 + (i % 16) * 8 + (i % 8);
+            diagUbTensor.SetValue(zOff, dmTmp[i] * invVScale);
+        }
+        AscendC::PipeBarrier<PIPE_V>();
+        // MTE3：diag 中转 -> L1（3 份轮转，由 kernel 按当前 l1PBufId 传入；双子核 L1 分块，
+        // 本子核的块在 stage 内偏移 subBlockIdx×4096 元素，避免互相覆盖）
+        AscendC::DataCopy(l1DiagTensor[subBlockIdx_ * 64 * 64], diagUbTensor, 64 * 64);
+        // 下一轮覆写中转缓冲前 wait（EVENT_ID5，kernel InitSyncFlags 已预置初始 token）
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
+    }
 
     enum class MAlignedTileNum {
         Zero = 0,

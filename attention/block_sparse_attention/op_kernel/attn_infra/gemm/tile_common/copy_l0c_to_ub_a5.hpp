@@ -18,6 +18,8 @@
 
 #if (__CCE_AICORE__ == 310)
 constexpr AscendC::FixpipeConfig CFG_ROW_MAJOR_UB = {AscendC::CO2Layout::ROW_MAJOR, true};
+// Fixpipe L0C -> UB 通路的 NZ2DN 随路转换（仅 950 支持）：输出 DN 格式
+constexpr AscendC::FixpipeConfig CFG_COLUMN_MAJOR_UB = {AscendC::CO2Layout::COLUMN_MAJOR, true};
 #endif
 
 namespace NpuArch::Gemm::Tile {
@@ -302,6 +304,69 @@ struct CopyL0CToUBTla<
 
         // Call AscendC Fixpipe
         AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_UB>(
+            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
+    }
+};
+
+// L0C -> UB，NZ2DN（CFG_COLUMN_MAJOR），scalar 反量化（QF322F32_PRE）
+// dst 为 ColumnMajor（DN）布局；输出 DN[D,qS] 的内存序即 row-major [qS,D]
+// CopyMode 键与 TileCopyPV 一致（NO_SPLIT），硬件行为由 dualDstCtl=0 单目标 + subBlockId 控制
+template <class TensorSrc_, class ElementDst_, class LayoutDst_, class CoordDst_, bool ReluEnable_>
+struct CopyL0CToUBTla<
+    NpuArch::Arch::AtlasA5,
+    TensorSrc_,
+    tla::Tensor<AscendC::LocalTensor<ElementDst_>, LayoutDst_, CoordDst_, AscendC::TPosition::VECCALC>,
+    CopyL0CToUBMode::NO_SPLIT,
+    ScaleGranularity::PER_TENSOR,
+    ReluEnable_,
+    std::enable_if_t<tla::detail::isColumnMajor<LayoutDst_>::value>> {
+    using ArchTag = NpuArch::Arch::AtlasA5;
+    using ElementDst = ElementDst_;
+    using ElementSrc = typename TensorSrc_::Element;
+    static constexpr auto quantPre =
+        CopyL0CToDstQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::PER_TENSOR>::VALUE;
+    static constexpr auto reluEn = ReluEnable_;
+
+    template <class TensorDst, class TensorSrc>
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint64_t deqScalar,
+                                      bool subBlockId, uint8_t unitFlag = 0)
+    {
+        static_assert(
+            tla::detail::isColumnMajor<typename TensorDst::Layout>::value
+                && TensorSrc::position == AscendC::TPosition::CO1
+                && TensorDst::position == AscendC::TPosition::VECCALC,
+            "The input parameters do not match. TensorSrc must be L0C, while TensorDst must be UB and ColumnMajor"
+        );
+
+        AscendC::FixpipeParamsC310<AscendC::CO2Layout::COLUMN_MAJOR> intriParams;
+
+        // Fixpipe layout information
+        intriParams.nSize = tla::get<1>(dstTensor.shape());
+        intriParams.mSize = tla::get<0>(dstTensor.shape());
+        intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<0, 0>(srcTensor.stride());
+        // NZ2DN：目的 DN 矩阵每一行中的元素个数（element 单位）= mSize
+        intriParams.dstStride = tla::get<0>(dstTensor.shape());
+
+        // NZ2DN 随路转换参数（TransformParams<COLUMN_MAJOR>::PARAMS = Nz2DnParams）
+        // dnNum=1：srcNzMatrixStride/dstDnMatrixStride 置 0 不生效；srcNzC0Stride 必须非 0，=1 时兼容 unitFlag
+        intriParams.params.dnNum = 1;
+        intriParams.params.srcNzMatrixStride = 0;
+        intriParams.params.dstDnMatrixStride = 0;
+        intriParams.params.srcNzC0Stride = 1;
+
+        // Fixpipe auxiliary arguments
+        intriParams.quantPre = quantPre;
+        intriParams.deqScalar = deqScalar;
+        intriParams.reluEn = reluEn;
+        intriParams.unitFlag = unitFlag;
+        intriParams.dualDstCtl = 0;
+        intriParams.subBlockId = subBlockId;
+
+        auto dstOffset = dstTensor.layout()(dstTensor.coord());
+        auto srcOffset = srcTensor.layout()(srcTensor.coord());
+
+        // Call AscendC Fixpipe
+        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_COLUMN_MAJOR_UB>(
             dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
     }
 };
