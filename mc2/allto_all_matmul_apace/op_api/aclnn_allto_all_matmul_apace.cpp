@@ -15,7 +15,12 @@
 
 #include "aclnn_allto_all_matmul_apace.h"
 
+#include "common/utils/matmul_util.h"
+#include "mc2/matmul_allto_all/op_api/matmul_allto_all_util.h"
 #include "opdev/op_log.h"
+#include "opdev/platform.h"
+
+using namespace op;
 
 enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
@@ -59,6 +64,23 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulApaceGetWorkspaceSize(
         output == nullptr || workspaceSize == nullptr || executor == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "aclnnAlltoAllMatmulApace: null pointer in input parameters.");
         return ACLNN_ERR_PARAM_NULLPTR;
+    }
+
+    auto transX2 = x2;
+    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        bool notContiguous = IsTransposeLastTwoDims(x2);
+        if (notContiguous && transposeX2) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "x2 is non-contiguous but transpose_x2 is true, this is invalid for apace.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (notContiguous) {
+            transposeX2 = true;
+            transX2 = matmul_allto_all_check::TransX2Tensor(x2);
+            if (transX2 == nullptr) {
+                return ACLNN_ERR_INNER_NULLPTR;
+            }
+        }
     }
 
     constexpr int64_t kDefaultYdtype = 27; // ge::DT_BF16
