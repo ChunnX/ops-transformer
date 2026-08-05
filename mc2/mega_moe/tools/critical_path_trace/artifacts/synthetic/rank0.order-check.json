@@ -1,0 +1,47 @@
+{
+  "captured_waves": 2,
+  "checks": [
+    "all record-local process boundaries are present and forward within the 32-bit half-range",
+    "every populated stage has a paired begin/end and a forward duration",
+    "every populated timestamp lies inside its role-local useful-work interval",
+    "uncaptured wave/expert slots retain the zero missing sentinel",
+    "dynamic fine records expose every routed expert index and active intervals are time-monotonic",
+    "AIV1 Dispatch is present exactly at every derived routed-wave start and Combine cannot use non-start slots"
+  ],
+  "fine_truncated_records": [],
+  "record_count": 108,
+  "runtime_waves": 2,
+  "span_summary": {
+    "combine": {
+      "count": 12,
+      "max_cycles": 800,
+      "min_cycles": 700
+    },
+    "dispatch": {
+      "count": 72,
+      "max_cycles": 800,
+      "min_cycles": 800
+    },
+    "gmm1_expert": {
+      "count": 16,
+      "max_cycles": 100,
+      "min_cycles": 100
+    },
+    "gmm2_expert": {
+      "count": 16,
+      "max_cycles": 150,
+      "min_cycles": 150
+    },
+    "process": {
+      "count": 108,
+      "max_cycles": 6000,
+      "min_cycles": 6000
+    },
+    "swiglu_expert": {
+      "count": 16,
+      "max_cycles": 150,
+      "min_cycles": 150
+    }
+  },
+  "status": "passed"
+}

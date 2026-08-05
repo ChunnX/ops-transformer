@@ -1,0 +1,5177 @@
+{
+  "schema_version": 1,
+  "trace_name": "mega-moe-wave-critical-path",
+  "protocol_version": 7,
+  "schema_id": "0x3eb1c6b3",
+  "metadata": {
+    "rank": 0,
+    "runtime_config_hash": "0x926c8db2",
+    "repetition_count": 2,
+    "capture_capacity": 8,
+    "trace_truncated": false,
+    "flags": "0x000003ff",
+    "raw_artifact": "rank0.raw",
+    "raw_sha256": "8c6b27741444dd1da15e34e32ec3b7bb45c4e6ba92bb4cffc3a69fc3316d1379",
+    "byte_offset": 0,
+    "required_trace_bytes": 14808,
+    "resolved_record_words": 34,
+    "fine_metadata_tail_words": 0,
+    "available_bytes_after_offset": 294912,
+    "header": {
+      "magic": 1129337938,
+      "version": 7,
+      "schema_id": 1051838131,
+      "header_words": 30,
+      "record_words": 34,
+      "record_count": 108,
+      "role_counts": [
+        36,
+        36,
+        36
+      ],
+      "clock_bits": 32,
+      "repetition_count": 2,
+      "capture_capacity": 8,
+      "truncated": 0,
+      "flags": 1023,
+      "rank": 0,
+      "runtime_config_hash": 2456587698,
+      "path_id": 1,
+      "bs": 24,
+      "h": 6144,
+      "hidden_dim": 12288,
+      "top_k": 8,
+      "moe_experts_per_rank": 8,
+      "shared_expert_count": 0,
+      "experts_per_wave": 4,
+      "world_size": 2,
+      "dispatch_quant_out_key": 4,
+      "combine_quant_mode": 0,
+      "topk_weights_prefetch": 0,
+      "weight1_interleaved": 0,
+      "carrier_words": 73728
+    },
+    "spec_sha256": "45b0e6fd94f863d9be44a89b3bdda7bf042306630688adbc3c11ed8bc31a4a86",
+    "capture_kind": "synthetic host-only contract fixture; NOT a device execution result"
+  },
+  "reference": {
+    "role": "AIC",
+    "core": 0,
+    "point": "process_begin_S",
+    "occurrence": 0
+  },
+  "records": [
+    {
+      "role": "AIC",
+      "core": 0,
+      "label": "AIC-00",
+      "timestamps": {
+        "process_begin_S": [
+          4294963200
+        ],
+        "work_end_S": [
+          1904
+        ],
+        "gmm1_expert_begin_S": [
+          4294963400,
+          4294963700,
+          4294964000,
+          4294964300,
+          4294964600,
+          4294964900,
+          4294965200,
+          4294965500
+        ],
+        "gmm1_expert_end_S": [
+          4294963500,
+          4294963800,
+          4294964100,
+          4294964400,
+          4294964700,
+          4294965000,
+          4294965300,
+          4294965600
+        ],
+        "gmm2_expert_begin_S": [
+          4294966000,
+          4294966300,
+          4294966600,
+          4294966900,
+          4294967200,
+          204,
+          504,
+          804
+        ],
+        "gmm2_expert_end_S": [
+          4294966150,
+          4294966450,
+          4294966750,
+          4294967050,
+          54,
+          354,
+          654,
+          954
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 1,
+      "label": "AIC-01",
+      "timestamps": {
+        "process_begin_S": [
+          4294963203
+        ],
+        "work_end_S": [
+          1907
+        ],
+        "gmm1_expert_begin_S": [
+          4294963403,
+          4294963703,
+          4294964003,
+          4294964303,
+          4294964603,
+          4294964903,
+          4294965203,
+          4294965503
+        ],
+        "gmm1_expert_end_S": [
+          4294963503,
+          4294963803,
+          4294964103,
+          4294964403,
+          4294964703,
+          4294965003,
+          4294965303,
+          4294965603
+        ],
+        "gmm2_expert_begin_S": [
+          4294966003,
+          4294966303,
+          4294966603,
+          4294966903,
+          4294967203,
+          207,
+          507,
+          807
+        ],
+        "gmm2_expert_end_S": [
+          4294966153,
+          4294966453,
+          4294966753,
+          4294967053,
+          57,
+          357,
+          657,
+          957
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 2,
+      "label": "AIC-02",
+      "timestamps": {
+        "process_begin_S": [
+          4294963206
+        ],
+        "work_end_S": [
+          1910
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 3,
+      "label": "AIC-03",
+      "timestamps": {
+        "process_begin_S": [
+          4294963209
+        ],
+        "work_end_S": [
+          1913
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 4,
+      "label": "AIC-04",
+      "timestamps": {
+        "process_begin_S": [
+          4294963212
+        ],
+        "work_end_S": [
+          1916
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 5,
+      "label": "AIC-05",
+      "timestamps": {
+        "process_begin_S": [
+          4294963215
+        ],
+        "work_end_S": [
+          1919
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 6,
+      "label": "AIC-06",
+      "timestamps": {
+        "process_begin_S": [
+          4294963218
+        ],
+        "work_end_S": [
+          1922
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 7,
+      "label": "AIC-07",
+      "timestamps": {
+        "process_begin_S": [
+          4294963221
+        ],
+        "work_end_S": [
+          1925
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 8,
+      "label": "AIC-08",
+      "timestamps": {
+        "process_begin_S": [
+          4294963224
+        ],
+        "work_end_S": [
+          1928
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 9,
+      "label": "AIC-09",
+      "timestamps": {
+        "process_begin_S": [
+          4294963227
+        ],
+        "work_end_S": [
+          1931
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 10,
+      "label": "AIC-10",
+      "timestamps": {
+        "process_begin_S": [
+          4294963230
+        ],
+        "work_end_S": [
+          1934
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 11,
+      "label": "AIC-11",
+      "timestamps": {
+        "process_begin_S": [
+          4294963233
+        ],
+        "work_end_S": [
+          1937
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 12,
+      "label": "AIC-12",
+      "timestamps": {
+        "process_begin_S": [
+          4294963236
+        ],
+        "work_end_S": [
+          1940
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 13,
+      "label": "AIC-13",
+      "timestamps": {
+        "process_begin_S": [
+          4294963239
+        ],
+        "work_end_S": [
+          1943
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 14,
+      "label": "AIC-14",
+      "timestamps": {
+        "process_begin_S": [
+          4294963242
+        ],
+        "work_end_S": [
+          1946
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 15,
+      "label": "AIC-15",
+      "timestamps": {
+        "process_begin_S": [
+          4294963245
+        ],
+        "work_end_S": [
+          1949
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 16,
+      "label": "AIC-16",
+      "timestamps": {
+        "process_begin_S": [
+          4294963248
+        ],
+        "work_end_S": [
+          1952
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 17,
+      "label": "AIC-17",
+      "timestamps": {
+        "process_begin_S": [
+          4294963251
+        ],
+        "work_end_S": [
+          1955
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 18,
+      "label": "AIC-18",
+      "timestamps": {
+        "process_begin_S": [
+          4294963254
+        ],
+        "work_end_S": [
+          1958
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 19,
+      "label": "AIC-19",
+      "timestamps": {
+        "process_begin_S": [
+          4294963257
+        ],
+        "work_end_S": [
+          1961
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 20,
+      "label": "AIC-20",
+      "timestamps": {
+        "process_begin_S": [
+          4294963260
+        ],
+        "work_end_S": [
+          1964
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 21,
+      "label": "AIC-21",
+      "timestamps": {
+        "process_begin_S": [
+          4294963263
+        ],
+        "work_end_S": [
+          1967
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 22,
+      "label": "AIC-22",
+      "timestamps": {
+        "process_begin_S": [
+          4294963266
+        ],
+        "work_end_S": [
+          1970
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 23,
+      "label": "AIC-23",
+      "timestamps": {
+        "process_begin_S": [
+          4294963269
+        ],
+        "work_end_S": [
+          1973
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 24,
+      "label": "AIC-24",
+      "timestamps": {
+        "process_begin_S": [
+          4294963272
+        ],
+        "work_end_S": [
+          1976
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 25,
+      "label": "AIC-25",
+      "timestamps": {
+        "process_begin_S": [
+          4294963275
+        ],
+        "work_end_S": [
+          1979
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 26,
+      "label": "AIC-26",
+      "timestamps": {
+        "process_begin_S": [
+          4294963278
+        ],
+        "work_end_S": [
+          1982
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 27,
+      "label": "AIC-27",
+      "timestamps": {
+        "process_begin_S": [
+          4294963281
+        ],
+        "work_end_S": [
+          1985
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 28,
+      "label": "AIC-28",
+      "timestamps": {
+        "process_begin_S": [
+          4294963284
+        ],
+        "work_end_S": [
+          1988
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 29,
+      "label": "AIC-29",
+      "timestamps": {
+        "process_begin_S": [
+          4294963287
+        ],
+        "work_end_S": [
+          1991
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 30,
+      "label": "AIC-30",
+      "timestamps": {
+        "process_begin_S": [
+          4294963290
+        ],
+        "work_end_S": [
+          1994
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 31,
+      "label": "AIC-31",
+      "timestamps": {
+        "process_begin_S": [
+          4294963293
+        ],
+        "work_end_S": [
+          1997
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 32,
+      "label": "AIC-32",
+      "timestamps": {
+        "process_begin_S": [
+          4294963296
+        ],
+        "work_end_S": [
+          2000
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 33,
+      "label": "AIC-33",
+      "timestamps": {
+        "process_begin_S": [
+          4294963299
+        ],
+        "work_end_S": [
+          2003
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 34,
+      "label": "AIC-34",
+      "timestamps": {
+        "process_begin_S": [
+          4294963302
+        ],
+        "work_end_S": [
+          2006
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIC",
+      "core": 35,
+      "label": "AIC-35",
+      "timestamps": {
+        "process_begin_S": [
+          4294963305
+        ],
+        "work_end_S": [
+          2009
+        ],
+        "gmm1_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm1_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "gmm2_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 0,
+      "label": "AIV0-00",
+      "timestamps": {
+        "process_begin_S": [
+          4294963201
+        ],
+        "work_end_S": [
+          1905
+        ],
+        "swiglu_expert_begin_S": [
+          4294963551,
+          4294963851,
+          4294964151,
+          4294964451,
+          4294964751,
+          4294965051,
+          4294965351,
+          4294965651
+        ],
+        "swiglu_expert_end_S": [
+          4294963701,
+          4294964001,
+          4294964301,
+          4294964601,
+          4294964901,
+          4294965201,
+          4294965501,
+          4294965801
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 1,
+      "label": "AIV0-01",
+      "timestamps": {
+        "process_begin_S": [
+          4294963204
+        ],
+        "work_end_S": [
+          1908
+        ],
+        "swiglu_expert_begin_S": [
+          4294963554,
+          4294963854,
+          4294964154,
+          4294964454,
+          4294964754,
+          4294965054,
+          4294965354,
+          4294965654
+        ],
+        "swiglu_expert_end_S": [
+          4294963704,
+          4294964004,
+          4294964304,
+          4294964604,
+          4294964904,
+          4294965204,
+          4294965504,
+          4294965804
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 2,
+      "label": "AIV0-02",
+      "timestamps": {
+        "process_begin_S": [
+          4294963207
+        ],
+        "work_end_S": [
+          1911
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 3,
+      "label": "AIV0-03",
+      "timestamps": {
+        "process_begin_S": [
+          4294963210
+        ],
+        "work_end_S": [
+          1914
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 4,
+      "label": "AIV0-04",
+      "timestamps": {
+        "process_begin_S": [
+          4294963213
+        ],
+        "work_end_S": [
+          1917
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 5,
+      "label": "AIV0-05",
+      "timestamps": {
+        "process_begin_S": [
+          4294963216
+        ],
+        "work_end_S": [
+          1920
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 6,
+      "label": "AIV0-06",
+      "timestamps": {
+        "process_begin_S": [
+          4294963219
+        ],
+        "work_end_S": [
+          1923
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 7,
+      "label": "AIV0-07",
+      "timestamps": {
+        "process_begin_S": [
+          4294963222
+        ],
+        "work_end_S": [
+          1926
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 8,
+      "label": "AIV0-08",
+      "timestamps": {
+        "process_begin_S": [
+          4294963225
+        ],
+        "work_end_S": [
+          1929
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 9,
+      "label": "AIV0-09",
+      "timestamps": {
+        "process_begin_S": [
+          4294963228
+        ],
+        "work_end_S": [
+          1932
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 10,
+      "label": "AIV0-10",
+      "timestamps": {
+        "process_begin_S": [
+          4294963231
+        ],
+        "work_end_S": [
+          1935
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 11,
+      "label": "AIV0-11",
+      "timestamps": {
+        "process_begin_S": [
+          4294963234
+        ],
+        "work_end_S": [
+          1938
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 12,
+      "label": "AIV0-12",
+      "timestamps": {
+        "process_begin_S": [
+          4294963237
+        ],
+        "work_end_S": [
+          1941
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 13,
+      "label": "AIV0-13",
+      "timestamps": {
+        "process_begin_S": [
+          4294963240
+        ],
+        "work_end_S": [
+          1944
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 14,
+      "label": "AIV0-14",
+      "timestamps": {
+        "process_begin_S": [
+          4294963243
+        ],
+        "work_end_S": [
+          1947
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 15,
+      "label": "AIV0-15",
+      "timestamps": {
+        "process_begin_S": [
+          4294963246
+        ],
+        "work_end_S": [
+          1950
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 16,
+      "label": "AIV0-16",
+      "timestamps": {
+        "process_begin_S": [
+          4294963249
+        ],
+        "work_end_S": [
+          1953
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 17,
+      "label": "AIV0-17",
+      "timestamps": {
+        "process_begin_S": [
+          4294963252
+        ],
+        "work_end_S": [
+          1956
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 18,
+      "label": "AIV0-18",
+      "timestamps": {
+        "process_begin_S": [
+          4294963255
+        ],
+        "work_end_S": [
+          1959
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 19,
+      "label": "AIV0-19",
+      "timestamps": {
+        "process_begin_S": [
+          4294963258
+        ],
+        "work_end_S": [
+          1962
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 20,
+      "label": "AIV0-20",
+      "timestamps": {
+        "process_begin_S": [
+          4294963261
+        ],
+        "work_end_S": [
+          1965
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 21,
+      "label": "AIV0-21",
+      "timestamps": {
+        "process_begin_S": [
+          4294963264
+        ],
+        "work_end_S": [
+          1968
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 22,
+      "label": "AIV0-22",
+      "timestamps": {
+        "process_begin_S": [
+          4294963267
+        ],
+        "work_end_S": [
+          1971
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 23,
+      "label": "AIV0-23",
+      "timestamps": {
+        "process_begin_S": [
+          4294963270
+        ],
+        "work_end_S": [
+          1974
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 24,
+      "label": "AIV0-24",
+      "timestamps": {
+        "process_begin_S": [
+          4294963273
+        ],
+        "work_end_S": [
+          1977
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 25,
+      "label": "AIV0-25",
+      "timestamps": {
+        "process_begin_S": [
+          4294963276
+        ],
+        "work_end_S": [
+          1980
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 26,
+      "label": "AIV0-26",
+      "timestamps": {
+        "process_begin_S": [
+          4294963279
+        ],
+        "work_end_S": [
+          1983
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 27,
+      "label": "AIV0-27",
+      "timestamps": {
+        "process_begin_S": [
+          4294963282
+        ],
+        "work_end_S": [
+          1986
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 28,
+      "label": "AIV0-28",
+      "timestamps": {
+        "process_begin_S": [
+          4294963285
+        ],
+        "work_end_S": [
+          1989
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 29,
+      "label": "AIV0-29",
+      "timestamps": {
+        "process_begin_S": [
+          4294963288
+        ],
+        "work_end_S": [
+          1992
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 30,
+      "label": "AIV0-30",
+      "timestamps": {
+        "process_begin_S": [
+          4294963291
+        ],
+        "work_end_S": [
+          1995
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 31,
+      "label": "AIV0-31",
+      "timestamps": {
+        "process_begin_S": [
+          4294963294
+        ],
+        "work_end_S": [
+          1998
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 32,
+      "label": "AIV0-32",
+      "timestamps": {
+        "process_begin_S": [
+          4294963297
+        ],
+        "work_end_S": [
+          2001
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 33,
+      "label": "AIV0-33",
+      "timestamps": {
+        "process_begin_S": [
+          4294963300
+        ],
+        "work_end_S": [
+          2004
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 34,
+      "label": "AIV0-34",
+      "timestamps": {
+        "process_begin_S": [
+          4294963303
+        ],
+        "work_end_S": [
+          2007
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV0",
+      "core": 35,
+      "label": "AIV0-35",
+      "timestamps": {
+        "process_begin_S": [
+          4294963306
+        ],
+        "work_end_S": [
+          2010
+        ],
+        "swiglu_expert_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "swiglu_expert_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 0,
+      "label": "AIV1-00",
+      "timestamps": {
+        "process_begin_S": [
+          4294963202
+        ],
+        "work_end_S": [
+          1906
+        ],
+        "dispatch_begin_S": [
+          4294963302,
+          0,
+          0,
+          0,
+          4294964152,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964102,
+          0,
+          0,
+          0,
+          4294964952,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          4294966802,
+          0,
+          0,
+          0,
+          306,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          206,
+          0,
+          0,
+          0,
+          1106,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 1,
+      "label": "AIV1-01",
+      "timestamps": {
+        "process_begin_S": [
+          4294963205
+        ],
+        "work_end_S": [
+          1909
+        ],
+        "dispatch_begin_S": [
+          4294963305,
+          0,
+          0,
+          0,
+          4294964155,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964105,
+          0,
+          0,
+          0,
+          4294964955,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          4294966805,
+          0,
+          0,
+          0,
+          309,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          209,
+          0,
+          0,
+          0,
+          1109,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 2,
+      "label": "AIV1-02",
+      "timestamps": {
+        "process_begin_S": [
+          4294963208
+        ],
+        "work_end_S": [
+          1912
+        ],
+        "dispatch_begin_S": [
+          4294963308,
+          0,
+          0,
+          0,
+          4294964158,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964108,
+          0,
+          0,
+          0,
+          4294964958,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          4294966808,
+          0,
+          0,
+          0,
+          312,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          212,
+          0,
+          0,
+          0,
+          1112,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 3,
+      "label": "AIV1-03",
+      "timestamps": {
+        "process_begin_S": [
+          4294963211
+        ],
+        "work_end_S": [
+          1915
+        ],
+        "dispatch_begin_S": [
+          4294963311,
+          0,
+          0,
+          0,
+          4294964161,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964111,
+          0,
+          0,
+          0,
+          4294964961,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          4294966811,
+          0,
+          0,
+          0,
+          315,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          215,
+          0,
+          0,
+          0,
+          1115,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 4,
+      "label": "AIV1-04",
+      "timestamps": {
+        "process_begin_S": [
+          4294963214
+        ],
+        "work_end_S": [
+          1918
+        ],
+        "dispatch_begin_S": [
+          4294963314,
+          0,
+          0,
+          0,
+          4294964164,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964114,
+          0,
+          0,
+          0,
+          4294964964,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          4294966814,
+          0,
+          0,
+          0,
+          318,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          218,
+          0,
+          0,
+          0,
+          1118,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 5,
+      "label": "AIV1-05",
+      "timestamps": {
+        "process_begin_S": [
+          4294963217
+        ],
+        "work_end_S": [
+          1921
+        ],
+        "dispatch_begin_S": [
+          4294963317,
+          0,
+          0,
+          0,
+          4294964167,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964117,
+          0,
+          0,
+          0,
+          4294964967,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          4294966817,
+          0,
+          0,
+          0,
+          321,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          221,
+          0,
+          0,
+          0,
+          1121,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 6,
+      "label": "AIV1-06",
+      "timestamps": {
+        "process_begin_S": [
+          4294963220
+        ],
+        "work_end_S": [
+          1924
+        ],
+        "dispatch_begin_S": [
+          4294963320,
+          0,
+          0,
+          0,
+          4294964170,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964120,
+          0,
+          0,
+          0,
+          4294964970,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 7,
+      "label": "AIV1-07",
+      "timestamps": {
+        "process_begin_S": [
+          4294963223
+        ],
+        "work_end_S": [
+          1927
+        ],
+        "dispatch_begin_S": [
+          4294963323,
+          0,
+          0,
+          0,
+          4294964173,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964123,
+          0,
+          0,
+          0,
+          4294964973,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 8,
+      "label": "AIV1-08",
+      "timestamps": {
+        "process_begin_S": [
+          4294963226
+        ],
+        "work_end_S": [
+          1930
+        ],
+        "dispatch_begin_S": [
+          4294963326,
+          0,
+          0,
+          0,
+          4294964176,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964126,
+          0,
+          0,
+          0,
+          4294964976,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 9,
+      "label": "AIV1-09",
+      "timestamps": {
+        "process_begin_S": [
+          4294963229
+        ],
+        "work_end_S": [
+          1933
+        ],
+        "dispatch_begin_S": [
+          4294963329,
+          0,
+          0,
+          0,
+          4294964179,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964129,
+          0,
+          0,
+          0,
+          4294964979,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 10,
+      "label": "AIV1-10",
+      "timestamps": {
+        "process_begin_S": [
+          4294963232
+        ],
+        "work_end_S": [
+          1936
+        ],
+        "dispatch_begin_S": [
+          4294963332,
+          0,
+          0,
+          0,
+          4294964182,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964132,
+          0,
+          0,
+          0,
+          4294964982,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 11,
+      "label": "AIV1-11",
+      "timestamps": {
+        "process_begin_S": [
+          4294963235
+        ],
+        "work_end_S": [
+          1939
+        ],
+        "dispatch_begin_S": [
+          4294963335,
+          0,
+          0,
+          0,
+          4294964185,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964135,
+          0,
+          0,
+          0,
+          4294964985,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 12,
+      "label": "AIV1-12",
+      "timestamps": {
+        "process_begin_S": [
+          4294963238
+        ],
+        "work_end_S": [
+          1942
+        ],
+        "dispatch_begin_S": [
+          4294963338,
+          0,
+          0,
+          0,
+          4294964188,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964138,
+          0,
+          0,
+          0,
+          4294964988,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 13,
+      "label": "AIV1-13",
+      "timestamps": {
+        "process_begin_S": [
+          4294963241
+        ],
+        "work_end_S": [
+          1945
+        ],
+        "dispatch_begin_S": [
+          4294963341,
+          0,
+          0,
+          0,
+          4294964191,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964141,
+          0,
+          0,
+          0,
+          4294964991,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 14,
+      "label": "AIV1-14",
+      "timestamps": {
+        "process_begin_S": [
+          4294963244
+        ],
+        "work_end_S": [
+          1948
+        ],
+        "dispatch_begin_S": [
+          4294963344,
+          0,
+          0,
+          0,
+          4294964194,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964144,
+          0,
+          0,
+          0,
+          4294964994,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 15,
+      "label": "AIV1-15",
+      "timestamps": {
+        "process_begin_S": [
+          4294963247
+        ],
+        "work_end_S": [
+          1951
+        ],
+        "dispatch_begin_S": [
+          4294963347,
+          0,
+          0,
+          0,
+          4294964197,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964147,
+          0,
+          0,
+          0,
+          4294964997,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 16,
+      "label": "AIV1-16",
+      "timestamps": {
+        "process_begin_S": [
+          4294963250
+        ],
+        "work_end_S": [
+          1954
+        ],
+        "dispatch_begin_S": [
+          4294963350,
+          0,
+          0,
+          0,
+          4294964200,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964150,
+          0,
+          0,
+          0,
+          4294965000,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 17,
+      "label": "AIV1-17",
+      "timestamps": {
+        "process_begin_S": [
+          4294963253
+        ],
+        "work_end_S": [
+          1957
+        ],
+        "dispatch_begin_S": [
+          4294963353,
+          0,
+          0,
+          0,
+          4294964203,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964153,
+          0,
+          0,
+          0,
+          4294965003,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 18,
+      "label": "AIV1-18",
+      "timestamps": {
+        "process_begin_S": [
+          4294963256
+        ],
+        "work_end_S": [
+          1960
+        ],
+        "dispatch_begin_S": [
+          4294963356,
+          0,
+          0,
+          0,
+          4294964206,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964156,
+          0,
+          0,
+          0,
+          4294965006,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 19,
+      "label": "AIV1-19",
+      "timestamps": {
+        "process_begin_S": [
+          4294963259
+        ],
+        "work_end_S": [
+          1963
+        ],
+        "dispatch_begin_S": [
+          4294963359,
+          0,
+          0,
+          0,
+          4294964209,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964159,
+          0,
+          0,
+          0,
+          4294965009,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 20,
+      "label": "AIV1-20",
+      "timestamps": {
+        "process_begin_S": [
+          4294963262
+        ],
+        "work_end_S": [
+          1966
+        ],
+        "dispatch_begin_S": [
+          4294963362,
+          0,
+          0,
+          0,
+          4294964212,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964162,
+          0,
+          0,
+          0,
+          4294965012,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 21,
+      "label": "AIV1-21",
+      "timestamps": {
+        "process_begin_S": [
+          4294963265
+        ],
+        "work_end_S": [
+          1969
+        ],
+        "dispatch_begin_S": [
+          4294963365,
+          0,
+          0,
+          0,
+          4294964215,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964165,
+          0,
+          0,
+          0,
+          4294965015,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 22,
+      "label": "AIV1-22",
+      "timestamps": {
+        "process_begin_S": [
+          4294963268
+        ],
+        "work_end_S": [
+          1972
+        ],
+        "dispatch_begin_S": [
+          4294963368,
+          0,
+          0,
+          0,
+          4294964218,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964168,
+          0,
+          0,
+          0,
+          4294965018,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 23,
+      "label": "AIV1-23",
+      "timestamps": {
+        "process_begin_S": [
+          4294963271
+        ],
+        "work_end_S": [
+          1975
+        ],
+        "dispatch_begin_S": [
+          4294963371,
+          0,
+          0,
+          0,
+          4294964221,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964171,
+          0,
+          0,
+          0,
+          4294965021,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 24,
+      "label": "AIV1-24",
+      "timestamps": {
+        "process_begin_S": [
+          4294963274
+        ],
+        "work_end_S": [
+          1978
+        ],
+        "dispatch_begin_S": [
+          4294963374,
+          0,
+          0,
+          0,
+          4294964224,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964174,
+          0,
+          0,
+          0,
+          4294965024,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 25,
+      "label": "AIV1-25",
+      "timestamps": {
+        "process_begin_S": [
+          4294963277
+        ],
+        "work_end_S": [
+          1981
+        ],
+        "dispatch_begin_S": [
+          4294963377,
+          0,
+          0,
+          0,
+          4294964227,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964177,
+          0,
+          0,
+          0,
+          4294965027,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 26,
+      "label": "AIV1-26",
+      "timestamps": {
+        "process_begin_S": [
+          4294963280
+        ],
+        "work_end_S": [
+          1984
+        ],
+        "dispatch_begin_S": [
+          4294963380,
+          0,
+          0,
+          0,
+          4294964230,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964180,
+          0,
+          0,
+          0,
+          4294965030,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 27,
+      "label": "AIV1-27",
+      "timestamps": {
+        "process_begin_S": [
+          4294963283
+        ],
+        "work_end_S": [
+          1987
+        ],
+        "dispatch_begin_S": [
+          4294963383,
+          0,
+          0,
+          0,
+          4294964233,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964183,
+          0,
+          0,
+          0,
+          4294965033,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 28,
+      "label": "AIV1-28",
+      "timestamps": {
+        "process_begin_S": [
+          4294963286
+        ],
+        "work_end_S": [
+          1990
+        ],
+        "dispatch_begin_S": [
+          4294963386,
+          0,
+          0,
+          0,
+          4294964236,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964186,
+          0,
+          0,
+          0,
+          4294965036,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 29,
+      "label": "AIV1-29",
+      "timestamps": {
+        "process_begin_S": [
+          4294963289
+        ],
+        "work_end_S": [
+          1993
+        ],
+        "dispatch_begin_S": [
+          4294963389,
+          0,
+          0,
+          0,
+          4294964239,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964189,
+          0,
+          0,
+          0,
+          4294965039,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 30,
+      "label": "AIV1-30",
+      "timestamps": {
+        "process_begin_S": [
+          4294963292
+        ],
+        "work_end_S": [
+          1996
+        ],
+        "dispatch_begin_S": [
+          4294963392,
+          0,
+          0,
+          0,
+          4294964242,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964192,
+          0,
+          0,
+          0,
+          4294965042,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 31,
+      "label": "AIV1-31",
+      "timestamps": {
+        "process_begin_S": [
+          4294963295
+        ],
+        "work_end_S": [
+          1999
+        ],
+        "dispatch_begin_S": [
+          4294963395,
+          0,
+          0,
+          0,
+          4294964245,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964195,
+          0,
+          0,
+          0,
+          4294965045,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 32,
+      "label": "AIV1-32",
+      "timestamps": {
+        "process_begin_S": [
+          4294963298
+        ],
+        "work_end_S": [
+          2002
+        ],
+        "dispatch_begin_S": [
+          4294963398,
+          0,
+          0,
+          0,
+          4294964248,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964198,
+          0,
+          0,
+          0,
+          4294965048,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 33,
+      "label": "AIV1-33",
+      "timestamps": {
+        "process_begin_S": [
+          4294963301
+        ],
+        "work_end_S": [
+          2005
+        ],
+        "dispatch_begin_S": [
+          4294963401,
+          0,
+          0,
+          0,
+          4294964251,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964201,
+          0,
+          0,
+          0,
+          4294965051,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 34,
+      "label": "AIV1-34",
+      "timestamps": {
+        "process_begin_S": [
+          4294963304
+        ],
+        "work_end_S": [
+          2008
+        ],
+        "dispatch_begin_S": [
+          4294963404,
+          0,
+          0,
+          0,
+          4294964254,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964204,
+          0,
+          0,
+          0,
+          4294965054,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    },
+    {
+      "role": "AIV1",
+      "core": 35,
+      "label": "AIV1-35",
+      "timestamps": {
+        "process_begin_S": [
+          4294963307
+        ],
+        "work_end_S": [
+          2011
+        ],
+        "dispatch_begin_S": [
+          4294963407,
+          0,
+          0,
+          0,
+          4294964257,
+          0,
+          0,
+          0
+        ],
+        "dispatch_end_S": [
+          4294964207,
+          0,
+          0,
+          0,
+          4294965057,
+          0,
+          0,
+          0
+        ],
+        "combine_begin_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "combine_end_S": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "counters": {}
+    }
+  ]
+}

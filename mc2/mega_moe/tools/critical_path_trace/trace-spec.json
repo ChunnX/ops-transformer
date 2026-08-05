@@ -1,0 +1,848 @@
+{
+  "schema_version": 1,
+  "trace": {
+    "name": "mega-moe-wave-critical-path",
+    "compile_switch": "MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE",
+    "roles": [
+      "AIC",
+      "AIV0",
+      "AIV1"
+    ],
+    "clock": {
+      "api": "AscendC::GetSystemCycle",
+      "unit": "cycle",
+      "bits": 32,
+      "timestamp_pipeline": "Scalar",
+      "scope": "one device/rank; AIC, AIV0, and AIV1 use the same device system-cycle domain; ranks are decoded separately",
+      "comparable_across_records": true,
+      "missing_value": 0,
+      "zero_handling": "a sampled low-32 system-cycle value of zero is remapped to one so zero remains an unambiguous missing sentinel"
+    },
+    "visualization": {
+      "comparison_group": {
+        "kind": "shared-core-index",
+        "key": "core",
+        "label": "AI Block",
+        "roles": [
+          "AIC",
+          "AIV0",
+          "AIV1"
+        ],
+        "reference_role": "AIC",
+        "cross_group_comparable": false,
+        "reason": "AIC, AIV0, and AIV1 with the same paired core index form one physical AI Block and share a synchronized timestamp; different AI Blocks may have fixed timestamp offsets"
+      },
+      "host_only": true,
+      "protocol_impact": "AI Block grouping and Chinese wording remain host-only; one slot per routed-expert index and dynamic record sizing are protocol v7 device ABI",
+      "fine_grained": {
+        "enabled_by": "MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE=1 and runtime flags bit8",
+        "occurrence_kind": "expert-index",
+        "occurrence_label": "数组下标就是本卡 routed expert index；未参与该专家的物理核保留 0 缺失值",
+        "expert_count_header_field": "moe_experts_per_rank",
+        "experts_per_wave_header_field": "experts_per_wave",
+        "wave_partition": "mirror MegaMoeImpl::GetWaveExpertCount, including absorption of a final tail smaller than half a normal wave",
+        "derived_idle_gaps": [
+          {
+            "span": "gmm1_expert",
+            "same_wave_only": true,
+            "label": "GMM1 FIX 尾部 + 等待/调度间隙",
+            "color": "#f59e0b",
+            "quality": "inferred",
+            "caveat": "从前一专家的 MMAD/NotifyVector issue 边界到下一专家 causal begin，包含 FIX 尾部、依赖等待和少量 Scalar 调度，不能解释为纯等待指令耗时"
+          },
+          {
+            "span": "swiglu_expert",
+            "same_wave_only": true,
+            "label": "SwiGLU 等待/调度间隙",
+            "color": "#f59e0b",
+            "quality": "inferred",
+            "caveat": "从前一专家实际输出/ready 发布后到下一专家 causal begin，主要包含 WaitForCube/输入就绪等待及少量调度"
+          },
+          {
+            "span": "gmm2_expert",
+            "same_wave_only": true,
+            "label": "GMM2 等待/调度间隙",
+            "color": "#f59e0b",
+            "quality": "inferred",
+            "caveat": "从前一专家实际 FIX 完成并发布 ready 后到下一专家 causal begin，包含 SwiGLU-ready 等待及少量调度"
+          }
+        ],
+        "protocol_impact": "dynamic expert-index arrays are device ABI and require protocol v7; wave IDs are derived from checked header fields instead of a fixed metadata tail"
+      }
+    },
+    "protocol": {
+      "magic": "0x43505452",
+      "version": 7,
+      "schema_id": "0x3eb1c6b3",
+      "word_bits": 32,
+      "endianness": "little",
+      "header_words": 30,
+      "record_words": {
+        "base_words": 2,
+        "count_header_field": "moe_experts_per_rank",
+        "words_per_count": 4
+      },
+      "record_order": "role-major",
+      "record_order_description": "AIC[0..aicNum-1], AIV0[0..aicNum-1], then AIV1[0..aicNum-1], each in ascending physical paired-core index",
+      "header_contract": "30 little-endian uint32 words; magic is published last after every dynamic record writer rendezvous; record_words is 2 + 4 * moe_experts_per_rank; runtime fields identify the current MTE A8W8 MegaMoeWave path and carry shape, role counts, full expert-index capacity, fine-grained flags, config hash, and y capacity",
+      "flags_contract": "required 0x000003ff: v5 bits0..7 unchanged; bit8 means expert-grained timing; bit9 means full runtime expert-index records staged through the reserved workspace scratch",
+      "header_fields": [
+        {
+          "name": "magic",
+          "word": 0,
+          "width_words": 1
+        },
+        {
+          "name": "version",
+          "word": 1,
+          "width_words": 1
+        },
+        {
+          "name": "schema_id",
+          "word": 2,
+          "width_words": 1
+        },
+        {
+          "name": "header_words",
+          "word": 3,
+          "width_words": 1
+        },
+        {
+          "name": "record_words",
+          "word": 4,
+          "width_words": 1
+        },
+        {
+          "name": "record_count",
+          "word": 5,
+          "width_words": 1
+        },
+        {
+          "name": "role_counts",
+          "word": 6,
+          "width_words": 3
+        },
+        {
+          "name": "clock_bits",
+          "word": 9,
+          "width_words": 1
+        },
+        {
+          "name": "repetition_count",
+          "word": 10,
+          "width_words": 1
+        },
+        {
+          "name": "capture_capacity",
+          "word": 11,
+          "width_words": 1
+        },
+        {
+          "name": "truncated",
+          "word": 12,
+          "width_words": 1
+        },
+        {
+          "name": "flags",
+          "word": 13,
+          "width_words": 1
+        },
+        {
+          "name": "rank",
+          "word": 14,
+          "width_words": 1
+        },
+        {
+          "name": "runtime_config_hash",
+          "word": 15,
+          "width_words": 1
+        },
+        {
+          "name": "path_id",
+          "word": 16,
+          "width_words": 1
+        },
+        {
+          "name": "bs",
+          "word": 17,
+          "width_words": 1
+        },
+        {
+          "name": "h",
+          "word": 18,
+          "width_words": 1
+        },
+        {
+          "name": "hidden_dim",
+          "word": 19,
+          "width_words": 1
+        },
+        {
+          "name": "top_k",
+          "word": 20,
+          "width_words": 1
+        },
+        {
+          "name": "moe_experts_per_rank",
+          "word": 21,
+          "width_words": 1
+        },
+        {
+          "name": "shared_expert_count",
+          "word": 22,
+          "width_words": 1
+        },
+        {
+          "name": "experts_per_wave",
+          "word": 23,
+          "width_words": 1
+        },
+        {
+          "name": "world_size",
+          "word": 24,
+          "width_words": 1
+        },
+        {
+          "name": "dispatch_quant_out_key",
+          "word": 25,
+          "width_words": 1
+        },
+        {
+          "name": "combine_quant_mode",
+          "word": 26,
+          "width_words": 1
+        },
+        {
+          "name": "topk_weights_prefetch",
+          "word": 27,
+          "width_words": 1
+        },
+        {
+          "name": "weight1_interleaved",
+          "word": 28,
+          "width_words": 1
+        },
+        {
+          "name": "carrier_words",
+          "word": 29,
+          "width_words": 1
+        }
+      ],
+      "record_fields": [
+        {
+          "name": "process_begin_S",
+          "kind": "timestamp",
+          "roles": [
+            "AIC",
+            "AIV0",
+            "AIV1"
+          ],
+          "word": 0,
+          "width_words": 1,
+          "count": 1,
+          "stride_words": 1
+        },
+        {
+          "name": "work_end_S",
+          "kind": "timestamp",
+          "roles": [
+            "AIC",
+            "AIV0",
+            "AIV1"
+          ],
+          "word": 1,
+          "width_words": 1,
+          "count": 1,
+          "stride_words": 1
+        },
+        {
+          "name": "gmm1_expert_begin_S",
+          "kind": "timestamp",
+          "roles": [
+            "AIC"
+          ],
+          "word": 2,
+          "width_words": 1,
+          "count": {
+            "header_field": "moe_experts_per_rank"
+          },
+          "stride_words": 4
+        },
+        {
+          "name": "gmm1_expert_end_S",
+          "kind": "timestamp",
+          "roles": [
+            "AIC"
+          ],
+          "word": 3,
+          "width_words": 1,
+          "count": {
+            "header_field": "moe_experts_per_rank"
+          },
+          "stride_words": 4
+        },
+        {
+          "name": "gmm2_expert_begin_S",
+          "kind": "timestamp",
+          "roles": [
+            "AIC"
+          ],
+          "word": 4,
+          "width_words": 1,
+          "count": {
+            "header_field": "moe_experts_per_rank"
+          },
+          "stride_words": 4
+        },
+        {
+          "name": "gmm2_expert_end_S",
+          "kind": "timestamp",
+          "roles": [
+            "AIC"
+          ],
+          "word": 5,
+          "width_words": 1,
+          "count": {
+            "header_field": "moe_experts_per_rank"
+          },
+          "stride_words": 4
+        },
+        {
+          "name": "swiglu_expert_begin_S",
+          "kind": "timestamp",
+          "roles": [
+            "AIV0"
+          ],
+          "word": 2,
+          "width_words": 1,
+          "count": {
+            "header_field": "moe_experts_per_rank"
+          },
+          "stride_words": 4
+        },
+        {
+          "name": "swiglu_expert_end_S",
+          "kind": "timestamp",
+          "roles": [
+            "AIV0"
+          ],
+          "word": 3,
+          "width_words": 1,
+          "count": {
+            "header_field": "moe_experts_per_rank"
+          },
+          "stride_words": 4
+        },
+        {
+          "name": "dispatch_begin_S",
+          "kind": "timestamp",
+          "roles": [
+            "AIV1"
+          ],
+          "word": 2,
+          "width_words": 1,
+          "count": {
+            "header_field": "moe_experts_per_rank"
+          },
+          "stride_words": 4
+        },
+        {
+          "name": "dispatch_end_S",
+          "kind": "timestamp",
+          "roles": [
+            "AIV1"
+          ],
+          "word": 3,
+          "width_words": 1,
+          "count": {
+            "header_field": "moe_experts_per_rank"
+          },
+          "stride_words": 4
+        },
+        {
+          "name": "combine_begin_S",
+          "kind": "timestamp",
+          "roles": [
+            "AIV1"
+          ],
+          "word": 4,
+          "width_words": 1,
+          "count": {
+            "header_field": "moe_experts_per_rank"
+          },
+          "stride_words": 4
+        },
+        {
+          "name": "combine_end_S",
+          "kind": "timestamp",
+          "roles": [
+            "AIV1"
+          ],
+          "word": 5,
+          "width_words": 1,
+          "count": {
+            "header_field": "moe_experts_per_rank"
+          },
+          "stride_words": 4
+        }
+      ],
+      "repetition_count_contract": "header repetition_count is the exact routed-wave count derived with GetWaveExpertCount; capture_capacity equals moe_experts_per_rank and truncated is always zero because every dynamic record has one slot per routed expert index"
+    },
+    "output": {
+      "carrier": "diagnostic reuse of y as raw bytes after all BF16 Unpermute output stores complete; fine v7 requires bytes=4*(30 + 3*aicNum*(2 + 4*moeExpertPerRank))",
+      "overwrites_user_output": true,
+      "capacity_check": "adapter and device independently compute record_words=2+4*moeExpertPerRank and require carrierBytes >= 4*(30+3*aicNum*record_words); device also checks the dynamic workspace scratch against the tiling-provided 50 MiB reserve",
+      "write_phase": "hot-path begin/end triples are written to disjoint per-role/core records in the reserved workspace tail; after role-local work_end_S, final Unpermute completion, and useful y lifetime, each core zeros and materializes its full expert-index y record; header fields follow and magic is last",
+      "rendezvous": "AscendC::SyncAll<false>() includes AIC/AIV: first protects y from late Unpermute writers; second waits for every dynamic record before AIC0 publishes the header"
+    },
+    "fine_grained_compile_switch": "MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE"
+  },
+  "points": [
+    {
+      "id": "process_begin_S",
+      "stage": "process",
+      "edge": "begin",
+      "boundary_quality": "causal",
+      "roles": [
+        "AIC",
+        "AIV0",
+        "AIV1"
+      ],
+      "scope": "once at MegaMoeWave::Process entry per physical role/core record",
+      "source": {
+        "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+        "symbol": "MegaMoeWave::Process",
+        "target_anchor": {
+          "mode": "literal",
+          "pattern": "int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();"
+        },
+        "placement": "before",
+        "marker": "TRACE_POINT: process_begin_S",
+        "max_line_distance": 4
+      },
+      "why": "Provides one local shared-axis reference for AIC, AIV0, and AIV1 inside the same physical AI Block, without asserting clock alignment across AI Blocks or ranks; also exposes role launch skew before input preparation.",
+      "semantics": "Scalar has entered the current MTE A8W8 MegaMoeWave Process body and no operator work has yet been issued by this role/core.",
+      "dependency": {
+        "precondition": "mixed-kernel task entry for this physical role/core",
+        "producer_pipeline": "kernel scheduler and Scalar control",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "none",
+        "proof": "The clock is the first diagnostic instruction immediately before the first Process statement."
+      },
+      "perturbation": "One 32-bit GetSystemCycle and one named Scalar assignment per role/core."
+    },
+    {
+      "id": "work_end_S",
+      "stage": "process",
+      "edge": "end",
+      "boundary_quality": "actual",
+      "roles": [
+        "AIC",
+        "AIV0",
+        "AIV1"
+      ],
+      "scope": "once after useful work and overflow-mode restoration per physical role/core record",
+      "source": {
+        "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+        "symbol": "MegaMoeWave::Process",
+        "target_anchor": {
+          "mode": "literal",
+          "pattern": "SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);"
+        },
+        "placement": "after",
+        "marker": "TRACE_POINT: work_end_S",
+        "max_line_distance": 4
+      },
+      "why": "Separates the real role-local useful-work tail from the diagnostic rendezvous and y record emission overhead.",
+      "semantics": "All useful work owned by this role is complete; for AIV roles Unpermute has consumed its final MTE3_V completion event, and routed AIC publications already passed FIX_S.",
+      "dependency": {
+        "precondition": "role-local GMM/Combine completion and, on AIV, final Unpermute y store completion",
+        "producer_pipeline": "FIX and Scalar for AIC; MTE3, Vector, and Scalar for AIV",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "existing PublishGmm2Ready FIX_S and Unpermute final MTE3_V waits; no additional hot-path bridge",
+        "proof": "The sample is after ProcessRoutedExpertWaves, cross-rank completion, Unpermute's final MTE3_V wait, and control-state restoration, but before either trace rendezvous."
+      },
+      "perturbation": "One 32-bit GetSystemCycle and assignment before trace-only terminal synchronization."
+    },
+    {
+      "id": "dispatch_begin_S",
+      "stage": "dispatch",
+      "edge": "begin",
+      "boundary_quality": "causal",
+      "roles": [
+        "AIV1"
+      ],
+      "scope": "每个物理 AIV1、每个实际 routed wave 一次；写入该 wave 首专家 index 对应的动态槽",
+      "source": {
+        "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+        "symbol": "MegaMoeWave::DispatchExpert",
+        "target_anchor": {
+          "mode": "literal",
+          "pattern": "SendCntCal(static_cast<int32_t>(expertIdx), sendCnt);"
+        },
+        "placement": "before",
+        "marker": "TRACE_POINT: dispatch_begin_S",
+        "max_line_distance": 24
+      },
+      "why": "Measures the actual per-wave AIV1 prefetch window, including send-count calculation, rather than the outer wave that may prefetch two waves at once.",
+      "semantics": "The first expert in this dispatch wave is about to start SendCntCal on the AIV1 Scalar/control path.",
+      "dependency": {
+        "precondition": "the monotonic dispatch cursor selected this expert and any prior Combine ring reuse was drained by the preceding wave",
+        "producer_pipeline": "AIV1 Scalar control",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "none",
+        "proof": "DispatchExpert is invoked exactly once per expert by DispatchExpertsUntil; the boundary cursor advances with GetWaveExpertCount, including the latest small-tail merge rule."
+      },
+      "perturbation": "每个 AIV1/wave 一次动态边界判断和时钟读取；结束时追加三次互不冲突的 workspace bypass-GM 标量写。"
+    },
+    {
+      "id": "dispatch_end_S",
+      "stage": "dispatch",
+      "edge": "end",
+      "boundary_quality": "actual",
+      "roles": [
+        "AIV1"
+      ],
+      "scope": "每个物理 AIV1、每个实际 routed wave 的最后一个专家一次；与 begin 共用 wave 首专家 index",
+      "source": {
+        "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+        "symbol": "MegaMoeWave::DispatchExpert",
+        "target_anchor": {
+          "mode": "literal",
+          "pattern": "MetaInfoCalAndDispatch(gmmAddrInfo, static_cast<int32_t>(expertIdx), bufferConfig);"
+        },
+        "placement": "after",
+        "marker": "TRACE_POINT: dispatch_end_S",
+        "max_line_distance": 10
+      },
+      "why": "Proves when each AIV1 has completed the token/scale/meta-info writes that release GMM1 and permits direct comparison with GMM1 readiness.",
+      "semantics": "The last expert handled by this AIV1 in the wave has completed all Dispatch MTE3 writes and ready publications.",
+      "dependency": {
+        "precondition": "CopyGMToGMPerToken has recycled every dynamic ring slot and MetaInfoCalAndDispatch has issued its final publication",
+        "producer_pipeline": "MTE3",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "trace-only MTE3_S using recycled EVENT_ID0 on the last expert of the wave",
+        "proof": "All EVENT_ID0..5 Dispatch ring lifetimes are paired before MetaInfoCalAndDispatch returns; the added MTE3_S orders the last output/publication into Scalar before sampling."
+      },
+      "perturbation": "One MTE3-to-Scalar bridge and one clock sample per active AIV1/wave."
+    },
+    {
+      "id": "gmm1_expert_begin_S",
+      "stage": "gmm1_expert",
+      "edge": "begin",
+      "boundary_quality": "causal",
+      "roles": [
+        "AIC"
+      ],
+      "scope": "每个物理 AIC 对实际分配到 tile 的 routed expert 各记录一次，数组下标等于本卡 expert index",
+      "source": {
+        "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h",
+        "symbol": "MegaMoeImpl::Detail::AicComputeGeneric",
+        "target_anchor": {
+          "mode": "literal",
+          "pattern": "if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !GMM2_DIRECT_GM) {"
+        },
+        "placement": "after",
+        "marker": "TRACE_POINT: gmm1_expert_begin_S",
+        "max_line_distance": 48
+      },
+      "why": "把一批专家的长 GMM1 外框拆成逐专家 issue 区间，使同一 wave 内专家间的 FIX 尾部和依赖等待可以单独显示。",
+      "semantics": "当前专家的 Dispatch GM readiness 与前序 ping-pong 依赖已满足，本核第一个 GMM1 tile 即将发出 MMAD。",
+      "dependency": {
+        "precondition": "WaitForUpstreamReady 已观察当前专家 Dispatch wave count，且需要时 WaitForVector 已完成",
+        "producer_pipeline": "Scalar GM visibility and FIX",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "trace-only FIX_S using recycled EVENT_ID0 before the first sampled tile",
+        "proof": "打点位于 AicComputeGeneric 的 readiness/ping-pong waits 之后；FIX_S 仅把该 causal begin 依赖传到 Scalar。"
+      },
+      "perturbation": "每个活跃专家一次动态状态检查、一次 FIX→Scalar causal bridge、一次时钟读取；结束时追加三次互不冲突的 workspace bypass-GM 标量写。"
+    },
+    {
+      "id": "gmm1_expert_end_S",
+      "stage": "gmm1_expert",
+      "edge": "end",
+      "boundary_quality": "issue",
+      "roles": [
+        "AIC"
+      ],
+      "scope": "每个已捕获且本核实际参与的 routed expert，在 GroupMatmulWithSwigluQuant 返回后记录一次",
+      "source": {
+        "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+        "symbol": "MegaMoeWave::ProcessGmm1Wave",
+        "target_anchor": {
+          "mode": "literal",
+          "pattern": "epilogueOp_, gmm1AddrInfo, gmm1State, expertIdx, vecSetSyncCom);"
+        },
+        "placement": "after",
+        "marker": "TRACE_POINT: gmm1_expert_end_S",
+        "max_line_distance": 10
+      },
+      "why": "给逐专家 GMM1 一个低扰动结束边界；与下一专家 causal begin 之间显示 FIX 尾部、等待和调度间隙。",
+      "semantics": "当前专家本核所有 GMM1 MMAD/NotifyVector 已发出，但不额外声称 FIX 已完成。",
+      "dependency": {
+        "precondition": "GroupMatmulWithSwigluQuant 已返回，当前专家分配给本核的 tile 已全部发出",
+        "producer_pipeline": "Scalar issue state; FIX may still be pending",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "none; intentionally issue-only",
+        "proof": "采样紧跟当前专家 helper 返回；不增加逐专家 FIX_S，避免把原本可流水的 FIX 尾部强制串行化。"
+      },
+      "perturbation": "每个活跃专家一次时钟读取和三次 workspace 标量写；无新增完成 bridge。该 span 以 issue/半透明显示。"
+    },
+    {
+      "id": "swiglu_expert_begin_S",
+      "stage": "swiglu_expert",
+      "edge": "begin",
+      "boundary_quality": "causal",
+      "roles": [
+        "AIV0"
+      ],
+      "scope": "每个物理 AIV0 对实际执行 epilogue 的 routed expert 各记录一次；同一专家后续 tile 复用其 expert-index 槽",
+      "source": {
+        "file": "mc2/mega_moe/op_kernel/arch35/block_epilogue_swiglu_mx_quant.h",
+        "symbol": "BlockEpilogueSwigluMxQuant::operator()",
+        "target_anchor": {
+          "mode": "literal",
+          "pattern": "uint64_t yOffset = Get<Y_IDX>(blockCoord);"
+        },
+        "placement": "before",
+        "marker": "TRACE_POINT: swiglu_expert_begin_S",
+        "max_line_distance": 24
+      },
+      "why": "把一批专家合并的 SwiGLU 长外框拆开，避免把专家间 WaitForCube/输入等待误认为 SwiGLU 计算。",
+      "semantics": "当前专家首个非空 epilogue 已完成上游 GMM1/输入就绪等待，并即将开始 SwiGLU 与 MX 量化。",
+      "dependency": {
+        "precondition": "the caller passed its AIC-to-AIV0 V wait or MTE2_V data-ready wait before entering the epilogue",
+        "producer_pipeline": "Vector",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "trace-only V_S using recycled EVENT_ID0 at the common epilogue entry",
+        "proof": "Every routed wave epilogue branch calls this operator only after its readiness wait; V_S orders those V-pipeline waits before the first recorded clock."
+      },
+      "perturbation": "每个被捕获活跃专家一次槽检查、一次 V→Scalar causal bridge 和一次时钟读取；同专家后续 tile 不重复 begin。"
+    },
+    {
+      "id": "swiglu_expert_end_S",
+      "stage": "swiglu_expert",
+      "edge": "end",
+      "boundary_quality": "actual",
+      "roles": [
+        "AIV0"
+      ],
+      "scope": "每个已捕获且本核实际执行 epilogue 的 routed expert，在 GroupMatmulWithSwigluQuant 返回后记录一次",
+      "source": {
+        "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+        "symbol": "MegaMoeWave::ProcessGmm1Wave",
+        "target_anchor": {
+          "mode": "literal",
+          "pattern": "epilogueOp_, gmm1AddrInfo, gmm1State, expertIdx, vecSetSyncCom);"
+        },
+        "placement": "after",
+        "marker": "TRACE_POINT: swiglu_expert_end_S",
+        "max_line_distance": 16
+      },
+      "why": "标出每个专家真实 SwiGLU/MX 输出完成点，使后续到下一专家 causal begin 的等待/调度间隙可见。",
+      "semantics": "当前专家在本 AIV0 上的全部 epilogue tile 已返回；其量化 data/scale MTE3 写回均已完成且 ready 均已发布。",
+      "dependency": {
+        "precondition": "当前专家的全部 BlockEpilogueSwigluMxQuant::operator() 调用已返回",
+        "producer_pipeline": "MTE3 completion and Scalar ready publication",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "existing per-tile MTE3_S; no added end bridge",
+        "proof": "每个 operator 返回前已有 MTE3_S 并随后发布 ready；helper 返回后的 Scalar 时钟因此晚于当前专家最后一个 tile 的完成与发布。"
+      },
+      "perturbation": "每个被捕获活跃专家一次条件检查和结束时钟；不新增 MTE3 bridge，不再逐 tile 重复采样。"
+    },
+    {
+      "id": "gmm2_expert_begin_S",
+      "stage": "gmm2_expert",
+      "edge": "begin",
+      "boundary_quality": "causal",
+      "roles": [
+        "AIC"
+      ],
+      "scope": "每个物理 AIC 对实际分配到 GMM2 tile 的 routed expert 各记录一次，数组下标等于本卡 expert index",
+      "source": {
+        "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h",
+        "symbol": "MegaMoeImpl::Detail::AicComputeGeneric",
+        "target_anchor": {
+          "mode": "literal",
+          "pattern": "if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !GMM2_DIRECT_GM) {"
+        },
+        "placement": "after",
+        "marker": "TRACE_POINT: gmm2_expert_begin_S",
+        "max_line_distance": 48
+      },
+      "why": "拆出逐专家 GMM2，使 SwiGLU-ready 等待不再被一批专家的外框吞入；也可验证 GMM2 是否确实近似连续输出 GM。",
+      "semantics": "当前专家的 SwiGLU-ready counter 已被 Scalar 观察，本核第一个 GMM2 MMAD 即将发出。",
+      "dependency": {
+        "precondition": "WaitForUpstreamReady observed the wave-grained swigluToGmm2Flag target",
+        "producer_pipeline": "MTE3 completion published through Scalar-visible GM AtomicAdd",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "none",
+        "proof": "The bypass GM polling loop runs on Scalar and returns only after epilogue MTE3_S and ready AtomicAdd; the immediately following Scalar clock is causally ordered without a cross-pipeline bridge."
+      },
+      "perturbation": "每个活跃专家一次动态状态检查和时钟读取；不新增跨流水 bridge。"
+    },
+    {
+      "id": "gmm2_expert_end_S",
+      "stage": "gmm2_expert",
+      "edge": "end",
+      "boundary_quality": "actual",
+      "roles": [
+        "AIC"
+      ],
+      "scope": "每个已捕获且本核实际参与的 routed expert，在 PublishGmm2Ready 后记录实际完成",
+      "source": {
+        "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+        "symbol": "MegaMoeWave::ProcessGmm2Wave",
+        "target_anchor": {
+          "mode": "literal",
+          "pattern": "PublishGmm2Ready(expertIdx);"
+        },
+        "placement": "after",
+        "marker": "TRACE_POINT: gmm2_expert_end_S",
+        "max_line_distance": 8
+      },
+      "why": "逐专家证明 GMM2 直写 GM 与 ready 发布完成，并把到下一专家 begin 的等待/调度间隙独立显示。",
+      "semantics": "当前专家本核所有 GMM2 FIX 直写已完成，且该 AIC 的 per-expert ready 已发布。",
+      "dependency": {
+        "precondition": "GroupMatmulGmm2 已发出当前专家所有 tile，PublishGmm2Ready 随后执行",
+        "producer_pipeline": "FIX then Scalar bypass GM store",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "existing FIX_S inside PublishGmm2Ready; no extra bridge",
+        "proof": "PublishGmm2Ready 内现有 FIX_S 在 WriteGmByPassDCache 前证明本核 FIX 完成；紧随其后的 Scalar 时钟不声称 AIV1 已观察 ready。"
+      },
+      "perturbation": "每个活跃专家一次时钟读取和三次 workspace 标量写；复用生产路径已有 FIX_S，不新增 completion bridge。"
+    },
+    {
+      "id": "combine_begin_S",
+      "stage": "combine",
+      "edge": "begin",
+      "boundary_quality": "causal",
+      "roles": [
+        "AIV1"
+      ],
+      "scope": "每个物理 AIV1、每个实际 routed wave 的首个非空 token range；写入该 wave 首专家 index",
+      "source": {
+        "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+        "symbol": "MegaMoeWave::ProcessCombineExperts",
+        "target_anchor": {
+          "mode": "literal",
+          "pattern": "WaitGmm2Ready(expertIdx);"
+        },
+        "placement": "after",
+        "marker": "TRACE_POINT: combine_begin_S",
+        "max_line_distance": 8
+      },
+      "why": "Exposes the publication-to-ready-observation handoff and starts Combine only after the full AIC fan-in is proven.",
+      "semantics": "This AIV1 owns at least one token and its first expert's GMM2-ready scan has observed all AIC publications; meta-info load and first row send follow.",
+      "dependency": {
+        "precondition": "WaitGmm2Ready reduced all per-AIC ready cache lines to at least blockNum",
+        "producer_pipeline": "MTE2 then Vector reduction",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "existing MTE2_V and V_S in WaitGmm2Ready",
+        "proof": "WaitGmm2Ready returns only after the V_S-ordered sum is read on Scalar and meets the all-AIC target; the marker is immediately after that return."
+      },
+      "perturbation": "One conditional slot check and one clock per active AIV1/wave."
+    },
+    {
+      "id": "combine_end_S",
+      "stage": "combine",
+      "edge": "end",
+      "boundary_quality": "actual",
+      "roles": [
+        "AIV1"
+      ],
+      "scope": "每个物理 AIV1、每个实际 routed wave 的最终远端发送 ring drain 后一次",
+      "source": {
+        "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_wave.h",
+        "symbol": "MegaMoeWave::ProcessCombineExperts",
+        "target_anchor": {
+          "mode": "literal",
+          "pattern": "DrainCombineRowRing(rowSequence);"
+        },
+        "placement": "after",
+        "marker": "TRACE_POINT: combine_end_S",
+        "max_line_distance": 8
+      },
+      "why": "Ends Combine at actual remote MTE3 send completion rather than at Scalar issue or ring-drain enqueue time.",
+      "semantics": "Every token row issued by this AIV1 for the wave has completed its remote MTE3 send.",
+      "dependency": {
+        "precondition": "DrainCombineRowRing consumed every MTE3_MTE2 event for each actually used row slot",
+        "producer_pipeline": "MTE3 completion dependency held by MTE2",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "trace-only MTE2_S using recycled EVENT_ID0 after the drain",
+        "proof": "The ring drain waits only the slots that were issued; MTE2_S transfers those completed MTE3 dependencies to Scalar before sampling."
+      },
+      "perturbation": "One MTE2-to-Scalar bridge and one clock per active AIV1/wave."
+    }
+  ],
+  "spans": [
+    {
+      "id": "process",
+      "label": "Role-local useful work",
+      "begin": "process_begin_S",
+      "end": "work_end_S",
+      "roles": [
+        "AIC",
+        "AIV0",
+        "AIV1"
+      ],
+      "quality": "exact",
+      "color": "#64748b"
+    },
+    {
+      "id": "dispatch",
+      "label": "Dispatch",
+      "begin": "dispatch_begin_S",
+      "end": "dispatch_end_S",
+      "roles": [
+        "AIV1"
+      ],
+      "quality": "exact",
+      "color": "#0891b2"
+    },
+    {
+      "id": "gmm1_expert",
+      "label": "GMM1（逐专家 issue）",
+      "begin": "gmm1_expert_begin_S",
+      "end": "gmm1_expert_end_S",
+      "roles": [
+        "AIC"
+      ],
+      "quality": "issue",
+      "color": "#2563eb"
+    },
+    {
+      "id": "swiglu_expert",
+      "label": "SwiGLU + MX 量化（逐专家）",
+      "begin": "swiglu_expert_begin_S",
+      "end": "swiglu_expert_end_S",
+      "roles": [
+        "AIV0"
+      ],
+      "quality": "exact",
+      "color": "#7c3aed"
+    },
+    {
+      "id": "gmm2_expert",
+      "label": "GMM2 + ready 发布（逐专家）",
+      "begin": "gmm2_expert_begin_S",
+      "end": "gmm2_expert_end_S",
+      "roles": [
+        "AIC"
+      ],
+      "quality": "exact",
+      "color": "#dc2626"
+    },
+    {
+      "id": "combine",
+      "label": "Ready fan-in + Combine",
+      "begin": "combine_begin_S",
+      "end": "combine_end_S",
+      "roles": [
+        "AIV1"
+      ],
+      "quality": "exact",
+      "color": "#16a34a"
+    }
+  ]
+}

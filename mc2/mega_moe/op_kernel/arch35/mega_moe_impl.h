@@ -22,6 +22,7 @@
 #include "lib/matmul_intf.h"
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_base.h"
+#include "mega_moe_trace.h"
 
 #include "tensor_api/tensor.h"
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
@@ -470,8 +471,39 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
             }
         }
 
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \
+    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
         typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
                                                    Get<K_VALUE>(actualShape), 0};
+        if constexpr (Policy::IS_GMM1) {
+            if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsExpertStage0Begin()) {
+                AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
+                // TRACE_POINT: gmm1_expert_begin_S
+                args.criticalPathTrace->BeginExpertStage0(CriticalPathTrace::Now());
+            }
+        } else if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsExpertStage1Begin()) {
+            // TRACE_POINT: gmm2_expert_begin_S
+            args.criticalPathTrace->BeginExpertStage1(CriticalPathTrace::Now());
+        }
+#elif MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if constexpr (Policy::IS_GMM1) {
+            if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsStage0Begin()) {
+                AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
+                // TRACE_POINT: gmm1_begin_S
+                args.criticalPathTrace->BeginStage0(CriticalPathTrace::Now());
+            }
+        } else if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsStage1Begin()) {
+            // TRACE_POINT: gmm2_begin_S
+            args.criticalPathTrace->BeginStage1(CriticalPathTrace::Now());
+        }
+        typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
+                                                   Get<K_VALUE>(actualShape), 0};
+#else
+        typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
+                                                   Get<K_VALUE>(actualShape), 0};
+#endif
 
         if constexpr (Policy::IS_GMM1) {
             if constexpr (TopkWeightsPrefetch) {
@@ -830,12 +862,18 @@ struct Gmm1ArgsGeneric {
     uint32_t expertBeforeCnt{0};
     uint32_t expertIdx{0}; // prefetch 软同步：当前 expert 索引，roundTag = expertIdx + 1
     uint16_t &pingpongIdx;
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    CriticalPathTrace *criticalPathTrace{nullptr};
+#endif
 };
 
 struct Gmm2ArgsGeneric {
     int32_t &vecSetSyncCom2;
     uint32_t groupCnt;
     uint16_t &pingpongIdx;
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    CriticalPathTrace *criticalPathTrace{nullptr};
+#endif
 };
 
 template <typename Scheduler, typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
@@ -952,11 +990,21 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                                L1_TILE_N, TopkWeightsPrefetch, IsGmm1Interleaved, IsWaveFlagGrained> &epilogueOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, uint32_t expertBeforeCnt,
-    uint32_t expertIdx, uint16_t &pingpongIdx)
+    uint32_t expertIdx, uint16_t &pingpongIdx
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    ,
+    CriticalPathTrace *criticalPathTrace = nullptr
+#endif
+)
 {
     using SwigluQuantOpType = std::remove_reference_t<decltype(epilogueOp)>;
     Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{
-        epilogueOp, vecSetSyncCom, expertBeforeCnt, expertIdx, pingpongIdx};
+        epilogueOp, vecSetSyncCom, expertBeforeCnt, expertIdx, pingpongIdx
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        ,
+        criticalPathTrace
+#endif
+    };
     Detail::GroupMatmulImplGeneric<Detail::Gmm1Policy, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, false, Gmm1TileM, TopkWeightsPrefetch, IsShared,
                                    IsGmm1Interleaved, IsWaveFlagGrained>(
@@ -992,9 +1040,19 @@ template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typena
 __aicore__ inline void GroupMatmul2(const Params &params,
                                     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
-                                    uint32_t groupCnt, uint16_t &pingpongIdx)
+                                    uint32_t groupCnt, uint16_t &pingpongIdx
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                    ,
+                                    CriticalPathTrace *criticalPathTrace = nullptr
+#endif
+)
 {
-    Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx};
+    Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                 ,
+                                 criticalPathTrace
+#endif
+    };
     Detail::GroupMatmulImplGeneric<Detail::Gmm2Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, IsLayered, Gmm1TileM, TopkWeightsPrefetch, IsShared,
                                    IsGmm1Interleaved, IsWaveFlagGrained>(
@@ -1011,11 +1069,17 @@ struct Gmm1ArgsA8W4 {
     SwigluQuantOp &swigluQuantOp;
     uint32_t expertBeforeCnt{0};
     uint32_t expertIdx{0}; // prefetch 软同步：当前 expert 索引，roundTag = expertIdx + 1
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    CriticalPathTrace *criticalPathTrace{nullptr};
+#endif
 };
 
 struct Gmm2ArgsA8W4 {
     uint32_t groupCnt;
     uint16_t &pingpongIdx;
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    CriticalPathTrace *criticalPathTrace{nullptr};
+#endif
 };
 
 template <uint8_t CombineQuantMode, typename Policy, bool IsShared, bool IsLayered = false, typename BlockMmad,
@@ -1024,7 +1088,12 @@ template <uint8_t CombineQuantMode, typename Policy, bool IsShared, bool IsLayer
 __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler, TensorA &gmA, TensorScaleA &gmScaleA,
                                       TensorScaleB &gmScaleB, TensorC &l0cOutGm, const GMMAddrInfo &gmmAddrInfo,
                                       int32_t &gmTileSequence, const Config &config, uint32_t startLoopIdx,
-                                      uint32_t tileNum, const Params &params, uint32_t expertIdx)
+                                      uint32_t tileNum, const Params &params, uint32_t expertIdx
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                      ,
+                                      CriticalPathTrace *criticalPathTrace
+#endif
+)
 {
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     GroupSyncSlotLayout groupSyncSlotLayout{};
@@ -1057,6 +1126,19 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
                 lastWaveWaited = waveIdx;
             }
         }
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if constexpr (Policy::IS_GMM1) {
+            if (criticalPathTrace != nullptr && criticalPathTrace->NeedsExpertStage0Begin()) {
+                // TRACE_POINT: a8w4_gmm1_begin_S
+                uint32_t a8w4Gmm1BeginCycle = CriticalPathTrace::Now();
+                criticalPathTrace->BeginExpertStage0(a8w4Gmm1BeginCycle);
+            }
+        } else if (criticalPathTrace != nullptr && criticalPathTrace->NeedsExpertStage1Begin()) {
+            // TRACE_POINT: a8w4_gmm2_begin_S
+            uint32_t a8w4Gmm2BeginCycle = CriticalPathTrace::Now();
+            criticalPathTrace->BeginExpertStage1(a8w4Gmm2BeginCycle);
+        }
+#endif
 
         auto gmBlockA = gmA.Slice(Te::MakeCoord(mLoc, 0), Te::MakeShape(Get<M_VALUE>(actualShape), config.k));
         auto gmBlockScaleA =
@@ -1106,9 +1188,10 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
     }
 }
 
-template <typename Policy, typename BlockPrologue, typename Scheduler, typename TensorB, typename Config>
+template <typename Policy, typename BlockPrologue, typename Scheduler, typename TensorB, typename Config,
+          typename ExtraArgs>
 __aicore__ inline void AivPrologueA8W4(BlockPrologue &blockPrologue, Scheduler &scheduler, TensorB &gmB,
-                                       const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
+                                       const Config &config, uint32_t startLoopIdx, uint32_t tileNum, ExtraArgs &args)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
@@ -1116,6 +1199,19 @@ __aicore__ inline void AivPrologueA8W4(BlockPrologue &blockPrologue, Scheduler &
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         auto mL1Size = Get<M_VALUE>(actualShape);
         auto nL1Size = Get<N_VALUE>(actualShape);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if constexpr (Policy::IS_GMM1) {
+            if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsExpertStage0Begin()) {
+                // TRACE_POINT: a8w4_gmm1_prologue_begin_S
+                uint32_t a8w4Gmm1PrologueBeginCycle = CriticalPathTrace::Now();
+                args.criticalPathTrace->BeginExpertStage0(a8w4Gmm1PrologueBeginCycle);
+            }
+        } else if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsExpertStage1Begin()) {
+            // TRACE_POINT: a8w4_gmm2_prologue_begin_S
+            uint32_t a8w4Gmm2PrologueBeginCycle = CriticalPathTrace::Now();
+            args.criticalPathTrace->BeginExpertStage1(a8w4Gmm2PrologueBeginCycle);
+        }
+#endif
 
         if constexpr (Policy::IS_GMM1) {
             for (uint32_t weightBlock = 0; weightBlock < MegaMoeImpl::SWIGLU_N_HALF; ++weightBlock) {
@@ -1133,7 +1229,12 @@ template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename 
 __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &scheduler, TensorC &l0cOutGm,
                                        const GMMAddrInfo &gmmAddrInfo, int32_t &gmTileSequence, const Config &config,
                                        uint32_t startLoopIdx, uint32_t tileNum, const Params &params,
-                                       uint32_t expertBeforeCnt, uint32_t expertIdx)
+                                       uint32_t expertBeforeCnt, uint32_t expertIdx
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                       ,
+                                       CriticalPathTrace *criticalPathTrace
+#endif
+)
 {
     constexpr uint32_t SUB_TILE_M = MegaMoeImpl::L1_TILE_M_128;
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
@@ -1157,6 +1258,9 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
                 while (AscendC::GetSystemCycle() - st < 100) {
                 }
             }
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+            RecordA8W4SwiGluBeginAfterReady(criticalPathTrace);
+#endif
 
             // 轮询通过后 metaInfo GM 已就绪，搬第一个 128 子块的权重到 weightUb_
             uint64_t metaInfoMLoc0 = expertBeforeCnt + mLoc;
@@ -1219,6 +1323,9 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
                 while (AscendC::GetSystemCycle() - st < 100) {
                 }
             }
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+            RecordA8W4SwiGluBeginAfterReady(criticalPathTrace);
+#endif
             AscendC::SetFlag<AscendC::HardEvent::S_MTE2>(0);
             AscendC::WaitFlag<AscendC::HardEvent::S_MTE2>(0);
             auto tensorBlockGmFirst = l0cOutGm.Slice(
@@ -1261,10 +1368,11 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
     }
 }
 
-template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config>
+template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config,
+          typename ExtraArgs>
 __aicore__ inline void AivGmm2PostA8W4(Scheduler &scheduler, TensorC &l0cOutGm, const Params &params,
                                        const GMMAddrInfo &gmmAddrInfo, int32_t &gmTileSequence, uint32_t groupCnt,
-                                       const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
+                                       const Config &config, uint32_t startLoopIdx, uint32_t tileNum, ExtraArgs &args)
 {
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
@@ -1278,6 +1386,9 @@ __aicore__ inline void AivGmm2PostA8W4(Scheduler &scheduler, TensorC &l0cOutGm, 
             while (AscendC::GetSystemCycle() - st < 100) {
             }
         }
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        RecordA8W4CombineBeginAfterReady(args.criticalPathTrace);
+#endif
         auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
                                             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
         auto layoutL0cUB = MakeLayoutC{}(config.tileM, L1_TILE_N);
@@ -1333,29 +1444,44 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet &workSet, const Params &param
                            decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
                            decltype(workSet.l0cOutGm), Config, TopkWeightsPrefetch>(
                 blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.l0cOutGm,
-                gmmAddrInfo, gmTileSequence, config, startLoopIdx, tileNum, params, args.expertIdx);
+                gmmAddrInfo, gmTileSequence, config, startLoopIdx, tileNum, params, args.expertIdx
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                ,
+                args.criticalPathTrace
+#endif
+            );
         } else {
             AicComputeA8W4<CombineQuantMode, Policy, IsShared, IsLayered, BlockMmad, decltype(workSet.scheduler),
                            decltype(workSet.gmA), decltype(workSet.gmScaleA), decltype(workSet.gmScaleB),
                            decltype(workSet.l0cOutGm), Config, TopkWeightsPrefetch>(
                 blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA, workSet.gmScaleB, workSet.l0cOutGm,
-                gmmAddrInfo, gmTileSequence, config, startLoopIdx, tileNum, params, 0);
+                gmmAddrInfo, gmTileSequence, config, startLoopIdx, tileNum, params, 0
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                ,
+                args.criticalPathTrace
+#endif
+            );
         }
     } else {
         if (GetSubBlockIdx() == 0) {
             BlockPrologue blockPrologue;
-            AivPrologueA8W4<Policy>(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
+            AivPrologueA8W4<Policy>(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum, args);
         } else {
             if constexpr (Policy::IS_GMM1) {
                 AivGmm1PostA8W4<ElementC, MakeLayoutC, decltype(workSet.scheduler), decltype(workSet.l0cOutGm),
                                 decltype(args.swigluQuantOp), Config, TopkWeightsPrefetch>(
                     args.swigluQuantOp, workSet.scheduler, workSet.l0cOutGm, gmmAddrInfo, gmTileSequence, config,
-                    startLoopIdx, tileNum, params, args.expertBeforeCnt, args.expertIdx);
+                    startLoopIdx, tileNum, params, args.expertBeforeCnt, args.expertIdx
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                    ,
+                    args.criticalPathTrace
+#endif
+                );
             } else {
                 if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !IsShared && !IsLayered) {
                     AivGmm2PostA8W4<ElementC, MakeLayoutC>(workSet.scheduler, workSet.l0cOutGm, params, gmmAddrInfo,
                                                            gmTileSequence, args.groupCnt, config, startLoopIdx,
-                                                           tileNum);
+                                                           tileNum, args);
                 }
             }
         }
@@ -1433,10 +1559,20 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
                                TopkWeightsPrefetch> &swigluQuantOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &gmTileSequence, uint32_t expertBeforeCnt,
-    uint32_t expertIdx = 0)
+    uint32_t expertIdx = 0
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    ,
+    CriticalPathTrace *criticalPathTrace = nullptr
+#endif
+)
 {
     using SwigluQuantOpType = std::remove_reference_t<decltype(swigluQuantOp)>;
-    Detail::Gmm1ArgsA8W4<SwigluQuantOpType> args{swigluQuantOp, expertBeforeCnt, expertIdx};
+    Detail::Gmm1ArgsA8W4<SwigluQuantOpType> args{swigluQuantOp, expertBeforeCnt, expertIdx
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                                 ,
+                                                 criticalPathTrace
+#endif
+    };
     Detail::GroupMatmulImplA8W4<COMBINE_NO_QUANT, Detail::Gmm1Policy, ElementA, ElementB, ElementC, ElementMxScaleA,
                                 ElementMxScaleB, Gmm1TileM, TopkWeightsPrefetch, IsShared, false, false>(
         params, problemShape, gmmAddrInfo, startBlockIdx, gmTileSequence, args);
@@ -1449,9 +1585,19 @@ template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typena
 __aicore__ inline void GroupMatmul2CombineA8W4(const Params &params,
                                                const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                                const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
-                                               int32_t &gmTileSequence, uint32_t groupCnt, uint16_t &pingpongIdx)
+                                               int32_t &gmTileSequence, uint32_t groupCnt, uint16_t &pingpongIdx
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                                               ,
+                                               CriticalPathTrace *criticalPathTrace = nullptr
+#endif
+)
 {
-    Detail::Gmm2ArgsA8W4 args{groupCnt, pingpongIdx};
+    Detail::Gmm2ArgsA8W4 args{groupCnt, pingpongIdx
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+                              ,
+                              criticalPathTrace
+#endif
+    };
     Detail::GroupMatmulImplA8W4<CombineQuantMode, Detail::Gmm2Policy, ElementA, ElementB, ElementC, ElementMxScaleA,
                                 ElementMxScaleB, Gmm1TileM, TopkWeightsPrefetch, IsShared, IsLayered,
                                 IsGmm1Interleaved>(

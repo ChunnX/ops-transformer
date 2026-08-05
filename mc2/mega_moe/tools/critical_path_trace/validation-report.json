@@ -1,0 +1,149 @@
+{
+  "schema_version": 3,
+  "status": "partially_verified_hardware_runtime_unavailable",
+  "baseline": {
+    "remote": "upstream",
+    "default_ref": "refs/heads/master",
+    "branch": "upstream/master",
+    "worktree_creation_commit": "4b3d39658e1d4f5d1f5b60acedfe2df8201e08b2",
+    "latest_integrated_commit": "27455755ec4fb4aac40cb6ff3d8ee962139ad5d3",
+    "integration_merge_commit": "b25081aa4d333037c7fc898b678e98c74eafdaf7"
+  },
+  "implementation": {
+    "branch": "codex/mega-moe-critical-path-trace-20260803",
+    "worktree": "/home/mace/workspace/ops-transformer_megaMoeOpt_trace_20260803",
+    "compile_switch": "MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE",
+    "compile_switch_default": 1,
+    "fine_grained_compile_switch": "MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE",
+    "fine_grained_compile_switch_default": 1,
+    "fine_protocol": {
+      "version": 7,
+      "schema_id": "0x3eb1c6b3",
+      "flags": "0x3ff",
+      "record_words_formula": "2 + 4 * moe_experts_per_rank",
+      "fixed_expert_slot_limit": null,
+      "scratch_reserved_bytes": 52428800,
+      "user_case": {
+        "bs": 24,
+        "h": 6144,
+        "output_dtype": "bfloat16",
+        "aic_core_num": 36,
+        "moe_experts_per_rank": 8,
+        "record_words": 34,
+        "required_y_bytes": 14808,
+        "available_y_bytes": 294912,
+        "required_scratch_bytes": 20736
+      }
+    },
+    "coarse_fallback_protocol": {
+      "version": 5,
+      "schema_id": "0xd32d8a49",
+      "flags": "0xff",
+      "required_bytes_at_36_aic": 7896
+    },
+    "supported_path": "arch35 MTE A8W8 MegaMoeWave"
+  },
+  "moe_test_provenance": {
+    "commit": "90319bbd05993d2fbe7674d693395d5520732553",
+    "mega_moe_py_sha256": "35f600ca443782fd8f210a33af879af651a9dea011f32afa51191ae2bf9ee43e",
+    "graph_py_sha256": "f050d695c5d4bde708e71f501ee587268c05ccbfef934b61f95dcd0b7e1fa13f"
+  },
+  "checks": [
+    {
+      "name": "fine_trace_spec_validation",
+      "status": "passed",
+      "sha256": "45b0e6fd94f863d9be44a89b3bdda7bf042306630688adbc3c11ed8bc31a4a86",
+      "scope": "protocol-v7 roles, points, dynamic expert-index record semantics, routed-wave derivation, deterministic schema, y capacity, and workspace scratch proof"
+    },
+    {
+      "name": "coarse_trace_spec_validation",
+      "status": "passed",
+      "sha256": "6304575de97a3d24cc2d8a54a425c0438aac5292731c5f36ac89c6884b8eb70e",
+      "scope": "fine switch off retains protocol-v5/schema-0xd32d8a49 batch-expert wire and placement contract"
+    },
+    {
+      "name": "plan_and_implemented_placement_audits",
+      "status": "passed",
+      "point_count_per_mode": 12,
+      "modes": [
+        "fine-v7",
+        "coarse-v5"
+      ],
+      "scope": "every semantic anchor and instrumentation marker resolves uniquely with placement, dependency proof, reason, performance relation, and perturbation"
+    },
+    {
+      "name": "python_syntax",
+      "status": "passed",
+      "scope": "trace tool, contract validator, runner adapter, tests, fixture generator, and trace-off verifier"
+    },
+    {
+      "name": "host_unit_tests",
+      "status": "passed",
+      "count": 12,
+      "scope": "v7 dynamic eight-expert raw-to-HTML, v5 fallback, pre-operator capacity checks, per-AI-Block grouping, dynamic expert order, required second Dispatch wave, default macros, bad magic, config hash, one-sided span, artifact isolation, and adapter syntax"
+    },
+    {
+      "name": "current_moe_test_adapter_check",
+      "status": "passed",
+      "adapter_version": 4,
+      "scope": "exact provenance, unique insertion anchors, generated Python syntax, pre-operator dynamic y/workspace capacity validation, external artifact isolation, and 100-iteration final-only capture policy; no NPU execution"
+    },
+    {
+      "name": "synthetic_decode_order_render",
+      "status": "passed",
+      "scope": "294912-byte user-like protocol-v7 raw with eight experts through contract validation, decode, routed-wave/order/bounds checks, and grouped Chinese HTML; protocol-v5 fallback is covered by host tests"
+    },
+    {
+      "name": "trace_off_source_equivalence",
+      "status": "passed",
+      "baseline": "27455755ec4fb4aac40cb6ff3d8ee962139ad5d3",
+      "scope": "both trace switches forced to zero by cpp; remaining tokens equal latest upstream/master for all three modified production device files"
+    },
+    {
+      "name": "ascend950_fine_v7_opkernel_build",
+      "status": "passed",
+      "variants": 8,
+      "command": "bash build.sh --opkernel --ops=mega_moe --soc=ascend950 -j8"
+    },
+    {
+      "name": "ascend950_coarse_v5_opkernel_build",
+      "status": "passed",
+      "variants": 8,
+      "command": "bash build.sh --opkernel --ops=mega_moe --soc=ascend950 --ops-compile-options '-DMEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE=0' -j8"
+    },
+    {
+      "name": "ascend950_trace_off_opkernel_build",
+      "status": "passed",
+      "variants": 8,
+      "command": "bash build.sh --opkernel --ops=mega_moe --soc=ascend950 --ops-compile-options '-DMEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=0' -j8"
+    }
+  ],
+  "unavailable_checks": [
+    {
+      "name": "real_npu_execution_and_multirank_capture",
+      "reason": "no NPU device/runtime is available in the validation environment"
+    },
+    {
+      "name": "real_device_timestamp_order_and_boundary_review",
+      "reason": "requires per-rank raw captures from the target NPU server"
+    },
+    {
+      "name": "observed_trace_perturbation_and_83us_swiglu_decomposition",
+      "reason": "requires repeated target-hardware runs and manual inspection of actual expert spans and inferred gaps"
+    },
+    {
+      "name": "trace_off_numeric_accuracy_regression",
+      "reason": "no NPU execution environment is available"
+    }
+  ],
+  "evidence": {
+    "fine_trace_spec": "trace-spec.json",
+    "coarse_trace_spec": "trace-spec-coarse-v5.json",
+    "fine_plan_audit": "audit-plan/trace_point_audit.json",
+    "fine_implemented_audit": "audit-implemented/trace_point_audit.json",
+    "coarse_plan_audit": "audit-plan-coarse-v5/trace_point_audit.json",
+    "coarse_implemented_audit": "audit-implemented-coarse-v5/trace_point_audit.json",
+    "synthetic_html": "artifacts/synthetic/index.html",
+    "synthetic_manifest": "artifacts/synthetic/run-manifest.json"
+  }
+}

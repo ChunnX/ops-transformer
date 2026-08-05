@@ -23,6 +23,7 @@
 #include "kernel_operator.h"
 #endif
 #include "mega_moe_base.h"
+#include "mega_moe_trace.h"
 
 namespace SwigluQuantMsg {
 enum class QuantMode : uint32_t {
@@ -179,6 +180,12 @@ public:
                                       uint16_t pingpongIdx = 0);
     __aicore__ inline void UpdateGlobalAddr(const BlockCoord &baseOffset, uint32_t flagElementOffset = 0);
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    __aicore__ inline void SetCriticalPathTrace(MegaMoeImpl::CriticalPathTrace *trace)
+    {
+        criticalPathTrace_ = trace;
+    }
+#endif
 
     // 权重预加载相关：由 AivGmm1PostGeneric 提前 DataCopy，VFDoSwigluAndQuantForMX 直接消费
     AscendC::LocalTensor<float> weightUb_;
@@ -262,6 +269,9 @@ private:
     uint8_t actSubMode_{0};
     float activationAlpha_{1.0f};
     float activationBeta_{1.0f};
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    MegaMoeImpl::CriticalPathTrace *criticalPathTrace_{nullptr};
+#endif
 };
 
 // ============================================================================
@@ -1135,9 +1145,32 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
         return;
     }
 
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0 && \
+    MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
     vlForHalfNumber_ = AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t); // 256 / 2 = 128
     UBBlockSize_ = BLOCK_SIZE;                                         // 32
     elementAfterReduce_ = AscendC::VECTOR_REG_WIDTH / UBBlockSize_;    // 256 / 32 = 8
+    if (criticalPathTrace_ != nullptr && criticalPathTrace_->NeedsExpertStage0Begin()) {
+        AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+        // TRACE_POINT: swiglu_expert_begin_S
+        criticalPathTrace_->BeginExpertStage0(MegaMoeImpl::CriticalPathTrace::Now());
+    }
+#elif MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+    if (criticalPathTrace_ != nullptr && criticalPathTrace_->NeedsStage0Begin()) {
+        AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+        // TRACE_POINT: swiglu_begin_S
+        criticalPathTrace_->BeginStage0(MegaMoeImpl::CriticalPathTrace::Now());
+    }
+    vlForHalfNumber_ = AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t); // 256 / 2 = 128
+    UBBlockSize_ = BLOCK_SIZE;                                         // 32
+    elementAfterReduce_ = AscendC::VECTOR_REG_WIDTH / UBBlockSize_;    // 256 / 32 = 8
+#else
+    vlForHalfNumber_ = AscendC::VECTOR_REG_WIDTH / sizeof(bfloat16_t); // 256 / 2 = 128
+    UBBlockSize_ = BLOCK_SIZE;                                         // 32
+    elementAfterReduce_ = AscendC::VECTOR_REG_WIDTH / UBBlockSize_;    // 256 / 32 = 8
+#endif
 
     uint64_t yOffset = Get<Y_IDX>(blockCoord);
     uint64_t yScaleOffset = Get<Y_SCALE_IDX>(blockCoord);

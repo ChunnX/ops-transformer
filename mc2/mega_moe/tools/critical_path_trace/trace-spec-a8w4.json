@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "trace": {
+    "name": "mega-moe-a8w4-critical-path",
+    "compile_switch": "MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE",
+    "roles": ["AIC", "AIV0", "AIV1"],
+    "clock": {
+      "api": "AscendC::GetSystemCycle",
+      "unit": "cycle",
+      "bits": 32,
+      "timestamp_pipeline": "Scalar",
+      "scope": "same-index AIC/AIV0/AIV1 form one physical AI Block; different AI Blocks and ranks are not compared",
+      "comparable_across_records": true,
+      "missing_value": 0,
+      "zero_handling": "sampled zero is remapped to one"
+    },
+    "visualization": {
+      "comparison_group": {
+        "kind": "shared-core-index",
+        "key": "core",
+        "label": "AI Block",
+        "roles": ["AIC", "AIV0", "AIV1"],
+        "reference_role": "AIC",
+        "cross_group_comparable": false,
+        "reason": "only the three roles of the same physical AI Block have a reviewed common clock domain"
+      },
+      "host_only": true
+    },
+    "protocol": {
+      "magic": "0x43505452",
+      "version": 1,
+      "schema_id": "0x8e7f106b",
+      "word_bits": 32,
+      "endianness": "little",
+      "header_words": 30,
+      "record_words": {
+        "base_words": 2,
+        "words_per_count": 6,
+        "count_header_field": "moe_experts_per_rank"
+      },
+      "record_order": "role-major",
+      "record_order_description": "AIC, AIV0, AIV1 records in ascending paired-core index",
+      "header_contract": "the header is published last after all records; record_words is 2 + 6 * moe_experts_per_rank",
+      "flags_contract": "0xf denotes process bounds, expert-grained records, workspace scratch staging, and the third AIV1 stage",
+      "header_fields": [
+        {"name":"magic","word":0,"width_words":1},
+        {"name":"version","word":1,"width_words":1},
+        {"name":"schema_id","word":2,"width_words":1},
+        {"name":"header_words","word":3,"width_words":1},
+        {"name":"record_words","word":4,"width_words":1},
+        {"name":"record_count","word":5,"width_words":1},
+        {"name":"role_counts","word":6,"width_words":3},
+        {"name":"clock_bits","word":9,"width_words":1},
+        {"name":"repetition_count","word":10,"width_words":1},
+        {"name":"capture_capacity","word":11,"width_words":1},
+        {"name":"truncated","word":12,"width_words":1},
+        {"name":"flags","word":13,"width_words":1},
+        {"name":"rank","word":14,"width_words":1},
+        {"name":"runtime_config_hash","word":15,"width_words":1},
+        {"name":"path_id","word":16,"width_words":1},
+        {"name":"bs","word":17,"width_words":1},
+        {"name":"h","word":18,"width_words":1},
+        {"name":"hidden_dim","word":19,"width_words":1},
+        {"name":"top_k","word":20,"width_words":1},
+        {"name":"moe_experts_per_rank","word":21,"width_words":1},
+        {"name":"shared_expert_count","word":22,"width_words":1},
+        {"name":"experts_per_wave","word":23,"width_words":1},
+        {"name":"world_size","word":24,"width_words":1},
+        {"name":"dispatch_quant_out_key","word":25,"width_words":1},
+        {"name":"combine_quant_mode","word":26,"width_words":1},
+        {"name":"topk_weights_prefetch","word":27,"width_words":1},
+        {"name":"weight1_interleaved","word":28,"width_words":1},
+        {"name":"carrier_words","word":29,"width_words":1}
+      ],
+      "record_fields": [
+        {"name":"a8w4_process_begin_S","kind":"timestamp","roles":["AIC","AIV0","AIV1"],"word":0,"width_words":1,"count":1,"stride_words":1},
+        {"name":"a8w4_work_end_S","kind":"timestamp","roles":["AIC","AIV0","AIV1"],"word":1,"width_words":1,"count":1,"stride_words":1},
+        {"name":"a8w4_gmm1_begin_S","kind":"timestamp","roles":["AIC"],"word":2,"width_words":1,"count":{"header_field":"moe_experts_per_rank"},"stride_words":6},
+        {"name":"a8w4_gmm1_end_S","kind":"timestamp","roles":["AIC"],"word":3,"width_words":1,"count":{"header_field":"moe_experts_per_rank"},"stride_words":6},
+        {"name":"a8w4_gmm2_begin_S","kind":"timestamp","roles":["AIC"],"word":4,"width_words":1,"count":{"header_field":"moe_experts_per_rank"},"stride_words":6},
+        {"name":"a8w4_gmm2_end_S","kind":"timestamp","roles":["AIC"],"word":5,"width_words":1,"count":{"header_field":"moe_experts_per_rank"},"stride_words":6},
+        {"name":"a8w4_gmm1_prologue_begin_S","kind":"timestamp","roles":["AIV0"],"word":2,"width_words":1,"count":{"header_field":"moe_experts_per_rank"},"stride_words":6},
+        {"name":"a8w4_gmm1_prologue_issue_end_S","kind":"timestamp","roles":["AIV0"],"word":3,"width_words":1,"count":{"header_field":"moe_experts_per_rank"},"stride_words":6},
+        {"name":"a8w4_gmm2_prologue_begin_S","kind":"timestamp","roles":["AIV0"],"word":4,"width_words":1,"count":{"header_field":"moe_experts_per_rank"},"stride_words":6},
+        {"name":"a8w4_gmm2_prologue_issue_end_S","kind":"timestamp","roles":["AIV0"],"word":5,"width_words":1,"count":{"header_field":"moe_experts_per_rank"},"stride_words":6},
+        {"name":"a8w4_dispatch_begin_S","kind":"timestamp","roles":["AIV1"],"word":2,"width_words":1,"count":{"header_field":"moe_experts_per_rank"},"stride_words":6},
+        {"name":"a8w4_dispatch_end_S","kind":"timestamp","roles":["AIV1"],"word":3,"width_words":1,"count":{"header_field":"moe_experts_per_rank"},"stride_words":6},
+        {"name":"a8w4_swiglu_begin_S","kind":"timestamp","roles":["AIV1"],"word":4,"width_words":1,"count":{"header_field":"moe_experts_per_rank"},"stride_words":6},
+        {"name":"a8w4_swiglu_end_S","kind":"timestamp","roles":["AIV1"],"word":5,"width_words":1,"count":{"header_field":"moe_experts_per_rank"},"stride_words":6},
+        {"name":"a8w4_combine_begin_S","kind":"timestamp","roles":["AIV1"],"word":6,"width_words":1,"count":{"header_field":"moe_experts_per_rank"},"stride_words":6},
+        {"name":"a8w4_combine_end_S","kind":"timestamp","roles":["AIV1"],"word":7,"width_words":1,"count":{"header_field":"moe_experts_per_rank"},"stride_words":6}
+      ]
+    },
+    "output": {
+      "carrier": "diagnostic y bytes",
+      "overwrites_user_output": true,
+      "capacity_check": "device checks bs*h*sizeof(y) against the full header and role-major records before enabling trace",
+      "write_phase": "after Unpermute returns and pending output writes are drained",
+      "rendezvous": "mixed-core SyncAll<false> covers every AIC/AIV record writer and the AIC0 header writer"
+    }
+  },
+  "points": [
+    {"id":"a8w4_process_begin_S","stage":"process","edge":"begin","boundary_quality":"causal","roles":["AIC","AIV0","AIV1"],"scope":"once per participating physical role","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe.h","symbol":"MegaMoe::Process","target_anchor":{"mode":"literal","pattern":"criticalPathTrace_.processBegin = CriticalPathTrace::Now();"},"placement":"before","marker":"TRACE_POINT: a8w4_process_begin_S","max_line_distance":1},"why":"establish the local process epoch","semantics":"entry to the MTE A8W4 process before useful work","dependency":{"precondition":"kernel entry","producer_pipeline":"Scalar","timestamp_pipeline":"Scalar","bridge":"none","proof":"the clock is the first trace action in Process"},"perturbation":"one clock read"},
+    {"id":"a8w4_work_end_S","stage":"process","edge":"end","boundary_quality":"actual","roles":["AIC","AIV0","AIV1"],"scope":"once per participating physical role","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe.h","symbol":"MegaMoe::Process","target_anchor":{"mode":"literal","pattern":"criticalPathTrace_.workEnd = CriticalPathTrace::Now();"},"placement":"before","marker":"TRACE_POINT: a8w4_work_end_S","max_line_distance":1},"why":"separate useful work from trace emission","semantics":"all role-local useful work has returned","dependency":{"precondition":"AIV Unpermute drain or AIC final compute return","producer_pipeline":"mixed","timestamp_pipeline":"Scalar","bridge":"existing stage drains","proof":"the point is after Unpermute and before the trace-only rendezvous"},"perturbation":"one clock read"},
+    {"id":"a8w4_dispatch_begin_S","stage":"dispatch","edge":"begin","boundary_quality":"causal","roles":["AIV1"],"scope":"once per routed expert on an active AIV1","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe.h","symbol":"MegaMoe::BeginDispatchTrace","target_anchor":{"mode":"literal","pattern":"criticalPathTrace_.BeginExpertStage0(CriticalPathTrace::Now());"},"placement":"before","marker":"TRACE_POINT: a8w4_dispatch_begin_S","max_line_distance":1},"why":"measure dispatch prefetch placement relative to A8W4 compute","semantics":"before SendCntCal and dispatch metadata/token movement for the expert","dependency":{"precondition":"the caller selected the next expert","producer_pipeline":"Scalar","timestamp_pipeline":"Scalar","bridge":"none","proof":"both dispatch call sites invoke this helper immediately before SendCntCal"},"perturbation":"one clock read"},
+    {"id":"a8w4_dispatch_end_S","stage":"dispatch","edge":"end","boundary_quality":"actual","roles":["AIV1"],"scope":"once per routed expert on an active AIV1","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe.h","symbol":"MegaMoe::EndDispatchTrace","target_anchor":{"mode":"literal","pattern":"uint32_t dispatchEndCycle = CriticalPathTrace::Now();"},"placement":"before","marker":"TRACE_POINT: a8w4_dispatch_end_S","max_line_distance":1},"why":"prove dispatch GM writes complete","semantics":"the expert dispatch MTE3 writes have completed","dependency":{"precondition":"MetaInfoCalAndDispatch returned","producer_pipeline":"MTE3","timestamp_pipeline":"Scalar","bridge":"MTE3_S EVENT_ID0","proof":"the clock follows the trace-only MTE3_S set/wait"},"perturbation":"forces the expert dispatch tail to complete"},
+    {"id":"a8w4_gmm1_begin_S","stage":"gmm1","edge":"begin","boundary_quality":"causal","roles":["AIC"],"scope":"first owned GMM1 tile per routed expert and AIC","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h","symbol":"AicComputeA8W4","target_anchor":{"mode":"literal","pattern":"uint32_t a8w4Gmm1BeginCycle = CriticalPathTrace::Now();"},"placement":"before","marker":"TRACE_POINT: a8w4_gmm1_begin_S","max_line_distance":1},"why":"locate AIC GMM1 after dispatch readiness","semantics":"after WaitForUpstreamReady and before the first blockMmad","dependency":{"precondition":"dispatch wave ready","producer_pipeline":"Scalar polling","timestamp_pipeline":"Scalar","bridge":"none","proof":"the clock is after WaitForUpstreamReady in the tile loop"},"perturbation":"one clock read"},
+    {"id":"a8w4_gmm1_end_S","stage":"gmm1","edge":"end","boundary_quality":"actual","roles":["AIC"],"scope":"last owned GMM1 tile per routed expert and AIC","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe.h","symbol":"MegaMoe::Process","target_anchor":{"mode":"literal","pattern":"uint32_t gmm1EndCycle = CriticalPathTrace::Now();"},"placement":"before","marker":"TRACE_POINT: a8w4_gmm1_end_S","max_line_distance":1},"why":"measure actual AIC GMM1 completion","semantics":"all owned GMM1 tiles have been published after FIX_S","dependency":{"precondition":"AicComputeA8W4 returned","producer_pipeline":"FIX","timestamp_pipeline":"Scalar","bridge":"existing per-tile FIX_S publication","proof":"every specialized tile publishes only after FIX_S before the function returns"},"perturbation":"one clock read"},
+    {"id":"a8w4_gmm1_prologue_begin_S","stage":"gmm1_prologue","edge":"begin","boundary_quality":"causal","roles":["AIV0"],"scope":"first owned GMM1 weight tile per expert and AIV0","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h","symbol":"AivPrologueA8W4","target_anchor":{"mode":"literal","pattern":"uint32_t a8w4Gmm1PrologueBeginCycle = CriticalPathTrace::Now();"},"placement":"before","marker":"TRACE_POINT: a8w4_gmm1_prologue_begin_S","max_line_distance":1},"why":"expose W4-to-W8 prologue occupancy","semantics":"before the first GMM1 blockPrologue issue","dependency":{"precondition":"the expert prologue loop is entered","producer_pipeline":"Scalar","timestamp_pipeline":"Scalar","bridge":"none","proof":"the sample precedes the first blockPrologue call"},"perturbation":"one clock read"},
+    {"id":"a8w4_gmm1_prologue_issue_end_S","stage":"gmm1_prologue","edge":"end","boundary_quality":"issue","roles":["AIV0"],"scope":"after the last owned GMM1 weight tile issue","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe.h","symbol":"MegaMoe::Process","target_anchor":{"mode":"literal","pattern":"uint32_t gmm1PrologueIssueEndCycle = CriticalPathTrace::Now();"},"placement":"before","marker":"TRACE_POINT: a8w4_gmm1_prologue_issue_end_S","max_line_distance":1},"why":"avoid adding a prologue completion drain","semantics":"AIV0 returned after issuing its GMM1 prologue work","dependency":{"precondition":"AivPrologueA8W4 returned","producer_pipeline":"Vector/MTE","timestamp_pipeline":"Scalar","bridge":"none","proof":"no completion bridge is claimed"},"perturbation":"one clock read; end remains issue-only"},
+    {"id":"a8w4_swiglu_begin_S","stage":"swiglu","edge":"begin","boundary_quality":"causal","roles":["AIV1"],"scope":"first ready GMM1 output tile per expert and AIV1","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe_trace.h","symbol":"RecordA8W4SwiGluBeginAfterReady","target_anchor":{"mode":"literal","pattern":"trace->BeginExpertStage1(CriticalPathTrace::Now());"},"placement":"before","marker":"TRACE_POINT: a8w4_swiglu_begin_S","max_line_distance":1},"why":"measure AIV1 epilogue after tile readiness","semantics":"after status/sequence polling and before the first GMM1-output load","dependency":{"precondition":"AIC published the tile-ready state","producer_pipeline":"Scalar polling","timestamp_pipeline":"Scalar","bridge":"none","proof":"both call sites invoke this helper only after their ready loop"},"perturbation":"one clock read"},
+    {"id":"a8w4_swiglu_end_S","stage":"swiglu","edge":"end","boundary_quality":"issue","roles":["AIV1"],"scope":"after the last owned SwiGLU tile issue per expert","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe.h","symbol":"MegaMoe::Process","target_anchor":{"mode":"literal","pattern":"uint32_t swigluEndCycle = CriticalPathTrace::Now();"},"placement":"before","marker":"TRACE_POINT: a8w4_swiglu_end_S","max_line_distance":1},"why":"avoid introducing an extra epilogue drain","semantics":"AivGmm1PostA8W4 returned after its final epilogue issue","dependency":{"precondition":"AivGmm1PostA8W4 returned","producer_pipeline":"Vector/MTE3","timestamp_pipeline":"Scalar","bridge":"none","proof":"the point deliberately does not claim MTE3 completion"},"perturbation":"one clock read; end remains issue-only"},
+    {"id":"a8w4_gmm2_begin_S","stage":"gmm2","edge":"begin","boundary_quality":"causal","roles":["AIC"],"scope":"first owned GMM2 tile per routed expert and AIC","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h","symbol":"AicComputeA8W4","target_anchor":{"mode":"literal","pattern":"uint32_t a8w4Gmm2BeginCycle = CriticalPathTrace::Now();"},"placement":"before","marker":"TRACE_POINT: a8w4_gmm2_begin_S","max_line_distance":1},"why":"locate GMM2 after SwiGLU readiness","semantics":"after WaitForUpstreamReady and before first GMM2 blockMmad","dependency":{"precondition":"SwiGLU output ready","producer_pipeline":"Scalar polling","timestamp_pipeline":"Scalar","bridge":"none","proof":"the sample follows the upstream wait"},"perturbation":"one clock read"},
+    {"id":"a8w4_gmm2_end_S","stage":"gmm2","edge":"end","boundary_quality":"actual","roles":["AIC"],"scope":"last owned GMM2 tile per routed expert and AIC","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe.h","symbol":"MegaMoe::Process","target_anchor":{"mode":"literal","pattern":"uint32_t gmm2EndCycle = CriticalPathTrace::Now();"},"placement":"before","marker":"TRACE_POINT: a8w4_gmm2_end_S","max_line_distance":1},"why":"measure actual AIC GMM2 completion/publication","semantics":"all owned GMM2 tiles have passed FIX_S publication","dependency":{"precondition":"AicComputeA8W4 returned","producer_pipeline":"FIX","timestamp_pipeline":"Scalar","bridge":"existing per-tile FIX_S publication","proof":"tile completion notification or GM epilogue publication follows FIX_S"},"perturbation":"one clock read"},
+    {"id":"a8w4_gmm2_prologue_begin_S","stage":"gmm2_prologue","edge":"begin","boundary_quality":"causal","roles":["AIV0"],"scope":"first owned GMM2 weight tile per expert and AIV0","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h","symbol":"AivPrologueA8W4","target_anchor":{"mode":"literal","pattern":"uint32_t a8w4Gmm2PrologueBeginCycle = CriticalPathTrace::Now();"},"placement":"before","marker":"TRACE_POINT: a8w4_gmm2_prologue_begin_S","max_line_distance":1},"why":"expose GMM2 W4-to-W8 prologue occupancy","semantics":"before first GMM2 blockPrologue issue","dependency":{"precondition":"the expert prologue loop is entered","producer_pipeline":"Scalar","timestamp_pipeline":"Scalar","bridge":"none","proof":"the sample precedes blockPrologue"},"perturbation":"one clock read"},
+    {"id":"a8w4_gmm2_prologue_issue_end_S","stage":"gmm2_prologue","edge":"end","boundary_quality":"issue","roles":["AIV0"],"scope":"after the last owned GMM2 weight tile issue","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe.h","symbol":"MegaMoe::Process","target_anchor":{"mode":"literal","pattern":"uint32_t gmm2PrologueIssueEndCycle = CriticalPathTrace::Now();"},"placement":"before","marker":"TRACE_POINT: a8w4_gmm2_prologue_issue_end_S","max_line_distance":1},"why":"avoid an artificial prologue completion drain","semantics":"AIV0 returned after issuing GMM2 prologue work","dependency":{"precondition":"AivPrologueA8W4 returned","producer_pipeline":"Vector/MTE","timestamp_pipeline":"Scalar","bridge":"none","proof":"no completion bridge is claimed"},"perturbation":"one clock read; end remains issue-only"},
+    {"id":"a8w4_combine_begin_S","stage":"combine","edge":"begin","boundary_quality":"causal","roles":["AIV1"],"scope":"first ready combine tile/group per expert and AIV1","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe_trace.h","symbol":"RecordA8W4CombineBeginAfterReady","target_anchor":{"mode":"literal","pattern":"trace->BeginExpertStage2(CriticalPathTrace::Now());"},"placement":"before","marker":"TRACE_POINT: a8w4_combine_begin_S","max_line_distance":1},"why":"measure Combine only after GMM2 output is visible","semantics":"after GM tile sequence or group counter readiness and before first combine load","dependency":{"precondition":"GMM2 tile/group ready","producer_pipeline":"Scalar polling","timestamp_pipeline":"Scalar","bridge":"none","proof":"both inline and quantized call sites invoke the helper after their ready wait"},"perturbation":"one clock read"},
+    {"id":"a8w4_combine_end_S","stage":"combine","edge":"end","boundary_quality":"actual","roles":["AIV1"],"scope":"last combine send per routed expert and AIV1","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe.h","symbol":"MegaMoe::Process","target_anchor":{"mode":"literal","pattern":"uint32_t combineEndCycle = CriticalPathTrace::Now();"},"placement":"before","marker":"TRACE_POINT: a8w4_combine_end_S","max_line_distance":1},"why":"measure completed remote combine writes","semantics":"the last MTE3 completion dependency has reached Scalar","dependency":{"precondition":"GroupMatmulWithCombine returned","producer_pipeline":"MTE3 transferred to MTE2","timestamp_pipeline":"Scalar","bridge":"MTE2_S EVENT_ID0","proof":"CombineTokenGroup/AivGmm2Post leave completion on MTE2 and the trace adds MTE2_S"},"perturbation":"one narrow completion bridge at expert end"}
+  ],
+  "spans": [
+    {"id":"a8w4_process","label":"A8W4 process","begin":"a8w4_process_begin_S","end":"a8w4_work_end_S","roles":["AIC","AIV0","AIV1"],"quality":"exact","color":"#64748b"},
+    {"id":"a8w4_dispatch","label":"Dispatch","begin":"a8w4_dispatch_begin_S","end":"a8w4_dispatch_end_S","roles":["AIV1"],"quality":"exact","color":"#06b6d4"},
+    {"id":"a8w4_gmm1","label":"GMM1","begin":"a8w4_gmm1_begin_S","end":"a8w4_gmm1_end_S","roles":["AIC"],"quality":"exact","color":"#2563eb"},
+    {"id":"a8w4_gmm1_prologue","label":"GMM1 prologue issue","begin":"a8w4_gmm1_prologue_begin_S","end":"a8w4_gmm1_prologue_issue_end_S","roles":["AIV0"],"quality":"inferred","color":"#a855f7"},
+    {"id":"a8w4_swiglu","label":"SwiGLU issue","begin":"a8w4_swiglu_begin_S","end":"a8w4_swiglu_end_S","roles":["AIV1"],"quality":"inferred","color":"#22c55e"},
+    {"id":"a8w4_gmm2","label":"GMM2","begin":"a8w4_gmm2_begin_S","end":"a8w4_gmm2_end_S","roles":["AIC"],"quality":"exact","color":"#ef4444"},
+    {"id":"a8w4_gmm2_prologue","label":"GMM2 prologue issue","begin":"a8w4_gmm2_prologue_begin_S","end":"a8w4_gmm2_prologue_issue_end_S","roles":["AIV0"],"quality":"inferred","color":"#c084fc"},
+    {"id":"a8w4_combine","label":"Combine","begin":"a8w4_combine_begin_S","end":"a8w4_combine_end_S","roles":["AIV1"],"quality":"exact","color":"#f97316"}
+  ]
+}
