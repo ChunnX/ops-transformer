@@ -122,7 +122,7 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulApaceGetWorkspaceSize(
     constexpr int64_t kDefaultYdtype = 27; // ge::DT_BF16
     constexpr bool kDefaultAlltoallOutFlag = false;
     alltoAllAxesOptional = nullptr;
-    transposeX2 = true; // temp setting true
+    
     aclnnStatus ret = aclnnInnerAlltoAllMatmulApaceGetWorkspaceSize(
         context, x1, transX2, biasOptional, x1ScaleOptional, x2ScaleOptional, commScaleOptional, x1OffsetOptional,
         x2OffsetOptional, const_cast<char *>(group), worldSize, hcclBufferSize, alltoAllAxesOptional, kDefaultYdtype,

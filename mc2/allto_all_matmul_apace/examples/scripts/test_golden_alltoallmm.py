@@ -230,6 +230,7 @@ def golden_test_worker(queue, rank, args, world_size):
         # Convert numpy fp8 -> torch fp8 and move to NPU
         x1 = np_fp8_to_torch(a_local, torch.float8_e4m3fn).npu()
         x2 = np_fp8_to_torch(b_ori, torch.float8_e4m3fn).npu()
+        x2 = x2.t()
         x1_scale = np_fp8_to_torch(a_scale, torch.float8_e8m0fnu).npu()
         x2_scale = np_fp8_to_torch(b_scale_ori, torch.float8_e8m0fnu).npu()
 
