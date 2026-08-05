@@ -15,8 +15,6 @@
 
 #include "aclnn_allto_all_matmul_apace.h"
 
-#include "common/utils/matmul_util.h"
-#include "mc2/matmul_allto_all/op_api/matmul_allto_all_util.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 
@@ -29,6 +27,46 @@ enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+
+static bool IsTransposeLastTwoDims(const aclTensor *tensor)
+{
+    if (tensor->GetViewShape().GetDimNum() < 2 || tensor->GetViewShape().GetDimNum() > 6) {
+        return false;
+    }
+    int64_t dim1 = tensor->GetViewShape().GetDimNum() - 1;
+    int64_t dim2 = tensor->GetViewShape().GetDimNum() - 2;
+    if (tensor->GetViewStrides()[dim2] == 1 && tensor->GetViewStrides()[dim1] == tensor->GetViewShape().GetDim(dim2)) {
+        if (tensor->GetViewShape().GetDim(dim1) == 1 && tensor->GetViewShape().GetDim(dim2) == 1) {
+            return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+static aclTensor *TransX2Tensor(const aclTensor *x2)
+{
+    uint64_t storageShapeDimNum = x2->GetStorageShape().GetDimNum();
+    std::vector<int64_t> storageDim(storageShapeDimNum);
+    for (uint64_t i = 0; i < storageShapeDimNum; i++) {
+        storageDim[i] = x2->GetStorageShape().GetDim(i);
+    }
+    uint64_t viewShapeDimNum = x2->GetViewShape().GetDimNum();
+    std::vector<int64_t> viewDim(viewShapeDimNum);
+    viewDim[0] = x2->GetViewShape().GetDim(1);
+    viewDim[1] = x2->GetViewShape().GetDim(0);
+    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
+    aclGetDataType(x2, &dataType);
+    std::vector<int64_t> stride(viewShapeDimNum);
+    auto transStride = x2->GetViewStrides();
+    stride = std::vector<int64_t>(transStride.begin(), transStride.end());
+    stride[0] = transStride[1];
+    stride[1] = transStride[0];
+    auto offset = x2->GetViewOffset();
+    aclFormat format = aclFormat::ACL_FORMAT_ND;
+    return aclCreateTensor(viewDim.data(), viewShapeDimNum, dataType, stride.data(), offset, format, storageDim.data(),
+                           storageShapeDimNum, x2->GetTensor()->GetAddr());
+}
 
 extern "C" aclnnStatus aclnnInnerAlltoAllMatmulApaceGetWorkspaceSize(
     const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
@@ -71,7 +109,7 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulApaceGetWorkspaceSize(
         bool notContiguous = IsTransposeLastTwoDims(x2);
         if (notContiguous) {
             transposeX2 = true;
-            transX2 = matmul_allto_all_check::TransX2Tensor(x2);
+            transX2 = TransX2Tensor(x2);
             if (transX2 == nullptr) {
                 return ACLNN_ERR_INNER_NULLPTR;
             }
@@ -81,7 +119,7 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulApaceGetWorkspaceSize(
     constexpr int64_t kDefaultYdtype = 27; // ge::DT_BF16
     constexpr bool kDefaultAlltoallOutFlag = false;
     aclnnStatus ret = aclnnInnerAlltoAllMatmulApaceGetWorkspaceSize(
-        context, x1, x2, biasOptional, x1ScaleOptional, x2ScaleOptional, commScaleOptional, x1OffsetOptional,
+        context, x1, transX2, biasOptional, x1ScaleOptional, x2ScaleOptional, commScaleOptional, x1OffsetOptional,
         x2OffsetOptional, const_cast<char *>(group), worldSize, hcclBufferSize, alltoAllAxesOptional, kDefaultYdtype,
         x1QuantMode, x2QuantMode, commQuantMode, x1QuantDtype, commQuantDtype, transposeX1, transposeX2, groupSize,
         kDefaultAlltoallOutFlag, const_cast<char *>(commMode ? commMode : "ai_cpu"), precisionMode, output,
