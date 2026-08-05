@@ -309,11 +309,10 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckFormat() const
 
     const gert::CompileTimeTensorDesc *optionalDescs[] = {
         opParamInfo.attenMask.desc, opParamInfo.pScale.desc, opParamInfo.blockTable.desc,  opParamInfo.metadata.desc,
-        opParamInfo.cuSeqlensQ.desc, opParamInfo.cuSeqlensKV.desc, opParamInfo.seqUsedQ.desc,
-        opParamInfo.seqUsedKV.desc,
+        opParamInfo.cuSeqlensQ.desc, opParamInfo.seqUsedKV.desc,
     };
     const char *optionalNames[] = {"atten_mask", "p_scale", "block_table", "metadata",  "cu_seqlens_q",
-                                   "cu_seqlens_kv", "seqused_q",   "seqused_kv"};
+                                   "seqused_kv"};
     for (size_t i = 0; i < sizeof(optionalDescs) / sizeof(optionalDescs[0]); ++i) {
         if (optionalDescs[i] != nullptr && optionalDescs[i]->GetOriginFormat() != ge::FORMAT_ND) {
             OP_LOGE_FOR_INVALID_FORMAT(kOpName, optionalNames[i],
@@ -663,7 +662,8 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckQuantShape() const
         const gert::Shape &pScaleShape = opParamInfo.pScale.shape->GetStorageShape();
         if (pScaleShape.GetShapeSize() != 1 && pScaleShape.GetShapeSize() != 0) {
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "p_scale", Ops::Base::ToString(pScaleShape),
-                                                  "p_scale must be a scalar (shape size == 1) or empty (shape size == 0)");
+                                                  "p_scale must be a scalar (shape size == 1) "
+                                                  "or empty (shape size == 0)");
             return ge::GRAPH_FAILED;
         }
     }
