@@ -10,9 +10,7 @@
 
 /*!
  * \file ffn_to_attention_v2_tilling.cpp
- * \brief V2 tiling delegates to V1's FFNToAttentionTilingFunc. Since V2 and V1 share
- *        identical input/attr prototype order, the index mapping is identity. After V1
- *        fills the tiling data, V2 overrides the tiling key from A3 to A5.
+ * \brief
  */
 
 #include <queue>
@@ -46,10 +44,6 @@ using namespace Mc2Tiling;
 namespace MC2Tiling {
 ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
 {
-    // V2 inputs/attrs share identical index order with V1 (index mapping is identity),
-    // so we delegate to V1's tiling which fills the tiling data buffer. Since
-    // FFNToAttentionV2TilingData and FFNToAttentionTilingData have identical memory layout,
-    // V1's GetTilingData<FFNToAttentionTilingData>() reinterprets V2's buffer correctly.
     auto ret = FFNToAttentionTilingFunc(context);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;

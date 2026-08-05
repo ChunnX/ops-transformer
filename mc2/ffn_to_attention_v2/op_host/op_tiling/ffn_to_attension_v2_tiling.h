@@ -10,8 +10,7 @@
 
 /*!
  * \file ffn_to_attension_v2_tiling.h
- * \brief V2 tiling delegates to V1's FFNToAttentionTilingFunc via index mapping,
- *        then overrides the tiling key from A3 to A5.
+ * \brief
  */
 
 #ifndef FFN_TO_ATTENSION_V2_TILING_H
