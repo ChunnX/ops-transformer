@@ -23,6 +23,8 @@ namespace Mc2Kernel {
 
 using namespace AscendC;
 
+constexpr uint32_t ARCH35_TILE_BYTES = 64U * 1024U;
+
 template <AscendC::HardEvent event>
 __aicore__ inline void EngramFetchGradSyncFunc()
 {
@@ -208,7 +210,6 @@ __aicore__ inline void EngramFetchGradArch35::WriteRemoteCounter(uint32_t dstRan
     uint64_t handle = GetCommHandle(dstRank);
     GM_ADDR remoteCounterAddr = GetRemoteWinAddr(dstRank, counterOffset) + rankId_ * STATE_OFFSET;
     WriteNbiChecked(handle, remoteCounterAddr, srcAddr, sizeof(int32_t));
-    DrainChecked(handle);
 }
 
 __aicore__ inline void EngramFetchGradArch35::WaitAllStatusFlags(GM_ADDR statusWinBase, uint32_t expectCount)
@@ -248,11 +249,11 @@ __aicore__ inline void EngramFetchGradArch35::LocalCopySlice(GM_ADDR dst, GM_ADD
     GlobalTensor<uint8_t> dstGm;
     srcGm.SetGlobalBuffer((__gm__ uint8_t *)src);
     dstGm.SetGlobalBuffer((__gm__ uint8_t *)dst);
-    uint32_t tileLen = TILE_BYTES;
+    uint32_t tileLen = ARCH35_TILE_BYTES;
     uint64_t off = 0;
     uint32_t tileIdx = 0;
     while (off < len) {
-        uint64_t thisLen = (len - off > TILE_BYTES) ? tileLen : (len - off);
+        uint64_t thisLen = (len - off > ARCH35_TILE_BYTES) ? tileLen : (len - off);
         uint32_t bufIdx = tileIdx % 2U;
         LocalTensor<uint8_t> tmp = (bufIdx == 0U) ? tmp0 : tmp1;
         if (tileIdx >= 2U) {
@@ -263,7 +264,7 @@ __aicore__ inline void EngramFetchGradArch35::LocalCopySlice(GM_ADDR dst, GM_ADD
         DataCopyPad(tmp, srcGm[off], mte2Params, mte2Pad);
         AscendC::SetFlag<HardEvent::MTE2_MTE3>(ppEvtMte2ToMte3_[bufIdx]);
         AscendC::WaitFlag<HardEvent::MTE2_MTE3>(ppEvtMte2ToMte3_[bufIdx]);
-        DataCopyParams mte3Params{1U, static_cast<uint16_t>(thisLen), 0U, 0U};
+        DataCopyExtParams mte3Params{1U, static_cast<uint32_t>(thisLen), 0U, 0U, 0U};
         DataCopyPad(dstGm[off], tmp, mte3Params);
         AscendC::SetFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[bufIdx]);
         off += thisLen;
@@ -348,8 +349,8 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     LocalTensor<uint8_t> hcommTensor = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor, HCOMM_INIT_SIZE);
 
-    tpipe_->InitBuffer(pingBuf_, TILE_BYTES);
-    tpipe_->InitBuffer(pongBuf_, TILE_BYTES);
+    tpipe_->InitBuffer(pingBuf_, ARCH35_TILE_BYTES);
+    tpipe_->InitBuffer(pongBuf_, ARCH35_TILE_BYTES);
     ppEvtMte2ToMte3_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
     ppEvtMte2ToMte3_[1] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
     ppEvtMte3ToMte2_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
@@ -392,6 +393,12 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     tpipe_->InitBuffer(indicesBuf_, indicesBufSize);
     uint32_t bitmapBufSize = Ceil(Ceil(segLen, BITS_PER_BYTE), ALIGNED_LEN_256) * ALIGNED_LEN_256;
     tpipe_->InitBuffer(bitmapBuf_, bitmapBufSize);
+
+    uint64_t ubUsed = HCOMM_INIT_SIZE + 2U * ARCH35_TILE_BYTES + statusBufSize + statusBufSize +
+                      gradSumBufSize + indicesBufSize + bitmapBufSize;
+    ascendc_assert(ubUsed <= ubSize_,
+                   "UB overflow: used=%llu, ubSize=%llu, rankId=%u, hiddenDim=%ld",
+                   ubUsed, ubSize_, rankId_, hiddenDim_);
 }
 
 __aicore__ inline void EngramFetchGradArch35::UnsortGrad()
@@ -508,7 +515,6 @@ __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, i
                                                 static_cast<uint64_t>(localWriteCnt + 1));
         ascendc_assert(ret == 0, "WriteWithNotifyNbi failed, ret=%d, tag=ExTok_data, rankId=%u, dstRank=%u", ret,
                        rankId_, dstRank);
-        DrainChecked(handle);
 
         localWriteCnt++;
         totalSent += chunkLen;
