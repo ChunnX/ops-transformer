@@ -73,6 +73,196 @@ class FagTiling:
     scale_value: float
 
 
+# ================================================================
+#  SetConstInfo — populate constInfo from tiling (like AscendC)
+# ================================================================
+def set_const_info(tiling):
+    constInfo = pl.struct("FagConstInfo",
+        bSize=tiling.b,
+        n2Size=tiling.n,
+        s1Size=tiling.s1,
+        s2Size=tiling.s2,
+        dSize=tiling.d,
+        scaleValue=tiling.scale_value,
+        s1Outer=(tiling.s1 + TILE_M - 1) // TILE_M,
+        s2Outer=(tiling.s2 + TILE_N - 1) // TILE_N,
+        nd=tiling.n * TILE_D,
+        bnTotal=tiling.b * tiling.n,
+        s1s2=tiling.s1 * tiling.s2,
+        totalWork=tiling.b * tiling.n * ((tiling.s1 + TILE_M - 1) // TILE_M),
+    )
+    return constInfo
+
+
+# ================================================================
+#  SetRunInfo — populate runInfo for a given work_id
+# ================================================================
+def set_run_info(constInfo, work_id):
+    runInfo = pl.struct("FagRunInfo",
+        bIdx=work_id // (constInfo.n2Size * constInfo.s1Outer),
+        nIdx=(work_id // constInfo.s1Outer) % constInfo.n2Size,
+        s1oIdx=work_id % constInfo.s1Outer,
+        s1Off=(work_id % constInfo.s1Outer) * TILE_M,
+        workId=work_id,
+        smaxOff=(work_id // (constInfo.n2Size * constInfo.s1Outer)) * constInfo.n2Size
+                + ((work_id // constInfo.s1Outer) % constInfo.n2Size),
+    )
+    return runInfo
+
+
+# ================================================================
+#  IterateMmQK — MM2: S = Q @ K^T  (cube stage)
+# ================================================================
+def iterate_mm_qk(constInfo, runInfo, tensor_q, tensor_k,
+                  q_l1, k_l1_t, left, right, acc, qk_ub):
+    cur_q = q_l1.current()
+    cur_k_t = k_l1_t.current()
+    pl.load(cur_q, tensor_q, [runInfo.bIdx, runInfo.s1Off, runInfo.nIdx, 0], order=[1, 3])
+    pl.load(cur_k_t, tensor_k, [runInfo.bIdx, 0, runInfo.nIdx, 0], order=[3, 1])
+    pl.move(left.current(), cur_q)
+    pl.move(right.current(), cur_k_t)
+    pl.matmul(acc.current(), left.current(), right.current())
+    pl.move(qk_ub.current(), acc.current(),
+            acc_to_vec_mode=pl.AccToVecMode.SingleModeVec0)
+    pl.system.set_cross_core(
+        pipe=pl.PipeType.FIX, event_id=EVT_C2V_S,
+        sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
+
+
+# ================================================================
+#  IterateMmDyV — MM1: dP = dO @ V^T  (cube stage)
+# ================================================================
+def iterate_mm_dyv(constInfo, runInfo, tensor_dy, tensor_v,
+                   do_l1, v_l1_t, left, right, acc, qk_ub):
+    cur_do = do_l1.current()
+    cur_v_t = v_l1_t.current()
+    pl.load(cur_do, tensor_dy, [runInfo.bIdx, runInfo.s1Off, runInfo.nIdx, 0], order=[1, 3])
+    pl.load(cur_v_t, tensor_v, [runInfo.bIdx, 0, runInfo.nIdx, 0], order=[3, 1])
+    pl.move(left.current(), cur_do)
+    pl.move(right.current(), cur_v_t)
+    pl.matmul(acc.current(), left.current(), right.current())
+    pl.move(qk_ub.current(), acc.current(),
+            acc_to_vec_mode=pl.AccToVecMode.SingleModeVec0)
+    pl.system.set_cross_core(
+        pipe=pl.PipeType.FIX, event_id=EVT_C2V_DP,
+        sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
+
+
+# ================================================================
+#  IterateMmDsK — MM3: dQ += dS @ K  (cube stage)
+# ================================================================
+def iterate_mm_dsk(constInfo, runInfo, s2_off,
+                   tensor_ds_ws, tensor_k, tensor_dq_ws,
+                   ds_l1, k_l1_n, left, right, acc_d):
+    cur_ds = ds_l1.current()
+    cur_k_n = k_l1_n.current()
+    pl.load(cur_ds, tensor_ds_ws, [runInfo.bIdx, runInfo.nIdx, runInfo.s1Off, s2_off])
+    pl.load(cur_k_n, tensor_k, [runInfo.bIdx, s2_off, runInfo.nIdx, 0], order=[1, 3])
+    pl.move(left.current(), cur_ds)
+    pl.move(right.current(), cur_k_n)
+    pl.matmul(acc_d.current(), left.current(), right.current())
+    pl.store(tensor_dq_ws, acc_d.current(),
+             [runInfo.bIdx, runInfo.s1Off, runInfo.nIdx, 0],
+             atomic=pl.AtomicType.AtomicAdd)
+
+
+# ================================================================
+#  IterateMmDsQ — MM4: dK += dS^T @ Q  (cube stage)
+# ================================================================
+def iterate_mm_dsq(constInfo, runInfo, s2_off,
+                   tensor_ds_ws, tensor_q, tensor_dk_ws,
+                   ds_t_l1, q_l1, left, right, acc_d):
+    cur_ds_t = ds_t_l1.current()
+    cur_q = q_l1.current()
+    pl.load(cur_ds_t, tensor_ds_ws,
+            [runInfo.bIdx, runInfo.nIdx, runInfo.s1Off, s2_off], order=[3, 2])
+    pl.load(cur_q, tensor_q, [runInfo.bIdx, runInfo.s1Off, runInfo.nIdx, 0], order=[1, 3])
+    pl.move(left.current(), cur_ds_t)
+    pl.move(right.current(), cur_q)
+    pl.matmul(acc_d.current(), left.current(), right.current())
+    pl.store(tensor_dk_ws, acc_d.current(),
+             [runInfo.bIdx, s2_off, runInfo.nIdx, 0],
+             atomic=pl.AtomicType.AtomicAdd)
+
+
+# ================================================================
+#  IterateMmPDy — MM5: dV += P^T @ dO  (cube stage)
+# ================================================================
+def iterate_mm_pdy(constInfo, runInfo, s2_off,
+                   tensor_p_ws, tensor_dy, tensor_dv_ws,
+                   p_t_l1, do_l1, left, right, acc_d):
+    cur_p_t = p_t_l1.current()
+    cur_do = do_l1.current()
+    pl.load(cur_p_t, tensor_p_ws,
+            [runInfo.bIdx, runInfo.nIdx, runInfo.s1Off, s2_off], order=[3, 2])
+    pl.load(cur_do, tensor_dy, [runInfo.bIdx, runInfo.s1Off, runInfo.nIdx, 0], order=[1, 3])
+    pl.move(left.current(), cur_p_t)
+    pl.move(right.current(), cur_do)
+    pl.matmul(acc_d.current(), left.current(), right.current())
+    pl.store(tensor_dv_ws, acc_d.current(),
+             [runInfo.bIdx, s2_off, runInfo.nIdx, 0],
+             atomic=pl.AtomicType.AtomicAdd)
+
+
+# ================================================================
+#  ProcessVec2 — V2: P = softmax(S*scale, max, sum)  (vector stage)
+# ================================================================
+def process_vec2(constInfo, runInfo, s2_off,
+                 tensor_smax, tensor_ssum, tensor_p_ws,
+                 qk_ub, p_ub, tmp_ub, max_ub, sum_ub):
+    cur_qk = qk_ub.current()
+    cur_p = p_ub.current()
+    cur_tmp = tmp_ub.current()
+    cur_max = max_ub.current()
+    cur_sum = sum_ub.current()
+
+    pl.load(cur_max, tensor_smax, [runInfo.s1Off, runInfo.smaxOff])
+    pl.load(cur_sum, tensor_ssum, [runInfo.s1Off, runInfo.smaxOff])
+
+    pl.mul(cur_qk, cur_qk, constInfo.scaleValue)
+    pl.expand_sub(cur_qk, cur_qk, cur_max, dim=0)
+    pl.exp(cur_tmp, cur_qk)
+    pl.expand_div(cur_tmp, cur_tmp, cur_sum, dim=0)
+    pl.cast(cur_p, cur_tmp, mode=pl.RoundMode.CAST_ROUND)
+    pl.store(tensor_p_ws, cur_p, [runInfo.bIdx, runInfo.nIdx, runInfo.s1Off, s2_off])
+
+    pl.system.set_cross_core(
+        pipe=pl.PipeType.MTE3, event_id=EVT_V2C_P,
+        sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
+
+
+# ================================================================
+#  ProcessVec3 — V3: dS = softmax_grad(dP, P) * scale  (vector stage)
+# ================================================================
+def process_vec3(constInfo, runInfo, s2_off,
+                 tensor_p_ws, tensor_ds_ws,
+                 qk_ub, p_ub, ds_ub, tmp_ub, dpsum_ub):
+    cur_qk = qk_ub.current()
+    cur_p = p_ub.current()
+    cur_ds = ds_ub.current()
+    cur_tmp = tmp_ub.current()
+    cur_dpsum = dpsum_ub.current()
+
+    pl.load(cur_p, tensor_p_ws, [runInfo.bIdx, runInfo.nIdx, runInfo.s1Off, s2_off])
+
+    pl.cast(cur_tmp, cur_p, mode=pl.RoundMode.CAST_NONE)
+    pl.mul(cur_tmp, cur_qk, cur_tmp)
+    pl.sum(cur_dpsum, cur_tmp, cur_qk, dim=0)
+    pl.cast(cur_qk, cur_p, mode=pl.RoundMode.CAST_NONE)
+    pl.expand_mul(cur_qk, cur_qk, cur_dpsum, dim=0)
+    pl.sub(cur_tmp, cur_tmp, cur_qk)
+    pl.mul(cur_tmp, cur_tmp, constInfo.scaleValue)
+    pl.cast(cur_ds, cur_tmp, mode=pl.RoundMode.CAST_ROUND)
+    pl.store(tensor_ds_ws, cur_ds, [runInfo.bIdx, runInfo.nIdx, runInfo.s1Off, s2_off])
+
+    pl.system.set_cross_core(
+        pipe=pl.PipeType.MTE3, event_id=EVT_V2C_DS,
+        sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
+
+
+# ================================================================
+#  Kernel
+# ================================================================
 @pl.jit(auto_mutex=True)
 def flash_attention_score_grad(
     query: pl.Ptr[pl.DT_UINT8],
@@ -88,44 +278,35 @@ def flash_attention_score_grad(
     p_workspace: pl.Ptr[pl.DT_UINT8],
     tiling: FagTiling,
 ):
-    b_dim = tiling.b
-    n_dim = tiling.n
-    s1_dim = tiling.s1
-    s2_dim = tiling.s2
-    scale_val = tiling.scale_value
+    # ---- SetConstInfo ----
+    constInfo = set_const_info(tiling)
 
-    s1_outer = (s1_dim + TILE_M - 1) // TILE_M
-    s2_outer = (s2_dim + TILE_N - 1) // TILE_N
-
-    nd = n_dim * TILE_D
-    tensor_q = pl.make_tensor(query, [b_dim, s1_dim, n_dim, TILE_D],
-                              [s1_dim * nd, nd, TILE_D, 1], dtype=pl.DT_FP16)
-    tensor_k = pl.make_tensor(key, [b_dim, s2_dim, n_dim, TILE_D],
-                              [s2_dim * nd, nd, TILE_D, 1], dtype=pl.DT_FP16)
-    tensor_v = pl.make_tensor(value, [b_dim, s2_dim, n_dim, TILE_D],
-                              [s2_dim * nd, nd, TILE_D, 1], dtype=pl.DT_FP16)
-    tensor_dy = pl.make_tensor(dy, [b_dim, s1_dim, n_dim, TILE_D],
-                               [s1_dim * nd, nd, TILE_D, 1], dtype=pl.DT_FP16)
-    bn_total = b_dim * n_dim
-    tensor_smax = pl.make_tensor(softmax_max, [s1_dim, bn_total],
-                                 [1, s1_dim], dtype=pl.DT_FP32)
-    tensor_ssum = pl.make_tensor(softmax_sum, [s1_dim, bn_total],
-                                 [1, s1_dim], dtype=pl.DT_FP32)
-    tensor_dq_ws = pl.make_tensor(dq_workspace, [b_dim, s1_dim, n_dim, TILE_D],
-                                  [s1_dim * nd, nd, TILE_D, 1], dtype=pl.DT_FP32)
-    tensor_dk_ws = pl.make_tensor(dk_workspace, [b_dim, s2_dim, n_dim, TILE_D],
-                                  [s2_dim * nd, nd, TILE_D, 1], dtype=pl.DT_FP32)
-    tensor_dv_ws = pl.make_tensor(dv_workspace, [b_dim, s2_dim, n_dim, TILE_D],
-                                  [s2_dim * nd, nd, TILE_D, 1], dtype=pl.DT_FP32)
-    s1s2 = s1_dim * s2_dim
-    tensor_ds_ws = pl.make_tensor(ds_workspace, [b_dim, n_dim, s1_dim, s2_dim],
-                                  [n_dim * s1s2, s1s2, s2_dim, 1], dtype=pl.DT_FP16)
-    tensor_p_ws = pl.make_tensor(p_workspace, [b_dim, n_dim, s1_dim, s2_dim],
-                                 [n_dim * s1s2, s1s2, s2_dim, 1], dtype=pl.DT_FP16)
+    # ---- Reconstruct GM tensor views (BSND layout) ----
+    tensor_q = pl.make_tensor(query, [constInfo.bSize, constInfo.s1Size, constInfo.n2Size, TILE_D],
+                              [constInfo.s1Size * constInfo.nd, constInfo.nd, TILE_D, 1], dtype=pl.DT_FP16)
+    tensor_k = pl.make_tensor(key, [constInfo.bSize, constInfo.s2Size, constInfo.n2Size, TILE_D],
+                              [constInfo.s2Size * constInfo.nd, constInfo.nd, TILE_D, 1], dtype=pl.DT_FP16)
+    tensor_v = pl.make_tensor(value, [constInfo.bSize, constInfo.s2Size, constInfo.n2Size, TILE_D],
+                              [constInfo.s2Size * constInfo.nd, constInfo.nd, TILE_D, 1], dtype=pl.DT_FP16)
+    tensor_dy = pl.make_tensor(dy, [constInfo.bSize, constInfo.s1Size, constInfo.n2Size, TILE_D],
+                               [constInfo.s1Size * constInfo.nd, constInfo.nd, TILE_D, 1], dtype=pl.DT_FP16)
+    tensor_smax = pl.make_tensor(softmax_max, [constInfo.s1Size, constInfo.bnTotal],
+                                 [1, constInfo.s1Size], dtype=pl.DT_FP32)
+    tensor_ssum = pl.make_tensor(softmax_sum, [constInfo.s1Size, constInfo.bnTotal],
+                                 [1, constInfo.s1Size], dtype=pl.DT_FP32)
+    tensor_dq_ws = pl.make_tensor(dq_workspace, [constInfo.bSize, constInfo.s1Size, constInfo.n2Size, TILE_D],
+                                  [constInfo.s1Size * constInfo.nd, constInfo.nd, TILE_D, 1], dtype=pl.DT_FP32)
+    tensor_dk_ws = pl.make_tensor(dk_workspace, [constInfo.bSize, constInfo.s2Size, constInfo.n2Size, TILE_D],
+                                  [constInfo.s2Size * constInfo.nd, constInfo.nd, TILE_D, 1], dtype=pl.DT_FP32)
+    tensor_dv_ws = pl.make_tensor(dv_workspace, [constInfo.bSize, constInfo.s2Size, constInfo.n2Size, TILE_D],
+                                  [constInfo.s2Size * constInfo.nd, constInfo.nd, TILE_D, 1], dtype=pl.DT_FP32)
+    tensor_ds_ws = pl.make_tensor(ds_workspace, [constInfo.bSize, constInfo.n2Size, constInfo.s1Size, constInfo.s2Size],
+                                  [constInfo.n2Size * constInfo.s1s2, constInfo.s1s2, constInfo.s2Size, 1], dtype=pl.DT_FP16)
+    tensor_p_ws = pl.make_tensor(p_workspace, [constInfo.bSize, constInfo.n2Size, constInfo.s1Size, constInfo.s2Size],
+                                 [constInfo.n2Size * constInfo.s1s2, constInfo.s1s2, constInfo.s2Size, 1], dtype=pl.DT_FP16)
 
     core_id = pl.get_block_idx()
     num_cores = pl.get_block_num()
-    total_work = b_dim * n_dim * s1_outer
 
     # --- Shared UB TileGroups (used by both cube and vector sections) ---
     qk_ub = pl.make_tile_group(
@@ -158,7 +339,7 @@ def flash_attention_score_grad(
         addrs=UB_DPSUM, mutex_ids=[16])
 
     # ==================================================================
-    #  CUBE SECTION
+    #  CUBE SECTION — Process()
     # ==================================================================
     with pl.section_cube():
         q_l1 = pl.make_tile_group(
@@ -210,29 +391,15 @@ def flash_attention_score_grad(
                              target_memory=pl.MemorySpace.Acc, compact=1),
             addrs=L0C_ADDR, mutex_ids=[4])
 
-        for work_id in pl.range(core_id, total_work, num_cores):
-            b_idx = work_id // (n_dim * s1_outer)
-            n_idx = (work_id // s1_outer) % n_dim
-            s1_o = work_id % s1_outer
-            s1_off = s1_o * TILE_M
+        for work_id in pl.range(core_id, constInfo.totalWork, num_cores):
+            runInfo = set_run_info(constInfo, work_id)
 
-            for s2_o in pl.range(0, s2_outer):
+            for s2_o in pl.range(0, constInfo.s2Outer):
                 s2_off = s2_o * TILE_N
 
                 # ---- MM2: S = Q @ K^T ----
-                cur_q = q_l1.current()
-                cur_k_t = k_l1_t.current()
-                pl.load(cur_q, tensor_q, [b_idx, s1_off, n_idx, 0], order=[1, 3])
-                pl.load(cur_k_t, tensor_k, [b_idx, s2_off, n_idx, 0], order=[3, 1])
-                pl.move(left.current(), cur_q)
-                pl.move(right.current(), cur_k_t)
-                pl.matmul(acc.current(), left.current(), right.current())
-                # Move S: L0C -> UB
-                pl.move(qk_ub.current(), acc.current(),
-                        acc_to_vec_mode=pl.AccToVecMode.SingleModeVec0)
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.FIX, event_id=EVT_C2V_S,
-                    sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
+                iterate_mm_qk(constInfo, runInfo, tensor_q, tensor_k,
+                              q_l1, k_l1_t, left, right, acc, qk_ub)
 
                 # Wait for V2 to finish (UB is free for dP)
                 pl.system.wait_cross_core(
@@ -240,19 +407,8 @@ def flash_attention_score_grad(
                     sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
 
                 # ---- MM1: dP = dO @ V^T ----
-                cur_do = do_l1.current()
-                cur_v_t = v_l1_t.current()
-                pl.load(cur_do, tensor_dy, [b_idx, s1_off, n_idx, 0], order=[1, 3])
-                pl.load(cur_v_t, tensor_v, [b_idx, s2_off, n_idx, 0], order=[3, 1])
-                pl.move(left.current(), cur_do)
-                pl.move(right.current(), cur_v_t)
-                pl.matmul(acc.current(), left.current(), right.current())
-                # Move dP: L0C -> UB
-                pl.move(qk_ub.current(), acc.current(),
-                        acc_to_vec_mode=pl.AccToVecMode.SingleModeVec0)
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.FIX, event_id=EVT_C2V_DP,
-                    sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
+                iterate_mm_dyv(constInfo, runInfo, tensor_dy, tensor_v,
+                               do_l1, v_l1_t, left, right, acc, qk_ub)
 
                 # Wait for V3 to finish (dS and P are in GM)
                 pl.system.wait_cross_core(
@@ -260,54 +416,28 @@ def flash_attention_score_grad(
                     sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
 
                 # ---- MM3: dQ += dS @ K ----
-                cur_ds = ds_l1.current()
-                cur_k_n = k_l1_n.current()
-                pl.load(cur_ds, tensor_ds_ws, [b_idx, n_idx, s1_off, s2_off])
-                pl.load(cur_k_n, tensor_k, [b_idx, s2_off, n_idx, 0], order=[1, 3])
-                pl.move(left.current(), cur_ds)
-                pl.move(right.current(), cur_k_n)
-                pl.matmul(acc_d.current(), left.current(), right.current())
-                pl.store(tensor_dq_ws, acc_d.current(),
-                         [b_idx, s1_off, n_idx, 0],
-                         atomic=pl.AtomicType.AtomicAdd)
+                iterate_mm_dsk(constInfo, runInfo, s2_off,
+                               tensor_ds_ws, tensor_k, tensor_dq_ws,
+                               ds_l1, k_l1_n, left, right, acc_d)
 
                 # ---- MM4: dK += dS^T @ Q ----
-                cur_ds_t = ds_t_l1.current()
-                cur_q2 = q_l1.current()
-                pl.load(cur_ds_t, tensor_ds_ws,
-                        [b_idx, n_idx, s1_off, s2_off], order=[3, 2])
-                pl.load(cur_q2, tensor_q, [b_idx, s1_off, n_idx, 0], order=[1, 3])
-                pl.move(left.current(), cur_ds_t)
-                pl.move(right.current(), cur_q2)
-                pl.matmul(acc_d.current(), left.current(), right.current())
-                pl.store(tensor_dk_ws, acc_d.current(),
-                         [b_idx, s2_off, n_idx, 0],
-                         atomic=pl.AtomicType.AtomicAdd)
+                iterate_mm_dsq(constInfo, runInfo, s2_off,
+                               tensor_ds_ws, tensor_q, tensor_dk_ws,
+                               ds_t_l1, q_l1, left, right, acc_d)
 
                 # ---- MM5: dV += P^T @ dO ----
-                cur_p_t = p_t_l1.current()
-                cur_do2 = do_l1.current()
-                pl.load(cur_p_t, tensor_p_ws,
-                        [b_idx, n_idx, s1_off, s2_off], order=[3, 2])
-                pl.load(cur_do2, tensor_dy, [b_idx, s1_off, n_idx, 0], order=[1, 3])
-                pl.move(left.current(), cur_p_t)
-                pl.move(right.current(), cur_do2)
-                pl.matmul(acc_d.current(), left.current(), right.current())
-                pl.store(tensor_dv_ws, acc_d.current(),
-                         [b_idx, s2_off, n_idx, 0],
-                         atomic=pl.AtomicType.AtomicAdd)
+                iterate_mm_pdy(constInfo, runInfo, s2_off,
+                               tensor_p_ws, tensor_dy, tensor_dv_ws,
+                               p_t_l1, do_l1, left, right, acc_d)
 
     # ==================================================================
-    #  VECTOR SECTION
+    #  VECTOR SECTION — Process()
     # ==================================================================
     with pl.section_vector():
-        for work_id in pl.range(core_id, total_work, num_cores):
-            b_idx = work_id // (n_dim * s1_outer)
-            n_idx = (work_id // s1_outer) % n_dim
-            s1_o = work_id % s1_outer
-            s1_off = s1_o * TILE_M
+        for work_id in pl.range(core_id, constInfo.totalWork, num_cores):
+            runInfo = set_run_info(constInfo, work_id)
 
-            for s2_o in pl.range(0, s2_outer):
+            for s2_o in pl.range(0, constInfo.s2Outer):
                 s2_off = s2_o * TILE_N
 
                 # ---- V2: P = softmax(S * scale, fwd_max, fwd_sum) ----
@@ -315,68 +445,15 @@ def flash_attention_score_grad(
                     pipe=pl.PipeType.V, event_id=EVT_C2V_S,
                     sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
 
-                cur_qk = qk_ub.current()
-                cur_p = p_ub.current()
-                cur_tmp = tmp_ub.current()
-                cur_max = max_ub.current()
-                cur_sum = sum_ub.current()
-
-                # Load forward max/sum
-                smax_off = b_idx * n_dim + n_idx
-                pl.load(cur_max, tensor_smax, [s1_off, smax_off])
-                pl.load(cur_sum, tensor_ssum, [s1_off, smax_off])
-
-                # S = S * scale
-                pl.mul(cur_qk, cur_qk, scale_val)
-                # S = S - max  (broadcast row subtract)
-                pl.expand_sub(cur_qk, cur_qk, cur_max, dim=0)
-                # tmp = exp(S)
-                pl.exp(cur_tmp, cur_qk)
-                # P = exp(S) / sum  (broadcast row divide)
-                pl.expand_div(cur_tmp, cur_tmp, cur_sum, dim=0)
-                # Cast to FP16
-                pl.cast(cur_p, cur_tmp, mode=pl.RoundMode.CAST_ROUND)
-                # Store P to GM
-                pl.store(tensor_p_ws, cur_p, [b_idx, n_idx, s1_off, s2_off])
-
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.MTE3, event_id=EVT_V2C_P,
-                    sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
+                process_vec2(constInfo, runInfo, s2_off,
+                             tensor_smax, tensor_ssum, tensor_p_ws,
+                             qk_ub, p_ub, tmp_ub, max_ub, sum_ub)
 
                 # ---- V3: dS = softmax_grad(dP, P) * scale ----
                 pl.system.wait_cross_core(
                     pipe=pl.PipeType.V, event_id=EVT_C2V_DP,
                     sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
 
-                cur_qk = qk_ub.current()
-                cur_p = p_ub.current()
-                cur_ds = ds_ub.current()
-                cur_tmp = tmp_ub.current()
-                cur_dpsum = dpsum_ub.current()
-
-                # Reload P from GM (was stored in V2)
-                pl.load(cur_p, tensor_p_ws, [b_idx, n_idx, s1_off, s2_off])
-
-                # tmp = cast(P, FP32)
-                pl.cast(cur_tmp, cur_p, mode=pl.RoundMode.CAST_NONE)
-                # tmp = dP * P  (dP in cur_qk, P in cur_tmp -> result in cur_tmp)
-                pl.mul(cur_tmp, cur_qk, cur_tmp)
-                # dpsum = sum(dP * P, dim=0)  using cur_qk as temp (dP no longer needed)
-                pl.sum(cur_dpsum, cur_tmp, cur_qk, dim=0)
-                # cur_qk is now free (overwritten by sum temp)
-                # cur_qk = cast(P, FP32)
-                pl.cast(cur_qk, cur_p, mode=pl.RoundMode.CAST_NONE)
-                # cur_qk = P * dpsum  (broadcast: P * row_sum)
-                pl.expand_mul(cur_qk, cur_qk, cur_dpsum, dim=0)
-                # dS = dP*P - P*dpsum = cur_tmp - cur_qk
-                pl.sub(cur_tmp, cur_tmp, cur_qk)
-                # dS = dS * scale
-                pl.mul(cur_tmp, cur_tmp, scale_val)
-                # Cast to FP16
-                pl.cast(cur_ds, cur_tmp, mode=pl.RoundMode.CAST_ROUND)
-                # Store dS to GM
-                pl.store(tensor_ds_ws, cur_ds, [b_idx, n_idx, s1_off, s2_off])
-
-                pl.system.set_cross_core(
-                    pipe=pl.PipeType.MTE3, event_id=EVT_V2C_DS,
-                    sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
+                process_vec3(constInfo, runInfo, s2_off,
+                             tensor_p_ws, tensor_ds_ws,
+                             qk_ub, p_ub, ds_ub, tmp_ub, dpsum_ub)
