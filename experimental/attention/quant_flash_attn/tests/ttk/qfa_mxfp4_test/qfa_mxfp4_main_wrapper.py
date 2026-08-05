@@ -173,6 +173,7 @@ def run_main(
         }
     )
 
+<<<<<<< HEAD
     golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
     try:
         try:
@@ -193,6 +194,10 @@ def run_main(
             "v_descale": v_descale,
         },
     )
+=======
+    # data_dict 由 generate_data 重新生成 (确定性种子, 与 inputs.py 同源, 无跨用例缓存)
+    data_dict = golden_mod.generate_data()
+>>>>>>> 2aa70e995... ttk修复cachejie机制，增加分开调用metadata 及 主算子机制
     logger.info(
         "[MAIN_WRAPPER] graph_path=%d, layout=%s, B=%d, N_q=%d, N_kv=%d, D=%d",
         graph_path,

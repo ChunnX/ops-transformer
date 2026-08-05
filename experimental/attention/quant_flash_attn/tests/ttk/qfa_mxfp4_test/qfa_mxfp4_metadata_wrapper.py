@@ -101,12 +101,22 @@ def run_metadata(
     softmax_lse_dtype: str = None,
     **kwargs,
 ):
+<<<<<<< HEAD
+=======
+
+>>>>>>> 2aa70e995... ttk修复cachejie机制，增加分开调用metadata 及 主算子机制
     torch_npu.npu.set_device(int(device_id))
 
     env_graph_path = os.environ.get("GRAPH_PATH")
     if env_graph_path is not None and env_graph_path.strip() != "":
         graph_path = int(env_graph_path)
+<<<<<<< HEAD
         logger.info("[METADATA_WRAPPER] 使用环境变量 GRAPH_PATH=%d", graph_path)
+=======
+        logger.info(
+            "[METADATA_WRAPPER] 使用环境变量 GRAPH_PATH=%d", graph_path
+        )
+>>>>>>> 2aa70e995... ttk修复cachejie机制，增加分开调用metadata 及 主算子机制
 
     _apply_golden_globals(
         {
@@ -168,6 +178,7 @@ def run_metadata(
         }
     )
 
+<<<<<<< HEAD
     golden_mod._inject_physical_s_override(q, v, input_layout, layout_kv)
     try:
         try:
@@ -188,6 +199,10 @@ def run_metadata(
             "v_descale": v_descale,
         },
     )
+=======
+    # data_dict 由 generate_data 重新生成 (确定性种子, 与 inputs.py 同源, 无跨用例缓存)
+    data_dict = golden_mod.generate_data()
+>>>>>>> 2aa70e995... ttk修复cachejie机制，增加分开调用metadata 及 主算子机制
     logger.info(
         "[METADATA_WRAPPER] graph_path=%d, layout=%s, B=%d, N_q=%d, N_kv=%d, D=%d",
         graph_path,
@@ -200,9 +215,13 @@ def run_metadata(
     try:
         metadata_list = golden_mod.call_npu_metadata(data_dict)
     except Exception as e:
+<<<<<<< HEAD
         logger.error(
             "[METADATA_WRAPPER] quant_flash_attn_metadata 调用失败: %s", str(e)
         )
+=======
+        logger.error("[METADATA_WRAPPER] quant_flash_attn_metadata 调用失败: %s", str(e))
+>>>>>>> 2aa70e995... ttk修复cachejie机制，增加分开调用metadata 及 主算子机制
         raise
 
     return metadata_list
