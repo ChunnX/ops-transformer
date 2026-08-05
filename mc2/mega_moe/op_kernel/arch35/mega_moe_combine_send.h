@@ -52,7 +52,10 @@ __aicore__ inline void CombineTokens(uint32_t nLoc, uint32_t n, LocalTensor<int3
         gmRemoteD.SetGlobalBuffer(
             reinterpret_cast<__gm__ ElementMMadOut2 *>(GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
         uint64_t gmDstOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * n + nLoc;
-        AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * ubTileN], ub2GmParams);
+        uint32_t remoteIoRepeat = GetFakeRemoteIoRepeatCount(toRankId, params.combineCommParams.rankId);
+        for (uint32_t repeatIndex = 0; repeatIndex < remoteIoRepeat; ++repeatIndex) {
+            AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * ubTileN], ub2GmParams);
+        }
     }
 }
 
@@ -253,7 +256,10 @@ __aicore__ inline void CombineQuantizedTokens(uint32_t batchStart, uint32_t curR
         (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * quantTokenSizeBytes;
 
     AscendC::DataCopyExtParams singleCopyParams{1, quantTokenSizeBytes, 0, 0, 0};
-    AscendC::DataCopyPad(gmRemoteD[dstBaseOffset], ubQuant, singleCopyParams);
+    uint32_t remoteIoRepeat = GetFakeRemoteIoRepeatCount(toRankId, params.combineCommParams.rankId);
+    for (uint32_t repeatIndex = 0; repeatIndex < remoteIoRepeat; ++repeatIndex) {
+        AscendC::DataCopyPad(gmRemoteD[dstBaseOffset], ubQuant, singleCopyParams);
+    }
 }
 
 // =============================================

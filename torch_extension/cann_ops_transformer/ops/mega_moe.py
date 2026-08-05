@@ -341,9 +341,10 @@ def mega_moe(
     shared_l2_weights_sf: Optional[List[torch.Tensor]] = None,
     shared_l1_bias: Optional[List[torch.Tensor]] = None,
     shared_l2_bias: Optional[List[torch.Tensor]] = None,
+    context: Optional[torch.Tensor] = None,
 ):
     return torch.ops.cann_ops_transformer.npu_mega_moe(
-        sym_buffer.context,
+        context if context is not None else sym_buffer.context,
         x,
         topk_ids,
         topk_weights,

@@ -244,6 +244,15 @@ __aicore__ inline GM_ADDR GetRankWinAddrWithOffset(uint32_t rankId, uint64_t off
     return (GM_ADDR)(winRankAddr_[rankId] + offset);
 }
 
+__aicore__ inline uint32_t GetFakeRemoteIoRepeatCount(uint32_t peerRankId, uint32_t localRankId)
+{
+#if FAKE_SEND_MODE
+    return peerRankId == localRankId ? 1U : static_cast<uint32_t>(FAKE_REMOTE_IO_REPEAT);
+#else
+    return 1U;
+#endif
+}
+
 __aicore__ inline GM_ADDR GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
 {
     __gm__ uint64_t *dataAddr = reinterpret_cast<__gm__ uint64_t *>(tensorPtr);
