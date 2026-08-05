@@ -286,9 +286,8 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(GM_
 
     GlobalTensor<int32_t> selfDataStatusTensor;
     statusDataSpaceGM_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
-    // 仅读写 D_S，与 combine 的 C_S 隔离，避免四算子抢同一个乒乓位
-    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGM_ + STATE_WIN_OFFSET +
-                                                            aivId_ * WIN_ADDR_ALIGN + DISPATCH_DATA_STATE_SLOT_OFFSET));
+    selfDataStatusTensor.SetGlobalBuffer(
+        (__gm__ int32_t *)(statusDataSpaceGM_ + STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
     axisBS_ = tilingData->moeDistributeDispatchSetupInfo.bs;
     axisH_ = tilingData->moeDistributeDispatchSetupInfo.h;
     epWorldSize_ = tilingData->moeDistributeDispatchSetupInfo.epWorldSize;
@@ -653,7 +652,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SetStatu
     GlobalTensor<int32_t> windowExpGMTensor;
     // 状态区拷贝到windowOut
     windowExpGMTensor.SetGlobalBuffer(
-        (__gm__ int32_t *)(statusDataSpaceGM_ + DISPATCH_STATUS_STAGING_OFFSET + startExpertId_ * 8 * sizeof(int32_t)));
+        (__gm__ int32_t *)(statusDataSpaceGM_ + 2 * WIN_STATE_OFFSET + startExpertId_ * 8 * sizeof(int32_t)));
     DataCopy<int32_t>(windowExpGMTensor, statusTensor_[startExpertId_ * 8],
                       sendExpertNum_ * 8); // 8时数据大小，按32对齐拷贝
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
@@ -997,7 +996,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
     }
 
     GlobalTensor<int32_t> windowExpGMTensor;
-    windowExpGMTensor.SetGlobalBuffer((__gm__ int32_t*)(statusDataSpaceGM_ + DISPATCH_STATUS_STAGING_OFFSET));
+    windowExpGMTensor.SetGlobalBuffer((__gm__ int32_t*)(statusDataSpaceGM_ + (WIN_STATE_OFFSET << 1))); // 不加偏移
     uint32_t len = sharedExpertRankNum_;
     if (endRankId > sharedExpertRankNum_) {
         len += (endRankId - sharedExpertRankNum_) * moeExpertNumPerRank_;
@@ -1051,7 +1050,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
                 }
 
                 // 发送状态
-                GM_ADDR srcStatusAddr = (GM_ADDR)(statusDataSpaceGM_ + DISPATCH_STATUS_STAGING_OFFSET +
+                GM_ADDR srcStatusAddr = (GM_ADDR)(statusDataSpaceGM_ + 2 * WIN_STATE_OFFSET +
                     (preExpertNum + dstExpertId) * 8 * sizeof(uint32_t));
                 uint32_t offset = stateOffset_ * epRankId_;
                 if (moeExpertNumPerRank_ > 1){

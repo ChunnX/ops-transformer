@@ -31,14 +31,11 @@
 #include "aclnnop/aclnn_moe_distribute_combine_setup.h"
 #include "aclnnop/aclnn_moe_distribute_combine_teardown.h"
 
-// 与 kernel moe_distribute_base.h 前 1MB 布局对齐
+// 与 kernel moe_distribute_base.h / combine_teardown STATE_OFFSET 对齐
 constexpr uint64_t WIN_STATE_OFFSET = 350ULL * 1024ULL;
-constexpr uint64_t COMBINE_STATE_OFFSET = 256ULL * 1024ULL; // bank 内 combine 段
 constexpr uint64_t STATE_WIN_OFFSET = 950ULL * 1024ULL;
-constexpr uint64_t DISPATCH_DATA_STATE_SLOT_OFFSET = 0ULL;
-constexpr uint64_t COMBINE_DATA_STATE_SLOT_OFFSET = 64ULL;
 constexpr uint64_t STATE_OFFSET = 512ULL;
-constexpr uint32_t DUMP_AIV_NUM = 8U; // 打印前若干 aiv 的 D_S/C_S
+constexpr uint32_t DUMP_AIV_NUM = 8U; // 打印前若干 aiv 的 dataState
 
 // 部分 hccl.h 未导出该符号；与 libhccl 链接时可用
 extern "C" HcclResult HcclGetHcclBuffer(HcclComm comm, void **buffer, uint64_t *size);
@@ -132,10 +129,9 @@ void FreeDeviceAddr(void *deviceAddr)
 
 // host 超时后 dump 本卡 EP window 状态区（方法 2）
 // layout:
-//   D_S[aiv] = *(int32_t*)(win + 950KB + aiv*512 + 0)
-//   C_S[aiv] = *(int32_t*)(win + 950KB + aiv*512 + 64)
-//   combine bank[C_S] = win + C_S*350KB + COMBINE_STATE_OFFSET(256KB)
-//   flag[r]           = *(float*)(combineBank + r*512)
+//   dataState[aiv] = *(int32_t*)(win + 950KB + aiv*512)
+//   bank[S] base  = win + S*350KB + COMBINE_STATE_OFFSET(0)
+//   flag[r]       = *(float*)(bank[S] + r*512)   // 1.0=combine, 2.0=dispatch
 void DumpEpCombineStatus(HcclComm comm, uint32_t epRankId, int64_t epWorldSize, int iter, const char *stage)
 {
     void *winAddr = nullptr;
@@ -156,45 +152,33 @@ void DumpEpCombineStatus(HcclComm comm, uint32_t epRankId, int64_t epWorldSize, 
     LOG_PRINT("[DUMP] ===== %s timeout dump rank=%u iter=%d win=%p size=%llu =====\n", stage, epRankId, iter, winAddr,
               static_cast<unsigned long long>(winSize));
 
-    int32_t combineDataState0 = 0;
+    int32_t dataState0 = 0;
     for (uint32_t aiv = 0; aiv < DUMP_AIV_NUM; ++aiv) {
-        int32_t dispatchDataState = 0;
-        int32_t combineDataState = 0;
-        void *dSrc = winBase + STATE_WIN_OFFSET + static_cast<uint64_t>(aiv) * STATE_OFFSET +
-                     DISPATCH_DATA_STATE_SLOT_OFFSET;
-        void *cSrc = winBase + STATE_WIN_OFFSET + static_cast<uint64_t>(aiv) * STATE_OFFSET +
-                     COMBINE_DATA_STATE_SLOT_OFFSET;
-        aclError ret = aclrtMemcpy(&dispatchDataState, sizeof(dispatchDataState), dSrc, sizeof(dispatchDataState),
-                                   ACL_MEMCPY_DEVICE_TO_HOST);
+        int32_t dataState = 0;
+        void *src = winBase + STATE_WIN_OFFSET + static_cast<uint64_t>(aiv) * STATE_OFFSET;
+        aclError ret = aclrtMemcpy(&dataState, sizeof(dataState), src, sizeof(dataState), ACL_MEMCPY_DEVICE_TO_HOST);
         if (ret != ACL_SUCCESS) {
-            LOG_PRINT("[DUMP] read D_S aiv=%u failed. ret=%d\n", aiv, ret);
-            continue;
-        }
-        ret = aclrtMemcpy(&combineDataState, sizeof(combineDataState), cSrc, sizeof(combineDataState),
-                          ACL_MEMCPY_DEVICE_TO_HOST);
-        if (ret != ACL_SUCCESS) {
-            LOG_PRINT("[DUMP] read C_S aiv=%u failed. ret=%d\n", aiv, ret);
+            LOG_PRINT("[DUMP] read dataState aiv=%u failed. ret=%d\n", aiv, ret);
             continue;
         }
         if (aiv == 0U) {
-            combineDataState0 = combineDataState;
+            dataState0 = dataState;
         }
-        LOG_PRINT("[DUMP] aiv=%u D_S=%d C_S=%d\n", aiv, dispatchDataState, combineDataState);
+        LOG_PRINT("[DUMP] dataState[aiv=%u]=%d\n", aiv, dataState);
     }
 
-    // 两个 combine bank 都打：current 以 C_S 为准
+    // 两个 bank 都打：便于判断 flag 是否落错半区
     for (uint32_t bank = 0; bank < 2U; ++bank) {
-        const char *tag = (static_cast<int32_t>(bank) == combineDataState0) ? "current" : "other";
+        const char *tag = (static_cast<int32_t>(bank) == dataState0) ? "current" : "other";
         float sum = 0.0f;
         uint32_t cntOne = 0U;
         uint32_t cntTwo = 0U;
         uint32_t cntZero = 0U;
-        LOG_PRINT("[DUMP] --- combine bank=%u (%s) base=win+%uKB+COMBINE(%uKB) ---\n", bank, tag,
-                  static_cast<unsigned>(bank * (WIN_STATE_OFFSET / 1024ULL)),
-                  static_cast<unsigned>(COMBINE_STATE_OFFSET / 1024ULL));
+        LOG_PRINT("[DUMP] --- bank=%u (%s) base=win+%uKB ---\n", bank, tag,
+                  static_cast<unsigned>(bank * (WIN_STATE_OFFSET / 1024ULL)));
         for (int64_t r = 0; r < epWorldSize; ++r) {
             float flag = 0.0f;
-            void *slot = winBase + static_cast<uint64_t>(bank) * WIN_STATE_OFFSET + COMBINE_STATE_OFFSET +
+            void *slot = winBase + static_cast<uint64_t>(bank) * WIN_STATE_OFFSET +
                          static_cast<uint64_t>(r) * STATE_OFFSET;
             aclError ret = aclrtMemcpy(&flag, sizeof(flag), slot, sizeof(flag), ACL_MEMCPY_DEVICE_TO_HOST);
             if (ret != ACL_SUCCESS) {

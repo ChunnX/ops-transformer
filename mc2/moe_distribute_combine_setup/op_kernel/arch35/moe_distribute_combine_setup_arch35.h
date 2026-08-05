@@ -47,8 +47,8 @@ class MoeDistributeCombineSetup {
     constexpr static uint64_t STATE_OFFSET = 512U;        // 状态空间偏移地址
     constexpr static uint32_t STATE_SIZE = 1024U * 1024U; // 1M
     constexpr static uint32_t UB_ALIGN = 32U;             // UB按32字节对齐
-    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U; // 数据和状态的0/1区标识占用空间
-    // COMBINE_STATE_OFFSET 取自 moe_distribute_base.h（256KB）：bank 内前段给 dispatch，后段给 combine
+    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U;   // 数据和状态的0/1区标识占用空间
+    constexpr static uint64_t COMBINE_STATE_OFFSET = 0U;    // 本卡状态空间偏移地址，前面的地址给dispatch用
     constexpr static uint32_t STATE_COUNT_THRESHOLD = 512U; // moeExpertNumPerRank*epWorldSize状态数阈值
 
 public:
@@ -138,19 +138,20 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
     epRankId_ = mc2Context_->epRankId;
 
-    // 获取 win 元数据槽：只使用 C_S，与 dispatch 的 D_S 隔离
+    // 获取win状态区地址，并保证数据一致
+    // 在1M中选择512K偏移后的1.5k空间记录本卡历史状态
     GlobalTensor<int32_t> selfDataStatusTensor;
     statusDataSpaceGM_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
     selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGM_ + STATE_WIN_OFFSET +
-        STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_) + COMBINE_DATA_STATE_SLOT_OFFSET));
+        STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_)));
 
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
 
-    dataState_ = selfDataStatusTensor(0); // combine 专用 C_S
+    dataState_ = selfDataStatusTensor(0); // win状态区的0/1标识
 
-    // 本卡准备状态flag源：供远端 WriteNbi 使用（与 D_S/C_S 槽位错开）
+    // 本卡准备状态flag源：每个核在dataState标识后的32B位置写入float 1.0，供远端WriteNbi使用
     statusFlagGM_ = statusDataSpaceGM_ + STATE_WIN_OFFSET +
-        STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_) + COMBINE_STATUS_FLAG_SLOT_OFFSET;
+        STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_) + UB_ALIGN;
     GlobalTensor<int32_t> statusFlagTensor;
     statusFlagTensor.SetGlobalBuffer((__gm__ int32_t *)statusFlagGM_);
     statusFlagTensor.SetValue(0, static_cast<int32_t>(STATUS_FLAG_VALUE));
@@ -180,9 +181,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     epStatusSpaceGM_ = GetUrmaStateAddrByRankId(epRankId_);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType *)(epWindowGM_), moeDistributeCombineSetupInfo_->totalWinSize);
-    // combine 仅占用 bank 内 [COMBINE_STATE_OFFSET, WIN_STATE_OFFSET) 一段
-    OOMCheckAddrRange<float>((__gm__ float *)(epStatusSpaceGM_),
-                             WIN_STATE_OFFSET - COMBINE_STATE_OFFSET);
+    OOMCheckAddrRange<float>((__gm__ float *)(epStatusSpaceGM_), STATE_SIZE);
 #endif
 
     SplitCoreCal(); // 分核计算
