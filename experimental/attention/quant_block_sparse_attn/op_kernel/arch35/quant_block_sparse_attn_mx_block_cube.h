@@ -30,29 +30,18 @@ using namespace fa_base_matmul;
 using namespace regbasemx;
 
 namespace BaseApi {
-template <typename inputType, typename mmType, typename outputType, QBSALayout layout, QBSALayout kvLayout,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType,
-          DTemplateType dVTemplateType, bool isPa, bool useDn = true>
 class QuantBlockSparseAttnMxBlockCube {
 public:
-    using INPUT_T = inputType;
+    using INPUT_T = fp8_e4m3fn_t;
     using SCALE_T = fp8_e8m0_t;
-    using MM_T = mmType;
+    using MM_T = float;
     using MxBmm2Buf = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
 
-    static constexpr bool USE_DN = useDn;
-    static constexpr bool IS_PA = isPa;
-    static constexpr QBSALayout LAYOUT = layout;
-    static constexpr QBSALayout KV_LAYOUT = kvLayout;
-    static constexpr uint32_t M_BASE = static_cast<uint32_t>(s1TemplateType);
-    static constexpr uint32_t S2_BASE = static_cast<uint32_t>(s2TemplateType);
+    static constexpr uint32_t M_BASE = 128U;
+    static constexpr uint32_t S2_BASE = 512U;
     static constexpr uint32_t S2_SPLIT = 256U;
-    static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
-    static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
-    static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNSD && IS_PA,
-                  "MX cube currently only supports TND query and PA_BNSD KV");
-    static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
-                  "MX cube currently only supports S1=128, S2=512, D=128 and DV=128");
+    static constexpr uint32_t D_BASE = 128U;
+    static constexpr uint32_t DV_BASE = 128U;
     // 每 32 个 fp8 数据元素对应一个 e8m0 scale。
     static constexpr uint32_t MX_SCALE_GROUP = 32U;
     // V scale 为 [blockNum,N,blockSize/64,DV,2]。
@@ -80,8 +69,6 @@ public:
     __aicore__ inline void InitBuffers()
     {
         if ASCEND_IS_AIC {
-            static_assert(USE_DN, "MXFullQuantMode cube currently implements DN copy/load path; "
-                                  "use_dn is kept for future non-DN extension");
             // data 与 scale 连续存放，LoadData 在 L1->L0 时完成随路反量化。
             constexpr uint32_t qSize = M_BASE * D_BASE * sizeof(INPUT_T);
             constexpr uint32_t qScaleSize = M_BASE * D_BASE / MX_SCALE_GROUP * sizeof(SCALE_T);
