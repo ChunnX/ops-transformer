@@ -125,8 +125,8 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
     <tr>
       <td>seqUsedKOptional</td>
       <td>输入</td>
-      <td>预留接口参数，表示不同batch中key实际参与运算的sequence length。</td>
-      <td>支持空Tensor。当前kernel路径暂不使用。</td>
+      <td>表示不同batch中key实际参与运算的sequence length。</td>
+      <td>支持空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维，shape为(B,)</td>
@@ -135,8 +135,8 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
     <tr>
       <td>cmpResidualKOptional</td>
       <td>输入</td>
-      <td>预留接口参数，表示不同batch中key的sequence length与cmpRatio相关的残差。</td>
-      <td>支持空Tensor。当前kernel路径暂不使用。</td>
+      <td>表示不同batch中key的sequence length与cmpRatio相关的残差。</td>
+      <td>支持空Tensor。maskMode=3且cmpRatio!=1时必须传</td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维，shape为(B,)</td>
@@ -149,7 +149,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
       <td>支持空Tensor。maskMode=0且存在稀疏索引时需要传，且必须为准确值。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape为(B,S1)或(T1,)</td>
+      <td>2维、3维，shape为(B,S1,N2)或(T1,N2)</td>
       <td>x</td>
     </tr>
     <tr>

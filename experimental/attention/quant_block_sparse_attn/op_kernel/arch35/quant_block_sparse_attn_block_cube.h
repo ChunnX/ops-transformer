@@ -8,8 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-// BSA-COPY-OF: FIA fullquant GQA local migration.
-
 /*!
  * \file quant_block_sparse_attn_block_cube.h
  * \brief
@@ -37,17 +35,17 @@ using namespace regbaseutil;
 using namespace fa_base_matmul;
 namespace BaseApi {
 namespace QuantBlockSparseAttnCube {
-template <BSALayout LAYOUT>
+template <QBSALayout LAYOUT>
 __aicore__ inline constexpr GmFormat GetQueryGmFormat()
 {
-    if constexpr (LAYOUT == BSALayout::TND)
+    if constexpr (LAYOUT == QBSALayout::TND)
         return GmFormat::TNGD;
-    if constexpr (LAYOUT == BSALayout::NTD)
+    if constexpr (LAYOUT == QBSALayout::NTD)
         return GmFormat::NGTD;
     return GmFormat::TNGD;
 }
 
-template <BSALayout LAYOUT>
+template <QBSALayout LAYOUT>
 __aicore__ inline constexpr GmFormat GetKVGmFormat()
 {
     return GmFormat::TND;
@@ -99,7 +97,7 @@ struct L0CBuffSel {
 } // namespace QuantBlockSparseAttnCube
 
 TEMPLATES_DEF
-class BSABlockCube {
+class QBSABlockCube {
 public:
     /* =================编译期常量的基本块信息================= */
     static constexpr uint32_t s1BaseSize = (uint32_t)s1TemplateType;
@@ -114,7 +112,7 @@ public:
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
 
-    __aicore__ inline BSABlockCube(){};
+    __aicore__ inline QBSABlockCube(){};
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BufferManagerPtr,
                                          __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                          __gm__ uint8_t *blockTable);
@@ -144,8 +142,6 @@ private:
     __aicore__ inline void IterateBmm1Dn(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
                                          RunInfo &runInfo, ConstInfo &constInfo);
 
-    // --------------------Bmm2--------------------------
-    __aicore__ inline bool IsGS1Merge(ConstInfo &constInfo);
     TPipe *tPipe;
     /* =====================GM变量==================== */
     __gm__ uint8_t *currentKey;    // pageattention需要
@@ -192,9 +188,10 @@ private:
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr,
-                                                                  __gm__ uint8_t *query, __gm__ uint8_t *key,
-                                                                  __gm__ uint8_t *value, __gm__ uint8_t *blockTable)
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitCubeBlock(TPipe *pipe,
+                                                                   BufferManager<BufferType::L1> *l1BuffMgr,
+                                                                   __gm__ uint8_t *query, __gm__ uint8_t *key,
+                                                                   __gm__ uint8_t *value, __gm__ uint8_t *blockTable)
 {
     if ASCEND_IS_AIC {
         tPipe = pipe;
@@ -208,7 +205,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitCubeBlock(TPipe *pipe, B
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value,
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value,
                                                                   CVSharedParams<isPa> *sharedParams,
                                                                   AttenMaskInfo *attenMaskInfo,
                                                                   __gm__ int32_t *actualSeqQlenAddr,
@@ -234,8 +231,6 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t
         attenMaskInfo->preTokens = sharedParams->preTokens;
         attenMaskInfo->nextTokens = sharedParams->nextTokens;
         attenMaskInfo->compressMode = sharedParams->compressMode;
-        attenMaskInfo->attenMaskS1Size = sharedParams->attenMaskS1Size;
-        attenMaskInfo->attenMaskS2Size = sharedParams->attenMaskS2Size;
         if constexpr (isPa) {
             this->blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blocktablePtr);
             this->maxBlockNumPerBatch = sharedParams->blockTableDim2;
@@ -250,7 +245,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer()
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer()
 {
     constexpr uint32_t mm1LeftSize = s1BaseSize * dBaseSize * sizeof(INPUT_T);
     constexpr uint32_t mm1RightSize = dBaseSize * s2BaseSize * sizeof(INPUT_T);
@@ -282,7 +277,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer()
 
 /* 初始化GmTensor,设置shape信息并计算strides */
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<isPa> *sharedParams,
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<isPa> *sharedParams,
                                                                  __gm__ int32_t *actualSeqQlenAddr)
 {
     if constexpr (GmLayoutParams<Q_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
@@ -294,15 +289,15 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::CalcS2Coord(RunInfo &runInfo, ConstInfo &constInfo)
 {
-    // BSA sparse: sparse block indices 已在 SetRunInfo 中预计算
+    // QBSA sparse: sparse block indices 已在 SetRunInfo 中预计算
     coordInfo[runInfo.taskIdMod3].sparseBlockIdx[0] = runInfo.sparseBlkIdx1;
     coordInfo[runInfo.taskIdMod3].sparseBlockIdx[1] = runInfo.sparseBlkIdx2;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1(
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo &runInfo, ConstInfo &constInfo)
 {
     CalcS2Coord(runInfo, constInfo);
@@ -316,7 +311,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
     mm2ResPos &outputBuf, BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
     RunInfo &runInfo, ConstInfo &constInfo)
 {
@@ -432,11 +427,6 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
             1 << 1; // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
         fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) *
                                   16; // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
-        bool isS1Odd =
-            (constInfo.s1Size % 2) != 0; // GS1合轴时，若s1为奇数且开启双目标模式，扩展M维度对齐g，避免计算中间块
-        if (IsGS1Merge(constInfo) && isS1Odd) {
-            fixpipeParams.mSize = runInfo.s1RealSize + constInfo.gSize;
-        }
     }
     if constexpr (bmm2Write2Ub) {
         fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
@@ -454,7 +444,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo &runInfo, ConstInfo &constInfo)
 {
     Buffer<BufferType::L1> mm1A;
@@ -560,7 +550,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitDequantParams(__gm__ uint8_t *deqScaleQ,
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitDequantParams(__gm__ uint8_t *deqScaleQ,
                                                                       __gm__ uint8_t *deqScaleK,
                                                                       __gm__ uint8_t *deqScaleV)
 {
@@ -572,9 +562,9 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitDequantParams(__gm__ uin
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::GetKvByTensorList(RunInfo &runInfo, const ConstInfo &constInfo,
-                                                                      GlobalTensor<INPUT_T> &keyValueGm,
-                                                                      GlobalTensor<INPUT_T> &tempKeyValueGm)
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::GetKvByTensorList(RunInfo &runInfo, const ConstInfo &constInfo,
+                                                                       GlobalTensor<INPUT_T> &keyValueGm,
+                                                                       GlobalTensor<INPUT_T> &tempKeyValueGm)
 {
     if (constInfo.isKvContinuous != 0) {
         return;
@@ -586,7 +576,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::GetKvByTensorList(RunInfo &r
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline GlobalTensor<INPUT_T> BSABlockCube<TEMPLATE_ARGS>::GetKeyGm(RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline GlobalTensor<INPUT_T> QBSABlockCube<TEMPLATE_ARGS>::GetKeyGm(RunInfo &runInfo, ConstInfo &constInfo)
 {
     GlobalTensor<INPUT_T> tempKeyGm = this->keyGm.gmTensor;
     GetKvByTensorList(runInfo, constInfo, this->keyGm.gmTensor, tempKeyGm);
@@ -594,7 +584,7 @@ __aicore__ inline GlobalTensor<INPUT_T> BSABlockCube<TEMPLATE_ARGS>::GetKeyGm(Ru
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline GlobalTensor<INPUT_T> BSABlockCube<TEMPLATE_ARGS>::GetValueGm(RunInfo &runInfo, ConstInfo &constInfo)
+__aicore__ inline GlobalTensor<INPUT_T> QBSABlockCube<TEMPLATE_ARGS>::GetValueGm(RunInfo &runInfo, ConstInfo &constInfo)
 {
     GlobalTensor<INPUT_T> tempValueGm = this->valueGm.gmTensor;
     GetKvByTensorList(runInfo, constInfo, this->valueGm.gmTensor, tempValueGm);
@@ -602,7 +592,7 @@ __aicore__ inline GlobalTensor<INPUT_T> BSABlockCube<TEMPLATE_ARGS>::GetValueGm(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo &runInfo, ConstInfo &constInfo)
 {
     // 计算key的offset
@@ -615,16 +605,8 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
         mm1A.Wait<HardEvent::MTE1_MTE2>(); // 占用L1A
         LocalTensor<INPUT_T> mm1ATensor = mm1A.GetTensor<INPUT_T>();
 
-        if (IsGS1Merge(constInfo)) {
-            uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, 0, 0,
-                                                                         0); // PFA GS1合轴下，g s1 d idx为0
-            CopyToL1Nd2NzGS1Merge<INPUT_T>(
-                mm1ATensor, this->queryGm.gmTensor[gmOffset], constInfo.s1Size, constInfo.gSize, constInfo.dSize,
-                constInfo.n2Size * constInfo.gSize * constInfo.dSize, constInfo.dSize, runInfo.s1RealSize);
-        } else {
-            CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize,
-                                   constInfo.dSize, constInfo.mm1Ka);
-        }
+        CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize,
+                               constInfo.dSize, constInfo.mm1Ka);
 
         mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
     } else {                              // 非S2的第一次循环直接复用Q
@@ -710,32 +692,20 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
 
-    bool isS1Odd = (constInfo.s1Size % 2) != 0; // GS1合轴时，若s1为奇数且开启双目标模式，扩展M维度对齐g，避免计算中间块
-    if (IsGS1Merge(constInfo) && isS1Odd) {
-        fixpipeParams.mSize = runInfo.s1RealSize + constInfo.gSize;
-    }
-
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(),
                                         fixpipeParams); // 将matmul结果从L0C搬运到UB
     mm1ResL0C.Set<HardEvent::FIX_M>();                  // 释放L0C
     outputBuf.SetCrossCore();
 }
 
-// 判断是否GS1合轴
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline bool BSABlockCube<TEMPLATE_ARGS>::IsGS1Merge(ConstInfo &constInfo)
-{
-    return (Q_FORMAT == GmFormat::TNGD) && constInfo.isPfaGS1Merge;
-}
-
 TEMPLATES_DEF
-class BSABlockCubeDummy {
+class QBSABlockCubeDummy {
 public:
     GlobalTensor<int32_t> blockTableGm; // pageattention需要
-    static constexpr bool isFp8 = BSABlockCube<TEMPLATE_ARGS>::isFp8;
-    static constexpr TPosition bmm2OutPos = BSABlockCube<TEMPLATE_ARGS>::bmm2OutPos;
-    static constexpr bool bmm2Write2Ub = BSABlockCube<TEMPLATE_ARGS>::bmm2Write2Ub;
-    __aicore__ inline BSABlockCubeDummy(){};
+    static constexpr bool isFp8 = QBSABlockCube<TEMPLATE_ARGS>::isFp8;
+    static constexpr TPosition bmm2OutPos = QBSABlockCube<TEMPLATE_ARGS>::bmm2OutPos;
+    static constexpr bool bmm2Write2Ub = QBSABlockCube<TEMPLATE_ARGS>::bmm2Write2Ub;
+    __aicore__ inline QBSABlockCubeDummy(){};
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BufferManagerPtr,
                                          __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                          __gm__ uint8_t *blockTable)
@@ -773,8 +743,8 @@ struct CubeBlockTraits; // 声明
         CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_TRAIT_CONST) \
     };
 
-DEFINE_CUBE_BLOCK_TRAITS(BSABlockCube);
-DEFINE_CUBE_BLOCK_TRAITS(BSABlockCubeDummy);
+DEFINE_CUBE_BLOCK_TRAITS(QBSABlockCube);
+DEFINE_CUBE_BLOCK_TRAITS(QBSABlockCubeDummy);
 
 // /* 生成Arg Traits, kernel中只需要调用ARGS_TRAITS就可以获取所有CubeBlock中的模板参数 */
 #define GEN_ARGS_TYPE(name, ...) using name = typename CubeBlockTraits<CubeBlockType>::name##_TRAITS;
