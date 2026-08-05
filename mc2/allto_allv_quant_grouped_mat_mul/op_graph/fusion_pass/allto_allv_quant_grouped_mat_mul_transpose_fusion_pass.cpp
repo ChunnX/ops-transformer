@@ -67,6 +67,17 @@ struct OriginalGraphInfo {
     TransposeNode node = TransposeNode::Transpose;
 };
 
+struct ReplaceGraphInputs {
+    ge::es::EsTensorHolder rGmmX;
+    ge::es::EsTensorHolder rGmmWeight;
+    ge::es::EsTensorHolder rGmmXScale;
+    ge::es::EsTensorHolder rGmmWeightScale;
+    ge::es::EsTensorHolder rMmX;
+    ge::es::EsTensorHolder rMmWeight;
+    ge::es::EsTensorHolder rMmXScale;
+    ge::es::EsTensorHolder rMmWeightScale;
+};
+
 // 加载 EsTranspose 符号
 namespace {
 typedef EsCTensorHolder *(*EsTransposeFunc)(EsCTensorHolder *, EsCTensorHolder *);
@@ -461,13 +472,244 @@ bool AlltoAllvQuantGroupedMatMulTransposeFusionPass::MeetRequirements(
     return true;
 }
 
+static bool CollectSubgraphInputsInfo(const std::vector<ge::fusion::SubgraphInput> &subGraphInputs,
+                                      std::vector<ge::Shape> &inputShapes, std::vector<ge::DataType> &inputDTypes,
+                                      std::vector<ge::Format> &inputFormats)
+{
+    inputShapes.clear();
+    inputDTypes.clear();
+    inputFormats.clear();
+    for (const auto &subGraphInput : subGraphInputs) {
+        auto matchNodes = subGraphInput.GetAllInputs();
+        if (matchNodes.empty()) {
+            OPS_LOG_E(FUSION_PASS_NAME.c_str(), "CollectSubgraphInputsInfo: matchNodes is empty.");
+            return false;
+        }
+        auto matchNode = matchNodes.at(0);
+        ge::TensorDesc tmpDesc;
+        if (matchNode.node.GetInputDesc(matchNode.index, tmpDesc) != ge::GRAPH_SUCCESS) {
+            OPS_LOG_E(FUSION_PASS_NAME.c_str(), "CollectSubgraphInputsInfo: GetInputDesc failed.");
+            return false;
+        }
+        inputShapes.emplace_back(tmpDesc.GetShape());
+        inputDTypes.emplace_back(tmpDesc.GetDataType());
+        inputFormats.emplace_back(tmpDesc.GetOriginFormat());
+    }
+    return true;
+}
+
+static bool CreateReplaceGraphInputs(ReplaceGraphInputs &inputs, ge::es::EsGraphBuilder &replaceGraphBuilder,
+                                     const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
+                                     const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
+{
+    // 按 MakePattern 的 CreateInputs 顺序映射 subgraph 边界（已是 Transpose 前的 tensor）
+    std::vector<ge::Shape> inputShapes;
+    std::vector<ge::DataType> inputDTypes;
+    std::vector<ge::Format> inputFormats;
+    if (!CollectSubgraphInputsInfo(subgraphInputs, inputShapes, inputDTypes, inputFormats)) {
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "CollectSubgraphInputsInfo failed in CreateReplaceGraphInputs.");
+        return false;
+    }
+    if (inputShapes.size() < INPUT_NUM_NO_MM) {
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Input Nums do not meet requirement without mm, size=%zu.",
+                  inputShapes.size());
+        return false;
+    }
+
+    ge::AscendString patternName = "";
+    matchResult->GetPatternGraph().GetName(patternName);
+    const std::string patternNameStr = patternName.GetString() != nullptr ? patternName.GetString() : "";
+    const bool hasMm = patternNameStr.find(PATTERN_HAS_MM) != std::string::npos;
+
+    int64_t inputIdx = 0;
+    inputs.rGmmX = replaceGraphBuilder.CreateInput(inputIdx, "gmm_x", inputDTypes[inputIdx], inputFormats[inputIdx],
+                                                   inputShapes[inputIdx].GetDims());
+    ++inputIdx;
+    inputs.rGmmWeight = replaceGraphBuilder.CreateInput(inputIdx, "gmm_weight", inputDTypes[inputIdx],
+                                                        inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
+    ++inputIdx;
+    inputs.rGmmXScale = replaceGraphBuilder.CreateInput(inputIdx, "gmm_x_scale", inputDTypes[inputIdx],
+                                                        inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
+    ++inputIdx;
+    inputs.rGmmWeightScale = replaceGraphBuilder.CreateInput(
+        inputIdx, "gmm_weight_scale", inputDTypes[inputIdx], inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
+    ++inputIdx;
+
+    inputs.rMmX = nullptr;
+    inputs.rMmWeight = nullptr;
+    inputs.rMmXScale = nullptr;
+    inputs.rMmWeightScale = nullptr;
+    if (hasMm) {
+        if (inputShapes.size() < INPUT_NUM_HAS_MM) {
+            OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Input Nums do not meet requirement with mm, size=%zu.",
+                      inputShapes.size());
+            return false;
+        }
+        inputs.rMmX = replaceGraphBuilder.CreateInput(inputIdx, "mm_x", inputDTypes[inputIdx], inputFormats[inputIdx],
+                                                      inputShapes[inputIdx].GetDims());
+        ++inputIdx;
+        inputs.rMmWeight = replaceGraphBuilder.CreateInput(inputIdx, "mm_weight", inputDTypes[inputIdx],
+                                                           inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
+        ++inputIdx;
+        inputs.rMmXScale = replaceGraphBuilder.CreateInput(inputIdx, "mm_x_scale", inputDTypes[inputIdx],
+                                                           inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
+        ++inputIdx;
+        inputs.rMmWeightScale =
+            replaceGraphBuilder.CreateInput(inputIdx, "mm_weight_scale", inputDTypes[inputIdx],
+                                            inputFormats[inputIdx], inputShapes[inputIdx].GetDims());
+    }
+    return true;
+}
+
+static bool GetCapturedMc2Node(const std::unique_ptr<ge::fusion::MatchResult> &matchResult, ge::GNode &mc2Node)
+{
+    ge::fusion::NodeIo mc2NodeIo;
+    OP_LOGE_IF(matchResult->GetCapturedTensor(MC2_CAPTURE_IDX, mc2NodeIo) != ge::SUCCESS, false,
+               FUSION_PASS_NAME.c_str(), "Capture AlltoAllvQuantGroupedMatMul node failed.");
+    mc2Node = mc2NodeIo.node;
+    return true;
+}
+
+static ge::fusion::GraphUniqPtr
+BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
+                  const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
+{
+    auto replaceGraphBuilder = ge::es::EsGraphBuilder("replacement");
+
+    ReplaceGraphInputs inputTensors;
+    if (!CreateReplaceGraphInputs(inputTensors, replaceGraphBuilder, subgraphInputs, matchResult)) {
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "CreateReplaceGraphInputs failed.");
+        return nullptr;
+    }
+
+    ge::GNode mc2Node;
+    if (!GetCapturedMc2Node(matchResult, mc2Node)) {
+        return nullptr;
+    }
+
+    ge::AscendString patternName = "";
+    matchResult->GetPatternGraph().GetName(patternName);
+    const std::string patternNameStr = patternName.GetString() != nullptr ? patternName.GetString() : "";
+
+    // 属性用局部变量直读，避免 AscendString 封装结构体析构导致 GetString 悬空
+    ge::AscendString group;
+    OP_LOGE_IF(mc2Node.GetAttr("group", group) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr group failed.");
+
+    int64_t epWorldSize = 0;
+    OP_LOGE_IF(mc2Node.GetAttr("ep_world_size", epWorldSize) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr ep_world_size failed.");
+
+    std::vector<int64_t> sendCounts;
+    OP_LOGE_IF(mc2Node.GetAttr("send_counts", sendCounts) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr send_counts failed.");
+
+    std::vector<int64_t> recvCounts;
+    OP_LOGE_IF(mc2Node.GetAttr("recv_counts", recvCounts) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr recv_counts failed.");
+
+    int64_t gmmXQuantMode = 0;
+    OP_LOGE_IF(mc2Node.GetAttr("gmm_x_quant_mode", gmmXQuantMode) != ge::GRAPH_SUCCESS, nullptr,
+               FUSION_PASS_NAME.c_str(), "Get Attr gmm_x_quant_mode failed.");
+
+    int64_t gmmWeightQuantMode = 0;
+    OP_LOGE_IF(mc2Node.GetAttr("gmm_weight_quant_mode", gmmWeightQuantMode) != ge::GRAPH_SUCCESS, nullptr,
+               FUSION_PASS_NAME.c_str(), "Get Attr gmm_weight_quant_mode failed.");
+
+    bool transGmmWeight = false;
+    OP_LOGE_IF(mc2Node.GetAttr("trans_gmm_weight", transGmmWeight) != ge::GRAPH_SUCCESS, nullptr,
+               FUSION_PASS_NAME.c_str(), "Get Attr trans_gmm_weight failed.");
+    // 吸收 gmm_weight Transpose 后取反（对齐 canndev）
+    if (patternNameStr.find(PATTERN_GMM_WEIGHT_TRANSPOSE) != std::string::npos) {
+        transGmmWeight = !transGmmWeight;
+    }
+
+    bool transMmWeight = false;
+    OP_LOGE_IF(mc2Node.GetAttr("trans_mm_weight", transMmWeight) != ge::GRAPH_SUCCESS, nullptr,
+               FUSION_PASS_NAME.c_str(), "Get Attr trans_mm_weight failed.");
+    if (patternNameStr.find(PATTERN_MM_WEIGHT_TRANSPOSE) != std::string::npos) {
+        transMmWeight = !transMmWeight;
+    }
+
+    bool permuteOutFlag = false;
+    OP_LOGE_IF(mc2Node.GetAttr("permute_out_flag", permuteOutFlag) != ge::GRAPH_SUCCESS, nullptr,
+               FUSION_PASS_NAME.c_str(), "Get Attr permute_out_flag failed.");
+
+    int64_t mmXQuantMode = 0;
+    OP_LOGE_IF(mc2Node.GetAttr("mm_x_quant_mode", mmXQuantMode) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr mm_x_quant_mode failed.");
+
+    int64_t mmWeightQuantMode = 0;
+    OP_LOGE_IF(mc2Node.GetAttr("mm_weight_quant_mode", mmWeightQuantMode) != ge::GRAPH_SUCCESS, nullptr,
+               FUSION_PASS_NAME.c_str(), "Get Attr mm_weight_quant_mode failed.");
+
+    int64_t groupSize = 0;
+    OP_LOGE_IF(mc2Node.GetAttr("group_size", groupSize) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr group_size failed.");
+
+    int64_t yDtype = 28;
+    OP_LOGE_IF(mc2Node.GetAttr("y_dtype", yDtype) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr y_dtype failed.");
+
+    int64_t mmDtype = 28;
+    OP_LOGE_IF(mc2Node.GetAttr("mm_dtype", mmDtype) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr mm_dtype failed.");
+
+    ge::AscendString commMode;
+    OP_LOGE_IF(mc2Node.GetAttr("comm_mode", commMode) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
+               "Get Attr comm_mode failed.");
+
+    auto mc2 = ge::es::AlltoAllvQuantGroupedMatMul(
+        inputTensors.rGmmX, inputTensors.rGmmWeight, inputTensors.rGmmXScale, inputTensors.rGmmWeightScale, nullptr,
+        nullptr, inputTensors.rMmX, inputTensors.rMmWeight, inputTensors.rMmXScale, inputTensors.rMmWeightScale,
+        group.GetString(), epWorldSize, sendCounts, recvCounts, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight,
+        transMmWeight, permuteOutFlag, mmXQuantMode, mmWeightQuantMode, groupSize, yDtype, mmDtype,
+        commMode.GetString());
+    return replaceGraphBuilder.BuildAndReset({mc2.gmm_y, mc2.mm_y, mc2.permute_out});
+}
+
+static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
+                                   const std::vector<ge::fusion::SubgraphInput> &subgraphInputs)
+{
+    std::vector<ge::Shape> inputShapes;
+    for (const auto &subgraphInput : subgraphInputs) {
+        auto matchNodes = subgraphInput.GetAllInputs();
+        if (matchNodes.empty()) {
+            OPS_LOG_D(FUSION_PASS_NAME.c_str(), "InferShapeReplaceGraph: matchNodes is empty.");
+            continue;
+        }
+        auto matchNode = matchNodes.at(0);
+        ge::TensorDesc tmpDesc;
+        if (matchNode.node.GetInputDesc(matchNode.index, tmpDesc) != ge::GRAPH_SUCCESS) {
+            OPS_LOG_D(FUSION_PASS_NAME.c_str(), "GetInputDesc failed.");
+            continue;
+        }
+        inputShapes.emplace_back(tmpDesc.GetShape());
+    }
+    return (ge::GeUtils::InferShape(*replaceGraph, inputShapes) == ge::SUCCESS);
+}
+
 ge::fusion::GraphUniqPtr AlltoAllvQuantGroupedMatMulTransposeFusionPass::Replacement(
     const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
 {
     OPS_LOG_D(FUSION_PASS_NAME.c_str(), "Enter Replacement for AlltoAllvQuantGroupedMatMulTransposeFusionPass");
-    (void)matchResult;
-    // TODO: BuildReplaceGraph（吸收 Transpose 后翻转 trans_gmm_weight / trans_mm_weight）
-    return nullptr;
+    std::vector<ge::fusion::SubgraphInput> subgraphInputs;
+    if (matchResult->ToSubgraphBoundary()->GetAllInputs(subgraphInputs) != ge::SUCCESS) {
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "Get subgraph inputs failed in Replacement.");
+        return nullptr;
+    }
+
+    ge::fusion::GraphUniqPtr replaceGraph = BuildReplaceGraph(subgraphInputs, matchResult);
+    if (replaceGraph == nullptr) {
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "BuildReplaceGraph failed in Replacement.");
+        return nullptr;
+    }
+    if (!InferShapeReplaceGraph(replaceGraph, subgraphInputs)) {
+        OPS_LOG_E(FUSION_PASS_NAME.c_str(), "InferShapeReplaceGraph failed in Replacement.");
+        return nullptr;
+    }
+
+    return std::move(replaceGraph);
 }
 
 REG_FUSION_PASS(AlltoAllvQuantGroupedMatMulTransposeFusionPass)
