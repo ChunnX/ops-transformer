@@ -117,7 +117,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseKeyValue(QuantBlockSparseAt
             if (paBlockStride != expectedPaBlockStride) {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     kOpName, "key stride[0]", std::to_string(paBlockStride),
-                    "must be equal to K/V/k_descale concatenated physical block size " +
+                    "Must be equal to K/V/k_descale concatenated physical block size " +
                         std::to_string(expectedPaBlockStride));
                 return ge::GRAPH_FAILED;
             }
@@ -132,7 +132,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseKeyValue(QuantBlockSparseAt
     }
     if (paBlockStride == 0U || paBlockStride > static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "key stride[0]", std::to_string(paBlockStride),
-                                              "must be in range (0, UINT32_MAX]");
+                                              "Must be in range (0, UINT32_MAX]");
         return ge::GRAPH_FAILED;
     }
     tilingInfo.paBlockStrideVal = static_cast<uint32_t>(paBlockStride);
@@ -146,7 +146,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseKeyValue(QuantBlockSparseAt
     if (tilingInfo.n2Size == 0U || tilingInfo.n1Size % tilingInfo.n2Size != 0U) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             kOpName, "n1Size (query head num)", std::to_string(tilingInfo.n1Size),
-            "must be divisible by n2Size (kv head num) " + std::to_string(tilingInfo.n2Size));
+            "Must be divisible by n2Size (kv head num) " + std::to_string(tilingInfo.n2Size));
         return ge::GRAPH_FAILED;
     }
 
@@ -171,7 +171,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseSparseIndices(QuantBlockSpa
     const uint64_t qSeqUpperBound = static_cast<uint64_t>(tilingInfo.qbMax) * tilingInfo.qBlockSizeVal;
     if (qSeqUpperBound > static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "sparse_indices.shape[2] * sparse_q_block_size",
-                                              std::to_string(qSeqUpperBound), "must be in range [0, UINT32_MAX]");
+                                              std::to_string(qSeqUpperBound), "Must be in range [0, UINT32_MAX]");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -215,7 +215,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseOptionalInputs(QuantBlockSp
             nullptr;
     if (opParamInfo.blockTable.tensor == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "block_table", "nullptr",
-                                              "block_table is required to derive max_block_num_per_batch");
+                                              "Block_table is required to derive max_block_num_per_batch");
         return ge::GRAPH_FAILED;
     }
 
@@ -241,7 +241,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseOptionalInputs(QuantBlockSp
         static_cast<uint64_t>(tilingInfo.maxBlockNumPerBatch) * tilingInfo.kvBlockSizeVal;
     if (kvSeqUpperBound > static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "block_table.shape[1] * sparse_kv_block_size",
-                                              std::to_string(kvSeqUpperBound), "must be in range [0, UINT32_MAX]");
+                                              std::to_string(kvSeqUpperBound), "Must be in range [0, UINT32_MAX]");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -287,12 +287,12 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseAttributes(QuantBlockSparse
 ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTilingInfo &tilingInfo)
 {
     if (context_ == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "tiling context", "nullptr", "context is nullptr");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "tiling context", "nullptr", "Context is nullptr");
         return ge::GRAPH_FAILED;
     }
     auto attrs = context_->GetAttrs();
     if (attrs == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "attrs", "nullptr", "attrs is nullptr");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "attrs", "nullptr", "Attrs is nullptr");
         return ge::GRAPH_FAILED;
     }
 
@@ -332,7 +332,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTiling
         opParamInfo.vDescale.shape == nullptr ||
         opParamInfo.sparseIndices.shape == nullptr || opParamInfo.sparseSeqLen.shape == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "required input shape", "nullptr",
-                                              "query/key/value/scale/sparse input shape must not be nullptr");
+                                              "Query/key/value/scale/sparse input shape must not be nullptr");
         return ge::GRAPH_FAILED;
     }
 
