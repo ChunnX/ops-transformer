@@ -32,6 +32,53 @@ constexpr uint32_t BUFFER_SIZE_256K = 262144; // 262144表示256 * 1024
 constexpr uint32_t CV_RATIO = 2;
 constexpr uint64_t SYNC_MODE = 4;
 
+// ===== V 侧主流程核内 MutexID (范围 0~7, 上限 27) =====
+#define INNERCORE_STAGE0_IN(s)       (s)           // 0, 1: UB stage0In, MTE2->V
+#define INNERCORE_STAGE0_OUT(s)      (2 + (s))     // 2, 3: UB stage0Out, V->MTE3
+#define INNERCORE_STAGE1(s)          (4 + (s))     // 4, 5: UB stage1Out, V->MTE3
+#define INNERCORE_STAGE2             (6)           // 6:   UB stage2Out, V->MTE3
+
+// TODO sinks init阶段执行 可复用id 与向量化一起分配
+#define INNERCORE_SINKS_SYNC         (7)           // 7:   UB sinksBuf, MTE2->V
+// ===== GetKVPhyAddr 核内 MutexID (独立阶段, ID 可与主流程复用) =====
+#define INNERCORE_PHYADDR_BLKTABLE   (0)
+#define INNERCORE_PHYADDR_SPARSEIDX  (1)
+#define INNERCORE_PHYADDR_KVADDR     (2)
+
+// ===== C 侧核内 MutexID (范围 0~12, 上限 27) =====
+#define INNERCORE_L1Q(s)             (s)           // 0, 1, 2: L1 Q, MTE2->MTE1
+#define INNERCORE_L1KV(s)            (3 + (s))     // 3~8:     L1 KV shared, MTE2->MTE1
+#define INNERCORE_L0AB(s)            (9 + (s))     // 9, 10:   L0A/L0B shared, MTE1->M
+#define INNERCORE_L0C(s)             (11 + (s))    // 11, 12:  L0C, M->FIX
+
+// ===== 跨核 flag ID (正向反向共用, +16 dual-dest sub-block 1, 上限 15) =====
+#define CROSSCORE_BMM1(s)            (6 + s)           // 0, 1: bmm1 DB
+#define CROSSCORE_BMM1_D(s)          (6 + 16 + (s))    // 16, 17: bmm1 dual-dest
+#define CROSSCORE_BMM2               (8)           // 2:    bmm2 Single
+#define CROSSCORE_BMM2_D             (24)          // 18:   bmm2 dual-dest
+
+template <typename ElemT>
+struct StaticBuffer {
+    LocalTensor<ElemT> tensor;
+    uint32_t idx;
+};
+
+template <typename ElemT>
+struct RingBuffer {
+    StaticBuffer<ElemT> *bufs;
+    uint32_t             bufNum;
+    uint32_t             curId;
+
+    __aicore__ inline RingBuffer(StaticBuffer<ElemT> *b, uint32_t n)
+        : bufs(b), bufNum(n), curId(n - 1) {}
+
+    __aicore__ inline StaticBuffer<ElemT> &GetNext()
+    {
+        curId = (curId + 1) % bufNum;
+        return bufs[curId];
+    }
+};
+
 namespace BaseApi {
 __aicore__ constexpr uint64_t Align2Func(uint64_t data) {
     return (data + 1UL) >> 1UL << 1UL; // 向上2对齐, +1移位2

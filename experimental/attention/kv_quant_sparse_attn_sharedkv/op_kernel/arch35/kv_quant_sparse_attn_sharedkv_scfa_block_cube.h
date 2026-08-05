@@ -59,12 +59,12 @@ public:
     __aicore__ inline void IterateLoadQK(
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         RunInfo &runInfo, ConstInfo &constInfo, bool isFirstLoop);
-    __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
+    __aicore__ inline void IterateBmm1(StaticBuffer<T> &outputBuf,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         bool notLastTwoLoop, RunInfo &runInfoNext,
         RunInfo &runInfo, ConstInfo &constInfo);
 
-    __aicore__ inline void IterateBmm2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+    __aicore__ inline void IterateBmm2(StaticBuffer<T> &outputBuf,
         BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
         RunInfo &runInfo, ConstInfo &constInfo);
 
@@ -73,13 +73,13 @@ private:
     __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, const ConstInfo &constInfo);
 
     __aicore__ inline void CopyQGmToL1(RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void IterateBmm1SCFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+    __aicore__ inline void IterateBmm1SCFA(StaticBuffer<T> &outputBuf,
         Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         bool notLastTwoLoop, RunInfo &runInfoNext,
         RunInfo &runInfo, ConstInfo &constInfo);
 
     // --------------------Bmm2--------------------------
-    __aicore__ inline void IterateBmm2SCFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+    __aicore__ inline void IterateBmm2SCFA(StaticBuffer<T> &outputBuf,
         BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
         RunInfo &runInfo, ConstInfo &constInfo);
     TPipe *tPipe;
@@ -166,7 +166,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+    StaticBuffer<T> &outputBuf,
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
     bool notLastTwoLoop, RunInfo &runInfoNext,
     RunInfo &runInfo, ConstInfo &constInfo)
@@ -175,7 +175,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+__aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2(StaticBuffer<T> &outputBuf,
     BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
     RunInfo &runInfo, ConstInfo &constInfo)
 {
@@ -237,7 +237,7 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateLoadQK(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
-    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+    StaticBuffer<T> &outputBuf,
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
     bool notLastTwoLoop, RunInfo &runInfoNext,
     RunInfo &runInfo, ConstInfo &constInfo)
@@ -303,7 +303,8 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
     get_buf(PIPE_FIX, l0CBufId + l0CBufIdx, false);
     rls_buf(PIPE_FIX, l0CBufId + l0CBufIdx, false);
 
-    outputBuf.WaitCrossCore();
+    CrossCoreWaitFlag<4, PIPE_FIX>(CROSSCORE_BMM1(outputBuf.idx));
+    CrossCoreWaitFlag<4, PIPE_FIX>(CROSSCORE_BMM1_D(outputBuf.idx));
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB
     fixpipeParams.nSize = Align8Func(runInfo.s2RealSize); // L0C上的bmm1结果矩阵N方向的size大小; 同mmadParams.n; 为什么要8个元素对齐(32B对齐) // 128
     fixpipeParams.mSize = Align2Func(runInfo.mRealSize); // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数) // 128
@@ -314,16 +315,17 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm1SCFA(
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
 
-    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(),
+    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.tensor,
         mmL0CTensor[BUFFER_SIZE_32K * l0CBufIdx], fixpipeParams); // 将matmul结果从L0C搬运到UB
     get_buf(PIPE_FIX, l0CBufId + l0CBufIdx, true);
     rls_buf(PIPE_FIX, l0CBufId + l0CBufIdx, true);
     l0CBufIdx ^= 1;
-    outputBuf.SetCrossCore();
+    CrossCoreSetFlag<4, PIPE_FIX>(CROSSCORE_BMM1(outputBuf.idx));
+    CrossCoreSetFlag<4, PIPE_FIX>(CROSSCORE_BMM1_D(outputBuf.idx));
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2SCFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+__aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2SCFA(StaticBuffer<T> &outputBuf,
     BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
     RunInfo &runInfo, ConstInfo &constInfo)
 {
@@ -355,7 +357,8 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2SCFA(Buffer<Buff
     rls_buf(PIPE_MTE1, l1KBufId + l1KMatmul2BufIdx, true);
     l1KMatmul2BufIdx = (l1KMatmul2BufIdx + 1) % l1KBufNum; // 释放两个子buffer
 
-    outputBuf.WaitCrossCore(); //占用
+    CrossCoreWaitFlag<4, PIPE_FIX>(CROSSCORE_BMM2);
+    CrossCoreWaitFlag<4, PIPE_FIX>(CROSSCORE_BMM2_D);
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB;FixpipeParamsM300:L0C→UB
     fixpipeParams.nSize = Align8Func(constInfo.dSizeV);    // L0C上的bmm1结果矩阵N方向的size大小, 分档计算且vector2中通过mask筛选出实际有效值
     fixpipeParams.mSize = s1BaseSize;                      // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小; 同mmadParams.m
@@ -365,13 +368,14 @@ __aicore__ inline void SCFABlockCube<TEMPLATE_ARGS>::IterateBmm2SCFA(Buffer<Buff
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
-    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(),
+    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.tensor,
         mmL0CTensor[BUFFER_SIZE_32K * l0CBufIdx], fixpipeParams); // 将matmul结果从L0C搬运到UB
     get_buf(PIPE_FIX, l0CBufId + l0CBufIdx, true);
     rls_buf(PIPE_FIX, l0CBufId + l0CBufIdx, true);
     l0CBufIdx ^= 1;
 
-    outputBuf.SetCrossCore();
+    CrossCoreSetFlag<4, PIPE_FIX>(CROSSCORE_BMM2);
+    CrossCoreSetFlag<4, PIPE_FIX>(CROSSCORE_BMM2_D);
 }
 
 TEMPLATES_DEF
