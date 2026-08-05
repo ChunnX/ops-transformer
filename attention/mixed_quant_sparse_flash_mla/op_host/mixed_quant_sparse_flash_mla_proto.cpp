@@ -76,7 +76,7 @@ ge::graphStatus InferShapeMixedQuantSparseFlashMla(gert::InferShapeContext *cont
         }
     } else {
         softmaxLseShape->SetDimNum(DIM_NUM_ONE);
-        softmaxLseShape->SetDim(DIM_IDX_ZERO, 0);
+        softmaxLseShape->SetDim(DIM_IDX_ZERO, 1);
     }
     return GRAPH_SUCCESS;
 }

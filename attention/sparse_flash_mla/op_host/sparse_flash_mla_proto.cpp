@@ -91,7 +91,7 @@ ge::graphStatus InferShapeSparseFlashMla(gert::InferShapeContext *context)
         }
     } else {
         softmaxLseShape->SetDimNum(DIM_NUM_1);
-        softmaxLseShape->SetDim(DIM_INDEX_0, 0);
+        softmaxLseShape->SetDim(DIM_INDEX_0, 1);
     }
     return GRAPH_SUCCESS;
 }
