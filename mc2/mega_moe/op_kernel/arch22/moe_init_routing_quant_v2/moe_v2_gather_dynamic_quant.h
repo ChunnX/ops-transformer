@@ -466,7 +466,7 @@ __aicore__ inline void MoeV2GatherDynamicQuant<T>::Init(GM_ADDR inputX, GM_ADDR 
                                                         int64_t colsAlign)
 {
     this->pipe = tPipe;
-    this->blockIdx = get_block_idx() + get_subblockid() * get_block_num();
+    this->blockIdx = AscendC::GetBlockIdx() + AscendC::GetSubBlockIdx() * AscendC::GetBlockNum();
     this->gatherOutTilingData = &(tilingData->gatherOutComputeParamsOp);
 
     this->needCoreNum = this->gatherOutTilingData->needCoreNum;

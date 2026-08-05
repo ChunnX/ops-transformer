@@ -125,7 +125,7 @@ __aicore__ inline void MoeV2SrcToDstOp::Init(GM_ADDR expandSrcToDstRow, GM_ADDR 
 {
     int64_t blockNum = GetBlockNum();
     this->pipe = tPipe;
-    this->blockIdx = get_block_idx() + get_subblockid() * get_block_num();
+    this->blockIdx = AscendC::GetBlockIdx() + AscendC::GetSubBlockIdx() * AscendC::GetBlockNum();
 
     this->coreNum = tilingData->coreNum;
     this->totalLength = tilingData->n * tilingData->k;

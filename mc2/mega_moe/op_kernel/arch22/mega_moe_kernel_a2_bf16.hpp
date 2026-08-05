@@ -179,8 +179,8 @@ public:
         }
 
         if ASCEND_IS_AIV {
-            coreIdx = get_block_idx() + get_subblockid() * get_block_num();
-            coreNum = get_block_num() * get_subblockdim();
+            coreIdx = AscendC::GetBlockIdx() + AscendC::GetSubBlockIdx() * AscendC::GetBlockNum();
+            coreNum = AscendC::GetBlockNum() * AscendC::GetSubBlockNum();
         }
 
         initBuffer(params);
@@ -1244,9 +1244,9 @@ private:
             shmem.CrossRankSync(ctrBuffer);
         }
 
-        // KernelMoeTokenUnpermute uses get_block_num() (= AIC tile count), not full AIV count.
+        // KernelMoeTokenUnpermute uses AscendC::GetBlockNum() (= AIC tile count), not full AIV count.
         // Use coreNum/2 for tiling and run only on one subblock to match blockIdx/blockNum semantics.
-        if (get_subblockid() == 1) {
+        if (AscendC::GetSubBlockIdx() == 1) {
             exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::UNPERMUTE);
             MoeTokenUnpermuteTilingData tilingData;
             MoeTokenUnpermuteTiling(params.problemShape.m() * params.topK, n2, params.topK, tilingData, coreNum / 2);
@@ -1265,8 +1265,8 @@ private:
         int32_t syncLoopIdx = 0;
         uint32_t startCoreIdx = 0;
         uint32_t aicCoreNum = coreNum / 2;
-        uint32_t aicCoreIdx = get_block_idx();
-        uint32_t aivSubCoreIdx = get_subblockid();
+        uint32_t aicCoreIdx = AscendC::GetBlockIdx();
+        uint32_t aivSubCoreIdx = AscendC::GetSubBlockIdx();
         uint32_t preSrcExpertSum = 0;
 
         uint32_t n2 = params.problemShape.k();

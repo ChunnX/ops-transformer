@@ -327,7 +327,7 @@ MoeV2FullLoadDynamicQuant<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR expande
 {
     this->gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);
     // this->blockIdx_ = GetBlockIdx();
-    this->blockIdx_ = get_block_idx() + get_subblockid() * get_block_num();
+    this->blockIdx_ = AscendC::GetBlockIdx() + AscendC::GetSubBlockIdx() * AscendC::GetBlockNum();
     this->k_ = tilingData->k;
     this->n_ = tilingData->n;
     this->cols_ = tilingData->cols;

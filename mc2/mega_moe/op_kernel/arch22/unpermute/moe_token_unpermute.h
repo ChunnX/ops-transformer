@@ -81,11 +81,11 @@ __aicore__ inline void KernelMoeTokenUnpermute<T1, T2, T3, PROBS>::Init(
     const MoeTokenUnpermuteTilingData *__restrict tiling_data, bool useAllVectorCore)
 {
     if (useAllVectorCore) {
-        this->blockIdx = get_block_idx() + get_subblockid() * get_block_num();
-        this->blockNum = get_block_num() * get_subblockdim();
+        this->blockIdx = AscendC::GetBlockIdx() + AscendC::GetSubBlockIdx() * AscendC::GetBlockNum();
+        this->blockNum = AscendC::GetBlockNum() * AscendC::GetSubBlockNum();
     } else {
-        this->blockIdx = get_block_idx();
-        this->blockNum = get_block_num();
+        this->blockIdx = AscendC::GetBlockIdx();
+        this->blockNum = AscendC::GetBlockNum();
     }
 
     if (blockIdx >= blockNum) {

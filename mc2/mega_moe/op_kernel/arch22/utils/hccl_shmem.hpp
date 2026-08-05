@@ -517,8 +517,8 @@ public:
         uint32_t stateOffset_ = STATE_OFFSET;
 
         uint64_t flag_offset = ((m_segmentSize - m_tailReservedSize)) + m_rank * stateOffset_;
-        int vec_size = get_block_num();
-        int vec_id = get_block_idx();
+        int vec_size = AscendC::GetBlockNum();
+        int vec_id = AscendC::GetBlockIdx();
 
         AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(RECV_SYNC_EVENT_ID);
         AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(SEND_SYNC_EVENT_ID);
@@ -564,8 +564,8 @@ public:
                              AscendC::LocalTensor<float> statusSumOutTensor)
     {
         uint64_t flag_offset = ((m_segmentSize - m_tailReservedSize));
-        int vec_size = get_block_num();
-        int vec_id = get_block_idx();
+        int vec_size = AscendC::GetBlockNum();
+        int vec_id = AscendC::GetBlockIdx();
         uint32_t stateOffset_ = STATE_OFFSET;
 
         uint32_t sendRankNum_ = m_rankSize / vec_size;
@@ -662,7 +662,7 @@ public:
         exceptionDump.Dump(base, static_cast<size_t>(m_rankSize), UB_ALIGN, static_cast<size_t>(STATE_OFFSET));
 
         // Region 3: CrossRankSyncV2 selfStatus，本 rank 各 AIV 核的 init 状态
-        // InitStatusTargetSum 用 GetBlockIdx() 索引，范围 [0, get_block_num())
+        // InitStatusTargetSum 用 GetBlockIdx() 索引，范围 [0, AscendC::GetBlockNum())
         // selfStatusTensor[coreIdx * UB_ALIGN] 中 UB_ALIGN 是 int32_t 元素索引，
         // 实际字节间距 = UB_ALIGN * sizeof(int32_t) = 128B
         exceptionDump.Dump(base + SELF_STATE_OFFSET, static_cast<size_t>(GetBlockNum()), sizeof(int32_t),
