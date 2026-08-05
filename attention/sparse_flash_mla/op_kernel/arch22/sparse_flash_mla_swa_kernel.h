@@ -890,12 +890,14 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::ProcessBalance()
             tempLoopInfo.s1EndIdx =
                 Min((tempLoopInfo.s1StartIdx + constInfo.mBaseSize / constInfo.gSize - 1), tempLoopInfo.actS1Size - 1);
             // 此处均为闭区间
+            // oriMaskMode 0 (DSpark): effective ori S2 from sparse topk_length, not band window.
             if (constInfo.hasOriSparseIndices) {
                 uint32_t sparseOriS2Size = GetOriSparseActualSeqLen();
                 tempLoopInfo.oriMaskLeft = 0;
                 tempLoopInfo.oriMaskRight =
                     sparseOriS2Size == 0 ? -1 : static_cast<int32_t>(sparseOriS2Size - 1U);
             } else {
+                // oriMaskMode 4 (Band): sliding window on dense ori_kv.
                 tempLoopInfo.oriMaskRight = tempLoopInfo.actOriS2Size - tempLoopInfo.actS1Size +
                                             static_cast<int32_t>(tempLoopInfo.s1EndIdx) + constInfo.oriWinRight;
                 tempLoopInfo.oriMaskRight =
