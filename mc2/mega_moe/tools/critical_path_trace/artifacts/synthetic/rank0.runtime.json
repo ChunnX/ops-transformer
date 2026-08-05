@@ -1,0 +1,39 @@
+{
+  "adapter_version": 4,
+  "aic_core_num": 36,
+  "bs": 24,
+  "capacity_preflight": {
+    "aic_core_num": 36,
+    "available_y_bytes": 294912,
+    "local_moe_expert_num": 8,
+    "protocol_version": 7,
+    "record_words": 34,
+    "required_y_bytes": 14808,
+    "scratch_required_bytes": 20736,
+    "scratch_reserve_bytes": 52428800
+  },
+  "comm_quant_mode": 0,
+  "dispatch_quant_out_type": 24,
+  "graph_type": 0,
+  "h": 6144,
+  "is_interleaved": false,
+  "k": 8,
+  "local_moe_expert_num": 8,
+  "n": 12288,
+  "output_dtype": "torch.bfloat16",
+  "output_nbytes": 294912,
+  "output_shape": [
+    24,
+    6144
+  ],
+  "quant_dtype": "float8_e4m3fn",
+  "quant_mode": 4,
+  "rank": 0,
+  "raw_sha256": "8c6b27741444dd1da15e34e32ec3b7bb45c4e6ba92bb4cffc3a69fc3316d1379",
+  "shared_expert_num": 0,
+  "swiglu_quant_dtype": "float8_e4m3fn",
+  "test_source_sha256": "synthetic-fixture",
+  "topk_weights_type": false,
+  "weight_dtype": "float8_e4m3fn",
+  "world_size": 2
+}

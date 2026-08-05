@@ -1,0 +1,22 @@
+{
+  "capture_kind": "synthetic host-only contract fixture; NOT hardware validation",
+  "captures": [
+    {
+      "available_carrier_bytes": 294912,
+      "contract_check": "rank0.contract-check.json",
+      "html": "rank0.html",
+      "normalized": "rank0.normalized.json",
+      "order_check": "rank0.order-check.json",
+      "protocol_version": 7,
+      "rank": 0,
+      "raw": "rank0.raw",
+      "raw_sha256": "8c6b27741444dd1da15e34e32ec3b7bb45c4e6ba92bb4cffc3a69fc3316d1379",
+      "required_trace_bytes": 14808,
+      "runtime_metadata": "rank0.runtime.json",
+      "schema_id": "0x3eb1c6b3",
+      "trace_spec": "trace-spec.json"
+    }
+  ],
+  "purpose": "exercise raw decode, header/config checks, wrap-safe order/bounds checks, and HTML rendering",
+  "status": "passed"
+}
