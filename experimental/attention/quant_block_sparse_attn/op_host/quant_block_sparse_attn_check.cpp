@@ -194,6 +194,21 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckAttrs() const
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus QuantBlockSparseAttnCheck::CheckSoftmaxScale() const
+{
+    const auto &opParamInfo = tilingInfo_.opParamInfo;
+    if (opParamInfo.softmaxScale != nullptr) {
+        if (tilingInfo_.softmaxScaleVal <= 0.0F || tilingInfo_.softmaxScaleVal > 1.0F) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "softmax_scale",
+                                                  std::to_string(tilingInfo_.softmaxScaleVal),
+                                                  "must be in range (0, 1] when explicitly passed; "
+                                                  "omit the attribute to use default 1/sqrt(D)");
+            return ge::GRAPH_FAILED;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus QuantBlockSparseAttnCheck::CheckDtype() const
 {
     const auto &opParamInfo = tilingInfo_.opParamInfo;
@@ -760,6 +775,9 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckMXFP8FullQuantShape() const
 ge::graphStatus QuantBlockSparseAttnCheck::Process()
 {
     if (CheckAttrs() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckSoftmaxScale() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (CheckExistence() != ge::GRAPH_SUCCESS) {

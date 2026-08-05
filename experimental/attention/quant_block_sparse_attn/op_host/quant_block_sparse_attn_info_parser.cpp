@@ -14,6 +14,7 @@
  */
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -264,7 +265,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseAttributes(QuantBlockSparse
     opParamInfo.layoutSparseIndices = attrs->GetAttrPointer<char>(QBSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX);
     opParamInfo.quantMode = attrs->GetAttrPointer<int64_t>(QBSA_QUANT_MODE_ATTR_INDEX);
 
-    tilingInfo.softmaxScaleVal = QBSAGetFloatAttr(attrs, QBSA_SOFTMAX_SCALE_ATTR_INDEX, 1.0F);
+    tilingInfo.softmaxScaleVal = QBSAGetFloatAttr(attrs, QBSA_SOFTMAX_SCALE_ATTR_INDEX, 0.0F);
     tilingInfo.maskModeVal = QBSAGetUintAttr(attrs, QBSA_MASK_MODE_ATTR_INDEX, 0U);
     tilingInfo.quantModeVal = QBSAGetUintAttr(attrs, QBSA_QUANT_MODE_ATTR_INDEX, QBSA_QUANT_MODE_FP8);
     tilingInfo.layoutQStr = QBSAGetStringAttr(attrs, QBSA_LAYOUT_Q_ATTR_INDEX, "TND");
@@ -343,6 +344,9 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTiling
 
     if (ParseQuery(tilingInfo, queryShape, sparseIndicesShape) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo.softmaxScale == nullptr) {
+        tilingInfo.softmaxScaleVal = 1.0F / std::sqrt(static_cast<float>(tilingInfo.dSize));
     }
     if (ParseKeyValue(tilingInfo, keyShape, valueShape, kDescaleShape, opParamInfo.key.stride) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
