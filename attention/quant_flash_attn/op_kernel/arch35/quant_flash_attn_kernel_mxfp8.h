@@ -20,12 +20,11 @@
 #include "quant_flash_attn_block_cube_mxfp8.h"
 #include "quant_flash_attn_block_vec_mxfp8.h"
 #include "quant_flash_attn_block_vec_flashdecode.h"
+#include "memory_copy_arch35.h"
 #if __has_include("../../../common/op_kernel/vector_common.h")
 #include "../../../common/op_kernel/vector_common.h"
-#include "../../../common/op_kernel/memory_copy_arch35.h"
 #else
 #include "../../common/op_kernel/vector_common.h"
-#include "../../common/op_kernel/memory_copy_arch35.h"
 #endif
 
 #if ASC_DEVKIT_MAJOR >= 9
