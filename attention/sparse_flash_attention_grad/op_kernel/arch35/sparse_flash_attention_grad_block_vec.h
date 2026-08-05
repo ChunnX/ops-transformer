@@ -135,7 +135,8 @@ public:
     TQue<QuePosition::VECIN, 1> maxForSinkQue; // max  GM→TQue（sink 专用连续，与 maxSumQue 独立）
     TQue<QuePosition::VECIN, 1> sumForSinkQue; // sum  GM→TQue
     TBuf<> sinkTensor;                         // P_sink=exp(sink-m)/ℓ 暂存（V2→V3 交接，微指令 StoreAlign 写、V3 标准 Mul 读）
-    TBuf<> dSinkAcc;                           // dSink per-sub-block 累加器（跨 S1 token 累加，持久存活）
+    TBuf<> dSinkAcc;                           // dSink per-sub-block 累加器（跨 key-block 任务 + 跨 S1 token 累加，持久存活）
+    TBuf<> sinkRowSumBuf;                      // 逐元素 dSink 行内负和 rowSumNeg[h]=-Σ_j P·dp 暂存（256B，V3 内生命周期）
  
     TPipe *pipe;
     SFagTilingType tilingData;
@@ -248,6 +249,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitUbBuffer()
         pipe->InitBuffer(sumForSinkQue, 1, VECTOR_BASEM * sizeof(CALC_TYPE));
         pipe->InitBuffer(sinkTensor, VECTOR_BASEM * sizeof(CALC_TYPE));
         pipe->InitBuffer(dSinkAcc, VECTOR_BASEM * sizeof(CALC_TYPE));
+        pipe->InitBuffer(sinkRowSumBuf, VECTOR_BASEM * sizeof(CALC_TYPE));
         LocalTensor<CALC_TYPE> dSinkAccTensor = dSinkAcc.Get<CALC_TYPE>();
         Duplicate(dSinkAccTensor, 0.0f, VECTOR_BASEM);
     }
@@ -562,6 +564,24 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3(Buffer<BufferType
  
     LocalTensor<CALC_TYPE> softmaxGradResTensor = softmaxGradResBuf.Get<CALC_TYPE>();
     LocalTensor<INPUT_TYPE> vecOutBuffer = dSOutQue.AllocTensor<INPUT_TYPE>();
+    // 【新增】逐元素 dSink：rowSumNeg[h] = -Σ_j P[h,j]·dp[h,j]（P∈mm2、dp∈mm1，fp32）
+    // 必须在 BroadcastSubMul 覆盖 mm1(dp) 之前计算。数学上 = -rowsum(Ō·dy)（Ō=P·V 无 bf16 舍入），
+    // 比复用 Di=rowsum(out_bf16·dy) 更精确（golden 已同步为 -(p*dp).sum(-1)）。
+    // dSinkAcc 用 Add 跨 key-block task 累加（每个 task 的 Σ_j 是部分和），旧 Muls 覆盖仅 T1=1 正确。
+    if constexpr (IS_SINKS) {
+        LocalTensor<CALC_TYPE> sinkRowSumTensor = sinkRowSumBuf.Get<CALC_TYPE>();
+        LocalTensor<CALC_TYPE> sinkPkTensor = sinkTensor.Get<CALC_TYPE>();
+        LocalTensor<CALC_TYPE> dSinkAccTensor = dSinkAcc.Get<CALC_TYPE>();
+        if (runInfo.halfGRealSize > 0 && runInfo.commonRunInfo.s2RealSize > 0) {
+            CalculateSinkNegRowSum<CALC_TYPE, VECTOR_BASEN>(sinkRowSumTensor, mm2ResTensor, mm1ResTensor,
+                static_cast<uint16_t>(runInfo.halfGRealSize),
+                static_cast<uint16_t>(runInfo.commonRunInfo.s2RealSize));
+            // sinkPk = P_sink · rowSumNeg（逐 head）
+            Mul(sinkPkTensor, sinkPkTensor, sinkRowSumTensor, runInfo.halfGRealSize);
+            // dSinkAcc += sinkPk（跨 key-block 累加，dSinkAcc 初始已清零）
+            Add(dSinkAccTensor, dSinkAccTensor, sinkPkTensor, runInfo.halfGRealSize);
+        }
+    }
     if (runInfo.commonRunInfo.s2RealSize > static_cast<uint32_t>(S2TemplateType::Aligned64)) {
         BroadcastSubMul<CALC_TYPE, static_cast<uint32_t>(S2TemplateType::Aligned128), 0>(mm1ResTensor, mm1ResTensor,
             softmaxGradResTensor, mm2ResTensor, runInfo.halfGRealSize, runInfo.commonRunInfo.s2RealSize);
@@ -581,17 +601,6 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3(Buffer<BufferType
     CopyUB2L1<true>(constInfo, runInfo, dsL1Tensor, vecOutBuffer);
 
     dSOutQue.FreeTensor(vecOutBuffer);
-
-    // 【新增】dSink 累加：dSinkAcc += P_sink · (-D_i)（sinks 存在时）
-    if constexpr (IS_SINKS) {
-        LocalTensor<CALC_TYPE> sinkPkTensor = sinkTensor.Get<CALC_TYPE>();
-        LocalTensor<CALC_TYPE> dSinkAccTensor = dSinkAcc.Get<CALC_TYPE>();
-        // sinkPk = P_sink × D_i（D_i 主路径切分，softmaxGradResTensor[0:halfG]）
-        Mul(sinkPkTensor, sinkPkTensor, softmaxGradResTensor, runInfo.halfGRealSize);
-        // dSinkAcc = -sinkPk（= P_sink·(-D_i)）。Muls 只写 dSinkAcc 不读（读 dSinkAcc 16x，见下注）
-        // 注：不能用 Sub(dSinkAcc,dSinkAcc,sinkPk) 或 Axpy——读 dSinkAcc 16x。Muls 覆盖语义，S1=1 正确；S1>1 需另设计。
-        Muls(dSinkAccTensor, sinkPkTensor, (CALC_TYPE)-1.0, runInfo.halfGRealSize);
-    }
 }
  
 TEMPLATES_DEF_NO_DEFAULT

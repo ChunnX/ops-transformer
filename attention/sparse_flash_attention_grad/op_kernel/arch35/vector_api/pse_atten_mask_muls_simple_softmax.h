@@ -185,4 +185,72 @@ __aicore__ inline void CalculateSinkSimpleSoftMax(FagConstInfo &constInfo, FagRu
     sumForSinkQue.FreeTensor(sumTensor);
 }
 
+// 【新增】微指令 VF：SinkNegRowSumVF —— 逐元素 dSink 的"行内负和"
+// rowSumNeg[h] = -Σ_j P[h,j]·dp[h,j]（P∈mm2、dp∈mm1，fp32 [halfG, s2RealSize]，行步长 srcN=128 元素）
+// 必须在 BroadcastSubMul 覆盖 mm1(dp) 之前调用（否则 dp 已被 P⊙(dp-Di) 覆盖）。
+// 结构同参考 flash_attention_score_grad vf_cal_sink.h 的 CalculateSinkVF：外层 m 行循环(uint16_t)
+// + 内层主 64-chunk 循环 + 直线尾块(恒执行一次, UpdateMask 控制实尾)；
+// 归约/标量写沿用本算子 vf_softmax_grad_front_cast_aligned512_f16.h 的
+// ReduceSum + StoreUnAlign(POST_MODE_UPDATE 自动推进 dstAddr) + vstas flush。
+// 负号折进累加：vregRes 每行 Duplicate(0)，Sub(vregRes, vregRes, vregReduceSum, pregAccu=VL1) 保护 lane0，
+// 免去额外的 Muls 取负。每 head 标量结果顺序写 dst[0..halfG-1]。
+template <typename T, uint16_t srcN>
+__simd_vf__ inline void SinkNegRowSumVF(uint64_t dstAddr, uint64_t pAddr, uint64_t dpAddr,
+                                        uint64_t pTailAddr, uint64_t dpTailAddr,
+                                        uint16_t halfG, uint16_t loopTimes, uint32_t realTailSize)
+{
+    RegTensor<T> vregP;
+    RegTensor<T> vregDp;
+    RegTensor<T> vregMul;
+    RegTensor<T> vregReduceSum;
+    RegTensor<T> vregRes;
+    UnalignReg uregRes;
+    MaskReg pregFullExe = CreateMask<T, MaskPattern::ALL>();
+    MaskReg pregAccu = CreateMask<T, MaskPattern::VL1>();
+    MaskReg pregTailExe = UpdateMask<float>(realTailSize);
+    for (uint16_t m = 0; m < halfG; m++) {
+        Duplicate(vregRes, 0);
+        for (uint16_t n = 0; n < loopTimes; n++) {
+            LoadAlign(vregP, ((__ubuf__ T *&)pAddr + m * srcN + n * 64));
+            LoadAlign(vregDp, ((__ubuf__ T *&)dpAddr + m * srcN + n * 64));
+            Mul(vregMul, vregP, vregDp, pregFullExe);
+            ReduceSum(vregReduceSum, vregMul, pregFullExe);
+            Sub(vregRes, vregRes, vregReduceSum, pregAccu);
+        }
+        // 尾块（直线，恒执行一次）：整 64 尾(realTailSize==64) 或部分尾(UpdateMask)
+        LoadAlign(vregP, ((__ubuf__ T *&)pTailAddr + m * srcN));
+        LoadAlign(vregDp, ((__ubuf__ T *&)dpTailAddr + m * srcN));
+        Mul(vregMul, vregP, vregDp, pregTailExe);
+        ReduceSum(vregReduceSum, vregMul, pregTailExe);
+        Sub(vregRes, vregRes, vregReduceSum, pregAccu);
+        // 每 head 标量写 dst[m]，POST_MODE_UPDATE 自动推进 dstAddr 一个元素
+        StoreUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T *&)dstAddr), vregRes, uregRes, 1);
+    }
+    vstas(uregRes, ((__ubuf__ T *&)dstAddr), 0, POST_UPDATE);
+}
+
+// 【新增】CalculateSinkNegRowSum：逐元素 dSink 行内负和 wrapper（__aicore__ 侧算循环参数，VF 侧只跑 uint16_t 循环）
+// guard halfG==0 / realN==0（realN==0 时 CeilDivision-1 会下溢成 65535，尾指针越界，必须拦）。
+// 尾指针 = 基址 + loopTimes*64 元素（= 主 chunk 覆盖后的下一 chunk 起始），与 vf_cal_sink.h 一致。
+template <typename T2, const uint32_t VECTOR_BASEN = 128>
+__aicore__ inline void CalculateSinkNegRowSum(LocalTensor<T2> &dstTensor, LocalTensor<T2> &pTensor,
+                                              LocalTensor<T2> &dpTensor, uint16_t halfG, uint16_t realN)
+{
+    if (halfG == 0 || realN == 0) {
+        return;
+    }
+    const uint16_t fullExeSize = 64;
+    uint16_t loopTimes = CeilDivision(realN, fullExeSize) - 1;
+    uint16_t tailSize = realN % fullExeSize;
+    uint16_t realTailSize = tailSize == 0 ? fullExeSize : tailSize;
+    uint64_t dstLocalInt = dstTensor.GetPhyAddr();
+    uint64_t pLocalInt = pTensor.GetPhyAddr();
+    uint64_t dpLocalInt = dpTensor.GetPhyAddr();
+    uint64_t pLocalIntTail = pTensor.GetPhyAddr() + (uint64_t)loopTimes * fullExeSize * sizeof(T2);
+    uint64_t dpLocalIntTail = dpTensor.GetPhyAddr() + (uint64_t)loopTimes * fullExeSize * sizeof(T2);
+    SinkNegRowSumVF<T2, static_cast<uint16_t>(VECTOR_BASEN)>(
+        dstLocalInt, pLocalInt, dpLocalInt, pLocalIntTail, dpLocalIntTail, halfG, loopTimes, realTailSize);
+}
+
 #endif
