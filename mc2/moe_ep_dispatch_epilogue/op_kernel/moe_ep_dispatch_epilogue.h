@@ -237,8 +237,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
             Ceil((uint32_t)(SLOTS_TILE * paddedTopkElems_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
         uint32_t ubRecvCntBytes = Ceil((uint32_t)(epWorldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
         uint32_t ubHitCountRowI64Bytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
-        uint32_t ubStageMetaBytes = axisK_ * UB_ALIGN;
-        uint32_t ubStageWeightsBytes = axisK_ * UB_ALIGN;
+        uint32_t ubStageMetaBytes = axisK_ * UB_ALIGN * 2;
+        uint32_t ubStageWeightsBytes = axisK_ * UB_ALIGN * 2;
         uint32_t ubHitListBytes = Ceil((uint32_t)(axisK_ * HIT_ENTRY_SIZE * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
         uint32_t ubLocalCursorBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
 
@@ -476,6 +476,8 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
             for (uint32_t localSlot = 0; localSlot < tileCnt; ++localSlot) {
                 uint32_t metaBase = localSlot * paddedMetaElems_;
+                uint32_t slotBufId = localSlot & 1U;
+                uint32_t stageOff = slotBufId * axisK_ * ELEM_ALIGN;
                 uint32_t hitCnt = 0;
                 int32_t srcRankMeta = ubMeta_.GetValue(metaBase + META_TOPK_SECTION * axisKAlign_);
                 int32_t tokenIdxMeta = ubMeta_.GetValue(metaBase + META_TOPK_SECTION * axisKAlign_ + 1);
@@ -531,12 +533,12 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 
                     if constexpr (HasTopkWeights) {
                         float weights = ubMeta_.ReinterpretCast<float>().GetValue(metaBase + axisKAlign_ + topkIdx);
-                        ubStageWeights_.SetValue(i * ELEM_ALIGN, weights);
+                        ubStageWeights_.SetValue(stageOff + i * ELEM_ALIGN, weights);
                     }
-                    ubStageMeta_.SetValue(i * ELEM_ALIGN + META_SRC_RANK_OFFSET, srcRankMeta);
-                    ubStageMeta_.SetValue(i * ELEM_ALIGN + META_TOKEN_IDX_OFFSET, tokenIdxMeta);
-                    ubStageMeta_.SetValue(i * ELEM_ALIGN + META_TOPK_IDX_OFFSET, static_cast<int32_t>(topkIdx));
-                    ubStageMeta_.SetValue(i * ELEM_ALIGN + META_SLOT_IDX_OFFSET,
+                    ubStageMeta_.SetValue(stageOff + i * ELEM_ALIGN + META_SRC_RANK_OFFSET, srcRankMeta);
+                    ubStageMeta_.SetValue(stageOff + i * ELEM_ALIGN + META_TOKEN_IDX_OFFSET, tokenIdxMeta);
+                    ubStageMeta_.SetValue(stageOff + i * ELEM_ALIGN + META_TOPK_IDX_OFFSET, static_cast<int32_t>(topkIdx));
+                    ubStageMeta_.SetValue(stageOff + i * ELEM_ALIGN + META_SLOT_IDX_OFFSET,
                                           static_cast<int32_t>(slotStart + tileStart + localSlot));
                 }
                 tokenQueue_.FreeTensor(tokenOut);
@@ -545,10 +547,11 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                 for (uint32_t i = 0; i < hitCnt; i++) {
                     int64_t globalRow = ubHitList_.GetValue(i * HIT_ENTRY_SIZE + HIT_ROW_OFFSET);
                     if constexpr (HasTopkWeights) {
-                        DataCopyPad(recvTopkWeightsGm_[globalRow], ubStageWeights_[i * ELEM_ALIGN], weightOutParams);
+                        DataCopyPad(recvTopkWeightsGm_[globalRow], ubStageWeights_[stageOff + i * ELEM_ALIGN],
+                                    weightOutParams);
                     }
-                    DataCopyPad(recvSrcMetadataGm_[globalRow * RECV_META_FIELDS], ubStageMeta_[i * ELEM_ALIGN],
-                                metaOutParams);
+                    DataCopyPad(recvSrcMetadataGm_[globalRow * RECV_META_FIELDS],
+                                ubStageMeta_[stageOff + i * ELEM_ALIGN], metaOutParams);
                 }
                 SyncFunc<AscendC::HardEvent::MTE3_S>();
             }
