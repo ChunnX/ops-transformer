@@ -23,8 +23,6 @@ namespace Mc2Kernel {
 
 using namespace AscendC;
 
-constexpr uint32_t ARCH35_TILE_BYTES = 64U * 1024U;
-
 template <AscendC::HardEvent event>
 __aicore__ inline void EngramFetchGradSyncFunc()
 {
@@ -106,6 +104,7 @@ private:
     int32_t outputDtype_{0};
     uint64_t winSize_{0};
     uint64_t ubSize_{0};
+    uint32_t tileBytes_{0};
 
     uint64_t barrierFlagOffset_{0};
     uint64_t tokenWriteOffset_{0};
@@ -243,38 +242,48 @@ __aicore__ inline void EngramFetchGradArch35::ClearStatusFlags(GM_ADDR statusWin
 
 __aicore__ inline void EngramFetchGradArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len)
 {
-    LocalTensor<uint8_t> tmp0 = pingBuf_.Get<uint8_t>();
-    LocalTensor<uint8_t> tmp1 = pongBuf_.Get<uint8_t>();
+    if (len == 0) {
+        return;
+    }
+
     GlobalTensor<uint8_t> srcGm;
     GlobalTensor<uint8_t> dstGm;
     srcGm.SetGlobalBuffer((__gm__ uint8_t *)src);
     dstGm.SetGlobalBuffer((__gm__ uint8_t *)dst);
-    uint32_t tileLen = ARCH35_TILE_BYTES;
+
+    LocalTensor<uint8_t> buf0 = pingBuf_.Get<uint8_t>();
+    LocalTensor<uint8_t> buf1 = pongBuf_.Get<uint8_t>();
+
     uint64_t off = 0;
     uint32_t tileIdx = 0;
+
     while (off < len) {
-        uint64_t thisLen = (len - off > ARCH35_TILE_BYTES) ? tileLen : (len - off);
+        uint32_t thisLen = (len - off > tileBytes_) ? tileBytes_ : static_cast<uint32_t>(len - off);
         uint32_t bufIdx = tileIdx % 2U;
-        LocalTensor<uint8_t> tmp = (bufIdx == 0U) ? tmp0 : tmp1;
+        LocalTensor<uint8_t> &buf = (bufIdx == 0U) ? buf0 : buf1;
+
         if (tileIdx >= 2U) {
             AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[bufIdx]);
         }
-        DataCopyExtParams mte2Params{1U, static_cast<uint32_t>(thisLen), 0U, 0U, 0U};
+
+        DataCopyExtParams mte2Params{1U, thisLen, 0U, 0U, 0U};
         DataCopyPadExtParams<uint8_t> mte2Pad{false, 0, 0, 0};
-        DataCopyPad(tmp, srcGm[off], mte2Params, mte2Pad);
+        DataCopyPad(buf, srcGm[off], mte2Params, mte2Pad);
         AscendC::SetFlag<HardEvent::MTE2_MTE3>(ppEvtMte2ToMte3_[bufIdx]);
         AscendC::WaitFlag<HardEvent::MTE2_MTE3>(ppEvtMte2ToMte3_[bufIdx]);
-        DataCopyExtParams mte3Params{1U, static_cast<uint32_t>(thisLen), 0U, 0U, 0U};
-        DataCopyPad(dstGm[off], tmp, mte3Params);
+
+        DataCopyExtParams mte3Params{1U, thisLen, 0U, 0U, 0U};
+        DataCopyPad(dstGm[off], buf, mte3Params);
         AscendC::SetFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[bufIdx]);
+
         off += thisLen;
         tileIdx++;
     }
-    if (tileIdx >= 1U) {
-        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[(tileIdx - 1U) % 2U]);
-    }
+
+    uint32_t last = (tileIdx - 1U) % 2U;
+    AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[last]);
     if (tileIdx >= 2U) {
-        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[tileIdx % 2U]);
+        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[last ^ 1U]);
     }
 }
 
@@ -315,6 +324,7 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     inputDtype_ = tilingData->inputDtype;
     outputDtype_ = tilingData->outputDtype;
     ubSize_ = tilingData->ubSize;
+    tileBytes_ = tilingData->tileBytes;
 
     winSize_ = tilingData->commBufferSize;
 
@@ -349,8 +359,8 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     LocalTensor<uint8_t> hcommTensor = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor, HCOMM_INIT_SIZE);
 
-    tpipe_->InitBuffer(pingBuf_, ARCH35_TILE_BYTES);
-    tpipe_->InitBuffer(pongBuf_, ARCH35_TILE_BYTES);
+    tpipe_->InitBuffer(pingBuf_, tileBytes_);
+    tpipe_->InitBuffer(pongBuf_, tileBytes_);
     ppEvtMte2ToMte3_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
     ppEvtMte2ToMte3_[1] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
     ppEvtMte3ToMte2_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
@@ -394,11 +404,11 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     uint32_t bitmapBufSize = Ceil(Ceil(segLen, BITS_PER_BYTE), ALIGNED_LEN_256) * ALIGNED_LEN_256;
     tpipe_->InitBuffer(bitmapBuf_, bitmapBufSize);
 
-    uint64_t ubUsed = HCOMM_INIT_SIZE + 2U * ARCH35_TILE_BYTES + statusBufSize + statusBufSize +
+    uint64_t ubUsed = HCOMM_INIT_SIZE + 2U * tileBytes_ + statusBufSize + statusBufSize +
                       gradSumBufSize + indicesBufSize + bitmapBufSize;
     ascendc_assert(ubUsed <= ubSize_,
-                   "UB overflow: used=%llu, ubSize=%llu, rankId=%u, hiddenDim=%ld",
-                   ubUsed, ubSize_, rankId_, hiddenDim_);
+                   "UB overflow: used=%llu, ubSize=%llu, rankId=%u, hiddenDim=%ld, tileBytes=%u",
+                   ubUsed, ubSize_, rankId_, hiddenDim_, tileBytes_);
 }
 
 __aicore__ inline void EngramFetchGradArch35::UnsortGrad()

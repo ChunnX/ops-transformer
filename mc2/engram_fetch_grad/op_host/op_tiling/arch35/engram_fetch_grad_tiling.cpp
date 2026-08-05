@@ -87,6 +87,7 @@ static void PrintEngramFetchGradTilingData(const EngramFetchGradTilingData *tili
     OP_LOGD(nodeName, "commBufferSize is %ld", tilingData->commBufferSize);
     OP_LOGD(nodeName, "inputDtype is %d", tilingData->inputDtype);
     OP_LOGD(nodeName, "outputDtype is %d", tilingData->outputDtype);
+    OP_LOGD(nodeName, "tileBytes is %u", tilingData->tileBytes);
 }
 
 static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context)
@@ -538,11 +539,28 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     tilingData.ubSize = ubSize;
 
+    uint32_t numBlocks = ascendcPlatform.CalcTschNumBlocks(tilingData.aivNum, 0, tilingData.aivNum);
+    uint32_t statusBufSize = AlignTo(static_cast<int64_t>(rankSize) * 32, UB_ALIGN);
+    uint32_t gradSumBufSize = AlignTo(hiddenDim * sizeof(float), UB_ALIGN);
+    uint32_t indicesBufSize = std::max(4U * 1024U, statusBufSize);
+    uint32_t segLen = (static_cast<uint32_t>(tilingData.numEntriesPerRank) + numBlocks - 1U) / numBlocks;
+    uint32_t bitmapBufSize = AlignTo(AlignTo(static_cast<int64_t>(segLen), 8), 256);
+
+    uint64_t fixedBufSize = 512 + statusBufSize + statusBufSize + gradSumBufSize + indicesBufSize + bitmapBufSize;
+    uint64_t available = (ubSize > fixedBufSize) ? (ubSize - fixedBufSize) : 0;
+    uint32_t computedTile = static_cast<uint32_t>(available / 2);
+
+    uint32_t minTile = std::max(gradSumBufSize, static_cast<uint32_t>(AlignTo(hiddenBytes, UB_ALIGN)));
+    computedTile = std::max(computedTile, minTile);
+    computedTile = static_cast<uint32_t>(AlignTo(static_cast<int64_t>(computedTile), UB_ALIGN));
+    tilingData.tileBytes = computedTile;
+
     OP_LOGD(nodeName,
             "SetTilingData: numTokens=%ld, hiddenDim=%ld, numEntriesPerRank=%d, hiddenBytes=%ld, "
-            "ubSize=%lu, rankSize=%u, totalRecv=%ld, commBufferSize=%ld",
+            "ubSize=%lu, rankSize=%u, totalRecv=%ld, commBufferSize=%ld, tileBytes=%u",
             tilingData.numTokens, tilingData.hiddenDim, tilingData.numEntriesPerRank, tilingData.hiddenBytes,
-            tilingData.ubSize, tilingData.rankSize, tilingData.totalRecv, tilingData.commBufferSize);
+            tilingData.ubSize, tilingData.rankSize, tilingData.totalRecv, tilingData.commBufferSize,
+            tilingData.tileBytes);
     return ge::GRAPH_SUCCESS;
 }
 
