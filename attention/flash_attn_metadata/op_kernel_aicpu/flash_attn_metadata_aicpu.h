@@ -119,6 +119,7 @@ private:
     bool fagIsAllSame_ = false;
     bool fagIsInvalidCol_ = false;
     bool fagIsInvalidRow_ = false;
+    bool fagIsGradEnabled_ = false;
 
     // FAG method declarations
     void InitFagParams();

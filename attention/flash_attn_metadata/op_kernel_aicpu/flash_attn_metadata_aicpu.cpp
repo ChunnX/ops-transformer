@@ -44,13 +44,12 @@ uint32_t FlashAttnMetadataCpuKernel::Compute(CpuKernelContext &ctx)
     KERNEL_CHECK_FALSE(success, FA_KERNEL_STATUS_PARAM_INVALID, "Generate balance result failed!");
 
     // ===== FAG metadata start =====
-    // FAG (Flash Attn Grad) metadata: always executed, appended after FA data.
-    // InitFagParams initializes split parameters (s1Inner, s2Inner, sparseMode, etc.)
-    // DoFagSparse dispatches to Dense/TND/Sparse split scenarios
-    // GenFagMetadata serializes results to the tail of the metadata tensor
-    InitFagParams();
-    DoFagSparse();
-    GenFagMetadata(splitRes.sectionNum);
+    // FAG (Flash Attn Grad) metadata: only executed when is_grad_enabled=true.
+    if (fagIsGradEnabled_) {
+        InitFagParams();
+        DoFagSparse();
+        GenFagMetadata(splitRes.sectionNum);
+    }
     // ===== FAG metadata end =====
 
     return FA_KERNEL_STATUS_OK;
@@ -86,6 +85,7 @@ bool FlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "layout_q", layoutQ_);
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
     GetAttrValueOpt(ctx, "layout_out", layoutOut_);
+    GetAttrValueOpt(ctx, "is_grad_enabled", fagIsGradEnabled_);
 
     KERNEL_CHECK_FALSE(ParamsCheck(), false, "Params check failed");
     return ParamsInit();

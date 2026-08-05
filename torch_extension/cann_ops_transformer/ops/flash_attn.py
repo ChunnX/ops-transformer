@@ -49,7 +49,8 @@ class FlashAttenOpBuilder(OpBuilder):
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, Tensor? seqused_kv=None,"
             "int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_kv=None, "
             "int? mask_mode=None, int? win_left=None, int? win_right=None, "
-            "str? layout_q=None, str? layout_kv=None, str? layout_out=None) -> Tensor",
+            "str? layout_q=None, str? layout_kv=None, str? layout_out=None, "
+            "bool is_grad_enabled=False) -> Tensor",
             "flash_attn(Tensor q, Tensor k, Tensor v,"
             "Tensor?block_table=None, Tensor?cu_seqlens_q=None,"
             "Tensor?cu_seqlens_kv=None, Tensor?seqused_q=None,"
@@ -84,6 +85,7 @@ class FlashAttenOpBuilder(OpBuilder):
             layout_q: Optional[str] = None,
             layout_kv: Optional[str] = None,
             layout_out: Optional[str] = None,
+            is_grad_enabled: bool = False,
         ):
             batch_size = (_calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
                 if batch_size is None
@@ -180,6 +182,7 @@ def flash_attn_metadata(
     layout_q: Optional[str] = None,
     layout_kv: Optional[str] = None,
     layout_out: Optional[str] = None,
+    is_grad_enabled: bool = False,
 ):
     """
     Dispatcher implementation: NPU.
@@ -220,6 +223,7 @@ def flash_attn_metadata(
         layout_q,
         layout_kv,
         layout_out,
+        is_grad_enabled,
         output,
     )
 
@@ -245,6 +249,7 @@ def flash_attn_metadata_fallback(
     layout_q: Optional[str] = None,
     layout_kv: Optional[str] = None,
     layout_out: Optional[str] = None,
+    is_grad_enabled: bool = False,
 ):
     # 处理所有 tensor 都为 None 的情况
     return _flash_attn_metadata(
@@ -264,6 +269,7 @@ def flash_attn_metadata_fallback(
         layout_q=layout_q,
         layout_kv=layout_kv,
         layout_out=layout_out,
+        is_grad_enabled=is_grad_enabled,
     )
 
 

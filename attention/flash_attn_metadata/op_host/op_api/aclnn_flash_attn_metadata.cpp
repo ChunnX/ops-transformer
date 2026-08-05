@@ -39,13 +39,13 @@ aclnnStatus aclnnFlashAttnMetadataGetWorkspaceSize(
     const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
     int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
     int64_t maskMode, int64_t winLeft, int64_t winRight,
-    const char *layoutQ, const char *layoutKv, const char *layoutOut,
+    const char *layoutQ, const char *layoutKv, const char *layoutOut, bool isGradEnabled,
     const aclTensor *metaData, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnFlashAttnMetadata,
                    DFX_IN(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional, batchSize,
                           maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, maskMode, winLeft, winRight, layoutQ,
-                          layoutKv, layoutOut),
+                          layoutKv, layoutOut, isGradEnabled),
                    DFX_OUT(metaData));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -63,8 +63,8 @@ aclnnStatus aclnnFlashAttnMetadataGetWorkspaceSize(
 
     auto output = l0op::FlashAttnMetadata(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
                                           batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, maskMode,
-                                          winLeft, winRight, layoutQ, layoutKv, layoutOut, socVersion, aicCoreNum,
-                                          aivCoreNum, metaData, uniqueExecutor.get());
+                                          winLeft, winRight, layoutQ, layoutKv, layoutOut, isGradEnabled,
+                                          socVersion, aicCoreNum, aivCoreNum, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = 0;

@@ -205,6 +205,7 @@ int main() {
         numHeads, numKeyValueHeads,
         headDim, sparseMode, preTokens, nextTokens,
         "BSND", "BSND", "BSND",
+        false,  // is_grad_enabled
         metadataTensor,
         &workspaceSize, &executor);
     if (ret != ACL_SUCCESS) {

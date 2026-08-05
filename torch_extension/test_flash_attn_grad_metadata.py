@@ -410,6 +410,7 @@ class TestFagMetadata:
             layout_q=layout_q,
             layout_kv=layout_kv,
             layout_out=layout_out,
+            is_grad_enabled=True,
         )
         assert metadata is not None, "metadata tensor is None"
         assert metadata.dtype == torch.int32, f"metadata dtype={metadata.dtype}, expected int32"
@@ -487,6 +488,7 @@ class TestFagMetadata:
             num_heads_q=8, num_heads_kv=4, head_dim=128,
             batch_size=4, max_seqlen_q=128, max_seqlen_kv=128,
             mask_mode=0, layout_q="BSND",
+            is_grad_enabled=True,
         )
         meta = metadata.cpu().tolist()
         fag_offset = meta[HEAD_FAG_START_OFFSET_INDEX]
@@ -501,6 +503,7 @@ class TestFagMetadata:
             num_heads_q=8, num_heads_kv=4, head_dim=128,
             batch_size=4, max_seqlen_q=128, max_seqlen_kv=128,
             mask_mode=0, layout_q="BSND",
+            is_grad_enabled=True,
         )
         actual = _extract_fag_from_metadata(metadata)
         assert actual is not None
@@ -511,6 +514,7 @@ class TestFagMetadata:
             num_heads_q=8, num_heads_kv=4, head_dim=128,
             batch_size=4, max_seqlen_q=128, max_seqlen_kv=128,
             mask_mode=0, layout_q="BSND",
+            is_grad_enabled=True,
         )
         actual = _extract_fag_from_metadata(metadata)
         assert actual is not None
@@ -523,6 +527,7 @@ class TestFagMetadata:
             num_heads_q=8, num_heads_kv=4, head_dim=128,
             batch_size=4, max_seqlen_q=128, max_seqlen_kv=128,
             mask_mode=0, layout_q="BSND",
+            is_grad_enabled=True,
         )
         actual = _extract_fag_from_metadata(metadata)
         assert actual is not None
