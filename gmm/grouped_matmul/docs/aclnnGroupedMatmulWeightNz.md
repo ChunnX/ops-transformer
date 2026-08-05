@@ -24,7 +24,7 @@
 
       - 输入的weight会被接口按AI处理器亲和数据排布格式（FRACTAL_NZ）解析。
       - 新增参数quantGroupSize，整数型参数，代表分组量化（per-group）的分组大小，不涉及分组量化时，填0。
-      - <term>Ascend 950PR/Ascend 950DT</term>：暂不支持quantGroupSize参数。
+      - <term>Ascend 950PR/Ascend 950DT</term>：A8W4伪量化的对称per-group场景quantGroupSize填256，非对称per-channel场景填0；其余场景暂不支持该参数。
 
   - **计算公式**：
 
@@ -359,7 +359,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>quantGroupSize</td>
     <td>输入</td>
     <td>代表分组量化（per-group）的分组大小。</td>
-    <td>不涉及分组量化时，填0。<term>Ascend 950PR/Ascend 950DT</term>暂不支持。</td>
+    <td>不涉及分组量化时，填0。<term>Ascend 950PR/Ascend 950DT</term>的A8W4伪量化对称per-group场景填256，非对称per-channel场景填0；其余场景暂不支持。</td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -552,7 +552,6 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         - 仅支持count模式（算子不会检查groupListType的值），k要求为quantGroupSize的整数倍，且要求k <= 18432。其中quantGroupSize为k方向上pergroup量化长度，当前支持quantGroupSize=256。
         - scale为pergroup与perchannel离线融合后的结果，shape要求为$[E, quantGroupNum, N]$，其中$quantGroupNum=k \div quantGroupSize$。
         - Bias为计算过程中离线计算的辅助结果，值要求为$8\times weight \times scale$，并在第1维累加，shape要求为$[E, N]$。
-        - 要求N为8的整数倍。
 
       - 非对称量化场景：
 
@@ -562,7 +561,6 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         - scale为pergroup与perchannel离线融合后的结果，shape要求为$[E, 1, N]$。
         - offsetOptional不为空。非对称量化offsetOptional为计算过程中离线计算辅助结果，即$antiquantOffset \times scale$，shape要求为$[E, 1, N]$，dtype为FLOAT32。
         - Bias为计算过程中离线计算的辅助结果，值要求为$8\times weight \times scale$，并在第1维累加，shape要求为$[E, N]$。
-        - 要求N为8的整数倍。
 
     - 伪量化场景下，若weight的类型为INT8，仅支持perchannel模式；若weight的类型为INT4，对称量化支持perchannel和pergroup两种模式。若为pergroup，pergroup数G或$G_i$必须要能整除对应的$k_i$。若weight为多tensor，定义pergroup长度$s_i = k_i / G_i$，要求所有$s_i(i=1,2,...g)$都相等。非对称量化支持perchannel模式。
 
@@ -588,7 +586,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     - groupListType：支持取值0、1、2。
       - 当groupListType为0时，groupListOptional必须为非负单调非递减数列；
       - 当groupListType为1时，groupListOptional必须为非负数列。
-      - 仅全量化且groupType为0场景下支持groupListType为2，此时要求groupListOptional中数值为非负数列，shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]，其中groupSize为分组轴上每组大小，此时groupedSize为零的组置于groupList末尾，非零组被前置，详见groupListOptional配置示例。
+      - 全量化或A8W4伪量化且groupType为0场景下支持groupListType为2，此时要求groupListOptional中数值为非负数列，shape为[E, 2]，E表示Group大小，数据排布为[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]，其中groupSize为分组轴上每组大小，此时groupedSize为零的组置于groupList末尾，非零组被前置，详见groupListOptional配置示例。
     - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值2147483647。
     - actType（int64\_t，计算输入）：整数型参数，代表激活函数类型，取值范围为0-5。
       - 在伪量化和非量化场景下，actType仅支持0。
@@ -605,6 +603,30 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       |-1/0   |FLOAT16     |FLOAT16     |FLOAT16/FLOAT32/null    | FLOAT16|
 
   - 伪量化场景支持的数据类型为：
+    **A8W4场景：**
+
+      **数据类型要求：**
+
+      | x | weight | bias | scale | offset | antiquantScale | antiquantOffset | perTokenScale | groupList | activationInput | activationQuantScale | activationQuantOffset | out |
+      |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+      | INT8 | INT4 (NZ) | FLOAT | UINT64 | null | null | null | FLOAT | INT64 | null | null | null | BFLOAT16 |
+      | INT8 | INT4 (NZ) | FLOAT | UINT64 | FLOAT/null | null | null | FLOAT | INT64 | null | null | null | FLOAT16 |
+
+      **约束说明：**
+
+      除公共约束外，A8W4场景其余约束如下：
+
+      - 仅支持groupType=0、splitItem=2/3、actType=0，groupListType支持0（cumsum）、1（count）和2（sparse）。
+      - x、weight、scaleOptional、biasOptional、perTokenScaleOptional和out均为长度1的TensorList；x和weight均不支持转置。
+      - x仅支持2维Tensor，shape为`[M,K]`；weight默认支持3维Tensor，shape为`[E,K,N]`；perTokenScaleOptional的shape为`[M]`。
+      - biasOptional为必选输入，数据类型为FLOAT32，shape为`[E,N]`。该输入是INT4权重离线转换的校正量，按`8 × weight × scale`沿K轴规约得到。
+      - 对称per-group场景：offsetOptional为空，scaleOptional为UINT64且shape为`[E,K/256,N]`，quantGroupSize填256，K不大于18432且必须是256的整数倍，out支持FLOAT16或BFLOAT16。
+      - 非对称per-channel场景：offsetOptional为FLOAT32且shape为`[E,1,N]`，scaleOptional为UINT64且shape为`[E,1,N]`，quantGroupSize填0，out仅支持FLOAT16。
+      - antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional和activationFeatureOutOptional必须为空。
+      - 各专家预期处理的token数大于N/4时，即tuningConfigOptional中第一个值大于N/4时，通常可获得更好的性能，此时显存占用会增加`E × K × N`字节。
+      - tuningConfigOptional数组第二个元素可置1，以开启A8W4 per-channel场景的weight特殊格式模板。该模板要求weight的shape为`[E,N,K]`，再进行ND2NZ转换后作为算子输入，推荐用于K不小于2048且N不小于2048的场景。
+
+    **其他伪量化场景：**
     - 以下入参为空：offsetOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
     - 不为空的参数支持的数据类型组合要满足下表
 

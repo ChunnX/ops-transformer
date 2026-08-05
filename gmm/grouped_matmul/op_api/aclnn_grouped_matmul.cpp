@@ -81,12 +81,12 @@ static constexpr uint64_t B4_PER_B32 = 8UL;
 static constexpr size_t WEIGHT_DIM_A8W4 = 3UL;
 static constexpr size_t OFFSET_DIM_A8W4 = 3UL;
 static constexpr size_t BIAS_DIM_A8W4 = 2UL;
-static constexpr size_t WEIGHT_DIM_S8S4 = 3UL;
-static constexpr size_t OFFSET_DIM_S8S4 = 3UL;
-static constexpr size_t BIAS_DIM_S8S4 = 2UL;
-static constexpr int64_t MAX_K_S8S4_PER_GROUP = 18432L;
+static constexpr size_t SCALE_GROUP_DIM_INDEX = 1UL;
+static constexpr int64_t GROUP_LIST_CUMSUM = 0L;
+static constexpr int64_t GROUP_LIST_COUNT = 1L;
 static constexpr int64_t QUANT_GROUP_SIZE_S8S4 = 256L;
-static constexpr int64_t N_ALIGN_S8S4 = 8L;
+static constexpr int64_t N_ALIGN_A4W4 = 8L;
+static constexpr int64_t QUANT_GROUP_SIZE_A4W4 = 2L;
 static constexpr size_t PER_CHANNEL_SCALE_DIM = 2UL;
 static constexpr size_t PER_GROUP_SCALE_DIM = 3UL;
 static constexpr size_t DIMS_THREE_FOR_GMM = 3UL;
@@ -108,17 +108,6 @@ static bool IsFormatNZ(const aclTensor *tensor)
 {
     return ge::GetPrimaryFormat(tensor->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ ||
            IsFormatNZWithC0(tensor);
-}
-
-static bool IsFormatND(const aclTensor *tensor)
-{
-    return ge::GetPrimaryFormat(tensor->GetStorageFormat()) == op::Format::FORMAT_ND;
-}
-
-static bool IsBaseFormat(const aclTensor *tensor)
-{
-    const auto format = tensor->GetStorageFormat();
-    return format < op::Format::FORMAT_END && !op::IsPrivateFormat(format);
 }
 
 static aclnnStatus SetSpecialNZTensorToNormalNZFormat(const aclTensorList *&tensorListInput)
@@ -202,6 +191,10 @@ static void UnpackB32ToB4(const aclTensorList *&tensorListB32, const std::string
 
 bool IsQuant(const DataType &xDtype, const DataType &weightDtype)
 {
+    // S8S4 is a pseudo-quantization data flow even though both dtypes occupy one byte in GE.
+    if (xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT4) {
+        return false;
+    }
     if (xDtype == DataType::DT_FLOAT4_E2M1 || xDtype == DataType::DT_INT4 || xDtype == DataType::DT_FLOAT4_E1M2) {
         return true;
     }
@@ -210,23 +203,8 @@ bool IsQuant(const DataType &xDtype, const DataType &weightDtype)
 
 bool IsWeightQuant(const DataType &xDtype, const DataType &weightDtype)
 {
-    return ge::GetSizeByDataType(xDtype) != ge::GetSizeByDataType(weightDtype);
-}
-
-bool IsS8S4FixedTemplateDAV3510(const gmm::GroupedMatmulParams &gmmParams)
-{
-    const bool supportedApi = gmmParams.apiVersion == gmm::GMMApiVersion::V5 ||
-                              gmmParams.apiVersion == gmm::GMMApiVersion::WeightNz;
-    if (!supportedApi || op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510 ||
-        gmmParams.x == nullptr || gmmParams.x->Size() == 0 || (*gmmParams.x)[0] == nullptr ||
-        gmmParams.weight == nullptr || gmmParams.weight->Size() == 0 || (*gmmParams.weight)[0] == nullptr ||
-        gmmParams.scaleOptional == nullptr || gmmParams.scaleOptional->Size() != 1 ||
-        (*gmmParams.scaleOptional)[0] == nullptr) {
-        return false;
-    }
-    return (*gmmParams.x)[0]->GetDataType() == DataType::DT_INT8 &&
-           (*gmmParams.weight)[0]->GetDataType() == DataType::DT_INT4 &&
-           (*gmmParams.scaleOptional)[0]->GetDataType() == DataType::DT_UINT64;
+    return (xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT4) ||
+           ge::GetSizeByDataType(xDtype) != ge::GetSizeByDataType(weightDtype);
 }
 
 const char *GetGmmScenarioName(const DataType &xDtype, const DataType &weightDtype)
@@ -1184,11 +1162,12 @@ static aclnnStatus CheckA8W4AsymQuantParamsRelationship(const gmm::GroupedMatmul
                "Constraint:[shape should be (%ld, 1, %ld)].",
                opName, "scale", scaleShape.GetDim(0), scaleShape.GetDim(1), scaleShape.GetDim(WEIGHT_DIM_A8W4 - 1), e,
                n);
-    CHECK_COND(perTokenScaleDim == 1 && perTokenScaleShape.GetDim(0) == m,
+    CHECK_COND(perTokenScaleDim == BIAS_DIM_A8W4 && perTokenScaleShape.GetDim(0) == m &&
+                   perTokenScaleShape.GetDim(BIAS_DIM_A8W4 - 1) == 1,
                ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when S8S4 asymmetric quant, the shape of [%s] is not supported. "
-               "Constraint:[shape should be (%ld)].",
-               opName, "perTokenScale", m);
+               "In op [%s], when A8W4 asymmetric quant, the shape of [%s] is not supported, got [(%ld, %ld)]. "
+               "Constraint:[shape should be (%ld, 1)].",
+               opName, "perTokenScale", perTokenScaleShape.GetDim(0), perTokenScaleShape.GetDim(1), m);
     return ACLNN_SUCCESS;
 }
 static aclnnStatus CheckA8W4AsymQuantParams(const gmm::GroupedMatmulParams &gmmParams, const char *opName)
@@ -1228,9 +1207,19 @@ static aclnnStatus CheckA8W4AsymQuantParams(const gmm::GroupedMatmulParams &gmmP
     return ACLNN_SUCCESS;
 }
 
-static bool IsS8S4AsymmetricQuant(const gmm::GroupedMatmulParams &gmmParams)
+static bool IsA8W4AsymmetricQuant(const gmm::GroupedMatmulParams &gmmParams)
 {
-    return gmmParams.offsetOptional != nullptr;
+    if (gmmParams.offsetOptional == nullptr || gmmParams.offsetOptional->Size() == 0 ||
+        (*gmmParams.offsetOptional)[0] == nullptr) {
+        return false;
+    }
+    const op::Shape &offsetShape = (*gmmParams.offsetOptional)[0]->GetViewShape();
+    if (offsetShape.GetDimNum() != OFFSET_DIM_A8W4) {
+        return false;
+    }
+    const op::Shape &weightShape = (*gmmParams.weight)[0]->GetViewShape();
+    return offsetShape.GetDim(0) == weightShape.GetDim(0) && offsetShape.GetDim(1) == 1 &&
+           offsetShape.GetDim(OFFSET_DIM_A8W4 - 1) == weightShape.GetDim(WEIGHT_DIM_A8W4 - 1);
 }
 
 static aclnnStatus CheckA8W4SymmQuantParamsRelationship(const gmm::GroupedMatmulParams &gmmParams)
@@ -1317,136 +1306,12 @@ static aclnnStatus CheckA8W4QuantParams(const gmm::GroupedMatmulParams &gmmParam
                 "1(count)].",
                 opName, "groupListType", gmmParams.groupListType);
     }
-    if (!IsS8S4AsymmetricQuant(gmmParams)) {
+    if (!IsA8W4AsymmetricQuant(gmmParams)) {
         CheckA8W4SymmQuantParams(gmmParams);
         return ACLNN_SUCCESS;
     }
     CHECK_COND(CheckA8W4AsymQuantParams(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], when A8W4 asymmetric quant, [%s] check failed.", opName, "parameter");
-    return ACLNN_SUCCESS;
-}
-
-static aclnnStatus CheckS8S4FixedTemplateTensorList(const aclTensorList *tensorList, const char *name,
-                                                    const char *opName)
-{
-    CHECK_COND(tensorList != nullptr && tensorList->Size() == 1 && (*tensorList)[0] != nullptr,
-               ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when S8S4 quant, [%s] must be a length-1 TensorList.", opName, name);
-    return ACLNN_SUCCESS;
-}
-
-static aclnnStatus CheckS8S4FixedTemplateDAV3510(const gmm::GroupedMatmulParams &gmmParams, const char *opName)
-{
-    CHECK_RET(CheckS8S4FixedTemplateTensorList(gmmParams.x, "x", opName) == ACLNN_SUCCESS,
-              ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckS8S4FixedTemplateTensorList(gmmParams.weight, "weight", opName) == ACLNN_SUCCESS,
-              ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckS8S4FixedTemplateTensorList(gmmParams.biasOptional, "bias", opName) == ACLNN_SUCCESS,
-              ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckS8S4FixedTemplateTensorList(gmmParams.scaleOptional, "scale", opName) == ACLNN_SUCCESS,
-              ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckS8S4FixedTemplateTensorList(gmmParams.perTokenScaleOptional, "perTokenScale", opName) ==
-                  ACLNN_SUCCESS,
-              ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckS8S4FixedTemplateTensorList(gmmParams.y, "out", opName) == ACLNN_SUCCESS,
-              ACLNN_ERR_PARAM_INVALID);
-    if (gmmParams.offsetOptional != nullptr) {
-        CHECK_RET(CheckS8S4FixedTemplateTensorList(gmmParams.offsetOptional, "offset", opName) == ACLNN_SUCCESS,
-                  ACLNN_ERR_PARAM_INVALID);
-    }
-
-    CHECK_COND(gmmParams.groupType == gmm::SPLIT_M && (gmmParams.splitItem == X_SEPARATED ||
-                   gmmParams.splitItem == NO_SEPARATED),
-               ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when S8S4 quant, groupType must be 0 and splitItem must be 2 or 3.", opName);
-    CHECK_COND(gmmParams.groupListType == 1, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when S8S4 quant, groupListType must be 1(count).", opName);
-    CHECK_COND(gmmParams.activeType == GMMActType::GMM_ACT_TYPE_NONE &&
-                   !gmmParams.transposeX && !gmmParams.transposeWeight,
-               ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when S8S4 quant, actType must be 0, and x and weight cannot be transposed.", opName);
-    CHECK_COND(gmmParams.antiquantScaleOptional == nullptr && gmmParams.antiquantOffsetOptional == nullptr,
-               ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when S8S4 quant, antiquantScale and antiquantOffset must be empty.", opName);
-
-    const aclTensor *x = (*gmmParams.x)[0];
-    const aclTensor *weight = (*gmmParams.weight)[0];
-    const aclTensor *bias = (*gmmParams.biasOptional)[0];
-    const aclTensor *scale = (*gmmParams.scaleOptional)[0];
-    const aclTensor *perTokenScale = (*gmmParams.perTokenScaleOptional)[0];
-    const aclTensor *out = (*gmmParams.y)[0];
-    CHECK_COND(IsFormatND(x) && IsFormatND(out),
-               ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when S8S4 quant, x and out must be in ND format.", opName);
-    const bool weightIsNz =
-        ge::GetPrimaryFormat(weight->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ;
-    CHECK_COND(IsBaseFormat(weight) || weightIsNz, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when S8S4 quant, weight must use a base format or standard FRACTAL_NZ format.",
-               opName);
-    CHECK_COND(gmmParams.apiVersion != gmm::GMMApiVersion::WeightNz || weightIsNz, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when S8S4 quant through the WeightNz interface, weight must be in FRACTAL_NZ format.",
-               opName);
-
-    const op::Shape &xShape = x->GetViewShape();
-    const op::Shape &weightShape = weight->GetViewShape();
-    const op::Shape &outShape = out->GetViewShape();
-    CHECK_COND(xShape.GetDimNum() == 2 && weightShape.GetDimNum() == WEIGHT_DIM_S8S4 &&
-                   outShape.GetDimNum() == 2,
-               ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when S8S4 quant, the shapes of x, weight and out must be [M,K], [E,K,N] and [M,N].",
-               opName);
-
-    bool specialWeightFormat = false;
-    if (gmmParams.tuningConfigOptional != nullptr && gmmParams.tuningConfigOptional->Size() > 1) {
-        specialWeightFormat = (*gmmParams.tuningConfigOptional)[1] == 1;
-    }
-    CHECK_COND(!specialWeightFormat || weightIsNz, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], tuningConfig[1]=1 requires FRACTAL_NZ weight.", opName);
-    const int64_t e = weightShape.GetDim(0);
-    const int64_t k = weightShape.GetDim(specialWeightFormat ? 2 : 1);
-    const int64_t n = weightShape.GetDim(specialWeightFormat ? 1 : 2);
-    const int64_t m = xShape.GetDim(0);
-    CHECK_COND(m > 0 && e > 0 && k > 0 && n > 0 && n % N_ALIGN_S8S4 == 0 &&
-                   xShape.GetDim(1) == k && outShape.GetDim(0) == m && outShape.GetDim(1) == n,
-               ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when S8S4 quant, M, E, K and N must be positive and compatible, and N must be "
-               "divisible by 8.", opName);
-
-    const op::Shape &biasShape = bias->GetViewShape();
-    const op::Shape &scaleShape = scale->GetViewShape();
-    const op::Shape &perTokenScaleShape = perTokenScale->GetViewShape();
-    CHECK_COND(bias->GetDataType() == DataType::DT_FLOAT && biasShape.GetDimNum() == BIAS_DIM_S8S4 &&
-                   biasShape.GetDim(0) == e && biasShape.GetDim(1) == n,
-               ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when S8S4 quant, bias must have dtype FLOAT and shape [E,N].", opName);
-    CHECK_COND(perTokenScale->GetDataType() == DataType::DT_FLOAT &&
-                   perTokenScaleShape.GetDimNum() == 1 && perTokenScaleShape.GetDim(0) == m,
-               ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when S8S4 quant, perTokenScale must have dtype FLOAT and shape [M].", opName);
-    CHECK_COND(scale->GetDataType() == DataType::DT_UINT64 && scaleShape.GetDimNum() == WEIGHT_DIM_S8S4 &&
-                   scaleShape.GetDim(0) == e && scaleShape.GetDim(2) == n,
-               ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when S8S4 quant, scale must have dtype UINT64 and shape [E,Q,N].", opName);
-
-    const bool hasOffset = IsS8S4AsymmetricQuant(gmmParams);
-    if (hasOffset) {
-        const aclTensor *offset = (*gmmParams.offsetOptional)[0];
-        const op::Shape &offsetShape = offset->GetViewShape();
-        CHECK_COND(offset->GetDataType() == DataType::DT_FLOAT &&
-                       offsetShape.GetDimNum() == OFFSET_DIM_S8S4 && offsetShape.GetDim(0) == e &&
-                       offsetShape.GetDim(1) == 1 && offsetShape.GetDim(2) == n &&
-                       scaleShape.GetDim(1) == 1 && out->GetDataType() == DataType::DT_FLOAT16,
-                   ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], when asymmetric S8S4 quant, offset must have dtype FLOAT and shape [E,1,N], "
-                   "scale must have dtype UINT64 and shape [E,1,N], and out must have dtype FLOAT16.", opName);
-    } else {
-        CHECK_COND(k <= MAX_K_S8S4_PER_GROUP && k % QUANT_GROUP_SIZE_S8S4 == 0 &&
-                       scaleShape.GetDim(1) == k / QUANT_GROUP_SIZE_S8S4 &&
-                       (out->GetDataType() == DataType::DT_FLOAT16 || out->GetDataType() == DataType::DT_BF16),
-                   ACLNN_ERR_PARAM_INVALID,
-                   "In op [%s], when per-group S8S4 quant, K must not exceed 18432 and must be divisible by 256, "
-                   "scale must have shape [E,K/256,N], and out must have dtype FLOAT16 or BFLOAT16.", opName);
-    }
     return ACLNN_SUCCESS;
 }
 
@@ -1459,20 +1324,20 @@ static aclnnStatus CheckA4W4ParamsShape(const gmm::GroupedMatmulParams &gmmParam
                "dim should be 2 for per-channel or 3 for per-group].",
                opName, "scale", scaleDimNum);
     int64_t n = scaleShape.GetDim(scaleDimNum - 1);
-    CHECK_COND((n % static_cast<int64_t>(8)) == 0, ACLNN_ERR_PARAM_INVALID, // 8 : A4W4 N need 8 agligned
+    CHECK_COND((n % N_ALIGN_A4W4) == 0, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], when A4W4 quant, the shape of [%s] is not supported, got [n %ld]. Constraint:[n axis "
                "should align with 8].",
                opName, "scale", n);
     if (scaleDimNum == PER_GROUP_SCALE_DIM) {
         const op::Shape &inputShape = (*gmmParams.x)[0]->GetViewShape();
         int64_t k = inputShape.GetDim(1);
-        int64_t kGroupNum = scaleShape.GetDim(1); // 1: pergroupe scale shape is [e, G, n]
+        int64_t kGroupNum = scaleShape.GetDim(SCALE_GROUP_DIM_INDEX);
         CHECK_COND(kGroupNum != 0 && (k % kGroupNum) == 0, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when per-group A4W4 quant, the tensor shapes of [%s...] are mismatched, the reason is: "
                    "[scale shape is [e, G, n], x shape [m, k] requires k divisible by G, but k is %ld and G is %ld].",
                    opName, "x, scale", k, kGroupNum);
         int64_t pergroupNum = static_cast<int64_t>(k / kGroupNum);
-        CHECK_COND((pergroupNum % 2) == 0, ACLNN_ERR_PARAM_INVALID, // 2: pergroupNum should be even number
+        CHECK_COND((pergroupNum % QUANT_GROUP_SIZE_A4W4) == 0, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when per-group A4W4 quant, the tensor shapes of [%s...] are mismatched, the reason is: "
                    "[scale shape is [e, G, n], per-group num k/G should be divisible by 2, but got %ld].",
                    opName, "x, scale", pergroupNum);
@@ -1483,8 +1348,8 @@ static aclnnStatus CheckA4W4ParamsShape(const gmm::GroupedMatmulParams &gmmParam
 
 static aclnnStatus CheckA4W4QuantParams(const gmm::GroupedMatmulParams &gmmParams, const char *opName)
 {
-    // 0: cumsum, 1: count, 2: sparse.
-    CHECK_COND(gmmParams.groupListType == 0 || gmmParams.groupListType == 1 || gmmParams.groupListType == 2,
+    CHECK_COND(gmmParams.groupListType == GROUP_LIST_CUMSUM || gmmParams.groupListType == GROUP_LIST_COUNT ||
+                   gmmParams.groupListType == gmm::GROUP_LIST_SPARSE_M,
                ACLNN_ERR_PARAM_INVALID,
                "In op [%s], when A4W4 quant, [%s] is not supported, got [%ld]. Constraint:[groupListType should be "
                "0(cumsum), 1(count), or 2(sparse)].",
@@ -1705,12 +1570,6 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
                ACLNN_ERR_PARAM_INVALID, "In op [%s], when %s, ASCEND310P scenario check failed.", opName,
                GetGmmScenarioName(gmmParams.xDtype, weightDtype));
 
-    if (IsS8S4FixedTemplateDAV3510(gmmParams)) {
-        // This route must precede the legacy DAV3510 quant/weight-quant classification. V5 accepts
-        // ND/NZ weight, while WeightNz is the explicit NZ entry. Host tiling and kernel selection
-        // remain data-driven and are shared by both APIs.
-        return CheckS8S4FixedTemplateDAV3510(gmmParams, opName);
-    }
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         if (IsQuant(gmmParams.xDtype, weightDtype)) {
             CHECK_COND(isNoActivation || CheckIsEnabledActive(gmmParams), ACLNN_ERR_PARAM_INVALID,
@@ -1740,7 +1599,6 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
         return ACLNN_SUCCESS;
     }
     if (gmmParams.xDtype == DataType::DT_INT4 && weightDtype == DataType::DT_INT4) {
-        // A4W4量化kernel未实现actType激活分支，先提示用户但保持兼容不拦截。
         LogUnsupportedQuantActivationWarning(gmmParams, weightDtype, opName);
         CHECK_COND(CheckA4W4QuantParams(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when A4W4 quant, parameter check failed.", opName);
@@ -2596,7 +2454,7 @@ static aclnnStatus TransWeightToNz(gmm::GroupedMatmulParams &gmmParams, aclOpExe
                 break;
             }
             if (!(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-                  IsQuant(xDtype, weight->GetDataType()) &&
+                  (IsQuant(xDtype, weight->GetDataType()) || IsWeightQuant(xDtype, weight->GetDataType())) &&
                   (*gmmParams.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ)) {
                 aclnnStatus ret = TransWeightToNzCheckAlign(gmmParams, weight, xDtype);
                 CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -2853,9 +2711,8 @@ static aclnnStatus SetTransposedTensorListContiguous(gmm::GroupedMatmulParams &p
         params.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
         CHECK_RET(params.weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-            ((IsQuant(params.xDtype, weightDtype) &&
-              (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
-             (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(params.xDtype, weightDtype)))) {
+            ((IsQuant(params.xDtype, weightDtype) || IsWeightQuant(params.xDtype, weightDtype)) &&
+             (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ)) {
             for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
                 (*params.weight)[idx]->SetStorageShape(nZShapes[idx]);
             }
@@ -2873,8 +2730,8 @@ static aclnnStatus ParamsDataContiguous(gmm::GroupedMatmulParams &params, aclOpE
     DataType xDtype = (*params.x)[0]->GetDataType();
     DataType weightDtype = (*params.weight)[0]->GetDataType();
     if (!(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-          ((IsQuant(xDtype, weightDtype) && (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
-           (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(xDtype, weightDtype))))) {
+          ((IsQuant(xDtype, weightDtype) || IsWeightQuant(xDtype, weightDtype)) &&
+           (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ))) {
         CHECK_COND(DataContiguous(params.weight, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "Contiguous weight failed."); // make w contiguous
     }
@@ -3025,8 +2882,8 @@ static aclnnStatus SetStorageShape(gmm::GroupedMatmulParams &params, const std::
     DataType xDtype = (*params.x)[0]->GetDataType();
     DataType weightDtype = (*params.weight)[0]->GetDataType();
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-        ((IsQuant(xDtype, weightDtype) && (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
-         (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(xDtype, weightDtype)))) {
+        ((IsQuant(xDtype, weightDtype) || IsWeightQuant(xDtype, weightDtype)) &&
+         (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ)) {
         CHECK_COND(wqbmmNzShapes.size() == (*params.weight).Size(), ACLNN_ERR_PARAM_INVALID,
                    "wqbmmNzShapes size[%zu] must be equal to weight size[%lu].", wqbmmNzShapes.size(),
                    (*params.weight).Size());
@@ -3338,14 +3195,14 @@ aclnnStatus aclnnGroupedMatmulWeightNzGetWorkspaceSize(
             UnpackB32ToB4(x, "x", true);
         }
     }
-    const bool isS8S4FixedTemplate =
+    const bool isS8S4PseudoQuant =
         op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
         x->Size() == 1 && (*x)[0] != nullptr && (*x)[0]->GetDataType() == DataType::DT_INT8 &&
         weight->Size() == 1 && (*weight)[0] != nullptr && (*weight)[0]->GetDataType() == DataType::DT_INT4 &&
         scaleOptional != nullptr && scaleOptional->Size() == 1 && (*scaleOptional)[0] != nullptr &&
         ((*scaleOptional)[0]->GetDataType() == DataType::DT_UINT64 ||
          (*scaleOptional)[0]->GetDataType() == DataType::DT_INT64);
-    if (isS8S4FixedTemplate) {
+    if (isS8S4PseudoQuant) {
         bool hasOffset = offsetOptional != nullptr && offsetOptional->Size() == 1 &&
                          (*offsetOptional)[0] != nullptr;
         if (hasOffset) {

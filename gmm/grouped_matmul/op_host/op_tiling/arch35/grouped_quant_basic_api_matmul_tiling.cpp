@@ -14,7 +14,7 @@
  */
 #include "grouped_quant_basic_api_matmul_tiling.h"
 #include <limits>
-#include "blaze/gemm/utils/s8s4_fixed_tile_resource.h"
+#include "gemm/utils/s8s4_fixed_tile_resource.h"
 #include "../../../op_kernel/arch35/weight_quant_basic_block/weight_quant_tiling_key.h"
 using namespace Ops::Transformer::OpTiling;
 using namespace GroupedMatmul;
@@ -375,6 +375,7 @@ bool GroupedS8S4BasicApiTiling::AnalyzeAttrs()
     const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
     const bool *transposeXPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_X);
     const int64_t *groupTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPTYPE);
+    const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE);
     const int64_t *actTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_ACT_TYPE);
     const auto tuningConfigPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_INDEX_TUNING_CONFIG);
 
@@ -384,18 +385,26 @@ bool GroupedS8S4BasicApiTiling::AnalyzeAttrs()
     inputParams_.groupType =
         groupTypePtr != nullptr ? static_cast<int8_t>(*groupTypePtr) : inputParams_.groupType;
     inputParams_.actType = actTypePtr != nullptr ? static_cast<int8_t>(*actTypePtr) : inputParams_.actType;
-    // The documented S8S4 path does not inspect this attribute and always treats groupList as count mode.
-    inputParams_.groupListType = 1;
+    inputParams_.groupListType =
+        groupListTypePtr != nullptr ? static_cast<int8_t>(*groupListTypePtr) : GROUP_LIST_COUNT;
+    OP_CHECK_IF(inputParams_.groupListType != GROUP_LIST_CUMSUM &&
+                    inputParams_.groupListType != GROUP_LIST_COUNT &&
+                    inputParams_.groupListType != GROUP_LIST_SPARSE,
+                OP_LOGE(context_->GetNodeName(), "groupListType must be 0(cumsum), 1(count), or 2(sparse)."),
+                return false);
     if (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 0) {
         const auto tuningConfig = reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData());
-        OP_CHECK_IF(tuningConfig[0] < 0 || static_cast<uint64_t>(tuningConfig[0]) > UINT32_MAX,
+        OP_CHECK_IF(tuningConfig[TUNING_CONFIG_EXPECTED_TOKEN_INDEX] < 0 ||
+                        static_cast<uint64_t>(tuningConfig[TUNING_CONFIG_EXPECTED_TOKEN_INDEX]) > UINT32_MAX,
                     OP_LOGE(context_->GetNodeName(), "tuningConfig[0] must be in [0, UINT32_MAX]."), return false);
-        expectedTokenNum_ = static_cast<uint32_t>(tuningConfig[0]);
-        specialWeightFormat_ = tuningConfigPtr->GetSize() > 1 && tuningConfig[1] == 1;
+        expectedTokenNum_ = static_cast<uint32_t>(tuningConfig[TUNING_CONFIG_EXPECTED_TOKEN_INDEX]);
+        specialWeightFormat_ = tuningConfigPtr->GetSize() > TUNING_CONFIG_WEIGHT_FORMAT_INDEX &&
+                               tuningConfig[TUNING_CONFIG_WEIGHT_FORMAT_INDEX] ==
+                                   TUNING_CONFIG_SPECIAL_WEIGHT_FORMAT;
     }
     inputParams_.isSingleX = context_->GetDynamicInputDesc(X_INDEX, 1) == nullptr;
     inputParams_.isSingleW = context_->GetDynamicInputDesc(WEIGHT_INDEX, 1) == nullptr;
-    inputParams_.isSingleY = inputParams_.splitItem == 2 || inputParams_.splitItem == 3;
+    inputParams_.isSingleY = inputParams_.splitItem == X_SEPARATED || inputParams_.splitItem == NO_SEPARATED;
 
     OP_CHECK_IF(inputParams_.groupType != SPLIT_M || inputParams_.actType != 0 || inputParams_.transA ||
                     inputParams_.transB,
@@ -421,7 +430,7 @@ bool GroupedS8S4BasicApiTiling::CheckTensorLists() const
 
 bool GroupedS8S4BasicApiTiling::CheckCommonShapes(const gert::Shape &xShape, const gert::Shape &wShape) const
 {
-    OP_CHECK_IF(xShape.GetDimNum() != 2 || wShape.GetDimNum() != 3,
+    OP_CHECK_IF(xShape.GetDimNum() != SPLIT_K_W_DIMS || wShape.GetDimNum() != SPLIT_M_W_DIMS,
                 OP_LOGE(context_->GetNodeName(), "S8S4 BasicApi expects 2D x and 3D weight."), return false);
     OP_CHECK_IF(inputParams_.mSize == 0 || inputParams_.groupNum == 0,
                 OP_LOGE(context_->GetNodeName(), "M and groupNum must be positive."), return false);
@@ -429,23 +438,23 @@ bool GroupedS8S4BasicApiTiling::CheckCommonShapes(const gert::Shape &xShape, con
                 OP_LOGE(context_->GetNodeName(), "weight axis 0 must equal groupNum."), return false);
     OP_CHECK_IF(inputParams_.kSize == 0, OP_LOGE(context_->GetNodeName(), "K must be positive."), return false);
     if (dequantMode_ == DequantMode::SYMMETRIC_PER_GROUP) {
-        OP_CHECK_IF(inputParams_.kSize > 18432UL || inputParams_.kSize % QUANT_GROUP_SIZE != 0,
+        OP_CHECK_IF(inputParams_.kSize > MAX_K_PER_GROUP || inputParams_.kSize % QUANT_GROUP_SIZE != 0,
                     OP_LOGE(context_->GetNodeName(),
                             "Symmetric per-group K must not exceed 18432 and must be divisible by 256."),
                     return false);
     }
-    OP_CHECK_IF(inputParams_.nSize == 0 || inputParams_.nSize % 8UL != 0,
-                OP_LOGE(context_->GetNodeName(), "N must be positive and divisible by 8."), return false);
+    OP_CHECK_IF(inputParams_.nSize == 0, OP_LOGE(context_->GetNodeName(), "N must be positive."), return false);
     return true;
 }
 
 bool GroupedS8S4BasicApiTiling::SetLogicalMkn(const gert::Shape &xShape, const gert::Shape &wShape)
 {
     auto outStorageShape = context_->GetOutputShape(Y_INDEX);
-    OP_CHECK_IF(outStorageShape == nullptr || xShape.GetDimNum() != 2 || wShape.GetDimNum() != 3,
+    OP_CHECK_IF(outStorageShape == nullptr || xShape.GetDimNum() != SPLIT_K_W_DIMS ||
+                    wShape.GetDimNum() != SPLIT_M_W_DIMS,
                 OP_LOGE(context_->GetNodeName(), "Invalid x/weight/out shape."), return false);
     const gert::Shape &outShape = outStorageShape->GetOriginShape();
-    OP_CHECK_IF(outShape.GetDimNum() != 2,
+    OP_CHECK_IF(outShape.GetDimNum() != SPLIT_K_W_DIMS,
                 OP_LOGE(context_->GetNodeName(), "S8S4 BasicApi expects out [M,N]."), return false);
 
     inputParams_.mSize = static_cast<uint64_t>(xShape.GetDim(0));
@@ -471,7 +480,8 @@ bool GroupedS8S4BasicApiTiling::CheckBiasShape() const
     OP_CHECK_IF(!inputParams_.hasBias || biasShape == nullptr,
                 OP_LOGE(context_->GetNodeName(), "bias is required."), return false);
     const gert::Shape &shape = biasShape->GetOriginShape();
-    OP_CHECK_IF(shape.GetDimNum() != 2 || static_cast<uint64_t>(shape.GetDim(0)) != inputParams_.groupNum ||
+    OP_CHECK_IF(shape.GetDimNum() != SPLIT_K_W_DIMS ||
+                    static_cast<uint64_t>(shape.GetDim(0)) != inputParams_.groupNum ||
                     static_cast<uint64_t>(shape.GetDim(1)) != inputParams_.nSize,
                 OP_LOGE(context_->GetNodeName(), "bias shape must be [groupNum, N]."), return false);
     return true;
@@ -508,11 +518,11 @@ bool GroupedS8S4BasicApiTiling::CheckWeightStorageShape(const gert::StorageShape
     uint64_t scalarSlotNum = inputParams_.groupNum * inputParams_.kSize * inputParams_.nSize;
     if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
         const uint64_t alignedK = specialWeightFormat_ ?
-                                      CeilAlign(inputParams_.kSize, 64UL) :
-                                      CeilAlign(inputParams_.kSize, 16UL);
+                                      CeilAlign(inputParams_.kSize, NZ_SPECIAL_K_ALIGN) :
+                                      CeilAlign(inputParams_.kSize, NZ_BASE_K_ALIGN);
         const uint64_t alignedN = specialWeightFormat_ ?
-                                      CeilAlign(inputParams_.nSize, 16UL) :
-                                      CeilAlign(inputParams_.nSize, 64UL);
+                                      CeilAlign(inputParams_.nSize, NZ_SPECIAL_N_ALIGN) :
+                                      CeilAlign(inputParams_.nSize, NZ_BASE_N_ALIGN);
         scalarSlotNum = inputParams_.groupNum * alignedK * alignedN;
     }
     const uint64_t actualStorageElements =
@@ -520,15 +530,17 @@ bool GroupedS8S4BasicApiTiling::CheckWeightStorageShape(const gert::StorageShape
     // aclnnGroupedMatmulV5 normalizes a packed INT32 carrier to logical INT4 before Host tiling.
     // For ND weights the 8:1 physical storage shape is intentionally retained, so dtype alone is
     // insufficient to recover the carrier representation at this point.
-    if (!weightPackedInt32_ && inputParams_.bDtype == ge::DT_INT4 && scalarSlotNum % 8UL == 0 &&
-        actualStorageElements == scalarSlotNum / 8UL) {
+    if (!weightPackedInt32_ && inputParams_.bDtype == ge::DT_INT4 &&
+        scalarSlotNum % PACKED_INT32_RATIO == 0 &&
+        actualStorageElements == scalarSlotNum / PACKED_INT32_RATIO) {
         weightPackedInt32_ = true;
     }
-    OP_CHECK_IF(weightPackedInt32_ && scalarSlotNum % 8UL != 0,
+    OP_CHECK_IF(weightPackedInt32_ && scalarSlotNum % PACKED_INT32_RATIO != 0,
                 OP_LOGE(context_->GetNodeName(), "Packed INT32 weight requires the physical INT4 slot count "
                                                      "to be divisible by 8."),
                 return false);
-    const uint64_t expectedStorageElements = weightPackedInt32_ ? scalarSlotNum / 8UL : scalarSlotNum;
+    const uint64_t expectedStorageElements =
+        weightPackedInt32_ ? scalarSlotNum / PACKED_INT32_RATIO : scalarSlotNum;
     OP_CHECK_IF(actualStorageElements != expectedStorageElements,
                 OP_LOGE(context_->GetNodeName(),
                         "Weight storage shape mismatch: expected %lu physical elements for logical INT4, got %lu.",
@@ -805,14 +817,7 @@ ge::graphStatus GroupedS8S4BasicApiTiling::DoLibApiTiling()
 
 ge::graphStatus GroupedS8S4BasicApiTiling::PostTiling()
 {
-    // if (dequantMode_ == DequantMode::ASYMMETRIC_PER_CHANNEL) {
-    //     // The per-channel kernel expands W4 to W8 and computes the X row sum
-    //     // on all vector cores before a full-core SyncAll. Batch scheduling
-    //     // is required to guarantee that every participating core is resident;
-    //     // otherwise an early wave can wait forever for a core that has not
-    //     // been scheduled yet.
-    //     context_->SetScheduleMode(1);
-    // }
+    // Weight preprocessing synchronizes all vector cores, so all participating cores must be resident.
     context_->SetScheduleMode(1);
     return SaveTilingDataToContext(tilingData_);
 }

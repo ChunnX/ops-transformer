@@ -100,6 +100,20 @@ private:
     static constexpr uint32_t S8S4_BASE_K = 128U;
     static constexpr uint32_t S8S4_PER_GROUP_K_L1 = 256U;
     static constexpr uint32_t S8S4_PER_CHANNEL_K_L1 = 256U;
+    static constexpr uint64_t MAX_K_PER_GROUP = 18432UL;
+    static constexpr uint64_t PACKED_INT32_RATIO = 8UL;
+    static constexpr uint64_t NZ_BASE_K_ALIGN = 16UL;
+    static constexpr uint64_t NZ_BASE_N_ALIGN = 64UL;
+    static constexpr uint64_t NZ_SPECIAL_K_ALIGN = 64UL;
+    static constexpr uint64_t NZ_SPECIAL_N_ALIGN = 16UL;
+    static constexpr size_t TUNING_CONFIG_EXPECTED_TOKEN_INDEX = 0UL;
+    static constexpr size_t TUNING_CONFIG_WEIGHT_FORMAT_INDEX = 1UL;
+    static constexpr int64_t TUNING_CONFIG_SPECIAL_WEIGHT_FORMAT = 1L;
+    static constexpr int64_t GROUP_LIST_CUMSUM = 0L;
+    static constexpr int64_t GROUP_LIST_COUNT = 1L;
+    static constexpr int64_t GROUP_LIST_SPARSE = 2L;
+    static constexpr int8_t X_SEPARATED = 2;
+    static constexpr int8_t NO_SEPARATED = 3;
 
     bool hasOffset_ = false;
     bool specialWeightFormat_ = false;

@@ -2371,16 +2371,13 @@ ASCENDC_EXTERN_C ge::graphStatus TilingGMM(gert::TilingContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);
     if (compileInfoPtr->npuArch == NpuArch::DAV_3510) {
         auto scale0Desc = context->GetDynamicInputDesc(SCALE_INDEX, 0);
-        const bool isS8S4V5 = xDType == ge::DT_INT8 &&
-                              (weightDtype == ge::DT_INT4 || weightDtype == ge::DT_INT32) &&
-                              scale0Desc != nullptr && scale0Desc->GetDataType() == ge::DT_UINT64;
-        if (isS8S4V5) {
-            std::vector<int32_t> registerList = {2};
-            return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
-        }
+        const bool isS8S4PseudoQuant = xDType == ge::DT_INT8 &&
+                                       (weightDtype == ge::DT_INT4 || weightDtype == ge::DT_INT32) &&
+                                       scale0Desc != nullptr && scale0Desc->GetDataType() == ge::DT_UINT64;
         // 全量化：双8bits或双4bits(不会有A4W2)
-        bool isQuant = xDType == ge::DT_FLOAT4_E2M1 || xDType == ge::DT_INT4 || xDType == ge::DT_FLOAT4_E1M2 ||
-                       (ge::GetSizeByDataType(xDType) == 1 && ge::GetSizeByDataType(weightDtype) == 1);
+        bool isQuant = !isS8S4PseudoQuant &&
+                       (xDType == ge::DT_FLOAT4_E2M1 || xDType == ge::DT_INT4 || xDType == ge::DT_FLOAT4_E1M2 ||
+                        (ge::GetSizeByDataType(xDType) == 1 && ge::GetSizeByDataType(weightDtype) == 1));
         if (isQuant) {
             if (xDType == ge::DT_INT4 && weightDtype == ge::DT_INT4) {  // A4W4 (INT4×INT4) mix-core
                 GroupedA4W4IntQuantTiling a4w4Tiling(context);
@@ -2393,6 +2390,10 @@ ASCENDC_EXTERN_C ge::graphStatus TilingGMM(gert::TilingContext *context)
             std::vector<int32_t> registerList = {0, 1};
             return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
         } else if (xDType != weightDtype) {
+            if (isS8S4PseudoQuant) {
+                std::vector<int32_t> registerList = {2};
+                return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
+            }
             GroupedWeightQuantBatchMatmulTiling groupedWeightQuantTiling;
             OP_CHECK_IF(!groupedWeightQuantTiling.SetTiling(context),
                         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "SetTiling failed."),

@@ -25,14 +25,23 @@
 
 namespace optiling {
 
-constexpr uint32_t A4W4_QUANT_GROUP_SIZE = 2U;    // groupSize 对齐粒度:偶数(2 的倍数)。
+constexpr uint32_t A4W4_QUANT_GROUP_SIZE = 2U;
 constexpr uint32_t A4W4_BASE_M_950 = 128U;
-constexpr uint32_t A4W4_BASE_N_950 = 256U;          // 950 L0C=256KB 支持 baseM·baseN=32768（dbL0C=2）
+constexpr uint32_t A4W4_BASE_N_950 = 256U;
 constexpr uint32_t A4W4_VEC_BASE_M_950 = 16U;
-constexpr uint32_t A4W4_BASE_K_950 = 128U;          // int8 Mmad baseK（L0B 约束 baseN·baseK≤32768）
-constexpr uint32_t A4W4_EPILOGUE_UB_COEFF = 24U;    // epilogue UB: 4(vecIn half DB2)+4(vecOut half DB2)+16(4×float)
-constexpr uint32_t PROLOGUE_MIN_BYTES_950 = 48UL * 1024UL;
+constexpr uint32_t A4W4_BASE_K_950 = 128U;
+constexpr uint32_t A4W4_EPILOGUE_UB_COEFF = 24U;
+constexpr uint32_t PROLOGUE_MIN_BYTES_950 = 48U * 1024U;
 constexpr uint32_t A4W4_MMOUT_PIPELINE = 4U;
+constexpr uint32_t A4W4_N_ALIGN = 8U;
+constexpr uint32_t A4W4_K_ALIGN = 32U;
+constexpr uint32_t A4W4_PER_CHANNEL_SCALE_DIM = 2U;
+constexpr uint32_t A4W4_PER_GROUP_SCALE_DIM = 3U;
+constexpr uint32_t A4W4_PER_TOKEN_QUEUE_BYTES_PER_M = 8U;
+constexpr uint64_t A4W4_AIV_PER_AIC = 2UL;
+constexpr uint64_t A4W4_KERNEL_TYPE_MIX = 3UL;
+constexpr uint64_t A4W4_WEIGHT_NZ_FLAG = 1ULL;
+constexpr uint64_t A4W4_TRANSPOSE_WEIGHT_FLAG = 2ULL;
 
 class GroupedA4W4IntQuantTiling : public GroupedQmmBasicApiTiling {
 public:
