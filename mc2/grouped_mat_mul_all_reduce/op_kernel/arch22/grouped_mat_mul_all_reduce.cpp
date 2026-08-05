@@ -41,11 +41,11 @@ struct HcclCombinOpParam {
 };
 
 // for oom check
-__aicore__ inline void OOMInit(__gm__ HcclCombinOpParam* context)
+__aicore__ inline void OOMInit(__gm__ HcclCombinOpParam *context)
 {
 #ifndef __CCE_KT_TEST__
-    AscendC::OOMCheckAddrRange((__gm__ uint8_t*)(context->WorkSpace), context->WorkSpaceSize);
-    AscendC::OOMCheckAddrRange((__gm__ uint8_t*)(context->windowsIn[context->rankId]), context->winSize);
+    AscendC::OOMCheckAddrRange((__gm__ uint8_t *)(context->WorkSpace), context->WorkSpaceSize);
+    AscendC::OOMCheckAddrRange((__gm__ uint8_t *)(context->windowsIn[context->rankId]), context->winSize);
 #endif
 }
 
@@ -54,8 +54,9 @@ using weightType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_WEIG
 using yType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_Y>;
 using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
 
-extern "C" __global__ __aicore__ void grouped_mat_mul_all_reduce(
-    GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR group_list, GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void grouped_mat_mul_all_reduce(GM_ADDR x, GM_ADDR weight, GM_ADDR bias,
+                                                                 GM_ADDR group_list, GM_ADDR y, GM_ADDR workspace,
+                                                                 GM_ADDR tiling)
 {
 #ifdef __CCE_KT_TEST__
     REGISTER_TILING_DEFAULT(GMMAllReduceTilingData);
@@ -65,14 +66,14 @@ extern "C" __global__ __aicore__ void grouped_mat_mul_all_reduce(
         return;
     }
 
-    const TCubeTiling* __restrict mmTiling = &(aicore_tiling_data.mmTilingData);
+    const TCubeTiling *__restrict mmTiling = &(aicore_tiling_data.mmTilingData);
     GM_ADDR user1 = GetUserWorkspace(workspace);
 
     TPipe tPipe;
     HcclServer hcclServer;
-    __gm__ HcclCombinOpParam* context = (__gm__ HcclCombinOpParam*)(GetHcclContext<0>());
+    __gm__ HcclCombinOpParam *context = (__gm__ HcclCombinOpParam *)(GetHcclContext<0>());
     OOMInit(context);
-    __gm__ uint8_t* workspaceMsg = (__gm__ uint8_t*)(context->WorkSpace + aicore_tiling_data.notifyOff);
+    __gm__ uint8_t *workspaceMsg = (__gm__ uint8_t *)(context->WorkSpace + aicore_tiling_data.notifyOff);
     hcclServer.Init(workspaceMsg, aicore_tiling_data.debugMode);
 
     if (TILING_KEY_IS(0)) { // float16 and bf16

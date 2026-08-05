@@ -1054,7 +1054,7 @@ bool Mc2QuantBatchMatmulV3Tiling::SetMatmulTilingFromTbeTiling()
     mt.baseM = tbeTiling_.m_l0 * BLOCK_CUBE;
     mt.baseN = tbeTiling_.n_l0 * BLOCK_CUBE;
     OP_TILING_CHECK(!SetBlockDimsAndSingleCore(mt),
-                    OP_LOGE(inputParams_.opName, "Set usedCoreNum or singleCoreM/N faild when m(%lu) and n(%lu).",
+                    OP_LOGE(inputParams_.opName, "Set usedCoreNum or singleCoreM/N failed when m(%lu) and n(%lu).",
                             inputParams_.mSize, inputParams_.nSize),
                     return false);
 

@@ -195,7 +195,7 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint32_t> &out,  
 
     constexpr uint32_t VL = 64; // vector length
 
-    auto qk0 = (__local_mem__ float*)qk.GetPhyAddr();;
+    auto qk0 = (__local_mem__ float*)qk.GetPhyAddr();
     auto qk1 = qk0 + VL;
     auto out0 = (__local_mem__ uint32_t*)out.GetPhyAddr();
     auto out1 = out0 + VL;

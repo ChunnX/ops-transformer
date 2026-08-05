@@ -110,16 +110,16 @@ private:
     __aicore__ inline void AICInit();
     __aicore__ inline void Padding();
     __aicore__ inline void Dequant(int32_t cal_idx);
-    __aicore__ inline void AllGatherPerTokenScale(int32_t buff_st);
+    __aicore__ inline void AllGatherPerTokenScale(int64_t buff_st);
     __aicore__ inline void CatlassMatmul();
-    __aicore__ inline void MoveWithSplit(__gm__ supportX1Type *gm_src, int32_t rank_offset, int32_t len);
-    __aicore__ inline void MoveToOtherRankWithSkip(__gm__ supportX1Type *gm_src, int32_t rank_offset, int32_t len,
+    __aicore__ inline void MoveWithSplit(__gm__ supportX1Type* gm_src, int64_t rank_offset, int64_t len);
+    __aicore__ inline void MoveToOtherRankWithSkip(__gm__ supportX1Type* gm_src, int64_t rank_offset, int32_t len,
                                                    int32_t rank_st, int32_t skip_num, int32_t group_num,
                                                    int32_t rank_scope);
-    __aicore__ inline void MoveResultFromPeerMemToOut(__gm__ supportX1Type *gm_src, __gm__ supportX1Type *gm_dst,
+    __aicore__ inline void MoveResultFromPeerMemToOut(__gm__ supportX1Type* gm_src, __gm__ supportX1Type* gm_dst,
                                                       int32_t actual_m);
-    __aicore__ inline void MoveResultToDst(__gm__ supportX1Type *gm_src, __gm__ supportX1Type *gm_dst, int32_t len);
-    __aicore__ inline void MoveResultFromSrcToDst(__gm__ supportX1Type *gm_src, __gm__ supportX1Type *gm_dst,
+    __aicore__ inline void MoveResultToDst(__gm__ supportX1Type* gm_src, __gm__ supportX1Type* gm_dst, int32_t len);
+    __aicore__ inline void MoveResultFromSrcToDst(__gm__ supportX1Type* gm_src, __gm__ supportX1Type* gm_dst,
                                                   int32_t len);
     __aicore__ inline void CrossRankSyncV1(int32_t flag_idx, int32_t flag_data);
     __aicore__ inline void CrossRankSyncV2(int32_t flag_idx, int32_t flag_data);
@@ -156,7 +156,7 @@ private:
     int32_t aligned_a;
     int32_t aligned_b;
     int32_t cal_count;
-    int32_t gm_a_pingpong_size;
+    int64_t gm_a_pingpong_size;
     int32_t max_ub_ping_pong_size;
     int32_t m_align;
     int64_t k_align;
@@ -167,7 +167,7 @@ private:
     int32_t len_per_loop;
     int32_t core_count;
     int64_t data_len;
-    int32_t num_per_rank_move;
+    int64_t num_per_rank_move;
     int64_t src_offset;
     int64_t rank_offset;
     int32_t swizzlCount;
@@ -358,7 +358,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::AIVInit()
         cal_count = DivCeil(m_loop, pValue);
         gm_a_pingpong_size = m0 * k_align * pValue * worldSize;
 
-        data_len = static_cast<int64_t>(m) * k_align; // 数据量
+        data_len = m * k_align;                       // 数据量
         num_per_rank_move = m0 * k_align * pValue;    // 每轮搬运到其他卡的数据量
         src_offset = 0;                               // 当前份数据的起始位置
         rank_offset = rankId * num_per_rank_move;
@@ -369,7 +369,7 @@ template <TemplateAGMMClass>
 __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::CatlassMatmul()
 {
     if ASCEND_IS_AIC {
-        int64_t peer_mem_m = m0 * pValue * worldSize;
+        int64_t peer_mem_m = static_cast<int64_t>(m0) * pValue * worldSize;
         uint32_t layout_b_col = (TB || weightNZ) ? static_cast<uint32_t>(n) : static_cast<uint32_t>(n_align);
         uint32_t layout_b_row = (TB && !weightNZ) ? static_cast<uint32_t>(k_align) : static_cast<uint32_t>(k);
         bool need_fixpipe = quantFlag && std::is_same<YType, half>::value && isX2ScaleTypeInt64 &&
@@ -588,7 +588,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveResultFromS
 }
 
 template <TemplateAGMMClass>
-__aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::AllGatherPerTokenScale(int32_t buff_st)
+__aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::AllGatherPerTokenScale(int64_t buff_st)
 {
     if (!needPerToken) {
         return;
@@ -632,10 +632,11 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Dequant(int32_t
     uint32_t tileM0 = m0;
     uint32_t tileN0 = n0;
 
-    uint64_t blockSt = cal_idx * m0 * pValue * n;
-    uint64_t blockSize = m * n;
-    uint64_t blockStInWorkspace = (cal_idx % MAX_BLOCK_COUNT) * worldSize * m0 * pValue * n;
-    uint64_t blockSizeInWorkspace = m0 * pValue * n;
+    int64_t blockSt = static_cast<int64_t>(cal_idx) * m0 * pValue * n;
+    int64_t blockSize = static_cast<int64_t>(m) * n;
+    int64_t blockStInWorkspace =
+        static_cast<int64_t>(cal_idx % MAX_BLOCK_COUNT) * worldSize * m0 * pValue * n;
+    int64_t blockSizeInWorkspace = static_cast<int64_t>(m0) * pValue * n;
 
     if (!accumWorkSpacePingPong) {
         blockStInWorkspace = blockSt;
@@ -658,7 +659,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Dequant(int32_t
 
 template <TemplateAGMMClass>
 __aicore__ inline void
-AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveToOtherRankWithSkip(__gm__ supportX1Type *gm_src, int32_t rank_offset,
+AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveToOtherRankWithSkip(__gm__ supportX1Type* gm_src, int64_t rank_offset,
                                                                   int32_t len, int32_t rank_st, int32_t skip_num,
                                                                   int32_t group_num, int32_t rank_scope)
 {
@@ -730,7 +731,8 @@ AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveResultFromPeerMemToOut(__gm__ supp
                 actual_k_move_num_in_out = k - k_move_idx * max_move_k;
             }
             WaitFlag<HardEvent::MTE3_MTE2>(event_id);
-            int32_t gm_src_offset_k_align = move_idx * max_move_m * k_align + k_move_idx * max_move_k;
+            int64_t gm_src_offset_k_align =
+                static_cast<int64_t>(move_idx) * max_move_m * k_align + k_move_idx * max_move_k;
             if constexpr (std::is_same_v<X1Type, AscendC::int4b_t>) {
                 gm_src_offset_k_align = gm_src_offset_k_align / 2;
             }
@@ -739,7 +741,8 @@ AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveResultFromPeerMemToOut(__gm__ supp
                          (k_align - actual_k_move_num_in_peer_mem) * Catlass::SizeOfBits<X1Type>::value / (8 * 32), 0);
             SetFlag<HardEvent::MTE2_MTE3>(event_id);
             WaitFlag<HardEvent::MTE2_MTE3>(event_id);
-            int32_t gm_src_offset = move_idx * max_move_m * k + k_move_idx * max_move_k;
+            int64_t gm_src_offset =
+                static_cast<int64_t>(move_idx) * max_move_m * k + k_move_idx * max_move_k;
             if constexpr (std::is_same_v<X1Type, AscendC::int4b_t>) {
                 gm_src_offset = gm_src_offset / 2;
             }
@@ -784,24 +787,24 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveResultToDst
 }
 
 template <TemplateAGMMClass>
-__aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveWithSplit(__gm__ supportX1Type *gm_src,
-                                                                               int32_t rank_offset, int32_t len)
+__aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::MoveWithSplit(__gm__ supportX1Type* gm_src,
+                                                                               int64_t rank_offset, int64_t len)
 {
-    int32_t data_split = DivCeil(len, len_per_loop);
+    int64_t data_split = DivCeil(len, static_cast<int64_t>(len_per_loop));
     int32_t data_block = len_per_loop; // 每份数据量 len_per_loop = 2560
     int32_t rank_st = blockIdx;
     int32_t group_num = DivCeil(worldSize, comm_npu_split); // 1？ comm_npu_split=worldSize?
     int32_t scope = comm_npu_split * group_num;             // worldSize？
-    int32_t data_offset = -data_block;                      // 当前份数据的起始位置
+    int64_t data_offset = -data_block;                      // 当前份数据的起始位置
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);               // MTE2等MTE3
     SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);               // MTE2等MTE3
-    for (int32_t data_block_idx = 0; data_block_idx < data_split; ++data_block_idx) {
+    for (int64_t data_block_idx = 0; data_block_idx < data_split; ++data_block_idx) {
         data_offset += data_block; // 当前份数据的起始位置
-        data_block = data_block_idx == data_split - 1 ? len - data_offset : data_block; // 当前份数据量
+        data_block = data_block_idx == data_split - 1 ? static_cast<int32_t>(len - data_offset) : data_block;
         int32_t num_per_core = DivCeil(data_block, comm_data_split);                    // 2560
 
-        int32_t data_src = data_offset + (blockIdx / comm_npu_split) * num_per_core;
-        int32_t data_len = data_block + data_offset - data_src;
+        int64_t data_src = data_offset + (blockIdx / comm_npu_split) * num_per_core;
+        int32_t data_len = static_cast<int32_t>(data_block + data_offset - data_src);
         data_len = data_len >= num_per_core ? num_per_core : data_len;
         // npu 方向：一份数据先发送到所有目标卡，再发送下一份数据，以此类推
         if (comm_direct) { // comm_direct=0？
@@ -875,7 +878,7 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
             }
 
             if (cal_idx < cal_count && aivIdx == 0 && blockIdx < core_count) {
-                int64_t gm_rank_offset = flag_idx * gm_a_pingpong_size + rank_offset;
+                int64_t gm_rank_offset = static_cast<int64_t>(flag_idx) * gm_a_pingpong_size + rank_offset;
                 if constexpr (std::is_same_v<X1Type, AscendC::int4b_t>) {
                     MoveWithSplit(reinterpret_cast<__gm__ int8_t *>(gm_a_src) + src_offset / 2, gm_rank_offset,
                                   num_per_rank_move);
@@ -890,14 +893,15 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
                 int32_t other_core_num = coreNum - core_count;                         // 剩余的core数
                 int32_t cycle_num = (other_core_num + worldSize - 1) / other_core_num; // 循环次数
                 uint64_t s2_flag_idx = (cal_idx - 1) % MAX_BLOCK_COUNT;
-                int64_t src_offset = (cal_idx - 1) * pValue * m0 * k_align;
+                int64_t src_offset = static_cast<int64_t>(cal_idx - 1) * pValue * m0 * k_align;
                 int32_t s2_actual_m = cal_idx == cal_count ? m - (cal_idx - 1) * pValue * m0 : pValue * m0;
 
                 for (int32_t cycle_idx = 0; cycle_idx < cycle_num; ++cycle_idx) {
                     int32_t s2_other_rank = blockIdx - core_count + cycle_idx * other_core_num;
-                    uint64_t other_rank_offset =
-                        s2_flag_idx * gm_a_pingpong_size + s2_other_rank * pValue * m0 * k_align;
-                    uint64_t dst_offset = s2_other_rank * static_cast<int64_t>(m) * k + (cal_idx - 1) * pValue * m0 * k;
+                    int64_t other_rank_offset = static_cast<int64_t>(s2_flag_idx) * gm_a_pingpong_size +
+                                                static_cast<int64_t>(s2_other_rank) * pValue * m0 * k_align;
+                    int64_t dst_offset = static_cast<int64_t>(s2_other_rank) * m * k +
+                                         static_cast<int64_t>(cal_idx - 1) * pValue * m0 * k;
                     if (s2_other_rank >= worldSize) {
                         break;
                     }

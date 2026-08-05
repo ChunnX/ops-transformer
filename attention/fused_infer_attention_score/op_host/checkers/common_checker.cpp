@@ -69,7 +69,7 @@ ge::graphStatus CommonChecker::CheckDtypeCommon(const gert::CompileTimeTensorDes
     if (desc != nullptr) {
         const auto& it = dataMap.find(name);
         OP_CHECK_IF(it == dataMap.end(),
-            OP_LOGE("FIA", "%s datatype support list should be specify in map", name.c_str()),
+            OP_LOGE("FIA", "%s dtype support list should be specify in map", name.c_str()),
             return ge::GRAPH_FAILED);
         auto &expectDtypeList = it->second;
         OP_CHECK_IF(std::find(expectDtypeList.begin(), expectDtypeList.end(),
@@ -537,28 +537,28 @@ ge::graphStatus CommonChecker::CheckMultiDtype(const FiaTilingInfo &fiaInfo)
         ge::GRAPH_SUCCESS != CheckDtypeCommon(fiaInfo.opParamInfo.query.desc, "query", QKVD_Different_MAP),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "query",
             ToString(fiaInfo.opParamInfo.query.desc->GetDataType()).c_str(),
-            "The dtype of query must be within the range of FLOAT16 or BF16 "
+            "The dtype of query must be within the range of FLOAT16 or BFLOAT16 "
             "when D of query and key is not equal to D of value"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.isQKVDDifferent &&
         ge::GRAPH_SUCCESS != CheckDtypeCommon(fiaInfo.opParamInfo.attenOut.desc, "attentionOut", QKVD_Different_MAP),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
             ToString(fiaInfo.opParamInfo.attenOut.desc->GetDataType()).c_str(),
-            "The dtype of attention_out must be within the range of FLOAT16 or BF16 "
+            "The dtype of attention_out must be within the range of FLOAT16 or BFLOAT16 "
             "when D of query and key is not equal to D of value"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.isQKVDDifferent &&
         ge::GRAPH_SUCCESS != CheckDtypeCommon(fiaInfo.opParamInfo.key.desc, "key", QKVD_Different_MAP),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key",
             ToString(fiaInfo.opParamInfo.key.desc->GetDataType()).c_str(),
-            "The dtype of key must be within the range of FLOAT16 or BF16 "
+            "The dtype of key must be within the range of FLOAT16 or BFLOAT16 "
             "when D of query and key is not equal to D of value"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.isQKVDDifferent &&
         ge::GRAPH_SUCCESS != CheckDtypeCommon(fiaInfo.opParamInfo.value.desc, "value", QKVD_Different_MAP),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value",
  	        ToString(fiaInfo.opParamInfo.value.desc->GetDataType()).c_str(),
- 	        "The dtype of value must be within the range of FLOAT16 or BF16 "
+ 	        "The dtype of value must be within the range of FLOAT16 or BFLOAT16 "
             "when D of query and key is not equal to D of value"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -996,7 +996,7 @@ ge::graphStatus CommonChecker::CheckMultiAttr(const FiaTilingInfo &fiaInfo)
     }
 
     if (fiaInfo.inputQType != ge::DT_FLOAT16) {
-        OP_LOGW(fiaInfo.opName, "When query input is not fp16,innerPrecise will not take effect");
+        OP_LOGW(fiaInfo.opName, "When query input is not FLOAT16,innerPrecise will not take effect");
     }
 
     if (fiaInfo.qLayout == FiaLayout::TND) {
@@ -1395,78 +1395,6 @@ ge::graphStatus CommonChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CommonChecker::CheckKVContiguous(const FiaTilingInfo &fiaInfo) const
-{
-    if (fiaInfo.isTensorV1) {
-        return ge::GRAPH_SUCCESS;
-    }
-    if (fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
-        return ge::GRAPH_SUCCESS;
-    }
-    const gert::Shape &keyShape = fiaInfo.opParamInfo.key.shape->GetStorageShape();
-    const gert::Shape &valueShape = fiaInfo.opParamInfo.value.shape->GetStorageShape();
-    uint32_t keyDimNum = keyShape.GetDimNum();
-    uint32_t valueDimNum = valueShape.GetDimNum();
-    int32_t dimIndex = 0;
-
-    if (!fiaInfo.pageAttentionFlag) {
-        OP_CHECK_IF((CheckTensorContiguous(keyDimNum, keyShape,
-                        fiaInfo.keyStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
-                    (CheckTensorContiguous(valueDimNum, valueShape,
-                        fiaInfo.valueStrides, dimIndex) != ge::GRAPH_SUCCESS),
-                    OP_LOGE(fiaInfo.opName,
-                            "In non-PA scenarios, key/value tensors must be contiguous."),
-                    return ge::GRAPH_FAILED);
-        return ge::GRAPH_SUCCESS;
-    }
-
-    if (fiaInfo.kvLayout == FiaLayout::BnBsH) {
-        OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
-                        CheckTensorContiguous(keyDimNum, keyShape,
-                            fiaInfo.keyStrides, dimIndex)) &&
-                    (dimIndex != 0)),
-                    OP_LOGE(fiaInfo.opName,
-                            "In PA BBND scenarios, key only supports non-contiguous "
-                            "tensors in dimension 0, "
-                            "but the first non-contiguous dimension is index %d.",
-                            dimIndex),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
-                        CheckTensorContiguous(valueDimNum, valueShape,
-                            fiaInfo.valueStrides, dimIndex)) &&
-                    (dimIndex != 0)),
-                    OP_LOGE(fiaInfo.opName,
-                            "In PA BBND scenarios, value only supports non-contiguous "
-                            "tensors in dimension 0, "
-                            "but the first non-contiguous dimension is index %d.",
-                            dimIndex),
-                    return ge::GRAPH_FAILED);
-    } else if (fiaInfo.kvLayout == FiaLayout::BnNBsD || fiaInfo.kvLayout == FiaLayout::NZ) {
-        OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
-                        CheckTensorContiguous(keyDimNum, keyShape,
-                            fiaInfo.keyStrides, dimIndex)) &&
-                    (dimIndex != 0 && dimIndex != 1)),
-                    OP_LOGE(fiaInfo.opName,
-                            "In PA BNBD/NZ scenarios, key only supports non-contiguous "
-                            "tensors in dimensions 0 or 1, "
-                            "but the first non-contiguous dimension is index %d.",
-                            dimIndex),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
-                        CheckTensorContiguous(valueDimNum, valueShape,
-                            fiaInfo.valueStrides, dimIndex)) &&
-                    (dimIndex != 0 && dimIndex != 1)),
-                    OP_LOGE(fiaInfo.opName,
-                            "In PA BNBD/NZ scenarios, value only supports non-contiguous "
-                            "tensors in dimensions 0 or 1, "
-                            "but the first non-contiguous dimension is index %d.",
-                            dimIndex),
-                    return ge::GRAPH_FAILED);
-    }
-
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus CommonChecker::CheckKVStorageConsistency(const FiaTilingInfo &fiaInfo)
 {
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
@@ -1525,10 +1453,6 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
         return ge::GRAPH_FAILED;
     }
 
-    if (fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B &&
-        enableNonQuant_ && CheckKVContiguous(fiaInfo) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
     return ge::GRAPH_SUCCESS;
 }
 

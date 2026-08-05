@@ -16,11 +16,16 @@
 #ifndef _RAC_SERVET_STUB_H_
 #define _RAC_SERVET_STUB_H_
 
-enum RANK_MSG_TYPE { RANK_ADDR = 1, RANK_WORK = 2, RANK_ADD_WORK = 3, RANK_END };
+enum RANK_MSG_TYPE {
+    RANK_ADDR = 1,
+    RANK_WORK = 2,
+    RANK_ADD_WORK = 3,
+    RANK_END
+};
 
-constexpr uint32_t AC_MAX_RANK_NUM = 8;  // 最大有8个卡
-constexpr uint32_t AC_MAX_AIV = 16;      // 最多有64个AIC
-constexpr uint32_t AC_MSG_CNT = 16;      // 可以创建64个消息
+constexpr uint32_t AC_MAX_RANK_NUM = 8; // 最大有8个卡
+constexpr uint32_t AC_MAX_AIV = 16;     // 最多有64个AIC
+constexpr uint32_t AC_MSG_CNT = 16;     // 可以创建64个消息
 constexpr uint32_t AC_MSG_VALID_MASK = 0x5CDF123A;
 constexpr uint32_t HCCL_COMM_DOMAIN_KEY_MAX_LEN = 128;
 
@@ -78,7 +83,7 @@ enum HcclDataType {
 };
 
 struct HcclSignalInfo {
-    uint64_t resId;  // 在代表event时为eventid，notify时为notifyid
+    uint64_t resId; // 在代表event时为eventid，notify时为notifyid
     uint64_t addr;
     uint32_t devId;
     uint32_t tsId;
@@ -90,7 +95,7 @@ struct HcclCombinOpSignalParam {
     HcclSignalInfo ipcNotifys[AC_MAX_RANK_NUM * 4];
     HcclSignalInfo noIpcEvents[AC_MAX_RANK_NUM];
     HcclSignalInfo aicpuNotify;
-    HcclSignalInfo aicpuOpNotify[2];  // 集合通信AICPU展开资源
+    HcclSignalInfo aicpuOpNotify[2]; // 集合通信AICPU展开资源
 };
 
 struct HcclStreamInfo {
@@ -99,14 +104,14 @@ struct HcclStreamInfo {
 };
 
 struct HcclConfig {
-    uint8_t determinism;  // 确定性计算开关
+    uint8_t determinism; // 确定性计算开关
 };
 
 // HCCL 代码直调时直接传此结构：
 struct HcclAicpuOpParam2 {
     uint32_t valid;
-    HcclReduceOp op_type;  // 32b
-    uint64_t send_buffer;  //
+    HcclReduceOp op_type; // 32b
+    uint64_t send_buffer; //
     uint64_t recv_buffer;
     uint64_t count;
 
@@ -116,29 +121,34 @@ struct HcclAicpuOpParam2 {
     uint8_t rank_id;
     uint8_t isLast;    // 是否最后一个下
     uint8_t funID;     // 功能ID，1地址消息；  2开始工作；
-    uint8_t numBlocks;  // 等价于启动的msgQueCnt
+    uint8_t numBlocks; // 等价于启动的msgQueCnt
     uint8_t blockIdx;
-    uint8_t sendCnt;  // 发送计数
+    uint8_t sendCnt; // 发送计数
     uint8_t rcvCnt;
-    AicpuComType comm_type;  // 32b
+    AicpuComType comm_type; // 32b
 
-    uint32_t groupNumber;  // 每组成员的个数
-    uint8_t everyTurnRsp;  // 每轮都需要等待执行结束发送响应，再执行下一轮
+    uint32_t groupNumber; // 每组成员的个数
+    uint8_t everyTurnRsp; // 每轮都需要等待执行结束发送响应，再执行下一轮
     int8_t validCnt;
-    int8_t sendValidCnt;  // 在发送时, 由AIC填写; Aicpu 回应时复制到validCnt 此处
+    int8_t sendValidCnt; // 在发送时, 由AIC填写; Aicpu 回应时复制到validCnt 此处
     uint8_t res3;
-    uint64_t stride;  // 表示列宽度
+    uint64_t stride; // 表示列宽度
 };
 
 template <typename T, typename U>
 struct same_type {
-    enum { value = 0 };
+    enum {
+        value = 0
+    };
 };
 template <typename T>
 struct same_type<T, T> {
-    enum { value = 1 };
+    enum {
+        value = 1
+    };
 };
-template <class T> __aicore__ inline HcclDataType GetDataType()
+template <class T>
+__aicore__ inline HcclDataType GetDataType()
 {
     if constexpr (same_type<T, int8_t>::value) {
         return HcclDataType::HCCL_DATA_TYPE_INT8;
@@ -161,7 +171,7 @@ template <class T> __aicore__ inline HcclDataType GetDataType()
 }
 
 class HcclServer {
-   public:
+public:
     struct KFCMsg {
         HcclAicpuOpParam2 notifyMsg[AC_MSG_CNT];
         HcclAicpuOpParam2 notifyCnt[AC_MSG_CNT];
@@ -172,20 +182,34 @@ class HcclServer {
     int lastCnt;
     int lastReadCnt;
 
-    __aicore__ inline void Init(GM_ADDR win, uint8_t debugMode) {}
+    __aicore__ inline void Init(GM_ADDR win, uint8_t debugMode)
+    {
+    }
 
-    __aicore__ inline void TurnNotifyRun(uint32_t blockIdx) {}
+    __aicore__ inline void TurnNotifyRun(uint32_t blockIdx)
+    {
+    }
 
-    __aicore__ inline void TurnNotifyRun(uint32_t blockIdx, uint32_t usedCoreNum) {}
+    __aicore__ inline void TurnNotifyRun(uint32_t blockIdx, uint32_t usedCoreNum)
+    {
+    }
 
-    __aicore__ inline void TurnNotifyRun(uint32_t blockIdx, uint32_t usedCoreNum, uint32_t curTurn) {}
+    __aicore__ inline void TurnNotifyRun(uint32_t blockIdx, uint32_t usedCoreNum, uint32_t curTurn)
+    {
+    }
 
-    __aicore__ inline void TurnNotifyRunA8W8Bf16(uint32_t blockIdx, uint32_t usedCoreNum, uint32_t curTurn) {}
+    __aicore__ inline void TurnNotifyRunA8W8Bf16(uint32_t blockIdx, uint32_t usedCoreNum, uint32_t curTurn)
+    {
+    }
 
     // 等待aicpu执行完成1次任务
-    __aicore__ inline void TurnWait(uint32_t turn) {}
+    __aicore__ inline void TurnWait(uint32_t turn)
+    {
+    }
 
-    __aicore__ inline void SetQueue() {}
+    __aicore__ inline void SetQueue()
+    {
+    }
 };
 
-#endif  // _RAC_SERVET_STUB_H_
+#endif // _RAC_SERVET_STUB_H_

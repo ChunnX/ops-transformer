@@ -9,9 +9,9 @@
  */
 
 /*!
-* \file grouped_matmul_kernel.h
-* \brief
-*/
+ * \file grouped_matmul_kernel.h
+ * \brief
+ */
 
 #ifndef NON_QUANT_GROUPED_MATMUL_BASIC_KERNEL_ACT
 #define NON_QUANT_GROUPED_MATMUL_BASIC_KERNEL_ACT
@@ -30,8 +30,9 @@ namespace GROUPED_MATMUL {
 constexpr uint64_t DIM_NUM = 2UL;
 constexpr uint64_t BUF_SIZE = 3UL;
 
-template<typename layoutA, typename layoutB>
-__aicore__ inline void GmmNoQuantAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR groupList, GM_ADDR y, GM_ADDR tiling)
+template <typename layoutA, typename layoutB>
+__aicore__ inline void GmmNoQuantAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR groupList, GM_ADDR y,
+                                      GM_ADDR tiling)
 {
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, gmmNoQuantParam, gmmBaseParams_, tiling);
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, mmTilingData, mmTilingData_, tiling);
@@ -50,9 +51,9 @@ __aicore__ inline void GmmNoQuantAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, G
     // 定义scheduler类型
     using BlockScheduler = GroupedMatmulAswtScheduler;
     // 定义MMAD类型
-    using BlockMmad = Block::BlockGroupedMatmulBuilder<
-            AType, LayoutA, BType, LayoutB, CType, LayoutC, BiasType, LayoutBias,
-            L1TileShape, L0TileShape, BlockScheduler, MatmulMultiBlockBias<>>;
+    using BlockMmad =
+        Block::BlockGroupedMatmulBuilder<AType, LayoutA, BType, LayoutB, CType, LayoutC, BiasType, LayoutBias,
+                                         L1TileShape, L0TileShape, BlockScheduler, MatmulMultiBlockBias<>>;
     // 定义BlockEpilogue类型
     using BlockEpilogue = Block::BlockEpilogueEmpty;
     // 定义shape的形状，tuple保存 m n k batch
@@ -61,30 +62,29 @@ __aicore__ inline void GmmNoQuantAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, G
     using GroupedMatmulKernel = Kernel::KernelGroupedMatmul<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename GroupedMatmulKernel::Params;
     using GMMTiling = typename GroupedMatmulKernel::GMMTiling;
-    GMMTiling gmmParams {gmmBaseParams_.groupNum, gmmBaseParams_.groupType, gmmBaseParams_.groupListType,
-        gmmBaseParams_.singleX, gmmBaseParams_.singleWeight, gmmBaseParams_.singleY, gmmBaseParams_.hasBias,
-        gmmBaseParams_.mTailCnt, gmmBaseParams_.nTailCnt, gmmBaseParams_.weightNoL2Cache};
+    GMMTiling gmmParams{gmmBaseParams_.groupNum,       gmmBaseParams_.groupType,    gmmBaseParams_.groupListType,
+                        gmmBaseParams_.singleX,        gmmBaseParams_.singleWeight, gmmBaseParams_.singleY,
+                        gmmBaseParams_.hasBias,        gmmBaseParams_.mTailCnt,     gmmBaseParams_.nTailCnt,
+                        gmmBaseParams_.weightNoL2Cache};
     gmmParams.matmulTiling = &mmTilingData_;
-    Params params = {
-        // template shape, gmm shape can not get now
-        {1, 1, 1, 1},
-        // mmad args
-        {x, weight, y, bias, groupList},
-        // epilogue args
-        {},
-        // gmm tiling data
-        gmmParams
-    };
+    Params params = {// template shape, gmm shape can not get now
+                     {1, 1, 1, 1},
+                     // mmad args
+                     {x, weight, y, bias, groupList},
+                     // epilogue args
+                     {},
+                     // gmm tiling data
+                     gmmParams};
     GroupedMatmulKernel op;
     op(params);
 }
 
-__aicore__ inline int32_t GetSplitValue(uint32_t groupIdx, int32_t &preOffset,
-                                        const int32_t groupType, const uint32_t groupListType,
-                                        const GlobalTensor<int64_t> &groupListGm) {
+__aicore__ inline int32_t GetSplitValue(uint32_t groupIdx, int32_t &preOffset, const int32_t groupType,
+                                        const uint32_t groupListType, const GlobalTensor<int64_t> &groupListGm)
+{
     int32_t splitValue = 0;
-    if (likely(groupType != -1)) {  // -1: no  need to split
-        if (groupListType == 0) { // 0: cumsum 1: count
+    if (likely(groupType != -1)) { // -1: no  need to split
+        if (groupListType == 0) {  // 0: cumsum 1: count
             int32_t offset = static_cast<int32_t>(groupListGm.GetValue(groupIdx));
             splitValue = offset - preOffset;
             preOffset = offset;
@@ -112,7 +112,8 @@ __aicore__ inline void GetTensorShape(uint32_t groupIdx, GM_ADDR tensorPtr, uint
 }
 
 template <typename T>
-__aicore__ inline void EmptyTensor(GM_ADDR x, GM_ADDR weight, GM_ADDR groupListPtr, GM_ADDR y, GM_ADDR tiling) {
+__aicore__ inline void EmptyTensor(GM_ADDR x, GM_ADDR weight, GM_ADDR groupListPtr, GM_ADDR y, GM_ADDR tiling)
+{
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, gmmNoQuantParam, gmmBaseParams, tiling);
     // groupType can only be 2, else return.
     if (groupListPtr == nullptr || gmmBaseParams.groupType != 2) {
@@ -123,7 +124,7 @@ __aicore__ inline void EmptyTensor(GM_ADDR x, GM_ADDR weight, GM_ADDR groupListP
     GlobalTensor<int64_t> groupListGm;
     yGm.SetGlobalBuffer(GetTensorAddr<T>(0, y));
     if (groupListPtr != nullptr) {
-        groupListGm.SetGlobalBuffer((__gm__ int64_t*)groupListPtr);
+        groupListGm.SetGlobalBuffer((__gm__ int64_t *)groupListPtr);
     }
     uint64_t yBaseOffset = 0;
     int32_t preOffset = 0;
@@ -134,8 +135,8 @@ __aicore__ inline void EmptyTensor(GM_ADDR x, GM_ADDR weight, GM_ADDR groupListP
     }
 
     for (uint32_t groupIdx = 0; groupIdx < gmmBaseParams.groupNum; ++groupIdx) {
-        int32_t splitValue = GetSplitValue(groupIdx, preOffset, gmmBaseParams.groupType,
-            gmmBaseParams.groupListType, groupListGm);
+        int32_t splitValue =
+            GetSplitValue(groupIdx, preOffset, gmmBaseParams.groupType, gmmBaseParams.groupListType, groupListGm);
         uint32_t xShape[DIM_NUM] = {0UL};
         uint32_t wShape[DIM_NUM] = {0UL};
         GetTensorShape(gmmBaseParams.singleX == 0 ? groupIdx : 0, x, xShape);
@@ -159,5 +160,5 @@ __aicore__ inline void EmptyTensor(GM_ADDR x, GM_ADDR weight, GM_ADDR groupListP
     }
 }
 
-}
+} // namespace GROUPED_MATMUL
 #endif

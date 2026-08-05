@@ -104,7 +104,7 @@ aclnnStatus aclnnMatmulReduceScatter(
                 <li>支持空Tensor。</li>
                 <li>与x1的数据类型保持一致。</li>
                 <li>当前版本仅支持二维输入，支持转置/不转置场景。</li>
-                <li>仅支持两根轴转置情况下的<a href="../../docs/zh/context/非连续的Tensor.md">非连续的Tensor</a>，其他场景的非连续的Tensor不支持。</li>
+                <li>仅支持两根轴转置情况下的<a href="../../docs/zh/context/non_contiguous_tensor.md">非连续的Tensor</a>，其他场景的非连续的Tensor不支持。</li>
             </ul>
         </td>
         <td>FLOAT16、BFLOAT16</td>
@@ -211,7 +211,7 @@ aclnnStatus aclnnMatmulReduceScatter(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -284,14 +284,14 @@ aclnnStatus aclnnMatmulReduceScatter(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 通信引擎约束：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持AICPU通信。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：仅支持AICPU通信。
-  - <term>Ascend 950PR/Ascend 950DT</term>：仅支持CCU通信。
+  - <term>Ascend 950PR/Ascend 950DT</term>：仅支持AICPU通信。
 
 - 参数说明中shape涉及的变量说明：
   - m为卡数rank_size的整数倍。
@@ -311,7 +311,7 @@ aclnnStatus aclnnMatmulReduceScatter(
   - 支持2、4、8、16、32卡，并且仅支持hccs链路double ring组网。
   - aclnnMatmulReduceScatter默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - <term>Ascend 950PR/Ascend 950DT</term>：支持2、4、8、16、32、64卡，并且仅支持hccs链路all mesh组网。
-  - ReduceScatter集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * n * sizeof(output_dtype)。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
+  - ReduceScatter集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m* n * sizeof(output_dtype)。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
   - aclnnMatmulReduceScatter默认为确定性实现。
 
 ## 调用说明

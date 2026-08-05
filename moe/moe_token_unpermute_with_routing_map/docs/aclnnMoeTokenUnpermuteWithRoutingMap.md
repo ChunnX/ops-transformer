@@ -17,7 +17,7 @@
 
 - 接口功能：对经过aclnnMoeTokenPermuteWithRoutingMap处理的permutedTokens，累加回原unpermutedTokens。根据sortedIndices存储的下标，获取permutedTokens中存储的输入数据；如果存在probs数据，permutedTokens会与probs相乘，最后进行累加求和，并输出计算结果。
 - 计算公式：
-  
+
   $$
   topK\_num= permutedTokens.size(0) // routingMapOptional.size(0)
   $$
@@ -95,8 +95,8 @@
   $$
 
 ## 函数原型
-  
-  每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithRoutingMap”接口执行计算。
+
+  每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithRoutingMap”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(
@@ -121,11 +121,11 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
   aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
-  
+
 ## aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize
-  
+
 - **参数说明**
-      
+
   <table style="undefined;table-layout: fixed; width: 1595px"><colgroup>
   <col style="width: 220px">
   <col style="width: 120px">
@@ -272,10 +272,10 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，出现以下场景时报错：
-  
+
   <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
   <col style="width: 320px">
   <col style="width: 140px">
@@ -348,8 +348,8 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
   </table>
 
 - **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -366,7 +366,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithRoutingMap(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include "acl/acl.h"
@@ -465,7 +465,7 @@ int main() {
     std::vector<int> sortedIndicesHostData = {1, 1};
     std::vector<char> routingMapOptionalHostData = {1, 1, 1, 1};
     std::vector<float> probsHostData = {1, 1, 1, 1};
-    
+
     std::vector<float> unpermutedTokensHostData = {0, 0, 0, 0};
     std::vector<int> outIndexHostData = {0, 0};
     std::vector<int> permuteTokenIdHostData = {0, 0};
@@ -492,7 +492,7 @@ int main() {
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
     // 调用aclnnMoeTokenUnpermuteWithRoutingMap第一段接口
-    ret = aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(permutedTokens, sortedIndices, routingMapOptional, probs, paddedMode, restoreShapeOptional, 
+    ret = aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize(permutedTokens, sortedIndices, routingMapOptional, probs, paddedMode, restoreShapeOptional,
                                                                unpermutedTokens, outIndex, permuteTokenId, permuteProbs, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenUnpermuteWithRoutingMapGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存

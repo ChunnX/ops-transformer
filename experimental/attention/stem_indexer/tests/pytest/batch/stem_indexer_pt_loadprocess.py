@@ -16,8 +16,10 @@ import torch_npu
 import stem_indexer_golden
 import os
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-import custom_ops  # 注册 torch.ops.custom.npu_stem_indexer(_metadata)
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+import custom_ops  # noqa: E402, F401
 
 
 def torch_load_cpu(filepath):
@@ -35,11 +37,21 @@ def move_inputs_to_npu(test_data):
         "q_seq_lens": test_data["q_seq_lens"].npu(),
         "kv_seq_lens": test_data["kv_seq_lens"].npu(),
         "num_prompt_tokens": test_data["num_prompt_tokens"].npu(),
-        "metadata": test_data["metadata"].npu(),
     }
 
 
+def build_metadata(case, npu_inputs):
+    return torch.ops.custom.npu_stem_indexer_metadata(
+        npu_inputs["q_seq_lens"],
+        npu_inputs["kv_seq_lens"],
+        case["q_heads"],
+        case["kv_heads"],
+        **stem_indexer_golden.get_metadata_attrs(case),
+    )
+
+
 def call_stem_indexer(case, npu_inputs):
+    metadata = build_metadata(case, npu_inputs)
     return torch.ops.custom.npu_stem_indexer(
         npu_inputs["qflat"],
         npu_inputs["kflat"],
@@ -47,7 +59,7 @@ def call_stem_indexer(case, npu_inputs):
         npu_inputs["q_seq_lens"],
         npu_inputs["kv_seq_lens"],
         num_prompt_tokens=npu_inputs["num_prompt_tokens"],
-        metadata=npu_inputs["metadata"],
+        metadata=metadata,
         **stem_indexer_golden.get_call_attrs(case),
     )
 
@@ -60,7 +72,12 @@ def stem_indexer_process(filepath, device_id=0, return_test_data=False):
     npu_inputs = move_inputs_to_npu(test_data)
     npu_result = call_stem_indexer(case, npu_inputs)
     torch_npu.npu.synchronize()
-    result = test_data["expected_sparse_indices"], test_data["expected_sparse_seq_len"], npu_result, case
+    result = (
+        test_data["expected_sparse_indices"],
+        test_data["expected_sparse_seq_len"],
+        npu_result,
+        case,
+    )
     if return_test_data:
         return (*result, test_data)
     return result

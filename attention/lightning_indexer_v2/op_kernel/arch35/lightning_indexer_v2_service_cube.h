@@ -55,12 +55,12 @@ public:
     static constexpr uint32_t FIX_M_EVENT = EVENT_ID2;
     static constexpr uint32_t M_FIX_EVENT = EVENT_ID3;
 
+    static constexpr uint64_t M_BASIC_BLOCK = 128;
     static constexpr uint64_t D_BASIC_BLOCK = 128;
     static constexpr uint64_t S2_BASIC_BLOCK = 128;
-
     static constexpr uint64_t D_BASIC_BLOCK_L0 = 128;
     static constexpr uint64_t S2_BASIC_BLOCK_L0 = 128;
-
+    static constexpr uint64_t BLOCK_CUBE = 16;
     static constexpr uint64_t FP16_BLOCK_CUBE = 16;
     // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
     static constexpr FixpipeConfig LI_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
@@ -69,7 +69,7 @@ public:
 
 protected:
     __aicore__ inline void Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset, uint64_t s1gL0RealSize,
-                                uint64_t s2L0RealSize, const LIV2Common::RunInfo &runInfo);
+                                uint64_t s2L0RealSize, uint64_t s1gSizeAlign2G, const LIV2Common::RunInfo &runInfo);
     __aicore__ inline void ComputeL0c(uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
                                       const LIV2Common::RunInfo &runInfo);
     __aicore__ inline void LoadKeyToL0b(uint64_t s2L0Offset, uint64_t s2L1RealSize, uint64_t s2L0RealSize,
@@ -121,28 +121,28 @@ template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::InitParams(const ConstInfo &constInfo)
 {
     constInfo_ = constInfo;
-    queryBufferOffset_ = constInfo.mBaseSize * D_BASIC_BLOCK;
-    l0abBufferOffset_ = constInfo.mBaseSize * D_BASIC_BLOCK_L0;
-    l0cBufferOffset_ = constInfo.mBaseSize * S2_BASIC_BLOCK_L0;
+    queryBufferOffset_ = M_BASIC_BLOCK * D_BASIC_BLOCK;
+    l0abBufferOffset_ = M_BASIC_BLOCK * D_BASIC_BLOCK_L0;
+    l0cBufferOffset_ = M_BASIC_BLOCK * S2_BASIC_BLOCK_L0;
 }
 
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::InitBuffers(TPipe *pipe)
 {
     // 大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
-    pipe->InitBuffer(bufUB_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize * sizeof(QK_T));
+    pipe->InitBuffer(bufUB_, 2 * CeilDiv(M_BASIC_BLOCK, 2) * constInfo_.s2BaseSize * sizeof(QK_T));
     mm1ResUB_ = bufUB_.Get<QK_T>();
-    pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * constInfo_.mBaseSize * D_BASIC_BLOCK * sizeof(Q_T));
+    pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * M_BASIC_BLOCK * D_BASIC_BLOCK * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
     pipe->InitBuffer(bufKeyL1_, KEY_BUF_NUM * S2_BASIC_BLOCK * D_BASIC_BLOCK * sizeof(K_T));
     keyL1_ = bufKeyL1_.Get<K_T>();
 
-    pipe->InitBuffer(bufQL0_, L0_BUF_NUM * constInfo_.mBaseSize * D_BASIC_BLOCK_L0 * sizeof(Q_T));
+    pipe->InitBuffer(bufQL0_, L0_BUF_NUM * M_BASIC_BLOCK * D_BASIC_BLOCK_L0 * sizeof(Q_T));
     queryL0_ = bufQL0_.Get<Q_T>();
     pipe->InitBuffer(bufKeyL0_, L0_BUF_NUM * D_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0 * sizeof(K_T));
     keyL0_ = bufKeyL0_.Get<K_T>();
 
-    pipe->InitBuffer(bufL0C_, L0_BUF_NUM * constInfo_.mBaseSize * S2_BASIC_BLOCK_L0 * sizeof(float));
+    pipe->InitBuffer(bufL0C_, L0_BUF_NUM * M_BASIC_BLOCK * S2_BASIC_BLOCK_L0 * sizeof(float));
     cL0_ = bufL0C_.Get<float>();
 }
 
@@ -180,29 +180,30 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::ComputeMm1(const LIV2
         SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
         WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
         // s1gProcessSize当前必定不会超过2倍的s1g basic block
-        for (uint64_t s1gGmOffset = 0; s1gGmOffset < s1gProcessSize; s1gGmOffset += constInfo_.mBaseSize) {
-            uint64_t s1gL1RealSize = s1gGmOffset + constInfo_.mBaseSize > s1gProcessSize ?
-                                     s1gProcessSize - s1gGmOffset : constInfo_.mBaseSize;
+        for (uint64_t s1gGmOffset = 0; s1gGmOffset < s1gProcessSize; s1gGmOffset += M_BASIC_BLOCK) {
+            uint64_t s1gL1RealSize = s1gGmOffset + M_BASIC_BLOCK > s1gProcessSize ?
+                                     s1gProcessSize - s1gGmOffset : M_BASIC_BLOCK;
             uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, 2 * constInfo_.gSize);
+            uint64_t s1gL1SizeAlign = CeilAlign(s1gL1SizeAlign2G, BLOCK_CUBE);
             if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
                 queryL1Mte2BufIdx_++;
                 queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
                 WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
-                QueryNd2Nz(s1gL1SizeAlign2G, s1gGmOffset, runInfo);
+                QueryNd2Nz(s1gL1RealSize, s1gGmOffset, runInfo);
                 SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                 WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
             } else {
                 queryL1Mte1BufIdx_ =
-                    queryL1Mte2BufIdx_ - (CeilDiv(s1gProcessSize, constInfo_.mBaseSize) - 1 - (s1gGmOffset > 0));
+                    queryL1Mte2BufIdx_ - (CeilDiv(s1gProcessSize, M_BASIC_BLOCK) - 1 - (s1gGmOffset > 0));
             }
             for (uint64_t s2L1Offset = 0; s2L1Offset < s2L1RealSize; s2L1Offset += S2_BASIC_BLOCK_L0) {
                 uint64_t s2L0RealSize =
                     s2L1Offset + S2_BASIC_BLOCK_L0 > s2L1RealSize ? s2L1RealSize - s2L1Offset : S2_BASIC_BLOCK_L0;
-                for (uint64_t s1gL1Offset = 0; s1gL1Offset < s1gL1SizeAlign2G; s1gL1Offset += constInfo_.mBaseSize) {
+                for (uint64_t s1gL1Offset = 0; s1gL1Offset < s1gL1SizeAlign; s1gL1Offset += M_BASIC_BLOCK) {
                     WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
-                    uint64_t s1gL0RealSize = s1gL1Offset + constInfo_.mBaseSize > s1gL1SizeAlign2G ?
-                                             s1gL1SizeAlign2G - s1gL1Offset : constInfo_.mBaseSize;
-                    LoadQueryToL0a(s1gGmOffset, s1gL1Offset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
+                    uint64_t s1gL0RealSize = s1gL1Offset + M_BASIC_BLOCK > s1gL1SizeAlign ?
+                                             s1gL1SizeAlign - s1gL1Offset : M_BASIC_BLOCK;
+                    LoadQueryToL0a(s1gGmOffset, s1gL1Offset, s1gL1SizeAlign, s1gL0RealSize, runInfo);
                     LoadKeyToL0b(s2L1Offset, s2L1RealSize, s2L0RealSize, runInfo);
 
                     SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
@@ -213,7 +214,8 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::ComputeMm1(const LIV2
 
                     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
                     
-                    Fixp(s1gGmOffset + s1gL1Offset, s2GmOffset + s2L1Offset, s1gL0RealSize, s2L0RealSize, runInfo);
+                    Fixp(s1gGmOffset + s1gL1Offset, s2GmOffset + s2L1Offset, s1gL0RealSize, s2L0RealSize,
+                         s1gL1SizeAlign2G, runInfo);
                     SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0BufIdx_ % L0_BUF_NUM);
                     l0BufIdx_++;
                 }
@@ -286,12 +288,13 @@ template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gGmOffset,
                                                  const LIV2Common::RunInfo &runInfo)
 {
+    uint64_t dstNzC0Stride = CeilAlign(s1gL1RealSize, constInfo_.gSize * 2);
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
     nd2nzPara.nValue = s1gL1RealSize; // 行数
     nd2nzPara.dValue = constInfo_.headDim;
     nd2nzPara.srcDValue = constInfo_.headDim;
-    nd2nzPara.dstNzC0Stride = CeilAlign(s1gL1RealSize, (uint64_t)BLOCK_CUBE); // 对齐到16 单位block
+    nd2nzPara.dstNzC0Stride = CeilAlign(dstNzC0Stride, (uint64_t)BLOCK_CUBE); // 对齐到16 单位block
     nd2nzPara.dstNzNStride = 1;
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
@@ -355,31 +358,42 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::ComputeL0c(uint64_t s
 template <typename LIT>
 __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset,
                                                                 uint64_t s1gL0RealSize, uint64_t s2L0RealSize,
+                                                                uint64_t s1gSizeAlign2G,
                                                                 const LIV2Common::RunInfo &runInfo)
 {
     SetFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
     WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
-
+    uint32_t nSize = (s2L0RealSize + 7) >> 3 << 3;
     // L0C->UB
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
     // L0C上的bmm1结果矩阵N方向的size大小；同mmadParams.n；8个元素（32B)对齐
-    fixpipeParams.nSize = (s2L0RealSize + 7) >> 3 << 3;
+    fixpipeParams.nSize = nSize;
     // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
-    fixpipeParams.mSize = (s1gL0RealSize + 1) >> 1 << 1;
+    fixpipeParams.mSize = s1gSizeAlign2G;
     // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T) //源NZ矩阵中相邻Z排布的起始地址偏移
-    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
+    fixpipeParams.srcStride = (s1gL0RealSize + 1) >> 1 << 1;
     // mmResUb上两行之间的间隔，单位：element。 // 128：根据比对dump文件得到，ND方案(S1 * S2)时脏数据用mask剔除
-    fixpipeParams.dstStride = constInfo_.s2BaseSize;
+    fixpipeParams.dstStride = UB_BANK_DEPTH_STRIDE / sizeof(QK_T);
     // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
     fixpipeParams.dualDstCtl = 1;
-    fixpipeParams.params.ndNum = 1;
-    fixpipeParams.params.srcNdStride = 0;
-    fixpipeParams.params.dstNdStride = 0;
+    if (nSize <= (256 / sizeof(float))) {
+        // N方向小于一个bank(256B), 只需搬一个ND块, 且不用补齐
+        fixpipeParams.nSize = nSize;
+        fixpipeParams.params.ndNum = 1;
+        fixpipeParams.params.srcNdStride = 0;
+        fixpipeParams.params.dstNdStride = 0;
+    } else {
+        // N方向在(256B, 512B]范围, 分2个ND搬
+        fixpipeParams.nSize = S2_BASIC_BLOCK_L0 / 2;
+        fixpipeParams.params.ndNum = 2;
+        fixpipeParams.params.srcNdStride = ((fixpipeParams.mSize + 15) / 16) * fixpipeParams.nSize;
+        fixpipeParams.params.dstNdStride = constInfo_.s2BaseSize * M_BASIC_BLOCK / 2;
+    }
+
     // 将matmul结果从L0C搬运到UB
     Fixpipe<float, float, LI_CFG_ROW_MAJOR_UB>(
-        mm1ResUB_[(runInfo.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize +
-                    CeilDiv(s1gGmOffset, 2) * fixpipeParams.dstStride + s2GmOffset],
-                    cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_], fixpipeParams);
+        mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
+                  cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_], fixpipeParams);
 }
 
 template <typename LIT>

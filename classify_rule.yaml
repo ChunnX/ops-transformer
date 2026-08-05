@@ -73,8 +73,6 @@ transformer-1@ops-transformer:
                 - ops/ops-transformer/attention/common/op_host/fia_tiling_base.h
                 - ops/ops-transformer/attention/common/op_host/fia_tiling_shape.cpp
                 - ops/ops-transformer/attention/common/op_host/fia_tiling_templates_registry.h
-                - ops/ops-transformer/attention/common/op_host/arch35/fia_tiling_nonquant_mla.cpp
-                - ops/ops-transformer/attention/common/op_host/arch35/fia_tiling_nonquant_mla.h
                 - ops/ops-transformer/attention/common/op_host/arch35/fia_tiling_nonquant_gqa.cpp
                 - ops/ops-transformer/attention/common/op_host/arch35/fia_tiling_nonquant_gqa.h
                 - ops/ops-transformer/attention/common/op_kernel/arch22/
@@ -129,11 +127,22 @@ transformer-1@ops-transformer:
                 - ops/ops-transformer/attention/incre_flash_attention/examples/
                 - ops/ops-transformer/attention/flash_attn/tests/
                 - ops/ops-transformer/attention/flash_attn/examples/
-                - ops/ops-transformer/attention/flashrecurrent_gated_delta_rule_attn/tests/
+                - ops/ops-transformer/attention/recurrent_gated_delta_rule/tests/
                 - ops/ops-transformer/attention/recurrent_gated_delta_rule/examples/
                 - ops/ops-transformer/attention/recurrent_gated_delta_rule/docs/
             non_delivery: null
             open_source: null
+    llt:
+        ut_filter:
+            - ops/ops-transformer/attention/*/op_kernel/
+            - ops/ops-transformer/attention/*/op_api/
+            - ops/ops-transformer/attention/*/op_graph/
+            - ops/ops-transformer/attention/common/op_host/fia_tiling_info.h
+            - ops/ops-transformer/attention/flash_attn/op_host/flash_attn_tiling.h
+            - ops/ops-transformer/attention/flash_attn/op_host/flash_attn_tiling_common.h
+            - ops/ops-transformer/attention/flash_attn/op_host/fa_tiling_info.h
+            - ops/ops-transformer/attention/flash_attn/op_host/flash_attn_def.cpp
+            - ops/ops-transformer/attention/recurrent_gated_delta_rule/op_host/recurrent_gated_delta_rule_def.cpp
 
 transformer-2@ops-transformer:
     src:
@@ -171,6 +180,11 @@ transformer-2@ops-transformer:
                 - ops/ops-transformer/attention/mixed_quant_sparse_flash_mla/tests/
             non_delivery: null
             open_source: null
+    llt:
+        ut_filter:
+            - ops/ops-transformer/attention/*/op_kernel/
+            - ops/ops-transformer/attention/*/op_api/
+            - ops/ops-transformer/attention/*/op_graph/
 
 transformer-pfa_unevolved@ops-transformer:
     src:
@@ -213,6 +227,11 @@ transformer-pfa_unevolved@ops-transformer:
                 - ops/ops-transformer/attention/prompt_flash_attention/docs/
             non_delivery: null
             open_source: null
+    llt:
+        ut_filter:
+            - ops/ops-transformer/attention/*/op_kernel/
+            - ops/ops-transformer/attention/*/op_api/
+            - ops/ops-transformer/attention/*/op_graph/
 
 transformer-vf@ops-transformer:
     src:
@@ -244,6 +263,11 @@ transformer-vf@ops-transformer:
             test_code: null
             non_delivery: null
             open_source: null
+    llt:
+        ut_filter:
+            - ops/ops-transformer/attention/*/op_kernel/
+            - ops/ops-transformer/attention/*/op_api/
+            - ops/ops-transformer/attention/*/op_graph/
 
 transformer-3@ops-transformer:
     src:
@@ -313,6 +337,11 @@ transformer-3@ops-transformer:
                 - ops/ops-transformer/attention/fused_infer_attention_score/docs/
             non_delivery: null
             open_source: null
+    llt:
+        ut_filter:
+            - ops/ops-transformer/attention/*/op_kernel/
+            - ops/ops-transformer/attention/*/op_api/
+            - ops/ops-transformer/attention/*/op_graph/
 
 transformer-5@ops-transformer:
     src:
@@ -380,6 +409,11 @@ transformer-5@ops-transformer:
             test_code: null
             non_delivery: null
             open_source: null
+    llt:
+        ut_filter:
+            - ops/ops-transformer/attention/*/op_kernel/
+            - ops/ops-transformer/attention/*/op_api/
+            - ops/ops-transformer/attention/*/op_graph/
 
 ifa@ops-transformer:
     src:
@@ -479,12 +513,9 @@ gmm@ops-transformer:
                 - ops/ops-transformer/gmm/grouped_matmul/op_host/grouped_matmul_infershape_quant_checker.h
                 - ops/ops-transformer/gmm/grouped_matmul/op_host/grouped_matmul_infershape_weight_quant_checker.cpp
                 - ops/ops-transformer/gmm/grouped_matmul/op_host/grouped_matmul_infershape_weight_quant_checker.h
-                - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp
-                - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.h
                 - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/arch35
                 - ops/ops-transformer/gmm/grouped_matmul/op_kernel/arch35
                 - ops/ops-transformer/gmm/grouped_matmul/op_kernel/grouped_matmul_apt.cpp
-                - ops/ops-transformer/gmm/grouped_matmul/op_kernel/grouped_matmul_utils.h
                 - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_api
                 - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_graph
                 - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_host/grouped_matmul_finalize_routing_base_tiling.cpp
@@ -507,7 +538,6 @@ gmm@ops-transformer:
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_host/op_tiling/arch35
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_kernel/arch35
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_kernel/grouped_matmul_swiglu_quant_v2_apt.cpp
-                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_kernel/grouped_matmul_swiglu_quant_v2_utils.h
                 - ops/ops-transformer/gmm/quant_grouped_matmul_inplace_add
             opensource_style: null
             kernel_style: null

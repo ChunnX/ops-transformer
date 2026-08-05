@@ -453,7 +453,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::GetTensorC(LocalT
     fixL0CToDstParams.nL0Size = param.nL1Size; // N方向当前在L0上实际计算的大小
     fixL0CToDstParams.outNSize = 256;          // 输出N方向的总大小，用于dstStride
     fixL0CToDstParams.splitNSize = 0;          // fixp输出多个矩阵时，N方向切分的大小
-    fixL0CToDstParams.dstNdStride = 0;         // fixp输出多个矩阵时，目的相邻DN矩阵起始地址间的偏移
+    fixL0CToDstParams.dstNdStride = 0; // fixp输出多个矩阵时，目的相邻DN矩阵起始地址间的偏移
     FixL0CToDst(yUb, l0c_[l0cOffset_], fixL0CToDstParams);
     l0cOffset_ += Ops::Base::CeilAlign(fixL0CToDstParams.mL0Size, static_cast<uint64_t>(BLOCK_CUBE)) *
                   CeilAlign(fixL0CToDstParams.nL0Size, static_cast<int64_t>(BLOCK_CUBE));

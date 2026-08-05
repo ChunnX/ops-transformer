@@ -378,8 +378,6 @@ bool ExecuteTiling(const gert::TilingContextPara &tilingContextPara, TilingInfo 
 
     return true;
 }
-<<<<<<< HEAD
-=======
 
 bool ExecuteTiling(
     const gert::TilingContextPara& tilingContextPara, TilingInfo& tilingInfo, TilingFunc tilingFuncOverride)
@@ -405,4 +403,3 @@ bool ExecuteTiling(
     std::memcpy(tilingInfo.tilingData.get(), rawTilingData->GetData(), rawTilingData->GetDataSize());
     return true;
 }
->>>>>>> a5dafc2cc (perchannel done)

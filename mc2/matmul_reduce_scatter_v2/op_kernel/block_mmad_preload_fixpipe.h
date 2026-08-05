@@ -29,14 +29,7 @@
 
 namespace Catlass::Gemm::Block {
 
-template <
-    class DispatchPolicy_,
-    class L1TileShape_,
-    class L0TileShape_,
-    class LayoutA_,
-    class LayoutB_,
-    class LayoutC_
->
+template <class DispatchPolicy_, class L1TileShape_, class L0TileShape_, class LayoutA_, class LayoutB_, class LayoutC_>
 struct FixpipeBlockMmad {
 public:
     // Type Aliases
@@ -69,8 +62,8 @@ public:
     using CopyGmToL1S = Gemm::Tile::CopyGmToL1<ArchTag, Gemm::GemmType<ElementScale, layout::VectorLayout>>;
     using CopyL1ToL0A = typename TileCopy::CopyL1ToL0A;
     using CopyL1ToL0B = typename TileCopy::CopyL1ToL0B;
-    using CopyL0CToGm = Gemm::Tile::CopyL0CToGm<ArchTag, ElementAccumulator, CType,
-    Gemm::Tile::ScaleGranularity::PER_CHANNEL>;
+    using CopyL0CToGm =
+        Gemm::Tile::CopyL0CToGm<ArchTag, ElementAccumulator, CType, Gemm::Tile::ScaleGranularity::PER_CHANNEL>;
     using LayoutAInL1 = typename CopyL1ToL0A::LayoutSrc;
     using LayoutBInL1 = typename CopyL1ToL0B::LayoutSrc;
     using LayoutAInL0 = typename CopyL1ToL0A::LayoutDst;
@@ -96,7 +89,7 @@ public:
 
     // Check L1TileShape
     static_assert((L1A_SIZE * STAGES + L1B_SIZE * STAGES + L1S_SIZE) <= ArchTag::L1_SIZE,
-            "L1TileShape exceeding the L1 space!");
+                  "L1TileShape exceeding the L1 space!");
 
     // Check L0TileShape
     static constexpr uint32_t L0A_TILE_SIZE = L0TileShape::M * L0TileShape::K * sizeof(ElementA);
@@ -105,7 +98,7 @@ public:
     static_assert((L0B_TILE_SIZE * STAGES) <= L0B_SIZE, "L0TileShape exceeding the L0B space!");
 
     static_assert(L1TileShape::M == L0TileShape::M && L1TileShape::N == L0TileShape::N,
-        "The situation where the basic blocks of L1 and L0 differ on the m and n axes is not supported yet");
+                  "The situation where the basic blocks of L1 and L0 differ on the m and n axes is not supported yet");
 
     /// Construct
     CATLASS_DEVICE
@@ -152,15 +145,13 @@ public:
 
     /// Perform a block-scoped matrix multiply-accumulate
     CATLASS_DEVICE
-    void operator()(
-        AscendC::GlobalTensor<ElementA> const &gmBlockA, LayoutA const &layoutA,
-        AscendC::GlobalTensor<ElementB> const &gmBlockB, LayoutB const &layoutB,
-        AscendC::GlobalTensor<ElementC> const &gmBlockC, LayoutC const &layoutC,
-        AscendC::GlobalTensor<ElementScale> const &gmBlockS, layout::VectorLayout const &layoutScale,
-        AscendC::GlobalTensor<ElementA> const &gmNextBlockA,
-        AscendC::GlobalTensor<ElementB> const &gmNextBlockB,
-        GemmCoord const &actualShape, GemmCoord const &actualShapeNext,
-        bool isFirstBlock, bool hasNextBlock)
+    void operator()(AscendC::GlobalTensor<ElementA> const &gmBlockA, LayoutA const &layoutA,
+                    AscendC::GlobalTensor<ElementB> const &gmBlockB, LayoutB const &layoutB,
+                    AscendC::GlobalTensor<ElementC> const &gmBlockC, LayoutC const &layoutC,
+                    AscendC::GlobalTensor<ElementScale> const &gmBlockS, layout::VectorLayout const &layoutScale,
+                    AscendC::GlobalTensor<ElementA> const &gmNextBlockA,
+                    AscendC::GlobalTensor<ElementB> const &gmNextBlockB, GemmCoord const &actualShape,
+                    GemmCoord const &actualShapeNext, bool isFirstBlock, bool hasNextBlock)
     {
         uint32_t mRound = RoundUp<L1AAlignHelper::M_ALIGNED>(actualShape.m());
         uint32_t nRound = RoundUp<L1BAlignHelper::N_ALIGNED>(actualShape.n());
@@ -220,8 +211,8 @@ public:
                 auto l1ATensor = l1ATensorList[l1ListIdNext];
                 auto l1BTensor = l1BTensorList[l1ListIdNext];
                 // Get GM tensor for next stage
-                kActualNext = (shuffleKIdxNext < kTileCount - 1) ?
-                    L1TileShape::K : (actualShape.k() - shuffleKIdxNext * L1TileShape::K);
+                kActualNext = (shuffleKIdxNext < kTileCount - 1) ? L1TileShape::K :
+                                                                   (actualShape.k() - shuffleKIdxNext * L1TileShape::K);
                 MatrixCoord gmTileAOffset{0, shuffleKIdxNext * L1TileShape::K};
                 MatrixCoord gmTileBOffset{shuffleKIdxNext * L1TileShape::K, 0};
                 auto gmTileA = gmBlockA[layoutA.GetOffset(gmTileAOffset)];
@@ -245,7 +236,8 @@ public:
                 auto l1BTensor = l1BTensorList[l1ListIdNext];
                 // Get GM tensor for next stage
                 kActualNext = (firstTileIdxNext < kTileCountNext - 1) ?
-                    L1TileShape::K : (actualShapeNext.k() - firstTileIdxNext * L1TileShape::K);
+                                  L1TileShape::K :
+                                  (actualShapeNext.k() - firstTileIdxNext * L1TileShape::K);
                 MatrixCoord gmTileAOffset{0, firstTileIdxNext * L1TileShape::K};
                 MatrixCoord gmTileBOffset{firstTileIdxNext * L1TileShape::K, 0};
                 auto gmTileA = gmNextBlockA[layoutA.GetOffset(gmTileAOffset)];
@@ -274,12 +266,12 @@ public:
             uint32_t l0BBufId = 0;
 
             for (uint32_t mPartIdx = 0; mPartIdx < mPartLoop; mPartIdx++) {
-                uint32_t mPartActual = (mPartIdx < mPartLoop - 1) ?
-                    L0TileShape::M : (mRound - mPartIdx * L0TileShape::M);
+                uint32_t mPartActual =
+                    (mPartIdx < mPartLoop - 1) ? L0TileShape::M : (mRound - mPartIdx * L0TileShape::M);
 
                 for (uint32_t kPartIdx = 0; kPartIdx < kPartLoop; kPartIdx++) {
-                    uint32_t kPartActual = (kPartIdx < kPartLoop - 1) ?
-                        L0TileShape::K : (kActual - kPartIdx * L0TileShape::K);
+                    uint32_t kPartActual =
+                        (kPartIdx < kPartLoop - 1) ? L0TileShape::K : (kActual - kPartIdx * L0TileShape::K);
 
                     // Locate the current tile on L0A
                     auto l0ATile = l0ATensorList[l0ABufId];
@@ -300,8 +292,8 @@ public:
                     }
 
                     for (uint32_t nPartIdx = 0; nPartIdx < nPartLoop; nPartIdx++) {
-                        uint32_t nPartActual = (nPartIdx < nPartLoop - 1) ?
-                            L0TileShape::N : (nRound - nPartIdx * L0TileShape::N);
+                        uint32_t nPartActual =
+                            (nPartIdx < nPartLoop - 1) ? L0TileShape::N : (nRound - nPartIdx * L0TileShape::N);
 
                         // Locate the current tile on L0B
                         auto l0BTile = l0BTensorList[l0BBufId];

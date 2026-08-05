@@ -22,11 +22,16 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
            int64_t epWorldSize, int64_t cclBufferSize, const c10::optional<std::vector<at::Tensor>> &weightScales1,
            const c10::optional<std::vector<at::Tensor>> &weightScales2,
            const c10::optional<std::vector<at::Tensor>> &bias1, const c10::optional<std::vector<at::Tensor>> &bias2,
-           const c10::optional<at::Tensor> &xActiveMask, int64_t maxRecvTokenNum, int64_t dispatchQuantMode,
-           int64_t combineQuantMode, std::string commAlg, int64_t numMaxTokensPerRank, std::string activation,
-           c10::optional<float> activationClamp, c10::optional<int64_t> dispatchQuantOutDtype,
+           const c10::optional<at::Tensor> &xActiveMask, const c10::optional<std::vector<at::Tensor>> &sharedWeight1,
+           const c10::optional<std::vector<at::Tensor>> &sharedWeight2,
+           const c10::optional<std::vector<at::Tensor>> &sharedWeightScales1,
+           const c10::optional<std::vector<at::Tensor>> &sharedWeightScales2,
+           const c10::optional<std::vector<at::Tensor>> &sharedBias1,
+           const c10::optional<std::vector<at::Tensor>> &sharedBias2, int64_t maxRecvTokenNum,
+           int64_t dispatchQuantMode, int64_t combineQuantMode, std::string commAlg, int64_t numMaxTokensPerRank,
+           std::string activation, c10::optional<float> activationClamp, c10::optional<int64_t> dispatchQuantOutDtype,
            c10::optional<int64_t> weight1Type, c10::optional<int64_t> weight2Type, c10::optional<int64_t> topoType,
-           c10::optional<int64_t> rankNumPerServer)
+           c10::optional<int64_t> rankNumPerServer, int64_t topkWeightsType)
 {
     TORCH_CHECK((epWorldSize > 0), "The ep_world_sizes should be greater than 0, current is: ", epWorldSize);
     TORCH_CHECK((x.dim() == DIM_TWO) && (topkIds.dim() == DIM_TWO), "The x and topk_ids should be 2D");
@@ -37,30 +42,13 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     at::TensorList weight1Ref = weight1;
     at::TensorList weight2Ref = weight2;
 
-    at::TensorList weightScales1Ref;
-    if (weightScales1.has_value()) {
-        weightScales1Ref = at::TensorList(weightScales1.value());
-    } else {
-        weightScales1Ref = at::TensorList();
-    }
-    at::TensorList weightScales2Ref;
-    if (weightScales2.has_value()) {
-        weightScales2Ref = at::TensorList(weightScales2.value());
-    } else {
-        weightScales2Ref = at::TensorList();
-    }
-    at::TensorList bias1Ref;
-    if (bias1.has_value()) {
-        bias1Ref = at::TensorList(bias1.value());
-    } else {
-        bias1Ref = at::TensorList();
-    }
-    at::TensorList bias2Ref;
-    if (bias2.has_value()) {
-        bias2Ref = at::TensorList(bias2.value());
-    } else {
-        bias2Ref = at::TensorList();
-    }
+    auto toTensorList = [](const c10::optional<std::vector<at::Tensor>> &opt) -> at::TensorList {
+        return opt.has_value() ? at::TensorList(opt.value()) : at::TensorList();
+    };
+    at::TensorList weightScales1Ref = toTensorList(weightScales1);
+    at::TensorList weightScales2Ref = toTensorList(weightScales2);
+    at::TensorList bias1Ref = toTensorList(bias1);
+    at::TensorList bias2Ref = toTensorList(bias2);
 
     aclDataType weight1RefDtype = weight1Type.has_value() ? GetAclDataType(weight1Type.value()) :
                                                             ConvertToAclDataType(weight1Ref[0].scalar_type());
@@ -122,11 +110,26 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     TensorListWrapper bias1Wrapper = {bias1Ref, aclDataType::ACL_FLOAT};
     TensorListWrapper bias2Wrapper = {bias2Ref, aclDataType::ACL_FLOAT};
 
+    at::TensorList sharedWeight1Ref = toTensorList(sharedWeight1);
+    at::TensorList sharedWeight2Ref = toTensorList(sharedWeight2);
+    at::TensorList sharedWeightScales1Ref = toTensorList(sharedWeightScales1);
+    at::TensorList sharedWeightScales2Ref = toTensorList(sharedWeightScales2);
+    at::TensorList sharedBias1Ref = toTensorList(sharedBias1);
+    at::TensorList sharedBias2Ref = toTensorList(sharedBias2);
+
+    TensorListWrapper sharedWeight1Wrapper = {sharedWeight1Ref, weight1RefDtype};
+    TensorListWrapper sharedWeight2Wrapper = {sharedWeight2Ref, weight2RefDtype};
+    TensorListWrapper sharedWeightScales1Wrapper = {sharedWeightScales1Ref, weightScales1Dtype};
+    TensorListWrapper sharedWeightScales2Wrapper = {sharedWeightScales2Ref, weightScales2Dtype};
+    TensorListWrapper sharedBias1Wrapper = {sharedBias1Ref, aclDataType::ACL_FLOAT};
+    TensorListWrapper sharedBias2Wrapper = {sharedBias2Ref, aclDataType::ACL_FLOAT};
+
     ACLNN_CMD(aclnnMegaMoe, context, x, topkIds, topkWeights, weight1Wrapper, weight2Wrapper, weightScales1Wrapper,
-              weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask, moeExpertNum, epWorldSize, cclBufferSize,
-              maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType, combineQuantMode, commAlgPtr,
-              numMaxTokensPerRank, activationPtr, activationClampValue, topoTypeValue, rankNumPerServerValue, y,
-              expertTokenNums);
+              weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask, sharedWeight1Wrapper, sharedWeight2Wrapper,
+              sharedWeightScales1Wrapper, sharedWeightScales2Wrapper, sharedBias1Wrapper, sharedBias2Wrapper,
+              moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType,
+              combineQuantMode, commAlgPtr, numMaxTokensPerRank, activationPtr, activationClampValue, topoTypeValue,
+              rankNumPerServerValue, topkWeightsType, y, expertTokenNums);
 
     return std::tie(y, expertTokenNums);
 }
@@ -137,6 +140,7 @@ constexpr int64_t ALIGN_512 = 512LL;
 constexpr int64_t MB_SIZE = 1024LL * 1024LL;
 constexpr int64_t RESERVED_SPACE_SIZE = 10LL * 1024 * 1024;
 constexpr int64_t MAX_EXPERTS_PER_RANK_A2A3 = 128LL;
+constexpr int64_t SYNC_STATE_RESERVED_SIZE = 512LL * 1024;
 
 int64_t CeilAlign(int64_t val, int64_t align)
 {
@@ -195,15 +199,15 @@ int64_t CalcLeastCclBufferSizeA3(int64_t h, int64_t epWorldSize, bool isQuantRou
         offsetTensor += bs * topK * static_cast<int64_t>(sizeof(float));
     }
 
-    // Data block 3: sync flags (CrossRankSync only)
-    int64_t offsetFlag = epWorldSize * ALIGN_512;
+    // Data block 3: sync flags
+    int64_t offsetFlag = std::max(epWorldSize * ALIGN_512, SYNC_STATE_RESERVED_SIZE);
 
     return (offsetTokenPerExpert + offsetTensor + offsetFlag + RESERVED_SPACE_SIZE + MB_SIZE) / MB_SIZE;
 }
 
 // A5 half-buffer minimum size (MB). Ported 1:1 from the original Python implementation.
 int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_t numMaxTokensPerRank, int64_t numTopk,
-                               int64_t hidden)
+                               int64_t hidden, int64_t topkWeightsType)
 {
     int64_t expertPerRank = moeExpertNum / epWorldSize;
 
@@ -220,6 +224,10 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     int64_t mxScaleNum = (hidden + 31) / 32;
     int64_t dataBytes = CeilAlign(hidden, 256);
     int64_t tokenBytes = CeilAlign(dataBytes + mxScaleNum, 32);
+    if (topkWeightsType == 1) {
+        int64_t weightBytes = CeilAlign(numTopk * static_cast<int64_t>(sizeof(float)), 32);
+        tokenBytes = CeilAlign(tokenBytes + weightBytes, 32);
+    }
     int64_t quantTokenScaleSize = CeilAlign(numMaxTokensPerRank * tokenBytes, 512);
 
     // combine_send_size
@@ -234,7 +242,7 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
 int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64_t numMaxTokensPerRank, int64_t numTopk,
                                 int64_t hidden, int64_t maxRecvTokenNum, int64_t dispatchQuantMode,
                                 c10::optional<int64_t> dispatchQuantOutDtype, int64_t combineQuantMode,
-                                std::string commAlg)
+                                std::string commAlg, int64_t topkWeightsType)
 {
     const char *socName = aclrtGetSocName();
     bool isA2 = (socName != nullptr && std::strstr(socName, "Ascend910B") != nullptr);
@@ -272,9 +280,9 @@ int64_t GetMegaMoeCclBufferSize(int64_t epWorldSize, int64_t moeExpertNum, int64
     TORCH_CHECK(numMaxTokensPerRank >= 1, "num_max_tokens_per_rank should be >= 1, but got ", numMaxTokensPerRank);
     TORCH_CHECK(moeExpertNum >= 1 && moeExpertNum <= 2048, "moe_expert_num only support in [1, 2048], but got ",
                 moeExpertNum);
-    TORCH_CHECK(numTopk >= 1 && numTopk <= 16, "num_topk only support in [1, 16], but got ", numTopk);
+    TORCH_CHECK(numTopk >= 1 && numTopk <= 32, "num_topk only support in [1, 32], but got ", numTopk);
 
-    return CalcHalfBufferSizeMBA5(epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden);
+    return CalcHalfBufferSizeMBA5(epWorldSize, moeExpertNum, numMaxTokensPerRank, numTopk, hidden, topkWeightsType);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)

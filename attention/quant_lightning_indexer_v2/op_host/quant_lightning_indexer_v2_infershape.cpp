@@ -23,10 +23,10 @@ using namespace ge;
 namespace ops {
 constexpr uint32_t QUERY_INDEX = 0;
 constexpr uint32_t KEY_INDEX = 1;
-constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 2;
-constexpr uint32_t ATTR_KV_LAYOUT_INDEX = 3;
-constexpr uint32_t ATTR_SPARSE_COUNT_INDEX = 4;
-constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 9;
+constexpr uint32_t ATTR_SPARSE_COUNT_INDEX = 0;
+constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX = 3;
+constexpr uint32_t ATTR_KV_LAYOUT_INDEX = 4;
+constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 7;
 constexpr uint32_t DIM_NUM_3 = 3;
 constexpr uint32_t DIM_NUM_4 = 4;
 
@@ -74,8 +74,8 @@ static ge::graphStatus InferShapeQuantLightningIndexerV2(gert::InferShapeContext
         sparseIndicesShape->SetDim(1, keyHeadNum);             // 1:output shape's N Dim, 2: key shape's N Dim
         sparseIndicesShape->SetDim(2, *sparse_count);          // 2:Dim K
     }
-    const bool *return_value = attrs->GetAttrPointer<bool>(ATTR_RETURN_VALUE_INDEX);
-    bool returnValueFlag = (return_value != nullptr) ? *return_value : false;
+    const int32_t *return_value = attrs->GetAttrPointer<int32_t>(ATTR_RETURN_VALUE_INDEX);
+    bool returnValueFlag = (return_value != nullptr) ? (*return_value != 0) : false;
     if (returnValueFlag) {
         *sparseValuesShape = *sparseIndicesShape;
     } else {

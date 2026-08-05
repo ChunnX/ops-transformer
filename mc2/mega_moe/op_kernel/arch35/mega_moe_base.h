@@ -39,13 +39,17 @@ struct GMMAddrInfo {
     GM_ADDR gmm2OutGlobal;
     __gm__ int32_t *swigluToGmm2Flag;
     __gm__ int32_t *dispatchToGmm1Flag;
+    __gm__ int32_t *gmm2CombineSyncCounter;
+    __gm__ int32_t *gmmToEpilogueFlag;
+    __gm__ int32_t *sharedExpertGmm2TileCounter;
 };
 
 struct PeermemInfo {
     GM_ADDR rankSyncInWorldPtr;
     GM_ADDR maskRecvPtr;        // 源卡算好的 send-mask 接收区, 布局 [localExpert][srcRank]
     GM_ADDR quantTokenScalePtr; // 量化结果，包括data+scale
-    GM_ADDR dispatchRecivePtr;  // dispatch 1级通信区,
+    GM_ADDR dispatchRecivePtr;  // dispatch 一级通信数据区，仅保存 token + scale
+    GM_ADDR dispatchFlagPtr;    // dispatch ready flag 区，布局 [sourceServer][tokenId] uint64_t
     GM_ADDR combineSendPtr;
     __aicore__ inline PeermemInfo() = default;
     __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1,
@@ -54,7 +58,7 @@ struct PeermemInfo {
         rankSyncInWorldPtr = base;
         int64_t offset = PEERMEM_DATA_OFFSET;
         maskRecvPtr = base + offset;
-        // 每张卡为自己的 expertPerRank 个专家、各 worldSize 个源卡保留一份 [mask | count] 槽位。
+        // 每张卡为自己的 moeExpertPerRank 个 routed 专家、各 worldSize 个源卡保留一份 [mask | count] 槽位。
         // 槽位 = bit-packed mask (CeilAlign(compareCount/8,32)) + 32B count(源卡 SendMaskCal 同步算好),
         // 与 mega_moe.h FirstBuffInit 的 maskSlotSize_ 一致; 接收端直接读 count, 不再 GatherMask 计数。
         int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
@@ -63,7 +67,7 @@ struct PeermemInfo {
         int64_t maskAlignSize = Ops::Base::CeilAlign(compareCount / 8, (int64_t)ALIGN_32);
         int64_t maskSlotSize = maskAlignSize + (int64_t)ALIGN_32; // mask + 32B count
         // 整个 mask 区按 512 对齐, 保证后续 quantTokenScalePtr 仍 512 对齐(CopyGMToGMPerToken 用普通 DataCopy 读)。
-        offset += Ops::Base::CeilAlign((int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize,
+        offset += Ops::Base::CeilAlign((int64_t)tilingData->moeExpertPerRank * tilingData->epWorldSize * maskSlotSize,
                                        (int64_t)ALIGN_512);
 
         if (tilingData->topoType == TOPO_TYPE_MTE) {
@@ -73,6 +77,11 @@ struct PeermemInfo {
                 Ops::Base::CeilAlign(tilingData->h / elemsPerByte, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
             uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
             uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+            if (tilingData->topkWeightsPrefetch == 1) {
+                uint32_t weightBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)),
+                                                            static_cast<uint32_t>(ALIGN_32));
+                tokenBytes = Ops::Base::CeilAlign(tokenBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
+            }
             offset += Ops::Base::CeilAlign(
                 (int64_t)(static_cast<int64_t>(tilingData->bs) * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
         } else {
@@ -81,13 +90,20 @@ struct PeermemInfo {
             uint32_t dataBytes =
                 Ops::Base::CeilAlign(tilingData->h / elemsPerByte, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
             uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
-            uint32_t tokenBytes = Ops::Base::CeilAlign(
-                static_cast<int64_t>(Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32)) +
-                                     ALIGN_32),
-                static_cast<int64_t>(ALIGN_512));
-            offset += Ops::Base::CeilAlign((int64_t)(static_cast<int64_t>(tilingData->bs) * tokenBytes *
+            uint32_t tokenScaleBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+            if (tilingData->topkWeightsPrefetch == 1) {
+                uint32_t weightBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)),
+                                                            static_cast<uint32_t>(ALIGN_32));
+                tokenScaleBytes = Ops::Base::CeilAlign(tokenScaleBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
+            }
+            uint32_t relayRecordBytes = Ops::Base::CeilAlign(tokenScaleBytes, static_cast<uint32_t>(ALIGN_512));
+            offset += Ops::Base::CeilAlign((int64_t)(static_cast<int64_t>(tilingData->bs) * relayRecordBytes *
                                                      sizeof(int8_t) * static_cast<int64_t>(serverNum)),
                                            (int64_t)ALIGN_512);
+            dispatchFlagPtr = base + offset;
+            offset += Ops::Base::CeilAlign(
+                static_cast<int64_t>(serverNum) * tilingData->bs * static_cast<int64_t>(sizeof(uint64_t)),
+                static_cast<int64_t>(ALIGN_512));
         }
         combineSendPtr = base + offset;
     }
@@ -99,6 +115,14 @@ struct CombineCommParams {
     __gm__ Mc2MoeContext *mc2Context;
 };
 
+// 保存 TensorList 入口地址，便于逐 expert 布局按当前 expert 下标解析权重。
+struct ExpertWeightTensorListAddrs {
+    GM_ADDR weight1 = nullptr;
+    GM_ADDR weightScales1 = nullptr;
+    GM_ADDR weight2 = nullptr;
+    GM_ADDR weightScales2 = nullptr;
+};
+
 struct Params {
     GM_ADDR aGmAddr;
     GM_ADDR expertIdxGmAddr;
@@ -106,6 +130,10 @@ struct Params {
     GM_ADDR bScaleGmAddr;
     GM_ADDR b2GmAddr;
     GM_ADDR b2ScaleGmAddr;
+    GM_ADDR sharedBGmAddr;
+    GM_ADDR sharedBScaleGmAddr;
+    GM_ADDR sharedB2GmAddr;
+    GM_ADDR sharedB2ScaleGmAddr;
     GM_ADDR probsGmAddr;
     GM_ADDR y2GmAddr;
     GM_ADDR expertTokenNumsOutGmAddr;
@@ -140,35 +168,27 @@ __aicore__ inline void WaitForCube(uint16_t value = 0)
     CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG + value);
 }
 
-__aicore__ inline void NotifyAiv1GmTileReady(uint16_t value = 0)
-{
-    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_EPILOGUE_FLAG + FLAG_ID_MAX_PER_V + value);
-}
-
-__aicore__ inline void WaitForAicGmTileReady(uint16_t value = 0)
-{
-    CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_MTE2>(AIC_SYNC_AIV_EPILOGUE_FLAG + value);
-}
-
-// AIV1 acknowledges that it has accepted the AIC-to-AIV1 GM tile notification.
-// On DAV_3510, an AIV1 flag ID maps to the AIC flag ID plus FLAG_ID_MAX_PER_V.
-__aicore__ inline void NotifyAicGmTileAccepted()
-{
-    CrossCoreSetFlag<SYNC_AIC_AIV_MODE, PIPE_MTE2>(AIV1_SYNC_AIC_EPILOGUE_ACK_FLAG);
-}
-
-__aicore__ inline void WaitForAiv1GmTileAccepted()
-{
-    CrossCoreWaitFlag<SYNC_AIC_AIV_MODE, PIPE_FIX>(AIV1_SYNC_AIC_EPILOGUE_ACK_FLAG + FLAG_ID_MAX_PER_V);
-}
-
-__aicore__ inline void EndSync(int32_t &vecSetSyncCom)
+template <bool IsPingPong = false>
+__aicore__ inline void EndSync(int32_t vecSetSyncCom, uint16_t pingpongIdx = 0)
 {
     if (vecSetSyncCom == 0) {
         return;
     }
     if constexpr (g_coreType == AIC) {
-        WaitForVector();
+        if constexpr (IsPingPong) {
+            if (vecSetSyncCom == 1) {
+                // pingpongIdx already points at the next slot, so the only
+                // outstanding tile occupies the opposite slot.
+                WaitForVector(1U - pingpongIdx);
+            } else {
+                // Drain the oldest slot first, then the other outstanding
+                // acknowledgement.
+                WaitForVector(pingpongIdx);
+                WaitForVector(1U - pingpongIdx);
+            }
+        } else {
+            WaitForVector();
+        }
     }
 }
 
@@ -218,7 +238,6 @@ __aicore__ inline uint64_t GetUrmaCommHandle(__gm__ Mc2MoeContext *mc2Context_, 
     return mc2Context_->hcommHandle[index];
 }
 
-
 inline GM_ADDR winRankAddr_[HCCL_MAX_RANK_SIZE];
 __aicore__ inline GM_ADDR GetRankWinAddrWithOffset(uint32_t rankId, uint64_t offset)
 {
@@ -231,6 +250,18 @@ __aicore__ inline GM_ADDR GetTensorAddr(uint16_t index, GM_ADDR tensorPtr)
     uint64_t tensorPtrOffset = *dataAddr;
     __gm__ uint64_t *retPtr = dataAddr + (tensorPtrOffset >> 3);
     return reinterpret_cast<GM_ADDR>(*(retPtr + index));
+}
+
+template <typename ElementType>
+__aicore__ inline GM_ADDR GetExpertWeightAddr(GM_ADDR tensorListAddr, bool isPerExpertWeightTensor,
+                                              uint32_t expertIdx, uint64_t elementOffset)
+{
+    uint16_t tensorIdx = isPerExpertWeightTensor ? static_cast<uint16_t>(expertIdx) : 0U;
+    GM_ADDR tensorAddr = GetTensorAddr(tensorIdx, tensorListAddr);
+    if (isPerExpertWeightTensor) {
+        return tensorAddr;
+    }
+    return tensorAddr + elementOffset * sizeof(ElementType);
 }
 
 // Base template: handles single-index case
@@ -254,45 +285,5 @@ __aicore__ inline void SyncFuncStatic()
     AscendC::SetFlag<event>(static_cast<event_t>(eventId));
     AscendC::WaitFlag<event>(static_cast<event_t>(eventId));
 }
-
-// MegaMoe batch sizing constants. DAV_3510 的 AIV 可用 UB 上限按 248KB 计算。
-//
-// Unpermute 的 batch 相关最坏占用来自 topK weight：
-//   float weight buffer + 可选的 bf16 中转 buffer
-//   = tokensPerBatch * topK * (sizeof(float) + sizeof(bfloat16_t))。
-// 基准值 1024 * 8 使最坏 weight buffer 保持为 48KB；topK > 8 时，运行时按
-//   tokensPerBatch = baseTokensPerBatch * baseTopK / topK
-// 反比缩小，并满足
-//   fixedUnpermuteBytes(k, combineMode) + tokensPerBatch * topK * 6 <= 248KB。
-// 若 UnpermuteBuffInit 增删固定 buffer、扩大 k/topK 上限或改变 weight 中转类型，必须重新核算该值。
-constexpr int32_t UNPERMUTE_BASE_TOPK = 8;
-constexpr int32_t UNPERMUTE_BASE_TOKENS_PER_BATCH = 1024;
-
-// Recv route batch 上限只由 DispatchBuffInit 的 UB 布局约束。Brecv 表示每个 recv batch 的 route item 数，
-// W=worldSize，E=expertPerRank，D=DISPATCH_BUFFER_NUM：
-//   recvVariableBytes(Brecv) = Brecv / 8 + 2 * Brecv * sizeof(int32_t) = 65 * Brecv / 8；
-//   recvFixedBytes = 32 + Align32(W * E * 4) + W * 32 + D * tokenScaleBytes + Align32(E * 4) + D * 32；
-//   recvFixedBytes + recvVariableBytes(Brecv) <= 248KB。
-// 12288 按 k=8192 和 recv fixedBytes 的最坏合法参数验证。Brecv 须向下对齐到 ALIGN_256；若修改
-// DispatchBuffInit、DISPATCH_BUFFER_NUM 或 k/worldSize/expert 上限，只需重新计算 recv 上限。
-constexpr int32_t MAX_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
-
-// Send route batch 上限只由 SendAndQuantBuffInit 的 UB 布局约束。Bsend 表示每个 send batch 的 route item 数：
-//   sendVariableBytes(Bsend) = 2 * Bsend * sizeof(int32_t) + 2 * (Bsend / 8) = 33 * Bsend / 4；
-//   sendFixedBytes = resetTensorBytes + 2048 + 2 * xOutTensorBytes + 2 * xInTensorBytes
-//                    + sendCntAccBytes + 2 * 32；末尾的 2 * 32 是两个 mask buffer 的 count 尾部；
-//   sendFixedBytes + sendVariableBytes(Bsend) <= 248KB。
-// 12288 按 k=8192 和 send fixedBytes 的最坏合法参数验证。Bsend 须向下对齐到 ALIGN_256；若修改
-// SendAndQuantBuffInit 或其 k/worldSize/expert/reset 参数上限，只需重新计算 send 上限。
-constexpr int32_t MAX_SEND_ROUTE_ITEMS_PER_BATCH = 12288;
-
-// Send/Recv 均按 ALIGN_256 对齐，以满足 mask 的 32B 对齐和 DAV_3510 CompareScalar 的 256B 输入长度要求。
-// 两个上限当前数值相同只是各自预算计算后的结果，彼此独立，不要求保持相等。
-
-// 大 BS dispatch 分块常量
-// DISPATCH_RESET_BATCH: ResetFlagList 分批清零的粒度（int32 个数）。
-//   2048 * sizeof(int32_t) = 8KB；本核 flag 份额超此值时复用同一片零 UB 分批推 GM，使 reset UB 与 BS 解耦。
-//   若调整 resetTensor_ 的 UB 预算或元素类型，需要按 targetResetUbBytes / sizeof(elementType) 重新计算。
-constexpr int32_t DISPATCH_RESET_BATCH = 2048;
 
 #endif

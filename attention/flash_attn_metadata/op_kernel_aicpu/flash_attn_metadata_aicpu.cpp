@@ -24,8 +24,8 @@
 #include "../../common/op_kernel/aicpu_common.h"
 #include "../../flash_attn/op_host/fa_adjust_sinner_souter.h"
 
-#define FA_KERNEL_STATUS_OK             0
-#define FA_KERNEL_STATUS_PARAM_INVALID  1
+constexpr uint32_t FA_KERNEL_STATUS_OK = 0;
+constexpr uint32_t FA_KERNEL_STATUS_PARAM_INVALID = 1;
 
 using namespace optiling;
 
@@ -75,6 +75,8 @@ bool FlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "layout_q", layoutQ_);
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
     GetAttrValueOpt(ctx, "layout_out", layoutOut_);
+
+    KERNEL_CHECK_FALSE(ParamsCheck(), false, "Params check failed");
     return ParamsInit();
 }
 
@@ -83,6 +85,102 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     InitDeviceInfo();
     InitBaseInfo();
     InitLoadBalanceParams();
+    return true;
+}
+
+bool FlashAttnMetadataCpuKernel::ParamsCheck()
+{
+    KERNEL_CHECK_FALSE(CheckActualQuerySeq(), false, "Check query sequence failed");
+    KERNEL_CHECK_FALSE(CheckActualKvSeq(), false, "Check kv sequence failed");
+    return true;
+}
+
+bool FlashAttnMetadataCpuKernel::CheckActualQuerySeq()
+{
+    isActualSeqlenQAccum_ = false;
+    actualSeqlenQ_.clear();
+    std::vector<int64_t> cuSeqlensQ {};
+    std::vector<int64_t> sequsedQ {};
+
+    cuSeqlensQ = GetTensorDataAsInt64(cuSeqlensQ_);
+    sequsedQ = GetTensorDataAsInt64(sequsedQ_);
+
+    for (size_t i = 0; i < sequsedQ.size(); ++i) {
+        if (sequsedQ[i] < 0) {
+            KERNEL_LOG_ERROR("The elements of sequsedQ must be non-negative, but %zuth element is %ld", i, sequsedQ[i]);
+            return false;
+        }
+    }
+
+    if (!cuSeqlensQ.empty()) {
+        if (cuSeqlensQ[0] != 0) {
+            KERNEL_LOG_ERROR("The first element of cuSeqlensQ must be 0, but got %ld", cuSeqlensQ[0]);
+            return false;
+        }
+    }
+
+    for (size_t i = 1; i < cuSeqlensQ.size(); ++i) {
+        if (cuSeqlensQ[i] < cuSeqlensQ[i - 1]) {
+            KERNEL_LOG_ERROR(
+                "The %zuth element of cuSeqlensQ must not be less than the %zuth element, but got %ld and %ld",
+                i, i -1, cuSeqlensQ[i], cuSeqlensQ[i - 1]);
+            return false;
+        }
+    }
+
+    if (!sequsedQ.empty()) {
+        isActualSeqlenQAccum_ = false;
+        actualSeqlenQ_ = sequsedQ;
+    } else if (!cuSeqlensQ.empty()) {
+        isActualSeqlenQAccum_ = true;
+        actualSeqlenQ_.assign(cuSeqlensQ.begin() + 1, cuSeqlensQ.end());
+    }
+
+    return true;
+}
+
+bool FlashAttnMetadataCpuKernel::CheckActualKvSeq()
+{
+    isActualSeqlenKvAccum_ = false;
+    actualSeqlenKv_.clear();
+    std::vector<int64_t> cuSeqlensKv {};
+    std::vector<int64_t> sequsedKv {};
+
+    cuSeqlensKv = GetTensorDataAsInt64(cuSeqlensKv_);
+    sequsedKv = GetTensorDataAsInt64(sequsedKv_);
+
+    for (size_t i = 0; i < sequsedKv.size(); ++i) {
+        if (sequsedKv[i] < 0) {
+            KERNEL_LOG_ERROR("The elements of sequsedKv must be non-negative, but %zuth element is %ld",
+                i, sequsedKv[i]);
+            return false;
+        }
+    }
+
+    if (!cuSeqlensKv.empty()) {
+        if (cuSeqlensKv[0] != 0) {
+            KERNEL_LOG_ERROR("The first element of cuSeqlensKv must be 0, but got %ld", cuSeqlensKv[0]);
+            return false;
+        }
+    }
+
+    for (size_t i = 1; i < cuSeqlensKv.size(); ++i) {
+        if (cuSeqlensKv[i] < cuSeqlensKv[i - 1]) {
+            KERNEL_LOG_ERROR(
+                "The %zuth element of cuSeqlensKv must not be less than the %zuth element, but got %ld and %ld",
+                i, i - 1, cuSeqlensKv[i], cuSeqlensKv[i - 1]);
+            return false;
+        }
+    }
+
+    if (!sequsedKv.empty()) {
+        isActualSeqlenKvAccum_ = false;
+        actualSeqlenKv_ = sequsedKv;
+    } else if (!cuSeqlensKv.empty()) {
+        isActualSeqlenKvAccum_ = true;
+        actualSeqlenKv_.assign(cuSeqlensKv.begin() + 1, cuSeqlensKv.end());
+    }
+
     return true;
 }
 
@@ -113,6 +211,7 @@ void FlashAttnMetadataCpuKernel::InitLoadBalanceParams()
     param.fdLeastBlock = 3;                  // 3: least block
     param.fdOn = true;
 }
+
 void FlashAttnMetadataCpuKernel::InitBaseInfo()
 {
     baseInfo.batchSize = batchSize_;
@@ -121,68 +220,22 @@ void FlashAttnMetadataCpuKernel::InitBaseInfo()
     baseInfo.kvSeqSize = maxSeqlenKv_;
     baseInfo.kvHeadNum = numHeadsKv_;
     baseInfo.headDim = headDim_;
-    baseInfo.attenMaskFlag = (maskMode_ != 0);
-    baseInfo.sparseMode = static_cast<uint32_t>(maskMode_);
+    load_balance::SparseMode maskMode = load_balance::SparseMode::BUTT;
+    if (maskMode_ != 0) {
+        maskMode = static_cast<load_balance::SparseMode>(maskMode_);
+    }
+    baseInfo.attenMaskFlag = (maskMode != load_balance::SparseMode::BUTT);
+    baseInfo.sparseMode = static_cast<uint32_t>(maskMode);
     baseInfo.preToken = (winLeft_ == -1) ? std::numeric_limits<uint32_t>::max() : static_cast<uint32_t>(winLeft_);
     baseInfo.nextToken = (winRight_ == -1) ? std::numeric_limits<uint32_t>::max() : static_cast<uint32_t>(winRight_);
     baseInfo.layoutQuery = load_balance::ConvertToLayout(layoutQ_);
     baseInfo.layoutKv = load_balance::ConvertToLayout(layoutKv_);
     baseInfo.queryType = load_balance::DataType::FP16;
     baseInfo.kvType = load_balance::DataType::FP16;
-    LoadActualQuerySeq();
-    LoadActualKvSeq();
-}
-
-void FlashAttnMetadataCpuKernel::LoadActualQuerySeq()
-{
-    baseInfo.actualQuerySeqSize.clear();
-    baseInfo.isCumulativeQuerySeq = (layoutQ_ == "TND" || layoutQ_ == "NTD");
-
-    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
-        batchSize_ = sequsedQ_->GetTensorShape()->GetDimSize(0);
-        baseInfo.batchSize = batchSize_;
-        auto tmpSeq = GetTensorDataAsInt64(sequsedQ_, sequsedQ_->GetTensorShape()->GetDimSize(0));
-        baseInfo.querySeqSize = static_cast<uint32_t>(*std::max_element(tmpSeq.begin(), tmpSeq.end()));
-        baseInfo.actualQuerySeqSize.assign(tmpSeq.begin(), tmpSeq.end());
-        if (baseInfo.isCumulativeQuerySeq) {
-            std::partial_sum(tmpSeq.begin(), tmpSeq.end(), baseInfo.actualQuerySeqSize.begin());
-        }
-    } else if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
-        batchSize_ = cuSeqlensQ_->GetTensorShape()->GetDimSize(0) - 1U;
-        baseInfo.batchSize = batchSize_;
-        auto tmpSeq = GetTensorDataAsInt64(cuSeqlensQ_, cuSeqlensQ_->GetTensorShape()->GetDimSize(0));
-        baseInfo.actualQuerySeqSize.assign(tmpSeq.begin() + 1, tmpSeq.end());
-        baseInfo.querySeqSize = 0U;
-        for (size_t i = 1; i < tmpSeq.size(); ++i) {
-            auto seq = (baseInfo.isCumulativeQuerySeq) ? tmpSeq[i] - tmpSeq[i - 1] : tmpSeq[i];
-            baseInfo.querySeqSize = std::max(baseInfo.querySeqSize, static_cast<uint32_t>(seq));
-        }
-    }
-    return;
-}
-
-void FlashAttnMetadataCpuKernel::LoadActualKvSeq()
-{
-    baseInfo.actualKvSeqSize.clear();
-    baseInfo.isCumulativeKvSeq = (layoutKv_ == "TND" || layoutKv_ == "NTD");
-
-    if (sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
-        auto tmpSeq = GetTensorDataAsInt64(sequsedKv_, sequsedKv_->GetTensorShape()->GetDimSize(0));
-        baseInfo.kvSeqSize = static_cast<uint32_t>(*std::max_element(tmpSeq.begin(), tmpSeq.end()));
-        baseInfo.actualKvSeqSize.assign(tmpSeq.begin(), tmpSeq.end());
-        if (baseInfo.isCumulativeKvSeq) {
-            std::partial_sum(tmpSeq.begin(), tmpSeq.end(), baseInfo.actualKvSeqSize.begin());
-        }
-    } else if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
-        auto tmpSeq = GetTensorDataAsInt64(cuSeqlensKv_, cuSeqlensKv_->GetTensorShape()->GetDimSize(0));
-        baseInfo.actualKvSeqSize.assign(tmpSeq.begin() + 1, tmpSeq.end());
-        baseInfo.kvSeqSize = 0U;
-        for (size_t i = 1; i < tmpSeq.size(); ++i) {
-            auto seq = (baseInfo.isCumulativeKvSeq) ? tmpSeq[i] - tmpSeq[i - 1] : tmpSeq[i];
-            baseInfo.kvSeqSize = std::max(baseInfo.kvSeqSize, static_cast<uint32_t>(seq));
-        }
-    }
-    return;
+    baseInfo.isCumulativeKvSeq = isActualSeqlenKvAccum_;
+    baseInfo.actualKvSeqSize = actualSeqlenKv_;
+    baseInfo.isCumulativeQuerySeq = isActualSeqlenQAccum_;
+    baseInfo.actualQuerySeqSize = actualSeqlenQ_;
 }
 
 bool FlashAttnMetadataCpuKernel::BalanceSchedule(load_balance::SectionStreamKResult &splitRes)

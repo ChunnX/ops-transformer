@@ -74,8 +74,8 @@ public:
         if (perAivM == 0) { // M小于核数，perAivM为0，核计算行数更新及偏移计算
             if (vectorIndex < usedAivCoreIndex) {
                 perAivM += 1;
-                blockAddrOffset = static_cast<int64_t>(vectorIndex) * static_cast<int64_t>(perAivM) *
-                                  static_cast<int64_t>(this->N);
+                blockAddrOffset =
+                    static_cast<int64_t>(vectorIndex) * static_cast<int64_t>(perAivM) * static_cast<int64_t>(this->N);
             } else {
                 return;
             }
@@ -83,12 +83,12 @@ public:
             if ((aivAddOneIndex < this->aivCoreNum + 1) && (vectorIndex >= aivAddOneIndex)) {
                 perAivM += 1;
                 blockAddrOffset = static_cast<int64_t>(aivAddOneIndex) * static_cast<int64_t>(perAivM - 1) *
-                                  static_cast<int64_t>(this->N) +
-                                  static_cast<int64_t>(vectorIndex - aivAddOneIndex) *
-                                  static_cast<int64_t>(perAivM) * static_cast<int64_t>(this->N);
+                                      static_cast<int64_t>(this->N) +
+                                  static_cast<int64_t>(vectorIndex - aivAddOneIndex) * static_cast<int64_t>(perAivM) *
+                                      static_cast<int64_t>(this->N);
             } else {
-                blockAddrOffset = static_cast<int64_t>(vectorIndex) * static_cast<int64_t>(perAivM) *
-                                  static_cast<int64_t>(this->N);
+                blockAddrOffset =
+                    static_cast<int64_t>(vectorIndex) * static_cast<int64_t>(perAivM) * static_cast<int64_t>(this->N);
             }
         }
 
@@ -143,13 +143,14 @@ public:
             curScaleAddrOffset = scaleAddrOffsetSplitMN;
         }
         tempBufferGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int8_t *>(this->tempBufferGM) + curBlockAddrOffset,
-            static_cast<int64_t>(this->M) * static_cast<int64_t>(this->N) - curBlockAddrOffset);
+                                         static_cast<int64_t>(this->M) * static_cast<int64_t>(this->N) -
+                                             curBlockAddrOffset);
         if (((loopIdx == 0) && (this->splitMode == SPLIT_M_MATMUL_ALLREDUCE_INT8)) ||
             (this->splitMode == SPLIT_MN_MATMUL_ALLREDUCE_INT8)) {
             quantScale1Global.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(this->quantScale1GM) + curScaleAddrOffset,
-                curScaleCnt);
+                                              curScaleCnt);
             quantScale2Global.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(this->quantScale2GM) + curScaleAddrOffset,
-                curScaleCnt);
+                                              curScaleCnt);
         }
     }
 
@@ -194,8 +195,8 @@ public:
                 (this->alignN * sizeof(int8_t) - Ceil(this->N * sizeof(int8_t), BYTE32_ALIGN) * BYTE32_ALIGN) /
                 BYTE32_ALIGN;
         }
-        DataCopyParams copyParamsCurBlock = {copyBlockCnt, static_cast<uint16_t>(copyBlockLen * sizeof(int8_t)),
-                                             0, copyInUbStride};
+        DataCopyParams copyParamsCurBlock = {copyBlockCnt, static_cast<uint16_t>(copyBlockLen * sizeof(int8_t)), 0,
+                                             copyInUbStride};
         DataCopyParams copyOutParamsCurBlock = {copyBlockCnt, static_cast<uint16_t>(copyBlockLen * sizeof(int8_t)),
                                                 copyOutUbStride, 0};
         DataCopyParams copyParamsScaleQuant = {1, static_cast<uint16_t>(copyBlockLen * sizeof(T)), 0, 0};
@@ -223,10 +224,10 @@ public:
         // 偏移取其余核进行相加 Cast + Add
         for (uint32_t i = 1; i < this->rankCnt; i++) {
             LocalTensor<int8_t> allToAllAddLocal = queueIn.AllocTensor<int8_t>();
-            int64_t offset = static_cast<int64_t>(i) * static_cast<int64_t>(this->tileRankM) *
-                static_cast<int64_t>(this->N);
+            int64_t offset =
+                static_cast<int64_t>(i) * static_cast<int64_t>(this->tileRankM) * static_cast<int64_t>(this->N);
             DataCopyPad(allToAllAddLocal, tempBufferGlobal[offset], copyParamsCurBlock,
-                padParams); // 其余卡数，对应位置 Move to UB
+                        padParams); // 其余卡数，对应位置 Move to UB
             queueIn.EnQue(allToAllAddLocal);
             LocalTensor<int8_t> xAddInt8Local = queueIn.DeQue<int8_t>();
             LocalTensor<half> xAddFp16Local = tBufFP16.Get<half>();
@@ -262,8 +263,8 @@ public:
         uint32_t rankId = this->hccl.GetRankId();
         queueOut.EnQue<int8_t>(zInt8Local);
         LocalTensor<int8_t> outLocal = queueOut.DeQue<int8_t>();
-        int64_t outOffset = static_cast<int64_t>(rankId) * static_cast<int64_t>(this->tileRankM) *
-                            static_cast<int64_t>(this->N);
+        int64_t outOffset =
+            static_cast<int64_t>(rankId) * static_cast<int64_t>(this->tileRankM) * static_cast<int64_t>(this->N);
         DataCopyPad(tempBufferGlobal[outOffset], outLocal, copyOutParamsCurBlock);
         queueOut.FreeTensor(zInt8Local);
         if (((loopIdx == (aivLoopNum - 1)) && (this->splitMode == SPLIT_M_MATMUL_ALLREDUCE_INT8)) ||
@@ -301,12 +302,12 @@ public:
 
         if (curQuantUbSize >= curAlignN) { // 分核切M， 不切N
             this->splitMode = SPLIT_M_MATMUL_ALLREDUCE_INT8;
-            this->MatmulAllReduceQuantReduceSumSplitM(curQuantUbSize, blockAddrOffset, tileCalcCntM,
-                tailCalcCntM, aivLoopNum);
+            this->MatmulAllReduceQuantReduceSumSplitM(curQuantUbSize, blockAddrOffset, tileCalcCntM, tailCalcCntM,
+                                                      aivLoopNum);
         } else { // N超大，分核策略采取切MN
             this->splitMode = SPLIT_MN_MATMUL_ALLREDUCE_INT8;
-            this->MatmulAllReduceQuantReduceSumSplitMAndN(curQuantUbSize, reqAivNum, tileBlockCnt,
-                tailBlockCnt, aivLoopNum, blockCntPerRow);
+            this->MatmulAllReduceQuantReduceSumSplitMAndN(curQuantUbSize, reqAivNum, tileBlockCnt, tailBlockCnt,
+                                                          aivLoopNum, blockCntPerRow);
         }
     }
 
@@ -379,7 +380,7 @@ __aicore__ inline void MatmulAllReduceQuantReduceSumInt8(GM_ADDR tempBufferGM, G
             }
             blockAddrOffsetSplitM = static_cast<int64_t>(blockAddrOffset) +
                                     static_cast<int64_t>(loopIdx) * static_cast<int64_t>(tileCalcCntM) *
-                                    static_cast<int64_t>(N); // 取到当前核的偏移，再+当前块的地址偏移
+                                        static_cast<int64_t>(N); // 取到当前核的偏移，再+当前块的地址偏移
         } else {
             globalBlockIdx = loopIdx * aivCoreNum + GetBlockIdx();
             if (globalBlockIdx > (reqAivNum - 1)) {

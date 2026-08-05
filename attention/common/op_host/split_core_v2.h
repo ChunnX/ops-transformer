@@ -11,7 +11,7 @@
 /*!
  * \file split_core_v2.h
  * \brief
-*/
+ */
 
 #ifndef SPLIT_CORE_V2_H
 #define SPLIT_CORE_V2_H
@@ -87,13 +87,13 @@ struct BaseInfo {
 
 // 分核功能模块输入：切分属性，预留接口，可作为切分方案的参数入口
 struct SplitParam {
-    uint32_t mBaseSize{ 1U };
-    uint32_t s2BaseSize{ 1U };
-    uint32_t gS1BaseSizeOfFd{ 8U }; // FD阶段分核，m轴切分基本块大小
+    uint32_t mBaseSize{1U};
+    uint32_t s2BaseSize{1U};
+    uint32_t gS1BaseSizeOfFd{8U}; // FD阶段分核，m轴切分基本块大小
     bool streamK = true;
-    int64_t fdTolerance { 0U };             // if fd - full_block_cost * fdTolerance <= fd, then choose no fd,
-                                            // full_block_cost is costFunc(mBaseSize, s2BaseSize)
-    int64_t fdLeastBlock { 0U };            // if noFd.maxCost <= fdLeastBlock * full_block_cost, then choose no fd
+    int64_t fdTolerance{0U};  // if fd - full_block_cost * fdTolerance <= fd, then choose no fd,
+                              // full_block_cost is costFunc(mBaseSize, s2BaseSize)
+    int64_t fdLeastBlock{0U}; // if noFd.maxCost <= fdLeastBlock * full_block_cost, then choose no fd
 };
 
 
@@ -132,15 +132,15 @@ struct FAMetaData {
     FlashDecodeResult fdRes{0U, 0U}; // FD信息
     FAMetaData(uint32_t coreNum, uint32_t ratio)
         : vecCubeRatio(ratio), bN2End(coreNum), mEnd(coreNum), s2End(coreNum), firstFdDataWorkspaceIdx(coreNum),
-          fdRes(coreNum, ratio){};
+          fdRes(coreNum, ratio) {};
 };
 
 // 分核功能模块内部使用：记录切分信息
 struct SplitInfo {
-    std::vector<uint32_t> mBaseNum{};  // M方向，切了多少个基本块
-    std::vector<uint32_t> s2BaseNum{};   // S2方向，切了多少个基本块
-    std::vector<uint32_t> mTailSize{}; // M方向，尾块size
-    std::vector<uint32_t> s2TailSize{};  // S2方向，尾块size
+    std::vector<uint32_t> mBaseNum{};   // M方向，切了多少个基本块
+    std::vector<uint32_t> s2BaseNum{};  // S2方向，切了多少个基本块
+    std::vector<uint32_t> mTailSize{};  // M方向，尾块size
+    std::vector<uint32_t> s2TailSize{}; // S2方向，尾块size
     bool isKvSeqAllZero{true};
 
     explicit SplitInfo(uint32_t batchSize)
@@ -234,8 +234,7 @@ int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &ba
 Range<uint32_t> CalcS2Range(uint32_t mIdx, const BaseInfo &baseInfo, const SplitParam &splitParam,
                             const BatchCache &batchCache);
 int64_t CalcCost(uint32_t basicM, uint32_t basicS2);
-BlockCost<int64_t> CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t mTailSize,
-                                 uint32_t s2TailSize);
+BlockCost<int64_t> CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t mTailSize, uint32_t s2TailSize);
 
 // cache calculation
 void CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache);

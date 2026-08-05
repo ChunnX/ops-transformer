@@ -50,11 +50,20 @@ const aclTensorList *GroupedMatmul(const aclTensorList *x,
     }
 
     for (size_t i(0); i < outLength; ++i) {
-        tensorsVec.emplace_back(executor->AllocTensor(yDtype, x0->GetStorageFormat(), x0->GetOriginalFormat()));
+        auto outTensor = executor->AllocTensor(yDtype, x0->GetStorageFormat(), x0->GetOriginalFormat());
+        if (outTensor == nullptr) {
+            OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensor for GroupedMatmul output failed.");
+            return nullptr;
+        }
+        tensorsVec.emplace_back(outTensor);
     }
 
     int64_t outputDtype = yDtype == DataType::DT_INT32 ? 2 : -1;
     auto out = executor->AllocTensorList(tensorsVec.data(), outLength);
+    if (out == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensorList for GroupedMatmul output failed.");
+        return nullptr;
+    }
 
     auto ret = INFER_SHAPE(GroupedMatmul,
                            OP_INPUT(x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional,

@@ -21,7 +21,9 @@ ASSET_IMPL_DIR = Path(__file__).with_name("impl")
 
 def load_impl_module(stem):
     path = ASSET_IMPL_DIR / f"{stem}.py"
-    spec = importlib.util.spec_from_file_location(f"qsfa_assets_impl_{stem}_{abs(hash(path))}", path)
+    spec = importlib.util.spec_from_file_location(
+        f"qsfa_assets_impl_{stem}_{abs(hash(path))}", path
+    )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -35,11 +37,11 @@ class KvQuantSparseFlashAttentionSpec:
     golden = golden_module.cpu_kv_quant_sparse_flash_attention
     customize_inputs = inputs_module.generate_kv_quant_inputs
     tolerance = {
-        "float16": {"standard": "IsClose", "rtol": 0.001, "ptol": 0.005, "atol": 0.02},
-        "bfloat16": {"standard": "IsClose", "rtol": 0.001, "ptol": 0.005, "atol": 0.02},
+        "float16": {"standard": "stat_rel_err"},
+        "bfloat16": {"standard": "stat_rel_err"},
     }
 
 
 __spec__ = {
-    "torch_npu.npu_kv_quant_sparse_flash_attention": KvQuantSparseFlashAttentionSpec,
+    "torch_npu.npu_kv_quant_sparse_flash_attention": "KvQuantSparseFlashAttentionSpec",
 }

@@ -102,20 +102,6 @@ static const std::set<ge::DataType> NON_QUANT_DTYPE = {ge::DT_FLOAT16, ge::DT_BF
                                                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2};
 
 namespace optiling {
-static bool IsPresentTensorShape(const gert::StorageShape *shape)
-{
-    if (shape == nullptr) {
-        return false;
-    }
-    const gert::Shape &storageShape = shape->GetStorageShape();
-    for (size_t i = 0; i < storageShape.GetDimNum(); ++i) {
-        if (storageShape.GetDim(i) == 0) {
-            return false;
-        }
-    }
-    return true;
-}
-
 static void PrintTilingDataInfo(const char *nodeName, MoeDistributeDispatchV2TilingData &tilingData)
 {
     OP_LOGD(nodeName, "epWorldSize is %u.", tilingData.moeDistributeDispatchV2Info.epWorldSize);
@@ -1775,7 +1761,7 @@ ge::graphStatus CheckAndGetOptionalInput(gert::TilingContext *context, const cha
     tilingData->moeDistributeDispatchV2Info.isPerformance = isPerformance;
 
     const gert::StorageShape *expertScalesStorageShape = context->GetOptionalInputShape(config.expertScalesIndex);
-    tilingData->moeDistributeDispatchV2Info.hasExpertScales = IsPresentTensorShape(expertScalesStorageShape);
+    tilingData->moeDistributeDispatchV2Info.hasExpertScales = (expertScalesStorageShape != nullptr);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1997,6 +1983,21 @@ MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3TilingFuncImplPubl
 
     OP_TILING_CHECK(CheckAndSetPlatformInfo(context, tilingData, isLayered, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Tiling set platformInfo Failed"), return ge::GRAPH_FAILED);
+
+    // A5 CumSum 最小 tmp 大小
+    if (tilingData->moeDistributeDispatchV2Info.expertTokenNumsType != 0) {
+        tilingData->moeDistributeDispatchV2Info.cumsumTmpMinSize = 0;
+    } else {
+        uint32_t localExpertNumAlign = (localMoeExpertNum + 7U) / 8U * 8U;
+        std::vector<int64_t> cumsumShapeDims = {1, static_cast<int64_t>(localExpertNumAlign)};
+        auto cumsumSrcShape = ge::Shape(cumsumShapeDims);
+        uint32_t cumsumMaxTmp = 0;
+        uint32_t cumsumMinTmp = 0;
+        GetCumSumMaxMinTmpSize(cumsumSrcShape, sizeof(float), true, false, cumsumMaxTmp, cumsumMinTmp);
+        tilingData->moeDistributeDispatchV2Info.cumsumTmpMinSize = cumsumMinTmp;
+        OP_LOGI(nodeName, "MTE cumsumTmpMinSize=%u. Kernel falls back to scalar prefix sum if UB is insufficient.",
+                cumsumMinTmp);
+    }
 
     PrintTilingDataInfo(nodeName, *tilingData);
     return ge::GRAPH_SUCCESS;

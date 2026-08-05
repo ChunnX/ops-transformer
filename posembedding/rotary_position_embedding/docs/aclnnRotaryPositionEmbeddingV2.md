@@ -23,7 +23,7 @@
      x切分为3份，$x = [x1|x2|x3]_{(dim=4)} ∈ R^{B×S×N×D}, x1 ∈ R^{B×S×N×D1},x2 ∈ R^{B×S×N×D2},x3 ∈ R^{B×S×N×D3},其中D = D1 + D2 + D3$，那么可以构造一个rotate矩阵，实现调用一次aclnnRotaryPositionEmbeddingV2接口完成x的旋转位置编码计算功能，rotate矩阵构造如下：
 
      $$rotate = diag(rotate1, rotate2, rotate3) = \begin{pmatrix}rotate1&0&0\\0&rotate2&0\\0&0&rotate3\\\end{pmatrix}$$
-     
+
      其中rotate1、rotate2、rotate3分别为x1、x2、x3的旋转编码矩阵，单个旋转矩阵构建参考调用示例。
 
 - 计算公式：
@@ -80,7 +80,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnRotaryPositionEmbeddingV2GetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnRotaryPositionEmbeddingV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnRotaryPositionEmbeddingV2GetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnRotaryPositionEmbeddingV2”接口执行计算。
 
 ```c++
 aclnnStatus aclnnRotaryPositionEmbeddingV2GetWorkspaceSize(
@@ -215,12 +215,12 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
   - 参数mode约束：
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：0=half，1=interleave。V2接口不同mode参数约束和V1接口相同，开发者可以根据mode在调用示例的辅助矩阵rotate生成中选择合适的rotate生成方式。
     - <term>Ascend 950PR/Ascend 950DT</term>：2=quarter，3=interleave-half。
-    
+
   - 参数rotate当前支持BFLOAT16、FLOAT16、FLOAT32类型。
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -296,10 +296,10 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
     </tr>
   </tbody>
   </table>
-  
+
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -329,10 +329,10 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
   输入张量x支持BNSD、BSND、SBND、TND排布，不支持辅助矩阵输入。各参数的shape约束可以描述如下：
   - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等1024。对于half、interleave和interleave-half模式，最后一维必须能被2除，对于quarter模式，最后一维必须能被4整除。
   - 输入张量x和输出张量y的shape必须完全相同。
-  - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播的shape必须等于x的shape。
+  - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满[broadcast关系](../../../docs/zh/context/broadcast_relationship.md)，且广播的shape必须等于x的shape。
   - 当x为TND时，cos、sin支持T1D、TND。
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include "acl/acl.h"
@@ -552,7 +552,7 @@ def compose_2matrix(A, B):
     result[:A.size(0), :A.size(1)] = A
     b_row_start = A.size(0)
     b_col_start = A.size(1)
-    result[b_row_start:b_row_start + B.size(0), 
+    result[b_row_start:b_row_start + B.size(0),
            b_col_start:b_col_start + B.size(1)] = B
     return result
 

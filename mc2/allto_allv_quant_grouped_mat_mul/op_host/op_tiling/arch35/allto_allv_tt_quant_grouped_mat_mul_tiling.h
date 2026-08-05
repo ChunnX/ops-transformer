@@ -36,11 +36,12 @@ protected:
     void GetPermuteOutSize() override;
 
 private:
-    void SetGMMQuantParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData) const;
-    void SetTilingArray(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N,
-                        uint64_t K) const;
-    void SetTilingParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData, uint64_t M, uint64_t N,
-                         uint64_t K, bool transB) const;
+    void SetGMMQuantParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData,
+                           uint32_t groupNum = 1) const;
+    void SetTilingArray(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData,
+                        uint64_t M, uint64_t N, uint64_t K, uint32_t groupNum = 1) const;
+    void SetTilingParams(Mc2GroupedMatmulTilingData::GMMQuantTilingData &gmmQuantTilingData,
+                         uint64_t M, uint64_t N, uint64_t K, bool transB) const;
 };
 } // namespace optiling
 #endif // ALLTO_ALLV_TT_GROUPED_MATMUL_QUANT_TILING_H
