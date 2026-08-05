@@ -106,7 +106,6 @@ private:
     uint64_t ubSize_{0};
 
     uint64_t barrierFlagOffset_{0};
-    uint64_t tokenFlagOffset_{0};
     uint64_t tokenWriteOffset_{0};
     uint64_t tokenReadOffset_{0};
     uint64_t tokenDataOffset_{0};
@@ -320,10 +319,9 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
 
     uint64_t totalRanksOffset = numRanks_ * STATE_OFFSET;
     barrierFlagOffset_ = 0;
-    tokenFlagOffset_ = totalRanksOffset;
-    tokenWriteOffset_ = tokenFlagOffset_ + totalRanksOffset;
+    tokenWriteOffset_ = totalRanksOffset;
     tokenReadOffset_ = tokenWriteOffset_ + totalRanksOffset;
-    tokenDataOffset_ = 4U * numRanks_ * STATE_OFFSET;
+    tokenDataOffset_ = 3U * numRanks_ * STATE_OFFSET;
 
     uint64_t tokenAreaRaw = (winSize_ > tokenDataOffset_) ? (winSize_ - tokenDataOffset_) : 0U;
     uint64_t tokenArea = tokenAreaRaw;
@@ -429,12 +427,6 @@ __aicore__ inline void EngramFetchGradArch35::ExchangeGrad()
     uint64_t recvEnd = static_cast<uint64_t>(AscendC::GetSystemCycle());
     exchangeRecvCycles_ = recvEnd - recvStart;
 
-    if (isFlagCore_) {
-        GM_ADDR localFlagBase = localWinBase + tokenFlagOffset_;
-        WaitAllStatusFlags(localFlagBase, numRanks_);
-        ClearStatusFlags(localFlagBase);
-    }
-
     SyncAll<true>();
 }
 
@@ -481,14 +473,6 @@ __aicore__ inline void EngramFetchGradArch35::SendGradLocal(int32_t sendCount, i
         LocalCopySlice(recvGradGM_ + rdispl * hiddenBytes_, gradSortedGM_ + sdispl * hiddenBytes_,
                        static_cast<uint64_t>(sendCount) * hiddenBytes_);
     }
-    GM_ADDR localFlagAddr = localWinBase + tokenFlagOffset_ + rankId_ * STATE_OFFSET;
-    LocalTensor<int32_t> flagLocal = statusBuf_.Get<int32_t>();
-    Duplicate<int32_t>(flagLocal, 1, STATE_OFFSET / sizeof(int32_t));
-    EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
-    GlobalTensor<int32_t> flagGM;
-    flagGM.SetGlobalBuffer((__gm__ int32_t *)localFlagAddr);
-    DataCopy(flagGM, flagLocal, STATE_OFFSET / sizeof(int32_t));
-    EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
 }
 
 __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, int32_t sendCount, int64_t sdispl,
@@ -530,8 +514,6 @@ __aicore__ inline void EngramFetchGradArch35::SendGradRemote(uint32_t dstRank, i
         totalSent += chunkLen;
     }
 
-    GM_ADDR remoteFlagAddr = GetRemoteWinAddr(dstRank, tokenFlagOffset_) + rankId_ * STATE_OFFSET;
-    WriteNbiChecked(handle, remoteFlagAddr, flagScratchGM_, STATE_OFFSET);
     DrainChecked(handle);
 }
 
@@ -942,13 +924,10 @@ __aicore__ inline void EngramFetchGradArch35::ClearWinCounters()
     Duplicate<int32_t>(cleanLocal, 0, numRanks_ * STATE_OFFSET / sizeof(int32_t));
     EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
     uint64_t cleanSize = numRanks_ * STATE_OFFSET / sizeof(int32_t);
-    GlobalTensor<int32_t> flagGM;
     GlobalTensor<int32_t> writeGM;
     GlobalTensor<int32_t> readGM;
-    flagGM.SetGlobalBuffer((__gm__ int32_t *)(localWinBase + tokenFlagOffset_));
     writeGM.SetGlobalBuffer((__gm__ int32_t *)(localWinBase + tokenWriteOffset_));
     readGM.SetGlobalBuffer((__gm__ int32_t *)(localWinBase + tokenReadOffset_));
-    DataCopy(flagGM, cleanLocal, cleanSize);
     DataCopy(writeGM, cleanLocal, cleanSize);
     DataCopy(readGM, cleanLocal, cleanSize);
     EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
