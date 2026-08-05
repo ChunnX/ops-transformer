@@ -15,8 +15,11 @@
 
 #include "aclnn_allto_all_matmul_apace.h"
 
+#include "acl/acl.h"
+#include "aclnn/aclnn_base.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
+#include "opdev/op_executor.h"
 
 using namespace op;
 
