@@ -55,12 +55,10 @@ public:
 
     // ==================== Functions ======================
     __aicore__ inline QSFAVectorService(){};
-    __aicore__ inline void InitVecBlock(TPipe *pipe, const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
-                                        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
+    __aicore__ inline void InitVecBlock(TPipe *pipe, int32_t aicIdx, uint8_t subBlockIdx,
                                         __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths)
     {
         if ASCEND_IS_AIV {
-            tilingData = tiling;
             tPipe = pipe;
             if (actualSeqLengths != nullptr) {
                 actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengths);
@@ -68,14 +66,12 @@ public:
             if (actualSeqLengthsQ != nullptr) {
                 cuSeqlensQGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsQ);
             }
-
-            this->InitCubeVecSharedParams(sharedParams, aicIdx, subBlockIdx);
             this->GetExtremeValue(this->negativeFloatScalar);
         }
     }
 
     // 初始化LocalTensor
-    __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo);
+    __aicore__ inline void InitLocalBuffer(ConstInfo &constInfo);
     // 初始化attentionOutGM
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
@@ -129,12 +125,9 @@ private:
                                                LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx,
                                                int64_t qsfaVec2CalcSize);
     __aicore__ inline void SoftmaxInitBuffer();
-    __aicore__ inline void InitCubeVecSharedParams(CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx);
-    __aicore__ inline void ComputeNeedInitQSFA(CVSharedParams &sharedParams) const;
     __aicore__ inline void GetExtremeValue(T &negativeScalar);
 
     TPipe *tPipe;
-    const KvQuantSparseFlashAttentionTilingDataMla *__restrict tilingData;
 
     GlobalTensor<OUTPUT_T> attentionOutGm;
     GlobalTensor<KV_T> keyGm;
@@ -471,7 +464,6 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec0(
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm, const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    outputL1.WaitCrossCore(); // 核间同步
     blockSize = constInfo.blockSize;
     maxBlockNumPerBatch = constInfo.maxBlockNumPerBatch;
 
@@ -483,9 +475,10 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ProcessVec0(
         CrossCoreWaitFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15); // 15: 跨核同步标志位值
     }
 
-    outputL1.SetCrossCore(); // 核间同步
     if constexpr (IS_SPLIT_G) {
         v0ResGm.SetCrossCore();
+    } else {
+        outputL1.SetCrossCore(); // 核间同步
     }
 }
 
@@ -767,7 +760,7 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::SoftmaxInitBuffer()
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo)
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(ConstInfo &constInfo)
 {
     // ub buffer
     SoftmaxInitBuffer();
@@ -790,84 +783,6 @@ __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitCubeVecSharedParams(
-    CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx)
-{
-    auto &sparseAttnSharedkvBaseParams = this->tilingData->baseParams;
-    sharedParams.bSize = sparseAttnSharedkvBaseParams.batchSize;
-    sharedParams.n2Size = 1;
-    sharedParams.s1Size = sparseAttnSharedkvBaseParams.qSeqSize;
-    sharedParams.s2Size = sparseAttnSharedkvBaseParams.seqSize;
-    sharedParams.gSize = sparseAttnSharedkvBaseParams.nNumOfQInOneGroup;
-
-    sharedParams.sparseBlockCount = sparseAttnSharedkvBaseParams.sparseBlockCount;
-    sharedParams.maskMode = sparseAttnSharedkvBaseParams.sparseMode;
-    sharedParams.layoutType = sparseAttnSharedkvBaseParams.outputLayout;
-    sharedParams.dSizeRope = 64; // 64: 编码维度
-    sharedParams.softmaxScale = sparseAttnSharedkvBaseParams.scaleValue;
-    sharedParams.dSize = 576; // 576: 模型特征维度(dSize)
-    sharedParams.dSizeVInput = sparseAttnSharedkvBaseParams.dSizeVInput;
-    sharedParams.usedCoreNum = this->tilingData->singleCoreParams.usedCoreNum;
-    if constexpr (isPa) {
-        sharedParams.blockSize = sparseAttnSharedkvBaseParams.blockSize;
-        sharedParams.maxBlockNumPerBatch = sparseAttnSharedkvBaseParams.maxBlockNumPerBatch;
-    }
-
-    sharedParams.isActualSeqLengthsNull = sparseAttnSharedkvBaseParams.isActualLenDimsNull;
-    sharedParams.isActualSeqLengthsKVNull = sparseAttnSharedkvBaseParams.isActualLenDimsKVNull;
-
-    ComputeNeedInitQSFA(sharedParams);
-
-    if ASCEND_IS_AIV {
-        if (subBlockIdx == 0) {
-            auto qsfaTempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t *>(0); // 从ssbuf的0地址开始拷贝
-            auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
-
-#pragma unroll
-            for (int i = 0; i < sizeof(CVSharedParams) / sizeof(uint32_t); ++i, ++qsfaTempTilingSSbuf, ++tempTiling) {
-                *qsfaTempTilingSSbuf = *tempTiling;
-            }
-
-            CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
-        }
-    }
-}
-
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ComputeNeedInitQSFA(
-    CVSharedParams &sharedParams) const
-{
-    sharedParams.needInit = 0;
-    for (uint32_t bIdx = 0; bIdx < sharedParams.bSize; bIdx++) {
-        int64_t s2Size;
-        if constexpr (KV_LAYOUT_T == QSFA_LAYOUT::TND) {
-            s2Size = (bIdx == 0) ? actualSeqLengthsKVGm.GetValue(bIdx) :
-                                   (actualSeqLengthsKVGm.GetValue(bIdx) - actualSeqLengthsKVGm.GetValue(bIdx - 1));
-        } else {
-            if (sharedParams.isActualSeqLengthsKVNull) {
-                s2Size = sharedParams.s2Size;
-            } else {
-                s2Size = actualSeqLengthsKVGm.GetValue(bIdx);
-            }
-        }
-
-        int64_t s1Size;
-        if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
-            s1Size = (bIdx == 0) ? cuSeqlensQGm.GetValue(bIdx) :
-                                   (cuSeqlensQGm.GetValue(bIdx) - cuSeqlensQGm.GetValue(bIdx - 1));
-        } else {
-            if (sharedParams.isActualSeqLengthsNull) {
-                s1Size = sharedParams.s1Size;
-            } else {
-                s1Size = cuSeqlensQGm.GetValue(bIdx);
-            }
-        }
-        if (s1Size > s2Size || (LAYOUT_T == QSFA_LAYOUT::BSND && s1Size < sharedParams.s1Size)) {
-            sharedParams.needInit = 1;
-            break;
-        }
-    }
-}
-
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::GetExtremeValue(T &negativeScalar)
 {
     uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
@@ -881,10 +796,9 @@ public:
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
                                             __gm__ uint8_t *blockTable)
     {}
-    __aicore__ inline void InitVecBlock(TPipe *pipe, const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
-                                        CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
+    __aicore__ inline void InitVecBlock(TPipe *pipe, int32_t aicIdx, uint8_t subBlockIdx,
                                         __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths) {};
-    __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
+    __aicore__ inline void InitLocalBuffer(ConstInfo &constInfo) {}
 
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
