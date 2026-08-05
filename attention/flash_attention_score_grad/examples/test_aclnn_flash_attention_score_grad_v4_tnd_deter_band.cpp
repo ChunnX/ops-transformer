@@ -82,12 +82,12 @@ int main() {
   auto ret = Init(deviceId, &stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-  // Case: band, expect DeterType=4
-  // Unequal per-batch lens keep TND; max S>=2048 for TND swizzle.
-  int64_t N1 = 1;
-  int64_t N2 = 1;
-  int64_t T1 = 2560;  // 512 + 2048
-  int64_t T2 = 2560;
+  // Case: band, expect DeterType=4, IsTndSwizzle=1
+  // Large shape needed for enableSwizzle (exceed L2 / fill aicNum).
+  int64_t N1 = 8;
+  int64_t N2 = 8;
+  int64_t T1 = 12288;  // 4096 + 8192
+  int64_t T2 = 12288;
   int64_t D = 128;
 
   int64_t q_size = T1 * N1 * D;
@@ -183,8 +183,8 @@ int main() {
   std::vector<int64_t> prefixOp = {0};
   std::vector<int64_t> qStartIdxOp = {0};
   std::vector<int64_t> kvStartIdxOp = {0};
-  std::vector<int64_t> actualSeqQLenOp = {512, 2560};  // per-batch: 512, 2048
-  std::vector<int64_t> actualSeqKVLenOp = {512, 2560};
+  std::vector<int64_t> actualSeqQLenOp = {4096, 12288};  // per-batch: 4096, 8192
+  std::vector<int64_t> actualSeqKVLenOp = {4096, 12288};
 
   aclIntArray *prefix = aclCreateIntArray(prefixOp.data(), 1);
   aclIntArray *qStartIdx = aclCreateIntArray(qStartIdxOp.data(), 1);
@@ -196,7 +196,7 @@ int main() {
   double keepProb = 1.0;
   int64_t preTokens = 1024;
   int64_t nextTokens = 1024;
-  int64_t headNum = 1;
+  int64_t headNum = 8;
   int64_t innerPrecise = 0;
   int64_t sparseMode = 4;
   int64_t pseType = 1;

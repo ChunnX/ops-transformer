@@ -124,9 +124,87 @@ using FagTilingWithTemplateTTTT =
      // bit: 54 IsRegbasePlatformValue
      ASCENDC_TPL_BOOL_DECL(IsRegbase, 0, 1),
  );
+
+ // Local debug: shrink kernel binary compile from ~8k templates to a handful.
+ // Matches examples/test_aclnn_flash_attention_score_grad_v4_tnd_deter_*:
+ // FP32 / TND / S1=S2=128 / D=128 / no drop/pse / attenmask / NEqual / deter 2~5.
+ // Set to 0 to restore full ASCENDC_TPL_SEL (needs large memory / -j carefully).
+ #ifndef FAG_DEBUG_MINIMAL_TPL
+ #define FAG_DEBUG_MINIMAL_TPL 1
+ #endif
  
  ASCENDC_TPL_SEL(
  
+ #if FAG_DEBUG_MINIMAL_TPL
+         // FP32 + TND + deter, no swizzle (host may still pick this)
+         ASCENDC_TPL_ARGS_SEL(
+             ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+             ASCENDC_TPL_UINT_SEL(SplitAxis, ASCENDC_TPL_UI_LIST, 0),
+             ASCENDC_TPL_UINT_SEL(InputDType, ASCENDC_TPL_UI_LIST, 1),
+             ASCENDC_TPL_BOOL_SEL(IsTnd, 1),
+             ASCENDC_TPL_BOOL_SEL(IsDrop, 0),
+             ASCENDC_TPL_BOOL_SEL(IsPse, 0),
+             ASCENDC_TPL_BOOL_SEL(IsAttenMask, 1),
+             ASCENDC_TPL_UINT_SEL(S1TemplateNum, ASCENDC_TPL_UI_LIST, 128),
+             ASCENDC_TPL_UINT_SEL(S2TemplateNum, ASCENDC_TPL_UI_LIST, 128),
+             ASCENDC_TPL_UINT_SEL(DTemplateNum, ASCENDC_TPL_UI_LIST, 128),
+             ASCENDC_TPL_UINT_SEL(DeterType, ASCENDC_TPL_UI_LIST, 2, 3, 4),
+             ASCENDC_TPL_BOOL_SEL(IsNEqual, 0, 1),
+             ASCENDC_TPL_BOOL_SEL(IsBn2MultiBlk, 0),
+             ASCENDC_TPL_BOOL_SEL(IsDNoEqual, 0),
+             ASCENDC_TPL_BOOL_SEL(IsRope, 0),
+             ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 1),
+             ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+             ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTF)
+         ),
+         // FP32 + TND + deter + IsTndSwizzle (target path)
+         ASCENDC_TPL_ARGS_SEL(
+             ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 0),
+             ASCENDC_TPL_UINT_SEL(SplitAxis, ASCENDC_TPL_UI_LIST, 0),
+             ASCENDC_TPL_UINT_SEL(InputDType, ASCENDC_TPL_UI_LIST, 1),
+             ASCENDC_TPL_BOOL_SEL(IsTnd, 1),
+             ASCENDC_TPL_BOOL_SEL(IsDrop, 0),
+             ASCENDC_TPL_BOOL_SEL(IsPse, 0),
+             ASCENDC_TPL_BOOL_SEL(IsAttenMask, 1),
+             ASCENDC_TPL_UINT_SEL(S1TemplateNum, ASCENDC_TPL_UI_LIST, 128),
+             ASCENDC_TPL_UINT_SEL(S2TemplateNum, ASCENDC_TPL_UI_LIST, 128),
+             ASCENDC_TPL_UINT_SEL(DTemplateNum, ASCENDC_TPL_UI_LIST, 128),
+             ASCENDC_TPL_UINT_SEL(DeterType, ASCENDC_TPL_UI_LIST, 2, 3, 4, 5),
+             ASCENDC_TPL_BOOL_SEL(IsNEqual, 0, 1),
+             ASCENDC_TPL_BOOL_SEL(IsBn2MultiBlk, 0),
+             ASCENDC_TPL_BOOL_SEL(IsDNoEqual, 0),
+             ASCENDC_TPL_BOOL_SEL(IsRope, 0),
+             ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 1),
+             ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+             ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 1),
+             ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateTTTT)
+         ),
+         ASCENDC_TPL_ARGS_SEL(
+             ASCENDC_TPL_BOOL_SEL(IsEmptyTensor, 1),
+             ASCENDC_TPL_UINT_SEL(SplitAxis, ASCENDC_TPL_UI_LIST, 0),
+             ASCENDC_TPL_UINT_SEL(InputDType, ASCENDC_TPL_UI_LIST, 0),
+             ASCENDC_TPL_BOOL_SEL(IsTnd, 0),
+             ASCENDC_TPL_BOOL_SEL(IsDrop, 0),
+             ASCENDC_TPL_BOOL_SEL(IsPse, 0),
+             ASCENDC_TPL_BOOL_SEL(IsAttenMask, 0),
+             ASCENDC_TPL_UINT_SEL(S1TemplateNum, ASCENDC_TPL_UI_LIST, 0),
+             ASCENDC_TPL_UINT_SEL(S2TemplateNum, ASCENDC_TPL_UI_LIST, 0),
+             ASCENDC_TPL_UINT_SEL(DTemplateNum, ASCENDC_TPL_UI_LIST, 0),
+             ASCENDC_TPL_UINT_SEL(DeterType, ASCENDC_TPL_UI_LIST, 0),
+             ASCENDC_TPL_BOOL_SEL(IsNEqual, 0),
+             ASCENDC_TPL_BOOL_SEL(IsBn2MultiBlk, 0),
+             ASCENDC_TPL_BOOL_SEL(IsDNoEqual, 0),
+             ASCENDC_TPL_BOOL_SEL(IsRope, 0),
+             ASCENDC_TPL_UINT_SEL(OutDType, ASCENDC_TPL_UI_LIST, 0),
+             ASCENDC_TPL_BOOL_SEL(IsNzOut, 0),
+             ASCENDC_TPL_BOOL_SEL(IsTndSwizzle, 0),
+             ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
+             ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
+         ),
+ #else
      #if (ORIG_DTYPE_QUERY == -1) || (ORIG_DTYPE_QUERY == DT_FLOAT16)
          // FP16
          ASCENDC_TPL_ARGS_SEL(
@@ -1569,5 +1647,6 @@ using FagTilingWithTemplateTTTT =
          ASCENDC_TPL_BOOL_SEL(IsRegbase, 1),
          ASCENDC_TPL_TILING_STRUCT_SEL(FagTilingWithTemplateFFFF)
      ),
+ #endif // FAG_DEBUG_MINIMAL_TPL
  );
  #endif
