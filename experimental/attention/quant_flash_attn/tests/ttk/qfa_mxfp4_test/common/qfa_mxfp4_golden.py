@@ -304,13 +304,7 @@ def update_act_seq_lens_for_tnd(layout, b, act_seq_lens):
 
 
 def transpose_kscale(k_scale, layout):
-    """K scale: BNSD [B,N,S,D] -> layout 适配 (TND reshape D//2,2, BSND/BNSD reshape D//2,2)
 
-    所有 layout 统一输出 5D (末两维 D//2, 2), 与 transpose_qscale 的 5D 风格保持一致.
-    BNSD 下量化后 k_scale = (B,N,S, ceil(D/32)), reshape 成 (B,N,S, D//2, 2):
-      乘积不变 (ceil(D/32) == D//2 当 D 是 32 倍数且 D//2 个 scale 在 D//2 维上排布),
-      存储排列不变 (row-major 下末维 4 -> (2,2) 是连续拆分), 数据语义不变.
-    """
     if k_scale is None:
         raise ValueError("k_scale cannot be None")
     if not isinstance(k_scale, torch.Tensor):
@@ -421,11 +415,6 @@ def _gen_range_tensor(shape, lo, hi, seed):
 
 
 def _gen_opt_tensor(shape, dtype_str, datarange_str, seed):
-    """按 shape 生成随机 tensor; shape 为空 -> 返回 None.
-
-    dtype_str: None -> 默认 float32; 支持 float16/bfloat16/float32/int32/uint8
-    datarange_str: None -> (-1,1); 支持 'min,max' 或 float 对称区间
-    """
     if not shape:
         return None
     # 解析 dtype
@@ -452,27 +441,8 @@ def _gen_opt_tensor(shape, dtype_str, datarange_str, seed):
         t = torch.randint(int(lo), int(hi) + 1, shape, dtype=torch_dtype)
     return t.contiguous()
 
-
-# ==============================================================================
-# 数据生成: BNSD FP32 Q/K/V -> MXFP4 量化 + scale 转换 + layout 重排
-# 与原 quant_flash_attn_golden.py 中 run_fia_eager 数据生成段一致
-# ==============================================================================
 def generate_data():
-    """生成 BNSD FP32 Q/K/V -> MXFP4 量化 -> layout 转换 -> 缓存结果.
 
-    返回 dict:
-      q_packed:        uint8, MXFP4 packed (last dim = D // 2)
-      k_packed:        uint8, MXFP4 packed
-      v_packed:        uint8, MXFP4 packed (按 act_seq_lens_kv 分批量化再拼回)
-      q_descale:       uint8, E8M0 scale, 已转好 layout & N2TGD-like 排布
-      k_descale:       uint8, E8M0 scale, 已转好 layout & (D//2,2) packing
-      v_descale:       uint8, E8M0 scale, 已转好 layout & (Sg//2,D,2) packing
-      block_table:     None (本适配只支持 continue KV)
-      cu_seqlens_q:    python list, TND 才需要, 否则 None
-      cu_seqlens_kv:   python list, TND 才需要, 否则 None
-      act_seq_lens_q:  python list
-      act_seq_lens_kv: python list
-    """
     n2 = N_kv
     g = G
     num_heads = n2 * g
@@ -499,9 +469,9 @@ def generate_data():
     key = _gen_range_tensor((B, n2, s2, qk_d), k_lo, k_hi, SEED_K)
     value = _gen_range_tensor((B, n2, s2, v_d), v_lo, v_hi, SEED_V)
 
-    # 缓存原始 FP32 BNSD Q/K/V 给 CPU golden 用 (与原 pytest cpu_golden_qkv_mxfp4_flash_attn
+    # 原始 FP32 BNSD Q/K/V 随返回 dict 传给 CPU golden (与原 pytest cpu_golden_qkv_mxfp4_flash_attn
     # 一致: golden 接收 FP32, 内部 _apply_input_quant 做量化反量化)
-    golden_mod_self._cached_fp32_bnsd = (query, key, value)
+    fp32_bnsd = (query, key, value)
 
     query_layout = get_query_layout(INPUT_LAYOUT)
     # attn_out_layout: 优先用表格 LAYOUT_OUT, 否则从 INPUT_LAYOUT 推导
@@ -591,17 +561,6 @@ def generate_data():
     # V descale 最后再 view 出 (*shape, -1, 2) 末尾两维
     v_descale = v_descale.view(*v_descale.shape[:-1], -1, 2)
 
-    # 在 layout 转换之前, 先缓存原始 BNSD 形式的 packed + scales,
-    # 供 CPU golden 内部 mxfp4_qdq 直接使用 (它期望 BNSD 4D)
-    query_packed_bnsd = query_packed
-    key_packed_bnsd = key_packed
-    value_packed_bnsd = value_packed
-    # scales 在量化后还是 BNSD 形式 (transpose_qscale/transpose_kscale 还没调)
-    # 这里缓存 transpose 之前的 BNSD scales
-    q_descale_bnsd = q_descale
-    k_descale_bnsd = k_descale
-    v_descale_bnsd = v_descale
-
     # cu_seqlens (TND only): 表格传了就用表格的, 否则自动推导
     cu_seqlens_q = (
         CU_SEQLENS_Q
@@ -643,16 +602,6 @@ def generate_data():
         ATTN_MASK_SHAPE, ATTN_MASK_DTYPE or "int8", ATTN_MASK_DATARANGE, seed=103
     )
 
-    # 缓存 BNSD packed + scales 给 CPU golden 用
-    golden_mod_self._cached_bnsd_inputs = [
-        query_packed_bnsd,
-        key_packed_bnsd,
-        value_packed_bnsd,
-        q_descale_bnsd,
-        k_descale_bnsd,
-        v_descale_bnsd,
-    ]
-
     return dict(
         q=query_packed.contiguous(),
         k=key_packed.contiguous(),
@@ -676,6 +625,7 @@ def generate_data():
         softmax_scale=SOFTMAX_SCALE
         if SOFTMAX_SCALE is not None
         else 1.0 / math.sqrt(qk_d),
+        fp32_bnsd=fp32_bnsd,
     )
 
 
@@ -683,17 +633,10 @@ def generate_data():
 # CPU Golden: 复用 flash_attention_cpu_golden_varlen, 与原 run_fia_eager 一致
 # 输入: generate_data() 输出的 dict (其中 q/k/v 是 MXFP4 packed 字节, 这里
 #       不做反量化, 直接喂给 cpu golden, 由其内部 mxfp4_qdq 处理)
+#       FP32 BNSD Q/K/V 通过 dict["fp32_bnsd"] 传入 (确定性种子生成, 无跨用例缓存)
 # 输出: attn_out 在 attn_out_layout 下, 已转好 layout
 # ==============================================================================
 def cpu_mxfp4_golden(data_dict):
-    """CPU flash-attention golden, 输出 attn_out 在 attn_out_layout 下.
-
-    与原 pytest cpu_golden_qkv_mxfp4_flash_attn (quant_flash_attn_golden.py:700) 完全一致:
-      - 取原始 FP32 BNSD Q/K/V (generate_data 缓存的 _cached_fp32_bnsd)
-      - bnsd_to_bsnd -> .to(float32) -> flatten(B,N) -> [T, N, D]  (D = qk_d, 未量化)
-      - 调 flash_attention_cpu_golden_varlen (内部 _apply_input_quant 做 MXFP4 量化反量化)
-      - 输出 reshape 回 [B, s1, N, qk_d] -> permute -> attn_out_layout
-    """
     act_seq_q = data_dict["act_seq_lens_q"]
     act_seq_kv = data_dict["act_seq_lens_kv"]
     softmax_scale = data_dict["softmax_scale"]
@@ -713,12 +656,13 @@ def cpu_mxfp4_golden(data_dict):
     cu_seqlens_kv = [i * s2 for i in range(b + 1)]
 
     # 取原始 FP32 BNSD Q/K/V (与原 pytest 一致, golden 接收 FP32, 内部做量化反量化)
-    cached_fp32 = getattr(golden_mod_self, "_cached_fp32_bnsd", None)
-    if cached_fp32 is None:
+    # FP32 由 generate_data 用确定性种子 (SEED_Q/K/V) 生成, 与 inputs.py 同源, 无需跨用例缓存
+    fp32_bnsd = data_dict.get("fp32_bnsd")
+    if fp32_bnsd is None:
         raise RuntimeError(
-            "_cached_fp32_bnsd is None, generate_data must be called first"
+            "data_dict['fp32_bnsd'] is None, generate_data must include fp32_bnsd"
         )
-    query_fp32, key_fp32, value_fp32 = cached_fp32
+    query_fp32, key_fp32, value_fp32 = fp32_bnsd
 
     # BNSD -> BSND -> flatten(B,N) -> [T, N, D]  (与原 pytest cpu_golden_qkv_mxfp4_flash_attn 一致)
     query_bsnd = (
@@ -767,7 +711,6 @@ def _to_npu(tensor):
 
 
 def _call_npu_fa_op(data_dict):
-    """eager 模式直接调 quant_flash_attn_metadata + quant_flash_attn"""
     q = _to_npu(data_dict["q"])
     k = _to_npu(data_dict["k"])
     v = _to_npu(data_dict["v"])
@@ -888,10 +831,6 @@ def _call_npu_fa_op(data_dict):
 
 
 class Network(nn.Module):
-    """aclgraph 编译目标: forward 只调两个 torch.library op.
-    所有 Python 预处理 (tensor().npu(), metadata 构造外的 list->tensor) 在编译区域外完成.
-    """
-
     def __init__(self):
         super(Network, self).__init__()
 
@@ -1101,6 +1040,202 @@ def npu_mxfp4_fa(data_dict):
     if GRAPH_PATH == 0:
         return _call_npu_fa_op(data_dict)
     return _mxfp4_fa_torch_npu(data_dict)
+
+
+def call_npu_metadata(data_dict):
+    """只调 quant_flash_attn_metadata, 返回 [metadata] 对象.
+
+    分离测试入口: 验证 metadata 算子独立正确性, 不调主算子。
+    """
+    v_descale = _to_npu(data_dict["v_descale"])
+
+    cu_seqlens_q = data_dict["cu_seqlens_q"]
+    cu_seqlens_kv = data_dict["cu_seqlens_kv"]
+    seqused_q = data_dict["act_seq_lens_q"]
+    seqused_kv = data_dict["act_seq_lens_kv"]
+
+    cu_seqlens_q_t = (
+        torch.tensor(
+            cu_seqlens_q, dtype=get_dtype(CU_SEQLENS_Q_DTYPE) or torch.int32
+        ).npu()
+        if cu_seqlens_q is not None
+        else None
+    )
+    cu_seqlens_kv_t = (
+        torch.tensor(
+            cu_seqlens_kv, dtype=get_dtype(CU_SEQLENS_KV_DTYPE) or torch.int32
+        ).npu()
+        if cu_seqlens_kv is not None
+        else None
+    )
+    seqused_q_t = (
+        torch.tensor(seqused_q, dtype=get_dtype(SEQUSED_Q_DTYPE) or torch.int32).npu()
+        if seqused_q
+        else None
+    )
+    seqused_kv_t = (
+        torch.tensor(seqused_kv, dtype=get_dtype(SEQUSED_KV_DTYPE) or torch.int32).npu()
+        if seqused_kv
+        else None
+    )
+
+    query_layout = data_dict["query_layout"]
+    kv_layout = data_dict.get("kv_layout", query_layout)
+    attn_out_layout = data_dict["attn_out_layout"]
+
+    torch_npu.npu.set_device(int(DEVICE_ID))
+    torch.npu.synchronize()
+
+    logger.info("[NPU_METADATA] 调用 quant_flash_attn_metadata")
+    metadata = quant_flash_attn_metadata(
+        num_heads_q=data_dict["num_heads"],
+        num_heads_kv=data_dict["num_key_value_heads"],
+        head_dim=D,
+        quant_mode=Q_QUANT_MODE,
+        cu_seqlens_q=cu_seqlens_q_t,
+        cu_seqlens_kv=cu_seqlens_kv_t,
+        seqused_q=seqused_q_t,
+        seqused_kv=seqused_kv_t,
+        v_descale=v_descale,
+        batch_size=B,
+        max_seqlen_q=MAX_SEQLEN_Q,
+        max_seqlen_kv=MAX_SEQLEN_KV,
+        mask_mode=SPARSE_MODE,
+        win_left=PRE_TOKENS,
+        win_right=NEXT_TOKENS,
+        layout_q=query_layout,
+        layout_q_descale=LAYOUT_Q_DESCALE,
+        layout_kv=kv_layout,
+        layout_out=attn_out_layout,
+    )
+    torch.npu.synchronize()
+    return [metadata]
+
+
+def call_npu_main(data_dict):
+    """内部重建 metadata 后调 quant_flash_attn 主算子, 返回 (atten_out, lse_out).
+
+    分离测试入口: 验证主算子 + metadata 完整链路 (metadata 在本函数内部重建, 不跨用例传递)。
+    """
+    q = _to_npu(data_dict["q"])
+    k = _to_npu(data_dict["k"])
+    v = _to_npu(data_dict["v"])
+    q_descale = _to_npu(data_dict["q_descale"])
+    k_descale = _to_npu(data_dict["k_descale"])
+    v_descale = _to_npu(data_dict["v_descale"])
+    block_table = (
+        _to_npu(data_dict.get("block_table"))
+        if data_dict.get("block_table") is not None
+        else None
+    )
+    p_scale = (
+        _to_npu(data_dict.get("p_scale"))
+        if data_dict.get("p_scale") is not None
+        else None
+    )
+    sinks = (
+        _to_npu(data_dict.get("sinks")) if data_dict.get("sinks") is not None else None
+    )
+    attn_mask = (
+        _to_npu(data_dict.get("attn_mask"))
+        if data_dict.get("attn_mask") is not None
+        else None
+    )
+
+    cu_seqlens_q = data_dict["cu_seqlens_q"]
+    cu_seqlens_kv = data_dict["cu_seqlens_kv"]
+    seqused_q = data_dict["act_seq_lens_q"]
+    seqused_kv = data_dict["act_seq_lens_kv"]
+
+    cu_seqlens_q_t = (
+        torch.tensor(
+            cu_seqlens_q, dtype=get_dtype(CU_SEQLENS_Q_DTYPE) or torch.int32
+        ).npu()
+        if cu_seqlens_q is not None
+        else None
+    )
+    cu_seqlens_kv_t = (
+        torch.tensor(
+            cu_seqlens_kv, dtype=get_dtype(CU_SEQLENS_KV_DTYPE) or torch.int32
+        ).npu()
+        if cu_seqlens_kv is not None
+        else None
+    )
+    seqused_q_t = (
+        torch.tensor(seqused_q, dtype=get_dtype(SEQUSED_Q_DTYPE) or torch.int32).npu()
+        if seqused_q
+        else None
+    )
+    seqused_kv_t = (
+        torch.tensor(seqused_kv, dtype=get_dtype(SEQUSED_KV_DTYPE) or torch.int32).npu()
+        if seqused_kv
+        else None
+    )
+
+    query_layout = data_dict["query_layout"]
+    kv_layout = data_dict.get("kv_layout", query_layout)
+    attn_out_layout = data_dict["attn_out_layout"]
+
+    torch_npu.npu.set_device(int(DEVICE_ID))
+    torch.npu.synchronize()
+
+    logger.info("[NPU_MAIN] 重建 metadata (调 quant_flash_attn_metadata)")
+    metadata = quant_flash_attn_metadata(
+        num_heads_q=data_dict["num_heads"],
+        num_heads_kv=data_dict["num_key_value_heads"],
+        head_dim=D,
+        quant_mode=Q_QUANT_MODE,
+        cu_seqlens_q=cu_seqlens_q_t,
+        cu_seqlens_kv=cu_seqlens_kv_t,
+        seqused_q=seqused_q_t,
+        seqused_kv=seqused_kv_t,
+        v_descale=v_descale,
+        batch_size=B,
+        max_seqlen_q=MAX_SEQLEN_Q,
+        max_seqlen_kv=MAX_SEQLEN_KV,
+        mask_mode=SPARSE_MODE,
+        win_left=PRE_TOKENS,
+        win_right=NEXT_TOKENS,
+        layout_q=query_layout,
+        layout_q_descale=LAYOUT_Q_DESCALE,
+        layout_kv=kv_layout,
+        layout_out=attn_out_layout,
+    )
+
+    main_kwargs = dict(
+        q=q,
+        k=k,
+        v=v,
+        q_descale=q_descale,
+        k_descale=k_descale,
+        v_descale=v_descale,
+        quant_mode=Q_QUANT_MODE,
+        block_table=block_table,
+        p_scale=p_scale,
+        cu_seqlens_q=cu_seqlens_q_t,
+        cu_seqlens_kv=cu_seqlens_kv_t,
+        seqused_q=seqused_q_t,
+        seqused_kv=seqused_kv_t,
+        sinks=sinks,
+        attn_mask=attn_mask,
+        metadata=metadata,
+        softmax_scale=data_dict["softmax_scale"],
+        mask_mode=SPARSE_MODE,
+        win_left=PRE_TOKENS,
+        win_right=NEXT_TOKENS,
+        max_seqlen_q=MAX_SEQLEN_Q,
+        max_seqlen_kv=MAX_SEQLEN_KV,
+        layout_q=query_layout,
+        layout_q_descale=LAYOUT_Q_DESCALE,
+        layout_kv=kv_layout,
+        layout_out=attn_out_layout,
+    )
+    main_kwargs.update(_get_npu_fa_kwargs())
+
+    logger.info("[NPU_MAIN] 调用 quant_flash_attn 主算子")
+    npu_attn_out, npu_lse = quant_flash_attn(**main_kwargs)
+    torch.npu.synchronize()
+    return npu_attn_out, npu_lse
 
 
 # 自引用, 用于 _apply_golden_globals (避免循环 import)

@@ -34,7 +34,7 @@ def _apply_golden_globals(attrs):
 
 
 def npu_qfa_mxfp4(
-    # ========== Tensor inputs (TTK 占位, 真实数据从 golden_mod._cached_data 取) ==========
+    # ========== Tensor inputs (TTK 占位, 真实数据由 golden_mod.generate_data 重新生成) ==========
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
@@ -102,13 +102,7 @@ def npu_qfa_mxfp4(
     softmax_lse_dtype: str = None,
     **kwargs,
 ):
-    """MXFP4 quant_flash_attn TTK wrapper.
 
-    graph_path:
-      - 0: eager 模式, 直接调用 quant_flash_attn_metadata + quant_flash_attn
-      - 7: aclgraph 模式, 用 npugraph_ex backend 编译 Network
-      - 优先级: 环境变量 GRAPH_PATH > CSV graph_path 属性 > 默认值 0
-    """
     torch_npu.npu.set_device(int(device_id))
 
     # 优先级: 环境变量 GRAPH_PATH > CSV graph_path 属性 > 默认值 0
@@ -186,16 +180,7 @@ def npu_qfa_mxfp4(
         }
     )
 
-    # 从 golden_mod 取 customize_inputs 缓存的真实 MXFP4 数据
-    cached = getattr(golden_mod, "_cached_data", None)
-    if cached is None:
-        logger.warning("[WRAPPER] customize_inputs 缓存为空, 重新生成数据")
-        cached = golden_mod.generate_data()
-        golden_mod._cached_data = cached
-    else:
-        logger.info("[WRAPPER] 使用 customize_inputs 缓存的真实 MXFP4 数据")
-
-    # 调用 golden 的 npu_mxfp4_fa (内部根据 GRAPH_PATH 选 eager / npugraph_ex)
+    data_dict = golden_mod.generate_data()
     logger.info(
         "[WRAPPER] graph_path=%d, layout=%s, B=%d, N_q=%d, N_kv=%d, D=%d",
         graph_path,
@@ -206,7 +191,7 @@ def npu_qfa_mxfp4(
         D,
     )
     try:
-        atten_out, lse_out = golden_mod.npu_mxfp4_fa(cached)
+        atten_out, lse_out = golden_mod.npu_mxfp4_fa(data_dict)
     except Exception as e:
         logger.error("[WRAPPER] NPU 调用失败: %s", str(e))
         raise
