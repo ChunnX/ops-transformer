@@ -201,5 +201,9 @@ struct MegaMoeTilingData {
     float activationAlpha;      // linear_beta, 默认 1.0
     float activationBeta;       // beta, 默认 1.0
     uint32_t expertsPerBatch;
+    // [PROFILER] device-side profiler ring buffer 在 workspace 尾部预留区的偏移（字节）。
+    // 0 = 未启用 profiler。数组式（按 rank 选择）避免 static counter 跨设备地址错乱（SUB-1），
+    // 子包路径 address-bridge 方案下所有 rank 共享同一 workspace 偏移，只用 [0]。
+    uint64_t profBufAddr[4] = {0, 0, 0, 0};
 };
 #endif

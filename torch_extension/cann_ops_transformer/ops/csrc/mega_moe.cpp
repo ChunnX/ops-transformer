@@ -10,11 +10,154 @@
 
 #include <torch/extension.h>
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <vector>
 #include "aclnn_common.h"
 
 namespace op_api {
 using npu_utils = at_npu::native::NpuUtils;
 const int DIM_TWO = 2;
+
+// ════════════════════════════════════════════════════════════════════════════════
+// [PROFILER] torch 路径打点回读（子包路径，见 mc2/mega_moe/tests/profiler/README.md）
+//   ACLNN_CMD 宏内部的 workspace 是宏作用域局部变量，宏结束后即释放，Python 层读不到 profBuf。
+//   因此 MEGA_MOE_PROF_DUMP=1 时走下面手动两阶段调用，显式保留 workspace 直到 D2H 回读完成。
+//
+//   两阶段工作流：
+//     ① 标定：MEGA_MOE_PROF_CALIB=1 跑一次，kernel(address-bridge) 把 workspace 基址写 yOut[0..8]，
+//        host 读出 delta = kernelWsBase - hostWsBase，打印后按 delta 填 MEGA_MOE_PROF_DELTA。
+//     ② 打点：MEGA_MOE_PROF_DUMP=1（不带 CALIB），用 MEGA_MOE_PROF_DELTA 从 workspace 尾部读 profBuf，
+//        写 prof_rank{device}.bin。
+//   PROF_N_CORES 须与 op_kernel/arch35/profiler_config.h 一致（Ascend 950 MIX_1_2 = 84）。
+// ════════════════════════════════════════════════════════════════════════════════
+constexpr uint32_t MEGA_MOE_PROF_N_CORES = 84;  // [MODIFY] 与 profiler_config.h PROF_N_CORES 一致
+constexpr uint32_t MEGA_MOE_PROF_SLOTS_PER_CORE = 4096;
+constexpr uint32_t MEGA_MOE_PROF_RECORD_BYTES = 16;
+constexpr uint32_t MEGA_MOE_PROF_RINGIDX_ALIGN = 64;
+constexpr size_t MEGA_MOE_PROF_BUF_TOTAL =
+    (size_t)MEGA_MOE_PROF_N_CORES * MEGA_MOE_PROF_RINGIDX_ALIGN +
+    (size_t)MEGA_MOE_PROF_N_CORES * MEGA_MOE_PROF_SLOTS_PER_CORE * MEGA_MOE_PROF_RECORD_BYTES;
+
+// 从 workspace 尾部读 profBuf 写 prof_rank{deviceId}.bin（MIX_1_2 → layout_type=3）
+inline void DumpMegaMoeProfBuf(void *workspaceAddr, uint64_t workspaceSize, int deviceId, uint64_t wsDelta)
+{
+    if (workspaceSize < MEGA_MOE_PROF_BUF_TOTAL) {
+        ASCEND_LOGW("MegaMoe profBuf: workspaceSize %llu < PROF_BUF_TOTAL %zu, skip dump.",
+                    (unsigned long long)workspaceSize, MEGA_MOE_PROF_BUF_TOTAL);
+        return;
+    }
+    uint64_t profBufOff = workspaceSize - MEGA_MOE_PROF_BUF_TOTAL;
+    uint8_t *profDevPtr = reinterpret_cast<uint8_t *>(workspaceAddr) + wsDelta + profBufOff;
+
+    std::vector<uint8_t> hostBuf(MEGA_MOE_PROF_BUF_TOTAL);
+    aclError ret = aclrtMemcpy(hostBuf.data(), MEGA_MOE_PROF_BUF_TOTAL, profDevPtr, MEGA_MOE_PROF_BUF_TOTAL,
+                               ACL_MEMCPY_DEVICE_TO_HOST);
+    if (ret != ACL_ERROR_NONE) {
+        ASCEND_LOGW("MegaMoe profBuf D2H failed, ret=%d.", ret);
+        return;
+    }
+
+    char fname[256];
+    snprintf(fname, sizeof(fname), "prof_rank%d.bin", deviceId);
+    std::ofstream ofs(fname, std::ios::binary);
+    uint32_t header[4] = {0x50524F46u, (3u << 16) | 1u, MEGA_MOE_PROF_N_CORES, MEGA_MOE_PROF_RECORD_BYTES};
+    ofs.write(reinterpret_cast<const char *>(header), sizeof(header));
+    ofs.write(reinterpret_cast<const char *>(hostBuf.data()), MEGA_MOE_PROF_BUF_TOTAL);
+    ofs.close();
+    uint32_t firstWord = 0;
+    memcpy(&firstWord, hostBuf.data(), 4);
+    printf("[PROFILER] MegaMoe rank %d dumped to %s (first word 0x%08X)\n", deviceId, fname, firstWord);
+}
+
+// 手动两阶段调用：与 ACLNN_CMD 等价，但保留 workspace 直到回读完成
+template <typename... Ts>
+void LaunchMegaMoeWithProfDump(const at::Tensor &yOut, int deviceId, Ts &...args)
+{
+    auto device = DecodeDevice(args...);
+    const c10::OptionalDeviceGuard device_guard(device);
+    static const auto getWorkspaceSizeFuncAddr = GetOpApiFuncAddr("aclnnMegaMoeGetWorkspaceSize");
+    static const auto opApiFuncAddr = GetOpApiFuncAddr("aclnnMegaMoe");
+    static const auto initMemAddr = GetOpApiFuncAddr("InitHugeMemThreadLocal");
+    static const auto unInitMemAddr = GetOpApiFuncAddr("UnInitHugeMemThreadLocal");
+    static const auto releaseMemAddr = GetOpApiFuncAddr("ReleaseHugeMem");
+    TORCH_CHECK(getWorkspaceSizeFuncAddr != nullptr && opApiFuncAddr != nullptr,
+                "aclnnMegaMoe / aclnnMegaMoeGetWorkspaceSize not found.");
+    auto acl_stream = c10_npu::getCurrentNPUStream().stream(false);
+    uint64_t workspace_size = 0;
+    uint64_t *workspace_size_addr = &workspace_size;
+    aclOpExecutor *executor = nullptr;
+    aclOpExecutor **executor_addr = &executor;
+    InitHugeMemThreadLocal initMemFunc = reinterpret_cast<InitHugeMemThreadLocal>(initMemAddr);
+    UnInitHugeMemThreadLocal unInitMemFunc = reinterpret_cast<UnInitHugeMemThreadLocal>(unInitMemAddr);
+    ReleaseHugeMem releaseMemFunc = reinterpret_cast<ReleaseHugeMem>(releaseMemAddr);
+    if (initMemFunc) {
+        initMemFunc(nullptr, false);
+    }
+    ApplyDeterministicConfig();
+    auto converted_params = ConvertTypes(args..., workspace_size_addr, executor_addr);
+    static auto getWorkspaceSizeFunc = ConvertToOpApiFunc(converted_params, getWorkspaceSizeFuncAddr);
+    auto workspace_status = call(getWorkspaceSizeFunc, converted_params);
+    if (workspace_status != 0) {
+        ReleaseConvertTypes(converted_params);
+        TORCH_CHECK(false, "call aclnnMegaMoeGetWorkspaceSize failed, detail:", aclGetRecentErrMsg());
+    }
+    at::Tensor workspace_tensor;
+    void *workspace_addr = nullptr;
+    if (workspace_size != 0) {
+        at::TensorOptions options = at::TensorOptions(torch_npu::utils::get_npu_device_type());
+        workspace_tensor = at::empty({workspace_size}, options.dtype(at::kByte));
+        workspace_addr = const_cast<void *>(workspace_tensor.storage().data());
+    }
+    auto acl_call = [converted_params, workspace_addr, workspace_size, acl_stream, executor]() -> int {
+        typedef int (*OpApiFunc)(void *, uint64_t, aclOpExecutor *, const aclrtStream);
+        OpApiFunc opApiFunc = reinterpret_cast<OpApiFunc>(opApiFuncAddr);
+        auto api_ret = opApiFunc(workspace_addr, workspace_size, executor, acl_stream);
+        ReleaseConvertTypes(converted_params);
+        if (releaseMemFunc) {
+            releaseMemFunc(nullptr, false);
+        }
+        TORCH_CHECK(api_ret == 0, "call aclnnMegaMoe failed, detail:", aclGetRecentErrMsg());
+        return api_ret;
+    };
+    at_npu::native::OpCommand cmd;
+    cmd.Name("aclnnMegaMoe");
+    cmd.SetCustomHandler(acl_call);
+    cmd.Run();
+    if (unInitMemFunc) {
+        unInitMemFunc(nullptr, false);
+    }
+
+    // ── 同步后回读 ──
+    (void)aclrtSynchronizeStreamWithTimeout(acl_stream, 30000);
+    const char *calib = getenv("MEGA_MOE_PROF_CALIB");
+    const char *dump = getenv("MEGA_MOE_PROF_DUMP");
+    uint64_t hostWsBase = reinterpret_cast<uint64_t>(workspace_addr);
+    if (calib != nullptr && std::strcmp(calib, "1") == 0) {
+        // 标定：kernel(address-bridge) 把 workspace 基址写到 yOut[0..8]
+        uint64_t kernelWsBase = 0;
+        aclError ret = aclrtMemcpy(&kernelWsBase, 8, const_cast<void *>(yOut.storage().data()), 8,
+                                   ACL_MEMCPY_DEVICE_TO_HOST);
+        if (ret != ACL_ERROR_NONE) {
+            ASCEND_LOGW("MegaMoe calib read bridge failed, ret=%d.", ret);
+        } else {
+            uint64_t delta = kernelWsBase - hostWsBase;
+            printf("[PROFILER] MegaMoe rank %d calib: kernelWsBase=0x%llX hostWsBase=0x%llX delta=%llu (0x%llX)\n",
+                   deviceId, (unsigned long long)kernelWsBase, (unsigned long long)hostWsBase,
+                   (unsigned long long)delta, (unsigned long long)delta);
+            printf("[PROFILER] Set MEGA_MOE_PROF_DELTA=%llu and rerun with MEGA_MOE_PROF_DUMP=1 (no CALIB).\n",
+                   (unsigned long long)delta);
+        }
+    } else if (dump != nullptr && std::strcmp(dump, "1") == 0) {
+        const char *deltaStr = getenv("MEGA_MOE_PROF_DELTA");
+        uint64_t wsDelta = 0;
+        if (deltaStr != nullptr) {
+            wsDelta = static_cast<uint64_t>(std::strtoull(deltaStr, nullptr, 0));
+        }
+        DumpMegaMoeProfBuf(workspace_addr, workspace_size, deviceId, wsDelta);
+    }
+}
 
 std::tuple<at::Tensor, at::Tensor>
 NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &topkIds, const at::Tensor &topkWeights,
@@ -124,16 +267,33 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     TensorListWrapper sharedBias1Wrapper = {sharedBias1Ref, aclDataType::ACL_FLOAT};
     TensorListWrapper sharedBias2Wrapper = {sharedBias2Ref, aclDataType::ACL_FLOAT};
 
-    ACLNN_CMD(aclnnMegaMoe, context, x, topkIds, topkWeights, weight1Wrapper, weight2Wrapper, weightScales1Wrapper,
-              weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask, sharedWeight1Wrapper, sharedWeight2Wrapper,
-              sharedWeightScales1Wrapper, sharedWeightScales2Wrapper, sharedBias1Wrapper, sharedBias2Wrapper,
-              moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType,
-              combineQuantMode, commAlgPtr, numMaxTokensPerRank, activationPtr, activationClampValue, topoTypeValue,
-              rankNumPerServerValue, topkWeightsType, y, expertTokenNums);
+    const char *profDump = getenv("MEGA_MOE_PROF_DUMP");
+    const char *profCalib = getenv("MEGA_MOE_PROF_CALIB");
+    bool profEnabled = (profDump != nullptr && std::strcmp(profDump, "1") == 0) ||
+                       (profCalib != nullptr && std::strcmp(profCalib, "1") == 0);
+    if (profEnabled) {
+        int deviceId = 0;
+        (void)aclrtGetDevice(&deviceId);
+        LaunchMegaMoeWithProfDump(y, deviceId, context, x, topkIds, topkWeights, weight1Wrapper, weight2Wrapper,
+                                  weightScales1Wrapper, weightScales2Wrapper, bias1Wrapper, bias2Wrapper,
+                                  xActiveMask, sharedWeight1Wrapper, sharedWeight2Wrapper, sharedWeightScales1Wrapper,
+                                  sharedWeightScales2Wrapper, sharedBias1Wrapper, sharedBias2Wrapper, moeExpertNum,
+                                  epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode,
+                                  dispatchQuantResultType, combineQuantMode, commAlgPtr, numMaxTokensPerRank,
+                                  activationPtr, activationClampValue, topoTypeValue, rankNumPerServerValue,
+                                  topkWeightsType, y, expertTokenNums);
+    } else {
+        ACLNN_CMD(aclnnMegaMoe, context, x, topkIds, topkWeights, weight1Wrapper, weight2Wrapper,
+                  weightScales1Wrapper, weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask,
+                  sharedWeight1Wrapper, sharedWeight2Wrapper, sharedWeightScales1Wrapper, sharedWeightScales2Wrapper,
+                  sharedBias1Wrapper, sharedBias2Wrapper, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
+                  dispatchQuantMode, dispatchQuantResultType, combineQuantMode, commAlgPtr, numMaxTokensPerRank,
+                  activationPtr, activationClampValue, topoTypeValue, rankNumPerServerValue, topkWeightsType, y,
+                  expertTokenNums);
+    }
 
     return std::tie(y, expertTokenNums);
 }
-
 namespace {
 constexpr int64_t ALIGN_128 = 128LL;
 constexpr int64_t ALIGN_512 = 512LL;

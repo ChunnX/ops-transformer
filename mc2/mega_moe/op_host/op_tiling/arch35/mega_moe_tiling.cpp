@@ -13,6 +13,22 @@
  * \brief
  */
 
+// ════════════════════════════════════════════════════════════════════════════════
+// [PROFILER] 打点编译开关（子包路径，CMake 无法传 -D 到 tiling 编译单元，须源文件内定义）
+//   MEGA_MOE_ENABLE_PROFILING = 1 时启用 device-side profiler：GetWorkspaceSize 在
+//   workspace 尾部预留 PROF_BUF_TOTAL，并把偏移写入 tilingData->profBufAddr[0]。
+//   0 时行为与未打点完全一致（不改 workspace 布局）。
+//   ⚠️ 必须与 op_kernel/arch35/mega_moe_layered.h 顶部的同名开关保持一致。
+// ════════════════════════════════════════════════════════════════════════════════
+#ifndef MEGA_MOE_ENABLE_PROFILING
+#define MEGA_MOE_ENABLE_PROFILING 1
+#endif
+#if MEGA_MOE_ENABLE_PROFILING
+#ifndef ENABLE_PROFILING
+#define ENABLE_PROFILING
+#endif
+#endif
+
 #include <vector>
 #include <cstring>
 #include <cmath>
@@ -31,6 +47,9 @@
 #include "../../../op_kernel/arch35/mega_moe_tiling.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling_key.h"
 #include "../../../op_kernel/arch35/mega_moe_workspace_info.h"
+#if MEGA_MOE_ENABLE_PROFILING
+#include "../../../op_kernel/arch35/profiler_config.h"
+#endif
 
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -917,7 +936,8 @@ static ge::graphStatus CheckAttrAndSetTilingData(const gert::TilingContext *cont
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus SetWorkspace(gert::TilingContext *context, WorkspaceInfo &workspaceInfo, const char *nodeName)
+static ge::graphStatus SetWorkspace(gert::TilingContext *context, WorkspaceInfo &workspaceInfo,
+                                    MegaMoeTilingData *tilingData, const char *nodeName)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     int64_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
@@ -931,6 +951,16 @@ static ge::graphStatus SetWorkspace(gert::TilingContext *context, WorkspaceInfo 
                     return ge::GRAPH_FAILED);
 
     int64_t workspaceSize = sysWorkspaceSize + workspaceInfo.workspaceSize + RESERVED_WORKSPACE_SIZE;
+#if MEGA_MOE_ENABLE_PROFILING
+    // [PROFILER] 在 workspace 尾部预留 profiler ring buffer（64B 对齐），偏移写入 tilingData->profBufAddr[0]。
+    // kernel 侧 Init 用 workspaceGM + profBufAddr[0] 定位打点区（见 subpackage-path.md Step 1/2）。
+    constexpr uint64_t PROF_ALIGN = 64ULL;
+    uint64_t profBufOffset = (static_cast<uint64_t>(workspaceSize) + PROF_ALIGN - 1ULL) & ~(PROF_ALIGN - 1ULL);
+    tilingData->profBufAddr[0] = profBufOffset;
+    workspaceSize = static_cast<int64_t>(profBufOffset + PROF_BUF_TOTAL);
+    OP_LOGD(nodeName, "profiler profBufOffset: %lu, PROF_BUF_TOTAL: %lu\n",
+            (unsigned long)profBufOffset, (unsigned long)PROF_BUF_TOTAL);
+#endif
     workspace[0] = workspaceSize;
 
     OP_LOGD(nodeName, "sysWorkspaceSize: %ld \n", sysWorkspaceSize);
@@ -1711,7 +1741,7 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
 
     // WorkspaceSize
     WorkspaceInfo workspaceInfo((uint8_t *)0, tilingData);
-    OP_TILING_CHECK(SetWorkspace(context, workspaceInfo, nodeName) == ge::GRAPH_FAILED,
+    OP_TILING_CHECK(SetWorkspace(context, workspaceInfo, tilingData, nodeName) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
 
     // Print Info

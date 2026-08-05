@@ -16,6 +16,31 @@
 #ifndef MEGA_MOE_LAYERED_H
 #define MEGA_MOE_LAYERED_H
 
+// ════════════════════════════════════════════════════════════════════════════════
+// [PROFILER] 打点编译开关（子包路径：build.sh --pkg 不支持自定义 -D，须源文件内定义）
+//   MEGA_MOE_ENABLE_PROFILING = 1 时启用 device-side cycle 级打点（需 profiler_config.h
+//   中的 PROF_N_CORES / PROF_AIV_CORES 与芯片匹配）；0 时零开销（PROF_* 宏空展开）。
+//   MEGA_MOE_PROF_ADDR_CALIB = 1 时启用 address-bridge（标定 host/kernel workspace 偏移 delta），
+//   仅标定阶段（Step 3/4）开启，标定完的正式打点（Step 5/6）必须置 0 重新编译。
+//   ⚠️ 必须与 op_host/op_tiling/arch35/mega_moe_tiling.cpp 顶部的 MEGA_MOE_ENABLE_PROFILING 保持一致。
+// ════════════════════════════════════════════════════════════════════════════════
+#ifndef MEGA_MOE_ENABLE_PROFILING
+#define MEGA_MOE_ENABLE_PROFILING 1
+#endif
+#ifndef MEGA_MOE_PROF_ADDR_CALIB
+#define MEGA_MOE_PROF_ADDR_CALIB 0
+#endif
+#if MEGA_MOE_ENABLE_PROFILING
+#ifndef ENABLE_PROFILING
+#define ENABLE_PROFILING
+#endif
+#endif
+#if MEGA_MOE_ENABLE_PROFILING && MEGA_MOE_PROF_ADDR_CALIB
+#ifndef PROF_ADDR_CALIB
+#define PROF_ADDR_CALIB
+#endif
+#endif
+
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #if __has_include("../../common/mc2_kernel_utils.h")
@@ -33,6 +58,7 @@
 #else
 #include "../../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
 #endif
+#include "profiler.h"
 
 using namespace AscendC;
 
@@ -160,6 +186,11 @@ private:
     __gm__ int32_t *gmmToEpilogueFlag_{nullptr};
     Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
     Params params_{};
+#ifdef ENABLE_PROFILING
+    // [PROFILER] 子包路径：_prof_buf_gm = workspace 基址 + tilingData->profBufAddr[0]（workspace 尾部预留区）
+    PROF_LOCAL_DEFINE()
+    GM_ADDR wsBaseGm_ = nullptr;  // address-bridge 标定用：kernel 侧看到的 workspace 基址
+#endif
 
     GlobalTensor<int32_t> swigluToGmm2FlagGm_;
     GlobalTensor<int32_t> expertTokenNumsOut_;
@@ -353,6 +384,16 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
     params_.workspaceInfo = WorkspaceInfo(workspaceGM, tilingData, serverNum_);
     params_.peermemInfo = PeermemInfo(winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE, serverNum_);
     params_.tilingData = tilingData;
+#ifdef ENABLE_PROFILING
+    // [PROFILER] 子包路径：profBuf 在 workspace 尾部（tiling GetWorkspaceSize 预留），
+    // 地址 = workspace 基址 + tilingData->profBufAddr[0]（host 侧用 address-bridge 标定 delta 后读取）。
+    // 若 tiling 侧 MEGA_MOE_ENABLE_PROFILING 未开启则 profBufAddr[0]==0，跳过打点避免写坏 workspace。
+    if (tilingData->profBufAddr[0] != 0) {
+        _prof_buf_gm = reinterpret_cast<__gm__ uint8_t *>(workspaceGM) + tilingData->profBufAddr[0];
+        wsBaseGm_ = workspaceGM;
+        PROF_INIT(_prof_buf_gm);
+    }
+#endif
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         gmmToEpilogueFlag_ = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.flagGmmToEpiloguePtr) +
                              static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
@@ -2546,9 +2587,15 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::ProcessSh
 template <TemplateMegaMoeLayeredTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
 {
+#ifdef ENABLE_PROFILING
+    PROF_MARK(_prof_buf_gm, EVT_KERNEL_BEGIN, blockIdx_);
+#endif
     // 1.本卡数据处理
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
+#ifdef ENABLE_PROFILING
+    PROF_MARK(_prof_buf_gm, EVT_PREPARE_BEGIN, blockIdx_);
+#endif
     SendAndQuantBuffInit();
     SendMaskCal();        // 源卡按所有全局专家算 mask 并推送到目标专家卡
     ResetFlagList();      // 清理workSpace空间上的flag位
@@ -2560,6 +2607,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
     }
     SyncAll<false>(); // aic需要等待flag位reset清理完成
+#ifdef ENABLE_PROFILING
+    PROF_MARK(_prof_buf_gm, EVT_PREPARE_END, blockIdx_);
+#endif
 
     // 共享专家 GMM1+SwiGLU (前移, 在 MoE 之前执行, 复用 MoE 函数)
     TupleShape initShape;
@@ -2567,14 +2617,23 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     Get<K_VALUE>(initShape) = k_;
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     int32_t gmTileSequence = 0; // Specialized A8W4/A4W4 AIC-AIV1 GM tile ready sequence.
+#ifdef ENABLE_PROFILING
+    PROF_MARK(_prof_buf_gm, EVT_SHARED_GMM1_BEGIN, blockIdx_);
+#endif
     if (sharedExpertNum_ > 0) {
         ProcessSharedExpertGmm1(initShape, initOffset, gmTileSequence);
         SyncAll<false>();
     }
+#ifdef ENABLE_PROFILING
+    PROF_MARK(_prof_buf_gm, EVT_SHARED_GMM1_END, blockIdx_);
+#endif
 
     CrossRankSyncInWorldSize();
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
+#ifdef ENABLE_PROFILING
+    PROF_MARK(_prof_buf_gm, EVT_DISPATCH_GMM1_BEGIN, blockIdx_);
+#endif
     DispatchBuffInit();
     GMMAddrInfo dispatchAddrInfo;
     GMMAddrInfo gmm1AddrInfo;
@@ -2652,9 +2711,15 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
             ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出
         }
     }
+#ifdef ENABLE_PROFILING
+    PROF_MARK(_prof_buf_gm, EVT_DISPATCH_GMM1_END, blockIdx_);
+#endif
 
     SyncAll<true>();
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
+#ifdef ENABLE_PROFILING
+    PROF_MARK(_prof_buf_gm, EVT_GMM2_COMBINE_BEGIN, blockIdx_);
+#endif
     vecSetSyncCom = 0;
     GMMAddrInfo gmm2AddrInfo;
     ExpertLoopState gmm2State{initShape, initOffset, 0};
@@ -2676,14 +2741,41 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     if (sharedExpertNum_ > 0) {
         ProcessSharedExpertGmm2(initShape, initOffset, gmTileSequence);
     }
+#ifdef ENABLE_PROFILING
+    PROF_MARK(_prof_buf_gm, EVT_GMM2_COMBINE_END, blockIdx_);
+#endif
 
     // 4. 本卡数据Unpermute
     if constexpr (g_coreType == AIV) {
+#ifdef ENABLE_PROFILING
+        PROF_MARK(_prof_buf_gm, EVT_UNPERMUTE_BEGIN, blockIdx_);
+#endif
         UnpermuteBuffInit();
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
         Unpermute();
+#ifdef ENABLE_PROFILING
+        PROF_MARK(_prof_buf_gm, EVT_UNPERMUTE_END, blockIdx_);
+#endif
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#ifdef ENABLE_PROFILING
+    PROF_MARK(_prof_buf_gm, EVT_KERNEL_END, blockIdx_);
+    if constexpr (g_coreType == AIC) {
+        PROF_FINALIZE_AIC();
+    } else {
+        PROF_FINALIZE();
+    }
+    // Address-bridge（标定阶段 MEGA_MOE_PROF_ADDR_CALIB=1 开启）：把 kernel 看到的 workspace 基址写到
+    // yOut[0..8]（output tensor，框架保证 host 可读 + DCCI 生效），host 据此算 delta = kernelWsBase - hostWsBase。
+#if MEGA_MOE_PROF_ADDR_CALIB
+    if (GetBlockIdx() == 0) {
+        __gm__ uint32_t *diagPtr = reinterpret_cast<__gm__ uint32_t *>(params_.y2GmAddr);
+        uint64_t wsBase = reinterpret_cast<uint64_t>(wsBaseGm_);
+        Profiler::GmWrite64(diagPtr, wsBase);
+        pipe_barrier(PIPE_ALL);
+    }
+#endif
+#endif
 }
 
 } // namespace MegaMoeImpl
