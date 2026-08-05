@@ -308,12 +308,12 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckFormat() const
     }
 
     const gert::CompileTimeTensorDesc *optionalDescs[] = {
-        opParamInfo.attenMask.desc, opParamInfo.pScale.desc, opParamInfo.blockTable.desc, opParamInfo.metadata.desc,
-        opParamInfo.cuSeqlensQ.desc, opParamInfo.cuSeqlensKV.desc, opParamInfo.seqUsedQ.desc,
-        opParamInfo.seqUsedKV.desc,
+    const gert::CompileTimeTensorDesc *optionalDescs[] = {
+        opParamInfo.attenMask.desc, opParamInfo.pScale.desc, opParamInfo.blockTable.desc,  opParamInfo.metadata.desc,
+        opParamInfo.cuSeqlensQ.desc, opParamInfo.seqUsedKV.desc,
     };
-    const char *optionalNames[] = {"atten_mask", "p_scale", "block_table", "metadata", "cu_seqlens_q",
-                                   "cu_seqlens_kv", "seqused_q", "seqused_kv"};
+    const char *optionalNames[] = {"atten_mask", "p_scale", "block_table", "metadata",  "cu_seqlens_q",
+                                   "seqused_kv"};
     for (size_t i = 0; i < sizeof(optionalDescs) / sizeof(optionalDescs[0]); ++i) {
         if (optionalDescs[i] != nullptr && optionalDescs[i]->GetOriginFormat() != ge::FORMAT_ND) {
             OP_LOGE_FOR_INVALID_FORMAT(kOpName, optionalNames[i],
