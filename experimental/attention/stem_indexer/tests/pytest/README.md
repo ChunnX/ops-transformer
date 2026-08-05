@@ -123,6 +123,14 @@ STEM_INDEXER_CASE_ID=SI_WB_001_1,SI_WB_101_1 \
     python3 batch/stem_indexer_pt_save.py csv/stem_indexer_generalized_cases.csv pt_path
 ```
 
+生成脚本默认使用全部可用CPU核按case并行。大用例并行时内存占用较高，可通过`--workers`限制进程数：
+
+```bash
+python3 batch/stem_indexer_pt_save.py csv/stem_indexer_cases.csv pt_path --workers 8
+```
+
+`--workers 0`表示使用全部可用CPU核，`--workers 1`表示按原方式串行生成。
+
 `.pt`文件和`result.csv`是本地生成产物，不需要提交。
 
 普通单case脚本可直接执行：
