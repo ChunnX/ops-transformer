@@ -15,6 +15,7 @@ from torch_npu.utils._error_code import ErrCode, ops_error
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 from .comm_context import CommContextManager
+from .activation_params import normalize_activation_params
 
 
 class _MegaMoeOpBuilder(OpBuilder):
@@ -133,7 +134,9 @@ def _npu_mega_moe(
     rank_num_per_server=None,
     topk_weights_type=0,
 ):
-    activation_params = activation_params or {}
+    activation_params_list = normalize_activation_params(
+        activation, activation_clamp, activation_params
+    )
     _op_module = _mega_moe_op_builder.load()
     return _op_module.npu_mega_moe(
         context,
@@ -162,8 +165,7 @@ def _npu_mega_moe(
         comm_alg,
         num_max_tokens_per_rank,
         activation,
-        activation_clamp,
-        activation_params,
+        activation_params_list,
         dispatch_quant_out_dtype,
         weight1_type,
         weight2_type,
