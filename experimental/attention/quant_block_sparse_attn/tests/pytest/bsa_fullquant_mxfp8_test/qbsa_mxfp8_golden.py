@@ -1471,6 +1471,7 @@ def _call_npu_fa_op(
         quant_mode=QUANT_MODE_MXFP8,
         mask_mode=MASK_MODE,
         return_softmax_lse=ENABLE_LSE,
+        block_num=0,
     )
     torch_npu.npu.synchronize()
     atten_out, lse_out = output

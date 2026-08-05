@@ -75,7 +75,8 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
     const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &metadata,
     c10::string_view layout_kv, c10::string_view layout_q, c10::string_view layout_sparse_indices,
-    c10::string_view layout_out, int64_t quant_mode, int64_t mask_mode, bool return_softmax_lse)
+    c10::string_view layout_out, int64_t quant_mode, int64_t mask_mode, bool return_softmax_lse,
+    int64_t block_num)
 {
     TORCH_CHECK(query.numel() > 0, "Tensor query is empty.");
     TORCH_CHECK(key.dim() == DIM_FOUR && value.dim() == DIM_FOUR,
@@ -104,11 +105,11 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
                     "k_descale should be 5D [blockNum, Nkv, blockSize, D / 64, 2] in quant_mode=2 MXFP8 "
                     "full-quant scenario, but got dim=",
                     k_descale.dim());
-        TORCH_CHECK(k_descale.size(0) == key.size(0) && k_descale.size(1) == key.size(1) &&
+        TORCH_CHECK(k_descale.size(0) >= key.size(0) && k_descale.size(1) == key.size(1) &&
                         k_descale.size(2) == key.size(2) && k_descale.size(3) == keyScaleDSize &&
                         k_descale.size(4) == QBSA_MXFP8_SCALE_LAST_DIM,
                     "k_descale should be [blockNum, Nkv, blockSize, D / 64, 2] and match key PA_BNSD "
-                    "shape, but got k_descale sizes ",
+                    "shape (dim[0] may be >= key dim[0] when block_num is set), but got k_descale sizes ",
                     k_descale.sizes(), " and key sizes ", key.sizes());
         TORCH_CHECK(k_descale.stride(4) == 1 && k_descale.stride(3) == k_descale.size(4) &&
                         k_descale.stride(2) == k_descale.size(3) * k_descale.size(4) &&
@@ -121,11 +122,11 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
                     "v_descale should be 5D [blockNum, Nkv, blockSize / 64, DV, 2] in quant_mode=2 MXFP8 "
                     "scenario, but got dim=",
                     v_descale.dim());
-        TORCH_CHECK(v_descale.size(0) == value.size(0) && v_descale.size(1) == value.size(1) &&
+        TORCH_CHECK(v_descale.size(0) >= value.size(0) && v_descale.size(1) == value.size(1) &&
                         v_descale.size(2) == valueScaleBlockSize && v_descale.size(3) == value.size(3) &&
                         v_descale.size(4) == QBSA_MXFP8_SCALE_LAST_DIM,
                     "v_descale should be [blockNum, Nkv, blockSize / 64, DV, 2] and match value PA_BNSD "
-                    "shape, but got v_descale sizes ",
+                    "shape (dim[0] may be >= value dim[0] when block_num is set), but got v_descale sizes ",
                     v_descale.sizes(), " and value sizes ", value.sizes());
         TORCH_CHECK(v_descale.stride(4) == 1 && v_descale.stride(3) == v_descale.size(4) &&
                         v_descale.stride(2) == v_descale.size(3) * v_descale.size(4) &&
@@ -181,7 +182,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
                     cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sparse_indices, sparse_seq_len, block_table,
                     atten_mask, metadata, softmax_scale, sparse_q_block_size, sparse_kv_block_size, layout_kv_ptr,
                     layout_q_ptr, layout_sparse_indices_ptr, layout_out_ptr, quant_mode, mask_mode,
-                    return_softmax_lse, attention_out, softmax_lse);
+                    return_softmax_lse, block_num, attention_out, softmax_lse);
 
     return std::tuple<at::Tensor, at::Tensor>(attention_out, softmax_lse);
 }
@@ -196,7 +197,8 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_meta(
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
     const c10::optional<at::Tensor> &block_table, const c10::optional<at::Tensor> &metadata,
     c10::string_view layout_kv, c10::string_view layout_q, c10::string_view layout_sparse_indices,
-    c10::string_view layout_out, int64_t quant_mode, int64_t mask_mode, bool return_softmax_lse)
+    c10::string_view layout_out, int64_t quant_mode, int64_t mask_mode, bool return_softmax_lse,
+    int64_t block_num)
 {
     return construct_bsa_output_tensors(query, value, layout_q, quant_mode, return_softmax_lse);
 }
