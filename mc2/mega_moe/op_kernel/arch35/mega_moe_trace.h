@@ -35,6 +35,9 @@
 #error "MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE must be 0 or 1"
 #endif
 
+#define MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE \
+    (MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE && MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE)
+
 namespace MegaMoeImpl {
 
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
@@ -61,27 +64,33 @@ static constexpr uint32_t CRITICAL_PATH_TRACE_DYNAMIC_RECORD_BASE_WORDS = 2U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_DYNAMIC_WORDS_PER_EXPERT = 4U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_SCRATCH_WORDS_PER_STAGE_EXPERT = 3U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_SCRATCH_STAGE_COUNT = 2U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_A8W4_STAGE_COUNT = 3U;
 // Arch35 tiling always appends this diagnostic-safe reserve after WorkspaceInfo::workspaceSize.
 // Keep synchronized with RESERVED_WORKSPACE_SIZE in op_host/op_tiling/arch35/mega_moe_tiling.cpp.
 static constexpr uint64_t CRITICAL_PATH_TRACE_SCRATCH_RESERVED_BYTES = 50ULL * 1024ULL * 1024ULL;
 static constexpr uint32_t CRITICAL_PATH_TRACE_PATH_MTE_A8W8_WAVE = 1U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_PATH_MTE_A8W4 = 2U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_A8W4_PROTOCOL_VERSION = 1U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_A8W4_SCHEMA_ID = 0x8E7F106BU;
+static constexpr uint32_t CRITICAL_PATH_TRACE_A8W4_FLAGS = 0xFU;
 
-__aicore__ inline uint32_t CriticalPathTraceRecordWords(uint32_t expertCount)
+__aicore__ inline uint32_t CriticalPathTraceRecordWords(
+    uint32_t expertCount, uint32_t stageCount = CRITICAL_PATH_TRACE_SCRATCH_STAGE_COUNT)
 {
 #if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
     return CRITICAL_PATH_TRACE_DYNAMIC_RECORD_BASE_WORDS +
-           CRITICAL_PATH_TRACE_DYNAMIC_WORDS_PER_EXPERT * expertCount;
+           2U * stageCount * expertCount;
 #else
     (void)expertCount;
     return CRITICAL_PATH_TRACE_COARSE_RECORD_WORDS;
 #endif
 }
 
-__aicore__ inline uint32_t CriticalPathTraceScratchRecordWords(uint32_t expertCount)
+__aicore__ inline uint32_t CriticalPathTraceScratchRecordWords(
+    uint32_t expertCount, uint32_t stageCount = CRITICAL_PATH_TRACE_SCRATCH_STAGE_COUNT)
 {
 #if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
-    return CRITICAL_PATH_TRACE_SCRATCH_STAGE_COUNT *
-           CRITICAL_PATH_TRACE_SCRATCH_WORDS_PER_STAGE_EXPERT * expertCount;
+    return stageCount * CRITICAL_PATH_TRACE_SCRATCH_WORDS_PER_STAGE_EXPERT * expertCount;
 #else
     (void)expertCount;
     return 0U;
@@ -126,12 +135,16 @@ struct CriticalPathTrace {
     static constexpr uint32_t INVALID_OCCURRENCE = 0xFFFFFFFFU;
     __gm__ uint32_t *scratchRecord = nullptr;
     uint32_t occurrenceCapacity = 0U;
+    uint32_t stageCount = CRITICAL_PATH_TRACE_SCRATCH_STAGE_COUNT;
     uint32_t stage0ActiveOccurrence = INVALID_OCCURRENCE;
     uint32_t stage1ActiveOccurrence = INVALID_OCCURRENCE;
+    uint32_t stage2ActiveOccurrence = INVALID_OCCURRENCE;
     uint32_t stage0ActiveBegin = 0U;
     uint32_t stage1ActiveBegin = 0U;
+    uint32_t stage2ActiveBegin = 0U;
     uint32_t stage0CapturedCount = 0U;
     uint32_t stage1CapturedCount = 0U;
+    uint32_t stage2CapturedCount = 0U;
 #else
     // Coarse v5 keeps the original four named wave slots and exact wire layout.
     struct WaveTrace {
@@ -145,6 +158,26 @@ struct CriticalPathTrace {
     WaveTrace wave1{};
     WaveTrace wave2{};
     WaveTrace wave3{};
+
+    __aicore__ inline void Init(__gm__ uint32_t *, uint32_t, uint32_t) {}
+    __aicore__ inline void PrepareExpertStage0(uint32_t) {}
+    __aicore__ inline void PrepareExpertStage1(uint32_t) {}
+    __aicore__ inline void PrepareExpertStage2(uint32_t) {}
+    __aicore__ inline bool NeedsExpertStage0Begin() const { return false; }
+    __aicore__ inline bool NeedsExpertStage1Begin() const { return false; }
+    __aicore__ inline bool NeedsExpertStage2Begin() const { return false; }
+    __aicore__ inline void BeginExpertStage0(uint32_t) {}
+    __aicore__ inline void BeginExpertStage1(uint32_t) {}
+    __aicore__ inline void BeginExpertStage2(uint32_t) {}
+    __aicore__ inline void EndExpertStage0(uint32_t) {}
+    __aicore__ inline void EndExpertStage1(uint32_t) {}
+    __aicore__ inline void EndExpertStage2(uint32_t) {}
+    __aicore__ inline bool HasExpertStage0Work() const { return false; }
+    __aicore__ inline bool HasExpertStage1Work() const { return false; }
+    __aicore__ inline bool HasExpertStage2Work() const { return false; }
+    __aicore__ inline void FinishExpertStage0() {}
+    __aicore__ inline void FinishExpertStage1() {}
+    __aicore__ inline void FinishExpertStage2() {}
 #endif
 
     static __aicore__ inline uint32_t Now()
@@ -154,10 +187,12 @@ struct CriticalPathTrace {
     }
 
 #if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
-    __aicore__ inline void Init(__gm__ uint32_t *scratch, uint32_t expertCount)
+    __aicore__ inline void Init(__gm__ uint32_t *scratch, uint32_t expertCount,
+                                uint32_t traceStageCount = CRITICAL_PATH_TRACE_SCRATCH_STAGE_COUNT)
     {
         scratchRecord = scratch;
         occurrenceCapacity = expertCount;
+        stageCount = traceStageCount;
     }
 
     __aicore__ inline void PrepareExpertStage0(uint32_t occurrence)
@@ -172,6 +207,12 @@ struct CriticalPathTrace {
         stage1ActiveBegin = 0U;
     }
 
+    __aicore__ inline void PrepareExpertStage2(uint32_t occurrence)
+    {
+        stage2ActiveOccurrence = occurrence;
+        stage2ActiveBegin = 0U;
+    }
+
     __aicore__ inline bool NeedsExpertStage0Begin()
     {
         return stage0ActiveOccurrence != INVALID_OCCURRENCE && stage0ActiveBegin == 0U;
@@ -180,6 +221,11 @@ struct CriticalPathTrace {
     __aicore__ inline bool NeedsExpertStage1Begin()
     {
         return stage1ActiveOccurrence != INVALID_OCCURRENCE && stage1ActiveBegin == 0U;
+    }
+
+    __aicore__ inline bool NeedsExpertStage2Begin()
+    {
+        return stage2ActiveOccurrence != INVALID_OCCURRENCE && stage2ActiveBegin == 0U;
     }
 
     __aicore__ inline void BeginExpertStage0(uint32_t value)
@@ -245,6 +291,39 @@ struct CriticalPathTrace {
         stage1ActiveBegin = 0U;
     }
 
+    __aicore__ inline void BeginExpertStage2(uint32_t value)
+    {
+        if (stage2ActiveOccurrence != INVALID_OCCURRENCE && stage2ActiveBegin == 0U) {
+            stage2ActiveBegin = value;
+        }
+    }
+
+    __aicore__ inline void EndExpertStage2(uint32_t value)
+    {
+        if (stageCount > CRITICAL_PATH_TRACE_SCRATCH_STAGE_COUNT && scratchRecord != nullptr &&
+            stage2ActiveOccurrence < occurrenceCapacity && stage2ActiveBegin != 0U &&
+            stage2CapturedCount < occurrenceCapacity) {
+            __gm__ uint32_t *entry =
+                scratchRecord + 2U * occurrenceCapacity * CRITICAL_PATH_TRACE_SCRATCH_WORDS_PER_STAGE_EXPERT +
+                stage2CapturedCount * CRITICAL_PATH_TRACE_SCRATCH_WORDS_PER_STAGE_EXPERT;
+            AscendC::WriteGmByPassDCache(entry + 0U, stage2ActiveOccurrence);
+            AscendC::WriteGmByPassDCache(entry + 1U, stage2ActiveBegin);
+            AscendC::WriteGmByPassDCache(entry + 2U, value);
+            ++stage2CapturedCount;
+        }
+    }
+
+    __aicore__ inline bool HasExpertStage2Work() const
+    {
+        return stage2ActiveOccurrence != INVALID_OCCURRENCE && stage2ActiveBegin != 0U;
+    }
+
+    __aicore__ inline void FinishExpertStage2()
+    {
+        stage2ActiveOccurrence = INVALID_OCCURRENCE;
+        stage2ActiveBegin = 0U;
+    }
+
     __aicore__ inline void WriteScratchStage(
         __gm__ uint32_t *record, __gm__ uint32_t *stageScratch, uint32_t count, uint32_t beginWord) const
     {
@@ -258,7 +337,7 @@ struct CriticalPathTrace {
                 continue;
             }
             const uint32_t word = CRITICAL_PATH_TRACE_DYNAMIC_RECORD_BASE_WORDS +
-                                  occurrence * CRITICAL_PATH_TRACE_DYNAMIC_WORDS_PER_EXPERT + beginWord;
+                                  occurrence * (2U * stageCount) + beginWord;
             AscendC::WriteGmByPassDCache(record + word + 0U, begin);
             AscendC::WriteGmByPassDCache(record + word + 1U, end);
         }
@@ -266,7 +345,7 @@ struct CriticalPathTrace {
 
     __aicore__ inline void WriteRecord(__gm__ uint32_t *record) const
     {
-        const uint32_t recordWords = CriticalPathTraceRecordWords(occurrenceCapacity);
+        const uint32_t recordWords = CriticalPathTraceRecordWords(occurrenceCapacity, stageCount);
         for (uint32_t word = 0U; word < recordWords; ++word) {
             AscendC::WriteGmByPassDCache(record + word, 0U);
         }
@@ -277,6 +356,11 @@ struct CriticalPathTrace {
         WriteScratchStage(
             record, scratchRecord + occurrenceCapacity * CRITICAL_PATH_TRACE_SCRATCH_WORDS_PER_STAGE_EXPERT,
             stage1CapturedCount, 2U);
+        if (stageCount > CRITICAL_PATH_TRACE_SCRATCH_STAGE_COUNT) {
+            WriteScratchStage(
+                record, scratchRecord + 2U * occurrenceCapacity * CRITICAL_PATH_TRACE_SCRATCH_WORDS_PER_STAGE_EXPERT,
+                stage2CapturedCount, 4U);
+        }
     }
 #else
     __aicore__ inline WaveTrace *Wave(uint32_t wave)
@@ -392,6 +476,27 @@ struct CriticalPathTrace {
     }
 #endif
 };
+
+#if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
+__aicore__ inline void RecordA8W4SwiGluBeginAfterReady(CriticalPathTrace *trace)
+{
+    if (trace != nullptr && trace->NeedsExpertStage1Begin()) {
+        // TRACE_POINT: a8w4_swiglu_begin_S
+        trace->BeginExpertStage1(CriticalPathTrace::Now());
+    }
+}
+
+__aicore__ inline void RecordA8W4CombineBeginAfterReady(CriticalPathTrace *trace)
+{
+    if (trace != nullptr && trace->NeedsExpertStage2Begin()) {
+        // TRACE_POINT: a8w4_combine_begin_S
+        trace->BeginExpertStage2(CriticalPathTrace::Now());
+    }
+}
+#else
+__aicore__ inline void RecordA8W4SwiGluBeginAfterReady(CriticalPathTrace *) {}
+__aicore__ inline void RecordA8W4CombineBeginAfterReady(CriticalPathTrace *) {}
+#endif
 
 #endif
 

@@ -1,9 +1,9 @@
 # MegaMoe 关键路径 tracing
 
-本目录提供 Ascend 950 `MegaMoeWave` 的诊断态关键路径打点、`moe_test` 适配器、
+本目录提供 Ascend 950 MegaMoe MTE A8W8 wave 与 A8W4 specialized 路径的诊断态关键路径打点、`moe_test` 适配器、
 严格解码和中文 HTML。默认打点粒度已经从“一批专家一个长框”细化为“本物理核
 实际参与的专家”，并把同一 wave 内相邻专家区间之间的间隙单独画出。它只支持
-当前 arch35 MTE A8W8 路径，不是通用 MegaMoe profiler。
+这两条已审计路径，不是通用 MegaMoe profiler。
 
 ## 基线与适用路径
 
@@ -60,6 +60,11 @@ workspace 两种容量，adapter 还会在第一次算子执行之前做同公�
 新的逐专家打点和间隙，必须重新编译并安装默认 v7 kernel。其他 version/schema
 仍然 fail closed。
 
+A8W4 specialized 路径使用独立的 protocol v1、schema `0x8e7f106b`、path id 2。
+每条 record 为 `2 + 6 * moeExpertPerRank` words：AIC 记录 GMM1/GMM2，AIV0 记录两段
+权重 prologue，AIV1 记录 Dispatch、SwiGLU 和 Combine。prologue 与 SwiGLU 的结束点是
+低扰动 issue 边界，Dispatch、AIC GMM 和 Combine 的结束点是带完成依赖证明的 actual 边界。
+
 ## 当前依赖与时间点
 
 稳态因果链是：AIV1 Dispatch 发布输入，AIC GMM1 消费，AIV0 SwiGLU+MX quant
@@ -90,6 +95,8 @@ Combine；下一 wave 的 Dispatch 可以与当前 wave 的计算重叠。
 - v5 回退规范：[`trace-spec-coarse-v5.json`](trace-spec-coarse-v5.json)
 - v5 计划/实现审计：[`audit-plan-coarse-v5/`](audit-plan-coarse-v5/) 与
   [`audit-implemented-coarse-v5/`](audit-implemented-coarse-v5/)
+- A8W4 机器规范：[`trace-spec-a8w4.json`](trace-spec-a8w4.json)
+- A8W4 实现审计：[`audit-implemented-a8w4/`](audit-implemented-a8w4/)
 
 ## HTML 如何表示“空等”
 
@@ -156,6 +163,15 @@ bash build.sh --pkg --soc=ascend950 --ops=mega_moe \
 ```bash
 bash build.sh --pkg --soc=ascend950 --ops=mega_moe \
   --ops-compile-options '-DMEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=0' -j8
+```
+
+运行 A8W4 采集时显式选择 profile；这会切换 Python 容量预检，并由设备 header 再确认实际命中的协议：
+
+```bash
+python3 mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py \
+  --trace-profile a8w4 \
+  --artifact-dir /tmp/mega-moe-a8w4-trace \
+  --set weight_dtype=4
 ```
 
 安装本次 run 包并确认 Python 环境加载到它后，在两个源码仓之外建立运行目录：

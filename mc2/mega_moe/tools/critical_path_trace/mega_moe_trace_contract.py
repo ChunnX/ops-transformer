@@ -14,9 +14,21 @@ class ContractError(RuntimeError):
 
 
 DISPATCH_API_TO_TILING_KEY = {23: 3, 24: 4, 296: 5}
-EXPECTED_PATH_ID = 1
 EXPECTED_COARSE_CAPTURE_CAPACITY = 4
-EXPECTED_FLAGS_BY_PROTOCOL = {5: 0xFF, 6: 0x1FF, 7: 0x3FF}
+TRACE_CONTRACTS = {
+    "mega-moe-wave-critical-path": {
+        "path_id": 1,
+        "flags_by_protocol": {5: 0xFF, 6: 0x1FF, 7: 0x3FF},
+        "experts_per_wave": "derived",
+        "weight1_interleaved": "metadata",
+    },
+    "mega-moe-a8w4-critical-path": {
+        "path_id": 2,
+        "flags_by_protocol": {1: 0xF},
+        "experts_per_wave": 1,
+        "weight1_interleaved": 0,
+    },
+}
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -203,29 +215,42 @@ def expected_header_from_metadata(
         ) from exc
     if dispatch_key not in (3, 4):
         raise ContractError(
-            f"dispatch tiling key {dispatch_key} is not the A8W8 MegaMoeWave path"
+            f"dispatch tiling key {dispatch_key} is not supported by the traced MTE paths"
         )
-    experts_per_wave = calc_experts_per_wave(
-        bs=bs,
-        top_k=top_k,
-        moe_experts_per_rank=moe_experts,
-        h=h,
-        hidden_dim=hidden_dim,
-        aic_count=aic_count,
-    )
-    repetitions = count_expert_waves(moe_experts, experts_per_wave)
+    trace_name = spec["trace"]["name"]
+    try:
+        trace_contract = TRACE_CONTRACTS[trace_name]
+    except KeyError as exc:
+        raise ContractError(f"unsupported MegaMoe trace contract {trace_name!r}") from exc
+    if trace_contract["experts_per_wave"] == "derived":
+        experts_per_wave = calc_experts_per_wave(
+            bs=bs,
+            top_k=top_k,
+            moe_experts_per_rank=moe_experts,
+            h=h,
+            hidden_dim=hidden_dim,
+            aic_count=aic_count,
+        )
+        repetitions = count_expert_waves(moe_experts, experts_per_wave)
+    else:
+        experts_per_wave = int(trace_contract["experts_per_wave"])
+        repetitions = moe_experts
     topk_prefetch = int(bool(metadata.get("topk_weights_type", False)))
-    interleaved = int(bool(metadata.get("is_interleaved", False)))
+    interleaved = (
+        int(bool(metadata.get("is_interleaved", False)))
+        if trace_contract["weight1_interleaved"] == "metadata"
+        else int(trace_contract["weight1_interleaved"])
+    )
     carrier_words = raw_bytes // 4
     protocol_version = int(spec["trace"]["protocol"]["version"])
     try:
-        expected_flags = EXPECTED_FLAGS_BY_PROTOCOL[protocol_version]
+        expected_flags = trace_contract["flags_by_protocol"][protocol_version]
     except KeyError as exc:
         raise ContractError(
             f"unsupported MegaMoe trace protocol version {protocol_version}"
         ) from exc
     values_for_hash = [
-        EXPECTED_PATH_ID,
+        trace_contract["path_id"],
         bs,
         h,
         hidden_dim,
@@ -240,7 +265,7 @@ def expected_header_from_metadata(
         topk_prefetch,
         interleaved,
     ]
-    fine_dynamic = protocol_version >= 7
+    fine_dynamic = isinstance(spec["trace"]["protocol"]["record_words"], dict)
     return {
         "record_count": 3 * aic_count,
         "clock_bits": 32,
@@ -254,7 +279,7 @@ def expected_header_from_metadata(
         "flags": expected_flags,
         "rank": rank,
         "runtime_config_hash": config_hash(values_for_hash),
-        "path_id": EXPECTED_PATH_ID,
+        "path_id": trace_contract["path_id"],
         "bs": bs,
         "h": h,
         "hidden_dim": hidden_dim,
@@ -330,7 +355,7 @@ def validate_capture_contract(
         raise ContractError(
             f"trace requires {required_words * 4} bytes but y carries only {len(raw)} bytes"
         )
-    if int(protocol["version"]) >= 7:
+    if isinstance(protocol["record_words"], dict):
         preflight = metadata.get("capacity_preflight")
         if not isinstance(preflight, dict):
             raise ContractError("runtime metadata lacks adapter capacity_preflight")
@@ -412,7 +437,11 @@ def validate_timestamp_order(
             else []
         )
     }
-    dynamic_fine = int(normalized.get("protocol_version", 0)) >= 7
+    dynamic_fine = isinstance(fine_visualization, dict)
+    process_spans = [span for span in spans if span.get("stage") == "process" or span["id"].endswith("process")]
+    if len(process_spans) != 1:
+        raise ContractError("trace spec must define exactly one process span")
+    process_span = process_spans[0]
     wave_starts: set[int] = set()
     if dynamic_fine:
         expert_count = int(header.get("moe_experts_per_rank", 0))
@@ -440,10 +469,12 @@ def validate_timestamp_order(
     for record in records:
         label = record.get("label", "unknown")
         timestamps = record.get("timestamps", {})
-        process_begin = timestamps.get("process_begin_S", [missing])[0]
-        work_end = timestamps.get("work_end_S", [missing])[0]
+        process_begin = timestamps.get(process_span["begin"], [missing])[0]
+        work_end = timestamps.get(process_span["end"], [missing])[0]
         if process_begin == missing or work_end == missing:
-            raise ContractError(f"{label} lacks process_begin_S/work_end_S")
+            raise ContractError(
+                f"{label} lacks {process_span['begin']}/{process_span['end']}"
+            )
         process_duration = _modular_delta(process_begin, work_end, bits)
         if process_duration >= half_range:
             raise ContractError(f"{label} has backward/ambiguous process interval")
@@ -480,7 +511,7 @@ def validate_timestamp_order(
                 from_process = _modular_delta(process_begin, value, bits)
                 if from_process > process_duration:
                     raise ContractError(
-                        f"{label} {point}[{occurrence}] lies outside process_begin_S..work_end_S"
+                        f"{label} {point}[{occurrence}] lies outside the process span"
                     )
                 if (
                     not dynamic_fine
@@ -593,9 +624,9 @@ def validate_timestamp_order(
                 span_counts[span["id"]] += 1
                 span_durations[span["id"]].append(duration)
 
-    if span_counts.get("process", 0) != len(records):
+    if span_counts.get(process_span["id"], 0) != len(records):
         raise ContractError(
-            f"validated {span_counts.get('process', 0)} process spans for {len(records)} records"
+            f"validated {span_counts.get(process_span['id'], 0)} process spans for {len(records)} records"
         )
     duration_summary = {
         name: {

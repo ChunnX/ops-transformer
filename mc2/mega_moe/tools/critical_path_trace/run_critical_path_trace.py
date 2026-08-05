@@ -9,6 +9,19 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+# python3 mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py \
+#   --trace-profile a8w4 \
+#   --test-script /path/to/moe_test/mega_moe/mega_moe.py \
+#   --artifact-dir /tmp/mega-moe-a8w4-check \
+#   --allow-compatible-test-script \
+#   --check-only
+# python3 mc2/mega_moe/tools/critical_path_trace/run_critical_path_trace.py \
+#   --trace-profile a8w4 \
+#   --test-script /path/to/moe_test/mega_moe/mega_moe.py \
+#   --artifact-dir /tmp/mega-moe-a8w4-trace \
+#   --allow-compatible-test-script \
+#   --iterations 100
+
 """Adapt the current moe_test runner, capture raw y bytes, validate, and render."""
 
 from __future__ import annotations
@@ -42,6 +55,7 @@ TESTED_SCRIPT_SHA256 = (
 )
 TESTED_GRAPH_SHA256 = "f050d695c5d4bde708e71f501ee587268c05ccbfef934b61f95dcd0b7e1fa13f"
 TRACE_ENV = "MEGA_MOE_CRITICAL_PATH_TRACE_CAPTURE"
+TRACE_PROFILE_ENV = "MEGA_MOE_CRITICAL_PATH_TRACE_PROFILE"
 ARTIFACT_ENV = "MEGA_MOE_CRITICAL_PATH_TRACE_ARTIFACT_DIR"
 SOURCE_SHA_ENV = "MEGA_MOE_CRITICAL_PATH_TRACE_SOURCE_SHA256"
 ORIGINAL_DIR_ENV = "MEGA_MOE_CRITICAL_PATH_TRACE_ORIGINAL_SCRIPT_DIR"
@@ -102,13 +116,24 @@ def _critical_path_trace_validate_capacity():
     expert_count = int(local_moe_expert_num)
     aic_count = int(aic_core_num)
     output_bytes = int(bs) * int(h) * torch.empty((), dtype=out_dtype).element_size()
-    record_words = 2 + 4 * expert_count
+    trace_profile = os.environ["MEGA_MOE_CRITICAL_PATH_TRACE_PROFILE"]
+    if trace_profile == "a8w4":
+        protocol_version = 1
+        stage_count = 3
+    elif trace_profile == "a8w8-wave":
+        protocol_version = 7
+        stage_count = 2
+    else:
+        raise RuntimeError(f"unsupported critical-path trace profile: {trace_profile}")
+    record_words = 2 + 2 * stage_count * expert_count
     required_y_bytes = 4 * (30 + 3 * aic_count * record_words)
-    scratch_bytes = 4 * 3 * aic_count * 2 * 3 * expert_count
+    scratch_bytes = 4 * 3 * aic_count * stage_count * 3 * expert_count
     scratch_reserve_bytes = 50 * 1024 * 1024
     _critical_path_trace_capacity = {
-        "protocol_version": 7,
-        "formula": "4 * (30 + 3 * aic_core_num * (2 + 4 * local_moe_expert_num))",
+        "trace_profile": trace_profile,
+        "protocol_version": protocol_version,
+        "formula": "4 * (30 + 3 * aic_core_num * (2 + 2 * stage_count * local_moe_expert_num))",
+        "stage_count": stage_count,
         "bs": int(bs),
         "h": int(h),
         "aic_core_num": aic_count,
@@ -127,7 +152,7 @@ def _critical_path_trace_validate_capacity():
         raise RuntimeError(
             "critical-path trace y capacity is insufficient: "
             f"required={required_y_bytes} bytes, available={output_bytes} bytes; "
-            f"record_words=2+4*{expert_count}={record_words}, AIC={aic_count}"
+            f"record_words=2+2*{stage_count}*{expert_count}={record_words}, AIC={aic_count}"
         )
     if scratch_bytes > scratch_reserve_bytes:
         raise RuntimeError(
@@ -531,6 +556,8 @@ def decode_artifacts(
     expected_source_sha: str | None,
     coarse_spec_path: Path | None = None,
     coarse_audit_path: Path | None = None,
+    a8w4_spec_path: Path | None = None,
+    a8w4_audit_path: Path | None = None,
 ) -> list[dict[str, Any]]:
     raw_paths = sorted(
         artifact_dir.glob("rank*.raw"),
@@ -549,6 +576,8 @@ def decode_artifacts(
         candidates = [(spec_path, audit_path)]
         if coarse_spec_path is not None and coarse_audit_path is not None:
             candidates.append((coarse_spec_path, coarse_audit_path))
+        if a8w4_spec_path is not None and a8w4_audit_path is not None:
+            candidates.append((a8w4_spec_path, a8w4_audit_path))
         active_spec_path, active_audit_path = select_capture_spec(raw_path, candidates)
         runtime_path = artifact_dir / f"rank{rank}.runtime.json"
         contract, expected = validate_capture_contract(
@@ -569,6 +598,14 @@ def decode_artifacts(
 
         normalized_path = artifact_dir / f"rank{rank}.normalized.json"
         html_path = artifact_dir / f"rank{rank}.html"
+        active_spec = json.loads(active_spec_path.read_text(encoding="utf-8"))
+        process_spans = [
+            span
+            for span in active_spec["spans"]
+            if span.get("stage") == "process" or span["id"].endswith("process")
+        ]
+        if len(process_spans) != 1:
+            raise ContractError("active trace spec must define exactly one process span")
         decode_command = [
             python,
             str(trace_tool),
@@ -584,7 +621,7 @@ def decode_artifacts(
             "--reference-core",
             "0",
             "--reference-point",
-            "process_begin_S",
+            process_spans[0]["begin"],
             "--require-flags-mask",
             f"0x{expected['flags']:x}",
             "--require-flags-value",
@@ -706,6 +743,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument(
+        "--trace-profile",
+        choices=("a8w8-wave", "a8w4"),
+        default="a8w8-wave",
+        help="select the kernel trace path and its capacity/protocol contract",
+    )
+    parser.add_argument(
         "--set",
         action="append",
         default=[],
@@ -750,6 +793,7 @@ def main() -> int:
     artifact_dir = args.artifact_dir.expanduser().resolve()
     validate_artifact_destination(artifact_dir, repo_root, decode_only=args.decode_only)
     spec_path = repo_root / "mc2/mega_moe/tools/critical_path_trace/trace-spec.json"
+    a8w4_spec_path = repo_root / "mc2/mega_moe/tools/critical_path_trace/trace-spec-a8w4.json"
     coarse_spec_path = (
         repo_root / "mc2/mega_moe/tools/critical_path_trace/trace-spec-coarse-v5.json"
     )
@@ -762,12 +806,18 @@ def main() -> int:
         repo_root
         / "mc2/mega_moe/tools/critical_path_trace/audit-implemented-coarse-v5/trace_point_audit.json"
     )
+    a8w4_audit_path = (
+        repo_root
+        / "mc2/mega_moe/tools/critical_path_trace/audit-implemented-a8w4/trace_point_audit.json"
+    )
     for required in (
         spec_path,
         coarse_spec_path,
+        a8w4_spec_path,
         trace_tool,
         audit_path,
         coarse_audit_path,
+        a8w4_audit_path,
     ):
         if not required.is_file():
             raise ContractError(f"required repository artifact is missing: {required}")
@@ -784,6 +834,8 @@ def main() -> int:
         "trace_spec_sha256": sha256_file(spec_path),
         "coarse_trace_spec": str(coarse_spec_path),
         "coarse_trace_spec_sha256": sha256_file(coarse_spec_path),
+        "a8w4_trace_spec": str(a8w4_spec_path),
+        "a8w4_trace_spec_sha256": sha256_file(a8w4_spec_path),
         "trace_tool_sha256": sha256_file(trace_tool),
         "trace_source_defaults": source_defaults,
         "forced_overrides": FORCED_OVERRIDES,
@@ -793,6 +845,7 @@ def main() -> int:
         else "check-only"
         if args.check_only
         else "run",
+        "trace_profile": args.trace_profile,
     }
     expected_source_sha: str | None = None
 
@@ -844,6 +897,7 @@ def main() -> int:
 
         env = os.environ.copy()
         env[TRACE_ENV] = "1"
+        env[TRACE_PROFILE_ENV] = args.trace_profile
         env[ARTIFACT_ENV] = str(artifact_dir)
         env[SOURCE_SHA_ENV] = expected_source_sha
         env[ORIGINAL_DIR_ENV] = str(script.parent)
@@ -866,6 +920,8 @@ def main() -> int:
         expected_source_sha=expected_source_sha,
         coarse_spec_path=coarse_spec_path,
         coarse_audit_path=coarse_audit_path,
+        a8w4_spec_path=a8w4_spec_path,
+        a8w4_audit_path=a8w4_audit_path,
     )
     manifest["captures"] = results
     manifest["status"] = "passed"

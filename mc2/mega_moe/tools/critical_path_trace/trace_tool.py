@@ -164,6 +164,102 @@ POINT_TEXT_ZH = {
         "proof": "ring drain 等待所有实际使用 slot 的 MTE3_MTE2 事件，再用复用 EVENT_ID0 的 MTE2_S 把完成依赖传到 Scalar。",
         "perturbation": "每个有效 AIV1/wave 增加一次 MTE2→Scalar 桥接、一次时钟采样和三次独占 workspace 标量写。",
     },
+    "a8w4_process_begin_S": {
+        "when": "A8W4 MTE 主流程刚进入 Process。",
+        "why": "建立同一 AI Block 三个角色的局部时间起点。",
+        "proof": "该采样位于 Process 的有效工作之前。",
+        "perturbation": "每核一次时钟采样。",
+    },
+    "a8w4_work_end_S": {
+        "when": "本角色有效工作已结束、trace 写回尚未开始。",
+        "why": "排除 trace 汇合与落盘自身的开销。",
+        "proof": "采样位于 Unpermute/计算返回之后、trace 专用 SyncAll 之前。",
+        "perturbation": "每核一次时钟采样。",
+    },
+    "a8w4_dispatch_begin_S": {
+        "when": "AIV1 即将为当前专家执行 SendCntCal 和 token dispatch。",
+        "why": "观察逐专家 Dispatch 与当前 GMM 的重叠。",
+        "proof": "调用点紧邻 SendCntCal 之前。",
+        "perturbation": "每专家一次时钟采样。",
+    },
+    "a8w4_dispatch_end_S": {
+        "when": "当前专家的 Dispatch MTE3 写入已经完成。",
+        "why": "给出 GMM1 输入真正可用的完成边界。",
+        "proof": "MTE3_S 将写入完成依赖传给 Scalar 后采样。",
+        "perturbation": "每专家一次 MTE3_S 桥接和时钟采样。",
+    },
+    "a8w4_gmm1_begin_S": {
+        "when": "AIC 已通过上游 ready 等待，即将发出首个 GMM1 MMAD。",
+        "why": "区分输入等待与 GMM1 计算。",
+        "proof": "采样位于 WaitForUpstreamReady 之后、blockMmad 之前。",
+        "perturbation": "每专家每活跃 AIC 一次时钟采样。",
+    },
+    "a8w4_gmm1_end_S": {
+        "when": "当前专家分配给该 AIC 的 GMM1 tile 已完成发布。",
+        "why": "给出 GMM1 的实际结束边界。",
+        "proof": "每个 tile 均在 FIX_S 后发布，采样位于计算函数返回之后。",
+        "perturbation": "每专家每活跃 AIC 一次时钟采样。",
+    },
+    "a8w4_gmm1_prologue_begin_S": {
+        "when": "AIV0 即将发出当前专家首个 GMM1 权重 prologue。",
+        "why": "单独观察 W4 到 W8 权重展开的占用。",
+        "proof": "采样位于首个 blockPrologue 之前。",
+        "perturbation": "每专家每活跃 AIV0 一次时钟采样。",
+    },
+    "a8w4_gmm1_prologue_issue_end_S": {
+        "when": "AIV0 已返回当前专家 GMM1 prologue 的最后一次发射。",
+        "why": "以低扰动方式估计 prologue 发射区间。",
+        "proof": "没有新增完成桥接，因此该点只表示 issue end。",
+        "perturbation": "每专家每活跃 AIV0 一次时钟采样。",
+    },
+    "a8w4_swiglu_begin_S": {
+        "when": "AIV1 已观察到首个 GMM1 输出 ready，即将加载并执行 SwiGLU。",
+        "why": "把 GMM1 handoff 等待与 SwiGLU 本体分开。",
+        "proof": "采样位于 ready 轮询之后、首次输出加载之前。",
+        "perturbation": "每专家每活跃 AIV1 一次时钟采样。",
+    },
+    "a8w4_swiglu_end_S": {
+        "when": "AIV1 已返回当前专家最后一次 SwiGLU 发射。",
+        "why": "以低扰动方式观察 SwiGLU 发射区间。",
+        "proof": "没有新增 MTE3 完成桥接，因此该点只表示 issue end。",
+        "perturbation": "每专家每活跃 AIV1 一次时钟采样。",
+    },
+    "a8w4_gmm2_begin_S": {
+        "when": "AIC 已观察到 SwiGLU 输出 ready，即将发出首个 GMM2 MMAD。",
+        "why": "区分 SwiGLU handoff 等待与 GMM2 计算。",
+        "proof": "采样位于上游 ready 等待之后、blockMmad 之前。",
+        "perturbation": "每专家每活跃 AIC 一次时钟采样。",
+    },
+    "a8w4_gmm2_end_S": {
+        "when": "当前专家分配给该 AIC 的 GMM2 tile 已完成发布。",
+        "why": "给出 GMM2 的实际结束边界。",
+        "proof": "每个 tile 均在 FIX_S 后发布，采样位于计算函数返回之后。",
+        "perturbation": "每专家每活跃 AIC 一次时钟采样。",
+    },
+    "a8w4_gmm2_prologue_begin_S": {
+        "when": "AIV0 即将发出当前专家首个 GMM2 权重 prologue。",
+        "why": "观察 GMM2 权重展开是否落在关键路径。",
+        "proof": "采样位于首个 blockPrologue 之前。",
+        "perturbation": "每专家每活跃 AIV0 一次时钟采样。",
+    },
+    "a8w4_gmm2_prologue_issue_end_S": {
+        "when": "AIV0 已返回当前专家 GMM2 prologue 的最后一次发射。",
+        "why": "以低扰动方式估计 GMM2 prologue 发射区间。",
+        "proof": "没有新增完成桥接，因此该点只表示 issue end。",
+        "perturbation": "每专家每活跃 AIV0 一次时钟采样。",
+    },
+    "a8w4_combine_begin_S": {
+        "when": "AIV1 已观察到首个 GMM2 输出 group/tile ready，即将开始 Combine。",
+        "why": "显式观察 GMM2 到 Combine 的 handoff。",
+        "proof": "采样位于 GM sequence 或 group counter ready 之后。",
+        "perturbation": "每专家每活跃 AIV1 一次时钟采样。",
+    },
+    "a8w4_combine_end_S": {
+        "when": "当前专家最后一次 Combine 发送的完成依赖已到达 Scalar。",
+        "why": "让区间结束于实际发送完成，而非仅发射完成。",
+        "proof": "MTE2_S 消费 Combine 返回时保留的完成依赖后采样。",
+        "perturbation": "每专家一次 MTE2_S 桥接和时钟采样。",
+    },
 }
 
 SPAN_LABEL_ZH = {
@@ -176,6 +272,14 @@ SPAN_LABEL_ZH = {
     "swiglu_expert": "SwiGLU + MX 量化（逐专家）",
     "gmm2_expert": "GMM2 + ready 发布（逐专家）",
     "combine": "ready 汇聚 + Combine",
+    "a8w4_process": "A8W4 角色有效工作",
+    "a8w4_dispatch": "逐专家 Dispatch",
+    "a8w4_gmm1": "逐专家 GMM1",
+    "a8w4_gmm1_prologue": "GMM1 权重 prologue（issue）",
+    "a8w4_swiglu": "SwiGLU（issue）",
+    "a8w4_gmm2": "逐专家 GMM2",
+    "a8w4_gmm2_prologue": "GMM2 权重 prologue（issue）",
+    "a8w4_combine": "逐专家 Combine",
 }
 
 

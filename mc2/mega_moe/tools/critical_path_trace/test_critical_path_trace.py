@@ -45,9 +45,11 @@ from run_critical_path_trace import (
 REPO_ROOT = HERE.parents[3]
 SPEC = HERE / "trace-spec.json"
 COARSE_SPEC = HERE / "trace-spec-coarse-v5.json"
+A8W4_SPEC = HERE / "trace-spec-a8w4.json"
 TRACE_TOOL = HERE / "trace_tool.py"
 AUDIT = HERE / "audit-implemented/trace_point_audit.json"
 COARSE_AUDIT = HERE / "audit-implemented-coarse-v5/trace_point_audit.json"
+A8W4_AUDIT = HERE / "audit-implemented-a8w4/trace_point_audit.json"
 MOE_TEST = Path("/home/mace/workspace/moe_test/mega_moe/mega_moe.py")
 
 
@@ -62,7 +64,8 @@ def make_synthetic_capture(
 ) -> tuple[Path, Path]:
     spec = load_json(spec_path)
     protocol = spec["trace"]["protocol"]
-    fine_grained = int(protocol["version"]) >= 7
+    fine_grained = isinstance(protocol["record_words"], dict)
+    a8w4 = spec["trace"]["name"] == "mega-moe-a8w4-critical-path"
     metadata = {
         "adapter_version": 4,
         "rank": 0,
@@ -99,7 +102,7 @@ def make_synthetic_capture(
             "required_y_bytes": 4
             * (int(protocol["header_words"]) + expected["record_count"] * record_words),
             "available_y_bytes": metadata["output_nbytes"],
-            "scratch_required_bytes": 4 * 3 * 36 * 2 * 3 * 8,
+            "scratch_required_bytes": 4 * 3 * 36 * (3 if a8w4 else 2) * 3 * 8,
             "scratch_reserve_bytes": 50 * 1024 * 1024,
         }
     word_count = metadata["output_nbytes"] // 4
@@ -131,7 +134,19 @@ def make_synthetic_capture(
         words[base + 0] = process_begin
         words[base + 1] = (process_begin + 6000) & 0xFFFFFFFF
         if fine_grained:
-            if role_index == 0 and core < 2:
+            if a8w4:
+                active_stage_count = 2 if role_index != 2 else 3
+                if role_index == 2 or core < 2:
+                    for expert in range(8):
+                        for stage in range(active_stage_count):
+                            begin = 100 + 1800 * stage + 180 * expert
+                            words[base + 2 + 6 * expert + 2 * stage] = (
+                                process_begin + begin
+                            ) & 0xFFFFFFFF
+                            words[base + 3 + 6 * expert + 2 * stage] = (
+                                process_begin + begin + 100
+                            ) & 0xFFFFFFFF
+            elif role_index == 0 and core < 2:
                 for expert in range(8):
                     words[base + 2 + 4 * expert] = (
                         process_begin + 200 + 300 * expert
@@ -267,6 +282,33 @@ class TraceContractTests(unittest.TestCase):
             order = load_json(directory / "rank0.order-check.json")
             self.assertEqual(order["status"], "passed")
             self.assertEqual(order["span_summary"]["process"]["count"], 108)
+
+    def test_a8w4_decode_order_and_html_pipeline(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            make_synthetic_capture(directory, A8W4_SPEC)
+            results = decode_artifacts(
+                artifact_dir=directory,
+                spec_path=SPEC,
+                audit_path=AUDIT,
+                trace_tool=TRACE_TOOL,
+                python=sys.executable,
+                allow_truncated=False,
+                expected_source_sha="synthetic-fixture",
+                coarse_spec_path=COARSE_SPEC,
+                coarse_audit_path=COARSE_AUDIT,
+                a8w4_spec_path=A8W4_SPEC,
+                a8w4_audit_path=A8W4_AUDIT,
+            )
+            self.assertEqual(results[0]["protocol_version"], 1)
+            normalized = load_json(directory / "rank0.normalized.json")
+            self.assertEqual(normalized["schema_id"], "0x8e7f106b")
+            self.assertEqual(normalized["metadata"]["resolved_record_words"], 50)
+            order = load_json(directory / "rank0.order-check.json")
+            self.assertEqual(order["span_summary"]["a8w4_process"]["count"], 108)
+            rendered_html = (directory / "rank0.html").read_text(encoding="utf-8")
+            self.assertIn("GMM1 权重 prologue", rendered_html)
+            self.assertIn("逐专家 Combine", rendered_html)
 
     def test_bad_magic_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
