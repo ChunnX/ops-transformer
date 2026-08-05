@@ -22,6 +22,7 @@ MXFP8 Flash Attention Golden
 
 import argparse
 import csv
+import enum
 import importlib.util
 import json
 import logging
@@ -33,6 +34,8 @@ import time
 
 import torch
 import torch_npu
+import torchair
+from torchair.configs.compiler_config import CompilerConfig
 
 try:
     from . import result_compare_method
@@ -55,6 +58,11 @@ _DTYPE_MAP = {
     "float8_e8m0fnu": torch.float8_e8m0fnu,
 }
 
+
+class QuantMode(enum.IntEnum):
+    MX_FP8_Q_PERCHANNEL_GROUP_K_PERCHANNEL_GROUP_V_PERTIKEN_GROPU = 2
+
+
 _CASE_BOOL_FIELDS = {
     "enable",
     "is_contiguous",
@@ -76,7 +84,6 @@ _CASE_INT_FIELDS = {
     "sparse_q_block_size",
     "sparse_kv_block_size",
     "sparse_count",
-    "quant_mode",
     "s2_base_size",
 }
 _CASE_FLOAT_FIELDS = {
@@ -265,6 +272,29 @@ def _resolve_dtype(value, field_name):
     return _DTYPE_MAP[value]
 
 
+def _resolve_quant_mode(value):
+    if isinstance(value, QuantMode):
+        return value
+    if isinstance(value, bool):
+        raise ValueError(f"unsupported quant_mode: {value}")
+    if isinstance(value, int):
+        return QuantMode(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit() or (stripped.startswith("-") and stripped[1:].isdigit()):
+            return QuantMode(int(stripped))
+        try:
+            return QuantMode[stripped]
+        except KeyError as error:
+            raise ValueError(
+                f"unsupported quant_mode: {value}; expected int 2 or enum name "
+                f"MX_FP8_Q_PERCHANNEL_GROUP_K_PERCHANNEL_GROUP_V_PERTIKEN_GROPU"
+            ) from error
+    raise ValueError(
+        f"unsupported quant_mode type: {type(value).__name__}, value={value}"
+    )
+
+
 def _validate_case_design_fields(case):
     """只校验实际参与运行的字段；参考字段允许由外部泛化表自由扩展。"""
     if case["N2"] <= 0 or case["N1"] % case["N2"] != 0:
@@ -327,6 +357,7 @@ def _normalize_case(case):
         )
     case["fp8_dtype"] = _resolve_dtype(case["fp8_dtype"], "fp8_dtype")
     case["scale_dtype"] = _resolve_dtype(case["scale_dtype"], "scale_dtype")
+    case["quant_mode"] = _resolve_quant_mode(case["quant_mode"])
     if case.get("enable") is None:
         case["enable"] = True
     case["softmax_scale"] = case.get("softmax_scale") or (
@@ -1477,6 +1508,161 @@ def _call_npu_fa_op(
     return atten_out.detach().cpu(), lse_out.detach().cpu()
 
 
+class _QuantBlockSparseAttnGraph(torch.nn.Module):
+    def __init__(self, softmax_scale, layout_q, layout_kv):
+        super().__init__()
+        self.softmax_scale = softmax_scale
+        self.sparse_block_size = SPARSE_BLOCK_SIZE
+        self.layout_q = layout_q
+        self.layout_kv = layout_kv
+        self.layout_sparse_indices = SPARSE_INDICES_LAYOUT
+        self.layout_out = OUT_LAYOUT
+        self.quant_mode = QUANT_MODE_MXFP8
+        self.mask_mode = MASK_MODE
+        self.return_softmax_lse = ENABLE_LSE
+
+    def forward(
+        self,
+        q,
+        k,
+        v,
+        dequant_scale_q,
+        dequant_scale_k,
+        dequant_scale_v,
+        p_scale,
+        sparse_indices,
+        sparse_seq_len,
+        mask,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
+        block_table,
+        metadata,
+    ):
+        return torch.ops.custom.npu_quant_block_sparse_attn(
+            q,
+            k,
+            v,
+            dequant_scale_q,
+            dequant_scale_k,
+            dequant_scale_v,
+            p_scale,
+            sparse_indices,
+            sparse_seq_len,
+            mask,
+            self.softmax_scale,
+            self.sparse_block_size,
+            self.sparse_block_size,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_kv=cu_seqlens_kv,
+            seqused_q=seqused_q,
+            seqused_kv=seqused_kv,
+            block_table=block_table,
+            metadata=metadata,
+            layout_kv=self.layout_kv,
+            layout_q=self.layout_q,
+            layout_sparse_indices=self.layout_sparse_indices,
+            layout_out=self.layout_out,
+            quant_mode=self.quant_mode,
+            mask_mode=self.mask_mode,
+            return_softmax_lse=self.return_softmax_lse,
+        )
+
+
+def _call_npu_fa_op_graph(
+    q,
+    k,
+    v,
+    mask,
+    q_lengths,
+    kv_lengths,
+    cu_seqlens_q,
+    cu_seqlens_kv,
+    dequant_scale_q,
+    dequant_scale_k,
+    dequant_scale_v,
+    p_scale,
+    block_table,
+    q_n,
+    kv_n,
+    softmax_scale,
+    layout_q,
+    layout_kv,
+    sparse_indices,
+    sparse_seq_len,
+):
+    """调用 QuantBlockSparseAttn 图模式，入参对齐 custom op schema。"""
+    _ensure_custom_ops_registered()
+    torch_npu.npu.set_device(int(DEVICE_ID))
+
+    if CASE.get("empty_actual_seq", False):
+        seqused_q = torch.empty((0,), dtype=torch.int32)
+        seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
+    else:
+        seqused_q = torch.tensor(q_lengths, dtype=torch.int32)
+        seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
+    cu_seqlens_q = _to_npu(cu_seqlens_q)
+    cu_seqlens_kv = _to_npu(cu_seqlens_kv)
+    seqused_q = seqused_q.npu()
+    seqused_kv = seqused_kv.npu()
+    sparse_indices = _to_npu(sparse_indices)
+    sparse_seq_len = _to_npu(sparse_seq_len)
+    block_table = _to_npu(block_table)
+
+    torch_npu.npu.synchronize()
+    metadata = torch.ops.custom.npu_quant_block_sparse_attn_metadata(
+        sparse_seq_len,
+        q_n,
+        kv_n,
+        D,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_kv=cu_seqlens_kv,
+        seqused_q=seqused_q,
+        seqused_kv=seqused_kv,
+        batch_size=B,
+        sparse_block_size_q=SPARSE_BLOCK_SIZE,
+        sparse_block_size_k=SPARSE_BLOCK_SIZE,
+        quant_mode=QUANT_MODE_MXFP8,
+        mask_mode=MASK_MODE,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+        layout_sparse_indices=SPARSE_INDICES_LAYOUT,
+    )
+    torch_npu.npu.synchronize()
+
+    config = CompilerConfig()
+    config.mode = "npugraph_ex"
+    npu_backend = torchair.get_npu_backend(compiler_config=config)
+    model = torch.compile(
+        _QuantBlockSparseAttnGraph(softmax_scale, layout_q, layout_kv).npu(),
+        fullgraph=True,
+        backend=npu_backend,
+        dynamic=False,
+    )
+    output = model(
+        q,
+        k,
+        v,
+        dequant_scale_q,
+        dequant_scale_k,
+        dequant_scale_v,
+        p_scale,
+        sparse_indices,
+        sparse_seq_len,
+        mask,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
+        block_table,
+        metadata,
+    )
+    torch_npu.npu.synchronize()
+    atten_out, lse_out = output
+    return atten_out.detach().cpu(), lse_out.detach().cpu()
+
+
 def _build_causal_mask():
     if MASK_MODE == 0:
         return torch.empty((0, 0), dtype=torch.uint8).npu()
@@ -1665,6 +1851,7 @@ def npu_mxfp8_fa(
     block_table_torch=None,
     sparse_indices=None,
     sparse_seq_len=None,
+    aclgraph=False,
 ):
     """调用 QuantBlockSparseAttn NPU 算子。"""
     torch_npu.npu.set_device(int(DEVICE_ID))
@@ -1787,12 +1974,7 @@ def npu_mxfp8_fa(
     layout_q = q_layout
     layout_kv = KEY_LAYOUT
 
-    logger.info(
-        "[NPU] 调用 QuantBlockSparseAttn 单算子, layout_q=%s, layout_kv=%s",
-        layout_q,
-        layout_kv,
-    )
-    atten_out, lse_out = _call_npu_fa_op(
+    npu_call_args = (
         q_npu,
         k_npu,
         v_npu,
@@ -1814,6 +1996,20 @@ def npu_mxfp8_fa(
         sparse_indices,
         sparse_seq_len,
     )
+    if aclgraph:
+        logger.info(
+            "[NPU] 调用 QuantBlockSparseAttn 图模式, layout_q=%s, layout_kv=%s",
+            layout_q,
+            layout_kv,
+        )
+        atten_out, lse_out = _call_npu_fa_op_graph(*npu_call_args)
+    else:
+        logger.info(
+            "[NPU] 调用 QuantBlockSparseAttn 单算子, layout_q=%s, layout_kv=%s",
+            layout_q,
+            layout_kv,
+        )
+        atten_out, lse_out = _call_npu_fa_op(*npu_call_args)
 
     npu_output = atten_out
     npu_lse = lse_out
@@ -2003,6 +2199,7 @@ def run_one_case(
     rdv=False,
     rdv_cache_dir=None,
     debug=False,
+    aclgraph=False,
 ):
     start_time = time.time()
     golden_cache = _load_golden_cache()
@@ -2153,6 +2350,7 @@ def run_one_case(
             block_table_torch,
             sparse_indices,
             sparse_seq_len,
+            aclgraph=aclgraph,
         )
         golden_cache.save_npu_output(case_name, atten_out, lse_out, cache_dir=cache_dir)
     else:
@@ -2257,6 +2455,11 @@ if __name__ == "__main__":
         action="store_true",
         help="单 case 调试模式；必须配合 --case_name，输出到 debug/<case_name>/。"
         "含 gen 时数据写入 debug pt 目录；不含 gen 时从 golden_cache 加载(可用 --cache-dir 指定)",
+    )
+    parser.add_argument(
+        "--aclgraph",
+        action="store_true",
+        help="使用图模式 (torchair + torch.compile) 执行 NPU 算子调用",
     )
     parser.add_argument(
         "--no_save",
@@ -2380,6 +2583,7 @@ if __name__ == "__main__":
                         rdv=args.rdv,
                         rdv_cache_dir=args.cache_dir,
                         debug=args.debug,
+                        aclgraph=args.aclgraph,
                     )
                 )
             except Exception as err:  # pylint: disable=broad-except
