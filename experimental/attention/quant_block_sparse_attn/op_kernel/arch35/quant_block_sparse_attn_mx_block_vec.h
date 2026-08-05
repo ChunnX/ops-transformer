@@ -32,33 +32,21 @@ using namespace regbasemx;
 
 namespace BaseApi {
 // V1 执行 softmax/P 量化，V2 更新并写回 attention output/LSE。
-template <typename inputType, typename mmType, typename outputType, QBSALayout layout, QBSALayout kvLayout,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType,
-          DTemplateType dVTemplateType, bool hasAtten, bool hasLse, bool isPa, bool useDn = true>
+template <bool hasAtten, bool hasLse>
 class QuantBlockSparseAttnMxBlockVec {
 public:
-    using INPUT_T = inputType;
+    using INPUT_T = fp8_e4m3fn_t;
     using SCALE_T = fp8_e8m0_t;
-    using MM_T = mmType;
-    using OUTPUT_T = outputType;
+    using MM_T = float;
+    using OUTPUT_T = bfloat16_t;
     using MxBmm2Buf = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
 
-    static constexpr bool USE_DN = useDn;
     static constexpr bool HAS_ATTEN = hasAtten;
     static constexpr bool HAS_LSE = hasLse;
-    static constexpr bool IS_PA = isPa;
-    static constexpr QBSALayout LAYOUT = layout;
-    static constexpr QBSALayout KV_LAYOUT = kvLayout;
-    static constexpr uint32_t M_BASE = static_cast<uint32_t>(s1TemplateType);
-    static constexpr uint32_t S2_BASE = static_cast<uint32_t>(s2TemplateType);
+    static constexpr uint32_t M_BASE = 128U;
+    static constexpr uint32_t S2_BASE = 512U;
     static constexpr uint32_t S2_SPLIT = 256U;
     static constexpr uint32_t VEC_M_BASE = M_BASE >> 1U;
-    static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
-    static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
-    static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNSD && IS_PA,
-                  "MX vector currently only supports TND query and PA_BNSD KV");
-    static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
-                  "MX vector currently only supports S1=128, S2=512, D=128 and DV=128");
     static constexpr uint32_t DB = 2U;
     static constexpr uint32_t PRELOAD_N = 2U;
     static constexpr uint32_t MX_SCALE_GROUP = 32U;
@@ -127,16 +115,14 @@ public:
                 // DN mask UB：[256,64]，按 sparse segment 拼接。
                 tPipe_->InitBuffer(attenMaskInQue_, 1, ATTEN_MASK_UB_SIZE);
             }
-            // DN VF lane 重排索引；保留 USE_DN 分支，便于后续补充非 DN 索引表。
-            if constexpr (USE_DN) {
-                tPipe_->InitBuffer(vselrIndexesBuf_[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)],
-                                   DN_VSELR_INDEX_SIZE);
-                LocalTensor<uint8_t> vselrIndexesTensor =
-                    vselrIndexesBuf_[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
-                for (uint32_t i = 0U; i < DN_VSELR_GROUP_NUM; ++i) {
-                    for (uint32_t j = 0U; j < DN_VSELR_GROUP_SIZE; ++j) {
-                        vselrIndexesTensor.SetValue(i * DN_VSELR_GROUP_SIZE + j, i + (j << 2));
-                    }
+            // DN VF lane 重排索引。
+            tPipe_->InitBuffer(vselrIndexesBuf_[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)],
+                               DN_VSELR_INDEX_SIZE);
+            LocalTensor<uint8_t> vselrIndexesTensor =
+                vselrIndexesBuf_[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
+            for (uint32_t i = 0U; i < DN_VSELR_GROUP_NUM; ++i) {
+                for (uint32_t j = 0U; j < DN_VSELR_GROUP_SIZE; ++j) {
+                    vselrIndexesTensor.SetValue(i * DN_VSELR_GROUP_SIZE + j, i + (j << 2));
                 }
             }
 
@@ -201,25 +187,20 @@ public:
         bmm1ResBuf.WaitCrossCore();
         constexpr float descaleQK = 1.0f;
         // Q/K scale 已在 C1 随路消费，因此 descaleQK=1。
-        if constexpr (USE_DN) {
-            // isUpdate 表示是否合并上一 logical S2 tile，不表示 subLoop 0/1。
-            const bool hasPreviousS2Loop = !runInfo.isFirstS2Loop;
-            if (unlikely(!hasPreviousS2Loop)) {
-                FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, false, HAS_ATTEN, S2_SPLIT>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb, pScaleSubLoopTensor,
-                    ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign >> 1,
-                    s2CalcSize, static_cast<MM_T>(constInfo.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
-            } else {
-                FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, true, HAS_ATTEN, S2_SPLIT>(
-                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb, pScaleSubLoopTensor,
-                    ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign >> 1,
-                    s2CalcSize, static_cast<MM_T>(constInfo.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_,
-                    0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
-            }
+        // isUpdate 表示是否合并上一 logical S2 tile，不表示 subLoop 0/1。
+        const bool hasPreviousS2Loop = !runInfo.isFirstS2Loop;
+        if (unlikely(!hasPreviousS2Loop)) {
+            FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, false, HAS_ATTEN, S2_SPLIT>(
+                stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb, pScaleSubLoopTensor,
+                ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign >> 1,
+                s2CalcSize, static_cast<MM_T>(constInfo.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_,
+                0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
         } else {
-            static_assert(USE_DN, "MXFullQuantMode vector currently implements DN VF only; "
-                                  "use_dn=false is reserved for future extension");
+            FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, true, HAS_ATTEN, S2_SPLIT>(
+                stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb, pScaleSubLoopTensor,
+                ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign >> 1,
+                s2CalcSize, static_cast<MM_T>(constInfo.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_,
+                0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
         }
         bmm1ResBuf.SetCrossCore();
         if constexpr (HAS_ATTEN) {
@@ -351,7 +332,7 @@ private:
         const int64_t deltaCausalOrNext =
             static_cast<int64_t>(runInfo.s1Idx) - static_cast<int64_t>(segmentS2TokenOffset) - deltaN;
         const uint64_t maskOffset = static_cast<uint64_t>(regbaseutil::ComputeOffsetForCausal(
-            deltaCausalOrNext, M_BASE, S2_SPLIT, attenMaskS2Size_, static_cast<int64_t>(runInfo.vecMbaseIdx), USE_DN));
+            deltaCausalOrNext, M_BASE, S2_SPLIT, attenMaskS2Size_, static_cast<int64_t>(runInfo.vecMbaseIdx), true));
         return maskOffset;
     }
 
