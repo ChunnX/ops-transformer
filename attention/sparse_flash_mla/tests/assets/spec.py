@@ -44,7 +44,6 @@ def load_impl_module(stem):
 golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
 compare_module = load_impl_module("compare")
-graph_module = load_impl_module("graph")
 
 
 class SparseFlashMlaSpec:
@@ -56,9 +55,14 @@ class SparseFlashMlaSpec:
     }
 
     compare = staticmethod(compare_module.compare)
-    torch_graph = graph_module.SparseFlashMlaAclGraph
+
+
+class AclnnSparseFlashMlaSpec(SparseFlashMlaSpec):
+    golden = golden_module.cpu_aclnn_sparse_flash_mla
+    customize_inputs = inputs_module.generate_aclnn_sparse_flash_mla_inputs
 
 
 __spec__ = {
-    "smla_ttk_ops.sparse_flash_mla_ttk": "SparseFlashMlaSpec",
+    "torch.ops.cann_ops_transformer.sparse_flash_mla": "SparseFlashMlaSpec",
+    "aclnnSparseFlashMla": "AclnnSparseFlashMlaSpec",
 }
