@@ -226,6 +226,9 @@ struct QSMLAParaInfo {
     QSMLATilingRequiredParaInfo q = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo oriKv = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo cmpKv = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo qDescale = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo oriKvDescale = {nullptr, nullptr};
+    QSMLATilingOptionalParaInfo cmpKvDescale = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo oriSparseIndices = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo cmpSparseIndices = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo oriBlockTable = {nullptr, nullptr};
@@ -242,6 +245,7 @@ struct QSMLAParaInfo {
     QSMLATilingOptionalParaInfo sinks = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo metadata = {nullptr, nullptr};
     QSMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
+    QSMLATilingRequiredParaInfo softmaxLse = {nullptr, nullptr};
 
     const int64_t *quantMode = nullptr;
     const float *softmaxScale = nullptr;
