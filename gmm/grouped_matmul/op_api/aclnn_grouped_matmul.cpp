@@ -110,6 +110,12 @@ static bool IsFormatND(const aclTensor *tensor)
     return ge::GetPrimaryFormat(tensor->GetStorageFormat()) == op::Format::FORMAT_ND;
 }
 
+static bool IsBaseFormat(const aclTensor *tensor)
+{
+    const auto format = tensor->GetStorageFormat();
+    return format < op::Format::FORMAT_END && !op::IsPrivateFormat(format);
+}
+
 static aclnnStatus SetSpecialNZTensorToNormalNZFormat(const aclTensorList *&tensorListInput)
 {
     if (tensorListInput->Size() <= 0 || !IsFormatNZWithC0((*tensorListInput)[0])) {
@@ -1330,13 +1336,14 @@ static aclnnStatus CheckA8W4FixedTemplateDAV3510(const gmm::GroupedMatmulParams 
     const aclTensor *scale = (*gmmParams.scaleOptional)[0];
     const aclTensor *perTokenScale = (*gmmParams.perTokenScaleOptional)[0];
     const aclTensor *out = (*gmmParams.y)[0];
-    CHECK_COND(IsFormatND(x) && IsFormatND(bias) && IsFormatND(scale) && IsFormatND(perTokenScale) &&
-                   IsFormatND(out),
+    CHECK_COND(IsFormatND(x) && IsFormatND(out),
                ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when A8W4 quant, x, bias, scale, perTokenScale and out must be in ND format.", opName);
-    const bool weightIsNz = IsFormatNZ(weight);
-    CHECK_COND(IsFormatND(weight) || weightIsNz, ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when A8W4 quant, weight must be in ND or FRACTAL_NZ format.", opName);
+               "In op [%s], when A8W4 quant, x and out must be in ND format.", opName);
+    const bool weightIsNz =
+        ge::GetPrimaryFormat(weight->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ;
+    CHECK_COND(IsBaseFormat(weight) || weightIsNz, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], when A8W4 quant, weight must use a base format or standard FRACTAL_NZ format.",
+               opName);
     CHECK_COND(gmmParams.apiVersion != gmm::GMMApiVersion::WeightNz || weightIsNz, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], when A8W4 quant through the WeightNz interface, weight must be in FRACTAL_NZ format.",
                opName);
@@ -1386,7 +1393,7 @@ static aclnnStatus CheckA8W4FixedTemplateDAV3510(const gmm::GroupedMatmulParams 
     if (hasOffset) {
         const aclTensor *offset = (*gmmParams.offsetOptional)[0];
         const op::Shape &offsetShape = offset->GetViewShape();
-        CHECK_COND(IsFormatND(offset) && offset->GetDataType() == DataType::DT_FLOAT &&
+        CHECK_COND(offset->GetDataType() == DataType::DT_FLOAT &&
                        offsetShape.GetDimNum() == OFFSET_DIM_A8W4 && offsetShape.GetDim(0) == e &&
                        offsetShape.GetDim(1) == 1 && offsetShape.GetDim(2) == n &&
                        scaleShape.GetDim(1) == 1 && out->GetDataType() == DataType::DT_FLOAT16,

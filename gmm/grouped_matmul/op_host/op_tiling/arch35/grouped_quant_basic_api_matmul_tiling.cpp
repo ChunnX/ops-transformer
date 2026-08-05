@@ -295,6 +295,11 @@ bool GroupedA8W4BasicApiTiling::AnalyzeDtype()
     inputParams_.perTokenScaleDtype = perTokenScaleDesc->GetDataType();
     inputParams_.aFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat()));
     inputParams_.bFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(weightDesc->GetStorageFormat()));
+    // Match the legacy A8W4 classification: standard FRACTAL_NZ selects NZ;
+    // every base format accepted by the API checker uses the ND layout path.
+    if (inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ) {
+        inputParams_.bFormat = ge::FORMAT_ND;
+    }
 
     OP_CHECK_IF(inputParams_.aDtype != ge::DT_INT8 ||
                     (inputParams_.bDtype != ge::DT_INT4 && inputParams_.bDtype != ge::DT_INT32),
