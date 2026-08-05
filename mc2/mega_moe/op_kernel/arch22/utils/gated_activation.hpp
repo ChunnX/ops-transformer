@@ -11,6 +11,9 @@
 #ifndef MEGA_MOE_GATED_ACTIVATION_HPP
 #define MEGA_MOE_GATED_ACTIVATION_HPP
 
+#include <cstddef>
+#include <cstdint>
+#include <type_traits>
 #include "../template_linear_algebra_v2/catlass.hpp"
 
 namespace Catlass::Epilogue {
@@ -143,7 +146,7 @@ struct SituActivation {
     CATLASS_DEVICE
     static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
                         AscendC::LocalTensor<float> const &up, AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
-                        uint32_t dataLength, float linearBeta = LINEAR_BETA_DISABLED, float beta = DEFAULT_BETA)
+                        uint32_t dataLength, float beta = DEFAULT_BETA, float linearBeta = LINEAR_BETA_DISABLED)
     {
         bool enableLinearBeta = linearBeta != LINEAR_BETA_DISABLED;
         if (enableLinearBeta) {
@@ -217,21 +220,29 @@ struct GatedActivation {
                         float activationParams1 = SwigluOaiActivation::DEFAULT_ALPHA,
                         float activationParams2 = SituActivation::DEFAULT_BETA)
     {
-        if (activationCode == static_cast<uint32_t>(GatedActivationMode::SWIGLU_OAI)) {
-            SwigluOaiActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit, activationParams1,
-                                         activationParams2);
-            return;
+        switch (static_cast<GatedActivationMode>(activationCode)) {
+            case GatedActivationMode::SWIGLU:
+                SwigluActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);
+                break;
+            case GatedActivationMode::SWIGLU_OAI:
+                SwigluOaiActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit,
+                                             activationParams1, activationParams2);
+                break;
+            case GatedActivationMode::SITU:
+                SituActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, activationParams1,
+                                        activationParams2);
+                break;
+            case GatedActivationMode::SWIGLU_STEP:
+                SwigluStepActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);
+                break;
+            default:
+                // Unknown activationCode indicates host/kernel version mismatch or corrupted tiling
+                // data. Fail loudly instead of silently degrading to SwiGLU, which would otherwise
+                // run successfully but produce wrong model outputs.
+                ASCENDC_ASSERT(false,
+                               { KERNEL_LOG(KERNEL_ERROR, "MegaMoe: unknown activationCode %u.", activationCode); });
+                break;
         }
-        if (activationCode == static_cast<uint32_t>(GatedActivationMode::SITU)) {
-            SituActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, activationParams1,
-                                    activationParams2);
-            return;
-        }
-        if (activationCode == static_cast<uint32_t>(GatedActivationMode::SWIGLU_STEP)) {
-            SwigluStepActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);
-            return;
-        }
-        SwigluActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);
     }
 };
 
