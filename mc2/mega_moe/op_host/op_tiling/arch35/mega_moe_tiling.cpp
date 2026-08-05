@@ -952,12 +952,20 @@ static ge::graphStatus SetWorkspace(gert::TilingContext *context, WorkspaceInfo 
 
     int64_t workspaceSize = sysWorkspaceSize + workspaceInfo.workspaceSize + RESERVED_WORKSPACE_SIZE;
 #if MEGA_MOE_ENABLE_PROFILING
-    // [PROFILER] 在 workspace 尾部预留 profiler ring buffer（64B 对齐），偏移写入 tilingData->profBufAddr[0]。
-    // kernel 侧 Init 用 workspaceGM + profBufAddr[0] 定位打点区（见 subpackage-path.md Step 1/2）。
+    // [PROFILER] 在 kernel workspace 布局之后预留 profiler ring buffer（64B 对齐），偏移写入 tilingData->profBufAddr[0]。
+    // kernel 侧 _prof_buf_gm = workspaceGM + profBufAddr[0]，其中 workspaceGM = hostWsBase + delta（CCU 实测 16MB 偏移）。
+    // ⚠️ profBufAddr[0] 必须相对 kernel 布局（workspaceInfo.workspaceSize）计算，否则 kernel 写 profBuf 的
+    //    实际地址 = hostWsBase + delta + offset 会超出 host 分配的 workspace（507015）。
+    //    host 不知道 delta，但 RESERVED(50MB) 足以兜底 delta(16MB) + PROF_BUF_TOTAL(5.5MB)。
     constexpr uint64_t PROF_ALIGN = 64ULL;
-    uint64_t profBufOffset = (static_cast<uint64_t>(workspaceSize) + PROF_ALIGN - 1ULL) & ~(PROF_ALIGN - 1ULL);
+    uint64_t profBufOffset =
+        (static_cast<uint64_t>(workspaceInfo.workspaceSize) + PROF_ALIGN - 1ULL) & ~(PROF_ALIGN - 1ULL);
     tilingData->profBufAddr[0] = profBufOffset;
-    workspaceSize = static_cast<int64_t>(profBufOffset + PROF_BUF_TOTAL);
+    // workspace 总大小需覆盖 delta + profBufOffset + PROF_BUF_TOTAL：
+    //   绝对上限 = hostWsBase + workspaceSize >= hostWsBase + delta + profBufOffset + PROF_BUF_TOTAL
+    //   => workspaceSize >= delta + profBufOffset + PROF_BUF_TOTAL（RESERVED 富余兜底 delta）
+    workspaceSize = sysWorkspaceSize + workspaceInfo.workspaceSize + RESERVED_WORKSPACE_SIZE +
+                    static_cast<int64_t>(profBufOffset + PROF_BUF_TOTAL - static_cast<uint64_t>(workspaceInfo.workspaceSize));
     OP_LOGD(nodeName, "profiler profBufOffset: %lu, PROF_BUF_TOTAL: %lu\n",
             (unsigned long)profBufOffset, (unsigned long)PROF_BUF_TOTAL);
 #endif
