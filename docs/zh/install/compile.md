@@ -89,7 +89,9 @@
     grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini
     ```
 
-    预期输出应包含已安装的 vendor 名（如 `${vendor_name}`），形如 `load_priority=${vendor_name}`。若 `load_priority` 不含对应 vendor，说明 `config.ini` 未更新成功，算子无法加载，请参考下方[权限失败修复指引](#权限失败修复指引)。
+    预期输出应包含已安装的 vendor 名（如 `${vendor_name}`），形如 `load_priority=${vendor_name}`。
+
+    > **如何判断校验结果**：若 `grep` 报错（如 `No such file`，说明 `config.ini` 未创建）或输出中不含对应 vendor，均表示 `config.ini` 未更新成功，算子无法加载，请参考下方[权限失败修复指引](#权限失败修复指引)。只有 `grep` 成功查到本 vendor 才算安装成功。
 
     #### 权限失败修复指引
 

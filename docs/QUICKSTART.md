@@ -83,7 +83,9 @@ Self-extractable archive "cann-ops-transformer-custom_linux.${arch}.run" success
 grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini
 ```
 
-预期输出应包含已安装的 vendor 名（如 `custom_transformer`），形如 `load_priority=custom_transformer`。若 `load_priority` 不含对应 vendor，说明 `config.ini` 未更新成功，算子无法加载，运行时会报 `error 161001 (aclnnAddExampleGetWorkspaceSize failed)`，请参考下方[常见安装问题排查](#常见安装问题排查)。
+预期输出应包含已安装的 vendor 名（如 `custom_transformer`），形如 `load_priority=custom_transformer`。
+
+> **如何判断校验结果**：若 `grep` 报错（如 `No such file`，说明 `config.ini` 未创建）或输出中不含对应 vendor，均表示 `config.ini` 未更新成功，算子无法加载，运行时会报 `error 161001 (aclnnAddExampleGetWorkspaceSize failed)`，请参考下方[常见安装问题排查](#常见安装问题排查)。只有 `grep` 成功查到本 vendor 才算安装成功。
 
 ### 常见安装问题排查
 
@@ -110,6 +112,8 @@ sudo chmod -R u+w ${ASCEND_HOME_PATH}/opp/vendors
 grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini
 ```
 
+> **对已安装过算子包的用户**：若此前安装时 `config.ini` 更新失败（`load_priority` 缺失），即使当前从源码重新编译，也需**重新执行 `.run` 安装**（或按上述方式修复权限后重装）以触发 `config.ini` 更新，仅重编译不足以修复 `config.ini`。
+
 #### 替代方案：使用 --install-path 安装到用户可写目录
 
 若无法获取 `${ASCEND_HOME_PATH}/opp/vendors` 的写权限，可在安装时通过 `--install-path` 参数指定到当前用户有权限的目录（如 `${HOME}/custom_ops`）：
@@ -133,6 +137,14 @@ source ${HOME}/custom_ops/vendors/custom_transformer/bin/set_env.bash
 ```bash
 export LD_LIBRARY_PATH=${ASCEND_HOME_PATH}/opp/vendors/custom_transformer/op_api/lib:${LD_LIBRARY_PATH}
 ```
+
+> **应急兜底**：若 `config.ini` 因权限问题始终无法更新（第3步校验不通过），且暂时无法获取 `${ASCEND_HOME_PATH}/opp/vendors` 写权限，可临时通过 `ASCEND_CUSTOM_OPP_PATH` 直接指定自定义算子包路径，使本会话中算子可被加载（无需修改 `config.ini`）：
+>
+> ```bash
+> export ASCEND_CUSTOM_OPP_PATH=${ASCEND_HOME_PATH}/opp/vendors/custom_transformer
+> ```
+>
+> 注意：该变量仅在当前 shell 会话内生效，是**临时兜底**方案，不写入 `config.ini`，重启后需重新设置。长期使用建议按第3步[常见安装问题排查](#常见安装问题排查)修复权限或改用 `--install-path` 方案。
 
 ### 5. 快速验证：运行算子样例
 
