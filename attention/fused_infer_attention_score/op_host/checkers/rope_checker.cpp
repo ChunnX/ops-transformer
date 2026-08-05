@@ -89,18 +89,18 @@ ge::graphStatus RopeChecker::CheckQDsizeSupport(const FiaTilingInfo &fiaInfo) co
 
 ge::graphStatus RopeChecker::CheckKRopeContiguous(const FiaTilingInfo &fiaInfo)
 {
-    bool isMxfp8 = enableFullQuant_ && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT;
-    if (isMxfp8) {
+    bool isFullQuantMxfp8 = (enableFullQuant_ && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT);
+    if (isFullQuantMxfp8) {
         const gert::Shape keyRopeShape = fiaInfo.opParamInfo.keyRope.tensor->GetStorageShape();
         const uint32_t keyRopeDimNum = keyRopeShape.GetDimNum();
         int32_t dimIndex = 0;
-        OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyRopeDimNum, keyRopeShape,
-                         fiaInfo.kRopeStrides, dimIndex)) && !fiaInfo.pageAttentionFlag),
+        OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyRopeDimNum, keyRopeShape, fiaInfo.kRopeStrides, dimIndex)) &&
+                    !fiaInfo.pageAttentionFlag),
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
                 "In non-PA scenarios, MXFP8 full quantization does not support non-contiguous tensors"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyRopeDimNum, keyRopeShape, fiaInfo.kRopeStrides, dimIndex)) &&
-            (dimIndex != 0 && dimIndex != 1) && fiaInfo.pageAttentionFlag),
+                    (dimIndex != 0 && dimIndex != 1) && fiaInfo.pageAttentionFlag),
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
                 "In MXFP8 Fullquant BnNBsD/NZ scenario, only 0th and 1st axis of keyRope can be non-contiguous, the "
                 + std::to_string(dimIndex) + "th axis of keyRope must be contiguous"),
@@ -110,12 +110,14 @@ ge::graphStatus RopeChecker::CheckKRopeContiguous(const FiaTilingInfo &fiaInfo)
         if (!fiaInfo.hasViewStride || fiaInfo.pageAttentionFlag) {
             return ge::GRAPH_SUCCESS;
         }
+
         OP_CHECK_IF(fiaInfo.keyRopeNonContigDim != -1,
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
                 "In non-PA scenarios, keyRope tensors must be contiguous"),
             return ge::GRAPH_FAILED);
+        
+        return ge::GRAPH_SUCCESS;
     }
-    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus RopeChecker::CheckShapeConsistency(const FiaTilingInfo &fiaInfo)
@@ -503,13 +505,23 @@ ge::graphStatus RopeChecker::CheckNSize(const FiaTilingInfo &fiaInfo) const
     if (fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512) {
         return ge::GRAPH_SUCCESS;
     }
-    // static const std::set<uint32_t> supportNumHeadForMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U};
-    // OP_CHECK_IF((supportNumHeadForMLA.find(fiaInfo.n1Size) == supportNumHeadForMLA.end()),
-    //             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-    //                 fiaInfo.opName, "query",
-    //                 ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-    //                 "In MLA decode scenario, the N axis of query must be in {1,2,4,8,16,32,64,128}"),
-    //             return ge::GRAPH_FAILED);
+    static const std::set<uint32_t> supportNumHeadForMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U};
+    bool isArch35NonQuant = (enableNonQuant_ && fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B);
+    if (isArch35NonQuant) {
+        OP_CHECK_IF((fiaInfo.n1Size < 1U || fiaInfo.n1Size > 128U),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        fiaInfo.opName, "query",
+                        ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
+                        "In MLA decode scenario, the N axis of query must be in [1, 128]"),
+                    return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF((supportNumHeadForMLA.find(fiaInfo.n1Size) == supportNumHeadForMLA.end()),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        fiaInfo.opName, "query",
+                        ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
+                        "In MLA decode scenario, the N axis of query must be in {1,2,4,8,16,32,64,128}"),
+                    return ge::GRAPH_FAILED);
+    }
 
     OP_CHECK_IF((*fiaInfo.opParamInfo.kvHeadNums != NUM1),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(

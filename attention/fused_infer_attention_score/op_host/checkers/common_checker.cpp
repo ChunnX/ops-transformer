@@ -620,22 +620,32 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
             ToStringRaw(fiaInfo.opParamInfo.key.shape->GetStorageShape()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
-    // if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
-    //     if (fiaInfo.s1Size < 1) {
-    //         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
-    //             ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-    //             "S of query must be >=1 in the Decode MLA scenario");
-    //         return ge::GRAPH_FAILED;
-    //     }
-    //     static const std::set<uint32_t> SUPPORT_G_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景g轴支持范围
-    //     if ((SUPPORT_G_IN_IFAMLA.find(fiaInfo.gSize) == SUPPORT_G_IN_IFAMLA.end())) {
-    //         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "axis G",
-    //             std::to_string(fiaInfo.n1Size / fiaInfo.n2Size).c_str(),
-    //             "The value of axis G must be in the range of {1, 2, 4, 8, 16, 32, 64, 128} "
-    //             "in the Decode MLA scenario");
-    //         return ge::GRAPH_FAILED;
-    //     }
-    // }
+    if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
+        if (fiaInfo.s1Size < 1) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "query",
+                ToStringRaw(fiaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
+                "S of query must be >=1 in the Decode MLA scenario");
+            return ge::GRAPH_FAILED;
+        }
+        static const std::set<uint32_t> SUPPORT_G_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景g轴支持范围
+        bool isArch35NonQuant = (enableNonQuant_ && fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B);
+        if (isArch35NonQuant) {
+            if (fiaInfo.gSize < 1U || fiaInfo.gSize > 128U) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "axis G",
+                    std::to_string(fiaInfo.n1Size / fiaInfo.n2Size).c_str(),
+                    "The value of axis G must be in the range of [1, 128] in the Decode MLA scenario");
+                return ge::GRAPH_FAILED;
+            }
+        } else {
+            if (SUPPORT_G_IN_IFAMLA.find(fiaInfo.gSize) == SUPPORT_G_IN_IFAMLA.end()) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "axis G",
+                    std::to_string(fiaInfo.n1Size / fiaInfo.n2Size).c_str(),
+                    "The value of axis G must be in the range of {1, 2, 4, 8, 16, 32, 64, 128} "
+                    "in the Decode MLA scenario");
+                return ge::GRAPH_FAILED;
+            }
+        }
+    }
     OP_LOGI(fiaInfo.opName, "The axis B(%u), qkD(%u), vD(%u), G(%u), qT(%u), kT(%u).",
             fiaInfo.bSize, fiaInfo.qkHeadDim, fiaInfo.vHeadDim, fiaInfo.gSize, fiaInfo.qTSize, fiaInfo.kTSize);
     return ge::GRAPH_SUCCESS;
@@ -1083,22 +1093,32 @@ ge::graphStatus CommonChecker::CheckHeadNum(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_FAILED;
     }
 
-    // if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) { // ifamla
-    //     static const std::set<uint32_t> SUPPORT_NUM_HEAD_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景qN支持范围
-    //     if ((SUPPORT_NUM_HEAD_IN_IFAMLA.find(fiaInfo.n1Size) == SUPPORT_NUM_HEAD_IN_IFAMLA.end())) {
-    //         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_heads",
-    //             std::to_string(fiaInfo.n1Size).c_str(),
-    //             "The value of num_heads must be in the range of {1, 2, 4, 8, 16, 32, 64, 128} "
-    //             "in the Decode MLA scenario");
-    //         return ge::GRAPH_FAILED;
-    //     }
-    //     if (fiaInfo.n2Size != 1U) {
-    //         std::string reason = "The value of num_key_value_heads must be 1 in the Decode MLA scenario";
-    //         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_key_value_heads",
-    //             std::to_string(fiaInfo.n2Size).c_str(), reason.c_str());
-    //         return ge::GRAPH_FAILED;
-    //     }
-    // }
+    if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) { // ifamla
+        static const std::set<uint32_t> SUPPORT_NUM_HEAD_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景qN支持范围
+        bool isArch35NonQuant = (enableNonQuant_ && fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B);
+        if (isArch35NonQuant) {
+            if (fiaInfo.n1Size < 1U || fiaInfo.n1Size > 128U) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_heads",
+                    std::to_string(fiaInfo.n1Size).c_str(),
+                    "The value of num_heads must be in the range of [1, 128] in the Decode MLA scenario");
+                return ge::GRAPH_FAILED;
+            }
+        } else {
+            if (SUPPORT_NUM_HEAD_IN_IFAMLA.find(fiaInfo.n1Size) == SUPPORT_NUM_HEAD_IN_IFAMLA.end()) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_heads",
+                    std::to_string(fiaInfo.n1Size).c_str(),
+                    "The value of num_heads must be in the range of {1, 2, 4, 8, 16, 32, 64, 128} "
+                    "in the Decode MLA scenario");
+                return ge::GRAPH_FAILED;
+            }
+        }
+        if (fiaInfo.n2Size != 1U) {
+            std::string reason = "The value of num_key_value_heads must be 1 in the Decode MLA scenario";
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "num_key_value_heads",
+                std::to_string(fiaInfo.n2Size).c_str(), reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1448,9 +1468,11 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
             return ge::GRAPH_FAILED;
         }
     }
+    
     if (CheckShapeConsistency(fiaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+
     return ge::GRAPH_SUCCESS;
 }
 
