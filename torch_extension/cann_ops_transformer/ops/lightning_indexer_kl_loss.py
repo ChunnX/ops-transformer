@@ -76,5 +76,4 @@ def lightning_indexer_kl_loss(target_score, index_probs, eps=1e-9, weight_type='
         >>> index_probs = torch.softmax(torch.randn(4, 10, 128), dim=-1).npu()
         >>> loss = lightning_indexer_kl_loss(target_score, index_probs)
     """
-    print(f"python weight_type:{weight_type}")
     return op_module.lightning_indexer_kl_loss(target_score, index_probs, eps, weight_type)

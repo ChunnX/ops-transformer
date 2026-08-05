@@ -260,12 +260,6 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::C
             }
         }
     }
-    // {
-    //     printf("ubTargetScoreIn:\n");
-    //     uint32_t array[] = {static_cast<uint32_t>(curTileLen), static_cast<uint32_t>(KAligned_)};
-    //     ShapeInfo shapeInfo(2, array);
-    //     DumpTensor(ubTargetScoreIn, 2, curTileLen * KAligned_, shapeInfo);
-    // }
 
     // CalcLogP: log(clamp_min(y/sum(y), eps)) * y
     repeat = K_ / FLOAT_VECTOR_SIZE;
@@ -298,19 +292,6 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::C
     
     repeat = (curTileLen + 7) / 8;
     Brcb(ubReduceSum, ubReduceSum[reduceOff], repeat, {1, 8});
-    DumpTensor(ubReduceSum, 999, curTileLen * FLOAT_BLOCK_SIZE);
-    // {
-    //     printf("ubReduceSum:\n");
-    //     uint32_t array[] = {static_cast<uint32_t>(curTileLen), static_cast<uint32_t>(8)};
-    //     ShapeInfo shapeInfo(2, array);
-    //     DumpTensor(ubReduceSum, 2, curTileLen * 8, shapeInfo);
-    // }
-    // {
-    //     printf("ubTargetScoreIn:\n");
-    //     uint32_t array[] = {static_cast<uint32_t>(curTileLen), static_cast<uint32_t>(KAligned_)};
-    //     ShapeInfo shapeInfo(2, array);
-    //     DumpTensor(ubTargetScoreIn, 2, curTileLen * KAligned_, shapeInfo);
-    // }
     repeat = KAligned_ / FLOAT_VECTOR_SIZE;
     remain = KAligned_ % FLOAT_VECTOR_SIZE;
     BinaryRepeatParams divParams{1, 1, 0, 8, 8, 0};
@@ -330,41 +311,9 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::C
                 divParams);
         }
     }
-    // {
-    //     printf("Div ubTmp:\n");
-    //     uint32_t array[] = {static_cast<uint32_t>(2), static_cast<uint32_t>(KAligned_)};
-    //     ShapeInfo shapeInfo(2, array);
-    //     // DumpTensor(ubTmp, 2, 2 * KAligned_, shapeInfo);
-    //     DumpTensor(ubTmp, 2, 10);
-    // }
     ClampMin(ubLogP, ubTmp, eps_, tileElems);
-    // {
-    //     printf("ClampMin ubLogP:\n");
-    //     uint32_t array[] = {static_cast<uint32_t>(curTileLen), static_cast<uint32_t>(KAligned_)};
-    //     ShapeInfo shapeInfo(2, array);
-    //     // DumpTensor(ubLogP, 2, curTileLen * KAligned_, shapeInfo);
-    //     DumpTensor(ubLogP, 3, 10);
-    // }
     Ln(ubLogP, ubLogP, tileElems);
     Sub(ubLogP, ubLogP, ubLogY, tileElems);
-    // 根据 weightType 选择外层权重:
-    //   weightType=0 ('logits'): result = log_ratio * ubTargetScoreIn (原始 y)
-    //   weightType=1 ('probs'):  result = log_ratio * p, p = ubTargetScoreIn / (ubReduceSum + eps)
-
-    // if constexpr (weightType) {
-    //     // printf("aaa\n");
-    //     Mul(ubLogP, ubLogP, ubTmp, tileElems);
-    // } else {
-    //     Mul(ubLogP, ubLogP, ubTargetScoreIn, tileElems);
-    // }
-
-    // {
-    //     printf("mul ubLogP:\n");
-    //     uint32_t array[] = {static_cast<uint32_t>(curTileLen), static_cast<uint32_t>(KAligned_)};
-    //     ShapeInfo shapeInfo(2, array);
-    //     // DumpTensor(ubLogP, 2, curTileLen * KAligned_, shapeInfo);
-    //     DumpTensor(ubLogP, 3, 10);
-    // }
     SetFlag<HardEvent::V_MTE2>(eventVToMTE2y_);
 
     WaitFlag<HardEvent::MTE3_V>(eventMTE3ToV_);
@@ -381,16 +330,6 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::C
             Add(ubOut, ubOut, ubReduceSum, 1, 1, {1, 1, 1, 8, 8, 8});
         }
     }
-    // DumpTensor(ubOut, 333, 1);
-
-    // printf("ubLogP:\n");
-    // DumpTensor(ubLogP[KAligned_], 222, KAligned_ - K_);
-    // uint32_t mask = KAligned_ - K_;
-    // ReduceSum(ubTmp, ubLogP[KAligned_], ubTargetScoreIn, mask, curTileLen, KAligned_ / FLOAT_BLOCK_SIZE);
-    // DumpTensor(ubTmp, 111, 1);
-    // Sub(ubOut, ubOut, ubTmp, 1, 1, {0, 0, 0, 0, 0, 0});
-    // DumpTensor(ubOut, 222, 1);
-    
     SetFlag<HardEvent::V_MTE3>(eventVToMTE3_);
 }
 

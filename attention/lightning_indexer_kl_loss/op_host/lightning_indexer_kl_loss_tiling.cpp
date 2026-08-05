@@ -141,8 +141,7 @@ static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext* con
     // UB 统一按 fp32 划分
     int64_t KAligned = (K + 7) / 8 * 8;
     int64_t tileLength = ComputeTileLength(KAligned, ubSize);
-    // tileLength = std::min(tileLength, M);
-    printf("tileLength: %d\n", tileLength);
+    tileLength = std::min(tileLength, M);
 
     // 计算 tile 块总数
     int64_t totalTileNum = (M + tileLength - 1) / tileLength;
