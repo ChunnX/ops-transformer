@@ -61,22 +61,16 @@ static aclnnStatus RunActivationParamCase(const char *activation, const std::vec
 TEST_F(AclnnMegaMoeTest, activation_param_domain)
 {
     constexpr float kMax = std::numeric_limits<float>::max();
-    constexpr float kInf = std::numeric_limits<float>::infinity();
-    const float nan = std::numeric_limits<float>::quiet_NaN();
 
-    // Valid parameter sets pass ACLNN validation and reach the mocked inner op,
-    // which returns ACLNN_ERR_RUNTIME_ERROR in this test environment.
+    // The op_api layer no longer duplicates activation-parameter validation; it lives on the
+    // tiling side (see ActivationParamValidationWithLargeIntermediateHidden in
+    // test_mega_moe_tiling.cpp), which every aclnn path goes through. Here we only verify that
+    // valid parameter sets are accepted and forwarded to the mocked inner op, which returns
+    // ACLNN_ERR_RUNTIME_ERROR in this test environment. Rejection of invalid parameter sets
+    // (wrong count, NaN/Inf, zero scale) is covered by the arch22 tiling UT.
     EXPECT_EQ(RunActivationParamCase("swigluoai", {kMax, 0.0f, -1.0f}), ACLNN_ERR_RUNTIME_ERROR);
     EXPECT_EQ(RunActivationParamCase("situglu", {-4.0f}), ACLNN_ERR_RUNTIME_ERROR);
     EXPECT_EQ(RunActivationParamCase("situglu", {-4.0f, -25.0f}), ACLNN_ERR_RUNTIME_ERROR);
-
-    EXPECT_EQ(RunActivationParamCase("swiglu", {-1.0f}), ACLNN_ERR_PARAM_INVALID);
-    EXPECT_EQ(RunActivationParamCase("swigluoai", {kMax, nan, 1.0f}), ACLNN_ERR_PARAM_INVALID);
-    EXPECT_EQ(RunActivationParamCase("swigluoai", {kMax, 1.702f, kInf}), ACLNN_ERR_PARAM_INVALID);
-    EXPECT_EQ(RunActivationParamCase("situglu", {0.0f}), ACLNN_ERR_PARAM_INVALID);
-    EXPECT_EQ(RunActivationParamCase("situglu", {1.0f, 0.0f}), ACLNN_ERR_PARAM_INVALID);
-    EXPECT_EQ(RunActivationParamCase("situglu", {nan}), ACLNN_ERR_PARAM_INVALID);
-    EXPECT_EQ(RunActivationParamCase("situglu", {1.0f, kInf}), ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(AclnnMegaMoeTest, ascend950_nullptr_context)

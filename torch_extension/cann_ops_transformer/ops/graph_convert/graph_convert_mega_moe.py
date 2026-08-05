@@ -41,6 +41,8 @@ try:
 except ImportError:
     _TORCHAIR_AVAILABLE = False
 
+from cann_ops_transformer.ops.mega_moe import _normalize_activation_params
+
 if _TORCHAIR_AVAILABLE:
 
     @auto_convert_to_tensor(
@@ -117,10 +119,10 @@ if _TORCHAIR_AVAILABLE:
         .ATTR(comm_alg, String, "")\n
         .ATTR(num_max_tokens_per_rank, Int, 0)\n
         .ATTR(activation, String, "swiglu")\n
-        .ATTR(activation_params, ListFloat, {3.4028234663852886e+38})\n
+        .ATTR(activation_params, ListFloat, {})\n
         """
         if activation_params is None:
-            activation_params = [3.4028234663852886e38]
+            activation_params = []
 
         inputs = {
             "context": context,
@@ -197,7 +199,7 @@ if _TORCHAIR_AVAILABLE:
             .attr("comm_alg", attr.Str(""))
             .attr("num_max_tokens_per_rank", attr.Int(0))
             .attr("activation", attr.Str("swiglu"))
-            .attr("activation_params", attr.ListFloat([3.4028234663852886e38]))
+            .attr("activation_params", attr.ListFloat([]))
             .attr("topk_weights_type", attr.Int(0))
             .output("y", "DT_BF16, DT_FLOAT16")
             .output("expert_token_nums", "DT_INT32"),
@@ -234,41 +236,9 @@ if _TORCHAIR_AVAILABLE:
         topk_weights_type: int = 0,
         meta_outputs: TensorSpec = None,
     ):
-        activation_params = activation_params or {}
-        clamp_in_params = activation_params.get("clamp")
-        if (
-            activation_clamp is not None
-            and clamp_in_params is not None
-            and activation_clamp != clamp_in_params
-        ):
-            raise ValueError(
-                "activation_clamp and activation_params['clamp'] must be equal "
-                f"when both are specified, but got {activation_clamp} and {clamp_in_params}"
-            )
-        activation_clamp_value = (
-            activation_clamp
-            if activation_clamp is not None
-            else clamp_in_params
-            if clamp_in_params is not None
-            else 3.4028234663852886e38
+        activation_values = _normalize_activation_params(
+            activation, activation_clamp, activation_params
         )
-        activation_alpha = activation_params.get("alpha", 1.702)
-        activation_beta = activation_params.get("beta", 1.0)
-        activation_linear_beta = activation_params.get("linearbeta")
-        if activation in ("swiglu", "swiglustep"):
-            activation_values = [activation_clamp_value]
-        elif activation == "swigluoai":
-            activation_values = [
-                activation_clamp_value,
-                activation_alpha,
-                activation_beta,
-            ]
-        elif activation == "situglu":
-            activation_values = [activation_beta]
-            if activation_linear_beta is not None:
-                activation_values.append(activation_linear_beta)
-        else:
-            raise ValueError(f"Unsupported activation: {activation}")
         return MegaMoe(
             context=context,
             x=x,

@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstdint>
 #include <algorithm>
+#include <limits>
 
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "register/tilingdata_base.h"
@@ -61,6 +62,7 @@ const static int64_t MAX_EP_WORLD_SIZE = 1024LL;
 const static int64_t MAX_MOE_EXPERT_NUM = 2048LL;
 const static int64_t INPUT_WEIGHT_SCALES_CEIL_ALIGN = 64LL;
 const static int64_t RESERVED_WORKSPACE_SIZE = 1024 * 1024 * 50LL;
+constexpr float DEFAULT_ACTIVATION_CLAMP = std::numeric_limits<float>::max();
 
 constexpr uint32_t GMM1_TILE_M = 256U;
 constexpr uint32_t GMM2_GM_TILE_M = 256U;
@@ -356,19 +358,22 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(activationParamsPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParams"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(activationParamsPtr->GetSize() != 1U,
+    OP_TILING_CHECK(activationParamsPtr->GetSize() > 1U,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationParamsSize",
                                               std::to_string(activationParamsPtr->GetSize()).c_str(),
-                                              "should be 1 for swiglu"),
+                                              "should be 0 or 1 for swiglu"),
                     return ge::GRAPH_FAILED);
-    const float *activationParams = activationParamsPtr->GetData();
-    OP_TILING_CHECK(activationParams == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParamsData"),
-                    return ge::GRAPH_FAILED);
-    const float activationClamp = activationParams[0];
-    OP_TILING_CHECK(activationClamp < 0 || std::isnan(activationClamp),
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationClamp", std::to_string(activationClamp).c_str(),
-                                              "should be >= 0 and not NAN"),
-                    return ge::GRAPH_FAILED);
+    if (activationParamsPtr->GetSize() == 1U) {
+        const float *activationParams = activationParamsPtr->GetData();
+        OP_TILING_CHECK(activationParams == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationParamsData"),
+                        return ge::GRAPH_FAILED);
+        const float activationClamp = activationParams[0];
+        OP_TILING_CHECK(activationClamp < 0 || std::isnan(activationClamp),
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "activationClamp",
+                                                  std::to_string(activationClamp).c_str(),
+                                                  "should be >= 0 and not NAN"),
+                        return ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -570,7 +575,8 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
                                                                         tilingData->moeExpertPerRank);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
     tilingData->combineQuantMode = GetCombineQuantModeByAttr(context, config);
-    tilingData->clampLimit = activationParamsPtr->GetData()[0];
+    tilingData->clampLimit = activationParamsPtr->GetSize() == 0U ? DEFAULT_ACTIVATION_CLAMP :
+                                                                    activationParamsPtr->GetData()[0];
     tilingData->actMode = 0U;    // ACT_MODE_SWIGLU, 功能关闭
     tilingData->actSubMode = 0U; // ACT_SUB_MODE_DEFAULT
     tilingData->activationAlpha = 1.0f;
