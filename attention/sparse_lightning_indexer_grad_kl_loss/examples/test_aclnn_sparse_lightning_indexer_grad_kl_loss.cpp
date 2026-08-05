@@ -101,6 +101,9 @@ int main() {
   // 2. 构造输入与输出，需要根据API的接口自定义构造
   int64_t s1 = 1;
   int64_t s2 = 1;
+  // Use padding: cu_seqlens = [0,1] but tensor size = 512
+  int64_t t1 = 512;
+  int64_t t2 = 512;
   int64_t n1 = 128;
   int64_t n2 = 1;
   int64_t nQueryIndex = 64;
@@ -108,8 +111,6 @@ int main() {
   int64_t dRope = 64;
   int64_t dQueryIndex = 128;
   int64_t topK = 2048;
-  int64_t t1 = s1;
-  int64_t t2 = s2;
   int64_t G = n1 / n2;
 
   std::vector<int64_t> qShape = {t1, n1, dQuery};

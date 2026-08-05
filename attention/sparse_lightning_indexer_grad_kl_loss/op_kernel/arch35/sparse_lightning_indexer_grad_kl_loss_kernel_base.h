@@ -126,6 +126,9 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
         int64_t t2PadLen = tilingData->baseParams.t2Size - actualKLen;
         int64_t totalAivNum = tilingData->baseParams.totalAivNum;
 
+        AscendC::PRINTF("[luo] tail_pad_init aiv=%u t1pad=%ld t2pad=%ld aivNum=%ld\n",
+            constInfo.aivIdx, t1PadLen, t2PadLen, totalAivNum);
+
         if (t1PadLen > 0) {
             int64_t split = t1PadLen / totalAivNum;
             int64_t remain = t1PadLen % totalAivNum;
@@ -134,6 +137,8 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
                 Min(static_cast<int64_t>(constInfo.aivIdx), remain);
             if ASCEND_IS_AIV {
                 if (coreCnt > 0) {
+                    AscendC::PRINTF("[luo] tail_pad_t1 aiv=%u cnt=%ld off=%ld\n",
+                        constInfo.aivIdx, coreCnt, coreOff);
                     int64_t rowElms = static_cast<int64_t>(constInfo.gSizeQueryIndex) *
                         static_cast<int64_t>(constInfo.dSizeQueryIndex);
                     int64_t dQOff = (coreOff + actualLen) * rowElms;
@@ -159,6 +164,8 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
                 if (coreCnt > 0) {
                     int64_t dKOff = (coreOff + actualKLen) *
                         static_cast<int64_t>(constInfo.dSizeQueryIndex);
+                    AscendC::PRINTF("[luo] tail_pad_t2 aiv=%u cnt=%ld dKOff=%ld\n",
+                        constInfo.aivIdx, coreCnt, dKOff);
                     GlobalTensor<INPUT_T> tmpDK;
                     tmpDK.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(dKeyIndex) + dKOff,
                         coreCnt * static_cast<int64_t>(constInfo.dSizeQueryIndex));
