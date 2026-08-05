@@ -817,20 +817,30 @@ void FiaTilingFullQuantMxArch35::SetFATilingData()
     tilingData_.baseTiling.fiaBaseParams.isSoftMaxLseEnable = fiaInfo_->softmaxLseFlag;
     tilingData_.baseTiling.fiaBaseParams.coreNum = numBlocks_;
     tilingData_.baseTiling.fiaBaseParams.outputLayout = static_cast<uint32_t>(fiaInfo_->outputLayout);
-    if (!fiaInfo_->isTensorV1) { // 只有tensorv2才会包含strides信息
+    if (fiaInfo_->hasViewStride) { // 只有tensorv2才会包含strides信息
         // fiaBaseParams增加strides参数，从fiaInfo获取strides值
-        tilingData_.baseTiling.fiaBaseParams.keyStrides.bnStride = fiaInfo_->keyStrides->GetStride(0);
-        tilingData_.baseTiling.fiaBaseParams.keyStrides.n2Stride = fiaInfo_->keyStrides->GetStride(1);
-        tilingData_.baseTiling.fiaBaseParams.valueStrides.bnStride = fiaInfo_->valueStrides->GetStride(0);
-        tilingData_.baseTiling.fiaBaseParams.valueStrides.n2Stride = fiaInfo_->valueStrides->GetStride(1);
+        tilingData_.baseTiling.fiaBaseParams.keyStrides.bnStride = fiaInfo_->keyBnStride;
+        tilingData_.baseTiling.fiaBaseParams.keyStrides.n2Stride = fiaInfo_->keyN2Stride;
+        tilingData_.baseTiling.fiaBaseParams.valueStrides.bnStride = fiaInfo_->valueBnStride;
+        tilingData_.baseTiling.fiaBaseParams.valueStrides.n2Stride = fiaInfo_->valueN2Stride;
         if (fiaInfo_->ropeHeadDim != 0) {  // 传入了rope才赋值
-            tilingData_.baseTiling.fiaBaseParams.kRopeStrides.bnStride = fiaInfo_->kRopeStrides->GetStride(0);
-            tilingData_.baseTiling.fiaBaseParams.kRopeStrides.n2Stride = fiaInfo_->kRopeStrides->GetStride(1);
+            tilingData_.baseTiling.fiaBaseParams.kRopeStrides.bnStride = fiaInfo_->kRopeBnStride;
+            tilingData_.baseTiling.fiaBaseParams.kRopeStrides.n2Stride = fiaInfo_->kRopeN2Stride;
         }
-        tilingData_.baseTiling.fiaBaseParams.kScaleStrides.bnStride = fiaInfo_->kScaleStrides->GetStride(0);
-        tilingData_.baseTiling.fiaBaseParams.kScaleStrides.n2Stride = fiaInfo_->kScaleStrides->GetStride(1);
-        tilingData_.baseTiling.fiaBaseParams.vScaleStrides.bnStride = fiaInfo_->vScaleStrides->GetStride(0);
-        tilingData_.baseTiling.fiaBaseParams.vScaleStrides.n2Stride = fiaInfo_->vScaleStrides->GetStride(1);
+        if (fiaInfo_->kScaleStrides != nullptr) {
+            auto dimNum = fiaInfo_->kScaleStrides->GetDimNum();
+            tilingData_.baseTiling.fiaBaseParams.kScaleStrides.bnStride =
+                dimNum > 0 ? fiaInfo_->kScaleStrides->GetStride(0) : 0;
+            tilingData_.baseTiling.fiaBaseParams.kScaleStrides.n2Stride =
+                dimNum > 1 ? fiaInfo_->kScaleStrides->GetStride(1) : 0;
+        }
+        if (fiaInfo_->vScaleStrides != nullptr) {
+            auto dimNum = fiaInfo_->vScaleStrides->GetDimNum();
+            tilingData_.baseTiling.fiaBaseParams.vScaleStrides.bnStride =
+                dimNum > 0 ? fiaInfo_->vScaleStrides->GetStride(0) : 0;
+            tilingData_.baseTiling.fiaBaseParams.vScaleStrides.n2Stride =
+                dimNum > 1 ? fiaInfo_->vScaleStrides->GetStride(1) : 0;
+        }
     }
     tilingData_.baseTiling.fiaAttenMaskParams.preTokens = fiaInfo_->preToken;
     tilingData_.baseTiling.fiaAttenMaskParams.nextTokens = fiaInfo_->nextToken;
