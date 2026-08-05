@@ -649,7 +649,8 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape, uint64_t
     const bool isInt4 = inputParams_.bDtype == ge::DT_INT4;
     const bool isFp4 = inputParams_.bDtype == ge::DT_FLOAT4_E2M1 ||
                        inputParams_.bDtype == ge::DT_FLOAT4_E1M2;
-    const uint32_t weightNzLastDim = isInt4 ? WEIGHTNZ_128 : (isFp4 ? WEIGHTNZ_64 : WEIGHTNZ_32);
+    const bool isBit4 = isInt4 || isFp4;
+    const uint32_t weightNzLastDim = isBit4 ? WEIGHTNZ_64 : WEIGHTNZ_32;
     const size_t nzDimOffset = wDimNum - (WEIGHTNZ_DIM_NUM - 1);
     const char *nzDtypeLabel = isInt4 ? "int4" : (isFp4 ? "fp4" : "fp8");
     OP_CHECK_IF(!CheckWeightNzLastDim(wShape, nzDimOffset, weightNzLastDim, nzDtypeLabel),
