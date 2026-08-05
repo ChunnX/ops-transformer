@@ -64,6 +64,7 @@ struct MQSMLATilingRequiredParaInfo {
 struct MQSMLATilingOptionalParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::Tensor *tensor;
+    const gert::StorageShape *shape;
 };
 
 enum class MQSMLALayout : uint32_t {
