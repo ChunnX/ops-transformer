@@ -123,7 +123,7 @@ private:
     CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, AType, TeamBarrier> allToAllA_;
     CollectiveComm<
         CommCollectiveOp::AllToAll, CommMode::PUT, TypeScaleA, TeamBarrier> allToAllScaleA_;
-    TeamBarrier teamBarrier_{};
+    TeamBarrier teamBarrier_;
 
     struct BaseParams {
         GM_ADDR selfWinAddr{nullptr}; // 通信窗口地址
