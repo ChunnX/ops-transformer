@@ -46,9 +46,7 @@ static const std::string CMP_TOPK_LENGTH_NAME = "cmp_topk_length";
 static const std::string A2_A3_PLATFORM_LOG = "A2/A3";
 static const std::string A5_PLATFORM_LOG = "A5";
 constexpr uint32_t FD_MAX_S2_SPLIT_NUM = 2U;
-constexpr uint32_t BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM = 33U;
 constexpr uint32_t FD_BROADCAST_ELEMS = 8U;
-constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
 static bool IsNonEmptyOptionalTensor(const gert::Tensor *tensor)
 {
     return tensor != nullptr && tensor->GetShapeSize() > 0;
@@ -354,7 +352,6 @@ ge::graphStatus SMLAInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "Npu Arch Version[%d] is not support.", (int32_t)npuArch_);
         return ge::GRAPH_FAILED;
     }
-    batchConsistency_ = (context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -420,8 +417,8 @@ ge::graphStatus SMLAInfoParser::GetAttrParaInfo()
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.oriMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_MASK_MODE_INDEX);
     opParamInfo_.cmpMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_MASK_MODE_INDEX);
-    opParamInfo_.oriWinLeft = attrs->GetAttrPointer<int32_t>(ATTR_ORI_WIN_LEFT_INDEX);
-    opParamInfo_.oriWinRight = attrs->GetAttrPointer<int32_t>(ATTR_ORI_WIN_RIGHT_INDEX);
+    opParamInfo_.oriWinLeft = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_WIN_LEFT_INDEX);
+    opParamInfo_.oriWinRight = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_WIN_RIGHT_INDEX);
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
     opParamInfo_.layoutKv = attrs->GetStr(ATTR_LAYOUT_KV_INDEX);
     opParamInfo_.topkValueMode = attrs->GetAttrPointer<uint32_t>(ATTR_TOPK_VALUE_MODE_INDEX);
@@ -511,7 +508,11 @@ ge::graphStatus SMLAInfoParser::GetSMLATemplateMode(SMLATilingInfo &smlaInfo)
         } else if (opParamInfo_.cmpKv.desc != nullptr && opParamInfo_.cmpSparseIndices.tensor == nullptr) {
             perfMode_ = SMLATemplateMode::HCA_TEMPLATE_MODE;
         } else if (opParamInfo_.cmpKv.desc == nullptr && opParamInfo_.cmpSparseIndices.tensor == nullptr) {
-            if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
+            if (opParamInfo_.oriSparseIndices.tensor != nullptr && opParamInfo_.oriMaskMode != nullptr &&
+                *opParamInfo_.oriMaskMode == 4U) {
+                // DSpark SWA sparse: band mask + ori_sparse_indices stays on SWA kernel path.
+                perfMode_ = SMLATemplateMode::SWA_TEMPLATE_MODE;
+            } else if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
                 perfMode_ = SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE;
             } else {
                 perfMode_ = SMLATemplateMode::SWA_TEMPLATE_MODE;
@@ -630,8 +631,12 @@ void SMLAInfoParser::SetSMLAShape()
     if (opParamInfo_.cmpKv.tensor != nullptr) {
         cmpKvShape_ = opParamInfo_.cmpKv.tensor->GetStorageShape();
     }
-    if (perfMode_ == SMLATemplateMode::CSA_TEMPLATE_MODE ||
-        perfMode_ == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+    if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
+        oriSparseIndicesShape_ = opParamInfo_.oriSparseIndices.tensor->GetStorageShape();
+        hasOriSparseIndices_ = true;
+        oriSparseIndexWidth_ = GetAxisNum(oriSparseIndicesShape_, SMLAAxis::K, oriSparseIndicesLayout_);
+    }
+    if (perfMode_ == SMLATemplateMode::CSA_TEMPLATE_MODE) {
         if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
             cmpSparseIndicesShape_ = opParamInfo_.cmpSparseIndices.tensor->GetStorageShape();
         } else {
@@ -953,11 +958,6 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
             return ge::GRAPH_FAILED;
         }
     }
-    if (!IsA5Arch(npuArch_) && IsNonEmptyOptionalTensor(opParamInfo_.oriTopkLength.tensor)) {
-        OP_LOGE(opName_, "ori_topk_length is reserved and does not support non-empty tensor on %s.",
-                A2_A3_PLATFORM_LOG.c_str());
-        return ge::GRAPH_FAILED;
-    }
     if (!IsA5Arch(npuArch_) && IsNonEmptyOptionalTensor(opParamInfo_.cmpTopkLength.tensor)) {
         OP_LOGE(opName_, "cmp_topk_length is reserved and does not support non-empty tensor on %s.",
                 A2_A3_PLATFORM_LOG.c_str());
@@ -1017,6 +1017,8 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     smlaInfo.oriSparseBlockCount = oriSparseBlockCount_;
     smlaInfo.cmpSparseBlockCount = cmpSparseBlockCount_;
     smlaInfo.sparseBlockCount = cmpSparseBlockCount_;
+    smlaInfo.hasOriSparseIndices = hasOriSparseIndices_;
+    smlaInfo.oriSparseIndexWidth = oriSparseIndexWidth_;
     smlaInfo.oriWinLeft = oriWinLeft_;
     smlaInfo.oriWinRight = oriWinRight_;
     smlaInfo.qType = qType_;
@@ -1057,7 +1059,6 @@ void SMLAInfoParser::GenerateInfo(SMLATilingInfo &smlaInfo)
     smlaInfo.kvLayout = kvLayout_;
     smlaInfo.outLayout = outLayout_;
     smlaInfo.returnSoftmaxLse = *opParamInfo_.returnSoftmaxLse;
-    smlaInfo.batchConsistency = batchConsistency_;
 
     smlaInfo.actualLenDimsOriKV = actualLenDimsOriKV_;
     smlaInfo.actualLenDimsCmpKV = actualLenDimsCmpKV_;
@@ -1131,6 +1132,8 @@ void SMLATilingCheck::Init()
     cmpSparseIndicesLayout_ = smlaInfo_.cmpSparseIndicesLayout;
     oriWinLeft_ = smlaInfo_.oriWinLeft;
     oriWinRight_ = smlaInfo_.oriWinRight;
+    hasOriSparseIndices_ = smlaInfo_.hasOriSparseIndices;
+    oriSparseIndexWidth_ = smlaInfo_.oriSparseIndexWidth;
     kvLayout_ = smlaInfo_.kvLayout;
     outLayout_ = smlaInfo_.outLayout;
     topkValueMode_ = smlaInfo_.topkValueMode;
@@ -1246,7 +1249,7 @@ ge::graphStatus SMLATilingCheck::CheckDimNumInLayoutSupport(const SMLALayout &la
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaQuery() const
 {
-    if (opParamInfo_.q.desc == nullptr || opParamInfo_.q.shape == nullptr) {
+    if (opParamInfo_.q.desc == nullptr) {
         OP_LOGE(opName_, "%s must be provided!", QUERY_NAME.c_str());
         return ge::GRAPH_FAILED;
     }
@@ -1372,8 +1375,8 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaOriSparseIndices() const
     if (opParamInfo_.oriSparseIndices.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(!IsA5Arch(npuArch_),
-                OP_LOGE(opName_, "ori_sparse_indices is only supported on %s.", A5_PLATFORM_LOG.c_str()),
+    OP_CHECK_IF(smlaInfo_.perfMode != SMLATemplateMode::SWA_TEMPLATE_MODE,
+                OP_LOGE(opName_, "ori_sparse_indices is only supported in SWA mode."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor->GetStorageShape().GetShapeSize() == 0,
                 OP_LOGE(opName_, "ori_sparse_indices cannot be empty tensor."), return ge::GRAPH_FAILED);
@@ -1560,17 +1563,11 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpMaskMode() const
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaOriWinLeft() const
 {
-    OP_CHECK_IF(oriWinLeft_ < -1,
-                OP_LOGE(opName_, "oriWinLeft should be -1(unlimited) or non-negative, but got %lld", oriWinLeft_),
-                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus SMLATilingCheck::CheckSingleParaOriWinRight() const
 {
-    OP_CHECK_IF(oriWinRight_ < -1,
-                OP_LOGE(opName_, "oriWinRight should be -1(unlimited) or non-negative, but got %lld", oriWinRight_),
-                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1626,12 +1623,46 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaTopkLength() const
         }
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(IsNonEmptyOptionalTensor(opParamInfo_.oriTopkLength.tensor),
-                OP_LOGE(opName_, "ori_topk_length is reserved and must be empty on %s.", A2_A3_PLATFORM_LOG.c_str()),
+    if (IsNonEmptyOptionalTensor(opParamInfo_.cmpTopkLength.tensor)) {
+        OP_CHECK_IF(smlaInfo_.perfMode != SMLATemplateMode::CSA_TEMPLATE_MODE,
+                    OP_LOGE(opName_, "cmp_topk_length is only supported in CSA mode."),
+                    return ge::GRAPH_FAILED);
+    }
+    if (!IsNonEmptyOptionalTensor(opParamInfo_.oriTopkLength.tensor)) {
+        OP_CHECK_IF(hasOriSparseIndices_ && smlaInfo_.perfMode == SMLATemplateMode::SWA_TEMPLATE_MODE,
+                    OP_LOGE(opName_, "ori_topk_length is required for SWA ori sparse."),
+                    return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor == nullptr,
+                OP_LOGE(opName_, "ori_topk_length requires ori_sparse_indices."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(IsNonEmptyOptionalTensor(opParamInfo_.cmpTopkLength.tensor),
-                OP_LOGE(opName_, "cmp_topk_length is reserved and must be empty on %s.", A2_A3_PLATFORM_LOG.c_str()),
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.oriTopkLength.desc, ORI_TOPK_LENGTH_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+    OP_CHECK_IF(opParamInfo_.oriTopkLength.desc->GetDataType() != ge::DT_INT32,
+                OP_LOGE(opName_, "%s's dtype must be DT_INT32.", ORI_TOPK_LENGTH_NAME.c_str()),
                 return ge::GRAPH_FAILED);
+    const gert::Shape &topkLenShape = opParamInfo_.oriTopkLength.tensor->GetStorageShape();
+    const gert::Shape &sparseShape = opParamInfo_.oriSparseIndices.tensor->GetStorageShape();
+    if (oriSparseIndicesLayout_ == SMLALayout::TND) {
+        OP_CHECK_IF(topkLenShape.GetDimNum() != 2 || sparseShape.GetDimNum() != 3,
+                    OP_LOGE(opName_, "TND ori_topk_length shape must be [T, N2], ori_sparse_indices [T, N2, K]."),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(topkLenShape.GetDim(0) != sparseShape.GetDim(0) ||
+                        topkLenShape.GetDim(1) != sparseShape.GetDim(1),
+                    OP_LOGE(opName_, "ori_topk_length shape must match ori_sparse_indices without K dim."),
+                    return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(topkLenShape.GetDimNum() != 3 || sparseShape.GetDimNum() != 4,
+                    OP_LOGE(opName_, "BSND ori_topk_length shape must be [B, S1, N2]."),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(topkLenShape.GetDim(0) != sparseShape.GetDim(0) ||
+                        topkLenShape.GetDim(1) != sparseShape.GetDim(1) ||
+                        topkLenShape.GetDim(2) != sparseShape.GetDim(2),
+                    OP_LOGE(opName_, "ori_topk_length shape must match ori_sparse_indices without K dim."),
+                    return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1800,17 +1831,21 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
                             *opParamInfo_.oriMaskMode),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(*opParamInfo_.cmpMaskMode != 3,
-                    OP_LOGE(opName_, "cmpMaskMode should be 3 on %s, but got %u", A2_A3_PLATFORM_LOG.c_str(),
-                            *opParamInfo_.cmpMaskMode),
+                    OP_LOGE(opName_, "cmpMaskMode should be 3 on %s, but got %u",
+                        A2_A3_PLATFORM_LOG.c_str(), *opParamInfo_.cmpMaskMode),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            oriWinLeft_ != 127,
-            OP_LOGE(opName_, "oriWinLeft_ should be 127 on %s, but got %ld", A2_A3_PLATFORM_LOG.c_str(), oriWinLeft_),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            oriWinRight_ != 0,
-            OP_LOGE(opName_, "oriWinRight_ should be 0 on %s, but got %ld", A2_A3_PLATFORM_LOG.c_str(), oriWinRight_),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(oriWinLeft_ != 127 && !hasOriSparseIndices_,
+                    OP_LOGE(opName_, "oriWinLeft_ should be 127 on %s when ori_sparse_indices is empty, but got %ld",
+                        A2_A3_PLATFORM_LOG.c_str(), oriWinLeft_),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(oriWinRight_ != 0 && !hasOriSparseIndices_,
+                    OP_LOGE(opName_, "oriWinRight_ should be 0 on %s when ori_sparse_indices is empty, but got %ld",
+                        A2_A3_PLATFORM_LOG.c_str(), oriWinRight_),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(hasOriSparseIndices_ && (oriWinLeft_ < 0 || oriWinRight_ < 0),
+                    OP_LOGE(opName_, "ori_win_left/right should be non-negative for ori sparse SWA on %s.",
+                        A2_A3_PLATFORM_LOG.c_str()),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1997,8 +2032,12 @@ void SparseFlashMlaTiling::SplitBalanced(SMLATilingInfo *tilingInfo)
     sInnerSizeAlign_ = Align(sInnerSize_, BYTE_BLOCK);
     if (tilingInfo->npuArch == NpuArch::DAV_2201) {
         mBaseSize_ = tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ?
-                         tilingInfo->gSize :
-                         (256 / tilingInfo->gSize) * tilingInfo->gSize;
+            tilingInfo->gSize : (256 / tilingInfo->gSize) * tilingInfo->gSize;
+        // DSpark ori_sparse_indices are per query token; keep one S1 row per M block.
+        if (tilingInfo->hasOriSparseIndices &&
+            tilingInfo->perfMode == SMLATemplateMode::SWA_TEMPLATE_MODE) {
+            mBaseSize_ = tilingInfo->gSize;
+        }
     }
     headDimAlign_ = Align(tilingInfo->qHeadDim, BYTE_BLOCK);
     CalcUbBmm(tilingInfo);
@@ -2024,18 +2063,9 @@ uint64_t SparseFlashMlaTiling::CalcFdStagingWorkspaceSize(const SMLATilingInfo *
         return 0ULL;
     }
 
-    const uint64_t logicalCoreSlots = CalcFdLogicalSlotCount(tilingInfo, aicNum);
-    // 2表示max和sum两个缓冲区
+    const uint64_t slotCount = CalcFdLogicalSlotCount(tilingInfo, aicNum) * FD_MAX_S2_SPLIT_NUM;
     const uint64_t bytesPerSlot = tilingInfo->gSize * sizeof(float) * (headDimAlign_ + 2ULL * FD_BROADCAST_ELEMS);
-    if (tilingInfo->batchConsistency) {
-        // Intra-core reduction ping-pongs by multiCoreIdxMod2. Cross-core staging
-        // keeps one reduce-block range for every physical AIC.
-        const uint64_t intraCoreSlots = 2ULL * logicalCoreSlots;
-        const uint64_t crossCoreSlots =
-            static_cast<uint64_t>(aicNum) * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM;
-        return (intraCoreSlots + crossCoreSlots) * bytesPerSlot;
-    }
-    return logicalCoreSlots * FD_MAX_S2_SPLIT_NUM * bytesPerSlot;
+    return slotCount * bytesPerSlot;
 }
 
 // --------------------------SparseFlashMlaTiling类成员函数定义----------------------
@@ -2056,7 +2086,7 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     constexpr uint32_t VEC2_RES_ELEM_SIZE = 4;
     constexpr uint32_t PRELOAD_NUM = 2;
 
-    size_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
+    uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     if (tilingInfo->npuArch == NpuArch::DAV_3510) {
         bool isSplitG = tilingInfo->gSize > 64;
         if (isSplitG || tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
@@ -2067,7 +2097,7 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
             constexpr uint32_t D_SIZE = 512;
             constexpr uint32_t VEC_RES_ELEM_SIZE = 2;
             uint32_t gmSize = S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM;
-            if (isSplitG) {
+            if (tilingInfo->gSize > 64) {
                 gmSize *= (aicNum >> 1U);
             } else {
                 gmSize *= aicNum;
@@ -2081,12 +2111,13 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
         workspaceSize += PRELOAD_NUM * mmResUbSize_ * VEC1_RES_ELEM_SIZE * aicNum;
         workspaceSize += PRELOAD_NUM * bmm2ResUbSize_ * MM2_RES_ELEM_SIZE * aicNum;
         workspaceSize += PRELOAD_NUM * bmm2ResUbSize_ * VEC2_RES_ELEM_SIZE * aicNum;
-        if (tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE) {
+        if (tilingInfo->perfMode == SMLATemplateMode::CSA_TEMPLATE_MODE ||
+            (tilingInfo->perfMode == SMLATemplateMode::SWA_TEMPLATE_MODE && tilingInfo->hasOriSparseIndices)) {
             constexpr uint32_t MERGE_CACHE_GM_BUF_NUM = 3;
             workspaceSize += MERGE_CACHE_GM_BUF_NUM * 512 * 512 * 2 * aicNum;
         }
     }
-    workspaceSize += CalcFdStagingWorkspaceSize(tilingInfo, aicNum);
+    workspaceSize += static_cast<uint32_t>(CalcFdStagingWorkspaceSize(tilingInfo, aicNum));
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
@@ -2119,6 +2150,8 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
     tilingData_.baseParams.set_actualLenDimsCmpKV(tilingInfo->actualLenDimsCmpKV);
     tilingData_.baseParams.set_cmpResidualKVSize(tilingInfo->cmpResidualKVSize);
     tilingData_.baseParams.set_oriKeyStride0(tilingInfo->oriKeyStride0);
+    tilingData_.baseParams.set_hasOriSparseIndices(tilingInfo->hasOriSparseIndices ? 1U : 0U);
+    tilingData_.baseParams.set_oriSparseIndexWidth(tilingInfo->oriSparseIndexWidth);
     tilingData_.cmpParams.set_cmpKeyStride0(tilingInfo->cmpKeyStride0);
 
     if (tilingInfo->npuArch == NpuArch::DAV_3510) {
@@ -2146,7 +2179,7 @@ ge::graphStatus SparseFlashMlaTiling::DoOpTiling(SMLATilingInfo *tilingInfo)
         splitG = static_cast<uint32_t>(tilingInfo->gSize > 64);
     }
     tilingKey = GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(tilingInfo->perfMode), splitG,
-                                   headRatioOne, static_cast<uint32_t>(tilingInfo->batchConsistency));
+                                   headRatioOne);
     context_->SetScheduleMode(1);
     context_->SetTilingKey(tilingKey);
 

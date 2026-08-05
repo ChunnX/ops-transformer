@@ -2,24 +2,14 @@
 
 ## 产品支持情况
 
-<!-- npu="950" id1 -->
-- <term>Ascend 950PR/Ascend 950DT</term>：支持
-<!-- end id1 -->
-<!-- npu="A3" id2 -->
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
-<!-- end id2 -->
-<!-- npu="910b" id3 -->
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
-<!-- end id3 -->
-<!-- npu="310b" id4 -->
-- <term>Atlas 200I/500 A2 推理产品</term>：不支持
-<!-- end id4 -->
-<!-- npu="310p" id5 -->
-- <term>Atlas 推理系列产品</term>：不支持
-<!-- end id5 -->
-<!-- npu="910" id6 -->
-- <term>Atlas 训练系列产品</term>：不支持
-<!-- end id6 -->
+| 产品                                                     | 是否支持 |
+| :------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                   |    √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> |    √    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
+| <term>Atlas 200I/500 A2 推理产品</term>                  |    ×    |
+| <term>Atlas 推理系列产品</term>                          |    ×    |
+| <term>Atlas 训练系列产品</term>                          |    ×    |
 
 ## 功能说明
 
@@ -219,11 +209,17 @@ aclnnStatus aclnnSparseFlashMla(
     <tr>
       <td>oriSparseIndicesOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>代表离散取oriKvCache的索引。</td>
-      <td>当前暂不支持，必须传入nullptr。</td>
+      <td>表示离散读取oriKvCache的逻辑行索引（logical index）。</td>
+      <td>SWA ori sparse场景（如DSpark draft attention）必须传入非空Tensor；连续SWA场景传入nullptr。layoutKv为PA_BBND时必须同时传入oriBlockTableOptional和sequsedOriKvOptional。index为batch内logical ori row，需通过oriBlockTableOptional映射到物理block slot。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>-</td>
+      <td>
+        <ul>
+          <li>layoutQ为BSND时：(B, S1, N2, K_ori)</li>
+          <li>layoutQ为TND时：(T1, N2, K_ori)</li>
+        </ul>
+        其中K_ori为ori侧稀疏选择数上界；每行可用-1表示提前结束，实际可见长度可由oriTopkLengthOptional给出。
+      </td>
       <td>√</td>
     </tr>
     <tr>
@@ -335,11 +331,16 @@ aclnnStatus aclnnSparseFlashMla(
     <tr>
       <td>oriTopkLengthOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>预留输入，当前版本不支持传入非空Tensor。</td>
-      <td>必须传入nullptr或空Tensor；传入非空Tensor会返回参数错误。</td>
+      <td>表示每行query对应的ori_sparse_indices实际有效长度，用于避免kernel扫描-1。</td>
+      <td>SWA ori sparse场景可选传入；未传时由每行ori_sparse_indices中第一个-1推导。shape须与ori_sparse_indices去掉最后一维后一致。连续SWA场景须传入nullptr或空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>-</td>
+      <td>
+        <ul>
+          <li>layoutQ为BSND时：(B, S1, N2)</li>
+          <li>layoutQ为TND时：(T1, N2)</li>
+        </ul>
+      </td>
       <td>√</td>
     </tr>
     <tr>
@@ -521,13 +522,8 @@ aclnnStatus aclnnSparseFlashMla(
   </tbody>
   </table>
 
-  <!-- npu="A3,910b" id7 -->
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1/N2支持1、2、4、8、16、32、64、128；cmp_ratio在SWA场景保持默认值1，CSA支持传入4，HCA支持传入128；block_size取值为16的倍数，最大支持1024；ori_sparse_indices当前暂不支持，cmp_sparse_indices的最后一维K2当前支持512或1024。
-  <!-- end id7 -->
-  <!-- npu="950" id8 -->
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1/N2支持1、2、4、8、16、32、64、128；cmp_ratio在SWA场景保持默认值1，CSA支持传入4，HCA支持传入128；block_size取值为16的倍数，最大支持1024；连续SWA场景oriWinLeft仅支持127、oriWinRight仅支持0；SWA ori sparse场景（oriSparseIndicesOptional非空）支持oriWinRight&gt;0且oriTopk&gt;0；cmp_sparse_indices的最后一维K2当前支持512或1024。
   - <term>Ascend 950PR/Ascend 950DT</term>：N1/N2支持2、4、8、16、32、64、128，不支持1。
-
-  <!-- end id8 -->
 
 - **返回值**
 
@@ -535,7 +531,6 @@ aclnnStatus aclnnSparseFlashMla(
 
   第一段接口完成入参校验，出现以下场景时报错：
 
-  <!-- npu="A3,910b" id9 -->
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
     <table style="undefined;table-layout: fixed;width: 1200px"><colgroup>
@@ -574,7 +569,7 @@ aclnnStatus aclnnSparseFlashMla(
         <td>SWA场景cmpRatio不为1，或cmpRatio与CSA、HCA场景不匹配。</td>
       </tr>
       <tr>
-        <td>oriWinLeft不为127，或oriWinRight不为0。</td>
+        <td>oriWinLeft不为127，或oriWinRight不为0（连续SWA且oriSparseIndicesOptional为空时）。</td>
       </tr>
       <tr>
         <td>layoutQOptional、layoutKvOptional、topkValueMode、cmpSparseIndicesOptional、metadataOptional、sinksOptional、cuSeqlens或seqused相关参数规格不在支持范围内。</td>
@@ -582,8 +577,6 @@ aclnnStatus aclnnSparseFlashMla(
     </tbody>
     </table>
 
-  <!-- end id9 -->
-  <!-- npu="950" id10 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
 
     <table style="undefined;table-layout: fixed;width: 1200px"><colgroup>
@@ -629,8 +622,6 @@ aclnnStatus aclnnSparseFlashMla(
       </tr>
     </tbody>
     </table>
-
-  <!-- end id10 -->
 
 ## aclnnSparseFlashMla
 
@@ -683,18 +674,20 @@ aclnnStatus aclnnSparseFlashMla(
 
 - 使用约束
 
-  - 资料支持范围内暂不支持对`oriKvOptional`进行稀疏计算，设置`oriSparseIndicesOptional`无效。
-  - 除`oriTopkLengthOptional`和`cmpTopkLengthOptional`等预留输入可传入nullptr或空Tensor外，其余已传入Tensor不支持为空。
+  - 连续SWA场景下未传入`oriSparseIndicesOptional`时，按滑动窗口计算ori侧注意力；`oriWinLeft`/`oriWinRight`在A2/A3上须为127/0。
+  - SWA ori sparse场景（`oriSparseIndicesOptional`非空，又称DSpark ori sparse SWA）下，每行query的ori侧可见集合由`oriSparseIndicesOptional`精确给出；index为batch内logical ori row，PA_BBND下通过`oriBlockTableOptional` gather物理KV。该场景要求`oriMaskMode`为4、`cmpKvOptional`为空，且`oriWinLeft`/`oriWinRight`须为非负数（可含`oriWinRight`&gt;0以覆盖draft block）。
+  - `oriTopkLengthOptional`在SWA ori sparse场景可选；连续SWA、`cmpTopkLengthOptional`等其它预留输入在未启用对应稀疏路径时须传入nullptr或空Tensor。
   - `metadataOptional`参数必须传入，由`aclnnSparseFlashMlaMetadata`算子生成，shape固定为(1024,)。
   - `cmpResidualKvOptional`为主算子和`aclnnSparseFlashMlaMetadata`的可选入参；传入后用于按`cmp_len * cmpRatio + residual`恢复cmp侧mask使用的压缩前长度。
 
 - 三种Attention场景输入要求
 
-  | 场景 | oriKvOptional | cmpKvOptional | cmpSparseIndicesOptional | 说明 |
-  | :--- | :----- | :----- | :----------------- | :--- |
-  | SWA   | 必须传入 | 不传入 | 不传入 | 仅滑动窗口注意力 |
-  | CSA   | 必须传入 | 必须传入 | 必须传入 | 滑动窗口 + TopK稀疏压缩KV |
-  | HCA | 必须传入 | 必须传入 | 不传入 | 滑动窗口 + 稠密压缩KV |
+  | 场景 | oriKvOptional | cmpKvOptional | cmpSparseIndicesOptional | oriSparseIndicesOptional | 说明 |
+  | :--- | :----- | :----- | :----------------- | :----------------------- | :--- |
+  | SWA   | 必须传入 | 不传入 | 不传入 | 不传入 | 连续滑动窗口注意力 |
+  | SWA ori sparse | 必须传入 | 不传入 | 不传入 | 必须传入 | DSpark draft attention等ori sparse SWA |
+  | CSA   | 必须传入 | 必须传入 | 必须传入 | 不传入 | 滑动窗口 + TopK稀疏压缩KV |
+  | HCA | 必须传入 | 必须传入 | 不传入 | 不传入 | 滑动窗口 + 稠密压缩KV |
 
 - Layout约束
 

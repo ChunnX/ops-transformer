@@ -169,7 +169,9 @@ TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsOriKV)
 TILING_DATA_FIELD_DEF(uint32_t, actualLenDimsCmpKV)
 TILING_DATA_FIELD_DEF(uint32_t, cmpResidualKVSize)
 TILING_DATA_FIELD_DEF(uint32_t, kvHeadNum)
-TILING_DATA_FIELD_DEF(uint32_t, oriKeyStride0) // A5
+TILING_DATA_FIELD_DEF(uint32_t, oriKeyStride0)      // A5
+TILING_DATA_FIELD_DEF(uint32_t, hasOriSparseIndices)
+TILING_DATA_FIELD_DEF(uint32_t, oriSparseIndexWidth)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaSwaParamsOp, SparseFlashMlaSwaParams)
 
@@ -217,8 +219,8 @@ struct SMLAParaInfo {
     const uint32_t *cmpRatio = nullptr;
     const uint32_t *oriMaskMode = nullptr;
     const uint32_t *cmpMaskMode = nullptr;
-    const int32_t *oriWinLeft = nullptr;
-    const int32_t *oriWinRight = nullptr;
+    const uint32_t *oriWinLeft = nullptr;
+    const uint32_t *oriWinRight = nullptr;
     const char *layoutQ = nullptr;
     const char *layoutKv = nullptr;
     const uint32_t *topkValueMode = nullptr;
@@ -274,7 +276,9 @@ public:
     int64_t sparseBlockSize = 0;
     int64_t oriSparseBlockCount = 0;
     int64_t cmpSparseBlockCount = 0;
-    int64_t sparseBlockCount = 0; // A2/A3
+    int64_t sparseBlockCount = 0;    // A2/A3
+    bool hasOriSparseIndices = false;
+    uint32_t oriSparseIndexWidth = 0;
 
     int64_t topkValueMode = 0;
     // Mask
@@ -282,7 +286,6 @@ public:
     // Others Flag
     uint32_t sparseCount = 0;
     bool returnSoftmaxLse = false;
-    bool batchConsistency = false;
 
     // PageAttention
     uint32_t blockTypeSize = 0;
@@ -417,6 +420,8 @@ private:
     uint32_t sparseBlockCount_ = 0;    // A2/A3
     int64_t oriWinLeft_ = 0;
     int64_t oriWinRight_ = 0;
+    bool hasOriSparseIndices_ = false;
+    uint32_t oriSparseIndexWidth_ = 0;
 
     int64_t topkValueMode_;
 
@@ -535,12 +540,13 @@ public:
     int64_t sparseBlockCount_ = 0;    // A2/A3
     int64_t oriWinLeft_ = 0;
     int64_t oriWinRight_ = 0;
+    bool hasOriSparseIndices_ = false;
+    uint32_t oriSparseIndexWidth_ = 0;
     int64_t topkValueMode_ = 0;
     uint32_t maxActualseq_ = 0;
     bool isSameSeqAllKVTensor_ = true;
     uint32_t actualLenDimsKV_ = 0;
     uint32_t actualLenDimsQ_ = 0;
-    bool batchConsistency_ = false;
 
     uint32_t actualLenDimsOriKV_ = 0;
     uint32_t actualLenDimsCmpKV_ = 0;
