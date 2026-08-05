@@ -38,7 +38,7 @@ using GMMA8W4BasicApiTilingData = GroupedMatmulTilingData::GMMA8W4BasicApiTiling
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_cgmct_mx_kernel.h"
 #endif
 #if defined(V310_GMM_QUANT_A4W4) && IS_BLAZE
-#include "arch35/tensor_adapter/qgmm_a4w4int_kernel.h"
+#include "arch35/quant_adaptive_sliding_window_templates/qgmm_a4w4int_kernel.h"
 #endif
 #if defined(V310_GMM_QUANT_MX) || defined(V310_GMM_QUANT_PERTENSOR_CUBE)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_init_output.h"
@@ -378,13 +378,8 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
         // transB 通过运行时 inputTransposedNz(桥接 qgmm_a4w4int_kernel.h 从 reserved.bit0/bit1 读)
         // 驱动 preprocess 选 ConvertNzTile(transB=0)/ConvertTransposedNzTile(transB=1)。
         // 注意:不可用 ZNLayoutPtn(transB=1),否则 cube 按 ZN 读 NZ 物理数据会错位。
-        if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
-                      KERNEL_TYPE == GMM_A4W4_MIX) {
-            GET_TILING_DATA_WITH_STRUCT(GMMA4W4IntQuantTilingData, tilingData, tiling);
-            GMM_A4W4_IMPL_CLASS(AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn,
-                                AscendC::Te::NDExtLayoutPtn);
-        } else if constexpr (QUANT_B_TRANS == GMM_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
-                             KERNEL_TYPE == GMM_A4W4_MIX) {
+        if constexpr ((QUANT_B_TRANS == GMM_NO_TRANS || QUANT_B_TRANS == GMM_TRANS) &&
+                      QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_A4W4_MIX) {
             GET_TILING_DATA_WITH_STRUCT(GMMA4W4IntQuantTilingData, tilingData, tiling);
             GMM_A4W4_IMPL_CLASS(AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn,
                                 AscendC::Te::NDExtLayoutPtn);
