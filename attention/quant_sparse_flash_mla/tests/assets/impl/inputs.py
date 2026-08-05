@@ -269,6 +269,54 @@ class QuantSparseFlashMlaInputAdapter:
         else:
             np.copyto(dst_array, src_array.astype(dst_array.dtype, copy=False))
 
+    def copy_metadata(self, dst, data):
+        metadata_input = data.get("metadata_input")
+        op_input = data.get("op_input")
+        if metadata_input is None or op_input is None:
+            raise ValueError("QSMLA pytest generator did not return metadata_input/op_input")
+
+        def to_npu(name, empty_if_none=False):
+            value = op_input.get(name)
+            if value is None:
+                return torch.tensor([]).npu() if empty_if_none else None
+            return value.npu() if torch.is_tensor(value) else torch.as_tensor(value).npu()
+
+        metadata_kwargs = {
+            "num_heads_q": metadata_input["num_heads_q"],
+            "num_heads_kv": metadata_input["num_heads_kv"],
+            "head_dim": metadata_input["head_dim"],
+            "cu_seqlens_q": to_npu("cu_seqlens_q", empty_if_none=True),
+            "cu_seqlens_ori_kv": to_npu("cu_seqlens_ori_kv", empty_if_none=True),
+            "cu_seqlens_cmp_kv": to_npu("cu_seqlens_cmp_kv", empty_if_none=True),
+            "seqused_q": to_npu("seqused_q", empty_if_none=True),
+            "seqused_ori_kv": to_npu("seqused_ori_kv"),
+            "seqused_cmp_kv": to_npu("seqused_cmp_kv"),
+            "cmp_residual_kv": to_npu("cmp_residual_kv"),
+            "ori_topk_length": to_npu("ori_topk_length"),
+            "cmp_topk_length": to_npu("cmp_topk_length"),
+            "quant_mode": op_input["quant_mode"],
+            "batch_size": metadata_input["batch_size"],
+            "max_seqlen_q": metadata_input["max_seqlen_q"],
+            "max_seqlen_ori_kv": metadata_input["max_seqlen_ori_kv"],
+            "max_seqlen_cmp_kv": metadata_input["max_seqlen_cmp_kv"],
+            "ori_topk": metadata_input.get("ori_topk", 0),
+            "cmp_topk": metadata_input["topk"],
+            "cmp_ratio": metadata_input["cmp_ratio"],
+            "ori_mask_mode": metadata_input["ori_mask_mode"],
+            "cmp_mask_mode": metadata_input["cmp_mask_mode"],
+            "layout_q": metadata_input["layout_q"],
+            "layout_kv": metadata_input["layout_kv"],
+            "has_ori_kv": metadata_input["has_ori_kv"],
+            "has_cmp_kv": metadata_input["has_cmp_kv"],
+        }
+        for name in ("ori_win_left", "ori_win_right"):
+            if metadata_input.get(name) is not None:
+                metadata_kwargs[name] = metadata_input[name]
+        metadata_api = getattr(
+            torch.ops.cann_ops_transformer, "quant_sparse_flash_mla_metadata"
+        )
+        self.copy_tensor(dst, metadata_api(**metadata_kwargs), "metadata")
+
     def generate_case(self, params):
         pytest_utils = self.load_pytest_module("utils", "utils.py")
         pytest_check = self.load_pytest_module("check", "check_valid_param.py")
@@ -298,8 +346,29 @@ def generate_quant_sparse_flash_mla_inputs(
         cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None,
         seqused_q=None, seqused_ori_kv=None, seqused_cmp_kv=None,
         cmp_residual_kv=None, ori_topk_length=None, cmp_topk_length=None,
-        sinks=None, **kwargs):
-    """Reuse the pytest parameter validation and input processing for a TTK case."""
+        sinks=None, metadata=None, quant_mode=None, softmax_scale=1.0,
+        cmp_ratio=1, ori_mask_mode=4, cmp_mask_mode=3, ori_win_left=127,
+        ori_win_right=0, layout_q="BSND", layout_kv="BSND",
+        topk_value_mode=1, return_softmax_lse=False, **kwargs):
+    """Populate direct API inputs and its pytest-derived metadata slot."""
+    if metadata is None:
+        raise ValueError("QSMLA direct API CSV must reserve the metadata tensor slot")
+    if quant_mode is None:
+        raise ValueError("QSMLA direct API requires quant_mode from CSV")
+    params = dict(kwargs)
+    params.update({
+        "quant_mode": quant_mode,
+        "softmax_scale": softmax_scale,
+        "cmp_ratio": cmp_ratio,
+        "ori_mask_mode": ori_mask_mode,
+        "cmp_mask_mode": cmp_mask_mode,
+        "ori_win_left": ori_win_left,
+        "ori_win_right": ori_win_right,
+        "layout_q": layout_q,
+        "layout_kv": layout_kv,
+        "topk_value_mode": topk_value_mode,
+        "return_softmax_lse": return_softmax_lse,
+    })
     params = INPUT_ADAPTER.build_case_params(
         q,
         ori_kv,
@@ -307,9 +376,9 @@ def generate_quant_sparse_flash_mla_inputs(
         ori_sparse_indices,
         cmp_sparse_indices,
         sinks,
-        kwargs.get("layout_q"),
-        kwargs.get("layout_kv"),
-        kwargs,
+        layout_q,
+        layout_kv,
+        params,
     )
     data = INPUT_ADAPTER.generate_case(params)
     op_input = data["op_input"]
@@ -336,3 +405,5 @@ def generate_quant_sparse_flash_mla_inputs(
         ("sinks", sinks),
     ):
         INPUT_ADAPTER.copy_tensor(tensor, op_input.get(name), name)
+    INPUT_ADAPTER.copy_metadata(metadata, data)
+    return data

@@ -57,10 +57,10 @@ def set_compare_data(testcase_name, data):
     CASE_DATA.case_data = {str(testcase_name): data}
 
 
-def cpu_lightning_indexer_v2(q, k, w, *, return_value=0,
+def cpu_lightning_indexer_v2(q, k, w, topk, *, return_value=0,
                              testcase_name=None, **kwargs):
     """Return the CPU outputs produced while generating this exact pytest case."""
-    del q, k, w, kwargs
+    del q, k, w, topk, kwargs
     data = CASE_DATA.activate(testcase_name)
     if int(return_value):
         sparse_value = data["cpu_topk_value"]

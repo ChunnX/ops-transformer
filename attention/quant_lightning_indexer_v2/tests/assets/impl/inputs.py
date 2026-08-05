@@ -12,9 +12,11 @@
 
 """Input customization for QuantLightningIndexer V2 TTK cases."""
 
+import fcntl
 import importlib.util
 import inspect
 import sys
+import tempfile
 from pathlib import Path
 
 import torch
@@ -34,6 +36,7 @@ class QuantLightningIndexerV2InputAdapter:
     def __init__(self):
         self.pytest_golden = None
         self.pytest_normalizer = None
+        self.metadata_runtime_ready = False
 
     @staticmethod
     def load_golden_store():
@@ -267,6 +270,37 @@ class QuantLightningIndexerV2InputAdapter:
                 f"pytest={tuple(src_cpu.shape)}"
             )
         dst.copy_(src_cpu.to(dtype=dst.dtype, device=dst.device))
+
+    def copy_metadata(self, dst, data):
+        metadata_input = data.get("metadata_input")
+        if metadata_input is None:
+            raise ValueError("QLI_V2 pytest generator did not return metadata_input")
+        device_input = {
+            name: value.npu() if torch.is_tensor(value) else value
+            for name, value in metadata_input.items()
+        }
+        metadata = self.call_metadata(device_input)
+        self.copy_tensor(dst, metadata, "metadata")
+
+    def call_metadata(self, device_input):
+        if self.metadata_runtime_ready:
+            return torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
+                **device_input
+            )
+
+        lock_path = Path(tempfile.gettempdir()) / "ttk_qli_v2_metadata_build.lock"
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                metadata = (
+                    torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
+                        **device_input
+                    )
+                )
+                self.metadata_runtime_ready = True
+                return metadata
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     @staticmethod
     def golden_data(data, layout_query, cu_seqlens_q):
@@ -524,27 +558,30 @@ def rebuild_qli_v2_compare_data(compare_context):
     return INPUT_ADAPTER.rebuild_compare_data(compare_context)
 
 
-def generate_qli_v2_inputs(query, key, weights, query_dequant_scale,
-                           key_dequant_scale, *, cu_seqlens_q=None,
-                           cu_seqlens_k=None, seqused_q=None, seqused_k=None,
-                           cmp_residual_k=None, block_table=None,
-                           output_idx_offset=None, layout_query=None,
-                           layout_key=None, **kwargs):
-    """Generate the exact pytest inputs and CPU golden for a TTK case."""
-    INPUT_ADAPTER.customize(
-        query,
-        key,
-        weights,
-        query_dequant_scale,
-        key_dequant_scale,
-        cu_seqlens_q,
-        cu_seqlens_k,
-        seqused_q,
-        seqused_k,
-        cmp_residual_k,
-        block_table,
-        output_idx_offset,
-        layout_query,
-        layout_key,
-        kwargs,
+def generate_qli_v2_inputs(
+        query, key, weights, query_dequant_scale, key_dequant_scale,
+        topk, quant_mode, *, cu_seqlens_q=None, cu_seqlens_k=None,
+        seqused_q=None, seqused_k=None, cmp_residual_k=None,
+        block_table=None, output_idx_offset=None, metadata=None,
+        max_seqlen_q=-1, layout_q="BSND", layout_k="BSND", mask_mode=0,
+        cmp_ratio=1, return_value=0, **kwargs):
+    """Populate direct API inputs and its pytest-derived metadata slot."""
+    if metadata is None:
+        raise ValueError("QLI_V2 direct API CSV must reserve the metadata tensor slot")
+    params = dict(kwargs)
+    params.update({
+        "sparse_count": topk,
+        "quant_mode": quant_mode,
+        "max_seqlen_q": max_seqlen_q,
+        "layout_query": layout_q,
+        "layout_key": layout_k,
+        "sparse_mode": mask_mode,
+        "cmp_ratio": cmp_ratio,
+        "return_value": return_value,
+    })
+    data = INPUT_ADAPTER.customize(
+        query, key, weights, query_dequant_scale, key_dequant_scale,
+        cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k,
+        block_table, output_idx_offset, layout_q, layout_k, params,
     )
+    INPUT_ADAPTER.copy_metadata(metadata, data)

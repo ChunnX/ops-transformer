@@ -60,10 +60,11 @@ def set_compare_data(testcase_name, data):
 
 
 def cpu_quant_lightning_indexer_v2(query, key, weights, query_dequant_scale,
-                                   key_dequant_scale, *, return_value=0,
+                                   key_dequant_scale, topk, quant_mode, *, return_value=0,
                                    testcase_name=None, **kwargs):
     """Return the CPU outputs produced while generating this exact pytest case."""
-    del query, key, weights, query_dequant_scale, key_dequant_scale, kwargs
+    del query, key, weights, query_dequant_scale, key_dequant_scale
+    del topk, quant_mode, kwargs
     data = CASE_DATA.activate(testcase_name)
     if int(return_value):
         sparse_value = data["cpu_topk_value"]

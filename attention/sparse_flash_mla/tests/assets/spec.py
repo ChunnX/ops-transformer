@@ -44,7 +44,6 @@ def load_impl_module(stem):
 golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
 compare_module = load_impl_module("compare")
-graph_module = load_impl_module("graph")
 
 
 class SparseFlashMlaSpec:
@@ -56,9 +55,6 @@ class SparseFlashMlaSpec:
     }
 
     compare = staticmethod(compare_module.compare)
-    torch_graph = graph_module.SparseFlashMlaAclGraph
-
-
 __spec__ = {
-    "smla_ttk_ops.sparse_flash_mla_ttk": "SparseFlashMlaSpec",
+    "torch.ops.cann_ops_transformer.sparse_flash_mla": "SparseFlashMlaSpec",
 }

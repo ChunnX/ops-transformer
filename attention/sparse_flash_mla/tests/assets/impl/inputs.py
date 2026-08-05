@@ -217,7 +217,11 @@ class SparseFlashMlaInputAdapter:
             "seqused_cmp_kv": seq_cmp,
             "cmp_residual_kv": residual,
             "template_mode": mode,
-            "cmp_ratio": kwargs.get("cmp_ratio"),
+            "cmp_ratio": (
+                kwargs.get("pytest_cmp_ratio")
+                if "pytest_cmp_ratio" in kwargs
+                else kwargs.get("cmp_ratio")
+            ),
             "cmp_mask_mode": kwargs.get("cmp_mask_mode"),
         })
         params.update({name: value for name, value in data_ranges.items() if value is not None})
@@ -239,6 +243,52 @@ class SparseFlashMlaInputAdapter:
                 f"{name} shape mismatch: TTK={tuple(dst.shape)} pytest={tuple(src_cpu.shape)}"
             )
         dst.copy_(src_cpu.to(dtype=dst.dtype, device=dst.device))
+
+    def copy_metadata(self, dst, data):
+        metadata_input = data.get("metadata_input")
+        op_input = data.get("input")
+        if metadata_input is None or op_input is None:
+            raise ValueError("SMLA pytest generator did not return metadata_input/input")
+
+        def to_npu(value):
+            return value.npu() if torch.is_tensor(value) else value
+
+        metadata_kwargs = {
+            "num_heads_q": metadata_input["N1"],
+            "num_heads_kv": metadata_input["N2"],
+            "head_dim": metadata_input["D"],
+            "cu_seqlens_q": to_npu(op_input.get("cu_seqlens_q")),
+            "cu_seqlens_ori_kv": to_npu(op_input.get("cu_seqlens_ori_kv")),
+            "cu_seqlens_cmp_kv": to_npu(op_input.get("cu_seqlens_cmp_kv")),
+            "seqused_q": to_npu(op_input.get("seqused_q")),
+            "seqused_ori_kv": to_npu(op_input.get("seqused_ori_kv")),
+            "seqused_cmp_kv": to_npu(op_input.get("seqused_cmp_kv")),
+            "cmp_residual_kv": to_npu(op_input.get("cmp_residual_kv")),
+            "ori_topk_length": to_npu(metadata_input.get("ori_topk_length")),
+            "cmp_topk_length": to_npu(metadata_input.get("cmp_topk_length")),
+            "batch_size": metadata_input["B"],
+            "max_seqlen_q": metadata_input["max_seqlen_q"],
+            "max_seqlen_ori_kv": metadata_input["max_seqlen_ori_kv"],
+            "max_seqlen_cmp_kv": metadata_input["max_seqlen_cmp_kv"],
+            "ori_topk": metadata_input["K1"]
+            if op_input.get("ori_sparse_indices") is not None else 0,
+            "cmp_topk": metadata_input["K"]
+            if op_input.get("cmp_sparse_indices") is not None else 0,
+            "cmp_ratio": metadata_input["cmp_ratio"],
+            "ori_mask_mode": metadata_input["ori_mask_mode"],
+            "cmp_mask_mode": metadata_input["cmp_mask_mode"],
+            "layout_q": metadata_input["layout_q"],
+            "layout_kv": metadata_input["layout_kv"],
+            "has_ori_kv": op_input.get("ori_kv") is not None,
+            "has_cmp_kv": op_input.get("cmp_kv") is not None,
+        }
+        for name in ("ori_win_left", "ori_win_right"):
+            if metadata_input.get(name) is not None:
+                metadata_kwargs[name] = metadata_input[name]
+        metadata = torch.ops.cann_ops_transformer.sparse_flash_mla_metadata(
+            **metadata_kwargs
+        )
+        self.copy_tensor(dst, metadata, "metadata")
 
     def generate_case(self, params):
         pytest_utils = self.load_pytest_module("utils", "utils.py")
@@ -267,23 +317,41 @@ class SparseFlashMlaInputAdapter:
 INPUT_ADAPTER = SparseFlashMlaInputAdapter()
 
 
-def generate_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None, ori_sparse_indices=None,
-                                     cmp_sparse_indices=None, ori_block_table=None, cmp_block_table=None,
-                                     cu_seqlens_q=None, cu_seqlens_ori_kv=None,
-                                     cu_seqlens_cmp_kv=None, seqused_q=None,
-                                     seqused_ori_kv=None, seqused_cmp_kv=None,
-                                     cmp_residual_kv=None, ori_topk_length=None,
-                                     cmp_topk_length=None, sinks=None, **kwargs):
-    """Reuse the pytest parameter and input processing for a TTK case."""
+def generate_sparse_flash_mla_inputs(
+        q, *, ori_kv=None, cmp_kv=None, ori_sparse_indices=None,
+        cmp_sparse_indices=None, ori_block_table=None, cmp_block_table=None,
+        cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None,
+        seqused_q=None, seqused_ori_kv=None, seqused_cmp_kv=None,
+        cmp_residual_kv=None, ori_topk_length=None, cmp_topk_length=None,
+        sinks=None, metadata=None, softmax_scale=1.0, cmp_ratio=1,
+        ori_mask_mode=4, cmp_mask_mode=3, ori_win_left=127,
+        ori_win_right=0, layout_q="BSND", layout_kv="BSND",
+        topk_value_mode=1, return_softmax_lse=False, **kwargs):
+    """Populate direct API inputs and its pytest-derived metadata slot."""
+    if metadata is None:
+        raise ValueError("SMLA direct API CSV must reserve the metadata tensor slot")
+    params = dict(kwargs)
+    params.update({
+        "softmax_scale": softmax_scale,
+        "cmp_ratio": cmp_ratio,
+        "ori_mask_mode": ori_mask_mode,
+        "cmp_mask_mode": cmp_mask_mode,
+        "ori_win_left": ori_win_left,
+        "ori_win_right": ori_win_right,
+        "layout_q": layout_q,
+        "layout_kv": layout_kv,
+        "topk_value_mode": topk_value_mode,
+        "return_softmax_lse": return_softmax_lse,
+    })
     data = INPUT_ADAPTER.customize(
         q,
         ori_kv,
         cmp_kv,
         ori_sparse_indices,
         cmp_sparse_indices,
-        kwargs.get("layout_q"),
-        kwargs.get("layout_kv"),
-        kwargs,
+        layout_q,
+        layout_kv,
+        params,
     )
     op_input = data["input"]
     metadata_input = data.get("metadata_input", {})
@@ -307,6 +375,10 @@ def generate_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None, ori_sparse_
         ("sinks", sinks),
     ):
         source = op_input.get(name)
+        if name == "cu_seqlens_q" and layout_q != "TND":
+            source = None
         if name in ("ori_topk_length", "cmp_topk_length") and source is None:
             source = metadata_input.get(name)
         INPUT_ADAPTER.copy_tensor(tensor, source, name)
+    INPUT_ADAPTER.copy_metadata(metadata, data)
+    return data
