@@ -238,7 +238,7 @@ def run_case(case_name, params, device_id=0):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MLA D512 non-quant precision test runner")
-    parser.add_argument("--case_files", type=str, default="mla_d512_noquant",
+    parser.add_argument("--case_files", type=str, default="mla_d512_noquant_gen",
                         help="Comma-separated test_cases module names")
     parser.add_argument("--case_id", type=str, default="all",
                         help="Specific case id (substring match) or 'all'")
