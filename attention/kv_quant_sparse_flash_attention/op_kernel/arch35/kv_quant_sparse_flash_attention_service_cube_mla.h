@@ -75,10 +75,10 @@ public:
     static constexpr uint32_t dBaseSize = 576;
     static constexpr uint32_t dBaseMatmulSize = 128;
 
-    __aicore__ inline QSFAMatmulService(){};
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *qsfaL1BufferManagerPtr,
-                                         __gm__ uint8_t *query);
-    __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, const ConstInfo &constInfo);
+    __aicore__ inline QSFAMatmulService() {};
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *cuSeqlensQ,
+                                            const ConstInfo &constInfo);
+    __aicore__ inline void InitLocalBuffer(TPipe *pipe, BufferManager<BufferType::L1> &qsfaL1BufMgr);
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output,
                                        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
                                        Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
@@ -91,7 +91,6 @@ public:
         ConstInfo &constInfo);
 
 private:
-    __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, const ConstInfo &constInfo);
     __aicore__ inline void CalcS1Coord(RunInfo &runInfo, ConstInfo &constInfo);
 
@@ -123,7 +122,6 @@ private:
     // GS1循环间开pingpong；D大于256使用单块Buffer，S1循环间驻留；fp32场景单块不驻留
     BuffersPolicySingleBuffer<BufferType::L1> l1QBuffers;
     // L0空间buffer manager
-    BufferManager<BufferType::L1> *qsfaL1BufferManagerPtr;
     BufferManager<BufferType::L0A> l0aBufferManager;
     BufferManager<BufferType::L0B> l0bBufferManager;
     BufferManager<BufferType::L0C> l0cBufferManager;
@@ -135,39 +133,23 @@ private:
     BuffersPolicyDB<BufferType::L0C> mmL0CBuffers;
 };
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::InitCubeBlock(
-    TPipe *pipe, BufferManager<BufferType::L1> *qsfaL1BuffMgr, __gm__ uint8_t *query)
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::InitGlobalBuffer(
+    __gm__ uint8_t *query, __gm__ uint8_t *qsfaActualSeqLengthsQ, const ConstInfo &constInfo)
 {
     if ASCEND_IS_AIC {
-        tPipe = pipe;
-        qsfaL1BufferManagerPtr = qsfaL1BuffMgr;
         this->queryGm.gmTensor.SetGlobalBuffer((__gm__ Q_T *)query);
-        InitLocalBuffer();
-    }
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *qsfaActualSeqLengthsQ,
-                                                                       const ConstInfo &constInfo)
-{
-    if ASCEND_IS_AIC {
         InitGmTensor(qsfaActualSeqLengthsQ, constInfo);
-        if constexpr (IS_SPLIT_G) {
-            mte1ToMte2Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
-            mte1ToMte2Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
-            mte1ToMte2Id[2] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
-            mte2ToMte1Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
-            mte2ToMte1Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
-            mte2ToMte1Id[2] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
-        }
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer()
+__aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer(
+    TPipe *pipe, BufferManager<BufferType::L1> &qsfaL1BufMgr)
 {
+    tPipe = pipe;
     constexpr uint32_t mm1LeftSize = s1BaseSize * dBaseSize * sizeof(Q_T);
-    l1QBuffers.Init((*qsfaL1BufferManagerPtr), mm1LeftSize);
+    l1QBuffers.Init(qsfaL1BufMgr, mm1LeftSize);
 
     // L0A B C 当前写死，能否通过基础api获取
     l0aBufferManager.Init(tPipe, L0AB_SHARED_SIZE_64K);
@@ -177,6 +159,18 @@ __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>::InitLocalBuffer()
     mmL0ABuffers.Init(l0aBufferManager, BUFFER_SIZE_16K); // db类型，填入数值是总大小的一半
     mmL0BBuffers.Init(l0bBufferManager, BUFFER_SIZE_32K);
     mmL0CBuffers.Init(l0cBufferManager, BUFFER_SIZE_128K);
+
+    if constexpr (IS_SPLIT_G) {
+        mte2ToMte1Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
+        mte2ToMte1Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
+        mte2ToMte1Id[2] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_MTE1>();
+        mte1ToMte2Id[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
+        mte1ToMte2Id[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
+        mte1ToMte2Id[2] = GetTPipePtr()->AllocEventID<HardEvent::MTE1_MTE2>();
+        SetFlag<HardEvent::MTE1_MTE2>(mte1ToMte2Id[0]);
+        SetFlag<HardEvent::MTE1_MTE2>(mte1ToMte2Id[1]);
+        SetFlag<HardEvent::MTE1_MTE2>(mte1ToMte2Id[2]);
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -228,17 +222,16 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
     PrepareLeftMatrixBmm1QSFA(inputLeftBuf, runInfo, constInfo);
 
     // 加载当前轮的右矩阵到L1
-    inputRightBuf.WaitCrossCore(); // 核间同步，这里需要根据V0操作处理同步，确保取tensor时，数据已经准备好
-
     if constexpr (IS_SPLIT_G) {
-        SetFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
-        WaitFlag<HardEvent::MTE1_MTE2>(mte2ToMte1Id[runInfo.taskIdMod3]);
+        WaitFlag<HardEvent::MTE1_MTE2>(mte1ToMte2Id[runInfo.taskIdMod3]);
         LocalTensor<Q_T> dst = inputRightBuf.GetTensor<Q_T>();
         v0ResGm.WaitCrossCore();
         GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
         DataCopy(dst, v0ResGmTensor, Align16Func(runInfo.s2RealSize) * constInfo.dSize);
-        SetFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
-        WaitFlag<HardEvent::MTE2_MTE1>(mte1ToMte2Id[runInfo.taskIdMod3]);
+        SetFlag<HardEvent::MTE2_MTE1>(mte2ToMte1Id[runInfo.taskIdMod3]);
+        WaitFlag<HardEvent::MTE2_MTE1>(mte2ToMte1Id[runInfo.taskIdMod3]);
+    } else {
+        inputRightBuf.WaitCrossCore(); // 核间同步，这里需要根据V0操作处理同步，确保取tensor时，数据已经准备好
     }
 
     inputLeftBuf.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
@@ -326,7 +319,9 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
         inputRightBuf.GetTensor<Q_T>(),                                 // 右矩阵V nope
         mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<T>(), qsfaParam);
 
-    inputRightBuf.SetCrossCore();       // bmm2才释放KV，在这里释放
+    if constexpr (IS_SPLIT_G) {
+        SetFlag<HardEvent::MTE1_MTE2>(mte1ToMte2Id[runInfo.taskIdMod3]);
+    }
     mm2ResL0C.Set<HardEvent::M_FIX>();  // 通知
     mm2ResL0C.Wait<HardEvent::M_FIX>(); // 等待
 
@@ -354,22 +349,19 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAMatmulService<TEMPLATE_ARGS>
 TEMPLATES_DEF
 class QSFAMatmulServiceDummy {
 public:
-    __aicore__ inline QSFAMatmulServiceDummy(){};
-    __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *qsfaL1BufferManagerPtr,
-                                         __gm__ uint8_t *query)
-    {}
-    __aicore__ inline void InitCubeInput(__gm__ uint8_t *cuSeqlensQ, const ConstInfo &constInfo) {}
+    __aicore__ inline QSFAMatmulServiceDummy() {};
+    __aicore__ inline void InitLocalBuffer(TPipe *pipe, BufferManager<BufferType::L1> &qsfaL1BufMgr) {};
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *cuSeqlensQ,
+                                            const ConstInfo &constInfo) {};
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
                                        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
-                                       RunInfo &runInfo, ConstInfo &constInfo)
-    {}
+                                       RunInfo &runInfo, ConstInfo &constInfo) {};
 
     __aicore__ inline void IterateBmm2(
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
         BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
-        ConstInfo &constInfo)
-    {}
+        ConstInfo &constInfo) {};
 };
 
 template <typename T>
