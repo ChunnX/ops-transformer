@@ -20,6 +20,15 @@
 #define FAKE_SEND_MODE 0
 #endif
 
+// Fake mode redirects peer windows to local HBM. Reissue remote-rank data transfers to approximate the lower
+// inter-card bandwidth, while same-rank transfers still execute once.
+#ifndef FAKE_REMOTE_IO_REPEAT
+#define FAKE_REMOTE_IO_REPEAT 4
+#endif
+#if FAKE_REMOTE_IO_REPEAT < 1
+#error "FAKE_REMOTE_IO_REPEAT must be at least 1"
+#endif
+
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 #include "kernel_operator.h"
 #define HOST_DEVICE __forceinline__[aicore]

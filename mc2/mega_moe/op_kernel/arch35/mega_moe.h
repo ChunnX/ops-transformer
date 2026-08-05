@@ -729,7 +729,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendMaskCal(const SendM
                                      static_cast<uint64_t>(maskSlotSize_) +
                                  static_cast<uint64_t>(batchStart / 8);
             dstGlobalTensor.SetGlobalBuffer((__gm__ uint8_t *)GetRankWinAddrWithOffset(dstRank, dstOffset));
-            DataCopyPad(dstGlobalTensor, maskBuf, {1U, static_cast<uint32_t>(pushBytes), 0U, 0U, 0U});
+            uint32_t remoteIoRepeat = GetFakeRemoteIoRepeatCount(dstRank, rankId_);
+            for (uint32_t repeatIndex = 0; repeatIndex < remoteIoRepeat; ++repeatIndex) {
+                DataCopyPad(dstGlobalTensor, maskBuf, {1U, static_cast<uint32_t>(pushBytes), 0U, 0U, 0U});
+            }
             SetFlag<AscendC::HardEvent::MTE3_V>(bufEvent);
         }
     }
@@ -941,7 +944,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::FetchTokenNLoadMetaInfo
     if constexpr (IsBufferReuse) {
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId); // 等该槽上一轮 token/scale 搬完，方可覆盖
     }
-    DataCopy(copyTmpTensor, remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
+    uint32_t remoteIoRepeat = GetFakeRemoteIoRepeatCount(remoteRankIdx, rankId_);
+    for (uint32_t repeatIndex = 0; repeatIndex < remoteIoRepeat; ++repeatIndex) {
+        DataCopy(copyTmpTensor, remoteRankGlobalTensor[remoteCopyOffset], copyInNum);
+    }
     SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
 
     if constexpr (IsBufferReuse) {
