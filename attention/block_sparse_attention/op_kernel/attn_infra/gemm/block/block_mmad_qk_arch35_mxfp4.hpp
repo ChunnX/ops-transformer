@@ -495,7 +495,7 @@ public:
 
         // Q-scale / K-scale：均按 D 分组；scaleK = Ceil(D/64)*2（= Host 每 token 的 D//64*2）
         uint32_t scaleK = CeilDivision(embed, 64) * 2;
-        uint32_t l1KEventId = MXFP4::K_EVENT0 + kBufId;
+        uint32_t l1KEventId = MXFP4::KV_EVENT0 + kBufId;
         uint32_t l1QEventId = Q_EVENT0 + qBufId;
 
         // Step5：Q/QScale 仅在 task 首 KV tile 稠密搬 GM→L1（TileCopyTla + Dn2Nz；后续 tile 复用）
