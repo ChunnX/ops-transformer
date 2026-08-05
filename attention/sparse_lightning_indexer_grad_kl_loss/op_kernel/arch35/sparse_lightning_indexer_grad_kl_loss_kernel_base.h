@@ -134,10 +134,8 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
         int64_t actualKLen = (tlKeyGmSize > 0) ? actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1) : t2Size;
         int64_t totalAivNum = baseInfo.get_totalAivNum();
 
-        AscendC::PRINTF("[luo] slig_tail_pad core aivIdx=%u aicIdx=%u, t1Size=%ld actualLen=%ld t2Size=%ld actualKLen=%ld totalAivNum=%ld\n",
+        AscendC::PRINTF("[luo] slig_tail_pad aiv=%u aic=%u t1=%ld alen=%ld t2=%ld aklen=%ld aivn=%ld\n",
             constInfo.aivIdx, constInfo.aicIdx, t1Size, actualLen, t2Size, actualKLen, totalAivNum);
-        AscendC::PRINTF("[luo] slig_gm_sizes query=%ld key=%ld bSize=%u\n",
-            tlQryGmSize, tlKeyGmSize, constInfo.bSize);
 
         if (t1Size > actualLen && totalAivNum > 0) {
             int64_t t1PadLen = t1Size - actualLen;
@@ -148,36 +146,47 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
             int64_t t1PadLenSum = static_cast<int64_t>(constInfo.aivIdx) * splitT1PadLen +
                 Min(static_cast<int64_t>(constInfo.aivIdx), remainT1PadLen);
 
-            AscendC::PRINTF("[luo] slig_t1_pad t1PadLen=%ld split=%ld remain=%ld core=%ld sum=%ld\n",
+            AscendC::PRINTF("[luo] slig_t1_pad pad=%ld split=%ld rem=%ld core=%ld sum=%ld\n",
                 t1PadLen, splitT1PadLen, remainT1PadLen, currentCoreT1PadLen, t1PadLenSum);
 
             if ASCEND_IS_AIV {
                 if (currentCoreT1PadLen > 0) {
-                    int64_t dQOutputOffset = (t1PadLenSum + actualLen) *
-                        static_cast<int64_t>(constInfo.gSizeQueryIndex) *
+                    int64_t rowElems = static_cast<int64_t>(constInfo.gSizeQueryIndex) *
                         static_cast<int64_t>(constInfo.dSizeQueryIndex);
+                    int64_t dQOutputOffset = (t1PadLenSum + actualLen) * rowElems;
                     GlobalTensor<INPUT_T> tmpDQ;
                     tmpDQ.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(dQueryIndex) + dQOutputOffset,
-                        currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex) *
-                            static_cast<int64_t>(constInfo.dSizeQueryIndex));
-                    AscendC::Fill(tmpDQ, currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex) *
-                        static_cast<int64_t>(constInfo.dSizeQueryIndex), static_cast<INPUT_T>(0));
+                        currentCoreT1PadLen * rowElems);
+                    int64_t rowBytes = rowElems * static_cast<int64_t>(sizeof(INPUT_T));
+                    TBuf<> zeroBuf;
+                    pipe->InitBuffer(zeroBuf, rowBytes);
+                    LocalTensor<INPUT_T> zeroData = zeroBuf.Get<INPUT_T>();
+                    Duplicate<INPUT_T>(zeroData, static_cast<INPUT_T>(0), rowElems);
+                    DataCopyExtParams copyParams;
+                    copyParams.blockCount = static_cast<uint16_t>(currentCoreT1PadLen);
+                    copyParams.blockLen = static_cast<uint16_t>(rowBytes);
+                    DataCopyPad(tmpDQ, zeroData, copyParams);
 
-                    int64_t dWOutputOffset = (t1PadLenSum + actualLen) *
-                        static_cast<int64_t>(constInfo.gSizeQueryIndex);
+                    int64_t dWRowSize = static_cast<int64_t>(constInfo.gSizeQueryIndex);
+                    int64_t dWOutputOffset = (t1PadLenSum + actualLen) * dWRowSize;
                     GlobalTensor<WEIGHT_T> tmpDW;
                     tmpDW.SetGlobalBuffer(reinterpret_cast<__gm__ WEIGHT_T *>(dWeight) + dWOutputOffset,
-                        currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex));
-                    AscendC::Fill(tmpDW, currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex), static_cast<WEIGHT_T>(0));
+                        currentCoreT1PadLen * dWRowSize);
+                    int64_t dWRowBytes = dWRowSize * static_cast<int64_t>(sizeof(WEIGHT_T));
+                    TBuf<> zeroBufW;
+                    pipe->InitBuffer(zeroBufW, dWRowBytes);
+                    LocalTensor<WEIGHT_T> zeroDataW = zeroBufW.Get<WEIGHT_T>();
+                    Duplicate<WEIGHT_T>(zeroDataW, static_cast<WEIGHT_T>(0), dWRowSize);
+                    copyParams.blockCount = static_cast<uint16_t>(currentCoreT1PadLen);
+                    copyParams.blockLen = static_cast<uint16_t>(dWRowBytes);
+                    DataCopyPad(tmpDW, zeroDataW, copyParams);
 
-                    AscendC::PRINTF("[luo] slig_t1_pad_fill done: dQOffset=%ld fillCnt=%ld dWOffset=%ld\n",
-                        dQOutputOffset, currentCoreT1PadLen * static_cast<int64_t>(constInfo.gSizeQueryIndex) *
-                            static_cast<int64_t>(constInfo.dSizeQueryIndex), dWOutputOffset);
+                    AscendC::PRINTF("[luo] slig_t1_pad_done dQOff=%ld dWOff=%ld rows=%ld\n",
+                        dQOutputOffset, dWOutputOffset, currentCoreT1PadLen);
                 }
             }
-        } else {
-            AscendC::PRINTF("[luo] slig_t1_pad skip: t1Size(%ld) <= actualLen(%ld) or totalAivNum(%ld) == 0\n", t1Size, actualLen, totalAivNum);
         }
+
         if (t2Size > actualKLen && totalAivNum > 0) {
             int64_t t2PadLen = t2Size - actualKLen;
             int64_t splitT2PadLen = t2PadLen / totalAivNum;
@@ -187,7 +196,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
             int64_t t2PadLenSum = static_cast<int64_t>(constInfo.aivIdx) * splitT2PadLen +
                 Min(static_cast<int64_t>(constInfo.aivIdx), remainT2PadLen);
 
-            AscendC::PRINTF("[luo] slig_t2_pad t2PadLen=%ld split=%ld remain=%ld core=%ld sum=%ld\n",
+            AscendC::PRINTF("[luo] slig_t2_pad pad=%ld split=%ld rem=%ld core=%ld sum=%ld\n",
                 t2PadLen, splitT2PadLen, remainT2PadLen, currentCoreT2PadLen, t2PadLenSum);
 
             if ASCEND_IS_AIV {
@@ -197,14 +206,22 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
                     GlobalTensor<INPUT_T> tmpDK;
                     tmpDK.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(dKeyIndex) + dKOutputOffset,
                         currentCoreT2PadLen * static_cast<int64_t>(constInfo.dSizeQueryIndex));
-                    AscendC::Fill(tmpDK, currentCoreT2PadLen * static_cast<int64_t>(constInfo.dSizeQueryIndex), static_cast<INPUT_T>(0));
+                    int64_t rowBytes = static_cast<int64_t>(constInfo.dSizeQueryIndex) *
+                        static_cast<int64_t>(sizeof(INPUT_T));
+                    TBuf<> zeroBufK;
+                    pipe->InitBuffer(zeroBufK, rowBytes);
+                    LocalTensor<INPUT_T> zeroDataK = zeroBufK.Get<INPUT_T>();
+                    Duplicate<INPUT_T>(zeroDataK, static_cast<INPUT_T>(0),
+                        static_cast<int64_t>(constInfo.dSizeQueryIndex));
+                    DataCopyExtParams copyParams;
+                    copyParams.blockCount = static_cast<uint16_t>(currentCoreT2PadLen);
+                    copyParams.blockLen = static_cast<uint16_t>(rowBytes);
+                    DataCopyPad(tmpDK, zeroDataK, copyParams);
 
-                    AscendC::PRINTF("[luo] slig_t2_pad_fill done: dKOffset=%ld fillCnt=%ld\n",
-                        dKOutputOffset, currentCoreT2PadLen * static_cast<int64_t>(constInfo.dSizeQueryIndex));
+                    AscendC::PRINTF("[luo] slig_t2_pad_done dKOff=%ld rows=%ld\n",
+                        dKOutputOffset, currentCoreT2PadLen);
                 }
             }
-        } else {
-            AscendC::PRINTF("[luo] slig_t2_pad skip: t2Size(%ld) <= actualKLen(%ld)\n", t2Size, actualKLen);
         }
     }
 
