@@ -295,7 +295,7 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsCapable()
     const bool checkTensorApiShapes = CheckTensorApiShapes();
     const bool checkTensorApiScaleShapes = CheckTensorApiScaleShapes();
     const uint32_t averageMPerGroup = static_cast<uint32_t>(inputParams_.mSize / inputParams_.groupNum);
-    const bool checkMSizeGroupNumRatio = averageMPerGroup >= TENSOR_API_M_MIN;
+    const bool checkMSizeGroupNumRatio = averageMPerGroup > TENSOR_API_M_MIN;
     const bool checkNSizeAlign = inputParams_.nSize % TENSOR_API_FP8_N_ALIGN == 0;
     const bool checkBNoTransMLimlit =
         inputParams_.transB ? true : inputParams_.mSize > TENSOR_API_B_NOTRANS_M_LOWER_LIMIT;
