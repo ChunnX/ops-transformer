@@ -237,7 +237,8 @@ private:
     uint32_t weightAlignBytes_ = 0;
     uint32_t ubBufferUsedAddr_ = 0;
     uint16_t gmm2PingPongIdx_ = 0;
-    uint64_t sendTotalNum_ = 0;
+    uint64_t sendTotalNum_ = 0;      // 本 Rank 的真实路由数量：localBs * topK
+    uint64_t recvRouteCapacity_ = 0; // MTE 接收槽位容量：maxTokensPerRank * topK
     uint32_t maskAlignSize_ = 0;
     uint32_t maskSlotSize_ = 0;   // 单个 win 槽位 = maskAlignSize_(mask) + 32B(count)
     uint64_t maskWinOffset_ = 0;  // maskRecvPtr 相对 win 基址(rankSyncInWorldPtr)的偏移
@@ -350,6 +351,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
     aicNum_ = tilingData->aicNum;
     topK_ = tilingData->topK;
     sendTotalNum_ = static_cast<uint64_t>(m_) * topK_;
+    recvRouteCapacity_ = static_cast<uint64_t>(tilingData->maxTokensPerRank) * topK_;
     worldSize_ = tilingData->epWorldSize;
     expertPerRank_ = tilingData->expertPerRank;
     moeExpertPerRank_ = tilingData->moeExpertPerRank;
@@ -400,7 +402,8 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
         static_cast<uint64_t>(params_.peermemInfo.quantTokenScalePtr - params_.peermemInfo.rankSyncInWorldPtr);
     // maskAlignSize_ 必与 PeermemInfo 中 maskAlignSize 公式数值一致。
     compareCount_ =
-        Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_256)) /
+        Ops::Base::CeilAlign(static_cast<int64_t>(recvRouteCapacity_ * sizeof(int32_t)),
+                            static_cast<int64_t>(ALIGN_256)) /
         sizeof(int32_t);
     maskAlignSize_ = Ops::Base::CeilAlign(static_cast<int64_t>(compareCount_) / 8, static_cast<int64_t>(ALIGN_32));
     // 每个 win 槽位再追加 32B 存 count(源卡 SendMaskCal 同步算好), 须与 PeermemInfo 的 maskSlotSize 一致。
@@ -770,10 +773,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ExpertTokenNumC
 //   EVENT_ID0~EVENT_ID(bufferCount-1) 控制各槽 MTE3 写入完成事件，保证环形缓冲区轮转使用不冲突。
 //
 // 关键细节：
-//   - 非末 batch: pushBytes = sliceBytes（纯 mask 切片）
-//   - 末 batch:   pushBytes = sliceBytes + 4B；末尾多写一个 int32 是该 expert 跨 batch 的累计 count
-//                 （SendCntCal 通过 maskSlotSize 跳过 mask 区直接读 count，无需再翻 mask）
-//   - sendCntAccTensor_[ownedIdx]：逐专家跨 batch 累加计数，末 batch 折叠进 mask 尾部
+//   - 每个 batch 只向对应 mask 切片写 sliceBytes；
+//   - 末 batch 将累计 count 单独写到 maxBS mask 容量后的固定位置；
+//   - sendCntAccTensor_[ownedIdx]：逐专家跨 batch 累加计数；
 //   - 对端 window 地址：maskWinOffset_ + expert*srcRank*(mask+count slot) + batchStart/8 偏移
 // ======================================================================================================
 template <TemplateMegaMoeWaveTypeClass>
@@ -815,14 +817,12 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::SendMaskCal(con
         bool isLastBatch = (batchIdx == sendRouteBatchCount_ - 1);
         int32_t validLen = sendRouteItemsPerBatch_;
         int32_t sliceBytes = maskSliceBytesFull;
-        int32_t pushBytes = sliceBytes;
 
         if (isLastBatch) {
             validLen = static_cast<int32_t>(sendTotalNum_ - static_cast<uint64_t>(batchStart));
             if (batchStart / 8 + sliceBytes > static_cast<int32_t>(maskAlignSize_)) {
                 sliceBytes = static_cast<int32_t>(maskAlignSize_) - batchStart / 8;
             }
-            pushBytes = sliceBytes + static_cast<int32_t>(sizeof(int32_t));
         }
 
         // 加载本 batch 的 topk
@@ -860,13 +860,19 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::SendMaskCal(con
             }
             SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
 
-            uint64_t dstOffset = maskWinOffset_ +
-                                 static_cast<uint64_t>(localExpertId * static_cast<int32_t>(worldSize_) +
-                                                       static_cast<int32_t>(rankId_)) *
-                                     static_cast<uint64_t>(maskSlotSize_) +
-                                 static_cast<uint64_t>(batchStart / 8);
+            uint64_t slotOffset = maskWinOffset_ +
+                                  static_cast<uint64_t>(localExpertId * static_cast<int32_t>(worldSize_) +
+                                                        static_cast<int32_t>(rankId_)) *
+                                      static_cast<uint64_t>(maskSlotSize_);
+            uint64_t dstOffset = slotOffset + static_cast<uint64_t>(batchStart / 8);
             dstGlobalTensor.SetGlobalBuffer((__gm__ uint8_t *)GetRankWinAddrWithOffset(dstRank, dstOffset));
-            DataCopyPad(dstGlobalTensor, maskBuf, {1U, static_cast<uint32_t>(pushBytes), 0U, 0U, 0U});
+            DataCopyPad(dstGlobalTensor, maskBuf, {1U, static_cast<uint32_t>(sliceBytes), 0U, 0U, 0U});
+            if (isLastBatch) {
+                dstGlobalTensor.SetGlobalBuffer(
+                    (__gm__ uint8_t *)GetRankWinAddrWithOffset(dstRank, slotOffset + maskAlignSize_));
+                DataCopyPad(dstGlobalTensor, maskBuf[sliceBytes],
+                            {1U, static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U, 0U});
+            }
             SetFlag<AscendC::HardEvent::MTE3_V>(bufEvent);
         }
     }
@@ -1302,7 +1308,8 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndDispatch(GMMAddrInfo &gm
             int32_t validRouteCount = recvRouteItemsPerBatch_;    // 当前 batch 的有效 route item 数
             int32_t maskSliceBytes = recvRouteItemsPerBatch_ / 8; // 当前 batch 对应的 mask 搬运字节数
             if (isLastBatch) {
-                validRouteCount = static_cast<int32_t>(sendTotalNum_ - static_cast<uint64_t>(batchRouteBegin));
+                validRouteCount = static_cast<int32_t>(recvRouteCapacity_ -
+                                                       static_cast<uint64_t>(batchRouteBegin));
                 if (batchRouteBegin / 8 + maskSliceBytes > static_cast<int32_t>(maskAlignSize_)) {
                     maskSliceBytes = static_cast<int32_t>(maskAlignSize_) - batchRouteBegin / 8;
                 }

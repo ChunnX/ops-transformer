@@ -187,7 +187,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         bias2Optional, xActiveMaskOptional, nullptr, sharedWeight1Optional, sharedWeight2Optional,
         sharedWeightScales1Optional, sharedWeightScales2Optional, sharedBias1Optional, sharedBias2Optional,
         moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantOutDtype,
-        combineQuantMode, const_cast<char *>(commAlg), 0, const_cast<char *>(activation), activationClamp,
+        combineQuantMode, const_cast<char *>(commAlg), numMaxTokensPerRank, const_cast<char *>(activation),
+        activationClamp,
         ge::DT_UNDEFINED, false, false, 0, topoType, rankNumPerServer, topkWeightsType, yOut, expertTokenNumsOut,
         workspaceSize, executor);
 

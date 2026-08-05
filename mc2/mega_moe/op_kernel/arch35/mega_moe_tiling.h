@@ -163,7 +163,7 @@ struct MegaMoeSendMaskBufferConfig {
 struct MegaMoeTilingData {
     uint32_t expertPerRank;    // 本卡 routed weight 容量，可大于实际参与路由的专家数
     uint32_t moeExpertPerRank; // 本卡实际参与 topK 路由的 MoE 专家数
-    uint32_t bs;
+    uint32_t bs;               // 当前 Rank 的实际 token 数，即 x.shape[0]
     uint32_t h;
     uint32_t hiddenDim;
     uint32_t epWorldSize;
@@ -201,5 +201,7 @@ struct MegaMoeTilingData {
     float activationAlpha;      // linear_beta, 默认 1.0
     float activationBeta;       // beta, 默认 1.0
     uint32_t expertsPerBatch;
+    // MTE 可变 BS 扩展字段放在末尾，避免改变已有 tiling 字段的二进制偏移。
+    uint32_t maxTokensPerRank;  // 所有 Rank 统一的通信容量 Bmax
 };
 #endif

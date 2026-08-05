@@ -61,7 +61,10 @@ struct PeermemInfo {
         // 每张卡为自己的 expertPerRank 个专家、各 worldSize 个源卡保留一份 [mask | count] 槽位。
         // 槽位 = bit-packed mask (CeilAlign(compareCount/8,32)) + 32B count(源卡 SendMaskCal 同步算好),
         // 与 mega_moe.h FirstBuffInit 的 maskSlotSize_ 一致; 接收端直接读 count, 不再 GatherMask 计数。
-        int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
+        int64_t maskTokenCapacity = tilingData->topoType == TOPO_TYPE_MTE ?
+                                        static_cast<int64_t>(tilingData->maxTokensPerRank) :
+                                        static_cast<int64_t>(tilingData->bs);
+        int64_t sendTotalNum = maskTokenCapacity * tilingData->topK;
         int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) /
                                (int64_t)sizeof(int32_t);
         int64_t maskAlignSize = Ops::Base::CeilAlign(compareCount / 8, (int64_t)ALIGN_32);
@@ -83,7 +86,8 @@ struct PeermemInfo {
                 tokenBytes = Ops::Base::CeilAlign(tokenBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
             }
             offset += Ops::Base::CeilAlign(
-                (int64_t)(static_cast<int64_t>(tilingData->bs) * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
+                static_cast<int64_t>(tilingData->maxTokensPerRank) * tokenBytes * sizeof(int8_t),
+                static_cast<int64_t>(ALIGN_512));
         } else {
             dispatchRecivePtr = base + offset;
             uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));

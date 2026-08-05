@@ -14,6 +14,28 @@
 #include "mc2_tiling_case_executor.h"
 
 namespace MegaMoeUT {
+namespace {
+
+bool SetIntAttr(gert::TilingContextPara &context, const std::string &attrName, int64_t value)
+{
+    for (auto &attr : context.attrs_) {
+        if (attr.attrName_ == attrName) {
+            attr.attr_ = Ops::Transformer::AnyValue::CreateFrom<int64_t>(value);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ExecuteTilingWithMock(const gert::TilingContextPara &context,
+                           const Mc2Hcom::MockValues &hcomTopologyMockValues, TilingInfo &tilingInfo)
+{
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().SetValues(hcomTopologyMockValues);
+    bool tilingSuccess = ExecuteTiling(context, tilingInfo);
+    Mc2Hcom::MC2HcomTopologyMocker::GetInstance().Reset();
+    return tilingSuccess;
+}
+} // namespace
 
 class MegaMoeArch35TilingTest : public testing::Test {
 protected:
@@ -28,7 +50,7 @@ protected:
     }
 };
 
-TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
+TEST_F(MegaMoeArch35TilingTest, H4096_LocalBS128_MaxBS256_FP8E4M3FN)
 {
     struct MegaMoeCompileInfo {
     } compileInfo;
@@ -62,13 +84,13 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
         {
             {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(16)},
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
-            {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(12777472)},
+            {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(21708800)},
             {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
             {"dispatch_quant_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(36)},
             {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
             {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
             {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
             {"activation_out_dtype",
@@ -83,7 +105,61 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
         &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
     uint64_t expectTilingKey = 16UL;
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTilingWithMock(tilingContextPara, hcomTopologyMockValues, tilingInfo));
+    EXPECT_EQ(tilingInfo.tilingKey, expectTilingKey);
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(MegaMoeTilingData));
+    const auto *tilingData = reinterpret_cast<const MegaMoeTilingData *>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tilingData->bs, 128U);
+    EXPECT_EQ(tilingData->maxTokensPerRank, 256U);
+    EXPECT_EQ(tilingData->maxOutputSize, 4096U);
+
+    auto fallbackContext = tilingContextPara;
+    ASSERT_TRUE(SetIntAttr(fallbackContext, "num_max_tokens_per_rank", 0));
+    TilingInfo fallbackTilingInfo;
+    ASSERT_TRUE(ExecuteTilingWithMock(fallbackContext, hcomTopologyMockValues, fallbackTilingInfo));
+    ASSERT_GE(fallbackTilingInfo.tilingDataSize, sizeof(MegaMoeTilingData));
+    const auto *fallbackTilingData =
+        reinterpret_cast<const MegaMoeTilingData *>(fallbackTilingInfo.tilingData.get());
+    EXPECT_EQ(fallbackTilingData->bs, 128U);
+    EXPECT_EQ(fallbackTilingData->maxTokensPerRank, 128U);
+    EXPECT_EQ(fallbackTilingData->maxOutputSize, 2048U);
+
+    auto equalMaxBsContext = tilingContextPara;
+    ASSERT_TRUE(SetIntAttr(equalMaxBsContext, "num_max_tokens_per_rank", 128));
+    TilingInfo equalMaxBsTilingInfo;
+    ASSERT_TRUE(ExecuteTilingWithMock(equalMaxBsContext, hcomTopologyMockValues, equalMaxBsTilingInfo));
+    ASSERT_GE(equalMaxBsTilingInfo.tilingDataSize, sizeof(MegaMoeTilingData));
+    const auto *equalMaxBsTilingData =
+        reinterpret_cast<const MegaMoeTilingData *>(equalMaxBsTilingInfo.tilingData.get());
+    EXPECT_EQ(equalMaxBsTilingData->maxTokensPerRank, 128U);
+    EXPECT_EQ(equalMaxBsTilingData->maxOutputSize, 2048U);
+
+    auto invalidMaxBsContext = tilingContextPara;
+    ASSERT_TRUE(SetIntAttr(invalidMaxBsContext, "num_max_tokens_per_rank", 127));
+    Mc2ExecuteTestCase(invalidMaxBsContext, hcomTopologyMockValues, ge::GRAPH_FAILED);
+
+    auto negativeMaxBsContext = tilingContextPara;
+    ASSERT_TRUE(SetIntAttr(negativeMaxBsContext, "num_max_tokens_per_rank", -1));
+    Mc2ExecuteTestCase(negativeMaxBsContext, hcomTopologyMockValues, ge::GRAPH_FAILED);
+
+    auto insufficientCclContext = tilingContextPara;
+    ASSERT_TRUE(SetIntAttr(insufficientCclContext, "ccl_buffer_size", 12777472));
+    Mc2ExecuteTestCase(insufficientCclContext, hcomTopologyMockValues, ge::GRAPH_FAILED);
+
+    auto urmaContext = tilingContextPara;
+    ASSERT_TRUE(SetIntAttr(urmaContext, "topo_type", 1));
+    Mc2ExecuteTestCase(urmaContext, hcomTopologyMockValues, ge::GRAPH_FAILED);
+
+    auto overflowMaxBsContext = tilingContextPara;
+    ASSERT_TRUE(SetIntAttr(overflowMaxBsContext, "num_max_tokens_per_rank",
+                           static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) + 1));
+    Mc2ExecuteTestCase(overflowMaxBsContext, hcomTopologyMockValues, ge::GRAPH_FAILED);
+
+    auto routeOverflowContext = tilingContextPara;
+    ASSERT_TRUE(SetIntAttr(routeOverflowContext, "num_max_tokens_per_rank",
+                           static_cast<int64_t>(std::numeric_limits<int32_t>::max()) / 8 + 1));
+    Mc2ExecuteTestCase(routeOverflowContext, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
 
 TEST_F(MegaMoeArch35TilingTest, H5120_BS256_FP8E5M2)
