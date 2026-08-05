@@ -87,7 +87,7 @@ class MoeGatingTopKMethod(BaseApi):
         y = torch.from_numpy(np.asarray(y)).to(dtype)
         indices = torch.from_numpy(indices).to(torch.int32)
 
-        return y, indices, y2.to(torch.float32)
+        return y, indices, y2.to(torch.float32) if y2 is not None else None
 
     def __call__(self, input_data: InputDataset, with_output: bool = False):
         if self.device == "cpu":
