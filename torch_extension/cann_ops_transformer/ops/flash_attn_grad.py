@@ -25,7 +25,7 @@ class FlashAttnGradOpBuilder(OpBuilder):
     def schema(self) -> str:
         """PyTorch operator signature."""
         return [
-            "flash_attn_grad(Tensor q, Tensor k, Tensor v, Tensor do, Tensor attn_out, Tensor softmax_lse, "
+            "flash_attn_grad(Tensor q, Tensor k, Tensor v, Tensor dout, Tensor attn_out, Tensor softmax_lse, "
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, "
             "Tensor? seqused_q=None, Tensor? seqused_kv=None, "
             "Tensor? sinks=None, Tensor? attn_mask=None, Tensor? metadata=None, "
@@ -46,7 +46,7 @@ class FlashAttnGradOpBuilder(OpBuilder):
             q: torch.Tensor,
             k: torch.Tensor,
             v: torch.Tensor,
-            do: torch.Tensor,
+            dout: torch.Tensor,
             attn_out: torch.Tensor,
             softmax_lse: torch.Tensor,
             cu_seqlens_q: Optional[torch.Tensor] = None,
@@ -81,7 +81,7 @@ def flash_attn_grad(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    do: torch.Tensor,
+    dout: torch.Tensor,
     attn_out: torch.Tensor,
     softmax_lse: torch.Tensor,
     cu_seqlens_q: Optional[torch.Tensor] = None,
@@ -110,7 +110,7 @@ def flash_attn_grad(
         q: Query tensor of shape (B, S1, N1, D) for BSND or (T1, N1, D) for TND.
         k: Key tensor of shape (B, S2, N2, D) for BSND or (T2, N2, D) for TND.
         v: Value tensor, same shape as k.
-        do: Upstream gradient, same shape as q.
+        dout: Upstream gradient, same shape as q.
         attn_out: Attention output from forward pass, same shape as v.
         softmax_lse: Softmax LSE from forward pass.
         cu_seqlens_q: Cumulative sequence lengths for Q (TND layout).
@@ -121,9 +121,9 @@ def flash_attn_grad(
         attn_mask: Attention mask tensor (for mask_mode 3 or 4).
         metadata: Precomputed metadata tensor from flash_attn_metadata.
         softmax_scale: Softmax scale factor. 0.0 means 1/sqrt(head_dim).
-        mask_mode: 0 for full compute, 3 for causal, 4 for window.
-        win_left: Left window size for mask_mode 4. -1 means infinite.
-        win_right: Right window size for mask_mode 4. -1 means infinite.
+        mask_mode: 0 for full compute, 3 for causal, 4 for windoutw.
+        win_left: Left windoutw size for mask_mode 4. -1 means infinite.
+        win_right: Right windoutw size for mask_mode 4. -1 means infinite.
         max_seqlen_q: Maximum sequence length for Q. -1 means unknown.
         max_seqlen_kv: Maximum sequence length for KV. -1 means unknown.
         layout_q: Layout of Q tensor ("BSND", "TND", or "BNSD").
@@ -138,7 +138,7 @@ def flash_attn_grad(
         q,
         k,
         v,
-        do,
+        dout,
         attn_out,
         softmax_lse,
         cu_seqlens_q,

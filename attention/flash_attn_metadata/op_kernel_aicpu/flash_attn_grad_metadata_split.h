@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <cmath>
 #include <climits>
+#include <vector>
 
 using namespace optiling;
 
@@ -136,10 +137,102 @@ void FlashAttnMetadataCpuKernel::InitFagParams()
     fagSplitAxis_ = FAG_SPLIT_AXIS_BN2GS1S2;
 }
 
-// ===== DoFagSparse: dispatch to 3 scenarios =====
-// Source: normal_regbase.cpp:660-731 DoSparse (BN2 paths removed)
+// ===== SetFagSplitAxis: determine BN2/BN2S2/BN2GS1S2 =====
+// Source: common_regbase.cpp:1581-1649 SetSplitAxis (simplified: no dtype/rope/dropout conditions)
+void FlashAttnMetadataCpuKernel::SetFagSplitAxis()
+{
+    int64_t s1 = static_cast<int64_t>(maxSeqlenQ_);
+    int64_t s2 = static_cast<int64_t>(maxSeqlenKv_);
+    int64_t n1 = static_cast<int64_t>(numHeadsQ_);
+    int64_t n2 = static_cast<int64_t>(numHeadsKv_);
+    int64_t d = static_cast<int64_t>(headDim_);
+    int64_t b = static_cast<int64_t>(batchSize_);
+    bool isTND = (fagLayoutType_ == FAG_INPUT_FORMAT_TND);
+
+    // isAllSame: all batches have same seq lengths (for TND)
+    fagIsAllSame_ = true;
+    if (!actualSeqlenQ_.empty()) {
+        int64_t s1First = actualSeqlenQ_[0];
+        int64_t s2First = actualSeqlenKv_[0];
+        for (size_t i = 1; i < actualSeqlenQ_.size(); i++) {
+            if (actualSeqlenQ_[i] != s1First || actualSeqlenKv_[i] != s2First) {
+                fagIsAllSame_ = false;
+                break;
+            }
+        }
+    }
+
+    // isBn2: S<=128, N1==N2, D<=512
+    fagIsBn2_ = (s1 <= 128 && s2 <= 128) && (n1 == n2) && (d <= 512);
+
+    // bnLimit: BN >= 256, or BN >= 128 with S1/S2 aligned to 128
+    bool bnLimit = ((b * n1) >= 256) ||
+                   ((b * n1) >= 128 && (s1 % 128 == 0) && (s2 % 128 == 0));
+    bool bnSparseLimit = bnLimit && !isTND;
+
+    // isBn2MultiBlk: BN limit + S>128 + S<=640 + N1==N2 + D<=512
+    fagIsBn2MultiBlk_ = bnSparseLimit &&
+                        (s1 > 128 || s2 > 128) &&
+                        (s1 <= 640 && s2 <= 640) &&
+                        (n1 == n2) && (d <= 512);
+    fagIsBn2_ = fagIsBn2MultiBlk_ ? true : fagIsBn2_;
+
+    // Source: common_regbase.cpp:1608-1614
+    // isBn2 && !isBn2MultiBlk: TND+D>128 时关闭 isBn2 (dropMaskOuter 不涉及)
+    if (fagIsBn2_ && !fagIsBn2MultiBlk_) {
+        if (isTND && d > 128) {
+            fagIsBn2_ = false;
+        }
+    }
+
+    // BN2S2 route: Source common_regbase.cpp:1631-1639
+    // bn2S2RouteLimit = !hasRope(removed) && d<=512 &&
+    //   (isTND || (isAllSame && !isDeterministic(removed)) || bn2S2NotTndLimit) &&
+    //   (keepProb>=1(removed) || ...) && (n1==n2) && (queryType checks removed)
+    // Simplified: d<=512 && (isTND || isAllSame || bn2S2NotTndLimit) && (n1==n2)
+    bool bn2S2NotTndLimit = (s1 < s2) && (s2 <= 1024) &&
+                            (s2 - s1 >= 128) && (d <= 128) &&
+                            !fagIsSparse_;
+    bool bn2S2RouteLimit = (d <= 512) &&
+                           (isTND || fagIsAllSame_ || bn2S2NotTndLimit) &&
+                           (n1 == n2);
+
+    if (!fagIsBn2_ && bn2S2RouteLimit) {
+        fagSplitAxis_ = FAG_SPLIT_AXIS_BN2S2;
+    } else if (fagIsBn2_) {
+        fagSplitAxis_ = FAG_SPLIT_AXIS_BN2;
+    } else {
+        fagSplitAxis_ = FAG_SPLIT_AXIS_BN2GS1S2;
+    }
+}
+
+// ===== DoFagSparse: dispatch to 5 scenarios =====
+// Source: normal_regbase.cpp:660-731 DoSparse
 void FlashAttnMetadataCpuKernel::DoFagSparse()
 {
+    SetFagSplitAxis();
+
+    // Scenario 1: BN2S2
+    if (fagSplitAxis_ == FAG_SPLIT_AXIS_BN2S2) {
+        TryBn2s2Sparse();
+        if (fagBlockOuter_ >= static_cast<uint32_t>(aicCoreNum_)) {
+            return;
+        }
+        // BN2S2 didn't produce enough cores, fall through to try BN2
+    }
+
+    // Scenario 2: BN2 multi-block
+    if (fagIsBn2_ && fagIsBn2MultiBlk_) {
+        bool success = TryBn2MultiBlkSparse();
+        if (success && !fagIsInvalidCol_ && !fagIsInvalidRow_) {
+            return;
+        }
+        // Fallback: degrade to BN2GS1S2
+        fagIsBn2_ = false;
+        fagIsBn2MultiBlk_ = false;
+    }
+
+    // Scenario 3-5: BN2GS1S2 (existing)
     fagSplitAxis_ = FAG_SPLIT_AXIS_BN2GS1S2;
     if (fagLayoutType_ == FAG_INPUT_FORMAT_TND) {
         DoFagTndSplit();
@@ -245,6 +338,9 @@ void FlashAttnMetadataCpuKernel::GetFagParseS1S2OuterInfo(int64_t (*parseInfo)[F
 {
     int64_t s1 = static_cast<int64_t>(maxSeqlenQ_);
     int64_t s2 = static_cast<int64_t>(maxSeqlenKv_);
+    fagIsInvalidCol_ = false;
+    fagIsInvalidRow_ = false;
+    std::vector<bool> invalidS1Array(fagS1Outer_, false);
     for (int64_t i = 0; i < fagS2Outer_; i++) {
         int64_t leftIntersectionPoint = std::max(static_cast<int64_t>(0),
             fagCvS2Inner_ * i - fagS2Token_);
@@ -254,7 +350,6 @@ void FlashAttnMetadataCpuKernel::GetFagParseS1S2OuterInfo(int64_t (*parseInfo)[F
             parseInfo[i][0] = leftIntersectionPoint / fagS1CvInner_;
         }
         // Source: normal_regbase.cpp:1519: cvBlockTail = s2CvTail for last block, cvS2Inner otherwise
-        // s2CvTail = (s2 % cvS2Inner == 0) ? cvS2Inner : s2 % cvS2Inner
         int64_t cvBlockTail = (i == fagS2Outer_ - 1) ?
             (s2 % fagCvS2Inner_ == 0 ? fagCvS2Inner_ : s2 % fagCvS2Inner_) : fagCvS2Inner_;
         int64_t rightPoint = std::min(std::max(static_cast<int64_t>(0),
@@ -267,6 +362,21 @@ void FlashAttnMetadataCpuKernel::GetFagParseS1S2OuterInfo(int64_t (*parseInfo)[F
             parseInfo[i][2] = tmpSize; // LENGTH_IDX=2
         } else {
             parseInfo[i][2] = parseInfo[i - 1][2] + tmpSize;
+        }
+        // Source: normal_regbase.cpp:1533-1550: invalid col/row detection
+        if (parseInfo[i][0] >= parseInfo[i][1]) {
+            fagIsInvalidCol_ = true;
+        }
+        for (int64_t j = 0; j < static_cast<int64_t>(invalidS1Array.size()); j++) {
+            if (j >= parseInfo[i][0] && j < parseInfo[i][1]) {
+                invalidS1Array[j] = true;
+            }
+        }
+    }
+    for (size_t j = 0; j < invalidS1Array.size(); j++) {
+        if (!invalidS1Array[j]) {
+            fagIsInvalidRow_ = true;
+            break;
         }
     }
 }
@@ -557,6 +667,284 @@ void FlashAttnMetadataCpuKernel::FagFillBlockInfoLoadBalance(
             totalBlockInfo[i][1] = n2 * g * totalBlockInfo[i][0] + totalBlockInfo[i - 1][1];
         }
     }
+}
+
+// ===== BN2S2 split: TryBn2s2Sparse =====
+// Source: normal_regbase.cpp:511-547 DoBn2s2Sparse
+void FlashAttnMetadataCpuKernel::TryBn2s2Sparse()
+{
+    fagSplitAxis_ = FAG_SPLIT_AXIS_BN2S2;
+    if (fagIsSparse_ || fagLayoutType_ == FAG_INPUT_FORMAT_TND) {
+        DoFagBn2s2SparseTndSplit();
+    } else {
+        DoFagBn2s2DenseSplit();
+    }
+}
+
+// ===== BN2S2 dense: BNS2 合轴均匀分核 =====
+// Source: normal_regbase.cpp:519-544
+void FlashAttnMetadataCpuKernel::DoFagBn2s2DenseSplit()
+{
+    int64_t b = static_cast<int64_t>(batchSize_);
+    int64_t n2 = static_cast<int64_t>(numHeadsKv_);
+    int64_t g = fagG_;
+    int64_t aicNum = static_cast<int64_t>(aicCoreNum_);
+
+    int64_t fusedOuter = b * n2 * g * fagS2Outer_;
+    int64_t bns2Factor = (fusedOuter + aicNum - 1) / aicNum;
+    int64_t blockOuter = (fusedOuter + bns2Factor - 1) / bns2Factor;
+    int64_t totalBlock = fusedOuter * fagS1Outer_;
+    int64_t blockFactor = bns2Factor * fagS1Outer_;
+
+    fagBlockOuter_ = static_cast<uint32_t>(blockOuter);
+    fagBlockFactor_ = blockFactor;
+
+    for (int64_t i = 0; i < blockOuter; i++) {
+        fagBlockStarts_[i] = blockFactor * i;
+        fagBlockEnds_[i] = std::min(blockFactor * (i + 1), totalBlock);
+    }
+    for (uint32_t i = static_cast<uint32_t>(blockOuter); i < FAG_CORE_LIST_NUM; i++) {
+        fagBlockStarts_[i] = 0;
+        fagBlockEnds_[i] = 0;
+    }
+}
+
+// ===== BN2S2 sparse/TND: 二分搜索负载均衡分核 =====
+// Source: varlen_regbase.cpp:1216-1314 GetBlockInfoOfBNS4TND
+void FlashAttnMetadataCpuKernel::DoFagBn2s2SparseTndSplit()
+{
+    int64_t b = static_cast<int64_t>(batchSize_);
+    int64_t n2 = static_cast<int64_t>(numHeadsKv_);
+    int64_t g = fagG_;
+    int64_t aicNum = static_cast<int64_t>(aicCoreNum_);
+
+    // Use heap allocation for large arrays (BATCH_MAX_SIZE * MAX_S2_OUTER is too large for stack)
+    int64_t (*totalBlockInfo)[2] = new int64_t[FAG_BATCH_MAX_SIZE][2];
+    float (*acturalBlockInfo)[FAG_MAX_S2_OUTER + 2] = new float[FAG_BATCH_MAX_SIZE + 2][FAG_MAX_S2_OUTER + 2];
+    std::memset(totalBlockInfo, 0, sizeof(int64_t) * FAG_BATCH_MAX_SIZE * 2);
+    std::memset(acturalBlockInfo, 0, sizeof(float) * (FAG_BATCH_MAX_SIZE + 2) * (FAG_MAX_S2_OUTER + 2));
+
+    FagFillBlockInfoLoadBalance(totalBlockInfo, acturalBlockInfo);
+
+    float maxBlockNumPerCore = Bn2s2BinarySearchMaxBlockNumPerCore(
+        b, n2, g, aicNum, totalBlockInfo, acturalBlockInfo);
+
+    bool success = Bn2s2CaclePerCoreBlockInfo(
+        b, n2, g, aicNum, totalBlockInfo, acturalBlockInfo, maxBlockNumPerCore);
+
+    if (!success) {
+        fagBlockOuter_ = 0;
+    } else {
+        fagBlockFactor_ = static_cast<int64_t>(std::ceil(maxBlockNumPerCore));
+    }
+
+    delete[] totalBlockInfo;
+    delete[] acturalBlockInfo;
+}
+
+// Source: varlen_regbase.cpp:1247-1262 BinarySearchMaxBlockNumPerCore
+float FlashAttnMetadataCpuKernel::Bn2s2BinarySearchMaxBlockNumPerCore(
+    int64_t b, int64_t n2, int64_t g, int64_t aicNum,
+    int64_t (*totalBlockInfo)[2],
+    float (*acturalBlockInfo)[FAG_MAX_S2_OUTER + 2])
+{
+    float left = acturalBlockInfo[b + 1][0];
+    float right = acturalBlockInfo[b][0];
+    float mid = 0;
+    while (left < right - 1) {
+        mid = (left + right) / 2;
+        if (Bn2s2IsPossible(b, n2, g, aicNum, mid, acturalBlockInfo)) {
+            right = mid;
+        } else {
+            left = mid + 1;
+        }
+    }
+    return right;
+}
+
+// Source: varlen_regbase.cpp:1373-1412 IsPossible
+bool FlashAttnMetadataCpuKernel::Bn2s2IsPossible(
+    int64_t b, int64_t n2, int64_t g, int64_t aicNum, float possibleMax,
+    float (*acturalBlockInfo)[FAG_MAX_S2_OUTER + 2])
+{
+    float currentSum = 0;
+    uint64_t needCoreNum = 1;
+    int64_t n2g = n2 * g;
+    int64_t bn2g = b * n2g;
+    for (int64_t i = 0; i < bn2g; i++) {
+        int64_t bi = i / n2g;
+        for (int64_t j = 0; j < fagS2Outer_; j++) {
+            float num = acturalBlockInfo[bi][j];
+            if (currentSum + num > possibleMax) {
+                needCoreNum += 1;
+                currentSum = num;
+            } else {
+                currentSum += num;
+            }
+            if (needCoreNum > static_cast<uint64_t>(aicNum)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+// Source: varlen_regbase.cpp:1264-1314 CaclePerCoreBlockInfo
+bool FlashAttnMetadataCpuKernel::Bn2s2CaclePerCoreBlockInfo(
+    int64_t b, int64_t n2, int64_t g, int64_t aicNum,
+    int64_t (*totalBlockInfo)[2],
+    float (*acturalBlockInfo)[FAG_MAX_S2_OUTER + 2],
+    float maxBlockNumPerCore)
+{
+    float currentSum = 0;
+    int64_t coreIdx = 0;
+    for (int64_t bb = 0; bb < b; bb++) {
+        for (int64_t n = 0; n < n2 * g; n++) {
+            int64_t actualS1Outer = (actualSeqlenQ_[bb] + fagS1CvInner_ - 1) / fagS1CvInner_;
+            for (int64_t j = 0; j < fagS2Outer_; j++) {
+                float num = acturalBlockInfo[bb][j];
+                if (coreIdx >= static_cast<int64_t>(FAG_CORE_LIST_NUM)) {
+                    return false;
+                } else if (currentSum + num > maxBlockNumPerCore) {
+                    int64_t preBatchBlockNum = (bb == 0) ? 0 : totalBlockInfo[bb - 1][1];
+                    int64_t preNGBlockNum = n * totalBlockInfo[bb][0];
+                    int64_t preS2BlockNum = j * actualS1Outer;
+                    fagBlockEnds_[coreIdx] = preBatchBlockNum + preNGBlockNum + preS2BlockNum;
+                    fagBlockStarts_[coreIdx + 1] = fagBlockEnds_[coreIdx];
+                    coreIdx += 1;
+                    currentSum = num;
+                    fagTndStartBIdx_[coreIdx] = static_cast<int64_t>(bb);
+                } else {
+                    currentSum += num;
+                }
+            }
+        }
+    }
+    fagBlockStarts_[0] = 0;
+    fagBlockEnds_[coreIdx] = totalBlockInfo[b - 1][1];
+    fagBlockOuter_ = static_cast<uint32_t>(coreIdx + 1);
+
+    for (uint32_t c = fagBlockOuter_; c < FAG_CORE_LIST_NUM; c++) {
+        fagBlockStarts_[c] = 0;
+        fagBlockEnds_[c] = 0;
+    }
+    return true;
+}
+
+// ===== BN2 split: TryBn2MultiBlkSparse =====
+// Source: normal_regbase.cpp:622-658 DoBn2MultiBlkSparse (TND path skipped)
+bool FlashAttnMetadataCpuKernel::TryBn2MultiBlkSparse()
+{
+    fagSplitAxis_ = FAG_SPLIT_AXIS_BN2;
+    // TND path (GetBlockInfoOfTNDForBn2) is deprecated — BN2 does not support TND
+    if (fagLayoutType_ == FAG_INPUT_FORMAT_TND) {
+        return false;
+    }
+    if (fagIsSparse_) {
+        return DoFagBn2SparseBlockInfo();
+    } else {
+        DoFagBn2DenseSplit();
+        return true;
+    }
+}
+
+// ===== BN2 dense: BN 合轴多块均匀分核 =====
+// Source: normal_regbase.cpp:629-655
+void FlashAttnMetadataCpuKernel::DoFagBn2DenseSplit()
+{
+    int64_t b = static_cast<int64_t>(batchSize_);
+    int64_t n2 = static_cast<int64_t>(numHeadsKv_);
+    int64_t g = fagG_;
+    int64_t aicNum = static_cast<int64_t>(aicCoreNum_);
+
+    int64_t fusedOuter = b * n2 * g;
+    int64_t blockFactor = (fusedOuter + aicNum - 1) / aicNum;
+    int64_t blockOuter = (fusedOuter + blockFactor - 1) / blockFactor;
+    blockFactor *= (fagS1Outer_ * fagS2Outer_);
+    fusedOuter *= (fagS1Outer_ * fagS2Outer_);
+
+    fagBlockOuter_ = static_cast<uint32_t>(blockOuter);
+    fagBlockFactor_ = blockFactor;
+
+    for (int64_t i = 0; i < blockOuter; i++) {
+        fagBlockStarts_[i] = blockFactor * i;
+        fagBlockEnds_[i] = std::min(blockFactor * (i + 1), fusedOuter);
+    }
+    for (uint32_t i = static_cast<uint32_t>(blockOuter); i < FAG_CORE_LIST_NUM; i++) {
+        fagBlockStarts_[i] = 0;
+        fagBlockEnds_[i] = 0;
+    }
+}
+
+// ===== BN2 sparse: BN 合轴 sparse 分核 (含 fallback 判定) =====
+// Source: normal_regbase.cpp:549-619 GetSparseBlockInfoBn2
+bool FlashAttnMetadataCpuKernel::DoFagBn2SparseBlockInfo()
+{
+    int64_t parseInfo[FAG_MAX_S2_OUTER][FAG_ARRAY_LENGTH];
+    std::memset(parseInfo, 0, sizeof(parseInfo));
+    GetFagParseS1S2OuterInfo(parseInfo);
+
+    int64_t s1s2oCount = parseInfo[fagS2Outer_ - 1][2];
+
+    int64_t b = static_cast<int64_t>(batchSize_);
+    int64_t n2 = static_cast<int64_t>(numHeadsKv_);
+    int64_t g = fagG_;
+    int64_t aicNum = static_cast<int64_t>(aicCoreNum_);
+
+    int64_t fusedOuter = b * n2 * g;
+    int64_t blockFactor = (fusedOuter + aicNum - 1) / aicNum;
+    int64_t blockOuter = (fusedOuter + blockFactor - 1) / blockFactor;
+
+    fusedOuter *= s1s2oCount;
+    blockFactor *= s1s2oCount;
+
+    fagBlockOuter_ = static_cast<uint32_t>(blockOuter);
+    fagBlockFactor_ = blockFactor;
+
+    int64_t n2gs1s2o = n2 * g * s1s2oCount;
+    int64_t gs1s2o = g * s1s2oCount;
+
+    fagBlockStarts_[0] = 0;
+    fagBlockEnds_[blockOuter - 1] = b * n2 * g * fagS1Outer_ * fagS2Outer_;
+
+    for (int64_t c = 1; c < blockOuter; c++) {
+        int64_t currentIdx = std::min(c * blockFactor, fusedOuter);
+        int64_t bIdx = currentIdx / n2gs1s2o;
+        int64_t bTail = currentIdx % n2gs1s2o;
+        int64_t n2Idx = bTail / gs1s2o;
+        int64_t n2Tail = bTail % gs1s2o;
+        int64_t gIdx = n2Tail / s1s2oCount;
+        int64_t gTail = n2Tail % s1s2oCount;
+
+        // Reverse map: linear valid-block index -> (s1oIdx, s2oIdx)
+        int64_t s1oIdx = 0;
+        int64_t s2oIdx = 0;
+        int64_t preSize = 0;
+        for (int64_t i = 0; i < fagS2Outer_; i++) {
+            int64_t nextSize = parseInfo[i][2];
+            if (gTail >= preSize && gTail < nextSize) {
+                s2oIdx = i;
+                s1oIdx = parseInfo[i][0] + gTail - preSize - 1;
+                break;
+            }
+            preSize = nextSize;
+        }
+
+        fagBlockStarts_[c] = (((bIdx * n2 + n2Idx) * g + gIdx) * fagS2Outer_ + s2oIdx) *
+                             fagS1Outer_ + s1oIdx + 1;
+        fagBlockEnds_[c - 1] = fagBlockStarts_[c];
+    }
+    for (uint32_t c = static_cast<uint32_t>(blockOuter); c < FAG_CORE_LIST_NUM; c++) {
+        fagBlockStarts_[c] = 0;
+        fagBlockEnds_[c] = 0;
+    }
+
+    // Fallback check: if isInvalidCol or isInvalidRow, return false to trigger BN2GS1S2 fallback
+    // isInvalidCol/isInvalidRow are set by GetFagParseS1S2OuterInfo
+    if (fagIsInvalidCol_ || fagIsInvalidRow_) {
+        return false;
+    }
+    return true;
 }
 
 // ===== GenFagMetadata: serialize FAG split results to metadata tensor =====

@@ -33,7 +33,7 @@ FlashAttnGrad(const at::Tensor &q, const at::Tensor &k, const at::Tensor &v,
     TORCH_CHECK(q.defined(), "q must be defined");
     TORCH_CHECK(k.defined(), "k must be defined");
     TORCH_CHECK(v.defined(), "v must be defined");
-    TORCH_CHECK(doTensor.defined(), "do must be defined");
+    TORCH_CHECK(doTensor.defined(), "dout must be defined");
     TORCH_CHECK(attnOut.defined(), "attn_out must be defined");
     TORCH_CHECK(softmaxLse.defined(), "softmax_lse must be defined");
 

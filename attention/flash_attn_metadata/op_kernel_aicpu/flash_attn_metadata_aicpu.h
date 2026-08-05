@@ -114,6 +114,11 @@ private:
     uint32_t fagLayoutType_ = FAG_INPUT_FORMAT_BS2N2GD;
     int64_t fagS1Token_ = -1;
     int64_t fagS2Token_ = -1;
+    bool fagIsBn2_ = false;
+    bool fagIsBn2MultiBlk_ = false;
+    bool fagIsAllSame_ = false;
+    bool fagIsInvalidCol_ = false;
+    bool fagIsInvalidRow_ = false;
 
     // FAG method declarations
     void InitFagParams();
@@ -121,6 +126,7 @@ private:
     void GenFagMetadata(uint32_t sectionNum);
 
     // FAG split implementations (defined in flash_attn_grad_metadata_split.h)
+    void SetFagSplitAxis();
     void DoFagDenseSplit();
     void DoFagTndSplit();
     void DoFagSparseBlockInfo();
@@ -132,6 +138,29 @@ private:
     void FagFillBlockInfoLoadBalance(
         int64_t (*totalBlockInfo)[2],
         float (*acturalBlockInfo)[FAG_MAX_S2_OUTER + 2]);
+
+    // BN2S2 split implementations
+    void TryBn2s2Sparse();
+    void DoFagBn2s2DenseSplit();
+    void DoFagBn2s2SparseTndSplit();
+    float Bn2s2BinarySearchMaxBlockNumPerCore(
+        int64_t b, int64_t n2, int64_t g, int64_t aicNum,
+        int64_t (*totalBlockInfo)[2],
+        float (*acturalBlockInfo)[FAG_MAX_S2_OUTER + 2]);
+    bool Bn2s2IsPossible(
+        int64_t b, int64_t n2, int64_t g, int64_t aicNum,
+        float possibleMax,
+        float (*acturalBlockInfo)[FAG_MAX_S2_OUTER + 2]);
+    bool Bn2s2CaclePerCoreBlockInfo(
+        int64_t b, int64_t n2, int64_t g, int64_t aicNum,
+        int64_t (*totalBlockInfo)[2],
+        float (*acturalBlockInfo)[FAG_MAX_S2_OUTER + 2],
+        float maxBlockNumPerCore);
+
+    // BN2 split implementations
+    bool TryBn2MultiBlkSparse();
+    void DoFagBn2DenseSplit();
+    bool DoFagBn2SparseBlockInfo();
 
 private:
     enum ParamId {

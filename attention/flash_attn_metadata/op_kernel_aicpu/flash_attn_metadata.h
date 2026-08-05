@@ -92,6 +92,8 @@ constexpr uint32_t FAG_SPARSE_BAND = 4U;
 
 // FAG split axis values (matching SplitAxisEnum)
 constexpr uint32_t FAG_SPLIT_AXIS_BN2GS1S2 = 0U;
+constexpr uint32_t FAG_SPLIT_AXIS_BN2 = 1U;
+constexpr uint32_t FAG_SPLIT_AXIS_BN2S2 = 5U;
 
 namespace detail {
 struct FaMetadata {
