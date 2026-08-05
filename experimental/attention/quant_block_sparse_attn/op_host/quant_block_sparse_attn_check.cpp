@@ -240,12 +240,6 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckDtype() const
                                   std::to_string(static_cast<int>(opParamInfo.metadata.desc->GetDataType())), "INT32");
         return ge::GRAPH_FAILED;
     }
-    if (opParamInfo.seqUsedQ.desc != nullptr && opParamInfo.seqUsedQ.tensor != nullptr &&
-        opParamInfo.seqUsedQ.desc->GetDataType() != ge::DT_INT32) {
-        OP_LOGE_FOR_INVALID_DTYPE(kOpName, "seqused_q",
-                                  std::to_string(static_cast<int>(opParamInfo.seqUsedQ.desc->GetDataType())), "INT32");
-        return ge::GRAPH_FAILED;
-    }
     if (opParamInfo.seqUsedKV.desc != nullptr && opParamInfo.seqUsedKV.tensor != nullptr &&
         opParamInfo.seqUsedKV.desc->GetDataType() != ge::DT_INT32) {
         OP_LOGE_FOR_INVALID_DTYPE(kOpName, "seqused_kv",
@@ -261,12 +255,6 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckDtype() const
     if (opParamInfo.cuSeqlensQ.desc != nullptr && opParamInfo.cuSeqlensQ.desc->GetDataType() != ge::DT_INT32) {
         OP_LOGE_FOR_INVALID_DTYPE(kOpName, "cu_seqlens_q",
                                   std::to_string(static_cast<int>(opParamInfo.cuSeqlensQ.desc->GetDataType())),
-                                  "INT32");
-        return ge::GRAPH_FAILED;
-    }
-    if (opParamInfo.cuSeqlensKV.desc != nullptr && opParamInfo.cuSeqlensKV.desc->GetDataType() != ge::DT_INT32) {
-        OP_LOGE_FOR_INVALID_DTYPE(kOpName, "cu_seqlens_kv",
-                                  std::to_string(static_cast<int>(opParamInfo.cuSeqlensKV.desc->GetDataType())),
                                   "INT32");
         return ge::GRAPH_FAILED;
     }
@@ -406,6 +394,18 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckExistence() const
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "seqused_kv", "nullptr",
                                               "seqused_kv is required for TND/NTD query layout "
                                               "with PA BNBD KV-cache");
+        return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo.cuSeqlensKV.tensor != nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "cu_seqlens_kv", "non-null",
+                                              "cu_seqlens_kv is a reserved parameter and must be passed as null; "
+                                              "non-null input is rejected");
+        return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo.seqUsedQ.tensor != nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "seqused_q", "non-null",
+                                              "seqused_q is a reserved parameter and must be passed as null; "
+                                              "non-null input is rejected");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -669,24 +669,6 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckActualSeqLen() const
             return ge::GRAPH_FAILED;
         }
     }
-    if (opParamInfo.cuSeqlensKV.tensor != nullptr) {
-        const auto *cuSeqlensKVShape = reinterpret_cast<const gert::StorageShape *>(opParamInfo.cuSeqlensKV.tensor);
-        const gert::Shape &shape = cuSeqlensKVShape->GetStorageShape();
-        if (shape.GetDimNum() != DIM_NUM_1 || shape.GetDim(0U) != static_cast<int64_t>(tilingInfo_.bSize) + 1) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "cu_seqlens_kv", Ops::Base::ToString(shape),
-                                                  "must be 1D with dim[0] == B+1");
-            return ge::GRAPH_FAILED;
-        }
-    }
-    if (opParamInfo.seqUsedQ.tensor != nullptr) {
-        const auto *seqUsedQShape = reinterpret_cast<const gert::StorageShape *>(opParamInfo.seqUsedQ.tensor);
-        const gert::Shape &shape = seqUsedQShape->GetStorageShape();
-        if (shape.GetDimNum() != DIM_NUM_1 || shape.GetDim(0U) != static_cast<int64_t>(tilingInfo_.bSize)) { // dim0 = B
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "seqused_q", Ops::Base::ToString(shape),
-                                                  "must be 1D with dim[0] == B");
-            return ge::GRAPH_FAILED;
-        }
-    }
     if (opParamInfo.seqUsedKV.tensor != nullptr) {
         const auto *seqUsedKVShape = reinterpret_cast<const gert::StorageShape *>(opParamInfo.seqUsedKV.tensor);
         const gert::Shape &shape = seqUsedKVShape->GetStorageShape();
@@ -790,6 +772,9 @@ ge::graphStatus QuantBlockSparseAttnCheck::Process()
     if (CheckAttrs() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    if (CheckExistence() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     if (CheckDtype() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -800,9 +785,6 @@ ge::graphStatus QuantBlockSparseAttnCheck::Process()
         return ge::GRAPH_FAILED;
     }
     if (CheckBlockSize() != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    if (CheckExistence() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (CheckShapeConsistency() != ge::GRAPH_SUCCESS) {

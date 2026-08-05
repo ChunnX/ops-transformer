@@ -214,19 +214,19 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>cu_seqlens_kv</td>
       <td>输入</td>
       <td>预留参数。</td>
-      <td>当前算子不使用；如传入则需满足 dtype/format/shape 约束。</td>
+      <td>预留参数，必须传空（None）；传入非空 Tensor 时 host 侧将拦截并报错。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B+1)</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>seqused_q</td>
       <td>输入</td>
       <td>预留参数。</td>
-      <td>当前算子不使用；如传入则需满足 dtype/format/shape 约束。</td>
+      <td>预留参数，必须传空（None）；传入非空 Tensor 时 host 侧将拦截并报错。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B)</td>
+      <td>-</td>
     </tr>
     <tr>
       <td>seqused_kv</td>
@@ -696,14 +696,14 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 - 单参数约束
 
-  - `cu_seqlens_q`、`cu_seqlens_kv`、`seqused_q`、`seqused_kv` 如传入，数据类型仅支持 `INT32`，数据格式仅支持 ND。
-  - `cu_seqlens_q`、`cu_seqlens_kv` 如传入，shape 为 `(BatchSize + 1)`。
-  - `seqused_q`、`seqused_kv` 如传入，shape 为 `(BatchSize)`。
+  - `cu_seqlens_q`、`seqused_kv` 数据类型仅支持 `INT32`，数据格式仅支持 ND。
+  - `cu_seqlens_q` shape 为 `(BatchSize + 1)`，`seqused_kv` shape 为 `(BatchSize)`。
+  - `cu_seqlens_kv` 和 `seqused_q` 为预留参数，必须传空（None）；传入非空 Tensor 时 host 侧将拦截并报错。
 
 - 存在性约束
 
   - TND/NTD + PA_BNSD 场景必须传入 `cu_seqlens_q` 和 `seqused_kv`。
-  - `cu_seqlens_kv` 和 `seqused_q` 为预留参数，可传空；当前主算子 host 侧和 kernel 侧不使用其数值。
+  - `cu_seqlens_kv` 和 `seqused_q` 为预留参数，必须传空；传入非空 Tensor 时 host 侧将拦截并报错。
 
 - 一致性约束
 
@@ -803,8 +803,8 @@ attn_out, softmax_lse = torch.ops.custom.npu_quant_block_sparse_attn(
     128,
     128,
     cu_seqlens_q=cu_seqlens_q,
-    cu_seqlens_kv=cu_seqlens_kv,
-    seqused_q=seqused_q,
+    cu_seqlens_kv=None,
+    seqused_q=None,
     seqused_kv=seqused_kv,
     block_table=block_table,
     metadata=metadata,
