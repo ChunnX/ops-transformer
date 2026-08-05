@@ -389,7 +389,7 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
 ## 约束说明
 
   - aclnnQuantLightningIndexerV2Metadata默认确定性实现。
-  - B（Batch）表示输入样本批量大小，S1表示layoutQOptional=BSND时，q shape中的S轴的大小，S2表示layoutKOptional=BSND时，k shape中的S轴的大小。
+  - B（Batch）表示输入样本批量大小，q、k为配套的aclnnQuantLightningIndexerV2算子的入参，S1表示layoutQOptional=BSND时，q shape中的S轴的大小，S2表示layoutKOptional=BSND时，k shape中的S轴的大小。
   - 参数cuSeqlensQOptional、cuSeqlensKOptional要求其值为当前Batch与前序Batch有效token数的累加值，第一个元素固定为0，后一个元素的值必须大于等于前一个元素的值。
   - 参数sequsedQOptional、sequsedKOptional要求其值表示每个Batch中的有效token数。
   - 非PA场景layoutQOptional、layoutKOptional须相同。
@@ -407,10 +407,10 @@ aclnnStatus aclnnQuantLightningIndexerV2Metadata(
   - Batch取值规则
     - layoutQOptional为BSND时，优先通过sequsedQOptional的shape推导batch，sequsedQOptional未传入则通过batchSize获取batch数。
     - layoutQOptional为TND时，优先通过sequsedQOptional的shape推导batch，sequsedQOptional未传入则通过cuSeqlensQOptional的shape推导batch。
-  - Q Seqlen取值规则
+  - q Seqlen取值规则
     - layoutQOptional为BSND时，优先通过sequsedQOptional中的元素获取seqlen，sequsedQOptional未传入则通过maxSeqlenQ获取seqlen。
     - layoutQOptional为TND时，优先通过sequsedQOptional中的元素获取seqlen，sequsedQOptional未传入则通过cuSeqlensQOptional中的元素获取seqlen。
-  - K Seqlen取值规则
+  - k Seqlen取值规则
     - layoutKOptional为BSND时，优先通过sequsedKOptional中的元素获取seqlen，sequsedKOptional未传入则通过maxSeqlenK获取seqlen。
     - layoutKOptional为TND时，优先通过sequsedKOptional中的元素获取seqlen，sequsedKOptional未传入则通过cuSeqlensKOptional中的元素获取seqlen。
 

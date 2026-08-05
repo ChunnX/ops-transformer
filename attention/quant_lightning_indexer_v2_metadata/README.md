@@ -171,7 +171,7 @@
 ## 约束说明
 
 - QuantLightningIndexerV2Metadata算子需要与QuantLightningIndexerV2算子配套使用。
-- B（Batch）表示输入样本批量大小，S1表示layout_q=BSND时，q shape中的S轴的大小，S2表示layout_k=BSND时，k shape中的S轴的大小。
+- B（Batch）表示输入样本批量大小，q、k为配套的QuantLightningIndexerV2算子的入参，S1表示layout_q=BSND时，q shape中的S轴的大小，S2表示layout_k=BSND时，k shape中的S轴的大小。
 - 参数cu_seqlens_q、cu_seqlens_k要求其值为当前Batch与前序Batch有效token数的累加值，第一个元素固定为0，后一个元素的值必须大于等于前一个元素的值。
 - 参数seqused_q、seqused_k要求其值表示每个Batch中的有效token数。
 - 参数cmp_residual_k需满足cmp_residual_k[i] < cmp_ratio。
@@ -190,10 +190,10 @@
 - Batch取值规则
   - layout_q为BSND时，优先通过seqused_q的shape推导batch，seqused_q未传入则通过batch_size获取batch数。
   - layout_q为TND时，优先通过seqused_q的shape推导batch，seqused_q未传入则通过cu_seqlens_q的shape推导batch。
-- Q Seqlen取值规则
+- q Seqlen取值规则
   - layout_q为BSND时，优先通过seqused_q中的元素获取seqlen，seqused_q未传入则通过max_seqlen_q获取seqlen。
   - layout_q为TND时，优先通过seqused_q中的元素获取seqlen，seqused_q未传入则通过cu_seqlens_q中的元素获取seqlen。
-- K Seqlen取值规则
+- k Seqlen取值规则
   - layout_k为BSND时，优先通过seqused_k中的元素获取seqlen，seqused_k未传入则通过max_seqlen_k获取seqlen。
   - layout_k为TND时，优先通过seqused_k中的元素获取seqlen，seqused_k未传入则通过cu_seqlens_k中的元素获取seqlen。
 

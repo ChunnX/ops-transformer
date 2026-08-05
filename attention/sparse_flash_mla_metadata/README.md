@@ -245,7 +245,7 @@
 - 该接口支持训练、推理场景下使用。
 - 该接口支持aclgraph模式。
 - 通用规格约束如下：
-  - B（Batch）表示输入样本批量大小，S1表示layout_q=BSND时，q shape中的S轴的大小，T1表示layout_q=TND时，q shape中的T轴的大小，S2表示layout_kv=BSND时，ori_kv shape中的S轴的大小，S3表示layout_kv=BSND时，cmp_kv shape中的S轴的大小，N2表示ori_kv、cmp_kv shape中的N轴的大小。
+  - B（Batch）表示输入样本批量大小，q、ori_kv、cmp_kv为配套的SparseFlashMla算子的入参，S1表示layout_q=BSND时，q shape中的S轴的大小，T1表示layout_q=TND时，q shape中的T轴的大小，S2表示layout_kv=BSND时，ori_kv shape中的S轴的大小，S3表示layout_kv=BSND时，cmp_kv shape中的S轴的大小，N2表示ori_kv、cmp_kv shape中的N轴的大小。
   - 参数`cu_seqlens_q`、`cu_seqlens_ori_kv`及`cu_seqlens_cmp_kv`要求其值为当前Batch与前序Batch有效token数的累加值，第一个元素固定为0，后一个元素的值必须大于等于前一个元素的值。
   - 参数`seqused_q`、`seqused_ori_kv`、`seqused_cmp_kv`要求其值表示每个Batch中的有效token数。
   - `layout_q`和`layout_kv`组合仅支持"BSND"/"BSND"、"TND"/"TND"、"BSND"/"PA_BBND"、"TND"/"PA_BBND"；非PA_BBND场景下`layout_q`和`layout_kv`必须一致。
@@ -271,14 +271,14 @@
   - Batch取值规则
     - layout_q为BSND时，优先通过seqused_q的shape推导batch，seqused_q未传入则通过batch_size获取batch数。
     - layout_q为TND时，优先通过seqused_q的shape推导batch，seqused_q未传入则通过cu_seqlens_q的shape推导batch。
-  - Q Seqlen取值规则
+  - q Seqlen取值规则
     - layout_q为BSND时，优先通过seqused_q中的元素获取seqlen，seqused_q未传入则通过max_seqlen_q获取seqlen。
     - layout_q为TND时，优先通过seqused_q中的元素获取seqlen，seqused_q未传入则通过cu_seqlens_q中的元素获取seqlen。
-  - Ori_kv Seqlen取值规则
-    - layout_kv为BSND时，优先通过seqused_ori_kv中的元素获取seqlen，seqused_ori_kv未传入则通过max_seqlen_ori_kv获取seqlen，若max_seqlen_ori_kv未传入且ori_topk不为0，则通过ori_topk_length或ori_topk获取seqlen。
+  - ori_kv Seqlen取值规则
+    - layout_kv为BSND时，优先通过seqused_ori_kv中的元素获取seqlen，seqused_ori_kv未传入则通过max_seqlen_ori_kv获取seqlen。
     - layout_kv为TND时，优先通过seqused_ori_kv中的元素获取seqlen，seqused_ori_kv未传入则通过cu_seqlens_ori_kv中的元素获取seqlen。
-  - Cmp_kv Seqlen取值规则
-    - layout_kv为BSND时，优先通过seqused_cmp_kv中的元素获取seqlen，seqused_cmp_kv未传入则通过max_seqlen_cmp_kv获取seqlen，若max_seqlen_cmp_kv未传入且cmp_topk不为0，则通过cmp_topk_length或cmp_topk获取seqlen。
+  - cmp_kv Seqlen取值规则
+    - layout_kv为BSND时，优先通过seqused_cmp_kv中的元素获取seqlen，seqused_cmp_kv未传入则通过max_seqlen_cmp_kv获取seqlen。
     - layout_kv为TND时，优先通过seqused_cmp_kv中的元素获取seqlen，seqused_cmp_kv未传入则通过cu_seqlens_cmp_kv中的元素获取seqlen。
 - Atlas A3 训练系列产品/Atlas A3 推理系列产品约束：
   - `cmp_ratio`表示`cmp_kv`相对于压缩前KV长度的压缩倍率；仅传入`ori_kv`时不参与压缩KV计算。CSA场景传4，HCA场景传128。
