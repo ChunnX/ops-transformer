@@ -23,8 +23,6 @@ namespace Mc2Kernel {
 
 using namespace AscendC;
 
-constexpr uint32_t ARCH35_TILE_BYTES = 64U * 1024U;
-
 template <AscendC::HardEvent event>
 __aicore__ inline void EngramFetchGradSyncFunc()
 {
@@ -106,6 +104,7 @@ private:
     int32_t outputDtype_{0};
     uint64_t winSize_{0};
     uint64_t ubSize_{0};
+    uint32_t tileBytes_{0};
 
     uint64_t barrierFlagOffset_{0};
     uint64_t tokenWriteOffset_{0};
@@ -243,38 +242,48 @@ __aicore__ inline void EngramFetchGradArch35::ClearStatusFlags(GM_ADDR statusWin
 
 __aicore__ inline void EngramFetchGradArch35::LocalCopySlice(GM_ADDR dst, GM_ADDR src, uint64_t len)
 {
-    LocalTensor<uint8_t> tmp0 = pingBuf_.Get<uint8_t>();
-    LocalTensor<uint8_t> tmp1 = pongBuf_.Get<uint8_t>();
+    if (len == 0) {
+        return;
+    }
+
     GlobalTensor<uint8_t> srcGm;
     GlobalTensor<uint8_t> dstGm;
     srcGm.SetGlobalBuffer((__gm__ uint8_t *)src);
     dstGm.SetGlobalBuffer((__gm__ uint8_t *)dst);
-    uint32_t tileLen = ARCH35_TILE_BYTES;
+
+    LocalTensor<uint8_t> buf0 = pingBuf_.Get<uint8_t>();
+    LocalTensor<uint8_t> buf1 = pongBuf_.Get<uint8_t>();
+
     uint64_t off = 0;
     uint32_t tileIdx = 0;
+
     while (off < len) {
-        uint64_t thisLen = (len - off > ARCH35_TILE_BYTES) ? tileLen : (len - off);
+        uint32_t thisLen = (len - off > tileBytes_) ? tileBytes_ : static_cast<uint32_t>(len - off);
         uint32_t bufIdx = tileIdx % 2U;
-        LocalTensor<uint8_t> tmp = (bufIdx == 0U) ? tmp0 : tmp1;
+        LocalTensor<uint8_t> &buf = (bufIdx == 0U) ? buf0 : buf1;
+
         if (tileIdx >= 2U) {
             AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[bufIdx]);
         }
-        DataCopyExtParams mte2Params{1U, static_cast<uint32_t>(thisLen), 0U, 0U, 0U};
+
+        DataCopyExtParams mte2Params{1U, thisLen, 0U, 0U, 0U};
         DataCopyPadExtParams<uint8_t> mte2Pad{false, 0, 0, 0};
-        DataCopyPad(tmp, srcGm[off], mte2Params, mte2Pad);
+        DataCopyPad(buf, srcGm[off], mte2Params, mte2Pad);
         AscendC::SetFlag<HardEvent::MTE2_MTE3>(ppEvtMte2ToMte3_[bufIdx]);
         AscendC::WaitFlag<HardEvent::MTE2_MTE3>(ppEvtMte2ToMte3_[bufIdx]);
-        DataCopyExtParams mte3Params{1U, static_cast<uint32_t>(thisLen), 0U, 0U, 0U};
-        DataCopyPad(dstGm[off], tmp, mte3Params);
+
+        DataCopyExtParams mte3Params{1U, thisLen, 0U, 0U, 0U};
+        DataCopyPad(dstGm[off], buf, mte3Params);
         AscendC::SetFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[bufIdx]);
+
         off += thisLen;
         tileIdx++;
     }
-    if (tileIdx >= 1U) {
-        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[(tileIdx - 1U) % 2U]);
-    }
+
+    uint32_t last = (tileIdx - 1U) % 2U;
+    AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[last]);
     if (tileIdx >= 2U) {
-        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[tileIdx % 2U]);
+        AscendC::WaitFlag<HardEvent::MTE3_MTE2>(ppEvtMte3ToMte2_[last ^ 1U]);
     }
 }
 
@@ -315,6 +324,7 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     inputDtype_ = tilingData->inputDtype;
     outputDtype_ = tilingData->outputDtype;
     ubSize_ = tilingData->ubSize;
+    tileBytes_ = tilingData->tileBytes;
 
     winSize_ = tilingData->commBufferSize;
 
@@ -349,8 +359,8 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     LocalTensor<uint8_t> hcommTensor = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor, HCOMM_INIT_SIZE);
 
-    tpipe_->InitBuffer(pingBuf_, ARCH35_TILE_BYTES);
-    tpipe_->InitBuffer(pongBuf_, ARCH35_TILE_BYTES);
+    tpipe_->InitBuffer(pingBuf_, tileBytes_);
+    tpipe_->InitBuffer(pongBuf_, tileBytes_);
     ppEvtMte2ToMte3_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
     ppEvtMte2ToMte3_[1] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE3));
     ppEvtMte3ToMte2_[0] = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
@@ -394,11 +404,11 @@ __aicore__ inline void EngramFetchGradArch35::Init(GM_ADDR commContext, GM_ADDR 
     uint32_t bitmapBufSize = Ceil(Ceil(segLen, BITS_PER_BYTE), ALIGNED_LEN_256) * ALIGNED_LEN_256;
     tpipe_->InitBuffer(bitmapBuf_, bitmapBufSize);
 
-    uint64_t ubUsed = HCOMM_INIT_SIZE + 2U * ARCH35_TILE_BYTES + statusBufSize + statusBufSize +
+    uint64_t ubUsed = HCOMM_INIT_SIZE + 2U * tileBytes_ + statusBufSize + statusBufSize +
                       gradSumBufSize + indicesBufSize + bitmapBufSize;
     ascendc_assert(ubUsed <= ubSize_,
-                   "UB overflow: used=%llu, ubSize=%llu, rankId=%u, hiddenDim=%ld",
-                   ubUsed, ubSize_, rankId_, hiddenDim_);
+                   "UB overflow: used=%llu, ubSize=%llu, rankId=%u, hiddenDim=%ld, tileBytes=%u",
+                   ubUsed, ubSize_, rankId_, hiddenDim_, tileBytes_);
 }
 
 __aicore__ inline void EngramFetchGradArch35::UnsortGrad()
@@ -926,16 +936,16 @@ __aicore__ inline void EngramFetchGradArch35::ClearWinCounters()
     }
 
     GM_ADDR localWinBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_];
-    LocalTensor<int32_t> cleanLocal = statusBuf_.Get<int32_t>();
-    Duplicate<int32_t>(cleanLocal, 0, numRanks_ * STATE_OFFSET / sizeof(int32_t));
+    uint32_t cleanElements = numRanks_ * STATE_OFFSET / sizeof(int32_t);
+    uint32_t totalCleanElements = 2U * cleanElements;
+
+    LocalTensor<int32_t> cleanLocal = pingBuf_.Get<int32_t>(totalCleanElements);
+    Duplicate<int32_t>(cleanLocal, 0, totalCleanElements);
     EngramFetchGradSyncFunc<HardEvent::V_MTE3>();
-    uint64_t cleanSize = numRanks_ * STATE_OFFSET / sizeof(int32_t);
-    GlobalTensor<int32_t> writeGM;
-    GlobalTensor<int32_t> readGM;
-    writeGM.SetGlobalBuffer((__gm__ int32_t *)(localWinBase + tokenWriteOffset_));
-    readGM.SetGlobalBuffer((__gm__ int32_t *)(localWinBase + tokenReadOffset_));
-    DataCopy(writeGM, cleanLocal, cleanSize);
-    DataCopy(readGM, cleanLocal, cleanSize);
+
+    GlobalTensor<int32_t> countersGM;
+    countersGM.SetGlobalBuffer((__gm__ int32_t *)(localWinBase + tokenWriteOffset_));
+    DataCopy(countersGM, cleanLocal, totalCleanElements);
     EngramFetchGradSyncFunc<HardEvent::MTE3_S>();
 }
 
@@ -948,7 +958,6 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrier()
             uint64_t handle = GetCommHandle(dstRank);
             GM_ADDR remoteFlagAddr = GetRemoteWinAddr(dstRank, barrierFlagOffset_) + rankId_ * STATE_OFFSET;
             WriteNbiChecked(handle, remoteFlagAddr, flagScratchGM_, STATE_OFFSET);
-            DrainChecked(handle);
         }
     }
     if (aivId_ == 0) {
@@ -970,12 +979,13 @@ __aicore__ inline void EngramFetchGradArch35::CrossRankBarrier()
         WaitAllStatusFlags(localFlagBase, numRanks_);
         ClearStatusFlags(localFlagBase);
     }
-    SyncAll<true>();
 }
 
 __aicore__ inline void EngramFetchGradArch35::Process()
 {
     if ASCEND_IS_AIV {
+        uint64_t cycleStartTotal = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
         uint64_t cycleStartInit = static_cast<uint64_t>(AscendC::GetSystemCycle());
         InitFlagsAndDispls();
         uint64_t cycleEndInit = static_cast<uint64_t>(AscendC::GetSystemCycle());
@@ -996,22 +1006,38 @@ __aicore__ inline void EngramFetchGradArch35::Process()
         uint64_t cycleStart = static_cast<uint64_t>(AscendC::GetSystemCycle());
         ExchangeGrad();
         uint64_t cycleEnd = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+        uint64_t cycleStartScatter = static_cast<uint64_t>(AscendC::GetSystemCycle());
+        UniqueScatterAdd();
+        uint64_t cycleEndScatter = static_cast<uint64_t>(AscendC::GetSystemCycle());
+
+        uint64_t cycleEndTotal = static_cast<uint64_t>(AscendC::GetSystemCycle());
         uint64_t cycleDelta = cycleEnd - cycleStart;
-        printf("[EngramFetchGrad] rankId=%u, aivId=%u, InitFlagsAndDispls cycles=%llu, ClearWinCounters cycles=%llu, "
-               "CrossRankBarrier cycles=%llu, UnsortGrad cycles=%llu, ExchangeGrad cycles=%llu, "
-               "sendCycles=%llu, sendBytes=%llu (%llu KB), recvCycles=%llu, recvBytes=%llu (%llu KB)\n",
-               rankId_, aivId_, static_cast<unsigned long long>(cycleEndInit - cycleStartInit),
+        uint64_t sendBw = (exchangeSendCycles_ > 0) ? exchangeSendBytes_ / (exchangeSendCycles_ / 1000) / 536 / 2 : 0;
+        uint64_t recvBw = (exchangeRecvCycles_ > 0) ? exchangeRecvBytes_ / (exchangeRecvCycles_ / 1000) / 536 / 2 : 0;
+        uint64_t totalSendBytes = static_cast<uint64_t>(numTokens_) * static_cast<uint64_t>(hiddenBytes_);
+        uint64_t totalCycles = cycleEndTotal - cycleStartTotal;
+        uint64_t totalBw = (totalCycles > 1000) ? totalSendBytes / (totalCycles / 1000) / 536 / 2 : 0;
+        printf("[EngramFetchGrad] rankId=%u, aivId=%u, total cycles=%llu (totalSendBytes=%llu, totalBW=%llu), "
+               "InitFlagsAndDispls=%llu, ClearWinCounters=%llu, CrossRankBarrier=%llu, UnsortGrad=%llu, "
+               "ExchangeGrad=%llu (sendCycles=%llu/sendBytes=%llu /sendBW=%llu, "
+               "recvCycles=%llu/recvBytes=%llu /recvBW=%llu), UniqueScatterAdd=%llu\n",
+               rankId_, aivId_,
+               static_cast<unsigned long long>(totalCycles),
+               static_cast<unsigned long long>(totalSendBytes),
+               static_cast<unsigned long long>(totalBw),
+               static_cast<unsigned long long>(cycleEndInit - cycleStartInit),
                static_cast<unsigned long long>(cycleEndClear - cycleStartClear),
                static_cast<unsigned long long>(cycleEndBarrier - cycleStartBarrier),
                static_cast<unsigned long long>(cycleEnd1 - cycleStart1),
                static_cast<unsigned long long>(cycleDelta),
                static_cast<unsigned long long>(exchangeSendCycles_),
                static_cast<unsigned long long>(exchangeSendBytes_),
-               static_cast<unsigned long long>(exchangeSendBytes_ / 1024),
+               static_cast<unsigned long long>(sendBw),
                static_cast<unsigned long long>(exchangeRecvCycles_),
                static_cast<unsigned long long>(exchangeRecvBytes_),
-               static_cast<unsigned long long>(exchangeRecvBytes_ / 1024));
-        UniqueScatterAdd();
+               static_cast<unsigned long long>(recvBw),
+               static_cast<unsigned long long>(cycleEndScatter - cycleStartScatter));
     }
 }
 
