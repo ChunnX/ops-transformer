@@ -56,7 +56,7 @@ def test_example(param_combinations):
             input_data["cpu_output"], npu_result
         )
 
-    if test_data.get("return_softmax_lse", False):
+    if test_data.get("return_softmax_lse", False) and npu_error_msg is None:
         result, fulfill_percent = result_compare_method.check_result(
             input_data["softmax_lse"], softmax_lse
         )

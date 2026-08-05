@@ -508,7 +508,11 @@ ge::graphStatus SMLAInfoParser::GetSMLATemplateMode(SMLATilingInfo &smlaInfo)
         } else if (opParamInfo_.cmpKv.desc != nullptr && opParamInfo_.cmpSparseIndices.tensor == nullptr) {
             perfMode_ = SMLATemplateMode::HCA_TEMPLATE_MODE;
         } else if (opParamInfo_.cmpKv.desc == nullptr && opParamInfo_.cmpSparseIndices.tensor == nullptr) {
-            if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
+            if (opParamInfo_.oriSparseIndices.tensor != nullptr && opParamInfo_.oriMaskMode != nullptr &&
+                *opParamInfo_.oriMaskMode == 4U) {
+                // DSpark SWA sparse: band mask + ori_sparse_indices stays on SWA kernel path.
+                perfMode_ = SMLATemplateMode::SWA_TEMPLATE_MODE;
+            } else if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
                 perfMode_ = SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE;
             } else {
                 perfMode_ = SMLATemplateMode::SWA_TEMPLATE_MODE;
@@ -953,11 +957,6 @@ ge::graphStatus SMLAInfoParser::GetActualseqInfo()
                     opParamInfo_.cmpResidualKv.tensor->GetShapeSize());
             return ge::GRAPH_FAILED;
         }
-    }
-    if (!IsA5Arch(npuArch_) && IsNonEmptyOptionalTensor(opParamInfo_.oriTopkLength.tensor)) {
-        OP_LOGE(opName_, "ori_topk_length is reserved and does not support non-empty tensor on %s.",
-                A2_A3_PLATFORM_LOG.c_str());
-        return ge::GRAPH_FAILED;
     }
     if (!IsA5Arch(npuArch_) && IsNonEmptyOptionalTensor(opParamInfo_.cmpTopkLength.tensor)) {
         OP_LOGE(opName_, "cmp_topk_length is reserved and does not support non-empty tensor on %s.",
