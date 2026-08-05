@@ -11,8 +11,10 @@
 
 /*!
  * \file test_aclnn_flash_attention_score_grad_v4_tnd_deter_causal_right_down.cpp
- * \brief TND deterministic example for TND deter RIGHT_DOWN_CAUSAL (S1!=S2 -> DeterType=5). Expect DeterType=5.
- *        Check plog: tiling is / isTndSwizzle / isDeterministic[5]
+ * \brief TND deterministic RIGHT_DOWN_CAUSAL (sparseMode=3, S1!=S2). Expect DeterType=5, isTndSwizzle=1.
+ *        Type 5 only when swizzle on; S1==S2 would stay DeterType=3.
+ *        Tiling-only: stops after GetWorkspaceSize (no kernel) for fast iteration.
+ *        Plog: isExceedL2Cache / enableSwizzle / isTndSwizzle / isDeterministic[5] / tiling is
  */
 
 #include <iostream>
@@ -47,7 +49,6 @@ int Init(int32_t deviceId, aclrtStream* stream) {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
   ret = aclrtSetDevice(deviceId);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
-  // Enable deterministic for TND deter / swizzle path
   int64_t det = 1;
   ret = aclrtCtxSetSysParamOpt(ACL_OPT_DETERMINISTIC, det);
   CHECK_RET(ret == ACL_SUCCESS,
@@ -57,20 +58,19 @@ int Init(int32_t deviceId, aclrtStream* stream) {
   return 0;
 }
 
-template <typename T>
-int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
-                    aclDataType dataType, aclTensor** tensor) {
-  auto size = GetShapeSize(shape) * sizeof(T);
+// Device-only alloc (memset), skip host H2D — enough for tiling / GetWorkspaceSize.
+int CreateAclTensorZero(const std::vector<int64_t>& shape, size_t elementSize, void** deviceAddr,
+                        aclDataType dataType, aclTensor** tensor) {
+  auto size = static_cast<size_t>(GetShapeSize(shape)) * elementSize;
   auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
-  ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
+  ret = aclrtMemset(*deviceAddr, size, 0, size);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemset failed. ERROR: %d\n", ret); return ret);
 
   std::vector<int64_t> strides(shape.size(), 1);
   for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; i--) {
     strides[i] = shape[i + 1] * strides[i + 1];
   }
-
   *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
                             shape.data(), shape.size(), *deviceAddr);
   return 0;
@@ -82,18 +82,12 @@ int main() {
   auto ret = Init(deviceId, &stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-  // Case: causal_right_down, expect DeterType=5, IsTndSwizzle=1
-  // Need S1!=S2 (else stays Deter=3); large shape for enableSwizzle.
+  // RIGHT_DOWN + S1!=S2 + swizzle → DeterType=5. Moderate size; unequal Q/KV keep TND + type5.
   int64_t N1 = 8;
   int64_t N2 = 8;
-  int64_t T1 = 12288;  // 4096 + 8192
-  int64_t T2 = 18432;  // 6144 + 12288
+  int64_t T1 = 6144;   // 2048 + 4096
+  int64_t T2 = 9216;   // 3072 + 6144
   int64_t D = 128;
-
-  int64_t q_size = T1 * N1 * D;
-  int64_t kv_size = T2 * N2 * D;
-  int64_t atten_mask_size = 2048 * 2048;
-  int64_t softmax_size = T1 * N1 * 8;
 
   std::vector<int64_t> qShape = {T1, N1, D};
   std::vector<int64_t> kShape = {T2, N2, D};
@@ -145,46 +139,34 @@ int main() {
   aclTensor* dqRope = nullptr;
   aclTensor* dkRope = nullptr;
 
-  std::vector<float> qHostData(q_size, 1.0f);
-  std::vector<float> kHostData(kv_size, 1.0f);
-  std::vector<float> vHostData(kv_size, 1.0f);
-  std::vector<float> dxHostData(q_size, 1.0f);
-  std::vector<uint8_t> attenmaskHostData(atten_mask_size, 0);
-  std::vector<float> softmaxMaxHostData(softmax_size, 3.0f);
-  std::vector<float> softmaxSumHostData(softmax_size, 3.0f);
-  std::vector<float> attentionInHostData(q_size, 1.0f);
-  std::vector<float> dqHostData(q_size, 0.0f);
-  std::vector<float> dkHostData(kv_size, 0.0f);
-  std::vector<float> dvHostData(kv_size, 0.0f);
-
-  ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT, &q);
+  ret = CreateAclTensorZero(qShape, sizeof(float), &qDeviceAddr, aclDataType::ACL_FLOAT, &q);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(kHostData, kShape, &kDeviceAddr, aclDataType::ACL_FLOAT, &k);
+  ret = CreateAclTensorZero(kShape, sizeof(float), &kDeviceAddr, aclDataType::ACL_FLOAT, &k);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(vHostData, vShape, &vDeviceAddr, aclDataType::ACL_FLOAT, &v);
+  ret = CreateAclTensorZero(vShape, sizeof(float), &vDeviceAddr, aclDataType::ACL_FLOAT, &v);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(dxHostData, dxShape, &dxDeviceAddr, aclDataType::ACL_FLOAT, &dx);
+  ret = CreateAclTensorZero(dxShape, sizeof(float), &dxDeviceAddr, aclDataType::ACL_FLOAT, &dx);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(attenmaskHostData, attenmaskShape, &attenmaskDeviceAddr, aclDataType::ACL_UINT8, &attenmask);
+  ret = CreateAclTensorZero(attenmaskShape, sizeof(uint8_t), &attenmaskDeviceAddr, aclDataType::ACL_UINT8, &attenmask);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(softmaxMaxHostData, softmaxMaxShape, &softmaxMaxDeviceAddr, aclDataType::ACL_FLOAT, &softmaxMax);
+  ret = CreateAclTensorZero(softmaxMaxShape, sizeof(float), &softmaxMaxDeviceAddr, aclDataType::ACL_FLOAT, &softmaxMax);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(softmaxSumHostData, softmaxSumShape, &softmaxSumDeviceAddr, aclDataType::ACL_FLOAT, &softmaxSum);
+  ret = CreateAclTensorZero(softmaxSumShape, sizeof(float), &softmaxSumDeviceAddr, aclDataType::ACL_FLOAT, &softmaxSum);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(attentionInHostData, attentionInShape, &attentionInDeviceAddr, aclDataType::ACL_FLOAT, &attentionIn);
+  ret = CreateAclTensorZero(attentionInShape, sizeof(float), &attentionInDeviceAddr, aclDataType::ACL_FLOAT, &attentionIn);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(dqHostData, dqShape, &dqDeviceAddr, aclDataType::ACL_FLOAT, &dq);
+  ret = CreateAclTensorZero(dqShape, sizeof(float), &dqDeviceAddr, aclDataType::ACL_FLOAT, &dq);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(dkHostData, dkShape, &dkDeviceAddr, aclDataType::ACL_FLOAT, &dk);
+  ret = CreateAclTensorZero(dkShape, sizeof(float), &dkDeviceAddr, aclDataType::ACL_FLOAT, &dk);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(dvHostData, dvShape, &dvDeviceAddr, aclDataType::ACL_FLOAT, &dv);
+  ret = CreateAclTensorZero(dvShape, sizeof(float), &dvDeviceAddr, aclDataType::ACL_FLOAT, &dv);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   std::vector<int64_t> prefixOp = {0};
   std::vector<int64_t> qStartIdxOp = {0};
   std::vector<int64_t> kvStartIdxOp = {0};
-  std::vector<int64_t> actualSeqQLenOp = {4096, 12288};   // per-batch: 4096, 8192
-  std::vector<int64_t> actualSeqKVLenOp = {6144, 18432};  // per-batch: 6144, 12288 (S1!=S2)
+  std::vector<int64_t> actualSeqQLenOp = {2048, 6144};   // per-batch: 2048, 4096
+  std::vector<int64_t> actualSeqKVLenOp = {3072, 9216};  // per-batch: 3072, 6144 (S1!=S2)
 
   aclIntArray *prefix = aclCreateIntArray(prefixOp.data(), 1);
   aclIntArray *qStartIdx = aclCreateIntArray(qStartIdxOp.data(), 1);
@@ -205,33 +187,30 @@ int main() {
   int64_t offset = 0;
   char inputlayOut[5] = {'T', 'N', 'D', 0};
 
-  LOG_PRINT("[FAG-TND-DETER] case=causal_right_down, sparseMode=%ld, pre/next=%ld/%ld, T1/T2=%ld/%ld, expectDeterType=5\n",
-            sparseMode, preTokens, nextTokens, T1, T2);
+  LOG_PRINT("[FAG-TND-DETER] causal_right_down tiling-only: N=%ld T1/T2=%ld/%ld sparseMode=%ld expect "
+            "DeterType=5 enableSwizzle=1 isTndSwizzle=1\n",
+            N1, T1, T2, sparseMode);
 
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
+  // API order: sparseMode, pseType, seed, offset, outDtype
   ret = aclnnFlashAttentionScoreGradV4GetWorkspaceSize(
       q, k, v, dx, pse, dropMask, padding, attenmask, softmaxMax, softmaxSum, softmaxIn, attentionIn, nullptr,
       queryRope, keyRope, dScaleQ, dScaleK, dScaleV, dScaleDy, dScaleO, prefix, actualSeqQLen, actualSeqKVLen,
       qStartIdx, kvStartIdx, scaleValue, keepProb, preTokens, nextTokens, headNum, inputlayOut, nullptr, innerPrecise,
-      sparseMode, outDtype, pseType, seed, offset, dq, dk, dv, dqRope, dkRope, dpse, nullptr, &workspaceSize,
+      sparseMode, pseType, seed, offset, outDtype, dq, dk, dv, dqRope, dkRope, dpse, nullptr, &workspaceSize,
       &executor);
-  CHECK_RET(ret == ACL_SUCCESS,
-            LOG_PRINT("aclnnFlashAttentionScoreGradV4GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
-
-  void* workspaceAddr = nullptr;
-  if (workspaceSize > 0) {
-    ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
+  if (ret != ACL_SUCCESS) {
+    const char* errMsg = aclGetRecentErrMsg();
+    LOG_PRINT("aclnnFlashAttentionScoreGradV4GetWorkspaceSize failed. ERROR: %d\n", ret);
+    LOG_PRINT("aclGetRecentErrMsg: %s\n", errMsg != nullptr ? errMsg : "(null)");
+    LOG_PRINT("Also grep plog for: Tiling failed|OP_LOGE|invalid|EZ1001|FlashAttentionScoreGrad\n");
+    return ret;
   }
 
-  ret = aclnnFlashAttentionScoreGradV4(workspaceAddr, workspaceSize, executor, stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFlashAttentionScoreGradV4 failed. ERROR: %d\n", ret); return ret);
-
-  ret = aclrtSynchronizeStream(stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-
-  LOG_PRINT("[FAG-TND-DETER] case=causal_right_down finished. Check plog for: tiling is / isTndSwizzle / isDeterministic[5]\n");
+  LOG_PRINT("[FAG-TND-DETER] GetWorkspaceSize ok, workspaceSize=%lu. Skip kernel.\n", workspaceSize);
+  LOG_PRINT("[FAG-TND-DETER] grep plog: isExceedL2Cache / enableSwizzle / isTndSwizzle / "
+            "isDeterministic\\[5\\] / tiling is\n");
 
   aclDestroyTensor(q);
   aclDestroyTensor(k);
@@ -261,9 +240,6 @@ int main() {
   aclrtFree(dqDeviceAddr);
   aclrtFree(dkDeviceAddr);
   aclrtFree(dvDeviceAddr);
-  if (workspaceSize > 0) {
-    aclrtFree(workspaceAddr);
-  }
   aclrtDestroyStream(stream);
   aclrtResetDevice(deviceId);
   aclFinalize();
