@@ -75,6 +75,16 @@ inline ge::graphStatus GetCacheStride0(gert::TilingContext &context, uint32_t in
     OP_CHECK_IF(shape.GetDimNum() == 0U,
                 OP_LOGE(context.GetNodeName(), "%s rank must be greater than 0.", tensorName),
                 return ge::GRAPH_FAILED);
+    // Empty cache tensors have no addressable elements, so their stride is not
+    // used by the kernel. In particular, krCache is required to be empty when
+    // ckvkrRepoMode is COMBINE, and aclCreateTensor may describe shape (0) with
+    // stride0 == 0. Leave the repo-mode/shape legality check to the existing
+    // MlaPrologTilingCheck and do not reject a valid empty tensor here.
+    if (shape.GetShapeSize() == 0) {
+        stride0 = 0U;
+        OP_LOGD(context.GetNodeName(), "%s is empty, skip stride validation.", tensorName);
+        return ge::GRAPH_SUCCESS;
+    }
     uint64_t defaultStride0 = 0U;
     OP_CHECK_IF(!GetDefaultStride0(shape, defaultStride0),
                 OP_LOGE(context.GetNodeName(), "%s shape cannot be represented by an int64 stride.", tensorName),
