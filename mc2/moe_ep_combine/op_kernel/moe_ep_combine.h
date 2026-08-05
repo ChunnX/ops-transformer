@@ -168,6 +168,7 @@ private:
     LocalTensor<float> ubAccFp32_;
     LocalTensor<float> ubTmpFp32_;
     LocalTensor<float> ubWeighted_;
+    LocalTensor<float> ubWeightedB_;
     LocalTensor<uint32_t> statusTensor_;
     LocalTensor<uint8_t> hcommTensor_;
     LocalTensor<uint32_t> stateResetTensor_;
@@ -180,6 +181,7 @@ private:
     TBuf<QuePosition::VECIN> ubAccFp32Buf_;
     TBuf<QuePosition::VECIN> ubTmpFp32Buf_;
     TBuf<QuePosition::VECIN> ubWeightedBuf_;
+    TBuf<QuePosition::VECIN> ubWeightedBufB_;
     TBuf<> readStateBuf_;
     TBuf<> tokenStatusBuf_;
     TBuf<> stateBuf_;
@@ -511,8 +513,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::BuffInit()
     tpipe_->InitBuffer(tokenBuf_, bsKHalfAlign);
 
     if constexpr (HasTopkWeight == 1) {
-        tpipe_->InitBuffer(ubWeightedBuf_, sizeof(float));
+        tpipe_->InitBuffer(ubWeightedBuf_, UB_ALIGN);
         ubWeighted_ = ubWeightedBuf_.Get<float>();
+        tpipe_->InitBuffer(ubWeightedBufB_, UB_ALIGN);
+        ubWeightedB_ = ubWeightedBufB_.Get<float>();
     }
     tpipe_->InitBuffer(ubXBuf_, ubXBytes_);
     tpipe_->InitBuffer(ubAccFp32Buf_, axisH_ * sizeof(float));
@@ -546,7 +550,6 @@ __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitDispatch(
     if (localState == copyCount) {
         DataCopyParams resetParams = {static_cast<uint16_t>(topK_), 1, 0, WIN_ADDR_ALIGN / UB_ALIGN - 1};
         DataCopy<uint32_t>(stateGMTensor, stateResetTensor_, resetParams);
-        SyncFunc<AscendC::HardEvent::MTE3_S>();
         return true;
     }
     return false;
@@ -559,8 +562,16 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessTopKTo
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(hAlignSize_), 0U, 0U};
     DataCopyParams weightCopyParams = {1U, static_cast<uint16_t>(sizeof(float)), 0U, 0U};
+
+    if constexpr (HasTopkWeight == 1) {
+        uint64_t slotOffset0 = (static_cast<uint64_t>(tokenIndex) * topK_ + 0) * perSlotBytes_;
+        GM_ADDR wAddr0 = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + slotOffset0;
+        GlobalTensor<float> srcWeightTensor0;
+        srcWeightTensor0.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(wAddr0 + hAlignSize_));
+        DataCopyPad(ubWeighted_, srcWeightTensor0, weightCopyParams, padParams);
+    }
+
     for (uint32_t topkId = 0U; topkId < topK_; topkId++) {
-        // 读取expert_id
         uint64_t slotOffset = (static_cast<uint64_t>(tokenIndex) * topK_ + topkId) * perSlotBytes_;
         GM_ADDR wAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + slotOffset;
         GlobalTensor<XType> srcTokenTensor;
@@ -570,13 +581,20 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessTopKTo
         Cast(ubTmpFp32_, ubX_, AscendC::RoundMode::CAST_NONE, axisH_);
         Add(ubAccFp32_, ubAccFp32_, ubTmpFp32_, axisH_);
         if constexpr (HasTopkWeight == 1) {
-            GM_ADDR weightAddr = wAddr + hAlignSize_;
-            GlobalTensor<float> srcWeightTensor;
-            srcWeightTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(weightAddr));
-            DataCopyPad(ubWeighted_, srcWeightTensor, weightCopyParams, padParams);
+            LocalTensor<float>& curBuf = (topkId % 2 == 0) ? ubWeighted_ : ubWeightedB_;
+            if (topkId >= 1) {
+                SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+            }
+            if (topkId + 1 < topK_) {
+                uint64_t nextSlotOffset = (static_cast<uint64_t>(tokenIndex) * topK_ + topkId + 1) * perSlotBytes_;
+                GM_ADDR nextWAddr = GetUrmaWinAddrByRankId(rankId_, combineDataWinOffset_) + nextSlotOffset;
+                GlobalTensor<float> nextSrcWeightTensor;
+                nextSrcWeightTensor.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(nextWAddr + hAlignSize_));
+                LocalTensor<float>& nextBuf = (topkId % 2 == 0) ? ubWeightedB_ : ubWeighted_;
+                DataCopyPad(nextBuf, nextSrcWeightTensor, weightCopyParams, padParams);
+            }
             SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-            DataCopyPad(combinedTopkWeightsGm_[tokenIndex * topK_ + topkId], ubWeighted_, weightCopyParams);
-            SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+            DataCopyPad(combinedTopkWeightsGm_[tokenIndex * topK_ + topkId], curBuf, weightCopyParams);
         }
     }
 }
