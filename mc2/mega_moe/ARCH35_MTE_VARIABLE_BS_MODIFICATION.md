@@ -3,8 +3,8 @@
 ```mermaid
 flowchart TD
     A[外层调用传入<br/>localBs / numMaxTokensPerRank / topoType] --> B[ACLNN 参数转发<br/>numMaxTokensPerRank 不再被 0 覆盖]
-    B --> C[Host Tiling 参数校验<br/>MTE: 0 或 Bmax >= localBs<br/>URMA: 0 或 Bmax == localBs]
-    C --> D[生成有效通信容量<br/>MTE: Bmax<br/>未配置或 URMA: localBs]
+    B --> C[仅在 MTE 条件内校验<br/>0 或 Bmax >= localBs]
+    C --> D[生成 MTE 有效通信容量<br/>配置Bmax时使用Bmax<br/>否则回退localBs]
     D --> E[写入 MegaMoeTilingData<br/>bs=localBs<br/>maxTokensPerRank=Bmax]
     D --> F[Host 容量推导]
     F --> F1[maskRecv<br/>Bmax * topK]
@@ -13,14 +13,13 @@ flowchart TD
     F --> F4[maxOutput/workspace<br/>Bmax * worldSize * expert上限]
     F --> F5[Dispatch接收与Combine同步<br/>按Bmax估算]
     E --> G[框架通过 tilingGM 下发]
-    G --> H{arch35 Kernel 路径}
+    G --> H{arch35 MTE Kernel 路径}
     H -->|MTE A8W8| I[MegaMoeWave]
     H -->|MTE 其他| J[MegaMoe]
-    H -->|URMA| K[MegaMoeLayered<br/>保持原行为]
     I --> L[发送按 localBs<br/>接收窗口按 Bmax]
     J --> L
     L --> M[mask count 写入固定 Bmax slot 尾部<br/>Dispatch 扫描完整 Bmax 路由窗口]
-    M --> N[单测覆盖<br/>可变BS/回退/边界/溢出/URMA不回归]
+    M --> N[单测覆盖<br/>可变BS/回退/边界/溢出]
 ```
 
 ## 1. 文档目的与修改范围
@@ -31,7 +30,7 @@ flowchart TD
 
 - 支持 arch35 的 MTE 通信路径在不同 Rank 使用不同的实际 BS。
 - MTE 的通用 Kernel `MegaMoe` 和 Wave Kernel `MegaMoeWave` 同时支持可变 BS。
-- URMA 的 `MegaMoeLayered` 不改造可变 BS，继续保持原有固定 BS 规则。
+- 非 MTE 路径不进入本次新增的 Bmax 校验和容量覆盖逻辑，`MegaMoeLayered` 不修改。
 - arch22 不在本次修改范围内。
 - 本地真实计算量仍由当前 Rank 的实际 BS 决定，不因 Bmax 增加而扩大。
 
@@ -132,16 +131,15 @@ Bmax = tilingData->maxTokensPerRank
 
 > 本地真实数据量使用 localBs；跨 Rank 地址布局、接收范围和最坏情况容量使用 Bmax。
 
-### 3.3 拓扑选择
+### 3.3 MTE 条件
 
-arch35 中：
+本次新增逻辑只在以下条件成立时执行：
 
 ```cpp
-TOPO_TYPE_MTE  = 0;
-TOPO_TYPE_URMA = 1;
+TOPO_TYPE_MTE = 0;
 ```
 
-定义位置：`op_kernel/arch35/mega_moe_workspace_info.h:98-99`。
+定义位置：`op_kernel/arch35/mega_moe_workspace_info.h:98`。
 
 本次可变 BS 使用：
 
@@ -150,7 +148,7 @@ topoType = 0
 numMaxTokensPerRank = 所有 Rank 统一的 Bmax
 ```
 
-URMA 继续要求 `numMaxTokensPerRank` 为 0 或等于本地 BS。
+非 MTE 路径不使用本次新增的 `numMaxTokensPerRank` 可变 BS 规则，也不为其增加新的参数约束。
 
 ## 4. 配置从外层到 Kernel 的调用路线
 
@@ -231,42 +229,46 @@ uint32_t maxTokensPerRank;  // 所有 Rank 统一的通信容量 Bmax
 
 > 固定 BS 时 `bs` 可以同时表示本地数据量和通信容量；可变 BS 后两者不再相等，必须使用两个独立字段。放在末尾可以尽量保持原有 Host/Kernel Tiling ABI 布局。
 
-### 5.3 将可变 BS 规则限制在 MTE
+### 5.3 仅在 MTE 条件内校验可变 BS 参数
 
 代码位置：`op_host/op_tiling/arch35/mega_moe_tiling.cpp:294-313,374-397`。
 
-首先拒绝空指针和负数：
+公共属性读取仅保留原有空指针检查：
 
 ```cpp
-numMaxTokensPerRankPtr == nullptr || *numMaxTokensPerRankPtr < 0
+numMaxTokensPerRankPtr == nullptr
 ```
 
-负数如果直接转换成 `uint32_t`，会变成异常大的正整数，因此必须在转换前拒绝。
+负数检查放入 MTE 条件内部，避免给非 MTE 路径新增该参数的行为定义。
 
-修改前的非零规则是：
+MTE 条件内新增规则：
 
 ```text
-numMaxTokensPerRank 必须等于本地 bs
+numMaxTokensPerRank == 0 或 numMaxTokensPerRank >= localBs
 ```
 
-修改后：
+代码结构为：
 
 ```text
-MTE ：numMaxTokensPerRank == 0 或 numMaxTokensPerRank >= localBs
-URMA：numMaxTokensPerRank == 0 或 numMaxTokensPerRank == localBs
+communicationTokenCapacity = bs; // 原逻辑默认值
+if (topoType == TOPO_TYPE_MTE) {
+    // 只在这里校验 numMaxTokensPerRank，并用 Bmax 覆盖通信容量
+}
 ```
 
 修改原因：
 
-> MTE 需要允许所有 Rank 使用统一且可能大于本地 BS 的 Bmax；URMA Kernel 未进行可变 BS 改造，因此继续保持原有固定 BS 约束。
+> MTE 需要允许所有 Rank 使用统一且可能大于本地 BS 的 Bmax；非 MTE 路径保持原流程，不新增 `numMaxTokensPerRank` 校验或语义。
 
 ### 5.4 生成有效通信容量并检查溢出
 
 代码位置：`op_host/op_tiling/arch35/mega_moe_tiling.cpp:396-410`。
 
 ```cpp
-int64_t communicationTokenCapacity =
-    topoType == TOPO_TYPE_MTE && numMaxTokensPerRank != 0 ? numMaxTokensPerRank : bs;
+int64_t communicationTokenCapacity = bs;
+if (topoType == TOPO_TYPE_MTE) {
+    communicationTokenCapacity = numMaxTokensPerRank != 0 ? numMaxTokensPerRank : bs;
+}
 ```
 
 含义：
@@ -275,7 +277,6 @@ int64_t communicationTokenCapacity =
 |---|---:|
 | MTE，Bmax 非零 | Bmax |
 | MTE，Bmax 为 0 | localBs |
-| URMA | localBs |
 
 `communicationTokenCapacity` 是 Host 校验阶段的局部变量，可以理解为 `effectiveCommunicationBs`，不是第三种 BS。
 
@@ -389,9 +390,11 @@ cclBufferSize >= leastCclBufferSize;
 代码位置：`op_host/op_tiling/arch35/mega_moe_tiling.cpp:454-477`。
 
 ```cpp
-int64_t outputExpertCapacity = topoType == TOPO_TYPE_MTE ? moeExpertPerRank : expertPerRank;
-int64_t maxOutputCapacity =
-    communicationTokenCapacity * epWorldSize * std::min(topK, outputExpertCapacity);
+int64_t maxOutputCapacity = bs * epWorldSize * std::min(topK, expertPerRank); // 原公式
+if (topoType == TOPO_TYPE_MTE) {
+    maxOutputCapacity =
+        communicationTokenCapacity * epWorldSize * std::min(topK, moeExpertPerRank);
+}
 ```
 
 `maxOutputCapacity` 表示本 Rank 所有本地 expert 最坏可能接收的 routed token 中间容量，不是最终输出 `y` 的行数。
@@ -404,7 +407,7 @@ int64_t maxOutputCapacity =
 * 单个 token 最多落到本 Rank 的 route 数
 ```
 
-MTE 使用实际参与路由的 `moeExpertPerRank`；URMA 沿用原来的 `expertPerRank` 公式，避免改变 URMA 行为。
+代码先保留原来的 `bs` 和 `expertPerRank` 公式，只在 MTE 条件内使用 Bmax 和实际参与路由的 `moeExpertPerRank` 覆盖结果，因此非 MTE 路径不进入新增逻辑。
 
 同时检查：
 
@@ -451,7 +454,7 @@ expectedTokens = CeilDiv(schedulingTokenCapacity * topK, expertPerRank);
 
 修改原因：
 
-> 小 BS Rank 的本地 expert 仍可能接收大 BS Rank 的大量路由。MTE 按 Bmax 保守估算 `expertsPerBatch`，避免低估接收侧 GMM 工作量；URMA 继续使用本地 BS。
+> 小 BS Rank 的本地 expert 仍可能接收大 BS Rank 的大量路由。原估算先保持不变，仅在 MTE 条件内按 Bmax 覆盖 `expertsPerBatch` 的负载基准。
 
 ### 5.12 Dispatch 接收 batch 按 Bmax 配置
 
@@ -498,7 +501,7 @@ maxTokenCountForOneExpert = tokenCapacityPerRank * epWorldSize;
 
 修改原因：
 
-> 小 BS Rank 的某个本地 expert 可能接收其他大 BS Rank 的 token；继续按本地 BS 分配 Combine 同步 slot 会低估最坏容量。URMA 仍按本地 BS 计算。
+> 小 BS Rank 的某个本地 expert 可能接收其他大 BS Rank 的 token；原同步容量公式先保持不变，仅在 MTE 条件内用 Bmax 覆盖。
 
 ### 5.14 Host 日志同步显示 Bmax 布局
 
@@ -532,7 +535,7 @@ maxTokensPerRank * tokenBytes
 
 修改原因：
 
-> Host 的 `leastCclBufferSize` 与 Kernel 的 `PeermemInfo` 必须采用完全一致的区域大小公式。MTE 使用统一 Bmax 后，所有 Rank 的 `maskRecvPtr`、`quantTokenScalePtr` 和 `combineSendPtr` 相对偏移保持一致；URMA 分支继续使用原布局。
+> Host 的 `leastCclBufferSize` 与 Kernel 的 `PeermemInfo` 必须采用完全一致的区域大小公式。Kernel 先保留原地址计算，仅在 MTE 条件内使用统一 Bmax 覆盖相关容量。
 
 ### 5.16 Kernel 分离本地发送量和接收容量
 
@@ -629,7 +632,7 @@ validRouteCount = recvRouteCapacity_ - batchRouteBegin;
 
 > Host 已经按 Bmax 生成 Dispatch 接收 batch；Kernel 的最后一个 batch 也必须按相同的 `recvRouteCapacity_` 收尾，才能完整扫描每个源 Rank 的统一 mask 窗口，并避免 Host/Kernel batch 范围不一致。
 
-### 5.20 两条 MTE Kernel 同步改造，URMA 不修改
+### 5.20 两条 MTE Kernel 同步改造，非 MTE 代码不修改
 
 Kernel 选择位置：`op_kernel/arch35/mega_moe_apt.cpp:61-99`。
 
@@ -638,7 +641,7 @@ arch35 的选择关系为：
 ```text
 MTE A8W8 -> MegaMoeWave
 MTE 其他 -> MegaMoe
-URMA     -> MegaMoeLayered
+非 MTE  -> 不进入本次新增的变量 BS Kernel 逻辑
 ```
 
 因此 `sendTotalNum_/recvRouteCapacity_`、mask slot、固定 count 地址和 Dispatch 接收扫描必须同时修改 `mega_moe.h` 与 `mega_moe_wave.h`。
@@ -647,18 +650,18 @@ URMA     -> MegaMoeLayered
 
 修改原因：
 
-> 只修改一条 MTE Kernel 会导致部分量化组合支持可变 BS、另一部分仍按固定 BS 运行；URMA 未纳入本次设计，保持原实现可以控制改动范围和回归风险。
+> 只修改一条 MTE Kernel 会导致部分量化组合支持可变 BS、另一部分仍按固定 BS 运行；非 MTE Kernel 不在本次设计范围内，也没有修改。
 
 ## 6. Workspace 为什么没有把所有 bs 都替换为 Bmax
 
 Workspace 的多个接收侧区域已经由 `maxOutputSize` 间接按 Bmax 扩大，例如 Dispatch 接收、Meta、GMM 和 Swiglu 中间结果。其余仍使用 `bs` 的位置主要属于：
 
-- URMA 专属区域；
+- 非 MTE 专属区域；
 - Shared Expert 的本地输入和输出；
 - 本 Rank Unpermute；
 - 最终 `y` 对应的本地 token。
 
-这些区域处理的是当前 Rank 真实数据，不应改成 Bmax。如果机械地把所有 `bs` 替换为 `maxTokensPerRank`，可能导致读取不存在的输入、扩大无意义的计算或改变 URMA 行为。
+这些区域处理的是当前 Rank 真实数据，不应改成 Bmax。如果机械地把所有 `bs` 替换为 `maxTokensPerRank`，可能导致读取不存在的输入、扩大无意义的计算或影响非 MTE 路径。
 
 因此本次修改不是“把所有 bs 替换成 Bmax”，而是按数据语义逐点区分：
 
@@ -727,9 +730,8 @@ tilingData->maxOutputSize == 4096;
 | `Bmax<localBs` | 138-140 | 失败 |
 | Bmax 为负数 | 142-144 | 失败 |
 | CCL buffer 仍按旧 localBs 分配 | 146-148 | 失败 |
-| URMA 使用不同 Bmax | 150-152 | 失败，验证 URMA 不放开 |
-| Bmax 超过 `uint32_t` | 154-157 | 失败 |
-| `Bmax*topK` 超过 `int32_t` | 159-162 | 失败 |
+| Bmax 超过 `uint32_t` | 150-153 | 失败 |
+| `Bmax*topK` 超过 `int32_t` | 155-158 | 失败 |
 
 ## 9. 验证情况
 
@@ -748,7 +750,7 @@ bash build.sh -u --ophost --ops=mega_moe --soc=ascend950
 >
 > 本次改造引入独立的 `maxTokensPerRank` 作为所有 Rank 统一的通信容量 Bmax。当前 Rank 的输入量化、真实 SendMask、Shared Expert 和 Unpermute 仍使用 localBs；mask 槽位、量化 token 通信窗口、Combine 回传窗口、Dispatch 接收扫描、接收 workspace 和 Combine 同步最坏容量改为使用 Bmax。Kernel 中进一步拆分 `sendTotalNum_=localBs*topK` 和 `recvRouteCapacity_=Bmax*topK`，并将每个 mask slot 的 count 固定放在统一 Bmax mask 区尾部，保证不同 BS Rank 使用一致的通信地址布局。
 >
-> 可变 BS 规则严格限定在 arch35 MTE；URMA 继续要求最大 token 属性为 0 或等于本地 BS，并使用原来的 Layered Kernel。最后补齐 ACLNN 属性转发以及可变 BS、兼容模式、非法容量、通信内存不足、溢出和 URMA 不回归测试，从外层接口到 Host Tiling 再到 Kernel 完成完整链路。
+> 可变 BS 规则严格限定在 arch35 MTE 条件内部，非 MTE 路径不新增 `numMaxTokensPerRank` 规则，Layered Kernel 也没有修改。最后补齐 ACLNN 属性转发以及 MTE 可变 BS、兼容模式、非法容量、通信内存不足和溢出测试，从外层接口到 Host Tiling 再到 MTE Kernel 完成完整链路。
 
 ## 11. 最终检查清单
 
@@ -783,7 +785,7 @@ bash build.sh -u --ophost --ops=mega_moe --soc=ascend950
 
 ### 汇报步骤 5：将可变 BS 规则严格限定到 MTE
 
-原有校验要求非零 `numMaxTokensPerRank` 必须等于本地 BS，因此无法配置大于 localBs 的统一 Bmax。修改后，MTE 允许该属性为 0，或者满足 `numMaxTokensPerRank >= localBs`；URMA 仍然只允许 0 或等于本地 BS。这样 MTE 可以支持不同 Rank 使用不同 localBs，而 URMA 由于 Kernel 未做可变 BS 改造，继续保持原有固定 BS 行为。与此同时，代码在转换为无符号类型前拒绝负数，避免 `-1` 被转换成异常大的 `uint32_t`。对应代码位于 `op_host/op_tiling/arch35/mega_moe_tiling.cpp:294-313,374-395`。
+原实现不能为 MTE 配置大于 localBs 的统一 Bmax。修改后，仅在 `topoType == TOPO_TYPE_MTE` 条件内检查该属性为 0 或满足 `numMaxTokensPerRank >= localBs`，并在转换为无符号类型前拒绝负数。非 MTE 路径不进入这段新增校验，也没有为其定义 `numMaxTokensPerRank` 规则。对应代码位于 `op_host/op_tiling/arch35/mega_moe_tiling.cpp:294-313,374-404`。
 
 ### 汇报步骤 6：生成有效通信容量
 
@@ -815,7 +817,7 @@ bash build.sh -u --ophost --ops=mega_moe --soc=ascend950
 
 ### 汇报步骤 13：按 Bmax 推导最大接收容量
 
-`maxOutputCapacity` 表示当前 Rank 的所有本地 expert 在最坏路由分布下可能接收的 routed token 中间容量，不是最终输出 `y` 的行数。MTE 下将公式改为 `Bmax * epWorldSize * min(topK, moeExpertPerRank)`，其中 `min` 表示单个 token 最多有多少条 route 可以落到当前 Rank。URMA 为了保持原行为，继续使用 `expertPerRank`。随后分别检查用户显式 `maxRecvTokenNum` 和自动计算值是否能够安全写入 `uint32_t maxOutputSize`，并要求显式值不超过理论上限。对应代码位于 `op_host/op_tiling/arch35/mega_moe_tiling.cpp:454-477`。
+`maxOutputCapacity` 表示当前 Rank 的所有本地 expert 在最坏路由分布下可能接收的 routed token 中间容量，不是最终输出 `y` 的行数。代码先保留原有公式，仅在 MTE 条件内覆盖为 `Bmax * epWorldSize * min(topK, moeExpertPerRank)`，其中 `min` 表示单个 token 最多有多少条 route 可以落到当前 Rank。随后在 MTE 条件内检查用户显式 `maxRecvTokenNum` 和自动计算值是否能够安全写入 `uint32_t maxOutputSize`。对应代码位于 `op_host/op_tiling/arch35/mega_moe_tiling.cpp:449-474`。
 
 ### 汇报步骤 14：把有效 Bmax 和接收容量写入 TilingData
 
@@ -823,7 +825,7 @@ bash build.sh -u --ophost --ops=mega_moe --soc=ascend950
 
 ### 汇报步骤 15：按 Bmax 估算 MTE 的 expertsPerBatch
 
-`CalcExpertsPerBatch` 用于估算每个 expert 的 token 负载并选择 GMM 的 expert batch 调度。原来按本 Rank 的 localBs 估算，小 BS Rank 可能低估从其他大 BS Rank 接收的工作量。修改后，MTE 使用 Bmax 保守估算，URMA 仍使用本地 BS。该修改只影响调度参数，不会制造额外 token 或扩大真实计算量。对应代码位于 `op_host/op_tiling/arch35/mega_moe_tiling.cpp:70-85`。
+`CalcExpertsPerBatch` 用于估算每个 expert 的 token 负载并选择 GMM 的 expert batch 调度。代码先保留原来的 localBs 估算，仅在 MTE 条件内将估算容量覆盖为 Bmax，避免小 BS Rank 低估从其他大 BS Rank 接收的工作量。该修改只影响调度参数，不会制造额外 token 或扩大真实计算量。对应代码位于 `op_host/op_tiling/arch35/mega_moe_tiling.cpp:70-86`。
 
 ### 汇报步骤 16：Dispatch 接收 batch 改为按 Bmax 配置
 
@@ -831,15 +833,15 @@ bash build.sh -u --ophost --ops=mega_moe --soc=ascend950
 
 ### 汇报步骤 17：Combine 同步 slot 改为按 Bmax 预留
 
-单个确定的 expert 对同一个源 token 最多命中一次，所以单 expert 从一个源 Rank 最多接收 Bmax 个 token，从所有 Rank 最多接收 `Bmax * epWorldSize` 个 token。原实现按本 Rank 的 `bs * epWorldSize` 估算，小 BS Rank 可能低估某个本地 expert 的最坏接收量。修改后，MTE 使用 Bmax 计算单 expert 最大 token 数并按 token group 换算同步 slot，URMA 保持本地 BS 公式。对应代码位于 `op_host/op_tiling/arch35/mega_moe_tiling.cpp:854-879`。
+单个确定的 expert 对同一个源 token 最多命中一次，所以单 expert 从一个源 Rank 最多接收 Bmax 个 token，从所有 Rank 最多接收 `Bmax * epWorldSize` 个 token。代码先保留原来的 `bs * epWorldSize` 估算，仅在 MTE 条件内使用 Bmax 覆盖并按 token group 换算同步 slot，避免小 BS Rank 低估本地 expert 的最坏接收量。对应代码位于 `op_host/op_tiling/arch35/mega_moe_tiling.cpp:848-875`。
 
 ### 汇报步骤 18：同步修改 Host 调试日志
 
-可变 BS 后，如果日志只打印 localBs，就无法判断通信窗口实际按照什么容量分配。修改后，Tiling 日志同时打印 `bs` 和 `maxTokensPerRank`，`PrintPeermemInfo` 也按照 MTE 使用 Bmax、URMA 使用 localBs 的规则计算通信区域。这样日志展示的 mask、quant 和 Combine 大小与 Kernel 的真实地址布局保持一致，便于问题定位。对应代码位于 `op_host/op_tiling/arch35/mega_moe_tiling.cpp:104-118,176-218`。
+可变 BS 后，如果日志只打印 localBs，就无法判断 MTE 通信窗口实际按照什么容量分配。修改后，Tiling 日志同时打印 `bs` 和 `maxTokensPerRank`；`PrintPeermemInfo` 先保留原值，只在 MTE 条件内使用 Bmax 覆盖。这样 MTE 日志展示的 mask、quant 和 Combine 大小与 Kernel 的真实地址布局保持一致。对应代码位于 `op_host/op_tiling/arch35/mega_moe_tiling.cpp:105-119,177-221`。
 
 ### 汇报步骤 19：Kernel PeermemInfo 使用统一 Bmax 地址布局
 
-Host 只负责检查 CCL buffer 是否足够，Kernel 还需要根据相同公式真正划分 `maskRecvPtr`、`quantTokenScalePtr` 和 `combineSendPtr`。因此 `PeermemInfo` 中的 MTE mask 容量和量化 token 区域也改为使用 `maxTokensPerRank`，URMA 分支继续使用本地 BS。这样 Host 计算的最小通信内存与 Kernel 使用的各区域 offset 完全一致。对应代码位于 `op_kernel/arch35/mega_moe_base.h:55-90`。
+Host 只负责检查 CCL buffer 是否足够，Kernel 还需要根据相同公式真正划分 `maskRecvPtr`、`quantTokenScalePtr` 和 `combineSendPtr`。因此 `PeermemInfo` 先保留原来的本地 BS 容量，只在 MTE 条件内使用 `maxTokensPerRank` 覆盖 mask 和量化 token 区域。这样 Host 计算的 MTE 最小通信内存与 Kernel 使用的各区域 offset 完全一致。对应代码位于 `op_kernel/arch35/mega_moe_base.h:55-91`。
 
 ### 汇报步骤 20：Kernel 分离真实发送量和最大接收容量
 
@@ -857,17 +859,17 @@ Kernel 原来使用 `sendTotalNum_` 计算 `compareCount_`、`maskAlignSize_` �
 
 Host 已经根据 Bmax 配置了 Dispatch 接收 batch，Kernel 的最后一个接收 batch 也必须按相同容量收尾。原来最后一批的 `validRouteCount` 由 `sendTotalNum_` 计算，修改后改为 `recvRouteCapacity_ - batchRouteBegin`。这样小 BS Rank 也会扫描每个源 Rank 的完整 Bmax mask 窗口，不会漏掉大 BS Rank 的后半部分路由。对应代码位于 `op_kernel/arch35/mega_moe.h:1139-1146` 和 `op_kernel/arch35/mega_moe_wave.h:1308-1315`。
 
-### 汇报步骤 24：同时覆盖两条 MTE Kernel，保持 URMA 不变
+### 汇报步骤 24：同时覆盖两条 MTE Kernel，非 MTE Kernel 不修改
 
-arch35 的 MTE A8W8 路径使用 `MegaMoeWave`，其他 MTE 量化组合使用 `MegaMoe`，因此发送/接收容量拆分、mask slot、固定 count 地址和 Dispatch 扫描范围必须在两套 Kernel 中同步修改。URMA 使用独立的 `MegaMoeLayered`，本次没有改变其可变 BS 行为。这样可以保证所有 MTE 配置语义一致，同时控制 URMA 的回归范围。Kernel 选择代码位于 `op_kernel/arch35/mega_moe_apt.cpp:61-99`。
+arch35 的 MTE A8W8 路径使用 `MegaMoeWave`，其他 MTE 量化组合使用 `MegaMoe`，因此发送/接收容量拆分、mask slot、固定 count 地址和 Dispatch 扫描范围必须在两套 MTE Kernel 中同步修改。非 MTE Kernel 不属于本次改造范围，`mega_moe_layered.h` 没有修改。Kernel 选择代码位于 `op_kernel/arch35/mega_moe_apt.cpp:61-99`。
 
 ### 汇报步骤 25：保留本地 bs 的正确使用点
 
-本次改造不是把所有 `bs` 机械替换成 Bmax。Shared Expert 的本地输入、当前 Rank 的量化循环、真实 SendMask、最终 Unpermute 和输出 `y` 都只处理当前 Rank 实际存在的 token，因此继续使用 localBs。接收侧 workspace 已经通过 `maxOutputSize` 间接按 Bmax 扩大，URMA 专属区域也保持原公式。这一审计可以避免为了统一容量而读取不存在的输入或扩大无意义的本地计算。
+本次改造不是把所有 `bs` 机械替换成 Bmax。Shared Expert 的本地输入、当前 Rank 的量化循环、真实 SendMask、最终 Unpermute 和输出 `y` 都只处理当前 Rank 实际存在的 token，因此继续使用 localBs。接收侧 workspace 通过 MTE 的 `maxOutputSize` 间接按 Bmax 扩大，非 MTE 专属区域不修改。这一审计可以避免读取不存在的输入或扩大无意义的本地计算。
 
 ### 汇报步骤 26：补充单元测试和回归边界
 
-Host Tiling 单测新增 `localBs=128、Bmax=256` 的成功场景，并验证 TilingData 中的 localBs、Bmax 和默认最大接收容量。测试同时覆盖 Bmax 为 0 的兼容模式、显式 Bmax 等于 localBs、Bmax 小于 localBs、负数、CCL buffer 不足、Bmax 超过 `uint32_t`、`Bmax * topK` 超过 `int32_t`，以及 URMA 使用不同 Bmax 时必须失败。这些用例分别验证主功能、向后兼容、内存安全、数值安全和 URMA 不回归。对应代码位于 `tests/ut/op_host/arch35/test_mega_moe_tiling.cpp:53-162`。
+Host Tiling 单测新增 `localBs=128、Bmax=256` 的成功场景，并验证 TilingData 中的 localBs、Bmax 和默认最大接收容量。测试同时覆盖 Bmax 为 0 的兼容模式、显式 Bmax 等于 localBs、Bmax 小于 localBs、负数、CCL buffer 不足、Bmax 超过 `uint32_t`，以及 `Bmax * topK` 超过 `int32_t`。测试只覆盖 MTE 可变 BS 规则，不新增非 MTE 参数行为测试。对应代码位于 `tests/ut/op_host/arch35/test_mega_moe_tiling.cpp:53-158`。
 
 ### 汇报步骤 27：说明最终效果与验证边界
 

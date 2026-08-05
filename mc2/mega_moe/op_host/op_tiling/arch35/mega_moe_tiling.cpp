@@ -74,10 +74,11 @@ uint32_t CalcExpertsPerBatch(const MegaMoeTilingData *tilingData, uint32_t aicNu
         return 1U;
     }
 
-    // 固定 BS 时，全局 token 数和全局 expert 数中的 worldSize 可以约掉；可变 BS 的 MTE 无法从本 Rank
-    // 得知其他 Rank 的实际 BS，因此按统一 Bmax 保守估算每个本地 expert 的负载。URMA 保持原来的本地 BS。
-    uint64_t schedulingTokenCapacity = tilingData->topoType == TOPO_TYPE_MTE ? tilingData->maxTokensPerRank :
-                                                                             tilingData->bs;
+    // 默认保持原来的本地 BS 估算；仅 MTE 可变 BS 按统一 Bmax 保守估算每个本地 expert 的负载。
+    uint64_t schedulingTokenCapacity = tilingData->bs;
+    if (tilingData->topoType == TOPO_TYPE_MTE) {
+        schedulingTokenCapacity = tilingData->maxTokensPerRank;
+    }
     uint64_t expectedTokens = ops::CeilDiv<uint64_t>(
         schedulingTokenCapacity * static_cast<uint64_t>(tilingData->topK), expertPerRank);
     uint64_t expectedMWaves =
@@ -106,9 +107,11 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return);
 
     OP_LOGD(nodeName, "========== MegaMoeTilingData ==========");
-    OP_LOGD(nodeName, "shape: bs=%u, maxTokensPerRank=%u, h=%u, hiddenDim=%u, topK=%u, maxOutputSize=%u",
-            tilingData->bs, tilingData->maxTokensPerRank, tilingData->h, tilingData->hiddenDim, tilingData->topK,
-            tilingData->maxOutputSize);
+    OP_LOGD(nodeName, "shape: bs=%u, h=%u, hiddenDim=%u, topK=%u, maxOutputSize=%u", tilingData->bs, tilingData->h,
+            tilingData->hiddenDim, tilingData->topK, tilingData->maxOutputSize);
+    if (tilingData->topoType == TOPO_TYPE_MTE) {
+        OP_LOGD(nodeName, "MTE variable BS: maxTokensPerRank=%u", tilingData->maxTokensPerRank);
+    }
     OP_LOGD(nodeName,
             "topology: expertPerRank=%u, moeExpertPerRank=%u, sharedExpertNum=%u, epWorldSize=%u, aicNum=%u, "
             "blockAivNum=%u, blockNumPerEP=%u, topoType=%ld",
@@ -178,8 +181,10 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     OP_LOGD(nodeName, "========== PeermemInfo ==========");
     int64_t rankSyncInWorldSize = PEERMEM_DATA_OFFSET;
     OP_LOGD(nodeName, "rankSyncInWorldSize: {%ld}\n", rankSyncInWorldSize);
-    uint32_t windowTokenCapacity = tilingData->topoType == TOPO_TYPE_MTE ? tilingData->maxTokensPerRank :
-                                                                          tilingData->bs;
+    uint32_t windowTokenCapacity = tilingData->bs;
+    if (tilingData->topoType == TOPO_TYPE_MTE) {
+        windowTokenCapacity = tilingData->maxTokensPerRank;
+    }
     int64_t sendTotalNum = static_cast<int64_t>(windowTokenCapacity) * tilingData->topK;
     int64_t compareCount =
         ops::CeilAlign(sendTotalNum * (int64_t)sizeof(int32_t), (int64_t)ALIGN_256) / (int64_t)sizeof(int32_t);
@@ -309,8 +314,8 @@ static ge::graphStatus CheckAttrPtrNullptr(const gert::TilingContext *context, M
     OP_TILING_CHECK(combineQuantModePtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "combineQuantMode"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(commAlgPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "commAlg"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr || *numMaxTokensPerRankPtr < 0,
-                    OP_LOGE_WITH_INVALID_INPUT(nodeName, "numMaxTokensPerRank"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "numMaxTokensPerRank"),
+                    return ge::GRAPH_FAILED);
     OP_TILING_CHECK(activationClampPtr == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "activationClamp"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(*activationClampPtr < 0 || std::isnan(*activationClampPtr),
@@ -374,28 +379,17 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
     int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
     int64_t topoType = *attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
-    if (numMaxTokensPerRank != 0) {
-        if (topoType == TOPO_TYPE_MTE) {
-            OP_TILING_CHECK(
-                bs > numMaxTokensPerRank,
-                OP_LOGE_FOR_INVALID_VALUE(
-                    nodeName, "numMaxTokensPerRank", std::to_string(numMaxTokensPerRank).c_str(),
-                    (std::string("should be 0 or greater than or equal to local Bs in MTE mode, local Bs is ") +
-                     std::to_string(bs))
-                        .c_str()),
-                return ge::GRAPH_FAILED);
-        } else {
-            OP_TILING_CHECK(
-                bs != numMaxTokensPerRank,
-                OP_LOGE_FOR_INVALID_VALUE(
-                    nodeName, "numMaxTokensPerRank", std::to_string(numMaxTokensPerRank).c_str(),
-                    (std::string("should be 0 or Bs in URMA mode, Bs is ") + std::to_string(bs)).c_str()),
-                return ge::GRAPH_FAILED);
-        }
-    }
-    int64_t communicationTokenCapacity =
-        topoType == TOPO_TYPE_MTE && numMaxTokensPerRank != 0 ? numMaxTokensPerRank : bs;
+    int64_t communicationTokenCapacity = bs;
     if (topoType == TOPO_TYPE_MTE) {
+        OP_TILING_CHECK(
+            numMaxTokensPerRank < 0 || (numMaxTokensPerRank != 0 && bs > numMaxTokensPerRank),
+            OP_LOGE_FOR_INVALID_VALUE(
+                nodeName, "numMaxTokensPerRank", std::to_string(numMaxTokensPerRank).c_str(),
+                (std::string("should be 0 or greater than or equal to local Bs in MTE mode, local Bs is ") +
+                 std::to_string(bs))
+                    .c_str()),
+            return ge::GRAPH_FAILED);
+        communicationTokenCapacity = numMaxTokensPerRank != 0 ? numMaxTokensPerRank : bs;
         OP_TILING_CHECK(
             communicationTokenCapacity > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
             OP_LOGE_FOR_INVALID_VALUE(nodeName, "numMaxTokensPerRank",
@@ -453,21 +447,20 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
 
     auto maxRecvTokenNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMaxRecvTokenNumIndex));
     int64_t maxRecvTokenNum = static_cast<int64_t>(*maxRecvTokenNumPtr);
-    // MTE 的通信容量只覆盖实际参与路由的 MoE expert；URMA 沿用原来的 expertPerRank 公式。
-    int64_t outputExpertCapacity = topoType == TOPO_TYPE_MTE ? moeExpertPerRank : expertPerRank;
-    int64_t maxOutputCapacity = communicationTokenCapacity * epWorldSize * std::min(topK, outputExpertCapacity);
-    OP_TILING_CHECK(
-        topoType == TOPO_TYPE_MTE &&
+    int64_t maxOutputCapacity = bs * epWorldSize * std::min(topK, expertPerRank);
+    if (topoType == TOPO_TYPE_MTE) {
+        maxOutputCapacity = communicationTokenCapacity * epWorldSize * std::min(topK, moeExpertPerRank);
+        OP_TILING_CHECK(
             maxRecvTokenNum > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(),
-                                  "exceeds uint32 capacity"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        topoType == TOPO_TYPE_MTE && maxRecvTokenNum == 0 &&
-            maxOutputCapacity > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "maxOutputCapacity", std::to_string(maxOutputCapacity).c_str(),
-                                  "default maxOutputSize exceeds uint32 capacity"),
-        return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(),
+                                      "exceeds uint32 capacity"),
+            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(
+            maxRecvTokenNum == 0 && maxOutputCapacity > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "maxOutputCapacity", std::to_string(maxOutputCapacity).c_str(),
+                                      "default maxOutputSize exceeds uint32 capacity"),
+            return ge::GRAPH_FAILED);
+    }
     OP_TILING_CHECK(maxRecvTokenNum < 0 || maxRecvTokenNum > maxOutputCapacity,
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(),
                                               (std::string("should in [0, ") +
@@ -560,20 +553,23 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     auto activationClampPtr = attrs->GetAttrPointer<float>((config.attrActivationClampIndex));
 
     tilingData->epWorldSize = *epWorldSizePtr;
-    tilingData->maxTokensPerRank = tilingData->topoType == TOPO_TYPE_MTE && *numMaxTokensPerRankPtr != 0 ?
-                                       static_cast<uint32_t>(*numMaxTokensPerRankPtr) :
-                                       tilingData->bs;
+    tilingData->maxTokensPerRank = tilingData->bs;
+    if (tilingData->topoType == TOPO_TYPE_MTE && *numMaxTokensPerRankPtr != 0) {
+        tilingData->maxTokensPerRank = static_cast<uint32_t>(*numMaxTokensPerRankPtr);
+    }
 
     auto moeExpertNumPtr = attrs->GetAttrPointer<int64_t>((config.attrMoeExpertNumIndex));
     int64_t moeExpertNum = static_cast<int64_t>(*moeExpertNumPtr);
     int64_t moeExpertPerRank = moeExpertNum / static_cast<int64_t>(tilingData->epWorldSize);
     tilingData->moeExpertPerRank = static_cast<uint32_t>(moeExpertPerRank);
 
-    uint32_t outputExpertCapacity = tilingData->topoType == TOPO_TYPE_MTE ? tilingData->moeExpertPerRank :
-                                                                           tilingData->expertPerRank;
     uint64_t maxOutputCapacity =
-        static_cast<uint64_t>(tilingData->maxTokensPerRank) * tilingData->epWorldSize *
-        std::min(tilingData->topK, outputExpertCapacity);
+        static_cast<uint64_t>(tilingData->bs) * tilingData->epWorldSize *
+        std::min(tilingData->topK, tilingData->expertPerRank);
+    if (tilingData->topoType == TOPO_TYPE_MTE) {
+        maxOutputCapacity = static_cast<uint64_t>(tilingData->maxTokensPerRank) * tilingData->epWorldSize *
+                            std::min(tilingData->topK, tilingData->moeExpertPerRank);
+    }
     tilingData->maxOutputSize = *maxRecvTokenNumPtr != 0 ? static_cast<uint32_t>(*maxRecvTokenNumPtr) :
                                                           static_cast<uint32_t>(maxOutputCapacity);
     tilingData->blockNumPerEP = std::max(static_cast<uint32_t>(1), aicNum / tilingData->epWorldSize);
@@ -637,7 +633,10 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
                                                             uint32_t availableUbBytes)
 {
     MegaMoeDispatchBufferConfig bufferConfig{};
-    uint64_t recvRouteCapacity = static_cast<uint64_t>(tilingData->maxTokensPerRank) * tilingData->topK;
+    uint64_t recvRouteCapacity = static_cast<uint64_t>(tilingData->bs) * tilingData->topK;
+    if (tilingData->topoType == TOPO_TYPE_MTE) {
+        recvRouteCapacity = static_cast<uint64_t>(tilingData->maxTokensPerRank) * tilingData->topK;
+    }
     uint64_t alignedTotalRouteItems =
         (recvRouteCapacity + static_cast<uint64_t>(ALIGN_256) - 1U) / static_cast<uint64_t>(ALIGN_256) * ALIGN_256;
 
@@ -869,9 +868,11 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
         // 配对路径和 A8W8 wave 均只让 subBlockIdx=1 参与 Combine，因此逻辑核数是物理 AIV 数的一半。
         logicalCoreCount /= 2U;
     }
-    // 同一 token 的 topK expert id 不重复；MTE 按统一 maxTokensPerRank 预留，其他拓扑保持本地 bs。
-    uint64_t tokenCapacityPerRank = tilingData->topoType == TOPO_TYPE_MTE ? tilingData->maxTokensPerRank :
-                                                                           tilingData->bs;
+    // 默认保持原来的本地 BS 公式；仅 MTE 按统一 maxTokensPerRank 预留。
+    uint64_t tokenCapacityPerRank = tilingData->bs;
+    if (tilingData->topoType == TOPO_TYPE_MTE) {
+        tokenCapacityPerRank = tilingData->maxTokensPerRank;
+    }
     uint64_t maxTokenCountForOneExpert = tokenCapacityPerRank * tilingData->epWorldSize;
     uint64_t maxTokenGroupCountForOneExpert =
         ops::CeilDiv(maxTokenCountForOneExpert, static_cast<uint64_t>(COMBINE_TOKEN_GROUP_SIZE));

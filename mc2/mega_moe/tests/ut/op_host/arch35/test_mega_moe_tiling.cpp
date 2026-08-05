@@ -147,10 +147,6 @@ TEST_F(MegaMoeArch35TilingTest, H4096_LocalBS128_MaxBS256_FP8E4M3FN)
     ASSERT_TRUE(SetIntAttr(insufficientCclContext, "ccl_buffer_size", 12777472));
     Mc2ExecuteTestCase(insufficientCclContext, hcomTopologyMockValues, ge::GRAPH_FAILED);
 
-    auto urmaContext = tilingContextPara;
-    ASSERT_TRUE(SetIntAttr(urmaContext, "topo_type", 1));
-    Mc2ExecuteTestCase(urmaContext, hcomTopologyMockValues, ge::GRAPH_FAILED);
-
     auto overflowMaxBsContext = tilingContextPara;
     ASSERT_TRUE(SetIntAttr(overflowMaxBsContext, "num_max_tokens_per_rank",
                            static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) + 1));
