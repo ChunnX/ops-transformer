@@ -26,16 +26,46 @@ class NumpyBatchRandomContext:
 
     SEED_MODULUS = (1 << 63) - 1
 
-    def __init__(self, q, kwargs):
-        self.batch_size = int(q.shape[0])
+    def __init__(self, q, ori_kv, cmp_kv, kwargs):
+        self.layout_q = kwargs.get("layout_q", "BSND")
+        self.layout_kv = kwargs.get("layout_kv", "BSND")
+        self.q_prefix = (
+            self.build_prefix(kwargs, "cu_seqlens_q", int(q.shape[0]), True)
+            if self.layout_q == "TND"
+            else None
+        )
+        self.batch_size = (
+            len(self.q_prefix) - 1 if self.q_prefix is not None else int(q.shape[0])
+        )
         self.relations = self.parse_relations(q, kwargs)
+        self.batch_relations = self.map_batch_relations()
+        self.validate_relation_contract(kwargs)
+        self.extent_selectors = {}
+        self.register_extent(self.batch_size, self.batch_relations, "logical batch")
+        if self.q_prefix is not None:
+            self.register_prefix(self.q_prefix, "q")
+        if self.layout_kv == "TND":
+            if ori_kv is not None:
+                self.register_prefix(
+                    self.build_prefix(
+                        kwargs, "cu_seqlens_ori_kv", int(ori_kv.shape[0]), True
+                    ),
+                    "ori_kv",
+                )
+            if cmp_kv is not None:
+                self.register_prefix(
+                    self.build_prefix(
+                        kwargs, "cu_seqlens_cmp_kv", int(cmp_kv.shape[0]), True
+                    ),
+                    "cmp_kv",
+                )
         self.base_seed = self.relations[0][1]
         self.call_index = 0
         self.original_numpy_uniform = None
         self.original_python_uniform = None
 
     @classmethod
-    def from_case(cls, q, kwargs):
+    def from_case(cls, q, ori_kv, cmp_kv, kwargs):
         fields = tuple(kwargs.get(name) for name in (
             "batch_axis", "batch_slice_info", "batch_seed"
         ))
@@ -45,13 +75,41 @@ class NumpyBatchRandomContext:
             raise ValueError(
                 "batch_axis, batch_slice_info and batch_seed must be set together"
             )
-        if kwargs.get("layout_q", "BSND") != "BSND" or kwargs.get(
-                "layout_kv", "BSND") != "BSND":
-            raise ValueError("MQSMLA batch consistency currently supports BSND/BSND only")
-        return cls(q, kwargs)
+        layout_q = kwargs.get("layout_q", "BSND")
+        layout_kv = kwargs.get("layout_kv", "BSND")
+        if layout_q not in ("BSND", "TND"):
+            raise ValueError(f"MQSMLA batch consistency does not support layout_q={layout_q!r}")
+        if layout_kv not in ("BSND", "TND", "PA_BBND"):
+            raise ValueError(f"MQSMLA batch consistency does not support layout_kv={layout_kv!r}")
+        return cls(q, ori_kv, cmp_kv, kwargs)
 
     @staticmethod
-    def parse_relations(q, kwargs):
+    def list_value(kwargs, name):
+        value = kwargs.get(f"{name}_values")
+        if value is None:
+            return None
+        if torch.is_tensor(value):
+            value = value.detach().cpu().reshape(-1).tolist()
+        return [int(item) for item in value]
+
+    @classmethod
+    def build_prefix(cls, kwargs, name, expected_total, required):
+        value = cls.list_value(kwargs, name)
+        if value is None:
+            if required:
+                raise ValueError(f"MQSMLA batch consistency requires explicit {name}_values")
+            return None
+        if len(value) < 2 or value[0] != 0 or value[-1] != expected_total:
+            raise ValueError(
+                f"MQSMLA {name}_values must start at 0 and end at {expected_total}: {value!r}"
+            )
+        if any(right <= left for left, right in zip(value, value[1:])):
+            raise ValueError(
+                f"MQSMLA {name}_values must be strictly increasing for batch relations"
+            )
+        return value
+
+    def parse_relations(self, q, kwargs):
         batch_axis = kwargs["batch_axis"]
         batch_slices = kwargs["batch_slice_info"]
         batch_seed = kwargs["batch_seed"]
@@ -71,9 +129,90 @@ class NumpyBatchRandomContext:
             start, stop, step = slice_value
             if step != 1 or start < 0 or start >= stop or stop > int(q.shape[0]):
                 raise ValueError(
-                    "MQSMLA batch consistency requires in-range, contiguous q batch slices"
+                    "MQSMLA batch consistency requires in-range, contiguous q axis slices"
                 )
-        return relations
+        return [(tuple(int(item) for item in value), int(seed)) for value, seed in relations]
+
+    def map_batch_relations(self):
+        if self.q_prefix is None:
+            return [((start, stop, step), seed) for (start, stop, step), seed in self.relations]
+        boundary_to_batch = {offset: index for index, offset in enumerate(self.q_prefix)}
+        mapped = []
+        for (start, stop, step), seed in self.relations:
+            if start not in boundary_to_batch or stop not in boundary_to_batch:
+                raise ValueError(
+                    "MQSMLA TND batch slice must align with complete cu_seqlens_q intervals: "
+                    f"{(start, stop, step)!r}"
+                )
+            mapped.append(
+                ((boundary_to_batch[start], boundary_to_batch[stop], step), seed)
+            )
+        return mapped
+
+    def validate_relation_contract(self, kwargs):
+        reference_slice = self.batch_relations[0][0]
+        reference_count = reference_slice[1] - reference_slice[0]
+        vector_names = (
+            "seqused_q",
+            "seqused_ori_kv",
+            "seqused_cmp_kv",
+            "cmp_residual_kv",
+        )
+        vectors = {}
+        for name in vector_names:
+            value = self.list_value(kwargs, name)
+            if value is not None:
+                vectors[name] = value
+        prefixes = []
+        for name, value in (
+            ("cu_seqlens_q", self.q_prefix),
+            ("cu_seqlens_ori_kv", self.list_value(kwargs, "cu_seqlens_ori_kv")),
+            ("cu_seqlens_cmp_kv", self.list_value(kwargs, "cu_seqlens_cmp_kv")),
+        ):
+            if value is not None:
+                prefixes.append((name, value))
+        for name, value in vectors.items():
+            if len(value) != self.batch_size:
+                raise ValueError(f"MQSMLA {name}_values length must equal B={self.batch_size}")
+        for name, value in prefixes:
+            if len(value) != self.batch_size + 1:
+                raise ValueError(f"MQSMLA {name}_values length must equal B + 1")
+
+        def relation_signature(batch_slice):
+            start, stop, _ = batch_slice
+            signature = []
+            for _name, value in prefixes:
+                signature.append(tuple(
+                    value[index + 1] - value[index] for index in range(start, stop)
+                ))
+            for value in vectors.values():
+                signature.append(tuple(value[start:stop]))
+            return tuple(signature)
+
+        reference_signature = relation_signature(reference_slice)
+        for batch_slice, _ in self.batch_relations[1:]:
+            if batch_slice[1] - batch_slice[0] != reference_count:
+                raise ValueError("MQSMLA relation slices must contain the same logical batch count")
+            if relation_signature(batch_slice) != reference_signature:
+                raise ValueError(
+                    "MQSMLA relation slices require identical q/KV lengths and residual values"
+                )
+
+    def register_extent(self, extent, relations, source):
+        selectors = tuple(value for value, _ in relations)
+        existing = self.extent_selectors.get(int(extent))
+        if existing is not None and existing[0] != selectors:
+            raise ValueError(
+                f"MQSMLA cannot distinguish generated {source} extent {extent} from "
+                f"{existing[1]} with different relation slices"
+            )
+        self.extent_selectors[int(extent)] = (selectors, source)
+
+    def register_prefix(self, prefix, source):
+        selectors = []
+        for (start, stop, _), _seed in self.batch_relations:
+            selectors.append((prefix[start], prefix[stop], 1))
+        self.register_extent(prefix[-1], tuple((value, 0) for value in selectors), source)
 
     def validate_params(self, params):
         if params.get("template_run_mode") not in ("SWA", "HCA"):
@@ -93,10 +232,13 @@ class NumpyBatchRandomContext:
         if size is None:
             return value
         value = np.asarray(value)
-        if value.ndim < 2 or int(value.shape[0]) != self.batch_size:
+        if value.ndim < 2:
             return value
-
-        for slice_value, seed in self.relations:
+        extent = self.extent_selectors.get(int(value.shape[0]))
+        if extent is None:
+            return value
+        selectors = extent[0]
+        for slice_value, (_batch_slice, seed) in zip(selectors, self.batch_relations):
             selector = (slice(*slice_value),) + (slice(None),) * (value.ndim - 1)
             piece = value[selector]
             piece_rng = np.random.default_rng(self.derive_seed(seed, call_index))
@@ -389,7 +531,7 @@ def generate_mixed_quant_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None,
                                                  cmp_residual_kv=None, ori_topk_length=None,
                                                  cmp_topk_length=None, sinks=None, **kwargs):
     """Reuse the pytest parameter validation and input processing for a TTK case."""
-    batch_random = NumpyBatchRandomContext.from_case(q, kwargs)
+    batch_random = NumpyBatchRandomContext.from_case(q, ori_kv, cmp_kv, kwargs)
     params = INPUT_ADAPTER.build_case_params(
         q,
         ori_kv,
