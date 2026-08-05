@@ -194,7 +194,10 @@ def _required_meta_int(metadata: dict[str, Any], name: str) -> int:
 
 
 def expected_header_from_metadata(
-    metadata: dict[str, Any], raw_bytes: int, spec: dict[str, Any]
+    metadata: dict[str, Any],
+    raw_bytes: int,
+    spec: dict[str, Any],
+    runtime_aic_count: int | None = None,
 ) -> dict[str, int]:
     bs = _required_meta_int(metadata, "bs")
     h = _required_meta_int(metadata, "h")
@@ -203,7 +206,11 @@ def expected_header_from_metadata(
     moe_experts = _required_meta_int(metadata, "local_moe_expert_num")
     shared_experts = _required_meta_int(metadata, "shared_expert_num")
     world_size = _required_meta_int(metadata, "world_size")
-    aic_count = _required_meta_int(metadata, "aic_core_num")
+    aic_count = (
+        _required_meta_int(metadata, "aic_core_num")
+        if runtime_aic_count is None
+        else runtime_aic_count
+    )
     dispatch_api_type = _required_meta_int(metadata, "dispatch_quant_out_type")
     combine_quant_mode = _required_meta_int(metadata, "comm_quant_mode")
     rank = _required_meta_int(metadata, "rank")
@@ -314,7 +321,23 @@ def validate_capture_contract(
             protocol, _required_meta_int(metadata, "local_moe_expert_num")
         ),
     }
-    expected = expected_header_from_metadata(metadata, len(raw), spec)
+    role_counts = header.get("role_counts")
+    if (
+        not isinstance(role_counts, list)
+        or len(role_counts) != 3
+        or any(not isinstance(count, int) or count <= 0 for count in role_counts)
+        or len(set(role_counts)) != 1
+    ):
+        raise ContractError(
+            "runtime header has invalid AIC/AIV0/AIV1 role_counts: "
+            f"{role_counts!r}"
+        )
+    # Tiling uses the platform-reported AIC count, while the adapted test script may
+    # carry a larger configured count. The published device header is authoritative.
+    runtime_aic_count = role_counts[0]
+    expected = expected_header_from_metadata(
+        metadata, len(raw), spec, runtime_aic_count=runtime_aic_count
+    )
     expected.update(protocol_expected)
 
     mismatches: list[str] = []
@@ -330,7 +353,6 @@ def validate_capture_contract(
                 )
             else:
                 mismatches.append(f"{name}={actual!r}, expected {wanted}")
-    role_counts = header.get("role_counts")
     wanted_role_counts = [expected["aic_count"]] * 3
     if role_counts != wanted_role_counts:
         mismatches.append(
@@ -359,12 +381,18 @@ def validate_capture_contract(
         preflight = metadata.get("capacity_preflight")
         if not isinstance(preflight, dict):
             raise ContractError("runtime metadata lacks adapter capacity_preflight")
+        preflight_aic_count = parse_uint(
+            preflight.get("aic_core_num"), "capacity_preflight aic_core_num"
+        )
+        preflight_required_words = (
+            int(protocol["header_words"])
+            + 3 * preflight_aic_count * expected["record_words"]
+        )
         wanted_preflight = {
             "protocol_version": int(protocol["version"]),
-            "aic_core_num": expected["aic_count"],
             "local_moe_expert_num": expected["moe_experts_per_rank"],
             "record_words": expected["record_words"],
-            "required_y_bytes": required_words * 4,
+            "required_y_bytes": preflight_required_words * 4,
             "available_y_bytes": len(raw),
         }
         mismatched_preflight = [
@@ -376,6 +404,11 @@ def validate_capture_contract(
             raise ContractError(
                 "adapter capacity_preflight mismatch: "
                 + "; ".join(mismatched_preflight)
+            )
+        if preflight_aic_count < expected["aic_count"]:
+            raise ContractError(
+                "adapter capacity_preflight underestimates runtime AIC count: "
+                f"aic_core_num={preflight_aic_count}, runtime={expected['aic_count']}"
             )
     if metadata.get("output_dtype") != "torch.bfloat16":
         raise ContractError(

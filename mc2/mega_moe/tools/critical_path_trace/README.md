@@ -137,8 +137,9 @@ AIC0 再写 header、执行 `PIPE_ALL`，最后发布 magic。
   `WorkspaceInfo` 使用的 50 MiB reserve。合法最大 1024 专家也小于该 reserve。
 - 36 个 AIC 的 v5 固定布局需要 7896 bytes。
 - adapter 在算子执行前按当前脚本里的 `bs/h/aic_core_num/local_moe_expert_num/
-  out_dtype` 打印 required/available 并失败关闭；设备再用 64 位中间量独立检查
-  y 与 scratch。host 解码时第三次核对 header、record 数和 raw 长度。
+  out_dtype` 做保守容量预检。实际记录数和 config hash 使用设备 header 中由 tiling
+  写出的 AIC 数；脚本核数较大只会多预留空间，小于运行时核数则失败关闭。设备仍用
+  64 位中间量独立检查 y 与 scratch，host 解码时再次核对 header、record 数和 raw 长度。
 - 诊断态会覆盖正常输出，适配器在最终 NPU synchronize 后按原始字节保存最后
   一轮 `y`，并跳过精度比较。业务不得消费 tracing-on 的 `y`。
 - tracing 全关时不复用 `y`；预处理 token 等价检查以最新集成主线为基线。

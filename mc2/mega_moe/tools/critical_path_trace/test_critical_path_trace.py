@@ -60,7 +60,11 @@ def _write_json(path: Path, value: dict) -> None:
 
 
 def make_synthetic_capture(
-    directory: Path, spec_path: Path = SPEC
+    directory: Path,
+    spec_path: Path = SPEC,
+    *,
+    configured_aic_count: int = 36,
+    runtime_aic_count: int | None = None,
 ) -> tuple[Path, Path]:
     spec = load_json(spec_path)
     protocol = spec["trace"]["protocol"]
@@ -76,7 +80,7 @@ def make_synthetic_capture(
         "local_moe_expert_num": 8,
         "shared_expert_num": 0,
         "world_size": 2,
-        "aic_core_num": 36,
+        "aic_core_num": configured_aic_count,
         "dispatch_quant_out_type": 24,
         "comm_quant_mode": 0,
         "topk_weights_type": False,
@@ -91,18 +95,34 @@ def make_synthetic_capture(
         "output_nbytes": 24 * 6144 * 2,
         "test_source_sha256": "synthetic-fixture",
     }
-    expected = expected_header_from_metadata(metadata, metadata["output_nbytes"], spec)
+    actual_aic_count = (
+        configured_aic_count if runtime_aic_count is None else runtime_aic_count
+    )
+    expected = expected_header_from_metadata(
+        metadata,
+        metadata["output_nbytes"],
+        spec,
+        runtime_aic_count=actual_aic_count,
+    )
     record_words = resolve_record_words(protocol, metadata["local_moe_expert_num"])
     if fine_grained:
         metadata["capacity_preflight"] = {
             "protocol_version": int(protocol["version"]),
-            "aic_core_num": metadata["aic_core_num"],
+            "aic_core_num": configured_aic_count,
             "local_moe_expert_num": metadata["local_moe_expert_num"],
             "record_words": record_words,
             "required_y_bytes": 4
-            * (int(protocol["header_words"]) + expected["record_count"] * record_words),
+            * (
+                int(protocol["header_words"])
+                + 3 * configured_aic_count * record_words
+            ),
             "available_y_bytes": metadata["output_nbytes"],
-            "scratch_required_bytes": 4 * 3 * 36 * (3 if a8w4 else 2) * 3 * 8,
+            "scratch_required_bytes": 4
+            * 3
+            * configured_aic_count
+            * (3 if a8w4 else 2)
+            * 3
+            * 8,
             "scratch_reserve_bytes": 50 * 1024 * 1024,
         }
     word_count = metadata["output_nbytes"] // 4
@@ -370,6 +390,23 @@ class TraceContractTests(unittest.TestCase):
                     spec_path=SPEC,
                     allow_truncated=False,
                 )
+
+    def test_runtime_header_core_count_overrides_conservative_preflight(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            raw_path, metadata_path = make_synthetic_capture(
+                directory, configured_aic_count=36, runtime_aic_count=32
+            )
+            contract, expected = validate_capture_contract(
+                raw_path=raw_path,
+                metadata_path=metadata_path,
+                spec_path=SPEC,
+                allow_truncated=False,
+            )
+            self.assertEqual(expected["aic_count"], 32)
+            self.assertEqual(expected["record_count"], 96)
+            self.assertEqual(contract["header"]["role_counts"], [32, 32, 32])
+            self.assertEqual(contract["metadata"]["aic_core_num"], 36)
 
     def test_one_sided_stage_boundary_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
