@@ -44,7 +44,6 @@ get_filename_component(OPS_TRANSFORMER_COMMON_INC_EXTERNAL "${OPS_TRANSFORMER_CO
 get_filename_component(OPS_TRANSFORMER_COMMON_INC_HEADERS  "${OPS_TRANSFORMER_COMMON_INC_EXTERNAL}/aclnn_kernels"       REALPATH)
 get_filename_component(OPS_KERNEL_BINARY_SCRIPT     "${OPS_TRANSFORMER_DIR}/scripts/kernel/binary_script"       REALPATH)
 get_filename_component(OPS_KERNEL_BINARY_CONFIG     "${OPS_TRANSFORMER_DIR}/scripts/kernel/binary_config"       REALPATH)
-get_filename_component(OPTENSOR_INCLUDE_ROOT        "${OPTENSOR_SOURCE_PATH}/include"                           REALPATH)
 get_filename_component(BLAZE                        "${OPTENSOR_SOURCE_PATH}/include/blaze"                     REALPATH)
 
 # python
@@ -162,7 +161,7 @@ else()
 endif()
 
 set(OP_TILING_INCLUDE
-  ${OPTENSOR_INCLUDE_ROOT}
+  ${BLAZE}
   ${OPBASE_INC_DIRS}
   ${C_SEC_INCLUDE}
   ${PLATFORM_INC_DIRS}

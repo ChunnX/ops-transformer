@@ -15,9 +15,7 @@ if (BUILD_OPEN_PROJECT)
     add_ops_compile_options(
         OP_NAME GroupedMatmul
         OPTIONS --cce-auto-sync=off
-                -I${OPTENSOR_INCLUDE_ROOT}
-                -I${OPTENSOR_INCLUDE_ROOT}/tensor_api/include
-                -I${OPTENSOR_INCLUDE_ROOT}/tensor_api
+                -I${OPTENSOR_SOURCE_PATH}/include
                 -Wno-deprecated-declarations
                 -Werror
     )

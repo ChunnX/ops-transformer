@@ -13,7 +13,7 @@
 #include "../../../op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
 #include "../../../op_kernel/arch35/weight_quant_basic_block/weight_quant_tiling_key.h"
-#include "blaze/gemm/utils/s8s4_fixed_tile_resource.h"
+#include "gemm/utils/s8s4_fixed_tile_resource.h"
 #include "gmm_csv_ge_parse_utils.h"
 #include "tiling_case_executor.h"
 
@@ -167,7 +167,9 @@ gert::TilingContextPara MakeContext(const S8S4Case &param, optiling::GMMCompileI
         {offsetShape, ge::DT_FLOAT, ge::FORMAT_ND},                                 // offset
         {antiquantScaleShape, ge::DT_FLOAT, ge::FORMAT_ND},                        // antiquantScale
         {antiquantOffsetShape, ge::DT_FLOAT, ge::FORMAT_ND},                       // antiquantOffset
-        MakeTensor({param.groupNum}, ge::DT_INT64),                                // groupList
+        MakeTensor(param.groupListTypeAttr == 2 ? std::vector<int64_t>{param.groupNum, 2} :
+                                                  std::vector<int64_t>{param.groupNum},
+                   ge::DT_INT64),                                                  // groupList
         MakeTensor({param.m}, ge::DT_FLOAT),                                       // perTokenScale
     };
     std::vector<TensorDescription> outputs = {
@@ -274,7 +276,7 @@ TEST(GroupedS8S4BasicApiArch35Tiling, V5ApiNormalizedPackedInt32UsesProductionRo
 TEST(GroupedS8S4BasicApiArch35Tiling, SymmetricPergroupUsesOneQuantGroupPerL1Window)
 {
     S8S4Case param;
-    param.groupListTypeAttr = 99; // The documented S8S4 path ignores this value and treats it as count mode.
+    param.groupListTypeAttr = 1;
 
     TilingInfo tilingInfo;
     ASSERT_TRUE(ExecuteS8S4Tiling(param, tilingInfo));
@@ -307,6 +309,27 @@ TEST(GroupedS8S4BasicApiArch35Tiling, SymmetricPergroupUsesOneQuantGroupPerL1Win
     EXPECT_EQ(tilingData->s8s4Params.userWorkspaceSizeBytes, expandedSize + tileSize);
     ASSERT_EQ(tilingInfo.workspaceSizes.size(), 1U);
     EXPECT_EQ(tilingInfo.workspaceSizes[0], SYS_WORKSPACE_SIZE + expandedSize + tileSize);
+}
+
+TEST(GroupedS8S4BasicApiArch35Tiling, PreservesSupportedGroupListTypes)
+{
+    for (int64_t groupListType : {0L, 1L, 2L}) {
+        S8S4Case param;
+        param.groupListTypeAttr = groupListType;
+        TilingInfo tilingInfo;
+        ASSERT_TRUE(ExecuteS8S4Tiling(param, tilingInfo)) << "groupListType=" << groupListType;
+        const auto *tilingData = GetTilingData(tilingInfo);
+        ASSERT_NE(tilingData, nullptr);
+        EXPECT_EQ(tilingData->gmmQuantParams.groupListType, groupListType);
+    }
+}
+
+TEST(GroupedS8S4BasicApiArch35Tiling, RejectsInvalidGroupListType)
+{
+    S8S4Case param;
+    param.groupListTypeAttr = 99;
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteS8S4Tiling(param, tilingInfo));
 }
 
 TEST(GroupedS8S4BasicApiArch35Tiling, AsymmetricPerchannelUsesOffsetAndTilePipelineWorkspace)
@@ -372,7 +395,7 @@ TEST(GroupedS8S4BasicApiArch35Tiling, FixedTilePhysicalFootprintSeparatesBAndSca
 TEST(GroupedS8S4BasicApiArch35Tiling, PerchannelNTailsUseLogicalTileAndPhysicalNzFootprint)
 {
     using Resource = Blaze::Gemm::S8S4FixedTileResource;
-    for (const int64_t n : {8L, 16L, 24L, 32L, 248L, 256L}) {
+    for (const int64_t n : {8L, 16L, 24L, 32L, 248L, 250L, 256L}) {
         S8S4Case param;
         param.m = 8;
         param.k = 512;
@@ -438,7 +461,7 @@ TEST(GroupedS8S4BasicApiArch35Tiling, AsymmetricPerchannelNzUsesNzTilingKey)
 {
     S8S4Case param;
     param.k = 1001;
-    param.n = 248;
+    param.n = 250;
     param.hasOffset = true;
     param.scaleGroupNum = 1;
     param.outDtype = ge::DT_FLOAT16;
