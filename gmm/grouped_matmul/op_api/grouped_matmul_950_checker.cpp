@@ -279,45 +279,44 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightStorageShape(const a
     bool isInt4 = (gmmParams_.xDtype == DataType::DT_INT4);
     bool isMxfp4 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E2M1 ||
                     gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2);
-
-    const int64_t CUBE_BLOCK_SIZE_K = isInt4 ? CUBE_BLOCK_SIZE_128
-                                             : (isMxfp4 ? CUBE_BLOCK_SIZE_64 : CUBE_BLOCK_SIZE_32);
-    // GMM_CHECK_REPORT(weightStorageLastDim == CUBE_BLOCK_SIZE_K,
-    //     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
-    //         StorageShapeToString(weightTensor),
-    //         "when the format of weight is FRACTAL_NZ, storage shape last dim of weight must be equal to "
-    //         "32 for fp8 dtype or 64 for fp4 dtype"));
-    // GMM_CHECK_REPORT(weightStorageLastSecondDim == CUBE_BLOCK_SIZE_16,
-    //     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
-    //         StorageShapeToString(weightTensor),
-    //         "when the format of weight is FRACTAL_NZ, storage shape last second dim of weight must be equal to 16"));
-    // if (gmmParams_.transposeWeight) {
-    //     GMM_CHECK_REPORT(weightStorageLastFourthDim == (kDimValue + CUBE_BLOCK_SIZE_K - 1) / CUBE_BLOCK_SIZE_K,
-    //         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
-    //             StorageShapeToString(weightTensor),
-    //             "when the format of weight is FRACTAL_NZ and transposition is true, storage shape second dim "
-    //             "of weight must be equal to ceil(k/32) for fp8 dtype or ceil(k/64) for fp4 dtype [" +
-    //                 std::to_string((kDimValue + CUBE_BLOCK_SIZE_K - 1) / CUBE_BLOCK_SIZE_K) + "]"));
-    //     GMM_CHECK_REPORT(weightStorageLastThirdDim == (nDimValue + CUBE_BLOCK_SIZE_16 - 1) / CUBE_BLOCK_SIZE_16,
-    //         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
-    //             StorageShapeToString(weightTensor),
-    //             "when the format of weight is FRACTAL_NZ and transposition is true, storage shape third dim "
-    //             "of weight must be equal to ceil(n/16) [" +
-    //                 std::to_string((nDimValue + CUBE_BLOCK_SIZE_16 - 1) / CUBE_BLOCK_SIZE_16) + "]"));
-    // } else {
-    //     GMM_CHECK_REPORT(weightStorageLastFourthDim == (nDimValue + CUBE_BLOCK_SIZE_K - 1) / CUBE_BLOCK_SIZE_K,
-    //         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
-    //             StorageShapeToString(weightTensor),
-    //             "when the format of weight is FRACTAL_NZ and transposition is false, storage shape second dim "
-    //             "of weight must be equal to ceil(n/32) for fp8 dtype or ceil(n/64) for fp4 dtype [" +
-    //                 std::to_string((nDimValue + CUBE_BLOCK_SIZE_K - 1) / CUBE_BLOCK_SIZE_K) + "]"));
-    //     GMM_CHECK_REPORT(weightStorageLastThirdDim == (kDimValue + CUBE_BLOCK_SIZE_16 - 1) / CUBE_BLOCK_SIZE_16,
-    //         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
-    //             StorageShapeToString(weightTensor),
-    //             "when the format of weight is FRACTAL_NZ and transposition is false, storage shape third dim "
-    //             "of weight must be equal to ceil(k/16) [" +
-    //                 std::to_string((kDimValue + CUBE_BLOCK_SIZE_16 - 1) / CUBE_BLOCK_SIZE_16) + "]"));
-    // }
+    bool isBit4 = isInt4 || isMxfp4;
+    const int64_t CUBE_BLOCK_SIZE_K = isBit4 ? CUBE_BLOCK_SIZE_64 : CUBE_BLOCK_SIZE_32;
+    GMM_CHECK_REPORT(weightStorageLastDim == CUBE_BLOCK_SIZE_K,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
+            StorageShapeToString(weightTensor),
+            "when the format of weight is FRACTAL_NZ, storage shape last dim of weight must be equal to "
+            "32 for fp8 dtype or 64 for fp4 dtype"));
+    GMM_CHECK_REPORT(weightStorageLastSecondDim == CUBE_BLOCK_SIZE_16,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
+            StorageShapeToString(weightTensor),
+            "when the format of weight is FRACTAL_NZ, storage shape last second dim of weight must be equal to 16"));
+    if (gmmParams_.transposeWeight) {
+        GMM_CHECK_REPORT(weightStorageLastFourthDim == (kDimValue + CUBE_BLOCK_SIZE_K - 1) / CUBE_BLOCK_SIZE_K,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
+                StorageShapeToString(weightTensor),
+                "when the format of weight is FRACTAL_NZ and transposition is true, storage shape second dim "
+                "of weight must be equal to ceil(k/32) for fp8 dtype or ceil(k/64) for fp4 dtype [" +
+                    std::to_string((kDimValue + CUBE_BLOCK_SIZE_K - 1) / CUBE_BLOCK_SIZE_K) + "]"));
+        GMM_CHECK_REPORT(weightStorageLastThirdDim == (nDimValue + CUBE_BLOCK_SIZE_16 - 1) / CUBE_BLOCK_SIZE_16,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
+                StorageShapeToString(weightTensor),
+                "when the format of weight is FRACTAL_NZ and transposition is true, storage shape third dim "
+                "of weight must be equal to ceil(n/16) [" +
+                    std::to_string((nDimValue + CUBE_BLOCK_SIZE_16 - 1) / CUBE_BLOCK_SIZE_16) + "]"));
+    } else {
+        GMM_CHECK_REPORT(weightStorageLastFourthDim == (nDimValue + CUBE_BLOCK_SIZE_K - 1) / CUBE_BLOCK_SIZE_K,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
+                StorageShapeToString(weightTensor),
+                "when the format of weight is FRACTAL_NZ and transposition is false, storage shape second dim "
+                "of weight must be equal to ceil(n/32) for fp8 dtype or ceil(n/64) for fp4 dtype [" +
+                    std::to_string((nDimValue + CUBE_BLOCK_SIZE_K - 1) / CUBE_BLOCK_SIZE_K) + "]"));
+        GMM_CHECK_REPORT(weightStorageLastThirdDim == (kDimValue + CUBE_BLOCK_SIZE_16 - 1) / CUBE_BLOCK_SIZE_16,
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(GetAclnnOpName(), weightName_.c_str(),
+                StorageShapeToString(weightTensor),
+                "when the format of weight is FRACTAL_NZ and transposition is false, storage shape third dim "
+                "of weight must be equal to ceil(k/16) [" +
+                    std::to_string((kDimValue + CUBE_BLOCK_SIZE_16 - 1) / CUBE_BLOCK_SIZE_16) + "]"));
+    }
     return ACLNN_SUCCESS;
 }
 
