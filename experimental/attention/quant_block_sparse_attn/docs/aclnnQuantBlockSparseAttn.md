@@ -169,10 +169,10 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>p_scale</td>
       <td>输入</td>
       <td>softmax 概率 FP8 量化缩放因子。</td>
-      <td>PERTENSOR。</td>
+      <td>可选输入（quant_mode=1 FP8 场景）。支持传空（None 或 shape size == 0），传空时 kernel 侧使用默认 scale 1.0；传入时 shape 必须为 (1)。quant_mode=2 MXFP8 场景下为必选输入。</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>(1)</td>
+      <td>(1) 或空</td>
     </tr>
     <tr>
       <td>sparse_indices</td>
@@ -467,7 +467,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
   </tr>
   <tr>
     <td>p_scale</td>
-    <td>INPUT</td>
+    <td>INPUT(OPTIONAL)</td>
     <td>Tensor</td>
   </tr>
   <tr>
@@ -595,7 +595,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 - 存在性约束
 
-  - `query`、`key`、`value`、`q_descale`、`k_descale`、`v_descale`、`p_scale`、`sparse_indices`、`sparse_seq_len` 为必选输入；`atten_mask` 在 `mask_mode=3` 时为必选输入，在 `mask_mode=0` 时可不传或传空指针。
+  - `query`、`key`、`value`、`q_descale`、`k_descale`、`v_descale`、`sparse_indices`、`sparse_seq_len` 为必选输入；`p_scale` 在 `quant_mode=1` 时为可选输入（传空时使用默认值 1.0），在 `quant_mode=2` 时为必选输入；`atten_mask` 在 `mask_mode=3` 时为必选输入，在 `mask_mode=0` 时可不传或传空指针。
   - 当前算子支持 4D PA_BNSD KV Cache 输入和 BF16 attention_out 输出；不支持非量化、伪量化、后量化输出、PSE、ROPE、公共前缀、左 padding、dropout、tensorlist KV 输入、1D 组合 KV 存储等扩展场景。
 
 - 一致性约束
@@ -616,15 +616,16 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 - 单参数约束
 
-  - `q_descale`、`k_descale`、`v_descale`、`p_scale` 数据类型仅支持 `FLOAT32`，数据格式仅支持 ND。
+  - `q_descale`、`k_descale`、`v_descale` 数据类型仅支持 `FLOAT32`，数据格式仅支持 ND。`p_scale` 数据类型支持 `FLOAT32`，数据格式仅支持 ND。
   - `q_descale` 表示 Query per-token-per-head 反量化缩放，`layout_q="TND"` 时通常为 `(QueryTokenNum, QueryNumHead)`，`layout_q="NTD"` 时通常为 `(QueryNumHead, QueryTokenNum)`。
   - `k_descale` 表示 Key per-token-per-head 反量化缩放，需与 PA KV Cache 的物理 block、KV head 和 block 内 token 对应。
   - `v_descale` 表示 Value per-head 反量化缩放，shape 为 `(KeyValueNumHead)`。
-  - `p_scale` 表示 softmax 概率 per-tensor 静态量化缩放，shape 为 `(1)`。
+  - `p_scale` 表示 softmax 概率 per-tensor 静态量化缩放，传入时 shape 为 `(1)`；支持传空（None 或 shape size == 0），传空时 kernel 侧使用默认 scale 1.0。
 
 - 存在性约束
 
-  - FP8 全量化场景下 `q_descale`、`k_descale`、`v_descale`、`p_scale` 均必须传入。
+  - `quant_mode=1` FP8 场景下 `q_descale`、`k_descale`、`v_descale` 必须传入；`p_scale` 为可选输入，传空时使用默认值 1.0。
+  - `quant_mode=2` MXFP8 场景下 `q_descale`、`k_descale`、`v_descale`、`p_scale` 均必须传入。
 
 - 一致性约束
 

@@ -120,6 +120,11 @@ void QuantBlockSparseAttnTiling::FillInputParams()
     inputParams.set_fromFused(0);      // 融合算子标记，稀疏算子固定设为 0
     inputParams.set_isGqa(info.isGqa ? 1 : 0);
     inputParams.set_isSoftMaxLseEnable(info.returnSoftmaxLseVal ? 1 : 0);
+    uint32_t fp8PScaleShapeSize = 0U;
+    if (info.opParamInfo.pScale.shape != nullptr) {
+        fp8PScaleShapeSize = static_cast<uint32_t>(info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize());
+    }
+    inputParams.set_pScaleShapeSize(fp8PScaleShapeSize);
 }
 
 void QuantBlockSparseAttnTiling::FillMultiCoreParams()
