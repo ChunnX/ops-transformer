@@ -120,6 +120,38 @@ struct GMMQuantBasicApiTilingData {
 #pragma pack(pop)
 
 #pragma pack(push, 8)
+struct GMMS8S4BasicApiParams {
+    uint32_t quantGroupSize = 0;
+    uint32_t quantGroupNum = 0;
+    uint32_t expectedTokenNum = 0;
+    uint32_t coreNum = 0;
+    uint8_t dequantMode = 0; // 0: symmetric per-group, 1: asymmetric per-channel
+    uint8_t hasOffset = 0;
+    uint8_t specialWeightFormat = 0;
+    uint8_t weightPackedInt32 = 0;
+    uint8_t enableWeightPreprocess = 0;
+    uint8_t reserved[3] = {0};
+    uint64_t expandedWeightOffsetBytes = 0;
+    uint64_t expandedWeightSizeBytes = 0;
+    uint64_t expandedWeightStrideBytes = 0;
+    uint64_t tileWorkspaceOffsetBytes = 0;
+    uint64_t tileWorkspaceSizeBytes = 0;
+    uint64_t tileWorkspaceStrideBytes = 0;
+    uint64_t rowSumOffsetBytes = 0;
+    uint64_t rowSumSizeBytes = 0;
+    uint64_t userWorkspaceSizeBytes = 0;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 8)
+struct GMMS8S4BasicApiTilingData {
+    GMMQuantParams gmmQuantParams;
+    GMMS8S4BasicApiParams s8s4Params;
+    QuantBasicApiMMTiling mmTilingData;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 8)
 struct GMMNoQuantTilingData {
     GMMNoQuantBaseParams gmmNoQuantParam;
     TCubeTiling mmTilingData;
@@ -129,6 +161,44 @@ struct GMMNoQuantTilingData {
 #pragma pack(push, 8)
 struct GMMWeightQuantTilingData {
     GMMWeightQuantParam gmmWeightQuantParam;
+    GMMArray gmmArray;
+    TCubeTiling mmTilingData;
+};
+#pragma pack(pop)
+
+// A5 A4W4 (INT4×INT4) mix-core tiling：AIV prologue(int4->int8) + AIC int8×int8 Mmad + AIV epilogue
+#pragma pack(push, 8)
+struct GMMBaseParamsA4W4 {
+    uint32_t m = 0;
+    uint32_t n = 0;
+    uint32_t k = 0;
+    uint32_t groupNum = 0;
+    uint32_t coreNum = 0;
+    uint32_t baseM = 0;
+    uint32_t baseN = 0;
+    uint32_t baseK = 0;
+    uint32_t ubCalSize = 0;        // epilogue 单次计算元素数
+    uint32_t ubRestBytes = 0;      // 留给 prologue 的 UB (byte)
+    uint32_t quantGroupNum = 1;    // perchannel=1, pergroup=k/256
+    uint32_t singleN = 0;          // perchannel 动态分块
+    uint32_t isPerTokenQuant = 0;  // perTokenScale 是否存在
+    uint32_t isA4W4Optimize = 0;
+    int32_t groupType = 0;
+    uint32_t groupListType = 0;
+    // 必须用 8 字节对齐类型(uint64_t), 使 GMMBaseParamsA4W4 的 alignof=8, 进而
+    // GMMA4W4IntQuantTilingData 整体 8 字节对齐(SaveTilingDataToContext 要求)。
+    // 历史 bug: uint32_t 使 GMMBaseParamsA4W4=68B(alignof=4), 导致
+    // sizeof(GMMA4W4IntQuantTilingData)=1804 非 8 对齐, 触发 "Tiling data size[1804] is not aligned to 8"。
+    // reserved 复用为 weight format 标志位 (host PostTiling 写, 桥接 qgmm_a4w4int_kernel.h 读):
+    //   bit0 = weightIsNz (bFormat == FORMAT_FRACTAL_NZ)
+    //   bit1 = transB     (weight 逻辑 [E,N,K])
+    uint64_t reserved = 0;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 8)
+struct GMMA4W4IntQuantTilingData {
+    GMMBaseParamsA4W4 gmmA4W4Params;
     GMMArray gmmArray;
     TCubeTiling mmTilingData;
 };
