@@ -285,7 +285,7 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsCapable()
         inputParams_.scaleDtype == ge::DT_FLOAT8_E8M0 && IsFp8(inputParams_.outDataDtype) &&
         inputParams_.outScaleDtype == ge::DT_FLOAT8_E8M0;
     const bool formatSupported = inputParams_.aFormat == ge::FORMAT_ND &&
-                                 inputParams_.bFormat == ge::FORMAT_ND &&
+                                 (inputParams_.bFormat == ge::FORMAT_ND || ge::FORMAT_NCL) &&
                                  xScaleFormat_ == ge::FORMAT_ND &&
                                  weightScaleFormat_ == ge::FORMAT_ND &&
                                  inputParams_.cFormat == ge::FORMAT_ND &&
