@@ -328,12 +328,13 @@ __aicore__ inline void BSAVecPoolService<BSAT>::PoolingSingleBlockImpl(GlobalTen
                                                                        bool isTnd, uint32_t timeStrideElems)
 {
     uint32_t dSize = constInfo.dSize;
+    uint32_t maxLen = BSAConstInfo::BUFFER_SIZE_BYTE_60K / BUFFER / sizeof(IN_T) / dSize;
     // 等上个步骤结束，防止内存踩踏
     AscendC::PipeBarrier<PIPE_ALL>();
     if (actualLen == 0) {
         PoolingLen0Impl(srcGm, dstGm, srcOffset, dstOffset);
         return;
-    } else if (actualLen <= 128) {
+    } else if (actualLen <= maxLen) {
         PoolingLen256Impl(srcGm, dstGm, srcOffset, dstOffset, actualLen, isTnd, timeStrideElems);
         return;
     } else {
@@ -451,7 +452,7 @@ BSAVecPoolService<BSAT>::PoolingLenAllImpl(GlobalTensor<IN_T> &srcGm, GlobalTens
 {
     uint32_t dSize = constInfo.dSize;
     uint32_t numHeads = constInfo.numHeads;
-    uint32_t maxLen = BSAConstInfo::BUFFER_SIZE_BYTE_60K / BUFFER / sizeof(IN_T) / 128;
+    uint32_t maxLen = BSAConstInfo::BUFFER_SIZE_BYTE_60K / BUFFER / sizeof(IN_T) / dSize;
     uint32_t loops = (actualLen + maxLen - 1) / maxLen;
     uint32_t tailLen = actualLen % maxLen == 0 ? maxLen : actualLen % maxLen;
 
