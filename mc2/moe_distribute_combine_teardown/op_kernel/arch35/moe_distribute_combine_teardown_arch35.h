@@ -140,16 +140,15 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(G
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
     epRankId_ = mc2Context_->epRankId;
 
-    // 获取win状态区地址，并保证数据一致
-    // 在1M中选择512K偏移后的1.5k空间记录本卡历史状态
-    // dataState 仅在 WaitDispatch 成功后再翻转，避免等待失败时通信域残留错位的 0/1 标识
+    // 只使用 C_S；WaitDispatch 成功后再翻转，避免与 dispatch 的 D_S 互相抢乒乓位
     GlobalTensor<int32_t> selfDataStatusTensor;
     GM_ADDR statusDataSpaceGm = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
-    dataStateGM_ = statusDataSpaceGm + STATE_WIN_OFFSET + STATE_SIZE_PER_CORE * static_cast<uint64_t>(coreIdx_);
+    dataStateGM_ = statusDataSpaceGm + STATE_WIN_OFFSET + STATE_SIZE_PER_CORE * static_cast<uint64_t>(coreIdx_) +
+                   COMBINE_DATA_STATE_SLOT_OFFSET;
     selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)dataStateGM_);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
 
-    dataState_ = selfDataStatusTensor(0); // win状态区的0/1标识，本轮仍使用该 bank
+    dataState_ = selfDataStatusTensor(0); // combine 专用 C_S，本轮仍使用该 bank
 
     expertIdsGlobal_.SetGlobalBuffer((__gm__ int32_t *)expertIds);
     expandIdxGlobal_.SetGlobalBuffer((__gm__ ExpandIdxType *)expandIdx);
@@ -297,7 +296,7 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::FlipDataState()
 {
-    // WaitDispatch 成功（或空闲核跳过等待）后再切换 0/1 区，供下一轮 setup 使用
+    // WaitDispatch 成功（或空闲核跳过等待）后再切换 C_S，不影响 D_S
     GlobalTensor<int32_t> selfDataStatusTensor;
     selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)dataStateGM_);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);

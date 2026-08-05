@@ -191,8 +191,9 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
 
     GlobalTensor<int32_t> selfDataStatusTensor;
     GM_ADDR statusDataSpaceGm = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
-    selfDataStatusTensor.SetGlobalBuffer(
-        (__gm__ int32_t *)(statusDataSpaceGm + STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
+    // 仅读写/翻转 D_S，与 combine 的 C_S 隔离
+    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGm + STATE_WIN_OFFSET +
+                                                            aivId_ * WIN_ADDR_ALIGN + DISPATCH_DATA_STATE_SLOT_OFFSET));
 
     axisBS_ = tilingData->moeDistributeDispatchTeardownInfo.bs;
     axisH_ = tilingData->moeDistributeDispatchTeardownInfo.h;

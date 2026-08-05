@@ -35,8 +35,10 @@
 constexpr uint64_t WIN_STATE_OFFSET = 350ULL * 1024ULL;
 constexpr uint64_t COMBINE_STATE_OFFSET = 256ULL * 1024ULL; // bank 内 combine 段
 constexpr uint64_t STATE_WIN_OFFSET = 950ULL * 1024ULL;
+constexpr uint64_t DISPATCH_DATA_STATE_SLOT_OFFSET = 0ULL;
+constexpr uint64_t COMBINE_DATA_STATE_SLOT_OFFSET = 64ULL;
 constexpr uint64_t STATE_OFFSET = 512ULL;
-constexpr uint32_t DUMP_AIV_NUM = 8U; // 打印前若干 aiv 的 dataState
+constexpr uint32_t DUMP_AIV_NUM = 8U; // 打印前若干 aiv 的 D_S/C_S
 
 // 部分 hccl.h 未导出该符号；与 libhccl 链接时可用
 extern "C" HcclResult HcclGetHcclBuffer(HcclComm comm, void **buffer, uint64_t *size);
@@ -130,9 +132,10 @@ void FreeDeviceAddr(void *deviceAddr)
 
 // host 超时后 dump 本卡 EP window 状态区（方法 2）
 // layout:
-//   dataState[aiv] = *(int32_t*)(win + 950KB + aiv*512)
-//   combine bank[S] = win + S*350KB + COMBINE_STATE_OFFSET(256KB)
-//   flag[r]         = *(float*)(combineBank[S] + r*512)  // 1.0=combine
+//   D_S[aiv] = *(int32_t*)(win + 950KB + aiv*512 + 0)
+//   C_S[aiv] = *(int32_t*)(win + 950KB + aiv*512 + 64)
+//   combine bank[C_S] = win + C_S*350KB + COMBINE_STATE_OFFSET(256KB)
+//   flag[r]           = *(float*)(combineBank + r*512)
 void DumpEpCombineStatus(HcclComm comm, uint32_t epRankId, int64_t epWorldSize, int iter, const char *stage)
 {
     void *winAddr = nullptr;
@@ -153,24 +156,35 @@ void DumpEpCombineStatus(HcclComm comm, uint32_t epRankId, int64_t epWorldSize, 
     LOG_PRINT("[DUMP] ===== %s timeout dump rank=%u iter=%d win=%p size=%llu =====\n", stage, epRankId, iter, winAddr,
               static_cast<unsigned long long>(winSize));
 
-    int32_t dataState0 = 0;
+    int32_t combineDataState0 = 0;
     for (uint32_t aiv = 0; aiv < DUMP_AIV_NUM; ++aiv) {
-        int32_t dataState = 0;
-        void *src = winBase + STATE_WIN_OFFSET + static_cast<uint64_t>(aiv) * STATE_OFFSET;
-        aclError ret = aclrtMemcpy(&dataState, sizeof(dataState), src, sizeof(dataState), ACL_MEMCPY_DEVICE_TO_HOST);
+        int32_t dispatchDataState = 0;
+        int32_t combineDataState = 0;
+        void *dSrc = winBase + STATE_WIN_OFFSET + static_cast<uint64_t>(aiv) * STATE_OFFSET +
+                     DISPATCH_DATA_STATE_SLOT_OFFSET;
+        void *cSrc = winBase + STATE_WIN_OFFSET + static_cast<uint64_t>(aiv) * STATE_OFFSET +
+                     COMBINE_DATA_STATE_SLOT_OFFSET;
+        aclError ret = aclrtMemcpy(&dispatchDataState, sizeof(dispatchDataState), dSrc, sizeof(dispatchDataState),
+                                   ACL_MEMCPY_DEVICE_TO_HOST);
         if (ret != ACL_SUCCESS) {
-            LOG_PRINT("[DUMP] read dataState aiv=%u failed. ret=%d\n", aiv, ret);
+            LOG_PRINT("[DUMP] read D_S aiv=%u failed. ret=%d\n", aiv, ret);
+            continue;
+        }
+        ret = aclrtMemcpy(&combineDataState, sizeof(combineDataState), cSrc, sizeof(combineDataState),
+                          ACL_MEMCPY_DEVICE_TO_HOST);
+        if (ret != ACL_SUCCESS) {
+            LOG_PRINT("[DUMP] read C_S aiv=%u failed. ret=%d\n", aiv, ret);
             continue;
         }
         if (aiv == 0U) {
-            dataState0 = dataState;
+            combineDataState0 = combineDataState;
         }
-        LOG_PRINT("[DUMP] dataState[aiv=%u]=%d\n", aiv, dataState);
+        LOG_PRINT("[DUMP] aiv=%u D_S=%d C_S=%d\n", aiv, dispatchDataState, combineDataState);
     }
 
-    // 两个 bank 都打：便于判断 flag 是否落错半区
+    // 两个 combine bank 都打：current 以 C_S 为准
     for (uint32_t bank = 0; bank < 2U; ++bank) {
-        const char *tag = (static_cast<int32_t>(bank) == dataState0) ? "current" : "other";
+        const char *tag = (static_cast<int32_t>(bank) == combineDataState0) ? "current" : "other";
         float sum = 0.0f;
         uint32_t cntOne = 0U;
         uint32_t cntTwo = 0U;

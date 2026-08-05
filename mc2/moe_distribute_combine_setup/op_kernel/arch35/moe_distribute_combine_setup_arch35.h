@@ -138,20 +138,19 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
     epRankId_ = mc2Context_->epRankId;
 
-    // 获取win状态区地址，并保证数据一致
-    // 在1M中选择512K偏移后的1.5k空间记录本卡历史状态
+    // 获取 win 元数据槽：只使用 C_S，与 dispatch 的 D_S 隔离
     GlobalTensor<int32_t> selfDataStatusTensor;
     statusDataSpaceGM_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
     selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGM_ + STATE_WIN_OFFSET +
-        STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_)));
+        STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_) + COMBINE_DATA_STATE_SLOT_OFFSET));
 
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
 
-    dataState_ = selfDataStatusTensor(0); // win状态区的0/1标识
+    dataState_ = selfDataStatusTensor(0); // combine 专用 C_S
 
-    // 本卡准备状态flag源：每个核在dataState标识后的32B位置写入float 1.0，供远端WriteNbi使用
+    // 本卡准备状态flag源：供远端 WriteNbi 使用（与 D_S/C_S 槽位错开）
     statusFlagGM_ = statusDataSpaceGM_ + STATE_WIN_OFFSET +
-        STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_) + UB_ALIGN;
+        STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_) + COMBINE_STATUS_FLAG_SLOT_OFFSET;
     GlobalTensor<int32_t> statusFlagTensor;
     statusFlagTensor.SetGlobalBuffer((__gm__ int32_t *)statusFlagGM_);
     statusFlagTensor.SetValue(0, static_cast<int32_t>(STATUS_FLAG_VALUE));
