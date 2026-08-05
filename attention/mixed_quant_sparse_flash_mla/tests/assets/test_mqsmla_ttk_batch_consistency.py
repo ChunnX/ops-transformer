@@ -80,11 +80,121 @@ def test_batch_random_context_repeats_declared_batch_slices():
     fields.update({"layout_q": "BSND", "layout_kv": "BSND"})
     original_uniform = np.random.uniform
 
-    with INPUTS_MODULE.NumpyBatchRandomContext.from_case(q, fields):
+    with INPUTS_MODULE.NumpyBatchRandomContext.from_case(q, None, None, fields):
         value = np.random.uniform(-1.0, 1.0, (3, 2))
 
     assert np.random.uniform is original_uniform
     assert np.array_equal(value[0], value[2])
+
+
+def test_bsnd_batch_context_ignores_auxiliary_q_prefix():
+    q = torch.empty((2, 1, 1, 1), dtype=torch.float32)
+    fields = batch_kwargs(((0, 1, 1), (1, 2, 1)), 7001)
+    fields.update({
+        "layout_q": "BSND",
+        "layout_kv": "BSND",
+        "cu_seqlens_q_values": [0, 14, 28],
+    })
+
+    context = INPUTS_MODULE.NumpyBatchRandomContext.from_case(q, None, None, fields)
+
+    assert context.q_prefix is None
+    assert context.batch_size == 2
+
+
+def test_tnd_batch_random_context_maps_logical_batch_and_token_ranges():
+    q = torch.empty((8, 1, 1), dtype=torch.float32)
+    ori_kv = torch.empty((12, 1, 1), dtype=torch.float32)
+    cmp_kv = torch.empty((4, 1, 1), dtype=torch.float32)
+    fields = batch_kwargs(((0, 2, 1), (4, 6, 1)), 7001)
+    fields.update({
+        "layout_q": "TND",
+        "layout_kv": "TND",
+        "cu_seqlens_q_values": [0, 2, 4, 6, 8],
+        "cu_seqlens_ori_kv_values": [0, 3, 6, 9, 12],
+        "cu_seqlens_cmp_kv_values": [0, 1, 2, 3, 4],
+        "seqused_q_values": [2, 2, 2, 2],
+        "seqused_ori_kv_values": [3, 3, 3, 3],
+        "seqused_cmp_kv_values": [1, 1, 1, 1],
+        "cmp_residual_kv_values": [0, 0, 0, 0],
+    })
+
+    with INPUTS_MODULE.NumpyBatchRandomContext.from_case(
+            q, ori_kv, cmp_kv, fields):
+        q_value = np.random.uniform(-1.0, 1.0, (8, 2))
+        ori_value = np.random.uniform(-1.0, 1.0, (12, 2))
+        batch_value = np.random.uniform(-1.0, 1.0, (4, 2, 2))
+
+    assert np.array_equal(q_value[0:2], q_value[4:6])
+    assert np.array_equal(ori_value[0:3], ori_value[6:9])
+    assert np.array_equal(batch_value[0], batch_value[2])
+
+
+def test_tnd_pa_input_adapter_preserves_relation_through_block_tables():
+    batch_size = 4
+    q = torch.empty((batch_size, 64, 512), dtype=torch.bfloat16)
+    ori_kv = torch.empty(
+        (batch_size, 128, 1, 608), dtype=torch.float8_e4m3fn
+    )
+    cmp_kv = torch.empty(
+        (batch_size, 16, 1, 608), dtype=torch.float8_e4m3fn
+    )
+    ori_block_table = torch.empty((batch_size, 1), dtype=torch.int32)
+    cmp_block_table = torch.empty((batch_size, 1), dtype=torch.int32)
+    cu_seqlens_q = torch.empty((batch_size + 1,), dtype=torch.int32)
+    seqused_q = torch.empty((batch_size,), dtype=torch.int32)
+    seqused_ori_kv = torch.empty((batch_size,), dtype=torch.int32)
+    seqused_cmp_kv = torch.empty((batch_size,), dtype=torch.int32)
+    cmp_residual_kv = torch.empty((batch_size,), dtype=torch.int32)
+    sinks = torch.empty((64,), dtype=torch.float32)
+
+    INPUTS_MODULE.generate_mixed_quant_sparse_flash_mla_inputs(
+        q,
+        ori_kv=ori_kv,
+        cmp_kv=cmp_kv,
+        ori_block_table=ori_block_table,
+        cmp_block_table=cmp_block_table,
+        cu_seqlens_q=cu_seqlens_q,
+        seqused_q=seqused_q,
+        seqused_ori_kv=seqused_ori_kv,
+        seqused_cmp_kv=seqused_cmp_kv,
+        cmp_residual_kv=cmp_residual_kv,
+        sinks=sinks,
+        testcase_name="MQSMLA_BATCH_TND_PA_INPUT_001",
+        layout_q="TND",
+        layout_kv="PA_BBND",
+        S1=1,
+        S2=128,
+        softmax_scale=0.04419417,
+        cmp_ratio=128,
+        ori_mask_mode=4,
+        cmp_mask_mode=3,
+        ori_win_left=127,
+        ori_win_right=0,
+        quant_mode=1,
+        rope_head_dim=64,
+        return_softmax_lse=True,
+        has_ori_kv=True,
+        has_cmp_kv=True,
+        template_run_mode="HCA",
+        cu_seqlens_q_values=[0, 1, 2, 3, 4],
+        seqused_q_values=[1, 1, 1, 1],
+        seqused_ori_kv_values=[128, 128, 128, 128],
+        seqused_cmp_kv_values=[1, 1, 1, 1],
+        cmp_residual_kv_values=[0, 0, 0, 0],
+        input_ranges=((-5, 5), (-5, 5), (-5, 5)),
+        **batch_kwargs(((0, 1, 1), (2, 3, 1)), 74123),
+    )
+
+    assert torch.equal(q[0].view(torch.uint8), q[2].view(torch.uint8))
+    assert torch.equal(
+        ori_kv[int(ori_block_table[0, 0])].view(torch.uint8),
+        ori_kv[int(ori_block_table[2, 0])].view(torch.uint8),
+    )
+    assert torch.equal(
+        cmp_kv[int(cmp_block_table[0, 0])].view(torch.uint8),
+        cmp_kv[int(cmp_block_table[2, 0])].view(torch.uint8),
+    )
 
 
 def test_non_batch_case_does_not_invent_pytest_geometry():
