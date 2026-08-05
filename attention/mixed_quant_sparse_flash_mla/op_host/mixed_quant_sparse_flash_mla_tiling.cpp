@@ -26,6 +26,20 @@ namespace optiling {
 
 constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
 
+std::string MQSMLALayoutToSerialString(MQSMLALayout layout)
+{
+    switch (layout) {
+        case MQSMLALayout::BSND:
+            return "BSND";
+        case MQSMLALayout::TND:
+            return "TND";
+        case MQSMLALayout::PA_BBND:
+            return "PA_BBND";
+        default:
+            return "UNKNOWN";
+    }
+}
+
 struct QSMLACompileInfo {
     int64_t core_num;
 };

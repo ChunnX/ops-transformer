@@ -28,8 +28,16 @@ add_ops_compile_options(
 
 add_modules_sources(OPTYPE quant_sparse_flash_mla ACLNNTYPE aclnn)
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../sparse_flash_mla/op_host/checkers/checker_sources.cmake)
+set(QUANT_SPARSE_MLA_CHECKER_SRC_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/checkers/quant_sparse_flash_mla_checker.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/checkers/quant_variant_checker.cpp
+)
+
 add_tiling_modules()
+add_sparse_mla_common_checker_sources(${OPHOST_NAME}_tiling_obj)
 target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
+    ${QUANT_SPARSE_MLA_CHECKER_SRC_FILES}
     quant_sparse_flash_mla_check_consistency.cpp
     quant_sparse_flash_mla_check_existance.cpp
     quant_sparse_flash_mla_check_feature.cpp
