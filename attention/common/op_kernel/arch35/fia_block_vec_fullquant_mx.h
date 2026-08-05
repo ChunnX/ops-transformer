@@ -419,11 +419,12 @@ public:
                             pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStrideD256});
                     }
                 }
-            } else {  // D128 K-major: Opt A byte-identical (D128 KV512 crash=PathC separate, not touched by 2a2b)
-                constexpr uint64_t subLoopScaleOffset = mBaseSize * s2BaseSizeCur / MXFP_GROUP_SIZE;
-                for (uint16_t i = 0; i < 4; i++) {
-                    DataCopy(mm2AScaleL1Tensor[vecOffset + subLoop * subLoopScaleOffset + i * blockBytes],
-                        pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
+            } else {  // D128 K-major: PathC 0bda7a4a pattern (subLoop1 only -> P0 region; cube P1-init 0x7f7f for P1 region; MatmulFullMX kLoops P0 rescale + P1=1.0)
+                if (subLoop % 2 == 1) {
+                    for (uint16_t i = 0; i < 4; i++) {
+                        DataCopy(mm2AScaleL1Tensor[vecOffset + i * blockBytes],
+                            pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
+                    }
                 }
             }
         } else if (runInfo.actSingleLoopS2Size <= s2SplitSize) {
@@ -441,7 +442,8 @@ public:
         this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
 
         LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
-        int64_t subLoopOffset = s2BaseSizeCur * 32 * subLoop;
+        int64_t subLoopOffset = (s2BaseSizeCur == 128) ? (s2BaseSizeCur * 32 * subLoop)  // D256 KV256 Opt A (selective 100%, P1 in MatmulN read range)
+                                                       : (s2BaseSizeCur * mBaseSize * subLoop);  // D128 KV512 PathC 0bda7a4a (P1 at 0x8000 for MatmulFullMX kLoops l1BaseKOffset)
         constexpr uint16_t elementSize = 32;
         constexpr uint32_t singleProcessSOuterSize = mBaseSize >> 1;
         constexpr uint32_t actCopyCount = (singleProcessSOuterSize + elementSize - 1) / elementSize;
