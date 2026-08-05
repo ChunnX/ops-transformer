@@ -2328,7 +2328,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
 
     __ubuf__ T2 *x_exp_1;
 
-    x_exp_1 = x_exp + 32;
+    x_exp_1 = x_exp + (ubN >> 3);
 
     __ubuf__ float *src_ub0 = input_x_local_UB;
     __ubuf__ float *src_ub1 = src_ub0 + m;
@@ -2664,7 +2664,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
     __ubuf__ T2 *x_exp_1;
-    x_exp_1 = x_exp + 32;
+    x_exp_1 = x_exp + (ubN >> 3);
     __ubuf__ float *src_ub0 = input_x_local_UB;
     __ubuf__ float *src_ub1 = src_ub0 + m;
     __ubuf__ float *src_ub2 = src_ub0 + (m << 1);
@@ -2830,8 +2830,6 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)x_exp), vreg_x_exp_f8_pack_0, blockStride, repeatStride, preg_134);
 
-        // -----------------------------------------------------------------------------//
-
         Cast<T2, T, castTraitRintZero>(vreg_x_exp_fp8_1, vreg_x_exp_4, preg_135);
         Cast<T2, T, castTraitRintOne>((RegTensor<T2> &)vreg_x_exp_4, vreg_x_exp_5, preg_135);
         Cast<T2, T, castTraitRintTwo>((RegTensor<T2> &)vreg_x_exp_5, vreg_x_exp_6, preg_135);
@@ -2972,17 +2970,13 @@ __aicore__ inline void ProcessVec1VfDnMxfp8(
     const LocalTensor<T> &firstLoopSumTensor, int32_t subLoop)
 {
     // 将 256-column C1 转为 P(e4m3)/PScale(e8m0)；isUpdate 控制 online-softmax 更新。
+    LocalTensor<uint8_t> indexesTensor;
+    indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
     if constexpr (!isUpdate) {
-        LocalTensor<uint8_t> indexesTensor;
-        indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
         ProcessVec1DnNoUpdateMxfp8<T, T2, hasAtten, ubN>(dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
                                                          indexesTensor, maskTensor, m, n, originN, scale, deScaleQK,
                                                          pScale, minValue, keepProb, subLoop, pScaleSubLoop0Tensor);
     } else {
-        LocalTensor<uint8_t> indexesTensor;
-
-        indexesTensor = vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
-
         ProcessVec1DnUpdateMxfp8<T, T2, hasAtten, ubN>(dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor,
                                                        indexesTensor, maskTensor, m, n, originN, scale, deScaleQK,
                                                        pScale, minValue, keepProb, preLoopMaxTensor, preLoopSumTensor,
