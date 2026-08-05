@@ -215,8 +215,8 @@ class QuantBlockSparseAttnMetadataBuilder:
             num_heads_kv,
             int(query.shape[-1]),
             cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_kv=cu_seqlens_kv,
-            seqused_q=seqused_q,
+            cu_seqlens_kv=None,
+            seqused_q=None,
             seqused_kv=seqused_kv,
             batch_size=cls.batch_size(
                 query, layout_q, cu_seqlens_q, seqused_q, sparse_indices
