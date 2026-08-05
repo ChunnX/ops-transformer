@@ -69,11 +69,6 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulApaceGetWorkspaceSize(
     auto transX2 = x2;
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         bool notContiguous = IsTransposeLastTwoDims(x2);
-        if (notContiguous && transposeX2) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "x2 is non-contiguous but transpose_x2 is true, this is invalid for apace.");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
         if (notContiguous) {
             transposeX2 = true;
             transX2 = matmul_allto_all_check::TransX2Tensor(x2);
