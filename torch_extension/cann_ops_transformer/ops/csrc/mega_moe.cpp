@@ -148,11 +148,17 @@ void LaunchMegaMoeWithProfDump(const at::Tensor &yOut, int deviceId, Ts &...args
             ASCEND_LOGW("MegaMoe calib read bridge failed, ret=%d.", ret);
         } else {
             uint64_t delta = kernelWsBase - hostWsBase;
-            printf("[PROFILER] MegaMoe rank %d calib: kernelWsBase=0x%llX hostWsBase=0x%llX delta=%llu (0x%llX)\n",
+            printf("[PROFILER] MegaMoe rank %d calib: kernelWsBase=0x%016llX hostWsBase=0x%016llX "
+                   "delta=%llu (0x%llX)\n",
                    deviceId, (unsigned long long)kernelWsBase, (unsigned long long)hostWsBase,
                    (unsigned long long)delta, (unsigned long long)delta);
             printf("[PROFILER] Set MEGA_MOE_PROF_DELTA=%llu and rerun with MEGA_MOE_PROF_DUMP=1 (no CALIB).\n",
                    (unsigned long long)delta);
+            // 诊断：若 delta > 2^63（无符号回绕），说明 kernelWsBase < hostWsBase，bridge 值可能被覆盖/错误。
+            if (delta > (uint64_t)0x8000000000000000ULL) {
+                printf("[PROFILER] WARN: delta appears to have wrapped (kernelWsBase < hostWsBase). "
+                       "Check bridge write timing / yOut overwrite.\n");
+            }
         }
     } else if (dump != nullptr && std::strcmp(dump, "1") == 0) {
         const char *deltaStr = getenv("MEGA_MOE_PROF_DELTA");

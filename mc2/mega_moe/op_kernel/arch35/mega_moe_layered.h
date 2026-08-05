@@ -28,7 +28,7 @@
 #define MEGA_MOE_ENABLE_PROFILING 1
 #endif
 #ifndef MEGA_MOE_PROF_ADDR_CALIB
-#define MEGA_MOE_PROF_ADDR_CALIB 0
+#define MEGA_MOE_PROF_ADDR_CALIB 1
 #endif
 #if MEGA_MOE_ENABLE_PROFILING
 #ifndef ENABLE_PROFILING
@@ -2766,11 +2766,17 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     // yOut[0..8]（output tensor，框架保证 host 可读 + DCCI 生效），host 据此算 delta = kernelWsBase - hostWsBase。
     // 直接写模式无需 PROF_FINALIZE/PROF_FINALIZE_AIC（PROF_MARK 已逐事件 DCCI flush）。
 #if MEGA_MOE_PROF_ADDR_CALIB
-    if (GetBlockIdx() == 0) {
-        __gm__ uint32_t *diagPtr = reinterpret_cast<__gm__ uint32_t *>(params_.y2GmAddr);
-        uint64_t wsBase = reinterpret_cast<uint64_t>(wsBaseGm_);
-        Profiler::GmWrite64(diagPtr, wsBase);
-        pipe_barrier(PIPE_ALL);
+    if constexpr (g_coreType == AIV) {
+        // 只由 AIV 核执行（AIC 核 GetBlockIdx()==0 也存在，会重复写/竞争）。
+        if (GetBlockIdx() == 0) {
+            // 必须先 PIPE_ALL barrier 确保 Unpermute 等异步 GM 写全部落盘，
+            // 否则 bridge 写 yOut[0..8] 会被 Unpermute 的异步写覆盖，host 读到的是输出数据而非 workspace 基址。
+            pipe_barrier(PIPE_ALL);
+            __gm__ uint32_t *diagPtr = reinterpret_cast<__gm__ uint32_t *>(params_.y2GmAddr);
+            uint64_t wsBase = reinterpret_cast<uint64_t>(wsBaseGm_);
+            Profiler::GmWrite64(diagPtr, wsBase);
+            pipe_barrier(PIPE_ALL);
+        }
     }
 #endif
 #endif
