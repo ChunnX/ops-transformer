@@ -126,6 +126,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
         int64_t t1PadLen = tilingData->baseParams.t1Size - actualLen;
         int64_t t2PadLen = tilingData->baseParams.t2Size - actualKLen;
         int64_t totalAivNum = tilingData->baseParams.totalAivNum;
+        AscendC::PRINTF("[luo] tail_pad_zero t1pad=%ld t2pad=%ld aivNum=%ld\n", t1PadLen, t2PadLen, totalAivNum);
 
         // 将padding行均分到各AIV核并行清零
         if (t1PadLen > 0) {
