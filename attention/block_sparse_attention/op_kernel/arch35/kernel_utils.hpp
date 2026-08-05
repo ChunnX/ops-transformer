@@ -73,6 +73,7 @@ struct TileInfo {
     bool isKvsFirstTilePerCore = false; // 16个softmax均分在两个core, 当前任务是否是分在当前core上的第一个，    
     
     uint32_t kvsActBaseTile = 0;
+    uint32_t kvsActBaseTileAlign16 = 0;
     uint32_t kvsActBaseTileAlign32 = 0;
     uint32_t kvsActBaseTileAlign64 = 0;
     // ===== PV 稀疏 gather 所需（mxfp4）=====

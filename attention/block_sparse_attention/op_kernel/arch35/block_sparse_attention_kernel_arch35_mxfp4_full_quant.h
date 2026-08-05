@@ -354,15 +354,11 @@ public:
                         gKDequantScale[curTaskInfo.gmOffsetKScale],
                         gSparseIdx[curTaskInfo.gmOffsetSparseIdx],
                         curUBSTensorTla,
-                        curTaskInfo.qsActBaseTile,
+                        curTaskInfo, 
+                        curTileInfo, 
                         embed_,
-                        curTileInfo.kvsActBaseTile,
-                        curTileInfo.pvGatheredKvSTileIdx,
-                        curTaskInfo.kvSeqlen,
-                        kvBaseTile_, blockShapeY_,
-                        curTaskInfo.yBlockNumAval, curTaskInfo.yBlockNumRsvd,
-                        curTileInfo.isFirstKvsTile,
-                        curTileInfo.isLastKvsTile, 
+                        kvBaseTile_, 
+                        blockShapeY_,
                         subBlockIdx, kvHeadMul, qHeadMul);
                     AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
                 } else {
@@ -839,6 +835,7 @@ public:
             (taskInfo.gatheredKvSeqlen - (taskInfo.taskTileNum - 1) * kvBaseTile_) : kvBaseTile_;
         // PV 稀疏 gather 用：当前 tile 在 task 内 gather 后的 KV base tile 序号
         info.pvGatheredKvSTileIdx = curTaskTileIdx;
+        info.kvsActBaseTileAlign16 = (info.kvsActBaseTile + 15) / 16 * 16;
         info.kvsActBaseTileAlign32 = (info.kvsActBaseTile + 31) / 32 * 32;
         info.kvsActBaseTileAlign64 = (info.kvsActBaseTile + 63) / 64 * 64;
     }
