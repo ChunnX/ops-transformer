@@ -28,16 +28,16 @@ class AllToAllCommGetImpl : public CollectiveCommBase<AllToAllCommGetImpl<Dtype,
     friend class CollectiveCommBase<AllToAllCommGetImpl<Dtype, Barrier>, Dtype, Barrier>;
 
 private:
-    template<uint8_t barrierMode>
+    template<uint8_t BarrierMode>
     __aicore__ inline void PostInit() {}
 
-    template<uint8_t barrierMode>
+    template<uint8_t BarrierMode>
     __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileByteSize)
     {
-        if constexpr (barrierMode & BARRIER_CORE) {
+        if constexpr (BarrierMode & BARRIER_CORE) {
             this->barrier_.CrossCore();
         }
-        if constexpr (barrierMode & BARRIER_DEVICE) {
+        if constexpr (BarrierMode & BARRIER_DEVICE) {
             this->barrier_.CrossDevice();
         }
         if (targetRankId == this->udmaCtx_->rankId) {
@@ -54,7 +54,7 @@ private:
         ascendc_assert(ret == 0, "Urma readNbi failed, ret=%d, targetRankId=%u", ret, targetRankId);
     }
 
-    template<uint8_t barrierMode>
+    template<uint8_t BarrierMode>
     __aicore__ inline void DoWait(uint32_t targetRankId)
     {
         if (targetRankId == this->udmaCtx_->rankId) {
@@ -64,13 +64,13 @@ private:
         ascendc_assert(ret == 0, "Urma drain failed, ret=%d, targetRankId=%u", ret, targetRankId);
     }
 
-    template<uint8_t barrierMode>
+    template<uint8_t BarrierMode>
     __aicore__ inline void DoFinalize()
     {
-        if constexpr (barrierMode & BARRIER_CORE) {
+        if constexpr (BarrierMode & BARRIER_CORE) {
             this->barrier_.CrossCore();
         }
-        if constexpr (barrierMode & BARRIER_DEVICE) {
+        if constexpr (BarrierMode & BARRIER_DEVICE) {
             this->barrier_.CrossDevice();
         }
     }

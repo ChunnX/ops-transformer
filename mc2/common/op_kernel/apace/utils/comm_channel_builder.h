@@ -45,6 +45,17 @@ public:
     explicit CommChannelBuilder(HcclComm comm) : comm_(comm) {}
 
     /*!
+     * \brief 初始化 rankId 和 rankNum（使用 HcclGetRankId/HcclGetRankSize）
+     * \return true 成功, false 失败
+     */
+    bool Init()
+    {
+        if (HcclGetRankId(comm_, &rankId_) != HCCL_SUCCESS) { return false; }
+        if (HcclGetRankSize(comm_, &rankNum_) != HCCL_SUCCESS) { return false; }
+        return true;
+    }
+
+    /*!
      * \brief 获取 rankId
      */
     uint32_t GetRankId() const { return rankId_; }

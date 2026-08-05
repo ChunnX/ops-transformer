@@ -32,11 +32,11 @@
 #include "utils.h"
 #include "apace/utils/constant.h"
 #include "apace/utils/common_utils.h"
-#include "apace/tiling/quant_matmul_mx_tiling_swat.h"
-#include "apace/kernel/all_gather_quant_matmul/all_gather_quant_matmul_prefill_tiling_data.h"
+#include "apace/tiling/quant_matmul_tiling_swat.h"
+#include "apace/kernel/all_gather_quant_matmul/all_gather_mx_matmul_udma_tiling_data.h"
 #include "apace/kernel/all_gather_quant_matmul/all_gather_mx_matmul_udma_impl.h"
 #include "apace/block/aiv_comm/collective_comm_context.h"
-#include "../../utils/comm_channel_builder.h"
+#include "apace/utils/comm_channel_builder.h"
 #include "../../utils/root_info_exchanger.h"
 
 using namespace AllGatherQuantMatmulImpl;
@@ -89,7 +89,7 @@ int LaunchKernel(uint32_t usedCoreNum, aclrtStream stream,
          CommContext *devContext,
          GM_ADDR deviceA, GM_ADDR deviceScaleA,
          GM_ADDR deviceB, GM_ADDR deviceScaleB,
-         GM_ADDR deviceOutput, AllGatherMatmulTilingData &tilingData)
+         GM_ADDR deviceOutput, AllGatherMxMatmulUdmaTilingData &tilingData)
 {
   AllGatherQuantMatmulKernel<<<usedCoreNum, nullptr, stream>>>(
     devContext, deviceA, deviceScaleA, deviceB, deviceScaleB, deviceOutput, tilingData);
@@ -101,7 +101,7 @@ int RunAllGatherQuantMatmul(int rankNum, int rankId, int m, int k, int n)
   const char *ipport = "tcp://127.0.0.1:8998";
   INFO_LOG("rankNum=%d, rankId=%d", rankNum, rankId);
 
-  AllGatherMatmulTilingData tilingData;
+  AllGatherMxMatmulUdmaTilingData tilingData;
 
   uint32_t tileM = TILE_M;
   if (m < static_cast<int>(tileM)) {

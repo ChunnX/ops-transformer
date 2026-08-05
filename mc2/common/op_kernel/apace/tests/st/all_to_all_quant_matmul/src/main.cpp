@@ -2,8 +2,8 @@
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You can not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
@@ -19,15 +19,8 @@
 #include <string>
 #include <vector>
 #include <sys/wait.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 
-#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
-#else
-#include "kernel_operator.h"
-#endif
 #include "acl/acl.h"
 #include "hccl/hccl.h"
 #include "hccl/hccl_comm.h"
@@ -36,16 +29,12 @@
 #include "hccl/hccl_rank_graph.h"
 #include <cstdlib>
 #include "utils.h"
+#include "../../utils/comm_channel_builder.h"
+#include "../../utils/root_info_exchanger.h"
 #include "apace/tiling/quant_matmul_mx_tiling_swat.h"
 #include "apace/kernel/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
-#include "apace/kernel/all_to_all_quant_matmul/all_to_all_mx_matmul_udma_impl.h"
+#include "kernel_launcher.h"
 #include "apace/block/aiv_comm/collective_comm_context.h"
-#include "apace/block/aiv_comm/comm_channel_builder.h"
-
-using CommUdmaContext = Apace::AivComm::CommUdmaContext;
-using CommUbmemContext = Apace::AivComm::CommUbmemContext;
-using CommChannelBuilder = Apace::AivComm::CommChannelBuilder;
-using ChannelMode = Apace::AivComm::ChannelMode;
 
 #define HCCL_CHECK(status) do { \
   HcclResult ret = (status); \
@@ -72,8 +61,6 @@ void printUsage(const std::string& programName)
     std::cerr << "  n: col of matrix B" << std::endl;
     std::cerr << "  rankNum: number of ranks" << std::endl;
     std::cerr << "  mode: optional, 'precision' (default) | 'perf'" << std::endl;
-    std::cerr << "        precision - 跑一次 kernel，写 npu_out.bin 供 verify_result.py 比对" << std::endl;
-    std::cerr << "        perf       - 10 轮主循环测性能（带 host 侧计时）" << std::endl;
     std::cerr << "  headMSize: optional, long block M size (default 512)" << std::endl;
     std::cerr << "Example: " << programName << " 100 200 64 4" << std::endl;
     std::cerr << "         " << programName << " 2048 8192 3584 4 perf 512" << std::endl;
@@ -121,138 +108,21 @@ void parseArguments(int argc, char* argv[], int& m, int& k, int& n, int& rankNum
     }
 }
 
-static bool ParseEndpoint(const std::string &endpoint, std::string &ip, uint16_t &port)
-{
-    const std::string prefix = "tcp://";
-    if (endpoint.find(prefix) != 0) { return false; }
-    std::string addr = endpoint.substr(prefix.size());
-    auto colonPos = addr.rfind(':');
-    if (colonPos == std::string::npos) { return false; }
-    ip = addr.substr(0, colonPos);
-    port = static_cast<uint16_t>(atoi(addr.substr(colonPos + 1).c_str()));
-    return !ip.empty() && port > 0;
-}
-
-static int32_t SendAll(int32_t sock, const void *buf, size_t len)
-{
-    size_t sent = 0;
-    while (sent < len) {
-        ssize_t n = send(sock, static_cast<const char *>(buf) + sent, len - sent, 0);
-        if (n <= 0) { return -1; }
-        sent += static_cast<size_t>(n);
-    }
-    return 0;
-}
-
-static int32_t RecvAll(int32_t sock, void *buf, size_t len)
-{
-    size_t received = 0;
-    while (received < len) {
-        ssize_t n = recv(sock, static_cast<char *>(buf) + received, len - received, 0);
-        if (n <= 0) { return -1; }
-        received += static_cast<size_t>(n);
-    }
-    return 0;
-}
-
-static int32_t ExchangeRootInfo(uint32_t rank, uint32_t rankNum,
-                                const std::vector<int32_t> &socks, HcclRootInfo *rootInfo)
-{
-    if (rank == 0) {
-        HCCL_CHECK(HcclGetRootInfo(rootInfo));
-        for (uint32_t i = 1; i < rankNum; i++) {
-            if (SendAll(socks[i - 1], rootInfo, sizeof(HcclRootInfo)) != 0) { return -1; }
-        }
-    } else {
-        if (RecvAll(socks[0], rootInfo, sizeof(HcclRootInfo)) != 0) { return -1; }
-    }
-    return 0;
-}
-
-static int32_t TcpBarrier(uint32_t rank, uint32_t rankNum, const std::vector<int32_t> &socks)
-{
-    int32_t flag = 1;
-    if (rank == 0) {
-        for (uint32_t i = 1; i < rankNum; i++) {
-            int32_t recvFlag = 0;
-            if (RecvAll(socks[i - 1], &recvFlag, sizeof(recvFlag)) != 0) { return -1; }
-        }
-        for (uint32_t i = 1; i < rankNum; i++) {
-            if (SendAll(socks[i - 1], &flag, sizeof(flag)) != 0) { return -1; }
-        }
-    } else {
-        if (SendAll(socks[0], &flag, sizeof(flag)) != 0) { return -1; }
-        int32_t recvFlag = 0;
-        if (RecvAll(socks[0], &recvFlag, sizeof(recvFlag)) != 0) { return -1; }
-    }
-    return 0;
-}
-
-static int32_t ConnectPeers(uint32_t rank, uint32_t rankNum,
-                             const std::string &ip, uint16_t port,
-                             std::vector<int32_t> &socks)
-{
-    if (rank == 0) {
-        int32_t listenSock = socket(AF_INET, SOCK_STREAM, 0);
-        if (listenSock < 0) { return -1; }
-        int32_t opt = 1;
-        setsockopt(listenSock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-        struct sockaddr_in addr = {};
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(port);
-        inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);
-        if (bind(listenSock, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) < 0 ||
-            listen(listenSock, static_cast<int>(rankNum)) < 0) {
-            close(listenSock);
-            return -1;
-        }
-        socks.resize(rankNum - 1, -1);
-        for (uint32_t i = 0; i < rankNum - 1; i++) {
-            socks[i] = accept(listenSock, nullptr, nullptr);
-            if (socks[i] < 0) {
-                close(listenSock);
-                return -1;
-            }
-        }
-        close(listenSock);
-    } else {
-        socks.resize(1, -1);
-        int32_t sock = socket(AF_INET, SOCK_STREAM, 0);
-        if (sock < 0) { return -1; }
-        struct sockaddr_in addr = {};
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(port);
-        inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);
-        for (int32_t retry = 0; retry < 100; retry++) {
-            if (connect(sock, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) == 0) {
-                socks[0] = sock;
-                return 0;
-            }
-            usleep(100000);
-        }
-        close(sock);
-        return -1;
-    }
-    return 0;
-}
-
-static void CloseSocks(std::vector<int32_t> &socks)
-{
-    for (int32_t sock : socks) {
-        if (sock >= 0) { close(sock); }
-    }
-    socks.clear();
-}
-
 int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::string& mode, int headMSizeArg) {
     const char *ipport = "tcp://127.0.0.1:8998";
-    INFO_LOG("rankNum=%d, rankId=%d, ipport=%s", rankNum, rankId, ipport);
+    INFO_LOG("rankNum=%d, rankId=%d, ipport=%s, mode=%s, headMSize=%d",
+             rankNum, rankId, ipport, mode.c_str(), headMSizeArg);
 
     uint32_t ka = k / rankNum;
 
     allToAllMatmulTilingData tilingData;
 
-    uint32_t headMSize = static_cast<uint32_t>(headMSizeArg);
+    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
+    tilingEngine.GetTilingData(m, n, ka, false, true, tilingData.tileQbmmTilingData);
+
+    auto nTile = CeilDiv(n, tilingData.tileQbmmTilingData.baseN);
+    uint32_t headMSize =
+        CeilDiv(tilingData.tileQbmmTilingData.usedCoreNum, nTile) * tilingData.tileQbmmTilingData.baseM;
     uint32_t headTileCnt = static_cast<uint32_t>(m) / headMSize;
     uint32_t tailMSize = static_cast<uint32_t>(m) % headMSize;
     uint32_t tailTileCnt = (tailMSize > 0) ? 1 : 0;
@@ -263,14 +133,13 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
     tilingData.commTilingData.splitAxisTailSize = static_cast<uint64_t>(tailMSize);
     tilingData.commTilingData.splitAxisTailCnt = static_cast<uint64_t>(tailTileCnt);
     tilingData.commTilingData.nonSplitAxisSize = ka;
-    tilingData.localMatmul = 1;
+    tilingData.localMatmul = 0;
+
+    tilingData.scaleCommTilingData = tilingData.commTilingData;
+    tilingData.scaleCommTilingData.nonSplitAxisSize = ka / 32;
 
     INFO_LOG("TileCnt=%u, HeadTileCnt=%u, HeadMSize=%u, TailTileCnt=%u, TailMSize=%u",
              tileCnt, headTileCnt, headMSize, tailTileCnt, tailMSize);
-
-    uint64_t maxTileM = static_cast<uint64_t>(headMSize);
-    if (static_cast<uint64_t>(tailMSize) > maxTileM) { maxTileM = static_cast<uint64_t>(tailMSize); }
-    auto shmemBufBytes = 200 * 1024 * 1024;
 
     ACL_CHECK(aclInit(nullptr));
     int32_t deviceId = rankId;
@@ -278,25 +147,12 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
     aclrtStream stream = nullptr;
     ACL_CHECK(aclrtCreateStream(&stream));
 
-    std::string ip;
-    uint16_t port = 0;
-    if (!ParseEndpoint(ipport, ip, port)) {
-        ERROR_LOG("invalid endpoint: %s", ipport);
-        return -1;
-    }
-    std::vector<int32_t> socks;
-    if (ConnectPeers(static_cast<uint32_t>(rankId), static_cast<uint32_t>(rankNum), ip, port, socks) != 0) {
-        ERROR_LOG("rank %d connect peers failed", rankId);
-        return -1;
-    }
-
+    RootInfoExchanger exchanger(static_cast<uint32_t>(rankId), static_cast<uint32_t>(rankNum), ipport);
     HcclRootInfo rootInfo;
-    if (ExchangeRootInfo(static_cast<uint32_t>(rankId), static_cast<uint32_t>(rankNum), socks, &rootInfo) != 0) {
+    if (!exchanger.Exchange(rootInfo)) {
         ERROR_LOG("rank %d exchange rootInfo failed", rankId);
-        CloseSocks(socks);
         return -1;
     }
-    TcpBarrier(static_cast<uint32_t>(rankId), static_cast<uint32_t>(rankNum), socks);
 
     HcclCommConfig config;
     HcclCommConfigInit(&config);
@@ -306,50 +162,23 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
                                           static_cast<uint32_t>(rankId), &config, &comm));
     if (comm == nullptr) {
         ERROR_LOG("rank %d HcclCommInitRootInfoConfig failed", rankId);
-        CloseSocks(socks);
         return -1;
     }
-
-    constexpr uint32_t MAX_AIV_NUM = Apace::AivComm::COMM_MAX_RANK_NUM;
-    constexpr uint64_t SYNC_BUF_SIZE = sizeof(uint64_t) * (2 + MAX_AIV_NUM * 6 + Apace::AivComm::COMM_MAX_RANK_NUM);
 
     CommChannelBuilder builder(comm);
     CommContext hostCtx = {};
-    Apace::AivComm::CommUdmaContext* udmaCtx = &hostCtx.udmaCtx;
-    Apace::AivComm::CommUbmemContext* ubmemCtx = &hostCtx.ubmemCtx;
-    udmaCtx->rankId = builder.GetRankId();
-    udmaCtx->rankSize = builder.GetRankSize();
-    ubmemCtx->rankId = builder.GetRankId();
-    ubmemCtx->rankSize = builder.GetRankSize();
+    const char *ctxTag = "all_to_all_quant_matmul";
 
-    if (!builder.AllocRegAndBuildChannels(
-        ChannelMode::URMA, false, shmemBufBytes, "shareBuf",
-        udmaCtx->channelHandles, udmaCtx->commBufferAddrs)) {
-        ERROR_LOG("rank %d AllocRegAndBuildChannels shareBuf failed", rankId);
-        CloseSocks(socks);
+    CommContext *devContext = reinterpret_cast<CommContext *>(
+        builder.CreateDeviceContext(&hostCtx, sizeof(CommContext), ctxTag,
+                                    &hostCtx.udmaCtx, &hostCtx.ubmemCtx));
+    if (devContext == nullptr) {
+        ERROR_LOG("rank %d CreateDeviceContext failed", rankId);
         return -1;
     }
 
-    if (!builder.AllocRegAndBuildChannels(
-        ChannelMode::UBMEM, false, SYNC_BUF_SIZE, "syncBuf",
-        nullptr, ubmemCtx->commBufferAddrs)) {
-        ERROR_LOG("rank %d AllocRegAndBuildChannels syncBuf failed", rankId);
-        CloseSocks(socks);
-        return -1;
-    }
-
-    TcpBarrier(static_cast<uint32_t>(rankId), static_cast<uint32_t>(rankNum), socks);
-    CloseSocks(socks);
-
-    CommContext *devContext = nullptr;
-    ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(&devContext), sizeof(CommContext),
-                          ACL_MEM_MALLOC_HUGE_ONLY));
-    ACL_CHECK(aclrtMemcpy(devContext, sizeof(CommContext), &hostCtx,
-                          sizeof(CommContext), ACL_MEMCPY_HOST_TO_DEVICE));
-
-    QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
-
-    tilingEngine.GetTilingData(m, n, ka, false, true, tilingData.tileQbmmTilingData);
+    exchanger.Barrier();
+    exchanger.Close();
 
     std::vector<uint8_t> hostA(m * k, 0);
     std::vector<uint8_t> hostB(k * n, 0);
@@ -410,8 +239,6 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
 
         WriteFile(outputDir + "/npu_out.bin", hostOutput.data(), sizeOutput);
     } else {
-        // 1) boost buffer: 200MB bf16 (100M elements) —— 100 次 exp 去 host bound
-        // 2) cache_flush buffer: 256MB bf16 (128M elements) —— 每轮 1 次 add_(1) 刷 L2
         constexpr int64_t HEAVY_BLOCK_NUM = 56;
         constexpr int64_t BOOST_ELEM_COUNT = 10000LL * 10000LL;
         size_t boostSize = static_cast<size_t>(BOOST_ELEM_COUNT) * sizeof(uint16_t);
@@ -421,7 +248,6 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
         ACL_CHECK(aclrtMalloc((void**)&boostOut, boostSize, ACL_MEM_MALLOC_HUGE_ONLY));
         std::vector<uint16_t> boostHost(BOOST_ELEM_COUNT, 0x3F00);
         ACL_CHECK(aclrtMemcpy(boostIn, boostSize, boostHost.data(), boostSize, ACL_MEMCPY_HOST_TO_DEVICE));
-        int64_t boostBlockLen = (BOOST_ELEM_COUNT + HEAVY_BLOCK_NUM - 1) / HEAVY_BLOCK_NUM;
 
         constexpr int64_t CACHE_FLUSH_ELEM_COUNT = 128LL * 1024 * 1024;
         size_t cacheFlushSize = static_cast<size_t>(CACHE_FLUSH_ELEM_COUNT) * sizeof(uint16_t);
@@ -442,6 +268,8 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
             durations[i] = std::chrono::duration<double, std::milli>(t1 - t0).count();
         }
 
+        ACL_CHECK(aclrtSynchronizeStream(stream));
+
         double sum = 0, minv = 1e9, maxv = 0;
         for (int i = 1; i < PERF_LOOP_COUNT; ++i) {
             sum += durations[i];
@@ -457,7 +285,6 @@ int runAllToAllMatmul(int rankNum, int rankId, int m, int k, int n, const std::s
         aclrtFree(cacheFlush);
     }
 
-    aclrtFree(devContext);
     aclrtFree(deviceA);
     aclrtFree(deviceScaleA);
     aclrtFree(deviceB);

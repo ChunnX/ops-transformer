@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file all_gather_quant_matmul_prefill_tiling_data.h
+ * \file all_gather_mx_matmul_udma_tiling_data.h
  * \brief Tiling data for AllGather + QuantMatmul fusion kernel (prefill variant)
  */
 
@@ -33,8 +33,8 @@ struct CommContext {
 using Apace::AivComm::CommContext;
 
 #pragma pack(push, 8)
-struct alignas(8) AllGatherMatmulTilingData {
-  QuantMatmulTilingData mmTile;
-  CommTilingData commTile;
+struct alignas(8) AllGatherMxMatmulUdmaTilingData {
+    QuantMatmulTilingData mmTile;
+    CommTilingData commTile;
 };
 #pragma pack(pop)
