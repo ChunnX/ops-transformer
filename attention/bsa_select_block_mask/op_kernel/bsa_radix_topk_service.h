@@ -635,7 +635,7 @@ __aicore__ inline void BSARadixTopKService<BSAT>::CopyIn(TBuf<TPosition::VECIN> 
     if constexpr (sizeof(SCORE_T) == 2) {
         ubOffset = tileLenScoreAlign_;
     }
-    uint64_t xAlign = COMPARES_ALIGN_LEN;
+    uint64_t xAlign = UB_BLOCK_SIZE / sizeof(SCORE_T);
     uint8_t xPadNum = static_cast<uint8_t>((xAlign - dataNum % xAlign) % xAlign);
     DataCopyExtParams xCopyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(SCORE_T) * dataNum), 0, 0, 0};
     DataCopyPadExtParams<SCORE_T> xPadParams{true, 0, xPadNum, 0};
