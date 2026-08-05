@@ -171,7 +171,7 @@ def gen_golden(x, expert_idx, scale, offset, active_num, expert_capacity,
 
 def gen_golden_data_simple(N, H, k, E, dtype, quant_mode, active_num, expert_capacity, 
                             expert_num, drop_pad, expert_token_num_type, 
-                            expert_tokens_num_flag, active_range, row_idx_type):
+                            expert_tokens_num_flag, active_range, row_idx_type, invalid_ratio=0.0):
     N = int(N)
     H = int(H)
     k = int(k)
@@ -185,9 +185,13 @@ def gen_golden_data_simple(N, H, k, E, dtype, quant_mode, active_num, expert_cap
     expert_tokens_num_flag = int(expert_tokens_num_flag)
     active_range = eval(active_range)
     row_idx_type = int(row_idx_type)
+    invalid_ratio = float(invalid_ratio)
 
     input_x = np.random.uniform(-2, 2, [N, H]).astype(dtype)
     input_expertIdx = np.random.randint(0, E, size=(N, k)).astype("int32")
+    if invalid_ratio > 0.0:
+        mask = np.random.random(size=(N, k)) < invalid_ratio
+        input_expertIdx[mask] = -1
     scale = np.random.uniform(-2, 2, [N]).astype(np.float32)
     offset = None
     if quant_mode == 0:
@@ -215,6 +219,7 @@ def gen_golden_data_simple(N, H, k, E, dtype, quant_mode, active_num, expert_cap
         expanded_scale.tofile("./expanded_scale.bin")
 
 if __name__ == "__main__":
+    invalid_ratio = sys.argv[15] if len(sys.argv) > 15 else "0.0"
     gen_golden_data_simple(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5],
                             sys.argv[6], sys.argv[7], sys.argv[8], sys.argv[9], sys.argv[10], sys.argv[11],
-                            sys.argv[12], sys.argv[13], sys.argv[14])
+                            sys.argv[12], sys.argv[13], sys.argv[14], invalid_ratio)
