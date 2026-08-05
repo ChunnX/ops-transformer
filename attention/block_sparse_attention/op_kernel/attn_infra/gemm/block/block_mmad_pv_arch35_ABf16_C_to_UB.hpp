@@ -200,7 +200,7 @@ public:
             // V 为正常布局 [N, embed]，Transposed=false
             EffRowsGatherCopy<false>(gBTensor, l1BTensorTla, gSparseBlockIdx, *effRowsCtx,
                                      yBlockNumRsvd, kvSeqlen, blockShapeY, embed,
-                                     curBaseTileSize, copyGmToL1B);
+                                     curBaseTileSize, copyGmToL1B, 0);
             return;
         }
         uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile;

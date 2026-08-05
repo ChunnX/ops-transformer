@@ -43,14 +43,14 @@ uint32_t EffRowsGatherCopy(TensorB &gBTensor, TensorL1B &l1BTensorTla,
                            const EffRowsCtx &ctx,
                            uint32_t yBlockNumRsvd, uint32_t kvSeqlen,
                            uint32_t blockShapeY, uint32_t embed,
-                           uint32_t targetLen, CopyFn copyFn)
+                           uint32_t targetLen, CopyFn copyFn,
+                           uint32_t innerOffset = 0)
 {
     if (!ctx.enabled || ctx.curBlockIdx == nullptr || ctx.curBlockCopied == nullptr) {
         return 0;
     }
     if (!ctx.gather) {
-        // FP8：tile 不跨块（dequantScale 逐块唯一），直接从 srcOffset 单块拷 targetLen 行
-        uint32_t oriStartOffset = static_cast<uint32_t>(ctx.srcOffset);
+        uint32_t oriStartOffset = static_cast<uint32_t>(ctx.srcOffset) + innerOffset;
         if constexpr (Transposed) {
             auto l1BTile = tla::GetTile(l1BTensorTla,
                 tla::MakeCoord(0, 0), tla::MakeShape(embed, targetLen));
