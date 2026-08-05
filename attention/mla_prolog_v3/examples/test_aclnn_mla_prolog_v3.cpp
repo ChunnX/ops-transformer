@@ -275,6 +275,7 @@ int main()
     ret = CreateAclTensorND(cacheIndexShape, &cacheIndexDeviceAddr, &cacheIndexHostAddr, aclDataType::ACL_INT64, &cacheIndex);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 设置cacheIndex，为每个token分配不同的cache slot，避免所有token写入同一slot
+    CHECK_RET(cacheIndexHostAddr != nullptr, LOG_PRINT("cacheIndexHostAddr is null.\n"); return ret);
     int64_t *cacheIndexData = static_cast<int64_t *>(cacheIndexHostAddr);
     for (int64_t i = 0; i < cacheIndexShape[0]; ++i) {
         cacheIndexData[i] = i;
