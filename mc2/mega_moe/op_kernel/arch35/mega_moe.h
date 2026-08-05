@@ -190,6 +190,10 @@ private:
     uint64_t quantWinOffset_ = 0; // quantTokenScalePtr 相对 win 基址的偏移
     uint64_t cumsumRevCntInRank_ = 0;
     int32_t compareCount_ = 0;
+#if FAKE_SEND_MODE
+    // fake context 的 epHcclBuffer[localExpertId] 保存该专家完整 [srcRank][mask|count] buffer 的地址。
+    GM_ADDR fakeMaskAddr_[HCCL_MAX_RANK_SIZE];
+#endif
     int64_t combineUbTensorSize_ = 0; // combineUbTensor 的大小（元素数）
     // 主线 shared-expert 特性成员
     uint32_t sharedExpertNum_ = 0;
@@ -296,10 +300,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     dispatchFlagSlotsPerExpert_ = maxWavesPerExpert_ * INT_CACHELINE;
     hiddenDim_ = tilingData->hiddenDim;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
+#if FAKE_SEND_MODE
+    rankId_ = 0;
+#else
     rankId_ = mc2Context_->epRankId;
     for (int i = 0; i < worldSize_; i++) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
+#endif
     params_.aGmAddr = x;
     params_.expertIdxGmAddr = topkIds;
     moeWeightTensorListAddrs_ = {weight1, weightScales1, weight2, weightScales2};
@@ -309,6 +317,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     params_.expertTokenNumsOutGmAddr = expertTokenNumsOut;
     params_.probsGmAddr = topkWeights;
     params_.workspaceInfo = WorkspaceInfo(workspaceGM, tilingData);
+#if FAKE_SEND_MODE
+    for (uint32_t rankIdx = 0; rankIdx < worldSize_; ++rankIdx) {
+        winRankAddr_[rankIdx] = params_.workspaceInfo.fakeWinPtr;
+    }
+#endif
     params_.peermemInfo = PeermemInfo(winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE);
     params_.tilingData = tilingData;
     expertTokenNumsOut_.SetGlobalBuffer((__gm__ int32_t *)params_.expertTokenNumsOutGmAddr);
@@ -351,6 +364,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
         gmmToEpilogueFlag_ = (__gm__ int32_t *)params_.workspaceInfo.flagGmmToEpiloguePtr +
                              static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
     }
+#if FAKE_SEND_MODE
+    for (uint32_t localExpertId = 0; localExpertId < moeExpertPerRank_; ++localExpertId) {
+        fakeMaskAddr_[localExpertId] = reinterpret_cast<GM_ADDR>(mc2Context_->epHcclBuffer[localExpertId]);
+    }
+#endif
 }
 
 // =================================================================================================
@@ -834,9 +852,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t loca
 
     // Phase 1: stride 读本 localExpert 的 worldsize 个 count
     GlobalTensor<int32_t> cntSrcGlobal;
+#if FAKE_SEND_MODE
+    cntSrcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(fakeMaskAddr_[localExpertId] + maskAlignSize_));
+#else
     cntSrcGlobal.SetGlobalBuffer((__gm__ int32_t *)(params_.peermemInfo.maskRecvPtr +
                                                     static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_ +
                                                     maskAlignSize_));
+#endif
     DataCopyExtParams cntCopyParams{static_cast<uint16_t>(worldSize_), static_cast<uint32_t>(sizeof(int32_t)),
                                     static_cast<uint32_t>(maskSlotSize_ - sizeof(int32_t)), 0U, 0U};
     DataCopyPadExtParams<int32_t> cntPad{true, 0U, 0U, 0U};
@@ -1132,10 +1154,17 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::MetaInfoCalAndDispatch(
                     maskSliceBytes = static_cast<int32_t>(maskAlignSize_) - batchRouteBegin / 8;
                 }
             }
+#if FAKE_SEND_MODE
             remoteRankMaskGlobal.SetGlobalBuffer(
-                (__gm__ uint8_t *)(params_.peermemInfo.maskRecvPtr +
-                                   (static_cast<uint64_t>(localExpertId) * worldSize_ + remoteRankIdx) * maskSlotSize_ +
-                                   static_cast<uint64_t>(batchRouteBegin / 8)));
+                reinterpret_cast<__gm__ uint8_t *>(fakeMaskAddr_[localExpertId] +
+                                                   static_cast<uint64_t>(remoteRankIdx) * maskSlotSize_ +
+                                                   static_cast<uint64_t>(batchRouteBegin / 8)));
+#else
+            remoteRankMaskGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(
+                params_.peermemInfo.maskRecvPtr +
+                (static_cast<uint64_t>(localExpertId) * worldSize_ + remoteRankIdx) * maskSlotSize_ +
+                static_cast<uint64_t>(batchRouteBegin / 8)));
+#endif
             DataCopy(maskBatchTensor_, remoteRankMaskGlobal, static_cast<uint32_t>(maskSliceBytes));
             SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
             // GatherMask 根据 mask 压缩本 batch 的全局 route index，并返回当前 batch 的命中数量。
@@ -2045,7 +2074,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         ProcessSharedExpertGmm1(initShape, initOffset, gmTileSequence);
     }
 
+#if !FAKE_SEND_MODE
     CrossRankSyncInWorldSize();
+#endif
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
     DispatchBufferConfig dispatchBufferConfig = DispatchBuffInit();
@@ -2160,7 +2191,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // 4. 本卡数据Unpermute
     if constexpr (g_coreType == AIV) {
+#if !FAKE_SEND_MODE
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
+#endif
         Unpermute();
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);

@@ -16,6 +16,10 @@
 #ifndef MEGA_MOE_WORKSPACE_INFO_H
 #define MEGA_MOE_WORKSPACE_INFO_H
 
+#ifndef FAKE_SEND_MODE
+#define FAKE_SEND_MODE 0
+#endif
+
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 #include "kernel_operator.h"
 #define HOST_DEVICE __forceinline__[aicore]
@@ -143,6 +147,49 @@ HOST_DEVICE int64_t CalcMegaMoeFlagWorkspaceSize(const MegaMoeTilingData *tiling
     return flagElementCount * SIZE_INT_32;
 }
 
+#if FAKE_SEND_MODE
+// Camodel has no HCCL peer window. Reserve an MTE-layout-compatible local window for the supported A8W4 fake case.
+HOST_DEVICE int64_t CalcFakeMtePeermemSize(const MegaMoeTilingData *tilingData)
+{
+    int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
+    int64_t compareCount =
+        Ops::Base::CeilAlign(sendTotalNum * static_cast<int64_t>(sizeof(int32_t)), static_cast<int64_t>(ALIGN_256)) /
+        static_cast<int64_t>(sizeof(int32_t));
+    int64_t maskAlignSize = Ops::Base::CeilAlign(compareCount / 8, static_cast<int64_t>(ALIGN_32));
+    int64_t maskSlotSize = maskAlignSize + static_cast<int64_t>(ALIGN_32);
+    int64_t maskRecvSize = Ops::Base::CeilAlign(
+        static_cast<int64_t>(tilingData->moeExpertPerRank) * tilingData->epWorldSize * maskSlotSize,
+        static_cast<int64_t>(ALIGN_512));
+
+    uint32_t dataBytes =
+        Ops::Base::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * static_cast<uint32_t>(SIZE_INT_8);
+    uint32_t scaleBytes = Ops::Base::CeilAlign(
+        Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32)) * static_cast<uint32_t>(SIZE_INT_8),
+        static_cast<uint32_t>(ALIGN_32));
+    uint32_t tokenBytes = dataBytes + scaleBytes;
+    if (tilingData->topkWeightsPrefetch == 1) {
+        tokenBytes += Ops::Base::CeilAlign(tilingData->topK * static_cast<uint32_t>(sizeof(float)),
+                                          static_cast<uint32_t>(ALIGN_32));
+    }
+    int64_t quantTokenScaleSize = Ops::Base::CeilAlign(
+        static_cast<int64_t>(tilingData->bs) * tokenBytes, static_cast<int64_t>(ALIGN_512));
+
+    int64_t combineTokenBytes = static_cast<int64_t>(tilingData->h) * SIZE_BF_16;
+    if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
+        int64_t tokenStorageBytes =
+            Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->h), static_cast<int64_t>(ALIGN_256));
+        int64_t scaleCount = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h),
+                                                static_cast<int64_t>(MXFP_SCALE_GROUP_NUM));
+        int64_t storedScaleBytes = Ops::Base::CeilAlign(scaleCount, static_cast<int64_t>(MXFP_MULTI_BASE_SIZE));
+        combineTokenBytes =
+            Ops::Base::CeilAlign(tokenStorageBytes + storedScaleBytes, static_cast<int64_t>(ALIGN_32));
+    }
+    int64_t combineSendSize =
+        Ops::Base::CeilAlign(sendTotalNum * combineTokenBytes, static_cast<int64_t>(ALIGN_512));
+    return PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize;
+}
+#endif
+
 } // namespace
 
 struct WorkspaceInfo {
@@ -176,6 +223,9 @@ struct WorkspaceInfo {
     GM_ADDR dispatchCursorPtr{nullptr}; // dispatch cnt for each expert
     GM_ADDR dispatchDonePtr{nullptr};   // dispatch done
     GM_ADDR dispatchL2CommPtr{nullptr}; // dispatch l2 communication workspace
+#if FAKE_SEND_MODE
+    GM_ADDR fakeWinPtr{nullptr}; // 单进程 camodel 中所有虚拟 rank 共用的本地 peer window
+#endif
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -396,6 +446,12 @@ struct WorkspaceInfo {
                                          MegaMoeImpl::SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
                                      ALIGN_512);
         }
+
+#if FAKE_SEND_MODE
+        workspaceSize = Ops::Base::CeilAlign(workspaceSize, static_cast<int64_t>(ALIGN_512));
+        fakeWinPtr = base + workspaceSize;
+        workspaceSize += CalcFakeMtePeermemSize(tilingData);
+#endif
     }
 };
 #endif // MEGA_MOE_WORKSPACE_INFO_H

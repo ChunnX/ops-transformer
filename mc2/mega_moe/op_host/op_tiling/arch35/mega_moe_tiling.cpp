@@ -1883,6 +1883,15 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
         SetAdaptiveBufferConfigs(context, config, tilingData, static_cast<uint32_t>(ubSize)) == ge::GRAPH_FAILED,
         OP_LOGE(nodeName, "Setting adaptive buffer configs failed."), return ge::GRAPH_FAILED);
 
+#if FAKE_SEND_MODE
+    // The initial camodel harness intentionally covers only the arch35 MTE A8W4 path without shared experts.
+    OP_TILING_CHECK(tilingData->topoType != TOPO_TYPE_MTE ||
+                        tilingData->groupedMatmulMode != GROUPED_MATMUL_MODE_A8W4 ||
+                        tilingData->sharedExpertNum != 0,
+                    OP_LOGE(nodeName, "FAKE_SEND_MODE only supports MTE A8W4 without shared experts"),
+                    return ge::GRAPH_FAILED);
+#endif
+
     // Cal TilingKey
     uint64_t tilingKey = CalTilingKey(context, config, tilingData, nodeName);
     OP_LOGI(nodeName, "OP TilingKey is %lu", tilingKey);
