@@ -864,8 +864,9 @@ def _reference_attention(
                 # golden 中 l_run 含 pScale 因子，m_run_offset = actual_max - ln(pScale)，
                 # 故 lse = log(l_run) + m_run_offset 与 kernel 的 log(sum)+max 浮点路径一致，
                 # 避免与 torch.logsumexp 的不同浮点路径产生 1-2 ULP 差异导致量化边界问题。
-                safe_l_lse = torch.where(l_run > 0, l_run, torch.ones_like(l_run))
-                lse = torch.log(safe_l_lse) + m_run_offset  # (nq,)
+                # 注意：l_run 不做非有限掩码，使全 inf 分数时 log(NaN)+inf = NaN，
+                # 与 kernel 的 log(sum)+max 一致（掩码会把 NaN 换成 1 导致 inf 不一致）。
+                lse = torch.log(l_run) + m_run_offset  # (nq,)
 
                 for li, q_idx in enumerate(q_indices):
                     if not bool(any_valid[li].item()):
