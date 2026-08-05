@@ -134,6 +134,10 @@ TEST_F(MegaMoeArch22TilingTest, ActivationParamValidationWithLargeIntermediateHi
         ge::graphStatus expectedStatus;
     };
     const std::vector<ActivationCase> activationCases = {
+        {"swiglu", {}, ge::GRAPH_SUCCESS},
+        {"swiglustep", {}, ge::GRAPH_SUCCESS},
+        {"swigluoai", {}, ge::GRAPH_SUCCESS},
+        {"situglu", {}, ge::GRAPH_SUCCESS},
         {"swiglu", {std::numeric_limits<float>::max()}, ge::GRAPH_SUCCESS},
         {"swiglu", {0.0f}, ge::GRAPH_SUCCESS},
         {"swiglustep", {std::numeric_limits<float>::max()}, ge::GRAPH_SUCCESS},

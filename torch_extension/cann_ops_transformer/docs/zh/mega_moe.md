@@ -902,7 +902,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation</td>
         <td>str</td>
         <td>可选</td>
-        <td>激活函数类型，默认值为"swiglu"。A2/A3支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"；其中"swiglu"为通用SwiGLU，"swiglustep"对应Step 3.5，"swigluoai"对应MiniMax-M3，"situglu"对应Kimi K3。A5当前仅支持"swiglu"。</td>
+        <td>激活函数类型，默认值为"swiglu"。A2/A3支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"；其中"swiglu"对应DeepSeek V4，"situglu"对应Kimi K3，"swiglustep"对应Step 3.5，"swigluoai"对应MiniMax M3。A5当前仅支持"swiglu"。</td>
         <td>str</td>
         <td>不涉及</td>
         <td>不涉及</td>
@@ -911,7 +911,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation_clamp</td>
         <td>float</td>
         <td>可选</td>
-        <td>"swiglu"、"swiglustep"和"swigluoai"的截断值，也可以通过activation_params中的"clamp"配置。两处同时配置时值必须相同；均未配置时使用float最大值。"situglu"忽略该值。值需≥0且不能为NaN。</td>
+        <td>"swiglu"、"swiglustep"和"swigluoai"的截断值，未配置时使用float最大值。"situglu"忽略该值。值需≥0且不能为NaN。</td>
         <td>float</td>
         <td>不涉及</td>
         <td>不涉及</td>
@@ -920,7 +920,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation_params</td>
         <td>dict[str, float]</td>
         <td>可选</td>
-        <td>激活函数参数字典，支持键"clamp"、"alpha"、"beta"和"linearbeta"。"clamp"与activation_clamp含义相同，两处同时配置时值必须相同；"alpha"用于"swigluoai"的sigmoid增益，默认值为1.702；"beta"用于"swigluoai"的up分支偏置或"situglu"的gate分支除数，默认值为1.0；"linearbeta"用于"situglu"的up分支，未配置时保持up不变。</td>
+        <td>激活函数参数字典，默认值为None。"swiglu"和"swiglustep"无需设置；"swigluoai"支持"alpha"和"beta"，默认值分别为1.702和1.0；"situglu"支持"beta"和"linear_beta"，"beta"默认值为1.0，"linear_beta"未配置时保持up分支不变。A5仅支持"swiglu"。</td>
         <td>float</td>
         <td>不涉及</td>
         <td>不涉及</td>
