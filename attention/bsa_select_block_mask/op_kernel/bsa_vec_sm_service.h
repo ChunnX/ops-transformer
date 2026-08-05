@@ -340,7 +340,7 @@ __aicore__ inline void BSAVecSmService<BSAT>::OnlineSoftmaxFirstPassChunk(
     AscendC::PipeBarrier<PIPE_V>();
 
     uint32_t sumShape[] = { actualQExcuteRow, kChunkSize};
-    AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, true>(
+    AscendC::ReduceSum<T, AscendC::Pattern::Reduce::AR, false>(
         tmpSum, scoreUb, reduceSharedTemp, sumShape, isSrcInnerPad);
     AscendC::PipeBarrier<PIPE_V>();
 
