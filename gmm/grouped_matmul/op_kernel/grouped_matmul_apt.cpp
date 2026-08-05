@@ -25,6 +25,8 @@ using GMMWeightQuantTilingData = GroupedMatmulTilingData::GMMWeightQuantTilingDa
 using GMMNoQuantTilingData = GroupedMatmulTilingData::GMMNoQuantTilingData;
 using GMMQuantTilingData = GroupedMatmulTilingData::GMMQuantTilingData;
 using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTilingData;
+using GMMA4W4IntQuantTilingData = GroupedMatmulTilingData::GMMA4W4IntQuantTilingData;
+using GMMS8S4BasicApiTilingData = GroupedMatmulTilingData::GMMS8S4BasicApiTilingData;
 #if defined(V310_GMM_QUANT)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_tiling_key.h"
 #if defined(V310_GMM_QUANT_CUBE) || defined(V310_GMM_QUANT_PERTENSOR_CUBE)
@@ -34,6 +36,9 @@ using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTili
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_tensor_api_mx_kernel.h"
 #elif defined(V310_GMM_QUANT_MX)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_cgmct_mx_kernel.h"
+#endif
+#if defined(V310_GMM_QUANT_A4W4) && IS_BLAZE
+#include "arch35/tensor_adapter/qgmm_a4w4int_kernel.h"
 #endif
 #if defined(V310_GMM_QUANT_MX) || defined(V310_GMM_QUANT_PERTENSOR_CUBE)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_init_output.h"
@@ -51,6 +56,9 @@ using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTili
 #include "arch35/weight_quant_basic_block/weight_quant_basic_block.h"
 #include "arch35/weight_quant_basic_block/weight_quant_vcv_basic_block.h"
 #include "arch35/weight_quant_basic_block/weight_quant_tiling_key.h"
+#if defined(V310_GMM_S8S4_V5)
+#include "arch35/s8s4_v5/gmm_s8s4_perchannel_tensor_api.h"
+#endif
 using WeightQuantBatchMatmulV2::Arch35::A16MXF4_NZKN;
 using WeightQuantBatchMatmulV2::Arch35::MXA8W4_NZNK;
 using WeightQuantBatchMatmulV2::Arch35::QuantType;
@@ -231,6 +239,17 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
     } while (0)
 #endif
 
+#if defined(V310_GMM_QUANT_A4W4) && IS_BLAZE
+#define GMM_A4W4_IMPL_CLASS(xLayout, wLayout, yLayout) \
+    do { \
+        GET_TILING_DATA_MEMBER(GMMA4W4IntQuantTilingData, gmmA4W4Params, gmmA4W4Params_, tiling); \
+        GET_TILING_DATA_MEMBER(GMMA4W4IntQuantTilingData, mmTilingData, mmTilingData_, tiling); \
+        GmmA4W4Kernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout, \
+                      yLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, user1, \
+                                                &gmmA4W4Params_, &mmTilingData_, &tPipe); \
+    } while (0)
+#endif
+
 #if defined(V310_GMM_QUANT)
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, int8_t KERNEL_TYPE>
 #elif defined(V310_GMM_ANTI_QUANT)
@@ -251,7 +270,7 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 
 #ifndef __CCE_KT_TEST__
 #if defined(V310_GMM_QUANT) // Quant: A8W8, A4W4
-    REGISTER_NONE_TILING;
+    REGISTER_TILING_DEFAULT(GMMA4W4IntQuantTilingData);
 #if defined(V310_GMM_QUANT_MX) // mx
     if constexpr (wFormat == CubeFormat::ND) {
         if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
@@ -343,9 +362,66 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                                 Cgmct::Gemm::layout::RowMajorAlign);
     }
 #endif
+#if defined(V310_GMM_QUANT_A4W4) && IS_BLAZE
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);   // A4W4 需 1:2 AIC:AIV
+    if constexpr (wFormat == CubeFormat::ND) {
+        if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
+                      KERNEL_TYPE == GMM_A4W4_MIX) {
+            GET_TILING_DATA_WITH_STRUCT(GMMA4W4IntQuantTilingData, tilingData, tiling);
+            GMM_A4W4_IMPL_CLASS(AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn,
+                                AscendC::Te::NDExtLayoutPtn);
+        }
+    } else {
+        // NZ weight: 恒用 NZLayoutPtn。preprocess(kernel_gmm_s8s4_weight_preprocess.h)无论 transB
+        // 都输出标准 [E,K,N] int8 NZ(ConvertNzTile/ConvertTransposedNzTile 输出布局一致),
+        // 故 cube 侧 TRANS_B=false -> MakeLayoutBL1 用 NZLayoutPtn 读,与 preprocess 输出一致。
+        // transB 通过运行时 inputTransposedNz(桥接 qgmm_a4w4int_kernel.h 从 reserved.bit0/bit1 读)
+        // 驱动 preprocess 选 ConvertNzTile(transB=0)/ConvertTransposedNzTile(transB=1)。
+        // 注意:不可用 ZNLayoutPtn(transB=1),否则 cube 按 ZN 读 NZ 物理数据会错位。
+        if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
+                      KERNEL_TYPE == GMM_A4W4_MIX) {
+            GET_TILING_DATA_WITH_STRUCT(GMMA4W4IntQuantTilingData, tilingData, tiling);
+            GMM_A4W4_IMPL_CLASS(AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn,
+                                AscendC::Te::NDExtLayoutPtn);
+        } else if constexpr (QUANT_B_TRANS == GMM_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
+                             KERNEL_TYPE == GMM_A4W4_MIX) {
+            GET_TILING_DATA_WITH_STRUCT(GMMA4W4IntQuantTilingData, tilingData, tiling);
+            GMM_A4W4_IMPL_CLASS(AscendC::Te::NDExtLayoutPtn, AscendC::Te::NZLayoutPtn,
+                                AscendC::Te::NDExtLayoutPtn);
+        }
+    }
+#endif
 #elif defined(V310_GMM_ANTI_QUANT)
-    REGISTER_TILING_DEFAULT(GMMWeightQuantTilingData);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+#if defined(V310_GMM_S8S4_V5)
+    constexpr bool IS_S8S4_V5_COMMON =
+        (W_TYPE == WQGMM_ND || W_TYPE == WQGMM_FRACTAL_NZ) &&
+        OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
+        W_QUANT_TYPE == WQGMM_NONE && WQ_B_TRANS == WQGMM_NO_TRANS && WQ_A_TRANS == WQGMM_NO_TRANS &&
+        TEMPLATE_CUSTOM_SC == WQGMM_S8S4_FIXED_TEMPLATE &&
+        IS_SINGLE_MULTI_SINGLE == WQGMM_NOT_SINGLE_MULTI_SINGLE &&
+        ALGORITHM_SUB_CATEGORY == WQGMM_VDEFAULT && ALGORITHM_CATEGORY == WQGMM_MULTI_SCALE_DEQUANT;
+    constexpr bool IS_S8S4_V5_PER_GROUP = IS_S8S4_V5_COMMON && C_QUANT_TYPE == WQGMM_PER_GROUP;
+    constexpr bool IS_S8S4_V5_PER_CHANNEL =
+        IS_S8S4_V5_COMMON && C_QUANT_TYPE == WQGMM_PER_CHANNEL &&
+        AscendC::IsSameType<DTYPE_Y, half>::value;
+    static_assert(!(IS_S8S4_V5_PER_GROUP && IS_S8S4_V5_PER_CHANNEL),
+                  "S8S4 V5 per-group and per-channel keys must be mutually exclusive.");
+    REGISTER_TILING_DEFAULT(GMMWeightQuantTilingData);
+    REGISTER_TILING_FOR_TILINGKEY(
+        "(TILING_KEY_VAR == 543163136) || (TILING_KEY_VAR == 543162880) || (TILING_KEY_VAR == 543163137) || (TILING_KEY_VAR == 543162881)",
+        GMMS8S4BasicApiTilingData);
+    if constexpr (IS_S8S4_V5_COMMON) {
+        GET_TILING_DATA_WITH_STRUCT(GMMS8S4BasicApiTilingData, s8s4TilingData, tiling);
+        if constexpr (IS_S8S4_V5_PER_GROUP || IS_S8S4_V5_PER_CHANNEL) {
+            GROUPED_MATMUL::S8S4V5::InvokeGmmS8S4TensorApi<DTYPE_Y, wFormat>(
+                x, weight, scale, offset, groupList, perTokenScale, y, user1, &tPipe, &s8s4TilingData);
+        }
+    } else
+#else
+    REGISTER_TILING_DEFAULT(GMMWeightQuantTilingData);
+#endif
+    {
 #if ORIG_DTYPE_X == DT_INT8
     if constexpr (W_TYPE == WQGMM_FRACTAL_NZ &&
                   OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST &&
@@ -460,6 +536,7 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
                                                          VEC_ANTIQUANT_CONFIG_6);
     }
 #endif
+    }
 #else
     REGISTER_TILING_DEFAULT(GMMNoQuantTilingData);
     if constexpr (NO_QUANT_B_TRANS == GMM_NO_TRANS && NO_QUANT_A_TRANS == GMM_NO_TRANS) {
