@@ -28,7 +28,8 @@ static constexpr uint32_t sparseModeZero = 0;
 
 TEMPLATE_INTF
 __aicore__ inline void GetSingleCoreParam(RunParamStr &runParam, const ConstInfo &constInfo,
-                                          __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *actualSeqKvlenAddr)
+                                          const GlobalTensor<int32_t> &actualSeqQGm,
+                                          const GlobalTensor<int32_t> &actualSeqKvGm)
 {
     int32_t qsfaActualS1Size = 0;
     int32_t qsfaActualS2Size = 0;
@@ -37,14 +38,14 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr &runParam, const ConstInfo
     int32_t sIdx = runParam.boIdx;
     if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
         // actual seq length first
-        if (actualSeqQlenAddr != nullptr) {
+        if (constInfo.isActualLenDimsNull == 0) {
             qsfaActualS1Size =
-                (sIdx == 0) ? actualSeqQlenAddr[0] : actualSeqQlenAddr[sIdx] - actualSeqQlenAddr[sIdx - 1];
+                (sIdx == 0) ? actualSeqQGm.GetValue(0) : actualSeqQGm.GetValue(sIdx) - actualSeqQGm.GetValue(sIdx - 1);
         } else {
             qsfaActualS1Size = constInfo.s1Size;
         }
     } else {
-        qsfaActualS1Size = (actualSeqQlenAddr == nullptr) ? constInfo.s1Size : actualSeqQlenAddr[sIdx];
+        qsfaActualS1Size = (constInfo.isActualLenDimsNull) ? constInfo.s1Size : actualSeqQGm.GetValue(sIdx);
     }
 
     if (constInfo.isActualLenDimsKVNull) {
@@ -52,18 +53,16 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr &runParam, const ConstInfo
     } else {
         if constexpr (isPa) {
             if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
-                qsfaActualS2Size = actualSeqKvlenAddr[sIdx];
+                qsfaActualS2Size = actualSeqKvGm.GetValue(sIdx);
             } else {
-                qsfaActualS2Size =
-                    (constInfo.actualSeqLenKVSize == actualSeqKVMin) ? actualSeqKvlenAddr[0] : actualSeqKvlenAddr[sIdx];
+                qsfaActualS2Size = actualSeqKvGm.GetValue(sIdx);
             }
         } else {
             if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
-                qsfaActualS2Size =
-                    (sIdx == 0) ? actualSeqKvlenAddr[0] : actualSeqKvlenAddr[sIdx] - actualSeqKvlenAddr[sIdx - 1];
+                qsfaActualS2Size = (sIdx == 0) ? actualSeqKvGm.GetValue(0) :
+                    (actualSeqKvGm.GetValue(sIdx) - actualSeqKvGm.GetValue(sIdx - 1));
             } else {
-                qsfaActualS2Size =
-                    (constInfo.actualSeqLenKVSize == actualSeqKVMin) ? actualSeqKvlenAddr[0] : actualSeqKvlenAddr[sIdx];
+                qsfaActualS2Size = actualSeqKvGm.GetValue(sIdx);
             }
         }
     }
@@ -80,9 +79,9 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr &runParam, const ConstInfo
 
 TEMPLATE_INTF
 __aicore__ inline void ComputeParamBatch(RunParamStr &runParam, const ConstInfo &constInfo,
-                                         __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *actualSeqKvlenAddr)
+                                         const GlobalTensor<int32_t> &actualSeqQGm, const GlobalTensor<int32_t> &actualSeqKvGm)
 {
-    GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualSeqQlenAddr, actualSeqKvlenAddr);
+    GetSingleCoreParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, actualSeqQGm, actualSeqKvGm);
 }
 
 TEMPLATE_INTF
@@ -152,12 +151,12 @@ __aicore__ inline void ComputeSouterParam(RunParamStr &runParam, const ConstInfo
 
 TEMPLATE_INTF
 __aicore__ inline void LoopSOuterOffsetInit(RunParamStr &runParam, const ConstInfo &constInfo, int32_t sIdx,
-                                            __gm__ int32_t *cuSeqlensQAddr)
+                                            const GlobalTensor<int32_t> &actualSeqQGm)
 {
     if ASCEND_IS_AIV {
         int64_t qsfaSeqOffset = 0;
         if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
-            qsfaSeqOffset = sIdx == 0 ? 0 : cuSeqlensQAddr[sIdx - 1];
+            qsfaSeqOffset = sIdx == 0 ? 0 : actualSeqQGm.GetValue(sIdx - 1);
         } else {
             qsfaSeqOffset = sIdx * constInfo.s1Size;
         }
@@ -175,7 +174,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr &runParam, const ConstIn
 
 TEMPLATE_INTF
 __aicore__ inline bool ComputeParamS1(RunParamStr &runParam, const ConstInfo &constInfo, uint32_t sOuterLoopIdx,
-                                      __gm__ int32_t *cuSeqlensQAddr)
+                                      const GlobalTensor<int32_t> &actualSeqQGm)
 {
     if (runParam.nextTokensPerBatch < 0) {
         uint64_t invalidTokenCount = static_cast<uint64_t>(-(runParam.nextTokensPerBatch + 1)) + 1ULL;
@@ -184,17 +183,17 @@ __aicore__ inline bool ComputeParamS1(RunParamStr &runParam, const ConstInfo &co
         }
     }
     ComputeSouterParam<TEMPLATE_INTF_ARGS>(runParam, constInfo, sOuterLoopIdx);
-    LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, cuSeqlensQAddr);
+    LoopSOuterOffsetInit<TEMPLATE_INTF_ARGS>(runParam, constInfo, runParam.boIdx, actualSeqQGm);
     return false;
 }
 
 TEMPLATE_INTF
-__aicore__ inline bool ComputeLastBN(RunParamStr &runParam, __gm__ int32_t *cuSeqlensQAddr)
+__aicore__ inline bool ComputeLastBN(RunParamStr &runParam, const GlobalTensor<int32_t> &actualSeqQGm)
 {
     if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
         // TND格式下 相邻Batch中当actualSeqQlen相等时则返回true
-        if (runParam.boIdx > 0 && ((runParam.boIdx == 0 && cuSeqlensQAddr[runParam.boIdx] == 0) ||
-                                   (cuSeqlensQAddr[runParam.boIdx] - cuSeqlensQAddr[runParam.boIdx - 1] == 0))) {
+        if (runParam.boIdx > 0 && ((runParam.boIdx == 0 && actualSeqQGm.GetValue(runParam.boIdx) == 0) ||
+                                   (actualSeqQGm.GetValue(runParam.boIdx) - actualSeqQGm.GetValue(runParam.boIdx - 1) == 0))) {
             return true;
         }
     }
