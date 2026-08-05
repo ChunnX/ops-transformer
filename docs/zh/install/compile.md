@@ -81,7 +81,42 @@
 
     自定义算子包安装路径为```${ASCEND_HOME_PATH}/opp/vendors```，\$\{ASCEND\_HOME\_PATH\}已通过环境变量配置，表示CANN toolkit包安装路径，一般为\$\{install\_path\}/cann。
 
+    > **权限要求**：安装自定义算子包需对 ```${ASCEND_HOME_PATH}/opp/vendors``` 目录有写权限。CANN 通常以 root 用户安装，若当前用户对该目录无写权限，安装脚本将无法更新 `config.ini`，导致算子无法加载。
+
+    **校验安装是否成功**：`config.ini` 的 `load_priority` 字段决定 CANN 是否加载自定义算子。安装完成后，建议执行如下命令校验 `config.ini` 是否更新成功。
+
+    ```bash
+    grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini
+    ```
+
+    预期输出应包含已安装的 vendor 名（如 `${vendor_name}`），形如 `load_priority=${vendor_name}`。若 `load_priority` 不含对应 vendor，说明 `config.ini` 未更新成功，算子无法加载，请参考下方[权限失败修复指引](#权限失败修复指引)。
+
+    #### 权限失败修复指引
+
+    若安装时提示 `chmod: changing permissions of '.../vendors/config.ini': Operation not permitted`，根因是 `opp/vendors` 目录或 `config.ini` 的属主不是当前用户。CANN 通常由 root 安装，普通用户对该目录无写权限，而只有文件属主或 root 才能执行 chmod，导致安装脚本无法更新 `config.ini`、`load_priority` 未写入，最终算子无法加载。请选择如下任一方式修复后重新安装。
+
+    **修复方式一（推荐）：将 vendors 目录属主改为当前用户**
+
+    ```bash
+    sudo chown -R $(whoami) ${ASCEND_HOME_PATH}/opp/vendors
+    ```
+
+    **修复方式二：放宽 vendors 目录写权限**
+
+    ```bash
+    sudo chmod -R u+w ${ASCEND_HOME_PATH}/opp/vendors
+    ```
+
+    完成上述任一修复后，重新执行安装命令并再次校验 `load_priority`：
+
+    ```bash
+    ./cann-ops-transformer-${vendor_name}_linux-${arch}.run
+    grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini
+    ```
+
     如果部署算子包时通过配置--install-path参数指定了算子包的安装目录，则在使用自定义算子前，需要执行```source ${install-path}/vendors/${vendor_name}/bin/set_env.bash```命令，set_env.bash脚本中将自定义算子包的安装路径追加到环境变量ASCEND_CUSTOM_OPP_PATH中，使自定义算子在当前环境中生效。
+
+    > **说明**：上述权限排查与修复指引与[快速入门 QUICKSTART](../../QUICKSTART.md) 中的"常见安装问题排查"章节口径一致。如需了解完整的快速上手流程（含 `--install-path` 替代方案），请参考[QUICKSTART](../../QUICKSTART.md)。
 
 3. **（可选）删除自定义算子包**
 

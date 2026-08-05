@@ -77,6 +77,55 @@ Self-extractable archive "cann-ops-transformer-custom_linux.${arch}.run" success
 
 `AddExample`安装在```${ASCEND_HOME_PATH}/opp/vendors```路径中，```${ASCEND_HOME_PATH}```表示CANN软件安装目录。
 
+> **校验安装是否成功**：`config.ini` 的 `load_priority` 字段决定 CANN 是否加载自定义算子。安装完成后，建议执行如下命令校验 `config.ini` 是否更新成功。
+
+```bash
+grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini
+```
+
+预期输出应包含已安装的 vendor 名（如 `custom_transformer`），形如 `load_priority=custom_transformer`。若 `load_priority` 不含对应 vendor，说明 `config.ini` 未更新成功，算子无法加载，运行时会报 `error 161001 (aclnnAddExampleGetWorkspaceSize failed)`，请参考下方[常见安装问题排查](#常见安装问题排查)。
+
+### 常见安装问题排查
+
+#### 安装时提示 chmod: changing permissions of '.../config.ini': Operation not permitted
+
+**根因**：安装过程中若提示 `chmod: changing permissions of '.../vendors/config.ini': Operation not permitted`，根因是 `opp/vendors` 目录或 `config.ini` 的属主不是当前用户。CANN 通常由 root 安装，普通用户对该目录无写权限，而只有文件属主或 root 才能执行 chmod，导致安装脚本无法更新 `config.ini`、`load_priority` 未写入，最终算子无法加载。
+
+**修复方式一（推荐）：将 vendors 目录属主改为当前用户**
+
+```bash
+sudo chown -R $(whoami) ${ASCEND_HOME_PATH}/opp/vendors
+```
+
+**修复方式二：放宽 vendors 目录写权限**
+
+```bash
+sudo chmod -R u+w ${ASCEND_HOME_PATH}/opp/vendors
+```
+
+完成上述任一修复后，重新执行第3步安装命令，并再次校验 `load_priority`：
+
+```bash
+./build_out/cann-ops-transformer-*linux*.run
+grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini
+```
+
+#### 替代方案：使用 --install-path 安装到用户可写目录
+
+若无法获取 `${ASCEND_HOME_PATH}/opp/vendors` 的写权限，可在安装时通过 `--install-path` 参数指定到当前用户有权限的目录（如 `${HOME}/custom_ops`）：
+
+```bash
+./build_out/cann-ops-transformer-*linux*.run --install-path=${HOME}/custom_ops
+```
+
+采用此方案时，无需执行第4步的手动 `LD_LIBRARY_PATH` 配置，改为 source 安装目录下的 `set_env.bash` 脚本，该脚本会自动设置 `ASCEND_CUSTOM_OPP_PATH` 与 `LD_LIBRARY_PATH`：
+
+```bash
+source ${HOME}/custom_ops/vendors/custom_transformer/bin/set_env.bash
+```
+
+> **说明**：`--install-path` 与 `set_env.bash` 的详细机制可参考[编译指导文档](docs/zh/install/compile.md)。
+
 ### 4. 配置环境变量
 
 将自定义算子包的路径加入环境变量，确保运行时能够找到。
