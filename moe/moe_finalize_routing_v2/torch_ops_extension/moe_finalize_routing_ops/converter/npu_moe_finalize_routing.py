@@ -1,4 +1,3 @@
-# -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
@@ -6,7 +5,7 @@
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+
 # GE Converter for Graph Mode
 
 try:
@@ -26,12 +25,84 @@ except ImportError:
 
 
 if _TORCHAIR_AVAILABLE:
+    _FINALIZE_ROUTING_INPUT_NAMES = [
+        "expanded_x",
+        "expanded_row_idx",
+        "x1",
+        "x2",
+        "bias",
+        "scales",
+        "expert_idx",
+        "x",
+        "alpha1",
+        "alpha2",
+        "v",
+    ]
+
+    _FINALIZE_ROUTING_IR_DEF = (
+        IrDef("MoeFinalizeRoutingV2")
+        .input("expanded_x", "DT_FLOAT, DT_FLOAT16, DT_BF16")
+        .input("expanded_row_idx", "DT_INT32")
+        .optional_input("x1", "DT_FLOAT, DT_FLOAT16, DT_BF16")
+        .optional_input("x2", "DT_FLOAT, DT_FLOAT16, DT_BF16")
+        .optional_input("bias", "DT_FLOAT, DT_FLOAT16, DT_BF16")
+        .optional_input("scales", "DT_FLOAT, DT_FLOAT16, DT_BF16")
+        .optional_input("expert_idx", "DT_INT32")
+        .optional_input("x", "DT_FLOAT, DT_FLOAT16, DT_BF16")
+        .optional_input("alpha1", "DT_FLOAT, DT_FLOAT16, DT_BF16")
+        .optional_input("alpha2", "DT_FLOAT, DT_FLOAT16, DT_BF16")
+        .optional_input("v", "DT_FLOAT, DT_FLOAT16, DT_BF16")
+        .attr("drop_pad_mode", attr.Int(0))
+        .attr("zero_expert_range", attr.ListInt([]))
+        .attr("copy_expert_range", attr.ListInt([]))
+        .attr("constant_expert_range", attr.ListInt([]))
+        .attr("k", attr.Int(1))
+        .output("y", "DT_FLOAT, DT_FLOAT16, DT_BF16")
+    )
+
+    def _build_finalize_routing_inputs(
+        expanded_x,
+        expanded_row_idx,
+        x1,
+        x2,
+        bias,
+        scales,
+        expert_idx,
+        x,
+        alpha1,
+        alpha2,
+        v,
+    ):
+        return {
+            "expanded_x": expanded_x,
+            "expanded_row_idx": expanded_row_idx,
+            "x1": x1,
+            "x2": x2,
+            "bias": bias,
+            "scales": scales,
+            "expert_idx": expert_idx,
+            "x": x,
+            "alpha1": alpha1,
+            "alpha2": alpha2,
+            "v": v,
+        }
+
+    def _build_finalize_routing_attrs(
+        drop_pad_mode, zero_expert_range, copy_expert_range, constant_expert_range, k
+    ):
+        return {
+            "drop_pad_mode": attr.Int(drop_pad_mode),
+            "zero_expert_range": attr.ListInt(zero_expert_range),
+            "copy_expert_range": attr.ListInt(copy_expert_range),
+            "constant_expert_range": attr.ListInt(constant_expert_range),
+            "k": attr.Int(k),
+        }
 
     @auto_convert_to_tensor(
         [False, False, False, False, False, False, False, False, False, False, False],
         [False, False, True, True, True, True, True, True, True, True, True],
     )
-    def MoeFinalizeRouting(
+    def moe_finalize_routing_ge(
         expanded_x: Tensor,
         expanded_row_idx: Tensor,
         x1: Optional[Tensor],
@@ -71,69 +142,43 @@ if _TORCHAIR_AVAILABLE:
         .ATTR(constant_expert_range, ListInt, {})\n
         .ATTR(k, Int, 1)\n
         """
-        if zero_expert_range is None:
-            zero_expert_range = []
-        if copy_expert_range is None:
-            copy_expert_range = []
-        if constant_expert_range is None:
-            constant_expert_range = []
-        if dependencies is None:
-            dependencies = []
+        zero_expert_range = zero_expert_range or []
+        copy_expert_range = copy_expert_range or []
+        constant_expert_range = constant_expert_range or []
+        dependencies = dependencies or []
 
-        inputs = {
-            "expanded_x": expanded_x,
-            "expanded_row_idx": expanded_row_idx,
-            "x1": x1,
-            "x2": x2,
-            "bias": bias,
-            "scales": scales,
-            "expert_idx": expert_idx,
-            "x": x,
-            "alpha1": alpha1,
-            "alpha2": alpha2,
-            "v": v,
-        }
-
-        attrs = {
-            "drop_pad_mode": attr.Int(drop_pad_mode),
-            "zero_expert_range": attr.ListInt(zero_expert_range),
-            "copy_expert_range": attr.ListInt(copy_expert_range),
-            "constant_expert_range": attr.ListInt(constant_expert_range),
-            "k": attr.Int(k),
-        }
-
-        outputs = ["y"]
+        inputs = _build_finalize_routing_inputs(
+            expanded_x,
+            expanded_row_idx,
+            x1,
+            x2,
+            bias,
+            scales,
+            expert_idx,
+            x,
+            alpha1,
+            alpha2,
+            v,
+        )
+        attrs = _build_finalize_routing_attrs(
+            drop_pad_mode,
+            zero_expert_range,
+            copy_expert_range,
+            constant_expert_range,
+            k,
+        )
 
         return ge_op(
             op_type="MoeFinalizeRoutingV2",
             inputs=inputs,
             attrs=attrs,
-            outputs=outputs,
+            outputs=["y"],
             dependencies=dependencies,
             node_name=node_name,
-            ir=IrDef("MoeFinalizeRoutingV2")
-            .input("expanded_x", "DT_FLOAT, DT_FLOAT16, DT_BF16")
-            .input("expanded_row_idx", "DT_INT32")
-            .optional_input("x1", "DT_FLOAT, DT_FLOAT16, DT_BF16")
-            .optional_input("x2", "DT_FLOAT, DT_FLOAT16, DT_BF16")
-            .optional_input("bias", "DT_FLOAT, DT_FLOAT16, DT_BF16")
-            .optional_input("scales", "DT_FLOAT, DT_FLOAT16, DT_BF16")
-            .optional_input("expert_idx", "DT_INT32")
-            .optional_input("x", "DT_FLOAT, DT_FLOAT16, DT_BF16")
-            .optional_input("alpha1", "DT_FLOAT, DT_FLOAT16, DT_BF16")
-            .optional_input("alpha2", "DT_FLOAT, DT_FLOAT16, DT_BF16")
-            .optional_input("v", "DT_FLOAT, DT_FLOAT16, DT_BF16")
-            .attr("drop_pad_mode", attr.Int(0))
-            .attr("zero_expert_range", attr.ListInt([]))
-            .attr("copy_expert_range", attr.ListInt([]))
-            .attr("constant_expert_range", attr.ListInt([]))
-            .attr("k", attr.Int(1))
-            .output("y", "DT_FLOAT, DT_FLOAT16, DT_BF16"),
+            ir=_FINALIZE_ROUTING_IR_DEF,
         )
 
-    @register_fx_node_ge_converter(
-        torch.ops.cann_ops_transformer.moe_finalize_routing.default
-    )
+    @register_fx_node_ge_converter(torch.ops.custom.moe_finalize_routing.default)
     def convert_moe_finalize_routing(
         expanded_x: Tensor,
         expanded_row_idx: Tensor,
@@ -153,7 +198,7 @@ if _TORCHAIR_AVAILABLE:
         k: int = 1,
         meta_outputs: TensorSpec = None,
     ):
-        return MoeFinalizeRouting(
+        return moe_finalize_routing_ge(
             expanded_x=expanded_x,
             expanded_row_idx=expanded_row_idx,
             x1=x1,
