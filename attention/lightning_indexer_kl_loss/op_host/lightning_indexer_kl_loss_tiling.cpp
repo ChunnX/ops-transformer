@@ -145,7 +145,6 @@ static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext* con
 
     // 计算 tile 块总数
     int64_t totalTileNum = (M + tileLength - 1) / tileLength;
-    coreNum = 1;
     // round-robin 分核
     int64_t formerNum = totalTileNum % coreNum;
     int64_t formerTileNum = (totalTileNum + coreNum - 1) / coreNum;

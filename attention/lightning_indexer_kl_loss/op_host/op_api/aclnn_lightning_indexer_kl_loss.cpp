@@ -106,7 +106,6 @@ aclnnStatus aclnnLightningIndexerKLLossGetWorkspaceSize(
     float eps, const char *weightType,
     const aclTensor *loss, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    printf("aclnn weightType: %s %x\n", weightType, weightType);
     L2_DFX_PHASE_1(aclnnLightningIndexerKLLoss,
                    DFX_IN(targetScore, indexProbs, eps, weightType),
                    DFX_OUT(loss));

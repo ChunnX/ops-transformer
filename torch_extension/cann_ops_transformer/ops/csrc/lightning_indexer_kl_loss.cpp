@@ -38,7 +38,6 @@ at::Tensor lightning_indexer_kl_loss(
     }
 
     char *weightTypePtr = const_cast<char *>(weightType.c_str());
-    printf("csr weight_type:%s\n", weightTypePtr);
     ACLNN_CMD(aclnnLightningIndexerKLLoss, targetScore, indexProbs, eps, weightTypePtr, loss);
 
     return loss;
