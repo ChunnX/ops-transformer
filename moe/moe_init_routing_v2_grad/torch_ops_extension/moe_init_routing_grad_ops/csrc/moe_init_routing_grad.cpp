@@ -61,12 +61,12 @@ at::Tensor moe_init_routing_grad_meta(const at::Tensor &gradExpandedX, const at:
     return gradExpandedX.new_empty({gradXDim0, gradXDim1});
 }
 
-TORCH_LIBRARY_IMPL(custom, PrivateUse1, m)
+TORCH_LIBRARY_IMPL(cann_ops_transformer, PrivateUse1, m)
 {
     m.impl("moe_init_routing_grad", &moe_init_routing_grad_npu);
 }
 
-TORCH_LIBRARY_IMPL(custom, Meta, m)
+TORCH_LIBRARY_IMPL(cann_ops_transformer, Meta, m)
 {
     m.impl("moe_init_routing_grad", &moe_init_routing_grad_meta);
 }

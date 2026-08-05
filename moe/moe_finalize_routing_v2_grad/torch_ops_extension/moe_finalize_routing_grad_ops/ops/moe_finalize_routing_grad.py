@@ -47,7 +47,7 @@ def moe_finalize_routing_grad(  # noqa: huawei-too-many-arguments
         has the same dtype as ``grad_y``; grad_scales has the dtype of ``scales``
         when provided, otherwise the dtype of ``grad_y``.
     """
-    return torch.ops.custom.moe_finalize_routing_grad(
+    return torch.ops.cann_ops_transformer.moe_finalize_routing_grad(
         grad_y,
         expanded_row_idx,
         expanded_x,

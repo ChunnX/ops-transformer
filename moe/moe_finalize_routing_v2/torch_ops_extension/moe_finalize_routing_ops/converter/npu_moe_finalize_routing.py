@@ -154,7 +154,9 @@ if _TORCHAIR_AVAILABLE:
             ir=_FINALIZE_ROUTING_IR_DEF,
         )
 
-    @register_fx_node_ge_converter(torch.ops.custom.moe_finalize_routing.default)
+    @register_fx_node_ge_converter(
+        torch.ops.cann_ops_transformer.moe_finalize_routing.default
+    )
     def convert_moe_finalize_routing(  # noqa: huawei-too-many-arguments
         expanded_x: Tensor,
         expanded_row_idx: Tensor,

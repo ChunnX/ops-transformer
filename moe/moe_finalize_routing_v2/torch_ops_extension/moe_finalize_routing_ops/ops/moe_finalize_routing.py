@@ -144,7 +144,7 @@ class MoeFinalizeRoutingFn(torch.autograd.Function):
             bias if ctx.has_bias else expanded_x,
             expert_idx if ctx.has_expert_idx else expanded_row_idx,
         )
-        return torch.ops.custom.moe_finalize_routing(
+        return torch.ops.cann_ops_transformer.moe_finalize_routing(
             expanded_x,
             expanded_row_idx,
             x1,
@@ -182,17 +182,19 @@ class MoeFinalizeRoutingFn(torch.autograd.Function):
             expanded_x, drop_pad_mode
         )
 
-        grad_expanded_x, grad_scales = torch.ops.custom.moe_finalize_routing_grad(
-            grad_out,
-            grad_row_idx,
-            expanded_x,
-            eff_scales,
-            expert_idx,
-            bias,
-            drop_pad_mode,
-            grad_active_num,
-            grad_expert_num,
-            grad_expert_capacity,
+        grad_expanded_x, grad_scales = (
+            torch.ops.cann_ops_transformer.moe_finalize_routing_grad(
+                grad_out,
+                grad_row_idx,
+                expanded_x,
+                eff_scales,
+                expert_idx,
+                bias,
+                drop_pad_mode,
+                grad_active_num,
+                grad_expert_num,
+                grad_expert_capacity,
+            )
         )
 
         needs = ctx.needs_input_grad

@@ -33,7 +33,7 @@ def moe_init_routing_grad(
     Returns:
         Tensor: ``grad_x`` of shape (R, H), same dtype as ``grad_expanded_x``.
     """
-    return torch.ops.custom.moe_init_routing_grad(
+    return torch.ops.cann_ops_transformer.moe_init_routing_grad(
         grad_expanded_x,
         expanded_row_idx,
         top_k,

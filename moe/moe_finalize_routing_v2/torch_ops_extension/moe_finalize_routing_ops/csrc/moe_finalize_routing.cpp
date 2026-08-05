@@ -103,12 +103,12 @@ at::Tensor moe_finalize_routing_meta(const at::Tensor &expandedX, const at::Tens
     return expandedX.new_empty({dimm, dimn});
 }
 
-TORCH_LIBRARY_IMPL(custom, PrivateUse1, m)
+TORCH_LIBRARY_IMPL(cann_ops_transformer, PrivateUse1, m)
 {
     m.impl("moe_finalize_routing", &moe_finalize_routing_npu);
 }
 
-TORCH_LIBRARY_IMPL(custom, Meta, m)
+TORCH_LIBRARY_IMPL(cann_ops_transformer, Meta, m)
 {
     m.impl("moe_finalize_routing", &moe_finalize_routing_meta);
 }

@@ -22,11 +22,11 @@ __all__ = list(
 
 """
 import custom ops as torch_npu ops to support the following usage:
-'torch.ops.custom.moe_init_routing()'
+'torch.ops.cann_ops_transformer.moe_init_routing()'
 'torch_npu.moe_init_routing()'
 """
 
-custom_ops_module = getattr(torch.ops, "custom", None)
+custom_ops_module = getattr(torch.ops, "cann_ops_transformer", None)
 
 if custom_ops_module is not None:
     for op_name in dir(custom_ops_module):
@@ -36,8 +36,8 @@ if custom_ops_module is not None:
         setattr(torch_npu, op_name, custom_op_func)
 else:
     WARN_MSG = (
-        "torch.ops.custom module is not found, mount custom ops to torch_npu failed."
-        "Calling by torch_npu.xxx for custom ops is unsupported, please use torch.ops.custom.xxx."
+        "torch.ops.cann_ops_transformer module is not found, mount custom ops to torch_npu failed."
+        "Calling by torch_npu.xxx for custom ops is unsupported, please use torch.ops.cann_ops_transformer.xxx."
     )
     warnings.warn(WARN_MSG)
     warnings.filterwarnings("ignore", message=WARN_MSG)

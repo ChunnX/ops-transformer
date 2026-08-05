@@ -11,9 +11,9 @@
 #include <torch/extension.h>
 #include <torch/library.h>
 
-// 在custom命名空间里注册moe_init_routing_grad算子
+// 在cann_ops_transformer命名空间里注册moe_init_routing_grad算子
 // 使用TORCH_LIBRARY_FRAGMENT以支持多个包向同一命名空间注册算子
-TORCH_LIBRARY_FRAGMENT(custom, m)
+TORCH_LIBRARY_FRAGMENT(cann_ops_transformer, m)
 {
     m.def("moe_init_routing_grad(Tensor grad_expanded_x, Tensor expanded_row_idx, "
           "int top_k, int drop_pad_mode=0, int active_num=0) -> Tensor");

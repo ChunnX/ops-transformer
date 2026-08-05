@@ -41,7 +41,7 @@ class MoeInitRoutingFn(torch.autograd.Function):
         ctx.active_num = active_num
         ctx.k = expert_idx.size(1)
         expanded_x, expanded_row_idx, tokens_count, tokens_before_capacity = (
-            torch.ops.custom.moe_init_routing(
+            torch.ops.cann_ops_transformer.moe_init_routing(
                 x,
                 expert_idx,
                 active_num,
@@ -68,7 +68,7 @@ class MoeInitRoutingFn(torch.autograd.Function):
         if grad_expanded_x is None or not needs[0]:
             return (None, None, None, None, None, None, None, None)  # noqa: too-many-return-values
         grad_expanded_x = grad_expanded_x.contiguous()
-        grad_x = torch.ops.custom.moe_init_routing_grad(
+        grad_x = torch.ops.cann_ops_transformer.moe_init_routing_grad(
             grad_expanded_x, expanded_row_idx, ctx.k, ctx.drop_pad_mode, ctx.active_num
         )
         return grad_x, None, None, None, None, None, None, None  # noqa: too-many-return-values
