@@ -108,11 +108,6 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
     tilingData = tiling;
     SetConstInfo();
 
-    AscendC::PRINTF("[luo] slig_init_ptr seqQ=%d seqK=%d bSize=%u n2=%u gQ=%u gQI=%u dQ=%u dQI=%u k=%u\n",
-        (actualSeqLengthsQuery != nullptr), (actualSeqLengthsKey != nullptr),
-        constInfo.bSize, constInfo.n2Size, constInfo.gSizeQuery, constInfo.gSizeQueryIndex,
-        constInfo.dSizeQuery, constInfo.dSizeQueryIndex, constInfo.kSize);
-
     if (actualSeqLengthsQuery != nullptr) {
         actualSeqLengthsQueryGm.SetGlobalBuffer((__gm__ int64_t *)actualSeqLengthsQuery, constInfo.bSize);
     } else {
@@ -122,107 +117,6 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
         actualSeqLengthsKeyGm.SetGlobalBuffer((__gm__ int64_t *)actualSeqLengthsKey, constInfo.bSize);
     } else {
         actualSeqLengthsKeyGm.SetGlobalBuffer((__gm__ int64_t *)actualSeqLengthsKey, 0);
-    }
-
-    if constexpr (LAYOUT_Q == SLILayout::TND) {
-        const auto &baseInfo = tilingData->baseParams;
-        int64_t t1Size = baseInfo.get_t1Size();
-        int64_t t2Size = baseInfo.get_t2Size();
-        int64_t tlQryGmSize = actualSeqLengthsQueryGm.GetSize();
-        int64_t tlKeyGmSize = actualSeqLengthsKeyGm.GetSize();
-        int64_t actualLen = (tlQryGmSize > 0) ? actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1) : t1Size;
-        int64_t actualKLen = (tlKeyGmSize > 0) ? actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1) : t2Size;
-        int64_t totalAivNum = baseInfo.get_totalAivNum();
-
-        AscendC::PRINTF("[luo] slig_tail_pad aiv=%u aic=%u t1=%ld alen=%ld t2=%ld aklen=%ld aivn=%ld\n",
-            constInfo.aivIdx, constInfo.aicIdx, t1Size, actualLen, t2Size, actualKLen, totalAivNum);
-
-        if (t1Size > actualLen && totalAivNum > 0) {
-            int64_t t1PadLen = t1Size - actualLen;
-            int64_t splitT1PadLen = t1PadLen / totalAivNum;
-            int64_t remainT1PadLen = t1PadLen % totalAivNum;
-            int64_t currentCoreT1PadLen = splitT1PadLen +
-                (static_cast<int64_t>(constInfo.aivIdx) < remainT1PadLen ? 1 : 0);
-            int64_t t1PadLenSum = static_cast<int64_t>(constInfo.aivIdx) * splitT1PadLen +
-                Min(static_cast<int64_t>(constInfo.aivIdx), remainT1PadLen);
-
-            AscendC::PRINTF("[luo] slig_t1_pad pad=%ld split=%ld rem=%ld core=%ld sum=%ld\n",
-                t1PadLen, splitT1PadLen, remainT1PadLen, currentCoreT1PadLen, t1PadLenSum);
-
-            if ASCEND_IS_AIV {
-                if (currentCoreT1PadLen > 0) {
-                    int64_t rowElems = static_cast<int64_t>(constInfo.gSizeQueryIndex) *
-                        static_cast<int64_t>(constInfo.dSizeQueryIndex);
-                    int64_t dQOutputOffset = (t1PadLenSum + actualLen) * rowElems;
-                    GlobalTensor<INPUT_T> tmpDQ;
-                    tmpDQ.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(dQueryIndex) + dQOutputOffset,
-                        currentCoreT1PadLen * rowElems);
-                    int64_t rowBytes = rowElems * static_cast<int64_t>(sizeof(INPUT_T));
-                    TBuf<> zeroBuf;
-                    pipe->InitBuffer(zeroBuf, rowBytes);
-                    LocalTensor<INPUT_T> zeroData = zeroBuf.Get<INPUT_T>();
-                    Duplicate<INPUT_T>(zeroData, static_cast<INPUT_T>(0), rowElems);
-                    DataCopyExtParams copyParams;
-                    copyParams.blockCount = static_cast<uint16_t>(currentCoreT1PadLen);
-                    copyParams.blockLen = static_cast<uint16_t>(rowBytes);
-                    DataCopyPad(tmpDQ, zeroData, copyParams);
-
-                    int64_t dWRowSize = static_cast<int64_t>(constInfo.gSizeQueryIndex);
-                    int64_t dWOutputOffset = (t1PadLenSum + actualLen) * dWRowSize;
-                    GlobalTensor<WEIGHT_T> tmpDW;
-                    tmpDW.SetGlobalBuffer(reinterpret_cast<__gm__ WEIGHT_T *>(dWeight) + dWOutputOffset,
-                        currentCoreT1PadLen * dWRowSize);
-                    int64_t dWRowBytes = dWRowSize * static_cast<int64_t>(sizeof(WEIGHT_T));
-                    TBuf<> zeroBufW;
-                    pipe->InitBuffer(zeroBufW, dWRowBytes);
-                    LocalTensor<WEIGHT_T> zeroDataW = zeroBufW.Get<WEIGHT_T>();
-                    Duplicate<WEIGHT_T>(zeroDataW, static_cast<WEIGHT_T>(0), dWRowSize);
-                    copyParams.blockCount = static_cast<uint16_t>(currentCoreT1PadLen);
-                    copyParams.blockLen = static_cast<uint16_t>(dWRowBytes);
-                    DataCopyPad(tmpDW, zeroDataW, copyParams);
-
-                    AscendC::PRINTF("[luo] slig_t1_pad_done dQOff=%ld dWOff=%ld rows=%ld\n",
-                        dQOutputOffset, dWOutputOffset, currentCoreT1PadLen);
-                }
-            }
-        }
-
-        if (t2Size > actualKLen && totalAivNum > 0) {
-            int64_t t2PadLen = t2Size - actualKLen;
-            int64_t splitT2PadLen = t2PadLen / totalAivNum;
-            int64_t remainT2PadLen = t2PadLen % totalAivNum;
-            int64_t currentCoreT2PadLen = splitT2PadLen +
-                (static_cast<int64_t>(constInfo.aivIdx) < remainT2PadLen ? 1 : 0);
-            int64_t t2PadLenSum = static_cast<int64_t>(constInfo.aivIdx) * splitT2PadLen +
-                Min(static_cast<int64_t>(constInfo.aivIdx), remainT2PadLen);
-
-            AscendC::PRINTF("[luo] slig_t2_pad pad=%ld split=%ld rem=%ld core=%ld sum=%ld\n",
-                t2PadLen, splitT2PadLen, remainT2PadLen, currentCoreT2PadLen, t2PadLenSum);
-
-            if ASCEND_IS_AIV {
-                if (currentCoreT2PadLen > 0) {
-                    int64_t dKOutputOffset = (t2PadLenSum + actualKLen) *
-                        static_cast<int64_t>(constInfo.dSizeQueryIndex);
-                    GlobalTensor<INPUT_T> tmpDK;
-                    tmpDK.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(dKeyIndex) + dKOutputOffset,
-                        currentCoreT2PadLen * static_cast<int64_t>(constInfo.dSizeQueryIndex));
-                    int64_t rowBytes = static_cast<int64_t>(constInfo.dSizeQueryIndex) *
-                        static_cast<int64_t>(sizeof(INPUT_T));
-                    TBuf<> zeroBufK;
-                    pipe->InitBuffer(zeroBufK, rowBytes);
-                    LocalTensor<INPUT_T> zeroDataK = zeroBufK.Get<INPUT_T>();
-                    Duplicate<INPUT_T>(zeroDataK, static_cast<INPUT_T>(0),
-                        static_cast<int64_t>(constInfo.dSizeQueryIndex));
-                    DataCopyExtParams copyParams;
-                    copyParams.blockCount = static_cast<uint16_t>(currentCoreT2PadLen);
-                    copyParams.blockLen = static_cast<uint16_t>(rowBytes);
-                    DataCopyPad(tmpDK, zeroDataK, copyParams);
-
-                    AscendC::PRINTF("[luo] slig_t2_pad_done dKOff=%ld rows=%ld\n",
-                        dKOutputOffset, currentCoreT2PadLen);
-                }
-            }
-        }
     }
 
     InitMMResBuf();
@@ -697,8 +591,6 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
         constInfo.subBlockIdx = constInfo.aivIdx % MODE_NUM_2;
     } else {
         constInfo.aicIdx = GetBlockIdx();
-        constInfo.aivIdx = 0;
-        constInfo.subBlockIdx = 0;
     }
 
     auto &baseInfo = tilingData->baseParams;
@@ -790,13 +682,7 @@ SparseLightningIndexerGradKLLossKernelBase<CubeBlockType, VecBlockType>::InitWor
     offset += gatherSYOffset;
     scatterAddResGm.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
     if constexpr (LAYOUT_Q == SLILayout::TND) {
-        if (actualSeqLengthsKeyGm.GetSize() > 0) {
-            constInfo.totalCost = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
-        } else {
-            constInfo.totalCost = constInfo.bSize * constInfo.s2Size;
-        }
-        AscendC::PRINTF("[luo] slig_workspace_tnd totalCost=%ld keyGmSize=%ld bSize=%u s2Size=%u\n",
-            constInfo.totalCost, actualSeqLengthsKeyGm.GetSize(), constInfo.bSize, constInfo.s2Size);
+        constInfo.totalCost = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
     } else if constexpr (LAYOUT_Q == SLILayout::BSND) {
         constInfo.totalCost = constInfo.bSize * constInfo.s2Size;
     }
