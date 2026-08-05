@@ -27,7 +27,10 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #if ((defined(__CCE_AICORE__) && (__CCE_AICORE__ == 310)) && !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3113))
-  #if defined(ORIG_DTYPE_X) && defined(DT_INT8) && ORIG_DTYPE_X == DT_INT8
+  // A8W8(INT8×INT8) 与 A4W4(INT4×INT4, cube 侧 int4->int8 后按 int8×int8 计算) 的 L0C 累加器均为 int32;
+  // 其余场景保持 float。
+  #if defined(ORIG_DTYPE_X) && defined(DT_INT8) && defined(DT_INT4) && defined(ORIG_DTYPE_WEIGHT) && \
+      (ORIG_DTYPE_X == DT_INT8 || (ORIG_DTYPE_X == DT_INT4 && ORIG_DTYPE_WEIGHT == DT_INT4))
       #define DTYPE_L0C_LOCAL int32_t
   #else
       #define DTYPE_L0C_LOCAL float
@@ -51,6 +54,9 @@
       #if (ORIG_DTYPE_X != DT_INT8 && ORIG_DTYPE_SCALE == DT_FLOAT)
         #define V310_GMM_QUANT_PERTILE
       #endif
+    #elif defined(ORIG_DTYPE_X) && defined(ORIG_DTYPE_WEIGHT) && defined(DT_INT4) && \
+        ORIG_DTYPE_X == DT_INT4 && ORIG_DTYPE_WEIGHT == DT_INT4
+      #define V310_GMM_QUANT_A4W4
     #else
       #define V310_GMM_QUANT_CUBE
     #endif
@@ -66,6 +72,15 @@
         (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN && (ORIG_DTYPE_WEIGHT == DT_FLOAT4_E2M1 || ORIG_DTYPE_WEIGHT == DT_FLOAT))
       #define V310_GMM_ANTI_QUANT
     #endif
+  #endif
+
+  // V5 A8W4 uses logical INT4 weights. DT_INT32 is only a packed carrier containing eight INT4 values.
+  // This macro controls whether the dedicated A8W4 V5 dispatch code is compiled; the tiling-key tuple
+  // still selects symmetric per-group versus asymmetric per-channel at compile time.
+  #if defined(V310_GMM_ANTI_QUANT) && defined(ORIG_DTYPE_SCALE) && defined(DT_UINT64) &&                      \
+      defined(DT_INT8) && defined(DT_INT4) && defined(DT_INT32) && ORIG_DTYPE_X == DT_INT8 &&              \
+      (ORIG_DTYPE_WEIGHT == DT_INT4 || ORIG_DTYPE_WEIGHT == DT_INT32) && ORIG_DTYPE_SCALE == DT_UINT64
+    #define V310_GMM_A8W4_V5
   #endif
 #endif
 

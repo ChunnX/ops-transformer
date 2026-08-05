@@ -278,23 +278,24 @@ bool GroupedQmmTiling::CheckDtypeForWeightNz(bool isPertokenScaleNull) const
         return dt == ge::DT_FLOAT4_E2M1 || dt == ge::DT_FLOAT4_E1M2;
     };
     bool isA4W4Fp = isFp4Dtype(inputParams_.aDtype) && isFp4Dtype(inputParams_.bDtype);
+    bool isA4W4Int = inputParams_.aDtype == ge::DT_INT4 && inputParams_.bDtype == ge::DT_INT4;
     OP_CHECK_IF(
-        !(isA8W8Int || isA8W8Fp || isA4W4Fp),
+        !(isA8W8Int || isA8W8Fp || isA4W4Fp || isA4W4Int),
         OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
             inputParams_.opType, "x, weight",
             ListToString(ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype),
                          ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype)),
             "when the format of weight is FRACTAL_NZ, the dtypes of x and weight must be within the range INT8, "
-            "FLOAT8_E4M3FN or FLOAT4 (E2M1/E1M2)"),
+            "int4, FLOAT8_E4M3FN or FLOAT4 (E2M1/E1M2)"),
         return false);
-    OP_CHECK_IF((isA8W8Int || isA8W8Fp || isA4W4Fp) && inputParams_.cDtype == ge::DT_INT8,
+    OP_CHECK_IF((isA8W8Int || isA8W8Fp || isA4W4Fp || isA4W4Int) && inputParams_.cDtype == ge::DT_INT8,
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opType, "y",
                                                       ge::TypeUtils::DataTypeToSerialString(inputParams_.cDtype),
                                                       "when the format of weight is FRACTAL_NZ, dtype of y cannot be "
                                                       "INT8"),
                 return false);
     if (!isPertokenScaleNull) {
-        OP_CHECK_IF(!CheckPertokenScaleDtypeForWeightNz(isA8W8Int, isA8W8Fp, isA4W4Fp),
+        OP_CHECK_IF(!CheckPertokenScaleDtypeForWeightNz(isA8W8Int, isA8W8Fp, isA4W4Fp, isA4W4Int),
                     OP_LOGE(inputParams_.opName, "CheckPertokenScaleDtypeForWeightNz failed."), return false);
     } else {
         static const std::vector<ge::DataType> legalScaleDtypes = {ge::DT_UINT64, ge::DT_INT64, ge::DT_FLOAT,
@@ -310,7 +311,7 @@ be in {UINT64, INT64, FLOAT, BF16}, actual is %s.",
     return true;
 }
 
-bool GroupedQmmTiling::CheckPertokenScaleDtypeForWeightNz(bool isA8W8Int, bool isA8W8Fp, bool isA4W4Fp) const
+bool GroupedQmmTiling::CheckPertokenScaleDtypeForWeightNz(bool isA8W8Int, bool isA8W8Fp, bool isA4W4Fp, bool isA4W4Int) const
 {
     if (isA8W8Int) {
         OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT ||
@@ -321,6 +322,15 @@ the dtype of pertokenScale should be FLOAT and the dtype of scale should be in {
                             ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str(),
                             ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
                     return false);
+    } else if (isA4W4Int) {
+        OP_CHECK_IF(
+            inputParams_.perTokenScaleDtype != ge::DT_FLOAT || inputParams_.scaleDtype != ge::DT_UINT64,
+            OP_LOGE(context_->GetNodeName(),
+                    "When the weight is Nz format and x/weight's dtype are INT4, "
+                    "the dtype of pertokenScale must be FLOAT and scale must be UINT64, actual are %s/%s.",
+                    ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str(),
+                    ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
+            return false);
     } else if (isA8W8Fp || isA4W4Fp) {
         OP_CHECK_IF(
             inputParams_.perTokenScaleDtype != ge::DT_FLOAT8_E8M0 || inputParams_.scaleDtype != ge::DT_FLOAT8_E8M0,
@@ -651,11 +661,13 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape, uint64_t
                 OP_LOGE(inputParams_.opName, "CheckWeightNzDimNum failed."), return false);
     const size_t wDimNum = wShape.GetDimNum();
     const uint64_t logicalNSize = expectedNSize == 0UL ? inputParams_.nSize : expectedNSize;
-    const bool isWeight4Bit = inputParams_.bDtype == ge::DT_INT4 || inputParams_.bDtype == ge::DT_FLOAT4_E2M1 ||
-                              inputParams_.bDtype == ge::DT_FLOAT4_E1M2;
-    const uint32_t weightNzLastDim = isWeight4Bit ? WEIGHTNZ_64 : WEIGHTNZ_32;
+    const bool isInt4 = inputParams_.bDtype == ge::DT_INT4;
+    const bool isFp4 = inputParams_.bDtype == ge::DT_FLOAT4_E2M1 ||
+                       inputParams_.bDtype == ge::DT_FLOAT4_E1M2;
+    const uint32_t weightNzLastDim = isInt4 ? WEIGHTNZ_128 : (isFp4 ? WEIGHTNZ_64 : WEIGHTNZ_32);
     const size_t nzDimOffset = wDimNum - (WEIGHTNZ_DIM_NUM - 1);
-    OP_CHECK_IF(!CheckWeightNzLastDim(wShape, nzDimOffset, weightNzLastDim, isWeight4Bit),
+    const char *nzDtypeLabel = isInt4 ? "int4" : (isFp4 ? "fp4" : "fp8");
+    OP_CHECK_IF(!CheckWeightNzLastDim(wShape, nzDimOffset, weightNzLastDim, nzDtypeLabel),
                 OP_LOGE(inputParams_.opName, "CheckWeightNzLastDim failed."), return false);
     OP_CHECK_IF(!CheckWeightNzSecondLastDim(wShape, nzDimOffset),
                 OP_LOGE(inputParams_.opName, "CheckWeightNzSecondLastDim failed."), return false);
@@ -688,14 +700,14 @@ bool GroupedQmmTiling::CheckWeightNzDimNum(const gert::Shape &wShape) const
 }
 
 bool GroupedQmmTiling::CheckWeightNzLastDim(
-    const gert::Shape &wShape, size_t nzDimOffset, uint32_t expectedValue, bool isWeight4Bit) const
+    const gert::Shape &wShape, size_t nzDimOffset, uint32_t expectedValue, const char *dtypeLabel) const
 {
     const uint64_t actual = static_cast<uint64_t>(wShape[nzDimOffset + WEIGHTNZ_FORTH_DIM]);
     OP_CHECK_IF(actual != static_cast<uint64_t>(expectedValue),
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     inputParams_.opType, "weight", ShapeToString(wShape),
                     BuildErrorMsgStr("the last storage dimension of an NZ weight must be ", expectedValue,
-                                     " for ", (isWeight4Bit ? "fp4" : "fp8"), "; actual value is ", actual)),
+                                     " for ", dtypeLabel, "; actual value is ", actual)),
                 return false);
     return true;
 }
@@ -1635,4 +1647,7 @@ void GQmmInputInfo::Reset()
 
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmul, GroupedQmmBasicApiTiling, 0);
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmul, GroupedQmmTiling, 1);
+// Dedicated V5 A8W4 host route. Its full input contract keeps it disjoint from MX/A8W8 and legacy
+// weight-antiquant templates, and the matching APT branch consumes GMMA8W4BasicApiTilingData.
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmul, GroupedA8W4BasicApiTiling, 2);
 } // namespace optiling
