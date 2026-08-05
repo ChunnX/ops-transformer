@@ -24,6 +24,55 @@ def _is_valid_expert_range(r):
     return r[0] >= 0 and r[1] > r[0]
 
 
+_NUM_FORWARD_INPUTS = 16
+
+
+def _check_backward_supported(ctx):
+    """Raise NotImplementedError if the V4-specific or unsupported drop_pad_mode path is taken."""
+    if ctx.has_v4_extras:
+        raise NotImplementedError(
+            "moe_finalize_routing autograd is not supported when V4-specific "
+            "inputs (x, alpha1, alpha2, v) or zero_expert_range are provided. "
+            "The aclnnMoeFinalizeRoutingV2Grad op only handles the regular-expert case."
+        )
+    if ctx.drop_pad_mode not in (0, 1):
+        raise NotImplementedError(
+            "moe_finalize_routing autograd is only supported for drop_pad_mode 0 or 1 "
+            "(column-major expanded_row_idx layout). The backward op "
+            "(aclnnMoeFinalizeRoutingV2Grad) does not support drop_pad_mode "
+            f"{ctx.drop_pad_mode}."
+        )
+
+
+def _transpose_row_idx(expanded_row_idx, top_k, row_num):
+    """Convert expanded_row_idx from forward (K, R) layout to grad op (R, K) layout."""
+    if top_k > 1:
+        return expanded_row_idx.view(top_k, row_num).t().contiguous().view(-1)
+    return expanded_row_idx
+
+
+def _synthesize_scales(scales, top_k, row_num, grad_out):
+    """Return effective scales, synthesizing a ones tensor when scales is None and K > 1."""
+    if scales is None and top_k > 1:
+        return torch.ones(row_num, top_k, dtype=grad_out.dtype, device=grad_out.device)
+    return scales
+
+
+def _infer_grad_shape(expanded_x, drop_pad_mode):
+    """Infer (active_num, expert_num, expert_capacity) for the grad op from expanded_x shape."""
+    if drop_pad_mode == 1:
+        return 0, expanded_x.shape[0], expanded_x.shape[1]
+    return expanded_x.shape[0], 0, 0
+
+
+def _build_grad_return_tuple(grad_expanded_x, grad_scales):
+    """Build the 16-element backward return tuple (only positions 0 and 5 are non-None)."""
+    grads = [None] * _NUM_FORWARD_INPUTS
+    grads[0] = grad_expanded_x
+    grads[5] = grad_scales
+    return tuple(grads)
+
+
 class MoeFinalizeRoutingFn(torch.autograd.Function):
     """Autograd binding: forward -> aclnnMoeFinalizeRoutingV4,
     backward -> aclnnMoeFinalizeRoutingV2Grad.
@@ -116,20 +165,7 @@ class MoeFinalizeRoutingFn(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_out):
-        if ctx.has_v4_extras:
-            raise NotImplementedError(
-                "moe_finalize_routing autograd is not supported when V4-specific "
-                "inputs (x, alpha1, alpha2, v) or zero_expert_range are provided. "
-                "The aclnnMoeFinalizeRoutingV2Grad op only handles the regular-expert case."
-            )
-        if ctx.drop_pad_mode not in (0, 1):
-            raise NotImplementedError(
-                "moe_finalize_routing autograd is only supported for drop_pad_mode 0 or 1 "
-                "(column-major expanded_row_idx layout). The backward op "
-                "(aclnnMoeFinalizeRoutingV2Grad) does not support drop_pad_mode "
-                f"{ctx.drop_pad_mode}."
-            )
-
+        _check_backward_supported(ctx)
         expanded_x, expanded_row_idx, scales, bias, expert_idx = ctx.saved_tensors
         scales = scales if ctx.has_scales else None
         bias = bias if ctx.has_bias else None
@@ -137,35 +173,14 @@ class MoeFinalizeRoutingFn(torch.autograd.Function):
         drop_pad_mode = ctx.drop_pad_mode
 
         grad_out = grad_out.contiguous()
-        R = grad_out.shape[0]
-        K = scales.shape[1] if ctx.has_scales else ctx.k
+        row_num = grad_out.shape[0]
+        top_k = scales.shape[1] if ctx.has_scales else ctx.k
 
-        if K > 1:
-            grad_row_idx = expanded_row_idx.view(K, R).t().contiguous().view(-1)
-        else:
-            grad_row_idx = expanded_row_idx
-
-        # When scales was not provided in forward but K > 1, the grad op cannot
-        # infer K from scales.  Synthesize a ones tensor so the grad op sees a
-        # valid (R, K) scales — mathematically equivalent since the implicit
-        # scale is 1.0.
-        eff_scales = scales
-        if scales is None and K > 1:
-            eff_scales = torch.ones(R, K, dtype=grad_out.dtype, device=grad_out.device)
-
-        # Infer grad_expanded_x shape from the saved forward expanded_x.
-        # The grad op uses (expert_num, expert_capacity) when drop_pad_mode == 1
-        # (expert packed) to allocate a 3D (E, C, H) output, and uses active_num
-        # when drop_pad_mode == 0 (dropless) to optionally truncate the output
-        # to fewer rows than expanded_row_idx.numel().
-        if drop_pad_mode == 1:
-            grad_expert_num = expanded_x.shape[0]
-            grad_expert_capacity = expanded_x.shape[1]
-            grad_active_num = 0
-        else:
-            grad_expert_num = 0
-            grad_expert_capacity = 0
-            grad_active_num = expanded_x.shape[0]
+        grad_row_idx = _transpose_row_idx(expanded_row_idx, top_k, row_num)
+        eff_scales = _synthesize_scales(scales, top_k, row_num, grad_out)
+        grad_active_num, grad_expert_num, grad_expert_capacity = _infer_grad_shape(
+            expanded_x, drop_pad_mode
+        )
 
         grad_expanded_x, grad_scales = torch.ops.custom.moe_finalize_routing_grad(
             grad_out,
@@ -180,32 +195,10 @@ class MoeFinalizeRoutingFn(torch.autograd.Function):
             grad_expert_capacity,
         )
 
-        # Only grad_expanded_x and grad_scales come from the V2Grad op.
-        # x1, x2, bias are not outputs of the grad op — return None.
         needs = ctx.needs_input_grad
-        # 16 inputs: expanded_x, row_idx, x1, x2, bias, scales, expert_idx,
-        #            x, alpha1, alpha2, v, drop_pad_mode,
-        #            zero_expert_range, copy_expert_range, constant_expert_range, k
         grad_expanded_x = grad_expanded_x if needs[0] else None
         grad_scales = grad_scales if ctx.has_scales and needs[5] else None
-        return (
-            grad_expanded_x,
-            None,
-            None,
-            None,
-            None,
-            grad_scales,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        return _build_grad_return_tuple(grad_expanded_x, grad_scales)
 
 
 def moe_finalize_routing(

@@ -1,4 +1,4 @@
-# copyright (c) 2026 Huawei Technologies Co., Ltd.
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@ import warnings
 import torch
 import torch_npu
 
-# 导入so 和 python
 from . import moe_init_routing_grad_lib
 from .ops import moe_init_routing_grad
 
@@ -27,19 +26,14 @@ import custom ops as torch_npu ops to support the following usage:
 'torch_npu.moe_init_routing_grad()'
 """
 
-# get torch.ops.custom module
 custom_ops_module = getattr(torch.ops, "custom", None)
 
 if custom_ops_module is not None:
     for op_name in dir(custom_ops_module):
         if op_name.startswith("_"):
-            # skip built-in method, such as __name__, __doc__
             continue
-
-        # get custom ops and set to torch_npu
         custom_op_func = getattr(custom_ops_module, op_name)
         setattr(torch_npu, op_name, custom_op_func)
-
 else:
     WARN_MSG = (
         "torch.ops.custom module is not found, mount custom ops to torch_npu failed."
