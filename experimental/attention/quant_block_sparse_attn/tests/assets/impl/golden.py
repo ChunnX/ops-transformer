@@ -251,16 +251,12 @@ def cpu_quant_block_sparse_attn(
         k_scale_dense = _pa_to_dense(
             k_descale_cpu, block_table_cpu, B, S2, (1, 0), sparse_kv_block_size
         )
-        if layout_q == "BSND":
-            k_scale = k_scale_dense
-        else:
-            k_scale = k_scale_dense.reshape(B * S2, N2)
     elif k_descale_cpu.dim() == 1:
-        k_scale = k_descale_cpu.unsqueeze(0).expand(B, -1, N2).contiguous()
-        if layout_q != "BSND":
-            k_scale = k_scale.reshape(B * S2, N2)
+        k_scale_dense = (
+            k_descale_cpu.unsqueeze(0).unsqueeze(0).expand(B, S2, N2).contiguous()
+        )
     else:
-        k_scale = k_descale_cpu
+        k_scale_dense = k_descale_cpu
 
     v_scale = v_descale_cpu if v_descale_cpu.dim() == 1 else v_descale_cpu.view(-1)
 
@@ -291,19 +287,35 @@ def cpu_quant_block_sparse_attn(
         "quant_mode": int(quant_mode),
     }
 
+    if key_cpu.dim() == 4:
+        if block_table_cpu is None:
+            block_table_cpu = _auto_block_table(
+                B, S2, sparse_kv_block_size, "sequential", 0
+            )
+        kv_cache_storage, kv_cache_meta = golden_module.combined_kv_cache.pack_combined_kv_cache(
+            dense_key,
+            dense_value,
+            k_scale_dense,
+            block_table_cpu,
+            sparse_kv_block_size,
+            0,
+            layout_kv,
+        )
+    else:
+        raise ValueError("kv_cache-based reference requires PA (4D) key")
+
     attention_out, softmax_lse = golden_module._reference_attention(
         case,
         q_cpu,
-        dense_key,
-        dense_value,
+        kv_cache_storage,
+        kv_cache_meta,
+        block_table_cpu,
         q_descale_cpu,
-        k_scale,
         v_scale,
         p_scale_cpu,
         sparse_indices_cpu,
         sparse_seq_len_cpu,
         cu_seqlens_q_inp,
-        cu_seqlens_kv_inp,
         q_lengths,
         kv_lengths,
     )

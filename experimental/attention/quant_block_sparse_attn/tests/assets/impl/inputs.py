@@ -42,23 +42,25 @@ def _quant_fp32_to_fp8(tensor, quant_scale):
     return quantized.to(FP8_DTYPE).contiguous()
 
 
-def _quantize_per_token_head(tensor):
+def _quantize_per_token_head(tensor, max_abs=FP8_E4M3_MAX):
+    max_abs = min(float(max_abs), FP8_E4M3_MAX)
     row_max = torch.abs(tensor).amax(dim=-1, keepdim=True)
     row_max = torch.maximum(
         row_max, torch.tensor(SCALE_EPSILON, dtype=torch.float32, device=tensor.device)
     )
-    quant_scale = FP8_E4M3_MAX / row_max
+    quant_scale = max_abs / row_max
     return _quant_fp32_to_fp8(tensor, quant_scale), (
         1.0 / quant_scale
     ).squeeze(-1).contiguous()
 
 
-def _quantize_value_per_head(tensor):
+def _quantize_value_per_head(tensor, max_abs=FP8_E4M3_MAX):
+    max_abs = min(float(max_abs), FP8_E4M3_MAX)
     head_max = torch.abs(tensor).amax(dim=(0, 1, 3), keepdim=True)
     head_max = torch.maximum(
         head_max, torch.tensor(SCALE_EPSILON, dtype=torch.float32, device=tensor.device)
     )
-    quant_scale = FP8_E4M3_MAX / head_max
+    quant_scale = max_abs / head_max
     value = _quant_fp32_to_fp8(tensor, quant_scale)
     return value, (1.0 / quant_scale).reshape(tensor.shape[2]).contiguous()
 
@@ -76,20 +78,113 @@ def _rand_fullquant_source(shape, amp_low, amp_high, generator, amp_shape=None):
     return base * amps
 
 
-def _make_block_table(batch, seq_len, block_size, pattern, rng):
-    block_num_per_batch = math.ceil(seq_len / block_size)
-    block_table = torch.empty((batch, block_num_per_batch), dtype=torch.int32)
-    for batch_idx in range(batch):
-        ids = list(
-            range(
-                batch_idx * block_num_per_batch, (batch_idx + 1) * block_num_per_batch
-            )
+def _parse_value_range(value):
+    if isinstance(value, str):
+        s = value.strip()
+        if s.startswith("[") and s.endswith("]"):
+            s = s[1:-1]
+        try:
+            r = float(s)
+            return -r, r
+        except ValueError:
+            pass
+        parts = s.split(",")
+        if len(parts) != 2:
+            raise ValueError(f"datarange should be like [-100,100], got {value!r}")
+        return float(parts[0].strip()), float(parts[1].strip())
+    if isinstance(value, (int, float)):
+        r = float(value)
+        return -r, r
+    return float(value[0]), float(value[1])
+
+
+def _rand_value_range(shape, low, high, generator):
+    return torch.empty(shape, dtype=torch.float32).uniform_(low, high, generator=generator)
+
+
+def _make_source(datarange_value, shape, default_low, default_high, generator, amp_shape=None):
+    if datarange_value is None:
+        source = _rand_fullquant_source(
+            shape, default_low, default_high, generator, amp_shape=amp_shape
         )
-        if pattern == "reverse":
-            ids.reverse()
-        elif pattern == "random":
-            rng.shuffle(ids)
-        block_table[batch_idx] = torch.tensor(ids, dtype=torch.int32)
+        return source, FP8_E4M3_MAX
+    low, high = _parse_value_range(datarange_value)
+    if low > high:
+        raise ValueError(f"datarange should satisfy low <= high, got ({low}, {high})")
+    source = _rand_value_range(shape, low, high, generator)
+    return source, max(abs(low), abs(high))
+
+
+def _make_block_table(batch, seq_len, block_size, pattern, rng, blocknum=None, q_block_num=1):
+    kv_block_num = math.ceil(seq_len / block_size)
+    width = kv_block_num * q_block_num
+    needed_block_num = batch * width
+
+    if blocknum is None or blocknum >= needed_block_num:
+        block_table = torch.empty((batch, kv_block_num), dtype=torch.int32)
+        for batch_idx in range(batch):
+            ids = list(
+                range(
+                    batch_idx * kv_block_num, (batch_idx + 1) * kv_block_num
+                )
+            )
+            if pattern == "reverse":
+                ids.reverse()
+            elif pattern == "random":
+                rng.shuffle(ids)
+            block_table[batch_idx] = torch.tensor(ids, dtype=torch.int32)
+        return block_table
+
+    if batch <= 1:
+        # 单 batch：共享退化为行内复用 —— block_table 前几个 index 均指向物理块 0，
+        # 其余 index 指向互不相同的物理块，使总物理块数精确等于 blocknum。
+        shared_cols = width - blocknum + 1
+        if shared_cols <= 0 or shared_cols > width:
+            raise ValueError(f"blocknum={blocknum} out of range [1, {width}] for a single batch")
+        block_table = torch.zeros((1, width), dtype=torch.int32)
+        for block_idx in range(shared_cols, width):
+            block_table[0, block_idx] = block_idx - shared_cols + 1
+        return block_table
+
+    if blocknum < width:
+        # 物理块池小于每 batch 的逻辑块数：block_table 前几列重复（0,1,2,... 循环），
+        # 所有 batch 行一致，总物理块数精确等于 blocknum。
+        block_table = torch.empty((batch, width), dtype=torch.int32)
+        for col in range(width):
+            block_table[:, col] = col % blocknum
+        return block_table
+
+    # batch >= 2 且 blocknum >= width：共享前缀（前几列各 batch 相同）+ 每 batch 独有尾部
+    block_table = torch.empty((batch, width), dtype=torch.int32)
+    shared_count = needed_block_num - blocknum
+    full_shared_cols = shared_count // (batch - 1)
+    partial_share = shared_count % (batch - 1)
+    next_id = 0
+    col = 0
+
+    for _ in range(full_shared_cols):
+        for batch_idx in range(batch):
+            block_table[batch_idx, col] = next_id
+        next_id += 1
+        col += 1
+
+    if partial_share > 0:
+        shared_id = next_id
+        next_id += 1
+        for batch_idx in range(partial_share + 1):
+            block_table[batch_idx, col] = shared_id
+        for batch_idx in range(partial_share + 1, batch):
+            block_table[batch_idx, col] = next_id
+            next_id += 1
+        col += 1
+
+    for batch_idx in range(batch):
+        for block_idx in range(col, width):
+            block_table[batch_idx, block_idx] = next_id
+            next_id += 1
+
+    if next_id != blocknum:
+        raise AssertionError(f"block_table generated {next_id} physical blocks, expected {blocknum}")
     return block_table
 
 
@@ -177,9 +272,17 @@ def _make_sparse_indices(
     return sparse_indices, sparse_seq_len
 
 
-def _dense_to_pa(dense_key, dense_value, dense_k_scale, block_table, block_size):
+def _dense_to_pa(dense_key, dense_value, dense_k_scale, block_table, block_size, num_blocks=None):
     B, S2, N2, D = dense_key.shape
-    block_num = int(block_table.max().item()) + 1
+    required = int(block_table.max().item()) + 1
+    if num_blocks is not None:
+        if num_blocks < required:
+            raise ValueError(
+                f"pre-allocated num_blocks={num_blocks} < required physical blocks {required}"
+            )
+        block_num = num_blocks
+    else:
+        block_num = required
     key_pa = torch.zeros((block_num, N2, block_size, D), dtype=dense_key.dtype)
     value_pa = torch.zeros((block_num, N2, block_size, D), dtype=dense_value.dtype)
     k_scale_pa = torch.zeros((block_num, N2, block_size), dtype=torch.float32)
@@ -230,6 +333,10 @@ def customize_inputs(
     actlen_mode="full",
     p_scale_value=1.0,
     seed=0,
+    q_datarange=None,
+    k_datarange=None,
+    v_datarange=None,
+    block_num=None,
     **kwargs,
 ):
     """Fill input tensors in-place with consistent test data for quant_block_sparse_attn.
@@ -271,33 +378,47 @@ def customize_inputs(
     kv_lengths = [S2] * B
 
     amp_high = FP8_E4M3_MAX
+    q_block_num = math.ceil(S1 / sparse_q_block_size)
     if layout_q == "NTD":
-        query_source = _rand_fullquant_source(
-            (N1, B * S1, D), amp_high * 0.01, amp_high, generator
+        query_source, q_max = _make_source(
+            q_datarange, (N1, B * S1, D), amp_high * 0.01, amp_high, generator
         )
     else:
-        query_source = _rand_fullquant_source(
-            (B * S1, N1, D), amp_high * 0.01, amp_high, generator
+        query_source, q_max = _make_source(
+            q_datarange, (B * S1, N1, D), amp_high * 0.01, amp_high, generator
         )
-    query_fp8, q_scale = _quantize_per_token_head(query_source)
+    query_fp8, q_scale = _quantize_per_token_head(query_source, q_max)
     query.copy_(query_fp8)
 
-    dense_key_source = _rand_fullquant_source(
-        (B, S2, N2, D), 1.0, amp_high, generator
+    dense_key_source, k_max = _make_source(
+        k_datarange, (B, S2, N2, D), 1.0, amp_high, generator
     )
-    dense_value_source = _rand_fullquant_source(
-        (B, S2, N2, D), 1.0, amp_high, generator, amp_shape=(B, 1, N2, 1)
+    dense_value_source, v_max = _make_source(
+        v_datarange, (B, S2, N2, D), 1.0, amp_high, generator, amp_shape=(B, 1, N2, 1)
     )
-    dense_key, dense_k_scale_base = _quantize_per_token_head(dense_key_source)
-    dense_value, v_scale = _quantize_value_per_head(dense_value_source)
+    dense_key, dense_k_scale_base = _quantize_per_token_head(dense_key_source, k_max)
+    dense_value, v_scale = _quantize_value_per_head(dense_value_source, v_max)
 
     dense_k_scale = torch.zeros((B, S2, N2), dtype=torch.float32)
     for b in range(B):
         dense_k_scale[b] = dense_k_scale_base[b]
 
-    block_table = _make_block_table(B, S2, sparse_kv_block_size, "sequential", rng)
+    block_table = _make_block_table(
+        B,
+        S2,
+        sparse_kv_block_size,
+        block_table_pattern,
+        rng,
+        blocknum=block_num,
+        q_block_num=q_block_num,
+    )
     key_pa, value_pa, k_scale_pa = _dense_to_pa(
-        dense_key, dense_value, dense_k_scale, block_table, sparse_kv_block_size
+        dense_key,
+        dense_value,
+        dense_k_scale,
+        block_table,
+        sparse_kv_block_size,
+        num_blocks=int(key.shape[0]) if key.dim() == 4 else None,
     )
 
     key.copy_(key_pa)
