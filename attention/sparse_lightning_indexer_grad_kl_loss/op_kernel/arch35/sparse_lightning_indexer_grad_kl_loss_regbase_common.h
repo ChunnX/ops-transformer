@@ -106,6 +106,11 @@ struct SLIGradKLLossConstInfo {
 
     // 确定性计算
     int64_t bmm3BaseOffset = 0;
+
+    // TND tail padding
+    int64_t t1Size = 0;
+    int64_t t2Size = 0;
+    int64_t totalAivNum = 0;
 };
 
 struct SLIGradKLLossRunInfo {
