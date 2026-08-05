@@ -72,7 +72,10 @@ enum class SocVersion {
     RESERVED_VERSION = 99999
 };
 
-enum class SocSpec { INST_MMAD = 0, RESERVED_SPEC = 99999 };
+enum class SocSpec {
+    INST_MMAD = 0,
+    RESERVED_SPEC = 99999
+};
 
 enum class SocSpecAbility {
     INST_MMAD_F162F16 = 0,
@@ -95,17 +98,17 @@ class PlatformInfoImpl;
 class PlatformThreadLockCtx;
 
 class PlatformInfo {
-    friend const PlatformInfo& GetCurrentPlatformInfo();
+    friend const PlatformInfo &GetCurrentPlatformInfo();
     friend class PlatformThreadLockCtx;
 
 public:
     PlatformInfo() {};
 
-    PlatformInfo(int32_t deviceId) : deviceId_(deviceId){};
+    PlatformInfo(int32_t deviceId) : deviceId_(deviceId) {};
 
     SocVersion GetSocVersion() const;
 
-    const std::string& GetSocLongVersion() const;
+    const std::string &GetSocLongVersion() const;
 
     int32_t GetDeviceId() const;
 
@@ -143,7 +146,7 @@ private:
     ~PlatformInfo();
 };
 
-const PlatformInfo& GetCurrentPlatformInfo();
+const PlatformInfo &GetCurrentPlatformInfo();
 
 ge::AscendString ToString(SocVersion socVersion);
 

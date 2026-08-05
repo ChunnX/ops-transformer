@@ -104,7 +104,7 @@ if [[ "$CMAKE_REBUILD" == "ON" ]]; then
     cmake --install build
 fi
 # 运行用例开关
-if [[ "$RUN_TEST" == "ON" ]]; then    
+if [[ "$RUN_TEST" == "ON" ]]; then
     # 读取目录下QuantAllReduce配置文件
     CSV_FILE="${CURRENT_DIR}/scripts/QuantAllReduce.csv"
     target_content=$(sed -n "${TARGET_LINE}p" "$CSV_FILE")
@@ -122,7 +122,7 @@ if [[ "$RUN_TEST" == "ON" ]]; then
         reduce_op \
         mxfp \
         seed \
-    <<< "$target_content"    
+    <<< "$target_content"
     echo "===== 执行第${TARGET_LINE}条用例 ====="
     echo "case_name : $case_name"
     echo "case_type : $case_type"
@@ -169,5 +169,5 @@ if [[ "$RUN_TEST" == "ON" ]]; then
             "$bs" \
             "$hidden_size" \
             "$output_type" \
-            "$ranksize" 
+            "$ranksize"
 fi

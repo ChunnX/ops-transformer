@@ -9,7 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 set(CONDITION_UNIT_COMMON ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
-    file(GLOB OPTILING_SRCS 
+    file(GLOB OPTILING_SRCS
         utils/context_transfer.cpp
         op_host/op_tiling/hccl_formulaic_tiling.cpp
         op_host/op_tiling/hccl_performance.cpp
@@ -25,6 +25,10 @@ if (BUILD_OPEN_PROJECT)
         op_host/op_tiling/moe_tiling_base.cpp
         op_host/op_tiling/one_calc_two_comm_tiling.cpp
     )
+
+    if(ENABLE_BUILT_IN)
+        list(APPEND OPTILING_SRCS op_host/mc2_common_infershape.cpp)
+    endif()
 
     if(UT_TEST_ALL OR OP_HOST_UT)
         list(FILTER OPTILING_SRCS EXCLUDE REGEX "utils/mc2_hcom_topo_info\\.cpp")
@@ -44,12 +48,14 @@ if (BUILD_OPEN_PROJECT)
             target_link_directories(${OPHOST_NAME}_tiling_obj PRIVATE mc2_tiling_ut_stub)
         endif()
     endif()
-    set(MC2_INFER_SRCS
-        op_host/mc2_common_infershape.cpp
-    )
-    if(MC2_INFER_SRCS)
-        add_infer_modules()
-        target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${MC2_INFER_SRCS})
+    if(NOT ENABLE_BUILT_IN)
+        set(MC2_INFER_SRCS
+            op_host/mc2_common_infershape.cpp
+        )
+        if(MC2_INFER_SRCS)
+            add_infer_modules()
+            target_sources(${OPHOST_NAME}_infer_obj PRIVATE ${MC2_INFER_SRCS})
+        endif()
     endif()
     file(GLOB COMMON_UTILS_SRCS
         utils/mc2_platform_info.cpp
@@ -57,7 +63,6 @@ if (BUILD_OPEN_PROJECT)
     file(GLOB GENTASK_SRCS
         op_graph/mc2_gen_task_ops_utils.cpp
         op_graph/matmul_all_reduce_gen_task_ops_utils.cpp
-        op_graph/mc2_moe_graph_context.cpp
         op_graph/mc2_moe_gen_task_ops_utils.cpp
     )
     if("${CONDITION_UNIT_COMMON}" STREQUAL "ascend950")
@@ -71,6 +76,13 @@ if (BUILD_OPEN_PROJECT)
             ${COMMON_UTILS_SRCS}
             ${GENTASK_SRCS}
         )
+    endif()
+    file(GLOB MC2_GRAPH_PLUGIN_SRCS
+        op_graph/mc2_moe_graph_context.cpp
+    )
+    if(MC2_GRAPH_PLUGIN_SRCS)
+        add_graph_plugin_modules()
+        target_sources(${GRAPH_PLUGIN_NAME}_obj PRIVATE ${MC2_GRAPH_PLUGIN_SRCS})
     endif()
     if(NOT ENABLE_TEST)
         file(GLOB OPPROTO_SRCS)
@@ -87,7 +99,7 @@ if (BUILD_OPEN_PROJECT)
 endif()
 
 file(GLOB NEW_MC2_MM_SRC op_host/op_tiling/new_mc2_*.cpp)
-# MC2_COMPILE used to avoid tefusion_llt 
+# MC2_COMPILE used to avoid tefusion_llt
 # when blue use SUB_MC2_COMPILE when rty use MC2_COMPILE
 if(MC2_COMPILE OR SUB_MC2_COMPILE OR UT_TEST OR OP_HOST_UT)
     add_tiling_modules()

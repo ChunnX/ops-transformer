@@ -13,15 +13,15 @@ if (BUILD_OPEN_PROJECT)  # custom
         grouped_mat_mul_allto_allv_def.cpp
     )
     add_modules_sources_with_soc(
-        OP_API_INDEPENDENT ON 
-        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
-        OP_MC2_ENABLE ON 
+        OP_API_INDEPENDENT ON
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+        OP_MC2_ENABLE ON
         OPTYPE grouped_mat_mul_allto_allv grouped_mat_mul_allto_allv ACLNNTYPE aclnn aclnn_inner)
 
     set(QUANT_TILING_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../quant_grouped_mat_mul_allto_allv/op_host/op_tiling)
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-        ${QUANT_TILING_DIR}/arch35/quant_grouped_mat_mul_allto_allv_tiling_common.cpp
-        ${QUANT_TILING_DIR}/arch35/quant_grouped_mat_mul_allto_allv_tiling_adapter.cpp
+        ${QUANT_TILING_DIR}/quant_grouped_mat_mul_allto_allv_tiling_common.cpp
+        ${QUANT_TILING_DIR}/quant_grouped_mat_mul_allto_allv_tiling_adapter.cpp
     )
 
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
@@ -47,5 +47,5 @@ if (BUILD_OPEN_PROJECT)  # custom
     endif()
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE grouped_mat_mul_allto_allv grouped_mat_mul_allto_allv ACLNNTYPE aclnn aclnn_inner)
-    set(SUB_MC2_COMPILE TRUE PARENT_SCOPE) 
+    set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
 endif()

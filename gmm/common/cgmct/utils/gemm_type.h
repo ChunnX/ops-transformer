@@ -25,6 +25,6 @@ struct GemmType {
     using Layout = Layout_;
     static constexpr AscendC::TPosition POSITION = POSITION_;
 };
-}  // namespace Cgmct::Gemm
+} // namespace Cgmct::Gemm
 
 #endif

@@ -43,17 +43,22 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenQDim(const FiaTilingInfo &
         // 若不存在actualSeqLengthsQ，则放弃后续校验
         return ge::GRAPH_SUCCESS;
     }
-    uint32_t actualSeqLengthsQDimNum = actualSeqLengthsQTensor->GetShapeSize();
     uint32_t batchSize = fiaInfo.bSize;
+    uint32_t actualSeqLengthsQDimNum = actualSeqLengthsQTensor->GetShapeSize();
     FiaLayout qLayout = fiaInfo.qLayout;
     if (qLayout == FiaLayout::TND || qLayout == FiaLayout::NTD) {
         // query的layout为TND/NTD时，actualSeqLengthsQ的长度为query的batch值
-        OP_CHECK_IF((actualSeqLengthsQDimNum != batchSize),
-            OP_LOGE(fiaInfo.opName,
-                    "The size(%u) of actualSeqLengthQ is not equal to the batchSize(%u) of query. "
-                    "The size of actualSeqLengthQ must be equal to the batchSize of query when "
-                    "the layout of query is TND or NTD.", actualSeqLengthsQDimNum, batchSize),
-            return ge::GRAPH_FAILED);
+        if (actualSeqLengthsQDimNum != batchSize) {
+            std::string shapeStr = "actual_seq_lengths element nums: " + std::to_string(actualSeqLengthsQDimNum) +
+                ", batchSize: " + std::to_string(batchSize);
+            std::string reason = "The element nums of actual_seq_lengths(" +
+                std::to_string(actualSeqLengthsQDimNum) +
+                ") must be equal to the batchSize of query(" + std::to_string(batchSize) +
+                ") when the layout of query is TND or NTD";
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "actual_seq_lengths and query",
+                shapeStr.c_str(), reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
     } else {
         // query为非TND/NTD，actualSeqLengthsQ的长度为1或大于等于query的batch值
         if (actualSeqLengthsQDimNum != DIM_NUM_1 && actualSeqLengthsQDimNum < batchSize) {
@@ -92,12 +97,16 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenQData(const FiaTilingInfo 
             // 其值应为递增
             if (bIdx != 0U) {
                 int64_t lastSeqLengthData = actualSeqLengthsQTensor->GetData<int64_t>()[bIdx - 1];
-                OP_CHECK_IF((curSeqLengthData < lastSeqLengthData),
-                    OP_LOGE(fiaInfo.opName,
-                            "actualSeqLengthsQ[%u](%ld) < actualSeqLengthQ[%u](%ld). "
-                            "actualSeqLengthsQ must be increasing when the layout of query is "
-                            "TND or NTD.", bIdx, curSeqLengthData, bIdx - 1, lastSeqLengthData),
-                    return ge::GRAPH_FAILED);
+                if (curSeqLengthData < lastSeqLengthData) {
+                    std::string valueStr = "actual_seq_lengths[" + std::to_string(bIdx) + "]";
+                    std::string reason = "actual_seq_lengths[" + std::to_string(bIdx) + "](" +
+                        std::to_string(curSeqLengthData) + ") must be greater than or equal to actual_seq_lengths[" +
+                        std::to_string(bIdx - 1U) + "](" + std::to_string(lastSeqLengthData) +
+                        ") when the layout of query is TND or NTD";
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
+                        std::to_string(curSeqLengthData).c_str(), reason.c_str());
+                    return ge::GRAPH_FAILED;
+                }
             }
             // curSeqLengthData应为非负数
             if (curSeqLengthData < 0) {
@@ -119,13 +128,16 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenQData(const FiaTilingInfo 
             }
             int64_t curSeqLengthData = actualSeqLengthsQTensor->GetData<int64_t>()[i];
             // curSeqLengthData应不大于Q_S
-            OP_CHECK_IF(curSeqLengthData > sOfQuery,
-                OP_LOGE(fiaInfo.opName,
-                        "actualSeqLengthsQ[%u](%ld) is larger than Q_S(%ld). The elements of actualSeqLengthsQ should not "
-                        "be larger than Q_S when "
-                        "the layout of query is not TND/NTD.", i, curSeqLengthData, sOfQuery),
-                return ge::GRAPH_FAILED);
-            
+            if (curSeqLengthData > sOfQuery) {
+                std::string valueStr = "actual_seq_lengths[" + std::to_string(i) + "]";
+                std::string reason = "actual_seq_lengths[" + std::to_string(i) + "](" +
+                    std::to_string(curSeqLengthData) + ") must not be greater than Q_S(" +
+                    std::to_string(sOfQuery) + ") when the layout of query is not TND or NTD";
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
+                    std::to_string(curSeqLengthData).c_str(), reason.c_str());
+                return ge::GRAPH_FAILED;
+            }
+
             // curSeqLengthData应为非负数
             if (curSeqLengthData < 0) {
                 std::string valueStr = "actual_seq_lengths[" + std::to_string(i) + "]";
@@ -157,12 +169,17 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvDim(const FiaTilingInfo 
     FiaLayout qLayout = fiaInfo.qLayout;
     if (qLayout == FiaLayout::TND || qLayout == FiaLayout::NTD) {
         // key/value的layout为TND/NTD时，actualSeqLengthsKv的长度为batchSize
-        OP_CHECK_IF((actualSeqLengthsKvDimNum != batchSize),
-            OP_LOGE(fiaInfo.opName,
-                    "The size(%u) of actualSeqLengthsKv is not equal to the batchSize(%u). "
-                    "The size of actualSeqLengthsKv must be equal to the batchSize when "
-                    "the layout of key/value is TND or NTD.", actualSeqLengthsKvDimNum, batchSize),
-            return ge::GRAPH_FAILED);
+        if (actualSeqLengthsKvDimNum != batchSize) {
+            std::string shapeStr = "actual_seq_lengths_kv element nums: " + std::to_string(actualSeqLengthsKvDimNum) +
+                ", batchSize: " + std::to_string(batchSize);
+            std::string reason = "The element nums of actual_seq_lengths_kv(" +
+                std::to_string(actualSeqLengthsKvDimNum) +
+                ") must be equal to the batchSize of key and value(" + std::to_string(batchSize) +
+                ") when the layout of key and value is TND or NTD";
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "actual_seq_lengths_kv and key and value",
+                shapeStr.c_str(), reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
     } else {
         // key/value的layout为非TND/NTD，actualSeqLengthsKv的长度为1或大于等于batchSize
         if (actualSeqLengthsKvDimNum != DIM_NUM_1 && actualSeqLengthsKvDimNum < batchSize) {
@@ -201,12 +218,16 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvData(const FiaTilingInfo
             // 非page attention场景时，其值应为递增
             if (bIdx != 0) {
                 int64_t lastSeqLengthData = actualSeqLengthsKvTensor->GetData<int64_t>()[bIdx - 1];
-                OP_CHECK_IF((fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION && curSeqLengthData < lastSeqLengthData),
-                    OP_LOGE(fiaInfo.opName,
-                            "actualSeqLengthsKv[%ld](%ld) < actualSeqLengthsKv[%ld](%ld). "
-                            "actualSeqLengthsKv must be increasing when the layout of key/value is "
-                            "TND or NTD.", bIdx, curSeqLengthData, bIdx - 1, lastSeqLengthData),
-                    return ge::GRAPH_FAILED);
+                if (fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION && curSeqLengthData < lastSeqLengthData) {
+                    std::string valueStr = "actual_seq_lengths_kv[" + std::to_string(bIdx) + "]";
+                    std::string reason = "actual_seq_lengths_kv[" + std::to_string(bIdx) + "](" +
+                        std::to_string(curSeqLengthData) + ") must be greater than or equal to actual_seq_lengths_kv[" +
+                        std::to_string(bIdx - 1) + "](" + std::to_string(lastSeqLengthData) +
+                        ") when the layout of key and value is TND or NTD and page attention is not enabled";
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
+                        std::to_string(curSeqLengthData).c_str(), reason.c_str());
+                    return ge::GRAPH_FAILED;
+                }
             }
             // curSeqLengthData应为非负数
             if (curSeqLengthData < 0) {
@@ -267,20 +288,30 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenQTNDLastData(const FiaTili
     uint32_t actualSeqLengthsQDimNum = actualSeqLengthsQTensor->GetShapeSize();
     int64_t actualSeqLengthsQLastData = actualSeqLengthsQTensor->GetData<int64_t>()[actualSeqLengthsQDimNum - 1];
     if (fiaInfo.qLayout == FiaLayout::TND) {
-        OP_CHECK_IF(actualSeqLengthsQLastData != queryShape.GetDim(DIM_NUM_0),
-            OP_LOGE(fiaInfo.opName,
-                    "The last element(%ld) of actualSeqLengthsQ is not equal to the T(%ld) of query. "
-                    "The last element of actualSeqLengthsQ must be equal to the T of query when "
-                    "the layout of query is TND.", actualSeqLengthsQLastData, queryShape.GetDim(DIM_NUM_0)),
-            return ge::GRAPH_FAILED);
+        if (actualSeqLengthsQLastData != queryShape.GetDim(DIM_NUM_0)) {
+            int64_t queryT = queryShape.GetDim(DIM_NUM_0);
+            std::string valueStr = "actual_seq_lengths last element";
+            std::string reason = "The last element of actual_seq_lengths(" +
+                std::to_string(actualSeqLengthsQLastData) +
+                ") must be equal to the T of query(" + std::to_string(queryT) +
+                ") when the layout of query is TND";
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
+                std::to_string(actualSeqLengthsQLastData).c_str(), reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     if (fiaInfo.qLayout == FiaLayout::NTD) {
-        OP_CHECK_IF(actualSeqLengthsQLastData != queryShape.GetDim(DIM_NUM_1),
-            OP_LOGE(fiaInfo.opName,
-                    "The last element(%ld) of actualSeqLengthsQ is not equal to the T(%ld) of query. "
-                    "The last element of actualSeqLengthsQ must be equal to the T of query when "
-                    "the layout of query is NTD.", actualSeqLengthsQLastData, queryShape.GetDim(DIM_NUM_1)),
-            return ge::GRAPH_FAILED);
+        if (actualSeqLengthsQLastData != queryShape.GetDim(DIM_NUM_1)) {
+            int64_t queryT = queryShape.GetDim(DIM_NUM_1);
+            std::string valueStr = "actual_seq_lengths last element";
+            std::string reason = "The last element of actual_seq_lengths(" +
+                std::to_string(actualSeqLengthsQLastData) +
+                ") must be equal to the T of query(" + std::to_string(queryT) +
+                ") when the layout of query is NTD";
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
+                std::to_string(actualSeqLengthsQLastData).c_str(), reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -305,20 +336,30 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenKvTNDLastData(const FiaTil
     uint32_t actualSeqLengthsKvDimNum = actualSeqLengthsKvTensor->GetShapeSize();
     int64_t actualSeqLengthsKvLastData = actualSeqLengthsKvTensor->GetData<int64_t>()[actualSeqLengthsKvDimNum - 1];
     if (fiaInfo.kvLayout == FiaLayout::TND) {
-        OP_CHECK_IF(actualSeqLengthsKvLastData != keyShape.GetDim(DIM_NUM_0),
-            OP_LOGE(fiaInfo.opName,
-                    "The last element(%ld) of actualSeqLengthsKv is not equal to the T(%ld) of "
-                    "key/value. The last element of actualSeqLengthsKv must be equal to the T of key/value "
-                    "when the layout of key/value is TND.", actualSeqLengthsKvLastData, keyShape.GetDim(DIM_NUM_0)),
-            return ge::GRAPH_FAILED);
+        if (actualSeqLengthsKvLastData != keyShape.GetDim(DIM_NUM_0)) {
+            int64_t keyT = keyShape.GetDim(DIM_NUM_0);
+            std::string valueStr = "actual_seq_lengths_kv last element";
+            std::string reason = "The last element of actual_seq_lengths_kv(" +
+                std::to_string(actualSeqLengthsKvLastData) +
+                ") must be equal to the T of key and value(" + std::to_string(keyT) +
+                ") when the layout of key and value is TND";
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
+                std::to_string(actualSeqLengthsKvLastData).c_str(), reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     if (fiaInfo.kvLayout == FiaLayout::NTD) {
-        OP_CHECK_IF(actualSeqLengthsKvLastData != keyShape.GetDim(DIM_NUM_1),
-            OP_LOGE(fiaInfo.opName,
-                    "The last element(%ld) of actualSeqLengthsKv is not equal to the T(%ld) of "
-                    "key/value. The last element of actualSeqLengthsKv must be equal to the T of key/value "
-                    "when the layout of key/value is NTD.", actualSeqLengthsKvLastData, keyShape.GetDim(DIM_NUM_1)),
-            return ge::GRAPH_FAILED);
+        if (actualSeqLengthsKvLastData != keyShape.GetDim(DIM_NUM_1)) {
+            int64_t keyT = keyShape.GetDim(DIM_NUM_1);
+            std::string valueStr = "actual_seq_lengths_kv last element";
+            std::string reason = "The last element of actual_seq_lengths_kv(" +
+                std::to_string(actualSeqLengthsKvLastData) +
+                ") must be equal to the T of key and value(" + std::to_string(keyT) +
+                ") when the layout of key and value is NTD";
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, valueStr.c_str(),
+                std::to_string(actualSeqLengthsKvLastData).c_str(), reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -360,35 +401,6 @@ ge::graphStatus ActualSeqLenChecker::CheckExistenceActualSeqLenKv(const FiaTilin
 }
 
 // feature
-ge::graphStatus ActualSeqLenChecker::CheckFeatureAlibi(const FiaTilingInfo &fiaInfo)
-{
-    // tiling下沉场景，则放弃后续校验
-    if (fiaInfo.isMaxWorkspace) {
-        return ge::GRAPH_SUCCESS;
-    }
-    // 使能alibi pse时，query和key每个batch的seqlength需要相等
-    int64_t actualSeqLengthsQData = 0;
-    int64_t actualSeqLengthsKvData = 0;
-    uint32_t batchSize = fiaInfo.bSize;
-    if (fiaInfo.enableAlibiPse) {
-        for (uint32_t bIdx = 0; bIdx < batchSize; bIdx++) {
-            actualSeqLengthsQData = GetActualSeqLengthsQData(fiaInfo, bIdx);
-            actualSeqLengthsKvData = GetActualSeqLengthsKvData(fiaInfo, bIdx);
-            if (actualSeqLengthsQData != actualSeqLengthsKvData) {
-                std::string attrName = "actualSeqLengthsQ[" + std::to_string(bIdx) +
-                    "] and actualSeqLengthsKvData[" + std::to_string(bIdx) + "]";
-                std::string valueStr = std::to_string(actualSeqLengthsQData) + " and " +
-                    std::to_string(actualSeqLengthsKvData);
-                std::string reason = attrName + " must be the same when pseType is 2 or 3";
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, attrName.c_str(),
-                    valueStr.c_str(), reason.c_str());
-                return ge::GRAPH_FAILED;
-            }
-        }
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus ActualSeqLenChecker::CheckFeatureIFAMLA(const FiaTilingInfo &fiaInfo)
 {
     auto &actualSeqLengthsQTensor = fiaInfo.opParamInfo.actualSeqLengthsQ.tensor;
@@ -402,67 +414,6 @@ ge::graphStatus ActualSeqLenChecker::CheckFeatureIFAMLA(const FiaTilingInfo &fia
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
-}
-
-// general
-int64_t ActualSeqLenChecker::GetActualSeqLengthsQData(const FiaTilingInfo &fiaInfo, uint32_t bIdx)
-{
-    // tiling下沉场景，则放弃后续校验
-    if (fiaInfo.isMaxWorkspace) {
-        return ge::GRAPH_SUCCESS;
-    }
-    // 获取bIdx对应batch的query的seqLength
-    int64_t actualSeqLengthsQData = 0;
-    auto &actualSeqLengthsQTensor = fiaInfo.opParamInfo.actualSeqLengthsQ.tensor;
-    if (fiaInfo.isAccumQSeq) {
-        // actualSeqLengths为累加形式
-        if (bIdx == 0U) {
-            actualSeqLengthsQData = actualSeqLengthsQTensor->GetData<int64_t>()[0];
-        } else {
-            actualSeqLengthsQData = actualSeqLengthsQTensor->GetData<int64_t>()[bIdx] -
-                                    actualSeqLengthsQTensor->GetData<int64_t>()[bIdx - 1];
-        }
-    } else {
-        // 非累加形式
-        if (actualSeqLengthsQTensor != nullptr) {
-            int64_t actSeqLenDims = actualSeqLengthsQTensor->GetShapeSize();
-            actualSeqLengthsQData = actSeqLenDims > 1 ? actualSeqLengthsQTensor->GetData<int64_t>()[bIdx] :
-                                    actualSeqLengthsQTensor->GetData<int64_t>()[0];
-        } else {
-            actualSeqLengthsQData = fiaInfo.s1Size;
-        }
-    }
-    return actualSeqLengthsQData;
-}
-
-int64_t ActualSeqLenChecker::GetActualSeqLengthsKvData(const FiaTilingInfo &fiaInfo, uint32_t bIdx)
-{
-    // tiling下沉场景，则放弃后续校验
-    if (fiaInfo.isMaxWorkspace) {
-        return ge::GRAPH_SUCCESS;
-    }
-    // 获取bIdx对应batch的key和value的seqLength
-    int64_t actualSeqLengthsKvData = 0;
-    auto &actualSeqLengthsKvTensor = fiaInfo.opParamInfo.actualSeqLengths.tensor;
-    if (fiaInfo.isAccumKVSeq) {
-        // actualSeqLengths为累加形式
-        if (bIdx == 0U) {
-            actualSeqLengthsKvData = actualSeqLengthsKvTensor->GetData<int64_t>()[0];
-        } else {
-            actualSeqLengthsKvData = actualSeqLengthsKvTensor->GetData<int64_t>()[bIdx] -
-                                     actualSeqLengthsKvTensor->GetData<int64_t>()[bIdx - 1];
-        }
-    } else {
-        // 非累加形式
-        if (actualSeqLengthsKvTensor != nullptr) {
-            int64_t actSeqLenKVDims = actualSeqLengthsKvTensor->GetShapeSize();
-            actualSeqLengthsKvData = actSeqLenKVDims > 1 ? actualSeqLengthsKvTensor->GetData<int64_t>()[bIdx]:
-                                     actualSeqLengthsKvTensor->GetData<int64_t>()[0];
-        } else {
-            actualSeqLengthsKvData = fiaInfo.s2Size;
-        }
-    }
-    return actualSeqLengthsKvData;
 }
 
 ge::graphStatus ActualSeqLenChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
@@ -489,10 +440,6 @@ ge::graphStatus ActualSeqLenChecker::CheckParaExistence(const FiaTilingInfo &fia
 
 ge::graphStatus ActualSeqLenChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 {
-    if (ge::GRAPH_SUCCESS != CheckFeatureAlibi(fiaInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-
     if (enableFullQuant_) {
         if (ge::GRAPH_SUCCESS != CheckFeatureIFAMLA(fiaInfo)) {
             return ge::GRAPH_FAILED;

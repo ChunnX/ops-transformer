@@ -9,8 +9,8 @@
 # -----------------------------------------------------------------------------------------------------------
 
 cmake_minimum_required(VERSION 3.16)
-find_package(ASC REQUIRED) 
-find_package(AICPU REQUIRED) 
+find_package(ASC REQUIRED)
+find_package(AICPU REQUIRED)
 set(PKG_NAME AscendOps)
 project(${PKG_NAME} LANGUAGES ASC AICPU CXX VERSION 1.0.0)
 
@@ -26,8 +26,8 @@ include(cmake/torch_npu.cmake)
 include(cmake/func.cmake)
 include(../../cmake/third_party/opbase.cmake)
 
-# set NPU architecture, default to ascend910b
-set(NPU_ARCH "ascend910b" CACHE STRING "NPU architecture")
+# set NPU SOC version, default to ascend910b
+set(NPU_SOC_VERSION "ascend910b" CACHE STRING "NPU SOC version")
 # set EXTENSION_MODULE_NAME to `ascend_ops`
 set(EXTENSION_MODULE_NAME "ascend_ops" CACHE STRING "Extension module name")
 

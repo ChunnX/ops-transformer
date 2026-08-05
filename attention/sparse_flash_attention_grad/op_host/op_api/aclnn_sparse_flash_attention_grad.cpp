@@ -27,7 +27,7 @@ extern aclnnStatus aclnnInnerSparseFlashAttentionGradGetWorkspaceSize(
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerSparseFlashAttentionGrad(void *workspace, uint64_t workspaceSize,
-                                                      aclOpExecutor *executor, const aclrtStream stream);
+                                                      aclOpExecutor *executor, aclrtStream stream);
 
 aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor *query,
@@ -65,7 +65,7 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
 }
 
 aclnnStatus aclnnSparseFlashAttentionGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                          const aclrtStream stream)
+                                          aclrtStream stream)
 {
     return aclnnInnerSparseFlashAttentionGrad(workspace, workspaceSize, executor, stream);
 }

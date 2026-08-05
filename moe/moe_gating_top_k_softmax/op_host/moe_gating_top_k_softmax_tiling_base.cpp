@@ -47,19 +47,25 @@ ge::graphStatus MoeGatingTopKSoftmaxBaseTiling::CheckOutShape(const gert::Shape&
 {
     OP_CHECK_IF(
         (outShape.GetDimNum() != gatingShape.GetDimNum()),
-        OP_LOGE(
-            context_->GetNodeName(), "Tiling4MoeGatingTopKSoftmax out and x shape num not equal, please check."),
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(
+            context_->GetNodeName(), "out and x",
+            (std::to_string(outShape.GetDimNum()) + " and " + std::to_string(gatingShape.GetDimNum())).c_str(),
+            "The dim number of output should be the same as input x"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         (outShape.GetDim(0) != gatingShape.GetDim(0)),
-        OP_LOGE(
-            context_->GetNodeName(), "Tiling4MoeGatingTopKSoftmax out and x dim 1 not equal, please check."),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+            context_->GetNodeName(), "out and x",
+            (Ops::Base::ToString(outShape) + " and " + Ops::Base::ToString(gatingShape)).c_str(),
+            "The dim 0 of output should be the same as input x"),
         return ge::GRAPH_FAILED);
     if (gatingShape.GetDimNum() == 3U) {
         OP_CHECK_IF(
             (outShape.GetDim(1) != gatingShape.GetDim(1)),
-            OP_LOGE(
-                context_->GetNodeName(), "Tiling4MoeGatingTopKSoftmax out and x dim 2 not equal, please check."),
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                context_->GetNodeName(), "out and x",
+                (Ops::Base::ToString(outShape) + " and " + Ops::Base::ToString(gatingShape)).c_str(),
+                "The dim 1 of output should be the same as input x"),
             return ge::GRAPH_FAILED);
     }
     return ge::SUCCESS;
@@ -73,21 +79,21 @@ ge::graphStatus MoeGatingTopKSoftmaxBaseTiling::GetShapeAttrsInfo()
     auto gatingShape = context_->GetInputShape(0)->GetStorageShape();
     OP_CHECK_IF(
         (gatingShape.GetDimNum() != 2U && gatingShape.GetDimNum() != 3U),
-        OP_LOGE(
-            context_->GetNodeName(), "Tiling4MoeGatingTopKSoftmax get x shape dim(=%zu) is not 2 or 3, please check.",
-            gatingShape.GetDimNum()),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(
+            context_->GetNodeName(), "x", std::to_string(gatingShape.GetDimNum()).c_str(), "2 or 3"),
         return ge::GRAPH_FAILED);
     for (size_t i = 0; i < gatingShape.GetDimNum(); i++) {
         OP_CHECK_IF(
             (gatingShape.GetDim(i) == 0),
-            OP_LOGE(
-                context_->GetNodeName(), "Tiling4MoeGatingTopKSoftmax x shape contain zero, please check."),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                context_->GetNodeName(), "x", Ops::Base::ToString(gatingShape).c_str(),
+                "Input x shape should not contain zero."),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             (gatingShape.GetDim(i) > MAX_INT32),
-            OP_LOGE(
-                context_->GetNodeName(), "Tiling4MoeGatingTopKSoftmax x shape larger than (=%u), please check.",
-                MAX_INT32),
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                context_->GetNodeName(), "x", Ops::Base::ToString(gatingShape).c_str(),
+                ("Each dim of input x should be no greater than " + std::to_string(MAX_INT32)).c_str()),
             return ge::GRAPH_FAILED);
     }
 
@@ -97,23 +103,23 @@ ge::graphStatus MoeGatingTopKSoftmaxBaseTiling::GetShapeAttrsInfo()
         auto finishDtype = context_->GetOptionalInputDesc(1)->GetDataType();
         OP_CHECK_IF(
             (finishDtype != ge::DataType::DT_BOOL),
-            OP_LOGE(
-                context_->GetNodeName(),
-                "Tiling4MoeGatingTopKSoftmax get finish type error, should be BOOL, please check."),
+            OP_LOGE_FOR_INVALID_DTYPE(
+                context_->GetNodeName(), "finished", Ops::Base::ToString(finishDtype).c_str(), "BOOL"),
             return ge::GRAPH_FAILED);
         auto finishedShape = finished->GetStorageShape();
         OP_CHECK_IF(
             (finishedShape.GetDimNum() != gatingShape.GetDimNum() - 1),
-            OP_LOGE(
-                context_->GetNodeName(),
-                "Tiling4MoeGatingTopKSoftmax get finish dim num (=%zu) error, should be (=%zu), please check.",
-                finishedShape.GetDimNum(), gatingShape.GetDimNum() - 1),
+            OP_LOGE_FOR_INVALID_SHAPEDIM(
+                context_->GetNodeName(), "finished", std::to_string(finishedShape.GetDimNum()).c_str(),
+                std::to_string(gatingShape.GetDimNum() - 1).c_str()),
             return ge::GRAPH_FAILED);
         for (size_t i = 0; i < gatingShape.GetDimNum() - 1; i++) {
             OP_CHECK_IF(
                 (finishedShape.GetDim(i) != gatingShape.GetDim(i)),
-                OP_LOGE(
-                    context_->GetNodeName(), "Tiling4MoeGatingTopKSoftmax finish and x shape not equal, please check."),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
+                    context_->GetNodeName(), "finished and x",
+                    (Ops::Base::ToString(finishedShape) + " and " + Ops::Base::ToString(gatingShape)).c_str(),
+                    "The shape of finished should be the same as input x except the last dim"),
                 return ge::GRAPH_FAILED);
         }
     }
@@ -148,13 +154,15 @@ ge::graphStatus MoeGatingTopKSoftmaxBaseTiling::GetShapeAttrsInfo()
     k = *kPtr;
     OP_CHECK_IF(
         (k <= 0 || k > col),
-        OP_LOGE(
-            context_->GetNodeName(), "Tiling4MoeGatingTopKSoftmax attr k(=%ld) is wrong, please check. col=%u", k, col),
+        OP_LOGE_WITH_INVALID_ATTR(
+            context_->GetNodeName(), "k", std::to_string(k).c_str(),
+            ("greater than 0 and less than or equal to " + std::to_string(col)).c_str()),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(
         (k > MAX_K),
-        OP_LOGE(
-            context_->GetNodeName(), "Tiling4MoeGatingTopKSoftmax attr k(=%ld) is too large, please check.", k),
+        OP_LOGE_WITH_INVALID_ATTR(
+            context_->GetNodeName(), "k", std::to_string(k).c_str(),
+            ("less than or equal to " + std::to_string(MAX_K)).c_str()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

@@ -17,25 +17,25 @@
 
 计算公式：
   tokens\_num为routingMap的第0维大小，expert\_num为routingMap的第1维大小。
- 
+
  1.dropAndPad为`false`时：
-  
+
   $$
   expertIndex=arrange(tokens\_num).expand(expert\_num,-1)
   $$
-  
+
   $$
   sortedIndicesFirst=expertIndex.maskedselect(routingMap.T)
   $$
-  
+
   $$
   sortedIndicesOut=argsort(sortedIndicesFirst)
   $$
-    
+
   $$
   topK = numOutTokens // tokens\_num
   $$
-  
+
   $$
   outToken = topK * tokens\_num
   $$
@@ -43,11 +43,11 @@
   $$
   permutedTokensOut[sortedIndicesOut[i]]=tokens[i//topK]
   $$
-  
+
   $$
   permuteProbsOutOptional=probsOptional.T.maskedselect(routingMap.T)
   $$
-  
+
 2.dropAndPad为`true`时：
 
   $$
@@ -61,29 +61,29 @@
   $$
   sortedIndicesOut = argsort(routingMap.T,dim=-1)[:, :capacity]
   $$
-  
+
   $$
   permutedTokensOut = tokens.index_select(0, sortedIndicesOut)
   $$
-  
-- 如果probsOptional不是`none`时：
-  
+
+- 如果probsOptional不是`None`时：
+
   $$
   probs\_T\_1D = probsOptional.T.view(-1)
   $$
-  
+
   $$
   indices\_dim0 = arange(expert\_num)
   $$
-  
+
   $$
   indices\_dim1 = sortedIndicesOut.view(expert\_num, capacity)
   $$
-  
+
   $$
   indices\_1D = (indices_dim0 * tokens\_num + indices\_dim1).view(-1)
   $$
-  
+
   $$
   permuteProbsOutOptional = probs\_T\_1D.index_select(0, indices_1D)
   $$
@@ -146,7 +146,7 @@
   <tr>
    <td>sortedIndicesOut</td>
    <td>输出</td>
-   <td>公式中的sortedIndicesOut，permute_tokens和tokens的映射关系。</td>
+   <td>公式中的sortedIndicesOut，permutedTokensOut和tokens的映射关系。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
@@ -163,7 +163,7 @@
 
  - tokens_num和expert_num要求小于`16777215`。
  - pad模式为false时routingMap中每行为1或true的个数固定且小于`512`。
- 
+
 ## 调用说明
 
 | 调用方式  | 样例代码                                  | 说明                                                     |

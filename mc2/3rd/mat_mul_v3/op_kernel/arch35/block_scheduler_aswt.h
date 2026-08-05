@@ -25,11 +25,7 @@ namespace Act {
 namespace Gemm {
 namespace Block {
 constexpr static uint16_t B_FULL_LOAD_MODE = 2;
-template <
-    class ProblemShape_,
-    class L1TileShape_,
-    class L0TileShape_
->
+template <class ProblemShape_, class L1TileShape_, class L0TileShape_>
 class Mc2BlockSchedulerAswtBuiltIn {
 public:
     int64_t mTileNum_{0};
@@ -80,15 +76,16 @@ public:
     using ProblemShape = ProblemShape_;
 
     struct Params {
-        const Mc2MatMulV3BasicTilingData* tilingData;
+        const Mc2MatMulV3BasicTilingData *tilingData;
     };
 
     struct BatchMatMulParams {
-        const Mc2BatchMatMulV3BasicTilingData* tilingData;
+        const Mc2BatchMatMulV3BasicTilingData *tilingData;
     };
+
 public:
-    __aicore__ inline Mc2BlockSchedulerAswtBuiltIn(
-        const ProblemShape& shape, int64_t blockIdx, int64_t blockNum, const Params& params)
+    __aicore__ inline Mc2BlockSchedulerAswtBuiltIn(const ProblemShape &shape, int64_t blockIdx, int64_t blockNum,
+                                                   const Params &params)
         : blockIdx_(blockIdx), blockNum_(blockNum)
     {
         k_ = shape.k;
@@ -160,11 +157,13 @@ public:
         return ubDB_ > 1;
     }
 
-    __aicore__ inline Shape<int64_t, int64_t, int64_t, int64_t> GetTileL1Shape() {
+    __aicore__ inline Shape<int64_t, int64_t, int64_t, int64_t> GetTileL1Shape()
+    {
         return {mL1_, nL1_, kL1_, 1};
     }
 
-    __aicore__ inline Shape<int64_t, int64_t, int64_t, int64_t> GetTileL0Shape() {
+    __aicore__ inline Shape<int64_t, int64_t, int64_t, int64_t> GetTileL0Shape()
+    {
         return {baseM_, baseN_, baseK_, 1};
     }
 
@@ -233,8 +232,8 @@ public:
         }
         splitBlkM = AscendC::Std::min(blkM - mSplitOffset_, splitBlkM);
         splitBlkN = AscendC::Std::min(blkN - nSplitOffset_, splitBlkN);
-        return {splitBlkM, splitBlkN, k_, batch_, splitBlkM,
-                AscendC::Std::min(AscendC::Std::min(baseN_, splitBlkN), splitBlkN - nOffset)};
+        return {splitBlkM, splitBlkN, k_,
+                batch_,    splitBlkM, AscendC::Std::min(AscendC::Std::min(baseN_, splitBlkN), splitBlkN - nOffset)};
     }
 
     __aicore__ inline BlockCoord GetBlockCoord(int tileIdx)
@@ -283,38 +282,16 @@ private:
     }
 };
 
-template <
-    class ProblemShape_,
-    class L1TileShape_,
-    class L0TileShape_,
-    bool TransA_,
-    bool TransB_>
-struct BlockSchedulerSelector<
-    ProblemShape_,
-    L1TileShape_,
-    L0TileShape_,
-    Act::Gemm::BuiltInAswtScheduler<>,
-    TransA_,
-    TransB_
-> {
-  using SchedulerOp = Mc2BlockSchedulerAswtBuiltIn<ProblemShape_, L1TileShape_, L0TileShape_>;
+template <class ProblemShape_, class L1TileShape_, class L0TileShape_, bool TransA_, bool TransB_>
+struct BlockSchedulerSelector<ProblemShape_, L1TileShape_, L0TileShape_, Act::Gemm::BuiltInAswtScheduler<>, TransA_,
+                              TransB_> {
+    using SchedulerOp = Mc2BlockSchedulerAswtBuiltIn<ProblemShape_, L1TileShape_, L0TileShape_>;
 };
 
-template <
-    class ProblemShape_,
-    class L1TileShape_,
-    class L0TileShape_,
-    bool TransA_,
-    bool TransB_>
-struct BlockSchedulerSelector<
-    ProblemShape_,
-    L1TileShape_,
-    L0TileShape_,
-    Act::Gemm::BuiltInAswtScheduler<B_FULL_LOAD_MODE>,
-    TransA_,
-    TransB_
-> {
-  using SchedulerOp = Mc2BlockSchedulerAswtBuiltIn<ProblemShape_, L1TileShape_, L0TileShape_>;
+template <class ProblemShape_, class L1TileShape_, class L0TileShape_, bool TransA_, bool TransB_>
+struct BlockSchedulerSelector<ProblemShape_, L1TileShape_, L0TileShape_,
+                              Act::Gemm::BuiltInAswtScheduler<B_FULL_LOAD_MODE>, TransA_, TransB_> {
+    using SchedulerOp = Mc2BlockSchedulerAswtBuiltIn<ProblemShape_, L1TileShape_, L0TileShape_>;
 };
 
 } // namespace Block

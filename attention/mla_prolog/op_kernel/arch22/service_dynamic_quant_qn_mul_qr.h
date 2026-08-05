@@ -20,65 +20,6 @@
 #include "mla_prolog_vector_comm.h"
 
 namespace MlaProlog {
-
-template <typename T, typename C, typename O>
-__aicore__ inline void DynamicQuantMultiRow(const GlobalTensor<O> &outputGm, const LocalTensor<C> &scaleOutputLocal,
-                                            const GlobalTensor<T> &inputGm, const LocalTensor<C> outputLocal,
-                                            const LocalTensor<T> &inputHalf, const LocalTensor<C> &inputLocal,
-                                            const LocalTensor<C> &maxInt8Tensor, const LocalTensor<uint8_t> &shareTmpUb,
-                                            uint64_t row, uint64_t col, uint64_t subRow, uint64_t queryOutStride,
-                                            uint32_t DYNAMIC_QUANT_INPUT_READY, uint32_t DYNAMIC_QUANT_OUTPUT_READY)
-{
-    constexpr uint64_t inputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(T));
-    constexpr uint64_t outputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(O));
-    // DataCopyParams  : count len srcStrideIn dstStrideIn
-    DataCopyParams outParams{(uint16_t)subRow, (uint16_t)(col / outputBlockAlign), 0,
-                             (uint16_t)((queryOutStride - col) / outputBlockAlign)};
-    DataCopyParams inputParams{(uint16_t)subRow, (uint16_t)(col / inputBlockAlign),
-                               (uint16_t)((queryOutStride - col) / inputBlockAlign), 0};
-
-    uint32_t computeSize = subRow * col;
-    uint64_t loopCnt = CeilDivT(row, subRow);
-    uint64_t lastSubRow = row - (loopCnt - 1) * subRow;
-    uint64_t inputGmOffset = 0;
-    uint64_t scaleOffset = 0;
-
-    for (uint64_t loopIdx = 0; loopIdx < loopCnt; loopIdx++) {
-        if ((loopIdx == loopCnt - 1) && (lastSubRow != subRow)) {
-            subRow = lastSubRow;
-            computeSize = subRow * col;
-            outParams.blockCount = subRow;
-            inputParams.blockCount = subRow;
-        }
-
-        WaitFlag<HardEvent::V_MTE2>(DYNAMIC_QUANT_INPUT_READY); // 计算是否已经完成可以搬运
-        DataCopy(inputHalf, inputGm[inputGmOffset], inputParams);
-        SetFlag<HardEvent::MTE2_V>(DYNAMIC_QUANT_INPUT_READY);
-        WaitFlag<HardEvent::MTE2_V>(DYNAMIC_QUANT_INPUT_READY); // 搬运是否已经完成可以计算
-
-        Cast(inputLocal, inputHalf, RoundMode::CAST_NONE, computeSize);
-        SetFlag<HardEvent::V_MTE2>(DYNAMIC_QUANT_INPUT_READY);
-        AscendC::PipeBarrier<PIPE_V>();
-        DynamicQuant(inputLocal, scaleOutputLocal[scaleOffset], inputLocal, maxInt8Tensor, shareTmpUb, subRow, col);
-        AscendC::PipeBarrier<PIPE_V>();
-        // float -> half -> int
-        WaitFlag<HardEvent::MTE3_V>(DYNAMIC_QUANT_OUTPUT_READY); // 搬运是否已经完成可以计算
-        LocalTensor<half> tmpf16Ub = outputLocal.template ReinterpretCast<half>();
-        Cast(tmpf16Ub, inputLocal, AscendC::RoundMode::CAST_ROUND, computeSize);
-        AscendC::PipeBarrier<PIPE_V>();
-        // Calc: out = round(x / scaleOut)
-        LocalTensor<O> tmpMMResCastTensor = outputLocal.template ReinterpretCast<O>();
-        Cast(tmpMMResCastTensor, tmpf16Ub, AscendC::RoundMode::CAST_ROUND, computeSize);
-        SetFlag<HardEvent::V_MTE3>(DYNAMIC_QUANT_OUTPUT_READY);
-        WaitFlag<HardEvent::V_MTE3>(DYNAMIC_QUANT_OUTPUT_READY); // 计算是否已经完成可以搬运
-
-        DataCopy(outputGm[inputGmOffset], tmpMMResCastTensor, outParams);
-        SetFlag<HardEvent::MTE3_V>(DYNAMIC_QUANT_OUTPUT_READY);
-        inputGmOffset += subRow * queryOutStride;
-        scaleOffset += subRow;
-    }
-}
-
 template <typename T, typename C>
 __aicore__ inline void
 MulQr(const GlobalTensor<T> &outputGmRope, const GlobalTensor<T> &inputGmRope, LocalTensor<T> outputLocalRope,
@@ -86,8 +27,8 @@ MulQr(const GlobalTensor<T> &outputGmRope, const GlobalTensor<T> &inputGmRope, L
       const LocalTensor<C> &dequantScaleBrcbLocal, uint64_t row, uint64_t colRope, uint64_t subRowRope,
       uint64_t qrOutputStrideRope, float quantScaleCkvRope, uint32_t MUL_QR_INPUT_COPY_READY, uint32_t MUL_QR)
 {
-    constexpr uint64_t inputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(T));
     constexpr uint64_t computeBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(C));
+    constexpr uint64_t inputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(T));
 
     uint64_t loopCntRope = CeilDivT(row, subRowRope);
     uint64_t lastSubRowRope = row - (loopCntRope - 1) * subRowRope;
@@ -104,7 +45,7 @@ MulQr(const GlobalTensor<T> &outputGmRope, const GlobalTensor<T> &inputGmRope, L
     uint64_t inputLocalRopeOffset = 0;
 
 
-    WaitFlag<HardEvent::V_MTE2>(MUL_QR_INPUT_COPY_READY);
+    AscendC::WaitFlag<HardEvent::V_MTE2>(MUL_QR_INPUT_COPY_READY);
     DataCopy(qrInputLocal, inputGmRope, inputParamsRope);
     for (uint64_t loopIdx = 0; loopIdx < loopCntRope; loopIdx++) {
         if (loopIdx == (loopCntRope - 1) && subRowRope != lastSubRowRope) {
@@ -112,11 +53,11 @@ MulQr(const GlobalTensor<T> &outputGmRope, const GlobalTensor<T> &inputGmRope, L
             computeSizeRope = subRowRope * colRope;
             outputParamsRope.blockCount = subRowRope;
         }
-        SetFlag<HardEvent::MTE3_V>(MUL_QR);
-        WaitFlag<HardEvent::MTE3_V>(MUL_QR);
+        AscendC::SetFlag<HardEvent::MTE3_V>(MUL_QR);
+        AscendC::WaitFlag<HardEvent::MTE3_V>(MUL_QR);
 
-        SetFlag<HardEvent::MTE2_V>(MUL_QR);
-        WaitFlag<HardEvent::MTE2_V>(MUL_QR);
+        AscendC::SetFlag<HardEvent::MTE2_V>(MUL_QR);
+        AscendC::WaitFlag<HardEvent::MTE2_V>(MUL_QR);
 
         Cast(qrFp32Local, qrInputLocal[inputLocalRopeOffset], RoundMode::CAST_NONE, computeSizeRope);
         AscendC::PipeBarrier<PIPE_V>();
@@ -133,16 +74,75 @@ MulQr(const GlobalTensor<T> &outputGmRope, const GlobalTensor<T> &inputGmRope, L
         Cast(outputLocalRope, qrFp32Local, RoundMode::CAST_RINT, computeSizeRope);
         AscendC::PipeBarrier<PIPE_V>();
 
-        SetFlag<HardEvent::V_MTE3>(MUL_QR);
-        WaitFlag<HardEvent::V_MTE3>(MUL_QR);
+        AscendC::SetFlag<HardEvent::V_MTE3>(MUL_QR);
+        AscendC::WaitFlag<HardEvent::V_MTE3>(MUL_QR);
 
         DataCopy(outputGmRope[inputGmRopeOffset], outputLocalRope, outputParamsRope);
         inputLocalRopeOffset += subRowRope * colRope;
         inputGmRopeOffset += subRowRope * qrOutputStrideRope;
         dequantScaleOffset += subRowRope * computeBlockAlign;
     }
-    SetFlag<HardEvent::V_MTE2>(MUL_QR_INPUT_COPY_READY);
+    AscendC::SetFlag<HardEvent::V_MTE2>(MUL_QR_INPUT_COPY_READY);
 }
+
+template <typename T, typename C, typename O>
+__aicore__ inline void DynamicQuantMultiRow(const GlobalTensor<O> &outputGm, const LocalTensor<C> &scaleOutputLocal,
+                                            const GlobalTensor<T> &inputGm, const LocalTensor<C> outputLocal,
+                                            const LocalTensor<T> &inputHalf, const LocalTensor<C> &inputLocal,
+                                            const LocalTensor<C> &maxInt8Tensor, const LocalTensor<uint8_t> &shareTmpUb,
+                                            uint64_t row, uint64_t col, uint64_t subRow, uint64_t queryOutStride,
+                                            uint32_t DYNAMIC_QUANT_INPUT_READY, uint32_t DYNAMIC_QUANT_OUTPUT_READY)
+{
+    constexpr uint64_t outputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(O));
+    constexpr uint64_t inputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(T));
+    // DataCopyParams  : count len srcStrideIn dstStrideIn
+    DataCopyParams outParams{(uint16_t)subRow, (uint16_t)(col / outputBlockAlign), 0,
+                             (uint16_t)((queryOutStride - col) / outputBlockAlign)};
+    DataCopyParams inputParams{(uint16_t)subRow, (uint16_t)(col / inputBlockAlign),
+                               (uint16_t)((queryOutStride - col) / inputBlockAlign), 0};
+
+    uint32_t computeSize = col * subRow;
+    uint64_t loopCnt = CeilDivT(row, subRow);
+    uint64_t lastSubRow = row - (loopCnt - 1) * subRow;
+    uint64_t inputGmOffset = 0;
+    uint64_t scaleOffset = 0;
+
+    for (uint64_t loopIdx = 0; loopIdx < loopCnt; loopIdx++) {
+        if ((loopIdx == loopCnt - 1) && (lastSubRow != subRow)) {
+            subRow = lastSubRow;
+            computeSize = col * subRow;
+            outParams.blockCount = subRow;
+            inputParams.blockCount = subRow;
+        }
+
+        AscendC::WaitFlag<HardEvent::V_MTE2>(DYNAMIC_QUANT_INPUT_READY); // 计算是否已经完成可以搬运
+        DataCopy(inputHalf, inputGm[inputGmOffset], inputParams);
+        AscendC::SetFlag<HardEvent::MTE2_V>(DYNAMIC_QUANT_INPUT_READY);
+        AscendC::WaitFlag<HardEvent::MTE2_V>(DYNAMIC_QUANT_INPUT_READY); // 搬运是否已经完成可以计算
+
+        Cast(inputLocal, inputHalf, RoundMode::CAST_NONE, computeSize);
+        AscendC::SetFlag<HardEvent::V_MTE2>(DYNAMIC_QUANT_INPUT_READY);
+        AscendC::PipeBarrier<PIPE_V>();
+        DynamicQuant(inputLocal, scaleOutputLocal[scaleOffset], inputLocal, maxInt8Tensor, shareTmpUb, subRow, col);
+        AscendC::PipeBarrier<PIPE_V>();
+        // float -> half -> int
+        AscendC::WaitFlag<HardEvent::MTE3_V>(DYNAMIC_QUANT_OUTPUT_READY); // 搬运是否已经完成可以计算
+        LocalTensor<half> tmpf16Ub = outputLocal.template ReinterpretCast<half>();
+        Cast(tmpf16Ub, inputLocal, AscendC::RoundMode::CAST_ROUND, computeSize);
+        AscendC::PipeBarrier<PIPE_V>();
+        // Calc: out = round(x / scaleOut)
+        LocalTensor<O> tmpMMResCastTensor = outputLocal.template ReinterpretCast<O>();
+        Cast(tmpMMResCastTensor, tmpf16Ub, AscendC::RoundMode::CAST_ROUND, computeSize);
+        AscendC::SetFlag<HardEvent::V_MTE3>(DYNAMIC_QUANT_OUTPUT_READY);
+        AscendC::WaitFlag<HardEvent::V_MTE3>(DYNAMIC_QUANT_OUTPUT_READY); // 计算是否已经完成可以搬运
+
+        DataCopy(outputGm[inputGmOffset], tmpMMResCastTensor, outParams);
+        AscendC::SetFlag<HardEvent::MTE3_V>(DYNAMIC_QUANT_OUTPUT_READY);
+        inputGmOffset += subRow * queryOutStride;
+        scaleOffset += subRow;
+    }
+}
+
 /**
  * @brief DynamicQuantQnWithMulQr 流程中dynamicquant和ropeMul融合流程
           UB，流水，中间产物统筹规划
@@ -174,7 +174,7 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     const GlobalTensor<T> &inputGmRope, float quantScaleCkvRope, uint64_t colRope, uint64_t qrOutputStrideRope,
     uint32_t cvRatio)
 {
-    if (row == 0 || col == 0) {
+    if (col == 0 || row == 0) {
         return;
     }
     // 常量
@@ -186,32 +186,28 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     constexpr uint32_t DYNAMIC_QUANT_OUTPUT_READY =
         EVENT_ID3; // dynamicquant输出的计算/搬运 是否已经完成可以开始下一轮的 搬运/计算
 
-    constexpr uint64_t computeBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(C));
     constexpr uint64_t inputBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(T));
+    constexpr uint64_t computeBlockAlign = (ALIGN_BLOCK_SIZE / sizeof(C));
     constexpr float maxInt8 = 127.0;
     // Dynamic Quant 局部变量
-    uint64_t rowStepSize = 16; // 单次处理最大行数
-
-    if (cvRatio == 1) { // cv1:1场景，改为8行进行计算，降低UB使用
-        rowStepSize = 8;
-    }
+    uint64_t rowStepSize = 8 * cvRatio; // 单次处理最大行数, cv1:1场景，改为8行进行计算，降低UB使用
 
     uint64_t subRow = row < rowStepSize ? row : rowStepSize;
-    uint32_t computeSize = subRow * col;
     uint32_t brcbCnt = Align(subRow, computeBlockAlign);
+    uint32_t computeSize = subRow * col;
 
     // Rope Post Process 局部变量
     uint64_t rowStepSizeRope = 64; // 单次处理最大行数
+    uint32_t loadRopeGmSize = row * colRope;
     uint64_t subRowRope = row < rowStepSizeRope ? row : rowStepSizeRope;
     uint32_t computeSizeRope = subRowRope * colRope;
-    uint32_t loadRopeGmSize = row * colRope;
 
     // Dynamic Quant & Rope Post Process UB Buffer分配
     LocalTensor<T> inputHalf = shareTmpUb.ReinterpretCast<T>();
     LocalTensor<T> qrInputLocal = inputHalf[computeSize];
-    LocalTensor<T> outputLocalRope = qrInputLocal[loadRopeGmSize + inputBlockAlign];
+    LocalTensor<T> outputLocalRope = qrInputLocal[inputBlockAlign + loadRopeGmSize];
 
-    LocalTensor<C> inputLocal = outputLocalRope[computeSizeRope + inputBlockAlign].template ReinterpretCast<C>();
+    LocalTensor<C> inputLocal = outputLocalRope[inputBlockAlign + computeSizeRope].template ReinterpretCast<C>();
     LocalTensor<C> outputLocal = inputLocal[computeSize];
     LocalTensor<C> maxInt8Tensor = outputLocal[computeSize];
     LocalTensor<C> dynamicQuantUb = maxInt8Tensor[brcbCnt];
@@ -221,7 +217,7 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     // Rope Post Process流程在Dynamic Quant流程结束，两者UB Buffer不会同时使用，故可以从起始位置开始重新计算，减少UB
     // Buffer使用
     LocalTensor<C> qrFp32Local = inputLocal;
-    LocalTensor<C> reciprocalLocal = qrFp32Local[computeSizeRope + computeBlockAlign];
+    LocalTensor<C> reciprocalLocal = qrFp32Local[computeBlockAlign + computeSizeRope];
 
     // Dynamic Quant
     Duplicate(maxInt8Tensor, static_cast<C>(maxInt8), brcbCnt);
@@ -238,16 +234,16 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     DataCopyParams scaleOutCopyParams{(uint16_t)row, (uint16_t)sizeof(C), 0,
                                       (uint16_t)((scaleOutStride - 1) * sizeof(C))};
 
-    SetFlag<HardEvent::V_MTE3>(CALC_SCALE_FINISH);
-    WaitFlag<HardEvent::V_MTE3>(CALC_SCALE_FINISH);
+    AscendC::SetFlag<HardEvent::V_MTE3>(CALC_SCALE_FINISH);
+    AscendC::WaitFlag<HardEvent::V_MTE3>(CALC_SCALE_FINISH);
     DataCopyPad(scaleOutputGm, scaleBrcb, scaleOutCopyParams);
 
     // qr rope 后的乘法
     MulQr(outputGmRope, inputGmRope, outputLocalRope, qrInputLocal, qrFp32Local, reciprocalLocal, scaleBrcb, row,
           colRope, subRowRope, qrOutputStrideRope, quantScaleCkvRope, MUL_QR_INPUT_COPY_READY, MUL_QR);
 
-    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    AscendC::SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    AscendC::WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
 }
 
 } // namespace MlaProlog

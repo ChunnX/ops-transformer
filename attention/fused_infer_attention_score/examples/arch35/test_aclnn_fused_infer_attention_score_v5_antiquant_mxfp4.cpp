@@ -91,6 +91,32 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
 } // namespace
 
+float fp16_to_float(uint16_t h) {
+    uint32_t sign = ((h >> 15) & 1);
+    uint32_t exponent = ((h >> 10) & 0x1F);
+    uint32_t mantissa = (h & 0x3FF);
+    
+    uint32_t f32;
+    if (exponent == 0x1F) {
+        exponent = 0xFF;
+        mantissa = (mantissa ? 0x7FFFFF : 0);
+    } else if (exponent == 0) {
+        if (mantissa != 0) {
+            exponent = 0x71;
+            do {
+                mantissa <<= 1;
+                exponent--;
+            } while (!(mantissa & 0x400));
+            mantissa &= 0x3FF;
+        }
+    } else {
+        exponent += (127 - 15);
+    }
+    
+    f32 = (sign << 31) | (exponent << 23) | (mantissa << 13);
+    return *((float*)&f32);
+}
+
 int main() {
     // 1. (Fixed writing method)  device/stream initialization. Refer to AscendCL's list of external interfaces.
     // Fill in the deviceId based on your actual device.
@@ -127,12 +153,12 @@ int main() {
     int64_t keyAntiquantScaleShapeSize = GetShapeSize(keyAntiquantScaleShape); // (1, B, N, >=KV_S, D/32)
     int64_t valueAntiquantScaleShapeSize = GetShapeSize(valueAntiquantScaleShape); // (1, B, N, >=KV_S, D/32)
     int64_t outShapeSize = GetShapeSize(outShape);     // BNSD
-    std::vector<float> queryHostData(queryShapeSize, 1);
-    std::vector<float> keyHostData(keyShapeSize, 1);
-    std::vector<float> valueHostData(valueShapeSize, 1);
-    std::vector<float> keyAntiquantScaleHostData(keyAntiquantScaleShapeSize, 1);
-    std::vector<float> valueAntiquantScaleHostData(valueAntiquantScaleShapeSize, 1);
-    std::vector<float> outHostData(outShapeSize, 1);
+    std::vector<uint16_t> queryHostData(queryShapeSize, 0x3C00); // fp16 1.0
+    std::vector<uint8_t> keyHostData(keyShapeSize / 2, 0b0010 + (0b0010 << 4)); // double fp4_e2m1 1.0
+    std::vector<uint8_t> valueHostData(valueShapeSize / 2, 0b0010 + (0b0010 << 4));
+    std::vector<uint8_t> keyAntiquantScaleHostData(keyAntiquantScaleShapeSize, 0b01111111); // fp8 1.0
+    std::vector<uint8_t> valueAntiquantScaleHostData(valueAntiquantScaleShapeSize, 0b01111111);
+    std::vector<uint16_t> outHostData(outShapeSize, 0x3C00);
 
     // Create query aclTensor.
     ret = CreateAclTensor(queryHostData, queryShape, &queryDeviceAddr, aclDataType::ACL_FLOAT16, &queryTensor);
@@ -176,7 +202,7 @@ int main() {
 
     int64_t numHeads = 2; // N
     int64_t numKeyValueHeads = numHeads;
-    double scaleValue = 1 / sqrt(2); // 1/sqrt(d)
+    double scaleValue = 1 / sqrt(32); // 1/sqrt(d)
     int64_t preTokens = 2147483647;
     int64_t nextTokens = 2147483647;
     string sLayerOut = "BNSD";
@@ -231,7 +257,7 @@ int main() {
     // 5. Retrieve the output value, copy the result from the device side memory to the host side, and modify it
     // according to the specific API interface definition.
     auto size = GetShapeSize(outShape);
-    std::vector<float> resultData(size, 0);
+    std::vector<uint16_t> resultData(size, 0);
     ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
                       size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) { 
@@ -239,7 +265,8 @@ int main() {
         return ret;
     }
     for (int64_t i = 0; i < size; i++) {
-        LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
+        float float_value = fp16_to_float(resultData[i]);
+        LOG_PRINT("result[%ld] is: %f\n", i, float_value);
     }
     // 6. Release resources.
     aclDestroyTensor(queryTensor);

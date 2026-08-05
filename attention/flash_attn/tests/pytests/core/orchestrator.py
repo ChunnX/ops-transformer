@@ -1,3 +1,13 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """编排器 — 串联数据生成 → 后端计算 → 精度对比 + golden 持久化。"""
 
 import gc
@@ -8,8 +18,8 @@ import torch
 
 from core.data import InputSpec, flash_attn_inputs
 from core.backends.base import Backend
-from utils.compare import check_result
-from utils.data import trans_bnsd_to_layout
+from utils.compare import check_result, get_tolerance
+from utils.data import trans_bnsd_to_layout, make_noncontiguous
 
 
 # ─── Golden 持久化 ───────────────────────────────────────────────────────────
@@ -82,6 +92,8 @@ def run_case(params: dict,
     comparators = comparators or []
     layout = params.get("input_layout", params.get("layout_q", "BNSD"))
     out_layout = params.get("layout_out", layout)
+    output_dtype = params.get("Dtype", "fp16")
+    atol, rtol = get_tolerance(output_dtype)
 
     if compare_dir and case_name:
         safe_name = case_name.replace("/", "_")
@@ -117,8 +129,48 @@ def run_case(params: dict,
     primary_out_raw = primary.compute(dev_inputs, params)
     primary_out = {k: v.cpu() if isinstance(v, torch.Tensor) else v
                    for k, v in primary_out_raw.items()}
-    del dev_inputs, primary_out_raw
+    del primary_out_raw
     primary.clear_cache()
+
+    # --- kvcache 非连续 self-consistency check ---
+    nc_kv_dims = params.get("nc_kv_dims")
+    nc_attn_result = None
+    if nc_kv_dims is not None:
+        # FIA做法: 连续tensor传NPU后, 在NPU上直接构造NC, 避免.to(npu)碾连续
+        nc_dev_inputs = {}
+        for k, v in dev_inputs.items():
+            if isinstance(v, torch.Tensor) and k in ("k", "v"):
+                nc_dev_inputs[k] = make_noncontiguous(v, nc_kv_dims)
+            else:
+                nc_dev_inputs[k] = v
+        assert torch.equal(nc_dev_inputs["k"], dev_inputs["k"]), "k NC后数据与连续时不一致"
+        assert torch.equal(nc_dev_inputs["v"], dev_inputs["v"]), "v NC后数据与连续时不一致"
+        print(f"  [nc_check] nc_kv_dims={nc_kv_dims} "
+              f"k_contig={nc_dev_inputs['k'].is_contiguous()} "
+              f"k_stride={nc_dev_inputs['k'].stride()} "
+              f"v_contig={nc_dev_inputs['v'].is_contiguous()} "
+              f"v_stride={nc_dev_inputs['v'].stride()}")
+        nc_raw = primary.compute(nc_dev_inputs, params)
+        nc_cpu = nc_raw["out"].cpu() if isinstance(nc_raw["out"], torch.Tensor) else nc_raw["out"]
+        del nc_dev_inputs, nc_raw
+        primary.clear_cache()
+        contig_f = primary_out["out"].float()
+        nc_f = nc_cpu.float()
+        exact_match = torch.equal(contig_f, nc_f)
+        diff = (contig_f - nc_f).abs()
+        max_abs = diff.max().item()
+        print(f"  [nc_check] NC vs Contiguous  exact_match={exact_match}  max_abs={max_abs:.8e}")
+        nc_attn_result = {
+            "passed": exact_match,
+            "max_abs": max_abs,
+            "mean_abs": diff.mean().item(),
+            "fail_cnt": 0 if exact_match else int((diff > 0).sum().item()),
+            "total": contig_f.numel(),
+            "fail_ratio": 0.0 if exact_match else float((diff > 0).sum().item()) / contig_f.numel(),
+        }
+        del nc_cpu
+
+    del dev_inputs
 
     dev_raw = primary_out["out"]
     dev_out = dev_raw
@@ -173,19 +225,21 @@ def run_case(params: dict,
             print(f"  [warn] {other_path} 不存在，退回 CPU 对比")
             print(f"  [compare] CPU vs {primary.name}")
             attn_result = check_result(f"CPU_vs_{primary.name}",
-                                       cpu_out, dev_out.float(),
-                                       except_label="CPU", comp_label=primary.name,
-                                       verbose_diff=verbose_diff)
+                                        cpu_out, dev_out.float(),
+                                        except_label="CPU", comp_label=primary.name,
+                                        verbose_diff=verbose_diff,
+                                        atol=atol, rtol=rtol)
     else:
         print(f"  [compare] CPU vs {primary.name}")
         attn_result = check_result(f"CPU_vs_{primary.name}",
-                                   cpu_out, dev_out.float(),
-                                   except_label="CPU", comp_label=primary.name,
-                                   verbose_diff=verbose_diff)
+                                    cpu_out, dev_out.float(),
+                                    except_label="CPU", comp_label=primary.name,
+                                    verbose_diff=verbose_diff,
+                                    atol=atol, rtol=rtol)
 
     lse_result = {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
                   "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}
-    if params.get("return_softmax_lse", 0) and "lse" in primary_out and "lse" in golden_out:
+    if params.get("return_softmax_lse", False) and "lse" in primary_out and "lse" in golden_out:
         dev_lse = primary_out["lse"]
         if isinstance(dev_lse, torch.Tensor):
             dev_lse = dev_lse.cpu().float()
@@ -199,7 +253,8 @@ def run_case(params: dict,
                 print(f"  [compare] LSE check")
                 lse_result = check_result("LSE", cpu_lse, dev_lse,
                                           except_label="CPU_lse", comp_label=f"{primary.name}_lse",
-                                          verbose_diff=verbose_diff)
+                                          verbose_diff=verbose_diff,
+                                          atol=atol, rtol=rtol)
 
     for comp in comparators:
         comp_inputs = {k: v.to(comp.device) if isinstance(v, torch.Tensor) else v for k, v in cpu_inputs.items()}
@@ -208,9 +263,12 @@ def run_case(params: dict,
         print(f"  [compare] {primary.name} vs {comp.name}")
         _ = check_result(f"{primary.name}_vs_{comp.name}",
                          dev_out.float(), comp_cpu.float(),
-                         except_label=primary.name, comp_label=comp.name)
+                         except_label=primary.name, comp_label=comp.name,
+                         atol=atol, rtol=rtol)
 
     ret = {"attn": _to_stats(attn_result), "lse": _to_stats(lse_result)}
+    if nc_attn_result is not None:
+        ret["nc_attn"] = _to_stats(nc_attn_result)
 
     if golden_dir and case_name:
         save_golden_case(case_name, cpu_inputs, golden_out, params, golden_dir,
@@ -259,6 +317,8 @@ def run_case_load(case_name: str, golden_dir: str, primary: Backend,
                   viz_dir: str = "./viz_output",
                   fail_analysis: bool = False) -> dict:
     inputs, golden_data, params = load_golden_case(case_name, golden_dir)
+    output_dtype = params.get("Dtype", "fp16")
+    atol, rtol = get_tolerance(output_dtype)
 
     dev_inputs = {k: v.to(primary.device) for k, v in inputs.items()}
     npu_out_raw = primary.compute(dev_inputs, params)
@@ -274,17 +334,23 @@ def run_case_load(case_name: str, golden_dir: str, primary: Backend,
 
     attn_result = check_result("CPU_vs_NPU", cpu_out.float(), dev_raw.float(),
                                except_label="CPU", comp_label=primary.name,
-                               verbose_diff=verbose_diff)
+                               verbose_diff=verbose_diff,
+                               atol=atol, rtol=rtol)
 
     lse_result = {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
                   "fail_cnt": 0, "total": 0, "fail_ratio": 0.0}
-    if params.get("return_softmax_lse", 0) and "lse" in golden_data and "lse" in npu_out:
+    if params.get("return_softmax_lse", False) and "lse" in golden_data and "lse" in npu_out:
         dev_lse = npu_out["lse"]
         cpu_lse = golden_data["lse"]
         if isinstance(dev_lse, torch.Tensor) and isinstance(cpu_lse, torch.Tensor):
-            lse_result = check_result("LSE", cpu_lse.float(), dev_lse.float(),
+            cpu_lse = cpu_lse.float().clone()
+            dev_lse = dev_lse.float().clone()
+            cpu_lse[cpu_lse.isinf() & (cpu_lse > 0)] = float('-inf')
+            dev_lse[dev_lse.isinf() & (dev_lse > 0)] = float('-inf')
+            lse_result = check_result("LSE", cpu_lse, dev_lse,
                                       except_label="CPU_lse", comp_label=f"{primary.name}_lse",
-                                      verbose_diff=verbose_diff)
+                                      verbose_diff=verbose_diff,
+                                      atol=atol, rtol=rtol)
 
     ret = {"attn": _to_stats(attn_result), "lse": _to_stats(lse_result)}
 

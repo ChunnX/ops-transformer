@@ -68,6 +68,20 @@ __aicore__ inline int32_t CeilDiv(int32_t a, int32_t b)
     return (a + b - 1) / b;
 }
 
+__aicore__ inline void VToMTE2Sync()
+{
+    event_t eventIDVToMTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
+    SetFlag<HardEvent::V_MTE2>(eventIDVToMTE2);
+    WaitFlag<HardEvent::V_MTE2>(eventIDVToMTE2);
+}
+
+__aicore__ inline void MTE2ToVSync()
+{
+    event_t eventIDMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+    SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
+    WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
+}
+
 __aicore__ inline void VToMTE3Sync()
 {
     event_t eventIDVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
@@ -193,6 +207,7 @@ public:
         SetPipeBuffer(hasProb);
         indexLocal = indexBuf.Get<int32_t>();
         offsetLocal = offsetBuf.Get<int32_t>();
+        offsetLocal.SetSize((numBlocks + ONE_BLOCK_NUM - 1) / ONE_BLOCK_NUM * ONE_BLOCK_NUM);
     }
 
     __aicore__ inline void Process(GM_ADDR y, GM_ADDR sortedIndices, int32_t& actualOutTokens)
@@ -299,6 +314,7 @@ public:
             for (int32_t i = 0; i < tileNum; ++i) {
                 CopyInExternalIndex(i);
                 CopyIn(i);
+                MTE2ToVSync();
                 ComputeExternalIndex(i);
                 CopyIndex2WorkSpace();
                 if (hasProb) {
@@ -362,6 +378,7 @@ private:
         }
         DataCopyExtParams copyParams{1, static_cast<uint32_t>(length * sizeof(int32_t)), 0, 0, 0};
         DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
+        VToMTE2Sync();
         DataCopyPad(indexLocal, externalIndexGlobal[regionOffset], copyParams, padParams);
     }
 

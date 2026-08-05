@@ -22,17 +22,17 @@
 #include "hccl/hccl.h"
 #include "aclnnop/aclnn_ffn_to_attention.h"
 
-#define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
-        printf(message, ##__VA_ARGS__); \
-    } while(0)
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
+    } while (0)
 
 struct Args {
     uint32_t rankId;
@@ -54,9 +54,9 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shape_size;
 }
 
-template<typename T>
+template <typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-    aclDataType dataType, aclTensor **tensor)
+                    aclDataType dataType, aclTensor **tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -65,10 +65,10 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
     std::vector<int64_t> strides(shape.size(), 1);
     for (int64_t i = shape.size() - 2; i >= 0; i--) {
-        strides[i] = shape[i +1] * strides[i + 1];
+        strides[i] = shape[i + 1] * strides[i + 1];
     }
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-        shape.data(), shape.size(), *deviceAddr);
+                              shape.data(), shape.size(), *deviceAddr);
     return 0;
 }
 
@@ -81,8 +81,8 @@ int LaunchOneProcessFFN2Attention(Args &args)
     ret = HcclGetCommName(args.hcclComm, hcomName);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed, ret %d\n", ret); return -1);
     LOG_PRINT("[INFO] rank = %d, hcomName = %s, FFN2AttentionStream = %p, \
-                context = %p\n", args.rankId, hcomName, args.FFN2AttentionStream, \
-                args.context);
+                context = %p\n",
+              args.rankId, hcomName, args.FFN2AttentionStream, args.context);
 
     int64_t micro_batch_num = 1;
     int64_t Y = 8;
@@ -109,11 +109,11 @@ int LaunchOneProcessFFN2Attention(Args &args)
     aclTensor *expertOffsets = nullptr;
     aclTensor *actualTokenNum = nullptr;
     aclTensor *attnRankTable = nullptr;
-    aclIntArray *tokenInfoTableShape = aclCreateIntArray(Token_info_shape, 3);   
-    aclIntArray *tokenDataShape = aclCreateIntArray(Token_data_shape, 4);   
+    aclIntArray *tokenInfoTableShape = aclCreateIntArray(Token_info_shape, 3);
+    aclIntArray *tokenDataShape = aclCreateIntArray(Token_data_shape, 4);
 
-    
-    //定义当前场景下各变量维度
+
+    // 定义当前场景下各变量维度
     std::vector<int64_t> xShape{Y, H};
     std::vector<int64_t> sessionIdsShape{Y};
     std::vector<int64_t> microBatchIdsShape{Y};
@@ -130,7 +130,7 @@ int LaunchOneProcessFFN2Attention(Args &args)
     int64_t expertOffsetsShapeSize = GetShapeSize(expertOffsetsShape);
     int64_t actualTokenNumShapeSize = GetShapeSize(actualTokenNumShape);
     int64_t attnRankTableShapeSize = GetShapeSize(attnRankTableShape);
-    
+
 
     std::vector<int16_t> xHostData(xShapeSize, 1);
     std::vector<int32_t> sessionIdsHostData(sessionIdsShapeSize, 0);
@@ -150,54 +150,58 @@ int LaunchOneProcessFFN2Attention(Args &args)
 
 
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);  
-    ret = CreateAclTensor(sessionIdsHostData, sessionIdsShape, &sessionIdsDeviceAddr, aclDataType::ACL_INT32, &sessionIds);
-    CHECK_RET(ret == ACL_SUCCESS, return ret);  
-    ret = CreateAclTensor(microBatchIdsHostData, microBatchIdsShape, &microBatchIdsDeviceAddr, aclDataType::ACL_INT32, &microBatchIds);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(sessionIdsHostData, sessionIdsShape, &sessionIdsDeviceAddr, aclDataType::ACL_INT32,
+                          &sessionIds);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(microBatchIdsHostData, microBatchIdsShape, &microBatchIdsDeviceAddr, aclDataType::ACL_INT32,
+                          &microBatchIds);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(tokenIdsHostData, tokenIdsShape, &tokenIdsDeviceAddr, aclDataType::ACL_INT32, &tokenIds);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(expertOffsetsHostData, expertOffsetsShape, &expertOffsetsDeviceAddr, aclDataType::ACL_INT32, &expertOffsets);
+    ret = CreateAclTensor(expertOffsetsHostData, expertOffsetsShape, &expertOffsetsDeviceAddr, aclDataType::ACL_INT32,
+                          &expertOffsets);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(actualTokenNumHostData, actualTokenNumShape, &actualTokenNumDeviceAddr,  aclDataType::ACL_INT64, &actualTokenNum);
+    ret = CreateAclTensor(actualTokenNumHostData, actualTokenNumShape, &actualTokenNumDeviceAddr,
+                          aclDataType::ACL_INT64, &actualTokenNum);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(attnRankTableHostData, attnRankTableShape, &attnRankTableDeviceAddr, aclDataType::ACL_INT32, &attnRankTable);
+    ret = CreateAclTensor(attnRankTableHostData, attnRankTableShape, &attnRankTableDeviceAddr, aclDataType::ACL_INT32,
+                          &attnRankTable);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
 
     uint64_t FFN2AttentionWorkspaceSize = 0;
     aclOpExecutor *FFN2AttentionExecutor = nullptr;
     void *FFN2AttentionWorkspaceAddr = nullptr;
-    
+
     /**************************************** 调用FFN2Attention ********************************************/
     // 调用第一阶段接口
-    ret = aclnnFFNToAttentionGetWorkspaceSize(x, sessionIds, microBatchIds, tokenIds,
-                                                        expertOffsets, actualTokenNum, attnRankTable,
-                                                        hcomName, WORLD_SIZE, tokenInfoTableShape, tokenDataShape,
-                                                        &FFN2AttentionWorkspaceSize, &FFN2AttentionExecutor);
-    CHECK_RET(ret == ACL_SUCCESS,
-        LOG_PRINT("[ERROR] aclnnFFNToAttentionGetWorkspaceSize failed. ret = %d \n", ret); return ret);
+    ret = aclnnFFNToAttentionGetWorkspaceSize(x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum,
+                                              attnRankTable, hcomName, WORLD_SIZE, tokenInfoTableShape, tokenDataShape,
+                                              &FFN2AttentionWorkspaceSize, &FFN2AttentionExecutor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnFFNToAttentionGetWorkspaceSize failed. ret = %d \n", ret);
+              return ret);
     // 根据第一阶段接口计算出的workspaceSize申请device内存
     if (FFN2AttentionWorkspaceSize > 0) {
         ret = aclrtMalloc(&FFN2AttentionWorkspaceAddr, FFN2AttentionWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
     }
     // 调用第二阶段接口
-    ret = aclnnFFNToAttention(FFN2AttentionWorkspaceAddr, FFN2AttentionWorkspaceSize, FFN2AttentionExecutor, args.FFN2AttentionStream);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnFFNToAttention failed. ret = %d \n", ret);
-        return ret);
+    ret = aclnnFFNToAttention(FFN2AttentionWorkspaceAddr, FFN2AttentionWorkspaceSize, FFN2AttentionExecutor,
+                              args.FFN2AttentionStream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnFFNToAttention failed. ret = %d \n", ret); return ret);
     // （固定写法）同步等待任务执行结束
     if (args.rankId >= ATTN_NUM) {
         ret = aclrtSynchronizeStreamWithTimeout(args.FFN2AttentionStream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
-        return ret);
+                  return ret);
         LOG_PRINT("[INFO] device_%d FFNToAttention execute successfully.\n", args.rankId);
     } else {
         std::this_thread::sleep_for(std::chrono::seconds(10));
         LOG_PRINT("[INFO] device_%d is AttentionWorker, sleeping 10 seconds...\n", args.rankId);
     }
 
-    
+
     // 释放device资源
     if (FFN2AttentionWorkspaceSize > 0) {
         aclrtFree(FFN2AttentionWorkspaceAddr);
@@ -280,13 +284,12 @@ int main(int argc, char *argv[])
 
     int32_t devices[WORLD_SIZE];
     for (int32_t deviceId = 0; deviceId < WORLD_SIZE; deviceId++) {
-        devices[deviceId] = deviceId ;
+        devices[deviceId] = deviceId;
     }
 
     HcclComm comms[WORLD_SIZE];
     ret = HcclCommInitAll(WORLD_SIZE, devices, comms);
-    CHECK_RET(ret == ACL_SUCCESS,
-                LOG_PRINT("[ERROR] HcclCommInitAll failed, ret %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitAll failed, ret %d\n", ret); return ret);
 
 
     Args args[DEV_NUM];
@@ -296,10 +299,10 @@ int main(int argc, char *argv[])
         args[rankId].hcclComm = comms[rankId];
         args[rankId].FFN2AttentionStream = FFN2AttentionStream[rankId];
         args[rankId].context = context[rankId];
-        threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneProcessFFN2Attention, std::ref(args[rankId])));
+        threads[rankId].reset(new (std::nothrow) std::thread(&LaunchOneProcessFFN2Attention, std::ref(args[rankId])));
     }
 
-    for(uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
+    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         threads[rankId]->join();
     }
 

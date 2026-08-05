@@ -71,7 +71,9 @@ struct SingleCoreSplitKBaseBlockArgs {
 
 class Mc2MatmulSingleCoreSplitKBaseBlock {
 public:
-    __aicore__ inline Mc2MatmulSingleCoreSplitKBaseBlock() {}
+    __aicore__ inline Mc2MatmulSingleCoreSplitKBaseBlock()
+    {
+    }
     template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
     __aicore__ inline void Init(const Mc2MatmulV3TilingData *matmulTilingData);
     __aicore__ inline void UpdateBlockCnt();
@@ -226,7 +228,7 @@ __aicore__ inline void Mc2MatmulSingleCoreSplitKBaseBlock::UpdateBlockParamsNk(u
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
 __aicore__ inline void Mc2MatmulSingleCoreSplitKBaseBlock::CalcGMOffset(uint64_t innerMIndex, uint64_t kIndex,
-    uint64_t innerNIndex, bool isNKM)
+                                                                        uint64_t innerNIndex, bool isNKM)
 {
     uint64_t innerNShiftIndex = (GetCurrentBlockIdx() + innerNIndex) % params_.innerLoopN;
     params_.innerSingleCoreN = params_.innerBlockN;
@@ -247,56 +249,60 @@ __aicore__ inline void Mc2MatmulSingleCoreSplitKBaseBlock::CalcGMOffset(uint64_t
         if (params_.isTransposeA) {
             offset_.offsetA =
                 (params_.mIndex * matmulTilingData_->matmulTiling.singleCoreM + innerMIndex * params_.innerBlockM +
-                kIndex * matmulTilingData_->matmulTiling.singleCoreK *
-                matmulTilingData_->matmulTiling.M);
+                 kIndex * matmulTilingData_->matmulTiling.singleCoreK * matmulTilingData_->matmulTiling.M);
         } else {
             offset_.offsetA =
                 ((params_.mIndex * matmulTilingData_->matmulTiling.singleCoreM + innerMIndex * params_.innerBlockM) *
-                matmulTilingData_->matmulTiling.Ka + kIndex * matmulTilingData_->matmulTiling.singleCoreK);
+                     matmulTilingData_->matmulTiling.Ka +
+                 kIndex * matmulTilingData_->matmulTiling.singleCoreK);
         }
     } else if constexpr (A_TYPE::format == CubeFormat::NZ) {
         if (params_.isTransposeA) {
             offset_.offsetA =
                 ((params_.mIndex * matmulTilingData_->matmulTiling.singleCoreM + innerMIndex * params_.innerBlockM) *
-                params_.alignedKaSize + kIndex * matmulTilingData_->matmulTiling.singleCoreK * params_.c0Size);
+                     params_.alignedKaSize +
+                 kIndex * matmulTilingData_->matmulTiling.singleCoreK * params_.c0Size);
         } else {
             offset_.offsetA =
                 ((params_.mIndex * matmulTilingData_->matmulTiling.singleCoreM + innerMIndex * params_.innerBlockM) *
-                params_.c0Size + kIndex * matmulTilingData_->matmulTiling.singleCoreK * params_.alignedOriM);
+                     params_.c0Size +
+                 kIndex * matmulTilingData_->matmulTiling.singleCoreK * params_.alignedOriM);
         }
     }
     if constexpr (B_TYPE::format == CubeFormat::ND) {
         if (params_.isTransposeB) {
             offset_.offsetB = (kIndex * matmulTilingData_->matmulTiling.singleCoreK +
-                (params_.nIndex * matmulTilingData_->matmulTiling.singleCoreN + innerNShiftIndex * params_.innerBlockN) *
-                matmulTilingData_->matmulTiling.Kb);
+                               (params_.nIndex * matmulTilingData_->matmulTiling.singleCoreN +
+                                innerNShiftIndex * params_.innerBlockN) *
+                                   matmulTilingData_->matmulTiling.Kb);
         } else {
-            offset_.offsetB = (params_.nIndex * matmulTilingData_->matmulTiling.singleCoreN +
-                innerNShiftIndex * params_.innerBlockN + kIndex *
-                matmulTilingData_->matmulTiling.singleCoreK * matmulTilingData_->matmulTiling.N);
+            offset_.offsetB =
+                (params_.nIndex * matmulTilingData_->matmulTiling.singleCoreN + innerNShiftIndex * params_.innerBlockN +
+                 kIndex * matmulTilingData_->matmulTiling.singleCoreK * matmulTilingData_->matmulTiling.N);
         }
     } else if constexpr (B_TYPE::format == CubeFormat::NZ) {
         if (params_.isTransposeB) {
-            offset_.offsetB =
-                (kIndex * matmulTilingData_->matmulTiling.singleCoreK * params_.alignedOriN +
-                (params_.nIndex * matmulTilingData_->matmulTiling.singleCoreN + innerNShiftIndex * params_.innerBlockN) *
-                params_.c0Size);
+            offset_.offsetB = (kIndex * matmulTilingData_->matmulTiling.singleCoreK * params_.alignedOriN +
+                               (params_.nIndex * matmulTilingData_->matmulTiling.singleCoreN +
+                                innerNShiftIndex * params_.innerBlockN) *
+                                   params_.c0Size);
         } else {
             offset_.offsetB = ((params_.nIndex * matmulTilingData_->matmulTiling.singleCoreN +
-                innerNShiftIndex * params_.innerBlockN) * params_.alignedKbSize +
-                kIndex * matmulTilingData_->matmulTiling.singleCoreK * params_.c0Size);
+                                innerNShiftIndex * params_.innerBlockN) *
+                                   params_.alignedKbSize +
+                               kIndex * matmulTilingData_->matmulTiling.singleCoreK * params_.c0Size);
         }
     }
     offset_.offsetC =
         ((params_.mIndex * matmulTilingData_->matmulTiling.singleCoreM + innerMIndex * params_.innerBlockM) *
-        params_.outNAlign + params_.nIndex * matmulTilingData_->matmulTiling.singleCoreN +
-        innerNShiftIndex * params_.innerBlockN);
+             params_.outNAlign +
+         params_.nIndex * matmulTilingData_->matmulTiling.singleCoreN + innerNShiftIndex * params_.innerBlockN);
     if (A_TYPE::format == CubeFormat::ND && B_TYPE::format == CubeFormat::ND &&
         (matmulTilingData_->matmulTiling.N % ALIGN_128_BYTE == 0)) {
         offset_.offsetC =
             ((params_.mIndex * matmulTilingData_->matmulTiling.singleCoreM + innerMIndex * params_.innerBlockM) *
-            matmulTilingData_->matmulTiling.N + params_.nIndex * matmulTilingData_->matmulTiling.singleCoreN +
-            innerNShiftIndex * params_.innerBlockN);
+                 matmulTilingData_->matmulTiling.N +
+             params_.nIndex * matmulTilingData_->matmulTiling.singleCoreN + innerNShiftIndex * params_.innerBlockN);
     }
     offset_.offsetBias = params_.nIndex * matmulTilingData_->matmulTiling.singleCoreN;
 }

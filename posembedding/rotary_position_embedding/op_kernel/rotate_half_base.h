@@ -22,6 +22,7 @@ namespace RotateHalfN {
 using namespace AscendC;
 
 constexpr uint8_t REPEAT_MAX = 255;
+constexpr uint32_t MASK_MAX = 64;
 constexpr int32_t SINGLE_BUFFER = 1;
 constexpr int32_t DOUBLE_BUFFER = 2;
 constexpr uint32_t BYTE_OF_BLOCK = 32;
@@ -33,6 +34,23 @@ constexpr uint16_t LAYOUT_SBND = 3;
 constexpr uint16_t LAYOUT_NO_BROADCAST = 4;
 constexpr uint16_t LAYOUT_BND = 5;
 constexpr uint16_t LAYOUT_R_B1SD = 6;
+constexpr uint16_t NUM_ZERO = 0;
+constexpr uint16_t MAX_REP_STRIDE = 8;
+
+template <HardEvent event>
+
+__aicore__ inline void SetWaitFlag(HardEvent evt)
+{
+    event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(evt));
+    SetFlag<event>(eventId);
+    WaitFlag<event>(eventId);
+}
+
+template <typename T>
+__aicore__ inline T Min(T a, T b)
+{
+    return (a < b) ? a : b;
+}
 
 template <typename OriT, typename CmpT>
 class RotateHalfBase {
@@ -47,6 +65,7 @@ protected:
                                         LocalTensor<CmpT> &sin, uint32_t calcLength);
     __aicore__ inline void RBroadCast(LocalTensor<CmpT> &cos, LocalTensor<CmpT> &sin, uint32_t broadcastLines);
     __aicore__ inline void XNewCopy(LocalTensor<CmpT> &x, LocalTensor<CmpT> &xNew, uint16_t sLines);
+    __aicore__ inline void FullLoadXDInit(const RotaryPositionEmbeddingTilingData &tilingData);
 
     bool isAligned;
     uint16_t layout;
@@ -92,6 +111,16 @@ protected:
     uint64_t coreRelativeIdx;
 
     DataCopyPadExtParams<OriT> noPadParams{false, 0, 0, 0};
+    // small shape optimization fields (FullLoadXD)
+    uint64_t axisLenX3;
+    uint64_t ropeEleNum;  // RoPE elements(indiced by ar1 * ar2 * ar3) processed by current core
+    uint64_t xGmBase;
+    uint64_t rGmBase;
+    uint64_t xCount;
+    uint64_t rCount;
+    uint64_t xCountDPad;
+    uint64_t rCountDPad;
+    bool isThreeOneDim;
 };
 
 template <typename OriT, typename CmpT>
@@ -132,6 +161,50 @@ __aicore__ inline void RotateHalfBase<OriT, CmpT>::BaseMemberInit(const RotaryPo
         rCoreOffset = xCoreOffset;
         rAllocLength = bcFirstDim * totalSLines * dLength;
     }
+}
+
+// FullLoadXD: initData
+template <typename OriT, typename CmpT>
+__aicore__ inline void RotateHalfBase<OriT, CmpT>::FullLoadXDInit(
+    const RotaryPositionEmbeddingTilingData &tilingData)
+{
+    const RotateHalfParams &tiling = tilingData.rotateHalfParams;
+
+    formerCoreNum = tiling.formerCoreNum;
+    uint64_t ubLoopPerCore = tiling.formerUbLoop;
+    uint64_t ubLoopLastCore = tiling.formerUbLast;
+    ubLoop = (GetBlockIdx() < formerCoreNum - 1) ? ubLoopPerCore : ubLoopLastCore;
+
+    uint64_t ropeLoopPerCore = tiling.tailUbLoop;
+    uint64_t ropeLoopLastCore = tiling.tailUbLast;
+    ropeEleNum = (GetBlockIdx() < formerCoreNum - 1) ? ropeLoopPerCore : ropeLoopLastCore;
+
+    dLength = tiling.dLength;
+    dPadLength = tiling.dPadLength;
+    halfDLength = tiling.halfDLength;
+    halfDPadLength = tiling.halfDPadLength;
+    isAligned = (tiling.isAligned == 1);
+    isThreeOneDim = (tiling.isThreeOneDim == 1);
+    axisLenX3 = tiling.axisLenX3;
+
+    uint64_t xD = axisLenX3 * dLength;
+    uint64_t xDPad = axisLenX3 * dPadLength;
+
+    xCount = ubLoop * xD;
+    rCount = ropeEleNum * dLength;
+    xCountDPad = ubLoop * xDPad;
+    rCountDPad = ropeEleNum * dPadLength;
+
+    // GM base offsets — there's at most one tail core
+    xGmBase = GetBlockIdx() * ubLoopPerCore * xD;
+    rGmBase = isThreeOneDim ? 0 : GetBlockIdx() * ropeLoopPerCore * dLength;
+
+    // Precompute for base class SinCompute and XNewCopy
+    repeatStride = static_cast<uint8_t>(dPadLength * sizeof(CmpT) / BYTE_OF_BLOCK);
+    dataEachRepeat = BYTE_OF_REPEAT / sizeof(CmpT);
+    innerHalfLoop = halfDLength / dataEachRepeat;
+    innerHalfLast = halfDLength % dataEachRepeat;
+    halfDBytes = halfDLength * sizeof(OriT);
 }
 
 template <typename OriT, typename CmpT>

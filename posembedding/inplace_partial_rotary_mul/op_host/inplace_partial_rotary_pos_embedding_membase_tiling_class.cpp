@@ -27,7 +27,6 @@ ge::graphStatus InplacePartialRotaryPosEmbeddingMembaseTilingClass::GetPlatformI
         aicoreParams_.blockDim = ascendcPlatform.GetCoreNumAiv();
         uint64_t ubSizePlatForm;
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
-        socVersion_ = ascendcPlatform.GetSocVersion();
         aicoreParams_.ubSize = ubSizePlatForm;
     } else {
         auto compileInfoPtr = reinterpret_cast<const InplacePartialRotaryPositionEmbeddingCompileInfo
@@ -35,7 +34,6 @@ ge::graphStatus InplacePartialRotaryPosEmbeddingMembaseTilingClass::GetPlatformI
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
         aicoreParams_.blockDim = compileInfoPtr->blockDim;
-        socVersion_ = compileInfoPtr->socVersion;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -59,9 +57,7 @@ ge::graphStatus Tiling4InplacePartialRotaryMulDispatcher(gert::TilingContext *co
     auto platformInfo = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context, "Tiling platformInfo is null"),
                return ge::GRAPH_FAILED);
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    auto socVersion = ascendcPlatform.GetSocVersion();
-    if (socVersion == platform_ascendc::SocVersion::ASCEND950) {
+    if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
         std::vector<std::unique_ptr<InplacePartialRopeRegBaseTilingClass>> regBaseTilingCases;
         regBaseTilingCases.push_back(
             std::unique_ptr<InplacePartialRopeRegBaseTilingClass>(
@@ -75,7 +71,7 @@ ge::graphStatus Tiling4InplacePartialRotaryMulDispatcher(gert::TilingContext *co
         regBaseTilingCases.push_back(
             std::unique_ptr<InplacePartialRopeRegBaseTilingClass>(
                 new InplacePartialRopeRegBaseTilingClassBAB(context)));
-        OP_LOGI(context, "Using arch35 tiling for ASCEND950");
+        OP_LOGI(context, "Using arch35 tiling for regbase soc");
         
         for (const auto& ptr : regBaseTilingCases) {
             if (ptr) {
@@ -105,4 +101,3 @@ IMPL_OP_OPTILING(InplacePartialRotaryMul)
     .Tiling(Tiling4InplacePartialRotaryMulDispatcher)
     .TilingParse<InplacePartialRotaryPositionEmbeddingCompileInfo>(TilingPrepareForInplacePartialRotaryMul);
 } // namespace optiling
-

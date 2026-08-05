@@ -14,17 +14,21 @@
  */
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "mhc_pre_grad_kernel.h"
+#include "arch22/mhc_pre_grad_kernel.h"
+#include "arch22/mhc_pre_sinkhorn_backward_data_arch22.h"
+#include "arch22/mhc_pre_sinkhorn_backward_key_arch22.h"
 
 using namespace AscendC;
 
-extern "C" __global__ __aicore__ void
+template<bool TILINGKEY>
+__global__ __aicore__ void
 mhc_pre_sinkhorn_backward(GM_ADDR grad_hin, GM_ADDR grad_h_post, GM_ADDR grad_h_res, GM_ADDR x, GM_ADDR phi,
                           GM_ADDR alpha, GM_ADDR bias, GM_ADDR h_pre, GM_ADDR hc_before_norm, GM_ADDR inv_rms,
                           GM_ADDR sum_out, GM_ADDR norm_out, GM_ADDR grad_x, GM_ADDR grad_phi, GM_ADDR grad_alpha,
                           GM_ADDR grad_bias, GM_ADDR workspace, GM_ADDR tiling)
 {
-    GET_TILING_DATA(tilingData, tiling);
+    REGISTER_TILING_DEFAULT(MhcPreSinkhornBackwardArch22TilingData);
+    GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornBackwardArch22TilingData, tilingData, tiling);
     GM_ADDR usrWorkspace = GetUserWorkspace(workspace);
     if (usrWorkspace == nullptr) {
         return;
@@ -32,7 +36,7 @@ mhc_pre_sinkhorn_backward(GM_ADDR grad_hin, GM_ADDR grad_h_post, GM_ADDR grad_h_
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
     TPipe pipe;
-    if (TILING_KEY_IS(1)) {
+    if constexpr (TILINGKEY) {
         MhcPreGradKernel<DTYPE_X, DTYPE_PHI, true> op;
         op.mm1_.SetSubBlockIdx(0);
         op.mm1_.Init(&tilingData.mm1TilingData, &pipe);
@@ -42,7 +46,7 @@ mhc_pre_sinkhorn_backward(GM_ADDR grad_hin, GM_ADDR grad_h_post, GM_ADDR grad_h_
         op.Init(x, phi, h_pre, grad_hin, grad_h_post, grad_h_res, alpha, bias, hc_before_norm, inv_rms, sum_out,
                 norm_out, grad_x, grad_phi, grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
         op.Process();
-    } else if (TILING_KEY_IS(0)) {
+    } else {
         MhcPreGradKernel<DTYPE_X, DTYPE_PHI, false> op;
         op.mm1_.SetSubBlockIdx(0);
         op.mm1_.Init(&tilingData.mm1TilingData, &pipe);

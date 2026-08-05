@@ -20,10 +20,10 @@
 
 namespace MatmulCommon {
 template <const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
-class Mc2MMCustomMatmulPolicy : public AscendC::Impl::Detail::MatmulPolicy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE,
-    BIAS_TYPE> {
+class Mc2MMCustomMatmulPolicy
+    : public AscendC::Impl::Detail::MatmulPolicy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE> {
 public:
     using CopyCubeOut = Mc2MMCustomCopyCubeOut<IMPL, A_TYPE, B_TYPE, C_TYPE, MM_CFG, McgShfMode::DUAL_DST_SPLIT_M>;
 };
-}  // namespace MatmulCommon
-#endif  // MM_CUSTOM_MM_POLICY_H
+} // namespace MatmulCommon
+#endif // MM_CUSTOM_MM_POLICY_H

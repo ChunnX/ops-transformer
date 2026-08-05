@@ -150,24 +150,26 @@ ge::graphStatus MatmulAllToAllTilingBase::Check2DMatrixMulShapes(const gert::Til
     uint64_t nAxis = x2TransFlag ? shapeInfo.x2Dim0 : shapeInfo.x2Dim1;
     // MatmulAlltoAll, n要整除rankSize
     OP_TILING_CHECK(nAxis % static_cast<uint64_t>(rankDim) != 0,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "n",
-                        std::to_string(nAxis).c_str(),
-                        "The value of n must be divisible by rankSize"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "n", std::to_string(nAxis).c_str(),
+                                                          "The value of n must be divisible by rankSize"),
                     return ge::GRAPH_FAILED);
     // MatmulAlltoAll: x1Dim1 = x2 K-axis
     OP_TILING_CHECK((shapeInfo.x1Dim1 != kAxis),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1dim1 and x2Kdim",
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        opName, "x1dim1 and x2Kdim",
                         (std::to_string(shapeInfo.x1Dim1) + " vs " + std::to_string(kAxis)).c_str(),
                         "The second dim of x1 must be equal to the K-axis dim of x2"),
                     return ge::GRAPH_FAILED);
     // MatmulAlltoAll: yDim0 = x1Dim0 * rankDim and x2 N-axis = yDim1 * rankDim
-    OP_TILING_CHECK((((shapeInfo.x1Dim0 * rankDim) != shapeInfo.yDim0) || (nAxis != (shapeInfo.yDim1 * rankDim))),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1_x2_y",
-                        (std::string("x1Dim0=") + std::to_string(shapeInfo.x1Dim0) + " yDim0=" +
-                         std::to_string(shapeInfo.yDim0) + " nAxis=" + std::to_string(nAxis) +
-                         " yDim1=" + std::to_string(shapeInfo.yDim1)).c_str(),
-                        "The value of yDim0 must equal x1Dim0 * rankSize and nAxis must equal yDim1 * rankSize"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        (((shapeInfo.x1Dim0 * rankDim) != shapeInfo.yDim0) || (nAxis != (shapeInfo.yDim1 * rankDim))),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            opName, "x1_x2_y",
+            (std::string("x1Dim0=") + std::to_string(shapeInfo.x1Dim0) + " yDim0=" + std::to_string(shapeInfo.yDim0) +
+             " nAxis=" + std::to_string(nAxis) + " yDim1=" + std::to_string(shapeInfo.yDim1))
+                .c_str(),
+            "The value of yDim0 must equal x1Dim0 * rankSize and nAxis must equal yDim1 * rankSize"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -211,13 +213,14 @@ ge::graphStatus MatmulAllToAllTilingBase::CheckKcQuantScaleShapes(const gert::Ti
     uint64_t x1ScaleDim = x1ScaleShape->GetStorageShape().GetDim(0);
     uint64_t x2ScaleDim = x2ScaleShape->GetStorageShape().GetDim(0);
     OP_TILING_CHECK((x1ScaleDim != shapeInfo.x1Dim0),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x1Scale",
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        opName, "x1Scale",
                         (std::to_string(x1ScaleDim) + " vs " + std::to_string(shapeInfo.x1Dim0)).c_str(),
                         "The dim of x1Scale must be equal to the first dim of x1"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((x2ScaleDim != nAxis),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "x2Scale",
-                        (std::to_string(x2ScaleDim) + " vs " + std::to_string(nAxis)).c_str(),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        opName, "x2Scale", (std::to_string(x2ScaleDim) + " vs " + std::to_string(nAxis)).c_str(),
                         "The dim of x2Scale must be equal to the second dim of x2"),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;

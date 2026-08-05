@@ -61,10 +61,10 @@ inline T Aligned(T value, T alignment)
  * if align is 0, return 0
  */
 template <typename T, typename U>
-inline typename std::enable_if<std::is_integral<T>::value, T>::type FloorAlign(T x, U align) 
+inline typename std::enable_if<std::is_integral<T>::value, T>::type FloorAlign(T x, U align)
 {
     return align == 0 ? 0 : x / align * align;
 }
-}
+} // namespace OpsUtils
 
-#endif  // ATVC_COMMON_OPS_UTILS_H
+#endif // ATVC_COMMON_OPS_UTILS_H

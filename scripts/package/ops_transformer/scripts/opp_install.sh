@@ -332,14 +332,14 @@ install_es_whl_package() {
  	  else
  	    logandprint "[INFO]: ${_package_name} installed successfully!"
  	  fi
- 	  chmod -R "${_BUILTIN_PERM}" "${_pythonlocalpath}"/es_transformer 2> /dev/null
- 	  chmod -R "${_BUILTIN_PERM}" "${_pythonlocalpath}"/es_transformer-*.dist-info 2> /dev/null
+ 	  chmod -R "${CUSTOM_PERM}" "${_pythonlocalpath}"/es_transformer 2> /dev/null
+ 	  chmod -R "${CUSTOM_PERM}" "${_pythonlocalpath}"/es_transformer-*.dist-info 2> /dev/null
  	else
  	  logandprint "[ERROR]: ERR_NO:0x0080;ERR_DES:install ${_package_name} failed, can not find the matched package for this platform."
  	  exit 1
  	fi
 }
- 	 
+
 install_es_whl() {
  	local es_whl_path="${OPS_SOURCE_DIR}/es_packages/whl/es_transformer-1.0.0-py3-none-any.whl"
  	local python_es_whl_name="es_transformer"
@@ -402,6 +402,8 @@ install_whl_package() {
       logandprint "[WARNING]: pip not available, copying whl file directly..."
       cp "${whl_file}" "${target_python_dir}/"
     fi
+    chmod -R "${CUSTOM_PERM}" "${target_python_dir}"/cann_ops_transformer 2> /dev/null
+    chmod -R "${CUSTOM_PERM}" "${target_python_dir}"/cann_ops_transformer-*.dist-info 2> /dev/null
 
     logandprint "[INFO]: cann_ops_transformer whl package installed successfully"
   else

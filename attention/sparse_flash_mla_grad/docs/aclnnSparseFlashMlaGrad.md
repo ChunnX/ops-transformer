@@ -2,21 +2,30 @@
 
 ## 产品支持情况
 
-| 产品                                              | 是否支持 |
-|:------------------------------------------------| :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>          |    ×     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>    |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>    |    √     |
-| <term>Atlas 200I/500 A2 推理产品</term>             |    ×     |
-| <term>Atlas 推理系列产品</term>                       |    ×     |
-| <term>Atlas 训练系列产品</term>                       |    ×     |
-
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
--   **接口功能**：计算`SparseFlashMla`训练场景下注意力的反向输出，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。
+- **接口功能**：计算`SparseFlashMla`训练场景下注意力的反向输出，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention。
 
--   **计算公式**：
+- **计算公式**：
 
     阶段一：根据不同cmp_ratio场景，对输入ori_kv与cmp_kv进行选择
 
@@ -66,11 +75,10 @@
     dSinks = ReduceSum(-P \text{ }\times\text{ } dP \text{ }\times\text{ } SimpleSoftmax(sinks, lse), dim=-1)
     $$
 
-
-
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSparseFlashMlaGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashMlaGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnSparseFlashMlaGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashMlaGrad”接口执行计算。
+
 ```c++
 aclnnStatus aclnnSparseFlashMlaGradGetWorkspaceSize(
     const aclTensor   *query,
@@ -109,6 +117,7 @@ aclnnStatus aclnnSparseFlashMlaGradGetWorkspaceSize(
     uint64_t          *workspaceSize,
     aclOpExecutor    **executor);
 ```
+
 ```c++
 aclnnStatus aclnnSparseFlashMlaGrad(
     void             *workspace,
@@ -125,9 +134,9 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <colgroup>
             <col style="width: 220px">
             <col style="width: 120px">
-            <col style="width: 200px">  
-            <col style="width: 400px">  
-            <col style="width: 212px">  
+            <col style="width: 200px">
+            <col style="width: 400px">
+            <col style="width: 212px">
             <col style="width: 100px">
             <col style="width: 290px">
             <col style="width: 145px">
@@ -313,7 +322,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示不同batch中query实际参与运算的token数。</td>
             <td>
-            该参数暂不支持。
+            长度为B。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -326,7 +335,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示不同batch中oriKvOptional实际参与运算的token数。</td>
             <td>
-            该参数暂不支持。
+            长度为B。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -339,7 +348,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示不同batch中cmpKvOptional实际参与运算的token数。</td>
             <td>
-            该参数暂不支持。
+            长度为B。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -365,7 +374,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示每行query对应的oriKvOptional实际可选的topk长度。</td>
             <td>
-            该参数暂不支持。
+            oriMaskMode=0且oriSparseIndicesOptional不为空时需要传，且必须为准确值。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -378,7 +387,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示每行query对应的cmpKvOptional实际可选的topk长度。</td>
             <td>
-            该参数暂不支持。
+            cmpMaskMode=0且cmpSparseIndicesOptional不为空时需要传，且必须为准确值。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -405,7 +414,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>表示tiling下沉的aicpu算子输出结果。</td>
             <td>
-            目前暂不支持tiling下沉，故设置此参数无效。
+            -
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -418,7 +427,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             <td>输入</td>
             <td>缩放系数。</td>
             <td>
-            建议值：公式中d开根号的倒数。</li>
+            建议值：公式中d开根号的倒数。
             </td>
             <td>FLOAT32</td>
             <td>N/A</td>
@@ -444,7 +453,6 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <td>
               <ul>
                 <li>表示sparse的模式。sparse不同模式的详细说明请参见<a href="#约束说明">约束说明</a>。</li>
-                <li>仅支持模式4。</li>
               </ul>
         </td>
         <td>INT64</td>
@@ -459,7 +467,6 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <td>
               <ul>
                 <li>表示sparse的模式。sparse不同模式的详细说明请参见<a href="#约束说明">约束说明</a>。</li>
-                <li>仅支持模式3。</li>
               </ul>
         </td>
         <td>INT64</td>
@@ -545,7 +552,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             </td>
             <td>√</td>
         </tr>
-        <tr>  
+        <tr>
             <td>dCmpKvOptional（aclTensor*）</td>
             <td>输出</td>
             <td>表示cmpKvOptional的梯度。</td>
@@ -558,7 +565,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             </td>
             <td>√</td>
         </tr>
-        <tr>  
+        <tr>
             <td>dSinksOutOptional（aclTensor*）</td>
             <td>输出</td>
             <td>表示sinksOptional的梯度。</td>
@@ -571,12 +578,12 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             </td>
             <td>√</td>
         </tr>
-        <tr>  
+        <tr>
             <td>oriSoftmaxL1NormOptional（aclTensor*）</td>
             <td>输出</td>
             <td>表示query与oriKvOptional计算得出的softmax L1Norm结果，公式为reduceG(softmax)/G。</td>
             <td>
-            该参数暂不支持。
+            若存在oriSparseIndicesOptional，则该输出不为空；其他场景下该参数输出为空。
             </td>
             <td>FLOAT32</td>
             <td>ND</td>
@@ -584,12 +591,12 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             </td>
             <td>√</td>
         </tr>
-        <tr>  
+        <tr>
             <td>cmpSoftmaxL1NormOptional（aclTensor*）</td>
             <td>输出</td>
             <td>表示query与cmpKvOptional计算得出的softmax L1Norm结果，公式为reduceG(softmax)/G。</td>
             <td>
-            在SCFA场景下，该输出不为空；其他场景下该参数输出为空。
+            若存在cmpSparseIndicesOptional，则该输出不为空；其他场景下该参数输出为空。
             </td>
             <td>FLOAT32</td>
             <td>ND</td>
@@ -600,9 +607,14 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         </tbody>
     </table>
 
+    <!-- npu="A3,910b" id7 -->
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持sequsedQOptional、sequsedOriKvOptional、sequsedCmpKvOptional、oriTopkLengthOptional、cmpTopkLengthOptional、metadataOptional字段。
+
+    <!-- end id7 -->
+
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -632,9 +644,13 @@ aclnnStatus aclnnSparseFlashMlaGrad(
                 <td>361001</td>
                 <td>API内存调用npu runtime的接口异常。</td>
             </tr>
+            <tr>
+                <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+                <td>561002</td>
+                <td>输入参数（如layout、maskMode）的取值超出支持范围，或输入Tensor的shape维度不符合约束要求。</td>
+            </tr>
         </tbody>
     </table>
-
 
 ## aclnnSparseFlashMlaGrad
 
@@ -677,14 +693,20 @@ aclnnStatus aclnnSparseFlashMlaGrad(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
-  
-  - aclnnSparseFlashMlaGrad默认非确定性实现，暂不支持通过aclrtCtxSetSysParamOpt开启确定性。
+
+    <!-- npu="A3,910b" id8 -->
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：aclnnSparseFlashMlaGrad默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+
+    <!-- end id8 -->
+    <!-- npu="950" id9 -->
+    - <term>Ascend 950PR/Ascend 950DT</term>：aclnnSparseFlashMlaGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+    <!-- end id9 -->
+
 - 公共约束
     - 入参为空的场景处理：
         - query为空Tensor：直接返回。
@@ -706,20 +728,21 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <tr>
             <td>0</td>
             <td>不做mask操作</td>
-            <td>当前不支持</td>
+            <td>支持</td>
         </tr>
         <tr>
             <td>3</td>
             <td>rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</td>
-            <td>当前cmp部分支持</td>
+            <td>支持</td>
         </tr>
         <tr>
             <td>4</td>
             <td>band模式的mask，滑窗范围由oriWinLeft、oriWinRight控制，参数起点为右下角。</td>
-            <td>当前ori部分支持</td>
+            <td>ori支持</td>
         </tr>
         </tbody>
     </table>
+
 - 规格约束
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
         <col style="width: 100px">
@@ -767,9 +790,29 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         </tbody>
     </table>
 
+  - 参数cmpMaskMode的支持情况:
+
+    <!-- npu="A3,910b" id10 -->
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：cmpMaskMode支持3。
+    <!-- end id10 -->
+    <!-- npu="950" id11 -->
+    - <term>Ascend 950PR/Ascend 950DT</term>：cmpMaskMode支持0、3。
+
+    <!-- end id11 -->
+
+  - 参数oriMaskMode的支持情况:
+
+    <!-- npu="A3,910b" id12 -->
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：oriMaskMode支持4。
+    <!-- end id12 -->
+    <!-- npu="950" id13 -->
+    - <term>Ascend 950PR/Ascend 950DT</term>：oriMaskMode支持0、3、4。
+
+    <!-- end id13 -->
+
 ## 调用示例
 
-调用示例代码如下（以<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>为例），仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -777,6 +820,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
 #include <numeric>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_sparse_flash_mla_grad.h"
+#include "aclnnop/aclnn_sparse_flash_mla_grad_metadata.h"
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \
@@ -848,7 +892,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1.（固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+  // 1. （固定写法）device/context/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtContext context;
@@ -867,7 +911,8 @@ int main() {
   std::vector<int64_t> cuSeqOriKvLenshape = {2};             // B + 1
   std::vector<int64_t> cuSeqCmpKvLenshape = {2};             // B + 1
   std::vector<int64_t> cmpResidualKvShape = {1};             // B
-  std::vector<int64_t> sinksShape = {2};                     // N1
+  std::vector<int64_t> sinksShape = {16};                    // N1
+  std::vector<int64_t> metadataShape = {1024};               // 固定大小
 
   void* qDeviceAddr = nullptr;
   void* oriKvDeviceAddr = nullptr;
@@ -884,6 +929,7 @@ int main() {
   void* dOriKvDeviceAddr = nullptr;
   void* dCmpKvDeviceAddr = nullptr;
   void* dSinksDeviceAddr = nullptr;
+  void* metadataDeviceAddr = nullptr;
   void* oriSoftmaxL1NormDeviceAddr = nullptr;
   void* cmpSoftmaxL1NormDeviceAddr = nullptr;
 
@@ -902,6 +948,7 @@ int main() {
   aclTensor* dOriKv = nullptr;
   aclTensor* dCmpKv = nullptr;
   aclTensor* dSinks = nullptr;
+  aclTensor* metadata = nullptr;
   aclTensor* oriSoftmaxL1Norm = nullptr;
   aclTensor* cmpSoftmaxL1Norm = nullptr;
 
@@ -920,6 +967,7 @@ int main() {
   std::vector<short> dOriKvHostData(2048 * 1 * 512, 0);
   std::vector<short> dCmpKvHostData(16 * 1 * 512, 0);
   std::vector<float> dSinksHostData(16, 0);
+  std::vector<int32_t> metadataHostData(1024, 0);
 
   ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -951,6 +999,8 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(dSinksHostData, sinksShape, &dSinksDeviceAddr, aclDataType::ACL_FLOAT, &dSinks);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
+  ret = CreateAclTensor(metadataHostData, metadataShape, &metadataDeviceAddr, aclDataType::ACL_INT32, &metadata);
+  CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   double scaleValue = 0.088388;
   int64_t cmpRatio = 128;
@@ -960,36 +1010,61 @@ int main() {
   int64_t oriWinRight = 0;
   char layoutQ[5] = {'T', 'N', 'D', 0};
   char layoutKv[5] = {'T', 'N', 'D', 0};
-  
+
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
+  // 3.1 调用SparseFlashMlaGradMetadata获取metadata
+  uint64_t metaWorkspaceSize = 0;
+  aclOpExecutor* metaExecutor;
+  ret = aclnnSparseFlashMlaGradMetadataGetWorkspaceSize(
+      cuSeqQLen, cuSeqOriKvLen, cuSeqCmpKvLen,
+      nullptr, nullptr, nullptr,
+      cmpResidualKv,
+      nullptr, nullptr,
+      16, 1, 512,
+      0, 0, 0, 0,
+      0, 0,
+      cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
+      layoutQ, layoutKv,
+      true, true,
+      metadata, &metaWorkspaceSize, &metaExecutor);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("SparseFlashMlaGradMetadataGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+
+  void* metaWorkspaceAddr = nullptr;
+  if (metaWorkspaceSize > 0) {
+    ret = aclrtMalloc(&metaWorkspaceAddr, metaWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate metadata workspace failed. ERROR: %d\n", ret); return ret);
+  }
+
+  ret = aclnnSparseFlashMlaGradMetadata(metaWorkspaceAddr, metaWorkspaceSize, metaExecutor, stream);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("SparseFlashMlaGradMetadata failed. ERROR: %d\n", ret); return ret);
+
+  ret = aclrtSynchronizeStream(stream);
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
+
+  // 3.2 调用SparseFlashMlaGrad计算梯度
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor;
-  
-  // 调用aclnnSparseFlashMlaGrad第一段接口
   ret = aclnnSparseFlashMlaGradGetWorkspaceSize(q, dOut, out, lse, oriKv, cmpKv, nullptr, nullptr, cuSeqQLen, cuSeqOriKvLen, cuSeqCmpKvLen,
-            nullptr, nullptr, nullptr, cmpResidualKv, nullptr, nullptr, sinks, nullptr, scaleValue, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
-            layoutQ, layoutKv, dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm, 
+            nullptr, nullptr, nullptr, cmpResidualKv, nullptr, nullptr, sinks, metadata, scaleValue, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
+            layoutQ, layoutKv, dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm,
             &workspaceSize, &executor);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashMlaGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
-  
-  // 根据第一段接口计算出的workspaceSize申请device内存
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("SparseFlashMlaGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+
   void* workspaceAddr = nullptr;
   if (workspaceSize > 0) {
     ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
   }
-  
-  // 调用aclnnSparseFlashMlaGrad第二段接口
+
   ret = aclnnSparseFlashMlaGrad(workspaceAddr, workspaceSize, executor, stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashMlaGrad failed. ERROR: %d\n", ret); return ret);
-  
-  // 4.（固定写法）同步等待任务执行结束
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("SparseFlashMlaGrad failed. ERROR: %d\n", ret); return ret);
+
+  // 4. （固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-  
+
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
   PrintOutResult(qShape, &dqDeviceAddr);
-  PrintOutResult(oriKvShape, &dOriKvDeviceAddr);
   PrintOutResult(cmpKvShape, &dCmpKvDeviceAddr);
   PrintOutResult(sinksShape, &dSinksDeviceAddr);
 
@@ -1009,6 +1084,7 @@ int main() {
   aclDestroyTensor(dOriKv);
   aclDestroyTensor(dCmpKv);
   aclDestroyTensor(dSinks);
+  aclDestroyTensor(metadata);
   aclDestroyTensor(oriSoftmaxL1Norm);
   aclDestroyTensor(cmpSoftmaxL1Norm);
 
@@ -1028,8 +1104,12 @@ int main() {
   aclrtFree(dOriKvDeviceAddr);
   aclrtFree(dCmpKvDeviceAddr);
   aclrtFree(dSinksDeviceAddr);
+  aclrtFree(metadataDeviceAddr);
   aclrtFree(oriSoftmaxL1NormDeviceAddr);
   aclrtFree(cmpSoftmaxL1NormDeviceAddr);
+  if (metaWorkspaceSize > 0) {
+    aclrtFree(metaWorkspaceAddr);
+  }
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
   }
@@ -1037,7 +1117,7 @@ int main() {
   aclrtDestroyContext(context);
   aclrtResetDevice(deviceId);
   aclFinalize();
-  
+
   return 0;
 }
 ```

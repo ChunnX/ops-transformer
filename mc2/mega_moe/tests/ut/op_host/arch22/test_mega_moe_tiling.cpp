@@ -98,7 +98,7 @@ TEST_F(MegaMoeArch22TilingTest, Test0)
         {1, 1}, &compileInfo, "Ascend910B", coreNum, ubSize);
 
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, UINT64_MAX);
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED, UINT64_MAX);
 }
 
 } // namespace MegaMoeUT

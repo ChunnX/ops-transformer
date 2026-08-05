@@ -126,9 +126,9 @@ int InitializeTensors(TensorResources& resources) {
 
     std::vector<int8_t> queryHostData(queryShapeSize, 1);
     std::vector<int8_t> keyHostData(keyShapeSize, 1);
-    std::vector<uint16_t> weightsHostData(weightsShapeSize, 0x3F00);
-    std::vector<float> queryDequantScaleHostData(queryDequantScaleShapeSize, 1.0f);
-    std::vector<float> keyDequantScaleHostData(keyDequantScaleShapeSize, 1.0f);
+    std::vector<uint16_t> weightsHostData(weightsShapeSize, 0x3C00);
+    std::vector<aclFloat16> queryDequantScaleHostData(queryDequantScaleShapeSize, 1.0f);
+    std::vector<aclFloat16> keyDequantScaleHostData(keyDequantScaleShapeSize, 1.0f);
     std::vector<int32_t> actualSeqLengthsKeyHostData = {256, 512};
     std::vector<int32_t> blockTableHostData(blockTableShapeSize, 0);
     for (int32_t i = 0; i < 32; i++) {
@@ -138,31 +138,31 @@ int InitializeTensors(TensorResources& resources) {
     std::vector<int32_t> outHostData(outShapeSize, 0);
 
     int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr,
-                              aclDataType::ACL_FLOAT8_E4M3FN, &resources.queryTensor);
+                              aclDataType::ACL_INT8, &resources.queryTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
     ret = CreateAclTensor(keyHostData, keyShape, &resources.keyDeviceAddr,
-                          aclDataType::ACL_FLOAT8_E4M3FN, &resources.keyTensor);
+                          aclDataType::ACL_INT8, &resources.keyTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
     ret = CreateAclTensor(weightsHostData, weightsShape, &resources.weightsDeviceAddr,
-                          aclDataType::ACL_BF16, &resources.weightsTensor);
+                          aclDataType::ACL_FLOAT16, &resources.weightsTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
     ret = CreateAclTensor(queryDequantScaleHostData, queryDequantScaleShape, &resources.queryDequantScaleDeviceAddr,
-                          aclDataType::ACL_FLOAT, &resources.queryDequantScaleTensor);
+                          aclDataType::ACL_FLOAT16, &resources.queryDequantScaleTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
     ret = CreateAclTensor(keyDequantScaleHostData, keyDequantScaleShape, &resources.keyDequantScaleDeviceAddr,
-                          aclDataType::ACL_FLOAT, &resources.keyDequantScaleTensor);
+                          aclDataType::ACL_FLOAT16, &resources.keyDequantScaleTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }

@@ -38,17 +38,16 @@ struct MoeDistributeCombineV2Info {
     uint32_t h;
     uint32_t a;
     uint32_t aivNum;
-    bool isTokenMask;              // input active mask 1dims or not
-    bool isExpertMask;             // input active mask 2dims or not
-    bool hasSharedExpertX;         // input shared expert x or not
-    bool hasElasticInfo;           // has elasticinfo or not
-    bool isPerformance;            // whether performance or not
+    bool isTokenMask;      // input active mask 1dims or not
+    bool isExpertMask;     // input active mask 2dims or not
+    bool hasSharedExpertX; // input shared expert x or not
+    bool hasElasticInfo;   // has elasticinfo or not
+    bool isPerformance;    // whether performance or not
     bool isMc2Context;
+    bool hasExpertScales;         // has expertScales or not
     bool reserved1;
-    bool reserved2;
     uint64_t totalUbSize;
     uint64_t totalWinSizeEp;
-    uint64_t totalWinSizeTp;
     float armAvgFactor;
     float epsilon;
     uint32_t bufferNum;
@@ -56,7 +55,6 @@ struct MoeDistributeCombineV2Info {
 struct MoeDistributeCombineV2TilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling1;
-    Mc2CcTiling mc2CcTiling2;
     MoeDistributeCombineV2Info moeDistributeCombineV2Info;
 };
 

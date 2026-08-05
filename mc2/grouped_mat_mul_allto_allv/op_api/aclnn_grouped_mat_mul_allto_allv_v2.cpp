@@ -17,14 +17,6 @@
 #include "aclnnInner_grouped_mat_mul_allto_allv.h"
 #include "mc2_comm_utils.h"
 
-#ifdef BUILD_OPEN_PROJECT
-#include "version/hcomm_version.h"
-#define HCCL_CHANNEL_SUPPORT_VERSION 89999700
-#if HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-#include "common/op_api/mc2_context.h"
-#endif
-#endif
-
 using namespace op;
 
 #ifdef __cplusplus
@@ -44,27 +36,23 @@ extern "C" void *NnopbaseGetUserHandle(void *executor);
 
 static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commModeStr, uint8_t &commModeEnum)
 {
-    // 获取卡数
-    uint32_t rankSize = 0;
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
-    auto getRankSizeRet = Mc2Aclnn::Mc2Context::GetMc2RankSize(group, rankSize);
-    CHECK_RET(getRankSizeRet == ACLNN_SUCCESS, getRankSizeRet);
-#endif
-    const size_t maxLength = 6UL;
+    const size_t maxLength = 7UL;
     // 获取通信引擎参数
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_AICPU;
         } else if (strncmp(commModeStr, "ccu", maxLength) == 0) {
             commModeEnum = Mc2Comm::COMM_MODE_CCU;
-        } else if (strncmp(commModeStr, "", maxLength) == 0) {
-            if (rankSize <= 8) {
-                commModeEnum = Mc2Comm::COMM_MODE_CCU;
-            } else {
-                commModeEnum = Mc2Comm::COMM_MODE_AICPU;
-            }
         } else {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "commMode only support '', 'ccu', 'ai_cpu'.");
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Currently, commMode only support 'ccu', 'ai_cpu', but got %s.",
+                    commModeStr);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    } else {
+        if (strncmp(commModeStr, "ai_cpu", maxLength) == 0) {
+            commModeEnum = Mc2Comm::COMM_MODE_AICPU;
+        } else {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Currently, commMode only support 'ai_cpu', but got %s.", commModeStr);
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -73,9 +61,9 @@ static aclnnStatus CheckAndHandleCommMode(const char *group, const char *commMod
 
 // check nullptr
 static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
-    const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
-    const aclTensor *mmWeightOptional, const char *group, bool transGmmWeight, bool transMmWeight, aclTensor *y,
-    const aclTensor *mmYOptional)
+                            const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional,
+                            const aclTensor *mmXOptional, const aclTensor *mmWeightOptional, const char *group,
+                            bool transGmmWeight, bool transMmWeight, aclTensor *y, const aclTensor *mmYOptional)
 {
     (void)transGmmWeight;
     (void)transMmWeight;
@@ -94,12 +82,12 @@ static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
     if ((!((mmXOptional != nullptr) && (mmWeightOptional != nullptr) && (mmYOptional != nullptr))) &&
         (!((mmXOptional == nullptr) && (mmWeightOptional == nullptr) && (mmYOptional == nullptr)))) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "mmXOptional, mmWeightOptional and mmYOptional should all be null or all not be null, "
-            "left: %u, right: %u, mmXOptional is nullptr: %u, mmWeightOptional is nullptr: %u, mmYOptional is "
-            "nullptr: %u",
-            (!((mmXOptional != nullptr) && (mmWeightOptional != nullptr) && (mmYOptional != nullptr))),
-            (!((mmXOptional == nullptr) && (mmWeightOptional == nullptr) && (mmYOptional == nullptr))),
-            mmXOptional == nullptr, mmWeightOptional == nullptr, mmYOptional == nullptr);
+                "mmXOptional, mmWeightOptional and mmYOptional should all be null or all not be null, "
+                "left: %u, right: %u, mmXOptional is nullptr: %u, mmWeightOptional is nullptr: %u, mmYOptional is "
+                "nullptr: %u",
+                (!((mmXOptional != nullptr) && (mmWeightOptional != nullptr) && (mmYOptional != nullptr))),
+                (!((mmXOptional == nullptr) && (mmWeightOptional == nullptr) && (mmYOptional == nullptr))),
+                mmXOptional == nullptr, mmWeightOptional == nullptr, mmYOptional == nullptr);
         return false;
     }
     return true;
@@ -132,16 +120,17 @@ static aclnnStatus CheckSendAndRecv(const aclIntArray *sendCounts, const aclIntA
 
 // 入参校验
 static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight,
-    const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
-    const aclTensor *mmWeightOptional, const char *group, int64_t epWorldSize, const aclIntArray *sendCounts,
-    const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight, aclTensor *y, aclTensor *mmYOptional)
+                               const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional,
+                               const aclTensor *mmXOptional, const aclTensor *mmWeightOptional, const char *group,
+                               int64_t epWorldSize, const aclIntArray *sendCounts, const aclIntArray *recvCounts,
+                               bool transGmmWeight, bool transMmWeight, aclTensor *y, aclTensor *mmYOptional)
 {
     (void)epWorldSize;
     (void)sendCounts;
     (void)recvCounts;
     CHECK_RET(CheckNullStatus(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
-        mmWeightOptional, group, transGmmWeight, transMmWeight, y, mmYOptional),
-        ACLNN_ERR_PARAM_NULLPTR);
+                              mmWeightOptional, group, transGmmWeight, transMmWeight, y, mmYOptional),
+              ACLNN_ERR_PARAM_NULLPTR);
 
     if (strnlen(group, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Required group name exceeds %zu.", HCCL_GROUP_NAME_MAX);
@@ -151,14 +140,16 @@ static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(const aclTensor *gmmX, const aclTensor *gmmWeight,
-    const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
-    const aclTensor *mmWeightOptional, const char *group, const char *commMode, int64_t epWorldSize,
-    const aclIntArray *sendCounts, const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight, aclTensor *y,
-    aclTensor *mmYOptional, uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(
+    const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *sendCountsTensorOptional,
+    const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
+    const char *group, const char *commMode, int64_t epWorldSize, const aclIntArray *sendCounts,
+    const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight, aclTensor *y, aclTensor *mmYOptional,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    auto ret_param = CheckParams(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
-        mmWeightOptional, group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, y, mmYOptional);
+    auto ret_param =
+        CheckParams(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
+                    group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, y, mmYOptional);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
     auto ret_send_and_recv = CheckSendAndRecv(sendCounts, recvCounts);
     CHECK_RET(ret_send_and_recv == ACLNN_SUCCESS, ret_send_and_recv);
@@ -170,9 +161,10 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(const aclTensor *gmmX,
     uint8_t commModeEnum = 0;
     aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
-    aclnnStatus ret = aclnnInnerGroupedMatMulAlltoAllvGetWorkspaceSize(gmmX, gmmWeight, sendCountsTensorOptional,
-        recvCountsTensorOptional, mmXOptional, mmWeightOptional, const_cast<char *>(group), epWorldSize, sendCounts,
-        recvCounts, transGmmWeight, transMmWeight, str_commMode, y, mmYOptional, workspaceSize, executor);
+    aclnnStatus ret = aclnnInnerGroupedMatMulAlltoAllvGetWorkspaceSize(
+        gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
+        const_cast<char *>(group), epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, str_commMode, y,
+        mmYOptional, workspaceSize, executor);
     OP_LOGD("GroupedMatMulAlltoAllv, aclnnInnerGroupedMatMulAlltoAllvGetWorkspaceSize ret %d.", ret);
     if (*executor != nullptr) {
         void *args = reinterpret_cast<void *>(static_cast<uint8_t>(commModeEnum));
@@ -182,7 +174,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvV2GetWorkspaceSize(const aclTensor *gmmX,
 }
 
 aclnnStatus aclnnGroupedMatMulAlltoAllvV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-    aclrtStream stream)
+                                          aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {

@@ -40,6 +40,7 @@ inline aclDataType ParseAclDtype(const std::string &dtype)
         {"FLOAT8_E8M0", ACL_FLOAT8_E8M0},
         {"HIFLOAT8", ACL_HIFLOAT8},
         {"FLOAT4_E2M1", ACL_FLOAT4_E2M1},
+        {"FLOAT4_E1M2", ACL_FLOAT4_E1M2},
         {"UNDEFINED", ACL_DT_UNDEFINED},
     };
     const auto it = dtypeMap.find(Trim(dtype));
@@ -154,7 +155,7 @@ inline TensorListDesc BuildAclTensorListDesc(const std::vector<std::vector<int64
     tensor_vec.reserve(shapes.size());
     for (size_t i = 0; i < shapes.size(); ++i) {
         tensor_vec.emplace_back(MakeAclTensorDesc(shapes[i], dtype, format, GetOptionalDims(storage_shapes, i),
-                                                 GetOptionalDims(strides, i)));
+                                                  GetOptionalDims(strides, i)));
     }
     return TensorListDesc(tensor_vec);
 }

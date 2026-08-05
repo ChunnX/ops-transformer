@@ -25,6 +25,28 @@
               -2
             ],
             "format_match_mode": "FormatAgnostic"
+          },
+          {
+            "name": "input_ids",
+            "index": 2,
+            "dtype": "int32",
+            "format": "ND",
+            "paramType": "optional",
+            "shape": [
+              -2
+            ],
+            "format_match_mode": "FormatAgnostic"
+          },
+          {
+            "name": "tid2eid",
+            "index": 3,
+            "dtype": "int32",
+            "format": "ND",
+            "paramType": "optional",
+            "shape": [
+              -2
+            ],
+            "format_match_mode": "FormatAgnostic"
           }
         ],
         "outputs": [
@@ -78,7 +100,6 @@
             "dtype": "int",
             "value": 1
           },
-  
           {
             "name": "group_select_mode",
             "dtype": "int",
@@ -135,6 +156,28 @@
               -2
             ],
             "format_match_mode": "FormatAgnostic"
+          },
+          {
+            "name": "input_ids",
+            "index": 2,
+            "dtype": "int32",
+            "format": "ND",
+            "paramType": "optional",
+            "shape": [
+              -2
+            ],
+            "format_match_mode": "FormatAgnostic"
+          },
+          {
+            "name": "tid2eid",
+            "index": 3,
+            "dtype": "int32",
+            "format": "ND",
+            "paramType": "optional",
+            "shape": [
+              -2
+            ],
+            "format_match_mode": "FormatAgnostic"
           }
         ],
         "outputs": [
@@ -188,7 +231,6 @@
             "dtype": "int",
             "value": 1
           },
-  
           {
             "name": "group_select_mode",
             "dtype": "int",
@@ -239,6 +281,28 @@
             "name": "bias",
             "index": 1,
             "dtype": "bfloat16",
+            "format": "ND",
+            "paramType": "optional",
+            "shape": [
+              -2
+            ],
+            "format_match_mode": "FormatAgnostic"
+          },
+          {
+            "name": "input_ids",
+            "index": 2,
+            "dtype": "int32",
+            "format": "ND",
+            "paramType": "optional",
+            "shape": [
+              -2
+            ],
+            "format_match_mode": "FormatAgnostic"
+          },
+          {
+            "name": "tid2eid",
+            "index": 3,
+            "dtype": "int32",
             "format": "ND",
             "paramType": "optional",
             "shape": [
@@ -298,7 +362,6 @@
             "dtype": "int",
             "value": 1
           },
-  
           {
             "name": "group_select_mode",
             "dtype": "int",

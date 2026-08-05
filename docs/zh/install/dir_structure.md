@@ -9,7 +9,7 @@
 > - 若缺少op_api目录，说明该算子暂不支持aclnn调用。
 > - 若缺少op_graph目录，说明该算子暂不支持图模式调用。
 
-```
+```text
 ├── cmake                                               # 项目工程编译目录
 │   ├── aclnn_ops_transformer.h.in                       # aclnn汇总头文件模板
 │   └── ...
@@ -20,8 +20,8 @@
 ├── experimental                                        # 用户自定义算子存放目录
 │   ├── attention                                       # 可选，用户开发的attention类算子目录
 │   │   └── CMakeLists.txt
-│   └── ...                                        
-│    
+│   └── ...
+│
 ├── ${op_class}                                         # 算子分类，如attention、ffn、gmm类算子
 │   ├${op_name}                                         # 算子工程目录，${op_name}表示算子名（小写下划线形式）
 │   │   ├── CMakeLists.txt                              # 算子cmakelist入口
@@ -44,7 +44,7 @@
 │   │   │   │   └── ...
 │   │   │   ├── ${op_name}_def.cpp                      # 算子信息库，定义算子基本信息，如名称、输入输出、数据类型等
 │   │   │   ├── ${op_name}_infershape.cpp               # 可选，InferShape实现，根据算子形状推导输出shape，若未配置则输出shape与输入shape一样
-│   │   │   ├── ${op_name}_tiling_${sub_case}.cpp       # 可选，针对某些子场景下的Tiling优化，${sub_case}表示子场景，若无该文件表明该算子没有对应子场景的特定Tiling策略
+│   │   │   ├── ${op_name}_tiling_${sub_case}.cpp       # 可选，针对某些子场景下的Tiling优化，${sub_case}表示子场景，如${op_name}_tiling_arch35是针对arch35架构的优化，若无该文件表明该算子没有对应子场景的特定Tiling策略；注意：Tiling实现文件名须包含 `_tiling` 标识才会被编译系统识别并参与编译
 │   │   │   ├── ${op_name}_tiling_${sub_case}.h         # 可选，${sub_case}子场景下Tiling实现用的头文件
 │   │   │   ├── ${op_name}_tiling.cpp                   # 可选，若无该文件表明对应场景下无Tiling实现(将张量划分为多个小块，区分数据类型进行并行计算)
 │   │   │   ├── ${op_name}_tiling.h                     # 可选，Tiling实现用的头文件
@@ -70,7 +70,7 @@
 ├── docs                                                # 项目相关文档目录
 ├── examples                                            # 端到端算子开发和调用示例
 │   ├── add_example                                     # AI Core算子示例目录
-│   │   ├── CMakeLists.txt                              # 算子编译配置文件 
+│   │   ├── CMakeLists.txt                              # 算子编译配置文件
 │   │   ├── examples                                    # 算子使用示例目录
 │   │   ├── op_graph                                    # 算子构图相关目录
 │   │   ├── op_host                                     # 算子信息库、Tiling、InferShape相关实现目录

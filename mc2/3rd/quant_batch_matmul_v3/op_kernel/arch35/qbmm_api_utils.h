@@ -25,16 +25,16 @@ using namespace AscendC;
 using namespace matmul;
 
 template <typename T, bool trans>
-__aicore__ inline void CopyInA1(const Mc2QuantBmmAswBlock& block, uint32_t blockIdx, bool isMultiCore,
-                                LocalTensor<T>& al1Local, const GlobalTensor<T>& aGlobal)
+__aicore__ inline void CopyInA1(const Mc2QuantBmmAswBlock &block, uint32_t blockIdx, bool isMultiCore,
+                                LocalTensor<T> &al1Local, const GlobalTensor<T> &aGlobal)
 {
     auto &matmulTilingData = *block.tilingData_;
     uint64_t shapeM = matmulTilingData.matmulTiling.M;
     uint64_t shapeK = matmulTilingData.matmulTiling.Ka;
     uint64_t mCntIdx = blockIdx % block.params_.mCnt;
-    uint64_t singleCoreM = isMultiCore && mCntIdx == block.params_.mCnt - 1UL
-                          ? block.params_.mBaseTail
-                          : static_cast<uint64_t>(matmulTilingData.matmulTiling.singleCoreM);
+    uint64_t singleCoreM = isMultiCore && mCntIdx == block.params_.mCnt - 1UL ?
+                               block.params_.mBaseTail :
+                               static_cast<uint64_t>(matmulTilingData.matmulTiling.singleCoreM);
     uint64_t nDim = singleCoreM;
     uint64_t dDim = shapeK;
     uint64_t offsetA = mCntIdx * matmulTilingData.matmulTiling.singleCoreM * shapeK;
@@ -79,17 +79,17 @@ __aicore__ inline void CopyInA1(const Mc2QuantBmmAswBlock& block, uint32_t block
 }
 
 template <typename T, bool trans>
-__aicore__ inline void CopyInScaleA(const Mc2QuantBmmAswBlock& block, uint32_t blockId, bool isMultiCore,
-                                    LocalTensor<T>& scaleAl1Local, const GlobalTensor<T>& scaleAGlobal)
+__aicore__ inline void CopyInScaleA(const Mc2QuantBmmAswBlock &block, uint32_t blockId, bool isMultiCore,
+                                    LocalTensor<T> &scaleAl1Local, const GlobalTensor<T> &scaleAGlobal)
 {
     auto &multiTilingData = *block.tilingData_;
     uint64_t shapeM = multiTilingData.matmulTiling.M;
     uint64_t shapeK =
         DequantBmm::Align(DequantBmm::CeilDiv(multiTilingData.matmulTiling.Ka, MXFP_GROUP_SIZE), MXFP_MULTI_BASE_SIZE);
     uint64_t mCntIdx = blockId % block.params_.mCnt;
-    uint64_t singleCoreM = isMultiCore && mCntIdx == block.params_.mCnt - 1UL
-                          ? block.params_.mBaseTail
-                          : static_cast<uint64_t>(multiTilingData.matmulTiling.singleCoreM);
+    uint64_t singleCoreM = isMultiCore && mCntIdx == block.params_.mCnt - 1UL ?
+                               block.params_.mBaseTail :
+                               static_cast<uint64_t>(multiTilingData.matmulTiling.singleCoreM);
 
     uint64_t nDim = singleCoreM;
     uint64_t dDim = shapeK;
@@ -119,16 +119,13 @@ __aicore__ inline void CopyInScaleA(const Mc2QuantBmmAswBlock& block, uint32_t b
 }
 
 template <typename T>
-__aicore__ inline void ProcessWithBatch(Mc2QuantBmmAswBlock& block, T& object)
+__aicore__ inline void ProcessWithBatch(Mc2QuantBmmAswBlock &block, T &object)
 {
-    uint64_t batchC3C4 =
-        static_cast<uint64_t>(block.tilingData_->params.batchC3) * block.tilingData_->params.batchC4;
+    uint64_t batchC3C4 = static_cast<uint64_t>(block.tilingData_->params.batchC3) * block.tilingData_->params.batchC4;
     uint64_t batchC2C3C4 = block.tilingData_->params.batchC2 * batchC3C4;
-    uint64_t batchB3B4 =
-        static_cast<uint64_t>(block.tilingData_->params.batchB3) * block.tilingData_->params.batchB4;
+    uint64_t batchB3B4 = static_cast<uint64_t>(block.tilingData_->params.batchB3) * block.tilingData_->params.batchB4;
     uint64_t batchB2B3B4 = block.tilingData_->params.batchB2 * batchB3B4;
-    uint64_t batchA3A4 =
-        static_cast<uint64_t>(block.tilingData_->params.batchA3) * block.tilingData_->params.batchA4;
+    uint64_t batchA3A4 = static_cast<uint64_t>(block.tilingData_->params.batchA3) * block.tilingData_->params.batchA4;
     uint64_t batchA2A3A4 = block.tilingData_->params.batchA2 * batchA3A4;
     uint32_t multiA1C1 = block.tilingData_->params.batchA1 / block.tilingData_->params.batchC1;
     uint32_t multiA2C2 = block.tilingData_->params.batchA2 / block.tilingData_->params.batchC2;
@@ -174,6 +171,6 @@ __aicore__ inline void ProcessWithBatch(Mc2QuantBmmAswBlock& block, T& object)
     }
 }
 
-}  // namespace DequantBmm
+} // namespace Mc2QuantBatchMatmulV3
 
-#endif  // QBMM_API_UTILS_H
+#endif // QBMM_API_UTILS_H

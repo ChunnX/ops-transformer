@@ -131,22 +131,6 @@ __simd_vf__ void ComputeVFImpl(__ubuf__ T *xAddr, __ubuf__ O *yAddr, __ubuf__ fl
     AscendC::MicroAPI::StoreUnAlignPost(scaleAddr, ureg0, 0);
 }
 
-template <typename T, typename C, typename O>
-__aicore__ inline void ComputeVF(__ubuf__ T *xAddr, __ubuf__ O *yAddr, __ubuf__ float *scaleAddr, uint32_t rowIndex,
-                                 uint32_t col)
-{
-    uint32_t dtypeSize = sizeof(float);
-    uint16_t VL = AscendC::VECTOR_REG_WIDTH / dtypeSize;
-    uint32_t rowCount = col;
-    uint16_t vfLoop = (rowCount + VL - 1) / VL;
-
-    constexpr float maxValue = std::is_same<O, fp8_e4m3fn_t>::value ? FP8_E4M3FN_MAX_VALUE :
-                               std::is_same<O, hifloat8_t>::value   ? HIFLOAT8_MAX_VALUE :
-                                                                      INT8_MAX_VALUE;
-    const float alphaValue = static_cast<float>(1.0) / maxValue;
-    ComputeVFImpl<T, C, O>(xAddr, yAddr, scaleAddr, rowIndex, rowCount, dtypeSize, VL, vfLoop, alphaValue);
-}
-
 /**
  * @brief DynamicQuantPerTokenVf 对row行进行dynamicquant, BF16 ---> int8/FP8E4M3, 每一行出一个系数。
  * @param outputLocal 输出tensor [row , col]
@@ -162,8 +146,17 @@ __aicore__ inline void DynamicQuantPerTokenVf(const LocalTensor<O> &outputLocal,
     auto xAddr = (__local_mem__ T *)inputLocal.GetPhyAddr();
     auto yAddr = (__local_mem__ O *)outputLocal.GetPhyAddr();
     auto scaleAddr = (__local_mem__ C *)scale.GetPhyAddr();
+    uint32_t dtypeSize = sizeof(float);
+    uint16_t VL = AscendC::VECTOR_REG_WIDTH / dtypeSize;
+    uint32_t rowCount = col;
+    uint16_t vfLoop = (rowCount + VL - 1) / VL;
+
+    constexpr float maxValue = std::is_same<O, fp8_e4m3fn_t>::value ? FP8_E4M3FN_MAX_VALUE :
+                               std::is_same<O, hifloat8_t>::value   ? HIFLOAT8_MAX_VALUE :
+                                                                      INT8_MAX_VALUE;
+    const float alphaValue = static_cast<float>(1.0) / maxValue;
     for (int32_t i = 0; i < row; i++) {
-        ComputeVF<T, C, O>(xAddr, yAddr, scaleAddr + i, i, col);
+        ComputeVFImpl<T, C, O>(xAddr, yAddr, scaleAddr + i, i, rowCount, dtypeSize, VL, vfLoop, alphaValue);
     }
 }
 
@@ -216,12 +209,9 @@ __simd_vf__ void ComputeScaleVF(__ubuf__ uint16_t *maxExpAddr, __ubuf__ uint16_t
     AscendC::MicroAPI::RegTensor<uint16_t> expMask;
     AscendC::MicroAPI::Duplicate(expMask, MAX_EXP_FOR_BF16);
     AscendC::MicroAPI::RegTensor<uint16_t> vdMaxExp;
-    AscendC::MicroAPI::RegTensor<T> vdExp0;
-    AscendC::MicroAPI::RegTensor<T> vdExp1;
 
     AscendC::MicroAPI::MaskReg cmpResult;
     AscendC::MicroAPI::MaskReg zeroMask;
-    AscendC::MicroAPI::MaskReg cmpResultSub;
     AscendC::MicroAPI::MaskReg preMaskScale;
     AscendC::MicroAPI::MaskReg invalidDataMask;
     AscendC::MicroAPI::MaskReg specialDataMask;

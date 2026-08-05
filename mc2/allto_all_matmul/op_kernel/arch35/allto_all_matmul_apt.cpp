@@ -16,8 +16,8 @@
 #include <kernel_operator.h>
 #include <lib/matmul_intf.h>
 #include "common.h"
-#include "allto_all_matmul_arch35.h"
-#include "allto_all_matmul_pipeline.h"
+#include "../allto_all_matmul_kernel_base.h"
+#include "../allto_all_matmul_pipeline.h"
 #include "allto_all_matmul_tiling_key.h"
 #include "allto_all_matmul_tiling_data.h"
 #include "allto_all_kc_quant_matmul_arch35.h"
@@ -45,7 +45,7 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
         using SchedulerType = Mc2Kernel::AlltoAllMatmulPipeLine<CommunicationType, TransposeType, ComputationType,     \
                                                                 SchedulerContextType>;                                 \
         SchedulerType SchedulerImpl(&commImplName, &transposeImplName, &matmulImplName);                               \
-        Mc2Kernel::AlltoAllMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingData> op(             \
+        Mc2Kernel::AlltoAllMatmulKernelBase<SchedulerType, SchedulerContextType, AlltoAllMatmulTilingData> op(         \
             &SchedulerImpl);                                                                                           \
         op.Init(x1, x2, bias, y, all2all_out, workspaceGM, &tilingData, &pipe);                                        \
         op.Process();                                                                                                  \
@@ -126,7 +126,7 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
 #else
     REGISTER_TILING_DEFAULT(AlltoAllQuantMatmulTilingData);
     GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
-#if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
+#if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&                                     \
      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
     AscendC::HcclDataType hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E4M3;
     if constexpr (AscendC::IsSameType<DTYPE_X1, float8_e5m2_t>::value) {

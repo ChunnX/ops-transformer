@@ -13,7 +13,7 @@ message(STATUS "=== Debug: start ops.moe.moe_gating_top_k.op_host.CMakeLists.txt
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
     message(STATUS "=== Debug: BUILD is BUILD_OPEN_PROJECT")
-    target_sources(op_host_aclnn PRIVATE
+    target_sources(op_host_aclnnExc PRIVATE
         moe_gating_top_k_def.cpp
     )
     if(CONDITION_UNIT STREQUAL "ascend950")
@@ -22,7 +22,7 @@ if (BUILD_OPEN_PROJECT)
             OPTIONS --cce-auto-sync=off
                     -Wno-deprecated-declarations
                     -Werror
-                    -mllvm 
+                    -mllvm
                     -cce-aicore-dcci-before-kernel-end=false
         )
     else()
@@ -37,5 +37,5 @@ endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
     message(STATUS "=== Debug: BUILD is NOT BUILD_OPS_RTY_KERNEL")
-    add_modules_sources(OPTYPE moe_gating_top_k ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE moe_gating_top_k ACLNNTYPE aclnn_exclude)
 endif()

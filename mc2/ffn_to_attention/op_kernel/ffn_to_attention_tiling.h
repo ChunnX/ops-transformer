@@ -9,9 +9,9 @@
  */
 
 /*!
-* \file ffn_to_attention_tiling.h
-* \brief
-*/
+ * \file ffn_to_attention_tiling.h
+ * \brief
+ */
 #ifndef FFN_TO_ATTENTION_TILING_H
 #define FFN_TO_ATTENTION_TILING_H
 

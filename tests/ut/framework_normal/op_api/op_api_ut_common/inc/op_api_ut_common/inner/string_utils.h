@@ -16,7 +16,7 @@
 
 using namespace std;
 
-vector<string> Split(const string &s, const string& spliter);
+vector<string> Split(const string &s, const string &spliter);
 string &Ltrim(string &s);
 string &Rtrim(string &s);
 string Trim(string &s);

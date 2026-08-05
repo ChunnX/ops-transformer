@@ -20,11 +20,13 @@
 namespace AscendC {
 
 // 当前mc2不调用该接口，修改接口仍需check
-template <typename xType, typename wType, int fFormat, int wFormat, typename scaleType, typename yType, bool aTrans, bool bTrans,
-          bool isAllAiv = false>
+template <typename xType, typename wType, int fFormat, int wFormat, typename scaleType, typename yType, bool aTrans,
+          bool bTrans, bool isAllAiv = false>
 class BmmDequantPertokenOpt {
 public:
-    __aicore__ inline BmmDequantPertokenOpt() {}
+    __aicore__ inline BmmDequantPertokenOpt()
+    {
+    }
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR scale, GM_ADDR pertokenScale, GM_ADDR y,
                                 GM_ADDR workSpace, const Mc2QuantBatchMatmulV3TilingData *__restrict tilingData,
                                 TPipe *tPipe)
@@ -132,7 +134,7 @@ public:
         for (uint32_t i = 0; i < singleCoreBatchUpdate; ++i) {
             // 不同batch复用相同workspace，需设置c等v的搬运同步，避免workspace的读写冲突
             CalcOffset(i, batchCoreIndx, mCoreIndx, nCoreIndx);
-            for(uint32_t j = 0; j < mLoops; ++j) {
+            for (uint32_t j = 0; j < mLoops; ++j) {
                 uint32_t singleM = j == mLoops - 1 ? singleCoreMUpdate - (mLoops - 1) * baseM_ : baseM_;
                 CalcMAxisOffset(j, nLoops);
                 if ASCEND_IS_AIV {
@@ -201,8 +203,8 @@ protected:
     float scaleScalar_;
     uint64_t offsetA_;
     uint64_t offsetB_;
-    uint64_t offsetC_;  // mm out: workspace
-    uint64_t offsetY_;  // op final out(y): ddr
+    uint64_t offsetC_; // mm out: workspace
+    uint64_t offsetY_; // op final out(y): ddr
     uint64_t offsetBias_;
     uint64_t offsetScale_;
     uint64_t offsetPertokenScale_;
@@ -249,8 +251,8 @@ protected:
         m_ = tilingData->matmulTiling.M;
         n_ = tilingData->matmulTiling.N;
         k_ = tilingData->matmulTiling.Ka;
-        singleCoreM_ = tilingData->params.realSingleCoreM;  // calcM of each core
-        singleCoreN_ = tilingData->params.realSingleCoreN;  // calcN of each core
+        singleCoreM_ = tilingData->params.realSingleCoreM; // calcM of each core
+        singleCoreN_ = tilingData->params.realSingleCoreN; // calcN of each core
         singleCoreK_ = tilingData->matmulTiling.singleCoreK;
         usedCoreNum_ = tilingData->matmulTiling.usedCoreNum;
 
@@ -261,7 +263,8 @@ protected:
         ubTmpBuffer_ = tilingData->params.needUbBuffer;
     }
 
-    __aicore__ inline void CalcOffset(uint32_t batchIndex, uint32_t batchCoreIndx, uint32_t mCoreIndx, uint32_t nCoreIndx)
+    __aicore__ inline void CalcOffset(uint32_t batchIndex, uint32_t batchCoreIndx, uint32_t mCoreIndx,
+                                      uint32_t nCoreIndx)
     {
         uint64_t batchAOffset = static_cast<uint64_t>((batchCoreIndx * (singleCoreBatch_) + batchIndex) % batchA_);
         uint64_t batchBOffset = static_cast<uint64_t>((batchCoreIndx * (singleCoreBatch_) + batchIndex) % batchB_);
@@ -271,7 +274,7 @@ protected:
         if constexpr (AMatmulType::format == CubeFormat::ND) {
             if constexpr (aTrans) {
                 offsetA_ = batchAOffset * static_cast<uint64_t>(k_ * m_) + mOffset;
-            } else  {
+            } else {
                 offsetA_ = batchAOffset * static_cast<uint64_t>(k_ * m_) + mOffset * k_;
             }
         } else if constexpr (AMatmulType::format == CubeFormat::NZ) {
@@ -293,14 +296,11 @@ protected:
             if constexpr (bTrans) {
                 // k1, n1, n0, k0
                 offsetB_ = DequantBmm::Align(nOffset, BMM_BLOCK_NUM) * K0_INT8 +
-                           batchBOffset * DequantBmm::Align(n_, BMM_BLOCK_NUM) *
-                               DequantBmm::Align(k_, K0_INT8);
+                           batchBOffset * DequantBmm::Align(n_, BMM_BLOCK_NUM) * DequantBmm::Align(k_, K0_INT8);
             } else {
                 // n1, k1, k0, n0
-                offsetB_ =
-                    DequantBmm::Align(nOffset, K0_INT8) * DequantBmm::Align(k_, BMM_BLOCK_NUM) +
-                    batchBOffset * DequantBmm::Align(n_, K0_INT8) *
-                        DequantBmm::Align(k_, BMM_BLOCK_NUM);
+                offsetB_ = DequantBmm::Align(nOffset, K0_INT8) * DequantBmm::Align(k_, BMM_BLOCK_NUM) +
+                           batchBOffset * DequantBmm::Align(n_, K0_INT8) * DequantBmm::Align(k_, BMM_BLOCK_NUM);
             }
         }
 
@@ -317,7 +317,7 @@ protected:
         }
     }
 
-     __aicore__ inline void CalcMAxisOffset(uint32_t loopIdx, uint32_t nLoops)
+    __aicore__ inline void CalcMAxisOffset(uint32_t loopIdx, uint32_t nLoops)
     {
         if (loopIdx == 0) {
             return;
@@ -375,8 +375,7 @@ protected:
             if constexpr (bTrans) {
                 offsetB_ += DequantBmm::Align(baseN_, BMM_BLOCK_NUM) * K0_INT8;
             } else {
-                offsetB_ +=
-                    DequantBmm::Align(baseN_, K0_INT8) * DequantBmm::Align(k_, BMM_BLOCK_NUM);
+                offsetB_ += DequantBmm::Align(baseN_, K0_INT8) * DequantBmm::Align(k_, BMM_BLOCK_NUM);
             }
         }
 
@@ -395,8 +394,8 @@ protected:
         if (hasBias_ != 0 && biasDtype_ == DT_INT32) {
             mm.SetBias(biasGmInt32_[offsetBias_]);
         }
-        mm.Iterate();                                // matmultiling singleM_ * baseN_
-        mm.GetTensorC(mmOutGm_[offsetC_], 0, true);  // baseM * baseN 连续写
+        mm.Iterate();                               // matmultiling singleM_ * baseN_
+        mm.GetTensorC(mmOutGm_[offsetC_], 0, true); // baseM * baseN 连续写
     }
 
     __aicore__ inline void PertokenGm2Ub(uint32_t singleM)
@@ -512,7 +511,7 @@ protected:
                 MulPertokenAndScale(broadcastFp32, scaleLocalFp32, broadCastDims, DequantBmm::Align(curAicN));
             } else {
                 MulPertokenAndScale(broadcastFp32, scaleLocal, broadCastDims,
-                                    DequantBmm::Align(curAicN, 8U));  // 8: 32 / sizeof(float)
+                                    DequantBmm::Align(curAicN, 8U)); // 8: 32 / sizeof(float)
             }
             vecQueScale_.FreeTensor(scaleLocal);
         }
@@ -534,9 +533,9 @@ protected:
         DataCopyExtParams ub2GmParams{static_cast<uint16_t>(curAivM), static_cast<uint32_t>(curAivN * sizeof(yType)), 0,
                                       static_cast<uint32_t>((n_ - curAivN) * sizeof(yType)), 0};
         DataCopyPadParams padParams;
-        uint32_t computedAivN = DequantBmm::Align(curAivN);  // 16: sizeof(yType) is 2, 32B / 2
+        uint32_t computedAivN = DequantBmm::Align(curAivN); // 16: sizeof(yType) is 2, 32B / 2
         if (computedAivN != DequantBmm::Align(curAivN, 8U)) {
-            gm2UbParams.dstStride = 1;  // dst ub, 1 dataBlock(32B), shape 16 aligned
+            gm2UbParams.dstStride = 1; // dst ub, 1 dataBlock(32B), shape 16 aligned
         }
         // 后续可以把biasFp32搞成类成员变量，则可以把cast提到前处理中
         CastBias2Fp32(biasFp32, computedAivN);
@@ -603,7 +602,7 @@ protected:
             for (uint32_t fixpInnerIdx = 0; fixpInnerIdx < fixpNInnerTimes; ++fixpInnerIdx) {
                 if (realFixpInnerIdx == fixpNTimes - 1) {
                     curAicN = singleN - baseN_ * (fixpNTimes - 1);
-                    fixpNInnerTimes = fixpInnerIdx;  // 结束循环
+                    fixpNInnerTimes = fixpInnerIdx; // 结束循环
                 }
                 CalcNAxisOffset(realFixpInnerIdx);
                 if ASCEND_IS_AIC {
@@ -633,6 +632,6 @@ protected:
         }
     }
 };
-}  // namespace AscendC
+} // namespace AscendC
 
-#endif  // QUANT_BATCH_MATMUL_V3_PERTOKEN_OPT_H
+#endif // QUANT_BATCH_MATMUL_V3_PERTOKEN_OPT_H

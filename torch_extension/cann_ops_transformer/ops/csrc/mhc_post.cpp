@@ -18,8 +18,7 @@
 
 namespace op_api {
 
-at::Tensor mhc_post(const at::Tensor &x, const at::Tensor &hRes,
-                    const at::Tensor &hOut, const at::Tensor &hPost)
+at::Tensor MhcPost(const at::Tensor &x, const at::Tensor &hRes, const at::Tensor &hOut, const at::Tensor &hPost)
 {
     at::Tensor out = at::empty_like(x);
 
@@ -30,7 +29,7 @@ at::Tensor mhc_post(const at::Tensor &x, const at::Tensor &hRes,
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("mhc_post", &mhc_post, "mhc_post");
+    m.def("mhc_post", &MhcPost, "mhc_post");
 }
 
 } // namespace op_api

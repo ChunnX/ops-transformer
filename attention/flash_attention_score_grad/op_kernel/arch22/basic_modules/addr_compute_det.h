@@ -372,7 +372,6 @@ private:
 
     __aicore__ inline int32_t InitBNIndex() {
         int32_t recoderS1 = GetRecoderS(s1Idx, dimS1);
-        int32_t recoderS2 = GetRecoderS(s1Idx, dimS2);
         bool updateS1Idx;
         if (sparseMode == 0 || sparseMode == 1) {
             updateS1Idx = (s2Idx == dimS2) ? true : false;

@@ -11,7 +11,7 @@
 /*!
  * \file split_core_v2.h
  * \brief
-*/
+ */
 
 #ifndef SPLIT_CORE_V2_H
 #define SPLIT_CORE_V2_H
@@ -47,21 +47,21 @@ template <class T>
 using BlockCost = std::array<std::array<T, static_cast<size_t>(BLOCK_MAX_TYPE)>, static_cast<size_t>(BLOCK_MAX_TYPE)>;
 
 template <typename T>
-T Clip(T value, T minValue, T maxValue)
+T Clip(T value, T min, T max)
 {
-    if (value < minValue) {
-        return minValue;
+    if (value < min) {
+        return min;
     }
-    if (value > maxValue) {
-        return maxValue;
+    if (value > max) {
+        return max;
     }
     return value;
 }
 
 template <typename T>
-inline bool IsWithinTolerance(T limit, T tolerance, T value)
+inline bool IsWithinTolerance(T limit, T toler, T value)
 {
-    return limit + tolerance >= value;
+    return limit + toler >= value;
 }
 
 // 分核功能模块输入：输入case的基本信息
@@ -91,6 +91,9 @@ struct SplitParam {
     uint32_t s2BaseSize{1U};
     uint32_t gS1BaseSizeOfFd{8U}; // FD阶段分核，m轴切分基本块大小
     bool streamK = true;
+    int64_t fdTolerance{0U};  // if fd - full_block_cost * fdTolerance <= fd, then choose no fd,
+                              // full_block_cost is costFunc(mBaseSize, s2BaseSize)
+    int64_t fdLeastBlock{0U}; // if noFd.maxCost <= fdLeastBlock * full_block_cost, then choose no fd
 };
 
 
@@ -129,19 +132,19 @@ struct FAMetaData {
     FlashDecodeResult fdRes{0U, 0U}; // FD信息
     FAMetaData(uint32_t coreNum, uint32_t ratio)
         : vecCubeRatio(ratio), bN2End(coreNum), mEnd(coreNum), s2End(coreNum), firstFdDataWorkspaceIdx(coreNum),
-          fdRes(coreNum, ratio){};
+          fdRes(coreNum, ratio) {};
 };
 
 // 分核功能模块内部使用：记录切分信息
 struct SplitInfo {
-    std::vector<uint32_t> s1GBaseNum{};  // S1G方向，切了多少个基本块
-    std::vector<uint32_t> s2BaseNum{};   // S2方向，切了多少个基本块
-    std::vector<uint32_t> s1GTailSize{}; // S1G方向，尾块size
-    std::vector<uint32_t> s2TailSize{};  // S2方向，尾块size
+    std::vector<uint32_t> mBaseNum{};   // M方向，切了多少个基本块
+    std::vector<uint32_t> s2BaseNum{};  // S2方向，切了多少个基本块
+    std::vector<uint32_t> mTailSize{};  // M方向，尾块size
+    std::vector<uint32_t> s2TailSize{}; // S2方向，尾块size
     bool isKvSeqAllZero{true};
 
     explicit SplitInfo(uint32_t batchSize)
-        : s1GBaseNum(batchSize), s2BaseNum(batchSize), s1GTailSize(batchSize), s2TailSize(batchSize)
+        : mBaseNum(batchSize), s2BaseNum(batchSize), mTailSize(batchSize), s2TailSize(batchSize)
     {
     }
 };
@@ -153,7 +156,7 @@ struct CostInfo {
     std::vector<int64_t> bN2LastBlockCostOfEachBatch{}; // batch最后一块的开销
     uint32_t totalBlockNum{0U};
     int64_t totalCost{0};
-    int64_t maxS1GCost{0};
+    int64_t maxMCost{0};
 
     explicit CostInfo(uint32_t batchSize)
         : bN2CostOfEachBatch(batchSize), bN2BlockOfEachBatch(batchSize), bN2LastBlockCostOfEachBatch(batchSize)
@@ -184,16 +187,16 @@ struct BatchCache {
     BlockCost<int64_t> typeCost{};
 };
 
-// 分核功能模块内部使用：记录当前行（S1G）的临时信息
-struct S1GCache {
+// 分核功能模块内部使用：记录当前行（M）的临时信息
+struct MCache {
     uint32_t bIdx{0U};
-    uint32_t s1GIdx{0U};
+    uint32_t mIdx{0U};
     uint32_t s2Start{0U};
     uint32_t s2End{0U};
-    int64_t s1GCost{0};
-    int64_t s1GLastBlockCost{0};
-    uint32_t s1GBlock{0U};
-    int64_t s1GNormalBlockCost{0};
+    int64_t mCost{0};
+    int64_t mLastBlockCost{0};
+    uint32_t mBlock{0U};
+    int64_t mNormalBlockCost{0};
 };
 
 // 分核功能模块内部使用：记录分配过程中，当前核的负载信息
@@ -207,7 +210,7 @@ struct CoreCache {
 struct AssignContext {
     uint32_t curBIdx{0U};
     uint32_t curBN2Idx{0U};
-    uint32_t curS1GIdx{0U};
+    uint32_t curMIdx{0U};
     uint32_t curS2Idx{0U};
     uint32_t curCoreIdx{0U};
     int64_t unassignedCost{0};
@@ -219,7 +222,7 @@ struct AssignContext {
     uint32_t bN2Block{0U};
     bool isFinished{false};
     BatchCache batchCache{};
-    S1GCache s1GCache{};
+    MCache mCache{};
     CoreCache coreCache{};
 };
 
@@ -228,15 +231,14 @@ uint32_t GetS1SeqSize(uint32_t bIdx, const BaseInfo &baseInfo);
 uint32_t GetS2SeqSize(uint32_t bIdx, const BaseInfo &baseInfo);
 int64_t CalcPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &baseInfo);
 int64_t CalcNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size, const BaseInfo &baseInfo);
-Range<uint32_t> CalcS2Range(uint32_t s1GIdx, const BaseInfo &baseInfo, const SplitParam &splitParam,
+Range<uint32_t> CalcS2Range(uint32_t mIdx, const BaseInfo &baseInfo, const SplitParam &splitParam,
                             const BatchCache &batchCache);
 int64_t CalcCost(uint32_t basicM, uint32_t basicS2);
-BlockCost<int64_t> CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize,
-                                 uint32_t s2TailSize);
+BlockCost<int64_t> CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t mTailSize, uint32_t s2TailSize);
 
 // cache calculation
 void CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache);
-void CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, const BatchCache &batchCache, S1GCache &s1GCache);
+void CalcMCache(uint32_t mIdx, const SplitContext &splitContext, const BatchCache &batchCache, MCache &mCache);
 void CopyTmpResult(FAMetaData &tmpRes, FAMetaData &splitRes);
 void ClearTmpResult(FAMetaData &tmpResult);
 
@@ -259,6 +261,9 @@ void RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignC
 // main
 void SplitFD(FAMetaData &result);
 void CalcSplitPlan(uint32_t coreNum, int64_t costLimit, const SplitContext &splitContext, FAMetaData &result);
+bool CheckChooseWithFd(int64_t noFdCost, int64_t withFdCost, uint32_t actualMFdsize, const SplitParam &param);
+void LogSplitCoreInput(const BaseInfo &baseInfo, const SplitParam &param);
+void LogSplitCoreResult(const FAMetaData &result);
 void SplitCore(uint32_t coreNum, const BaseInfo &baseInfo, const SplitParam &param, FAMetaData &result);
 } // namespace split_core_v2
 #endif

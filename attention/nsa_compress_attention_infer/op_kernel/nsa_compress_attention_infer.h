@@ -951,9 +951,9 @@ __aicore__ inline void NsaCompressAttentionInferAiv<NCAIType>::PreProcess(const 
 
     // 设置softmax buffer
     const uint32_t softmaxInputbufOffset = 0;
-    const uint32_t softmaxOut32bufOffset = softmaxTileLength * sizeof(float);
-    const uint32_t softmaxOut16bufOffset = 2 * softmaxTileLength * sizeof(float);
-    const uint32_t softmaxbufOffset = 3 * softmaxTileLength * sizeof(float);
+    const uint32_t softmaxOut32bufOffset = softmaxInputbufOffset + softmaxTileLength * sizeof(float);
+    const uint32_t softmaxOut16bufOffset = softmaxOut32bufOffset + softmaxTileLength * sizeof(float);
+    const uint32_t softmaxbufOffset = softmaxOut16bufOffset + softmaxTileLength * sizeof(float);
     softmaxInputbufTensor = buf.GetBuffer<BufferType::ASCEND_UB, float>(softmaxInputbufOffset);
     softmaxOut32bufTensor = buf.GetBuffer<BufferType::ASCEND_UB, float>(softmaxOut32bufOffset);
     softmaxOut16bufTensor = buf.GetBuffer<BufferType::ASCEND_UB, Q_T>(softmaxOut16bufOffset);
@@ -963,10 +963,10 @@ __aicore__ inline void NsaCompressAttentionInferAiv<NCAIType>::PreProcess(const 
 
     // 设置topk buffer
     const uint32_t topkInputbufOffset = 0;
-    const uint32_t topkOutvaluebufOffset = BASE_TOPK_ELEM_NUM_OFFSET * sizeof(float);
-    const uint32_t topkOutindexbufOffset = 2 * BASE_TOPK_ELEM_NUM_OFFSET * sizeof(float);
-    const uint32_t arithbufferoffset = 3 * BASE_TOPK_ELEM_NUM_OFFSET * sizeof(float);
-    const uint32_t topktempbufOffset = 4 * BASE_TOPK_ELEM_NUM_OFFSET * sizeof(float);
+    const uint32_t topkOutvaluebufOffset = topkInputbufOffset + BASE_TOPK_ELEM_NUM_OFFSET * sizeof(float);
+    const uint32_t topkOutindexbufOffset = topkOutvaluebufOffset + BASE_TOPK_ELEM_NUM_OFFSET * sizeof(float);
+    const uint32_t arithbufferoffset = topkOutindexbufOffset + BASE_TOPK_ELEM_NUM_OFFSET * sizeof(float);
+    const uint32_t topktempbufOffset = arithbufferoffset + BASE_TOPK_ELEM_NUM_OFFSET * sizeof(float);
     topkInputbufTensor = buf.GetBuffer<BufferType::ASCEND_UB, float>(topkInputbufOffset);
     topkoutvalueLocal = buf.GetBuffer<BufferType::ASCEND_UB, float>(topkOutvaluebufOffset);
     topkoutindexLocal = buf.GetBuffer<BufferType::ASCEND_UB, int32_t>(topkOutindexbufOffset);
@@ -1248,9 +1248,9 @@ __aicore__ inline void NsaCompressAttentionInferAiv<NCAIType>::SoftmaxCompute(ui
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0); // softmax搬入等待softmax计算结束
     PipeBarrier<PIPE_V>();
     if (std::is_same<OUT_T, __bf16>::value) {
-        AscendC::Cast(softmaxOut16bufTensor, softmaxOut32bufTensor, AscendC::RoundMode::CAST_RINT, softmaxOut32bufTensor.GetSize());
+        AscendC::Cast(softmaxOut16bufTensor, softmaxOut32bufTensor, AscendC::RoundMode::CAST_RINT, softmaxTileLength);
     } else {
-        AscendC::Cast(softmaxOut16bufTensor, softmaxOut32bufTensor, AscendC::RoundMode::CAST_NONE, softmaxOut32bufTensor.GetSize());
+        AscendC::Cast(softmaxOut16bufTensor, softmaxOut32bufTensor, AscendC::RoundMode::CAST_NONE, softmaxTileLength);
     }
     PipeBarrier<PIPE_V>();
 }

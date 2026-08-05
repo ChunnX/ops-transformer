@@ -788,6 +788,30 @@ TEST_F(InplacePartialRotaryMulTilingA5, slice_empty_noop)
     ExecuteTestCase(tilingPara, ge::GRAPH_SUCCESS, expectTilingKey, "", expectWorkspaces);
 }
 
+// cos/sin last dim == 0: valid no-op, no rope computation
+TEST_F(InplacePartialRotaryMulTilingA5, cos_sin_empty_d_noop)
+{
+    optiling::InplacePartialRotaryPositionEmbeddingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingPara("InplacePartialRotaryMul",
+        {
+            {{{2, 4, 8, 128}, {2, 4, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 4, 8, 0}, {2, 4, 8, 0}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 4, 8, 0}, {2, 4, 8, 0}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{2, 4, 8, 128}, {2, 4, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>({0, 128})},
+        },
+        &compileInfo, kSocVersion, k950CoreNum, k950UbSize);
+
+    uint64_t expectTilingKey = 20040;
+    vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
+    ExecuteTestCase(tilingPara, ge::GRAPH_SUCCESS, expectTilingKey, "", expectWorkspaces);
+}
+
 // cos/sin last dim != sliceLength 非法
 TEST_F(InplacePartialRotaryMulTilingA5, invalid_cos_lastdim_mismatch_slice)
 {
@@ -808,6 +832,29 @@ TEST_F(InplacePartialRotaryMulTilingA5, invalid_cos_lastdim_mismatch_slice)
         &compileInfo, kSocVersion, k950CoreNum, k950UbSize);
 
     // cos last dim = 128 != sliceLength = 64
+    ExecuteTestCase(tilingPara, ge::GRAPH_FAILED);
+}
+
+// sliceLength 为奇数 (interleave requires sliceLength%2==0) 非法
+// x D=128 (even, passes D%2 check), but slice=[0,3) → sliceLength=3 (odd)
+TEST_F(InplacePartialRotaryMulTilingA5, invalid_slice_length_odd)
+{
+    optiling::InplacePartialRotaryPositionEmbeddingCompileInfo compileInfo = {};
+    gert::TilingContextPara tilingPara("InplacePartialRotaryMul",
+        {
+            {{{2, 4, 8, 128}, {2, 4, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 4, 8, 3}, {2, 4, 8, 3}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2, 4, 8, 3}, {2, 4, 8, 3}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{2, 4, 8, 128}, {2, 4, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"rotary_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"partial_slice", Ops::Transformer::AnyValue::CreateFrom<vector<int64_t>>({0, 3})},
+        },
+        &compileInfo, kSocVersion, k950CoreNum, k950UbSize);
+
     ExecuteTestCase(tilingPara, ge::GRAPH_FAILED);
 }
 

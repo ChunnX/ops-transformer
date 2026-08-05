@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                              | 是否支持 |
-| :---------------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>|    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    ×    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    ×    |
-| <term>Atlas 200I/500 A2 推理产品</term>|    ×    |
-| <term>Atlas 推理系列产品</term>                         |    ×    |
-| <term>Atlas 训练系列产品</term>                          |    ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -20,7 +30,7 @@
   相比于FusedInferAttentionScoreV4，本接口新增qStartIdxOptional、kvStartIdxOptional、pseType参数。
 
   **说明：**
-  
+
   decode场景下特有KV Cache：KV Cache是大模型推理性能优化的一个常用技术。采样时，Transformer模型会以给定的prompt/context作为初始输入进行推理（可以并行处理），随后逐一生成额外的token来继续完善生成的序列（体现了模型的自回归性质）。在采样过程中，Transformer会执行自注意力操作，为此需要给当前序列中的每个项目（无论是prompt/context还是生成的token）提取键值（KV）向量。这些向量存储在一个矩阵中，通常被称为kv缓存（KV Cache）。
 - 计算公式：
 
@@ -47,7 +57,7 @@
 
 ## 函数原型
 
-算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFusedInferAttentionScoreV5GetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnFusedInferAttentionScoreV5”接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnFusedInferAttentionScoreV5GetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnFusedInferAttentionScoreV5”接口执行计算。
 
 ```c++
 aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
@@ -68,46 +78,46 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
     const aclTensor     *blockTableOptional,
     const aclTensor     *queryPaddingSizeOptional,
     const aclTensor     *kvPaddingSizeOptional,
-    const aclTensor     *keyAntiquantScaleOptional, 
-    const aclTensor     *keyAntiquantOffsetOptional, 
-    const aclTensor     *valueAntiquantScaleOptional, 
-    const aclTensor     *valueAntiquantOffsetOptional, 
-    const aclTensor     *keySharedPrefixOptional, 
-    const aclTensor     *valueSharedPrefixOptional, 
-    const aclIntArray   *actualSharedPrefixLenOptional, 
-    const aclTensor     *queryRopeOptional, 
-    const aclTensor     *keyRopeOptional, 
-    const aclTensor     *keyRopeAntiquantScaleOptional, 
-    const aclTensor     *dequantScaleQueryOptional, 
-    const aclTensor     *learnableSinkOptional, 
-    const aclIntArray   *qStartIdxOptional, 
-    const aclIntArray   *kvStartIdxOptional, 
-    int64_t             numHeads, 
-    double              scaleValue, 
-    int64_t             preTokens, 
-    int64_t             nextTokens, 
-    char                *inputLayout, 
-    int64_t             numKeyValueHeads, 
-    int64_t             sparseMode, 
-    int64_t             innerPrecise, 
-    int64_t             blockSize, 
-    int64_t             antiquantMode, 
-    bool                softmaxLseFlag, 
-    int64_t             keyAntiquantMode, 
-    int64_t             valueAntiquantMode, 
-    int64_t             queryQuantMode, 
-    int64_t             pseType, 
-    const aclTensor     *attentionOut, 
-    const aclTensor     *softmaxLse, 
-    uint64_t            *workspaceSize, 
+    const aclTensor     *keyAntiquantScaleOptional,
+    const aclTensor     *keyAntiquantOffsetOptional,
+    const aclTensor     *valueAntiquantScaleOptional,
+    const aclTensor     *valueAntiquantOffsetOptional,
+    const aclTensor     *keySharedPrefixOptional,
+    const aclTensor     *valueSharedPrefixOptional,
+    const aclIntArray   *actualSharedPrefixLenOptional,
+    const aclTensor     *queryRopeOptional,
+    const aclTensor     *keyRopeOptional,
+    const aclTensor     *keyRopeAntiquantScaleOptional,
+    const aclTensor     *dequantScaleQueryOptional,
+    const aclTensor     *learnableSinkOptional,
+    const aclIntArray   *qStartIdxOptional,
+    const aclIntArray   *kvStartIdxOptional,
+    int64_t             numHeads,
+    double              scaleValue,
+    int64_t             preTokens,
+    int64_t             nextTokens,
+    char                *inputLayout,
+    int64_t             numKeyValueHeads,
+    int64_t             sparseMode,
+    int64_t             innerPrecise,
+    int64_t             blockSize,
+    int64_t             antiquantMode,
+    bool                softmaxLseFlag,
+    int64_t             keyAntiquantMode,
+    int64_t             valueAntiquantMode,
+    int64_t             queryQuantMode,
+    int64_t             pseType,
+    const aclTensor     *attentionOut,
+    const aclTensor     *softmaxLse,
+    uint64_t            *workspaceSize,
     aclOpExecutor       **executor)
 ```
 
 ```c++
 aclnnStatus aclnnFusedInferAttentionScoreV5(
-    void                *workspace, 
-    uint64_t            workspaceSize, 
-    aclOpExecutor       *executor, 
+    void                *workspace,
+    uint64_t            workspaceSize,
+    aclOpExecutor       *executor,
     const aclrtStream   stream)
 ```
 
@@ -154,13 +164,13 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>公式中的输入K。</td>
         <td>
         <ul>
-            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。其他场景均不支持非连续tensor。</li>
+            <li>不支持非连续tensor。</li>
         </ul>
         </td>
         <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E4M3FN、INT4(INT32)、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
-        <td>-</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>value</td>
@@ -168,13 +178,13 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>公式中的输入V。</td>
         <td>
         <ul>
-            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。其他场景均不支持非连续tensor。</li>
+            <li>不支持非连续tensor。</li>
         </ul>
         </td>
         <td>FLOAT16、BFLOAT16、INT8、HIFLOAT8、FLOAT8_E4M3FN、INT4(INT32)、FLOAT4_E2M1</td>
         <td>ND</td>
         <td>见参数inputLayout</td>
-        <td>-</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>pseShiftOptional</td>
@@ -346,7 +356,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>-</td>
         <td>-</td>
         <td>-</td>
-    </tr> 
+    </tr>
     <tr>
         <td>blockTableOptional</td>
         <td>输入</td>
@@ -362,7 +372,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>第一维长度需等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为不同batch中最大actualSeqLengthsKv对应的block数量）</td>
         <td>-</td>
     </tr>
-    <tr> 
+    <tr>
         <td>queryPaddingSizeOptional</td>
         <td>输入</td>
         <td>表示Query中每个batch的数据是否右对齐，且右对齐的个数是多少。</td>
@@ -378,7 +388,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>（1）</td>
         <td>-</td>
     </tr>
-    <tr> 
+    <tr>
         <td>kvPaddingSizeOptional</td>
         <td>输入</td>
         <td>表示key/value中每个batch的数据是否右对齐，且右对齐的个数是多少。</td>
@@ -393,7 +403,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>（1）</td>
         <td>-</td>
     </tr>
-    <tr> 
+    <tr>
         <td>keyAntiquantScaleOptional</td>
         <td>输入</td>
         <td>表示key的反量化因子，用于KV伪量化参数分离场景。</td>
@@ -401,7 +411,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <ul>
             <li>不支持空Tensor。</li>
             <li>不使用该功能时可传入nullptr。</li>
-            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。其他场景均不支持非连续tensor。</li>
+            <li>不支持非连续tensor。</li>
             <li>支持per-tensor，per-channel，per-token，per-token-group，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用page attention模式管理scale/offset、per-token叠加per-head并使用page attention模式管理scale/offset和per-token-group。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
@@ -409,9 +419,9 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>FLOAT16、BFLOAT16、FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
         <td>见<a href="#约束说明">约束说明</a></td>
-        <td>-</td>
+        <td>×</td>
     </tr>
-    <tr> 
+    <tr>
         <td>keyAntiquantOffsetOptional</td>
         <td>输入</td>
         <td>KV伪量化参数分离时表示key的反量化偏移。</td>
@@ -429,7 +439,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>见<a href="#约束说明">约束说明</a></td>
         <td>-</td>
     </tr>
-    <tr> 
+    <tr>
         <td>valueAntiquantScaleOptional</td>
         <td>输入</td>
         <td>表示value的反量化因子，用于KV伪量化参数分离场景。</td>
@@ -437,7 +447,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <ul>
             <li>不支持空Tensor。</li>
             <li>不使用该功能时可传入nullptr。</li>
-            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。其他场景均不支持非连续tensor。</li>
+            <li>不支持非连续tensor。</li>
             <li>支持per-tensor，per-channel，per-token，per-tensor叠加per-head，per-token叠加per-head，per-token叠加使用page attention模式管理scale/offset、per-token叠加per head并使用page attention模式管理scale/offset和per-token-group。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
@@ -445,9 +455,9 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>FLOAT16、BFLOAT16、FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
         <td>见<a href="#约束说明">约束说明</a></td>
-        <td>-</td>
+        <td>×</td>
     </tr>
-    <tr> 
+    <tr>
         <td>valueAntiquantOffsetOptional</td>
         <td>输入</td>
         <td>KV伪量化参数分离时表示value的反量化因子。</td>
@@ -464,8 +474,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>ND</td>
         <td>见<a href="#约束说明">约束说明</a></td>
         <td>-</td>
-    </tr>  
-    <tr> 
+    </tr>
+    <tr>
         <td>keySharedPrefixOptional</td>
         <td>输入</td>
         <td>attention结构中Key的系统前缀部分的参数。</td>
@@ -487,7 +497,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>×</td>
     </tr>
-    <tr> 
+    <tr>
         <td>valueSharedPrefixOptional</td>
         <td>输入</td>
         <td>attention结构中Value的系统前缀部分的输入。</td>
@@ -509,7 +519,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>×</td>
     </tr>
-    <tr> 
+    <tr>
         <td>actualSharedPrefixLenOptional</td>
         <td>输入</td>
         <td>keySharedPrefix/valueSharedPrefix的有效Sequence Length。</td>
@@ -547,14 +557,14 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>
         <ul>
             <li>不支持空Tensor。</li>
-            <li>MXFP8 PagedAttention场景下，kv cache排布为BnNBsD/NZ时支持0轴和1轴非连续。其他场景均不支持非连续tensor。</li>
+            <li>不支持非连续tensor。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
         </td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>keyRope的shape中d为64，其余维度与key一致</td>
-        <td>-</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>keyRopeAntiquantScaleOptional</td>
@@ -570,8 +580,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>-</td>
         <td>-</td>
         <td>-</td>
-    </tr>  
-    <tr> 
+    </tr>
+    <tr>
         <td>dequantScaleQueryOptional</td>
         <td>输入</td>
         <td>对query进行反量化的因子。</td>
@@ -603,7 +613,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>(Q_N)</td>
         <td>×</td>
     </tr>
-    <tr> 
+    <tr>
         <td>qStartIdxOptional</td>
         <td>输入</td>
         <td>代表外切场景，当前分块的query的sequence在全局中的起始索引。</td>
@@ -618,7 +628,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>见<a href="#约束说明">约束说明</a></td>
         <td>-</td>
     </tr>
-    <tr> 
+    <tr>
         <td>kvStartIdxOptional</td>
         <td>输入</td>
         <td>代表外切场景，当前分块的key和value的sequence在全局中的起始索引。</td>
@@ -671,7 +681,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>-</td>
         <td>-</td>
         <td>-</td>
-    </tr>  
+    </tr>
     <tr>
         <td>nextTokens</td>
         <td>输入</td>
@@ -796,7 +806,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>-</td>
         <td>-</td>
         <td>-</td>
-    </tr>  
+    </tr>
     <tr>
         <td>keyAntiquantMode</td>
         <td>输入</td>
@@ -827,7 +837,8 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>value的反量化的方式。</td>
         <td>
         <ul>
-            <li>模式编号与keyAntiquantMode一致。</li>
+            <li>valueAntiquantMode模式编号0-6与keyAntiquantMode一致。</li>
+            <li>valueAntiquantMode为8时，代表per-channel-group模式。</li>
             <li>用户不特意指定时建议传入0。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
@@ -836,7 +847,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>-</td>
         <td>-</td>
         <td>-</td>
-    </tr>  
+    </tr>
     <tr>
         <td>queryQuantMode</td>
         <td>输入</td>
@@ -890,7 +901,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>softmaxLseFlag为True时，一般情况下，shape必须为[B, N, Q_S, 1]，当inputLayout为TND/NTD_TND/TND_NTD时，shape必须为[T, N, 1]。</td>
+        <td>softmaxLseFlag为True时，一般情况下，shape必须为[B, N, Q_S, 1]，当inputLayout为TND/NTD/NTD_TND/TND_NTD时，shape必须为[T, N, 1]。</td>
         <td>-</td>
     </tr>
     <tr>
@@ -917,7 +928,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -991,7 +1002,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -1289,7 +1300,8 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 | :---------: | :---------------------------------------------------------: |
 |     GQA     |           在资料约束中，泛指不传入ROPE的所有场景，包含G=1和G>1的场景           |
 | Prefill MLA | 传入ROPE（包含合并和分离2种模式，headdim为64）：分离模式下，输入Q/K/V headdim为128，ROPE单独传入；合并模式下，输入Q/K headdim为192（与ROPE合并），V headdim为128，ROPE不单独传入 |
-| Decode MLA |             输入Q/K/V headdim为512，且ROPE单独传入             |
+| Decode MLA |             输入Q/K/V headdim为512，key/value复用，其中value的不生效，且ROPE单独传入             |
+| GQA全量化 | query/key/value数据类型为FLOAT8_E4M3FN的GQA全量化场景，queryQuantMode为3（per-token叠加per-head模式），keyAntiquantMode为3（per-token叠加per-head模式），valueAntiquantMode为2（per-tensor叠加per-head模式） |
 |      B      |                Batch,表示输入样本批量大小                |
 |     Q_N     |        输入query tensor的头数，对应query shape中的N        |
 |    KV_N    |    输入key/value tensor的头数，对应key/value shape中的N    |
@@ -1419,6 +1431,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
                         <li>非量化场景下，当query/key/value三组HeadDim均小于等于128且layout不为NTD/NTD_TND/BSH_BNSD/BSND_BNSD/BNSD_BSND时，支持参数query/key的HeadDim与value的HeadDim不相等
                         </li>
                         <li>MxFP8场景下，HeadDim仅支持64或128</li>
+                        <li>GQA全量化场景下，HeadDim仅支持128</li>
                         <li>layout为NTD/NTD_TND/BSH_BNSD/BSND_BNSD时，HeadDim仅支持64或128</li>
                         <li>layout为BNSD_BSND时，HeadDim需要16对齐</li>
                         <li>layout为BNSD_BSND，且AttentionOut数据类型为INT8时，HeadDim需要32对齐</li>
@@ -1484,9 +1497,12 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
         </tbody>
     </table>
 
+      <!-- npu="A3,910b" id7 -->
       - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - Prefill MLA场景下，不支持tensorlist、左padding
         - MLA场景下，不支持后量化
+
+      <!-- end id7 -->
 
 #### PSE参数组
 
@@ -1523,6 +1539,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - D不等长场景下，入参pseShift应满足以下条件：
       - 不支持pse，不能传入pseShift
     - 伪量化场景下，当pseType为0且Q_S为1时，pseShift的第三维仅支持1
+    - GQA全量化场景下，不支持pse，不能传入pseShift
 
 #### <span id="MaskChecker">Attention Mask参数组</span>
 
@@ -1550,16 +1567,23 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       |     6     |                                                                              global                                                                              |              -              |                                            不支持                                            |
       |     7     |                                                                              dilated                                                                              |              -              |                                            不支持                                            |
       |     8     |                                                                            block_local                                                                            |              -              |                                            不支持                                            |
+
 - 存在性约束
   - 无
 - 一致性约束
   - 公共
     - 入参attenMask的输入维度仅支持2/3/4
+
+      <!-- npu="950" id8 -->
       - <term>Ascend 950PR/Ascend 950DT</term>：
         - 维度为2时，不支持sparseMode为0/1模式
+      <!-- end id8 -->
+      <!-- npu="A3,910b" id9 -->
       - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - sparseMode为0/1模式时，若传入query_rope和key_rope，或者query与key的D不等于value的D，则不支持attenMask输入维度为2
-        - sparseMode为0/1模式时，若attenMask输入维度为2，则layout仅支持为BSH、BSND、BNSD、BNSD_BSND 
+        - sparseMode为0/1模式时，若attenMask输入维度为2，则layout仅支持为BSH、BSND、BNSD、BNSD_BSND
+      <!-- end id9 -->
+
     - 入参sparseMode为0/1模式时，attenMask矩阵的shape应满足 [batchSize/1，>=Q_S，>=KV_S + actualSharedPrefixLen]
     - 入参sparseMode为2/3/4模式时，attenMask矩阵的shape最后两维应等于2048，即支持传入(2048,2048)或(1,2048,2048)或(1,1,2048,2048)
     - 非伪量化或Q_S大于1时，preTokens与nextTokens应满足nextTokens * (-1) <= preTokens，以确保具有有效数据
@@ -1575,6 +1599,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - Decode MLA场景下，如果query/key/value的类型为INT8，当layout不为TND/TND_NTD时，Q_S大于1时，sparseMode仅支持3模式，且传入attenMask矩阵；Q_S等于1时，sparseMode仅支持0模式，且不支持传入attenMask矩阵
     - Decode MLA场景下，如果query/key/value的类型为FLOAT8_E4M3FN/HIFLOAT8时，sparseMode仅支持0/3模式，且0模式下不支持传入attenMask矩阵
     - MxFP8场景下，sparseMode仅支持0/3模式，且0模式下不支持传入attenMask矩阵
+    - GQA全量化场景下，sparseMode仅支持0/3模式，且0模式下不支持传入attenMask矩阵
 
 #### ActualSeqLen参数组
 
@@ -1658,9 +1683,15 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 入参keyAntiquantMode、valueAntiquantMode为0（per-tensor模式），queryQuantMode为3（per-token叠加per-head模式）
     - MxFP8全量化
       - 入参dequantScaleQuery、keyAntiquantScale、valueAntiquantScale的dtype为FLOAT8_E8M0类型
-      - 当Q_S * G > 80场景，入参dequantScaleQuery的shape推荐为（Q_T, Q_N, D/64, 2），当Q_S * G <= 80场景，入参dequantScaleQuery的shape推荐为（KV_N, Q_T, G, D/64, 2）；非PagedAttention场景，keyAntiquantScale的shape为（KV_T, KV_N, D/64, 2），valueAntiquantScale的shape为（KV_T/64, KV_N, D, 2）；PagedAttention场景下，kv cache排布为BnNBsD时，keyAntiquantScale的shape为（Bn, KV_N, Bs, D/64, 2），valueAntiquantScale的shape为（Bn, KV_N, Bs/64, D, 2）；kv cache排布为NZ时，keyAntiquantScale的shape为（Bn, KV_N, Bs/16, D/64, 16, 2），valueAntiquantScale的shape为（Bn, KV_N, D/16, Bs/64, 16, 2）
+      - 当Q_S *G > 80场景，入参dequantScaleQuery的shape推荐为（Q_T, Q_N, D/64, 2），当Q_S* G <= 80场景，入参dequantScaleQuery的shape推荐为（KV_N, Q_T, G, D/64, 2）；非PagedAttention场景，keyAntiquantScale的shape为（KV_T, KV_N, D/64, 2），valueAntiquantScale的shape为（KV_T/64, KV_N, D, 2）；PagedAttention场景下，kv cache排布为BnNBsD时，keyAntiquantScale的shape为（Bn, KV_N, Bs, D/64, 2），valueAntiquantScale的shape为（Bn, KV_N, Bs/64, D, 2）；kv cache排布为NZ时，keyAntiquantScale的shape为（Bn, KV_N, Bs/16, D/64, 16, 2），valueAntiquantScale的shape为（Bn, KV_N, D/16, Bs/64, 16, 2）
       - 入参queryQuantMode、keyAntiquantMode为6（per-token-group模式），valueAntiquantMode为8（per-channel-group模式）
       - 入参quantScale1的shape为（1），dtype支持FLOAT32，复用quantScale1作为pScale
+    - GQA全量化
+      - 入参dequantScaleQuery、keyAntiquantScale、valueAntiquantScale的dtype为FLOAT32类型
+      - 入参dequantScaleQuery的shape为（Q_N, Q_T），排布为NT；入参keyAntiquantScale的shape为（Bn, KV_N, Bs），排布为BnNBs；入参valueAntiquantScale的shape为（KV_N），排布为N
+      - 入参queryQuantMode为3（per-token叠加per-head模式），keyAntiquantMode为3（per-token叠加per-head模式），valueAntiquantMode为2（per-tensor叠加per-head模式）
+      - 入参quantScale1的shape为（1），dtype为FLOAT32，复用quantScale1作为pScale
+      - kv cache排布仅支持BnNBsD（blocknum, KV_N, blocksize, D）
 - 存在性约束
   - 伪量化场景
     - 入参keyAntiquantScale和valueAntiquantScale应满足以下条件：
@@ -1680,6 +1711,13 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 不支持传入keyRopeAntiquantScale
     - MxFP8全量化
       - dequantScaleQuery、keyAntiquantScale、valueAntiquantScale需同时存在
+      - 不支持传入keyAntiquantOffset、valueAntiquantOffset
+      - 不支持传入deqScale1、deqScale2
+      - 不支持传入antiquantScale、antiquantOffset
+      - 不支持传入keyRopeAntiquantScale
+    - GQA全量化
+      - dequantScaleQuery、keyAntiquantScale、valueAntiquantScale需同时存在
+      - quantScale1需存在（复用quantScale1作为pScale）
       - 不支持传入keyAntiquantOffset、valueAntiquantOffset
       - 不支持传入deqScale1、deqScale2
       - 不支持传入antiquantScale、antiquantOffset
@@ -1721,11 +1759,18 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - MxFP8全量化
       - query、key、value的dtype为FLOAT8_E4M3FN
       - attentionOut的dtype支持FLOAT16、BFLOAT16
-      - Q_S、KV_S仅支持64对齐
       - inputLayout仅支持TND
       - 支持PagedAttention场景和非PagedAttention场景，PagedAttention场景仅支持BnNBsD（blocknum, KV_N, blocksize, D）和NZ (blocknum，KV_N，D/D0，blocksize，D0)
       - 支持传入独立Rope，若传入Rope，Rope和attentionOut的dtype仅支持BFLOAT16
-      - 不支持alibi场景、不支持后量化、不支持D不等长场景、不支持公共前缀场景
+      - 不支持alibi场景、不支持Rope存在、不支持后量化、不支持D不等长场景、不支持公共前缀场景
+    - GQA全量化
+      - query、key、value的dtype仅支持FLOAT8_E4M3FN
+      - attentionOut的dtype支持FLOAT16、BFLOAT16
+      - inputLayout仅支持NTD_TND
+      - 仅支持PagedAttention场景，kv cache排布仅支持BnNBsD（blocknum, KV_N, blocksize, D）
+      - D仅支持128
+      - Q_S支持[1, 64K]，KV_S支持[0, 256K]
+      - 不支持公共前缀场景、不支持pse场景、不支持alibi场景、不支持左padding场景、不支持tensorlist场景、不支持rope场景、不支持后量化场景
 
 #### <span id="PostQuantChecker">后量化参数组（PostQuantChecker）</span>
 
@@ -1771,7 +1816,8 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - 入参blockSize需要满足以下条件：需要根据key、value dtype size 32B对齐，最大支持512。即当key、value dtype为INT8/HIFLOAT8/FLOAT8_E4M3FN时，blockSize需要32对齐，即当key、value dtype为INT4(INT32)、FLOAT4_E2M1时，blockSize需要64对齐
   - 全量化
     - Decode MLA全量化场景下，仅支持blockSize取值128
-    - MxFP8全量化场景下，仅支持blockSize取值512
+    - MxFP8全量化场景下，仅支持blockSize取值512或1024
+    - GQA全量化场景下，仅支持blockSize取值128
 - 存在性约束
   - 公共
     - PagedAttention开启情况下，必须传入actualSeqLengthsKv
@@ -1791,7 +1837,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 当query的数据类型为FP8_E4M3FN/HIFLOAT8，且inputLayout为BNSD、TND、BNSD_NBSD、TND_NTD时，kv cache排布支持BnBsH（blocknum, blocksize, H）、BnNBsD（blocknum, KV_N, blocksize, D）和NZ（blocknum，KV_N，D/D0，blocksize，D0）三种格式
       - 当query的数据类型为INT8时，kv cache排布仅支持NZ，且kv cache排布为(blocknum，KV_N，D/D0，blocksize，D0)
       - 当kv cache排布为NZ时，最后一维D0是32, keyRope最后一维D0是16
-    - GQA全量化场景除开MxFP8均不支持PagedAttention
+    - GQA全量化场景下，除MxFP8和GQA全量化（queryQuantMode = 3，keyAntiquantMode = 3，valueAntiquantMode = 2）外均不支持PagedAttention
     - MxFP8全量化支持非PagedAttention场景，kv cache排布支持BnNBsD（blocknum, KV_N, blocksize, D）和NZ (blocknum，KV_N，D/D0，blocksize，D0)
 
 #### 左padding参数组
@@ -1884,6 +1930,8 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - Layout仅支持BNSD、BSND、BSH、TND、NTD、BSH_BNSD、BSND_BNSD、NTD_TND、BNSD_BSND
     - 在tensorlist场景下，传入keyRope shape中D为64，B需要和key的tensorlist长度保持一致，N、S需要与key的tensorlist中每个tensor的N、S相等
     - 不支持全量化场景
+  - GQA全量化
+    - 不支持rope场景
 
 #### LearnableSink参数组
 
@@ -1921,7 +1969,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
   #include <iostream>

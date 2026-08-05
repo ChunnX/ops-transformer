@@ -24,8 +24,7 @@
 
 namespace AscendC {
 constexpr uint32_t AC_MSG_VALID_MASK = 0x5CDF123A;
-enum AicpuComType
-{
+enum AicpuComType {
     HCCL_CMD_INVALID = 0,
     HCCL_CMD_BROADCAST = 1,
     HCCL_CMD_ALLREDUCE,
@@ -65,17 +64,16 @@ struct AivAicpuOpParam {
 #ifdef __CCE_AICORE__
 #if __CCE_AICORE__ == 220
 // Rich Communications Services
-class HcclServer
-{
+class HcclServer {
 public:
-    __gm__ AivAicpuOpParam* msgSndWorkArea;
-    __gm__ AivAicpuOpParam* msgRcvRspArea;
+    __gm__ AivAicpuOpParam *msgSndWorkArea;
+    __gm__ AivAicpuOpParam *msgRcvRspArea;
     uint8_t debugMode_;
 
     __aicore__ inline void Init(GM_ADDR win, uint8_t debugMode)
     {
-        msgSndWorkArea = reinterpret_cast<__gm__ AivAicpuOpParam*>(win);
-        msgRcvRspArea = reinterpret_cast<__gm__ AivAicpuOpParam*>(win + sizeof(AivAicpuOpParam));
+        msgSndWorkArea = reinterpret_cast<__gm__ AivAicpuOpParam *>(win);
+        msgRcvRspArea = reinterpret_cast<__gm__ AivAicpuOpParam *>(win + sizeof(AivAicpuOpParam));
         debugMode_ = debugMode;
     }
 
@@ -88,7 +86,7 @@ public:
         msgSndWorkArea->valid = AC_MSG_VALID_MASK;
         AscendC::Barrier();
         AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-            AscendC::DcciDst::CACHELINE_OUT>(msgSndWorkArea);
+                                          AscendC::DcciDst::CACHELINE_OUT>(msgSndWorkArea);
     }
 
     __aicore__ inline void TurnWait(uint32_t totalTurn)
@@ -99,7 +97,7 @@ public:
         while (true) {
             AscendC::Barrier();
             AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-                AscendC::DcciDst::CACHELINE_OUT>(msgRcvRspArea);
+                                              AscendC::DcciDst::CACHELINE_OUT>(msgRcvRspArea);
             if (msgRcvRspArea->rcvCnt >= totalTurn) {
                 break;
             }
@@ -109,7 +107,7 @@ public:
         msgRcvRspArea->valid = ~AC_MSG_VALID_MASK;
         AscendC::Barrier();
         AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-            AscendC::DcciDst::CACHELINE_OUT>(msgRcvRspArea);
+                                          AscendC::DcciDst::CACHELINE_OUT>(msgRcvRspArea);
     }
 };
 #endif // __CCE_AICORE__ == 220
@@ -118,12 +116,11 @@ public:
 constexpr uint32_t AC_MAX_AIV = 64;                           // 最多有64个AIV
 constexpr uint32_t HCCL_PARAM_SIZE = sizeof(AivAicpuOpParam); // must aligned by 32 bytes
 // Rich Communications Services
-class HcclServer
-{
+class HcclServer {
 public:
     __aicore__ inline HcclServer() = default;
-    __ubuf__ AivAicpuOpParam* msgSndWorkArea;
-    __ubuf__ AivAicpuOpParam* msgRcvRspArea;
+    __ubuf__ AivAicpuOpParam *msgSndWorkArea;
+    __ubuf__ AivAicpuOpParam *msgRcvRspArea;
     GlobalTensor<uint8_t> msgSndGlobalTensor;
     LocalTensor<uint8_t> msgSndLocalTensor;
     GlobalTensor<uint8_t> msgRcvGlobalTensor;
@@ -137,8 +134,8 @@ public:
     // 16:KFC统计各阶段耗时
     uint8_t debugMode_;
 
-    __aicore__ inline void ReadMsgFromGlobal(
-        LocalTensor<uint8_t> local, GlobalTensor<uint8_t> global, uint32_t sizeInBytes)
+    __aicore__ inline void ReadMsgFromGlobal(LocalTensor<uint8_t> local, GlobalTensor<uint8_t> global,
+                                             uint32_t sizeInBytes)
     {
         DataCopy(local, global, sizeInBytes);
         event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE2_S));
@@ -146,8 +143,8 @@ public:
         WaitFlag<HardEvent::MTE2_S>(eventID);
     }
 
-    __aicore__ inline void WriteMsgToGlobal(
-        GlobalTensor<uint8_t> global, LocalTensor<uint8_t> local, uint32_t sizeInBytes)
+    __aicore__ inline void WriteMsgToGlobal(GlobalTensor<uint8_t> global, LocalTensor<uint8_t> local,
+                                            uint32_t sizeInBytes)
     {
         event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::S_MTE3));
         SetFlag<HardEvent::S_MTE3>(eventID);
@@ -155,7 +152,7 @@ public:
         DataCopy(global, local, sizeInBytes);
     }
 
-    __aicore__ inline void Init(GM_ADDR win, uint8_t debugMode, TBuf<TPosition::VECCALC>& tmpBuf)
+    __aicore__ inline void Init(GM_ADDR win, uint8_t debugMode, TBuf<TPosition::VECCALC> &tmpBuf)
     {
         debugMode_ = debugMode;
         uint32_t offset = 0;
@@ -165,14 +162,14 @@ public:
         // use ubuf hold the result
         msgSndLocalTensor = tmpBuf.Get<uint8_t>();
         msgRcvLocalTensor = tmpBuf.Get<uint8_t>();
-        msgSndWorkArea = reinterpret_cast<__ubuf__ AivAicpuOpParam*>(msgSndLocalTensor.GetPhyAddr());
-        msgRcvRspArea = reinterpret_cast<__ubuf__ AivAicpuOpParam*>(msgRcvLocalTensor.GetPhyAddr());
+        msgSndWorkArea = reinterpret_cast<__ubuf__ AivAicpuOpParam *>(msgSndLocalTensor.GetPhyAddr());
+        msgRcvRspArea = reinterpret_cast<__ubuf__ AivAicpuOpParam *>(msgRcvLocalTensor.GetPhyAddr());
     }
 
-    __aicore__ inline void InitSoftSync(GM_ADDR softSyncOffset, uint32_t usedCoreNum, TBuf<TPosition::VECCALC>& tmpBuf)
+    __aicore__ inline void InitSoftSync(GM_ADDR softSyncOffset, uint32_t usedCoreNum, TBuf<TPosition::VECCALC> &tmpBuf)
     {
         const int32_t ELEMENT_CNT = DEFAULT_C0_SIZE / sizeof(int32_t);
-        syncGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(softSyncOffset), usedCoreNum * ELEMENT_CNT);
+        syncGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(softSyncOffset), usedCoreNum * ELEMENT_CNT);
         syncLocalTensor = tmpBuf.Get<int32_t>();
         // clear soft sync global tensor
         Duplicate(syncLocalTensor, 0, usedCoreNum * ELEMENT_CNT);

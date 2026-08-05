@@ -18,26 +18,27 @@
 namespace domi {
 using NodeProto = ge::onnx::NodeProto;
 
-static Status ParseParamsNPUScaledMaskedSoftmax(const Message* op_src, ge::Operator& op_dest) {
-  const NodeProto* node = dynamic_cast<const NodeProto*>(op_src);
-  if (node == nullptr) {
-    OP_LOGE(GetOpName(op_dest).c_str(), "Dynamic cast op_src to NodeProto failed!");
-    return FAILED;
-  }
-
-  float scale = 1.0;
-  bool fixed_triu_mask = false;
-  for (const auto& attr : node->attribute()) {
-    if (attr.name() == "scale" && attr.type() == ge::onnx::AttributeProto::FLOAT) {
-      scale = attr.f();
-    } else if (attr.name() == "fixed_triu_mask" && attr.type() == ge::onnx::AttributeProto::INT && attr.i() == 1) {
-      fixed_triu_mask = true;
+static Status ParseParamsNPUScaledMaskedSoftmax(const Message *op_src, ge::Operator &op_dest)
+{
+    const NodeProto *node = dynamic_cast<const NodeProto *>(op_src);
+    if (node == nullptr) {
+        OP_LOGE(GetOpName(op_dest).c_str(), "Dynamic cast op_src to NodeProto failed!");
+        return FAILED;
     }
-  }
-  op_dest.SetAttr("scale", scale);
-  op_dest.SetAttr("fixed_triu_mask", fixed_triu_mask);
 
-  return SUCCESS;
+    float scale = 1.0;
+    bool fixed_triu_mask = false;
+    for (const auto &attr : node->attribute()) {
+        if (attr.name() == "scale" && attr.type() == ge::onnx::AttributeProto::FLOAT) {
+            scale = attr.f();
+        } else if (attr.name() == "fixed_triu_mask" && attr.type() == ge::onnx::AttributeProto::INT && attr.i() == 1) {
+            fixed_triu_mask = true;
+        }
+    }
+    op_dest.SetAttr("scale", scale);
+    op_dest.SetAttr("fixed_triu_mask", fixed_triu_mask);
+
+    return SUCCESS;
 }
 
 // register npu_scaled_masked_softmax op info to GE
@@ -54,4 +55,4 @@ REGISTER_CUSTOM_OP("ScaledMaskedSoftmax")
                    ge::AscendString("ai.onnx::18::NPUScaledMaskedSoftmax")})
     .ParseParamsFn(ParseParamsNPUScaledMaskedSoftmax)
     .ImplyType(ImplyType::TVM);
-}  // namespace domi
+} // namespace domi

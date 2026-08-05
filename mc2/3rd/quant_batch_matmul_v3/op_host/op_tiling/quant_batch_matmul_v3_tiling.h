@@ -64,8 +64,8 @@ protected:
     bool GetUbDequantExtreSpace() override;
     ge::graphStatus CalcUbTiling() override;
     bool CheckDtype() const override;
-    bool CheckShape(const std::vector<gert::Shape *> &mandtoryShape, const gert::StorageShape* biasShape,
-                    const gert::StorageShape* pertokenShape, const std::vector<int64_t> &dimValueOfMKN) const override;
+    bool CheckShape(const std::vector<gert::Shape *> &mandtoryShape, const gert::StorageShape *biasShape,
+                    const gert::StorageShape *pertokenShape, const std::vector<int64_t> &dimValueOfMKN) const override;
     bool SetMatmulTilingFromTbeTiling();
     bool GetTbeTiling();
     void ProcessMSmall();
@@ -92,18 +92,19 @@ protected:
     bool CheckDimValue(const gert::Shape &scaleShape, const gert::StorageShape *biasShape,
                        const gert::StorageShape *pertokenShape, const std::vector<int64_t> &dimValueOfMKN) const;
 
-    bool CheckShapeInRangeForOptionalInputs(const gert::StorageShape* biasShape,
-                                            const gert::StorageShape* pertokenShape) const;
+    bool CheckShapeInRangeForOptionalInputs(const gert::StorageShape *biasShape,
+                                            const gert::StorageShape *pertokenShape) const;
     bool BiasShapeCheck(const gert::Shape &biasShape) const;
     uint64_t GetTotalSize(uint64_t m, uint64_t k, uint64_t n) const;
 
     uint32_t GetABankConflictSize();
     void UpdateSmallMTbeTiling();
     void UpdateSmallMTbeTiling(uint64_t baseM, uint64_t baseN, uint64_t baseK);
-    void SetQuantBatchMatmulRunParas(QuantBatchMatmulRunParas& runParams, const optiling::Mc2QuantBatchMatmulInfo& inputParams);
+    void SetQuantBatchMatmulRunParas(QuantBatchMatmulRunParas &runParams,
+                                     const optiling::Mc2QuantBatchMatmulInfo &inputParams);
     // 新增数据成员请注意：如果是在GetShapeAttrsInfo函数过程中获取的，请放到Mc2QuantBatchMatmulInfo结构体中，或者保证在DoOpTiling赋值
     Mc2QuantBatchMatmulV3TilingData tilingDataSelf_{};
     Mc2QuantBatchMatmulV3TilingData &tilingData_;
 };
-}  // namespace optiling
-#endif  // QUANT_BATCH_MATMUL_V3_TILING_H
+} // namespace optiling
+#endif // QUANT_BATCH_MATMUL_V3_TILING_H

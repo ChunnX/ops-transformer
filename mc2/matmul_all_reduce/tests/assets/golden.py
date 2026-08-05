@@ -9,14 +9,10 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-__golden__ = {
-    "kernel": {
-        "matmul_all_reduce": "matmul_all_reduce_golden"
-    }
-}
+__golden__ = {"kernel": {"matmul_all_reduce": "matmul_all_reduce_golden"}}
 
-import numpy as np
 import torch
+
 
 def matmul_all_reduce_golden(
     x1,
@@ -38,7 +34,7 @@ def matmul_all_reduce_golden(
     group_size: int = 0,
     y_dtype: int = 0,
     comm_quant_mode: int = 0,
-    **kwargs
+    **kwargs,
 ):
     if is_trans_b:
         x2 = x2.t()

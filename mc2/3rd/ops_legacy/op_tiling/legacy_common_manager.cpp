@@ -50,7 +50,7 @@ LegacyCommonMgr::~LegacyCommonMgr()
     if (handle_ != nullptr) {
         int ret = dlclose(handle_);
         if (ret != 0) {
-            const char* err = dlerror();
+            const char *err = dlerror();
             OP_LOGE("LegacyCommonMgr", "Fail to dlclose handle, reason: %s.", err ? err : "unknown error");
         }
         handle_ = nullptr;

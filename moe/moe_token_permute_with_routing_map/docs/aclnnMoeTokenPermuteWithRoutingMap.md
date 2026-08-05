@@ -24,19 +24,19 @@
   $$
   expertIndex=arange(tokens\_num).expand(expert\_num,-1)
   $$
-  
+
   $$
   sortedIndicesFirst=expertIndex.masked\_select(routingMap.T)
   $$
-  
+
   $$
   sortedIndicesOut=argsort(sortedIndicesFirst)
   $$
-    
+
   $$
   topK = numOutTokens // tokens\_num
   $$
-  
+
   $$
   outToken = topK * tokens\_num
   $$
@@ -44,7 +44,7 @@
   $$
   permuteTokensOut[sortedIndicesOut[i]]=tokens[i//topK]
   $$
-  
+
   如果probs不是none
 
   $$
@@ -64,7 +64,7 @@
   $$
   sortedIndicesOut = argsort(routingMap.T,dim=-1)[:, :capacity]
   $$
-  
+
   $$
   permutedTokensOut = tokens.index\_select(0, sortedIndicesOut)
   $$
@@ -74,46 +74,46 @@
   $$
   probs\_T\_1D = probsOptional.T.view(-1)
   $$
-  
+
   $$
   indices\_dim0 = arange(expert\_num).view(expert\_num, 1)
   $$
-  
+
   $$
   indices\_dim1 = sortedIndicesOut.view(expert\_num, capacity)
   $$
-  
+
   $$
   indices\_1D = (indices\_dim0 * tokens\_num + indices\_dim1).view(-1)
   $$
-  
+
   $$
   permuteProbsOutOptional = probs\_T\_1D.index\_select(0, indices\_1D)
   $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermuteWithRoutingMap”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermuteWithRoutingMap”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize(
-    const aclTensor  *tokens, 
-    const aclTensor  *routingMap, 
-    const aclTensor  *probsOptional, 
-    int64_t           numOutTokens, 
-    bool              dropAndPad, 
-    aclTensor        *permuteTokensOut, 
-    aclTensor        *permuteProbsOutOptional, 
-    aclTensor        *sortedIndicesOut, 
-    uint64_t         *workspaceSize, 
+    const aclTensor  *tokens,
+    const aclTensor  *routingMap,
+    const aclTensor  *probsOptional,
+    int64_t           numOutTokens,
+    bool              dropAndPad,
+    aclTensor        *permuteTokensOut,
+    aclTensor        *permuteProbsOutOptional,
+    aclTensor        *sortedIndicesOut,
+    uint64_t         *workspaceSize,
     aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
-    void            *workspace, 
-    uint64_t         workspaceSize, 
-    aclOpExecutor   *executor, 
+    void            *workspace,
+    uint64_t         workspaceSize,
+    aclOpExecutor   *executor,
     aclrtStream      stream)
 ```
 
@@ -124,10 +124,10 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
   <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
   <col style="width: 170px">
   <col style="width: 120px">
-  <col style="width: 300px">  
-  <col style="width: 550px">  
-  <col style="width: 212px">  
-  <col style="width: 100px"> 
+  <col style="width: 300px">
+  <col style="width: 550px">
+  <col style="width: 212px">
+  <col style="width: 100px">
   <col style="width: 190px">
   <col style="width: 145px">
   </colgroup>
@@ -247,10 +247,10 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
 
 - **返回值：**
 
-  `aclnnStatus`：返回状态码，具体参见 <a href="../../../docs/zh/context/aclnn返回码.md">aclnn返回码</a>。
+  `aclnnStatus`：返回状态码，具体参见 <a href="../../../docs/zh/context/aclnn_return_code.md">aclnn返回码</a>。
 
   一段接口完成入参校验，出现以下场景时报错：
-  <table style="undefined;table-layout: fixed; width: 1180px"> 
+  <table style="undefined;table-layout: fixed; width: 1180px">
     <colgroup>
       <col style="width: 250px">
       <col style="width: 130px">
@@ -283,7 +283,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
       <tr>
         <td>ACLNN_ERR_INNER_NULLPTR</td>
         <td>561103</td>
-        <td>topK > 512</td>
+        <td>内部指针为空</td>
       </tr>
     </tbody>
   </table>
@@ -292,7 +292,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1180px"> 
+  <table style="undefined;table-layout: fixed; width: 1180px">
     <colgroup>
       <col style="width: 250px">
       <col style="width: 130px">
@@ -331,18 +331,18 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-    
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
 ## 约束说明
 
 - 确定性计算：
   - aclnnMoeTokenPermuteWithRoutingMap默认确定性实现。
 
-- tokens_num和experts_num要求小于`16777215`，pad模式为false时routingMap中每行为1或true的个数固定且小于`512`。
+- pad模式为true时tokens_num要求小于`16777215`，pad模式为false时routingMap中每行为1或true的个数小于topK且小于`512`，且topK * tokens_num小于`16777215`。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include "acl/acl.h"

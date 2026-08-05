@@ -60,8 +60,8 @@ __aicore__ inline void CopyGmToUbufAlignMc2(const LocalTensor<T> &dst, const Glo
 
 template <typename T>
 __aicore__ inline void CopyUbufToGmAlignMc2(const GlobalTensor<T> &dst, const LocalTensor<T> &src, uint16_t nBurst,
-                                         uint32_t lenBurst, uint8_t leftPaddingNum, uint8_t rightPaddingNum,
-                                         uint32_t srcGap, uint32_t dstGap)
+                                            uint32_t lenBurst, uint8_t leftPaddingNum, uint8_t rightPaddingNum,
+                                            uint32_t srcGap, uint32_t dstGap)
 {
     DataCopyExtParams dataCopyExtParams{nBurst, lenBurst, srcGap, dstGap, 0};
     DataCopyPadExtParams<T> dataCopyPadExtParams{false, leftPaddingNum, rightPaddingNum, static_cast<T>(0)};
@@ -74,20 +74,23 @@ template <typename T>
 __aicore__ inline void CopyPad(const GlobalTensor<T> &outputGlobal, const LocalTensor<T> &tmpUb,
                                const GlobalTensor<T> &inputGlobal, uint32_t nBurst, uint32_t ubDstGap,
                                uint32_t inputWidth, uint32_t outputWidth, uint32_t inputOrgWidth,
-                               uint32_t outputOrgWidth, uint8_t pingpongID) {
+                               uint32_t outputOrgWidth, uint8_t pingpongID)
+{
     CopyGmToUbufAlignMc2<T>(tmpUb, inputGlobal, static_cast<uint16_t>(nBurst), inputWidth * sizeof(T), 0, 0,
                             (inputOrgWidth - inputWidth) * sizeof(T), ubDstGap);
     SetFlag<HardEvent::MTE2_MTE3>(static_cast<event_t>(pingpongID));
     WaitFlag<HardEvent::MTE2_MTE3>(static_cast<event_t>(pingpongID));
 
     CopyUbufToGmAlignMc2<T>(outputGlobal, tmpUb, static_cast<uint16_t>(nBurst), outputWidth * sizeof(T), 0, 0, ubDstGap,
-                         (outputOrgWidth - outputWidth) * sizeof(T));
+                            (outputOrgWidth - outputWidth) * sizeof(T));
 }
 
-__aicore__ __inline__ GM_ADDR GetTailA(GM_ADDR aGM, TCubeTiling &tiling, uint32_t size) {
+__aicore__ __inline__ GM_ADDR GetTailA(GM_ADDR aGM, TCubeTiling &tiling, uint32_t size)
+{
     return aGM + (tiling.M * tiling.Ka) * sizeof(A_DTYPE) * size;
 }
-__aicore__ __inline__ GM_ADDR GetTailC(GM_ADDR cGM, TCubeTiling &tiling, uint32_t size) {
+__aicore__ __inline__ GM_ADDR GetTailC(GM_ADDR cGM, TCubeTiling &tiling, uint32_t size)
+{
     return cGM + (tiling.M * tiling.N) * sizeof(C_DTYPE) * size;
 }
 
@@ -95,7 +98,8 @@ __aicore__ __inline__ GM_ADDR GetTailC(GM_ADDR cGM, TCubeTiling &tiling, uint32_
 // userBlock 指 V core的数量
 template <class T>
 __aicore__ inline void Gm2GmTrans(GM_ADDR output, GM_ADDR aGm, uint32_t row, uint32_t col, uint32_t curBlock,
-                                  uint32_t userBlock) {
+                                  uint32_t userBlock)
+{
     if (g_coreType != AIV) {
         return;
     }
@@ -106,7 +110,7 @@ __aicore__ inline void Gm2GmTrans(GM_ADDR output, GM_ADDR aGm, uint32_t row, uin
     int singleVCoreSize = (allCoreSize + userBlock - 1) / userBlock;
     if (curBlock == userBlock - 1) {
         singleVCoreSize = allCoreSize - singleVCoreSize * (userBlock - 1);
-    }  // 尾核可能有尾块
+    } // 尾核可能有尾块
     auto dataSize = TOTAL_UB_SIZE / sizeof(T);
 
     GlobalTensor<T> gmSrc;
@@ -149,7 +153,8 @@ __aicore__ inline void Gm2GmTrans(GM_ADDR output, GM_ADDR aGm, uint32_t row, uin
 template <class T>
 __aicore__ inline void PreCopyPadNd2Nz(const LocalTensor<T> &tmpUb, const GlobalTensor<T> &inputGlobal, uint32_t nBurst,
                                        uint32_t gmSrcGap, uint32_t inputWidth, uint32_t outputWidth, uint16_t pad_size,
-                                       uint8_t pingpongID) {
+                                       uint8_t pingpongID)
+{
     DataCopyParams copyParams{static_cast<uint16_t>(nBurst), static_cast<uint16_t>(inputWidth * sizeof(T)),
                               static_cast<uint16_t>(gmSrcGap), 0};
     DataCopyPadParams padParams{false, 0, 0, 0};
@@ -175,7 +180,8 @@ template <class T>
 __aicore__ inline void CopyPadNd2Nz(const GlobalTensor<T> &outputGlobal, const LocalTensor<T> &tmpUb,
                                     const LocalTensor<T> &transUb, const GlobalTensor<T> &inputGlobal, uint32_t nBurst,
                                     uint32_t gmSrcGap, uint32_t inputWidth, uint32_t outputWidth, uint32_t height,
-                                    uint16_t pad_size, uint8_t pingpongID) {
+                                    uint16_t pad_size, uint8_t pingpongID)
+{
     PreCopyPadNd2Nz(tmpUb, inputGlobal, nBurst, inputWidth, outputWidth, pad_size, pingpongID);
     // use vmuls to nd2nz
     uint32_t c0Size;
@@ -186,7 +192,7 @@ __aicore__ inline void CopyPadNd2Nz(const GlobalTensor<T> &outputGlobal, const L
     } else {
         c0Size = 16;
     }
-    int widthStep = Ceil(inputWidth, c0Size);  // 行方向搬运多少次
+    int widthStep = Ceil(inputWidth, c0Size); // 行方向搬运多少次
     uint64_t mask_count = c0Size * nBurst;
     uint16_t dstBlkStride = 1;
     uint16_t srcBlkStride = widthStep;
@@ -217,10 +223,10 @@ __aicore__ inline void CopyPadNd2Nz(const GlobalTensor<T> &outputGlobal, const L
     SetFlag<HardEvent::V_MTE3>(static_cast<event_t>(pingpongID));
     WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(pingpongID));
     DataCopyParams copyOutParams;
-    copyOutParams.blockLen = nBurst;       // c0 size 32byte
-    copyOutParams.blockCount = widthStep;  // 最大4095， 需要切分
+    copyOutParams.blockLen = nBurst;      // c0 size 32byte
+    copyOutParams.blockCount = widthStep; // 最大4095， 需要切分
     copyOutParams.srcStride = 0;
-    copyOutParams.dstStride = height * 2 - nBurst;  // 分了两个核，所以需要在m方向上跳转一大块
+    copyOutParams.dstStride = height * 2 - nBurst; // 分了两个核，所以需要在m方向上跳转一大块
     DataCopy(outputGlobal, transUb, copyOutParams);
 }
 
@@ -228,7 +234,8 @@ __aicore__ inline void CopyPadNd2Nz(const GlobalTensor<T> &outputGlobal, const L
 template <class T>
 __aicore__ inline void PrePaddingImplNd2Nz(const GlobalTensor<T> &mmWorkspace, const GlobalTensor<T> &mmGlobal,
                                            uint32_t height, uint32_t width, uint32_t widthAligned, int height_pad_size,
-                                           int ori_width) {
+                                           int ori_width)
+{
     int pad_size = 0;
     // 当前切出来的height是大于16的，所以只有第二个核需要进行padding补齐
     if (GetSubBlockIdxImpl() == 1) {
@@ -308,7 +315,8 @@ template <class T>
 __aicore__ inline void CopyPadNd2Nz(const GlobalTensor<T> &outputGlobal, const LocalTensor<T> &tmpUb,
                                     const LocalTensor<T> &transUb, const GlobalTensor<T> &inputGlobal, uint32_t nBurst,
                                     uint32_t gmSrcGap, uint32_t inputWidth, uint32_t outputWidth, uint32_t height,
-                                    uint16_t pad_size) {
+                                    uint16_t pad_size)
+{
     // use vmuls to nd2nz
     uint32_t c0Size;
     if (sizeof(T) == sizeof(float)) {
@@ -338,16 +346,16 @@ __aicore__ inline void CopyPadNd2Nz(const GlobalTensor<T> &outputGlobal, const L
         if constexpr (sizeof(T) == sizeof(int8_t)) {
             mask_count /= 2;
             SetVectorMask<T>(0UL, static_cast<uint64_t>(pad_size * outputWidth / 2));
-            DuplicateIntrinsicsImpl((__ubuf__ uint16_t*)tmpUb[pad_offset].GetPhyAddr(), (uint16_t)0, 1, 1, 8);
+            DuplicateIntrinsicsImpl((__ubuf__ uint16_t *)tmpUb[pad_offset].GetPhyAddr(), (uint16_t)0, 1, 1, 8);
         } else {
             SetVectorMask<T>(0UL, static_cast<uint64_t>(pad_size * outputWidth));
-            DuplicateIntrinsicsImpl((__ubuf__ T*)tmpUb[pad_offset].GetPhyAddr(), (T)0, 1, 1, 8);
+            DuplicateIntrinsicsImpl((__ubuf__ T *)tmpUb[pad_offset].GetPhyAddr(), (T)0, 1, 1, 8);
         }
         PipeBarrier<PIPE_V>();
         SetVectorMask<T>(0UL, mask_count);
     }
-    
-    int widthStep = Ceil(inputWidth, c0Size);  // 行方向搬运多少次
+
+    int widthStep = Ceil(inputWidth, c0Size); // 行方向搬运多少次
     uint16_t dstBlkStride = 1;
     uint16_t srcBlkStride = widthStep;
     uint16_t dstRepStride = nBurst;
@@ -378,17 +386,18 @@ __aicore__ inline void CopyPadNd2Nz(const GlobalTensor<T> &outputGlobal, const L
     SetFlag<HardEvent::V_MTE3>(0);
     WaitFlag<HardEvent::V_MTE3>(0);
     DataCopyParams copyOutParams;
-    copyOutParams.blockCount = widthStep;  // 最大4095， 需要切分
+    copyOutParams.blockCount = widthStep; // 最大4095， 需要切分
     copyOutParams.blockLen = nBurst;
     copyOutParams.srcStride = 0;
-    copyOutParams.dstStride = height * 2 - nBurst;  // 分了两个核，所以需要在m方向上跳转一大块
+    copyOutParams.dstStride = height * 2 - nBurst; // 分了两个核，所以需要在m方向上跳转一大块
     DataCopy(outputGlobal, transUb, copyOutParams);
 }
 
 template <class T>
 __aicore__ inline void PrePaddingImplNd2Nz(const GlobalTensor<T> &mmWorkspace, const GlobalTensor<T> &mmGlobal,
                                            uint32_t height, uint32_t width, uint32_t widthAligned, int height_pad_size,
-                                           int ori_width, TBuf<TPosition::VECCALC> &totalUbBuf) {
+                                           int ori_width, TBuf<TPosition::VECCALC> &totalUbBuf)
+{
     int pad_size = 0;
     // 当前切出来的height是大于16的，所以只有第二个核需要进行padding补齐
     if (GetSubBlockIdxImpl() == 1) {
@@ -447,7 +456,8 @@ __aicore__ inline void PrePaddingImplNd2Nz(const GlobalTensor<T> &mmWorkspace, c
 
 template <class T>
 __aicore__ inline void MatrixND2NZ(GM_ADDR outGm, GM_ADDR srcGm, uint32_t high, uint32_t width, uint32_t orgWidth,
-                                   TBuf<TPosition::VECCALC> &totalUbBuf) {
+                                   TBuf<TPosition::VECCALC> &totalUbBuf)
+{
     const uint32_t alignRow = 16;
     int size = DivCeil(high, alignRow) * DivCeil(width, alignRow) * 256;
     auto alignedNSize = DivCeil(width, alignRow) * alignRow;
@@ -478,27 +488,27 @@ __aicore__ inline void MatrixBtoNZ(GM_ADDR workspace, GM_ADDR src, const Mc2Tili
                                    TBuf<TPosition::VECCALC> &totalUbBuf)
 {
     if (g_coreType == AIV) {
-        auto alignedNSize = Ceil(cfg.rankN, (uint32_t)16) * 16;  // N轴转换成分型
-        auto alignedKSize = Ceil(cfg.rankK, (uint32_t)16) * 16;  // K轴转换成分型
-        auto spliteWidth = cfg.rankN;                            // 切N轴时用N
+        auto alignedNSize = Ceil(cfg.rankN, (uint32_t)16) * 16; // N轴转换成分型
+        auto alignedKSize = Ceil(cfg.rankK, (uint32_t)16) * 16; // K轴转换成分型
+        auto spliteWidth = cfg.rankN;                           // 切N轴时用N
         if (cfg.isTransposeB) {
             spliteWidth = cfg.rankK;
-        }  // 切K轴时用K
+        } // 切K轴时用K
         // rangN取分形块数， 如1920 则生成120个16分形
         auto fractalPerNum = Ceil(spliteWidth, (uint32_t)16);
-        auto userCodeNum = cfg.aicCoreNum;  // 使用最大的核数
+        auto userCodeNum = cfg.aicCoreNum; // 使用最大的核数
 
-        uint32_t oneBlockFactalNum = Ceil(fractalPerNum, userCodeNum);  // 每个core需要计算的分型
+        uint32_t oneBlockFactalNum = Ceil(fractalPerNum, userCodeNum); // 每个core需要计算的分型
         // 本核需要计算的分型开始位置
         int32_t curBlockCount = (fractalPerNum - oneBlockFactalNum * block_idx);
         if (curBlockCount <= 0) {
-            CrossCoreSetFlag<SET_FLAG_MODE_2, PIPE_MTE3>(EVENT_ID_5);  // v侧做完才能做c侧
+            CrossCoreSetFlag<SET_FLAG_MODE_2, PIPE_MTE3>(EVENT_ID_5); // v侧做完才能做c侧
             return;
         }
         // 本核计算的分型长度
         int32_t oneBlock;
         if (curBlockCount <= oneBlockFactalNum) {
-            oneBlock = (spliteWidth - block_idx * oneBlockFactalNum * 16);  // 当前为尾核
+            oneBlock = (spliteWidth - block_idx * oneBlockFactalNum * 16); // 当前为尾核
         } else {
             oneBlock = oneBlockFactalNum * 16;
         }
@@ -515,7 +525,7 @@ __aicore__ inline void MatrixBtoNZ(GM_ADDR workspace, GM_ADDR src, const Mc2Tili
             MatrixND2NZ<T>(gmBTrans, bTemp, cfg.rankK, oneBlock, cfg.rankN, totalUbBuf);
         }
         // 先AIC 等待AIV, 再AIC之间一次同步
-        CrossCoreSetFlag<SET_FLAG_MODE_2, PIPE_MTE3>(EVENT_ID_5);  // v侧做完才能做c侧
+        CrossCoreSetFlag<SET_FLAG_MODE_2, PIPE_MTE3>(EVENT_ID_5); // v侧做完才能做c侧
     } else {
 #ifndef __CCE_KT_TEST__
         CrossCoreWaitFlag(EVENT_ID_5);
@@ -525,17 +535,18 @@ __aicore__ inline void MatrixBtoNZ(GM_ADDR workspace, GM_ADDR src, const Mc2Tili
     }
 }
 
-#endif  // ENALBE_ND2NZ
+#endif // ENALBE_ND2NZ
 
-__aicore__ inline void CastBFtoFloat(GM_ADDR dst, GM_ADDR src, int size, TBuf<TPosition::VECCALC> &totalUbBuf) {
+__aicore__ inline void CastBFtoFloat(GM_ADDR dst, GM_ADDR src, int size, TBuf<TPosition::VECCALC> &totalUbBuf)
+{
 #if __CCE_AICORE__ == 220
     if (g_coreType == AIC) { // 先aiv，后aic
-    #ifndef __CCE_KT_TEST__
+#ifndef __CCE_KT_TEST__
         CrossCoreWaitFlag(EVENT_ID_5);
         CrossCoreSetFlag<SET_FLAG_MODE_0, PIPE_MTE3>(EVENT_ID_4);
         CrossCoreWaitFlag(EVENT_ID_4);
         return;
-    #endif
+#endif
     }
     if (GetBlockIdx() != 0) {
         CrossCoreSetFlag<SET_FLAG_MODE_2, PIPE_MTE3>(EVENT_ID_5);
@@ -545,8 +556,8 @@ __aicore__ inline void CastBFtoFloat(GM_ADDR dst, GM_ADDR src, int size, TBuf<TP
     // 1. 初始化global tensor
     GlobalTensor<bfloat16_t> gmSrc;
     GlobalTensor<float> gmDst;
-    gmSrc.SetGlobalBuffer((__gm__ bfloat16_t*)(src), size);
-    gmDst.SetGlobalBuffer((__gm__ float*)(dst), size);
+    gmSrc.SetGlobalBuffer((__gm__ bfloat16_t *)(src), size);
+    gmDst.SetGlobalBuffer((__gm__ float *)(dst), size);
 
     // 2. 初始化local tensor
     LocalTensor<bfloat16_t> fullBf16 = totalUbBuf.Get<bfloat16_t>();
@@ -576,5 +587,5 @@ __aicore__ inline void CastBFtoFloat(GM_ADDR dst, GM_ADDR src, int size, TBuf<TP
     CrossCoreSetFlag<SET_FLAG_MODE_2, PIPE_MTE3>(EVENT_ID_5);
 #endif
 }
-#endif  // MC2_GATHER_COMM_H
+#endif // MC2_GATHER_COMM_H
 }

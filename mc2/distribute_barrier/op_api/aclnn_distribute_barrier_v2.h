@@ -35,10 +35,8 @@ extern "C" {
  *
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnDistributeBarrierV2GetWorkspaceSize(
-    const aclTensor* xRef, const aclTensor* timeOut,
-    const aclTensor* elasticInfo, const char* group,
-    int64_t worldSize, uint64_t* workspaceSize,
-    aclOpExecutor** executor);
+    const aclTensor *xRef, const aclTensor *timeOut, const aclTensor *elasticInfo, const char *group, int64_t worldSize,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnDistributeBarrierV2的第二段接口，用于执行计算。
@@ -49,12 +47,12 @@ __attribute__((visibility("default"))) aclnnStatus aclnnDistributeBarrierV2GetWo
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-__attribute__((visibility("default"))) aclnnStatus aclnnDistributeBarrierV2(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-    aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnDistributeBarrierV2(void *workspace, uint64_t workspaceSize,
+                                                                            aclOpExecutor *executor,
+                                                                            aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // OP_API_INC_DISTRIBUTE_BARRIER_V2_H
+#endif // OP_API_INC_DISTRIBUTE_BARRIER_V2_H

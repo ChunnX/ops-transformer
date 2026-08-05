@@ -22,7 +22,7 @@ struct AllGatherAddTilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling;
     uint32_t commTurn; // 通信轮次
-    
+
     uint32_t totalElemNum;
     uint32_t blockElemNum;
     uint32_t tileNum;
@@ -31,4 +31,4 @@ struct AllGatherAddTilingData {
     uint32_t addCoresPerRank;
 };
 
-#endif //ALL_GATHER_ADD_TILING_H
+#endif // ALL_GATHER_ADD_TILING_H

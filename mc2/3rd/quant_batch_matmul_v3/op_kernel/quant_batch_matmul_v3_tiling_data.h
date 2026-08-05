@@ -20,7 +20,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 
 #pragma pack(push, 8)
-struct alignas(8) Mc2QuantBatchMatmulV3Params{
+struct alignas(8) Mc2QuantBatchMatmulV3Params {
     uint32_t batchA;
     uint32_t batchB;
     uint32_t batchC;
@@ -57,7 +57,7 @@ struct alignas(8) Mc2QuantBatchMatmulV3Params{
 #pragma pack(pop)
 
 #pragma pack(push, 8)
-struct alignas(8) Mc2L2cacheTileParam{
+struct alignas(8) Mc2L2cacheTileParam {
     uint32_t mTileCntL2;
     uint32_t nTileCntL2;
     uint32_t mTileBlock;
@@ -68,7 +68,7 @@ struct alignas(8) Mc2L2cacheTileParam{
 #pragma pack(pop)
 
 #pragma pack(push, 8)
-struct alignas(8) Mc2SlidingWindowParam{
+struct alignas(8) Mc2SlidingWindowParam {
     uint32_t mTailTile;
     uint32_t nTailTile;
     uint32_t mBaseTailSplitCnt;
@@ -79,11 +79,11 @@ struct alignas(8) Mc2SlidingWindowParam{
 #pragma pack(pop)
 
 #pragma pack(push, 8)
-struct alignas(8) Mc2QuantBatchMatmulV3TilingData{
-  Mc2QuantBatchMatmulV3Params params;
-  TCubeTiling matmulTiling;
-  Mc2L2cacheTileParam tileL2cacheTiling;
-  Mc2SlidingWindowParam adaptiveSlidingWin;
+struct alignas(8) Mc2QuantBatchMatmulV3TilingData {
+    Mc2QuantBatchMatmulV3Params params;
+    TCubeTiling matmulTiling;
+    Mc2L2cacheTileParam tileL2cacheTiling;
+    Mc2SlidingWindowParam adaptiveSlidingWin;
 };
 #pragma pack(pop)
 

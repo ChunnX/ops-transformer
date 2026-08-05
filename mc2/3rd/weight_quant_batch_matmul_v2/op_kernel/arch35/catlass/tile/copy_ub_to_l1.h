@@ -17,9 +17,8 @@ using AscendC::DataCopyParams;
 using AscendC::LocalTensor;
 
 template <typename T>
-DEVICE void CopyUbToL1IntervalDataCopy(
-    const LocalTensor<T>& dst, const LocalTensor<T>& src, uint32_t blockCount, uint32_t blockLen,
-    uint32_t dstInnerLength, uint32_t srcInnerLength)
+DEVICE void CopyUbToL1IntervalDataCopy(const LocalTensor<T> &dst, const LocalTensor<T> &src, uint32_t blockCount,
+                                       uint32_t blockLen, uint32_t dstInnerLength, uint32_t srcInnerLength)
 {
     DataCopyParams params;
     params.blockLen = blockLen;

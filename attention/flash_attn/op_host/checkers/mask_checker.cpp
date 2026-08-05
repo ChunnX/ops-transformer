@@ -73,7 +73,7 @@ ge::graphStatus MaskChecker::CheckSingleParaAttnMask(const FaTilingInfo &faInfo)
         dim0 != SPARSE_OPTIMIZE_ATTENTION_SIZE || dim1 != SPARSE_OPTIMIZE_ATTENTION_SIZE,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "attn_mask",
                                               ("[" + std::to_string(dim0) + ", " + std::to_string(dim1) + "]").c_str(),
-                                              "The shape of attn_mask must be [256, 256]"),
+                                              "The shape of attn_mask must be [2048, 2048]"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

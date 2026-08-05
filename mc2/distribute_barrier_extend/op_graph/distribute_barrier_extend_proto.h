@@ -41,18 +41,18 @@ namespace ge {
 REG_OP(DistributeBarrierExtend)
     .INPUT(context, TensorType({DT_INT32}))
     .INPUT(x_ref, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT, DT_BOOL, DT_INT8, DT_INT16, DT_INT32, DT_INT64, DT_UINT8,
-           DT_UINT16, DT_UINT32, DT_UINT64, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E1M2, DT_FLOAT4_E2M1,
-           DT_HIFLOAT8, DT_INT4}))
+                              DT_UINT16, DT_UINT32, DT_UINT64, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E1M2,
+                              DT_FLOAT4_E2M1, DT_HIFLOAT8, DT_INT4}))
     .OPTIONAL_INPUT(time_out, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(elastic_info, TensorType({DT_INT32}))
     .OUTPUT(x_ref, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT, DT_BOOL, DT_INT8, DT_INT16, DT_INT32, DT_INT64, DT_UINT8,
-            DT_UINT16, DT_UINT32, DT_UINT64, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E1M2, DT_FLOAT4_E2M1,
-            DT_HIFLOAT8, DT_INT4}))
+                               DT_UINT16, DT_UINT32, DT_UINT64, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E1M2,
+                               DT_FLOAT4_E2M1, DT_HIFLOAT8, DT_INT4}))
     .REQUIRED_ATTR(group, String)
     .REQUIRED_ATTR(world_size, Int)
     .OP_END_FACTORY_REG(DistributeBarrierExtend)
 
-}  // namespace ge
+} // namespace ge
 
 
-#endif  // DISTRIBUTE_BARRIER_EXTEND_PROTO_H_
+#endif // DISTRIBUTE_BARRIER_EXTEND_PROTO_H_

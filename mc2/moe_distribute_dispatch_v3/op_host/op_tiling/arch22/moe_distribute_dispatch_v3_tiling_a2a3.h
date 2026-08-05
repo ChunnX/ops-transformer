@@ -21,7 +21,7 @@ namespace optiling {
 class MoeDistributeDispatchV3TilingFuncA2A3 : public MoeDistributeDispatchV3TilingFuncBase {
 public:
     ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext *context,
-                                                                 DispatchV2Config &config) override;
+                                                                DispatchV2Config &config) override;
 };
-}
+} // namespace optiling
 #endif

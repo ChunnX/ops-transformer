@@ -11,8 +11,7 @@
 #define ARCH35_CATLASS_CONSTANT_H
 
 namespace Mc2WeightQuantBatchMatmulV2::Arch35::Catlass {
-enum class Mc2QuantType
-{
+enum class Mc2QuantType {
     NONE = 0,
     PER_TENSOR = 1,
     PER_CHANNEL = 2,

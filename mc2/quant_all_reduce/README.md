@@ -28,7 +28,7 @@
     $$
     output = Reduce(AllGatherScales * AllGatherData)
     $$
-    
+
     其中的Reduce计算是将来自不同rank的数据进行reduce计算。
 
 ## 参数说明
@@ -36,10 +36,10 @@
 <table style="undefined;table-layout: fixed; width: 1567px"><colgroup>
     <col style="width: 170px">
     <col style="width: 120px">
-    <col style="width: 300px">  
-    <col style="width: 330px">  
-    <col style="width: 212px">  
-    <col style="width: 100px"> 
+    <col style="width: 300px">
+    <col style="width: 330px">
+    <col style="width: 212px">
+    <col style="width: 100px">
     <col style="width: 190px">
     <col style="width: 145px">
     </colgroup>

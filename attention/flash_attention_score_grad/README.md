@@ -25,6 +25,7 @@
     $$
     Y=Dropout(Softmax(Mask(\frac{QK^T+pse}{\sqrt{d}}),atten\_mask),keep\_prob)V
     $$
+
   - pseType≠1时，公式如下：
 
     $$
@@ -126,6 +127,27 @@
       <td>可选输入</td>
       <td>公式中的atten_mask，表示注意力掩码，取值为1代表该位不参与计算（不生效），为0代表该位参与计算。</td>
       <td>BOOL、UINT8</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>softmaxMaxOptional</td>
+      <td>可选输入</td>
+      <td>注意力正向计算的中间输出。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>softmaxSumOptional</td>
+      <td>可选输入</td>
+      <td>注意力正向计算的中间输出。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+    </tr>
+    <tr>
+      <td>attentionInOptional</td>
+      <td>可选输入</td>
+      <td>注意力正向计算的最终输出。</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32</td>
       <td>ND</td>
     </tr>
     <tr>

@@ -331,6 +331,7 @@ __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::ComputeMm4(
         sYGatherL1Buffer.Set<HardEvent::MTE2_MTE1>();
         sYGatherL1Buffer.Wait<HardEvent::MTE2_MTE1>();
         if ((pRunInfo.kTaskId == 0) && (kIdx == 0)) {
+            mm4L0CBuffer.Wait<HardEvent::FIX_M>();
             mmParam.isOutKFisrt = true;
         } else {
             mmParam.isOutKFisrt = false;
@@ -360,6 +361,7 @@ __aicore__ inline void SligBlockCube<TEMPLATE_ARGS>::ComputeMm4(
         }
         Fixpipe<OUT_T, T, PFA_CFG_ROW_MAJOR_GM>(mm4ResGm[runInfo.queryIndexTensorOffset], mm4L0CBuffer.GetTensor<T>(),
             fixpipe2GmParams);
+        mm4L0CBuffer.Set<HardEvent::FIX_M>();
     }
 };
 

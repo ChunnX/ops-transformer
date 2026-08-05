@@ -13,9 +13,9 @@ if (BUILD_OPEN_PROJECT)  # custom
         all_gather_matmul_v2_def.cpp
     )
     add_modules_sources_with_soc(
-        OP_API_INDEPENDENT ON 
-        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
-        OP_MC2_ENABLE ON 
+        OP_API_INDEPENDENT ON
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+        OP_MC2_ENABLE ON
         OPTYPE all_gather_matmul_v2 all_gather_matmul_v2 ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
@@ -23,13 +23,16 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(all_gather_matmul_v2_apt_depends mc2/common mc2/3rd PARENT_SCOPE)
 
     # --cce-auto-sync: 指定CCE编译器是否自动执行线程间或模块间的同步操作
+    add_ops_compile_options(
+        OP_NAME AllGatherMatmulV2
+        OPTIONS --cce-auto-sync=off
+    )
     # -mllvm -cce-aicore-dcci-before-kernel-end=false：禁用在kernel函数结束前插入DCCI指令
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
             OP_NAME AllGatherMatmulV2
-            OPTIONS --cce-auto-sync=off
-                    -mllvm -cce-aicore-dcci-before-kernel-end=false
+            OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
         )
     endif()
 else() # 回黄host

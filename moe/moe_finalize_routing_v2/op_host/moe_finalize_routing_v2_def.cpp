@@ -71,6 +71,7 @@ public:
         this->Attr("zero_expert_range").AttrType(OPTIONAL).ListInt({-1, -1});
         this->Attr("copy_expert_range").AttrType(OPTIONAL).ListInt({-1, -1});
         this->Attr("constant_expert_range").AttrType(OPTIONAL).ListInt({-1, -1});
+        this->Attr("k").AttrType(OPTIONAL).Int(1);
         OpAICoreConfig membaseCfg;
         membaseCfg.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)

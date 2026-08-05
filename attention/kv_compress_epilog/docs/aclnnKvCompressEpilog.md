@@ -4,47 +4,64 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                       |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |    ×     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                              |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
-- 接口功能：在KV Cache的Epilog阶段，对KV Cache进行原地压缩更新。将`bfloat16`的激活值按逐组动态量化（Group-wise Dynamic Quantization）压缩为FP8（以`uint8`打包）格式，并按`slotMapping`散写到cache，值为 -1的token跳过不处理。支持group(bf16 scale)、group(e8m0 scale)、HiFloat8三种量化模式。
+- 接口功能：在KV Cache的Epilog阶段，对KV Cache进行原地压缩更新。将`bfloat16`激活值量化压缩后，按`slotMapping`散写到cache，值为 -1的token跳过不处理。`x`尾轴`d`的后64列为rope段、前`d-64`列为nope段。支持三种量化模式：group(bf16 scale)、group(e8m0 scale)、rope hifloat8静态 + nope FLOAT4_E2M1动态。
 
 - 计算公式：
 
-  对`x`的最后一维（d轴）按每64个元素一组计算每组的amax，并量化为目标dtype，记第g组为$x_g$：
+  对`x`的最后一维（d轴）按组计算每组的amax，并量化为目标dtype，记第g组为$x_g$：
 
-  $$
-  scale_g = \frac{\max(|x_g|)}{FP8\_MAX}, \quad q_i = \mathrm{round}\left(\frac{x_i}{scale_g}\right)
-  $$
+  - 场景1（quantMode=0）：group(64)量化为FP8，`scale`存储为`bfloat16`；rope段保留`bfloat16`。
 
-  - 场景1（quantMode=0）：group量化，`scale`存储为`bfloat16`。
-  - 场景2（quantMode=1）：group量化，`scale`存储为`float8_e8m0`，`roundScale=true`时`scale`向上取到2的幂。
-  - 场景3（quantMode=2）：HiFloat8量化，输出为$x \times xScale$后的hifloat8。
+    $$
+    scale_g = \frac{\max(|x_g|)}{FP8\_MAX}, \quad q_i = \mathrm{round}\left(\frac{x_i}{scale_g}\right)
+    $$
+
+  - 场景2（quantMode=1）：同场景1，但`scale`存储为`float8_e8m0`，`roundScale=true`时`scale`向上取到2的幂。
+
+  - 场景3（quantMode=2）：rope段（后64列）做hifloat8**静态**量化，nope段（前d-64列）做per-group **FLOAT4_E2M1 动态**量化（`FP4\_MAX=6.0`），`scale`以`bfloat16`写出，`roundScale`不生效：
+
+    $$
+    rope_i = \mathrm{hifloat8}(x_i \cdot xScale), \qquad
+    scale_g = \frac{\max(|x_g|)}{FP4\_MAX}, \quad nope_i = \mathrm{FLOAT4\_E2M1}\left(\frac{x_i}{scale_g}\right)
+    $$
 
 - 示例：
 
-  ```
-  cache shape:        [2048, 384]
+  ```python
+  cache shape:        [128, 16, 1, 384]   # 4D [blockNum, blockSize, 1, headDim], num_slots=2048, headDim≥kvCacheCol(=323)
   x shape:            [1024, 256]
   slot_mapping shape: [1024]
   quantGroupSize = 64
   quantMode = 1
   roundScale = true
   xScale = 1.0
-  cache out shape:    [2048, 384]   (原地更新)
+  cache out shape:    [128, 16, 1, 384]   (原地更新)
   ```
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnKvCompressEpilogGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnKvCompressEpilog”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnKvCompressEpilogGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnKvCompressEpilog”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnKvCompressEpilogGetWorkspaceSize(
@@ -96,18 +113,18 @@ aclnnStatus aclnnKvCompressEpilog(
     <tr>
       <td>cacheRef（aclTensor*）</td>
       <td>输入/输出</td>
-      <td>表示当前层的KV Cache向量缓存，原地更新，每行包含rope/fp8/scale/pad各区段，对应计算公式中的量化目标。</td>
-      <td><li>不支持空Tensor。</li><li>既是输入也是输出（原地操作）。</li></td>
+      <td>表示当前层的KV Cache向量缓存，原地更新，对应计算公式中的量化目标。</td>
+      <td><li>不支持空Tensor。</li><li>既是输入也是输出。</li><li>仅支持四维[blockNum, blockSize, 1, headDim]，dim2固定为1。</li></td>
       <td>UINT8</td>
       <td>ND</td>
-      <td>[num_slots, kvCacheCol]</td>
+      <td>[blockNum, blockSize, 1, headDim]</td>
       <td>×</td>
     </tr>
     <tr>
       <td>x（const aclTensor*）</td>
       <td>输入</td>
       <td>待量化的激活输入，对应计算公式中x。</td>
-      <td><li>不支持空Tensor。</li><li>最后一维d需满足d % 64 == 0且d > 64。</li></td>
+      <td><li>不支持空Tensor。</li><li>最后一维d需满足d % 64 == 0且64 < d ≤ 8192。</li></td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>[bs, d]</td>
@@ -127,7 +144,7 @@ aclnnStatus aclnnKvCompressEpilog(
       <td>quantGroupSize（int64_t）</td>
       <td>输入</td>
       <td>量化分组大小。</td>
-      <td>默认值为64。</td>
+      <td>默认值为64。quantMode=2时仅支持16/32/64，且要求(d-64) % quantGroupSize == 0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -137,7 +154,7 @@ aclnnStatus aclnnKvCompressEpilog(
       <td>quantMode（int64_t）</td>
       <td>输入</td>
       <td>量化模式。</td>
-      <td>枚举值支持0、1、2，其中0表示group量化（scale存储为bfloat16），1表示group量化（scale存储为float8_e8m0），2表示HiFloat8量化。默认值为1。</td>
+      <td>枚举值支持0、1、2，其中0表示group量化（scale存储为bfloat16），1表示group量化（scale存储为float8_e8m0），2表示rope段hifloat8静态量化 + nope段FLOAT4_E2M1动态量化（scale存储为bfloat16）。默认值为1。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -147,7 +164,7 @@ aclnnStatus aclnnKvCompressEpilog(
       <td>roundScale（bool）</td>
       <td>输入</td>
       <td>group模式下是否对每组scale向上取到2的幂。</td>
-      <td>默认值为true。</td>
+      <td>默认值为true。quantMode=2下不生效。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -156,8 +173,8 @@ aclnnStatus aclnnKvCompressEpilog(
     <tr>
       <td>xScale（float）</td>
       <td>输入</td>
-      <td>HiFloat8模式（quantMode=2）下的全局scale乘数。</td>
-      <td>仅在quantMode=2时生效。默认值为1.0。</td>
+      <td>quantMode=2时为rope段hifloat8静态量化的缩放系数；quantMode=0/1下预留未使用。</td>
+      <td>默认值为1.0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -187,7 +204,7 @@ aclnnStatus aclnnKvCompressEpilog(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -238,20 +255,21 @@ aclnnStatus aclnnKvCompressEpilog(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：aclnnKvCompressEpilog默认确定性实现。
-- 仅支持 <term>Ascend 950PR/Ascend 950DT</term> 平台。
-- cacheRef既是输入也是输出（原地操作），调用前后须为同一tensor。
+- **cache仅支持四维shape** `[blockNum, blockSize, 1, headDim]`（num_slots = blockNum × blockSize），倒数第二维固定为1，不支持其他维数；仅在blockNum维支持非连续。
+- **headDim约束**：cache末维headDim须 ≥ 每行写出字节数kvCacheCol = 对齐(concatCol)。concatCol：quantMode=0/1为(d-64)+128+⌈(d-64)/64⌉×scaleBytes（mode0=2、mode1=1）；quantMode=2为64+(d-64)/2+((d-64)/quantGroupSize)×2。对齐：quantMode=1不补齐，quantMode=0/2按32B对齐。示例：d=256、quantMode=1 → kvCacheCol=323 → headDim ≥ 323。
 - slotMapping的维度应等于x的维度减1，即slotMapping为x除最后一维外的所有维度展平。
-- x的最后一维（d轴）需满足d % 64 == 0且d > 64，按每64个元素一组进行逐组量化。
+- x的最后一维（d轴）需满足d % 64 == 0且64 < d ≤ 8192，按每64个元素一组进行逐组量化。
+- quantMode=2时，quantGroupSize仅支持16/32/64，且nope段长度(d-64)需能被quantGroupSize整除；x需为bfloat16。
 - slotMapping中值为 -1的token会被跳过不处理；其余有效元素取值范围为[0, num_slots - 1]，且元素值应保证不重复，重复时不保证结果正确性。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 #include <iostream>
@@ -319,7 +337,7 @@ int main() {
     CHECK_RET(ret == 0, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
     // 2.构造输入与输出，需要根据API的接口自定义构造
-    std::vector<int64_t> cacheShape = {2048, 384};  // KV Cache（uint8 打包）
+    std::vector<int64_t> cacheShape = {128, 16, 1, 384};  // 4D KV Cache [blockNum,blockSize,1,headDim]，num_slots=2048
     std::vector<int64_t> xShape = {1024, 256};      // 待量化激活
     std::vector<int64_t> slotShape = {1024};        // slot 索引映射
     void* cacheDeviceAddr = nullptr;

@@ -22,7 +22,7 @@
         add_opapi_modules()
         target_sources(${OPHOST_NAME}_opapi_obj PRIVATE ${MC2_OPAPI_SRCS})
     endif()
-    
+
     if(UT_TEST_ALL OR OP_HOST_UT)
         file(GLOB MC2_3RD_BLUE_COMM
             # mm  stub
@@ -58,7 +58,7 @@ file(GLOB MC2_3RD_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/weight_quant_batch_matmul_v2/op_host/op_tiling/arch35/*.cpp
     # mm common
     ${CMAKE_CURRENT_SOURCE_DIR}/common/op_host/op_tiling/*.cpp
-    # gmm 
+    # gmm
     ${CMAKE_CURRENT_SOURCE_DIR}/grouped_matmul/op_tiling/*.cpp
 )
 

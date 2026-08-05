@@ -18,8 +18,6 @@
 
 
 namespace optiling {
-
-// #if defined(__NPU_ARCH__) && ((__NPU_ARCH__ == 3510) || (__NPU_ARCH__ == 5102))
 constexpr uint32_t FA_AIC_CORE_NUM = 36;
 constexpr uint32_t FA_AIV_CORE_NUM = 72;
 
@@ -69,6 +67,11 @@ struct FlashAttnBaseParams {
     uint32_t coreNum;
     uint32_t outputLayout;
     bool needInitOutput;
+    // kvcache non-contiguous strides (valid only for tensor v2 view inputs)
+    uint64_t keyBnStride = 0;
+    uint64_t keyN2Stride = 0;
+    uint64_t valueBnStride = 0;
+    uint64_t valueN2Stride = 0;
 };
 
 struct FlashAttnAttenMaskParams {

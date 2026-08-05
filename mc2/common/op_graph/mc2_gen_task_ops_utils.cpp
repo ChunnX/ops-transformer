@@ -18,7 +18,6 @@
 #include "graph/ascend_string.h"
 #include "mc2_common_log.h"
 #include "mc2_platform_info.h"
-#include "runtime/runtime/base.h"
 
 namespace {
 constexpr int64_t INVALID_INT_VAL = -1;

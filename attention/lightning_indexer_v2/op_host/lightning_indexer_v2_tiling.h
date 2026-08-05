@@ -23,9 +23,10 @@
 #include "tiling/tiling_api.h"
 #include "err/ops_err.h"
 #include "platform/platform_info.h"
+#include "op_host/tiling_util.h"
 
 namespace optiling {
-    // ------------------公共定义--------------------------
+// ------------------公共定义--------------------------
 struct TilingRequiredParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::StorageShape *shape;
@@ -36,11 +37,7 @@ struct TilingOptionalParaInfo {
     const gert::Tensor *tensor;
 };
 
-enum class DataLayout : uint32_t {
-    BSND = 0,
-    TND = 1,
-    BnBsND = 2
-};
+enum class DataLayout : uint32_t { BSND = 0, TND = 1, PA_BBND = 2 };
 
 // ------------------算子原型索引常量定义----------------
 // Inputs Index
@@ -80,6 +77,7 @@ constexpr uint32_t HEAD_DIM_LIMIT = 128;
 constexpr uint32_t SPARSE_LIMIT = 2048;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 constexpr uint32_t TOPK_MAX = 8192;
+constexpr uint32_t G_SIZE_LIMIT = 64;
 constexpr uint32_t METADATA_LIMIT = 1024;
 
 // -----------算子TilingData定义---------------
@@ -99,6 +97,7 @@ TILING_DATA_FIELD_DEF(int64_t, preTokens)
 TILING_DATA_FIELD_DEF(int64_t, nextTokens)
 TILING_DATA_FIELD_DEF(int64_t, cmpRatio)
 TILING_DATA_FIELD_DEF(uint32_t, batchSupperFlag)
+TILING_DATA_FIELD_DEF(uint32_t, keyStride0)
 TILING_DATA_FIELD_DEF(uint32_t, returnValue)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(LightningIndexerV2, LIV2TilingData)
@@ -163,6 +162,8 @@ public:
     int64_t cmpRatio = 1;
     uint32_t batchSupperFlag = 0;
     uint32_t returnValue = 0;
+    uint32_t keyStride0 = 0;
+    std::vector<uint32_t> keyStridesVec;
 
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;
@@ -170,15 +171,13 @@ public:
     ge::DataType outputType = ge::DT_INT32;
     // Layout
     DataLayout inputQLayout = DataLayout::BSND;
-    DataLayout inputKLayout = DataLayout::BnBsND;
+    DataLayout inputKLayout = DataLayout::PA_BBND;
 };
 
 // -----------算子Tiling入参信息解析及Check类---------------
 class LIV2InfoParser {
 public:
-    explicit LIV2InfoParser(gert::TilingContext *context) : context_(context)
-    {
-    }
+    explicit LIV2InfoParser(gert::TilingContext *context) : context_(context) {}
     ~LIV2InfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
@@ -212,6 +211,7 @@ public:
     ge::graphStatus GetGSize();
     ge::graphStatus GetAttenMaskInfo();
     ge::graphStatus GetActualSeqInfo();
+    ge::graphStatus CheckKeyContiguous() const;
     void GenerateInfo(LIV2TilingInfo &liInfo);
     ge::graphStatus ParseAndCheck(LIV2TilingInfo &liInfo);
 
@@ -232,11 +232,12 @@ public:
     uint32_t batchSupperFlag_ = 0;
     // Layout
     DataLayout qLayout_ = DataLayout::BSND;
-    DataLayout kLayout_ = DataLayout::BnBsND;
+    DataLayout kLayout_ = DataLayout::PA_BBND;
     // PageAttention
     uint32_t maxBlockNumPerBatch_ = 0;
     int32_t blockSize_ = 0;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
     ge::DataType inputQType_ = ge::DT_FLOAT16;
     ge::DataType inputKType_ = ge::DT_FLOAT16;
     ge::DataType weightsType_ = ge::DT_FLOAT16;
@@ -244,12 +245,14 @@ public:
     ge::DataType inputKRopeType_ = ge::DT_FLOAT16;
     ge::DataType outputType_ = ge::DT_FLOAT16;
     ge::DataType valuesOutType_ = ge::DT_FLOAT16;
+    std::vector<uint32_t> keyStridesVec_;
+    std::vector<uint32_t> keyDequantScaleStridesVec_;
 };
 
 // ---------------算子Tiling类---------------
 class LightningIndexerV2Tiling {
 public:
-    explicit LightningIndexerV2Tiling(gert::TilingContext *context) : context_(context){};
+    explicit LightningIndexerV2Tiling(gert::TilingContext *context) : context_(context) {};
     ge::graphStatus DoTiling(LIV2TilingInfo *tilingInfo);
 
 private:

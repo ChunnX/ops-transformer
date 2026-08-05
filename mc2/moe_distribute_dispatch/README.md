@@ -13,18 +13,13 @@
 
 ## 功能说明
 
-- 算子功能：对Token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。
+- 算子功能：对Token数据进行量化（可选），进行EP（Expert Parallelism）域的AllToAllV通信。TP（Tensor Parallelism）域通信当前版本不再支持，TP相关参数为预留参数。
 - 计算公式：
 
     - 情形1：如果quaneMode=0（非量化场景）：
 
     $$
-    allToAllXOut = AllToAllV(X)\\
-    expandXOut =
-    \begin{cases}
-    AllToAllV(X), & 无TP通信域 \\
-    AllGatherV(allToAllXOut), & 有TP通信域 \\
-    \end{cases}
+    expandXOut = AllToAllV(X)
     $$
 
     - 情形2：如果quaneMode=2（pertoken动态量化场景）：
@@ -35,16 +30,8 @@
     quantOut = CastToInt8(xFp32 \times dynamicScalesValue) \\
     allToAllXOut = AllToAllV(quantOut) \\
     allToAllDynamicScalesOut = AllToAllV(1.0/dynamicScales) \\
-    expandXOut =
-    \begin{cases}
-    AllToAllV(X), & 无TP通信域 \\
-    AllGatherV(allToAllXOut), & 有TP通信域 \\
-    \end{cases} \\
-    dynamicScalesOut =
-    \begin{cases}
-    AllGatherV(allToAllDynamicScalesOut), & 无TP通信域 \\
-    allToAllDynamicScalesOut, & 有TP通信域 \\
-    \end{cases}
+    expandXOut = AllToAllV(quantOut) \\
+    dynamicScalesOut = allToAllDynamicScalesOut
     $$
 
     注意该算子必须与`MoeDistributeCombine`配套使用。
@@ -106,7 +93,7 @@
 <tr>
 <td>groupEp</td>
 <td>属性</td>
-<td>EP通信域名称（专家并行通信域），字符串长度范围为[1, 128)，不能和groupTp相同。</td>
+<td>EP通信域名称（专家并行通信域），字符串长度范围为[1, 128)。</td>
 <td>STRING</td>
 <td>ND</td>
 </tr>
@@ -134,21 +121,21 @@
 <tr>
 <td>groupTp</td>
 <td>可选属性</td>
-<td><li>TP通信域名称（数据并行通信域）。</li><li>默认值为""。</li></td>
+<td><li>TP通信域名称（预留参数，当前版本不支持）。</li><li>默认值为""。</li></td>
 <td>STRING</td>
 <td>ND</td>
 </tr>
 <tr>
 <td>tpWorldSize</td>
 <td>可选属性</td>
-<td><li>TP通信域大小。</li><li>默认值为0。</li></td>
+<td><li>TP通信域大小（预留参数，当前版本不支持，仅支持传0或1）。</li><li>默认值为0。</li></td>
 <td>INT64</td>
 <td>ND</td>
 </tr>
 <tr>
 <td>tpRankId</td>
 <td>可选属性</td>
-<td><li>TP域本卡ID。</li><li>默认值为0。</li></td>
+<td><li>TP域本卡ID（预留参数，当前版本不支持，仅支持传0）。</li><li>默认值为0。</li></td>
 <td>INT64</td>
 <td>ND</td>
 </tr>
@@ -232,7 +219,7 @@
 <tr>
 <td>tpRecvCounts</td>
 <td>输出</td>
-<td>从TP通信域各卡接收的token数（对应MoeDistributeCombine中的tpSendCounts）；若有TP域通信则有该输出，若无TP域通信则无该输出。</td>
+<td>从TP通信域各卡接收的token数（预留输出，当前版本不支持，传空指针即可）；若无TP域通信则无该输出。</td>
 <td>INT32</td>
 <td>ND</td>
 </tr>
@@ -250,7 +237,7 @@
     * 支持`FLOAT16`、`BFLOAT16`数据类型。
     * `quantMode`属性仅支持0和2。
     * 不支持共享专家场景，不支持`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`属性。
-    * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，`tpRecvCounts`为无效内容。
+    * 仅支持EP域，不支持TP域通信，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，`tpRecvCounts`为无效内容。
     * 仅设置环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0时，`expandScales`内容有效。
 
 * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
@@ -260,7 +247,7 @@
 
 * <term>Ascend 950DT</term>：
     * 不支持`expandScales`。
-    * 当前不支持TP域通信，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpSendCounts`为无效内容。
+    * 当前不支持TP域通信，`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpSendCounts`为无效内容。
 
 ## 约束说明
 
@@ -274,17 +261,17 @@
 
 - 参数说明里shape格式说明：
     - `A`：表示本卡可能接收的最大token数量，取值范围如下：
-        - 对于共享专家，要满足`A` = `BS` * `epWorldSize` * `sharedExpertNum` / `sharedExpertRankNum`。
-        - 对于MoE专家，当`globalBS`为0时，要满足`A` >= `BS` * `epWorldSize` * min(`localExpertNum`, `K`)；当`globalBS`非0时，要满足`A` >= `globalBS` * min(`localExpertNum`, `K`)。
+        - 对于共享专家，要满足`A` = `BS` *`epWorldSize`* `sharedExpertNum` / `sharedExpertRankNum`。
+        - 对于MoE专家，当`globalBS`为0时，要满足`A` >= `BS` *`epWorldSize`* min(`localExpertNum`, `K`)；当`globalBS`非0时，要满足`A` >= `globalBS` * min(`localExpertNum`, `K`)。
     - `localExpertNum`：表示本卡专家数量。
         - 对于共享专家卡，`localExpertNum` = 1
-        - 对于MoE专家卡，`localExpertNum` = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)，`localExpertNum` > 1时，不支持TP域通信。
+        - 对于MoE专家卡，`localExpertNum` = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)，当前不支持TP域通信。
 
 - 本文公式中的"/"表示整除。
 
 - 通信域使用约束：
     - 一个模型中的`MoeDistributeCombine`和`MoeDistributeDispatch`仅支持相同EP通信域，且该通信域中不允许有其他算子。
-    - 一个模型中的`MoeDistributeCombine`和`MoeDistributeDispatch`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
+    - 当前不支持TP域通信。
 
 - 通信方式约束：
   - <term>Ascend 950DT</term>：仅支持UB Memory通信。
@@ -294,8 +281,8 @@
         - `H`：表示hidden size隐藏层大小，取值范围(0, 7168]，且保证是32的整数倍。
         - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 256]。
         - `K`：表示选取topK个专家，需满足0 < `K` ≤ moeExpertNum，取值范围为[1, 16]。
-    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= (`BS` * `epWorldSize` * min(`localExpertNum`, `K`) * `H` * 4B + 4MB)。
-    - `HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`：设置环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0可以减少跨机通信数据量，可能提升算子性能。此时，要求`HCCL_BUFFSIZE` >= `moeExpertNum` * `BS` * (`H` * 2 + 16 * Align8(`K`))B + 104MB。并且，对于入参`moeExpertNum`，只要求`moeExpertNum` % `epWorldSize` = 0，不要求`moeExpertNum` / `epWorldSize` <= 24，但不支持`scales`特性，其中Align8(x) = ((x + 8 - 1) / 8) * 8。
+    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= (`BS` *`epWorldSize`* min(`localExpertNum`, `K`) *`H`* 4B + 4MB)。
+    - `HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`：设置环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0可以减少跨机通信数据量，可能提升算子性能。此时，要求`HCCL_BUFFSIZE` >= `moeExpertNum` *`BS`* (`H` *2 + 16* Align8(`K`))B + 104MB。并且，对于入参`moeExpertNum`，只要求`moeExpertNum` % `epWorldSize` = 0，不要求`moeExpertNum` / `epWorldSize` <= 24，但不支持`scales`特性，其中Align8(x) = ((x + 8 - 1) / 8) * 8。
     - `epWorldSize`：取值支持16、32、64。
     - `quantMode`相关约束：
         - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
@@ -309,7 +296,7 @@
         - `H`：表示hidden size隐藏层大小，取值为7168。
         - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
         - `K`：表示选取topK个专家，需满足0 < `K` ≤ moeExpertNum，取值范围为[1, 8]。
-    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= 2且满足1024 ^ 2 * (`HCCL_BUFFSIZE` - 2) / 2 >= `BS` * 2 * (`H` + 128) * (`epWorldSize` * `localExpertNum` + `K` + 1)，`localExpertNum`需使用MoE专家卡的本卡专家数。
+    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= 2且满足1024 ^ 2 *(`HCCL_BUFFSIZE` - 2) / 2 >= `BS`* 2 *(`H` + 128)* (`epWorldSize` * `localExpertNum` + `K` + 1)，`localExpertNum`需使用MoE专家卡的本卡专家数。
     - `epWorldSize`：取值支持8、16、32、64、128、144、256、288。
     - `quantMode`相关约束：
         - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
@@ -323,7 +310,7 @@
         - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
         - `K`：表示选取topK个专家，需满足0 < `K` ≤ moeExpertNum，取值范围为[1, 8]。
     - `epWorldSize`：取值支持2、4、8、16、32、64、128、144、256、288。
-    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= 2且满足1024 ^ 2 * (`HCCL_BUFFSIZE` - 2) / 2 >= `BS` * 2 * (`H` + 128) * (`epWorldSize` * `localExpertNum` + `K` + 1)，`localExpertNum`需使用MoE专家卡的本卡专家数。
+    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= 2且满足1024 ^ 2 *(`HCCL_BUFFSIZE` - 2) / 2 >= `BS`* 2 *(`H` + 128)* (`epWorldSize` * `localExpertNum` + `K` + 1)，`localExpertNum`需使用MoE专家卡的本卡专家数。
     - `quantMode`相关约束：
         - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
             - 输入`scales`可传入空指针。

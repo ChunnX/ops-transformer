@@ -61,7 +61,7 @@ ge::Status Mc2Arch35GenTaskOpsUtils::CreateCCUFusionTask(const gert::ExeResGener
     // 填充hcom,当前约定Hcom插入于args format的最前面
     for (size_t i = 0; i < groupInfo.groupCnt; ++i) {
         argDescInfos.insert(argDescInfos.begin() + i,
-                              ge::ArgDescInfo::CreateHiddenInput(ge::HiddenInputSubType::kHcom));
+                            ge::ArgDescInfo::CreateHiddenInput(ge::HiddenInputSubType::kHcom));
     }
     auto argsFormatStr = ge::ArgsFormatSerializer::Serialize(argDescInfos);
 

@@ -26,10 +26,10 @@ import multiprocessing as mp
 import concurrent.futures
 import utils
 
-pt_save_path = "qsmla_testcase"
+pt_save_path = "mqsmla_testcase"
 device_id = 0
 save_pt = False
-result_path = Path('result.xlsx')
+result_path = Path("result.xlsx")
 
 param_combinations = []
 for params in ENABLED_PARAMS:
@@ -46,6 +46,7 @@ for params in ENABLED_PARAMS:
         "N1": params.get("N1"),
         "N2": params.get("N2"),
         "D": params.get("D"),
+        "K1": params.get("K1", [None]),
         "K": params.get("K", [None]),
         "block_num1": params.get("block_num1", [None]),
         "block_num2": params.get("block_num2", [None]),
@@ -64,12 +65,19 @@ for params in ENABLED_PARAMS:
         "cmp_mask_mode": params.get("cmp_mask_mode", [None]),
         "ori_win_left": params.get("ori_win_left"),
         "ori_win_right": params.get("ori_win_right"),
-        "kv_quant_mode": params.get("kv_quant_mode"),
+        "quant_mode": params.get("quant_mode"),
         "tile_size": params.get("tile_size"),
         "rope_head_dim": params.get("rope_head_dim"),
         "template_run_mode": params.get("template_run_mode"),
         "actlen_mode": params.get("actlen_mode"),
         "S1EQS2": params.get("S1EQS2", [False]),
+        "return_softmax_lse": params.get("return_softmax_lse", [False]),
+        "ori_kv_topk_mode": params.get("ori_kv_topk_mode", [None]),
+        "cmp_kv_topk_mode": params.get("cmp_kv_topk_mode", [None]),
+        "ori_sparse_indices_mode": params.get("ori_sparse_indices_mode", ["full"]),
+        "cmp_sparse_indices_mode": params.get("cmp_sparse_indices_mode", ["full"]),
+        "ori_topk_length": params.get("ori_topk_length", [None]),
+        "cmp_topk_length": params.get("cmp_topk_length", [None]),
     }
 
     param_names = list(param_values.keys())
@@ -78,70 +86,115 @@ for params in ENABLED_PARAMS:
     for combo in itertools.product(*values_lists):
         combination = dict(zip(param_names, combo))
         param_combinations.append(combination)
-
 case_id = 0
-def qsmla(param_combinations):
+
+
+def mqsmla(param_combinations):
     global case_id
 
     # 填充None参数的默认值
     params = utils.fill_none_params(param_combinations)
 
     # 生成测试用例名称
-    Testcase_Name = params['Testcase_Name']
+    Testcase_Name = params["Testcase_Name"]
     if Testcase_Name is None:
-        ops_mode = 'prefill' if params['S1'] > 4 else "decode"
-        q_type_str = "BF16" if params['q_type'] == torch.bfloat16 else "FP16"
-        kv_type_str = "HIF8" if params['ori_kv_type'] == torch.uint8 else "FP8_E4M3FN"
-        prefix_part = f"{param_combinations['tc_prefix']}_" if param_combinations.get('tc_prefix', '') else ""
+        ops_mode = "prefill" if params["S1"] > 4 else "decode"
+        q_type_str = "BF16" if params["q_type"] == torch.bfloat16 else "FP16"
+        kv_type_str = "HIF8" if params["ori_kv_type"] == torch.uint8 else "FP8_E4M3FN"
+        prefix_part = (
+            f"{param_combinations['tc_prefix']}_"
+            if param_combinations.get("tc_prefix", "")
+            else ""
+        )
         Testcase_Name = f"mixedQuantSparseFlashMla_{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_{params['B']}_{params['N1']}_{params['N2']}_{params['S1']}_{params['S2']}_{params['D']}_{params['K']}_{params['rope_head_dim']}_{case_id:06d}"
-        params['Testcase_Name'] = Testcase_Name
+        params["Testcase_Name"] = Testcase_Name
 
     # 输入参数的合法性校验
     try:
         check_valid_param.check_valid_param(params)
     except ValueError as e:
-       pytest.skip(f"输入参数校验失败:{e}")
+        pytest.skip(f"输入参数校验失败:{e}")
 
     # 生成测试数据及golden
-    test_data = mixed_quant_sparse_flash_mla_golden.generate_and_save_testdata(params, save_pt=save_pt, save_path=pt_save_path)
+    test_data = mixed_quant_sparse_flash_mla_golden.generate_and_save_testdata(
+        params, save_pt=save_pt, save_path=pt_save_path
+    )
 
     # 获得cpu结果(真值)和算子结果（测试值）
+    npu_error_msg = None
     try:
-        npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
-            test_data, device_id=device_id)
-        result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
+        npu_result, cpu_quant_result, cpu_lse, npu_lse = (
+            mixed_quant_sparse_flash_mla_process.test_mqsmla_quant_process_ci(
+                test_data, device_id=device_id
+            )
+        )
+        attn_result, attn_percent = result_compare_method.check_result(
+            cpu_quant_result, npu_result
+        )
+        lse_result, lse_percent = None, None
+        fail_info = []
+        min_fulfill = attn_percent
+
+        if test_data["params"].get("return_softmax_lse"):
+            print("return_softmax_lse is true!!!")
+            lse_result, lse_percent = result_compare_method.check_result(
+                cpu_lse, npu_lse
+            )
+            min_fulfill = min(min_fulfill, lse_percent)
+
+        if attn_result != "Pass":
+            fail_info.append(f"MAIN_FAILED:{attn_result}")
+        if lse_result is not None and lse_result != "Pass":
+            fail_info.append(f"LSE_FAILED:{lse_result}")
+
+        if fail_info:
+            result = "; ".join(fail_info)
+            fulfill_percent = min_fulfill
+        else:
+            result = "Pass"
+            fulfill_percent = min_fulfill
     except Exception as e:
-        print("NPU ERROR：", e)
+        npu_error_msg = str(e)
+        print("NPU ERROR：", npu_error_msg)
         result = "NPU ERROR"
         fulfill_percent = 0
 
     case_id += 1
 
-    utils.save_result(test_data['params'], result, fulfill_percent, result_path)
+    utils.save_result(test_data["params"], result, fulfill_percent, result_path)
 
-    if result in ("NPU ERROR", "Failed"):
-        pytest.fail(f"用例执行失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%")
+    if result == "Failed":
+        pytest.fail(
+            f"用例精度失败:{test_data['Testcase_Name']} 精度:{fulfill_percent:.2f}%"
+        )
+    if result == "NPU ERROR":
+        pytest.fail(
+            f"用例执行失败:{test_data['Testcase_Name']} NPU ERROR: {npu_error_msg}"
+        )
+
 
 def _gen_testcase_id(params, idx):
-    name = params.get('Testcase_Name')
+    name = params.get("Testcase_Name")
     if name is not None:
         return name
-    ops_mode = 'prefill' if params['S1'] > 4 else "decode"
-    q_type_str = "BF16" if params['q_type'] == torch.bfloat16 else "FP16"
-    kv_type_str = "HIF8" if params['ori_kv_type'] == torch.uint8 else "FP8_E4M3FN"
+    ops_mode = "prefill" if params["S1"] > 4 else "decode"
+    q_type_str = "BF16" if params["q_type"] == torch.bfloat16 else "FP16"
+    kv_type_str = "HIF8" if params["ori_kv_type"] == torch.uint8 else "FP8_E4M3FN"
     return f"{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_B{params['B']}_S1{params['S1']}_S2{params['S2']}_D{params['D']}_K{params['K']}_{idx:06d}"
 
+
 testcase_ids = [_gen_testcase_id(p, i) for i, p in enumerate(param_combinations)]
+
 
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations, ids=testcase_ids)
 def test_mixed_quant_sparse_flash_mla(param_combinations):
     # 线程池
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        futures = executor.submit(qsmla, param_combinations)
+        futures = executor.submit(mqsmla, param_combinations)
         # 等待并获取结果
         for future in concurrent.futures.as_completed([futures]):
             try:
                 result = future.result()
             except Exception as e:
-                pytest.fail(f"当前用例线程执行失败")
+                pytest.fail("当前用例线程执行失败")

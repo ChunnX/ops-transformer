@@ -3,14 +3,24 @@
 
 ## 产品支持情况
 
-|产品             |  是否支持  |
-|:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
-|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
-|  <term>Atlas 推理系列产品</term>    |     ×    |
-|  <term>Atlas 训练系列产品</term>    |     ×    |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -34,7 +44,7 @@
 
 ## 函数原型
 
-算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnDenseLightningIndexerSoftmaxLseGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnDenseLightningIndexerSoftmaxLse”接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnDenseLightningIndexerSoftmaxLseGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnDenseLightningIndexerSoftmaxLse”接口执行计算。
 
 ```c++
 aclnnStatus aclnnDenseLightningIndexerSoftmaxLseGetWorkspaceSize(
@@ -61,17 +71,17 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
     aclrtStream    stream);
 ```
 
-## aclnnDenseLightningIndexerSoftmaxLse
+## aclnnDenseLightningIndexerSoftmaxLseGetWorkspaceSize
 
-- **参数说明:**
-  
+- **参数说明：**
+
     <table style="undefined;table-layout: fixed; width: 1550px">
     <colgroup>
             <col style="width: 220px">
             <col style="width: 120px">
-            <col style="width: 300px">  
-            <col style="width: 400px">  
-            <col style="width: 212px">  
+            <col style="width: 300px">
+            <col style="width: 400px">
+            <col style="width: 212px">
             <col style="width: 100px">
             <col style="width: 190px">
             <col style="width: 145px">
@@ -198,7 +208,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td>(B,Nidx2,S1);(Nidx2,T1)</td>
       <td>×</td>
      </tr>
-     <tr> 
+     <tr>
       <td>workspaceSize（uint64_t*）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
@@ -223,7 +233,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -246,7 +256,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
      <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>queryIndex、keyIndex、weights等输入变量的数据类型和数据格式不在支持的范围内。</td>
+      <td>queryIndex、keyIndex、weight等输入变量的数据类型和数据格式不在支持的范围内。</td>
      </tr>
      <tr>
       <td>ACLNN_ERR_INNER_TILING_ERROR</td>
@@ -297,13 +307,13 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
   - 参数queryIndex、keyIndex的数据类型应保持一致。
 
-  - 参数weights不为float32时，参数queryIndex、keyIndex、weights的数据类型应保持一致。
+  - 参数weight不为float32时，参数queryIndex、keyIndex、weight的数据类型应保持一致。
 
   - 确定性计算：
     aclnnDenseLightningIndexerSoftmaxLse默认确定性实现。
@@ -396,7 +406,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
     </tr>
     <tr>
       <td>S1、S2</td>
-      <td>0~128K</td>
+      <td>0~1M</td>
       <td>S1、S2支持不等长，当layout为BSND时，S1<=S2；layout为TND时，actualSeqLengthsQuery小于等于actualSeqLengthsKey相同索引位置的值，且相同索引位置S1<=S2。</td>
     </tr>
     <tr>
@@ -423,7 +433,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
     </table>
 
   - 典型值
-  
+
     <table style="undefined;table-layout: fixed; width: 903px"><colgroup>
     <col style="width: 164px">
     <col style="width: 739px">
@@ -448,7 +458,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -603,43 +613,43 @@ int main() {
             qIndex, kIndex, weight, acSeqQLen, acSeqKvLen, layOut,
             sparseMode, preTokens, nextTokens, softmaxMaxIndex, softmaxSumIndex,
             &workspaceSize, &executor);
-  CHECK_RET(ret == ACL_SUCCESS, 
+  CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnDenseLightningIndexerSoftmaxLseGetWorkspaceSize failed. ERROR: %d\n", ret);
             return ret);
-  
+
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;
   if (workspaceSize > 0) {
     ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
   }
-  
+
   // 调用aclnnDenseLightningIndexerSoftmaxLse第二段接口
   ret = aclnnDenseLightningIndexerSoftmaxLse(workspaceAddr, workspaceSize, executor, stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnDenseLightningIndexerSoftmaxLse failed. ERROR: %d\n", ret); return ret);
-  
+
   // 4.（固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
-  
+
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
   PrintOutResult(softmaxMaxIndexShape, &softmaxMaxIndexDeviceAddr);
   PrintOutResult(softmaxSumIndexShape, &softmaxSumIndexDeviceAddr);
-  
+
   // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
   aclDestroyTensor(qIndex);
   aclDestroyTensor(kIndex);
   aclDestroyTensor(weight);
   aclDestroyTensor(softmaxMaxIndex);
   aclDestroyTensor(softmaxSumIndex);
-  
+
   // 7. 释放device资源
   aclrtFree(qIndexDeviceAddr);
   aclrtFree(kIndexDeviceAddr);
   aclrtFree(weightDeviceAddr);
   aclrtFree(softmaxMaxIndexDeviceAddr);
   aclrtFree(softmaxSumIndexDeviceAddr);
-  
+
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
   }
@@ -647,7 +657,7 @@ int main() {
   aclrtDestroyContext(context);
   aclrtResetDevice(deviceId);
   aclFinalize();
-  
+
   return 0;
 }
 

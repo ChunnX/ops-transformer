@@ -24,8 +24,8 @@ class AclnnTensorList : public ops::adv::tests::utils::TensorIntf {
 public:
     AclnnTensorList() = default;
     AclnnTensorList(const char *name, const std::vector<std::vector<int64_t>> &shape, const char *shapeType,
-                    ge::DataType dType, ge::Format format, 
-                    TensorType type = TensorType::REQUIRED_INPUT, bool isTrans = false);
+                    ge::DataType dType, ge::Format format, TensorType type = TensorType::REQUIRED_INPUT,
+                    bool isTrans = false);
     explicit AclnnTensorList(const TensorList &t, bool isTrans = false);
     AclnnTensorList(const AclnnTensorList &o) = default;
     AclnnTensorList &operator=(const AclnnTensorList &o) = default;

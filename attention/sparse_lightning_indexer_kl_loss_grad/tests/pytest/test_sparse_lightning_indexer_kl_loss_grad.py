@@ -1,3 +1,13 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """
 Reference and precision harness for sparse_lightning_indexer_kl_loss_grad.
 
@@ -462,7 +472,7 @@ def run_fused_op(case, tensors, golden, device, cmp_ratio):
     print("layout:", case.layout, "mask_mode:", case.sparse_mode, "cmp_ratio:", cmp_ratio)
     print("##################### END fused inputs #######################")
 
-    metadata = torch.ops.cann_ops_transformer.npu_sparse_lightning_indexer_kl_loss_grad_metadata(
+    metadata = torch.ops.cann_ops_transformer.sparse_lightning_indexer_kl_loss_grad_metadata(
         case.n_query_index,
         case.n_key,
         case.d_index,
@@ -480,7 +490,7 @@ def run_fused_op(case, tensors, golden, device, cmp_ratio):
     )
     print_slig_metadata(metadata)
 
-    dq, dk, dw, softmax_out = torch.ops.cann_ops_transformer.npu_sparse_lightning_indexer_kl_loss_grad(
+    dq, dk, dw, softmax_out = torch.ops.cann_ops_transformer.sparse_lightning_indexer_kl_loss_grad(
         q,
         k,
         w,

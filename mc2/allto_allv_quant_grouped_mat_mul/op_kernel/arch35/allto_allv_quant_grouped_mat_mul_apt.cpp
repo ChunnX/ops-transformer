@@ -27,14 +27,14 @@ using namespace MC2KernelTemplate;
 using namespace Mc2GroupedMatmulTilingData;
 
 #if defined(CONST_TILING)
-#define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling) \
-    const outerType *outerPtr##var = (const outerType *)(tiling);                                       \
-    const innerType *innerPtr##var = &(outerPtr##var->outerPtr##var);                                   \
+#define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling)                \
+    const outerType *outerPtr##var = (const outerType *)(tiling);                                                      \
+    const innerType *innerPtr##var = &(outerPtr##var->outerPtr##var);                                                  \
     const int32_t *(var) = (const int32_t)((const uint8_t *)&(innerPtr##var->innerMember));
 #else
-#define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling) \
-    size_t outerOffset##var = (size_t)(&((outerType *)0)->outerMember);                                 \
-    size_t innerOffset##var = (size_t)(&((innerType *)0)->innerMember);                                 \
+#define GET_NESTED_TILING_DATA_MEMBER_ADDR(outerType, innerType, outerMember, innerMember, var, tiling)                \
+    size_t outerOffset##var = (size_t)(&((outerType *)0)->outerMember);                                                \
+    size_t innerOffset##var = (size_t)(&((innerType *)0)->innerMember);                                                \
     __gm__ int32_t *(var) = (__gm__ int32_t *)((__gm__ uint8_t *)(tiling) + outerOffset##var + innerOffset##var);
 #endif
 
@@ -44,20 +44,21 @@ using namespace Mc2GroupedMatmulTilingData;
 #define TILING_TYPE __gm__ int32_t
 #endif
 
-#define INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL()                                                                 \
-    do {                                                                                                          \
-        op.Init(gmmxGM, gmmweightGM, sendCountsTensorOptionalGM, recvCountsTensorOptionalGM, mmxOptionalGM,       \
-            mmweightOptionalGM, gmmyGM, mmyOptionalGM, permuteOutOptionalGM, workspaceGM, contextGM, &tilingData, \
-            hcclInitTiling, alltoAllvCcTiling, &pipe);                                                            \
-        op.Process();                                                                                             \
+#define INVOKE_ALLTOALLV_GROUPED_MATMUL_OP_IMPL()                                                                      \
+    do {                                                                                                               \
+        op.Init(gmmxGM, gmmweightGM, sendCountsTensorOptionalGM, recvCountsTensorOptionalGM, mmxOptionalGM,            \
+                mmweightOptionalGM, gmmyGM, mmyOptionalGM, permuteOutOptionalGM, workspaceGM, contextGM, &tilingData,  \
+                hcclInitTiling, alltoAllvCcTiling, &pipe);                                                             \
+        op.Process();                                                                                                  \
     } while (0)
 
 template <bool TILINGKEY_GMM_WEIGHT_TRANSPOSE, bool TILINGKEY_MM_WEIGHT_TRANSPOSE, int TILINGKEY_COMM_MODE>
-__global__ __aicore__ void allto_allv_quant_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
-    GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM, GM_ADDR sendCountsTensorOptionalGM,
-    GM_ADDR recvCountsTensorOptionalGM, GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM,
-    GM_ADDR mmxScaleGM, GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
-    GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+__global__ __aicore__ void
+allto_allv_quant_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM,
+                                 GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM,
+                                 GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM, GM_ADDR mmxScaleGM,
+                                 GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
+                                 GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     SetSysWorkspace(workspaceGM);
     GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspaceGM);
@@ -67,22 +68,23 @@ __global__ __aicore__ void allto_allv_quant_grouped_mat_mul(GM_ADDR gmmxGM, GM_A
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     TPipe pipe;
     REGISTER_TILING_DEFAULT(QuantAlltoAllvGroupedMatmulTilingData);
-    using ComputeOpType = QuantGroupedMatmul<QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, DTYPE_GMM_X,
-        DTYPE_GMM_WEIGHT, DTYPE_GMM_X_SCALE, DTYPE_GMM_Y, CubeFormat::ND, false, TILINGKEY_GMM_WEIGHT_TRANSPOSE,
-        false, true>; // isLocal=false, isA2avGmm=true
+    using ComputeOpType =
+        QuantGroupedMatmul<QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
+                           DTYPE_GMM_X_SCALE, DTYPE_GMM_Y, CubeFormat::ND, false, TILINGKEY_GMM_WEIGHT_TRANSPOSE, false,
+                           true>; // isLocal=false, isA2avGmm=true
     using LocalComputeOpType =
         QuantGroupedMatmul<QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, DTYPE_GMM_X, DTYPE_GMM_WEIGHT,
-        DTYPE_GMM_X_SCALE, DTYPE_GMM_Y, CubeFormat::ND, false, TILINGKEY_MM_WEIGHT_TRANSPOSE,
-        true, true>; // isLocal=true, isA2avGmm=true
+                           DTYPE_GMM_X_SCALE, DTYPE_GMM_Y, CubeFormat::ND, false, TILINGKEY_MM_WEIGHT_TRANSPOSE, true,
+                           true>; // isLocal=true, isA2avGmm=true
     A2avGmmScheduler<HcclA2avOp<DTYPE_GMM_WEIGHT, true, TILINGKEY_COMM_MODE>, ComputeOpType, LocalComputeOpType,
-        QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, TILING_TYPE>
+                     QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, TILING_TYPE>
         a2avGmmScheduler;
     GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, gmmQuantTilingData,
-        gmmArray, gmmArrayAddr_, tilingGM);
+                                       gmmArray, gmmArrayAddr_, tilingGM);
     GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantAlltoAllvGroupedMatmulTilingData, GMMQuantTilingData, mmQuantTilingData,
-        gmmArray, mmArrayAddr_, tilingGM);
+                                       gmmArray, mmArrayAddr_, tilingGM);
     a2avGmmScheduler.Init(gmmxGM, gmmweightGM, mmxOptionalGM, mmweightOptionalGM, gmmxScaleGM, gmmWeightScaleGM,
-        mmxScaleGM, mmWeightScaleGM, gmmyGM, mmyOptionalGM, permuteOutOptionalGM, userWorkspace, tilingGM,
-        gmmArrayAddr_, mmArrayAddr_, &pipe, true);  // isA2avGmmFlag=true
+                          mmxScaleGM, mmWeightScaleGM, gmmyGM, mmyOptionalGM, permuteOutOptionalGM, userWorkspace,
+                          tilingGM, gmmArrayAddr_, mmArrayAddr_, &pipe, true); // isA2avGmmFlag=true
     a2avGmmScheduler.Process();
 }

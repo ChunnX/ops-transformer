@@ -19,7 +19,7 @@
 #include "mc2_kernel_utils.h"
 
 namespace AscendC {
-    
+
 // 向上取整除法：计算a除以b的向上取整结果
 __aicore__ inline uint64_t CeilDiv(uint64_t a, uint32_t b)
 {
@@ -30,7 +30,8 @@ __aicore__ inline uint64_t CeilDiv(uint64_t a, uint32_t b)
 }
 
 // 向下取整除法：计算a除以b的向下取整结果（整数除法）
-__aicore__ inline uint64_t FloorDiv(uint64_t a, uint32_t b) {
+__aicore__ inline uint64_t FloorDiv(uint64_t a, uint32_t b)
+{
     if (b == 0) {
         return 0; // 安全处理除零错误
     }
@@ -57,7 +58,7 @@ __aicore__ inline uint64_t BlockAlignMod(uint64_t a, uint32_t b)
     if (b == 0) {
         return 0;
     }
-    
+
     uint64_t c = a % b;
     return c ? c : b;
 }
@@ -67,6 +68,6 @@ __aicore__ inline uint64_t MIN(uint64_t x, uint64_t y)
 {
     return (x < y) ? x : y;
 }
-}  // namespace AscendC
+} // namespace AscendC
 
 #endif // REDUCE_SUM_UTILS_H

@@ -977,7 +977,6 @@ FFNAntiQuantMSD<xT, wT, mm1Type, mm2Type, c1T, yT, biasT>::CopyOutFinalResult(ui
     } else {
         Cast(outputInUb, middleResult3, RoundMode::CAST_RINT, curV2BaseM * curBaseNAligned);
     }
-    Cast(outputInUb, middleResult3, RoundMode::CAST_NONE, curV2BaseM * curBaseNAligned);
     outQueueY_.EnQue(outputInUb);
     LocalTensor<yT> output = outQueueY_.DeQue<yT>();
     // (m, n)

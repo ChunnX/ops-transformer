@@ -19,8 +19,9 @@
 using namespace Act;
 using namespace Act::Gemm;
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class A_LAYOUT, class B_LAYOUT, class C_LAYOUT>
-__aicore__ inline void Mc2BatchMatMulActIterBatchKernel(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM,
-    GM_ADDR cGM, GM_ADDR workspaceGM, const BatchMatMulV3IterBatchBasicTilingData& tilingData)
+__aicore__ inline void Mc2BatchMatMulActIterBatchKernel(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM,
+                                                        GM_ADDR workspaceGM,
+                                                        const BatchMatMulV3IterBatchBasicTilingData &tilingData)
 {
     // 定义L1和L0的TileShape
     using L1TileShape = AscendC::Shape<_0, _0, _0>;
@@ -43,9 +44,8 @@ __aicore__ inline void Mc2BatchMatMulActIterBatchKernel(GM_ADDR aGM, GM_ADDR bGM
     using BlockScheduler = BuiltInIterBatchScheduler;
 
     // 定义MMAD类型
-    using BlockMmad = Block::BlockMmadBuilder<
-            AType, LayoutA, BType, LayoutB, OutType, LayoutC, BiasType, LayoutC,
-            L1TileShape, L0TileShape, BlockScheduler, MatmulIterBatch<>>;
+    using BlockMmad = Block::BlockMmadBuilder<AType, LayoutA, BType, LayoutB, OutType, LayoutC, BiasType, LayoutC,
+                                              L1TileShape, L0TileShape, BlockScheduler, MatmulIterBatch<>>;
 
     // 定义BlockEpilogue类型
     using BlockEpilogue = Block::BlockEpilogueEmpty;
@@ -56,12 +56,10 @@ __aicore__ inline void Mc2BatchMatMulActIterBatchKernel(GM_ADDR aGM, GM_ADDR bGM
     // 定义Kernel类型
     using MatmulKernel = Kernel::KernelMatMulIterBatch<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename MatmulKernel::Params;
-    Params params = {
-        {tilingData.m, tilingData.n, tilingData.k, tilingData.b}, // shape
-        {aGM, bGM, cGM, biasGM}, // gm addr
-        {}, // epilogue args
-        {&tilingData}
-    };
+    Params params = {{tilingData.m, tilingData.n, tilingData.k, tilingData.b}, // shape
+                     {aGM, bGM, cGM, biasGM},                                  // gm addr
+                     {},                                                       // epilogue args
+                     {&tilingData}};
     AscendC::TPipe tPipe;
     MatmulKernel mm;
     mm(params);

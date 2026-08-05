@@ -19,12 +19,12 @@
 #include "qbmm_asw_block.h"
 #include "../quant_batch_matmul_v3_base.h"
 
-#define LOCAL_TEMPLATE_CLASS_MIX_PARAMS                                                                                 \
-    template <class aType, class bType, class scaleType, class biasType, class ptScaleType, class cType,            \
-              CubeFormat aFormat, CubeFormat bFormat, CubeFormat cFormat, bool aTrans, bool bTrans, class l0cDtype, \
+#define LOCAL_TEMPLATE_CLASS_MIX_PARAMS                                                                                \
+    template <class aType, class bType, class scaleType, class biasType, class ptScaleType, class cType,               \
+              CubeFormat aFormat, CubeFormat bFormat, CubeFormat cFormat, bool aTrans, bool bTrans, class l0cDtype,    \
               class blockType, const MatmulConfig &mmCfg>
-#define LOCAL_TEMPLATE_FUNC_MIX_PARAMS                                                                              \
-    aType, bType, scaleType, biasType, ptScaleType, cType, aFormat, bFormat, cFormat, aTrans, bTrans, l0cDtype, \
+#define LOCAL_TEMPLATE_FUNC_MIX_PARAMS                                                                                 \
+    aType, bType, scaleType, biasType, ptScaleType, cType, aFormat, bFormat, cFormat, aTrans, bTrans, l0cDtype,        \
         blockType, mmCfg
 
 namespace Mc2QuantBatchMatmulV3 {
@@ -62,7 +62,9 @@ template <class aType, class bType, class scaleType, class biasType, class ptSca
           class blockType = Mc2QuantBmmAswBlock, const MatmulConfig &mmCfg = MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG>
 class Mc2QuantBmmPertokenRegbaseKernel {
 public:
-    __aicore__ inline Mc2QuantBmmPertokenRegbaseKernel() {}
+    __aicore__ inline Mc2QuantBmmPertokenRegbaseKernel()
+    {
+    }
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR scale, GM_ADDR offset, GM_ADDR bias, GM_ADDR ptScale,
                                 GM_ADDR cGM, GM_ADDR workSpace, const void *tilingData, TPipe *pipe);
     __aicore__ inline void UpdateGlobalAddr(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR scale, GM_ADDR bias, GM_ADDR ptScale,
@@ -75,7 +77,7 @@ public:
     using biasT = AscendC::MatmulType<TPosition::GM, CubeFormat::ND, biasType>;
     using cT = AscendC::MatmulType<TPosition::VECIN, CubeFormat::ND_ALIGN, l0cDtype>;
     AscendC::MatmulImpl<aT, bT, cT, biasT, mmCfg, AscendC::MatmulCallBackFunc<nullptr, nullptr, nullptr>,
-                       AscendC::QBmmCustomMatmulPolicy>
+                        AscendC::QBmmCustomMatmulPolicy>
         mm;
 
 protected:
@@ -94,7 +96,10 @@ protected:
     __aicore__ inline void VFDoDequant(__ubuf__ cType *dst, __ubuf__ l0cDtype *l0cOut, __ubuf__ scaleType *scale,
                                        __ubuf__ ptScaleType *perTokenScale, __ubuf__ BiasDtype *bias, uint16_t mSize,
                                        uint16_t nSize);
-    __aicore__ inline void NotifyCube() { AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG); }
+    __aicore__ inline void NotifyCube()
+    {
+        AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE, PIPE_V>(AIV_SYNC_AIC_FLAG);
+    }
     __aicore__ inline void WaitForVector()
     {
         AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIV_SYNC_AIC_FLAG);
@@ -105,7 +110,10 @@ protected:
         AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG);
         AscendC::CrossCoreSetFlag<AIC_SYNC_AIV_MODE, PIPE_FIX>(AIC_SYNC_AIV_FLAG + FLAG_ID_MAX);
     }
-    __aicore__ inline void WaitForCube() { AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG); }
+    __aicore__ inline void WaitForCube()
+    {
+        AscendC::CrossCoreWaitFlag<AIC_SYNC_AIV_MODE, PIPE_V>(AIC_SYNC_AIV_FLAG);
+    }
     __aicore__ inline void CopyDataFromGm2Ub();
     __aicore__ inline void CopyX1ScaleFromGm2Ub(LocalTensor<ptScaleType> &dst, uint64_t blockLen, uint64_t offset);
     __aicore__ inline void CopyX2ScaleFromGm2Ub(LocalTensor<scaleType> &dst);
@@ -164,7 +172,7 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
     isBiasEpilogue_ = IsSameType<aType, int8_t>::value &&
                       (biasDtype_ == DT_BF16 || biasDtype_ == DT_FLOAT16 || biasDtype_ == DT_FLOAT);
     UpdateGlobalAddr(aGM, bGM, scale, bias, ptScale, cGM, workSpace);
-    if ASCEND_IS_AIC{
+    if ASCEND_IS_AIC {
         mm.Init(&tilingData_->matmulTiling, pipe);
     }
     uint32_t mForSingleVec = DequantBmm::CeilDiv(tilingData_->matmulTiling.baseM, CV_RATIO);
@@ -176,8 +184,9 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
             pipe_->InitBuffer(vecQueScale_, 1, tilingData_->matmulTiling.baseN * sizeof(scaleType));
         }
         if (static_cast<bool>(tilingData_->params.isPertoken)) {
-            pipe_->InitBuffer(vecQuePertokenScale_, 1, DequantBmm::Align(mForSingleVec * sizeof(ptScaleType),
-                                                                         static_cast<uint64_t>(DATA_BLOCK)));
+            pipe_->InitBuffer(
+                vecQuePertokenScale_, 1,
+                DequantBmm::Align(mForSingleVec * sizeof(ptScaleType), static_cast<uint64_t>(DATA_BLOCK)));
         }
         if (isBiasEpilogue_) {
             if (biasDtype_ == DT_FLOAT) {
@@ -187,9 +196,9 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
             }
         }
         // fp16/bf16分两次输出，fp32分四次输出
-        pipe_->InitBuffer(
-            vecQueOut_, BUFFER_NUM,
-            DequantBmm::CeilDiv(mForSingleVec, FP32_OUTPUT_TIMES) * tilingData_->matmulTiling.baseN * sizeof(cType));
+        pipe_->InitBuffer(vecQueOut_, BUFFER_NUM,
+                          DequantBmm::CeilDiv(mForSingleVec, FP32_OUTPUT_TIMES) * tilingData_->matmulTiling.baseN *
+                              sizeof(cType));
     }
 }
 
@@ -261,7 +270,7 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
                 block_.template CalcGMOffset<aTrans, bTrans, aType, scaleType, bFormat>();
                 if ASCEND_IS_AIC {
                     mm.SetSingleShape(block_.params_.singleCoreM, block_.params_.singleCoreN,
-                        tilingData_->matmulTiling.singleCoreK);
+                                      tilingData_->matmulTiling.singleCoreK);
                     if (block_.offset_.batchCOffset * block_.params_.round + j > 0) {
                         WaitForVector();
                     }
@@ -341,7 +350,7 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
 __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::DequantCompute()
 {
-    auto halfSingleM = DequantBmm::CeilDiv(block_.params_.singleCoreM, static_cast<uint64_t>(2));  // 分配给2个AIV计算
+    auto halfSingleM = DequantBmm::CeilDiv(block_.params_.singleCoreM, static_cast<uint64_t>(2)); // 分配给2个AIV计算
     auto singleMInVec = subBlockIdx_ == 1 ? block_.params_.singleCoreM - halfSingleM : halfSingleM;
     if (singleMInVec == 0) {
         return;
@@ -386,7 +395,7 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
 __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyDataFromGm2Ub()
 {
-    auto halfSingleM = DequantBmm::CeilDiv(block_.params_.singleCoreM, static_cast<uint64_t>(2));  // 分配给2个AIV计算
+    auto halfSingleM = DequantBmm::CeilDiv(block_.params_.singleCoreM, static_cast<uint64_t>(2)); // 分配给2个AIV计算
     auto singleMInVec = subBlockIdx_ == 1 ? block_.params_.singleCoreM - halfSingleM : halfSingleM;
     // scale: GM -> UB
     if (!static_cast<bool>(tilingData_->params.isPerTensor)) {
@@ -431,8 +440,8 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
 }
 
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
-__aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyX2ScaleFromGm2Ub(
-    LocalTensor<scaleType> &dst)
+__aicore__ inline void
+Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyX2ScaleFromGm2Ub(LocalTensor<scaleType> &dst)
 {
     DataCopyParams scale2UbParams{1, 0, 0, 0};
     DataCopyPadParams padParams;
@@ -442,8 +451,8 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
 
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
 template <class BiasDtype>
-__aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyBiasFromGm2Ub(
-    LocalTensor<BiasDtype> &dst)
+__aicore__ inline void
+Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::CopyBiasFromGm2Ub(LocalTensor<BiasDtype> &dst)
 {
     DataCopyParams bias2UbParams{1, 0, 0, 0};
     DataCopyPadParams padParams;
@@ -547,7 +556,8 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
 }
 
 LOCAL_TEMPLATE_CLASS_MIX_PARAMS
-__aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::VFDoDequantWithoutPertokenScale(
+__aicore__ inline void
+Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::VFDoDequantWithoutPertokenScale(
     __ubuf__ cType *dequantOutInUbAddr, __ubuf__ l0cDtype *l0cOutUbAddr, uint16_t mSize)
 {
     if (!isBiasEpilogue_) {
@@ -618,7 +628,7 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
                     AscendC::MicroAPI::Muls(mulScaleOutReg, castSrcOutReg, scaleScalar_, maskN);
                 } else {
                     AscendC::MicroAPI::DataCopy(scaleReg, scale + vfBlockIdx * eleNumPerVf);
-                    if constexpr (!IsSameType<scaleType, float>::value) {  // cast scale from bf16 to float
+                    if constexpr (!IsSameType<scaleType, float>::value) { // cast scale from bf16 to float
                         AscendC::MicroAPI::Cast<float, scaleType, ctHalf2Fp32Zero>(castScaleReg, scaleReg, maskN);
                         AscendC::MicroAPI::Cast<float, scaleType, ctHalf2Fp32One>(castScaleOneReg, scaleReg, maskN4B16);
                         AscendC::MicroAPI::Interleave(castScaleReg, castScaleOneReg, castScaleReg, castScaleOneReg);
@@ -672,6 +682,6 @@ __aicore__ inline void Mc2QuantBmmPertokenRegbaseKernel<LOCAL_TEMPLATE_FUNC_MIX_
     }
 }
 
-}  // namespace Mc2QuantBatchMatmulV3
+} // namespace Mc2QuantBatchMatmulV3
 
-#endif  // QBMM_MIX_ONLINE_DYNAMIC_H
+#endif // QBMM_MIX_ONLINE_DYNAMIC_H

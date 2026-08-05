@@ -36,7 +36,8 @@ public:
 
 class RecurrentGatedDeltaRuleTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit RecurrentGatedDeltaRuleTiling(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context)
+    explicit RecurrentGatedDeltaRuleTiling(gert::TilingContext *context)
+        : Ops::Transformer::OpTiling::TilingBaseClass(context)
     {
         InitCompileInfo();
     };
@@ -85,6 +86,7 @@ protected:
     RecurrentGatedDeltaRuleCompileInfo compileInfo_;
     RecurrentGatedDeltaRuleTilingData tilingData_;
     RecurrentGatedDeltaRuleInfo inputParams_;
+    ge::DataType stateDtype_ = ge::DT_BF16;
 };
 
 } // namespace optiling

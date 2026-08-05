@@ -19,11 +19,11 @@
 
 - **计算公式**：
     - paddedMode为`false`时，公式如下，其中topK指一个token选择的专家个数，Indices维度为2时topK等于Indices最后一维大小，Indices维度为1时topK等于1：
-    
+
       $$
       sortedIndicesFirst=argSort(\text{flatten}(Indices))
       $$
-    
+
       $$
       sortedIndicesOut=argSort(sortedIndicesFirst)
       $$
@@ -44,25 +44,25 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenPermuteGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermute”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeTokenPermuteGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermute”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeTokenPermuteGetWorkspaceSize(
-    const aclTensor  *tokens, 
-    const aclTensor  *indices, 
-    int64_t           numOutTokens, 
-    bool              paddedMode, 
-    const aclTensor  *permuteTokensOut, 
-    const aclTensor  *sortedIndicesOut, 
-    uint64_t         *workspaceSize, 
+    const aclTensor  *tokens,
+    const aclTensor  *indices,
+    int64_t           numOutTokens,
+    bool              paddedMode,
+    const aclTensor  *permuteTokensOut,
+    const aclTensor  *sortedIndicesOut,
+    uint64_t         *workspaceSize,
     aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMoeTokenPermute(
-    void             *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor    *executor, 
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     aclrtStream       stream)
 ```
 
@@ -73,10 +73,10 @@ aclnnStatus aclnnMoeTokenPermute(
   <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
     <col style="width: 265px">
     <col style="width: 120px">
-    <col style="width: 223px">  
-    <col style="width: 391px">  
-    <col style="width: 181px">  
-    <col style="width: 111px"> 
+    <col style="width: 223px">
+    <col style="width: 391px">
+    <col style="width: 181px">
+    <col style="width: 111px">
     <col style="width: 126px">
     <col style="width: 145px">
     </colgroup>
@@ -96,8 +96,8 @@ aclnnStatus aclnnMoeTokenPermute(
       <td>tokens</td>
       <td>输入</td>
       <td>输入token特征。</td>
-      <td><ul><li>支持空tensor。</li><li>要求为一个维度大于等于2的Tensor，第一维的大小为num_tokens。</li></ul></td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td><ul><li>支持空tensor。</li><li>要求为一个维度大于等于2的Tensor，第一维的大小为num_tokens。</li><li>INT8仅支持Ascend 950，按非量化方式处理。</li></ul></td>
+      <td>FLOAT16、BFLOAT16、FLOAT32、INT8</td>
       <td>ND</td>
       <td>≥2</td>
       <td>√</td>
@@ -106,7 +106,7 @@ aclnnStatus aclnnMoeTokenPermute(
       <td>indices</td>
       <td>输入</td>
       <td>输入indices索引。</td>
-      <td><ul><li>支持空tensor。</li><li>要求shape为2D或1D。</li><li>paddedMode为false时表示每一个输入token对应的topK个处理专家索引，shape为(num_tokens, topK)或(num_tokens)。</li><li>paddedMode为true时表示每个专家选中的token索引（暂不支持）。</li><li>元素个数小于16777215，值大于等于0且小于16777215。</li></ul></td>
+      <td><ul><li>支持空tensor。</li><li>要求shape为2D或1D。</li><li>paddedMode为false时表示每一个输入token对应的topK个处理专家索引，shape为(num_tokens, topK)或(num_tokens)。</li><li>paddedMode为true时表示每个专家选中的token索引（暂不支持）。</li><li>元素个数小于16777215，值大于等于0且小于16777215。</li><li>在Ascend 950上调用本接口且tokens数据类型为INT8时，元素表示expert ID，取值范围为[0, 10240)，最大值为10239，不支持10240。</li><li>tokens数据类型为INT8时，取值范围为[0, 10240)。</li></ul></td>
       <td>INT32、INT64</td>
       <td>ND</td>
       <td>1或2</td>
@@ -137,7 +137,7 @@ aclnnStatus aclnnMoeTokenPermute(
       <td>输出</td>
       <td>根据indices进行扩展并排序过的tokens。</td>
       <td><ul><li>支持空tensor。</li><li>要求是一个维度大于等于2的Tensor，第一维的大小为min(num_tokens * topK, numOutTokens)。</li><li>除第一维外其余维度大小乘积与tokens除第一维外其余维度大小乘积相同。</li><li>数据类型同tokens。</li></ul></td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
+      <td>FLOAT16、BFLOAT16、FLOAT32、INT8</td>
       <td>ND</td>
       <td>≥2</td>
       <td>×</td>
@@ -176,10 +176,10 @@ aclnnStatus aclnnMoeTokenPermute(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   一段接口完成入参校验，出现以下场景时报错：
-  <table style="undefined;table-layout: fixed; width: 1180px"> 
+  <table style="undefined;table-layout: fixed; width: 1180px">
     <colgroup>
       <col style="width: 250px">
       <col style="width: 130px">
@@ -221,7 +221,7 @@ aclnnStatus aclnnMoeTokenPermute(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1180px"> 
+  <table style="undefined;table-layout: fixed; width: 1180px">
     <colgroup>
       <col style="width: 250px">
       <col style="width: 130px">
@@ -260,16 +260,19 @@ aclnnStatus aclnnMoeTokenPermute(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-    
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
 ## 约束说明
 
+- INT8类型的tokens和permuteTokensOut仅支持Ascend 950，且二者数据类型必须一致。
+- 在Ascend 950上调用本接口且`tokens`数据类型为INT8时，`indices`表示expert ID，取值范围为`[0, 10240)`，最大值为`10239`，不支持`10240`。
+- 调用本接口时，`indices`必须为1D或2D；不满足时接口直接返回参数错误。
 - 确定性计算：
   - aclnnMoeTokenPermute默认确定性实现。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include "acl/acl.h"
@@ -353,12 +356,12 @@ int main() {
     std::vector<float> expandedXOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::vector<int> sortedIndicesOutHostData = {0, 0, 0, 0, 0, 0};
     // 创建self aclTensor
-    ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_BF16, &x);
+    ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(indicesHostData, idxShape, &indicesDeviceAddr, aclDataType::ACL_INT32, &indices);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建out aclTensor
-    ret = CreateAclTensor(expandedXOutHostData, expandedXOutShape, &expandedXOutDeviceAddr, aclDataType::ACL_BF16, &expandedXOut);
+    ret = CreateAclTensor(expandedXOutHostData, expandedXOutShape, &expandedXOutDeviceAddr, aclDataType::ACL_FLOAT, &expandedXOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(sortedIndicesOutHostData, idxOutShape, &sortedIndicesOutDeviceAddr, aclDataType::ACL_INT32, &sortedIndicesOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -366,7 +369,8 @@ int main() {
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
     // 调用aclnnMoeTokenPermute第一段接口
-    ret = aclnnMoeTokenPermuteGetWorkspaceSize(x, indices, numTokenOut, padMode, expandedXOut, sortedIndicesOut, &workspaceSize, &executor);
+    ret = aclnnMoeTokenPermuteGetWorkspaceSize(x, indices, numTokenOut, padMode, expandedXOut,
+                                               sortedIndicesOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMoeTokenPermuteGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     void* workspaceAddr = nullptr;

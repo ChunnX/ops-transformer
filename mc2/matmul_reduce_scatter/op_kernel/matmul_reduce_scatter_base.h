@@ -18,13 +18,8 @@
 #include "lib/matmul_intf.h"
 #include "reduce_scatter_nd_to_nz.h"
 
-#if __has_include("../../common/op_kernel/mc2_nd_to_nz.h")
 #include "../../common/op_kernel/mc2_nd_to_nz.h"
 #include "../../common/op_kernel/mc2_matmul_compute.h"
-#else
-#include "../common/op_kernel/mc2_nd_to_nz.h"
-#include "../common/op_kernel/mc2_matmul_compute.h"
-#endif
 
 namespace AscendC {
 constexpr uint8_t MC2_DEBUG_ONLY_CUBE = 1;  // 只计算不通信
@@ -33,9 +28,11 @@ constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4; // 只通信不计算
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool BNd2Nz, bool Bias2Float>
 class MatmulReduceScatterBase {
 public:
-    __aicore__ inline MatmulReduceScatterBase() {}
+    __aicore__ inline MatmulReduceScatterBase()
+    {
+    }
     __aicore__ inline void InitBase(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM,
-        GM_ADDR contextGM, MatmulReduceScatterTilingData *tilingData, TPipe *tPipe);
+                                    GM_ADDR contextGM, MatmulReduceScatterTilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Nd2NzBiasCast();
 
 protected:
@@ -47,9 +44,9 @@ protected:
     GM_ADDR workspaceGM_;
     MatmulReduceScatterTilingData *tilingData_;
     TPipe *tPipe_;
-    uint32_t rankId_{ 0 };
-    uint32_t rankDim_{ 8 };
-    bool debugOnlyCalc_{ false };
+    uint32_t rankId_{0};
+    uint32_t rankDim_{8};
+    bool debugOnlyCalc_{false};
 };
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool BNd2Nz, bool Bias2Float>
@@ -80,12 +77,12 @@ __aicore__ inline void MatmulReduceScatterBase<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE
     if constexpr (Bias2Float) {
         CastBFtoFloat(biasToFloat, biasGM_, tilingData_->param.rankN, totalUbBuf);
         biasGM_ = biasToFloat;
-        SyncAll<true>(); 
+        SyncAll<true>();
     }
     if constexpr (BNd2Nz) {
         MatrixBtoNZMc2<typename B_TYPE::T>(gmNd2NzAddr, bGM_, tilingData_, tilingData_->param.isTransposeB, totalUbBuf);
         bGM_ = gmNd2NzAddr;
     }
 }
-}
+} // namespace AscendC
 #endif

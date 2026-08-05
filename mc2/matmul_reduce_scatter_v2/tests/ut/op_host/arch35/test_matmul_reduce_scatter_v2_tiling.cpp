@@ -37,47 +37,33 @@ TEST_P(MatmulReduceScatterV2Arch35TilingTest, param)
     gert::TilingContextPara tilingContextPara(
         "MatmulReduceScatterV2",
         {
-            param.x1,
-            param.x2,
-            param.bias,
-            param.x1_scale,
-            param.x2_scale,
-            param.quant_scale,
+            param.x1, param.x2, param.bias, param.x1_scale, param.x2_scale, param.quant_scale,
             // 还差一个
         },
         {
             param.y,
             param.amax_out,
         },
-        {
-            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
-            {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.reduce_op)},
-            {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_a)},
-            {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_b)},
-            {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_turn)},
-            {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.rank_size)},
-            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.block_size)},
-            {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.group_size)},
-            {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_amax_out)},
-            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.y_dtype)},
-            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.comm_mode)}
-        },
-        param.inputInstance, param.outputInstance,
-        &compileInfo,
-        param.soc, param.coreNum, param.ubsize
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", param.rank_size}
-    };
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
+         {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.reduce_op)},
+         {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_a)},
+         {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_b)},
+         {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_turn)},
+         {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.rank_size)},
+         {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.block_size)},
+         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.group_size)},
+         {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_amax_out)},
+         {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.y_dtype)},
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.comm_mode)}},
+        param.inputInstance, param.outputInstance, &compileInfo, param.soc, param.coreNum, param.ubsize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.rank_size}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.expectResult, param.expectTilingKey,
-        param.expectTilingDataHash, {}, MC2_TILING_DATA_RESERVED_LEN, true);
+                       param.expectTilingDataHash, {}, MC2_TILING_DATA_RESERVED_LEN, true);
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    MatmulReduceScatterV2,
-    MatmulReduceScatterV2Arch35TilingTest,
+    MatmulReduceScatterV2, MatmulReduceScatterV2Arch35TilingTest,
     testing::ValuesIn(GetCasesFromCsv<MatmulReduceScatterV2TilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
-    GetCaseInfoString<MatmulReduceScatterV2TilingUtParam>
-);
+    GetCaseInfoString<MatmulReduceScatterV2TilingUtParam>);
 
 } // namespace matmul_reduce_scatter_v2_ut

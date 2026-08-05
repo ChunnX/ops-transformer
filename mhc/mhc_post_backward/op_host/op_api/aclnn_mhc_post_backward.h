@@ -29,13 +29,14 @@ extern "C" {
  */
 aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, const aclTensor *x, const aclTensor *hRes,
     const aclTensor *hOut, const aclTensor *hPost, aclTensor *gradX,
-    aclTensor *gradHres, aclTensor *gradHout, aclTensor *gradHpost,
+    aclTensor *gradHRes, aclTensor *gradHOut, aclTensor *gradHPost,
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnMhcPostBackward的第二段接口，用于执行计算。
  */
-aclnnStatus aclnnMhcPostBackward(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+aclnnStatus aclnnMhcPostBackward(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+    const aclrtStream stream);
 
 #ifdef __cplusplus
 }

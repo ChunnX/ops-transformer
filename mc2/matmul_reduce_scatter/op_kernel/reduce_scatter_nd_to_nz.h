@@ -29,19 +29,14 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 
-#if __has_include("../../common/op_kernel/mc2_tiling_struct.h")
 #include "../../common/op_kernel/mc2_tiling_struct.h"
 #include "../../3rd/mat_mul_v3/op_kernel/mat_mul_nd2nz.h"
-#else
-#include "../common/op_kernel/mc2_tiling_struct.h"
-#include "../3rd/mat_mul_v3/op_kernel/mat_mul_nd2nz.h"
-#endif
 
 namespace AscendC {
 using namespace matmul;
 
 template <class T>
-__aicore__ inline void MatrixBtoNZMc2(GM_ADDR workspace, GM_ADDR src, const MatmulReduceScatterTilingData* tilingData,
+__aicore__ inline void MatrixBtoNZMc2(GM_ADDR workspace, GM_ADDR src, const MatmulReduceScatterTilingData *tilingData,
                                       bool isTransposeB, TBuf<TPosition::VECCALC> &tmpBuf)
 {
     if (g_coreType == AIV) {
@@ -50,7 +45,8 @@ __aicore__ inline void MatrixBtoNZMc2(GM_ADDR workspace, GM_ADDR src, const Matm
             CrossCoreSetFlag<2, PIPE_MTE3>(3);
             return;
         }
-        MatrixBtoNZV2<T>(workspace, src, tilingData->tileTiling, isTransposeB, tmpBuf, tilingData->socParam.baseBN, tilingData->socParam.baseBD);
+        MatrixBtoNZV2<T>(workspace, src, tilingData->tileTiling, isTransposeB, tmpBuf, tilingData->socParam.baseBN,
+                         tilingData->socParam.baseBD);
         // 先AIC等待AIV, 再AIC之间一次同步
         CrossCoreSetFlag<2, PIPE_MTE3>(3); // v侧做完才能做c侧
     } else {

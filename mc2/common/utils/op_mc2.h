@@ -134,8 +134,7 @@ enum class MmReduceScatterV2AttrIdx : size_t {
     K_COMM_MODE
 };
 
-enum class MmAllReduceAttrIdx : size_t
-{
+enum class MmAllReduceAttrIdx : size_t {
     K_GROUP,
     K_OP,
     K_TRANS_X1,
@@ -148,8 +147,7 @@ enum class MmAllReduceAttrIdx : size_t
     K_COMM_MODE
 };
 
-enum class MmAllReduceAddRmsNormAttrIdx : size_t
-{
+enum class MmAllReduceAddRmsNormAttrIdx : size_t {
     K_GROUP,
     K_OP,
     K_TRANS_X1,
@@ -175,8 +173,7 @@ const std::vector<int64_t> ACT_TYPE_SUPPORT_VEC = {
     static_cast<int64_t>(AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_GELU),
     static_cast<int64_t>(AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_SILU),
     static_cast<int64_t>(AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_RELU),
-    static_cast<int64_t>(AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_FASTGELU)
-};
+    static_cast<int64_t>(AlltoAllAllGatherBatchMatMulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_FASTGELU)};
 
 enum class MC2MoeInputIdx : size_t {
     K_X,
@@ -331,6 +328,6 @@ enum class GroupedMatMulAlltoAllvAttrIdx : size_t {
     K_TRANS_GMM_WEIGHT,
     K_TRANS_MM_WEIGHT
 };
-}  // namespace ops
+} // namespace ops
 
-#endif  // OPS_COMMON_INC_OP_MC2_H
+#endif // OPS_COMMON_INC_OP_MC2_H

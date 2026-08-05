@@ -102,6 +102,32 @@ void Finalize(int32_t deviceId, aclrtStream stream)
     aclFinalize();
 }
 
+float fp16_to_float(uint16_t h) {
+    uint32_t sign = ((h >> 15) & 1);
+    uint32_t exponent = ((h >> 10) & 0x1F);
+    uint32_t mantissa = (h & 0x3FF);
+    
+    uint32_t f32;
+    if (exponent == 0x1F) {
+        exponent = 0xFF;
+        mantissa = (mantissa ? 0x7FFFFF : 0);
+    } else if (exponent == 0) {
+        if (mantissa != 0) {
+            exponent = 0x71;
+            do {
+                mantissa <<= 1;
+                exponent--;
+            } while (!(mantissa & 0x400));
+            mantissa &= 0x3FF;
+        }
+    } else {
+        exponent += (127 - 15);
+    }
+    
+    f32 = (sign << 31) | (exponent << 23) | (mantissa << 13);
+    return *((float*)&f32);
+}
+
 int aclnnFusedInferAttentionScoreV5FullQuantTest(int32_t deviceId, aclrtStream &stream)
 {
     auto ret = Init(deviceId, &stream);
@@ -150,14 +176,14 @@ int aclnnFusedInferAttentionScoreV5FullQuantTest(int32_t deviceId, aclrtStream &
     int64_t keyAntiquantScaleShapeSize = GetShapeSize(keyAntiquantScaleShape);     // （KV_T, KV_N, D/64, 2）
     int64_t valueAntiquantScaleShapeSize = GetShapeSize(valueAntiquantScaleShape); // （KV_T/64, KV_N, D, 2）
     int64_t outShapeSize = GetShapeSize(outShape);                                 // BNSD
-    std::vector<float> queryHostData(queryShapeSize, 1);
-    std::vector<float> keyHostData(keyShapeSize, 1);
-    std::vector<float> valueHostData(valueShapeSize, 1);
+    std::vector<uint8_t> queryHostData(queryShapeSize, 0b00111000); // fp8_e4m3 1.0
+    std::vector<uint8_t> keyHostData(keyShapeSize, 0b00111000);
+    std::vector<uint8_t> valueHostData(valueShapeSize, 0b00111000);
     std::vector<float> quantScale1HostData(quantScale1ShapeSize, 1);
-    std::vector<float> dequantScaleQueryHostData(dequantScaleQueryShapeSize, 1);
-    std::vector<float> keyAntiquantScaleHostData(keyAntiquantScaleShapeSize, 1);
-    std::vector<float> valueAntiquantScaleHostData(valueAntiquantScaleShapeSize, 1);
-    std::vector<float> outHostData(outShapeSize, 1);
+    std::vector<uint8_t> dequantScaleQueryHostData(dequantScaleQueryShapeSize, 0b01111111); // fp8_e8m0 1.0
+    std::vector<uint8_t> keyAntiquantScaleHostData(keyAntiquantScaleShapeSize, 0b01111111);
+    std::vector<uint8_t> valueAntiquantScaleHostData(valueAntiquantScaleShapeSize, 0b01111111);
+    std::vector<uint16_t> outHostData(outShapeSize, 0x3C00); // fp16 1.0
 
     ret = CreateAclTensor(queryHostData, queryShape, &queryDeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &queryTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
@@ -239,7 +265,7 @@ int aclnnFusedInferAttentionScoreV5FullQuantTest(int32_t deviceId, aclrtStream &
 
     int64_t numHeads = 2; // N
     int64_t numKeyValueHeads = 2;
-    double scaleValue = 1 / sqrt(2); // 1/sqrt(d)
+    double scaleValue = 1 / sqrt(64); // 1/sqrt(d)
     int64_t preTokens = 2147483647;
     int64_t nextTokens = 2147483647;
     string sLayerOut = "TND";
@@ -290,7 +316,7 @@ int aclnnFusedInferAttentionScoreV5FullQuantTest(int32_t deviceId, aclrtStream &
     }
 
     auto size = GetShapeSize(outShape);
-    std::vector<float> resultData(size, 0);
+    std::vector<uint16_t> resultData(size, 0);
     ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
                       size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
@@ -298,7 +324,8 @@ int aclnnFusedInferAttentionScoreV5FullQuantTest(int32_t deviceId, aclrtStream &
         return ret;
     }
     for (int64_t i = 0; i < size; i++) {
-        LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
+        float float_value = fp16_to_float(resultData[i]);
+        LOG_PRINT("result[%ld] is: %f\n", i, float_value);
     }
     return 0;
 }

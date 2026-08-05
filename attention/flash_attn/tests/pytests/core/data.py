@@ -1,3 +1,13 @@
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """声明式张量生成 + 按文档参数组构造参数。"""
 
 import torch
@@ -5,7 +15,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 # ============================================================
-# 参数组构造 — 按 npu_flash_attn.md 的 6 组参数规范化
+# 参数组构造 — 按 flash_attn.md 的 6 组参数规范化
 # ============================================================
 
 def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
@@ -111,7 +121,7 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
         max_seqlen_q=msq,
         max_seqlen_kv=msk,
         layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
-        return_softmax_lse=p.get("return_softmax_lse", 0),
+        return_softmax_lse=p.get("return_softmax_lse", False),
     )
 
     return meta_kwargs, kernel_kwargs, layout_out

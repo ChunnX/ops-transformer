@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-算子功能：MoE的permute计算，根据索引indices将tokens和可选probs广播后排序并按照rangeOptional中范围切片。
+算子功能：MoE(Mixture of Experts)的permute计算，根据索引indices将tokens和可选probs广播后排序并按照rangeOptional中范围切片。
 
 计算公式：
 

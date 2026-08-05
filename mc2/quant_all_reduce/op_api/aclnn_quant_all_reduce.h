@@ -32,8 +32,10 @@ extern "C" {
  * 当量化方式为mx量化时，数据类型支持：FLOAT8_E4M3FN、FLOAT8_E5M2，数据格式支持ND，
  * 当量化方式为pertoken-pergroup量化时，数据类型支持：INT8, HIFLOAT8, FLOAT8_E4M3FN, FLOAT8_E5M2，数据格式支持ND。
  * @param [in] scales: 公式中的输入scales，不支持空Tensor，
- * 当量化方式为mx量化时，支持的维度为3-4维，shape必须对应x的shape为(bs, H/64, 2)或者(b, s, H/64, 2)，数据类型支持：FLOAT8_E8M0，数据格式支持ND，
- * 当量化方式为pertoken-pergroup量化时，支持的维度为2-3维，shape必须对应x的shape为(bs, H/128)或者(b, s, H/128)，数据类型支持：FLOAT，数据格式支持ND。
+ * 当量化方式为mx量化时，支持的维度为3-4维，shape必须对应x的shape为(bs, H/64, 2)或者(b, s, H/64,
+ * 2)，数据类型支持：FLOAT8_E8M0，数据格式支持ND，
+ * 当量化方式为pertoken-pergroup量化时，支持的维度为2-3维，shape必须对应x的shape为(bs, H/128)或者(b, s,
+ * H/128)，数据类型支持：FLOAT，数据格式支持ND。
  * @param [in] group: 通信域标识，数据类型支持String。
  * @param [in] reduceOp: 公式中的reduce操作类型，默认值：sum，当前版本只支持sum，数据类型支持String。
  * @param [out] output: 公式中的输出output，不支持空Tensor，
@@ -43,14 +45,9 @@ extern "C" {
  * @return aclnnStatus: 返回值，返回状态码
  *
  */
-ACLNN_API aclnnStatus aclnnQuantAllReduceGetWorkspaceSize(
-    const aclTensor* x,
-    const aclTensor* scales,
-    const char* group,
-    const char* reduceOp,
-    aclTensor* output,
-    uint64_t* workspaceSize,
-    aclOpExecutor** executor);
+ACLNN_API aclnnStatus aclnnQuantAllReduceGetWorkspaceSize(const aclTensor *x, const aclTensor *scales,
+                                                          const char *group, const char *reduceOp, aclTensor *output,
+                                                          uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnQuantAllReduce的第二段接口，用于执行计算。
@@ -60,14 +57,11 @@ ACLNN_API aclnnStatus aclnnQuantAllReduceGetWorkspaceSize(
  * @param [in] stream: 指定执行任务的Stream。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnQuantAllReduce(
-    void* workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor* executor,
-    const aclrtStream stream);
+ACLNN_API aclnnStatus aclnnQuantAllReduce(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                          const aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // OP_API_INC_QUANT_ALL_REDUCE_
+#endif // OP_API_INC_QUANT_ALL_REDUCE_

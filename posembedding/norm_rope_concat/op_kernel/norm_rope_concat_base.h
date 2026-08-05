@@ -151,9 +151,11 @@ public:
         ropeQueue_.EnQue(rope);
         LocalTensor<DTYPE_ROPE_SIN> deQue = ropeQueue_.DeQue<DTYPE_ROPE_SIN>();
         if (sizeof(DTYPE_ROPE_SIN) < sizeof(float)) {
-            Cast(sin_, deQue, RoundMode::CAST_NONE, NUM_TWO * totalRopeDim_);
+            Cast(sin_, deQue, RoundMode::CAST_NONE, totalRopeDim_);
+            Cast(cos_, deQue[totalRopeDim_], RoundMode::CAST_NONE, totalRopeDim_);
         } else {
-            Adds(sin_, deQue.ReinterpretCast<float>(), 0.f, NUM_TWO * totalRopeDim_);
+            Adds(sin_, deQue.ReinterpretCast<float>(), 0.f, totalRopeDim_);
+            Adds(cos_, deQue[totalRopeDim_].ReinterpretCast<float>(), 0.f, totalRopeDim_);
         }
         ropeQueue_.FreeTensor(deQue);
         PipeBarrier<PIPE_V>();
