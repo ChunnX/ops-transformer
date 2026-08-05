@@ -13,6 +13,7 @@
 #if CANN_VERSION_NUM >= GRAPH_FUSION_SUPPORT_VERSION
 #include "es_AlltoAllMatmul.h" // es autogen header
 #include "es_TransposeD.h"     // es autogen header for stub op
+#include "es_Bitcast.h"        // es autogen header for stub op
 #include "es_math_ops.h"       // math ops stub
 #include "mc2_platform_info.h"
 #include "mc2_common_log.h"
@@ -26,17 +27,21 @@ const std::string PATTERN_TRANSPOSE = "Transpose";
 const std::string PATTERN_TRANSPOSE_D = "TransposeD";
 const std::string PATTERN_BIAS = "HasBias";
 const std::string PATTERN_SCALE = "HasScale"; // MX：scale 固定进 pattern，仅写入名字便于区分
+const std::string PATTERN_BITCAST = "X2Bitcast";
 
 const int64_t MX_QUANT_MODE = 6;
 const int64_t ALL2ALLMM_CAPTURE_IDX = 0l;
 const int64_t TRANSPOSE_CAPTURE_IDX = 1l;
 const int64_t TRANSPOSE_PERM_IDX = 1l;
+const int64_t X2_INPUT_IDX = 1l; // IR: x1 / x2 / ...
 const size_t INPUT_NUM_NO_BIAS = 4;
 const size_t INPUT_NUM_HAS_BIAS = 5;
 const size_t ONE_DIM_SIZE = 1;
 const size_t PERM_SIZE_ONE = 1;
 const size_t PERM_SIZE_TWO = 2;
 const size_t PERM_SIZE_THREE = 3;
+// Pattern 中 Bitcast 的 type 仅占位；默认 matcher 不校验 IR attr，Replacement 用真实 MC2 输入 dtype
+const ge::DataType BITCAST_PATTERN_DTYPE = ge::DT_HIFLOAT8;
 
 enum class TransposeNode {
     Transpose,
@@ -45,6 +50,7 @@ enum class TransposeNode {
 
 struct OriginalGraphInfo {
     bool hasBias = false;
+    bool hasBitcast = false; // true：Transpose → Bitcast → x2
     TransposeNode node = TransposeNode::Transpose;
 };
 
@@ -103,6 +109,15 @@ ge::CustomPassStage GetAllToAllMatmulTransposeA5FusionPassStage()
 }
 } // namespace
 
+static ge::es::EsTensorHolder MaybeBitcastAfterTranspose(bool needBitcast, const ge::es::EsTensorHolder &transposed)
+{
+    if (!needBitcast) {
+        return transposed;
+    }
+    // 对齐 canndev：Transpose → Bitcast → MC2；type 占位，matcher 默认只比 op type
+    return ge::es::Bitcast(transposed, BITCAST_PATTERN_DTYPE);
+}
+
 static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
 {
     std::string patternName = FUSION_PASS_NAME;
@@ -111,6 +126,9 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
         patternName += PATTERN_BIAS;
     }
     patternName += PATTERN_SCALE;
+    if (info.hasBitcast) {
+        patternName += PATTERN_BITCAST;
+    }
 
     auto graphBuilder = ge::es::EsGraphBuilder(patternName.c_str());
     // MX：x1/x2/scale 常驻，bias 可选；comm/offset 不进 pattern
@@ -132,10 +150,11 @@ static ge::fusion::PatternUniqPtr MakePattern(const OriginalGraphInfo &info)
     } else {
         transpose = ge::es::TransposeD(x2, std::vector<int64_t>{1, 0});
     }
+    auto x2In = MaybeBitcastAfterTranspose(info.hasBitcast, transpose);
 
     const char *group = "";
     int64_t worldSize = 0;
-    auto mc2 = ge::es::AlltoAllMatmul(x1, transpose, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr, group,
+    auto mc2 = ge::es::AlltoAllMatmul(x1, x2In, bias, x1Scale, x2Scale, nullptr, nullptr, nullptr, group,
                                       worldSize);
     auto graph = graphBuilder.BuildAndReset({mc2.y, mc2.all2all_out});
     auto pattern = std::make_unique<ge::fusion::Pattern>(std::move(*graph));
@@ -328,6 +347,22 @@ static bool GetCapturedMc2Node(const std::unique_ptr<ge::fusion::MatchResult> &m
     return true;
 }
 
+// 对齐 canndev FusionTransposeWithBitcast：吸掉 Transpose，保留 Bitcast，dtype 取自原 MC2 该口输入
+static ge::es::EsTensorHolder MaybeKeepBitcast(const ge::GNode &mc2Node, int64_t inputIdx,
+                                               const ge::es::EsTensorHolder &x, bool keepBitcast)
+{
+    if (!keepBitcast) {
+        return x;
+    }
+    ge::TensorDesc inDesc;
+    if (mc2Node.GetInputDesc(static_cast<int>(inputIdx), inDesc) != ge::GRAPH_SUCCESS) {
+        OPS_LOG_W(FUSION_PASS_NAME.c_str(), "GetInputDesc failed for bitcast dtype, idx=%ld, fallback HIFLOAT8.",
+                  inputIdx);
+        return ge::es::Bitcast(x, BITCAST_PATTERN_DTYPE);
+    }
+    return ge::es::Bitcast(x, inDesc.GetDataType());
+}
+
 static ge::fusion::GraphUniqPtr
 BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
                   const std::unique_ptr<ge::fusion::MatchResult> &matchResult)
@@ -344,6 +379,12 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
     if (!GetCapturedMc2Node(matchResult, mc2Node)) {
         return nullptr;
     }
+
+    ge::AscendString patternName = "";
+    matchResult->GetPatternGraph().GetName(patternName);
+    const std::string patternNameStr = patternName.GetString() != nullptr ? patternName.GetString() : "";
+    const bool keepX2Bitcast = patternNameStr.find(PATTERN_BITCAST) != std::string::npos;
+    auto x2In = MaybeKeepBitcast(mc2Node, X2_INPUT_IDX, inputTensors.rX2, keepX2Bitcast);
 
     ge::AscendString group;
     OP_LOGE_IF(mc2Node.GetAttr("group", group) != ge::GRAPH_SUCCESS, nullptr, FUSION_PASS_NAME.c_str(),
@@ -403,7 +444,7 @@ BuildReplaceGraph(const std::vector<ge::fusion::SubgraphInput> &subgraphInputs,
     OP_LOGE_IF(mc2Node.GetAttr("alltoall_out_flag", alltoallOutFlag) != ge::GRAPH_SUCCESS, nullptr,
                FUSION_PASS_NAME.c_str(), "Get Attr alltoall_out_flag failed.");
 
-    auto mc2 = ge::es::AlltoAllMatmul(inputTensors.rX1, inputTensors.rX2, inputTensors.rBias, inputTensors.rX1Scale,
+    auto mc2 = ge::es::AlltoAllMatmul(inputTensors.rX1, x2In, inputTensors.rBias, inputTensors.rX1Scale,
                                       inputTensors.rX2Scale, inputTensors.rCommScale, inputTensors.rX1Offset,
                                       inputTensors.rX2Offset, group.GetString(), worldSize, all2allAxes, yDtype,
                                       x1QuantMode, x2QuantMode, commQuantMode, x1QuantDtype, commQuantDtype,
@@ -435,11 +476,13 @@ static bool InferShapeReplaceGraph(const ge::fusion::GraphUniqPtr &replaceGraph,
 std::vector<ge::fusion::PatternUniqPtr> AllToAllMatmulTransposeA5FusionPass::Patterns()
 {
     OPS_LOG_I(FUSION_PASS_NAME.c_str(), "Enter Patterns for AllToAllMatmulTransposeA5FusionPass");
-    // ES：排列 hasBias × Transpose/TransposeD；MX scale 固定 → 共 4 种
+    // ES：排列 hasBias × hasBitcast × Transpose/TransposeD；MX scale 固定 → 共 8 种
     std::vector<ge::fusion::PatternUniqPtr> patternGraphs;
     for (bool hasBias : {false, true}) {
-        for (auto node : {TransposeNode::Transpose, TransposeNode::TransposeD}) {
-            patternGraphs.emplace_back(MakePattern({hasBias, node}));
+        for (bool hasBitcast : {false, true}) {
+            for (auto node : {TransposeNode::Transpose, TransposeNode::TransposeD}) {
+                patternGraphs.emplace_back(MakePattern({hasBias, hasBitcast, node}));
+            }
         }
     }
     return patternGraphs;
