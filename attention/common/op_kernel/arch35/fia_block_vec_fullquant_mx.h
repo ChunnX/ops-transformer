@@ -399,10 +399,32 @@ public:
         constexpr uint16_t pScaleDstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
         uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
-            constexpr uint64_t subLoopScaleOffset = mBaseSize * s2BaseSizeCur / MXFP_GROUP_SIZE;
-            for (uint16_t i = 0; i < 4; i++) {
-                DataCopy(mm2AScaleL1Tensor[vecOffset + subLoop * subLoopScaleOffset + i * blockBytes],
-                    pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
+            if constexpr (s2BaseSizeCur == 128) {  // D256 M-major KV256: selective P0 K-group rescale (fix NIGHT3 over-rescale P1)
+                // i=Ksg (LAYOUT_A: tile=l1_off//32, Ksg=tile%4=i). Ksg0,1=P0(K0-127), Ksg2,3=P1(K128-255).
+                // subLoop1 tensor=rescale(P0 factor exp(m0-m_new), 0x7e bad/0x7f good) -> Ksg0,1 (P0) ONLY.
+                // subLoop0 tensor=0x7f(P1 factor 1.0, P1=exp(S1-m_new) already m_new basis) -> Ksg2,3 (P1) ONLY.
+                // SIM-VERIFIED (sim_selective_verify.py): P0 bad rows Ksg0,1=0x7e(20/20), P1 Ksg2,3=0x7f NOT over-rescaled(20/20).
+                // e8m0 per-(M-row,K-group-32) NOT per-32-M-group (memory:616 LINCHPIN D128 l0amx 24 0x7e=3rowsx8Kgrp).
+                constexpr uint16_t pScaleDstStrideD256 = 3;
+                constexpr uint64_t vecOffsetSpacingD256 = mBaseSize * s2BaseSizeCur / MXFP_GROUP_SIZE;  // 128*128/32 = 0x200
+                uint64_t vecOffsetD256 = constInfo.subBlockIdx * vecOffsetSpacingD256;
+                if (subLoop % 2 == 1) {
+                    for (uint16_t i = 0; i < 2; i++) {  // Ksg 0,1 = P0 only (was 0..4 = over-rescale P1, NIGHT3)
+                        DataCopy(mm2AScaleL1Tensor[vecOffsetD256 + i * blockBytes],
+                            pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStrideD256});
+                    }
+                } else {
+                    for (uint16_t i = 2; i < 4; i++) {  // Ksg 2,3 = P1 only (fill P1=0x7f; cube gate s2BaseSize>256 skips InitConstValue)
+                        DataCopy(mm2AScaleL1Tensor[vecOffsetD256 + i * blockBytes],
+                            pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStrideD256});
+                    }
+                }
+            } else {  // D128 K-major: Opt A byte-identical (D128 KV512 crash=PathC separate, not touched by 2a2b)
+                constexpr uint64_t subLoopScaleOffset = mBaseSize * s2BaseSizeCur / MXFP_GROUP_SIZE;
+                for (uint16_t i = 0; i < 4; i++) {
+                    DataCopy(mm2AScaleL1Tensor[vecOffset + subLoop * subLoopScaleOffset + i * blockBytes],
+                        pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
+                }
             }
         } else if (runInfo.actSingleLoopS2Size <= s2SplitSize) {
             // 一次循环拷贝32个S1的scale，每个S1对应8个scale

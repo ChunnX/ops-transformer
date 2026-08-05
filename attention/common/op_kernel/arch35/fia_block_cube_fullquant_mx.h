@@ -1009,14 +1009,23 @@ public:
 
         constexpr uint32_t pScaleOffset = mBaseSize * s2BaseSize;
         if (runInfo.actSingleLoopS2Size > s2SplitSize) {
-            constexpr uint32_t sizeOfInt16 = 2U;
-            LocalTensor<int16_t> mm2AScaleTensor = mm2A.GetTensor<int16_t>(pScaleOffset / sizeOfInt16 +
-                mBaseSize * s2SplitSize / MXFP_GROUP_SIZE / sizeOfInt16);
-            InitConstValue(mm2AScaleTensor,
-                {1, mBaseSize * s2SplitSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / blockBytes, 0, 0x7f7f});
-            // DIAGNOSTIC: zero PScale at C2 read position. If branch taken, output will change.
-            LocalTensor<int16_t> diagZero = mm2A.GetTensor<int16_t>(pScaleOffset / sizeOfInt16);
-            InitConstValue(diagZero, {1, mBaseSize * s2SplitSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / blockBytes, 0, 0x7f7f});
+            // 2b fix: gate BOTH P1-init (0x8200) + diagZero (0x8000) to D128 K-major ONLY (s2BaseSize>256).
+            // D256 M-major (s2BaseSize==256, kLoops=1): 0x8200=back rows P0-scale, 0x8000=front rows P0-scale
+            // (M-split, NOT K-split). vec subLoop1 ALREADY writes per-row rescale (0x7e bad/0x7f good) to FULL
+            // 0x8000-0x83ff. These cube inits run AFTER vec (C2, dump SET_2D tick176587 > vec tick~165632-166091)
+            // and clobber vec's 0x7e to 0x7f => would erase ALL 10 bad rows' rescale. SKIP both for D256.
+            // SIM-VERIFIED (sim_2a2b_verify.py): gating only P1-init (keep diagZero) loses front 5 (Scenario C);
+            // gating both lets all 10 survive (Scenario D).
+            if constexpr (s2BaseSize > 256) {  // D128 K-major only (s2BaseSize=512); D256 M-major (256) skips both
+                constexpr uint32_t sizeOfInt16 = 2U;
+                LocalTensor<int16_t> mm2AScaleTensor = mm2A.GetTensor<int16_t>(pScaleOffset / sizeOfInt16 +
+                    mBaseSize * s2SplitSize / MXFP_GROUP_SIZE / sizeOfInt16);
+                InitConstValue(mm2AScaleTensor,
+                    {1, mBaseSize * s2SplitSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / blockBytes, 0, 0x7f7f});
+                // DIAGNOSTIC: zero PScale at C2 read position. If branch taken, output will change.
+                LocalTensor<int16_t> diagZero = mm2A.GetTensor<int16_t>(pScaleOffset / sizeOfInt16);
+                InitConstValue(diagZero, {1, mBaseSize * s2SplitSize / MXFP_GROUP_SIZE * sizeof(SCALE_T) / blockBytes, 0, 0x7f7f});
+            }
         }
         LocalTensor<SCALE_T> mm2AScaleFakeTensor = mm2A.GetTensor<SCALE_T>(pScaleOffset);
 #ifdef FIA_DUMP_INTERMEDIATE
