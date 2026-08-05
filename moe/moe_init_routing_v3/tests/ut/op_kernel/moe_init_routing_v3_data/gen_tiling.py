@@ -48,6 +48,14 @@ params_info = {
     "case14": case14_params,
 }
 
+# Cases with invalid expertIdx (-1): reuse existing tiling params
+case_invalid_1_params = case8_params   # FullLoad unquantized, activeExpertRange=[873,889], with -1
+case_invalid_2_params = case9_params   # FullLoad unquantized, full range [0,734], with -1
+case_invalid_3_params = case7_params   # FullLoad unquantized, activeExpertRange=[873,889], count mode, with -1
+params_info["case_invalid_1"] = case_invalid_1_params
+params_info["case_invalid_2"] = case_invalid_2_params
+params_info["case_invalid_3"] = case_invalid_3_params
+
 def main():
     params_list = params_info[sys.argv[1]]   # python gen_tiling.py case0  sys.argv[1]="case0"
 
