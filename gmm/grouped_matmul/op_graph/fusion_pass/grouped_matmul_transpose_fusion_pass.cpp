@@ -111,17 +111,20 @@ bool IsGraphFusionRuntimeSupported()
 
 bool IsType(const GNodePtr& node, const char* type)
 {
-    if (node == nullptr) {
+    if (node == nullptr || type == nullptr) {
         return false;
     }
     AscendString nodeType;
-    return node->GetType(nodeType) == GRAPH_SUCCESS && nodeType == type;
+    return node->GetType(nodeType) == GRAPH_SUCCESS && nodeType == AscendString(type);
 }
 
 bool IsType(const GNode& node, const char* type)
 {
+    if (type == nullptr) {
+        return false;
+    }
     AscendString nodeType;
-    return node.GetType(nodeType) == GRAPH_SUCCESS && nodeType == type;
+    return node.GetType(nodeType) == GRAPH_SUCCESS && nodeType == AscendString(type);
 }
 
 bool IsTransposeType(const GNodePtr& node)
