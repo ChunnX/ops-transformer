@@ -11,11 +11,13 @@
 /*!
  * \file test_local_xncke_rw.cpp
  * \brief 本地读写 CCU Variable(XN)/Event(CKE) 测试 Host 侧代码
- *        使用 hcomm 的 HcommCcuInsCreateDefault / HcommCcuVariableAlloc / HcommCcuEventAlloc /
- *        HcommCcuVariableAddrGet / HcommCcuEventAddrGet / HcommCcuInsDestroy 接口获取资源地址，
+ *        使用 HcclCommQueryCcuIns 获取通信域绑定的 CCU 实例，
+ *        再通过 HcommCcuVariableAlloc / HcommCcuEventAlloc /
+ *        HcommCcuVariableGetAddr / HcommCcuEventGetAddr 接口获取资源地址，
  *        然后通过 <<<>>> 直调 AIV kernel 做读写验证。
  */
 
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <getopt.h>
@@ -23,7 +25,8 @@
 #include "acl/acl.h"
 #include "hccl/hccl.h"
 #include "hccl/hcom.h"
-#include "ccu/ccu_res.h"
+#include "hccl/hccl_ccu_res.h"
+#include "hcomm/ccu/ccu_res.h"
 #include "securec.h"
 #include "./local_xncke_rw.h"
 
@@ -38,6 +41,14 @@ using namespace std;
     do {                                                                                                               \
         if (!(cond)) {                                                                                                 \
             return_expr;                                                                                               \
+        }                                                                                                              \
+    } while (0)
+
+#define CHECK_HCCL(hcclRet, msg, ...)                                                                                   \
+    do {                                                                                                               \
+        if ((hcclRet) != HCCL_SUCCESS) {                                                                               \
+            LOG_PRINT("[ERROR] " msg " ret: %d\n", ##__VA_ARGS__, static_cast<int32_t>(hcclRet));                      \
+            return -1;                                                                                                 \
         }                                                                                                              \
     } while (0)
 
@@ -232,17 +243,20 @@ int main(int argc, char *argv[])
     ret = aclrtSetCurrentContext(context);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret: %d\n", ret); return ret);
 
-    LOG_PRINT("[INFO] 创建 CCU 实例 (HcommCcuInsCreateDefault)...\n");
+    LOG_PRINT("[INFO] 查询通信域绑定的 CCU 实例 (HcclCommQueryCcuIns)...\n");
     CcuInsHandle ccuInsHandle = 0;
-    CcuResult ccuRet = HcommCcuInsCreateDefault(nullptr, 0, &ccuInsHandle);
-    CHECK_CCU(ccuRet, "HcommCcuInsCreateDefault failed.");
+    uint32_t insNum = 0;
+    ret = HcclCommQueryCcuIns(comms, &ccuInsHandle, &insNum);
+    CHECK_HCCL(ret, "HcclCommQueryCcuIns failed.");
+    CHECK_RET(insNum == 1, LOG_PRINT("[ERROR] unexpected insNum: %u\n", insNum); return -1);
     CHECK_RET(ccuInsHandle != 0, LOG_PRINT("[ERROR] ccuInsHandle is 0.\n"); return -1);
-    LOG_PRINT("[INFO] ccuInsHandle=0x%016lx\n", static_cast<uint64_t>(ccuInsHandle));
+    LOG_PRINT("[INFO] ccuInsHandle=0x%016lx, insNum=%u\n", static_cast<uint64_t>(ccuInsHandle), insNum);
 
     uint64_t xnAddr = 0;
     uint64_t ckeAddr = 0;
     CcuVariableHandle varHandle = 0;
     CcuEventHandle eventHandle = 0;
+    CcuResult ccuRet;
 
     if (NeedAccessXn()) {
         LOG_PRINT("[INFO] 申请 Variable(XN) 资源: dieId=%u, num=%u\n", g_dieId, g_xnNum);
@@ -251,8 +265,8 @@ int main(int argc, char *argv[])
         CHECK_RET(varHandle != 0, LOG_PRINT("[ERROR] varHandle is 0.\n"); return -1);
         LOG_PRINT("[INFO] varHandle=0x%016lx\n", static_cast<uint64_t>(varHandle));
 
-        ccuRet = HcommCcuVariableAddrGet(varHandle, g_xnIndex, &xnAddr);
-        CHECK_CCU(ccuRet, "HcommCcuVariableAddrGet failed. index=%u", g_xnIndex);
+        ccuRet = HcommCcuVariableGetAddr(varHandle, g_xnIndex, &xnAddr);
+        CHECK_CCU(ccuRet, "HcommCcuVariableGetAddr failed. index=%u", g_xnIndex);
         CHECK_RET(xnAddr != 0, LOG_PRINT("[ERROR] xnAddr is 0.\n"); return -1);
         LOG_PRINT("[INFO] XNAddr:  varHandle=0x%016lx, index=%u, va=0x%016lx\n",
                   static_cast<uint64_t>(varHandle), g_xnIndex, xnAddr);
@@ -265,8 +279,8 @@ int main(int argc, char *argv[])
         CHECK_RET(eventHandle != 0, LOG_PRINT("[ERROR] eventHandle is 0.\n"); return -1);
         LOG_PRINT("[INFO] eventHandle=0x%016lx\n", static_cast<uint64_t>(eventHandle));
 
-        ccuRet = HcommCcuEventAddrGet(eventHandle, g_ckeIndex, &ckeAddr);
-        CHECK_CCU(ccuRet, "HcommCcuEventAddrGet failed. index=%u", g_ckeIndex);
+        ccuRet = HcommCcuEventGetAddr(eventHandle, g_ckeIndex, &ckeAddr);
+        CHECK_CCU(ccuRet, "HcommCcuEventGetAddr failed. index=%u", g_ckeIndex);
         CHECK_RET(ckeAddr != 0, LOG_PRINT("[ERROR] ckeAddr is 0.\n"); return -1);
         LOG_PRINT("[INFO] CKEAddr: eventHandle=0x%016lx, index=%u, va=0x%016lx\n",
                   static_cast<uint64_t>(eventHandle), g_ckeIndex, ckeAddr);
@@ -322,7 +336,6 @@ int main(int argc, char *argv[])
     LOG_PRINT("===========================\n");
 
     aclrtFree(timeGm);
-    HcommCcuInsDestroy(ccuInsHandle);
     HcclCommDestroy(comms);
     aclrtDestroyStream(stream);
     aclrtDestroyContext(context);
