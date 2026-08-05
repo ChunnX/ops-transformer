@@ -14,6 +14,7 @@
 
 #include "gtest/gtest.h"
 #include "../../../op_host/op_api/aclnn_sparse_flash_attention_grad.h"
+#include "../../../op_host/op_api/aclnn_sparse_flash_attention_grad_v2.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "opdev/platform.h"
 
@@ -67,11 +68,9 @@ TEST_F(SparseFlashAttentionGradOpapiUt, A1_bsnd_fp16_value_present)
     aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
         query.get(), key.get(), value.get(), sparseIndices.get(), dOut.get(), out.get(),
         softmaxMax.get(), softmaxSum.get(),
-        nullptr,  // sinks（新增 OPTIONAL）—— 无 sink
         nullptr, nullptr, nullptr, nullptr,
         0.0883883476, 64, layout, 3, INT64_MAX, INT64_MAX, false,
         dQueryOut.get(), dKeyOut.get(), dValueOut.get(), nullptr, nullptr,
-        nullptr,  // dSinksOptional（新增 OPTIONAL）
         &workspaceSize, &executor);
 
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -98,11 +97,9 @@ TEST_F(SparseFlashAttentionGradOpapiUt, A2_bsnd_fp16_value_optional_null)
     aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
         query.get(), key.get(), nullptr, sparseIndices.get(), dOut.get(), out.get(),
         softmaxMax.get(), softmaxSum.get(),
-        nullptr,  // sinks
         nullptr, nullptr, nullptr, nullptr,
         0.0883883476, 64, layout, 3, INT64_MAX, INT64_MAX, false,
         dQueryOut.get(), dKeyOut.get(), nullptr, nullptr, nullptr,
-        nullptr,  // dSinks
         &workspaceSize, &executor);
 
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -130,10 +127,10 @@ TEST_F(SparseFlashAttentionGradOpapiUt, E1_null_query)
     aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
         nullptr, key.get(), value.get(), sparseIndices.get(), dOut.get(), out.get(),
         softmaxMax.get(), softmaxSum.get(),
-        nullptr, nullptr, nullptr, nullptr, nullptr,
+        nullptr, nullptr, nullptr, nullptr,
         0.0883883476, 64, layout, 3, INT64_MAX, INT64_MAX, false,
         dQueryOut.get(), dKeyOut.get(), dValueOut.get(), nullptr, nullptr,
-        nullptr, &workspaceSize, &executor);
+        &workspaceSize, &executor);
 
     EXPECT_NE(aclRet, ACL_SUCCESS);
     EXPECT_EQ(executor, nullptr);
@@ -194,11 +191,11 @@ TEST_F(SparseFlashAttentionGradArch35SinkUt, S1_tnd_rope_with_sinks)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
-    aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
+    aclnnStatus aclRet = aclnnSparseFlashAttentionGradV2GetWorkspaceSize(
         t.query.get(), t.key.get(), t.value.get(), t.sparseIndices.get(), t.dOut.get(), t.out.get(),
         t.softmaxMax.get(), t.softmaxSum.get(), sinks.get(),
         t.actSeqQ.get(), t.actSeqKv.get(), t.qRope.get(), t.kRope.get(),
-        0.0441941738, 1, layout, 0, INT64_MAX, INT64_MAX, false,
+        0.0441941738, 1, layout, layout, 0, INT64_MAX, INT64_MAX, false,
         t.dQ.get(), t.dK.get(), t.dV.get(), t.dQRope.get(), t.dKRope.get(), dSinks.get(),
         &workspaceSize, &executor);
 
@@ -215,11 +212,11 @@ TEST_F(SparseFlashAttentionGradArch35SinkUt, S2_tnd_rope_no_sinks)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
-    aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
+    aclnnStatus aclRet = aclnnSparseFlashAttentionGradV2GetWorkspaceSize(
         t.query.get(), t.key.get(), t.value.get(), t.sparseIndices.get(), t.dOut.get(), t.out.get(),
         t.softmaxMax.get(), t.softmaxSum.get(), nullptr,
         t.actSeqQ.get(), t.actSeqKv.get(), t.qRope.get(), t.kRope.get(),
-        0.0441941738, 1, layout, 0, INT64_MAX, INT64_MAX, false,
+        0.0441941738, 1, layout, layout, 0, INT64_MAX, INT64_MAX, false,
         t.dQ.get(), t.dK.get(), t.dV.get(), t.dQRope.get(), t.dKRope.get(), nullptr,
         &workspaceSize, &executor);
 
@@ -238,11 +235,11 @@ TEST_F(SparseFlashAttentionGradArch35SinkUt, S3_tnd_rope_with_sinks_deter)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
-    aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
+    aclnnStatus aclRet = aclnnSparseFlashAttentionGradV2GetWorkspaceSize(
         t.query.get(), t.key.get(), t.value.get(), t.sparseIndices.get(), t.dOut.get(), t.out.get(),
         t.softmaxMax.get(), t.softmaxSum.get(), sinks.get(),
         t.actSeqQ.get(), t.actSeqKv.get(), t.qRope.get(), t.kRope.get(),
-        0.0441941738, 1, layout, 0, INT64_MAX, INT64_MAX, true,
+        0.0441941738, 1, layout, layout, 0, INT64_MAX, INT64_MAX, true,
         t.dQ.get(), t.dK.get(), t.dV.get(), t.dQRope.get(), t.dKRope.get(), dSinks.get(),
         &workspaceSize, &executor);
 
@@ -261,11 +258,11 @@ TEST_F(SparseFlashAttentionGradArch35SinkUt, S4_tnd_rope_n1_24_non_aligned)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
-    aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
+    aclnnStatus aclRet = aclnnSparseFlashAttentionGradV2GetWorkspaceSize(
         t.query.get(), t.key.get(), t.value.get(), t.sparseIndices.get(), t.dOut.get(), t.out.get(),
         t.softmaxMax.get(), t.softmaxSum.get(), sinks.get(),
         t.actSeqQ.get(), t.actSeqKv.get(), t.qRope.get(), t.kRope.get(),
-        0.0441941738, 1, layout, 0, INT64_MAX, INT64_MAX, false,
+        0.0441941738, 1, layout, layout, 0, INT64_MAX, INT64_MAX, false,
         t.dQ.get(), t.dK.get(), t.dV.get(), t.dQRope.get(), t.dKRope.get(), dSinks.get(),
         &workspaceSize, &executor);
 
@@ -283,11 +280,11 @@ TEST_F(SparseFlashAttentionGradArch35SinkUt, E2_sinks_present_but_dsinks_null)
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
 
-    aclnnStatus aclRet = aclnnSparseFlashAttentionGradGetWorkspaceSize(
+    aclnnStatus aclRet = aclnnSparseFlashAttentionGradV2GetWorkspaceSize(
         t.query.get(), t.key.get(), t.value.get(), t.sparseIndices.get(), t.dOut.get(), t.out.get(),
         t.softmaxMax.get(), t.softmaxSum.get(), sinks.get(),
         t.actSeqQ.get(), t.actSeqKv.get(), t.qRope.get(), t.kRope.get(),
-        0.0441941738, 1, layout, 0, INT64_MAX, INT64_MAX, false,
+        0.0441941738, 1, layout, layout, 0, INT64_MAX, INT64_MAX, false,
         t.dQ.get(), t.dK.get(), t.dV.get(), t.dQRope.get(), t.dKRope.get(), nullptr,
         &workspaceSize, &executor);
 

@@ -18,6 +18,8 @@
 extern "C" {
 #endif
 
+// 【回退商发兼容】V1 不带 sinks/dSinks（5 输出），位置参数与商发 npu_sparse_flash_attention_grad 严格对齐。
+// 带 sinks/dSinks（6 输出）+ layout_q/layout_kv 拆分请使用 aclnnSparseFlashAttentionGradV2。
 __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor *query,
     const aclTensor *key,
@@ -27,7 +29,6 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashAttentionGrad
     const aclTensor *out,
     const aclTensor *softmaxMax,
     const aclTensor *softmaxSum,
-    const aclTensor *sinks,                    // 【新增】oss-sink 输入 [N1] FP32，OPTIONAL
     const aclTensor *actualSeqLengthsQueryOptional,
     const aclTensor *actualSeqLengthsKvOptional,
     const aclTensor *queryRopeOptional,
@@ -44,7 +45,6 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashAttentionGrad
     const aclTensor *dValueOut,
     const aclTensor *dQueryRopeOutOptional,
     const aclTensor *dKeyRopeOutOptional,
-    const aclTensor *dSinksOptional,           // 【新增】sink 梯度 [N1] FP32，OPTIONAL
     uint64_t *workspaceSize,
     aclOpExecutor **executor);
 

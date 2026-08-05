@@ -21,14 +21,16 @@ extern aclnnStatus aclnnInnerSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor *dOut, const aclTensor *out, const aclTensor *softmaxMax, const aclTensor *softmaxSum,
     const aclTensor *sinksOptional, const aclTensor *valueOptional, const aclTensor *actualSeqLengthsQueryOptional,
     const aclTensor *actualSeqLengthsKvOptional, const aclTensor *queryRopeOptional, const aclTensor *keyRopeOptional,
-    double scaleValue, int64_t sparseBlockSize, char *layoutOptional, int64_t sparseMode, int64_t preTokens,
-    int64_t nextTokens, bool deterministic, const aclTensor *dQueryOut, const aclTensor *dKeyOut,
+    double scaleValue, int64_t sparseBlockSize, char *layoutOptional, char *layoutKvOptional, int64_t sparseMode,
+    int64_t preTokens, int64_t nextTokens, bool deterministic, const aclTensor *dQueryOut, const aclTensor *dKeyOut,
     const aclTensor *dValueOutOptional, const aclTensor *dQueryRopeOutOptional, const aclTensor *dKeyRopeOutOptional,
     const aclTensor *dSinksOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerSparseFlashAttentionGrad(void *workspace, uint64_t workspaceSize,
                                                       aclOpExecutor *executor, aclrtStream stream);
 
+// 【回退商发兼容】V1：无 sinks/dSinks（5 输出），位置参数与商发 npu_sparse_flash_attention_grad 严格对齐。
+// 转发 inner 时 sinks/dSinks 传 nullptr，layoutKv 与 layout 取同一值（q==kv 恒等约定）。
 aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor *query,
     const aclTensor *key,
@@ -38,7 +40,6 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor *out,
     const aclTensor *softmaxMax,
     const aclTensor *softmaxSum,
-    const aclTensor *sinks,
     const aclTensor *actualSeqLengthsQueryOptional,
     const aclTensor *actualSeqLengthsKvOptional,
     const aclTensor *queryRopeOptional,
@@ -55,16 +56,15 @@ aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor *dValueOut,
     const aclTensor *dQueryRopeOutOptional,
     const aclTensor *dKeyRopeOutOptional,
-    const aclTensor *dSinksOptional,
     uint64_t *workspaceSize,
     aclOpExecutor **executor)
 {
     return aclnnInnerSparseFlashAttentionGradGetWorkspaceSize(
-        query, key, sparseIndices, dOut, out, softmaxMax, softmaxSum, sinks, value,
+        query, key, sparseIndices, dOut, out, softmaxMax, softmaxSum, nullptr /*sinks*/, value,
         actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, queryRopeOptional, keyRopeOptional,
-        scaleValue, sparseBlockSize, layoutOptional, sparseMode, preTokens, nextTokens, deterministic,
-        dQueryOut, dKeyOut, dValueOut, dQueryRopeOutOptional, dKeyRopeOutOptional, dSinksOptional,
-        workspaceSize, executor);
+        scaleValue, sparseBlockSize, layoutOptional, layoutOptional /*layoutKv==layout 恒等*/, sparseMode,
+        preTokens, nextTokens, deterministic, dQueryOut, dKeyOut, dValueOut, dQueryRopeOutOptional,
+        dKeyRopeOutOptional, nullptr /*dSinks*/, workspaceSize, executor);
 }
 
 aclnnStatus aclnnSparseFlashAttentionGrad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,

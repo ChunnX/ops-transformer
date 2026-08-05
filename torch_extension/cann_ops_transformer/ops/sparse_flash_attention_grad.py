@@ -29,7 +29,7 @@ class SparseFlashAttentionGradOpBuilder(OpBuilder):
             "Tensor d_out, Tensor out, Tensor softmax_max, Tensor softmax_sum, Tensor? sinks, "
             "float scale_value, int sparse_block_size, "
             "*, Tensor? query_rope=None, Tensor? key_rope=None, Tensor? actual_seq_qlen=None, "
-            "Tensor? actual_seq_kvlen=None, str layout=\"BSND\", int sparse_mode=3, "
+            "Tensor? actual_seq_kvlen=None, str layout_q=\"BSND\", str layout_kv=\"BSND\", int sparse_mode=3, "
             "int pre_tokens=2147483647, int next_tokens=2147483647, bool deterministic=False) "
             "-> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)"
         )
@@ -57,7 +57,8 @@ class SparseFlashAttentionGradOpBuilder(OpBuilder):
             key_rope=None,
             actual_seq_qlen=None,
             actual_seq_kvlen=None,
-            layout="BSND",
+            layout_q="BSND",
+            layout_kv="BSND",
             sparse_mode=3,
             pre_tokens=2147483647,
             next_tokens=2147483647,
@@ -105,13 +106,14 @@ def sparse_flash_attention_grad(
     key_rope=None,
     actual_seq_qlen=None,
     actual_seq_kvlen=None,
-    layout="BSND",
+    layout_q="BSND",
+    layout_kv="BSND",
     sparse_mode=3,
     pre_tokens=2147483647,
     next_tokens=2147483647,
     deterministic=False,
 ):
-    """SparseFlashAttentionGrad（SFAG，MLA OSS Sink）反向计算，封装 aclnnSparseFlashAttentionGrad。
+    """SparseFlashAttentionGrad（SFAG，MLA OSS Sink）反向计算，封装 aclnnSparseFlashAttentionGradV2。
 
     Args:
         query (Tensor): query 张量，dtype 支持 bfloat16/float16，layout 决定 shape（TND: [total_q, N1, D+Dr]）。
@@ -129,7 +131,8 @@ def sparse_flash_attention_grad(
         key_rope (Tensor, optional): key 的 rope 部分，dtype 与 query 一致，仅 layout=TND 时使用。
         actual_seq_qlen (Tensor, optional): query 实际序列长度，int32。
         actual_seq_kvlen (Tensor, optional): key/value 实际序列长度，int32。
-        layout (str): 输入排布，支持 "BSND"/"TND"，默认 "BSND"。
+        layout_q (str): query 输入排布，支持 "BSND"/"TND"，默认 "BSND"。
+        layout_kv (str): key/value 输入排布，支持 "BSND"/"TND"，默认 "BSND"。约定与 layout_q 恒等（q==kv）。
         sparse_mode (int): 稀疏模式，默认 3。
         pre_tokens (int): 前向 token 数，默认 2147483647。
         next_tokens (int): 后向 token 数，默认 2147483647。
@@ -158,7 +161,8 @@ def sparse_flash_attention_grad(
         key_rope,
         actual_seq_qlen,
         actual_seq_kvlen,
-        layout,
+        layout_q,
+        layout_kv,
         sparse_mode,
         pre_tokens,
         next_tokens,

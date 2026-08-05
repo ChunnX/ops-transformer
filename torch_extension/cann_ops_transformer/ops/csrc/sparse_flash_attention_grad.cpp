@@ -48,7 +48,8 @@ SparseFlashAttentionGrad(
     double scaleValue, int64_t sparseBlockSize,
     const c10::optional<at::Tensor> &queryRope, const c10::optional<at::Tensor> &keyRope,
     const c10::optional<at::Tensor> &actualSeqLenQ, const c10::optional<at::Tensor> &actualSeqLenKv,
-    std::string layout, int64_t sparseMode, int64_t preTokens, int64_t nextTokens, bool deterministic)
+    std::string layoutQ, std::string layoutKv, int64_t sparseMode, int64_t preTokens, int64_t nextTokens,
+    bool deterministic)
 {
     // ---- 入参校验 ----
     TORCH_CHECK((query.scalar_type() == at::kBFloat16 || query.scalar_type() == at::kHalf),
@@ -61,7 +62,10 @@ SparseFlashAttentionGrad(
                 "sparse_indices should be int32, current dtype is: ", sparseIndices.scalar_type());
     TORCH_CHECK((softmaxMax.scalar_type() == at::kFloat && softmaxSum.scalar_type() == at::kFloat),
                 "softmax_max/softmax_sum should be float32, current dtype is: ", softmaxMax.scalar_type());
-    TORCH_CHECK(SfagLayoutValid(layout), "layout should be BSND or TND, current is: ", layout);
+    TORCH_CHECK(SfagLayoutValid(layoutQ), "layout_q should be BSND or TND, current is: ", layoutQ);
+    TORCH_CHECK(SfagLayoutValid(layoutKv), "layout_kv should be BSND or TND, current is: ", layoutKv);
+    TORCH_CHECK(layoutQ == layoutKv, "layout_q and layout_kv should be equal, but got layout_q: ",
+                layoutQ, ", layout_kv: ", layoutKv);
     TORCH_CHECK((sparseBlockSize == SFAG_MIN_SPARSE_BLOCK_SIZE || sparseBlockSize == 8 ||
                  sparseBlockSize == 16 || sparseBlockSize == 32 ||
                  sparseBlockSize == SFAG_MAX_SPARSE_BLOCK_SIZE),
@@ -108,11 +112,12 @@ SparseFlashAttentionGrad(
                                       : at::empty({SFAG_EMPTY_NUMEL}, query.options().dtype(at::kFloat));
     }
 
-    char *layoutPtr = const_cast<char *>(layout.c_str());
-    ACLNN_CMD(aclnnSparseFlashAttentionGrad, query, key, value, sparseIndices, dOut, out, softmaxMax, softmaxSum,
+    char *layoutQPtr = const_cast<char *>(layoutQ.c_str());
+    char *layoutKvPtr = const_cast<char *>(layoutKv.c_str());
+    ACLNN_CMD(aclnnSparseFlashAttentionGradV2, query, key, value, sparseIndices, dOut, out, softmaxMax, softmaxSum,
               sinksConst, actualSeqLenQConst, actualSeqLenKvConst, queryRopeConst, keyRopeConst, scaleValue,
-              sparseBlockSize, layoutPtr, sparseMode, preTokens, nextTokens, deterministic, dq, dk, dv, dqRope, dkRope,
-              dSinks);
+              sparseBlockSize, layoutQPtr, layoutKvPtr, sparseMode, preTokens, nextTokens, deterministic, dq, dk, dv,
+              dqRope, dkRope, dSinks);
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>(dq, dk, dv, dqRope,
                                                                                                dkRope, dSinks);

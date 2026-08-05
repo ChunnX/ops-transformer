@@ -69,7 +69,8 @@ enum class OutputIndex : uint32_t {
 enum class AttrIndex : uint32_t {
     SCALE_VALUE = 0,
     SELECTED_BLOCK_SIZE,
-    INPUT_LAYOUT,
+    LAYOUT_Q,        // 【改造】原 INPUT_LAYOUT 拆分为 layout_q / layout_kv（q==kv 恒等约定，tiling 校验相等后沿用单一 layout 逻辑）
+    LAYOUT_KV,
     SPARSE_MODE,
     PRE_TOKENS,
     NEXT_TOKENS,
