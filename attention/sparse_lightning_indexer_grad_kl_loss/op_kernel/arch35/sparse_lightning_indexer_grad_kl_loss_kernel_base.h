@@ -120,7 +120,52 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
     }
 
     if constexpr (LAYOUT_Q == SLILayout::TND) {
-        int64_t t1Size = tilingData->baseParams.t1Size;
+        int64_t actualLen = actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
+        int64_t actualKLen = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
+        int64_t t1PadLen = tilingData->baseParams.t1Size - actualLen;
+        int64_t t2PadLen = tilingData->baseParams.t2Size - actualKLen;
+        int64_t totalAivNum = tilingData->baseParams.totalAivNum;
+
+        if (t1PadLen > 0) {
+            int64_t split = t1PadLen / totalAivNum;
+            int64_t remain = t1PadLen % totalAivNum;
+            int64_t coreCnt = split + (static_cast<int64_t>(constInfo.aivIdx) < remain ? 1 : 0);
+            int64_t coreOff = static_cast<int64_t>(constInfo.aivIdx) * split +
+                Min(static_cast<int64_t>(constInfo.aivIdx), remain);
+            if ASCEND_IS_AIV {
+                if (coreCnt > 0) {
+                    int64_t rowElms = static_cast<int64_t>(constInfo.gSizeQueryIndex) *
+                        static_cast<int64_t>(constInfo.dSizeQueryIndex);
+                    int64_t dQOff = (coreOff + actualLen) * rowElms;
+                    GlobalTensor<INPUT_T> tmpDQ;
+                    tmpDQ.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(dQueryIndex) + dQOff, coreCnt * rowElms);
+                    AscendC::Fill(tmpDQ, coreCnt * rowElms, static_cast<INPUT_T>(0));
+                    int64_t dWOff = (coreOff + actualLen) *
+                        static_cast<int64_t>(constInfo.gSizeQueryIndex);
+                    GlobalTensor<WEIGHT_T> tmpDW;
+                    tmpDW.SetGlobalBuffer(reinterpret_cast<__gm__ WEIGHT_T *>(dWeight) + dWOff,
+                        coreCnt * static_cast<int64_t>(constInfo.gSizeQueryIndex));
+                    AscendC::Fill(tmpDW, coreCnt * static_cast<int64_t>(constInfo.gSizeQueryIndex), static_cast<WEIGHT_T>(0));
+                }
+            }
+        }
+        if (t2PadLen > 0) {
+            int64_t split = t2PadLen / totalAivNum;
+            int64_t remain = t2PadLen % totalAivNum;
+            int64_t coreCnt = split + (static_cast<int64_t>(constInfo.aivIdx) < remain ? 1 : 0);
+            int64_t coreOff = static_cast<int64_t>(constInfo.aivIdx) * split +
+                Min(static_cast<int64_t>(constInfo.aivIdx), remain);
+            if ASCEND_IS_AIV {
+                if (coreCnt > 0) {
+                    int64_t dKOff = (coreOff + actualKLen) *
+                        static_cast<int64_t>(constInfo.dSizeQueryIndex);
+                    GlobalTensor<INPUT_T> tmpDK;
+                    tmpDK.SetGlobalBuffer(reinterpret_cast<__gm__ INPUT_T *>(dKeyIndex) + dKOff,
+                        coreCnt * static_cast<int64_t>(constInfo.dSizeQueryIndex));
+                    AscendC::Fill(tmpDK, coreCnt * static_cast<int64_t>(constInfo.dSizeQueryIndex), static_cast<INPUT_T>(0));
+                }
+            }
+        }
     }
 
     InitMMResBuf();
