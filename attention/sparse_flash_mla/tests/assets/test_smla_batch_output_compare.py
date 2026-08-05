@@ -69,6 +69,48 @@ class FixtureWriter:
         row.update(self.batch_fields(slices, seed))
         return row
 
+    def tnd_case_row(self, testcase_name, batch_size, slices, seed):
+        q_prefix = [2 * index for index in range(batch_size + 1)]
+        ori_prefix = [3 * index for index in range(batch_size + 1)]
+        cmp_prefix = list(range(batch_size + 1))
+        row = {
+            "testcase_name": testcase_name,
+            "api_name": API_NAME,
+            "tensor_view_shapes": repr((
+                (q_prefix[-1], 1, 2),
+                (ori_prefix[-1], 1, 2),
+                (cmp_prefix[-1], 1, 2),
+                None, None, None, None,
+                (batch_size + 1,), (batch_size + 1,), (batch_size + 1,),
+                (batch_size,), (batch_size,), (batch_size,), (batch_size,),
+            )),
+            "tensor_dtypes": repr((
+                "float16", "float16", "float16",
+                None, None, None, None,
+                "int32", "int32", "int32",
+                "int32", "int32", "int32", "int32",
+            )),
+            "input_data_ranges": repr((
+                (-1, 1), (-1, 1), (-1, 1),
+                None, None, None, None,
+                (0, q_prefix[-1]), (0, ori_prefix[-1]), (0, cmp_prefix[-1]),
+                (2, 2), (3, 3), (1, 1), (0, 0),
+            )),
+            "attributes": repr({
+                "layout_q": "TND",
+                "layout_kv": "TND",
+                "cu_seqlens_q_values": q_prefix,
+                "cu_seqlens_ori_kv_values": ori_prefix,
+                "cu_seqlens_cmp_kv_values": cmp_prefix,
+                "seqused_q_values": [2] * batch_size,
+                "seqused_ori_kv_values": [3] * batch_size,
+                "seqused_cmp_kv_values": [1] * batch_size,
+                "cmp_residual_kv_values": [0] * batch_size,
+            }),
+        }
+        row.update(self.batch_fields(slices, seed))
+        return row
+
     def write_csv(self, path, rows):
         with path.open("w", encoding="utf-8", newline="") as stream:
             writer = csv.DictWriter(stream, fieldnames=rows[0].keys())
@@ -240,3 +282,54 @@ def test_batch_output_comparator_requires_cross_case_when_requested(tmp_path):
         "relation appears in fewer than two testcases" in group["errors"]
         for group in report["groups"]
     )
+
+
+def test_batch_output_comparator_accepts_tnd_logical_relations(tmp_path):
+    fixture = FixtureWriter(tmp_path)
+    fixture.write_csv(fixture.case_csv, [
+        fixture.tnd_case_row("TND_B3", 3, ((0, 2, 1), (4, 6, 1)), 7011),
+        fixture.tnd_case_row("TND_B4", 4, ((0, 2, 1), (6, 8, 1)), 7011),
+    ])
+    fixture.write_csv(fixture.result_csv, [
+        {
+            "testcase_name": name,
+            "precision_status": "PASS",
+            "eager_precision": "100.0%,batch_intra=PASS",
+        }
+        for name in ("TND_B3", "TND_B4")
+    ])
+    relation = np.array([[[1.0, 2.0]], [[3.0, 4.0]]], dtype=np.float16)
+    first = np.zeros((6, 1, 2), dtype=np.float16)
+    first[0:2] = relation
+    first[4:6] = relation
+    second = np.zeros((8, 1, 2), dtype=np.float16)
+    second[0:2] = relation
+    second[6:8] = relation
+    (fixture.dump_dir / "TND_B3_output_0.bin").write_bytes(first.tobytes())
+    (fixture.dump_dir / "TND_B4_output_0.bin").write_bytes(second.tobytes())
+
+    completed = subprocess.run(fixture.command(), check=False, capture_output=True, text=True)
+
+    assert completed.returncode == 0, completed.stderr + completed.stdout
+    report = json.loads(fixture.report.read_text(encoding="utf-8"))
+    assert report["status"] == "PASS"
+    assert report["groups"][0]["sample_count"] == 4
+
+
+def test_batch_output_comparator_rejects_partial_tnd_batch(tmp_path):
+    fixture = FixtureWriter(tmp_path)
+    fixture.write_csv(fixture.case_csv, [
+        fixture.tnd_case_row("TND_BAD", 3, ((1, 3, 1), (4, 6, 1)), 7011),
+    ])
+    fixture.write_csv(fixture.result_csv, [{
+        "testcase_name": "TND_BAD",
+        "precision_status": "PASS",
+        "eager_precision": "100.0%,batch_intra=PASS",
+    }])
+    output = np.zeros((6, 1, 2), dtype=np.float16)
+    (fixture.dump_dir / "TND_BAD_output_0.bin").write_bytes(output.tobytes())
+
+    completed = subprocess.run(fixture.command(), check=False, capture_output=True, text=True)
+
+    assert completed.returncode == 1
+    assert "complete cu_seqlens_q intervals" in completed.stdout

@@ -100,7 +100,7 @@ TTK 输入 CSV 新增三个顶层字段。三个字段的最外层长度必须�
 
 | 字段 | 含义 | 当前三算子约束 |
 | --- | --- | --- |
-| `batch_axis` | 每个 tensor slot 中哪些轴随 batch 变化 | 所有 batch-shaped slot 都应标出；Q slot 0 为 `(0,)` |
+| `batch_axis` | 每个 tensor slot 中哪些轴承载 batch相关存储 | Q slot 0固定为 `(0,)`；BSND表示batch轴，TND表示由`cu_seqlens_q`解释的token轴 |
 | `batch_slice_info` | 哪些切片被声明为 relation 样本 | 当前只允许 Q slot 0、axis 0；其他 slot 必须为 `None` |
 | `batch_seed` | relation 样本使用的确定性 seed | 嵌套结构与 slice 完全一致；其他 slot 必须为 `None` |
 
@@ -139,9 +139,10 @@ tensor slot -> batch axis -> 该 axis 下的多个 slice/seed
 `(start, stop, step)` 使用左闭右开切片。当前 assets 只接受 `step=1`、非空、非负且不越过 Q 的 B 维。
 一个 case 内的 relation 目前只能使用一个 seed；要测试另一 relation，使用另一组 case 或另一 seed。
 
-`batch_axis` 不能只给 Q 填 `(0,)` 后忽略其他实际带 B 轴的 tensor。跨 case 脚本会用它和
-`tensor_view_shapes`、attributes 构建去 batch 后的业务上下文；错误标记可能把不等价输入误分组，或直接触发
-上下文不一致。
+`batch_axis` 不能只给 Q 填 `(0,)` 后忽略其他实际带 B/B+1轴的 tensor。TND下Q slot的axis 0虽然是物理
+token轴，仍填写`(0,)`；assets会要求slice端点严格落在`cu_seqlens_q_values`边界，再映射成logical batch。
+PA下KV slot的axis 0是physical block轴，不等于logical batch；block table和`seqused_*`才定义逻辑映射。
+跨case工具会结合layout、prefix和shape构建relation上下文，不能仅凭某个第一维恰好等于B猜语义。
 
 ### 3.2 `batch_consistency_id` 不写入输入 CSV
 
@@ -226,6 +227,59 @@ batch_seed       = (((74123, 74123),), None, ...)
 - relation 样本的 Q/KV/mask/有效长度是否真正等价；
 - `batch_deterministic_level` 是否为 3；
 - 至少两个 case 是否共享同一个 `(seed, slice_length)`，否则无法覆盖跨 case。
+
+### 4.1 TND + PA 示例
+
+TND relation仍写Q的物理token区间，但每个区间必须覆盖完整logical batch。以下A3小case令B=4且每个batch
+只有1个query token：
+
+```python
+tensor_view_shapes = (
+    (4, 64, 512),       # q: T=4
+    (4, 128, 1, 512),   # ori_kv physical blocks
+    (4, 16, 1, 512),    # cmp_kv physical blocks；A3要求block size为16的倍数
+    None, None,
+    (4, 1),             # ori_block_table: [B, max_blocks]
+    (4, 1),             # cmp_block_table
+    (5,),               # cu_seqlens_q: B+1
+    None, None,
+    (4,), (4,), (4,), (4,),
+    None, None,
+    (64,),
+)
+
+attributes = {
+    'layout_q': 'TND',
+    'layout_kv': 'PA_BBND',
+    'cu_seqlens_q_values': [0, 1, 2, 3, 4],
+    'seqused_q_values': [1, 1, 1, 1],
+    'seqused_ori_kv_values': [128, 128, 128, 128],
+    'seqused_cmp_kv_values': [1, 1, 1, 1],
+    'cmp_residual_kv_values': [0, 0, 0, 0],
+    'batch_deterministic_level': 3,
+    # 其余mask、window、ratio、template等仍来自原功能case
+}
+
+# case A比较logical batch 0和2；token边界分别为[0,1)、[2,3)
+batch_slice_info = ((((0, 1, 1), (2, 3, 1)),), None, ...)
+batch_seed       = (((75123, 75123),), None, ...)
+
+# case B比较logical batch 1和3，形成同一个跨case relation
+batch_slice_info = ((((1, 2, 1), (3, 4, 1)),), None, ...)
+batch_seed       = (((75123, 75123),), None, ...)
+```
+
+input adapter先按`cu_seqlens_q`把token slice映射为logical batch，再让pytest为relation batch生成同一份Q、
+ori/cmp KV逻辑内容。PA block id可以不同；pytest写入各自block table后，assets回读对应physical block并验证
+内容逐bit一致。不能要求两个batch共享同一个block id，共享id会改变cache别名语义。
+
+A3与A5的PA block约束不同。当前A3 tiling要求cmp block size位于`[16,1024]`且16对齐；A5可接受1。
+为A3构造小case时应使用物理block size 16并把`seqused_cmp_kv_values`保持为真实有效长度1，不能把有效长度
+也伪改成16。
+
+上述两条关系已作为 `SMLA_BATCH_TND_PA_B4_001_NOLSE` 和
+`SMLA_BATCH_TND_PA_B4_002_NOLSE` 收录到 A3 正式 batch CSV。它们使用相同 seed、不同 logical batch位置，既能
+覆盖同case比较，也能覆盖跨case比较；不是只能依赖开发机临时文件复现的示例。
 
 ## 5. 执行流程
 
@@ -349,30 +403,128 @@ report 中每个样本记录 testcase、slice、shape、dtype 和 SHA-256。脚�
 排错顺序固定为 `validate -> input/Golden -> 普通精度 -> 同 case -> dump 完整性 -> 跨 case上下文 -> 原始输出`。
 不要在 inputs.py 内补默认值、跳过 slot 矛盾或放宽 compare 来绕过上游失败。
 
-## 8. 当前支持边界
+## 8. 当前支持边界及原因
 
-三算子公共边界：
+### 8.1 “框架支持 batch”不等于“所有算子和 layout 自动支持”
 
-- `layout_q/layout_kv=BSND/BSND`；
-- relation 只声明在 Q tensor slot 0、axis 0；
-- slice 必须连续且 `step=1`；
-- 同 case 只支持一个 relation seed；
-- 只比较主输出 output 0 的 batch axis 0；
-- 比较原始 storage 字节，不使用数值容差；
-- 普通无 batch 字段的 case 仍完全走原 pytest 路径，不应被 batch adapter 改写。
+这里列出的边界较多，不是主线功能回退，也不是因为 TTK 无法解析这些 layout。普通算子功能测试只要求一条
+case 的 NPU输出满足数值精度；batch一致性还要求不同 batch位置、不同 case中的 relation 在输入语义完全等价后，
+NPU输出原始字节仍一致。因此，任何会改变 token来源、KV访问集合、量化编码或输出切片映射的特性，都必须有
+对应的 relation建模和反例测试后才能开放。主线某个算子已实现自己的映射，只能证明该算子的 adapter完成，不能
+自动覆盖输入合同不同的 MLA算子。
 
-算子专项边界：
+batch 一致性由三个彼此独立的能力层组成：
 
-| 算子 | 已支持 | 当前拒绝 |
-| --- | --- | --- |
-| SMLA | SWA、HCA；现成交付为 HCA | CSA/ORI sparse 类 batch 模式、TND/PA relation |
-| MQSMLA | SWA、HCA，`quant_mode=1`；现成交付为 HCA | sparse 模式、其他 quant mode、TND/PA relation |
-| QSMLA | `quant_mode=1`；SWA/HCA/ORI_SPARSE/ORI_CMP_SPARSE；full sparse、`fullK/no` TopK、均匀 `seqused_q` | CSA、random sparse、random TopK、非均匀 `seqused_q`、TND/PA relation |
+1. **TTK 通用层**解析 `batch_axis`、`batch_slice_info`、`batch_seed`，生成
+   `batch_consistency_id`，把四者传给 assets，并负责保存 result/output bin。TTK 不知道 Q、KV、TopK、block
+   table 或某个输出轴的算子语义。
+2. **算子 assets 层**必须把 relation 转成可证明等价的输入上下文，并把输入 slice 映射到正确的输出 slice。
+   SMLA、QSMLA、MQSMLA 的当前边界主要来自这一层的已实现范围。
+3. **算子包和 SoC 层**必须真正支持 deterministic level 3及对应 layout/sparse/quant kernel。CSV validate、CPU
+   白盒或 metadata调用成功都不能替代目标 SoC 上的主算子证据。
 
-QSMLA output 0 的正式 dtype 是 `bfloat16`，即使 Q 输入为 `uint8`；dump 大小必须按 output 契约计算。
+主线 `compressor` 已适配 batch，表示它为自己的输入和输出实现了第 2层，不表示它提供了一个可直接复用的
+通用 attention batch 引擎。其 assets 会区分 TH 与非 TH layout，并结合 `cu_seqlens`、`seqused`、
+`start_pos`、`cmp_ratio`、`is_th` 计算压缩输出的起点和长度；PA/cache 场景还会同步 state cache。上述公式来自
+compressor 的压缩输出定义，不能复制成 MLA 的 attention 输出映射。
 
-扩展 layout、输入轴、多个 seed、非连续 slice 或其他 output 时，必须同步修改 input 确定性逻辑、同 case
-compare、跨 case脚本、CSV 样例和正反白盒测试，不能只改 CSV。
+主线实现可在 `attention/compressor/tests/assets/impl/inputs.py` 中直接核对，关键行为不是 TTK 自动提供的：
+
+- `x.dim() == 2` 才进入 compressor 的 TH 分支。该分支要求 `cu_seqlens`，以
+  `B=len(cu_seqlens)-1` 恢复逻辑 batch，并以 `seqused[b]` 或
+  `cu_seqlens[b+1]-cu_seqlens[b]` 得到每个 batch 的有效长度；非 TH 则直接使用物理 `x.shape[0:2]`。
+- `coff=1` 时按 relation 的 `[start,end)` 替换对应 token；`coff=2` 时还必须包含前置
+  `cmp_ratio` 个 token，即写入 `[start-cmp_ratio,end)`，`start<cmp_ratio` 的 relation会被拒绝。这个额外上下文
+  来自 compressor 算法，不是通用 TND规则。
+- cache mode会同步改写 `state_cache` 和 `state_block_table`；block范围还依赖
+  `start_pos`、有效长度、`block_size` 与 `cmp_ratio`。只固定 `x` 的随机片段并不能构成 compressor batch等价性。
+
+因此，主线 compressor能够测试 TH，是因为它已经实现并测试了上述专用 token-origin和 cache映射。MLA虽然算子
+接口本身可支持 TND，其 Q、ori/cmp KV、sparse index、TopK length及 metadata关系不同，不能调用 compressor
+公式得到正确 relation。首版 MLA adapter 曾因缺少这些映射而暂不开放 TND/PA；当前版本已经实现完整 logical
+batch映射和PA block回读，但仍只在本节列出的输入合同内开放，不能把“已支持TND/PA”扩大解释为任意 sparse、
+量化、零长batch或多block跨case组合都已验收。
+
+同理，deterministic level 3只约束算子内部的确定性调度。它不会自动令两个 case 的输入上下文等价，也不会
+替测试框架完成 token-origin、paged KV 或 sparse访问集合的对应关系。只有三层同时完成，才能声明某个场景
+batch 一致性 PASS。
+
+### 8.2 三 MLA 当前实际实现的 relation
+
+当前assets支持`layout_q=BSND/TND`以及`layout_kv=BSND/TND/PA_BBND`。共同规则如下：
+
+- relation仍只声明在Q tensor slot 0、axis 0，slice连续且`step=1`；一个case只使用一个relation seed；
+- BSND的Q slice直接映射logical batch；TND必须用严格递增的`cu_seqlens_q_values`映射，partial batch直接拒绝；
+- relation两侧必须具有相同logical batch数、每batch Q/KV长度、`seqused_*`和`cmp_residual_kv`；
+- pytest生成完整输入，assets只控制relation随机源。TND同步Q、ori KV、cmp KV token origin；PA先生成等价
+  logical KV，再按各自block table写入physical block；
+- 同case和跨case当前都对主输出output 0的Q axis 0切片做原始storage字节比较；普通pytest compare仍检查
+  所有启用输出的数值精度；
+- 没有batch三字段的普通case完全走原pytest路径。
+
+### 8.3 TND映射和剩余边界
+
+TND的axis 0是token轴。assets先检查每个slice的start/stop均在`cu_seqlens_q_values`中，再把它转换为
+logical batch区间；output比较仍切原始token区间，因为SMLA/QSMLA/MQSMLA主输出与Q保持同一T轴。跨case
+工具使用同一prefix恢复B，并把B、B+1、Tq、Tori和Tcmp维度归一化后构建上下文。
+
+当前严格拒绝零长logical batch，即prefix必须严格递增。原因不是API必然不支持零长，而是重复prefix会使
+token边界到batch编号不再一一映射，现有relation ID无法区分空batch位置。非均匀长度本身可以使用，但relation
+两侧对应batch的Q/KV长度必须相同；不满足时应设计另一relation，不能由assets改写长度。
+
+### 8.4 PA映射和剩余边界
+
+PA relation不要求相同block id。pytest为每个logical batch生成KV内容并分配block table；assets确保relation
+batch的逻辑内容逐bit相同，再核对block table指向的physical block内容。`seqused_ori_kv`、
+`seqused_cmp_kv`、residual及block size共同进入合同，缺任何CSV slot都按`copy_tensor`单边None失败。
+
+当前已覆盖“每个batch一个physical block”的跨case实例。若两个case使用不同B并且每batch需要多个block，
+physical block总数和block table宽度会不同；当前跨case上下文仍保守地把这类storage geometry视为不同case。
+这不影响同case检查，也不表示PA kernel不支持多block，但在补齐physical-storage归一化和反例前不能强行归组。
+
+### 8.5 sparse、TopK和量化边界
+
+sparse index、TopK length、window、compressed/residual长度决定实际访问的KV集合。当前边界为：
+
+- SMLA：batch模式只开放SWA/HCA；
+- MQSMLA：只开放SWA/HCA和`quant_mode=1`；
+- QSMLA：开放SWA/HCA/ORI_SPARSE/ORI_CMP_SPARSE及`quant_mode=1`，sparse mode必须为`full`，TopK只允许
+  `fullK/no`，`seqused_q`必须均匀；CSA、random sparse和random TopK仍拒绝；
+- relation两侧的模式、mask、window、TopK和长度必须一致，不能靠相同seed掩盖业务上下文不同。
+
+QSMLA主输出dtype为`bfloat16`，即使Q输入为`uint8`；外置bin比较按输出合同计算byte count，不能从输入dtype
+推断。其他quant mode需同步scale、offset、rounding、输出dtype并补A5证据后再开放。
+
+### 8.6 可选LSE和分阶段边界
+
+pytest在TND下返回的LSE布局为`(T1,N2,G)`并用flatten compare；assets按既定合同原样返回，不推导或转轴。
+当前A3包的SMLA设备LSE为`(N2,T1,G)`。单阶段执行因此能按pytest语义完成LSE精度比较，但manual-data replay
+会在compare前严格检查保存Golden与设备output shape，并明确报shape不一致。
+
+这不是batch token映射失败，也不能在assets中私自转轴规避。现阶段分阶段batch验收使用
+`return_softmax_lse=False`，主输出、同case和跨case均正常；LSE=True使用单阶段验证。若业务要求LSE=True也
+支持replay，应先由算子pytest/API owner统一shape合同，或由TTK定义对custom flatten compare可声明的通用
+manual-data协议，再同步三算子，不能只改某一个assets。
+
+### 8.7 平台边界如何判定
+
+- `--validate`和CPU白盒只证明字段、shape及relation合同可解析；
+- A3真机只能证明当前A3包实际注册且支持的feature；A3 PA压缩block size要求16对齐，A5规则不同；
+- A5-only sparse、quant或dtype能力必须在匹配custom OPP的A5验证；
+- metadata成功但主算子被SoC/tiling拦截，仍不能写成batch一致性PASS；
+- level发生降级或runtime拒绝level 3时，普通精度PASS不能替代level-3证据。
+
+报告中应区分“assets已实现但目标平台未验”“当前包/SoC明确拒绝”和“已验收”，不能笼统写成“不支持”。
+
+### 8.8 当前算子专项矩阵
+
+| 算子 | assets/CPU已实现 | 当前真机证据 | 仍保留边界 |
+| --- | --- | --- | --- |
+| SMLA | BSND/TND Q；BSND/TND/PA KV；SWA/HCA；正式CSV 11条 | A3正式表11/11精度及同casePASS，跨case`groups=3/samples=22/PASS`；TND+PA LSE单阶段2/2、无LSE prepare/replay 2/2 PASS | sparse模式、零长batch、多block跨B归组、TND LSE分阶段shape合同 |
+| MQSMLA | 同上，`quant_mode=1`；真实pytest generator和PA block回读逐bitPASS；正式CSV 9条 | A3 input/Golden prepare通过；主C API被SoC/算子包明确拒绝，目标为A5 | sparse模式、其他quant mode及A5真机 |
+| QSMLA | TND/PA真实pytest generator和PA block回读逐bitPASS；既有四类非CSA模式；正式CSV 2条 | A3 input/Golden prepare通过；主C API被SoC/算子包明确拒绝，目标为A5 | CSA、random sparse/TopK、非均匀`seqused_q`及A5真机 |
+
+该表描述TTK assets和验证证据，不是算子host/kernel的完整功能表。
 
 ## 9. 交付矩阵
 
@@ -391,3 +543,7 @@ compare、跨 case脚本、CSV 样例和正反白盒测试，不能只改 CSV。
 
 没有目标平台时可以交付白盒和 validate 证据，但必须明确写为“待 A5 NPU 验收”，不能把 A3 静态结果或 CPU
 Golden 写成 QSMLA/MQSMLA batch PASS。
+
+当前交付基线的静态结果为 SMLA `11/11`、QSMLA `2/2`、MQSMLA `9/9` valid；三算子 input、同case compare和
+跨case output-bin 六组白盒共 `55 passed`。SMLA正式11条还完成A3单阶段全量执行和严格跨case检查，结果为
+`11/11 PASS`、`groups=3`、`samples=22`。QSMLA/MQSMLA仍须按上表在A5和匹配算子包上完成主算子验收。

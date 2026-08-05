@@ -24,6 +24,13 @@ from pathlib import Path
 class BatchOutputComparator:
     """Validate same-case and cross-case relations from raw output bins."""
 
+    PREFIX_LENGTH_INPUT_INDEXES = frozenset((7, 8, 9))
+    PREFIX_ATTRIBUTE_NAMES = (
+        "cu_seqlens_q_values",
+        "cu_seqlens_ori_kv_values",
+        "cu_seqlens_cmp_kv_values",
+    )
+
     BYTE_WIDTHS = {
         "bool": 1,
         "uint8": 1,
@@ -83,26 +90,115 @@ class BatchOutputComparator:
             return [BatchOutputComparator.normalize_value(item) for item in value]
         return value
 
-    def normalize_shapes(self, shapes, batch_size):
+    def normalize_shapes(self, shapes, dynamic_extents):
         normalized = []
-        for shape in shapes:
+        for index, shape in enumerate(shapes):
             if shape is None:
                 normalized.append(None)
                 continue
             value = tuple(shape)
-            if value and value[0] == batch_size:
-                value = value[1:]
-            normalized.append(list(value))
+            if index in self.PREFIX_LENGTH_INPUT_INDEXES:
+                normalized.append(["PREFIX", *value[1:]])
+            elif value and value[0] in dynamic_extents:
+                normalized.append([dynamic_extents[value[0]], *value[1:]])
+            else:
+                normalized.append(list(value))
         return normalized
 
-    def normalize_attributes(self, attributes, start, stop, batch_size):
+    @staticmethod
+    def normalize_prefix(value, start, stop):
+        selected = [int(item) for item in value[start:stop + 1]]
+        base = selected[0]
+        return [item - base for item in selected]
+
+    def normalize_attributes(self, attributes, start, stop, batch_size,
+                             relation_token_lengths):
         normalized = {}
         for key, value in attributes.items():
-            if isinstance(value, (list, tuple)) and len(value) == batch_size:
+            if key in self.PREFIX_ATTRIBUTE_NAMES and isinstance(value, (list, tuple)):
+                normalized[key] = self.normalize_prefix(value, start, stop)
+            elif isinstance(value, (list, tuple)) and len(value) == batch_size:
                 normalized[key] = self.normalize_value(value[start:stop])
+            elif key == "B":
+                normalized[key] = stop - start
+            elif key == "T1" and relation_token_lengths.get("q") is not None:
+                normalized[key] = relation_token_lengths["q"]
+            elif key == "T2" and relation_token_lengths.get("ori_kv") is not None:
+                normalized[key] = relation_token_lengths["ori_kv"]
+            elif key == "T3" and relation_token_lengths.get("cmp_kv") is not None:
+                normalized[key] = relation_token_lengths["cmp_kv"]
             else:
                 normalized[key] = self.normalize_value(value)
         return normalized
+
+    def layout_context(self, row, output_extent):
+        attributes = self.parse_cell(row, "attributes", {})
+        layout_q = attributes.get("layout_q", "BSND")
+        if layout_q not in ("BSND", "TND"):
+            raise ValueError(f"{row['testcase_name']}: unsupported layout_q={layout_q!r}")
+        prefixes = {}
+        for name in self.PREFIX_ATTRIBUTE_NAMES:
+            value = attributes.get(name)
+            if value is not None:
+                prefixes[name] = [int(item) for item in value]
+        if layout_q == "TND":
+            q_prefix = prefixes.get("cu_seqlens_q_values")
+            if q_prefix is None:
+                raise ValueError(
+                    f"{row['testcase_name']}: TND requires cu_seqlens_q_values"
+                )
+            if q_prefix[0] != 0 or q_prefix[-1] != output_extent:
+                raise ValueError(
+                    f"{row['testcase_name']}: cu_seqlens_q_values must span output T"
+                )
+            batch_size = len(q_prefix) - 1
+        else:
+            q_prefix = None
+            batch_size = output_extent
+        for name, value in prefixes.items():
+            if len(value) != batch_size + 1 or value[0] != 0:
+                raise ValueError(
+                    f"{row['testcase_name']}: {name} must contain B + 1 prefix values"
+                )
+            if any(right <= left for left, right in zip(value, value[1:])):
+                raise ValueError(
+                    f"{row['testcase_name']}: {name} must be strictly increasing"
+                )
+        return attributes, batch_size, q_prefix, prefixes
+
+    @staticmethod
+    def logical_batch_slice(testcase_name, start, stop, q_prefix):
+        if q_prefix is None:
+            return start, stop
+        boundaries = {offset: index for index, offset in enumerate(q_prefix)}
+        if start not in boundaries or stop not in boundaries:
+            raise ValueError(
+                f"{testcase_name}: TND q slice {(start, stop, 1)!r} must align "
+                "with complete cu_seqlens_q intervals"
+            )
+        return boundaries[start], boundaries[stop]
+
+    @staticmethod
+    def relation_token_lengths(prefixes, start, stop):
+        result = {"q": None, "ori_kv": None, "cmp_kv": None}
+        names = {
+            "cu_seqlens_q_values": "q",
+            "cu_seqlens_ori_kv_values": "ori_kv",
+            "cu_seqlens_cmp_kv_values": "cmp_kv",
+        }
+        for name, target in names.items():
+            value = prefixes.get(name)
+            if value is not None:
+                result[target] = value[stop] - value[start]
+        return result
+
+    @staticmethod
+    def dynamic_extents(batch_size, prefixes):
+        labels = {batch_size: {"B"}, batch_size + 1: {"B+1"}}
+        for name, value in prefixes.items():
+            label = name.removeprefix("cu_seqlens_").removesuffix("_values").upper()
+            labels.setdefault(value[-1], set()).add(f"T_{label}")
+        return {extent: "/".join(sorted(value)) for extent, value in labels.items()}
 
     @classmethod
     def expected_byte_count(cls, output_shape, output_dtype):
@@ -162,17 +258,31 @@ class BatchOutputComparator:
             relations.append((start, stop, seed, stop - start))
         return relations
 
-    def build_context(self, row, start, stop, batch_size, output_shape, output_dtype):
+    def build_context(self, row, start, stop, output_extent, output_shape, output_dtype):
         shapes = self.parse_cell(row, "tensor_view_shapes")
         dtypes = self.parse_cell(row, "tensor_dtypes")
         ranges = self.parse_cell(row, "input_data_ranges", ())
-        attributes = self.parse_cell(row, "attributes", {})
+        attributes, batch_size, q_prefix, prefixes = self.layout_context(
+            row, output_extent
+        )
+        batch_start, batch_stop = self.logical_batch_slice(
+            row["testcase_name"], start, stop, q_prefix
+        )
+        token_lengths = self.relation_token_lengths(prefixes, batch_start, batch_stop)
         return {
             "api_name": row.get("api_name"),
-            "input_shapes_without_batch": self.normalize_shapes(shapes, batch_size),
+            "layout_q": attributes.get("layout_q", "BSND"),
+            "layout_kv": attributes.get("layout_kv", "BSND"),
+            "relation_batch_count": batch_stop - batch_start,
+            "relation_token_lengths": token_lengths,
+            "input_shapes_without_relation": self.normalize_shapes(
+                shapes, self.dynamic_extents(batch_size, prefixes)
+            ),
             "input_dtypes": self.normalize_value(dtypes),
             "input_ranges": self.normalize_value(ranges),
-            "attributes": self.normalize_attributes(attributes, start, stop, batch_size),
+            "attributes": self.normalize_attributes(
+                attributes, batch_start, batch_stop, batch_size, token_lengths
+            ),
             "output_shape": list(output_shape),
             "output_dtype": str(output_dtype),
         }
@@ -218,7 +328,7 @@ class BatchOutputComparator:
             output_dtype = dtypes[self.output_index]
             if not output_shape or output_shape[0] <= 0:
                 raise ValueError(f"{testcase_name}: output 0 requires a non-empty batch axis")
-            batch_size = output_shape[0]
+            output_extent = output_shape[0]
             output_path = self.dump_dir / f"{testcase_name}_output_{self.output_index}.bin"
             if not output_path.is_file():
                 raise ValueError(f"{testcase_name}: missing output dump {output_path}")
@@ -229,15 +339,16 @@ class BatchOutputComparator:
                     f"{testcase_name}: output byte count {len(output_bytes)} does not match "
                     f"shape/dtype expectation {expected_bytes}"
                 )
-            bytes_per_batch = len(output_bytes) // batch_size
+            bytes_per_item = len(output_bytes) // output_extent
 
             for start, stop, seed, length in self.parse_relations(row):
-                if stop > batch_size:
+                if stop > output_extent:
                     raise ValueError(
-                        f"{testcase_name}: q slice {(start, stop, 1)!r} exceeds B={batch_size}"
+                        f"{testcase_name}: q slice {(start, stop, 1)!r} exceeds "
+                        f"output axis-0 extent {output_extent}"
                     )
                 relation = (self.output_index, 0, seed, length)
-                value = output_bytes[start * bytes_per_batch:stop * bytes_per_batch]
+                value = output_bytes[start * bytes_per_item:stop * bytes_per_item]
                 samples.append({
                     "testcase_name": testcase_name,
                     "relation": relation,
@@ -245,7 +356,7 @@ class BatchOutputComparator:
                     "shape": [length, *output_shape[1:]],
                     "dtype": str(output_dtype),
                     "context": self.build_context(
-                        row, start, stop, batch_size, output_shape[1:], output_dtype
+                        row, start, stop, output_extent, output_shape[1:], output_dtype
                     ),
                     "digest": hashlib.sha256(value).hexdigest(),
                     "value": value,
