@@ -119,6 +119,15 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
         actualSeqLengthsKeyGm.SetGlobalBuffer((__gm__ int64_t *)actualSeqLengthsKey, 0);
     }
 
+    if constexpr (LAYOUT_Q == SLILayout::TND) {
+        const auto &baseInfo = tilingData->baseParams;
+        int64_t t1Size = baseInfo.get_t1Size();
+        int64_t t2Size = baseInfo.get_t2Size();
+        int64_t actualLen = actualSeqLengthsQueryGm.GetValue(constInfo.bSize - 1);
+        int64_t actualKLen = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
+        int64_t totalAivNum = baseInfo.get_totalAivNum();
+    }
+
     InitMMResBuf();
     InitWorkspace(workspace);
 
