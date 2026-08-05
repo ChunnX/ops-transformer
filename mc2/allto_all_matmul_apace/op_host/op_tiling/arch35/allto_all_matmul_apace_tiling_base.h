@@ -17,7 +17,7 @@
 #include <ascendc/host_api/tiling/template_argument.h>
 #include "securec.h"
 #include "apace/kernel/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
-#include "apace/tiling/quant_matmul_mx_tiling_swat.h"
+#include "apace/tiling/quant_matmul_tiling_swat.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"

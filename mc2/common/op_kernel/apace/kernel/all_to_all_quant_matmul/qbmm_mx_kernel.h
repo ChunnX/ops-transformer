@@ -40,9 +40,9 @@ public:
     __aicore__ inline ~QuantMatmulMxKernelSwat()
     {}
 
-    static constexpr bool weightNz = BlockMmad::WEIGHT_NZ;
-    static constexpr bool transA = BlockMmad::TRANS_A;
-    static constexpr bool transB = BlockMmad::TRANS_B;
+    static constexpr bool weightNz = BlockMmad::weightNz;
+    static constexpr bool transA = BlockMmad::transA;
+    static constexpr bool transB = BlockMmad::transB;
 
     using BlockMmadParams = typename BlockMmad::Params;
     using L1Params = typename BlockMmad::L1Params;

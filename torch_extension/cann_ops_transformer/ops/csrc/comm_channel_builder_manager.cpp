@@ -28,7 +28,7 @@
 #include "acl/acl_rt.h"
 #include "hccl_common.h"
 #include "apace/block/aiv_comm/collective_comm_context.h"
-#include "apace/tests/st/utils/comm_channel_builder.h"
+#include "apace/utils/comm_channel_builder.h"
 
 namespace op_api {
 
