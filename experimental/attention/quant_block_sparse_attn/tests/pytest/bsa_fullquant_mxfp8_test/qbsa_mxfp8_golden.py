@@ -81,10 +81,12 @@ _CASE_INT_FIELDS = {
 }
 _CASE_FLOAT_FIELDS = {
     "p_scale_value",
+    "softmax_scale",
+}
+_CASE_DATA_RANGE_FIELDS = {
     "data_range_q",
     "data_range_k",
     "data_range_v",
-    "softmax_scale",
 }
 _CASE_INT_LIST_FIELDS = {"actual_seq_q", "actual_seq_kv"}
 _CASE_REQUIRED_RUNTIME_FIELDS = {
@@ -205,6 +207,39 @@ def _parse_bool(value, field_name):
     raise ValueError(f"{field_name} must be true or false, got: {value}")
 
 
+def _parse_data_range(value, field_name):
+    """Normalize a data range to [lower, upper], keeping scalar cases backward compatible."""
+    parsed = value
+    if isinstance(parsed, str):
+        try:
+            parsed = json.loads(parsed)
+        except json.JSONDecodeError as error:
+            raise ValueError(
+                f"{field_name} must be a number or a JSON [lower, upper] list, got: {value}"
+            ) from error
+
+    if isinstance(parsed, (int, float)) and not isinstance(parsed, bool):
+        limit = float(parsed)
+        if not math.isfinite(limit) or limit < 0.0:
+            raise ValueError(
+                f"scalar {field_name} must be finite and non-negative, got: {value}"
+            )
+        return [-limit, limit]
+
+    if not isinstance(parsed, (list, tuple)) or len(parsed) != 2:
+        raise ValueError(
+            f"{field_name} must contain exactly [lower, upper], got: {value}"
+        )
+    lower, upper = (float(item) for item in parsed)
+    if not math.isfinite(lower) or not math.isfinite(upper):
+        raise ValueError(f"{field_name} bounds must be finite, got: {value}")
+    if lower > upper:
+        raise ValueError(
+            f"{field_name} lower bound must be <= upper bound, got: {value}"
+        )
+    return [lower, upper]
+
+
 def _parse_case_field(field_name, value):
     if value is None:
         return None
@@ -218,6 +253,8 @@ def _parse_case_field(field_name, value):
         return int(value)
     if field_name in _CASE_FLOAT_FIELDS:
         return float(value)
+    if field_name in _CASE_DATA_RANGE_FIELDS:
+        return _parse_data_range(value, field_name)
     if field_name in _CASE_INT_LIST_FIELDS:
         parsed = value if isinstance(value, list) else json.loads(str(value))
         if not isinstance(parsed, list):
@@ -326,6 +363,8 @@ def _normalize_case(case):
         )
     case["fp8_dtype"] = _resolve_dtype(case["fp8_dtype"], "fp8_dtype")
     case["scale_dtype"] = _resolve_dtype(case["scale_dtype"], "scale_dtype")
+    for field_name in _CASE_DATA_RANGE_FIELDS:
+        case[field_name] = _parse_data_range(case[field_name], field_name)
     if case.get("enable") is None:
         case["enable"] = True
     case["softmax_scale"] = case.get("softmax_scale") or (
@@ -460,13 +499,16 @@ def _prefix(lengths):
     return torch.tensor(values, dtype=torch.int32)
 
 
-def _rand_float(shape, generator, data_range=1.0):
+def _rand_float(shape, generator, data_range=(-1.0, 1.0)):
+    lower, upper = _parse_data_range(data_range, "data_range")
     return (
-        torch.rand(shape, dtype=torch.float32, generator=generator) * 2 - 1
-    ) * data_range
+        torch.rand(shape, dtype=torch.float32, generator=generator)
+        * (upper - lower)
+        + lower
+    )
 
 
-def _rand_fp8(shape, generator, data_range=1.0):
+def _rand_fp8(shape, generator, data_range=(-1.0, 1.0)):
     return _rand_float(shape, generator, data_range).to(FP8_DTYPE)
 
 
