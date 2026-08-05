@@ -379,30 +379,25 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
     int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
     int64_t topoType = *attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
-    int64_t communicationTokenCapacity = bs;
-    if (topoType == TOPO_TYPE_MTE) {
-        OP_TILING_CHECK(
-            numMaxTokensPerRank < 0 || (numMaxTokensPerRank != 0 && bs > numMaxTokensPerRank),
-            OP_LOGE_FOR_INVALID_VALUE(
-                nodeName, "numMaxTokensPerRank", std::to_string(numMaxTokensPerRank).c_str(),
-                (std::string("should be 0 or greater than or equal to local Bs in MTE mode, local Bs is ") +
-                 std::to_string(bs))
-                    .c_str()),
-            return ge::GRAPH_FAILED);
-        communicationTokenCapacity = numMaxTokensPerRank != 0 ? numMaxTokensPerRank : bs;
-        OP_TILING_CHECK(
-            communicationTokenCapacity > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "numMaxTokensPerRank",
-                                      std::to_string(communicationTokenCapacity).c_str(), "exceeds uint32 capacity"),
-            return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(
-            topK > 0 &&
-                communicationTokenCapacity > static_cast<int64_t>(std::numeric_limits<int32_t>::max()) / topK,
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "numMaxTokensPerRank",
-                                      std::to_string(communicationTokenCapacity).c_str(),
-                                      "numMaxTokensPerRank * topK exceeds int32 route capacity"),
-            return ge::GRAPH_FAILED);
-    }
+    OP_TILING_CHECK(
+        numMaxTokensPerRank < 0 || (numMaxTokensPerRank != 0 && bs > numMaxTokensPerRank),
+        OP_LOGE_FOR_INVALID_VALUE(
+            nodeName, "numMaxTokensPerRank", std::to_string(numMaxTokensPerRank).c_str(),
+            (std::string("should be 0 or greater than or equal to local Bs, local Bs is ") + std::to_string(bs))
+                .c_str()),
+        return ge::GRAPH_FAILED);
+    int64_t communicationTokenCapacity = numMaxTokensPerRank != 0 ? numMaxTokensPerRank : bs;
+    OP_TILING_CHECK(
+        communicationTokenCapacity > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "numMaxTokensPerRank",
+                                  std::to_string(communicationTokenCapacity).c_str(), "exceeds uint32 capacity"),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        topK > 0 && communicationTokenCapacity > static_cast<int64_t>(std::numeric_limits<int32_t>::max()) / topK,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "numMaxTokensPerRank",
+                                  std::to_string(communicationTokenCapacity).c_str(),
+                                  "numMaxTokensPerRank * topK exceeds int32 route capacity"),
+        return ge::GRAPH_FAILED);
 
     // maskRecv Size
     int64_t routeCapacity = communicationTokenCapacity * topK;

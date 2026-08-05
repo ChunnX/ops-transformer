@@ -3,8 +3,8 @@
 ```mermaid
 flowchart TD
     A[外层调用传入<br/>localBs / numMaxTokensPerRank / topoType] --> B[ACLNN 参数转发<br/>numMaxTokensPerRank 不再被 0 覆盖]
-    B --> C[仅在 MTE 条件内校验<br/>0 或 Bmax >= localBs]
-    C --> D[生成 MTE 有效通信容量<br/>配置Bmax时使用Bmax<br/>否则回退localBs]
+    B --> C[直接校验参数<br/>0 或 Bmax >= localBs]
+    C --> D[生成有效通信容量<br/>配置Bmax时使用Bmax<br/>否则回退localBs]
     D --> E[写入 MegaMoeTilingData<br/>bs=localBs<br/>maxTokensPerRank=Bmax]
     D --> F[Host 容量推导]
     F --> F1[maskRecv<br/>Bmax * topK]
@@ -229,7 +229,7 @@ uint32_t maxTokensPerRank;  // 所有 Rank 统一的通信容量 Bmax
 
 > 固定 BS 时 `bs` 可以同时表示本地数据量和通信容量；可变 BS 后两者不再相等，必须使用两个独立字段。放在末尾可以尽量保持原有 Host/Kernel Tiling ABI 布局。
 
-### 5.3 仅在 MTE 条件内校验可变 BS 参数
+### 5.3 直接校验可变 BS 参数
 
 代码位置：`op_host/op_tiling/arch35/mega_moe_tiling.cpp:294-313,374-397`。
 
@@ -239,9 +239,9 @@ uint32_t maxTokensPerRank;  // 所有 Rank 统一的通信容量 Bmax
 numMaxTokensPerRankPtr == nullptr
 ```
 
-负数检查放入 MTE 条件内部，避免给非 MTE 路径新增该参数的行为定义。
+取得属性后直接检查负数以及 Bmax 是否小于 localBs，不再使用 `topoType` 包裹该检查。
 
-MTE 条件内新增规则：
+校验规则：
 
 ```text
 numMaxTokensPerRank == 0 或 numMaxTokensPerRank >= localBs
@@ -250,33 +250,27 @@ numMaxTokensPerRank == 0 或 numMaxTokensPerRank >= localBs
 代码结构为：
 
 ```text
-communicationTokenCapacity = bs; // 原逻辑默认值
-if (topoType == TOPO_TYPE_MTE) {
-    // 只在这里校验 numMaxTokensPerRank，并用 Bmax 覆盖通信容量
-}
+numMaxTokensPerRank == 0 或 numMaxTokensPerRank >= localBs
 ```
 
 修改原因：
 
-> MTE 需要允许所有 Rank 使用统一且可能大于本地 BS 的 Bmax；非 MTE 路径保持原流程，不新增 `numMaxTokensPerRank` 校验或语义。
+> `numMaxTokensPerRank` 在该接口中作为 MTE 可变 BS 参数使用；没有有效配置时其值为 0，因此直接校验和回退即可，不需要再增加 `topoType` 分支。
 
 ### 5.4 生成有效通信容量并检查溢出
 
 代码位置：`op_host/op_tiling/arch35/mega_moe_tiling.cpp:396-410`。
 
 ```cpp
-int64_t communicationTokenCapacity = bs;
-if (topoType == TOPO_TYPE_MTE) {
-    communicationTokenCapacity = numMaxTokensPerRank != 0 ? numMaxTokensPerRank : bs;
-}
+int64_t communicationTokenCapacity = numMaxTokensPerRank != 0 ? numMaxTokensPerRank : bs;
 ```
 
 含义：
 
-| 拓扑/属性 | 有效通信容量 |
+| 属性 | 有效通信容量 |
 |---|---:|
-| MTE，Bmax 非零 | Bmax |
-| MTE，Bmax 为 0 | localBs |
+| Bmax 非零 | Bmax |
+| Bmax 为 0 | localBs |
 
 `communicationTokenCapacity` 是 Host 校验阶段的局部变量，可以理解为 `effectiveCommunicationBs`，不是第三种 BS。
 
@@ -783,13 +777,13 @@ bash build.sh -u --ophost --ops=mega_moe --soc=ascend950
 
 原来的 `MegaMoeTilingData` 只有 `bs`，无法同时表达当前 Rank 的实际 BS 和所有 Rank 统一的最大通信 BS。修改后新增 `uint32_t maxTokensPerRank`，并保留 `bs` 表示 localBs。新增字段放在结构体末尾，而不是插入到 `bs` 后面，目的是避免改变已有字段的二进制偏移，降低 Host 和 Kernel Tiling ABI 发生错位的风险。对应代码位于 `op_kernel/arch35/mega_moe_tiling.h:166,203-205`。
 
-### 汇报步骤 5：将可变 BS 规则严格限定到 MTE
+### 汇报步骤 5：直接校验可变 BS 参数
 
-原实现不能为 MTE 配置大于 localBs 的统一 Bmax。修改后，仅在 `topoType == TOPO_TYPE_MTE` 条件内检查该属性为 0 或满足 `numMaxTokensPerRank >= localBs`，并在转换为无符号类型前拒绝负数。非 MTE 路径不进入这段新增校验，也没有为其定义 `numMaxTokensPerRank` 规则。对应代码位于 `op_host/op_tiling/arch35/mega_moe_tiling.cpp:294-313,374-404`。
+原实现不能为 MTE 配置大于 localBs 的统一 Bmax。修改后，读取 `numMaxTokensPerRank` 后直接检查它为 0 或满足 `numMaxTokensPerRank >= localBs`，并在转换为无符号类型前拒绝负数，不再使用 `topoType == TOPO_TYPE_MTE` 包裹这组检查。该参数没有有效配置时取默认值 0，因此会自然回退到 localBs。对应代码位于 `op_host/op_tiling/arch35/mega_moe_tiling.cpp:374-402`。
 
 ### 汇报步骤 6：生成有效通信容量
 
-`numMaxTokensPerRank` 是用户传入的原始属性，它允许为 0，而 0 表示未显式配置 Bmax，并不是通信容量真的为 0。因此 Host Tiling 新增 `communicationTokenCapacity` 作为当前拓扑真正使用的有效通信 BS：MTE 且属性非零时使用 Bmax，其余情况回退到本地 BS。后续所有跨 Rank 容量都从这个统一变量推导，避免 mask 使用 Bmax、quant 使用 localBs 等语义不一致的问题。对应代码位于 `op_host/op_tiling/arch35/mega_moe_tiling.cpp:396-397`。
+`numMaxTokensPerRank` 是用户传入的原始属性，它允许为 0，而 0 表示未显式配置 Bmax，并不是通信容量真的为 0。因此 Host Tiling 直接生成 `communicationTokenCapacity`：属性非零时使用 Bmax，为 0 时回退到本地 BS。后续相关通信容量都从这个统一变量推导，避免 mask 使用 Bmax、quant 使用 localBs 等语义不一致的问题。对应代码位于 `op_host/op_tiling/arch35/mega_moe_tiling.cpp:389`。
 
 ### 汇报步骤 7：增加 Bmax 和 route 容量的溢出检查
 
