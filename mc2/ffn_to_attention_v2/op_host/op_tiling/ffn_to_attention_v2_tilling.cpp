@@ -1,16 +1,18 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
- * \file ffn_to_attention_tilling_v2.cpp
- * \brief
+ * \file ffn_to_attention_v2_tilling.cpp
+ * \brief V2 tiling delegates to V1's FFNToAttentionTilingFunc. Since V2 and V1 share
+ *        identical input/attr prototype order, the index mapping is identity. After V1
+ *        fills the tiling data, V2 overrides the tiling key from A3 to A5.
  */
 
 #include <queue>
@@ -31,6 +33,7 @@
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "mc2_log.h"
+#include "ffn_to_attension_v2_tiling.h"
 #include "../../op_kernel/ffn_to_attention_v2_tiling.h"
 #include "../../op_kernel/ffn_to_attention_v2_tilling_key.h"
 #include "platform/platform_infos_def.h"
@@ -41,17 +44,25 @@ using namespace ge;
 using namespace Mc2Tiling;
 
 namespace MC2Tiling {
-ge::graphStatus
-FFNToAttentionV2TilingFuncA5::FFNToAttentionTilingFunc(gert::TilingContext *context)
+ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
 {
-    FFNToAttentionTilingFunc funcA5;
-    return funcA5.FFNToAttentionTilingFunc(context);
-}
+    // V2 inputs/attrs share identical index order with V1 (index mapping is identity),
+    // so we delegate to V1's tiling which fills the tiling data buffer. Since
+    // FFNToAttentionV2TilingData and FFNToAttentionTilingData have identical memory layout,
+    // V1's GetTilingData<FFNToAttentionTilingData>() reinterprets V2's buffer correctly.
+    auto ret = FFNToAttentionTilingFunc(context);
+    if (ret != ge::GRAPH_SUCCESS) {
+        return ret;
+    }
 
-ge::graphStatus FFNToAttentionV2TilingFuncImpl(gert::TilingContext *context)
-{
-    FFNToAttentionV2TilingFuncA5 impl;
-    return impl.FFNToAttentionV2TilingFunc(context);
+    // Override tiling key from A3 to A5 after V1's tiling completes
+    FFNToAttentionV2TilingData *tilingData = context->GetTilingData<FFNToAttentionV2TilingData>();
+    bool rankTableMode = tilingData->ffnToAttentionV2Info.isInputRankTable;
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(rankTableMode, TILINGKEY_TPL_A5);
+    context->SetTilingKey(tilingKey);
+    OP_LOGD(context->GetNodeName(), "FFNToAttentionV2 cur case tilingKey is %lu", tilingKey);
+
+    return ge::GRAPH_SUCCESS;
 }
 
 struct FFNToAttentionV2CompileInfo {};
@@ -61,7 +72,7 @@ ge::graphStatus TilingParseForFFNToAttentionV2(gert::TilingParseContext *context
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(FFNToAttention)
-    .Tiling(FFNToAttentionV2TilingFuncImpl)
-    .TilingParse<FFNToAttentionCompileInfo>(TilingParseForFFNToAttentionV2);
+IMPL_OP_OPTILING(FFNToAttentionV2)
+    .Tiling(FFNToAttentionV2TilingFunc)
+    .TilingParse<FFNToAttentionV2CompileInfo>(TilingParseForFFNToAttentionV2);
 } // namespace MC2Tiling

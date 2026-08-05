@@ -45,7 +45,7 @@ using namespace AscendC;
 template <TemplateFFNToAttentionV2TypeClass>
 class FFNToAttentionV2 {
 public:
-    __aicore__ inline FFNToAttention(){};
+    __aicore__ inline FFNToAttentionV2(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds, GM_ADDR tokenIds,
                                 GM_ADDR expertOffsets, GM_ADDR actualTokenNum, GM_ADDR attnRankTable,
                                 GM_ADDR workspaceGM, TPipe *pipe, const FFNToAttentionV2TilingData *tilingData);
@@ -104,7 +104,7 @@ FFNToAttentionV2<TemplateFFNToAttentionV2TypeFunc>::Init(GM_ADDR x, GM_ADDR sess
     axisH_ = tilingData->ffnToAttentionV2Info.H;
     axisHS_ = tilingData->ffnToAttentionV2Info.HS;
     axisA_ = tilingData->ffnToAttentionV2Info.A;
-    microBatchNum_ = tilingData->ffnToAttentionInfoV2.microBatchNum;
+    microBatchNum_ = tilingData->ffnToAttentionV2Info.microBatchNum;
     expertNumPerToken_ = tilingData->ffnToAttentionV2Info.expertNumPerToken; // 专家总数
     aivNum_ = tilingData->ffnToAttentionV2Info.aivNum;
     worldSize_ = tilingData->ffnToAttentionV2Info.worldSize;
