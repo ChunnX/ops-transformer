@@ -65,7 +65,7 @@ public:
         Epilogue::Tile::CopyUb2Gm<ArchTag, Gemm::GemmType<ElementPerTokenScale, LayoutPerTokenScale>>;
 
     struct Params {
-        CATLASS_DEVICE Params(){};
+        CATLASS_DEVICE Params() {};
     };
 
     CATLASS_DEVICE
@@ -125,13 +125,13 @@ public:
     // is kept for interface compatibility with the unified kernel.
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementC> const &gmC, MatrixCoord const &shapeC,
-                     AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale1,
-                     AscendC::GlobalTensor<ElementD> const &gmD,
-                     AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2, uint32_t epilogueCoreNum = 40,
-                     float activationClamp = 0.0f, uint32_t activationCode = 0,
-                     float activationParams1 = SwigluOaiActivation::DEFAULT_ALPHA,
-                     float activationParams2 = SituActivation::DEFAULT_BETA, uint32_t gmmOutPreRowStride = 1,
-                     Callback &&callback = Callback{})
+                    AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale1,
+                    AscendC::GlobalTensor<ElementD> const &gmD,
+                    AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2, uint32_t epilogueCoreNum = 40,
+                    float activationClamp = 0.0f, uint32_t activationCode = 0,
+                    float activationParams1 = SwigluOaiActivation::DEFAULT_ALPHA,
+                    float activationParams2 = SituActivation::DEFAULT_BETA, uint32_t gmmOutPreRowStride = 1,
+                    Callback &&callback = Callback{})
     {
         activationCode_ = activationCode;
         activationParams1_ = activationParams1;
@@ -176,25 +176,31 @@ public:
             if (scaleBatchCount == 0 && scaleBatchIndex >= SCALE_BUFFER_COUNT) {
                 WaitScaleBuffer(scaleStage);
             }
-            AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
             ubPerTokenScaleOutputList[scaleStage].SetValue(scaleBatchCount, rowAbsMax / 127.0f);
-            AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);
             ElementPerTokenScale quantMultiplier = rowAbsMax > 0.0f ? 127.0f / rowAbsMax : 0.0f;
+            AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);
 
             currentStage = 0;
-            LoadTile(gmTileC, branchLength, 0, TileLength(branchLength, 0), gmmOutPreRowStride, currentStage);
-            for (uint32_t tileIdx = 0; tileIdx < tileCount; ++tileIdx) {
-                uint32_t tileOffset = tileIdx * TILE_LENGTH;
-                uint32_t tileLength = TileLength(branchLength, tileOffset);
-                uint32_t nextStage = NextStage(currentStage);
-                uint32_t nextOffset = tileOffset + TILE_LENGTH;
-                if (nextOffset < branchLength) {
-                    LoadTile(gmTileC, branchLength, nextOffset, TileLength(branchLength, nextOffset),
-                             gmmOutPreRowStride, nextStage);
+            if (tileCount == 1) {
+                // Single-tile fast path: ubActivationList[0] still holds the first-pass activation
+                // output, so skip the second LoadTile + reactivation and quantize it directly.
+                QuantizeAndCopyTile(0, gmTileD[0], TileLength(branchLength, 0), quantMultiplier);
+            } else {
+                LoadTile(gmTileC, branchLength, 0, TileLength(branchLength, 0), gmmOutPreRowStride, currentStage);
+                for (uint32_t tileIdx = 0; tileIdx < tileCount; ++tileIdx) {
+                    uint32_t tileOffset = tileIdx * TILE_LENGTH;
+                    uint32_t tileLength = TileLength(branchLength, tileOffset);
+                    uint32_t nextStage = NextStage(currentStage);
+                    uint32_t nextOffset = tileOffset + TILE_LENGTH;
+                    if (nextOffset < branchLength) {
+                        LoadTile(gmTileC, branchLength, nextOffset, TileLength(branchLength, nextOffset),
+                                 gmmOutPreRowStride, nextStage);
+                    }
+                    ComputeLoadedTile(currentStage, tileLength, perTokenScale, true, activationClamp);
+                    QuantizeAndCopyTile(currentStage, gmTileD[tileOffset], tileLength, quantMultiplier);
+                    currentStage = nextStage;
                 }
-                ComputeLoadedTile(currentStage, tileLength, perTokenScale, true, activationClamp);
-                QuantizeAndCopyTile(currentStage, gmTileD[tileOffset], tileLength, quantMultiplier);
-                currentStage = nextStage;
             }
             ++scaleBatchCount;
             if (scaleBatchCount == SCALE_BATCH_COUNT) {
@@ -215,11 +221,11 @@ public:
     // Non-quantized BF16/FP16 path.
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementC> const &gmC, MatrixCoord const &shapeC,
-                     AscendC::GlobalTensor<ElementD> const &gmD, uint32_t epilogueCoreNum = 40,
-                     float activationClamp = 0.0f, uint32_t activationCode = 0,
-                     float activationParams1 = SwigluOaiActivation::DEFAULT_ALPHA,
-                     float activationParams2 = SituActivation::DEFAULT_BETA, uint32_t gmmOutPreRowStride = 1,
-                     Callback &&callback = Callback{})
+                    AscendC::GlobalTensor<ElementD> const &gmD, uint32_t epilogueCoreNum = 40,
+                    float activationClamp = 0.0f, uint32_t activationCode = 0,
+                    float activationParams1 = SwigluOaiActivation::DEFAULT_ALPHA,
+                    float activationParams2 = SituActivation::DEFAULT_BETA, uint32_t gmmOutPreRowStride = 1,
+                    Callback &&callback = Callback{})
     {
         activationCode_ = activationCode;
         activationParams1_ = activationParams1;
@@ -296,8 +302,8 @@ private:
     CATLASS_DEVICE
     bool GetTaskRange(uint32_t blockM, uint32_t epilogueCoreNum, uint32_t &loopStartIdx, uint32_t &tasksForIdx)
     {
-        uint32_t subblockIdx = get_block_idx() + get_subblockid() * get_block_num();
-        uint32_t moveDataCoreNum = get_block_num() * 2 - epilogueCoreNum;
+        uint32_t subblockIdx = AscendC::GetBlockIdx() + AscendC::GetSubBlockIdx() * AscendC::GetBlockNum();
+        uint32_t moveDataCoreNum = AscendC::GetBlockNum() * 2 - epilogueCoreNum;
         if (subblockIdx < moveDataCoreNum) {
             return false;
         }
