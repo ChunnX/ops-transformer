@@ -302,7 +302,7 @@ class TraceContractTests(unittest.TestCase):
             )
             self.assertEqual(results[0]["protocol_version"], 1)
             normalized = load_json(directory / "rank0.normalized.json")
-            self.assertEqual(normalized["schema_id"], "0x8e7f106b")
+            self.assertEqual(normalized["schema_id"], "0x34dddbe0")
             self.assertEqual(normalized["metadata"]["resolved_record_words"], 50)
             order = load_json(directory / "rank0.order-check.json")
             self.assertEqual(order["span_summary"]["a8w4_process"]["count"], 108)

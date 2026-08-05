@@ -206,11 +206,11 @@ POINT_TEXT_ZH = {
         "proof": "采样位于首个 blockPrologue 之前。",
         "perturbation": "每专家每活跃 AIV0 一次时钟采样。",
     },
-    "a8w4_gmm1_prologue_issue_end_S": {
-        "when": "AIV0 已返回当前专家 GMM1 prologue 的最后一次发射。",
-        "why": "以低扰动方式估计 prologue 发射区间。",
-        "proof": "没有新增完成桥接，因此该点只表示 issue end。",
-        "perturbation": "每专家每活跃 AIV0 一次时钟采样。",
+    "a8w4_gmm1_prologue_end_S": {
+        "when": "AIV0 已完成当前专家全部 GMM1 权重 prologue。",
+        "why": "观察完整的 W4 到 W8 权重展开与 L1 写入时间。",
+        "proof": "prologue 返回并回收事件环后，MTE3_S 将最终 L1 写入完成依赖传到 Scalar。",
+        "perturbation": "每专家每活跃 AIV0 一次 MTE3→Scalar 桥接和时钟采样。",
     },
     "a8w4_swiglu_begin_S": {
         "when": "AIV1 已观察到首个 GMM1 输出 ready，即将加载并执行 SwiGLU。",
@@ -219,9 +219,9 @@ POINT_TEXT_ZH = {
         "perturbation": "每专家每活跃 AIV1 一次时钟采样。",
     },
     "a8w4_swiglu_end_S": {
-        "when": "AIV1 已返回当前专家最后一次 SwiGLU 发射。",
-        "why": "以低扰动方式观察 SwiGLU 发射区间。",
-        "proof": "没有新增 MTE3 完成桥接，因此该点只表示 issue end。",
+        "when": "AIV1 已完成当前专家最后一次 SwiGLU 与 MX 量化输出。",
+        "why": "观察完整的 SwiGLU、量化和 GM 输出时间。",
+        "proof": "BlockEpilogueSwigluMxQuant 每次返回前已有 MTE3_S，最后一次调用后的 Scalar 时钟可直接作为 actual end。",
         "perturbation": "每专家每活跃 AIV1 一次时钟采样。",
     },
     "a8w4_gmm2_begin_S": {
@@ -242,11 +242,11 @@ POINT_TEXT_ZH = {
         "proof": "采样位于首个 blockPrologue 之前。",
         "perturbation": "每专家每活跃 AIV0 一次时钟采样。",
     },
-    "a8w4_gmm2_prologue_issue_end_S": {
-        "when": "AIV0 已返回当前专家 GMM2 prologue 的最后一次发射。",
-        "why": "以低扰动方式估计 GMM2 prologue 发射区间。",
-        "proof": "没有新增完成桥接，因此该点只表示 issue end。",
-        "perturbation": "每专家每活跃 AIV0 一次时钟采样。",
+    "a8w4_gmm2_prologue_end_S": {
+        "when": "AIV0 已完成当前专家全部 GMM2 权重 prologue。",
+        "why": "观察完整的 GMM2 W4 到 W8 权重展开与 L1 写入时间。",
+        "proof": "prologue 返回并回收事件环后，MTE3_S 将最终 L1 写入完成依赖传到 Scalar。",
+        "perturbation": "每专家每活跃 AIV0 一次 MTE3→Scalar 桥接和时钟采样。",
     },
     "a8w4_combine_begin_S": {
         "when": "AIV1 已观察到首个 GMM2 输出 group/tile ready，即将开始 Combine。",
@@ -275,10 +275,10 @@ SPAN_LABEL_ZH = {
     "a8w4_process": "A8W4 角色有效工作",
     "a8w4_dispatch": "逐专家 Dispatch",
     "a8w4_gmm1": "逐专家 GMM1",
-    "a8w4_gmm1_prologue": "GMM1 权重 prologue（issue）",
-    "a8w4_swiglu": "SwiGLU（issue）",
+    "a8w4_gmm1_prologue": "GMM1 权重 prologue",
+    "a8w4_swiglu": "SwiGLU",
     "a8w4_gmm2": "逐专家 GMM2",
-    "a8w4_gmm2_prologue": "GMM2 权重 prologue（issue）",
+    "a8w4_gmm2_prologue": "GMM2 权重 prologue",
     "a8w4_combine": "逐专家 Combine",
 }
 

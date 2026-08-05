@@ -2289,9 +2289,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 criticalPathTrace_.FinishExpertStage0();
             } else if (subBlockIdx_ == 0U) {
                 if (criticalPathTrace_.HasExpertStage0Work()) {
-                    // TRACE_POINT: a8w4_gmm1_prologue_issue_end_S
-                    uint32_t gmm1PrologueIssueEndCycle = CriticalPathTrace::Now();
-                    criticalPathTrace_.EndExpertStage0(gmm1PrologueIssueEndCycle);
+                    AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+                    // TRACE_POINT: a8w4_gmm1_prologue_end_S
+                    uint32_t gmm1PrologueEndCycle = CriticalPathTrace::Now();
+                    criticalPathTrace_.EndExpertStage0(gmm1PrologueEndCycle);
                 }
                 criticalPathTrace_.FinishExpertStage0();
             } else {
@@ -2377,9 +2379,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
                 criticalPathTrace_.FinishExpertStage1();
             } else if (subBlockIdx_ == 0U) {
                 if (criticalPathTrace_.HasExpertStage1Work()) {
-                    // TRACE_POINT: a8w4_gmm2_prologue_issue_end_S
-                    uint32_t gmm2PrologueIssueEndCycle = CriticalPathTrace::Now();
-                    criticalPathTrace_.EndExpertStage1(gmm2PrologueIssueEndCycle);
+                    AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+                    // TRACE_POINT: a8w4_gmm2_prologue_end_S
+                    uint32_t gmm2PrologueEndCycle = CriticalPathTrace::Now();
+                    criticalPathTrace_.EndExpertStage1(gmm2PrologueEndCycle);
                 }
                 criticalPathTrace_.FinishExpertStage1();
             } else {
@@ -2417,6 +2421,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
     if (CriticalPathTracePtr() != nullptr) {
+        if constexpr (g_coreType == AIV) {
+            // Unpermute leaves its final MTE3 completion dependency on Vector through MTE3_V.
+            AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+        }
         // TRACE_POINT: a8w4_work_end_S
         criticalPathTrace_.workEnd = CriticalPathTrace::Now();
         SyncAll<false>();

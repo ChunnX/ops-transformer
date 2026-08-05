@@ -71,7 +71,7 @@ static constexpr uint64_t CRITICAL_PATH_TRACE_SCRATCH_RESERVED_BYTES = 50ULL * 1
 static constexpr uint32_t CRITICAL_PATH_TRACE_PATH_MTE_A8W8_WAVE = 1U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_PATH_MTE_A8W4 = 2U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_A8W4_PROTOCOL_VERSION = 1U;
-static constexpr uint32_t CRITICAL_PATH_TRACE_A8W4_SCHEMA_ID = 0x8E7F106BU;
+static constexpr uint32_t CRITICAL_PATH_TRACE_A8W4_SCHEMA_ID = 0x34DDDBE0U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_A8W4_FLAGS = 0xFU;
 
 __aicore__ inline uint32_t CriticalPathTraceRecordWords(

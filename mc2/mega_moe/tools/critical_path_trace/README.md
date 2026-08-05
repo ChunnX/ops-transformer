@@ -60,10 +60,10 @@ workspace 两种容量，adapter 还会在第一次算子执行之前做同公�
 新的逐专家打点和间隙，必须重新编译并安装默认 v7 kernel。其他 version/schema
 仍然 fail closed。
 
-A8W4 specialized 路径使用独立的 protocol v1、schema `0x8e7f106b`、path id 2。
+A8W4 specialized 路径使用独立的 protocol v1、schema `0x34dddbe0`、path id 2。
 每条 record 为 `2 + 6 * moeExpertPerRank` words：AIC 记录 GMM1/GMM2，AIV0 记录两段
-权重 prologue，AIV1 记录 Dispatch、SwiGLU 和 Combine。prologue 与 SwiGLU 的结束点是
-低扰动 issue 边界，Dispatch、AIC GMM 和 Combine 的结束点是带完成依赖证明的 actual 边界。
+权重 prologue，AIV1 记录 Dispatch、SwiGLU 和 Combine。所有阶段 end 均带有直接或复用的完成依赖证明；
+prologue 为诊断态增加 `MTE3_S`，SwiGLU 复用算子内部已有的 `MTE3_S`。
 
 ## 当前依赖与时间点
 
