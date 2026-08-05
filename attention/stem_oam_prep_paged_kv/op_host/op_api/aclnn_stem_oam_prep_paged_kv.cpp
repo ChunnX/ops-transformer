@@ -45,8 +45,8 @@ constexpr int64_t STEM_BLOCK_SIZE_ALIGN = 32;
 constexpr int64_t STEM_BLOCK_SIZE_MAX = 256;
 constexpr int64_t STEM_STRIDE_ALIGN = 16;
 constexpr int64_t STEM_STRIDE_MAX = 64;
-constexpr int64_t CACHE_LAYOUT_A = 0;
-constexpr int64_t CACHE_LAYOUT_B = 1;
+constexpr int64_t KV_LAYOUT_BBND = 0;
+constexpr int64_t KV_LAYOUT_BNBD = 1;
 constexpr size_t KV_CACHE_DIM_NUM = 4;
 constexpr size_t SHAPE_DIM_0 = 0;
 constexpr size_t SHAPE_DIM_1 = 1;
@@ -59,18 +59,28 @@ inline static bool CheckNull(const aclTensor *kCache, const aclTensor *vCache, c
     OP_CHECK_NULL(kCache, return false);
     OP_CHECK_NULL(vCache, return false);
     OP_CHECK_NULL(kvIndices, return false);
-    OP_CHECK_NULL(kScaleCache, return false);
-    OP_CHECK_NULL(vScale, return false);
     OP_CHECK_NULL(kFlat, return false);
     OP_CHECK_NULL(vBias, return false);
+    if (kCache->GetDataType() == DataType::DT_FLOAT8_E4M3FN) {
+        OP_CHECK_NULL(kScaleCache, return false);
+        OP_CHECK_NULL(vScale, return false);
+    }
     return true;
 }
 
 inline static bool CheckEmpty(const aclTensor *kCache, const aclTensor *vCache, const aclTensor *kvIndices,
                               const aclTensor *kScaleCache, const aclTensor *vScale)
 {
-    if (kCache->IsEmpty() || vCache->IsEmpty() || kvIndices->IsEmpty() || kScaleCache->IsEmpty() || vScale->IsEmpty()) {
+    if (kCache->IsEmpty() || vCache->IsEmpty() || kvIndices->IsEmpty()) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnStemOamPrepPagedKv does not support empty tensor!");
+        return false;
+    }
+    if (kScaleCache != nullptr && kScaleCache->IsEmpty()) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kScaleCache does not support empty tensor!");
+        return false;
+    }
+    if (vScale != nullptr && vScale->IsEmpty()) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "vScale does not support empty tensor!");
         return false;
     }
     return true;
@@ -81,39 +91,50 @@ inline static bool CheckDtype(const aclTensor *kCache, const aclTensor *vCache, 
 {
     OP_CHECK_DTYPE_NOT_SUPPORT(kCache, KV_CACHE_DTYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(vCache, KV_CACHE_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(kScaleCache, KV_SCALE_DTYPE_SUPPORT_LIST, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(vScale, KV_SCALE_DTYPE_SUPPORT_LIST, return false);
+    if (kScaleCache != nullptr) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(kScaleCache, KV_SCALE_DTYPE_SUPPORT_LIST, return false);
+    }
+    if (vScale != nullptr) {
+        OP_CHECK_DTYPE_NOT_SUPPORT(vScale, KV_SCALE_DTYPE_SUPPORT_LIST, return false);
+    }
     return true;
 }
 
 inline static bool CheckShape(const aclTensor *kCache, const aclTensor *vCache, const aclTensor *kScaleCache,
-                              const aclTensor *vScale, int64_t cacheLayout, int64_t kvBlockSize)
+                              const aclTensor *vScale, int64_t kvLayout)
 {
     auto kCacheShape = kCache->GetViewShape();
     auto vCacheShape = vCache->GetViewShape();
-    auto kScaleCacheShape = kScaleCache->GetViewShape();
-    if (kCacheShape.GetDimNum() != KV_CACHE_DIM_NUM || vCacheShape.GetDimNum() != KV_CACHE_DIM_NUM ||
-        kScaleCacheShape.GetDimNum() != KV_CACHE_DIM_NUM) {
+    if (kCacheShape.GetDimNum() != KV_CACHE_DIM_NUM || vCacheShape.GetDimNum() != KV_CACHE_DIM_NUM) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "kCache/vCache/kScaleCache must be 4D, got kCache dimNum=%zu, "
-                "vCache dimNum=%zu, kScaleCache dimNum=%zu.",
-                kCacheShape.GetDimNum(), vCacheShape.GetDimNum(), kScaleCacheShape.GetDimNum());
+                "kCache/vCache must be 4D, got kCache dimNum=%zu, vCache dimNum=%zu.",
+                kCacheShape.GetDimNum(), vCacheShape.GetDimNum());
         return false;
     }
-    if (cacheLayout == CACHE_LAYOUT_A &&
+    if (kScaleCache == nullptr || vScale == nullptr) {
+        return true;
+    }
+    auto kScaleCacheShape = kScaleCache->GetViewShape();
+    if (kScaleCacheShape.GetDimNum() != KV_CACHE_DIM_NUM) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kScaleCache must be 4D, got dimNum=%zu.", kScaleCacheShape.GetDimNum());
+        return false;
+    }
+    int64_t kvBlockSize =
+        (kvLayout == KV_LAYOUT_BBND) ? kCacheShape.GetDim(SHAPE_DIM_1) : kCacheShape.GetDim(SHAPE_DIM_2);
+    if (kvLayout == KV_LAYOUT_BBND &&
         (kScaleCacheShape.GetDim(SHAPE_DIM_1) != kvBlockSize ||
          kScaleCacheShape.GetDim(SHAPE_DIM_2) != vScale->GetViewShape().GetDim(SHAPE_DIM_0))) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "cacheLayout=0 requires kScaleCacheShape[1]=kvBlockSize(%ld) and "
+                "kvLayout=BBND requires kScaleCacheShape[1]=kvBlockSize(%ld) and "
                 "kScaleCacheShape[2]=H_kv(%ld), got kScaleCacheShape[1]=%ld, kScaleCacheShape[2]=%ld.",
                 kvBlockSize, vScale->GetViewShape().GetDim(SHAPE_DIM_0), kScaleCacheShape.GetDim(SHAPE_DIM_1),
                 kScaleCacheShape.GetDim(SHAPE_DIM_2));
         return false;
-    } else if (cacheLayout == CACHE_LAYOUT_B &&
+    } else if (kvLayout == KV_LAYOUT_BNBD &&
                (kScaleCacheShape.GetDim(SHAPE_DIM_2) != kvBlockSize ||
                 kScaleCacheShape.GetDim(SHAPE_DIM_1) != vScale->GetViewShape().GetDim(SHAPE_DIM_0))) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "cacheLayout=1 requires kScaleCacheShape[2]=kvBlockSize(%ld) and "
+                "kvLayout=BNBD requires kScaleCacheShape[2]=kvBlockSize(%ld) and "
                 "kScaleCacheShape[1]=H_kv(%ld), got kScaleCacheShape[1]=%ld, kScaleCacheShape[2]=%ld.",
                 kvBlockSize, vScale->GetViewShape().GetDim(SHAPE_DIM_0), kScaleCacheShape.GetDim(SHAPE_DIM_1),
                 kScaleCacheShape.GetDim(SHAPE_DIM_2));
@@ -140,14 +161,14 @@ inline static bool CheckAttr(int64_t stemBlockSize, int64_t stemStride)
 }
 
 inline static aclnnStatus CheckParams(const aclTensor *kCache, const aclTensor *vCache, const aclTensor *kvIndices,
-                                      const aclTensor *kScaleCache, const aclTensor *vScale, int64_t cacheLayout,
-                                      int64_t kvBlockSize, int64_t stemBlockSize, int64_t stemStride,
-                                      const aclTensor *kFlat, const aclTensor *vBias)
+                                      const aclTensor *kScaleCache, const aclTensor *vScale, int64_t kvLayout,
+                                      int64_t stemBlockSize, int64_t stemStride, const aclTensor *kFlat,
+                                      const aclTensor *vBias)
 {
     CHECK_RET(CheckNull(kCache, vCache, kvIndices, kScaleCache, vScale, kFlat, vBias), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckEmpty(kCache, vCache, kvIndices, kScaleCache, vScale), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckDtype(kCache, vCache, kScaleCache, vScale), ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckShape(kCache, vCache, kScaleCache, vScale, cacheLayout, kvBlockSize), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckShape(kCache, vCache, kScaleCache, vScale, kvLayout), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckAttr(stemBlockSize, stemStride), ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
@@ -155,20 +176,33 @@ inline static aclnnStatus CheckParams(const aclTensor *kCache, const aclTensor *
 aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(const aclTensor *kCache, const aclTensor *vCache,
                                                     const aclTensor *kvIndices, const aclIntArray *kvSeqLens,
                                                     const aclTensor *kScaleCache, const aclTensor *vScale,
-                                                    double lambdaMag, int64_t cacheLayout, int64_t kvBlockSize,
-                                                    int64_t stemBlockSize, int64_t stemStride, const aclTensor *kFlat,
-                                                    const aclTensor *vBias, uint64_t *workspaceSize,
-                                                    aclOpExecutor **executor)
+                                                    double lambdaMag, char *kvLayout, int64_t stemBlockSize,
+                                                    int64_t stemStride, const aclTensor *kFlat, const aclTensor *vBias,
+                                                    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnStemOamPrepPagedKv,
-                   DFX_IN(kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale, lambdaMag, cacheLayout,
-                          kvBlockSize, stemBlockSize, stemStride),
+                   DFX_IN(kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale, lambdaMag, kvLayout,
+                          stemBlockSize, stemStride),
                    DFX_OUT(kFlat, vBias));
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    auto ret = CheckParams(kCache, vCache, kvIndices, kScaleCache, vScale, cacheLayout, kvBlockSize, stemBlockSize,
-                           stemStride, kFlat, vBias);
+    if (kvLayout == nullptr) {
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    std::string kvLayoutStr(kvLayout);
+    int64_t kvLayoutVal = KV_LAYOUT_BBND;
+    if (kvLayoutStr == "BNBD") {
+        kvLayoutVal = KV_LAYOUT_BNBD;
+    } else if (kvLayoutStr == "BBND") {
+        kvLayoutVal = KV_LAYOUT_BBND;
+    } else {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "kvLayout must be BBND or BNBD, got %s.", kvLayout);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    auto ret = CheckParams(kCache, vCache, kvIndices, kScaleCache, vScale, kvLayoutVal, stemBlockSize, stemStride,
+                           kFlat, vBias);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     auto kCacheView = IsContiguous(kCache) ?
@@ -179,20 +213,26 @@ aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(const aclTensor *kCache, con
                           vCache :
                           uniqueExecutor->CreateView(vCache, vCache->GetViewShape(), vCache->GetStorageShape(),
                                                      vCache->GetViewStrides(), vCache->GetViewOffset());
-    auto kScaleCacheView =
-        IsContiguous(kScaleCache) ?
-            kScaleCache :
-            uniqueExecutor->CreateView(kScaleCache, kScaleCache->GetViewShape(), kScaleCache->GetStorageShape(),
-                                       kScaleCache->GetViewStrides(), kScaleCache->GetViewOffset());
+    const aclTensor *kScaleCacheView = nullptr;
+    if (kScaleCache != nullptr) {
+        kScaleCacheView = IsContiguous(kScaleCache) ?
+                              kScaleCache :
+                              uniqueExecutor->CreateView(kScaleCache, kScaleCache->GetViewShape(),
+                                                         kScaleCache->GetStorageShape(), kScaleCache->GetViewStrides(),
+                                                         kScaleCache->GetViewOffset());
+    }
+    const aclTensor *vScaleContiguous = nullptr;
+    if (vScale != nullptr) {
+        vScaleContiguous = l0op::Contiguous(vScale, uniqueExecutor.get());
+    }
 
     auto kvIndicesContiguous = l0op::Contiguous(kvIndices, uniqueExecutor.get());
     const aclTensor *kvSeqLensTensor = uniqueExecutor->ConvertToTensor(kvSeqLens, DataType::DT_INT32);
     OP_CHECK_NULL(kvSeqLensTensor, return ACLNN_ERR_PARAM_NULLPTR);
-    auto vScaleContiguous = l0op::Contiguous(vScale, uniqueExecutor.get());
     float lambdaMagFloat = static_cast<float>(lambdaMag);
 
     auto result = l0op::StemOamPrepPagedKv(kCacheView, vCacheView, kvIndicesContiguous, kvSeqLensTensor,
-                                           kScaleCacheView, vScaleContiguous, lambdaMagFloat, cacheLayout, kvBlockSize,
+                                           kScaleCacheView, vScaleContiguous, lambdaMagFloat, kvLayoutStr,
                                            stemBlockSize, stemStride, kFlat, vBias, uniqueExecutor.get());
     CHECK_RET(std::get<0>(result) != nullptr && std::get<1>(result) != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
