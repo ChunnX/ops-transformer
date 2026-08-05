@@ -26,11 +26,12 @@ const int DIM_TWO = 2;
 //   因此 MEGA_MOE_PROF_DUMP=1 时走下面手动两阶段调用，显式保留 workspace 直到 D2H 回读完成。
 //
 //   两阶段工作流：
-//     ① 标定：MEGA_MOE_PROF_CALIB=1 跑一次，kernel(address-bridge) 把 workspace 基址写 yOut[0..8]，
+//     ① 标定：MEGA_MOE_PROF_CALIB=1 跑一次，kernel(address-bridge) 把 workspace 基址写 expertTokenNumsOut[0..8]，
 //        host 读出 delta = kernelWsBase - hostWsBase，打印后按 delta 填 MEGA_MOE_PROF_DELTA。
 //     ② 打点：MEGA_MOE_PROF_DUMP=1（不带 CALIB），用 MEGA_MOE_PROF_DELTA 从 workspace 尾部读 profBuf，
 //        写 prof_rank{device}.bin。
 //   PROF_N_CORES 须与 op_kernel/arch35/profiler_config.h 一致（Ascend 950 MIX_1_2 = 84）。
+//   ⚠️ bridge 不写 yOut：yOut 会被 Unpermute 写满真实输出，bridge 值被覆盖；改写 expertTokenNumsOut。
 // ════════════════════════════════════════════════════════════════════════════════
 constexpr uint32_t MEGA_MOE_PROF_N_CORES = 84;  // [MODIFY] 与 profiler_config.h PROF_N_CORES 一致
 constexpr uint32_t MEGA_MOE_PROF_SLOTS_PER_CORE = 4096;
@@ -73,8 +74,9 @@ inline void DumpMegaMoeProfBuf(void *workspaceAddr, uint64_t workspaceSize, int 
 
 // 手动两阶段调用：与 ACLNN_CMD 等价，但保留 workspace 直到回读完成
 template <typename... Ts>
-void LaunchMegaMoeWithProfDump(const at::Tensor &yOut, int deviceId, Ts &...args)
+void LaunchMegaMoeWithProfDump(const at::Tensor &yOut, const at::Tensor &expertTokenNums, int deviceId, Ts &...args)
 {
+    (void)yOut;  // bridge 已改写到 expertTokenNumsOut，yOut 仅用于保持 aclnn 参数顺序
     auto device = DecodeDevice(args...);
     const c10::OptionalDeviceGuard device_guard(device);
     static const auto getWorkspaceSizeFuncAddr = GetOpApiFuncAddr("aclnnMegaMoeGetWorkspaceSize");
@@ -140,9 +142,10 @@ void LaunchMegaMoeWithProfDump(const at::Tensor &yOut, int deviceId, Ts &...args
     const char *dump = getenv("MEGA_MOE_PROF_DUMP");
     uint64_t hostWsBase = reinterpret_cast<uint64_t>(workspace_addr);
     if (calib != nullptr && std::strcmp(calib, "1") == 0) {
-        // 标定：kernel(address-bridge) 把 workspace 基址写到 yOut[0..8]
+        // 标定：kernel(address-bridge) 把 workspace 基址写到 expertTokenNumsOut[0..8]
+        //（不写 yOut——yOut 会被 Unpermute 写满真实输出，bridge 值被覆盖）
         uint64_t kernelWsBase = 0;
-        aclError ret = aclrtMemcpy(&kernelWsBase, 8, const_cast<void *>(yOut.storage().data()), 8,
+        aclError ret = aclrtMemcpy(&kernelWsBase, 8, const_cast<void *>(expertTokenNums.storage().data()), 8,
                                    ACL_MEMCPY_DEVICE_TO_HOST);
         if (ret != ACL_ERROR_NONE) {
             ASCEND_LOGW("MegaMoe calib read bridge failed, ret=%d.", ret);
@@ -157,7 +160,7 @@ void LaunchMegaMoeWithProfDump(const at::Tensor &yOut, int deviceId, Ts &...args
             // 诊断：若 delta > 2^63（无符号回绕），说明 kernelWsBase < hostWsBase，bridge 值可能被覆盖/错误。
             if (delta > (uint64_t)0x8000000000000000ULL) {
                 printf("[PROFILER] WARN: delta appears to have wrapped (kernelWsBase < hostWsBase). "
-                       "Check bridge write timing / yOut overwrite.\n");
+                       "Check bridge write timing / output tensor overwrite.\n");
             }
         }
     } else if (dump != nullptr && std::strcmp(dump, "1") == 0) {
@@ -285,14 +288,14 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     if (profEnabled) {
         int deviceId = 0;
         (void)aclrtGetDevice(&deviceId);
-        LaunchMegaMoeWithProfDump(y, deviceId, context, x, topkIds, topkWeights, weight1Wrapper, weight2Wrapper,
-                                  weightScales1Wrapper, weightScales2Wrapper, bias1Wrapper, bias2Wrapper,
-                                  xActiveMask, sharedWeight1Wrapper, sharedWeight2Wrapper, sharedWeightScales1Wrapper,
-                                  sharedWeightScales2Wrapper, sharedBias1Wrapper, sharedBias2Wrapper, moeExpertNum,
-                                  epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode,
-                                  dispatchQuantResultType, combineQuantMode, commAlgPtr, numMaxTokensPerRank,
-                                  activationPtr, activationClampValue, topoTypeValue, rankNumPerServerValue,
-                                  topkWeightsType, y, expertTokenNums);
+        LaunchMegaMoeWithProfDump(y, expertTokenNums, deviceId, context, x, topkIds, topkWeights, weight1Wrapper,
+                                  weight2Wrapper, weightScales1Wrapper, weightScales2Wrapper, bias1Wrapper,
+                                  bias2Wrapper, xActiveMask, sharedWeight1Wrapper, sharedWeight2Wrapper,
+                                  sharedWeightScales1Wrapper, sharedWeightScales2Wrapper, sharedBias1Wrapper,
+                                  sharedBias2Wrapper, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
+                                  dispatchQuantMode, dispatchQuantResultType, combineQuantMode, commAlgPtr,
+                                  numMaxTokensPerRank, activationPtr, activationClampValue, topoTypeValue,
+                                  rankNumPerServerValue, topkWeightsType, y, expertTokenNums);
     } else {
         ACLNN_CMD(aclnnMegaMoe, context, x, topkIds, topkWeights, weight1Wrapper, weight2Wrapper,
                   weightScales1Wrapper, weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask,

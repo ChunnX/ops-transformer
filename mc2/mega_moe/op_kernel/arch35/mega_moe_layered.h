@@ -2769,10 +2769,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     if constexpr (g_coreType == AIV) {
         // 只由 AIV 核执行（AIC 核 GetBlockIdx()==0 也存在，会重复写/竞争）。
         if (GetBlockIdx() == 0) {
-            // 必须先 PIPE_ALL barrier 确保 Unpermute 等异步 GM 写全部落盘，
-            // 否则 bridge 写 yOut[0..8] 会被 Unpermute 的异步写覆盖，host 读到的是输出数据而非 workspace 基址。
+            // 先 PIPE_ALL barrier 确保前面异步写完成。
+            // ⚠️ 不要写 yOut[0..8]：Unpermute() 会把 yOut 写满真实输出（异步 GM 写），
+            //    bridge 值会被覆盖/竞争，host 读到的是输出数据而非 workspace 基址。
+            //    改写到 expertTokenNumsOut（第二个输出，仅 ExpertTokenNumCopyOut 在早期写入，内容为 int32 token 数）。
             pipe_barrier(PIPE_ALL);
-            __gm__ uint32_t *diagPtr = reinterpret_cast<__gm__ uint32_t *>(params_.y2GmAddr);
+            __gm__ uint32_t *diagPtr = reinterpret_cast<__gm__ uint32_t *>(params_.expertTokenNumsOutGmAddr);
             uint64_t wsBase = reinterpret_cast<uint64_t>(wsBaseGm_);
             Profiler::GmWrite64(diagPtr, wsBase);
             pipe_barrier(PIPE_ALL);
