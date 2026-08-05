@@ -271,8 +271,8 @@
   - has_ori_kv为true时，cu_seqlens_ori_kv必须传入。
   - has_cmp_kv为true时，cu_seqlens_cmp_kv必须传入。
 - layout_kv=PA_BBND场景
-  - has_ori_kv为true，且ori_mask_mode不为0或ori_topk为0时，seqused_ori_kv必须传入。
-  - has_cmp_kv为true，且cmp_mask_mode不为0或cmp_topk为0时，seqused_cmp_kv必须传入。
+  - has_ori_kv为true，ori_topk不为0且ori_mask_mode为0时（ori_topk_length必传场景），seqused_ori_kv可选传入，其他场景seqused_ori_kv必须传入。
+  - has_cmp_kv为true，cmp_topk不为0且cmp_mask_mode为0时（cmp_topk_length必传场景），seqused_cmp_kv可选传入，其他场景seqused_cmp_kv必须传入。
 - Batch取值规则
   - layout_q为BSND时，优先通过seqused_q的shape推导batch，seqused_q未传入则通过batch_size获取batch数。
   - layout_q为TND时，优先通过seqused_q的shape推导batch，seqused_q未传入则通过cu_seqlens_q的shape推导batch。
@@ -282,9 +282,11 @@
 - ori_kv Seqlen取值规则
   - layout_kv为BSND时，优先通过seqused_ori_kv中的元素获取seqlen，seqused_ori_kv未传入则通过max_seqlen_ori_kv获取seqlen。
   - layout_kv为TND时，优先通过seqused_ori_kv中的元素获取seqlen，seqused_ori_kv未传入则通过cu_seqlens_ori_kv中的元素获取seqlen。
+  - layout_kv为PA_BBND时，优先通过seqused_ori_kv中的元素获取seqlen，seqused_ori_kv未传入则通过max_seqlen_ori_kv获取seqlen，若max_seqlen_ori_kv未传入，则通过ori_topk_length获取seqlen。
 - cmp_kv Seqlen取值规则
   - layout_kv为BSND时，优先通过seqused_cmp_kv中的元素获取seqlen，seqused_cmp_kv未传入则通过max_seqlen_cmp_kv获取seqlen。
   - layout_kv为TND时，优先通过seqused_cmp_kv中的元素获取seqlen，seqused_cmp_kv未传入则通过cu_seqlens_cmp_kv中的元素获取seqlen。
+  - layout_kv为PA_BBND时，优先通过seqused_cmp_kv中的元素获取seqlen，seqused_cmp_kv未传入则通过max_seqlen_cmp_kv获取seqlen，若max_seqlen_cmp_kv未传入，则通过cmp_topk_length获取seqlen。
 
 ## 调用说明
 

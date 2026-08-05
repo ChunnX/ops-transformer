@@ -533,8 +533,8 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
     - hasOriKv为true时，cuSeqlensOriKvOptional必须传入。
     - hasCmpKv为true时，cuSeqlensCmpKvOptional必须传入。
   - layoutKvOptional=PA_BBND场景
-    - hasOriKv为true，且oriMaskMode不为0或oriTopk为0时，sequsedOriKvOptional必须传入。
-    - hasCmpKv为true，且cmpMaskMode不为0或cmpTopk为0时，sequsedCmpKvOptional必须传入。
+    - hasOriKv为true，oriTopk不为0且oriMaskMode为0时（oriTopkLengthOptional必传场景），sequsedOriKvOptional可选传入，其他场景sequsedOriKvOptional必须传入。
+    - hasCmpKv为true，cmpTopk不为0且cmpMaskMode为0时（cmpTopkLengthOptional必传场景），sequsedCmpKvOptional可选传入，其他场景sequsedCmpKvOptional必须传入。
   - Batch取值规则
     - layoutQOptional为BSND时，优先通过sequsedQOptional的shape推导batch，sequsedQOptional未传入则通过batch_size获取batch数。
     - layoutQOptional为TND时，优先通过sequsedQOptional的shape推导batch，sequsedQOptional未传入则通过cuSeqlensQOptional的shape推导batch。
@@ -544,9 +544,11 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
   - oriKvOptional Seqlen取值规则
     - layoutKvOptional为BSND时，优先通过sequsedOriKvOptional中的元素获取seqlen，sequsedOriKvOptional未传入则通过maxSeqlenOriKv获取seqlen。
     - layoutKvOptional为TND时，优先通过sequsedOriKvOptional中的元素获取seqlen，sequsedOriKvOptional未传入则通过cuSeqlensOriKvOptional中的元素获取seqlen。
+    - layoutKvOptional为PA_BBND时，优先通过sequsedOriKvOptional中的元素获取seqlen，sequsedOriKvOptional未传入则通过maxSeqlenOriKv获取seqlen，若maxSeqlenOriKv未传入，则通过oriTopkLengthOptional获取seqlen。
   - cmpKvOptional Seqlen取值规则
     - layoutKvOptional为BSND时，优先通过sequsedCmpKvOptional中的元素获取seqlen，sequsedCmpKvOptional未传入则通过maxSeqlenCmpKv获取seqlen。
     - layoutKvOptional为TND时，优先通过sequsedCmpKvOptional中的元素获取seqlen，sequsedCmpKvOptional未传入则通过cuSeqlensCmpKvOptional中的元素获取seqlen。
+    - layoutKvOptional为PA_BBND时，优先通过sequsedCmpKvOptional中的元素获取seqlen，sequsedCmpKvOptional未传入则通过maxSeqlenCmpKv获取seqlen，若maxSeqlenCmpKv未传入，则通过cmpTopkLengthOptional获取seqlen。
 
 ## 调用示例
 
