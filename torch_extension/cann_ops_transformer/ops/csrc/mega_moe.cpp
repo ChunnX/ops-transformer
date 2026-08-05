@@ -130,7 +130,12 @@ void LaunchMegaMoeWithProfDump(const at::Tensor &yOut, int deviceId, Ts &...args
     }
 
     // ── 同步后回读 ──
-    (void)aclrtSynchronizeStreamWithTimeout(acl_stream, 30000);
+    // ⚠️ 必须检查同步错误：kernel 若 507015 崩溃，同步会返回非 0，此时读到的 bridge/profBuf 是垃圾值。
+    aclError syncRet = aclrtSynchronizeStreamWithTimeout(acl_stream, 30000);
+    if (syncRet != ACL_ERROR_NONE) {
+        ASCEND_LOGW("MegaMoe profiler sync failed after launch, ret=%d (kernel may have crashed).", syncRet);
+        return;
+    }
     const char *calib = getenv("MEGA_MOE_PROF_CALIB");
     const char *dump = getenv("MEGA_MOE_PROF_DUMP");
     uint64_t hostWsBase = reinterpret_cast<uint64_t>(workspace_addr);

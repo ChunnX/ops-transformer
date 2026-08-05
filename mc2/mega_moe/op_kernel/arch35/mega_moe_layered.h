@@ -187,8 +187,10 @@ private:
     Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
     Params params_{};
 #ifdef ENABLE_PROFILING
-    // [PROFILER] 子包路径：_prof_buf_gm = workspace 基址 + tilingData->profBufAddr[0]（workspace 尾部预留区）
-    PROF_LOCAL_DEFINE()
+    // [PROFILER] 子包路径：_prof_buf_gm = workspace 基址 + tilingData->profBufAddr[0]（workspace 尾部预留区）。
+    // 直接写模式：PROF_MARK 每次独立 GmWrite32+DCCI 写 GM ring，无需本地缓冲数组，
+    // 避免在 AIC 栈上实例化大数组导致栈溢出（507015）。
+    __gm__ uint8_t *_prof_buf_gm = nullptr;
     GM_ADDR wsBaseGm_ = nullptr;  // address-bridge 标定用：kernel 侧看到的 workspace 基址
 #endif
 
@@ -2760,13 +2762,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Process()
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 #ifdef ENABLE_PROFILING
     PROF_MARK(_prof_buf_gm, EVT_KERNEL_END, blockIdx_);
-    if constexpr (g_coreType == AIC) {
-        PROF_FINALIZE_AIC();
-    } else {
-        PROF_FINALIZE();
-    }
     // Address-bridge（标定阶段 MEGA_MOE_PROF_ADDR_CALIB=1 开启）：把 kernel 看到的 workspace 基址写到
     // yOut[0..8]（output tensor，框架保证 host 可读 + DCCI 生效），host 据此算 delta = kernelWsBase - hostWsBase。
+    // 直接写模式无需 PROF_FINALIZE/PROF_FINALIZE_AIC（PROF_MARK 已逐事件 DCCI flush）。
 #if MEGA_MOE_PROF_ADDR_CALIB
     if (GetBlockIdx() == 0) {
         __gm__ uint32_t *diagPtr = reinterpret_cast<__gm__ uint32_t *>(params_.y2GmAddr);
