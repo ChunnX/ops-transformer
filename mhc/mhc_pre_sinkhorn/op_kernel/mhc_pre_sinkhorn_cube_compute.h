@@ -34,7 +34,7 @@ using AscendC::WaitFlag;
 using namespace AscendC;
 
 namespace MhcPreSinkhorn {
-
+// Set the first parameter to true when K > 65536 to trigger loop-based buffer loading.
 constexpr MatmulConfig MHC_PRE_GRAD_MM1_CFG = GetMDLConfig(true, false, 0, false, false, false, true);
 
 struct MmParams {

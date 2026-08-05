@@ -68,7 +68,7 @@ ge::graphStatus MhcPreSinkhornTiling::GetPlatformInfo()
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"),
                       return ge::GRAPH_FAILED);
         aivCoreNum_ = compileInfoPtr->coreNum;
-        aicCoreNum_ = compileInfoPtr->coreNum;
+        aicCoreNum_ = compileInfoPtr->aicCoreNum;
         ubSize_ = compileInfoPtr->ubSize;
     } else {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
@@ -80,7 +80,9 @@ ge::graphStatus MhcPreSinkhornTiling::GetPlatformInfo()
         ubSize_ = ubSizePlatForm;
         socVersion_ = ascendcPlatform.GetSocVersion();
     }
-    OP_CHECK_IF(aicCoreNum_ == 0, OP_LOGE(context_, "aicCoreNum is 0, cannot do cube tiling"),
+    OP_CHECK_IF(aicCoreNum_ == 0, OP_LOGE(context_, "aicCoreNum is 0, cannot do tiling"),
+                  return ge::GRAPH_FAILED);
+    OP_CHECK_IF(aivCoreNum_ == 0, OP_LOGE(context_, "aivCoreNum_ is 0, cannot do tiling"),
                   return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -148,7 +150,7 @@ ge::graphStatus MhcPreSinkhornTiling::GetShapeAttrsInfoInner()
     OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS,
                   OP_LOGE(context_->GetNodeName(), "get attr failed."),
                   return ge::GRAPH_FAILED);
-
+    // hcMult only support 4
     OP_CHECK_IF(hcMult_ != HCMULT_VALUE,
                 OP_LOGE(context_->GetNodeName(), "hcMult should be %ld, but is %ld", HCMULT_VALUE, hcMult_),
                 return ge::GRAPH_FAILED);
