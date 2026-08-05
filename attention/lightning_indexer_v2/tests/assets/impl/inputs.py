@@ -218,6 +218,19 @@ class LightningIndexerV2InputAdapter:
             )
         dst.copy_(src_cpu.to(dtype=dst.dtype, device=dst.device))
 
+    def copy_metadata(self, dst, data):
+        metadata_input = data.get("metadata_input")
+        if metadata_input is None:
+            raise ValueError("LI_V2 pytest generator did not return metadata_input")
+        device_input = {
+            name: value.npu() if torch.is_tensor(value) else value
+            for name, value in metadata_input.items()
+        }
+        metadata = torch.ops.cann_ops_transformer.lightning_indexer_metadata(
+            **device_input
+        )
+        self.copy_tensor(dst, metadata, "metadata")
+
     @staticmethod
     def golden_data(data, layout_q, cu_seqlens_q):
         cu_q = None
@@ -347,7 +360,7 @@ class LightningIndexerV2InputAdapter:
             "params": params,
             "scores": scores,
             "topk_value": scores,
-            "index_offsets": None if offset is None else offset.detach().cpu(),
+            "output_idx_offset": None if offset is None else offset.detach().cpu(),
             "score_layout": layout_q,
             "cu_seqlens_q": cu_q_cpu,
         }
@@ -387,23 +400,63 @@ def rebuild_li_v2_compare_data(compare_context):
     return INPUT_ADAPTER.rebuild_compare_data(compare_context)
 
 
-def generate_li_v2_inputs(q, k, w, *, cu_seqlens_q=None, cu_seqlens_k=None,
-                          seqused_q=None, seqused_k=None, cmp_residual_k=None,
-                          block_table=None, output_idx_offset=None,
-                          layout_q=None, layout_k=None, **kwargs):
-    """Generate the exact pytest inputs and CPU golden for a TTK case."""
-    INPUT_ADAPTER.customize(
+def generate_li_v2_inputs(
+        q, k, w, topk, *, cu_seqlens_q=None, cu_seqlens_k=None,
+        seqused_q=None, seqused_k=None, cmp_residual_k=None,
+        block_table=None, output_idx_offset=None, metadata=None,
+        max_seqlen_q=-1, layout_q="BSND", layout_k="BSND", mask_mode=0,
+        cmp_ratio=1, return_value=0, **kwargs):
+    """Populate direct API inputs and its pytest-derived metadata slot."""
+    if metadata is None:
+        raise ValueError("LI_V2 direct API CSV must reserve the metadata tensor slot")
+    params = dict(kwargs)
+    params.update({
+        "topk": topk,
+        "max_seqlen_q": max_seqlen_q,
+        "layout_q": layout_q,
+        "layout_k": layout_k,
+        "mask_mode": mask_mode,
+        "cmp_ratio": cmp_ratio,
+        "return_value": return_value,
+    })
+    data = INPUT_ADAPTER.customize(
+        q, k, w, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+        cmp_residual_k, block_table, output_idx_offset, layout_q, layout_k,
+        params,
+    )
+    INPUT_ADAPTER.copy_metadata(metadata, data)
+
+
+def generate_aclnn_li_v2_inputs(
+        q, k, w, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+        cmp_residual_k, block_table, output_idx_offset, metadata, topk,
+        max_seqlen_q, layout_q, layout_k, mask_mode, cmp_ratio,
+        return_value, sparse_indices_out, sparse_values_out, **kwargs):
+    """Map the ACLNN C signature to the canonical pytest input adapter."""
+    from ttk.utilities.torch_ops_package_loader import TorchOpsPackageLoader
+
+    TorchOpsPackageLoader.ensure_registered(
+        "torch.ops.cann_ops_transformer.lightning_indexer_metadata"
+    )
+    del sparse_indices_out, sparse_values_out
+    return generate_li_v2_inputs(
         q,
         k,
         w,
-        cu_seqlens_q,
-        cu_seqlens_k,
-        seqused_q,
-        seqused_k,
-        cmp_residual_k,
-        block_table,
-        output_idx_offset,
-        layout_q,
-        layout_k,
-        kwargs,
+        topk,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_k=cu_seqlens_k,
+        seqused_q=seqused_q,
+        seqused_k=seqused_k,
+        cmp_residual_k=cmp_residual_k,
+        block_table=block_table,
+        output_idx_offset=output_idx_offset,
+        metadata=metadata,
+        max_seqlen_q=max_seqlen_q,
+        layout_q=layout_q,
+        layout_k=layout_k,
+        mask_mode=mask_mode,
+        cmp_ratio=cmp_ratio,
+        return_value=return_value,
+        **kwargs,
     )

@@ -149,7 +149,6 @@ class PytestV2TopKComparator:
             npu_values, _ = npu_values.sort(dim=-1, descending=True)
         output_idx_offset = self.to_torch(compare_data.get("output_idx_offset"))
         golden_values_for_index = golden_values.detach().cpu().float().numpy()
-        npu_values_for_index = npu_values.detach().cpu().float().numpy()
         module = self.load_module()
         index_result = module.check_result(
             self.to_torch(golden_outputs[0]),
@@ -158,7 +157,7 @@ class PytestV2TopKComparator:
             output_idx_offset,
             params,
             golden_values_for_index,
-            npu_values_for_index,
+            npu_values,
         )
         results = [self.result_dict(index_result, "index compare")]
         if return_value:

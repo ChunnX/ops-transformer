@@ -44,7 +44,6 @@ def load_impl_module(stem):
 golden_module = load_impl_module("golden")
 inputs_module = load_impl_module("inputs")
 compare_module = load_impl_module("compare")
-graph_module = load_impl_module("graph")
 
 
 class MixedQuantSparseFlashMlaSpec:
@@ -56,9 +55,14 @@ class MixedQuantSparseFlashMlaSpec:
     }
 
     compare = staticmethod(compare_module.compare)
-    torch_graph = graph_module.MixedQuantSparseFlashMlaAclGraph
+
+
+class AclnnMixedQuantSparseFlashMlaSpec(MixedQuantSparseFlashMlaSpec):
+    golden = golden_module.cpu_aclnn_mixed_quant_sparse_flash_mla
+    customize_inputs = inputs_module.generate_aclnn_mixed_quant_sparse_flash_mla_inputs
 
 
 __spec__ = {
-    "mqsmla_ttk_ops.mixed_quant_sparse_flash_mla_ttk": "MixedQuantSparseFlashMlaSpec",
+    "torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla": "MixedQuantSparseFlashMlaSpec",
+    "aclnnMixedQuantSparseFlashMla": "AclnnMixedQuantSparseFlashMlaSpec",
 }
