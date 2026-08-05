@@ -30,7 +30,7 @@ using namespace fa_base_matmul;
 using namespace regbasemx;
 
 namespace BaseApi {
-template <typename inputType, typename mmType, typename outputType, BSALayout layout, BSALayout kvLayout,
+template <typename inputType, typename mmType, typename outputType, QBSALayout layout, QBSALayout kvLayout,
           S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType,
           DTemplateType dVTemplateType, bool isPa, bool useDn = true>
 class QuantBlockSparseAttnMxBlockCube {
@@ -42,14 +42,14 @@ public:
 
     static constexpr bool USE_DN = useDn;
     static constexpr bool IS_PA = isPa;
-    static constexpr BSALayout LAYOUT = layout;
-    static constexpr BSALayout KV_LAYOUT = kvLayout;
+    static constexpr QBSALayout LAYOUT = layout;
+    static constexpr QBSALayout KV_LAYOUT = kvLayout;
     static constexpr uint32_t M_BASE = static_cast<uint32_t>(s1TemplateType);
     static constexpr uint32_t S2_BASE = static_cast<uint32_t>(s2TemplateType);
     static constexpr uint32_t S2_SPLIT = 256U;
     static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
     static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
-    static_assert(LAYOUT == BSALayout::TND && KV_LAYOUT == BSALayout::PA_BNSD && IS_PA,
+    static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNSD && IS_PA,
                   "MX cube currently only supports TND query and PA_BNSD KV");
     static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
                   "MX cube currently only supports S1=128, S2=512, D=128 and DV=128");
@@ -268,7 +268,7 @@ private:
         startPos.dIdx = 0U;
 
         PAShape keyShape;
-        keyShape.blockSize = constInfo.kvSparseBlockSize;
+        keyShape.blockSize = constInfo.paBlockSize;
         keyShape.headNum = constInfo.n2Size;
         keyShape.headDim = constInfo.dSize;
         keyShape.actHeadDim = constInfo.dSize;
@@ -279,7 +279,7 @@ private:
 
         // KScale GM 为 [physicalBlock,kvHeads,blockSize,D/64,2]，单行使用 DN2NZ。
         PAShape keyScaleShape;
-        keyScaleShape.blockSize = constInfo.kvSparseBlockSize;
+        keyScaleShape.blockSize = constInfo.paBlockSize;
         keyScaleShape.headNum = constInfo.n2Size;
         keyScaleShape.headDim = constInfo.keyScaleDSize * constInfo.scaleLastDim;
         keyScaleShape.actHeadDim = keyScaleShape.headDim;
@@ -328,7 +328,7 @@ private:
         startPos.dIdx = 0U;
 
         PAShape valueShape;
-        valueShape.blockSize = constInfo.kvSparseBlockSize;
+        valueShape.blockSize = constInfo.paBlockSize;
         valueShape.headNum = constInfo.n2Size;
         valueShape.headDim = constInfo.dSizeV;
         valueShape.actHeadDim = constInfo.dSizeV;
@@ -364,7 +364,7 @@ private:
         const uint32_t tileStart = kIdx * S2_SPLIT;
         const uint32_t tileEnd = tileStart + realK;
         const uint32_t totalGroupCount = AlignUp64(realK) / MX_TOKEN_GROUP;
-        const uint32_t scaleBlockSize = constInfo.kvSparseBlockSize / MX_TOKEN_GROUP;
+        const uint32_t scaleBlockSize = constInfo.paBlockSize / MX_TOKEN_GROUP;
         constexpr uint32_t blockElementCnt = 32U / sizeof(SCALE_T);
         uint32_t copiedGroupCount = 0U;
 
@@ -399,7 +399,7 @@ private:
             const uint32_t groupEndInBlock = (copyStartInBlock + copyRowNum + MX_TOKEN_GROUP - 1U) / MX_TOKEN_GROUP;
             const uint32_t copyGroupNum = groupEndInBlock - groupStartInBlock;
 
-            startPos.s2Offset = static_cast<uint64_t>(runInfo.sparseBlockIdx[i]) * scaleBlockSize + groupStartInBlock;
+            startPos.s2Offset = runInfo.sparseBlockTokenOffset[i] / MX_TOKEN_GROUP + groupStartInBlock;
             valueScaleShape.copyRowNum = copyGroupNum;
             LocalTensor<SCALE_T> valueScaleDstTensor = dstTensor[copiedGroupCount * blockElementCnt];
             MxGmFlatScaleCopyInToL1PAForND<SCALE_T>(valueScaleDstTensor, vScaleGm_, blockTableGm_, valueScaleShape,

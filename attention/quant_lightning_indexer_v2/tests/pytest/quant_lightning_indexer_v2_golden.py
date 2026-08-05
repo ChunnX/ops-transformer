@@ -24,6 +24,7 @@ import math
 import ctypes
 import copy
 import ast
+from qliv2_parameter_normalization import normalize_qliv2_params
 
 try:
     import cann_ops_transformer
@@ -173,6 +174,22 @@ def reduce_mxfp4_weighted_qk(weight_matrix, qk_matrix):
         fma_fp64 = acc_bf16.to(torch.float64) + weight_fp64 * qk_fp64
         acc_bf16 = round_fp64_to_bf16_rne(fma_fp64)
     return acc_bf16
+
+
+def reduce_mxfp8_weighted_qk(weight_matrix, qk_matrix):
+    output_shape = (weight_matrix.shape[0], weight_matrix.shape[1], qk_matrix.shape[2])
+    acc_fp32 = torch.zeros(
+        output_shape, dtype=torch.float32, device=weight_matrix.device
+    )
+
+    for g_idx in range(weight_matrix.shape[2]):
+        weight_fp64 = weight_matrix[:, :, g_idx : g_idx + 1].to(torch.float64)
+        qk_fp64 = qk_matrix[:, g_idx : g_idx + 1, :].to(torch.float64)
+        # Model an FP32-destination MulAddDst: compute the fused multiply-add in
+        # FP64, then round once to the FP32 destination after every G.
+        fma_fp64 = acc_fp32.to(torch.float64) + weight_fp64 * qk_fp64
+        acc_fp32 = fma_fp64.to(torch.float32)
+    return acc_fp32
 
 
 def get_qk_physical_head_dim(head_dim, quant_mode):
@@ -843,10 +860,9 @@ class GeneralizedQLIV2:
                 cur_q.squeeze(0), cur_k.permute(0, 1, 3, 2).squeeze(0)
             ).unsqueeze(0)
             qk_relu_out = qk_bmm_res.to(dtype=torch.float32).clamp_min(0.0)
-            brc_vmul = torch.bmm(
-                cur_wt.permute(0, 2, 3, 1).to(dtype=torch.float32).squeeze(0),
-                qk_relu_out.permute(0, 2, 1, 3).to(dtype=torch.float32).squeeze(0),
-            ).unsqueeze(0)
+            weight_matrix = cur_wt.permute(0, 2, 3, 1).squeeze(0)
+            qk_matrix = qk_relu_out.permute(0, 2, 1, 3).squeeze(0)
+            brc_vmul = reduce_mxfp8_weighted_qk(weight_matrix, qk_matrix).unsqueeze(0)
         temp_b, temp_s1, temp_n1, temp_s2 = brc_vmul.shape
         temp_n2 = self.k_head_num
         actual_selected_count = min(temp_s2, sparse_count)
@@ -1450,6 +1466,8 @@ def trans_prefix_actseq(self, list):
 def qliv2_output_single(
     params, is_batch=False, split_s1=DEFAULT_SPLIT_S1, s1size=DEFAULT_S1SIZE
 ):
+    if is_batch:
+        params = normalize_qliv2_params(params)
     (
         batch_size,
         q_seq,
@@ -1487,72 +1505,6 @@ def qliv2_output_single(
     ) = params
 
     if is_batch:
-        if q_t_size is None:
-            q_t_size = 0
-        if k_t_size is None:
-            k_t_size = 0
-        if block_size is None:
-            block_size = 0
-        if block_num is None:
-            block_num = 0
-
-        batch_size = int(batch_size)
-        q_seq = int(q_seq)
-        k_seq = int(k_seq)
-        q_t_size = int(q_t_size)
-        k_t_size = int(k_t_size)
-        q_head_num = int(q_head_num)
-        k_head_num = int(k_head_num)
-        head_dim = int(head_dim)
-        block_size = int(block_size)
-        block_num = int(block_num)
-        if max_seqlen_q is None:
-            max_seqlen_q = -1
-        max_seqlen_q = int(max_seqlen_q)
-        if quant_mode is None:
-            quant_mode = 1
-        quant_mode = int(quant_mode)
-        cmp_ratio = int(cmp_ratio)
-        sparse_count = int(sparse_count)
-        sparse_mode = int(sparse_mode)
-        return_value = int(return_value)
-
-        params = (
-            batch_size,
-            q_seq,
-            k_seq,
-            q_t_size,
-            k_t_size,
-            q_head_num,
-            k_head_num,
-            head_dim,
-            block_size,
-            block_num,
-            qk_dtype,
-            weight_dtype,
-            dequant_dtype,
-            actual_seq_dtype,
-            cu_seqlens_q,
-            cu_seqlens_k,
-            seqused_q,
-            seqused_k,
-            cmp_residual_k,
-            max_seqlen_q,
-            quant_mode,
-            layout_query,
-            layout_key,
-            sparse_count,
-            sparse_mode,
-            query_datarange,
-            key_datarange,
-            weights_datarange,
-            q_scale_datarange,
-            k_scale_datarange,
-            cmp_ratio,
-            return_value,
-            output_idx_offset,
-        )
-
         dtype_map = {
             "INT8": torch.int8,
             "UINT8": torch.uint8,
@@ -2188,7 +2140,7 @@ def qliv2_output_single(
             query = query.to(dtype=torch.float16)
             key = key.to(dtype=torch.float16)
             if blockFusion is not None:
-                blockFusion = blockFusion.to(dtype=torch.float16)
+                blockFusion = blockFusion.view(torch.uint8)
 
         output_tensors = {
             "params": params,
