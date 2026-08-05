@@ -12,11 +12,14 @@
 
 """Input customization for QuantLightningIndexer V2 TTK cases."""
 
+import fcntl
 import importlib.util
 import inspect
 import sys
+import tempfile
 from pathlib import Path
 
+import numpy as np
 import torch
 
 
@@ -34,6 +37,7 @@ class QuantLightningIndexerV2InputAdapter:
     def __init__(self):
         self.pytest_golden = None
         self.pytest_normalizer = None
+        self.metadata_runtime_ready = False
 
     @staticmethod
     def load_golden_store():
@@ -109,7 +113,28 @@ class QuantLightningIndexerV2InputAdapter:
             return None
         if torch.is_tensor(value):
             value = value.detach().cpu().reshape(-1).tolist()
+        elif isinstance(value, np.ndarray):
+            value = value.reshape(-1).tolist()
         return [int(item) for item in value]
+
+    @staticmethod
+    def tensor_dtype(tensor):
+        if torch.is_tensor(tensor):
+            return tensor.dtype
+        if "hifloat8" in str(tensor.dtype):
+            return torch.uint8
+        return torch.from_numpy(np.asarray(tensor)).dtype
+
+    @staticmethod
+    def to_cpu_tensor(tensor):
+        if tensor is None:
+            return None
+        if torch.is_tensor(tensor):
+            return tensor.detach().cpu()
+        array = np.asarray(tensor)
+        if "hifloat8" in str(array.dtype):
+            array = array.view(np.uint8)
+        return torch.from_numpy(np.array(array, copy=True))
 
     @staticmethod
     def prefix_lengths(value):
@@ -126,20 +151,22 @@ class QuantLightningIndexerV2InputAdapter:
 
     @staticmethod
     def qk_dtype_name(tensor):
+        dtype = QuantLightningIndexerV2InputAdapter.tensor_dtype(tensor)
         dtype_name = str(tensor.dtype)
-        if dtype_name == "torch.int8":
+        if dtype == torch.int8:
             return "INT8"
         if "float8_e4m3fn" in dtype_name:
             return "FLOAT8_E4M3FN"
-        if dtype_name == "torch.uint8":
+        if dtype == torch.uint8:
             return "HIFLOAT8"
         raise ValueError(f"unsupported QLI_V2 q/k dtype: {tensor.dtype}")
 
     @staticmethod
     def dequant_dtype_name(tensor):
-        if tensor.dtype == torch.float16:
+        dtype = QuantLightningIndexerV2InputAdapter.tensor_dtype(tensor)
+        if dtype == torch.float16:
             return "FP16"
-        if tensor.dtype == torch.float32:
+        if dtype == torch.float32:
             return "FP32"
         raise ValueError(f"unsupported QLI_V2 dequant dtype: {tensor.dtype}")
 
@@ -152,8 +179,9 @@ class QuantLightningIndexerV2InputAdapter:
             torch.float32: "FP32",
             torch.bfloat16: "BF16",
         }
-        if tensor.dtype in mapping:
-            return mapping[tensor.dtype]
+        dtype = QuantLightningIndexerV2InputAdapter.tensor_dtype(tensor)
+        if dtype in mapping:
+            return mapping[dtype]
         if "float8_e4m3fn" in str(tensor.dtype):
             return "FLOAT8_E4M3FN"
         raise ValueError(f"unsupported QLI_V2 weight dtype: {tensor.dtype}")
@@ -260,19 +288,62 @@ class QuantLightningIndexerV2InputAdapter:
             return
         if src is None:
             raise ValueError(f"{name} is present in CSV but pytest generator returned None")
-        src_cpu = src.detach().cpu() if torch.is_tensor(src) else torch.as_tensor(src)
+        src_cpu = src.detach().cpu() if torch.is_tensor(src) else src
         if tuple(dst.shape) != tuple(src_cpu.shape):
             raise ValueError(
                 f"{name} shape mismatch: TTK={tuple(dst.shape)} "
                 f"pytest={tuple(src_cpu.shape)}"
             )
-        dst.copy_(src_cpu.to(dtype=dst.dtype, device=dst.device))
+        if torch.is_tensor(dst):
+            src_tensor = torch.as_tensor(src_cpu)
+            dst.copy_(src_tensor.to(dtype=dst.dtype, device=dst.device))
+            return
+
+        dst_array = np.asarray(dst)
+        src_array = np.asarray(src_cpu)
+        if "hifloat8" in str(dst_array.dtype):
+            np.copyto(dst_array.view(np.uint8), src_array.view(np.uint8))
+        else:
+            np.copyto(dst_array, src_array.astype(dst_array.dtype, copy=False))
+
+    def copy_metadata(self, dst, data):
+        metadata_input = data.get("metadata_input")
+        if metadata_input is None:
+            raise ValueError("QLI_V2 pytest generator did not return metadata_input")
+        device_input = {
+            name: value.npu() if torch.is_tensor(value) else value
+            for name, value in metadata_input.items()
+        }
+        metadata = self.call_metadata(device_input)
+        self.copy_tensor(dst, metadata, "metadata")
+
+    def call_metadata(self, device_input):
+        if self.metadata_runtime_ready:
+            return torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
+                **device_input
+            )
+
+        lock_path = Path(tempfile.gettempdir()) / "ttk_qli_v2_metadata_build.lock"
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                metadata = (
+                    torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata(
+                        **device_input
+                    )
+                )
+                self.metadata_runtime_ready = True
+                return metadata
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     @staticmethod
     def golden_data(data, layout_query, cu_seqlens_q):
         cu_q = None
         if cu_seqlens_q is not None:
-            cu_q = cu_seqlens_q.detach().cpu().clone()
+            cu_q = QuantLightningIndexerV2InputAdapter.to_cpu_tensor(
+                cu_seqlens_q
+            ).clone()
         return {
             "cpu_result": data["cpu_result"],
             "topk_value": data["topk_value"],
@@ -287,13 +358,14 @@ class QuantLightningIndexerV2InputAdapter:
     def tensor_values(tensor):
         if tensor is None:
             return None
-        return [int(value) for value in tensor.detach().cpu().reshape(-1).tolist()]
+        tensor = QuantLightningIndexerV2InputAdapter.to_cpu_tensor(tensor)
+        return [int(value) for value in tensor.reshape(-1).tolist()]
 
     @staticmethod
     def restore_paged_tensor(tensor, block_table, batch_size, sequence_length):
         """Restore a paged key or scale tensor to its logical BNS(D) layout."""
-        physical = tensor.detach().cpu()
-        table = block_table.detach().cpu().to(torch.int64)
+        physical = QuantLightningIndexerV2InputAdapter.to_cpu_tensor(tensor)
+        table = QuantLightningIndexerV2InputAdapter.to_cpu_tensor(block_table).to(torch.int64)
         if physical.ndim not in (3, 4):
             raise ValueError(
                 f"paged tensor must be 3-D or 4-D, got shape {tuple(physical.shape)}"
@@ -416,15 +488,19 @@ class QuantLightningIndexerV2InputAdapter:
         cu_k_cpu = as_int_tensor(cu_k_values)
         seq_q_cpu = as_int_tensor(seq_q_values)
         seq_k_cpu = as_int_tensor(seq_k_values)
+        query_cpu = self.to_cpu_tensor(query)
+        weights_cpu = self.to_cpu_tensor(weights)
+        block_table_cpu = self.to_cpu_tensor(block_table)
+        offset_cpu = self.to_cpu_tensor(offset)
         model_args = [
             batch_size, q_seq, k_seq, q_t_size, k_t_size,
             q_head_num, k_head_num, head_dim, block_size, block_num,
-            query.dtype,
+            self.tensor_dtype(query),
         ]
         if uses_weight_dtype:
-            model_args.append(weights.dtype)
+            model_args.append(self.tensor_dtype(weights))
         model_args.extend([
-            query_scale.dtype, torch.int32,
+            self.tensor_dtype(query_scale), torch.int32,
             cu_q_cpu, cu_k_cpu, q_lengths, k_lengths, residual_for_cpu,
             max_seqlen_q, quant_mode, layout_q, layout_k, sparse_count,
             sparse_mode, None, None, None, None, None,
@@ -432,8 +508,8 @@ class QuantLightningIndexerV2InputAdapter:
         ])
         model = pytest_golden.GeneralizedQLIV2(*model_args)
 
-        key_for_cpu = key
-        key_scale_for_cpu = key_scale
+        key_for_cpu = self.to_cpu_tensor(key)
+        key_scale_for_cpu = self.to_cpu_tensor(key_scale)
         if layout_k == "PA_BBND":
             if block_table is None or not k_lengths:
                 raise ValueError("PA_BBND compare context requires block_table and seqused_k")
@@ -446,12 +522,12 @@ class QuantLightningIndexerV2InputAdapter:
                     key_scale, block_table, batch_size, sequence_length
                 )
 
-        query_scale_for_cpu = query_scale.detach().cpu()
+        query_scale_for_cpu = self.to_cpu_tensor(query_scale)
         if quant_mode == 4:
             query_scale_for_cpu = torch.full(
                 tuple(query.shape[:-1]),
-                query_scale.detach().cpu().reshape(-1)[0].item(),
-                dtype=query_scale.dtype,
+                self.to_cpu_tensor(query_scale).reshape(-1)[0].item(),
+                dtype=self.tensor_dtype(query_scale),
             )
             if layout_k == "PA_BBND":
                 key_scale_shape = (batch_size, k_head_num, max(k_lengths))
@@ -459,19 +535,19 @@ class QuantLightningIndexerV2InputAdapter:
                 key_scale_shape = tuple(key.shape[:-1])
             key_scale_for_cpu = torch.full(
                 key_scale_shape,
-                key_scale.detach().cpu().reshape(-1)[0].item(),
-                dtype=key_scale.dtype,
+                self.to_cpu_tensor(key_scale).reshape(-1)[0].item(),
+                dtype=self.tensor_dtype(key_scale),
             )
 
         _, scores, _ = model.forward(
-            query, key_for_cpu, weights, query_scale_for_cpu, key_scale_for_cpu,
-            cu_q_cpu, cu_k_cpu, seq_q_cpu, seq_k_cpu, block_table, offset,
+            query_cpu, key_for_cpu, weights_cpu, query_scale_for_cpu, key_scale_for_cpu,
+            cu_q_cpu, cu_k_cpu, seq_q_cpu, seq_k_cpu, block_table_cpu, offset_cpu,
         )
         return {
             "params": params,
             "scores": scores,
             "topk_value": scores,
-            "output_idx_offset": None if offset is None else offset.detach().cpu(),
+            "output_idx_offset": offset_cpu,
             "score_layout": layout_q,
             "cu_seqlens_q": cu_q_cpu,
         }
@@ -524,27 +600,70 @@ def rebuild_qli_v2_compare_data(compare_context):
     return INPUT_ADAPTER.rebuild_compare_data(compare_context)
 
 
-def generate_qli_v2_inputs(query, key, weights, query_dequant_scale,
-                           key_dequant_scale, *, cu_seqlens_q=None,
-                           cu_seqlens_k=None, seqused_q=None, seqused_k=None,
-                           cmp_residual_k=None, block_table=None,
-                           output_idx_offset=None, layout_query=None,
-                           layout_key=None, **kwargs):
-    """Generate the exact pytest inputs and CPU golden for a TTK case."""
-    INPUT_ADAPTER.customize(
+def generate_qli_v2_inputs(
+        query, key, weights, query_dequant_scale, key_dequant_scale,
+        topk, quant_mode, *, cu_seqlens_q=None, cu_seqlens_k=None,
+        seqused_q=None, seqused_k=None, cmp_residual_k=None,
+        block_table=None, output_idx_offset=None, metadata=None,
+        max_seqlen_q=-1, layout_q="BSND", layout_k="BSND", mask_mode=0,
+        cmp_ratio=1, return_value=0, **kwargs):
+    """Populate direct API inputs and its pytest-derived metadata slot."""
+    if metadata is None:
+        raise ValueError("QLI_V2 direct API CSV must reserve the metadata tensor slot")
+    params = dict(kwargs)
+    params.update({
+        "sparse_count": topk,
+        "quant_mode": quant_mode,
+        "max_seqlen_q": max_seqlen_q,
+        "layout_query": layout_q,
+        "layout_key": layout_k,
+        "sparse_mode": mask_mode,
+        "cmp_ratio": cmp_ratio,
+        "return_value": return_value,
+    })
+    data = INPUT_ADAPTER.customize(
+        query, key, weights, query_dequant_scale, key_dequant_scale,
+        cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k,
+        block_table, output_idx_offset, layout_q, layout_k, params,
+    )
+    INPUT_ADAPTER.copy_metadata(metadata, data)
+
+
+def generate_aclnn_qli_v2_inputs(
+        query, key, weights, query_dequant_scale, key_dequant_scale,
+        cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+        cmp_residual_k, block_table, output_idx_offset, metadata, topk,
+        quant_mode, max_seqlen_q, layout_q, layout_k, mask_mode,
+        cmp_ratio, return_value, sparse_indices_out, sparse_values_out,
+        **kwargs):
+    """Map the ACLNN C signature to the canonical pytest input adapter."""
+    from ttk.utilities.torch_ops_package_loader import TorchOpsPackageLoader
+
+    TorchOpsPackageLoader.ensure_registered(
+        "torch.ops.cann_ops_transformer.quant_lightning_indexer_metadata"
+    )
+    del sparse_indices_out, sparse_values_out
+    return generate_qli_v2_inputs(
         query,
         key,
         weights,
         query_dequant_scale,
         key_dequant_scale,
-        cu_seqlens_q,
-        cu_seqlens_k,
-        seqused_q,
-        seqused_k,
-        cmp_residual_k,
-        block_table,
-        output_idx_offset,
-        layout_query,
-        layout_key,
-        kwargs,
+        topk,
+        quant_mode,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_k=cu_seqlens_k,
+        seqused_q=seqused_q,
+        seqused_k=seqused_k,
+        cmp_residual_k=cmp_residual_k,
+        block_table=block_table,
+        output_idx_offset=output_idx_offset,
+        metadata=metadata,
+        max_seqlen_q=max_seqlen_q,
+        layout_q=layout_q,
+        layout_k=layout_k,
+        mask_mode=mask_mode,
+        cmp_ratio=cmp_ratio,
+        return_value=return_value,
+        **kwargs,
     )

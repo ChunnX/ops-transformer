@@ -12,6 +12,7 @@
 
 """CPU golden adapter for QuantLightningIndexer V2 TTK cases."""
 
+import numpy as np
 import torch
 
 
@@ -60,13 +61,62 @@ def set_compare_data(testcase_name, data):
 
 
 def cpu_quant_lightning_indexer_v2(query, key, weights, query_dequant_scale,
-                                   key_dequant_scale, *, return_value=0,
+                                   key_dequant_scale, topk, quant_mode, *, return_value=0,
                                    testcase_name=None, **kwargs):
     """Return the CPU outputs produced while generating this exact pytest case."""
-    del query, key, weights, query_dequant_scale, key_dequant_scale, kwargs
+    del query, key, weights, query_dequant_scale, key_dequant_scale
+    del topk, quant_mode, kwargs
     data = CASE_DATA.activate(testcase_name)
     if int(return_value):
         sparse_value = data["cpu_topk_value"]
     else:
         sparse_value = torch.zeros(0, dtype=data["topk_value"].dtype)
     return data["cpu_result"], sparse_value
+
+
+def cpu_aclnn_qli_v2(
+        query, key, weights, query_dequant_scale, key_dequant_scale,
+        cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k,
+        cmp_residual_k, block_table, output_idx_offset, metadata, topk,
+        quant_mode, max_seqlen_q, layout_q, layout_k, mask_mode,
+        cmp_ratio, return_value, sparse_indices_out, sparse_values_out,
+        testcase_name=None, **kwargs):
+    """Return the same pytest Golden for the ACLNN C API parameter order."""
+    del (
+        cu_seqlens_q,
+        cu_seqlens_k,
+        seqused_q,
+        seqused_k,
+        cmp_residual_k,
+        block_table,
+        output_idx_offset,
+        metadata,
+        max_seqlen_q,
+        layout_q,
+        layout_k,
+        mask_mode,
+        cmp_ratio,
+        sparse_indices_out,
+    )
+    sparse_indices, sparse_values = cpu_quant_lightning_indexer_v2(
+        query,
+        key,
+        weights,
+        query_dequant_scale,
+        key_dequant_scale,
+        topk,
+        quant_mode,
+        return_value=return_value,
+        testcase_name=testcase_name,
+        **kwargs,
+    )
+    if not int(return_value):
+        if sparse_values_out is None:
+            raise ValueError("ACLNN QLI_V2 requires the sparseValuesOut tensor slot")
+        if torch.is_tensor(sparse_values_out):
+            sparse_values = torch.zeros(
+                tuple(sparse_values_out.shape), dtype=sparse_values_out.dtype
+            )
+        else:
+            sparse_values = np.zeros_like(np.asarray(sparse_values_out))
+    return sparse_indices, sparse_values
