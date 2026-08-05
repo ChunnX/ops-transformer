@@ -792,14 +792,14 @@
   <tr>
    <td>activation</td>
    <td>可选属性</td>
-   <td>激活函数类型。默认值为"swiglu"。A2/A3支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"；其中"swiglu"为通用SwiGLU，"swiglustep"对应Step 3.5，"swigluoai"对应MiniMax-M3，"situglu"对应Kimi K3。A5当前仅支持"swiglu"。</td>
+   <td>激活函数类型。默认值为"swiglu"。A2/A3支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"；其中"swiglu"为通用SwiGLU，计算为SiLU(gate)×up；"swiglustep"为对SiLU(gate)先截断再乘up的变体；"swigluoai"计算为(up+beta)×gate×sigmoid(alpha×gate)；"situglu"计算为beta×tanh(gate/beta)×sigmoid(gate)×up，可用linear_beta对up做tanh缩放。各激活函数的计算公式见上方"计算过程"章节。A5当前仅支持"swiglu"。</td>
    <td>STRING</td>
    <td></td>
   </tr>
   <tr>
    <td>activation_params</td>
    <td>可选属性</td>
-   <td>激活函数参数列表，默认值为[float最大值]。参数顺序和数量由activation决定："swiglu"和"swiglustep"传[clamp]；"swigluoai"传[clamp, alpha, beta]；"situglu"在linear_beta为None时传[beta]，否则传[beta, linear_beta]。clamp需≥0且不能为NaN；alpha和swigluoai的beta需为有限值；situglu的beta和linear_beta作为除数，需为有限非零值。</td>
+   <td>激活函数参数。Python接口以字典传入（键为"clamp"、"alpha"、"beta"、"linear_beta"），C++属性以列表按固定顺序序列化：默认不设置额外参数（clamp未配置时使用float最大值）；"swiglu"和"swiglustep"传[clamp]；"swigluoai"传[clamp, alpha, beta]；"situglu"传[beta]或[beta, linear_beta]；A5仅支持[clamp]。clamp需≥0且不能为NaN；alpha和swigluoai的beta需为有限值；situglu的beta和linear_beta作为除数，需为有限非零值。</td>
    <td>LIST_FLOAT</td>
    <td></td>
   </tr>
