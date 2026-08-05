@@ -65,17 +65,14 @@ private:
     __aicore__ inline void ProcessMainLoop();
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                             __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable,
-                                            __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-                                            __gm__ uint8_t *workspace,
-                                            const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
-                                            TPipe *tPipe);
+                                            __gm__ uint8_t *actualSeqLengthsQ);
     __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void ComputeConstexpr();
+    __aicore__ inline void ParseTilingData(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths);
     __aicore__ inline void InitMMResBuf(__gm__ uint8_t *workspace);
     __aicore__ inline void SetRunInfo(RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount,
                                       int64_t s2LoopLimit, int64_t multiCoreInnerIdx);
     __aicore__ inline void ComputeBmm1Tail(RunInfo &runInfo, RunParamStr &runParam);
-    __aicore__ inline void InitUniqueConstInfo();
     __aicore__ inline void InitUniqueRunInfo(const RunParamStr &runParam, RunInfo &runInfo);
     __aicore__ inline void ComputeAxisIdxByBnAndGs1(int64_t bnIndex, int64_t gS1Index, RunParamStr &runParam);
     __aicore__ inline void InitCalcParamsEach();
@@ -85,7 +82,6 @@ private:
     TPipe *pipe;
 
     const KvQuantSparseFlashAttentionTilingDataMla *__restrict tilingData;
-    static constexpr uint64_t SYNC_MODE = 4;
     static constexpr uint32_t PRELOAD_NUM = 2;
     /* 核间通道 */
     BufferManager<BufferType::UB> ubBufferManager;
@@ -96,7 +92,6 @@ private:
     // mm2左矩阵P
     BufferManager<BufferType::L1> l1BufferManager;
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1RightBuffers;
-    CVSharedParams sharedParams;
     /* GM信息 */
     __gm__ int32_t *actualSeqKvlenAddr = nullptr;
     __gm__ int32_t *actualSeqQlenAddr = nullptr;
@@ -132,45 +127,26 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
 {
     fa_base_matmul::idCounterNum = 0;
     constInfo.subBlockIdx = GetSubBlockIdx();
+    this->tilingData = tiling;
     if ASCEND_IS_AIC {
         this->aicIdx = GetBlockIdx();
         constInfo.aivIdx = 0;
     } else {
         constInfo.aivIdx = GetBlockIdx();
         this->aicIdx = constInfo.aivIdx >> 1;
-        this->tilingData = tiling;
     }
 
     constInfo.s1BaseSize = 64;
     constInfo.s2BaseSize = 128;
 
     this->pipe = tPipe;
-    vecBlock.InitVecBlock(tPipe, this->tilingData, this->sharedParams, this->aicIdx, constInfo.subBlockIdx,
-                          actualSeqLengthsQ, actualSeqLengths);
-    if ASCEND_IS_AIV {
-        constInfo.bSize = this->sharedParams.bSize;
-        constInfo.gSize = this->sharedParams.gSize;
-        constInfo.s1Size = this->sharedParams.s1Size;
-        constInfo.needInit = this->sharedParams.needInit;
-        constInfo.dSizeV = 512;
-    }
+    this->ParseTilingData(actualSeqLengthsQ, actualSeqLengths);
+    vecBlock.InitVecBlock(tPipe, this->aicIdx, constInfo.subBlockIdx, actualSeqLengthsQ, actualSeqLengths);
     vecBlock.CleanOutput(attentionOut, constInfo);
-    /* cube侧不依赖sharedParams的scalar前置 */
+
     InitMMResBuf(workspace);
-    if ASCEND_IS_AIC {
-        cubeBlock.InitCubeBlock(pipe, &l1BufferManager, query);
-        /* wait kfc message */
-        CrossCoreWaitFlag<SYNC_MODE, PIPE_S>(15);
-        auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t *>(0); // 从ssbuf的0地址开始拷贝
-        auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);
-#pragma unroll
-        for (int i = 0; i < sizeof(CVSharedParams) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
-            *tempTiling = *tempTilingSSbuf;
-        }
-    }
     this->ComputeConstexpr();
-    this->InitGlobalBuffer(query, key, value, sparseIndices, blockTable, actualSeqLengthsQ, actualSeqLengths, workspace,
-                           tiling, tPipe); // gm设置
+    this->InitGlobalBuffer(query, key, value, sparseIndices, blockTable, actualSeqLengthsQ);
     this->InitCalcParamsEach();
     this->InitLocalBuffer();
 }
@@ -314,19 +290,10 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::InitGlobalBuffer(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
-    __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-    __gm__ uint8_t *workspace, const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling, TPipe *tPipe)
+    __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ)
 {
-    if (actualSeqLengthsQ != nullptr) {
-        actualSeqQlenAddr = (__gm__ int32_t *)actualSeqLengthsQ;
-    }
-
-    if (actualSeqLengths != nullptr) {
-        actualSeqKvlenAddr = (__gm__ int32_t *)actualSeqLengths;
-    }
-
     vecBlock.InitGlobalBuffer(key, value, sparseIndices, blockTable);
-    cubeBlock.InitCubeInput(actualSeqLengthsQ, constInfo);
+    cubeBlock.InitGlobalBuffer(query, actualSeqLengthsQ, constInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -388,32 +355,14 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::InitLocalBuffer()
 {
     vecBlock.InitLocalBuffer(pipe, constInfo);
+    cubeBlock.InitLocalBuffer(l1BufferManager);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::ComputeConstexpr()
 {
-    // 计算轴的乘积
-    usedCoreNum = sharedParams.usedCoreNum;
+    usedCoreNum = tilingData->singleCoreParams.usedCoreNum;
 
-    if ASCEND_IS_AIC {
-        constInfo.bSize = this->sharedParams.bSize;
-        constInfo.gSize = this->sharedParams.gSize;
-        constInfo.s1Size = this->sharedParams.s1Size;
-        constInfo.needInit = this->sharedParams.needInit;
-        constInfo.dSizeV = 512;
-    }
-    constInfo.n2Size = sharedParams.n2Size;
-    constInfo.s2Size = sharedParams.s2Size;
-    constInfo.dSize = sharedParams.dSize;
-    constInfo.dSizeVInput = sharedParams.dSizeVInput;
-    constInfo.dSizeRope = sharedParams.dSizeRope;
-    constInfo.dSizeNope = constInfo.dSize - constInfo.dSizeRope;
-    constInfo.tileSize = sharedParams.tileSize;
-    constInfo.sparseBlockCount = sharedParams.sparseBlockCount;
-    constInfo.sparseBlockSize = 1;
-
-    constInfo.sparseMode = sharedParams.maskMode;
     constInfo.n2G = constInfo.n2Size * constInfo.gSize;
 
     constInfo.s1Dv = constInfo.s1Size * constInfo.dSizeV;
@@ -424,20 +373,14 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     constInfo.n2S2Dv = constInfo.n2Size * constInfo.s2Dv;
     constInfo.n2GDv = constInfo.n2Size * constInfo.gDv;
     constInfo.s2BaseN2Dv = constInfo.s2BaseSize * constInfo.n2Dv;
-    constInfo.layoutType = sharedParams.layoutType;
-
-    constInfo.isActualLenDimsNull = sharedParams.isActualSeqLengthsNull;
-    constInfo.isActualLenDimsKVNull = sharedParams.isActualSeqLengthsKVNull;
 
     if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
-        // (BS)ND
         constInfo.s1BaseN2GDv = constInfo.s1BaseSize * constInfo.n2GDv;
         constInfo.mm1Ka = constInfo.n2Size * constInfo.dSize;
         if ASCEND_IS_AIV {
             constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
         }
     } else if constexpr (LAYOUT_T == QSFA_LAYOUT::BSND) {
-        // BSH/BSNGD
         constInfo.s1BaseN2GDv = constInfo.s1BaseSize * constInfo.n2GDv;
         constInfo.mm1Ka = constInfo.n2Size * constInfo.dSize;
 
@@ -445,33 +388,86 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
             constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * constInfo.dSizeV * sizeof(OUTPUT_T);
         }
     }
+}
 
-    if ASCEND_IS_AIV {
-        constInfo.blockSize = sharedParams.blockSize;
-        constInfo.softmaxScale = sharedParams.softmaxScale;
-        constInfo.maxBlockNumPerBatch = sharedParams.maxBlockNumPerBatch;
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::ParseTilingData(
+    __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths)
+{
+    if (actualSeqLengthsQ != nullptr) {
+        actualSeqQlenAddr = (__gm__ int32_t *)actualSeqLengthsQ;
+    }
+    if (actualSeqLengths != nullptr) {
+        actualSeqKvlenAddr = (__gm__ int32_t *)actualSeqLengths;
+    }
+
+    constInfo.bSize = tilingData->baseParams.batchSize;
+    constInfo.gSize = tilingData->baseParams.nNumOfQInOneGroup;
+    constInfo.s1Size = tilingData->baseParams.qSeqSize;
+    constInfo.s2Size = tilingData->baseParams.seqSize;
+    constInfo.n2Size = 1;
+    constInfo.dSize = 576;
+    constInfo.dSizeV = 512;
+    constInfo.dSizeVInput = tilingData->baseParams.dSizeVInput;
+    constInfo.dSizeRope = 64;
+    constInfo.dSizeNope = constInfo.dSize - constInfo.dSizeRope;
+    constInfo.tileSize = 128;
+    constInfo.sparseBlockCount = tilingData->baseParams.sparseBlockCount;
+    constInfo.sparseBlockSize = 1;
+    constInfo.sparseMode = tilingData->baseParams.sparseMode;
+    constInfo.layoutType = tilingData->baseParams.outputLayout;
+    constInfo.isActualLenDimsNull = tilingData->baseParams.isActualLenDimsNull;
+    constInfo.isActualLenDimsKVNull = tilingData->baseParams.isActualLenDimsKVNull;
+    constInfo.softmaxScale = tilingData->baseParams.scaleValue;
+
+    if constexpr (isPa) {
+        constInfo.blockSize = tilingData->baseParams.blockSize;
+        constInfo.maxBlockNumPerBatch = tilingData->baseParams.maxBlockNumPerBatch;
     }
 
     if ASCEND_IS_AIV {
         constInfo.keyStride0 = this->tilingData->baseParams.keyStride0;
     }
 
-    InitUniqueConstInfo();
-}
+    this->constInfo.actualSeqLenSize = this->tilingData->baseParams.batchSize;
+    this->constInfo.actualSeqLenKVSize = this->tilingData->baseParams.batchSize;
 
-template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::InitUniqueConstInfo()
-{
-    // bsize + 1-> bsize
-    this->constInfo.actualSeqLenSize = this->sharedParams.bSize;
-    this->constInfo.actualSeqLenKVSize = this->sharedParams.bSize;
+    constInfo.needInit = 0;
+    for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
+        int64_t s2Size;
+        if constexpr (KV_LAYOUT_T == QSFA_LAYOUT::TND) {
+            s2Size = (bIdx == 0) ? ((actualSeqKvlenAddr != nullptr) ? actualSeqKvlenAddr[bIdx] : constInfo.s2Size) :
+                                   ((actualSeqKvlenAddr != nullptr) ? actualSeqKvlenAddr[bIdx] - actualSeqKvlenAddr[bIdx - 1] : constInfo.s2Size);
+        } else {
+            if (constInfo.isActualLenDimsKVNull) {
+                s2Size = constInfo.s2Size;
+            } else {
+                s2Size = (actualSeqKvlenAddr != nullptr) ? actualSeqKvlenAddr[bIdx] : constInfo.s2Size;
+            }
+        }
+
+        int64_t s1Size;
+        if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+            s1Size = (bIdx == 0) ? ((actualSeqQlenAddr != nullptr) ? actualSeqQlenAddr[bIdx] : constInfo.s1Size) :
+                                   ((actualSeqQlenAddr != nullptr) ? actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1] : constInfo.s1Size);
+        } else {
+            if (constInfo.isActualLenDimsNull) {
+                s1Size = constInfo.s1Size;
+            } else {
+                s1Size = (actualSeqQlenAddr != nullptr) ? actualSeqQlenAddr[bIdx] : constInfo.s1Size;
+            }
+        }
+        if (s1Size > s2Size || (LAYOUT_T == QSFA_LAYOUT::BSND && s1Size < constInfo.s1Size)) {
+            constInfo.needInit = 1;
+            break;
+        }
+    }
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::Process()
 {
-    // SyncAll Cube和Vector都需要调用
-    if (this->sharedParams.needInit) {
+    if (this->constInfo.needInit) {
         SyncAll<false>();
     }
 

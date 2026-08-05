@@ -13,32 +13,21 @@
  * \brief
  */
 
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "kv_quant_sparse_flash_attention_template_tiling_key.h"
 #if (__CCE_AICORE__ == 310)
 #include "arch35/kv_quant_sparse_flash_attention_kernel_mla.h"
 #else
-#include "kv_quant_sparse_flash_attention_kernel_mla.h"
+#include "arch22/kv_quant_sparse_flash_attention_kernel_mla.h"
 #endif
 
 using namespace AscendC;
 
 #if (__CCE_AICORE__ == 310)
-#if defined(__DAV_C310_CUBE__)
-#define QSFA_OP_IMPL(templateClass, tilingdataClass, ...) \
-    do { \
-        using CubeBlockType = \
-            typename std::conditional<g_coreType == AscendC::AIC, BaseApi::QSFAMatmulService<__VA_ARGS__>, \
-                                      BaseApi::QSFAMatmulServiceDummy<__VA_ARGS__>>::type; \
-        using VecBlockType = \
-            typename std::conditional<g_coreType == AscendC::AIC, BaseApi::QSFAVectorServiceDummy<__VA_ARGS__>, \
-                                      BaseApi::QSFAVectorService<__VA_ARGS__>>::type; \
-        templateClass<CubeBlockType, VecBlockType> op; \
-        op.Init(query, key, value, sparseIndices, keyScale, valueScale, blocktable, actualSeqLengthsQuery, \
-                actualSeqLengthsKV, attentionOut, user, nullptr, &tPipe); \
-        op.Process(); \
-    } while (0)
-#else
 #define QSFA_OP_IMPL(templateClass, tilingdataClass, ...) \
     do { \
         using CubeBlockType = \
@@ -54,7 +43,6 @@ using namespace AscendC;
                 actualSeqLengthsKV, attentionOut, user, tilingData, &tPipe); \
         op.Process(); \
     } while (0)
-#endif
 #else
 #define QSFA_OP_IMPL(templateClass, tilingdataClass, ...) \
     do { \
