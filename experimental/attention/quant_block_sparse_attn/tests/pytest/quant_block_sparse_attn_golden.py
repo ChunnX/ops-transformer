@@ -210,7 +210,7 @@ def _physical_ids(start, count, pattern, rng):
 
 def _make_block_table(batch, seq_len, block_size, pattern, rng, blocknum=None, q_block_num=1):
     kv_block_num = math.ceil(seq_len / block_size)
-    width = kv_block_num * q_block_num
+    width = kv_block_num
     needed_block_num = batch * width
 
     if blocknum is None or blocknum >= needed_block_num:
@@ -223,60 +223,17 @@ def _make_block_table(batch, seq_len, block_size, pattern, rng, blocknum=None, q
                 block_table[batch_idx, block_idx] = int(physical_block)
         return block_table
 
-    if batch <= 1:
-        # 单 batch：共享退化为行内复用 —— block_table 前几个 index 均指向物理块 0，
-        # 其余 index 指向互不相同的物理块，使总物理块数精确等于 blocknum。
+    if blocknum < width:
+        # 物理块池小于每 batch 的逻辑块数：block_table 前几列共享（全部指向物理块 0），
+        # 其余列指向互不相同的物理块；所有 batch 行一致，总物理块数精确等于 blocknum。
         shared_cols = width - blocknum + 1
         if shared_cols <= 0 or shared_cols > width:
-            raise ValueError(f"blocknum={blocknum} out of range [1, {width}] for a single batch")
-        block_table = torch.zeros((1, width), dtype=torch.int32)
-        for block_idx in range(shared_cols, width):
-            block_table[0, block_idx] = block_idx - shared_cols + 1
-        return block_table
-
-    if blocknum < width:
-        # 物理块池小于每 batch 的逻辑块数：block_table 前几列重复（0,1,2,... 循环），
-        # 所有 batch 行一致，总物理块数精确等于 blocknum。
-        block_table = torch.empty((batch, width), dtype=torch.int32)
-        for col in range(width):
-            block_table[:, col] = col % blocknum
-        return block_table
-
-    # 物理块池小于每个 batch 独占所需总数（batch * ceil(s1/block_size) * ceil(s2/block_size)），
-    # 说明部分物理块被跨 batch 共用。共享块放在每行头部：
-    # 即 block_table 的前几个 index 在各 batch 保持一致（共享前缀）。
-    # 构造保证最终总物理块数精确等于 blocknum。
-    block_table = torch.empty((batch, width), dtype=torch.int32)
-    shared_count = needed_block_num - blocknum
-    full_shared_cols = shared_count // (batch - 1)
-    partial_share = shared_count % (batch - 1)
-    next_id = 0
-    col = 0
-
-    for _ in range(full_shared_cols):
+            raise ValueError(f"blocknum={blocknum} out of range [1, {width}]")
+        block_table = torch.zeros((batch, width), dtype=torch.int32)
         for batch_idx in range(batch):
-            block_table[batch_idx, col] = next_id
-        next_id += 1
-        col += 1
-
-    if partial_share > 0:
-        shared_id = next_id
-        next_id += 1
-        for batch_idx in range(partial_share + 1):
-            block_table[batch_idx, col] = shared_id
-        for batch_idx in range(partial_share + 1, batch):
-            block_table[batch_idx, col] = next_id
-            next_id += 1
-        col += 1
-
-    for batch_idx in range(batch):
-        for block_idx in range(col, width):
-            block_table[batch_idx, block_idx] = next_id
-            next_id += 1
-
-    if next_id != blocknum:
-        raise AssertionError(f"block_table generated {next_id} physical blocks, expected {blocknum}")
-    return block_table
+            for block_idx in range(shared_cols, width):
+                block_table[batch_idx, block_idx] = block_idx - shared_cols + 1
+        return block_table
 
 
 def _allowed_blocks(
