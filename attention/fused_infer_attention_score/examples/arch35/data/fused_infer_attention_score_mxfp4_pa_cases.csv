@@ -51,6 +51,23 @@ bbh_fp16_symmetric_three_page_tail,bbh,fp16,0,3,3,1,128,128,10,257;130;1,9;2;5;1
 bbh_fp16_asymmetric_three_page_tail,bbh,fp16,1,3,3,1,128,128,10,257;130;1,9;2;5;1;8;3;7;0;6
 bbh_bf16_symmetric_three_page_tail,bbh,bf16,0,3,3,1,128,128,10,257;130;1,9;2;5;1;8;3;7;0;6
 bbh_bf16_asymmetric_three_page_tail,bbh,bf16,1,3,3,1,128,128,10,257;130;1,9;2;5;1;8;3;7;0;6
+# Paired BNBD/BBH cases use identical logical data, page mappings and seeds.
+# They cover non-degenerate BBH head stride, page boundaries, GQA, and the
+# supported group-count/VF buckets without introducing layout-only data drift.
+bnbd_bf16_asymmetric_random_b4n1_s1x2_mixed_lens_seed131071,bnbd,bf16,1,4,1,2,128,128,16,1;127;128;257,15;2;9;4;13;1;7;0;11;5;14;3,131071
+bbh_bf16_asymmetric_random_b4n1_s1x2_mixed_lens_seed131071,bbh,bf16,1,4,1,2,128,128,16,1;127;128;257,15;2;9;4;13;1;7;0;11;5;14;3,131071
+bnbd_fp16_asymmetric_random_b2n4_two_page_seed524287,bnbd,fp16,1,2,4,1,128,128,12,129;256,11;3;8;1,524287
+bbh_fp16_asymmetric_random_b2n4_two_page_seed524287,bbh,fp16,1,2,4,1,128,128,12,129;256,11;3;8;1,524287
+bnbd_bf16_asymmetric_random_gqa8x2_s1x2_seed999983,bnbd,bf16,1,2,2,2,128,128,12,130;257,11;3;8;1;10;4,999983,8
+bbh_bf16_asymmetric_random_gqa8x2_s1x2_seed999983,bbh,bf16,1,2,2,2,128,128,12,130;257,11;3;8;1;10;4,999983,8
+bnbd_bf16_asymmetric_random_group1_d32_boundaries_seed2097143,bnbd,bf16,1,3,2,1,32,128,12,1;128;129,11;3;8;1;10;4,2097143
+bbh_bf16_asymmetric_random_group1_d32_boundaries_seed2097143,bbh,bf16,1,3,2,1,32,128,12,1;128;129,11;3;8;1;10;4,2097143
+bnbd_bf16_asymmetric_random_group6_d192_seed8191,bnbd,bf16,1,2,3,1,192,128,10,257;129,9;2;5;1;8;3,8191
+bbh_bf16_asymmetric_random_group6_d192_seed8191,bbh,bf16,1,2,3,1,192,128,10,257;129,9;2;5;1;8;3,8191
+bnbd_bf16_asymmetric_random_group8_d256_seed32749,bnbd,bf16,1,2,3,1,256,128,10,257;129,9;2;5;1;8;3,32749
+bbh_bf16_asymmetric_random_group8_d256_seed32749,bbh,bf16,1,2,3,1,256,128,10,257;129,9;2;5;1;8;3,32749
+bnbd_bf16_asymmetric_random_group16_d512_boundaries_seed4194301,bnbd,bf16,1,2,2,1,512,128,12,127;129,11;3;8;1,4194301
+bbh_bf16_asymmetric_random_group16_d512_boundaries_seed4194301,bbh,bf16,1,2,2,1,512,128,12,127;129,11;3;8;1,4194301
 # Degenerate B/N contract coverage. BBH stride is intentionally zero here;
 # non-degenerate BBH stride is covered by the N=3 case above.
 nz_fp16_symmetric_single_page_b1n1,nz,fp16,0,1,1,1,128,128,3,127,2
