@@ -109,6 +109,42 @@ def reduce_ape_workspace(workspace_raw, headDim, coff, cmpRatio, roundCnt, total
 #  Test runner
 # ================================================================
 
+def _check_block_size(case, batchSize, seqSize, layoutId, cmpRatio, coff, cacheMode,
+                     cuNpu, sqs):
+    """校验 case 数据的 block_size 字段合法性；不符则终止+告警（不静默替换）。
+
+    cache_mode=1: block_size 为自由参数，需在 [1, 1024]；
+    cache_mode=2: block_size 必须等于 min(coff*cmpRatio + S_for_bs - 1, 1024)
+                  （S_for_bs: TH 布局 = max(seqused) 或 max(cu_seqlens 差)；BSH 布局 = S1）
+    """
+    bs = case["block_size"]
+    name = case["testcase_name"]
+    if cacheMode == 1:
+        if not (1 <= bs <= 1024):
+            raise SystemExit(
+                f"[block_size 校验失败] {name}: cache_mode=1 block_size={bs} "
+                f"不在 [1,1024] 范围内，请修正 case 数据后重跑")
+        return
+    # cache_mode=2
+    if layoutId == 1:  # TH
+        if sqs:
+            S_for_bs = max(sqs)
+        elif cuNpu is not None:
+            S_for_bs = max(int(cuNpu[i + 1]) - int(cuNpu[i])
+                           for i in range(batchSize)) if batchSize > 0 else 0
+        else:
+            S_for_bs = seqSize
+    else:  # BSH
+        S_for_bs = seqSize
+    need = coff * cmpRatio + S_for_bs - 1
+    expect = min(need, 1024)
+    if bs != expect:
+        raise SystemExit(
+            f"[block_size 校验失败] {name}: cache_mode=2 block_size={bs} "
+            f"与要求 {expect} 不一致 (coff*cmpRatio+S-1={need}, S_for_bs={S_for_bs})，"
+            f"请修正 case 数据后重跑")
+
+
 def npu_test(case, device):
     """Run one test case and return result dict."""
     name = case["testcase_name"]
@@ -275,25 +311,13 @@ def npu_test(case, device):
         state_shape = (block_num, block_size, 2 * coff * headDim)
     else:
         # cache_mode=2: block_num = B (每 batch 一个 block)
-        # block_size (第二维) 计算与正向 golden 一致：
-        #   compressor_golden.py:610
-        #   block_size = min((2*cmpRatio+S-1) if coff==2 else (cmpRatio+S-1), 1024)
-        #   其中 S 因布局而异 (TH 布局 S = max(seqused) 或 max(cu_seqlens 差))
-        # task 说明后两维正确, 仅补齐 1024 上限与 S 取值
-        if layoutId == 1:  # TH
-            if sqs:
-                S_for_bs = max(sqs)
-            elif cuNpu is not None:
-                S_for_bs = max(int(cuNpu[i + 1]) - int(cuNpu[i])
-                               for i in range(batchSize)) if batchSize > 0 else 0
-            else:
-                S_for_bs = seqSize
-        else:  # BSH
-            S_for_bs = seqSize
-        token_cache_size_ex = min(
-            (2 * cmpRatio + S_for_bs - 1) if coff == 2 else (cmpRatio + S_for_bs - 1),
-            1024)
+        # block_size (第二维) 直接使用 case 数据（不再推导替换）；
+        # 数据合法性由 _check_block_size 在下方统一校验（不符则终止+告警）
+        token_cache_size_ex = case["block_size"]
         state_shape = (batchSize, token_cache_size_ex, 2 * coff * headDim)
+
+    _check_block_size(case, batchSize, seqSize, layoutId, cmpRatio, coff, cache_mode,
+                      cuNpu, sqs)
 
     state_cache_npu = torch.zeros(state_shape, device=device, dtype=torch.float32)
     ape_npu = torch.randn(torch.Size([cmpRatio, coff * headDim]), device=device, dtype=torch.float32)
