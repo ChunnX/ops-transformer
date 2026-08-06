@@ -41,7 +41,6 @@ int64_t RoundUp(int64_t x, int64_t y)
     return CeilDiv(x, y) * y;
 }
 
-
 constexpr int64_t INPUT_CACHE_IDX = 0;
 constexpr int64_t INPUT_SCALE_IDX = 1;
 constexpr int64_t INPUT_X_IDX = 2;
@@ -54,7 +53,7 @@ constexpr int64_t INPUT_SLOT_MAPPING_IDX = 3;
 constexpr size_t CACHE_VIEW_DIM_NUM = 4;
 constexpr size_t CACHE_BLOCKNUM_DIM = 0;
 constexpr size_t CACHE_BLOCKSIZE_DIM = 1;
-constexpr size_t CACHE_ONE_DIM = 2;          // 倒数第二维, 必须 == 1
+constexpr size_t CACHE_ONE_DIM = 2; // 倒数第二维, 必须 == 1
 constexpr int64_t CACHE_ONE_DIM_VALUE = 1;
 constexpr int64_t ATTR_QUANT_MODE_INDEX = 0;
 constexpr int64_t ATTR_ROUND_SCALE_INDEX = 1;
@@ -63,7 +62,7 @@ constexpr int64_t BLOCK_SIZE = 32;
 constexpr int64_t D_LENGTH_FULL_LOAD = 8192;
 constexpr int64_t REPEAT_SIZE = 256;
 constexpr int64_t DOUBLE_BUFFER = 2;
-constexpr int64_t FP4_PACK_NUM = 2;   // MX-FP4: 2 fp4 values packed per byte
+constexpr int64_t FP4_PACK_NUM = 2; // MX-FP4: 2 fp4 values packed per byte
 // per_block量化,每128个f16需要量化出一个scale, 因此切分尾轴时，以128为factor进行切分
 constexpr int64_t PER_BLOCK_FP16 = 128;
 // MX-FP4 (quant_mode=3) 采用标准 MX 量化块, 每32个元素一个 e8m0 scale
@@ -73,7 +72,7 @@ constexpr int64_t NORMAL_QUANT_MODE = 1;
 constexpr int64_t HIFLOAT_QUANT_MODE = 2;
 constexpr int64_t MXFP4_QUANT_MODE = 3;
 constexpr int64_t SINGLE_ROW = 1;
-}
+} // namespace
 
 ge::graphStatus IndexerQuantCacheTiling::GetPlatformInfo()
 {
@@ -81,7 +80,7 @@ ge::graphStatus IndexerQuantCacheTiling::GetPlatformInfo()
     if (platformInfo == nullptr) {
         auto compileInfoPtr = context_->GetCompileInfo<IndexerQuantCacheCompileInfo>();
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_->GetNodeName(), "compile info is null"),
-                      return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
         coreNum_ = compileInfoPtr->coreNum;
         ubSize_ = compileInfoPtr->ubSize;
     } else {
@@ -97,7 +96,7 @@ ge::graphStatus IndexerQuantCacheTiling::GetPlatformInfo()
 
 ge::graphStatus IndexerQuantCacheTiling::GetAttr()
 {
-    auto* attrs = context_->GetAttrs();
+    auto *attrs = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
 
     auto quantMode = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
@@ -153,15 +152,15 @@ ge::graphStatus IndexerQuantCacheTiling::ValidateCache4D(size_t inputIdx, const 
     OP_CHECK_NULL_WITH_CONTEXT(context_, shapePtr);
     const auto &logical = shapePtr->GetShape();
     OP_CHECK_IF(logical.GetDimNum() != CACHE_VIEW_DIM_NUM,
-                  OP_LOGE(context_->GetNodeName(),
-                          "%s must be 4D [blockNum, blockSize, 1, headDim], got dimNum=%zu",
-                          name, logical.GetDimNum()),
-                  return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(),
+                        "%s must be 4D [blockNum, blockSize, 1, headDim], got dimNum=%zu",
+                        name, logical.GetDimNum()),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(logical.GetDim(CACHE_ONE_DIM) != CACHE_ONE_DIM_VALUE,
-                  OP_LOGE(context_->GetNodeName(),
-                          "%s dim2 (second-to-last) must be 1 (one quantized vector per token), got %ld",
-                          name, logical.GetDim(CACHE_ONE_DIM)),
-                  return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(),
+                        "%s dim2 (second-to-last) must be 1 (one quantized vector per token), got %ld",
+                        name, logical.GetDim(CACHE_ONE_DIM)),
+                return ge::GRAPH_FAILED);
     // 连续场景的行宽(headDim)取末维; 分页 view 下随后由 view stride 覆盖, 此处仅作连续默认值。
     const auto &storage = shapePtr->GetStorageShape();
     lastDim = storage.GetDim(storage.GetDimNum() - 1);
@@ -179,12 +178,11 @@ ge::graphStatus IndexerQuantCacheTiling::GetShapeAttrsInfoInner()
     uint32_t xDims = xStorageShape.GetDimNum();
     uint32_t slotMappingDims = slotMappingShape.GetDimNum();
     OP_CHECK_IF(xDims - 1 != slotMappingDims,
-        OP_LOGE(context_->GetNodeName(), "slotMappingDims should equal xDims - 1"), return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "slotMappingDims should equal xDims - 1"), return ge::GRAPH_FAILED);
     int64_t bs = 1;
     for (uint32_t i = 0; i < slotMappingDims; i++) {
         int64_t temp = xStorageShape.GetDim(i);
-        OP_CHECK_IF(temp != slotMappingShape.GetDim(i), OP_LOGE(context_->GetNodeName(),
-            "slotMappingShape should equal xStorageShape in dim %d", i), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(temp != slotMappingShape.GetDim(i), OP_LOGE(context_->GetNodeName(), "slotMappingShape should equal xStorageShape in dim %d", i), return ge::GRAPH_FAILED);
         bs *= temp;
     }
     d_ = xStorageShape.GetDim(xDims - 1);
@@ -193,20 +191,20 @@ ge::graphStatus IndexerQuantCacheTiling::GetShapeAttrsInfoInner()
     // x 尾轴 d 必须 32 对齐: MX 模式每 32 个元素一个 scale, 且各量化分支按 32 元素块对齐处理,
     // 非 32 对齐会导致尾块读越界/scale 错位。
     OP_CHECK_IF(d_ <= 0 || d_ % BLOCK_SIZE != 0,
-                  OP_LOGE(context_->GetNodeName(),
-                          "the last dim (d) of x should be 32-aligned, got %ld", d_),
-                  return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(),
+                        "the last dim (d) of x should be 32-aligned, got %ld", d_),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(d_ > D_LENGTH_FULL_LOAD,
-                  OP_LOGE(context_->GetNodeName(), "input x tail dimension must less than 8192, got %ld", d_),
-                  return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "input x tail dimension must less than 8192, got %ld", d_),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS,
-                  OP_LOGE(context_->GetNodeName(), "get attr failed."),
-                  return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "get attr failed."),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(quantMode_ < 0 || quantMode_ > MXFP4_QUANT_MODE,
-                  OP_LOGE(context_->GetNodeName(), "quant_mode should be in [0,3], got %ld", quantMode_),
-                  return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "quant_mode should be in [0,3], got %ld", quantMode_),
+                return ge::GRAPH_FAILED);
 
     // 每行 scale 个数:
     //   mode0 MX-FP8 / mode3 MX-FP4 : 每 32 个元素一个 scale (标准 MX 块)
@@ -220,7 +218,6 @@ ge::graphStatus IndexerQuantCacheTiling::GetShapeAttrsInfoInner()
     return ge::GRAPH_SUCCESS;
 }
 
-
 ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
 {
     rowOfFormerBlock_ = CeilDiv(bs_, static_cast<int64_t>(coreNum_));
@@ -233,7 +230,7 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
     rowFactor_ = rowOnceLoop;
     int64_t scaleByteSize = 4;
     if (quantMode_ == MXFP8_QUANT_MODE || quantMode_ == MXFP4_QUANT_MODE) {
-        scaleByteSize = 1;  // MX 模式 scale 为 e8m0, 占1字节
+        scaleByteSize = 1; // MX 模式 scale 为 e8m0, 占1字节
     }
     int64_t perBlockScaleElemNum = BLOCK_SIZE / scaleByteSize;
     int64_t xAlign = (quantMode_ == MXFP8_QUANT_MODE) ? PER_BLOCK_FP16 : 16;
@@ -246,9 +243,7 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
         int64_t ySize = mid * RoundUp(d_, BLOCK_SIZE) * 1 * DOUBLE_BUFFER;
         int64_t scaleSize = mid * RoundUp(scaleCol_, perBlockScaleElemNum) * scaleByteSize * DOUBLE_BUFFER;
         int64_t tmpBufferSize = RoundUp(mid, 8) * 4;
-        int64_t mxScratchSize = (quantMode_ == MXFP8_QUANT_MODE)
-            ? (mid * RoundUp(d_, 8) * 4 + mid * CeilDiv(d_, 128) * 16 * 4)
-            : 0;
+        int64_t mxScratchSize = (quantMode_ == MXFP8_QUANT_MODE) ? (mid * RoundUp(d_, 8) * 4 + mid * CeilDiv(d_, 128) * 16 * 4) : 0;
         int64_t totalSize = xSize + ySize + scaleSize + tmpBufferSize + mxScratchSize;
         if (totalSize <= static_cast<int64_t>(ubSize_)) {
             rowFactor_ = mid;
@@ -299,7 +294,7 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
         return ge::GRAPH_FAILED;
     }
     scaleRowStride_ = scaleLastDim;
-    blockSize_ = 1;                 // default: contiguous flat slots (slot * rowStride)
+    blockSize_ = 1; // default: contiguous flat slots (slot * rowStride)
     cacheBlockStride_ = cacheRowStride_;
     scaleBlockStride_ = scaleRowStride_;
 
@@ -339,16 +334,17 @@ ge::graphStatus IndexerQuantCacheTiling::CalcOpTiling()
     // cache 行宽必须能容纳每行写出的 cacheCol, 否则散写越界到下一行。
     // (cacheCol 与 cacheRowStride_ 单位一致: MX-FP4 皆为字节, 其余皆为元素/字节)
     OP_CHECK_IF(cacheRowStride_ < cacheCol,
-                  OP_LOGE(context_->GetNodeName(),
-                          "cache headDim(row stride, in cache elements/bytes)=%ld must be >= per-token "
-                          "quantized-x length=%ld", cacheRowStride_, cacheCol),
-                  return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(),
+                        "cache headDim(row stride, in cache elements/bytes)=%ld must be >= per-token "
+                        "quantized-x length=%ld",
+                        cacheRowStride_, cacheCol),
+                return ge::GRAPH_FAILED);
     // cache_scale 行宽必须能容纳每行写出的 scaleCol(mode2: scaleCol=1), 否则散写越界到下一行。
     OP_CHECK_IF(scaleRowStride_ < scaleCol_,
-                  OP_LOGE(context_->GetNodeName(),
-                          "cache_scale last dim(row stride)=%ld must be >= scaleCol=%ld",
-                          scaleRowStride_, scaleCol_),
-                  return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(),
+                        "cache_scale last dim(row stride)=%ld must be >= scaleCol=%ld",
+                        scaleRowStride_, scaleCol_),
+                return ge::GRAPH_FAILED);
 
     tilingData_.set_bs(bs_);
     tilingData_.set_d(d_);
@@ -424,7 +420,7 @@ ge::graphStatus IndexerQuantCacheTiling::GetWorkspaceSize()
 ge::graphStatus IndexerQuantCacheTiling::PostTiling()
 {
     context_->SetBlockDim(usedCoreNums_);
-    size_t* workspaces = context_->GetWorkspaceSizes(1);
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = workspaceSize_;
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
@@ -451,7 +447,7 @@ ge::graphStatus TilingPrepareForIndexerQuantCache(gert::TilingParseContext *cont
 ge::graphStatus TilingForIndexerQuantCache(gert::TilingContext *context)
 {
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("IndexerQuantCache", "Tiling context is null"),
-               return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
     IndexerQuantCacheTiling IndexerQuantCacheTiling(context);
     return IndexerQuantCacheTiling.DoOpTiling();
 }
@@ -460,4 +456,4 @@ IMPL_OP_OPTILING(IndexerQuantCache)
     .Tiling(TilingForIndexerQuantCache)
     .TilingParse<IndexerQuantCacheCompileInfo>(TilingPrepareForIndexerQuantCache);
 
-}  // namespace optiling
+} // namespace optiling
