@@ -63,7 +63,8 @@ constexpr uint32_t DIM_INDEX_1 = 1;
 constexpr uint32_t DIM_INDEX_2 = 2;
 constexpr uint32_t DIM_INDEX_3 = 3;
 
-ge::graphStatus GetCompressorGradShapeDim(const gert::InferShapeContext* context, CompressorGradProtoShapeParam &shapeParam)
+ge::graphStatus GetCompressorGradShapeDim(const gert::InferShapeContext* context,
+                                          CompressorGradProtoShapeParam &shapeParam)
 {
     auto xShape = context->GetRequiredInputShape(TOKEN_X_INPUT_INDEX);      // (B, S, H) | (T, H)
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
@@ -83,14 +84,11 @@ ge::graphStatus GetCompressorGradShapeDim(const gert::InferShapeContext* context
         shapeParam.isBsMerge = false;
         shapeParam.B = xShape->GetDim(DIM_INDEX_0);
         shapeParam.S = xShape->GetDim(DIM_INDEX_1);
-        shapeParam.Sr = (xShape->GetDim(DIM_INDEX_1) + cmpRatio - 1) / cmpRatio;
         shapeParam.H = xShape->GetDim(DIM_INDEX_2);
         shapeParam.T = shapeParam.B * shapeParam.S;
     } else {                                                    // T
         shapeParam.isBsMerge = true;
         auto cuSeqlensShape = context->GetOptionalInputShape(CU_SEQ_LEN_INPUT_INDEX);
-        shapeParam.Sr = std::min(xShape->GetDim(DIM_INDEX_0),
-            xShape->GetDim(DIM_INDEX_0) / cmpRatio+ cuSeqlensShape->GetDim(DIM_INDEX_0) - 1);
         shapeParam.T = xShape->GetDim(DIM_INDEX_0);
         shapeParam.H = xShape->GetDim(DIM_INDEX_1);
     }
@@ -100,7 +98,8 @@ ge::graphStatus GetCompressorGradShapeDim(const gert::InferShapeContext* context
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus SetCompressorGradShapeDim(const CompressorGradProtoShapeParam &shapeParam, gert::InferShapeContext* context)
+ge::graphStatus SetCompressorGradShapeDim(const CompressorGradProtoShapeParam &shapeParam,
+                                          gert::InferShapeContext* context)
 {
     // query: (B, S, N, Hckv) | (T, N, Hckv)
     auto dxShape = context->GetOutputShape(D_X_OUTPUT_INDEX);
