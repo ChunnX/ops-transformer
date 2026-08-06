@@ -30,7 +30,7 @@
 #   export RANK_TABLE_FILE=/path/to/rank_table.json
 # -----------------------------------------------------------------------------------------------------------
 
-set -euo pipefail
+set -uo pipefail
 
 CURRENT_DIR=$(
     cd $(dirname ${BASH_SOURCE:-$0})
@@ -144,17 +144,28 @@ tail -n +2 "$INPUT_CSV" | while IFS=',' read -r mode res_kind die_id warmup_coun
     end_cycle=$(echo "$output" | grep "endCycle:" | grep -oP '\d+' | tail -1)
     avg_ns=$(echo "$output" | grep "平均:" | grep -oP '[\d.]+' | head -1)
 
-    verify_str=$(echo "$output" | grep "数据校验:" | grep -oP '(通过|失败)' | head -1)
-    if [ "$verify_str" = "通过" ]; then
-        verify_result="PASS"
-    elif [ "$verify_str" = "失败" ]; then
-        verify_result="FAIL"
+    # verify_result: 仅 mode=2（先写后读）才有数据校验，其他模式为 N/A
+    if [ "$mode" = "2" ]; then
+        verify_str=$(echo "$output" | grep "数据校验:" | grep -oP '(通过|失败)' | head -1)
+        if [ "$verify_str" = "通过" ]; then
+            verify_result="PASS"
+        elif [ "$verify_str" = "失败" ]; then
+            verify_result="FAIL"
+        else
+            verify_result="N/A"
+        fi
     else
         verify_result="N/A"
     fi
 
-    xn_readback=$(echo "$output" | grep "XN readback:" | grep -oP '0x[0-9a-fA-F]+' | head -1)
-    cke_readback=$(echo "$output" | grep "CKE readback:" | grep -oP '0x[0-9a-fA-F]+' | head -1)
+    # readback 值：仅 mode=2 或 mode=1（读）才有 readback 输出
+    if [ "$mode" = "2" ] || [ "$mode" = "1" ]; then
+        xn_readback=$(echo "$output" | grep "XN readback:" | grep -oP '0x[0-9a-fA-F]+' | head -1)
+        cke_readback=$(echo "$output" | grep "CKE readback:" | grep -oP '0x[0-9a-fA-F]+' | head -1)
+    else
+        xn_readback=""
+        cke_readback=""
+    fi
 
     if [ -n "$start_cycle" ] && [ -n "$end_cycle" ] && [ "$loop_count" -gt 0 ]; then
         elapsed=$((end_cycle - start_cycle))
