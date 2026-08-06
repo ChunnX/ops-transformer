@@ -70,8 +70,8 @@ vector<gert::TilingContextPara::OpAttr> GetGroupedNoQuantAttrs(int64_t splitItem
     return {
         {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(splitItem)},
         {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeX)},
         {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
+        {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeX)},
         {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupType)},
         {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
