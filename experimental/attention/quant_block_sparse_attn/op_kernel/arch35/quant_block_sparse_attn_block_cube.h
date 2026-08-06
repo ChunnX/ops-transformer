@@ -27,6 +27,8 @@
 #include "common/FixpipeOut.h"
 #include "common/CopyInL1.h"
 #include "quant_block_sparse_attn_common_arch35.h"
+#include "quant_block_sparse_attn_fp8_static.h"
+#include "quant_block_sparse_attn_fp8_static_matmul.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "quant_block_sparse_attn_attenmask.h"
 using namespace AscendC;
@@ -125,11 +127,18 @@ public:
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf,
                                        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
                                        RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void IterateBmm1Static(LocalTensor<uint8_t> &outputBuf, uint32_t outputEventId,
+                                             RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void IterateBmm2Static(LocalTensor<uint8_t> &outputBuf, uint32_t outputEventId,
+                                             LocalTensor<uint8_t> &inputBuf, uint32_t inputEventId,
+                                             RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void FinalizeStaticBuffers();
     __aicore__ inline void InitDequantParams(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
                                              __gm__ uint8_t *deqScaleV);
     GlobalTensor<int32_t> blockTableGm; // pageattention需要
 private:
     __aicore__ inline void InitLocalBuffer();
+    __aicore__ inline void InitStaticLocalBuffer();
     __aicore__ inline void InitGmTensor(CVSharedParams<isPa> *sharedParams, __gm__ int32_t *actualSeqQlenAddr);
     __aicore__ inline void CalcS2Coord(RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void GetKvByTensorList(RunInfo &runInfo, const ConstInfo &constInfo,
@@ -185,6 +194,20 @@ private:
     // L0C
     using L0CType = typename QuantBlockSparseAttnCube::L0CBuffSel<INPUT_T, s1BaseSize, s2BaseSize, dVBaseSize>::Type;
     L0CType mmL0CBuffers;
+
+    LocalTensor<uint8_t> l1QTensor_;
+    LocalTensor<uint8_t> l1KTensor_;
+    LocalTensor<uint8_t> l1VTensor_;
+    LocalTensor<uint8_t> l0aTensor_[2];
+    LocalTensor<uint8_t> l0bTensor_[2];
+    LocalTensor<uint8_t> l0cTensor_[2];
+    uint32_t qCursor_ = 0U;
+    uint32_t kCursor_ = 0U;
+    uint32_t vCursor_ = 0U;
+    uint32_t currentQSlot_ = 0U;
+    uint32_t l0aCursor_ = 0U;
+    uint32_t l0bCursor_ = 0U;
+    uint32_t l0cCursor_ = 0U;
 };
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -200,7 +223,12 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitCubeBlock(TPipe *pipe,
         if constexpr (isPa) {
             blocktablePtr = blockTable;
         }
-        InitLocalBuffer();
+        if constexpr (useDn && isFp8 && s1BaseSize == 128U && s2BaseSize == 256U && dBaseSize == 128U &&
+                      dVBaseSize == 128U && bmm2Write2Ub) {
+            InitStaticLocalBuffer();
+        } else {
+            InitLocalBuffer();
+        }
     }
 }
 
@@ -272,6 +300,59 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer()
         mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / NUM_4) * KB_TO_BYTES);
     } else {
         mmL0CBuffers.Init(l0cBufferManager, (L0C_SIZE / NUM_2) * KB_TO_BYTES);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::InitStaticLocalBuffer()
+{
+    if constexpr (useDn && isFp8 && s1BaseSize == 128U && s2BaseSize == 256U && dBaseSize == 128U &&
+                  dVBaseSize == 128U && bmm2Write2Ub) {
+        l1QTensor_ = LocalTensor<uint8_t>(TPosition::A1, Fp8Static::L1_Q_ADDR, 2U * Fp8Static::L1_Q_SLOT_BYTES);
+        l1KTensor_ = LocalTensor<uint8_t>(TPosition::A1, Fp8Static::L1_K_ADDR, 2U * Fp8Static::L1_K_SLOT_BYTES);
+        l1VTensor_ = LocalTensor<uint8_t>(TPosition::A1, Fp8Static::L1_V_ADDR, 2U * Fp8Static::L1_V_SLOT_BYTES);
+        for (uint32_t i = 0U; i < 2U; ++i) {
+            l0aTensor_[i] = LocalTensor<uint8_t>(TPosition::A2, i * Fp8Static::L0_SLOT_BYTES,
+                                                 Fp8Static::L0_SLOT_BYTES);
+            l0bTensor_[i] = LocalTensor<uint8_t>(TPosition::B2, i * Fp8Static::L0_SLOT_BYTES,
+                                                 Fp8Static::L0_SLOT_BYTES);
+            l0cTensor_[i] = LocalTensor<uint8_t>(TPosition::CO1, i * Fp8Static::L0C_SLOT_BYTES,
+                                                 Fp8Static::L0C_SLOT_BYTES);
+        }
+        SetFlag<HardEvent::MTE1_MTE2>(Fp8Static::L1_Q_EVENT_ID0);
+        SetFlag<HardEvent::MTE1_MTE2>(Fp8Static::L1_Q_EVENT_ID1);
+        SetFlag<HardEvent::MTE1_MTE2>(Fp8Static::L1_K_EVENT_ID0);
+        SetFlag<HardEvent::MTE1_MTE2>(Fp8Static::L1_K_EVENT_ID1);
+        SetFlag<HardEvent::MTE1_MTE2>(Fp8Static::L1_V_EVENT_ID0);
+        SetFlag<HardEvent::MTE1_MTE2>(Fp8Static::L1_V_EVENT_ID1);
+        SetFlag<HardEvent::M_MTE1>(Fp8Static::L0A_EVENT_ID0);
+        SetFlag<HardEvent::M_MTE1>(Fp8Static::L0A_EVENT_ID1);
+        SetFlag<HardEvent::M_MTE1>(Fp8Static::L0B_EVENT_ID0);
+        SetFlag<HardEvent::M_MTE1>(Fp8Static::L0B_EVENT_ID1);
+        SetFlag<HardEvent::FIX_M>(Fp8Static::L0C_EVENT_ID0);
+        SetFlag<HardEvent::FIX_M>(Fp8Static::L0C_EVENT_ID1);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::FinalizeStaticBuffers()
+{
+    if constexpr (useDn && isFp8 && s1BaseSize == 128U && s2BaseSize == 256U && dBaseSize == 128U &&
+                  dVBaseSize == 128U && bmm2Write2Ub) {
+        if ASCEND_IS_AIC {
+            WaitFlag<HardEvent::MTE1_MTE2>(Fp8Static::L1_Q_EVENT_ID0);
+            WaitFlag<HardEvent::MTE1_MTE2>(Fp8Static::L1_Q_EVENT_ID1);
+            WaitFlag<HardEvent::MTE1_MTE2>(Fp8Static::L1_K_EVENT_ID0);
+            WaitFlag<HardEvent::MTE1_MTE2>(Fp8Static::L1_K_EVENT_ID1);
+            WaitFlag<HardEvent::MTE1_MTE2>(Fp8Static::L1_V_EVENT_ID0);
+            WaitFlag<HardEvent::MTE1_MTE2>(Fp8Static::L1_V_EVENT_ID1);
+            WaitFlag<HardEvent::M_MTE1>(Fp8Static::L0A_EVENT_ID0);
+            WaitFlag<HardEvent::M_MTE1>(Fp8Static::L0A_EVENT_ID1);
+            WaitFlag<HardEvent::M_MTE1>(Fp8Static::L0B_EVENT_ID0);
+            WaitFlag<HardEvent::M_MTE1>(Fp8Static::L0B_EVENT_ID1);
+            WaitFlag<HardEvent::FIX_M>(Fp8Static::L0C_EVENT_ID0);
+            WaitFlag<HardEvent::FIX_M>(Fp8Static::L0C_EVENT_ID1);
+        }
     }
 }
 
@@ -440,6 +521,204 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
                                        fixpipeParams); // 将matmul结果从L0C搬运到UB
     mm2ResL0C.Set<HardEvent::FIX_M>();                 // 释放
     outputBuf.SetCrossCore();
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Static(LocalTensor<uint8_t> &outputBuf,
+                                                                       uint32_t outputEventId, RunInfo &runInfo,
+                                                                       ConstInfo &constInfo)
+{
+    if constexpr (useDn && isFp8 && s1BaseSize == 128U && s2BaseSize == 256U && dBaseSize == 128U &&
+                  dVBaseSize == 128U && bmm2Write2Ub) {
+        CalcS2Coord(runInfo, constInfo);
+        uint32_t qSlot = currentQSlot_;
+        TEventID qEventId = qSlot == 0U ? Fp8Static::L1_Q_EVENT_ID0 : Fp8Static::L1_Q_EVENT_ID1;
+        LocalTensor<uint8_t> qBuf;
+        if (unlikely(runInfo.s2LoopCount == 0)) {
+            qSlot = qCursor_;
+            qCursor_ ^= 1U;
+            currentQSlot_ = qSlot;
+            qEventId = qSlot == 0U ? Fp8Static::L1_Q_EVENT_ID0 : Fp8Static::L1_Q_EVENT_ID1;
+            qBuf = l1QTensor_[qSlot * Fp8Static::L1_Q_SLOT_BYTES];
+            WaitFlag<HardEvent::MTE1_MTE2>(qEventId);
+            LocalTensor<INPUT_T> qTensor = qBuf.ReinterpretCast<INPUT_T>();
+            CopyToL1Nd2Nz<INPUT_T>(qTensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize,
+                                   constInfo.dSize, constInfo.mm1Ka);
+            SetFlag<HardEvent::MTE2_MTE1>(qEventId);
+        } else {
+            qBuf = l1QTensor_[qSlot * Fp8Static::L1_Q_SLOT_BYTES];
+            SetFlag<HardEvent::MTE2_MTE1>(qEventId);
+        }
+
+        const uint32_t kSlot = kCursor_;
+        kCursor_ ^= 1U;
+        const TEventID kEventId = kSlot == 0U ? Fp8Static::L1_K_EVENT_ID0 : Fp8Static::L1_K_EVENT_ID1;
+        LocalTensor<uint8_t> kBuf = l1KTensor_[kSlot * Fp8Static::L1_K_SLOT_BYTES];
+        WaitFlag<HardEvent::MTE1_MTE2>(kEventId);
+        LocalTensor<INPUT_T> kTensor = kBuf.ReinterpretCast<INPUT_T>();
+        int32_t remainBlocks = runInfo.actSparseLen - runInfo.s2LoopCount * 2;
+        uint32_t actualS2RealSize = static_cast<uint32_t>(runInfo.s2SparseBlk1RealSize);
+        if (remainBlocks >= 2) {
+            actualS2RealSize += static_cast<uint32_t>(runInfo.s2SparseBlk2RealSize);
+        }
+        if constexpr (isPa) {
+            Position startPos;
+            startPos.bIdx = runInfo.boIdx;
+            startPos.n2Idx = runInfo.n2oIdx;
+            startPos.s2Offset = coordInfo[runInfo.taskIdMod3].sparseBlockIdx[0] * constInfo.kvSparseBlockSize;
+            startPos.dIdx = 0;
+            PAShape shape;
+            shape.blockSize = constInfo.kvSparseBlockSize;
+            shape.headNum = constInfo.n2Size;
+            shape.headDim = constInfo.dSize;
+            shape.actHeadDim = constInfo.dSize;
+            shape.maxblockNumPerBatch = maxBlockNumPerBatch;
+            shape.copyRowNum = runInfo.s2SparseBlk1RealSize;
+            shape.pageStride = constInfo.paBlockStride;
+            shape.rowStride = constInfo.dSize;
+            shape.copyRowNumAlign = (actualS2RealSize + 31U) >> 5 << 5;
+            GlobalTensor<INPUT_T> kGmTensor = GetKeyGm(runInfo, constInfo);
+            GmCopyInToL1PA<INPUT_T>(kTensor, kGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
+
+            if (remainBlocks >= 2) {
+                startPos.s2Offset = coordInfo[runInfo.taskIdMod3].sparseBlockIdx[1] * constInfo.kvSparseBlockSize;
+                shape.copyRowNum = runInfo.s2SparseBlk2RealSize;
+                uint32_t halfOffset = runInfo.s2SparseBlk1RealSize * (32U / sizeof(INPUT_T));
+                LocalTensor<INPUT_T> kTensor2 = kTensor[halfOffset];
+                GmCopyInToL1PA<INPUT_T>(kTensor2, kGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
+            }
+        } else {
+            runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
+                coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+            CopyToL1Nd2Nz<INPUT_T>(kTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
+                                   constInfo.dSize, constInfo.mm1Kb);
+        }
+        SetFlag<HardEvent::MTE2_MTE1>(kEventId);
+        WaitFlag<HardEvent::MTE2_MTE1>(kEventId);
+        WaitFlag<HardEvent::MTE2_MTE1>(qEventId);
+
+        const uint32_t l0cSlot = l0cCursor_;
+        l0cCursor_ ^= 1U;
+        const TEventID l0cEventId = l0cSlot == 0U ? Fp8Static::L0C_EVENT_ID0 : Fp8Static::L0C_EVENT_ID1;
+        LocalTensor<T> mm1ResL0C = l0cTensor_[l0cSlot].ReinterpretCast<T>();
+        WaitFlag<HardEvent::FIX_M>(l0cEventId);
+        MMParam param = {actualS2RealSize, static_cast<uint32_t>(runInfo.s1RealSize),
+                         static_cast<uint32_t>(constInfo.dSize), 0, 1};
+        Fp8Static::MatmulFullStatic<INPUT_T, INPUT_T, T>(kTensor, qBuf.ReinterpretCast<INPUT_T>(), l0aTensor_,
+                                                         l0bTensor_, l0aCursor_, l0bCursor_, mm1ResL0C, param);
+
+        if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
+            SetFlag<HardEvent::MTE1_MTE2>(qEventId);
+        }
+        SetFlag<HardEvent::MTE1_MTE2>(kEventId);
+        SetFlag<HardEvent::M_FIX>(l0cEventId);
+        WaitFlag<HardEvent::M_FIX>(l0cEventId);
+
+        Fp8Static::AicWaitUbFree(outputEventId);
+        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+        fixpipeParams.nSize = (runInfo.s1RealSize + 31) >> 5 << 5;
+        fixpipeParams.mSize = actualS2RealSize;
+        fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
+        fixpipeParams.dstStride = 64;
+        fixpipeParams.dualDstCtl = 2;
+        fixpipeParams.params.ndNum = 1;
+        fixpipeParams.params.srcNdStride = 0;
+        fixpipeParams.params.dstNdStride = 0;
+        Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.ReinterpretCast<T>(), mm1ResL0C, fixpipeParams);
+        SetFlag<HardEvent::FIX_M>(l0cEventId);
+        Fp8Static::AicSetUbReady(outputEventId);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2Static(LocalTensor<uint8_t> &outputBuf,
+                                                                       uint32_t outputEventId,
+                                                                       LocalTensor<uint8_t> &inputBuf,
+                                                                       uint32_t inputEventId, RunInfo &runInfo,
+                                                                       ConstInfo &constInfo)
+{
+    if constexpr (useDn && isFp8 && s1BaseSize == 128U && s2BaseSize == 256U && dBaseSize == 128U &&
+                  dVBaseSize == 128U && bmm2Write2Ub) {
+        Fp8Static::AicWaitL1PReady(inputEventId);
+        LocalTensor<INPUT_T> pTensor = inputBuf.ReinterpretCast<INPUT_T>();
+        const uint32_t vSlot = vCursor_;
+        vCursor_ ^= 1U;
+        const TEventID vEventId = vSlot == 0U ? Fp8Static::L1_V_EVENT_ID0 : Fp8Static::L1_V_EVENT_ID1;
+        LocalTensor<uint8_t> vBuf = l1VTensor_[vSlot * Fp8Static::L1_V_SLOT_BYTES];
+        WaitFlag<HardEvent::MTE1_MTE2>(vEventId);
+        LocalTensor<INPUT_T> vTensor = vBuf.ReinterpretCast<INPUT_T>();
+
+        int32_t remainBlocks = runInfo.actSparseLen - runInfo.s2LoopCount * 2;
+        uint32_t actualS2RealSize = static_cast<uint32_t>(runInfo.s2SparseBlk1RealSize);
+        if (remainBlocks >= 2) {
+            actualS2RealSize += static_cast<uint32_t>(runInfo.s2SparseBlk2RealSize);
+        }
+        if constexpr (isPa) {
+            Position startPos;
+            startPos.bIdx = runInfo.boIdx;
+            startPos.n2Idx = runInfo.n2oIdx;
+            startPos.s2Offset = coordInfo[runInfo.taskIdMod3].sparseBlockIdx[0] * constInfo.kvSparseBlockSize;
+            startPos.dIdx = 0;
+            PAShape shape;
+            shape.blockSize = constInfo.kvSparseBlockSize;
+            shape.headNum = constInfo.n2Size;
+            shape.headDim = constInfo.dSizeV;
+            shape.actHeadDim = constInfo.dSizeV;
+            shape.maxblockNumPerBatch = maxBlockNumPerBatch;
+            shape.copyRowNum = runInfo.s2SparseBlk1RealSize;
+            shape.pageStride = constInfo.paBlockStride;
+            shape.rowStride = constInfo.dSizeV;
+            shape.copyRowNumAlign = (actualS2RealSize + 31U) >> 5 << 5;
+            GlobalTensor<INPUT_T> vGmTensor = GetValueGm(runInfo, constInfo);
+            GmCopyInToL1PA<INPUT_T>(vTensor, vGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
+
+            if (remainBlocks >= 2) {
+                startPos.s2Offset = coordInfo[runInfo.taskIdMod3].sparseBlockIdx[1] * constInfo.kvSparseBlockSize;
+                shape.copyRowNum = runInfo.s2SparseBlk2RealSize;
+                uint32_t halfOffset = runInfo.s2SparseBlk1RealSize * (32U / sizeof(INPUT_T));
+                LocalTensor<INPUT_T> vTensor2 = vTensor[halfOffset];
+                GmCopyInToL1PA<INPUT_T>(vTensor2, vGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
+            }
+        } else {
+            uint64_t gmOffset = runInfo.keyOffset;
+            if (constInfo.dSize != constInfo.dSizeV) {
+                gmOffset = this->valueGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx,
+                                                                    runInfo.n2oIdx,
+                                                                    coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+            }
+            CopyToL1Nd2Nz<INPUT_T>(vTensor, GetValueGm(runInfo, constInfo)[gmOffset], runInfo.s2RealSize,
+                                   constInfo.dSizeV, constInfo.mm2Kb);
+        }
+        SetFlag<HardEvent::MTE2_MTE1>(vEventId);
+        WaitFlag<HardEvent::MTE2_MTE1>(vEventId);
+
+        const uint32_t l0cSlot = l0cCursor_;
+        l0cCursor_ ^= 1U;
+        const TEventID l0cEventId = l0cSlot == 0U ? Fp8Static::L0C_EVENT_ID0 : Fp8Static::L0C_EVENT_ID1;
+        LocalTensor<T> mm2ResL0C = l0cTensor_[l0cSlot].ReinterpretCast<T>();
+        WaitFlag<HardEvent::FIX_M>(l0cEventId);
+        MMParam param = {static_cast<uint32_t>(s1BaseSize), static_cast<uint32_t>(constInfo.dSizeV),
+                         actualS2RealSize, useDn, false};
+        Fp8Static::MatmulFullStatic<INPUT_T, INPUT_T, T>(pTensor, vTensor, l0aTensor_, l0bTensor_, l0aCursor_,
+                                                         l0bCursor_, mm2ResL0C, param);
+        SetFlag<HardEvent::MTE1_MTE2>(vEventId);
+        SetFlag<HardEvent::M_FIX>(l0cEventId);
+        WaitFlag<HardEvent::M_FIX>(l0cEventId);
+
+        Fp8Static::AicWaitUbFree(outputEventId);
+        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+        fixpipeParams.nSize = (constInfo.dSizeV + 7) >> 3 << 3;
+        fixpipeParams.mSize = s1BaseSize;
+        fixpipeParams.srcStride = ((s1BaseSize + 15) / 16) * 16;
+        fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
+        fixpipeParams.dualDstCtl = 1;
+        fixpipeParams.params.ndNum = 1;
+        fixpipeParams.params.srcNdStride = 0;
+        fixpipeParams.params.dstNdStride = 0;
+        Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(outputBuf.ReinterpretCast<T>(), mm2ResL0C, fixpipeParams);
+        SetFlag<HardEvent::FIX_M>(l0cEventId);
+        Fp8Static::AicSetUbReady(outputEventId);
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -722,6 +1001,14 @@ public:
                                        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
                                        RunInfo &runInfo, ConstInfo &constInfo)
     {}
+    __aicore__ inline void IterateBmm1Static(LocalTensor<uint8_t> &outputBuf, uint32_t outputEventId,
+                                             RunInfo &runInfo, ConstInfo &constInfo)
+    {}
+    __aicore__ inline void IterateBmm2Static(LocalTensor<uint8_t> &outputBuf, uint32_t outputEventId,
+                                             LocalTensor<uint8_t> &inputBuf, uint32_t inputEventId,
+                                             RunInfo &runInfo, ConstInfo &constInfo)
+    {}
+    __aicore__ inline void FinalizeStaticBuffers() {}
     __aicore__ inline void InitDequantParams(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
                                              __gm__ uint8_t *deqScaleV)
     {}
