@@ -97,7 +97,7 @@ protected:
     GlobalTensor<float> lseMaxFdGm_;
     GlobalTensor<float> accumOutGm_;
     GlobalTensor<float> softmaxLseGm_;
-    GlobalTensor<float> sinkGm_;
+    GlobalTensor<INPUT_T> sinkGm_;
 
     static constexpr UbFormat UB_FORMAT = GetOutUbFormat<LAYOUT_T>();
     int64_t preTokensPerBatch_ = 0;
@@ -162,7 +162,7 @@ public:
             softmaxLseGm_.SetGlobalBuffer((__gm__ float *)softmaxLse);
         }
         if (constInfo_.learnableSinkFlag) {
-            sinkGm_.SetGlobalBuffer((__gm__ float *)learnableSink);
+            sinkGm_.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
         }
     }
 
@@ -294,7 +294,13 @@ protected:
         LocalTensor<T> maxLseUb = fdLseUbBuf_;
         bool learnableSinkFlag = constInfo_.learnableSinkFlag;
         if (learnableSinkFlag) {
-            T sinkValue = static_cast<T>(sinkGm_.GetValue(taskInfo_.n2Idx * constInfo_.gSize));
+            auto sinkSrc = sinkGm_.GetValue(taskInfo_.n2Idx * constInfo_.gSize);
+            T sinkValue;
+            if constexpr (IsSameType<INPUT_T, half>::value) {
+                sinkValue = static_cast<T>(sinkSrc);
+            } else {
+                sinkValue = static_cast<T>(Cast(sinkSrc));
+            }
             Duplicate<T>(sinkExpBuf, sinkValue, dealRowCount * FP32_BLOCK_ELEMENT_NUM);
             AscendC::PipeBarrier<PIPE_V>();
         }

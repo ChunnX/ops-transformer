@@ -152,7 +152,7 @@ public:
     GlobalTensor<float> accumOutGm_;
     GlobalTensor<float> softmaxFDSumGm_;
     GlobalTensor<float> softmaxFDMaxGm_;
-    GlobalTensor<float> sinkGm_;
+    GlobalTensor<INPUT_T> sinkGm_;
 
     static constexpr MaskFormat MASK_LAYOUT =
         (LAYOUT_T == FA_LAYOUT::BSH || LAYOUT_T == FA_LAYOUT::TND) ? MaskFormat::SG : MaskFormat::GS;
@@ -193,7 +193,7 @@ public:
                                             constInfo_.logSumExpSize);
         }
         if (constInfo_.learnableSinkFlag) {
-            sinkGm_.SetGlobalBuffer((__gm__ float *)learnableSink);
+            sinkGm_.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
         }
     }
 
@@ -254,7 +254,13 @@ public:
         LocalTensor<T> sumUb = softmaxSumBuf_[slotIdx * softmaxBufElementCount];
         LocalTensor<T> maxUb = softmaxMaxBuf_[slotIdx * softmaxBufElementCount];
         if (constInfo_.learnableSinkFlag) {
-            T sinkValue = static_cast<T>(sinkGm_.GetValue(runInfo.n2Idx * constInfo_.gSize + runInfo.gIdx));
+            auto sinkSrc = sinkGm_.GetValue(runInfo.n2Idx * constInfo_.gSize + runInfo.gIdx);
+            T sinkValue;
+            if constexpr (IsSameType<INPUT_T, half>::value) {
+                sinkValue = static_cast<T>(sinkSrc);
+            } else {
+                sinkValue = static_cast<T>(Cast(sinkSrc));
+            }
             Duplicate<T>(maxUb, sinkValue, softmaxBufElementCount);
             Duplicate<T>(sumUb, static_cast<T>(1), softmaxBufElementCount);
         } else {

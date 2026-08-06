@@ -130,6 +130,9 @@ def run_case(params: dict,
     print(f"  [primary] {primary.name} 计算...")
     dev_inputs = {k: v.to(primary.device) if isinstance(v, torch.Tensor) else v
                   for k, v in cpu_inputs.items()}
+    if params.get("sinks") is not None and "sinks" in dev_inputs:
+        q_dtype = torch.float16 if params.get("Dtype", "fp16") == "fp16" else torch.bfloat16
+        dev_inputs["sinks"] = dev_inputs["sinks"].to(q_dtype)
     primary_out_raw = primary.compute(dev_inputs, params)
     primary_out = {k: v.cpu() if isinstance(v, torch.Tensor) else v
                    for k, v in primary_out_raw.items()}
