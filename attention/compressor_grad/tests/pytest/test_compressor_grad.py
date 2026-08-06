@@ -9,14 +9,10 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ======================================================================================================================
 
-import sys
-import argparse
 import random
-from dataclasses import dataclass
 
 import os
 import torch
-
 from test_cases import REDLINE_CASES
 from cpu_golden import compressor_grad_golden
 from npu_core import NPUBackend
@@ -26,13 +22,8 @@ from precision_check import (
     check_result,
     print_log,
     get_pct_thd,
-    get_output_keys,
     format_case_line,
-    build_error_result,
-    print_summary,
-    ALL_OUTPUTS,
 )
-
 
 DEVICE_ID = 0
 
@@ -554,53 +545,22 @@ def npu_test(case, device):
     return result
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--case",  type=str, default=None)
-    args = parser.parse_args()
+import pytest
 
-    if args.case:
-        allCases = REDLINE_CASES
-        cases = [c for c in allCases if c["testcase_name"] == args.case]
-        if not cases:
-            print(f"Case '{args.case}' not found. "
-                  f"Available: {[c['testcase_name'] for c in allCases]}")
-            return 1
-    else:
-        cases = REDLINE_CASES
 
+@pytest.mark.parametrize(
+    "case",
+    [c for c in REDLINE_CASES if c.get("enable", True)],
+    ids=[c["testcase_name"] for c in REDLINE_CASES if c.get("enable", True)],
+)
+def test_compressor_grad(case):
+    """主链路（pytest 形式）：autograd 正反向全链路 + 反向四输出校验
+    + 通路 1 正向输出校验（cmp_kv/softmax_score/kv vs compressor_core 参考）。
+
+    单 case 运行：pytest test_compressor_grad.py -k <case名子串> -q
+    全部运行：pytest test_compressor_grad.py -q
+    """
     device = f"npu:{DEVICE_ID}"
     torch.npu.set_device(device)
-
-    print("=" * 70)
-    print(f"Compressor Grad (unified kernel) — {len(cases)} case(s)")
-    print(f"  Checks: d_wkv={ENABLE_DWKV_CHECK}  d_wgate={ENABLE_DWGATE_CHECK}  "
-          f"d_ape={ENABLE_APE_CHECK}  d_x={ENABLE_DX_CHECK}")
-    print("=" * 70)
-
-    results = []
-    for i, c in enumerate(cases):
-        print(f"\n[{i+1}/{len(cases)}] {c['testcase_name']}  "
-              f"B={c['B']} hd={c['D']} cr={c['cmp_ratio']} "
-              f"coff={c['coff']} {c['input_layout']}")
-        try:
-            r = npu_test(c, device)
-            results.append(r)
-            # 每个用例输出每个输出的对比结果，未对比的输出明确标记 SKIP
-            print(format_case_line(r))
-        except Exception as e:
-            print(f"  ERROR: {e}")
-            # 错误用例补齐每个输出的状态为 ERROR，便于 per-output 统计
-            results.append(build_error_result(c["testcase_name"]))
-
-    # ── Summary ──
-    # 汇总统计（含用例通过个数 + 以 case 为粒度的 per-output 对比结果表）统一在 precision_check 中实现
-    print_summary(results)
-
-    failed  = sum(1 for r in results if r.get("status") == "FAIL")
-    errors  = sum(1 for r in results if r.get("status") == "ERROR")
-    return 0 if (failed + errors) == 0 else 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    result = npu_test(case, device)
+    assert result["status"] == "PASS", format_case_line(result)
