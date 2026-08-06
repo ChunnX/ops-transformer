@@ -21,7 +21,7 @@ import torchair
 import numpy as np
 import torch.nn as nn
 
-from k_pool_golden import run_k_pool_eager, cpu_k_pool
+from k_pool_legacy_golden import run_k_pool_eager, cpu_k_pool
 
 class Generalized_operator():
     def forward(self,
