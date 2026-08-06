@@ -129,8 +129,8 @@ ge::graphStatus SetBaseInfo(CompressorGradContext &compressorGradContext,
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CalcWorkSpace(CompressorGradContext &compressorGradContext, CompressorGradInnerSplitParams &compressorGradInnerSplitParams,
-                              CompressorGradBaseParams &compressorGradBaseParams, CompressorGradWorkspaceParams &compressorGradWorkspaceParams,
+ge::graphStatus CalcWorkSpace(CompressorGradContext &compressorGradContext, CompressorGradBaseParams &compressorGradBaseParams,
+                              CompressorGradWorkspaceParams &compressorGradWorkspaceParams,
                               size_t &workspaceSize, size_t libapiSize, uint32_t aicNum)
 {
     constexpr uint32_t MM1_RES_ELEM_SIZE = 4; // 4: fp32
