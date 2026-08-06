@@ -542,10 +542,7 @@ private:
         SetFlag<HardEvent::S_V>(eventID);
         WaitFlag<HardEvent::S_V>(eventID);
 
-        InverseAIVVF<INVERSE_SHAPE>(reinterpret_cast<__ubuf__ float *>(attnUbFloat_.GetPhyAddr()),
-                                    reinterpret_cast<__ubuf__ float *>(inverseRes_.GetPhyAddr()),
-                                    reinterpret_cast<__ubuf__ float *>(inverseBuffer_.GetPhyAddr()),
-                                    subOffset_, chunkSize_);
+        InverseAIVVF<INVERSE_SHAPE>(attnUbFloat_, inverseRes_, inverseBuffer_, subOffset_, chunkSize_);
         PipeBarrier<PIPE_V>();
         auto tmp = outQueue_.AllocTensor<bfloat16_t>();
         Cast(tmp, inverseRes_, RoundMode::CAST_RINT, curVecLen);
