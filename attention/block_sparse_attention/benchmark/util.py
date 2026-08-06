@@ -252,10 +252,15 @@ def generate_sparse_blocks_by_row(
                          f"— exceeds target sparsity {sparsity:.2%}. Adjust frame or sparsity.")
     n_max_kept = int(math.floor(n_total * (1.0 - sparsity)))
     # Spread the post-frame budget exactly across sparse rows: the first
-    # `extra_rows` rows keep one more random block than the rest. Rounding the
-    # per-row count (e.g. math.ceil) would overshoot the budget by up to
-    # n_sparse_rows-1 blocks; divmod makes the total kept == n_max_kept exactly.
+    # `extra_rows` rows keep one more random block than the rest, so the total kept
+    # == n_max_kept exactly (integer division alone would over/under-shoot).
     base_per_row, extra_rows = divmod(max(n_max_kept - n_forced, 0), n_sparse_rows) if n_sparse_rows > 0 else (0, 0)
+    # ...but never leave a sparse row with zero kept blocks: a fully-masked query
+    # row has no keys to attend to, so its softmax is 0/0 (NaN out, LSE = -inf).
+    # With no frame to fall back on, keep >= 1 random block per row even if that
+    # overshoots the budget — at extreme sparsity on a small grid the exact budget
+    # simply isn't representable without empty rows (e.g. keep 1 of 16 across 4 rows).
+    min_kept_per_row = 0 if forced_cols else 1
     rng = random.Random(seed)
     rows: list[list[int]] = []
     sparse_row_idx = 0
@@ -263,7 +268,7 @@ def generate_sparse_blocks_by_row(
         if r in dense_rows:
             rows.append(list(range(n_cols)))
             continue
-        n_kept_this_row = base_per_row + (1 if sparse_row_idx < extra_rows else 0)
+        n_kept_this_row = max(base_per_row + (1 if sparse_row_idx < extra_rows else 0), min_kept_per_row)
         sparse_row_idx += 1
         if n_kept_this_row <= 0:
             cols = sorted(forced_cols) + [pad_value] * (n_cols - len(forced_cols))
