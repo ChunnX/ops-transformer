@@ -13,9 +13,10 @@
 """TTK metadata-first adapter for the installed quant_block_sparse_attn API."""
 
 import math
+import random
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import torch
 
@@ -92,51 +93,84 @@ def _auto_generate_params(
     cu_seqlens_q,
     cu_seqlens_kv,
     block_table,
-    max_seqlen_q,
-    max_seqlen_kv,
     layout_q,
-    sparse_kv_block_size,
+    page_block_size,
+    actual_seq_q=None,
+    actual_seq_kv=None,
+    empty_actual_seq=False,
+    block_table_pattern="sequential",
+    seed=0,
 ):
     """Auto-generate missing seqused/cu_seqlens/block_table from available info."""
     B = int(sparse_indices.shape[0]) if sparse_indices is not None else 1
 
-    if max_seqlen_q <= 0:
-        if layout_q == "BSND":
-            max_seqlen_q = int(query.shape[1])
-        elif layout_q == "NTD":
-            max_seqlen_q = int(query.shape[1])
-        else:
-            max_seqlen_q = int(query.shape[0])
+    if layout_q == "BSND":
+        q_fallback = int(query.shape[1])
+    elif layout_q == "NTD":
+        q_fallback = int(query.shape[1]) // B
+    else:
+        q_fallback = int(query.shape[0]) // B
+    if key.dim() == 4:
+        kv_fallback = int(key.shape[0]) * int(key.shape[2]) // B
+    else:
+        kv_fallback = int(key.shape[0]) // B
 
-    if max_seqlen_kv <= 0:
-        if key.dim() == 4:
-            max_seqlen_kv = int(key.shape[0]) * int(key.shape[2])
-        else:
-            max_seqlen_kv = int(key.shape[0])
+    def normalize_lengths(values, fallback, name):
+        if values is None:
+            return [int(fallback)] * B
+        lengths = [int(value) for value in values]
+        if len(lengths) != B:
+            raise ValueError(f"{name} must contain B={B} values, got {len(lengths)}")
+        return lengths
+
+    q_lengths = normalize_lengths(actual_seq_q, q_fallback, "actual_seq_q")
+    kv_lengths = normalize_lengths(actual_seq_kv, kv_fallback, "actual_seq_kv")
 
     if seqused_q is None:
-        seqused_q = torch.full(
-            (B,), max_seqlen_q, dtype=torch.int32, device=query.device
+        seqused_q = torch.tensor(
+            [] if empty_actual_seq else q_lengths,
+            dtype=torch.int32,
+            device=query.device,
         )
     if seqused_kv is None:
-        seqused_kv = torch.full(
-            (B,), max_seqlen_kv, dtype=torch.int32, device=query.device
-        )
+        seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32, device=query.device)
     if cu_seqlens_q is None:
-        cu = torch.zeros(B + 1, dtype=torch.int32, device=query.device)
-        for i in range(B):
-            cu[i + 1] = cu[i] + int(seqused_q[i].item())
-        cu_seqlens_q = cu
+        cu_seqlens_q = torch.tensor(
+            [0] + [sum(q_lengths[: index + 1]) for index in range(B)],
+            dtype=torch.int32,
+            device=query.device,
+        )
     if cu_seqlens_kv is None:
-        cu = torch.zeros(B + 1, dtype=torch.int32, device=query.device)
-        for i in range(B):
-            cu[i + 1] = cu[i] + int(seqused_kv[i].item())
-        cu_seqlens_kv = cu
+        cu_seqlens_kv = torch.tensor(
+            [0] + [sum(kv_lengths[: index + 1]) for index in range(B)],
+            dtype=torch.int32,
+            device=query.device,
+        )
     if block_table is None:
-        num_blocks = math.ceil(max_seqlen_kv / sparse_kv_block_size)
-        block_table = torch.arange(
-            B * num_blocks, dtype=torch.int32, device=query.device
-        ).reshape(B, num_blocks)
+        block_counts = [math.ceil(length / page_block_size) for length in kv_lengths]
+        max_block_count = max(block_counts, default=0)
+        block_table = torch.full(
+            (B, max_block_count), -1, dtype=torch.int32, device=query.device
+        )
+        physical_ids = list(range(sum(block_counts)))
+        rng = random.Random(int(seed))
+        if block_table_pattern == "reverse":
+            physical_ids.reverse()
+        elif block_table_pattern == "random":
+            rng.shuffle(physical_ids)
+        elif block_table_pattern != "sequential":
+            raise ValueError(
+                f"unsupported block_table_pattern: {block_table_pattern}"
+            )
+        offset = 0
+        for batch_idx, block_count in enumerate(block_counts):
+            if block_count:
+                block_table[batch_idx, :block_count] = torch.tensor(
+                    physical_ids[offset : offset + block_count],
+                    dtype=torch.int32,
+                    device=query.device,
+                )
+            offset += block_count
 
     return seqused_q, seqused_kv, cu_seqlens_q, cu_seqlens_kv, block_table
 
@@ -145,19 +179,10 @@ class QuantBlockSparseAttnMetadataBuilder:
     """Derive and create the metadata consumed by the main operator."""
 
     @staticmethod
-    def max_seq(cu_seqlens, seqused, fallback):
-        if seqused is not None and seqused.numel() > 0:
-            return int(seqused.detach().cpu().max().item())
-        if cu_seqlens is not None and cu_seqlens.numel() > 1:
-            values = cu_seqlens.detach().cpu()
-            return int((values[1:] - values[:-1]).max().item())
-        return int(fallback)
-
-    @staticmethod
     def batch_size(q, layout_q, cu_seqlens_q, seqused_q, sparse_indices=None):
         if layout_q == "BSND":
             return int(q.shape[0])
-        if seqused_q is not None:
+        if seqused_q is not None and seqused_q.numel() > 0:
             return int(seqused_q.numel())
         if cu_seqlens_q is not None:
             return max(int(cu_seqlens_q.numel()) - 1, 0)
@@ -192,23 +217,15 @@ class QuantBlockSparseAttnMetadataBuilder:
         layout_sparse_indices="B_N_Qb_Kb",
         mask_mode=3,
         quant_mode=1,
-        max_seqlen_q=0,
-        max_seqlen_kv=0,
     ):
         _ensure_cann_ops()
         if layout_q == "BSND":
             num_heads_q = int(query.shape[2])
-            q_fallback = int(query.shape[1])
         elif layout_q == "NTD":
             num_heads_q = int(query.shape[0])
-            q_fallback = int(query.shape[1])
         else:
             num_heads_q = int(query.shape[1])
-            q_fallback = int(query.shape[0])
         num_heads_kv = int(key.shape[1])
-        kv_fallback = (
-            int(key.shape[0] * key.shape[2]) if key.dim() == 4 else int(key.shape[0])
-        )
         metadata = torch.ops.custom.npu_quant_block_sparse_attn_metadata(
             sparse_seq_len,
             num_heads_q,
@@ -225,12 +242,6 @@ class QuantBlockSparseAttnMetadataBuilder:
             sparse_block_size_k=int(sparse_kv_block_size),
             quant_mode=int(quant_mode),
             mask_mode=int(mask_mode),
-            max_seqlen_q=cls.max_seq(
-                cu_seqlens_q, seqused_q, max_seqlen_q or q_fallback
-            ),
-            max_seqlen_kv=cls.max_seq(
-                cu_seqlens_kv, seqused_kv, max_seqlen_kv or kv_fallback
-            ),
             layout_q=layout_q,
             layout_kv=layout_kv,
             layout_sparse_indices=layout_sparse_indices,
@@ -247,7 +258,7 @@ def quant_block_sparse_attn(
     q_descale: torch.Tensor,
     k_descale: torch.Tensor,
     v_descale: torch.Tensor,
-    p_scale: torch.Tensor,
+    p_scale: Optional[torch.Tensor],
     sparse_indices: torch.Tensor,
     sparse_seq_len: torch.Tensor,
     atten_mask: torch.Tensor,
@@ -261,8 +272,6 @@ def quant_block_sparse_attn(
     softmax_scale: float = 1.0,
     sparse_q_block_size: int = 128,
     sparse_kv_block_size: int = 128,
-    max_seqlen_q: int = 0,
-    max_seqlen_kv: int = 0,
     layout_kv: str = "PA_BNSD",
     layout_q: str = "BSND",
     layout_sparse_indices: str = "B_N_Qb_Kb",
@@ -270,6 +279,11 @@ def quant_block_sparse_attn(
     quant_mode: int = 1,
     mask_mode: int = 3,
     return_softmax_lse: bool = False,
+    actual_seq_q: Optional[List[int]] = None,
+    actual_seq_kv: Optional[List[int]] = None,
+    empty_actual_seq: bool = False,
+    block_table_pattern: str = "sequential",
+    seed: int = 0,
 ):
     """Compute metadata first, then call cann_ops_transformer.quant_block_sparse_attn."""
     _ensure_cann_ops()
@@ -285,10 +299,13 @@ def quant_block_sparse_attn(
                 cu_seqlens_q,
                 cu_seqlens_kv,
                 block_table,
-                max_seqlen_q,
-                max_seqlen_kv,
                 layout_q,
-                sparse_kv_block_size,
+                int(key.shape[2]) if key.dim() == 4 else sparse_kv_block_size,
+                actual_seq_q,
+                actual_seq_kv,
+                empty_actual_seq,
+                block_table_pattern,
+                seed,
             )
         )
 
@@ -317,8 +334,6 @@ def quant_block_sparse_attn(
             layout_sparse_indices=layout_sparse_indices,
             mask_mode=mask_mode,
             quant_mode=quant_mode,
-            max_seqlen_q=max_seqlen_q,
-            max_seqlen_kv=max_seqlen_kv,
         )
 
     if key.dim() == 4 and int(quant_mode) != 2:
