@@ -525,12 +525,15 @@ def _reduce_ape(vecCtx, coreIdx, groupIdx, dbIdx, roundBlocks,
     rgStart = rgStart * D_BASE_SIZE
     rgEnd = rgEnd * D_BASE_SIZE
     # validRows：实际写入 tensorApe 的行数（只读被写过的行，与 workspace 初始内容无关）
-    # coff=1：写行号连续为 0..min(roundBlocks, 2*groupNum)-1——sub1 子核槽位写入条件
-    #   含额外 +dealScNum（groupIdx*gds + dealScNum < roundBlocks），原 ceil 公式在
-    #   roundBlocks 非 groupDealScNum 整数倍时高估，会读入未写槽位（未清零→垃圾）
-    # coff=2：每 group 仅 1 行（coffCoef=1），ceil 公式精确
+    # coff=1：每轮每个 vec 子核处理 dealScNum 块，写行号 = groupIdx*2+sub，
+    #   写 iff groupIdx*gds + sub*ds < roundBlocks ⟺ 行号 < roundBlocks/ds，
+    #   即写行数 = min(ceil(roundBlocks/ds), 2*groupNum)；
+    #   原 ceil(roundBlocks/gds)*2 在 roundBlocks 非 ds 整数倍时高估（读入未写
+    #   槽位→垃圾）；min(roundBlocks, 2*groupNum) 仅 ds==1 时正确
+    # coff=2：每 group 仅 1 行（coffCoef=1），ceil(roundBlocks/gds) 精确
     if Coff == 1:
-        validRows = min(roundBlocks, groupNum * 2)
+        validRows = min((roundBlocks + vecCtx.dealScNum - 1) // vecCtx.dealScNum,
+                        groupNum * 2)
     else:
         validRows = (roundBlocks + vecCtx.groupDealScNum - 1) // vecCtx.groupDealScNum
     pl.set_validshape(reduceAcc, [1, rgEnd - rgStart])
