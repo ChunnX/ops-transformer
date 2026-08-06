@@ -70,11 +70,25 @@ export RANK_TABLE_FILE=/path/to/rank_table.json
 # 一条命令搞定：自动编译 + 批跑 CSV 用例 + 回写结果
 bash batch_run.sh cases/cases_example.csv
 
-# 或指定输出文件名
+# 指定输出文件名
 bash batch_run.sh cases/cases_example.csv cases/my_result.csv
+
+# 只跑 id=3 的用例
+bash batch_run.sh cases/cases_example.csv -caseid 3
+
+# 只跑 id=3，指定输出文件
+bash batch_run.sh cases/cases_example.csv cases/my_result.csv -caseid 3
 ```
 
 脚本会自动检测：如果二进制不存在或源码有更新，自动重新编译；否则跳过编译直接跑。
+
+`batch_run.sh` 参数：
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| input.csv | 输入用例 CSV 文件 | 必填 |
+| output.csv | 输出结果 CSV 文件 | input 文件名加 `_result` |
+| -caseid N | 只跑 id=N 的用例（匹配 CSV 中 id 列） | 不传=跑全部 |
 
 ## 批量运行说明
 
@@ -90,6 +104,7 @@ mode,res_kind,die_id,warmup_count,loop_count,pattern,rank_id,ranksize
 
 | 字段 | 含义 | 取值 |
 |------|------|------|
+| id | 用例 ID | 从 0 开始，用于 `-caseid` 指定单跑 |
 | mode | 读写模式 | `write` / `read` / `write_then_read`（或 `wtr`），也支持数字 0/1/2 |
 | res_kind | 资源类型 | `xn` / `cke` / `both`，也支持数字 0/1/2 |
 | die_id | IO Die ID | 0 或 1（单 rank 默认用 1） |

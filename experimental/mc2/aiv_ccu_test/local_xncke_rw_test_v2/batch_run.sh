@@ -85,20 +85,43 @@ if [ "$NEED_BUILD" -eq 1 ]; then
     echo "==================================================================="
 fi
 
-# ==================== 参数检查 ====================
+# ==================== 参数解析 ====================
 
-if [ $# -lt 1 ]; then
-    echo "用法: bash batch_run.sh <input.csv> [output.csv]"
-    echo "      output 默认在 input 文件名后加 _result"
+INPUT_CSV=""
+OUTPUT_CSV=""
+CASE_LINE=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -caseid)
+            CASE_LINE="$2"
+            shift 2
+            ;;
+        *)
+            if [ -z "$INPUT_CSV" ]; then
+                INPUT_CSV="$1"
+            elif [ -z "$OUTPUT_CSV" ]; then
+                OUTPUT_CSV="$1"
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [ -z "$INPUT_CSV" ]; then
+    echo "用法: bash batch_run.sh <input.csv> [output.csv] [-caseid N]"
+    echo "      output   默认在 input 文件名后加 _result"
+    echo "      -caseid  指定只跑某个 id 的用例（匹配 CSV 中 id 列的值）"
     echo ""
     echo "示例:"
-    echo "  bash batch_run.sh cases/cases_example.csv"
-    echo "  bash batch_run.sh cases/cases_example.csv cases/my_result.csv"
+    echo "  bash batch_run.sh cases/cases_example.csv                # 跑全部"
+    echo "  bash batch_run.sh cases/cases_example.csv result.csv     # 跑全部，指定输出"
+    echo "  bash batch_run.sh cases/cases_example.csv -caseid 3      # 只跑 id=3 的用例"
+    echo "  bash batch_run.sh cases/cases_example.csv result.csv -caseid 3  # 只跑 id=3，指定输出"
     exit 1
 fi
 
-INPUT_CSV="$1"
-OUTPUT_CSV="${2:-${INPUT_CSV%.csv}_result.csv}"
+OUTPUT_CSV="${OUTPUT_CSV:-${INPUT_CSV%.csv}_result.csv}"
 
 if [ ! -f "$INPUT_CSV" ]; then
     echo "[ERROR] 输入文件不存在: $INPUT_CSV"
@@ -107,21 +130,32 @@ fi
 
 # ==================== 批量执行 ====================
 
-HEADER="mode,res_kind,die_id,warmup_count,loop_count,pattern,rank_id,ranksize,warmup_cycles,start_cycle,end_cycle,avg_cycles,avg_ns,verify_result,xn_readback,cke_readback,status"
+HEADER="id,mode,res_kind,die_id,warmup_count,loop_count,pattern,rank_id,ranksize,warmup_cycles,start_cycle,end_cycle,avg_cycles,avg_ns,verify_result,xn_readback,cke_readback,status"
 echo "$HEADER" > "$OUTPUT_CSV"
 
 total_lines=$(wc -l < "$INPUT_CSV")
 case_count=$((total_lines - 1))
-echo "[INFO] 共 $case_count 条用例"
+
+if [ -n "$CASE_LINE" ]; then
+    echo "[INFO] 只跑 id=$CASE_LINE 的用例（共 $case_count 条）"
+else
+    echo "[INFO] 共 $case_count 条用例"
+fi
 echo "  输入: $INPUT_CSV"
 echo "  输出: $OUTPUT_CSV"
 echo "==================================================================="
 
 current=0
 
-tail -n +2 "$INPUT_CSV" | while IFS=',' read -r mode res_kind die_id warmup_count loop_count pattern rank_id ranksize; do
+tail -n +2 "$INPUT_CSV" | while IFS=',' read -r id mode res_kind die_id warmup_count loop_count pattern rank_id ranksize; do
     current=$((current + 1))
-    echo "[INFO] === 用例 $current/$case_count ==="
+
+    # 单跑模式：按 id 匹配
+    if [ -n "$CASE_LINE" ] && [ "$id" != "$CASE_LINE" ]; then
+        continue
+    fi
+
+    echo "[INFO] === 用例 id=$id ($current/$case_count) ==="
     echo "  mode=$mode res_kind=$res_kind die_id=$die_id warmup=$warmup_count loop=$loop_count pattern=$pattern rank=$rank_id/$ranksize"
 
     output=$("$BIN" \
@@ -145,8 +179,9 @@ tail -n +2 "$INPUT_CSV" | while IFS=',' read -r mode res_kind die_id warmup_coun
     end_cycle=$(echo "$output" | grep "endCycle:" | grep -oP '\d+' | tail -1)
     avg_ns=$(echo "$output" | grep "平均:" | grep -oP '[\d.]+' | head -1)
 
-    # verify_result: 仅 mode=2（先写后读）才有数据校验，其他模式为 N/A
-    if [ "$mode" = "2" ]; then
+    # verify_result: 仅 write_then_read（mode=2）才有数据校验，其他模式为 N/A
+    if [ "$mode" = "2" ] || [ "$mode" = "write_then_read" ] || [ "$mode" = "WRITE_THEN_READ" ] \
+       || [ "$mode" = "wtr" ] || [ "$mode" = "WTR" ]; then
         verify_str=$(echo "$output" | grep "数据校验:" | grep -oP '(通过|失败)' | head -1)
         if [ "$verify_str" = "通过" ]; then
             verify_result="PASS"
@@ -159,8 +194,11 @@ tail -n +2 "$INPUT_CSV" | while IFS=',' read -r mode res_kind die_id warmup_coun
         verify_result="N/A"
     fi
 
-    # readback 值：仅 mode=2 或 mode=1（读）才有 readback 输出
-    if [ "$mode" = "2" ] || [ "$mode" = "1" ]; then
+    # readback 值：仅 read(1) 或 write_then_read(2) 才有 readback 输出
+    if [ "$mode" = "1" ] || [ "$mode" = "2" ] \
+       || [ "$mode" = "read" ] || [ "$mode" = "READ" ] \
+       || [ "$mode" = "write_then_read" ] || [ "$mode" = "WRITE_THEN_READ" ] \
+       || [ "$mode" = "wtr" ] || [ "$mode" = "WTR" ]; then
         xn_readback=$(echo "$output" | grep "XN readback:" | grep -oP '0x[0-9a-fA-F]+' | head -1)
         cke_readback=$(echo "$output" | grep "CKE readback:" | grep -oP '0x[0-9a-fA-F]+' | head -1)
     else
@@ -194,7 +232,7 @@ tail -n +2 "$INPUT_CSV" | while IFS=',' read -r mode res_kind die_id warmup_coun
     echo "  结果: warmup=$warmup_cycles start=$start_cycle end=$end_cycle avg_cycles=$avg_cycles avg_ns=$avg_ns verify=$verify_result status=$status"
     echo "-------------------------------------------------------------------"
 
-    echo "${mode},${res_kind},${die_id},${warmup_count},${loop_count},${pattern},${rank_id},${ranksize},${warmup_cycles},${start_cycle},${end_cycle},${avg_cycles},${avg_ns},${verify_result},${xn_readback:-},${cke_readback:-},${status}" >> "$OUTPUT_CSV"
+    echo "${id},${mode},${res_kind},${die_id},${warmup_count},${loop_count},${pattern},${rank_id},${ranksize},${warmup_cycles},${start_cycle},${end_cycle},${avg_cycles},${avg_ns},${verify_result},${xn_readback:-},${cke_readback:-},${status}" >> "$OUTPUT_CSV"
 
 done
 
