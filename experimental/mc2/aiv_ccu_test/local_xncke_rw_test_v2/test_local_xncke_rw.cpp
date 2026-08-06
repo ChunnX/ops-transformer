@@ -23,6 +23,7 @@
 #include <cstring>
 #include <getopt.h>
 #include <iostream>
+#include <string>
 #include "acl/acl.h"
 #include "hccl/hccl.h"
 #include "hccl/hcom.h"
@@ -110,12 +111,22 @@ void GetOption(int argc, char **argv)
             case 'd':
                 g_ranksize = atoi(optarg);
                 break;
-            case 'm':
-                g_mode = static_cast<uint32_t>(atoi(optarg));
+            case 'm': {
+                std::string m(optarg);
+                if (m == "write" || m == "WRITE") { g_mode = TEST_MODE_WRITE; }
+                else if (m == "read" || m == "READ") { g_mode = TEST_MODE_READ; }
+                else if (m == "write_then_read" || m == "WRITE_THEN_READ" || m == "wtr" || m == "WTR") { g_mode = TEST_MODE_WRITE_THEN_READ; }
+                else { g_mode = static_cast<uint32_t>(atoi(optarg)); }
                 break;
-            case 'k':
-                g_resKind = static_cast<uint32_t>(atoi(optarg));
+            }
+            case 'k': {
+                std::string k(optarg);
+                if (k == "xn" || k == "XN") { g_resKind = TEST_RES_XN; }
+                else if (k == "cke" || k == "CKE") { g_resKind = TEST_RES_CKE; }
+                else if (k == "both" || k == "BOTH") { g_resKind = TEST_RES_BOTH; }
+                else { g_resKind = static_cast<uint32_t>(atoi(optarg)); }
                 break;
+            }
             case 'w':
                 g_warmupCount = static_cast<uint32_t>(atoi(optarg));
                 break;

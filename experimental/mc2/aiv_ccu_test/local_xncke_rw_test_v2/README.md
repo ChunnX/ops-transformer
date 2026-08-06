@@ -90,8 +90,8 @@ mode,res_kind,die_id,warmup_count,loop_count,pattern,rank_id,ranksize
 
 | 字段 | 含义 | 取值 |
 |------|------|------|
-| mode | 读写模式 | 0=写, 1=读, 2=先写后读 |
-| res_kind | 资源类型 | 0=XN, 1=CKE, 2=BOTH |
+| mode | 读写模式 | `write` / `read` / `write_then_read`（或 `wtr`），也支持数字 0/1/2 |
+| res_kind | 资源类型 | `xn` / `cke` / `both`，也支持数字 0/1/2 |
 | die_id | IO Die ID | 0 或 1（单 rank 默认用 1） |
 | warmup_count | 预热次数 | 0=不预热, N=预热 N 轮 |
 | loop_count | 正式打点循环次数 | 正整数 |

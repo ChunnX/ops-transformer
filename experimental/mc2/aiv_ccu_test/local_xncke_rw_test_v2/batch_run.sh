@@ -136,7 +136,8 @@ tail -n +2 "$INPUT_CSV" | while IFS=',' read -r mode res_kind die_id warmup_coun
         --cke_num 1 \
         --cke_index 0 \
         --loop_count "$loop_count" \
-        --pattern "$pattern" 2>&1) || true
+        --pattern "$pattern" 2>&1)
+    bin_ret=$?
 
     # 解析输出
     warmup_cycles=$(echo "$output" | grep "warmupCycle:" | grep -oP '\d+' | tail -1)
@@ -174,11 +175,11 @@ tail -n +2 "$INPUT_CSV" | while IFS=',' read -r mode res_kind die_id warmup_coun
         avg_cycles=""
     fi
 
-    if echo "$output" | grep -q "程序执行完成"; then
+    if [ "$bin_ret" -eq 0 ]; then
         status="OK"
     else
         status="ERROR"
-        echo "[ERROR] 用例执行失败，原始输出:"
+        echo "[ERROR] 用例执行失败(ret=$bin_ret)，原始输出:"
         echo "$output" | head -20
     fi
 
