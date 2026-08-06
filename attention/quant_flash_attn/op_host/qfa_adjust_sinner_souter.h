@@ -12,7 +12,6 @@
 #define QUANT_FLASH_ATTN_QFA_ADJUST_SINNER_SOUTER_H
 
 #include <cstdint>
-#include "../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_constants.h"
 
 namespace optiling {
 namespace quant_flash_attn {
