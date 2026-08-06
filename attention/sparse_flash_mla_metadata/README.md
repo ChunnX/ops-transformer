@@ -277,11 +277,11 @@
   - ori_kv Seqlen取值规则
     - layout_kv为BSND时，优先通过seqused_ori_kv中的元素获取seqlen，seqused_ori_kv未传入则通过max_seqlen_ori_kv获取seqlen。
     - layout_kv为TND时，优先通过seqused_ori_kv中的元素获取seqlen，seqused_ori_kv未传入则通过cu_seqlens_ori_kv中的元素获取seqlen。
-    - layout_kv为PA_BBND时，优先通过seqused_ori_kv中的元素获取seqlen，seqused_ori_kv未传入则通过max_seqlen_ori_kv获取seqlen，若max_seqlen_ori_kv未传入，则通过ori_topk_length获取seqlen。
+    - layout_kv为PA_BBND时，优先通过seqused_ori_kv中的元素获取seqlen，seqused_ori_kv未传入则通过ori_topk_length获取seqlen。
   - cmp_kv Seqlen取值规则
     - layout_kv为BSND时，优先通过seqused_cmp_kv中的元素获取seqlen，seqused_cmp_kv未传入则通过max_seqlen_cmp_kv获取seqlen。
     - layout_kv为TND时，优先通过seqused_cmp_kv中的元素获取seqlen，seqused_cmp_kv未传入则通过cu_seqlens_cmp_kv中的元素获取seqlen。
-    - layout_kv为PA_BBND时，优先通过seqused_cmp_kv中的元素获取seqlen，seqused_cmp_kv未传入则通过max_seqlen_cmp_kv获取seqlen，若max_seqlen_cmp_kv未传入，则通过cmp_topk_length获取seqlen。
+    - layout_kv为PA_BBND时，优先通过seqused_cmp_kv中的元素获取seqlen，seqused_cmp_kv未传入则通过cmp_topk_length获取seqlen。
 - Atlas A3 训练系列产品/Atlas A3 推理系列产品约束：
   - `cmp_ratio`表示`cmp_kv`相对于压缩前KV长度的压缩倍率；仅传入`ori_kv`时不参与压缩KV计算。CSA场景传4，HCA场景传128。
   - `cmp_topk`在CSA场景支持512或1024，SWA、HCA场景传0。

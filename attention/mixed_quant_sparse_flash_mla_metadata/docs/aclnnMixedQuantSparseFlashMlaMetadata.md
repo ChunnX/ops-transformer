@@ -544,11 +544,11 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
   - oriKvOptional Seqlen取值规则
     - layoutKvOptional为BSND时，优先通过sequsedOriKvOptional中的元素获取seqlen，sequsedOriKvOptional未传入则通过maxSeqlenOriKv获取seqlen。
     - layoutKvOptional为TND时，优先通过sequsedOriKvOptional中的元素获取seqlen，sequsedOriKvOptional未传入则通过cuSeqlensOriKvOptional中的元素获取seqlen。
-    - layoutKvOptional为PA_BBND时，优先通过sequsedOriKvOptional中的元素获取seqlen，sequsedOriKvOptional未传入则通过maxSeqlenOriKv获取seqlen，若maxSeqlenOriKv未传入，则通过oriTopkLengthOptional获取seqlen。
+    - layoutKvOptional为PA_BBND时，优先通过sequsedOriKvOptional中的元素获取seqlen，sequsedOriKvOptional未传入则通过oriTopkLengthOptional获取seqlen。
   - cmpKvOptional Seqlen取值规则
     - layoutKvOptional为BSND时，优先通过sequsedCmpKvOptional中的元素获取seqlen，sequsedCmpKvOptional未传入则通过maxSeqlenCmpKv获取seqlen。
     - layoutKvOptional为TND时，优先通过sequsedCmpKvOptional中的元素获取seqlen，sequsedCmpKvOptional未传入则通过cuSeqlensCmpKvOptional中的元素获取seqlen。
-    - layoutKvOptional为PA_BBND时，优先通过sequsedCmpKvOptional中的元素获取seqlen，sequsedCmpKvOptional未传入则通过maxSeqlenCmpKv获取seqlen，若maxSeqlenCmpKv未传入，则通过cmpTopkLengthOptional获取seqlen。
+    - layoutKvOptional为PA_BBND时，优先通过sequsedCmpKvOptional中的元素获取seqlen，sequsedCmpKvOptional未传入则通过cmpTopkLengthOptional获取seqlen。
 
 ## 调用示例
 

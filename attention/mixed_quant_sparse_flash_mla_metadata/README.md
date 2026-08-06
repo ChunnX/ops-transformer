@@ -282,11 +282,11 @@
 - ori_kv Seqlen取值规则
   - layout_kv为BSND时，优先通过seqused_ori_kv中的元素获取seqlen，seqused_ori_kv未传入则通过max_seqlen_ori_kv获取seqlen。
   - layout_kv为TND时，优先通过seqused_ori_kv中的元素获取seqlen，seqused_ori_kv未传入则通过cu_seqlens_ori_kv中的元素获取seqlen。
-  - layout_kv为PA_BBND时，优先通过seqused_ori_kv中的元素获取seqlen，seqused_ori_kv未传入则通过max_seqlen_ori_kv获取seqlen，若max_seqlen_ori_kv未传入，则通过ori_topk_length获取seqlen。
+  - layout_kv为PA_BBND时，优先通过seqused_ori_kv中的元素获取seqlen，seqused_ori_kv未传入则通过ori_topk_length获取seqlen。
 - cmp_kv Seqlen取值规则
   - layout_kv为BSND时，优先通过seqused_cmp_kv中的元素获取seqlen，seqused_cmp_kv未传入则通过max_seqlen_cmp_kv获取seqlen。
   - layout_kv为TND时，优先通过seqused_cmp_kv中的元素获取seqlen，seqused_cmp_kv未传入则通过cu_seqlens_cmp_kv中的元素获取seqlen。
-  - layout_kv为PA_BBND时，优先通过seqused_cmp_kv中的元素获取seqlen，seqused_cmp_kv未传入则通过max_seqlen_cmp_kv获取seqlen，若max_seqlen_cmp_kv未传入，则通过cmp_topk_length获取seqlen。
+  - layout_kv为PA_BBND时，优先通过seqused_cmp_kv中的元素获取seqlen，seqused_cmp_kv未传入则通过cmp_topk_length获取seqlen。
 
 ## 调用说明
 
