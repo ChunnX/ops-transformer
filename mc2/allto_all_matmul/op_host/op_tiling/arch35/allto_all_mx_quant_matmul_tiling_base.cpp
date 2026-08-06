@@ -476,7 +476,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoMxQuantMMTiling()
         QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingSwat;
         tilingSwat.GetTilingData(perRankM, nValue, perRankK, false, transB, localTilingData_.tileQbmmTilingData);
     }
-    localTilingData_.localMatmul = 1;
+    localTilingData_.localMatmul = 0;
     OP_LOGD(opName_, "MxQuantMM tiling: perRankM=%lu perRankK=%lu N=%lu", perRankM, perRankK, nValue);
     return ge::GRAPH_SUCCESS;
 }
