@@ -20,8 +20,9 @@
 #include "graph/types.h"
 
 namespace ge {
-// REG_OP(FlashAttn)
+    // REG_OP(FlashAttn)
 
-} // namespace ge
 
-#endif // FLASH_ATTENTION_SCORE_PROTO_H_
+}  // namespace ge
+
+#endif  // FLASH_ATTENTION_SCORE_PROTO_H_
