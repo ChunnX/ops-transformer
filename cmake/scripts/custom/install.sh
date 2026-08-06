@@ -354,7 +354,7 @@ else
     fi
     log "[INFO] using requirements: when custom module install finished or before you run the custom module, \
         execute the command [ export LD_LIBRARY_PATH=${_ASCEND_CUSTOM_OPP_PATH}/op_api/lib/:\${LD_LIBRARY_PATH} ] to set the environment path"
-    log "[INFO] verify install: run [ grep load_priority ${config_file} ] to confirm the vendor is loaded; if it fails, refer to the '常见安装问题排查' section in docs/QUICKSTART.md"
+    log "[INFO] verify install: run [ grep load_priority ${config_file} ] to confirm the vendor is loaded; if it fails, check the write permission of opp/vendors and retry"
 fi
 
 if [ -d ${targetdir}/$vendordir/op_impl/cpu/aicpu_kernel/impl/ ]; then

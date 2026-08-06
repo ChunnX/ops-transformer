@@ -77,49 +77,32 @@ Self-extractable archive "cann-ops-transformer-custom_linux.${arch}.run" success
 
 `AddExample`安装在```${ASCEND_HOME_PATH}/opp/vendors```路径中，```${ASCEND_HOME_PATH}```表示CANN软件安装目录。
 
-> **校验安装是否成功**：`config.ini` 的 `load_priority` 字段决定 CANN 是否加载自定义算子。安装完成后，建议执行如下命令校验 `config.ini` 是否更新成功。
+> **校验安装是否成功**：安装完成后执行以下命令，确认 `config.ini` 的 `load_priority` 已写入本 vendor：
 
 ```bash
 grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini
 ```
 
-预期输出应包含已安装的 vendor 名（如 `custom_transformer`），形如 `load_priority=custom_transformer`。
-
-> **如何判断校验结果**：`grep` 成功查到本 vendor 才算安装成功。若 `grep` 报错（如 `No such file`，说明 `config.ini` 未创建）或输出不含对应 vendor，均表示 `config.ini` 未更新成功，算子无法加载，运行时会报 `error 161001`，请参考下方[常见安装问题排查](#常见安装问题排查)。
+预期输出形如 `load_priority=custom_transformer`。若无输出或报 `No such file`，说明安装失败，请参考下方[常见安装问题排查](#常见安装问题排查)。
 
 ### 常见安装问题排查
 
 #### opp/vendors 权限与属主检查
 
-安装脚本需向 `${ASCEND_HOME_PATH}/opp/vendors` 写入 `config.ini` 及算子文件。CANN 通常由 root 安装，若该目录属主非当前用户，将导致 `config.ini` 更新失败、算子无法加载（运行时报 `error 161001`）。建议**安装前**执行以下命令预检查：
+若安装失败或运行报 `error 161001`，通常是 `${ASCEND_HOME_PATH}/opp/vendors` 属主非当前用户，导致 `config.ini` 更新失败。检查属主：
 
 ```bash
 ls -ld ${ASCEND_HOME_PATH}/opp/vendors
-ls -l  ${ASCEND_HOME_PATH}/opp/vendors/config.ini 2>/dev/null
 ```
 
-预期输出属主为当前用户（如 `developer developer`）且具有写权限。若属主为 `root` 或无写权限（安装时会提示 `chmod: changing permissions of '.../config.ini': Operation not permitted`），请选择以下任一方式修复：
-
-**修复方式一（推荐）：将 vendors 目录属主改为当前用户**
+属主非当前用户时，执行以下任一命令修复后重新安装：
 
 ```bash
-sudo chown -R $(whoami) ${ASCEND_HOME_PATH}/opp/vendors
+sudo chown -R $(whoami) ${ASCEND_HOME_PATH}/opp/vendors   # 推荐：改属主
+sudo chmod -R u+w ${ASCEND_HOME_PATH}/opp/vendors          # 或：放宽写权限
 ```
 
-**修复方式二：放宽 vendors 目录写权限**
-
-```bash
-sudo chmod -R u+w ${ASCEND_HOME_PATH}/opp/vendors
-```
-
-完成上述任一修复后，重新执行第3步安装命令，并再次校验 `load_priority`：
-
-```bash
-./build_out/cann-ops-transformer-*linux*.run
-grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini
-```
-
-> **对已安装过算子包的用户**：若此前安装时 `config.ini` 更新失败（`load_priority` 缺失），仅重新编译不会修复 `config.ini`，需在确认权限正常后**重新执行 `.run` 安装**以触发更新。
+修复后重新执行第3步安装命令，并再次校验 `load_priority`。
 
 #### 替代方案：使用 --install-path 安装到用户可写目录
 
