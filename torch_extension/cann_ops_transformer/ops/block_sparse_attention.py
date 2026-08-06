@@ -229,7 +229,6 @@ class BlockSparseAttentionOpBuilder(OpBuilder):
 
 
 _op_builder = BlockSparseAttentionOpBuilder()
-_op_module = _op_builder.load()      # JIT-compiles + loads block_sparse_attention.so
 
 
 @impl(AS_LIBRARY, _op_builder.name, "PrivateUse1")
@@ -300,7 +299,11 @@ def block_sparse_attention(query,
     # Resolve here so eager execution and the registered Meta impl agree on the
     # attentionOut dtype (and so the kernel binary can be found).
     resolved_out_dtype = _resolve_out_dtype(query.dtype, attention_out_dtype)
-    return _op_module.npu_block_sparse_attention(
+    # JIT-compile + load block_sparse_attention.so on first call, not at import
+    # time, so `import cann_ops_transformer` stays free of this op's build cost.
+    # OpBuilder.load() caches in `_loaded_ops`, so later calls are a dict lookup.
+    op_module = _op_builder.load()
+    return op_module.npu_block_sparse_attention(
         query, key, value, block_sparse_mask,
         block_shape, actual_seq_lengths, actual_seq_lengths_kv,
         num_heads, num_key_value_heads,
