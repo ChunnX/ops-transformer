@@ -18,6 +18,7 @@
 #include "securec.h"
 #include "apace/kernel/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
 #include "apace/tiling/quant_matmul_tiling_swat.h"
+#include "apace/tiling/comm_tiling_base.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"
@@ -243,22 +244,8 @@ protected:
 
         auto &mm = td->tileQbmmTilingData;
         usedCoreNum_ = mm.usedCoreNum;
-        auto nTile = (n_ + mm.baseN - 1) / mm.baseN;
-        uint64_t headMSize = ((mm.usedCoreNum + nTile - 1) / nTile) * mm.baseM;
-        uint64_t headTileCnt = m_ / headMSize;
-        uint64_t tailMSize = m_ % headMSize;
-        uint64_t tailTileCnt = (tailMSize > 0) ? 1 : 0;
 
-        td->commTilingData.splitAxisTileSize = headMSize;
-        td->commTilingData.splitAxisTileCnt = headTileCnt;
-        td->commTilingData.splitAxisTailSize = tailMSize;
-        td->commTilingData.splitAxisTailCnt = tailTileCnt;
-        td->commTilingData.nonSplitAxisSize = ka;
-        td->scaleCommTilingData.splitAxisTileSize = headMSize;
-        td->scaleCommTilingData.splitAxisTileCnt = headTileCnt;
-        td->scaleCommTilingData.splitAxisTailSize = tailMSize;
-        td->scaleCommTilingData.splitAxisTailCnt = tailTileCnt;
-        td->scaleCommTilingData.nonSplitAxisSize = ka / 32;
+        apace::CommTilingBase::GetCommTilingData(m_, n_, ka, mm, td->commTilingData, td->scaleCommTilingData);
 
         OP_LOGI("AlltoAllMatmulApace",
                 "commTilingData: splitAxisTileSize=%lu, splitAxisTileCnt=%lu, splitAxisTailSize=%lu, "
