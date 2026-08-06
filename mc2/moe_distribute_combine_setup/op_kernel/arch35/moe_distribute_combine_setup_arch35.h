@@ -296,7 +296,29 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         if (unlikely(dstRankId == epRankId_)) {
             continue;
         }
-        hcomm_.Drain(GetCommHandle(dstRankId));
+        auto channelId = GetCommHandle(dstRankId);
+        hcomm_.Drain(channelId);
+
+        // 调试对端 dst 槽：改为 1 开启。Drain 后经 channel 映射回读 dstStatusAddr。
+        // 期望 dstRaw=0x3f800000；若仍为 0，以对端 host dump（kernBase=win+rank*1024）为准。
+#define COMBINE_SETUP_DEBUG_DST_STATUS 1
+#if COMBINE_SETUP_DEBUG_DST_STATUS
+        GM_ADDR dstStatusAddr = GetUrmaStateAddrByRankId(dstRankId) + epStateOffsetOnWin_;
+        GlobalTensor<int32_t> dstStatusTensor;
+        dstStatusTensor.SetGlobalBuffer((__gm__ int32_t *)dstStatusAddr);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(dstStatusTensor);
+        int32_t dstRaw = dstStatusTensor(0);
+        GlobalTensor<int32_t> srcFlagTensor;
+        srcFlagTensor.SetGlobalBuffer((__gm__ int32_t *)statusFlagGM_);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(srcFlagTensor);
+        int32_t srcRaw = srcFlagTensor(0);
+        AscendC::printf(
+            "[DST] srcRank=%u dstRank=%u aiv=%u S=%u stateOff=%u dst=0x%llx srcFlag=0x%x dstRaw=0x%x\n",
+            epRankId_, dstRankId, aivId_, dataState_, static_cast<uint32_t>(epStateOffsetOnWin_),
+            static_cast<unsigned long long>(static_cast<uint64_t>(dstStatusAddr)),
+            static_cast<uint32_t>(srcRaw), static_cast<uint32_t>(dstRaw));
+#endif
+#undef COMBINE_SETUP_DEBUG_DST_STATUS
     }
 
     assistInfoQueue_.FreeTensor<int32_t>(assistInfoForCombineLocal);

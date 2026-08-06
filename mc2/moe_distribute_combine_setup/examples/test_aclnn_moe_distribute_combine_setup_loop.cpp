@@ -35,6 +35,8 @@
 constexpr uint64_t WIN_STATE_OFFSET = 350ULL * 1024ULL;
 constexpr uint64_t STATE_WIN_OFFSET = 950ULL * 1024ULL;
 constexpr uint64_t STATE_OFFSET = 512ULL;
+// kernel 侧 epHcclBuffer_[rank] = HcclGetHcclBuffer() + rank * 1024，dump 必须用同一基址
+constexpr uint64_t EP_RANK_OFFSET_STEP = 1024ULL;
 constexpr uint32_t DUMP_AIV_NUM = 8U; // 打印前若干 aiv 的 dataState
 
 // 部分 hccl.h 未导出该符号；与 libhccl 链接时可用
@@ -128,10 +130,11 @@ void FreeDeviceAddr(void *deviceAddr)
 }
 
 // host 超时后 dump 本卡 EP window 状态区（方法 2）
-// layout:
-//   dataState[aiv] = *(int32_t*)(win + 950KB + aiv*512)
-//   bank[S] base  = win + S*350KB + COMBINE_STATE_OFFSET(0)
-//   flag[r]       = *(float*)(bank[S] + r*512)   // 1.0=combine, 2.0=dispatch
+// layout（与 kernel 一致，基址含 rank*1024）:
+//   kernBase       = HcclGetHcclBuffer() + epRankId*1024
+//   dataState[aiv] = *(int32_t*)(kernBase + 950KB + aiv*512)
+//   bank[S] base   = kernBase + S*350KB
+//   flag[r]        = *(float*)(bank[S] + r*512)   // 1.0=combine, 2.0=dispatch
 void DumpEpCombineStatus(HcclComm comm, uint32_t epRankId, int64_t epWorldSize, int iter, const char *stage)
 {
     void *winAddr = nullptr;
@@ -142,14 +145,18 @@ void DumpEpCombineStatus(HcclComm comm, uint32_t epRankId, int64_t epWorldSize, 
                   static_cast<int>(hcclRet), winAddr);
         return;
     }
-    if (winSize < STATE_WIN_OFFSET + DUMP_AIV_NUM * STATE_OFFSET) {
-        LOG_PRINT("[DUMP] %s iter=%d rank=%u winSize too small: %llu\n", stage, iter, epRankId,
-                  static_cast<unsigned long long>(winSize));
+    const uint64_t kernBaseOff = static_cast<uint64_t>(epRankId) * EP_RANK_OFFSET_STEP;
+    if (winSize < kernBaseOff + STATE_WIN_OFFSET + DUMP_AIV_NUM * STATE_OFFSET) {
+        LOG_PRINT("[DUMP] %s iter=%d rank=%u winSize too small: %llu need>=%llu\n", stage, iter, epRankId,
+                  static_cast<unsigned long long>(winSize),
+                  static_cast<unsigned long long>(kernBaseOff + STATE_WIN_OFFSET + DUMP_AIV_NUM * STATE_OFFSET));
         return;
     }
 
-    auto *winBase = static_cast<uint8_t *>(winAddr);
-    LOG_PRINT("[DUMP] ===== %s timeout dump rank=%u iter=%d win=%p size=%llu =====\n", stage, epRankId, iter, winAddr,
+    // 与 kernel epHcclBuffer_[epRankId] 对齐；未加 rank*1024 时 rank!=0 会看错槽
+    auto *winBase = static_cast<uint8_t *>(winAddr) + kernBaseOff;
+    LOG_PRINT("[DUMP] ===== %s timeout dump rank=%u iter=%d win=%p kernBase=+%llu size=%llu =====\n", stage,
+              epRankId, iter, winAddr, static_cast<unsigned long long>(kernBaseOff),
               static_cast<unsigned long long>(winSize));
 
     int32_t dataState0 = 0;
@@ -166,6 +173,7 @@ void DumpEpCombineStatus(HcclComm comm, uint32_t epRankId, int64_t epWorldSize, 
         }
         LOG_PRINT("[DUMP] dataState[aiv=%u]=%d\n", aiv, dataState);
     }
+    LOG_PRINT("[SIGMA] stage=%s iter=%d rank=%u sigma=%d\n", stage, iter, epRankId, dataState0);
 
     // 两个 bank 都打：便于判断 flag 是否落错半区
     for (uint32_t bank = 0; bank < 2U; ++bank) {
@@ -174,7 +182,7 @@ void DumpEpCombineStatus(HcclComm comm, uint32_t epRankId, int64_t epWorldSize, 
         uint32_t cntOne = 0U;
         uint32_t cntTwo = 0U;
         uint32_t cntZero = 0U;
-        LOG_PRINT("[DUMP] --- bank=%u (%s) base=win+%uKB ---\n", bank, tag,
+        LOG_PRINT("[DUMP] --- bank=%u (%s) base=kernBase+%uKB ---\n", bank, tag,
                   static_cast<unsigned>(bank * (WIN_STATE_OFFSET / 1024ULL)));
         for (int64_t r = 0; r < epWorldSize; ++r) {
             float flag = 0.0f;

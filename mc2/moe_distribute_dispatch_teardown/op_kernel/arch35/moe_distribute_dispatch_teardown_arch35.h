@@ -65,6 +65,7 @@ public:
 private:
     __aicore__ inline void LocalWindowCopy();
     __aicore__ inline void WaitDispatch();
+    __aicore__ inline void FlipDataState();
     __aicore__ inline void GetCumSum(LocalTensor<int32_t> &outLocal, uint32_t totalCount);
     __aicore__ inline void UpdateTokenNumsOut();
     __aicore__ inline void UpdateMultiMoeTokenNumsOut();
@@ -154,6 +155,7 @@ private:
     uint32_t totalCnt_;
     uint32_t lastCore_{0};
     uint32_t dataState_{0};
+    GM_ADDR dataStateGM_{nullptr}; // 本核 dataState 0/1 标识地址，WaitDispatch 成功后再翻转
     uint64_t winDataSizeOffset_{0};
     uint64_t tempTotalWinSize_{0};
     uint64_t expertPerSizeOnWin_{0};
@@ -189,10 +191,11 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
     // 与 setup/combine 保持一致，统一从 Mc2MoeContext 取 epRankId，避免 tiling 与 context 不一致导致等/清错 buffer
     epRankId_ = mc2Context_->epRankId;
 
+    // dataState 仅在 WaitDispatch 成功后再翻转，与 combine_teardown 对齐，避免联跑跨卡 σ 错位
     GlobalTensor<int32_t> selfDataStatusTensor;
     GM_ADDR statusDataSpaceGm = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
-    selfDataStatusTensor.SetGlobalBuffer(
-        (__gm__ int32_t *)(statusDataSpaceGm + STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
+    dataStateGM_ = statusDataSpaceGm + STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN;
+    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)dataStateGM_);
 
     axisBS_ = tilingData->moeDistributeDispatchTeardownInfo.bs;
     axisH_ = tilingData->moeDistributeDispatchTeardownInfo.h;
@@ -233,13 +236,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
     stateOffset_ = ((recvWinBlockNum_ > 512) ? (STATE_OFFSET / 2) : STATE_OFFSET);
     moeUsedAivNum_ = aivNum_ - sharedUsedAivNum_;
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
-    dataState_ = selfDataStatusTensor(0);
-    if (dataState_ == 0) {
-        selfDataStatusTensor(0) = 1;
-    } else {
-        selfDataStatusTensor(0) = 0;
-    }
-    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
+    dataState_ = selfDataStatusTensor(0); // 本轮仍使用该 bank，GM 待 Wait 成功后再翻
     if constexpr (IsShareExpertRank) { // 接收状态数
         rscvStatusNum_ = epWorldSize_;
     } else {
@@ -434,6 +431,17 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::WaitD
 }
 
 template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::FlipDataState()
+{
+    // WaitDispatch 成功（或空闲核跳过等待）后再切换 0/1 区，供后续 combine_setup 使用
+    GlobalTensor<int32_t> selfDataStatusTensor;
+    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)dataStateGM_);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
+    selfDataStatusTensor(0) = static_cast<int32_t>(1U - dataState_);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
+}
+
+template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::GetCumSum(LocalTensor<int32_t> &outLocal,
                                                                                      uint32_t totalCount)
 {
@@ -596,6 +604,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Proce
 {
     if ASCEND_IS_AIV { // 全aiv处理
         WaitDispatch();
+        FlipDataState();
         SyncAll<true>();
         LocalWindowCopy();
         UpdateTokenNumsOut();
