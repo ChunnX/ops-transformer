@@ -108,10 +108,11 @@ public:
     static constexpr uint32_t UB_MASK_BUF_BYTES = 8192U;
     LocalTensor<uint8_t> ubMaskBuffers_;
 
+    static constexpr uint32_t UB_VEC2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
     LocalTensor<T> ubVec2Res_; // 存放vec2阶段VEC的中间处理结果, 并且作为attn_out的输出buffer, 需配对的MTE3和V的同步ID
 
     static constexpr uint32_t UB_VEC1_RES_BUFCNT = 2U;
-    static constexpr uint32_t UB_VEC1_RES_BUF_BYTES = 33024U;
+    static constexpr uint32_t UB_VEC1_RES_BUF_BYTES = (mBaseSize / CV_RATIO + 1U) * s2BaseSize * sizeof(INPUT_T);
     LocalTensor<uint8_t> ubVec1ResBuffers_;
     uint32_t vec1ResUbBufId_ = 0;
 
@@ -203,7 +204,7 @@ public:
             uint8_t mm2ResBuffers[UB_MM2_RES_BUFCNT][UB_MM2_RES_BUF_BYTES]; // 2 * 32K = 64K, CV通信BUF
             uint8_t mm1ResBuffers[UB_MM1_RES_BUFCNT][UB_MM1_RES_BUF_BYTES]; // 2 * 32K = 64K, CV通信BUF
             uint8_t maskBuffers[UB_MASK_BUFCNT][UB_MASK_BUF_BYTES];         // 2 * 8K = 16K, 输入BUF: MASK拷入
-            uint8_t vec2Res[32768U];                                        // 32K, 输出BUF: attn_out拷出
+            uint8_t vec2Res[UB_VEC2_RES_BUF_BYTES];                                // 输出BUF: attn_out拷出
             uint8_t vec1ResBuffers[UB_VEC1_RES_BUFCNT]
                                   [UB_VEC1_RES_BUF_BYTES];                           // 2 * 32.25K, softmax结果拷至L1
             uint8_t softmaxSumBuf_[UB_SOFTMAX_SUM_BUFCNT][UB_SOFTMAX_SUM_BUF_BYTES]; // 3 * 0.25K = 0.75K, sum常驻BUF

@@ -99,10 +99,11 @@ public:
     static constexpr uint32_t UB_MM1_RES_BUF_BYTES = mBaseSize / CV_RATIO * s2BaseSize * sizeof(T);
     LocalTensor<uint8_t> ubMm1ResBuffers_;
 
+    static constexpr uint32_t UB_VEC2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
     LocalTensor<T> ubVec2Res_; // 存放vec2阶段VEC的中间处理结果, 并且作为attn_out的输出buffer, 需配对的MTE3和V的同步ID
 
     static constexpr uint32_t UB_VEC1_RES_BUFCNT = 2U;
-    static constexpr uint32_t UB_VEC1_RES_BUF_BYTES = 33024U;
+    static constexpr uint32_t UB_VEC1_RES_BUF_BYTES = (mBaseSize / CV_RATIO + 1U) * s2BaseSize * sizeof(INPUT_T);
     LocalTensor<uint8_t> ubVec1ResBuffers_;
     uint32_t vec1ResUbBufId_ = 0;
 
@@ -186,9 +187,9 @@ public:
         ubMm1ResBuffers_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb,
                                                 UB_MM1_RES_BUFCNT * UB_MM1_RES_BUF_BYTES); // 2 * 32K = 64K, CV通信BUF
         addrUb += UB_MM1_RES_BUFCNT * UB_MM1_RES_BUF_BYTES;
-        ubVec2Res_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, 32768U)
-                         .template ReinterpretCast<T>(); // 32K, 输出BUF: attn_out拷出
-        addrUb += 32768U;
+        ubVec2Res_ = LocalTensor<uint8_t>(TPosition::VECIN, addrUb, UB_VEC2_RES_BUF_BYTES)
+                         .template ReinterpretCast<T>(); // 输出BUF: attn_out拷出
+        addrUb += UB_VEC2_RES_BUF_BYTES;
         ubVec1ResBuffers_ = LocalTensor<uint8_t>(
             TPosition::VECIN, addrUb,
             UB_VEC1_RES_BUFCNT * UB_VEC1_RES_BUF_BYTES); // 2 * 32.25K = 64.5K, 输出BUF: softmax结果拷贝至L1
