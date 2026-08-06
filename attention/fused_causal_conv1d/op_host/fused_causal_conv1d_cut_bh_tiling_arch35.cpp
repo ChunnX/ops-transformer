@@ -29,6 +29,15 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetPlatformInfo()
         // 无运行时平台信息，降级使用编译期 CompileInfo
         auto compileInfoPtr = reinterpret_cast<const FusedCausalConv1dCutBHCompileInfo *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
+        // 与运行时路径对齐：coreNum/ubSize 必须 > 0，否则后续核内 UB 切分会下溢
+        if (compileInfoPtr->coreNum == 0UL) {
+            OP_LOGE(context_->GetNodeName(), "compile-time coreNum is 0");
+            return ge::GRAPH_FAILED;
+        }
+        if (compileInfoPtr->ubSize == 0UL) {
+            OP_LOGE(context_->GetNodeName(), "compile-time ubSize is 0");
+            return ge::GRAPH_FAILED;
+        }
         totalCoreNum_ = compileInfoPtr->coreNum;
         ubSize_ = compileInfoPtr->ubSize;
     } else {
@@ -97,6 +106,13 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeInfo()
         auto queryStartLocShape = context_->GetOptionalInputShape(QUERY_START_LOC_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, queryStartLocShape);
         auto queryStartLocOriginShape = queryStartLocShape->GetOriginShape();
+        // 完整形状校验由 ValidateQueryStartLocShape 完成（要求 dim==1），此处仅保证读 dim0 不越界
+        if (queryStartLocOriginShape.GetDimNum() != DIM_1) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "query_start_loc",
+                                                     std::to_string(queryStartLocOriginShape.GetDimNum()).c_str(),
+                                                     "The shape dim of query_start_loc must be 1");
+            return ge::GRAPH_FAILED;
+        }
         batchSize_ = queryStartLocOriginShape.GetDim(DIM_0) - 1;
         seqLen_ = 0; // 2D 模式下 seqLen_ 在 UB 计算时由 maxQueryLen_ 替代
     } else {
@@ -122,6 +138,13 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeInfo()
     auto convStatesShape = context_->GetInputShape(CONV_STATES_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, convStatesShape);
     auto convStatesOriginShape = convStatesShape->GetOriginShape();
+
+    if (convStatesOriginShape.GetDimNum() != DIM_3) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "conv_states",
+                                                 std::to_string(convStatesOriginShape.GetDimNum()).c_str(),
+                                                 "The shape dim of conv_states must be 3");
+        return ge::GRAPH_FAILED;
+    }
     stateLen_ = convStatesOriginShape.GetDim(DIM_1);
 
     // 判断 APC 是否开启：blockIdxLastScheduledToken 存在则表示 APC 开启
@@ -159,9 +182,16 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetShapeInfo()
 
 ge::graphStatus FusedCausalConv1dCutBHTiling::GetTypeInfo()
 {
-    xDtype_ = context_->GetInputDesc(X_INDEX)->GetDataType();
-    weightDtype_ = context_->GetInputDesc(WEIGHT_INDEX)->GetDataType();
-    convStatesDtype_ = context_->GetInputDesc(CONV_STATES_INDEX)->GetDataType();
+    auto xDesc = context_->GetInputDesc(X_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, xDesc);
+    auto weightDesc = context_->GetInputDesc(WEIGHT_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, weightDesc);
+    auto convStatesDesc = context_->GetInputDesc(CONV_STATES_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, convStatesDesc);
+
+    xDtype_ = xDesc->GetDataType();
+    weightDtype_ = weightDesc->GetDataType();
+    convStatesDtype_ = convStatesDesc->GetDataType();
 
     // 可选输入：query_start_loc
     auto queryStartLocDesc = context_->GetOptionalInputDesc(QUERY_START_LOC_INDEX);

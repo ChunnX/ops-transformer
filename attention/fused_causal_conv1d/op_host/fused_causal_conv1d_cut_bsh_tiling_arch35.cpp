@@ -530,6 +530,13 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetInputShapes()
     auto seqStartIndexStorageShape = context_->GetOptionalInputShape(INPUT_QUERY_START_LOC_INDEX);
     if (seqStartIndexStorageShape != nullptr) {
         seqStartIndexShape_ = seqStartIndexStorageShape->GetOriginShape();
+        // 完整 dim 校验由 CheckIndexDims 完成（要求 dim==1），此处仅保证读 dim0 不越界
+        if (seqStartIndexShape_.GetDimNum() < SEQ_START_INDEX_DIM_NUM) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "query_start_loc",
+                                                     std::to_string(seqStartIndexShape_.GetDimNum()).c_str(),
+                                                     "The shape dim of query_start_loc must be 1");
+            return ge::GRAPH_FAILED;
+        }
         batch_ = seqStartIndexShape_.GetDim(DIM_0) - 1;
     } else {
         batch_ = 1;
@@ -557,6 +564,15 @@ ge::graphStatus FusedCausalConv1dCutBSHTiling::GetInputDtypes()
 
 ge::graphStatus FusedCausalConv1dCutBSHTiling::GetInputStrides()
 {
+    // 完整 dim 校验由 CheckCacheStatesDim 完成（要求 dim==3），此处仅保证 cache_states 至少 2 维
+    // 以避免连续分支中 GetDim(DIM_1) 越界
+    if (cacheStatesShape_.GetDimNum() < CACHE_STATES_DIM_NUM) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context_->GetNodeName(), "cache_states",
+                                                 std::to_string(cacheStatesShape_.GetDimNum()).c_str(),
+                                                 "The shape dim of cache_states must be 3");
+        return ge::GRAPH_FAILED;
+    }
+
     if (context_->InputIsView(INPUT_X_INDEX)) {
         auto *xStride = context_->GetInputStride(INPUT_X_INDEX);
         OP_CHECK_IF(xStride == nullptr || xStride->GetDimNum() == 0,
