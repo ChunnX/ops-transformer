@@ -329,3 +329,137 @@ vStep = vStep / 16 * 16         // 对齐到 16（64B，2 个 32B block）
 4. **State 约束**：`BlockNum >= T`；仅支持轴 0、轴 1 非连续（最内两维必须连续）
 5. **数值约束**（用户保证，算子不校验）：$|q|, |k| \le 1$，$g < 0$，$g_k < 0$，$0 < \beta < 1$
 6. **确定性**：默认确定性计算
+
+## 8 下一代芯片适配分析（UB=384KB, AIV=1）
+
+假设下一代芯片将 UB 总空间调整为 384KB（当前 A2/950 典型为 192KB），且 AIV 数量为 1。以下分析 UB 分配是否需要调整，以及对计算流程的影响。
+
+### 8.1 对 arch22（动态分配）UB 的影响
+
+arch22 的 `CalUbSize()` 从平台信息动态读取 `ubSize`，按 `vStep = (ubSize - usedUbBytes) / coeff / 8 * 8` 自适应推导。**UB 变大后无需修改代码即可自动适配**，vStep 会按比例增大。
+
+以最坏场景（$D_k=512, D_v=512, N_v=256$，FP32 state，含 g/gk）为例，量化对比：
+
+| UB 大小 | 固定占用 | coeff（每行边际） | vStep（原始） | vStep（微调后） | $D_v$ 迭代次数 |
+|:--------|:---------|:-----------------|:--------------|:----------------|:--------------|
+| 192KB | ~108KB | 8204 B | 8 | 8 | 64 |
+| 384KB | ~108KB | 8204 B | 32 | 32 | 16 |
+
+> vStep 从 8 提升到 32，$D_v$ 方向迭代次数从 64 降至 16，减少 75% 的 state GM 读写往返。
+
+以典型场景（$D_k=128, D_v=128, N_v=8$，FP32 state，含 g/gk）为例：
+
+| UB 大小 | vStep（原始） | vStep（微调后） | $D_v$ 迭代次数 |
+|:--------|:--------------|:----------------|:--------------|
+| 192KB | 80 | 64 | 2 |
+| 384KB | 176 | 128 | 1 |
+
+> 典型场景下 vStep 达到 $D_v=128$，单头仅需 1 次 $D_v$ 迭代即可完成，state 只需一次性 Load/Store。
+
+**结论**：arch22 无需修改代码。vStep 增大后，state 相关 TQue（`stateInQueue_`/`stateOutQueue_`）和 TBuf（`stateInUb`/`broadTmpInUb`）的容量按 `vStep` 同比例增长，`CalUbSize()` 公式保证总占用不超过 UB 上限。
+
+**注意点**：
+1. 当 vStep 增大至 $\ge D_v$ 时，`rptime = CeilDiv(Dv, vStep) = 1`，vStep 被 `CeilAlign(Dv, 8)` 截断为 $D_v$（对齐后），**超出部分 UB 空间闲置**。此时可考虑将闲置空间用于 Double Buffer 或增大 `MAX_MTP`（但 `MAX_MTP` 受 $L_i \le 8$ 约束，不宜调整）。
+2. arch22 的 `MatVecMul` 内部以 `MAX_REPEAT_TIME=255` 分段循环，无 vStep 上限硬约束。`ReduceSum` 高阶 API 内部自行 tiling，也不受 vStep 大小限制。
+3. TilingData 中 `ubCalSize`/`ubRestBytes` 为 `uint32_t`，384KB = 393216 远未溢出。
+
+### 8.2 对 arch35（固定分配）UB 的影响
+
+arch35 的 buffer 大小为**硬编码常量**（`BUFFER_SIZE_BYTE_16K`/`32K` 等），vStep 在 Kernel 构造函数中按 `vStep = 8192 / alignDK` 计算（8192 = 32KB / 4B，绑定 `stateBuff_` 的 32KB 固定大小）。**UB 变大后不会自动适配，额外空间被完全浪费**。
+
+当前 arch35 固定 UB 占用（FP32 state）：
+
+| Buffer | 大小 | 说明 |
+|:-------|:-----|:-----|
+| `inputQueue1_`（Double Buffer） | 64KB | 32K × 2 |
+| `stateOutQueue_` | 32KB | |
+| `stateBuff_` | 32KB | vStep 基准 |
+| `tmpBuff2_` | 32KB | VecMulMat 输出 |
+| `attnOutQueue_` / `gamaBuff_` / `queryBuff_` / `keyBuff_` / `valueBuff_` | 16KB × 5 = 80KB | |
+| `tmpBuff1_` | 2KB | ReduceSum 结果 |
+| **合计** | **242KB** | |
+
+| UB 大小 | 占用 | 剩余 | 剩余利用率 |
+|:--------|:-----|:-----|:-----------|
+| 192KB | 242KB | **-50KB（超限）** | FP32 state + 大 shape 在 192KB 下已无法运行 |
+| 384KB | 242KB | 142KB | **36.9% 浪费** |
+
+> **关键发现**：arch35 当前固定分配 242KB 已超过 192KB，说明 950 实际 UB 大于 192KB（推测为 256KB+）。在 384KB 下有 142KB 闲置。
+
+**需调整的 buffer 及 vStep 提升效果**：
+
+`stateBuff_` 和 `tmpBuff2_` 是与 vStep 直接相关的两个 buffer（分别存储 state 工作副本和 VecMulMat 输出，大小均为 `alignDK × vStep × 4B`）。增大这两个 buffer 即可提升 vStep：
+
+| `stateBuff_`/`tmpBuff2_` 大小 | vStep（alignDK=512） | vStep（alignDK=128） | vStep（alignDK=64） | 新总占用 | 384KB 内余量 |
+|:------------------------------|:---------------------|:---------------------|:---------------------|:---------|:-------------|
+| 32KB（当前） | 16 | 64 | 128 | 242KB | 142KB |
+| 64KB | 32 | 128 | 240 | 306KB | 78KB |
+| 96KB | 48 | 192 | 240 | 370KB | 14KB |
+| 128KB | 64 | 256→255 | 255 | 434KB | **超限** |
+
+> - **推荐调整为 96KB**：在 384KB 内可容纳（余 14KB），vStep 提升显著（alignDK=512 时从 16→48，提升 3 倍）。
+> - 128KB 方案总占用 434KB 超 384KB 上限，不可行。
+> - vStep 受 `if (vStep > 255) vStep = 255` 硬件 repeat 上限约束，alignDK=64 时 96KB 方案已达上限 240（对齐 16 后）。
+
+### 8.3 对 arch35 的推荐调整方案
+
+若下一代芯片采用 arch35 路线，建议新增 arch 配置（如 arch36），做以下调整：
+
+```cpp
+// 推荐调整（基于 384KB UB）
+constexpr uint32_t BUFFER_SIZE_BYTE_96K = 98304;
+// stateBuff_ 和 tmpBuff2_ 从 32K 增至 96K
+pipe_->InitBuffer(stateBuff_, BUFFER_SIZE_BYTE_96K);    // 原 32K
+pipe_->InitBuffer(tmpBuff2_, BUFFER_SIZE_BYTE_96K);     // 原 32K
+// vStep 公式同步调整
+vStep_ = (96 * 1024 / 4) / alignDK_;   // = 24576 / alignDK_
+if (vStep_ > 255) vStep_ = 255;
+vStep_ = vStep_ / BF16_NUM_PER_BLOCK * BF16_NUM_PER_BLOCK;
+```
+
+其余 buffer（`inputQueue1_`/`queryBuff_`/`keyBuff_` 等）保持不变——它们存储的是 `MAX_MTP × alignDK` 级别的数据，与 vStep 无关，且 16KB 已足够覆盖最大 shape（$8 \times 512 \times 4B = 16KB$）。
+
+### 8.4 对计算流程的影响（AIV=1）
+
+#### 8.4.1 任务调度
+
+AIV=1 时 `vectorCoreNum = min(1, B × NV) = 1`，`SetBlockDim(1)`，全部 $B \times N_v$ 个任务在单核上串行执行：
+
+| 调度逻辑 | AIV > 1（当前） | AIV = 1 |
+|:---------|:----------------|:--------|
+| `ComputeAvgload()` | `Ceil(realT × NV, aivNum)` 均分到多核 | `Ceil(realT × NV, 1) = realT × NV`，全部归一核 |
+| `IsCurrentBlock()` | 轮转分配，`usedblk` 递增切换核 | `usedblk` 始终为 0，所有任务命中 `blockIdx==0` |
+| 并行度 | $B \times N_v$ 任务分散到多核 | 全串行，无并行 |
+
+**调度逻辑无需修改**，`IsCurrentBlock` 在 `blockIdx=0, usedblk=0` 时对所有任务返回 `true`，行为正确。
+
+#### 8.4.2 状态更新
+
+state 在序列内递推更新（每 token 写回 GM）。多核场景下不同核处理不同 `(batch, head)`，state 槽位通过 `ssmStateIndices` 映射，天然无冲突。AIV=1 时全部串行，**反而简化了状态一致性**——无需担心核间竞争，state 写回顺序确定。
+
+#### 8.4.3 性能影响
+
+| 因素 | 影响 |
+|:-----|:-----|
+| 核间并行丧失 | $B \times N_v$ 任务全串行，吞吐量降为 1/aivNum（相比多核） |
+| vStep 增大（384KB） | 减少 $D_v$ 方向迭代次数，降低 GM 读写往返，部分弥补串行损失 |
+| 单核流水线 | arch35 Double Buffer 的 MTE2/V 流水仍在单核内有效，不受 AIV 数量影响 |
+| 数据搬运 | 单核独占带宽，无多核竞争 GM 带宽 |
+
+> **净效果**：AIV=1 导致性能大幅下降（串行化），但 384KB UB 通过增大 vStep 可减少 GM 访问次数，对单核吞吐有一定补偿。对于 $D_v$ 较大的 shape（如 512），vStep 从 8→32 可减少 75% 的 state Load/Store 次数，缓解串行瓶颈。
+
+#### 8.4.4 Workspace
+
+`workspaceSize_` 固定为 16MB（系统 workspace），与 AIV 数量和 UB 大小无关，无需调整。
+
+### 8.5 总结
+
+| 维度 | arch22（动态分配） | arch35（固定分配） |
+|:-----|:-------------------|:-------------------|
+| **UB 适配** | 自动适配，无需改码 | 需手动调整 `stateBuff_`/`tmpBuff2_` 大小及 vStep 公式 |
+| **vStep 变化** | 192K→384K：8→32（最坏），64→128（典型） | 32K→96K：16→48（alignDK=512） |
+| **代码改动** | 无 | 新增 arch 或修改常量（推荐 96K 方案） |
+| **计算流程** | 不变 | 不变 |
+| **AIV=1 调度** | 不需修改，`IsCurrentBlock` 自动收敛 | 同左 |
+| **性能** | vStep 增大补偿部分串行损失 | 同左，但需先完成 UB 调整才能获益 |
+| **风险** | vStep≥Dv 时 UB 闲置（低风险） | 96K 方案余量仅 14KB，需验证各 shape 组合 |
