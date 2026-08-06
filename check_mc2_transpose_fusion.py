@@ -15,7 +15,7 @@
 用法：
   python3 check_mc2_transpose_fusion.py --op allto_allv_quant_gmm --dump-dir ./pid_xxx --log run.log
   python3 check_mc2_transpose_fusion.py --list-ops
-  python3 check_mc2_transpose_fusion.py --op quant_gmm_allto_allv --dump-dir ./dump --log run.log
+  python3 check_mc2_transpose_fusion.py --op quant_gmm_allto_allv --dump-dir ./dump --inspect
 """
 
 from __future__ import annotations
@@ -55,6 +55,8 @@ class OpSpec:
     )
     # 可选融合口（有 Transpose 才校验去掉；无则跳过），如 AGMMV2/MRSV2 的 x2_scale
     extra_fuse_inputs: Tuple[Tuple[int, str], ...] = ()
+    # --inspect 时打印的 IR 输入名（按下标）；空则用 input{idx}
+    input_names: Tuple[str, ...] = ()
 
 
 OP_SPECS: Dict[str, OpSpec] = {
@@ -134,6 +136,19 @@ OP_SPECS: Dict[str, OpSpec] = {
             (3, "gmm_weight_scale"),
             (7, "mm_weight"),
             (9, "mm_weight_scale"),
+        ),
+        input_names=(
+            "gmm_x",
+            "gmm_weight",
+            "gmm_x_scale",
+            "gmm_weight_scale",
+            "send_counts_tensor",
+            "recv_counts_tensor",
+            "mm_x",
+            "mm_weight",
+            "mm_x_scale",
+            "mm_weight_scale",
+            "comm_quant_scale",
         ),
     ),
 }
@@ -408,6 +423,44 @@ def _analyze_port(
     return chain, has_transpose_on_weight(chain), has_bitcast_direct(chain)
 
 
+def _fuse_port_set(spec: OpSpec) -> Dict[int, str]:
+    ports = {spec.weight_input_idx: spec.weight_name}
+    for idx, name in spec.extra_fuse_inputs:
+        ports[idx] = name
+    return ports
+
+
+def inspect_snapshot(snap: GraphSnapshot, spec: OpSpec) -> List[str]:
+    """打印 MC2 各输入口前驱链，标出本 pass 可融口；用于确认 Transpose 挂在哪一路。"""
+    lines: List[str] = []
+    fuse_ports = _fuse_port_set(spec)
+    lines.append(f"inspect seq={snap.seq} stage={snap.stage}")
+    lines.append(f"  path={snap.path}")
+    lines.append(
+        f"  mc2={snap.mc2.name} type={snap.mc2.op_type} n_inputs={len(snap.mc2.inputs)}"
+    )
+    for idx, ref in enumerate(snap.mc2.inputs):
+        name = spec.input_names[idx] if idx < len(spec.input_names) else f"input{idx}"
+        chain, has_t, bitcast = _analyze_port(snap.ops, snap.mc2, idx)
+        role = "FUSE" if idx in fuse_ports else "skip"
+        lines.append(
+            f"  [{idx}] {name:22s} peer={ref!r:28s} role={role:4s} "
+            f"transpose={has_t} bitcast0={bitcast} chain={chain}"
+        )
+    fuse_with_t = [
+        f"{n}[{i}]"
+        for i, n in sorted(fuse_ports.items())
+        if has_transpose_on_weight(resolve_weight_chain(snap.ops, snap.mc2, i))
+    ]
+    if fuse_with_t:
+        lines.append(f"  => 可融口上有 Transpose: {', '.join(fuse_with_t)}")
+    else:
+        lines.append(
+            "  => 可融口(1/3/7/9 等)上均无 Transpose；图上若有 T→Bitcast，多半挂在 skip 口（如 gmm_x）"
+        )
+    return lines
+
+
 def _check_extra_fuse_ports(
     before_snap: GraphSnapshot,
     after_snap: GraphSnapshot,
@@ -554,6 +607,11 @@ def main() -> int:
     parser.add_argument("--log", default=None, help="可选 run.log")
     parser.add_argument("--strict-log", action="store_true", help="log 失败则整体 FAIL")
     parser.add_argument(
+        "--inspect",
+        action="store_true",
+        help="只打印最早快照各输入口前驱链（确认 Transpose 挂在哪），不判定融合成败",
+    )
+    parser.add_argument(
         "--list-ops", action="store_true", help="列出支持的算子配置后退出"
     )
     args = parser.parse_args()
@@ -578,15 +636,31 @@ def main() -> int:
         return 2
 
     snaps, diag = collect_snapshots(dump_dir, spec)
-    dump_ok, dump_msg, detail = judge_fusion(snaps, spec)
 
     print("==== Dump 扫描诊断 ====")
     print(f"dump-dir: {dump_dir}")
     for d in diag:
         print(d)
 
+    if args.inspect:
+        print("==== 输入口前驱链 inspect ====")
+        if not snaps:
+            print(f"[FAIL] dump 中未找到含 {spec.op_types[0]} 的图")
+            return 1
+        # 最早一帧（通常 GraphPreRunBegin）最接近「原始图」
+        for line in inspect_snapshot(snaps[0], spec):
+            print(line)
+        return 0
+
+    dump_ok, dump_msg, detail = judge_fusion(snaps, spec)
+
     print("==== Dump 判定 ====")
     print(f"快照数: {len(snaps)}")
+    # 融合判定失败时也打印 inspect，便于确认 Transpose 是否在可融口
+    if snaps and not dump_ok:
+        print("==== 输入口前驱链 inspect（辅助）====")
+        for line in inspect_snapshot(snaps[0], spec):
+            print(line)
     if "before" in detail:
         b = detail["before"]
         print(f"BEFORE seq={b['seq']} stage={b['stage']}")
