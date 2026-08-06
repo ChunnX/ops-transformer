@@ -109,9 +109,7 @@ private:
     static constexpr size_t TUNING_CONFIG_EXPECTED_TOKEN_INDEX = 0UL;
     static constexpr size_t TUNING_CONFIG_WEIGHT_FORMAT_INDEX = 1UL;
     static constexpr int64_t TUNING_CONFIG_SPECIAL_WEIGHT_FORMAT = 1L;
-    static constexpr int64_t GROUP_LIST_CUMSUM = 0L;
     static constexpr int64_t GROUP_LIST_COUNT = 1L;
-    static constexpr int64_t GROUP_LIST_SPARSE = 2L;
     static constexpr int8_t X_SEPARATED = 2;
     static constexpr int8_t NO_SEPARATED = 3;
 

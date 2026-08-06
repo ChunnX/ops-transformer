@@ -387,11 +387,8 @@ bool GroupedS8S4BasicApiTiling::AnalyzeAttrs()
     inputParams_.actType = actTypePtr != nullptr ? static_cast<int8_t>(*actTypePtr) : inputParams_.actType;
     inputParams_.groupListType =
         groupListTypePtr != nullptr ? static_cast<int8_t>(*groupListTypePtr) : GROUP_LIST_COUNT;
-    OP_CHECK_IF(inputParams_.groupListType != GROUP_LIST_CUMSUM &&
-                    inputParams_.groupListType != GROUP_LIST_COUNT &&
-                    inputParams_.groupListType != GROUP_LIST_SPARSE,
-                OP_LOGE(context_->GetNodeName(), "groupListType must be 0(cumsum), 1(count), or 2(sparse)."),
-                return false);
+    OP_CHECK_IF(inputParams_.groupListType != GROUP_LIST_COUNT,
+                OP_LOGE(context_->GetNodeName(), "groupListType must be 1(count)."), return false);
     if (tuningConfigPtr != nullptr && tuningConfigPtr->GetSize() > 0) {
         const auto tuningConfig = reinterpret_cast<const int64_t *>(tuningConfigPtr->GetData());
         OP_CHECK_IF(tuningConfig[TUNING_CONFIG_EXPECTED_TOKEN_INDEX] < 0 ||

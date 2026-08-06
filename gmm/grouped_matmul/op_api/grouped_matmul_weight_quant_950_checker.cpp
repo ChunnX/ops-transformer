@@ -29,7 +29,6 @@ static constexpr size_t WEIGHT_K_DIM_S8S4 = 1UL;
 static constexpr size_t WEIGHT_N_DIM_S8S4 = 2UL;
 static constexpr size_t TUNING_CONFIG_WEIGHT_FORMAT_INDEX = 1UL;
 static constexpr int64_t TUNING_CONFIG_SPECIAL_WEIGHT_FORMAT = 1L;
-static constexpr int64_t GROUP_LIST_CUMSUM = 0L;
 static constexpr int64_t GROUP_LIST_COUNT = 1L;
 static constexpr int64_t MAX_K_S8S4_PER_GROUP = 18432L;
 static constexpr int64_t QUANT_GROUP_SIZE_S8S4 = 256L;
@@ -137,12 +136,8 @@ bool AclnnGroupedMatmulWeightQuantDAV3510Checker::HasS8S4Offset() const
 
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckS8S4PseudoQuantGroupListType() const
 {
-    CHECK_COND(gmmParams_.groupListType == GROUP_LIST_CUMSUM ||
-                   gmmParams_.groupListType == GROUP_LIST_COUNT ||
-                   gmmParams_.groupListType == GROUP_LIST_SPARSE_M,
-               ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when S8S4 pseudo quant, groupListType must be 0(cumsum), 1(count), or 2(sparse).",
-               GetAclnnName());
+    CHECK_COND(gmmParams_.groupListType == GROUP_LIST_COUNT, ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], when S8S4 pseudo quant, groupListType must be 1(count).", GetAclnnName());
     return ACLNN_SUCCESS;
 }
 
