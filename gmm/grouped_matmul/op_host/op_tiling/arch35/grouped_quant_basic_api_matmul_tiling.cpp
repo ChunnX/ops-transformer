@@ -18,7 +18,8 @@ using namespace GroupedMatmul;
 using namespace optiling::GmmConstant;
 using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTilingData;
 namespace optiling {
-GroupedQmmBasicApiTiling::GroupedQmmBasicApiTiling(gert::TilingContext *context) : GroupedQmmTiling(context)
+GroupedQmmBasicApiTiling::GroupedQmmBasicApiTiling(gert::TilingContext *context)
+    : GroupedQmmTiling(context)
 {
     Reset();
 }
@@ -97,7 +98,8 @@ bool GroupedQmmBasicApiTiling::CanEnableThreeL1Buffer() const
     const uint64_t kBL1 = basicTiling_.stepKb * basicTiling_.baseK;
     const uint64_t scaleKL1 = std::min(
         std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa,
-                 basicTiling_.scaleFactorB * basicTiling_.stepKb) * basicTiling_.baseK,
+                 basicTiling_.scaleFactorB * basicTiling_.stepKb) *
+            basicTiling_.baseK,
         inputParams_.kSize);
     if (kAL1 == 0UL || kBL1 == 0UL || scaleKL1 == 0UL) {
         return false;
@@ -189,8 +191,8 @@ ge::graphStatus GroupedQmmBasicApiTiling::CalL1Depth(uint64_t leftL1Size)
 }
 
 bool GroupedQmmBasicApiTiling::SearchReducedThreeBufferTiling(const GQmmBasicTiling &initialTiling,
-                                                             uint64_t baseASize, uint64_t baseBSize,
-                                                             GQmmBasicTiling &bestTiling)
+                                                              uint64_t baseASize, uint64_t baseBSize,
+                                                              GQmmBasicTiling &bestTiling)
 {
     if (!IsMicroScaling() || inputParams_.transA) {
         return false;
