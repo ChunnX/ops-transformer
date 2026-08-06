@@ -161,6 +161,22 @@ gert::InfershapeContextPara BuildInferShapeContextOnlyCatIndices(int64_t undLen,
         {1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1}, {1, 1, 1});
 }
 
+// 造一个指定 rank 的 shape，各维取值相同
+gert::StorageShape MakeStorageShape(size_t rank, int64_t dimValue)
+{
+    gert::StorageShape shape;
+    for (size_t i = 0; i < rank; ++i) {
+        shape.MutableOriginShape().AppendDim(dimValue);
+        shape.MutableStorageShape().AppendDim(dimValue);
+    }
+    return shape;
+}
+
+gert::StorageShape UnknownRankShape()
+{
+    return {{-2}, {-2}};
+}
+
 void CheckInferDataType()
 {
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
@@ -410,3 +426,108 @@ TEST_F(UndGenQkvRmsNormRopeCacheInferShape, infershape_dynamic_dim_no_total_sour
     };
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
 }
+
+// gen_len 为动态 shape（-1）而 und_len 已知：加法同样不成立，且无其他 T 来源时为 -1
+TEST_F(UndGenQkvRmsNormRopeCacheInferShape, infershape_dynamic_dim_gen_len)
+{
+    auto para = BuildInferShapeContext(5, 3, 8, 1, 1);
+    para.inputTensorDesc_[6] = {{{-1}, {-1}}, ge::DT_INT64, ge::FORMAT_ND};
+    para.inputTensorDesc_[7] = {{{3, -1}, {3, -1}}, ge::DT_INT64, ge::FORMAT_ND};
+    para.inputTensorDesc_[8] = {{{-1, 10, 128}, {-1, 10, 128}}, ge::DT_BF16, ge::FORMAT_ND};
+    para.inputTensorDesc_[11] = {{{-1}, {-1}}, ge::DT_INT64, ge::FORMAT_ND};
+    std::vector<std::vector<int64_t>> expectOutputShape = {
+        {-1, 8, 128},
+        {2, 128, 1, 128},
+        {2, 128, 1, 128},
+    };
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+// 来源的 rank 合法、但目标维本身是动态 shape（-1）时也要继续往下找：
+// und_qkv 的 D 维为 -1，D 应退到 cos_sin_cache
+TEST_F(UndGenQkvRmsNormRopeCacheInferShape, infershape_skip_source_whose_dim_is_dynamic)
+{
+    auto para = BuildInferShapeContext(5, 3, 8, 1, 1);
+    para.inputTensorDesc_[0] = {{{5, 10, -1}, {5, 10, -1}}, ge::DT_BF16, ge::FORMAT_ND};
+    std::vector<std::vector<int64_t>> expectOutputShape = {
+        {8, 8, 128},
+        {2, 128, 1, 128},
+        {2, 128, 1, 128},
+    };
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+namespace {
+struct RankCase {
+    size_t inputIdx;
+    size_t expectDimNum;
+    const char* name;
+};
+
+struct HeadDimSourceCase {
+    size_t inputIdx;
+    const char* name;
+};
+
+// D 出现在这 9 个输入里，与 infershape 中 HEAD_DIM_SOURCES 一一对应
+constexpr size_t HEAD_DIM_INPUT_IDXS[] = {0, 1, 2, 3, 4, 5, 8, 9, 10};
+constexpr size_t IDX_K_CACHE = 4;
+constexpr size_t IDX_V_CACHE = 5;
+} // namespace
+
+class UndGenQkvRmsNormRopeCacheInferShapeRank : public testing::TestWithParam<RankCase> {};
+
+// 12 个输入逐个验：rank 与 IR 定义不符必须失败。
+// 这是在钉 INPUT_SPECS 这张表本身的录入正确性，表里任一条 expectDimNum 写错都会被抓到。
+TEST_P(UndGenQkvRmsNormRopeCacheInferShapeRank, infershape_fail_when_rank_mismatch)
+{
+    const auto& param = GetParam();
+    auto para = BuildInferShapeContext(5, 3, 8, 1, 1);
+    auto dtype = para.inputTensorDesc_[param.inputIdx].dtype_;
+    // 比预期多一维
+    para.inputTensorDesc_[param.inputIdx] = {MakeStorageShape(param.expectDimNum + 1, 1), dtype, ge::FORMAT_ND};
+    ExecuteTestCase(para, ge::GRAPH_FAILED, {});
+}
+
+INSTANTIATE_TEST_SUITE_P(AllInputs, UndGenQkvRmsNormRopeCacheInferShapeRank,
+                         testing::Values(RankCase{0, 3, "und_qkv"}, RankCase{1, 1, "und_weights_q"},
+                                         RankCase{2, 1, "und_weights_k"}, RankCase{3, 2, "cos_sin_cache"},
+                                         RankCase{4, 4, "k_cache"}, RankCase{5, 4, "v_cache"},
+                                         RankCase{6, 1, "slot_mapping"}, RankCase{7, 2, "positions"},
+                                         RankCase{8, 3, "gen_qkv"}, RankCase{9, 1, "gen_weights_q"},
+                                         RankCase{10, 1, "gen_weights_k"}, RankCase{11, 1, "cat_indices"}),
+                         [](const testing::TestParamInfo<RankCase>& info) { return std::string(info.param.name); });
+
+class UndGenQkvRmsNormRopeCacheInferShapeHeadDim : public testing::TestWithParam<HeadDimSourceCase> {};
+
+// 9 个带 D 的输入逐个验：把其余 8 个都置为 -2，D 必须仍能从剩下的这一个取到。
+// 这是在钉 HEAD_DIM_SOURCES 里每一条的 dimIdx 写得对不对。
+// 其中 v_cache 那条同时覆盖了 Bn/Bs 在 k_cache 不可用时退到 v_cache 的路径。
+TEST_P(UndGenQkvRmsNormRopeCacheInferShapeHeadDim, infershape_head_dim_from_single_source)
+{
+    const auto& param = GetParam();
+    auto para = BuildInferShapeContext(5, 3, 8, 1, 1);
+    for (size_t idx : HEAD_DIM_INPUT_IDXS) {
+        if (idx != param.inputIdx) {
+            para.inputTensorDesc_[idx].shape_ = UnknownRankShape();
+        }
+    }
+    // T 恒由 positions 给出；Bn/Bs 只有在保留 k_cache 或 v_cache 时才可知
+    const bool cacheKnown = (param.inputIdx == IDX_K_CACHE) || (param.inputIdx == IDX_V_CACHE);
+    std::vector<std::vector<int64_t>> expectOutputShape = {
+        {8, 8, 128},
+        cacheKnown ? std::vector<int64_t>{2, 128, 1, 128} : std::vector<int64_t>{-1, -1, 1, 128},
+        cacheKnown ? std::vector<int64_t>{2, 128, 1, 128} : std::vector<int64_t>{-1, -1, 1, 128},
+    };
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+INSTANTIATE_TEST_SUITE_P(AllHeadDimSources, UndGenQkvRmsNormRopeCacheInferShapeHeadDim,
+                         testing::Values(HeadDimSourceCase{0, "und_qkv"}, HeadDimSourceCase{1, "und_weights_q"},
+                                         HeadDimSourceCase{2, "und_weights_k"}, HeadDimSourceCase{3, "cos_sin_cache"},
+                                         HeadDimSourceCase{4, "k_cache"}, HeadDimSourceCase{5, "v_cache"},
+                                         HeadDimSourceCase{8, "gen_qkv"}, HeadDimSourceCase{9, "gen_weights_q"},
+                                         HeadDimSourceCase{10, "gen_weights_k"}),
+                         [](const testing::TestParamInfo<HeadDimSourceCase>& info) {
+                             return std::string(info.param.name);
+                         });
