@@ -524,7 +524,15 @@ def _reduce_ape(vecCtx, coreIdx, groupIdx, dbIdx, roundBlocks,
     rgEnd = rgStart + rgPerCore + (1 if coreIdx < rgRemain else 0)
     rgStart = rgStart * D_BASE_SIZE
     rgEnd = rgEnd * D_BASE_SIZE
-    validRows = (roundBlocks + vecCtx.groupDealScNum - 1) // vecCtx.groupDealScNum * (2 // Coff)
+    # validRows：实际写入 tensorApe 的行数（只读被写过的行，与 workspace 初始内容无关）
+    # coff=1：写行号连续为 0..min(roundBlocks, 2*groupNum)-1——sub1 子核槽位写入条件
+    #   含额外 +dealScNum（groupIdx*gds + dealScNum < roundBlocks），原 ceil 公式在
+    #   roundBlocks 非 groupDealScNum 整数倍时高估，会读入未写槽位（未清零→垃圾）
+    # coff=2：每 group 仅 1 行（coffCoef=1），ceil 公式精确
+    if Coff == 1:
+        validRows = min(roundBlocks, groupNum * 2)
+    else:
+        validRows = (roundBlocks + vecCtx.groupDealScNum - 1) // vecCtx.groupDealScNum
     pl.set_validshape(reduceAcc, [1, rgEnd - rgStart])
     # 末轮一次性归约：累加器从零开始（输出 tensor 不保证清零，不能读入做 RMW）
     _vf_tile_zero(reduceAcc, 1, (rgEnd - rgStart))
