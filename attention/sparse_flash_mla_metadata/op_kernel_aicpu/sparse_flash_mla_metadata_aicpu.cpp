@@ -530,7 +530,7 @@ uint32_t SparseFlashMlaMetadataCpuKernel::GetOriS2SeqSize(uint32_t bIdx)
         }
     }
     // 如果 max_seqlen_ori_kv 没传入，且 ori_kv 为稀疏的，则尝试从 topk 中获取
-    if (maxSeqlenOriKv_ == 0 && isSparseOriKv_) {
+    if ((layoutKv_ == "PA_BBND" || maxSeqlenOriKv_ == 0) && isSparseOriKv_) {
         return UINT32_MAX;
     }
     // 使用 max_seqlen_ori_kv
@@ -553,7 +553,7 @@ uint32_t SparseFlashMlaMetadataCpuKernel::GetCmpS2SeqSize(uint32_t bIdx)
         }
     }
     // 如果 max_seqlen_cmp_kv 没传入，且 cmp_kv 为稀疏的，则尝试从topk中获取
-    if (maxSeqlenCmpKv_ == 0 && isSparseCmpKv_) {
+    if ((layoutKv_ == "PA_BBND" || maxSeqlenCmpKv_ == 0) && isSparseCmpKv_) {
         return UINT32_MAX;
     }
     // 使用 max_seqlen_cmp_kv
