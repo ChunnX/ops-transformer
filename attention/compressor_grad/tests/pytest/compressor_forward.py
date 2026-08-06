@@ -44,6 +44,21 @@ def _softmax_by_column(z: torch.Tensor) -> torch.Tensor:
     return exp_z / exp_z.sum(dim=0, keepdim=True)
 
 
+class _QuantGrad(torch.autograd.Function):
+    """前向恒等、反向梯度量化：模拟 kernel 反向中间量（dkv/dsb）经
+    FP16/BF16 存储后回 FP32（与 compressor_grad_cpu_golden 的
+    d_new_kv.to(iodtype).float() 对齐）。"""
+
+    @staticmethod
+    def forward(ctx, x, quant_dtype):
+        ctx.quant_dtype = quant_dtype
+        return x
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output.to(ctx.quant_dtype).float(), None
+
+
 def _read_cache(
     state: torch.Tensor,           # (block_num, block_size, coff * head_dim)
     block_table: torch.Tensor,     # (B, max_blocks)  int32
@@ -195,6 +210,9 @@ def compressor_forward(
         flat_score = x_f32.reshape(B_in * S_in, H_in) @ wgate_f32.T
         T = B_in * S_in
 
+    # 模拟 kernel 反向中间精度：dkv/dsb 梯度经 FP16/BF16 存储（golden 同款量化）
+    flat_kv = _QuantGrad.apply(flat_kv, orig_dtype)
+    flat_score = _QuantGrad.apply(flat_score, orig_dtype)
     # ---- 第二步：全局添加 ape（与 golden 中 in-place 加法等价）----
     ape_add = _build_ape_for_flat_sequence(T, B, start_pos, ape_f32, cmp_ratio, bs_combine, cu_seqlens)
     flat_score = flat_score + ape_add   # (T, coff*head_dim)，ape 已应用
