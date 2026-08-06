@@ -450,23 +450,34 @@ int64_t GetCmpKvBatchSizeMqsmla(const aclTensor *sequsedCmpKvOptional, const acl
     return batchSize;
 }
 
+std::string TopkLengthShapeToStringMqsmla(const aclTensor *topkLengthOptional)
+{
+    const auto &shape = topkLengthOptional->GetViewShape();
+    std::string result = "[";
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (i != 0) {
+            result += ", ";
+        }
+        result += std::to_string(shape.GetDim(i));
+    }
+    return result + "]";
+}
+
 aclnnStatus CheckTopkLengthFirstDimMqsmla(const aclTensor *topkLengthOptional, const std::string &topkLengthName,
                                           int64_t queryBatchSize, const std::string &querySource)
 {
     if (topkLengthOptional->GetViewShape().GetDim(0) == queryBatchSize) {
         return ACLNN_SUCCESS;
     }
+    std::string incorrectShape = TopkLengthShapeToStringMqsmla(topkLengthOptional);
     if (IsTensorSourceMqsmla(querySource)) {
-        OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
-            MQSMLA_ACLNN_OP_NAME, topkLengthName + " and " + querySource,
-            std::to_string(topkLengthOptional->GetViewShape().GetDim(0)) + " and " +
-                std::to_string(GetRawShapeSizeMqsmla(querySource, queryBatchSize)),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            MQSMLA_ACLNN_OP_NAME, topkLengthName, incorrectShape,
             "When layout_q is BSND, the size of the first axis of " + topkLengthName +
                 " must be equal to " + GetSourceDescMqsmla(querySource));
     } else {
-        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
-            MQSMLA_ACLNN_OP_NAME, topkLengthName,
-            std::to_string(topkLengthOptional->GetViewShape().GetDim(0)),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            MQSMLA_ACLNN_OP_NAME, topkLengthName, incorrectShape,
             "When layout_q is BSND, the size of the first axis of " + topkLengthName +
                 " must be equal to batch_size");
     }
@@ -488,9 +499,9 @@ aclnnStatus CheckTopkLengthSingleDimMqsmla(const aclTensor *topkLengthOptional, 
     if (topkLengthOptional->GetViewShape().GetDim(axis.index) == expectedValue) {
         return ACLNN_SUCCESS;
     }
-    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
-        MQSMLA_ACLNN_OP_NAME, topkLengthName,
-        std::to_string(topkLengthOptional->GetViewShape().GetDim(axis.index)),
+    std::string incorrectShape = TopkLengthShapeToStringMqsmla(topkLengthOptional);
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+        MQSMLA_ACLNN_OP_NAME, topkLengthName, incorrectShape,
         "When layout_q is " + std::string(layoutQOptional) + ", the size of the " + axis.desc + " axis of " +
             topkLengthName + " must be equal to " + expectedDesc);
     return ACLNN_ERR_PARAM_INVALID;

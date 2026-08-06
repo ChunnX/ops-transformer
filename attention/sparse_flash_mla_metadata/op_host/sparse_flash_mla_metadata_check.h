@@ -222,7 +222,7 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
             if (oriWinLeft < -1 || oriWinRight < -1) {
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(SMLA_ACLNN_OP_NAME, "ori_win_left and ori_win_right",
                                                        std::to_string(oriWinLeft) + " and " +
-                                                       std::to_string(oriWinRight),
+                                                           std::to_string(oriWinRight),
                                                        "When has_ori_kv is true, the value of ori_win_left, "
                                                        "ori_win_right must be greater than or equal to -1");
                 return ACLNN_ERR_PARAM_INVALID;
@@ -236,7 +236,7 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
             if (oriWinLeft != 127 || oriWinRight != 0) {
                 OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(SMLA_ACLNN_OP_NAME, "ori_win_left and ori_win_right",
                                                        std::to_string(oriWinLeft) + " and " +
-                                                       std::to_string(oriWinRight),
+                                                           std::to_string(oriWinRight),
                                                        "When has_ori_kv is true, the value of ori_win_left "
                                                        "must be 127 and the value of ori_win_right must be 0");
                 return ACLNN_ERR_PARAM_INVALID;
@@ -563,23 +563,34 @@ int64_t GetCmpKvBatchSizeSmla(const aclTensor *sequsedCmpKvOptional, const aclTe
     return batchSize;
 }
 
+std::string TopkLengthShapeToStringSmla(const aclTensor *topkLengthOptional)
+{
+    const auto &shape = topkLengthOptional->GetViewShape();
+    std::string result = "[";
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (i != 0) {
+            result += ", ";
+        }
+        result += std::to_string(shape.GetDim(i));
+    }
+    return result + "]";
+}
+
 aclnnStatus CheckTopkLengthFirstDimSmla(const aclTensor *topkLengthOptional, const std::string &topkLengthName,
                                         int64_t queryBatchSize, const std::string &querySource)
 {
     if (topkLengthOptional->GetViewShape().GetDim(0) == queryBatchSize) {
         return ACLNN_SUCCESS;
     }
+    std::string incorrectShape = TopkLengthShapeToStringSmla(topkLengthOptional);
     if (IsTensorSourceSmla(querySource)) {
-        OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
-            SMLA_ACLNN_OP_NAME, topkLengthName + " and " + querySource,
-            std::to_string(topkLengthOptional->GetViewShape().GetDim(0)) + " and " +
-                std::to_string(GetRawShapeSizeSmla(querySource, queryBatchSize)),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            SMLA_ACLNN_OP_NAME, topkLengthName, incorrectShape,
             "When layout_q is BSND, the size of the first axis of " + topkLengthName +
                 " must be equal to " + GetSourceDescSmla(querySource));
     } else {
-        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
-            SMLA_ACLNN_OP_NAME, topkLengthName,
-            std::to_string(topkLengthOptional->GetViewShape().GetDim(0)),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+            SMLA_ACLNN_OP_NAME, topkLengthName, incorrectShape,
             "When layout_q is BSND, the size of the first axis of " + topkLengthName +
                 " must be equal to batch_size");
     }
@@ -601,9 +612,9 @@ aclnnStatus CheckTopkLengthSingleDimSmla(const aclTensor *topkLengthOptional, co
     if (topkLengthOptional->GetViewShape().GetDim(axis.index) == expectedValue) {
         return ACLNN_SUCCESS;
     }
-    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
-        SMLA_ACLNN_OP_NAME, topkLengthName,
-        std::to_string(topkLengthOptional->GetViewShape().GetDim(axis.index)),
+    std::string incorrectShape = TopkLengthShapeToStringSmla(topkLengthOptional);
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+        SMLA_ACLNN_OP_NAME, topkLengthName, incorrectShape,
         "When layout_q is " + std::string(layoutQOptional) + ", the size of the " + axis.desc + " axis of " +
             topkLengthName + " must be equal to " + expectedDesc);
     return ACLNN_ERR_PARAM_INVALID;
