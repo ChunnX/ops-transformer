@@ -18,6 +18,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "chunk_gated_delta_rule_utils.h"
 #include "../chunk_gated_delta_rule_tiling_data.h"
+#include "vf/chunk_gated_delta_rule_stage1_vf.h"
 
 namespace ChunkGatedDeltaRule {
 using namespace AscendC;
@@ -180,9 +181,6 @@ public:
         kkLocal_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpBufferLen), buffOffset);
         buffOffset += tmpBufferLen * sizeof(float);
 
-        inverseGatherBuffer_ = tmpBuff_.GetWithOffset<uint32_t>(static_cast<uint32_t>(INVERSE_SHAPE), buffOffset);
-        buffOffset += INVERSE_SHAPE * sizeof(uint32_t);
-
         inverseRes_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * halfChunkSize_), buffOffset);
     }
 
@@ -190,9 +188,6 @@ public:
     {
         for (uint32_t i = 0; i < chunkSize_; ++i) {
             inputGatherBuffer_.SetValue(i, i * BLOCK_SIZE);
-        }
-        for (uint32_t i = 0; i < INVERSE_SHAPE; ++i) {
-            inverseGatherBuffer_.SetValue<uint32_t>(i, (i * chunkSize_) * sizeof(float));
         }
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
         SetFlag<HardEvent::S_V>(eventID);
@@ -528,61 +523,33 @@ private:
         }
         PipeBarrier<PIPE_V>();
 
+        // attn 取负：前代法求逆需要 attn 的严格下三角部分（对角线为 0），取负后对角线恢复为 1
         Muls(inverseRes_, attnUbFloat_, static_cast<float>(-1.0), curVecLen);
+        // 构造单位阵 eiUb：先清零，再由标量逐行设置对角线为 1.0
+        // inverseBuffer_ 与 kkLocal_ 等共用 union 缓冲，须在每个 chunk 使用前重新初始化
+        Duplicate(inverseBuffer_, static_cast<float>(0.0), INVERSE_SHAPE * chunkSize_);
         PipeBarrier<PIPE_V>();
+        // V→S 屏障：等待 V 管线 Duplicate 清零完成后再执行标量 SetValue
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::V_S));
         SetFlag<HardEvent::V_S>(eventID);
         WaitFlag<HardEvent::V_S>(eventID);
+        // 标量逐行设置单位阵对角线元素为 1.0
+        for (uint32_t j = 0; j < INVERSE_SHAPE; ++j) {
+            inverseBuffer_.SetValue(j * chunkSize_ + j, static_cast<float>(1.0));
+        }
+        // S→V 屏障：等待标量 SetValue 完成后再执行 VF 函数中的向量 Load
+        eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
+        SetFlag<HardEvent::S_V>(eventID);
+        WaitFlag<HardEvent::S_V>(eventID);
 
-        InverseAIV(subOffset_, INVERSE_SHAPE);
+        // 调用 VF 函数执行前代法求逆
+        // attnUbFloat_ 存储已取负的 attn，inverseBuffer_ 存储单位阵，inverseRes_ 存储求逆结果
+        InverseAIVCompute<INVERSE_SHAPE>(attnUbFloat_, inverseRes_, inverseBuffer_, subOffset_, chunkSize_);
+        PipeBarrier<PIPE_V>();
         auto tmp = outQueue_.AllocTensor<bfloat16_t>();
         Cast(tmp, inverseRes_, RoundMode::CAST_RINT, curVecLen);
         outQueue_.EnQue(tmp);
         DataCopyOutBf16(halfChunkSize_, chunkSize_, chunkSize_, dst[subOffset_ * chunkSize_]);
-    }
-
-    __aicore__ inline void InverseAIV(uint64_t offset, uint32_t inverseVecLen)
-    {
-        uint64_t inverseBufferOffset = 0;
-        auto row = inverseBuffer_[inverseBufferOffset];
-        inverseBufferOffset += inverseVecLen * inverseVecLen;
-        auto col = inverseBuffer_[inverseBufferOffset];
-        inverseBufferOffset += inverseVecLen * inverseVecLen + inverseVecLen;
-        auto yLocal = inverseBuffer_[inverseBufferOffset];
-        inverseBufferOffset += inverseVecLen * inverseVecLen;
-        auto eiMatrix = inverseBuffer_[inverseBufferOffset];
-
-        Duplicate(yLocal, static_cast<float>(0.0), inverseVecLen * inverseVecLen);
-        Duplicate(eiMatrix, static_cast<float>(0.0), inverseVecLen * inverseVecLen);
-        int32_t vsEventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::V_S));
-        SetFlag<HardEvent::V_S>(vsEventID);
-        WaitFlag<HardEvent::V_S>(vsEventID);
-        for (uint32_t j = 0; j < inverseVecLen; ++j) {
-            eiMatrix.SetValue(j * inverseVecLen + j, static_cast<float>(1.0));
-        }
-        inverseRes_.SetValue(offset, static_cast<float>(1.0));
-
-        uint32_t srcShape[2] = {1, inverseVecLen};
-        int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
-        SetFlag<HardEvent::S_V>(eventID);
-        WaitFlag<HardEvent::S_V>(eventID);
-        for (int i = 1; i < inverseVecLen; ++i) {
-            uint32_t curI = i - 1;
-            uint32_t validRows = inverseVecLen - i;
-            Gather(col, attnUbFloat_[offset + i * chunkSize_ + curI], inverseGatherBuffer_, (uint32_t)0, validRows);
-            PipeBarrier<PIPE_V>();
-            uint32_t dstShape[2] = {validRows, inverseVecLen};
-            uint32_t colSrcShape[2] = {validRows, 1};
-            Broadcast<float, BROADCAST_AXIS, 1>(col[inverseVecLen], col, dstShape, colSrcShape);
-            Broadcast<float, BROADCAST_AXIS, 0>(row, inverseRes_[offset + curI * chunkSize_], dstShape, srcShape);
-            PipeBarrier<PIPE_V>();
-            MulAddDst(yLocal[i * inverseVecLen], col[inverseVecLen], row, inverseVecLen * validRows);
-            PipeBarrier<PIPE_V>();
-            // xi = (I - SUM) / Lii = I - SUM
-            Sub(inverseRes_[offset + i * chunkSize_], eiMatrix[i * inverseVecLen],
-                yLocal[i * inverseVecLen], inverseVecLen);
-            PipeBarrier<PIPE_V>();
-        }
     }
 
     __aicore__ inline void GBKCompute(const GlobalTensor<bfloat16_t> gBKWsGm, const GlobalTensor<bfloat16_t> outKgGm,
@@ -899,7 +866,6 @@ private:
     LocalTensor<float> gTransBroadUbFloat_;
     LocalTensor<float> gEndBroadUbFloat_;
     LocalTensor<float> gammaUbFloat_;
-    LocalTensor<uint32_t> inverseGatherBuffer_;
     LocalTensor<float> qUbFloatCon_;
     LocalTensor<float> kUbFloatCon_;
     LocalTensor<float> gBKUbFloat_;
