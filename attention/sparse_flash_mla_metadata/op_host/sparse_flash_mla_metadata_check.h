@@ -249,11 +249,10 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
                 }
                 if (oriWinLeft != 127 || oriWinRight != 0) {
                     OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(SMLA_ACLNN_OP_NAME, "ori_win_left, ori_win_right",
-                                                           std::to_string(oriWinLeft) + ", " +
-                                                               std::to_string(oriWinRight),
-                                                           "When has_ori_kv is true and ori_topk is 0, the value of "
-                                                           "ori_win_left must be 127 and ori_win_right must be 0");
-                    return ACLNN_ERR_PARAM_INVALID;
+                                                        std::to_string(oriWinLeft) + ", " + std::to_string(oriWinRight),
+                                                        "When has_ori_kv is true, the value of ori_win_left "
+                                                        "must be 127 and the value of ori_win_right must be 0");
+                        return ACLNN_ERR_PARAM_INVALID;
                 }
             }
         }
