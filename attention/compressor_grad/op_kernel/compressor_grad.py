@@ -977,11 +977,30 @@ def _arrange_x(vecCtx, dbIdx, groupIdx, dbRowCnt, dealTcSize,
                         _vf_tile_zero_f16(mxTie, zeroRows, D_BASE_SIZE * 2)
                     pl.store(xArrangeGm, mxTie, [curBase, hi])
             if Coff == 2 and processed == 0 and groupIdx > 0:
-                for hi in pl.range(0, hiddenSize, D_BASE_SIZE * 2):
-                    mxTie = moveXTiles.next()
-                    pl.set_validshape(mxTie, [cmpRatio, D_BASE_SIZE * 2])
-                    pl.load(mxTie, xGm, [srcIdx - cmpRatio, hi])
-                    pl.store(xArrangeGm, mxTie, [dbIdx * dbRowCnt + groupIdx * vecCtx.groupRowStride, hi])
+                # prev 头部：前 cr-srcIdx 行是 cache 历史（sc=1 且 bStartPos%cr>0 时
+                # srcIdx<cr，直读 xGm[srcIdx-cr] 会负偏移越界——读到 xGm 前内存
+                # （任意值/NaN 位模式）→ 0×NaN 传染 d_wkv；这些行对应 dkv 已被
+                # scatter mask 为 0）→ 显式清零；后 srcIdx 行 = 上一块 cur
+                # （x[0..srcIdx) 有效数据）→ 拷贝
+                headDst = dbIdx * dbRowCnt + groupIdx * vecCtx.groupRowStride
+                headZero = cmpRatio - srcIdx if srcIdx < cmpRatio else 0
+                if headZero > 0:
+                    for hi in pl.range(0, hiddenSize, D_BASE_SIZE * 2):
+                        mxTie = moveXTiles.next()
+                        pl.set_validshape(mxTie, [headZero, D_BASE_SIZE * 2])
+                        if DataType == 0:
+                            _vf_tile_zero_bf16(mxTie, headZero, D_BASE_SIZE * 2)
+                        else:
+                            _vf_tile_zero_f16(mxTie, headZero, D_BASE_SIZE * 2)
+                        pl.store(xArrangeGm, mxTie, [headDst, hi])
+                headSrc = max(srcIdx - cmpRatio, 0)
+                headRows = cmpRatio - headZero
+                if headRows > 0:
+                    for hi in pl.range(0, hiddenSize, D_BASE_SIZE * 2):
+                        mxTie = moveXTiles.next()
+                        pl.set_validshape(mxTie, [headRows, D_BASE_SIZE * 2])
+                        pl.load(mxTie, xGm, [headSrc, hi])
+                        pl.store(xArrangeGm, mxTie, [headDst + headZero, hi])
             for hi in pl.range(0, hiddenSize, D_BASE_SIZE * 2):
                 mxTie = moveXTiles.next()
                 pl.set_validshape(mxTie, [mxRows, D_BASE_SIZE * 2])
