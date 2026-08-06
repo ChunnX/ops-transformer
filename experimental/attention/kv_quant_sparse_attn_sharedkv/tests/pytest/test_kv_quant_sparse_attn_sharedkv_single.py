@@ -30,7 +30,7 @@ import utils
 
 pt_save_path = "qsas_testcase"
 device_id = 0
-save_pt = False
+save_pt = True
 result_path = Path('result.xlsx')
 
 locals()["param_combinations"] = []
