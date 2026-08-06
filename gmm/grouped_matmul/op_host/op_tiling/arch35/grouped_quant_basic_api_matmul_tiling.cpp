@@ -93,9 +93,12 @@ bool GroupedQmmBasicApiTiling::CanEnableThreeL1Buffer() const
         return false;
     }
 
-    const uint64_t kAL1 = tilingData_.mmTilingData.kAL1;
-    const uint64_t kBL1 = tilingData_.mmTilingData.kBL1;
-    const uint64_t scaleKL1 = tilingData_.mmTilingData.scaleKAL1;
+    const uint64_t kAL1 = basicTiling_.stepKa * basicTiling_.baseK;
+    const uint64_t kBL1 = basicTiling_.stepKb * basicTiling_.baseK;
+    const uint64_t scaleKL1 = std::min(
+        std::max(basicTiling_.scaleFactorA * basicTiling_.stepKa,
+                 basicTiling_.scaleFactorB * basicTiling_.stepKb) * basicTiling_.baseK,
+        inputParams_.kSize);
     if (kAL1 == 0UL || kBL1 == 0UL || scaleKL1 == 0UL) {
         return false;
     }
@@ -155,8 +158,70 @@ ge::graphStatus GroupedQmmBasicApiTiling::CalL1Depth(uint64_t leftL1Size)
         basicTiling_.depthA1 = depthInit;
         basicTiling_.depthB1 = depthInit;
     }
-    // 用剩余L1空间对内轴ND非对齐场景进行调整depth
+    const uint64_t initialDepthA1 = basicTiling_.depthA1;
+    const uint64_t initialDepthB1 = basicTiling_.depthB1;
+
+    // 先使用初始 stepK 判断是否可以开启 3-buffer。初始值不满足时，先尝试缩小 depthA1。
+    OP_CHECK_IF(FinalizeStepAndScale() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "Finalize initial stepK and scale factor failed"),
+                return ge::GRAPH_FAILED);
+    const GQmmBasicTiling initialTiling = basicTiling_;
+    if (!CanEnableThreeL1Buffer()) {
+        // 初始 stepK 不满足 3-buffer 时，逐级缩小 depthA1，优先保留能开启 3-buffer 的最大值。
+        uint64_t candidateDepthA1 = initialTiling.depthA1;
+        while (IsMicroScaling() && !inputParams_.transA && candidateDepthA1 > DB_SIZE) {
+            candidateDepthA1 = std::max(candidateDepthA1 / POWER_OF_TWO, static_cast<uint64_t>(DB_SIZE));
+            basicTiling_ = initialTiling;
+            basicTiling_.depthA1 = candidateDepthA1;
+            if (FinalizeStepAndScale() != ge::GRAPH_SUCCESS) {
+                break;
+            }
+            if (CanEnableThreeL1Buffer()) {
+                return ge::GRAPH_SUCCESS;
+            }
+        }
+
+        // depthA1 缩小到最小值仍无法开启 3-buffer 时，恢复初始 depth 并执行原有放大逻辑。
+        basicTiling_.depthA1 = initialDepthA1;
+        basicTiling_.depthB1 = initialDepthB1;
+        ModifyDepthForUnalign(leftL1Size, baseASize, baseBSize, baseScaleASize + baseScaleBSize);
+        return FinalizeStepAndScale();
+    }
+
+    // 初始 stepK 可开启 3-buffer 时，先按原逻辑求出最大 depth，再逐级放大，仅保留仍能开启 3-buffer 的最大值。
+    basicTiling_.depthA1 = initialDepthA1;
+    basicTiling_.depthB1 = initialDepthB1;
     ModifyDepthForUnalign(leftL1Size, baseASize, baseBSize, baseScaleASize + baseScaleBSize);
+    const uint64_t maxDepthA1 = basicTiling_.depthA1;
+    const uint64_t maxDepthB1 = basicTiling_.depthB1;
+
+    GQmmBasicTiling bestTiling = initialTiling;
+    uint64_t candidateDepthA1 = initialDepthA1;
+    uint64_t candidateDepthB1 = initialDepthB1;
+    while (candidateDepthA1 < maxDepthA1 || candidateDepthB1 < maxDepthB1) {
+        if (candidateDepthA1 < maxDepthA1) {
+            candidateDepthA1 = std::min(candidateDepthA1 * POWER_OF_TWO, maxDepthA1);
+        }
+        if (candidateDepthB1 < maxDepthB1) {
+            candidateDepthB1 = std::min(candidateDepthB1 * POWER_OF_TWO, maxDepthB1);
+        }
+
+        basicTiling_ = initialTiling;
+        basicTiling_.depthA1 = candidateDepthA1;
+        basicTiling_.depthB1 = candidateDepthB1;
+        if (FinalizeStepAndScale() != ge::GRAPH_SUCCESS) {
+            break;
+        }
+        if (CanEnableThreeL1Buffer()) {
+            bestTiling = basicTiling_;
+        }
+    }
+    basicTiling_ = bestTiling;
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus GroupedQmmBasicApiTiling::FinalizeStepAndScale()
+{
     CalStepKs();
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         return CalScaleFactors();
