@@ -168,3 +168,75 @@ TEST_F(UndGenQkvRmsNormRopeCacheInferShape, infershape_fail_when_gen_qkv_not_3d)
     std::vector<std::vector<int64_t>> expectOutputShape = {};
     ExecuteTestCase(para, ge::GRAPH_FAILED, expectOutputShape);
 }
+
+// q 恒为 3D [T, Hq, D]：Hq 直接来自属性，任何场景都可知；T 与 D 能推则推、推不出才置 -1。
+// k_cache/v_cache 是原地别名，shape 一律按输入透传。
+
+// und_qkv 为未知 rank（-2）：T 不可知，但 D 可从 cos_sin_cache 的 [max_pos, D] 拿到
+TEST_F(UndGenQkvRmsNormRopeCacheInferShape, infershape_unknown_rank_und_qkv)
+{
+    auto para = BuildInferShapeContext(5, 3, 8, 1, 1);
+    para.inputTensorDesc_[0] = {{{-2}, {-2}}, ge::DT_BF16, ge::FORMAT_ND};
+    std::vector<std::vector<int64_t>> expectOutputShape = {
+        {-1, 8, 128},
+        {2, 128, 1, 128},
+        {2, 128, 1, 128},
+    };
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+// gen_qkv 为未知 rank：T = und_len + gen_len 不可知，D 仍从 und_qkv 尾维拿到
+TEST_F(UndGenQkvRmsNormRopeCacheInferShape, infershape_unknown_rank_gen_qkv)
+{
+    auto para = BuildInferShapeContext(5, 3, 8, 1, 1);
+    para.inputTensorDesc_[8] = {{{-2}, {-2}}, ge::DT_BF16, ge::FORMAT_ND};
+    std::vector<std::vector<int64_t>> expectOutputShape = {
+        {-1, 8, 128},
+        {2, 128, 1, 128},
+        {2, 128, 1, 128},
+    };
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+// D 的取值链路：und_qkv 与 cos_sin_cache 都是 -2 时，退到 und_weights_q 的 [D]
+TEST_F(UndGenQkvRmsNormRopeCacheInferShape, infershape_head_dim_falls_back_to_weights)
+{
+    auto para = BuildInferShapeContext(5, 3, 8, 1, 1);
+    para.inputTensorDesc_[0] = {{{-2}, {-2}}, ge::DT_BF16, ge::FORMAT_ND};
+    para.inputTensorDesc_[3] = {{{-2}, {-2}}, ge::DT_FLOAT, ge::FORMAT_ND};
+    std::vector<std::vector<int64_t>> expectOutputShape = {
+        {-1, 8, 128},
+        {2, 128, 1, 128},
+        {2, 128, 1, 128},
+    };
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+// 所有带 D 的输入都是 -2：D 才真的推不出来，此时 q 为 [-1, Hq, -1]
+TEST_F(UndGenQkvRmsNormRopeCacheInferShape, infershape_unknown_rank_all_inputs)
+{
+    auto para = BuildInferShapeContext(5, 3, 8, 1, 1);
+    for (size_t idx : {0, 1, 2, 3, 4, 5, 8, 9, 10}) {
+        auto dtype = (idx == 3) ? ge::DT_FLOAT : ge::DT_BF16;
+        para.inputTensorDesc_[idx] = {{{-2}, {-2}}, dtype, ge::FORMAT_ND};
+    }
+    std::vector<std::vector<int64_t>> expectOutputShape = {
+        {-1, 8, -1},
+        {-2},
+        {-2},
+    };
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+// 已知 rank 但第一维为动态 shape（-1）：T 不可加，第 0 维取 -1，Hq 与 D 仍可推出
+TEST_F(UndGenQkvRmsNormRopeCacheInferShape, infershape_dynamic_dim_und_len)
+{
+    auto para = BuildInferShapeContext(5, 3, 8, 1, 1);
+    para.inputTensorDesc_[0] = {{{-1, 10, 128}, {-1, 10, 128}}, ge::DT_BF16, ge::FORMAT_ND};
+    std::vector<std::vector<int64_t>> expectOutputShape = {
+        {-1, 8, 128},
+        {2, 128, 1, 128},
+        {2, 128, 1, 128},
+    };
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+}

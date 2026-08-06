@@ -110,9 +110,8 @@ public:
         this->Attr("mrope_section").AttrType(OPTIONAL).ListInt({});
 
         // 仅支持 Ascend 950（DAV_3510, arch35）
-        // 不开 DynamicRankSupportFlag：InferShape 依赖 und_qkv 为 3D [und_len, N, D]，未知 rank 推导不出 q
         OpAICoreConfig regbaseCfg;
-        regbaseCfg.DynamicCompileStaticFlag(true).DynamicShapeSupportFlag(true);
+        regbaseCfg.DynamicCompileStaticFlag(true).DynamicShapeSupportFlag(true).DynamicRankSupportFlag(true);
         this->AICore().AddConfig("ascend950", regbaseCfg);
     }
 };
