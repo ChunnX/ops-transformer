@@ -91,15 +91,7 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseKeyValue(QuantBlockSparseAt
         !QBSAGetDimAsU32(keyShape, QBSAGetAxisIdx(QBSALayout::PA_BNSD, QBSAAxis::BLOCK_NUM),
                          tilingInfo.paBlockNumSum)) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "key", std::to_string(keyShape.GetDimNum()) + "D",
-                                                 "failed to get n2Size from key shape");
-        return ge::GRAPH_FAILED;
-    }
-
-    if (tilingInfo.blockNumAttr > 0U) {
-        tilingInfo.paBlockNumSum = tilingInfo.blockNumAttr;
-    } else if (!BSAGetDimAsU32(keyShape, DIM_0, tilingInfo.paBlockNumSum)) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "key", std::to_string(keyShape.GetDimNum()) + "D",
-                                                 "failed to get paBlockNumSum from key shape");
+                                                 "failed to get n2Size/paBlockNumSum from key shape");
         return ge::GRAPH_FAILED;
     }
 
@@ -282,7 +274,6 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseAttributes(QuantBlockSparse
     tilingInfo.layoutSparseIndicesStr = QBSAGetStringAttr(attrs, QBSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX, "B_N_Qb_Kb");
     tilingInfo.layoutOutStr = QBSAGetStringAttr(attrs, QBSA_LAYOUT_OUT_ATTR_INDEX, "TND");
     tilingInfo.returnSoftmaxLseVal = QBSAGetBoolAttr(attrs, QBSA_RETURN_SOFTMAX_LSE_ATTR_INDEX, false);
-    tilingInfo.blockNumAttr = QBSAGetUintAttr(attrs, QBSA_BLOCK_NUM_ATTR_INDEX, 0U);
 
     opParamInfo.query.desc = context_->GetInputDesc(QBSA_QUERY_INDEX);
     tilingInfo.qDtype =
