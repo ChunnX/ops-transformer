@@ -549,14 +549,14 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
         - 输出out的dtype为BFLOAT16或FLOAT16
         - offsetOptional为空
-        - 仅支持count模式（算子不会检查groupListType的值），k要求为quantGroupSize的整数倍，且要求k <= 18432。其中quantGroupSize为k方向上pergroup量化长度，当前支持quantGroupSize=256。
+        - groupListType仅支持1（count），k要求为quantGroupSize的整数倍，且要求k <= 18432。其中quantGroupSize为k方向上pergroup量化长度，当前支持quantGroupSize=256。
         - scale为pergroup与perchannel离线融合后的结果，shape要求为$[E, quantGroupNum, N]$，其中$quantGroupNum=k \div quantGroupSize$。
         - Bias为计算过程中离线计算的辅助结果，值要求为$8\times weight \times scale$，并在第1维累加，shape要求为$[E, N]$。
 
       - 非对称量化场景：
 
         - 输出out的dtype为FLOAT16
-        - 仅支持count模式（算子不会检查groupListType的值）。
+        - groupListType仅支持1（count）。
         - {k, n}要求为{7168, 4096}或者{2048, 7168}。
         - scale为pergroup与perchannel离线融合后的结果，shape要求为$[E, 1, N]$。
         - offsetOptional不为空。非对称量化offsetOptional为计算过程中离线计算辅助结果，即$antiquantOffset \times scale$，shape要求为$[E, 1, N]$，dtype为FLOAT32。
@@ -616,7 +616,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
 
       除公共约束外，A8W4场景其余约束如下：
 
-      - 仅支持groupType=0、splitItem=2/3、actType=0，groupListType支持0（cumsum）、1（count）和2（sparse）。
+      - 仅支持groupType=0、splitItem=2/3、actType=0，groupListType仅支持1（count）。
       - x、weight、scaleOptional、biasOptional、perTokenScaleOptional和out均为长度1的TensorList；x和weight均不支持转置。
       - x仅支持2维Tensor，shape为`[M,K]`；weight默认支持3维Tensor，shape为`[E,K,N]`；perTokenScaleOptional的shape为`[M]`。
       - biasOptional为必选输入，数据类型为FLOAT32，shape为`[E,N]`。该输入是INT4权重离线转换的校正量，按`8 × weight × scale`沿K轴规约得到。

@@ -52,7 +52,7 @@ struct S8S4Case {
     int64_t n = 256;
     int64_t groupNum = 2;
     int64_t scaleGroupNum = 4;
-    int64_t groupListTypeAttr = 0;
+    int64_t groupListTypeAttr = 1;
     ge::DataType weightDtype = ge::DT_INT4;
     ge::DataType outDtype = ge::DT_BF16;
     ge::Format weightFormat = ge::FORMAT_ND;
@@ -311,25 +311,24 @@ TEST(GroupedS8S4BasicApiArch35Tiling, SymmetricPergroupUsesOneQuantGroupPerL1Win
     EXPECT_EQ(tilingInfo.workspaceSizes[0], SYS_WORKSPACE_SIZE + expandedSize + tileSize);
 }
 
-TEST(GroupedS8S4BasicApiArch35Tiling, PreservesSupportedGroupListTypes)
+TEST(GroupedS8S4BasicApiArch35Tiling, AcceptsCountGroupListType)
 {
-    for (int64_t groupListType : {0L, 1L, 2L}) {
+    S8S4Case param;
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteS8S4Tiling(param, tilingInfo));
+    const auto *tilingData = GetTilingData(tilingInfo);
+    ASSERT_NE(tilingData, nullptr);
+    EXPECT_EQ(tilingData->gmmQuantParams.groupListType, 1);
+}
+
+TEST(GroupedS8S4BasicApiArch35Tiling, RejectsUnsupportedGroupListTypes)
+{
+    for (int64_t groupListType : {0L, 2L, 99L}) {
         S8S4Case param;
         param.groupListTypeAttr = groupListType;
         TilingInfo tilingInfo;
-        ASSERT_TRUE(ExecuteS8S4Tiling(param, tilingInfo)) << "groupListType=" << groupListType;
-        const auto *tilingData = GetTilingData(tilingInfo);
-        ASSERT_NE(tilingData, nullptr);
-        EXPECT_EQ(tilingData->gmmQuantParams.groupListType, groupListType);
+        EXPECT_FALSE(ExecuteS8S4Tiling(param, tilingInfo)) << "groupListType=" << groupListType;
     }
-}
-
-TEST(GroupedS8S4BasicApiArch35Tiling, RejectsInvalidGroupListType)
-{
-    S8S4Case param;
-    param.groupListTypeAttr = 99;
-    TilingInfo tilingInfo;
-    EXPECT_FALSE(ExecuteS8S4Tiling(param, tilingInfo));
 }
 
 TEST(GroupedS8S4BasicApiArch35Tiling, AsymmetricPerchannelUsesOffsetAndTilePipelineWorkspace)

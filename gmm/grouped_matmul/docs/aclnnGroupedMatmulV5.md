@@ -514,7 +514,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 
 除平台约束外，A8W4场景其余约束如下：
 
-- 仅支持groupType=0（M轴分组）、splitItem=2/3、actType=0，groupListType支持0（cumsum）、1（count）和2（sparse）。
+- 仅支持groupType=0（M轴分组）、splitItem=2/3、actType=0，groupListType仅支持1（count）。
 - 当前仅支持x、weight、biasOptional、scaleOptional、offsetOptional、perTokenScaleOptional和out均为长度1的TensorList。
 - x和weight均不支持转置；x仅支持2维Tensor，shape为`[M,K]`；weight默认支持3维Tensor，shape为`[E,K,N]`。
 - perTokenScaleOptional的shape为`[M]`。
@@ -715,7 +715,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 - **约束说明**
 
   除平台约束外，A8W4场景其余约束如下：
-  - 仅支持groupType=0（M轴分组），actType=0
+  - 仅支持groupType=0（M轴分组），actType=0，groupListType仅支持1（count）
   - 当前支持x、out均为长度为1的TensorList
   - weight、scaleOptional、biasOptional和offsetOptional支持单Tensor场景（tensorlist长度为1）和多Tensor场景（tensorlist长度大于1）
   - x不支持转置、weight不支持转置
@@ -724,7 +724,7 @@ aclnnGroupedMatmulV5默认确定性实现。
   - Bias为计算过程中离线计算的辅助结果，值要求为 $8 \times weight \times scale$，并在第1维累加，shape要求为 $[E, N]$
   - 当weight传入数据类型为INT32时，会将每个INT32视为8个INT4
   - offset为空时
-    - 该场景下仅支持groupListType为1（算子不会检查groupListType的值，会认为groupListType为1），k要求为quantGroupSize的整数倍，且要求k <= 18432。其中quantGroupSize为k方向上pergroup量化长度，当前支持quantGroupSize=256
+    - k要求为quantGroupSize的整数倍，且要求k <= 18432。其中quantGroupSize为k方向上pergroup量化长度，当前支持quantGroupSize=256
     - 该场景下scale为pergroup与perchannel离线融合后的结果，shape要求为 $[E, quantGroupNum, N]$，其中 $quantGroupNum = k \div quantGroupSize$
     - 该场景下，各个专家处理的token数的预期值大于n/4时，即tuningConfigOptional中第一个值大于n/4时，通常会取得更好的性能，此时显存占用会增加 $g \times k \times n$ 字节（其中g为matmul组数即分组数）
   - offset不为空时

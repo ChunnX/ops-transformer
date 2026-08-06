@@ -24,6 +24,7 @@
 #include "../../../op_api/aclnn_grouped_matmul_v4.h"
 #include "../../../op_api/aclnn_grouped_matmul_v5.h"
 #include "../../../op_api/aclnn_grouped_matmul_weight_nz.h"
+#include "../../../op_api/grouped_matmul_weight_quant_950_checker.h"
 #include "op_api_ut_common/array_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"
@@ -547,6 +548,46 @@ string BuildCaseName(const testing::TestParamInfo<GroupedMatmulOpApiCase> &info)
 }
 
 class grouped_matmul_opapi_csv_test : public testing::TestWithParam<GroupedMatmulOpApiCase> {};
+
+aclnnStatus CheckS8S4PseudoQuantGroupListType(int64_t groupListType, bool hasOffset)
+{
+    auto x = BuildAclTensorListDesc("64:1024", "INT8", "ND").ToAclType();
+    auto weight = BuildAclTensorListDesc("2:1024:256", "INT4", "ND").ToAclType();
+    auto bias = BuildAclTensorListDesc("2:256", "FLOAT", "ND").ToAclType();
+    auto scale = BuildAclTensorListDesc(hasOffset ? "2:1:256" : "2:4:256", "UINT64", "ND").ToAclType();
+    auto offset = BuildAclTensorListDesc("2:1:256", "FLOAT", "ND").ToAclType();
+    auto perTokenScale = BuildAclTensorListDesc("64", "FLOAT", "ND").ToAclType();
+    auto out = BuildAclTensorListDesc("64:256", hasOffset ? "FLOAT16" : "BF16", "ND").ToAclType();
+    auto groupList = TensorDesc({2}, ACL_INT64, ACL_FORMAT_ND).ToAclType();
+
+    gmm::GroupedMatmulParams params;
+    params.x = x.get();
+    params.weight = weight.get();
+    params.biasOptional = bias.get();
+    params.groupTensorOptional = groupList.get();
+    params.scaleOptional = scale.get();
+    params.offsetOptional = hasOffset ? offset.get() : nullptr;
+    params.perTokenScaleOptional = perTokenScale.get();
+    params.splitItem = 3;
+    params.groupListType = groupListType;
+    params.activeType = 0;
+    params.apiVersion = gmm::GMMApiVersion::V5;
+    params.groupType = 0;
+    params.y = out.get();
+    params.xDtype = op::DataType::DT_INT8;
+    return gmm::AclnnGroupedMatmulWeightQuantDAV3510Checker(params).CheckGroupedMatmulWeightQuantDAV3510();
+}
+
+TEST(GroupedMatmulS8S4OpApiChecker, OnlyAcceptsCountGroupListType)
+{
+    for (bool hasOffset : {false, true}) {
+        EXPECT_EQ(CheckS8S4PseudoQuantGroupListType(1, hasOffset), ACLNN_SUCCESS);
+        for (int64_t groupListType : {0L, 2L, 99L}) {
+            EXPECT_EQ(CheckS8S4PseudoQuantGroupListType(groupListType, hasOffset), ACLNN_ERR_PARAM_INVALID)
+                << "hasOffset=" << hasOffset << ", groupListType=" << groupListType;
+        }
+    }
+}
 
 TEST_P(grouped_matmul_opapi_csv_test, run_case)
 {
