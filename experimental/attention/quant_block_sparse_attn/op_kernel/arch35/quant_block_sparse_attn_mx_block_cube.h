@@ -105,6 +105,20 @@ public:
         }
     }
 
+    __aicore__ inline void FreeEventID()
+    {
+        if ASCEND_IS_AIC {
+            // Uninit waits for the final consumer-to-producer token before
+            // releasing every event allocated by the inner-core buffers.
+            l1QBuffers_.Uninit(*l1BufferManager_);
+            l1KVBuffers_.Uninit(*l1BufferManager_);
+            l1VBuffers_.Uninit(*l1BufferManager_);
+            mmL0ABuffers_.Uninit(l0aBufferManager_);
+            mmL0BBuffers_.Uninit(l0bBufferManager_);
+            mmL0CBuffers_.Uninit(l0cBufferManager_);
+        }
+    }
+
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
                                        MxRunInfo &runInfo, const MxConstInfo &constInfo, uint32_t subLoop)
     {

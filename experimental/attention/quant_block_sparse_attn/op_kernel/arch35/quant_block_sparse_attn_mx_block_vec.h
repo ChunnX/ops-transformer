@@ -147,6 +147,17 @@ public:
         }
     }
 
+    __aicore__ inline void FreeEventID()
+    {
+        if ASCEND_IS_AIV {
+            // ProcessVec2 leaves one MTE3->V token outstanding.  Consume it so
+            // graph replay cannot inherit an event that still looks signaled.
+            WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
+            GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId_[0]);
+            GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id_[0]);
+        }
+    }
+
     __aicore__ inline void ClearOutput(const optiling::QuantBlockSparseAttnMxEmptyTensorParams &emptyTensorParams,
                                        const MxConstInfo &constInfo)
     {
