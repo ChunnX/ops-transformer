@@ -365,7 +365,18 @@ def customize_inputs(
         B = int(sparse_indices.shape[0])
         S1 = max_seqlen_q if max_seqlen_q > 0 else int(query.shape[0]) // B
 
-    N2 = int(v_descale.shape[0])
+    # KV head 数以 key/value（PA 4D 的 dim1）为准；v_descale 必须为 [N2]
+    if key.dim() == 4:
+        N2 = int(key.shape[1])
+    elif value.dim() == 4:
+        N2 = int(value.shape[1])
+    else:
+        N2 = int(v_descale.shape[0])
+    if int(v_descale.shape[0]) != N2:
+        raise ValueError(
+            f"v_descale has {v_descale.shape[0]} elements but KV head num (N2) is {N2}; "
+            f"v_descale must be [N2]"
+        )
     block_size = int(key.shape[2]) if key.dim() == 4 else sparse_kv_block_size
     num_blocks = (
         int(key.shape[0])
