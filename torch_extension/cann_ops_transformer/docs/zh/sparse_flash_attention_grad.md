@@ -54,8 +54,7 @@ cann_ops_transformer.sparse_flash_attention_grad(
     key_rope=None,
     actual_seq_qlen=None,
     actual_seq_kvlen=None,
-    layout_q="BSND",
-    layout_kv="BSND",
+    layout="BSND",
     sparse_mode=3,
     win_left=2147483647,
     win_right=2147483647,
@@ -96,9 +95,7 @@ cann_ops_transformer.sparse_flash_attention_grad(
 
 - **actual_seq_kvlen**（`Tensor`，可选）：每个 batch 中 key/value 的有效 token 数。shape为 `[B]`。数据类型支持`int32`。
 
-- **layout_q**（`str`，可选）：query 输入数据排布，支持 "BSND"/"TND"，默认值：`"BSND"`。
-
-- **layout_kv**（`str`，可选）：key/value 输入数据排布，支持 "BSND"/"TND"，默认值：`"BSND"`。约定与 `layout_q` 恒等。
+- **layout**（`str`，可选）：输入数据排布，支持 "BSND"/"TND"，默认值：`"BSND"`。
 
 - **sparse_mode**（`int`，可选）：稀疏模式，默认值：3。
 
@@ -177,6 +174,6 @@ cann_ops_transformer.sparse_flash_attention_grad(
         sinks, scale_value, 1,
         query_rope=query_rope, key_rope=key_rope,
         actual_seq_qlen=None, actual_seq_kvlen=None,
-        layout_q=input_layout, layout_kv=input_layout, sparse_mode=0, deterministic=False,
+        layout=input_layout, sparse_mode=0, deterministic=False,
     )
     ```

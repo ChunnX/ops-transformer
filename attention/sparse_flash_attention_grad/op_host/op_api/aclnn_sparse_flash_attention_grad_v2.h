@@ -23,8 +23,7 @@ extern "C" {
  *        calculates the workspace size based on the specific calculation process.
  * @domain aclnn_ops_infer
  * @note  V2 相比 V1（aclnnSparseFlashAttentionGrad，商发兼容、5 输出）：
- *        1) 新增 oss-sink 输入 sinks 与 sink 梯度输出 dSinks（6 输出）；
- *        2) layout 拆分为 layoutQuery/layoutKv（约定 q==kv 恒等，tiling 校验相等）。
+ *        新增 oss-sink 输入 sinks 与 sink 梯度输出 dSinks（6 输出）。
  *        V1/V2 复用同一 OpDef（SparseFlashAttentionGrad）与同一 inner aclnn。
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashAttentionGradV2GetWorkspaceSize(
@@ -43,8 +42,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashAttentionGrad
     const aclTensor *keyRopeOptional,
     double scaleValue,
     int64_t sparseBlockSize,
-    char *layoutQueryOptional,
-    char *layoutKvOptional,
+    char *layoutOptional,
     int64_t sparseMode,
     int64_t preTokens,
     int64_t nextTokens,

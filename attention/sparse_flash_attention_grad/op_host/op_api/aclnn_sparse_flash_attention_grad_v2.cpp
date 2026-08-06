@@ -24,7 +24,7 @@ extern aclnnStatus aclnnInnerSparseFlashAttentionGradGetWorkspaceSize(
     const aclTensor *dOut, const aclTensor *out, const aclTensor *softmaxMax, const aclTensor *softmaxSum,
     const aclTensor *sinksOptional, const aclTensor *valueOptional, const aclTensor *actualSeqLengthsQueryOptional,
     const aclTensor *actualSeqLengthsKvOptional, const aclTensor *queryRopeOptional, const aclTensor *keyRopeOptional,
-    double scaleValue, int64_t sparseBlockSize, char *layoutOptional, char *layoutKvOptional, int64_t sparseMode,
+    double scaleValue, int64_t sparseBlockSize, char *layoutOptional, int64_t sparseMode,
     int64_t preTokens, int64_t nextTokens, bool deterministic, const aclTensor *dQueryOut, const aclTensor *dKeyOut,
     const aclTensor *dValueOutOptional, const aclTensor *dQueryRopeOutOptional, const aclTensor *dKeyRopeOutOptional,
     const aclTensor *dSinksOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
@@ -32,9 +32,9 @@ extern aclnnStatus aclnnInnerSparseFlashAttentionGradGetWorkspaceSize(
 extern aclnnStatus aclnnInnerSparseFlashAttentionGrad(void *workspace, uint64_t workspaceSize,
                                                       aclOpExecutor *executor, aclrtStream stream);
 
-// 【新增 V2】oss-sink + layout 拆分接口：sinks 与 dSinks 必须成对出现。
-// 位置参数顺序与 V1 商发兼容签名完全一致，仅在 softmaxSum 后插 sinks、sparseBlockSize 后插
-// layoutQuery/layoutKv、dKeyRopeOutOptional 后插 dSinksOptional。复用同一 OpDef 与同一 inner aclnn。
+// 【新增 V2】oss-sink 接口：sinks 与 dSinks 必须成对出现。
+// 位置参数顺序与 V1 商发兼容签名完全一致，仅在 softmaxSum 后插 sinks、dKeyRopeOutOptional 后插
+// dSinksOptional。复用同一 OpDef 与同一 inner aclnn。
 aclnnStatus aclnnSparseFlashAttentionGradV2GetWorkspaceSize(
     const aclTensor *query,
     const aclTensor *key,
@@ -51,8 +51,7 @@ aclnnStatus aclnnSparseFlashAttentionGradV2GetWorkspaceSize(
     const aclTensor *keyRopeOptional,
     double scaleValue,
     int64_t sparseBlockSize,
-    char *layoutQueryOptional,
-    char *layoutKvOptional,
+    char *layoutOptional,
     int64_t sparseMode,
     int64_t preTokens,
     int64_t nextTokens,
@@ -79,7 +78,7 @@ aclnnStatus aclnnSparseFlashAttentionGradV2GetWorkspaceSize(
     return aclnnInnerSparseFlashAttentionGradGetWorkspaceSize(
         query, key, sparseIndices, dOut, out, softmaxMax, softmaxSum, sinks, value,
         actualSeqLengthsQueryOptional, actualSeqLengthsKvOptional, queryRopeOptional, keyRopeOptional,
-        scaleValue, sparseBlockSize, layoutQueryOptional, layoutKvOptional, sparseMode,
+        scaleValue, sparseBlockSize, layoutOptional, sparseMode,
         preTokens, nextTokens, deterministic, dQueryOut, dKeyOut, dValueOut, dQueryRopeOutOptional,
         dKeyRopeOutOptional, dSinksOptional, workspaceSize, executor);
 }

@@ -29,7 +29,7 @@ class SparseFlashAttentionGradOpBuilder(OpBuilder):
             "Tensor d_out, Tensor out, Tensor softmax_max, Tensor softmax_sum, Tensor? sinks, "
             "float scale_value, int sparse_block_size, "
             "*, Tensor? query_rope=None, Tensor? key_rope=None, Tensor? actual_seq_qlen=None, "
-            "Tensor? actual_seq_kvlen=None, str layout_q=\"BSND\", str layout_kv=\"BSND\", int sparse_mode=3, "
+            "Tensor? actual_seq_kvlen=None, str layout=\"BSND\", int sparse_mode=3, "
             "int win_left=2147483647, int win_right=2147483647, int attention_mode=0, "
             "bool deterministic=False) "
             "-> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)"
@@ -58,8 +58,7 @@ class SparseFlashAttentionGradOpBuilder(OpBuilder):
             key_rope=None,
             actual_seq_qlen=None,
             actual_seq_kvlen=None,
-            layout_q="BSND",
-            layout_kv="BSND",
+            layout="BSND",
             sparse_mode=3,
             win_left=2147483647,
             win_right=2147483647,
@@ -108,8 +107,7 @@ def sparse_flash_attention_grad(
     key_rope=None,
     actual_seq_qlen=None,
     actual_seq_kvlen=None,
-    layout_q="BSND",
-    layout_kv="BSND",
+    layout="BSND",
     sparse_mode=3,
     win_left=2147483647,
     win_right=2147483647,
@@ -134,8 +132,7 @@ def sparse_flash_attention_grad(
         key_rope (Tensor, optional): key 的 rope 部分，dtype 与 query 一致，仅 layout=TND 时使用。
         actual_seq_qlen (Tensor, optional): query 实际序列长度，int32，shape [B]。
         actual_seq_kvlen (Tensor, optional): key/value 实际序列长度，int32，shape [B]。
-        layout_q (str): query 输入排布，支持 "BSND"/"TND"，默认 "BSND"。
-        layout_kv (str): key/value 输入排布，支持 "BSND"/"TND"，默认 "BSND"。约定与 layout_q 恒等（q==kv）。
+        layout (str): 输入排布，支持 "BSND"/"TND"，默认 "BSND"。
         sparse_mode (int): 稀疏模式，默认 3。
         win_left (int): 左侧窗口 token 数，默认 2147483647。
         win_right (int): 右侧窗口 token 数，默认 2147483647。
@@ -165,8 +162,7 @@ def sparse_flash_attention_grad(
         key_rope,
         actual_seq_qlen,
         actual_seq_kvlen,
-        layout_q,
-        layout_kv,
+        layout,
         sparse_mode,
         win_left,
         win_right,

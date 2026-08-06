@@ -50,8 +50,7 @@ enum class OutputIndex : uint32_t {
 enum class AttrIndex : uint32_t {
     SCALE_VALUE = 0,
     SELECTED_BLOCK_SIZE,
-    LAYOUT_Q,
-    LAYOUT_KV
+    INPUT_LAYOUT
 };
 
 ge::graphStatus InferShape4SparseFlashAttentionGrad(gert::InferShapeContext *context)
@@ -75,8 +74,7 @@ ge::graphStatus InferShape4SparseFlashAttentionGrad(gert::InferShapeContext *con
     OP_CHECK_NULL_WITH_CONTEXT(context, scaleValue);
     auto selectedBlockSize = attrs->GetInt(static_cast<size_t>(AttrIndex::SELECTED_BLOCK_SIZE));
     OP_CHECK_NULL_WITH_CONTEXT(context, selectedBlockSize);
-    // 【改造】layout 拆分：约定 q==kv 恒等，仅取 layout_q 参与 shape 校验（tiling 层已校验相等）
-    const char *inputLayout = attrs->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::LAYOUT_Q));
+    const char *inputLayout = attrs->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::INPUT_LAYOUT));
     OP_CHECK_NULL_WITH_CONTEXT(context, inputLayout);
 
     std::string inputLayoutSfag = std::string(inputLayout);

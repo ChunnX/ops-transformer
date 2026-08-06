@@ -411,16 +411,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     int64_t dimDv = valueShape.GetDim(dimSize - 1);
 
     // attrs
-    // 【改造】layout 拆分为 layout_q / layout_kv：约定 q==kv 恒等，校验相等后沿用单一 inputLayout 逻辑（kernel 零改动）
-    const char *layoutQ = context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::LAYOUT_Q));
-    const char *layoutKv = context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::LAYOUT_KV));
-    if (strcmp(layoutQ, layoutKv) != 0) {
-        OP_LOGE(context_,
-                "SparseFlashAttentionGrad layout_q and layout_kv should be equal, but got layout_q=%s, layout_kv=%s.",
-                layoutQ, layoutKv);
-        return ge::GRAPH_FAILED;
-    }
-    const char *inputLayout = layoutQ;
+    const char *inputLayout = context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::INPUT_LAYOUT));
     auto selected_block_count = indicesShape.GetDim(dimSize - 1);
     if (selected_block_count % 1024 != 0 || selected_block_count < 1024 || selected_block_count > 8192) {
         OP_LOGE(context_, "SparseFlashAttentionGrad only support selected_block_count [1024, 2048, 3072, 4096, 5120, 6144, 7168, 8192] now, but got selected_block_count=%ld.", selected_block_count);

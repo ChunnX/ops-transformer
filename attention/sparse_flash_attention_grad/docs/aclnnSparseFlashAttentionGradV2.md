@@ -25,7 +25,6 @@
 
 - **接口功能**：根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。
 - **OSS Sink（可选）**：V2 支持可学习 OSS Sink 输入（sinks）与对应梯度输出（dSinks），二者必须成对传入。sinks 仅支持 <term>Ascend 950PR/Ascend 950DT</term>。
-- **layout 拆分**：V2 将 layout 拆分为 layout_q 与 layout_kv 两个独立参数。当前约束 layout_q 与 layout_kv 恒等（q==kv，仅支持 BSND/TND），tiling 侧校验二者一致后沿用单一排布逻辑。
 
 - **计算公式**：根据传入的topkIndice对keyIn和value选取数量为selectedBlockCount个大小为selectedBlockSize的数据重排，公式如下：
 
@@ -86,7 +85,7 @@
 每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnSparseFlashAttentionGradV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashAttentionGradV2”接口执行计算。
 
 > [!NOTE]
-> V2 为新增接口（6 输出，携带 sinks/dSinks 并支持 layout_q/layout_kv 拆分），与 V1 共用同一 OpDef 与 inner 实现。需要商发兼容签名（5 输出、无 sinks/dSinks、单一 layout）时请使用 [aclnnSparseFlashAttentionGrad](aclnnSparseFlashAttentionGrad.md)。
+> V2 为新增接口（6 输出，携带 sinks/dSinks），与 V1 共用同一 OpDef 与 inner 实现。需要商发兼容签名（5 输出、无 sinks/dSinks）时请使用 [aclnnSparseFlashAttentionGrad](aclnnSparseFlashAttentionGrad.md)。
 
 ```c++
 aclnnStatus aclnnSparseFlashAttentionGradV2GetWorkspaceSize(
@@ -105,8 +104,7 @@ aclnnStatus aclnnSparseFlashAttentionGradV2GetWorkspaceSize(
     const aclTensor     *keyRopeOptional,
     double               scaleValue,
     int64_t              sparseBlockSize,
-    char                *layoutQueryOptional,
-    char                *layoutKvOptional,
+    char                *layoutOptional,
     int64_t              sparseMode,
     int64_t              preTokens,
     int64_t              nextTokens,
@@ -358,23 +356,11 @@ aclnnStatus aclnnSparseFlashAttentionGradV2(
             <td>-</td>
         </tr>
         <tr>
-            <td>layoutQuery</td>
+            <td>layout</td>
             <td>输入</td>
-            <td>query 的 layout 格式。</td>
+            <td>输入数据的 layout 格式。</td>
             <td>
             支持BSND、TND。
-            </td>
-            <td>STRING</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        <tr>
-            <td>layoutKv</td>
-            <td>输入</td>
-            <td>key/value 的 layout 格式。</td>
-            <td>
-            支持BSND、TND。当前约束与 layoutQuery 恒等（q==kv）。
             </td>
             <td>STRING</td>
             <td>-</td>
@@ -617,7 +603,6 @@ aclnnStatus aclnnSparseFlashAttentionGradV2(
     - KV merge场景下，value和dValueOut需传入空指针，dKeyOut返回dK+dV，不再单独返回dValue。
     - OSS Sink：sinks 与 dSinksOptional 必须成对出现（同传或同空），仅传一个会返回 ACLNN_ERR_PARAM_INVALID。
     - OSS Sink：sinks 仅支持 <term>Ascend 950PR/Ascend 950DT</term>，其它平台传入 sinks 返回 ACLNN_ERR_RUNTIME_ERROR。
-    - layout 拆分：layoutQuery 与 layoutKv 必须恒等（q==kv，支持 BSND/TND），二者不一致时 tiling 报错返回。
 
 - Mask
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
@@ -740,9 +725,9 @@ aclnnStatus aclnnSparseFlashAttentionGradV2(
             <td>不建议K * sparseBlockSize超过100k，由于内部算法硬件限制可能会导致oom</td>
         </tr>
         <tr>
-            <td>layout_q、layout_kv</td>
+            <td>layout</td>
             <td>BSND/TND</td>
-            <td>layout_q 与 layout_kv 必须恒等（q==kv）</td>
+            <td>query 与 key/value 共用同一 layout</td>
         </tr>
         </tbody>
     </table>
@@ -957,8 +942,7 @@ int main() {
   int64_t preTokens = 2147483647;
   int64_t nextTokens = 2147483647;
   bool deterministic = false;
-  char layoutQuery[5] = {'T', 'N', 'D', 0};
-  char layoutKv[5] = {'T', 'N', 'D', 0};
+  char layout[5] = {'T', 'N', 'D', 0};
 
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   uint64_t workspaceSize = 0;
@@ -966,7 +950,7 @@ int main() {
 
   // 调用aclnnSparseFlashAttentionGradV2第一段接口
   ret = aclnnSparseFlashAttentionGradV2GetWorkspaceSize(q, k, v, sparseIndices, dOut, out, softmaxMax, softmaxSum, sinks,
-            actSeqQLen, actSeqKvLen, qRope, kRope, scaleValue, sparseBlockSize, layoutQuery, layoutKv, sparseMode,
+            actSeqQLen, actSeqKvLen, qRope, kRope, scaleValue, sparseBlockSize, layout, sparseMode,
             preTokens, nextTokens, deterministic, dq, dk, dv, dqRope, dkRope, dSinks, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnSparseFlashAttentionGradV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 

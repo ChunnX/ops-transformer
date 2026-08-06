@@ -151,7 +151,6 @@ public:
         this->Attr("scale_value").AttrType(REQUIRED).Float(1.0);
         this->Attr("sparse_block_size").AttrType(OPTIONAL).Int(1);
         this->Attr("layout").AttrType(OPTIONAL).String("BSND");
-        this->Attr("layout_kv").AttrType(OPTIONAL).String("BSND"); // 【改造】layout 拆分：q/kv 恒等，tiling 校验 layout_q==layout_kv
         this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3);
         this->Attr("pre_tokens").AttrType(OPTIONAL).Int(2147483647);
         this->Attr("next_tokens").AttrType(OPTIONAL).Int(2147483647);

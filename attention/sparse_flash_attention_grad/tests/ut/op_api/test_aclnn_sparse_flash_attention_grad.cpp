@@ -195,7 +195,7 @@ TEST_F(SparseFlashAttentionGradArch35SinkUt, S1_tnd_rope_with_sinks)
         t.query.get(), t.key.get(), t.value.get(), t.sparseIndices.get(), t.dOut.get(), t.out.get(),
         t.softmaxMax.get(), t.softmaxSum.get(), sinks.get(),
         t.actSeqQ.get(), t.actSeqKv.get(), t.qRope.get(), t.kRope.get(),
-        0.0441941738, 1, layout, layout, 0, INT64_MAX, INT64_MAX, false,
+        0.0441941738, 1, layout, 0, INT64_MAX, INT64_MAX, false,
         t.dQ.get(), t.dK.get(), t.dV.get(), t.dQRope.get(), t.dKRope.get(), dSinks.get(),
         &workspaceSize, &executor);
 
@@ -216,7 +216,7 @@ TEST_F(SparseFlashAttentionGradArch35SinkUt, S2_tnd_rope_no_sinks)
         t.query.get(), t.key.get(), t.value.get(), t.sparseIndices.get(), t.dOut.get(), t.out.get(),
         t.softmaxMax.get(), t.softmaxSum.get(), nullptr,
         t.actSeqQ.get(), t.actSeqKv.get(), t.qRope.get(), t.kRope.get(),
-        0.0441941738, 1, layout, layout, 0, INT64_MAX, INT64_MAX, false,
+        0.0441941738, 1, layout, 0, INT64_MAX, INT64_MAX, false,
         t.dQ.get(), t.dK.get(), t.dV.get(), t.dQRope.get(), t.dKRope.get(), nullptr,
         &workspaceSize, &executor);
 
@@ -239,7 +239,7 @@ TEST_F(SparseFlashAttentionGradArch35SinkUt, S3_tnd_rope_with_sinks_deter)
         t.query.get(), t.key.get(), t.value.get(), t.sparseIndices.get(), t.dOut.get(), t.out.get(),
         t.softmaxMax.get(), t.softmaxSum.get(), sinks.get(),
         t.actSeqQ.get(), t.actSeqKv.get(), t.qRope.get(), t.kRope.get(),
-        0.0441941738, 1, layout, layout, 0, INT64_MAX, INT64_MAX, true,
+        0.0441941738, 1, layout, 0, INT64_MAX, INT64_MAX, true,
         t.dQ.get(), t.dK.get(), t.dV.get(), t.dQRope.get(), t.dKRope.get(), dSinks.get(),
         &workspaceSize, &executor);
 
@@ -262,7 +262,7 @@ TEST_F(SparseFlashAttentionGradArch35SinkUt, S4_tnd_rope_n1_24_non_aligned)
         t.query.get(), t.key.get(), t.value.get(), t.sparseIndices.get(), t.dOut.get(), t.out.get(),
         t.softmaxMax.get(), t.softmaxSum.get(), sinks.get(),
         t.actSeqQ.get(), t.actSeqKv.get(), t.qRope.get(), t.kRope.get(),
-        0.0441941738, 1, layout, layout, 0, INT64_MAX, INT64_MAX, false,
+        0.0441941738, 1, layout, 0, INT64_MAX, INT64_MAX, false,
         t.dQ.get(), t.dK.get(), t.dV.get(), t.dQRope.get(), t.dKRope.get(), dSinks.get(),
         &workspaceSize, &executor);
 
@@ -284,7 +284,7 @@ TEST_F(SparseFlashAttentionGradArch35SinkUt, E2_sinks_present_but_dsinks_null)
         t.query.get(), t.key.get(), t.value.get(), t.sparseIndices.get(), t.dOut.get(), t.out.get(),
         t.softmaxMax.get(), t.softmaxSum.get(), sinks.get(),
         t.actSeqQ.get(), t.actSeqKv.get(), t.qRope.get(), t.kRope.get(),
-        0.0441941738, 1, layout, layout, 0, INT64_MAX, INT64_MAX, false,
+        0.0441941738, 1, layout, 0, INT64_MAX, INT64_MAX, false,
         t.dQ.get(), t.dK.get(), t.dV.get(), t.dQRope.get(), t.dKRope.get(), nullptr,
         &workspaceSize, &executor);
 

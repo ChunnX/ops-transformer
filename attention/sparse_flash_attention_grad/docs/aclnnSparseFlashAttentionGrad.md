@@ -24,7 +24,7 @@
 ## 功能说明
 
 - **接口功能**：根据topkIndices对key和value选取大小为selectedBlockSize的数据重排，接着进行训练场景下计算注意力的反向输出。
-- **OSS Sink（可选）**：V1 不携带 sinks/dSinks。支持可学习 OSS Sink（sinks/dSinks）以及 layout_q/layout_kv 拆分的版本请见 [aclnnSparseFlashAttentionGradV2](aclnnSparseFlashAttentionGradV2.md)。
+- **OSS Sink（可选）**：V1 不携带 sinks/dSinks。支持可学习 OSS Sink（sinks/dSinks）的版本请见 [aclnnSparseFlashAttentionGradV2](aclnnSparseFlashAttentionGradV2.md)。
 
 - **计算公式**：根据传入的topkIndice对keyIn和value选取数量为selectedBlockCount个大小为selectedBlockSize的数据重排，公式如下：
 
@@ -85,7 +85,7 @@
 每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnSparseFlashAttentionGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashAttentionGrad”接口执行计算。
 
 > [!NOTE]
-> V1 为商发兼容接口（5 输出，不携带 sinks/dSinks），位置参数与商发 `npu_sparse_flash_attention_grad` 严格对齐。需要 OSS Sink（sinks/dSinks）或 layout_q/layout_kv 拆分时请使用 [aclnnSparseFlashAttentionGradV2](aclnnSparseFlashAttentionGradV2.md)。
+> V1 为商发兼容接口（5 输出，不携带 sinks/dSinks），位置参数与商发 `npu_sparse_flash_attention_grad` 严格对齐。需要 OSS Sink（sinks/dSinks）时请使用 [aclnnSparseFlashAttentionGradV2](aclnnSparseFlashAttentionGradV2.md)。
 
 ```c++
 aclnnStatus aclnnSparseFlashAttentionGradGetWorkspaceSize(
