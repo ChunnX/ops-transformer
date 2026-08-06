@@ -196,15 +196,11 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckAttrs() const
 
 ge::graphStatus QuantBlockSparseAttnCheck::CheckSoftmaxScale() const
 {
-    const auto &opParamInfo = tilingInfo_.opParamInfo;
-    if (opParamInfo.softmaxScale != nullptr) {
-        if (tilingInfo_.softmaxScaleVal <= 0.0F || tilingInfo_.softmaxScaleVal > 1.0F) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "softmax_scale",
-                                                  std::to_string(tilingInfo_.softmaxScaleVal),
-                                                  "Must be in range (0, 1] when explicitly passed; "
-                                                  "omit the attribute to use default 1/sqrt(D)");
-            return ge::GRAPH_FAILED;
-        }
+    if (tilingInfo_.softmaxScaleVal <= 0.0F || tilingInfo_.softmaxScaleVal > 1.0F) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "softmax_scale",
+                                              std::to_string(tilingInfo_.softmaxScaleVal),
+                                              "Must be in range (0, 1]");
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
