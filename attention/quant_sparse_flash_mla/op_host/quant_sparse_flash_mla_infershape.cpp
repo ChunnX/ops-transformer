@@ -24,6 +24,30 @@ using namespace ge;
 namespace ops {
 constexpr uint32_t QUERY_INPUT_INDEX = 0;
 
+static std::vector<int64_t> ToVectorFunc(const gert::Shape &shape)
+{
+    size_t shapeSize = shape.GetDimNum();
+    std::vector<int64_t> shapeVec(shapeSize, 0L);
+
+    for (size_t i = 0UL; i < shapeSize; i++) {
+        shapeVec[i] = shape.GetDim(i);
+    }
+    return shapeVec;
+}
+
+static std::string ToStringFunc(const gert::Shape &shape)
+{
+    std::ostringstream oss;
+    auto v = ToVectorFunc(shape);
+    if (v.size() > 0UL) {
+        for (size_t i = 0UL; i < v.size() - 1UL; ++i) {
+            oss << v[i] << ", ";
+        }
+        oss << v[v.size() - 1UL];
+    }
+    return oss.str();
+}
+
 ge::graphStatus InferShapeQuantSparseFlashMla(gert::InferShapeContext *context)
 {
     OP_CHECK_IF(context == nullptr,
@@ -49,6 +73,16 @@ ge::graphStatus InferShapeQuantSparseFlashMla(gert::InferShapeContext *context)
     const char *layoutKv = attr->GetStr(ATTR_LAYOUT_KV_INDEX);
     std::string layoutQStr = (layoutQ != nullptr) ? std::string(layoutQ) : "BSND";
     std::string layoutKvStr = (layoutKv != nullptr) ? std::string(layoutKv) : "BSND";
+    if (queryShape->GetShapeSize() <= 0) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "q", ToStringFunc(queryShape->GetShapeSize()).c_str(),
+            "The shape size of query should be greater than 0");
+        return ge::GRAPH_FAILED;
+    }
+    if (kvShape->GetShapeSize() <= 0) {
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "ori_kv or cmp_kv", ToStringFunc(kvShape->GetShapeSize()).c_str(),
+            "The shape size of ori_kv or cmp_kv should be greater than 0");
+        return ge::GRAPH_FAILED;
+    }
     if (returnSoftmaxLse) {
         if (layoutQStr == "TND") {
             int64_t kvHeadNum;
