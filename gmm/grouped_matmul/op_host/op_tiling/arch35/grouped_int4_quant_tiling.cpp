@@ -9,8 +9,8 @@
  */
 
 /*!
- * \file grouped_a4w4_quant_tiling.cpp
- * \brief A4W4 quantization tiling for Atlas A5.
+ * \file grouped_int4_quant_tiling.cpp
+ * \brief
  */
 
 #include "grouped_int4_quant_tiling.h"
@@ -29,8 +29,8 @@ constexpr uint64_t CUBE_BLOCK = 16UL;
 constexpr uint64_t INT8_NZ_C0 = 32UL;
 constexpr uint32_t DATA_SIZE_L0C = 4U;
 constexpr uint64_t GMM_MAX_GROUP_LIST_SIZE = 1024UL;
-constexpr size_t LAST_FIRST_DIM_INDEX = 1;
-constexpr size_t LAST_SECOND_DIM_INDEX = 2;
+constexpr size_t LAST_FIRST_DIM_INDEX = 1U;
+constexpr size_t LAST_SECOND_DIM_INDEX = 2U;
 constexpr float EFFECTIVE_TASK_RATIO = 0.95f;
 
 inline uint64_t CeilDiv(uint64_t a, uint64_t b) { return (a + b - 1UL) / b; }
@@ -54,10 +54,10 @@ GroupedA4W4IntQuantTiling::GroupedA4W4IntQuantTiling(gert::TilingContext *contex
 void GroupedA4W4IntQuantTiling::Reset()
 {
     a4w4Tiling_ = A4W4BasicTiling{};
-    int8WeightWs_ = 0;
-    int8XWs_ = 0;
-    mmOutWs_ = 0;
-    perTokenScaleFillWs_ = 0;
+    int8WeightWs_ = 0UL;
+    int8XWs_ = 0UL;
+    mmOutWs_ = 0UL;
+    perTokenScaleFillWs_ = 0UL;
 }
 
 bool GroupedA4W4IntQuantTiling::IsCapable()
@@ -85,6 +85,10 @@ ge::graphStatus GroupedA4W4IntQuantTiling::GetPlatformInfo()
 
 ge::graphStatus GroupedA4W4IntQuantTiling::GetShapeAttrsInfo()
 {
+    if (context_ == nullptr) {
+        OP_LOGE("GroupedA4W4IntQuantTiling", "context_ is nullptr.");
+        return ge::GRAPH_FAILED;
+    }
     auto xDesc = context_->GetDynamicInputDesc(X_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xDesc);
     inputParams_.aDtype = xDesc->GetDataType();
@@ -104,30 +108,27 @@ ge::graphStatus GroupedA4W4IntQuantTiling::GetShapeAttrsInfo()
     }
     inputParams_.bFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
     auto attrs = context_->GetAttrs();
-    if (attrs != nullptr) {
-        OP_CHECK_IF(attrs->GetAttrNum() < ATTR_INDEX_ACT_TYPE + 1,
-                    OP_LOGE(context_->GetNodeName(), "A4W4: attr num < %lu, got %zu.",
-                            ATTR_INDEX_ACT_TYPE + 1, attrs->GetAttrNum()),
-                    return ge::GRAPH_FAILED);
-        const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
-        const bool *transposeXPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_X);
-        const int64_t *groupTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPTYPE);
-        const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE);
-        const int64_t *actTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_ACT_TYPE);
-        inputParams_.transB = (transposeWeightPtr != nullptr) && *transposeWeightPtr;
-        inputParams_.transA = (transposeXPtr != nullptr) && *transposeXPtr;
-        inputParams_.groupType = (groupTypePtr != nullptr) ? static_cast<int8_t>(*groupTypePtr) : inputParams_.groupType;
-        inputParams_.groupListType = (groupListTypePtr != nullptr) ? static_cast<uint8_t>(*groupListTypePtr) : inputParams_.groupListType;
-        int64_t actTypeVal = (actTypePtr != nullptr) ? *actTypePtr : 0L;
-        OP_CHECK_IF(actTypeVal != 0L,
-                    OP_LOGE(context_->GetNodeName(), "A4W4: actType must be 0, got %ld.", actTypeVal),
-                    return ge::GRAPH_FAILED);
-    } else {
-        inputParams_.groupType = static_cast<int8_t>(GroupedMatmul::SPLIT_M);
-        inputParams_.groupListType = 0U;
-        inputParams_.transA = false;
-        inputParams_.transB = false;
+    if (attrs == nullptr) {
+        OP_LOGE(context_->GetNodeName(), "A4W4: attrs is nullptr.");
+        return ge::GRAPH_FAILED;
     }
+    OP_CHECK_IF(attrs->GetAttrNum() < ATTR_INDEX_ACT_TYPE + 1,
+                OP_LOGE(context_->GetNodeName(), "A4W4: attr num < %lu, got %zu.",
+                        ATTR_INDEX_ACT_TYPE + 1, attrs->GetAttrNum()),
+                return ge::GRAPH_FAILED);
+    const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
+    const bool *transposeXPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_X);
+    const int64_t *groupTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUPTYPE);
+    const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE);
+    const int64_t *actTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_ACT_TYPE);
+    inputParams_.transB = (transposeWeightPtr != nullptr) && *transposeWeightPtr;
+    inputParams_.transA = (transposeXPtr != nullptr) && *transposeXPtr;
+    inputParams_.groupType = (groupTypePtr != nullptr) ? static_cast<int8_t>(*groupTypePtr) : inputParams_.groupType;
+    inputParams_.groupListType = (groupListTypePtr != nullptr) ? static_cast<uint8_t>(*groupListTypePtr) : inputParams_.groupListType;
+    int64_t actTypeVal = (actTypePtr != nullptr) ? *actTypePtr : 0L;
+    OP_CHECK_IF(actTypeVal != 0L,
+                OP_LOGE(context_->GetNodeName(), "A4W4: actType must be 0, got %ld.", actTypeVal),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(inputParams_.groupType != GroupedMatmul::SPLIT_M,
                 OP_LOGE(context_->GetNodeName(), "A4W4: groupType must be 0(SPLIT_M), got %d.",
                         static_cast<int32_t>(inputParams_.groupType)),
@@ -271,7 +272,7 @@ uint32_t GroupedA4W4IntQuantTiling::FindBestSingleN() const
     if (taskNumPerCore <= 1) {
         return a4w4Tiling_.baseN;
     }
-    for (uint32_t i = 1; i <= static_cast<uint32_t>(usedCore); ++i) {
+    for (uint32_t i = 1U; i <= static_cast<uint32_t>(usedCore); ++i) {
         uint32_t candidate = static_cast<uint32_t>(CeilDiv(inputParams_.nSize, static_cast<uint64_t>(i)));
         if (candidate % a4w4Tiling_.baseN != 0) {
             continue;
@@ -360,7 +361,7 @@ ge::graphStatus GroupedA4W4IntQuantTiling::CalL1Tiling()
 {
     InitCommonL1TilingFields();
     if (inputParams_.kSize == 0UL) { return ge::GRAPH_SUCCESS; }
-    uint64_t leftL1Size = 0;
+    uint64_t leftL1Size = 0UL;
     OP_CHECK_IF(CalcLeftL1Size(leftL1Size) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalcLeftL1Size failed."), return ge::GRAPH_FAILED);
     return CalL1Depth(leftL1Size);
