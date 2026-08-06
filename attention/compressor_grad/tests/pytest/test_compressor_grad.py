@@ -13,11 +13,11 @@ import random
 
 import os
 import torch
-from test_cases import REDLINE_CASES
-from cpu_golden import compressor_grad_golden
-from npu_core import NPUBackend
-import compressor_core
-from precision_check import (
+from test_compressor_grad_cases import REDLINE_CASES
+from compressor_grad_cpu_golden import compressor_grad_golden
+from compressor_grad_npu import NPUBackend
+import compressor_grad_forward
+from compressor_grad_check import (
     check_one_output,
     check_result,
     print_log,
@@ -143,13 +143,13 @@ def check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu, stateCacheCpu, ape
                            cmpRatio, coff, cacheMode, headDim, dataType):
     """通路 1 增强：正向输出（cmp_kv/softmax_score/kv）与小算子拼接参考比对。
 
-    参考实现：compressor_core.compressor_forward（纯 PyTorch 小算子拼接）。
+    参考实现：compressor_grad_forward.compressor_forward（纯 PyTorch 小算子拼接）。
     仅比对有效压缩块行（padding 行参考为 0、NPU 不保证写）。
     """
     coffD = coff * headDim
     kv_state = stateCacheCpu[..., :coffD]
     score_state = stateCacheCpu[..., coffD:]
-    ref_cmp, ref_mask, _, _, ref_sm, ref_kv = compressor_core.compressor_forward(
+    ref_cmp, ref_mask, _, _, ref_sm, ref_kv = compressor_grad_forward.compressor_forward(
         xCpu, wkvCpu, wgateCpu, kv_state, score_state, apeCpu, blockTableCpu,
         [int(v) for v in spGolden] if spGolden is not None else None,
         cmp_ratio=cmpRatio, coff=coff, cache_mode=cacheMode,
@@ -182,7 +182,7 @@ def check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu, stateCacheCpu, ape
     return {"status": "PASS" if ok else "FAIL", "detail": "  ".join(results)}
 
 
-def npu_test(case, device):
+def run_case(case, device):
     """Run one test case and return result dict."""
     name = case["testcase_name"]
     batchSize = case["B"]
@@ -562,5 +562,5 @@ def test_compressor_grad(case):
     """
     device = f"npu:{DEVICE_ID}"
     torch.npu.set_device(device)
-    result = npu_test(case, device)
+    result = run_case(case, device)
     assert result["status"] == "PASS", format_case_line(result)
