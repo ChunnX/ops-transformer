@@ -67,6 +67,5 @@ from .dense_lightning_indexer_softmax_lse import (
 )
 from .ffn_to_attention_v2 import (
     ffn_to_attention_v2,
-    register_window_memory,
-    get_window_memory_ptr,
+    FFNToAttentionV2Buffer,
 )
