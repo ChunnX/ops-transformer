@@ -57,7 +57,7 @@ public:
                                 __gm__ uint8_t *sparseIndices, __gm__ uint8_t *keyScale, __gm__ uint8_t *valueScale,
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ,
                                 __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *attentionOut,
-                                __gm__ uint8_t *workspace,
+                                __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
                                 const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
@@ -66,6 +66,7 @@ private:
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                             __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable,
                                             __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
+                                            __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
                                             __gm__ uint8_t *workspace,
                                             const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
                                             TPipe *tPipe);
@@ -127,7 +128,8 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::Init(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
     __gm__ uint8_t *keyScale, __gm__ uint8_t *valueScale, __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ,
-    __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+    __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxMax,
+    __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
     const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling, TPipe *tPipe)
 {
     fa_base_matmul::idCounterNum = 0;
@@ -154,7 +156,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         constInfo.needInit = this->sharedParams.needInit;
         constInfo.dSizeV = 512;
     }
-    vecBlock.CleanOutput(attentionOut, constInfo);
+    vecBlock.CleanOutput(attentionOut, softmaxMax, softmaxSum, constInfo);
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf(workspace);
     if ASCEND_IS_AIC {
@@ -169,8 +171,8 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         }
     }
     this->ComputeConstexpr();
-    this->InitGlobalBuffer(query, key, value, sparseIndices, blockTable, actualSeqLengthsQ, actualSeqLengths, workspace,
-                           tiling, tPipe); // gm设置
+    this->InitGlobalBuffer(query, key, value, sparseIndices, blockTable, actualSeqLengthsQ, actualSeqLengths, softmaxMax,
+                           softmaxSum, workspace, tiling, tPipe); // gm设置
     this->InitCalcParamsEach();
     this->InitLocalBuffer();
 }
@@ -315,7 +317,8 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::InitGlobalBuffer(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-    __gm__ uint8_t *workspace, const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling, TPipe *tPipe)
+    __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
+    const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling, TPipe *tPipe)
 {
     if (actualSeqLengthsQ != nullptr) {
         actualSeqQlenAddr = (__gm__ int32_t *)actualSeqLengthsQ;
@@ -325,7 +328,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         actualSeqKvlenAddr = (__gm__ int32_t *)actualSeqLengths;
     }
 
-    vecBlock.InitGlobalBuffer(key, value, sparseIndices, blockTable);
+    vecBlock.InitGlobalBuffer(key, value, sparseIndices, blockTable, softmaxMax, softmaxSum);
     cubeBlock.InitCubeInput(actualSeqLengthsQ, constInfo);
 }
 
@@ -455,6 +458,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     if ASCEND_IS_AIV {
         constInfo.keyStride0 = this->tilingData->baseParams.keyStride0;
     }
+    constInfo.returnSoftmaxLse = this->sharedParams.returnSoftmaxLse;
 
     InitUniqueConstInfo();
 }

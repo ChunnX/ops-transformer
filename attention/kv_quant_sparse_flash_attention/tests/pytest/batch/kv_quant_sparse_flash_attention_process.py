@@ -70,6 +70,7 @@ def call_npu_eager(torch_tensor_dict, params):
         next_tokens=params.get("next_tokens", (1 << 63) - 1),
         key_dtype=_get_kv_torch_dtype(params["dtype_input"]["key"]),
         value_dtype=_get_kv_torch_dtype(params["dtype_input"]["value"]),
+        return_softmax_lse=params.get("return_softmax_lse", False),
     )
 
 
@@ -110,6 +111,7 @@ class Network(torch.nn.Module):
         value_dtype,
         pre_tokens,
         next_tokens,
+        return_softmax_lse,
     ):
         return torch_npu.npu_kv_quant_sparse_flash_attention(
             query=query,
@@ -136,6 +138,7 @@ class Network(torch.nn.Module):
             value_dtype=value_dtype,
             pre_tokens=pre_tokens,
             next_tokens=next_tokens,
+            return_softmax_lse=return_softmax_lse,
         )
 
 
@@ -186,4 +189,5 @@ def call_npu_graph(torch_tensor_dict, params):
         next_tokens=params.get("next_tokens", (1 << 63) - 1),
         key_dtype=_get_kv_torch_dtype(params["dtype_input"]["key"]),
         value_dtype=_get_kv_torch_dtype(params["dtype_input"]["value"]),
+        return_softmax_lse=params.get("return_softmax_lse", False),
     )

@@ -200,10 +200,31 @@
           <td>-</td>
       </tr>
       <tr>
+          <td>return_softmax_lse</td>
+          <td>可选属性</td>
+          <td>用于表示是否返回softmax_max和softmax_sum。True表示返回，False表示不返回，默认值为False。</td>
+          <td>BOOL</td>
+          <td>-</td>
+      </tr>
+      <tr>
           <td>output</td>
           <td>输出</td>
           <td>代表公式中的输出Attention。输出shape与入参query的shape保持一致，layout_query为"BSND"时shape为[B, Q_S, Q_N, Q_out_D]，layout_query为"TND"时shape为[Q_T, Q_N, Q_out_D]，其中Q_out_D = Q_D - rope_head_dim。</td>
           <td>FLOAT16、BFLOAT16</td>
+          <td>ND</td>
+      </tr>
+      <tr>
+          <td>softmax_max</td>
+          <td>输出</td>
+          <td>Attention算法对query乘key的结果取max得到softmax_max。return_softmax_lse为True时，layout_query为"BSND"时shape为[B, KV_N, Q_S, Q_N/KV_N]，layout_query为"TND"时shape为[KV_N, Q_T, Q_N/KV_N]；return_softmax_lse为False时shape为[0]。</td>
+          <td>FLOAT</td>
+          <td>ND</td>
+      </tr>
+      <tr>
+          <td>softmax_sum</td>
+          <td>输出</td>
+          <td>Attention算法query乘key的结果减去softmax_max后取exp并求sum，得到softmax_sum。return_softmax_lse为True时，layout_query为"BSND"时shape为[B, KV_N, Q_S, Q_N/KV_N]，layout_query为"TND"时shape为[KV_N, Q_T, Q_N/KV_N]；return_softmax_lse为False时shape为[0]。</td>
+          <td>FLOAT</td>
           <td>ND</td>
       </tr>
       </tbody>

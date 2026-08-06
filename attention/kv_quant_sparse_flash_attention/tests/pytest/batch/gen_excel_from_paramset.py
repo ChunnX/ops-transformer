@@ -51,6 +51,7 @@ EXCEL_COLUMNS = [
     "sparse_mode",
     "attention_mode",
     "quant_scale_repo_mode",
+    "return_softmax_lse",
     "block_size",
     "block_num",
     "actual_seq_q",

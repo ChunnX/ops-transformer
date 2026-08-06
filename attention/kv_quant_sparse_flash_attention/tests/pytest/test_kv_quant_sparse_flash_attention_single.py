@@ -46,28 +46,42 @@ def execute_qsfa(param_combination):
     }
     if SAVE_PT:
         kv_quant_sparse_flash_attention_golden._save_test_case(test_data, PT_SAVE_PATH)
-    result, fulfill_percent = utils.qsfa_run_npu(
+    result, compare_results = utils.qsfa_run_npu(
         test_data, testcase_name=None, device_id=DEVICE_ID, result_path=RESULT_PATH
     )
     case_id += 1
-    return result, fulfill_percent, test_data
+    return result, compare_results, test_data
 
 
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combination", PARAM_COMBINATION_SET)
 def test_kv_quant_sparse_flash_attention(param_combination):
     test_data = None
-    fulfill_percent = 0.0
+    compare_results = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         futures = executor.submit(execute_qsfa, param_combination)
         for future in concurrent.futures.as_completed([futures]):
             try:
-                result, fulfill_percent, test_data = future.result()
+                result, compare_results, test_data = future.result()
                 if result == "Failed":
                     case_name = test_data.get("Testcase_Name", "unknown")
+                    return_softmax_lse = test_data.get("input", {}).get(
+                        "return_softmax_lse", False
+                    )
+                    compare_items = ["attn_out"]
+                    if return_softmax_lse:
+                        compare_items.extend(["softmax_max", "softmax_sum"])
+                    detail_parts = []
+                    for item in compare_items:
+                        item_result = compare_results.get(item, {})
+                        item_status = item_result.get("result", "Unknown")
+                        item_percent = item_result.get("fulfill_percent", 0.0)
+                        detail_parts.append(
+                            f"{item}: {item_status}({item_percent:.4f}%)"
+                        )
+                    detail_msg = ", ".join(detail_parts)
                     pytest.fail(
-                        f"用例名: {case_name}, 精度: {fulfill_percent:.4f}%",
-                        pytrace=False,
+                        f"用例名: {case_name}, 对比结果: {detail_msg}", pytrace=False
                     )
             except Exception as e:
                 params = test_data.get("params") if test_data else None
@@ -77,5 +91,5 @@ def test_kv_quant_sparse_flash_attention(param_combination):
                     else "unknown"
                 )
                 if params:
-                    utils.save_result(params, "Failed", "", RESULT_PATH)
+                    utils.save_result(params, "Failed", "", RESULT_PATH, None, None)
                 pytest.fail(f"用例名: {case_name}, 当前用例线程执行失败")

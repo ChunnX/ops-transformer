@@ -273,7 +273,11 @@ def compute_golden_with_provided_api_tensors(input_tensor_dict, params):
     if query is None or key is None:
         out_shape = list(query.shape) if query is not None else [1, 1, 1, 512]
         out_shape[-1] = 512
-        return torch.zeros(out_shape, dtype=torch.float16)
+        return (
+            torch.zeros(out_shape, dtype=torch.float16),
+            torch.zeros([1], dtype=torch.float32),
+            torch.zeros([1], dtype=torch.float32),
+        )
 
     tensor_dtypes = params.get("tensor_dtypes") or ()
     query_dtype = (
@@ -412,6 +416,35 @@ def compute_golden_with_provided_api_tensors(input_tensor_dict, params):
     out_shape_bnsd[-1] = d_kv
     y = torch.zeros(out_shape_bnsd, dtype=torch.float32)
     group = num_heads // num_kv_heads
+    return_softmax_lse = params.get("return_softmax_lse", False)
+    if return_softmax_lse:
+        if is_tnd_q:
+            softmax_max = torch.zeros(
+                [num_kv_heads, q_shape[0], group], dtype=torch.float32
+            )
+            softmax_sum = torch.zeros(
+                [num_kv_heads, q_shape[0], group], dtype=torch.float32
+            )
+        else:
+            softmax_max = torch.zeros(
+                [batch, num_kv_heads, seq_q, group], dtype=torch.float32
+            )
+            softmax_sum = torch.zeros(
+                [batch, num_kv_heads, seq_q, group], dtype=torch.float32
+            )
+    else:
+        softmax_max = torch.zeros([1], dtype=torch.float32)
+        softmax_sum = torch.zeros([1], dtype=torch.float32)
+
+    def _set_lse(batch_idx, n2_idx, s1_idx, q_offset, max_val, sum_val):
+        if not return_softmax_lse:
+            return
+        if is_tnd_q:
+            softmax_max[n2_idx, q_offset + s1_idx, :] = max_val
+            softmax_sum[n2_idx, q_offset + s1_idx, :] = sum_val
+        else:
+            softmax_max[batch_idx, n2_idx, s1_idx, :] = max_val
+            softmax_sum[batch_idx, n2_idx, s1_idx, :] = sum_val
 
     for batch_idx in range(batch):
         batch_q_len = (
@@ -424,6 +457,7 @@ def compute_golden_with_provided_api_tensors(input_tensor_dict, params):
             if batch_idx < len(act_kv_per_batch)
             else k_bnsd_shape[2]
         )
+        q_offset = 0 if batch_idx == 0 else sum(act_q_per_batch[0:batch_idx])
         for n2_idx in range(num_kv_heads):
             for s1_idx in range(batch_q_len):
                 if s1_idx < batch_q_len - batch_kv_len and sparse_mode != 0:
@@ -448,13 +482,16 @@ def compute_golden_with_provided_api_tensors(input_tensor_dict, params):
                 if empty:
                     continue
                 bmm1 = torch.matmul(q_curr.float(), k_sparse.float().T)
-                softmax_res = softmax(bmm1 * scale_value)
+                softmax_res, x_max, x_sum = softmax(bmm1 * scale_value)
+                _set_lse(
+                    batch_idx, n2_idx, s1_idx, q_offset, x_max[:, 0], x_sum[:, 0]
+                )
                 bmm2 = torch.matmul(softmax_res.float(), v_sparse.float())
                 y[batch_idx, n2_idx * group : (n2_idx + 1) * group, s1_idx, :] = bmm2
 
     out_shape = list(q_nope.shape)
     y_out = ttk_trans_bnsd_to_layout(y, out_shape, layout_query, act_q_per_batch)
-    return y_out.to(query.dtype)
+    return y_out.to(query.dtype), softmax_max, softmax_sum
 
 
 def cpu_kv_quant_sparse_flash_attention(
@@ -483,6 +520,7 @@ def cpu_kv_quant_sparse_flash_attention(
     rope_head_dim=64,
     key_dtype=None,
     value_dtype=None,
+    return_softmax_lse=False,
     **kwargs,
 ):
     """Golden reference implementation for KV-quantized sparse flash attention with MLA-absorb support."""
@@ -518,6 +556,7 @@ def cpu_kv_quant_sparse_flash_attention(
         "rope_head_dim": rope_head_dim,
         "key_dtype": key_dtype,
         "value_dtype": value_dtype,
+        "return_softmax_lse": return_softmax_lse,
     }
     params.update(kwargs)
     return compute_golden(input_tensor_dict, params)

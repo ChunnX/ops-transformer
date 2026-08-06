@@ -410,6 +410,9 @@ def get_param_fus(input_tensor_dict, params):
     # >> out info
     fa_param["out_shape"] = fa_param["q_shape"]
     fa_param["out_dtype"] = trans_input_dtype(params["dtype_output"][0])
+    fa_param["softmax_max_shape"] = params["shape_output"]["softmax_max"]
+    fa_param["softmax_sum_shape"] = params["shape_output"]["softmax_sum"]
+    fa_param["return_softmax_lse"] = params.get("return_softmax_lse", False)
 
     # >> batch_size info
     if fa_param["layout_query"] in ["TND"]:
@@ -552,6 +555,7 @@ def generate_input_tensors(params):
         "kv_dtype": params["dtype_input"]["key"],
         "pre_tokens": (1 << 63) - 1,
         "next_tokens": (1 << 63) - 1,
+        "return_softmax_lse": params.get("return_softmax_lse", False),
     }
 
 
@@ -827,7 +831,11 @@ def compute_golden(input_tensor_dict, params):
     }
     fa_param = _prepare_fa_param(cpu_input, params)
     if not fa_param["normal_flag"]:
-        return torch.zeros(fa_param["out_shape"])
+        return (
+            torch.zeros(fa_param["out_shape"]),
+            torch.zeros(fa_param["softmax_max_shape"], dtype=torch.float32),
+            torch.zeros(fa_param["softmax_sum_shape"], dtype=torch.float32),
+        )
 
     out_shape = fa_param["out_shape"]
     layoutQuery = fa_param["layout_query"]
@@ -855,14 +863,18 @@ def compute_golden(input_tensor_dict, params):
         input_tensor_dict, fa_param, params, actualSeqLengths_kv, out_shape
     )
     if early_exit is not None:
-        return early_exit
+        return (
+            early_exit,
+            torch.zeros(fa_param["softmax_max_shape"], dtype=torch.float32),
+            torch.zeros(fa_param["softmax_sum_shape"], dtype=torch.float32),
+        )
 
     # ===计算入口===
-    y_all = _t_increattention_bnsd(fa_param)
+    y_all, softmax_max, softmax_sum = _t_increattention_bnsd(fa_param)
     y_all = trans_bnsd_to_layout(
         y_all, out_shape, layoutQuery, fa_param["actualSeqLengths_q"]
     )
-    return y_all
+    return y_all, softmax_max, softmax_sum
 
 
 def gatherKV(
@@ -923,7 +935,7 @@ def softmax(x):
     y = torch.exp(x_sub)
     x_sum = y.sum(dim=-1, keepdim=True)
     ans = y / x_sum
-    return ans
+    return ans, x_max, x_sum
 
 
 def _t_increattention_bnsd(fa_param):
@@ -965,12 +977,25 @@ def _t_increattention_bnsd(fa_param):
     v_bnsd_tensor = k_bnsd_tensor[..., :512].clone()
     matmul_dtype = torch.float32
     y = torch.zeros(out_shape_bnsd, dtype=torch.float32)
+    softmax_max = torch.zeros(fa_param["softmax_max_shape"], dtype=torch.float32)
+    softmax_sum = torch.zeros(fa_param["softmax_sum_shape"], dtype=torch.float32)
+
+    def set_softmax_lse(batch_idx, n2_idx, s1_idx, q_last_prefill, max_value, sum_value):
+        if not fa_param["return_softmax_lse"]:
+            return
+        if fa_param["layout_query"] == "BSND":
+            softmax_max[batch_idx, n2_idx, s1_idx, :] = max_value
+            softmax_sum[batch_idx, n2_idx, s1_idx, :] = sum_value
+        else:
+            softmax_max[n2_idx, q_last_prefill + s1_idx, :] = max_value
+            softmax_sum[n2_idx, q_last_prefill + s1_idx, :] = sum_value
 
     q_bnsd_tensor = fa_param["q_bnsd_tensor"].float()
 
     for batch in range(batch_size):
         curr_actualSeq_q = actualSeqLengths_q[batch]
         curr_actualSeq = actualSeqLengths_kv[batch]
+        qLastPrefill = 0 if batch == 0 else sum(actualSeqLengths_q[0:batch])
         for n2Idx in range(numKeyValueHeads):
             for s1Idx in range(curr_actualSeq_q):
                 if s1Idx < curr_actualSeq_q - curr_actualSeq and sparse_mode != 0:
@@ -998,7 +1023,10 @@ def _t_increattention_bnsd(fa_param):
                     continue
                 bmm1Res = torch.matmul(q_curr.float(), k_sparse.float().T)
                 scaleRes = bmm1Res * scaleValue
-                softmax_res = softmax(scaleRes)
+                softmax_res, x_max, x_sum = softmax(scaleRes)
+                set_softmax_lse(
+                    batch, n2Idx, s1Idx, qLastPrefill, x_max[:, 0], x_sum[:, 0]
+                )
                 if fa_param["q_dtype"] == "float16":
                     bmm2Res = torch.matmul(
                         softmax_res.to(torch.float16).float(), v_sparse.float()
@@ -1010,7 +1038,7 @@ def _t_increattention_bnsd(fa_param):
                 else:
                     bmm2Res = torch.matmul(softmax_res.float(), v_sparse.float())
                 y[batch, n2Idx * g : (n2Idx + 1) * g, s1Idx, :] = bmm2Res
-    return y
+    return y, softmax_max, softmax_sum
 
 
 def kv_concat_pa_preprocessing(input_tensor_dict, fa_param, params):

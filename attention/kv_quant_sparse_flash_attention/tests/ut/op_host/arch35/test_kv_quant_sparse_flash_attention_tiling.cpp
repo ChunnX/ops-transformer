@@ -37,7 +37,9 @@ TEST_F(KvQuantSparseFlashAttentionTilingArch35, KvQuantSparseFlashAttention_950_
          {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND},  // softmax_max
+         {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND}}, // softmax_sum
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -50,7 +52,8 @@ TEST_F(KvQuantSparseFlashAttentionTilingArch35, KvQuantSparseFlashAttention_950_
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend950", 64, 262144, 16384);
 
     int64_t expectTilingKey = 1154;
@@ -77,7 +80,9 @@ TEST_F(KvQuantSparseFlashAttentionTilingArch35, KvQuantSparseFlashAttention_950_
          {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{96, 16, 512}, {96, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{{96, 16, 512}, {96, 16, 512}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+         {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND},  // softmax_max
+         {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND}}, // softmax_sum
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -90,7 +95,8 @@ TEST_F(KvQuantSparseFlashAttentionTilingArch35, KvQuantSparseFlashAttention_950_
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend950", 64, 262144, 16384);
 
     int64_t expectTilingKey = 1092;
@@ -117,7 +123,9 @@ TEST_F(KvQuantSparseFlashAttentionTilingArch35, KvQuantSparseFlashAttention_950_
          {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqQuery},
          {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, actualSeqKv}},
-        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{2, 64, 8, 512}, {2, 64, 8, 512}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND},  // softmax_max
+         {{{0}, {0}}, ge::DT_FLOAT, ge::FORMAT_ND}}, // softmax_sum
         {{"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.044194173f)},
          {"key_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"value_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
@@ -130,7 +138,8 @@ TEST_F(KvQuantSparseFlashAttentionTilingArch35, KvQuantSparseFlashAttention_950_
          {"attention_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
          {"quant_scale_repo_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
          {"tile_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
-         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)}},
+         {"rope_head_dim", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}},
         &compileInfo, "Ascend950", 64, 262144, 16384);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
