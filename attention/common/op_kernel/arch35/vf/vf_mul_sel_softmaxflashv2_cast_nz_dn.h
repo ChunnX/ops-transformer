@@ -3243,7 +3243,7 @@ ProcessVec1DnNoUpdateHif8VF(__ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
     RegTensor<float> vreg_chunk0;
-    RegTensor<float> vreg_thresh;123
+    RegTensor<float> vreg_thresh;
 
     __ubuf__ T2 *x_exp_1;
     x_exp_1 = x_exp + 32;
