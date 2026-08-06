@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Union
 import math
 import torch
 import torch_npu
@@ -266,7 +266,7 @@ class _MoeInitRoutingOpBuilder(OpBuilder):
     def schema(self) -> str:
         return "moe_init_routing(Tensor x, Tensor expert_idx, " \
             "*, Tensor? scale=None, Tensor? offset=None, Tensor? topk_weight=None, " \
-            "int active_num=-1, int expert_capacity=-1, int expert_num=-1, " \
+            "SymInt active_num=-1, int expert_capacity=-1, int expert_num=-1, " \
             "int drop_pad_mode=0, int expert_tokens_num_type=0, bool expert_tokens_num_flag=False, " \
             "int quant_mode=-1, int[]? active_expert_range=None, int row_idx_type=0, " \
             "int? x_dtype=None) " \
@@ -341,7 +341,8 @@ def _moe_init_routing(x, expert_idx, scale=None, offset=None, topk_weight=None,
 def moe_init_routing(x: torch.Tensor, expert_idx: torch.Tensor,
                      scale: Optional[torch.Tensor] = None, offset: Optional[torch.Tensor] = None,
                      topk_weight: Optional[torch.Tensor] = None,
-                     active_num: int = -1, expert_capacity: int = -1, expert_num: int = -1,
+                     active_num: Union[int, torch.SymInt] = -1,
+                     expert_capacity: int = -1, expert_num: int = -1,
                      drop_pad_mode: int = 0, expert_tokens_num_type: int = 0,
                      expert_tokens_num_flag: bool = False, quant_mode: int = -1,
                      active_expert_range: Optional[List[int]] = None, row_idx_type: int = 0,
@@ -369,7 +370,8 @@ def moe_init_routing(x: torch.Tensor, expert_idx: torch.Tensor,
             - Other modes: not used. Default: None.
         topk_weight (Tensor, optional): Topk weight tensor of shape (n, k), dtype float32.
             When provided, expanded_topk_weight output will also be produced. Default: None.
-        active_num (int): Number of active tokens. -1 means n*k (all tokens). Default: -1.
+        active_num (Union[int, torch.SymInt]): Number of active tokens. -1 means n*k (all tokens).
+ 	        Supports SymInt for dynamic shape in graph mode. Default: -1.
         expert_capacity (int): Capacity per expert, required when drop_pad_mode=1. Default: -1.
         expert_num (int): Total number of experts, must be greater than 0. Default: -1.
         drop_pad_mode (int): 0 for dropless, 1 for drop/pad mode. Default: 0.
