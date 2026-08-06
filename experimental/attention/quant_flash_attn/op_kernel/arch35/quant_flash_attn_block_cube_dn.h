@@ -869,7 +869,7 @@ private:
         LoadData2DMxParams load2DMxParamsB;
         load2DMxParamsB.xStartPosition = 0;
         load2DMxParamsB.yStartPosition = 0;
-        load2DMxParamsB.xStep = constInfo.dSize / 16;
+        load2DMxParamsB.xStep = info.actMSizeAlign128 / 16;
         load2DMxParamsB.yStep = (info.actSingleLoopS2SizeAlign64 + 63) / 64;
         load2DMxParamsB.srcStride =
             5; // S2BaseSIze=256，5由s2BaseSize / 64 + 1得到，1为解UB Bank冲突预留的一个Block，一次全拷过来
