@@ -5,36 +5,27 @@
 #
 # 用法:
 #   bash build_install_attn_res.sh [安装路径]
-#     安装路径默认 /data/kdy/gentest/custpkg
+#     安装路径默认: 当前脚本目录下的 install/
 #
 # 流程:
-#   1. 编译并安装 torch_extension wheel（cann_ops_transformer）
+#   1. 编译并安装 torch_extension wheel（cann_ops_transformer，使用当前 python 环境）
 #   2. 编译正反向算子包（attn_res_fwd, attention_res_grad）
 #   3. 安装算子包到指定路径
 #   4. source 该路径下 set_env.bash，设置 ASCEND_CUSTOM_OPP_PATH / LD_LIBRARY_PATH
 #
 # 注意:
 #   - 算子包构建期间请勿 source workspace CANN set_env.sh（beta.3 缺 asc/impl/tensor_api）
-#   - 运行时需 source workspace CANN set_env.sh + conda activate kdy
+#   - 运行时需 source workspace CANN set_env.sh（如需）
 # -----------------------------------------------------------------------------------------------------------
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPS_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"     # ops-transformer
 TORCH_EXT_DIR="${OPS_ROOT}/torch_extension"
-INSTALL_PATH="${1:-/data/kdy/gentest/custpkg}"
+INSTALL_PATH="${1:-${SCRIPT_DIR}/install}"
 OPS="attn_res_fwd,attention_res_grad"
 
-echo "=== [1/4] 准备 Python 环境 (conda kdy) ==="
-source /opt/anaconda3/etc/profile.d/conda.sh
-if ! conda env list | grep -q "kdy"; then
-    echo "ERROR: conda 环境 kdy 不存在" >&2
-    exit 1
-fi
-conda activate kdy
-echo "python: $(which python3)"
-
-echo "=== [2/4] 编译并安装 torch_extension ==="
+echo "=== [1/3] 编译并安装 torch_extension ==="
 cd "${TORCH_EXT_DIR}"
 python3 -c "import build" 2>/dev/null || python3 -m pip install build
 rm -rf build dist
@@ -42,11 +33,11 @@ python3 -m build --wheel -n
 python3 -m pip install dist/*.whl --force-reinstall --no-deps
 echo "cann_ops_transformer 安装完成: $(python3 -c 'import cann_ops_transformer; print(cann_ops_transformer.__file__)')"
 
-echo "=== [3/4] 编译正反向算子包 (${OPS}) ==="
+echo "=== [2/3] 编译正反向算子包 (${OPS}) ==="
 cd "${OPS_ROOT}"
 bash build.sh --pkg --ops="${OPS}"
 
-echo "=== [4/4] 安装算子包到 ${INSTALL_PATH} 并设置环境变量 ==="
+echo "=== [3/3] 安装算子包到 ${INSTALL_PATH} 并设置环境变量 ==="
 RUN_FILE="${OPS_ROOT}/build/cann-ops-transformer-custom_linux-aarch64.run"
 if [[ ! -f "${RUN_FILE}" ]]; then
     echo "ERROR: 未找到算子包 ${RUN_FILE}" >&2
@@ -69,4 +60,7 @@ echo "==================== 完成 ===================="
 echo "torch 插件已安装: cann_ops_transformer"
 echo "算子包已安装到:   ${INSTALL_PATH}"
 echo "ASCEND_CUSTOM_OPP_PATH=${ASCEND_CUSTOM_OPP_PATH:-}"
+echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"
+echo "运行前建议 source:"
+echo "  source ${SET_ENV}"
 echo "==============================================="
