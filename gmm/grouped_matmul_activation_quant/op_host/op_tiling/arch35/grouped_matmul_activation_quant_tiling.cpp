@@ -377,6 +377,23 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::DoLibApiTiling()
     // The kernel consumes compact low-level BasicAPI fields instead of TCubeTiling, so scaleKAL1 and scaleKBL1
     // must be identical.
     GroupedQmmTiling::CalBasicBlock();
+
+    // For evenly distributed split-M groups, choose a group-local M tile size when it can
+    // eliminate a very small tail tile without increasing the number of M tiles. The common
+    // tiling path uses the global M and therefore produces 256 + 64 for groupM=320 and
+    // 256 + 256 + 128 for groupM=640. These thin tails lower Cube utilization substantially.
+    // Only shrink baseM and keep it Cube-aligned; this is safe for the existing L1/L0 buffers
+    // and leaves non-integral average group sizes on the common path.
+    if (inputParams_.groupType == GroupedMatmul::SPLIT_M && inputParams_.groupNum > 0 &&
+        inputParams_.mSize % inputParams_.groupNum == 0) {
+        const uint64_t groupM = inputParams_.mSize / inputParams_.groupNum;
+        const uint64_t groupMTileCount = Ops::Base::CeilDiv(groupM, basicTiling_.baseM);
+        const uint64_t balancedBaseM = GroupedMatmul::CeilAlign(
+            Ops::Base::CeilDiv(groupM, groupMTileCount), GmmConstant::CUBE_BLOCK);
+        if (balancedBaseM >= GmmConstant::CUBE_BLOCK && balancedBaseM < basicTiling_.baseM) {
+            basicTiling_.baseM = balancedBaseM;
+        }
+    }
     basicTiling_.baseM = GroupedMatmul::CeilAlign(basicTiling_.baseM, GmmConstant::CUBE_BLOCK);
     OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
