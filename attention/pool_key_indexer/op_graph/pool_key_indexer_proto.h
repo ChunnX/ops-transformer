@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file kpool_indexer_proto.h
+ * \file pool_key_indexer_proto.h
  * \brief
  */
-#ifndef OPS_OP_PROTO_INC_KpoolIndexer_H_
-#define OPS_OP_PROTO_INC_KpoolIndexer_H_
+#ifndef OPS_OP_PROTO_INC_PoolKeyIndexer_H_
+#define OPS_OP_PROTO_INC_PoolKeyIndexer_H_
 
 #include "graph/operator_reg.h"
 #include "graph/types.h"
@@ -21,7 +21,7 @@
 namespace ge {
 
 /**
- * @brief KpoolIndexer packs consecutive tokens into pools, computes attention
+ * @brief PoolKeyIndexer packs consecutive tokens into pools, computes attention
  *        relevance scores per pool, selects top-k pools and expands them into
  *        sparse token indices, so as to reduce indexing overhead while keeping
  *        the benefit of sparse attention. \n
@@ -37,13 +37,17 @@ namespace ge {
  * @li weights: The multi-head weight projection matrix for score aggregation. \n
  *   - Data types: float16, bfloat16.
  *   - format: ND
- * @li pool_tail_k: The number of valid tokens in the tail (incomplete) pool of each batch. \n
+ * @li pool_tail_k: The number of valid tokens in the tail (incomplete) pool of each batch.
+ *   Value range is [0, pool_size - 1]. \n
  *   - Data types: int32.
  *   - format: ND
  * @li actual_seq_q: Optional. The valid token count of Query per batch. \n
  *   - Data types: int32.
  *   - format: ND
- * @li actual_seq_k: Optional. The valid token count of Key per batch. \n
+ * @li actual_seq_k: Optional. The valid token count of Key per batch.
+ *   In PageAttention (PA_BSND) scenario, each element represents the token count
+ *   of the current batch (not a prefix sum). In TND scenario, each element
+ *   represents a prefix sum of token counts. \n
  *   - Data types: int32.
  *   - format: ND
  * @li block_table: Optional. The block mapping table used in PageAttention KV storage. \n
@@ -57,9 +61,11 @@ namespace ge {
  *   - format: ND
 
  * @par Attributes:
- * @li topk: A required int attribute. The number of tokens to keep after pool
+ * @li topk: An optional int attribute. The number of tokens to keep after pool
  *   expansion. k_pool = floor(topk / pool_size) pools are selected.
- * @li pool_size: A required int attribute. The number of tokens packed into one pool.
+ *   Defaults to 2048.
+ * @li pool_size: An optional int attribute. The number of tokens packed into one pool.
+ *   Defaults to 16.
  * @li layout_q: An optional string attribute. The layout of Query, "BSND" or "TND".
  *   Defaults to "BSND".
  * @li layout_k: An optional string attribute. The layout of Key, "BSND", "TND" or "PA_BSND".
@@ -72,9 +78,9 @@ namespace ge {
  *   - -1: no quantization (default)
  *   - 0: FP8 per-token-head quantization (scale stored as float32)
  *   - 1: MX-FP8 quantization (scale stored as float8_e8m0)
- * @li return_value: An optional int attribute. Whether to output sparse_values.
- *   - 0: do not output (default)
- *   - 1: output sparse_values
+ * @li return_value: An optional bool attribute. Whether to output sparse_values.
+ *   - false: do not output (default)
+ *   - true: output sparse_values
 
  * @par Outputs:
  * @li sparse_indices: The expanded sparse token indices.
@@ -86,16 +92,19 @@ namespace ge {
  * @code{.c}
  *  - topk must be divisible by pool_size (topk % pool_size == 0).
  *  - pool_size supports [1, 128]; topk supports [1, 2048] and 3072/4096/5120/6144/7168/8192.
+ *  - pool_tail_k value range is [0, pool_size - 1].
  *  - head_dim supports 128; query head num (N1) supports [1, 64]; pool_key head num (N2) supports 1.
  *  - block_size must be a multiple of 16 and no greater than 1024.
  *  - Padding invalid data on S1/S2 of query/pool_key is not supported.
- *  - pool_key supports non-contiguous on axis 0.
- *  - Ascend950PR/Ascend950DT, Atlas A3 training/inference products.
- *  - FP8 (float8_e4m3fn) and MX-FP8 (float8_e8m0 scale) data types are only supported
- *    on Ascend950PR/Ascend950DT and Atlas A3 training/inference products.
+ *  - All inputs do not support non-contiguous tensors.
+ *  - Ascend950PR/Ascend950DT supports FP8 (float8_e4m3fn) and MX-FP8 (float8_e8m0 scale)
+ *    data types and quantization.
+ *  - Atlas A3 training/inference products and Atlas A2 training/inference products
+ *    do not support FLOAT8_E4M3FN and FLOAT8_E8M0 data types, and do not support
+ *    quantization.
  * @endcode
  */
-REG_OP(KpoolIndexer)
+REG_OP(PoolKeyIndexer)
     .INPUT(query, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT8_E4M3FN}))
     .INPUT(pool_key, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT8_E4M3FN}))
     .INPUT(weights, TensorType({DT_FLOAT16, DT_BF16}))
@@ -107,14 +116,14 @@ REG_OP(KpoolIndexer)
     .OPTIONAL_INPUT(k_descale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
     .OUTPUT(sparse_indices, TensorType({DT_INT32}))
     .OUTPUT(sparse_values, TensorType({DT_FLOAT}))
-    .REQUIRED_ATTR(topk, Int)
-    .REQUIRED_ATTR(pool_size, Int)
+    .ATTR(topk, Int, 2048)
+    .ATTR(pool_size, Int, 16)
     .ATTR(layout_q, String, "BSND")
     .ATTR(layout_k, String, "BSND")
     .ATTR(mask_mode, Int, 3)
     .ATTR(quant_mode, Int, -1)
-    .ATTR(return_value, Int, 0)
-.OP_END_FACTORY_REG(KpoolIndexer)
+    .ATTR(return_value, Bool, false)
+.OP_END_FACTORY_REG(PoolKeyIndexer)
 } // namespace ge
 
-#endif // OPS_OP_PROTO_INC_KpoolIndexer_H_
+#endif // OPS_OP_PROTO_INC_PoolKeyIndexer_H_

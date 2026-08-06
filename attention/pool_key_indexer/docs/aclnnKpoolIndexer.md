@@ -1,6 +1,6 @@
-# aclnnKpoolIndexer
+# aclnnPoolKeyIndexer
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/kpool_indexer)
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/pool_key_indexer)
 
 ## 产品支持情况
 
@@ -25,7 +25,7 @@
 
 ## 功能说明
 
-- 接口功能：`kpool_indexer`将多个连续token打包成一个pool（池），以pool为单位计算注意力相关性分数并选取top-k位置，从而在保持稀疏注意力优势的同时减少索引开销。该算子适用于基于key pool的稀疏注意力场景下的稀疏索引选择。支持FLOAT16、BFLOAT16浮点输入，并支持配合反量化系数的FLOAT8_E4M3FN量化输入（FP8 per-token-head或mxFP8量化模式）。
+- 接口功能：`pool_key_indexer`将多个连续token打包成一个pool（池），以pool为单位计算注意力相关性分数并选取top-k位置，从而在保持稀疏注意力优势的同时减少索引开销。该算子适用于基于key pool的稀疏注意力场景下的稀疏索引选择。支持FLOAT16、BFLOAT16浮点输入，并支持配合反量化系数的FLOAT8_E4M3FN量化输入（FP8 per-token-head或mxFP8量化模式）。
 
 - 计算公式：
 
@@ -95,12 +95,12 @@
   SparseValues = PoolScores[TopK\_pool]
   $$
 
-  当return_value为1时输出$SparseValues$，即选中pool的分数值；return_value为0时不输出。
+  当return_value为true时输出$SparseValues$，即选中pool的分数值；return_value为false时不输出。
 
   符号说明如下：
 
   - $SparseIndices$：输出的稀疏token索引。
-  - $SparseValues$：输出的选中pool分数（return_value为1时输出）。
+  - $SparseValues$：输出的选中pool分数（return_value为true时输出）。
   - $PoolScores$：每个pool的综合分数。
   - $TopK\_pool$：被选中的top-k pool索引。
   - $Top$-$k$：取前$k$个最大分数对应的pool索引，$k = \lfloor topk / pool\_size \rfloor$。
@@ -118,10 +118,10 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnKpoolIndexerGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnKpoolIndexer”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnPoolKeyIndexerGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnPoolKeyIndexer”接口执行计算。
 
 ```Cpp
-aclnnStatus aclnnKpoolIndexerGetWorkspaceSize(
+aclnnStatus aclnnPoolKeyIndexerGetWorkspaceSize(
     const aclTensor *query,
     const aclTensor *poolKey,
     const aclTensor *weights,
@@ -137,7 +137,7 @@ aclnnStatus aclnnKpoolIndexerGetWorkspaceSize(
     int64_t          poolSize,
     int64_t          maskMode,
     int64_t          quantMode,
-    int64_t          returnValue,
+    bool             returnValue,
     const aclTensor *sparseIndicesOut,
     const aclTensor *sparseValuesOut,
     uint64_t        *workspaceSize,
@@ -145,14 +145,14 @@ aclnnStatus aclnnKpoolIndexerGetWorkspaceSize(
 ```
 
 ```Cpp
-aclnnStatus aclnnKpoolIndexer(
+aclnnStatus aclnnPoolKeyIndexer(
     void             *workspace,
     uint64_t          workspaceSize,
     aclOpExecutor    *executor,
     const aclrtStream stream)
 ```
 
-## aclnnKpoolIndexerGetWorkspaceSize
+## aclnnPoolKeyIndexerGetWorkspaceSize
 
 - **参数说明：**
 
@@ -197,7 +197,7 @@ aclnnStatus aclnnKpoolIndexer(
                 <li>layoutQueryOptional为TND时，shape为(T1,N1,D)。</li>
           </ul>
       </td>
-      <td>x</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>poolKey</td>
@@ -207,19 +207,20 @@ aclnnStatus aclnnKpoolIndexer(
           <ul>
                 <li>不支持空tensor。</li>
                 <li>block_num为PageAttention时block总数，block_size为一个block的token数。</li>
-                <li>支持0轴非连续。</li>
+                <li>数据类型需与query保持一致。</li>
+                <li>数据布局需与query保持一致，PageAttention场景（layoutKeyOptional为PA_BBND）除外。</li>
           </ul>
       </td>
       <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN</td>
       <td>ND</td>
       <td>
           <ul>
-                <li>layoutKeyOptional为PA_BSND时，shape为(block_num, block_size, N2, D)。</li>
+                <li>layoutKeyOptional为PA_BBND时，shape为(block_num, block_size, N2, D)。</li>
                 <li>layoutKeyOptional为BSND时，shape为(B, S2, N2, D)。</li>
                 <li>layoutKeyOptional为TND时，shape为(T2, N2, D)。</li>
           </ul>
       </td>
-      <td>√</td>
+      <td>支持0轴非连续</td>
     </tr>
     <tr>
       <td>weights</td>
@@ -234,7 +235,7 @@ aclnnStatus aclnnKpoolIndexer(
                 <li>layoutQueryOptional为TND时，shape为(T1,N1)。</li>
           </ul>
       </td>
-      <td>x</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>poolTailK</td>
@@ -243,13 +244,13 @@ aclnnStatus aclnnKpoolIndexer(
       <td>
           <ul>
                 <li>不支持空tensor。</li>
-                <li>取值范围为[0, pool_size]，0表示无尾部有效token。</li>
+                <li>取值范围为[0, pool_size-1]，0表示无尾部有效token。</li>
           </ul>
       </td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
-      <td>x</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>actualSeqLengthsQueryOptional</td>
@@ -265,7 +266,7 @@ aclnnStatus aclnnKpoolIndexer(
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
-      <td>x</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>actualSeqLengthsKeyOptional</td>
@@ -275,13 +276,13 @@ aclnnStatus aclnnKpoolIndexer(
           <ul>
                 <li>可选输入，不指定seqlen时可传入空指针，表示与poolKey的shape的S长度相同。</li>
                 <li>该参数中每个Batch的有效token数不超过poolKey中的维度S大小且不小于0，支持长度为B的一维tensor。</li>
-                <li>当layoutKeyOptional为TND或PA_BSND时，该入参必须传入，layoutKeyOptional为TND时，该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</li>
+                <li>当layoutKeyOptional为TND或PA_BBND时，该入参必须传入。layoutKeyOptional为TND时，该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值；layoutKeyOptional为PA_BBND时，该参数中每个元素的值表示当前batch的token数，非前缀和形式。</li>
           </ul>
       </td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
-      <td>x</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>blockTableOptional</td>
@@ -295,8 +296,8 @@ aclnnStatus aclnnKpoolIndexer(
       </td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B, max_num_blocks_per_seq)</td>
-      <td>x</td>
+      <td>(B, maxBlockNumPerSeq)</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>qDescaleOptional</td>
@@ -316,7 +317,7 @@ aclnnStatus aclnnKpoolIndexer(
                 <li>layoutQueryOptional为TND时，shape为(T1,N1)。</li>
           </ul>
       </td>
-      <td>x</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>kDescaleOptional</td>
@@ -334,10 +335,10 @@ aclnnStatus aclnnKpoolIndexer(
           <ul>
                 <li>layoutKeyOptional为BSND时，shape为(B,S2,N2)。</li>
                 <li>layoutKeyOptional为TND时，shape为(T2,N2)。</li>
-                <li>layoutKeyOptional为PA_BSND时，shape为(block_num, block_size, N2)。</li>
+                <li>layoutKeyOptional为PA_BBND时，shape为(block_num, block_size, N2)。</li>
           </ul>
       </td>
-      <td>x</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>layoutQueryOptional</td>
@@ -345,7 +346,7 @@ aclnnStatus aclnnKpoolIndexer(
       <td>用于标识输入Query的数据排布格式。</td>
       <td>
           <ul>
-                <li>用户不特意指定时可传入默认值"BSND"。</li>
+                <li>用户不特意指定时可传入建议值"BSND"。</li>
                 <li>当前支持BSND、TND。</li>
           </ul>
       </td>
@@ -360,8 +361,8 @@ aclnnStatus aclnnKpoolIndexer(
       <td>用于标识输入Key的数据排布格式。</td>
       <td>
           <ul>
-                <li>用户不特意指定时可传入默认值"BSND"。</li>
-                <li>当前支持PA_BSND、BSND、TND。</li>
+                <li>用户不特意指定时可传入建议值"BSND"。</li>
+                <li>当前支持PA_BBND、BSND、TND。</li>
           </ul>
       </td>
       <td>STRING</td>
@@ -372,7 +373,7 @@ aclnnStatus aclnnKpoolIndexer(
     <tr>
       <td>topk</td>
       <td>输入</td>
-      <td>展开后需要保留的token数量，对应公式中的topk。</td>
+      <td>展开后需要保留的token数量，对应公式中的topk。可选属性，建议值为2048。</td>
       <td>
           <ul>
                 <li>支持[1, 2048]以及3072、4096、5120、6144、7168、8192。</li>
@@ -387,7 +388,7 @@ aclnnStatus aclnnKpoolIndexer(
     <tr>
       <td>poolSize</td>
       <td>输入</td>
-      <td>每个pool包含的token数量，对应公式中的pool_size。</td>
+      <td>每个pool包含的token数量，对应公式中的pool_size。可选属性，建议值为16。</td>
       <td>支持[1, 128]。</td>
       <td>INT64</td>
       <td>-</td>
@@ -428,14 +429,14 @@ aclnnStatus aclnnKpoolIndexer(
     <tr>
       <td>returnValue</td>
       <td>输入</td>
-      <td>表示是否输出sparseValuesOut。</td>
+      <td>表示是否输出sparseValuesOut。可选属性，建议值为false。</td>
       <td>
           <ul>
-                <li>returnValue为0时，表示不输出sparseValuesOut。</li>
-                <li>returnValue为1时，表示输出sparseValuesOut。</li>
+                <li>returnValue为false时，表示不输出sparseValuesOut。</li>
+                <li>returnValue为true时，表示输出sparseValuesOut。</li>
           </ul>
       </td>
-      <td>INT64</td>
+      <td>BOOL</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -462,7 +463,7 @@ aclnnStatus aclnnKpoolIndexer(
       <td>
           <ul>
                 <li>不支持空tensor。</li>
-                <li>仅当returnValue为1时输出有效结果。</li>
+                <li>仅当returnValue为true时输出有效结果。</li>
           </ul>
       </td>
       <td>FLOAT</td>
@@ -539,7 +540,7 @@ aclnnStatus aclnnKpoolIndexer(
         </tbody>
     </table>
 
-## aclnnKpoolIndexer
+## aclnnPoolKeyIndexer
 
 - **参数说明：**
 
@@ -563,7 +564,7 @@ aclnnStatus aclnnKpoolIndexer(
     <tr>
       <td>workspaceSize</td>
       <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnKpoolIndexerGetWorkspaceSize获取。</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnPoolKeyIndexerGetWorkspaceSize获取。</td>
     </tr>
     <tr>
       <td>executor</td>
@@ -585,7 +586,7 @@ aclnnStatus aclnnKpoolIndexer(
 ## 约束说明
 
 - 确定性说明：
-  - aclnnKpoolIndexer默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - aclnnPoolKeyIndexer默认确定性实现。
 - 输入shape限制：
   - 参数query的N1支持小于等于64，poolKey的N2支持1，headDim支持128。
   - 不支持query、poolKey中对S1、S2 pad无效数据。
@@ -595,11 +596,13 @@ aclnnStatus aclnnKpoolIndexer(
   - block_size取值为16的倍数，最大支持1024。
 - 输入数据类型限制：
   - 参数query、poolKey的数据类型应保持一致。
-  - 参数weights不为FLOAT32时，参数query、poolKey、weights的数据类型应保持一致。
-  - <term>Ascend 950PR/Ascend 950DT</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持FLOAT8_E4M3FN（query、poolKey）数据类型，并支持量化场景（quantMode为0时反量化系数为FLOAT，quantMode为1时反量化系数为FLOAT8_E8M0）。
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持FLOAT8_E4M3FN与FLOAT8_E8M0数据类型，不支持量化场景。
+  - 参数query、poolKey、weights的数据类型应保持一致。
+  - <term>Ascend 950PR/Ascend 950DT</term>：支持FLOAT8_E4M3FN（query、poolKey）数据类型，并支持量化场景（quantMode为0时反量化系数为FLOAT，quantMode为1时反量化系数为FLOAT8_E8M0）。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持FLOAT8_E4M3FN与FLOAT8_E8M0数据类型，不支持量化场景。
+- 输入数据布局限制：
+  - 参数query、poolKey的数据布局（layoutQueryOptional与layoutKeyOptional）需保持一致，PageAttention场景（layoutKeyOptional为PA_BBND时）除外。
 - 其他限制：
-  - poolKey支持0轴非连续，其余输入不支持非连续。
+  - poolKey支持0轴非连续。
 
 ## 调用示例
 
@@ -617,7 +620,7 @@ aclnnStatus aclnnKpoolIndexer(
  */
 
 /*!
- * \file test_aclnn_kpool_indexer.cpp
+ * \file test_aclnn_pool_key_indexer.cpp
  * \brief
  */
 //testci
@@ -627,7 +630,7 @@ aclnnStatus aclnnKpoolIndexer(
 #include <cstring>
 #include "securec.h"
 #include "acl/acl.h"
-#include "aclnnop/aclnn_kpool_indexer.h"
+#include "aclnnop/aclnn_pool_key_indexer.h"
 
 using namespace std;
 
@@ -772,13 +775,13 @@ int InitializeTensors(TensorResources& resources) {
     return ACL_SUCCESS;
 }
 
-int ExecuteKpoolIndexer(TensorResources& resources, aclrtStream stream,
+int ExecutePoolKeyIndexer(TensorResources& resources, aclrtStream stream,
                         void** workspaceAddr, uint64_t* workspaceSize) {
     int64_t topk = 2048;
     int64_t poolSize = 16;
     int64_t maskMode = 3;
     int64_t quantMode = -1;
-    int64_t returnValue = 1;
+    bool returnValue = true;
     constexpr const char layerOutStr[] = "BSND";
     constexpr size_t layerOutLen = sizeof(layerOutStr);
     char layoutQuery[layerOutLen];
@@ -795,7 +798,7 @@ int ExecuteKpoolIndexer(TensorResources& resources, aclrtStream stream,
     }
     aclOpExecutor* executor;
 
-    int ret = aclnnKpoolIndexerGetWorkspaceSize(resources.queryTensor, resources.poolKeyTensor,
+    int ret = aclnnPoolKeyIndexerGetWorkspaceSize(resources.queryTensor, resources.poolKeyTensor,
                                                  resources.weightsTensor, resources.poolTailKTensor,
                                                  nullptr, nullptr, nullptr, nullptr, nullptr,
                                                  layoutQuery, layoutKey, topk, poolSize,
@@ -804,7 +807,7 @@ int ExecuteKpoolIndexer(TensorResources& resources, aclrtStream stream,
                                                  workspaceSize, &executor);
 
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclnnKpoolIndexerGetWorkspaceSize failed. ERROR: %d\n", ret);
+        LOG_PRINT("aclnnPoolKeyIndexerGetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;
     }
 
@@ -816,9 +819,9 @@ int ExecuteKpoolIndexer(TensorResources& resources, aclrtStream stream,
         }
     }
 
-    ret = aclnnKpoolIndexer(*workspaceAddr, *workspaceSize, executor, stream);
+    ret = aclnnPoolKeyIndexer(*workspaceAddr, *workspaceSize, executor, stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclnnKpoolIndexer failed. ERROR: %d\n", ret);
+        LOG_PRINT("aclnnPoolKeyIndexer failed. ERROR: %d\n", ret);
         return ret;
     }
 
@@ -932,7 +935,7 @@ int main() {
     }
 
     // 3. Execute the operation
-    ret = ExecuteKpoolIndexer(resources, stream, &workspaceAddr, &workspaceSize);
+    ret = ExecutePoolKeyIndexer(resources, stream, &workspaceAddr, &workspaceSize);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         CleanupResources(resources, workspaceAddr, stream, deviceId);
         return ret;
@@ -955,160 +958,3 @@ int main() {
     return 0;
 }
 ```
-
-## 实现说明（不对外，代码上库评审需要，md文件上gitcode前删除）
-
-<font color="#FF0000">**（暂时只对内，md文件上传gitee前需删除！！）**</font>
-
-> 注：以下计算图仅体现aclnn L0层级的算子编排流程，不体现算子内部计算细节。
-
-### 计算图一：
-
-场景：当输入数据类型为FLOAT16或BFLOAT16，且quantMode为-1（不量化）时，直接调用KpoolIndexer算子完成计算。query和weights不支持非连续，需先做Contiguous；poolKey支持0轴非连续，直接参与计算。
-
-```mermaid
-graph LR
-    A[(query)] --> B([l0op::Contiguous])
-    B --> D([l0op::KpoolIndexer])
-    C[(poolKey)] --> D
-    E[(weights)] --> F([l0op::Contiguous])
-    F --> D
-    G[(poolTailK)] --> D
-    ACTQ[(actualSeqQ)] -.可选.-> D
-    ACTK[(actualSeqK)] -.可选.-> D
-    BT[(blockTable)] -.可选.-> D
-    D --> I[(sparseIndices)]
-    D --> K[(sparseValues)]
-    T((topk)) --> D
-    P((poolSize)) --> D
-```
-
-### 计算图二：
-
-场景：当输入数据类型为FLOAT8_E4M3FN，且quantMode为0或1（量化）时，先对query和poolKey结合反量化系数做Cast，再调用KpoolIndexer算子完成计算。weights为FLOAT16或BFLOAT16无需反量化，仅需Contiguous。
-
-```mermaid
-graph LR
-    A[(query)] --> B([l0op::Cast])
-    QD[(qDescale)] --> B
-    B --> D([l0op::KpoolIndexer])
-    C[(poolKey)] --> E([l0op::Cast])
-    KD[(kDescale)] --> E
-    E --> D
-    W[(weights)] --> F([l0op::Contiguous])
-    F --> D
-    G[(poolTailK)] --> D
-    D --> I[(sparseIndices)]
-    D --> K[(sparseValues)]
-    T((topk)) --> D
-    P((poolSize)) --> D
-```
-
-## 附录（不对外，代码上库评审需要，md文件上gitcode前删除）
-
-<font color="#FF0000">**（暂时只对内，md文件上传gitee前需删除！！）**</font>
-
-### 1. 归属领域
-
-算子仓：ops-transformer
-算子分类：attention
-即：ops-transformer/attention
-
-### 2. Pytorch AtenIR
-
-```
-torch.ops.cann_ops_nn.kpool_indexer(
-    query,
-    pool_key,
-    weights,
-    pool_tail_k,
-    topk,
-    layout_q,
-    layout_k,
-    pool_size,
-    *,
-    actual_seq_q,
-    actual_seq_k,
-    block_table,
-    q_descale,
-    k_descale,
-    mask_mode,
-    quant_mode,
-    return_value
-) -> (Tensor sparse_indices, Tensor sparse_values)
-
-参考：
-aclnnStatus aclnnKpoolIndexerGetWorkspaceSize(
-    const aclTensor *query, const aclTensor *poolKey, const aclTensor *weights,
-    const aclTensor *poolTailK,
-    const aclTensor *actualSeqLengthsQueryOptional, const aclTensor *actualSeqLengthsKeyOptional,
-    const aclTensor *blockTableOptional,
-    const aclTensor *qDescaleOptional, const aclTensor *kDescaleOptional,
-    char *layoutQueryOptional, char *layoutKeyOptional,
-    int64_t topk, int64_t poolSize, int64_t maskMode, int64_t quantMode, int64_t returnValue,
-    const aclTensor *sparseIndicesOut, const aclTensor *sparseValuesOut,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
-```
-
-### 3. AtenIR参数描述
-
-| 类型 | 名称 | 描述 | GPU支持的数据类型 | CPU支持的数据类型 |
-| ---- | ---- | ---- | ------------- | ------------- |
-| 输入 | query | Query输入tensor | FLOAT16、BFLOAT16、FLOAT8_E4M3FN | - |
-| 输入 | pool_key | Pool Key输入tensor | FLOAT16、BFLOAT16、FLOAT8_E4M3FN | - |
-| 输入 | weights | 多头权重投影矩阵 | FLOAT16、BFLOAT16 | - |
-| 输入 | pool_tail_k | 尾部不完整pool的有效token数 | INT32 | - |
-| 可选输入 | q_descale | Query反量化系数 | FLOAT、FLOAT8_E8M0 | - |
-| 可选输入 | k_descale | Key反量化系数 | FLOAT、FLOAT8_E8M0 | - |
-| 可选输入 | actual_seq_q | Query每batch有效token数 | INT32 | - |
-| 可选输入 | actual_seq_k | Key每batch有效token数 | INT32 | - |
-| 可选输入 | block_table | PageAttention block映射表 | INT32 | - |
-| 属性 | topk | 展开后保留的token数量 | Int | - |
-| 属性 | layout_q | Query数据排布 | String | - |
-| 属性 | layout_k | Key数据排布 | String | - |
-| 属性 | pool_size | 每个pool包含的token数 | Int | - |
-| 属性 | mask_mode | mask模式 | Int | - |
-| 属性 | quant_mode | 量化模式 | Int | - |
-| 属性 | return_value | 是否输出sparse_values | Int | - |
-| 输出 | sparse_indices | 稀疏token索引 | INT32 | - |
-| 输出 | sparse_values | 选中pool的分数 | FLOAT | - |
-
-### 4. HostAPI接口约束
-
-| 功能维度 | 已支持 | 应支持但未支持 |
-| -------- | ------ | -------------- |
-| 数据类型 | FLOAT16、BFLOAT16、FLOAT8_E4M3FN（query、poolKey）、FLOAT16、BFLOAT16（weights）、FLOAT、FLOAT8_E8M0（qDescale、kDescale）、INT32（poolTailK、actualSeqQ、actualSeqK、blockTable、sparseIndices）、FLOAT（sparseValues） | - |
-| 数据格式 | ND | - |
-| 空Tensor | 不支持 | - |
-| 非连续Tensor | poolKey支持0轴非连续，其余输入不支持非连续 | - |
-
-**低性能场景**：
-
-无。
-
-**边界值场景说明**：
-
-1. 当输入数据为nan时，输出也为nan。
-2. 当计算结果超过数据类型的数据范围时，浮点类型计算结果为inf。
-
-### 5. HostAPI异常处理
-
-以下场景会出现参数校验异常：
-
-1. 传入的query、poolKey、weights、poolTailK、sparseIndicesOut、sparseValuesOut是空指针时（可选输入为空指针时除外）。
-2. query、poolKey、weights、poolTailK、sparseIndicesOut、sparseValuesOut的数据类型和数据格式不在支持的范围之内。
-3. query、poolKey的数据类型不匹配。
-4. weights不为FLOAT32时，query、poolKey、weights的数据类型不匹配。
-5. topk与poolSize不满足topk % pool_size == 0的约束。
-6. topk或poolSize的取值不在支持的范围之内。
-7. query、poolKey、weights的shape维度不在支持的范围之内。
-
-### 6. 兼容性说明
-
-1. 功能兼容性：兼容Pytorch框架定义（torch.ops.cann_ops_nn.kpool_indexer）。
-2. 平台兼容性：Ascend950PR/Ascend950DT、Atlas A3训练/推理系列产品支持全数据类型（含FP8/mxFP8）；Atlas A2训练/推理系列产品不支持FLOAT8_E4M3FN与FLOAT8_E8M0数据类型，不支持量化场景。
-3. 接口兼容性：新增接口。
-4. 行为兼容性：新增接口。
-5. 性能兼容性：新增接口。
-6. 资源兼容性：新增接口。
-7. 错误处理兼容性：新增接口。
