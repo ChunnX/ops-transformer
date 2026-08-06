@@ -364,7 +364,7 @@ def _build_inputs(case, p, device, seed, totalValid, cuNpu, sqs, sps):
     d_xNpu = torch.rand(totalTokens, hiddenSize, device=device, dtype=ioDtype)
     d_wkvNpu = torch.rand(coff * headDim, hiddenSize, device=device, dtype=torch.float32)
     d_wgateNpu = torch.rand(coff * headDim, hiddenSize, device=device, dtype=torch.float32)
-    dapeWsNpu = torch.zeros(wsSize, device=device, dtype=torch.float32)
+    dapeWsNpu = torch.rand(wsSize, device=device, dtype=torch.float32)
     dapeOutNpu = torch.rand(coff * cmpRatio * headDim, device=device, dtype=torch.float32)
 
     # cu_seqlens argument (None if BSH or noCu)
@@ -691,13 +691,15 @@ def run_backward_case(case, device):
     smNpu = torch.softmax(torch.randn(outputRows, coff * cr, D, device=device), dim=1)
 
     # ── 输出与 workspace（精确大小，FP32 元素数）──
-    dX = torch.zeros(xRows, H, device=device, dtype=ioDtype)
-    dWkv = torch.zeros(coff * D, H, device=device, dtype=ioDtype)
-    dWgate = torch.zeros(coff * D, H, device=device, dtype=ioDtype)
-    dApe = torch.zeros(cr * coff * D, device=device, dtype=torch.float32)
+    # ⚠️ 全部用随机值初始化：kernel 未写区域将暴露为垃圾而非被 0 掩盖
+    #（曾因 workspace=zeros 掩盖 d_ape 未写槽位读入问题）
+    dX = torch.rand(xRows, H, device=device, dtype=ioDtype)
+    dWkv = torch.rand(coff * D, H, device=device, dtype=ioDtype)
+    dWgate = torch.rand(coff * D, H, device=device, dtype=ioDtype)
+    dApe = torch.rand(cr * coff * D, device=device, dtype=torch.float32)
     wsSize = (tiling.dapeWsSize + tiling.dXWsSize + 2 * tiling.dWWeightWsSize +
               tiling.xWsSize + tiling.dXCacheWsSize)
-    workspace = torch.zeros(wsSize, device=device, dtype=torch.float32)
+    workspace = torch.rand(wsSize, device=device, dtype=torch.float32)
 
     # ── PyPTO 直跑（不经 aclnn/custom 包）──
     compressor_grad[None, cubeCoreNum,
