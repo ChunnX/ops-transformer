@@ -272,6 +272,15 @@ protected:
             accumS1BlockNum += CeilDivision(actualSeqLenData[i], s1BasicBlock);
         }
         totalSize = accumS1BlockNum * n2Size * gSize;
+        // 全部batch的KV长度均为0时, totalSize为0, 保留1个no-op核避免kernel侧totalSize/(coreNum*2)除0,
+        // 其余多核参数置0, kernel空跑后安全返回
+        if (totalSize == 0) {
+            multiCoreParamsRegbase_->set_coreNum(1);
+            multiCoreParamsRegbase_->set_totalSize(0);
+            multiCoreParamsRegbase_->set_splitFactorSize(0);
+            multiCoreParamsRegbase_->set_splitFactorTailSize(0);
+            return;
+        }
         int64_t actualUsedCoreNum = std::min(totalSize, static_cast<int64_t>(aicNum));
         multiCoreParamsRegbase_->set_coreNum(static_cast<int32_t>(actualUsedCoreNum));
         multiCoreParamsRegbase_->set_totalSize(totalSize);
