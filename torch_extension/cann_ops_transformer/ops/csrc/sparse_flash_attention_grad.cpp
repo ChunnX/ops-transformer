@@ -47,10 +47,12 @@ SparseFlashAttentionGrad(
     const c10::optional<at::Tensor> &sinks,
     double scaleValue, int64_t sparseBlockSize,
     const c10::optional<at::Tensor> &queryRope, const c10::optional<at::Tensor> &keyRope,
-    const c10::optional<at::Tensor> &actualSeqLenQ, const c10::optional<at::Tensor> &actualSeqLenKv,
-    std::string layoutQ, std::string layoutKv, int64_t sparseMode, int64_t preTokens, int64_t nextTokens,
-    bool deterministic)
+    const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensKv,
+    std::string layoutQ, std::string layoutKv, int64_t sparseMode, int64_t winLeft, int64_t winRight,
+    int64_t attentionMode, bool deterministic)
 {
+    // attention_mode 为接口占位参数，暂不参与计算（仅收参，不转发到 aclnn/OpDef/tiling）
+    (void)attentionMode;
     // ---- 入参校验 ----
     TORCH_CHECK((query.scalar_type() == at::kBFloat16 || query.scalar_type() == at::kHalf),
                 "query should be bfloat16 or float16, current dtype is: ", query.scalar_type());
@@ -87,8 +89,8 @@ SparseFlashAttentionGrad(
 
     const at::Tensor &queryRopeConst = queryRope.value_or(at::Tensor());
     const at::Tensor &keyRopeConst = keyRope.value_or(at::Tensor());
-    const at::Tensor &actualSeqLenQConst = actualSeqLenQ.value_or(at::Tensor());
-    const at::Tensor &actualSeqLenKvConst = actualSeqLenKv.value_or(at::Tensor());
+    const at::Tensor &cuSeqlensQConst = cuSeqlensQ.value_or(at::Tensor());
+    const at::Tensor &cuSeqlensKvConst = cuSeqlensKv.value_or(at::Tensor());
 
     // ---- 申请输出张量（DeviceGuard 必须包住输出申请） ----
     at::Tensor dq{nullptr};
@@ -115,8 +117,8 @@ SparseFlashAttentionGrad(
     char *layoutQPtr = const_cast<char *>(layoutQ.c_str());
     char *layoutKvPtr = const_cast<char *>(layoutKv.c_str());
     ACLNN_CMD(aclnnSparseFlashAttentionGradV2, query, key, value, sparseIndices, dOut, out, softmaxMax, softmaxSum,
-              sinksConst, actualSeqLenQConst, actualSeqLenKvConst, queryRopeConst, keyRopeConst, scaleValue,
-              sparseBlockSize, layoutQPtr, layoutKvPtr, sparseMode, preTokens, nextTokens, deterministic, dq, dk, dv,
+              sinksConst, cuSeqlensQConst, cuSeqlensKvConst, queryRopeConst, keyRopeConst, scaleValue,
+              sparseBlockSize, layoutQPtr, layoutKvPtr, sparseMode, winLeft, winRight, deterministic, dq, dk, dv,
               dqRope, dkRope, dSinks);
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>(dq, dk, dv, dqRope,

@@ -52,12 +52,14 @@ cann_ops_transformer.sparse_flash_attention_grad(
     *,
     query_rope=None,
     key_rope=None,
-    actual_seq_qlen=None,
-    actual_seq_kvlen=None,
-    layout="BSND",
+    cu_seqlens_q=None,
+    cu_seqlens_kv=None,
+    layout_q="BSND",
+    layout_kv="BSND",
     sparse_mode=3,
-    pre_tokens=2147483647,
-    next_tokens=2147483647,
+    win_left=2147483647,
+    win_right=2147483647,
+    attention_mode=0,
     deterministic=False
 ) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)
 ```
@@ -90,17 +92,21 @@ cann_ops_transformer.sparse_flash_attention_grad(
 
 - **key_rope**（`Tensor`，可选）：key 的 rope 部分，仅 `layout`="TND" 时使用。shape为 `[T2, N2, Dr]`。数据类型与query一致。
 
-- **actual_seq_qlen**（`Tensor`，可选）：每个 batch 中 query 的有效 token 数。shape为 `[B]`。数据类型支持`int32`。
+- **cu_seqlens_q**（`Tensor`，可选）：每个 batch 中 query 的有效 token 数。shape为 `[B]`。数据类型支持`int32`。
 
-- **actual_seq_kvlen**（`Tensor`，可选）：每个 batch 中 key/value 的有效 token 数。shape为 `[B]`。数据类型支持`int32`。
+- **cu_seqlens_kv**（`Tensor`，可选）：每个 batch 中 key/value 的有效 token 数。shape为 `[B]`。数据类型支持`int32`。
 
-- **layout**（`str`，可选）：输入数据排布，支持 "BSND"/"TND"，默认值：`"BSND"`。
+- **layout_q**（`str`，可选）：query 输入数据排布，支持 "BSND"/"TND"，默认值：`"BSND"`。
+
+- **layout_kv**（`str`，可选）：key/value 输入数据排布，支持 "BSND"/"TND"，默认值：`"BSND"`。约定与 `layout_q` 恒等。
 
 - **sparse_mode**（`int`，可选）：稀疏模式，默认值：3。
 
-- **pre_tokens**（`int`，可选）：pre-token 数量，默认值：2147483647。
+- **win_left**（`int`，可选）：左侧窗口 token 数，默认值：2147483647。
 
-- **next_tokens**（`int`，可选）：next-token 数量，默认值：2147483647。
+- **win_right**（`int`，可选）：右侧窗口 token 数，默认值：2147483647。
+
+- **attention_mode**（`int`，可选）：注意力模式占位参数（暂不参与计算），默认值：0。
 
 - **deterministic**（`bool`，可选）：是否确定性计算，默认值：False。
 
@@ -170,7 +176,7 @@ cann_ops_transformer.sparse_flash_attention_grad(
         query, key, value, sparse_indices, d_out, out, softmax_max, softmax_sum,
         sinks, scale_value, 1,
         query_rope=query_rope, key_rope=key_rope,
-        actual_seq_qlen=None, actual_seq_kvlen=None,
-        layout=input_layout, sparse_mode=0, deterministic=False,
+        cu_seqlens_q=None, cu_seqlens_kv=None,
+        layout_q=input_layout, layout_kv=input_layout, sparse_mode=0, deterministic=False,
     )
     ```

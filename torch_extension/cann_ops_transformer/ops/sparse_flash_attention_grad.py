@@ -28,9 +28,10 @@ class SparseFlashAttentionGradOpBuilder(OpBuilder):
             "sparse_flash_attention_grad(Tensor query, Tensor key, Tensor value, Tensor sparse_indices, "
             "Tensor d_out, Tensor out, Tensor softmax_max, Tensor softmax_sum, Tensor? sinks, "
             "float scale_value, int sparse_block_size, "
-            "*, Tensor? query_rope=None, Tensor? key_rope=None, Tensor? actual_seq_qlen=None, "
-            "Tensor? actual_seq_kvlen=None, str layout_q=\"BSND\", str layout_kv=\"BSND\", int sparse_mode=3, "
-            "int pre_tokens=2147483647, int next_tokens=2147483647, bool deterministic=False) "
+            "*, Tensor? query_rope=None, Tensor? key_rope=None, Tensor? cu_seqlens_q=None, "
+            "Tensor? cu_seqlens_kv=None, str layout_q=\"BSND\", str layout_kv=\"BSND\", int sparse_mode=3, "
+            "int win_left=2147483647, int win_right=2147483647, int attention_mode=0, "
+            "bool deterministic=False) "
             "-> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)"
         )
 
@@ -55,13 +56,14 @@ class SparseFlashAttentionGradOpBuilder(OpBuilder):
             sparse_block_size=1,
             query_rope=None,
             key_rope=None,
-            actual_seq_qlen=None,
-            actual_seq_kvlen=None,
+            cu_seqlens_q=None,
+            cu_seqlens_kv=None,
             layout_q="BSND",
             layout_kv="BSND",
             sparse_mode=3,
-            pre_tokens=2147483647,
-            next_tokens=2147483647,
+            win_left=2147483647,
+            win_right=2147483647,
+            attention_mode=0,
             deterministic=False,
         ):
             dq = query.new_empty(query.shape, dtype=query.dtype, device="meta")
@@ -104,13 +106,14 @@ def sparse_flash_attention_grad(
     sparse_block_size=1,
     query_rope=None,
     key_rope=None,
-    actual_seq_qlen=None,
-    actual_seq_kvlen=None,
+    cu_seqlens_q=None,
+    cu_seqlens_kv=None,
     layout_q="BSND",
     layout_kv="BSND",
     sparse_mode=3,
-    pre_tokens=2147483647,
-    next_tokens=2147483647,
+    win_left=2147483647,
+    win_right=2147483647,
+    attention_mode=0,
     deterministic=False,
 ):
     """SparseFlashAttentionGrad（SFAG，MLA OSS Sink）反向计算，封装 aclnnSparseFlashAttentionGradV2。
@@ -129,13 +132,14 @@ def sparse_flash_attention_grad(
         sparse_block_size (int): block 大小，支持 {1,8,16,32,64}，默认 1。
         query_rope (Tensor, optional): query 的 rope 部分，dtype 与 query 一致，仅 layout=TND 时使用。
         key_rope (Tensor, optional): key 的 rope 部分，dtype 与 query 一致，仅 layout=TND 时使用。
-        actual_seq_qlen (Tensor, optional): query 实际序列长度，int32。
-        actual_seq_kvlen (Tensor, optional): key/value 实际序列长度，int32。
+        cu_seqlens_q (Tensor, optional): query 实际序列长度，int32，shape [B]。
+        cu_seqlens_kv (Tensor, optional): key/value 实际序列长度，int32，shape [B]。
         layout_q (str): query 输入排布，支持 "BSND"/"TND"，默认 "BSND"。
         layout_kv (str): key/value 输入排布，支持 "BSND"/"TND"，默认 "BSND"。约定与 layout_q 恒等（q==kv）。
         sparse_mode (int): 稀疏模式，默认 3。
-        pre_tokens (int): 前向 token 数，默认 2147483647。
-        next_tokens (int): 后向 token 数，默认 2147483647。
+        win_left (int): 左侧窗口 token 数，默认 2147483647。
+        win_right (int): 右侧窗口 token 数，默认 2147483647。
+        attention_mode (int): 注意力模式占位参数（暂不参与计算），默认 0。
         deterministic (bool): 是否确定性计算，默认 False。
 
     Returns:
@@ -159,13 +163,14 @@ def sparse_flash_attention_grad(
         sparse_block_size,
         query_rope,
         key_rope,
-        actual_seq_qlen,
-        actual_seq_kvlen,
+        cu_seqlens_q,
+        cu_seqlens_kv,
         layout_q,
         layout_kv,
         sparse_mode,
-        pre_tokens,
-        next_tokens,
+        win_left,
+        win_right,
+        attention_mode,
         deterministic,
     )
 
