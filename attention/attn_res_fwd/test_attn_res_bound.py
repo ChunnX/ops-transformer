@@ -12,6 +12,7 @@
 
 import argparse
 
+import numpy as np
 import torch
 import torch_npu  # noqa: F401
 
@@ -54,6 +55,15 @@ def check(name, npu, cpu, rtol=2e-2, atol=2e-2):
     mae = abs_err.max().item()
     ok = torch.allclose(npu.float().cpu(), cpu.float().cpu(), rtol=rtol, atol=atol)
     print(f"[{'PASS' if ok else 'FAIL'}] {name}: MERE={mere:.3e} MARE={mare:.3e} MAE={mae:.3e}")
+    if not ok:
+        idx = abs_err.argmax().item()
+        lo = max(0, idx - 2)
+        hi = min(abs_err.numel(), idx + 3)
+        print(f"    {name} 最大误差点及前后2点 (元素数 {abs_err.numel()}, 原始shape {tuple(npu.shape)}):")
+        for i in range(lo, hi):
+            coord = np.unravel_index(i, tuple(npu.shape))
+            print(f"      flat[{i}] coord={coord} npu={a[i].item():.6e} "
+                  f"gold={b[i].item():.6e} abs_err={abs_err[i].item():.6e}")
     return ok
 
 
