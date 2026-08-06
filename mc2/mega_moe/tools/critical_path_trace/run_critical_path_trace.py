@@ -71,6 +71,7 @@ USER_OVERRIDABLE = {
     "is_interleaved",
     "k",
     "local_moe_expert_num",
+    "max_recv_token_num",
     "n",
     "quant_dtype",
     "quant_mode",
@@ -115,29 +116,51 @@ def _critical_path_trace_validate_capacity():
         )
     expert_count = int(local_moe_expert_num)
     aic_count = int(aic_core_num)
+    configured_max_output_size = int(globals().get("max_recv_token_num", 0))
+    max_output_size = (
+        configured_max_output_size
+        if configured_max_output_size != 0
+        else int(bs) * int(world_size) * min(int(k), expert_count)
+    )
     output_bytes = int(bs) * int(h) * torch.empty((), dtype=out_dtype).element_size()
     trace_profile = os.environ["MEGA_MOE_CRITICAL_PATH_TRACE_PROFILE"]
     if trace_profile == "a8w4":
-        protocol_version = 1
+        protocol_version = 2
         stage_count = 3
+        header_words = 33
+        max_gmm2_tiles = (
+            (max_output_size + 255) // 256
+        ) * ((int(h) + 255) // 256)
+        combine_tiles_per_expert_per_core = (
+            max_gmm2_tiles + aic_count - 1
+        ) // aic_count
+        combine_tile_capacity = expert_count * combine_tiles_per_expert_per_core
     elif trace_profile == "a8w8-wave":
         protocol_version = 7
         stage_count = 2
+        header_words = 30
+        combine_tiles_per_expert_per_core = 0
+        combine_tile_capacity = 0
     else:
         raise RuntimeError(f"unsupported critical-path trace profile: {trace_profile}")
-    record_words = 2 + 2 * stage_count * expert_count
-    required_y_bytes = 4 * (30 + 3 * aic_count * record_words)
-    scratch_bytes = 4 * 3 * aic_count * stage_count * 3 * expert_count
+    record_words = 2 + 2 * stage_count * expert_count + 4 * combine_tile_capacity
+    required_y_bytes = 4 * (header_words + 3 * aic_count * record_words)
+    scratch_record_words = stage_count * 3 * expert_count + 4 * combine_tile_capacity
+    scratch_bytes = 4 * 3 * aic_count * scratch_record_words
     scratch_reserve_bytes = 50 * 1024 * 1024
     _critical_path_trace_capacity = {
         "trace_profile": trace_profile,
         "protocol_version": protocol_version,
-        "formula": "4 * (30 + 3 * aic_core_num * (2 + 2 * stage_count * local_moe_expert_num))",
+        "formula": "4 * (header_words + 3 * aic_core_num * (2 + 2 * stage_count * local_moe_expert_num + 4 * combine_tile_capacity))",
         "stage_count": stage_count,
+        "header_words": header_words,
         "bs": int(bs),
         "h": int(h),
         "aic_core_num": aic_count,
         "local_moe_expert_num": expert_count,
+        "max_output_size": max_output_size,
+        "combine_tiles_per_expert_per_core": combine_tiles_per_expert_per_core,
+        "combine_tile_capacity": combine_tile_capacity,
         "record_words": record_words,
         "required_y_bytes": required_y_bytes,
         "available_y_bytes": output_bytes,
@@ -195,6 +218,7 @@ def _critical_path_trace_capture_y(y, rank):
         "n": int(n),
         "k": int(k),
         "local_moe_expert_num": int(local_moe_expert_num),
+        "max_output_size": int(_critical_path_trace_capacity["max_output_size"]),
         "shared_expert_num": int(shared_expert_num),
         "world_size": int(world_size),
         "aic_core_num": int(aic_core_num),

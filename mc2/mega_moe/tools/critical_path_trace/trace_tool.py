@@ -260,6 +260,30 @@ POINT_TEXT_ZH = {
         "proof": "MTE2_S 消费 Combine 返回时保留的完成依赖后采样。",
         "perturbation": "每专家一次 MTE2_S 桥接和时钟采样。",
     },
+    "a8w4_combine_tile_wait_begin_S": {
+        "when": "AIV1 即将轮询当前 Combine tile 的 GMM2 ready sequence。",
+        "why": "量化每个 tile 实际等待 GMM2 的时间。",
+        "proof": "采样直接位于 gmmToEpilogueFlag 轮询之前。",
+        "perturbation": "每个本核 Combine tile 一次时钟采样。",
+    },
+    "a8w4_combine_tile_wait_end_S": {
+        "when": "当前 Combine tile 的 GMM2 ready sequence 已可见。",
+        "why": "精确关闭逐 tile 等待区间。",
+        "proof": "采样直接位于 ready 轮询之后。",
+        "perturbation": "与 tile work begin 共用一次时钟采样。",
+    },
+    "a8w4_combine_tile_begin_S": {
+        "when": "当前 GMM2 tile 已 ready，即将开始 GM 到 UB 搬运和 Combine。",
+        "why": "将等待空泡与 Combine 工作分开。",
+        "proof": "采样位于 ready 轮询之后、首次 GM 到 UB 搬运之前。",
+        "perturbation": "与 tile wait end 共用一次时钟采样。",
+    },
+    "a8w4_combine_tile_end_S": {
+        "when": "当前 Combine tile 的远端 MTE3 写出完成依赖已到达 Scalar。",
+        "why": "得到逐 tile Combine 工作的实际完成边界。",
+        "proof": "依次经过 MTE3_MTE2 和 MTE2_S 后采样。",
+        "perturbation": "每个本核 Combine tile 一次 MTE2_S 桥接和时钟采样。",
+    },
 }
 
 SPAN_LABEL_ZH = {
@@ -280,6 +304,8 @@ SPAN_LABEL_ZH = {
     "a8w4_gmm2": "逐专家 GMM2",
     "a8w4_gmm2_prologue": "GMM2 权重 prologue",
     "a8w4_combine": "逐专家 Combine",
+    "a8w4_combine_tile_wait": "Combine tile wait",
+    "a8w4_combine_tile_work": "Combine tile work",
 }
 
 
@@ -413,28 +439,39 @@ def _resolve_record_words(
     if not isinstance(layout, dict):
         raise ContractError(f"{location} must be a positive integer or dynamic layout")
     base = layout.get("base_words")
-    per_count = layout.get("words_per_count")
-    count_field = layout.get("count_header_field")
-    if (
-        not isinstance(base, int)
-        or isinstance(base, bool)
-        or base < 0
-        or not isinstance(per_count, int)
-        or isinstance(per_count, bool)
-        or per_count <= 0
-        or not isinstance(count_field, str)
-        or not count_field
-    ):
+    if not isinstance(base, int) or isinstance(base, bool) or base < 0:
         raise ContractError(
-            f"{location} dynamic layout requires non-negative base_words, positive "
-            "words_per_count, and count_header_field"
+            f"{location} dynamic layout requires non-negative base_words"
         )
-    count = header.get(count_field)
-    if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
-        raise ContractError(
-            f"{location} cannot resolve positive header field {count_field!r}: {count!r}"
-        )
-    return base + per_count * count
+    terms = layout.get("terms")
+    if terms is None:
+        terms = [layout]
+    if not isinstance(terms, list) or not terms:
+        raise ContractError(f"{location}.terms must be a non-empty list")
+    result = base
+    for index, term in enumerate(terms):
+        term_location = f"{location}.terms[{index}]"
+        if not isinstance(term, dict):
+            raise ContractError(f"{term_location} must be an object")
+        per_count = term.get("words_per_count")
+        count_field = term.get("count_header_field")
+        if (
+            not isinstance(per_count, int)
+            or isinstance(per_count, bool)
+            or per_count <= 0
+            or not isinstance(count_field, str)
+            or not count_field
+        ):
+            raise ContractError(
+                f"{term_location} requires positive words_per_count and count_header_field"
+            )
+        count = header.get(count_field)
+        if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+            raise ContractError(
+                f"{location} cannot resolve positive header field {count_field!r}: {count!r}"
+            )
+        result += per_count * count
+    return result
 
 
 def _resolve_field_count(
@@ -460,15 +497,69 @@ def _resolve_field_count(
     return count
 
 
+def _resolve_field_word(
+    field: dict[str, Any], header: dict[str, Any], location: str = "record field word"
+) -> int:
+    word_layout = field.get("word")
+    if (
+        isinstance(word_layout, int)
+        and not isinstance(word_layout, bool)
+        and word_layout >= 0
+    ):
+        return word_layout
+    if not isinstance(word_layout, dict):
+        raise ContractError(f"{location} must be a non-negative integer or dynamic layout")
+    base = word_layout.get("base_words")
+    terms = word_layout.get("terms")
+    if (
+        not isinstance(base, int)
+        or isinstance(base, bool)
+        or base < 0
+        or not isinstance(terms, list)
+        or not terms
+    ):
+        raise ContractError(
+            f"{location} dynamic layout requires non-negative base_words and non-empty terms"
+        )
+    result = base
+    for index, term in enumerate(terms):
+        term_location = f"{location}.terms[{index}]"
+        if not isinstance(term, dict):
+            raise ContractError(f"{term_location} must be an object")
+        words_per_count = term.get("words_per_count")
+        count_field = term.get("count_header_field")
+        if (
+            not isinstance(words_per_count, int)
+            or isinstance(words_per_count, bool)
+            or words_per_count <= 0
+            or not isinstance(count_field, str)
+            or not count_field
+        ):
+            raise ContractError(
+                f"{term_location} requires positive words_per_count and count_header_field"
+            )
+        count = header.get(count_field)
+        if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+            raise ContractError(
+                f"{location} cannot resolve positive header field {count_field!r}: {count!r}"
+            )
+        result += words_per_count * count
+    return result
+
+
 def _record_words_text(
     protocol: dict[str, Any], header: dict[str, Any] | None = None
 ) -> str:
     layout = protocol["record_words"]
     if isinstance(layout, int):
         return str(layout)
-    formula = (
-        f"{layout['base_words']} + {layout['words_per_count']} × "
-        f"header.{layout['count_header_field']}"
+    terms = layout.get("terms", [layout])
+    formula = " + ".join(
+        [str(layout["base_words"])]
+        + [
+            f"{term['words_per_count']} × header.{term['count_header_field']}"
+            for term in terms
+        ]
     )
     if header is None:
         return formula
@@ -615,11 +706,11 @@ def _validate_spec(spec: Any) -> list[str]:
     ):
         errors.append("$.trace.protocol.header_words must be a positive integer")
     record_words = protocol.get("record_words")
-    validation_record_header = (
-        {record_words.get("count_header_field", ""): 3}
-        if isinstance(record_words, dict)
-        else {}
-    )
+    validation_record_header: dict[str, int] = {}
+    if isinstance(record_words, dict):
+        for term in record_words.get("terms", [record_words]):
+            if isinstance(term, dict) and isinstance(term.get("count_header_field"), str):
+                validation_record_header[term["count_header_field"]] = 3
     try:
         _resolve_record_words(
             protocol,
@@ -794,18 +885,14 @@ def _validate_spec(spec: Any) -> list[str]:
             "$.trace.protocol.header_fields field 'role_counts' must have width_words "
             f"equal to len(trace.roles)={len(roles)}"
         )
-    dynamic_record_count_field = (
-        record_words.get("count_header_field")
-        if isinstance(record_words, dict)
-        else None
-    )
-    if (
-        dynamic_record_count_field is not None
-        and dynamic_record_count_field not in header_names
-    ):
-        errors.append(
-            "$.trace.protocol.record_words.count_header_field must name a header field"
-        )
+    if isinstance(record_words, dict):
+        for index, term in enumerate(record_words.get("terms", [record_words])):
+            count_field = term.get("count_header_field") if isinstance(term, dict) else None
+            if count_field is not None and count_field not in header_names:
+                errors.append(
+                    f"$.trace.protocol.record_words.terms[{index}].count_header_field "
+                    "must name a header field"
+                )
 
     output = trace.get("output")
     if not isinstance(output, dict):
@@ -967,11 +1054,15 @@ def _validate_spec(spec: Any) -> list[str]:
         elif kind == "counter" and name and not FIELD_NAME_RE.fullmatch(name):
             errors.append(f"{loc}.name must be a C-like identifier")
 
-        word = field.get("word")
         width = field.get("width_words")
         count_layout = field.get("count")
         stride = field.get("stride_words")
         validation_header = {name: 3 for name in header_names}
+        try:
+            word = _resolve_field_word(field, validation_header, f"{loc}.word")
+        except ContractError as exc:
+            errors.append(str(exc))
+            word = None
         try:
             count = _resolve_field_count(field, validation_header, f"{loc}.count")
         except ContractError as exc:
@@ -1946,11 +2037,29 @@ def _render_html(
                     expert_wave_ids
                 )
                 wave_id = expert_wave_ids[occurrence] if expert_indexed else None
+                tile_expert = None
+                tile_ordinal = None
+                if span["id"] in {
+                    "a8w4_combine_tile_wait",
+                    "a8w4_combine_tile_work",
+                }:
+                    tiles_per_expert = int(
+                        runtime_header.get("combine_tiles_per_expert_per_core", 0)
+                    )
+                    if tiles_per_expert <= 0:
+                        raise ContractError(
+                            "A8W4 tile span lacks positive combine_tiles_per_expert_per_core"
+                        )
+                    tile_expert = occurrence // tiles_per_expert
+                    tile_ordinal = occurrence % tiles_per_expert
+                    wave_id = None
                 row_spans.append(
                     {
                         "span": span,
                         "occurrence": occurrence,
                         "wave_id": wave_id,
+                        "tile_expert": tile_expert,
+                        "tile_ordinal": tile_ordinal,
                         "derived_gap": None,
                         "begin_raw": begin,
                         "end_raw": end,
@@ -2103,9 +2212,13 @@ def _render_html(
             css_class = "" if exact else "nonexact"
             opacity = "0.92" if exact else "0.42"
             wave_label = (
-                f"wave {rendered['wave_id']} / 专家 {rendered['occurrence']}"
-                if rendered["wave_id"] is not None
-                else f"记录项 {rendered['occurrence']}"
+                f"专家 {rendered.get('tile_expert')} / 本核 tile {rendered.get('tile_ordinal')}"
+                if rendered.get("tile_expert") is not None
+                else (
+                    f"wave {rendered['wave_id']} / 专家 {rendered['occurrence']}"
+                    if rendered["wave_id"] is not None
+                    else f"记录项 {rendered['occurrence']}"
+                )
             )
             if rendered["derived_gap"] is not None:
                 gap = rendered["derived_gap"]
@@ -2574,11 +2687,14 @@ def _cmd_decode(args: argparse.Namespace) -> int:
                 if role not in field["roles"]:
                     continue
                 values: list[int] = []
+                field_word = _resolve_field_word(
+                    field, header, f"record field {field['name']} word"
+                )
                 field_count = _resolve_field_count(
                     field, header, f"record field {field['name']} count"
                 )
                 for repetition in range(field_count):
-                    start = field["word"] + repetition * field["stride_words"]
+                    start = field_word + repetition * field["stride_words"]
                     selected = record_words[start : start + field["width_words"]]
                     values.append(
                         _combine_protocol_words(

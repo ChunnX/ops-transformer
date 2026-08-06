@@ -2481,7 +2481,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::GroupMatm
                                              QuantScaleOutType, QuantScaleOutType, MegaMoeImpl::L1_TILE_M_256,
                                              TopkWeightsPrefetch, IsShared, true>(
             params_, state.problemShape, gmmAddrInfo, startBlockIdx_, gmTileSequence, state.expertBeforeCnt,
-            gmm2PingPongIdx_);
+            expertIdx, gmm2PingPongIdx_);
     } else {
         // A8W8_NZ / Generic: both use the same GroupMatmul2 template, only LayoutB differs (ZN vs ND).
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {

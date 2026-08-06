@@ -78,6 +78,7 @@ def make_synthetic_capture(
         "n": 12288,
         "k": 8,
         "local_moe_expert_num": 8,
+        "max_output_size": 384,
         "shared_expert_num": 0,
         "world_size": 2,
         "aic_core_num": configured_aic_count,
@@ -104,27 +105,47 @@ def make_synthetic_capture(
         spec,
         runtime_aic_count=actual_aic_count,
     )
-    record_words = resolve_record_words(protocol, metadata["local_moe_expert_num"])
+    record_words = resolve_record_words(protocol, expected)
     if fine_grained:
+        preflight_record_header = {"moe_experts_per_rank": metadata["local_moe_expert_num"]}
+        if a8w4:
+            max_gmm2_tiles = ((metadata["max_output_size"] + 255) // 256) * (
+                (metadata["h"] + 255) // 256
+            )
+            preflight_tiles_per_expert = (
+                max_gmm2_tiles + configured_aic_count - 1
+            ) // configured_aic_count
+            preflight_record_header["combine_tile_capacity"] = (
+                metadata["local_moe_expert_num"] * preflight_tiles_per_expert
+            )
+        preflight_record_words = resolve_record_words(protocol, preflight_record_header)
         metadata["capacity_preflight"] = {
             "protocol_version": int(protocol["version"]),
             "aic_core_num": configured_aic_count,
             "local_moe_expert_num": metadata["local_moe_expert_num"],
-            "record_words": record_words,
+            "record_words": preflight_record_words,
             "required_y_bytes": 4
             * (
                 int(protocol["header_words"])
-                + 3 * configured_aic_count * record_words
+                + 3 * configured_aic_count * preflight_record_words
             ),
             "available_y_bytes": metadata["output_nbytes"],
-            "scratch_required_bytes": 4
-            * 3
-            * configured_aic_count
-            * (3 if a8w4 else 2)
-            * 3
-            * 8,
+            "scratch_required_bytes": 4 * 3 * configured_aic_count * (
+                (3 if a8w4 else 2) * 3 * 8
+                + 4 * preflight_record_header.get("combine_tile_capacity", 0)
+            ),
             "scratch_reserve_bytes": 50 * 1024 * 1024,
         }
+        if a8w4:
+            metadata["capacity_preflight"].update(
+                {
+                    "max_output_size": metadata["max_output_size"],
+                    "combine_tiles_per_expert_per_core": preflight_tiles_per_expert,
+                    "combine_tile_capacity": preflight_record_header[
+                        "combine_tile_capacity"
+                    ],
+                }
+            )
     word_count = metadata["output_nbytes"] // 4
     words = [0] * word_count
     header_values = {
@@ -160,12 +181,35 @@ def make_synthetic_capture(
                     for expert in range(8):
                         for stage in range(active_stage_count):
                             begin = 100 + 1800 * stage + 180 * expert
+                            end = begin + 100
+                            if role_index == 2 and stage == 2:
+                                begin = 3700 + 220 * expert
+                                end = begin + 180
                             words[base + 2 + 6 * expert + 2 * stage] = (
                                 process_begin + begin
                             ) & 0xFFFFFFFF
                             words[base + 3 + 6 * expert + 2 * stage] = (
-                                process_begin + begin + 100
+                                process_begin + end
                             ) & 0xFFFFFFFF
+                    if role_index == 2:
+                        tile_record_base = base + 2 + 6 * 8
+                        tiles_per_expert = expected[
+                            "combine_tiles_per_expert_per_core"
+                        ]
+                        for expert in range(8):
+                            aggregate_begin = 3700 + 220 * expert
+                            for tile_ordinal in range(2):
+                                slot = expert * tiles_per_expert + tile_ordinal
+                                wait_begin = aggregate_begin + tile_ordinal * 100 - (
+                                    30 if tile_ordinal == 0 else 40
+                                )
+                                tile_begin = aggregate_begin + tile_ordinal * 100
+                                tile_end = tile_begin + (60 if tile_ordinal == 0 else 80)
+                                entry = tile_record_base + slot * 4
+                                words[entry + 0] = (process_begin + wait_begin) & 0xFFFFFFFF
+                                words[entry + 1] = (process_begin + tile_begin) & 0xFFFFFFFF
+                                words[entry + 2] = (process_begin + tile_begin) & 0xFFFFFFFF
+                                words[entry + 3] = (process_begin + tile_end) & 0xFFFFFFFF
             elif role_index == 0 and core < 2:
                 for expert in range(8):
                     words[base + 2 + 4 * expert] = (
@@ -231,6 +275,24 @@ def make_synthetic_capture(
 
 
 class TraceContractTests(unittest.TestCase):
+    def test_a8w4_spec_exposes_per_tile_combine_wait_and_work(self) -> None:
+        spec = load_json(A8W4_SPEC)
+        point_ids = {point["id"] for point in spec["points"]}
+        span_ids = {span["id"] for span in spec["spans"]}
+        self.assertTrue(
+            {
+                "a8w4_combine_tile_wait_begin_S",
+                "a8w4_combine_tile_wait_end_S",
+                "a8w4_combine_tile_begin_S",
+                "a8w4_combine_tile_end_S",
+            }.issubset(point_ids)
+        )
+        self.assertTrue(
+            {"a8w4_combine_tile_wait", "a8w4_combine_tile_work"}.issubset(
+                span_ids
+            )
+        )
+
     def test_trace_switches_default_to_fine_diagnostic_mode(self) -> None:
         source_defaults = validate_trace_source_defaults(REPO_ROOT)
         self.assertEqual(
@@ -320,15 +382,22 @@ class TraceContractTests(unittest.TestCase):
                 a8w4_spec_path=A8W4_SPEC,
                 a8w4_audit_path=A8W4_AUDIT,
             )
-            self.assertEqual(results[0]["protocol_version"], 1)
+            self.assertEqual(results[0]["protocol_version"], 2)
             normalized = load_json(directory / "rank0.normalized.json")
-            self.assertEqual(normalized["schema_id"], "0x34dddbe0")
-            self.assertEqual(normalized["metadata"]["resolved_record_words"], 50)
+            self.assertEqual(normalized["schema_id"], "0xe9b9e5a3")
+            self.assertEqual(normalized["metadata"]["resolved_record_words"], 114)
             order = load_json(directory / "rank0.order-check.json")
             self.assertEqual(order["span_summary"]["a8w4_process"]["count"], 108)
+            self.assertEqual(
+                order["span_summary"]["a8w4_combine_tile_wait"]["count"], 576
+            )
+            self.assertEqual(
+                order["span_summary"]["a8w4_combine_tile_work"]["count"], 576
+            )
             rendered_html = (directory / "rank0.html").read_text(encoding="utf-8")
             self.assertIn("GMM1 权重 prologue", rendered_html)
             self.assertIn("逐专家 Combine", rendered_html)
+            self.assertIn("Combine tile wait", rendered_html)
 
     def test_bad_magic_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -407,6 +476,30 @@ class TraceContractTests(unittest.TestCase):
             self.assertEqual(expected["record_count"], 96)
             self.assertEqual(contract["header"]["role_counts"], [32, 32, 32])
             self.assertEqual(contract["metadata"]["aic_core_num"], 36)
+
+    def test_a8w4_runtime_core_count_recomputes_tile_capacity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            raw_path, metadata_path = make_synthetic_capture(
+                directory,
+                A8W4_SPEC,
+                configured_aic_count=36,
+                runtime_aic_count=32,
+            )
+            contract, expected = validate_capture_contract(
+                raw_path=raw_path,
+                metadata_path=metadata_path,
+                spec_path=A8W4_SPEC,
+                allow_truncated=False,
+            )
+            self.assertEqual(expected["aic_count"], 32)
+            self.assertEqual(expected["record_count"], 96)
+            self.assertEqual(expected["combine_tiles_per_expert_per_core"], 2)
+            self.assertEqual(expected["combine_tile_capacity"], 16)
+            self.assertEqual(contract["header"]["role_counts"], [32, 32, 32])
+            self.assertEqual(
+                contract["metadata"]["capacity_preflight"]["aic_core_num"], 36
+            )
 
     def test_one_sided_stage_boundary_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

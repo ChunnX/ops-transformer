@@ -1076,6 +1076,7 @@ struct Gmm1ArgsA8W4 {
 
 struct Gmm2ArgsA8W4 {
     uint32_t groupCnt;
+    uint32_t expertIdx;
     uint16_t &pingpongIdx;
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
     CriticalPathTrace *criticalPathTrace{nullptr};
@@ -1374,6 +1375,7 @@ __aicore__ inline void AivGmm2PostA8W4(Scheduler &scheduler, TensorC &l0cOutGm, 
                                        const GMMAddrInfo &gmmAddrInfo, int32_t &gmTileSequence, uint32_t groupCnt,
                                        const Config &config, uint32_t startLoopIdx, uint32_t tileNum, ExtraArgs &args)
 {
+    uint32_t tileOrdinal = 0U;
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -1381,6 +1383,13 @@ __aicore__ inline void AivGmm2PostA8W4(Scheduler &scheduler, TensorC &l0cOutGm, 
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
 
         int32_t expectedReadySequence = gmTileSequence + 1;
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if (args.criticalPathTrace != nullptr) {
+            // TRACE_POINT: a8w4_combine_tile_wait_begin_S
+            args.criticalPathTrace->BeginCombineTileWait(
+                args.expertIdx, tileOrdinal, CriticalPathTrace::Now());
+        }
+#endif
         while (AscendC::ReadGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag) < expectedReadySequence) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
@@ -1388,6 +1397,12 @@ __aicore__ inline void AivGmm2PostA8W4(Scheduler &scheduler, TensorC &l0cOutGm, 
         }
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
         RecordA8W4CombineBeginAfterReady(args.criticalPathTrace);
+        if (args.criticalPathTrace != nullptr) {
+            // TRACE_POINT: a8w4_combine_tile_wait_end_S
+            // TRACE_POINT: a8w4_combine_tile_begin_S
+            args.criticalPathTrace->BeginCombineTile(
+                args.expertIdx, tileOrdinal, CriticalPathTrace::Now());
+        }
 #endif
         auto tensorBlockGm = l0cOutGm.Slice(Te::MakeCoord(mLoc, nLoc),
                                             Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
@@ -1412,7 +1427,17 @@ __aicore__ inline void AivGmm2PostA8W4(Scheduler &scheduler, TensorC &l0cOutGm, 
             nLoc, config.n, metaInfoTensor, l0cOutUbGMM2, actualShape, L1_TILE_N, params);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if (args.criticalPathTrace != nullptr) {
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);
+            // TRACE_POINT: a8w4_combine_tile_end_S
+            args.criticalPathTrace->EndCombineTile(
+                args.expertIdx, tileOrdinal, CriticalPathTrace::Now());
+        }
+#endif
         gmTileSequence = expectedReadySequence;
+        ++tileOrdinal;
     }
 }
 
@@ -1585,14 +1610,15 @@ template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typena
 __aicore__ inline void GroupMatmul2CombineA8W4(const Params &params,
                                                const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                                const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx,
-                                               int32_t &gmTileSequence, uint32_t groupCnt, uint16_t &pingpongIdx
+                                               int32_t &gmTileSequence, uint32_t groupCnt, uint32_t expertIdx,
+                                               uint16_t &pingpongIdx
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
                                                ,
                                                CriticalPathTrace *criticalPathTrace = nullptr
 #endif
 )
 {
-    Detail::Gmm2ArgsA8W4 args{groupCnt, pingpongIdx
+    Detail::Gmm2ArgsA8W4 args{groupCnt, expertIdx, pingpongIdx
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
                               ,
                               criticalPathTrace

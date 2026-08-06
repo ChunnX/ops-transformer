@@ -24,7 +24,7 @@ TRACE_CONTRACTS = {
     },
     "mega-moe-a8w4-critical-path": {
         "path_id": 2,
-        "flags_by_protocol": {1: 0xF},
+        "flags_by_protocol": {1: 0xF, 2: 0x1F},
         "experts_per_wave": 1,
         "weight1_interleaved": 0,
     },
@@ -153,15 +153,30 @@ def count_expert_waves(expert_count: int, experts_per_wave: int) -> int:
     return waves
 
 
-def resolve_record_words(protocol: dict[str, Any], expert_count: int) -> int:
+def resolve_record_words(
+    protocol: dict[str, Any], header_or_expert_count: dict[str, int] | int
+) -> int:
     layout = protocol["record_words"]
     if isinstance(layout, int) and not isinstance(layout, bool):
         return layout
     if not isinstance(layout, dict):
         raise ContractError("protocol record_words is neither fixed nor dynamic")
-    if layout.get("count_header_field") != "moe_experts_per_rank":
-        raise ContractError("unsupported dynamic record_words count header field")
-    return int(layout["base_words"]) + int(layout["words_per_count"]) * expert_count
+    header = (
+        {"moe_experts_per_rank": header_or_expert_count}
+        if isinstance(header_or_expert_count, int)
+        else header_or_expert_count
+    )
+    terms = layout.get("terms", [layout])
+    result = int(layout["base_words"])
+    for term in terms:
+        count_field = term.get("count_header_field")
+        count = header.get(count_field)
+        if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+            raise ContractError(
+                f"cannot resolve record_words from header field {count_field!r}: {count!r}"
+            )
+        result += int(term["words_per_count"]) * count
+    return result
 
 
 def calc_experts_per_wave(
@@ -273,7 +288,7 @@ def expected_header_from_metadata(
         interleaved,
     ]
     fine_dynamic = isinstance(spec["trace"]["protocol"]["record_words"], dict)
-    return {
+    expected = {
         "record_count": 3 * aic_count,
         "clock_bits": 32,
         "repetition_count": repetitions,
@@ -302,6 +317,19 @@ def expected_header_from_metadata(
         "carrier_words": carrier_words,
         "aic_count": aic_count,
     }
+    if trace_name == "mega-moe-a8w4-critical-path" and protocol_version >= 2:
+        max_output_size = _required_meta_int(metadata, "max_output_size")
+        max_gmm2_tiles = ceil_div(max_output_size, 256) * ceil_div(h, 256)
+        combine_tiles_per_expert_per_core = ceil_div(max_gmm2_tiles, aic_count)
+        expected.update(
+            {
+                "max_output_size": max_output_size,
+                "combine_tiles_per_expert_per_core": combine_tiles_per_expert_per_core,
+                "combine_tile_capacity": moe_experts
+                * combine_tiles_per_expert_per_core,
+            }
+        )
+    return expected
 
 
 def validate_capture_contract(
@@ -312,15 +340,6 @@ def validate_capture_contract(
     raw = raw_path.read_bytes()
     header = read_header(raw, spec)
     protocol = spec["trace"]["protocol"]
-    protocol_expected = {
-        "magic": parse_uint(protocol["magic"], "protocol magic"),
-        "version": int(protocol["version"]),
-        "schema_id": parse_uint(protocol["schema_id"], "protocol schema_id"),
-        "header_words": int(protocol["header_words"]),
-        "record_words": resolve_record_words(
-            protocol, _required_meta_int(metadata, "local_moe_expert_num")
-        ),
-    }
     role_counts = header.get("role_counts")
     if (
         not isinstance(role_counts, list)
@@ -338,6 +357,13 @@ def validate_capture_contract(
     expected = expected_header_from_metadata(
         metadata, len(raw), spec, runtime_aic_count=runtime_aic_count
     )
+    protocol_expected = {
+        "magic": parse_uint(protocol["magic"], "protocol magic"),
+        "version": int(protocol["version"]),
+        "schema_id": parse_uint(protocol["schema_id"], "protocol schema_id"),
+        "header_words": int(protocol["header_words"]),
+        "record_words": resolve_record_words(protocol, expected),
+    }
     expected.update(protocol_expected)
 
     mismatches: list[str] = []
@@ -384,17 +410,42 @@ def validate_capture_contract(
         preflight_aic_count = parse_uint(
             preflight.get("aic_core_num"), "capacity_preflight aic_core_num"
         )
+        preflight_record_header = {
+            "moe_experts_per_rank": expected["moe_experts_per_rank"]
+        }
+        if "max_output_size" in expected:
+            preflight_tiles_per_expert = ceil_div(
+                ceil_div(expected["max_output_size"], 256)
+                * ceil_div(expected["h"], 256),
+                preflight_aic_count,
+            )
+            preflight_record_header["combine_tile_capacity"] = (
+                expected["moe_experts_per_rank"] * preflight_tiles_per_expert
+            )
+        preflight_record_words = resolve_record_words(
+            protocol, preflight_record_header
+        )
         preflight_required_words = (
             int(protocol["header_words"])
-            + 3 * preflight_aic_count * expected["record_words"]
+            + 3 * preflight_aic_count * preflight_record_words
         )
         wanted_preflight = {
             "protocol_version": int(protocol["version"]),
             "local_moe_expert_num": expected["moe_experts_per_rank"],
-            "record_words": expected["record_words"],
+            "record_words": preflight_record_words,
             "required_y_bytes": preflight_required_words * 4,
             "available_y_bytes": len(raw),
         }
+        if "max_output_size" in expected:
+            wanted_preflight.update(
+                {
+                    "max_output_size": expected["max_output_size"],
+                    "combine_tiles_per_expert_per_core": preflight_tiles_per_expert,
+                    "combine_tile_capacity": preflight_record_header[
+                        "combine_tile_capacity"
+                    ],
+                }
+            )
         mismatched_preflight = [
             f"{name}={preflight.get(name)!r}, expected {wanted}"
             for name, wanted in wanted_preflight.items()
@@ -495,6 +546,13 @@ def validate_timestamp_order(
         if span["id"] in fine_gap_by_span
         for point_id in (span["begin"], span["end"])
     }
+    variable_capacity_point_ids = {
+        field["name"]
+        for field in spec["trace"]["protocol"]["record_fields"]
+        if isinstance(field.get("count"), dict)
+        and field["count"].get("header_field")
+        not in (None, "moe_experts_per_rank")
+    }
     span_counts = {span["id"]: 0 for span in spans}
     span_durations: dict[str, list[int]] = {span["id"]: [] for span in spans}
     fine_truncated_records: list[str] = []
@@ -535,6 +593,54 @@ def validate_timestamp_order(
                         f"{label} combine slot {expert} is not a routed-wave start"
                     )
 
+        if (
+            spec["trace"]["name"] == "mega-moe-a8w4-critical-path"
+            and record.get("role") == "AIV1"
+            and "combine_tile_capacity" in header
+        ):
+            tile_capacity = int(header["combine_tile_capacity"])
+            tiles_per_expert = int(header["combine_tiles_per_expert_per_core"])
+            tile_points = {
+                name: timestamps.get(name, [])
+                for name in (
+                    "a8w4_combine_tile_wait_begin_S",
+                    "a8w4_combine_tile_wait_end_S",
+                    "a8w4_combine_tile_begin_S",
+                    "a8w4_combine_tile_end_S",
+                )
+            }
+            if any(len(values) != tile_capacity for values in tile_points.values()):
+                raise ContractError(
+                    f"{label} Combine tile arrays do not match capacity {tile_capacity}"
+                )
+            expert_count = int(header["moe_experts_per_rank"])
+            if tile_capacity != expert_count * tiles_per_expert:
+                raise ContractError(
+                    f"{label} Combine tile capacity does not match expert slot layout"
+                )
+            for expert in range(expert_count):
+                seen_missing = False
+                for tile_ordinal in range(tiles_per_expert):
+                    slot = expert * tiles_per_expert + tile_ordinal
+                    values = [point_values[slot] for point_values in tile_points.values()]
+                    present = [value != missing for value in values]
+                    if any(present) and not all(present):
+                        raise ContractError(
+                            f"{label} expert {expert} tile {tile_ordinal} has incomplete boundaries"
+                        )
+                    if not any(present):
+                        seen_missing = True
+                        continue
+                    if seen_missing:
+                        raise ContractError(
+                            f"{label} expert {expert} tile slots are not contiguous"
+                        )
+                    if values[1] != values[2]:
+                        raise ContractError(
+                            f"{label} expert {expert} tile {tile_ordinal} wait end "
+                            "does not equal work begin"
+                        )
+
         for point, values in timestamps.items():
             if not isinstance(values, list):
                 raise ContractError(f"{label} point {point} is not an occurrence list")
@@ -549,6 +655,7 @@ def validate_timestamp_order(
                 if (
                     not dynamic_fine
                     and point not in fine_point_ids
+                    and point not in variable_capacity_point_ids
                     and len(values) > 1
                     and occurrence >= captured
                 ):
