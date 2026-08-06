@@ -289,11 +289,11 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsCapable()
         xScaleDtype_ == ge::DT_FLOAT8_E8M0 &&
         inputParams_.scaleDtype == ge::DT_FLOAT8_E8M0 && IsFp8(inputParams_.outDataDtype) &&
         inputParams_.outScaleDtype == ge::DT_FLOAT8_E8M0;
-    const bool formatSupported = IsSupportedFormat(inputParams_.aFormat) && 
+    const bool formatSupported = IsSupportedFormat(inputParams_.aFormat) &&
                                  IsSupportedFormat(inputParams_.bFormat) &&
-                                 IsSupportedFormat(xScaleFormat_) && 
+                                 IsSupportedFormat(xScaleFormat_) &&
                                  IsSupportedFormat(weightScaleFormat_) &&
-                                 IsSupportedFormat(inputParams_.cFormat) && 
+                                 IsSupportedFormat(inputParams_.cFormat) &&
                                  IsSupportedFormat(yScaleFormat_);
     const bool coreSupported =
         aicoreParams_.aicNum > 0 && aivNum_ == AIC_AIV_CORE_RATIO * aicoreParams_.aicNum;
