@@ -72,8 +72,11 @@ class OpBuilder(ABC):
         paths = [
             os.path.join(self._torch_npu_path, "include"),
             os.path.join(self._torch_npu_path, "include/third_party/hccl/inc"),
-            os.path.join(self._torch_npu_path, "include/third_party/acl/inc"),
+            # 优先使用 CANN Toolkit 的 acl 头文件：torch_npu 自带的 third_party/acl 版本较旧，
+            # 缺少 ACL_FLOAT8_E5M2/ACL_FLOAT4_E2M1 等新 dtype 常量（两者 include guard 相同，
+            # 命中新版后旧版会被跳过，不会重复定义 aclDataType/aclFormat 枚举）
             os.path.join(self._cann_path, "include"),
+            os.path.join(self._torch_npu_path, "include/third_party/acl/inc"),
             os.path.join(self._package_path, "common/inc"),
         ]
         return paths
