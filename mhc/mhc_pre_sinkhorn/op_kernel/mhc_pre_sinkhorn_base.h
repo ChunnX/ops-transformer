@@ -237,7 +237,7 @@ __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, cons
                 instrParams.dstRepStride = dstRepStridePerLine;
                 instrParams.src0RepStride = dstRepStridePerLine;
                 instrParams.src1RepStride = 1;
-                Mul(output[numRepeatPerLine * elemInOneRepeat], input0[numRepeatPerLine * elemInOneRepeat], tmpBuffer, 
+                Mul(output[numRepeatPerLine * elemInOneRepeat], input0[numRepeatPerLine * elemInOneRepeat], tmpBuffer,
                     numRemainPerLine, curRowNum, instrParams);
             }
         }
