@@ -20,7 +20,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OPS_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"     # ops-transformer
+OPS_ROOT="${SCRIPT_DIR}"     # ops-transformer
 TORCH_EXT_DIR="${OPS_ROOT}/torch_extension"
 INSTALL_PATH="${1:-${SCRIPT_DIR}/install}"
 OPS="attn_res_fwd,attention_res_grad"
