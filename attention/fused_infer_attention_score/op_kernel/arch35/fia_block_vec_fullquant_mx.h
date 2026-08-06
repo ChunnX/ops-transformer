@@ -339,7 +339,19 @@ public:
             s2CalcSize = subLoop == 0 ? s2BaseSizeCur : runInfo.actSingleLoopS2Size - s2BaseSizeCur;
         }
 
-        if (unlikely(runInfo.isFirstS2Loop)) {
+        bool skipVfForFullMask = false;
+        if constexpr (HAS_MASK) {
+            skipVfForFullMask = isFullMask && !isSkipMask && !runInfo.isFirstS2Loop;
+        }
+        if (skipVfForFullMask) {
+            LocalTensor<uint8_t> stage1CastU8;
+            stage1CastU8.SetAddr(stage1CastTensor.address_);
+            Duplicate(stage1CastU8, static_cast<uint8_t>(0U), stage1CastTensor.GetSize());
+            Duplicate(expUb, 1.0f, expUb.GetSize());
+            LocalTensor<uint8_t> pScaleU8;
+            pScaleU8.SetAddr(pScaleSubLoop0Tensor.address_);
+            Duplicate(pScaleU8, static_cast<uint8_t>(0x7f), pScaleSubLoop0Tensor.GetSize());
+        } else if (unlikely(runInfo.isFirstS2Loop)) {
             if (unlikely(!isSkipMask)) {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, hasAtten, s2BaseSizeCur>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, pScaleSubLoop0Tensor,
