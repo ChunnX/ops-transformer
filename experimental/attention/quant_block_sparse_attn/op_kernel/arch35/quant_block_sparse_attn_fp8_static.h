@@ -58,7 +58,7 @@ static_assert(2U * L0_SLOT_BYTES <= L0B_CAPACITY, "FP8 L0B exceeds capacity");
 static_assert(2U * L0C_SLOT_BYTES <= L0C_CAPACITY, "FP8 L0C exceeds capacity");
 
 constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
-constexpr uint32_t AIV0_AIV1_OFFSET = 16U;
+constexpr uint32_t FP8_STATIC_AIV0_AIV1_OFFSET = 16U;
 constexpr uint32_t CC_BMM1_EVENT_ID0 = 0U;
 constexpr uint32_t CC_BMM1_EVENT_ID1 = 1U;
 constexpr uint32_t CC_BMM2_EVENT_ID = 2U;
@@ -108,13 +108,13 @@ __aicore__ inline uint32_t L1PEventId(uint32_t slot)
 __aicore__ inline void AicWaitUbFree(uint32_t eventId)
 {
     AscendC::CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(eventId);
-    AscendC::CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(eventId + AIV0_AIV1_OFFSET);
+    AscendC::CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(eventId + FP8_STATIC_AIV0_AIV1_OFFSET);
 }
 
 __aicore__ inline void AicSetUbReady(uint32_t eventId)
 {
     AscendC::CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(eventId);
-    AscendC::CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(eventId + AIV0_AIV1_OFFSET);
+    AscendC::CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(eventId + FP8_STATIC_AIV0_AIV1_OFFSET);
 }
 
 __aicore__ inline void AivWaitUbReady(uint32_t eventId)
@@ -135,7 +135,7 @@ __aicore__ inline void AivSetL1PReady(uint32_t eventId)
 __aicore__ inline void AicWaitL1PReady(uint32_t eventId)
 {
     AscendC::CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(eventId);
-    AscendC::CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(eventId + AIV0_AIV1_OFFSET);
+    AscendC::CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(eventId + FP8_STATIC_AIV0_AIV1_OFFSET);
 }
 
 } // namespace Fp8Static
