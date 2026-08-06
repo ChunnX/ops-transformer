@@ -925,6 +925,18 @@ def _arrange_x(vecCtx, dbIdx, groupIdx, dbRowCnt, dealTcSize,
             pl.set_validshape(mxTie, [cmpRatio, D_BASE_SIZE * 2])
             pl.load(mxTie, xArrangeGm, [firstSrcIdx, hi])
             pl.store(xArrangeGm, mxTie, [firstDstIdx, hi])
+    elif Coff == 2 and groupIdx == 0 and scIdx == 0:
+        # 轮首/批次首块：prev 头部无有效数据（对应 dkv prev 半区已被 scatter mask
+        # 为 0，matmul 贡献恒 0），显式清零——防止 mm2 读到未初始化 workspace
+        #（FP32 随机位模式按 FP16 视图解释 → NaN/Inf → 0×NaN 传染 d_wkv/d_wgate）
+        for hi in pl.range(0, hiddenSize, D_BASE_SIZE * 2):
+            mxTie = moveXTiles.next()
+            pl.set_validshape(mxTie, [cmpRatio, D_BASE_SIZE * 2])
+            if DataType == 0:
+                _vf_tile_zero_bf16(mxTie, cmpRatio, D_BASE_SIZE * 2)
+            else:
+                _vf_tile_zero_f16(mxTie, cmpRatio, D_BASE_SIZE * 2)
+            pl.store(xArrangeGm, mxTie, [dbIdx * dbRowCnt, hi])
     processed = 0
     while processed < dealTcSize:
         bStartPos = _get_start_pos(bIdx, startPos, seqCtx)
@@ -946,6 +958,21 @@ def _arrange_x(vecCtx, dbIdx, groupIdx, dbRowCnt, dealTcSize,
             if mxsIdx == 0:
                 mxRows -= bStartPos % cmpRatio
                 dstIdx += bStartPos % cmpRatio
+            if mxsIdx == 0 and bStartPos % cmpRatio > 0:
+                # 首块部分块：cur 区域前 bStartPos%cr 行 = cache 历史（对应 dkv 已被
+                # scatter mask 为 0，matmul 贡献恒 0），显式清零——防 mm2 读到未初始化
+                # workspace（FP32 随机位按 FP16 视图解释 → NaN/Inf → 0×NaN 传染
+                # d_wkv/d_wgate）
+                zeroRows = bStartPos % cmpRatio
+                curBase = dstIdx - zeroRows
+                for hi in pl.range(0, hiddenSize, D_BASE_SIZE * 2):
+                    mxTie = moveXTiles.next()
+                    pl.set_validshape(mxTie, [zeroRows, D_BASE_SIZE * 2])
+                    if DataType == 0:
+                        _vf_tile_zero_bf16(mxTie, zeroRows, D_BASE_SIZE * 2)
+                    else:
+                        _vf_tile_zero_f16(mxTie, zeroRows, D_BASE_SIZE * 2)
+                    pl.store(xArrangeGm, mxTie, [curBase, hi])
             if Coff == 2 and processed == 0 and groupIdx > 0:
                 for hi in pl.range(0, hiddenSize, D_BASE_SIZE * 2):
                     mxTie = moveXTiles.next()
