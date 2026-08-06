@@ -48,7 +48,7 @@ bs = 8
 h = 7168
 scale_pad = 128                     # 用于存放量化参数
 hs = h + scale_pad                  # 量化时h的长度
-k = 8
+k = 1
 micro_batch_num = 1
 default_micro_batch_id = 0          
 layer_num = 1                       # 模型层数
@@ -56,18 +56,18 @@ default_layer_id = 0                # 默认模型层id
 
 server_num = 1
 server_index = 0
-rank_per_dev = 16                   # 每个设备（如 GPU）上运行的 rank 数量（这里可能指逻辑 rank，用于模拟多进程）                       
-world_size = 16
-shared_expert_rank_num_ffn = 1
-moe_rank_ffn_num = 8
-experts_per_rank = 11
+rank_per_dev = 2                   # 每个设备（如 GPU）上运行的 rank 数量（这里可能指逻辑 rank，用于模拟多进程）                       
+world_size = 2
+shared_expert_rank_num_ffn = 0
+moe_rank_ffn_num = 1
+experts_per_rank = 1
 
                 
 default_window_addr = 0x12c101800000 # 默认win区地址
 compare_per_rank = 1            # 每个 rank 会单独计算并比较自己的结果
 
 moe_expert_num = moe_rank_ffn_num * experts_per_rank  # 8个moe专家
-shared_expert_num = 1
+shared_expert_num = 0
 ffn_worker_num = shared_expert_rank_num_ffn + moe_rank_ffn_num # ffn使用5个rank
 attention_worker_num = world_size - ffn_worker_num  # attention使用11个rank
 expert_num_per_token = k + shared_expert_num  # 9个专家
@@ -331,7 +331,7 @@ def get_attn_num_in_server():
     return num
 
 def ffn2attn_get_kwargs(
-    x, session_ids, micro_batch_ids, token_ids, expert_offsets, actual_token_num,
+    context, x, session_ids, micro_batch_ids, token_ids, expert_offsets, actual_token_num,
     attn_rank_table, group, world_size, token_info_table_shape, token_data_shape
 ):
     x = x.to(input_dtype).npu()
@@ -343,6 +343,7 @@ def ffn2attn_get_kwargs(
     attn_rank_table = attn_rank_table.to(torch.int32).npu()
 
     return {
+        'context': context,
         'x': x,
         'session_ids': session_ids,
         'micro_batch_ids': micro_batch_ids,
@@ -353,7 +354,7 @@ def ffn2attn_get_kwargs(
         'group': group,
         'world_size': world_size,
         'token_info_table_shape': token_info_table_shape,
-        'token_data_shape': token_data_shape
+        'token_data_shape': token_data_shape,
     }
 
 _ACL_LIB = ctypes.CDLL("libascendcl.so")
@@ -380,10 +381,13 @@ def create_npu_tensor_from_window(shape, dtype, window_addr):
     return tensor
 
 
-def ffn2attn_get_npu(ep_group):
+def ffn2attn_get_npu(ctx_buffer):
     window_addr = default_window_addr
     if enable_window:
-        window_addr = cot.get_window_memory_ptr(ep_group)
+        window_addr = ctx_buffer.get_window_addr()
+        if window_addr == 0:
+            print('[WARN] get_window_addr returned 0, using default_window_addr')
+            window_addr = default_window_addr
 
     attn_window_states = create_npu_tensor_from_window(
         [micro_batch_num, bs, expert_num_per_token], torch.int32, window_addr
@@ -459,16 +463,11 @@ def ffn2attn_run_npu(queue, rank, x, token_ids, actual_token_num, session_ids, m
     print('===================通信域建立完成======================')
 
     # print(rank)
-    # 是否开启window自定义功能
-    if enable_window:
-        if attention_worker_num <= rank < world_size:
-            # 当前rank属于后半部分：需要与前attention_worker_num个rank通信
-            target_ranks = list(range(attention_worker_num))
-        else:
-            # 当前rank属于前半部分，需要与后ffn_worker_num个rank通信
-            target_ranks = list(range(attention_worker_num, world_size))
-        print(f'target_ranks: {target_ranks}')
-        cot.register_window_memory(ep_group, window_size, target_ranks)
+    # 创建 CommContextManager context (Ascend 950 Channel backend)
+    ctx_buffer = cot.FFNToAttentionV2Buffer(
+        ep_group, world_size, token_info_table_shape, token_data_table_shape
+    )
+    print(f'[INFO] rank {rank} context created, ccl_buffer_size={ctx_buffer.ccl_buffer_size}')
 
     
     if attention_worker_num <= rank < world_size:
@@ -506,6 +505,7 @@ def ffn2attn_run_npu(queue, rank, x, token_ids, actual_token_num, session_ids, m
                 
         print(f'[INFO] device_{rank} 构造ffn2attn算子输入数据')
         ffn2attn_kwargs = ffn2attn_get_kwargs(
+            context = ctx_buffer.context,
             x = x_local,
             session_ids = session_ids_local,
             micro_batch_ids = micro_batch_ids_local,
@@ -516,7 +516,7 @@ def ffn2attn_run_npu(queue, rank, x, token_ids, actual_token_num, session_ids, m
             group = ep_hcomm_info,
             world_size = world_size,
             token_info_table_shape = token_info_table_shape,
-            token_data_shape= token_data_table_shape
+            token_data_shape= token_data_table_shape,
         )
 
         if is_full_core:
@@ -546,7 +546,7 @@ def ffn2attn_run_npu(queue, rank, x, token_ids, actual_token_num, session_ids, m
             time.sleep(30)
         else:
             time.sleep(50)
-        attn_window_states, attn_data_tensor = ffn2attn_get_npu(ep_group)
+        attn_window_states, attn_data_tensor = ffn2attn_get_npu(ctx_buffer)
         # 将张量从 NPU 移到 CPU
         token_states_cpu = attn_window_states.cpu()
         token_data_cpu = attn_data_tensor.cpu()

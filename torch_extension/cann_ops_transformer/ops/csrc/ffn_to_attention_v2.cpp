@@ -25,7 +25,7 @@ const int DIM_TWO = 2;
  *        tensor so PyTorch's dispatcher contract (at least one output) is satisfied.
  */
 void NpuFFNToAttentionV2(
-    const at::Tensor &x, const at::Tensor &sessionIds, const at::Tensor &microBatchIds,
+    const at::Tensor &context, const at::Tensor &x, const at::Tensor &sessionIds, const at::Tensor &microBatchIds,
     const at::Tensor &tokenIds, const at::Tensor &expertOffsets, const at::Tensor &actualTokenNum,
     const c10::optional<at::Tensor> &attnRankTable, std::string group, int64_t worldSize,
     const std::vector<int64_t> &tokenInfoTableShape, const std::vector<int64_t> &tokenDataShape)
@@ -58,7 +58,7 @@ void NpuFFNToAttentionV2(
     at::IntArrayRef tokenInfoTableShapeRef(tokenInfoTableShape);
     at::IntArrayRef tokenDataShapeRef(tokenDataShape);
 
-    ACLNN_CMD(aclnnFFNToAttentionV2, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum,
+    ACLNN_CMD(aclnnFFNToAttentionV2, context, x, sessionIds, microBatchIds, tokenIds, expertOffsets, actualTokenNum,
               attnRankTable, groupPtr, worldSize, tokenInfoTableShapeRef, tokenDataShapeRef);
 }
 

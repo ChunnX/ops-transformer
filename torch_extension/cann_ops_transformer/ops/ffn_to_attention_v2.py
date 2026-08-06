@@ -15,6 +15,7 @@ from torch.library import impl
 from torch_npu.utils._error_code import ErrCode, ops_error
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+from .comm_context import CommContextManager
 
 
 class _FFNToAttentionV2OpBuilder(OpBuilder):
@@ -26,14 +27,17 @@ class _FFNToAttentionV2OpBuilder(OpBuilder):
 
     def schema(self) -> str:
         return (
-            "npu_ffn_to_attention_v2(Tensor x, Tensor session_ids, Tensor micro_batch_ids, "
-            "Tensor token_ids, Tensor expert_offsets, Tensor actual_token_num, str group, int world_size, "
-            "int[] token_info_table_shape, int[] token_data_shape, *, Tensor? attn_rank_table=None) -> ()"
+            "npu_ffn_to_attention_v2(Tensor context, Tensor x, Tensor session_ids, "
+            "Tensor micro_batch_ids, Tensor token_ids, Tensor expert_offsets, Tensor actual_token_num, "
+            "str group, int world_size, "
+            "int[] token_info_table_shape, int[] token_data_shape, *, "
+            "Tensor? attn_rank_table=None) -> ()"
         )
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
         def npu_ffn_to_attention_v2_meta(
+            context,
             x,
             session_ids,
             micro_batch_ids,
@@ -75,6 +79,7 @@ _ffn_to_attention_v2_op_builder = _FFNToAttentionV2OpBuilder()
 
 @impl(AS_LIBRARY, _ffn_to_attention_v2_op_builder.name, "PrivateUse1")
 def _npu_ffn_to_attention_v2(
+    context,
     x,
     session_ids,
     micro_batch_ids,
@@ -89,6 +94,7 @@ def _npu_ffn_to_attention_v2(
 ):
     _op_module = _ffn_to_attention_v2_op_builder.load()
     _op_module.npu_ffn_to_attention_v2(
+        context,
         x,
         session_ids,
         micro_batch_ids,
@@ -117,44 +123,74 @@ def _get_npu_backend(group):
     return get_backend(torch.device("npu"))
 
 
-def register_window_memory(
-    group: "torch.distributed.ProcessGroup",
-    window_size: int,
-    target_ranks: List[int],
-) -> None:
-    """Register and exchange HCCL window memory with peer ranks.
+def _calc_window_size(token_info_table_shape, token_data_shape):
+    """Calculate the required window buffer size in bytes."""
+    micro_batch_num = token_info_table_shape[0]
+    bs = token_info_table_shape[1]
+    expert_num_per_token = token_info_table_shape[2]
+    hs = token_data_shape[3]
+    token_data_size = micro_batch_num * bs * expert_num_per_token * hs * 2
+    token_info_size = micro_batch_num * bs * expert_num_per_token * 4
+    raw_size = token_data_size + token_info_size
+    mb_align = 2 * 1024 * 1024
+    return ((raw_size + mb_align - 1) // mb_align) * mb_align
 
-    This wraps the HCCL backend window registration so that callers do not
-    need to access private backend APIs directly.
 
-    Args:
-        group: A ``torch.distributed.ProcessGroup`` backed by HCCL.
-        window_size: Window memory size in bytes.
-        target_ranks: List of peer rank ids to exchange window memory with.
+class FFNToAttentionV2Buffer:
+    """Communication buffer for ffn_to_attention_v2, wraps CommContextManager.
+
+    Uses the HCCL Channel backend (HcclCommMemReg + HcclChannelGetRemoteMems)
+    to allocate and exchange window memory, compatible with Ascend 950.
     """
-    backend = _get_npu_backend(group)
-    backend._window_register_and_exchange(window_size, target_ranks)
 
+    def __init__(
+        self,
+        group: "torch.distributed.ProcessGroup",
+        world_size: int,
+        token_info_table_shape: List[int],
+        token_data_shape: List[int],
+    ):
+        self.group = group
+        self.rank_id = torch.distributed.get_rank(group)
+        self.group_name = _get_hccl_comm_name(group, self.rank_id)
+        self.ep_world_size = world_size
 
-def get_window_memory_ptr(
-    group: "torch.distributed.ProcessGroup",
-) -> int:
-    """Get the device pointer of the HCCL window memory.
+        required_buffer_size = _calc_window_size(token_info_table_shape, token_data_shape)
+        self._ctx_manager = CommContextManager(
+            self.group_name,
+            self.ep_world_size,
+            backend={
+                "Ascend910B": "kfc",
+                "Ascend910_93": "kfc",
+                "Ascend950": "channel",
+            },
+            customCclBufferSize=required_buffer_size,
+        )
+        self.context = self._ctx_manager.create_context()
+        self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
 
-    This wraps the HCCL backend window memory access so that callers do not
-    need to access private backend APIs directly.
+    def destroy(self):
+        self._ctx_manager.destroy()
 
-    Args:
-        group: A ``torch.distributed.ProcessGroup`` backed by HCCL.
+    def get_window_addr(self) -> int:
+        """Get the local window memory device address from the context."""
+        import ctypes
 
-    Returns:
-        int: The device pointer (as an integer address) of the window memory.
-    """
-    backend = _get_npu_backend(group)
-    return backend._get_window_mem().data_ptr()
+        if self.context is None:
+            return 0
+
+        host_tensor = self.context.cpu()
+        context_ptr = host_tensor.data_ptr()
+        if context_ptr == 0:
+            return 0
+
+        offset_buffer_start = 2 * 4 + 8
+        addr_bytes = ctypes.c_uint64.from_address(context_ptr + offset_buffer_start)
+        return int(addr_bytes.value)
 
 
 def ffn_to_attention_v2(
+    context: torch.Tensor,
     x: torch.Tensor,
     session_ids: torch.Tensor,
     micro_batch_ids: torch.Tensor,
@@ -170,12 +206,12 @@ def ffn_to_attention_v2(
 ) -> None:
     """Send token data from FFN workers to Attention workers via HCCL window.
 
-    The op uses the traditional MC2 communication model: the HCCL communicator is
-    looked up by ``group`` name inside the kernel, so no context tensor is needed.
-    The caller is responsible for initializing the HCCL communicator (e.g. via
-    ``torch.distributed.init_process_group(backend="hccl")``) before calling this op.
+    Uses the CommContextManager-based context tensor to pass window memory
+    addresses to the kernel, compatible with Ascend 950 (Channel backend).
 
     Args:
+        context (Tensor): Communication context tensor created by
+            ``FFNToAttentionV2Buffer``.
         x (Tensor): Token data to send, shape (Y, H), dtype float16/bfloat16.
         session_ids (Tensor): Per-token attention worker index, shape (Y,), dtype int32.
         micro_batch_ids (Tensor): Per-token micro batch index, shape (Y,), dtype int32.
@@ -193,14 +229,13 @@ def ffn_to_attention_v2(
     Returns:
         None. Data is sent to peer ranks via the HCCL window; no host-visible output.
     """
-    # Resolve ProcessGroup to HCCL communicator name string
     if not isinstance(group, str):
-        rank_id = torch.distributed.get_rank(group)
-        group_name = _get_hccl_comm_name(group, rank_id)
+        group_name = _get_hccl_comm_name(group, torch.distributed.get_rank(group))
     else:
         group_name = group
 
     torch.ops.cann_ops_transformer.npu_ffn_to_attention_v2(
+        context,
         x,
         session_ids,
         micro_batch_ids,
