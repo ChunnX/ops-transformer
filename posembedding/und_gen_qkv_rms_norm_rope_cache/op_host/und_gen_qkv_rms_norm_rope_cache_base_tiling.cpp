@@ -350,7 +350,8 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckUndGenQkvValid()
     if (genQkvShapePtr != nullptr) {
         auto& genQkvShape = genQkvShapePtr->GetStorageShape();
         OP_CHECK_IF(genQkvShape.GetDim(DIM_ONE) != numHead_ || genQkvShape.GetDim(DIM_TWO) != headDim_,
-                    OP_LOGE(context_->GetNodeName(), "gen_qkv N/D dims must match und_qkv, got (%ld, %ld) vs (%ld, %ld).",
+                    OP_LOGE(context_->GetNodeName(),
+                            "gen_qkv N/D dims must match und_qkv, got (%ld, %ld) vs (%ld, %ld).",
                             genQkvShape.GetDim(DIM_ONE), genQkvShape.GetDim(DIM_TWO), numHead_, headDim_),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(genQkvShape.GetDim(DIM_ZERO) < 0,
@@ -384,7 +385,8 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckWeightsValid()
         }
         auto& shape = shapePtr->GetStorageShape();
         OP_CHECK_IF(shape.GetDimNum() != DIM_NUM_ONE || shape.GetDim(DIM_ZERO) != headDim_,
-                    OP_LOGE(context_->GetNodeName(), "gen weights(input %ld) must be 1D tensor [D=%ld].", idx, headDim_),
+                    OP_LOGE(context_->GetNodeName(), "gen weights(input %ld) must be 1D tensor [D=%ld].", idx,
+                            headDim_),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -418,9 +420,11 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckKvCacheValid()
     auto& vCacheShape = vCacheShapePtr->GetStorageShape();
 
     OP_CHECK_IF(vCacheShape.GetDimNum() != DIM_NUM_FOUR,
-                OP_LOGE(context_->GetNodeName(), "v_cache must be 4D tensor [Bn, Bs, Hv, D]."), return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "v_cache must be 4D tensor [Bn, Bs, Hv, D]."),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(blockNum_ <= 0 || blockSize_ <= 0,
-                OP_LOGE(context_->GetNodeName(), "k_cache Bn(%ld) and Bs(%ld) must be positive.", blockNum_, blockSize_),
+                OP_LOGE(context_->GetNodeName(), "k_cache Bn(%ld) and Bs(%ld) must be positive.", blockNum_,
+                        blockSize_),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(kCacheShape.GetDim(DIM_TWO) != numHeadK_,
                 OP_LOGE(context_->GetNodeName(), "k_cache Hk dimension must be num_heads_k(%ld), got %ld.", numHeadK_,

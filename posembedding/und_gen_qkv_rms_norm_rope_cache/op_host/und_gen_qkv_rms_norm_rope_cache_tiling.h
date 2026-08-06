@@ -47,7 +47,7 @@ TILING_DATA_FIELD_DEF(float, reciprocal);      // 1 / D
 TILING_DATA_FIELD_DEF(int64_t, usedCoreNum);
 TILING_DATA_FIELD_DEF(int64_t, formerCoreNum);  // 前 formerCoreNum 个核多处理 1 个 token
 TILING_DATA_FIELD_DEF(int64_t, blockFactor);    // 前 formerCoreNum 个核的 token 数
-TILING_DATA_FIELD_DEF(int64_t, tailBlockFactor);// 其余核的 token 数
+TILING_DATA_FIELD_DEF(int64_t, tailBlockFactor); // 其余核的 token 数
 TILING_DATA_FIELD_DEF(int64_t, ubFactor);       // 单次 UB 内处理的 token 数
 END_TILING_DATA_DEF;
 
