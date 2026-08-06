@@ -173,61 +173,48 @@ public:
     __aicore__ inline void InitBuffers()
     {
         if ASCEND_IS_AIV {
-            // 与 FA block 共享UB布局：bmm1/bmm2 区域在前，FD 业务缓冲区紧随其后。
-            // 使用 LocalTensor 构造函数直接指定绝对字节偏移，实现内存完全自主管理，
-            // 无需 LocalMemAllocator 线性分配器。
-            constexpr uint32_t mm1Sz = mBaseSize / 2U * s2BaseSize * sizeof(T);
-            constexpr uint32_t mm2Sz = mBaseSize / 2U * dVBaseSize * sizeof(T);
+            // FA 和 FD 由 SyncAll 隔离，不会同时执行。FD 从 offset 0 开始独立分配 UB，不依赖 FA 布局。
+            constexpr uint32_t STRIDE = BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K; // 6144 bytes
 
-            // FD 业务区起始字节偏移（跳过 bmm1/bmm2/mm2In 区域）
-            constexpr uint32_t BASE = mm1Sz * 2U + mm2Sz * 2U;
+            constexpr uint32_t OFF_FD_MM2RES1 = 0U;
+            constexpr uint32_t OFF_FD_MM2RES2 = BUFFER_SIZE_BYTE_16K;
+            constexpr uint32_t OFF_FD_REDUCE = 2U * BUFFER_SIZE_BYTE_16K;
+            constexpr uint32_t OFF_FD_OUTPUT = 3U * BUFFER_SIZE_BYTE_16K;
+            constexpr uint32_t OFF_FD_LSE_SUM = 4U * BUFFER_SIZE_BYTE_16K;
+            constexpr uint32_t OFF_FD_LSE_MAX_UB = OFF_FD_LSE_SUM + 5U * STRIDE;
 
-            // 各共享区块的绝对字节偏移（与原 LocalMemAllocator 分配顺序完全一致）
-            // SharedBuffer2[0]：attenMaskBuf[0](FA) / fdLseMaxUb(FD)，8192 bytes
-            constexpr uint32_t OFF_BUF2A = BASE;
-            // Skip attenMaskBuf[1]：8192 bytes
-            // SharedBuffer3：stage2OutBuf(FA) / fdSum/Max/LseExp(FD)，32768 bytes
-            constexpr uint32_t OFF_BUF3 = BASE + BUFFER_SIZE_BYTE_8K + BUFFER_SIZE_BYTE_8K;
-            // SharedBuffer1[0]：stage1OutBuf[0](FA) / fdMm2Res(FD)，33024 bytes
-            constexpr uint32_t OFF_BUF1A = OFF_BUF3 + 32768U;
-            // SharedBuffer1[1]：stage1OutBuf[1](FA) / fdReduce/Output(FD)，33024 bytes
-            constexpr uint32_t OFF_BUF1B = OFF_BUF1A + 33024U;
-
-            // sharedBuf1a 内：fdMm2ResBuf1_（前16K）、fdMm2ResBuf2_（后16K）
             fdMm2ResBuf1_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1A, BUFFER_SIZE_BYTE_16K).template ReinterpretCast<T>();
+                LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_MM2RES1, BUFFER_SIZE_BYTE_16K).template ReinterpretCast<T>();
             fdMm2ResBuf2_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1A + BUFFER_SIZE_BYTE_16K, BUFFER_SIZE_BYTE_16K)
+                LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_MM2RES2, BUFFER_SIZE_BYTE_16K)
                     .template ReinterpretCast<T>();
-            // sharedBuf1b 内：fdReduceBuf_（前16K）、fdOutputBuf_（后16K）
             fdReduceBuf_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B, BUFFER_SIZE_BYTE_16K).template ReinterpretCast<T>();
-            fdOutputBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF1B + BUFFER_SIZE_BYTE_16K,
-                                                BUFFER_SIZE_BYTE_16K)
+                LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_REDUCE, BUFFER_SIZE_BYTE_16K).template ReinterpretCast<T>();
+            fdOutputBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_OUTPUT, BUFFER_SIZE_BYTE_16K)
                                .template ReinterpretCast<OUTPUT_T>();
 
-            // sharedBuf3 内：5 个 6144-byte 槽（fdSum1/2, fdMax1/2, fdLseExp）
-            constexpr uint32_t STRIDE = BUFFER_SIZE_BYTE_4K + BUFFER_SIZE_BYTE_2K; // 6144 bytes
-            fdSumBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3, STRIDE).template ReinterpretCast<T>();
-            fdSumBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3 + STRIDE,
-                                              STRIDE)
-                             .template ReinterpretCast<T>();
+            fdSumBuf1_ =
+                LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_LSE_SUM, STRIDE).template ReinterpretCast<T>();
+            fdSumBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_LSE_SUM + STRIDE, STRIDE)
+                              .template ReinterpretCast<T>();
             fdMaxBuf1_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3 + 2U * STRIDE, STRIDE).template ReinterpretCast<T>();
+                LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_LSE_SUM + 2U * STRIDE, STRIDE)
+                    .template ReinterpretCast<T>();
             fdMaxBuf2_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3 + 3U * STRIDE, STRIDE).template ReinterpretCast<T>();
+                LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_LSE_SUM + 3U * STRIDE, STRIDE)
+                    .template ReinterpretCast<T>();
             fdLseExpBuf_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF3 + 4U * STRIDE, STRIDE).template ReinterpretCast<T>();
+                LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_LSE_SUM + 4U * STRIDE, STRIDE)
+                    .template ReinterpretCast<T>();
 
-            // sharedBuf2a 内：fdLseMaxUbBuf1_/2、fdLseUbBuf_，各 256 bytes
-            fdLseMaxUbBuf1_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF2A, BUFFER_SIZE_BYTE_256B).template ReinterpretCast<T>();
-            fdLseMaxUbBuf2_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF2A + BUFFER_SIZE_BYTE_256B, BUFFER_SIZE_BYTE_256B)
-                    .template ReinterpretCast<T>();
-            fdLseUbBuf_ =
-                LocalTensor<uint8_t>(TPosition::VECIN, OFF_BUF2A + 2U * BUFFER_SIZE_BYTE_256B, BUFFER_SIZE_BYTE_256B)
-                    .template ReinterpretCast<T>();
+            fdLseMaxUbBuf1_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_LSE_MAX_UB, BUFFER_SIZE_BYTE_256B)
+                                  .template ReinterpretCast<T>();
+            fdLseMaxUbBuf2_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_LSE_MAX_UB + BUFFER_SIZE_BYTE_256B,
+                                                   BUFFER_SIZE_BYTE_256B)
+                                  .template ReinterpretCast<T>();
+            fdLseUbBuf_ = LocalTensor<uint8_t>(TPosition::VECIN, OFF_FD_LSE_MAX_UB + 2U * BUFFER_SIZE_BYTE_256B,
+                                               BUFFER_SIZE_BYTE_256B)
+                              .template ReinterpretCast<T>();
         }
     }
 
