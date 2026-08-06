@@ -408,7 +408,7 @@ def set_active_case(case):
         DATA_RANGE_V, \
         DEVICE_ID, \
         SPARSE_BLOCK_SIZE
-    global QUANT_MODE_MXFP8, KEY_LAYOUT, SPARSE_INDICES_LAYOUT, OUT_LAYOUT
+    global QUANT_MODE_MXFP8, KEY_LAYOUT, SPARSE_INDICES_LAYOUT, OUT_LAYOUT, BLOCK_NUM
 
     CASE = dict(case)
     B = CASE["B"]
@@ -435,6 +435,7 @@ def set_active_case(case):
     KEY_LAYOUT = CASE["layout_kv"]
     SPARSE_INDICES_LAYOUT = CASE["layout_sparse_indices"]
     OUT_LAYOUT = CASE["layout_out"]
+    BLOCK_NUM = CASE.get("block_num", 0)
 
 
 CASE = _load_initial_case()
@@ -1594,7 +1595,7 @@ def _call_npu_fa_op(
         quant_mode=QUANT_MODE_MXFP8,
         mask_mode=MASK_MODE,
         return_softmax_lse=ENABLE_LSE,
-        block_num=0,
+        block_num=BLOCK_NUM,
     )
     torch_npu.npu.synchronize()
     atten_out, lse_out = output
