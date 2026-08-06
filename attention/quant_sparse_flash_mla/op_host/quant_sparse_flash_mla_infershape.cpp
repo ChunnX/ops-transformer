@@ -49,6 +49,16 @@ ge::graphStatus InferShapeQuantSparseFlashMla(gert::InferShapeContext *context)
     const char *layoutKv = attr->GetStr(ATTR_LAYOUT_KV_INDEX);
     std::string layoutQStr = (layoutQ != nullptr) ? std::string(layoutQ) : "BSND";
     std::string layoutKvStr = (layoutKv != nullptr) ? std::string(layoutKv) : "BSND";
+    OP_CHECK_IF(queryShape->GetShapeSize() <= 0,
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON("QuantSparseFlashMla", "q",
+            std::to_string(queryShape->GetShapeSize()).c_str(),
+            "The shape size of q should be greater than 0"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(kvShape->GetShapeSize() <= 0,
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON("QuantSparseFlashMla", "ori_kv or cmp_kv",
+            std::to_string(kvShape->GetShapeSize()).c_str(),
+            "The shape size of ori_kv or cmp_kv should be greater than 0"),
+        return ge::GRAPH_FAILED);
     if (returnSoftmaxLse) {
         if (layoutQStr == "TND") {
             int64_t kvHeadNum;
