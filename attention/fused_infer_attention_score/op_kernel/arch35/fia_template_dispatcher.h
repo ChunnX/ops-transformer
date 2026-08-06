@@ -172,15 +172,11 @@ inline __aicore__ void run_fia_fullquant_mx_kernel(
 
     // VecFdBlockType
     using VecFdBlockNormal =
-        BaseApi::FiaBlockVecFlashDecodeFullQuant<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                 s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                 static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
-                                                 KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+        BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                        s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
     using VecFdBlockDummy =
-        BaseApi::FiaBlockVecFlashDecodeFullQuantDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                      s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                      static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
-                                                      KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+        BaseApi::FiaBlockVecFlashDecodeDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                             s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
     using VecFdBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFdBlockNormal, VecFdBlockDummy>::type;
 
     // KernelType
@@ -246,15 +242,11 @@ inline __aicore__ void run_fia_fullquant_gqa_kernel(__gm__ uint8_t *query, __gm_
 
     // VecFdBlockType
     using VecFdBlockNormal =
-        BaseApi::FiaBlockVecFlashDecodeFullQuant<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                 s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                 static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
-                                                 KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+        BaseApi::FiaBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                        s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
     using VecFdBlockDummy =
-        BaseApi::FiaBlockVecFlashDecodeFullQuantDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
-                                                      s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                                      static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope,
-                                                      KvLayoutType, enableKVPrefix, useDn, bmm2Write2Ub, splitD>;
+        BaseApi::FiaBlockVecFlashDecodeDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
+                                             s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType>;
     using VecFdBlock = typename std::conditional<g_coreType == AscendC::AIV, VecFdBlockNormal, VecFdBlockDummy>::type;
 
     // KernelType
