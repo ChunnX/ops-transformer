@@ -76,9 +76,9 @@ private:
     uint32_t bmm1GetFlag = 0;
     uint32_t vUbBase = 0;
 
-    // mm2左矩阵P
-    BufferManager<BufferType::L1> l1BufferManager;
-    BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
+    StaticBuffer<Q_T> l1PBuffers[2];
+    uint32_t l1PGetFlag = 0;
+    uint32_t l1CubeBase = 0;
     /* GM信息 */
     GlobalTensor<uint32_t> metadataGm;
     __gm__ int32_t *cuSeqlensQAddr = nullptr;
@@ -158,7 +158,7 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     }
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf(workspace);
-    cubeBlock.InitCubeBlock(pipe, query);
+    cubeBlock.InitCubeBlock(pipe, query, l1CubeBase);
     this->ComputeConstexpr();
     this->InitLocalBuffer();
 }
@@ -251,9 +251,12 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
     uint32_t mm1ResultSize = constInfo.s1BaseSize / CV_RATIO * constInfo.s2BaseSize * sizeof(T);
     uint32_t mm2ResultSize = constInfo.s1BaseSize / CV_RATIO * 512 * sizeof(T);
     uint32_t mm2LeftSize = constInfo.s1BaseSize * constInfo.s2BaseSize * sizeof(Q_T);
-    l1BufferManager.Init(pipe, mm2LeftSize * 2); // 仅L1P使用, L1Right已迁移至cube侧通过tPipe分配
-    // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
-    l1PBuffers.Init(l1BufferManager, mm2LeftSize);
+    uint32_t l1PAddr = 0;
+    l1PBuffers[0] = {LocalTensor<Q_T>(TPosition::A1, l1PAddr, mm2LeftSize / sizeof(Q_T)), 0};
+    l1PAddr += mm2LeftSize;
+    l1PBuffers[1] = {LocalTensor<Q_T>(TPosition::A1, l1PAddr, mm2LeftSize / sizeof(Q_T)), 1};
+    l1PAddr += mm2LeftSize;
+    l1CubeBase = l1PAddr;
 
     uint32_t ubAddr = 0;
     bmm2Buffers = {LocalTensor<T>(TPosition::VECIN, ubAddr, mm2ResultSize / sizeof(T)), 0};
@@ -422,8 +425,10 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
                     if (taskId > 1 && notLast) {
                         uint32_t bmm1Slot = bmm1GetFlag;
                         bmm1GetFlag ^= 1;
+                        uint32_t l1PSlot = l1PGetFlag;
+                        l1PGetFlag ^= 1;
                         auto &runInfo2 = runInfo[(taskId + 2) % 4];
-                        this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers[bmm1Slot],
+                        this->vecBlock.ProcessVec1(this->l1PBuffers[l1PSlot], this->bmm1Buffers[bmm1Slot],
                             runInfo2, this->constInfo);
                     }
                     if (taskId > 2) {
@@ -457,7 +462,9 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
                     }
                     if (taskId > 2) {
                         RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
-                        this->cubeBlock.IterateBmm2(this->bmm2Buffers, this->l1PBuffers,
+                        uint32_t l1PSlot = l1PGetFlag;
+                        l1PGetFlag ^= 1;
+                        this->cubeBlock.IterateBmm2(this->bmm2Buffers, this->l1PBuffers[l1PSlot],
                             runInfo3, this->constInfo);
                     }
                 }

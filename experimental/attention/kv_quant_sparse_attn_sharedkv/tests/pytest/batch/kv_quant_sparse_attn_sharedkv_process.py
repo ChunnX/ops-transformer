@@ -189,7 +189,8 @@ def test_sas_quant_process_ci(test_data, device_id=0):
     metadata.npu()
 
     print("npu_kv_quant_sparse_attn_sharedkv...")
-    npu_result, _ = torch.ops.custom.npu_kv_quant_sparse_attn_sharedkv(
+    for i in range(1):
+        npu_result, _ = torch.ops.custom.npu_kv_quant_sparse_attn_sharedkv(
                                                         q=input['q'].npu() if input['q'] is not None else None,
                                                         ori_kv=input['ori_kv'].npu() if input['ori_kv'] is not None else None,
                                                         cmp_kv=input['cmp_kv'].npu() if input['cmp_kv'] is not None else None,

@@ -78,7 +78,7 @@ public:
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void ProcessVec0(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
         const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
+    __aicore__ inline void ProcessVec1(StaticBuffer<Q_T> &outputBuf,
         StaticBuffer<T> &bmm1ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo);
     __aicore__ inline void ProcessVec2(StaticBuffer<T> &bmm2ResBuf, RunInfo &runInfo,
@@ -714,7 +714,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
-    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
+    StaticBuffer<Q_T> &outputBuf,
     StaticBuffer<T> &bmm1ResBuf, RunInfo &runInfo,
     ConstInfo &constInfo)
 {
@@ -794,8 +794,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     // ===================DataCopy to L1 ====================
     Mutex::Unlock<PIPE_V>(INNERCORE_STAGE1(stage1Offset));
 
-    outputBuf.WaitCrossCore();
-    LocalTensor<Q_T> mm2AL1Tensor = outputBuf.GetTensor<Q_T>();
+    LocalTensor<Q_T> mm2AL1Tensor = outputBuf.tensor;
     if (likely(runInfo.halfMRealSize != 0)) {
         Mutex::Lock<PIPE_MTE3>(INNERCORE_STAGE1(stage1Offset));
         DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * (BLOCK_BYTE / sizeof(Q_T)) * (runInfo.mRealSize - runInfo.halfMRealSize)],
@@ -805,7 +804,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
         Mutex::Unlock<PIPE_MTE3>(INNERCORE_STAGE1(stage1Offset));
     }
 
-    outputBuf.SetCrossCore();
+    CrossCoreSetFlag<4, PIPE_MTE3>(CROSSCORE_L1P);
+    CrossCoreSetFlag<4, PIPE_MTE3>(CROSSCORE_L1P + AIV0_AIV1_OFFSET);
     // ======================================================
     if (runInfo.s2LoopCount != 0 || (runInfo.s2LoopCount == 0 && isSinks)) {
         SCFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
@@ -1450,7 +1450,7 @@ public:
         __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks) {}
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv) {};
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo, uint32_t ubBaseAddr) {}
-    __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
+    __aicore__ inline void ProcessVec1(StaticBuffer<Q_T> &outputBuf,
         StaticBuffer<T> &bmm1ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo) {}
     __aicore__ inline void ProcessVec2(StaticBuffer<T> &bmm2ResBuf, RunInfo &runInfo,
