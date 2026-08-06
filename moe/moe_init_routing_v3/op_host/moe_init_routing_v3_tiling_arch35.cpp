@@ -1166,13 +1166,11 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()");
 
-    // 空tensor场景：n_==0、k_==0、cols_==0
-    if (n_ == 0 || k_ == 0 || cols_ == 0) {
+    if (n_ == 0 || k_ == 0) {
         isEmptyTensor_ = true;
     }
 
-    // 空tensor场景下activeNum无实际意义（如cols_==0但n_*k_>0时，调用方可能传入0），跳过校验并
-    // 归一化为totalLength_，与非arch35版本保持一致，避免语义上合法的空输入误失败。
+    // 空tensor场景下activeNum无实际意义，跳过校验并归一化为totalLength_。
     if (isEmptyTensor_) {
         tilingDataPtr_->activeNum = totalLength_;
     } else if (activeNum_ != ACTIVE_NUM_MIN_VALUE) {
@@ -1879,6 +1877,10 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()");
 
     auto *gatherOutTiling = &(tilingDataPtr_->gatherOutComputeParamsOp);
+    if (cols_ == 0) {
+        // Full-load does not consume GatherOut tiling when X has no elements.
+        return;
+    }
     int64_t perCoreIndicesElements = Ops::Base::CeilDiv(totalLength_, aivCoreNum_);
     if (perCoreIndicesElements <= 0) {
         gatherOutTiling->needCoreNum = 0;
