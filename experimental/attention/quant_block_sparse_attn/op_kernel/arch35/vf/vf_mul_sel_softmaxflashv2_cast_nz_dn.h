@@ -1188,14 +1188,14 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     const T minValue, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
     const float pScale = 1.0f)
 {
-    constexpr uint32_t mConst = 64;
-    constexpr uint32_t m2Const = 128;
-    constexpr uint32_t m3Const = 192;
-    constexpr uint32_t m4Const = 256;
-    constexpr uint32_t ubN_m_m_div_4 = (ubN * mConst) >> 2;
-    constexpr uint32_t ubN_m_m_div_2 = (ubN * mConst) >> 1;
-    constexpr uint32_t ubN_m_m_mul3_div_4 = ((ubN * mConst) >> 1) + ((ubN * mConst) >> 2);
-    constexpr uint16_t loopNum = ubN >> 3;
+    constexpr uint32_t mConst = 64; // m = 64
+    constexpr uint32_t m2Const = 128; // m * 2 = 128
+    constexpr uint32_t m3Const = 192; // m * 3 = 192
+    constexpr uint32_t m4Const = 256; // m * 4 = 256
+    constexpr uint32_t ubN_m_m_div_4 = (ubN * mConst) >> 2; // ubN * m / 4
+    constexpr uint32_t ubN_m_m_div_2 = (ubN * mConst) >> 1; // ubN * m / 2
+    constexpr uint32_t ubN_m_m_mul3_div_4 = ((ubN * mConst) >> 1) + ((ubN * mConst) >> 2); // ubN * m * 3 / 4
+    constexpr uint16_t loopNum = ubN >> 3; // ubN / 8
 
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -1415,14 +1415,14 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
     const T minValue, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
     const float pScale = 1.0f)
 {
-    constexpr uint32_t mConst = 64;
-    constexpr uint32_t m2Const = 128;
-    constexpr uint32_t m3Const = 192;
-    constexpr uint32_t m4Const = 256;
-    constexpr uint32_t ubN_m_m_div_4 = (ubN * mConst) >> 2;
-    constexpr uint32_t ubN_m_m_div_2 = (ubN * mConst) >> 1;
-    constexpr uint32_t ubN_m_m_mul3_div_4 = ((ubN * mConst) >> 1) + ((ubN * mConst) >> 2);
-    constexpr uint16_t loopNum = ubN >> 3;
+    constexpr uint32_t mConst = 64; // m = 64
+    constexpr uint32_t m2Const = 128; // m * 2 = 128
+    constexpr uint32_t m3Const = 192; // m * 3 = 192
+    constexpr uint32_t m4Const = 256; // m * 4 = 256
+    constexpr uint32_t ubN_m_m_div_4 = (ubN * mConst) >> 2; // ubN * m / 4
+    constexpr uint32_t ubN_m_m_div_2 = (ubN * mConst) >> 1; // ubN * m / 2
+    constexpr uint32_t ubN_m_m_mul3_div_4 = ((ubN * mConst) >> 1) + ((ubN * mConst) >> 2); // ubN * m * 3 / 4
+    constexpr uint16_t loopNum = ubN >> 3; // ubN / 8
 
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -1702,14 +1702,14 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     const T minValue, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
     const float pScale = 1.0f)
 {
-    constexpr uint32_t mConst = 64;
-    constexpr uint32_t m2Const = 128;
-    constexpr uint32_t m3Const = 192;
-    constexpr uint32_t m4Const = 256;
-    constexpr uint32_t ubN_m_m_div_4 = (ubN * mConst) >> 2;
-    constexpr uint32_t ubN_m_m_div_2 = (ubN * mConst) >> 1;
-    constexpr uint32_t ubN_m_m_mul3_div_4 = ((ubN * mConst) >> 1) + ((ubN * mConst) >> 2);
-    constexpr uint16_t loopNum = ubN >> 3;
+    constexpr uint32_t mConst = 64; // m = 64
+    constexpr uint32_t m2Const = 128; // m * 2 = 128
+    constexpr uint32_t m3Const = 192; // m * 3 = 192
+    constexpr uint32_t m4Const = 256; // m * 4 = 256
+    constexpr uint32_t ubN_m_m_div_4 = (ubN * mConst) >> 2; // ubN * m / 4
+    constexpr uint32_t ubN_m_m_div_2 = (ubN * mConst) >> 1; // ubN * m / 2
+    constexpr uint32_t ubN_m_m_mul3_div_4 = ((ubN * mConst) >> 1) + ((ubN * mConst) >> 2); // ubN * m * 3 / 4
+    constexpr uint16_t loopNum = ubN >> 3; // ubN / 8
 
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -1937,14 +1937,14 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
     const T minValue, const float dScale, const uint32_t blockStride, const uint32_t repeatStride,
     const float pScale = 1.0f)
 {
-    constexpr uint32_t mConst = 64;
-    constexpr uint32_t m2Const = 128;
-    constexpr uint32_t m3Const = 192;
-    constexpr uint32_t m4Const = 256;
-    constexpr uint32_t ubN_m_m_div_4 = (ubN * mConst) >> 2;
-    constexpr uint32_t ubN_m_m_div_2 = (ubN * mConst) >> 1;
-    constexpr uint32_t ubN_m_m_mul3_div_4 = ((ubN * mConst) >> 1) + ((ubN * mConst) >> 2);
-    constexpr uint16_t loopNum = ubN >> 3;
+    constexpr uint32_t mConst = 64; // m = 64
+    constexpr uint32_t m2Const = 128; // m * 2 = 128
+    constexpr uint32_t m3Const = 192; // m * 3 = 192
+    constexpr uint32_t m4Const = 256; // m * 4 = 256
+    constexpr uint32_t ubN_m_m_div_4 = (ubN * mConst) >> 2; // ubN * m / 4
+    constexpr uint32_t ubN_m_m_div_2 = (ubN * mConst) >> 1; // ubN * m / 2
+    constexpr uint32_t ubN_m_m_mul3_div_4 = ((ubN * mConst) >> 1) + ((ubN * mConst) >> 2); // ubN * m * 3 / 4
+    constexpr uint16_t loopNum = ubN >> 3; // ubN / 8
 
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
