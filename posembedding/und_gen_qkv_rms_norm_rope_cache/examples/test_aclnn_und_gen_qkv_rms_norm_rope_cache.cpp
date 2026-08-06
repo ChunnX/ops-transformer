@@ -12,9 +12,10 @@
  * \brief aclnnUndGenQkvRmsNormRopeCache 两段式接口调用样例（含 slot_mapping 预计算）
  */
 
+#include <cmath>
+#include <cstring>
 #include <iostream>
 #include <vector>
-#include <cstring>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_und_gen_qkv_rms_norm_rope_cache.h"
 
@@ -41,6 +42,23 @@ constexpr int64_t GEN_LEN = 3;
 constexpr int64_t MAX_POS = 32;
 constexpr int64_t MROPE_AXIS_NUM = 3;
 constexpr float NORM_EPS = 1e-6f;
+
+// bf16 用 uint16_t 承载：取 float32 的高 16 位，就近舍入
+uint16_t FloatToBf16(float value)
+{
+    uint32_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    uint32_t rounded = bits + 0x7FFFU + ((bits >> 16) & 1U);
+    return static_cast<uint16_t>(rounded >> 16);
+}
+
+float Bf16ToFloat(uint16_t value)
+{
+    uint32_t bits = static_cast<uint32_t>(value) << 16;
+    float result = 0.0f;
+    std::memcpy(&result, &bits, sizeof(result));
+    return result;
+}
 
 int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
@@ -106,14 +124,32 @@ int main()
     std::vector<int64_t> catIndicesShape = {total};
     std::vector<int64_t> qShape = {total, NUM_HEADS_Q, HEAD_DIM};
 
-    // 3. 造 host 数据（bf16 用 uint16_t 承载，示例中填 0）
-    std::vector<uint16_t> undQkvHost(GetShapeSize(undQkvShape), 0);
-    std::vector<uint16_t> genQkvHost(GetShapeSize(genQkvShape), 0);
-    std::vector<uint16_t> undWeightsQHost(HEAD_DIM, 0);
-    std::vector<uint16_t> undWeightsKHost(HEAD_DIM, 0);
-    std::vector<uint16_t> genWeightsQHost(HEAD_DIM, 0);
-    std::vector<uint16_t> genWeightsKHost(HEAD_DIM, 0);
-    std::vector<float> cosSinHost(GetShapeSize(cosSinShape), 0.0f);
+    // 3. 造 host 数据（bf16 用 uint16_t 承载）
+    // QKV 填一段随位置缓慢变化的非零数据，避免全零输入让样例退化成恒等于 0 的空跑
+    std::vector<uint16_t> undQkvHost(GetShapeSize(undQkvShape));
+    for (size_t i = 0; i < undQkvHost.size(); ++i) {
+        undQkvHost[i] = FloatToBf16(0.05f * static_cast<float>(i % 17) - 0.4f);
+    }
+    std::vector<uint16_t> genQkvHost(GetShapeSize(genQkvShape));
+    for (size_t i = 0; i < genQkvHost.size(); ++i) {
+        genQkvHost[i] = FloatToBf16(0.05f * static_cast<float>(i % 13) - 0.3f);
+    }
+    // RMSNorm 权重：und 段取 1.0，gen 段取 0.5，便于区分两段权重是否按 catIndices 正确选中
+    std::vector<uint16_t> undWeightsQHost(HEAD_DIM, FloatToBf16(1.0f));
+    std::vector<uint16_t> undWeightsKHost(HEAD_DIM, FloatToBf16(1.0f));
+    std::vector<uint16_t> genWeightsQHost(HEAD_DIM, FloatToBf16(0.5f));
+    std::vector<uint16_t> genWeightsKHost(HEAD_DIM, FloatToBf16(0.5f));
+    // cos/sin 缓存表：前 D/2 列为 cos、后 D/2 列为 sin，按标准 RoPE 的 theta 生成
+    std::vector<float> cosSinHost(GetShapeSize(cosSinShape));
+    for (int64_t pos = 0; pos < MAX_POS; ++pos) {
+        for (int64_t i = 0; i < HEAD_DIM / 2; ++i) {
+            float freq = 1.0f / std::pow(10000.0f, 2.0f * static_cast<float>(i) / static_cast<float>(HEAD_DIM));
+            float angle = static_cast<float>(pos) * freq;
+            cosSinHost[pos * HEAD_DIM + i] = std::cos(angle);
+            cosSinHost[pos * HEAD_DIM + HEAD_DIM / 2 + i] = std::sin(angle);
+        }
+    }
+    // KV Cache 由调用方预分配并原地更新，未被 slot_mapping 命中的行保持传入值
     std::vector<uint16_t> kCacheHost(GetShapeSize(kCacheShape), 0);
     std::vector<uint16_t> vCacheHost(GetShapeSize(vCacheShape), 0);
     std::vector<uint16_t> qHost(GetShapeSize(qShape), 0);
@@ -209,6 +245,17 @@ int main()
     ret = aclrtMemcpy(kCacheResult.data(), kCacheResult.size() * sizeof(kCacheResult[0]), kCacheDev,
                       kCacheSize * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy k_cache result failed. ERROR: %d\n", ret); return ret);
+
+    // 打印前若干个结果，k_cache 按 slot_mapping[0] 定位到被写入的那一行
+    constexpr int64_t PRINT_NUM = 8;
+    for (int64_t i = 0; i < PRINT_NUM; ++i) {
+        LOG_PRINT("qOut[%ld] = %f\n", i, Bf16ToFloat(qResult[i]));
+    }
+    int64_t kCacheRowOffset = slotMappingHost[0] * NUM_HEADS_K * HEAD_DIM;
+    for (int64_t i = 0; i < PRINT_NUM; ++i) {
+        LOG_PRINT("kCache[slot %ld][%ld] = %f\n", slotMappingHost[0], i,
+                  Bf16ToFloat(kCacheResult[kCacheRowOffset + i]));
+    }
     LOG_PRINT("run aclnnUndGenQkvRmsNormRopeCache success, qOut size = %ld, k_cache size = %ld\n", qSize, kCacheSize);
 
     // 8. 释放资源
