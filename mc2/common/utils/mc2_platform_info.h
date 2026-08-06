@@ -24,6 +24,8 @@ namespace ops {
 const std::set<std::string> PLATFORM_A2 = {"Ascend910B"};
 const std::set<std::string> PLATFORM_A3 = {"Ascend910_93"};
 const std::set<std::string> NPUARCH_A5 = {std::to_string(static_cast<uint32_t>(NpuArch::DAV_3510))};
+const std::set<std::string> NPUARCH_310P = {std::to_string(static_cast<uint32_t>(NpuArch::DAV_2002))};
+const std::set<std::string> NPUARCH_A2A3 = {std::to_string(static_cast<uint32_t>(NpuArch::DAV_2201))};
 
 // distinguish between 910B and 910_93
 bool IsTargetPlatformSocVersion(const char *nodeName, const std::set<std::string> &targetPlatform);
