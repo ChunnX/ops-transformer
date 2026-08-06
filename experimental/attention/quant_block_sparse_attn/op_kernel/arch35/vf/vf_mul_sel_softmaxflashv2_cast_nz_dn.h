@@ -1554,7 +1554,8 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
     // 第二个 sparse block 不存在时，尾部列可能对应零 scale。
     // q/k scale 处理后重新写入 minValue，避免无效列进入 softmax。
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * mConst, vreg_min, preg_135);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+            (__ubuf__ T *&)input_x_local_UB + i * mConst, vreg_min, preg_135);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
@@ -2077,7 +2078,8 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
     // Tail columns may have zero scale when the second sparse block is absent.
     // Re-apply minValue after q/k scale so invalid columns cannot enter softmax.
     for (uint16_t i = originN; i < ubN; ++i) {
-        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * mConst, vreg_min, preg_135);
+        StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+            (__ubuf__ T *&)input_x_local_UB + i * mConst, vreg_min, preg_135);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 

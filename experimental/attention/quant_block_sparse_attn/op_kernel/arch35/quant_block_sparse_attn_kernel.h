@@ -354,10 +354,10 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     runInfo.sparseBlkIdx1 = remainingSparseBlocks > 0 ? sparseIndicesGm.GetValue(sparseLoopCountOffset) : -1;
     runInfo.sparseBlkIdx2 = remainingSparseBlocks > 1 ? sparseIndicesGm.GetValue(sparseLoopCountOffset + 1) : -1;
 
-    if (unlikely(runInfo.sparseBlkIdx1 < 0)) { 
-        runInfo.s2SparseBlk1RealSize = 0; 
-        runInfo.s2SparseBlk1RealAlignedSize = 0; 
-        runInfo.sparseBlk1PartialMask = false; 
+    if (unlikely(runInfo.sparseBlkIdx1 < 0)) {
+        runInfo.s2SparseBlk1RealSize = 0;
+        runInfo.s2SparseBlk1RealAlignedSize = 0;
+        runInfo.sparseBlk1PartialMask = false;
     } else if (unlikely((runInfo.sparseBlkIdx1 + 1) * constInfo.kvSparseBlockSize > runParam.actualS2Size)) {
         runInfo.s2SparseBlk1RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
         runInfo.s2SparseBlk1RealAlignedSize = Align(runInfo.s2SparseBlk1RealSize);
@@ -546,15 +546,15 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                             uint32_t sparseBlk2S1Offset = sparseBlk1S1Offset;
                             if (likely(runInfo1.sparseBlkIdx1 >= 0)) {
                                 uint32_t sparseBlk1S2Offset = runInfo1.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
-                                AttentionMaskFullProcessingOrRequired(sparseBlk1S1Offset, sparseBlk1S2Offset, delta,
-                                                                    runInfo1.s2SparseBlk1RealSize, runInfo1.sparseBlkIdx1,
-                                                                    runInfo1.sparseBlk1PartialMask);
+                                AttentionMaskFullProcessingOrRequired(
+                                    sparseBlk1S1Offset, sparseBlk1S2Offset, delta, runInfo1.s2SparseBlk1RealSize,
+                                    runInfo1.sparseBlkIdx1, runInfo1.sparseBlk1PartialMask);
                             }
                             if (likely(runInfo1.sparseBlkIdx2 >= 0)) {
                                 uint32_t sparseBlk2S2Offset = runInfo1.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
-                                AttentionMaskFullProcessingOrRequired(sparseBlk2S1Offset, sparseBlk2S2Offset, delta,
-                                                                    runInfo1.s2SparseBlk2RealSize, runInfo1.sparseBlkIdx2,
-                                                                    runInfo1.sparseBlk2PartialMask);
+                                AttentionMaskFullProcessingOrRequired(
+                                    sparseBlk2S1Offset, sparseBlk2S2Offset, delta, runInfo1.s2SparseBlk2RealSize,
+                                    runInfo1.sparseBlkIdx2, runInfo1.sparseBlk2PartialMask);
                             }
                         }
                     }
