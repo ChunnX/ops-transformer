@@ -259,7 +259,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>softmax_scale</td>
       <td>输入属性</td>
       <td>QK 结果缩放因子。</td>
-      <td>可选属性。不传入时默认为 1 / sqrt(D)；传入时取值范围必须为 (0, 1]，传入 &lt;=0 或 &gt;1 的值将被 host 侧拦截。</td>
+      <td>取值范围必须为 (0, 1]，传入 &lt;=0 或 &gt;1 的值将被 host 侧拦截。常用值为 1 / sqrt(D)。</td>
       <td>FLOAT32</td>
       <td>-</td>
       <td>-</td>
@@ -416,7 +416,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
   </tr>
   <tr>
     <td>softmax_scale</td>
-    <td>ATTR(OPTIONAL)</td>
+    <td>ATTR</td>
     <td>float</td>
   </tr>
   <tr>
@@ -591,7 +591,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
   - `layout_q` 当前仅支持 `TND`、`NTD`。
   - `layout_out` 为预留参数，当前不使能；传入非 `TND` 类型会被拦截。
   - `quant_mode` 当前主算子仅支持 1，表示 `Q_PERTOKEN_PERHEAD_K_PERTOKEN_PERHEAD_V_PERHEAD`。
-  - `softmax_scale` 为可选 float 属性。不传入时默认取 `1 / sqrt(QueryHeadDim)`；传入时取值范围必须为 `(0, 1]`，传入 `<=0` 或 `>1` 的值将被 host 侧拦截。
+  - `softmax_scale` 为 float 属性，取值范围必须为 `(0, 1]`，传入 `<=0` 或 `>1` 的值将被 host 侧拦截。常用值为 `1 / sqrt(QueryHeadDim)`。
 
 - 存在性约束
 
