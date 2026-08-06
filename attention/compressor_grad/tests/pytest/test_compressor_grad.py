@@ -12,7 +12,14 @@
 import random
 
 import os
+import sys
 import torch
+import pytest
+
+# PyPTO kernel 直跑（通路 2）：不经 aclnn/custom 包，运行时 JIT 编译
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "op_kernel"))
+from compressor_grad import compressor_grad, CompressorGradTiling  # noqa: E402
+
 from test_compressor_grad_cases import REDLINE_CASES
 from compressor_grad_cpu_golden import compressor_grad_golden
 from compressor_grad_npu import NPUBackend
@@ -28,12 +35,14 @@ from compressor_grad_check import (
 DEVICE_ID = 0
 
 
+def _ceil_div(a, b):
+    return (a + b - 1) // b
+
 # ── 输出精度对比开关 ──
 ENABLE_DWKV_CHECK  = True
 ENABLE_DWGATE_CHECK  = True
 ENABLE_APE_CHECK  = True
 ENABLE_DX_CHECK   = True
-
 
 # ================================================================
 #  Workspace reduction
@@ -97,7 +106,6 @@ def reduce_ape_workspace(workspace_raw, headDim, coff, cmpRatio, roundCnt, total
 
     return d_ape
 
-
 # ================================================================
 #  Test runner
 # ================================================================
@@ -136,7 +144,6 @@ def _check_block_size(case, batchSize, seqSize, layoutId, cmpRatio, coff, cacheM
             f"[block_size 校验失败] {name}: cache_mode=2 block_size={bs} "
             f"与要求 {expect} 不一致 (coff*cmpRatio+S-1={need}, S_for_bs={S_for_bs})，"
             f"请修正 case 数据后重跑")
-
 
 def check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu, stateCacheCpu, apeCpu,
                            blockTableCpu, spGolden, sqGolden, cuGolden,
@@ -181,56 +188,59 @@ def check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu, stateCacheCpu, ape
     ok = all("PASS" in r for r in results)
     return {"status": "PASS" if ok else "FAIL", "detail": "  ".join(results)}
 
+def _parse_case(case, device):
+    """解析 case 公共参数（通路 1/2 共用）。"""
+    B, S1, H, D = case["B"], case["S1"], case["hidden_size"], case["D"]
+    cr, coff = case["cmp_ratio"], case["coff"]
+    layout = case["input_layout"]
+    layoutId = 1 if layout == "TH" else 0
+    dataType = case["dtype"]
+    ioDtype = torch.float16 if dataType == "float16" else torch.bfloat16
+    if layoutId == 1:
+        tokenSize = int(case["seqlens_list_q"][-1])
+        outputRows = min(tokenSize, tokenSize // cr + B)
+        seqSize = 0                       # 与 host tiling 一致（TH 不设置 seqSize）
+    else:
+        tokenSize = B * S1
+        outputRows = B * _ceil_div(S1, cr)
+        seqSize = S1
+    return dict(B=B, S1=S1, H=H, D=D, cr=cr, coff=coff, layout=layout,
+                layoutId=layoutId, dataType=dataType, ioDtype=ioDtype,
+                tokenSize=tokenSize, seqSize=seqSize, outputRows=outputRows)
 
 def run_case(case, device):
     """Run one test case and return result dict."""
     name = case["testcase_name"]
-    batchSize = case["B"]
-    seqSize = case["S1"]
-    headDim = case["D"]
-    hiddenSize = case["hidden_size"]
-    cmpRatio = case["cmp_ratio"]
-    coff = case["coff"]
-    layout = case["input_layout"]
+    p = _parse_case(case, device)
+    batchSize, seqSize, headDim, hiddenSize = p["B"], p["S1"], p["D"], p["H"]
+    cmpRatio, coff = p["cr"], p["coff"]
+    layoutId, ioDtype, dataType = p["layoutId"], p["ioDtype"], p["dataType"]
+    layout = p["layout"]
+    tokenSize, outputRows = p["tokenSize"], p["outputRows"]
     sps = case["start_pos"]
     if sps is None:
         sps = [0] * case["B"]
     sqs = case["seqused_q"]
     seqlens_list_q = case["seqlens_list_q"]
-    dataType = case["dtype"]
     seed = case["manual_seed"]
 
-    dtypeMap   = {"float16": torch.float16, "bfloat16": torch.bfloat16}
-    ioDtype    = dtypeMap[dataType]
     dataTypeId = 0 if dataType == "bfloat16" else 1
-    layoutId   = 1 if layout == "TH" else 0
 
-    tokenSize = batchSize * seqSize
-    if layoutId == 1:  # TH
-        # ── 构造 cu_seqlens ──
+    sqNpu = torch.tensor(sqs, device=device, dtype=torch.int32) if sqs else None
+    spNpu = torch.tensor(sps, device=device, dtype=torch.int32) if sps else None
+
+    # ── 构造 cu_seqlens（TH 布局；BSH 为 None）──
+    if layoutId == 1:
         # case 数据统一为"0 开始累加"的累积形式（B+1 项、首项 0），直用不再调整
-        seqlens_list = case.get('seqlens_list_q')
-        if seqlens_list is not None:
-            cuNpu = torch.tensor(seqlens_list, dtype=torch.int32)
+        if seqlens_list_q is not None:
+            cuNpu = torch.tensor(seqlens_list_q, dtype=torch.int32)
         elif sqs is not None:
             cuNpu = torch.tensor([0] + torch.tensor(sqs).cumsum(0).tolist(),
                                  dtype=torch.int32)
         else:
             cuNpu = torch.zeros(batchSize + 1, dtype=torch.int32)
-        tokenSize = int(cuNpu[-1])
-    else:  # BSH
+    else:
         cuNpu = None
-        tokenSize = batchSize * seqSize
-
-    scKvRowCount = coff * cmpRatio
-
-    if layoutId == 1:  # TH
-        outputRows = min(tokenSize, (tokenSize // cmpRatio) + batchSize)
-    else:  # BSH
-        outputRows = batchSize * ((seqSize + cmpRatio - 1) // cmpRatio)
-
-    sqNpu = torch.tensor(sqs, device=device, dtype=torch.int32) if sqs else None
-    spNpu = torch.tensor(sps, device=device, dtype=torch.int32) if sps else None
 
     # ── Total valid compression blocks ──
     totalValid = 0
@@ -544,8 +554,119 @@ def run_case(case, device):
 
     return result
 
+def run_backward_case(case, device):
+    """通路 2：单反向——随机构造中间量 → PyPTO 直跑 kernel → golden 比对。
 
-import pytest
+    不经 aclnn/custom 包（kernel 运行时 JIT 编译）；TilingData 29 字段
+    派生逻辑与 op_host/compressor_grad_tiling.cpp 一致。
+    """
+    p = _parse_case(case, device)
+    B, H, D = p["B"], p["H"], p["D"]
+    cr, coff = p["cr"], p["coff"]
+    layoutId, ioDtype = p["layoutId"], p["ioDtype"]
+    tokenSize, seqSize, outputRows = p["tokenSize"], p["seqSize"], p["outputRows"]
+    sqs, sps = case.get("seqused_q"), case.get("start_pos")
+
+    if layoutId == 1:
+        cuNpu = torch.tensor(case["seqlens_list_q"], device=device, dtype=torch.int32)
+    else:
+        cuNpu = None
+    sqNpu = torch.tensor(sqs, device=device, dtype=torch.int32) if sqs else None
+    spNpu = torch.tensor(sps, device=device, dtype=torch.int32) if sps else None
+
+    # ── TilingData（派生与 op_host/compressor_grad_tiling.cpp 一致）──
+    cubeCoreNum, coreNum = 32, 64
+    coffCoef = 2 // coff
+    totalHeadDim = coff * D
+    cmpSize = coff * cr * D
+    cmpKvBatchStride = _ceil_div(seqSize, cr)
+    xRows = tokenSize if layoutId == 1 else B * seqSize
+    groupSize = D // 128
+    groupNum = cubeCoreNum // groupSize
+    dealScNum = 128 // cr
+    groupDealScNum = dealScNum * coffCoef
+    totalScNumPerRound = groupNum * groupDealScNum
+    groupRowStride = groupDealScNum * cr + (coff - 1) * cr
+    dbRowCnt = groupNum * groupRowStride
+    tiling = CompressorGradTiling(
+        batchSize=B, tokenSize=tokenSize, seqSize=seqSize,
+        cmpRatio=cr, hiddenSize=H, headDim=D,
+        cubeCoreNum=cubeCoreNum, coreNum=coreNum,
+        totalHeadDim=totalHeadDim, cmpRowCnt=coff * cr, cmpSize=cmpSize,
+        cmpKvBatchStride=cmpKvBatchStride, cmpKvRows=outputRows, xRows=xRows,
+        groupSize=groupSize, groupNum=groupNum,
+        groupDealScNum=groupDealScNum, dealScNum=dealScNum,
+        totalScNumPerRound=totalScNumPerRound, dbRowCnt=dbRowCnt,
+        groupRowStride=groupRowStride,
+        coffCoef=coffCoef, cubeMBaseSize=128 * coffCoef,
+        dDealSize=128 // coff, mDealSize=128 * coff,
+        dapeWsSize=groupNum * cmpSize * coffCoef,
+        dXWsSize=2 * cubeCoreNum * 256 * H,
+        dWWeightWsSize=groupNum * totalHeadDim * H,
+        xWsSize=2 * groupNum * groupRowStride * H,
+        dXCacheWsSize=2 * cr * H,
+    )
+
+    # ── 随机构造输入/中间量（不依赖正向输出）──
+    torch.manual_seed(case["manual_seed"])
+    xNpu = torch.randn(xRows, H, device=device, dtype=ioDtype)
+    wkvInp = torch.randn(coff * D, H, device=device, dtype=ioDtype)
+    wgateInp = torch.randn(coff * D, H, device=device, dtype=ioDtype)
+    dcNpu = torch.randn(outputRows, D, device=device, dtype=ioDtype)
+    kvNpu = torch.randn(outputRows, coff * cr, D, device=device, dtype=torch.float32)
+    smNpu = torch.softmax(torch.randn(outputRows, coff * cr, D, device=device), dim=1)
+
+    # ── 输出与 workspace（精确大小，FP32 元素数）──
+    dX = torch.zeros(xRows, H, device=device, dtype=ioDtype)
+    dWkv = torch.zeros(coff * D, H, device=device, dtype=ioDtype)
+    dWgate = torch.zeros(coff * D, H, device=device, dtype=ioDtype)
+    dApe = torch.zeros(cr * coff * D, device=device, dtype=torch.float32)
+    wsSize = (tiling.dapeWsSize + tiling.dXWsSize + 2 * tiling.dWWeightWsSize +
+              tiling.xWsSize + tiling.dXCacheWsSize)
+    workspace = torch.zeros(wsSize, device=device, dtype=torch.float32)
+
+    # ── PyPTO 直跑（不经 aclnn/custom 包）──
+    compressor_grad[None, cubeCoreNum,
+                    {"Coff": coff, "Layout": layoutId,
+                     "DataType": 0 if ioDtype == torch.bfloat16 else 1}](
+        xNpu, wkvInp, wgateInp, dcNpu, smNpu, kvNpu,
+        cuNpu, sqNpu, spNpu,
+        dX, dWkv, dWgate, dApe, workspace, tiling)
+    torch.npu.synchronize()
+
+    # ── golden（BSH 输入需 3 维；dc/sm/kv 需 (B, blocks, ...) 维）──
+    xCpu = xNpu.cpu().view(B, seqSize, H) if layoutId == 0 else xNpu.cpu()
+    smCpu = smNpu.cpu().view(B, -1, coff * cr, D) if layoutId == 0 else smNpu.cpu()
+    kvCpu = kvNpu.cpu().view(B, -1, coff * cr, D) if layoutId == 0 else kvNpu.cpu()
+    g_dx, g_dwkv, g_dwgate, g_dape = compressor_grad_golden(
+        x=xCpu, wkv=wkvInp.cpu().float(), wgate=wgateInp.cpu().float(),
+        d_cpm_kv=(dcNpu.cpu().view(B, -1, D) if layoutId == 0 else dcNpu.cpu()),
+        softmax_score=smCpu, kv=kvCpu,
+        cu_seqlens=cuNpu.cpu() if cuNpu is not None else None,
+        seqused=sqNpu.cpu() if sqNpu is not None else None,
+        start_pos=spNpu.cpu() if spNpu is not None else None,
+        cmp_ratio=cr, coff=coff)
+
+    # ── 四输出比对 ──
+    p_pct_thd = get_pct_thd(p["dataType"])
+    checks = [
+        ("d_wkv", g_dwkv.float(), dWkv.cpu().float(), p["dataType"], p_pct_thd),
+        ("d_wgate", g_dwgate.float(), dWgate.cpu().float(), p["dataType"], p_pct_thd),
+        ("d_ape", g_dape, dApe.cpu().float(), "float32", get_pct_thd("float32")),
+        ("d_x", g_dx.float(), dX.cpu().float(), p["dataType"], p_pct_thd),
+    ]
+    statuses = []
+    for name, exp, act, dt, thd in checks:
+        r = check_one_output(name, exp, act, dt, True, 1, thd)
+        statuses.append(f"{name}={r['status']}")
+    status = "ERROR" if any("ERROR" in s for s in statuses) else \
+             "FAIL" if any("FAIL" in s for s in statuses) else "PASS"
+    return {"status": status, "detail": "  ".join(statuses)}
+
+
+def _pathway(request):
+    """当前验证通路（--pathway 入参）。"""
+    return request.config.getoption("--pathway")
 
 
 @pytest.mark.parametrize(
@@ -553,14 +674,31 @@ import pytest
     [c for c in REDLINE_CASES if c.get("enable", True)],
     ids=[c["testcase_name"] for c in REDLINE_CASES if c.get("enable", True)],
 )
-def test_compressor_grad(case):
-    """主链路（pytest 形式）：autograd 正反向全链路 + 反向四输出校验
-    + 通路 1 正向输出校验（cmp_kv/softmax_score/kv vs compressor_core 参考）。
+def test_compressor_grad(case, request):
+    """通路 1：autograd 正反向全链路 + 反向四输出校验
+    + 正向输出校验（cmp_kv/softmax_score/kv vs compressor_forward 参考）。
 
-    单 case 运行：pytest test_compressor_grad.py -k <case名子串> -q
-    全部运行：pytest test_compressor_grad.py -q
+    运行：pytest test_compressor_grad.py -k <case名子串> -q
     """
+    if _pathway(request) != 1:
+        pytest.skip(f"pathway={_pathway(request)}")
     device = f"npu:{DEVICE_ID}"
     torch.npu.set_device(device)
     result = run_case(case, device)
     assert result["status"] == "PASS", format_case_line(result)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [c for c in REDLINE_CASES if c.get("enable", True)],
+    ids=[c["testcase_name"] for c in REDLINE_CASES if c.get("enable", True)],
+)
+def test_compressor_grad_backward(case, request):
+    """通路 2：单反向（PyPTO 直跑，随机构造中间量，不经 custom 包）。
+
+    运行：pytest test_compressor_grad.py --pathway 2 -k <case名子串> -q
+    """
+    if _pathway(request) != 2:
+        pytest.skip(f"pathway={_pathway(request)}")
+    result = run_backward_case(case, f"npu:{DEVICE_ID}")
+    assert result["status"] == "PASS", result["detail"]
