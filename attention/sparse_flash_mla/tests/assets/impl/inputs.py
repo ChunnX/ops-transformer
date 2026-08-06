@@ -14,6 +14,7 @@
 
 import importlib.util
 import sys
+from bisect import bisect_right
 from pathlib import Path
 
 import torch
@@ -59,7 +60,11 @@ class TorchBatchRandomContext:
                 )
         self.base_seed = self.relations[0][1]
         self.call_index = 0
+        self.randperm_call_index = 0
+        self.randperm_batch_offsets = None
+        self.randperm_relation_keys = {}
         self.original_rand = None
+        self.original_randperm = None
 
     @classmethod
     def from_case(cls, q, ori_kv, cmp_kv, kwargs):
@@ -210,8 +215,55 @@ class TorchBatchRandomContext:
         self.register_extent(prefix[-1], tuple((value, 0) for value in selectors), source)
 
     def validate_params(self, params):
-        if params.get("template_mode") not in ("SWA", "HCA"):
-            raise ValueError("SMLA batch consistency currently excludes sparse modes")
+        mode = params.get("template_mode")
+        if mode not in ("SWA", "HCA", "CSA", "ORI_SPARSE", "ORI_CMP_SPARSE"):
+            raise ValueError(f"SMLA batch consistency does not support mode {mode!r}")
+        if mode not in ("CSA", "ORI_SPARSE", "ORI_CMP_SPARSE"):
+            return
+        for name in ("ori_sparse_indices_mode", "cmp_sparse_indices_mode"):
+            value = params.get(name)
+            if value is not None and value != "full":
+                raise ValueError(
+                    "SMLA batch consistency requires full sparse indices"
+                )
+        for name in ("ori_kv_topk_mode", "cmp_kv_topk_mode"):
+            value = params.get(name)
+            if value is not None and value not in ("full", "fullK", "no"):
+                raise ValueError(
+                    "SMLA batch consistency excludes random topk lengths"
+                )
+        self.configure_randperm(params)
+
+    def configure_randperm(self, params):
+        sequence_lengths = params.get("seqused_q")
+        if torch.is_tensor(sequence_lengths):
+            sequence_lengths = sequence_lengths.detach().cpu().reshape(-1).tolist()
+        if sequence_lengths is None:
+            prefix = params.get("cu_seqlens_q")
+            if torch.is_tensor(prefix):
+                prefix = prefix.detach().cpu().reshape(-1).tolist()
+            if prefix is not None:
+                sequence_lengths = [
+                    prefix[index + 1] - prefix[index]
+                    for index in range(len(prefix) - 1)
+                ]
+            else:
+                sequence_lengths = [int(params["S1"])] * self.batch_size
+        if len(sequence_lengths) != self.batch_size:
+            raise ValueError("SMLA sparse batch q lengths must contain B values")
+
+        calls_per_batch = [int(length) * int(params["N2"])
+                           for length in sequence_lengths]
+        offsets = [0]
+        for count in calls_per_batch:
+            offsets.append(offsets[-1] + count)
+        if offsets[-1] <= 0:
+            raise ValueError("SMLA sparse batch requires a non-empty q relation")
+        self.randperm_batch_offsets = offsets
+        for batch_slice, seed in self.batch_relations:
+            start, stop, _ = batch_slice
+            for relative_index, batch_index in enumerate(range(start, stop)):
+                self.randperm_relation_keys[batch_index] = (seed, relative_index)
 
     @classmethod
     def derive_seed(cls, seed, call_index):
@@ -252,13 +304,40 @@ class TorchBatchRandomContext:
             )
         return value
 
+    def random_permutation(self, n, **kwargs):
+        if self.randperm_batch_offsets is None:
+            return self.original_randperm(n, **kwargs)
+        call_index = self.randperm_call_index
+        self.randperm_call_index += 1
+        total_calls = self.randperm_batch_offsets[-1]
+        cycle_index, cycle_offset = divmod(call_index, total_calls)
+        batch_index = bisect_right(self.randperm_batch_offsets, cycle_offset) - 1
+        local_index = cycle_offset - self.randperm_batch_offsets[batch_index]
+        relation = self.randperm_relation_keys.get(batch_index)
+        if relation is None:
+            seed = self.base_seed
+            seed_index = 3000017 + call_index
+        else:
+            seed, relative_index = relation
+            seed_index = (2000003 + cycle_index * 1000000007
+                          + relative_index * 1000003 + local_index)
+        call_kwargs = dict(kwargs)
+        device = call_kwargs.get("device") or "cpu"
+        call_kwargs["generator"] = self.create_generator(
+            self.derive_seed(seed, seed_index), device
+        )
+        return self.original_randperm(n, **call_kwargs)
+
     def __enter__(self):
         self.original_rand = torch.rand
+        self.original_randperm = torch.randperm
         torch.rand = self.random_values
+        torch.randperm = self.random_permutation
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         torch.rand = self.original_rand
+        torch.randperm = self.original_randperm
         return False
 
 

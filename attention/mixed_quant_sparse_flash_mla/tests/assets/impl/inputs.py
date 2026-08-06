@@ -15,6 +15,7 @@
 import importlib.util
 import random
 import sys
+from bisect import bisect_right
 from pathlib import Path
 
 import numpy as np
@@ -61,8 +62,12 @@ class NumpyBatchRandomContext:
                 )
         self.base_seed = self.relations[0][1]
         self.call_index = 0
+        self.randperm_call_index = 0
+        self.randperm_batch_offsets = None
+        self.randperm_relation_keys = {}
         self.original_numpy_uniform = None
         self.original_python_uniform = None
+        self.original_torch_randperm = None
 
     @classmethod
     def from_case(cls, q, ori_kv, cmp_kv, kwargs):
@@ -215,10 +220,57 @@ class NumpyBatchRandomContext:
         self.register_extent(prefix[-1], tuple((value, 0) for value in selectors), source)
 
     def validate_params(self, params):
-        if params.get("template_run_mode") not in ("SWA", "HCA"):
-            raise ValueError("MQSMLA batch consistency currently excludes sparse modes")
-        if int(params.get("quant_mode")) != 1:
-            raise ValueError("MQSMLA batch consistency currently supports quant_mode=1 only")
+        mode = params.get("template_run_mode")
+        if mode not in ("SWA", "HCA", "CSA", "ORI_SPARSE", "ORI_CMP_SPARSE"):
+            raise ValueError(f"MQSMLA batch consistency does not support mode {mode!r}")
+        if int(params.get("quant_mode")) not in (1, 2):
+            raise ValueError("MQSMLA batch consistency supports quant_mode 1 and 2")
+        if mode not in ("CSA", "ORI_SPARSE", "ORI_CMP_SPARSE"):
+            return
+        for name in ("ori_sparse_indices_mode", "cmp_sparse_indices_mode"):
+            value = params.get(name)
+            if value is not None and value != "full":
+                raise ValueError(
+                    "MQSMLA batch consistency requires full sparse indices"
+                )
+        for name in ("ori_kv_topk_mode", "cmp_kv_topk_mode"):
+            value = params.get(name)
+            if value is not None and value not in ("full", "fullK", "no"):
+                raise ValueError(
+                    "MQSMLA batch consistency excludes random topk lengths"
+                )
+        self.configure_randperm(params)
+
+    def configure_randperm(self, params):
+        sequence_lengths = params.get("seqused_q")
+        if torch.is_tensor(sequence_lengths):
+            sequence_lengths = sequence_lengths.detach().cpu().reshape(-1).tolist()
+        if sequence_lengths is None:
+            prefix = params.get("cu_seqlens_q")
+            if torch.is_tensor(prefix):
+                prefix = prefix.detach().cpu().reshape(-1).tolist()
+            if prefix is not None:
+                sequence_lengths = [
+                    prefix[index + 1] - prefix[index]
+                    for index in range(len(prefix) - 1)
+                ]
+            else:
+                sequence_lengths = [int(params["S1"])] * self.batch_size
+        if len(sequence_lengths) != self.batch_size:
+            raise ValueError("MQSMLA sparse batch q lengths must contain B values")
+
+        calls_per_batch = [int(length) * int(params["N2"])
+                           for length in sequence_lengths]
+        offsets = [0]
+        for count in calls_per_batch:
+            offsets.append(offsets[-1] + count)
+        if offsets[-1] <= 0:
+            raise ValueError("MQSMLA sparse batch requires a non-empty q relation")
+        self.randperm_batch_offsets = offsets
+        for batch_slice, seed in self.batch_relations:
+            start, stop, _ = batch_slice
+            for relative_index, batch_index in enumerate(range(start, stop)):
+                self.randperm_relation_keys[batch_index] = (seed, relative_index)
 
     @classmethod
     def derive_seed(cls, seed, call_index):
@@ -251,16 +303,43 @@ class NumpyBatchRandomContext:
         rng = random.Random(self.derive_seed(self.base_seed, call_index))
         return rng.uniform(low, high)
 
+    def torch_randperm(self, n, **kwargs):
+        if self.randperm_batch_offsets is None:
+            return self.original_torch_randperm(n, **kwargs)
+        call_index = self.randperm_call_index
+        self.randperm_call_index += 1
+        total_calls = self.randperm_batch_offsets[-1]
+        cycle_index, cycle_offset = divmod(call_index, total_calls)
+        batch_index = bisect_right(self.randperm_batch_offsets, cycle_offset) - 1
+        local_index = cycle_offset - self.randperm_batch_offsets[batch_index]
+        relation = self.randperm_relation_keys.get(batch_index)
+        if relation is None:
+            seed = self.base_seed
+            seed_index = 3000017 + call_index
+        else:
+            seed, relative_index = relation
+            seed_index = (2000003 + cycle_index * 1000000007
+                          + relative_index * 1000003 + local_index)
+        call_kwargs = dict(kwargs)
+        device = call_kwargs.get("device") or "cpu"
+        generator = torch.Generator(device=device)
+        generator.manual_seed(self.derive_seed(seed, seed_index))
+        call_kwargs["generator"] = generator
+        return self.original_torch_randperm(n, **call_kwargs)
+
     def __enter__(self):
         self.original_numpy_uniform = np.random.uniform
         self.original_python_uniform = random.uniform
+        self.original_torch_randperm = torch.randperm
         np.random.uniform = self.numpy_uniform
         random.uniform = self.python_uniform
+        torch.randperm = self.torch_randperm
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         np.random.uniform = self.original_numpy_uniform
         random.uniform = self.original_python_uniform
+        torch.randperm = self.original_torch_randperm
         return False
 
 
