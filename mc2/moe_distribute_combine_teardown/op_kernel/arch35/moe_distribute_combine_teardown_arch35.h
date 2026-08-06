@@ -46,8 +46,7 @@ class MoeDistributeCombineTeardown {
     constexpr static uint64_t STATE_OFFSET = 512U;        // 状态空间偏移地址
     constexpr static uint32_t STATE_SIZE = 1024U * 1024;  // 1M
     constexpr static uint32_t UB_ALIGN = 32U;             // UB按32字节对齐
-    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U; // 数据和状态的0/1区标识占用空间
-    constexpr static uint64_t COMBINE_STATE_OFFSET = 0U; // 本卡状态空间偏移地址，前面的地址给dispatch用
+    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U; // 每 aiv 控制块大小（D_S/C_S/flag）
     constexpr static uint32_t STATE_COUNT_THRESHOLD = 512U; // moeExpertNumPerRank*epWorldSize状态数阈值
 
 public:
@@ -75,8 +74,9 @@ private:
 
     __aicore__ GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId]) + COMBINE_STATE_OFFSET +
-            WIN_STATE_OFFSET * static_cast<uint64_t>(dataState_);
+        // C 专用状态区，与 D bank 物理隔离；本轮使用 C_S
+        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId]) + COMBINE_STATUS_BASE +
+            COMBINE_STATE_BANK_STRIDE * static_cast<uint64_t>(dataState_);
     }
 
     TPipe *tpipe_{nullptr};
@@ -142,14 +142,15 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(G
 
     // 获取win状态区地址，并保证数据一致
     // 在1M中选择512K偏移后的1.5k空间记录本卡历史状态
-    // dataState 仅在 WaitDispatch 成功后再翻转，避免等待失败时通信域残留错位的 0/1 标识
+    // C_S 仅在 WaitDispatch 成功后再翻转，与 D_S 独立
     GlobalTensor<int32_t> selfDataStatusTensor;
     GM_ADDR statusDataSpaceGm = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
-    dataStateGM_ = statusDataSpaceGm + STATE_WIN_OFFSET + STATE_SIZE_PER_CORE * static_cast<uint64_t>(coreIdx_);
+    dataStateGM_ = statusDataSpaceGm + STATE_WIN_OFFSET + STATE_SIZE_PER_CORE * static_cast<uint64_t>(coreIdx_) +
+                   CTRL_COMBINE_STATE_OFFSET;
     selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)dataStateGM_);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
 
-    dataState_ = selfDataStatusTensor(0); // win状态区的0/1标识，本轮仍使用该 bank
+    dataState_ = selfDataStatusTensor(0); // C_S，本轮仍使用该 bank
 
     expertIdsGlobal_.SetGlobalBuffer((__gm__ int32_t *)expertIds);
     expandIdxGlobal_.SetGlobalBuffer((__gm__ ExpandIdxType *)expandIdx);
@@ -170,16 +171,19 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(G
                                   static_cast<uint64_t>(moeDistributeCombineTeardownInfo_->sharedExpertRankNum) *
                                   expertPerSizeOnWin_; // 共享专家占用空间
 
-    winDataSizeOffset_ = static_cast<uint64_t>(dataState_) *
-                         (static_cast<uint64_t>(moeDistributeCombineTeardownInfo_->totalWinSize) / 2ULL);
+    // C 固定占用数据区后半，区内按 C_S 做 totalWin/4 乒乓
+    {
+        const uint64_t totalWin = static_cast<uint64_t>(moeDistributeCombineTeardownInfo_->totalWinSize);
+        winDataSizeOffset_ = (totalWin / 2ULL) + static_cast<uint64_t>(dataState_) * (totalWin / 4ULL);
+    }
     stateOffset_ = (moeSendNum_ > STATE_COUNT_THRESHOLD) ? (STATE_OFFSET / 2ULL) : STATE_OFFSET;
 
     epWindowGM_ = GetUrmaAddrByRankId(epRankId_);
     epStatusSpaceGM_ = GetUrmaStateAddrByRankId(epRankId_);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType *)(epWindowGM_),
-                                   moeDistributeCombineTeardownInfo_->totalWinSize);
-    OOMCheckAddrRange<float>((__gm__ float *)(epStatusSpaceGM_), STATE_SIZE);
+                                   moeDistributeCombineTeardownInfo_->totalWinSize / 4ULL);
+    OOMCheckAddrRange<float>((__gm__ float *)(epStatusSpaceGM_), COMBINE_STATE_BANK_STRIDE);
 #endif
 
     SplitCoreCal();      // rank分核计算
@@ -295,7 +299,7 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::FlipDataState()
 {
-    // WaitDispatch 成功（或空闲核跳过等待）后再切换 0/1 区，供下一轮 setup 使用
+    // WaitDispatch 成功（或空闲核跳过等待）后再切换 C_S，供下一轮 combine_setup 使用
     GlobalTensor<int32_t> selfDataStatusTensor;
     selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)dataStateGM_);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);

@@ -250,7 +250,11 @@ private:
     __aicore__ inline uint64_t GetCommHandle(uint32_t rankId)
     {
         uint32_t index = rankId > epRankId_ ? rankId - 1 : rankId;
-        return mc2Context_->hcommHandle_[index];
+        // hcommHandle_ 在 GM(context) 上，读前 DCCI 单 cacheline，避免脏/陈旧 handle
+        GlobalTensor<uint64_t> handleGT;
+        handleGT.SetGlobalBuffer((__gm__ uint64_t *)&mc2Context_->hcommHandle_[index]);
+        DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(handleGT);
+        return handleGT(0);
     }
 
     __aicore__ inline GM_ADDR GetUrmaAddrByRankId(const int32_t rankId)
@@ -260,6 +264,7 @@ private:
 
     __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId)
     {
+        // D 专用状态区 [0,512KB)，按 D_S 选 bank；与 C [512KB,768KB) 隔离
         return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET);
     }
     // =============================== Urma =============================== //
@@ -286,8 +291,9 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(GM_
 
     GlobalTensor<int32_t> selfDataStatusTensor;
     statusDataSpaceGM_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
-    selfDataStatusTensor.SetGlobalBuffer(
-        (__gm__ int32_t *)(statusDataSpaceGM_ + STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
+    // 只读写 D_S（控制块 +0），与 C_S 独立
+    selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGM_ + STATE_WIN_OFFSET +
+                                                            aivId_ * WIN_ADDR_ALIGN + CTRL_DISPATCH_STATE_OFFSET));
     axisBS_ = tilingData->moeDistributeDispatchSetupInfo.bs;
     axisH_ = tilingData->moeDistributeDispatchSetupInfo.h;
     epWorldSize_ = tilingData->moeDistributeDispatchSetupInfo.epWorldSize;
@@ -349,8 +355,8 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Init(GM_
     PipeBarrier<PIPE_V>();
     Duplicate<int32_t>(statusTensor_, 0x40000000, mask, statusBufCntAlign / 8, 1, 8); // 0x3F800000是float的1
 
-    // 当前win区划分为前后区，dispatch/combine不再划分区域
-    winDataSizeOffset_ = dataState_ * (tilingData->moeDistributeDispatchSetupInfo.totalWinSize / 2);
+    // D 固定占用数据区前半，区内按 D_S 做 totalWin/4 乒乓
+    winDataSizeOffset_ = dataState_ * (tilingData->moeDistributeDispatchSetupInfo.totalWinSize / 4);
     windowGM_ = GetUrmaAddrByRankId(epRankId_);
     windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_));
     hOutAlignUbSize_ = Ceil(hOutSizeAlign_, UB_ALIGN) * UB_ALIGN;
@@ -652,7 +658,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::SetStatu
     GlobalTensor<int32_t> windowExpGMTensor;
     // 状态区拷贝到windowOut
     windowExpGMTensor.SetGlobalBuffer(
-        (__gm__ int32_t *)(statusDataSpaceGM_ + 2 * WIN_STATE_OFFSET + startExpertId_ * 8 * sizeof(int32_t)));
+        (__gm__ int32_t *)(statusDataSpaceGM_ + DISPATCH_STAGING_OFFSET + startExpertId_ * 8 * sizeof(int32_t)));
     DataCopy<int32_t>(windowExpGMTensor, statusTensor_[startExpertId_ * 8],
                       sendExpertNum_ * 8); // 8时数据大小，按32对齐拷贝
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
@@ -996,7 +1002,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
     }
 
     GlobalTensor<int32_t> windowExpGMTensor;
-    windowExpGMTensor.SetGlobalBuffer((__gm__ int32_t*)(statusDataSpaceGM_ + (WIN_STATE_OFFSET << 1))); // 不加偏移
+    windowExpGMTensor.SetGlobalBuffer((__gm__ int32_t*)(statusDataSpaceGM_ + DISPATCH_STAGING_OFFSET));
     uint32_t len = sharedExpertRankNum_;
     if (endRankId > sharedExpertRankNum_) {
         len += (endRankId - sharedExpertRankNum_) * moeExpertNumPerRank_;
@@ -1050,7 +1056,7 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communic
                 }
 
                 // 发送状态
-                GM_ADDR srcStatusAddr = (GM_ADDR)(statusDataSpaceGM_ + 2 * WIN_STATE_OFFSET +
+                GM_ADDR srcStatusAddr = (GM_ADDR)(statusDataSpaceGM_ + DISPATCH_STAGING_OFFSET +
                     (preExpertNum + dstExpertId) * 8 * sizeof(uint32_t));
                 uint32_t offset = stateOffset_ * epRankId_;
                 if (moeExpertNumPerRank_ > 1){

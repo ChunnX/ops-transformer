@@ -84,6 +84,7 @@ private:
 
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
     {
+        // D 专用状态区，按 D_S 选 bank
         return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId] + dataState_ * WIN_STATE_OFFSET);
     }
 
@@ -191,10 +192,10 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
     // 与 setup/combine 保持一致，统一从 Mc2MoeContext 取 epRankId，避免 tiling 与 context 不一致导致等/清错 buffer
     epRankId_ = mc2Context_->epRankId;
 
-    // dataState 仅在 WaitDispatch 成功后再翻转，与 combine_teardown 对齐，避免联跑跨卡 σ 错位
+    // D_S 仅在 WaitDispatch 成功后再翻转；与 C_S 独立，避免联跑抢乒乓
     GlobalTensor<int32_t> selfDataStatusTensor;
     GM_ADDR statusDataSpaceGm = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
-    dataStateGM_ = statusDataSpaceGm + STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN;
+    dataStateGM_ = statusDataSpaceGm + STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN + CTRL_DISPATCH_STATE_OFFSET;
     selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)dataStateGM_);
 
     axisBS_ = tilingData->moeDistributeDispatchTeardownInfo.bs;
@@ -258,7 +259,8 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Init(
     statusTensor_ = statusBuf_.Get<int32_t>(); // 保存状态，用于计算windows中的偏移
     statusSpaceGm_ = GetWindStateAddrByRankId(epRankId_);
     sumTarget_ = static_cast<float>(1.0);
-    winDataSizeOffset_ = dataState_ * (tilingData->moeDistributeDispatchTeardownInfo.totalWinSize / 2);
+    // D 固定占用数据区前半，区内按 D_S 做 totalWin/4 乒乓
+    winDataSizeOffset_ = dataState_ * (tilingData->moeDistributeDispatchTeardownInfo.totalWinSize / 4);
     tempTotalWinSize_ = tilingData->moeDistributeDispatchTeardownInfo.totalWinSize;
     windowGM_ = GetWindAddrByRankId(epRankId_);
     windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float *)(statusSpaceGm_));
@@ -433,7 +435,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::WaitD
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::FlipDataState()
 {
-    // WaitDispatch 成功（或空闲核跳过等待）后再切换 0/1 区，供后续 combine_setup 使用
+    // WaitDispatch 成功后再切换 D_S，供下一轮 dispatch_setup 使用（不影响 C_S）
     GlobalTensor<int32_t> selfDataStatusTensor;
     selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)dataStateGM_);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);

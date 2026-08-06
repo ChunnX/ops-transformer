@@ -31,13 +31,17 @@
 #include "aclnnop/aclnn_moe_distribute_combine_setup.h"
 #include "aclnnop/aclnn_moe_distribute_combine_teardown.h"
 
-// 与 kernel moe_distribute_base.h / combine_teardown STATE_OFFSET 对齐
-constexpr uint64_t WIN_STATE_OFFSET = 350ULL * 1024ULL;
+// 与 kernel moe_distribute_base.h 新布局对齐（D/C 状态隔离）
+constexpr uint64_t DISPATCH_STATE_OFFSET = 256ULL * 1024ULL;
+constexpr uint64_t COMBINE_STATUS_BASE = 512ULL * 1024ULL;
+constexpr uint64_t COMBINE_STATE_BANK_STRIDE = 128ULL * 1024ULL;
 constexpr uint64_t STATE_WIN_OFFSET = 950ULL * 1024ULL;
 constexpr uint64_t STATE_OFFSET = 512ULL;
+constexpr uint64_t CTRL_DISPATCH_STATE_OFFSET = 0ULL;
+constexpr uint64_t CTRL_COMBINE_STATE_OFFSET = 32ULL;
 // kernel 侧 epHcclBuffer_[rank] = HcclGetHcclBuffer() + rank * 1024，dump 必须用同一基址
 constexpr uint64_t EP_RANK_OFFSET_STEP = 1024ULL;
-constexpr uint32_t DUMP_AIV_NUM = 8U; // 打印前若干 aiv 的 dataState
+constexpr uint32_t DUMP_AIV_NUM = 8U; // 打印前若干 aiv 的 D_S/C_S
 
 // 部分 hccl.h 未导出该符号；与 libhccl 链接时可用
 extern "C" HcclResult HcclGetHcclBuffer(HcclComm comm, void **buffer, uint64_t *size);
@@ -129,12 +133,12 @@ void FreeDeviceAddr(void *deviceAddr)
     }
 }
 
-// host 超时后 dump 本卡 EP window 状态区（方法 2）
+// host 超时后 dump 本卡 EP window 状态区
 // layout（与 kernel 一致，基址含 rank*1024）:
-//   kernBase       = HcclGetHcclBuffer() + epRankId*1024
-//   dataState[aiv] = *(int32_t*)(kernBase + 950KB + aiv*512)
-//   bank[S] base   = kernBase + S*350KB
-//   flag[r]        = *(float*)(bank[S] + r*512)   // 1.0=combine, 2.0=dispatch
+//   kernBase     = HcclGetHcclBuffer() + epRankId*1024
+//   D_S/C_S[aiv] = *(int32*)(kernBase + 950KB + aiv*512 + 0/32)
+//   D bank[S]    = kernBase + S*256KB
+//   C bank[S]    = kernBase + 512KB + S*128KB
 void DumpEpCombineStatus(HcclComm comm, uint32_t epRankId, int64_t epWorldSize, int iter, const char *stage)
 {
     void *winAddr = nullptr;
@@ -153,61 +157,75 @@ void DumpEpCombineStatus(HcclComm comm, uint32_t epRankId, int64_t epWorldSize, 
         return;
     }
 
-    // 与 kernel epHcclBuffer_[epRankId] 对齐；未加 rank*1024 时 rank!=0 会看错槽
     auto *winBase = static_cast<uint8_t *>(winAddr) + kernBaseOff;
     LOG_PRINT("[DUMP] ===== %s timeout dump rank=%u iter=%d win=%p kernBase=+%llu size=%llu =====\n", stage,
               epRankId, iter, winAddr, static_cast<unsigned long long>(kernBaseOff),
               static_cast<unsigned long long>(winSize));
 
-    int32_t dataState0 = 0;
+    int32_t dState0 = 0;
+    int32_t cState0 = 0;
     for (uint32_t aiv = 0; aiv < DUMP_AIV_NUM; ++aiv) {
-        int32_t dataState = 0;
-        void *src = winBase + STATE_WIN_OFFSET + static_cast<uint64_t>(aiv) * STATE_OFFSET;
-        aclError ret = aclrtMemcpy(&dataState, sizeof(dataState), src, sizeof(dataState), ACL_MEMCPY_DEVICE_TO_HOST);
-        if (ret != ACL_SUCCESS) {
-            LOG_PRINT("[DUMP] read dataState aiv=%u failed. ret=%d\n", aiv, ret);
+        int32_t dState = 0;
+        int32_t cState = 0;
+        void *dSrc = winBase + STATE_WIN_OFFSET + static_cast<uint64_t>(aiv) * STATE_OFFSET + CTRL_DISPATCH_STATE_OFFSET;
+        void *cSrc = winBase + STATE_WIN_OFFSET + static_cast<uint64_t>(aiv) * STATE_OFFSET + CTRL_COMBINE_STATE_OFFSET;
+        aclError retD = aclrtMemcpy(&dState, sizeof(dState), dSrc, sizeof(dState), ACL_MEMCPY_DEVICE_TO_HOST);
+        aclError retC = aclrtMemcpy(&cState, sizeof(cState), cSrc, sizeof(cState), ACL_MEMCPY_DEVICE_TO_HOST);
+        if (retD != ACL_SUCCESS || retC != ACL_SUCCESS) {
+            LOG_PRINT("[DUMP] read sigma aiv=%u failed. retD=%d retC=%d\n", aiv, retD, retC);
             continue;
         }
         if (aiv == 0U) {
-            dataState0 = dataState;
+            dState0 = dState;
+            cState0 = cState;
         }
-        LOG_PRINT("[DUMP] dataState[aiv=%u]=%d\n", aiv, dataState);
+        LOG_PRINT("[DUMP] aiv=%u D_S=%d C_S=%d\n", aiv, dState, cState);
     }
-    LOG_PRINT("[SIGMA] stage=%s iter=%d rank=%u sigma=%d\n", stage, iter, epRankId, dataState0);
+    LOG_PRINT("[SIGMA] stage=%s iter=%d rank=%u D_S=%d C_S=%d\n", stage, iter, epRankId, dState0, cState0);
 
-    // 两个 bank 都打：便于判断 flag 是否落错半区
-    for (uint32_t bank = 0; bank < 2U; ++bank) {
-        const char *tag = (static_cast<int32_t>(bank) == dataState0) ? "current" : "other";
-        float sum = 0.0f;
-        uint32_t cntOne = 0U;
-        uint32_t cntTwo = 0U;
-        uint32_t cntZero = 0U;
-        LOG_PRINT("[DUMP] --- bank=%u (%s) base=kernBase+%uKB ---\n", bank, tag,
-                  static_cast<unsigned>(bank * (WIN_STATE_OFFSET / 1024ULL)));
-        for (int64_t r = 0; r < epWorldSize; ++r) {
-            float flag = 0.0f;
-            void *slot = winBase + static_cast<uint64_t>(bank) * WIN_STATE_OFFSET +
-                         static_cast<uint64_t>(r) * STATE_OFFSET;
-            aclError ret = aclrtMemcpy(&flag, sizeof(flag), slot, sizeof(flag), ACL_MEMCPY_DEVICE_TO_HOST);
-            if (ret != ACL_SUCCESS) {
-                LOG_PRINT("[DUMP]   src=%lld memcpy failed. ret=%d\n", static_cast<long long>(r), ret);
-                continue;
+    // D banks @0/+256KB；C banks @512KB/+128KB
+    const struct {
+        const char *name;
+        uint64_t baseOff;
+        uint64_t bankStride;
+        int32_t curSigma;
+    } regions[2] = {{"D", 0ULL, DISPATCH_STATE_OFFSET, dState0},
+                    {"C", COMBINE_STATUS_BASE, COMBINE_STATE_BANK_STRIDE, cState0}};
+
+    for (const auto &region : regions) {
+        for (uint32_t bank = 0; bank < 2U; ++bank) {
+            const char *tag = (static_cast<int32_t>(bank) == region.curSigma) ? "current" : "other";
+            float sum = 0.0f;
+            uint32_t cntOne = 0U;
+            uint32_t cntTwo = 0U;
+            uint32_t cntZero = 0U;
+            LOG_PRINT("[DUMP] --- %s bank=%u (%s) base=kernBase+%lluKB ---\n", region.name, bank, tag,
+                      static_cast<unsigned long long>((region.baseOff + bank * region.bankStride) / 1024ULL));
+            for (int64_t r = 0; r < epWorldSize; ++r) {
+                float flag = 0.0f;
+                void *slot = winBase + region.baseOff + static_cast<uint64_t>(bank) * region.bankStride +
+                             static_cast<uint64_t>(r) * STATE_OFFSET;
+                aclError ret = aclrtMemcpy(&flag, sizeof(flag), slot, sizeof(flag), ACL_MEMCPY_DEVICE_TO_HOST);
+                if (ret != ACL_SUCCESS) {
+                    LOG_PRINT("[DUMP]   src=%lld memcpy failed. ret=%d\n", static_cast<long long>(r), ret);
+                    continue;
+                }
+                uint32_t raw = 0U;
+                static_assert(sizeof(raw) == sizeof(flag), "float/uint32 size mismatch");
+                std::memcpy(&raw, &flag, sizeof(raw));
+                sum += flag;
+                if (raw == 0x00000000U) {
+                    ++cntZero;
+                } else if (raw == 0x3f800000U) {
+                    ++cntOne;
+                } else if (raw == 0x40000000U) {
+                    ++cntTwo;
+                }
+                LOG_PRINT("[DUMP]   src=%lld flag=%f raw=0x%08x\n", static_cast<long long>(r), flag, raw);
             }
-            uint32_t raw = 0U;
-            static_assert(sizeof(raw) == sizeof(flag), "float/uint32 size mismatch");
-            std::memcpy(&raw, &flag, sizeof(raw));
-            sum += flag;
-            if (raw == 0x00000000U) {
-                ++cntZero;
-            } else if (raw == 0x3f800000U) {
-                ++cntOne; // 1.0 combine
-            } else if (raw == 0x40000000U) {
-                ++cntTwo; // 2.0 dispatch
-            }
-            LOG_PRINT("[DUMP]   src=%lld flag=%f raw=0x%08x\n", static_cast<long long>(r), flag, raw);
+            LOG_PRINT("[DUMP] %s bank=%u sum=%f target~=%lld zero=%u one(1.0)=%u two(2.0)=%u\n", region.name, bank,
+                      sum, static_cast<long long>(epWorldSize), cntZero, cntOne, cntTwo);
         }
-        LOG_PRINT("[DUMP] bank=%u sum=%f target~=%lld zero=%u one(1.0)=%u two(2.0)=%u\n", bank, sum,
-                  static_cast<long long>(epWorldSize), cntZero, cntOne, cntTwo);
     }
     LOG_PRINT("[DUMP] ===== end dump rank=%u =====\n", epRankId);
 }

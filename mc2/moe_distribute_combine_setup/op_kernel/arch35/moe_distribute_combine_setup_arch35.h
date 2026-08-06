@@ -47,8 +47,7 @@ class MoeDistributeCombineSetup {
     constexpr static uint64_t STATE_OFFSET = 512U;        // 状态空间偏移地址
     constexpr static uint32_t STATE_SIZE = 1024U * 1024U; // 1M
     constexpr static uint32_t UB_ALIGN = 32U;             // UB按32字节对齐
-    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U;   // 数据和状态的0/1区标识占用空间
-    constexpr static uint64_t COMBINE_STATE_OFFSET = 0U;    // 本卡状态空间偏移地址，前面的地址给dispatch用
+    constexpr static uint64_t STATE_SIZE_PER_CORE = 512U;   // 每 aiv 控制块大小（D_S/C_S/flag）
     constexpr static uint32_t STATE_COUNT_THRESHOLD = 512U; // moeExpertNumPerRank*epWorldSize状态数阈值
 
 public:
@@ -110,7 +109,11 @@ private:
     __aicore__ inline uint64_t GetCommHandle(uint32_t rankId)
     {
         uint32_t index = rankId > epRankId_ ? rankId - 1 : rankId;
-        return mc2Context_->hcommHandle_[index];
+        // hcommHandle_ 在 GM(context) 上，读前 DCCI 单 cacheline，避免脏/陈旧 handle
+        GlobalTensor<uint64_t> handleGT;
+        handleGT.SetGlobalBuffer((__gm__ uint64_t *)&mc2Context_->hcommHandle_[index]);
+        DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(handleGT);
+        return handleGT(0);
     }
 
     __aicore__ inline GM_ADDR GetUrmaAddrByRankId(const int32_t rankId, const uint8_t expertLocalId = 0U)
@@ -121,7 +124,9 @@ private:
 
     __aicore__ inline GM_ADDR GetUrmaStateAddrByRankId(const int32_t rankId)
     {
-        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId] + COMBINE_STATE_OFFSET + dataState_ * WIN_STATE_OFFSET);
+        // C 专用状态区，与 D bank 物理隔离；C_S 独立乒乓
+        return (GM_ADDR)(mc2Context_->epHcclBuffer_[rankId] + COMBINE_STATUS_BASE +
+                         dataState_ * COMBINE_STATE_BANK_STRIDE);
     }
     // =============================== Urma =============================== //
 };
@@ -138,20 +143,19 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     mc2Context_ = (__gm__ Mc2MoeContext* )context;
     epRankId_ = mc2Context_->epRankId;
 
-    // 获取win状态区地址，并保证数据一致
-    // 在1M中选择512K偏移后的1.5k空间记录本卡历史状态
+    // 获取 win 控制区：本算子只读写 C_S，与 D_S 独立，避免联跑抢乒乓
     GlobalTensor<int32_t> selfDataStatusTensor;
     statusDataSpaceGM_ = (GM_ADDR)(mc2Context_->epHcclBuffer_[epRankId_]);
     selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGM_ + STATE_WIN_OFFSET +
-        STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_)));
+        STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_) + CTRL_COMBINE_STATE_OFFSET));
 
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
 
-    dataState_ = selfDataStatusTensor(0); // win状态区的0/1标识
+    dataState_ = selfDataStatusTensor(0); // C_S：combine 专用 0/1
 
-    // 本卡准备状态flag源：每个核在dataState标识后的32B位置写入float 1.0，供远端WriteNbi使用
+    // 本卡准备状态 flag 源（控制块 +64），供远端 WriteNbi；与 C_S(+32)/D_S(+0) 错开
     statusFlagGM_ = statusDataSpaceGM_ + STATE_WIN_OFFSET +
-        STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_) + UB_ALIGN;
+        STATE_SIZE_PER_CORE * static_cast<uint64_t>(aivId_) + CTRL_COMBINE_FLAG_OFFSET;
     GlobalTensor<int32_t> statusFlagTensor;
     statusFlagTensor.SetGlobalBuffer((__gm__ int32_t *)statusFlagGM_);
     statusFlagTensor.SetValue(0, static_cast<int32_t>(STATUS_FLAG_VALUE));
@@ -169,8 +173,11 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
         static_cast<uint64_t>(sizeof(ExpandXType));              // 一个token占用内存
     expertPerSizeOnWin_ = static_cast<uint64_t>(axisMaxBS_) * axisHExpandXTypeSize_; // 单个专家可能占用的最大空间
 
-    winDataSizeOffset_ = static_cast<uint64_t>(dataState_) *
-        (static_cast<uint64_t>(moeDistributeCombineSetupInfo_->totalWinSize) >> 1);
+    // C 固定占用数据区后半，区内按 C_S 做 totalWin/4 乒乓
+    {
+        const uint64_t totalWin = static_cast<uint64_t>(moeDistributeCombineSetupInfo_->totalWinSize);
+        winDataSizeOffset_ = (totalWin >> 1) + static_cast<uint64_t>(dataState_) * (totalWin >> 2);
+    }
     stateOffset_ = (moeSendNum_ > STATE_COUNT_THRESHOLD) ? (STATE_OFFSET >> 1) : STATE_OFFSET;
     epStateOffsetOnWin_ = static_cast<uint64_t>(epRankId_) * stateOffset_;
     epDataOffsetOnWin_ = static_cast<uint64_t>(epRankId_) *
@@ -180,8 +187,9 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(GM_A
     epWindowGM_ = GetUrmaAddrByRankId(epRankId_);
     epStatusSpaceGM_ = GetUrmaStateAddrByRankId(epRankId_);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
-    OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType *)(epWindowGM_), moeDistributeCombineSetupInfo_->totalWinSize);
-    OOMCheckAddrRange<float>((__gm__ float *)(epStatusSpaceGM_), STATE_SIZE);
+    OOMCheckAddrRange<ExpandXType>((__gm__ ExpandXType *)(epWindowGM_),
+                                   moeDistributeCombineSetupInfo_->totalWinSize / 4U);
+    OOMCheckAddrRange<float>((__gm__ float *)(epStatusSpaceGM_), COMBINE_STATE_BANK_STRIDE);
 #endif
 
     SplitCoreCal(); // 分核计算
@@ -267,6 +275,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         if (unlikely(dstRankId == epRankId_)) {
             continue;
         }
+        // 每 dst 只取一次 channelId（内含单行 DCCI），Commit 后立刻 Drain，避免二次读 handle
         auto channelId = GetCommHandle(dstRankId);
         GM_ADDR dstStatusAddr = GetUrmaStateAddrByRankId(dstRankId) + epStateOffsetOnWin_;
         for (uint32_t expertIdx = 0U; expertIdx < curRankExpertNum; ++expertIdx) {
@@ -289,21 +298,12 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         // 无论token是否为0，都独立下发状态，避免WriteWithNotify在length=0时丢notify
         hcomm_.WriteNbi<false>(channelId, dstStatusAddr, statusFlagGM_, UB_ALIGN);
         hcomm_.Commit(channelId);
-    }
-
-    // 回收本核负责的 channel CQ，避免同通信域多轮复用时 SQ/CQ 堆积导致后续卡死
-    for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; ++dstRankId) {
-        if (unlikely(dstRankId == epRankId_)) {
-            continue;
-        }
-        auto channelId = GetCommHandle(dstRankId);
+        // 回收本核负责的 channel CQ，避免同通信域多轮复用时 SQ/CQ 堆积导致后续卡死
         hcomm_.Drain(channelId);
 
         // 调试对端 dst 槽：改为 1 开启。Drain 后经 channel 映射回读 dstStatusAddr。
-        // 期望 dstRaw=0x3f800000；若仍为 0，以对端 host dump（kernBase=win+rank*1024）为准。
-#define COMBINE_SETUP_DEBUG_DST_STATUS 1
+#define COMBINE_SETUP_DEBUG_DST_STATUS 0
 #if COMBINE_SETUP_DEBUG_DST_STATUS
-        GM_ADDR dstStatusAddr = GetUrmaStateAddrByRankId(dstRankId) + epStateOffsetOnWin_;
         GlobalTensor<int32_t> dstStatusTensor;
         dstStatusTensor.SetGlobalBuffer((__gm__ int32_t *)dstStatusAddr);
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(dstStatusTensor);

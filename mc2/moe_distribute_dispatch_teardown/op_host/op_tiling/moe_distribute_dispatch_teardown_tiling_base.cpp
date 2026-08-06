@@ -768,6 +768,29 @@ const ge::graphStatus MoeDistributeDispatchTeardownTilingBase::CheckHcclBuffSize
     OP_TILING_CHECK(hcclBuffSize < hcclBuffSizeGolden,
                     OP_LOGE(nodeName_, "HCCL_BUFFSIZE [%ld] < [%ld].", hcclBuffSize, hcclBuffSizeGolden),
                     return ge::GRAPH_FAILED);
+
+    // arch35: totalWin 按 D/C 各半、区内 /4 乒乓
+    OP_TILING_CHECK((hcclBuffSize % 4) != 0,
+                    OP_LOGE(nodeName_, "totalWinSize [%ld] must be divisible by 4 for D/C data partition.",
+                            hcclBuffSize),
+                    return ge::GRAPH_FAILED);
+    const int64_t dataBankSize = hcclBuffSize / 4;
+    const int64_t dataNeed = epWorldSize * localExpertNum * maxBs * align;
+    OP_TILING_CHECK(dataNeed > dataBankSize,
+                    OP_LOGE(nodeName_,
+                            "dispatch data need [%ld] > active data bank totalWin/4 [%ld] (totalWin=%ld).", dataNeed,
+                            dataBankSize, hcclBuffSize),
+                    return ge::GRAPH_FAILED);
+    const int64_t recvWinBlockNum = epWorldSize * localExpertNum;
+    const int64_t stateOffset = (recvWinBlockNum > 512) ? 256 : 512;
+    constexpr int64_t DISPATCH_STATE_BANK = 256 * 1024;
+    const int64_t statusNeed = recvWinBlockNum * stateOffset;
+    OP_TILING_CHECK(statusNeed > DISPATCH_STATE_BANK,
+                    OP_LOGE(nodeName_,
+                            "dispatch status need [%ld] > D status bank [%ld] (blocks=%ld stateOffset=%ld).",
+                            statusNeed, DISPATCH_STATE_BANK, recvWinBlockNum, stateOffset),
+                    return ge::GRAPH_FAILED);
+
     tilingData_->moeDistributeDispatchTeardownInfo.totalWinSize = hcclBuffSize;
     return ge::GRAPH_SUCCESS;
 }
