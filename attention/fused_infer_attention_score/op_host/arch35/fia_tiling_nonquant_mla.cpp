@@ -21,11 +21,11 @@
 #include <algorithm>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
-#include "../fia_tiling_templates_registry.h"
-#include "../split_core_v2.h"
-#include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_utils.h"
-#include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_constants.h"
-#include "../../../prompt_flash_attention/op_kernel/arch35/prompt_flash_attention_template_tiling_key_enum.h"
+#include "../../../common/op_host/fia_tiling_templates_registry.h"
+#include "../../../common/op_host/split_core_v2.h"
+#include "../fused_infer_attention_score_tiling_utils.h"
+#include "../fused_infer_attention_score_tiling_constants.h"
+#include "../../op_kernel/arch35/fia_arch35_template_tiling_key_enum.h"
 
 using namespace ge;
 using namespace AscendC;

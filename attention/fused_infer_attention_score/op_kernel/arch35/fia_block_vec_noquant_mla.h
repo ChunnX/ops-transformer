@@ -21,15 +21,15 @@
 #include "kernel_operator.h"
 #endif
 
-#include "flash_attention_score_common_regbase.h"
+#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "adv_api/activation/softmax.h"
-#include "vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
-#include "vf/vf_flashupdate_new.h"
-#include "vf/vf_div_cast.h"
-#include "vf/vf_flash_decode.h"
+#include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
+#include "../../../common/op_kernel/arch35/vf/vf_div_cast.h"
+#include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "fia_public_define_arch35.h"
-#include "../vector_common.h"
-#include "../memory_copy_arch35.h"
+#include "../../../common/op_kernel/vector_common.h"
+#include "memory_copy_arch35.h"
 
 using namespace AscendC;
 using namespace FaVectorApi;
