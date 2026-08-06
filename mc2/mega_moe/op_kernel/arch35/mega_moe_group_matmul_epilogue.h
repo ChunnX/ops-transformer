@@ -13,7 +13,7 @@
 
 #include "kernel_operator.h"
 #include "tensor_api/tensor.h"
-#include "mega_moe_combine_send.h"
+#include "aiv_comm/mega_moe_token_combine.h"
 
 namespace MegaMoeImpl {
 namespace Detail {

@@ -80,13 +80,13 @@ constexpr int64_t E2M1_QUANT = 5U;
 constexpr int64_t HALF_TO_FP32 = 2U;
 constexpr int64_t DEQUANT_SCALE_EXPAND = 2U;
 constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
-// Combine quantization modes
+// Combine 量化模式。
 constexpr uint8_t COMBINE_NO_QUANT = 0;
 constexpr uint8_t MXFP8_E5M2_COMM_QUANT = 3;
 constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;
-// Combine buffer constants
+// Combine buffer 常量。
 constexpr uint32_t META_INFO_SIZE = 8U; // 每个 token 的 metaInfo 大小（8 个 int32）
-// GroupedMatmul modes
+// GroupedMatmul 模式。
 constexpr uint8_t GROUPED_MATMUL_MODE_GENERAL = 0U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A8W4 = 1U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A8W8_NZ = 2U;
@@ -115,10 +115,10 @@ HOST_DEVICE int64_t CalcMegaMoeFlagWorkspaceSize(const MegaMoeTilingData *tiling
     int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
     int64_t swigluFlagSlotsPerExpert =
         useMteA8W8Wave ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
-    int64_t routedExpertCount = static_cast<int64_t>(tilingData->moeExpertPerRank);
+    int64_t moeExpertCount = static_cast<int64_t>(tilingData->moeExpertPerRank);
 
     int64_t flagElementCount =
-        routedExpertCount *
+        moeExpertCount *
         (swigluFlagSlotsPerExpert + waveFlagSlotsPerExpert +
          static_cast<int64_t>(INT_CACHELINE) * tilingData->aicNum);
     if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
@@ -127,11 +127,11 @@ HOST_DEVICE int64_t CalcMegaMoeFlagWorkspaceSize(const MegaMoeTilingData *tiling
         flagElementCount += static_cast<int64_t>(tilingData->aicNum) * INT_CACHELINE;
     }
     if (useMteA8W8Wave) {
-        flagElementCount += routedExpertCount * tilingData->aicNum * INT_CACHELINE;
+        flagElementCount += moeExpertCount * tilingData->aicNum * INT_CACHELINE;
     }
     if (useGroupSyncCounters) {
         flagElementCount += static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) *
-                            routedExpertCount * INT_CACHELINE;
+                            moeExpertCount * INT_CACHELINE;
     }
     if (tilingData->sharedExpertNum > 0) {
         int64_t tokenGroupCount = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->bs),
@@ -216,7 +216,7 @@ struct WorkspaceInfo {
         metaInfoPtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
 
-        // 以下三组 flag 仅由路由 MoE 专家使用；共享专家路径不使用这些 flag。
+        // 以下三组 flag 仅由 MoE 专家使用；共享专家路径不使用这些 flag。
         bool isGenericGmm = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
                             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
         bool useMteA8W8Wave = tilingData->topoType == TOPO_TYPE_MTE && isGenericGmm;
@@ -228,26 +228,24 @@ struct WorkspaceInfo {
             Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize),
                                static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256));
         int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
-        // Only the wave pipeline can consume SwiGLU at 256-row granularity.
-        // Legacy and layered paths retain one cache-line slot per expert.
+        // 只有 wave 流水会按 256 行粒度消费 SwiGLU；普通和 layered 路径仍为每个专家保留一个 cache line 槽。
         int64_t swigluFlagSlotsPerExpert =
             useMteA8W8Wave ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
-        int64_t routedExpertCount = static_cast<int64_t>(tilingData->moeExpertPerRank);
+        int64_t moeExpertCount = static_cast<int64_t>(tilingData->moeExpertPerRank);
 
-        // Keep every scalar notification in one contiguous workspace region.
-        // Each logical slot owns one 64B cache line, so ResetFlagList can clear
-        // the complete region in one partitioned pass.
+        // 所有 Scalar 通知都放在同一段连续 workspace 中。每个逻辑槽独占一个 64B cache line，
+        // 因而 ResetFlagList 可以按任务分区一次清理完整区域。
         flagSwiGluToGmm2Ptr = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * routedExpertCount * swigluFlagSlotsPerExpert;
+        workspaceSize += SIZE_INT_32 * moeExpertCount * swigluFlagSlotsPerExpert;
         flagDispatchToGmm1Ptr = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * routedExpertCount * waveFlagSlotsPerExpert;
+        workspaceSize += SIZE_INT_32 * moeExpertCount * waveFlagSlotsPerExpert;
 
         // 每(expert, aiCore)单独占一个cache_line
         flagSendCntCalToUpdParamsPtr = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * INT_CACHELINE * routedExpertCount * tilingData->aicNum;
+        workspaceSize += SIZE_INT_32 * INT_CACHELINE * moeExpertCount * tilingData->aicNum;
 
-        // Keep the per-AIC ready sequence contiguous with the preceding flags so ResetFlagList can clear all of them
-        // with the same MTE reset pass. Each sequence occupies one 64B cacheline.
+        // 每个 AIC 的就绪序列与前面的 flag 连续存放，使 ResetFlagList 能用同一次 MTE reset 清理；
+        // 每个序列独占一个 64B cache line。
         if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
@@ -257,15 +255,15 @@ struct WorkspaceInfo {
 
         if (useMteA8W8Wave) {
             gmm2ReadyPtr = base + workspaceSize;
-            // slotIdx is expertIdx in PER_EXPERT mode and batchIdx in
-            // PER_BATCH mode. Each AIC arrival owns one 64B cache line.
-            workspaceSize += SIZE_INT_32 * routedExpertCount * tilingData->aicNum * INT_CACHELINE;
+            // PER_EXPERT 模式下 slotIdx 为 expertIdx，PER_BATCH 模式下为 batchIdx；
+            // 每个 AIC 到达标记独占一个 64B cache line。
+            workspaceSize += SIZE_INT_32 * moeExpertCount * tilingData->aicNum * INT_CACHELINE;
         }
 
         if (useGroupSyncCounters) {
             gmm2CombineSyncCounterPtr = base + workspaceSize;
             workspaceSize += static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) *
-                             routedExpertCount * INT_CACHELINE * SIZE_INT_32;
+                             moeExpertCount * INT_CACHELINE * SIZE_INT_32;
         }
 
         // Shared expert GMM2 tile counter: tile 级 flag counter, 每 shared expert 一组 slot。
@@ -278,15 +276,15 @@ struct WorkspaceInfo {
                              static_cast<int64_t>(tilingData->sharedExpertNum) * INT_CACHELINE;
         }
 
-        // Conditional allocation for A8W4 / combine-quant paths.
+        // A8W4 / Combine 量化路径的条件 workspace 分配。
         // 以下条件分配与 mega_moe.h 编译期守卫 (ENABLE_A8W4 / ENABLE_A4W4 / CombineQuantMode) 一致，
         // 由 TilingKey 保证同步。
-        // A8W4-only: cumsum GM backup and GMM1 intermediate result.
+        // 仅 A8W4 使用：cumsum GM 备份和 GMM1 中间结果。
         cumsumInfoPtr = nullptr;
         gmm1MmadResPtr = nullptr;
         gmm2MmadResPtr = nullptr;
         if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 || tilingData->topkWeightsPrefetch == 1) {
-            // cumsumInfo: per-core backup of cumsum state (moeExpertPerRank × epWorldSize int32 per core).
+            // cumsumInfo：逐核备份 cumsum 状态，每核 moeExpertPerRank × epWorldSize 个 int32。
             if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4) {
                 cumsumInfoPtr = base + workspaceSize;
                 workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(SIZE_INT_32 *
@@ -295,12 +293,12 @@ struct WorkspaceInfo {
                                                       ALIGN_32) *
                                  tilingData->aicNum;
             }
-            // gmm1MmadRes: GMM1 matmul output (maxOutputSize × hiddenDim bf16).
+            // gmm1MmadRes：GMM1 matmul 输出，布局为 maxOutputSize × hiddenDim 个 BF16。
             gmm1MmadResPtr = base + workspaceSize;
             workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->hiddenDim;
         }
-        // gmm2MmadRes: GMM2 matmul output (maxOutputSize × h bf16), needed by A8W4 GMM1 path,
-        // A4W4 hybrid path (GMM2 uses A8W4), A4W4_NZ, and combine-quant.
+        // gmm2MmadRes：GMM2 matmul 输出，布局为 maxOutputSize × h 个 BF16；
+        // A8W4 GMM1、A4W4 混合路径、A4W4_NZ 和 Combine 量化路径需要该区域。
         if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ ||
@@ -310,9 +308,9 @@ struct WorkspaceInfo {
                 workspaceSize = Ops::Base::CeilAlign(workspaceSize, static_cast<int64_t>(ALIGN_512));
             }
             gmm2MmadResPtr = base + workspaceSize;
-            // The MTE wave path gives every routed row a unique [H] BF16
-            // region for the complete kernel lifetime.  It is not a batch or
-            // ring slot, so AIC never needs a consumer ACK before advancing.
+            // MTE wave 路径为每个 MoE token 行分配独立的 [H] BF16
+            // 区域，生命周期覆盖整个 kernel。它不是 batch 或 ring slot，
+            // 因此 AIC 推进游标前不需要等待 consumer ACK。
             int64_t gmm2OutputBytes = static_cast<int64_t>(SIZE_BF_16) *
                                       static_cast<int64_t>(tilingData->maxOutputSize) *
                                       static_cast<int64_t>(tilingData->h);
@@ -363,32 +361,32 @@ struct WorkspaceInfo {
             workspaceSize += static_cast<int64_t>(tilingData->aicNum) * dispatchL2ScratchBytes;
         }
 
-        // Shared expert workspace buffers
+        // 共享专家 workspace buffer。
         if (tilingData->sharedExpertNum > 0) {
-            // sharedExpertResult: GMM2 output for shared experts [sharedExpertNum × bs × h]
+            // sharedExpertResult：共享专家 GMM2 输出 [sharedExpertNum × bs × h]。
             sharedExpertResultPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
                 SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->h, ALIGN_512);
-            // sharedExpertGmm1Out: GMM1 output for shared experts [sharedExpertNum × bs × hiddenDim]
+            // sharedExpertGmm1Out：共享专家 GMM1 输出 [sharedExpertNum × bs × hiddenDim]。
             sharedExpertGmm1OutPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
                 SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim, ALIGN_512);
-            // sharedExpertInputData: GMM1 input data [bs × h]
+            // sharedExpertInputData：GMM1 输入数据 [bs × h]。
             sharedExpertInputDataPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->h, ALIGN_512);
-            // sharedExpertInputScale: GMM1 input scale [bs × CeilDiv(h,32)*2]
+            // sharedExpertInputScale：GMM1 输入 scale [bs × CeilDiv(h, 32) × 2]。
             sharedExpertInputScalePtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs *
                                                       Ops::Base::CeilDiv(static_cast<uint32_t>(tilingData->h),
                                                                          static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM)) *
                                                       MXFP_MULTI_BASE_SIZE,
                                                   ALIGN_512);
-            // sharedExpertSwigluData: SwiGLU quant output [sharedExpertNum × bs × hiddenDim/2] fp8
+            // sharedExpertSwigluData：SwiGLU 量化输出 [sharedExpertNum × bs × hiddenDim / 2] FP8。
             sharedExpertSwigluDataPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum *
                                                       tilingData->hiddenDim / MegaMoeImpl::SWIGLU_N_HALF,
                                                   ALIGN_512);
-            // sharedExpertSwigluScale: SwiGLU scale [sharedExpertNum × bs × hiddenDim/2/32]
+            // sharedExpertSwigluScale：SwiGLU scale [sharedExpertNum × bs × hiddenDim / 2 / 32]。
             sharedExpertSwigluScalePtr = base + workspaceSize;
             workspaceSize +=
                 Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim /

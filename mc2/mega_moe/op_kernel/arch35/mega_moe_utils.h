@@ -10,13 +10,15 @@
 
 /*!
  * \file mega_moe_utils.h
- * \brief Common host/device helpers for MegaMoe scheduling.
+ * \brief MegaMoe 调度使用的通用 host/device 辅助函数。
  */
 
 #ifndef MEGA_MOE_UTILS_H
 #define MEGA_MOE_UTILS_H
 
 #include <cstdint>
+
+#include "mega_moe_job_context.h"
 
 namespace MegaMoeImpl {
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
@@ -30,8 +32,7 @@ struct TokenRange {
     uint32_t count = 0;
 };
 
-// Return the number of experts in the current wave. A final tail containing
-// strictly less than half a normal wave is absorbed by its preceding wave.
+// 返回当前 wave 的专家数；不足正常 wave 一半的尾块合并到前一个 wave。
 MEGA_MOE_HOST_DEVICE_INLINE uint32_t GetWaveExpertCount(uint32_t waveBegin, uint32_t expertCount,
                                                         uint32_t expertsPerWave)
 {
@@ -47,8 +48,7 @@ MEGA_MOE_HOST_DEVICE_INLINE uint32_t GetWaveExpertCount(uint32_t waveBegin, uint
     return mergeSmallTail ? remainingExperts : expertsPerWave;
 }
 
-// Balanced contiguous ownership. Every token belongs to exactly one worker;
-// the first (totalTokens % workerCount) workers receive one extra token.
+// 连续均衡分配 token，前 totalTokens % workerCount 个任务各多处理一个 token。
 MEGA_MOE_HOST_DEVICE_INLINE TokenRange GetBalancedTokenRange(uint32_t totalTokens, uint32_t workerIdx,
                                                              uint32_t workerCount)
 {
@@ -60,6 +60,58 @@ MEGA_MOE_HOST_DEVICE_INLINE TokenRange GetBalancedTokenRange(uint32_t totalToken
     uint32_t extraBefore = workerIdx < remainder ? workerIdx : remainder;
     return {workerIdx * base + extraBefore, base + static_cast<uint32_t>(workerIdx < remainder)};
 }
+
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+struct ResetWorkspaceArgs {
+    GM_ADDR flagWorkspacePtr;
+    GM_ADDR gmm1TileStatusPtr;
+    int32_t flagElementCount;
+    int32_t gmm1StatusExpertCapacity;
+    int32_t maxTilesPerExpert;
+    int32_t resetBatchElementCount;
+};
+
+// 使用调用方准备的全零 UB Tensor，清理当前 AIV 任务负责的连续 GM 区域。
+template <int32_t JobAlignment>
+__aicore__ inline void ResetWorkspaceRegion(const AivJobContext &job, GM_ADDR regionPtr, int32_t elementCount,
+                                            int32_t batchElementCount, LocalTensor<int32_t> &resetTensor)
+{
+    int32_t jobLen;
+    int32_t jobOffset;
+    TilingByJobContext(elementCount, jobLen, jobOffset, job.jobIndex, job.totalJobs, JobAlignment);
+    GlobalTensor<int32_t> regionGm;
+    regionGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(regionPtr));
+    for (int32_t offset = 0; offset < jobLen; offset += batchElementCount) {
+        int32_t batchCount = jobLen - offset < batchElementCount ? jobLen - offset : batchElementCount;
+        DataCopyExtParams copyParams{1U, static_cast<uint32_t>(batchCount * sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyPad(regionGm[jobOffset + offset], resetTensor, copyParams);
+    }
+}
+
+// 清理连续 flag workspace；prefetch 路径额外清理独立分配的 GMM1 tile 状态区。
+template <bool TopkWeightsPrefetch>
+__aicore__ inline void ResetDispatchWorkspace(const DispatchPrepareContext &context,
+                                              const ResetWorkspaceArgs &args,
+                                              LocalTensor<int32_t> &resetTensor)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    const AivJobContext &job = context.job;
+    if (job.totalJobs == 0U || job.jobIndex >= job.totalJobs || args.resetBatchElementCount <= 0) {
+        return;
+    }
+    SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
+    ResetWorkspaceRegion<1>(job, args.flagWorkspacePtr, args.flagElementCount,
+                            args.resetBatchElementCount, resetTensor);
+    if constexpr (TopkWeightsPrefetch) {
+        int32_t statusElementCount =
+            (args.gmm1StatusExpertCapacity * args.maxTilesPerExpert + 1) * INT_CACHELINE;
+        ResetWorkspaceRegion<1>(job, args.gmm1TileStatusPtr, statusElementCount,
+                                args.resetBatchElementCount, resetTensor);
+    }
+}
+#endif
 
 #undef MEGA_MOE_HOST_DEVICE_INLINE
 } // namespace MegaMoeImpl

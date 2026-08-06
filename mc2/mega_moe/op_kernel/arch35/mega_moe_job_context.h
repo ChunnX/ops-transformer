@@ -16,8 +16,8 @@
 
 namespace MegaMoeImpl {
 
-// AIV logical job information supplied by the caller. jobIndex must be a
-// zero-based, contiguous index in [0, totalJobs), independent of physical AIV IDs.
+// 调用方提供的 AIV 逻辑任务信息。jobIndex 必须是 [0, totalJobs) 内从零开始的连续编号，
+// 与物理 AIV 编号无关。
 struct AivJobContext {
     uint32_t jobIndex;
     uint32_t totalJobs;
@@ -35,7 +35,7 @@ struct TokenShapeContext {
     uint32_t tokenHiddenDim;
 };
 
-// Stable information shared by the dispatch preparation stage.
+// Dispatch 前处理阶段共用的稳定信息。
 struct DispatchPrepareContext {
     AivJobContext job;
     MoeTopologyContext topology;
