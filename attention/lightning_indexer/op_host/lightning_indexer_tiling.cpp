@@ -112,12 +112,12 @@ ge::graphStatus LIInfoParser::CheckTensorDescriptions() const
                     "Desc of tensor weights is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "attenOut",
-                    "Desc of tensor attenOut is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_indices",
+                    "Desc of tensor sparse_indices is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.valuesOut.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "valuesOut",
-                    "Desc of tensor valuesOut is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparse_values",
+                    "Desc of tensor sparse_values is nullptr"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -176,8 +176,7 @@ ge::graphStatus LIInfoParser::CheckRequiredParaExistence() const
 ge::graphStatus LIInfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("LightningIndexer", "opName",
-            "opName got from TilingContext is nullptr");
+        OP_LOGE("LightningIndexer", "opName got from TilingContext is nullptr");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
@@ -188,8 +187,7 @@ ge::graphStatus LIInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo_ == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "GetPlatformInfo",
-                    "GetPlatformInfo is nullptr"),
+                OP_LOGE(opName_, "GetPlatformInfo is nullptr"),
                 return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
@@ -205,12 +203,10 @@ ge::graphStatus LIInfoParser::GetNpuInfo()
         return GRAPH_FAILED;
     }
     OP_CHECK_IF(context_->GetWorkspaceSizes(1) == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "workSpaceSize",
-                    "workSpaceSize got from ge is nullptr"),
+ 	            OP_LOGE(opName_, "workSpaceSize got from ge is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetRawTilingData() == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "RawTilingData",
-                    "RawTilingData got from GE context is nullptr"),
+ 	                 OP_LOGE(opName_, "RawTilingData got from GE context is nullptr"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -298,7 +294,7 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
             "input attr layout_query only supported BSND or TND"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT)) &&
- 	                *opParamInfo_.sparseCount % 1024 != 0),
+ 	                *opParamInfo_.sparseCount % 1024 != 0) || (*opParamInfo_.sparseCount > 8192),
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse_count",
         std::to_string(*opParamInfo_.sparseCount).c_str(),
         "input attr sparse_count must > 0 and <= 8192."
@@ -308,10 +304,10 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse_mode",
             std::to_string(*opParamInfo_.sparseMode), "sparse_count must be 0 or 3"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.preTokens != INT64_MAX,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "pre_tokens",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "preTokens",
             std::to_string(*opParamInfo_.preTokens), "preTokens must be INT64_MAX"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.nextTokens != INT64_MAX,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "next_tokens",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "nextTokens",
             std::to_string(*opParamInfo_.nextTokens), "nextTokens must be INT64_MAX"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.returnValue && std::string(opParamInfo_.layOutKey) == "PA_BSND",
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_key", std::string(opParamInfo_.layOutKey),
@@ -352,18 +348,18 @@ ge::graphStatus LIInfoParser::GetAndCheckInOutDataType()
         return ge::GRAPH_FAILED);
     if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF((inputQType_ != weightsType_),
-            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query, key, and weights",
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query, key and weights",
                 LIDataTypeToSerialString(inputQType_) + ", " + LIDataTypeToSerialString(inputKType_) +
                 "and " + LIDataTypeToSerialString(inputKType_),
-                "The dtype of query, key, and weights must be same"),
+                "The dtype of query, key and weights must be same"),
             return ge::GRAPH_FAILED);
     } else {
         if (weightsType_ != ge::DT_FLOAT) {
             OP_CHECK_IF((inputQType_ != weightsType_),
-                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query, key, and weights",
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query, key and weights",
                     LIDataTypeToSerialString(inputQType_) + ", " + LIDataTypeToSerialString(inputKType_) +
                     "and " + LIDataTypeToSerialString(inputKType_),
-                    "The dtype of query, key, and weights must be same"),
+                    "The dtype of query, key and weights must be same"),
                 return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF((weightsType_ != ge::DT_FLOAT),
@@ -768,7 +764,7 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatchQbsnd()
         OP_CHECK_IF(opParamInfo_.key.shape->GetStorageShape().GetDim(0) != bSize_,
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and key",
                 Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
-                Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()),
+                Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()),
                 "BSND case input query, key dim 0 are " +
                 std::to_string(bSize_) + ", " +
                 std::to_string(opParamInfo_.key.shape->GetStorageShape().GetDim(0)) +
