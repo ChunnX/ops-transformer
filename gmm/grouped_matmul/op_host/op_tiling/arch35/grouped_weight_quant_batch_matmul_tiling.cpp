@@ -14,7 +14,6 @@
  */
 #include "grouped_weight_quant_batch_matmul_tiling.h"
 #include <limits>
-#include "gemm/utils/s8s4_fixed_tile_resource.h"
 #include "op_host/tiling_templates_registry.h"
 #include "../../../op_kernel/arch35/weight_quant_basic_block/weight_quant_tiling_key.h"
 
@@ -2274,25 +2273,37 @@ uint64_t GroupedS8S4BasicApiTiling::GetTilingKey() const
         WQGMM_MULTI_SCALE_DEQUANT);
 }
 
-uint64_t GroupedS8S4BasicApiTiling::GetRequiredL1Size(uint64_t kL1) const
-{
-    return Blaze::Gemm::S8S4FixedTileResource::GetRequiredL1Bytes(
-        basicTiling_.baseM, basicTiling_.baseN, kL1, kL1);
-}
-
 ge::graphStatus GroupedS8S4BasicApiTiling::ValidateFixedTileResources(uint64_t kL1) const
 {
-    using Resource = Blaze::Gemm::S8S4FixedTileResource;
-    const uint64_t l1StageBytes = Resource::GetL1StageBytes(
-        basicTiling_.baseM, basicTiling_.baseN, kL1, kL1);
-    const uint64_t l1HalfBytes = aicoreParams_.l1Size / Resource::L1_BUFFER_NUM;
-    const uint64_t l0aBytes = Resource::L0_BUFFER_NUM *
-        Resource::GetL0ABytes(basicTiling_.baseM, basicTiling_.baseK);
-    const uint64_t l0bBytes = Resource::L0_BUFFER_NUM *
-        Resource::GetL0BBytes(basicTiling_.baseN, basicTiling_.baseK);
-    const uint64_t l0cBytes = Resource::GetL0CBytes(basicTiling_.baseM, basicTiling_.baseN);
-    const uint64_t ubBytes = dequantMode_ == DequantMode::ASYMMETRIC_PER_CHANNEL ?
-        Resource::GetEpilogueUbBytes(basicTiling_.baseM, basicTiling_.baseN) : 0UL;
+    const uint64_t int8C0 = GetShapeWithDataType(GmmConstant::L1_ALIGN_SIZE, ge::DT_INT8);
+    const uint64_t baseMAligned = CeilAlign(basicTiling_.baseM, GmmConstant::CUBE_BLOCK);
+    const uint64_t baseNCubeAligned = CeilAlign(basicTiling_.baseN, GmmConstant::CUBE_BLOCK);
+    const uint64_t baseNInt8Aligned = CeilAlign(basicTiling_.baseN, int8C0);
+    const uint64_t kL1CubeAligned = CeilAlign(kL1, GmmConstant::CUBE_BLOCK);
+    const uint64_t kL1Int8Aligned = CeilAlign(kL1, int8C0);
+    const uint64_t scaleL1Bytes = CeilAlign(
+        basicTiling_.baseN * sizeof(uint64_t), GmmConstant::L1_ALIGN_SIZE);
+    const uint64_t l1StageBytes =
+        baseMAligned * kL1Int8Aligned + kL1CubeAligned * baseNInt8Aligned + scaleL1Bytes;
+    const uint64_t l1HalfBytes = aicoreParams_.l1Size / GmmConstant::DB_SIZE;
+
+    const uint64_t baseKInt8Aligned = CeilAlign(basicTiling_.baseK, int8C0);
+    const uint64_t l0aBytes = GmmConstant::DB_SIZE * baseMAligned * baseKInt8Aligned;
+    const uint64_t l0bBytes = GmmConstant::DB_SIZE * baseKInt8Aligned * baseNCubeAligned;
+    const uint64_t l0cBytes = baseMAligned * baseNCubeAligned * GmmConstant::DATA_SIZE_L0C;
+
+    uint64_t ubBytes = 0UL;
+    if (dequantMode_ == DequantMode::ASYMMETRIC_PER_CHANNEL) {
+        const uint64_t vectorBaseM = CeilDiv(basicTiling_.baseM, GmmConstant::CORE_RATIO);
+        const uint64_t dataTileBytes = CeilAlign(
+            vectorBaseM * CeilAlign(basicTiling_.baseN * sizeof(uint16_t), GmmConstant::UB_ALIGN_SIZE),
+            GmmConstant::UB_ALIGN_SIZE);
+        const uint64_t rowSumBytes = CeilAlign(
+            vectorBaseM * sizeof(float), GmmConstant::UB_ALIGN_SIZE);
+        const uint64_t offsetBytes = CeilAlign(
+            basicTiling_.baseN * sizeof(float), GmmConstant::UB_ALIGN_SIZE);
+        ubBytes = GmmConstant::NUM_HALF * (dataTileBytes + rowSumBytes) + offsetBytes;
+    }
 
     OP_CHECK_IF(l1StageBytes > l1HalfBytes || l0aBytes > aicoreParams_.l0aSize ||
                     l0bBytes > aicoreParams_.l0bSize || l0cBytes > aicoreParams_.l0cSize ||

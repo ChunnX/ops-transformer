@@ -13,7 +13,6 @@
 #include "../../../op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
 #include "../../../op_kernel/arch35/weight_quant_basic_block/weight_quant_tiling_key.h"
-#include "gemm/utils/s8s4_fixed_tile_resource.h"
 #include "gmm_csv_ge_parse_utils.h"
 #include "tiling_case_executor.h"
 
@@ -374,26 +373,25 @@ TEST(GroupedS8S4BasicApiArch35Tiling, AsymmetricPerchannelUsesOffsetAndTilePipel
 
 TEST(GroupedS8S4BasicApiArch35Tiling, FixedTilePhysicalFootprintSeparatesBAndScaleForSmallN)
 {
-    using Resource = Blaze::Gemm::S8S4FixedTileResource;
-    constexpr uint64_t baseM = 16UL;
-    constexpr uint64_t baseN = 16UL;
-    constexpr uint64_t kL1 = 256UL;
-    constexpr uint64_t aBytes = Resource::GetAL1Bytes(baseM, kL1);
-    constexpr uint64_t bBytes = Resource::GetBL1Bytes(baseN, kL1);
-    constexpr uint64_t scaleBytes = Resource::GetScaleL1Bytes(baseN);
-    constexpr uint64_t scaleOffset = aBytes + bBytes;
+    S8S4Case param;
+    param.m = 16;
+    param.k = 512;
+    param.n = 16;
+    param.scaleGroupNum = 1;
+    param.hasOffset = true;
+    param.outDtype = ge::DT_FLOAT16;
 
-    static_assert(aBytes == 4096UL);
-    static_assert(bBytes == 8192UL);
-    static_assert(scaleBytes == 128UL);
-    static_assert(scaleOffset == 12288UL);
-    EXPECT_EQ(Resource::GetL1StageBytes(baseM, baseN, kL1, kL1), 12416UL);
-    EXPECT_EQ(scaleOffset, aBytes + bBytes);
+    auto compileInfo = MakeCompileInfo();
+    compileInfo.l1Size = 2UL * 12416UL;
+    TilingInfo tilingInfo;
+    EXPECT_TRUE(ExecuteS8S4TilingWithCompileInfo(param, compileInfo, tilingInfo));
+
+    compileInfo.l1Size--;
+    EXPECT_FALSE(ExecuteS8S4TilingWithCompileInfo(param, compileInfo, tilingInfo));
 }
 
 TEST(GroupedS8S4BasicApiArch35Tiling, PerchannelNTailsUseLogicalTileAndPhysicalNzFootprint)
 {
-    using Resource = Blaze::Gemm::S8S4FixedTileResource;
     for (const int64_t n : {8L, 16L, 24L, 32L, 248L, 250L, 256L}) {
         S8S4Case param;
         param.m = 8;
@@ -407,27 +405,28 @@ TEST(GroupedS8S4BasicApiArch35Tiling, PerchannelNTailsUseLogicalTileAndPhysicalN
         ASSERT_TRUE(ExecuteS8S4Tiling(param, tilingInfo)) << "N=" << n;
         const auto *tilingData = GetTilingData(tilingInfo);
         ASSERT_NE(tilingData, nullptr);
-        const uint64_t expectedBaseN = Resource::AlignUp(static_cast<uint64_t>(n), Resource::CUBE_BLOCK);
+        const uint64_t expectedBaseN =
+            GroupedMatmul::CeilAlign(static_cast<uint64_t>(n), optiling::GmmConstant::CUBE_BLOCK);
         EXPECT_EQ(tilingData->mmTilingData.baseM, 16U);
         EXPECT_EQ(tilingData->mmTilingData.baseN, expectedBaseN);
-        EXPECT_EQ(Resource::GetBL1Bytes(expectedBaseN, tilingData->mmTilingData.kBL1),
-                  Resource::AlignUp(256UL, Resource::CUBE_BLOCK) *
-                      Resource::AlignUp(expectedBaseN, Resource::INT8_C0));
     }
 }
 
 TEST(GroupedS8S4BasicApiArch35Tiling, MaximumFixedTileMatchesA5ResourceBudget)
 {
-    using Resource = Blaze::Gemm::S8S4FixedTileResource;
-    EXPECT_EQ(Resource::GetAL1Bytes(256UL, 256UL), 64UL * 1024UL);
-    EXPECT_EQ(Resource::GetBL1Bytes(256UL, 256UL), 64UL * 1024UL);
-    EXPECT_EQ(Resource::GetScaleL1Bytes(256UL), 2UL * 1024UL);
-    EXPECT_EQ(Resource::GetL1StageBytes(256UL, 256UL, 256UL, 256UL), 130UL * 1024UL);
-    EXPECT_EQ(Resource::GetRequiredL1Bytes(256UL, 256UL, 256UL, 256UL), 260UL * 1024UL);
-    EXPECT_EQ(Resource::L0_BUFFER_NUM * Resource::GetL0ABytes(256UL, 128UL), 64UL * 1024UL);
-    EXPECT_EQ(Resource::L0_BUFFER_NUM * Resource::GetL0BBytes(256UL, 128UL), 64UL * 1024UL);
-    EXPECT_EQ(Resource::GetL0CBytes(256UL, 256UL), 256UL * 1024UL);
-    EXPECT_EQ(Resource::GetEpilogueUbBytes(256UL, 256UL), 130UL * 1024UL);
+    S8S4Case param;
+    param.scaleGroupNum = 1;
+    param.hasOffset = true;
+    param.outDtype = ge::DT_FLOAT16;
+
+    auto compileInfo = MakeCompileInfo();
+    compileInfo.l1Size = 260UL * 1024UL;
+    compileInfo.l0ASize = 64UL * 1024UL;
+    compileInfo.l0BSize = 64UL * 1024UL;
+    compileInfo.l0CSize = 256UL * 1024UL;
+    compileInfo.ubSize = 130UL * 1024UL;
+    TilingInfo tilingInfo;
+    EXPECT_TRUE(ExecuteS8S4TilingWithCompileInfo(param, compileInfo, tilingInfo));
 }
 
 TEST(GroupedS8S4BasicApiArch35Tiling, FixedTileRejectsInsufficientOnChipMemory)

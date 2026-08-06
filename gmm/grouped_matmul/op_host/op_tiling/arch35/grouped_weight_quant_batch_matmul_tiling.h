@@ -273,7 +273,6 @@ private:
     bool CheckScaleAndOffsetShapes();
     bool SetLogicalMKN(const gert::Shape &xShape, const gert::Shape &wShape);
     void SetBasicBlock();
-    uint64_t GetRequiredL1Size(uint64_t kL1) const;
     ge::graphStatus ValidateFixedTileResources(uint64_t kL1) const;
 
     static constexpr uint32_t QUANT_GROUP_SIZE = 256U;
