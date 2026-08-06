@@ -293,7 +293,9 @@ __simd_vf__ void ComputeScaleValue_8_VF_FD(__ubuf__ T *lseSink, __ubuf__ T *lseM
         MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_NORM>(vregLseSinkCast, (__ubuf__ float *&)lseSink);
         MicroAPI::Sub<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSinkCast, vregLseSinkCast, vregLseMax, pregTailN);
         MicroAPI::Exp<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSinkCast, vregLseSinkCast, pregTailN);
-        MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSum, vregLseSum, vregLseSinkCast, pregTailN);
+        float sinkSubCount = static_cast<float>(actualCombineLoopSize) - 1.0f;
+        MicroAPI::Muls(vregLseSinkCast, vregLseSinkCast, sinkSubCount, pregTailN);
+        MicroAPI::Sub<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSum, vregLseSum, vregLseSinkCast, pregTailN);
     }
 
     for (i = 0; i < static_cast<uint16_t>(softmaxLseFlag); ++i) {
@@ -433,8 +435,11 @@ __simd_vf__ void ComputeScaleValue_16_VF(__ubuf__ uint16_t *lseSink, __ubuf__ ui
         MicroAPI::Exp<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSinkCast, vregLseSinkCast, pregTailN);
         MicroAPI::Exp<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSinkCast2, vregLseSinkCast2, pregTailN2);
 
-        MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSum, vregLseSum, vregLseSinkCast, pregTailN);
-        MicroAPI::Add<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSum2, vregLseSum2, vregLseSinkCast2, pregTailN2);
+        float sinkSubCount = static_cast<float>(actualCombineLoopSize) - 1.0f;
+        MicroAPI::Muls(vregLseSinkCast, vregLseSinkCast, sinkSubCount, pregTailN);
+        MicroAPI::Muls(vregLseSinkCast2, vregLseSinkCast2, sinkSubCount, pregTailN2);
+        MicroAPI::Sub<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSum, vregLseSum, vregLseSinkCast, pregTailN);
+        MicroAPI::Sub<T, MicroAPI::MaskMergeMode::ZEROING>(vregLseSum2, vregLseSum2, vregLseSinkCast2, pregTailN2);
     }
 
     if (softmaxLseFlag) {

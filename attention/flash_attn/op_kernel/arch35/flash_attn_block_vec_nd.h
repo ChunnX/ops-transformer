@@ -151,6 +151,7 @@ public:
     GlobalTensor<float> accumOutGm_;
     GlobalTensor<float> softmaxFDSumGm_;
     GlobalTensor<float> softmaxFDMaxGm_;
+    GlobalTensor<INPUT_T> sinkGm_;
 
     static constexpr MaskFormat MASK_LAYOUT =
         (LAYOUT_T == FA_LAYOUT::BSH || LAYOUT_T == FA_LAYOUT::TND) ? MaskFormat::SG : MaskFormat::GS;
@@ -189,6 +190,9 @@ public:
             softmaxFDSumGm_.SetGlobalBuffer((__gm__ float *)workspace + constInfo_.accumOutSize);
             softmaxFDMaxGm_.SetGlobalBuffer((__gm__ float *)workspace + constInfo_.accumOutSize +
                                             constInfo_.logSumExpSize);
+        }
+        if (constInfo_.learnableSinkFlag) {
+            sinkGm_.SetGlobalBuffer((__gm__ INPUT_T *)learnableSink);
         }
     }
 
@@ -239,13 +243,25 @@ public:
                                               SIZE_OF_MEMBER(UbLayout, softmaxTmpBuf));
     }
 
-    __aicore__ inline void ResetSoftmaxBuffer(uint32_t slotIdx)
+    __aicore__ inline void ResetSoftmaxBuffer(uint32_t slotIdx, const RunInfoX &runInfo)
     {
         constexpr uint32_t softmaxBufElementCount = UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T);
         LocalTensor<T> sumUb = softmaxSumBuf_[slotIdx * softmaxBufElementCount];
         LocalTensor<T> maxUb = softmaxMaxBuf_[slotIdx * softmaxBufElementCount];
-        Duplicate<T>(sumUb, static_cast<T>(0), softmaxBufElementCount);
-        Duplicate<T>(maxUb, static_cast<T>(-std::numeric_limits<float>::infinity()), softmaxBufElementCount);
+        if (constInfo_.learnableSinkFlag) {
+            auto sinkSrc = sinkGm_.GetValue(runInfo.n2Idx * constInfo_.gSize + runInfo.gIdx);
+            T sinkValue;
+            if constexpr (IsSameType<INPUT_T, half>::value) {
+                sinkValue = static_cast<T>(sinkSrc);
+            } else {
+                sinkValue = static_cast<T>(Cast(sinkSrc));
+            }
+            Duplicate<T>(maxUb, sinkValue, softmaxBufElementCount);
+            Duplicate<T>(sumUb, static_cast<T>(1), softmaxBufElementCount);
+        } else {
+            Duplicate<T>(sumUb, static_cast<T>(0), softmaxBufElementCount);
+            Duplicate<T>(maxUb, static_cast<T>(-std::numeric_limits<float>::infinity()), softmaxBufElementCount);
+        }
     }
 
     __aicore__ inline void InitCrossCoreSync()
@@ -275,7 +291,7 @@ public:
         auto mm1ResUbTensor = ubMmResBuffers_[mmResUbBufId * UB_MM_RES_BUF_BYTES].template ReinterpretCast<T>();
 
         if (unlikely(runInfo.isFirstS2Loop)) {
-            ResetSoftmaxBuffer(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT);
+            ResetSoftmaxBuffer(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT, runInfo);
             AscendC::PipeBarrier<PIPE_V>();
         }
 
