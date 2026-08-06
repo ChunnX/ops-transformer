@@ -10,9 +10,7 @@
 
 /*!
  * \file grouped_int4_quant_tiling.h
- * \brief A5 A4W4 (INT4xINT4) quant tiling.
- *        Inherits GroupedQmmBasicApiTiling, reusing inputParams_/basicTiling_/mList_/kList_/nList_/aicoreParams_.
- *        Plan: baseM=128, baseN=256, ubCalSize=4096. Tiling + dispatch only (no kernel prologue/epilogue).
+ * \brief
  */
 #ifndef GROUPED_A4W4_QUANT_TILING_H
 #define GROUPED_A4W4_QUANT_TILING_H
@@ -82,41 +80,41 @@ protected:
 
 private:
     struct A4W4BasicTiling {
-        uint64_t m = 0;
-        uint64_t n = 0;
-        uint64_t k = 0;
+        uint64_t m = 0UL;
+        uint64_t n = 0UL;
+        uint64_t k = 0UL;
         uint32_t baseM = A4W4_BASE_M_950;
         uint32_t baseN = A4W4_BASE_N_950;
-        uint32_t baseK = 0;
-        uint32_t ubCalSize = 0;
-        uint32_t ubRestBytes = 0;
-        uint32_t quantGroupNum = 1;
-        uint32_t singleN = 0;
-        uint32_t usedCoreNum = 1;
-        uint32_t isPerTokenQuant = 0;
-        uint32_t isA4W4Optimize = 0;
+        uint32_t baseK = 0U;
+        uint32_t ubCalSize = 0U;
+        uint32_t ubRestBytes = 0U;
+        uint32_t quantGroupNum = 1U;
+        uint32_t singleN = 0U;
+        uint32_t usedCoreNum = 1U;
+        uint32_t isPerTokenQuant = 0U;
+        uint32_t isA4W4Optimize = 0U;
         int8_t groupType = 0;
         uint8_t groupListType = 0;
-        uint32_t groupNum = 0;
-        uint64_t singleCoreM = 1;
-        uint64_t singleCoreN = 1;
-        uint64_t singleCoreK = 1;
-        uint64_t depthA1 = 1;
-        uint64_t depthB1 = 1;
-        uint64_t stepM = 1;
-        uint64_t stepN = 1;
-        uint64_t stepKa = 1;
-        uint64_t stepKb = 1;
-        uint32_t iterateOrder = 0;
-        uint32_t dbL0c = 1;
+        uint32_t groupNum = 0U;
+        uint64_t singleCoreM = 1UL;
+        uint64_t singleCoreN = 1UL;
+        uint64_t singleCoreK = 1UL;
+        uint64_t depthA1 = 1UL;
+        uint64_t depthB1 = 1UL;
+        uint64_t stepM = 1UL;
+        uint64_t stepN = 1UL;
+        uint64_t stepKa = 1UL;
+        uint64_t stepKb = 1UL;
+        uint32_t iterateOrder = 0U;
+        uint32_t dbL0c = 1U;
     };
     A4W4BasicTiling a4w4Tiling_;
     // Shadows base's private tilingData_ (GMMQuantBasicApiTilingData); own type
     GroupedMatmulTilingData::GMMA4W4IntQuantTilingData tilingData_;
-    uint64_t int8WeightWs_ = 0;
-    uint64_t int8XWs_ = 0;      // ★ x int4->int8 预转换 workspace (m·k·1B, m=totalM single x)
-    uint64_t mmOutWs_ = 0;
-    uint64_t perTokenScaleFillWs_ = 0;  // F3: isPerTokenQuant=0 时全 1 perTokenScale 兜底段 (m·float)
+    uint64_t int8WeightWs_ = 0UL;
+    uint64_t int8XWs_ = 0UL;      // ★ x int4->int8 预转换 workspace (m·k·1B, m=totalM single x)
+    uint64_t mmOutWs_ = 0UL;
+    uint64_t perTokenScaleFillWs_ = 0UL;  // F3: isPerTokenQuant=0 时全 1 perTokenScale 兜底段 (m·float)
     // mList_/kList_/nList_ shadow base's private same-named (base private, derived inaccessible)
     int32_t mList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};
     int32_t kList_[GroupedMatmul::MAX_TENSOR_CONT] = {0};
