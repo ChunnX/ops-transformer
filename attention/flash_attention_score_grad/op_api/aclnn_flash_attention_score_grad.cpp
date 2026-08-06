@@ -31,6 +31,7 @@
 #include "runtime/context.h"
 #include "acl/acl_rt.h"
 #include "op_common/log/log.h"
+#include <cctype>
 
 using namespace op;
 #ifdef __cplusplus
@@ -113,6 +114,23 @@ static const uint64_t DIM_NUM_4 = 4;
 static const uint64_t DIM_NUM_3 = 3;
 static const uint64_t DIM_NUM_2 = 2;
 static const uint64_t DIM_NUM_1 = 1;
+
+static std::string NormalizeInputLayout(const char *inputLayout)
+{
+    if (inputLayout == nullptr) {
+        return "";
+    }
+    std::string inputLayoutStr = op::ToString(inputLayout).GetString();
+    for (auto &c : inputLayoutStr) {
+        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    }
+    return inputLayoutStr;
+}
+
+static bool IsTndInputLayout(const char *inputLayout)
+{
+    return NormalizeInputLayout(inputLayout) == "TND";
+}
 
 char defaultSoftmaxInLayout[] = "";
 
@@ -393,7 +411,7 @@ static aclnnStatus GetInputShapeInfo(const aclTensor *query, const aclTensor *ke
     auto valueShape = value->GetViewShape();
     auto queryDimSize = queryShape.GetShapeSize();
     auto kvDimSize = keyShape.GetShapeSize();
-    fagShape.inputLayoutStr = op::ToString(inputLayout).GetString();
+    fagShape.inputLayoutStr = NormalizeInputLayout(inputLayout);
     bool isLayoutBNSD = (fagShape.inputLayoutStr == "BNSD");
     bool isLayoutBSND = (fagShape.inputLayoutStr == "BSND");
     bool isLayoutBSH = (fagShape.inputLayoutStr == "BSH");
@@ -631,9 +649,10 @@ static inline aclnnStatus ContiguousTensorWithCheck(const aclTensor *inputTensor
     return ACLNN_SUCCESS;
 }
 
-static inline void ConvertInputLayout(FagInShapeInfo fagShape, const char *inputLayout, char *inputLayoutUnderTrans,
+static inline void ConvertInputLayout(const FagInShapeInfo &fagShape, char *inputLayoutUnderTrans,
                                       size_t layoutUnderTransSize)
 {
+    const std::string &inputLayout = fagShape.inputLayoutStr;
     if (fagShape.needTranspose) {                  // 1. 只要是需要transpose，输入FAG layout必然是BNSD
         inputLayoutUnderTrans[0] = 'B';            // 0: 'B'
         inputLayoutUnderTrans[1] = 'N';            // 1: 'N'
@@ -649,7 +668,7 @@ static inline void ConvertInputLayout(FagInShapeInfo fagShape, const char *input
            TND  -> TND
            BNSD -> BNSD
            BSND -> BSND */
-        for (size_t i = 0; i < strlen(inputLayout) && i < layoutUnderTransSize - 1; i++) {
+        for (size_t i = 0; i < inputLayout.size() && i < layoutUnderTransSize - 1; i++) {
             if (inputLayout[i] == 'H') {
                 inputLayoutUnderTrans[i] = 'N';
                 inputLayoutUnderTrans[i + 1] = 'D';
@@ -658,7 +677,7 @@ static inline void ConvertInputLayout(FagInShapeInfo fagShape, const char *input
             inputLayoutUnderTrans[i] = inputLayout[i];
         }
     } else { // 4. 其他情况，保持原始layout
-        for (size_t i = 0; i < strlen(inputLayout) && i < layoutUnderTransSize - 1; i++) {
+        for (size_t i = 0; i < inputLayout.size() && i < layoutUnderTransSize - 1; i++) {
             inputLayoutUnderTrans[i] = inputLayout[i];
         }
     }
@@ -1453,7 +1472,7 @@ static aclnnStatus InputOutputShapeCheck(const aclTensor *query, const aclTensor
     auto dqShape = dq->GetViewShape();
     auto dkShape = dk->GetViewShape();
     auto dvShape = dv->GetViewShape();
-    std::string inputLayoutStr = op::ToString(inputLayout).GetString();
+    std::string inputLayoutStr = NormalizeInputLayout(inputLayout);
     auto expectedDimNum = (inputLayoutStr == "BNSD" || inputLayoutStr == "BSND") ? DIM_NUM_4 : DIM_NUM_3;
     if (!(inputLayoutStr == "BNSD" || inputLayoutStr == "BSND" || inputLayoutStr == "BSH" ||
           inputLayoutStr == "SBH" || inputLayoutStr == "TND")) {
@@ -1840,7 +1859,7 @@ static aclnnStatus FlashAttentionScoreGradGetWorkspace(
 
     // 调整input layout
     char inputLayoutUnderTrans[MAX_LAYOUT_SIZE] = {0};
-    ConvertInputLayout(fagShape, inputLayout, inputLayoutUnderTrans, MAX_LAYOUT_SIZE);
+    ConvertInputLayout(fagShape, inputLayoutUnderTrans, MAX_LAYOUT_SIZE);
 
     // 调用FAG ascendc接口
     auto fagRes = l0op::FlashAttentionScoreGrad(
@@ -1972,7 +1991,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradGetWorkspaceSize(
                           inputLayout, innerPrecise, sparseMode),
                    DFX_OUT(dqOut, dkOut, dvOut, dpseOut));
     // layout检查
-    if (strcmp(inputLayout, "TND") != 0) {
+    if (!IsTndInputLayout(inputLayout)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [FlashAttentionScoreGrad], the format of layout is not supported, got [%s], expected TND", inputLayout);
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -2115,7 +2134,7 @@ static aclnnStatus FlashAttentionScoreGradV2GetWorkspace(
 
     // 调整input layout
     char inputLayoutUnderTrans[MAX_LAYOUT_SIZE] = {0};
-    ConvertInputLayout(fagShape, inputLayout, inputLayoutUnderTrans, MAX_LAYOUT_SIZE);
+    ConvertInputLayout(fagShape, inputLayoutUnderTrans, MAX_LAYOUT_SIZE);
 
     // 调用FAG ascendc接口
     auto fagRes = l0op::FlashAttentionScoreGrad(
@@ -2247,7 +2266,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV2GetWorkspaceSize(
                sparseMode, pseType),
         DFX_OUT(dqOut, dkOut, dvOut, dpseOut));
     // layout检查
-    if (strcmp(inputLayout, "TND") != 0) {
+    if (!IsTndInputLayout(inputLayout)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [FlashAttentionScoreGrad], the format of layout is not supported, got [%s], expected TND", inputLayout);
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -2395,7 +2414,7 @@ static aclnnStatus FlashAttentionScoreGradV3GetWorkspace(
 
     // 调整input layout
     char inputLayoutUnderTrans[MAX_LAYOUT_SIZE] = {0};
-    ConvertInputLayout(fagShape, inputLayout, inputLayoutUnderTrans, MAX_LAYOUT_SIZE);
+    ConvertInputLayout(fagShape, inputLayoutUnderTrans, MAX_LAYOUT_SIZE);
     // 调用FAG ascendc接口
 
     auto fagRes = l0op::FlashAttentionScoreGrad(
@@ -2440,7 +2459,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3GetWorkspaceSize(
         DFX_OUT(dqOut, dqRopeOut, dkOut, dkRopeOut, dvOut, dpseOut));
 
     // layout检查
-    if (strcmp(inputLayout, "TND") != 0) {
+    if (!IsTndInputLayout(inputLayout)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [FlashAttentionScoreGrad], the format of layout is not supported, got [%s], expected TND", inputLayout);
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -2540,7 +2559,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize(
                           inputLayout, innerPrecise, sparseMode, softmaxInLayout),
                    DFX_OUT(dqOut, dkOut, dvOut, dpseOut));
     // layout检查
-    if (strcmp(inputLayout, "TND") != 0) {
+    if (!IsTndInputLayout(inputLayout)) {
          OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [FlashAttentionScoreGrad], the format of layout is not supported, got [%s], expected TND", inputLayout);
          return ACLNN_ERR_PARAM_INVALID;
     }
@@ -2682,7 +2701,7 @@ static aclnnStatus FlashAttentionScoreGradV5GetWorkspace(
         ret = TransposeSoftMaxTensor(&softmaxMaxOptionalCngs, &softmaxSumOptionalCngs, fagShape, executor);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
     }
-    ConvertInputLayout(fagShape, inputLayout, inputLayoutUnderTrans, MAX_LAYOUT_SIZE);
+    ConvertInputLayout(fagShape, inputLayoutUnderTrans, MAX_LAYOUT_SIZE);
 
     // 调用FAG ascendc接口
     auto fagRes = l0op::FlashAttentionScoreGrad(
@@ -2852,7 +2871,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize(
                sparseMode, pseType, softmaxInLayout), 
         DFX_OUT(dqOut, dqRopeOut, dkOut, dkRopeOut, dvOut, dpseOut, dsinkOut)); 
     
-    if (strcmp(inputLayout, "TND") != 0) {
+    if (!IsTndInputLayout(inputLayout)) {
          OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [FlashAttentionScoreGrad], the format of layout is not supported, got [%s], expected TND", inputLayout);
          return ACLNN_ERR_PARAM_INVALID;
     }
@@ -2980,7 +2999,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize(
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    if (strcmp(inputLayout, "TND") != 0) {
+    if (!IsTndInputLayout(inputLayout)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [FlashAttentionScoreGrad], the format of layout is not supported, got [%s], expected TND", inputLayout);
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -3179,12 +3198,12 @@ static aclnnStatus FlashAttentionScoreGradV4GetWorkspace(
         dy, attentionInOptional, queryRopeOptional, keyRopeOptional, dqOut, dkOut, dvOut);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     if (softmaxInLayout != nullptr) {
-        if (strcmp(inputLayout, "TND") == 0 && strcmp(softmaxInLayout, "same_as_input") != 0 &&
+        if (fagShape.inputLayoutStr == "TND" && strcmp(softmaxInLayout, "same_as_input") != 0 &&
             strcmp(softmaxInLayout, "") != 0) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScoreGrad", "softmaxInLayout", softmaxInLayout,
                 "When inputLayout is TND, the value of softmaxInLayout must be same_as_input or empty string");
             return ACLNN_ERR_PARAM_INVALID;
-        } else if (strcmp(inputLayout, "TND") != 0 && strcmp(softmaxInLayout, "") != 0) {
+        } else if (fagShape.inputLayoutStr != "TND" && strcmp(softmaxInLayout, "") != 0) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("FlashAttentionScoreGrad", "softmaxInLayout", softmaxInLayout,
                 "When inputLayout is not TND, the value of softmaxInLayout must be empty string");
             return ACLNN_ERR_PARAM_INVALID;
@@ -3236,7 +3255,7 @@ static aclnnStatus FlashAttentionScoreGradV4GetWorkspace(
 
     // 调整input layout
     char inputLayoutUnderTrans[MAX_LAYOUT_SIZE] = {0};
-    ConvertInputLayout(fagShape, inputLayout, inputLayoutUnderTrans, MAX_LAYOUT_SIZE);
+    ConvertInputLayout(fagShape, inputLayoutUnderTrans, MAX_LAYOUT_SIZE);
 
     // 调用FAG ascendc接口
     auto fagRes = l0op::FlashAttentionScoreGrad(
