@@ -55,6 +55,10 @@ struct TaskInfo {
     uint32_t oShapeCol = 0;
 
     uint32_t qsActBaseTileAlign128 = 0;
+    uint32_t qsActBaseTileAlign64 = 0;
+    uint32_t qsActBaseTileAlign16 = 0;
+    uint32_t qsActBaseTileAlign8 = 0;
+    
 };
 
 struct TileInfo {

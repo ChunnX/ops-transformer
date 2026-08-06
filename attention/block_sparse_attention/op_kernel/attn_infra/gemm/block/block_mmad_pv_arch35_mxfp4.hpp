@@ -186,18 +186,17 @@ public:
 
     // [改造] P 的 L1->L0B 转置搬运改走 mx functor（原裸 LoadPToL0 下沉到 policy）。
     //   zN L1(P) + P-scale -> nZ L0B(Pᵀ)，ifTranspose=true 由 functor 内部设定。
-        __aicore__ inline void LoadPToL0(uint32_t l1BBufId, uint32_t l0BBufId,
-                                     uint32_t s1Align128, uint32_t s2Align64,
-                                     uint32_t embedReal)
+        __aicore__ inline void LoadPToL0(uint32_t l1BBufId, uint32_t l0BBufId, uint32_t s2Align64,
+                                     uint32_t embedReal,uint32_t s1Act,uint32_t s1Align16)
     {
         // s2Base 取整 tile S2Base(=256)，用于推导 P-scale srcStride（原硬编码 5 的来源）。
         // [TODO] s2Base 应由调用方/TileShape 传入，此处暂以 256 占位（与 MXFP4::L1_P_BUF_SIZE 排布一致）。
         constexpr uint32_t s2Base = 256;
         copyL1ToL0BMx(
-            l0BTensor[l0BBufId],
-            l1BTensor[l1BBufId],
-            l1BScaleTensor[l1BBufId].template ReinterpretCast<AscendC::fp8_e8m0_t>(),
-            s1Align128, s2Align64, embedReal, s2Base, 5);
+                    l0BTensor[l0BBufId],
+                    l1BTensor[l1BBufId],
+                    l1BScaleTensor[l1BBufId].template ReinterpretCast<AscendC::fp8_e8m0_t>(),
+                    s2Align64, embedReal, s2Base, 5, s1Act, s1Align16);
     }
 
     // [改造] Mmad 改走 tileMmad functor（原裸 MatmulPV 的 AscendC::Mmad 下沉到 TileMmadTla）。
@@ -387,6 +386,31 @@ public:
         copyL0CToDst(ubOTmpTensor, l0CTensorTla);   // operator()(dst=UB, src=L0C)
     }
 
+    template <class TensorUB>
+    __aicore__ inline void FixpipeMm2SingleVect(uint32_t s1Align128, uint32_t embedReal, TensorUB &ubOTmpTensor)
+    {
+        // L0C tla：rows=D+16（与 MatmulPV 的 mMmad=D+16 一致）→ srcStride=D+16
+        auto l0CTensorTla = tla::MakeTensor(l0CTensor[0],
+            tla::MakeLayoutL0C(embedReal + MXFP4::ROW_SUM_PAD_NUM , s1Align128), Arch::PositionL0C{});
+        // 模板参序 (ArchTag, TensorSrc=L0C, TensorDst=UB, SPLIT_N, NO_QUANT, ReluEnable=false)
+        using CopyL0CToDst = Tile::CopyL0CToUBTla<ArchTag, decltype(l0CTensorTla), TensorUB,
+                                                   Tile::CopyL0CToUBMode::NO_SPLIT,
+                                                   Tile::ScaleGranularity::NO_QUANT, false>;
+        CopyL0CToDst copyL0CToDst;
+        // [验证] catlass 从布局算出的 fixpipe 参数 vs raw 期望
+        uint32_t fpMSize = static_cast<uint32_t>(tla::get<0>(ubOTmpTensor.shape()));
+        uint32_t fpNSizeBase = static_cast<uint32_t>(tla::get<1>(ubOTmpTensor.shape()));
+        uint32_t fpDstStride = static_cast<uint32_t>(tla::get<0>(ubOTmpTensor.stride()));
+        uint32_t fpSrcStride = static_cast<uint32_t>(tla::get<1, 1>(l0CTensorTla.stride())) /
+                               static_cast<uint32_t>(tla::get<0, 0>(l0CTensorTla.shape()));
+        // AscendC::printf("[FP-CHK] mSize=%u(want %u) nSizeBase=%u(want %u) srcStride=%u(want %u) dstStride=%u(want 64) dualDstCtl=2\n",
+        //     (unsigned)fpMSize, (unsigned)(embedReal + 1),
+        //     (unsigned)fpNSizeBase, (unsigned)s1Align128,
+        //     (unsigned)fpSrcStride, (unsigned)(embedReal + 16),
+        //     (unsigned)fpDstStride);
+        copyL0CToDst(ubOTmpTensor, l0CTensorTla);   // operator()(dst=UB, src=L0C)
+    }
+
     __aicore__ inline uint16_t CeilDivision(uint16_t numerator, uint16_t denominator)
     {
         return (numerator + denominator - 1) / denominator;
@@ -538,6 +562,8 @@ public:
         //   不用 LayoutTagL1A（主模板默认 LayoutTagA=RowMajor→zN，与 V 不一致）。
         auto l1ATensorTla = tla::MakeTensor(l1ATensor[l1ABufId],
             tla::MakeLayout<ElementA, layout::nZ>(embedReal, delay20TileInfo.kvsActBaseTileAlign64), Arch::PositionL1{});
+        // AscendC::printf("[CPY-G2L1] copy v \n"); 
+
         SparseVBaseTileL1FullLoad(
             gV, l1ATensorTla, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
             yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embedReal, delay20TileInfo.kvsActBaseTileAlign64);
@@ -552,6 +578,7 @@ public:
         auto l1AScaleTensorTla = tla::MakeTensor(l1AScaleTensor[l1ABufId].ReinterpretCast<AscendC::fp8_e8m0_t>(),
             tla::MakeMxScaleLayout<AscendC::fp8_e8m0_t, layout::zZ, false>(embedReal, delay20TileInfo.kvsActBaseTileAlign64 / 32),
             Arch::PositionL1{});
+        // AscendC::printf("[CPY-G2L1] copy v scale \n"); 
         SparseVScaleBaseTileL1FullLoad(
             gVScaleTensorTla, l1AScaleTensorTla, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
             yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embedReal, delay20TileInfo.kvsActBaseTileAlign64);
@@ -580,15 +607,16 @@ public:
 
         // [验证] L0A/B bufId 轮转
         // AscendC::printf("[L0-CHK] pvL0abBufId=%u\n", (unsigned)pvL0abBufId);
-
-        LoadPToL0(pSlot, l0BBufId, delay20TaskInfo.qsActBaseTileAlign128, delay20TileInfo.kvsActBaseTileAlign64, embedReal);
-
+        // AscendC::printf("[CPY-G2L1] LoadPToL0 \n"); 
+        LoadPToL0(pSlot, l0BBufId,delay20TileInfo.kvsActBaseTileAlign64, embedReal, delay20TaskInfo.qsActBaseTile, delay20TaskInfo.qsActBaseTileAlign16);
+        // AscendC::printf("[CPY-G2L1] LoadVToL0 \n"); 
         LoadVToL0(l1ABufId, l0ABufId, embedReal, delay20TileInfo.kvsActBaseTileAlign64);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
-
+        // AscendC::printf("[CPY-G2L1] MatmulPV \n"); 
         // [#1] initC=isTileGoupFirstTile：TileGroup 首 tile 重置 L0C、tile 内累加
-        MatmulPV(l0ABufId, l0BBufId, mMmad, delay20TaskInfo.qsActBaseTileAlign128, delay20TileInfo.kvsActBaseTileAlign64, delay20TileInfo.isTileGoupFirstTile);
+
+        MatmulPV(l0ABufId, l0BBufId, mMmad, delay20TaskInfo.qsActBaseTile, delay20TileInfo.kvsActBaseTileAlign64, delay20TileInfo.isTileGoupFirstTile);
 
         // [#3] Mmad 完成 → 释放 L0A/B 槽给下次（M_MTE1：M→MTE1），轮转
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
@@ -600,7 +628,13 @@ public:
         if (delay20TileInfo.isUpdatePScale) {  // tile 末尾 → Fixpipe L0C→UB
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
-            FixpipeMm2(delay20TaskInfo.qsActBaseTileAlign128,embedReal,ubOTmpTensor);
+            // AscendC::printf("[CPY-G2L1] FixpipeMm2 \n"); 
+            // 如果在s1不满64的时候，全部由某一个子vector核处理。如果fixpipe也要缩小基块到64的话，在vect的处理不变的情况下，就需要在s1不满64但是>32的时候，切换搬运模式到单目标搬出
+            if (delay20TaskInfo.qsActBaseTileAlign8 <= 64) {
+                FixpipeMm2SingleVect(delay20TaskInfo.qsActBaseTileAlign64,embedReal,ubOTmpTensor);
+            } else {
+                FixpipeMm2(delay20TaskInfo.qsActBaseTileAlign64,embedReal,ubOTmpTensor);
+            }
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);  // [#5] FIX→M: fixpipe 完成，L0C 释放给下一 TileGroup
         }
 
