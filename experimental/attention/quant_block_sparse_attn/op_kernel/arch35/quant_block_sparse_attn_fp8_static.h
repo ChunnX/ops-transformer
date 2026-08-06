@@ -57,31 +57,12 @@ static_assert(2U * L0_SLOT_BYTES <= L0A_CAPACITY, "FP8 L0A exceeds capacity");
 static_assert(2U * L0_SLOT_BYTES <= L0B_CAPACITY, "FP8 L0B exceeds capacity");
 static_assert(2U * L0C_SLOT_BYTES <= L0C_CAPACITY, "FP8 L0C exceeds capacity");
 
-constexpr uint64_t CROSS_CORE_SYNC_MODE = 4U;
-constexpr uint32_t FP8_STATIC_AIV0_AIV1_OFFSET = 16U;
-constexpr uint32_t CC_BMM1_READY_EVENT_ID0 = 0U;
-constexpr uint32_t CC_BMM1_READY_EVENT_ID1 = 1U;
-constexpr uint32_t CC_BMM2_READY_EVENT_ID = 2U;
-constexpr uint32_t CC_BMM1_FREE_EVENT_ID0 = 3U;
-constexpr uint32_t CC_BMM1_FREE_EVENT_ID1 = 4U;
-constexpr uint32_t CC_BMM2_FREE_EVENT_ID = 6U;
-constexpr uint32_t CC_L1P_READY_EVENT_ID0 = 5U;
-constexpr uint32_t CC_L1P_READY_EVENT_ID1 = 8U;
-constexpr uint32_t CC_L1P_READY_EVENT_ID2 = 9U;
-
 constexpr AscendC::TEventID L1_Q_EVENT_ID0 = 0U;
 constexpr AscendC::TEventID L1_Q_EVENT_ID1 = 1U;
 constexpr AscendC::TEventID L1_K_EVENT_ID0 = 2U;
 constexpr AscendC::TEventID L1_K_EVENT_ID1 = 3U;
 constexpr AscendC::TEventID L1_V_EVENT_ID0 = 4U;
 constexpr AscendC::TEventID L1_V_EVENT_ID1 = 5U;
-
-constexpr AscendC::TEventID L0A_EVENT_ID0 = 0U;
-constexpr AscendC::TEventID L0A_EVENT_ID1 = 1U;
-constexpr AscendC::TEventID L0B_EVENT_ID0 = 2U;
-constexpr AscendC::TEventID L0B_EVENT_ID1 = 3U;
-constexpr AscendC::TEventID L0C_EVENT_ID0 = 0U;
-constexpr AscendC::TEventID L0C_EVENT_ID1 = 1U;
 
 constexpr AscendC::TEventID STAGE1_EVENT_ID0 = 0U;
 constexpr AscendC::TEventID STAGE1_EVENT_ID1 = 1U;
@@ -90,60 +71,9 @@ constexpr AscendC::TEventID STAGE2_EVENT_ID = 3U;
 constexpr AscendC::TEventID LSE_EVENT_ID = 4U;
 constexpr AscendC::TEventID MASK_EVENT_ID = 0U;
 
-__aicore__ inline uint32_t Bmm1ReadyEventId(uint32_t slot)
-{
-    return slot == 0U ? CC_BMM1_READY_EVENT_ID0 : CC_BMM1_READY_EVENT_ID1;
-}
-
-__aicore__ inline uint32_t Bmm1FreeEventId(uint32_t slot)
-{
-    return slot == 0U ? CC_BMM1_FREE_EVENT_ID0 : CC_BMM1_FREE_EVENT_ID1;
-}
-
 __aicore__ inline AscendC::TEventID Stage1EventId(uint32_t slot)
 {
     return slot == 0U ? STAGE1_EVENT_ID0 : STAGE1_EVENT_ID1;
-}
-
-__aicore__ inline uint32_t L1PEventId(uint32_t slot)
-{
-    if (slot == 0U) {
-        return CC_L1P_READY_EVENT_ID0;
-    }
-    return slot == 1U ? CC_L1P_READY_EVENT_ID1 : CC_L1P_READY_EVENT_ID2;
-}
-
-__aicore__ inline void AicWaitUbFree(uint32_t eventId)
-{
-    AscendC::CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(eventId);
-    AscendC::CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(eventId + FP8_STATIC_AIV0_AIV1_OFFSET);
-}
-
-__aicore__ inline void AicSetUbReady(uint32_t eventId)
-{
-    AscendC::CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(eventId);
-    AscendC::CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_FIX>(eventId + FP8_STATIC_AIV0_AIV1_OFFSET);
-}
-
-__aicore__ inline void AivWaitUbReady(uint32_t eventId)
-{
-    AscendC::CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(eventId);
-}
-
-__aicore__ inline void AivSetUbFree(uint32_t eventId)
-{
-    AscendC::CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(eventId);
-}
-
-__aicore__ inline void AivSetL1PReady(uint32_t eventId)
-{
-    AscendC::CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(eventId);
-}
-
-__aicore__ inline void AicWaitL1PReady(uint32_t eventId)
-{
-    AscendC::CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(eventId);
-    AscendC::CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE1>(eventId + FP8_STATIC_AIV0_AIV1_OFFSET);
 }
 
 } // namespace Fp8Static
