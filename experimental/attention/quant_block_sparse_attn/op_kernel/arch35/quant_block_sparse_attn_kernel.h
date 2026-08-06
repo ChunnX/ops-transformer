@@ -221,7 +221,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     __gm__ uint8_t *prefix = nullptr;
     __gm__ uint8_t *pScalePtr = (this->tilingData->inputParamsRegbase.pScaleShapeSize == 0U) ? nullptr : pScale;
     vecBlock.InitGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScalePtr, prefix, attenMask, blockTable,
-                              queryPaddingSize, kvPaddingSize, softmaxMax, softmaxSum, workspace, 
+                              queryPaddingSize, kvPaddingSize, softmaxMax, softmaxSum, workspace,
                               singleCoreOffset, this->aicIdx, constInfo);
     // NTD 的 query 走 offsetCalculator(NGTD)，其 ACCUM(no-zero-head) parser 期望"不含前导0的累加序列"
     // [s0, s0+s1, ...]：GetTSize() 取末元素=总 token 数(决定 head/n2 的 stride=d*T、d*T*g)，
