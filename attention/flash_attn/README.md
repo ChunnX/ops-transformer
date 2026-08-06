@@ -68,7 +68,7 @@ $$
 
 sink 参与 max 计算 (使 max 不会过小) 并加到分母 (防止分母为 0)。每个 head 一个 sink 标量值, shape 为 `(Q_N,)`。
 
-> 当前 sinks 输入参数已声明但 checker 硬编码拦截, kernel 计算逻辑已实现但未打通。打通方案详见第八节。
+> 当前 sinks 输入参数已打通，采用 Scheme B（sink 完整参与 max + 分母）。详见第八节。
 
 ### 1.4 Softmax LSE (Log-Sum-Exp)
 
@@ -510,7 +510,7 @@ MatmulN<Q_T, KV_T, MM_T, mBaseSize, 128, s2BaseSize, ...>(...)
 6. **Cast back**: fp32 → fp16/bf16 (写 L1 供 BMM2)
 7. **Store**: softmaxMax/softmaxSum 写 UB buffer (per mloop)
 
-> **首次/非首次 softmax VF 统一方案 (计划中)**: 当前区分 `isFirstS2Loop` 调用 NoUpdate/Update 两套 VF。若在首次 tile 前显式初始化 `max=-inf, sum=0, ubVec2Res=0`, 则统一调用 Update 版即可——首次时 `exp(old_max - new_max) = exp(-inf) = 0`, `old_sum * 0 + new_sum = new_sum`, `FlashUpdateNew: 0 * 0 + mm2Res = mm2Res` (等价 NoUpdate 的 DataCopy)。消除 NoUpdate VF (~200 行), 简化代码路径, 且 Sink 集成时 sum 初始化可直接设为 `exp(sink-max)`。前置条件: 验证 950 `FusedExpSub(-inf, finite)` 产生 0 而非 NaN。
+> **首次/非首次 softmax VF 统一方案 (已实现, commit `5e3eb323c`)**: 首次 tile 前 `ResetSoftmaxBuffer` 显式初始化 `max=-inf, sum=0`（sink 场景下 max=sink, sum=1），统一调用 Update 版 VF。首次时 `exp(old_max - new_max) = exp(-inf) = 0`, `old_sum * 0 + new_sum = new_sum`。**ProcessVec2 不统一**——保持 pre-unify 的 `isFirstS2Loop` DataCopy 分支，因为 sink 场景下 `expUb = exp(sink - new_max) ≠ 0`，`ubVec2Res` 脏值会泄漏，必须用 `DataCopy` 跳过 `expUb * pre`。
 
 **ProcessVec2 (Output 累加)**:
 
@@ -523,14 +523,14 @@ FlashUpdateLastNew<..., false, false>(ubVec2Res_, mm2Res, ubVec2Res_, expUb, ...
 LastDivNew<..., false>(ubVec2Res_, ubVec2Res_, sumUb, ...);
 ```
 
-> `expUb` 存储 rescale factor `exp(old_max - new_max)`, 供 `FlashUpdateNew` 对之前的 output 做 rescale。NoUpdate 版不写入 expUb; Update 版写入。统一方案下首次 tile 的 expUb = `exp(-inf - tile_max) = 0`, 使 `FlashUpdateNew` 退化为直接赋值。
+> `expUb` 存储 rescale factor `exp(old_max - new_max)`, 供 `FlashUpdateNew` 对之前的 output 做 rescale。首次 tile 用 `DataCopy` 跳过 `expUb * pre`（因为 ubVec2Res 是脏值，sink 场景下 expUb≠0 会泄漏）；非首次 tile expUb 正常使用。
 
 **FlashDecode 归约**:
 
 `ComputeScaleValue` (跨 split-K 份归约 softmax):
 1. **Max 归约**: 跨 `actualCombineLoopSize` (K) 份 lseMax, 求全局 max
 2. **Exp+Sum 重算**: `Sub(max_i, globalMax)` → `Exp` → `Mul(sum_i, exp)` → `Add(totalSum, ...)`
-3. **Sink (learnableSinkFlag=true 时)**: 见第八章方案
+3. **Sink (learnableSinkFlag=true 时)**: `Sub(sink, globalMax)` → `Exp` → `Muls(K-1)` → `Sub(totalSum, ...)` — 修正 K 份 split-K 多加的 (K-1) 份 sink
 4. **LSE 输出**: `Log(sum) + max` → lse
 
 `ReduceFinalRes` (跨 split-K 份归约 output):
@@ -563,117 +563,114 @@ mask 矩阵固定为 `(2048, 2048)` 的下三角模板, kernel 按 flash attenti
 
 | 层 | 状态 | 说明 |
 |---|---|---|
-| 接口 (def.cpp) | ⚠️ dtype 不一致 | `sinks` 声明 DT_FLOAT, 但 kernel `SINK_T = INPUT_T` (fp16/bf16) |
-| 文档 (flash_attn.md) | ⚠️ "暂不支持" | 需更新 |
-| Checker | ❌ 硬编码拦截 | `if (faInfo.sinksFlag) return FAILED` |
+| 接口 (def.cpp) | ✅ 已打通 | `sinks` dtype DT_FLOAT |
+| 文档 (flash_attn.md) | ✅ 已更新 | Sinks 参数正式约束 |
+| Checker | ✅ 已打通 | `sinks_checker.cpp` 解除拦截, 改为校验 dtype/shape |
 | Tiling parser | ✅ 已解析 | `sinksFlag_` 正确设置 |
 | Kernel constInfo | ✅ 已设置 | `constInfo_.learnableSinkFlag = (learnableSink != nullptr)` |
-| **位置 A: FA ProcessVec1** | ❌ 未打通 | `hasSink` 缺省=false, `sinkValue` 用默认 0.0, sum 未含 sink |
-| **位置 B: FD ComputeScaleValue** | ❌ 未打通 | `learnableSinkFlag` 硬编码 false, `sinkExpBuf` 空 |
-| VF 计算逻辑 | ✅ 已实现 | `hasSink` 的 `Max(sink)` 分支 + `learnableSinkFlag` 的 `Add(sink)` 分支均完整 |
+| **位置 A: FA ResetSoftmaxBuffer** | ✅ 已打通 | max=sink/sum=1 初始化 |
+| **位置 B: FD ComputeScaleValue** | ✅ 已打通 | `Sub(K-1)` 修正多加份数 |
+| VF 计算逻辑 | ✅ 已实现 | 统一 Update VF, 不区分 sink |
 
-### 8.2 Sink 参与计算的两个位置
+### 8.2 Scheme B: sink 完整参与 max + 分母
 
-**位置 A (FA 阶段 ProcessVec1)**: sink 参与 max 和 sum
+#### 核心思路
 
-- `ProcessVec1VfDn` 的 `hasSink=true` 分支: `Duplicate(vreg_sink_input, sinkValue)` → `Max(max0, max0, vreg_sink_input)`
-- sinkValue 是标量 (float), 通过 `sinkGm.GetValue(n2Idx * gSize + gIdx)` 取单值
-- 对应公式: $m = \max(\text{sink}, \max(S))$
-- **当前 `hasSink` 只做 Max, 不在 sum 中加 `exp(sink-m)`** — 需在 sum 初始化时设为 `exp(sink-max)`
+在 `ResetSoftmaxBuffer` 中将 sink 注入 max/sum 初始值（max=sink, sum=1）。VF 层不区分是否有 sink，统一调用 Update 版本。ProcessVec2 保持 pre-unify 原样（`isFirstS2Loop` DataCopy + `LastDivNew`）。
+
+#### 数学推导
+
+**online softmax 等价展开**（sink 作为初始项）：
+
+| 步骤 | 初始值 | 首 tile | 后续 tile |
+|---|---|---|---|
+| max | sink | max(sink, tile_max) | max(old_max, tile_max) |
+| sum | 1 | old_sum*exp(old_max-new_max) + tile_sum = exp(sink-new_max) + tile_sum | 同左 |
+| ubVec2Res | 0(脏) | DataCopy(mm2Res) 跳过 expUb*pre | expUb*pre + cur |
+
+- 首次 tile `expUb = exp(sink - new_max) ≠ 0`，所以 ubVec2Res 脏值会泄漏
+- ProcessVec2 的 pre-unify 代码用 `DataCopy` 跳过 `expUb * pre`，天然解决脏值问题
+- 非首次 tile `expUb = exp(old_max - new_max)`，`FlashUpdateNew` 正常累加
+
+#### FD（FlashDecode）修正
+
+FD 将 gSplit 个 core 的局部 sum/max 合并为全局值。每个 core 的 sum 已含 1 份 sink 项，gSplit 个 core 合并后 sink 被加了 K=gSplit 份。需在 `ComputeScaleValue` 中减去 (K-1) 份：
+
+$$
+\ell_{\text{corrected}} = \ell_{\text{total}} - (K-1) \cdot e^{\text{sink} - m_{\text{global}}}
+$$
+
+#### 为什么不用 Scheme A（sink 只参与 max）
+
+Scheme A 中 sink 不参与分母，数学上不完整。当 sink 值很大（成为 max）时，`exp(Sᵢ - sink)` 被 shrink 但分母不含 `exp(0)=1`，导致 attention weight 偏大。Scheme B 完整公式修正了此问题。
+
+### 8.3 Sink 参与计算的两个位置
+
+**位置 A (FA 阶段 ResetSoftmaxBuffer)**: sink 注入 max/sum 初始值
+
+- `ResetSoftmaxBuffer` 中 `learnableSinkFlag=true` 时: `Duplicate(maxUb, sinkValue)`, `Duplicate(sumUb, 1)`
+- sinkValue 通过 `sinkGm_.GetValue(n2Idx * gSize + gIdx)` 取单值
+- 对应公式: $m_0 = \text{sink}, \ell_0 = 1$
 
 **位置 B (FD 阶段 ComputeScaleValue)**: sink 修正分母
 
 - `ComputeScaleValue_8_VF_FD` 的 `learnableSinkFlag` 分支
-- sink 是 UB tensor (dealCount 个元素, 按 gIdx 映射每行到对应 head 的 sink 值)
-- 跨 K 份 split-K 归约时需修正多加的 sink 份数
+- `Sub(sink, globalMax)` → `Exp` → `Muls(K-1)` → `Sub(sum, ...)` 修正多加份数
 
-### 8.3 Sink 方案: 首次初始化 + FD 减去多加份数
-
-#### 核心思路
-
-利用"首次 softmax 统一方案"的初始化机制, 在首次 tile 的 sum 初始化时直接设为 `exp(sink - max)`, 使 sink 自然参与分母; FD 阶段减去多加的 (K-1) 份 sink。
-
-#### 数学推导
-
-**非 FD 路径 (FA 阶段, 单核多 S2 tile)**:
-
-首次 tile (NoUpdate, hasSink=true):
-$$
-m = \max(\text{sink}, \max(S_{\text{tile}_0}))
-$$
-$$
-\ell = e^{\text{sink} - m} + \sum_{j \in \text{tile}_0} e^{s_j - m}
-$$
-
-后续 tile (Update, hasSink=true):
-$$
-m' = \max(m, \max(S_{\text{tile}_k}))
-$$
-$$
-\ell' = \ell \cdot e^{m - m'} + \sum_{j \in \text{tile}_k} e^{s_j - m'}
-$$
-
-rescale 后 sink 项: $e^{\text{sink}-m} \cdot e^{m-m'} = e^{\text{sink}-m'}$ ✅ (自然正确, 无需额外处理)
-
-最终: $\text{output} = \frac{\sum e^{s_j - m'} \cdot v_j}{\ell'}$, 分母含 1 份 sink ✅
-
-**FD 路径 (K 份 split-K, 每份独立计算)**:
-
-每份 i 的 local_max_i ≥ sink, local_sum_i 含 1 份 `exp(sink - local_max_i)`。
-
-FD 归约:
-$$
-m_{\text{global}} = \max_i(\text{local\_max}_i)
-$$
-$$
-\ell_{\text{total}} = \sum_i \ell_i \cdot e^{\text{local\_max}_i - m_{\text{global}}}
-= \sum_j e^{s_j - m_{\text{global}}} + K \cdot e^{\text{sink} - m_{\text{global}}}
-$$
-
-正确结果应为 $\sum_j e^{s_j - m_{\text{global}}} + 1 \cdot e^{\text{sink} - m_{\text{global}}}$
-
-**需减去**: $(K-1) \cdot e^{\text{sink} - m_{\text{global}}}$
-
-#### 逐层修改清单
+### 8.4 逐层修改清单
 
 | 层 | 文件 | 修改 |
 |---|---|---|
-| **common (VF)** | `vf_mul_sel_softmaxflashv2_cast_nz_dn.h` | NoUpdate 的 `hasSink=true` 分支: sum 初始化从 0 改为 `exp(sink - max)` (`Sub` → `Exp` → `Mov` 到 sum 寄存器) |
-| **common (VF)** | `vf_mul_sel_softmaxflashv2_cast_nz.h` | Nd 版 `ProcessVec1Vf` 的 `hasSink=true` 分支: 同上 |
-| **common (VF)** | `vf_flash_decode.h` | `ComputeScaleValue_8_VF_FD` 的 `learnableSinkFlag` 分支: `Add(sum, sinkExp)` 改为 `Muls(sinkExp, K-1)` + `Sub(sum, sinkExp)` |
-| **block_vec** | `block_vec_dn.h` / `block_vec_nd.h` | InitBlock 保存 `sinkGm_`; ProcessVec1 中 `GetValue(n2Idx * gSize + gIdx)` 取 sinkValue; if 分支传 `hasSink=true` + `sinkValue` (两套编译路径) |
-| **fd** | `block_vec_flashdecode.h` | InitBlock 保存 `sinkGm_`; 新增 `CopySinkIn` (DataCopy + Cast + Brcb) + `SinkMax` (按 gIdx 映射每行 sink 值); ComputeScaleValue 传真实 flag + sinkExpBuf; InitBuffers 新增 sink UB buffer |
-| **kernel** | `kernel_dn.h` / `kernel_nd.h` | CalcParams 中赋值 `info.gIdx` (当前 RunInfoX 有 gIdx 字段但未赋值) |
-| **block_cube** | `block_cube_dn.h` / `block_cube_nd.h` | 无需修改 (sink 是纯 Vector 概念) |
-| **host** | `def.cpp` | sinks dtype: DT_FLOAT → DT_FLOAT16/DT_BF16 |
-| **host** | `sinks_checker.cpp` | 解除拦截, 改为校验 dtype/shape |
-| **host** | `flash_attn.md` | Sinks 参数组: "暂不支持" → 正式约束 |
+| host | `def.cpp` | sinks dtype DT_FLOAT |
+| host | `sinks_checker.cpp` | 解除拦截, 改为校验 dtype/shape |
+| kernel | `kernel_dn.h` / `kernel_nd.h` | CalcParams 赋值 `info.gIdx` |
+| block_vec | `block_vec_dn.h` / `block_vec_nd.h` | `sinkGm_` + InitBlock 保存 + `ResetSoftmaxBuffer` max=sink/sum=1 |
+| fd | `block_vec_flashdecode.h` | `sinkGm_` + InitBlock 保存 + ComputeScaleValue 传 `learnableSinkFlag=true` + sinkExpBuf |
+| common (VF) | `vf_flash_decode.h` | `Sub(K-1)` 修正 (原 Add 改 Sub) |
+| ProcessVec1 | 不修改 | 统一 Update VF (unify commit 已完成) |
+| ProcessVec2 | 不修改 | pre-unify 原样 (DataCopy + LastDivNew) |
+| golden | `cpu_golden.py` | `x_sum += exp(sink - x_max)` 完整分母 |
 
-#### FD 阶段 sink 数据加载
+### 8.5 验证结果
 
-`ComputeScaleValue_8_VF_FD` 从 `lseSink` (UB) 加载 `dealCount = dealRowCount × 8` 个 float 元素。每行的 sink 值取决于该行所属的 g group, 需通过 `CopySinkIn` + `SinkMax` 映射:
+**Sink 用例 (4/4 PASS)**:
 
-```cpp
-// CopySinkIn: 从 sinkGm 加载 gSize 个 sink 值 (per n2 head), Cast 到 float, Brcb 广播
-DataCopy(sinkCopyInBuf, sinkGm[n2Idx * gSize], copySize);
-Cast(sinkCastBuf, sinkCopyInBuf, CAST_NONE, gSize);
-Brcb(sinkBrcbBuf, sinkCastBuf, ...);
+| 用例 | dtype | layout | Attn MaxAbsErr | LSE MaxAbsErr |
+|---|---|---|---|---|
+| Prefill FP16 | fp16 | BNSD | 0.005 | — |
+| Prefill BF16 | bf16 | BSND | 0.042 | 0.000008 |
+| Decode FP16 | fp16 | BNSD/BSND | 0.004 | — |
+| Decode BF16 | bf16 | BSND | 0.031 | 0.000000 |
 
-// SinkMax: 按每行 gIdx 从广播结果取对应 sink 值到 sinkExpBuf
-for (row = 0; row < dealRowCount; ++row) {
-    gIdx = (BSND/TND) ? (gS1Idx + row) % gSize : (gS1Idx + row) / actS1Size;
-    DataCopy(sinkExpBuf[row * 8], sinkBrcbBuf[gIdx * 8], 8);
-}
-```
+**非 Sink 回归 (5/5 PASS, 无退化)**:
 
-参考 FIA fullquant: `fia_block_vec_flashdecode_fullquant.h:420-465`。
+| 用例 | dtype | layout | 结论 |
+|---|---|---|---|
+| Decode BF16 BNSD | bf16 | BNSD | PASS |
+| Decode FP16 PA_BBND | fp16 | BNSD | PASS |
+| Prefill BF16 BNSD | bf16 | BNSD | PASS |
+| Decode BF16 BSND | bf16 | BSND | PASS |
+| Prefill FP16 BSND | fp16 | BSND | PASS |
 
-#### 关键风险
+### 8.6 关键设计决策
 
-1. **hasSink 编译期 vs 运行时**: `hasSink` 是模板参数, `learnableSinkFlag` 是运行时值。需用 `if` 分支编译两套调用路径 (hasSink=true/false), 增加代码量但无运行时开销。
-2. **UB 空间**: FD 阶段需新增 4 个 sink buffer (copyIn 1K / cast / brcb / exp), 需确认 UB 剩余空间。flashdecode.h 的 InitBuffers 与 vec_dn.h 共享 UB 布局 (FD 复用 FA 的 buffer 区域)。
-3. **expUb 统一方案的前置条件**: `FusedExpSub(-inf, finite)` 需产生 0 而非 NaN, 需上板验证。
-4. **与 FIA 的差异**: FIA noquant 路径只做 `Max(sink)` 不在 sum 加 sink; 本方案在 sum 初始化时加 sink, 比FIA 更完整, 但偏离 FIA 实现。
+#### ubVec2Res 单 buffer + PRELOAD_N=2
+
+`ubVec2Res_` 是单 buffer（32K），PRELOAD_N=2 时 Vec1(task N) 和 Vec2(task N-2) 同时执行。如果在 ProcessVec1 的 `ResetSoftmaxBuffer` 中用 `Duplicate` 清零 `ubVec2Res_`，会与 Vec2(task N-2) 的读冲突——即使加 Mutex Lock 也会因持锁时间过长阻塞流水。ProcessVec2 的 `DataCopy` 方案在 V pipe 内完成，天然在 `UB_OUT_VEC2_RES_EVENT0` Lock 保护内，无冲突。
+
+#### bf16 NaN 陷阱
+
+`ResetSoftmaxBuffer` 中 `-inf` 初始化用 `static_cast<T>(-std::numeric_limits<float>::infinity())`，而非 `*((T*)&0xFF7FFFFF)`。后者对 bf16 读低 16 位 = NaN。
+
+#### ProcessVec2 不需要 sink 修改
+
+pre-unify 版本的 ProcessVec2 已有 `isFirstS2Loop` 分支：
+- **非 last + first**: `DataCopy(mm2Res → ubVec2Res)`，等价 `0 * expUb + mm2Res`，跳过脏值
+- **非 last + 非 first**: `FlashUpdateNew`（`expUb * pre + cur`），正常累加
+- **last + first**: `DataCopy` + `LastDivNew`（只除 sum），单 tile 快捷路径
+- **last + 非 first**: `FlashUpdateLastNew`（`(expUb * pre + cur) / sum`），含除法
+
+这套逻辑对 sink 和非 sink 都正确——非 sink 时 expUb=0（old_max=-inf），DataCopy 和 FlashUpdateNew 结果一致。
 
 ---
 
@@ -725,7 +722,7 @@ cann_ops_transformer.flash_attn(
 | 变长序列 | cu_seqlens (TND packing) + seqused (截断) |
 | FlashDecode | 自动启用 (enableFlashDecode) |
 | softmax_lse | return_softmax_lse=True 时输出 |
-| sinks | ⚠️ 暂不支持 (参数已声明, 待打通) |
+| sinks | ✅ 已支持 (Scheme B: sink 参与 max + 分母, dtype DT_FLOAT, shape `(Q_N,)`) |
 
 ### 9.3 layout 匹配关系
 
@@ -871,31 +868,28 @@ kernel 按 flash attention 分块, 每个 tile 从模板矩阵中扣取所需子
 
 FD 阶段所有 AIV 核需要读取 FA 阶段所有核写入 workspace 的中间结果 (lseSum/lseMax/accumOut)。`SyncAll` 确保 FA 阶段全部完成后再开始 FD, FD 全部完成后再进入下一 section。
 
-### 11.7 为什么计划消除首次/非首次 softmax VF 区分?
+### 11.7 为什么统一 softmax VF 时 ProcessVec2 不统一?
 
-当前 `ProcessVec1Dn` 按 `isFirstS2Loop` 调用两套 VF:
-- **NoUpdate** (首次): max 初始化为 `-inf`, sum 初始化为 0, expUb 不写入, ProcessVec2 用 `DataCopy` 直接赋值
-- **Update** (非首次): 加载 old_max/old_sum, rescale 后累加, expUb 写入 `exp(old_max - new_max)`, ProcessVec2 用 `FlashUpdateNew` 做 `pre * expMax + cur`
+统一 softmax VF 时（commit `5e3eb323c`）只统一了 ProcessVec1（NoUpdate → Update），**ProcessVec2 保持 pre-unify 原样**。
 
-若首次 tile 前显式初始化 `max=-inf, sum=0, ubVec2Res=0`, 统一调用 Update 版:
-- `exp(-inf - tile_max) = 0` → `old_sum * 0 + new_sum = new_sum` ✅
-- `FlashUpdateNew: 0 * 0 + mm2Res = mm2Res` (等价 DataCopy) ✅
+原方案曾统一 ProcessVec2（移除 `isFirstS2Loop` DataCopy 分支），认为首次 tile `expUb = exp(-inf - tile_max) = 0` 时 `FlashUpdateNew: 0 * 脏值 + mm2Res = mm2Res` 等价 `DataCopy`。但 sink 支持开发中发现：sink 场景下 `old_max = sink`（非 -inf），`expUb = exp(sink - new_max) ≠ 0`，`ubVec2Res` 脏值泄漏导致 output NaN。
 
-**收益**: 消除 NoUpdate VF (~200 行), 减少 kernel binary, 改善 I-cache, 简化 Sink 集成 (sum 初始化时可直接设 `exp(sink-max)`)。
+**结论**: ProcessVec2 的 `isFirstS2Loop` DataCopy 分支对非 sink（expUb=0）和 sink（expUb≠0）都正确——DataCopy 直接跳过 `expUb * pre`，不依赖 expUb=0 的假设。amend 回退为 pre-unify 状态。
 
-**前置条件**: 950 的 `FusedExpSub(-inf, finite)` 需产生 0 而非 NaN (IEEE 754 规定 `exp(-inf)=0`, 但融合指令需验证)。
+**收益**（仅统一 ProcessVec1）: 消除 NoUpdate VF (~200 行), 减少 kernel binary, 改善 I-cache。ProcessVec1 的 `isFirstS2Loop` guard 仅保留 `ResetSoftmaxBuffer` 调用，不再有 NoUpdate/Update 分支。
 
-### 11.8 为什么 Sink 方案用"首次初始化 + FD 减去多加份数"?
+### 11.8 为什么 Sink 用 Scheme B (max + 分母)?
 
-**问题**: Sink 需参与 softmax 分母 ($\sum e^{S-m} + e^{\text{sink}-m}$), 但 FA 阶段的 `hasSink` 分支只做 `Max(max, sink)`, 不在 sum 中加 `exp(sink-max)`。
+**问题**: Sink 需参与 softmax 分母 ($\sum e^{S-m} + e^{\text{sink}-m}$), 但 FA 阶段的 VF 只做 softmax 计算, 不感知 sink。
 
-**方案**: 利用首次 softmax 统一方案的初始化机制:
-- **FA 首次 tile**: sum 初始化为 `exp(sink - max)` (而非 0), 后续 Update 的 rescale 自然保持 sink 项正确
+**Scheme B 方案**: 在 `ResetSoftmaxBuffer` 中注入 sink 初始值:
+- **FA 首次 tile**: `max=sink, sum=1`，后续 Update 的 rescale 自然保持 sink 项正确（`1 * exp(sink - new_max) = exp(sink - new_max)`）
 - **FD 阶段**: K 份 split-K 每份含 1 份 sink, 归约后多 (K-1) 份, 需 `Sub(sum, (K-1) * exp(sink - global_max))`
 
-**优势**:
-- 非 FD 路径 (prefill) sink 完整参与 max + sum (比 FIA noquant 更完整)
-- 无需在 Update VF 中添加 sink 逻辑 (rescale 自然正确)
-- FD 阶段只需改 `Add` → `Sub(K-1)`, 逻辑简单
+**为什么不用 Scheme A (sink 只参与 max)**: Scheme A 不在分母加 sink，当 sink 值很大（成为 max）时 attention weight 偏大，数学不完整。Scheme B 完整公式修正了此问题。
 
-**与 FIA 差异**: FIA noquant 只做 `Max(sink)` 不在 sum 加 sink; 本方案 sum 含 sink, 更数学完整, 但偏离 FIA。
+**优势**:
+- VF 层不区分 sink（统一 Update），sink 注入完全在 `ResetSoftmaxBuffer` 完成
+- 非 FD 路径 (prefill) sink 完整参与 max + sum
+- FD 阶段只需改 `Add` → `Sub(K-1)`, 逻辑简单
+- ProcessVec2 无需任何 sink 相关修改
