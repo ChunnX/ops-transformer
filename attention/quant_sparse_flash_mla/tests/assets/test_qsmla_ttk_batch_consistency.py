@@ -82,7 +82,7 @@ def test_qsmla_batch_random_context_repeats_declared_batch_slices():
         q, None, None, fields
     )
     context.validate_params({
-        "template_run_mode": "ORI_CMP_SPARSE",
+        "template_run_mode": "CSA",
         "quant_mode": 1,
         "ori_sparse_indices_mode": "full",
         "cmp_sparse_indices_mode": "full",
@@ -98,11 +98,43 @@ def test_qsmla_batch_random_context_repeats_declared_batch_slices():
         value = torch.rand(3, 2)
         first_permutation = torch.randperm(8)
         second_permutation = torch.randperm(8)
+        third_permutation = torch.randperm(8)
 
     assert torch.rand is original_rand
     assert torch.randperm is original_randperm
     assert torch.equal(value[0], value[2])
-    assert torch.equal(first_permutation, second_permutation)
+    assert not torch.equal(first_permutation, second_permutation)
+    assert torch.equal(first_permutation, third_permutation)
+
+
+def test_qsmla_sparse_randperm_maps_nonuniform_batch_call_offsets():
+    q = torch.empty((3, 2, 1, 1), dtype=torch.float32)
+    fields = batch_kwargs(((0, 1, 1), (2, 3, 1)), 7001)
+    fields.update({
+        "layout_q": "BSND",
+        "layout_kv": "BSND",
+        "quant_mode": 1,
+        "seqused_q_values": [2, 1, 2],
+    })
+    context = INPUTS_MODULE.QuantSparseFlashMlaBatchRandomContext.from_case(
+        q, None, None, fields
+    )
+    context.validate_params({
+        "template_run_mode": "ORI_SPARSE",
+        "quant_mode": 1,
+        "ori_sparse_indices_mode": "full",
+        "cmp_sparse_indices_mode": "full",
+        "ori_kv_topk_mode": "fullK",
+        "cmp_kv_topk_mode": "fullK",
+        "seqused_q": [2, 1, 2],
+        "N2": 1,
+    })
+
+    with context:
+        permutations = [torch.randperm(8) for _ in range(5)]
+
+    assert torch.equal(permutations[0], permutations[3])
+    assert torch.equal(permutations[1], permutations[4])
 
 
 def test_qsmla_bsnd_batch_context_ignores_auxiliary_q_prefix():

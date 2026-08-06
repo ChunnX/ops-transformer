@@ -15,6 +15,7 @@
 import importlib.util
 import random
 import sys
+from bisect import bisect_right
 from pathlib import Path
 
 import numpy as np
@@ -61,8 +62,12 @@ class NumpyBatchRandomContext:
                 )
         self.base_seed = self.relations[0][1]
         self.call_index = 0
+        self.randperm_call_index = 0
+        self.randperm_batch_offsets = None
+        self.randperm_relation_keys = {}
         self.original_numpy_uniform = None
         self.original_python_uniform = None
+        self.original_torch_randperm = None
 
     @classmethod
     def from_case(cls, q, ori_kv, cmp_kv, kwargs):
@@ -215,10 +220,57 @@ class NumpyBatchRandomContext:
         self.register_extent(prefix[-1], tuple((value, 0) for value in selectors), source)
 
     def validate_params(self, params):
-        if params.get("template_run_mode") not in ("SWA", "HCA"):
-            raise ValueError("MQSMLA batch consistency currently excludes sparse modes")
-        if int(params.get("quant_mode")) != 1:
-            raise ValueError("MQSMLA batch consistency currently supports quant_mode=1 only")
+        mode = params.get("template_run_mode")
+        if mode not in ("SWA", "HCA", "CSA", "ORI_SPARSE", "ORI_CMP_SPARSE"):
+            raise ValueError(f"MQSMLA batch consistency does not support mode {mode!r}")
+        if int(params.get("quant_mode")) not in (1, 2):
+            raise ValueError("MQSMLA batch consistency supports quant_mode 1 and 2")
+        if mode not in ("CSA", "ORI_SPARSE", "ORI_CMP_SPARSE"):
+            return
+        for name in ("ori_sparse_indices_mode", "cmp_sparse_indices_mode"):
+            value = params.get(name)
+            if value is not None and value != "full":
+                raise ValueError(
+                    "MQSMLA batch consistency requires full sparse indices"
+                )
+        for name in ("ori_kv_topk_mode", "cmp_kv_topk_mode"):
+            value = params.get(name)
+            if value is not None and value not in ("full", "fullK", "no"):
+                raise ValueError(
+                    "MQSMLA batch consistency excludes random topk lengths"
+                )
+        self.configure_randperm(params)
+
+    def configure_randperm(self, params):
+        sequence_lengths = params.get("seqused_q")
+        if torch.is_tensor(sequence_lengths):
+            sequence_lengths = sequence_lengths.detach().cpu().reshape(-1).tolist()
+        if sequence_lengths is None:
+            prefix = params.get("cu_seqlens_q")
+            if torch.is_tensor(prefix):
+                prefix = prefix.detach().cpu().reshape(-1).tolist()
+            if prefix is not None:
+                sequence_lengths = [
+                    prefix[index + 1] - prefix[index]
+                    for index in range(len(prefix) - 1)
+                ]
+            else:
+                sequence_lengths = [int(params["S1"])] * self.batch_size
+        if len(sequence_lengths) != self.batch_size:
+            raise ValueError("MQSMLA sparse batch q lengths must contain B values")
+
+        calls_per_batch = [int(length) * int(params["N2"])
+                           for length in sequence_lengths]
+        offsets = [0]
+        for count in calls_per_batch:
+            offsets.append(offsets[-1] + count)
+        if offsets[-1] <= 0:
+            raise ValueError("MQSMLA sparse batch requires a non-empty q relation")
+        self.randperm_batch_offsets = offsets
+        for batch_slice, seed in self.batch_relations:
+            start, stop, _ = batch_slice
+            for relative_index, batch_index in enumerate(range(start, stop)):
+                self.randperm_relation_keys[batch_index] = (seed, relative_index)
 
     @classmethod
     def derive_seed(cls, seed, call_index):
@@ -251,16 +303,43 @@ class NumpyBatchRandomContext:
         rng = random.Random(self.derive_seed(self.base_seed, call_index))
         return rng.uniform(low, high)
 
+    def torch_randperm(self, n, **kwargs):
+        if self.randperm_batch_offsets is None:
+            return self.original_torch_randperm(n, **kwargs)
+        call_index = self.randperm_call_index
+        self.randperm_call_index += 1
+        total_calls = self.randperm_batch_offsets[-1]
+        cycle_index, cycle_offset = divmod(call_index, total_calls)
+        batch_index = bisect_right(self.randperm_batch_offsets, cycle_offset) - 1
+        local_index = cycle_offset - self.randperm_batch_offsets[batch_index]
+        relation = self.randperm_relation_keys.get(batch_index)
+        if relation is None:
+            seed = self.base_seed
+            seed_index = 3000017 + call_index
+        else:
+            seed, relative_index = relation
+            seed_index = (2000003 + cycle_index * 1000000007
+                          + relative_index * 1000003 + local_index)
+        call_kwargs = dict(kwargs)
+        device = call_kwargs.get("device") or "cpu"
+        generator = torch.Generator(device=device)
+        generator.manual_seed(self.derive_seed(seed, seed_index))
+        call_kwargs["generator"] = generator
+        return self.original_torch_randperm(n, **call_kwargs)
+
     def __enter__(self):
         self.original_numpy_uniform = np.random.uniform
         self.original_python_uniform = random.uniform
+        self.original_torch_randperm = torch.randperm
         np.random.uniform = self.numpy_uniform
         random.uniform = self.python_uniform
+        torch.randperm = self.torch_randperm
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         np.random.uniform = self.original_numpy_uniform
         random.uniform = self.original_python_uniform
+        torch.randperm = self.original_torch_randperm
         return False
 
 
@@ -495,6 +574,55 @@ class MixedQuantSparseFlashMlaInputAdapter:
             )
         dst.copy_(src_cpu.to(dtype=dst.dtype, device=dst.device))
 
+    def copy_metadata(self, dst, data):
+        metadata_input = data.get("metadata_input")
+        op_input = data.get("op_input")
+        if metadata_input is None or op_input is None:
+            raise ValueError("MQSMLA pytest generator did not return metadata_input/op_input")
+
+        def to_npu(name, empty_if_none=False):
+            value = op_input.get(name)
+            if value is None:
+                return torch.tensor([]).npu() if empty_if_none else None
+            return value.npu() if torch.is_tensor(value) else torch.as_tensor(value).npu()
+
+        metadata_kwargs = {
+            "num_heads_q": metadata_input["num_heads_q"],
+            "num_heads_kv": metadata_input["num_heads_kv"],
+            "head_dim": metadata_input["head_dim"],
+            "quant_mode": op_input["quant_mode"],
+            "cu_seqlens_q": to_npu("cu_seqlens_q", empty_if_none=True),
+            "cu_seqlens_ori_kv": to_npu("cu_seqlens_ori_kv", empty_if_none=True),
+            "cu_seqlens_cmp_kv": to_npu("cu_seqlens_cmp_kv", empty_if_none=True),
+            "seqused_q": to_npu("seqused_q", empty_if_none=True),
+            "seqused_ori_kv": to_npu("seqused_ori_kv"),
+            "seqused_cmp_kv": to_npu("seqused_cmp_kv"),
+            "cmp_residual_kv": to_npu("cmp_residual_kv"),
+            "ori_topk_length": to_npu("ori_topk_length"),
+            "cmp_topk_length": to_npu("cmp_topk_length"),
+            "batch_size": metadata_input["batch_size"],
+            "max_seqlen_q": metadata_input["max_seqlen_q"],
+            "max_seqlen_ori_kv": metadata_input["max_seqlen_ori_kv"],
+            "max_seqlen_cmp_kv": metadata_input["max_seqlen_cmp_kv"],
+            "ori_topk": metadata_input.get("ori_topk", 0),
+            "cmp_topk": metadata_input["topk"],
+            "rope_head_dim": op_input["rope_head_dim"],
+            "cmp_ratio": metadata_input["cmp_ratio"],
+            "ori_mask_mode": metadata_input["ori_mask_mode"],
+            "cmp_mask_mode": metadata_input["cmp_mask_mode"],
+            "layout_q": metadata_input["layout_q"],
+            "layout_kv": metadata_input["layout_kv"],
+            "has_ori_kv": metadata_input["has_ori_kv"],
+            "has_cmp_kv": metadata_input["has_cmp_kv"],
+        }
+        for name in ("ori_win_left", "ori_win_right"):
+            if metadata_input.get(name) is not None:
+                metadata_kwargs[name] = metadata_input[name]
+        metadata = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata(
+            **metadata_kwargs
+        )
+        self.copy_tensor(dst, metadata, "metadata")
+
     def generate_case(self, params, batch_random=None):
         pytest_utils = self.load_pytest_module("utils", "utils.py")
         pytest_check = self.load_pytest_module("check", "check_valid_param.py")
@@ -522,25 +650,45 @@ class MixedQuantSparseFlashMlaInputAdapter:
 INPUT_ADAPTER = MixedQuantSparseFlashMlaInputAdapter()
 
 
-def generate_mixed_quant_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None,
-                                                 ori_sparse_indices=None, cmp_sparse_indices=None,
-                                                 ori_block_table=None, cmp_block_table=None,
-                                                 cu_seqlens_q=None, cu_seqlens_ori_kv=None,
-                                                 cu_seqlens_cmp_kv=None, seqused_q=None,
-                                                 seqused_ori_kv=None, seqused_cmp_kv=None,
-                                                 cmp_residual_kv=None, ori_topk_length=None,
-                                                 cmp_topk_length=None, sinks=None, **kwargs):
-    """Reuse the pytest parameter validation and input processing for a TTK case."""
-    batch_random = NumpyBatchRandomContext.from_case(q, ori_kv, cmp_kv, kwargs)
+def generate_mixed_quant_sparse_flash_mla_inputs(
+        q, *, ori_kv=None, cmp_kv=None, ori_sparse_indices=None,
+        cmp_sparse_indices=None, ori_block_table=None, cmp_block_table=None,
+        cu_seqlens_q=None, cu_seqlens_ori_kv=None, cu_seqlens_cmp_kv=None,
+        seqused_q=None, seqused_ori_kv=None, seqused_cmp_kv=None,
+        cmp_residual_kv=None, ori_topk_length=None, cmp_topk_length=None,
+        sinks=None, metadata=None, quant_mode=None, rope_head_dim=None,
+        softmax_scale=None, cmp_ratio=None, ori_mask_mode=0,
+        cmp_mask_mode=0, ori_win_left=-1, ori_win_right=-1,
+        layout_q="BSND", layout_kv="BSND", topk_value_mode=1,
+        return_softmax_lse=False, key_dtype=None, value_dtype=None, **kwargs):
+    """Populate direct API inputs and its pytest-derived metadata slot."""
+    params = dict(kwargs)
+    params.update({
+        "quant_mode": quant_mode,
+        "rope_head_dim": rope_head_dim,
+        "softmax_scale": softmax_scale,
+        "cmp_ratio": cmp_ratio,
+        "ori_mask_mode": ori_mask_mode,
+        "cmp_mask_mode": cmp_mask_mode,
+        "ori_win_left": ori_win_left,
+        "ori_win_right": ori_win_right,
+        "layout_q": layout_q,
+        "layout_kv": layout_kv,
+        "topk_value_mode": topk_value_mode,
+        "return_softmax_lse": return_softmax_lse,
+        "key_dtype": key_dtype,
+        "value_dtype": value_dtype,
+    })
+    batch_random = NumpyBatchRandomContext.from_case(q, ori_kv, cmp_kv, params)
     params = INPUT_ADAPTER.build_case_params(
         q,
         ori_kv,
         cmp_kv,
         ori_sparse_indices,
         cmp_sparse_indices,
-        kwargs.get("layout_q"),
-        kwargs.get("layout_kv"),
-        kwargs,
+        layout_q,
+        layout_kv,
+        params,
     )
     data = INPUT_ADAPTER.generate_case(params, batch_random)
     op_input = data["op_input"]
@@ -564,3 +712,58 @@ def generate_mixed_quant_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None,
         ("sinks", sinks),
     ):
         INPUT_ADAPTER.copy_tensor(tensor, op_input.get(name), name)
+    if metadata is not None:
+        INPUT_ADAPTER.copy_metadata(metadata, data)
+    return data
+
+
+def generate_aclnn_mixed_quant_sparse_flash_mla_inputs(
+        q, ori_kv, cmp_kv, ori_sparse_indices, cmp_sparse_indices,
+        ori_block_table, cmp_block_table, cu_seqlens_q,
+        cu_seqlens_ori_kv, cu_seqlens_cmp_kv, seqused_q,
+        seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv,
+        ori_topk_length, cmp_topk_length, sinks, metadata, quant_mode,
+        rope_head_dim, softmax_scale, cmp_ratio, ori_mask_mode,
+        cmp_mask_mode, ori_win_left, ori_win_right, layout_q, layout_kv,
+        topk_value_mode, return_softmax_lse, attn_out, softmax_lse_out,
+        **kwargs):
+    """Map the ACLNN C signature to the canonical pytest input adapter."""
+    from ttk.utilities.torch_ops_package_loader import TorchOpsPackageLoader
+
+    TorchOpsPackageLoader.ensure_registered(
+        "torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla_metadata"
+    )
+    del attn_out, softmax_lse_out
+    return generate_mixed_quant_sparse_flash_mla_inputs(
+        q,
+        ori_kv=ori_kv,
+        cmp_kv=cmp_kv,
+        ori_sparse_indices=ori_sparse_indices,
+        cmp_sparse_indices=cmp_sparse_indices,
+        ori_block_table=ori_block_table,
+        cmp_block_table=cmp_block_table,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
+        seqused_q=seqused_q,
+        seqused_ori_kv=seqused_ori_kv,
+        seqused_cmp_kv=seqused_cmp_kv,
+        cmp_residual_kv=cmp_residual_kv,
+        ori_topk_length=ori_topk_length,
+        cmp_topk_length=cmp_topk_length,
+        sinks=sinks,
+        metadata=metadata,
+        quant_mode=quant_mode,
+        rope_head_dim=rope_head_dim,
+        softmax_scale=softmax_scale,
+        cmp_ratio=cmp_ratio,
+        ori_mask_mode=ori_mask_mode,
+        cmp_mask_mode=cmp_mask_mode,
+        ori_win_left=ori_win_left,
+        ori_win_right=ori_win_right,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+        topk_value_mode=topk_value_mode,
+        return_softmax_lse=return_softmax_lse,
+        **kwargs,
+    )

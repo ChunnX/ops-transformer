@@ -17,9 +17,10 @@ import ast
 import csv
 import hashlib
 import json
+import os
+import tempfile
 from collections import Counter, defaultdict
 from pathlib import Path
-
 
 class BatchOutputComparator:
     """Validate same-case and cross-case relations from raw output bins."""
@@ -30,6 +31,10 @@ class BatchOutputComparator:
         "cu_seqlens_ori_kv_values",
         "cu_seqlens_cmp_kv_values",
     )
+    STATIC_SEQUENCE_ATTRIBUTE_NAMES = frozenset((
+        "q_datarange", "ori_kv_datarange", "cmp_kv_datarange",
+    ))
+    BLOCK_COUNT_ATTRIBUTE_NAMES = frozenset(("block_num1", "block_num2"))
 
     BYTE_WIDTHS = {
         "bool": 1,
@@ -52,7 +57,8 @@ class BatchOutputComparator:
     }
 
     def __init__(self, case_csv, result_csv, dump_dir, report_path,
-                 output_index, require_intra_case, require_cross_case):
+                 output_index, require_intra_case, require_cross_case,
+                 excel_path=None):
         self.case_csv = Path(case_csv)
         self.result_csv = Path(result_csv)
         self.dump_dir = Path(dump_dir)
@@ -60,6 +66,7 @@ class BatchOutputComparator:
         self.output_index = output_index
         self.require_intra_case = require_intra_case
         self.require_cross_case = require_cross_case
+        self.excel_path = Path(excel_path) if excel_path else None
 
     @staticmethod
     def read_rows(path):
@@ -105,6 +112,16 @@ class BatchOutputComparator:
                 normalized.append(list(value))
         return normalized
 
+    def normalize_ranges(self, ranges):
+        normalized = []
+        for index, value in enumerate(ranges):
+            # Prefix storage range scales with B + 1 and is not relation identity.
+            normalized.append(
+                None if index in self.PREFIX_LENGTH_INPUT_INDEXES
+                else self.normalize_value(value)
+            )
+        return normalized
+
     @staticmethod
     def normalize_prefix(value, start, stop):
         selected = [int(item) for item in value[start:stop + 1]]
@@ -117,6 +134,11 @@ class BatchOutputComparator:
         for key, value in attributes.items():
             if key in self.PREFIX_ATTRIBUTE_NAMES and isinstance(value, (list, tuple)):
                 normalized[key] = self.normalize_prefix(value, start, stop)
+            elif key in self.STATIC_SEQUENCE_ATTRIBUTE_NAMES:
+                normalized[key] = self.normalize_value(value)
+            elif (key in self.BLOCK_COUNT_ATTRIBUTE_NAMES
+                  and attributes.get("layout_kv") != "PA_BBND"):
+                continue
             elif isinstance(value, (list, tuple)) and len(value) == batch_size:
                 normalized[key] = self.normalize_value(value[start:stop])
             elif key == "B":
@@ -279,7 +301,7 @@ class BatchOutputComparator:
                 shapes, self.dynamic_extents(batch_size, prefixes)
             ),
             "input_dtypes": self.normalize_value(dtypes),
-            "input_ranges": self.normalize_value(ranges),
+            "input_ranges": self.normalize_ranges(ranges),
             "attributes": self.normalize_attributes(
                 attributes, batch_start, batch_stop, batch_size, token_lengths
             ),
@@ -413,6 +435,85 @@ class BatchOutputComparator:
             "errors": errors,
         }
 
+    def write_excel(self, report):
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+
+        workbook = Workbook()
+        summary = workbook.active
+        summary.title = "Summary"
+        summary.append(("Field", "Value"))
+        for key in (
+            "status", "case_csv", "result_csv", "dump_dir", "output_index",
+            "require_intra_case", "require_cross_case", "group_count", "sample_count",
+        ):
+            summary.append((key, str(report[key])))
+
+        details = workbook.create_sheet("Relations")
+        headers = (
+            "Group", "Output", "Axis", "Seed", "Slice length", "Status",
+            "Case count", "Sample count", "Testcase", "Slice", "Shape",
+            "Dtype", "SHA-256", "Errors",
+        )
+        details.append(headers)
+        for group_id, group in enumerate(report["groups"], start=1):
+            first_row = details.max_row + 1
+            output_index, batch_axis, seed, slice_length = group["relation"]
+            errors = "\n".join(group["errors"])
+            for sample in group["samples"]:
+                details.append((
+                    group_id, output_index, batch_axis, seed, slice_length,
+                    group["status"], group["case_count"], group["sample_count"],
+                    sample["testcase_name"], repr(sample["slice"]),
+                    repr(sample["shape"]), sample["dtype"], sample["sha256"], errors,
+                ))
+            last_row = details.max_row
+            if last_row > first_row:
+                for column in (*range(1, 9), 14):
+                    details.merge_cells(
+                        start_row=first_row,
+                        start_column=column,
+                        end_row=last_row,
+                        end_column=column,
+                    )
+            for column in (*range(1, 9), 14):
+                details.cell(first_row, column).alignment = Alignment(
+                    horizontal="center", vertical="center", wrap_text=True
+                )
+            fill = "C6EFCE" if group["status"] == "PASS" else "FFC7CE"
+            details.cell(first_row, 6).fill = PatternFill("solid", fgColor=fill)
+
+        header_fill = PatternFill("solid", fgColor="D9EAF7")
+        for worksheet in (summary, details):
+            worksheet.freeze_panes = "A2"
+            worksheet.sheet_view.showGridLines = False
+            for cell in worksheet[1]:
+                cell.font = Font(bold=True)
+                cell.fill = header_fill
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+        details.freeze_panes = "I2"
+        details.auto_filter.ref = details.dimensions
+        for column, width in {
+            "A": 9, "B": 9, "C": 8, "D": 12, "E": 14, "F": 10,
+            "G": 12, "H": 14, "I": 54, "J": 20, "K": 24, "L": 16,
+            "M": 68, "N": 58,
+        }.items():
+            details.column_dimensions[column].width = width
+        summary.column_dimensions["A"].width = 28
+        summary.column_dimensions["B"].width = 100
+
+        self.excel_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            prefix=f".{self.excel_path.stem}.", suffix=".xlsx",
+            dir=self.excel_path.parent, delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+        try:
+            workbook.save(temporary)
+            os.replace(temporary, self.excel_path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
     def run(self):
         case_rows = self.read_rows(self.case_csv)
         result_rows = self.read_rows(self.result_csv)
@@ -441,6 +542,8 @@ class BatchOutputComparator:
         self.report_path.write_text(
             json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
+        if self.excel_path is not None:
+            self.write_excel(report)
         return passed, report
 
 
@@ -452,6 +555,7 @@ def build_parser():
     parser.add_argument("--result", required=True, help="TTK result CSV")
     parser.add_argument("--dump-dir", required=True, help="Directory set through NPU_DUMP_PATH")
     parser.add_argument("--report", required=True, help="JSON report path")
+    parser.add_argument("--excel", help="Optional grouped Excel report path")
     parser.add_argument("--output-index", type=int, default=0, help="Output index dumped by E2E")
     parser.add_argument(
         "--require-intra-case",
@@ -476,6 +580,7 @@ def main():
         args.output_index,
         args.require_intra_case,
         args.require_cross_case,
+        args.excel,
     )
     try:
         passed, report = comparator.run()
