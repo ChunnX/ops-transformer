@@ -40,11 +40,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> AttentionResGrad(
         gradNormWeight = at::empty({hiddenSize}, prefixSum.options());
     }
 
-    // 反向 kernel 将 inv_rms/probs 按主 dtype（FP16/BF16）解释，正向算子输出为 FP32，需先 cast 对齐。
+    // 反向 kernel 的 inv_rms/probs 输入为 FP32（与正向算子输出一致），无需 cast。
     at::Tensor invRmsCast =
-        invRms.scalar_type() == prefixSum.scalar_type() ? invRms : invRms.to(prefixSum.scalar_type());
+        invRms.scalar_type() == at::kFloat ? invRms : invRms.to(at::kFloat);
     at::Tensor probsCast =
-        probs.scalar_type() == prefixSum.scalar_type() ? probs : probs.to(prefixSum.scalar_type());
+        probs.scalar_type() == at::kFloat ? probs : probs.to(at::kFloat);
 
     ACLNN_CMD(aclnnAttentionResGrad, prefixSum, blockResidual, projWeight, normWeight, gradOutput, invRmsCast,
               probsCast, gradPrefixSum, gradBlockResidual, gradProjWeight, gradNormWeight);

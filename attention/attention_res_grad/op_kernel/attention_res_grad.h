@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -32,6 +32,57 @@
 
 namespace NsAttentionResGrad {
 using namespace AscendC;
+
+// ---- half-interval reduce，参照 attn_res_fwd/op_kernel/arch22/reduce_common.h ----
+// src 就地 half-interval fold 后 WholeReduceSum 归约到独立 dst[0]；无 sharedTmpBuffer。
+constexpr uint32_t ARG_ELEM_PER_REP_FP32 = 64;
+constexpr int32_t ARG_HALF_INTERVAL = 2;
+constexpr int32_t ARG_INDEX_TWO = 2;
+constexpr int32_t ARG_INDEX_FOUR = 4;
+constexpr int32_t ARG_INDEX_EIGHT = 8;
+constexpr int32_t ARG_INDEX_SIXTEEN = 16;
+
+__aicore__ inline int32_t ArgFindPowerTwo(int32_t n)
+{
+    n |= n >> 1;
+    n |= n >> ARG_INDEX_TWO;
+    n |= n >> ARG_INDEX_FOUR;
+    n |= n >> ARG_INDEX_EIGHT;
+    n |= n >> ARG_INDEX_SIXTEEN;
+    return (n + 1) >> 1;
+}
+
+__aicore__ inline void ReduceSumHalfInterval(const LocalTensor<float>& dstLocal, const LocalTensor<float>& srcLocal,
+                                             int32_t count)
+{
+    if (likely(count > static_cast<int32_t>(ARG_ELEM_PER_REP_FP32))) {
+        int32_t bodyCount = ArgFindPowerTwo(count);
+        int32_t tailCount = count - bodyCount;
+        if (tailCount > 0) {
+            Add(srcLocal, srcLocal, srcLocal[bodyCount], tailCount);
+            PipeBarrier<PIPE_V>();
+        }
+        while (bodyCount > static_cast<int32_t>(ARG_ELEM_PER_REP_FP32)) {
+            bodyCount = bodyCount / ARG_HALF_INTERVAL;
+            Add(srcLocal, srcLocal, srcLocal[bodyCount], bodyCount);
+            PipeBarrier<PIPE_V>();
+        }
+        AscendCUtils::SetMask<float>(ARG_ELEM_PER_REP_FP32);
+    } else {
+        AscendCUtils::SetMask<float>(static_cast<uint32_t>(count));
+    }
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
+    if ASCEND_IS_AIV {
+        WholeReduceSum<float, false>(dstLocal, srcLocal, MASK_PLACEHOLDER, 1, 0, 1, 0);
+    }
+#else
+    WholeReduceSum<float, false>(dstLocal, srcLocal, MASK_PLACEHOLDER, 1, 1, 1, DEFAULT_REPEAT_STRIDE);
+#endif
+    PipeBarrier<PIPE_V>();
+    SetMaskNorm();
+    ResetMask();
+    PipeBarrier<PIPE_V>();
+}
 
 template <typename T>
 __aicore__ inline void KahanSumUpdate(LocalTensor<T>& inputTensor,
@@ -79,7 +130,8 @@ private:
     TPipe pipe;
 
     GlobalTensor<T>     prefixSumGm, blockResGm, projWeightGm, normWeightGm;
-    GlobalTensor<T>     gradOutGm, invRmsGm, probsGm;
+    GlobalTensor<T>     gradOutGm;
+    GlobalTensor<float> invRmsGm, probsGm;
     GlobalTensor<T>     gradPrefixSumGm, gradBlockResGm;
     GlobalTensor<T>     gradProjWeightGm, gradNormWeightGm;
     GlobalTensor<float> gswWkspGm;
@@ -88,8 +140,8 @@ private:
     TBuf<TPosition::VECCALC> scoreWeightBuf, halfBuf;
     TBuf<TPosition::VECCALC> floatBuf0, floatBuf1, floatBuf2, gswAccBuf;
     TBuf<TPosition::VECCALC> gswCmpBuf;
-    TBuf<TPosition::VECCALC> probsHalfBuf, invrmsHalfBuf;
     TBuf<TPosition::VECCALC> probsFloatBuf, invrmsFloatBuf, gradProbBuf, gradScoreBuf;
+    TBuf<TPosition::VECCALC> reduceDstBuf;
 
     int64_t  batchSize_, numBlocks_, totalBlocks_, hiddenSize_;
     int64_t  coreBatchStart_, coreBatchEnd_, coreBatchCount_;
@@ -110,9 +162,14 @@ template <typename T>
 __aicore__ inline GlobalTensor<T> AttentionResGrad<T>::VAddr(int64_t blk, int64_t batch) const
 {
     if (blk < numBlocks_) {
-        return blockResGm[static_cast<uint64_t>(batch) * numBlocks_ + static_cast<uint64_t>(blk)];
+        // 每个 block 占 hiddenSize_ 个元素，偏移需乘 H
+        uint64_t blkOff =
+            (static_cast<uint64_t>(batch) * static_cast<uint64_t>(numBlocks_) +
+             static_cast<uint64_t>(blk)) * static_cast<uint64_t>(hiddenSize_);
+        return blockResGm[blkOff];
     } else {
-        return prefixSumGm[static_cast<uint64_t>(batch)];
+        // prefix_sum [B, H]，偏移 batch*H
+        return prefixSumGm[static_cast<uint64_t>(batch) * static_cast<uint64_t>(hiddenSize_)];
     }
 }
 
@@ -170,8 +227,8 @@ __aicore__ inline void AttentionResGrad<T>::Init(
     projWeightGm.SetGlobalBuffer((__gm__ T*)projWeight, H);
     normWeightGm.SetGlobalBuffer((__gm__ T*)normWeight, H);
     gradOutGm.SetGlobalBuffer((__gm__ T*)gradOutput, B * H);
-    invRmsGm.SetGlobalBuffer((__gm__ T*)invRms, B * N1);
-    probsGm.SetGlobalBuffer((__gm__ T*)probs,   B * N1);
+    invRmsGm.SetGlobalBuffer((__gm__ float*)invRms, B * N1);
+    probsGm.SetGlobalBuffer((__gm__ float*)probs, B * N1);
     gradPrefixSumGm.SetGlobalBuffer((__gm__ T*)gradPrefixSum, B * H);
     gradBlockResGm.SetGlobalBuffer((__gm__ T*)gradBlockResidual, B * N * H);
     gradProjWeightGm.SetGlobalBuffer((__gm__ T*)gradProjWeight, H);
@@ -193,14 +250,12 @@ __aicore__ inline void AttentionResGrad<T>::Init(
     pipe.InitBuffer(floatBuf2,         HU * sizeof(float));
     pipe.InitBuffer(gswAccBuf,         HU * sizeof(float));
     pipe.InitBuffer(gswCmpBuf,         HU * sizeof(float));
-    uint32_t n1HalfBytes  = (N1U * sizeof(T) + 31U) / 32U * 32U;
-    uint32_t n1FloatBytes = N1U * sizeof(float);
-    pipe.InitBuffer(probsHalfBuf,      n1HalfBytes);
-    pipe.InitBuffer(invrmsHalfBuf,     n1HalfBytes);
-    pipe.InitBuffer(probsFloatBuf,     n1FloatBytes);
-    pipe.InitBuffer(invrmsFloatBuf,    n1FloatBytes);
+    uint32_t n1FloatBytes = (N1U * sizeof(float) + 31U) / 32U * 32U;
+    pipe.InitBuffer(probsFloatBuf, n1FloatBytes);
+    pipe.InitBuffer(invrmsFloatBuf, n1FloatBytes);
     pipe.InitBuffer(gradProbBuf,       N1U * sizeof(float));
     pipe.InitBuffer(gradScoreBuf,      N1U * sizeof(float));
+    pipe.InitBuffer(reduceDstBuf,      32U);   // ReduceSumHalfInterval 的独立 dst（1 个 float）
     // Kahan summation buffers.
 }
 
@@ -240,31 +295,26 @@ __aicore__ inline void AttentionResGrad<T>::CopyInToken(int64_t batch)
 
     uint64_t gmOff = static_cast<uint64_t>(batch) * totalBlocks_;
 
-    LocalTensor<T> hb     = halfBuf.Get<T>();
-    LocalTensor<T> ppHalf = probsHalfBuf.Get<T>();
-    LocalTensor<T> piHalf = invrmsHalfBuf.Get<T>();
+    LocalTensor<T>     hb  = halfBuf.Get<T>();
+    LocalTensor<float> pf  = probsFloatBuf.Get<float>();
+    LocalTensor<float> irf = invrmsFloatBuf.Get<float>();
 
     DataCopyExtParams cpH(1, H * sizeof(T), 0, 0, 0);
-    DataCopyExtParams cpN1(1, N1U * sizeof(T), 0, 0, 0);
-    uint32_t n1RightPad = ((N1U * sizeof(T) + 31U) / 32U * 32U - N1U * sizeof(T)) / sizeof(T);
+    DataCopyExtParams cpN1(1, N1U * sizeof(float), 0, 0, 0);
+    uint32_t n1RightPad = ((N1U * sizeof(float) + 31U) / 32U * 32U - N1U * sizeof(float)) / sizeof(float);
 
     DataCopyPad(hb, gradOutGm[static_cast<uint64_t>(batch) * hiddenSize_], cpH, {false, 0U, 0U, 0U});
     SetFlag<HardEvent::MTE2_V>(eventMTE2V_);
     WaitFlag<HardEvent::MTE2_V>(eventMTE2V_);
 
-    DataCopyPad(ppHalf, probsGm[gmOff], cpN1, {true, 0U, static_cast<uint8_t>(n1RightPad), 0U});
+    // probs/inv_rms 输入为 FP32（正向算子输出），直接搬入 float buffer，不再经 BF16 量化。
+    DataCopyPad(pf, probsGm[gmOff], cpN1, {true, 0U, static_cast<uint8_t>(n1RightPad), 0U});
     SetFlag<HardEvent::MTE2_V>(eventMTE2V_);
     WaitFlag<HardEvent::MTE2_V>(eventMTE2V_);
-    Cast(probsFloatBuf.Get<float>(), ppHalf, RoundMode::CAST_NONE, N1U);
-    SetFlag<HardEvent::V_MTE2>(eventVMTE2_);
-    WaitFlag<HardEvent::V_MTE2>(eventVMTE2_);
 
-    DataCopyPad(piHalf, invRmsGm[gmOff], cpN1, {true, 0U, static_cast<uint8_t>(n1RightPad), 0U});
+    DataCopyPad(irf, invRmsGm[gmOff], cpN1, {true, 0U, static_cast<uint8_t>(n1RightPad), 0U});
     SetFlag<HardEvent::MTE2_V>(eventMTE2V_);
     WaitFlag<HardEvent::MTE2_V>(eventMTE2V_);
-    Cast(invrmsFloatBuf.Get<float>(), piHalf, RoundMode::CAST_NONE, N1U);
-    SetFlag<HardEvent::V_MTE2>(eventVMTE2_);
-    WaitFlag<HardEvent::V_MTE2>(eventVMTE2_);
 }
 
 template <typename T>
@@ -319,10 +369,11 @@ __aicore__ inline void AttentionResGrad<T>::PrecomputeGradProbs(int64_t batch)
         WaitFlag<HardEvent::V_MTE2>(eventVMTE2_);
 
         Mul(fb2, fb1, fb0, H);
-        ReduceSum<float>(fb2, fb2, fb2, H);
+        ReduceSumHalfInterval(reduceDstBuf.Get<float>(), fb2, static_cast<int32_t>(H));
         SetFlag<HardEvent::V_S>(eventVS_);   // ReduceSum -> GetValue
         WaitFlag<HardEvent::V_S>(eventVS_);
-        gp.SetValue(bb, fb2.GetValue(0));
+        float gpVal = reduceDstBuf.Get<float>().GetValue(0);
+        gp.SetValue(bb, gpVal);
     }
     SetFlag<HardEvent::S_V>(eventSV_);   // Scalar writes to gp are visible to vector.
 }
@@ -339,10 +390,10 @@ __aicore__ inline void AttentionResGrad<T>::SoftmaxBackwardN1()
 
     WaitFlag<HardEvent::S_V>(eventSV_);   // Wait for scalar writes to gp.
     Mul(tmp, probsF, gp, N1);
-    ReduceSum<float>(tmp, tmp, tmp, N1);
+    ReduceSumHalfInterval(reduceDstBuf.Get<float>(), tmp, static_cast<int32_t>(N1));
     SetFlag<HardEvent::V_S>(eventVS_);   // ReduceSum -> GetValue
     WaitFlag<HardEvent::V_S>(eventVS_);
-    float scalar = tmp.GetValue(0);
+    float scalar = reduceDstBuf.Get<float>().GetValue(0);
 
     Adds(tmp, gp, -scalar, N1);
     Mul(gs, probsF, tmp, N1);
@@ -385,10 +436,10 @@ __aicore__ inline void AttentionResGrad<T>::ComputeGradV(int64_t blk)
     // grad_v_from_k = grad_k * inv_rms  ->  [B, N+1, H] * [B, N+1, 1]  ->  [B, N+1, H]
     // grad_inv_rms = gradScore[blk] * sum(score_weight * v)
     Mul(fb0, sw, fb1, H);
-    ReduceSum<float>(fb0, fb0, fb0, H);
+    ReduceSumHalfInterval(reduceDstBuf.Get<float>(), fb0, static_cast<int32_t>(H));
     SetFlag<HardEvent::V_S>(eventVS_);   // ReduceSum -> GetValue
     WaitFlag<HardEvent::V_S>(eventVS_);
-    float sumSWV = fb0.GetValue(0);
+    float sumSWV = reduceDstBuf.Get<float>().GetValue(0);
     float gradInvRms = gsBlk * sumSWV;
 
     // grad_variance = grad_inv_rms * (-0.5) * inv_rms^3
@@ -496,6 +547,9 @@ __aicore__ inline void AttentionResGrad<T>::ReduceAndWriteWeights()
     SetFlag<HardEvent::V_MTE3>(eventVMTE3_);   // Cast writes hb; MTE3 may read it.
     WaitFlag<HardEvent::V_MTE3>(eventVMTE3_);
     DataCopyPad(gradNormWeightGm, hb, cpT);
+    // 上一段 MTE3 读 hb 必须先完成，下一段 MTE2 才能覆写同一 halfBuf，否则输出被污染
+    SetFlag<HardEvent::MTE3_MTE2>(eventMTE3MTE2_);
+    WaitFlag<HardEvent::MTE3_MTE2>(eventMTE3MTE2_);
 
     // grad_proj_weight = total * norm_w
     DataCopyPad(ph, normWeightGm, cpT, {false, 0U, 0U, 0U});
