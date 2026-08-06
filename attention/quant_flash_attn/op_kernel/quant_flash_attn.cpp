@@ -18,11 +18,7 @@
 #include "arch35/quant_flash_attn_common_def.h"
 #include "util.h"
 #include "arch35/quant_flash_attn_kernel_mxfp8.h"
-<<<<<<< HEAD
-=======
-#include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "arch35/quant_flash_attn_kernel_hif8.h"
->>>>>>> 5719f124e (feat(quant_flash_attn): 支持 HIF8 per-tensor 量化模式)
 #include "arch35/quant_flash_attn_template_tiling_key.h"
 #include "arch35/quant_flash_attn_tiling_data.h"
 #if __has_include("../../common/op_kernel/arch35/flash_attention_score_common_regbase.h")
