@@ -22,9 +22,6 @@ def tsoftmax(x, sink=None):
     x_sub = x.sub(x_max)
     y = torch.exp(x_sub)
     x_sum = y.sum(dim=-1, keepdim=True)
-    if sink is not None:
-        sink_exp = torch.exp(sink.view(1, -1, 1, 1) - x_max)
-        x_sum = x_sum + sink_exp
     res = y.div(x_sum)
     return res, x_max, x_sum
 
