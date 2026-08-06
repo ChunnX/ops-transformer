@@ -38,7 +38,7 @@
 #include <cstdlib>
 
 #include "utils.h"
-#include "../../common/op_kernel/apace/tests/st/utils/comm_channel_builder.h"
+#include "../../common/op_kernel/apace/utils/comm_channel_builder.h"
 #include "../../common/op_kernel/apace/tests/st/utils/root_info_exchanger.h"
 #include "apace/kernel/all_to_all_quant_matmul/all_to_all_matmul_tiling_data.h"
 #include "aclnnop/aclnn_allto_all_matmul_apace.h"
@@ -241,6 +241,156 @@ int runOneRank(int rankNum, int rankId, int mPerRank, int kTotal, int n, const s
 
     aclrtSynchronizeStream(stream);
     INFO_LOG("rank %d execute success", rankId);
+
+    // ---- Input validation tests (rank 0 only, to avoid duplicating logs) ----
+    if (rankId == 0) {
+#define CHECK_FAIL(name, call) \
+    do { \
+        uint64_t _ws = 0; \
+        aclOpExecutor *_ex = nullptr; \
+        aclnnStatus _r = call; \
+        INFO_LOG("  [%s] ret=%d %s", name, (int)_r, (_r != 0) ? "PASS" : "FAIL"); \
+    } while (0)
+
+        INFO_LOG("--- validation: nullptr checks ---");
+        CHECK_FAIL("x1_null", aclnnAlltoAllMatmulApaceGetWorkspaceSize(
+                                  ctxTensor, nullptr, tX2, nullptr, tS1, tS2, nullptr, nullptr, nullptr, "", worldSize,
+                                  0, nullptr, 6, 6, 0, 28, 28, false, true, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
+        CHECK_FAIL("x2_null", aclnnAlltoAllMatmulApaceGetWorkspaceSize(
+                                  ctxTensor, tX1, nullptr, nullptr, tS1, tS2, nullptr, nullptr, nullptr, "", worldSize,
+                                  0, nullptr, 6, 6, 0, 28, 28, false, true, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
+        CHECK_FAIL("s1_null", aclnnAlltoAllMatmulApaceGetWorkspaceSize(
+                                  ctxTensor, tX1, tX2, nullptr, nullptr, tS2, nullptr, nullptr, nullptr, "", worldSize,
+                                  0, nullptr, 6, 6, 0, 28, 28, false, true, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
+        CHECK_FAIL("s2_null", aclnnAlltoAllMatmulApaceGetWorkspaceSize(
+                                  ctxTensor, tX1, tX2, nullptr, tS1, nullptr, nullptr, nullptr, nullptr, "", worldSize,
+                                  0, nullptr, 6, 6, 0, 28, 28, false, true, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
+        CHECK_FAIL("out_null",
+                   aclnnAlltoAllMatmulApaceGetWorkspaceSize(ctxTensor, tX1, tX2, nullptr, tS1, tS2, nullptr, nullptr,
+                                                            nullptr, "", worldSize, 0, nullptr, 6, 6, 0, 28, 28, false,
+                                                            true, 0, commMode, 0, nullptr, nullptr, &_ws, &_ex));
+
+        INFO_LOG("--- validation: dtype checks ---");
+        {
+            void *dX1B = nullptr, *dOutB = nullptr;
+            aclTensor *tX1Bad = nullptr, *tOutBad = nullptr;
+            aclrtMalloc(&dX1B, nX1, ACL_MEM_MALLOC_HUGE_FIRST);
+            aclrtMalloc(&dOutB, nOut * 2, ACL_MEM_MALLOC_HUGE_FIRST);
+            CreateAclTensorFromDevice(dX1B, x1Shape, ACL_FLOAT, &tX1Bad);
+            CreateAclTensorFromDevice(dOutB, outShape, ACL_FLOAT, &tOutBad);
+            CHECK_FAIL("x1_not_fp8",
+                       aclnnAlltoAllMatmulApaceGetWorkspaceSize(
+                           ctxTensor, tX1Bad, tX2, nullptr, tS1, tS2, nullptr, nullptr, nullptr, "", worldSize, 0,
+                           nullptr, 6, 6, 0, 28, 28, false, true, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
+            CHECK_FAIL("y_not_bf16",
+                       aclnnAlltoAllMatmulApaceGetWorkspaceSize(
+                           ctxTensor, tX1, tX2, nullptr, tS1, tS2, nullptr, nullptr, nullptr, "", worldSize, 0, nullptr,
+                           6, 6, 0, 28, 28, false, true, 0, commMode, 0, tOutBad, nullptr, &_ws, &_ex));
+            aclDestroyTensor(tX1Bad);
+            aclDestroyTensor(tOutBad);
+            aclrtFree(dX1B);
+            aclrtFree(dOutB);
+        }
+
+        INFO_LOG("--- validation: transpose_x2 must be true ---");
+        CHECK_FAIL("transx2_false",
+                   aclnnAlltoAllMatmulApaceGetWorkspaceSize(ctxTensor, tX1, tX2, nullptr, tS1, tS2, nullptr, nullptr,
+                                                            nullptr, "", worldSize, 0, nullptr, 6, 6, 0, 28, 28, false,
+                                                            false, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
+
+        INFO_LOG("--- validation: K dim not divisible by 64 ---");
+        {
+            void *dX1K = nullptr;
+            aclTensor *tX1K = nullptr;
+            std::vector<int64_t> x1kShape = {mTotal, ka + 1}; // K not aligned to 64
+            long long nX1K = GetShapeSize(x1kShape);
+            aclrtMalloc(&dX1K, nX1K, ACL_MEM_MALLOC_HUGE_FIRST);
+            CreateAclTensorFromDevice(dX1K, x1kShape, ACL_FLOAT8_E4M3FN, &tX1K);
+            CHECK_FAIL("k_not_div64",
+                       aclnnAlltoAllMatmulApaceGetWorkspaceSize(
+                           ctxTensor, tX1K, tX2, nullptr, tS1, tS2, nullptr, nullptr, nullptr, "", worldSize, 0,
+                           nullptr, 6, 6, 0, 28, 28, false, true, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
+            aclDestroyTensor(tX1K);
+            aclrtFree(dX1K);
+        }
+
+        INFO_LOG("--- validation: scale shape mismatch ---");
+        {
+            void *dS1B = nullptr;
+            aclTensor *tS1Bad = nullptr;
+            std::vector<int64_t> s1BadShape = {(int64_t)mTotal, (ka + 63) / 64 + 1, 2L}; // wrong K dim
+            long long nS1B = GetShapeSize(s1BadShape);
+            aclrtMalloc(&dS1B, nS1B, ACL_MEM_MALLOC_HUGE_FIRST);
+            CreateAclTensorFromDevice(dS1B, s1BadShape, ACL_FLOAT8_E8M0, &tS1Bad);
+            CHECK_FAIL("s1_shape_mismatch",
+                       aclnnAlltoAllMatmulApaceGetWorkspaceSize(
+                           ctxTensor, tX1, tX2, nullptr, tS1Bad, tS2, nullptr, nullptr, nullptr, "", worldSize, 0,
+                           nullptr, 6, 6, 0, 28, 28, false, true, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
+            aclDestroyTensor(tS1Bad);
+            aclrtFree(dS1B);
+        }
+
+        INFO_LOG("--- validation: scale must be 3D ---");
+        {
+            void *dS2B = nullptr;
+            aclTensor *tS2Bad = nullptr;
+            std::vector<int64_t> s2BadShape = {(int64_t)n, (kTotal + 63) / 64}; // 2D instead of 3D
+            long long nS2B = GetShapeSize(s2BadShape);
+            aclrtMalloc(&dS2B, nS2B, ACL_MEM_MALLOC_HUGE_FIRST);
+            CreateAclTensorFromDevice(dS2B, s2BadShape, ACL_FLOAT8_E8M0, &tS2Bad);
+            CHECK_FAIL("s2_not_3d",
+                       aclnnAlltoAllMatmulApaceGetWorkspaceSize(
+                           ctxTensor, tX1, tX2, nullptr, tS1, tS2Bad, nullptr, nullptr, nullptr, "", worldSize, 0,
+                           nullptr, 6, 6, 0, 28, 28, false, true, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
+            aclDestroyTensor(tS2Bad);
+            aclrtFree(dS2B);
+        }
+
+        INFO_LOG("--- validation: scale dtype not E8M0 ---");
+        {
+            void *dS1D = nullptr;
+            aclTensor *tS1D = nullptr;
+            aclrtMalloc(&dS1D, nS1, ACL_MEM_MALLOC_HUGE_FIRST);
+            CreateAclTensorFromDevice(dS1D, s1Shape, ACL_FLOAT, &tS1D);
+            CHECK_FAIL("s1_not_e8m0",
+                       aclnnAlltoAllMatmulApaceGetWorkspaceSize(
+                           ctxTensor, tX1, tX2, nullptr, tS1D, tS2, nullptr, nullptr, nullptr, "", worldSize, 0,
+                           nullptr, 6, 6, 0, 28, 28, false, true, 0, commMode, 0, tOut, nullptr, &_ws, &_ex));
+            aclDestroyTensor(tS1D);
+            aclrtFree(dS1D);
+        }
+        INFO_LOG("--- validation: Torch .t() non-contiguous x2 ---");
+        {
+            // Simulate PyTorch .t(): x2 is [K,N] storage, [N,K] view with strides [1,N]
+            std::vector<int64_t> viewShapeT = {static_cast<int64_t>(n), kTotal};
+            std::vector<int64_t> storageShapeT = {kTotal, static_cast<int64_t>(n)};
+            std::vector<int64_t> stridesT = {1, static_cast<int64_t>(n)};
+            aclTensor *tX2Trans =
+                aclCreateTensor(viewShapeT.data(), viewShapeT.size(), ACL_FLOAT8_E4M3FN, stridesT.data(), 0,
+                                ACL_FORMAT_ND, storageShapeT.data(), storageShapeT.size(), dX2);
+            // transposed x2 + transposeX2=true should succeed
+            uint64_t _ws2 = 0;
+            aclOpExecutor *_ex2 = nullptr;
+            aclnnStatus _r2 = aclnnAlltoAllMatmulApaceGetWorkspaceSize(
+                ctxTensor, tX1, tX2Trans, nullptr, tS1, tS2, nullptr, nullptr, nullptr, "", worldSize, 0, nullptr, 6, 6,
+                0, 28, 28, false, true, 0, commMode, 0, tOut, nullptr, &_ws2, &_ex2);
+            INFO_LOG("  [x2_transposed] ret=%d %s", (int)_r2, (_r2 == 0) ? "PASS" : "FAIL");
+            aclDestroyTensor(tX2Trans);
+
+            // transposed x2 + transposeX2=false → should auto-detect and succeed
+            aclTensor *tX2Trans2 =
+                aclCreateTensor(viewShapeT.data(), viewShapeT.size(), ACL_FLOAT8_E4M3FN, stridesT.data(), 0,
+                                ACL_FORMAT_ND, storageShapeT.data(), storageShapeT.size(), dX2);
+            uint64_t _ws3 = 0;
+            aclOpExecutor *_ex3 = nullptr;
+            aclnnStatus _r3 = aclnnAlltoAllMatmulApaceGetWorkspaceSize(
+                ctxTensor, tX1, tX2Trans2, nullptr, tS1, tS2, nullptr, nullptr, nullptr, "", worldSize, 0, nullptr, 6,
+                6, 0, 28, 28, false, false, 0, commMode, 0, tOut, nullptr, &_ws3, &_ex3);
+            INFO_LOG("  [x2_transp_autofix] ret=%d %s", (int)_r3, (_r3 == 0) ? "PASS" : "FAIL");
+            aclDestroyTensor(tX2Trans2);
+        }
+#undef CHECK_FAIL
+    }
 
     // ---- Read back output ----
     aclrtMemcpy(hOut.data(), nOut * sizeof(uint16_t), dOut, nOut * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);

@@ -47,7 +47,8 @@ set(CANN_VENDOR_INCLUDE   ${ASCEND_HOME_PATH}/vendors/custom_transformer/op_api/
 set(CANN_TIK_INCLUDE      ${ASCEND_HOME_PATH}/compiler/tikcpp/tikcfw)
 
 set(APACE_KERNEL_ROOT     ${REPO_ROOT}/mc2/common/op_kernel)           # apace/ 头文件
-set(APACE_ST_UTILS        ${APACE_KERNEL_ROOT}/apace/tests/st/utils)  # CommChannelBuilder 等
+set(APACE_COMMON_UTILS    ${APACE_KERNEL_ROOT}/apace/utils)           # CommChannelBuilder
+set(APACE_ST_UTILS        ${APACE_KERNEL_ROOT}/apace/tests/st/utils)  # RootInfoExchanger 等
 set(APACE_ST_SRC          ${APACE_KERNEL_ROOT}/apace/tests/st)
 
 include_directories(
@@ -58,6 +59,7 @@ include_directories(
     ${CANN_VENDOR_INCLUDE}
     ${CANN_TIK_INCLUDE}
     ${APACE_KERNEL_ROOT}
+    ${APACE_COMMON_UTILS}
     ${APACE_ST_UTILS}
     ${APACE_ST_SRC}
 )
