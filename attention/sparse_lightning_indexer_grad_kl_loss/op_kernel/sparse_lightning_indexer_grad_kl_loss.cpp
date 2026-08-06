@@ -49,13 +49,13 @@ using namespace SligKlLoss;
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                                          \
         const tilingdataClass *__restrict tiling_data = &tiling_data_in;                                               \
         op.Init(query, key, queryIndex, keyIndex, weight, sparseIndices, softmaxMax, softmaxMum, queryRope, keyRope,   \
-                actualSeqLengthsQuery, actualSeqLengthsKey, dQueryIndex, dKeyIndex, dWeight, loss, user, tiling_data,  \
-                &tPipe);                                                                                               \
+                actualSeqLengthsQuery, actualSeqLengthsKey, dQueryIndex, dKeyIndex, dWeight, loss, sinks, user,        \
+                tiling_data, &tPipe);                                                                                  \
         op.Process();                                                                                                  \
     } while (0)
 #endif
 
-template< bool HasRope, int TopKRange, int LayoutT_QT, int LayoutT_KT, int SparseMode, bool Deterministic>
+template< bool HasRope, int TopKRange, int LayoutT_QT, int LayoutT_KT, int SparseMode, bool Deterministic, bool HasSink>
  __global__ __aicore__ void
 sparse_lightning_indexer_grad_kl_loss(__gm__ uint8_t *query, __gm__ uint8_t *key,
                                       __gm__ uint8_t *queryIndex, __gm__ uint8_t *keyIndex,
@@ -66,7 +66,7 @@ sparse_lightning_indexer_grad_kl_loss(__gm__ uint8_t *query, __gm__ uint8_t *key
                                       __gm__ uint8_t* actualSeqLengthsKey,
                                       __gm__ uint8_t *dQueryIndex, __gm__ uint8_t *dKeyIndex,
                                       __gm__ uint8_t *dWeight, __gm__ uint8_t *loss,
-                                      __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+                                      __gm__ uint8_t *sinks, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
 #if __CCE_AICORE__ == 310
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
@@ -78,13 +78,13 @@ sparse_lightning_indexer_grad_kl_loss(__gm__ uint8_t *query, __gm__ uint8_t *key
         SLI_OP_IMPL(SparseLightningIndexerGradKLLossKernelBase,
                     optiling::SparseLightningIndexerGradKLLossRegBaseTilingData, half, half, DTYPE_WEIGHT, float,
                     static_cast<SLILayout>(LayoutT_QT), static_cast<SLILayout>(LayoutT_KT), SLISparseMode::RightDown,
-                    HasRope, Deterministic);
+                    HasRope, Deterministic, HasSink);
     }
     if constexpr (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16) {
         SLI_OP_IMPL(SparseLightningIndexerGradKLLossKernelBase,
                     optiling::SparseLightningIndexerGradKLLossRegBaseTilingData, bfloat16_t, bfloat16_t, DTYPE_WEIGHT,
                     float, static_cast<SLILayout>(LayoutT_QT), static_cast<SLILayout>(LayoutT_KT),
-                    SLISparseMode::RightDown, HasRope, Deterministic);
+                    SLISparseMode::RightDown, HasRope, Deterministic, HasSink);
     }
 #else
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);

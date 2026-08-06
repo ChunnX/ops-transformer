@@ -41,6 +41,7 @@ constexpr uint32_t QUERY_ROPE_INPUT_INDEX = 8;
 constexpr uint32_t KEY_ROPE_INPUT_INDEX = 9;
 constexpr uint32_t ACTUAL_SEQ_LENGTHS_QUERY_INPUT_INDEX = 10;
 constexpr uint32_t ACTUAL_SEQ_LENGTHS_KEY_INPUT_INDEX = 11;
+constexpr uint32_t SINK_INPUT_INDEX = 12;
 
 // Outputs Index
 constexpr uint32_t D_QUERY_INDEX_OUTPUT_INDEX = 0;

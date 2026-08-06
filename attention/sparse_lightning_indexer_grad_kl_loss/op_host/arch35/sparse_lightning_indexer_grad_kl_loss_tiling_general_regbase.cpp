@@ -703,6 +703,16 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeLayout()
     OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "n2Size is zero"), return false);
     OP_CHECK_IF(dSizeQuery <= 0,
                  OPS_REPORT_VECTOR_INNER_ERR(opName, "dSizeQuery  is not support <= 0"), return false);
+
+    auto sinksShape = context_->GetOptionalInputShape(SINK_INPUT_INDEX);
+    hasSink = (sinksShape != nullptr && sinksShape->GetStorageShape().GetDimNum() != 0);
+    if (hasSink) {
+        auto &sinksStorageShape = sinksShape->GetStorageShape();
+        OP_CHECK_IF(sinksStorageShape.GetDimNum() != 1 || sinksStorageShape.GetDim(0) != gSizeQuery,
+            OP_LOGE(opName, "sinks shape should be [%d], but got dimNum=%lu, dim0=%ld.",
+                gSizeQuery, sinksStorageShape.GetDimNum(), sinksStorageShape.GetDim(0)),
+            return false);
+    }
     return true;
 }
 
@@ -1071,8 +1081,9 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::DoLibApiTilin
 
 uint64_t SparseLightningIndexerGradKLLossTilingBaseRegbase::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(static_cast<uint8_t>(hasRope), static_cast<uint8_t>(topKRange), static_cast<uint8_t>(tilingKeyLayout), 
-        static_cast<uint8_t>(tilingKeyLayout), static_cast<uint8_t>(sparseMode), static_cast<uint8_t>(deterministic));
+    return GET_TPL_TILING_KEY(static_cast<uint8_t>(hasRope), static_cast<uint8_t>(topKRange), static_cast<uint8_t>(tilingKeyLayout),
+        static_cast<uint8_t>(tilingKeyLayout), static_cast<uint8_t>(sparseMode), static_cast<uint8_t>(deterministic),
+        static_cast<uint8_t>(hasSink));
 }
 
 ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::GetWorkspaceSize()
@@ -1092,6 +1103,9 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::GetWorkspaceS
 
     int64_t usedCoreNum = static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum());
     int64_t singlecoreTotalSize = PING_PONG_VALUE * reduceSumOffset + reluOffset + gatherSYOffset;
+    if (hasSink) {
+        singlecoreTotalSize += 2 * sizeof(float); // psinkSync: one float per subBlock
+    }
     int64_t multicoreTotalsize = 0;
     if (deterministic) {
         multicoreTotalsize = singlecoreTotalSize *
