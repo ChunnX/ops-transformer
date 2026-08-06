@@ -25,7 +25,7 @@ def load_pytest_golden_module():
     global PYTEST_GOLDEN_MODULE
     if PYTEST_GOLDEN_MODULE is not None:
         return PYTEST_GOLDEN_MODULE
-    pytest_dir = Path(__file__).resolve().parents[2] / "pytest"
+    pytest_dir = Path(__file__).resolve().parents[3] / "pytest"
     module_path = pytest_dir / "stem_indexer_golden.py"
     sys.path.insert(0, str(pytest_dir))
     try:
