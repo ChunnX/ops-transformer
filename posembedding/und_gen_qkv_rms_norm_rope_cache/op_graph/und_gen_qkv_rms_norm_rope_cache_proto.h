@@ -61,9 +61,6 @@ namespace ge {
 * @li D is fixed to 128, and (num_heads_q, num_heads_k, num_heads_v) supports (8,1,1) and (16,2,2) only.
 * @li k_cache and v_cache must be contiguous, and their capacity must satisfy Bn * Bs >= T.
 * @li The four optional inputs must be either all provided or all absent within one call. \n
-
-* @par Restrictions:
-* Warning: THIS FUNCTION IS EXPERIMENTAL. Please do not use. \n
 */
 REG_OP(UndGenQkvRmsNormRopeCache)
     .INPUT(und_qkv, TensorType({DT_BF16}))
