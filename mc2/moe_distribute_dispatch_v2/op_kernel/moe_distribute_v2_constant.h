@@ -39,6 +39,7 @@ constexpr uint32_t UB_ALIGN = 32U;
 constexpr uint64_t DISPATCH_STATE_WIN_OFFSET = 768UL * 1024UL;
 constexpr uint8_t BUFFER_NUM = 2; // 多buf
 constexpr uint8_t BUFFER_SINGLE = 1;
+constexpr uint8_t VALID_EVENT_FLAG_NUM = 8U; // SetFlag/WaitFlag 旋转事件的并发深度上限
 constexpr uint32_t STATE_OFFSET = 32U; // 状态空间偏移地址
 constexpr uint8_t COMM_NUM = 1;        // 通信域大小
 constexpr uint8_t COMM_EP_IDX = 0;
