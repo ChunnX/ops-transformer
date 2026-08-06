@@ -203,6 +203,8 @@ bool GroupedQmmTiling::AnalyzeAttrs()
     inputParams_.isSingleW = (context_->GetDynamicInputDesc(WEIGHT_INDEX, 1) == nullptr);
     // 2: when x is multi-tensor, y is single-tensor; 3: when x is single-tensor, y is single-tensor
     inputParams_.isSingleY = (inputParams_.splitItem == 2 || inputParams_.splitItem == 3);
+    OP_CHECK_IF(!CheckWeightNzRuntimeConstraints(),
+                OP_LOGE(inputParams_.opName, "CheckWeightNzRuntimeConstraints failed."), return false);
     return true;
 }
 
@@ -1146,7 +1148,7 @@ ge::graphStatus GroupedQmmTiling::GetShapeAttrsInfo()
         OP_LOGD(inputParams_.opName, "No need to get shape and attrs from tiling context again.");
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(!AnalyzeDtype() || !AnalyzeAttrs() || !CheckWeightNzRuntimeConstraints() || !AnalyzeInputs(),
+    OP_CHECK_IF(!AnalyzeDtype() || !AnalyzeAttrs() || !AnalyzeInputs(),
                 OP_LOGE(inputParams_.opName, "Failed to analyze context_ info."), return ge::GRAPH_FAILED);
     inputParams_.initFlag = true;
     return ge::GRAPH_SUCCESS;
