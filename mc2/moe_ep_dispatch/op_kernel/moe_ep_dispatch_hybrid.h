@@ -62,6 +62,7 @@ constexpr uint32_t EXPERT_NUM_PER_GROUP = 256U; // GetExpertFreq 单次最多256
 constexpr uint32_t DATA_BLOCK_NUM = 8U;         // 256B/32B=8
 constexpr uint8_t BUFFER_NUM = 2;
 constexpr int64_t STATUS_POLL_BACKOFF_CYCLES = 100; // ready 未就绪时的轮询退避周期
+constexpr int64_t COUNT_SEND_DRAIN_DELAY_CYCLES = 200000; // 调试：count Drain 后延时，验证跨轮竞争是否纯时序
 constexpr uint32_t STATUS_CLEAR_BATCH_RECORDS = 64U;
 // status[0]发布总slot数，其余status只表示对应slot已到达。
 constexpr uint32_t SCALEOUT_SLOT_READY = 1U;
@@ -776,10 +777,15 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
 
     // notifyValue 的低 32 位为 ready，高 32 位为该目标 rank 的 token count。
+    PRINTF("[DH] r=%u aiv=%u sendCount dst=%u val=%lu begin\n", epRankId_, aivId_, dstRankId,
+           static_cast<unsigned long>(notifyValue));
     hcomm_.WriteWithNotifyNbi(commHandle, remoteCountAddr, srcWorkspaceAddr,
                               static_cast<uint64_t>(moeExpertNumPerRank_ * sizeof(int32_t)),
                               notifyAddr, notifyValue);
     hcomm_.Drain(commHandle);
+    int64_t delayStartCycle = GetSystemCycle();
+    while (GetSystemCycle() - delayStartCycle < COUNT_SEND_DRAIN_DELAY_CYCLES) {
+    }
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -857,19 +863,31 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     LocalTensor<float> recvCounterTensorFp32 = recvCounterTensor.template ReinterpretCast<float>();
     LocalTensor<float> numRecvPerRankTensorFp32 = numRecvPerRankTensor_.template ReinterpretCast<float>();
     SyncFunc<AscendC::HardEvent::MTE3_V>(); // 等待本核上轮计数器清0(buf 复用)
+    PRINTF("[DH] r=%u aiv=0 getRecvCount enter cmp=%u\n", epRankId_, compareFlag);
+    uint32_t dbgPoll = 0U;
     while (sumOfFlag != compareFlag) {      // 状态位check
         DataCopy(recvCounterTensor, recvCounterGMTensor_, statusCopyParams_);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum(numRecvPerRankTensorFp32, recvCounterTensorFp32, tempFp32, mask, serverRankCount, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = numRecvPerRankTensor_.GetValue(0);
+        if (dbgPoll < 5U || (dbgPoll & 0xFFU) == 0U) {
+            PRINTF("[DH] r=%u aiv=0 getRecvCount poll=%u sum=%d cmp=%d", epRankId_, dbgPoll, sumOfFlag, compareFlag);
+            for (uint32_t srcRankId = 0U; srcRankId < serverRankCount; ++srcRankId) {
+                PRINTF(" r%u=%d", srcRankId, recvCounterTensor.GetValue(srcRankId * UB_STRIDE));
+            }
+            PRINTF("\n");
+        }
+        dbgPoll++;
     }
+    PRINTF("[DH] r=%u aiv=0 getRecvCount done sum=%d\n", epRankId_, sumOfFlag);
     SetRecvNumPerExpert();                // 计算本卡上各专家接收的token总数
     SetRecvNumPerRank(recvCounterTensor); // 计算本端接收来自各卡的token总数
     // status clear
     Duplicate<int32_t>(recvCounterTensor, 0, serverRankCount * UB_STRIDE);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(recvCounterGMTensor_, recvCounterTensor, clearStatusCopyParams_);
+    PRINTF("[DH] r=%u aiv=0 getRecvCount status cleared\n", epRankId_);
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1949,6 +1967,9 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     ExchangeCount();
     SyncAll<true>(); // 本Rank的count全部发出后，AIV0等待远端count，其余AIV开始本地构建。
     if (aivId_ == 0U) {
+        PRINTF("[DH] r=%u aiv=0 exchangeCount+syncAll done\n", epRankId_);
+    }
+    if (aivId_ == 0U) {
         GetRecvCount();
     }
     PipeBarrier<PIPE_ALL>();
@@ -1957,6 +1978,9 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         PreparePayloads();
     }
     SyncAll<true>();
+    if (aivId_ == 0U) {
+        PRINTF("[DH] r=%u aiv=0 prepareDispatchPayloads all done\n", epRankId_);
+    }
 
     PipeBarrier<PIPE_ALL>();
     tpipe_->Reset();
@@ -1981,6 +2005,10 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::TransferDispatchPayloads()
 {
+    if (aivId_ == 0U) {
+        PRINTF("[DH] r=%u aiv=0 transfer begin serverNum=%u remote=%u scaleoutAiv=%u scaleupAiv=%u\n",
+               epRankId_, serverNum_, remoteServerCount_, numScaleoutSendAiv_, numNodeLocalAiv_);
+    }
     if (aivNum_ == 1U) {
         SendScaleoutPayloadsToProxy();
         SendScaleupPayloads();
@@ -1991,7 +2019,13 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         SendScaleupPayloads();
     }
     SyncAll<true>(); // 所有节点内发送完成后才能清理本轮Scaleout接收状态。
+    if (aivId_ == 0U) {
+        PRINTF("[DH] r=%u aiv=0 transfer payloads syncAll done\n", epRankId_);
+    }
     ClearReceivedScaleoutStatuses();
+    if (aivId_ == 0U) {
+        PRINTF("[DH] r=%u aiv=0 transfer done\n", epRankId_);
+    }
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
