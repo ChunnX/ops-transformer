@@ -1000,73 +1000,79 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckUnsupportedApi() c
     return ACLNN_SUCCESS;
 }
 
+aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckS8S4PseudoQuantGroupSize(size_t idx) const
+{
+    if (!HasS8S4Offset()) {
+        const op::Shape &weightShape = (*gmmParams_.weight)[idx]->GetViewShape();
+        const op::Shape &scaleShape = (*gmmParams_.scaleOptional)[idx]->GetViewShape();
+        const size_t weightKDim = IsS8S4SpecialWeightFormat() ? WEIGHT_N_DIM_S8S4 : WEIGHT_K_DIM_S8S4;
+        const int64_t kSize = weightShape.GetDim(weightKDim);
+        const int64_t groupNum = scaleShape.GetDim(WEIGHT_K_DIM_S8S4);
+        CHECK_COND(groupNum > 0 && kSize % groupNum == 0, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], when per-group S8S4 pseudo quant, K must be divisible by scale group number.",
+                   GetAclnnName());
+        const int64_t groupSize = kSize / groupNum;
+        CHECK_COND(groupSize == QUANT_GROUP_SIZE_S8S4, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], when per-group S8S4 pseudo quant, groupSize must be 256, but got %ld.",
+                   GetAclnnName(), groupSize);
+    }
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupSize(size_t idx) const
 {
-    if (IsS8S4PseudoQuantDataFlow()) {
-        if (!HasS8S4Offset()) {
-            const op::Shape &weightShape = (*gmmParams_.weight)[idx]->GetViewShape();
-            const op::Shape &scaleShape = (*gmmParams_.scaleOptional)[idx]->GetViewShape();
-            const size_t weightKDim = IsS8S4SpecialWeightFormat() ? WEIGHT_N_DIM_S8S4 : WEIGHT_K_DIM_S8S4;
-            const int64_t kSize = weightShape.GetDim(weightKDim);
-            const int64_t groupNum = scaleShape.GetDim(WEIGHT_K_DIM_S8S4);
-            CHECK_COND(groupNum > 0 && kSize % groupNum == 0, ACLNN_ERR_PARAM_INVALID,
-                       "In op [%s], when per-group S8S4 pseudo quant, K must be divisible by scale group number.",
-                       GetAclnnName());
-            const int64_t groupSize = kSize / groupNum;
-            CHECK_COND(groupSize == QUANT_GROUP_SIZE_S8S4, ACLNN_ERR_PARAM_INVALID,
-                       "In op [%s], when per-group S8S4 pseudo quant, groupSize must be 256, but got %ld.",
-                       GetAclnnName(), groupSize);
+    if (!(IsA16MxFp4NZ() || IsMxA8W4NZ() || IsS8S4NZ() || IsA16W4Pergroup(idx))) {
+        return ACLNN_SUCCESS;
+    }
+
+    auto antiquantScaleShape = (*gmmParams_.antiquantScaleOptional)[idx]->GetViewShape();
+    auto weightShape = (*gmmParams_.weight)[idx]->GetViewShape();
+    auto antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
+    int64_t groupSize = 0;
+
+    // 2含义: (g,k,n)的k轴索引
+    int64_t kSize = weightShape.GetDim(weightShape.GetDimNum() - 2);
+    // 2含义: (g,k/groupSize,n)的k轴索引
+    int64_t groupNum = IsMxA8W4NZ() ? antiquantScaleShape.GetDim(antiquantScaleDimNum - 3) * 2 :
+                                      antiquantScaleShape.GetDim(antiquantScaleDimNum - 2);
+    if (unlikely(groupNum <= 0)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupNum", std::to_string(groupNum),
+                                              "The value of groupNum must be greater than 0");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    if (unlikely(kSize % groupNum != 0)) {
+        std::string incorrectValues = "kSize: " + std::to_string(kSize) + ", groupNum: " + std::to_string(groupNum);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(GetAclnnName(), "kSize, groupNum", incorrectValues,
+                                               "kSize must be a multiple of groupNum");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    groupSize = kSize / groupNum;
+    if (IsMxA8W4NZ()) {
+        // 2：MxA8W4NZ的antiquantScaleViewShape: (g, k / groupSIze / 2, n, 2)
+        groupSize = kSize / groupNum;
+    }
+    // 当前伪量化仅支持groupsize为32整数倍
+    if (IsS8S4NZ()) {
+        // 伪量化S8S4场景支持groupsize为128/192/256/512
+        if (unlikely(!(groupSize == 128 || groupSize == 256 || groupSize == 512 || groupSize == 192))) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupSize", std::to_string(groupSize),
+                                                  "The value of groupSize must be 128/192/256/512");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    } else if (IsA16W4Pergroup(idx)) {
+        // 伪量化A16W4 pergroup场景支持groupsize为32/64/128/256
+        if (unlikely(!(groupSize == 32 || groupSize == 64 || groupSize == 128 || groupSize == 256))) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                GetAclnnName(), "groupSize", std::to_string(groupSize),
+                "When the quant mode is pergroup, The value of groupSize must be 32/64/128/256 on arch3510");
+            return ACLNN_ERR_PARAM_INVALID;
         }
     } else {
-        if (!(IsA16MxFp4NZ() || IsMxA8W4NZ() || IsS8S4NZ() || IsA16W4Pergroup(idx))) {
-            return ACLNN_SUCCESS;
-        }
-
-        auto antiquantScaleShape = (*gmmParams_.antiquantScaleOptional)[idx]->GetViewShape();
-        auto weightShape = (*gmmParams_.weight)[idx]->GetViewShape();
-        auto antiquantScaleDimNum = antiquantScaleShape.GetDimNum();
-
-        // 2含义: (g,k,n)的k轴索引
-        int64_t kSize = weightShape.GetDim(weightShape.GetDimNum() - 2);
-        // 2含义: (g,k/groupSize,n)的k轴索引
-        int64_t groupNum = IsMxA8W4NZ() ? antiquantScaleShape.GetDim(antiquantScaleDimNum - 3) * 2 :
-                                          antiquantScaleShape.GetDim(antiquantScaleDimNum - 2);
-        if (unlikely(groupNum <= 0)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupNum", std::to_string(groupNum),
-                                                  "The value of groupNum must be greater than 0");
+        // 当前伪量化非S8S4仅支持groupsize为32
+        if (unlikely(groupSize != 32)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupSize", std::to_string(groupSize),
+                                                  "The value of groupSize must be 32");
             return ACLNN_ERR_PARAM_INVALID;
-        }
-        if (unlikely(kSize % groupNum != 0)) {
-            std::string incorrectValues =
-                "kSize: " + std::to_string(kSize) + ", groupNum: " + std::to_string(groupNum);
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(GetAclnnName(), "kSize, groupNum", incorrectValues,
-                                                   "kSize must be a multiple of groupNum");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        int64_t groupSize = kSize / groupNum;
-        // 当前伪量化仅支持groupsize为32整数倍
-        if (IsS8S4NZ()) {
-            // 伪量化S8S4场景支持groupsize为128/192/256/512
-            if (unlikely(!(groupSize == 128 || groupSize == 256 || groupSize == 512 || groupSize == 192))) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupSize", std::to_string(groupSize),
-                                                      "The value of groupSize must be 128/192/256/512");
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-        } else if (IsA16W4Pergroup(idx)) {
-            // 伪量化A16W4 pergroup场景支持groupsize为32/64/128/256
-            if (unlikely(!(groupSize == 32 || groupSize == 64 || groupSize == 128 || groupSize == 256))) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    GetAclnnName(), "groupSize", std::to_string(groupSize),
-                    "When the quant mode is pergroup, The value of groupSize must be 32/64/128/256 on arch3510");
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-        } else {
-            // 当前伪量化非S8S4仅支持groupsize为32
-            if (unlikely(groupSize != 32)) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnName(), "groupSize", std::to_string(groupSize),
-                                                      "The value of groupSize must be 32");
-                return ACLNN_ERR_PARAM_INVALID;
-            }
         }
     }
     return ACLNN_SUCCESS;
@@ -1277,7 +1283,10 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckGroupedMatmulWeigh
         CHECK_RET(CheckAntiQuantDtype(wIdx) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         CHECK_RET(CheckAntiQuantShape(wIdx) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         CHECK_RET(CheckAntiQuantTranspose(wIdx) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-        CHECK_COND(CheckGroupSize(wIdx) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "CheckGroupSize failed");
+        const aclnnStatus groupSizeRet = IsS8S4PseudoQuantDataFlow() ?
+                                             CheckS8S4PseudoQuantGroupSize(wIdx) :
+                                             CheckGroupSize(wIdx);
+        CHECK_COND(groupSizeRet == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "CheckGroupSize failed");
     }
     return ACLNN_SUCCESS;
 }
