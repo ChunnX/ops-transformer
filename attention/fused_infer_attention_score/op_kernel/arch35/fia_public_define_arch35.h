@@ -205,14 +205,7 @@ struct SysPrefixConstInfo {
     int64_t prefixLoopCount;    /* 保存prefix参与的S2方向循环次数 */
 };
 
-template <FiaKernelType>
-struct ConstInfo_t;
-
-template <>
-struct ConstInfo_t<FiaKernelType::NO_QUANT> : CommonConstInfo, PAConstInfo, LseConstInfo {};
-
-template <>
-struct ConstInfo_t<FiaKernelType::FULL_QUANT> : CommonConstInfo, PAConstInfo, LseConstInfo, TensorListConstInfo {};
+struct ConstInfo_t : CommonConstInfo, PAConstInfo, LseConstInfo {};
 
 __aicore__ inline int64_t ClipSInnerToken(int64_t sInnerToken, int64_t minValue, int64_t maxValue)
 {
