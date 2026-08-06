@@ -39,6 +39,8 @@ enum MoeQuantMode {
     QUANT_MODE_DYNAMIC = 1,
     QUANT_MODE_MXFP8_E5M2 = 2,
     QUANT_MODE_MXFP8_E4M3FN = 3,
+    QUANT_MODE_FP8_GROUP_E5M2 = 4,
+    QUANT_MODE_FP8_GROUP_E4M3FN = 5,
     QUANT_MODE_HIF8_CAST = 6,
     QUANT_MODE_HIF8_PERTENSOR = 7,
     QUANT_MODE_HIF8_PER_TOKEN_DIM = 8,
@@ -46,6 +48,10 @@ enum MoeQuantMode {
     QUANT_MODE_FP8_PERBLOCK_E5M2 = 11,
     QUANT_MODE_FP8_PERBLOCK_E4M3FN = 12,
     QUANT_MODE_INT4_DYNAMIC = 13,
+    QUANT_MODE_FP8_GROUP_AMAX_E5M2 = 14,
+    QUANT_MODE_FP8_GROUP_AMAX_E4M3FN = 15,
+    QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 = 16,
+    QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN = 17,
 };
 
 // ---- Helper functions (from MoeInitRoutingV2KernelNpuOpApi.cpp) ----
@@ -56,7 +62,15 @@ inline bool IsQuantModeMXFP4(int64_t quantMode)
 
 inline bool IsQuantModeMXFP8(int64_t quantMode)
 {
-    return quantMode == QUANT_MODE_MXFP8_E5M2 || quantMode == QUANT_MODE_MXFP8_E4M3FN;
+    return quantMode == QUANT_MODE_MXFP8_E5M2 || quantMode == QUANT_MODE_MXFP8_E4M3FN ||
+           quantMode == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 ||
+           quantMode == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN;
+}
+
+inline bool IsQuantModeFP8Group(int64_t quantMode)
+{
+    return quantMode == QUANT_MODE_FP8_GROUP_E5M2 || quantMode == QUANT_MODE_FP8_GROUP_E4M3FN ||
+           quantMode == QUANT_MODE_FP8_GROUP_AMAX_E5M2 || quantMode == QUANT_MODE_FP8_GROUP_AMAX_E4M3FN;
 }
 
 inline bool IsQuantModeFP8(int64_t quantMode)
@@ -184,9 +198,11 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_
             expanded_scale_len = bs * k;
             switch (quant_mode) {
                 case QUANT_MODE_MXFP8_E5M2:
+                case QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2:
                     expanded_x = at::empty({expanded_scale_len, h}, x.options().dtype(at::kFloat8_e5m2));
                     break;
                 case QUANT_MODE_MXFP8_E4M3FN:
+                case QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN:
                     expanded_x = at::empty({expanded_scale_len, h}, x.options().dtype(at::kFloat8_e4m3fn));
                     break;
                 case QUANT_MODE_MXFP4_E2M1:
@@ -205,9 +221,13 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_
                     expanded_x = at::empty({expanded_scale_len, h}, x.options().dtype(at::kByte));
                     break;
                 case QUANT_MODE_FP8_PERBLOCK_E5M2:
+                case QUANT_MODE_FP8_GROUP_E5M2:
+                case QUANT_MODE_FP8_GROUP_AMAX_E5M2:
                     expanded_x = at::empty({expanded_scale_len, h}, x.options().dtype(at::kFloat8_e5m2));
                     break;
                 case QUANT_MODE_FP8_PERBLOCK_E4M3FN:
+                case QUANT_MODE_FP8_GROUP_E4M3FN:
+                case QUANT_MODE_FP8_GROUP_AMAX_E4M3FN:
                     expanded_x = at::empty({expanded_scale_len, h}, x.options().dtype(at::kFloat8_e4m3fn));
                     break;
                 default:
@@ -241,6 +261,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_
         } else if (IsQuantModeFP8(quant_mode)) {
             int64_t block_size = FP8_QUANT_BLOCK_SIZE * 2;
             expanded_scale = at::empty({expanded_scale_len, CeilDiv(h, block_size), SCALE_THIRD_DIM_SIZE},
+                                       x.options().dtype(at::kFloat));
+        } else if (IsQuantModeFP8Group(quant_mode)) {
+            expanded_scale = at::empty({expanded_scale_len, CeilDiv(h, FP8_QUANT_BLOCK_SIZE)},
                                        x.options().dtype(at::kFloat));
         } else if (quant_mode == QUANT_MODE_UNQUANT && has_scale &&
                    (x.scalar_type() == at::kFloat8_e5m2 || x.scalar_type() == at::kFloat8_e4m3fn ||

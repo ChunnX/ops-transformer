@@ -94,9 +94,9 @@ if _TORCHAIR_AVAILABLE:
             outputs=outputs,
             dependencies=dependencies,
             ir=IrDef("MoeInitRoutingV4") \
-            .input("x", "DT_BF16, DT_FLOAT16, DT_FLOAT, DT_INT8") \
+            .input("x", "DT_INT8, DT_FLOAT16, DT_BF16, DT_FLOAT, DT_HIFLOAT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E2M1") \
             .input("expert_idx", "DT_INT32") \
-            .optional_input("scale", "DT_FLOAT") \
+            .optional_input("scale", "DT_FLOAT, DT_FLOAT8_E8M0") \
             .optional_input("offset", "DT_FLOAT") \
             .optional_input("active_num", "DT_INT64") \
             .optional_input("topk_weight", "DT_FLOAT") \
@@ -108,10 +108,10 @@ if _TORCHAIR_AVAILABLE:
             .attr("quant_mode", attr.Int(-1)) \
             .attr("active_expert_range", attr.ListInt([-1, -1])) \
             .attr("row_idx_type", attr.Int(0)) \
-            .output("expanded_x", "DT_BF16, DT_FLOAT16, DT_FLOAT, DT_INT8") \
+            .output("expanded_x", "DT_INT8, DT_FLOAT16, DT_BF16, DT_FLOAT, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_INT4") \
             .output("expanded_row_idx", "DT_INT32") \
             .output("expert_tokens_count_or_cumsum", "DT_INT64") \
-            .output("expanded_scale", "DT_FLOAT") \
+            .output("expanded_scale", "DT_FLOAT, DT_FLOAT8_E8M0") \
             .output("expanded_topk_weight", "DT_FLOAT"))
 
     @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.moe_init_routing.default)

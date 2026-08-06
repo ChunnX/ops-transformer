@@ -4,16 +4,16 @@
 
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>            |    √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>  | √   |
 |<term>Ascend 950PR/Ascend 950DT</term>                                      |    √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>            |    ×     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>  |    ×     |
 |<term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
 |<term>Atlas 推理系列产品</term>    |     ×    |
 |<term>Atlas 训练系列产品</term>    |     ×    |
 
 ## 功能说明
 
-- API功能：MoE的routing计算，根据torch_npu-npu_moe_gating_top_k_softmax的计算结果做routing处理，支持不量化、静态量化和动态量化模式。相较于`npu\_moe\_init\_routing\_v2`，新增可选输入`topk\_weight`和可选输出`expanded\_topk\_weight`，支持对topkWeight按排序后的索引进行重排，使得`expanded\_topk\_weight`与`expanded\_x`一一对应。`topk\_weight`与`expanded\_topk\_weight`必须同时传入或同时不传入。
+- API功能：MoE的routing计算，根据torch_npu-npu_moe_gating_top_k_softmax的计算结果做routing处理，支持非量化、静态量化和动态量化模式。相较于`npu\_moe\_init\_routing\_v2`，新增可选输入`topk\_weight`和可选输出`expanded\_topk\_weight`，支持对topkWeight按排序后的索引进行重排，使得`expanded\_topk\_weight`与`expanded\_x`一一对应。`topk\_weight`与`expanded\_topk\_weight`必须同时传入或同时不传入。
 
 - 计算公式：
 
@@ -176,19 +176,25 @@ def moe_init_routing(
 - **drop\_pad\_mode** (`int`)：可选参数，默认值为0，表示是否为drop\_pad场景。0表示Dropless场景，该场景下不校验`expert\_capacity`。1表示Drop\_Pad场景。
 - **expert\_tokens\_num\_type** (`int`)：可选参数，默认值为0，表示直方图的不同模式。取值为0、1和2。0表示cumsum模式；1表示count模式；2表示key\_value模式。
 - **expert\_tokens\_num\_flag** (`bool`)：可选参数，默认值为False，取值为False和True，表示是否输出`expert\_token\_cumsum\_or\_count`。
-- **quant\_mode** (`int`)：可选参数，默认值为-1，表示量化模式，支持取值为-1、0、1、2、3、6、7、8、9、11、12、13（不同产品支持情况有差异，见约束说明）。
-    - -1：表示不量化场景；
+- **quant\_mode** (`int`)：可选参数，默认值为-1，表示量化模式，支持取值为-1、0、1、2、3、4、5、6、7、8、9、11、12、13、14、15、16、17（不同产品支持情况有差异，见约束说明）。
+    - -1：表示非量化场景；
     - 0：表示静态量化场景；
     - 1：表示动态量化场景，`expanded\_x`量化到INT8；
     - 2：表示MXFP8量化场景，`expanded\_x`量化到float8\_e5m2；
     - 3：表示MXFP8量化场景，`expanded\_x`量化到float8\_e4m3fn；
+    - 4：表示FP8 PerGroup量化场景（GroupSize=128，RoundScale），`expanded\_x`量化到float8\_e5m2；
+    - 5：表示FP8 PerGroup量化场景（GroupSize=128，RoundScale），`expanded\_x`量化到float8\_e4m3fn；
     - 6：表示HIF8直转量化场景，`expanded\_x`量化到hifloat8；
     - 7：表示HIF8 PERTENSOR量化场景；
     - 8：表示HIF8 PERTOKEN量化场景；
     - 9：表示MXFP4量化场景，`expanded\_x`量化到float4\_e2m1；
     - 11：表示FP8 PerBlock量化场景（BlockSize=128），`expanded\_x`量化到float8\_e5m2；
     - 12：表示FP8 PerBlock量化场景（BlockSize=128），`expanded\_x`量化到float8\_e4m3fn；
-    - 13：表示INT4动态量化场景，`expanded\_x`量化到INT4。
+    - 13：表示INT4动态量化场景，`expanded\_x`量化到INT4；
+    - 14：表示FP8 PerGroup量化场景（GroupSize=128，RoundScale+Amax），`expanded\_x`量化到float8\_e5m2；
+    - 15：表示FP8 PerGroup量化场景（GroupSize=128，RoundScale+Amax），`expanded\_x`量化到float8\_e4m3fn；
+    - 16：表示MXFP8 RoundScale+Amax量化场景，`expanded\_x`量化到float8\_e5m2；
+    - 17：表示MXFP8 RoundScale+Amax量化场景，`expanded\_x`量化到float8\_e4m3fn。
 - **active\_expert\_range** (`List[int]`)：可选参数，默认为None，表示活跃expert的范围。长度为2，数组内的值为[expert\_start, expert\_end]，左闭右开，要求值大于等于0，并且expert\_end不大于`expert\_num`。Drop/Pad场景下，expert\_start等于0, expert\_end等于`expert\_num`。传入None时，视为活跃的expert范围在0到`expert\_num`之间。
 - **row\_idx\_type** (`int`)：可选参数，默认为0，表示输出`expanded\_row\_idx`使用的索引类型，支持取值0和1。0表示gather类型的索引；1表示scatter类型的索引。
 
@@ -226,9 +232,8 @@ def moe_init_routing(
 9. `drop\_pad\_mode=1`时，`expert\_capacity`必须大于0，且具有如下额外约束：`row\_idx\_type`仅支持取值为0（gather索引）；`active\_expert\_range`必须为[0, expert\_num]；`quant\_mode`仅支持-1（非量化）。
 10. `expert\_tokens\_num\_type`仅支持0、1、2。
 11. `row\_idx\_type`仅支持0或1。
-12. quantMode支持情况差异：
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持-1、0、1。
-    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、0、1、2、3、6、7、8、9、11、12、13。
+12. quantMode支持情况：
+    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、0、1、2、3、4、5、6、7、8、9、11、12、13、14、15、16、17。
 13. <term>Ascend 950PR/Ascend 950DT</term>仅支持如下参数值：
     - activeNum仅支持值等于NUM\_ROWS\*K。
     - expertCapacity在Dropless场景下仅校验其值，不使用该参数；在DropPad场景下取值范围为(0, NUM\_ROWS]。

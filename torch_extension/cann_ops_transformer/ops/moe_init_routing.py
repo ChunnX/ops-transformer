@@ -154,8 +154,8 @@ class _MoeInitRoutingOpBuilder(OpBuilder):
             lambda: f"drop_pad_mode must be 0 or 1.{ops_error(ErrCode.VALUE)}")
         torch._check(expert_tokens_num_type in [0, 1, 2],
             lambda: f"expert_tokens_num_type must be 0, 1 or 2.{ops_error(ErrCode.VALUE)}")
-        torch._check(quant_mode in [-1, 0, 1, 2, 3, 6, 7, 8, 9, 11, 12, 13],
-            lambda: f"quant_mode must be in [-1, 0, 1, 2, 3, 6, 7, 8, 9, 11, 12, 13].{ops_error(ErrCode.VALUE)}")
+        torch._check(quant_mode in [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17],
+            lambda: f"quant_mode must be in [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17].{ops_error(ErrCode.VALUE)}")
         torch._check(row_idx_type in [0, 1],
             lambda: f"row_idx_type must be 0 or 1.{ops_error(ErrCode.VALUE)}")
         is_float4_case = (hasattr(torch, 'float4_e2m1fn_x2') and x.dtype == torch.float4_e2m1fn_x2) \
@@ -200,10 +200,10 @@ class _MoeInitRoutingOpBuilder(OpBuilder):
             expanded_x_dtype = torch.uint8
         elif quant_mode in [0, 1]:
             expanded_x_dtype = torch.int8
-        elif quant_mode == 2:
+        elif quant_mode in [2, 16]:
             expanded_x_dtype = torch.float8_e5m2
             expanded_scale_dtype = torch.float8_e8m0fnu
-        elif quant_mode == 3:
+        elif quant_mode in [3, 17]:
             expanded_x_dtype = torch.float8_e4m3fn
             expanded_scale_dtype = torch.float8_e8m0fnu
         elif quant_mode in [6, 7, 8]:
@@ -213,9 +213,9 @@ class _MoeInitRoutingOpBuilder(OpBuilder):
         elif quant_mode == 9:
             expanded_x_dtype = torch.uint8
             expanded_scale_dtype = torch.float8_e8m0fnu
-        elif quant_mode == 11:
+        elif quant_mode in [4, 11, 14]:
             expanded_x_dtype = torch.float8_e5m2
-        elif quant_mode == 12:
+        elif quant_mode in [5, 12, 15]:
             expanded_x_dtype = torch.float8_e4m3fn
         return expanded_x_dtype, expanded_scale_dtype
 
@@ -232,7 +232,7 @@ class _MoeInitRoutingOpBuilder(OpBuilder):
         else:
             num_expanded_rows = bs * k
             expanded_x_dim_list = [num_expanded_rows, x.size(1)]
-            if quant_mode in [2, 3]:
+            if quant_mode in [2, 3, 16, 17]:
                 scale_cols = (h + MXQUANT_BLOCK_SIZE - 1) // MXQUANT_BLOCK_SIZE
                 scale_cols = (scale_cols + PAD_TO_EVEN_FACTOR - 1) // PAD_TO_EVEN_FACTOR * PAD_TO_EVEN_FACTOR
                 expanded_scale_dim_list = [num_expanded_rows, scale_cols]
@@ -252,6 +252,8 @@ class _MoeInitRoutingOpBuilder(OpBuilder):
                 block_size = FP8_QUANT_BLOCK_SIZE * PAD_TO_EVEN_FACTOR
                 scale_cols = math.ceil(h / block_size)
                 expanded_scale_dim_list = [num_expanded_rows, scale_cols, PAD_TO_EVEN_FACTOR]
+            elif quant_mode in [4, 5, 14, 15]:
+                expanded_scale_dim_list = [num_expanded_rows, math.ceil(h / FP8_QUANT_BLOCK_SIZE)]
 
         if quant_mode in [0, 6, 7]:
             expanded_scale_dim_list = []
@@ -376,9 +378,11 @@ def moe_init_routing(x: torch.Tensor, expert_idx: torch.Tensor,
         expert_tokens_num_flag (bool): Whether to produce expert_tokens_count output. Default: False.
         quant_mode (int): Quantization mode. Default: -1.
             -1: no quantization; 0: static; 1: dynamic int8; 2: mxfp8_e5m2;
-            3: mxfp8_e4m3fn; 6: hif8_cast; 7: hif8_pertensor;
-            8: hif8_per_token_dim; 9: mxfp4_e2m1; 11: fp8_perblock_e5m2;
-            12: fp8_perblock_e4m3fn; 13: int4_dynamic.
+            3: mxfp8_e4m3fn; 4: fp8_group_e5m2; 5: fp8_group_e4m3fn;
+            6: hif8_cast; 7: hif8_pertensor; 8: hif8_per_token_dim;
+            9: mxfp4_e2m1; 11: fp8_perblock_e5m2; 12: fp8_perblock_e4m3fn;
+            13: int4_dynamic; 14: fp8_group_amax_e5m2; 15: fp8_group_amax_e4m3fn;
+            16: mxfp8_roundscale_amax_e5m2; 17: mxfp8_roundscale_amax_e4m3fn.
         active_expert_range (list[int], optional): Range of active experts [start, end].
             start >= 0, end <= 10240, end > start. Default: None (means [0, expert_num]).
         row_idx_type (int): Row index type. 0=gather, 1=scatter. Default: 0.
