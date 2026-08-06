@@ -48,6 +48,17 @@ ge::graphStatus InferShapeMixedQuantSparseFlashMla(gert::InferShapeContext *cont
     std::string layoutQStr = (layoutQ != nullptr) ? std::string(layoutQ) : "BSND";
     std::string layoutKvStr = (layoutKv != nullptr) ? std::string(layoutKv) : "BSND";
 
+    OP_CHECK_IF(queryShape->GetShapeSize() <= 0,
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON("MixedQuantSparseFlashMla", "q",
+            std::to_string(queryShape->GetShapeSize()).c_str(),
+            "The shape size of q should be greater than 0"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(kvShape->GetShapeSize() <= 0,
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON("MixedQuantSparseFlashMla", "ori_kv or cmp_kv",
+            std::to_string(kvShape->GetShapeSize()).c_str(),
+            "The shape size of ori_kv or cmp_kv should be greater than 0"),
+        return ge::GRAPH_FAILED);
+
     if (returnSoftmaxLse) {
         if (layoutQStr == "TND") {
             int64_t kvHeadNum;
@@ -56,18 +67,12 @@ ge::graphStatus InferShapeMixedQuantSparseFlashMla(gert::InferShapeContext *cont
             } else {
                 kvHeadNum = kvShape->GetDim(DIM_IDX_ONE);
             }
-            OPS_ERR_IF(kvHeadNum <= 0,
-                       OPS_LOG_E("MixedQuantSparseFlashMla", "kvHeadNum must be positive, but got %ld", kvHeadNum),
-                       return ge::GRAPH_FAILED);
             softmaxLseShape->SetDimNum(DIM_NUM_THREE);
             softmaxLseShape->SetDim(DIM_IDX_ZERO, kvHeadNum);
             softmaxLseShape->SetDim(DIM_IDX_ONE, queryShape->GetDim(DIM_IDX_ZERO));
             softmaxLseShape->SetDim(DIM_IDX_TWO, queryShape->GetDim(DIM_IDX_ONE) / kvHeadNum);
         } else {
             int64_t kvHeadNum = kvShape->GetDim(DIM_IDX_TWO);
-            OPS_ERR_IF(kvHeadNum <= 0,
-                       OPS_LOG_E("MixedQuantSparseFlashMla", "kvHeadNum must be positive, but got %ld", kvHeadNum),
-                       return ge::GRAPH_FAILED);
             softmaxLseShape->SetDimNum(DIM_NUM_FOUR);
             softmaxLseShape->SetDim(DIM_IDX_ZERO, queryShape->GetDim(DIM_IDX_ZERO));
             softmaxLseShape->SetDim(DIM_IDX_ONE, kvHeadNum);
