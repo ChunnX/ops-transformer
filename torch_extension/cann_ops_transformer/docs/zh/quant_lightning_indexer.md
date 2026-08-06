@@ -162,12 +162,13 @@ cann_ops_transformer.quant_lightning_indexer(
   - query、key在quant_mode为1/3时支持float8_e4m3fn，quant_mode为4时支持HIfloat8，quant_mode为5时支持float4_e2m1，不支持int8。
   - query_dequant_scale和key_dequant_scale在quant_mode为3/5时支持float8_e8m0，quant_mode为1/4时支持float32。
   - weights支持float32，不支持float16。
+  - quant_mode为3/5时，query_dequant_scale和key_dequant_scale的维数分别比query和key多1，前缀维度保持一致，末两维为(D/64,2)；D必须为64的倍数，每个scale对应连续32个D轴逻辑元素。
   - query的N支持32或64。
 <!-- end id10 -->
 <!-- npu="A3,910b" id11 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>:
-  - query、key仅支持int8，不支持float8_e4m3fn和HIfloat8。
-  - weights、query_dequant_scale和key_dequant_scale支持float16，不支持float32。
+  - query、key仅支持int8，不支持float8_e4m3fn、HIfloat8和float4_e2m1。
+  - weights、query_dequant_scale和key_dequant_scale仅支持float16，不支持float32和float8_e8m0。
   - query的N仅支持64。
   - layout_k仅支持PA_BBND。
   - cmp_ratio仅支持2的幂次方值：1/2/4/8/16/32/64/128。
