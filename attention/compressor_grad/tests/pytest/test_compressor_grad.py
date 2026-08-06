@@ -15,6 +15,98 @@ import os
 import sys
 import torch
 import pytest
+def run_small_ops_case(case, device):
+    """通路 3：小算子拼接通路——CPU 小算子拼接 + 自动反向推导梯度作 golden，
+    算子侧经 pta 反向传播串联正反向（与通路 1 相同 NPU 流程）。
+
+    ⚠️ loss 只对有效压缩块计算（cmp_mask 过滤），无效 padding 不附加梯度。
+    """
+    p = _parse_case(case, device)
+    B, S1, H, D = p["B"], p["S1"], p["H"], p["D"]
+    cr, coff = p["cr"], p["coff"]
+    layoutId, ioDtype, dataType = p["layoutId"], p["ioDtype"], p["dataType"]
+    layout = p["layout"]
+    seqSize = p["seqSize"]
+    tokenSize = p["tokenSize"]
+    sps = case["start_pos"] or [0] * B
+    sqs = case["seqused_q"]
+    cu = case.get("seqlens_list_q")
+    seed = case["manual_seed"]
+
+    if layoutId == 1:
+        if cu is not None:
+            cuNpu = torch.tensor(cu, dtype=torch.int32)
+        elif sqs:
+            cuNpu = torch.tensor([0] + torch.tensor(sqs).cumsum(0).tolist(), dtype=torch.int32)
+        else:
+            cuNpu = torch.zeros(B + 1, dtype=torch.int32)
+    else:
+        cuNpu = None
+    totalValid = 0
+    for i in range(B):
+        sp = sps[i]
+        sq = sqs[i] if sqs else (int(cuNpu[i + 1] - cuNpu[i]) if cuNpu is not None
+                                 else (tokenSize if layoutId == 1 else tokenSize // B))
+        cmpLimit = (sp + sq) // cr * cr
+        if cmpLimit > sp:
+            totalValid += _ceil_div(cmpLimit - sp, cr)
+
+    # ── NPU 侧：pta 反向传播串联正反向（与通路 1 相同的输入构造 + compute）──
+    b = _build_inputs(case, p, device, seed, totalValid, cuNpu, sqs, sps)
+    backend = NPUBackend(device_id=DEVICE_ID)
+    npu_result = backend.compute(inputs=b["inputs"])
+    torch.npu.synchronize()
+
+    # ── CPU 侧：小算子拼接 + 自动反向推导梯度（golden）──
+    coffD = coff * D
+    stateCpu = b["state_cache_npu"].cpu()
+    xCpu = b["xNpu"].cpu().view(B, seqSize, H) if layoutId == 0 else b["xNpu"].cpu()
+    xIn = xCpu.detach().requires_grad_(True)
+    wkvIn = b["wkvInp"].cpu().detach().requires_grad_(True)
+    wgateIn = b["wgateInp"].cpu().detach().requires_grad_(True)
+    apeIn = b["ape_npu"].cpu().detach().requires_grad_(True)
+    ref_cmp, ref_mask, _, _, _, _ = compressor_forward.compressor_forward(
+        xIn, wkvIn, wgateIn,
+        stateCpu[..., :coffD].detach(), stateCpu[..., coffD:].detach(),
+        apeIn,
+        b["block_table_npu"].cpu(),
+        sps, cmp_ratio=cr, coff=coff, cache_mode=b["cache_mode"],
+        cu_seqlens=cuNpu.cpu() if cuNpu is not None else None,
+        seqused=sqs, return_intermediates=True)
+    # ⚠️ loss 只对有效压缩块：mask 过滤，无效 padding 不附加梯度
+    dcCpu = b["dcNpu"].cpu().float()
+    if ref_cmp.requires_grad:
+        loss = (ref_cmp * dcCpu * ref_mask.float()).sum()
+        loss.backward()
+        g_dx = xIn.grad.reshape(-1, H) if layoutId == 0 else xIn.grad
+        g_dwkv = wkvIn.grad
+        g_dwgate = wgateIn.grad
+        g_dape = apeIn.grad
+    else:
+        # 无有效压缩块（totalValid=0）：cmp_kv 为纯 zeros 无梯度图，golden 梯度全 0
+        g_dx = torch.zeros_like(xIn).reshape(-1, H) if layoutId == 0 else torch.zeros_like(xIn)
+        g_dwkv = torch.zeros_like(wkvIn)
+        g_dwgate = torch.zeros_like(wgateIn)
+        g_dape = torch.zeros_like(apeIn)
+
+    # ── 比对：NPU 四梯度 vs CPU 自动反向四梯度 ──
+    d_xNpu = npu_result["d_x"].cpu().float().reshape(-1, H)
+    p_pct_thd = get_pct_thd(dataType)
+    checks = [
+        ("d_wkv", g_dwkv.float(), npu_result["d_wkv"].cpu().float(), dataType, p_pct_thd),
+        ("d_wgate", g_dwgate.float(), npu_result["d_wgate"].cpu().float(), dataType, p_pct_thd),
+        ("d_ape", g_dape, npu_result["d_ape"].cpu().float(), "float32", get_pct_thd("float32")),
+        ("d_x", g_dx.float(), d_xNpu, dataType, p_pct_thd),
+    ]
+    statuses = []
+    for name, exp, act, dt, thd in checks:
+        r = check_one_output(name, exp, act, dt, True, 1, thd)
+        statuses.append(f"{name}={r['status']}")
+    status = "ERROR" if any("ERROR" in s for s in statuses) else \
+             "FAIL" if any("FAIL" in s for s in statuses) else "PASS"
+    return {"status": status, "detail": "  ".join(statuses)}
+
+
 
 # PyPTO kernel 直跑（通路 2）：不经 aclnn/custom 包，运行时 JIT 编译
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "op_kernel"))
@@ -208,6 +300,147 @@ def _parse_case(case, device):
                 layoutId=layoutId, dataType=dataType, ioDtype=ioDtype,
                 tokenSize=tokenSize, seqSize=seqSize, outputRows=outputRows)
 
+
+def _build_inputs(case, p, device, seed, totalValid, cuNpu, sqs, sps):
+    """构造通路 1/3 共用的 NPU 输入（x/wkv/wgate/state_cache/ape/dc/block_table + 输出占位）。
+
+    返回 compute inputs dict + 附带 tensor（输出占位用 rand 模拟未初始化内存，
+    不依赖初始 0——kernel 未写输出时比对必须 FAIL 而非被零掩盖）。
+    """
+    batchSize, seqSize, headDim, hiddenSize = p["B"], p["S1"], p["D"], p["H"]
+    cmpRatio, coff = p["cr"], p["coff"]
+    layoutId, ioDtype = p["layoutId"], p["ioDtype"]
+    layout = p["layout"]
+    tokenSize, outputRows = p["tokenSize"], p["outputRows"]
+    sqNpu = torch.tensor(sqs, device=device, dtype=torch.int32) if sqs else None
+    spNpu = torch.tensor(sps, device=device, dtype=torch.int32) if sps else None
+
+    # ── Workspace sizing（仅注释参考，autograd 路径由 aclnn 分配）──
+    scKvRowCount = coff * cmpRatio
+    coreNum = 64
+    groupSize = headDim // 128
+    nCorePerGroup = (coreNum // 2) // groupSize
+    mPerRoundPerGroup = 128 * 2 // coff // cmpRatio
+    mPerRoundAll = nCorePerGroup * mPerRoundPerGroup
+    dbRows = mPerRoundAll * cmpRatio
+    apeWsSize = 2 * dbRows * headDim
+    dxPerGroup = 256 * hiddenSize
+    dxPerRoundAll = 32 * dxPerGroup
+    dxWsSize = 2 * dxPerRoundAll * 2
+    cvGmPerCore = 128 * coff * (128 // coff)
+    cvGmSize = 32 * cvGmPerCore * 2
+    wsSize = apeWsSize + dxWsSize + cvGmSize
+
+    # ── Generate random inputs ──
+    torch.manual_seed(seed)
+    if layoutId == 0:  # BSH: dc 与 cmp_kv 同为 (B, blocks, D)，kernel 按扁平读兼容
+        dcNpu = torch.randn(batchSize, (seqSize + cmpRatio - 1) // cmpRatio, headDim,
+                            device=device, dtype=ioDtype)
+    else:
+        dcNpu = torch.randn(outputRows, headDim, device=device, dtype=ioDtype)
+
+    # ── Output tensors（占位 rand）──
+    totalTokens = tokenSize if layoutId == 1 else batchSize * seqSize
+    d_xNpu = torch.rand(totalTokens, hiddenSize, device=device, dtype=ioDtype)
+    d_wkvNpu = torch.rand(coff * headDim, hiddenSize, device=device, dtype=torch.float32)
+    d_wgateNpu = torch.rand(coff * headDim, hiddenSize, device=device, dtype=torch.float32)
+    dapeWsNpu = torch.zeros(wsSize, device=device, dtype=torch.float32)
+    dapeOutNpu = torch.rand(coff * cmpRatio * headDim, device=device, dtype=torch.float32)
+
+    # cu_seqlens argument (None if BSH or noCu)
+    cuArg = None if (layoutId == 0 or case.get('noCu')) else cuNpu
+
+    # x / wkv / wgate input tensors
+    xNpu = torch.randn(totalTokens, hiddenSize, device=device, dtype=ioDtype)
+    wkvInp = torch.randn(coff * headDim, hiddenSize, device=device, dtype=ioDtype)
+    wgateInp = torch.randn(coff * headDim, hiddenSize, device=device, dtype=ioDtype)
+
+    # ── state_cache 与 block_table（构造与正向 golden 一致）──
+    cache_mode = case.get("cache_mode", 1)
+    if cache_mode == 1:
+        block_size = case.get("block_size", 128)
+        if layoutId == 1:  # TH
+            cu_lens = cuNpu.tolist() if cuNpu is not None else [0] * (batchSize + 1)
+            if sps:
+                S_max = max(sps[i] + (cu_lens[i + 1] - cu_lens[i])
+                            for i in range(batchSize)) if batchSize > 0 else 0
+            else:
+                S_max = max((cu_lens[i + 1] - cu_lens[i])
+                            for i in range(batchSize)) if batchSize > 0 else 0
+        else:  # BSH
+            S_max = max(sps) + seqSize if sps else seqSize
+        max_block_num_per_batch = (S_max + block_size - 1) // block_size
+        block_num = batchSize * max_block_num_per_batch
+        state_shape = (block_num, block_size, 2 * coff * headDim)
+    else:
+        # cache_mode=2: block_size 直用 case 数据（合法性由 _check_block_size 校验）
+        state_shape = (batchSize, case["block_size"], 2 * coff * headDim)
+
+    _check_block_size(case, batchSize, seqSize, layoutId, cmpRatio, coff, cache_mode,
+                      cuNpu, sqs)
+
+    state_cache_npu = torch.zeros(state_shape, device=device, dtype=torch.float32)
+    ape_npu = torch.randn(torch.Size([cmpRatio, coff * headDim]), device=device,
+                          dtype=torch.float32)
+
+    block_table_npu = None
+    if cache_mode == 1:
+        block_table = torch.zeros(batchSize, max_block_num_per_batch, dtype=torch.int32)
+        if batchSize > 0 and totalValid > 0:
+            next_block_id = 1
+            for i in range(batchSize):
+                sp = sps[i] if sps else 0
+                if sqs:
+                    sq = sqs[i]
+                elif cuNpu is not None:
+                    sq = int(cuNpu[i + 1].item() - cuNpu[i].item())
+                else:
+                    sq = tokenSize if layoutId == 1 else tokenSize // batchSize
+                end_pos = sq
+                # 读取范围 (与 golden compressor_golden.py:572-583 一致)
+                cur_start = sp // cmpRatio * cmpRatio - cmpRatio
+                cur_end = sp // cmpRatio * cmpRatio + cmpRatio
+                if sp % cmpRatio == 0:
+                    cur_end = sp
+                cur_end = min(cur_end, sp + sq)
+                for j in range(max(cur_start // block_size, 0),
+                               (cur_end - 1) // block_size + 1):
+                    if next_block_id < block_num:
+                        block_table[i][j] = next_block_id
+                        next_block_id = next_block_id + 1
+                # 写入范围 (与 golden compressor_golden.py:589-600 一致)
+                next_start = (sp + end_pos) // cmpRatio * cmpRatio - cmpRatio
+                next_end = (sp + end_pos) // cmpRatio * cmpRatio + cmpRatio
+                if (sp + end_pos) % cmpRatio == 0:
+                    next_end = sp + end_pos
+                next_end = min(next_end, sp + end_pos)
+                for j in range(max(next_start // block_size, 0),
+                               (next_end - 1) // block_size + 1):
+                    if next_block_id < block_num and block_table[i][j] == 0:
+                        block_table[i][j] = next_block_id
+                        next_block_id = next_block_id + 1
+        block_table_npu = block_table.to(device)
+    else:
+        block_table_npu = torch.tensor(
+            random.sample(list(range(batchSize)), batchSize),
+            device=device, dtype=torch.int32) if batchSize > 0 else torch.zeros(0, device=device, dtype=torch.int32)
+
+    x_npu_input = xNpu.view(batchSize, seqSize, hiddenSize) if layoutId == 0 else xNpu
+    inputs = {
+        "x": x_npu_input, "wkv": wkvInp, "wgate": wgateInp,
+        "state_cache": state_cache_npu, "ape": ape_npu, "d_cpm_kv": dcNpu,
+        "cu_seqlens": cuArg, "seqused": sqNpu, "start_pos": spNpu,
+        "block_table": block_table_npu, "cmp_ratio": cmpRatio, "coff": coff,
+        "cache_mode": cache_mode, "input_layout": layout,
+    }
+    return dict(inputs=inputs, xNpu=xNpu, wkvInp=wkvInp, wgateInp=wgateInp,
+                dcNpu=dcNpu, state_cache_npu=state_cache_npu, ape_npu=ape_npu,
+                block_table_npu=block_table_npu, cuArg=cuArg,
+                d_xNpu=d_xNpu, d_wkvNpu=d_wkvNpu, d_wgateNpu=d_wgateNpu,
+                dapeOutNpu=dapeOutNpu, totalTokens=totalTokens,
+                cache_mode=cache_mode, scKvRowCount=scKvRowCount)
+
+
 def run_case(case, device):
     """Run one test case and return result dict."""
     name = case["testcase_name"]
@@ -257,196 +490,14 @@ def run_case(case, device):
             # startPos%cmpRatio!=0 时首块为部分块但仍计 1 块 → 向上取整（与 kernel 一致）
             totalValid += (cmpLimit - sp + cmpRatio - 1) // cmpRatio
 
-    scKvRowCount = coff * cmpRatio
-
-    # ── Workspace sizing ──
-    coreNum = 64
-    groupSize = headDim // 128
-    nCorePerGroup = (coreNum // 2) // groupSize
-    mPerRoundPerGroup = 128 * 2 // coff // cmpRatio
-    mPerRoundAll = nCorePerGroup * mPerRoundPerGroup
-    roundCnt = (totalValid + mPerRoundAll - 1) // mPerRoundAll if totalValid > 0 else 0
-    dbRows = mPerRoundAll * cmpRatio
-    apeWsSize = 2 * dbRows * headDim
-    dxPerGroup = 256 * hiddenSize
-    dxPerRoundAll = 32 * dxPerGroup       # pl.get_block_num() = 32 Cube cores
-    dxWsSize   = 2 * dxPerRoundAll * 2    # double: dkv@wkv + dsb@wgate
-    # GM storage for dkv/dsb: 32 cube cores * [128*coff, 128//coff] FP16 each
-    cvGmPerCore = 128 * coff * (128 // coff)  # = 128*128 = 16384 elements
-    cvGmSize   = 32 * cvGmPerCore * 2          # dkv + dsb, FP16 (2 bytes each, but count as FP32 elements)
-    wsSize     = apeWsSize + dxWsSize + cvGmSize
-
-    # ── Generate random inputs ──
-    torch.manual_seed(seed)
-    if layoutId == 0:  # BSH: dc 与 cmp_kv 同为 (B, blocks, D)，与 golden 约定一致；kernel 按扁平读兼容
-        dcNpu  = torch.randn(batchSize, (seqSize + cmpRatio - 1) // cmpRatio, headDim,
-                             device=device, dtype=ioDtype)
-    else:
-        dcNpu  = torch.randn(outputRows, headDim, device=device, dtype=ioDtype)
-    # 注：autograd 路径下 kernel 与 golden 实际使用前向计算的真实 kv/softmax_score
-    #（见 backend.compute 的 saved tensors），此处不生成占位（避免与真实值不一致的误导）
-
-    # ── Output tensors ──
-    # d_x/d_wkv/d_wgate/d_ape: Phase 2/3 写入，占位用随机值（模拟真实未初始化内存，
-    # 不依赖初始 0——kernel 未写输出时比对必须 FAIL 而非被零掩盖）
-    if layoutId == 1:  # TH
-        totalTokens = tokenSize
-    else:  # BSH
-        totalTokens = batchSize * seqSize
-    d_xNpu     = torch.rand(totalTokens, hiddenSize, device=device,
-                             dtype=ioDtype)
-    d_wkvNpu   = torch.rand(coff * headDim, hiddenSize, device=device,
-                              dtype=torch.float32)
-    d_wgateNpu = torch.rand(coff * headDim, hiddenSize, device=device,
-                              dtype=torch.float32)
-    dapeWsNpu  = torch.zeros(wsSize, device=device, dtype=torch.float32)
-    # d_ape final output (dummy — Phase 3 写入)
-    dapeOutNpu = torch.rand(coff * cmpRatio * headDim, device=device, dtype=torch.float32)
-
-    # TODO: 如需要 dkv/dsb GM 输出，需在 kernel 添加 pl.store 并在下方分配:
-    #   dkvNpu = torch.zeros(outputRows, scKvRowCount, headDim,
-    #                        device=device, dtype=ioDtype)
-    #   dsbNpu = torch.zeros(outputRows, scKvRowCount, headDim,
-    #                        device=device, dtype=ioDtype)
-    #   然后将 dkvNpu/dsbNpu 加入 kernel 参数列表
-
-    
-
-    # cu_seqlens argument (None if BSH or noCu)
-    if layoutId == 0 or case.get('noCu'):
-        cuArg = None
-    else:
-        cuArg = cuNpu
-
-    # x / wkv / wgate input tensors
-    xNpu    = torch.randn(totalTokens, hiddenSize, device=device, dtype=ioDtype)
-    wkvInp  = torch.randn(coff * headDim, hiddenSize, device=device, dtype=ioDtype)  # 单位阵
-    wgateInp= torch.randn(coff * headDim, hiddenSize, device=device, dtype=ioDtype)
-
-    # ── NPU: 通过 autograd 自动调用 compressor_grad ──
+    b = _build_inputs(case, p, device, seed, totalValid, cuNpu, sqs, sps)
+    xNpu, wkvInp, wgateInp = b["xNpu"], b["wkvInp"], b["wgateInp"]
+    dcNpu = b["dcNpu"]; state_cache_npu = b["state_cache_npu"]; ape_npu = b["ape_npu"]
+    block_table_npu = b["block_table_npu"]; cache_mode = b["cache_mode"]
+    d_xNpu = b["d_xNpu"]; d_wkvNpu = b["d_wkvNpu"]; d_wgateNpu = b["d_wgateNpu"]
+    dapeOutNpu = b["dapeOutNpu"]; totalTokens = b["totalTokens"]
     backend = NPUBackend(device_id=DEVICE_ID)
-
-    # 构建前向所需的 state_cache 和 ape 输入
-    # state_cache: dtype 固定 fp32, shape = (block_num, block_size, 2*coff*D)
-    # block_num 计算参考 attention/compressor 正向算子：
-    #   compressor_golden.py:565-567  -> block_num = B * ceil(S_max / block_size)
-    #   S_max 因 BSH/TH 布局而异，参考 compressor_operator_single.py:62-85
-    #     BSH: S_max = max(start_pos) + S  (有 start_pos) 否则 S_max = S
-    #     TH : S_max = max(start_pos[i] + cu_seqlens[i+1] - cu_seqlens[i]) (有 start_pos)
-    #                       否则 max(cu_seqlens[i+1] - cu_seqlens[i])
-    #   cache_mode=2: block_num = B (每 batch 一个 block)
-    #                 参考 compressor_golden.py:608-616 (kv_state shape = (B, block_size, coff*D))
-    cache_mode = case.get("cache_mode", 1)
-    if cache_mode == 1:
-        block_size = case.get("block_size", 128)
-        # S_max 计算因 BSH/TH 布局而异
-        if layoutId == 1:  # TH
-            # 统一用修复后的 cuNpu（与 kernel 侧一致）
-            cu_lens = cuNpu.tolist() if cuNpu is not None else [0] * (batchSize + 1)
-            if sps:
-                S_max = max(sps[i] + (cu_lens[i + 1] - cu_lens[i])
-                            for i in range(batchSize)) if batchSize > 0 else 0
-            else:
-                S_max = max((cu_lens[i + 1] - cu_lens[i])
-                            for i in range(batchSize)) if batchSize > 0 else 0
-        else:  # BSH
-            if sps:
-                S_max = max(sps) + seqSize
-            else:
-                S_max = seqSize
-        max_block_num_per_batch = (S_max + block_size - 1) // block_size
-        block_num = batchSize * max_block_num_per_batch
-        state_shape = (block_num, block_size, 2 * coff * headDim)
-    else:
-        # cache_mode=2: block_num = B (每 batch 一个 block)
-        # block_size (第二维) 直接使用 case 数据（不再推导替换）；
-        # 数据合法性由 _check_block_size 在下方统一校验（不符则终止+告警）
-        token_cache_size_ex = case["block_size"]
-        state_shape = (batchSize, token_cache_size_ex, 2 * coff * headDim)
-
-    _check_block_size(case, batchSize, seqSize, layoutId, cmpRatio, coff, cache_mode,
-                      cuNpu, sqs)
-
-    state_cache_npu = torch.zeros(state_shape, device=device, dtype=torch.float32)
-    ape_npu = torch.randn(torch.Size([cmpRatio, coff * headDim]), device=device, dtype=torch.float32)
-
-    # block_table 构造，与正向 golden 一致：
-    #   cache_mode=1: 参考 compressor_golden.py:565-600
-    #     block_table shape = (B, max_block_num_per_batch), dtype int32
-    #     需要按 start_pos/seqused 真实写入有效 block_id (1..block_num-1),
-    #     block_id=0 表示无效 block (read_state_page_cache 会报错、write 跳过)
-    #   cache_mode=2: 参考 compressor_golden.py:609
-    #     block_table shape = (B,), dtype int32, 值为 [0, B) 的排列
-    #     (每 batch 一个独立 block_id, 全 0 会导致多 batch 写同一行)
-    block_table_npu = None
-    if cache_mode == 1:
-        block_table = torch.zeros(batchSize, max_block_num_per_batch,
-                                  dtype=torch.int32)
-        if batchSize > 0 and totalValid > 0:
-            next_block_id = 1
-            for i in range(batchSize):
-                sp = sps[i] if sps else 0
-                if sqs:
-                    sq = sqs[i]
-                elif cuNpu is not None:
-                    sq = int(cuNpu[i + 1].item() - cuNpu[i].item())
-                else:
-                    sq = tokenSize if layoutId == 1 else tokenSize // batchSize
-                end_pos = sq
-                # 读取范围 (与 golden compressor_golden.py:572-583 一致)
-                cur_start = sp // cmpRatio * cmpRatio - cmpRatio
-                cur_end = sp // cmpRatio * cmpRatio + cmpRatio
-                if sp % cmpRatio == 0:
-                    cur_end = sp
-                cur_end = min(cur_end, sp + sq)
-                cur_start_block_id = (cur_start // block_size) if cur_start >= 0 else 0
-                cur_end_block_id = (cur_end - 1) // block_size
-                for j in range(cur_start_block_id, cur_end_block_id + 1):
-                    if next_block_id < block_num:
-                        block_table[i][j] = next_block_id
-                        next_block_id = next_block_id + 1
-                # 写入范围 (与 golden compressor_golden.py:589-600 一致)
-                next_start = (sp + end_pos) // cmpRatio * cmpRatio - cmpRatio
-                next_end = (sp + end_pos) // cmpRatio * cmpRatio + cmpRatio
-                if (sp + end_pos) % cmpRatio == 0:
-                    next_end = sp + end_pos
-                next_end = min(next_end, sp + end_pos)
-                next_start_block_id = (next_start // block_size) if next_start >= 0 else 0
-                next_end_block_id = (next_end - 1) // block_size
-                for j in range(next_start_block_id, next_end_block_id + 1):
-                    if next_block_id < block_num and block_table[i][j] == 0:
-                        block_table[i][j] = next_block_id
-                        next_block_id = next_block_id + 1
-        block_table_npu = block_table.to(device)
-    else:
-        # cache_mode=2: block_table = [0, B) 的排列，与正向 golden 一致
-        block_table_npu = torch.tensor(random.sample(list(range(batchSize)), batchSize),
-                                       device=device, dtype=torch.int32) if batchSize > 0 else \
-                          torch.zeros(0, device=device, dtype=torch.int32)
-
-    if layoutId == 0:  # BSH
-        x_npu_input = xNpu.view(batchSize, seqSize, hiddenSize)
-    else:  # TH
-        x_npu_input = xNpu
-
-    npu_result = backend.compute(
-        inputs={
-            "x": x_npu_input,
-            "wkv": wkvInp,
-            "wgate": wgateInp,
-            "state_cache": state_cache_npu,
-            "ape": ape_npu,
-            "d_cpm_kv": dcNpu,
-            "cu_seqlens": cuArg,
-            "seqused": sqNpu,
-            "start_pos": spNpu,
-            "block_table": block_table_npu,
-            "cmp_ratio": cmpRatio,
-            "coff": coff,
-            "cache_mode": cache_mode,
-            "input_layout": layout,
-        },
-    )
+    npu_result = backend.compute(inputs=b["inputs"])
 
     d_xNpu.copy_(npu_result["d_x"].view_as(d_xNpu))
     d_wkvNpu.copy_(npu_result["d_wkv"])
@@ -701,4 +752,20 @@ def test_compressor_grad_backward(case, request):
     if _pathway(request) != 2:
         pytest.skip(f"pathway={_pathway(request)}")
     result = run_backward_case(case, f"npu:{DEVICE_ID}")
+    assert result["status"] == "PASS", result["detail"]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [c for c in REDLINE_CASES if c.get("enable", True)],
+    ids=[c["testcase_name"] for c in REDLINE_CASES if c.get("enable", True)],
+)
+def test_compressor_grad_small_ops(case, request):
+    """通路 3：小算子拼接 golden + pta 串联正反向（loss 只对有效压缩块）。
+
+    运行：pytest test_compressor_grad.py --pathway 3 -k <case名子串> -q
+    """
+    if _pathway(request) != 3:
+        pytest.skip(f"pathway={_pathway(request)}")
+    result = run_small_ops_case(case, f"npu:{DEVICE_ID}")
     assert result["status"] == "PASS", result["detail"]
