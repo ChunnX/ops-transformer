@@ -336,6 +336,21 @@ void ExpectArch35MxFP8NoQuantUseGatherCopy(int64_t n, int64_t h, int64_t k, int6
     const auto *tilingData = reinterpret_cast<const MoeInitRoutingV3Arch35TilingData *>(tilingInfo.tilingData.get());
     EXPECT_EQ(tilingData->useGatherCopy, expectedUseGatherCopy);
 }
+
+void ExpectArch35IndexOnlyRoutingTilingData()
+{
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 262144, platform_ascendc::SocVersion::ASCEND950};
+    gert::TilingContextPara tilingContextPara = MakeArch35ExtendedTilingContextPara(
+        3, 0, 8, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, ge::DT_FLOAT, {0, EXPERT_NUM},
+        ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto, &compileInfo);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    EXPECT_EQ(tilingInfo.tilingKey, 10000000);
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(MoeInitRoutingV3Arch35TilingData));
+    const auto *tilingData = reinterpret_cast<const MoeInitRoutingV3Arch35TilingData *>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tilingData->gatherOutComputeParamsOp.needCoreNum, 0);
+}
 } // namespace
 
 class MoeInitRoutingV3Tiling : public testing::Test {
@@ -891,12 +906,10 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_empty_tensor_k
                               kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
 }
 
-// 空tensor场景：cols_==0（x第1维为0，如[3,0]）
-TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_empty_tensor_cols_zero)
+// 零宽输入、非空indices时，只进行路由索引与专家 token 计数。
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_index_only_cols_zero)
 {
-    RunArch35ExtendedTestcase(3, 0, 8, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, ge::DT_FLOAT,
-                              {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
-                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+    ExpectArch35IndexOnlyRoutingTilingData();
 }
 
 // 空tensor场景：k_==0 + key_value模式

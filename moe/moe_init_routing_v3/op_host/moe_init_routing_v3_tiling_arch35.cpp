@@ -272,6 +272,7 @@ private:
     int64_t CalcMaxRowIdxPerLoopMxQuant(int64_t perLoopCols);
     int64_t CalcMaxRowIdxPerLoopFP8Quant(int64_t perLoopCols);
     int64_t CalcMaxRowIdxPerLoopFP8GroupQuant(int64_t perLoopCols);
+    bool IsIndexOnlyRouting() const;
     bool IsFullLoad();
     bool IsSupportGatherCopyKernels() const;
     void ComputeUseGatherCopy();
@@ -1165,13 +1166,12 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()");
 
-    // 空tensor场景：n_==0、k_==0、cols_==0
-    if (n_ == 0 || k_ == 0 || cols_ == 0) {
+    // A zero-width input only reaches the regular pipeline when it needs index-only routing.
+    if (n_ == 0 || k_ == 0 || (cols_ == 0 && !IsIndexOnlyRouting())) {
         isEmptyTensor_ = true;
     }
 
-    // 空tensor场景下activeNum无实际意义（如cols_==0但n_*k_>0时，调用方可能传入0），跳过校验并
-    // 归一化为totalLength_，与非arch35版本保持一致，避免语义上合法的空输入误失败。
+    // 空tensor场景下activeNum无实际意义，跳过校验并归一化为totalLength_。
     if (isEmptyTensor_) {
         tilingDataPtr_->activeNum = totalLength_;
     } else if (activeNum_ != ACTIVE_NUM_MIN_VALUE) {
@@ -1858,6 +1858,12 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()");
 
+    // Sorting and RowIdxGather have completed; zero-width tensors have no GatherOut work.
+    if (IsIndexOnlyRouting()) {
+        tilingDataPtr_->gatherOutComputeParamsOp.needCoreNum = 0;
+        return;
+    }
+
     auto *gatherOutTiling = &(tilingDataPtr_->gatherOutComputeParamsOp);
     int64_t perCoreIndicesElements = Ops::Base::CeilDiv(totalLength_, aivCoreNum_);
     if (perCoreIndicesElements <= 0) {
@@ -2115,8 +2121,17 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutFP8Quant()
     return;
 }
 
+bool MoeInitRoutingV3Arch35TilingClass::IsIndexOnlyRouting() const
+{
+    return n_ > 0 && k_ > 0 && cols_ == 0 && quantMode_ == QUANT_MODE_UNQUANT && isInputScale_ == 0 &&
+           dropPadMode_ == DROP_PAD_MODE_DROPLESS;
+}
+
 bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
 {
+    if (IsIndexOnlyRouting()) {
+        return false;
+    }
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
         return false;
     }
