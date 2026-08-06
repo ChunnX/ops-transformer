@@ -996,7 +996,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchExpert(
     const DispatchBufferConfig &bufferConfig)
 {
     if constexpr (g_coreType == AIV) {
-        if (subBlockIdx_ != 1) {
+        // [full-AIV dispatch experiment] AIV1 handles even experts, AIV0 handles odd experts.
+        bool isExpertOwned = (subBlockIdx_ == 1) ? ((expertIdx & 1) == 0) : ((expertIdx & 1) == 1);
+        if (!isExpertOwned) {
             return;
         }
         uint64_t sendCnt = 0;
@@ -1016,9 +1018,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchExperts
     uint32_t dispatchEnd, const DispatchBufferConfig &bufferConfig)
 {
     if constexpr (g_coreType == AIV) {
-        if (subBlockIdx_ != 1) {
-            return;
-        }
+        // [full-AIV dispatch experiment] both AIV0/AIV1 advance expert cursor; ownership split in DispatchExpert.
         for (; nextDispatchExpert < dispatchEnd; ++nextDispatchExpert) {
             DispatchExpert(state, gmmAddrInfo, nextDispatchExpert, bufferConfig);
         }
