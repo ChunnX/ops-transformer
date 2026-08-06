@@ -10,7 +10,7 @@
 
 /*!
  * \file quant_flash_attn_tiling_mxfp8.cpp
- * \brief QuantFlashAttn arch35 tiling implementation (MXFP8_FP32)
+ * \brief QuantFlashAttn arch35 tiling implementation (A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32)
  */
 
 #include "quant_flash_attn_tiling_mxfp8.h"
@@ -18,16 +18,16 @@
 #include <vector>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
-#include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_utils.h"
+#include "../quant_flash_attn_tiling_utils.h"
 #include "../../op_kernel/arch35/quant_flash_attn_template_tiling_key.h"
 #include "../../../common/op_host/fia_tiling_templates_registry.h"
-#include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_constants.h"
+#include "../quant_flash_attn_tiling_constants.h"
 
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
 namespace quant_flash_attn {
-using namespace arch35FIA;
+using namespace arch35QFA;
 constexpr uint64_t PRE_LOAD_NUM_QFA_ARCH35 = 3;
 
 void QuantFlashAttnTilingImpl::InitTilingInfo(TilingInfo *tilingInfo)
@@ -40,7 +40,7 @@ bool QuantFlashAttnTilingImpl::IsCapable()
     if (qfaInfo_ == nullptr) {
         return false;
     }
-    if (qfaInfo_->quantMode != QfaQuantMode::MXFP8_FP32) {
+    if (qfaInfo_->quantMode != QfaQuantMode::A8C8_QKV_MXFP8_P_FP8_E4M3_PER_TENSOR_SOFTMAX_FP32) {
         return false;
     }
     return true;
@@ -63,7 +63,6 @@ ge::graphStatus QuantFlashAttnTilingImpl::DoOpTiling()
     CalcScheduleMode();
     CalcWorkspaceSize();
     GenTilingKey();
-
     if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
         (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) || (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
         (SetScheduleMode(scheduleMode_) != ge::GRAPH_SUCCESS)) {
@@ -170,7 +169,7 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyLayout()
     } else if (qfaInfo_->qLayout == QfaLayout::TND) {
         tilingKeyInfo_.inputLayout = InOutLayoutType_TND_TND;
     } else {
-        tilingKeyInfo_.inputLayout = InOutLayoutType_BSH_BSH;
+        tilingKeyInfo_.inputLayout = InOutLayoutType_BSND_BSND;
     }
 }
 
@@ -179,7 +178,7 @@ void QuantFlashAttnTilingImpl::UpdateTilingKeyKvLayout()
     if (!qfaInfo_->pageAttentionFlag) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_NO_PA;
     } else if (qfaInfo_->kvLayout == QfaLayout::PA_BBND) {
-        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BBH;
+        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BBND;
     } else if (qfaInfo_->kvLayout == QfaLayout::PA_BNBD) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
     } else if (qfaInfo_->kvLayout == QfaLayout::PA_NZ) {
@@ -335,13 +334,10 @@ bool QuantFlashAttnTilingImpl::CheckNeedInitOutput() const
     if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) {
         return false;
     }
-    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::ALL_MASK)) {
-        return true;
-    }
     if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::CAUSAL)) {
         return qfaInfo_->s1Size > qfaInfo_->s2Size;
     }
-    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::BAND)) {
+    if (qfaInfo_->maskMode == static_cast<int64_t>(MaskMode::SLIDING_WINDOW)) {
         if (qfaInfo_->winRight == -1) {
             return false;
         }

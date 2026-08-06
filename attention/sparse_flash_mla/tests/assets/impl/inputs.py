@@ -19,8 +19,261 @@ from pathlib import Path
 import torch
 
 
+class TorchBatchRandomContext:
+    """Make declared logical batches deterministic while pytest builds the case."""
+
+    SEED_MODULUS = (1 << 63) - 1
+
+    def __init__(self, q, ori_kv, cmp_kv, kwargs):
+        self.layout_q = kwargs.get("layout_q", "BSND")
+        self.layout_kv = kwargs.get("layout_kv", "BSND")
+        self.q_prefix = (
+            self.build_prefix(kwargs, "cu_seqlens_q", int(q.shape[0]), True)
+            if self.layout_q == "TND"
+            else None
+        )
+        self.batch_size = (
+            len(self.q_prefix) - 1 if self.q_prefix is not None else int(q.shape[0])
+        )
+        self.relations = self.parse_relations(q, kwargs)
+        self.batch_relations = self.map_batch_relations()
+        self.validate_relation_contract(kwargs)
+        self.extent_selectors = {}
+        self.register_extent(self.batch_size, self.batch_relations, "logical batch")
+        if self.q_prefix is not None:
+            self.register_prefix(self.q_prefix, "q")
+        if self.layout_kv == "TND":
+            if ori_kv is not None:
+                self.register_prefix(
+                    self.build_prefix(
+                        kwargs, "cu_seqlens_ori_kv", int(ori_kv.shape[0]), True
+                    ),
+                    "ori_kv",
+                )
+            if cmp_kv is not None:
+                self.register_prefix(
+                    self.build_prefix(
+                        kwargs, "cu_seqlens_cmp_kv", int(cmp_kv.shape[0]), True
+                    ),
+                    "cmp_kv",
+                )
+        self.base_seed = self.relations[0][1]
+        self.call_index = 0
+        self.original_rand = None
+
+    @classmethod
+    def from_case(cls, q, ori_kv, cmp_kv, kwargs):
+        fields = tuple(kwargs.get(name) for name in (
+            "batch_axis", "batch_slice_info", "batch_seed"
+        ))
+        if all(field is None for field in fields):
+            return None
+        if any(field is None for field in fields):
+            raise ValueError(
+                "batch_axis, batch_slice_info and batch_seed must be set together"
+            )
+        layout_q = kwargs.get("layout_q", "BSND")
+        layout_kv = kwargs.get("layout_kv", "BSND")
+        if layout_q not in ("BSND", "TND"):
+            raise ValueError(f"SMLA batch consistency does not support layout_q={layout_q!r}")
+        if layout_kv not in ("BSND", "TND", "PA_BBND"):
+            raise ValueError(f"SMLA batch consistency does not support layout_kv={layout_kv!r}")
+        return cls(q, ori_kv, cmp_kv, kwargs)
+
+    @staticmethod
+    def list_value(kwargs, name):
+        value = kwargs.get(f"{name}_values")
+        if value is None:
+            return None
+        if torch.is_tensor(value):
+            value = value.detach().cpu().reshape(-1).tolist()
+        return [int(item) for item in value]
+
+    @classmethod
+    def build_prefix(cls, kwargs, name, expected_total, required):
+        value = cls.list_value(kwargs, name)
+        if value is None:
+            if required:
+                raise ValueError(f"SMLA batch consistency requires explicit {name}_values")
+            return None
+        if len(value) < 2 or value[0] != 0 or value[-1] != expected_total:
+            raise ValueError(
+                f"SMLA {name}_values must start at 0 and end at {expected_total}: {value!r}"
+            )
+        if any(right <= left for left, right in zip(value, value[1:])):
+            raise ValueError(
+                f"SMLA {name}_values must be strictly increasing for batch relations"
+            )
+        return value
+
+    def parse_relations(self, q, kwargs):
+        batch_axis = kwargs["batch_axis"]
+        batch_slices = kwargs["batch_slice_info"]
+        batch_seed = kwargs["batch_seed"]
+        if not batch_axis or batch_axis[0] != (0,):
+            raise ValueError("SMLA batch consistency requires q batch_axis=((0,), ...)")
+        if not batch_slices or batch_slices[0] is None or batch_seed[0] is None:
+            raise ValueError("SMLA batch consistency requires slices and seeds on q")
+        if any(slices is not None for slices in batch_slices[1:]):
+            raise ValueError("SMLA batch consistency relations must be declared on q only")
+
+        relations = list(zip(batch_slices[0][0], batch_seed[0][0]))
+        if not relations:
+            raise ValueError("SMLA batch consistency requires at least one q slice")
+        if len({seed for _, seed in relations}) != 1:
+            raise ValueError("SMLA batch consistency supports one relation seed per case")
+        q_extent = int(q.shape[0])
+        for slice_value, _ in relations:
+            start, stop, step = slice_value
+            if step != 1 or start < 0 or start >= stop or stop > q_extent:
+                raise ValueError(
+                    "SMLA batch consistency requires in-range, contiguous q axis slices"
+                )
+        return [(tuple(int(item) for item in value), int(seed)) for value, seed in relations]
+
+    def map_batch_relations(self):
+        if self.q_prefix is None:
+            return [((start, stop, step), seed) for (start, stop, step), seed in self.relations]
+        boundary_to_batch = {offset: index for index, offset in enumerate(self.q_prefix)}
+        mapped = []
+        for (start, stop, step), seed in self.relations:
+            if start not in boundary_to_batch or stop not in boundary_to_batch:
+                raise ValueError(
+                    "SMLA TND batch slice must align with complete cu_seqlens_q intervals: "
+                    f"{(start, stop, step)!r}"
+                )
+            mapped.append(
+                ((boundary_to_batch[start], boundary_to_batch[stop], step), seed)
+            )
+        return mapped
+
+    def validate_relation_contract(self, kwargs):
+        reference_slice = self.batch_relations[0][0]
+        reference_count = reference_slice[1] - reference_slice[0]
+        vector_names = (
+            "seqused_q",
+            "seqused_ori_kv",
+            "seqused_cmp_kv",
+            "cmp_residual_kv",
+        )
+        vectors = {
+            name: self.list_value(kwargs, name)
+            for name in vector_names
+            if self.list_value(kwargs, name) is not None
+        }
+        prefixes = [value for value in (
+            self.q_prefix,
+            self.list_value(kwargs, "cu_seqlens_ori_kv"),
+            self.list_value(kwargs, "cu_seqlens_cmp_kv"),
+        ) if value is not None]
+        for name, value in vectors.items():
+            if len(value) != self.batch_size:
+                raise ValueError(f"SMLA {name}_values length must equal B={self.batch_size}")
+        for value in prefixes:
+            if len(value) != self.batch_size + 1:
+                raise ValueError("SMLA prefix-length vector length must equal B + 1")
+
+        def relation_signature(batch_slice):
+            start, stop, _ = batch_slice
+            signature = []
+            for value in prefixes:
+                signature.append(tuple(
+                    value[index + 1] - value[index] for index in range(start, stop)
+                ))
+            for value in vectors.values():
+                signature.append(tuple(value[start:stop]))
+            return tuple(signature)
+
+        reference_signature = relation_signature(reference_slice)
+        for batch_slice, _ in self.batch_relations[1:]:
+            if batch_slice[1] - batch_slice[0] != reference_count:
+                raise ValueError("SMLA relation slices must contain the same logical batch count")
+            if relation_signature(batch_slice) != reference_signature:
+                raise ValueError(
+                    "SMLA relation slices require identical q/KV lengths and residual values"
+                )
+
+    def register_extent(self, extent, relations, source):
+        selectors = tuple(value for value, _ in relations)
+        existing = self.extent_selectors.get(int(extent))
+        if existing is not None and existing[0] != selectors:
+            raise ValueError(
+                f"SMLA cannot distinguish generated {source} extent {extent} from "
+                f"{existing[1]} with different relation slices"
+            )
+        self.extent_selectors[int(extent)] = (selectors, source)
+
+    def register_prefix(self, prefix, source):
+        selectors = []
+        for (start, stop, _), _seed in self.batch_relations:
+            selectors.append((prefix[start], prefix[stop], 1))
+        self.register_extent(prefix[-1], tuple((value, 0) for value in selectors), source)
+
+    def validate_params(self, params):
+        if params.get("template_mode") not in ("SWA", "HCA"):
+            raise ValueError("SMLA batch consistency currently excludes sparse modes")
+
+    @classmethod
+    def derive_seed(cls, seed, call_index):
+        return (int(seed) + (call_index + 1) * 1000003) % cls.SEED_MODULUS
+
+    @staticmethod
+    def create_generator(seed, device):
+        generator = torch.Generator(device=device)
+        generator.manual_seed(seed)
+        return generator
+
+    def random_values(self, *size, **kwargs):
+        call_index = self.call_index
+        self.call_index += 1
+        call_kwargs = dict(kwargs)
+        device = call_kwargs.get("device") or "cpu"
+        call_kwargs["generator"] = self.create_generator(
+            self.derive_seed(self.base_seed, call_index), device
+        )
+        value = self.original_rand(*size, **call_kwargs)
+        if value.ndim < 2:
+            return value
+        extent = self.extent_selectors.get(int(value.shape[0]))
+        if extent is None:
+            return value
+        selectors = extent[0]
+        for slice_value, (_batch_slice, seed) in zip(selectors, self.batch_relations):
+            selector = (slice(*slice_value),) + (slice(None),) * (value.ndim - 1)
+            piece = value[selector]
+            piece_generator = self.create_generator(
+                self.derive_seed(seed, call_index), value.device
+            )
+            value[selector] = self.original_rand(
+                tuple(piece.shape),
+                generator=piece_generator,
+                dtype=value.dtype,
+                device=value.device,
+            )
+        return value
+
+    def __enter__(self):
+        self.original_rand = torch.rand
+        torch.rand = self.random_values
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        torch.rand = self.original_rand
+        return False
+
+
 class SparseFlashMlaInputAdapter:
     """Translate a TTK case to pytest parameters and reuse pytest generation."""
+
+    TEMPLATE_MODES = frozenset(("SWA", "HCA", "CSA", "ORI_SPARSE", "ORI_CMP_SPARSE"))
+
+    @staticmethod
+    def module_load_error(stage, path, exc):
+        return RuntimeError(
+            "Failed to load SparseFlashMla module; "
+            f"stage={stage}; module={path.resolve()}; "
+            f"original error: {type(exc).__name__}: {exc}"
+        )
 
     def __init__(self):
         self.pytest_modules = {}
@@ -31,14 +284,18 @@ class SparseFlashMlaInputAdapter:
         if name in sys.modules:
             return sys.modules[name]
         path = Path(__file__).with_name("golden.py")
-        spec = importlib.util.spec_from_file_location(name, path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[name] = module
         try:
+            spec = importlib.util.spec_from_file_location(name, path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"cannot create import spec for {path}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
             spec.loader.exec_module(module)
-        except Exception:
+        except Exception as exc:
             sys.modules.pop(name, None)
-            raise
+            raise SparseFlashMlaInputAdapter.module_load_error(
+                "assets Golden store", path, exc
+            ) from exc
         return module
 
     def load_pytest_module(self, stem, filename):
@@ -56,15 +313,16 @@ class SparseFlashMlaInputAdapter:
                 module = sys.modules[name]
             else:
                 spec = importlib.util.spec_from_file_location(name, module_path)
+                if spec is None or spec.loader is None:
+                    raise ImportError(f"cannot create import spec for {module_path}")
                 module = importlib.util.module_from_spec(spec)
                 sys.modules[name] = module
-                try:
-                    spec.loader.exec_module(module)
-                except Exception:
-                    sys.modules.pop(name, None)
-                    raise
+                spec.loader.exec_module(module)
             self.pytest_modules[stem] = module
             return module
+        except Exception as exc:
+            sys.modules.pop(name, None)
+            raise self.module_load_error(f"pytest {stem}", module_path, exc) from exc
         finally:
             if inserted:
                 sys.path.remove(str(pytest_dir))
@@ -85,12 +343,37 @@ class SparseFlashMlaInputAdapter:
         return [int(value[i + 1]) - int(value[i]) for i in range(len(value) - 1)]
 
     @staticmethod
-    def data_range(input_ranges, index, default=(-10, 10)):
-        if input_ranges and index < len(input_ranges) and input_ranges[index] is not None:
-            return repr(list(input_ranges[index]))
-        return repr(list(default))
+    def data_range(input_ranges, index):
+        if not input_ranges or index >= len(input_ranges):
+            return None
+        value = input_ranges[index]
+        if value is None or any(item is None for item in value):
+            return None
+        return repr(list(value))
 
-    def build_case_params(self, q, ori_kv, cmp_kv, cmp_sparse_indices, layout_q, layout_kv, kwargs):
+    @classmethod
+    def select_template_mode(cls, kwargs):
+        mode = kwargs.get("template_run_mode") or kwargs.get("template_mode")
+        if mode is None:
+            return None
+        mode = str(mode).strip()
+        if mode not in cls.TEMPLATE_MODES:
+            raise ValueError(f"unsupported explicit template_run_mode: {mode!r}")
+        return mode
+
+    @staticmethod
+    def verify_template_inputs(mode, ori_sparse_indices, cmp_sparse_indices, cmp_kv):
+        if mode in ("ORI_SPARSE", "ORI_CMP_SPARSE") and ori_sparse_indices is None:
+            raise ValueError(f"{mode} requires ori_sparse_indices in the CSV")
+        if mode in ("CSA", "ORI_CMP_SPARSE") and cmp_sparse_indices is None:
+            raise ValueError(f"{mode} requires cmp_sparse_indices in the CSV")
+        if mode in ("SWA", "ORI_SPARSE") and cmp_kv is not None:
+            raise ValueError(f"{mode} must not provide cmp_kv in the CSV")
+        if mode in ("HCA", "CSA", "ORI_CMP_SPARSE") and cmp_kv is None:
+            raise ValueError(f"{mode} requires cmp_kv in the CSV")
+
+    def build_case_params(self, q, ori_kv, cmp_kv, ori_sparse_indices,
+                          cmp_sparse_indices, layout_q, layout_kv, kwargs):
         cu_q = self.list_value(kwargs, "cu_seqlens_q")
         cu_ori = self.list_value(kwargs, "cu_seqlens_ori_kv")
         cu_cmp = self.list_value(kwargs, "cu_seqlens_cmp_kv")
@@ -106,46 +389,54 @@ class SparseFlashMlaInputAdapter:
             q_total, q_heads, head_dim = [int(x) for x in q.shape]
             batch_size = len(seq_q or self.prefix_lengths(cu_q))
             q_seq = max(self.prefix_lengths(cu_q) or seq_q or [q_total])
+        if kwargs.get("S1") is not None:
+            q_seq = int(kwargs["S1"])
 
         if layout_kv == "BSND":
             _, kv_seq, kv_heads, _ = [int(x) for x in ori_kv.shape]
             kv_total = batch_size * kv_seq
-            block_num1, block_size1 = 0, 128
+            block_num1, block_size1 = None, None
         elif layout_kv == "TND":
             kv_total, kv_heads, _ = [int(x) for x in ori_kv.shape]
             kv_seq = max(self.prefix_lengths(cu_ori) or seq_ori or [kv_total])
-            block_num1, block_size1 = 0, 128
+            block_num1, block_size1 = None, None
         else:
             block_num1, block_size1, kv_heads, _ = [int(x) for x in ori_kv.shape]
             kv_seq = max(seq_ori or [block_size1])
             kv_total = sum(seq_ori or [])
+        if kwargs.get("S2") is not None:
+            kv_seq = int(kwargs["S2"])
 
         if cmp_kv is None:
-            mode = "SWA"
             cmp_total = 0
-            block_num2, block_size2 = 0, block_size1
+            block_num2, block_size2 = None, None
         elif layout_kv == "BSND":
-            mode = "CSA" if cmp_sparse_indices is not None else "HCA"
             cmp_total = batch_size * int(cmp_kv.shape[1])
-            block_num2, block_size2 = 0, 128
+            block_num2, block_size2 = None, None
         elif layout_kv == "TND":
-            mode = "CSA" if cmp_sparse_indices is not None else "HCA"
             cmp_total = int(cmp_kv.shape[0])
-            block_num2, block_size2 = 0, 128
+            block_num2, block_size2 = None, None
         else:
-            mode = "CSA" if cmp_sparse_indices is not None else "HCA"
             block_num2, block_size2 = int(cmp_kv.shape[0]), int(cmp_kv.shape[1])
             cmp_total = sum(seq_cmp or [])
+        mode = self.select_template_mode(kwargs)
+        if mode is not None:
+            self.verify_template_inputs(mode, ori_sparse_indices, cmp_sparse_indices, cmp_kv)
 
         input_ranges = kwargs.get("input_ranges") or ()
         params = dict(kwargs)
+        data_ranges = {
+            "q_datarange": self.data_range(input_ranges, 0),
+            "ori_kv_datarange": self.data_range(input_ranges, 1),
+            "cmp_kv_datarange": self.data_range(input_ranges, 2),
+        }
         params.update({
             "testcase_name": kwargs.get("testcase_name"),
             "layout_q": layout_q,
             "layout_kv": layout_kv,
             "q_type": q.dtype,
             "ori_kv_type": ori_kv.dtype,
-            "cmp_kv_type": cmp_kv.dtype if cmp_kv is not None else ori_kv.dtype,
+            "cmp_kv_type": cmp_kv.dtype if cmp_kv is not None else None,
             "B": batch_size,
             "S1": q_seq,
             "S2": kv_seq,
@@ -155,6 +446,7 @@ class SparseFlashMlaInputAdapter:
             "N1": q_heads,
             "N2": kv_heads,
             "D": head_dim,
+            "K1": int(ori_sparse_indices.shape[-1]) if ori_sparse_indices is not None else None,
             "K": int(cmp_sparse_indices.shape[-1]) if cmp_sparse_indices is not None else None,
             "block_num1": block_num1,
             "block_num2": block_num2,
@@ -168,24 +460,19 @@ class SparseFlashMlaInputAdapter:
             "seqused_cmp_kv": seq_cmp,
             "cmp_residual_kv": residual,
             "template_mode": mode,
-            "cmp_ratio": None if mode == "SWA" else int(kwargs.get("cmp_ratio", 1)),
-            "cmp_mask_mode": 0 if mode == "SWA" else int(kwargs.get("cmp_mask_mode", 3)),
-            "q_datarange": self.data_range(input_ranges, 0),
-            "ori_kv_datarange": self.data_range(input_ranges, 1),
-            "cmp_kv_datarange": self.data_range(input_ranges, 2),
-            "qk_equal_len": False,
+            "cmp_ratio": kwargs.get("cmp_ratio"),
+            "cmp_mask_mode": kwargs.get("cmp_mask_mode"),
         })
-        params.setdefault("return_softmax_lse", False)
-        params.setdefault("ori_kv_topk_mode", "full")
-        params.setdefault("cmp_kv_topk_mode", "full")
-        params.setdefault("ori_sparse_indices_mode", "full")
-        params.setdefault("cmp_sparse_indices_mode", "full")
-        params.setdefault("actlen_mode", "full")
+        params.update({name: value for name, value in data_ranges.items() if value is not None})
         return params
 
     @staticmethod
     def copy_tensor(dst, src, name):
         if dst is None:
+            if src is not None:
+                raise ValueError(
+                    f"{name} is absent from CSV but pytest generator produced a tensor"
+                )
             return
         if src is None:
             raise ValueError(f"{name} is present in CSV but pytest generator returned None")
@@ -196,20 +483,37 @@ class SparseFlashMlaInputAdapter:
             )
         dst.copy_(src_cpu.to(dtype=dst.dtype, device=dst.device))
 
-    def generate_case(self, params):
+    def generate_case(self, params, batch_random=None):
         pytest_utils = self.load_pytest_module("utils", "utils.py")
         pytest_golden = self.load_pytest_module("golden", "sparse_flash_mla_golden.py")
-        case_params = pytest_utils.generate_case_with_default_param(params)
-        data = pytest_golden.gen_data(case_params, case_params.get("template_mode"))
+        pytest_input = {name: [value] for name, value in params.items()}
+        param_combinations = pytest_utils.generate_param_combinations([pytest_input])
+        if len(param_combinations) != 1:
+            raise ValueError(
+                f"expected one pytest parameter combination, got {len(param_combinations)}"
+            )
+        case_params = pytest_utils.generate_case_with_default_param(param_combinations[0])
+        if batch_random is None:
+            data = pytest_golden.gen_data(
+                case_params, prepare_device_storage=False
+            )
+        else:
+            batch_random.validate_params(case_params)
+            with batch_random:
+                data = pytest_golden.gen_data(
+                    case_params, prepare_device_storage=False
+                )
         testcase_name = params.get("testcase_name") or case_params.get("testcase_name")
         self.load_golden_store().CASE_DATA.put(testcase_name, data)
         return data
 
-    def customize(self, q, ori_kv, cmp_kv, cmp_sparse_indices, layout_q, layout_kv, kwargs):
+    def customize(self, q, ori_kv, cmp_kv, ori_sparse_indices,
+                  cmp_sparse_indices, layout_q, layout_kv, kwargs, batch_random=None):
         params = self.build_case_params(
-            q, ori_kv, cmp_kv, cmp_sparse_indices, layout_q, layout_kv, kwargs
+            q, ori_kv, cmp_kv, ori_sparse_indices, cmp_sparse_indices,
+            layout_q, layout_kv, kwargs
         )
-        return self.generate_case(params)
+        return self.generate_case(params, batch_random)
 
 
 INPUT_ADAPTER = SparseFlashMlaInputAdapter()
@@ -223,16 +527,20 @@ def generate_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None, ori_sparse_
                                      cmp_residual_kv=None, ori_topk_length=None,
                                      cmp_topk_length=None, sinks=None, **kwargs):
     """Reuse the pytest parameter and input processing for a TTK case."""
+    batch_random = TorchBatchRandomContext.from_case(q, ori_kv, cmp_kv, kwargs)
     data = INPUT_ADAPTER.customize(
         q,
         ori_kv,
         cmp_kv,
+        ori_sparse_indices,
         cmp_sparse_indices,
-        kwargs.get("layout_q", "BSND"),
-        kwargs.get("layout_kv", "BSND"),
+        kwargs.get("layout_q"),
+        kwargs.get("layout_kv"),
         kwargs,
+        batch_random,
     )
     op_input = data["input"]
+    metadata_input = data.get("metadata_input", {})
     for name, tensor in (
         ("q", q),
         ("ori_kv", ori_kv),
@@ -252,4 +560,7 @@ def generate_sparse_flash_mla_inputs(q, *, ori_kv=None, cmp_kv=None, ori_sparse_
         ("cmp_topk_length", cmp_topk_length),
         ("sinks", sinks),
     ):
-        INPUT_ADAPTER.copy_tensor(tensor, op_input.get(name), name)
+        source = op_input.get(name)
+        if name in ("ori_topk_length", "cmp_topk_length") and source is None:
+            source = metadata_input.get(name)
+        INPUT_ADAPTER.copy_tensor(tensor, source, name)

@@ -8,8 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-// BSA-COPY-OF: FIA fullquant GQA local migration.
-
 /*!
  * \file quant_block_sparse_attn_kernel.h
  * \brief
@@ -41,14 +39,14 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 
 namespace BaseApi {
-namespace BSAKernelBase {
+namespace QBSAKernelBase {
 template <bool useDn, bool isFp8>
 struct Bmm2ResBuffSel {
     using Type =
         std::conditional_t<(useDn && isFp8), BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                            BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>;
 };
-} // namespace BSAKernelBase
+} // namespace QBSAKernelBase
 
 template <typename CubeBlockType, typename VecBlockType>
 class QuantBlockSparseAttnKernel {
@@ -110,7 +108,7 @@ public:
 
     BufferManager<BufferType::UB> ubBufferManager;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    using bmm2ResBufferType = typename BSAKernelBase::Bmm2ResBuffSel<useDn, isFp8>::Type;
+    using bmm2ResBufferType = typename QBSAKernelBase::Bmm2ResBuffSel<useDn, isFp8>::Type;
     bmm2ResBufferType bmm2Buffers;
 
     BufferManager<BufferType::L1> l1BufferManager;
@@ -123,8 +121,6 @@ public:
     GlobalTensor<int32_t> metadataGm;
     GlobalTensor<int32_t> blockTableGm;
     __gm__ int32_t *cuSeqQlenAddr;
-    __gm__ int32_t *cuSeqKvlenAddr;
-    __gm__ int32_t *seqUsedQlenAddr;
     __gm__ int32_t *seqUsedKvlenAddr;
     int32_t aicIdx;
 
@@ -185,8 +181,8 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::InitGlobalBuffer(
     __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseSeqLen,
-    __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *cuSeqQlen, __gm__ uint8_t *cuSeqKvlen,
-    __gm__ uint8_t *seqUsedQlen, __gm__ uint8_t *seqUsedKvlen, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
+    __gm__ uint8_t *attenMask, __gm__ uint8_t *metadata, __gm__ uint8_t *cuSeqQlen, __gm__ uint8_t *,
+    __gm__ uint8_t *, __gm__ uint8_t *seqUsedKvlen, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
     __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
     __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
     const QuantBlockSparseAttnTilingData *__restrict tiling, TPipe *tPipe)
@@ -198,10 +194,8 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     if constexpr (isPa) {
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
     }
-    if constexpr (layout == BSALayout::TND || layout == BSALayout::NTD) {
+    if constexpr (layout == QBSALayout::TND || layout == QBSALayout::NTD) {
         cuSeqQlenAddr = (__gm__ int32_t *)cuSeqQlen;
-        cuSeqKvlenAddr = (__gm__ int32_t *)cuSeqKvlen;
-        seqUsedQlenAddr = (__gm__ int32_t *)seqUsedQlen;
         seqUsedKvlenAddr = (__gm__ int32_t *)seqUsedKvlen;
     }
 
@@ -293,10 +287,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
 
     constInfo.bSize = sharedParams.bSize;
     constInfo.t1Size = sharedParams.t1Size;
-    constInfo.t2Size = sharedParams.t2Size;
     constInfo.n2Size = sharedParams.n2Size;
-    constInfo.s1Size = sharedParams.s1Size;
-    constInfo.s2Size = sharedParams.s2Size;
     constInfo.dSize = sharedParams.dSize;
     constInfo.dSizeV = sharedParams.dSizeV;
     constInfo.combineDim = (constInfo.dSize + constInfo.dSizeV + sizeof(float) + 31U) / 32U * 32U;
@@ -305,39 +296,30 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     constInfo.gSize = sharedParams.gSize;
     constInfo.n1Size = constInfo.n2Size * constInfo.gSize;
     constInfo.s1OuterSize = sharedParams.s1OuterSize;
-    constInfo.s1S2 = constInfo.s1Size * constInfo.s2Size;
-    constInfo.gS1 = constInfo.gSize * constInfo.s1Size;
     constInfo.n2G = constInfo.n2Size * constInfo.gSize;
 
-    constInfo.s1Dv = constInfo.s1Size * constInfo.dSizeV;
-    constInfo.s2Dv = constInfo.s2Size * constInfo.dSizeV;
     constInfo.n2Dv = constInfo.n2Size * constInfo.dSizeV;
     constInfo.gDv = constInfo.gSize * constInfo.dSizeV;
-    constInfo.gS1Dv = constInfo.gSize * constInfo.s1Dv;
-    constInfo.n2S2Dv = constInfo.n2Size * constInfo.s2Dv;
     constInfo.n2GDv = constInfo.n2Size * constInfo.gDv;
     constInfo.s2BaseN2Dv = s2BaseSize * constInfo.n2Dv;
-    constInfo.n2GS1Dv = constInfo.n2Size * constInfo.gS1Dv;
     constInfo.layoutType = sharedParams.layoutType;
 
-    constInfo.s1D = constInfo.s1Size * constInfo.dSize;
     constInfo.gD = constInfo.gSize * constInfo.dSize;
     constInfo.n2GD = constInfo.n2Size * constInfo.gD;
-    constInfo.gS1D = constInfo.gS1 * constInfo.dSize;
     constInfo.maxBlockNumPerBatch = sharedParams.blockTableDim2;
 
-    if constexpr (layout == BSALayout::TND) {
+    if constexpr (layout == QBSALayout::TND) {
         constInfo.s1BaseN2GDv = s1BaseSize * constInfo.n2GDv;
 
         constInfo.mm1Ka = constInfo.n2Size * constInfo.gSize * constInfo.dSize;
         constInfo.mm1Kb = constInfo.n2Size * constInfo.dSize;
         constInfo.mm2Kb = constInfo.n2Dv;
         if ASCEND_IS_AIV {
-            // BSA: 输出 TND [T, N1, Dv]，同一 head 相邻 token 间隔 (n2G-1)*Dv 个元素（跳过其余 head）。
+            // QBSA: 输出 TND [T, N1, Dv]，同一 head 相邻 token 间隔 (n2G-1)*Dv 个元素（跳过其余 head）。
             // 每核独立计算一个 head，不做 FIA GS1 合轴/连续 GQA 输出，固定使用 per-head stride。
             constInfo.attentionOutStride = (constInfo.n2G - 1) * constInfo.dSizeV * sizeof(OUTPUT_T);
         }
-    } else if constexpr (layout == BSALayout::NTD) {
+    } else if constexpr (layout == QBSALayout::NTD) {
         constInfo.s1BaseDv = s1BaseSize * constInfo.dSizeV;
         constInfo.s2BaseDv = s2BaseSize * constInfo.dSizeV;
         constInfo.mm1Ka = constInfo.dSize;
@@ -350,12 +332,9 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
 
     if ASCEND_IS_AIV {
         auto &inputParamsRegbase = this->tilingData->inputParamsRegbase;
-        auto &paParams = this->tilingData->paParams;
         if constexpr (hasAtten) {
             attenMaskInfo.preTokens = sharedParams.preTokens;
             attenMaskInfo.nextTokens = sharedParams.nextTokens;
-            attenMaskInfo.attenMaskShapeType = inputParamsRegbase.attenMaskShapeType;
-            attenMaskInfo.attenMaskS1Size = paParams.attenMaskS1Size;
             attenMaskInfo.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
             attenMaskInfo.bandIndex = inputParamsRegbase.bandIndex;
         }
@@ -374,30 +353,23 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     int32_t remainingSparseBlocks = runParam.actSparseLen - static_cast<int32_t>(s2LoopCount * 2);
     runInfo.sparseBlkIdx1 = remainingSparseBlocks > 0 ? sparseIndicesGm.GetValue(sparseLoopCountOffset) : -1;
     runInfo.sparseBlkIdx2 = remainingSparseBlocks > 1 ? sparseIndicesGm.GetValue(sparseLoopCountOffset + 1) : -1;
-    if constexpr (isPa) {
-        if (runInfo.sparseBlkIdx1 >= static_cast<int64_t>(constInfo.maxBlockNumPerBatch)) {
-            runInfo.sparseBlkIdx1 = -1;
-        }
-        if (runInfo.sparseBlkIdx2 >= static_cast<int64_t>(constInfo.maxBlockNumPerBatch)) {
-            runInfo.sparseBlkIdx2 = -1;
-        }
-    }
-    if ((runInfo.sparseBlkIdx1 < 0) || (runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize >= runParam.actualS2Size)) {
+
+    if (unlikely(runInfo.sparseBlkIdx1 < 0)) {
         runInfo.s2SparseBlk1RealSize = 0;
         runInfo.s2SparseBlk1RealAlignedSize = 0;
         runInfo.sparseBlk1PartialMask = false;
-    } else if ((runInfo.sparseBlkIdx1 + 1) * constInfo.kvSparseBlockSize > runParam.actualS2Size) {
+    } else if (unlikely((runInfo.sparseBlkIdx1 + 1) * constInfo.kvSparseBlockSize > runParam.actualS2Size)) {
         runInfo.s2SparseBlk1RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
         runInfo.s2SparseBlk1RealAlignedSize = Align(runInfo.s2SparseBlk1RealSize);
     } else {
         runInfo.s2SparseBlk1RealSize = constInfo.kvSparseBlockSize;
         runInfo.s2SparseBlk1RealAlignedSize = runInfo.s2SparseBlk1RealSize;
     }
-    if ((runInfo.sparseBlkIdx2 < 0) || (runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize >= runParam.actualS2Size)) {
+    if (unlikely(runInfo.sparseBlkIdx2 < 0)) {
         runInfo.s2SparseBlk2RealSize = 0;
         runInfo.s2SparseBlk2RealAlignedSize = 0;
         runInfo.sparseBlk2PartialMask = false;
-    } else if ((runInfo.sparseBlkIdx2 + 1) * constInfo.kvSparseBlockSize > runParam.actualS2Size) {
+    } else if (unlikely((runInfo.sparseBlkIdx2 + 1) * constInfo.kvSparseBlockSize > runParam.actualS2Size)) {
         runInfo.s2SparseBlk2RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
         runInfo.s2SparseBlk2RealAlignedSize = Align(runInfo.s2SparseBlk2RealSize);
     } else {
@@ -405,32 +377,8 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
         runInfo.s2SparseBlk2RealAlignedSize = runInfo.s2SparseBlk2RealSize;
     }
 
-    // 判断当前sparse块是否需要计算
-    int64_t delta = runParam.nextTokensPerBatch;
-    uint32_t sparseBlk1S1Offset = runParam.s1oIdx * constInfo.s1BaseSize;
-    uint32_t sparseBlk2S1Offset = sparseBlk1S1Offset;
-    if (runInfo.sparseBlkIdx1 >= 0) {
-        uint32_t sparseBlk1S2Offset = runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
-        AttentionMaskFullProcessingOrRequired(sparseBlk1S1Offset, sparseBlk1S2Offset, delta,
-                                              runInfo.s2SparseBlk1RealSize, runInfo.sparseBlkIdx1,
-                                              runInfo.sparseBlk1PartialMask);
-    }
-    if (runInfo.sparseBlkIdx2 >= 0) {
-        uint32_t sparseBlk2S2Offset = runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
-        AttentionMaskFullProcessingOrRequired(sparseBlk2S1Offset, sparseBlk2S2Offset, delta,
-                                              runInfo.s2SparseBlk2RealSize, runInfo.sparseBlkIdx2,
-                                              runInfo.sparseBlk2PartialMask);
-    }
-
     // 将sparseBlkIdx映射为phyBlkNumIdx  并按照phyBlkNumIdx的大小顺序排列
-    if constexpr (isPa) {
-        uint64_t blockTableBaseOffset = runInfo.boIdx * constInfo.maxBlockNumPerBatch;
-        runInfo.phyBlkNumIdx1 =
-            runInfo.sparseBlkIdx1 == -1 ? -1 : blockTableGm.GetValue(blockTableBaseOffset + runInfo.sparseBlkIdx1);
-        runInfo.phyBlkNumIdx2 =
-            runInfo.sparseBlkIdx2 == -1 ? -1 : blockTableGm.GetValue(blockTableBaseOffset + runInfo.sparseBlkIdx2);
-        IdxSortBySparseIdx(runInfo);
-    }
+    IdxSortBySparseIdx(runInfo);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -491,12 +439,9 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     }
     this->constInfo.isRowInvalid = this->sharedParams.isRowInvalid;
     this->constInfo.isGqa = this->sharedParams.isGqa;
-    this->constInfo.isPfaGS1Merge = this->sharedParams.isPfaGS1Merge;
     this->constInfo.isKvContinuous = this->sharedParams.isKvContinuous;
     this->constInfo.seqUsedQlenSize = this->sharedParams.seqUsedQlenSize;
     this->constInfo.seqUsedKvlenSize = this->sharedParams.seqUsedKvlenSize;
-    this->constInfo.isSeqUsedQlenNull = static_cast<bool>(this->sharedParams.isSeqUsedQlenNull);
-    this->constInfo.isSeqUsedKvlenNull = static_cast<bool>(this->sharedParams.isSeqUsedKvlenNull);
     if constexpr (isPa) {
         this->constInfo.blockTableDim2 = this->sharedParams.blockTableDim2;
         this->constInfo.kvSparseBlockSize = this->sharedParams.kvSparseBlockSize;
@@ -519,7 +464,7 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
     int32_t actualCoreNums = this->sharedParams.coreNum;
-    if (this->aicIdx >= actualCoreNums || static_cast<uint32_t>(this->aicIdx) >= BSA_FA_AIC_CORE_NUM) {
+    if (this->aicIdx >= actualCoreNums || static_cast<uint32_t>(this->aicIdx) >= QBSA_FA_AIC_CORE_NUM) {
         return;
     }
 
@@ -563,7 +508,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
             runParam.n2oIdx = runParam.n1oIdx / constInfo.gSize;
             runParam.goIdx = runParam.n1oIdx % constInfo.gSize;
             ComputeParamBatch<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, this->attenMaskInfo, this->keyGm,
-                                                        this->cuSeqQlenAddr, this->cuSeqKvlenAddr);
+                                                        this->cuSeqQlenAddr, this->seqUsedKvlenAddr);
             ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, constInfo, s1StartIdx, s1EndIdx,
                                                         bn1Idx == bn1StartIdx, sectionLastBN);
             int64_t temps1End = coreLastBN ? (runParam.s1LoopEnd + 3) : runParam.s1LoopEnd;
@@ -594,6 +539,23 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                                          sparseBase);
                         if ASCEND_IS_AIC {
                             this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo1, this->constInfo);
+                        }
+                        if ASCEND_IS_AIV {
+                            int64_t delta = runInfo1.nextTokensPerBatch;
+                            uint32_t sparseBlk1S1Offset = runInfo1.s1oIdx * constInfo.s1BaseSize;
+                            uint32_t sparseBlk2S1Offset = sparseBlk1S1Offset;
+                            if (likely(runInfo1.sparseBlkIdx1 >= 0)) {
+                                uint32_t sparseBlk1S2Offset = runInfo1.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
+                                AttentionMaskFullProcessingOrRequired(
+                                    sparseBlk1S1Offset, sparseBlk1S2Offset, delta, runInfo1.s2SparseBlk1RealSize,
+                                    runInfo1.sparseBlkIdx1, runInfo1.sparseBlk1PartialMask);
+                            }
+                            if (likely(runInfo1.sparseBlkIdx2 >= 0)) {
+                                uint32_t sparseBlk2S2Offset = runInfo1.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
+                                AttentionMaskFullProcessingOrRequired(
+                                    sparseBlk2S1Offset, sparseBlk2S2Offset, delta, runInfo1.s2SparseBlk2RealSize,
+                                    runInfo1.sparseBlkIdx2, runInfo1.sparseBlk2PartialMask);
+                            }
                         }
                     }
                     if (likely(taskId > 0 && notLastTwoLoop)) {
