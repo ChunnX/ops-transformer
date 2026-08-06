@@ -10,8 +10,8 @@
 
 /*!
  * \file local_xncke_rw_kernel.h
- * \brief 本地读写 CCU Variable(XN 64bit)/Event(CKE 16bit) 资源的 Kernel 核心逻辑
- *        XN 通过 DataCopy 做 8B 读写；CKE 因 16bit 宽度使用 SetValue/GetValue 做 2B 读写。
+ * \brief 本地同时读写 CCU Variable(XN 64bit) + Event(CKE 16bit) Kernel 核心逻辑
+ *        使用 WriteGmByPassDCache/ReadGmByPassDCache 绕过 DCache 直接读写寄存器。
  */
 
 #ifndef LOCAL_XNCKE_RW_KERNEL_H
@@ -23,252 +23,107 @@ namespace LocalXnCkeRwImpl {
 
 using namespace AscendC;
 
-constexpr uint32_t RESULT_WORDS = 6U;
-
 enum RwMode : uint32_t {
     MODE_WRITE = 0,
     MODE_READ = 1,
     MODE_WRITE_THEN_READ = 2,
-    MODE_SET_VALUE = 3,
-};
-
-enum ResKind : uint32_t {
-    RES_KIND_XN = 0,
-    RES_KIND_CKE = 1,
-    RES_KIND_BOTH = 2,
 };
 
 class LocalXnCkeRw {
 public:
     __aicore__ inline LocalXnCkeRw(){};
-    __aicore__ inline void Init(uint32_t mode, uint32_t resKind, uint32_t enableWarmup, uint32_t loopCount,
-                                uint64_t pattern, GM_ADDR xnAddr, GM_ADDR ckeAddr, GM_ADDR timeAddr, TPipe *pipe);
-    __aicore__ inline void Process();
-
+    __aicore__ inline void Init(uint32_t mode, uint32_t enableWarmup, uint32_t loopCount,
+                                uint64_t pattern, GM_ADDR xnAddr, GM_ADDR ckeAddr, GM_ADDR timeAddr)
+    {
+        mode_ = mode;
+        warmupCount_ = enableWarmup;
+        loopCount_ = loopCount == 0 ? 1 : loopCount;
+        xnPattern_ = pattern;
+        ckePattern_ = static_cast<uint16_t>(pattern & 0xFFFFU);
+        aivId_ = GetBlockIdx();
+        if (aivId_ > 0) { return; }
+        xnPtr_ = reinterpret_cast<__gm__ uint64_t *>(xnAddr);
+        ckePtr_ = reinterpret_cast<__gm__ uint16_t *>(ckeAddr);
+        timeGm_.SetGlobalBuffer((__gm__ uint64_t *)timeAddr);
+    }
+    __aicore__ inline void Process()
+    {
+        if (aivId_ > 0) { return; }
+        verifyResult_ = 0;
+        uint64_t warmupCycles = 0;
+        if (warmupCount_ != 0) {
+            uint32_t savedLoop = loopCount_;
+            loopCount_ = warmupCount_;
+            uint64_t ws = GetSystemCycle();
+            switch (mode_) {
+                case MODE_WRITE:            WriteMode(); break;
+                case MODE_READ:             ReadMode(); break;
+                default:                    WriteThenReadMode(); break;
+            }
+            warmupCycles = GetSystemCycle() - ws;
+            loopCount_ = savedLoop;
+        }
+        uint64_t startCycle = GetSystemCycle();
+        switch (mode_) {
+            case MODE_WRITE:            WriteMode(); break;
+            case MODE_READ:             ReadMode(); break;
+            default:                    WriteThenReadMode(); break;
+        }
+        uint64_t endCycle = GetSystemCycle();
+        if (mode_ == MODE_WRITE_THEN_READ) {
+            if (xnReadBack_ != xnPattern_) { verifyResult_ = 1; }
+            if (ckeReadBack_ != ckePattern_) { verifyResult_ = 1; }
+        }
+        timeGm_.SetValue(0, startCycle);
+        timeGm_.SetValue(1, endCycle);
+        timeGm_.SetValue(2, static_cast<uint64_t>(verifyResult_));
+        timeGm_.SetValue(3, xnReadBack_);
+        timeGm_.SetValue(4, static_cast<uint64_t>(ckeReadBack_));
+        timeGm_.SetValue(5, warmupCycles);
+        DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE,
+            DcciDst::CACHELINE_OUT>(timeGm_);
+    }
 private:
-    __aicore__ inline bool NeedAccessXn() const;
-    __aicore__ inline bool NeedAccessCke() const;
-    __aicore__ inline void PrepareWriteData();
-    __aicore__ inline void ReadXn();
-    __aicore__ inline void WriteXn();
-    __aicore__ inline void WriteThenReadXn();
-    __aicore__ inline void SetValueXn(uint32_t loops);
-    __aicore__ inline void SetValueCke(uint32_t loops);
-    __aicore__ inline void GetValueCke(uint32_t loops);
-    __aicore__ inline void SetValueThenGetValueCke(uint32_t loops);
-    __aicore__ inline void RunSelectedOp(uint32_t loops);
-    __aicore__ inline void CaptureReadBack();
-    __aicore__ inline void CheckResult();
-
+    __aicore__ inline void WriteMode()
+    {
+        for (uint32_t i = 0; i < loopCount_; i++) {
+            WriteGmByPassDCache<uint64_t>(xnPtr_, xnPattern_);
+            WriteGmByPassDCache<uint16_t>(ckePtr_, ckePattern_);
+            PipeBarrier<PIPE_ALL>();
+        }
+    }
+    __aicore__ inline void ReadMode()
+    {
+        for (uint32_t i = 0; i < loopCount_; i++) {
+            xnReadBack_ = ReadGmByPassDCache<uint64_t>(xnPtr_);
+            ckeReadBack_ = ReadGmByPassDCache<uint16_t>(ckePtr_);
+            PipeBarrier<PIPE_ALL>();
+        }
+    }
+    __aicore__ inline void WriteThenReadMode()
+    {
+        for (uint32_t i = 0; i < loopCount_; i++) {
+            WriteGmByPassDCache<uint64_t>(xnPtr_, xnPattern_);
+            WriteGmByPassDCache<uint16_t>(ckePtr_, ckePattern_);
+            PipeBarrier<PIPE_ALL>();
+            xnReadBack_ = ReadGmByPassDCache<uint64_t>(xnPtr_);
+            ckeReadBack_ = ReadGmByPassDCache<uint16_t>(ckePtr_);
+            PipeBarrier<PIPE_ALL>();
+        }
+    }
     uint32_t mode_{0};
-    uint32_t resKind_{0};
-    uint32_t enableWarmup_{0};
+    uint32_t warmupCount_{0};
     uint32_t loopCount_{1};
     uint32_t aivId_{0};
-    uint64_t pattern_{0};
+    uint32_t verifyResult_{0};
+    uint64_t xnPattern_{0};
     uint16_t ckePattern_{0};
     uint64_t xnReadBack_{0};
     uint16_t ckeReadBack_{0};
-    uint32_t verifyResult_{0};
-
-    GlobalTensor<uint64_t> xnGm_;
-    GlobalTensor<uint16_t> ckeGm_;
+    __gm__ uint64_t *xnPtr_{nullptr};
+    __gm__ uint16_t *ckePtr_{nullptr};
     GlobalTensor<uint64_t> timeGm_;
-
-    TBuf<TPosition::VECCALC> dataBuf_;
-    TBuf<TPosition::VECCALC> readXnBuf_;
-    LocalTensor<uint64_t> dataLocal_;
-    LocalTensor<uint64_t> readXnLocal_;
 };
-
-__aicore__ inline void LocalXnCkeRw::Init(uint32_t mode, uint32_t resKind, uint32_t enableWarmup,
-                                          uint32_t loopCount, uint64_t pattern, GM_ADDR xnAddr, GM_ADDR ckeAddr,
-                                          GM_ADDR timeAddr, TPipe *pipe)
-{
-    mode_ = mode;
-    resKind_ = resKind;
-    enableWarmup_ = enableWarmup;
-    loopCount_ = loopCount == 0 ? 1 : loopCount;
-    pattern_ = pattern;
-    ckePattern_ = static_cast<uint16_t>(pattern & 0xFFFFU);
-    aivId_ = GetBlockIdx();
-    if (aivId_ > 0) {
-        return;
-    }
-
-    xnGm_.SetGlobalBuffer((__gm__ uint64_t *)xnAddr);
-    ckeGm_.SetGlobalBuffer((__gm__ uint16_t *)ckeAddr);
-    timeGm_.SetGlobalBuffer((__gm__ uint64_t *)timeAddr);
-    pipe->InitBuffer(dataBuf_, sizeof(uint64_t));
-    pipe->InitBuffer(readXnBuf_, sizeof(uint64_t));
-    dataLocal_ = dataBuf_.Get<uint64_t>();
-    readXnLocal_ = readXnBuf_.Get<uint64_t>();
-}
-
-__aicore__ inline bool LocalXnCkeRw::NeedAccessXn() const
-{
-    return resKind_ == RES_KIND_XN || resKind_ == RES_KIND_BOTH;
-}
-
-__aicore__ inline bool LocalXnCkeRw::NeedAccessCke() const
-{
-    return resKind_ == RES_KIND_CKE || resKind_ == RES_KIND_BOTH;
-}
-
-__aicore__ inline void LocalXnCkeRw::PrepareWriteData()
-{
-    dataLocal_.SetValue(0, pattern_);
-    PipeBarrier<PIPE_ALL>();
-}
-
-__aicore__ inline void LocalXnCkeRw::WriteXn()
-{
-    xnGm_.SetValue(0, pattern_);
-    PipeBarrier<PIPE_ALL>();
-}
-
-__aicore__ inline void LocalXnCkeRw::ReadXn()
-{
-    xnReadBack_ = xnGm_.GetValue(0);
-    PipeBarrier<PIPE_ALL>();
-}
-
-__aicore__ inline void LocalXnCkeRw::WriteThenReadXn()
-{
-    xnGm_.SetValue(0, pattern_);
-    PipeBarrier<PIPE_ALL>();
-    xnReadBack_ = xnGm_.GetValue(0);
-    PipeBarrier<PIPE_ALL>();
-}
-
-__aicore__ inline void LocalXnCkeRw::SetValueXn(uint32_t loops)
-{
-    for (uint32_t i = 0; i < loops; i++) {
-        xnGm_.SetValue(0, pattern_);
-        PipeBarrier<PIPE_ALL>();
-    }
-}
-
-__aicore__ inline void LocalXnCkeRw::SetValueCke(uint32_t loops)
-{
-    for (uint32_t i = 0; i < loops; i++) {
-        ckeGm_.SetValue(0, ckePattern_);
-        PipeBarrier<PIPE_ALL>();
-    }
-}
-
-__aicore__ inline void LocalXnCkeRw::GetValueCke(uint32_t loops)
-{
-    for (uint32_t i = 0; i < loops; i++) {
-        ckeReadBack_ = ckeGm_.GetValue(0);
-        PipeBarrier<PIPE_ALL>();
-    }
-}
-
-__aicore__ inline void LocalXnCkeRw::SetValueThenGetValueCke(uint32_t loops)
-{
-    for (uint32_t i = 0; i < loops; i++) {
-        ckeGm_.SetValue(0, ckePattern_);
-        PipeBarrier<PIPE_ALL>();
-        ckeReadBack_ = ckeGm_.GetValue(0);
-        PipeBarrier<PIPE_ALL>();
-    }
-}
-
-__aicore__ inline void LocalXnCkeRw::RunSelectedOp(uint32_t loops)
-{
-    switch (mode_) {
-        case MODE_WRITE:
-            if (NeedAccessXn()) {
-                for (uint32_t i = 0; i < loops; i++) { WriteXn(); }
-            }
-            if (NeedAccessCke()) {
-                SetValueCke(loops);
-            }
-            break;
-        case MODE_READ:
-            if (NeedAccessXn()) {
-                for (uint32_t i = 0; i < loops; i++) { ReadXn(); }
-            }
-            if (NeedAccessCke()) {
-                GetValueCke(loops);
-            }
-            break;
-        case MODE_WRITE_THEN_READ:
-            if (NeedAccessXn()) {
-                for (uint32_t i = 0; i < loops; i++) { WriteThenReadXn(); }
-            }
-            if (NeedAccessCke()) {
-                SetValueThenGetValueCke(loops);
-            }
-            break;
-        case MODE_SET_VALUE:
-            if (NeedAccessXn()) {
-                SetValueXn(loops);
-            }
-            if (NeedAccessCke()) {
-                SetValueCke(loops);
-            }
-            break;
-        default:
-            verifyResult_ = 1;
-            break;
-    }
-}
-
-__aicore__ inline void LocalXnCkeRw::CaptureReadBack()
-{
-    if (mode_ == MODE_READ || mode_ == MODE_WRITE_THEN_READ) {
-        if (NeedAccessCke()) {
-            ckeReadBack_ = ckeGm_.GetValue(0);
-        }
-    }
-}
-
-__aicore__ inline void LocalXnCkeRw::CheckResult()
-{
-    if (mode_ == MODE_WRITE_THEN_READ) {
-        if (NeedAccessXn() && xnReadBack_ != pattern_) {
-            verifyResult_ = 1;
-        }
-        if (NeedAccessCke() && ckeReadBack_ != ckePattern_) {
-            verifyResult_ = 1;
-        }
-    }
-}
-
-__aicore__ inline void LocalXnCkeRw::Process()
-{
-    if (aivId_ > 0) {
-        return;
-    }
-
-    verifyResult_ = 0;
-    uint64_t warmupCycles = 0;
-    PrepareWriteData();
-
-    if (enableWarmup_ != 0) {
-        uint64_t warmupStart = GetSystemCycle();
-        RunSelectedOp(1);
-        uint64_t warmupEnd = GetSystemCycle();
-        warmupCycles = warmupEnd - warmupStart;
-    }
-
-    uint64_t startCycle = GetSystemCycle();
-    RunSelectedOp(loopCount_);
-    uint64_t endCycle = GetSystemCycle();
-    CaptureReadBack();
-    CheckResult();
-
-    timeGm_.SetValue(0, startCycle);
-    timeGm_.SetValue(1, endCycle);
-    timeGm_.SetValue(2, static_cast<uint64_t>(verifyResult_));
-    timeGm_.SetValue(3, xnReadBack_);
-    timeGm_.SetValue(4, static_cast<uint64_t>(ckeReadBack_));
-    timeGm_.SetValue(5, warmupCycles);
-    DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
-        timeGm_);
-}
 
 } // namespace LocalXnCkeRwImpl
 

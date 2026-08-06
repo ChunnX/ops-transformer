@@ -74,7 +74,7 @@ int32_t g_rankId = 0;
 int32_t g_ranksize = 1;
 uint32_t g_mode = TEST_MODE_WRITE_THEN_READ;
 uint32_t g_resKind = TEST_RES_BOTH;
-uint32_t g_enableWarmup = 0;
+uint32_t g_warmupCount = 0;
 uint32_t g_dieId = 1;
 uint32_t g_xnNum = 1;
 uint32_t g_xnIndex = 0;
@@ -117,7 +117,7 @@ void GetOption(int argc, char **argv)
                 g_resKind = static_cast<uint32_t>(atoi(optarg));
                 break;
             case 'w':
-                g_enableWarmup = static_cast<uint32_t>(atoi(optarg));
+                g_warmupCount = static_cast<uint32_t>(atoi(optarg));
                 break;
             case 'i':
                 g_dieId = static_cast<uint32_t>(atoi(optarg));
@@ -191,14 +191,13 @@ int main(int argc, char *argv[])
     GetOption(argc, argv);
 
     LOG_PRINT("[INFO] ===== 本地读写 XN(64bit)/CKE(16bit) 测试 =====\n");
-    LOG_PRINT("[INFO] rank_id=%d, ranksize=%d, mode=%s, res_kind=%s, warmup=%u, die_id=%u, "
-              "xn_num=%u, xn_index=%u, cke_num=%u, cke_index=%u, loop_count=%u, pattern=0x%016lx\n",
-              g_rankId, g_ranksize, GetModeStr(g_mode), GetResKindStr(g_resKind), g_enableWarmup, g_dieId,
+    LOG_PRINT("[INFO] rank_id=%d, ranksize=%d, mode=%s, res_kind=%s, warmup=%u, die_id=%u, "              "xn_num=%u, xn_index=%u, cke_num=%u, cke_index=%u, loop_count=%u, pattern=0x%016lx\n",
+              g_rankId, g_ranksize, GetModeStr(g_mode), GetResKindStr(g_resKind), g_warmupCount, g_dieId,
               g_xnNum, g_xnIndex, g_ckeNum, g_ckeIndex, g_loopCount, g_pattern);
 
     CHECK_RET(g_mode <= TEST_MODE_SET_VALUE, LOG_PRINT("[ERROR] mode invalid: %u\n", g_mode); return -1);
     CHECK_RET(g_resKind <= TEST_RES_BOTH, LOG_PRINT("[ERROR] res_kind invalid: %u\n", g_resKind); return -1);
-    CHECK_RET(g_enableWarmup <= 1, LOG_PRINT("[ERROR] warmup invalid: %u\n", g_enableWarmup); return -1);
+    CHECK_RET(g_warmupCount <= 1000, LOG_PRINT("[ERROR] warmup invalid: %u (0-1000)\n", g_warmupCount); return -1);
     CHECK_RET(g_loopCount > 0, LOG_PRINT("[ERROR] loop_count must be greater than 0.\n"); return -1);
     CHECK_RET(g_dieId < 2, LOG_PRINT("[ERROR] die_id must be 0 or 1.\n"); return -1);
 
@@ -280,7 +279,7 @@ int main(int argc, char *argv[])
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc timeGm failed. ret: %d\n", ret); return ret);
 
     LOG_PRINT("[INFO] 启动 Kernel (blockDim=%u)...\n", BLOCK_NUM);
-    local_xncke_rw_demo(g_mode, g_resKind, g_enableWarmup, g_loopCount, g_pattern, BLOCK_NUM, stream,
+    local_xncke_rw_demo(g_mode, g_resKind, g_warmupCount, g_loopCount, g_pattern, BLOCK_NUM, stream,
                         (uint8_t *)xnAddr, (uint8_t *)ckeAddr, (uint8_t *)timeGm);
 
     ret = aclrtSynchronizeStream(stream);
@@ -305,7 +304,7 @@ int main(int argc, char *argv[])
     LOG_PRINT("===== XN/CKE 测试结果 =====\n");
     LOG_PRINT("  资源:         %s\n", GetResKindStr(g_resKind));
     LOG_PRINT("  模式:         %s\n", GetModeStr(g_mode));
-    LOG_PRINT("  预热:         %s\n", g_enableWarmup == 0 ? "关闭" : "开启");
+    LOG_PRINT("  预热次数:     %u\n", g_warmupCount);
     LOG_PRINT("  loop_count:   %u\n", g_loopCount);
     LOG_PRINT("  warmupCycle:  %lu\n", warmupCycles);
     LOG_PRINT("  startCycle:   %lu\n", startCycle);

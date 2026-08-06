@@ -11,37 +11,63 @@
 /*!
  * \file local_xncke_rw.cpp
  * \brief 本地读写 XN(64bit)/CKE(16bit) Kernel 入口 + <<<>>> 封装
+ *        三个独立 kernel 入口：XN only / CKE only / Both
  */
 
 #include "kernel_operator.h"
+#include "./kernel/local_xn_rw_kernel.h"
+#include "./kernel/local_cke_rw_kernel.h"
 #include "./kernel/local_xncke_rw_kernel.h"
 
 using namespace AscendC;
-using namespace LocalXnCkeRwImpl;
 
-__attribute__((always_inline)) __aicore__ __inline__ void
-local_xncke_rw_kernel_impl(uint32_t mode, uint32_t resKind, uint32_t enableWarmup, uint32_t loopCount,
-                           uint64_t pattern, GM_ADDR xnAddr, GM_ADDR ckeAddr, GM_ADDR timeAddr)
+// ==================== XN only ====================
+
+extern "C" __global__ __aicore__ void Aivccu_COMM_XN(uint32_t mode, uint32_t enableWarmup,
+                                                      uint32_t loopCount, uint64_t pattern,
+                                                      GM_ADDR xnAddr, GM_ADDR timeAddr)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
-    TPipe pipe;
-
-    LocalXnCkeRw op;
-    op.Init(mode, resKind, enableWarmup, loopCount, pattern, xnAddr, ckeAddr, timeAddr, &pipe);
+    LocalXnRwImpl::LocalXnRw op;
+    op.Init(mode, enableWarmup, loopCount, pattern, xnAddr, timeAddr);
     op.Process();
 }
 
-extern "C" __global__ __aicore__ void Aivccu_COMM(uint32_t mode, uint32_t resKind, uint32_t enableWarmup,
-                                                   uint32_t loopCount, uint64_t pattern, GM_ADDR xnAddr,
-                                                   GM_ADDR ckeAddr, GM_ADDR timeAddr)
+// ==================== CKE only ====================
+
+extern "C" __global__ __aicore__ void Aivccu_COMM_CKE(uint32_t mode, uint32_t enableWarmup,
+                                                       uint32_t loopCount, uint64_t pattern,
+                                                       GM_ADDR ckeAddr, GM_ADDR timeAddr)
 {
-    local_xncke_rw_kernel_impl(mode, resKind, enableWarmup, loopCount, pattern, xnAddr, ckeAddr, timeAddr);
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+    LocalCkeRwImpl::LocalCkeRw op;
+    op.Init(mode, enableWarmup, loopCount, pattern, ckeAddr, timeAddr);
+    op.Process();
 }
+
+// ==================== Both (XN + CKE) ====================
+
+extern "C" __global__ __aicore__ void Aivccu_COMM_BOTH(uint32_t mode, uint32_t enableWarmup,
+                                                        uint32_t loopCount, uint64_t pattern,
+                                                        GM_ADDR xnAddr, GM_ADDR ckeAddr, GM_ADDR timeAddr)
+{
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+    LocalXnCkeRwImpl::LocalXnCkeRw op;
+    op.Init(mode, enableWarmup, loopCount, pattern, xnAddr, ckeAddr, timeAddr);
+    op.Process();
+}
+
+// ==================== Host 侧统一封装 ====================
 
 void local_xncke_rw_demo(uint32_t mode, uint32_t resKind, uint32_t enableWarmup, uint32_t loopCount,
                          uint64_t pattern, uint32_t blockDim, void *stream, uint8_t *xnAddr, uint8_t *ckeAddr,
                          uint8_t *timeAddr)
 {
-    Aivccu_COMM<<<blockDim, nullptr, stream>>>(mode, resKind, enableWarmup, loopCount, pattern, xnAddr, ckeAddr,
-                                                timeAddr);
+    if (resKind == 0) {
+        Aivccu_COMM_XN<<<blockDim, nullptr, stream>>>(mode, enableWarmup, loopCount, pattern, xnAddr, timeAddr);
+    } else if (resKind == 1) {
+        Aivccu_COMM_CKE<<<blockDim, nullptr, stream>>>(mode, enableWarmup, loopCount, pattern, ckeAddr, timeAddr);
+    } else {
+        Aivccu_COMM_BOTH<<<blockDim, nullptr, stream>>>(mode, enableWarmup, loopCount, pattern, xnAddr, ckeAddr, timeAddr);
+    }
 }
