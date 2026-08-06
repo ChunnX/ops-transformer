@@ -8,6 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <limits>
 #include <vector>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
@@ -91,9 +95,77 @@ static void CreateEmptyTensorWithFormat(aclDataType dataType, ge::Format format,
     }
 }
 
-// Activation parameter validation (count, finiteness, non-zero scale, etc.) is performed on the
-// host/tiling side (see mega_moe_tiling_arch22.cpp::CheckActivationParamsAttr and the arch35 tiling
-// checks), which every aclnn path goes through. It is intentionally not duplicated here.
+static bool IsValidActivationClamp(float value)
+{
+    return value >= 0.0f && !std::isnan(value);
+}
+
+static bool IsFiniteActivationParam(float value)
+{
+    return std::isfinite(value);
+}
+
+static bool IsValidSituScale(float value)
+{
+    return std::isfinite(value) && value != 0.0f;
+}
+
+static bool CheckActivationParams(const char *activation, const aclFloatArray *activationParams)
+{
+    const size_t paramCount = activationParams->Size();
+    const float *params = activationParams->GetData();
+    if (params == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "activationParams data must not be null.");
+        return false;
+    }
+
+    const bool isSwiglu = std::strcmp(activation, "swiglu") == 0;
+    const bool isSwigluStep = std::strcmp(activation, "swiglustep") == 0;
+    const bool isSwigluOai = std::strcmp(activation, "swigluoai") == 0;
+    const bool isSituGlu = std::strcmp(activation, "situglu") == 0;
+
+    if (!isSwiglu && !isSwigluStep && !isSwigluOai && !isSituGlu) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Unsupported activation '%s'.", activation);
+        return false;
+    }
+    if ((isSwiglu || isSwigluStep) && paramCount != 1U) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s expects activationParams=[clamp], but got %zu values.", activation,
+                paramCount);
+        return false;
+    }
+    if (isSwigluOai && paramCount != 3U) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "swigluoai expects activationParams=[clamp, alpha, beta], but got %zu values.",
+                paramCount);
+        return false;
+    }
+    if (isSituGlu && (paramCount < 1U || paramCount > 2U)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "situglu expects activationParams=[beta] or [beta, linear_beta], but got %zu values.", paramCount);
+        return false;
+    }
+
+    if (!isSituGlu && !IsValidActivationClamp(params[0])) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "activation clamp must be >= 0 and not NAN, but got %f.", params[0]);
+        return false;
+    }
+    if (isSwigluOai && !IsFiniteActivationParam(params[1])) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "activation alpha must be finite, but got %f.", params[1]);
+        return false;
+    }
+    if (isSwigluOai && !IsFiniteActivationParam(params[2])) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "swigluoai beta must be finite, but got %f.", params[2]);
+        return false;
+    }
+    if (isSituGlu && !IsValidSituScale(params[0])) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "situglu beta must be finite and non-zero, but got %f.", params[0]);
+        return false;
+    }
+    if (isSituGlu && paramCount == 2U && !IsValidSituScale(params[1])) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "situglu linear_beta must be finite and non-zero, but got %f.", params[1]);
+        return false;
+    }
+    return true;
+}
 
 aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *topkIds, const aclTensor *topkWeights,
@@ -125,6 +197,8 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     CHECK_COND(epWorldSize > 0, ACLNN_ERR_PARAM_INVALID, "epWorldSize must be > 0, got %ld.", epWorldSize);
     CHECK_COND(maxRecvTokenNum >= 0, ACLNN_ERR_PARAM_INVALID, "maxRecvTokenNum must be >= 0, got %ld.",
                maxRecvTokenNum);
+    CHECK_COND(CheckActivationParams(activation, activationParams), ACLNN_ERR_PARAM_INVALID,
+               "activationParams is invalid for activation '%s'.", activation);
 
     // 确保 executor 已创建，以便调用 CreateEmptyTensor
     if (*executor == nullptr) {

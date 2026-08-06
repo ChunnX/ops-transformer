@@ -13,6 +13,7 @@
  * \brief
  */
 
+
 #include <vector>
 #include <map>
 #include <algorithm>
@@ -326,19 +327,12 @@ static ge::graphStatus CheckActivationParamsAttr(const gert::TypedContinuousVect
 {
     OP_TILING_CHECK(params == nullptr, OP_LOGE(K_INNER_DEBUG, "activation_params is null."), return GRAPH_FAILED);
     size_t paramCount = params->GetSize();
+    const float *data = params->GetData();
+    OP_TILING_CHECK(data == nullptr, OP_LOGE(K_INNER_DEBUG, "activation_params data is null."), return GRAPH_FAILED);
+
     info.activationClamp = DEFAULT_ACTIVATION_CLAMP;
     info.activationParams1 = DEFAULT_ACTIVATION_PARAMS1;
     info.activationParams2 = DEFAULT_ACTIVATION_PARAMS2;
-    if (info.activationCode == ACTIVATION_CODE_SITU) {
-        info.activationParams1 = DEFAULT_ACTIVATION_PARAMS2;
-        info.activationParams2 = SITU_LINEAR_BETA_DISABLED;
-    }
-    if (paramCount == 0U) {
-        return ge::GRAPH_SUCCESS;
-    }
-
-    const float *data = params->GetData();
-    OP_TILING_CHECK(data == nullptr, OP_LOGE(K_INNER_DEBUG, "activation_params data is null."), return GRAPH_FAILED);
 
     if (info.activationCode == ACTIVATION_CODE_SWIGLU || info.activationCode == ACTIVATION_CODE_SWIGLU_STEP) {
         OP_TILING_CHECK(CheckActivationParamCount(info.activationCode, paramCount, 1U, 1U) != ge::GRAPH_SUCCESS,
@@ -351,12 +345,10 @@ static ge::graphStatus CheckActivationParamsAttr(const gert::TypedContinuousVect
         info.activationParams1 = data[1];
         info.activationParams2 = data[2];
     } else {
-        // SITU prototype order is [beta, linear_beta]; activationParams1 carries beta (data[0]) and
-        // activationParams2 carries linear_beta (data[1]), matching the order passed by the prototype.
         OP_TILING_CHECK(CheckActivationParamCount(info.activationCode, paramCount, 1U, 2U) != ge::GRAPH_SUCCESS,
                         OP_LOGE(K_INNER_DEBUG, "CheckActivationParamCount failed."), return GRAPH_FAILED);
-        info.activationParams1 = data[0];
-        info.activationParams2 = paramCount == 2U ? data[1] : SITU_LINEAR_BETA_DISABLED;
+        info.activationParams2 = data[0];
+        info.activationParams1 = paramCount == 2U ? data[1] : SITU_LINEAR_BETA_DISABLED;
     }
 
     if (info.activationCode != ACTIVATION_CODE_SITU) {
@@ -379,13 +371,13 @@ static ge::graphStatus CheckActivationParamsAttr(const gert::TypedContinuousVect
     }
     if (info.activationCode == ACTIVATION_CODE_SITU) {
         OP_TILING_CHECK(
-            !IsValidSituScale(info.activationParams1),
-            OP_LOGE(K_INNER_DEBUG, "situglu beta must be finite and non-zero, but got %f.", info.activationParams1),
+            !IsValidSituScale(info.activationParams2),
+            OP_LOGE(K_INNER_DEBUG, "situglu beta must be finite and non-zero, but got %f.", info.activationParams2),
             return GRAPH_FAILED);
         if (paramCount == 2U) {
-            OP_TILING_CHECK(!IsValidSituScale(info.activationParams2),
+            OP_TILING_CHECK(!IsValidSituScale(info.activationParams1),
                             OP_LOGE(K_INNER_DEBUG, "situglu linear_beta must be finite and non-zero, but got %f.",
-                                    info.activationParams2),
+                                    info.activationParams1),
                             return GRAPH_FAILED);
         }
     }
@@ -1377,8 +1369,8 @@ static ge::graphStatus MegaMoeA2A3TilingFuncImpl(gert::TilingContext *context)
                                                  // cumsum + ptrSumBeforeRankForDispatch + ptrSumBeforeRankForCombine
                            paddedExpertNumAligned * (info.worldSize + 2UL) * sizeof(int32_t) +
                            info.maxRecvTokenNum * std::max(info.N, n2) * sizeof(int16_t) + // GMM1&2 Out
-                           info.maxRecvTokenNum * std::max(info.K, k2) * swigluSize +      // swiglu out
-                           info.worldSize * sizeof(int32_t) * 16UL;                        // sync
+                           info.maxRecvTokenNum * std::max(info.K, k2) * swigluSize + // swiglu out & quantizedToken
+                           info.worldSize * sizeof(int32_t) * 16UL;                   // sync
         if (info.isQuantRouting) {
             megeMoeWorkspace += info.maxRecvTokenNum * sizeof(float) * 2UL; // perTokenScale GMM1&2
         }

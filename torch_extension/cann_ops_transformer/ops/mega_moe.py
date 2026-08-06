@@ -17,58 +17,6 @@ from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 from .comm_context import CommContextManager
 
 
-_CLAMP_DEFAULT = 3.4028234663852886e38
-_ALPHA_DEFAULT = 1.702
-_BETA_DEFAULT = 1.0
-_ALLOWED_ACTIVATION_KEYS = {
-    "swiglu": frozenset(),
-    "swiglustep": frozenset(),
-    "swigluoai": frozenset({"alpha", "beta"}),
-    "situglu": frozenset({"beta", "linear_beta"}),
-}
-
-
-def _normalize_activation_params(
-    activation: str,
-    activation_clamp: Optional[float] = None,
-    activation_params: Optional[Dict[str, float]] = None,
-) -> List[float]:
-    if activation not in _ALLOWED_ACTIVATION_KEYS:
-        raise ValueError(
-            f"Unsupported activation: {activation!r}; expected one of {sorted(_ALLOWED_ACTIVATION_KEYS)}."
-        )
-
-    activation_params = activation_params or {}
-    allowed = _ALLOWED_ACTIVATION_KEYS[activation]
-    for key in activation_params:
-        if key not in allowed:
-            raise ValueError(
-                f"Unknown activation param key {key!r} for activation {activation!r}; "
-                f"allowed keys: {sorted(allowed)}."
-            )
-
-    if activation in ("swiglu", "swiglustep"):
-        if activation_clamp is None:
-            return []
-        return [float(activation_clamp)]
-
-    if activation == "swigluoai":
-        if activation_clamp is None and not activation_params:
-            return []
-        clamp = _CLAMP_DEFAULT if activation_clamp is None else float(activation_clamp)
-        alpha = float(activation_params.get("alpha", _ALPHA_DEFAULT))
-        beta = float(activation_params.get("beta", _BETA_DEFAULT))
-        return [clamp, alpha, beta]
-
-    if not activation_params:
-        return []
-    beta = float(activation_params.get("beta", _BETA_DEFAULT))
-    values = [beta]
-    if "linear_beta" in activation_params:
-        values.append(float(activation_params["linear_beta"]))
-    return values
-
-
 class _MegaMoeOpBuilder(OpBuilder):
     def __init__(self):
         super(_MegaMoeOpBuilder, self).__init__("npu_mega_moe")
@@ -185,9 +133,7 @@ def _npu_mega_moe(
     rank_num_per_server=None,
     topk_weights_type=0,
 ):
-    activation_params_list = _normalize_activation_params(
-        activation, activation_clamp, activation_params
-    )
+    activation_params = activation_params or {}
     _op_module = _mega_moe_op_builder.load()
     return _op_module.npu_mega_moe(
         context,
@@ -216,7 +162,8 @@ def _npu_mega_moe(
         comm_alg,
         num_max_tokens_per_rank,
         activation,
-        activation_params_list,
+        activation_clamp,
+        activation_params,
         dispatch_quant_out_dtype,
         weight1_type,
         weight2_type,
@@ -356,7 +303,6 @@ def get_symm_buffer_for_mega_moe(
     dispatch_quant_out_dtype: Optional[torch.dtype] = None,
     combine_quant_mode: int = 0,
     comm_alg: str = "",
-    use_ccl_buffer: bool = True,
     topk_weights_type: int = 0,
 ) -> SymmBuffer:
     return SymmBuffer(
