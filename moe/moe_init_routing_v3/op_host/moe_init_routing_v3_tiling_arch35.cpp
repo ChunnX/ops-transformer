@@ -272,7 +272,6 @@ private:
     int64_t CalcMaxRowIdxPerLoopMxQuant(int64_t perLoopCols);
     int64_t CalcMaxRowIdxPerLoopFP8Quant(int64_t perLoopCols);
     int64_t CalcMaxRowIdxPerLoopFP8GroupQuant(int64_t perLoopCols);
-    bool IsIndexOnlyRouting() const;
     bool IsFullLoad();
     bool IsSupportGatherCopyKernels() const;
     void ComputeUseGatherCopy();
@@ -1166,8 +1165,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()");
 
-    // A zero-width input only reaches the regular pipeline when it needs index-only routing.
-    if (n_ == 0 || k_ == 0 || (cols_ == 0 && !IsIndexOnlyRouting())) {
+    // 空tensor场景：n_==0、k_==0、cols_==0
+    if (n_ == 0 || k_ == 0 || cols_ == 0) {
         isEmptyTensor_ = true;
     }
 
@@ -1858,12 +1857,6 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()");
 
-    // Sorting and RowIdxGather have completed; zero-width tensors have no GatherOut work.
-    if (IsIndexOnlyRouting()) {
-        tilingDataPtr_->gatherOutComputeParamsOp.needCoreNum = 0;
-        return;
-    }
-
     auto *gatherOutTiling = &(tilingDataPtr_->gatherOutComputeParamsOp);
     int64_t perCoreIndicesElements = Ops::Base::CeilDiv(totalLength_, aivCoreNum_);
     if (perCoreIndicesElements <= 0) {
@@ -2121,17 +2114,8 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutFP8Quant()
     return;
 }
 
-bool MoeInitRoutingV3Arch35TilingClass::IsIndexOnlyRouting() const
-{
-    return n_ > 0 && k_ > 0 && cols_ == 0 && quantMode_ == QUANT_MODE_UNQUANT && isInputScale_ == 0 &&
-           dropPadMode_ == DROP_PAD_MODE_DROPLESS;
-}
-
 bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
 {
-    if (IsIndexOnlyRouting()) {
-        return false;
-    }
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
         return false;
     }
