@@ -1244,9 +1244,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::MetaInfoCalAndDispatch(GMMAddrInfo &gm
     // 所有 dispatch core 数 = blockNum_；按行均分，本 core 负责 [coreExpertRowBegin, coreExpertRowEnd)（expert-local）。
     int32_t dispatchCoreCount = static_cast<int32_t>(blockNum_);
     int32_t rowsPerCore = Ops::Base::CeilDiv(expertRowCount, dispatchCoreCount);
-    // [rotate-core experiment] segment position rotates with expert id, so each core pulls from all source ranks evenly.
-    int32_t rotatedCoreIdx = (static_cast<int32_t>(blockIdx_) + localExpertId) % dispatchCoreCount;
-    int32_t coreExpertRowBegin = rotatedCoreIdx * rowsPerCore;
+    int32_t coreExpertRowBegin = static_cast<int32_t>(blockIdx_) * rowsPerCore;
     int32_t coreExpertRowEnd =
         (coreExpertRowBegin + rowsPerCore > expertRowCount) ? expertRowCount : coreExpertRowBegin + rowsPerCore;
     if (coreExpertRowBegin >= coreExpertRowEnd) {
