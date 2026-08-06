@@ -20,30 +20,27 @@ namespace Fp8Static {
 template <typename A, typename B, typename C, typename L0ADType = A, typename L0BDType = B>
 __aicore__ inline void MatmulFullStatic(
     const AscendC::LocalTensor<A> &aL1Tensor, const AscendC::LocalTensor<B> &bL1Tensor,
-    AscendC::LocalTensor<uint8_t> *l0aBuffers, AscendC::LocalTensor<uint8_t> *l0bBuffers,
+    fa_base_matmul::Buffer<fa_base_matmul::BufferType::L0A> *l0aBuffers,
+    fa_base_matmul::Buffer<fa_base_matmul::BufferType::L0B> *l0bBuffers,
     uint32_t &l0aCursor, uint32_t &l0bCursor, const AscendC::LocalTensor<C> &cL0Tensor,
     fa_base_matmul::MMParam &param)
 {
     const uint32_t l0aSlot = l0aCursor;
     l0aCursor ^= 1U;
-    const AscendC::TEventID l0aEventId =
-        l0aSlot == 0U ? Fp8Static::L0A_EVENT_ID0 : Fp8Static::L0A_EVENT_ID1;
-    AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0aEventId);
-    AscendC::LocalTensor<L0ADType> l0aTensor = l0aBuffers[l0aSlot].template ReinterpretCast<L0ADType>();
+    l0aBuffers[l0aSlot].template Wait<AscendC::HardEvent::M_MTE1>();
+    AscendC::LocalTensor<L0ADType> l0aTensor = l0aBuffers[l0aSlot].template GetTensor<L0ADType>();
     fa_base_matmul::LoadDataToL0A(l0aTensor, aL1Tensor, param, 0, param.singleK, param.singleM);
-    AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0aEventId);
+    l0aBuffers[l0aSlot].template Set<AscendC::HardEvent::MTE1_M>();
 
     const uint32_t l0bSlot = l0bCursor;
     l0bCursor ^= 1U;
-    const AscendC::TEventID l0bEventId =
-        l0bSlot == 0U ? Fp8Static::L0B_EVENT_ID0 : Fp8Static::L0B_EVENT_ID1;
-    AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0bEventId);
-    AscendC::LocalTensor<L0BDType> l0bTensor = l0bBuffers[l0bSlot].template ReinterpretCast<L0BDType>();
+    l0bBuffers[l0bSlot].template Wait<AscendC::HardEvent::M_MTE1>();
+    AscendC::LocalTensor<L0BDType> l0bTensor = l0bBuffers[l0bSlot].template GetTensor<L0BDType>();
     fa_base_matmul::LoadDataToL0B(l0bTensor, bL1Tensor, param, 0, param.singleK, param.singleN);
-    AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0bEventId);
+    l0bBuffers[l0bSlot].template Set<AscendC::HardEvent::MTE1_M>();
 
-    AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0aEventId);
-    AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0bEventId);
+    l0aBuffers[l0aSlot].template Wait<AscendC::HardEvent::MTE1_M>();
+    l0bBuffers[l0bSlot].template Wait<AscendC::HardEvent::MTE1_M>();
 
     AscendC::MmadParams mmParams;
     mmParams.m = param.realM != 0U ? param.realM : param.singleM;
@@ -57,8 +54,8 @@ __aicore__ inline void MatmulFullStatic(
     }
     AscendC::Mmad(cL0Tensor, l0aTensor, l0bTensor, mmParams);
 
-    AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0aEventId);
-    AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0bEventId);
+    l0aBuffers[l0aSlot].template Set<AscendC::HardEvent::M_MTE1>();
+    l0bBuffers[l0bSlot].template Set<AscendC::HardEvent::M_MTE1>();
 }
 
 } // namespace Fp8Static

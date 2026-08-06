@@ -92,15 +92,15 @@ public:
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                        RunInfo &runInfo, ConstInfo &constInfo, int32_t subLoop = 0);
-    __aicore__ inline void ProcessVec1Static(LocalTensor<uint8_t> &outputBuf, uint32_t outputEventId,
-                                             LocalTensor<uint8_t> &bmm1ResBuf, uint32_t bmm1ReadyEventId,
-                                             uint32_t bmm1FreeEventId, RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void ProcessVec1Static(
+        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
+        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo, ConstInfo &constInfo);
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void ProcessVec2Static(LocalTensor<uint8_t> &bmm2ResBuf, uint32_t bmm2ReadyEventId,
-                                             uint32_t bmm2FreeEventId, RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void ProcessVec2Static(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
+                                             RunInfo &runInfo, ConstInfo &constInfo);
 
     __aicore__ inline void InitCubeVecSharedParams(CVSharedParams<isPa> &sharedParams, int32_t aicIdx,
                                                    uint8_t subBlockIdx);
@@ -409,12 +409,9 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Static(LocalTensor<uint8_t> &outputBuf,
-                                                                      uint32_t outputEventId,
-                                                                      LocalTensor<uint8_t> &bmm1ResBuf,
-                                                                      uint32_t bmm1ReadyEventId,
-                                                                      uint32_t bmm1FreeEventId, RunInfo &runInfo,
-                                                                      ConstInfo &constInfo)
+__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Static(
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
 {
     if constexpr (useDn && isFp8 && s1BaseSize == 128U && s2BaseSize == 256U && dTemplateAlign64 == 128U &&
                   bmm2Write2Ub) {
@@ -452,8 +449,8 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Static(LocalTenso
         SetFlag<HardEvent::MTE2_V>(Fp8Static::SCALE_EVENT_ID);
         WaitFlag<HardEvent::MTE2_V>(Fp8Static::SCALE_EVENT_ID);
 
-        Fp8Static::AivWaitUbReady(bmm1ReadyEventId);
-        LocalTensor<T> mmRes = bmm1ResBuf.ReinterpretCast<T>();
+        bmm1ResBuf.WaitCrossCore();
+        LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
         LocalTensor<INPUT_T> stage1CastTensor = stage1OutBufStatic_[stage1Offset];
         if constexpr (layout == QBSALayout::NTD) {
             if (unlikely(runInfo.s2LoopCount == 0)) {
@@ -489,12 +486,12 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Static(LocalTenso
             }
         }
         SetFlag<HardEvent::V_MTE2>(Fp8Static::SCALE_EVENT_ID);
-        Fp8Static::AivSetUbFree(bmm1FreeEventId);
+        bmm1ResBuf.SetCrossCore();
         if constexpr (hasAtten) {
             SetFlag<HardEvent::V_MTE2>(Fp8Static::MASK_EVENT_ID);
         }
 
-        LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.ReinterpretCast<INPUT_T>();
+        LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.template GetTensor<INPUT_T>();
         SetFlag<HardEvent::V_MTE3>(stage1EventId);
         WaitFlag<HardEvent::V_MTE3>(stage1EventId);
         DataCopy(mm2AL1Tensor[constInfo.subBlockIdx * vec1HalfS1BaseSize *
@@ -505,7 +502,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Static(LocalTenso
                               Align64Func(static_cast<uint16_t>(runInfo.s2RealSize)) * 32],
                  stage1CastTensor[65 << 5], {static_cast<uint16_t>((runInfo.s2RealSize + 63) >> 6), 64, 66, 0});
         SetFlag<HardEvent::MTE3_V>(stage1EventId);
-        Fp8Static::AivSetL1PReady(outputEventId);
+        outputBuf.SetCrossCore();
         if (constInfo.isSoftmaxLseEnable && unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
             SoftmaxLseCopyOut(sumUb, maxUb, runInfo, constInfo);
         }
@@ -591,23 +588,21 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2(mm2ResPos &bmm2R
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2Static(LocalTensor<uint8_t> &bmm2ResBuf,
-                                                                      uint32_t bmm2ReadyEventId,
-                                                                      uint32_t bmm2FreeEventId, RunInfo &runInfo,
-                                                                      ConstInfo &constInfo)
+__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2Static(
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
 {
     if constexpr (useDn && isFp8 && s1BaseSize == 128U && s2BaseSize == 256U && dTemplateAlign64 == 128U &&
                   bmm2Write2Ub) {
-        Fp8Static::AivWaitUbReady(bmm2ReadyEventId);
+        bmm2ResBuf.WaitCrossCore();
         if (unlikely(runInfo.vec2S1BaseSize == 0)) {
-            Fp8Static::AivSetUbFree(bmm2FreeEventId);
+            bmm2ResBuf.SetCrossCore();
             return;
         }
         runInfo.vec2S1RealSize = runInfo.vec2S1BaseSize;
         int64_t vec2CalcSize = runInfo.vec2S1RealSize * dTemplateAlign64;
         float deSCaleVValue = this->deScaleVGm.GetValue(runInfo.n2oIdx);
         LocalTensor<T> vec2ResUb = stage2OutBufStatic_;
-        LocalTensor<T> mmRes = bmm2ResBuf.ReinterpretCast<T>();
+        LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
         WaitFlag<HardEvent::MTE3_V>(Fp8Static::STAGE2_EVENT_ID);
         if (unlikely(runInfo.s2LoopCount == 0)) {
             Adds<T>(vec2ResUb, mmRes, static_cast<T>(0.0F), vec2CalcSize);
@@ -637,7 +632,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec2Static(LocalTenso
                 }
             }
         }
-        Fp8Static::AivSetUbFree(bmm2FreeEventId);
+        bmm2ResBuf.SetCrossCore();
         if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
             if (unlikely(runInfo.s2LoopCount == 0)) {
                 LocalTensor<float> sumUb = softmaxSumBufStatic_[runInfo.multiCoreIdxMod3];
@@ -1177,16 +1172,16 @@ public:
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
                                        RunInfo &runInfo, ConstInfo &constInfo)
     {}
-    __aicore__ inline void ProcessVec1Static(LocalTensor<uint8_t> &outputBuf, uint32_t outputEventId,
-                                             LocalTensor<uint8_t> &bmm1ResBuf, uint32_t bmm1ReadyEventId,
-                                             uint32_t bmm1FreeEventId, RunInfo &runInfo, ConstInfo &constInfo)
+    __aicore__ inline void ProcessVec1Static(
+        Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
+        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
     {}
 
     using mm2ResPos = typename std::conditional<bmm2Write2Ub, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo) {}
-    __aicore__ inline void ProcessVec2Static(LocalTensor<uint8_t> &bmm2ResBuf, uint32_t bmm2ReadyEventId,
-                                             uint32_t bmm2FreeEventId, RunInfo &runInfo, ConstInfo &constInfo)
+    __aicore__ inline void ProcessVec2Static(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
+                                             RunInfo &runInfo, ConstInfo &constInfo)
     {}
 };
 } // namespace BaseApi

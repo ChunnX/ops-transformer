@@ -119,9 +119,9 @@ public:
 
     BufferManager<BufferType::L1> l1BufferManager;
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
-    LocalTensor<uint8_t> bmm1UbStatic_[2];
-    LocalTensor<uint8_t> bmm2UbStatic_;
-    LocalTensor<uint8_t> l1PStatic_[3];
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1UbStatic_[2];
+    Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2UbStatic_;
+    Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PStatic_[3];
     uint32_t bmm1CursorStatic_ = 1U;
     CVSharedParams<isPa> sharedParams;
     using keyGmType = GlobalTensor<INPUT_T>;
@@ -256,12 +256,18 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                       "Unexpected FP8 BMM1 UB static size");
         static_assert(Fp8Static::BMM2_UB_SLOT_BYTES == mm2ResultSize, "Unexpected FP8 BMM2 UB static size");
         static_assert(Fp8Static::L1_P_SLOT_BYTES == mm2LeftSize, "Unexpected FP8 L1 P static size");
-        bmm1UbStatic_[0] = LocalTensor<uint8_t>(TPosition::VECIN, Fp8Static::BMM1_UB_ADDR0, mm1ResultSize);
-        bmm1UbStatic_[1] = LocalTensor<uint8_t>(TPosition::VECIN, Fp8Static::BMM1_UB_ADDR1, mm1ResultSize);
-        bmm2UbStatic_ = LocalTensor<uint8_t>(TPosition::VECIN, Fp8Static::BMM2_UB_ADDR, mm2ResultSize);
-        l1PStatic_[0] = LocalTensor<uint8_t>(TPosition::A1, Fp8Static::L1_P_ADDR0, Fp8Static::L1_P_SLOT_BYTES);
-        l1PStatic_[1] = LocalTensor<uint8_t>(TPosition::A1, Fp8Static::L1_P_ADDR1, Fp8Static::L1_P_SLOT_BYTES);
-        l1PStatic_[2] = LocalTensor<uint8_t>(TPosition::A1, Fp8Static::L1_P_ADDR2, Fp8Static::L1_P_SLOT_BYTES);
+        l1PStatic_[0] = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>(
+            LocalTensor<uint8_t>(TPosition::A1, Fp8Static::L1_P_ADDR0, Fp8Static::L1_P_SLOT_BYTES), mm2LeftSize);
+        l1PStatic_[1] = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>(
+            LocalTensor<uint8_t>(TPosition::A1, Fp8Static::L1_P_ADDR1, Fp8Static::L1_P_SLOT_BYTES), mm2LeftSize);
+        l1PStatic_[2] = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>(
+            LocalTensor<uint8_t>(TPosition::A1, Fp8Static::L1_P_ADDR2, Fp8Static::L1_P_SLOT_BYTES), mm2LeftSize);
+        bmm2UbStatic_ = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>(
+            LocalTensor<uint8_t>(TPosition::VECIN, Fp8Static::BMM2_UB_ADDR, mm2ResultSize), mm2ResultSize);
+        bmm1UbStatic_[0] = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>(
+            LocalTensor<uint8_t>(TPosition::VECIN, Fp8Static::BMM1_UB_ADDR0, mm1ResultSize), mm1ResultSize);
+        bmm1UbStatic_[1] = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>(
+            LocalTensor<uint8_t>(TPosition::VECIN, Fp8Static::BMM1_UB_ADDR1, mm1ResultSize), mm1ResultSize);
         return;
     }
     l1BufferManager.Init(pipe, 524288);
@@ -294,9 +300,9 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
 {
     if constexpr (useFp8StaticTensor) {
         if ASCEND_IS_AIV {
-            Fp8Static::AivSetUbFree(Fp8Static::CC_BMM1_FREE_EVENT_ID0);
-            Fp8Static::AivSetUbFree(Fp8Static::CC_BMM1_FREE_EVENT_ID1);
-            Fp8Static::AivSetUbFree(Fp8Static::CC_BMM2_FREE_EVENT_ID);
+            bmm1UbStatic_[0].SetCrossCore();
+            bmm1UbStatic_[1].SetCrossCore();
+            bmm2UbStatic_.SetCrossCore();
         }
     }
 }
@@ -306,9 +312,9 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
 {
     if constexpr (useFp8StaticTensor) {
         if ASCEND_IS_AIC {
-            Fp8Static::AicWaitUbFree(Fp8Static::CC_BMM1_FREE_EVENT_ID0);
-            Fp8Static::AicWaitUbFree(Fp8Static::CC_BMM1_FREE_EVENT_ID1);
-            Fp8Static::AicWaitUbFree(Fp8Static::CC_BMM2_FREE_EVENT_ID);
+            bmm1UbStatic_[0].WaitCrossCore();
+            bmm1UbStatic_[1].WaitCrossCore();
+            bmm2UbStatic_.WaitCrossCore();
         }
     }
 }
@@ -619,10 +625,8 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                             if constexpr (useFp8StaticTensor) {
                                 const uint32_t bmm1Slot = bmm1CursorStatic_;
                                 bmm1CursorStatic_ ^= 1U;
-                                this->cubeBlock.IterateBmm1Static(this->bmm1UbStatic_[bmm1Slot],
-                                                                  Fp8Static::Bmm1ReadyEventId(bmm1Slot),
-                                                                  Fp8Static::Bmm1FreeEventId(bmm1Slot),
-                                                                  runInfo1, this->constInfo);
+                                this->cubeBlock.IterateBmm1Static(this->bmm1UbStatic_[bmm1Slot], runInfo1,
+                                                                  this->constInfo);
                             } else {
                                 this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo1, this->constInfo);
                             }
@@ -636,11 +640,8 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                                 bmm1CursorStatic_ ^= 1U;
                                 const uint32_t l1PSlot = static_cast<uint32_t>(runInfo3.taskId % 3);
                                 this->vecBlock.ProcessVec1Static(this->l1PStatic_[l1PSlot],
-                                                                 Fp8Static::L1PEventId(l1PSlot),
-                                                                 this->bmm1UbStatic_[bmm1Slot],
-                                                                 Fp8Static::Bmm1ReadyEventId(bmm1Slot),
-                                                                 Fp8Static::Bmm1FreeEventId(bmm1Slot),
-                                                                 runInfo3, this->constInfo);
+                                                                 this->bmm1UbStatic_[bmm1Slot], runInfo3,
+                                                                 this->constInfo);
                             } else {
                                 this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo3,
                                                            this->constInfo);
@@ -652,12 +653,8 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                             RunInfo &runInfo2 = runInfo[static_cast<uint64_t>(taskId + 2) & 3];
                             if constexpr (useFp8StaticTensor) {
                                 const uint32_t l1PSlot = static_cast<uint32_t>(runInfo2.taskId % 3);
-                                this->cubeBlock.IterateBmm2Static(this->bmm2UbStatic_,
-                                                                  Fp8Static::CC_BMM2_READY_EVENT_ID,
-                                                                  Fp8Static::CC_BMM2_FREE_EVENT_ID,
-                                                                  this->l1PStatic_[l1PSlot],
-                                                                  Fp8Static::L1PEventId(l1PSlot), runInfo2,
-                                                                  this->constInfo);
+                                this->cubeBlock.IterateBmm2Static(this->bmm2UbStatic_, this->l1PStatic_[l1PSlot],
+                                                                  runInfo2, this->constInfo);
                             } else if constexpr (bmm2Write2Ub) {
                                 this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo2,
                                                             this->constInfo);
@@ -671,10 +668,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                         if ASCEND_IS_AIV {
                             RunInfo &runInfo3 = runInfo[static_cast<uint64_t>(taskId + 1) & 3];
                             if constexpr (useFp8StaticTensor) {
-                                this->vecBlock.ProcessVec2Static(this->bmm2UbStatic_,
-                                                                 Fp8Static::CC_BMM2_READY_EVENT_ID,
-                                                                 Fp8Static::CC_BMM2_FREE_EVENT_ID,
-                                                                 runInfo3, this->constInfo);
+                                this->vecBlock.ProcessVec2Static(this->bmm2UbStatic_, runInfo3, this->constInfo);
                             } else if constexpr (bmm2Write2Ub) {
                                 this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
                             } else {
