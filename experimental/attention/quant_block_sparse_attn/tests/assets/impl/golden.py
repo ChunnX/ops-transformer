@@ -21,6 +21,8 @@ from pathlib import Path
 import torch
 
 PYTEST_GOLDEN_MODULE = None
+PYTEST_MXFP8_GOLDEN_MODULE = None
+_MXFP8_MODULE_NAME = "_qbsa_mxfp8_pytest_golden"
 
 
 def load_pytest_golden_module():
@@ -42,6 +44,39 @@ def load_pytest_golden_module():
         except ValueError:
             pass
     PYTEST_GOLDEN_MODULE = module
+    return module
+
+
+def load_pytest_mxfp8_golden_module():
+    """Load the legacy MXFP8 reference under the same name as input.py."""
+    global PYTEST_MXFP8_GOLDEN_MODULE
+    if PYTEST_MXFP8_GOLDEN_MODULE is not None:
+        return PYTEST_MXFP8_GOLDEN_MODULE
+    if _MXFP8_MODULE_NAME in sys.modules:
+        PYTEST_MXFP8_GOLDEN_MODULE = sys.modules[_MXFP8_MODULE_NAME]
+        return PYTEST_MXFP8_GOLDEN_MODULE
+
+    pytest_dir = (
+        Path(__file__).resolve().parents[2] / "pytest" / "bsa_fullquant_mxfp8_test"
+    )
+    module_path = pytest_dir / "qbsa_mxfp8_golden.py"
+    spec = importlib.util.spec_from_file_location(_MXFP8_MODULE_NAME, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load MXFP8 golden module from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[_MXFP8_MODULE_NAME] = module
+    sys.path.insert(0, str(pytest_dir))
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(_MXFP8_MODULE_NAME, None)
+        raise
+    finally:
+        try:
+            sys.path.remove(str(pytest_dir))
+        except ValueError:
+            pass
+    PYTEST_MXFP8_GOLDEN_MODULE = module
     return module
 
 
@@ -75,8 +110,6 @@ def infer_geometry(
     cu_seqlens_kv,
     seqused_q,
     seqused_kv,
-    max_seqlen_q=0,
-    max_seqlen_kv=0,
 ):
     D = int(query.shape[-1])
     N2 = int(key.shape[1]) if key.dim() >= 2 else 1
@@ -88,19 +121,17 @@ def infer_geometry(
         N1 = int(query.shape[1]) if layout_q == "TND" else int(query.shape[0])
         T = int(query.shape[0]) if layout_q == "TND" else int(query.shape[1])
         B = int(sparse_indices.shape[0]) if sparse_indices is not None else 1
-        S1 = max_seqlen_q if max_seqlen_q > 0 else (T // B if B > 0 else T)
+        S1 = T // B if B > 0 else T
         q_lengths = to_list(seqused_q) or lengths_from_prefix(cu_seqlens_q) or [S1] * B
 
     kv_lengths = to_list(seqused_kv) or lengths_from_prefix(cu_seqlens_kv)
     if not kv_lengths:
-        if max_seqlen_kv > 0:
-            S2 = max_seqlen_kv
-        elif key.dim() == 4:
+        if key.dim() == 4:
             num_blocks = int(key.shape[0])
             block_size = int(key.shape[2])
-            S2 = num_blocks * block_size
+            S2 = num_blocks * block_size // B
         else:
-            S2 = int(key.shape[0])
+            S2 = int(key.shape[0]) // B
         kv_lengths = [S2] * B if B > 0 else [S2]
 
     return B, S1, N1, N2, D, q_lengths, kv_lengths
@@ -155,6 +186,128 @@ def _pack_pa_to_combined(key_pa, value_pa, k_scale_pa, block_size, layout_kv):
     return storage, meta
 
 
+def _cpu_mxfp8_golden(
+    query,
+    key,
+    value,
+    q_descale,
+    k_descale,
+    v_descale,
+    p_scale,
+    sparse_indices,
+    sparse_seq_len,
+    atten_mask,
+    softmax_scale,
+    sparse_q_block_size,
+    sparse_kv_block_size,
+    *,
+    layout_kv="PA_BNSD",
+    layout_q="TND",
+    layout_sparse_indices="B_N_Qb_Kb",
+    layout_out="TND",
+    mask_mode=3,
+    return_softmax_lse=False,
+    actual_seq_q=None,
+    actual_seq_kv=None,
+    empty_actual_seq=False,
+    block_table_pattern="sequential",
+    seed=0,
+    **kwargs,
+):
+    """Run the original pytest CPU reference on the exact customized inputs."""
+    module = load_pytest_mxfp8_golden_module()
+    testcase_name = kwargs.get("testcase_name") or "__default__"
+    cache = getattr(module, "_TTK_MXFP8_CACHE", {})
+    cached = cache.pop(testcase_name, None)
+
+    if cached is None:
+        batch = int(sparse_indices.shape[0])
+        if layout_q == "BSND":
+            q_fallback = int(query.shape[1])
+        elif layout_q == "NTD":
+            q_fallback = int(query.shape[1]) // batch
+        else:
+            q_fallback = int(query.shape[0]) // batch
+        kv_fallback = int(key.shape[0]) * int(key.shape[2]) // batch
+        q_lengths = (
+            [int(item) for item in actual_seq_q]
+            if actual_seq_q is not None
+            else [q_fallback] * batch
+        )
+        kv_lengths = (
+            [int(item) for item in actual_seq_kv]
+            if actual_seq_kv is not None
+            else [kv_fallback] * batch
+        )
+        head_axis = 0 if layout_q == "NTD" else 1
+        case = {
+            "B": batch,
+            "N1": int(query.shape[head_axis]),
+            "N2": int(key.shape[1]),
+            "D": int(query.shape[-1]),
+            "S1": max(q_lengths),
+            "S2": max(kv_lengths),
+            "actual_seq_q": q_lengths,
+            "actual_seq_kv": kv_lengths,
+            "s2_base_size": int(kwargs.get("s2_base_size", 512)),
+            "block_size": int(key.shape[2]),
+            "mask_mode": int(mask_mode),
+            "fp8_dtype": torch.float8_e4m3fn,
+            "scale_dtype": torch.float8_e8m0fnu,
+            "quant_group_size": int(kwargs.get("quant_group_size", 32)),
+            "layout_q": layout_q,
+            "layout_kv": layout_kv,
+            "layout_sparse_indices": layout_sparse_indices,
+            "layout_out": layout_out,
+            "kv_cache_layout": "BnNBsD",
+            "is_contiguous": True,
+            "p_scale_value": (
+                None
+                if kwargs.get("p_scale_value") is None
+                else float(kwargs["p_scale_value"])
+            ),
+            "softmax_scale": float(softmax_scale),
+            "return_softmax_lse": bool(return_softmax_lse),
+            "empty_actual_seq": bool(empty_actual_seq),
+            "seed": int(seed),
+            "data_range_q": float(kwargs.get("data_range_q", 1.0)),
+            "data_range_k": float(kwargs.get("data_range_k", 1.0)),
+            "data_range_v": float(kwargs.get("data_range_v", 1.0)),
+            "device_id": 0,
+            "sparse_q_block_size": int(sparse_q_block_size),
+            "sparse_kv_block_size": int(sparse_kv_block_size),
+            "sparse_count": int(kwargs.get("sparse_count", 0)),
+            "sparse_pattern": str(kwargs.get("sparse_pattern", "sequential")),
+            "block_table_pattern": block_table_pattern,
+            "quant_mode": 2,
+        }
+        module.set_active_case(case)
+        data = module._generate_reference_style_mxfp8_inputs()
+    else:
+        case = cached["case"]
+        data = cached["data"]
+        module.set_active_case(case)
+
+    attention_out, softmax_lse = module.cpu_mxfp8_golden(
+        data["query"],
+        data["key"],
+        data["value"],
+        data["q_descale"],
+        data["k_descale"],
+        data["v_descale"],
+        data["p_scale"],
+        data["q_lengths"],
+        data["kv_lengths"],
+        data["cu_seqlens_q"],
+        data["sparse_indices"],
+        data["sparse_seq_len"],
+    )
+    attention_out = attention_out.to(torch.bfloat16)
+    if not return_softmax_lse:
+        softmax_lse = torch.empty((0,), dtype=torch.float32)
+    return [attention_out, softmax_lse]
+
+
 def cpu_quant_block_sparse_attn(
     query,
     key,
@@ -175,8 +328,6 @@ def cpu_quant_block_sparse_attn(
     seqused_kv=None,
     block_table=None,
     metadata=None,
-    max_seqlen_q=0,
-    max_seqlen_kv=0,
     layout_kv="PA_BNSD",
     layout_q="BSND",
     layout_sparse_indices="B_N_Qb_Kb",
@@ -187,6 +338,30 @@ def cpu_quant_block_sparse_attn(
     **kwargs,
 ):
     """CPU reference implementation wrapping the existing pytest golden."""
+    if int(quant_mode) == 2:
+        return _cpu_mxfp8_golden(
+            query,
+            key,
+            value,
+            q_descale,
+            k_descale,
+            v_descale,
+            p_scale,
+            sparse_indices,
+            sparse_seq_len,
+            atten_mask,
+            softmax_scale,
+            sparse_q_block_size,
+            sparse_kv_block_size,
+            layout_kv=layout_kv,
+            layout_q=layout_q,
+            layout_sparse_indices=layout_sparse_indices,
+            layout_out=layout_out,
+            mask_mode=mask_mode,
+            return_softmax_lse=return_softmax_lse,
+            **kwargs,
+        )
+
     golden_module = load_pytest_golden_module()
 
     q_cpu = to_cpu(query)
@@ -213,21 +388,11 @@ def cpu_quant_block_sparse_attn(
         cu_seqlens_kv_cpu,
         seqused_q_cpu,
         seqused_kv_cpu,
-        max_seqlen_q,
-        max_seqlen_kv,
     )
 
     sparse_q_block_size = int(sparse_q_block_size)
     sparse_kv_block_size = int(sparse_kv_block_size)
-    max_seqlen_q = int(max_seqlen_q) if max_seqlen_q > 0 else S1
-    max_seqlen_kv = (
-        int(max_seqlen_kv)
-        if max_seqlen_kv > 0
-        else max(kv_lengths)
-        if kv_lengths
-        else S1
-    )
-    S2 = max(kv_lengths) if kv_lengths else max_seqlen_kv
+    S2 = max(kv_lengths) if kv_lengths else S1
 
     if key_cpu.dim() != 4:
         raise ValueError(
@@ -296,4 +461,4 @@ def cpu_quant_block_sparse_attn(
 
     if return_softmax_lse:
         return [attention_out, softmax_lse]
-    return [attention_out]
+    return [attention_out, torch.empty((0,), dtype=torch.float32)]
