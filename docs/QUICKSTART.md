@@ -85,13 +85,20 @@ grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini
 
 预期输出应包含已安装的 vendor 名（如 `custom_transformer`），形如 `load_priority=custom_transformer`。
 
-> **如何判断校验结果**：若 `grep` 报错（如 `No such file`，说明 `config.ini` 未创建）或输出中不含对应 vendor，均表示 `config.ini` 未更新成功，算子无法加载，运行时会报 `error 161001 (aclnnAddExampleGetWorkspaceSize failed)`，请参考下方[常见安装问题排查](#常见安装问题排查)。只有 `grep` 成功查到本 vendor 才算安装成功。
+> **如何判断校验结果**：`grep` 成功查到本 vendor 才算安装成功。若 `grep` 报错（如 `No such file`，说明 `config.ini` 未创建）或输出不含对应 vendor，均表示 `config.ini` 未更新成功，算子无法加载，运行时会报 `error 161001`，请参考下方[常见安装问题排查](#常见安装问题排查)。
 
 ### 常见安装问题排查
 
-#### 安装时提示 chmod: changing permissions of '.../config.ini': Operation not permitted
+#### opp/vendors 权限与属主检查
 
-**根因**：安装过程中若提示 `chmod: changing permissions of '.../vendors/config.ini': Operation not permitted`，根因是 `opp/vendors` 目录或 `config.ini` 的属主不是当前用户。CANN 通常由 root 安装，普通用户对该目录无写权限，而只有文件属主或 root 才能执行 chmod，导致安装脚本无法更新 `config.ini`、`load_priority` 未写入，最终算子无法加载。
+安装脚本需向 `${ASCEND_HOME_PATH}/opp/vendors` 写入 `config.ini` 及算子文件。CANN 通常由 root 安装，若该目录属主非当前用户，将导致 `config.ini` 更新失败、算子无法加载（运行时报 `error 161001`）。建议**安装前**执行以下命令预检查：
+
+```bash
+ls -ld ${ASCEND_HOME_PATH}/opp/vendors
+ls -l  ${ASCEND_HOME_PATH}/opp/vendors/config.ini 2>/dev/null
+```
+
+预期输出属主为当前用户（如 `developer developer`）且具有写权限。若属主为 `root` 或无写权限（安装时会提示 `chmod: changing permissions of '.../config.ini': Operation not permitted`），请选择以下任一方式修复：
 
 **修复方式一（推荐）：将 vendors 目录属主改为当前用户**
 
@@ -112,7 +119,7 @@ sudo chmod -R u+w ${ASCEND_HOME_PATH}/opp/vendors
 grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini
 ```
 
-> **对已安装过算子包的用户**：若此前安装时 `config.ini` 更新失败（`load_priority` 缺失），即使当前从源码重新编译，也需**重新执行 `.run` 安装**（或按上述方式修复权限后重装）以触发 `config.ini` 更新，仅重编译不足以修复 `config.ini`。
+> **对已安装过算子包的用户**：若此前安装时 `config.ini` 更新失败（`load_priority` 缺失），仅重新编译不会修复 `config.ini`，需在确认权限正常后**重新执行 `.run` 安装**以触发更新。
 
 #### 替代方案：使用 --install-path 安装到用户可写目录
 
@@ -137,14 +144,6 @@ source ${HOME}/custom_ops/vendors/custom_transformer/bin/set_env.bash
 ```bash
 export LD_LIBRARY_PATH=${ASCEND_HOME_PATH}/opp/vendors/custom_transformer/op_api/lib:${LD_LIBRARY_PATH}
 ```
-
-> **应急兜底**：若 `config.ini` 因权限问题始终无法更新（第3步校验不通过），且暂时无法获取 `${ASCEND_HOME_PATH}/opp/vendors` 写权限，可临时通过 `ASCEND_CUSTOM_OPP_PATH` 直接指定自定义算子包路径，使本会话中算子可被加载（无需修改 `config.ini`）：
->
-> ```bash
-> export ASCEND_CUSTOM_OPP_PATH=${ASCEND_HOME_PATH}/opp/vendors/custom_transformer
-> ```
->
-> 注意：该变量仅在当前 shell 会话内生效，是**临时兜底**方案，不写入 `config.ini`，重启后需重新设置。长期使用建议按第3步[常见安装问题排查](#常见安装问题排查)修复权限或改用 `--install-path` 方案。
 
 ### 5. 快速验证：运行算子样例
 

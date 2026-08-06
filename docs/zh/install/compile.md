@@ -91,11 +91,18 @@
 
     预期输出应包含已安装的 vendor 名（如 `${vendor_name}`），形如 `load_priority=${vendor_name}`。
 
-    > **如何判断校验结果**：若 `grep` 报错（如 `No such file`，说明 `config.ini` 未创建）或输出中不含对应 vendor，均表示 `config.ini` 未更新成功，算子无法加载，请参考下方[权限失败修复指引](#权限失败修复指引)。只有 `grep` 成功查到本 vendor 才算安装成功。
+    > **如何判断校验结果**：`grep` 成功查到本 vendor 才算安装成功。若 `grep` 报错（如 `No such file`，说明 `config.ini` 未创建）或输出不含对应 vendor，均表示 `config.ini` 未更新成功，算子无法加载，请参考下方[权限失败修复指引](#权限失败修复指引)。
 
     #### 权限失败修复指引
 
-    若安装时提示 `chmod: changing permissions of '.../vendors/config.ini': Operation not permitted`，根因是 `opp/vendors` 目录或 `config.ini` 的属主不是当前用户。CANN 通常由 root 安装，普通用户对该目录无写权限，而只有文件属主或 root 才能执行 chmod，导致安装脚本无法更新 `config.ini`、`load_priority` 未写入，最终算子无法加载。请选择如下任一方式修复后重新安装。
+    **安装前预检查**：建议安装前先检查 `opp/vendors` 属主与权限：
+
+    ```bash
+    ls -ld ${ASCEND_HOME_PATH}/opp/vendors
+    ls -l  ${ASCEND_HOME_PATH}/opp/vendors/config.ini 2>/dev/null
+    ```
+
+    若属主非当前用户（如 `root`），安装脚本将无法更新 `config.ini`（安装时提示 `chmod: ... Operation not permitted`），导致算子无法加载。请选择以下任一方式修复后重新安装。
 
     **修复方式一（推荐）：将 vendors 目录属主改为当前用户**
 
