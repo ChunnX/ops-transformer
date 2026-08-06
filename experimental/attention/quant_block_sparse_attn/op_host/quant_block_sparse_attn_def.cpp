@@ -114,7 +114,6 @@ public:
         this->Attr("quant_mode").AttrType(OPTIONAL).Int(1);
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(3);
         this->Attr("return_softmax_lse").AttrType(OPTIONAL).Bool(false);
-        this->Attr("block_num").AttrType(OPTIONAL).Int(0);
 
         OpAICoreConfig aicoreConfig;
         aicoreConfig.DynamicCompileStaticFlag(true)

@@ -776,61 +776,6 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckMXFP8FullQuantShape() const
         static_cast<int64_t>(tilingInfo_.paBlockNumSum), static_cast<int64_t>(tilingInfo_.n2Size), valueScaleBlockSize,
         static_cast<int64_t>(tilingInfo_.dSizeV), QBSA_MXFP8_SCALE_LAST_DIM};
 
-    // When block_num attr is explicitly set and smaller than key.shape[0],
-    // dim[0] of key/value/k_descale/v_descale may be larger than paBlockNumSum.
-    // Only check dim[1..] for those tensors; dim[0] must be >= paBlockNumSum.
-    if (tilingInfo_.blockNumAttr > 0U) {
-        const int64_t paBlockNumSumInt = static_cast<int64_t>(tilingInfo_.paBlockNumSum);
-        if (CheckInputShape(opParamInfo.pScale, "quantScale1", pScaleShape) != ge::GRAPH_SUCCESS ||
-            CheckInputShape(opParamInfo.qDescale, "dequantScaleQuery", queryAntiquantScaleShape) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-        auto checkDim0Ge = [&](const BSARequiredParaInfo &input, const char *name,
-                               const std::array<int64_t, DIM_NUM_4> &expect) -> ge::graphStatus {
-            if (input.shape == nullptr) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, name, "nullptr", "shape is nullptr");
-                return ge::GRAPH_FAILED;
-            }
-            const auto &shp = input.shape->GetStorageShape();
-            if (shp.GetDim(0) < paBlockNumSumInt || shp.GetDim(1) != expect[1] ||
-                shp.GetDim(2) != expect[2] || shp.GetDim(3) != expect[3]) {
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, name, Ops::Base::ToString(shp),
-                                                      "dim[0] must be >= " + std::to_string(paBlockNumSumInt) +
-                                                          ", dim[1..3] must be (" + std::to_string(expect[1]) + ", " +
-                                                          std::to_string(expect[2]) + ", " + std::to_string(expect[3]) + ")");
-                return ge::GRAPH_FAILED;
-            }
-            return ge::GRAPH_SUCCESS;
-        };
-        if (checkDim0Ge(opParamInfo.key, "key", keyShapeExpect) != ge::GRAPH_SUCCESS ||
-            checkDim0Ge(opParamInfo.value, "value", valueShapeExpect) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-        auto checkDim0Ge5D = [&](const BSARequiredParaInfo &input, const char *name,
-                                 const std::array<int64_t, DIM_NUM_5> &expect) -> ge::graphStatus {
-            if (input.shape == nullptr) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, name, "nullptr", "shape is nullptr");
-                return ge::GRAPH_FAILED;
-            }
-            const auto &shp = input.shape->GetStorageShape();
-            if (shp.GetDim(0) < paBlockNumSumInt || shp.GetDim(1) != expect[1] ||
-                shp.GetDim(2) != expect[2] || shp.GetDim(3) != expect[3] || shp.GetDim(4) != expect[4]) {
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, name, Ops::Base::ToString(shp),
-                                                      "dim[0] must be >= " + std::to_string(paBlockNumSumInt) +
-                                                          ", dim[1..4] must be (" + std::to_string(expect[1]) + ", " +
-                                                          std::to_string(expect[2]) + ", " + std::to_string(expect[3]) + ", " +
-                                                          std::to_string(expect[4]) + ")");
-                return ge::GRAPH_FAILED;
-            }
-            return ge::GRAPH_SUCCESS;
-        };
-        if (checkDim0Ge5D(opParamInfo.kDescale, "keyAntiquantScale", keyAntiquantScaleShape) != ge::GRAPH_SUCCESS ||
-            checkDim0Ge5D(opParamInfo.vDescale, "valueAntiquantScale", valueAntiquantScaleShape) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-        return ge::GRAPH_SUCCESS;
-    }
-
     if (CheckInputShape(opParamInfo.pScale, "quantScale1", pScaleShape) != ge::GRAPH_SUCCESS ||
         CheckInputShape(opParamInfo.qDescale, "dequantScaleQuery", queryAntiquantScaleShape) != ge::GRAPH_SUCCESS ||
         CheckInputShape(opParamInfo.key, "key", keyShapeExpect) != ge::GRAPH_SUCCESS ||

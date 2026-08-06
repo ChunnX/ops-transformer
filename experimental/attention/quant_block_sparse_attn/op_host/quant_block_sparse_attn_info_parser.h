@@ -55,7 +55,6 @@ constexpr uint32_t QBSA_LAYOUT_OUT_ATTR_INDEX = 6U;
 constexpr uint32_t QBSA_QUANT_MODE_ATTR_INDEX = 7U;
 constexpr uint32_t QBSA_MASK_MODE_ATTR_INDEX = 8U;
 constexpr uint32_t QBSA_RETURN_SOFTMAX_LSE_ATTR_INDEX = 9U;
-constexpr uint32_t QBSA_BLOCK_NUM_ATTR_INDEX = 10U;
 
 struct QBSARequiredParaInfo {
     const gert::CompileTimeTensorDesc *desc = nullptr;
@@ -120,7 +119,6 @@ struct QuantBlockSparseAttnTilingInfo {
     uint32_t paBlockStrideVal = 0;
     uint32_t maxBlockNumPerBatch = 0;
     uint32_t paBlockNumSum = 0;
-    uint32_t blockNumAttr = 0;
     uint32_t gS1OuterSize = 0;
 
     ge::DataType qDtype = ge::DT_UNDEFINED;
