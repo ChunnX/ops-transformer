@@ -226,9 +226,15 @@ def _make_sparse_indices(
     return sparse_indices, sparse_seq_len
 
 
-def _dense_to_pa(dense_key, dense_value, dense_k_scale, block_table, block_size):
+def _dense_to_pa(dense_key, dense_value, dense_k_scale, block_table, block_size, num_blocks=None):
     B, S2, N2, D = dense_key.shape
-    block_num = int(block_table.max().item()) + 1
+    required = int(block_table.max().item()) + 1
+    if num_blocks is not None and num_blocks < required:
+        raise ValueError(
+            f"pre-allocated num_blocks={num_blocks} < required physical blocks {required}"
+        )
+    # 预分配物理池可能大于 block_table 实际用到的块数，按预分配大小定 PA 张量，尾部补零
+    block_num = num_blocks if num_blocks is not None else required
     key_pa = torch.zeros((block_num, N2, block_size, D), dtype=dense_key.dtype)
     value_pa = torch.zeros((block_num, N2, block_size, D), dtype=dense_value.dtype)
     k_scale_pa = torch.zeros((block_num, N2, block_size), dtype=torch.float32)
@@ -356,7 +362,12 @@ def customize_inputs(
         blocknum=int(key.shape[0]) if key.dim() == 4 else None,
     )
     key_pa, value_pa, k_scale_pa = _dense_to_pa(
-        dense_key, dense_value, dense_k_scale, block_table, sparse_kv_block_size
+        dense_key,
+        dense_value,
+        dense_k_scale,
+        block_table,
+        sparse_kv_block_size,
+        num_blocks=int(key.shape[0]) if key.dim() == 4 else None,
     )
 
     key.copy_(key_pa)
