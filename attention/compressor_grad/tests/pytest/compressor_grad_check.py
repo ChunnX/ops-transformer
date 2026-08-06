@@ -42,8 +42,10 @@ PRECISION = {
 # ================================================================
 #  输出定义
 # ================================================================
-# 反向算子所有输出列表（顺序固定，便于汇总统计）
-ALL_OUTPUTS = ["d_wkv", "d_wgate", "d_ape", "d_x"]
+# 算子所有输出列表（顺序固定，便于汇总统计）：
+# 反向 4 个 + 正向 3 个；通路 2/3 的 result 无正向字段，打印/汇总时自动跳过
+ALL_OUTPUTS = ["d_wkv", "d_wgate", "d_ape", "d_x",
+               "cmp_kv", "softmax_score", "kv"]
 
 # 输出名 → result dict 中的 status/pct key 映射
 _OUTPUT_KEY_MAP = {
@@ -51,6 +53,9 @@ _OUTPUT_KEY_MAP = {
     "d_wgate":   ("dwgatePct",   "dwgateStatus"),
     "d_ape": ("apePct",   "apeStatus"),
     "d_x":   ("dxPct",    "dxStatus"),
+    "cmp_kv":      ("cmpkvPct", "cmpkvStatus"),
+    "softmax_score": ("smPct",   "smStatus"),
+    "kv":          ("kvPct",   "kvStatus"),
 }
 
 
@@ -311,9 +316,16 @@ def check_one_output(name, expect, result, data_type, enabled, total_valid, pct_
 #  结果格式化与汇总统计
 # ================================================================
 def format_output_status(result, out_name):
-    """格式化单个输出的状态字符串（用于用例行展示）。"""
+    """格式化单个输出的状态字符串（正反向统一格式，用于用例行展示）。
+
+    输出格式（正反向完全一致）：`<名>=<pct>%[<STATUS>]`；
+    result 中不存在该输出的 status 字段（如通路 2/3 无正向字段）时返回 None，
+    由调用方跳过，不参与展示。
+    """
     pct_key, stat_key = get_output_keys(out_name)
-    st = result.get(stat_key, "SKIP")
+    if stat_key not in result:
+        return None
+    st = result[stat_key]
     pct = result.get(pct_key, 100.0)
     if st == "SKIP":
         return f"{out_name}=SKIP"
@@ -324,8 +336,12 @@ def format_output_status(result, out_name):
 
 
 def format_case_line(result):
-    """格式化单个用例的完整结果行（含 4 个输出的对比状态）。"""
-    parts = [format_output_status(result, out_name) for out_name in ALL_OUTPUTS]
+    """格式化单个用例的完整结果行（正反向统一；按 result 实际含有的输出展示）。"""
+    parts = []
+    for out_name in ALL_OUTPUTS:
+        s = format_output_status(result, out_name)
+        if s is not None:
+            parts.append(s)
     detail = "  ".join(parts)
     return f"  {result.get('status', 'N/A'):5s}  {detail}  (validBlocks={result.get('totalValid', 0)})"
 
@@ -357,23 +373,26 @@ def print_summary(results):
     print("=" * 100)
 
     # 以 case 为粒度的每个输出对比结果
+    # 列由该批 result 实际含有的输出决定（数据驱动，不区分正反向）：
+    # 通路 1 含正向字段 → 7 列；通路 2/3 仅反向 → 4 列
+    cols = [o for o in ALL_OUTPUTS
+            if any(get_output_keys(o)[1] in r for r in results)]
     print("\nPer-Case Per-Output Summary:")
     print("-" * 100)
-    header = f"{'Case':<45}" + "".join(f"{o:<18}" for o in ALL_OUTPUTS) + "Overall"
+    header = f"{'Case':<45}" + "".join(f"{o:<18}" for o in cols) + "Overall"
     print(header)
     print("-" * 100)
     for r in results:
         case_name = r.get("name", "unknown")
         row = f"{case_name:<45}"
-        for out_name in ALL_OUTPUTS:
-            _, stat_key = get_output_keys(out_name)
+        for out_name in cols:
+            pct_key, stat_key = get_output_keys(out_name)
             st = r.get(stat_key, "SKIP")
             if st == "SKIP":
                 row += f"{'SKIP':<18}"
             elif st == "ERROR":
                 row += f"{'ERROR':<18}"
             else:
-                pct_key, _ = get_output_keys(out_name)
                 pct = r.get(pct_key, 0.0)
                 row += f"{pct:.2f}%[{st}]".ljust(18)
         row += r.get("status", "N/A")
