@@ -1,0 +1,58 @@
+# name,layout,q_dtype,with_offset,b,kv_heads,s1,d,block_size,total_block_num,actual_kv_lens,block_table[,seed[,q_heads[,profile]]]
+# List fields use ';'. block_table is row-major [B, max_blocks_per_batch].
+# A positive optional seed selects reproducible pseudo-random data. It uses the
+# stable functional scale/offset range. A final profile value of 'wide' is only
+# permitted for the dedicated single-token antiquant case. Each full 16-FP4
+# segment remains a seeded permutation, so no E2M1 code drops from coverage.
+# The first two cases are the initial NZ numerical gate. All use the complete
+# FLOAT4_E2M1 code table; only shape/page-layout semantics live in this CSV.
+nz_fp16_symmetric_three_page_tail,nz,fp16,0,3,3,1,128,128,10,257;130;1,9;2;5;1;8;3;7;0;6
+nz_fp16_asymmetric_three_page_tail,nz,fp16,1,3,3,1,128,128,10,257;130;1,9;2;5;1;8;3;7;0;6
+nz_bf16_symmetric_three_page_tail,nz,bf16,0,3,3,1,128,128,10,257;130;1,9;2;5;1;8;3;7;0;6
+nz_bf16_asymmetric_three_page_tail,nz,bf16,1,3,3,1,128,128,10,257;130;1,9;2;5;1;8;3;7;0;6
+# NZ D/bucket coverage. D=32/64 exercise the 64 bucket; D=96/192
+# exercise padded 128/256 buckets; D=256/512 exercise exact larger buckets.
+nz_bf16_asymmetric_d32_three_page_tail,nz,bf16,1,2,3,1,32,128,10,257;129,9;2;5;1;8;3
+nz_bf16_asymmetric_d64_three_page_tail,nz,bf16,1,2,3,1,64,128,10,257;129,9;2;5;1;8;3
+nz_bf16_asymmetric_d96_three_page_tail,nz,bf16,1,2,3,1,96,128,10,257;129,9;2;5;1;8;3
+nz_bf16_asymmetric_d192_three_page_tail,nz,bf16,1,2,3,1,192,128,10,257;129,9;2;5;1;8;3
+nz_bf16_asymmetric_d256_three_page_tail,nz,bf16,1,2,3,1,256,128,10,257;129,9;2;5;1;8;3
+nz_bf16_asymmetric_d512_three_page_tail,nz,bf16,1,2,3,1,512,128,10,257;129,9;2;5;1;8;3
+# Reproducible randomized data coverage. These retain already validated D/page
+# buckets, so random data itself cannot add a tiling key.
+nz_bf16_asymmetric_random_d128_seed1729,nz,bf16,1,3,3,1,128,128,10,257;130;1,9;2;5;1;8;3;7;0;6,1729
+nz_fp16_symmetric_random_d128_seed2026,nz,fp16,0,3,3,1,128,128,10,257;130;1,9;2;5;1;8;3;7;0;6,2026
+nz_fp16_asymmetric_random_d64_seed4099,nz,fp16,1,2,3,1,64,128,10,257;129,9;2;5;1;8;3,4099
+nz_bf16_asymmetric_random_d192_seed8191,nz,bf16,1,2,3,1,192,128,10,257;129,9;2;5;1;8;3,8191
+nz_bf16_asymmetric_random_d512_seed16381,nz,bf16,1,2,3,1,512,128,10,257;129,9;2;5;1;8;3,16381
+# With S2=1, softmax is exactly one. This isolates wide E8M0/offset value
+# antiquantization and PA physical-page selection from multi-token softmax math.
+nz_bf16_asymmetric_wide_scale_single_token_seed65537,nz,bf16,1,3,3,1,128,128,10,1;1;1,9;2;5,65537,3,wide
+# S2=2 is the smallest K/QK/softmax/PV path. It retains the same wide
+# dequantization data and non-identity physical page selection as S2=1.
+nz_bf16_asymmetric_wide_scale_two_token_seed65537,nz,bf16,1,3,3,1,128,128,10,2;2;2,9;2;5,65537,3,wide
+# S2=128 has a full single page; S2=129 changes only one property by crossing
+# the page boundary. Together they separate long reduction from page transition.
+nz_bf16_asymmetric_wide_scale_s2eq128_seed65537,nz,bf16,1,3,3,1,128,128,10,128;128;128,9;2;5,65537,3,wide
+nz_bf16_asymmetric_wide_scale_s2eq129_seed65537,nz,bf16,1,3,3,1,128,128,10,129;129;129,9;2;5;1;8;3,65537,3,wide
+# Same seeded FP4/query/page layouts as the two wide cases, but scale remains
+# within 0.25..2 and offset within [-0.5, 0.5]. This isolates dynamic range.
+nz_bf16_asymmetric_stable_scale_s2eq128_seed65537,nz,bf16,1,3,3,1,128,128,10,128;128;128,9;2;5,65537,3
+nz_bf16_asymmetric_stable_scale_s2eq129_seed65537,nz,bf16,1,3,3,1,128,128,10,129;129;129,9;2;5;1;8;3,65537,3
+# This is intentionally the only added shape class: GQA QH=4/KVH=2, S1=2,
+# and exact one-page, two-page and two-page-plus-one-token lengths. It may
+# need one extra key.
+nz_bf16_asymmetric_random_gqa_s1x2_page_boundaries_seed32749,nz,bf16,1,3,2,2,128,128,10,128;256;257,9;2;5;1;8;3;7;0;6,32749,4
+bnbd_fp16_symmetric_three_page_tail,bnbd,fp16,0,3,3,1,128,128,10,257;130;1,9;2;5;1;8;3;7;0;6
+bnbd_fp16_asymmetric_three_page_tail,bnbd,fp16,1,3,3,1,128,128,10,257;130;1,9;2;5;1;8;3;7;0;6
+bnbd_bf16_symmetric_three_page_tail,bnbd,bf16,0,3,3,1,128,128,10,257;130;1,9;2;5;1;8;3;7;0;6
+bnbd_bf16_asymmetric_three_page_tail,bnbd,bf16,1,3,3,1,128,128,10,257;130;1,9;2;5;1;8;3;7;0;6
+bbh_fp16_symmetric_three_page_tail,bbh,fp16,0,3,3,1,128,128,10,257;130;1,9;2;5;1;8;3;7;0;6
+bbh_fp16_asymmetric_three_page_tail,bbh,fp16,1,3,3,1,128,128,10,257;130;1,9;2;5;1;8;3;7;0;6
+bbh_bf16_symmetric_three_page_tail,bbh,bf16,0,3,3,1,128,128,10,257;130;1,9;2;5;1;8;3;7;0;6
+bbh_bf16_asymmetric_three_page_tail,bbh,bf16,1,3,3,1,128,128,10,257;130;1,9;2;5;1;8;3;7;0;6
+# Degenerate B/N contract coverage. BBH stride is intentionally zero here;
+# non-degenerate BBH stride is covered by the N=3 case above.
+nz_fp16_symmetric_single_page_b1n1,nz,fp16,0,1,1,1,128,128,3,127,2
+bnbd_fp16_symmetric_single_page_b1n1,bnbd,fp16,0,1,1,1,128,128,3,127,2
+bbh_fp16_symmetric_single_page_b1n1,bbh,fp16,0,1,1,1,128,128,3,127,2
