@@ -30,7 +30,7 @@
 #include "blaze/prologue/block_prologue_mx_fp8fp4.h"
 
 #include "mega_moe_impl_base.h"
-#include "mega_moe_combine_send.h"
+#include "aiv_comm/mega_moe_token_combine.h"
 #include "mega_moe_group_matmul_compute.h"
 #include "mega_moe_group_matmul_prologue.h"
 #include "mega_moe_group_matmul_epilogue.h"

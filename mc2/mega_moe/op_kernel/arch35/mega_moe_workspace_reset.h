@@ -18,11 +18,9 @@ namespace MegaMoeImpl {
 struct ResetWorkspaceArgs {
     GM_ADDR flagSwiGluToGmm2Ptr;
     GM_ADDR gmm2CombineSyncCounterPtr;
-    GM_ADDR sharedExpertGmm2TileCounterPtr;
     GM_ADDR gmm1TileStatusPtr;
     int32_t flagNum;
     int32_t gmm2CombineSyncCounterNum;
-    int32_t sharedExpertGmm2TileCounterNum;
     int32_t gmm1StatusExpertCapacity;
     int32_t maxTilesPerExpert;
     int32_t resetBatchElementCount;
@@ -38,23 +36,6 @@ __aicore__ inline void ResetGmm2CombineSyncCounters(const AivJobContext &job, co
     TilingByJobContext(args.gmm2CombineSyncCounterNum, jobLen, jobOffset, job.jobIndex, job.totalJobs);
     GlobalTensor<int32_t> counterGm;
     counterGm.SetGlobalBuffer((__gm__ int32_t *)args.gmm2CombineSyncCounterPtr);
-    for (int32_t offset = 0; offset < jobLen; offset += args.resetBatchElementCount) {
-        int32_t batchCount =
-            jobLen - offset < args.resetBatchElementCount ? jobLen - offset : args.resetBatchElementCount;
-        DataCopyExtParams copyParams{1U, static_cast<uint32_t>(batchCount * sizeof(int32_t)), 0U, 0U, 0U};
-        DataCopyPad(counterGm[jobOffset + offset], resetTensor, copyParams);
-    }
-}
-
-// Clears the tile counters used by shared-expert GMM2 producers and Unpermute consumers.
-__aicore__ inline void ResetSharedExpertGmm2TileCounters(const AivJobContext &job, const ResetWorkspaceArgs &args,
-                                                         LocalTensor<int32_t> &resetTensor)
-{
-    int32_t jobLen;
-    int32_t jobOffset;
-    TilingByJobContext(args.sharedExpertGmm2TileCounterNum, jobLen, jobOffset, job.jobIndex, job.totalJobs);
-    GlobalTensor<int32_t> counterGm;
-    counterGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(args.sharedExpertGmm2TileCounterPtr));
     for (int32_t offset = 0; offset < jobLen; offset += args.resetBatchElementCount) {
         int32_t batchCount =
             jobLen - offset < args.resetBatchElementCount ? jobLen - offset : args.resetBatchElementCount;
@@ -88,9 +69,6 @@ __aicore__ inline void ResetDispatchWorkspace(const DispatchPrepareContext &cont
     }
     if constexpr (ResetCombineCounters) {
         ResetGmm2CombineSyncCounters(job, args, resetTensor);
-    }
-    if (args.sharedExpertGmm2TileCounterNum > 0) {
-        ResetSharedExpertGmm2TileCounters(job, args, resetTensor);
     }
     if constexpr (TopkWeightsPrefetch) {
         GlobalTensor<int32_t> statusGm;
