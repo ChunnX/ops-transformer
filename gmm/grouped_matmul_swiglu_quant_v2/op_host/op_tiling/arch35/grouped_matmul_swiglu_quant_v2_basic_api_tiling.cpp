@@ -216,6 +216,11 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsFp8(ge::DataType dtype) cons
     return dtype == ge::DT_FLOAT8_E4M3FN || dtype == ge::DT_FLOAT8_E5M2;
 }
 
+bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsNdOrNcl(ge::Format format) const
+{
+    return format == ge::FORMAT_ND || format == ge::FORMAT_NCL;
+}
+
 size_t GroupedMatmulSwigluQuantV2BasicApiTiling950::GetDynamicInputCount(uint32_t inputIndex) const
 {
     size_t count = 0U;
@@ -284,12 +289,9 @@ bool GroupedMatmulSwigluQuantV2BasicApiTiling950::IsCapable()
         xScaleDtype_ == ge::DT_FLOAT8_E8M0 &&
         inputParams_.scaleDtype == ge::DT_FLOAT8_E8M0 && IsFp8(inputParams_.outDataDtype) &&
         inputParams_.outScaleDtype == ge::DT_FLOAT8_E8M0;
-    const bool formatSupported = (inputParams_.aFormat == ge::FORMAT_ND || ge::FORMAT_NCL) &&
-                                 (inputParams_.bFormat == ge::FORMAT_ND || ge::FORMAT_NCL) &&
-                                 (xScaleFormat_ == ge::FORMAT_ND || ge::FORMAT_NCL) &&
-                                 (weightScaleFormat_ == ge::FORMAT_ND || ge::FORMAT_NCL) &&
-                                 (inputParams_.cFormat == ge::FORMAT_ND || ge::FORMAT_NCL) &&
-                                 (yScaleFormat_ == ge::FORMAT_ND || ge::FORMAT_NCL);
+    const bool formatSupported = IsNdOrNcl(inputParams_.aFormat) && IsNdOrNcl(inputParams_.bFormat) &&
+                                 IsNdOrNcl(xScaleFormat_) && IsNdOrNcl(weightScaleFormat_) &&
+                                 IsNdOrNcl(inputParams_.cFormat) && IsNdOrNcl(yScaleFormat_);
     const bool coreSupported =
         aicoreParams_.aicNum > 0 && aivNum_ == AIC_AIV_CORE_RATIO * aicoreParams_.aicNum;
     const bool checkTensorApiShapes = CheckTensorApiShapes();
