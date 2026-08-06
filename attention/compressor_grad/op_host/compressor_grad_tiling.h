@@ -66,7 +66,6 @@ constexpr uint32_t COMPRESSOR_GRAD_DIM_INDEX_3 = 3;
 constexpr uint32_t MAX_HIDDEN_SIZE = 10240;
 constexpr uint32_t MIN_HIDDEN_SIZE = 1024;
 constexpr uint32_t ALIGN_FACTOR_HIDDEN_SIZE = 512;
-constexpr uint32_t MIN_BLOCK_SIZE = 1;
 constexpr uint32_t MIN_CMP_RATIO = 2;
 constexpr uint32_t MAX_CMP_RATIO = 128;
 
@@ -247,12 +246,6 @@ struct CompressorGradBaseParams {
     uint32_t coreGroupNum = 0;
     uint32_t mLoopNum = 0;
     CompressorGradSplitCoreParams splitCoreParam[CMP_MAX_AIC_CORE_NUM];
-};
-
-struct CompressorGradPageAttentionParams {
-    uint32_t blockNum = 0;
-    uint32_t blockSize = 1;
-    uint32_t maxBlockNumPerBatch = 1;
 };
 
 struct CompressorGradInnerSplitParams {
