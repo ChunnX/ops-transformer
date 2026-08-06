@@ -1312,6 +1312,36 @@ __aicore__ inline void AntiqOffsetByVFNz(LocalTensor<Q_T> offsetInUb, LocalTenso
     AntiqOffsetByVFNzImpl<Q_T>(ub_src_addr, ub_dst_addr, loop_cnt, tailSize);
 }
 
+// Compact the padded rows produced by BBH DataCopyPad into the tight [S, G]
+// parameter stream consumed by the existing MXFP4 antiquant VF.  Each source
+// row is 32-byte aligned; StoreUnAlign appends only the valid G elements.
+template <typename PARAM_T>
+__simd_vf__ void CompactBbhAntiqParamsByVFImpl(__ubuf__ PARAM_T *srcAddr, __ubuf__ PARAM_T *dstAddr,
+                                                uint16_t rowCount, uint16_t srcRowElements,
+                                                uint16_t validElements)
+{
+    MicroAPI::RegTensor<PARAM_T> rowData;
+    MicroAPI::UnalignReg unalignReg;
+    for (uint16_t rowIdx = 0; rowIdx < rowCount; ++rowIdx) {
+        MicroAPI::LoadAlign<PARAM_T>(rowData, srcAddr + static_cast<uint32_t>(rowIdx) * srcRowElements);
+        MicroAPI::StoreUnAlign<PARAM_T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            dstAddr, rowData, unalignReg, validElements);
+    }
+    MicroAPI::StoreUnAlignPost<PARAM_T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(dstAddr, unalignReg, 0);
+}
+
+template <typename PARAM_T>
+__aicore__ inline void CompactBbhAntiqParamsByVF(LocalTensor<PARAM_T> srcLocal, LocalTensor<PARAM_T> dstLocal,
+                                                  uint32_t rowCount, uint32_t srcRowElements,
+                                                  uint32_t validElements)
+{
+    __ubuf__ PARAM_T *srcAddr = (__ubuf__ PARAM_T *)(srcLocal.GetPhyAddr());
+    __ubuf__ PARAM_T *dstAddr = (__ubuf__ PARAM_T *)(dstLocal.GetPhyAddr());
+    CompactBbhAntiqParamsByVFImpl<PARAM_T>(srcAddr, dstAddr, static_cast<uint16_t>(rowCount),
+                                           static_cast<uint16_t>(srcRowElements),
+                                           static_cast<uint16_t>(validElements));
+}
+
 }; // namespace FaVectorApi
 
 #endif

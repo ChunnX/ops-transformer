@@ -374,10 +374,10 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::InitAntiqua
 {
     this->tPipe->InitBuffer(kvInputQue, 3, kvInputSize);        // 3 buffer
     this->tPipe->InitBuffer(kvOutputQue, 2, kvOutSize);         // 2 buffer
-    this->tPipe->InitBuffer(keyAntiqScaleInputQue, 1, 3072);    // 3072 is 3 * 1024, deal the tail
-    this->tPipe->InitBuffer(keyAntiqOffsetInputQue, 1, 6144);   // mode 6 offset为Q_T，2倍字节
-    this->tPipe->InitBuffer(valueAntiqScaleInputQue, 1, 3072);  // 3072 is 3 * 1024, deal the tail
-    this->tPipe->InitBuffer(valueAntiqOffsetInputQue, 1, 6144); // mode 6 offset为Q_T，2倍字节
+    this->tPipe->InitBuffer(keyAntiqScaleInputQue, 1, ANTIQ_SCALE_INPUT_BUFFER_BYTES);
+    this->tPipe->InitBuffer(keyAntiqOffsetInputQue, 1, ANTIQ_OFFSET_INPUT_BUFFER_BYTES);
+    this->tPipe->InitBuffer(valueAntiqScaleInputQue, 1, ANTIQ_SCALE_INPUT_BUFFER_BYTES);
+    this->tPipe->InitBuffer(valueAntiqOffsetInputQue, 1, ANTIQ_OFFSET_INPUT_BUFFER_BYTES);
     if constexpr (KVFP4) {
         this->tPipe->InitBuffer(kvAntiqMxScaleRes, BUFFER_SIZE_BYTE_5K_ANTIQUANT);
         this->tPipe->InitBuffer(kvOffsetBuf, BUFFER_SIZE_BYTE_5K_ANTIQUANT);

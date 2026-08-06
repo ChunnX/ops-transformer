@@ -51,6 +51,11 @@ __aicore__ constexpr uint64_t AlignUp32(uint64_t size)
     return (size + 31) >> 5 << 5; // 31 & 5 is Alignup 32
 }
 
+constexpr uint32_t ANTIQ_SCALE_INPUT_BUFFER_BYTES = 3072;
+constexpr uint32_t ANTIQ_OFFSET_INPUT_BUFFER_BYTES = 6144;
+constexpr uint32_t BBH_PARAM_STAGE_MAX_ROWS = 48;
+constexpr uint32_t VF_REGISTER_BYTES = 256;
+
 struct AntiquantTaskParamBaseAPI {
     uint32_t batchSize;
     uint32_t seqSize;
@@ -100,6 +105,13 @@ public:
     // mode 6(per-token-group)时scale在GM上是E8M0字节流，必须按字节寻址，禁止fp16 alias
     using SCALE_GM_T = typename std::conditional<KVFP4, uint8_t, ANTIQ_PARAMS_T>::type;
     static constexpr uint32_t dBaseSize = (uint32_t)dTemplateType;
+    static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
+    static constexpr uint32_t maxAntiqParamElements = s2BaseSize * dBaseSize / 32U;
+    static_assert(!KVFP4 || dBaseSize >= 32U, "MXFP4 per-token-group requires at least one 32-element group");
+    static_assert(!KVFP4 || maxAntiqParamElements <= ANTIQ_SCALE_INPUT_BUFFER_BYTES,
+                  "MXFP4 antiquant scale input exceeds its UB queue");
+    static_assert(!KVFP4 || maxAntiqParamElements * sizeof(Q_T) <= ANTIQ_OFFSET_INPUT_BUFFER_BYTES,
+                  "MXFP4 antiquant offset input exceeds its UB queue");
 
     __aicore__ inline AntiquantProcessorBaseAPI(){};
 
@@ -391,6 +403,17 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAnt
     DataCopyExtParams copyInParams;
     DataCopyPadExtParams<uint8_t> copyInPadParams{};
     copyInParams.dstStride = 0;
+    const bool isBbh = taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_BSH);
+    const uint32_t bbhRowBytes = (grpNum + 31U) / 32U * 32U;
+    const uint64_t tightBytes = static_cast<uint64_t>(taskParam.copyTotalS) * grpNum;
+    const uint64_t scratchByteOffset = AlignUp32(tightBytes) + 32U;
+    uint32_t stageRowCapacity = 0;
+    if (scratchByteOffset + VF_REGISTER_BYTES <= ANTIQ_SCALE_INPUT_BUFFER_BYTES) {
+        stageRowCapacity = 1U + static_cast<uint32_t>(
+            (ANTIQ_SCALE_INPUT_BUFFER_BYTES - scratchByteOffset - VF_REGISTER_BYTES) / bbhRowBytes);
+        stageRowCapacity = stageRowCapacity > BBH_PARAM_STAGE_MAX_ROWS ? BBH_PARAM_STAGE_MAX_ROWS : stageRowCapacity;
+    }
+    bool usedScalarFallback = false;
 
     while (copyFinishElmenCnt < taskParam.copyTotalS) {
         uint64_t blockIdOffset = curSequence / taskParam.kvCacheBlockSize;
@@ -400,26 +423,59 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAnt
         if (copyElmenCnt + copyFinishElmenCnt > taskParam.copyTotalS) {
             copyElmenCnt = taskParam.copyTotalS - copyFinishElmenCnt;
         }
+        if (isBbh && stageRowCapacity > 0 && copyElmenCnt > stageRowCapacity) {
+            copyElmenCnt = stageRowCapacity;
+        }
         // E8M0字节流：每token每group 1字节，字节寻址，GM为ACL_FLOAT8_E8M0。
         // BNBD 与 BBH 的 token/head 轴顺序不同，偏移必须跟随 paKvShapeType。
         uint64_t srcByteOffset = GetAntiqPageParamOffset(taskParam, idInBlockTable, remainElmenCnt, grpNum);
-        if (taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_BSH)) {
-            // BBH [P, Bs, N*G]: one token's G groups are contiguous, while successive
-            // tokens of one head are separated by the remaining KV heads.
-            copyInParams.blockCount = copyElmenCnt;
-            copyInParams.blockLen = grpNum;
-            copyInParams.srcStride = (taskParam.kvHeadNum - 1) * grpNum;
+        if (isBbh) {
+            LocalTensor<uint8_t> dstBytes = dstLocal.template ReinterpretCast<uint8_t>();
+            if (stageRowCapacity > 0) {
+                // BBH [P, Bs, N*G] is strided between tokens of one head. DataCopyPad
+                // materializes 32-byte-aligned rows in a bounded tail scratch, then a
+                // VF StoreUnAlign pass appends only the valid G bytes to tight [S, G].
+                event_t eventIdVToMTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
+                SetFlag<HardEvent::V_MTE2>(eventIdVToMTE2);
+                WaitFlag<HardEvent::V_MTE2>(eventIdVToMTE2);
+                copyInParams.blockCount = copyElmenCnt;
+                copyInParams.blockLen = grpNum;
+                copyInParams.srcStride = (taskParam.kvHeadNum - 1) * grpNum;
+                DataCopyPad(dstBytes[scratchByteOffset], srcGm[srcByteOffset], copyInParams, copyInPadParams);
+                event_t eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+                SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
+                WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
+                FaVectorApi::CompactBbhAntiqParamsByVF<uint8_t>(
+                    dstBytes[scratchByteOffset], dstBytes[dstByteOffset], copyElmenCnt, bbhRowBytes, grpNum);
+            } else {
+                // The tight payload is compile-time bounded by the queue size above.
+                // This fallback is used only when that payload leaves no full VF register scratch.
+                usedScalarFallback = true;
+                for (uint32_t tokenIdx = 0; tokenIdx < copyElmenCnt; ++tokenIdx) {
+                    const uint64_t tokenSrcOffset = srcByteOffset +
+                        static_cast<uint64_t>(tokenIdx) * taskParam.kvHeadNum * grpNum;
+                    const uint64_t tokenDstOffset = dstByteOffset + static_cast<uint64_t>(tokenIdx) * grpNum;
+                    for (uint32_t groupIdx = 0; groupIdx < grpNum; ++groupIdx) {
+                        dstBytes.SetValue(tokenDstOffset + groupIdx, srcGm.GetValue(tokenSrcOffset + groupIdx));
+                    }
+                }
+            }
         } else {
             // BNBD [P, N, Bs, G]: the selected head's token range is contiguous.
             copyInParams.blockCount = 1;
             copyInParams.blockLen = copyElmenCnt * grpNum;
             copyInParams.srcStride = 0;
+            DataCopyPad(dstLocal.template ReinterpretCast<uint8_t>()[dstByteOffset], srcGm[srcByteOffset], copyInParams,
+                        copyInPadParams);
         }
-        DataCopyPad(dstLocal.template ReinterpretCast<uint8_t>()[dstByteOffset], srcGm[srcByteOffset], copyInParams,
-                    copyInPadParams);
         dstByteOffset += copyElmenCnt * grpNum;
         copyFinishElmenCnt += copyElmenCnt;
         curSequence += copyElmenCnt;
+    }
+    if (usedScalarFallback) {
+        event_t eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+        SetFlag<HardEvent::S_V>(eventIdSToV);
+        WaitFlag<HardEvent::S_V>(eventIdSToV);
     }
 }
 
@@ -438,6 +494,19 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAnt
     DataCopyExtParams copyInParams;
     DataCopyPadExtParams<Q_T> copyInPadParams{};
     copyInParams.dstStride = 0;
+    const bool isBbh = taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_BSH);
+    const uint32_t bbhRowBytes = (grpNum * sizeof(Q_T) + 31U) / 32U * 32U;
+    const uint32_t bbhRowElements = bbhRowBytes / sizeof(Q_T);
+    const uint64_t tightBytes = static_cast<uint64_t>(taskParam.copyTotalS) * grpNum * sizeof(Q_T);
+    const uint64_t scratchByteOffset = AlignUp32(tightBytes) + 32U;
+    const uint64_t scratchElemOffset = scratchByteOffset / sizeof(Q_T);
+    uint32_t stageRowCapacity = 0;
+    if (scratchByteOffset + VF_REGISTER_BYTES <= ANTIQ_OFFSET_INPUT_BUFFER_BYTES) {
+        stageRowCapacity = 1U + static_cast<uint32_t>(
+            (ANTIQ_OFFSET_INPUT_BUFFER_BYTES - scratchByteOffset - VF_REGISTER_BYTES) / bbhRowBytes);
+        stageRowCapacity = stageRowCapacity > BBH_PARAM_STAGE_MAX_ROWS ? BBH_PARAM_STAGE_MAX_ROWS : stageRowCapacity;
+    }
+    bool usedScalarFallback = false;
 
     while (copyFinishElmenCnt < taskParam.copyTotalS) {
         uint64_t blockIdOffset = curSequence / taskParam.kvCacheBlockSize;
@@ -447,22 +516,51 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAnt
         if (copyElmenCnt + copyFinishElmenCnt > taskParam.copyTotalS) {
             copyElmenCnt = taskParam.copyTotalS - copyFinishElmenCnt;
         }
+        if (isBbh && stageRowCapacity > 0 && copyElmenCnt > stageRowCapacity) {
+            copyElmenCnt = stageRowCapacity;
+        }
         uint64_t srcElemOffset = GetAntiqPageParamOffset(taskParam, idInBlockTable, remainElmenCnt, grpNum);
-        if (taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_BSH)) {
-            // BBH [P, Bs, N*G]: copy one token per block and skip the other heads.
-            copyInParams.blockCount = copyElmenCnt;
-            copyInParams.blockLen = grpNum * sizeof(Q_T);
-            copyInParams.srcStride = (taskParam.kvHeadNum - 1) * grpNum * sizeof(Q_T);
+        if (isBbh) {
+            if (stageRowCapacity > 0) {
+                event_t eventIdVToMTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
+                SetFlag<HardEvent::V_MTE2>(eventIdVToMTE2);
+                WaitFlag<HardEvent::V_MTE2>(eventIdVToMTE2);
+                copyInParams.blockCount = copyElmenCnt;
+                copyInParams.blockLen = grpNum * sizeof(Q_T);
+                copyInParams.srcStride = (taskParam.kvHeadNum - 1) * grpNum * sizeof(Q_T);
+                DataCopyPad(dstLocal[scratchElemOffset], srcGm[srcElemOffset], copyInParams, copyInPadParams);
+                event_t eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+                SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
+                WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
+                FaVectorApi::CompactBbhAntiqParamsByVF<Q_T>(
+                    dstLocal[scratchElemOffset], dstLocal[dstElemOffset], copyElmenCnt, bbhRowElements, grpNum);
+            } else {
+                // The tight payload is compile-time bounded by the queue size above.
+                usedScalarFallback = true;
+                for (uint32_t tokenIdx = 0; tokenIdx < copyElmenCnt; ++tokenIdx) {
+                    const uint64_t tokenSrcOffset = srcElemOffset +
+                        static_cast<uint64_t>(tokenIdx) * taskParam.kvHeadNum * grpNum;
+                    const uint64_t tokenDstOffset = dstElemOffset + static_cast<uint64_t>(tokenIdx) * grpNum;
+                    for (uint32_t groupIdx = 0; groupIdx < grpNum; ++groupIdx) {
+                        dstLocal.SetValue(tokenDstOffset + groupIdx, srcGm.GetValue(tokenSrcOffset + groupIdx));
+                    }
+                }
+            }
         } else {
             // BNBD [P, N, Bs, G]: the selected head's token range is contiguous.
             copyInParams.blockCount = 1;
             copyInParams.blockLen = copyElmenCnt * grpNum * sizeof(Q_T);
             copyInParams.srcStride = 0;
+            DataCopyPad(dstLocal[dstElemOffset], srcGm[srcElemOffset], copyInParams, copyInPadParams);
         }
-        DataCopyPad(dstLocal[dstElemOffset], srcGm[srcElemOffset], copyInParams, copyInPadParams);
         dstElemOffset += copyElmenCnt * grpNum;
         copyFinishElmenCnt += copyElmenCnt;
         curSequence += copyElmenCnt;
+    }
+    if (usedScalarFallback) {
+        event_t eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+        SetFlag<HardEvent::S_V>(eventIdSToV);
+        WaitFlag<HardEvent::S_V>(eventIdSToV);
     }
 }
 
