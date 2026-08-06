@@ -35,7 +35,7 @@ NPU Simulator集成在CANN toolkit包里，参考[环境部署](../install/quick
 
 # 快速开始
 
-下面以[add_examples](../../../examples/add_example/)为例，对算子仿真进行详细说明
+下面以[add_example](../../../examples/add_example/)为例，对算子仿真进行详细说明
 
 ## 算子编译
 
@@ -109,19 +109,19 @@ npusim record [options] user_app
 2. 执行仿真命令，可参考以下使用示例
 
     ```bash
-    方式一：启用仿真，并将输出保存至 ./output目录，/path/to/app为算子程序
+    # 方式一:启用仿真，并将输出保存至 ./output目录，/path/to/app为算子程序
     $ npusim record /path/to/app -o ./output -s Ascend950
 
-    方式二：启用仿真并生成报告，用于后续性能分析
+    # 方式二:启用仿真并生成报告，用于后续性能分析
     $ npusim record /path/to/app -o ./output -s Ascend950 --gen-report
     ```
 
 3. 命令完成后，会在默认路径或指定的“output”目录下生成以“npusim_{timestamp}_${user_app}”命名的文件夹，结构示例如下：
 
-```bash
-├─npusim_{timestamp}_${user_app}
-├── npusim.log
-```
+    ```bash
+    ├─npusim_{timestamp}_${user_app}
+    ├── npusim.log
+    ```
 
 4. 用户可以获取算子执行结果，并进行精度的对比，结果展示在npusim.log，示例如下
 
@@ -159,14 +159,14 @@ npusim report [options]
 
 ## 使用示例
 
-1. 参考仿真执行执行算子仿真，对比输出示例，确保对应的结果执行正确。
+1. 参考仿真执行算子仿真，对比输出示例，确保对应的结果执行正确。
 2. 执行仿真结果解析命令，可参考以下执行用例。
 
     ```bash
-    在当前目录下生成性能分析报告（默认仅分析核0）
+    # 在当前目录下生成性能分析报告(默认仅分析核0)
     npusim report -e /path/to/npusim_{timestamp}_${user_app}
 
-    在指定目录下生成核0、核1、核11、核12的性能分析报告
+    # 在指定目录下生成核0、核1、核11、核12的性能分析报告
     npusim report -e /path/to/npusim_{timestamp}_${user_app} -o /path/to/report -n '0-1, 11-12'
     ```
 
@@ -180,7 +180,7 @@ npusim report [options]
 
 4. 仿真结果查看
     在Chrome浏览器中输入“chrome://tracing”地址，并将生成的指令流水图文件（trace.json）拖到空白处打开，键盘上输入快捷键（W：放大，S：缩小，A：左移，D：右移）可进行查看。
-    ![指令流水图](../figures/指令流水图.png)
+    ![指令流水图](../figures/cannsim_pipeline_chart.png)
 
     表2 关键字段说明
 
