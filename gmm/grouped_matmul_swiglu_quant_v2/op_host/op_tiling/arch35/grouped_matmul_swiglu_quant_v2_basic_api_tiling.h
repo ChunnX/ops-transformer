@@ -65,7 +65,7 @@ private:
     bool CheckTensorApiShapes() const;
     bool CheckTensorApiScaleShapes() const;
     bool IsFp8(ge::DataType dtype) const;
-    bool IsNdOrNcl(ge::Format format) const;
+    bool IsSupportedFormat(ge::Format format) const;
     size_t GetDynamicInputCount(uint32_t inputIndex) const;
 
     GroupedMatmulSwigluQuantV2TensorApi::GMMSwigluQuantV2TensorApiTilingData tilingData_;
