@@ -23,7 +23,7 @@ _CUSTOM_OPS_LOADED = False
 def _ensure_custom_ops():
     global _CUSTOM_OPS_LOADED
     if not _CUSTOM_OPS_LOADED:
-        pytest_dir = str(Path(__file__).resolve().parents[1] / "pytest")
+        pytest_dir = str(Path(__file__).resolve().parents[2] / "pytest")
         if pytest_dir not in sys.path:
             sys.path.insert(0, pytest_dir)
         import custom_ops  # noqa: F401
