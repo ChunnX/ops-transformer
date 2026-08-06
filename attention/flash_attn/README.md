@@ -563,7 +563,7 @@ mask 矩阵固定为 `(2048, 2048)` 的下三角模板, kernel 按 flash attenti
 
 | 层 | 状态 | 说明 |
 |---|---|---|
-| 接口 (def.cpp) | ✅ 已打通 | `sinks` dtype DT_FLOAT |
+| 接口 (def.cpp) | ✅ 已打通 | `sinks` dtype {DT_FLOAT16, DT_BF16}，与 Q dtype 一致 |
 | 文档 (flash_attn.md) | ✅ 已更新 | Sinks 参数正式约束 |
 | Checker | ✅ 已打通 | `sinks_checker.cpp` 解除拦截, 改为校验 dtype/shape |
 | Tiling parser | ✅ 已解析 | `sinksFlag_` 正确设置 |
@@ -610,6 +610,7 @@ Scheme A 中 sink 不参与分母，数学上不完整。当 sink 值很大（�
 
 - `ResetSoftmaxBuffer` 中 `learnableSinkFlag=true` 时: `Duplicate(maxUb, sinkValue)`, `Duplicate(sumUb, 1)`
 - sinkValue 通过 `sinkGm_.GetValue(n2Idx * gSize + gIdx)` 取单值
+- `sinkGm_` 类型为 `GlobalTensor<INPUT_T>`（与 Q dtype 一致），GetValue 后用 `Cast()`（bf16）或 `static_cast<float>()`（fp16）转为 float
 - 对应公式: $m_0 = \text{sink}, \ell_0 = 1$
 
 **位置 B (FD 阶段 ComputeScaleValue)**: sink 修正分母
@@ -621,11 +622,11 @@ Scheme A 中 sink 不参与分母，数学上不完整。当 sink 值很大（�
 
 | 层 | 文件 | 修改 |
 |---|---|---|
-| host | `def.cpp` | sinks dtype DT_FLOAT |
-| host | `sinks_checker.cpp` | 解除拦截, 改为校验 dtype/shape |
+| host | `def.cpp` | sinks dtype {DT_FLOAT16, DT_BF16} |
+| host | `sinks_checker.cpp` | 解除拦截, 校验 dtype=fp16/bf16 且与 Q 一致 + shape |
 | kernel | `kernel_dn.h` / `kernel_nd.h` | CalcParams 赋值 `info.gIdx` |
-| block_vec | `block_vec_dn.h` / `block_vec_nd.h` | `sinkGm_` + InitBlock 保存 + `ResetSoftmaxBuffer` max=sink/sum=1 |
-| fd | `block_vec_flashdecode.h` | `sinkGm_` + InitBlock 保存 + ComputeScaleValue 传 `learnableSinkFlag=true` + sinkExpBuf |
+| block_vec | `block_vec_dn.h` / `block_vec_nd.h` | `sinkGm_`(GlobalTensor<INPUT_T>) + InitBlock 保存 + `ResetSoftmaxBuffer` max=sink/sum=1 + GetValue后Cast转float |
+| fd | `block_vec_flashdecode.h` | `sinkGm_`(GlobalTensor<INPUT_T>) + InitBlock 保存 + ComputeScaleValue 传 `learnableSinkFlag=true` + sinkExpBuf + GetValue后Cast |
 | common (VF) | `vf_flash_decode.h` | `Sub(K-1)` 修正 (原 Add 改 Sub) |
 | ProcessVec1 | 不修改 | 统一 Update VF (unify commit 已完成) |
 | ProcessVec2 | 不修改 | pre-unify 原样 (DataCopy + LastDivNew) |
@@ -722,7 +723,7 @@ cann_ops_transformer.flash_attn(
 | 变长序列 | cu_seqlens (TND packing) + seqused (截断) |
 | FlashDecode | 自动启用 (enableFlashDecode) |
 | softmax_lse | return_softmax_lse=True 时输出 |
-| sinks | ✅ 已支持 (Scheme B: sink 参与 max + 分母, dtype DT_FLOAT, shape `(Q_N,)`) |
+| sinks | ✅ 已支持 (Scheme B: sink 参与 max + 分母, dtype fp16/bf16 匹配 Q, shape `(Q_N,)`) |
 
 ### 9.3 layout 匹配关系
 
