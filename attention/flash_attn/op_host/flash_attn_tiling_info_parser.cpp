@@ -30,7 +30,7 @@ using namespace Ops::Base;
 namespace optiling {
 namespace flash_attn {
 
-ge::graphStatus FaInfoParser::GetEmptyTensorFlag()
+ge::graphStatus FaInfoParser::CheckEmptyTensor()
 {
     auto checkEmptyTensor = [this](const gert::StorageShape *shape, const std::string &name) -> bool {
         if (shape == nullptr) {
@@ -48,7 +48,6 @@ ge::graphStatus FaInfoParser::GetEmptyTensorFlag()
     if (checkEmptyTensor(opParamInfo_.query.shape, QUERY_NAME) || checkEmptyTensor(opParamInfo_.key.shape, KEY_NAME) ||
         checkEmptyTensor(opParamInfo_.value.shape, VALUE_NAME) ||
         checkEmptyTensor(opParamInfo_.attnOut.shape, ATTN_OUT_NAME)) {
-        emptyTensorFlag_ = true;
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -147,6 +146,7 @@ void FaInfoParser::GetOptionalInputParaInfo()
     GetOptionalInputParaSeqLengthInfo();
     GetOptionalInputParaPageAttentionInfo();
     GetOptionalInputParaSinksInfo();
+    GetOptionalInputParaMetadataInfo();
     GetOptionalInputParaMaskInfo();
 }
 void FaInfoParser::GetOptionalInputParaMaskInfo()
@@ -177,6 +177,10 @@ void FaInfoParser::GetOptionalInputParaSinksInfo()
 {
     opParamInfo_.sinks.tensor = context_->GetOptionalInputTensor(SINKS_INDEX);
     opParamInfo_.sinks.desc = context_->GetOptionalInputDesc(SINKS_INDEX);
+}
+
+void FaInfoParser::GetOptionalInputParaMetadataInfo()
+{
     opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
     opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
 }
@@ -344,17 +348,17 @@ void FaInfoParser::GetKvIsContiguous()
     if (keyStrides_ != nullptr) {
         const gert::Shape &keyShape = opParamInfo_.key.shape->GetStorageShape();
         keyContig = (CheckTensorContiguous(keyShape.GetDimNum(), keyShape, keyStrides_, keyDimIdx) ==
-                      ge::GRAPH_SUCCESS);
+                     ge::GRAPH_SUCCESS);
         keyNonContigDim_ = keyContig ? -1 : keyDimIdx;
     }
 
     if (valueStrides_ != nullptr) {
         const gert::Shape &valueShape = opParamInfo_.value.shape->GetStorageShape();
         valContig = (CheckTensorContiguous(valueShape.GetDimNum(), valueShape, valueStrides_, valDimIdx) ==
-                        ge::GRAPH_SUCCESS);
+                     ge::GRAPH_SUCCESS);
         valueNonContigDim_ = valContig ? -1 : valDimIdx;
     }
-    
+
     if (layoutKV_ == FaLayout::PA_BBND) {
         if (keyStrides_ != nullptr) {
             keyBnStride_ = keyStrides_->GetStride(0);
@@ -423,9 +427,9 @@ ge::graphStatus FaInfoParser::GetBlockNum()
 ge::graphStatus FaInfoParser::GetS2SizeForPageAttention()
 {
     OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
-            "When layout_kv is PA, block_table must be provided but got nullptr."),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
+                                                      "When layout_kv is PA, block_table must be provided but got nullptr."),
+                return ge::GRAPH_FAILED);
     if (GetBlockSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -441,7 +445,6 @@ ge::graphStatus FaInfoParser::GetS2Size()
 {
     // 获取S2基准值
     // 1、BATCH_CONTINUOUS时, 从key的S轴获取
-    // 2、TENSOR_LIST时, 从kCache_的所有Tensor的S轴的最大值
     // 3、PAGE_ATTENTION时, S2 = block_table.dim1 * block_size
     if (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS) {
         return GetS2SizeForBatchContinuous();
@@ -467,7 +470,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
     if (itQ == layoutMap.end()) {
         std::string reason = "layout_q: " + std::string(opParamInfo_.layoutQ) + " is not supported.";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q",
-            opParamInfo_.layoutQ, reason.c_str());
+                                              opParamInfo_.layoutQ, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutQ_ = itQ->second;
@@ -476,7 +479,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
     if (itKV == layoutMap.end()) {
         std::string reason = "layout_kv: " + std::string(opParamInfo_.layoutKV) + " is not supported.";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv",
-            opParamInfo_.layoutKV, reason.c_str());
+                                              opParamInfo_.layoutKV, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutKV_ = itKV->second;
@@ -485,7 +488,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
     if (itOut == layoutMap.end()) {
         std::string reason = "layout_out: " + std::string(opParamInfo_.layoutOut) + " is not supported.";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_out",
-            opParamInfo_.layoutOut, reason.c_str());
+                                              opParamInfo_.layoutOut, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutOut_ = itOut->second;
@@ -536,9 +539,9 @@ ge::graphStatus FaInfoParser::GetGSize()
     }
     if (n1Size_ % n2Size_ != 0U) {
         std::string shapeStr = ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
-            ToString(opParamInfo_.key.shape->GetStorageShape());
+                               ToString(opParamInfo_.key.shape->GetStorageShape());
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and key",
-            shapeStr.c_str(), "N of query must be an integer multiple of the same axis of key");
+                                               shapeStr.c_str(), "N of query must be an integer multiple of the same axis of key");
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
@@ -591,7 +594,6 @@ void FaInfoParser::GenerateInfo(FaTilingInfo &faInfo)
     GenerateDtypeInfo(faInfo);
     faInfo.batchContinuousFlag = (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS);
     faInfo.kvStorageMode = kvStorageMode_;
-    faInfo.emptyTensorFlag = emptyTensorFlag_;
 
     faInfo.totalOutputSize = opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize();
     faInfo.totalBlockNum = blockNum_;
@@ -634,14 +636,14 @@ void FaInfoParser::GenerateDtypeInfo(FaTilingInfo &faInfo)
 
 ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
 {
-    OP_LOGI(faInfo.opName, "enter FaInfoParser::Parse!");
+    OP_LOGD(faInfo.opName, "enter FaInfoParser::Parse!");
     if (context_ == nullptr) {
         OP_LOGE(faInfo.opName, "tiling context is nullptr!");
         return ge::GRAPH_FAILED;
     }
 
     if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
-        ge::GRAPH_SUCCESS != CheckRequiredParaExistence() || ge::GRAPH_SUCCESS != GetEmptyTensorFlag()) {
+        ge::GRAPH_SUCCESS != CheckRequiredParaExistence() || ge::GRAPH_SUCCESS != CheckEmptyTensor()) {
         return ge::GRAPH_FAILED;
     }
     GetInOutDataType();
@@ -653,9 +655,6 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
         return ge::GRAPH_FAILED;
     }
     GetKvStorageMode();
-    if (emptyTensorFlag_) {
-        return ge::GRAPH_FAILED;
-    }
     if (ge::GRAPH_SUCCESS != ParseAxisInfo()) {
         return ge::GRAPH_FAILED;
     }
@@ -663,7 +662,7 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
         return ge::GRAPH_FAILED;
     }
     GenerateInfo(faInfo);
-    OP_LOGI(faInfo.opName, "end FaInfoParser::Parse!");
+    OP_LOGD(faInfo.opName, "end FaInfoParser::Parse!");
     return ge::GRAPH_SUCCESS;
 }
 

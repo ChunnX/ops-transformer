@@ -39,7 +39,7 @@ static bool IsEmptyInput(gert::TilingContext *context)
 
 ASCENDC_EXTERN_C ge::graphStatus TilingFlashAttn(gert::TilingContext *context)
 {
-    OP_LOGW(context, "FlashAttn TilingFlashAttn start.");
+    OP_LOGD(context, "FlashAttn TilingFlashAttn start.");
 
     auto platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context, "platformInfoPtr is null"), return ge::GRAPH_FAILED);

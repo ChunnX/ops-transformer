@@ -30,7 +30,6 @@ using namespace ge;
 using namespace AscendC;
 namespace optiling {
 namespace flash_attn {
-constexpr uint64_t PRE_LOAD_NUM_GQA_ARCH35 = 3;
 
 void FlashAttnTilingImpl::InitTilingInfo(TilingInfo *tilingInfo)
 {
@@ -45,7 +44,7 @@ bool FlashAttnTilingImpl::IsCapable()
 void FlashAttnTilingImpl::CalcScheduleMode()
 {
     scheduleMode_ = ScheduleMode::BATCH_MODE;
-    OP_LOGI(faInfo_->opName, "FlashAttn schedule mode: %u.", static_cast<uint32_t>(scheduleMode_));
+    OP_LOGD(faInfo_->opName, "FlashAttn schedule mode: %u.", static_cast<uint32_t>(scheduleMode_));
 }
 
 ge::graphStatus FlashAttnTilingImpl::DoOpTiling()
@@ -58,7 +57,8 @@ ge::graphStatus FlashAttnTilingImpl::DoOpTiling()
     FillTiling();
     CalcScheduleMode();
     CalcWorkspaceSize();
-    GenTilingKey();
+    OP_CHECK_IF(GenTilingKey() != ge::GRAPH_SUCCESS, OP_LOGE(faInfo_->opName, "GenTilingKey failed."),
+                return ge::GRAPH_FAILED);
 
     if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
         (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) || (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
@@ -86,9 +86,9 @@ ge::graphStatus FlashAttnTilingImpl::SetPlatMemoryInfo()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, platformInfo_.l2Size);
 
     platformInfo_.defaultSysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    OP_LOGI(faInfo_->opName, "AIV:%u AIC:%u L0A:%lu L0B:%lu L0C:%lu UB:%lu L1:%lu L2:%lu", platformInfo_.aivNum,
-            platformInfo_.aicNum, platformInfo_.l0aSize, platformInfo_.l0bSize, platformInfo_.l0cSize,
-            platformInfo_.ubSize, platformInfo_.l1Size, platformInfo_.l2Size);
+    OP_LOGD(faInfo_->opName, "AIV Num:%u AIC Num:%u L0ASize:%lu L0BSize:%lu L0CSize:%lu UBSize:%lu L1Size:%lu L2Size:%lu",
+            platformInfo_.aivNum, platformInfo_.aicNum, platformInfo_.l0aSize, platformInfo_.l0bSize,
+            platformInfo_.l0cSize, platformInfo_.ubSize, platformInfo_.l1Size, platformInfo_.l2Size);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -129,7 +129,7 @@ void FlashAttnTilingImpl::SplitPolicy()
     flashDecodeFlag_ = true;
 }
 
-void FlashAttnTilingImpl::UpdateTilingKeyConfig()
+ge::graphStatus FlashAttnTilingImpl::UpdateTilingKeyConfig()
 {
     // config:
     //   config=0: D=64,  sOuter=64,  sInner=128
@@ -137,6 +137,7 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
     //   config=2: D=128, sOuter=64,  sInner=128
     //   config=3: D=128, sOuter=32,  sInner=256
     //   config=4: D=256, sOuter=32,  sInner=256
+    //   sOuter 最终要乘以cvRatio
     if (faInfo_->qkHeadDim == 64) {
         tilingKeyInfo_.config = (sOuterFactor_ == fa_tiling_util::SOUTER_64) ? 0 : 1;
     } else if (faInfo_->qkHeadDim == 128) {
@@ -147,7 +148,9 @@ void FlashAttnTilingImpl::UpdateTilingKeyConfig()
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo_->opName, "qkHeadDim(Head num of Q/K)",
                                                std::to_string(faInfo_->qkHeadDim).c_str(),
                                                "The value of qkHeadDim(Head num of Q/K) can only be 64/128/256");
+        return ge::GRAPH_FAILED;
     }
+    return ge::GRAPH_SUCCESS;
 }
 
 void FlashAttnTilingImpl::UpdateTilingKeyLayout()
@@ -176,26 +179,29 @@ void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
     }
 }
 
-void FlashAttnTilingImpl::UpdateTilingKeyInfo()
+ge::graphStatus FlashAttnTilingImpl::UpdateTilingKeyInfo()
 {
     UpdateTilingKeyLayout();
-    UpdateTilingKeyConfig();
+    OP_CHECK_IF(UpdateTilingKeyConfig() != ge::GRAPH_SUCCESS,
+                OP_LOGE(faInfo_->opName, "UpdateTilingKeyConfig failed."), return ge::GRAPH_FAILED);
     UpdateTilingKeyKvLayout();
     tilingKeyInfo_.hasAttenMask = (faInfo_->maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) ? 0 : 1;
+    return ge::GRAPH_SUCCESS;
 }
 
-void FlashAttnTilingImpl::GenTilingKey()
+ge::graphStatus FlashAttnTilingImpl::GenTilingKey()
 {
-    UpdateTilingKeyInfo();
+    OP_CHECK_IF(UpdateTilingKeyInfo() != ge::GRAPH_SUCCESS,
+                OP_LOGE(faInfo_->opName, "UpdateTilingKeyInfo failed."), return ge::GRAPH_FAILED);
     tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType,
                                     tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.config);
-    OP_LOGI(faInfo_->opName, "The tilingkey is %llu.", tilingKey_);
-    OP_LOGI(faInfo_->opName,
+    OP_LOGD(faInfo_->opName, "The tilingkey is %llu.", tilingKey_);
+    OP_LOGD(faInfo_->opName,
             "The tilingkey param is inOutLayoutType: %llu, kvLayoutType: %llu, hasAttenMask: %llu, config: %llu.",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.hasAttenMask,
             tilingKeyInfo_.config);
+    return ge::GRAPH_SUCCESS;
 }
-
 
 void FlashAttnTilingImpl::CalcNumBlocks(uint32_t aicNum)
 {
@@ -203,7 +209,7 @@ void FlashAttnTilingImpl::CalcNumBlocks(uint32_t aicNum)
     auto aivNum = aicNum * platformInfo_.cvRatio;
 
     numBlocks_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
-    OP_LOGI(faInfo_->opName, "FlashAttn block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, aicNum);
+    OP_LOGD(faInfo_->opName, "FlashAttn block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, aicNum);
 }
 
 void FlashAttnTilingImpl::CalcWorkspaceSize()
@@ -224,7 +230,6 @@ void FlashAttnTilingImpl::CalcWorkspaceSize()
 
     workspaceSize_ = sysWorkspaceSize;
 
-    // TODO，确认这段workspace分配逻辑
     int64_t bmm2Bytes = 0;
     int64_t vec2Bytes = 0;
     int64_t bmm2ResBlockSize = dVBasicBlock;
@@ -252,7 +257,7 @@ void FlashAttnTilingImpl::CalcWorkspaceSize()
         tilingData_.baseTiling.flashAttnWorkspaceParams.logSumExpSize = fatmpResLseGmSize;
     }
 
-    OP_LOGI(faInfo_->opName, "Workspaces: %ld", workspaceSize_);
+    OP_LOGD(faInfo_->opName, "Workspaces: %ld", workspaceSize_);
 }
 
 void FlashAttnTilingImpl::FillTiling()
@@ -384,7 +389,6 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     FlashAttnPageAttentionParams &flashAttnPageAttentionParams = baseTiling.flashAttnPageAttentionParams;
     FlashAttnWorkspaceParams &flashAttnWorkspaceParams = baseTiling.flashAttnWorkspaceParams;
     FlashAttnS1OuterSplitCoreParams &flashAttnS1OuterSplitCoreParams = baseTiling.flashAttnS1OuterSplitCoreParams;
-    FlashAttnMetaData &flashAttnMetaData = tilingData_.flashAttnMetaData;
 
     OP_LOGD(faInfo_->opName, "bSize:%d", flashAttnBaseParams.bSize);
     OP_LOGD(faInfo_->opName, "t1Size:%d", flashAttnBaseParams.t1Size);
@@ -395,7 +399,6 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(faInfo_->opName, "s2Size:%d", flashAttnBaseParams.s2Size);
     OP_LOGD(faInfo_->opName, "dSize:%d", flashAttnBaseParams.dSize);
     OP_LOGD(faInfo_->opName, "dSizeV:%d", flashAttnBaseParams.dSizeV);
-    OP_LOGD(faInfo_->opName, "dSizeRope:%d", flashAttnBaseParams.dSizeRope);
     OP_LOGD(faInfo_->opName, "cuSeqLensQSize:%d", flashAttnBaseParams.cuSeqLensQSize);
     OP_LOGD(faInfo_->opName, "cuSeqLensKVSize:%d", flashAttnBaseParams.cuSeqLensKVSize);
     OP_LOGD(faInfo_->opName, "seqUsedQSize:%d", flashAttnBaseParams.seqUsedQSize);
@@ -421,22 +424,6 @@ void FlashAttnTilingImpl::PrintAllTilingData()
     OP_LOGD(faInfo_->opName, "logSumExpSize:%d", flashAttnWorkspaceParams.logSumExpSize);
 
     OP_LOGD(faInfo_->opName, "totalSize:%d", flashAttnS1OuterSplitCoreParams.totalSize);
-
-    for (int aicIdx = 0; aicIdx < FA_AIC_CORE_NUM; ++aicIdx) {
-        OP_LOGD(faInfo_->opName, "FAMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
-                aicIdx, flashAttnMetaData.FAMetadata[aicIdx][0], flashAttnMetaData.FAMetadata[aicIdx][1],
-                flashAttnMetaData.FAMetadata[aicIdx][2], flashAttnMetaData.FAMetadata[aicIdx][3],
-                flashAttnMetaData.FAMetadata[aicIdx][4], flashAttnMetaData.FAMetadata[aicIdx][5],
-                flashAttnMetaData.FAMetadata[aicIdx][6], flashAttnMetaData.FAMetadata[aicIdx][7]);
-    }
-
-    for (int aivIdx = 0; aivIdx < FA_AIV_CORE_NUM; ++aivIdx) {
-        OP_LOGD(faInfo_->opName, "FDMetadata[%d], [0]:%d, [1]:%d, [2]:%d, [3]:%d, [4]:%d, [5]:%d, [6]:%d, [7]:%d",
-                aivIdx, flashAttnMetaData.FDMetadata[aivIdx][0], flashAttnMetaData.FDMetadata[aivIdx][1],
-                flashAttnMetaData.FDMetadata[aivIdx][2], flashAttnMetaData.FDMetadata[aivIdx][3],
-                flashAttnMetaData.FDMetadata[aivIdx][4], flashAttnMetaData.FDMetadata[aivIdx][5],
-                flashAttnMetaData.FDMetadata[aivIdx][6], flashAttnMetaData.FDMetadata[aivIdx][7]);
-    }
 
     int64_t cap = context_->GetRawTilingData()->GetCapacity();
     OP_LOGD(faInfo_->opName, "Tiling Data context_ GetCapacity: %lu.", cap);

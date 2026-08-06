@@ -71,16 +71,16 @@ constexpr uint32_t ATTN_MASK_INDEX = 9;
 constexpr uint32_t METADATA_INDEX = 10;
 
 // Attributes Index
-constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 0;  // softmax_mode (scaleValue)
-constexpr uint32_t ATTR_MASK_MODE_INDEX = 1;      // mask_mode
-constexpr uint32_t ATTR_WIN_LEFT_INDEX = 2;       // win_left (preToken)
-constexpr uint32_t ATTR_WIN_RIGHT_INDEX = 3;      // win_right (nextToken)
-constexpr uint32_t ATTR_MAX_SEQLEN_Q_INDEX = 4;   // max_seqlen_q
-constexpr uint32_t ATTR_MAX_SEQLEN_KV_INDEX = 5;  // max_seqlen_kv
-constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 6;       // layout_q
-constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 7;      // layout_kv
-constexpr uint32_t ATTR_LAYOUT_OUT_INDEX = 8;     // layout_out
-constexpr uint32_t ATTR_RETURN_LSE_INDEX = 9;     // return_softmax_lse
+constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 0; // softmax_mode (scaleValue)
+constexpr uint32_t ATTR_MASK_MODE_INDEX = 1;     // mask_mode
+constexpr uint32_t ATTR_WIN_LEFT_INDEX = 2;      // win_left (preToken)
+constexpr uint32_t ATTR_WIN_RIGHT_INDEX = 3;     // win_right (nextToken)
+constexpr uint32_t ATTR_MAX_SEQLEN_Q_INDEX = 4;  // max_seqlen_q
+constexpr uint32_t ATTR_MAX_SEQLEN_KV_INDEX = 5; // max_seqlen_kv
+constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 6;      // layout_q
+constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 7;     // layout_kv
+constexpr uint32_t ATTR_LAYOUT_OUT_INDEX = 8;    // layout_out
+constexpr uint32_t ATTR_RETURN_LSE_INDEX = 9;    // return_softmax_lse
 
 // Legacy aliases for backward compatibility
 constexpr uint32_t ATTR_SCALE_INDEX = ATTR_SOFTMAX_SCALE_INDEX;
@@ -256,7 +256,6 @@ public:
     KvStorageMode kvStorageMode = KvStorageMode::BATCH_CONTINUOUS;
     bool softmaxLseFlag = false;
     bool sinksFlag = false;
-    bool emptyTensorFlag = false;
 
     // kvcache strides (tensor v2 view inputs). hasViewStride == false means old opbase
     // without view info, key/value are guaranteed contiguous.
@@ -422,9 +421,12 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {{ge::DT_UNDE
                                                                     {ge::DT_FLOAT4_E2M1, "DT_FLOAT4_E2M1"}};
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
-    {QUERY_NAME, {ge::DT_FLOAT16, ge::DT_BF16}}, {KEY_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
-    {VALUE_NAME, {ge::DT_FLOAT16, ge::DT_BF16}}, {ATTN_MASK_NAME, {ge::DT_INT8}},
-    {BLOCK_TABLE_NAME, {ge::DT_INT32}},          {ATTN_OUT_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
+    {QUERY_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
+    {KEY_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
+    {VALUE_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
+    {ATTN_MASK_NAME, {ge::DT_INT8}},
+    {BLOCK_TABLE_NAME, {ge::DT_INT32}},
+    {ATTN_OUT_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
     {SOFTMAX_LSE_NAME, {ge::DT_FLOAT}},
 };
 

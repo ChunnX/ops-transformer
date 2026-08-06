@@ -13,7 +13,8 @@
  * \brief
  */
 
-#pragma once
+#ifndef FLASH_ATTN_TILING_INFO_PARSER_H_
+#define FLASH_ATTN_TILING_INFO_PARSER_H_
 
 #include "fa_tiling_info.h"
 #include "fa_tiling_shape.h"
@@ -22,7 +23,8 @@ namespace optiling {
 namespace flash_attn {
 class FaInfoParser {
 public:
-    explicit FaInfoParser(const gert::TilingContext *context) : context_(context)
+    explicit FaInfoParser(const gert::TilingContext *context)
+        : context_(context)
     {
     }
     ~FaInfoParser() = default;
@@ -30,7 +32,7 @@ public:
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
-    ge::graphStatus GetEmptyTensorFlag();
+    ge::graphStatus CheckEmptyTensor();
     ge::graphStatus GetCuSeqLenQSize(int64_t &size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
@@ -38,6 +40,7 @@ public:
     void GetOptionalInputParaSeqLengthInfo();
     void GetOptionalInputParaPageAttentionInfo();
     void GetOptionalInputParaSinksInfo();
+    void GetOptionalInputParaMetadataInfo();
 
     void GetOptionalInputParaInfo();
     void GetInputParaInfo();
@@ -156,9 +159,6 @@ public:
     int64_t maxSeqQ_ = -1;
     int64_t maxSeqKv_ = -1;
 
-    // Empty Tensor
-    bool emptyTensorFlag_ = false;
-
     // shape信息
     std::shared_ptr<FaTilingShape> queryShape_ = nullptr;
     std::shared_ptr<FaTilingShape> keyShape_ = nullptr;
@@ -166,3 +166,4 @@ public:
 };
 } // namespace flash_attn
 } // namespace optiling
+#endif // FLASH_ATTN_TILING_INFO_PARSER_H_

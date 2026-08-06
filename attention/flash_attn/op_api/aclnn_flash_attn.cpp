@@ -19,13 +19,53 @@
 #include "opdev/make_op_executor.h"
 #include "opdev/op_def.h"
 #include "opdev/op_log.h"
-#include "aclnn_flash_attn_inner.h"
 
 using namespace op;
+
+namespace {
+
+void FlashAttnProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse, const aclTensor *&tempTensor,
+                                const aclTensor *&placeHolder)
+{
+    if (returnSoftmaxLse == false) {
+        std::vector<int64_t> shape = {0};
+        int64_t addr = 0xff;
+        tempTensor = aclCreateTensor(shape.data(), shape.size(), aclDataType::ACL_FLOAT, shape.data(), 0, ACL_FORMAT_ND,
+                                     shape.data(), shape.size(), static_cast<void *>(&addr));
+        placeHolder = tempTensor;
+    } else {
+        placeHolder = softmaxLse;
+    }
+}
+
+void FlashAttnProcessSinks(const aclTensor *&sinksOptional)
+{
+    if (sinksOptional != nullptr) {
+        const auto &shape = sinksOptional->GetViewShape();
+        if (shape.GetDimNum() == 1U && shape[0] == 0) {
+            OP_LOGD("sinks shape is {0}, treat as nullptr.");
+            sinksOptional = nullptr;
+        }
+    }
+}
+
+} // namespace
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+extern aclnnStatus aclnnInnerFlashAttnGetWorkspaceSize(
+    const aclTensor *q, const aclTensor *k, const aclTensor *v, const aclTensor *blockTableOptional,
+    const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
+    const aclTensor *sequsedKvOptional, const aclTensor *sinksOptional, const aclTensor *attnMaskOptional,
+    const aclTensor *metadataOptional, double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
+    int64_t maxSeqlenQ, int64_t maxSeqlenKV, const char *layoutQ, const char *layoutKv, const char *layoutOut,
+    int64_t returnSoftmaxLse, const aclTensor *attnOut, const aclTensor *softmaxLse,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
+
+extern aclnnStatus aclnnInnerFlashAttn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                       const aclrtStream stream);
 
 // 第一段接口：计算workspace大小
 aclnnStatus aclnnFlashAttnGetWorkspaceSize(
