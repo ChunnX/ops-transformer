@@ -38,6 +38,7 @@ TEST_PARAMS = {
         "attention_mode": [2],
         "quant_scale_repo_mode": [1],
         "block_size": [128],
+        "return_softmax_lse": [True],
         "actual_seq_q": [
             [
                 1,
@@ -114,6 +115,7 @@ TEST_PARAMS = {
         "attention_mode": [2],
         "quant_scale_repo_mode": [1],
         "block_size": [256],
+        "return_softmax_lse": [True],
         "actual_seq_q": [[1]],
         "actual_seq_kv": [[4096]],
     },
@@ -141,6 +143,7 @@ TEST_PARAMS = {
         "attention_mode": [2],
         "quant_scale_repo_mode": [1],
         "block_size": [16],
+        "return_softmax_lse": [True],
         "actual_seq_q": [[3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]],
         "actual_seq_kv": [
             [
@@ -191,6 +194,7 @@ TEST_PARAMS = {
         "attention_mode": [2],
         "quant_scale_repo_mode": [1],
         "block_size": [128],
+        "return_softmax_lse": [True],
         "actual_seq_q": [
             [
                 1,

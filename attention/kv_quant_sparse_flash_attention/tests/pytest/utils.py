@@ -167,7 +167,7 @@ def load_excel_test_cases(excel_file_path, sheet_name):
     return [row.to_dict() for _, row in dataframe.iterrows()]
 
 
-def save_result(params, result, fulfill_percent, result_path):
+def save_result(params, result, fulfill_percent, result_path, softmax_max_percent=None, softmax_sum_percent=None):
     """保存测试结果，列与 example.xlsx 一致，结果文件可直接用于批量生成 pt。"""
     row_data = {
         "Testcase_Prefix": params.get("Testcase_Prefix", "kvQuantSparseFlashAttn"),
@@ -220,6 +220,8 @@ def save_result(params, result, fulfill_percent, result_path):
         else None,
         "result": result,
         "fulfill_percent": fulfill_percent,
+        "softmax_max_percent": softmax_max_percent,
+        "softmax_sum_percent": softmax_sum_percent,
     }
 
     if result_path.exists():
@@ -261,6 +263,7 @@ def combin_params(enabled_params, pytest_paramset=True):
         "actual_seq_q",
         "actual_seq_kv",
         "enable_sinks",
+        "return_softmax_lse",
     ]
     range_param_names = [
         "range_query",
@@ -314,6 +317,7 @@ def convert_param_combination_to_cs_format(param_combination):
     block_size = param_combination.get("block_size") or 256
     block_num = param_combination.get("block_num")
     enable_sinks = param_combination.get("enable_sinks", False)
+    return_softmax_lse = param_combination.get("return_softmax_lse", False)
     
     # 参数校验：TND layout 下 T 不能超过 B*S
     if layout_query == "TND" and T1 is not None:
@@ -470,7 +474,20 @@ def convert_param_combination_to_cs_format(param_combination):
     if enable_sinks == True:
         shape_input["sinks"] = [N1]
         dtype_input["sinks"] = "fp32"
-    
+
+    if layout_query == "BSND":
+        shape_output = {
+            "attn_out": [B, S1, N1, D],
+            "softmax_max": [B, N2, S1, int(N1 / N2)],
+            "softmax_sum": [B, N2, S1, int(N1 / N2)],
+        }
+    else:
+        shape_output = {
+            "attn_out": [T1, N1, D],
+            "softmax_max": [N2, T1, int(N1 / N2)],
+            "softmax_sum": [N2, T1, int(N1 / N2)],
+        }
+
     default_range_input = {
         "query": [2, 10],
         "key": [-100, 100.0],
@@ -506,7 +523,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "dtype_input": dtype_input,
         "range_input": range_input,
         "dtype_output": [q_dtype_str],
-        "shape_output": [[B, S1, N1, D]],
+        "shape_output": shape_output,
         "tile_size": tile_size,
         "rope_head_dim": rope_head_dim,
         "key_quant_mode": key_quant_mode,
@@ -535,6 +552,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "actual_seq_q": actual_seq_q,
         "actual_seq_kv": actual_seq_kv,
         "enable_sinks": enable_sinks,
+        "return_softmax_lse": return_softmax_lse,
         # range 参数，保存实际使用的值
         "range_query": range_input["query"],
         "range_key": range_input["key"],
@@ -679,17 +697,41 @@ def qsfa_run_npu(test_data, testcase_name=None, device_id=0, result_path=None):
     if testcase_name:
         params["Testcase_Prefix"] = testcase_name
     cpu_result = test_data["cpu_output"]
+    return_softmax_lse = test_data.get("input", {}).get("return_softmax_lse", False)
+    softmax_max_percent = None
+    softmax_sum_percent = None
     try:
         npu_result = kv_quant_sparse_flash_attention_process.call_npu(
             test_data["input"], params
         )
-        result, fulfill_percent = result_compare_method.check_result(
-            cpu_result, npu_result
+        print("[compare] comparing attn_out ...")
+        result_attn, fulfill_percent = result_compare_method.check_result(
+            cpu_result[0], npu_result[0]
         )
+        overall_result = result_attn
+        overall_fulfill_percent = fulfill_percent
+        if return_softmax_lse:
+            print("[compare] comparing softmax_max ...")
+            result_softmax_max, fulfill_percent_max = result_compare_method.check_result(
+                cpu_result[1], npu_result[1]
+            )
+            print("[compare] comparing softmax_sum ...")
+            result_softmax_sum, fulfill_percent_sum = result_compare_method.check_result(
+                cpu_result[2], npu_result[2]
+            )
+            softmax_max_percent = fulfill_percent_max
+            softmax_sum_percent = fulfill_percent_sum
+            overall_result = (
+                "Pass"
+                if (result_attn == "Pass" and result_softmax_max == "Pass" and result_softmax_sum == "Pass")
+                else "Failed"
+            )
+        result = overall_result
+        fulfill_percent = overall_fulfill_percent
     except Exception:
         if result_path:
-            save_result(params, "Failed", "", result_path)
+            save_result(params, "Failed", "", result_path, softmax_max_percent, softmax_sum_percent)
         raise
     if result_path:
-        save_result(params, result, fulfill_percent, result_path)
+        save_result(params, result, fulfill_percent, result_path, softmax_max_percent, softmax_sum_percent)
     return result, fulfill_percent

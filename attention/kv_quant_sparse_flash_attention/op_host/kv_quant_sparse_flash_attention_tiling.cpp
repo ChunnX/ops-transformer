@@ -42,6 +42,8 @@ static const std::string SPARSE_INDICES_NAME = "sparse_indices";
 static const std::string BLOCK_TABLE_NAME = "block_table";
 static const std::string ATTEN_OUT_NAME = "attention_out";
 static const std::string SINKS_NAME = "sinks";
+static const std::string SOFTMAX_MAX_NAME = "softmax_max";
+static const std::string SOFTMAX_SUM_NAME = "softmax_sum";
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {QUERY_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
@@ -49,7 +51,9 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {VALUE_NAME, {ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8}},
     {ATTEN_OUT_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
     {SPARSE_INDICES_NAME, {ge::DT_INT32}},
-    {SINKS_NAME, {ge::DT_FLOAT}}};
+    {SINKS_NAME, {ge::DT_FLOAT}},
+    {SOFTMAX_MAX_NAME, {ge::DT_FLOAT}},
+    {SOFTMAX_SUM_NAME, {ge::DT_FLOAT}}};
 
 const std::map<std::string, std::vector<QSFALayout>> LAYOUT_SUPPORT_MAP = {
     {QUERY_NAME, {QSFALayout::BSND, QSFALayout::TND}},
@@ -385,6 +389,7 @@ void QSFAMlaTiling::FillTilingBaseParamsMla()
     tilingData_.baseParams.set_isActualLenDimsNull(qsfaInfo_->actualQSeqLenFlag ? 0U : 1U);
     tilingData_.baseParams.set_isActualLenDimsKVNull(qsfaInfo_->actualSeqLenFlag ? 0U : 1U);
     tilingData_.baseParams.set_keyStride0(qsfaInfo_->keyStride0);
+    tilingData_.baseParams.set_returnSoftmaxLse(qsfaInfo_->returnSoftmaxLse ? 1U : 0U);
 }
 
 // for flash decode
@@ -771,7 +776,7 @@ ge::graphStatus QSFATilingCheck::CheckSingleParaSinks() const
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, SINKS_NAME.c_str(),
             "sinks is not supported on the current platform. It should be nullptr."),
         return ge::GRAPH_FAILED);
-    
+
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.sinks.desc, SINKS_NAME)) {
         return ge::GRAPH_FAILED;
     }
@@ -789,12 +794,23 @@ ge::graphStatus QSFATilingCheck::CheckSingleParaSinks() const
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus QSFATilingCheck::CheckSoftmaxMax() const
+{
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QSFATilingCheck::CheckSoftmaxSum() const
+{
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus QSFATilingCheck::CheckSinglePara() const
 {
     if (ge::GRAPH_SUCCESS != CheckSingleParaQuery() || ge::GRAPH_SUCCESS != CheckSingleParaKey() ||
         ge::GRAPH_SUCCESS != CheckSingleParaSparseIndices() || ge::GRAPH_SUCCESS != CheckSingleParaNumHeads() ||
         ge::GRAPH_SUCCESS != CheckSingleParaKvHeadNums() || ge::GRAPH_SUCCESS != CheckSingleParaSparseMode() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaSinks() || ge::GRAPH_SUCCESS != CheckSingleParaSparseBlockSize()) {
+        ge::GRAPH_SUCCESS != CheckSingleParaSinks() || ge::GRAPH_SUCCESS != CheckSoftmaxMax() ||
+        ge::GRAPH_SUCCESS != CheckSoftmaxSum() || ge::GRAPH_SUCCESS != CheckSingleParaSparseBlockSize()) {
         return ge::GRAPH_FAILED;
     }
 
@@ -895,10 +911,16 @@ static ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *t
 void QSFATilingCheck::SetQSFAShapeCompare()
 {
     queryShapeCmp_ = opParamInfo_.query.shape->GetStorageShape();
-    topkShapeCmp_ = opParamInfo_.sparseIndices.shape->GetStorageShape();
+    topkShapeCmp_ = opParamInfo_.sparse_indices.shape->GetStorageShape();
     keyShapeCmp_ = opParamInfo_.key.shape->GetStorageShape();
     valueShapeCmp_ = opParamInfo_.value.shape->GetStorageShape();
     attenOutShapeCmp_ = opParamInfo_.attenOut.shape->GetStorageShape();
+    if (opParamInfo_.softmaxMax.shape != nullptr) {
+        softmaxMaxShapeCmp_ = opParamInfo_.softmaxMax.shape->GetStorageShape();
+    }
+    if (opParamInfo_.softmaxSum.shape != nullptr) {
+        softmaxSumShapeCmp_ = opParamInfo_.softmaxSum.shape->GetStorageShape();
+    }
 }
 
 ge::graphStatus QSFATilingCheck::CheckBlockTable() const
@@ -1635,6 +1657,10 @@ void QSFAInfoParser::GetOutputParaInfo()
 {
     opParamInfo_.attenOut.desc = context_->GetOutputDesc(OUTPUT_INDEX);
     opParamInfo_.attenOut.shape = context_->GetOutputShape(OUTPUT_INDEX);
+    opParamInfo_.softmaxMax.desc = context_->GetOutputDesc(SOFTMAX_MAX_OUTPUT_INDEX);
+    opParamInfo_.softmaxMax.shape = context_->GetOutputShape(SOFTMAX_MAX_OUTPUT_INDEX);
+    opParamInfo_.softmaxSum.desc = context_->GetOutputDesc(SOFTMAX_SUM_OUTPUT_INDEX);
+    opParamInfo_.softmaxSum.shape = context_->GetOutputShape(SOFTMAX_SUM_OUTPUT_INDEX);
 }
 
 ge::graphStatus QSFAInfoParser::GetAttrParaInfo()
@@ -1656,6 +1682,7 @@ ge::graphStatus QSFAInfoParser::GetAttrParaInfo()
     opParamInfo_.quantScaleRepoMode = attrs->GetAttrPointer<int64_t>(QUANT_SCALE_REPO_MODE_ATTR_INDEX);
     opParamInfo_.tileSize = attrs->GetAttrPointer<int64_t>(TILE_SIZE_ATTR_INDEX);
     opParamInfo_.ropeHeadDim = attrs->GetAttrPointer<int64_t>(ROPE_HEAD_DIM_ATTR_INDEX);
+    opParamInfo_.returnSoftmaxLse = attrs->GetAttrPointer<bool>(RETURN_SOFTMAX_LSE_ATTR_INDEX);
 
     auto keyStrides = context_->GetDynamicInputStride(KEY_INPUT_INDEX, 0);
     if (keyStrides != nullptr && keyStrides->GetDimNum() > 1) {
@@ -2052,6 +2079,7 @@ void QSFAInfoParser::FillTilingInfoAttrsAndLayouts(QSFATilingInfo &qsfaInfo)
     qsfaInfo.quantScaleRepoMode = *opParamInfo_.quantScaleRepoMode;
     qsfaInfo.preTokens = *opParamInfo_.preTokens;
     qsfaInfo.nextTokens = *opParamInfo_.nextTokens;
+    qsfaInfo.returnSoftmaxLse = (opParamInfo_.returnSoftmaxLse != nullptr) ? *opParamInfo_.returnSoftmaxLse : false;
     qsfaInfo.tileSize = *opParamInfo_.tileSize;
     qsfaInfo.ropeHeadDim = *opParamInfo_.ropeHeadDim;
 
