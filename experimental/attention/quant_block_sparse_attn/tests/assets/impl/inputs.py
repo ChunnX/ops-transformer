@@ -368,8 +368,13 @@ def customize_inputs(
     k_descale.copy_(k_scale_pa.unsqueeze(-1))
     v_descale.copy_(v_scale)
 
-    p_scale_data = torch.tensor([float(p_scale_value)], dtype=torch.float32)
-    p_scale.copy_(p_scale_data)
+    if p_scale_value is None:
+        # p_scale 未指定时生成 [-1, 1] 随机 float
+        p_scale_data = torch.tensor([rng.uniform(-1.0, 1.0)], dtype=torch.float32)
+    else:
+        p_scale_data = torch.tensor([float(p_scale_value)], dtype=torch.float32)
+    if p_scale is not None:
+        p_scale.copy_(p_scale_data)
 
     sparse_indices_data, sparse_seq_len_data = _make_sparse_indices(
         B,
