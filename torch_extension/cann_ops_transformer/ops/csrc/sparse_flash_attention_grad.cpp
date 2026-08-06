@@ -47,7 +47,7 @@ SparseFlashAttentionGrad(
     const c10::optional<at::Tensor> &sinks,
     double scaleValue, int64_t sparseBlockSize,
     const c10::optional<at::Tensor> &queryRope, const c10::optional<at::Tensor> &keyRope,
-    const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensKv,
+    const c10::optional<at::Tensor> &actualSeqLenQ, const c10::optional<at::Tensor> &actualSeqLenKv,
     std::string layoutQ, std::string layoutKv, int64_t sparseMode, int64_t winLeft, int64_t winRight,
     int64_t attentionMode, bool deterministic)
 {
@@ -89,8 +89,8 @@ SparseFlashAttentionGrad(
 
     const at::Tensor &queryRopeConst = queryRope.value_or(at::Tensor());
     const at::Tensor &keyRopeConst = keyRope.value_or(at::Tensor());
-    const at::Tensor &cuSeqlensQConst = cuSeqlensQ.value_or(at::Tensor());
-    const at::Tensor &cuSeqlensKvConst = cuSeqlensKv.value_or(at::Tensor());
+    const at::Tensor &actualSeqLenQConst = actualSeqLenQ.value_or(at::Tensor());
+    const at::Tensor &actualSeqLenKvConst = actualSeqLenKv.value_or(at::Tensor());
 
     // ---- 申请输出张量（DeviceGuard 必须包住输出申请） ----
     at::Tensor dq{nullptr};
@@ -117,7 +117,7 @@ SparseFlashAttentionGrad(
     char *layoutQPtr = const_cast<char *>(layoutQ.c_str());
     char *layoutKvPtr = const_cast<char *>(layoutKv.c_str());
     ACLNN_CMD(aclnnSparseFlashAttentionGradV2, query, key, value, sparseIndices, dOut, out, softmaxMax, softmaxSum,
-              sinksConst, cuSeqlensQConst, cuSeqlensKvConst, queryRopeConst, keyRopeConst, scaleValue,
+              sinksConst, actualSeqLenQConst, actualSeqLenKvConst, queryRopeConst, keyRopeConst, scaleValue,
               sparseBlockSize, layoutQPtr, layoutKvPtr, sparseMode, winLeft, winRight, deterministic, dq, dk, dv,
               dqRope, dkRope, dSinks);
 

@@ -28,8 +28,8 @@ class SparseFlashAttentionGradOpBuilder(OpBuilder):
             "sparse_flash_attention_grad(Tensor query, Tensor key, Tensor value, Tensor sparse_indices, "
             "Tensor d_out, Tensor out, Tensor softmax_max, Tensor softmax_sum, Tensor? sinks, "
             "float scale_value, int sparse_block_size, "
-            "*, Tensor? query_rope=None, Tensor? key_rope=None, Tensor? cu_seqlens_q=None, "
-            "Tensor? cu_seqlens_kv=None, str layout_q=\"BSND\", str layout_kv=\"BSND\", int sparse_mode=3, "
+            "*, Tensor? query_rope=None, Tensor? key_rope=None, Tensor? actual_seq_qlen=None, "
+            "Tensor? actual_seq_kvlen=None, str layout_q=\"BSND\", str layout_kv=\"BSND\", int sparse_mode=3, "
             "int win_left=2147483647, int win_right=2147483647, int attention_mode=0, "
             "bool deterministic=False) "
             "-> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)"
@@ -56,8 +56,8 @@ class SparseFlashAttentionGradOpBuilder(OpBuilder):
             sparse_block_size=1,
             query_rope=None,
             key_rope=None,
-            cu_seqlens_q=None,
-            cu_seqlens_kv=None,
+            actual_seq_qlen=None,
+            actual_seq_kvlen=None,
             layout_q="BSND",
             layout_kv="BSND",
             sparse_mode=3,
@@ -106,8 +106,8 @@ def sparse_flash_attention_grad(
     sparse_block_size=1,
     query_rope=None,
     key_rope=None,
-    cu_seqlens_q=None,
-    cu_seqlens_kv=None,
+    actual_seq_qlen=None,
+    actual_seq_kvlen=None,
     layout_q="BSND",
     layout_kv="BSND",
     sparse_mode=3,
@@ -132,8 +132,8 @@ def sparse_flash_attention_grad(
         sparse_block_size (int): block 大小，支持 {1,8,16,32,64}，默认 1。
         query_rope (Tensor, optional): query 的 rope 部分，dtype 与 query 一致，仅 layout=TND 时使用。
         key_rope (Tensor, optional): key 的 rope 部分，dtype 与 query 一致，仅 layout=TND 时使用。
-        cu_seqlens_q (Tensor, optional): query 实际序列长度，int32，shape [B]。
-        cu_seqlens_kv (Tensor, optional): key/value 实际序列长度，int32，shape [B]。
+        actual_seq_qlen (Tensor, optional): query 实际序列长度，int32，shape [B]。
+        actual_seq_kvlen (Tensor, optional): key/value 实际序列长度，int32，shape [B]。
         layout_q (str): query 输入排布，支持 "BSND"/"TND"，默认 "BSND"。
         layout_kv (str): key/value 输入排布，支持 "BSND"/"TND"，默认 "BSND"。约定与 layout_q 恒等（q==kv）。
         sparse_mode (int): 稀疏模式，默认 3。
@@ -163,8 +163,8 @@ def sparse_flash_attention_grad(
         sparse_block_size,
         query_rope,
         key_rope,
-        cu_seqlens_q,
-        cu_seqlens_kv,
+        actual_seq_qlen,
+        actual_seq_kvlen,
         layout_q,
         layout_kv,
         sparse_mode,

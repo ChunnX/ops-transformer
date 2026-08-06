@@ -52,8 +52,8 @@ cann_ops_transformer.sparse_flash_attention_grad(
     *,
     query_rope=None,
     key_rope=None,
-    cu_seqlens_q=None,
-    cu_seqlens_kv=None,
+    actual_seq_qlen=None,
+    actual_seq_kvlen=None,
     layout_q="BSND",
     layout_kv="BSND",
     sparse_mode=3,
@@ -92,9 +92,9 @@ cann_ops_transformer.sparse_flash_attention_grad(
 
 - **key_rope**（`Tensor`，可选）：key 的 rope 部分，仅 `layout`="TND" 时使用。shape为 `[T2, N2, Dr]`。数据类型与query一致。
 
-- **cu_seqlens_q**（`Tensor`，可选）：每个 batch 中 query 的有效 token 数。shape为 `[B]`。数据类型支持`int32`。
+- **actual_seq_qlen**（`Tensor`，可选）：每个 batch 中 query 的有效 token 数。shape为 `[B]`。数据类型支持`int32`。
 
-- **cu_seqlens_kv**（`Tensor`，可选）：每个 batch 中 key/value 的有效 token 数。shape为 `[B]`。数据类型支持`int32`。
+- **actual_seq_kvlen**（`Tensor`，可选）：每个 batch 中 key/value 的有效 token 数。shape为 `[B]`。数据类型支持`int32`。
 
 - **layout_q**（`str`，可选）：query 输入数据排布，支持 "BSND"/"TND"，默认值：`"BSND"`。
 
@@ -176,7 +176,7 @@ cann_ops_transformer.sparse_flash_attention_grad(
         query, key, value, sparse_indices, d_out, out, softmax_max, softmax_sum,
         sinks, scale_value, 1,
         query_rope=query_rope, key_rope=key_rope,
-        cu_seqlens_q=None, cu_seqlens_kv=None,
+        actual_seq_qlen=None, actual_seq_kvlen=None,
         layout_q=input_layout, layout_kv=input_layout, sparse_mode=0, deterministic=False,
     )
     ```
