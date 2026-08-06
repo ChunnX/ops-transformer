@@ -69,6 +69,10 @@ public:
                                 __gm__ uint8_t *, const QuantBlockSparseAttnMxTilingData *__restrict tiling,
                                 TPipe *tPipe)
     {
+        // ACLGraph reuses the kernel context across consecutive cases. Reset
+        // the block-local allocator so AIC and both AIVs bind the same clean
+        // cross-core flag IDs on every launch.
+        fa_base_matmul::idCounterNum = 0;
         // Q/K/V 在 cube 中结合 block_table 完成 PA 搬运。
         pipe = tPipe;
         tilingData = tiling;
