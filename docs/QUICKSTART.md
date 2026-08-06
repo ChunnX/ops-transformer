@@ -77,48 +77,7 @@ Self-extractable archive "cann-ops-transformer-custom_linux.${arch}.run" success
 
 `AddExample`安装在```${ASCEND_HOME_PATH}/opp/vendors```路径中，```${ASCEND_HOME_PATH}```表示CANN软件安装目录。
 
-> **校验安装是否成功**：安装完成后执行以下命令，确认 `config.ini` 的 `load_priority` 已写入本 vendor：
-
-```bash
-grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini
-```
-
-预期输出形如 `load_priority=custom_transformer`。若无输出或报 `No such file`，说明安装失败，请参考下方[常见安装问题排查](#常见安装问题排查)。
-
-### 常见安装问题排查
-
-#### opp/vendors 权限与属主检查
-
-若安装失败或运行报 `error 161001`，通常是 `${ASCEND_HOME_PATH}/opp/vendors` 属主非当前用户，导致 `config.ini` 更新失败。检查属主：
-
-```bash
-ls -ld ${ASCEND_HOME_PATH}/opp/vendors
-```
-
-属主非当前用户时，执行以下任一命令修复后重新安装：
-
-```bash
-sudo chown -R $(whoami) ${ASCEND_HOME_PATH}/opp/vendors   # 推荐：改属主
-sudo chmod -R u+w ${ASCEND_HOME_PATH}/opp/vendors          # 或：放宽写权限
-```
-
-修复后重新执行第3步安装命令，并再次校验 `load_priority`。
-
-#### 替代方案：使用 --install-path 安装到用户可写目录
-
-若无法获取 `${ASCEND_HOME_PATH}/opp/vendors` 的写权限，可在安装时通过 `--install-path` 参数指定到当前用户有权限的目录（如 `${HOME}/custom_ops`）：
-
-```bash
-./build_out/cann-ops-transformer-*linux*.run --install-path=${HOME}/custom_ops
-```
-
-采用此方案时，无需执行第4步的手动 `LD_LIBRARY_PATH` 配置，改为 source 安装目录下的 `set_env.bash` 脚本，该脚本会自动设置 `ASCEND_CUSTOM_OPP_PATH` 与 `LD_LIBRARY_PATH`：
-
-```bash
-source ${HOME}/custom_ops/vendors/custom_transformer/bin/set_env.bash
-```
-
-> **说明**：`--install-path` 与 `set_env.bash` 的详细机制可参考[编译指导文档](docs/zh/install/compile.md)。
+> 安装后执行 `grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini` 校验，预期输出含本 vendor。若无输出，通常是 `${ASCEND_HOME_PATH}/opp/vendors` 属主或权限不对，执行 `sudo chown -R $(whoami) ${ASCEND_HOME_PATH}/opp/vendors` 修复后重新安装。
 
 ### 4. 配置环境变量
 
