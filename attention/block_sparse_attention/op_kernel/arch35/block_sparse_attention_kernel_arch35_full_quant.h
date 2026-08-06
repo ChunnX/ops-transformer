@@ -644,28 +644,22 @@ public:
         uint32_t dmStartOffset;
         uint32_t llStartOffset;
         if constexpr (RESCALE_ON_CUBE) {
-            // rescaleOnCube on cube：OTmp(lo)/dm 不再驻留 UB（偏移传 0）；diag 块中转 [qS/2, qS/2] fp32 单份
+            // rescaleOnCube on cube：OTmp(lo) 不再驻留 UB（偏移传 0）；diag 块中转 [qS/2, qS/2] fp32 单份
             loStartOffset = 0;
             diagStartOffset = pStartOffset + pTotalSize;
             goStartOffset = diagStartOffset + qBaseTilePerSubCore * qBaseTilePerSubCore * sizeof(float);
-            dmStartOffset = 0;
-            llStartOffset = 0;
         } else {
             // 旧路径：lo 2 份轮转、dm 3 份轮转（偏移与 HEAD 一致）
             loStartOffset = pStartOffset + pTotalSize;
             diagStartOffset = 0;
             goStartOffset = loStartOffset + qBaseTilePerSubCore * embedPerSubCore * sizeof(ElementOTmp) * UB_S_OTMP_BUF_STAGES;
-            dmStartOffset = 0;
-            llStartOffset = 0;
         }
         uint32_t lmStartOffset = goStartOffset + qBaseTilePerSubCore * embedPerSubCore * sizeof(ElementOTmp);
         uint32_t gmStartOffset = lmStartOffset + qBaseTilePerSubCore * sizeof(float);
-        if constexpr (!RESCALE_ON_CUBE) {
-            dmStartOffset = gmStartOffset + qBaseTilePerSubCore * sizeof(float);
-            llStartOffset = dmStartOffset + qBaseTilePerSubCore * (PRE_LAUNCH + 1) * sizeof(float);
-        } else {
-            llStartOffset = gmStartOffset + qBaseTilePerSubCore * sizeof(float);
-        }
+        // dm 3 份轮转（rescaleOnCube 同样保留）：UpdateDeltaMax 先算出 dm 存 dmUb，
+        // GenDiagBlockAndCopyL1 再据此生成 diag 块，不再借用 diag 中转缓冲暂存 dm
+        dmStartOffset = gmStartOffset + qBaseTilePerSubCore * sizeof(float);
+        llStartOffset = dmStartOffset + qBaseTilePerSubCore * (PRE_LAUNCH + 1) * sizeof(float);
         uint32_t glStartOffset = llStartOffset + qBaseTilePerSubCore * sizeof(float);
         uint32_t lseStartOffset = glStartOffset + qBaseTilePerSubCore * sizeof(float);
         uint32_t maskStartOffset = lseStartOffset + qBaseTilePerSubCore * (32 / sizeof(float)) * sizeof(float);

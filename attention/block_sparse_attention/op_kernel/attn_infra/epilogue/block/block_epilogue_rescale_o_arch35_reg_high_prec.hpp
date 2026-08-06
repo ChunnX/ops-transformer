@@ -103,7 +103,8 @@ public:
     BlockEpilogue(Arch::Resource<ArchTag> &resource, UBufTileHelper &uBufTileHelper)
     {
         if constexpr (!DispatchPolicy::rescaleOnCube) {
-            // rescaleOnCube on cube：lo/dm 缓冲不再驻留 UB（lo 的偏移在 full_quant kernel 中传 0）
+            // 仅旧路径在此 epilogue 分配 lo/dm；rescaleOnCube 时 lo 由 CUBE 累加不再驻留 UB，
+            // dm 则保留在 online softmax 的 dmUb（用于生成 diag 块），此处均不再需要
             for (uint32_t i = 0; i < UB_OTMP_BUF_STAGES; i++) {
                 loUbTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
                     uBufTileHelper.loStartOffset +

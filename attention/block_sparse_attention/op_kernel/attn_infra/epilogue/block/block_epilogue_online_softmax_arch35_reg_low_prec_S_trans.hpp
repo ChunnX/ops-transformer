@@ -72,14 +72,13 @@ public:
                 sizeof(ElementOutput) * i);
         }
         if constexpr (rescaleOnCube_) {
-            // rescaleOnCube on cube：dm 向量不再驻留 UB，diag 块中转 [qS/2, qS/2] fp32 单份（生成后 MTE3 搬 L1）
+            // rescaleOnCube on cube：dm 向量仍驻留 UB（先算 dm 再生成 diag）；diag 块中转 [qS/2, qS/2] fp32 单份
             diagUbTensor = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.diagStartOffset);
-        } else {
-            for (uint32_t i = 0; i < UB_DM_BUF_MAX_STAGES; i++) {
-                dmUbTensor[i] = resource.ubBuf.template GetBufferByByte<float>(
-                    uBufTileHelper.dmStartOffset +
-                    uBufTileHelper.qBaseTilePerSubCore * sizeof(float) * i);
-            }
+        }
+        for (uint32_t i = 0; i < UB_DM_BUF_MAX_STAGES; i++) {
+            dmUbTensor[i] = resource.ubBuf.template GetBufferByByte<float>(
+                uBufTileHelper.dmStartOffset +
+                uBufTileHelper.qBaseTilePerSubCore * sizeof(float) * i);
         }
         gmUbTensor = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.gmStartOffset);
         glUbTensor = resource.ubBuf.template GetBufferByByte<float>(uBufTileHelper.glStartOffset);
@@ -109,6 +108,17 @@ public:
             SetCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
             WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
             SetCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
+            if constexpr (rescaleOnCube_) {
+                // diag flag 双向转发：AIV1 分到 0 行（rowNum <= nCopyOffset 的尾块）时主路径的
+                // wait/write/set 被跳过，这里仍需 wait（消费 CUBE 的 consumed，保持 mode-4 交替）
+                // 并 set（CUBE 的 RE 会双 AIV wait ready，否则 rowNum<=64 时 CUBE 等不到 AIV1 的
+                // ready 而死锁）；无数据可写，仅转发 flag
+                if (!isFirstKvSTile) {
+                    Arch::CrossCoreFlag diagFlag(6 + l1PBufId);
+                    WaitCrossCoreSync<4, PIPE_MTE3>(diagFlag);
+                    SetCrossCoreSync<4, PIPE_MTE3>(diagFlag);
+                }
+            }
             return;
         }
         uint32_t m = actualBlockShape.n();
@@ -133,13 +143,7 @@ public:
         __ubuf__ half *lmUbAddr = (__ubuf__ half *)lmUbTensor.GetPhyAddr();
         __ubuf__ half *lmUbStartAddr = (__ubuf__ half *)lmUbTensor.GetPhyAddr();
         __ubuf__ half *llUbAddr = (__ubuf__ half *)llUbTensor.GetPhyAddr();
-        __ubuf__ float *dmUbAddr = nullptr;
-        __ubuf__ float *diagUbAddr = nullptr;
-        if constexpr (rescaleOnCube_) {
-            diagUbAddr = (__ubuf__ float *)diagUbTensor.GetPhyAddr();
-        } else {
-            dmUbAddr = (__ubuf__ float *)dmUbTensor[l1PBufId].GetPhyAddr();
-        }
+        __ubuf__ float *dmUbAddr = (__ubuf__ float *)dmUbTensor[l1PBufId].GetPhyAddr();
         // wait QK Fixpipe finish
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
 
@@ -227,17 +231,15 @@ public:
             // AscendC::printf("tkd glUbTensor\n");
             // AscendC::DumpTensor(glUbTensor, 1, 128);
         } else {
+            // 先算 dm 存 dmUb（3 份轮转），再据此生成 diag 块
+            UpdateDeltaMaxGlobalMaxAndGlobalSum(lmUbAddr, gmUbAddr, llUbAddr, glUbAddr, dmUbAddr, tailN);
             if constexpr (rescaleOnCube_) {
-                // rescaleOnCube on cube：等 CUBE 消费完同 buffer 的上一轮 diag 后，生成 diag(dm/vScale) 块搬 L1
-                Arch::CrossCoreFlag diagConsumedFlag(6 + l1PBufId);
-                WaitCrossCoreSync<4, PIPE_MTE3>(diagConsumedFlag);
+                // diag flag 双向 token：先等 CUBE 消费完同 buffer 的上一轮 diag（consumed）
+                Arch::CrossCoreFlag diagFlag(6 + l1PBufId);
+                WaitCrossCoreSync<4, PIPE_MTE3>(diagFlag);
                 // 等上一轮 diag 的 MTE3 搬运完成再覆写中转缓冲（单缓冲，防 VF 写与在飞 MTE3 读竞争）
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
-                // dm 暂存于 diag 中转缓冲开头 [0..64)
-                UpdateDeltaMaxGlobalMaxAndGlobalSum(lmUbAddr, gmUbAddr, llUbAddr, glUbAddr, diagUbAddr, tailN);
-                GenDiagBlockAndCopyL1(l1DiagTensor, vScale);
-            } else {
-                UpdateDeltaMaxGlobalMaxAndGlobalSum(lmUbAddr, gmUbAddr, llUbAddr, glUbAddr, dmUbAddr, tailN);
+                GenDiagBlockAndCopyL1(l1DiagTensor, dmUbTensor[l1PBufId], vScale, diagFlag);
             }
             // AscendC::printf("tkd UpdateDeltaMaxGlobalMaxAndGlobalSum\n");
             // AscendC::printf("tkd gmUbTensor\n");
@@ -260,14 +262,15 @@ private:
     AscendC::LocalTensor<ElementInput> llUbTensor;
     uint32_t subBlockIdx_;
 
-    // rescaleOnCube on cube：由 dm（暂存于 diagUbTensor[0..64)）生成 diag 块 [qS/2, qS/2] fp32（zN 布局），MTE3 搬 L1
+    // rescaleOnCube on cube：由 dm（dmUb 3 份轮转的当前份）生成 diag 块 [qS/2, qS/2] fp32（zN 布局），MTE3 搬 L1
     __aicore__ inline
-    void GenDiagBlockAndCopyL1(AscendC::LocalTensor<float> l1DiagTensor, float vScale)
+    void GenDiagBlockAndCopyL1(AscendC::LocalTensor<float> l1DiagTensor, AscendC::LocalTensor<float> dmUbSrc,
+                               float vScale, Arch::CrossCoreFlag diagFlag)
     {
-        // 先读 dm（UpdateDeltaMax 暂存于中转缓冲开头），再清零整块
+        // 先读 dm（UpdateDeltaMax 已写入 dmUb），再清零中转整块
         float dmTmp[64];
         for (uint32_t i = 0; i < 64; i++) {
-            dmTmp[i] = diagUbTensor.GetValue(i);
+            dmTmp[i] = dmUbSrc.GetValue(i);
         }
         AscendC::Duplicate(diagUbTensor, 0.0f, 64 * 64);
         AscendC::PipeBarrier<PIPE_V>();
@@ -279,11 +282,17 @@ private:
             diagUbTensor.SetValue(zOff, dmTmp[i] * invVScale);
         }
         AscendC::PipeBarrier<PIPE_V>();
+        // V→MTE3：VF 写 UB 中转完成，MTE3 才能读（与 P 的 SetFlag/WaitFlag<V_MTE3>(ubSBufId) 对称）
+        // V_MTE3 类型当前仅占用 0/1，diag 用空闲的 EVENT_ID2；tile 内先 Set 再 Wait，无需 Init/Release 预置
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
         // MTE3：diag 中转 -> L1（3 份轮转，由 kernel 按当前 l1PBufId 传入；双子核 L1 分块，
         // 本子核的块在 stage 内偏移 subBlockIdx×4096 元素，避免互相覆盖）
         AscendC::DataCopy(l1DiagTensor[subBlockIdx_ * 64 * 64], diagUbTensor, 64 * 64);
         // 下一轮覆写中转缓冲前 wait（EVENT_ID5，kernel InitSyncFlags 已预置初始 token）
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
+        // diag 写完成（L1 就绪）：与 P 的 smToMm2 ready 方向对称，CUBE RE 读 diag 前 wait 同一 flag
+        SetCrossCoreSync<4, PIPE_MTE3>(diagFlag);
     }
 
     enum class MAlignedTileNum {

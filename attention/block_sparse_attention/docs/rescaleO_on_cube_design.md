@@ -161,7 +161,7 @@ FP8 场景 bias 是 raw fp8 累加（未反量化），而 GO 存反量化后的
 - **diag 只需两个 [64,64] 对角块**而非整张 [128,128]（方法 3 的结构红利），3 份对齐 PRE_LAUNCH 流水；
 - `mm2L1AddrStart_` 之后的排布顺延：P/V 后接 GO^T、diag。
 
-### 5.2 UB（VECCALC）：每子核 ~147KB / 256KB
+### 5.2 UB（VECCALC）：每子核 ~148KB / 256KB
 
 | 段 | 大小 | 份数 | 变化 |
 |---|---|---|---|
@@ -171,9 +171,9 @@ FP8 场景 bias 是 raw fp8 累加（未反量化），而 GO 存反量化后的
 | go | 64×128×4B = 32KB | 1 | 保留（float，仅末块） |
 | **diag 块中转** | [64,64]×4B = 16KB | 1 | **新增**（float，VF 算完 → UB → MTE3 → L1） |
 | lm / gm / ll / gl | 128B / 256B / 128B / 256B | 1 | 不变 |
-| **dm 向量** | — | — | **删除**（diag 块直接从寄存器生成） |
+| **dm 向量** | 64×4B = 256B | 3（PRE_LAUNCH+1 轮转） | 保留（`UpdateDeltaMax` 先算 dm 存 dmUb，`GenDiag` 据此生成 diag） |
 | lse | 64×8×4B = 2KB | 1 | 不变 |
-| 合计 | | | **≈ 147KB** |
+| 合计 | | | **≈ 148KB** |
 
 要点：
 
@@ -245,9 +245,9 @@ FP8 场景 bias 是 raw fp8 累加（未反量化），而 GO 存反量化后的
 
 ### 7.4 OnlineSoftmax（VEC）
 
-- 生成 **diag(dm/vScale) 块** [64,64] fp32（本子核 64 个 q）：VF 寄存器算 → store-align 到 UB 中转（16KB）→ MTE3 → L1（3 份轮转）；
+- 生成 **diag(dm/vScale) 块** [64,64] fp32（本子核 64 个 q）：`UpdateDeltaMaxGlobalMaxAndGlobalSum` 先算 dm 存 dmUb（3 份轮转）→ `GenDiagBlockAndCopyL1` 读 dmUb 生成对角块 → MTE3 → L1（3 份轮转）；
 - **VEC 每 task 读 vScale**（GM，当前索引无 De）：`yBlockIndex = (gatheredKvSTileIdx·kvBaseTile_)/blockShapeY_` → `gSparseIdx` → `vDequantScale`，与 CUBE 侧 FixPipe 用 De 索引各取各的；
-- 删除 dm 向量缓冲（diag 块直接从寄存器生成）。
+- 保留 dm 向量缓冲（3 份轮转）：先经过 `UpdateDeltaMaxGlobalMaxAndGlobalSum` 得到 dm 结果，再据此生成 diag(dm/vScale) 块。
 
 ### 7.5 RescaleO（VEC）
 
@@ -272,9 +272,9 @@ FP8 场景 bias 是 raw fp8 累加（未反量化），而 GO 存反量化后的
 
 | 文件 | 改动 |
 |---|---|
-| `block_sparse_attention_kernel_arch35_full_quant.h` | `CalcUBufTileInfo`（删 lo/dm 段、增 diag 中转段）、L1 排布（Q/K/P/V 后接 GO^T 64KB + diag 块 96KB）、`InitCrossCoreDstBuf`、`mm2L1AddrStart_` 语义、**LayoutV 条件化 + vShape 交换**（rescaleOnCube 时 V 以 ColumnMajor [D,kvS] 进 L1） |
-| `block_epilogue_arch35_utils.hpp`（UBufTileHelper） | 偏移字段调整：删 dm、增 diag 中转 |
-| `block_epilogue_online_softmax_arch35_reg_low_prec_S_trans.hpp` | 构造缓冲：删 dmUb、增 diag 块中转缓冲；生成 diag(dm/vScale) 块 |
+| `block_sparse_attention_kernel_arch35_full_quant.h` | `CalcUBufTileInfo`（删 lo 段、保留 dm 段、增 diag 中转段）、L1 排布（Q/K/P/V 后接 GO^T 64KB + diag 块 96KB）、`InitCrossCoreDstBuf`、`mm2L1AddrStart_` 语义、**LayoutV 条件化 + vShape 交换**（rescaleOnCube 时 V 以 ColumnMajor [D,kvS] 进 L1） |
+| `block_epilogue_arch35_utils.hpp`（UBufTileHelper） | 偏移字段调整：保留 dm、增 diag 中转 |
+| `block_epilogue_online_softmax_arch35_reg_low_prec_S_trans.hpp` | 构造缓冲：保留 dmUb（3 份轮转）、增 diag 块中转缓冲；`UpdateDeltaMax` 先算 dm 存 dmUb，再生成 diag(dm/vScale) 块 |
 | `block_epilogue_rescale_o_arch35_reg_high_prec.hpp` | go 缓冲偏移随新布局；删除原 rescale 计算（见 §7.5） |
 | 新 PV 文件（`<true,true>`） | 构造函数：diag 块的 L1 起始地址传入（沿用 `mm2L1AddrStart_` 式传参）、L0 缓冲；GO^T 与 go 的 UB/L1 TLA 均由 kernel 构造传入（模板参数 TensorGo/TensorC，与现有 PV 的 TLA 传入风格一致） |
 | 现有 PV 文件（`<*,false>`） | 特化键补 `false`；缓冲逻辑不动 |

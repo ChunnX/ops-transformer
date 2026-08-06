@@ -344,6 +344,9 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
         }
+        // reverse crossCoreSync for P：最后一次 copyL1ToL0B 已消费 L1 P 缓冲，VEC 才能覆写（与旧 PV 的
+        // "L1 P buffer free" 方向对齐；softmax epilogue 在 P→L1 DataCopy 前 wait 同一 flag，缺此 set 会死锁）
+        SetCrossCoreSync<4, PIPE_MTE1>(smToMm2Flag);
 
         // rescale：C 按 16 列块拼接累加（8 次 [D,16]×[16,16] 小 mmad，K=16，全量覆盖 qS）
         // diag 双子核块各 [64,64] fp32 = 4×8 个 16×8 fractal，非零仅对角斜带（fractal 行 fr 的列 2fr/2fr+1）
@@ -353,6 +356,10 @@ public:
         if (!isFirstKvSTile) {
             // GO^T 由上一块 FixPipe(CFG_NZ→L1) 写入：等 L1 写完成后再读（独立 event id，与 l0C 释放的 FIX_M 区分）
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(GO_READY_EVENT_ID);
+            // diag 就绪（双向 token 的 ready 方向）：等 VEC 把本轮 diag(dm/vScale) 写完再读，
+            // 避免读到旧一轮或半成品；同一 flag 在 RE 末尾再 set 回 consumed 给 VEC 覆写前 wait
+            Arch::CrossCoreFlag diagFlag(6 + l1DiagBufId);
+            WaitCrossCoreSync<4, PIPE_MTE1>(diagFlag);
             // 尾块 qS 非 16 倍数时向上取整：最后一块用实际列数 nAct（mmad 的 k/n 用实际值，与 PV^T 的
             // K 尾块同惯例；k 对齐填充读的 B 行在 C 的列区内为 0——对角矩阵保证填充贡献恒为 0，无污染）
             uint32_t blockNum = CeilDiv(rowNum, 16);   // 8
@@ -404,8 +411,8 @@ public:
                 AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                 // diag 消费完成（softmax 覆写同 buffer 前 wait）：最后一块 mmad 后 set（读已完成，单实例单发）
                 if (fr == blockNum - 1) {
-                    Arch::CrossCoreFlag diagConsumedFlag(6 + l1DiagBufId);
-                    SetCrossCoreSync<4, PIPE_MTE1>(diagConsumedFlag);
+                    // 同一 flag set 回 consumed：VEC 下一轮覆写同 buffer 前 wait
+                    SetCrossCoreSync<4, PIPE_MTE1>(diagFlag);
                 }
             }
         }
