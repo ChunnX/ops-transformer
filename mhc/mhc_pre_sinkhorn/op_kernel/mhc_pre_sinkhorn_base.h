@@ -216,8 +216,8 @@ __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, cons
                 }
             }
         }
-        if (numRemainPerLine > 0) {	 
-             if (dstRepStridePerLine > MAX_REPEAT_STRIDE) {
+        if (numRemainPerLine > 0) {
+            if (dstRepStridePerLine > MAX_REPEAT_STRIDE) {
                 instrParams.dstBlkStride = 1;
                 instrParams.src0BlkStride = 1;
                 instrParams.src1BlkStride = 0;
@@ -230,16 +230,16 @@ __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, cons
                         tmpBuffer[(i / numN * elemInOneBlock + i % numN) * elemInOneBlock], numRemainPerLine, 1,
                         instrParams);
                 }
-             } else { 
-                 instrParams.dstBlkStride = 1; 
-                 instrParams.src0BlkStride = 1; 
-                 instrParams.src1BlkStride = 0; 
-                 instrParams.dstRepStride = dstRepStridePerLine;
-                 instrParams.src0RepStride = dstRepStridePerLine;
-                 instrParams.src1RepStride = 1;
-                 Mul(output[numRepeatPerLine * elemInOneRepeat], input0[numRepeatPerLine * elemInOneRepeat], tmpBuffer, 
-                     numRemainPerLine, curRowNum, instrParams); 
-             }
+            } else {
+                instrParams.dstBlkStride = 1; 
+                instrParams.src0BlkStride = 1; 
+                instrParams.src1BlkStride = 0; 
+                instrParams.dstRepStride = dstRepStridePerLine;
+                instrParams.src0RepStride = dstRepStridePerLine;
+                instrParams.src1RepStride = 1;
+                Mul(output[numRepeatPerLine * elemInOneRepeat], input0[numRepeatPerLine * elemInOneRepeat], tmpBuffer, 
+                    numRemainPerLine, curRowNum, instrParams); 
+            }
         }
     }
     PipeBarrier<PIPE_V>();
