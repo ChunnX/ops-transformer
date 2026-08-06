@@ -53,6 +53,7 @@ private:
     aclnnStatus CheckS8S4NZScaleShape() const;
     aclnnStatus CheckS8S4PseudoQuantScaleShape() const;
     aclnnStatus CheckS8S4PseudoQuantGroupListType() const;
+    aclnnStatus CheckS8S4PseudoQuantGroupSize(size_t idx) const;
     static aclnnStatus CheckOptionalListSize(const aclTensorList *optional, const aclTensorList *reference,
                                              const char *optionalName, const char *referenceName,
                                              const char *opName);
