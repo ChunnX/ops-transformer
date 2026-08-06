@@ -304,7 +304,8 @@ def check_one_output(name, expect, result, data_type, enabled, total_valid, pct_
         if expect.shape != result.shape:
             print_log(f"{name}: shape mismatch expect={expect.shape} result={result.shape}, flatten compare")
         fulfill_percent, result_str = check_result(expect, result, data_type, pct_thd)
-        max_abs_diff = abs(expect.cpu().float().flatten() - result.cpu().float().flatten()).max().item()
+        diff = expect.cpu().float().flatten() - result.cpu().float().flatten()
+        max_abs_diff = diff.abs().max().item() if diff.numel() > 0 else 0.0
         return {"diff": max_abs_diff, "pct": fulfill_percent, "status": "PASS" if result_str == "Pass" else "FAIL"}
     except Exception as e:
         import traceback
