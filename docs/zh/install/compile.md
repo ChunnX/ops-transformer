@@ -83,45 +83,30 @@
 
     > **权限要求**：安装自定义算子包需对 ```${ASCEND_HOME_PATH}/opp/vendors``` 目录有写权限。CANN 通常以 root 用户安装，若当前用户对该目录无写权限，安装脚本将无法更新 `config.ini`，导致算子无法加载。
 
-    **校验安装是否成功**：`config.ini` 的 `load_priority` 字段决定 CANN 是否加载自定义算子。安装完成后，建议执行如下命令校验 `config.ini` 是否更新成功。
+    **校验安装是否成功**：安装完成后执行以下命令，确认 `config.ini` 的 `load_priority` 已写入本 vendor：
 
     ```bash
     grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini
     ```
 
-    预期输出应包含已安装的 vendor 名（如 `${vendor_name}`），形如 `load_priority=${vendor_name}`。
-
-    > **如何判断校验结果**：`grep` 成功查到本 vendor 才算安装成功。若 `grep` 报错（如 `No such file`，说明 `config.ini` 未创建）或输出不含对应 vendor，均表示 `config.ini` 未更新成功，算子无法加载，请参考下方[权限失败修复指引](#权限失败修复指引)。
+    预期输出形如 `load_priority=${vendor_name}`。若无输出或报 `No such file`，说明安装失败，请参考下方[权限失败修复指引](#权限失败修复指引)。
 
     #### 权限失败修复指引
 
-    **安装前预检查**：建议安装前先检查 `opp/vendors` 属主与权限：
+    若安装失败或运行报 `error 161001`，通常是 `${ASCEND_HOME_PATH}/opp/vendors` 属主非当前用户，导致 `config.ini` 更新失败。检查属主：
 
     ```bash
     ls -ld ${ASCEND_HOME_PATH}/opp/vendors
-    ls -l  ${ASCEND_HOME_PATH}/opp/vendors/config.ini 2>/dev/null
     ```
 
-    若属主非当前用户（如 `root`），安装脚本将无法更新 `config.ini`（安装时提示 `chmod: ... Operation not permitted`），导致算子无法加载。请选择以下任一方式修复后重新安装。
-
-    **修复方式一（推荐）：将 vendors 目录属主改为当前用户**
+    属主非当前用户时，执行以下任一命令修复后重新安装：
 
     ```bash
-    sudo chown -R $(whoami) ${ASCEND_HOME_PATH}/opp/vendors
+    sudo chown -R $(whoami) ${ASCEND_HOME_PATH}/opp/vendors   # 推荐：改属主
+    sudo chmod -R u+w ${ASCEND_HOME_PATH}/opp/vendors          # 或：放宽写权限
     ```
 
-    **修复方式二：放宽 vendors 目录写权限**
-
-    ```bash
-    sudo chmod -R u+w ${ASCEND_HOME_PATH}/opp/vendors
-    ```
-
-    完成上述任一修复后，重新执行安装命令并再次校验 `load_priority`：
-
-    ```bash
-    ./cann-ops-transformer-${vendor_name}_linux-${arch}.run
-    grep load_priority ${ASCEND_HOME_PATH}/opp/vendors/config.ini
-    ```
+    修复后重新执行安装命令，并再次校验 `load_priority`。
 
     如果部署算子包时通过配置--install-path参数指定了算子包的安装目录，则在使用自定义算子前，需要执行```source ${install-path}/vendors/${vendor_name}/bin/set_env.bash```命令，set_env.bash脚本中将自定义算子包的安装路径追加到环境变量ASCEND_CUSTOM_OPP_PATH中，使自定义算子在当前环境中生效。
 
