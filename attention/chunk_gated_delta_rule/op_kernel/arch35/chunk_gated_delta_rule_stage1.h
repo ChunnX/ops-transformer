@@ -529,19 +529,27 @@ private:
         }
         PipeBarrier<PIPE_V>();
 
+        // attn 取负：前代法求逆需要 attn 的严格下三角部分（对角线为 0），取负后对角线恢复为 1
         Muls(inverseRes_, attnUbFloat_, static_cast<float>(-1.0), curVecLen);
+        // 构造单位阵 eiUb：先清零，再由标量逐行设置对角线为 1.0
+        // inverseBuffer_ 与 kkLocal_ 等共用 union 缓冲，须在每个 chunk 使用前重新初始化
         Duplicate(inverseBuffer_, static_cast<float>(0.0), INVERSE_SHAPE * chunkSize_);
         PipeBarrier<PIPE_V>();
+        // V→S 屏障：等待 V 管线 Duplicate 清零完成后再执行标量 SetValue
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::V_S));
         SetFlag<HardEvent::V_S>(eventID);
         WaitFlag<HardEvent::V_S>(eventID);
+        // 标量逐行设置单位阵对角线元素为 1.0
         for (uint32_t j = 0; j < INVERSE_SHAPE; ++j) {
             inverseBuffer_.SetValue(j * chunkSize_ + j, static_cast<float>(1.0));
         }
+        // S→V 屏障：等待标量 SetValue 完成后再执行 VF 函数中的向量 Load
         eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
         SetFlag<HardEvent::S_V>(eventID);
         WaitFlag<HardEvent::S_V>(eventID);
 
+        // 调用 VF 函数执行前代法求逆
+        // attnUbFloat_ 存储已取负的 attn，inverseBuffer_ 存储单位阵，inverseRes_ 存储求逆结果
         InverseAIVVF<INVERSE_SHAPE>(reinterpret_cast<__ubuf__ float *>(attnUbFloat_.GetPhyAddr()),
                                     reinterpret_cast<__ubuf__ float *>(inverseRes_.GetPhyAddr()),
                                     reinterpret_cast<__ubuf__ float *>(inverseBuffer_.GetPhyAddr()),
