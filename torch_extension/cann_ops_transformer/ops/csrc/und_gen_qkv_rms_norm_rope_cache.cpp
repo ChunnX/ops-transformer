@@ -62,9 +62,12 @@ at::Tensor UndGenQkvRmsNormRopeCache(const at::Tensor &undQkv, const at::Tensor 
     //       "tensor does not have a device"。undQkv / q 保持裸 at::Tensor 即可满足它。
     StorageShapeTensor kCacheWrapped{kCache};
     StorageShapeTensor vCacheWrapped{vCache};
+    // k_cache/v_cache 是原地更新的入参（带 Ref 后缀），aclnn 接口不再有对应的 *Out 出参，
+    // 实参列表必须与 aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize 逐一对齐：
+    // ACLNN_CMD 走动态符号解析 + 变参调用，多传或少传实参编译期不会报错，只会在运行时崩
     ACLNN_CMD(aclnnUndGenQkvRmsNormRopeCache, undQkv, undWeightsQ, undWeightsK, cosSinCache, kCacheWrapped,
               vCacheWrapped, slotMapping, positions, genQkv, genWeightsQ, genWeightsK, catIndices, numHeadsQ,
-              numHeadsK, numHeadsV, normEps, mropeSection, q, kCacheWrapped, vCacheWrapped);
+              numHeadsK, numHeadsV, normEps, mropeSection, q);
 
     return q;
 }
