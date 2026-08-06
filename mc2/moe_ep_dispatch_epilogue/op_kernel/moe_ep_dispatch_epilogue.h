@@ -304,6 +304,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTopkWeights>::Process()
 {
+    if (aivId_ == 0U) {
+        PRINTF("[EP] r=%u aiv=0 process begin\n", epRankId_);
+    }
     if constexpr (!IsCached) {
         ComputePrefixSums();
         WaitDispatch();
@@ -323,6 +326,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         WaitDispatch();
         SyncAll<true>();
         CopyFromWindowByCachedMeta();
+    }
+    if (aivId_ == 0U) {
+        PRINTF("[EP] r=%u aiv=0 process done\n", epRankId_);
     }
 }
 
@@ -347,16 +353,32 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
                                             static_cast<uint16_t>((WIN_ADDR_ALIGN - UB_ALIGN) / UB_ALIGN)};
 
     SyncFunc<AscendC::HardEvent::S_V>();    // 确保expertSum_计算完成
+    PRINTF("[EP] r=%u aiv=%u waitDispatch enter cmp=%u addr=%lu\n", epRankId_, aivId_, commpareFlag,
+           static_cast<unsigned long>(localSlotStateWinAddr_));
+    uint32_t dbgPoll = 0U;
     while (sumOfFlag != commpareFlag) {
         DataCopy(ubWaitStatus_, statusGMTensor, statusCopyParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum(ubWaitSumFp32, ubWaitStatusFp32, sharedTmp, mask, totalNotifyCnt_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = ubWaitSum_.GetValue(0);
+        if (dbgPoll < 5U || (dbgPoll & 0xFFU) == 0U) {
+            PRINTF("[EP] r=%u aiv=%u waitDispatch poll=%u sum=%d cmp=%d", epRankId_, aivId_, dbgPoll, sumOfFlag,
+                   commpareFlag);
+            uint32_t dbgSlotCount = totalNotifyCnt_ < 8U ? totalNotifyCnt_ : 8U;
+            uint32_t slotStride = UB_ALIGN / sizeof(int32_t);
+            for (uint32_t slotIdx = 0U; slotIdx < dbgSlotCount; ++slotIdx) {
+                PRINTF(" s%u=%d", slotIdx, ubWaitStatus_.GetValue(slotIdx * slotStride));
+            }
+            PRINTF("\n");
+        }
+        dbgPoll++;
     }
+    PRINTF("[EP] r=%u aiv=%u waitDispatch done sum=%d\n", epRankId_, aivId_, sumOfFlag);
     Duplicate<int32_t>(ubWaitStatus_, 0, totalNotifyCnt_ * UB_ALIGN / sizeof(int32_t));
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(statusGMTensor, ubWaitStatus_, clearStatusCopyParams);
+    PRINTF("[EP] r=%u aiv=%u waitDispatch status cleared\n", epRankId_, aivId_);
 }
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
