@@ -10,7 +10,7 @@
 
 #include <gtest/gtest.h>
 
-#include "../../../op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.h"
+#include "../../../op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
 #include "../../../op_kernel/arch35/weight_quant_basic_block/weight_quant_tiling_key.h"
 #include "gemm/utils/s8s4_fixed_tile_resource.h"
