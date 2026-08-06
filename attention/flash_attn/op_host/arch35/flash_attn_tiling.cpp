@@ -344,8 +344,8 @@ bool FlashAttnTilingImpl::CheckNeedInitOutput() const
     if (seqUsedQFlag_ || seqUsedKvFlag_) {
         return true;
     }
-    // kv为TND默认清零，kv可能会有空batch
-    if (faInfo_->kvLayout == FaLayout::TND) {
+    // 传入cuSeqLenKv时默认清零，可能会有空batch
+    if (cuSeqLenKVFlag_) {
         return true;
     }
     // 非TND固定shape: 按mask模式判断是否存在整行被mask掉的query块
