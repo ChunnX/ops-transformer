@@ -288,8 +288,6 @@ def check_one_output(name, expect, result, data_type, enabled, total_valid, pct_
     """
     if not enabled:
         return {"diff": float("nan"), "pct": 100.0, "status": "SKIP"}
-    if total_valid == 0:
-        return {"diff": float("nan"), "pct": 100.0, "status": "SKIP"}
 
     print_log("=" * 80)
     print_log(f"check {name}:")

@@ -848,13 +848,20 @@ ge::graphStatus CheckRequiredParaExistence(CompressorGradContext &compressorGrad
 
 ge::graphStatus CheckEmptyTensor(CompressorGradContext &compressorGradcontext)
 {
+    // CompressorGrad 不支持空 tensor：与正向不同（正向 x 支持 B/S/T=0 走 EMPTY_X 分支），
+    // 反向无空 tensor 分支——所有输入/输出 shapeSize 必须 > 0，空则直接拦截
     if (compressorGradcontext.x.shape->GetStorageShape().GetShapeSize() == 0 ||
         compressorGradcontext.wkv.shape->GetStorageShape().GetShapeSize() == 0 ||
         compressorGradcontext.wgate.shape->GetStorageShape().GetShapeSize() == 0 ||
         compressorGradcontext.dCmpKv.shape->GetStorageShape().GetShapeSize() == 0 ||
         compressorGradcontext.softmaxScore.shape->GetStorageShape().GetShapeSize() == 0 ||
-        compressorGradcontext.kv.shape->GetStorageShape().GetShapeSize() == 0) {
-        OP_LOGE(compressorGradcontext.opName, "Only input tensor x dim B or S or T supports to be 0");
+        compressorGradcontext.kv.shape->GetStorageShape().GetShapeSize() == 0 ||
+        compressorGradcontext.dX.shape->GetStorageShape().GetShapeSize() == 0 ||
+        compressorGradcontext.dWkv.shape->GetStorageShape().GetShapeSize() == 0 ||
+        compressorGradcontext.dWgate.shape->GetStorageShape().GetShapeSize() == 0 ||
+        compressorGradcontext.dApe.shape->GetStorageShape().GetShapeSize() == 0) {
+        OP_LOGE(compressorGradcontext.opName,
+                "CompressorGrad does not support empty tensor: all inputs/outputs shapeSize must be > 0");
         return ge::GRAPH_FAILED;
     }
 

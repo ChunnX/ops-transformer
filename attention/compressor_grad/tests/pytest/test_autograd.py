@@ -20,8 +20,10 @@ import torch
 from test_cases import REDLINE_CASES
 from cpu_golden import compressor_grad_golden
 from npu_core import NPUBackend
+import compressor_core
 from precision_check import (
     check_one_output,
+    check_result,
     print_log,
     get_pct_thd,
     get_output_keys,
@@ -145,6 +147,50 @@ def _check_block_size(case, batchSize, seqSize, layoutId, cmpRatio, coff, cacheM
             f"请修正 case 数据后重跑")
 
 
+def check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu, stateCacheCpu, apeCpu,
+                           blockTableCpu, spGolden, sqGolden, cuGolden,
+                           cmpRatio, coff, cacheMode, headDim, dataType):
+    """通路 1 增强：正向输出（cmp_kv/softmax_score/kv）与小算子拼接参考比对。
+
+    参考实现：compressor_core.compressor_forward（纯 PyTorch 小算子拼接）。
+    仅比对有效压缩块行（padding 行参考为 0、NPU 不保证写）。
+    """
+    coffD = coff * headDim
+    kv_state = stateCacheCpu[..., :coffD]
+    score_state = stateCacheCpu[..., coffD:]
+    ref_cmp, ref_mask, _, _, ref_sm, ref_kv = compressor_core.compressor_forward(
+        xCpu, wkvCpu, wgateCpu, kv_state, score_state, apeCpu, blockTableCpu,
+        [int(v) for v in spGolden] if spGolden is not None else None,
+        cmp_ratio=cmpRatio, coff=coff, cache_mode=cacheMode,
+        cu_seqlens=cuGolden,
+        seqused=[int(v) for v in sqGolden] if sqGolden is not None else None,
+        return_intermediates=True)
+
+    valid = ref_mask.any(dim=-1)  # (B, blocks) 或 (rows,)
+
+    def interleave(t):
+        # 参考为顺序布局 (prev|cur)；NPU 正向输出为交错布局
+        # (偶行=prev、奇行=cur)——比对前重排参考
+        n = t.shape[-2]
+        half = n // 2
+        return torch.stack([t[..., :half, :], t[..., half:, :]], dim=-2).reshape(t.shape)
+
+    def gather(t):
+        t = t.detach().float()  # npu 侧输出/参考输入可能带 requires_grad（autograd 图）
+        return t[valid]
+
+    results = []
+    for name, ref_t, npu_t, dt in (
+        ("cmp_kv", ref_cmp, npu_result["cmp_kv"], dataType),
+        ("softmax_score", interleave(ref_sm), npu_result["softmax_score"], "float32"),
+        ("kv", interleave(ref_kv), npu_result["kv"], "float32"),
+    ):
+        pct, res = check_result(gather(ref_t), gather(npu_t), dt, get_pct_thd(dt))
+        results.append(f"{name}={pct:.2f}%[{res.upper()}]".replace("PASS", "PASS"))
+    ok = all("PASS" in r for r in results)
+    return {"status": "PASS" if ok else "FAIL", "detail": "  ".join(results)}
+
+
 def npu_test(case, device):
     """Run one test case and return result dict."""
     name = case["testcase_name"]
@@ -240,20 +286,21 @@ def npu_test(case, device):
     #（见 backend.compute 的 saved tensors），此处不生成占位（避免与真实值不一致的误导）
 
     # ── Output tensors ──
-    # d_x/d_wkv/d_wgate: Phase 2/3 写入，当前仅占位
+    # d_x/d_wkv/d_wgate/d_ape: Phase 2/3 写入，占位用随机值（模拟真实未初始化内存，
+    # 不依赖初始 0——kernel 未写输出时比对必须 FAIL 而非被零掩盖）
     if layoutId == 1:  # TH
         totalTokens = tokenSize
     else:  # BSH
         totalTokens = batchSize * seqSize
-    d_xNpu     = torch.zeros(totalTokens, hiddenSize, device=device,
+    d_xNpu     = torch.rand(totalTokens, hiddenSize, device=device,
                              dtype=ioDtype)
-    d_wkvNpu   = torch.zeros(coff * headDim, hiddenSize, device=device,
+    d_wkvNpu   = torch.rand(coff * headDim, hiddenSize, device=device,
                               dtype=torch.float32)
-    d_wgateNpu = torch.zeros(coff * headDim, hiddenSize, device=device,
+    d_wgateNpu = torch.rand(coff * headDim, hiddenSize, device=device,
                               dtype=torch.float32)
     dapeWsNpu  = torch.zeros(wsSize, device=device, dtype=torch.float32)
     # d_ape final output (dummy — Phase 3 写入)
-    dapeOutNpu = torch.zeros(coff * cmpRatio * headDim, device=device, dtype=torch.float32)
+    dapeOutNpu = torch.rand(coff * cmpRatio * headDim, device=device, dtype=torch.float32)
 
     # TODO: 如需要 dkv/dsb GM 输出，需在 kernel 添加 pl.store 并在下方分配:
     #   dkvNpu = torch.zeros(outputRows, scKvRowCount, headDim,
@@ -480,14 +527,22 @@ def npu_test(case, device):
     result["dxPct"] = r_dx["pct"]
     result["dxStatus"] = r_dx["status"]
 
+    # ── 通路 1 增强：正向输出校验（cmp_kv/softmax_score/kv vs 小算子拼接参考）──
+    fwd = check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu,
+                                 state_cache_npu.cpu(), ape_npu.cpu(),
+                                 block_table_npu.cpu(), spGolden, sqGolden, cuGolden,
+                                 cmpRatio, coff, cache_mode, headDim, dataType)
+    result["fwdStatus"] = fwd["status"]
+    result["fwdDetail"] = fwd["detail"]
+    print_log(f"Forward check: {fwd['detail']}")
+
     # ── Overall status ──
-    # 全部 SKIP 或 0 有效块 → PASS（trivial）
     # 任一 FAIL → FAIL；任一 ERROR → ERROR
+    # 注：totalValid=0 不再 trivial PASS——四输出必须真实写 0（golden 全 0），
+    #      kernel 未写输出（垃圾）时校验必须 FAIL（见 _zero_outputs）
     statuses = [result["dwkvStatus"], result["dwgateStatus"],
-                result["apeStatus"], result["dxStatus"]]
-    if totalValid == 0:
-        result["status"] = "PASS"  # No valid blocks → trivial pass
-    elif any(s == "ERROR" for s in statuses):
+                result["apeStatus"], result["dxStatus"], result["fwdStatus"]]
+    if any(s == "ERROR" for s in statuses):
         result["status"] = "ERROR"
     elif any(s == "FAIL" for s in statuses):
         result["status"] = "FAIL"
