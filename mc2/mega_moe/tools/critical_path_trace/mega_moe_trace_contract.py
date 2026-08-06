@@ -24,7 +24,7 @@ TRACE_CONTRACTS = {
     },
     "mega-moe-a8w4-critical-path": {
         "path_id": 2,
-        "flags_by_protocol": {1: 0xF, 2: 0x1F},
+        "flags_by_protocol": {1: 0xF, 2: 0x1F, 3: 0x3F},
         "experts_per_wave": 1,
         "weight1_interleaved": 0,
     },
@@ -321,12 +321,15 @@ def expected_header_from_metadata(
         max_output_size = _required_meta_int(metadata, "max_output_size")
         max_gmm2_tiles = ceil_div(max_output_size, 256) * ceil_div(h, 256)
         combine_tiles_per_expert_per_core = ceil_div(max_gmm2_tiles, aic_count)
+        gmm1_waves_per_expert = ceil_div(max_output_size, 256)
         expected.update(
             {
                 "max_output_size": max_output_size,
                 "combine_tiles_per_expert_per_core": combine_tiles_per_expert_per_core,
                 "combine_tile_capacity": moe_experts
                 * combine_tiles_per_expert_per_core,
+                "gmm1_waves_per_expert": gmm1_waves_per_expert,
+                "gmm1_wave_capacity": moe_experts * gmm1_waves_per_expert,
             }
         )
     return expected
@@ -422,6 +425,9 @@ def validate_capture_contract(
             preflight_record_header["combine_tile_capacity"] = (
                 expected["moe_experts_per_rank"] * preflight_tiles_per_expert
             )
+            preflight_record_header["gmm1_wave_capacity"] = expected[
+                "gmm1_wave_capacity"
+            ]
         preflight_record_words = resolve_record_words(
             protocol, preflight_record_header
         )
@@ -444,6 +450,10 @@ def validate_capture_contract(
                     "combine_tile_capacity": preflight_record_header[
                         "combine_tile_capacity"
                     ],
+                    "gmm1_waves_per_expert": expected[
+                        "gmm1_waves_per_expert"
+                    ],
+                    "gmm1_wave_capacity": expected["gmm1_wave_capacity"],
                 }
             )
         mismatched_preflight = [
@@ -639,6 +649,46 @@ def validate_timestamp_order(
                         raise ContractError(
                             f"{label} expert {expert} tile {tile_ordinal} wait end "
                             "does not equal work begin"
+                        )
+
+        if (
+            spec["trace"]["name"] == "mega-moe-a8w4-critical-path"
+            and record.get("role") == "AIC"
+            and "gmm1_wave_capacity" in header
+        ):
+            wave_capacity = int(header["gmm1_wave_capacity"])
+            waves_per_expert = int(header["gmm1_waves_per_expert"])
+            wave_points = {
+                name: timestamps.get(name, [])
+                for name in (
+                    "a8w4_gmm1_wave_wait_begin_S",
+                    "a8w4_gmm1_wave_wait_end_S",
+                    "a8w4_gmm1_wave_begin_S",
+                    "a8w4_gmm1_wave_end_S",
+                )
+            }
+            if any(len(values) != wave_capacity for values in wave_points.values()):
+                raise ContractError(
+                    f"{label} GMM1 wave arrays do not match capacity {wave_capacity}"
+                )
+            expert_count = int(header["moe_experts_per_rank"])
+            if wave_capacity != expert_count * waves_per_expert:
+                raise ContractError(
+                    f"{label} GMM1 wave capacity does not match expert slot layout"
+                )
+            for expert in range(expert_count):
+                for wave in range(waves_per_expert):
+                    slot = expert * waves_per_expert + wave
+                    values = [point_values[slot] for point_values in wave_points.values()]
+                    present = [value != missing for value in values]
+                    if any(present) and not all(present):
+                        raise ContractError(
+                            f"{label} expert {expert} GMM1 wave {wave} has incomplete boundaries"
+                        )
+                    if all(present) and values[1] != values[2]:
+                        raise ContractError(
+                            f"{label} expert {expert} GMM1 wave {wave} wait end "
+                            "does not equal envelope begin"
                         )
 
         for point, values in timestamps.items():

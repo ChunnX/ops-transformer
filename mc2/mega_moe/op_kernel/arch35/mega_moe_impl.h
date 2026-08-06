@@ -1121,12 +1121,33 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
         } else {
             shouldWait = loopIdx == startLoopIdx;
         }
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if constexpr (Policy::IS_GMM1) {
+            if (shouldWait && criticalPathTrace != nullptr &&
+                criticalPathTrace->NeedsGmm1WaveWait(expertIdx, waveIdx)) {
+                // TRACE_POINT: a8w4_gmm1_wave_wait_begin_S
+                criticalPathTrace->BeginGmm1WaveWait(
+                    expertIdx, waveIdx, CriticalPathTrace::Now());
+            }
+        }
+#endif
         if (shouldWait) {
             WaitForUpstreamReady<Policy, IsShared>(gmmAddrInfo, config, mLoc);
             if constexpr (Policy::IS_GMM1 || Config::SOURCE_GMM1_INTERLEAVED) {
                 lastWaveWaited = waveIdx;
             }
         }
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if constexpr (Policy::IS_GMM1) {
+            if (shouldWait && criticalPathTrace != nullptr &&
+                criticalPathTrace->NeedsGmm1WaveBegin(expertIdx, waveIdx)) {
+                // TRACE_POINT: a8w4_gmm1_wave_wait_end_S
+                // TRACE_POINT: a8w4_gmm1_wave_begin_S
+                criticalPathTrace->BeginGmm1Wave(
+                    expertIdx, waveIdx, CriticalPathTrace::Now());
+            }
+        }
+#endif
 #if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
         if constexpr (Policy::IS_GMM1) {
             if (criticalPathTrace != nullptr && criticalPathTrace->NeedsExpertStage0Begin()) {
@@ -1186,6 +1207,15 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
                 AscendC::WriteGmByPassDCache(gmmAddrInfo.gmmToEpilogueFlag, ++gmTileSequence);
             }
         }
+#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0
+        if constexpr (Policy::IS_GMM1) {
+            if (criticalPathTrace != nullptr) {
+                // TRACE_POINT: a8w4_gmm1_wave_end_S
+                criticalPathTrace->EndGmm1Wave(
+                    expertIdx, waveIdx, CriticalPathTrace::Now());
+            }
+        }
+#endif
     }
 }
 

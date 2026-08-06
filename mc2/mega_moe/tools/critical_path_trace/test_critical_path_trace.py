@@ -118,6 +118,10 @@ def make_synthetic_capture(
             preflight_record_header["combine_tile_capacity"] = (
                 metadata["local_moe_expert_num"] * preflight_tiles_per_expert
             )
+            preflight_waves_per_expert = (metadata["max_output_size"] + 255) // 256
+            preflight_record_header["gmm1_wave_capacity"] = (
+                metadata["local_moe_expert_num"] * preflight_waves_per_expert
+            )
         preflight_record_words = resolve_record_words(protocol, preflight_record_header)
         metadata["capacity_preflight"] = {
             "protocol_version": int(protocol["version"]),
@@ -133,6 +137,7 @@ def make_synthetic_capture(
             "scratch_required_bytes": 4 * 3 * configured_aic_count * (
                 (3 if a8w4 else 2) * 3 * 8
                 + 4 * preflight_record_header.get("combine_tile_capacity", 0)
+                + 4 * preflight_record_header.get("gmm1_wave_capacity", 0)
             ),
             "scratch_reserve_bytes": 50 * 1024 * 1024,
         }
@@ -143,6 +148,10 @@ def make_synthetic_capture(
                     "combine_tiles_per_expert_per_core": preflight_tiles_per_expert,
                     "combine_tile_capacity": preflight_record_header[
                         "combine_tile_capacity"
+                    ],
+                    "gmm1_waves_per_expert": preflight_waves_per_expert,
+                    "gmm1_wave_capacity": preflight_record_header[
+                        "gmm1_wave_capacity"
                     ],
                 }
             )
@@ -182,6 +191,8 @@ def make_synthetic_capture(
                         for stage in range(active_stage_count):
                             begin = 100 + 1800 * stage + 180 * expert
                             end = begin + 100
+                            if role_index == 0 and stage == 0:
+                                end = begin + 160
                             if role_index == 2 and stage == 2:
                                 begin = 3700 + 220 * expert
                                 end = begin + 180
@@ -210,6 +221,26 @@ def make_synthetic_capture(
                                 words[entry + 1] = (process_begin + tile_begin) & 0xFFFFFFFF
                                 words[entry + 2] = (process_begin + tile_begin) & 0xFFFFFFFF
                                 words[entry + 3] = (process_begin + tile_end) & 0xFFFFFFFF
+                    if role_index == 0 and core < 2:
+                        wave_record_base = (
+                            base
+                            + 2
+                            + 6 * 8
+                            + 4 * expected["combine_tile_capacity"]
+                        )
+                        waves_per_expert = expected["gmm1_waves_per_expert"]
+                        for expert in range(8):
+                            aggregate_begin = 100 + 180 * expert
+                            for wave in range(waves_per_expert):
+                                slot = expert * waves_per_expert + wave
+                                wait_begin = aggregate_begin + wave * 75 - 20
+                                wave_begin = aggregate_begin + wave * 75
+                                wave_end = wave_begin + 60
+                                entry = wave_record_base + slot * 4
+                                words[entry + 0] = (process_begin + wait_begin) & 0xFFFFFFFF
+                                words[entry + 1] = (process_begin + wave_begin) & 0xFFFFFFFF
+                                words[entry + 2] = (process_begin + wave_begin) & 0xFFFFFFFF
+                                words[entry + 3] = (process_begin + wave_end) & 0xFFFFFFFF
             elif role_index == 0 and core < 2:
                 for expert in range(8):
                     words[base + 2 + 4 * expert] = (
@@ -275,6 +306,22 @@ def make_synthetic_capture(
 
 
 class TraceContractTests(unittest.TestCase):
+    def test_a8w4_spec_exposes_per_wave_gmm1_wait_and_work(self) -> None:
+        spec = load_json(A8W4_SPEC)
+        point_ids = {point["id"] for point in spec["points"]}
+        span_ids = {span["id"] for span in spec["spans"]}
+        self.assertTrue(
+            {
+                "a8w4_gmm1_wave_wait_begin_S",
+                "a8w4_gmm1_wave_wait_end_S",
+                "a8w4_gmm1_wave_begin_S",
+                "a8w4_gmm1_wave_end_S",
+            }.issubset(point_ids)
+        )
+        self.assertTrue(
+            {"a8w4_gmm1_wave_wait", "a8w4_gmm1_wave_work"}.issubset(span_ids)
+        )
+
     def test_a8w4_spec_exposes_per_tile_combine_wait_and_work(self) -> None:
         spec = load_json(A8W4_SPEC)
         point_ids = {point["id"] for point in spec["points"]}
@@ -382,10 +429,10 @@ class TraceContractTests(unittest.TestCase):
                 a8w4_spec_path=A8W4_SPEC,
                 a8w4_audit_path=A8W4_AUDIT,
             )
-            self.assertEqual(results[0]["protocol_version"], 2)
+            self.assertEqual(results[0]["protocol_version"], 3)
             normalized = load_json(directory / "rank0.normalized.json")
-            self.assertEqual(normalized["schema_id"], "0xe9b9e5a3")
-            self.assertEqual(normalized["metadata"]["resolved_record_words"], 114)
+            self.assertEqual(normalized["schema_id"], "0xabb0fd53")
+            self.assertEqual(normalized["metadata"]["resolved_record_words"], 178)
             order = load_json(directory / "rank0.order-check.json")
             self.assertEqual(order["span_summary"]["a8w4_process"]["count"], 108)
             self.assertEqual(
@@ -394,10 +441,17 @@ class TraceContractTests(unittest.TestCase):
             self.assertEqual(
                 order["span_summary"]["a8w4_combine_tile_work"]["count"], 576
             )
+            self.assertEqual(
+                order["span_summary"]["a8w4_gmm1_wave_wait"]["count"], 32
+            )
+            self.assertEqual(
+                order["span_summary"]["a8w4_gmm1_wave_work"]["count"], 32
+            )
             rendered_html = (directory / "rank0.html").read_text(encoding="utf-8")
             self.assertIn("GMM1 权重 prologue", rendered_html)
             self.assertIn("逐专家 Combine", rendered_html)
             self.assertIn("Combine tile wait", rendered_html)
+            self.assertIn("GMM1 wave wait", rendered_html)
 
     def test_bad_magic_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -496,6 +550,8 @@ class TraceContractTests(unittest.TestCase):
             self.assertEqual(expected["record_count"], 96)
             self.assertEqual(expected["combine_tiles_per_expert_per_core"], 2)
             self.assertEqual(expected["combine_tile_capacity"], 16)
+            self.assertEqual(expected["gmm1_waves_per_expert"], 2)
+            self.assertEqual(expected["gmm1_wave_capacity"], 16)
             self.assertEqual(contract["header"]["role_counts"], [32, 32, 32])
             self.assertEqual(
                 contract["metadata"]["capacity_preflight"]["aic_core_num"], 36

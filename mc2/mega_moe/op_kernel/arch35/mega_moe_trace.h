@@ -65,41 +65,46 @@ static constexpr uint32_t CRITICAL_PATH_TRACE_DYNAMIC_WORDS_PER_EXPERT = 4U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_SCRATCH_WORDS_PER_STAGE_EXPERT = 3U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_SCRATCH_STAGE_COUNT = 2U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_A8W4_STAGE_COUNT = 3U;
-static constexpr uint32_t CRITICAL_PATH_TRACE_A8W4_HEADER_WORDS = 33U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_A8W4_HEADER_WORDS = 35U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_COMBINE_TILE_WORDS = 4U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_GMM1_WAVE_WORDS = 4U;
 // Arch35 tiling always appends this diagnostic-safe reserve after WorkspaceInfo::workspaceSize.
 // Keep synchronized with RESERVED_WORKSPACE_SIZE in op_host/op_tiling/arch35/mega_moe_tiling.cpp.
 static constexpr uint64_t CRITICAL_PATH_TRACE_SCRATCH_RESERVED_BYTES = 50ULL * 1024ULL * 1024ULL;
 static constexpr uint32_t CRITICAL_PATH_TRACE_PATH_MTE_A8W8_WAVE = 1U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_PATH_MTE_A8W4 = 2U;
-static constexpr uint32_t CRITICAL_PATH_TRACE_A8W4_PROTOCOL_VERSION = 2U;
-static constexpr uint32_t CRITICAL_PATH_TRACE_A8W4_SCHEMA_ID = 0xE9B9E5A3U;
-static constexpr uint32_t CRITICAL_PATH_TRACE_A8W4_FLAGS = 0x1FU;
+static constexpr uint32_t CRITICAL_PATH_TRACE_A8W4_PROTOCOL_VERSION = 3U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_A8W4_SCHEMA_ID = 0xABB0FD53U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_A8W4_FLAGS = 0x3FU;
 
 __aicore__ inline uint32_t CriticalPathTraceRecordWords(
     uint32_t expertCount, uint32_t stageCount = CRITICAL_PATH_TRACE_SCRATCH_STAGE_COUNT,
-    uint32_t combineTileCapacity = 0U)
+    uint32_t combineTileCapacity = 0U, uint32_t gmm1WaveCapacity = 0U)
 {
 #if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
     return CRITICAL_PATH_TRACE_DYNAMIC_RECORD_BASE_WORDS +
-           2U * stageCount * expertCount + CRITICAL_PATH_TRACE_COMBINE_TILE_WORDS * combineTileCapacity;
+           2U * stageCount * expertCount + CRITICAL_PATH_TRACE_COMBINE_TILE_WORDS * combineTileCapacity +
+           CRITICAL_PATH_TRACE_GMM1_WAVE_WORDS * gmm1WaveCapacity;
 #else
     (void)expertCount;
     (void)combineTileCapacity;
+    (void)gmm1WaveCapacity;
     return CRITICAL_PATH_TRACE_COARSE_RECORD_WORDS;
 #endif
 }
 
 __aicore__ inline uint32_t CriticalPathTraceScratchRecordWords(
     uint32_t expertCount, uint32_t stageCount = CRITICAL_PATH_TRACE_SCRATCH_STAGE_COUNT,
-    uint32_t combineTileCapacity = 0U)
+    uint32_t combineTileCapacity = 0U, uint32_t gmm1WaveCapacity = 0U)
 {
 #if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
     return stageCount * CRITICAL_PATH_TRACE_SCRATCH_WORDS_PER_STAGE_EXPERT * expertCount +
-           CRITICAL_PATH_TRACE_COMBINE_TILE_WORDS * combineTileCapacity;
+           CRITICAL_PATH_TRACE_COMBINE_TILE_WORDS * combineTileCapacity +
+           CRITICAL_PATH_TRACE_GMM1_WAVE_WORDS * gmm1WaveCapacity;
 #else
     (void)expertCount;
     (void)combineTileCapacity;
+    (void)gmm1WaveCapacity;
     return 0U;
 #endif
 }
@@ -145,6 +150,8 @@ struct CriticalPathTrace {
     uint32_t stageCount = CRITICAL_PATH_TRACE_SCRATCH_STAGE_COUNT;
     uint32_t combineTilesPerExpert = 0U;
     uint32_t combineTileCapacity = 0U;
+    uint32_t gmm1WavesPerExpert = 0U;
+    uint32_t gmm1WaveCapacity = 0U;
     uint32_t stage0ActiveOccurrence = INVALID_OCCURRENCE;
     uint32_t stage1ActiveOccurrence = INVALID_OCCURRENCE;
     uint32_t stage2ActiveOccurrence = INVALID_OCCURRENCE;
@@ -168,7 +175,7 @@ struct CriticalPathTrace {
     WaveTrace wave2{};
     WaveTrace wave3{};
 
-    __aicore__ inline void Init(__gm__ uint32_t *, uint32_t, uint32_t, uint32_t = 0U) {}
+    __aicore__ inline void Init(__gm__ uint32_t *, uint32_t, uint32_t, uint32_t = 0U, uint32_t = 0U) {}
     __aicore__ inline void PrepareExpertStage0(uint32_t) {}
     __aicore__ inline void PrepareExpertStage1(uint32_t) {}
     __aicore__ inline void PrepareExpertStage2(uint32_t) {}
@@ -190,6 +197,11 @@ struct CriticalPathTrace {
     __aicore__ inline void BeginCombineTileWait(uint32_t, uint32_t, uint32_t) {}
     __aicore__ inline void BeginCombineTile(uint32_t, uint32_t, uint32_t) {}
     __aicore__ inline void EndCombineTile(uint32_t, uint32_t, uint32_t) {}
+    __aicore__ inline void BeginGmm1WaveWait(uint32_t, uint32_t, uint32_t) {}
+    __aicore__ inline void BeginGmm1Wave(uint32_t, uint32_t, uint32_t) {}
+    __aicore__ inline void EndGmm1Wave(uint32_t, uint32_t, uint32_t) {}
+    __aicore__ inline bool NeedsGmm1WaveWait(uint32_t, uint32_t) const { return false; }
+    __aicore__ inline bool NeedsGmm1WaveBegin(uint32_t, uint32_t) const { return false; }
 #endif
 
     static __aicore__ inline uint32_t Now()
@@ -201,16 +213,23 @@ struct CriticalPathTrace {
 #if MEGA_MOE_ENABLE_FINE_GRAIN_CRITICAL_PATH_TRACE != 0
     __aicore__ inline void Init(__gm__ uint32_t *scratch, uint32_t expertCount,
                                 uint32_t traceStageCount = CRITICAL_PATH_TRACE_SCRATCH_STAGE_COUNT,
-                                uint32_t traceCombineTilesPerExpert = 0U)
+                                uint32_t traceCombineTilesPerExpert = 0U,
+                                uint32_t traceGmm1WavesPerExpert = 0U)
     {
         scratchRecord = scratch;
         occurrenceCapacity = expertCount;
         stageCount = traceStageCount;
         combineTilesPerExpert = traceCombineTilesPerExpert;
         combineTileCapacity = expertCount * traceCombineTilesPerExpert;
+        gmm1WavesPerExpert = traceGmm1WavesPerExpert;
+        gmm1WaveCapacity = expertCount * traceGmm1WavesPerExpert;
         __gm__ uint32_t *tileScratch = CombineTileScratch();
         for (uint32_t word = 0U; word < CRITICAL_PATH_TRACE_COMBINE_TILE_WORDS * combineTileCapacity; ++word) {
             AscendC::WriteGmByPassDCache(tileScratch + word, 0U);
+        }
+        __gm__ uint32_t *waveScratch = Gmm1WaveScratch();
+        for (uint32_t word = 0U; word < CRITICAL_PATH_TRACE_GMM1_WAVE_WORDS * gmm1WaveCapacity; ++word) {
+            AscendC::WriteGmByPassDCache(waveScratch + word, 0U);
         }
         AscendC::PipeBarrier<PIPE_ALL>();
     }
@@ -384,6 +403,57 @@ struct CriticalPathTrace {
         }
     }
 
+    __aicore__ inline __gm__ uint32_t *Gmm1WaveScratch() const
+    {
+        return CombineTileScratch() + CRITICAL_PATH_TRACE_COMBINE_TILE_WORDS * combineTileCapacity;
+    }
+
+    __aicore__ inline __gm__ uint32_t *Gmm1WaveEntry(uint32_t expert, uint32_t wave) const
+    {
+        if (scratchRecord == nullptr || expert >= occurrenceCapacity || wave >= gmm1WavesPerExpert) {
+            return nullptr;
+        }
+        const uint32_t slot = expert * gmm1WavesPerExpert + wave;
+        return Gmm1WaveScratch() + slot * CRITICAL_PATH_TRACE_GMM1_WAVE_WORDS;
+    }
+
+    __aicore__ inline void BeginGmm1WaveWait(uint32_t expert, uint32_t wave, uint32_t value)
+    {
+        __gm__ uint32_t *entry = Gmm1WaveEntry(expert, wave);
+        if (entry != nullptr && AscendC::ReadGmByPassDCache(entry + 0U) == 0U) {
+            AscendC::WriteGmByPassDCache(entry + 0U, value);
+        }
+    }
+
+    __aicore__ inline bool NeedsGmm1WaveWait(uint32_t expert, uint32_t wave) const
+    {
+        __gm__ uint32_t *entry = Gmm1WaveEntry(expert, wave);
+        return entry != nullptr && AscendC::ReadGmByPassDCache(entry + 0U) == 0U;
+    }
+
+    __aicore__ inline void BeginGmm1Wave(uint32_t expert, uint32_t wave, uint32_t value)
+    {
+        __gm__ uint32_t *entry = Gmm1WaveEntry(expert, wave);
+        if (entry != nullptr && AscendC::ReadGmByPassDCache(entry + 1U) == 0U) {
+            AscendC::WriteGmByPassDCache(entry + 1U, value);
+            AscendC::WriteGmByPassDCache(entry + 2U, value);
+        }
+    }
+
+    __aicore__ inline bool NeedsGmm1WaveBegin(uint32_t expert, uint32_t wave) const
+    {
+        __gm__ uint32_t *entry = Gmm1WaveEntry(expert, wave);
+        return entry != nullptr && AscendC::ReadGmByPassDCache(entry + 1U) == 0U;
+    }
+
+    __aicore__ inline void EndGmm1Wave(uint32_t expert, uint32_t wave, uint32_t value)
+    {
+        __gm__ uint32_t *entry = Gmm1WaveEntry(expert, wave);
+        if (entry != nullptr) {
+            AscendC::WriteGmByPassDCache(entry + 3U, value);
+        }
+    }
+
     __aicore__ inline void WriteScratchStage(
         __gm__ uint32_t *record, __gm__ uint32_t *stageScratch, uint32_t count, uint32_t beginWord) const
     {
@@ -405,7 +475,8 @@ struct CriticalPathTrace {
 
     __aicore__ inline void WriteRecord(__gm__ uint32_t *record) const
     {
-        const uint32_t recordWords = CriticalPathTraceRecordWords(occurrenceCapacity, stageCount, combineTileCapacity);
+        const uint32_t recordWords =
+            CriticalPathTraceRecordWords(occurrenceCapacity, stageCount, combineTileCapacity, gmm1WaveCapacity);
         for (uint32_t word = 0U; word < recordWords; ++word) {
             AscendC::WriteGmByPassDCache(record + word, 0U);
         }
@@ -427,6 +498,13 @@ struct CriticalPathTrace {
         for (uint32_t word = 0U; word < CRITICAL_PATH_TRACE_COMBINE_TILE_WORDS * combineTileCapacity; ++word) {
             AscendC::WriteGmByPassDCache(
                 record + tileRecordBase + word, AscendC::ReadGmByPassDCache(tileScratch + word));
+        }
+        const uint32_t waveRecordBase =
+            tileRecordBase + CRITICAL_PATH_TRACE_COMBINE_TILE_WORDS * combineTileCapacity;
+        __gm__ uint32_t *waveScratch = Gmm1WaveScratch();
+        for (uint32_t word = 0U; word < CRITICAL_PATH_TRACE_GMM1_WAVE_WORDS * gmm1WaveCapacity; ++word) {
+            AscendC::WriteGmByPassDCache(
+                record + waveRecordBase + word, AscendC::ReadGmByPassDCache(waveScratch + word));
         }
     }
 #else

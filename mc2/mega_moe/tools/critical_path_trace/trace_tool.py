@@ -284,6 +284,30 @@ POINT_TEXT_ZH = {
         "proof": "依次经过 MTE3_MTE2 和 MTE2_S 后采样。",
         "perturbation": "每个本核 Combine tile 一次 MTE2_S 桥接和时钟采样。",
     },
+    "a8w4_gmm1_wave_wait_begin_S": {
+        "when": "AIC 首次为当前专家 M-wave 检查 Dispatch ready。",
+        "why": "量化 Dispatch 到 GMM1 的逐 M-wave 首次等待。",
+        "proof": "采样直接位于 WaitForUpstreamReady 之前。",
+        "perturbation": "每个活跃专家 M-wave 保留一次时钟。",
+    },
+    "a8w4_gmm1_wave_wait_end_S": {
+        "when": "当前专家 M-wave 的 Dispatch 行数条件已经满足。",
+        "why": "精确关闭逐 M-wave 首次等待。",
+        "proof": "采样直接位于 WaitForUpstreamReady 之后。",
+        "perturbation": "与 wave envelope begin 共用一次时钟。",
+    },
+    "a8w4_gmm1_wave_begin_S": {
+        "when": "当前专家 M-wave 的首个本核 tile 即将发出 MMAD。",
+        "why": "建立该 M-wave 活跃包络的起点。",
+        "proof": "采样在 readiness 后、blockMmad 前。",
+        "perturbation": "与 wave wait end 共用一次时钟。",
+    },
+    "a8w4_gmm1_wave_end_S": {
+        "when": "当前专家 M-wave 最新一个本核 tile 已完成 FIX_S 发布。",
+        "why": "建立该 M-wave 活跃包络的终点。",
+        "proof": "采样位于每个 tile 已有 FIX_S 和 ready 发布之后，最终保留最新值。",
+        "perturbation": "每个本核 GMM1 tile 一次时钟；包络可能包含 swizzle 穿插的其他 wave。",
+    },
 }
 
 SPAN_LABEL_ZH = {
@@ -306,6 +330,8 @@ SPAN_LABEL_ZH = {
     "a8w4_combine": "逐专家 Combine",
     "a8w4_combine_tile_wait": "Combine tile wait",
     "a8w4_combine_tile_work": "Combine tile work",
+    "a8w4_gmm1_wave_wait": "GMM1 wave wait",
+    "a8w4_gmm1_wave_work": "GMM1 wave active envelope",
 }
 
 
@@ -2053,6 +2079,22 @@ def _render_html(
                     tile_expert = occurrence // tiles_per_expert
                     tile_ordinal = occurrence % tiles_per_expert
                     wave_id = None
+                wave_expert = None
+                m_wave = None
+                if span["id"] in {
+                    "a8w4_gmm1_wave_wait",
+                    "a8w4_gmm1_wave_work",
+                }:
+                    waves_per_expert = int(
+                        runtime_header.get("gmm1_waves_per_expert", 0)
+                    )
+                    if waves_per_expert <= 0:
+                        raise ContractError(
+                            "A8W4 wave span lacks positive gmm1_waves_per_expert"
+                        )
+                    wave_expert = occurrence // waves_per_expert
+                    m_wave = occurrence % waves_per_expert
+                    wave_id = None
                 row_spans.append(
                     {
                         "span": span,
@@ -2060,6 +2102,8 @@ def _render_html(
                         "wave_id": wave_id,
                         "tile_expert": tile_expert,
                         "tile_ordinal": tile_ordinal,
+                        "wave_expert": wave_expert,
+                        "m_wave": m_wave,
                         "derived_gap": None,
                         "begin_raw": begin,
                         "end_raw": end,
@@ -2212,12 +2256,16 @@ def _render_html(
             css_class = "" if exact else "nonexact"
             opacity = "0.92" if exact else "0.42"
             wave_label = (
-                f"专家 {rendered.get('tile_expert')} / 本核 tile {rendered.get('tile_ordinal')}"
-                if rendered.get("tile_expert") is not None
+                f"专家 {rendered.get('wave_expert')} / M-wave {rendered.get('m_wave')}"
+                if rendered.get("wave_expert") is not None
                 else (
-                    f"wave {rendered['wave_id']} / 专家 {rendered['occurrence']}"
-                    if rendered["wave_id"] is not None
-                    else f"记录项 {rendered['occurrence']}"
+                    f"专家 {rendered.get('tile_expert')} / 本核 tile {rendered.get('tile_ordinal')}"
+                    if rendered.get("tile_expert") is not None
+                    else (
+                        f"wave {rendered['wave_id']} / 专家 {rendered['occurrence']}"
+                        if rendered["wave_id"] is not None
+                        else f"记录项 {rendered['occurrence']}"
+                    )
                 )
             )
             if rendered["derived_gap"] is not None:

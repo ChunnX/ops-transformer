@@ -60,12 +60,15 @@ workspace 两种容量，adapter 还会在第一次算子执行之前做同公�
 新的逐专家打点和间隙，必须重新编译并安装默认 v7 kernel。其他 version/schema
 仍然 fail closed。
 
-A8W4 specialized 路径使用独立的 protocol v2、schema `0xe9b9e5a3`、path id 2。
-每条 record 为 `2 + 6 * moeExpertPerRank + 4 * combineTileCapacity` words：AIC
+A8W4 specialized 路径使用独立的 protocol v3、schema `0xabb0fd53`、path id 2。
+每条 record 为 `2 + 6 * moeExpertPerRank + 4 * combineTileCapacity +
+4 * gmm1WaveCapacity` words：AIC
 记录 GMM1/GMM2，AIV0 记录两段权重 prologue，AIV1 记录 Dispatch、SwiGLU、逐专家
 Combine，以及逐 tile 的 wait begin/end 和 work begin/end。`combineTileCapacity` 等于
 `moeExpertPerRank * combineTilesPerExpertPerCore`，后者由 `maxOutputSize`、`h` 和设备
-header 中的运行时 AIC 数推导。所有阶段 end 均带有直接或复用的完成依赖证明；
+header 中的运行时 AIC 数推导。AIC 还按 `expert × M-wave` 记录 GMM1 首次 Dispatch-ready
+等待和活跃包络；`gmm1WaveCapacity = moeExpertPerRank * ceil(maxOutputSize / 256)`。
+所有阶段 end 均带有直接或复用的完成依赖证明；
 prologue 为诊断态增加 `MTE3_S`，SwiGLU 复用算子内部已有的 `MTE3_S`。逐 tile
 Combine end 为获得实际发送完成边界，每 tile 增加一次 `MTE2_S`，因此该视图仅用于诊断。
 
@@ -91,6 +94,8 @@ Combine；下一 wave 的 Dispatch 可以与当前 wave 的计算重叠。
 | `combine_end_S` | `mega_moe_wave.h` / `ProcessCombineExperts` | ring drain 后远端 MTE3 send 完成；增加一次 MTE2→Scalar bridge和时钟。 |
 | `a8w4_combine_tile_wait_begin/end_S` | `mega_moe_impl.h` / `AivGmm2PostA8W4` | 每个本核 Combine tile 在轮询 GMM2 ready 前后采样，精确展示等待空泡；ready 后的一次时钟同时写 wait end 和 work begin。 |
 | `a8w4_combine_tile_begin/end_S` | `mega_moe_impl.h` / `AivGmm2PostA8W4` | 从 tile ready 后、首次 GM→UB 前开始，到远端 MTE3 写出经 `MTE3_MTE2`、`MTE2_S` 到达 Scalar 后结束；每 tile 增加一次完成桥。 |
+| `a8w4_gmm1_wave_wait_begin/end_S` | `mega_moe_impl.h` / `AicComputeA8W4` | 每个 expert/M-wave 首次进入 readiness polling 前后采样，直接展示 Dispatch-ready 等待；wait end 与 envelope begin 共用一次时钟。 |
+| `a8w4_gmm1_wave_begin/end_S` | `mega_moe_impl.h` / `AicComputeA8W4` | 从该 M-wave 首个本核 tile issue 前到最新本核 tile 完成既有 `FIX_S` 发布后；由于 `BlockSchedulerSwizzle<3,1>` 可能穿插其他 M-wave，这是一段活跃包络，不等同于纯 MMAD 占用。每个 tile 只增加一次结束时钟，不新增 FIX bridge。 |
 
 完整的文件、函数/符号、唯一语义锚点、解析行号、边界等级、原因、性能关系、
 依赖证明和潜在扰动见：
@@ -136,8 +141,8 @@ AIC0 再写 header、执行 `PIPE_ALL`，最后发布 magic。
   `bs * h * sizeof(OutputType)`；适配器要求实际输出 dtype/shape 精确匹配。
 - v7 布局：`30 + 3 * aicNum * (2 + 4 * moeExpertPerRank)` 个 word，不含固定
   专家上限。
-- A8W4 v2 布局：`33 + 3 * aicNum * (2 + 6 * moeExpertPerRank +
-  4 * combineTileCapacity)` 个 word。adapter 用配置核数做保守容量预检，设备与 host
+- A8W4 v3 布局：`35 + 3 * aicNum * (2 + 6 * moeExpertPerRank +
+  4 * combineTileCapacity + 4 * gmm1WaveCapacity)` 个 word。adapter 用配置核数做保守容量预检，设备与 host
   用 runtime header 核数重新计算 `combineTilesPerExpertPerCore` 和 record words。
 - 用户 case `bs=24, h=6144, aicNum=36, moeExpertPerRank=8` 时，record 为
   34 words，最终 trace 需要 `14808` bytes；BF16 y 有 `294912` bytes。

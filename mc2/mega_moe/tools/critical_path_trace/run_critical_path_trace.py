@@ -125,9 +125,9 @@ def _critical_path_trace_validate_capacity():
     output_bytes = int(bs) * int(h) * torch.empty((), dtype=out_dtype).element_size()
     trace_profile = os.environ["MEGA_MOE_CRITICAL_PATH_TRACE_PROFILE"]
     if trace_profile == "a8w4":
-        protocol_version = 2
+        protocol_version = 3
         stage_count = 3
-        header_words = 33
+        header_words = 35
         max_gmm2_tiles = (
             (max_output_size + 255) // 256
         ) * ((int(h) + 255) // 256)
@@ -135,23 +135,36 @@ def _critical_path_trace_validate_capacity():
             max_gmm2_tiles + aic_count - 1
         ) // aic_count
         combine_tile_capacity = expert_count * combine_tiles_per_expert_per_core
+        gmm1_waves_per_expert = (max_output_size + 255) // 256
+        gmm1_wave_capacity = expert_count * gmm1_waves_per_expert
     elif trace_profile == "a8w8-wave":
         protocol_version = 7
         stage_count = 2
         header_words = 30
         combine_tiles_per_expert_per_core = 0
         combine_tile_capacity = 0
+        gmm1_waves_per_expert = 0
+        gmm1_wave_capacity = 0
     else:
         raise RuntimeError(f"unsupported critical-path trace profile: {trace_profile}")
-    record_words = 2 + 2 * stage_count * expert_count + 4 * combine_tile_capacity
+    record_words = (
+        2
+        + 2 * stage_count * expert_count
+        + 4 * combine_tile_capacity
+        + 4 * gmm1_wave_capacity
+    )
     required_y_bytes = 4 * (header_words + 3 * aic_count * record_words)
-    scratch_record_words = stage_count * 3 * expert_count + 4 * combine_tile_capacity
+    scratch_record_words = (
+        stage_count * 3 * expert_count
+        + 4 * combine_tile_capacity
+        + 4 * gmm1_wave_capacity
+    )
     scratch_bytes = 4 * 3 * aic_count * scratch_record_words
     scratch_reserve_bytes = 50 * 1024 * 1024
     _critical_path_trace_capacity = {
         "trace_profile": trace_profile,
         "protocol_version": protocol_version,
-        "formula": "4 * (header_words + 3 * aic_core_num * (2 + 2 * stage_count * local_moe_expert_num + 4 * combine_tile_capacity))",
+        "formula": "4 * (header_words + 3 * aic_core_num * (2 + 2 * stage_count * local_moe_expert_num + 4 * combine_tile_capacity + 4 * gmm1_wave_capacity))",
         "stage_count": stage_count,
         "header_words": header_words,
         "bs": int(bs),
@@ -161,6 +174,8 @@ def _critical_path_trace_validate_capacity():
         "max_output_size": max_output_size,
         "combine_tiles_per_expert_per_core": combine_tiles_per_expert_per_core,
         "combine_tile_capacity": combine_tile_capacity,
+        "gmm1_waves_per_expert": gmm1_waves_per_expert,
+        "gmm1_wave_capacity": gmm1_wave_capacity,
         "record_words": record_words,
         "required_y_bytes": required_y_bytes,
         "available_y_bytes": output_bytes,

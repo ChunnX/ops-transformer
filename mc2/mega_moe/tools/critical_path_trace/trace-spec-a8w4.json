@@ -28,22 +28,23 @@
     },
     "protocol": {
       "magic": "0x43505452",
-      "version": 2,
-      "schema_id": "0xe9b9e5a3",
+      "version": 3,
+      "schema_id": "0xabb0fd53",
       "word_bits": 32,
       "endianness": "little",
-      "header_words": 33,
+      "header_words": 35,
       "record_words": {
         "base_words": 2,
         "terms": [
           {"words_per_count":6,"count_header_field":"moe_experts_per_rank"},
-          {"words_per_count":4,"count_header_field":"combine_tile_capacity"}
+          {"words_per_count":4,"count_header_field":"combine_tile_capacity"},
+          {"words_per_count":4,"count_header_field":"gmm1_wave_capacity"}
         ]
       },
       "record_order": "role-major",
       "record_order_description": "AIC, AIV0, AIV1 records in ascending paired-core index",
-      "header_contract": "the header is published last after all records; record_words is 2 + 6 * moe_experts_per_rank + 4 * combine_tile_capacity",
-      "flags_contract": "0x1f denotes process bounds, expert-grained records, workspace scratch staging, the third AIV1 stage, and per-tile Combine wait/work records",
+      "header_contract": "the header is published last after all records; record_words is 2 + 6 * moe_experts_per_rank + 4 * combine_tile_capacity + 4 * gmm1_wave_capacity",
+      "flags_contract": "0x3f denotes process bounds, expert-grained records, workspace scratch staging, the third AIV1 stage, per-tile Combine records, and per-wave GMM1 wait/envelope records",
       "header_fields": [
         {"name":"magic","word":0,"width_words":1},
         {"name":"version","word":1,"width_words":1},
@@ -75,7 +76,9 @@
         {"name":"carrier_words","word":29,"width_words":1},
         {"name":"max_output_size","word":30,"width_words":1},
         {"name":"combine_tiles_per_expert_per_core","word":31,"width_words":1},
-        {"name":"combine_tile_capacity","word":32,"width_words":1}
+        {"name":"combine_tile_capacity","word":32,"width_words":1},
+        {"name":"gmm1_waves_per_expert","word":33,"width_words":1},
+        {"name":"gmm1_wave_capacity","word":34,"width_words":1}
       ],
       "record_fields": [
         {"name":"a8w4_process_begin_S","kind":"timestamp","roles":["AIC","AIV0","AIV1"],"word":0,"width_words":1,"count":1,"stride_words":1},
@@ -97,7 +100,11 @@
         {"name":"a8w4_combine_tile_wait_begin_S","kind":"timestamp","roles":["AIV1"],"word":{"base_words":2,"terms":[{"words_per_count":6,"count_header_field":"moe_experts_per_rank"}]},"width_words":1,"count":{"header_field":"combine_tile_capacity"},"stride_words":4},
         {"name":"a8w4_combine_tile_wait_end_S","kind":"timestamp","roles":["AIV1"],"word":{"base_words":3,"terms":[{"words_per_count":6,"count_header_field":"moe_experts_per_rank"}]},"width_words":1,"count":{"header_field":"combine_tile_capacity"},"stride_words":4},
         {"name":"a8w4_combine_tile_begin_S","kind":"timestamp","roles":["AIV1"],"word":{"base_words":4,"terms":[{"words_per_count":6,"count_header_field":"moe_experts_per_rank"}]},"width_words":1,"count":{"header_field":"combine_tile_capacity"},"stride_words":4},
-        {"name":"a8w4_combine_tile_end_S","kind":"timestamp","roles":["AIV1"],"word":{"base_words":5,"terms":[{"words_per_count":6,"count_header_field":"moe_experts_per_rank"}]},"width_words":1,"count":{"header_field":"combine_tile_capacity"},"stride_words":4}
+        {"name":"a8w4_combine_tile_end_S","kind":"timestamp","roles":["AIV1"],"word":{"base_words":5,"terms":[{"words_per_count":6,"count_header_field":"moe_experts_per_rank"}]},"width_words":1,"count":{"header_field":"combine_tile_capacity"},"stride_words":4},
+        {"name":"a8w4_gmm1_wave_wait_begin_S","kind":"timestamp","roles":["AIC"],"word":{"base_words":2,"terms":[{"words_per_count":6,"count_header_field":"moe_experts_per_rank"},{"words_per_count":4,"count_header_field":"combine_tile_capacity"}]},"width_words":1,"count":{"header_field":"gmm1_wave_capacity"},"stride_words":4},
+        {"name":"a8w4_gmm1_wave_wait_end_S","kind":"timestamp","roles":["AIC"],"word":{"base_words":3,"terms":[{"words_per_count":6,"count_header_field":"moe_experts_per_rank"},{"words_per_count":4,"count_header_field":"combine_tile_capacity"}]},"width_words":1,"count":{"header_field":"gmm1_wave_capacity"},"stride_words":4},
+        {"name":"a8w4_gmm1_wave_begin_S","kind":"timestamp","roles":["AIC"],"word":{"base_words":4,"terms":[{"words_per_count":6,"count_header_field":"moe_experts_per_rank"},{"words_per_count":4,"count_header_field":"combine_tile_capacity"}]},"width_words":1,"count":{"header_field":"gmm1_wave_capacity"},"stride_words":4},
+        {"name":"a8w4_gmm1_wave_end_S","kind":"timestamp","roles":["AIC"],"word":{"base_words":5,"terms":[{"words_per_count":6,"count_header_field":"moe_experts_per_rank"},{"words_per_count":4,"count_header_field":"combine_tile_capacity"}]},"width_words":1,"count":{"header_field":"gmm1_wave_capacity"},"stride_words":4}
       ]
     },
     "output": {
@@ -128,7 +135,11 @@
     {"id":"a8w4_combine_tile_wait_begin_S","stage":"combine_tile_wait","edge":"begin","boundary_quality":"causal","roles":["AIV1"],"scope":"before each owned Combine tile readiness poll","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h","symbol":"AivGmm2PostA8W4","target_anchor":{"mode":"literal","pattern":"args.criticalPathTrace->BeginCombineTileWait("},"placement":"before","marker":"TRACE_POINT: a8w4_combine_tile_wait_begin_S","max_line_distance":2},"why":"measure the exact per-tile GMM2-to-Combine wait","semantics":"immediately before polling the next GMM2 tile sequence","dependency":{"precondition":"the scheduler selected the next owned tile","producer_pipeline":"Scalar","timestamp_pipeline":"Scalar","bridge":"none","proof":"the sample directly precedes the gmmToEpilogueFlag polling loop"},"perturbation":"one clock read per owned Combine tile"},
     {"id":"a8w4_combine_tile_wait_end_S","stage":"combine_tile_wait","edge":"end","boundary_quality":"actual","roles":["AIV1"],"scope":"after each owned Combine tile becomes ready","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h","symbol":"AivGmm2PostA8W4","target_anchor":{"mode":"literal","pattern":"args.criticalPathTrace->BeginCombineTile("},"placement":"before","marker":"TRACE_POINT: a8w4_combine_tile_wait_end_S","max_line_distance":2},"why":"close the exact per-tile readiness wait","semantics":"the tile sequence has reached expectedReadySequence","dependency":{"precondition":"gmmToEpilogueFlag reached expectedReadySequence","producer_pipeline":"Scalar polling","timestamp_pipeline":"Scalar","bridge":"none","proof":"the shared ready sample directly follows the readiness loop"},"perturbation":"shares the tile-begin clock read"},
     {"id":"a8w4_combine_tile_begin_S","stage":"combine_tile","edge":"begin","boundary_quality":"causal","roles":["AIV1"],"scope":"after each owned Combine tile becomes ready","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h","symbol":"AivGmm2PostA8W4","target_anchor":{"mode":"literal","pattern":"args.criticalPathTrace->BeginCombineTile("},"placement":"before","marker":"TRACE_POINT: a8w4_combine_tile_begin_S","max_line_distance":2},"why":"separate GMM2 wait from Combine work","semantics":"the tile sequence is visible and GM-to-UB movement is next","dependency":{"precondition":"gmmToEpilogueFlag reached expectedReadySequence","producer_pipeline":"Scalar polling","timestamp_pipeline":"Scalar","bridge":"none","proof":"the shared ready sample directly precedes Combine work"},"perturbation":"one clock read per owned Combine tile shared with wait end"},
-    {"id":"a8w4_combine_tile_end_S","stage":"combine_tile","edge":"end","boundary_quality":"actual","roles":["AIV1"],"scope":"after each owned Combine tile send completes","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h","symbol":"AivGmm2PostA8W4","target_anchor":{"mode":"literal","pattern":"args.criticalPathTrace->EndCombineTile("},"placement":"before","marker":"TRACE_POINT: a8w4_combine_tile_end_S","max_line_distance":2},"why":"measure per-tile Combine work through actual remote write completion","semantics":"the tile MTE3 completion dependency has reached Scalar","dependency":{"precondition":"CombineTokens returned","producer_pipeline":"MTE3 transferred to MTE2","timestamp_pipeline":"Scalar","bridge":"MTE3_MTE2 followed by MTE2_S EVENT_ID0","proof":"the timestamp follows both completion bridges"},"perturbation":"one MTE2-to-Scalar bridge and one clock read per owned Combine tile"}
+    {"id":"a8w4_combine_tile_end_S","stage":"combine_tile","edge":"end","boundary_quality":"actual","roles":["AIV1"],"scope":"after each owned Combine tile send completes","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h","symbol":"AivGmm2PostA8W4","target_anchor":{"mode":"literal","pattern":"args.criticalPathTrace->EndCombineTile("},"placement":"before","marker":"TRACE_POINT: a8w4_combine_tile_end_S","max_line_distance":2},"why":"measure per-tile Combine work through actual remote write completion","semantics":"the tile MTE3 completion dependency has reached Scalar","dependency":{"precondition":"CombineTokens returned","producer_pipeline":"MTE3 transferred to MTE2","timestamp_pipeline":"Scalar","bridge":"MTE3_MTE2 followed by MTE2_S EVENT_ID0","proof":"the timestamp follows both completion bridges"},"perturbation":"one MTE2-to-Scalar bridge and one clock read per owned Combine tile"},
+    {"id":"a8w4_gmm1_wave_wait_begin_S","stage":"gmm1_wave_wait","edge":"begin","boundary_quality":"causal","roles":["AIC"],"scope":"first readiness visit for each expert M-wave on an active AIC","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h","symbol":"AicComputeA8W4","target_anchor":{"mode":"literal","pattern":"criticalPathTrace->BeginGmm1WaveWait("},"placement":"before","marker":"TRACE_POINT: a8w4_gmm1_wave_wait_begin_S","max_line_distance":2},"why":"measure Dispatch-to-GMM1 readiness wait per M-wave","semantics":"immediately before the first readiness poll retained for this expert and M-wave","dependency":{"precondition":"the swizzled scheduler selected a tile in the M-wave","producer_pipeline":"Scalar","timestamp_pipeline":"Scalar","bridge":"none","proof":"the sample directly precedes WaitForUpstreamReady"},"perturbation":"one retained clock read per active expert M-wave"},
+    {"id":"a8w4_gmm1_wave_wait_end_S","stage":"gmm1_wave_wait","edge":"end","boundary_quality":"actual","roles":["AIC"],"scope":"after the retained readiness wait for each expert M-wave","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h","symbol":"AicComputeA8W4","target_anchor":{"mode":"literal","pattern":"criticalPathTrace->BeginGmm1Wave("},"placement":"before","marker":"TRACE_POINT: a8w4_gmm1_wave_wait_end_S","max_line_distance":2},"why":"close the retained per-wave Dispatch readiness wait","semantics":"the Dispatch row-count condition for this wave is satisfied","dependency":{"precondition":"WaitForUpstreamReady returned","producer_pipeline":"Scalar polling","timestamp_pipeline":"Scalar","bridge":"none","proof":"the shared sample directly follows the wait"},"perturbation":"shares the wave-envelope begin clock read"},
+    {"id":"a8w4_gmm1_wave_begin_S","stage":"gmm1_wave","edge":"begin","boundary_quality":"causal","roles":["AIC"],"scope":"first owned tile retained for each expert M-wave and AIC","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h","symbol":"AicComputeA8W4","target_anchor":{"mode":"literal","pattern":"criticalPathTrace->BeginGmm1Wave("},"placement":"before","marker":"TRACE_POINT: a8w4_gmm1_wave_begin_S","max_line_distance":2},"why":"start the GMM1 M-wave active envelope after readiness","semantics":"the first retained tile in this M-wave is about to issue MMAD","dependency":{"precondition":"Dispatch readiness is satisfied","producer_pipeline":"Scalar","timestamp_pipeline":"Scalar","bridge":"none","proof":"the shared sample precedes the first retained blockMmad"},"perturbation":"shares the wait-end clock read"},
+    {"id":"a8w4_gmm1_wave_end_S","stage":"gmm1_wave","edge":"end","boundary_quality":"actual","roles":["AIC"],"scope":"latest completed owned tile for each expert M-wave and AIC","source":{"file":"mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h","symbol":"AicComputeA8W4","target_anchor":{"mode":"literal","pattern":"criticalPathTrace->EndGmm1Wave("},"placement":"before","marker":"TRACE_POINT: a8w4_gmm1_wave_end_S","max_line_distance":2},"why":"close the M-wave active envelope at its latest published tile","semantics":"the latest owned tile observed for this wave has passed FIX_S publication; the envelope may include interleaved swizzle work from other waves","dependency":{"precondition":"the current GMM1 tile has been published","producer_pipeline":"FIX","timestamp_pipeline":"Scalar","bridge":"existing per-tile FIX_S","proof":"the sample follows the existing FIX_S and ready publication"},"perturbation":"one clock read per owned GMM1 tile; only the latest value is retained"}
   ],
   "spans": [
     {"id":"a8w4_process","label":"A8W4 process","begin":"a8w4_process_begin_S","end":"a8w4_work_end_S","roles":["AIC","AIV0","AIV1"],"quality":"exact","color":"#64748b"},
@@ -140,6 +151,8 @@
     {"id":"a8w4_gmm2_prologue","label":"GMM2 prologue","begin":"a8w4_gmm2_prologue_begin_S","end":"a8w4_gmm2_prologue_end_S","roles":["AIV0"],"quality":"exact","color":"#c084fc"},
     {"id":"a8w4_combine","label":"Combine","begin":"a8w4_combine_begin_S","end":"a8w4_combine_end_S","roles":["AIV1"],"quality":"exact","color":"#f97316"},
     {"id":"a8w4_combine_tile_wait","label":"Combine tile wait","begin":"a8w4_combine_tile_wait_begin_S","end":"a8w4_combine_tile_wait_end_S","roles":["AIV1"],"quality":"exact","color":"#facc15"},
-    {"id":"a8w4_combine_tile_work","label":"Combine tile work","begin":"a8w4_combine_tile_begin_S","end":"a8w4_combine_tile_end_S","roles":["AIV1"],"quality":"exact","color":"#fb7185"}
+    {"id":"a8w4_combine_tile_work","label":"Combine tile work","begin":"a8w4_combine_tile_begin_S","end":"a8w4_combine_tile_end_S","roles":["AIV1"],"quality":"exact","color":"#fb7185"},
+    {"id":"a8w4_gmm1_wave_wait","label":"GMM1 wave wait","begin":"a8w4_gmm1_wave_wait_begin_S","end":"a8w4_gmm1_wave_wait_end_S","roles":["AIC"],"quality":"exact","color":"#eab308"},
+    {"id":"a8w4_gmm1_wave_work","label":"GMM1 wave active envelope","begin":"a8w4_gmm1_wave_begin_S","end":"a8w4_gmm1_wave_end_S","roles":["AIC"],"quality":"exact","color":"#38bdf8"}
   ]
 }

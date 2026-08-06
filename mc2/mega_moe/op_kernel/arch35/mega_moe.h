@@ -162,6 +162,8 @@ private:
     uint64_t criticalPathTraceCarrierWords_ = 0U;
     uint32_t criticalPathTraceCombineTilesPerExpert_ = 0U;
     uint32_t criticalPathTraceCombineTileCapacity_ = 0U;
+    uint32_t criticalPathTraceGmm1WavesPerExpert_ = 0U;
+    uint32_t criticalPathTraceGmm1WaveCapacity_ = 0U;
     bool criticalPathTraceCarrierValid_ = false;
 #endif
 
@@ -377,15 +379,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
         Ops::Base::CeilDiv(k_, static_cast<uint32_t>(L1_TILE_N));
     criticalPathTraceCombineTilesPerExpert_ = Ops::Base::CeilDiv(maxGmm2TilesPerExpert, aicNum_);
     criticalPathTraceCombineTileCapacity_ = moeExpertPerRank_ * criticalPathTraceCombineTilesPerExpert_;
+    criticalPathTraceGmm1WavesPerExpert_ =
+        static_cast<uint32_t>(Ops::Base::CeilDiv(static_cast<int64_t>(maxOutputSize_),
+                                                 static_cast<int64_t>(GMM1_TILE_M)));
+    criticalPathTraceGmm1WaveCapacity_ = moeExpertPerRank_ * criticalPathTraceGmm1WavesPerExpert_;
     const uint32_t traceRecordWords =
         CriticalPathTraceRecordWords(moeExpertPerRank_, CRITICAL_PATH_TRACE_A8W4_STAGE_COUNT,
-                                     criticalPathTraceCombineTileCapacity_);
+                                     criticalPathTraceCombineTileCapacity_, criticalPathTraceGmm1WaveCapacity_);
     const uint64_t requiredWords = static_cast<uint64_t>(CRITICAL_PATH_TRACE_A8W4_HEADER_WORDS) +
                                    static_cast<uint64_t>(CRITICAL_PATH_TRACE_ROLE_COUNT) * aicNum_ *
                                        traceRecordWords;
     const uint64_t scratchRecordWords =
         CriticalPathTraceScratchRecordWords(moeExpertPerRank_, CRITICAL_PATH_TRACE_A8W4_STAGE_COUNT,
-                                            criticalPathTraceCombineTileCapacity_);
+                                            criticalPathTraceCombineTileCapacity_,
+                                            criticalPathTraceGmm1WaveCapacity_);
     const uint64_t scratchRequiredBytes = static_cast<uint64_t>(CRITICAL_PATH_TRACE_ROLE_COUNT) * aicNum_ *
                                           scratchRecordWords * sizeof(uint32_t);
     criticalPathTraceCarrierValid_ = MEGA_MOE_ENABLE_A8W4_CRITICAL_PATH_TRACE && ENABLE_A8W4 &&
@@ -406,7 +413,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
         __gm__ uint32_t *traceScratchRecord =
             traceScratchBase + static_cast<uint64_t>(traceRecordIdx) * scratchRecordWords;
         criticalPathTrace_.Init(traceScratchRecord, moeExpertPerRank_, CRITICAL_PATH_TRACE_A8W4_STAGE_COUNT,
-                                criticalPathTraceCombineTilesPerExpert_);
+                                criticalPathTraceCombineTilesPerExpert_, criticalPathTraceGmm1WavesPerExpert_);
     }
 #endif
     // 各 win 区相对 win 基址(rankSyncInWorldPtr)的偏移; 所有卡 win 布局一致, 跨卡读写用同一偏移。
@@ -2132,7 +2139,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WriteCriticalPathTrace(
 
     const uint32_t recordWords =
         CriticalPathTraceRecordWords(moeExpertPerRank_, CRITICAL_PATH_TRACE_A8W4_STAGE_COUNT,
-                                     criticalPathTraceCombineTileCapacity_);
+                                     criticalPathTraceCombineTileCapacity_, criticalPathTraceGmm1WaveCapacity_);
     __gm__ uint32_t *record = traceOut + CRITICAL_PATH_TRACE_A8W4_HEADER_WORDS +
                               static_cast<uint64_t>(recordIdx) * recordWords;
     criticalPathTrace_.WriteRecord(record);
@@ -2181,6 +2188,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WriteCriticalPathTrace(
         AscendC::WriteGmByPassDCache(traceOut + 30U, static_cast<uint32_t>(maxOutputSize_));
         AscendC::WriteGmByPassDCache(traceOut + 31U, criticalPathTraceCombineTilesPerExpert_);
         AscendC::WriteGmByPassDCache(traceOut + 32U, criticalPathTraceCombineTileCapacity_);
+        AscendC::WriteGmByPassDCache(traceOut + 33U, criticalPathTraceGmm1WavesPerExpert_);
+        AscendC::WriteGmByPassDCache(traceOut + 34U, criticalPathTraceGmm1WaveCapacity_);
         AscendC::PipeBarrier<PIPE_ALL>();
         AscendC::WriteGmByPassDCache(traceOut + 0U, CRITICAL_PATH_TRACE_MAGIC);
     }

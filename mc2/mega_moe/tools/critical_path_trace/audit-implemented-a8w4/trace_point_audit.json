@@ -2,18 +2,17 @@
   "audit_schema_version": 1,
   "status": "pass",
   "phase": "implemented",
-  "generated_at_utc": "2026-08-06T01:51:16.868300+00:00",
+  "generated_at_utc": "2026-08-06T06:57:29.302215+00:00",
   "trace_name": "mega-moe-a8w4-critical-path",
   "repo_root": "/home/oiseau/codes/ops-transformer",
   "git": {
     "is_git_repository": true,
-    "revision": "c6568d155d5af1cc6f540c5bac4206b93a3ed144",
+    "revision": "b33ab9697975f9cd441b014dbb847dae3afe4f86",
     "branch": "codex/mega-moe-a8w4-critical-path-trace",
     "dirty": true,
     "status_short": [
       "M mc2/mega_moe/op_kernel/arch35/mega_moe.h",
       " M mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h",
-      " M mc2/mega_moe/op_kernel/arch35/mega_moe_layered.h",
       " M mc2/mega_moe/op_kernel/arch35/mega_moe_trace.h",
       " M mc2/mega_moe/tools/critical_path_trace/README.md",
       " M mc2/mega_moe/tools/critical_path_trace/audit-implemented-a8w4/trace_point_audit.json",
@@ -25,13 +24,13 @@
       " M mc2/mega_moe/tools/critical_path_trace/trace_tool.py"
     ],
     "status_truncated": false,
-    "tracked_diff_raw_sha256": "d0b5a91577622ffa45d3cd8d95918c2ec7fe4e096d233523be2b5e71154a25d7"
+    "tracked_diff_raw_sha256": "5116122f4fa93904f056616962e9cba487d6e4d3343d186bf93cac3f2ceeaa9f"
   },
   "spec": {
     "path": "/home/oiseau/codes/ops-transformer/mc2/mega_moe/tools/critical_path_trace/trace-spec-a8w4.json",
-    "sha256": "e9f81b37a4a09ac1ca8640143c708b121b93c9d4e2d1d5f898cf554f19ff34d6",
-    "protocol_version": 2,
-    "schema_id": "0xe9b9e5a3"
+    "sha256": "5d71b53535e86085f4106187c1c2584b48b2c5c3f407d1deace761cb73a16649",
+    "protocol_version": 3,
+    "schema_id": "0xabb0fd53"
   },
   "points": [
     {
@@ -53,64 +52,64 @@
         "pattern": "criticalPathTrace_.processBegin = CriticalPathTrace::Now();"
       },
       "target_match_count": 1,
-      "target_line": 2195,
+      "target_line": 2204,
       "target_context": {
-        "start_line": 2193,
-        "end_line": 2197,
+        "start_line": 2202,
+        "end_line": 2206,
         "lines": [
           {
-            "line": 2193,
+            "line": 2202,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 2194,
+            "line": 2203,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 2195,
+            "line": 2204,
             "text": "        criticalPathTrace_.processBegin = CriticalPathTrace::Now(); // TRACE_POINT: a8w4_process_begin_S"
           },
           {
-            "line": 2196,
+            "line": 2205,
             "text": "    }"
           },
           {
-            "line": 2197,
+            "line": 2206,
             "text": "#endif"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_process_begin_S",
       "marker_match_count": 1,
-      "marker_line": 2195,
+      "marker_line": 2204,
       "marker_context": {
-        "start_line": 2193,
-        "end_line": 2197,
+        "start_line": 2202,
+        "end_line": 2206,
         "lines": [
           {
-            "line": 2193,
+            "line": 2202,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 2194,
+            "line": 2203,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 2195,
+            "line": 2204,
             "text": "        criticalPathTrace_.processBegin = CriticalPathTrace::Now(); // TRACE_POINT: a8w4_process_begin_S"
           },
           {
-            "line": 2196,
+            "line": 2205,
             "text": "    }"
           },
           {
-            "line": 2197,
+            "line": 2206,
             "text": "#endif"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "c13170e8e9c5eaecf9a5ab03606d522bd39febdea7da7eba5f54756f9e2d0e11",
+      "source_file_sha256": "39b1ed544381a31d51e312fc7c53a0f745e67e270a412ff0322a9060fef17407",
       "why": "establish the local process epoch",
       "semantics": "entry to the MTE A8W4 process before useful work",
       "dependency": {
@@ -141,64 +140,64 @@
         "pattern": "criticalPathTrace_.workEnd = CriticalPathTrace::Now();"
       },
       "target_match_count": 1,
-      "target_line": 2446,
+      "target_line": 2455,
       "target_context": {
-        "start_line": 2444,
-        "end_line": 2448,
+        "start_line": 2453,
+        "end_line": 2457,
         "lines": [
           {
-            "line": 2444,
+            "line": 2453,
             "text": "        }"
           },
           {
-            "line": 2445,
+            "line": 2454,
             "text": "        // TRACE_POINT: a8w4_work_end_S"
           },
           {
-            "line": 2446,
+            "line": 2455,
             "text": "        criticalPathTrace_.workEnd = CriticalPathTrace::Now();"
           },
           {
-            "line": 2447,
+            "line": 2456,
             "text": "        SyncAll<false>();"
           },
           {
-            "line": 2448,
+            "line": 2457,
             "text": "        WriteCriticalPathTrace();"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_work_end_S",
       "marker_match_count": 1,
-      "marker_line": 2445,
+      "marker_line": 2454,
       "marker_context": {
-        "start_line": 2443,
-        "end_line": 2447,
+        "start_line": 2452,
+        "end_line": 2456,
         "lines": [
           {
-            "line": 2443,
+            "line": 2452,
             "text": "            AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);"
           },
           {
-            "line": 2444,
+            "line": 2453,
             "text": "        }"
           },
           {
-            "line": 2445,
+            "line": 2454,
             "text": "        // TRACE_POINT: a8w4_work_end_S"
           },
           {
-            "line": 2446,
+            "line": 2455,
             "text": "        criticalPathTrace_.workEnd = CriticalPathTrace::Now();"
           },
           {
-            "line": 2447,
+            "line": 2456,
             "text": "        SyncAll<false>();"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "c13170e8e9c5eaecf9a5ab03606d522bd39febdea7da7eba5f54756f9e2d0e11",
+      "source_file_sha256": "39b1ed544381a31d51e312fc7c53a0f745e67e270a412ff0322a9060fef17407",
       "why": "separate useful work from trace emission",
       "semantics": "all role-local useful work has completed",
       "dependency": {
@@ -227,64 +226,64 @@
         "pattern": "criticalPathTrace_.BeginExpertStage0(CriticalPathTrace::Now());"
       },
       "target_match_count": 1,
-      "target_line": 298,
+      "target_line": 300,
       "target_context": {
-        "start_line": 296,
-        "end_line": 300,
+        "start_line": 298,
+        "end_line": 302,
         "lines": [
           {
-            "line": 296,
+            "line": 298,
             "text": "        criticalPathTrace_.PrepareExpertStage0(expertIdx);"
           },
           {
-            "line": 297,
+            "line": 299,
             "text": "        // TRACE_POINT: a8w4_dispatch_begin_S"
           },
           {
-            "line": 298,
+            "line": 300,
             "text": "        criticalPathTrace_.BeginExpertStage0(CriticalPathTrace::Now());"
           },
           {
-            "line": 299,
+            "line": 301,
             "text": "    }"
           },
           {
-            "line": 300,
+            "line": 302,
             "text": "}"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_dispatch_begin_S",
       "marker_match_count": 1,
-      "marker_line": 297,
+      "marker_line": 299,
       "marker_context": {
-        "start_line": 295,
-        "end_line": 299,
+        "start_line": 297,
+        "end_line": 301,
         "lines": [
           {
-            "line": 295,
+            "line": 297,
             "text": "    if (CriticalPathTracePtr() != nullptr) {"
           },
           {
-            "line": 296,
+            "line": 298,
             "text": "        criticalPathTrace_.PrepareExpertStage0(expertIdx);"
           },
           {
-            "line": 297,
+            "line": 299,
             "text": "        // TRACE_POINT: a8w4_dispatch_begin_S"
           },
           {
-            "line": 298,
+            "line": 300,
             "text": "        criticalPathTrace_.BeginExpertStage0(CriticalPathTrace::Now());"
           },
           {
-            "line": 299,
+            "line": 301,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "c13170e8e9c5eaecf9a5ab03606d522bd39febdea7da7eba5f54756f9e2d0e11",
+      "source_file_sha256": "39b1ed544381a31d51e312fc7c53a0f745e67e270a412ff0322a9060fef17407",
       "why": "measure dispatch prefetch placement relative to A8W4 compute",
       "semantics": "before SendCntCal and dispatch metadata/token movement for the expert",
       "dependency": {
@@ -313,64 +312,64 @@
         "pattern": "uint32_t dispatchEndCycle = CriticalPathTrace::Now();"
       },
       "target_match_count": 1,
-      "target_line": 309,
+      "target_line": 311,
       "target_context": {
-        "start_line": 307,
-        "end_line": 311,
+        "start_line": 309,
+        "end_line": 313,
         "lines": [
           {
-            "line": 307,
+            "line": 309,
             "text": "        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);"
           },
           {
-            "line": 308,
+            "line": 310,
             "text": "        // TRACE_POINT: a8w4_dispatch_end_S"
           },
           {
-            "line": 309,
+            "line": 311,
             "text": "        uint32_t dispatchEndCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 310,
+            "line": 312,
             "text": "        criticalPathTrace_.EndExpertStage0(dispatchEndCycle);"
           },
           {
-            "line": 311,
+            "line": 313,
             "text": "        criticalPathTrace_.FinishExpertStage0();"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_dispatch_end_S",
       "marker_match_count": 1,
-      "marker_line": 308,
+      "marker_line": 310,
       "marker_context": {
-        "start_line": 306,
-        "end_line": 310,
+        "start_line": 308,
+        "end_line": 312,
         "lines": [
           {
-            "line": 306,
+            "line": 308,
             "text": "        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);"
           },
           {
-            "line": 307,
+            "line": 309,
             "text": "        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);"
           },
           {
-            "line": 308,
+            "line": 310,
             "text": "        // TRACE_POINT: a8w4_dispatch_end_S"
           },
           {
-            "line": 309,
+            "line": 311,
             "text": "        uint32_t dispatchEndCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 310,
+            "line": 312,
             "text": "        criticalPathTrace_.EndExpertStage0(dispatchEndCycle);"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "c13170e8e9c5eaecf9a5ab03606d522bd39febdea7da7eba5f54756f9e2d0e11",
+      "source_file_sha256": "39b1ed544381a31d51e312fc7c53a0f745e67e270a412ff0322a9060fef17407",
       "why": "prove dispatch GM writes complete",
       "semantics": "the expert dispatch MTE3 writes have completed",
       "dependency": {
@@ -399,64 +398,64 @@
         "pattern": "uint32_t a8w4Gmm1BeginCycle = CriticalPathTrace::Now();"
       },
       "target_match_count": 1,
-      "target_line": 1134,
+      "target_line": 1155,
       "target_context": {
-        "start_line": 1132,
-        "end_line": 1136,
+        "start_line": 1153,
+        "end_line": 1157,
         "lines": [
           {
-            "line": 1132,
+            "line": 1153,
             "text": "            if (criticalPathTrace != nullptr && criticalPathTrace->NeedsExpertStage0Begin()) {"
           },
           {
-            "line": 1133,
+            "line": 1154,
             "text": "                // TRACE_POINT: a8w4_gmm1_begin_S"
           },
           {
-            "line": 1134,
+            "line": 1155,
             "text": "                uint32_t a8w4Gmm1BeginCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 1135,
+            "line": 1156,
             "text": "                criticalPathTrace->BeginExpertStage0(a8w4Gmm1BeginCycle);"
           },
           {
-            "line": 1136,
+            "line": 1157,
             "text": "            }"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_gmm1_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1133,
+      "marker_line": 1154,
       "marker_context": {
-        "start_line": 1131,
-        "end_line": 1135,
+        "start_line": 1152,
+        "end_line": 1156,
         "lines": [
           {
-            "line": 1131,
+            "line": 1152,
             "text": "        if constexpr (Policy::IS_GMM1) {"
           },
           {
-            "line": 1132,
+            "line": 1153,
             "text": "            if (criticalPathTrace != nullptr && criticalPathTrace->NeedsExpertStage0Begin()) {"
           },
           {
-            "line": 1133,
+            "line": 1154,
             "text": "                // TRACE_POINT: a8w4_gmm1_begin_S"
           },
           {
-            "line": 1134,
+            "line": 1155,
             "text": "                uint32_t a8w4Gmm1BeginCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 1135,
+            "line": 1156,
             "text": "                criticalPathTrace->BeginExpertStage0(a8w4Gmm1BeginCycle);"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "d8be4e6f4d0b93322e4438f3b8d86c9e00c1ef1f7e8924c5df455c685830e53c",
+      "source_file_sha256": "3bab7cecaab907a1229fccdc5d46634784abb951a89608ee63c50ccc634b6698",
       "why": "locate AIC GMM1 after dispatch readiness",
       "semantics": "after WaitForUpstreamReady and before the first blockMmad",
       "dependency": {
@@ -485,64 +484,64 @@
         "pattern": "uint32_t gmm1EndCycle = CriticalPathTrace::Now();"
       },
       "target_match_count": 1,
-      "target_line": 2302,
+      "target_line": 2311,
       "target_context": {
-        "start_line": 2300,
-        "end_line": 2304,
+        "start_line": 2309,
+        "end_line": 2313,
         "lines": [
           {
-            "line": 2300,
+            "line": 2309,
             "text": "                    // Every A8W4 tile publishes only after FIX_S, so return is an actual GMM1 completion boundary."
           },
           {
-            "line": 2301,
+            "line": 2310,
             "text": "                    // TRACE_POINT: a8w4_gmm1_end_S"
           },
           {
-            "line": 2302,
+            "line": 2311,
             "text": "                    uint32_t gmm1EndCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 2303,
+            "line": 2312,
             "text": "                    criticalPathTrace_.EndExpertStage0(gmm1EndCycle);"
           },
           {
-            "line": 2304,
+            "line": 2313,
             "text": "                }"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_gmm1_end_S",
       "marker_match_count": 1,
-      "marker_line": 2301,
+      "marker_line": 2310,
       "marker_context": {
-        "start_line": 2299,
-        "end_line": 2303,
+        "start_line": 2308,
+        "end_line": 2312,
         "lines": [
           {
-            "line": 2299,
+            "line": 2308,
             "text": "                if (criticalPathTrace_.HasExpertStage0Work()) {"
           },
           {
-            "line": 2300,
+            "line": 2309,
             "text": "                    // Every A8W4 tile publishes only after FIX_S, so return is an actual GMM1 completion boundary."
           },
           {
-            "line": 2301,
+            "line": 2310,
             "text": "                    // TRACE_POINT: a8w4_gmm1_end_S"
           },
           {
-            "line": 2302,
+            "line": 2311,
             "text": "                    uint32_t gmm1EndCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 2303,
+            "line": 2312,
             "text": "                    criticalPathTrace_.EndExpertStage0(gmm1EndCycle);"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "c13170e8e9c5eaecf9a5ab03606d522bd39febdea7da7eba5f54756f9e2d0e11",
+      "source_file_sha256": "39b1ed544381a31d51e312fc7c53a0f745e67e270a412ff0322a9060fef17407",
       "why": "measure actual AIC GMM1 completion",
       "semantics": "all owned GMM1 tiles have been published after FIX_S",
       "dependency": {
@@ -571,64 +570,64 @@
         "pattern": "uint32_t a8w4Gmm1PrologueBeginCycle = CriticalPathTrace::Now();"
       },
       "target_match_count": 1,
-      "target_line": 1207,
+      "target_line": 1237,
       "target_context": {
-        "start_line": 1205,
-        "end_line": 1209,
+        "start_line": 1235,
+        "end_line": 1239,
         "lines": [
           {
-            "line": 1205,
+            "line": 1235,
             "text": "            if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsExpertStage0Begin()) {"
           },
           {
-            "line": 1206,
+            "line": 1236,
             "text": "                // TRACE_POINT: a8w4_gmm1_prologue_begin_S"
           },
           {
-            "line": 1207,
+            "line": 1237,
             "text": "                uint32_t a8w4Gmm1PrologueBeginCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 1208,
+            "line": 1238,
             "text": "                args.criticalPathTrace->BeginExpertStage0(a8w4Gmm1PrologueBeginCycle);"
           },
           {
-            "line": 1209,
+            "line": 1239,
             "text": "            }"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_gmm1_prologue_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1206,
+      "marker_line": 1236,
       "marker_context": {
-        "start_line": 1204,
-        "end_line": 1208,
+        "start_line": 1234,
+        "end_line": 1238,
         "lines": [
           {
-            "line": 1204,
+            "line": 1234,
             "text": "        if constexpr (Policy::IS_GMM1) {"
           },
           {
-            "line": 1205,
+            "line": 1235,
             "text": "            if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsExpertStage0Begin()) {"
           },
           {
-            "line": 1206,
+            "line": 1236,
             "text": "                // TRACE_POINT: a8w4_gmm1_prologue_begin_S"
           },
           {
-            "line": 1207,
+            "line": 1237,
             "text": "                uint32_t a8w4Gmm1PrologueBeginCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 1208,
+            "line": 1238,
             "text": "                args.criticalPathTrace->BeginExpertStage0(a8w4Gmm1PrologueBeginCycle);"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "d8be4e6f4d0b93322e4438f3b8d86c9e00c1ef1f7e8924c5df455c685830e53c",
+      "source_file_sha256": "3bab7cecaab907a1229fccdc5d46634784abb951a89608ee63c50ccc634b6698",
       "why": "expose W4-to-W8 prologue occupancy",
       "semantics": "before the first GMM1 blockPrologue issue",
       "dependency": {
@@ -657,64 +656,64 @@
         "pattern": "uint32_t gmm1PrologueEndCycle = CriticalPathTrace::Now();"
       },
       "target_match_count": 1,
-      "target_line": 2311,
+      "target_line": 2320,
       "target_context": {
-        "start_line": 2309,
-        "end_line": 2313,
+        "start_line": 2318,
+        "end_line": 2322,
         "lines": [
           {
-            "line": 2309,
+            "line": 2318,
             "text": "                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);"
           },
           {
-            "line": 2310,
+            "line": 2319,
             "text": "                    // TRACE_POINT: a8w4_gmm1_prologue_end_S"
           },
           {
-            "line": 2311,
+            "line": 2320,
             "text": "                    uint32_t gmm1PrologueEndCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 2312,
+            "line": 2321,
             "text": "                    criticalPathTrace_.EndExpertStage0(gmm1PrologueEndCycle);"
           },
           {
-            "line": 2313,
+            "line": 2322,
             "text": "                }"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_gmm1_prologue_end_S",
       "marker_match_count": 1,
-      "marker_line": 2310,
+      "marker_line": 2319,
       "marker_context": {
-        "start_line": 2308,
-        "end_line": 2312,
+        "start_line": 2317,
+        "end_line": 2321,
         "lines": [
           {
-            "line": 2308,
+            "line": 2317,
             "text": "                    AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);"
           },
           {
-            "line": 2309,
+            "line": 2318,
             "text": "                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);"
           },
           {
-            "line": 2310,
+            "line": 2319,
             "text": "                    // TRACE_POINT: a8w4_gmm1_prologue_end_S"
           },
           {
-            "line": 2311,
+            "line": 2320,
             "text": "                    uint32_t gmm1PrologueEndCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 2312,
+            "line": 2321,
             "text": "                    criticalPathTrace_.EndExpertStage0(gmm1PrologueEndCycle);"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "c13170e8e9c5eaecf9a5ab03606d522bd39febdea7da7eba5f54756f9e2d0e11",
+      "source_file_sha256": "39b1ed544381a31d51e312fc7c53a0f745e67e270a412ff0322a9060fef17407",
       "why": "measure completed W4-to-W8 prologue work",
       "semantics": "all owned GMM1 prologue MTE3 writes to L1 have completed",
       "dependency": {
@@ -743,64 +742,64 @@
         "pattern": "trace->BeginExpertStage1(CriticalPathTrace::Now());"
       },
       "target_match_count": 1,
-      "target_line": 552,
+      "target_line": 630,
       "target_context": {
-        "start_line": 550,
-        "end_line": 554,
+        "start_line": 628,
+        "end_line": 632,
         "lines": [
           {
-            "line": 550,
+            "line": 628,
             "text": "    if (trace != nullptr && trace->NeedsExpertStage1Begin()) {"
           },
           {
-            "line": 551,
+            "line": 629,
             "text": "        // TRACE_POINT: a8w4_swiglu_begin_S"
           },
           {
-            "line": 552,
+            "line": 630,
             "text": "        trace->BeginExpertStage1(CriticalPathTrace::Now());"
           },
           {
-            "line": 553,
+            "line": 631,
             "text": "    }"
           },
           {
-            "line": 554,
+            "line": 632,
             "text": "}"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_swiglu_begin_S",
       "marker_match_count": 1,
-      "marker_line": 551,
+      "marker_line": 629,
       "marker_context": {
-        "start_line": 549,
-        "end_line": 553,
+        "start_line": 627,
+        "end_line": 631,
         "lines": [
           {
-            "line": 549,
+            "line": 627,
             "text": "{"
           },
           {
-            "line": 550,
+            "line": 628,
             "text": "    if (trace != nullptr && trace->NeedsExpertStage1Begin()) {"
           },
           {
-            "line": 551,
+            "line": 629,
             "text": "        // TRACE_POINT: a8w4_swiglu_begin_S"
           },
           {
-            "line": 552,
+            "line": 630,
             "text": "        trace->BeginExpertStage1(CriticalPathTrace::Now());"
           },
           {
-            "line": 553,
+            "line": 631,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "fb88e0a8f06bda4ab3dfdc5874e6145ced5c12f6cf7ccbd8d9fd68bc82828bc8",
+      "source_file_sha256": "b89e25d85aeab70d037809e190ae8f97cdd697a3c27ec73a640f79c21658cef4",
       "why": "measure AIV1 epilogue after tile readiness",
       "semantics": "after status/sequence polling and before the first GMM1-output load",
       "dependency": {
@@ -829,64 +828,64 @@
         "pattern": "uint32_t swigluEndCycle = CriticalPathTrace::Now();"
       },
       "target_match_count": 1,
-      "target_line": 2318,
+      "target_line": 2327,
       "target_context": {
-        "start_line": 2316,
-        "end_line": 2320,
+        "start_line": 2325,
+        "end_line": 2329,
         "lines": [
           {
-            "line": 2316,
+            "line": 2325,
             "text": "                if (criticalPathTrace_.HasExpertStage1Work()) {"
           },
           {
-            "line": 2317,
+            "line": 2326,
             "text": "                    // TRACE_POINT: a8w4_swiglu_end_S"
           },
           {
-            "line": 2318,
+            "line": 2327,
             "text": "                    uint32_t swigluEndCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 2319,
+            "line": 2328,
             "text": "                    criticalPathTrace_.EndExpertStage1(swigluEndCycle);"
           },
           {
-            "line": 2320,
+            "line": 2329,
             "text": "                }"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_swiglu_end_S",
       "marker_match_count": 1,
-      "marker_line": 2317,
+      "marker_line": 2326,
       "marker_context": {
-        "start_line": 2315,
-        "end_line": 2319,
+        "start_line": 2324,
+        "end_line": 2328,
         "lines": [
           {
-            "line": 2315,
+            "line": 2324,
             "text": "            } else {"
           },
           {
-            "line": 2316,
+            "line": 2325,
             "text": "                if (criticalPathTrace_.HasExpertStage1Work()) {"
           },
           {
-            "line": 2317,
+            "line": 2326,
             "text": "                    // TRACE_POINT: a8w4_swiglu_end_S"
           },
           {
-            "line": 2318,
+            "line": 2327,
             "text": "                    uint32_t swigluEndCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 2319,
+            "line": 2328,
             "text": "                    criticalPathTrace_.EndExpertStage1(swigluEndCycle);"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "c13170e8e9c5eaecf9a5ab03606d522bd39febdea7da7eba5f54756f9e2d0e11",
+      "source_file_sha256": "39b1ed544381a31d51e312fc7c53a0f745e67e270a412ff0322a9060fef17407",
       "why": "measure completed SwiGLU and MX quant output",
       "semantics": "the final SwiGLU data/scale MTE3 writes and ready publication have completed",
       "dependency": {
@@ -915,64 +914,64 @@
         "pattern": "uint32_t a8w4Gmm2BeginCycle = CriticalPathTrace::Now();"
       },
       "target_match_count": 1,
-      "target_line": 1139,
+      "target_line": 1160,
       "target_context": {
-        "start_line": 1137,
-        "end_line": 1141,
+        "start_line": 1158,
+        "end_line": 1162,
         "lines": [
           {
-            "line": 1137,
+            "line": 1158,
             "text": "        } else if (criticalPathTrace != nullptr && criticalPathTrace->NeedsExpertStage1Begin()) {"
           },
           {
-            "line": 1138,
+            "line": 1159,
             "text": "            // TRACE_POINT: a8w4_gmm2_begin_S"
           },
           {
-            "line": 1139,
+            "line": 1160,
             "text": "            uint32_t a8w4Gmm2BeginCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 1140,
+            "line": 1161,
             "text": "            criticalPathTrace->BeginExpertStage1(a8w4Gmm2BeginCycle);"
           },
           {
-            "line": 1141,
+            "line": 1162,
             "text": "        }"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_gmm2_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1138,
+      "marker_line": 1159,
       "marker_context": {
-        "start_line": 1136,
-        "end_line": 1140,
+        "start_line": 1157,
+        "end_line": 1161,
         "lines": [
           {
-            "line": 1136,
+            "line": 1157,
             "text": "            }"
           },
           {
-            "line": 1137,
+            "line": 1158,
             "text": "        } else if (criticalPathTrace != nullptr && criticalPathTrace->NeedsExpertStage1Begin()) {"
           },
           {
-            "line": 1138,
+            "line": 1159,
             "text": "            // TRACE_POINT: a8w4_gmm2_begin_S"
           },
           {
-            "line": 1139,
+            "line": 1160,
             "text": "            uint32_t a8w4Gmm2BeginCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 1140,
+            "line": 1161,
             "text": "            criticalPathTrace->BeginExpertStage1(a8w4Gmm2BeginCycle);"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "d8be4e6f4d0b93322e4438f3b8d86c9e00c1ef1f7e8924c5df455c685830e53c",
+      "source_file_sha256": "3bab7cecaab907a1229fccdc5d46634784abb951a89608ee63c50ccc634b6698",
       "why": "locate GMM2 after SwiGLU readiness",
       "semantics": "after WaitForUpstreamReady and before first GMM2 blockMmad",
       "dependency": {
@@ -1001,64 +1000,64 @@
         "pattern": "uint32_t gmm2EndCycle = CriticalPathTrace::Now();"
       },
       "target_match_count": 1,
-      "target_line": 2392,
+      "target_line": 2401,
       "target_context": {
-        "start_line": 2390,
-        "end_line": 2394,
+        "start_line": 2399,
+        "end_line": 2403,
         "lines": [
           {
-            "line": 2390,
+            "line": 2399,
             "text": "                    // Every A8W4 tile publishes only after FIX_S, so return is an actual GMM2 completion boundary."
           },
           {
-            "line": 2391,
+            "line": 2400,
             "text": "                    // TRACE_POINT: a8w4_gmm2_end_S"
           },
           {
-            "line": 2392,
+            "line": 2401,
             "text": "                    uint32_t gmm2EndCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 2393,
+            "line": 2402,
             "text": "                    criticalPathTrace_.EndExpertStage1(gmm2EndCycle);"
           },
           {
-            "line": 2394,
+            "line": 2403,
             "text": "                }"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_gmm2_end_S",
       "marker_match_count": 1,
-      "marker_line": 2391,
+      "marker_line": 2400,
       "marker_context": {
-        "start_line": 2389,
-        "end_line": 2393,
+        "start_line": 2398,
+        "end_line": 2402,
         "lines": [
           {
-            "line": 2389,
+            "line": 2398,
             "text": "                if (criticalPathTrace_.HasExpertStage1Work()) {"
           },
           {
-            "line": 2390,
+            "line": 2399,
             "text": "                    // Every A8W4 tile publishes only after FIX_S, so return is an actual GMM2 completion boundary."
           },
           {
-            "line": 2391,
+            "line": 2400,
             "text": "                    // TRACE_POINT: a8w4_gmm2_end_S"
           },
           {
-            "line": 2392,
+            "line": 2401,
             "text": "                    uint32_t gmm2EndCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 2393,
+            "line": 2402,
             "text": "                    criticalPathTrace_.EndExpertStage1(gmm2EndCycle);"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "c13170e8e9c5eaecf9a5ab03606d522bd39febdea7da7eba5f54756f9e2d0e11",
+      "source_file_sha256": "39b1ed544381a31d51e312fc7c53a0f745e67e270a412ff0322a9060fef17407",
       "why": "measure actual AIC GMM2 completion/publication",
       "semantics": "all owned GMM2 tiles have passed FIX_S publication",
       "dependency": {
@@ -1087,64 +1086,64 @@
         "pattern": "uint32_t a8w4Gmm2PrologueBeginCycle = CriticalPathTrace::Now();"
       },
       "target_match_count": 1,
-      "target_line": 1212,
+      "target_line": 1242,
       "target_context": {
-        "start_line": 1210,
-        "end_line": 1214,
+        "start_line": 1240,
+        "end_line": 1244,
         "lines": [
           {
-            "line": 1210,
+            "line": 1240,
             "text": "        } else if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsExpertStage1Begin()) {"
           },
           {
-            "line": 1211,
+            "line": 1241,
             "text": "            // TRACE_POINT: a8w4_gmm2_prologue_begin_S"
           },
           {
-            "line": 1212,
+            "line": 1242,
             "text": "            uint32_t a8w4Gmm2PrologueBeginCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 1213,
+            "line": 1243,
             "text": "            args.criticalPathTrace->BeginExpertStage1(a8w4Gmm2PrologueBeginCycle);"
           },
           {
-            "line": 1214,
+            "line": 1244,
             "text": "        }"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_gmm2_prologue_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1211,
+      "marker_line": 1241,
       "marker_context": {
-        "start_line": 1209,
-        "end_line": 1213,
+        "start_line": 1239,
+        "end_line": 1243,
         "lines": [
           {
-            "line": 1209,
+            "line": 1239,
             "text": "            }"
           },
           {
-            "line": 1210,
+            "line": 1240,
             "text": "        } else if (args.criticalPathTrace != nullptr && args.criticalPathTrace->NeedsExpertStage1Begin()) {"
           },
           {
-            "line": 1211,
+            "line": 1241,
             "text": "            // TRACE_POINT: a8w4_gmm2_prologue_begin_S"
           },
           {
-            "line": 1212,
+            "line": 1242,
             "text": "            uint32_t a8w4Gmm2PrologueBeginCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 1213,
+            "line": 1243,
             "text": "            args.criticalPathTrace->BeginExpertStage1(a8w4Gmm2PrologueBeginCycle);"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "d8be4e6f4d0b93322e4438f3b8d86c9e00c1ef1f7e8924c5df455c685830e53c",
+      "source_file_sha256": "3bab7cecaab907a1229fccdc5d46634784abb951a89608ee63c50ccc634b6698",
       "why": "expose GMM2 W4-to-W8 prologue occupancy",
       "semantics": "before first GMM2 blockPrologue issue",
       "dependency": {
@@ -1173,64 +1172,64 @@
         "pattern": "uint32_t gmm2PrologueEndCycle = CriticalPathTrace::Now();"
       },
       "target_match_count": 1,
-      "target_line": 2401,
+      "target_line": 2410,
       "target_context": {
-        "start_line": 2399,
-        "end_line": 2403,
+        "start_line": 2408,
+        "end_line": 2412,
         "lines": [
           {
-            "line": 2399,
+            "line": 2408,
             "text": "                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);"
           },
           {
-            "line": 2400,
+            "line": 2409,
             "text": "                    // TRACE_POINT: a8w4_gmm2_prologue_end_S"
           },
           {
-            "line": 2401,
+            "line": 2410,
             "text": "                    uint32_t gmm2PrologueEndCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 2402,
+            "line": 2411,
             "text": "                    criticalPathTrace_.EndExpertStage1(gmm2PrologueEndCycle);"
           },
           {
-            "line": 2403,
+            "line": 2412,
             "text": "                }"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_gmm2_prologue_end_S",
       "marker_match_count": 1,
-      "marker_line": 2400,
+      "marker_line": 2409,
       "marker_context": {
-        "start_line": 2398,
-        "end_line": 2402,
+        "start_line": 2407,
+        "end_line": 2411,
         "lines": [
           {
-            "line": 2398,
+            "line": 2407,
             "text": "                    AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);"
           },
           {
-            "line": 2399,
+            "line": 2408,
             "text": "                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);"
           },
           {
-            "line": 2400,
+            "line": 2409,
             "text": "                    // TRACE_POINT: a8w4_gmm2_prologue_end_S"
           },
           {
-            "line": 2401,
+            "line": 2410,
             "text": "                    uint32_t gmm2PrologueEndCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 2402,
+            "line": 2411,
             "text": "                    criticalPathTrace_.EndExpertStage1(gmm2PrologueEndCycle);"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "c13170e8e9c5eaecf9a5ab03606d522bd39febdea7da7eba5f54756f9e2d0e11",
+      "source_file_sha256": "39b1ed544381a31d51e312fc7c53a0f745e67e270a412ff0322a9060fef17407",
       "why": "measure completed W4-to-W8 prologue work",
       "semantics": "all owned GMM2 prologue MTE3 writes to L1 have completed",
       "dependency": {
@@ -1259,64 +1258,64 @@
         "pattern": "trace->BeginExpertStage2(CriticalPathTrace::Now());"
       },
       "target_match_count": 1,
-      "target_line": 560,
+      "target_line": 638,
       "target_context": {
-        "start_line": 558,
-        "end_line": 562,
+        "start_line": 636,
+        "end_line": 640,
         "lines": [
           {
-            "line": 558,
+            "line": 636,
             "text": "    if (trace != nullptr && trace->NeedsExpertStage2Begin()) {"
           },
           {
-            "line": 559,
+            "line": 637,
             "text": "        // TRACE_POINT: a8w4_combine_begin_S"
           },
           {
-            "line": 560,
+            "line": 638,
             "text": "        trace->BeginExpertStage2(CriticalPathTrace::Now());"
           },
           {
-            "line": 561,
+            "line": 639,
             "text": "    }"
           },
           {
-            "line": 562,
+            "line": 640,
             "text": "}"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_combine_begin_S",
       "marker_match_count": 1,
-      "marker_line": 559,
+      "marker_line": 637,
       "marker_context": {
-        "start_line": 557,
-        "end_line": 561,
+        "start_line": 635,
+        "end_line": 639,
         "lines": [
           {
-            "line": 557,
+            "line": 635,
             "text": "{"
           },
           {
-            "line": 558,
+            "line": 636,
             "text": "    if (trace != nullptr && trace->NeedsExpertStage2Begin()) {"
           },
           {
-            "line": 559,
+            "line": 637,
             "text": "        // TRACE_POINT: a8w4_combine_begin_S"
           },
           {
-            "line": 560,
+            "line": 638,
             "text": "        trace->BeginExpertStage2(CriticalPathTrace::Now());"
           },
           {
-            "line": 561,
+            "line": 639,
             "text": "    }"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "fb88e0a8f06bda4ab3dfdc5874e6145ced5c12f6cf7ccbd8d9fd68bc82828bc8",
+      "source_file_sha256": "b89e25d85aeab70d037809e190ae8f97cdd697a3c27ec73a640f79c21658cef4",
       "why": "measure Combine only after GMM2 output is visible",
       "semantics": "after GM tile sequence or group counter readiness and before first combine load",
       "dependency": {
@@ -1345,64 +1344,64 @@
         "pattern": "uint32_t combineEndCycle = CriticalPathTrace::Now();"
       },
       "target_match_count": 1,
-      "target_line": 2410,
+      "target_line": 2419,
       "target_context": {
-        "start_line": 2408,
-        "end_line": 2412,
+        "start_line": 2417,
+        "end_line": 2421,
         "lines": [
           {
-            "line": 2408,
+            "line": 2417,
             "text": "                    AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);"
           },
           {
-            "line": 2409,
+            "line": 2418,
             "text": "                    // TRACE_POINT: a8w4_combine_end_S"
           },
           {
-            "line": 2410,
+            "line": 2419,
             "text": "                    uint32_t combineEndCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 2411,
+            "line": 2420,
             "text": "                    criticalPathTrace_.EndExpertStage2(combineEndCycle);"
           },
           {
-            "line": 2412,
+            "line": 2421,
             "text": "                }"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_combine_end_S",
       "marker_match_count": 1,
-      "marker_line": 2409,
+      "marker_line": 2418,
       "marker_context": {
-        "start_line": 2407,
-        "end_line": 2411,
+        "start_line": 2416,
+        "end_line": 2420,
         "lines": [
           {
-            "line": 2407,
+            "line": 2416,
             "text": "                    AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);"
           },
           {
-            "line": 2408,
+            "line": 2417,
             "text": "                    AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);"
           },
           {
-            "line": 2409,
+            "line": 2418,
             "text": "                    // TRACE_POINT: a8w4_combine_end_S"
           },
           {
-            "line": 2410,
+            "line": 2419,
             "text": "                    uint32_t combineEndCycle = CriticalPathTrace::Now();"
           },
           {
-            "line": 2411,
+            "line": 2420,
             "text": "                    criticalPathTrace_.EndExpertStage2(combineEndCycle);"
           }
         ]
       },
       "max_line_distance": 1,
-      "source_file_sha256": "c13170e8e9c5eaecf9a5ab03606d522bd39febdea7da7eba5f54756f9e2d0e11",
+      "source_file_sha256": "39b1ed544381a31d51e312fc7c53a0f745e67e270a412ff0322a9060fef17407",
       "why": "measure completed remote combine writes",
       "semantics": "the last MTE3 completion dependency has reached Scalar",
       "dependency": {
@@ -1431,64 +1430,64 @@
         "pattern": "args.criticalPathTrace->BeginCombineTileWait("
       },
       "target_match_count": 1,
-      "target_line": 1389,
+      "target_line": 1419,
       "target_context": {
-        "start_line": 1387,
-        "end_line": 1391,
+        "start_line": 1417,
+        "end_line": 1421,
         "lines": [
           {
-            "line": 1387,
+            "line": 1417,
             "text": "        if (args.criticalPathTrace != nullptr) {"
           },
           {
-            "line": 1388,
+            "line": 1418,
             "text": "            // TRACE_POINT: a8w4_combine_tile_wait_begin_S"
           },
           {
-            "line": 1389,
+            "line": 1419,
             "text": "            args.criticalPathTrace->BeginCombineTileWait("
           },
           {
-            "line": 1390,
+            "line": 1420,
             "text": "                args.expertIdx, tileOrdinal, CriticalPathTrace::Now());"
           },
           {
-            "line": 1391,
+            "line": 1421,
             "text": "        }"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_combine_tile_wait_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1388,
+      "marker_line": 1418,
       "marker_context": {
-        "start_line": 1386,
-        "end_line": 1390,
+        "start_line": 1416,
+        "end_line": 1420,
         "lines": [
           {
-            "line": 1386,
+            "line": 1416,
             "text": "#if MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE != 0"
           },
           {
-            "line": 1387,
+            "line": 1417,
             "text": "        if (args.criticalPathTrace != nullptr) {"
           },
           {
-            "line": 1388,
+            "line": 1418,
             "text": "            // TRACE_POINT: a8w4_combine_tile_wait_begin_S"
           },
           {
-            "line": 1389,
+            "line": 1419,
             "text": "            args.criticalPathTrace->BeginCombineTileWait("
           },
           {
-            "line": 1390,
+            "line": 1420,
             "text": "                args.expertIdx, tileOrdinal, CriticalPathTrace::Now());"
           }
         ]
       },
       "max_line_distance": 2,
-      "source_file_sha256": "d8be4e6f4d0b93322e4438f3b8d86c9e00c1ef1f7e8924c5df455c685830e53c",
+      "source_file_sha256": "3bab7cecaab907a1229fccdc5d46634784abb951a89608ee63c50ccc634b6698",
       "why": "measure the exact per-tile GMM2-to-Combine wait",
       "semantics": "immediately before polling the next GMM2 tile sequence",
       "dependency": {
@@ -1517,64 +1516,64 @@
         "pattern": "args.criticalPathTrace->BeginCombineTile("
       },
       "target_match_count": 1,
-      "target_line": 1403,
+      "target_line": 1433,
       "target_context": {
-        "start_line": 1401,
-        "end_line": 1405,
+        "start_line": 1431,
+        "end_line": 1435,
         "lines": [
           {
-            "line": 1401,
+            "line": 1431,
             "text": "            // TRACE_POINT: a8w4_combine_tile_wait_end_S"
           },
           {
-            "line": 1402,
+            "line": 1432,
             "text": "            // TRACE_POINT: a8w4_combine_tile_begin_S"
           },
           {
-            "line": 1403,
+            "line": 1433,
             "text": "            args.criticalPathTrace->BeginCombineTile("
           },
           {
-            "line": 1404,
+            "line": 1434,
             "text": "                args.expertIdx, tileOrdinal, CriticalPathTrace::Now());"
           },
           {
-            "line": 1405,
+            "line": 1435,
             "text": "        }"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_combine_tile_wait_end_S",
       "marker_match_count": 1,
-      "marker_line": 1401,
+      "marker_line": 1431,
       "marker_context": {
-        "start_line": 1399,
-        "end_line": 1403,
+        "start_line": 1429,
+        "end_line": 1433,
         "lines": [
           {
-            "line": 1399,
+            "line": 1429,
             "text": "        RecordA8W4CombineBeginAfterReady(args.criticalPathTrace);"
           },
           {
-            "line": 1400,
+            "line": 1430,
             "text": "        if (args.criticalPathTrace != nullptr) {"
           },
           {
-            "line": 1401,
+            "line": 1431,
             "text": "            // TRACE_POINT: a8w4_combine_tile_wait_end_S"
           },
           {
-            "line": 1402,
+            "line": 1432,
             "text": "            // TRACE_POINT: a8w4_combine_tile_begin_S"
           },
           {
-            "line": 1403,
+            "line": 1433,
             "text": "            args.criticalPathTrace->BeginCombineTile("
           }
         ]
       },
       "max_line_distance": 2,
-      "source_file_sha256": "d8be4e6f4d0b93322e4438f3b8d86c9e00c1ef1f7e8924c5df455c685830e53c",
+      "source_file_sha256": "3bab7cecaab907a1229fccdc5d46634784abb951a89608ee63c50ccc634b6698",
       "why": "close the exact per-tile readiness wait",
       "semantics": "the tile sequence has reached expectedReadySequence",
       "dependency": {
@@ -1603,64 +1602,64 @@
         "pattern": "args.criticalPathTrace->BeginCombineTile("
       },
       "target_match_count": 1,
-      "target_line": 1403,
+      "target_line": 1433,
       "target_context": {
-        "start_line": 1401,
-        "end_line": 1405,
+        "start_line": 1431,
+        "end_line": 1435,
         "lines": [
           {
-            "line": 1401,
+            "line": 1431,
             "text": "            // TRACE_POINT: a8w4_combine_tile_wait_end_S"
           },
           {
-            "line": 1402,
+            "line": 1432,
             "text": "            // TRACE_POINT: a8w4_combine_tile_begin_S"
           },
           {
-            "line": 1403,
+            "line": 1433,
             "text": "            args.criticalPathTrace->BeginCombineTile("
           },
           {
-            "line": 1404,
+            "line": 1434,
             "text": "                args.expertIdx, tileOrdinal, CriticalPathTrace::Now());"
           },
           {
-            "line": 1405,
+            "line": 1435,
             "text": "        }"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_combine_tile_begin_S",
       "marker_match_count": 1,
-      "marker_line": 1402,
+      "marker_line": 1432,
       "marker_context": {
-        "start_line": 1400,
-        "end_line": 1404,
+        "start_line": 1430,
+        "end_line": 1434,
         "lines": [
           {
-            "line": 1400,
+            "line": 1430,
             "text": "        if (args.criticalPathTrace != nullptr) {"
           },
           {
-            "line": 1401,
+            "line": 1431,
             "text": "            // TRACE_POINT: a8w4_combine_tile_wait_end_S"
           },
           {
-            "line": 1402,
+            "line": 1432,
             "text": "            // TRACE_POINT: a8w4_combine_tile_begin_S"
           },
           {
-            "line": 1403,
+            "line": 1433,
             "text": "            args.criticalPathTrace->BeginCombineTile("
           },
           {
-            "line": 1404,
+            "line": 1434,
             "text": "                args.expertIdx, tileOrdinal, CriticalPathTrace::Now());"
           }
         ]
       },
       "max_line_distance": 2,
-      "source_file_sha256": "d8be4e6f4d0b93322e4438f3b8d86c9e00c1ef1f7e8924c5df455c685830e53c",
+      "source_file_sha256": "3bab7cecaab907a1229fccdc5d46634784abb951a89608ee63c50ccc634b6698",
       "why": "separate GMM2 wait from Combine work",
       "semantics": "the tile sequence is visible and GM-to-UB movement is next",
       "dependency": {
@@ -1689,64 +1688,64 @@
         "pattern": "args.criticalPathTrace->EndCombineTile("
       },
       "target_match_count": 1,
-      "target_line": 1435,
+      "target_line": 1465,
       "target_context": {
-        "start_line": 1433,
-        "end_line": 1437,
+        "start_line": 1463,
+        "end_line": 1467,
         "lines": [
           {
-            "line": 1433,
+            "line": 1463,
             "text": "            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);"
           },
           {
-            "line": 1434,
+            "line": 1464,
             "text": "            // TRACE_POINT: a8w4_combine_tile_end_S"
           },
           {
-            "line": 1435,
+            "line": 1465,
             "text": "            args.criticalPathTrace->EndCombineTile("
           },
           {
-            "line": 1436,
+            "line": 1466,
             "text": "                args.expertIdx, tileOrdinal, CriticalPathTrace::Now());"
           },
           {
-            "line": 1437,
+            "line": 1467,
             "text": "        }"
           }
         ]
       },
       "marker": "TRACE_POINT: a8w4_combine_tile_end_S",
       "marker_match_count": 1,
-      "marker_line": 1434,
+      "marker_line": 1464,
       "marker_context": {
-        "start_line": 1432,
-        "end_line": 1436,
+        "start_line": 1462,
+        "end_line": 1466,
         "lines": [
           {
-            "line": 1432,
+            "line": 1462,
             "text": "            AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);"
           },
           {
-            "line": 1433,
+            "line": 1463,
             "text": "            AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(EVENT_ID0);"
           },
           {
-            "line": 1434,
+            "line": 1464,
             "text": "            // TRACE_POINT: a8w4_combine_tile_end_S"
           },
           {
-            "line": 1435,
+            "line": 1465,
             "text": "            args.criticalPathTrace->EndCombineTile("
           },
           {
-            "line": 1436,
+            "line": 1466,
             "text": "                args.expertIdx, tileOrdinal, CriticalPathTrace::Now());"
           }
         ]
       },
       "max_line_distance": 2,
-      "source_file_sha256": "d8be4e6f4d0b93322e4438f3b8d86c9e00c1ef1f7e8924c5df455c685830e53c",
+      "source_file_sha256": "3bab7cecaab907a1229fccdc5d46634784abb951a89608ee63c50ccc634b6698",
       "why": "measure per-tile Combine work through actual remote write completion",
       "semantics": "the tile MTE3 completion dependency has reached Scalar",
       "dependency": {
@@ -1757,6 +1756,350 @@
         "proof": "the timestamp follows both completion bridges"
       },
       "perturbation": "one MTE2-to-Scalar bridge and one clock read per owned Combine tile"
+    },
+    {
+      "id": "a8w4_gmm1_wave_wait_begin_S",
+      "stage": "gmm1_wave_wait",
+      "edge": "begin",
+      "boundary_quality": "causal",
+      "roles": [
+        "AIC"
+      ],
+      "scope": "first readiness visit for each expert M-wave on an active AIC",
+      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h",
+      "symbol": "AicComputeA8W4",
+      "placement": "before",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "criticalPathTrace->BeginGmm1WaveWait("
+      },
+      "target_match_count": 1,
+      "target_line": 1129,
+      "target_context": {
+        "start_line": 1127,
+        "end_line": 1131,
+        "lines": [
+          {
+            "line": 1127,
+            "text": "                criticalPathTrace->NeedsGmm1WaveWait(expertIdx, waveIdx)) {"
+          },
+          {
+            "line": 1128,
+            "text": "                // TRACE_POINT: a8w4_gmm1_wave_wait_begin_S"
+          },
+          {
+            "line": 1129,
+            "text": "                criticalPathTrace->BeginGmm1WaveWait("
+          },
+          {
+            "line": 1130,
+            "text": "                    expertIdx, waveIdx, CriticalPathTrace::Now());"
+          },
+          {
+            "line": 1131,
+            "text": "            }"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: a8w4_gmm1_wave_wait_begin_S",
+      "marker_match_count": 1,
+      "marker_line": 1128,
+      "marker_context": {
+        "start_line": 1126,
+        "end_line": 1130,
+        "lines": [
+          {
+            "line": 1126,
+            "text": "            if (shouldWait && criticalPathTrace != nullptr &&"
+          },
+          {
+            "line": 1127,
+            "text": "                criticalPathTrace->NeedsGmm1WaveWait(expertIdx, waveIdx)) {"
+          },
+          {
+            "line": 1128,
+            "text": "                // TRACE_POINT: a8w4_gmm1_wave_wait_begin_S"
+          },
+          {
+            "line": 1129,
+            "text": "                criticalPathTrace->BeginGmm1WaveWait("
+          },
+          {
+            "line": 1130,
+            "text": "                    expertIdx, waveIdx, CriticalPathTrace::Now());"
+          }
+        ]
+      },
+      "max_line_distance": 2,
+      "source_file_sha256": "3bab7cecaab907a1229fccdc5d46634784abb951a89608ee63c50ccc634b6698",
+      "why": "measure Dispatch-to-GMM1 readiness wait per M-wave",
+      "semantics": "immediately before the first readiness poll retained for this expert and M-wave",
+      "dependency": {
+        "precondition": "the swizzled scheduler selected a tile in the M-wave",
+        "producer_pipeline": "Scalar",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "none",
+        "proof": "the sample directly precedes WaitForUpstreamReady"
+      },
+      "perturbation": "one retained clock read per active expert M-wave"
+    },
+    {
+      "id": "a8w4_gmm1_wave_wait_end_S",
+      "stage": "gmm1_wave_wait",
+      "edge": "end",
+      "boundary_quality": "actual",
+      "roles": [
+        "AIC"
+      ],
+      "scope": "after the retained readiness wait for each expert M-wave",
+      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h",
+      "symbol": "AicComputeA8W4",
+      "placement": "before",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "criticalPathTrace->BeginGmm1Wave("
+      },
+      "target_match_count": 1,
+      "target_line": 1146,
+      "target_context": {
+        "start_line": 1144,
+        "end_line": 1148,
+        "lines": [
+          {
+            "line": 1144,
+            "text": "                // TRACE_POINT: a8w4_gmm1_wave_wait_end_S"
+          },
+          {
+            "line": 1145,
+            "text": "                // TRACE_POINT: a8w4_gmm1_wave_begin_S"
+          },
+          {
+            "line": 1146,
+            "text": "                criticalPathTrace->BeginGmm1Wave("
+          },
+          {
+            "line": 1147,
+            "text": "                    expertIdx, waveIdx, CriticalPathTrace::Now());"
+          },
+          {
+            "line": 1148,
+            "text": "            }"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: a8w4_gmm1_wave_wait_end_S",
+      "marker_match_count": 1,
+      "marker_line": 1144,
+      "marker_context": {
+        "start_line": 1142,
+        "end_line": 1146,
+        "lines": [
+          {
+            "line": 1142,
+            "text": "            if (shouldWait && criticalPathTrace != nullptr &&"
+          },
+          {
+            "line": 1143,
+            "text": "                criticalPathTrace->NeedsGmm1WaveBegin(expertIdx, waveIdx)) {"
+          },
+          {
+            "line": 1144,
+            "text": "                // TRACE_POINT: a8w4_gmm1_wave_wait_end_S"
+          },
+          {
+            "line": 1145,
+            "text": "                // TRACE_POINT: a8w4_gmm1_wave_begin_S"
+          },
+          {
+            "line": 1146,
+            "text": "                criticalPathTrace->BeginGmm1Wave("
+          }
+        ]
+      },
+      "max_line_distance": 2,
+      "source_file_sha256": "3bab7cecaab907a1229fccdc5d46634784abb951a89608ee63c50ccc634b6698",
+      "why": "close the retained per-wave Dispatch readiness wait",
+      "semantics": "the Dispatch row-count condition for this wave is satisfied",
+      "dependency": {
+        "precondition": "WaitForUpstreamReady returned",
+        "producer_pipeline": "Scalar polling",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "none",
+        "proof": "the shared sample directly follows the wait"
+      },
+      "perturbation": "shares the wave-envelope begin clock read"
+    },
+    {
+      "id": "a8w4_gmm1_wave_begin_S",
+      "stage": "gmm1_wave",
+      "edge": "begin",
+      "boundary_quality": "causal",
+      "roles": [
+        "AIC"
+      ],
+      "scope": "first owned tile retained for each expert M-wave and AIC",
+      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h",
+      "symbol": "AicComputeA8W4",
+      "placement": "before",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "criticalPathTrace->BeginGmm1Wave("
+      },
+      "target_match_count": 1,
+      "target_line": 1146,
+      "target_context": {
+        "start_line": 1144,
+        "end_line": 1148,
+        "lines": [
+          {
+            "line": 1144,
+            "text": "                // TRACE_POINT: a8w4_gmm1_wave_wait_end_S"
+          },
+          {
+            "line": 1145,
+            "text": "                // TRACE_POINT: a8w4_gmm1_wave_begin_S"
+          },
+          {
+            "line": 1146,
+            "text": "                criticalPathTrace->BeginGmm1Wave("
+          },
+          {
+            "line": 1147,
+            "text": "                    expertIdx, waveIdx, CriticalPathTrace::Now());"
+          },
+          {
+            "line": 1148,
+            "text": "            }"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: a8w4_gmm1_wave_begin_S",
+      "marker_match_count": 1,
+      "marker_line": 1145,
+      "marker_context": {
+        "start_line": 1143,
+        "end_line": 1147,
+        "lines": [
+          {
+            "line": 1143,
+            "text": "                criticalPathTrace->NeedsGmm1WaveBegin(expertIdx, waveIdx)) {"
+          },
+          {
+            "line": 1144,
+            "text": "                // TRACE_POINT: a8w4_gmm1_wave_wait_end_S"
+          },
+          {
+            "line": 1145,
+            "text": "                // TRACE_POINT: a8w4_gmm1_wave_begin_S"
+          },
+          {
+            "line": 1146,
+            "text": "                criticalPathTrace->BeginGmm1Wave("
+          },
+          {
+            "line": 1147,
+            "text": "                    expertIdx, waveIdx, CriticalPathTrace::Now());"
+          }
+        ]
+      },
+      "max_line_distance": 2,
+      "source_file_sha256": "3bab7cecaab907a1229fccdc5d46634784abb951a89608ee63c50ccc634b6698",
+      "why": "start the GMM1 M-wave active envelope after readiness",
+      "semantics": "the first retained tile in this M-wave is about to issue MMAD",
+      "dependency": {
+        "precondition": "Dispatch readiness is satisfied",
+        "producer_pipeline": "Scalar",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "none",
+        "proof": "the shared sample precedes the first retained blockMmad"
+      },
+      "perturbation": "shares the wait-end clock read"
+    },
+    {
+      "id": "a8w4_gmm1_wave_end_S",
+      "stage": "gmm1_wave",
+      "edge": "end",
+      "boundary_quality": "actual",
+      "roles": [
+        "AIC"
+      ],
+      "scope": "latest completed owned tile for each expert M-wave and AIC",
+      "file": "mc2/mega_moe/op_kernel/arch35/mega_moe_impl.h",
+      "symbol": "AicComputeA8W4",
+      "placement": "before",
+      "target_anchor": {
+        "mode": "literal",
+        "pattern": "criticalPathTrace->EndGmm1Wave("
+      },
+      "target_match_count": 1,
+      "target_line": 1214,
+      "target_context": {
+        "start_line": 1212,
+        "end_line": 1216,
+        "lines": [
+          {
+            "line": 1212,
+            "text": "            if (criticalPathTrace != nullptr) {"
+          },
+          {
+            "line": 1213,
+            "text": "                // TRACE_POINT: a8w4_gmm1_wave_end_S"
+          },
+          {
+            "line": 1214,
+            "text": "                criticalPathTrace->EndGmm1Wave("
+          },
+          {
+            "line": 1215,
+            "text": "                    expertIdx, waveIdx, CriticalPathTrace::Now());"
+          },
+          {
+            "line": 1216,
+            "text": "            }"
+          }
+        ]
+      },
+      "marker": "TRACE_POINT: a8w4_gmm1_wave_end_S",
+      "marker_match_count": 1,
+      "marker_line": 1213,
+      "marker_context": {
+        "start_line": 1211,
+        "end_line": 1215,
+        "lines": [
+          {
+            "line": 1211,
+            "text": "        if constexpr (Policy::IS_GMM1) {"
+          },
+          {
+            "line": 1212,
+            "text": "            if (criticalPathTrace != nullptr) {"
+          },
+          {
+            "line": 1213,
+            "text": "                // TRACE_POINT: a8w4_gmm1_wave_end_S"
+          },
+          {
+            "line": 1214,
+            "text": "                criticalPathTrace->EndGmm1Wave("
+          },
+          {
+            "line": 1215,
+            "text": "                    expertIdx, waveIdx, CriticalPathTrace::Now());"
+          }
+        ]
+      },
+      "max_line_distance": 2,
+      "source_file_sha256": "3bab7cecaab907a1229fccdc5d46634784abb951a89608ee63c50ccc634b6698",
+      "why": "close the M-wave active envelope at its latest published tile",
+      "semantics": "the latest owned tile observed for this wave has passed FIX_S publication; the envelope may include interleaved swizzle work from other waves",
+      "dependency": {
+        "precondition": "the current GMM1 tile has been published",
+        "producer_pipeline": "FIX",
+        "timestamp_pipeline": "Scalar",
+        "bridge": "existing per-tile FIX_S",
+        "proof": "the sample follows the existing FIX_S and ready publication"
+      },
+      "perturbation": "one clock read per owned GMM1 tile; only the latest value is retained"
     }
   ],
   "errors": []
