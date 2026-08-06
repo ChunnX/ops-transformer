@@ -45,7 +45,7 @@ def attn_res_golden(prefix_sum, block_residual, proj_weight, norm_weight,
             nw.grad.to(norm_weight.dtype))
 
 
-def check(name, npu, cpu, rtol=2e-2, atol=2e-2):
+def check(name, npu, cpu, rtol=2e-2, atol=2e-2, show_points=False):
     a = npu.detach().float().cpu().reshape(-1)
     b = cpu.detach().float().cpu().reshape(-1)
     abs_err = (a - b).abs()
@@ -55,7 +55,7 @@ def check(name, npu, cpu, rtol=2e-2, atol=2e-2):
     mae = abs_err.max().item()
     ok = torch.allclose(npu.float().cpu(), cpu.float().cpu(), rtol=rtol, atol=atol)
     print(f"[{'PASS' if ok else 'FAIL'}] {name}: MERE={mere:.3e} MARE={mare:.3e} MAE={mae:.3e}")
-    if not ok:
+    if not ok or show_points:
         idx = abs_err.argmax().item()
         lo = max(0, idx - 2)
         hi = min(abs_err.numel(), idx + 3)
@@ -67,7 +67,7 @@ def check(name, npu, cpu, rtol=2e-2, atol=2e-2):
     return ok
 
 
-def run_case(dtype, B, N, H, seed):
+def run_case(dtype, B, N, H, seed, show_points=False):
     torch.manual_seed(seed)
     print(f"\n===== dtype={dtype} B={B} N={N} H={H} seed={seed} =====")
 
@@ -86,10 +86,10 @@ def run_case(dtype, B, N, H, seed):
         prefix_sum, block_residual, proj_weight, norm_weight, grad_output)
 
     results = []
-    results.append(check("bwd.grad_prefix_sum", prefix_sum.grad, g_ps))
-    results.append(check("bwd.grad_block_residual", block_residual.grad, g_br))
-    results.append(check("bwd.grad_proj_weight", proj_weight.grad, g_pw))
-    results.append(check("bwd.grad_norm_weight", norm_weight.grad, g_nw))
+    results.append(check("bwd.grad_prefix_sum", prefix_sum.grad, g_ps, show_points=show_points))
+    results.append(check("bwd.grad_block_residual", block_residual.grad, g_br, show_points=show_points))
+    results.append(check("bwd.grad_proj_weight", proj_weight.grad, g_pw, show_points=show_points))
+    results.append(check("bwd.grad_norm_weight", norm_weight.grad, g_nw, show_points=show_points))
 
     # ---- 非可微路径：仅正向
     hidden_nograd = attn_res(prefix_sum.detach(), block_residual.detach(),
@@ -109,10 +109,12 @@ def main():
     parser.add_argument("--H", type=int, default=7168)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--dtype", default="bf16", choices=["fp16", "bf16"])
+    parser.add_argument("--show-points", action="store_true",
+                        help="PASS 时也打印最大误差点及前后2点")
     args = parser.parse_args()
 
     dtype = torch.float16 if args.dtype == "fp16" else torch.bfloat16
-    ok = run_case(dtype, args.B, args.N, args.H, args.seed)
+    ok = run_case(dtype, args.B, args.N, args.H, args.seed, show_points=args.show_points)
     print("\n=== ALL PASS ===" if ok else "\n=== SOME CASES FAILED ===")
     return 0 if ok else 1
 
