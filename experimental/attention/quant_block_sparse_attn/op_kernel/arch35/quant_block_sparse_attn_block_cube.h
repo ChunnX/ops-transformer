@@ -127,10 +127,10 @@ public:
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf,
                                        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
                                        RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void IterateBmm1Static(LocalTensor<uint8_t> &outputBuf, uint32_t outputEventId,
-                                             RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void IterateBmm2Static(LocalTensor<uint8_t> &outputBuf, uint32_t outputEventId,
-                                             LocalTensor<uint8_t> &inputBuf, uint32_t inputEventId,
+    __aicore__ inline void IterateBmm1Static(LocalTensor<uint8_t> &outputBuf, uint32_t readyEventId,
+                                             uint32_t freeEventId, RunInfo &runInfo, ConstInfo &constInfo);
+    __aicore__ inline void IterateBmm2Static(LocalTensor<uint8_t> &outputBuf, uint32_t readyEventId,
+                                             uint32_t freeEventId, LocalTensor<uint8_t> &inputBuf, uint32_t inputEventId,
                                              RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline void FinalizeStaticBuffers();
     __aicore__ inline void InitDequantParams(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
@@ -525,8 +525,8 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Static(LocalTensor<uint8_t> &outputBuf,
-                                                                       uint32_t outputEventId, RunInfo &runInfo,
-                                                                       ConstInfo &constInfo)
+                                                                       uint32_t readyEventId, uint32_t freeEventId,
+                                                                       RunInfo &runInfo, ConstInfo &constInfo)
 {
     if constexpr (useDn && isFp8 && s1BaseSize == 128U && s2BaseSize == 256U && dBaseSize == 128U &&
                   dVBaseSize == 128U && bmm2Write2Ub) {
@@ -614,7 +614,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Static(LocalTens
         SetFlag<HardEvent::M_FIX>(l0cEventId);
         WaitFlag<HardEvent::M_FIX>(l0cEventId);
 
-        Fp8Static::AicWaitUbFree(outputEventId);
+        Fp8Static::AicWaitUbFree(freeEventId);
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = (runInfo.s1RealSize + 31) >> 5 << 5;
         fixpipeParams.mSize = actualS2RealSize;
@@ -626,13 +626,13 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Static(LocalTens
         fixpipeParams.params.dstNdStride = 0;
         Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.ReinterpretCast<T>(), mm1ResL0C, fixpipeParams);
         SetFlag<HardEvent::FIX_M>(l0cEventId);
-        Fp8Static::AicSetUbReady(outputEventId);
+        Fp8Static::AicSetUbReady(readyEventId);
     }
 }
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2Static(LocalTensor<uint8_t> &outputBuf,
-                                                                       uint32_t outputEventId,
+                                                                       uint32_t readyEventId, uint32_t freeEventId,
                                                                        LocalTensor<uint8_t> &inputBuf,
                                                                        uint32_t inputEventId, RunInfo &runInfo,
                                                                        ConstInfo &constInfo)
@@ -705,7 +705,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2Static(LocalTens
         SetFlag<HardEvent::M_FIX>(l0cEventId);
         WaitFlag<HardEvent::M_FIX>(l0cEventId);
 
-        Fp8Static::AicWaitUbFree(outputEventId);
+        Fp8Static::AicWaitUbFree(freeEventId);
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         fixpipeParams.nSize = (constInfo.dSizeV + 7) >> 3 << 3;
         fixpipeParams.mSize = s1BaseSize;
@@ -717,7 +717,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2Static(LocalTens
         fixpipeParams.params.dstNdStride = 0;
         Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(outputBuf.ReinterpretCast<T>(), mm2ResL0C, fixpipeParams);
         SetFlag<HardEvent::FIX_M>(l0cEventId);
-        Fp8Static::AicSetUbReady(outputEventId);
+        Fp8Static::AicSetUbReady(readyEventId);
     }
 }
 
@@ -1001,11 +1001,11 @@ public:
                                        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
                                        RunInfo &runInfo, ConstInfo &constInfo)
     {}
-    __aicore__ inline void IterateBmm1Static(LocalTensor<uint8_t> &outputBuf, uint32_t outputEventId,
-                                             RunInfo &runInfo, ConstInfo &constInfo)
+    __aicore__ inline void IterateBmm1Static(LocalTensor<uint8_t> &outputBuf, uint32_t readyEventId,
+                                             uint32_t freeEventId, RunInfo &runInfo, ConstInfo &constInfo)
     {}
-    __aicore__ inline void IterateBmm2Static(LocalTensor<uint8_t> &outputBuf, uint32_t outputEventId,
-                                             LocalTensor<uint8_t> &inputBuf, uint32_t inputEventId,
+    __aicore__ inline void IterateBmm2Static(LocalTensor<uint8_t> &outputBuf, uint32_t readyEventId,
+                                             uint32_t freeEventId, LocalTensor<uint8_t> &inputBuf, uint32_t inputEventId,
                                              RunInfo &runInfo, ConstInfo &constInfo)
     {}
     __aicore__ inline void FinalizeStaticBuffers() {}
