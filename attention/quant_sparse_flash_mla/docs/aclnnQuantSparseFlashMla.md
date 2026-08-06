@@ -251,7 +251,7 @@ aclnnStatus aclnnQuantSparseFlashMla(
       <td>cmpKvDescaleOptional（aclTensor*）</td>
       <td>输入</td>
       <td>对应cmpKvOptional的量化参数。</td>
-      <td>当前必传。</td>
+      <td>可选输入。</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>
@@ -737,7 +737,7 @@ aclnnStatus aclnnQuantSparseFlashMla(
     - 空tensor指必选输入、某调用场景下必传输入和输出的shape size为0，即有任意轴为0。
     - 触发空tensor的用例将全部拦截报错。
 
-- q、oriKvOptional、cmpKvOptional、attnOutOut校验
+- q、oriKvOptional、cmpKvOptional、qDescaleOptional、oriKvDescaleOptional、cmpKvDescaleOptional、attnOutOut校验
 
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
 <col style="width: 147px">
@@ -846,8 +846,11 @@ aclnnStatus aclnnQuantSparseFlashMla(
                 <li>dtype支持FLOAT32</li>
             </ul>
         </td>
-        <td rowspan="3">
+        <td rowspan="2">
             当前版本必传
+        </td>
+        <td rowspan="3">
+            无
         </td>
         <td rowspan="3">
             当quantMode=1时，shape为[1]
@@ -867,6 +870,10 @@ aclnnStatus aclnnQuantSparseFlashMla(
             <ul>
                 <li>dtype支持FLOAT32</li>
             </ul>
+        </td>
+        <td>
+            <li>cmpKvOptional传入时，必须传入</li>
+            <li>cmpKvOptional为空时，不支持传入</li>
         </td>
     </tr>
 </tbody>
@@ -1004,9 +1011,7 @@ metadataOptional校验
              <td>
                 <ul>
                     <li>当oriKvOptional/cmpKvOptional/cmpSparseIndicesOptional/oriSparseIndicesOptional传入时，cmpMaskMode为0和oriMaskMode必须为0</li>
-                    <li>当cmpKvOptional不传时，oriMaskMode为3、4</li>
-                    <li>当oriMaskMode为3时，cmpMaskMode必须为3</li>
-                    <li>当oriMaskMode为4时，cmpMaskMode必须为3</li>
+                    <li>SWA场景下cmpMaskMode必须为0 </li>
                 </ul>
             </td>
         </tr>
