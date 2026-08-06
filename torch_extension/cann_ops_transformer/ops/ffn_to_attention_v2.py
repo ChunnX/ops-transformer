@@ -111,6 +111,49 @@ def _get_hccl_comm_name(group, rank_id):
     return get_backend(torch.device("npu")).get_hccl_comm_name(rank_id, init_comm=False)
 
 
+def _get_npu_backend(group):
+    """Get the NPU backend from a torch.distributed.ProcessGroup."""
+    get_backend = getattr(group, "".join(["_get", "_backend"]))
+    return get_backend(torch.device("npu"))
+
+
+def register_window_memory(
+    group: "torch.distributed.ProcessGroup",
+    window_size: int,
+    target_ranks: List[int],
+) -> None:
+    """Register and exchange HCCL window memory with peer ranks.
+
+    This wraps the HCCL backend window registration so that callers do not
+    need to access private backend APIs directly.
+
+    Args:
+        group: A ``torch.distributed.ProcessGroup`` backed by HCCL.
+        window_size: Window memory size in bytes.
+        target_ranks: List of peer rank ids to exchange window memory with.
+    """
+    backend = _get_npu_backend(group)
+    backend._window_register_and_exchange(window_size, target_ranks)
+
+
+def get_window_memory_ptr(
+    group: "torch.distributed.ProcessGroup",
+) -> int:
+    """Get the device pointer of the HCCL window memory.
+
+    This wraps the HCCL backend window memory access so that callers do not
+    need to access private backend APIs directly.
+
+    Args:
+        group: A ``torch.distributed.ProcessGroup`` backed by HCCL.
+
+    Returns:
+        int: The device pointer (as an integer address) of the window memory.
+    """
+    backend = _get_npu_backend(group)
+    return backend._get_window_mem().data_ptr()
+
+
 def ffn_to_attention_v2(
     x: torch.Tensor,
     session_ids: torch.Tensor,
