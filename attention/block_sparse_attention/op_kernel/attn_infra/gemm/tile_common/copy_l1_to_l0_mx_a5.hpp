@@ -65,7 +65,7 @@ struct CopyL1ToL0AMxA5 {
         // 调用点传入的 LocalTensor 已是 fp4x2_e2m1_t / fp8_e8m0_t 元素类型，直接传给 LoadData。
         // [TODO] fp4 粒度下 tla stride 与 mx LoadData 的 16/64 块单位非一一对应，
         //        暂不经 tla 张量重推 stride，维数由形参 dAct/s2Act 显式传入（忠实移植）。
-        AscendC::LoadData(dst, src, scale, loadData2DParamsA, load2DMxParamsA);
+                AscendC::LoadData(dst, src, scale, loadData2DParamsA, load2DMxParamsA);
     }
 };
 
@@ -80,28 +80,27 @@ struct CopyL1ToL0BMxA5 {
     // s2Base: 整 tile 的 S2Base（256），用于推导 scale srcStride（残留硬编码 5 的来源）
     template <class TensorDst, class TensorSrc, class TensorScale>
     __aicore__ inline void operator()(
-        TensorDst const &dst, TensorSrc const &src, TensorScale const &scale,
-        uint32_t s1Act, uint32_t s2Act, uint32_t dAct, uint32_t s2Base, uint32_t actScaleSrcStride)
+        TensorDst const &dst, TensorSrc const &src, TensorScale const &scale, uint32_t s2Align64, uint32_t dAct, uint32_t s2Base, uint32_t actScaleSrcStride, uint32_t s1Act, uint32_t s1Align16)
     {
         AscendC::LoadData2DParamsV2 loadData2DParamsB;
         loadData2DParamsB.mStartPosition = 0;                       // [移植 :187]
         loadData2DParamsB.kStartPosition = 0;                       // [移植 :188]
-        loadData2DParamsB.mStep = (s2Act + 15) / 16;                // 源 m = S2（16-块）[移植 :189]
-        loadData2DParamsB.kStep = s1Act / 64;                       // 源 k = M（64-块）[移植 :190] 残留:尾块需 align128
+        loadData2DParamsB.mStep = (s2Align64 + 15) / 16;                // 源 m = S2（16-块）[移植 :189]
+        loadData2DParamsB.kStep = (s1Align16 + 63) / 64;                       // 源 k = M（64-块）[移植 :190] 残留:尾块需 align128
         loadData2DParamsB.srcStride = loadData2DParamsB.mStep;      // [移植 :191]
-        loadData2DParamsB.dstStride = s1Act / 16;                   // L0B dst stride [移植 :192] 残留:尾块需 align128
+        loadData2DParamsB.dstStride = s1Align16 / 16;                   // L0B dst stride [移植 :192] 残留:尾块需 align128
         loadData2DParamsB.ifTranspose = true;                       // 转置 -> P 在 L0B 直通 (k=S2,n=M) [移植 :193]
 
         AscendC::LoadData2DMxParams load2DMxParamsB;
         load2DMxParamsB.xStartPosition = 0;                         // [移植 :196]
         load2DMxParamsB.yStartPosition = 0;                         // [移植 :197]
-        load2DMxParamsB.xStep = dAct / 16;                          // D=M=128 时 = M/16 [移植 :198]
-        load2DMxParamsB.yStep = (s2Act + 63) / 64;                  // P 量化轴 S2（64-块）[移植 :199]
+        load2DMxParamsB.xStep = (s1Act + 15) / 16;                          // D=M=128 时 = M/16 [移植 :198]
+        load2DMxParamsB.yStep = (s2Align64 + 63) / 64;                  // P 量化轴 S2（64-块）[移植 :199]
         // [残留硬编码] 原 srcStride=5 = S2Base/64+1 = 256/64+1，仅 S2=256 正确。
         // [改造] 改由 s2Base 派生，适配真实 S2Base。
         load2DMxParamsB.srcStride = actScaleSrcStride == 0 ? s2Base / 64 + 1 : actScaleSrcStride;                // [移植+去硬编码 :200]
         load2DMxParamsB.dstStride = load2DMxParamsB.yStep;          // [移植 :201]
-
+       
         AscendC::LoadData(dst, src, scale, loadData2DParamsB, load2DMxParamsB);
     }
 };
