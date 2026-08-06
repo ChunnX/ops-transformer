@@ -15,6 +15,8 @@
 
 #include "stem_indexer_tiling.h"
 
+#include <cmath>
+
 #include "../op_kernel/stem_indexer_template_tiling_key.h"
 
 using namespace ge;
@@ -135,9 +137,10 @@ ge::graphStatus StemIndexerInfoParser::GetAndCheckAttrParaInfo()
         *opParamInfo_.windowSize != WINDOW_SIZE_LIMIT,
         OP_LOGE(opName_, "window_size only supports %u, but got %ld.", WINDOW_SIZE_LIMIT, *opParamInfo_.windowSize),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF((*opParamInfo_.alpha <= ALPHA_MIN) || (*opParamInfo_.alpha > ALPHA_MAX),
-                OP_LOGE(opName_, "alpha should be in (%f, %f], but got %f.", ALPHA_MIN, ALPHA_MAX, *opParamInfo_.alpha),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(std::isnan(*opParamInfo_.alpha) || (*opParamInfo_.alpha <= ALPHA_MIN) ||
+                    (*opParamInfo_.alpha > ALPHA_MAX),
+                 OP_LOGE(opName_, "alpha should be in (%f, %f], but got %f.", ALPHA_MIN, ALPHA_MAX, *opParamInfo_.alpha),
+                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!IsFloatEqual(*opParamInfo_.kBlockNumRateMedium, K_BLOCK_NUM_RATE_MEDIUM_LIMIT),
                 OP_LOGE(opName_, "k_block_num_rate_medium only supports %f, but got %f.", K_BLOCK_NUM_RATE_MEDIUM_LIMIT,
                         *opParamInfo_.kBlockNumRateMedium),
@@ -399,10 +402,7 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
     context_->SetBlockDim(blockDim);
 
-    constexpr uint32_t FP32_BYTES = 4;
-    constexpr uint32_t DOUBLE_BUFFER = 2;
     uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
-    workspaceSize += STEM_M_BASE_SIZE * STEM_S2_BASE_SIZE * FP32_BYTES * DOUBLE_BUFFER * aicNum;
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = workspaceSize;
 
