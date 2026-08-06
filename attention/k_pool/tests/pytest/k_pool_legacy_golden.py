@@ -12,7 +12,6 @@ import torch_npu
 from k_pool_torch_extension import k_pool
 import numpy as np
 import torch.nn as nn
-from torch_npu.testing.testcase import TestCase, run_tests
 import logging
 import datetime
 import os
