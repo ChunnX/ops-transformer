@@ -409,9 +409,9 @@
     * 当cache_mode为PA_BNSD、PA_NZ时，shape为1维[Bkv * Skv]，要求index的value值范围为[-1,block_num * block_size)。value数值不能重复。
     * 当cache_mode为PA_BLK_BNSD、PA_BLK_NZ时，shape为1维[Bkv * ceil_div(Skv,block_size)]，要求index的value的数值范围为[-1,block_num * block_size)。value/block_size的值不能重复。
   * is_output_kv约束：
-    * 作用是输出中间处理结果：使能 k_rope 和 c_kv。
+    * 作用是输出中间处理结果：开启 k_rope 和 c_kv。
     * 在cache_mode为PA, PA_BNSD, PA_NZ, PA_BLK_BNSD, PA_BLK_NZ模式时有效。
-    * 在cache_mode为Norm时，仅在V2场景中使能量化模式时有效。
+    * 在cache_mode为Norm时，仅在V2场景中开启量化模式时有效。
 
   * 输入组合约束：
 
