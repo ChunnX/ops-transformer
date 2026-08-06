@@ -1519,6 +1519,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 {
     bool hasReadRouteInfo = false;
     Duplicate<int64_t>(sourceStateTensor_, SOURCE_STATE_UNREAD, remoteServerCount_);
+    SyncFunc<AscendC::HardEvent::V_S>();
     uint32_t completedSourceCount = 0U;
     while (completedSourceCount != remoteServerCount_) {
         bool madeProgress = false;
