@@ -54,8 +54,9 @@
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
   - `query`、`key`在`quant_mode`为1/3时支持FLOAT8_e4m3fn，`quant_mode`为4时支持HIFLOAT8，`quant_mode`为5时支持FLOAT4_e2m1，不支持INT8。
-  - `quant_mode`为3/5时，`query_dequant_scale`和`key_dequant_scale`仅支持FLOAT8_e8m0。
-  - `quant_mode`为5时，`query`和`key`的逻辑数据类型为FLOAT4_e2m1，每个物理字节打包两个E2M1逻辑元素。
+  - `query_dequant_scale`和`key_dequant_scale`在`quant_mode`为1/4时支持FLOAT32，在`quant_mode`为3/5时支持FLOAT8_e8m0。
+  - `weights`支持FLOAT32，不支持FLOAT16。
+  - `quant_mode`为3/5时，`query_dequant_scale`和`key_dequant_scale`的维数分别比`query`和`key`多1，前缀维度保持一致，末两维为(D/64,2)；D必须为64的倍数，每个scale对应连续32个D轴逻辑元素。
 
 ## 调用示例
 

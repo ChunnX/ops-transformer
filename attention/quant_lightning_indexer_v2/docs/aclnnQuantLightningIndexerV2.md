@@ -118,7 +118,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>输入</td>
       <td>公式中量化后的 Query。</td>
       <td>不支持空tensor。</td>
-      <td>INT8、FLOAT8_e4m3fn、HIFLOAT8</td>
+      <td>INT8、FLOAT8_e4m3fn、HIFLOAT8、FLOAT4_e2m1</td>
       <td>ND</td>
       <td>
           <ul>
@@ -140,7 +140,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
                 <li>layout_key为BSND时，shape为(B, K_S, N2, D)，layout_key为TND时，shape为(K_T, N2, D)。</li>
           </ul>
       </td>
-      <td>INT8、FLOAT8_e4m3fn、HIFLOAT8</td>
+      <td>INT8、FLOAT8_e4m3fn、HIFLOAT8、FLOAT4_e2m1</td>
       <td>ND</td>
       <td>
           <ul>
@@ -169,9 +169,14 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>输入</td>
       <td>公式中 Query 的反量化系数。</td>
       <td>不支持空tensor。</td>
-      <td>FLOAT16、FLOAT32</td>
+      <td>FLOAT16、FLOAT32、FLOAT8_e8m0</td>
       <td>ND</td>
-      <td>shape与weights保持一致。</td>
+      <td>
+          <ul>
+                <li>quantMode为3/5时，layout_query为BSND时shape为(B,S1,N1,D/64,2)，layout_query为TND时shape为(T1,N1,D/64,2)。</li>
+                <li>其他场景shape与weights保持一致。</li>
+          </ul>
+      </td>
       <td>x</td>
     </tr>
     <tr>
@@ -179,9 +184,14 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>输入</td>
       <td>公式中 Key 的反量化系数。</td>
       <td>不支持空tensor。</td>
-      <td>FLOAT16、FLOAT32</td>
+      <td>FLOAT16、FLOAT32、FLOAT8_e8m0</td>
       <td>ND</td>
-      <td>layout_key为PA_BSND时，shape为(block_num, block_size, N2)。</td>
+      <td>
+          <ul>
+                <li>quantMode为3/5时，layout_key为PA_BSND、BSND、TND对应的shape分别为(block_num,block_size,N2,D/64,2)、(B,K_S,N2,D/64,2)、(K_T,N2,D/64,2)。</li>
+                <li>其他场景下，layout_key为PA_BSND时shape为(block_num, block_size, N2)。</li>
+          </ul>
+      </td>
       <td>支持0轴非连续</td>
     </tr>
     <tr>
@@ -309,7 +319,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
       <td>量化模式。</td>
       <td>
           <ul>
-                <li>支持传入 1（FLOAT8_e4m3fn量化）、2（Per-Token-Head量化）、4（HIFLOAT8量化）。</li>
+                <li>支持传入 1（FLOAT8_e4m3fn量化）、2（Per-Token-Head量化）、3（MXFP8量化）、4（HIFLOAT8量化）、5（MXFP4量化）。</li>
           </ul>
       </td>
       <td>INT64</td>
@@ -454,11 +464,12 @@ aclnnStatus aclnnQuantLightningIndexerV2(
 <!-- npu="950" id10 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：
   - `layout_key` 额外支持 BSND 和 TND；支持 PA_BSND、BSND、TND。
-  - `quant_mode` 支持 1（FLOAT8_e4m3fn量化）和 4（HIFLOAT8量化），不支持 2。
+  - `quant_mode` 支持 1（FLOAT8_e4m3fn量化）、3（MXFP8量化）、4（HIFLOAT8量化）和 5（MXFP4量化），不支持 2。
   - `cmp_ratio` 支持 (0, 128] 内任意正整数。
   - 支持 `return_value`。
-  - query 和 key：`quant_mode` 为 1 时支持 FLOAT8_e4m3fn，`quant_mode` 为 4 时支持 HIFLOAT8，不支持 INT8。
-  - weights、query_dequant_scale 和 key_dequant_scale：仅支持 FLOAT32，不支持 FLOAT16。
+  - query 和 key：`quant_mode` 为 1/3 时支持 FLOAT8_e4m3fn，`quant_mode` 为 4 时支持 HIFLOAT8，`quant_mode` 为 5 时支持 FLOAT4_e2m1，不支持 INT8。
+  - query_dequant_scale 和 key_dequant_scale：`quant_mode` 为 1/4 时支持 FLOAT32，`quant_mode` 为 3/5 时支持 FLOAT8_e8m0，不支持 FLOAT16。
+  - weights：仅支持 FLOAT32，不支持 FLOAT16。
   - query Q_N 支持 32、64。
 <!-- end id10 -->
 <!-- npu="A3,910b" id11 -->
@@ -552,7 +563,7 @@ aclnnStatus aclnnQuantLightningIndexerV2(
 - block_size 取值为 16 的倍数，最大支持 1024。
 - 当 `layout_key` 不为 PA_BSND 时，`layout_query` 和 `layout_key` 必须一致。
 - 当 `quant_mode` 为 4 时，`queryDequantScale` 和 `keyDequantScale` 的 shape 维度必须为 1 且 shape[0]=1（即 Per-Tensor 量化）。
-
+- 当 `quant_mode` 为 3/5 时，`queryDequantScale` 和 `keyDequantScale` 的维数分别比 `query` 和 `key` 多 1，前缀维度保持一致，末两维为(D/64, 2)；D必须为64的倍数，每个scale对应D轴上连续32个逻辑元素。
 - **确定性说明：** aclnnQuantLightningIndexerV2 默认确定性实现。
 
 ## 调用示例
