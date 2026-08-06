@@ -28,6 +28,7 @@ TEST_PARAMS = {
         "num_accepted_tokens": [None],
         "block_num": [None],
         "data_type": [torch.bfloat16],
+        "state_data_type": [torch.bfloat16],
         "query_datarange": [[-1, 1]],
         "key_datarange": [[-1, 1]],
         "value_datarange": [[-10, 10]],
@@ -35,6 +36,7 @@ TEST_PARAMS = {
         "gamma_k_datarange": [[0, 1]],
         "beta_datarange": [[0, 1]],
         "state_datarange": [[-10, 10]],
+        "state_non_contiguous": [False],
     },
     "Testcase1": {
         "batch_size": [2],
@@ -52,6 +54,7 @@ TEST_PARAMS = {
         "num_accepted_tokens": [None],
         "block_num": [None],
         "data_type": [torch.bfloat16],
+        "state_data_type": [torch.bfloat16],
         "query_datarange": [[-1, 1]],
         "key_datarange": [[-1, 1]],
         "value_datarange": [[-10, 10]],
@@ -59,6 +62,7 @@ TEST_PARAMS = {
         "gamma_k_datarange": [[0, 1]],
         "beta_datarange": [[0, 1]],
         "state_datarange": [[-10, 10]],
+        "state_non_contiguous": [False],
     },
 }  # 注意单个用例组内的用例尽量不要超过32
 FIRST_CASE = [TEST_PARAMS["Testcase0"], TEST_PARAMS["Testcase1"]]

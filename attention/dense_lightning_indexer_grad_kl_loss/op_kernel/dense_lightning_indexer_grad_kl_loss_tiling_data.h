@@ -69,7 +69,7 @@ constexpr int64_t DETER_CORE_INFO_TMP_GM_NUM = 16;
 constexpr int64_t DETER_LOSS_TMP_GM_NUM = 8;
 
 // ------------------公共定义--------------------------
-constexpr uint32_t MAX_CORE_NUM = 25; // 目前使用AIC核的最大值为25
+constexpr uint32_t MAX_CORE_NUM = 36;
 
 struct InnerSplitParams {
     uint32_t s1GBaseSize = 1;

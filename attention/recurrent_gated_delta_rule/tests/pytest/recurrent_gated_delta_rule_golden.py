@@ -15,6 +15,7 @@ import datetime
 import os
 import sys
 import argparse
+import gc
 
 np.random.seed(21)  # 固定随机种子
 np.set_printoptions(suppress=True)
@@ -187,42 +188,28 @@ def display_error_output(real_data, expect_data, err_idx, relative_diff):
 
 # fuzz 中precision_method == 1的精度对比方式
 def check_result(expect, result, data_type, pct_thd=0.005):
-    real_data = result.cpu().numpy()
-    data_compe = expect.cpu().numpy()
-    real_data = real_data.flatten()
-    data_compe = data_compe.flatten()
-    if real_data.size == 0 and real_data.size == data_compe.size:
+    expect_flat = expect.reshape(-1)
+    result_flat = result.reshape(-1)
+    total = result_flat.numel()
+
+    if total == 0 and expect_flat.numel() == 0:
         print_log(
             'The npu_output is [],and it is same as bm_output, the result of data_compare is "Pass"'
         )
         return 100.0, "Pass"
     start = 0
-    end = real_data.size - 1
+    end = total - 1
     if end < start:
         end = start
     max_error = 0
     result = "Failed"
 
-    if real_data.size != data_compe.size:
+    if total != expect_flat.numel():
         print_log(
             "Error,the size of npu output[%s] and benchmark[%s] is not equal."
-            % (real_data.size, data_compe.size)
+            % (total, expect_flat.numel())
         )
         return 0.0, result
-    overflows_count = (
-        data_compe[np.isinf(data_compe)].size + data_compe[np.isnan(data_compe)].size
-    )
-
-    if overflows_count > 0:
-        print_log(
-            "Overflow,size:%s,benchmark_output:%s, %s"
-            % (
-                overflows_count,
-                data_compe[np.isinf(data_compe)][0:10],
-                data_compe[np.isnan(data_compe)][0:10],
-            )
-        )
-
     if data_type == "bfloat16":
         diff_thd = 0.005
         max_diff_hd = 10.0
@@ -239,68 +226,110 @@ def check_result(expect, result, data_type, pct_thd=0.005):
     split_count = int(end - start + 1) if end != start else 1
     print_log("split_count:%s; max_diff_hd:%s;" % (float(split_count), max_diff_hd))
 
-    if str(real_data.dtype) == "bfloat16":
-        diff_result = np.isclose(
-            real_data.astype(np.float32),
-            data_compe.astype(np.float32),
-            rtol=rtol,
-            atol=atol,
-            equal_nan=True,
-        )
-    elif str(real_data.dtype) == "float8_e4m3fn":
-        nan_mask = np.isnan(real_data)
-        real_data[nan_mask] = 0
-        arr_string = real_data.tobytes()
-        real_data = np.frombuffer(arr_string, dtype="uint8")
-        nan_mask = np.isnan(data_compe)
-        data_compe[nan_mask] = 0
-        arr_string = data_compe.tobytes()
-        data_compe = np.frombuffer(arr_string, dtype="uint8")
-        diff_result = np.isclose(
-            real_data, data_compe, rtol=rtol, atol=atol, equal_nan=True
-        )
-    elif str(real_data.dtype) == "float8_e5m2":
-        nan_mask = np.isnan(real_data)
-        real_data[nan_mask] = 0
-        nan_pos_inf = np.isposinf(real_data)
-        real_data[nan_pos_inf] = 57344
-        nan_neg_inf = np.isneginf(real_data)
-        real_data[nan_neg_inf] = -57344
-
-        arr_string = real_data.tobytes()
-        real_data = np.frombuffer(arr_string, dtype="uint8")
-        nan_mask = np.isnan(data_compe)
-        data_compe[nan_mask] = 0
-        nan_pos_inf = np.isposinf(data_compe)
-        data_compe[nan_pos_inf] = 57344
-        nan_neg_inf = np.isneginf(data_compe)
-        data_compe[nan_neg_inf] = -57344
-
-        arr_string = data_compe.tobytes()
-        data_compe = np.frombuffer(arr_string, dtype="uint8")
-        diff_result = np.isclose(
-            real_data, data_compe, rtol=rtol, atol=atol, equal_nan=True
-        )
-    else:
-        diff_result = np.isclose(
-            real_data, data_compe, rtol=rtol, atol=atol, equal_nan=True
-        )
-    err_idx = np.where(diff_result != np.array((True,)))[0]
-
-    if str(data_compe.dtype) == "bool":
-        data_compe = data_compe.astype(np.int8)
-        real_data = real_data.astype(np.int8)
-    diff_abs = abs(data_compe - real_data)
-    b1 = np.maximum(np.abs(real_data), (np.abs(data_compe)))
-    b2 = float((1.0 / (1 << 14)) / diff_thd)
-    b = np.add(np.maximum(b1, b2), 10e-10)
     eps = 10e-10
-    err_diff = diff_abs / (b + eps)
-    err_diff = err_diff[err_idx]
+    b2 = float((1.0 / (1 << 14)) / diff_thd)
+    chunk_size = 1 << 22
 
-    fulfill_percent = float(split_count - err_idx.size) / float(split_count) * 100.0
+    overflows_count = 0
+    err_count = 0
+    inf_samples = []
+    nan_samples = []
+    err_idx_parts = []
+    err_diff_parts = []
 
-    display_output_np_isclose(real_data, data_compe, start, end)
+    for chunk_start in range(0, total, chunk_size):
+        chunk_end = min(chunk_start + chunk_size, total)
+        r_chunk = result_flat[chunk_start:chunk_end].cpu().to(torch.float32).numpy()
+        c_chunk = expect_flat[chunk_start:chunk_end].cpu().to(torch.float32).numpy()
+
+        inf_mask = np.isinf(c_chunk)
+        nan_mask = np.isnan(c_chunk)
+        overflows_count += int(inf_mask.sum()) + int(nan_mask.sum())
+        if len(inf_samples) < 10:
+            for li in np.where(inf_mask)[0]:
+                if len(inf_samples) >= 10:
+                    break
+                inf_samples.append(c_chunk[li])
+        if len(nan_samples) < 10:
+            for li in np.where(nan_mask)[0]:
+                if len(nan_samples) >= 10:
+                    break
+                nan_samples.append(c_chunk[li])
+
+        diff_chunk = np.isclose(r_chunk, c_chunk, rtol=rtol, atol=atol, equal_nan=True)
+        local_err = np.where(~diff_chunk)[0]
+        err_count += local_err.size
+        if local_err.size > 0:
+            global_err = local_err + chunk_start
+            er = r_chunk[local_err]
+            ec = c_chunk[local_err]
+            ed = np.abs(ec - er) / (
+                np.maximum(np.maximum(np.abs(er), np.abs(ec)), b2) + eps + eps
+            )
+            err_idx_parts.append(global_err)
+            err_diff_parts.append(ed)
+
+    if overflows_count > 0:
+        print_log(
+            "Overflow,size:%s,benchmark_output:%s, %s"
+            % (
+                overflows_count,
+                np.array(inf_samples)[0:10] if inf_samples else np.array([]),
+                np.array(nan_samples)[0:10] if nan_samples else np.array([]),
+            )
+        )
+
+    err_idx = (
+        np.concatenate(err_idx_parts) if err_idx_parts else np.array([], dtype=np.int64)
+    )
+    err_diff = (
+        np.concatenate(err_diff_parts)
+        if err_diff_parts
+        else np.array([], dtype=np.float64)
+    )
+
+    fulfill_percent = float(split_count - err_count) / float(split_count) * 100.0
+
+    display_threshold = 1 << 20
+    if total <= display_threshold:
+        disp_real = result_flat.cpu().to(torch.float32).numpy()
+        disp_compe = expect_flat.cpu().to(torch.float32).numpy()
+        display_output_np_isclose(disp_real, disp_compe, start, end)
+    else:
+        print_log(
+            "---------------------------------------------------------------------------------------"
+        )
+        print_log("Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff")
+        print_log(
+            "---------------------------------------------------------------------------------------"
+        )
+        n_sample = 10
+        r_head = result_flat[:n_sample].cpu().to(torch.float32).numpy()
+        c_head = expect_flat[:n_sample].cpu().to(torch.float32).numpy()
+        r_tail = result_flat[total - n_sample :].cpu().to(torch.float32).numpy()
+        c_tail = expect_flat[total - n_sample :].cpu().to(torch.float32).numpy()
+        for i in range(n_sample):
+            diff_abs = abs(np.float64(c_head[i]) - np.float64(r_head[i]))
+            diff_rate = cal_relative_diff_np_isclose(r_head[i], c_head[i])
+            print_log(
+                "%08d \t %0.7f \t %0.7f \t %0.7f \t %0.7f"
+                % (i + 1, c_head[i], r_head[i], diff_abs, diff_rate)
+            )
+        print_log("...   \t   ...   \t   ...   \t   ...    \t   ...")
+        for i in range(n_sample):
+            diff_abs = abs(np.float64(c_tail[i]) - np.float64(r_tail[i]))
+            diff_rate = cal_relative_diff_np_isclose(r_tail[i], c_tail[i])
+            print_log(
+                "%08d \t %0.7f \t %0.7f \t %0.7f \t %0.7f"
+                % (
+                    total - n_sample + i + 1,
+                    c_tail[i],
+                    r_tail[i],
+                    diff_abs,
+                    diff_rate,
+                )
+            )
+
     pct_thd = (1 - pct_thd) * 100.0
     result = "Pass" if (fulfill_percent >= pct_thd) else "Failed"
     if len(err_diff) > 0:
@@ -323,7 +352,20 @@ def check_result(expect, result, data_type, pct_thd=0.005):
             "Max-RelativeError is: %s. Threshold is: %s." % (max_error, max_diff_hd)
         )
     if result == "Failed":
-        display_error_output(real_data, data_compe, err_idx, err_diff[0:max_error_idx])
+        err_limit = min(len(err_idx), max_error_idx)
+        if err_limit > 0:
+            err_indices = err_idx[:err_limit]
+            err_tensor = torch.as_tensor(err_indices, dtype=torch.long)
+            err_r = (
+                result_flat[err_tensor.to(result_flat.device)]
+                .cpu()
+                .to(torch.float32)
+                .numpy()
+            )
+            err_c = expect_flat[err_tensor].cpu().to(torch.float32).numpy()
+            display_error_output(
+                err_r, err_c, np.arange(err_limit), err_diff[:err_limit]
+            )
     return fulfill_percent, result
 
 
@@ -346,7 +388,7 @@ def cpu_recurrent_gated_delta_rule(
     q = q.to(torch.float32)
     k = k.to(torch.float32)
     v = v.to(torch.float32)
-    initial_state = state.to(torch.float32)
+    initial_state = state.to(torch.float32).clone()
     beta = beta.to(torch.float32)
     output = torch.empty_like(v).to(torch.float32)
     g = (
@@ -429,6 +471,7 @@ def run_recurrent_gated_delta_rule_eager(
     num_accepted_tokens=None,
     block_num=None,
     data_type=torch.bfloat16,
+    state_data_type=None,
     query_datarange=[-10, 10],
     key_datarange=[-10, 10],
     value_datarange=[-10, 10],
@@ -436,9 +479,12 @@ def run_recurrent_gated_delta_rule_eager(
     gamma_k_datarange=[0, 1],
     beta_datarange=[0, 1],
     state_datarange=[-10, 10],
+    state_non_contiguous=False,
 ):
     torch_npu.npu.set_device(int(DEVICE_ID))
     # ======================== set input params finish ========================
+    if state_data_type is None:
+        state_data_type = data_type
     block_num = B * mtp if block_num is None else block_num
     if scale_value is None:
         scale_value = dk**-0.5
@@ -511,7 +557,7 @@ def run_recurrent_gated_delta_rule_eager(
         if has_num_accepted_tokens == True
         else None
     )
-    state = rand_range((block_num, nv, dv, dk), state_datarange, data_type)
+    state = rand_range((block_num, nv, dv, dk), state_datarange, state_data_type)
     act_seq_len = torch.tensor(actual_seq_lengths, dtype=torch.int32)
     ssm_state_indices = torch.tensor(ssm_state_indices, dtype=torch.int32)
 
@@ -544,6 +590,16 @@ def run_recurrent_gated_delta_rule_eager(
     key = key.to("npu:%s" % DEVICE_ID)
     value = value.to("npu:%s" % DEVICE_ID)
     state = state.to("npu:%s" % DEVICE_ID)
+    if state_non_contiguous:
+        padded_state = torch.zeros(
+            block_num * 2, nv * 2, dv, dk, dtype=state.dtype, device=state.device
+        )
+        padded_state[::2, ::2, :, :] = state
+        state = padded_state[::2, ::2, :, :]
+        print(
+            f"state non-contiguous: shape={state.shape}, strides={state.stride()}, "
+            f"is_contiguous={state.is_contiguous()}"
+        )
     beta = beta.to("npu:%s" % DEVICE_ID)
     act_seq_len = act_seq_len.to("npu:%s" % DEVICE_ID)
     ssm_state_indices = ssm_state_indices.to("npu:%s" % DEVICE_ID)
@@ -557,7 +613,11 @@ def run_recurrent_gated_delta_rule_eager(
 
     # ======================== execute npu finish ================================
     # start run custom ops
-    init_state = state.clone()
+    if state_non_contiguous:
+        init_padded = padded_state.clone()
+        init_state = init_padded[::2, ::2, :, :]
+    else:
+        init_state = state.clone()
     npu_out = torch_npu.npu_recurrent_gated_delta_rule(
         query,
         key,
@@ -583,18 +643,37 @@ def run_recurrent_gated_delta_rule_eager(
     )
 
     # 结果精度对比
-    data_type = str(npu_out.dtype)
+    out_data_type = str(npu_out.dtype)
+    state_data_type_str = str(npu_state_out.dtype)
+
+    del query, key, value, state, beta, act_seq_len, ssm_state_indices
+    del num_accepted_tokens, g, gk, init_state
+    if state_non_contiguous:
+        del padded_state, init_padded
+    torch.npu.empty_cache()
+
     print(
         "--------------------------------------------------------------check result-------------------------------------------------------------"
     )
-    check_result(cpu_out.to(torch.float32), npu_out.cpu().to(torch.float32), data_type)
+    out_pct, out_result = check_result(cpu_out, npu_out, out_data_type)
     print(
         "--------------------------------------------------------------check state ouput-------------------------------------------------------------"
     )
-    check_result(
-        cpu_state_ouput.to(torch.float32),
-        npu_state_out.cpu().to(torch.float32),
-        data_type,
+    state_pct, state_result = check_result(
+        cpu_state_ouput,
+        npu_state_out,
+        state_data_type_str,
+    )
+
+    del cpu_out, cpu_state_ouput, npu_out, npu_state_out
+    gc.collect()
+    torch.npu.empty_cache()
+
+    assert out_result == "Pass", (
+        f"output precision check failed: pass_rate={out_pct:.4f}%"
+    )
+    assert state_result == "Pass", (
+        f"state precision check failed: pass_rate={state_pct:.4f}%"
     )
 
 
