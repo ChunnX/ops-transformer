@@ -191,10 +191,6 @@ static void UnpackB32ToB4(const aclTensorList *&tensorListB32, const std::string
 
 bool IsQuant(const DataType &xDtype, const DataType &weightDtype)
 {
-    // S8S4 is a pseudo-quantization data flow even though both dtypes occupy one byte in GE.
-    if (xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT4) {
-        return false;
-    }
     if (xDtype == DataType::DT_FLOAT4_E2M1 || xDtype == DataType::DT_INT4 || xDtype == DataType::DT_FLOAT4_E1M2) {
         return true;
     }
@@ -203,8 +199,20 @@ bool IsQuant(const DataType &xDtype, const DataType &weightDtype)
 
 bool IsWeightQuant(const DataType &xDtype, const DataType &weightDtype)
 {
-    return (xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT4) ||
-           ge::GetSizeByDataType(xDtype) != ge::GetSizeByDataType(weightDtype);
+    return ge::GetSizeByDataType(xDtype) != ge::GetSizeByDataType(weightDtype);
+}
+
+bool IsS8S4PseudoQuantDataFlow(const gmm::GroupedMatmulParams &gmmParams)
+{
+    const bool supportedApi = gmmParams.apiVersion == gmm::GMMApiVersion::V5 ||
+                              gmmParams.apiVersion == gmm::GMMApiVersion::WeightNz;
+    if (!supportedApi || gmmParams.xDtype != DataType::DT_INT8 || gmmParams.weight == nullptr ||
+        gmmParams.weight->Size() == 0 || (*gmmParams.weight)[0] == nullptr ||
+        (*gmmParams.weight)[0]->GetDataType() != DataType::DT_INT4 || gmmParams.scaleOptional == nullptr ||
+        gmmParams.scaleOptional->Size() == 0 || (*gmmParams.scaleOptional)[0] == nullptr) {
+        return false;
+    }
+    return (*gmmParams.scaleOptional)[0]->GetDataType() == DataType::DT_UINT64;
 }
 
 const char *GetGmmScenarioName(const DataType &xDtype, const DataType &weightDtype)
@@ -1207,19 +1215,22 @@ static aclnnStatus CheckA8W4AsymQuantParams(const gmm::GroupedMatmulParams &gmmP
     return ACLNN_SUCCESS;
 }
 
-static bool IsA8W4AsymmetricQuant(const gmm::GroupedMatmulParams &gmmParams)
+static bool isA8W8AsymmetricQuant(const gmm::GroupedMatmulParams &gmmParams)
 {
-    if (gmmParams.offsetOptional == nullptr || gmmParams.offsetOptional->Size() == 0 ||
-        (*gmmParams.offsetOptional)[0] == nullptr) {
+    if (gmmParams.offsetOptional == nullptr) {
         return false;
     }
     const op::Shape &offsetShape = (*gmmParams.offsetOptional)[0]->GetViewShape();
-    if (offsetShape.GetDimNum() != OFFSET_DIM_A8W4) {
+    int64_t offsetDim = offsetShape.GetDimNum();
+    if (offsetDim != OFFSET_DIM_A8W4) {
         return false;
     }
     const op::Shape &weightShape = (*gmmParams.weight)[0]->GetViewShape();
-    return offsetShape.GetDim(0) == weightShape.GetDim(0) && offsetShape.GetDim(1) == 1 &&
-           offsetShape.GetDim(OFFSET_DIM_A8W4 - 1) == weightShape.GetDim(WEIGHT_DIM_A8W4 - 1);
+    if (offsetShape.GetDim(0) == weightShape.GetDim(0) && offsetShape.GetDim(1) == 1 &&
+        offsetShape.GetDim(OFFSET_DIM_A8W4 - 1) == weightShape.GetDim(OFFSET_DIM_A8W4 - 1)) {
+        return true;
+    }
+    return false;
 }
 
 static aclnnStatus CheckA8W4SymmQuantParamsRelationship(const gmm::GroupedMatmulParams &gmmParams)
@@ -1306,7 +1317,7 @@ static aclnnStatus CheckA8W4QuantParams(const gmm::GroupedMatmulParams &gmmParam
                 "1(count)].",
                 opName, "groupListType", gmmParams.groupListType);
     }
-    if (!IsA8W4AsymmetricQuant(gmmParams)) {
+    if (!isA8W8AsymmetricQuant(gmmParams)) {
         CheckA8W4SymmQuantParams(gmmParams);
         return ACLNN_SUCCESS;
     }
@@ -2454,7 +2465,7 @@ static aclnnStatus TransWeightToNz(gmm::GroupedMatmulParams &gmmParams, aclOpExe
                 break;
             }
             if (!(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-                  (IsQuant(xDtype, weight->GetDataType()) || IsWeightQuant(xDtype, weight->GetDataType())) &&
+                  (IsQuant(xDtype, weight->GetDataType()) || IsS8S4PseudoQuantDataFlow(gmmParams)) &&
                   (*gmmParams.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ)) {
                 aclnnStatus ret = TransWeightToNzCheckAlign(gmmParams, weight, xDtype);
                 CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -2711,8 +2722,12 @@ static aclnnStatus SetTransposedTensorListContiguous(gmm::GroupedMatmulParams &p
         params.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
         CHECK_RET(params.weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-            ((IsQuant(params.xDtype, weightDtype) || IsWeightQuant(params.xDtype, weightDtype)) &&
-             (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ)) {
+            ((IsQuant(params.xDtype, weightDtype) &&
+              (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
+             (params.apiVersion == gmm::GMMApiVersion::WeightNz &&
+              IsWeightQuant(params.xDtype, weightDtype)) ||
+             (IsS8S4PseudoQuantDataFlow(params) &&
+              (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ))) {
             for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
                 (*params.weight)[idx]->SetStorageShape(nZShapes[idx]);
             }
@@ -2730,8 +2745,11 @@ static aclnnStatus ParamsDataContiguous(gmm::GroupedMatmulParams &params, aclOpE
     DataType xDtype = (*params.x)[0]->GetDataType();
     DataType weightDtype = (*params.weight)[0]->GetDataType();
     if (!(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-          ((IsQuant(xDtype, weightDtype) || IsWeightQuant(xDtype, weightDtype)) &&
-           (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ))) {
+          ((IsQuant(xDtype, weightDtype) &&
+            (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
+           (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(xDtype, weightDtype)) ||
+           (IsS8S4PseudoQuantDataFlow(params) &&
+            (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ)))) {
         CHECK_COND(DataContiguous(params.weight, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "Contiguous weight failed."); // make w contiguous
     }
@@ -2882,8 +2900,11 @@ static aclnnStatus SetStorageShape(gmm::GroupedMatmulParams &params, const std::
     DataType xDtype = (*params.x)[0]->GetDataType();
     DataType weightDtype = (*params.weight)[0]->GetDataType();
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-        ((IsQuant(xDtype, weightDtype) || IsWeightQuant(xDtype, weightDtype)) &&
-         (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ)) {
+        ((IsQuant(xDtype, weightDtype) &&
+          (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
+         (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(xDtype, weightDtype)) ||
+         (IsS8S4PseudoQuantDataFlow(params) &&
+          (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ))) {
         CHECK_COND(wqbmmNzShapes.size() == (*params.weight).Size(), ACLNN_ERR_PARAM_INVALID,
                    "wqbmmNzShapes size[%zu] must be equal to weight size[%lu].", wqbmmNzShapes.size(),
                    (*params.weight).Size());
