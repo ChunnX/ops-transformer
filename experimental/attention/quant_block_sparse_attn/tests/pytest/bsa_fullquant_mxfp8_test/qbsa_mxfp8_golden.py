@@ -1638,11 +1638,9 @@ def _call_npu_fa_op_graph(
     )
     torch_npu.npu.synchronize()
 
-    # QBSA is a mixed AIC/AIV kernel with cross-core event handshakes.  Use the
-    # same ACL graph configuration as the batch graph test: static input
-    # shapes and no reinplace pass.  Replacing a live input buffer while the
-    # captured kernel is still consuming it can make the AIC and AIV paths see
-    # different loop metadata and wait forever on unmatched cross-core flags.
+    # Keep the standalone golden aligned with the batch ACL graph path.  QBSA
+    # is a mixed AIC/AIV kernel, so graph capture must preserve its input
+    # shapes and must not reinplace buffers that the custom op still consumes.
     config = CompilerConfig()
     config.mode = "reduce-overhead"
     config.debug.aclgraph.disable_reinplace_inplaceable_ops_pass = True
