@@ -16,7 +16,6 @@
 #include "opdev/fast_vector.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/contiguous.h"
-#include "aclnn_kernels/reshape.h"
 #include "opdev/tensor_view_utils.h"
 #include "acl/acl.h"
 
@@ -362,28 +361,6 @@ void SetTensorFormatToND(const aclTensor *tensor)
     mutableTensor->SetOriginalFormat(Format::FORMAT_ND);
 }
 
-aclnnStatus ReshapeTensorToViewShape(const aclTensor *&tensor, const char *name, aclOpExecutor *executor)
-{
-    if (tensor == nullptr) {
-        return ACLNN_SUCCESS;
-    }
-
-    const auto viewShape = tensor->GetViewShape();
-    std::vector<int64_t> shapeValues;
-    shapeValues.reserve(viewShape.GetDimNum());
-    for (uint64_t i = 0; i < viewShape.GetDimNum(); ++i) {
-        shapeValues.emplace_back(viewShape.GetDim(i));
-    }
-
-    tensor = l0op::Reshape(tensor, executor->AllocIntArray(shapeValues.data(), shapeValues.size()), executor);
-    if (tensor == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try reshape %s to view shape failed.", name);
-        return ACLNN_ERR_INNER_NULLPTR;
-    }
-    SetTensorFormatToND(tensor);
-    return ACLNN_SUCCESS;
-}
-
 aclnnStatus MakeTensorContiguous(const aclTensor *&tensor, const char *name, aclOpExecutor *executor)
 {
     if (tensor == nullptr) {
@@ -396,34 +373,6 @@ aclnnStatus MakeTensorContiguous(const aclTensor *&tensor, const char *name, acl
         return ACLNN_ERR_INNER_NULLPTR;
     }
     SetTensorFormatToND(tensor);
-    return ACLNN_SUCCESS;
-}
-
-aclnnStatus ReshapeTensorListToViewShape(const aclTensorList *&tensorList, const char *name, aclOpExecutor *executor)
-{
-    if (tensorList == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "%s tensorList is nullptr.", name);
-        return ACLNN_ERR_PARAM_NULLPTR;
-    }
-
-    std::vector<const aclTensor *> tensors;
-    tensors.reserve(tensorList->Size());
-    for (uint64_t i = 0; i < tensorList->Size(); ++i) {
-        auto tensor = (*tensorList)[i];
-        if (tensor != nullptr) {
-            std::string itemName = std::string(name) + "[" + std::to_string(i) + "]";
-            CHECK_RET(ReshapeTensorToViewShape(tensor, itemName.c_str(), executor) == ACLNN_SUCCESS,
-                      ACLNN_ERR_INNER_NULLPTR);
-        }
-        tensors.emplace_back(tensor);
-    }
-
-    auto reshapedList = executor->AllocTensorList(tensors.data(), tensors.size());
-    if (reshapedList == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc reshaped %s tensorList failed.", name);
-        return ACLNN_ERR_INNER_NULLPTR;
-    }
-    tensorList = reshapedList;
     return ACLNN_SUCCESS;
 }
 
@@ -507,8 +456,6 @@ aclnnStatus ProcessKVForL0Input(const aclTensorList *&key, const aclTensorList *
 
     CHECK_RET(MakeTensorListContiguous(key, "key", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(MakeTensorListContiguous(value, "value", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(ReshapeTensorListToViewShape(key, "key", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(ReshapeTensorListToViewShape(value, "value", executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     return ACLNN_SUCCESS;
 }
 
