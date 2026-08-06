@@ -14,7 +14,7 @@
  */
 
 #include "kernel_operator.h"
-#if (defined(__CCE_AICORE__) && __CCE_AICORE__ == 220) || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
+#if (defined(__CCE_AICORE__) && __CCE_AICORE__ == 220) || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113 || __NPU_ARCH__ == 3510))
 #include "ffn_high_performence.h"
 #include "ffn_quant.h"
 #include "ffn_antiquant.h"
@@ -72,7 +72,7 @@ template <typename T, typename cT = T, typename biasT = T, CubeFormat cubeFormat
 using mmQuantType =
     MMType<aType<T, cubeFormatA>, bType<T, CubeFormat::ND>, cType<cT, tPositionC>, biasType<biasT>, MM_CFG>;
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220 || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220 || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113 || __NPU_ARCH__ == 3510))
 template <typename T> struct GetC1Type {
     using Type = T;
 };
@@ -107,7 +107,7 @@ extern "C" __global__ __aicore__ void ffn(__gm__ uint8_t *x, __gm__ uint8_t *wei
     __gm__ uint8_t *user1 = GetUserWorkspace(workSpace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220 || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220 || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113 || __NPU_ARCH__ == 3510))
     if (TILING_KEY_IS(2000)) { // One matmul, float16
         KERNEL_TASK_TYPE(2000, KERNEL_TYPE_MIX_AIC_1_1);
         using mt = mmType<half, CubeFormat::ND, CubeFormat::ND>;
@@ -165,7 +165,10 @@ extern "C" __global__ __aicore__ void ffn(__gm__ uint8_t *x, __gm__ uint8_t *wei
         op.Init(x, weight1, weight2, expertTokens, bias1, bias2, y, user1, ffn_tiling_data, &tPipe);
         op.Process();
     } else if (TILING_KEY_IS(6)) { // ANTI_QUANT
-#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
+#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
+        if constexpr ((IsSameType<DTYPE_X, half>::value || IsSameType<DTYPE_X, bfloat16_t>::value) &&
+                      IsSameType<DTYPE_WEIGHT1, int8_t>::value) {
+#elif !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
         if constexpr ((IsSameType<DTYPE_X, half>::value || IsSameType<DTYPE_X, bfloat16_t>::value) &&
                       (IsSameType<DTYPE_WEIGHT1, int8_t>::value || IsSameType<DTYPE_WEIGHT1, int4b_t>::value)) {
 #else
@@ -182,7 +185,10 @@ extern "C" __global__ __aicore__ void ffn(__gm__ uint8_t *x, __gm__ uint8_t *wei
             op.Process();
         }
     } else if (TILING_KEY_IS(12)) { // ANTI_QUANT_PERGROUP
-#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
+#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
+        if constexpr ((IsSameType<DTYPE_X, half>::value || IsSameType<DTYPE_X, bfloat16_t>::value) &&
+                      IsSameType<DTYPE_WEIGHT1, int8_t>::value) {
+#elif !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
         if constexpr ((IsSameType<DTYPE_X, half>::value || IsSameType<DTYPE_X, bfloat16_t>::value) &&
                       (IsSameType<DTYPE_WEIGHT1, int8_t>::value || IsSameType<DTYPE_WEIGHT1, int4b_t>::value)) {
 #else
