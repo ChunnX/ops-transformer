@@ -270,15 +270,31 @@ def check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu, stateCacheCpu, ape
         return t[valid]
 
     results = []
+    per = {}
+    fwd_key_map = {
+        "cmp_kv":        ("cmpkvPct", "cmpkvStatus"),
+        "softmax_score": ("smPct",    "smStatus"),
+        "kv":            ("kvPct",    "kvStatus"),
+    }
     for name, ref_t, npu_t, dt in (
         ("cmp_kv", ref_cmp, npu_result["cmp_kv"], dataType),
         ("softmax_score", interleave(ref_sm), npu_result["softmax_score"], "float32"),
         ("kv", interleave(ref_kv), npu_result["kv"], "float32"),
     ):
-        pct, res = check_result(gather(ref_t), gather(npu_t), dt, get_pct_thd(dt))
-        results.append(f"{name}={pct:.2f}%[{res.upper()}]".replace("PASS", "PASS"))
-    ok = all("PASS" in r for r in results)
-    return {"status": "PASS" if ok else "FAIL", "detail": "  ".join(results)}
+        # 与反向 4 输出同一检查函数（check_one_output）：
+        # 输出块格式（check <名> / Loop 明细 / Rtol-Atol 汇总 / 错误值打印）完全一致
+        r = check_one_output(name, gather(ref_t), gather(npu_t), dt, True, 1,
+                             get_pct_thd(dt))
+        r["name"] = name
+        results.append(r)
+        pk, sk = fwd_key_map[name]
+        per[pk] = r["pct"]
+        per[sk] = r["status"]
+    detail = "  ".join(f"{r['name']}={r['pct']:.2f}%[{r['status']}]" for r in results)
+    ok = all(r["status"] == "PASS" for r in results)
+    d = {"status": "PASS" if ok else "FAIL", "detail": detail}
+    d.update(per)
+    return d
 
 def _parse_case(case, device):
     """解析 case 公共参数（通路 1/2 共用）。"""
@@ -586,6 +602,9 @@ def run_case(case, device):
                                  cmpRatio, coff, cache_mode, headDim, dataType)
     result["fwdStatus"] = fwd["status"]
     result["fwdDetail"] = fwd["detail"]
+    # 正向 3 输出 per-output 字段并入 result（与反向 4 输出同构，供统一打印/汇总）
+    for k in ("cmpkvPct", "cmpkvStatus", "smPct", "smStatus", "kvPct", "kvStatus"):
+        result[k] = fwd[k]
     print_log(f"Forward check: {fwd['detail']}")
 
     # ── Overall status ──
