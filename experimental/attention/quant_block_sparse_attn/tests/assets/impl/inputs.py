@@ -389,5 +389,10 @@ def customize_inputs(
     sparse_indices.copy_(sparse_indices_data)
     sparse_seq_len.copy_(sparse_seq_len_data)
 
-    atten_mask_data = torch.tril(torch.ones(atten_mask.shape, dtype=torch.uint8)).T
-    atten_mask.copy_(atten_mask_data)
+    if int(mask_mode) == 3:
+        # 因果掩码：仅在需要掩码时生成；mask_mode=0（无掩码）时预分配的 atten_mask 为空，
+        # 用形状 [0] 生成 tril 会失败，故跳过。
+        atten_mask_data = torch.tril(torch.ones(atten_mask.shape, dtype=torch.uint8)).T
+        atten_mask.copy_(atten_mask_data)
+    elif atten_mask.numel() > 0:
+        atten_mask.zero_()
