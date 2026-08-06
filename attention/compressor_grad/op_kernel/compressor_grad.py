@@ -579,6 +579,63 @@ def _reduce_d_weight(vecCtx, coreIdx, groupIdx, dbIdx, roundBlocks,
 
 
 
+# ================================================================
+#  无压缩块：四输出显式刷 0（totalValid=0 / compressedCnt=0）
+# ================================================================
+def _zero_outputs(coreIdx, coreNum, xRows, hiddenSize, totalHeadDim, cmpSize,
+                  dXOutGm, tensorDWKvFlat, tensorDWGateFlat, tensorDApeFlat,
+                  reduceAcc, zeroCast):
+    """无压缩块时对四个输出 GM 显式刷 0，不依赖归约路径的隐式行为。
+
+    各核按 D_BASE_SIZE 块/行分片（与 _reduce_ape/_reduce_d_weight/_reduce_dx
+    的分核模式一致）；零 tile 仅初始化一次，循环复用 store 到 GM。
+    """
+    # ── 零 tile 初始化（一次）：ioDType 直接清零，FP32 仅供 d_ape ──
+    pl.set_validshape(zeroCast, [1, hiddenSize])
+    if DataType == 0:                              # BF16
+        _vf_tile_zero_bf16(zeroCast, 1, hiddenSize)
+    else:                                          # FP16
+        _vf_tile_zero_f16(zeroCast, 1, hiddenSize)
+    pl.set_validshape(reduceAcc, [1, hiddenSize])
+    _vf_tile_zero(reduceAcc, 1, hiddenSize)        # FP32 全零（d_ape 用）
+
+    # ── d_x [xRows, hiddenSize]：按行分片（_reduce_dx 同款）──
+    rowsPerCore = xRows // coreNum
+    rowsRemain  = xRows % coreNum
+    rS = coreIdx * rowsPerCore + (coreIdx if coreIdx < rowsRemain else rowsRemain)
+    rE = rS + rowsPerCore + (1 if coreIdx < rowsRemain else 0)
+    for r in pl.range(rS, rE):
+        pl.store(dXOutGm, zeroCast, [r, 0])
+
+    # ── d_wkv / d_wgate [totalHeadDim * hiddenSize]：按 D_BASE_SIZE 块分片 ──
+    #    （与 _reduce_d_weight 同款：扁平 view + 块分片）
+    dwChunkNum = (totalHeadDim * hiddenSize) // D_BASE_SIZE
+    dwPerCore  = dwChunkNum // coreNum
+    dwRemain   = dwChunkNum % coreNum
+    wS = coreIdx * dwPerCore + (coreIdx if coreIdx < dwRemain else dwRemain)
+    wE = wS + dwPerCore + (1 if coreIdx < dwRemain else 0)
+    wS = wS * D_BASE_SIZE
+    wE = wE * D_BASE_SIZE
+    for curWStart in pl.range(wS, wE, BASE_SIZE * BASE_SIZE):
+        curWNum = min(BASE_SIZE * BASE_SIZE, wE - curWStart)
+        pl.set_validshape(zeroCast, [1, curWNum])
+        pl.store(tensorDWKvFlat, zeroCast, [0, curWStart])
+        pl.store(tensorDWGateFlat, zeroCast, [0, curWStart])
+
+    # ── d_ape [1, cmpSize] FP32：按 D_BASE_SIZE 块分片（_reduce_ape 同款）──
+    rgChunkNum = cmpSize // D_BASE_SIZE
+    rgPerCore  = rgChunkNum // coreNum
+    rgRemain   = rgChunkNum % coreNum
+    rgStart = coreIdx * rgPerCore + (coreIdx if coreIdx < rgRemain else rgRemain)
+    rgEnd   = rgStart + rgPerCore + (1 if coreIdx < rgRemain else 0)
+    rgStart = rgStart * D_BASE_SIZE
+    rgEnd   = rgEnd * D_BASE_SIZE
+    for curRgStart in pl.range(rgStart, rgEnd, BASE_SIZE * BASE_SIZE):
+        curRgNum = min(BASE_SIZE * BASE_SIZE, rgEnd - curRgStart)
+        pl.set_validshape(reduceAcc, [1, curRgNum])
+        pl.store(tensorDApeFlat, reduceAcc, [0, curRgStart])
+
+
 def _cast_dkv_dsb_to_l1(vecCtx, nTileRows, dealTcSize, subIdx,
                         tileTemp, tileDkvCast, tileDkvCastMd, tileDkvNz,
                         tileDkvNzMdPrev, tileDkvNzMdCur,
@@ -1228,6 +1285,8 @@ def compressor_grad(
         tensorDWGateFlat = pl.make_tensor(dWgate, [1, totalHeadDim * hiddenSize],
                                          [totalHeadDim * hiddenSize, 1], dtype=ioDType)
 
+
+
     # ═════════════════════════════════════════════════════════════════════════
     #  Cube tile declarations (once)
     # ═════════════════════════════════════════════════════════════════════════
@@ -1271,6 +1330,19 @@ def compressor_grad(
         # dX partial workspace (dkv@wkv) + dsb@wgate workspace
 
 
+
+    # ═════════════════════════════════════════════════════════════════════════
+    #  无压缩块（totalValid=0 / compressedCnt=0）特判：放所有 section 外部，
+    #  主函数支持多个 return——vec 侧四输出刷 0 后返回，cube 侧无代码直接返回，
+    #  均不进 round 循环（d_ape/d_wkv/d_wgate 归约在 validRows=0 时虽隐式写 0，
+    #  d_x 的 _reduce_dx 用回绕节点不可依赖——统一在此显式处理）
+    # ═════════════════════════════════════════════════════════════════════════
+    if compressedCnt == 0:
+        with pl.section_vector():
+            _zero_outputs(coreIdx, vecCtx.coreNum, xRows, hiddenSize, totalHeadDim,
+                        tiling.cmpSize, dXOutGm, tensorDWKvFlat, tensorDWGateFlat,
+                        tensorDApeFlat, reduce_acc, p3_cast)
+        return
     # ════════════════════════════════════════════════════════════
     #  Phase 1+3: Vec Scatter & Reduce (per-round compute)
     # ════════════════════════════════════════════════════════════
