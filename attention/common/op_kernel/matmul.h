@@ -938,7 +938,7 @@ __aicore__ inline void MatmulN(const LocalTensor<A> &aL1Tensor,
         mmadParams.cmatrixSource = false;
         mmadParams.unitFlag = param.unitFlag;
 #ifdef FIA_DUMP_INTERMEDIATE
-        DumpTensor<L0ADType>(L0ATensor, 641, 16384);  // (1a): L0A post-LoadDataToL0AMx pre-Mmad (BMM2 A-input=P); D=256 vs D=128 amplification? (count=0 => L0A not dumpable, fall back to inference)
+    PipeBarrier<PIPE_ALL>();  // NIGHT12i drain-validation: was DumpTensor (implicit pipe_barrier*2 each). Tests if local drain alone cures multi-s2Loop timing.
 #endif
         Mmad(cL0Tensor[n * L0Coffset], L0ATensor, L0BTensor, mmadParams);
 
