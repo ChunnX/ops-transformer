@@ -550,10 +550,7 @@ private:
 
         // 调用 VF 函数执行前代法求逆
         // attnUbFloat_ 存储已取负的 attn，inverseBuffer_ 存储单位阵，inverseRes_ 存储求逆结果
-        InverseAIVVF<INVERSE_SHAPE>(reinterpret_cast<__ubuf__ float *>(attnUbFloat_.GetPhyAddr()),
-                                    reinterpret_cast<__ubuf__ float *>(inverseRes_.GetPhyAddr()),
-                                    reinterpret_cast<__ubuf__ float *>(inverseBuffer_.GetPhyAddr()),
-                                    subOffset_, chunkSize_);
+        InverseAIVCompute<INVERSE_SHAPE>(attnUbFloat_, inverseRes_, inverseBuffer_, subOffset_, chunkSize_);
         PipeBarrier<PIPE_V>();
         auto tmp = outQueue_.AllocTensor<bfloat16_t>();
         Cast(tmp, inverseRes_, RoundMode::CAST_RINT, curVecLen);
