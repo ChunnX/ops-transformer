@@ -262,4 +262,31 @@ __aicore__ inline void IdxSortBySparseIdx(RunInfo &runInfo)
     }
 }
 
+// Static-Tensor FP8 uses logical sparse indices directly when copying PA KV.
+// Keep the dynamic path's physical-index bookkeeping untouched.
+__aicore__ inline void SwapSparseBlockSlotsStatic(RunInfo &runInfo)
+{
+    SwapValues(runInfo.sparseBlkIdx1, runInfo.sparseBlkIdx2);
+    SwapValues(runInfo.s2SparseBlk1RealSize, runInfo.s2SparseBlk2RealSize);
+    SwapValues(runInfo.s2SparseBlk1RealAlignedSize, runInfo.s2SparseBlk2RealAlignedSize);
+    SwapValues(runInfo.sparseBlk1PartialMask, runInfo.sparseBlk2PartialMask);
+}
+
+__aicore__ inline void IdxSortBySparseIdxStatic(RunInfo &runInfo)
+{
+    if (unlikely(runInfo.sparseBlkIdx1 == -1 && runInfo.sparseBlkIdx2 == -1)) {
+        return;
+    }
+    if (unlikely(runInfo.sparseBlkIdx1 == -1)) {
+        SwapSparseBlockSlotsStatic(runInfo);
+        return;
+    }
+    if (unlikely(runInfo.sparseBlkIdx2 == -1)) {
+        return;
+    }
+    if (runInfo.sparseBlkIdx1 > runInfo.sparseBlkIdx2) {
+        SwapSparseBlockSlotsStatic(runInfo);
+    }
+}
+
 #endif // INFER_FLASH_ATTENTION_KVCACHE_H

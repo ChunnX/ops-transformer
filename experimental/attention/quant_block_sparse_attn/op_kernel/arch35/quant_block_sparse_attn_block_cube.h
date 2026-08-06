@@ -555,9 +555,8 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Static(
         LocalTensor<uint8_t> kBuf = l1KTensor_[kSlot * Fp8Static::L1_K_SLOT_BYTES];
         WaitFlag<HardEvent::MTE1_MTE2>(kEventId);
         LocalTensor<INPUT_T> kTensor = kBuf.ReinterpretCast<INPUT_T>();
-        int32_t remainBlocks = runInfo.actSparseLen - runInfo.s2LoopCount * 2;
         uint32_t actualS2RealSize = static_cast<uint32_t>(runInfo.s2SparseBlk1RealSize);
-        if (remainBlocks >= 2) {
+        if (likely(runInfo.sparseBlkIdx2 != -1)) {
             actualS2RealSize += static_cast<uint32_t>(runInfo.s2SparseBlk2RealSize);
         }
         if constexpr (isPa) {
@@ -579,7 +578,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm1Static(
             GlobalTensor<INPUT_T> kGmTensor = GetKeyGm(runInfo, constInfo);
             GmCopyInToL1PA<INPUT_T>(kTensor, kGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
 
-            if (remainBlocks >= 2) {
+            if (likely(runInfo.sparseBlkIdx2 != -1)) {
                 startPos.s2Offset = coordInfo[runInfo.taskIdMod3].sparseBlockIdx[1] * constInfo.kvSparseBlockSize;
                 shape.copyRowNum = runInfo.s2SparseBlk2RealSize;
                 uint32_t halfOffset = runInfo.s2SparseBlk1RealSize * (32U / sizeof(INPUT_T));
@@ -644,9 +643,8 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2Static(
         WaitFlag<HardEvent::MTE1_MTE2>(vEventId);
         LocalTensor<INPUT_T> vTensor = vBuf.ReinterpretCast<INPUT_T>();
 
-        int32_t remainBlocks = runInfo.actSparseLen - runInfo.s2LoopCount * 2;
         uint32_t actualS2RealSize = static_cast<uint32_t>(runInfo.s2SparseBlk1RealSize);
-        if (remainBlocks >= 2) {
+        if (likely(runInfo.sparseBlkIdx2 != -1)) {
             actualS2RealSize += static_cast<uint32_t>(runInfo.s2SparseBlk2RealSize);
         }
         if constexpr (isPa) {
@@ -668,7 +666,7 @@ __aicore__ inline void QBSABlockCube<TEMPLATE_ARGS>::IterateBmm2Static(
             GlobalTensor<INPUT_T> vGmTensor = GetValueGm(runInfo, constInfo);
             GmCopyInToL1PA<INPUT_T>(vTensor, vGmTensor, blockTableGm, pa_kvLayout, shape, startPos);
 
-            if (remainBlocks >= 2) {
+            if (likely(runInfo.sparseBlkIdx2 != -1)) {
                 startPos.s2Offset = coordInfo[runInfo.taskIdMod3].sparseBlockIdx[1] * constInfo.kvSparseBlockSize;
                 shape.copyRowNum = runInfo.s2SparseBlk2RealSize;
                 uint32_t halfOffset = runInfo.s2SparseBlk1RealSize * (32U / sizeof(INPUT_T));

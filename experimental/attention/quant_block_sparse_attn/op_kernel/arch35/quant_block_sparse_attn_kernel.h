@@ -406,6 +406,33 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     int32_t remainingSparseBlocks = runParam.actSparseLen - static_cast<int32_t>(s2LoopCount * 2);
     runInfo.sparseBlkIdx1 = remainingSparseBlocks > 0 ? sparseIndicesGm.GetValue(sparseLoopCountOffset) : -1;
     runInfo.sparseBlkIdx2 = remainingSparseBlocks > 1 ? sparseIndicesGm.GetValue(sparseLoopCountOffset + 1) : -1;
+    if constexpr (useFp8StaticTensor) {
+        if (unlikely(runInfo.sparseBlkIdx1 < 0)) {
+            runInfo.s2SparseBlk1RealSize = 0;
+            runInfo.s2SparseBlk1RealAlignedSize = 0;
+            runInfo.sparseBlk1PartialMask = false;
+        } else if (unlikely((runInfo.sparseBlkIdx1 + 1) * constInfo.kvSparseBlockSize > runParam.actualS2Size)) {
+            runInfo.s2SparseBlk1RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
+            runInfo.s2SparseBlk1RealAlignedSize = Align(runInfo.s2SparseBlk1RealSize);
+        } else {
+            runInfo.s2SparseBlk1RealSize = constInfo.kvSparseBlockSize;
+            runInfo.s2SparseBlk1RealAlignedSize = runInfo.s2SparseBlk1RealSize;
+        }
+        if (unlikely(runInfo.sparseBlkIdx2 < 0)) {
+            runInfo.s2SparseBlk2RealSize = 0;
+            runInfo.s2SparseBlk2RealAlignedSize = 0;
+            runInfo.sparseBlk2PartialMask = false;
+        } else if (unlikely((runInfo.sparseBlkIdx2 + 1) * constInfo.kvSparseBlockSize > runParam.actualS2Size)) {
+            runInfo.s2SparseBlk2RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
+            runInfo.s2SparseBlk2RealAlignedSize = Align(runInfo.s2SparseBlk2RealSize);
+        } else {
+            runInfo.s2SparseBlk2RealSize = constInfo.kvSparseBlockSize;
+            runInfo.s2SparseBlk2RealAlignedSize = runInfo.s2SparseBlk2RealSize;
+        }
+
+        IdxSortBySparseIdxStatic(runInfo);
+        return;
+    }
     if constexpr (isPa) {
         if (runInfo.sparseBlkIdx1 >= static_cast<int64_t>(constInfo.maxBlockNumPerBatch)) {
             runInfo.sparseBlkIdx1 = -1;
@@ -629,6 +656,27 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                                                                   this->constInfo);
                             } else {
                                 this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo1, this->constInfo);
+                            }
+                        }
+                        if constexpr (useFp8StaticTensor) {
+                            if ASCEND_IS_AIV {
+                                int64_t delta = runInfo1.nextTokensPerBatch;
+                                uint32_t sparseBlk1S1Offset = runInfo1.s1oIdx * constInfo.s1BaseSize;
+                                uint32_t sparseBlk2S1Offset = sparseBlk1S1Offset;
+                                if (likely(runInfo1.sparseBlkIdx1 >= 0)) {
+                                    uint32_t sparseBlk1S2Offset =
+                                        runInfo1.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
+                                    AttentionMaskFullProcessingOrRequired(
+                                        sparseBlk1S1Offset, sparseBlk1S2Offset, delta, runInfo1.s2SparseBlk1RealSize,
+                                        runInfo1.sparseBlkIdx1, runInfo1.sparseBlk1PartialMask);
+                                }
+                                if (likely(runInfo1.sparseBlkIdx2 >= 0)) {
+                                    uint32_t sparseBlk2S2Offset =
+                                        runInfo1.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
+                                    AttentionMaskFullProcessingOrRequired(
+                                        sparseBlk2S1Offset, sparseBlk2S2Offset, delta, runInfo1.s2SparseBlk2RealSize,
+                                        runInfo1.sparseBlkIdx2, runInfo1.sparseBlk2PartialMask);
+                                }
                             }
                         }
                     }

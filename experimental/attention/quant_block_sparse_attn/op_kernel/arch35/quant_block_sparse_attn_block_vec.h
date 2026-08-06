@@ -53,6 +53,8 @@ public:
     static constexpr bool splitD = (uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256;
     static constexpr TPosition bmm2OutPos = GetC2Position();
     static constexpr bool bmm2Write2Ub = bmm2OutPos == TPosition::VECCALC;
+    static constexpr bool useFp8StaticTensor = useDn && isFp8 && bmm2Write2Ub && s1BaseSize == 128U &&
+                                               s2BaseSize == 256U && dTemplateAlign64 == 128U;
     static constexpr uint64_t SYNC_V1_C2_FLAG[3] = {2, 3, 4};
     static constexpr bool isW8In = IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                                    IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value;
@@ -441,9 +443,11 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Static(
         WaitFlag<HardEvent::MTE3_V>(stage1EventId);
 
         WaitFlag<HardEvent::V_MTE2>(Fp8Static::SCALE_EVENT_ID);
-        Duplicate<float>(kScaleBufStatic_, 1, s2BaseSize);
-        SetFlag<HardEvent::V_MTE2>(Fp8Static::SCALE_EVENT_ID);
-        WaitFlag<HardEvent::V_MTE2>(Fp8Static::SCALE_EVENT_ID);
+        if (unlikely(runInfo.s2SparseBlk2RealSize < constInfo.kvSparseBlockSize)) {
+            Duplicate<float>(kScaleBufStatic_, 1, s2BaseSize);
+            SetFlag<HardEvent::V_MTE2>(Fp8Static::SCALE_EVENT_ID);
+            WaitFlag<HardEvent::V_MTE2>(Fp8Static::SCALE_EVENT_ID);
+        }
         copyQueryScaleGmToUb(qScaleBufStatic_, deScaleQGm, runInfo, constInfo);
         copyKeyScaleGmToUb(kScaleBufStatic_, deScaleKGm, blockTableGm, runInfo, constInfo);
         SetFlag<HardEvent::MTE2_V>(Fp8Static::SCALE_EVENT_ID);
@@ -503,8 +507,10 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Static(
                  stage1CastTensor[65 << 5], {static_cast<uint16_t>((runInfo.s2RealSize + 63) >> 6), 64, 66, 0});
         SetFlag<HardEvent::MTE3_V>(stage1EventId);
         outputBuf.SetCrossCore();
-        if (constInfo.isSoftmaxLseEnable && unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
-            SoftmaxLseCopyOut(sumUb, maxUb, runInfo, constInfo);
+        if constexpr (hasLse) {
+            if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
+                SoftmaxLseCopyOut(sumUb, maxUb, runInfo, constInfo);
+            }
         }
     }
 }
@@ -826,7 +832,7 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitStaticLocalBuffer(ConstI
         constexpr uint32_t qScaleBytes = 256U * sizeof(float) * 2U;
         constexpr uint32_t kScaleBytes = 1024U;
         constexpr uint32_t maskBytes = hasAtten ? ((s1BaseSize / CV_RATIO) * s2BaseSize) : 0U;
-        constexpr uint32_t lseBytes = (s1BaseSize >> 1U) * sizeof(float) * 8U;
+        constexpr uint32_t lseBytes = hasLse ? ((s1BaseSize >> 1U) * sizeof(float) * 8U) : 0U;
         constexpr uint32_t gt128Bytes = 128U;
         constexpr uint32_t gt64Bytes = 64U;
         constexpr uint32_t dnIndexBytes = 256U;
@@ -881,8 +887,10 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitStaticLocalBuffer(ConstI
         if constexpr (hasAtten) {
             attenMaskBufStatic_ = LocalTensor<uint8_t>(TPosition::VECIN, maskAddr, maskBytes);
         }
-        softmaxLseBufStatic_ =
-            LocalTensor<uint8_t>(TPosition::VECOUT, lseAddr, lseBytes).ReinterpretCast<float>();
+        if constexpr (hasLse) {
+            softmaxLseBufStatic_ =
+                LocalTensor<uint8_t>(TPosition::VECOUT, lseAddr, lseBytes).ReinterpretCast<float>();
+        }
         vselrIndexesBufStatic_[static_cast<uint32_t>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)] =
             LocalTensor<uint8_t>(TPosition::VECCALC, gt128Addr, gt128Bytes);
         vselrIndexesBufStatic_[static_cast<uint32_t>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)] =
@@ -932,7 +940,9 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitStaticEvents(ConstInfo &
             SetFlag<HardEvent::MTE3_V>(Fp8Static::STAGE1_EVENT_ID1);
             SetFlag<HardEvent::V_MTE2>(Fp8Static::SCALE_EVENT_ID);
             SetFlag<HardEvent::MTE3_V>(Fp8Static::STAGE2_EVENT_ID);
-            SetFlag<HardEvent::MTE3_V>(Fp8Static::LSE_EVENT_ID);
+            if constexpr (hasLse) {
+                SetFlag<HardEvent::MTE3_V>(Fp8Static::LSE_EVENT_ID);
+            }
             if constexpr (hasAtten) {
                 SetFlag<HardEvent::V_MTE2>(Fp8Static::MASK_EVENT_ID);
             }
@@ -950,7 +960,9 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::FinalizeStaticBuffers(ConstI
             WaitFlag<HardEvent::MTE3_V>(Fp8Static::STAGE1_EVENT_ID1);
             WaitFlag<HardEvent::V_MTE2>(Fp8Static::SCALE_EVENT_ID);
             WaitFlag<HardEvent::MTE3_V>(Fp8Static::STAGE2_EVENT_ID);
-            WaitFlag<HardEvent::MTE3_V>(Fp8Static::LSE_EVENT_ID);
+            if constexpr (hasLse) {
+                WaitFlag<HardEvent::MTE3_V>(Fp8Static::LSE_EVENT_ID);
+            }
             if constexpr (hasAtten) {
                 WaitFlag<HardEvent::V_MTE2>(Fp8Static::MASK_EVENT_ID);
             }
@@ -1028,13 +1040,26 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *
 {
     if ASCEND_IS_AIV {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
-        softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
-        constInfo.isSoftmaxLseEnable = this->tilingData->inputParamsRegbase.isSoftMaxLseEnable;
+        if constexpr (useFp8StaticTensor) {
+            if constexpr (hasLse) {
+                softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
+            }
+        } else {
+            softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
+            constInfo.isSoftmaxLseEnable = this->tilingData->inputParamsRegbase.isSoftMaxLseEnable;
+        }
         if (this->tilingData->initOutputParams.needInit == 1) {
             InitOutputSingleCore(constInfo);
-            if (constInfo.isSoftmaxLseEnable) {
-                SyncAll();
-                InitLseOutputSingleCore(constInfo);
+            if constexpr (useFp8StaticTensor) {
+                if constexpr (hasLse) {
+                    SyncAll();
+                    InitLseOutputSingleCore(constInfo);
+                }
+            } else {
+                if (constInfo.isSoftmaxLseEnable) {
+                    SyncAll();
+                    InitLseOutputSingleCore(constInfo);
+                }
             }
         }
     }
@@ -1085,8 +1110,10 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(LocalTenso
         return;
     }
 
-    if (!constInfo.isSoftmaxLseEnable) {
-        return;
+    if constexpr (!useFp8StaticTensor) {
+        if (!constInfo.isSoftmaxLseEnable) {
+            return;
+        }
     }
     if constexpr (useDn && isFp8 && s1BaseSize == 128U && s2BaseSize == 256U && dTemplateAlign64 == 128U &&
                   bmm2Write2Ub) {
