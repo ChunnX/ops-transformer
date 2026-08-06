@@ -9,13 +9,13 @@
  */
 
 /*!
-* \file sparse_flash_mla_proto.cpp
+* \file sparse_flash_mla_infershape.cpp
 * \brief
 */
 
 #include <graph/utils/type_utils.h>
 #include <register/op_impl_registry.h>
-#include "error/ops_error.h"
+#include "err/ops_err.h"
 
 using namespace ge;
 
@@ -52,21 +52,21 @@ const gert::Shape *GetOptionalStorageShape(gert::InferShapeContext *context, uin
 
 ge::graphStatus InferShapeSparseFlashMla(gert::InferShapeContext *context)
 {
-    OPS_ERR_IF(context == nullptr, OPS_LOG_E("SparseFlashMla", "InferShapeContext is nullptr"),
-            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr, OP_LOGE("SparseFlashMla", "InferShapeContext is nullptr"),
+                return ge::GRAPH_FAILED);
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
-    OPS_LOG_E_IF_NULL(context, queryShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
     const gert::Shape *oriKvShape = GetOptionalStorageShape(context, ORI_KV_INPUT_INDEX);
     const gert::Shape *cmpKvShape = GetOptionalStorageShape(context, CMP_KV_INPUT_INDEX);
     const gert::Shape *kvShape = (oriKvShape != nullptr) ? oriKvShape : cmpKvShape;
-    OPS_LOG_E_IF_NULL(context, kvShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, kvShape);
 
     gert::Shape *attentionOutShape = context->GetOutputShape(0);
-    OPS_LOG_E_IF_NULL(context, attentionOutShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, attentionOutShape);
     *attentionOutShape = *queryShape;
 
     gert::Shape *softmaxLseShape = context->GetOutputShape(1);
-    OPS_LOG_E_IF_NULL(context, softmaxLseShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, softmaxLseShape);
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const bool *returnSoftmaxLsePtr = attrs->GetAttrPointer<bool>(RETURN_SOFTMAX_INDEX);
@@ -75,6 +75,17 @@ ge::graphStatus InferShapeSparseFlashMla(gert::InferShapeContext *context)
     std::string layoutKv = std::string(layoutKvPtr);
     bool returnSoftmaxLse = (returnSoftmaxLsePtr != nullptr) ? *returnSoftmaxLsePtr : false;
     int64_t kvHeadNum = GetKvHeadNum(kvShape, layoutKv);
+
+    OP_CHECK_IF(queryShape->GetShapeSize() <= 0,
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON("SparseFlashMla", "q",
+            std::to_string(queryShape->GetShapeSize()).c_str(),
+            "The shape size of q should be greater than 0"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(kvShape->GetShapeSize() <= 0,
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON("SparseFlashMla", "ori_kv or cmp_kv",
+            std::to_string(kvShape->GetShapeSize()).c_str(),
+            "The shape size of ori_kv or cmp_kv should be greater than 0"),
+        return ge::GRAPH_FAILED);
 
     if (returnSoftmaxLse) {
         if (queryShape->GetDimNum() == DIM_NUM_3) {
@@ -98,13 +109,13 @@ ge::graphStatus InferShapeSparseFlashMla(gert::InferShapeContext *context)
 
 ge::graphStatus InferDataTypeSparseFlashMla(gert::InferDataTypeContext *context)
 {
-    OPS_ERR_IF(context == nullptr, OPS_LOG_E("SparseFlashMla", "InferShapeContext is nullptr"),
-            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr, OP_LOGE("SparseFlashMla", "InferShapeContext is nullptr"),
+                return ge::GRAPH_FAILED);
     const auto inputDataType = context->GetInputDataType(QUERY_INPUT_INDEX);
     context->SetOutputDataType(0, inputDataType);
     context->SetOutputDataType(1, ge::DT_FLOAT);
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP(SparseFlashMla).InferShape(InferShapeSparseFlashMla).InferDataType(InferDataTypeSparseFlashMla);
+IMPL_OP_INFERSHAPE(SparseFlashMla).InferShape(InferShapeSparseFlashMla).InferDataType(InferDataTypeSparseFlashMla);
 } // namespace ops
