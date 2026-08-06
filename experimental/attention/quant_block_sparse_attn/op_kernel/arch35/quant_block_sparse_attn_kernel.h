@@ -102,7 +102,8 @@ public:
     static constexpr TPosition bmm2OutPos = CubeBlockType::bmm2OutPos;
     static constexpr bool bmm2Write2Ub = CubeBlockType::bmm2Write2Ub;
     static constexpr bool useFp8StaticTensor = useDn && isFp8 && bmm2Write2Ub && s1BaseSize == 128U &&
-                                               s2BaseSize == 256U && dTemplateAlign64 == 128U;
+                                               s2BaseSize == 256U && dTemplateAlign64 == 128U &&
+                                               static_cast<uint32_t>(dTemplateType) == 128U;
     static constexpr bool splitD = CubeBlockType::splitD;
     static constexpr uint64_t SYNC_MODE = 4;
     static constexpr uint64_t SYNC_C1_V1_FLAG[2] = {0, 1};
