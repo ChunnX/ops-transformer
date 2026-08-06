@@ -155,7 +155,8 @@ public:
             if (commIdx >= params.pipeDepth) {
                 WaitEvent(flagIdx + WORKSPACE_STAGES * 2); // 避开matmul-dequant使用的flag_idx(0-3)
             }
-            int64_t gmAPingpongSize = L1TileShape::M * params.commUtil.p_value * params.problemShape.n();
+            int64_t gmAPingpongSize =
+                static_cast<int64_t>(L1TileShape::M) * params.commUtil.p_value * params.problemShape.n();
 
             int32_t actualLoopNum = actualPValue * nLoops;
 
@@ -196,10 +197,12 @@ public:
                 MatrixCoord offsetA{blockIdxCoord.m() * L1TileShape::M, blockIdxCoord.k() * L1TileShape::K};
                 MatrixCoord offsetC{(stageId * coreNum + coreIdx) * L1TileShape::M, 0};
                 int64_t gmOffsetA = params.layoutA.GetOffset(offsetA) +
-                                    commIdx * L1TileShape::M * params.commUtil.p_value * params.problemShape.k();
+                                    static_cast<int64_t>(commIdx) * L1TileShape::M * params.commUtil.p_value *
+                                        params.problemShape.k();
                 int64_t gmOffsetB =
-                    ((blockIdxCoord.n() / nLoopPerRank) * (params.problemShape.n() / params.commUtil.rank_size) +
-                     (blockIdxCoord.n() % nLoopPerRank) * L1TileShape::N) *
+                    (static_cast<int64_t>(blockIdxCoord.n() / nLoopPerRank) *
+                         (params.problemShape.n() / params.commUtil.rank_size) +
+                     static_cast<int64_t>(blockIdxCoord.n() % nLoopPerRank) * L1TileShape::N) *
                     (params.transB ? params.problemShape.k() : 1);
                 int64_t gmOffsetC = layoutC.GetOffset(offsetC);
 
@@ -266,7 +269,8 @@ public:
                 actualPValue = mLoops - commIdx * params.commUtil.p_value;
             }
 
-            int64_t gmAPingpongSize = L1TileShape::M * params.commUtil.p_value * params.problemShape.n();
+            int64_t gmAPingpongSize =
+                static_cast<int64_t>(L1TileShape::M) * params.commUtil.p_value * params.problemShape.n();
             int32_t actualLoopNum = actualPValue * nLoops;
 
             int32_t nLoopPerRank = nLoops / params.commUtil.rank_size;
@@ -292,8 +296,8 @@ public:
                                         blockIdxCoord.n() % nLoopPerRank * L1TileShape::N) :
                                        L1TileShape::N;
                 GemmCoord actualBlockShape{mActual, nActual, params.problemShape.k()};
-                int64_t mOffset =
-                    commIdx * L1TileShape::M * params.commUtil.p_value + blockIdxCoord.m() * L1TileShape::M;
+                int64_t mOffset = static_cast<int64_t>(commIdx) * L1TileShape::M * params.commUtil.p_value +
+                                  static_cast<int64_t>(blockIdxCoord.m()) * L1TileShape::M;
                 int64_t nOffset =
                     (blockIdxCoord.n() / nLoopPerRank) * (params.problemShape.n() / params.commUtil.rank_size) +
                     (blockIdxCoord.n() % nLoopPerRank) * L1TileShape::N;
@@ -311,9 +315,11 @@ public:
                 int64_t rankIdx = blockIdxCoord.n() / nLoopPerRank;
                 int64_t rankOffsetInRank = blockIdxCoord.n() % nLoopPerRank;
                 int64_t gmOffsetD =
-                    flagIdx * L1TileShape::M * params.commUtil.p_value * params.problemShape.n() +
+                    static_cast<int64_t>(flagIdx) * L1TileShape::M * params.commUtil.p_value *
+                        params.problemShape.n() +
                     rankIdx * rankOffset +
-                    blockIdxCoord.m() * L1TileShape::M * (params.problemShape.n() / params.commUtil.rank_size) +
+                    static_cast<int64_t>(blockIdxCoord.m()) * L1TileShape::M *
+                        (params.problemShape.n() / params.commUtil.rank_size) +
                     blockIdxCoord.n() % nLoopPerRank * L1TileShape::N;
                 Arch::CrossCoreWaitFlag(flagAicFinishStoreList[stageId]);
                 blockEpilogue(blockOffset, actualBlockShape, gmBlockC, layoutBlockC, gmD[gmOffsetD], layoutD);
@@ -324,7 +330,8 @@ public:
             int64_t token_total =
                 static_cast<int64_t>(params.commUtil.p_value) * L1TileShape::M * params.problemShape.n();
             if (commIdx == commCount - 1) {
-                token_total = (params.problemShape.m() - (commIdx * L1TileShape::M * params.commUtil.p_value)) *
+                token_total = (params.problemShape.m() -
+                               static_cast<int64_t>(commIdx) * L1TileShape::M * params.commUtil.p_value) *
                               params.problemShape.n();
             }
             int64_t token_per_rank = token_total / params.commUtil.rank_size;
@@ -337,10 +344,11 @@ public:
                 static_cast<int64_t>(params.problemShape.m()) * params.problemShape.n() / params.commUtil.rank_size;
             if (params.commUtil.aiv_idx == 0 && params.commUtil.core_idx < params.commUtil.rank_size) {
                 int64_t src_offset =
-                    flag_idx * params.commUtil.gm_a_pingpong_size +
+                    static_cast<int64_t>(flag_idx) * params.commUtil.gm_a_pingpong_size +
                     params.commUtil.gm_a_pingpong_size / params.commUtil.rank_size * params.commUtil.rank;
                 int64_t dst_offset =
-                    params.commUtil.core_idx * rank_offset + commIdx * L1TileShape::M * params.commUtil.p_value *
+                    params.commUtil.core_idx * rank_offset + static_cast<int64_t>(commIdx) * L1TileShape::M *
+                                                                 params.commUtil.p_value *
                                                                  (params.problemShape.n() / params.commUtil.rank_size);
                 params.commUtil.CopyGMToGM(
                     (__gm__ ElementD *)params.commUtil.buff[params.commUtil.core_idx] + src_offset,

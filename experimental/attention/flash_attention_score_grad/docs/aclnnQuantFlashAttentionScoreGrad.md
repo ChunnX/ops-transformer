@@ -14,95 +14,95 @@
 ## 功能说明
 
 - 接口功能：实现“Transformer Attention Score”的融合量化的反向计算。
-  
+
 - 计算公式：
 
   $$
   Y=Softmax(\frac{\hat{Q}\hat{K}^T*(dS_q*dS_k)}{\sqrt{d}})\hat{V}*dS_v
   $$
-  
+
     为方便表达，以变量$S$和$P$表示计算公式：
-  
+
   $$
   S=\frac{\hat{Q}\hat{K}^T*(dS_q * dS_k)}{\sqrt{d}}
   $$
-  
+
   $$
   P=Softmax(S)
   $$
-  
+
   $$
   Y=P\hat{V} * dS_v
   $$
-  
+
     则注意力的反向计算公式为：
 
   $$
   \hat{dS}= dS * dsScale
   $$
-	
+
   $$
   \hat{P}= P * pScale
   $$
-	
+
   $$
   dV=\hat{P}^T\hat{dY} * (dS_{dy} * dS_p)
   $$
-  
+
   $$
   dQ=\frac{(\hat{(dS)}*\hat{K})}{\sqrt{d}}* (dS_{ds} * dS_k)
   $$
-  
+
   $$
   dK=\frac{(\hat{(dS)}^T*\hat{Q})}{\sqrt{d}} * (dS_{ds} * dS_q)
   $$
-  
+
 ## 函数原型
 
-每个算子分为[两段式接口](../../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantFlashAttentionScoreGradGetWorkspace”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantFlashAttentionScoreGrad”接口执行计算。
+每个算子分为[两段式接口](../../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnQuantFlashAttentionScoreGradGetWorkspace”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantFlashAttentionScoreGrad”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnQuantFlashAttentionScoreGradGetWorkspace(
   const aclTensor   *query,
-  const aclTensor   *keyIn, 
-  const aclTensor   *value, 
+  const aclTensor   *keyIn,
+  const aclTensor   *value,
   const aclTensor   *dy,
   const aclTensor   *attenMaskOptional,
-  const aclTensor   *softmaxMax, 
-  const aclTensor   *softmaxSum, 
-  const aclTensor   *attentionIn, 
-  const aclTensor   *dScaleQ, 
-  const aclTensor   *dScaleK, 
-  const aclTensor   *dScaleV, 
-  const aclTensor   *dScaleDy, 
-  const aclTensor   *dsScale, 
+  const aclTensor   *softmaxMax,
+  const aclTensor   *softmaxSum,
+  const aclTensor   *attentionIn,
+  const aclTensor   *dScaleQ,
+  const aclTensor   *dScaleK,
+  const aclTensor   *dScaleV,
+  const aclTensor   *dScaleDy,
+  const aclTensor   *dsScale,
   const aclTensor   *pScale,
-  double             scaleValue, 
+  double             scaleValue,
   int64_t 			     preTokens,
   int64_t            nextTokens,
-  int64_t            headNum, 
+  int64_t            headNum,
   char              *inputLayout,
   int64_t           sparseMode,
-  int64_t            outDtype, 
-  aclTensor         *dqOut, 
-  aclTensor         *dkOut, 
-  aclTensor         *dvOut, 
-  uint64_t          *workspaceSize, 
+  int64_t            outDtype,
+  aclTensor         *dqOut,
+  aclTensor         *dkOut,
+  aclTensor         *dvOut,
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)`
 ```
 
 ```cpp
 aclnnStatus aclnnQuantFlashAttentionScoreGrad(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
 ## aclnnQuantFlashAttentionScoreGradGetWorkspace
 
 - **参数说明：**
-  
+
   <table style="undefined;table-layout: fixed; width: 1565px">
   <colgroup>
     <col style="width: 146px">
@@ -389,10 +389,10 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
     </tr>
   </tbody>
   </table>
-  
+
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -425,7 +425,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
 ## aclnnQuantFlashAttentionScoreGrad
 
 - **参数说明：**
-  
+
   <table style="undefined;table-layout: fixed; width: 953px"><colgroup>
   <col style="width: 173px">
   <col style="width: 112px">
@@ -460,21 +460,21 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
     </tr>
   </tbody>
   </table>
-  
+
 - **返回值：**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
   - aclnnQuantFlashAttentionScoreGrad默认确定性实现。
-  
+
 - 输入query、key、value、dy的约束如下：
   - B：batchsize必须相等。
   - inputLayout必须一致。
   - D：支持128。
-  
+
 - 输入query/dy的N和key/value的N必须相等。
 
 - 关于数据shape的约束，目前支持以下场景：
@@ -532,7 +532,7 @@ aclnnStatus aclnnQuantFlashAttentionScoreGrad(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```C++
 #include <iostream>

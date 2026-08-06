@@ -23,8 +23,8 @@
 
 namespace Mc2Tiling {
 
-constexpr uint32_t MAX_EXPERT_SIZE = 256U;  // 最大通信域专家的数量
-constexpr uint32_t MAX_EP_RANK_SIZE = 64U;  // 最大通信域内卡的数量
+constexpr uint32_t MAX_EXPERT_SIZE = 256U; // 最大通信域专家的数量
+constexpr uint32_t MAX_EP_RANK_SIZE = 64U; // 最大通信域内卡的数量
 
 struct MatmulReduceScatterV2TilingData {
     Mc2InitTiling mc2InitTiling;
@@ -45,5 +45,5 @@ struct QuantBatchMatmulV3ReduceScatterTilingData {
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmV3TileTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams quantBmmV3TailTiling;
 };
-}
+} // namespace Mc2Tiling
 #endif

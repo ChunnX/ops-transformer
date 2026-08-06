@@ -21,23 +21,20 @@ namespace op_api {
 /**
  * scatter_pa_kv_cache_with_k_scale算子的C++实现
  *
- * 功能：将FP8格式的key/value和对应的key_scale更新到KV cache中
+ * 功能：将FP8格式的key/value和对应的key_scale更新到KV cache中（原地更新）
  *
  * @param key [num_tokens, num_head, k_head_size] FP8格式的key输入
  * @param value [num_tokens, num_head, v_head_size] FP8格式的value输入
- * @param key_cache [num_blocks, num_head, block_size, k_head_size] FP8格式的key cache
- * @param value_cache [num_blocks, num_head, block_size, v_head_size] FP8格式的value cache
- * @param slot_mapping [num_tokens] int32/int64，每个token在cache中的偏移
- * @param key_scale [num_tokens, num_head] float32格式的key scale输入
- * @param key_scale_cache [num_blocks, num_head, block_size, 1] float32格式的key scale cache
- * @param cache_layout cache布局格式字符串（默认"BNBD"）
- *
- * @return tuple(key_cache_out, value_cache_out, key_scale_cache_out)
+ * @param keyCache [num_blocks, num_head, block_size, k_head_size] FP8格式的key cache（原地更新）
+ * @param valueCache [num_blocks, num_head, block_size, v_head_size] FP8格式的value cache（原地更新）
+ * @param slotMapping [num_tokens] int32/int64，每个token在cache中的偏移
+ * @param keyScale [num_tokens, num_head] float32格式的key scale输入
+ * @param keyScaleCache [num_blocks, num_head, block_size, 1] float32格式的key scale cache（原地更新）
+ * @param cacheLayout cache布局格式字符串（默认"BNBD"）
  */
-std::tuple<at::Tensor, at::Tensor, at::Tensor>
-ScatterPaKvCacheWithKScale(const at::Tensor &key, const at::Tensor &value, const at::Tensor &keyCache,
-                           const at::Tensor &valueCache, const at::Tensor &slotMapping, const at::Tensor &keyScale,
-                           const at::Tensor &keyScaleCache, std::string cacheLayout)
+void ScatterPaKvCacheWithKScale(const at::Tensor &key, const at::Tensor &value, at::Tensor &keyCache,
+                                at::Tensor &valueCache, const at::Tensor &slotMapping, const at::Tensor &keyScale,
+                                at::Tensor &keyScaleCache, std::string cacheLayout)
 {
     // 检查输入tensor维度
     TORCH_CHECK(key.dim() == 3, "key must be 3D tensor [num_tokens, num_head, k_head_size]");
@@ -59,19 +56,12 @@ ScatterPaKvCacheWithKScale(const at::Tensor &key, const at::Tensor &value, const
     TORCH_CHECK(slotMapping.dtype() == at::kInt || slotMapping.dtype() == at::kLong,
                 "slot_mapping dtype must be int32 or int64");
 
-    // 创建输出tensor（与输入cache相同shape和dtype）
-    at::Tensor keyCacheOut = keyCache.clone();
-    at::Tensor valueCacheOut = valueCache.clone();
-    at::Tensor keyScaleCacheOut = keyScaleCache.clone();
-
     // 转换cache_layout为char指针
     char *cacheLayoutPtr = const_cast<char *>(cacheLayout.c_str());
 
-    // 调用ACLNN算子
-    ACLNN_CMD(aclnnScatterPaKvCacheWithKScale, key, value, keyCacheOut, valueCacheOut, slotMapping, keyScale,
-              keyScaleCacheOut, cacheLayoutPtr);
-
-    return std::tuple<at::Tensor, at::Tensor, at::Tensor>(keyCacheOut, valueCacheOut, keyScaleCacheOut);
+    // 调用ACLNN算子（inplace更新输入cache）
+    ACLNN_CMD(aclnnScatterPaKvCacheWithKScale, key, value, keyCache, valueCache, slotMapping, keyScale,
+              keyScaleCache, cacheLayoutPtr);
 }
 
 // 绑定C++函数到Python模块

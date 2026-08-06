@@ -40,7 +40,7 @@ constexpr uint32_t X2_SCALE_INDEX = 4;
 constexpr uint32_t C_INDEX = 0;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
 constexpr uint32_t USER_WORKSPACE_A2 = 1 * 1024 * 1024; // moeExpertNum_ * sizeof(uint32_t) + epWorldSize_ * 2 * 32
-constexpr uint64_t CCL_BUFFER_MIN_BYTES = 200ULL * 1024 * 1024;  // 校验HCCL BUFF空间大小
+constexpr uint64_t CCL_BUFFER_MIN_BYTES = 200ULL * 1024 * 1024; // 校验HCCL BUFF空间大小
 constexpr uint32_t MB_BYTES = 1024 * 1024;
 constexpr uint64_t TILINGKEY_BIAS = 1U;
 constexpr uint64_t TILINGKEY_TRANS_A = 100U;
@@ -59,8 +59,10 @@ const std::vector<std::vector<uint32_t>> SUPPORTED_TYPES_WITH_BIAS = {
     {ge::DT_INT8, ge::DT_INT8, ge::DT_BF16, ge::DT_BF16},
     {ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT16, ge::DT_FLOAT16}};
 const std::vector<std::vector<uint32_t>> SUPPORTED_TYPES_WITHOUT_BIAS = {
-    {ge::DT_BF16, ge::DT_BF16, ge::DT_BF16}, {ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16},
-    {ge::DT_INT8, ge::DT_INT8, ge::DT_BF16}, {ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT16}};
+    {ge::DT_BF16, ge::DT_BF16, ge::DT_BF16},
+    {ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16},
+    {ge::DT_INT8, ge::DT_INT8, ge::DT_BF16},
+    {ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT16}};
 
 std::map<int, std::vector<std::vector<int>>> g_matmulReduceScatterA2FourRankINT8CodeMap = {
     {59785264, {{-1, 1536, -1, 7168, -1, 1536}}},
@@ -496,12 +498,9 @@ static ge::graphStatus MatmulReduceScatterV2CheckAttrAndSetTiling(gert::TilingCo
     auto is_trans_a = attrs->GetAttrPointer<bool>(ATTR_IS_TRANS_A);
     auto is_trans_b = attrs->GetAttrPointer<bool>(ATTR_IS_TRANS_B);
     OP_TILING_CHECK(groupPtr == nullptr || strlen(groupPtr) == 0,
-                    OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "group"),
-                    return GRAPH_FAILED);
-    OP_TILING_CHECK(
-        is_trans_a == nullptr || is_trans_b == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "is_trans_a"),
-        return GRAPH_FAILED);
+                    OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "group"), return GRAPH_FAILED);
+    OP_TILING_CHECK(is_trans_a == nullptr || is_trans_b == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "is_trans_a"), return GRAPH_FAILED);
     info.isTransposeA = false; // 当前默认a矩阵不转置
     info.isTransposeB = *is_trans_b ? *is_trans_b : false;
 
@@ -579,9 +578,10 @@ static ge::graphStatus MatmulReduceScatterV2CheckDtypeAndSetTiling(const gert::T
             }
         }
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "x1,x2,bias,y",
-            (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype) + "," +
-             Ops::Base::ToString(biasDtype) + "," + Ops::Base::ToString(yDtype)).c_str(),
-            "unsupported dtype combination");
+                                              (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype) + "," +
+                                               Ops::Base::ToString(biasDtype) + "," + Ops::Base::ToString(yDtype))
+                                                  .c_str(),
+                                              "unsupported dtype combination");
         return ge::GRAPH_FAILED;
     } else {
         vector<uint32_t> paramsType = {x1Dtype, x2Dtype, yDtype};
@@ -590,9 +590,11 @@ static ge::graphStatus MatmulReduceScatterV2CheckDtypeAndSetTiling(const gert::T
                 return ge::GRAPH_SUCCESS;
             }
         }
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(context->GetNodeName(), "x1,x2,y",
-            (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype) + "," +
-             Ops::Base::ToString(yDtype)).c_str(), "unsupported dtype combination");
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            context->GetNodeName(), "x1,x2,y",
+            (Ops::Base::ToString(x1Dtype) + "," + Ops::Base::ToString(x2Dtype) + "," + Ops::Base::ToString(yDtype))
+                .c_str(),
+            "unsupported dtype combination");
         return ge::GRAPH_FAILED;
     }
 }
@@ -931,32 +933,39 @@ void SetTilingData_SmallM(CoCTiling &cocTilingData, MatmulReduceScatterV2AivMode
 inline ge::graphStatus checkAndResetTilingData_SmallM(CoCTiling &cocTilingData, MatmulReduceScatterV2AivModeInfo &info,
                                                       gert::TilingContext *context, int64_t rankSize)
 {
-    OP_TILING_CHECK(cocTilingData.m0 != 128 && cocTilingData.m0 != 256,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "m0", std::to_string(cocTilingData.m0).c_str(), "128 or 256"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        cocTilingData.m0 != 128 && cocTilingData.m0 != 256,
+        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "m0", std::to_string(cocTilingData.m0).c_str(), "128 or 256"),
+        return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(cocTilingData.swizzlCount < 1 || cocTilingData.swizzlCount > 16,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "swizzlCount", std::to_string(cocTilingData.swizzlCount).c_str(), "1 to 16"),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "swizzlCount",
+                                              std::to_string(cocTilingData.swizzlCount).c_str(), "1 to 16"),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(cocTilingData.swizzlDirect != 0 && cocTilingData.swizzlDirect != 1,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "swizzlDirect", std::to_string(cocTilingData.swizzlDirect).c_str(), "0 or 1"),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "swizzlDirect",
+                                              std::to_string(cocTilingData.swizzlDirect).c_str(), "0 or 1"),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(cocTilingData.pValue < 1 || cocTilingData.pValue > 20,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "pValue", std::to_string(cocTilingData.pValue).c_str(), "1 to 20"),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "pValue",
+                                              std::to_string(cocTilingData.pValue).c_str(), "1 to 20"),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(cocTilingData.ubMoveNum < 4 || cocTilingData.ubMoveNum > 100,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "ubMoveNum", std::to_string(cocTilingData.ubMoveNum).c_str(), "4 to 100"),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "ubMoveNum",
+                                              std::to_string(cocTilingData.ubMoveNum).c_str(), "4 to 100"),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(cocTilingData.commNpuSplit != 0 && cocTilingData.commNpuSplit != 1,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "commNpuSplit", std::to_string(cocTilingData.commNpuSplit).c_str(), "0 or 1"),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "commNpuSplit",
+                                              std::to_string(cocTilingData.commNpuSplit).c_str(), "0 or 1"),
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(cocTilingData.commDataSplit != 8 && cocTilingData.commDataSplit != 16,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "commDataSplit", std::to_string(cocTilingData.commDataSplit).c_str(), "8 or 16"),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "commDataSplit",
+                                              std::to_string(cocTilingData.commDataSplit).c_str(), "8 or 16"),
                     return ge::GRAPH_FAILED);
 
     int32_t m_loop = (info.M + cocTilingData.m0 - 1) / (cocTilingData.m0);
@@ -966,10 +975,8 @@ inline ge::graphStatus checkAndResetTilingData_SmallM(CoCTiling &cocTilingData, 
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     int32_t coreNum = ascendcPlatform.GetCoreNumAic();
-    OP_TILING_CHECK(
-        coreNum == 0,
-        OP_LOGE(context->GetNodeName(), "ascendcPlatform.GetCoreNumAic() return 0 cores."),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(coreNum == 0, OP_LOGE(context->GetNodeName(), "ascendcPlatform.GetCoreNumAic() return 0 cores."),
+                    return ge::GRAPH_FAILED);
     int32_t count_m_tile = cocTilingData.swizzlDirect != 0 ?
                                ((coreNum * (cocTilingData.pValue)) / cocTilingData.swizzlCount) :
                                cocTilingData.swizzlCount;
@@ -977,12 +984,11 @@ inline ge::graphStatus checkAndResetTilingData_SmallM(CoCTiling &cocTilingData, 
     auto cType = context->GetOutputDesc(0)->GetDataType();
     uint32_t elementSize = D_TYPE_SIZE_MAP.at(cType);
 
-    OP_TILING_CHECK(
-        (static_cast<uint64_t>(info.M) * info.N / rankSize * elementSize) >= (180 * 1024 * 1024),
-        OP_LOGE(context->GetNodeName(),
-                "The space required for the output result is larger than the peermem space, and "
-                "a single copy is not possible."),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((static_cast<uint64_t>(info.M) * info.N / rankSize * elementSize) >= (180 * 1024 * 1024),
+                    OP_LOGE(context->GetNodeName(),
+                            "The space required for the output result is larger than the peermem space, and "
+                            "a single copy is not possible."),
+                    return ge::GRAPH_FAILED);
 
     if (cocTilingData.swizzlDirect == 1 && m_loop > count_m_tile) {
         cocTilingData.pValue = CeilDev(m_loop * cocTilingData.swizzlCount, coreNum);
@@ -1020,13 +1026,15 @@ void GetUsrWorkSpaceSize(uint32_t elementSize, uint32_t numBlocks, uint64_t &use
     info.hasAAlign = hasAAlign;
     info.hasBAlign = hasBAlign;
     if (info.hasAAlign) {
-        info.aAlignSize = (info.isTransposeA ? static_cast<uint64_t>(info.K) * mAlign :
-                           static_cast<uint64_t>(info.M) * kAlign) * elementSize;
+        info.aAlignSize =
+            (info.isTransposeA ? static_cast<uint64_t>(info.K) * mAlign : static_cast<uint64_t>(info.M) * kAlign) *
+            elementSize;
         userWorkSpaceSize += info.aAlignSize;
     }
     if (info.hasBAlign) {
-        info.bAlignSize = (info.isTransposeB ? static_cast<uint64_t>(info.N) * kAlign :
-                           static_cast<uint64_t>(info.K) * nAlign) * elementSize;
+        info.bAlignSize =
+            (info.isTransposeB ? static_cast<uint64_t>(info.N) * kAlign : static_cast<uint64_t>(info.K) * nAlign) *
+            elementSize;
         userWorkSpaceSize += info.bAlignSize;
     }
     if (info.quantFlag) {
@@ -1036,7 +1044,7 @@ void GetUsrWorkSpaceSize(uint32_t elementSize, uint32_t numBlocks, uint64_t &use
         } else {
             // 大m场景算法，peermem可能转不下输出矩阵，需要double buffer搬运，因此workspace匹配double buffer空间。
             info.dequantSize = static_cast<uint64_t>(cocTilingData.pValue) * numBlocks * cocTilingData.m0 *
-                                                     cocTilingData.n0 * TWO * sizeof(int32_t);
+                               cocTilingData.n0 * TWO * sizeof(int32_t);
         }
     }
     userWorkSpaceSize += info.dequantSize;
@@ -1115,26 +1123,20 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     // 1. tilingData
     MatmulReduceScatterV2AivModeTilingData *tilingData =
         context->GetTilingData<MatmulReduceScatterV2AivModeTilingData>();
-    OP_TILING_CHECK(
-        tilingData == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "tilingData"),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "tilingData"),
+                    return ge::GRAPH_FAILED);
     MatmulReduceScatterV2AivModeInfo &info = tilingData->matmulReduceScatterV2AivModeInfo;
     OP_TILING_CHECK(MatmulReduceScatterV2CheckAttrAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(),
-                            "MatmulReduceScatterV2 aivMode CheckAttrAndSetTiling Failed"),
+                    OP_LOGE(context->GetNodeName(), "MatmulReduceScatterV2 aivMode CheckAttrAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulReduceScatterV2CheckShapeAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(),
-                            "MatmulReduceScatterV2 aivMode CheckShapeAndSetTiling Failed"),
+                    OP_LOGE(context->GetNodeName(), "MatmulReduceScatterV2 aivMode CheckShapeAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulReduceScatterV2CheckDtypeAndSetTiling(context) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(),
-                            "MatmulReduceScatterV2 aivMode CheckDtypeAndSetTiling Failed"),
+                    OP_LOGE(context->GetNodeName(), "MatmulReduceScatterV2 aivMode CheckDtypeAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(MatmulReduceScatterV2GetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(context->GetNodeName(),
-                            "MatmulReduceScatterV2 aivMode GetPlatformInfoAndSetTiling Failed"),
+                    OP_LOGE(context->GetNodeName(), "MatmulReduceScatterV2 aivMode GetPlatformInfoAndSetTiling Failed"),
                     return ge::GRAPH_FAILED);
     auto attrs = context->GetAttrs();
     auto group = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
@@ -1144,17 +1146,18 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
     auto cclRet = mc2tiling::GetCclBufferSize(group, &hcclBuffSize, opName);
     if (cclRet == ge::GRAPH_SUCCESS) {
         OP_TILING_CHECK(hcclBuffSize < CCL_BUFFER_MIN_BYTES,
-            OP_LOGE(opName, "HCCL_BUFFSIZE (%lu Bytes) too small, min required %lu Bytes (%dMB)",
-                hcclBuffSize, CCL_BUFFER_MIN_BYTES, CCL_BUFFER_MIN_BYTES / MB_BYTES),
-            return ge::GRAPH_FAILED);
+                        OP_LOGE(opName, "HCCL_BUFFSIZE (%lu Bytes) too small, min required %lu Bytes (%dMB)",
+                                hcclBuffSize, CCL_BUFFER_MIN_BYTES, CCL_BUFFER_MIN_BYTES / MB_BYTES),
+                        return ge::GRAPH_FAILED);
     } else {
         OP_LOGW(opName, "Can't get HCCL_BUFFSIZE, skip CCL buffer size validation.");
     }
     int64_t rankSize = 0;
     mc2tiling::GetRankSize(opName, group, rankSize);
-    OP_TILING_CHECK(rankSize != 2 && rankSize != 4 && rankSize != 8,
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "rankSize", std::to_string(rankSize).c_str(), "2, 4 or 8"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        rankSize != 2 && rankSize != 4 && rankSize != 8,
+        OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "rankSize", std::to_string(rankSize).c_str(), "2, 4 or 8"),
+        return ge::GRAPH_FAILED);
     // 2. set numBlocks
     uint32_t numBlocks = 1U;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -1188,15 +1191,12 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
 
     // 5. workspace
     size_t *workSpaces = context->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(
-        workSpaces == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "workSpaces"),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "workSpaces"),
+                    return ge::GRAPH_FAILED);
     if (info.quantFlag) {
-        OP_TILING_CHECK(
-            !CheckDtype_X2(context, info, cType),
-            OP_LOGE(context->GetNodeName(), "MatmulReduceScatterV2 aivMode Invalid x2Scale."),
-            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(!CheckDtype_X2(context, info, cType),
+                        OP_LOGE(context->GetNodeName(), "MatmulReduceScatterV2 aivMode Invalid x2Scale."),
+                        return ge::GRAPH_FAILED);
         info.dequant_type = DequantType::PER_CHANNEL;
         if (CheckDtype_X1(context)) {
             info.dequant_type = DequantType::PER_TOKEN;
@@ -1207,8 +1207,7 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
         SetTilingData_SmallM(tilingData->cocTiling, info, rankSize);
         OP_TILING_CHECK(
             checkAndResetTilingData_SmallM(tilingData->cocTiling, info, context, rankSize) != ge::GRAPH_SUCCESS,
-            OP_LOGE(context->GetNodeName(),
-                    "MatmulReduceScatterV2 aivMode checkAndResetTilingData_SmallM Failed"),
+            OP_LOGE(context->GetNodeName(), "MatmulReduceScatterV2 aivMode checkAndResetTilingData_SmallM Failed"),
             return ge::GRAPH_FAILED);
     } else {
         SetTilingData(tilingData->cocTiling, info, rankSize);
@@ -1226,26 +1225,22 @@ ge::graphStatus MatmulReduceScatterTilingV2AivModeFunc(gert::TilingContext *cont
         uint32_t opType = OP_TYPE_REDUCE_SCATTER;
         std::string algConfig = "ReduceScatter=level0:fullmesh";
         AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig);
-        OP_TILING_CHECK(
-            mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
-            OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2InitTiling GetTiling failed."),
-            return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(
-            mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
-            OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2CcTiling GetTiling failed."),
-            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
+                        OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2InitTiling GetTiling failed."),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
+                        OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2CcTiling GetTiling failed."),
+                        return ge::GRAPH_FAILED);
     } else {
         uint32_t opType = 18;
         std::string algConfig = "MultiPut=level0:fullmesh";
         AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, opType, algConfig);
-        OP_TILING_CHECK(
-            mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
-            OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2InitTiling GetTiling failed."),
-            return ge::GRAPH_FAILED);
-        OP_TILING_CHECK(
-            mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
-            OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2CcTiling GetTiling failed."),
-            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
+                        OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2InitTiling GetTiling failed."),
+                        return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
+                        OP_LOGE(context->GetNodeName(), "mc2CcTilingConfig mc2CcTiling GetTiling failed."),
+                        return ge::GRAPH_FAILED);
     }
 
     OP_LOGI("Leave MatmulReduceScatterV2AivMode tiling func.");

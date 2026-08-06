@@ -683,7 +683,7 @@ ge::graphStatus FiaTilingCheck::CheckSoftmaxLse()
 ge::graphStatus FiaTilingCheck::CheckSoftmaxLseDType() 
 {
     if (opParamInfo_.lseOut.desc->GetDataType() != ge::DT_FLOAT) { 
-        OP_LOGE(opName_, "only support dtype FP32, but got %s",
+        OP_LOGE(opName_, "only support dtype FLOAT32, but got %s",
             FusedDataTypeToSerialString(opParamInfo_.lseOut.desc->GetDataType()).c_str());
         return ge::GRAPH_FAILED;
     }
@@ -740,11 +740,11 @@ ge::graphStatus FiaTilingCheck::CheckPostQuant()
 
         // scale2 dtype verification
         OP_CHECK_IF((queryDataType_ != ge::DT_FLOAT16 && queryDataType_ != ge::DT_BF16),
-            OP_LOGE(opName_, "in postquant situation, query type should be FP16 or BF16"),
+            OP_LOGE(opName_, "in postquant situation, query type should be FLOAT16 or BFLOAT16"),
             return ge::GRAPH_FAILED);
  
         OP_CHECK_IF((queryDataType_ == ge::DT_FLOAT16 && quantScale2Datatype_ != ge::DT_FLOAT),
-            OP_LOGE(opName_, "inputQ dtype is FP16, quantScale2 dtype should be FP32"),
+            OP_LOGE(opName_, "inputQ dtype is FLOAT16, quantScale2 dtype should be FLOAT32"),
             return ge::GRAPH_FAILED);
 
         //scale2 shape verfication

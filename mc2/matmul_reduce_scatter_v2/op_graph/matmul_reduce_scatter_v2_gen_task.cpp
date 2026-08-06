@@ -21,7 +21,7 @@
 #include "mc2_comm_utils.h"
 
 namespace {
-    constexpr int64_t MAX_CCU_RANKSIZE = 8;
+constexpr int64_t MAX_CCU_RANKSIZE = 8;
 }
 
 namespace ops {
@@ -40,7 +40,7 @@ static ge::Status MatmulReduceScatterV2CalcOpParam(gert::ExeResGenerationContext
             OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTask CalcOpParam");
             return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
         }
-        OPS_LOG_E(context->GetNodeName(), "Unsupported comm_mode: %s, comm_mode must be 'ai_cpu' or 'ccu'.", \
+        OPS_LOG_E(context->GetNodeName(), "Unsupported comm_mode: %s, comm_mode must be 'ai_cpu' or 'ccu'.",
                   comm_mode.GetString());
         return ge::GRAPH_FAILED;
     }
@@ -49,7 +49,7 @@ static ge::Status MatmulReduceScatterV2CalcOpParam(gert::ExeResGenerationContext
 }
 
 static ge::Status MatmulReduceScatterV2GenTask(const gert::ExeResGenerationContext *context,
-                                           std::vector<std::vector<uint8_t>> &tasks)
+                                               std::vector<std::vector<uint8_t>> &tasks)
 {
     if (IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) {
         OPS_LOG_D(context->GetNodeName(), "Do A5 GenTaskFunc");
@@ -65,7 +65,7 @@ static ge::Status MatmulReduceScatterV2GenTask(const gert::ExeResGenerationConte
             OPS_LOG_D(context->GetNodeName(), "Do A5 CCU GenTaskFunc");
             return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
         }
-        OPS_LOG_E(context->GetNodeName(), "Unsupported comm_mode: %s, comm_mode must be 'ai_cpu' or 'ccu'.", \
+        OPS_LOG_E(context->GetNodeName(), "Unsupported comm_mode: %s, comm_mode must be 'ai_cpu' or 'ccu'.",
                   comm_mode.GetString());
         return ge::GRAPH_FAILED;
     }

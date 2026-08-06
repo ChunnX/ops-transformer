@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                       |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |    ×     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                              |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -57,19 +67,19 @@
 
     - **计算过程**
 
-      - 1. 根据groupList[i]确定当前分组的token范围，$i \in [0, Len(groupList))$。
+      - 1.根据groupList[i]确定当前分组的token范围，$i \in [0, Len(groupList))$。
 
-      - 2. 根据分组确定的入参进行GroupedMatmul和反量化计算，中间GroupedMatmul结果默认为FLOAT32类型：
+      - 2.根据分组确定的入参进行GroupedMatmul和反量化计算，中间GroupedMatmul结果默认为FLOAT32类型：
 
         $C_i = (X_i \cdot weight_i) \odot xScale_{i\ Broadcast} \odot weightScale_{i\ Broadcast}$
 
-      - 3. 执行gelu_tanh激活：
+      - 3.执行gelu_tanh激活：
 
         $S_i = GeluTanh(C_i)$
 
         注：当前kernel底层实现使用gelu_sigmoid函数近似计算gelu_tanh，近似公式见定义。
 
-      - 4. 对激活结果进行MX量化，目标数据类型DType由输出Tensor y的数据类型指定：
+      - 4.对激活结果进行MX量化，目标数据类型DType由输出Tensor y的数据类型指定：
 
         - 场景1，当scaleAlg为0时，表示OCP实现，将激活结果$S_i$在N轴按$k=blocksize$分组，一组$k$个数$\{V_j\}_{j=1}^{k}$动态量化为$\{YScale, \{P_j\}_{j=1}^{k}\}$。
 
@@ -138,7 +148,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulActivationQuantWeightNz”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulActivationQuantWeightNz”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
@@ -158,7 +168,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(
   aclTensor           *y,
   aclTensor           *yScale,
   uint64_t            *workspaceSize,
-  aclOpExecutor      **executor)
+  aclOpExecutor       **executor)
 ```
 
 ```cpp
@@ -196,7 +206,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
   </thead>
   <tbody>
     <tr>
-      <td>x</td>
+      <td>x（const aclTensor *）</td>
       <td rowspan="1">输入</td>
       <td>表示左矩阵，对应公式中的X。</td>
       <td>必选参数。</td>
@@ -206,7 +216,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>√</td>
     </tr>
     <tr>
-      <td>groupList</td>
+      <td>groupList（const aclTensor *）</td>
       <td rowspan="1">输入</td>
       <td>表示分组信息，对应公式中的groupList。</td>
       <td>必选参数。根据groupListType输入不同格式数据。</td>
@@ -216,7 +226,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>√</td>
     </tr>
     <tr>
-      <td>weight</td>
+      <td>weight（const aclTensorList *）</td>
       <td rowspan="1">输入</td>
       <td>表示weight矩阵，对应公式中的weight。</td>
       <td>tensorList长度当前仅支持1。调用者必须传入FRACTAL_NZ格式的weight，接口按该格式解析该参数；viewShape要求为3维，storageShape要求为5维。</td>
@@ -226,7 +236,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>×</td>
     </tr>
     <tr>
-      <td>weightScale</td>
+      <td>weightScale（const aclTensorList *）</td>
       <td rowspan="1">输入</td>
       <td>表示weight矩阵的量化因子，对应公式中的weightScale。</td>
       <td>tensorList长度当前仅支持1。</td>
@@ -236,7 +246,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>√</td>
     </tr>
     <tr>
-      <td>bias</td>
+      <td>bias（const aclTensorList *）</td>
       <td rowspan="1">可选输入</td>
       <td>表示偏置。</td>
       <td>MXFP8场景下必须为空，支持nullptr、空tensorlist或长度为1且元素shape为(0)的空tensorlist。</td>
@@ -246,7 +256,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>-</td>
     </tr>
     <tr>
-      <td>xScaleOptional</td>
+      <td>xScaleOptional（const aclTensor *）</td>
       <td rowspan="1">输入</td>
       <td>表示左矩阵的量化因子，对应公式中的xScale。</td>
       <td>当前MXFP8量化场景下必选，不能传nullptr。</td>
@@ -256,7 +266,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>√</td>
     </tr>
     <tr>
-      <td>activationType</td>
+      <td>activationType（const char *）</td>
       <td>输入</td>
       <td>表示激活函数类型。</td>
       <td>必选属性。当前仅支持"gelu_tanh"。</td>
@@ -266,7 +276,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupListType</td>
+      <td>groupListType（int64_t）</td>
       <td>输入</td>
       <td>表示groupList的解释方式。</td>
       <td>支持取值0、1；当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。</td>
@@ -276,7 +286,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>-</td>
     </tr>
     <tr>
-      <td>tuningConfig</td>
+      <td>tuningConfig（const aclIntArray *）</td>
       <td>可选输入</td>
       <td>表示调优参数，预留参数。</td>
       <td>支持传入nullptr，当前暂不使用。</td>
@@ -286,7 +296,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>-</td>
     </tr>
     <tr>
-      <td>quantMode</td>
+      <td>quantMode（const char *）</td>
       <td>可选输入</td>
       <td>表示量化模式。</td>
       <td>支持传入nullptr或空字符串。当前仅支持"mx"；传入nullptr或空字符串时，若x的数据类型为FLOAT8_E4M3FN或FLOAT8_E5M2且xScaleOptional的数据类型为FLOAT8_E8M0，则推导为"mx"。若显式传入非"mx"，则报错。</td>
@@ -296,7 +306,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>-</td>
     </tr>
     <tr>
-      <td>roundMode</td>
+      <td>roundMode（const char *）</td>
       <td>可选输入</td>
       <td>表示量化舍入模式。</td>
       <td>支持传入nullptr或空字符串，传入nullptr或空字符串时按"rint"处理，当前仅支持"rint"。</td>
@@ -306,7 +316,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>-</td>
     </tr>
     <tr>
-      <td>scaleAlg</td>
+      <td>scaleAlg（int64_t）</td>
       <td>输入</td>
       <td>表示量化因子计算算法。</td>
       <td>当前MX量化场景下支持0或1，其中0表示OCP实现，1表示cuBLAS实现。</td>
@@ -316,17 +326,17 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>-</td>
     </tr>
     <tr>
-      <td>dstTypeMax</td>
+      <td>dstTypeMax（float）</td>
       <td>输入</td>
       <td>表示maxType的取值，对应公式中的Amax(DType)。</td>
-      <td>当前MXFP8场景仅支持0.0，表示Amax(DType)为量化结果数据类型的最大值。6.0-12.0为后续FP4E2M1且blocksize取32场景预留。</td>
+      <td>当前MXFP8场景仅支持0.0，表示Amax(DType)为量化结果数据类型的最大值。6.0-12.0为后续数据类型为FLOAT4_E2M1且blocksize为32的场景预留。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>y</td>
+      <td>y（aclTensor *）</td>
       <td>输出</td>
       <td>表示激活并量化后的输出矩阵。</td>
       <td>必选参数。</td>
@@ -336,7 +346,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>-</td>
     </tr>
     <tr>
-      <td>yScale</td>
+      <td>yScale（aclTensor *）</td>
       <td>输出</td>
       <td>表示输出量化因子。</td>
       <td>必选参数。</td>
@@ -346,7 +356,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>-</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t *）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -356,7 +366,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor **）</td>
       <td>输出</td>
       <td>返回op执行器，包含算子计算流程。</td>
       <td>-</td>
@@ -368,24 +378,20 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
   </tbody>
   </table>
 
+  <!-- npu="950" id7 -->
   - <term>Ascend 950PR/Ascend 950DT</term>：
-    - <strong>调用者必须传入FRACTAL_NZ格式的weight，接口按该格式解析该参数。</strong>
     - x仅支持非转置输入，weight支持非转置和转置输入，接口会根据weight和weightScale的形状及转置关系推导weight是否转置。
     - weightScale转置属性需要与weight保持一致。
-    - xScaleOptional当前MXFP8量化场景下必选，不能传nullptr。
     - 空Tensor处理规则：
-      - weight和weightScale作为必选输入，tensorList长度当前仅支持1，不支持空tensorlist，tensorlist中的元素不能为nullptr。
+      - weight和weightScale作为必选输入，不支持空tensorlist，tensorlist中的元素不能为nullptr。
       - 支持M为0或N为0的空Tensor场景：x和xScaleOptional支持M为0，weight和weightScale支持N为0；该场景下允许K为0，第一段接口返回ACLNN_SUCCESS，workspaceSize为0；当M和N均不为0时，不支持K为0。
       - 支持groupList为空的空Tensor场景：当groupList为空，且输出y或yScale为空时，第一段接口返回ACLNN_SUCCESS，workspaceSize为0。
-    - roundMode仅支持"rint"。
-    - scaleAlg仅支持0或1，其中0表示OCP实现，1表示cuBLAS实现。
-    - MXFP8场景下bias必须为空，支持nullptr、空tensorlist或长度为1且元素shape为(0)的空tensorlist。
-    - tuningConfig为预留参数，当前暂不使用。
-    - dstTypeMax表示maxType的取值，对应公式中的Amax(DType)。当前MXFP8场景仅支持0.0，表示Amax(DType)为量化结果数据类型的最大值。6.0-12.0为后续FP4E2M1且blocksize取32场景预留。
+
+  <!-- end id7 -->
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -408,9 +414,21 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>必选参数为空指针，例如x、groupList、xScaleOptional、weight、weightScale、activationType、y、yScale、workspaceSize或executor为空。</td>
     </tr>
     <tr>
-      <td>ACLNN_ERR_PARAM_INVALID</td>
-      <td>161002</td>
-      <td>参数不满足约束，例如activationType不是"gelu_tanh"，bias非空，输入数据类型或数据格式不支持，shape维度不匹配，或属性值不在支持范围内。</td>
+      <td rowspan="5">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="5">161002</td>
+      <td>activationType不是"gelu_tanh"。</td>
+    </tr>
+    <tr>
+      <td>bias非空。</td>
+    </tr>
+    <tr>
+      <td>输入数据类型或数据格式不支持。</td>
+    </tr>
+    <tr>
+      <td>shape维度不匹配。</td>
+    </tr>
+    <tr>
+      <td>属性值不在支持范围内。</td>
     </tr>
   </tbody>
   </table>
@@ -457,14 +475,13 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
     - aclnnGroupedMatmulActivationQuantWeightNz默认确定性实现。
 - 非空Tensor场景下，groupList第1维最小为1，最大为1024。
-- 当前仅支持MXFP8量化场景，激活函数仅支持gelu_tanh。
 - MXFP8量化场景下需满足以下约束条件：
     - 数据类型需要满足下表：
       <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
@@ -542,16 +559,11 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       </tbody>
       </table>
 
-    - activationType仅支持"gelu_tanh"。
-    - quantMode显式传入时当前仅支持"mx"；传入nullptr或空字符串时，若x的数据类型为FLOAT8_E4M3FN或FLOAT8_E5M2且xScaleOptional的数据类型为FLOAT8_E8M0，则推导为"mx"；否则报错。
     - N必须为64整数倍。
-    - groupListType支持取值0、1；当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。
-    - y支持FLOAT8_E4M3FN、FLOAT8_E5M2。
-    - scaleAlg支持0或1，其中0表示OCP实现，1表示cuBLAS实现。
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 /**

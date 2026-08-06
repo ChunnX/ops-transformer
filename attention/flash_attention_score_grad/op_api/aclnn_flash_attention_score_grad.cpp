@@ -124,6 +124,16 @@ static bool StrideLimited() {
     return false;
 }
 
+static bool IsAscend950()
+{
+    return GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+}
+
+static bool NeedTransposeSoftmaxTensor(const char *softmaxInLayout)
+{
+    return softmaxInLayout != nullptr && strcmp(softmaxInLayout, "same_as_input") == 0 && !IsAscend950();
+}
+
 static bool CheckIsNeedPad(const FagInShapeInfo &fagShape)
 {
     if (fagShape.dDim == HEAD_DIM_192 &&  fagShape.inputLayoutStr != "TND" && fagShape.needTranspose == false) {
@@ -1823,7 +1833,7 @@ static aclnnStatus FlashAttentionScoreGradGetWorkspace(
                                      fagShapeArray, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    if (strcmp(softmaxInLayout, "same_as_input") == 0) {
+    if (NeedTransposeSoftmaxTensor(softmaxInLayout)) {
         ret = TransposeSoftMaxTensor(&softmaxMaxOptionalCngs, &softmaxSumOptionalCngs, fagShape, executor);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
     }
@@ -2668,7 +2678,7 @@ static aclnnStatus FlashAttentionScoreGradV5GetWorkspace(
     ret = PreFlashAttentionScoreGrad(&queryCngs, &keyCngs, &valueCngs, &dyCngs, &attentionInOptionalCngs, fagShape,
         fagShapeArray, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    if (softmaxInLayout != nullptr && strcmp(softmaxInLayout, "same_as_input") == 0) {
+    if (NeedTransposeSoftmaxTensor(softmaxInLayout)) {
         ret = TransposeSoftMaxTensor(&softmaxMaxOptionalCngs, &softmaxSumOptionalCngs, fagShape, executor);
         CHECK_RET(ret == ACLNN_SUCCESS, ret);
     }

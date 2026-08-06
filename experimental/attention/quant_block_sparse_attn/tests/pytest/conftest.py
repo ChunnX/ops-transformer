@@ -101,12 +101,24 @@ def pytest_addoption(parser):
         default=False,
         help="Enable detailed accuracy comparison including cosine similarity and error tables",
     )
+    parser.addoption(
+        "--force-regenerate",
+        action="store_true",
+        default=False,
+        help="Force regenerate .pt test case files even if they already exist",
+    )
 
 
 @pytest.fixture(scope="session")
 def check_accuracy(request):
     """Fixture that returns True when --check-accuracy flag is set."""
     return request.config.getoption("--check-accuracy")
+
+
+@pytest.fixture(scope="session")
+def force_regenerate(request):
+    """Fixture that returns True when --force-regenerate flag is set."""
+    return request.config.getoption("--force-regenerate")
 
 
 def pytest_configure(config):

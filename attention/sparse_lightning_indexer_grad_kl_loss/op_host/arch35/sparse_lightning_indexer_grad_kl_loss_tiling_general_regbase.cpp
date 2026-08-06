@@ -111,30 +111,6 @@ static auto CalcTailSize(T num1, T num2) -> T
     return mod != 0 ? mod : num2;
 }
 
-ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::CheckOutShape(gert::Shape &inputshape, const char *inputName, 
-                                                                    gert::Shape &outputshape)
-{
-    if (inputLayout[DIM_NUM_0] == 'T' && inputLayout[DIM_NUM_1] == 'N' && inputLayout[DIM_NUM_2] == 'D') {
-        if (inputshape.GetDim(DIM_NUM_0) != outputshape.GetDim(DIM_NUM_0) || inputshape.GetDim(DIM_NUM_1) != outputshape.GetDim(DIM_NUM_1) 
-            || inputshape.GetDim(DIM_NUM_2) != outputshape.GetDim(DIM_NUM_2)) {
-            OP_LOGE(context_, "SparseLightningIndexerGradKLLoss Input %s [%ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld]", 
-                inputName, inputshape.GetDim(DIM_NUM_0), inputshape.GetDim(DIM_NUM_1), inputshape.GetDim(DIM_NUM_2),
-                inputName, outputshape.GetDim(DIM_NUM_0), outputshape.GetDim(DIM_NUM_1), outputshape.GetDim(DIM_NUM_2));
-            return ge::GRAPH_FAILED;
-        }
-    } else {
-        if (inputshape.GetDim(DIM_NUM_0) != outputshape.GetDim(DIM_NUM_0) || inputshape.GetDim(DIM_NUM_1) != outputshape.GetDim(DIM_NUM_1) 
-            || inputshape.GetDim(DIM_NUM_2) != outputshape.GetDim(DIM_NUM_2) || inputshape.GetDim(DIM_NUM_3) != outputshape.GetDim(DIM_NUM_3)){
-            OP_LOGE(context_, "SparseLightningIndexerGradKLLoss Input %s [%ld, %ld, %ld, %ld] is not equal to Output d_%s [%ld, %ld, %ld, %ld]", 
-                inputName, inputshape.GetDim(DIM_NUM_0), inputshape.GetDim(DIM_NUM_1), inputshape.GetDim(DIM_NUM_2), inputshape.GetDim(DIM_NUM_3),
-                inputName, outputshape.GetDim(DIM_NUM_0), outputshape.GetDim(DIM_NUM_1), outputshape.GetDim(DIM_NUM_2), outputshape.GetDim(DIM_NUM_3));
-            return ge::GRAPH_FAILED;
-        }    
-    }
-
-    return ge::GRAPH_SUCCESS;
-}
-
 // 比较维度数值与输入是否能够对应
 ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::CheckOutPut()
 {
@@ -145,30 +121,47 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::CheckOutPut()
     auto dkeyIndexShape = context_->GetOutputShape(D_KEY_INDEX_OUTPUT_INDEX)->GetStorageShape();
     auto dWeightsShape = context_->GetOutputShape(D_WEIGHTS_OUTPUT_INDEX)->GetStorageShape();
 
-    auto status = CheckOutShape(queryIndexShape, "query_index", dQueryIndexShape);
-    if (status == ge::GRAPH_FAILED) {
-        return ge::GRAPH_FAILED;
-    }
-    status = CheckOutShape(keyIndexShape, "key_index", dkeyIndexShape);
-    if (status == ge::GRAPH_FAILED) {
-        return ge::GRAPH_FAILED;
+    {
+        auto qIdxDimNum = queryIndexShape.GetDimNum();
+        if (qIdxDimNum != dQueryIndexShape.GetDimNum() ||
+            queryIndexShape.GetDim(DIM_NUM_0) != dQueryIndexShape.GetDim(DIM_NUM_0) ||
+            queryIndexShape.GetDim(DIM_NUM_1) != dQueryIndexShape.GetDim(DIM_NUM_1) ||
+            (qIdxDimNum > DIM_NUM_2 && queryIndexShape.GetDim(DIM_NUM_2) != dQueryIndexShape.GetDim(DIM_NUM_2)) ||
+            (qIdxDimNum > DIM_NUM_3 && queryIndexShape.GetDim(DIM_NUM_3) != dQueryIndexShape.GetDim(DIM_NUM_3))) {
+            OP_LOGE(context_,
+                "SparseLightningIndexerGradKLLoss Input query_index %s is not equal to Output d_query_index %s",
+                Ops::Base::ToString(queryIndexShape).c_str(), Ops::Base::ToString(dQueryIndexShape).c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
 
-    if (inputLayout[DIM_NUM_0] == 'B' && inputLayout[DIM_NUM_1] == 'S' && inputLayout[DIM_NUM_2] == 'N' && inputLayout[DIM_NUM_3] == 'D') {
-        if (dWeightsShape.GetDim(DIM_NUM_0) != weightsShape.GetDim(DIM_NUM_0) || dWeightsShape.GetDim(DIM_NUM_1) != weightsShape.GetDim(DIM_NUM_1)
-            || dWeightsShape.GetDim(DIM_NUM_2) != weightsShape.GetDim(DIM_NUM_2)) {
-                OP_LOGE(context_, "The input weights shape is [%ld, %ld, %ld], but d_weights got [%ld, %ld, %ld].", weightsShape.GetDim(DIM_NUM_0),
-                weightsShape.GetDim(DIM_NUM_1), weightsShape.GetDim(DIM_NUM_2), dWeightsShape.GetDim(DIM_NUM_0),
-                dWeightsShape.GetDim(DIM_NUM_1), dWeightsShape.GetDim(DIM_NUM_2));
-                return GRAPH_FAILED;
-        }
-    } else if (inputLayout[DIM_NUM_0] == 'T' && inputLayout[DIM_NUM_1] == 'N' && inputLayout[DIM_NUM_2] == 'D'){
-        if (dWeightsShape.GetDim(DIM_NUM_0) != weightsShape.GetDim(DIM_NUM_0) || dWeightsShape.GetDim(DIM_NUM_1) != weightsShape.GetDim(DIM_NUM_1)) {
-                OP_LOGE(context_, "The input weights shape is [%ld, %ld], but d_weights got [%ld, %ld].", weightsShape.GetDim(DIM_NUM_0),
-                weightsShape.GetDim(DIM_NUM_1), dWeightsShape.GetDim(DIM_NUM_0), dWeightsShape.GetDim(DIM_NUM_1));
-                return GRAPH_FAILED;
+    {
+        auto kIdxDimNum = keyIndexShape.GetDimNum();
+        if (kIdxDimNum != dkeyIndexShape.GetDimNum() ||
+            keyIndexShape.GetDim(DIM_NUM_0) != dkeyIndexShape.GetDim(DIM_NUM_0) ||
+            keyIndexShape.GetDim(DIM_NUM_1) != dkeyIndexShape.GetDim(DIM_NUM_1) ||
+            (kIdxDimNum > DIM_NUM_2 && keyIndexShape.GetDim(DIM_NUM_2) != dkeyIndexShape.GetDim(DIM_NUM_2)) ||
+            (kIdxDimNum > DIM_NUM_3 && keyIndexShape.GetDim(DIM_NUM_3) != dkeyIndexShape.GetDim(DIM_NUM_3))) {
+            OP_LOGE(context_,
+                "SparseLightningIndexerGradKLLoss Input key_index %s is not equal to Output d_key_index %s",
+                Ops::Base::ToString(keyIndexShape).c_str(), Ops::Base::ToString(dkeyIndexShape).c_str());
+            return ge::GRAPH_FAILED;
         }
     }
+
+    {
+        auto wDimNum = weightsShape.GetDimNum();
+        if (wDimNum != dWeightsShape.GetDimNum() ||
+            weightsShape.GetDim(DIM_NUM_0) != dWeightsShape.GetDim(DIM_NUM_0) ||
+            weightsShape.GetDim(DIM_NUM_1) != dWeightsShape.GetDim(DIM_NUM_1) ||
+            (wDimNum > DIM_NUM_2 && weightsShape.GetDim(DIM_NUM_2) != dWeightsShape.GetDim(DIM_NUM_2))) {
+            OP_LOGE(context_,
+                "SparseLightningIndexerGradKLLoss Input weights %s is not equal to Output d_weights %s",
+                Ops::Base::ToString(weightsShape).c_str(), Ops::Base::ToString(dWeightsShape).c_str());
+            return ge::GRAPH_FAILED;
+        }
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 

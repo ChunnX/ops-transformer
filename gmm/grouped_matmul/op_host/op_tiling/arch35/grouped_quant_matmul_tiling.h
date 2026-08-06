@@ -29,6 +29,7 @@ constexpr uint64_t NUM_HALF = 2UL;
 constexpr uint64_t EVEN_FACTOR = 2UL;
 constexpr uint64_t POWER_OF_TWO = 2UL;
 constexpr uint32_t DB_SIZE = 2U;
+constexpr uint32_t TB_SIZE = 3U;
 constexpr uint32_t BASIC_BLOCK_SIZE_512 = 512U;
 constexpr uint32_t BASIC_BLOCK_SIZE_256 = 256U;
 constexpr uint32_t BASIC_BLOCK_SIZE_128 = 128U;
@@ -307,8 +308,7 @@ private:
                                         uint64_t expectedNSize = 0UL) const;
     bool CheckQuantParams(const gert::StorageShape *xScaleStorageShape, const gert::Shape &wScaleShape,
                           uint64_t expectedNSize = 0UL) const;
-    bool CheckQuantParamsForNonKGroupQuantMode(const gert::Shape &wScaleShape,
-                                               uint64_t expectedNSize = 0UL) const;
+    bool CheckQuantParamsForNonKGroupQuantMode(const gert::Shape &wScaleShape, uint64_t expectedNSize = 0UL) const;
     bool SetMKNList();
     bool CheckDtypeForWeightNz(bool isPertokenScaleNull) const;
     bool CheckActiveModeDtype(const gert::StorageShape *xScaleStorageShape) const;
@@ -316,12 +316,11 @@ private:
     virtual bool CheckCoreNum() const;
     bool CheckTransposeAndFormatByGroupType() const;
     bool CheckPertokenScaleDtypeForWeightNz(bool isA8W8Int, bool isA8W8Fp, bool isA4W4Fp) const;
-    bool CheckWeightNzTransposedDims(const gert::Shape &wShape, uint64_t wShapeDimThird,
-                                     uint64_t wShapeDimSecond, uint32_t weightNzLastDim,
-                                     uint64_t logicalNSize) const;
+    bool CheckWeightNzTransposedDims(const gert::Shape &wShape, uint64_t wShapeDimThird, uint64_t wShapeDimSecond,
+                                     uint32_t weightNzLastDim, uint64_t logicalNSize) const;
     bool CheckWeightNzDimNum(const gert::Shape &wShape) const;
-    bool CheckWeightNzLastDim(const gert::Shape &wShape, size_t nzDimOffset,
-                              uint32_t expectedValue, bool isWeight4Bit) const;
+    bool CheckWeightNzLastDim(const gert::Shape &wShape, size_t nzDimOffset, uint32_t expectedValue,
+                              bool isWeight4Bit) const;
     bool CheckWeightNzSecondLastDim(const gert::Shape &wShape, size_t nzDimOffset) const;
     bool ValidateAAndWDtype(const std::vector<ge::DataType> &legalInputDtypes) const;
 

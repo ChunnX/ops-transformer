@@ -19,20 +19,19 @@
 #include "mat_mul_v3/op_host/op_tiling/matmul_v3_base_tiling.h"
 
 namespace optiling {
-    
-struct Matmul310TPLParam{
+
+struct Matmul310TPLParam {
     uint64_t disableMixNd2nz{65535};
 };
-class UnQuantMatmulAllReduceTiling310 : public MatmulAllReduceTilingBase
-{
-    class UnQuantTilingTransferHelper : public mc2_matmul_v3::Mc2MatmulV3BaseTiling
-    {
+class UnQuantMatmulAllReduceTiling310 : public MatmulAllReduceTilingBase {
+    class UnQuantTilingTransferHelper : public mc2_matmul_v3::Mc2MatmulV3BaseTiling {
     public:
-        UnQuantTilingTransferHelper(
-            UnQuantMatmulAllReduceTiling310& unquantMatmulAllReduceTiling, Mc2MatmulV3TilingData& data)
+        UnQuantTilingTransferHelper(UnQuantMatmulAllReduceTiling310 &unquantMatmulAllReduceTiling,
+                                    Mc2MatmulV3TilingData &data)
             : Mc2MatmulV3BaseTiling(unquantMatmulAllReduceTiling.context_, &data),
               tilingProcesser_(unquantMatmulAllReduceTiling)
-        {}
+        {
+        }
 
         ge::graphStatus CheckInputInfo()
         {
@@ -46,7 +45,7 @@ class UnQuantMatmulAllReduceTiling310 : public MatmulAllReduceTilingBase
                 return ge::GRAPH_FAILED;
             }
 
-            auto&& tilingArgs = tilingProcesser_.args_;
+            auto &&tilingArgs = tilingProcesser_.args_;
             args_.opName = tilingProcesser_.opName_;
             args_.isATrans = tilingArgs.isATrans;
             args_.isBTrans = tilingArgs.isBTrans;
@@ -82,12 +81,15 @@ class UnQuantMatmulAllReduceTiling310 : public MatmulAllReduceTilingBase
             // 1: disable mix nd2nz 0: enable mix nd2nz
             return param;
         }
+
     private:
-        UnQuantMatmulAllReduceTiling310& tilingProcesser_;
+        UnQuantMatmulAllReduceTiling310 &tilingProcesser_;
     };
 
 public:
-    explicit UnQuantMatmulAllReduceTiling310(gert::TilingContext* context) : MatmulAllReduceTilingBase(context) {}
+    explicit UnQuantMatmulAllReduceTiling310(gert::TilingContext *context) : MatmulAllReduceTilingBase(context)
+    {
+    }
     ~UnQuantMatmulAllReduceTiling310() override = default;
 
 protected:
@@ -101,13 +103,13 @@ protected:
 
     ge::graphStatus PostTiling() override;
 
-    Mc2Tiling::Mc2Msg& MutableMc2MsgData() override;
+    Mc2Tiling::Mc2Msg &MutableMc2MsgData() override;
 
-    Mc2Tiling::RCSTiling& MutableRCSTilingData() override;
+    Mc2Tiling::RCSTiling &MutableRCSTilingData() override;
 
-    AscendC::tiling::TCubeTiling& MutableTCubeTileTilingData() override;
+    AscendC::tiling::TCubeTiling &MutableTCubeTileTilingData() override;
 
-    AscendC::tiling::TCubeTiling& MutableTCubeTailTilingData() override;
+    AscendC::tiling::TCubeTiling &MutableTCubeTailTilingData() override;
 
     CutResult GetTilingResult() override;
 

@@ -1581,6 +1581,10 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::GetWorkspaceSize()
     int64_t currentUseCoreNum =
         tmpData_.isL1CustomEnable ? (td_->opInfo.get_usedCoreNum() * 2) : td_->opInfo.get_usedCoreNum();
     int64_t launchBlockDims = needAdjustBlockDim ? currentUseCoreNum : aicoreParams_.numBlocks;
+    if (isMaxWorkspace_) {
+        td_->opInfo.set_usedCoreNum(aicoreParams_.aicNum);
+        currentUseCoreNum = td_->opInfo.get_usedCoreNum();
+    }
     // Tiling传递的内存大小、起始地址，统一为字节数，单位为B
     auto blockdim = CalcTschBlockDim(launchBlockDims, aicoreParams_.aicNum, aicoreParams_.numBlocks);
     OP_CHECK_IF(blockdim == 0,
@@ -1750,19 +1754,17 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::SetBaseInfo(const gert::Sh
         td_->opInfo.set_S2(keyShape.GetDim(DIM_0));
         td_->opInfo.set_D(tempDimD);
     } else if (td_->opInfo.get_layout() == static_cast<uint32_t>(InputLayout::TND)) {
+        auto actualSeqQlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
+        auto actualSeqKvlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
+        OP_CHECK_IF((actualSeqQlenTensor == nullptr || actualSeqKvlenTensor == nullptr),
+                OP_LOGW(context_, "actualSeqQlenTensor or actualSeqKvlenTensor is nullptr."),
+                return ge::GRAPH_PARAM_INVALID);
+        const size_t seqQShapeSize = static_cast<size_t>(actualSeqQlenTensor->GetShapeSize());
+        const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvlenTensor->GetShapeSize());
+        OP_CHECK_IF((seqQShapeSize != kvSeqShapeSize),
+                OP_LOGW(context_, "actualSeqQlenTensor shapeSize is not equal actualSeqKvlenTensor."),
+                return ge::GRAPH_PARAM_INVALID);
         if (!isMaxWorkspace_) {
-            auto actualSeqQlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
-            auto actualSeqKvlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
-            OP_CHECK_IF((actualSeqQlenTensor == nullptr || actualSeqKvlenTensor == nullptr),
-                    OP_LOGW(context_, "actualSeqQlenTensor or actualSeqKvlenTensor is nullptr."),
-                    return ge::GRAPH_PARAM_INVALID);
-
-            const size_t seqQShapeSize = static_cast<size_t>(actualSeqQlenTensor->GetShapeSize());
-            const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvlenTensor->GetShapeSize());
-            OP_CHECK_IF((seqQShapeSize != kvSeqShapeSize),
-                    OP_LOGW(context_, "actualSeqQlenTensor shapeSize is not equal actualSeqKvlenTensor."),
-                    return ge::GRAPH_PARAM_INVALID);
-
             std::vector<int64_t> actualSeqQlen;
             std::vector<int64_t> actualSeqKvlen;
             const int64_t *qValue = actualSeqQlenTensor->GetData<int64_t>();

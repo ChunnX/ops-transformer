@@ -23,6 +23,7 @@ import math
 import ctypes
 import copy
 import ast
+from liv2_parameter_normalization import normalize_liv2_params
 try:
     import cann_ops_transformer
 except ImportError:
@@ -638,42 +639,14 @@ def trans_prefix_actseq(self,list):
         return list_new
 
 def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1size = DEFAULT_S1SIZE):
+    if is_batch:
+        params = normalize_liv2_params(params)
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
     qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, output_idx_offset, \
     layout_query, layout_key, topk, mask_mode, query_datarange, key_datarange, weights_datarange, \
     cmp_ratio, return_value, max_seqlen_q = params
 
     if is_batch:
-        if q_t_size is None:
-            q_t_size = 0
-        if k_t_size is None:
-            k_t_size = 0
-        if block_size is None:
-            block_size = 0
-        if block_num is None:
-            block_num = 0
-        batch_size = int(batch_size)
-        q_seq = int(q_seq)
-        k_seq = int(k_seq)
-        q_t_size = int(q_t_size)
-        k_t_size = int(k_t_size)
-        q_head_num = int(q_head_num)
-        k_head_num = int(k_head_num)
-        head_dim = int(head_dim)
-        block_size = int(block_size)
-        block_num = int(block_num)
-        cmp_ratio = int(cmp_ratio)
-        if max_seqlen_q is None:
-            max_seqlen_q = -1
-        max_seqlen_q = int(max_seqlen_q)
-        topk = int(topk)
-        mask_mode = int(mask_mode)
-        return_value = int(return_value)
-
-        params = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
-                 qk_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, output_idx_offset, \
-                 layout_query, layout_key, topk, mask_mode, query_datarange, key_datarange, weights_datarange, \
-                 cmp_ratio, return_value, max_seqlen_q
         if qk_dtype == 'FP16':
             qk_dtype = torch.float16
         else:
@@ -792,7 +765,7 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
     if cmp_ratio == 1 or mask_mode == 0:
         cmp_residual_k_for_npu = None
     else:
-        cmp_residual_k_for_npu = torch.tensor(cmp_residual_k).to(torch.int32).npu()
+        cmp_residual_k_for_npu = torch.tensor(cmp_residual_k).to(torch.int32)
 
     if cu_seqlens_q is not None:
         cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
@@ -870,15 +843,15 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
                 else:
                     for i_n in range(k_head_num):
                         key[cur_block_id, :, i_n, :] = key_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size,:]
-        properties = torch.npu.get_device_properties() 
+        properties = torch.npu.get_device_properties()
         blockFusion = None 
-        if "Ascend950" in properties.name and DISCONTINUOUS_KEYS: 
+        if "Ascend950" in properties.name and DISCONTINUOUS_KEYS:
             key_stride = 10  # 0轴非连续增加stride 
             bytes_per_token = head_dim + key_stride # 整个非连续的长度 
             blockFusion = torch.zeros((block_num, block_size * k_head_num * bytes_per_token), dtype=qk_dtype) 
             key_flat = key.view(block_num, block_size * k_head_num * head_dim) 
             blockFusion[:, :block_size * k_head_num * head_dim] = key_flat 
-            blockFusion = blockFusion.npu() 
+            blockFusion = blockFusion
             key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
         cpu_result, topk_value, cpu_topk_value = test_liv2.forward(query, key_bnsd, weights, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, block_table, output_idx_offset)
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32)
@@ -974,3 +947,8 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
         torch.npu.synchronize()
         npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
         return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value
+
+
+def generate_liv2_test_data(params, split_s1=DEFAULT_SPLIT_S1, s1size=DEFAULT_S1SIZE):
+    """Generate LI_V2 inputs and CPU golden without executing metadata or the main op."""
+    return liv2_output_single(params, is_batch=True, split_s1=split_s1, s1size=s1size)

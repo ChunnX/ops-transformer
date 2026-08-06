@@ -154,7 +154,8 @@ public:
             if (commIdx >= params.pipeDepth) {
                 WaitEvent(flagIdx);
             }
-            int64_t gmAPingpongSize = L1TileShape::M * params.pValue * params.problemShape.n();
+            int64_t gmAPingpongSize =
+                static_cast<int64_t>(L1TileShape::M) * params.pValue * params.problemShape.n();
 
             int32_t actualLoopNum = actualPValue * nLoops;
 
@@ -184,17 +185,22 @@ public:
                 MatrixCoord offsetA{blockIdxCoord.m() * L1TileShape::M, blockIdxCoord.k() * L1TileShape::K};
                 MatrixCoord offsetC{blockIdxCoord.m() * L1TileShape::M, blockIdxCoord.n() * L1TileShape::N};
                 int64_t gmOffsetA = params.layoutA.GetOffset(offsetA) +
-                                    commIdx * L1TileShape::M * params.pValue * params.problemShape.k();
-                int64_t gmOffsetB = ((blockIdxCoord.n() / nLoopPerRank) * (params.problemShape.n() / params.rankSize) +
-                                     (blockIdxCoord.n() % nLoopPerRank) * L1TileShape::N) *
+                                    static_cast<int64_t>(commIdx) * L1TileShape::M * params.pValue *
+                                        params.problemShape.k();
+                int64_t gmOffsetB =
+                    (static_cast<int64_t>(blockIdxCoord.n() / nLoopPerRank) *
+                         (params.problemShape.n() / params.rankSize) +
+                     static_cast<int64_t>(blockIdxCoord.n() % nLoopPerRank) * L1TileShape::N) *
                                     (params.transB ? params.problemShape.k() : 1);
 
                 int64_t rankOffset = gmAPingpongSize / params.rankSize;
                 int64_t rankIdx = blockIdxCoord.n() / nLoopPerRank;
                 int64_t rankOffsetInRank = blockIdxCoord.n() % nLoopPerRank;
-                int64_t gmOffsetC = flagIdx * L1TileShape::M * params.pValue * params.problemShape.n() +
+                int64_t gmOffsetC =
+                    static_cast<int64_t>(flagIdx) * L1TileShape::M * params.pValue * params.problemShape.n() +
                                     rankIdx * rankOffset +
-                                    blockIdxCoord.m() * L1TileShape::M * (params.problemShape.n() / params.rankSize) +
+                                    static_cast<int64_t>(blockIdxCoord.m()) * L1TileShape::M *
+                                        (params.problemShape.n() / params.rankSize) +
                                     blockIdxCoord.n() % nLoopPerRank * L1TileShape::N;
 
                 if constexpr (HasBias) {
@@ -230,10 +236,12 @@ public:
                     MatrixCoord offsetNextB{nextBlockIdCoord.k() * L1TileShape::K,
                                             nextBlockIdCoord.n() * L1TileShape::N};
                     int64_t gmOffsetNextA = params.layoutA.GetOffset(offsetNextA) +
-                                            commIdx * L1TileShape::M * params.pValue * params.problemShape.k();
+                                            static_cast<int64_t>(commIdx) * L1TileShape::M * params.pValue *
+                                                params.problemShape.k();
                     int64_t gmOffsetNextB =
-                        ((nextBlockIdCoord.n() / nLoopPerRank) * (params.problemShape.n() / params.rankSize) +
-                         (nextBlockIdCoord.n() % nLoopPerRank) * L1TileShape::N) *
+                        (static_cast<int64_t>(nextBlockIdCoord.n() / nLoopPerRank) *
+                             (params.problemShape.n() / params.rankSize) +
+                         static_cast<int64_t>(nextBlockIdCoord.n() % nLoopPerRank) * L1TileShape::N) *
                         (params.transB ? params.problemShape.k() : 1);
 
                     blockMmad(gmA[gmOffsetA], params.layoutA, gmB[gmOffsetB], params.layoutB, gmC[gmOffsetC],

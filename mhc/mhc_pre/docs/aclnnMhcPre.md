@@ -4,14 +4,24 @@
 
 ## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    ×     |
-| <term>Atlas 训练系列产品</term>                              |    ×     |
+<!-- npu="950" id1 -->
+- <term>Ascend 950PR/Ascend 950DT</term>：支持
+<!-- end id1 -->
+<!-- npu="A3" id2 -->
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持
+<!-- end id2 -->
+<!-- npu="910b" id3 -->
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：不支持
+<!-- end id3 -->
+<!-- npu="310b" id4 -->
+- <term>Atlas 200I/500 A2 推理产品</term>：不支持
+<!-- end id4 -->
+<!-- npu="310p" id5 -->
+- <term>Atlas 推理系列产品</term>：不支持
+<!-- end id5 -->
+<!-- npu="910" id6 -->
+- <term>Atlas 训练系列产品</term>：不支持
+<!-- end id6 -->
 
 ## 功能说明
 
@@ -19,21 +29,34 @@
 
 - 计算公式：
 
+  其中，xFlat表示将x的最后两维n和D视作长度为nD的向量，gammaFlat表示将gamma视作长度为nD的向量，@表示矩阵乘法，$\odot$表示逐元素乘法。
+
   $$
   \begin{aligned}
-  \vec{x^{'}_{l}} &=RMSNorm(\vec{x_{l}})\\
-  H^{pre}_l &= \alpha^{pre}_{l} ·(\vec{x^{'}_{l}}\varphi^{pre}_{l}) + b^{pre}_{l}\\
-  H^{post}_l &= \alpha^{post}_{l} ·(\vec{x^{'}_{l}}\varphi^{post}_{l}) + b^{post}_{l}\\
-  H^{res}_l &= \alpha^{res}_{l} ·(\vec{x^{'}_{l}}\varphi^{res}_{l}) + b^{res}_{l}\\
-  H^{pre}_l &= \sigma (H^{pre}_{l})\\
-  H^{post}_l &= 2\sigma (H^{post}_{l})\\
-  h_{in} &=\vec{x_{l}}H^{pre}_l
+  invRms &= \left(mean(xFlat^{2}) + normEps\right)^{-\frac{1}{2}}\\
+  xGamma &= \begin{cases}
+      xFlat \odot gammaFlat, & gamma \ne null \\
+      xFlat, & gamma = null
+  \end{cases}\\
+  hMix &= xGamma @ phi^{T}\\
+  w &= hMix \odot invRms\\
+  [pPre, pPost, pRes] &= \begin{cases}
+      split(w, [n, n, n^{2}]), & alpha.shape=[3] \\
+      [split(w, [n, n]), 0], & alpha.shape=[2]
+  \end{cases}\\
+  hPre &= \sigma(pPre \odot alpha0 + bias0) + hcEps\\
+  hPost &= 2\sigma(pPost \odot alpha1 + bias1)\\
+  hRes &= \begin{cases}
+      pRes \odot alpha2 + bias2, & alpha.shape=[3] \\
+      0, & alpha.shape=[2]
+  \end{cases}\\
+  hIn_{d} &= \sum_{i=0}^{n-1} hPre_{i} x_{i,d}
   \end{aligned}
   $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnMhcPreGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnMhcPre"接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnMhcPreGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnMhcPre"接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnMhcPreGetWorkspaceSize(
@@ -91,7 +114,7 @@ aclnnStatus aclnnMhcPre(
   <tr>
       <td>x</td>
       <td>输入</td>
-      <td>待计算数据，表示网络中mHC层的输入数据。</td>
+      <td>待计算数据，表示网络中mHC层的输入数据，对应公式中的x。</td>
       <td>不能为空Tensor。</td>
       <td>BFLOAT16或FLOAT16</td>
       <td>ND</td>
@@ -101,7 +124,7 @@ aclnnStatus aclnnMhcPre(
   <tr>
       <td>phi</td>
       <td>输入</td>
-      <td>mHC的参数矩阵。</td>
+      <td>mHC的参数矩阵，对应公式中的phi。</td>
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -111,7 +134,7 @@ aclnnStatus aclnnMhcPre(
   <tr>
       <td>alpha</td>
       <td>输入</td>
-      <td>mHC的缩放参数。</td>
+      <td>mHC的缩放参数，对应公式中的alpha。</td>
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>-</td>
@@ -121,7 +144,7 @@ aclnnStatus aclnnMhcPre(
   <tr>
       <td>bias</td>
           <td>输入</td>
-      <td>mHC的bias参数。</td>
+      <td>mHC的bias参数，对应公式中的bias。</td>
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>-</td>
@@ -131,7 +154,7 @@ aclnnStatus aclnnMhcPre(
   <tr>
       <td>gammaOptional</td>
       <td>可选输入</td>
-      <td>表示进行RmsNorm计算的缩放因子。</td>
+      <td>表示进行RmsNorm计算的缩放因子，对应公式中的gamma。</td>
       <td>对于推理场景，可传空指针。</td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -141,7 +164,7 @@ aclnnStatus aclnnMhcPre(
   <tr>
       <td>normEps</td>
       <td>可选输入</td>
-      <td>RmsNorm的防除零参数。</td>
+      <td>RmsNorm的防除零参数，对应公式中的normEps。</td>
       <td>建议值：1e-6。</td>
       <td>DOUBLE</td>
       <td>-</td>
@@ -151,7 +174,7 @@ aclnnStatus aclnnMhcPre(
   <tr>
       <td>hcEps</td>
       <td>可选输入</td>
-      <td>h_pre的sigmoid后的eps参数。</td>
+      <td>h_pre的sigmoid后的eps参数，对应公式中的hcEps。</td>
       <td>建议值：1e-6。</td>
       <td>DOUBLE</td>
       <td>-</td>
@@ -161,7 +184,7 @@ aclnnStatus aclnnMhcPre(
   <tr>
       <td>hIn</td>
       <td>输出</td>
-      <td>输出的h_in作为Attention/MLP层的输入。</td>
+      <td>输出的h_in作为Attention/MLP层的输入，对应公式中的hIn。</td>
       <td>不能为空Tensor。</td>
       <td>BFLOAT16或FLOAT16</td>
       <td>ND</td>
@@ -171,7 +194,7 @@ aclnnStatus aclnnMhcPre(
   <tr>
       <td>hPost</td>
       <td>输出</td>
-      <td>输出的mHC的h_post变换矩阵。</td>
+      <td>输出的mHC的h_post变换矩阵，对应公式中的hPost。</td>
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -181,8 +204,8 @@ aclnnStatus aclnnMhcPre(
   <tr>
       <td>hRes</td>
       <td>输出</td>
-      <td>输出的mHC的h_res变换矩阵（未做sinkhorn变换）。</td>
-      <td>不能为空Tensor，当alpha=2时为0。</td>
+      <td>输出的mHC的h_res变换矩阵（未做sinkhorn变换），对应公式中的hRes。</td>
+      <td>当alpha=[3]时不能为空Tensor；当alpha=[2]时可传空指针。</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>[B,S,n,n] 或 [T,n,n]</td>
@@ -191,7 +214,7 @@ aclnnStatus aclnnMhcPre(
   <tr>
       <td>invRmsOptional</td>
       <td>可选输出</td>
-      <td>RmsNorm计算得到的1/r。</td>
+      <td>RmsNorm计算得到的1/r，对应公式中的invRms。</td>
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -201,7 +224,7 @@ aclnnStatus aclnnMhcPre(
   <tr>
       <td>hMixOptional</td>
       <td>可选输出</td>
-      <td>x与phi矩阵乘的结果。</td>
+      <td>xGamma与phi矩阵乘的结果，对应公式中的hMix。</td>
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -211,7 +234,7 @@ aclnnStatus aclnnMhcPre(
   <tr>
       <td>hPreOptional</td>
       <td>可选输出</td>
-      <td>做完sigmoid计算之后的h_pre矩阵。</td>
+      <td>做完sigmoid计算之后的h_pre矩阵，对应公式中的hPre。</td>
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
@@ -242,7 +265,7 @@ aclnnStatus aclnnMhcPre(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -267,10 +290,10 @@ aclnnStatus aclnnMhcPre(
     <tr>
     <td rowspan="2"> ACLNN_ERR_PARAM_INVALID </td>
     <td rowspan="2"> 161002 </td>
-    <td>x、phi、alpha、bias、hIn、hPost、hRes的数据类型不在支持的范围内。</td>
+    <td>x、phi、alpha、bias、gammaOptional、hIn、hPost、hRes、invRmsOptional、hMixOptional、hPreOptional的数据类型不在支持的范围内。</td>
     </tr>
     <tr>
-    <td>x、phi、alpha、bias、hIn、hPost、hRes的shape维度不在支持的范围内。</td>
+    <td>x、phi、alpha、bias、gammaOptional、hIn、hPost、hRes、invRmsOptional、hMixOptional、hPreOptional的shape维度不在支持的范围内。</td>
     </tr>
     <tr>
     <td> ACLNN_ERR_RUNTIME_ERROR </td>
@@ -320,8 +343,8 @@ aclnnStatus aclnnMhcPre(
   </table>
 
 - **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -336,7 +359,7 @@ aclnnStatus aclnnMhcPre(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>

@@ -51,14 +51,16 @@ recurrent_gated_delta_rule(GM_ADDR query, GM_ADDR key, GM_ADDR value, GM_ADDR be
                            GM_ADDR stateOut, GM_ADDR workspaceGM, GM_ADDR tilingGM);
 
 template <typename T>
-T* GmAllocWrapper(size_t size) {
+T *GmAllocWrapper(size_t size)
+{
     T *ptr = reinterpret_cast<T *>(AscendC::GmAlloc(size));
     assert(ptr != nullptr && "GM allocation failed");
-    return ptr; 
+    return ptr;
 }
 
-void InitTilingData(RecurrentGatedDeltaRuleTilingData* tilingData, uint32_t b, uint32_t t, uint32_t nk, uint32_t nv,
-                    uint32_t dk, uint32_t dv, uint32_t hasGama, uint32_t hasAcceptedTokens) {
+void InitTilingData(RecurrentGatedDeltaRuleTilingData *tilingData, uint32_t b, uint32_t t, uint32_t nk, uint32_t nv,
+                    uint32_t dk, uint32_t dv, uint32_t hasGama, uint32_t hasAcceptedTokens)
+{
     tilingData->vectorCoreNum = 8;
     tilingData->ubCalSize = 192 * 1024;
     tilingData->ubRestBytes = 96 * 1024;
@@ -76,16 +78,11 @@ void InitTilingData(RecurrentGatedDeltaRuleTilingData* tilingData, uint32_t b, u
 }
 
 
-void InitInputData(uint8_t* stateGm, size_t shapeState,
-                   uint8_t* queryGm, size_t shapeQ,
-                   uint8_t* keyGm, size_t shapeK,
-                   uint8_t* valueGm, size_t shapeV,
-                   uint8_t* betaGm, size_t shapeBeta,
-                   uint8_t* gamaGm, size_t shapeGama,
-                   uint8_t* actSeqLenGM, size_t b,
-                   uint8_t* ssmStaIdGm, size_t t,
-                   uint8_t* numAccTokGm, size_t b_size,
-                   uint8_t* attnOutGM, size_t shapeAttnOut) {
+void InitInputData(uint8_t *stateGm, size_t shapeState, uint8_t *queryGm, size_t shapeQ, uint8_t *keyGm, size_t shapeK,
+                   uint8_t *valueGm, size_t shapeV, uint8_t *betaGm, size_t shapeBeta, uint8_t *gamaGm,
+                   size_t shapeGama, uint8_t *actSeqLenGM, size_t b, uint8_t *ssmStaIdGm, size_t t,
+                   uint8_t *numAccTokGm, size_t b_size, uint8_t *attnOutGM, size_t shapeAttnOut)
+{
     memset(stateGm, 0, shapeState);
     memset(queryGm, 0, shapeQ);
     memset(keyGm, 0, shapeK);
@@ -94,15 +91,15 @@ void InitInputData(uint8_t* stateGm, size_t shapeState,
     memset(gamaGm, 0, shapeGama);
     memset(attnOutGM, 0, shapeAttnOut);
 
-    int32_t* actSeqLen = reinterpret_cast<int32_t*>(actSeqLenGM);
+    int32_t *actSeqLen = reinterpret_cast<int32_t *>(actSeqLenGM);
     for (size_t i = 0; i < b; ++i) {
         actSeqLen[i] = 2;
     }
-    int32_t* ssmStaId = reinterpret_cast<int32_t*>(ssmStaIdGm);
+    int32_t *ssmStaId = reinterpret_cast<int32_t *>(ssmStaIdGm);
     for (size_t i = 0; i < t; ++i) {
         ssmStaId[i] = static_cast<int32_t>(i);
     }
-    int32_t* numAccTok = reinterpret_cast<int32_t*>(numAccTokGm);
+    int32_t *numAccTok = reinterpret_cast<int32_t *>(numAccTokGm);
     for (size_t i = 0; i < b_size; ++i) {
         numAccTok[i] = 1;
     }
@@ -117,7 +114,7 @@ class RecurrentGatedDeltaRuleTest : public testing::TestWithParam<RGDRTestParams
 protected:
     uint32_t b = 4;
     uint32_t mtp = 2;
-    uint32_t t = b * mtp;       // 8
+    uint32_t t = b * mtp; // 8
     uint32_t nk = 4;
     uint32_t nv = 4;
     uint32_t dk = 32;
@@ -136,20 +133,21 @@ protected:
     size_t allWorkspaceSize = 196608;
     size_t tilingSize = sizeof(RecurrentGatedDeltaRuleTilingData);
 
-    uint8_t* stateGm = nullptr;
-    uint8_t* queryGm = nullptr;
-    uint8_t* keyGm = nullptr;
-    uint8_t* valueGm = nullptr;
-    uint8_t* betaGm = nullptr;
-    uint8_t* gamaGm = nullptr;
-    uint8_t* actSeqLenGM = nullptr;
-    uint8_t* ssmStaIdGm = nullptr;
-    uint8_t* numAccTokGm = nullptr;
-    uint8_t* attnOutGM = nullptr;
-    uint8_t* workspace = nullptr;
-    uint8_t* tiling = nullptr;
+    uint8_t *stateGm = nullptr;
+    uint8_t *queryGm = nullptr;
+    uint8_t *keyGm = nullptr;
+    uint8_t *valueGm = nullptr;
+    uint8_t *betaGm = nullptr;
+    uint8_t *gamaGm = nullptr;
+    uint8_t *actSeqLenGM = nullptr;
+    uint8_t *ssmStaIdGm = nullptr;
+    uint8_t *numAccTokGm = nullptr;
+    uint8_t *attnOutGM = nullptr;
+    uint8_t *workspace = nullptr;
+    uint8_t *tiling = nullptr;
 
-    void SetUp() override {
+    void SetUp() override
+    {
         AscendC::SetKernelMode(KernelMode::AIV_MODE);
         stateGm = GmAllocWrapper<uint8_t>(shapeState);
         queryGm = GmAllocWrapper<uint8_t>(shapeQ);
@@ -164,25 +162,16 @@ protected:
         workspace = GmAllocWrapper<uint8_t>(allWorkspaceSize);
         tiling = GmAllocWrapper<uint8_t>(tilingSize);
 
-        InitInputData(stateGm, shapeState,
-                      queryGm, shapeQ,
-                      keyGm, shapeK,
-                      valueGm, shapeV,
-                      betaGm, shapeBeta,
-                      gamaGm, shapeGama,
-                      actSeqLenGM, b,
-                      ssmStaIdGm, t,
-                      numAccTokGm, b,
-                      attnOutGM, shapeAttnOut);
+        InitInputData(stateGm, shapeState, queryGm, shapeQ, keyGm, shapeK, valueGm, shapeV, betaGm, shapeBeta, gamaGm,
+                      shapeGama, actSeqLenGM, b, ssmStaIdGm, t, numAccTokGm, b, attnOutGM, shapeAttnOut);
 
-        auto params = GetParam(); 
-        RecurrentGatedDeltaRuleTilingData* tilingData = reinterpret_cast<RecurrentGatedDeltaRuleTilingData*>(tiling);
-        InitTilingData(tilingData, b, t, nk, nv, dk, dv,
-                       params.hasGama,
-                       params.hasAcceptedTokens);
+        auto params = GetParam();
+        RecurrentGatedDeltaRuleTilingData *tilingData = reinterpret_cast<RecurrentGatedDeltaRuleTilingData *>(tiling);
+        InitTilingData(tilingData, b, t, nk, nv, dk, dv, params.hasGama, params.hasAcceptedTokens);
     }
 
-    void TearDown() override {
+    void TearDown() override
+    {
         AscendC::GmFree(stateGm);
         AscendC::GmFree(queryGm);
         AscendC::GmFree(keyGm);
@@ -199,25 +188,20 @@ protected:
 };
 
 
-INSTANTIATE_TEST_SUITE_P(
-    GeneralTests, 
-    RecurrentGatedDeltaRuleTest, 
-    testing::Values(
-        RGDRTestParams{1, 1},    // general_test_01: 有Gama，有AcceptedTokens
-        RGDRTestParams{0, 1},    // general_test_02: 无Gama，有AcceptedTokens
-        RGDRTestParams{1, 0}     // general_test_03: 有Gama，无AcceptedTokens
-    )
-);
+INSTANTIATE_TEST_SUITE_P(GeneralTests, RecurrentGatedDeltaRuleTest,
+                         testing::Values(RGDRTestParams{1, 1}, // general_test_01: 有Gama，有AcceptedTokens
+                                         RGDRTestParams{0, 1}, // general_test_02: 无Gama，有AcceptedTokens
+                                         RGDRTestParams{1, 0}  // general_test_03: 有Gama，无AcceptedTokens
+                                         ));
 
-TEST_P(RecurrentGatedDeltaRuleTest, RunTest) {
+TEST_P(RecurrentGatedDeltaRuleTest, RunTest)
+{
     auto params = GetParam();
-    std::cout << "tets config: hasGama=" << params.hasGama 
-              << ", hasAcceptedTokens=" << params.hasAcceptedTokens << std::endl;
+    std::cout << "tets config: hasGama=" << params.hasGama << ", hasAcceptedTokens=" << params.hasAcceptedTokens
+              << std::endl;
 
     uint32_t blockDim = 8;
     ICPU_SET_TILING_KEY(0);
-    ICPU_RUN_KF(recurrent_gated_delta_rule, blockDim,
-                queryGm, keyGm, valueGm, betaGm, stateGm, actSeqLenGM, ssmStaIdGm,
+    ICPU_RUN_KF(recurrent_gated_delta_rule, blockDim, queryGm, keyGm, valueGm, betaGm, stateGm, actSeqLenGM, ssmStaIdGm,
                 gamaGm, nullptr, numAccTokGm, attnOutGM, stateGm, workspace, tiling);
-
 }

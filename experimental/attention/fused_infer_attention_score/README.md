@@ -2,7 +2,7 @@
 
 ##  概述
 
-本样例的FA算子实现使用自定义算子工程，其kernel包含两个模板：GQA模板以及MLA模板。本工程默认使用GQA模板，示例通过msprof工具（社区版CANN包自带）采集了模板的性能数据。
+本样例的FA算子实现使用自定义算子工程，其kernel包含两个模板：GQA模板以及MLA模板。本工程默认使用GQA模板，示例通过msprof工具（最新版CANN包自带）采集了模板的性能数据。
 
 ##  支持的AI处理器
 
@@ -21,7 +21,7 @@
 |   |   |   |-- CMakeLists.txt
 |   |   |   |-- op_host                      // 算子tiling侧公共文件
 |   |   |   `-- op_kernel                    // 算子kernel侧公共文件
-|   |   `-- fused_infer_attention_score       
+|   |   `-- fused_infer_attention_score
 |   |       |-- CMakeLists.txt
 |   |       |-- README.md                    // 本demo使用说明
 |   |       |-- op_host                      // FA算子tiling侧文件
@@ -57,12 +57,12 @@
 3. qk headdim = 128， rope = 64， v headdim = 128.
 4. qk headdim = 512， rope = 64， kvn = 1, g = 1, 2, 4, 8, 16, 32, 64, 128.
 
-## 环境变量配置 
+## 环境变量配置
 
 根据当前环境，安装对应的CANN开发套件包（toolkit包+ops包）。
 
-1. torch_npu安装包下载路径：[torch_npu安装教程](https://gitcode.com/Ascend/pytorch)
-2. CANN包可从[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=cann)获取，具体下载安装见昇腾社区[文档](https://www.hiascend.com/document/detail/zh/canncommercial/850/softwareinst/instg/instg_0000.html?Mode=PmIns&InstallType=netconda&OS=Ubuntu)。
+1. TorchNPU安装包下载路径：[TorchNPU安装教程](https://gitcode.com/Ascend/pytorch)
+2. CANN包可从[昇腾社区](https://www.hiascend.com/developer/download/community/result?module=cann)获取，具体下载安装见昇腾社区[文档](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/latest/softwareinst/instg/instg_0000.html?Mode=PmIns&InstallType=netconda&OS=Ubuntu)。
 
 按需选择合适的命令使环境变量生效。
 
@@ -96,9 +96,9 @@ cd ${git_clone_path}/experimental/attention/fused_infer_attention_score/output
 
 ```bash
 # 切换到工程根目录(ops-transformer目录)
-cd ${git_clone_path}  
+cd ${git_clone_path}
 # 编译样例算子run包
-bash build.sh --pkg  --experimental --soc=ascend910b --ops=fused_infer_attention_score  
+bash build.sh --pkg  --experimental --soc=ascend910b --ops=fused_infer_attention_score
 #安装自定义算子run包
 ./build_out/cann-ops-transformer-${vendor_name}-${arch}_linux.run --instal-path=${install_path} # install_path为CANN包安装路径
 # source custom包

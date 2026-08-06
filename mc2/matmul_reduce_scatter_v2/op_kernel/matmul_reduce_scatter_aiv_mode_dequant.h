@@ -49,7 +49,7 @@ public:
     using BroadcastOneBlkType = Gemm::GemmType<float, layout::RowMajor>;
     using OneBlkColumnBroadcastMulType = Gemm::GemmType<float, layout::RowMajor>;
     using RowBroadcastAddType = Gemm::GemmType<float, layout::RowMajor>;
-    
+
     using EpilogueTileShape = MatrixShape<TILE_SHAPE_64, TILE_SHAPE_128>;
     using TileRowBroadcastMul = Epilogue::Tile::TileRowBroadcastMul<ArchTag, RowBroadcastMulType, EpilogueTileShape>;
     using TileRowBroadcastAdd = Epilogue::Tile::TileRowBroadcastAdd<ArchTag, RowBroadcastAddType, EpilogueTileShape>;
@@ -60,10 +60,9 @@ public:
     using TileCopy = Epilogue::Tile::TileCopy<ArchTag, CType, ScaleType, PerTokenScaleType, DType>;
     using TileScheduler = Epilogue::Tile::EpilogueHorizontalTileSwizzle;
 
-    using BlockEpilogue =
-        Epilogue::Block::BlockEpilogue<ArchTag, CType, ScaleType, PerTokenScaleType, BiasGType, DType,
-        TileRowBroadcastMul, TileRowBroadcastAdd, TileBroadcastOneBlk, TileOneBlkColumnBroadcastMul,
-        TileCopy, TileScheduler>;
+    using BlockEpilogue = Epilogue::Block::BlockEpilogue<ArchTag, CType, ScaleType, PerTokenScaleType, BiasGType, DType,
+                                                         TileRowBroadcastMul, TileRowBroadcastAdd, TileBroadcastOneBlk,
+                                                         TileOneBlkColumnBroadcastMul, TileCopy, TileScheduler>;
 
     uint32_t DefaultSwizzleDirect = 0;
     uint32_t DefaultSwizzleCount = 3;
@@ -140,20 +139,14 @@ public:
             if (needPerChannel && needPerToken) {
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
                               perTokenScale + dstRankIdx * finalM + blockLocCoord.m(), layoutPerTokenScale,
-                              gmBiasOffset, layoutBias, workspace + dataBlockOffset, layoutBlock,
-                              gmDst, layoutDst,
+                              gmBiasOffset, layoutBias, workspace + dataBlockOffset, layoutBlock, gmDst, layoutDst,
                               blockSizeCoord);
             } else if (needPerChannel) {
-                blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
-                              gmBiasOffset, layoutBias,
-                              workspace + dataBlockOffset, layoutBlock,
-                              gmDst, layoutDst,
-                              blockSizeCoord);
+                blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale, gmBiasOffset, layoutBias,
+                              workspace + dataBlockOffset, layoutBlock, gmDst, layoutDst, blockSizeCoord);
             } else if (needPerToken) {
                 blockEpilogue(perTokenScale + dstRankIdx * finalM + blockLocCoord.m(), layoutPerTokenScale,
-                              gmBiasOffset, layoutBias,
-                              gmPeerMem + dataBlockOffset, layoutBlock,
-                              gmDst, layoutDst,
+                              gmBiasOffset, layoutBias, gmPeerMem + dataBlockOffset, layoutBlock, gmDst, layoutDst,
                               blockSizeCoord);
             }
         }

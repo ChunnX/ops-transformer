@@ -129,7 +129,10 @@ attention:
     test:
       ut: True
     ut_cov_exclude:
-      - attention/flash_attention_score_grad
+      - attention/flash_attention_score_grad/op_api
+      - attention/flash_attention_score_grad/op_graph
+      - attention/flash_attention_score_grad/op_kernel
+      - attention/flash_attention_score_grad/tests
     options:
       - flash_attention_score_grad
 
@@ -298,8 +301,6 @@ attention:
       - attention/prompt_flash_attention/tests
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_context.h
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_register.cpp
-      - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_v2.h       # A5 FIA tiling 重构后不再依赖PFA算子，目前PFA tiling_v2目前已无法走入，无需看护
-      - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_v2.cpp
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.h   # arch38 tiling 目前UT框架不支持（会被高级api拦截走不进去tiling，后续打通后开放）
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.cpp
     test:
@@ -476,12 +477,13 @@ attention:
       - attention/recurrent_gated_delta_rule/docs
       - attention/recurrent_gated_delta_rule/README.md
     ut_cov_exclude:
-      - attention/recurrent_gated_delta_rule
+      - attention/recurrent_gated_delta_rule/tests
     test:
       examples: True
       ut: True
     options:
       - recurrent_gated_delta_rule
+
   flash_attn:
     module: True
     src:
@@ -496,6 +498,22 @@ attention:
       examples: False
     options:
       - flash_attn
+
+  compressor:
+    module: True
+    src:
+      - attention/compressor
+    exclude:
+      - attention/compressor/docs
+      - attention/compressor/README.md
+    ut_cov_exclude:
+      - attention/compressor/tests
+    test:
+      ut: True
+      examples: False
+    options:
+      - compressor
+
 gmm:
   grouped_matmul:
     module: True
@@ -1746,38 +1764,6 @@ mc2:
       options:
         - moe_distribute_dispatch
         - moe_distribute_combine
-
-    moe_distribute_dispatch_setup:
-      module: True
-      src:
-        - mc2/moe_distribute_dispatch_setup
-        - mc2/common
-      exclude:
-        - mc2/moe_distribute_dispatch_setup/docs
-        - mc2/moe_distribute_dispatch_setup/README.md
-      ut_cov_exclude:
-        - mc2/moe_distribute_dispatch_setup/op_graph
-        - mc2/moe_distribute_dispatch_setup/op_kernel
-      test:
-        examples: False
-      options:
-        - moe_distribute_dispatch_setup
-
-    moe_distribute_dispatch_teardown:
-      module: True
-      src:
-        - mc2/moe_distribute_dispatch_teardown
-        - mc2/common
-      exclude:
-        - mc2/moe_distribute_dispatch_teardown/docs
-        - mc2/moe_distribute_dispatch_teardown/README.md
-      ut_cov_exclude:
-        - mc2/moe_distribute_dispatch_teardown/op_graph
-        - mc2/moe_distribute_dispatch_teardown/op_kernel
-      test:
-        examples: False
-      options:
-        - moe_distribute_dispatch_teardown
 
     moe_distribute_dispatch_v2:
       module: True

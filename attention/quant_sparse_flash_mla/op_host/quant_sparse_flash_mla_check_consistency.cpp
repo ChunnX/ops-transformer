@@ -18,8 +18,8 @@
 using namespace ge;
 using namespace AscendC;
 using std::map;
-using std::string;
 using std::pair;
+using std::string;
 namespace optiling {
 
 static constexpr uint32_t DIM_0 = 0;
@@ -28,29 +28,28 @@ static constexpr uint32_t DIM_2 = 2;
 static constexpr uint32_t DIM_3 = 3;
 
 ge::graphStatus QSMLATilingCheck::CheckDTypeConsistency(const ge::DataType &actualDtype,
-    const ge::DataType &expectDtype, const std::string &name) const
+                                                        const ge::DataType &expectDtype, const std::string &name) const
 {
     if (actualDtype != expectDtype) {
-        OP_LOGE(opName_, "%s dtype should be %s, but it's %s.", name.c_str(),
-            QSMLADataTypeToSerialString(expectDtype).c_str(),
-            QSMLADataTypeToSerialString(actualDtype).c_str());
+        OP_LOGE_FOR_INVALID_DTYPE(opName_, name.c_str(), QSMLADataTypeToSerialString(actualDtype).c_str(),
+                                  QSMLADataTypeToSerialString(expectDtype).c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSMLATilingCheck::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
-    const QSMLALayout &layout, const std::string &name) const
+                                                      const QSMLALayout &layout, const std::string &name) const
 {
     if (tensor == nullptr) {
-        OP_LOGE(opName_, "when layout of query is %s, %s must be provided.",
-            QSMLALayoutToSerialString(layout).c_str(), name.c_str());
+        OP_LOGE(opName_, "when layout of query is %s, %s must be provided.", QSMLALayoutToSerialString(layout).c_str(),
+                name.c_str());
         return ge::GRAPH_FAILED;
     }
     int64_t shapeSize = tensor->GetShapeSize();
     if (shapeSize <= 0) {
-        OP_LOGE(opName_, "the shape size of %s is %ld, it should be greater than 0.",
-            name.c_str(), shapeSize);
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName_, name.c_str(), std::to_string(shapeSize).c_str(),
+                                                  "the shape size of " + name + " should be greater than 0");
         return ge::GRAPH_FAILED;
     }
     size = static_cast<uint32_t>(shapeSize);
@@ -58,7 +57,8 @@ ge::graphStatus QSMLATilingCheck::GetActualSeqLenSize(uint32_t &size, const gert
 }
 
 ge::graphStatus QSMLATilingCheck::GetExpectedShape(gert::Shape &shapeExpected,
-    const QSMLATilingShapeCompareParam &param, const QSMLALayout &layout) const
+                                                   const QSMLATilingShapeCompareParam &param,
+                                                   const QSMLALayout &layout) const
 {
     if (layout == QSMLALayout::BSND) {
         shapeExpected = gert::Shape({param.B, param.S, param.N, param.D});
@@ -73,8 +73,8 @@ ge::graphStatus QSMLATilingCheck::GetExpectedShape(gert::Shape &shapeExpected,
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::CompareShape(QSMLATilingShapeCompareParam &param,
-    const gert::Shape &shape, const QSMLALayout &layout, const std::string &name) const
+ge::graphStatus QSMLATilingCheck::CompareShape(QSMLATilingShapeCompareParam &param, const gert::Shape &shape,
+                                               const QSMLALayout &layout, const std::string &name) const
 {
     gert::Shape shapeExpected;
     if (GetExpectedShape(shapeExpected, param, layout) != ge::GRAPH_SUCCESS) {
@@ -82,17 +82,16 @@ ge::graphStatus QSMLATilingCheck::CompareShape(QSMLATilingShapeCompareParam &par
     }
 
     if (shape.GetDimNum() != shapeExpected.GetDimNum()) {
-        OP_LOGE(opName_,
-            "%s dimension is %zu, expected dimension is %zu.",
-            name.c_str(), shape.GetDimNum(), shapeExpected.GetDimNum());
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, name.c_str(), std::to_string(shape.GetDimNum()).c_str(),
+                                                 std::to_string(shapeExpected.GetDimNum()).c_str());
         return ge::GRAPH_FAILED;
     }
 
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
         if (shape.GetDim(i) != shapeExpected.GetDim(i)) {
-            OP_LOGE(opName_, "%s layout is %s, shape is %s, expected shape is %s.",
-                name.c_str(), QSMLALayoutToSerialString(layout).c_str(),
-                MQSMLAGetShapeStr(shape).c_str(), MQSMLAGetShapeStr(shapeExpected).c_str());
+            OP_LOGE(opName_, "%s layout is %s, shape is %s, expected shape is %s.", name.c_str(),
+                    QSMLALayoutToSerialString(layout).c_str(), QSMLAGetShapeStr(shape).c_str(),
+                    QSMLAGetShapeStr(shapeExpected).c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -113,35 +112,44 @@ ge::graphStatus QSMLATilingCheck::CheckBlockTable() const
 {
     if (kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
         OP_CHECK_IF(opParamInfo_.oriBlockTable.tensor != nullptr,
-            OP_LOGE(opName_, "when the layout_kv is %s, %s should be null",
-                QSMLALayoutToSerialString(kvLayout_).c_str(), ORI_BLOCK_TABLE_NAME.c_str()),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName_, ORI_BLOCK_TABLE_NAME.c_str(),
+                        Ops::Base::ToString(opParamInfo_.oriBlockTable.tensor->GetStorageShape()).c_str(),
+                        "when the layout_kv is " + QSMLALayoutToSerialString(kvLayout_) + ", " + ORI_BLOCK_TABLE_NAME +
+                            " should be null"),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.cmpBlockTable.tensor != nullptr,
-            OP_LOGE(opName_, "when the layout_kv is %s, %s should be null",
-                QSMLALayoutToSerialString(kvLayout_).c_str(), CMP_BLOCK_TABLE_NAME.c_str()),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        opName_, CMP_BLOCK_TABLE_NAME.c_str(),
+                        Ops::Base::ToString(opParamInfo_.oriBlockTable.tensor->GetStorageShape()).c_str(),
+                        "when the layout_kv is " + QSMLALayoutToSerialString(kvLayout_) + ", " + CMP_BLOCK_TABLE_NAME +
+                            " should be null"),
+                    return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
 
     uint32_t oriBlockTableBatch = opParamInfo_.oriBlockTable.tensor->GetStorageShape().GetDim(0);
     OP_CHECK_IF(oriBlockTableBatch != bSize_,
-        OP_LOGE(opName_, "oriBlockTableBatch's first dimension(%u) should be equal to batch size(%u)",
-            oriBlockTableBatch, bSize_),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    opName_, "oriBlockTableBatch",
+                    Ops::Base::ToString(opParamInfo_.oriBlockTable.tensor->GetStorageShape()).c_str(),
+                    "oriBlockTableBatch's first dimension(" + std::to_string(oriBlockTableBatch) +
+                        ") should be equal to batch size" + std::to_string(bSize_)),
+                return ge::GRAPH_FAILED);
 
     uint32_t cmpBlockTableBatch = opParamInfo_.cmpBlockTable.tensor->GetStorageShape().GetDim(0);
     OP_CHECK_IF(cmpBlockTableBatch != bSize_,
-        OP_LOGE(opName_, "cmpBlockTableBatch's first dimension(%u) should be equal to batch size(%u)",
-            cmpBlockTableBatch, bSize_),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    opName_, "cmpBlockTableBatch",
+                    Ops::Base::ToString(opParamInfo_.cmpBlockTable.tensor->GetStorageShape()).c_str(),
+                    "cmpBlockTableBatch's first dimension(" + std::to_string(cmpBlockTableBatch) +
+                        ") should be equal to batch size(" + std::to_string(bSize_) + ")"),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::CheckTopkShape()
-{
-    return ge::GRAPH_SUCCESS;
-}
+ge::graphStatus QSMLATilingCheck::CheckTopkShape() { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus QSMLATilingCheck::CheckAttenOutShape()
 {
@@ -159,8 +167,7 @@ ge::graphStatus QSMLATilingCheck::CheckAttenOutShape()
 
 ge::graphStatus QSMLATilingCheck::CheckAttenOut()
 {
-    if (ge::GRAPH_SUCCESS != CheckDTypeConsistency(opParamInfo_.attnOut.desc->GetDataType(),
-        qType_, ATTEN_OUT_NAME) ||
+    if (ge::GRAPH_SUCCESS != CheckDTypeConsistency(opParamInfo_.attnOut.desc->GetDataType(), qType_, ATTEN_OUT_NAME) ||
         ge::GRAPH_SUCCESS != CheckAttenOutShape()) {
         return ge::GRAPH_FAILED;
     }
@@ -238,8 +245,7 @@ ge::graphStatus QSMLATilingCheck::CheckKVShape()
 
 ge::graphStatus QSMLATilingCheck::CheckKV()
 {
-    if (ge::GRAPH_SUCCESS != CheckDTypeConsistency(cmpKvType_,
-        oriKvType_, CMP_KV_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckDTypeConsistency(cmpKvType_, oriKvType_, CMP_KV_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -247,8 +253,7 @@ ge::graphStatus QSMLATilingCheck::CheckKV()
 
 ge::graphStatus QSMLATilingCheck::CheckActualSeqLensQ()
 {
-    if (ge::GRAPH_SUCCESS != CheckActualSeqLensQDType() ||
-        ge::GRAPH_SUCCESS != CheckActualSeqLensQShape()) {
+    if (ge::GRAPH_SUCCESS != CheckActualSeqLensQDType() || ge::GRAPH_SUCCESS != CheckActualSeqLensQShape()) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -261,13 +266,13 @@ ge::graphStatus QSMLATilingCheck::CheckActualSeqLensQDType()
     }
     if (opParamInfo_.cuSeqLensQ.desc == nullptr) {
         OP_LOGE(opName_, "cuSeqLensQ is not empty,"
-            "but cuSeqLensQ's dtype is nullptr.");
-            return ge::GRAPH_FAILED;
+                         "but cuSeqLensQ's dtype is nullptr.");
+        return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.cuSeqLensQ.desc->GetDataType() != ge::DT_INT32) {
         OP_LOGE(opName_, "cuSeqLensQ's dtype is %s, it should be DT_INT32.",
-            QSMLADataTypeToSerialString(opParamInfo_.cuSeqLensQ.desc->GetDataType()).c_str());
-            return ge::GRAPH_FAILED;
+                QSMLADataTypeToSerialString(opParamInfo_.cuSeqLensQ.desc->GetDataType()).c_str());
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -278,13 +283,11 @@ ge::graphStatus QSMLATilingCheck::CheckActualSeqLensQShape()
         return ge::GRAPH_SUCCESS;
     }
     uint32_t shapeSize = 0;
-    if (GetActualSeqLenSize(shapeSize, opParamInfo_.cuSeqLensQ.tensor, qLayout_, "cuSeqLensQ") !=
-        ge::GRAPH_SUCCESS) {
+    if (GetActualSeqLenSize(shapeSize, opParamInfo_.cuSeqLensQ.tensor, qLayout_, "cuSeqLensQ") != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (shapeSize != bSize_ + 1) {
-        OP_LOGE(opName_, "cuSeqLensQ shape size is %u, it should be equal to batch size[%u]",
-            shapeSize, bSize_);
+        OP_LOGE(opName_, "cuSeqLensQ shape size is %u, it should be equal to batch size[%u]", shapeSize, bSize_);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -292,8 +295,7 @@ ge::graphStatus QSMLATilingCheck::CheckActualSeqLensQShape()
 
 ge::graphStatus QSMLATilingCheck::CheckActualSeqLens()
 {
-    if (ge::GRAPH_SUCCESS != CheckActualSeqLensDType() ||
-        ge::GRAPH_SUCCESS != CheckActualSeqLensShape()) {
+    if (ge::GRAPH_SUCCESS != CheckActualSeqLensDType() || ge::GRAPH_SUCCESS != CheckActualSeqLensShape()) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -305,14 +307,15 @@ ge::graphStatus QSMLATilingCheck::CheckActualSeqLensDType()
         return ge::GRAPH_SUCCESS;
     }
     if (opParamInfo_.sequsedOriKv.desc == nullptr) {
-        OP_LOGE(opName_, "sequsedOriKv is not empty,"
-            "but sequsedOriKv's dtype is nullptr.");
-            return ge::GRAPH_FAILED;
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sequsedOriKv's dtype",
+                                                 "sequsedOriKv is not empty, but sequsedOriKv's dtype is nullptr");
+        return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.sequsedOriKv.desc->GetDataType() != ge::DT_INT32) {
-        OP_LOGE(opName_, "sequsedOriKv's dtype is %s, it should be DT_INT32.",
-            QSMLADataTypeToSerialString(opParamInfo_.sequsedOriKv.desc->GetDataType()).c_str());
-            return ge::GRAPH_FAILED;
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+            opName_, "sequsedOriKv", QSMLADataTypeToSerialString(opParamInfo_.sequsedOriKv.desc->GetDataType()).c_str(),
+            "sequsedOriKv's dtype should be DT_INT32");
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -328,8 +331,9 @@ ge::graphStatus QSMLATilingCheck::CheckActualSeqLensShape()
         return ge::GRAPH_FAILED;
     }
     if (shapeSize != bSize_) {
-        OP_LOGE(opName_, "sequsedOriKv shape size is %u, it should be equal to batch size[%u].",
-            shapeSize, bSize_);
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
+            opName_, "sequsedOriKv", std::to_string(shapeSize).c_str(),
+            "sequsedOriKv shape size should be equal to batch size[" + std::to_string(bSize_) + "]");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -338,11 +342,8 @@ ge::graphStatus QSMLATilingCheck::CheckActualSeqLensShape()
 ge::graphStatus QSMLATilingCheck::CheckMultiParaConsistency()
 {
     SetQSMLAShapeCompare();
-    if (ge::GRAPH_SUCCESS != CheckKV() ||
-        ge::GRAPH_SUCCESS != CheckTopK() ||
-        ge::GRAPH_SUCCESS != CheckAttenOut() ||
-        ge::GRAPH_SUCCESS != CheckActualSeqLensQ() ||
-        ge::GRAPH_SUCCESS != CheckActualSeqLens() ||
+    if (ge::GRAPH_SUCCESS != CheckKV() || ge::GRAPH_SUCCESS != CheckTopK() || ge::GRAPH_SUCCESS != CheckAttenOut() ||
+        ge::GRAPH_SUCCESS != CheckActualSeqLensQ() || ge::GRAPH_SUCCESS != CheckActualSeqLens() ||
         ge::GRAPH_SUCCESS != CheckBlockTable()) {
         return ge::GRAPH_FAILED;
     }
@@ -363,51 +364,52 @@ ge::graphStatus QSMLATilingCheck::CheckLayoutQKvConsistency() const
 
 ge::graphStatus QSMLATilingCheck::CheckSparseIndicesShapeMatchQ() const
 {
-    if (perfMode_ != QSMLATemplateMode::CSA_TEMPLATE_MODE) {
+    if (perfMode_ != QSMLATemplateMode::CSA_TEMPLATE_MODE && perfMode_ != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
+        perfMode_ != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         return ge::GRAPH_SUCCESS;
     }
 
     if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
         const auto &oriSparseShape = opParamInfo_.oriSparseIndices.tensor->GetStorageShape();
         if (qLayout_ == QSMLALayout::BSND) {
-            OP_CHECK_IF(oriSparseShape.GetDim(DIM_0) != bSize_,
-                        OP_LOGE(opName_,
-                                "When q layout is BSND, oriSparseIndices's B(%ld) should be equal to q's B(%u).",
-                                oriSparseShape.GetDim(DIM_0), bSize_),
-                        return ge::GRAPH_FAILED);
-            OP_CHECK_IF(oriSparseShape.GetDim(DIM_1) != s1Size_,
-                        OP_LOGE(opName_,
-                                "When q layout is BSND, oriSparseIndices's S1(%ld) should be equal to q's S1(%u).",
-                                oriSparseShape.GetDim(DIM_1), s1Size_),
-                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                oriSparseShape.GetDim(DIM_0) != bSize_,
+                OP_LOGE(opName_, "When q layout is BSND, oriSparseIndices's B(%ld) should be equal to q's B(%u).",
+                        oriSparseShape.GetDim(DIM_0), bSize_),
+                return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                oriSparseShape.GetDim(DIM_1) != s1Size_,
+                OP_LOGE(opName_, "When q layout is BSND, oriSparseIndices's S1(%ld) should be equal to q's S1(%u).",
+                        oriSparseShape.GetDim(DIM_1), s1Size_),
+                return ge::GRAPH_FAILED);
         } else {
-            OP_CHECK_IF(oriSparseShape.GetDim(DIM_0) != qTSize_,
-                        OP_LOGE(opName_,
-                                "When q layout is TND, oriSparseIndices's T1(%ld) should be equal to q's T1(%u).",
-                                oriSparseShape.GetDim(DIM_0), qTSize_),
-                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                oriSparseShape.GetDim(DIM_0) != qTSize_,
+                OP_LOGE(opName_, "When q layout is TND, oriSparseIndices's T1(%ld) should be equal to q's T1(%u).",
+                        oriSparseShape.GetDim(DIM_0), qTSize_),
+                return ge::GRAPH_FAILED);
         }
     }
 
     if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
         const auto &cmpSparseShape = opParamInfo_.cmpSparseIndices.tensor->GetStorageShape();
         if (qLayout_ == QSMLALayout::BSND) {
-            OP_CHECK_IF(cmpSparseShape.GetDim(DIM_0) != bSize_,
-                        OP_LOGE(opName_,
-                                "When q layout is BSND, cmpSparseIndices's B(%ld) should be equal to q's B(%u).",
-                                cmpSparseShape.GetDim(DIM_0), bSize_),
-                        return ge::GRAPH_FAILED);
-            OP_CHECK_IF(cmpSparseShape.GetDim(DIM_1) != s1Size_,
-                        OP_LOGE(opName_,
-                                "When q layout is BSND, cmpSparseIndices's S1(%ld) should be equal to q's S1(%u).",
-                                cmpSparseShape.GetDim(DIM_1), s1Size_),
-                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                cmpSparseShape.GetDim(DIM_0) != bSize_,
+                OP_LOGE(opName_, "When q layout is BSND, cmpSparseIndices's B(%ld) should be equal to q's B(%u).",
+                        cmpSparseShape.GetDim(DIM_0), bSize_),
+                return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                cmpSparseShape.GetDim(DIM_1) != s1Size_,
+                OP_LOGE(opName_, "When q layout is BSND, cmpSparseIndices's S1(%ld) should be equal to q's S1(%u).",
+                        cmpSparseShape.GetDim(DIM_1), s1Size_),
+                return ge::GRAPH_FAILED);
         } else {
-            OP_CHECK_IF(cmpSparseShape.GetDim(DIM_0) != qTSize_,
-                        OP_LOGE(opName_,
-                                "When q layout is TND, cmpSparseIndices's T1(%ld) should be equal to q's T1(%u).",
-                                cmpSparseShape.GetDim(DIM_0), qTSize_),
-                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(
+                cmpSparseShape.GetDim(DIM_0) != qTSize_,
+                OP_LOGE(opName_, "When q layout is TND, cmpSparseIndices's T1(%ld) should be equal to q's T1(%u).",
+                        cmpSparseShape.GetDim(DIM_0), qTSize_),
+                return ge::GRAPH_FAILED);
         }
     }
 
@@ -582,4 +584,4 @@ ge::graphStatus QSMLATilingCheck::CheckConsistency() const
     }
     return ge::GRAPH_SUCCESS;
 }
-}
+} // namespace optiling

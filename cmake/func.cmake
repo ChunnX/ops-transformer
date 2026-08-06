@@ -426,6 +426,15 @@ function(add_opc_config)
         list(APPEND _OPC_CONFIG "-fdata-sections")
     endif()
 
+    if(ENABLE_MSSANITIZER)
+        list(APPEND _OPC_CONFIG "-g")
+        list(APPEND _OPC_CONFIG "--cce-enable-sanitizer")
+    endif()
+
+    if(ENABLE_DUMP_CCE)
+        list(APPEND _OPC_CONFIG "--save-temp-files")
+    endif()
+
     if(_OPC_CONFIG)
         add_ops_compile_options(
                 OP_NAME ${OP_COMPILE_OP_NAME}
@@ -447,6 +456,11 @@ function(add_ops_src_copy)
                 ${OPS_ADV_UTILS_KERNEL_INC}/*
                 ${OPS_CGMCT}/*
                 ${OPS_GMM_COMMON_KERNEL_INC}/*
+                ${BLAZE}/*
+                ${TENSOR_API}/impl/tensor_api/*
+                ${TENSOR_API}/include/tensor_api/*
+                ${TENSOR_API}/impl/c_api/*
+                ${TENSOR_API}/include/c_api/*
             )
             add_custom_command(OUTPUT ${UTILS_COPY_STAMP}
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/regbase
@@ -454,6 +468,11 @@ function(add_ops_src_copy)
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_ADV_UTILS_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_CGMCT} ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_GMM_COMMON_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${BLAZE} ${OPS_UTILS_INC_KERNEL_DIR}/blaze
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/impl/tensor_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/impl/tensor_api
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/include/tensor_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/include/tensor_api
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/impl/c_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/impl/c_api
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/include/c_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/include/c_api
                 COMMAND ${CMAKE_COMMAND} -E touch ${UTILS_COPY_STAMP}
                 DEPENDS ${UTILS_FILES}
                 VERBATIM
@@ -507,6 +526,42 @@ function(add_ops_src_copy)
 endfunction()
 
 # ------------------------------------------------------------------------------------------------------------
+# require_pypto_pro(<op_name>)
+#   Require pypto_pro for the current operator. Call at the beginning of an operator's CMakeLists.txt, before
+#   registering any host or kernel build rules. If pypto_pro is unavailable in HI_PYTHON, warn and return from
+#   the caller's CMakeLists.txt so the whole operator is skipped.
+# ------------------------------------------------------------------------------------------------------------
+macro(require_pypto_pro op_name)
+    get_property(_pypto_pro_checked GLOBAL PROPERTY PYPTO_PRO_CHECKED)
+    if (NOT _pypto_pro_checked)
+        execute_process(
+            COMMAND ${HI_PYTHON} -c
+                    "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('pypto_pro') else 1)"
+            RESULT_VARIABLE _pypto_pro_check_result
+            OUTPUT_QUIET
+            ERROR_QUIET
+        )
+        if (_pypto_pro_check_result EQUAL 0)
+            set_property(GLOBAL PROPERTY PYPTO_PRO_AVAILABLE TRUE)
+        else()
+            set_property(GLOBAL PROPERTY PYPTO_PRO_AVAILABLE FALSE)
+        endif()
+        set_property(GLOBAL PROPERTY PYPTO_PRO_CHECKED TRUE)
+    endif()
+
+    get_property(_pypto_pro_available GLOBAL PROPERTY PYPTO_PRO_AVAILABLE)
+    if (NOT _pypto_pro_available)
+        message(WARNING
+                "pypto_pro is unavailable in ${HI_PYTHON}; skip operator ${op_name}.")
+        return()
+    endif()
+
+    unset(_pypto_pro_checked)
+    unset(_pypto_pro_check_result)
+    unset(_pypto_pro_available)
+endmacro()
+
+# ------------------------------------------------------------------------------------------------------------
 # enable_pypto_kernel(<op_file>)
 #   Mark an operator whose kernel is written in PyPTO. Call ONCE from the op's op_host/CMakeLists.txt,
 #   and BEFORE add_modules_sources_with_soc(...) (so the tiling logic can read PYPTO_GEN_DIR).
@@ -515,8 +570,15 @@ endfunction()
 #   to install the generated artifacts into the kernel staging dir.
 # ------------------------------------------------------------------------------------------------------------
 function(enable_pypto_kernel op_file)
-    set(_gen ${ASCEND_BINARY_OUT_DIR}/${ASCEND_COMPUTE_UNIT}/${op_file}_pypto_gen)
-    set(_py  ${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/${op_file}.py)
+    set(_compute_units ${ASCEND_COMPUTE_UNIT})
+    list(FILTER _compute_units INCLUDE REGEX ".+")
+    if (NOT _compute_units)
+        message(FATAL_ERROR "enable_pypto_kernel: ASCEND_COMPUTE_UNIT is empty")
+    endif ()
+    list(GET _compute_units 0 _soc_unit)
+
+    set(_gen "${ASCEND_BINARY_OUT_DIR}/${_soc_unit}/${op_file}_pypto_gen")
+    set(_py  "${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/${op_file}.py")
 
     if (NOT EXISTS ${_py})
         message(FATAL_ERROR "enable_pypto_kernel: kernel python file not found: ${_py}")
@@ -524,9 +586,9 @@ function(enable_pypto_kernel op_file)
 
     message(STATUS "pypto codegen: ${op_file} -> ${_gen}")
     execute_process(
-        COMMAND ${HI_PYTHON} ${CMAKE_SOURCE_DIR}/cmake/scripts/pypto_codegen.py
-                --py-file ${_py} --out-dir ${_gen}
-                --op-file ${op_file} --soc ${ASCEND_COMPUTE_UNIT}
+        COMMAND ${HI_PYTHON} ${OPS_ADV_DIR}/cmake/scripts/pypto_codegen.py
+                --py-file "${_py}" --out-dir "${_gen}"
+                --op-file "${op_file}" --soc "${_soc_unit}"
         RESULT_VARIABLE _rc
     )
     if (NOT _rc EQUAL 0)

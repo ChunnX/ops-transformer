@@ -289,18 +289,21 @@ protected:
         }
     }
 
-    void CreateEmptyTensor(const aclDataType dataType, const aclTensorList *&tensorList,
+    aclnnStatus CreateEmptyTensor(const aclDataType dataType, const aclTensorList *&tensorList,
             aclTensorList *&emptyTensorList) const
     {
         if (tensorList != nullptr) {
-            return;
+            return ACLNN_SUCCESS;
         }
 
         FVector<aclTensor*> emptyTensors;
         aclTensor *emptyTensor = l0Executor_->AllocTensor({0}, static_cast<op::DataType>(dataType));
+        CHECK_RET(emptyTensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
         emptyTensors.emplace_back(emptyTensor);
         emptyTensorList = l0Executor_->AllocTensorList(emptyTensors.data(), emptyTensors.size());
+        CHECK_RET(emptyTensorList != nullptr, ACLNN_ERR_INNER_NULLPTR);
         tensorList = emptyTensorList;
+        return ACLNN_SUCCESS;
     }
 
     aclnnStatus DataContiguous(const aclTensorList *&tensors) const
@@ -314,6 +317,7 @@ protected:
             tensorsVec.push_back(contiguousTensor);
         }
         tensors = l0Executor_->AllocTensorList(tensorsVec.data(), tensorsVec.size());
+        CHECK_RET(tensors != nullptr, ACLNN_ERR_INNER_NULLPTR);
         return ACLNN_SUCCESS;
     }
 
@@ -332,6 +336,7 @@ protected:
             }
         }
         tensors = l0Executor_->AllocTensorList(tensorsVec.data(), tensorsVec.size());
+        CHECK_RET(tensors != nullptr, ACLNN_ERR_INNER_NULLPTR);
         return ACLNN_SUCCESS;
     }
 
@@ -339,8 +344,8 @@ protected:
     {
         aclTensorList *emptyWeightAssistMatrixList = nullptr;
         CheckOptionalTensorListEmpty(gmmDsqParams_.weightAssistMatrix);
-        CreateEmptyTensor(aclDataType::ACL_FLOAT, gmmDsqParams_.weightAssistMatrix,
-            emptyWeightAssistMatrixList);
+        CHECK_RET(CreateEmptyTensor(aclDataType::ACL_FLOAT, gmmDsqParams_.weightAssistMatrix,
+            emptyWeightAssistMatrixList) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
 
         CHECK_COND(DataContiguousWeight(gmmDsqParams_.weight) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR,
                     "Contiguous weight failed.");

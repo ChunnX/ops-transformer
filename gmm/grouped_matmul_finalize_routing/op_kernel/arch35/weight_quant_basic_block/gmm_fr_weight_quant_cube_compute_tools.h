@@ -44,7 +44,7 @@ struct L0CopyAndCalcParams {
     uint64_t nL0Size; // N方向当前在L0上实际计算的大小
     uint64_t nL1Size; // N方向当前在L1上实际载入的大小
     uint64_t
-        scaleKL1Size;  // scale的K方向在L1上实际载入的大小，mx group数为scaleKL1Size/32，认为A和B的scale在L1载入量一致
+        scaleKL1Size; // scale的K方向在L1上实际载入的大小，mx group数为scaleKL1Size/32，认为A和B的scale在L1载入量一致
     bool isFirstKLoop; // 是否是第一次K方向的循环，用于控制L0C的初始值
     bool isLastKLoop;  // 是否是最后一次K方向的循环，用于控制unitFlag
 };

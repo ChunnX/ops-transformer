@@ -32,7 +32,7 @@ constexpr uint32_t DIM_NUM_4 = 4;
 static ge::graphStatus InferShapeQuantLightningIndexer(gert::InferShapeContext *context)
 {
     if (context == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("QuantLightningIndexer", "InferShapeContext");
+        OP_LOGE("QuantLightningIndexer", "context is nullptr");
         return ge::GRAPH_FAILED;
     }
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INDEX);
@@ -53,22 +53,23 @@ static ge::graphStatus InferShapeQuantLightningIndexer(gert::InferShapeContext *
     std::string inputLayoutQueryPtrStr = std::string(inputLayoutQueryPtr);
     std::string inputLayoutKeyPtrStr = std::string(inputLayoutKeyPtr);
     if (inputLayoutQueryPtrStr != "TND" && inputLayoutQueryPtrStr != "BSND") {
-        OP_LOGE_FOR_INVALID_FORMAT("QuantLightningIndexer", "query", inputLayoutQueryPtrStr.c_str(), "BSND or TND");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("QuantLightningIndexer", "layout_query", inputLayoutQueryPtrStr.c_str(),
+                                              "Layout_query should be TND or BSND");
         return GRAPH_FAILED;
     }
 
     int64_t keyHeadNum = (inputLayoutKeyPtrStr == "TND") ? keyShape->GetDim(1) : keyShape->GetDim(2);
     if (inputLayoutQueryPtrStr == "BSND") {
         outShape->SetDimNum(DIM_NUM_4);
-        outShape->SetDim(0, queryShape->GetDim(0));  // 0:Dim B
-        outShape->SetDim(1, queryShape->GetDim(1));  // 1:Dim S
-        outShape->SetDim(2, keyHeadNum);             // 2:Dim N
-        outShape->SetDim(3, *sparse_count);          // 3:Dim K
+        outShape->SetDim(0, queryShape->GetDim(0)); // 0:Dim B
+        outShape->SetDim(1, queryShape->GetDim(1)); // 1:Dim S
+        outShape->SetDim(2, keyHeadNum);            // 2:Dim N
+        outShape->SetDim(3, *sparse_count);         // 3:Dim K
     } else {
         outShape->SetDimNum(DIM_NUM_3);
-        outShape->SetDim(0, queryShape->GetDim(0));  // 0:Dim T
-        outShape->SetDim(1, keyHeadNum);             // 1:output shape's N Dim, 2: key shape's N Dim
-        outShape->SetDim(2, *sparse_count);          // 2:Dim K
+        outShape->SetDim(0, queryShape->GetDim(0)); // 0:Dim T
+        outShape->SetDim(1, keyHeadNum);            // 1:output shape's N Dim, 2: key shape's N Dim
+        outShape->SetDim(2, *sparse_count);         // 2:Dim K
     }
 
     OP_LOGD(context->GetNodeName(), "QuantLightningIndexer InferShape end.");
@@ -78,7 +79,7 @@ static ge::graphStatus InferShapeQuantLightningIndexer(gert::InferShapeContext *
 static ge::graphStatus InferDataTypeQuantLightningIndexer(gert::InferDataTypeContext *context)
 {
     if (context == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("QuantLightningIndexer", "InferDataTypeContext");
+        OP_LOGE("QuantLightningIndexer", "InferDataTypeContext context is nullptr");
         return ge::GRAPH_FAILED;
     }
     OP_LOGD(context->GetNodeName(), "Enter QuantLightningIndexer InferDataType impl.");
@@ -92,4 +93,4 @@ static ge::graphStatus InferDataTypeQuantLightningIndexer(gert::InferDataTypeCon
 IMPL_OP_INFERSHAPE(QuantLightningIndexer)
     .InferShape(InferShapeQuantLightningIndexer)
     .InferDataType(InferDataTypeQuantLightningIndexer);
-}  // namespace ops
+} // namespace ops

@@ -61,8 +61,12 @@ class KernelGroupedMatmulAdd<
     ProblemShape_, BlockMmadBuilder_, BlockEpilogue_, BlockScheduler_,
     AscendC::Std::enable_if_t<AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtScheduler>>> {
 public:
-    __aicore__ inline KernelGroupedMatmulAdd() {}
-    __aicore__ inline ~KernelGroupedMatmulAdd() {}
+    __aicore__ inline KernelGroupedMatmulAdd()
+    {
+    }
+    __aicore__ inline ~KernelGroupedMatmulAdd()
+    {
+    }
 
     using BlockEpilogue = BlockEpilogue_;
     using BlockMmadBuilder = BlockMmadBuilder_;
@@ -112,13 +116,15 @@ public:
         uint32_t groupListType;
         uint64_t mTailCnt;
         uint64_t nTailCnt;
-        const TCubeTiling* __restrict matmulTiling;
-        __aicore__ GMMAddTiling() {}
+        const TCubeTiling *__restrict matmulTiling;
+        __aicore__ GMMAddTiling()
+        {
+        }
         __aicore__ GMMAddTiling(uint32_t groupNum_, uint32_t groupListType_, uint64_t mTailCnt_ = 1,
-                                uint64_t nTailCnt_ = 1) :
-            groupNum(groupNum_),
-            groupListType(groupListType_), mTailCnt(mTailCnt_), nTailCnt(nTailCnt_)
-        {}
+                                uint64_t nTailCnt_ = 1)
+            : groupNum(groupNum_), groupListType(groupListType_), mTailCnt(mTailCnt_), nTailCnt(nTailCnt_)
+        {
+        }
     };
 
     struct Arguments {
@@ -150,11 +156,11 @@ public:
         return splitValue;
     }
 
-    __aicore__ inline void InitGlobalBuffer(const Params& params, uint64_t groupIdx)
+    __aicore__ inline void InitGlobalBuffer(const Params &params, uint64_t groupIdx)
     {
-        aGlobal_.SetGlobalBuffer((__gm__ AType*)params.mmadParams.aGmAddr + Get<NUM_ZERO>(baseOffset_));
-        bGlobal_.SetGlobalBuffer((__gm__ BType*)params.mmadParams.bGmAddr + Get<NUM_ONE>(baseOffset_));
-        cGlobal_.SetGlobalBuffer((__gm__ CType*)params.mmadParams.cGmAddr + Get<NUM_TWO>(baseOffset_));
+        aGlobal_.SetGlobalBuffer((__gm__ AType *)params.mmadParams.aGmAddr + Get<NUM_ZERO>(baseOffset_));
+        bGlobal_.SetGlobalBuffer((__gm__ BType *)params.mmadParams.bGmAddr + Get<NUM_ONE>(baseOffset_));
+        cGlobal_.SetGlobalBuffer((__gm__ CType *)params.mmadParams.cGmAddr + Get<NUM_TWO>(baseOffset_));
     }
 
     __aicore__ inline void UpdateOffset(uint64_t groupIdx)
@@ -173,7 +179,7 @@ public:
         Get<NUM_TWO>(baseOffset_) = Get<NUM_TWO>(baseOffset_) + m * n;
     }
 
-    __aicore__ inline bool Init(const Params& params, uint64_t groupIdx)
+    __aicore__ inline bool Init(const Params &params, uint64_t groupIdx)
     {
         UpdateOffset(groupIdx);
         int64_t splitValue = GetSplitValueFromGroupList(groupIdx, params.gmmParams.groupListType);
@@ -186,17 +192,17 @@ public:
         return true;
     }
 
-    __aicore__ inline void InitParamsAndGm(const Params& params)
+    __aicore__ inline void InitParamsAndGm(const Params &params)
     {
         if (params.mmadParams.groupListGmAddr != nullptr) {
-            groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(params.mmadParams.groupListGmAddr));
+            groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(params.mmadParams.groupListGmAddr));
         }
         Get<M_VALUE>(problemShape_) = params.gmmParams.matmulTiling->M;
         Get<N_VALUE>(problemShape_) = params.gmmParams.matmulTiling->N;
         cGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     }
 
-    __host_aicore__ static Status CheckShape(const ProblemShape& shape)
+    __host_aicore__ static Status CheckShape(const ProblemShape &shape)
     {
         int64_t m = shape.m;
         int64_t n = shape.n;
@@ -212,7 +218,7 @@ public:
         return Status::success;
     }
 
-    __host_aicore__ static Status CanImplement(const Arguments& args)
+    __host_aicore__ static Status CanImplement(const Arguments &args)
     {
         // Check shape in kernel
         CHECK_AND_RETURN(CheckShape(args.problemShape));
@@ -237,7 +243,7 @@ public:
         return workSpaceSize;
     }
 
-    __host_aicore__ static Params InitParams(const Arguments& args, GM_ADDR workspace)
+    __host_aicore__ static Params InitParams(const Arguments &args, GM_ADDR workspace)
     {
         BlockMmadParams mmadParams = BlockMmadBuilder::InitParams(args.mmadArgs);
         // mmad params with epiligue takes workspaceGm as output
@@ -255,7 +261,7 @@ public:
         return BlockSchedulerOp::GetBlockNum(shape);
     }
 
-    __aicore__ inline void operator()(const Params& params)
+    __aicore__ inline void operator()(const Params &params)
     {
         if ASCEND_IS_AIV {
             return;
@@ -272,7 +278,7 @@ public:
         int32_t baseM = params.gmmParams.matmulTiling->baseM;
         int32_t baseN = params.gmmParams.matmulTiling->baseN;
         int32_t baseK = params.gmmParams.matmulTiling->baseK;
-        blockMmadOp.Init(const_cast<TCubeTiling* __restrict>(params.gmmParams.matmulTiling), GetTPipePtr());
+        blockMmadOp.Init(const_cast<TCubeTiling *__restrict>(params.gmmParams.matmulTiling), GetTPipePtr());
         for (uint64_t groupIdx = 0, count = 0; groupIdx < params.gmmParams.groupNum; groupIdx++) {
             if (!Init(params, groupIdx)) {
                 continue;

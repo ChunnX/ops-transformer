@@ -22,19 +22,21 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(matmul_allto_all_depends mc2/common mc2/3rd PARENT_SCOPE)
     set(matmul_allto_all_apt_depends mc2/common mc2/3rd PARENT_SCOPE)
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
+    add_ops_compile_options(
+        OP_NAME MatmulAlltoAll
+        OPTIONS --cce-auto-sync=off
+    )
     if("${CONDITION_UNIT}" STREQUAL "ascend950")
         add_ops_compile_options(
             OP_NAME MatmulAlltoAll
             COMPUTE_UNIT Ascend950PR_9599
-            OPTIONS --cce-auto-sync=off
-                    -mllvm -cce-aicore-dcci-before-kernel-end=false
+            OPTIONS -mllvm -cce-aicore-dcci-before-kernel-end=false
                     -DENABLE_CV_COMM_VIA_SSBUF=true
         )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
  	         add_ops_compile_options(
  	             OP_NAME MatmulAlltoAll
- 	             OPTIONS --cce-auto-sync=off
- 	                     -DAICORE_EXCEPTION_RESTART
+ 	             OPTIONS -DAICORE_EXCEPTION_RESTART
  	     )
     endif()
 

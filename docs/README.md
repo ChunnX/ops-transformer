@@ -62,7 +62,7 @@ Docs目录结构说明如下：
 
 ### 样例实践
 
-如需学习算子领域高性能实战案例，可参考[cann-samples Performance目录](https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/README.md)）。
+如需学习算子领域高性能实战案例，可参考[cann-samples Performance目录](https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/README.md)。
 
 |  算子分类       |  样例算子       | 说明                  |
 | ----------------------- | ---------------------- | ---------------------- |
@@ -78,5 +78,5 @@ Docs目录结构说明如下：
 
 | 文档                                | 说明                                                         |
 | ----------------------------------- | ------------------------------------------------------------ |
-| [算子基本概念](zh/context/基本概念.md) | 介绍算子领域相关的基础概念和术语，如量化/稀疏、数据类型、数据格式等。 |
+| [算子基本概念](zh/context/basic_concept.md) | 介绍算子领域相关的基础概念和术语，如量化/稀疏、数据类型、数据格式等。 |
 | [build参数说明](zh/install/build.md)   | 介绍本项目build.sh参数功能和取值，包括源码编译、算子调用、调试等。 |

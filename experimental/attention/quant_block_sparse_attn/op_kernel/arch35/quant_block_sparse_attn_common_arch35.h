@@ -24,6 +24,7 @@
 #include "lib/matmul_intf.h"
 #include "stdarg.h"
 #include "common/util_regbase.h"
+#include "quant_block_sparse_attn_metadata.h"
 
 using matmul::MatmulType;
 using namespace AscendC;
@@ -54,7 +55,7 @@ struct CubeCoordInfo {
     uint32_t curBIdx;
     uint32_t s1Coord;
     uint32_t s2Coord;
-    int32_t sparseBlockIdx[2]; // BSA: 当前迭代的 2 个 sparse block index
+    int32_t sparseBlockIdx[2]; // QBSA: 当前迭代的 2 个 sparse block index
 };
 
 __aicore__ constexpr uint16_t Align64Func(uint16_t data)
@@ -75,16 +76,16 @@ __aicore__ constexpr TPosition GetC2Position()
 
 #define CHILD_SPEC_TEMPLATE_ARGS                                                                                       \
     INPUT_T, T, layout, kvLayout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAtten, OUTPUT_T,   \
-        isPa, useDn
+        hasLse, isPa, useDn
 
 #define TEMPLATE_INTF                                                                                                  \
-    template <typename INPUT_T, typename T, BSALayout layout, BSALayout kvLayout, S1TemplateType s1TemplateType,       \
+    template <typename INPUT_T, typename T, QBSALayout layout, QBSALayout kvLayout, S1TemplateType s1TemplateType,     \
               S2TemplateType s2TemplateType, DTemplateType dTemplateType, DTemplateType dVTemplateType, bool hasAtten, \
-              typename OUTPUT_T, bool isPa, bool useDn = true>
+              typename OUTPUT_T, bool hasLse, bool isPa, bool useDn = true>
 
 #define TEMPLATE_INTF_ARGS                                                                                             \
     INPUT_T, T, layout, kvLayout, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAtten, OUTPUT_T,   \
-        isPa, useDn
+        hasLse, isPa, useDn
 
 #define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X)                                                                               \
     X(INPUT_T)                                                                                                         \
@@ -92,13 +93,14 @@ __aicore__ constexpr TPosition GetC2Position()
     X(OUTPUT_T)
 
 #define CUBE_BLOCK_TRAITS_CONST_FIELDS(X)                                                                              \
-    X(layout, BSALayout, BSALayout::TND)                                                                               \
-    X(kvLayout, BSALayout, BSALayout::PA_BNSD)                                                                         \
+    X(layout, QBSALayout, QBSALayout::TND)                                                                             \
+    X(kvLayout, QBSALayout, QBSALayout::PA_BNSD)                                                                       \
     X(s1TemplateType, S1TemplateType, S1TemplateType::Aligned128)                                                      \
     X(s2TemplateType, S2TemplateType, S2TemplateType::Aligned128)                                                      \
     X(dTemplateType, DTemplateType, DTemplateType::Aligned128)                                                         \
     X(dVTemplateType, DTemplateType, DTemplateType::Aligned128)                                                        \
     X(hasAtten, bool, false)                                                                                           \
+    X(hasLse, bool, false)                                                                                             \
     X(isPa, bool, false)                                                                                               \
     X(useDn, bool, false)
 
@@ -143,21 +145,5 @@ __aicore__ constexpr TPosition GetC2Position()
 #define TEMPLATE_BASE_ARGS                                                                                             \
     ChildClass, CUBE_BLOCK_TRAITS_TYPE_FIELDS(GEN_ARG_NAME) CUBE_BLOCK_TRAITS_CONST_FIELDS(GEN_ARG_NAME) end
 
-// metadata获取
-constexpr uint32_t BSA_FA_METADATA_SIZE = 8U;
-
-constexpr uint32_t BSA_FA_CORE_ENABLE_INDEX = 0U;
-constexpr uint32_t BSA_FA_BN1_START_INDEX = 1U;
-constexpr uint32_t BSA_FA_S1_START_INDEX = 2U;
-constexpr uint32_t BSA_FA_S2_START_INDEX = 3U;
-constexpr uint32_t BSA_FA_BN1_END_INDEX = 4U;
-constexpr uint32_t BSA_FA_S1_END_INDEX = 5U;
-constexpr uint32_t BSA_FA_S2_END_INDEX = 6U;
-
-__aicore__ inline uint32_t GetBsaAttrMetadata(GlobalTensor<int32_t> &metadataGm, uint32_t coreIdx, uint32_t metaIdx)
-{
-    uint32_t metadataIndex = BSA_FA_METADATA_SIZE * coreIdx + metaIdx;
-    return metadataGm.GetValue(metadataIndex);
-}
 
 #endif

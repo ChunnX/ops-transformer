@@ -40,15 +40,16 @@ constexpr size_t GROUPSIZE_IDX = 7;
 
 // Dtype
 constexpr std::initializer_list<ge::DataType> MXDTYPE_SUPPORT_LIST = {
-    ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2,
-    ge::DataType::DT_FLOAT4_E2M1};
+    ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2, ge::DataType::DT_FLOAT4_E2M1};
 
 // HcclLimit
 constexpr static uint64_t REDUCE_SCATTER_V2_HCCL_NUM_LIMIT = 63;
 
 class MatmulReduceScatterTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MatmulReduceScatterTilingBase(gert::TilingContext* context) : TilingBaseClass(context) {}
+    explicit MatmulReduceScatterTilingBase(gert::TilingContext *context) : TilingBaseClass(context)
+    {
+    }
     ~MatmulReduceScatterTilingBase() override = default;
 
     void Reset(gert::TilingContext *context) override
@@ -66,12 +67,12 @@ protected:
 
     // tiling
     void DoFormulaticTiling(Mc2Tiling::RCSTiling &rcsCfg);
-    void SetStorageAWorkSpaceSize(Mc2Tiling::RCSTiling& rcsCfg);
-    void SetRcsTilingData(Mc2Tiling::RCSTiling& rcsCfg);
-    uint32_t ReduceScatterSpliteM(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64) const;
-    ge::graphStatus DoSplitMTiling(Mc2Tiling::RCSTiling& rcsCfg);
+    void SetStorageAWorkSpaceSize(Mc2Tiling::RCSTiling &rcsCfg);
+    void SetRcsTilingData(Mc2Tiling::RCSTiling &rcsCfg);
+    uint32_t ReduceScatterSpliteM(mc2tiling::TilingArgs &args, uint32_t maxTileCnt = 64) const;
+    ge::graphStatus DoSplitMTiling(Mc2Tiling::RCSTiling &rcsCfg);
     virtual CutResult GetTilingResult();
-    uint32_t GetRankSize(const char* group) const;
+    uint32_t GetRankSize(const char *group) const;
     void Reset();
     bool ReduceScatterCheckShapeInfo();
     bool CheckInputScale() const;
@@ -83,10 +84,16 @@ protected:
     void SetReduceScatterTilingArgsBasicInfo();
     void SetReduceScatterTilingArgs();
     ge::graphStatus SetReduceScatterTilingArgsCommAlgo();
-    virtual ge::graphStatus CheckInput() { return ge::GRAPH_SUCCESS; }
-    inline mc2tiling::TilingArgs GetMc2tilingArgs() { return args_; };
-    void SetTilingResult(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling, 
-                         ::TCubeTiling &tailTiling, uint32_t& debugMode, uint32_t& dataType);
+    virtual ge::graphStatus CheckInput()
+    {
+        return ge::GRAPH_SUCCESS;
+    }
+    inline mc2tiling::TilingArgs GetMc2tilingArgs()
+    {
+        return args_;
+    };
+    void SetTilingResult(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling, ::TCubeTiling &tailTiling,
+                         uint32_t &debugMode, uint32_t &dataType);
     void SetMsgDataInfo(const Mc2Tiling::RCSTiling &rcsCfg, const ::TCubeTiling &mmTiling,
                         const ::TCubeTiling &tailTiling, uint32_t debugMode);
     ge::graphStatus CheckHCCLSize();
@@ -96,15 +103,15 @@ protected:
     platform_ascendc::SocVersion socVersion_;
     NpuArch npuArch_;
     bool isA2APath_;
-    const char* opName_ = nullptr;
+    const char *opName_ = nullptr;
     int64_t rankSize_{0};
     uint8_t commMode_{0};
-    uint64_t tileMValue_{0};   // mc2 切块后主块M的大小；
-    uint64_t tailMValue_{0};   // mc2 切块后尾块M的大小；
-    uint64_t longTileLen_{0};  // mc2 切块后长块的大小；
+    uint64_t tileMValue_{0};  // mc2 切块后主块M的大小；
+    uint64_t tailMValue_{0};  // mc2 切块后尾块M的大小；
+    uint64_t longTileLen_{0}; // mc2 切块后长块的大小；
     uint64_t mmResultLen_{0};
     uint32_t libApiWorkSpaceSize_{0};
 };
-}  // namespace optiling
+} // namespace optiling
 
 #endif //__MATMUL_REDUCE_SCATTER_TILING_H__

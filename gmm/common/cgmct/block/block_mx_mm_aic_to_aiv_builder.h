@@ -36,19 +36,20 @@ namespace Cgmct {
 namespace Gemm {
 namespace Block {
 template <class AType_, class LayoutA_, class BType_, class LayoutB_, class BiasType_, class CType_, class LayoutC_,
-          class L1TileShape_, class L0TileShape_, class BlockScheduler_, class BlockMatmulPolicy_ = QuantMatmulWithTileMultiBlock<>,
-          class TileCopyParam_ = void, typename Enable_ = void>
+          class L1TileShape_, class L0TileShape_, class BlockScheduler_,
+          class BlockMatmulPolicy_ = QuantMatmulWithTileMultiBlock<>, class TileCopyParam_ = void,
+          typename Enable_ = void>
 class BlockMxMmAicToAivBuilder {
     static_assert(AscendC::Std::always_false_v<BlockMatmulPolicy_>,
                   "BlockMxMmAicToAivBuilder is not implemented for this BlockMatmulPolicy");
 };
 
-template <class AType_, class LayoutA_, class BType_, class LayoutB_, class BiasType_, class CType_, class LayoutC_, class L1TileShape_,
-          class L0TileShape_, class BlockScheduler_, class BlockMatmulPolicy_, class TileCopyParam_>
-class BlockMxMmAicToAivBuilder<AType_, LayoutA_, BType_, LayoutB_, BiasType_, CType_, LayoutC_, L1TileShape_, L0TileShape_,
-                              BlockScheduler_, BlockMatmulPolicy_, TileCopyParam_,
-                              AscendC::Std::enable_if_t<AscendC::Std::is_base_of_v<QuantMatmulWithTileMultiBlock<>,
-                              BlockMatmulPolicy_>>> {
+template <class AType_, class LayoutA_, class BType_, class LayoutB_, class BiasType_, class CType_, class LayoutC_,
+          class L1TileShape_, class L0TileShape_, class BlockScheduler_, class BlockMatmulPolicy_, class TileCopyParam_>
+class BlockMxMmAicToAivBuilder<
+    AType_, LayoutA_, BType_, LayoutB_, BiasType_, CType_, LayoutC_, L1TileShape_, L0TileShape_, BlockScheduler_,
+    BlockMatmulPolicy_, TileCopyParam_,
+    AscendC::Std::enable_if_t<AscendC::Std::is_base_of_v<QuantMatmulWithTileMultiBlock<>, BlockMatmulPolicy_>>> {
 public:
     using AType = AType_;
     using BType = BType_;
@@ -77,9 +78,8 @@ public:
     using CMatmulType = AscendC::MatmulType<AscendC::TPosition::VECIN, formatC, CType>;
     using BiasMatmulType = AscendC::MatmulType<AscendC::TPosition::GM, CubeFormat::ND, BiasType>;
 
-    using BlockMmadOp =
-        Block::BlockMmad<BlockMatmulPolicy, L1TileShape, L0TileShape, AMatmulType, BMatmulType, CMatmulType,
-                         BiasMatmulType, TileCopyParam>;
+    using BlockMmadOp = Block::BlockMmad<BlockMatmulPolicy, L1TileShape, L0TileShape, AMatmulType, BMatmulType,
+                                         CMatmulType, BiasMatmulType, TileCopyParam>;
 
     static constexpr int64_t l1M = GetIntegralConstant<MNK_M, L1TileShape>();
     static constexpr int64_t l1N = GetIntegralConstant<MNK_N, L1TileShape>();
@@ -103,10 +103,13 @@ public:
     // params
     using Params = Arguments;
 
-    __aicore__ inline BlockMxMmAicToAivBuilder() {}
+    __aicore__ inline BlockMxMmAicToAivBuilder()
+    {
+    }
 
-    __aicore__ inline ~BlockMxMmAicToAivBuilder() {}
-
+    __aicore__ inline ~BlockMxMmAicToAivBuilder()
+    {
+    }
 };
 } // namespace Block
 } // namespace Gemm

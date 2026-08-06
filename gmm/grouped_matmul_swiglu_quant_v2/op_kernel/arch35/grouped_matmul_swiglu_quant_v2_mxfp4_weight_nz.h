@@ -44,11 +44,10 @@ public:
         uint64_t scaleFactorB = (matmulTiling->mxTypePara >> MX_SCALE_FACTOR_BIT) & MX_SCALE_FACTOR_MASK;
         uint64_t kAL1 = static_cast<uint64_t>(matmulTiling->stepKa) * static_cast<uint64_t>(matmulTiling->baseK);
         uint64_t kBL1 = static_cast<uint64_t>(matmulTiling->stepKb) * static_cast<uint64_t>(matmulTiling->baseK);
-        uint64_t scaleKL1 = Cgmct::Gemm::Min(
-            Cgmct::Gemm::Max(scaleFactorA * kAL1, scaleFactorB * kBL1), static_cast<uint64_t>(matmulTiling->Ka));
+        uint64_t scaleKL1 = Cgmct::Gemm::Min(Cgmct::Gemm::Max(scaleFactorA * kAL1, scaleFactorB * kBL1),
+                                             static_cast<uint64_t>(matmulTiling->Ka));
         typename BlockMmadMxOp::L1Params l1Params{kAL1, kBL1, scaleKL1, MX_L1_BUFFER_NUM};
-        AscendC::Shape<int64_t, int64_t, int64_t> problemShape{matmulTiling->M, matmulTiling->N,
-                                                               matmulTiling->Ka};
+        AscendC::Shape<int64_t, int64_t, int64_t> problemShape{matmulTiling->M, matmulTiling->N, matmulTiling->Ka};
         AscendC::Shape<int64_t, int64_t, int64_t> l0TileShape{matmulTiling->baseM, matmulTiling->baseN,
                                                               matmulTiling->baseK};
         if ASCEND_IS_AIC {
@@ -57,12 +56,11 @@ public:
     }
 
     template <typename SingleShape>
-    __aicore__ inline void operator()(const AscendC::GlobalTensor<AType> &aGlobal,
-                                      const AscendC::GlobalTensor<BType> &bGlobal,
-                                      const AscendC::GlobalTensor<AscendC::fp8_e8m0_t> &scaleAGlobal,
-                                      const AscendC::GlobalTensor<AscendC::fp8_e8m0_t> &scaleBGlobal,
-                                      const AscendC::LocalTensor<CType> &cLocal, const SingleShape &singleShape,
-                                      bool transA, bool transB)
+    __aicore__ inline void
+    operator()(const AscendC::GlobalTensor<AType> &aGlobal, const AscendC::GlobalTensor<BType> &bGlobal,
+               const AscendC::GlobalTensor<AscendC::fp8_e8m0_t> &scaleAGlobal,
+               const AscendC::GlobalTensor<AscendC::fp8_e8m0_t> &scaleBGlobal,
+               const AscendC::LocalTensor<CType> &cLocal, const SingleShape &singleShape, bool transA, bool transB)
     {
         (void)transA;
         (void)transB;
@@ -84,8 +82,7 @@ class BlockMxLowLevelMmAicToAivBuilder {
 };
 
 template <class AType_, class LayoutA_, class BType_, class LayoutB_, class BiasType_, class CType_, class LayoutC_,
-          class L1TileShape_, class L0TileShape_, class BlockScheduler_, class BlockMatmulPolicy_,
-          class TileCopyParam_>
+          class L1TileShape_, class L0TileShape_, class BlockScheduler_, class BlockMatmulPolicy_, class TileCopyParam_>
 class BlockMxLowLevelMmAicToAivBuilder<
     AType_, LayoutA_, BType_, LayoutB_, BiasType_, CType_, LayoutC_, L1TileShape_, L0TileShape_, BlockScheduler_,
     BlockMatmulPolicy_, TileCopyParam_,
@@ -153,17 +150,20 @@ __aicore__ inline void GmmSwigluMxFp4WeightNz(GM_ADDR x, GM_ADDR weight, GM_ADDR
     using BlockScheduler = GroupedMatmulAswtWithTailSplitScheduler;
     using C1Type = float;
     using BlockMmadPolicy = MatmulWithScale<AscendC::Shape<_0, _0, _0, _0>, 0>;
-    using BlockEpilogue = Block::BlockEpilogueSwigluQuant<L0TileShape, CType, C1Type, WeightScaleType,
-                                                          WeightScaleType, true>;
+    using BlockEpilogue =
+        Block::BlockEpilogueSwigluQuant<L0TileShape, CType, C1Type, WeightScaleType, WeightScaleType, true>;
     using ProblemShape = MatmulShape;
-    using BlockMmad = Block::BlockMxLowLevelMmAicToAivBuilder<AType, LayoutA, BType, LayoutB, BiasType, C1Type,
-                                                              LayoutC, L1TileShape, L0TileShape, BlockScheduler,
-                                                              BlockMmadPolicy, void>;
+    using BlockMmad =
+        Block::BlockMxLowLevelMmAicToAivBuilder<AType, LayoutA, BType, LayoutB, BiasType, C1Type, LayoutC, L1TileShape,
+                                                L0TileShape, BlockScheduler, BlockMmadPolicy, void>;
     using QGmmKernel = Kernel::KernelGmmSwiGluMixOnlineDynamic<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename QGmmKernel::Params;
     using GMMTiling = typename QGmmKernel::GMMTiling;
-    GMMTiling gmmParams{gmmSwigluQuantParams_.groupNum, gmmSwigluQuantParams_.groupListType, mmTilingData_.baseM,
-                        mmTilingData_.baseN, mmTilingData_.baseK,
+    GMMTiling gmmParams{gmmSwigluQuantParams_.groupNum,
+                        gmmSwigluQuantParams_.groupListType,
+                        mmTilingData_.baseM,
+                        mmTilingData_.baseN,
+                        mmTilingData_.baseK,
                         gmmSwigluQuantParams_.isMxWeightNzMultiTensor};
     gmmParams.matmulTiling = &mmTilingData_;
     Params params = {{1, 1, 1, 1},

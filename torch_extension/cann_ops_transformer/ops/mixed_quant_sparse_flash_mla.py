@@ -132,34 +132,42 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
             key_dtype=None,
             value_dtype=None,
         ):
-            if layout_q == "BSND":
-                ## 添加softmax_lse
-                attn_out = torch.empty(q.shape, dtype=q.dtype, device="meta")
-                if return_softmax_lse:
+            attn_out = torch.empty(q.shape, dtype=q.dtype, device="meta")
+            if return_softmax_lse:
+                if layout_q == "TND":
+                    if layout_kv == "PA_BBND":
+                        softmax_lse = torch.empty(
+                            [
+                                ori_kv.shape[2],
+                                q.shape[0],
+                                int(q.shape[1] / ori_kv.shape[2]),
+                            ],
+                            dtype=torch.float32,
+                            device="meta",
+                        )
+                    else:
+                        softmax_lse = torch.empty(
+                            [
+                                ori_kv.shape[1],
+                                q.shape[0],
+                                int(q.shape[1] / ori_kv.shape[1]),
+                            ],
+                            dtype=torch.float32,
+                            device="meta",
+                        )
+                else:
                     softmax_lse = torch.empty(
                         [
                             q.shape[0],
                             ori_kv.shape[2],
                             q.shape[1],
-                            q.shape[2] / ori_kv.shape[2],
+                            int(q.shape[2] / ori_kv.shape[2]),
                         ],
                         dtype=torch.float32,
                         device="meta",
                     )
-                else:
-                    # 给一个空的合法张量，不能是 nullptr
-                    softmax_lse = torch.empty([], dtype=torch.float32, device="meta")
             else:
-                attn_out = torch.empty(q.shape, dtype=q.dtype, device="meta")
-                if return_softmax_lse:
-                    softmax_lse = torch.empty(
-                        [ori_kv.shape[1], q.shape[0], q.shape[2] / ori_kv.shape[2]],
-                        dtype=torch.float32,
-                        device="meta",
-                    )
-                else:
-                    # 给一个空的合法张量，不能是 nullptr
-                    softmax_lse = torch.empty([], dtype=torch.float32, device="meta")
+                softmax_lse = torch.empty([], dtype=torch.float32, device="meta")
             return (attn_out, softmax_lse)
 
 

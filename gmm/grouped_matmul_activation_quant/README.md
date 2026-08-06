@@ -47,7 +47,7 @@
       \frac{x}{1 + \exp\left(-1.595769121 \times \left(x + 0.044715 \times x^3\right)\right)}
       $$
 
-    - 对激活结果在N轴按$blocksize=64$分组执行MX动态量化，输出量化结果$y$和量化因子$y\_scale$。
+    - 对激活结果在N轴按$blocksize=32$分组执行MX动态量化，输出量化结果$y$和量化因子$y\_scale$。
 
     </details>
 
@@ -75,12 +75,9 @@
 
 ## 约束说明
 
-- 当前仅支持激活函数为gelu_tanh、量化模式为MXFP8的组合。
 - `x`仅支持非转置输入；`weight`支持非转置和转置输入，`weight_scale`转置属性需要与`weight`保持一致。
-- `weight`必须为FRACTAL_NZ格式，viewShape为3维，storageShape为5维。
 - `N`必须为64的整数倍，`group_list`第一维取值范围为[1, 1024]。
-- MXFP8场景下`bias`必须为空，支持nullptr、空tensorList或长度为1且元素shape为(0)的空tensorList。
-- `round_mode`当前仅支持`"rint"`，`scale_alg`支持0或1。
+- `bias`为空时，支持nullptr、空tensorList或长度为1且元素shape为(0)的空tensorList。
 
 ## 调用说明
 

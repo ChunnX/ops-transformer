@@ -24,5 +24,5 @@ struct WQBmmCustomPolicy : public AscendC::Impl::Detail::MatmulPolicy<MM_CFG, IM
 public:
     using CopyCubeOut = WQBmmCustomCopyCubeOut<IMPL, A_TYPE, B_TYPE, C_TYPE, MM_CFG>;
 };
-}  // namespace WeightQuantBatchMatmulV2::Arch35
-#endif  // WQBMM_CUSTOM_POLICY_H
+} // namespace WeightQuantBatchMatmulV2::Arch35
+#endif // WQBMM_CUSTOM_POLICY_H

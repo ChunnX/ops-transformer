@@ -154,8 +154,8 @@ public:
     }
 };
 template <class ProblemShape_, class L1TileShape_, class L0TileShape_, bool TransA_, bool TransB_>
-struct BlockSchedulerSelector<ProblemShape_, L1TileShape_, L0TileShape_, Cgmct::Gemm::GroupedMatmulAswtScheduler, TransA_,
-                              TransB_> {
+struct BlockSchedulerSelector<ProblemShape_, L1TileShape_, L0TileShape_, Cgmct::Gemm::GroupedMatmulAswtScheduler,
+                              TransA_, TransB_> {
     using SchedulerOp = BlockSchedulerGroupedMatmulAswt<ProblemShape_, L1TileShape_, L0TileShape_>;
 };
 } // namespace Block

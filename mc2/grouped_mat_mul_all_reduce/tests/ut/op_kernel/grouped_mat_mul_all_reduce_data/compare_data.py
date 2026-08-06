@@ -17,7 +17,7 @@ curr_dir = os.path.dirname(os.path.realpath(__file__))
 
 
 def compare_data(golden_file_lists, output_file_lists, d_type):
-    precision = 5/1000
+    precision = 5 / 1000
     data_same = True
     assert len(golden_file_lists) == len(output_file_lists)
     for gold, out in zip(golden_file_lists, output_file_lists):
@@ -50,5 +50,5 @@ def process(d_type):
         exit(1)  # failed
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     process(sys.argv[1])
