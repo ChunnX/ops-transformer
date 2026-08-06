@@ -149,7 +149,9 @@ constexpr DtypeSpec OUTPUT_DTYPE_SPECS[] = {
 ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckDtypeValid()
 {
     for (const auto& spec : INPUT_DTYPE_SPECS) {
-        auto desc = context_->GetInputDesc(spec.index);
+        // 可选输入必须按 IR 下标取：它未实例化时后面输入的实例化下标会整体前移，
+        // 用 GetInputDesc 会取到隔壁输入的 desc
+        auto desc = spec.optional ? context_->GetOptionalInputDesc(spec.index) : context_->GetInputDesc(spec.index);
         if (desc == nullptr) {
             OP_CHECK_IF(!spec.optional,
                         OP_LOGE(context_->GetNodeName(), "required input %s desc is nullptr.", spec.name),
