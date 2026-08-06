@@ -682,7 +682,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnGroupedMatmulActivationQuantWeightNz,
-                   DFX_IN(x, groupList, weight, weightScale, bias, xScaleOptional),
+                   DFX_IN(x, groupList, weight, weightScale, bias, xScaleOptional, activationType, groupListType,
+                          tuningConfig, quantMode, roundMode, scaleAlg, dstTypeMax),
                    DFX_OUT(y, yScale));
     bool transposeWeight = false;
 
