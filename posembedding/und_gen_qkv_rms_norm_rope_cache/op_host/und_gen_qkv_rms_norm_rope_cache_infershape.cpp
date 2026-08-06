@@ -25,15 +25,20 @@ constexpr size_t IN_UND_WEIGHTS_K = 2;
 constexpr size_t IN_COS_SIN_CACHE = 3;
 constexpr size_t IN_K_CACHE = 4;
 constexpr size_t IN_V_CACHE = 5;
+constexpr size_t IN_SLOT_MAPPING = 6;
+constexpr size_t IN_POSITIONS = 7;
 constexpr size_t IN_GEN_QKV = 8;
 constexpr size_t IN_GEN_WEIGHTS_Q = 9;
 constexpr size_t IN_GEN_WEIGHTS_K = 10;
+constexpr size_t IN_CAT_INDICES = 11;
 
 constexpr size_t OUT_Q = 0;
 constexpr size_t OUT_K_CACHE = 1;
 constexpr size_t OUT_V_CACHE = 2;
 
 constexpr size_t ATTR_NUM_HEADS_Q = 0;
+constexpr size_t ATTR_NUM_HEADS_K = 1;
+constexpr size_t ATTR_NUM_HEADS_V = 2;
 
 constexpr size_t DIM_ZERO = 0;
 constexpr size_t DIM_ONE = 1;
@@ -45,17 +50,17 @@ constexpr size_t DIM_NUM_THREE = 3;
 constexpr size_t DIM_NUM_FOUR = 4;
 constexpr int64_t UNKNOWN_DIM_VALUE = -1LL;
 
-// D（headDim）在多个输入里都出现，任取一个能拿到具体值的即可：
-// und_qkv/gen_qkv 的 [.., .., D]、四个 RMSNorm 权重的 [D]、cos_sin_cache 的 [max_pos, D]、
-// k_cache/v_cache 的 [Bn, Bs, H, D]。按“必选输入优先”的顺序尝试，先命中先用。
-struct HeadDimSource {
+// 某个维度的一个候选来源：从第 inputIdx 个输入（rank 须为 expectDimNum）的第 dimIdx 维取值
+struct DimSource {
     size_t inputIdx;
     size_t dimIdx;
     size_t expectDimNum;
     bool optional;
 };
 
-constexpr HeadDimSource HEAD_DIM_SOURCES[] = {
+// D（headDim）在 9 个输入里都出现：und_qkv/gen_qkv 的 [.., .., D]、四个 RMSNorm 权重的 [D]、
+// cos_sin_cache 的 [max_pos, D]、k_cache/v_cache 的 [Bn, Bs, H, D]
+constexpr DimSource HEAD_DIM_SOURCES[] = {
     {IN_UND_QKV, DIM_TWO, DIM_NUM_THREE, false},
     {IN_COS_SIN_CACHE, DIM_ONE, DIM_NUM_TWO, false},
     {IN_UND_WEIGHTS_Q, DIM_ZERO, DIM_NUM_ONE, false},
@@ -67,8 +72,26 @@ constexpr HeadDimSource HEAD_DIM_SOURCES[] = {
     {IN_GEN_WEIGHTS_K, DIM_ZERO, DIM_NUM_ONE, true},
 };
 
+// T 除了 und_len + gen_len 相加，还能从三个按 token 组织的输入直接读出
+constexpr DimSource TOTAL_TOKEN_SOURCES[] = {
+    {IN_POSITIONS, DIM_ONE, DIM_NUM_TWO, false},     // [3, T]
+    {IN_SLOT_MAPPING, DIM_ZERO, DIM_NUM_ONE, false}, // [T]
+    {IN_CAT_INDICES, DIM_ZERO, DIM_NUM_ONE, true},   // [T]
+};
+
+// Bn/Bs 是 k_cache 与 v_cache 共有的前两维（约束要求两者一致），任一可用即可
+constexpr DimSource BLOCK_NUM_SOURCES[] = {
+    {IN_K_CACHE, DIM_ZERO, DIM_NUM_FOUR, false},
+    {IN_V_CACHE, DIM_ZERO, DIM_NUM_FOUR, false},
+};
+
+constexpr DimSource BLOCK_SIZE_SOURCES[] = {
+    {IN_K_CACHE, DIM_ONE, DIM_NUM_FOUR, false},
+    {IN_V_CACHE, DIM_ONE, DIM_NUM_FOUR, false},
+};
+
 // 取某个输入的指定维；输入缺省、未知 rank、rank 不符或该维本身是 -1 时返回 -1
-inline int64_t TryGetDim(gert::InferShapeContext* context, const HeadDimSource& src)
+inline int64_t TryGetDim(gert::InferShapeContext* context, const DimSource& src)
 {
     const gert::Shape* shape =
         src.optional ? context->GetOptionalInputShape(src.inputIdx) : context->GetInputShape(src.inputIdx);
@@ -78,8 +101,21 @@ inline int64_t TryGetDim(gert::InferShapeContext* context, const HeadDimSource& 
     return shape->GetDim(src.dimIdx);
 }
 
-// 取 T = und_len + gen_len；任一段拿不到具体值时整体不可知
-inline int64_t InferTotalTokens(const gert::Shape* undQkvShape, const gert::Shape* genQkvShape)
+// 按给定顺序逐个来源尝试，先拿到具体值就返回；全都拿不到才返回 -1
+template <size_t N>
+inline int64_t InferDimFromSources(gert::InferShapeContext* context, const DimSource (&sources)[N])
+{
+    for (const auto& src : sources) {
+        const int64_t dim = TryGetDim(context, src);
+        if (dim != UNKNOWN_DIM_VALUE) {
+            return dim;
+        }
+    }
+    return UNKNOWN_DIM_VALUE;
+}
+
+// T = und_len + gen_len；任一段拿不到具体值时返回 -1，交由调用方回退到其他来源
+inline int64_t InferTotalTokensByAdd(const gert::Shape* undQkvShape, const gert::Shape* genQkvShape)
 {
     if (Ops::Base::IsUnknownRank(*undQkvShape)) {
         return UNKNOWN_DIM_VALUE;
@@ -96,6 +132,17 @@ inline int64_t InferTotalTokens(const gert::Shape* undQkvShape, const gert::Shap
     }
     const int64_t genLen = genQkvShape->GetDim(DIM_ZERO);
     return genLen == UNKNOWN_DIM_VALUE ? UNKNOWN_DIM_VALUE : undLen + genLen;
+}
+
+// KV Cache 输出与输入同址，shape 为 [Bn, Bs, H, D]：H 由属性给出恒可知，Bn/Bs/D 能推则推
+inline void SetCacheShape(gert::Shape* cacheShape, int64_t blockNum, int64_t blockSize, int64_t numHeads,
+                          int64_t headDim)
+{
+    cacheShape->SetDimNum(DIM_NUM_FOUR);
+    cacheShape->SetDim(DIM_ZERO, blockNum);
+    cacheShape->SetDim(DIM_ONE, blockSize);
+    cacheShape->SetDim(DIM_TWO, numHeads);
+    cacheShape->SetDim(DIM_THREE, headDim);
 }
 
 graphStatus InferShape4UndGenQkvRmsNormRopeCache(gert::InferShapeContext* context)
@@ -128,28 +175,32 @@ graphStatus InferShape4UndGenQkvRmsNormRopeCache(gert::InferShapeContext* contex
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
     const int64_t* numHeadsQ = attrs->GetInt(ATTR_NUM_HEADS_Q);
     OP_CHECK_NULL_WITH_CONTEXT(context, numHeadsQ);
+    const int64_t* numHeadsK = attrs->GetInt(ATTR_NUM_HEADS_K);
+    OP_CHECK_NULL_WITH_CONTEXT(context, numHeadsK);
+    const int64_t* numHeadsV = attrs->GetInt(ATTR_NUM_HEADS_V);
+    OP_CHECK_NULL_WITH_CONTEXT(context, numHeadsV);
 
-    // q 恒为 3D [T, Hq, D]：Hq 直接来自属性，任何场景都可知；T、D 先按不可知铺底，再逐个尝试推导
-    qOutShape->SetDimNum(DIM_NUM_THREE);
-    qOutShape->SetDim(DIM_ZERO, UNKNOWN_DIM_VALUE);
-    qOutShape->SetDim(DIM_ONE, *numHeadsQ);
-    qOutShape->SetDim(DIM_TWO, UNKNOWN_DIM_VALUE);
+    // 三个输出的 rank 恒定、头数恒由属性给出，其余维度能推则推、推不出才置 -1
 
-    // T = und_len + gen_len
-    qOutShape->SetDim(DIM_ZERO, InferTotalTokens(undQkvShape, genQkvShape));
-
-    // D 从任一能给出具体值的输入取
-    for (const auto& src : HEAD_DIM_SOURCES) {
-        const int64_t headDim = TryGetDim(context, src);
-        if (headDim != UNKNOWN_DIM_VALUE) {
-            qOutShape->SetDim(DIM_TWO, headDim);
-            break;
-        }
+    // T：优先按定义 und_len + gen_len 相加；相加不成立时退到按 token 组织的输入直接读
+    int64_t total = InferTotalTokensByAdd(undQkvShape, genQkvShape);
+    if (total == UNKNOWN_DIM_VALUE) {
+        total = InferDimFromSources(context, TOTAL_TOKEN_SOURCES);
     }
+    // D：9 个输入都带 D，取第一个能给出具体值的
+    const int64_t headDim = InferDimFromSources(context, HEAD_DIM_SOURCES);
 
-    // k_cache/v_cache 原地写入，shape 透传（输入为 -2 时输出同样是 -2）
-    *kCacheOutShape = *kCacheShape;
-    *vCacheOutShape = *vCacheShape;
+    // q: [T, Hq, D]
+    qOutShape->SetDimNum(DIM_NUM_THREE);
+    qOutShape->SetDim(DIM_ZERO, total);
+    qOutShape->SetDim(DIM_ONE, *numHeadsQ);
+    qOutShape->SetDim(DIM_TWO, headDim);
+
+    // k_cache/v_cache 原地写入，输出与输入同址：[Bn, Bs, Hk/Hv, D]
+    const int64_t blockNum = InferDimFromSources(context, BLOCK_NUM_SOURCES);
+    const int64_t blockSize = InferDimFromSources(context, BLOCK_SIZE_SOURCES);
+    SetCacheShape(kCacheOutShape, blockNum, blockSize, *numHeadsK, headDim);
+    SetCacheShape(vCacheOutShape, blockNum, blockSize, *numHeadsV, headDim);
 
     OP_LOGD(context, "End to do InferShape4UndGenQkvRmsNormRopeCache.");
     return GRAPH_SUCCESS;
