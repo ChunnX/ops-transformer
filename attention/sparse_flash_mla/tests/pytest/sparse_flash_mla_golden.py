@@ -754,7 +754,7 @@ class GeneralizedSFA:
                     ori_topk_length, ori_topk_length.shape, self.layout_q, cu_seqlens_q
                 )
                 if ori_topk_length is not None
-                else None
+                else None, None
             )
         else:
             ori_topk_length_bnsd = None
@@ -764,7 +764,7 @@ class GeneralizedSFA:
                     cmp_topk_length, cmp_topk_length.shape, self.layout_q, cu_seqlens_q
                 )
                 if cmp_topk_length is not None
-                else None
+                else None, None
             )
         else:
             cmp_topk_length_bnsd = None
@@ -878,6 +878,8 @@ def gen_sparse_indices_bsnd(
     kv_topk_mode,
     topk_length_override=None,
 ):
+    if mask_mode != 0:
+        kv_topk_mode = "no"  # mask_mode != 0时，kv_topk_mode只能为no
     if sparse_indices_mode == None:  # 不传默认取full, 兼容老用例
         sparse_indices_mode = "full"
     if sparse_indices_mode not in ["full", "random"]:
@@ -968,6 +970,8 @@ def gen_sparse_indices_tnd(
     kv_topk_mode,
     topk_length_override=None,
 ):
+    if mask_mode != 0:
+        kv_topk_mode = "no"  # mask_mode != 0时，kv_topk_mode只能为no
     if sparse_indices_mode == None:
         sparse_indices_mode = "full"
     if sparse_indices_mode not in ["full", "random"]:
@@ -1782,6 +1786,9 @@ def gen_data(params, prepare_device_storage=True):
         cmp_topk_length,
         return_softmax_lse,
     )
+
+    max_seqlen_ori_kv = seqused_ori_kv.max().item()
+    max_seqlen_cmp_kv = seqused_cmp_kv.max().item() if seqused_cmp_kv is not None else 0
     # ORI_SPARSE/ORI_CMP_SPARSE: seqused (actualLength) not passed to op, determined by sparse_indices and topkLength
     # cu_seqlens still passed for TND kv layout (needed for data addressing in kernel)
     no_actual_length = template_run_mode in ("ORI_SPARSE", "ORI_CMP_SPARSE")
@@ -1823,12 +1830,8 @@ def gen_data(params, prepare_device_storage=True):
             "cmp_topk_length": cmp_topk_length if cmp_topk_length is not None else None,
             "B": B,
             "max_seqlen_q": max_seqlen_q,
-            "max_seqlen_ori_kv": max(seqused_ori_kv)
-            if seqused_ori_kv is not None
-            else (T2 if layout_kv == "TND" else S2),
-            "max_seqlen_cmp_kv": max(seqused_cmp_kv)
-            if seqused_cmp_kv is not None
-            else 0,
+            "max_seqlen_ori_kv": max_seqlen_ori_kv,
+            "max_seqlen_cmp_kv": max_seqlen_cmp_kv,
             "K1": K1,
             "K": K,
             "cmp_ratio": cmp_ratio,
