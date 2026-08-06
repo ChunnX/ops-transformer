@@ -260,7 +260,11 @@ def check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu, stateCacheCpu, ape
 
     def interleave(t):
         # 参考为顺序布局 (prev|cur)；NPU 正向输出为交错布局
-        # (偶行=prev、奇行=cur)——比对前重排参考
+        # (偶行=prev、奇行=cur)——比对前重排参考。
+        # coff=1 时无 prev/cur 之分，参考即顺序布局，直接返回（对半分会导致
+        # 偶数错位 / 奇数崩溃）。
+        if coff == 1:
+            return t
         n = t.shape[-2]
         half = n // 2
         return torch.stack([t[..., :half, :], t[..., half:, :]], dim=-2).reshape(t.shape)
