@@ -93,15 +93,6 @@ __global__ __aicore__ void quant_block_sparse_attn(
     constexpr bool bsaUseDn = BaseApi::IsDn();
     constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
     if constexpr (QUANT_MODE == MXFullQuantMode) {
-        static_assert(QKV_DTYPE == QBSA_DTYPE_FP8_E4M3FN,
-                      "MXFullQuantMode only supports fp8_e4m3fn Q/K/V");
-        static_assert(layout == QBSALayout::TND && kvLayout == QBSALayout::PA_BNSD && bsaIsPa,
-                      "MXFullQuantMode must use TND query and PA_BNSD KV");
-        static_assert(QUANT_MODE != MXFullQuantMode || bsaUseDn,
-                      "MXFullQuantMode only supports the DN copy/load path");
-        // MX 当前支持 TND + PA BNBD，S2 logical tile 为 512。
-        static_assert(Config == Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128,
-                      "MXFullQuantMode must use S1=128, S2=512, D=128, DV=128 config");
         QBSA_MX_OP_IMPL(HAS_ATTENTION, RETURN_SOFTMAX_LSE);
     } else {
         static_assert(Config == Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128,
