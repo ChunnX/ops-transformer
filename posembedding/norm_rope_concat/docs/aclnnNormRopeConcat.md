@@ -105,9 +105,10 @@
         ```
 
     5. RoPE的输入`ropeSin`的shape为`(seqRope, D)`，其中
-    $$
-    seqRope \leq \min(seqQuery+seqEncoderQuery, seqKey+seqEncoderKey)
-    $$
+
+      $$
+      seqRope \leq \min(seqQuery+seqEncoderQuery, seqKey+seqEncoderKey)
+      $$
 
     6. 当场景为训练时，会输出`queryMean, queryRstd，encoderQueryMean, encoderQueryRstd`供后续反向使用。
 

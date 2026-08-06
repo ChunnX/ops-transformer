@@ -344,7 +344,6 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
   - quarter模式下，切片长度(end - start)必须能被4整除。
   - 输入张量cos和sin的数据类型必须相同。
 
-
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。

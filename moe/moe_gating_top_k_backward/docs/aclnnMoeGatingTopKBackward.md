@@ -30,43 +30,43 @@
 
   1. 缩放梯度
 
-    $$
-    gradYScaled_{ip} = routedScalingFactor \cdot gradY_{ip}
-    $$
+      $$
+      gradYScaled_{ip} = routedScalingFactor \cdot gradY_{ip}
+      $$
 
   2. 正向renorm的反向传播
 
-    $$
-    wPrime_{ip} = xNorm_{i,\ expertIdx_{ip}}
-    $$
+      $$
+      wPrime_{ip} = xNorm_{i,\ expertIdx_{ip}}
+      $$
 
-    $$
-    D_i = \sum_{p} wPrime_{ip} + eps
-    $$
+      $$
+      D_i = \sum_{p} wPrime_{ip} + eps
+      $$
 
-    $$
-    w_{ip} = \frac{wPrime_{ip}}{D_i}
-    $$
+      $$
+      w_{ip} = \frac{wPrime_{ip}}{D_i}
+      $$
 
-    $$
-    beta_i = \sum_{p} w_{ip} \cdot gradYScaled_{ip}
-    $$
+      $$
+      beta_i = \sum_{p} w_{ip} \cdot gradYScaled_{ip}
+      $$
 
-    $$
-    gradWPrime_{ip} = \frac{gradYScaled_{ip} - beta_i}{D_i}
-    $$
+      $$
+      gradWPrime_{ip} = \frac{gradYScaled_{ip} - beta_i}{D_i}
+      $$
 
   3. 散射到完整维度
 
-    $$
-    gradNormX_{ij} = \sum_{p:\ expertIdx_{ip}=j} gradWPrime_{ip}
-    $$
+      $$
+      gradNormX_{ij} = \sum_{p:\ expertIdx_{ip}=j} gradWPrime_{ip}
+      $$
 
   4. Sigmoid反向传播
 
-    $$
-    gradX_{ij} = xNorm_{ij} \cdot (1 - xNorm_{ij}) \cdot gradNormX_{ij}
-    $$
+      $$
+      gradX_{ij} = xNorm_{ij} \cdot (1 - xNorm_{ij}) \cdot gradNormX_{ij}
+      $$
 
 ## 函数原型
 

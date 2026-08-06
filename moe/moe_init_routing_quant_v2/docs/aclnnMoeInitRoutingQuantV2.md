@@ -336,7 +336,7 @@ aclnnStatus aclnnMoeInitRoutingQuantV2(
   </tbody></table>
 
   <!-- npu="950" id7 -->
-  -   <term>Ascend 950PR/Ascend 950DT</term>：输出expandedXOut数据类型仅支持INT8。
+  - <term>Ascend 950PR/Ascend 950DT</term>：输出expandedXOut数据类型仅支持INT8。
 
   <!-- end id7 -->
 

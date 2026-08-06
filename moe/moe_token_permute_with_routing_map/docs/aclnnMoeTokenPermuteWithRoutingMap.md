@@ -72,7 +72,7 @@
   $$
 
   $$
-  sortedIndicesOut = argsort(routingMap.T,dim=-1)[:, :capacity]
+  sortedIndicesOut = argsort[routingMap.T,dim=-1](:, :capacity)
   $$
 
   $$
