@@ -221,13 +221,19 @@ public:
         addrUb += UB_LSE_OUT_BUFCNT * UB_LSE_OUT_BUF_BYTES;
     }
 
-    __aicore__ inline void ResetSoftmaxBuffer(uint32_t slotIdx)
+    __aicore__ inline void ResetSoftmaxBuffer(uint32_t slotIdx, const RunInfoX &runInfo)
     {
         constexpr uint32_t softmaxBufElementCount = UB_SOFTMAX_SUM_BUF_BYTES / sizeof(T);
         LocalTensor<T> sumUb = softmaxSumBuf_[slotIdx * softmaxBufElementCount];
         LocalTensor<T> maxUb = softmaxMaxBuf_[slotIdx * softmaxBufElementCount];
-        Duplicate<T>(sumUb, static_cast<T>(0), softmaxBufElementCount);
-        Duplicate<T>(maxUb, static_cast<T>(-std::numeric_limits<float>::infinity()), softmaxBufElementCount);
+        if (constInfo_.learnableSinkFlag) {
+            T sinkValue = static_cast<T>(sinkGm_.GetValue(runInfo.n2Idx * constInfo_.gSize + runInfo.gIdx));
+            Duplicate<T>(maxUb, sinkValue, softmaxBufElementCount);
+            Duplicate<T>(sumUb, static_cast<T>(1), softmaxBufElementCount);
+        } else {
+            Duplicate<T>(sumUb, static_cast<T>(0), softmaxBufElementCount);
+            Duplicate<T>(maxUb, static_cast<T>(-std::numeric_limits<float>::infinity()), softmaxBufElementCount);
+        }
     }
 
     __aicore__ inline void InitCrossCoreSync()
@@ -260,7 +266,7 @@ public:
         auto mm1ResUbTensor = ubMm1ResBuffers_[mm1ResUbBufId * UB_MM1_RES_BUF_BYTES].template ReinterpretCast<T>();
 
         if (unlikely(runInfo.isFirstS2Loop)) {
-            ResetSoftmaxBuffer(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT);
+            ResetSoftmaxBuffer(runInfo.mloop % UB_SOFTMAX_SUM_BUFCNT, runInfo);
             AscendC::PipeBarrier<PIPE_V>();
         }
 
@@ -395,18 +401,10 @@ public:
 
         LocalTensor<INPUT_T> stage1CastTensor =
             ubVec1ResBuffers_[vec1ResUbBufId_ * UB_VEC1_RES_BUF_BYTES].template ReinterpretCast<INPUT_T>();
-        if (constInfo_.learnableSinkFlag) {
-            float sinkValue = static_cast<float>(sinkGm_.GetValue(runInfo.n2Idx * constInfo_.gSize + runInfo.gIdx));
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize, true>(
-                stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
-                runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
-                static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false, 1.0F, sinkValue);
-        } else {
-            FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
-                stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
-                runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
-                static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false);
-        }
+        FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, false, s2BaseSize>(
+            stage1CastTensor, sumUb, maxUb, mm1ResUbTensor, expUb, nullptr, attenMaskUb,
+            runInfo.actMSizeAlign32 >> 1, runInfo.actSingleLoopS2SizeAlign, runInfo.actSingleLoopS2Size,
+            static_cast<T>(constInfo_.scaleValue), descaleQK, negativeFloatScalar_, 0.0F, false);
 
         Mutex::Unlock<PIPE_V>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
         Mutex::Lock<PIPE_MTE3>(UB_OUT_VEC1_RES_EVENT0 + vec1ResUbBufId_);
