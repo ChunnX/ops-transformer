@@ -145,6 +145,8 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::Init(
     uint32_t ubOffset = 0;
     auto commBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
     ubOffset += COMM_WORKSPACE_SIZE;
+    auto commScaleBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
+    ubOffset += COMM_WORKSPACE_SIZE;
     auto barrierBuf = AscendC::Te::MakeMemPtr<AscendC::Te::Location::UB, uint8_t>(ubOffset);
     teamBarrier_.Init(barrierBuf.Get(), ubmemCtx_, rankSize_,
                       static_cast<uint32_t>(GetBlockIdx()));
@@ -164,8 +166,8 @@ __aicore__ inline void AllGatherMxMatmulUdmaImpl<AType, BType, CType>::Init(
     all_gather_data_.template Init<BARRIER_NONE>(udmaCtx_, teamBarrier_, commTilingData_,
                           aGM_, commBuf.Get(), rankSize_,
                           static_cast<uint32_t>(GetBlockIdx()));
-    all_gather_scale_.Init(udmaCtx_, teamBarrier_, commTilingScale_,
-                          aScaleGM_, commBuf.Get(), rankSize_,
+    all_gather_scale_.template Init<BARRIER_DEVICE>(udmaCtx_, teamBarrier_, commTilingScale_,
+                          aScaleGM_, commScaleBuf.Get(), rankSize_,
                           static_cast<uint32_t>(GetBlockIdx()), dataRegionBytes_);
     AscendC::SyncAll<true>();
 }
