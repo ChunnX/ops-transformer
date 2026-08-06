@@ -37,6 +37,30 @@ constexpr uint32_t OUTPUT_INDEX_0 = 0;
 constexpr uint32_t OUTPUT_INDEX_1 = 1;
 constexpr uint32_t OUTPUT_INDEX_2 = 2;
 
+static std::vector<int64_t> ToVectorFunc(const gert::Shape &shape)
+{
+    size_t shapeSize = shape.GetDimNum();
+    std::vector<int64_t> shapeVec(shapeSize, 0L);
+
+    for (size_t i = 0UL; i < shapeSize; i++) {
+        shapeVec[i] = shape.GetDim(i);
+    }
+    return shapeVec;
+}
+
+static std::string ToStringFunc(const gert::Shape &shape)
+{
+    std::ostringstream oss;
+    auto v = ToVectorFunc(shape);
+    if (v.size() > 0UL) {
+        for (size_t i = 0UL; i < v.size() - 1UL; ++i) {
+            oss << v[i] << ", ";
+        }
+        oss << v[v.size() - 1UL];
+    }
+    return oss.str();
+}
+
 ge::graphStatus InferShapeSparseFlashAttention(gert::InferShapeContext *context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("SparseFlashAttention", "InferShapeContext is nullptr"),
@@ -66,29 +90,33 @@ ge::graphStatus InferShapeSparseFlashAttention(gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, lse_flag);
     bool return_softmax_lse = (lse_flag != nullptr) ? *lse_flag : false;
 
+    OPS_ERR_IF(return_softmax_lse && (inputLayoutKeyPtrStr == "PA_BSND"),
+               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("SparseFlashAttention", "layout_kv",
+                                                     inputLayoutKeyPtrStr.c_str(),
+                                                     "The value of layout_kv should not be PA_BSND when lse_flag is true"),
+               return ge::GRAPH_FAILED);
+    OPS_ERR_IF(queryShape->GetShapeSize() <= 0,
+               OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("SparseFlashAttention", "query",
+                                                     ToStringFunc(queryShape->GetShapeSize()).c_str(),
+                                                     "The shape size of query should be greater than 0"),
+               return ge::GRAPH_FAILED);
+    OPS_ERR_IF(kvShape->GetShapeSize() <= 0,
+               OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("SparseFlashAttention", "key",
+                                                     ToStringFunc(kvShape->GetShapeSize()).c_str(),
+                                                     "The shape size of key should be greater than 0"),
+               return ge::GRAPH_FAILED);
+
     if (return_softmax_lse) {
         if (queryShape->GetDimNum() == DIM_NUM_3) {
-            if (inputLayoutKeyPtrStr == "PA_BSND") {
-                softmaxMaxShape->SetDimNum(DIM_NUM_3);
-                softmaxMaxShape->SetDim(DIM_INDEX_0, keyShape->GetDim(DIM_INDEX_2));
-                softmaxMaxShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
-                softmaxMaxShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / keyShape->GetDim(DIM_INDEX_2));
+            softmaxMaxShape->SetDimNum(DIM_NUM_3);
+            softmaxMaxShape->SetDim(DIM_INDEX_0, keyShape->GetDim(DIM_INDEX_1));
+            softmaxMaxShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
+            softmaxMaxShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / keyShape->GetDim(DIM_INDEX_1));
 
-                softmaxSumShape->SetDimNum(DIM_NUM_3);
-                softmaxSumShape->SetDim(DIM_INDEX_0, keyShape->GetDim(DIM_INDEX_2));
-                softmaxSumShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
-                softmaxSumShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / keyShape->GetDim(DIM_INDEX_2));
-            } else {
-                softmaxMaxShape->SetDimNum(DIM_NUM_3);
-                softmaxMaxShape->SetDim(DIM_INDEX_0, keyShape->GetDim(DIM_INDEX_1));
-                softmaxMaxShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
-                softmaxMaxShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / keyShape->GetDim(DIM_INDEX_1));
-
-                softmaxSumShape->SetDimNum(DIM_NUM_3);
-                softmaxSumShape->SetDim(DIM_INDEX_0, keyShape->GetDim(DIM_INDEX_1));
-                softmaxSumShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
-                softmaxSumShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / keyShape->GetDim(DIM_INDEX_1));
-            }
+            softmaxSumShape->SetDimNum(DIM_NUM_3);
+            softmaxSumShape->SetDim(DIM_INDEX_0, keyShape->GetDim(DIM_INDEX_1));
+            softmaxSumShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
+            softmaxSumShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / keyShape->GetDim(DIM_INDEX_1));
         } else {
             softmaxMaxShape->SetDimNum(DIM_NUM_4);
             softmaxMaxShape->SetDim(DIM_INDEX_0, queryShape->GetDim(DIM_INDEX_0));

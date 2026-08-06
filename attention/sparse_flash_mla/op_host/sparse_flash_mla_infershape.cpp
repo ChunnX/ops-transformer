@@ -33,6 +33,30 @@ constexpr uint32_t CMP_KV_INPUT_INDEX = 2;
 constexpr uint32_t RETURN_SOFTMAX_INDEX = 9;
 constexpr uint32_t LAYOUT_KV_ATTR_INDEX = 7;
 
+static std::vector<int64_t> ToVectorFunc(const gert::Shape &shape)
+{
+    size_t shapeSize = shape.GetDimNum();
+    std::vector<int64_t> shapeVec(shapeSize, 0L);
+
+    for (size_t i = 0UL; i < shapeSize; i++) {
+        shapeVec[i] = shape.GetDim(i);
+    }
+    return shapeVec;
+}
+
+static std::string ToStringFunc(const gert::Shape &shape)
+{
+    std::ostringstream oss;
+    auto v = ToVectorFunc(shape);
+    if (v.size() > 0UL) {
+        for (size_t i = 0UL; i < v.size() - 1UL; ++i) {
+            oss << v[i] << ", ";
+        }
+        oss << v[v.size() - 1UL];
+    }
+    return oss.str();
+}
+
 int64_t GetKvHeadNum(const gert::Shape *kvShape, const std::string &layoutKv)
 {
     if (layoutKv == "TND") {
@@ -75,6 +99,17 @@ ge::graphStatus InferShapeSparseFlashMla(gert::InferShapeContext *context)
     std::string layoutKv = std::string(layoutKvPtr);
     bool returnSoftmaxLse = (returnSoftmaxLsePtr != nullptr) ? *returnSoftmaxLsePtr : false;
     int64_t kvHeadNum = GetKvHeadNum(kvShape, layoutKv);
+
+    OPS_ERR_IF(queryShape->GetShapeSize() <= 0,
+               OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("SparseFlashMla", "q",
+                                                     ToStringFunc(queryShape->GetShapeSize()).c_str(),
+                                                     "The shape size of q should be greater than 0"),
+               return ge::GRAPH_FAILED);
+    OPS_ERR_IF(kvShape->GetShapeSize() <= 0,
+               OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("SparseFlashMla", "ori_kv or cmp_kv",
+                                                     ToStringFunc(kvShape->GetShapeSize()).c_str(),
+                                                     "The shape size of ori_kv or cmp_kv should be greater than 0"),
+               return ge::GRAPH_FAILED);
 
     if (returnSoftmaxLse) {
         if (queryShape->GetDimNum() == DIM_NUM_3) {
