@@ -98,6 +98,7 @@ bool FiaTilingNonQuantMlaArch35::IsCapableSparseLayoutCheckMla()
 
 bool FiaTilingNonQuantMlaArch35::IsCapable()
 {
+    return false;
     if (!IsCapableBasicCheckMla()) {
         return false;
     }
