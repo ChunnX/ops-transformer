@@ -14,11 +14,17 @@ import math
 from utils.data import generate_cpu_mask
 
 
-def tsoftmax(x):
+def tsoftmax(x, sink=None):
     x_max = x.max(dim=-1, keepdim=True).values
+    if sink is not None:
+        sink_expanded = sink.view(1, -1, 1, 1)
+        x_max = torch.maximum(x_max, sink_expanded)
     x_sub = x.sub(x_max)
     y = torch.exp(x_sub)
-    x_sum = y.sum(dim=-1, keepdims=True)
+    x_sum = y.sum(dim=-1, keepdim=True)
+    if sink is not None:
+        sink_exp = torch.exp(sink.view(1, -1, 1, 1) - x_max)
+        x_sum = x_sum + sink_exp
     res = y.div(x_sum)
     return res, x_max, x_sum
 
@@ -35,7 +41,7 @@ def _fix_invalid_rows(softmax_res, x_max, x_sum):
     return softmax_res, x_max, x_sum
 
 
-def _attend(q, k, v, atten_mask, scale, need_fix_invalid):
+def _attend(q, k, v, atten_mask, scale, need_fix_invalid, sink=None):
     q = q.float()
     k = k.float()
     v = v.float()
@@ -47,10 +53,10 @@ def _attend(q, k, v, atten_mask, scale, need_fix_invalid):
     if qk.shape[-1] == 0:
         b, n, sq, _ = qk.shape
         softmax_res = torch.zeros((b, n, sq, 0), dtype=qk.dtype)
-        x_max       = torch.zeros(b, n, sq, 1)  # torch.finfo(torch.float).min
-        x_sum       = torch.zeros(b, n, sq, 1)  # torch.finfo(torch.float).max
+        x_max       = torch.zeros(b, n, sq, 1)
+        x_sum       = torch.zeros(b, n, sq, 1)
     else:
-        softmax_res, x_max, x_sum = tsoftmax(qk)
+        softmax_res, x_max, x_sum = tsoftmax(qk, sink)
 
     # softmax_res, x_max, x_sum = tsoftmax(qk)
 
@@ -122,6 +128,8 @@ def tforward_tnd(q, k, v, **kwargs):
 
     scale = kwargs.get("scale", 1 / (d ** 0.5))
 
+    sink = kwargs.get("sinks", None)
+
     band_index = 0
 
     qk_size = [int(seqused_q[i] * math.ceil(seqused_kv[i] / 16) * 16) for i in range(b)]
@@ -154,7 +162,7 @@ def tforward_tnd(q, k, v, **kwargs):
 
         need_fix = _should_fix_invalid_rows(mask_mode, win_left, win_right, act_q_len, act_kv_len, prefix)
 
-        outi, x_maxi, x_sumi = _attend(qi, ki, vi, atten_maski, scale, need_fix)
+        outi, x_maxi, x_sumi = _attend(qi, ki, vi, atten_maski, scale, need_fix, sink)
         out_golden[:, :, q_start:q_start + act_q_len] = outi
         x_max[:, q_start:q_start + act_q_len] = x_maxi.squeeze(0).squeeze(-1)	 
         x_sum[:, q_start:q_start + act_q_len] = x_sumi.squeeze(0).squeeze(-1)
