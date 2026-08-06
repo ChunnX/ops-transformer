@@ -25,9 +25,11 @@
 #include "ffn_to_attention_v2_tiling.h"
 #if __has_include("../common/moe_distribute_base.h")
 #include "../common/moe_distribute_base.h"
+#include "../common/mc2_moe_context.h"
 #include "../common/mc2_kernel_utils.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
@@ -37,6 +39,7 @@ constexpr uint8_t BUFFER_NUM = 2; // 多buf
 constexpr uint32_t UB_ALIGN = 32; // UB按32字节对齐
 constexpr uint8_t WIN_OFFSET_CNT = 2;
 constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
+constexpr uint8_t COMM_EP_IDX = 0;
 
 #define TemplateFFNToAttentionV2TypeClass typename xType, bool isInputRankTable
 #define TemplateFFNToAttentionV2TypeFunc xType, isInputRankTable
@@ -46,13 +49,13 @@ template <TemplateFFNToAttentionV2TypeClass>
 class FFNToAttentionV2 {
 public:
     __aicore__ inline FFNToAttentionV2(){};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds, GM_ADDR tokenIds,
-                                GM_ADDR expertOffsets, GM_ADDR actualTokenNum, GM_ADDR attnRankTable,
+    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds,
+                                GM_ADDR tokenIds, GM_ADDR expertOffsets, GM_ADDR actualTokenNum, GM_ADDR attnRankTable,
                                 GM_ADDR workspaceGM, TPipe *pipe, const FFNToAttentionV2TilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline GM_ADDR GetWindowAddr(uint32_t curAttenWorkRank);
+    __aicore__ inline GM_ADDR GetWindAddrByRankId(uint8_t ctxIdx, const int32_t rankId);
     __aicore__ inline void ReadTokenMetaData(ReadTokenMetaDataStruct &metaDataStruct, uint32_t YOffset);
     TPipe *tpipe_{nullptr};
     GlobalTensor<xType> xGMTensor_;
@@ -86,20 +89,20 @@ private:
     uint64_t hSize_{0};
     uint64_t winTokenInfoTableSize_{0};
     uint8_t windowType_{0};
-    __gm__ HcclOpResParam *winContext_{nullptr};
+    __gm__ Mc2Aclnn::AttentionFFNContext *mc2Context_{nullptr};
 };
 
 template <TemplateFFNToAttentionV2TypeClass>
 __aicore__ inline void
-FFNToAttentionV2<TemplateFFNToAttentionV2TypeFunc>::Init(GM_ADDR x, GM_ADDR sessionIds, GM_ADDR microBatchIds,
-                                                     GM_ADDR tokenIds, GM_ADDR expertOffsets, GM_ADDR actualTokenNum,
-                                                     GM_ADDR attnRankTable, GM_ADDR workspaceGM, TPipe *pipe,
-                                                     const FFNToAttentionV2TilingData *tilingData)
+FFNToAttentionV2<TemplateFFNToAttentionV2TypeFunc>::Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionIds,
+                                                         GM_ADDR microBatchIds, GM_ADDR tokenIds,
+                                                         GM_ADDR expertOffsets, GM_ADDR actualTokenNum,
+                                                         GM_ADDR attnRankTable, GM_ADDR workspaceGM, TPipe *pipe,
+                                                         const FFNToAttentionV2TilingData *tilingData)
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
-    auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    winContext_ = (__gm__ HcclOpResParam *)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+    mc2Context_ = reinterpret_cast<__gm__ AttentionFFNContext *>(mc2Context);
     axisBS_ = tilingData->ffnToAttentionV2Info.BS;
     axisH_ = tilingData->ffnToAttentionV2Info.H;
     axisHS_ = tilingData->ffnToAttentionV2Info.HS;
@@ -136,15 +139,11 @@ FFNToAttentionV2<TemplateFFNToAttentionV2TypeFunc>::Init(GM_ADDR x, GM_ADDR sess
 }
 
 template <TemplateFFNToAttentionV2TypeClass>
-__aicore__ inline GM_ADDR FFNToAttentionV2<TemplateFFNToAttentionV2TypeFunc>::GetWindowAddr(uint32_t curAttenWorkRank)
+__aicore__ inline GM_ADDR
+FFNToAttentionV2<TemplateFFNToAttentionV2TypeFunc>::GetWindAddrByRankId( const int32_t curAttenWorkRank)
 {
-    // 当 userMemType 为 0 时，使用远程设备内存; 当 userMemType 不为 0 时，使用用户自定义内存
-    if (winContext_->userMemType == 0) {
-        return (__gm__ uint8_t *)(((HcclRankRelationResV2 *)(winContext_->remoteRes[curAttenWorkRank].nextDevicePtr))
-                                      ->windowsIn);
-    } else {
-        return (__gm__ uint8_t *)(winContext_->userMemRes[curAttenWorkRank].addr);
-    }
+    // AttentionFFNContext 中保存的是状态区基址，token 数据区位于 A5 状态区之后。
+    return (GM_ADDR)mc2Context_->epHcclBuffer_[curAttenWorkRank] ;
 }
 
 template <TemplateFFNToAttentionV2TypeClass>
@@ -210,7 +209,7 @@ __aicore__ inline void FFNToAttentionV2<TemplateFFNToAttentionV2TypeFunc>::Proce
             ReadTokenMetaData(metaDataStruct, YOffset);
 
             // 3. 计算win区地址
-            curRankWinAddr = GetWindowAddr(metaDataStruct.curAttenWorkRank);
+            curRankWinAddr = GetWindAddrByRankId(COMM_EP_IDX, metaDataStruct.curAttenWorkRank);
 
             // 4. 计算info和data在win区的地址偏移
             uint64_t tokenInfoTableOffset = metaDataStruct.curMicroBatchIds * batchSizeSendCnt_;

@@ -19,6 +19,7 @@ namespace ops {
 class AttentionToFFN : public OpDef {
 public:
     explicit AttentionToFFN(const char *name) : OpDef(name) {
+        
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
@@ -68,6 +69,7 @@ public:
         this->Attr("quant_mode").AttrType(OPTIONAL).Int();
         this->Attr("sync_flag").AttrType(OPTIONAL).Int();
         this->Attr("ffn_start_rank_id").AttrType(OPTIONAL).Int();
+        this->Attr("ccl_buffer_size").AttrType(OPTIONAL).Int();
     
         // _a3 entry (arch22/attention_to_ffn_a3.cpp).
         OpAICoreConfig aicore_config_a3;
@@ -95,9 +97,9 @@ public:
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
             .ExtendCfgInfo("opFile.value", "attention_to_ffn_apt");
 
-        this->AICore().AddConfig("ascend910_93", aicore_config_a3);
+        //this->AICore().AddConfig("ascend910_93", aicore_config_a3);
         this->AICore().AddConfig("ascend950", aicore_config_apt);
-        this->MC2().HcclGroup({"group"});
+        //this->MC2().HcclGroup({"group"});
     }
 };
 

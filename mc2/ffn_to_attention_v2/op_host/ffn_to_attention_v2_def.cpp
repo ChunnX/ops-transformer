@@ -20,6 +20,11 @@ class FFNToAttentionV2 : public OpDef {
 public:
     explicit FFNToAttentionV2(const char *name) : OpDef(name)
     {
+        this->Input("context")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})

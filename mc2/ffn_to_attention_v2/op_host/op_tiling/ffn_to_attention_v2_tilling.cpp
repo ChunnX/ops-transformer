@@ -44,7 +44,22 @@ using namespace Mc2Tiling;
 namespace MC2Tiling {
 ge::graphStatus FFNToAttentionV2TilingFunc(gert::TilingContext *context)
 {
-    auto ret = FFNToAttentionTilingFunc(context);
+    FFNToAttentionTilingConfig config;
+    config.contextIndex = 0U;
+    config.xIndex = 1U;
+    config.sessionIdsIndex = 2U;
+    config.microBatchIdsIndex = 3U;
+    config.tokenIdsIndex = 4U;
+    config.expertOffsetsIndex = 5U;
+    config.actualTokenNumIndex = 6U;
+    config.attnRankTableIndex = 7U;
+    config.attrGroupIndex = 0U;
+    config.attrWorldSizeIndex = 1U;
+    config.attrTokenInfoTableShapeIndex = 2U;
+    config.attrTokenDataShapeIndex = 3U;
+    config.isMc2Context = true;
+
+    auto ret = FFNToAttentionTilingFuncBase(context, config);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
