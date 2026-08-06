@@ -53,7 +53,6 @@ struct TaskInfo {
     // O GM 偏移
     int64_t  gmOffsetO = 0;
     uint32_t oShapeCol = 0;
-
     uint32_t qsActBaseTileAlign128 = 0;
     uint32_t qsActBaseTileAlign64 = 0;
     uint32_t qsActBaseTileAlign16 = 0;
