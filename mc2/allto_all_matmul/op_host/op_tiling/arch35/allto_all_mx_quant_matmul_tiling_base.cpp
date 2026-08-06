@@ -421,20 +421,56 @@ CutResult AllToAllMxQuantMatmulTilingBase::GetCutResOfCommAndCompute()
         != ge::GRAPH_SUCCESS) {
         OP_LOGD(opName_, "GetAndConvertCommMode failed, use default commMode AICPU for tiling.");
     }
+    CutResult cutRes;
     if (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR) {
         AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_,
                                               TopoType::STANDARD_CARD, SocVersion::SOC950, commMode);
-        return tiling.GetTiling();
+        cutRes = tiling.GetTiling();
+    } else {
+        OP_LOGD(opName_, "Falling back to formulaic tiling for arch35 tiling");
+        AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim,
+                                               KernelType::ALL_TO_ALL, SocVersion::SOC950, true);
+        if (commMode == mc2tiling::A5_AICPU_TS_ENGINE) {
+            constexpr uint64_t MX_AICPU_TILING_MAX_NUM = 3;
+            alltoallMatmulTileFormulate.tilingM_.SetMaxTileCnt(MX_AICPU_TILING_MAX_NUM);
+        }
+        alltoallMatmulTileFormulate.GetTiling();
+        cutRes = alltoallMatmulTileFormulate.tilingM_.cutRes;
     }
-    OP_LOGD(opName_, "Falling back to formulaic tiling for arch35 tiling");
-    AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim,
-                                           KernelType::ALL_TO_ALL, SocVersion::SOC950, true);
-    if (commMode == mc2tiling::A5_AICPU_TS_ENGINE) {
-        constexpr uint64_t MX_AICPU_TILING_MAX_NUM = 3;
-        alltoallMatmulTileFormulate.tilingM_.SetMaxTileCnt(MX_AICPU_TILING_MAX_NUM);
+    AlignCutResForKernel(cutRes, contextInfo_.args_.mValue);
+    return cutRes;
+}
+
+void AllToAllMxQuantMatmulTilingBase::AlignCutResForKernel(CutResult &cutRes, uint64_t mValue) const
+{
+    constexpr uint64_t KERNEL_ALIGN_M = 256;
+    cutRes.shortTileAtBack = true;
+    if (cutRes.numShortTile == 0 && cutRes.numLongTile > 0) {
+        return;
     }
-    alltoallMatmulTileFormulate.GetTiling();
-    return alltoallMatmulTileFormulate.tilingM_.cutRes;
+    auto alignUp = [](uint64_t val, uint64_t align) { return (val + align - 1) / align * align; };
+    uint64_t longTile = alignUp(cutRes.longTileLen, KERNEL_ALIGN_M);
+    uint64_t numLong = mValue / longTile;
+    uint64_t remainder = mValue % longTile;
+    cutRes.longTileLen = longTile;
+    cutRes.numLongTile = numLong;
+    if (remainder == 0) {
+        cutRes.shortTileLen = 0;
+        cutRes.numShortTile = 0;
+    } else {
+        uint64_t shortTile = alignUp(remainder, KERNEL_ALIGN_M);
+        if (shortTile >= longTile) {
+            cutRes.numLongTile = numLong + 1;
+            cutRes.shortTileLen = 0;
+            cutRes.numShortTile = 0;
+        } else {
+            cutRes.shortTileLen = shortTile;
+            cutRes.numShortTile = 1;
+        }
+    }
+    OP_LOGD(opName_, "Adjusted cutRes: longTile=%lu numLong=%lu shortTile=%lu numShort=%lu atBack=%d",
+            cutRes.longTileLen, cutRes.numLongTile, cutRes.shortTileLen, cutRes.numShortTile,
+            cutRes.shortTileAtBack);
 }
 
 /**
