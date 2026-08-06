@@ -320,9 +320,7 @@ def customize_inputs(
     softmax_scale=1.0,
     sparse_q_block_size=128,
     sparse_kv_block_size=128,
-    max_seqlen_q=0,
-    max_seqlen_kv=0,
-    layout_q="BSND",
+    layout_q="TND",
     layout_kv="PA_BNSD",
     mask_mode=3,
     quant_mode=1,
@@ -337,6 +335,8 @@ def customize_inputs(
     k_datarange=None,
     v_datarange=None,
     block_num=None,
+    cu_seqlens_q,
+    seqused_kv,
     **kwargs,
 ):
     """Fill input tensors in-place with consistent test data for quant_block_sparse_attn.
@@ -354,36 +354,32 @@ def customize_inputs(
     generator = torch.Generator().manual_seed(seed)
 
     D = int(query.shape[-1])
-    if layout_q == "BSND":
-        B, S1, N1 = int(query.shape[0]), int(query.shape[1]), int(query.shape[2])
-    elif layout_q == "NTD":
+    if key.dim() != 4:
+        raise ValueError(f"key must be 4D PA [blockNum, kvHeadNum, blockSize, headDim], got {tuple(key.shape)}")
+    B = int(sparse_indices.shape[0])
+    if layout_q == "NTD":
         N1 = int(query.shape[0])
-        B = int(sparse_indices.shape[0])
-        S1 = max_seqlen_q if max_seqlen_q > 0 else int(query.shape[1]) // B
-    else:
+    else:  # TND
         N1 = int(query.shape[1])
-        B = int(sparse_indices.shape[0])
-        S1 = max_seqlen_q if max_seqlen_q > 0 else int(query.shape[0]) // B
 
-    # KV head 数以 key/value（PA 4D 的 dim1）为准；v_descale 必须为 [N2]
-    if key.dim() == 4:
-        N2 = int(key.shape[1])
-    elif value.dim() == 4:
-        N2 = int(value.shape[1])
-    else:
-        N2 = int(v_descale.shape[0])
+    # S1 由 cu_seqlens_q 前缀和做差得到
+    cu = torch.as_tensor(list(cu_seqlens_q), dtype=torch.int32).reshape(-1)
+    per_batch = [int(cu[i + 1]) - int(cu[i]) for i in range(int(cu.numel()) - 1)]
+    S1 = max(per_batch)
+
+    # KV head 数以 key 的 dim1 为准；v_descale 必须为 [N2]
+    N2 = int(key.shape[1])
     if int(v_descale.shape[0]) != N2:
         raise ValueError(
             f"v_descale has {v_descale.shape[0]} elements but KV head num (N2) is {N2}; "
             f"v_descale must be [N2]"
         )
-    block_size = int(key.shape[2]) if key.dim() == 4 else sparse_kv_block_size
-    num_blocks = (
-        int(key.shape[0])
-        if key.dim() == 4
-        else math.ceil(max_seqlen_kv / sparse_kv_block_size)
-    )
-    S2 = max_seqlen_kv if max_seqlen_kv > 0 else num_blocks * block_size
+    block_size = int(key.shape[2])
+    num_blocks = int(key.shape[0])
+
+    # S2 取 seqused_kv 最大值
+    sv = torch.as_tensor(list(seqused_kv), dtype=torch.int32).reshape(-1)
+    S2 = int(sv.max().item())
 
     q_lengths = [S1] * B
     kv_lengths = [S2] * B
@@ -429,7 +425,7 @@ def customize_inputs(
         dense_k_scale,
         block_table,
         sparse_kv_block_size,
-        num_blocks=int(key.shape[0]) if key.dim() == 4 else None,
+        num_blocks=num_blocks,
     )
 
     key.copy_(key_pa)

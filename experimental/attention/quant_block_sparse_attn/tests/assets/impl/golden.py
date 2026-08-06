@@ -66,51 +66,26 @@ def lengths_from_prefix(value):
     )
 
 
-def infer_geometry(
-    query,
-    key,
-    sparse_indices,
-    layout_q,
-    cu_seqlens_q,
-    cu_seqlens_kv,
-    seqused_q,
-    seqused_kv,
-    max_seqlen_q=0,
-    max_seqlen_kv=0,
-):
+def infer_geometry(query, key, sparse_indices, layout_q, cu_seqlens_q, seqused_kv):
     D = int(query.shape[-1])
-    N2 = int(key.shape[1]) if key.dim() >= 2 else 1
+    if key.dim() != 4:
+        raise ValueError(f"key must be 4D PA [blockNum, kvHeadNum, blockSize, headDim], got {tuple(key.shape)}")
+    N2 = int(key.shape[1])
 
-    if layout_q == "BSND":
-        B, S1, N1 = int(query.shape[0]), int(query.shape[1]), int(query.shape[2])
-        q_lengths = to_list(seqused_q) or [S1] * B
-    else:
-        N1 = int(query.shape[1]) if layout_q == "TND" else int(query.shape[0])
-        T = int(query.shape[0]) if layout_q == "TND" else int(query.shape[1])
-        B = int(sparse_indices.shape[0]) if sparse_indices is not None else 1
-        S1 = max_seqlen_q if max_seqlen_q > 0 else (T // B if B > 0 else T)
-        q_lengths = to_list(seqused_q) or lengths_from_prefix(cu_seqlens_q) or [S1] * B
+    if layout_q == "NTD":
+        N1 = int(query.shape[0])
+    else:  # TND
+        N1 = int(query.shape[1])
+    B = int(sparse_indices.shape[0]) if sparse_indices is not None else 1
+    # S1 由 cu_seqlens_q 前缀和做差得到
+    q_lengths = lengths_from_prefix(cu_seqlens_q)
+    S1 = max(q_lengths)
 
-    kv_lengths = to_list(seqused_kv) or lengths_from_prefix(cu_seqlens_kv)
-    if not kv_lengths:
-        if max_seqlen_kv > 0:
-            S2 = max_seqlen_kv
-        elif key.dim() == 4:
-            num_blocks = int(key.shape[0])
-            block_size = int(key.shape[2])
-            S2 = num_blocks * block_size
-        else:
-            S2 = int(key.shape[0])
-        kv_lengths = [S2] * B if B > 0 else [S2]
+    # S2 取 seqused_kv 最大值
+    kv_lengths = to_list(seqused_kv)
+    S2 = max(kv_lengths)
 
-    return B, S1, N1, N2, D, q_lengths, kv_lengths
-
-
-def _lengths_to_prefix(lengths):
-    values = [0]
-    for length in lengths:
-        values.append(values[-1] + int(length))
-    return torch.tensor(values, dtype=torch.int32)
+    return B, S1, N1, N2, D, q_lengths, kv_lengths, S2
 
 
 def _auto_block_table(B, S2, block_size, pattern="sequential", seed=0):
@@ -165,16 +140,12 @@ def cpu_quant_block_sparse_attn(
     softmax_scale,
     sparse_q_block_size,
     sparse_kv_block_size,
-    cu_seqlens_q=None,
-    cu_seqlens_kv=None,
-    seqused_q=None,
-    seqused_kv=None,
+    cu_seqlens_q,
+    seqused_kv,
     block_table=None,
     metadata=None,
-    max_seqlen_q=0,
-    max_seqlen_kv=0,
     layout_kv="PA_BNSD",
-    layout_q="BSND",
+    layout_q="TND",
     layout_sparse_indices="B_N_Qb_Kb",
     layout_out="TND",
     quant_mode=1,
@@ -194,60 +165,36 @@ def cpu_quant_block_sparse_attn(
     p_scale_cpu = to_cpu(p_scale)
     sparse_indices_cpu = to_cpu(sparse_indices)
     sparse_seq_len_cpu = to_cpu(sparse_seq_len)
-    cu_seqlens_q_cpu = to_cpu(cu_seqlens_q) if cu_seqlens_q is not None else None
-    cu_seqlens_kv_cpu = to_cpu(cu_seqlens_kv) if cu_seqlens_kv is not None else None
-    seqused_q_cpu = to_cpu(seqused_q) if seqused_q is not None else None
-    seqused_kv_cpu = to_cpu(seqused_kv) if seqused_kv is not None else None
+    cu_seqlens_q_cpu = to_cpu(cu_seqlens_q)
+    seqused_kv_cpu = to_cpu(seqused_kv)
     block_table_cpu = to_cpu(block_table) if block_table is not None else None
 
-    B, S1, N1, N2, D, q_lengths, kv_lengths = infer_geometry(
+    B, S1, N1, N2, D, q_lengths, kv_lengths, S2 = infer_geometry(
         q_cpu,
         key_cpu,
         sparse_indices_cpu,
         layout_q,
         cu_seqlens_q_cpu,
-        cu_seqlens_kv_cpu,
-        seqused_q_cpu,
         seqused_kv_cpu,
-        max_seqlen_q,
-        max_seqlen_kv,
     )
 
     sparse_q_block_size = int(sparse_q_block_size)
     sparse_kv_block_size = int(sparse_kv_block_size)
-    max_seqlen_q = int(max_seqlen_q) if max_seqlen_q > 0 else S1
-    max_seqlen_kv = (
-        int(max_seqlen_kv)
-        if max_seqlen_kv > 0
-        else max(kv_lengths)
-        if kv_lengths
-        else S1
+
+    if block_table_cpu is None:
+        block_table_cpu = _auto_block_table(
+            B, S2, sparse_kv_block_size, "sequential", 0
+        )
+    dense_key = _pa_to_dense(
+        key_cpu, block_table_cpu, B, S2, (1, 0, 2), sparse_kv_block_size
     )
-    S2 = max(kv_lengths) if kv_lengths else max_seqlen_kv
+    dense_value = _pa_to_dense(
+        value_cpu, block_table_cpu, B, S2, (1, 0, 2), sparse_kv_block_size
+    )
 
-    if key_cpu.dim() == 4:
-        if block_table_cpu is None:
-            block_table_cpu = _auto_block_table(
-                B, S2, sparse_kv_block_size, "sequential", 0
-            )
-        dense_key = _pa_to_dense(
-            key_cpu, block_table_cpu, B, S2, (1, 0, 2), sparse_kv_block_size
-        )
-        dense_value = _pa_to_dense(
-            value_cpu, block_table_cpu, B, S2, (1, 0, 2), sparse_kv_block_size
-        )
-    else:
-        dense_key = key_cpu
-        dense_value = value_cpu
-
-    if cu_seqlens_q_cpu is None and layout_q != "BSND":
-        cu_seqlens_q_cpu = _lengths_to_prefix(q_lengths)
-    if cu_seqlens_kv_cpu is None and layout_q != "BSND":
-        cu_seqlens_kv_cpu = _lengths_to_prefix(kv_lengths)
     cu_seqlens_q_inp = cu_seqlens_q_cpu
-    cu_seqlens_kv_inp = cu_seqlens_kv_cpu
 
-    if k_descale_cpu.dim() == 3 and key_cpu.dim() == 4:
+    if k_descale_cpu.dim() == 3:
         k_scale_dense = _pa_to_dense(
             k_descale_cpu, block_table_cpu, B, S2, (1, 0), sparse_kv_block_size
         )
@@ -287,22 +234,15 @@ def cpu_quant_block_sparse_attn(
         "quant_mode": int(quant_mode),
     }
 
-    if key_cpu.dim() == 4:
-        if block_table_cpu is None:
-            block_table_cpu = _auto_block_table(
-                B, S2, sparse_kv_block_size, "sequential", 0
-            )
-        kv_cache_storage, kv_cache_meta = golden_module.combined_kv_cache.pack_combined_kv_cache(
-            dense_key,
-            dense_value,
-            k_scale_dense,
-            block_table_cpu,
-            sparse_kv_block_size,
-            0,
-            layout_kv,
-        )
-    else:
-        raise ValueError("kv_cache-based reference requires PA (4D) key")
+    kv_cache_storage, kv_cache_meta = golden_module.combined_kv_cache.pack_combined_kv_cache(
+        dense_key,
+        dense_value,
+        k_scale_dense,
+        block_table_cpu,
+        sparse_kv_block_size,
+        0,
+        layout_kv,
+    )
 
     attention_out, softmax_lse = golden_module._reference_attention(
         case,
