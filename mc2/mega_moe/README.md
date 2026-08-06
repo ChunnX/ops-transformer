@@ -792,15 +792,15 @@
   <tr>
    <td>activation</td>
    <td>可选属性</td>
-   <td>激活函数类型。默认值为"swiglu"。当前仅支持"swiglu"。</td>
+   <td>激活函数类型。默认值为"swiglu"。A2/A3支持"swiglu"、"swiglustep"、"swigluoai"和"situglu"；其中"swiglu"为通用SwiGLU，"swiglustep"对应Step 3.5，"swigluoai"对应MiniMax-M3，"situglu"对应Kimi K3。A5支持"swiglu"和"situglu"。</td>
    <td>STRING</td>
    <td></td>
   </tr>
   <tr>
-   <td>activationClamp</td>
+   <td>activation_params</td>
    <td>可选属性</td>
-   <td>激活函数输入的对称截断阈值，将输入张量限制在[-activationClamp, activationClamp]区间内。默认值为float最大值，表示不截断，值需≥0。</td>
-   <td>FLOAT</td>
+   <td>激活函数参数列表，默认值为[float最大值]。参数顺序和数量由activation决定："swiglu"和"swiglustep"传[clamp]；"swigluoai"传[clamp, alpha, beta]；"situglu"在linear_beta为None时传[beta]，否则传[beta, linear_beta]。clamp需≥0且不能为NaN；alpha和swigluoai的beta需为有限值；situglu的beta和linear_beta作为除数，需为有限非零值。</td>
+   <td>LIST_FLOAT</td>
    <td></td>
   </tr>
   <tr>
