@@ -76,6 +76,17 @@ ge::graphStatus InferShapeSparseFlashMla(gert::InferShapeContext *context)
     bool returnSoftmaxLse = (returnSoftmaxLsePtr != nullptr) ? *returnSoftmaxLsePtr : false;
     int64_t kvHeadNum = GetKvHeadNum(kvShape, layoutKv);
 
+    OPS_ERR_IF(queryShape->GetShapeSize() <= 0,
+               OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON("SparseFlashMla", "q",
+                                                         std::to_string(queryShape->GetShapeSize()).c_str(),
+                                                         "The shape size of q should be greater than 0"),
+               return ge::GRAPH_FAILED);
+    OPS_ERR_IF(kvShape->GetShapeSize() <= 0,
+               OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON("SparseFlashMla", "ori_kv or cmp_kv",
+                                                         std::to_string(kvShape->GetShapeSize()).c_str(),
+                                                         "The shape size of ori_kv or cmp_kv should be greater than 0"),
+               return ge::GRAPH_FAILED);
+
     if (returnSoftmaxLse) {
         if (queryShape->GetDimNum() == DIM_NUM_3) {
             softmaxLseShape->SetDimNum(DIM_NUM_3);
