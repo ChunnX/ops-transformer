@@ -1511,6 +1511,13 @@ class _QuantBlockSparseAttnGraph(torch.nn.Module):
         )
 
 
+def _mark_static_graph_tensors(*tensors):
+    """Freeze QBSA input shapes for ACL graph capture/replay."""
+    for tensor in tensors:
+        if tensor is not None:
+            torch._dynamo.mark_static(tensor)
+
+
 def _call_npu_fa_op_graph(
     q,
     k,
@@ -1572,9 +1579,34 @@ def _call_npu_fa_op_graph(
     )
     torch_npu.npu.synchronize()
 
+    # QBSA is a mixed AIC/AIV kernel with cross-core event handshakes.  Use the
+    # same ACL graph configuration as the batch graph test: static input
+    # shapes and no reinplace pass.  Replacing a live input buffer while the
+    # captured kernel is still consuming it can make the AIC and AIV paths see
+    # different loop metadata and wait forever on unmatched cross-core flags.
     config = CompilerConfig()
     config.mode = "reduce-overhead"
+    config.debug.aclgraph.disable_reinplace_inplaceable_ops_pass = True
     npu_backend = torchair.get_npu_backend(compiler_config=config)
+    _mark_static_graph_tensors(
+        q,
+        k,
+        v,
+        dequant_scale_q,
+        dequant_scale_k,
+        dequant_scale_v,
+        p_scale,
+        sparse_indices,
+        sparse_seq_len,
+        mask,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        seqused_q,
+        seqused_kv,
+        block_table,
+        metadata,
+    )
+    torch._dynamo.reset()
     model = torch.compile(
         _QuantBlockSparseAttnGraph(softmax_scale, layout_q, layout_kv).npu(),
         fullgraph=True,
