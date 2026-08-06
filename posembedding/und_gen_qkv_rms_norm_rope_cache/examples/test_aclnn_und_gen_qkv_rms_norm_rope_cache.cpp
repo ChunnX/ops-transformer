@@ -141,8 +141,8 @@ int main()
     void *vCacheDev = nullptr, *slotMappingDev = nullptr, *positionsDev = nullptr, *catIndicesDev = nullptr;
     void* qDev = nullptr;
     aclTensor *undQkv = nullptr, *genQkv = nullptr, *undWq = nullptr, *undWk = nullptr, *genWq = nullptr;
-    aclTensor *genWk = nullptr, *cosSin = nullptr, *kCache = nullptr, *vCache = nullptr, *slotMapping = nullptr;
-    aclTensor *positions = nullptr, *catIndices = nullptr, *q = nullptr;
+    aclTensor *genWk = nullptr, *cosSin = nullptr, *kCacheRef = nullptr, *vCacheRef = nullptr, *slotMapping = nullptr;
+    aclTensor *positions = nullptr, *catIndices = nullptr, *qOut = nullptr;
 
     ret = CreateAclTensor(undQkvHost, undQkvShape, &undQkvDev, ACL_BF16, &undQkv);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -152,9 +152,9 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(cosSinHost, cosSinShape, &cosSinDev, ACL_FLOAT, &cosSin);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(kCacheHost, kCacheShape, &kCacheDev, ACL_BF16, &kCache);
+    ret = CreateAclTensor(kCacheHost, kCacheShape, &kCacheDev, ACL_BF16, &kCacheRef);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(vCacheHost, vCacheShape, &vCacheDev, ACL_BF16, &vCache);
+    ret = CreateAclTensor(vCacheHost, vCacheShape, &vCacheDev, ACL_BF16, &vCacheRef);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(slotMappingHost, slotMappingShape, &slotMappingDev, ACL_INT64, &slotMapping);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -168,7 +168,7 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(catIndicesHost, catIndicesShape, &catIndicesDev, ACL_INT64, &catIndices);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(qHost, qShape, &qDev, ACL_BF16, &q);
+    ret = CreateAclTensor(qHost, qShape, &qDev, ACL_BF16, &qOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     // mrope_section：三轴分段
@@ -179,8 +179,8 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     ret = aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
-        undQkv, undWq, undWk, cosSin, kCache, vCache, slotMapping, positions, genQkv, genWq, genWk, catIndices,
-        NUM_HEADS_Q, NUM_HEADS_K, NUM_HEADS_V, NORM_EPS, mropeSection, q, kCache, vCache, &workspaceSize, &executor);
+        undQkv, undWq, undWk, cosSin, kCacheRef, vCacheRef, slotMapping, positions, genQkv, genWq, genWk, catIndices,
+        NUM_HEADS_Q, NUM_HEADS_K, NUM_HEADS_V, NORM_EPS, mropeSection, qOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
@@ -197,34 +197,34 @@ int main()
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-    // 7. 拷回结果：q 直接读取；k_cache/v_cache 按 slot_mapping 定位对应行
+    // 7. 拷回结果：qOut 直接读取；k_cache/v_cache 按 slot_mapping 定位对应行
     auto qSize = GetShapeSize(qShape);
     std::vector<uint16_t> qResult(qSize, 0);
     ret = aclrtMemcpy(qResult.data(), qResult.size() * sizeof(qResult[0]), qDev, qSize * sizeof(uint16_t),
                       ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy q result failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy qOut result failed. ERROR: %d\n", ret); return ret);
 
     auto kCacheSize = GetShapeSize(kCacheShape);
     std::vector<uint16_t> kCacheResult(kCacheSize, 0);
     ret = aclrtMemcpy(kCacheResult.data(), kCacheResult.size() * sizeof(kCacheResult[0]), kCacheDev,
                       kCacheSize * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy k_cache result failed. ERROR: %d\n", ret); return ret);
-    LOG_PRINT("run aclnnUndGenQkvRmsNormRopeCache success, q size = %ld, k_cache size = %ld\n", qSize, kCacheSize);
+    LOG_PRINT("run aclnnUndGenQkvRmsNormRopeCache success, qOut size = %ld, k_cache size = %ld\n", qSize, kCacheSize);
 
     // 8. 释放资源
     aclDestroyTensor(undQkv);
     aclDestroyTensor(undWq);
     aclDestroyTensor(undWk);
     aclDestroyTensor(cosSin);
-    aclDestroyTensor(kCache);
-    aclDestroyTensor(vCache);
+    aclDestroyTensor(kCacheRef);
+    aclDestroyTensor(vCacheRef);
     aclDestroyTensor(slotMapping);
     aclDestroyTensor(positions);
     aclDestroyTensor(genQkv);
     aclDestroyTensor(genWq);
     aclDestroyTensor(genWk);
     aclDestroyTensor(catIndices);
-    aclDestroyTensor(q);
+    aclDestroyTensor(qOut);
     aclDestroyIntArray(mropeSection);
 
     aclrtFree(undQkvDev);

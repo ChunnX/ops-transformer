@@ -38,31 +38,30 @@ namespace und_gen_qkv_rms_norm_rope_cache {
 
 static inline bool CheckNotNull(
     const aclTensor* undQkv, const aclTensor* undWeightsQ, const aclTensor* undWeightsK, const aclTensor* cosSinCache,
-    aclTensor* kCache, aclTensor* vCache, const aclTensor* slotMapping, const aclTensor* positions, aclTensor* q,
-    aclTensor* kCacheOut, aclTensor* vCacheOut)
+    aclTensor* kCacheRef, aclTensor* vCacheRef, const aclTensor* slotMapping, const aclTensor* positions,
+    aclTensor* qOut)
 {
     OP_CHECK_NULL(undQkv, return false);
     OP_CHECK_NULL(undWeightsQ, return false);
     OP_CHECK_NULL(undWeightsK, return false);
     OP_CHECK_NULL(cosSinCache, return false);
-    OP_CHECK_NULL(kCache, return false);
-    OP_CHECK_NULL(vCache, return false);
+    OP_CHECK_NULL(kCacheRef, return false);
+    OP_CHECK_NULL(vCacheRef, return false);
     OP_CHECK_NULL(slotMapping, return false);
     OP_CHECK_NULL(positions, return false);
-    OP_CHECK_NULL(q, return false);
-    OP_CHECK_NULL(kCacheOut, return false);
-    OP_CHECK_NULL(vCacheOut, return false);
+    OP_CHECK_NULL(qOut, return false);
     return true;
 }
 
 // k_cache/v_cache 是调用方预分配、算子原地写入的缓冲区，不能走 Contiguous：
 // 非连续时 Contiguous 产出的是副本，kernel 写进副本后调用方的 cache 不会被更新且无任何报错。
 // 本算子只支持连续 BBND 布局，这里直接把非连续输入拒掉。
-static inline bool CheckCacheContiguous(const aclTensor* kCache, const aclTensor* vCache)
+static inline bool CheckCacheContiguous(const aclTensor* kCacheRef, const aclTensor* vCacheRef)
 {
-    if (!IsContiguous(kCache) || !IsContiguous(vCache)) {
+    if (!IsContiguous(kCacheRef) || !IsContiguous(vCacheRef)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "kCache/vCache must be contiguous [Bn, Bs, N, D] tensors, non-contiguous KV Cache is not supported.");
+                "kCacheRef/vCacheRef must be contiguous [Bn, Bs, N, D] tensors, "
+                "non-contiguous KV Cache is not supported.");
         return false;
     }
     return true;
@@ -83,27 +82,27 @@ static inline bool CheckGenPaired(const aclTensor* genQkv, const aclTensor* genW
 
 aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
     const aclTensor* undQkv, const aclTensor* undWeightsQ, const aclTensor* undWeightsK, const aclTensor* cosSinCache,
-    aclTensor* kCache, aclTensor* vCache, const aclTensor* slotMapping, const aclTensor* positions,
+    aclTensor* kCacheRef, aclTensor* vCacheRef, const aclTensor* slotMapping, const aclTensor* positions,
     const aclTensor* genQkv, const aclTensor* genWeightsQ, const aclTensor* genWeightsK, const aclTensor* catIndices,
     int64_t numHeadsQ, int64_t numHeadsK, int64_t numHeadsV, double normEps, const aclIntArray* mropeSection,
-    aclTensor* q, aclTensor* kCacheOut, aclTensor* vCacheOut, uint64_t* workspaceSize, aclOpExecutor** executor)
+    aclTensor* qOut, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnUndGenQkvRmsNormRopeCache,
-                   DFX_IN(undQkv, undWeightsQ, undWeightsK, cosSinCache, kCache, vCache, slotMapping, positions, genQkv,
-                          genWeightsQ, genWeightsK, catIndices, numHeadsQ, numHeadsK, numHeadsV, normEps, mropeSection),
-                   DFX_OUT(q, kCacheOut, vCacheOut));
+                   DFX_IN(undQkv, undWeightsQ, undWeightsK, cosSinCache, kCacheRef, vCacheRef, slotMapping, positions,
+                          genQkv, genWeightsQ, genWeightsK, catIndices, numHeadsQ, numHeadsK, numHeadsV, normEps,
+                          mropeSection),
+                   DFX_OUT(qOut, kCacheRef, vCacheRef));
 
     // 参数检查：L2 只做空指针与 KV Cache 连续性校验（后者 tiling 侧看不到 view stride，只能在这里拦），
     // dtype/shape/属性取值的完整校验统一在 tiling 侧
     // （aclnn 单算子路径与图模式都会走 tiling，避免两处重复实现导致漂移）
-    auto notNull = und_gen_qkv_rms_norm_rope_cache::CheckNotNull(undQkv, undWeightsQ, undWeightsK, cosSinCache, kCache,
-                                                                 vCache, slotMapping, positions, q, kCacheOut,
-                                                                 vCacheOut);
+    auto notNull = und_gen_qkv_rms_norm_rope_cache::CheckNotNull(undQkv, undWeightsQ, undWeightsK, cosSinCache,
+                                                                 kCacheRef, vCacheRef, slotMapping, positions, qOut);
     CHECK_RET(notNull, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckGenPaired(genQkv, genWeightsQ, genWeightsK),
               ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckCacheContiguous(kCache, vCache), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(und_gen_qkv_rms_norm_rope_cache::CheckCacheContiguous(kCacheRef, vCacheRef), ACLNN_ERR_PARAM_INVALID);
 
     // 创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -146,10 +145,9 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
 
     // 调用l0接口进行计算
     auto l0Ret = l0op::UndGenQkvRmsNormRopeCache(
-        undQkvContiguous, undWeightsQContiguous, undWeightsKContiguous, cosSinCacheContiguous, kCache, vCache,
+        undQkvContiguous, undWeightsQContiguous, undWeightsKContiguous, cosSinCacheContiguous, kCacheRef, vCacheRef,
         slotMappingContiguous, positionsContiguous, genQkvContiguous, genWeightsQContiguous, genWeightsKContiguous,
-        catIndicesContiguous, numHeadsQ, numHeadsK, numHeadsV, normEps, mropeSection, q, kCacheOut, vCacheOut,
-        uniqueExecutor.get());
+        catIndicesContiguous, numHeadsQ, numHeadsK, numHeadsV, normEps, mropeSection, qOut, uniqueExecutor.get());
     CHECK_RET(l0Ret == ACLNN_SUCCESS, l0Ret);
 
     // 获取workspace大小

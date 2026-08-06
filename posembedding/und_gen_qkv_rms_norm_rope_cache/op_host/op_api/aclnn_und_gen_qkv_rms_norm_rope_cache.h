@@ -36,9 +36,9 @@ extern "C" {
  * @param [in] undWeightsK: 计算输入张量，npu device侧的aclTensor，数据类型支持BF16，shape为[D]，数据格式支持ND。
  * @param [in] cosSinCache: 计算输入张量，npu device侧的aclTensor，数据类型支持FLOAT32，shape为[max_pos, D]，
  * 前半为cos、后半为sin，数据格式支持ND。
- * @param [in] kCache: 计算输入输出张量（原地更新），npu device侧的aclTensor，数据类型支持BF16，
+ * @param [in/out] kCacheRef: 计算输入输出张量（原地更新），npu device侧的aclTensor，数据类型支持BF16，
  * shape为[Bn, Bs, Hk, D]（连续BBND布局），数据格式支持ND。
- * @param [in] vCache: 计算输入输出张量（原地更新），npu device侧的aclTensor，数据类型支持BF16，
+ * @param [in/out] vCacheRef: 计算输入输出张量（原地更新），npu device侧的aclTensor，数据类型支持BF16，
  * shape为[Bn, Bs, Hv, D]（连续BBND布局），数据格式支持ND。
  * @param [in] slotMapping: 计算输入张量，npu device侧的aclTensor，数据类型支持INT64，shape为[T]，
  * 值为 block_num * Bs + row_idx，由调用方预计算，数据格式支持ND。
@@ -58,19 +58,17 @@ extern "C" {
  * @param [in] normEps: 计算属性，数据类型支持double（下发前转 float），RMSNorm防除零epsilon，默认值1e-6。
  * @param [in] mropeSection: 计算属性，可选，数据类型支持aclIntArray（长度3），MRoPE三轴分段；
  * 传nullptr或空数组时退化为[D/2, 0, 0]，即标准RoPE。
- * @param [out] q: 计算输出张量，npu device侧的aclTensor，数据类型支持BF16，shape为[T, Hq, D]，数据格式支持ND。
- * @param [out] kCacheOut: 计算输出张量（与kCache同地址，原地更新），npu device侧的aclTensor。
- * @param [out] vCacheOut: 计算输出张量（与vCache同地址，原地更新），npu device侧的aclTensor。
+ * @param [out] qOut: 计算输出张量，npu device侧的aclTensor，数据类型支持BF16，shape为[T, Hq, D]，数据格式支持ND。
  * @param [out] workspaceSize: 返回用户需要在npu device侧申请的workspace大小。
  * @param [out] executor: 返回op执行器，包含算子计算流程。
  * @return aclnnStatus: 返回状态码。
  */
 ACLNN_API aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
     const aclTensor* undQkv, const aclTensor* undWeightsQ, const aclTensor* undWeightsK, const aclTensor* cosSinCache,
-    aclTensor* kCache, aclTensor* vCache, const aclTensor* slotMapping, const aclTensor* positions,
+    aclTensor* kCacheRef, aclTensor* vCacheRef, const aclTensor* slotMapping, const aclTensor* positions,
     const aclTensor* genQkv, const aclTensor* genWeightsQ, const aclTensor* genWeightsK, const aclTensor* catIndices,
     int64_t numHeadsQ, int64_t numHeadsK, int64_t numHeadsV, double normEps, const aclIntArray* mropeSection,
-    aclTensor* q, aclTensor* kCacheOut, aclTensor* vCacheOut, uint64_t* workspaceSize, aclOpExecutor** executor);
+    aclTensor* qOut, uint64_t* workspaceSize, aclOpExecutor** executor);
 
 /**
  * @brief aclnnUndGenQkvRmsNormRopeCache的第二段接口，用于执行计算。

@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：面向多模态大模型推理的 QKV 主干融合前处理算子。接口把理解阶段（undecoded）与生成阶段（generated）两段 QKV 输入按 `catIndices` 间接寻址拼成一条输出序列，逐 token 沿头维度拆分出 Q/K/V，对 Q 和 K 逐头执行 RMSNorm 归一化与 MRoPE（多模态旋转位置编码），V 不参与归一化与旋转；Q 作为独立输出返回，K 和 V 按 `slotMapping` 写入分页 KV Cache（`kCache`/`vCache` 原地更新）。RMSNorm 权重按源 token 落在理解段还是生成段在两套权重间选择。计算全程 float32，输出与 KV Cache 均为 BF16。当前接口无版本迭代关系，不存在 V1/V2 等版本变体。
+- 接口功能：面向多模态大模型推理的 QKV 主干融合前处理算子。接口把理解阶段（undecoded）与生成阶段（generated）两段 QKV 输入按 `catIndices` 间接寻址拼成一条输出序列，逐 token 沿头维度拆分出 Q/K/V，对 Q 和 K 逐头执行 RMSNorm 归一化与 MRoPE（多模态旋转位置编码），V 不参与归一化与旋转；Q 作为独立输出返回，K 和 V 按 `slotMapping` 写入分页 KV Cache（`kCacheRef`/`vCacheRef` 原地更新）。RMSNorm 权重按源 token 落在理解段还是生成段在两套权重间选择。计算全程 float32，输出与 KV Cache 均为 BF16。当前接口无版本迭代关系，不存在 V1/V2 等版本变体。
 
 - 计算公式：
 
@@ -55,7 +55,7 @@
 
   说明：Q 按输出 token 顺序写入独立输出张量；K 按 `slotMapping` 指定的槽位写入分页 KV Cache；V 不做归一化与旋转，直接按 `slotMapping` 写入分页 KV Cache。槽位号 s<sub>t</sub> 由调用方预计算，拆成块号与块内行号后定位到 cache 的对应行。未被 `slotMapping` 命中的 cache 位置保持调用方传入的原值。
 
-  其中，X<sub>und</sub> 表示参数 `undQkv`，X<sub>gen</sub> 表示参数 `genQkv`，γ<sub>h</sub> 表示参数 `undWeightsQ`、`undWeightsK`、`genWeightsQ` 或 `genWeightsK`（按源 token 来自理解阶段还是生成阶段、以及当前是 Q 头还是 K 头选择对应权重），C 表示参数 `cosSinCache`，K<sub>cache</sub> 表示参数 `kCache` 或 `kCacheOut`，V<sub>cache</sub> 表示参数 `vCache` 或 `vCacheOut`，s 表示参数 `slotMapping`，p 表示参数 `positions`，c 表示参数 `catIndices`，H<sub>q</sub> 表示参数 `numHeadsQ`，H<sub>k</sub> 表示参数 `numHeadsK`，H<sub>v</sub> 表示参数 `numHeadsV`，ε 表示参数 `normEps`，m 表示参数 `mropeSection`，Q<sub>out</sub> 表示参数 `q`，B<sub>s</sub> 表示 `kCache` 的第二维（blockSize），D 表示头维度（固定为 128），T 表示总 token 数（等于 `undQkv` 第一维与 `genQkv` 第一维之和）。
+  其中，X<sub>und</sub> 表示参数 `undQkv`，X<sub>gen</sub> 表示参数 `genQkv`，γ<sub>h</sub> 表示参数 `undWeightsQ`、`undWeightsK`、`genWeightsQ` 或 `genWeightsK`（按源 token 来自理解阶段还是生成阶段、以及当前是 Q 头还是 K 头选择对应权重），C 表示参数 `cosSinCache`，K<sub>cache</sub> 表示参数 `kCacheRef`，V<sub>cache</sub> 表示参数 `vCacheRef`，s 表示参数 `slotMapping`，p 表示参数 `positions`，c 表示参数 `catIndices`，H<sub>q</sub> 表示参数 `numHeadsQ`，H<sub>k</sub> 表示参数 `numHeadsK`，H<sub>v</sub> 表示参数 `numHeadsV`，ε 表示参数 `normEps`，m 表示参数 `mropeSection`，Q<sub>out</sub> 表示参数 `qOut`，B<sub>s</sub> 表示 `kCacheRef` 的第二维（blockSize），D 表示头维度（固定为 128），T 表示总 token 数（等于 `undQkv` 第一维与 `genQkv` 第一维之和）。
 
   - L<sub>und</sub>：理解阶段的 token 数量，即 `undQkv` 的第一维，非接口参数。
   - α(l)：MRoPE 轴映射函数，把每个低半位置 l（0 ≤ l < D/2）映射到时间（0）、高度（1）、宽度（2）三轴之一，规则为：
@@ -84,8 +84,8 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
   const aclTensor   *undWeightsQ,
   const aclTensor   *undWeightsK,
   const aclTensor   *cosSinCache,
-  aclTensor         *kCache,
-  aclTensor         *vCache,
+  aclTensor         *kCacheRef,
+  aclTensor         *vCacheRef,
   const aclTensor   *slotMapping,
   const aclTensor   *positions,
   const aclTensor   *genQkv,
@@ -97,9 +97,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
   int64_t            numHeadsV,
   double             normEps,
   const aclIntArray *mropeSection,
-  aclTensor         *q,
-  aclTensor         *kCacheOut,
-  aclTensor         *vCacheOut,
+  aclTensor         *qOut,
   uint64_t          *workspaceSize,
   aclOpExecutor     **executor
 );
@@ -183,7 +181,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
         <td>√</td>
       </tr>
       <tr>
-        <td>kCache（aclTensor*）</td>
+        <td>kCacheRef（aclTensor*）</td>
         <td>输入/输出</td>
         <td>公式中的K<sub>cache</sub>，表示K的分页KV Cache缓冲区。</td>
         <td><ul><li>不支持空指针或空Tensor。</li><li>由调用方预分配，接口基于传入Tensor原地更新。</li><li>必须为内存连续Tensor；非连续时接口直接返回失败。</li><li>容量需满足<code>Bn * Bs >= T</code>。</li></ul></td>
@@ -193,10 +191,10 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
         <td>×</td>
       </tr>
       <tr>
-        <td>vCache（aclTensor*）</td>
+        <td>vCacheRef（aclTensor*）</td>
         <td>输入/输出</td>
         <td>公式中的V<sub>cache</sub>，表示V的分页KV Cache缓冲区。</td>
-        <td><ul><li>不支持空指针或空Tensor。</li><li>由调用方预分配，接口基于传入Tensor原地更新。</li><li>必须为内存连续Tensor；非连续时接口直接返回失败。</li><li><code>Bn</code>、<code>Bs</code>必须与<code>kCache</code>一致。</li></ul></td>
+        <td><ul><li>不支持空指针或空Tensor。</li><li>由调用方预分配，接口基于传入Tensor原地更新。</li><li>必须为内存连续Tensor；非连续时接口直接返回失败。</li><li><code>Bn</code>、<code>Bs</code>必须与<code>kCacheRef</code>一致。</li></ul></td>
         <td>BFLOAT16</td>
         <td>ND</td>
         <td><code>[Bn,Bs,Hv,D]</code></td>
@@ -276,7 +274,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
         <td>numHeadsK（int64_t）</td>
         <td>输入</td>
         <td>公式中的H<sub>k</sub>，表示K的头数。</td>
-        <td><ul><li>必须为正数，且等于<code>kCache</code>的第三维。</li><li><code>(numHeadsQ, numHeadsK, numHeadsV)</code>当前仅支持<code>(8,1,1)</code>和<code>(16,2,2)</code>两种组合。</li></ul></td>
+        <td><ul><li>必须为正数，且等于<code>kCacheRef</code>的第三维。</li><li><code>(numHeadsQ, numHeadsK, numHeadsV)</code>当前仅支持<code>(8,1,1)</code>和<code>(16,2,2)</code>两种组合。</li></ul></td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -286,7 +284,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
         <td>numHeadsV（int64_t）</td>
         <td>输入</td>
         <td>公式中的H<sub>v</sub>，表示V的头数。</td>
-        <td><ul><li>必须为正数，且等于<code>vCache</code>的第三维。</li><li><code>(numHeadsQ, numHeadsK, numHeadsV)</code>当前仅支持<code>(8,1,1)</code>和<code>(16,2,2)</code>两种组合。</li></ul></td>
+        <td><ul><li>必须为正数，且等于<code>vCacheRef</code>的第三维。</li><li><code>(numHeadsQ, numHeadsK, numHeadsV)</code>当前仅支持<code>(8,1,1)</code>和<code>(16,2,2)</code>两种组合。</li></ul></td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -313,33 +311,13 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
         <td>-</td>
       </tr>
       <tr>
-        <td>q（aclTensor*）</td>
+        <td>qOut（aclTensor*）</td>
         <td>输出</td>
         <td>公式中的Q<sub>out</sub>，表示归一化与旋转后的Q输出张量。</td>
         <td><ul><li>不支持空指针或空Tensor。</li><li>由调用方预分配，shape必须为<code>[T, numHeadsQ, D]</code>。</li></ul></td>
         <td>BFLOAT16</td>
         <td>ND</td>
         <td><code>[T,Hq,D]</code></td>
-        <td>×</td>
-      </tr>
-      <tr>
-        <td>kCacheOut（aclTensor*）</td>
-        <td>输出</td>
-        <td>公式中的K<sub>cache</sub>，表示K Cache输出张量。</td>
-        <td><ul><li>不支持空指针或空Tensor。</li><li>需与<code>kCache</code>传入同一Tensor，接口原地更新，shape必须与<code>kCache</code>逐维一致。</li></ul></td>
-        <td>BFLOAT16</td>
-        <td>ND</td>
-        <td><code>[Bn,Bs,Hk,D]</code></td>
-        <td>×</td>
-      </tr>
-      <tr>
-        <td>vCacheOut（aclTensor*）</td>
-        <td>输出</td>
-        <td>公式中的V<sub>cache</sub>，表示V Cache输出张量。</td>
-        <td><ul><li>不支持空指针或空Tensor。</li><li>需与<code>vCache</code>传入同一Tensor，接口原地更新，shape必须与<code>vCache</code>逐维一致。</li></ul></td>
-        <td>BFLOAT16</td>
-        <td>ND</td>
-        <td><code>[Bn,Bs,Hv,D]</code></td>
         <td>×</td>
       </tr>
       <tr>
@@ -388,7 +366,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
     <tr>
       <td rowspan="2" style="white-space: nowrap">ACLNN_ERR_PARAM_NULLPTR</td>
       <td rowspan="2">161001</td>
-      <td>传入的<code>undQkv</code>、<code>undWeightsQ</code>、<code>undWeightsK</code>、<code>cosSinCache</code>、<code>kCache</code>、<code>vCache</code>、<code>slotMapping</code>、<code>positions</code>、<code>q</code>、<code>kCacheOut</code>、<code>vCacheOut</code>、<code>workspaceSize</code>或<code>executor</code>是空指针。</td>
+      <td>传入的<code>undQkv</code>、<code>undWeightsQ</code>、<code>undWeightsK</code>、<code>cosSinCache</code>、<code>kCacheRef</code>、<code>vCacheRef</code>、<code>slotMapping</code>、<code>positions</code>、<code>qOut</code>、<code>workspaceSize</code>或<code>executor</code>是空指针。</td>
     </tr>
     <tr>
       <td>提供了<code>genQkv</code>，但<code>genWeightsQ</code>或<code>genWeightsK</code>是空指针。</td>
@@ -396,7 +374,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
     <tr>
       <td style="white-space: nowrap">ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td><code>kCache</code>或<code>vCache</code>是非连续Tensor。</td>
+      <td><code>kCacheRef</code>或<code>vCacheRef</code>是非连续Tensor。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap">ACLNN_ERR_INNER_CREATE_EXECUTOR</td>
@@ -467,10 +445,10 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
   - und_len 必须为正数；T = und_len + gen_len 必须为正数。
   - T 不设人为上限，真实上限由 KV Cache 容量决定，需满足 blockNum × blockSize ≥ T。上板已验证到 T = 64K。
   - blockSize 不设限：cache 强制为连续 BBND，`[Bn, Bs, N, D]` 展平后等价 `[Bn*Bs, N, D]`，槽位号直接作为扁平行号使用，Bs 不参与地址计算，也不参与多核与 UB 切分。上板已验证 Bs ∈ {16, 64, 100, 128, 256, 512}，含非 2 的幂。
-  - `vCache` 的 Bn、Bs 必须与 `kCache` 一致。
-  - `kCache` 第三维必须等于 numHeadsK，第四维必须等于 headDim（128）。
-  - `vCache` 第三维必须等于 numHeadsV，第四维必须等于 headDim（128）。
-  - `kCache`、`vCache` 必须为内存连续 Tensor，不支持非连续（含 BNBD 物理布局）；`kCacheOut`、`vCacheOut` 必须与之传入同一 Tensor，shape 逐维一致。
+  - `vCacheRef` 的 Bn、Bs 必须与 `kCacheRef` 一致。
+  - `kCacheRef` 第三维必须等于 numHeadsK，第四维必须等于 headDim（128）。
+  - `vCacheRef` 第三维必须等于 numHeadsV，第四维必须等于 headDim（128）。
+  - `kCacheRef`、`vCacheRef` 必须为内存连续 Tensor，不支持非连续（含 BNBD 物理布局）。
   - `genQkv` 的 N 和 D 维必须与 `undQkv` 一致。
   - `undWeightsQ`、`undWeightsK`、`genWeightsQ`、`genWeightsK` 均必须为 1 维 `[D]`，D = headDim = 128。
   - `cosSinCache` 必须为 2 维 `[max_pos, D]`，max_pos 为正数，D = headDim = 128。
@@ -625,8 +603,8 @@ int main()
     void *vCacheDev = nullptr, *slotMappingDev = nullptr, *positionsDev = nullptr, *catIndicesDev = nullptr;
     void* qDev = nullptr;
     aclTensor *undQkv = nullptr, *genQkv = nullptr, *undWq = nullptr, *undWk = nullptr, *genWq = nullptr;
-    aclTensor *genWk = nullptr, *cosSin = nullptr, *kCache = nullptr, *vCache = nullptr, *slotMapping = nullptr;
-    aclTensor *positions = nullptr, *catIndices = nullptr, *q = nullptr;
+    aclTensor *genWk = nullptr, *cosSin = nullptr, *kCacheRef = nullptr, *vCacheRef = nullptr, *slotMapping = nullptr;
+    aclTensor *positions = nullptr, *catIndices = nullptr, *qOut = nullptr;
 
     ret = CreateAclTensor(undQkvHost, undQkvShape, &undQkvDev, ACL_BF16, &undQkv);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -636,9 +614,9 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(cosSinHost, cosSinShape, &cosSinDev, ACL_FLOAT, &cosSin);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(kCacheHost, kCacheShape, &kCacheDev, ACL_BF16, &kCache);
+    ret = CreateAclTensor(kCacheHost, kCacheShape, &kCacheDev, ACL_BF16, &kCacheRef);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(vCacheHost, vCacheShape, &vCacheDev, ACL_BF16, &vCache);
+    ret = CreateAclTensor(vCacheHost, vCacheShape, &vCacheDev, ACL_BF16, &vCacheRef);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(slotMappingHost, slotMappingShape, &slotMappingDev, ACL_INT64, &slotMapping);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -652,7 +630,7 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(catIndicesHost, catIndicesShape, &catIndicesDev, ACL_INT64, &catIndices);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(qHost, qShape, &qDev, ACL_BF16, &q);
+    ret = CreateAclTensor(qHost, qShape, &qDev, ACL_BF16, &qOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     // mrope_section：三轴分段
@@ -663,8 +641,8 @@ int main()
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     ret = aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize(
-        undQkv, undWq, undWk, cosSin, kCache, vCache, slotMapping, positions, genQkv, genWq, genWk, catIndices,
-        NUM_HEADS_Q, NUM_HEADS_K, NUM_HEADS_V, NORM_EPS, mropeSection, q, kCache, vCache, &workspaceSize, &executor);
+        undQkv, undWq, undWk, cosSin, kCacheRef, vCacheRef, slotMapping, positions, genQkv, genWq, genWk, catIndices,
+        NUM_HEADS_Q, NUM_HEADS_K, NUM_HEADS_V, NORM_EPS, mropeSection, qOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
               LOG_PRINT("aclnnUndGenQkvRmsNormRopeCacheGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
@@ -681,34 +659,34 @@ int main()
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
-    // 7. 拷回结果：q 直接读取；k_cache/v_cache 按 slot_mapping 定位对应行
+    // 7. 拷回结果：qOut 直接读取；k_cache/v_cache 按 slot_mapping 定位对应行
     auto qSize = GetShapeSize(qShape);
     std::vector<uint16_t> qResult(qSize, 0);
     ret = aclrtMemcpy(qResult.data(), qResult.size() * sizeof(qResult[0]), qDev, qSize * sizeof(uint16_t),
                       ACL_MEMCPY_DEVICE_TO_HOST);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy q result failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy qOut result failed. ERROR: %d\n", ret); return ret);
 
     auto kCacheSize = GetShapeSize(kCacheShape);
     std::vector<uint16_t> kCacheResult(kCacheSize, 0);
     ret = aclrtMemcpy(kCacheResult.data(), kCacheResult.size() * sizeof(kCacheResult[0]), kCacheDev,
                       kCacheSize * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy k_cache result failed. ERROR: %d\n", ret); return ret);
-    LOG_PRINT("run aclnnUndGenQkvRmsNormRopeCache success, q size = %ld, k_cache size = %ld\n", qSize, kCacheSize);
+    LOG_PRINT("run aclnnUndGenQkvRmsNormRopeCache success, qOut size = %ld, k_cache size = %ld\n", qSize, kCacheSize);
 
     // 8. 释放资源
     aclDestroyTensor(undQkv);
     aclDestroyTensor(undWq);
     aclDestroyTensor(undWk);
     aclDestroyTensor(cosSin);
-    aclDestroyTensor(kCache);
-    aclDestroyTensor(vCache);
+    aclDestroyTensor(kCacheRef);
+    aclDestroyTensor(vCacheRef);
     aclDestroyTensor(slotMapping);
     aclDestroyTensor(positions);
     aclDestroyTensor(genQkv);
     aclDestroyTensor(genWq);
     aclDestroyTensor(genWk);
     aclDestroyTensor(catIndices);
-    aclDestroyTensor(q);
+    aclDestroyTensor(qOut);
     aclDestroyIntArray(mropeSection);
 
     aclrtFree(undQkvDev);

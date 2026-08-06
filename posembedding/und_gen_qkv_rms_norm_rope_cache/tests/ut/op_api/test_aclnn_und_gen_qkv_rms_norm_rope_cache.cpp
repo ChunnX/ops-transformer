@@ -69,8 +69,8 @@ TEST_F(und_gen_qkv_rms_norm_rope_cache_opapi_ut, aclnn_contiguous_kv_cache_passe
     auto undWeightsQ = TensorDesc({HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
     auto undWeightsK = TensorDesc({HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
     auto cosSinCache = TensorDesc({MAX_POS, HEAD_DIM}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto kCache = ContiguousCache(NUM_HEAD_K);
-    auto vCache = ContiguousCache(NUM_HEAD_V);
+    auto kCacheRef = ContiguousCache(NUM_HEAD_K);
+    auto vCacheRef = ContiguousCache(NUM_HEAD_V);
     auto slotMapping = TensorDesc({TOTAL}, ACL_INT64, ACL_FORMAT_ND);
     auto positions = TensorDesc({3, TOTAL}, ACL_INT64, ACL_FORMAT_ND);
     auto genQkv = TensorDesc({GEN_LEN, NUM_HEAD, HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
@@ -78,13 +78,13 @@ TEST_F(und_gen_qkv_rms_norm_rope_cache_opapi_ut, aclnn_contiguous_kv_cache_passe
     auto genWeightsK = TensorDesc({HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
     auto catIndices = TensorDesc({TOTAL}, ACL_INT64, ACL_FORMAT_ND);
     auto mropeSection = IntArrayDesc(vector<int64_t>{16, 16, 16});
-    auto q = TensorDesc({TOTAL, NUM_HEAD_Q, HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
+    auto qOut = TensorDesc({TOTAL, NUM_HEAD_Q, HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(
         aclnnUndGenQkvRmsNormRopeCache,
-        INPUT(undQkv, undWeightsQ, undWeightsK, cosSinCache, kCache, vCache, slotMapping, positions, genQkv,
+        INPUT(undQkv, undWeightsQ, undWeightsK, cosSinCache, kCacheRef, vCacheRef, slotMapping, positions, genQkv,
               genWeightsQ, genWeightsK, catIndices, NUM_HEAD_Q, NUM_HEAD_K, NUM_HEAD_V, NORM_EPS, mropeSection),
-        OUTPUT(q, kCache, vCache));
+        OUTPUT(qOut));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -98,8 +98,8 @@ TEST_F(und_gen_qkv_rms_norm_rope_cache_opapi_ut, aclnn_non_contiguous_k_cache_re
     auto undWeightsQ = TensorDesc({HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
     auto undWeightsK = TensorDesc({HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
     auto cosSinCache = TensorDesc({MAX_POS, HEAD_DIM}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto kCache = NonContiguousCache(NUM_HEAD_K);
-    auto vCache = ContiguousCache(NUM_HEAD_V);
+    auto kCacheRef = NonContiguousCache(NUM_HEAD_K);
+    auto vCacheRef = ContiguousCache(NUM_HEAD_V);
     auto slotMapping = TensorDesc({TOTAL}, ACL_INT64, ACL_FORMAT_ND);
     auto positions = TensorDesc({3, TOTAL}, ACL_INT64, ACL_FORMAT_ND);
     auto genQkv = TensorDesc({GEN_LEN, NUM_HEAD, HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
@@ -107,13 +107,13 @@ TEST_F(und_gen_qkv_rms_norm_rope_cache_opapi_ut, aclnn_non_contiguous_k_cache_re
     auto genWeightsK = TensorDesc({HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
     auto catIndices = TensorDesc({TOTAL}, ACL_INT64, ACL_FORMAT_ND);
     auto mropeSection = IntArrayDesc(vector<int64_t>{16, 16, 16});
-    auto q = TensorDesc({TOTAL, NUM_HEAD_Q, HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
+    auto qOut = TensorDesc({TOTAL, NUM_HEAD_Q, HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(
         aclnnUndGenQkvRmsNormRopeCache,
-        INPUT(undQkv, undWeightsQ, undWeightsK, cosSinCache, kCache, vCache, slotMapping, positions, genQkv,
+        INPUT(undQkv, undWeightsQ, undWeightsK, cosSinCache, kCacheRef, vCacheRef, slotMapping, positions, genQkv,
               genWeightsQ, genWeightsK, catIndices, NUM_HEAD_Q, NUM_HEAD_K, NUM_HEAD_V, NORM_EPS, mropeSection),
-        OUTPUT(q, kCache, vCache));
+        OUTPUT(qOut));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -127,8 +127,8 @@ TEST_F(und_gen_qkv_rms_norm_rope_cache_opapi_ut, aclnn_non_contiguous_v_cache_re
     auto undWeightsQ = TensorDesc({HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
     auto undWeightsK = TensorDesc({HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
     auto cosSinCache = TensorDesc({MAX_POS, HEAD_DIM}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto kCache = ContiguousCache(NUM_HEAD_K);
-    auto vCache = NonContiguousCache(NUM_HEAD_V);
+    auto kCacheRef = ContiguousCache(NUM_HEAD_K);
+    auto vCacheRef = NonContiguousCache(NUM_HEAD_V);
     auto slotMapping = TensorDesc({TOTAL}, ACL_INT64, ACL_FORMAT_ND);
     auto positions = TensorDesc({3, TOTAL}, ACL_INT64, ACL_FORMAT_ND);
     auto genQkv = TensorDesc({GEN_LEN, NUM_HEAD, HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
@@ -136,13 +136,13 @@ TEST_F(und_gen_qkv_rms_norm_rope_cache_opapi_ut, aclnn_non_contiguous_v_cache_re
     auto genWeightsK = TensorDesc({HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
     auto catIndices = TensorDesc({TOTAL}, ACL_INT64, ACL_FORMAT_ND);
     auto mropeSection = IntArrayDesc(vector<int64_t>{16, 16, 16});
-    auto q = TensorDesc({TOTAL, NUM_HEAD_Q, HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
+    auto qOut = TensorDesc({TOTAL, NUM_HEAD_Q, HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(
         aclnnUndGenQkvRmsNormRopeCache,
-        INPUT(undQkv, undWeightsQ, undWeightsK, cosSinCache, kCache, vCache, slotMapping, positions, genQkv,
+        INPUT(undQkv, undWeightsQ, undWeightsK, cosSinCache, kCacheRef, vCacheRef, slotMapping, positions, genQkv,
               genWeightsQ, genWeightsK, catIndices, NUM_HEAD_Q, NUM_HEAD_K, NUM_HEAD_V, NORM_EPS, mropeSection),
-        OUTPUT(q, kCache, vCache));
+        OUTPUT(qOut));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -156,7 +156,7 @@ TEST_F(und_gen_qkv_rms_norm_rope_cache_opapi_ut, aclnn_null_k_cache_rejected_bef
     auto undWeightsQ = TensorDesc({HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
     auto undWeightsK = TensorDesc({HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
     auto cosSinCache = TensorDesc({MAX_POS, HEAD_DIM}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto vCache = ContiguousCache(NUM_HEAD_V);
+    auto vCacheRef = ContiguousCache(NUM_HEAD_V);
     auto slotMapping = TensorDesc({TOTAL}, ACL_INT64, ACL_FORMAT_ND);
     auto positions = TensorDesc({3, TOTAL}, ACL_INT64, ACL_FORMAT_ND);
     auto genQkv = TensorDesc({GEN_LEN, NUM_HEAD, HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
@@ -164,15 +164,14 @@ TEST_F(und_gen_qkv_rms_norm_rope_cache_opapi_ut, aclnn_null_k_cache_rejected_bef
     auto genWeightsK = TensorDesc({HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
     auto catIndices = TensorDesc({TOTAL}, ACL_INT64, ACL_FORMAT_ND);
     auto mropeSection = IntArrayDesc(vector<int64_t>{16, 16, 16});
-    auto q = TensorDesc({TOTAL, NUM_HEAD_Q, HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
-    auto kCacheOut = ContiguousCache(NUM_HEAD_K);
+    auto qOut = TensorDesc({TOTAL, NUM_HEAD_Q, HEAD_DIM}, ACL_BF16, ACL_FORMAT_ND);
 
     auto ut = OP_API_UT(
         aclnnUndGenQkvRmsNormRopeCache,
-        INPUT(undQkv, undWeightsQ, undWeightsK, cosSinCache, (aclTensor*)nullptr, vCache, slotMapping, positions,
+        INPUT(undQkv, undWeightsQ, undWeightsK, cosSinCache, (aclTensor*)nullptr, vCacheRef, slotMapping, positions,
               genQkv, genWeightsQ, genWeightsK, catIndices, NUM_HEAD_Q, NUM_HEAD_K, NUM_HEAD_V, NORM_EPS,
               mropeSection),
-        OUTPUT(q, kCacheOut, vCache));
+        OUTPUT(qOut));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
