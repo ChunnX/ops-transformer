@@ -72,7 +72,7 @@
              .AutoContiguous(); 
          this->Input("sinks") 
              .ParamType(OPTIONAL) 
-             .DataTypeList({ge::DT_FLOAT}) 
+             .DataTypeList({ge::DT_FLOAT16, ge::DT_BF16}) 
              .FormatList({ge::FORMAT_ND}) 
              .AutoContiguous(); 
          this->Input("attn_mask") 

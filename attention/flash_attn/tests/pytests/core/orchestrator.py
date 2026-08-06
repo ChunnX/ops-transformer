@@ -120,12 +120,19 @@ def run_case(params: dict,
         elif "block_table" in params and params["block_table"] is not None:
             cpu_inputs["block_table"] = params["block_table"]
 
+        if params.get("sinks") is not None:
+            n1 = params.get("N1", 1)
+            cpu_inputs["sinks"] = torch.randn(n1, dtype=torch.float32) * 0.5
+
         print(f"  [golden] CPU 参考计算...")
         golden_out = golden.compute(cpu_inputs, params)
 
     print(f"  [primary] {primary.name} 计算...")
     dev_inputs = {k: v.to(primary.device) if isinstance(v, torch.Tensor) else v
                   for k, v in cpu_inputs.items()}
+    if params.get("sinks") is not None and "sinks" in dev_inputs:
+        q_dtype = torch.float16 if params.get("Dtype", "fp16") == "fp16" else torch.bfloat16
+        dev_inputs["sinks"] = dev_inputs["sinks"].to(q_dtype)
     primary_out_raw = primary.compute(dev_inputs, params)
     primary_out = {k: v.cpu() if isinstance(v, torch.Tensor) else v
                    for k, v in primary_out_raw.items()}

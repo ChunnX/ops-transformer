@@ -485,9 +485,11 @@ public:
         if constexpr (LAYOUT_T == FA_LAYOUT::BSND || LAYOUT_T == FA_LAYOUT::TND) {
             // S1G layout
             info.s1Idx = info.gS1Idx / constInfo_.gSize;
+            info.gIdx = info.gS1Idx % constInfo_.gSize;
         } else {
             // GS1 layout
             info.s1Idx = info.gS1Idx % actSeqLensQ_;
+            info.gIdx = info.gS1Idx / actSeqLensQ_;
         }
         info.s2Idx = s2Cur * s2BaseSize;
         info.actS1Size = actSeqLensQ_;
