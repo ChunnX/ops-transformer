@@ -33,7 +33,7 @@ except ImportError:
 class FlashAttnGraphNetwork(torch.nn.Module):
     """torch.compile 图模式包装器。"""
 
-    def forward(self, q, k, v, block_table, attn_mask, metadata,
+    def forward(self, q, k, v, block_table, sinks, attn_mask, metadata,
                 cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
                 softmax_scale, mask_mode, win_left, win_right,
                 max_seqlen_q, max_seqlen_kv, layout_q, layout_kv, layout_out,
@@ -41,7 +41,7 @@ class FlashAttnGraphNetwork(torch.nn.Module):
         out, lse_out = torch.ops.cann_ops_transformer.flash_attn(
             q, k, v,
             block_table=block_table,
-            sinks=None,
+            sinks=sinks,
             attn_mask=attn_mask,
             metadata=metadata,
             cu_seqlens_q=cu_seqlens_q,
@@ -196,6 +196,7 @@ class NPUBackend(Backend):
             out, lse = net(
                 inputs["q"], inputs["k"], inputs["v"],
                 kernel_kwargs.get("block_table"),
+                kernel_kwargs.get("sinks"),
                 kernel_kwargs.get("attn_mask"),
                 metadata,
                 kernel_kwargs.get("cu_seqlens_q"),
