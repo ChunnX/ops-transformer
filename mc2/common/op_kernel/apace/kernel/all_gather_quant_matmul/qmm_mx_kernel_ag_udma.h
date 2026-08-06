@@ -340,6 +340,11 @@ __aicore__ inline void QmmMxKernelAgUdma<AType, BType, CType>::Process(
     auto gmBias = Te::MakeTensor(Te::MakeMemPtr<Te::Location::GM>(biasNull),
                     Te::MakeFrameLayout<Te::NDExtLayoutPtn>(1L, Ni));
 
+    const auto& mTailTile = mmT.mTailTile;
+    const auto& nTailTile = mmT.nTailTile;
+    if ((sch.GetEndBlockIdx() + 1) * mTailTile * nTailTile <= AscendC::GetBlockNum()) {
+        sch.UpdateTailTile(mTailTile, nTailTile);
+    }
     uint32_t waitedMask = 0U;
     // dependId=0 由 AIV 预触发，无需等待。
 
