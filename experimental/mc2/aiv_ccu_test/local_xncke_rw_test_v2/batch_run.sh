@@ -89,7 +89,7 @@ fi
 
 INPUT_CSV=""
 OUTPUT_CSV=""
-CASE_LINE=0
+CASE_LINE=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -127,6 +127,18 @@ if [ ! -f "$INPUT_CSV" ]; then
     echo "[ERROR] 输入文件不存在: $INPUT_CSV"
     exit 1
 fi
+
+echo "==================================================================="
+echo "[INFO] 环境信息"
+echo "  主机名:       $(hostname)"
+echo "  服务器IP:     $(hostname -I 2>/dev/null | awk '{print $1}')"
+echo "  操作系统:     $(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d'=' -f2 | tr -d '"')"
+echo "  内核版本:     $(uname -r)"
+echo "  架构:         $(uname -m)"
+echo "  CANN路径:     ${_ASCEND_INSTALL_PATH}"
+echo "  RANK_TABLE:   ${RANK_TABLE_FILE:-未设置}"
+echo "  二进制:       ${BIN}"
+echo "==================================================================="
 
 # ==================== 批量执行 ====================
 
