@@ -155,7 +155,7 @@ endmacro()
 set(PARENT_DIRS attention mamba ffn gmm mc2 moe posembedding)
 set(OPERATOR_TARGETS "")
 # 进行白名单管理
-set(NPU_EXT_OPERATOR_LIST "typhoon_mla;score_normalize;rope_matrix;select_attention_operators")
+set(NPU_EXT_OPERATOR_LIST "typhoon_mla;score_normalize;rope_matrix;select_attention_operators;lightning_attention")
 
 foreach(DIR_NAME ${PARENT_DIRS})
     set(PARENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../${DIR_NAME}")
