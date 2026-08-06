@@ -245,22 +245,17 @@ def cpu_quant_block_sparse_attn(
     if cu_seqlens_kv_cpu is None and layout_q != "BSND":
         cu_seqlens_kv_cpu = _lengths_to_prefix(kv_lengths)
     cu_seqlens_q_inp = cu_seqlens_q_cpu
-    cu_seqlens_kv_inp = cu_seqlens_kv_cpu
 
     if k_descale_cpu.dim() == 3 and key_cpu.dim() == 4:
         k_scale_dense = _pa_to_dense(
             k_descale_cpu, block_table_cpu, B, S2, (1, 0), sparse_kv_block_size
         )
-        if layout_q == "BSND":
-            k_scale = k_scale_dense
-        else:
-            k_scale = k_scale_dense.reshape(B * S2, N2)
     elif k_descale_cpu.dim() == 1:
-        k_scale = k_descale_cpu.unsqueeze(0).expand(B, -1, N2).contiguous()
-        if layout_q != "BSND":
-            k_scale = k_scale.reshape(B * S2, N2)
+        k_scale_dense = (
+            k_descale_cpu.unsqueeze(0).unsqueeze(0).expand(B, S2, N2).contiguous()
+        )
     else:
-        k_scale = k_descale_cpu
+        k_scale_dense = k_descale_cpu
 
     v_scale = v_descale_cpu if v_descale_cpu.dim() == 1 else v_descale_cpu.view(-1)
 
@@ -291,19 +286,29 @@ def cpu_quant_block_sparse_attn(
         "quant_mode": int(quant_mode),
     }
 
+    # pytest golden 的 _reference_attention 已改为 kv_cache 读取（不再收 dense key/value/k_scale、cu_seqlens_kv），
+    # 因此把 dense key/value/k_scale 经 pack_combined_kv_cache 打包成组合 storage+meta 再传入。
+    kv_cache_storage, kv_cache_meta = golden_module.combined_kv_cache.pack_combined_kv_cache(
+        dense_key,
+        dense_value,
+        k_scale_dense,
+        block_table_cpu,
+        sparse_kv_block_size,
+        0,
+        layout_kv,
+    )
     attention_out, softmax_lse = golden_module._reference_attention(
         case,
         q_cpu,
-        dense_key,
-        dense_value,
+        kv_cache_storage,
+        kv_cache_meta,
+        block_table_cpu,
         q_descale_cpu,
-        k_scale,
         v_scale,
         p_scale_cpu,
         sparse_indices_cpu,
         sparse_seq_len_cpu,
         cu_seqlens_q_inp,
-        cu_seqlens_kv_inp,
         q_lengths,
         kv_lengths,
     )
