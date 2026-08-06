@@ -80,6 +80,87 @@ gert::InfershapeContextPara BuildInferShapeContext(int64_t undLen, int64_t genLe
         });
 }
 
+// 纯 prefill 形态：4 个可选输入一个都不实例化（实例数为 0），只传 8 个必选输入
+gert::InfershapeContextPara BuildInferShapeContextWithoutOptional(int64_t undLen, int64_t numHeadQ, int64_t numHeadK,
+                                                                  int64_t numHeadV, int64_t headDim = HEAD_DIM,
+                                                                  int64_t maxPos = 4096)
+{
+    const int64_t numHead = numHeadQ + numHeadK + numHeadV;
+    const int64_t blockNum = (undLen + BLOCK_SIZE - 1) / BLOCK_SIZE + 1;
+
+    return gert::InfershapeContextPara(
+        "UndGenQkvRmsNormRopeCache",
+        {
+            {{{undLen, numHead, headDim}, {undLen, numHead, headDim}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{headDim}, {headDim}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{headDim}, {headDim}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{maxPos, headDim}, {maxPos, headDim}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{blockNum, BLOCK_SIZE, numHeadK, headDim}, {blockNum, BLOCK_SIZE, numHeadK, headDim}},
+             ge::DT_BF16,
+             ge::FORMAT_ND},
+            {{{blockNum, BLOCK_SIZE, numHeadV, headDim}, {blockNum, BLOCK_SIZE, numHeadV, headDim}},
+             ge::DT_BF16,
+             ge::FORMAT_ND},
+            {{{undLen}, {undLen}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{MROPE_AXIS_NUM, undLen}, {MROPE_AXIS_NUM, undLen}}, ge::DT_INT64, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            {"num_heads_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(numHeadQ)},
+            {"num_heads_k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(numHeadK)},
+            {"num_heads_v", Ops::Transformer::AnyValue::CreateFrom<int64_t>(numHeadV)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(NORM_EPS)},
+            {"mrope_section", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({16, 16, 16})},
+        },
+        // gen_qkv/gen_weights_q/gen_weights_k/cat_indices 的实例数为 0，即调用方未传
+        {1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0}, {1, 1, 1});
+}
+
+// 只实例化 cat_indices 一个可选输入，gen 那三个都不传：
+// 用来钉住"按 IR 下标取可选输入"这件事——此时 cat_indices 的 IR 下标是 11，实例化下标却是 8
+gert::InfershapeContextPara BuildInferShapeContextOnlyCatIndices(int64_t undLen, int64_t catLen, int64_t numHeadQ,
+                                                                 int64_t numHeadK, int64_t numHeadV,
+                                                                 int64_t headDim = HEAD_DIM, int64_t maxPos = 4096)
+{
+    const int64_t numHead = numHeadQ + numHeadK + numHeadV;
+    const int64_t blockNum = (undLen + BLOCK_SIZE - 1) / BLOCK_SIZE + 1;
+
+    return gert::InfershapeContextPara(
+        "UndGenQkvRmsNormRopeCache",
+        {
+            {{{undLen, numHead, headDim}, {undLen, numHead, headDim}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{headDim}, {headDim}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{headDim}, {headDim}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{maxPos, headDim}, {maxPos, headDim}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{blockNum, BLOCK_SIZE, numHeadK, headDim}, {blockNum, BLOCK_SIZE, numHeadK, headDim}},
+             ge::DT_BF16,
+             ge::FORMAT_ND},
+            {{{blockNum, BLOCK_SIZE, numHeadV, headDim}, {blockNum, BLOCK_SIZE, numHeadV, headDim}},
+             ge::DT_BF16,
+             ge::FORMAT_ND},
+            {{{undLen}, {undLen}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{MROPE_AXIS_NUM, undLen}, {MROPE_AXIS_NUM, undLen}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{catLen}, {catLen}}, ge::DT_INT64, ge::FORMAT_ND},
+        },
+        {
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            {"num_heads_q", Ops::Transformer::AnyValue::CreateFrom<int64_t>(numHeadQ)},
+            {"num_heads_k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(numHeadK)},
+            {"num_heads_v", Ops::Transformer::AnyValue::CreateFrom<int64_t>(numHeadV)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(NORM_EPS)},
+            {"mrope_section", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({16, 16, 16})},
+        },
+        {1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1}, {1, 1, 1});
+}
+
 void CheckInferDataType()
 {
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
@@ -169,6 +250,33 @@ TEST_F(UndGenQkvRmsNormRopeCacheInferShape, infershape_fail_when_gen_qkv_not_3d)
     ExecuteTestCase(para, ge::GRAPH_FAILED, expectOutputShape);
 }
 
+// rank 不是 -2 就是确定的：任一输入 rank 与 IR 定义不符都直接判失败，
+// 不能因为"还能从别的输入推出同一个维度"就把它跳过去
+TEST_F(UndGenQkvRmsNormRopeCacheInferShape, infershape_fail_when_cos_sin_cache_not_2d)
+{
+    auto para = BuildInferShapeContext(5, 3, 8, 1, 1);
+    para.inputTensorDesc_[3] = {{{4096, 128, 1}, {4096, 128, 1}}, ge::DT_FLOAT, ge::FORMAT_ND};
+    std::vector<std::vector<int64_t>> expectOutputShape = {};
+    ExecuteTestCase(para, ge::GRAPH_FAILED, expectOutputShape);
+}
+
+TEST_F(UndGenQkvRmsNormRopeCacheInferShape, infershape_fail_when_k_cache_not_4d)
+{
+    auto para = BuildInferShapeContext(5, 3, 8, 1, 1);
+    para.inputTensorDesc_[4] = {{{2, 128, 128}, {2, 128, 128}}, ge::DT_BF16, ge::FORMAT_ND};
+    std::vector<std::vector<int64_t>> expectOutputShape = {};
+    ExecuteTestCase(para, ge::GRAPH_FAILED, expectOutputShape);
+}
+
+// 可选输入同样要查：cat_indices 传了就必须是 1D
+TEST_F(UndGenQkvRmsNormRopeCacheInferShape, infershape_fail_when_cat_indices_not_1d)
+{
+    auto para = BuildInferShapeContext(5, 3, 8, 1, 1);
+    para.inputTensorDesc_[11] = {{{2, 4}, {2, 4}}, ge::DT_INT64, ge::FORMAT_ND};
+    std::vector<std::vector<int64_t>> expectOutputShape = {};
+    ExecuteTestCase(para, ge::GRAPH_FAILED, expectOutputShape);
+}
+
 // 三个输出的 rank 与头数恒定（头数来自属性），T、D、Bn、Bs 能从任一输入推出就推，
 // 全都推不出才置 -1。以下用例逐条钉住各维度的取值链路。
 
@@ -237,6 +345,51 @@ TEST_F(UndGenQkvRmsNormRopeCacheInferShape, infershape_unknown_rank_all_inputs)
         {-1, 8, -1},
         {-1, -1, 1, -1},
         {-1, -1, 1, -1},
+    };
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+// 4 个可选输入全部不传（实例数为 0）：T 退化为 und_len 单段，不再做加法
+TEST_F(UndGenQkvRmsNormRopeCacheInferShape, infershape_without_optional_inputs)
+{
+    auto para = BuildInferShapeContextWithoutOptional(5, 8, 1, 1);
+    std::vector<std::vector<int64_t>> expectOutputShape = {
+        {5, 8, 128},
+        {2, 128, 1, 128},
+        {2, 128, 1, 128},
+    };
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+// 可选输入不传、且 8 个必选输入全是 -2：取值链路走到未实例化的可选输入时必须跳过，
+// 不能把"没传"当成一个可用来源，最终 T 与 D 都推不出来
+TEST_F(UndGenQkvRmsNormRopeCacheInferShape, infershape_without_optional_inputs_all_unknown_rank)
+{
+    auto para = BuildInferShapeContextWithoutOptional(5, 8, 1, 1);
+    for (auto& desc : para.inputTensorDesc_) {
+        desc.shape_ = {{-2}, {-2}};
+    }
+    std::vector<std::vector<int64_t>> expectOutputShape = {
+        {-1, 8, -1},
+        {-1, -1, 1, -1},
+        {-1, -1, 1, -1},
+    };
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+// 可选输入部分实例化：只传 cat_indices，且把 und_qkv/positions/slot_mapping 都置为 -2，
+// 使 cat_indices 成为 T 的唯一来源。它的 IR 下标是 11、实例化下标是 8，
+// 若用 GetInputShape(11) 取会落空，本用例即失败。
+TEST_F(UndGenQkvRmsNormRopeCacheInferShape, infershape_total_from_only_instantiated_cat_indices)
+{
+    auto para = BuildInferShapeContextOnlyCatIndices(5, 7, 8, 1, 1);
+    para.inputTensorDesc_[0] = {{{-2}, {-2}}, ge::DT_BF16, ge::FORMAT_ND};
+    para.inputTensorDesc_[6] = {{{-2}, {-2}}, ge::DT_INT64, ge::FORMAT_ND};
+    para.inputTensorDesc_[7] = {{{-2}, {-2}}, ge::DT_INT64, ge::FORMAT_ND};
+    std::vector<std::vector<int64_t>> expectOutputShape = {
+        {7, 8, 128},
+        {2, 128, 1, 128},
+        {2, 128, 1, 128},
     };
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
 }

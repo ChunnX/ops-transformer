@@ -50,52 +50,108 @@ constexpr size_t DIM_NUM_THREE = 3;
 constexpr size_t DIM_NUM_FOUR = 4;
 constexpr int64_t UNKNOWN_DIM_VALUE = -1LL;
 
-// 某个维度的一个候选来源：从第 inputIdx 个输入（rank 须为 expectDimNum）的第 dimIdx 维取值
+// 各输入的 rank 是确定的：非未知 rank 时 rank 必须与此表一致，否则直接判失败。
+// 维度取值、跨输入一致性与支持范围的校验仍统一在 tiling 侧。
+struct InputSpec {
+    size_t idx;
+    const char* name;
+    size_t expectDimNum;
+    bool optional;
+};
+
+// 按 IR 下标顺序排列，下标即数组位置，是"输入是否可选"的唯一出处
+constexpr InputSpec INPUT_SPECS[] = {
+    {IN_UND_QKV, "und_qkv", DIM_NUM_THREE, false},           // [und_len, N, D]
+    {IN_UND_WEIGHTS_Q, "und_weights_q", DIM_NUM_ONE, false}, // [D]
+    {IN_UND_WEIGHTS_K, "und_weights_k", DIM_NUM_ONE, false}, // [D]
+    {IN_COS_SIN_CACHE, "cos_sin_cache", DIM_NUM_TWO, false}, // [max_pos, D]
+    {IN_K_CACHE, "k_cache", DIM_NUM_FOUR, false},            // [Bn, Bs, Hk, D]
+    {IN_V_CACHE, "v_cache", DIM_NUM_FOUR, false},            // [Bn, Bs, Hv, D]
+    {IN_SLOT_MAPPING, "slot_mapping", DIM_NUM_ONE, false},   // [T]
+    {IN_POSITIONS, "positions", DIM_NUM_TWO, false},         // [3, T]
+    {IN_GEN_QKV, "gen_qkv", DIM_NUM_THREE, true},            // [gen_len, N, D]
+    {IN_GEN_WEIGHTS_Q, "gen_weights_q", DIM_NUM_ONE, true},  // [D]
+    {IN_GEN_WEIGHTS_K, "gen_weights_k", DIM_NUM_ONE, true},  // [D]
+    {IN_CAT_INDICES, "cat_indices", DIM_NUM_ONE, true},      // [T]
+};
+
+constexpr size_t INPUT_SPEC_NUM = sizeof(INPUT_SPECS) / sizeof(INPUT_SPECS[0]);
+
+constexpr bool AreInputSpecsIndexedByIrIndex()
+{
+    for (size_t i = 0; i < INPUT_SPEC_NUM; ++i) {
+        if (INPUT_SPECS[i].idx != i) {
+            return false;
+        }
+    }
+    return true;
+}
+// 下面按 IR 下标直接索引 INPUT_SPECS，表的顺序必须与 IR 输入顺序一致
+static_assert(AreInputSpecsIndexedByIrIndex(), "INPUT_SPECS must be listed in IR input index order.");
+
+// 某个维度的一个候选来源：从第 inputIdx 个输入的第 dimIdx 维取值。
+// 同一个输入可以出现在多张来源表里（如 k_cache 分别供出 Bn、Bs、D），
+// 表内顺序即尝试优先级，故与 INPUT_SPECS 是多对一关系，不能合表；
+// 是否可选统一查 INPUT_SPECS，此处不再重复声明。
 struct DimSource {
     size_t inputIdx;
     size_t dimIdx;
-    size_t expectDimNum;
-    bool optional;
 };
 
 // D（headDim）在 9 个输入里都出现：und_qkv/gen_qkv 的 [.., .., D]、四个 RMSNorm 权重的 [D]、
 // cos_sin_cache 的 [max_pos, D]、k_cache/v_cache 的 [Bn, Bs, H, D]
 constexpr DimSource HEAD_DIM_SOURCES[] = {
-    {IN_UND_QKV, DIM_TWO, DIM_NUM_THREE, false},
-    {IN_COS_SIN_CACHE, DIM_ONE, DIM_NUM_TWO, false},
-    {IN_UND_WEIGHTS_Q, DIM_ZERO, DIM_NUM_ONE, false},
-    {IN_UND_WEIGHTS_K, DIM_ZERO, DIM_NUM_ONE, false},
-    {IN_K_CACHE, DIM_THREE, DIM_NUM_FOUR, false},
-    {IN_V_CACHE, DIM_THREE, DIM_NUM_FOUR, false},
-    {IN_GEN_QKV, DIM_TWO, DIM_NUM_THREE, true},
-    {IN_GEN_WEIGHTS_Q, DIM_ZERO, DIM_NUM_ONE, true},
-    {IN_GEN_WEIGHTS_K, DIM_ZERO, DIM_NUM_ONE, true},
+    {IN_UND_QKV, DIM_TWO},        {IN_COS_SIN_CACHE, DIM_ONE},  {IN_UND_WEIGHTS_Q, DIM_ZERO},
+    {IN_UND_WEIGHTS_K, DIM_ZERO}, {IN_K_CACHE, DIM_THREE},      {IN_V_CACHE, DIM_THREE},
+    {IN_GEN_QKV, DIM_TWO},        {IN_GEN_WEIGHTS_Q, DIM_ZERO}, {IN_GEN_WEIGHTS_K, DIM_ZERO},
 };
 
 // T 除了 und_len + gen_len 相加，还能从三个按 token 组织的输入直接读出
 constexpr DimSource TOTAL_TOKEN_SOURCES[] = {
-    {IN_POSITIONS, DIM_ONE, DIM_NUM_TWO, false},     // [3, T]
-    {IN_SLOT_MAPPING, DIM_ZERO, DIM_NUM_ONE, false}, // [T]
-    {IN_CAT_INDICES, DIM_ZERO, DIM_NUM_ONE, true},   // [T]
+    {IN_POSITIONS, DIM_ONE},     // [3, T]
+    {IN_SLOT_MAPPING, DIM_ZERO}, // [T]
+    {IN_CAT_INDICES, DIM_ZERO},  // [T]
 };
 
 // Bn/Bs 是 k_cache 与 v_cache 共有的前两维（约束要求两者一致），任一可用即可
 constexpr DimSource BLOCK_NUM_SOURCES[] = {
-    {IN_K_CACHE, DIM_ZERO, DIM_NUM_FOUR, false},
-    {IN_V_CACHE, DIM_ZERO, DIM_NUM_FOUR, false},
+    {IN_K_CACHE, DIM_ZERO},
+    {IN_V_CACHE, DIM_ZERO},
 };
 
 constexpr DimSource BLOCK_SIZE_SOURCES[] = {
-    {IN_K_CACHE, DIM_ONE, DIM_NUM_FOUR, false},
-    {IN_V_CACHE, DIM_ONE, DIM_NUM_FOUR, false},
+    {IN_K_CACHE, DIM_ONE},
+    {IN_V_CACHE, DIM_ONE},
 };
 
-// 取某个输入的指定维；输入缺省、未知 rank、rank 不符或该维本身是 -1 时返回 -1
+// 可选输入按 IR 下标取（未实例化时返回 nullptr），必选输入按实例化下标取
+inline const gert::Shape* GetShapeByIrIndex(gert::InferShapeContext* context, size_t irIdx)
+{
+    return INPUT_SPECS[irIdx].optional ? context->GetOptionalInputShape(irIdx) : context->GetInputShape(irIdx);
+}
+
+// rank 校验：输入没传或是未知 rank(-2) 时跳过，否则 rank 必须与 IR 定义一致
+inline ge::graphStatus CheckInputRanks(gert::InferShapeContext* context)
+{
+    for (const auto& spec : INPUT_SPECS) {
+        const gert::Shape* shape = GetShapeByIrIndex(context, spec.idx);
+        if (shape == nullptr || Ops::Base::IsUnknownRank(*shape)) {
+            continue;
+        }
+        OP_CHECK_IF(shape->GetDimNum() != spec.expectDimNum,
+                    OP_LOGE(context, "%s must be a %zuD tensor, but got %zuD.", spec.name, spec.expectDimNum,
+                            shape->GetDimNum()),
+                    return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+// 取某个输入的指定维；输入没传、是未知 rank 或该维本身是 -1 时返回 -1。
+// 前置条件：CheckInputRanks 已通过，因此非未知 rank 的输入 rank 必定合法，dimIdx 不会越界
 inline int64_t TryGetDim(gert::InferShapeContext* context, const DimSource& src)
 {
-    const gert::Shape* shape =
-        src.optional ? context->GetOptionalInputShape(src.inputIdx) : context->GetInputShape(src.inputIdx);
-    if (shape == nullptr || Ops::Base::IsUnknownRank(*shape) || shape->GetDimNum() != src.expectDimNum) {
+    const gert::Shape* shape = GetShapeByIrIndex(context, src.inputIdx);
+    if (shape == nullptr || Ops::Base::IsUnknownRank(*shape)) {
         return UNKNOWN_DIM_VALUE;
     }
     return shape->GetDim(src.dimIdx);
@@ -164,12 +220,9 @@ graphStatus InferShape4UndGenQkvRmsNormRopeCache(gert::InferShapeContext* contex
     gert::Shape* vCacheOutShape = context->GetOutputShape(OUT_V_CACHE);
     OP_CHECK_NULL_WITH_CONTEXT(context, vCacheOutShape);
 
-    // 非未知 rank 时 und_qkv/gen_qkv 必须是 3D，这是 T 的推导前提；其余合法性校验在 tiling
-    OP_CHECK_IF(!Ops::Base::IsUnknownRank(*undQkvShape) && undQkvShape->GetDimNum() != DIM_NUM_THREE,
-                OP_LOGE(context, "und_qkv must be 3D tensor [und_len, N, D]."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(genQkvShape != nullptr && !Ops::Base::IsUnknownRank(*genQkvShape) &&
-                    genQkvShape->GetDimNum() != DIM_NUM_THREE,
-                OP_LOGE(context, "gen_qkv must be 3D tensor [gen_len, N, D]."), return ge::GRAPH_FAILED);
+    // 非未知 rank 的输入，rank 必须与 IR 定义一致，不一致直接判失败，不能当成"这个来源用不了"跳过
+    OP_CHECK_IF(CheckInputRanks(context) != ge::GRAPH_SUCCESS, OP_LOGE(context, "input rank check failed."),
+                return ge::GRAPH_FAILED);
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
