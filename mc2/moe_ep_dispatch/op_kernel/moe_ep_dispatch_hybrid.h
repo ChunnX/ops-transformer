@@ -65,6 +65,9 @@ constexpr int64_t STATUS_POLL_BACKOFF_CYCLES = 100; // ready 未就绪时的轮�
 constexpr uint32_t STATUS_CLEAR_BATCH_RECORDS = 64U;
 // status[0]发布总slot数，其余status只表示对应slot已到达。
 constexpr uint32_t SCALEOUT_SLOT_READY = 1U;
+// count状态槽(512B)内：consumedTag/轮次计数各自独占64B cache line，避免DCCI刷出覆盖对端写入的count
+constexpr uint32_t COUNT_SLOT_CONSUMED_TAG_OFFSET = 64;
+constexpr uint32_t COUNT_SLOT_ROUND_OFFSET = 128;
 // 高32位为nextSlot，低32位为slotsLeft；低32位为-1表示count尚未读到。
 constexpr int64_t SOURCE_STATE_UNREAD = (static_cast<int64_t>(0) << 32) | 0xFFFFFFFFLL;
 constexpr int32_t SOURCE_COUNT_UNREAD = -1;
@@ -270,6 +273,7 @@ private:
     uint32_t aivNum_{0};
     uint32_t epRankId_{0};
     uint32_t aivId_{0};
+    uint32_t roundTag_{0}; // 本轮count交换使用的轮次tag
     uint32_t rankNumPerServer_{0};
     uint32_t currentServerIndex_{0};
     uint32_t serverStartRank_{0};
@@ -766,6 +770,20 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SendCountToRemoteRank(
     uint32_t dstRankId, uint64_t notifyValue)
 {
+    // 跨轮握手：接收方确认消费完上一轮（consumedTag==roundTag_-1）后才写本轮，
+    // 避免下一轮count提前写入被上一轮误读/误清。
+    GM_ADDR consumedAddr =
+        MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, dstRankId, cntWinStateOffset_) +
+        static_cast<uint64_t>(epRankId_) * WIN_ADDR_ALIGN + COUNT_SLOT_CONSUMED_TAG_OFFSET;
+    uint32_t expectedConsumed = roundTag_ - 1U;
+    while (static_cast<uint32_t>(ReadGmByPassDCache((__gm__ int32_t *)consumedAddr)) != expectedConsumed) {
+        int64_t backoffStartCycle = GetSystemCycle();
+        while (GetSystemCycle() - backoffStartCycle < STATUS_POLL_BACKOFF_CYCLES) {
+        }
+    }
+    // notifyValue低32位为轮次tag（替代原state=1），高32位仍为count
+    notifyValue = (notifyValue & 0xFFFFFFFF00000000ULL) | static_cast<uint64_t>(roundTag_);
+
     // 计算目标窗口地址:
     GM_ADDR remoteStateAddr =
         MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, dstRankId, cntWinStateOffset_);
@@ -775,7 +793,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         sendCntWorkspaceAddr_ + cntPerRankSizeAlign512_ + dstRankId * moeExpertNumPerRank_ * sizeof(int32_t);
     uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
 
-    // notifyValue 的低 32 位为 ready，高 32 位为该目标 rank 的 token count。
+    // notifyValue 的低 32 位为轮次 tag，高 32 位为该目标 rank 的 token count。
     hcomm_.WriteWithNotifyNbi(commHandle, remoteCountAddr, srcWorkspaceAddr,
                               static_cast<uint64_t>(moeExpertNumPerRank_ * sizeof(int32_t)),
                               notifyAddr, notifyValue);
@@ -803,6 +821,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     DataCopyPad(countGMTensor, cntPerExpertTensor, expertCntCopyParams);
     SyncFunc<AscendC::HardEvent::MTE3_S>(); // perExpert 写完再写notifyVal
+    notifyVal = (notifyVal & 0xFFFFFFFF00000000ULL) | static_cast<uint64_t>(roundTag_);
     notifyGMTensor.SetValue(0, notifyVal);
     DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(notifyGMTensor);
 }
@@ -810,6 +829,23 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::ExchangeCount()
 {
+    // 轮次计数：AIV0递增本卡轮次并刷出，SyncAll后所有AIV使用同一轮次
+    if (aivId_ == 0U) {
+        GM_ADDR roundAddr =
+            MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, epRankId_, cntWinStateOffset_) +
+            static_cast<uint64_t>(epRankId_) * WIN_ADDR_ALIGN + COUNT_SLOT_ROUND_OFFSET;
+        GlobalTensor<uint32_t> roundTensor;
+        roundTensor.SetGlobalBuffer((__gm__ uint32_t *)roundAddr);
+        uint32_t nextRound = static_cast<uint32_t>(ReadGmByPassDCache((__gm__ int32_t *)roundAddr)) + 1U;
+        roundTensor.SetValue(0, nextRound);
+        DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(roundTensor);
+    }
+    SyncAll<true>();
+    GM_ADDR roundAddr =
+        MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, epRankId_, cntWinStateOffset_) +
+        static_cast<uint64_t>(epRankId_) * WIN_ADDR_ALIGN + COUNT_SLOT_ROUND_OFFSET;
+    roundTag_ = static_cast<uint32_t>(ReadGmByPassDCache((__gm__ int32_t *)roundAddr));
+
     SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, rankNumPerCore_);
     if (startRankId_ >= epWorldSize_) {
         return;
@@ -848,28 +884,38 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     }
 
     uint32_t serverRankCount = epWorldSize_;
-    uint32_t mask = 1U;
-    int32_t sumOfFlag = -1;
-    int32_t compareFlag = static_cast<int32_t>(serverRankCount);
     LocalTensor<int32_t> recvCounterTensor = topkIdsBuf_.GetWithOffset<int32_t>(serverRankCount * UB_STRIDE, 0);
-    LocalTensor<float> tempFp32 =
-        topkIdsBuf_.GetWithOffset<float>(serverRankCount * UB_STRIDE, serverRankCount * UB_ALIGN);
-    LocalTensor<float> recvCounterTensorFp32 = recvCounterTensor.template ReinterpretCast<float>();
-    LocalTensor<float> numRecvPerRankTensorFp32 = numRecvPerRankTensor_.template ReinterpretCast<float>();
     SyncFunc<AscendC::HardEvent::MTE3_V>(); // 等待本核上轮计数器清0(buf 复用)
-    while (sumOfFlag != compareFlag) {      // 状态位check
+    bool allCountsReady = false;
+    while (!allCountsReady) {               // 等所有来源槽的轮次tag == 本轮
         DataCopy(recvCounterTensor, recvCounterGMTensor_, statusCopyParams_);
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
-        ReduceSum(numRecvPerRankTensorFp32, recvCounterTensorFp32, tempFp32, mask, serverRankCount, 1);
-        SyncFunc<AscendC::HardEvent::V_S>();
-        sumOfFlag = numRecvPerRankTensor_.GetValue(0);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        allCountsReady = true;
+        for (uint32_t srcRankId = 0U; srcRankId < serverRankCount; ++srcRankId) {
+            if (recvCounterTensor.GetValue(srcRankId * UB_STRIDE) != static_cast<int32_t>(roundTag_)) {
+                allCountsReady = false;
+                break;
+            }
+        }
+        if (!allCountsReady) {
+            int64_t backoffStartCycle = GetSystemCycle();
+            while (GetSystemCycle() - backoffStartCycle < STATUS_POLL_BACKOFF_CYCLES) {
+            }
+        }
+        SyncFunc<AscendC::HardEvent::S_MTE2>(); // 循环回边：S读完成后下一轮MTE2才能写同一UB
     }
     SetRecvNumPerExpert();                // 计算本卡上各专家接收的token总数
     SetRecvNumPerRank(recvCounterTensor); // 计算本端接收来自各卡的token总数
-    // status clear
-    Duplicate<int32_t>(recvCounterTensor, 0, serverRankCount * UB_STRIDE);
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy(recvCounterGMTensor_, recvCounterTensor, clearStatusCopyParams_);
+    // 写consumedTag标记本轮已消费，不再整区清零，避免误伤下一轮提前写入的count
+    for (uint32_t srcRankId = 0U; srcRankId < serverRankCount; ++srcRankId) {
+        GM_ADDR consumedAddr =
+            MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, epRankId_, cntWinStateOffset_) +
+            static_cast<uint64_t>(srcRankId) * WIN_ADDR_ALIGN + COUNT_SLOT_CONSUMED_TAG_OFFSET;
+        GlobalTensor<uint32_t> consumedTensor;
+        consumedTensor.SetGlobalBuffer((__gm__ uint32_t *)consumedAddr);
+        consumedTensor.SetValue(0, roundTag_);
+        DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(consumedTensor);
+    }
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
