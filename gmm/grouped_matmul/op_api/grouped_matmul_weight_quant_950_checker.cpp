@@ -112,7 +112,7 @@ bool AclnnGroupedMatmulWeightQuantDAV3510Checker::IsS8S4PseudoQuantDataFlow() co
     const bool supportedApi = gmmParams_.apiVersion == GMMApiVersion::V5 ||
                               gmmParams_.apiVersion == GMMApiVersion::WeightNz;
     return supportedApi && IsS8S4NZ() && gmmParams_.scaleOptional != nullptr &&
-           gmmParams_.scaleOptional->Size() == 1 && (*gmmParams_.scaleOptional)[0] != nullptr &&
+           gmmParams_.scaleOptional->Size() > 0 && (*gmmParams_.scaleOptional)[0] != nullptr &&
            (*gmmParams_.scaleOptional)[0]->GetDataType() == ge::DT_UINT64;
 }
 
