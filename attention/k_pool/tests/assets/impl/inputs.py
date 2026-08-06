@@ -35,11 +35,11 @@ def fill_tensor_from_value(tensor, value):
     tensor.copy_(data.reshape(tensor.shape))
 
 
-def get_seq_used_by_batch(batch_idx, S, seqused, cu_seqlens):
-    if seqused is not None:
-        return seqused[batch_idx]
-    if cu_seqlens is not None:
-        return cu_seqlens[batch_idx + 1] - cu_seqlens[batch_idx]
+def get_seq_used_by_batch(batch_idx, S, seq_used, seq_lens):
+    if seq_used is not None:
+        return seq_used[batch_idx]
+    if seq_lens is not None:
+        return seq_lens[batch_idx + 1] - seq_lens[batch_idx]
     return S
 
 
@@ -51,8 +51,8 @@ def build_block_table(
     block_size,
     cmp_ratio,
     start_pos,
-    seqused,
-    cu_seqlens,
+    seq_used,
+    seq_lens,
     cache_mode,
     S,
 ):
@@ -80,7 +80,7 @@ def build_block_table(
                 if next_block_id < block_num:
                     block_table[i][j] = next_block_id
                     next_block_id += 1
-            end_pos = get_seq_used_by_batch(i, S, seqused, cu_seqlens)
+            end_pos = get_seq_used_by_batch(i, S, seq_used, seq_lens)
             next_start = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio - cmp_ratio
             next_end = (start_pos[i] + end_pos) // cmp_ratio * cmp_ratio + cmp_ratio
             if (start_pos[i] + end_pos) % cmp_ratio == 0:
@@ -103,17 +103,17 @@ def build_block_table(
 
 
 def _fill_seq_descriptors(
-    x,
+    hidden_states,
     state_cache,
     cmp_ratio,
     coff,
     cache_mode,
-    cu_seqlens,
-    seqused,
+    seq_lens,
+    seq_used,
     start_pos,
     **kwargs,
 ):
-    if x is None or not torch.is_tensor(x):
+    if hidden_states is None or not torch.is_tensor(hidden_states):
         return None, None, None, 0, 0, 0, 128
 
     block_size = 128
@@ -124,26 +124,26 @@ def _fill_seq_descriptors(
     ):
         block_size = int(state_cache.shape[1])
 
-    is_th = x.dim() == 2
+    is_th = hidden_states.dim() == 2
     S_max = 0
     cu_seqlens_values = kwargs.get("cu_seqlens_values")
     seqused_values = kwargs.get("seqused_values")
     start_pos_values = kwargs.get("start_pos_values")
 
     if is_th:
-        T = x.shape[0]
+        T = hidden_states.shape[0]
         if cu_seqlens_values is not None:
             cu_seqlens_list = [int(v) for v in cu_seqlens_values]
-            if cu_seqlens is not None and torch.is_tensor(cu_seqlens):
-                fill_tensor_from_value(cu_seqlens, cu_seqlens_list)
+            if seq_lens is not None and torch.is_tensor(seq_lens):
+                fill_tensor_from_value(seq_lens, cu_seqlens_list)
         else:
-            print("Error: layout of x is [T, hidden_size], cu_seqlens is required!!!")
+            print("Error: layout of hidden_states is [T, hidden_size], seq_lens is required!!!")
         B = len(cu_seqlens_list) - 1
         S = T // B
     else:
         cu_seqlens_list = None
-        B = x.shape[0]
-        S = x.shape[1]
+        B = hidden_states.shape[0]
+        S = hidden_states.shape[1]
 
     if seqused_values is not None:
         seqused_list = [int(v) for v in seqused_values]
@@ -153,8 +153,8 @@ def _fill_seq_descriptors(
                 cu_seqlens_list[i + 1] - cu_seqlens_list[i] for i in range(B)
             ]
         else:
-            seqused_list = [x.shape[1]] * B
-    fill_tensor_from_value(seqused, seqused_list)
+            seqused_list = [hidden_states.shape[1]] * B
+    fill_tensor_from_value(seq_used, seqused_list)
 
     if start_pos_values is not None:
         start_pos_list = [max(0, int(v)) for v in start_pos_values]
@@ -176,11 +176,11 @@ def _fill_seq_descriptors(
 
 
 def apply_batch_slice_seeded(
-    x,
-    wkv,
-    wgate,
+    hidden_states,
+    wk,
+    gate_weight,
     state_cache,
-    state_block_table,
+    cache_block_table,
     ape,
     cmp_ratio,
     coff,
@@ -207,8 +207,8 @@ def apply_batch_slice_seeded(
         return
     batch_axis = kwargs.get("batch_axis")
     # 输入 tensor 列表（与 tensor_view_shapes 顺序一致）
-    is_th = x.dim() == 2
-    input_tensors = [x, wkv, wgate, state_cache, ape]
+    is_th = hidden_states.dim() == 2
+    input_tensors = [hidden_states, wk, gate_weight, state_cache, ape]
     torch_npu.npu.set_deterministic_level(3)
     for idx, tensor in enumerate(input_tensors):
         if tensor is None or not torch.is_tensor(tensor):
@@ -287,7 +287,7 @@ def apply_batch_slice_seeded(
                                 ).to(state_cache.dtype)
                             else:
                                 cache_shape = list(state_cache.shape)
-                                cache_shape[0] = length * state_block_table.shape[1]
+                                cache_shape[0] = length * cache_block_table.shape[1]
                                 cache_rng = np.random.RandomState(seed_value)
                                 cache_range = input_ranges[3]
                                 cache_lo, cache_hi = cache_range[0], cache_range[1]
@@ -295,8 +295,8 @@ def apply_batch_slice_seeded(
                                     cache_lo, cache_hi, size=tuple(cache_shape)
                                 ).astype(np.float32)
                                 state_cache[
-                                    start * state_block_table.shape[1] : end
-                                    * state_block_table.shape[1],
+                                    start * cache_block_table.shape[1] : end
+                                    * cache_block_table.shape[1],
                                     :,
                                     :,
                                 ] = torch.from_numpy(cache_data).to(state_cache.dtype)
@@ -345,7 +345,7 @@ def apply_batch_slice_seeded(
                                 ).to(state_cache.dtype)
                             else:
                                 cache_shape = list(state_cache.shape)
-                                cache_shape[0] = length * state_block_table.shape[1]
+                                cache_shape[0] = length * cache_block_table.shape[1]
                                 cache_rng = np.random.RandomState(seed_value)
                                 cache_range = input_ranges[3]
                                 cache_lo, cache_hi = cache_range[0], cache_range[1]
@@ -353,24 +353,24 @@ def apply_batch_slice_seeded(
                                     cache_lo, cache_hi, size=tuple(cache_shape)
                                 ).astype(np.float32)
                                 state_cache[
-                                    start * state_block_table.shape[1] : end
-                                    * state_block_table.shape[1],
+                                    start * cache_block_table.shape[1] : end
+                                    * cache_block_table.shape[1],
                                     :,
                                     :,
                                 ] = torch.from_numpy(cache_data).to(state_cache.dtype)
 
 
 def generate_k_pool_inputs(
-    x,
-    wkv,
-    wgate,
+    hidden_states,
+    wk,
+    gate_weight,
     state_cache,
     ape,
     cmp_ratio=4,
     *,
-    state_block_table=None,
-    cu_seqlens=None,
-    seqused=None,
+    cache_block_table=None,
+    seq_lens=None,
+    seq_used=None,
     start_pos=None,
     coff=1,
     cache_mode=1,
@@ -378,28 +378,28 @@ def generate_k_pool_inputs(
 ):
     cu_seqlens_list, seqused_list, start_pos_list, B, S, S_max, block_size = (
         _fill_seq_descriptors(
-            x,
+            hidden_states,
             state_cache,
             cmp_ratio,
             coff,
             cache_mode,
-            cu_seqlens,
-            seqused,
+            seq_lens,
+            seq_used,
             start_pos,
             **kwargs,
         )
     )
 
-    if x is None or not torch.is_tensor(x):
+    if hidden_states is None or not torch.is_tensor(hidden_states):
         return
 
     cmp_ratio_val = int(cmp_ratio) if cmp_ratio is not None else 4
     cache_mode_val = int(cache_mode) if cache_mode is not None else 1
 
-    if state_block_table is not None and torch.is_tensor(state_block_table):
+    if cache_block_table is not None and torch.is_tensor(cache_block_table):
         build_block_table(
             state_cache,
-            state_block_table,
+            cache_block_table,
             B,
             S_max,
             block_size,
@@ -412,11 +412,11 @@ def generate_k_pool_inputs(
         )
     # batch一致性切片赋值
     apply_batch_slice_seeded(
-        x,
-        wkv,
-        wgate,
+        hidden_states,
+        wk,
+        gate_weight,
         state_cache,
-        state_block_table,
+        cache_block_table,
         ape,
         cmp_ratio,
         coff,
@@ -426,43 +426,43 @@ def generate_k_pool_inputs(
 
 
 def aclnn_k_pool_input(
-    x,
-    wkv,
-    wgate,
+    hidden_states,
+    wk,
+    gate_weight,
     stateCacheRef,
     ape,
-    stateBlockTable,
-    cuSeqlens,
-    seqused,
+    cacheBlockTable,
+    seqLens,
+    seq_used,
     startPos,
     cmpRatio,
     coff,
     cacheMode,
     stateCacheStrideDim0,
-    cmpKv,
+    pooledKey,
     **kwargs,
 ):
     cu_seqlens_list, seqused_list, start_pos_list, B, S, S_max, block_size = (
         _fill_seq_descriptors(
-            x,
+            hidden_states,
             stateCacheRef,
             cmpRatio,
             coff,
             cacheMode,
-            cuSeqlens,
-            seqused,
+            seqLens,
+            seq_used,
             startPos,
             **kwargs,
         )
     )
 
-    if x is None or not torch.is_tensor(x):
+    if hidden_states is None or not torch.is_tensor(hidden_states):
         return
 
-    if stateBlockTable is not None and torch.is_tensor(stateBlockTable):
+    if cacheBlockTable is not None and torch.is_tensor(cacheBlockTable):
         build_block_table(
             stateCacheRef,
-            stateBlockTable,
+            cacheBlockTable,
             B,
             S_max,
             block_size,
@@ -475,11 +475,11 @@ def aclnn_k_pool_input(
         )
 
     apply_batch_slice_seeded(
-        x,
-        wkv,
-        wgate,
+        hidden_states,
+        wk,
+        gate_weight,
         stateCacheRef,
-        stateBlockTable,
+        cacheBlockTable,
         ape,
         cmpRatio,
         coff,

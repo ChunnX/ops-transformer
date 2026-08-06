@@ -29,16 +29,16 @@ public:
     __aicore__ inline KPoolBlockCubeFullLoad(){};
     __aicore__ inline void InitParams(const ConstInfo &constInfo, const KPoolTools<COMP> &tools);
     __aicore__ inline void Init(
-        __gm__ uint8_t *x,
-        __gm__ uint8_t *wKv,
-        __gm__ uint8_t *wGate,
+        __gm__ uint8_t *hidden_states,
+        __gm__ uint8_t *wk,
+        __gm__ uint8_t *gateWeight,
         __gm__ uint8_t *stateCache,
         __gm__ uint8_t *ape,
-        __gm__ uint8_t *stateBlockTable,
-        __gm__ uint8_t *cuSeqlens,
+        __gm__ uint8_t *cacheBlockTable,
+        __gm__ uint8_t *seqLens,
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
-        __gm__ uint8_t *cmpKvOut);
+        __gm__ uint8_t *pooledKeyOut);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitGlobalBuffers(const GlobalTensor<MM1_OUT_T>& kvMm1ResGm, const GlobalTensor<MM1_OUT_T>& scoreMm1ResGm);
     __aicore__ inline void AllocEventID(TPipe *pipe);
@@ -47,18 +47,18 @@ public:
 
 private:
     using T = float;
-    using X_T = typename AscendC::Conditional<COMP::xDtype == X_DTYPE::BF16, bfloat16_t, half>::type;
+    using HIDDEN_STATES_T = typename AscendC::Conditional<COMP::hiddenStatesDtype == HIDDEN_STATES_DTYPE::BF16, bfloat16_t, half>::type;
     
     __aicore__ inline uint32_t GetMSize(const RunInfo &info, uint32_t coffId);
-    __aicore__ inline void CopyXGmToL1(LocalTensor<X_T> xL1Tensor, uint32_t hIdx, uint32_t kBase);
-    __aicore__ inline void CopyWeightGmToL1(LocalTensor<X_T> wL1Tensor,
+    __aicore__ inline void CopyXGmToL1(LocalTensor<HIDDEN_STATES_T> xL1Tensor, uint32_t hIdx, uint32_t kBase);
+    __aicore__ inline void CopyWeightGmToL1(LocalTensor<HIDDEN_STATES_T> wL1Tensor,
         uint32_t hIdx, uint32_t kBase, uint32_t coffId);
-    __aicore__ inline void LoadAToL0(LocalTensor<X_T> aL0Tensor, LocalTensor<X_T> xL1Tensor,
+    __aicore__ inline void LoadAToL0(LocalTensor<HIDDEN_STATES_T> aL0Tensor, LocalTensor<HIDDEN_STATES_T> xL1Tensor,
         uint32_t kStart, uint32_t kBase, uint32_t mStart, uint32_t mDealSize);
-    __aicore__ inline void LoadBToL0(LocalTensor<X_T> bL0Tensor, LocalTensor<X_T> wL1Tensor,
+    __aicore__ inline void LoadBToL0(LocalTensor<HIDDEN_STATES_T> bL0Tensor, LocalTensor<HIDDEN_STATES_T> wL1Tensor,
         uint32_t kStart, uint32_t kBase, uint32_t nStart, uint32_t nDealSize);
-    __aicore__ inline void MatrixMmad(LocalTensor<T> cL0Tensor, LocalTensor<X_T> aL0Tensor,
-        LocalTensor<X_T> bL0Tensor, uint32_t mActSize, uint32_t nDealSize, uint32_t kActSize, bool isInitL0C);
+    __aicore__ inline void MatrixMmad(LocalTensor<T> cL0Tensor, LocalTensor<HIDDEN_STATES_T> aL0Tensor,
+        LocalTensor<HIDDEN_STATES_T> bL0Tensor, uint32_t mActSize, uint32_t nDealSize, uint32_t kActSize, bool isInitL0C);
     __aicore__ inline void CopyOutMm1Res(const RunInfo &info, LocalTensor<T> cL0Tensor,
         uint32_t coffId, uint32_t mStart, uint32_t mDealSize, uint32_t nStart, uint32_t nDealSize);
 
@@ -66,9 +66,9 @@ private:
     KPoolTools<COMP> tools_;
 
     // GM
-    GlobalTensor<X_T> xGm_;
-    GlobalTensor<X_T> wkvGm_;
-    GlobalTensor<X_T> wgateGm_;
+    GlobalTensor<HIDDEN_STATES_T> hiddenStatesGm_;
+    GlobalTensor<HIDDEN_STATES_T> wkvGm_;
+    GlobalTensor<HIDDEN_STATES_T> wgateGm_;
     GlobalTensor<MM1_OUT_T>kvMm1ResGm;
     GlobalTensor<MM1_OUT_T>scoreMm1ResGm;
     GlobalTensor<int32_t> cuSeqlensGm_;
@@ -127,27 +127,27 @@ __aicore__ inline void KPoolBlockCubeFullLoad<COMP>::InitParams(const ConstInfo 
 }
 
 template <typename COMP> __aicore__ inline void KPoolBlockCubeFullLoad<COMP>::Init(
-        __gm__ uint8_t *x,
-        __gm__ uint8_t *wKv,
-        __gm__ uint8_t *wGate,
+        __gm__ uint8_t *hidden_states,
+        __gm__ uint8_t *wk,
+        __gm__ uint8_t *gateWeight,
         __gm__ uint8_t *stateCache,
         __gm__ uint8_t *ape,
-        __gm__ uint8_t *stateBlockTable,
-        __gm__ uint8_t *cuSeqlens,
+        __gm__ uint8_t *cacheBlockTable,
+        __gm__ uint8_t *seqLens,
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
-        __gm__ uint8_t *cmpKvOut)
+        __gm__ uint8_t *pooledKeyOut)
 {
-    xGm_.SetGlobalBuffer((__gm__ X_T *)x);
-    wkvGm_.SetGlobalBuffer((__gm__ X_T *)wKv);
-    wgateGm_.SetGlobalBuffer((__gm__ X_T *)wGate);
+    hiddenStatesGm_.SetGlobalBuffer((__gm__ HIDDEN_STATES_T *)hidden_states);
+    wkvGm_.SetGlobalBuffer((__gm__ HIDDEN_STATES_T *)wk);
+    wgateGm_.SetGlobalBuffer((__gm__ HIDDEN_STATES_T *)gateWeight);
     startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
     isExistSeqUsed = (seqUsed != nullptr);
     if (isExistSeqUsed) {
         sequsedGm_.SetGlobalBuffer((__gm__ int32_t *)seqUsed);
     }
-    if constexpr (COMP::xLayout == X_LAYOUT::TH) {
-        cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)cuSeqlens);
+    if constexpr (COMP::hiddenStatesLayout == HIDDEN_STATES_LAYOUT::TH) {
+        cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)seqLens);
     }
 }
 
@@ -217,28 +217,28 @@ __aicore__ inline void KPoolBlockCubeFullLoad<COMP>::FreeEventID(TPipe *pipe)
 }
 
 template <typename COMP>
-__aicore__ inline void KPoolBlockCubeFullLoad<COMP>::CopyXGmToL1(LocalTensor<X_T> xL1Tensor,
+__aicore__ inline void KPoolBlockCubeFullLoad<COMP>::CopyXGmToL1(LocalTensor<HIDDEN_STATES_T> xL1Tensor,
     uint32_t hIdx, uint32_t kBase)
 {
     uint32_t copySeqCnt = constInfo_.mEnd - constInfo_.mStart;    //info.dealSeqCnt; // 此基本块处理的长度
 
-    uint32_t xL1Offset = 0 * BlockElementNum<X_T>();
+    uint32_t xL1Offset = 0 * BlockElementNum<HIDDEN_STATES_T>();
     uint64_t sIdx = constInfo_.mStart;    // 起始s在整个T的起始点
     uint64_t gmOffset = sIdx * constInfo_.hSize + hIdx;
     uint32_t nValue = copySeqCnt;
     uint32_t dValue = kBase;  // 拷贝的列数kBase
     uint32_t srcDValue = constInfo_.hSize;
     uint32_t dstNzC0Stride = Align(copySeqCnt, NZ_FRACTAL_DIM);    // 1行变2行的行方向的偏移，需要16对齐
-    CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
+    CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], hiddenStatesGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
 }
 
 template <typename COMP>
-__aicore__ inline void KPoolBlockCubeFullLoad<COMP>::CopyWeightGmToL1(LocalTensor<X_T> wL1Tensor,
+__aicore__ inline void KPoolBlockCubeFullLoad<COMP>::CopyWeightGmToL1(LocalTensor<HIDDEN_STATES_T> wL1Tensor,
     uint32_t hIdx, uint32_t kBase, uint32_t coffId)
 {
     uint64_t gmOffset = coffId * constInfo_.headDim * constInfo_.hSize + constInfo_.nStart * constInfo_.hSize + hIdx;
     uint32_t wkvL1Offset = 0;
-    uint32_t wgateL1Offset = constInfo_.dBaseSize * BlockElementNum<X_T>(); // wgate与wkv的起始点相隔dBaseSize个32B
+    uint32_t wgateL1Offset = constInfo_.dBaseSize * BlockElementNum<HIDDEN_STATES_T>(); // wgate与wkv的起始点相隔dBaseSize个32B
     uint32_t nValue = constInfo_.dBaseSize;
     uint32_t dValue = kBase;
     uint32_t srcDValue = constInfo_.hSize;
@@ -248,20 +248,20 @@ __aicore__ inline void KPoolBlockCubeFullLoad<COMP>::CopyWeightGmToL1(LocalTenso
 }
 
 template <typename COMP>
-__aicore__ inline void KPoolBlockCubeFullLoad<COMP>::LoadAToL0(LocalTensor<X_T> aL0Tensor,
-    LocalTensor<X_T> xL1Tensor, uint32_t kStart, uint32_t kBase, uint32_t mStart, uint32_t mDealSize)
+__aicore__ inline void KPoolBlockCubeFullLoad<COMP>::LoadAToL0(LocalTensor<HIDDEN_STATES_T> aL0Tensor,
+    LocalTensor<HIDDEN_STATES_T> xL1Tensor, uint32_t kStart, uint32_t kBase, uint32_t mStart, uint32_t mDealSize)
 {
     uint32_t mSize = constInfo_.mEnd - constInfo_.mStart;
 
     uint32_t mSizeAlign = Align(mSize, 16U);
-    uint32_t xTensorOffset = kStart * mSizeAlign + mStart * BlockElementNum<X_T>();
+    uint32_t xTensorOffset = kStart * mSizeAlign + mStart * BlockElementNum<HIDDEN_STATES_T>();
     uint32_t mDealSizeAlign = Align(mDealSize, 16U);
 
     LoadData2DParamsV2 loadData2DParamsV2;
     loadData2DParamsV2.mStartPosition = 0;
     loadData2DParamsV2.kStartPosition = 0;
     loadData2DParamsV2.mStep = mDealSizeAlign / 16;
-    loadData2DParamsV2.kStep = kBase / BlockElementNum<X_T>();
+    loadData2DParamsV2.kStep = kBase / BlockElementNum<HIDDEN_STATES_T>();
     loadData2DParamsV2.srcStride = mSizeAlign / 16;
     loadData2DParamsV2.dstStride = loadData2DParamsV2.mStep;
     loadData2DParamsV2.ifTranspose = false;
@@ -269,20 +269,20 @@ __aicore__ inline void KPoolBlockCubeFullLoad<COMP>::LoadAToL0(LocalTensor<X_T> 
 }
 
 template <typename COMP>
-__aicore__ inline void KPoolBlockCubeFullLoad<COMP>::LoadBToL0(LocalTensor<X_T> bL0Tensor, LocalTensor<X_T> wL1Tensor,
+__aicore__ inline void KPoolBlockCubeFullLoad<COMP>::LoadBToL0(LocalTensor<HIDDEN_STATES_T> bL0Tensor, LocalTensor<HIDDEN_STATES_T> wL1Tensor,
     uint32_t kStart, uint32_t kBase, uint32_t nStart, uint32_t nDealSize)
 {
     uint32_t nSize = WEIGHT_MATRIX_NUM * constInfo_.dBaseSize;
 
     uint32_t nSizeAlign = Align(nSize, 16U);
-    uint64_t wTensorOffset = nSizeAlign * kStart + nStart * BlockElementNum<X_T>();
+    uint64_t wTensorOffset = nSizeAlign * kStart + nStart * BlockElementNum<HIDDEN_STATES_T>();
     uint32_t nDealSizeAlign = Align(nDealSize, 16U);
 
     LoadData2DParamsV2 loadData2DParamsV2;
     loadData2DParamsV2.mStartPosition = 0;
     loadData2DParamsV2.kStartPosition = 0;
     loadData2DParamsV2.mStep = nDealSizeAlign / 16;
-    loadData2DParamsV2.kStep = kBase / BlockElementNum<X_T>();
+    loadData2DParamsV2.kStep = kBase / BlockElementNum<HIDDEN_STATES_T>();
     loadData2DParamsV2.srcStride = nSizeAlign / 16;
     loadData2DParamsV2.dstStride = loadData2DParamsV2.mStep;
     loadData2DParamsV2.ifTranspose = false;
@@ -290,8 +290,8 @@ __aicore__ inline void KPoolBlockCubeFullLoad<COMP>::LoadBToL0(LocalTensor<X_T> 
 }
 
 template <typename COMP>
-__aicore__ inline void KPoolBlockCubeFullLoad<COMP>::MatrixMmad(LocalTensor<T> cL0Tensor, LocalTensor<X_T> aL0Tensor,
-    LocalTensor<X_T> bL0Tensor, uint32_t mActSize, uint32_t nDealSize, uint32_t kActSize, bool isInitL0C)
+__aicore__ inline void KPoolBlockCubeFullLoad<COMP>::MatrixMmad(LocalTensor<T> cL0Tensor, LocalTensor<HIDDEN_STATES_T> aL0Tensor,
+    LocalTensor<HIDDEN_STATES_T> bL0Tensor, uint32_t mActSize, uint32_t nDealSize, uint32_t kActSize, bool isInitL0C)
 {
     MmadParams mmadParams;
     mmadParams.m = mActSize < 16 ? 16 : mActSize;
@@ -364,7 +364,7 @@ __aicore__ inline void KPoolBlockCubeFullLoad<COMP>::ComputeMm1(const RunInfo &i
         bool isFirst = (h == 0);
         bool isLast = (h + K_L1_BASE >= hSize);
         WaitFlag<HardEvent::MTE1_MTE2>(X_EVENT0 + xBufId);
-        LocalTensor<X_T> xL1Tensor = xBufL1.GetWithOffset<X_T>(L1_X_SIZE / sizeof(X_T), xBufId * L1_X_SIZE);
+        LocalTensor<HIDDEN_STATES_T> xL1Tensor = xBufL1.GetWithOffset<HIDDEN_STATES_T>(L1_X_SIZE / sizeof(HIDDEN_STATES_T), xBufId * L1_X_SIZE);
         CopyXGmToL1(xL1Tensor, hStart + hIdx, kSize);
         SetFlag<HardEvent::MTE2_MTE1>(X_EVENT0 + xBufId);
         WaitFlag<HardEvent::MTE2_MTE1>(X_EVENT0 + xBufId);
@@ -372,7 +372,7 @@ __aicore__ inline void KPoolBlockCubeFullLoad<COMP>::ComputeMm1(const RunInfo &i
             // coffId=0, 计算pre数据; coffId=1, 计算cur数据
             uint32_t coffId = i - 1;
             WaitFlag<HardEvent::MTE1_MTE2>(W_EVENT0 + wBufId);
-            LocalTensor<X_T> wL1Tensor = wBufL1.GetWithOffset<X_T>(L1_W_SIZE / sizeof(X_T), wBufId * L1_W_SIZE);
+            LocalTensor<HIDDEN_STATES_T> wL1Tensor = wBufL1.GetWithOffset<HIDDEN_STATES_T>(L1_W_SIZE / sizeof(HIDDEN_STATES_T), wBufId * L1_W_SIZE);
             CopyWeightGmToL1(wL1Tensor, hStart + hIdx, kSize, coffId);
             SetFlag<HardEvent::MTE2_MTE1>(W_EVENT0 + wBufId);
             WaitFlag<HardEvent::MTE2_MTE1>(W_EVENT0 + wBufId);
@@ -400,8 +400,8 @@ __aicore__ inline void KPoolBlockCubeFullLoad<COMP>::ComputeMm1(const RunInfo &i
                             actKDealSize = kSize - kL0;
                         }
                         WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0 + l0abBufId);
-                        LocalTensor<X_T> aL0Tensor = tmpBufL0A.GetWithOffset<X_T>(L0A_PP_SIZE / sizeof(X_T), l0abBufId * L0A_PP_SIZE);
-                        LocalTensor<X_T> bL0Tensor = tmpBufL0B.GetWithOffset<X_T>(L0B_PP_SIZE / sizeof(X_T), l0abBufId * L0B_PP_SIZE);
+                        LocalTensor<HIDDEN_STATES_T> aL0Tensor = tmpBufL0A.GetWithOffset<HIDDEN_STATES_T>(L0A_PP_SIZE / sizeof(HIDDEN_STATES_T), l0abBufId * L0A_PP_SIZE);
+                        LocalTensor<HIDDEN_STATES_T> bL0Tensor = tmpBufL0B.GetWithOffset<HIDDEN_STATES_T>(L0B_PP_SIZE / sizeof(HIDDEN_STATES_T), l0abBufId * L0B_PP_SIZE);
                         LoadAToL0(aL0Tensor, xL1Tensor, kL0, actKDealSize, mL0, actMDealSize);
                         LoadBToL0(bL0Tensor, wL1Tensor, kL0, actKDealSize, nL0, actNDealSize);
                         SetFlag<HardEvent::MTE1_M>(L0AB_EVENT0 + l0abBufId);

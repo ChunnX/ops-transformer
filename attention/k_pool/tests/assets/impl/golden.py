@@ -97,9 +97,9 @@ def ttk_tensor_to_list(val):
 
 
 def run_cpu_k_pool(
-    x,
-    wkv,
-    wgate,
+    hidden_states,
+    wk,
+    gate_weight,
     state_cache_cpu,
     ape_cpu,
     block_table,
@@ -112,7 +112,7 @@ def run_cpu_k_pool(
 ):
     pytest_golden = load_pytest_golden_module()
 
-    x_dtype = x.dtype if x is not None else torch.bfloat16
+    x_dtype = hidden_states.dtype if hidden_states is not None else torch.bfloat16
 
     state_cache_f32 = state_cache_cpu.to(torch.float32)
     half_dim = state_cache_f32.shape[-1] // 2
@@ -133,24 +133,24 @@ def run_cpu_k_pool(
     if start_pos_list is None:
         if cu_seqlens_list is not None:
             B = len(cu_seqlens_list) - 1
-        elif x is not None and x.dim() == 3:
-            B = x.shape[0]
+        elif hidden_states is not None and hidden_states.dim() == 3:
+            B = hidden_states.shape[0]
         else:
             B = 1
         start_pos_list = [0] * B
 
-    cmp_kv, cmp_kv_mask = pytest_golden.cpu_k_pool(
-        x,
-        wkv,
-        wgate,
+    pooled_key, cmp_kv_mask = pytest_golden.cpu_k_pool(
+        hidden_states,
+        wk,
+        gate_weight,
         kv_state_golden,
         score_state_golden,
         update_kv,
         update_score,
         ape_cpu,
         block_table=block_table,
-        cu_seqlens=cu_seqlens_list,
-        seqused=seqused_list,
+        seq_lens=cu_seqlens_list,
+        seq_used=seqused_list,
         start_pos=start_pos_list,
         cmp_ratio=cmp_ratio_val,
         coff=coff_val,
@@ -162,7 +162,7 @@ def run_cpu_k_pool(
     golden_state_cache[:, :, half_dim:] = score_state_golden
 
     return (
-        cmp_kv.to(x_dtype),
+        pooled_key.to(x_dtype),
         cmp_kv_mask,
         golden_state_cache.to(state_cache_cpu.dtype),
         update_kv,
@@ -172,33 +172,33 @@ def run_cpu_k_pool(
 
 
 def cpu_k_pool(
-    x,
-    wkv,
-    wgate,
+    hidden_states,
+    wk,
+    gate_weight,
     state_cache,
     ape,
     cmp_ratio=4,
     *,
-    state_block_table=None,
-    cu_seqlens=None,
-    seqused=None,
+    cache_block_table=None,
+    seq_lens=None,
+    seq_used=None,
     start_pos=None,
     coff=1,
     cache_mode=1,
     **kwargs,
 ):
-    x_cpu = ttk_to_cpu(x)
-    wkv_cpu = ttk_to_cpu(wkv)
-    wgate_cpu = ttk_to_cpu(wgate)
+    x_cpu = ttk_to_cpu(hidden_states)
+    wkv_cpu = ttk_to_cpu(wk)
+    wgate_cpu = ttk_to_cpu(gate_weight)
     ape_cpu = ttk_to_cpu(ape)
     state_cache_cpu = ttk_to_cpu(state_cache)
-    block_table = ttk_to_cpu(state_block_table)
+    block_table = ttk_to_cpu(cache_block_table)
 
     start_pos_list = ttk_tensor_to_list(start_pos) if start_pos is not None else None
-    cu_seqlens_list = ttk_tensor_to_list(cu_seqlens) if cu_seqlens is not None else None
-    seqused_list = ttk_tensor_to_list(seqused) if seqused is not None else None
+    cu_seqlens_list = ttk_tensor_to_list(seq_lens) if seq_lens is not None else None
+    seqused_list = ttk_tensor_to_list(seq_used) if seq_used is not None else None
 
-    cmp_kv, cmp_kv_mask, golden_state_cache, update_kv, update_score, x_dtype = (
+    pooled_key, cmp_kv_mask, golden_state_cache, update_kv, update_score, x_dtype = (
         run_cpu_k_pool(
             x_cpu,
             wkv_cpu,
@@ -226,40 +226,40 @@ def cpu_k_pool(
     _GOLDEN_CONTEXT["is_th"] = is_th
 
     return [
-        cmp_kv,
+        pooled_key,
         golden_state_cache,
     ]
 
 
 def aclnn_k_pool_golden(
-    x,
-    wkv,
-    wgate,
+    hidden_states,
+    wk,
+    gate_weight,
     stateCacheRef,
     ape,
-    stateBlockTable,
-    cuSeqlens,
-    seqused,
+    cacheBlockTable,
+    seqLens,
+    seq_used,
     startPos,
     cmpRatio,
     coff,
     cacheMode,
     stateCacheStrideDim0,
-    cmpKv,
+    pooledKey,
     **kwargs,
 ):
-    x_cpu = ttk_to_cpu(x)
-    wkv_cpu = ttk_to_cpu(wkv)
-    wgate_cpu = ttk_to_cpu(wgate)
+    x_cpu = ttk_to_cpu(hidden_states)
+    wkv_cpu = ttk_to_cpu(wk)
+    wgate_cpu = ttk_to_cpu(gate_weight)
     ape_cpu = ttk_to_cpu(ape)
     state_cache_cpu = ttk_to_cpu(stateCacheRef)
-    block_table = ttk_to_cpu(stateBlockTable)
+    block_table = ttk_to_cpu(cacheBlockTable)
 
     start_pos_list = ttk_tensor_to_list(startPos) if startPos is not None else None
-    cu_seqlens_list = ttk_tensor_to_list(cuSeqlens) if cuSeqlens is not None else None
-    seqused_list = ttk_tensor_to_list(seqused) if seqused is not None else None
+    cu_seqlens_list = ttk_tensor_to_list(seqLens) if seqLens is not None else None
+    seqused_list = ttk_tensor_to_list(seq_used) if seq_used is not None else None
 
-    cmp_kv, cmp_kv_mask, golden_state_cache, update_kv, update_score, x_dtype = (
+    pooled_key, cmp_kv_mask, golden_state_cache, update_kv, update_score, x_dtype = (
         run_cpu_k_pool(
             x_cpu,
             wkv_cpu,
@@ -287,7 +287,7 @@ def aclnn_k_pool_golden(
     _GOLDEN_CONTEXT["cu_seqlens_list"] = cu_seqlens_list
     _GOLDEN_CONTEXT["is_th"] = is_th
 
-    return [cmp_kv, golden_state_cache]
+    return [pooled_key, golden_state_cache]
 
 
 def get_golden_context():

@@ -31,11 +31,11 @@ class KPoolOpBuilder(OpBuilder):
     def schema(self):
         """PyTorch operator signature."""
         return (
-            "k_pool(Tensor x, Tensor wkv, Tensor wgate, Tensor(a!) state_cache, "
+            "k_pool(Tensor hidden_states, Tensor wk, Tensor gate_weight, Tensor(a!) state_cache, "
             "Tensor ape, "
             "int cmp_ratio=4, *, "
-            "Tensor? state_block_table=None, Tensor? cu_seqlens=None, "
-            "Tensor? seqused=None, Tensor? start_pos=None, "
+            "Tensor? cache_block_table=None, Tensor? seq_lens=None, "
+            "Tensor? seq_used=None, Tensor? start_pos=None, "
             "int coff=1, int cache_mode=1) -> Tensor"
         )
 
@@ -47,32 +47,32 @@ class KPoolOpBuilder(OpBuilder):
 
         @impl(AS_LIBRARY, self.name, "Meta")
         def k_pool_meta(
-            x,
-            wkv,
-            wgate,
+            hidden_states,
+            wk,
+            gate_weight,
             state_cache,
             ape,
             cmp_ratio=4,
             *,
-            state_block_table=None,
-            cu_seqlens=None,
-            seqused=None,
+            cache_block_table=None,
+            seq_lens=None,
+            seq_used=None,
             start_pos=None,
             coff=1,
             cache_mode=CacheMode.LINEAR_BUFFER,
         ):
-            d = wkv.size(0) // coff
-            if x.dim() == 3:
-                b = x.size(0)
-                s = x.size(1)
+            d = wk.size(0) // coff
+            if hidden_states.dim() == 3:
+                b = hidden_states.size(0)
+                s = hidden_states.size(1)
                 sr = (s + cmp_ratio - 1) // cmp_ratio
-                cmp_kv_size = (b, sr, d)
+                pooled_key_size = (b, sr, d)
             else:
-                t = x.size(0)
+                t = hidden_states.size(0)
                 sr = (t + cmp_ratio - 1) // cmp_ratio
-                cmp_kv_size = (sr, d)
+                pooled_key_size = (sr, d)
 
-            return torch.empty(cmp_kv_size, dtype=x.dtype, device="meta")
+            return torch.empty(pooled_key_size, dtype=hidden_states.dtype, device="meta")
 
 
 k_pool_op_builder = KPoolOpBuilder()
@@ -80,16 +80,16 @@ k_pool_op_builder = KPoolOpBuilder()
 
 @impl(AS_LIBRARY, k_pool_op_builder.name, "PrivateUse1")
 def k_pool(
-    x: torch.Tensor,
-    wkv: torch.Tensor,
-    wgate: torch.Tensor,
+    hidden_states: torch.Tensor,
+    wk: torch.Tensor,
+    gate_weight: torch.Tensor,
     state_cache: torch.Tensor,
     ape: torch.Tensor,
     cmp_ratio: int = 4,
     *,
-    state_block_table: Optional[torch.Tensor] = None,
-    cu_seqlens: Optional[torch.Tensor] = None,
-    seqused: Optional[torch.Tensor] = None,
+    cache_block_table: Optional[torch.Tensor] = None,
+    seq_lens: Optional[torch.Tensor] = None,
+    seq_used: Optional[torch.Tensor] = None,
     start_pos: Optional[torch.Tensor] = None,
     coff: Optional[int] = 1,
     cache_mode: Optional[CacheMode] = CacheMode.LINEAR_BUFFER,
@@ -100,15 +100,15 @@ def k_pool(
     """
     op_module = k_pool_op_builder.load()
     return op_module.k_pool(
-        x,
-        wkv,
-        wgate,
+        hidden_states,
+        wk,
+        gate_weight,
         state_cache,
         ape,
         cmp_ratio,
-        state_block_table,
-        cu_seqlens,
-        seqused,
+        cache_block_table,
+        seq_lens,
+        seq_used,
         start_pos,
         coff,
         cache_mode,

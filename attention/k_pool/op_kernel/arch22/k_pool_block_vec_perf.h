@@ -31,7 +31,7 @@ using AscendC::CrossCoreWaitFlag;
 template <typename COMP>
 class KPoolBlockVectorPerf {
 public:
-    static constexpr bool X_DTYPE = COMP::xDtype == X_DTYPE::BF16;
+    static constexpr bool HIDDEN_STATES_DTYPE = COMP::hiddenStatesDtype == HIDDEN_STATES_DTYPE::BF16;
     static constexpr uint64_t BLOCK_VEC_BASE_BUFFER_SIZE = BUFFER_SIZE_BYTE_32K; // 32k
     static constexpr uint32_t DATABLOCK_BYTES = 32;
     static constexpr float FLOAT_ZERO = 0;
@@ -39,22 +39,22 @@ public:
     // =================================类型定义区=================================
     // 中间计算数据类型为float，高精度模式
     using T = float;
-    using X_T = typename AscendC::Conditional<X_DTYPE, bfloat16_t, half>::type;
+    using HIDDEN_STATES_T = typename AscendC::Conditional<HIDDEN_STATES_DTYPE, bfloat16_t, half>::type;
 
     __aicore__ inline KPoolBlockVectorPerf(){};
     // =================================设置参数=================================
     __aicore__ inline void InitParams(const ConstInfo &constInfo, const KPoolTools<COMP> &tools);
     __aicore__ inline void Init(
-        __gm__ uint8_t *x,
-        __gm__ uint8_t *wKv,
-        __gm__ uint8_t *wGate,
+        __gm__ uint8_t *hidden_states,
+        __gm__ uint8_t *wk,
+        __gm__ uint8_t *gateWeight,
         __gm__ uint8_t *stateCache,
         __gm__ uint8_t *ape,
-        __gm__ uint8_t *stateBlockTable,
-        __gm__ uint8_t *cuSeqlens,
+        __gm__ uint8_t *cacheBlockTable,
+        __gm__ uint8_t *seqLens,
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
-        __gm__ uint8_t *cmpKvOut);
+        __gm__ uint8_t *pooledKeyOut);
     // =================================资源管理=================================
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void AllocEventID();
@@ -173,7 +173,7 @@ private:
     GlobalTensor<int32_t> stateBlockTableGm_;
     GlobalTensor<T> stateCacheGm_;
     GlobalTensor<T> apeGm_;
-    GlobalTensor<X_T> cmpKvOutGm_;
+    GlobalTensor<HIDDEN_STATES_T> cmpKvOutGm_;
 
     // ================================Local Buffer区====================================
     // TBuf<TPosition::VECIN> mm1ResUb;
@@ -204,25 +204,25 @@ __aicore__ inline void KPoolBlockVectorPerf<COMP>::InitParams(const ConstInfo &c
 
 template <typename COMP>
 __aicore__ inline void KPoolBlockVectorPerf<COMP>::Init(
-    __gm__ uint8_t *x,
-    __gm__ uint8_t *wKv,
-    __gm__ uint8_t *wGate,
+    __gm__ uint8_t *hidden_states,
+    __gm__ uint8_t *wk,
+    __gm__ uint8_t *gateWeight,
     __gm__ uint8_t *stateCache,
     __gm__ uint8_t *ape,
-    __gm__ uint8_t *stateBlockTable,
-    __gm__ uint8_t *cuSeqlens,
+    __gm__ uint8_t *cacheBlockTable,
+    __gm__ uint8_t *seqLens,
     __gm__ uint8_t *seqUsed,
     __gm__ uint8_t *startPos,
-    __gm__ uint8_t *cmpKvOut)
+    __gm__ uint8_t *pooledKeyOut)
 {
-    stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)stateBlockTable);
+    stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)cacheBlockTable);
     stateCacheGm_.SetGlobalBuffer((__gm__ T *)stateCache);
     apeGm_.SetGlobalBuffer((__gm__ T *)ape);
-    cmpKvOutGm_.SetGlobalBuffer((__gm__ X_T *)cmpKvOut);
+    cmpKvOutGm_.SetGlobalBuffer((__gm__ HIDDEN_STATES_T *)pooledKeyOut);
     isExistSeqUsed = (seqUsed != nullptr);
     isExistStartPos = (startPos != nullptr);
-    if constexpr (COMP::xLayout == X_LAYOUT::TH) {
-        cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)cuSeqlens);
+    if constexpr (COMP::hiddenStatesLayout == HIDDEN_STATES_LAYOUT::TH) {
+        cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)seqLens);
     }
     if (isExistSeqUsed) {
         sequsedGm_.SetGlobalBuffer((__gm__ int32_t *)seqUsed);
@@ -271,7 +271,7 @@ __aicore__ inline uint32_t KPoolBlockVectorPerf<COMP>::GetSeqUsed(uint32_t bIdx)
     if (isExistSeqUsed) {
         return (uint32_t)sequsedGm_.GetValue(bIdx);
     } else {
-        if constexpr (COMP::xLayout == X_LAYOUT::TH) {
+        if constexpr (COMP::hiddenStatesLayout == HIDDEN_STATES_LAYOUT::TH) {
             return (uint32_t)(cuSeqlensGm_.GetValue(bIdx + 1) - cuSeqlensGm_.GetValue(bIdx));
         } else {
             return constInfo_.sSize;
@@ -291,7 +291,7 @@ __aicore__ inline uint32_t KPoolBlockVectorPerf<COMP>::GetStartPos(uint32_t bIdx
 template <typename COMP>
 __aicore__ inline uint32_t KPoolBlockVectorPerf<COMP>::GetSeqLength(uint32_t bIdx)
 {
-    if (COMP::xLayout == X_LAYOUT::TH) {
+    if (COMP::hiddenStatesLayout == HIDDEN_STATES_LAYOUT::TH) {
         return cuSeqlensGm_.GetValue(bIdx + 1) - cuSeqlensGm_.GetValue(bIdx);
     } else {
         return constInfo_.sSize;
@@ -796,11 +796,11 @@ __aicore__ inline void KPoolBlockVectorPerf<COMP>::CopyOutVec1ResToOutput(const 
                                                                             uint32_t compressTcSize,
                                                                             uint32_t dStartIdx, uint32_t dDealSize)
 {
-    LocalTensor<X_T> outputUb = outputQue1.AllocTensor<X_T>();
+    LocalTensor<HIDDEN_STATES_T> outputUb = outputQue1.AllocTensor<HIDDEN_STATES_T>();
     Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, compressTcSize * dDealSize);
     outputQue1.EnQue(outputUb);
-    outputQue1.DeQue<X_T>();
-    if constexpr (COMP::xLayout == X_LAYOUT::BSH) {
+    outputQue1.DeQue<HIDDEN_STATES_T>();
+    if constexpr (COMP::hiddenStatesLayout == HIDDEN_STATES_LAYOUT::BSH) {
         uint32_t bOutputScLen = CeilDivT(GetSeqLength(sliceInfo.bIdx), cmpRatio_);
         uint32_t bIdx = sliceInfo.bIdx;
         uint32_t sIdx = sliceInfo.sIdx;
@@ -914,8 +914,8 @@ __aicore__ inline void KPoolBlockVectorPerf<COMP>::CalcGroupInfo(const Vec1RunIn
 {
     uint32_t aiCoreNum = constInfo_.usedCoreNum * 2;
     splitInfo.dBaseSize = constInfo_.headDim / min(FloorPow2(aiCoreNum), CeilPow2(CeilDivT(aiCoreNum, info.dealTcNum)));
-    // 结果输出到GM前必须转换成X_T，dBaseSize * sizeof(X_T)需32B对齐
-    splitInfo.dBaseSize = max(splitInfo.dBaseSize, BlockElementNum<X_T>());
+    // 结果输出到GM前必须转换成X_T，dBaseSize * sizeof(HIDDEN_STATES_T)需32B对齐
+    splitInfo.dBaseSize = max(splitInfo.dBaseSize, BlockElementNum<HIDDEN_STATES_T>());
     splitInfo.vec1GroupSize = constInfo_.headDim / splitInfo.dBaseSize;
     splitInfo.vec1GroupNum = min(static_cast<uint32_t>(aiCoreNum / splitInfo.vec1GroupSize), info.dealTcNum);
 }

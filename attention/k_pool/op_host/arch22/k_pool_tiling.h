@@ -40,15 +40,15 @@
 namespace optiling {
 
 // INPUT
-constexpr uint32_t TOKEN_X_INPUT_INDEX = 0;
-constexpr uint32_t WEIGHT_KV_INPUT_INDEX = 1;
-constexpr uint32_t WEIGHT_WGATE_INPUT_INDEX = 2;
+constexpr uint32_t HIDDEN_STATES_INPUT_INDEX = 0;
+constexpr uint32_t WK_INPUT_INDEX = 1;
+constexpr uint32_t GATE_WEIGHT_INPUT_INDEX = 2;
 constexpr uint32_t STATE_CACHE_INPUT_INDEX = 3;
 constexpr uint32_t APE_INPUT_INDEX = 4;
 
 // INPUT(OPTION)
-constexpr uint32_t STATE_BLOCK_TABLE_INPUT_INDEX = 5;
-constexpr uint32_t CU_SEQ_LEN_INPUT_INDEX = 6;
+constexpr uint32_t CACHE_BLOCK_TABLE_INPUT_INDEX = 5;
+constexpr uint32_t SEQ_LENS_INPUT_INDEX = 6;
 constexpr uint32_t SEQ_USED_INPUT_INDEX = 7;
 constexpr uint32_t START_POS_INPUT_INDEX = 8;
 
@@ -59,7 +59,7 @@ constexpr uint32_t CACHE_MODE_ATTR_INDEX = 2;
 constexpr uint32_t STATE_CACHE_STRIDE_DIM0_ATTR_INDEX = 3;
 
 // OUTPUT
-constexpr uint32_t CMP_KV_OUTPUT_INDEX = 0;
+constexpr uint32_t POOLED_KEY_OUTPUT_INDEX = 0;
 
 constexpr uint32_t K_POOL_DIM_NUM_1 = 1;
 constexpr uint32_t K_POOL_DIM_NUM_2 = 2;
@@ -79,45 +79,45 @@ constexpr uint32_t MAX_BLOCK_SIZE = 1024;
 
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 
-static const std::string X_NAME = "query";
-static const std::string WKV_NAME = "wkv";
-static const std::string WGATE_NAME = "wgate";
+static const std::string HIDDEN_STATES_NAME = "hidden_states";
+static const std::string WK_NAME = "wk";
+static const std::string GATE_WEIGHT_NAME = "gate_weight";
 static const std::string STATE_CACHE_NAME = "state_cache";
 static const std::string APE_NAME = "ape";
-static const std::string STATE_BLOCK_TABLE_NAME = "state_block_table";
-static const std::string CU_SEQLENS_NAME = "cu_seqlens";
-static const std::string SEQUSED_NAME = "seq_used";
+static const std::string CACHE_BLOCK_TABLE_NAME = "cache_block_table";
+static const std::string SEQ_LENS_NAME = "seq_lens";
+static const std::string SEQ_USED_NAME = "seq_used";
 static const std::string START_POS_NAME = "start_pos";
 static const std::string CMP_RATIO_NAME = "cmp_ratio";
 static const std::string COFF_NAME = "coff";
 static const std::string CACHE_MODE_NAME = "cache_mode";
-static const std::string CMP_KV_NAME = "cmp_kv";
+static const std::string POOLED_KEY_NAME = "pooled_key";
 
 static std::string DataTypeToSerialString(ge::DataType type);
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
-    {X_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
-    {WKV_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
-    {WGATE_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
+    {HIDDEN_STATES_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
+    {WK_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
+    {GATE_WEIGHT_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
     {STATE_CACHE_NAME, {ge::DT_FLOAT}},
     {APE_NAME, {ge::DT_FLOAT}},
-    {STATE_BLOCK_TABLE_NAME, {ge::DT_INT32}},
-    {CU_SEQLENS_NAME, {ge::DT_INT32}},
-    {SEQUSED_NAME, {ge::DT_INT32}},
+    {CACHE_BLOCK_TABLE_NAME, {ge::DT_INT32}},
+    {SEQ_LENS_NAME, {ge::DT_INT32}},
+    {SEQ_USED_NAME, {ge::DT_INT32}},
     {START_POS_NAME, {ge::DT_INT32}},
-    {CMP_KV_NAME, {ge::DT_BF16, ge::DT_FLOAT16}}};
+    {POOLED_KEY_NAME, {ge::DT_BF16, ge::DT_FLOAT16}}};
 
 const std::map<std::string, std::vector<uint32_t>> DIM_NUM_MAP = {
-    {X_NAME, {K_POOL_DIM_NUM_2, K_POOL_DIM_NUM_3}},
-    {WKV_NAME, {K_POOL_DIM_NUM_2}},
-    {WGATE_NAME, {K_POOL_DIM_NUM_2}},
+    {HIDDEN_STATES_NAME, {K_POOL_DIM_NUM_2, K_POOL_DIM_NUM_3}},
+    {WK_NAME, {K_POOL_DIM_NUM_2}},
+    {GATE_WEIGHT_NAME, {K_POOL_DIM_NUM_2}},
     {STATE_CACHE_NAME, {K_POOL_DIM_NUM_3}},
     {APE_NAME, {K_POOL_DIM_NUM_2}},
-    {STATE_BLOCK_TABLE_NAME, {K_POOL_DIM_NUM_2}},
-    {CU_SEQLENS_NAME, {K_POOL_DIM_NUM_1}},
-    {SEQUSED_NAME, {K_POOL_DIM_NUM_1}},
+    {CACHE_BLOCK_TABLE_NAME, {K_POOL_DIM_NUM_2}},
+    {SEQ_LENS_NAME, {K_POOL_DIM_NUM_1}},
+    {SEQ_USED_NAME, {K_POOL_DIM_NUM_1}},
     {START_POS_NAME, {K_POOL_DIM_NUM_1}},
-    {CMP_KV_NAME, {K_POOL_DIM_NUM_2, K_POOL_DIM_NUM_3}}};
+    {POOLED_KEY_NAME, {K_POOL_DIM_NUM_2, K_POOL_DIM_NUM_3}}};
 
 static const std::map<std::string, uint32_t> LAYOUT_DIM_MAP = {
     {"BSH", K_POOL_DIM_NUM_3},
@@ -177,7 +177,7 @@ struct OptionalParaInfo {
 
 enum class LayoutType { LAYOUT_BSH, LAYOUT_TH };
 
-enum class TemplateId : uint8_t { NORMAL = 0, EMPTY_X = 1, FULL_LOAD = 2 };
+enum class TemplateId : uint8_t { NORMAL = 0, EMPTY_HIDDEN_STATES = 1, FULL_LOAD = 2 };
 
 CMP_EXTERN_C ge::graphStatus TilingKPool(gert::TilingContext *context);
 struct KPoolBaseShapeInfo {
@@ -209,16 +209,16 @@ struct KPoolContext {
     const char *opType;
     fe::PlatFormInfos *platformInfo;
 
-    RequiredParaInfo x;
-    RequiredParaInfo wkv;
-    RequiredParaInfo wgate;
+    RequiredParaInfo hidden_states;
+    RequiredParaInfo wk;
+    RequiredParaInfo gate_weight;
     RequiredParaInfo stateCache;
     RequiredParaInfo ape;
-    OptionalParaInfo stateBlockTable;
-    OptionalParaInfo cuSeqlens;
+    OptionalParaInfo cacheBlockTable;
+    OptionalParaInfo seqLens;
     OptionalParaInfo seqUsed;
     OptionalParaInfo startPos;
-    RequiredParaInfo cmpKv;
+    RequiredParaInfo pooledKey;
 
     const int *coff;
     const int *cmpRatio;
@@ -274,16 +274,16 @@ private:
     ge::graphStatus LogErrorShapeConsistency(const std::string &name, const gert::StorageShape *shape,
                                              const uint32_t &dimNum, const std::string &subName,
                                              const uint32_t &expectNum) const;
-    ge::graphStatus CheckSingleParaX() const;
-    ge::graphStatus CheckSingleParaWkv() const;
-    ge::graphStatus CheckSingleParaWgate() const;
+    ge::graphStatus CheckSingleParaHiddenStates() const;
+    ge::graphStatus CheckSingleParaWk() const;
+    ge::graphStatus CheckSingleParaGateWeight() const;
     ge::graphStatus CheckSingleParaStateCache() const;
     ge::graphStatus CheckSingleParaApe() const;
-    ge::graphStatus CheckSingleParaStateBlockTable() const;
-    ge::graphStatus CheckSingleParaCuSeqlens() const;
-    ge::graphStatus CheckSingleParaSeqused() const;
+    ge::graphStatus CheckSingleParaCacheBlockTable() const;
+    ge::graphStatus CheckSingleParaSeqLens() const;
+    ge::graphStatus CheckSingleParaSeqUsed() const;
     ge::graphStatus CheckSingleParaStartPos() const;
-    ge::graphStatus CheckSingleParaCmpKv() const;
+    ge::graphStatus CheckSingleParaPooledKey() const;
     ge::graphStatus CheckSingleParaCmpRatio() const;
     ge::graphStatus CheckSingleParaCoff() const;
     ge::graphStatus CheckSingleParaCacheMode() const;
@@ -292,7 +292,7 @@ private:
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckFeature() const;
     ge::graphStatus CheckShapeConsistency() const;
-    ge::graphStatus CheckDtypeConsistencyX(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
+    ge::graphStatus CheckDtypeConsistencyHiddenStates(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
     ge::graphStatus CheckDtypeConsistency() const;
     ge::graphStatus CheckMultiParaConsistency() const;
     ge::graphStatus CheckDimNumConsistency() const;

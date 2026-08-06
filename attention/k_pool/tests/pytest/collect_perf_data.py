@@ -104,7 +104,7 @@ def collect_all(test_result_path, is_compare=False, perf_golden_path="perf_golde
 
     prof_folders = sorted(
         [d for d in os.listdir('.') if os.path.isdir(d) and d.startswith('PROF')],
-        key=lambda x: os.path.getmtime(x)
+        key=lambda hidden_states: os.path.getmtime(hidden_states)
     )
 
     print(f"============= 开始收集性能数据 =============")
@@ -237,7 +237,7 @@ def main():
         else:
             prof_folders = sorted(
                 [d for d in os.listdir('.') if os.path.isdir(d) and d.startswith('PROF')],
-                key=lambda x: os.path.getmtime(x)
+                key=lambda hidden_states: os.path.getmtime(hidden_states)
             )
             if not prof_folders:
                 print("未找到PROF文件夹")

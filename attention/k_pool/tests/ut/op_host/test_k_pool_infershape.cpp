@@ -36,24 +36,24 @@ TEST_F(KPoolInfershape, bsh_c4a_bf16)
 {
     gert::InfershapeContextPara para("KPool",
                                      {
-                                         // input 0: x [B, S, H]
+                                         // input 0: hidden_states [B, S, H]
                                          {{{2, 4, 4096}, {2, 4, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         // input 1: wkv [coff*D, H] = [1024, 4096]
+                                         // input 1: wk [coff*D, H] = [1024, 4096]
                                          {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         // input 2: wgate [coff*D, H] = [1024, 4096]
+                                         // input 2: gate_weight [coff*D, H] = [1024, 4096]
                                          {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
                                          // input 3: state_cache [block_num, block_size, 2*coff*D]
                                          {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                          // input 4: ape [cmp_ratio, coff*D] = [4, 1024]
                                          {{{4, 1024}, {4, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                          // optional inputs (not used in BSH layout)
-                                         {{{2, 4}, {2, 4}}, ge::DT_INT32, ge::FORMAT_ND}, // state_block_table
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // cu_seqlens
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // seqused
+                                         {{{2, 4}, {2, 4}}, ge::DT_INT32, ge::FORMAT_ND}, // cache_block_table
+                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // seq_lens
+                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // seq_used
                                          {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // start_pos
                                      },
                                      {
-                                         // output 0: cmp_kv (placeholder)
+                                         // output 0: pooled_key (placeholder)
                                          {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
                                      },
                                      {
@@ -176,27 +176,27 @@ TEST_F(KPoolInfershape, bsh_non_divisible)
 // TH Layout Tests
 // ====================================================================
 
-// TH: T=8, H=128, B=2, cuSeqlens=[0,4,8]
+// TH: T=8, H=128, B=2, seqLens=[0,4,8]
 // Sr = min(8, 8/4 + 3 - 1) = min(8, 4) = 4, output: [4, 512]
 TEST_F(KPoolInfershape, th_c4a_bf16)
 {
     gert::InfershapeContextPara para("KPool",
                                      {
-                                         // x [T, H] = [8, 4096]
+                                         // hidden_states [T, H] = [8, 4096]
                                          {{{8, 4096}, {8, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         // wkv [coff*D, H] = [1024, 4096]
+                                         // wk [coff*D, H] = [1024, 4096]
                                          {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
-                                         // wgate [coff*D, H] = [1024, 4096]
+                                         // gate_weight [coff*D, H] = [1024, 4096]
                                          {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
                                          // state_cache [block_num, block_size, 2*coff*D]
                                          {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                          // ape [cmp_ratio, coff*D] = [4, 1024]
                                          {{{4, 1024}, {4, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                          // optional inputs
-                                         {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND}, // state_block_table
-                                                                                  // cu_seqlens [B+1] = [3]
+                                         {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND}, // cache_block_table
+                                                                                  // seq_lens [B+1] = [3]
                                          {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND},
-                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // seqused
+                                         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // seq_used
                                          {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND}, // start_pos
                                      },
                                      {
@@ -210,7 +210,7 @@ TEST_F(KPoolInfershape, th_c4a_bf16)
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
-// TH: T=16, H=4096, B=3, cuSeqlens=[0,4,10,16]
+// TH: T=16, H=4096, B=3, seqLens=[0,4,10,16]
 // Sr = min(16, 16/4 + 4 - 1) = min(16, 7) = 7, output: [7, 512]
 TEST_F(KPoolInfershape, th_c4a_multi_batch)
 {

@@ -13,7 +13,7 @@
 """Precision compare helpers for KPool TestSpec adapters.
 
 Comparison logic is consistent with k_pool_golden.py check_result.
-Compares 5 tensors: cmp_kv, kv_state_update, score_state_update,
+Compares 5 tensors: pooled_key, kv_state_update, score_state_update,
 kv_state_origin, score_state_origin.
 """
 
@@ -35,7 +35,7 @@ _PCT_THD = 0.005
 _MAX_ERROR_IDX = 10000000
 
 _OUTPUT_NAMES = [
-    "cmp_kv",
+    "pooled_key",
     "kv_state_update",
     "score_state_update",
     "kv_state_origin",
@@ -325,11 +325,11 @@ def compare(*outputs, **kwargs):
     npu_outputs = list(outputs[:-GOLDEN_OUTPUT_COUNT])
     cmp_kv_mask = kwargs.get("cmp_kv_mask", None)
 
-    # Fallback: single NPU output (cmp_kv only) — compare cmp_kv, skip state_cache
+    # Fallback: single NPU output (pooled_key only) — compare pooled_key, skip state_cache
     if len(npu_outputs) == 1:
         results = [
             _tensor_compare(
-                npu_outputs[0][cmp_kv_mask], golden_outputs[0][cmp_kv_mask], "cmp_kv"
+                npu_outputs[0][cmp_kv_mask], golden_outputs[0][cmp_kv_mask], "pooled_key"
             )
         ]
         for i in range(1, len(golden_outputs)):
@@ -415,11 +415,11 @@ def compare_aclnn(*outputs, **kwargs):
     npu_outputs = list(outputs[:-GOLDEN_OUTPUT_COUNT])
     cmp_kv_mask = kwargs.get("cmp_kv_mask", None)
 
-    # Fallback: single NPU output (cmp_kv only) — compare cmp_kv, skip state_cache
+    # Fallback: single NPU output (pooled_key only) — compare pooled_key, skip state_cache
     if len(npu_outputs) == 1:
         results = [
             _tensor_compare(
-                npu_outputs[0][cmp_kv_mask].to(torch.float32), golden_outputs[0][cmp_kv_mask].to(torch.float32), "cmp_kv"
+                npu_outputs[0][cmp_kv_mask].to(torch.float32), golden_outputs[0][cmp_kv_mask].to(torch.float32), "pooled_key"
             )
         ]
         for i in range(1, len(golden_outputs)):

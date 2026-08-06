@@ -242,12 +242,12 @@ def check_result(expect, result, data_type, pct_thd = 0.005):
                                 err_idx, err_diff[0:max_error_idx])
     return fulfill_percent, result
 
-def get_seq_used_by_batch(batch_idx, S, seqused, cu_seqlens):
-    if seqused is not None:
-        return seqused[batch_idx]
+def get_seq_used_by_batch(batch_idx, S, seq_used, seq_lens):
+    if seq_used is not None:
+        return seq_used[batch_idx]
     else:
-        if cu_seqlens is not None:
-            return cu_seqlens[batch_idx + 1] - cu_seqlens[batch_idx]
+        if seq_lens is not None:
+            return seq_lens[batch_idx + 1] - seq_lens[batch_idx]
         else:
             return S
 
@@ -321,39 +321,39 @@ def read_state_page_cache(state, b_idx, start_seq_idx, end_seq_idx, block_table,
     return result
 
 def cpu_k_pool(
-    x, wkv, wgate, kv_state, score_state, update_kv_position, update_score_position, ape,
-    block_table=None, cu_seqlens=None, seqused=None, start_pos=None,
+    hidden_states, wk, gate_weight, kv_state, score_state, update_kv_position, update_score_position, ape,
+    block_table=None, seq_lens=None, seq_used=None, start_pos=None,
     cmp_ratio=4, coff=1, cache_mode=1):
-    x_dtype = x.dtype
-    x = x.to(torch.float32).numpy()
-    wkv = wkv.to(torch.float32).numpy()
-    wgate = wgate.to(torch.float32).numpy()
+    x_dtype = hidden_states.dtype
+    hidden_states = hidden_states.to(torch.float32).numpy()
+    wk = wk.to(torch.float32).numpy()
+    gate_weight = gate_weight.to(torch.float32).numpy()
     kv_state = kv_state.numpy()
     score_state = score_state.numpy()
     ape = ape.numpy()
     matmul_dtype = np.float32
-    for i in range(wkv.shape[1] // 128):
+    for i in range(wk.shape[1] // 128):
         leftH = i * 128
         rightH = (i + 1) * 128
-    new_kv_state = np.matmul(x, wkv.T, dtype=matmul_dtype)
-    new_score_state = np.matmul(x, wgate.T, dtype=matmul_dtype)
+    new_kv_state = np.matmul(hidden_states, wk.T, dtype=matmul_dtype)
+    new_score_state = np.matmul(hidden_states, gate_weight.T, dtype=matmul_dtype)
 
     B = len(start_pos)
-    head_dim = wkv.shape[0] // coff
+    head_dim = wk.shape[0] // coff
     bs_combine_flag = False
-    if cu_seqlens is not None:
+    if seq_lens is not None:
         bs_combine_flag = True
 
     # 将B和S合轴, 便于后面取索引
     if bs_combine_flag == False:
-        S = x.shape[1]
+        S = hidden_states.shape[1]
         new_kv_state = new_kv_state.reshape(B * S, new_kv_state.shape[-1])
         new_score_state = new_score_state.reshape(B * S, new_score_state.shape[-1])
-        cmp_kv = np.zeros(shape=(B, (S + cmp_ratio - 1) // cmp_ratio, head_dim), dtype=matmul_dtype)
+        pooled_key = np.zeros(shape=(B, (S + cmp_ratio - 1) // cmp_ratio, head_dim), dtype=matmul_dtype)
     else:
-        cmp_kv = np.zeros(shape=(min(x.shape[0], x.shape[0] // cmp_ratio + B), head_dim), dtype=matmul_dtype)
+        pooled_key = np.zeros(shape=(min(hidden_states.shape[0], hidden_states.shape[0] // cmp_ratio + B), head_dim), dtype=matmul_dtype)
 
-    cmp_kv_mask = np.zeros_like(cmp_kv, dtype=bool)
+    cmp_kv_mask = np.zeros_like(pooled_key, dtype=bool)
     out_cu_seqlen = [0] * (B + 1)
     out_seqused = [0] * B
 
@@ -362,13 +362,13 @@ def cpu_k_pool(
         batch_out_sc_id = 0
         batch_start_pos = start_pos[b_idx]
         # get_seq_used_by_batch
-        if seqused is not None:
-            batch_seq_used = seqused[b_idx]
+        if seq_used is not None:
+            batch_seq_used = seq_used[b_idx]
         else:
             if bs_combine_flag == False:
-                batch_seq_used = x.shape[1] # x的shape为3维, BSh
+                batch_seq_used = hidden_states.shape[1] # x的shape为3维, BSh
             else:
-                batch_seq_used = cu_seqlens[b_idx + 1] - cu_seqlens[b_idx]# x的shape为2维, Th
+                batch_seq_used = seq_lens[b_idx + 1] - seq_lens[b_idx]# x的shape为2维, Th
         # 小于compress_seq_id的seq_id为需要压缩的token
         compress_seq_id = (batch_start_pos + batch_seq_used) // cmp_ratio * cmp_ratio
 
@@ -381,7 +381,7 @@ def cpu_k_pool(
                 end_seq_idx = batch_start_pos + batch_seq_used
 
             # calc offset T of one sc, for get data from new state
-            base_offset = cu_seqlens[b_idx] if bs_combine_flag else b_idx * x.shape[1]
+            base_offset = seq_lens[b_idx] if bs_combine_flag else b_idx * hidden_states.shape[1]
             start_offset = base_offset + (start_seq_idx - batch_start_pos)
             end_offset = base_offset + (end_seq_idx - batch_start_pos)
 
@@ -465,10 +465,10 @@ def cpu_k_pool(
                 sc_cmp_kv = np.sum(sc_data, axis=0, keepdims=True)
                 # inplace rotary_emb
                 if bs_combine_flag == False:
-                    cmp_kv[b_idx, batch_out_sc_id, :] = sc_cmp_kv
+                    pooled_key[b_idx, batch_out_sc_id, :] = sc_cmp_kv
                     cmp_kv_mask[b_idx, batch_out_sc_id, :] = 1
                 else:
-                    cmp_kv[out_sum_sc_cnt, :] = sc_cmp_kv
+                    pooled_key[out_sum_sc_cnt, :] = sc_cmp_kv
                     cmp_kv_mask[out_sum_sc_cnt, :] = 1
                 batch_out_sc_id = batch_out_sc_id + 1
                 out_sum_sc_cnt = out_sum_sc_cnt + 1
@@ -480,11 +480,11 @@ def cpu_k_pool(
 
     print(f"out_cu_seqlen: {out_cu_seqlen}")
     print(f"out_seqused: {out_seqused}")
-    print(f"cmp_kv.shape: {cmp_kv.shape}")
-    cmp_kv_torch = torch.tensor(cmp_kv).to(x_dtype)
+    print(f"pooled_key.shape: {pooled_key.shape}")
+    cmp_kv_torch = torch.tensor(pooled_key).to(x_dtype)
     return cmp_kv_torch, cmp_kv_mask
 
-def run_k_pool_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S = 0, start_pos=None, seqused=None, cu_seqlens=None,
+def run_k_pool_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S = 0, start_pos=None, seq_used=None, seq_lens=None,
                          block_size = 128, data_type = torch.bfloat16, hidden_size = 4096,
                          save_state_seqlens = None, cache_mode = 1, x_datarange = [-10, 10],
                          wkv_datarange = [-10, 10], wgate_datarange = [-10, 10], ape_datarange = [-10, 10],
@@ -492,23 +492,23 @@ def run_k_pool_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S = 0
     torch_npu.npu.set_device(int(DEVICE_ID))
     # ======================== set input params finish ========================
     if bs_combine_flag:
-        # cu_seqlens = [0, 1] # (B+1,), None时表示非BSh，否则为Th
-        if cu_seqlens is None:
-            print(f"Error: layout of x is [T, hidden_size], cu_seqlens is required!!!")
+        # seq_lens = [0, 1] # (B+1,), None时表示非BSh，否则为Th
+        if seq_lens is None:
+            print(f"Error: layout of hidden_states is [T, hidden_size], seq_lens is required!!!")
             return
         old_S = S
-        if seqused is not None:
-            S = max(seqused)
+        if seq_used is not None:
+            S = max(seq_used)
         else:
             S = 0
             for i in range(B):
-                if (cu_seqlens[i + 1] - cu_seqlens[i]) > S:
-                    S = cu_seqlens[i + 1] - cu_seqlens[i]
-        print(f"Warning: layout of x is [T, hidden_size], S={old_S}, it is modified to S={S}!!!")
+                if (seq_lens[i + 1] - seq_lens[i]) > S:
+                    S = seq_lens[i + 1] - seq_lens[i]
+        print(f"Warning: layout of hidden_states is [T, hidden_size], S={old_S}, it is modified to S={S}!!!")
     else:
-        if cu_seqlens is not None:
-            print(f"Warning: layout of x is [B, S, hidden_size], but cu_seqlens is not None, it is modified to None!!!")
-        cu_seqlens = None
+        if seq_lens is not None:
+            print(f"Warning: layout of hidden_states is [B, S, hidden_size], but seq_lens is not None, it is modified to None!!!")
+        seq_lens = None
     exist_start_pos = True
     if start_pos is None:
         exist_start_pos = False
@@ -519,40 +519,40 @@ def run_k_pool_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S = 0
         if len(start_pos) != B:
             print(f"Error: the len of start_pos is {len(start_pos)}, it should be B({B})")
             return
-    if seqused is not None:
-        if len(seqused) != B:
-            print(f"Error: the len of seqused is {len(seqused)}, it should be B({B})")
+    if seq_used is not None:
+        if len(seq_used) != B:
+            print(f"Error: the len of seq_used is {len(seq_used)}, it should be B({B})")
             return
-    if cu_seqlens is not None:
-        if len(cu_seqlens) != (B + 1):
-            print(f"Error: the len of cu_seqlens is {len(cu_seqlens)}, it should be equal to B({B}) + 1")
+    if seq_lens is not None:
+        if len(seq_lens) != (B + 1):
+            print(f"Error: the len of seq_lens is {len(seq_lens)}, it should be equal to B({B}) + 1")
             return
     if bs_combine_flag:
         for i in range(B):
-            if start_pos[i] + (cu_seqlens[i + 1] - cu_seqlens[i]) > S_max:
-                print(f"Error: for batch {i} when shape of x is (T, hidden_size), start_pos[{i}] + (cu_seqlens[{i + 1}] - cu_seqlens[{i}]) > S_max, "
-                    f"start_pos[{i}]={start_pos[i]}, cu_seqlens[{i + 1}]={cu_seqlens[i + 1]}, cu_seqlens[{i}]={cu_seqlens[i]}, S_max={S_max}")
+            if start_pos[i] + (seq_lens[i + 1] - seq_lens[i]) > S_max:
+                print(f"Error: for batch {i} when shape of hidden_states is (T, hidden_size), start_pos[{i}] + (seq_lens[{i + 1}] - seq_lens[{i}]) > S_max, "
+                    f"start_pos[{i}]={start_pos[i]}, seq_lens[{i + 1}]={seq_lens[i + 1]}, seq_lens[{i}]={seq_lens[i]}, S_max={S_max}")
                 return
-            if seqused is not None:
-                if seqused[i] > (cu_seqlens[i + 1] - cu_seqlens[i]):
-                    print(f"Error: for batch {i} when shape of x is (T, hidden_size), seqused[{i}] > (cu_seqlens[{i + 1}] - cu_seqlens[{i}]), "
-                        f"seqused[{i}]={seqused[i]}, cu_seqlens[{i + 1}]={cu_seqlens[i + 1]}, cu_seqlens[{i}]={cu_seqlens[i]}")
+            if seq_used is not None:
+                if seq_used[i] > (seq_lens[i + 1] - seq_lens[i]):
+                    print(f"Error: for batch {i} when shape of hidden_states is (T, hidden_size), seq_used[{i}] > (seq_lens[{i + 1}] - seq_lens[{i}]), "
+                        f"seq_used[{i}]={seq_used[i]}, seq_lens[{i + 1}]={seq_lens[i + 1]}, seq_lens[{i}]={seq_lens[i]}")
                     return
     else:
         for i in range(B):
             if start_pos[i] + S > S_max:
-                print(f"Error: for batch {i} when shape of x is (B, S, hidden_size), start_pos[{i}] + S > S_max, start_pos[{i}]={start_pos[i]}, S={S}, S_max={S_max}")
+                print(f"Error: for batch {i} when shape of hidden_states is (B, S, hidden_size), start_pos[{i}] + S > S_max, start_pos[{i}]={start_pos[i]}, S={S}, S_max={S_max}")
                 return
-            if seqused is not None:
-                if seqused[i] > S:
-                    print(f"Error: for batch {i} when shape of x is (B, S, hidden_size), seqused[{i}] > S, seqused[{i}]={seqused[i]}, S={S}")
+            if seq_used is not None:
+                if seq_used[i] > S:
+                    print(f"Error: for batch {i} when shape of hidden_states is (B, S, hidden_size), seq_used[{i}] > S, seq_used[{i}]={seq_used[i]}, S={S}")
                     return
     if save_state_seqlens is not None:
         if len(save_state_seqlens) != B:
             print(f"Error: the len of save_state_seqlens is {len(save_state_seqlens)}, it should be equal to B({B})")
             return
         for i in range(B):
-            b_seqused = get_seq_used_by_batch(i, S, seqused, cu_seqlens)
+            b_seqused = get_seq_used_by_batch(i, S, seq_used, seq_lens)
             if b_seqused < save_state_seqlens[i]:
                 print(f"Error: for batch {i}, b_seqused < save_state_seqlens[{i}], b_seqused={b_seqused}, save_state_seqlens[{i}]={save_state_seqlens[i]}")
                 return
@@ -580,7 +580,7 @@ def run_k_pool_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S = 0
                     block_table[i][j] = next_block_id
                     next_block_id = next_block_id + 1
             # 需要写入state的范围
-            end_pos = get_seq_used_by_batch(i, S, seqused, cu_seqlens)
+            end_pos = get_seq_used_by_batch(i, S, seq_used, seq_lens)
             if save_state_seqlens is not None:
                 next_start = start_pos[i] + end_pos - save_state_seqlens[i]
                 next_end = start_pos[i] + end_pos
@@ -615,17 +615,17 @@ def run_k_pool_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S = 0
 
     # other input
     if bs_combine_flag:
-        x_shape = (cu_seqlens[-1], hidden_size)
+        x_shape = (seq_lens[-1], hidden_size)
     else:
         x_shape = (B, S, hidden_size)
 
-    x = torch.tensor(np.random.uniform(x_datarange[0], x_datarange[1], x_shape)).to(data_type)
-    wkv = torch.tensor(np.random.uniform(wkv_datarange[0], wkv_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
-    wgate = torch.tensor(np.random.uniform(wgate_datarange[0], wgate_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
+    hidden_states = torch.tensor(np.random.uniform(x_datarange[0], x_datarange[1], x_shape)).to(data_type)
+    wk = torch.tensor(np.random.uniform(wkv_datarange[0], wkv_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
+    gate_weight = torch.tensor(np.random.uniform(wgate_datarange[0], wgate_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
     ape = torch.tensor(np.random.uniform(ape_datarange[0], ape_datarange[1], (cmp_ratio, coff * head_dim))).to(torch.float32)
     print(f"start_pos={start_pos}")
-    print(f"seqused={seqused}")
-    print(f"cu_seqlens={cu_seqlens}")
+    print(f"seq_used={seq_used}")
+    print(f"seq_lens={seq_lens}")
 
 
     # ======================== gen input data finish =============================
@@ -636,15 +636,15 @@ def run_k_pool_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S = 0
     update_kv = torch.zeros((cpu_kv_state.shape[0],cpu_kv_state.shape[1],cpu_kv_state.shape[2]), dtype=torch.bool)
     update_score = torch.zeros((cpu_score_state.shape[0],cpu_score_state.shape[1],cpu_score_state.shape[2]), dtype=torch.bool)
     cpu_out, cmp_kv_mask = cpu_k_pool(
-        x, wkv, wgate, cpu_kv_state, cpu_score_state, update_kv, update_score, ape,
-        block_table=block_table, cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos,
+        hidden_states, wk, gate_weight, cpu_kv_state, cpu_score_state, update_kv, update_score, ape,
+        block_table=block_table, seq_lens=seq_lens, seq_used=seq_used, start_pos=start_pos,
         cmp_ratio=cmp_ratio, coff=coff, cache_mode=cache_mode)
     # ======================== execute cpu finish ================================
 
     # ======================== execute npu start =================================
-    x = x.to("npu:%s" % DEVICE_ID)
-    wkv = wkv.to("npu:%s" % DEVICE_ID)
-    wgate = wgate.to("npu:%s" % DEVICE_ID)
+    hidden_states = hidden_states.to("npu:%s" % DEVICE_ID)
+    wk = wk.to("npu:%s" % DEVICE_ID)
+    gate_weight = gate_weight.to("npu:%s" % DEVICE_ID)
     is_contiguous_flag = True
     if cache_mode == 1:  # 连续buffer(支持在第二维非连续)
         if is_contiguous_flag:
@@ -687,43 +687,43 @@ def run_k_pool_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S = 0
     ape = ape.to("npu:%s" % DEVICE_ID)
     block_table = block_table.to("npu:%s" % DEVICE_ID)
     start_pos = torch.tensor(start_pos).to(torch.int32).to("npu:%s" % DEVICE_ID)
-    if cu_seqlens is not None:
-        cu_seqlens = torch.tensor(cu_seqlens).to(torch.int32).to("npu:%s" % DEVICE_ID)
-    if seqused is not None:
-        seqused = torch.tensor(seqused).to(torch.int32).to("npu:%s" % DEVICE_ID)
+    if seq_lens is not None:
+        seq_lens = torch.tensor(seq_lens).to(torch.int32).to("npu:%s" % DEVICE_ID)
+    if seq_used is not None:
+        seq_used = torch.tensor(seq_used).to(torch.int32).to("npu:%s" % DEVICE_ID)
     # ======================== execute npu finish ================================
     # start run custom ops
     npu_out = (
         k_pool(
-            x,
-            wkv,
-            wgate,
+            hidden_states,
+            wk,
+            gate_weight,
             state_cache,
             ape,
             cmp_ratio = cmp_ratio,
-            state_block_table = block_table,
-            cu_seqlens = cu_seqlens,
-            seqused = seqused,
+            cache_block_table = block_table,
+            seq_lens = seq_lens,
+            seq_used = seq_used,
             start_pos = start_pos if exist_start_pos else None,
             coff = coff,
             cache_mode = cache_mode
         )
     )
-    print(f"x: shape {x.shape}, dtype: {x.dtype}")
-    print(f"wkv: shape {wkv.shape}, dtype: {wkv.dtype}")
-    print(f"wgate: shape {wgate.shape}, dtype: {wgate.dtype}")
+    print(f"hidden_states: shape {hidden_states.shape}, dtype: {hidden_states.dtype}")
+    print(f"wk: shape {wk.shape}, dtype: {wk.dtype}")
+    print(f"gate_weight: shape {gate_weight.shape}, dtype: {gate_weight.dtype}")
     print(f"kv_state: shape {kv_state.shape}, dtype: {kv_state.dtype}")
     print(f"score_state: shape {score_state.shape}, dtype: {score_state.dtype}")
     print(f"ape: shape {ape.shape}, dtype: {ape.dtype}")
     print(f"block_table: shape {block_table.shape}, dtype: {block_table.dtype}")
-    print(f"cmp_kv: shape {npu_out.shape}, dtype: {npu_out.dtype}")
+    print(f"pooled_key: shape {npu_out.shape}, dtype: {npu_out.dtype}")
 
     # 结果精度对比
     check_succeed = True
     data_type = str(npu_out.dtype)
     results = {}
     print("--------------------------------------------------------------check result-------------------------------------------------------------")
-    _, results['cmp_kv'] = check_result(cpu_out[cmp_kv_mask].to(torch.float32), npu_out.cpu()[cmp_kv_mask].to(torch.float32), data_type)
+    _, results['pooled_key'] = check_result(cpu_out[cmp_kv_mask].to(torch.float32), npu_out.cpu()[cmp_kv_mask].to(torch.float32), data_type)
     print("--------------------------------------------------------------check kv state update-------------------------------------------------------------")
     _, results['kv_state_update'] = check_result(cpu_kv_state[update_kv].to(torch.float32), state_cache[:, :, :state_cache.shape[2] // 2].cpu()[update_kv].to(torch.float32), data_type)
     print("--------------------------------------------------------------check score state update-------------------------------------------------------------")
@@ -744,16 +744,16 @@ if __name__ == "__main__":
     parser.add_argument('--head_dim', required=True, type=int)
     parser.add_argument('--coff', required=True, type=int, choices=[1, 2], help='1:no overlap 2:overlap')
     parser.add_argument('--cmp_ratio', required=True, type=int, choices=[2, 4, 8, 16, 32, 64, 128], help='compress cmp_ratio token to one')
-    parser.add_argument('--bs_combine_flag', action='store_true', help='Include this flag to set x.shape to [T, hidden_size]')
-    parser.add_argument('--S', type=int, default=0, help='cur sequence length dim of x when BSh')
+    parser.add_argument('--bs_combine_flag', action='store_true', help='Include this flag to set hidden_states.shape to [T, hidden_size]')
+    parser.add_argument('--S', type=int, default=0, help='cur sequence length dim of hidden_states when BSh')
     parser.add_argument('--start_pos', type=int, nargs='*', help='start_pos of every batch, len is B')
-    parser.add_argument('--seqused', type=int, nargs='*', help="sequence which is used, len is B")
-    parser.add_argument('--cu_seqlens', type=int, nargs='*', help='when x is [T, h], it is required, len is B+1')
+    parser.add_argument('--seq_used', type=int, nargs='*', help="sequence which is used, len is B")
+    parser.add_argument('--seq_lens', type=int, nargs='*', help='when hidden_states is [T, h], it is required, len is B+1')
     parser.add_argument('--block_size', type=int, default=128)
     parser.add_argument('--cache_mode', type=int, default=1)
     parser.add_argument('--data_type', type=str, choices=["bfloat16", "float16"], default="bfloat16", help='bfloat16 or float16')
     parser.add_argument('--hidden_size', type=int, default=4096)
-    parser.add_argument('--save_state_seqlens', type=int, nargs='*', help='save to kv_state and score_state of seq id in [start_pos + seqused - save_state_seqlens, start_pos + seqused)')
+    parser.add_argument('--save_state_seqlens', type=int, nargs='*', help='save to kv_state and score_state of seq id in [start_pos + seq_used - save_state_seqlens, start_pos + seq_used)')
     args = parser.parse_args()
 
     if args.data_type == "float16":
@@ -773,8 +773,8 @@ if __name__ == "__main__":
             args.bs_combine_flag,
             args.S,
             args.start_pos,
-            args.seqused,
-            args.cu_seqlens,
+            args.seq_used,
+            args.seq_lens,
             args.block_size,
             data_type,
             args.hidden_size,

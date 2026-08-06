@@ -75,9 +75,9 @@ __aicore__ inline T CeilPow2(T num)
     return num;
 }
 
-enum class X_LAYOUT : std::uint8_t { BSH = static_cast<std::uint8_t>(0), TH = static_cast<std::uint8_t>(1) };
+enum class HIDDEN_STATES_LAYOUT : std::uint8_t { BSH = static_cast<std::uint8_t>(0), TH = static_cast<std::uint8_t>(1) };
 
-enum class X_DTYPE : std::uint8_t { BF16 = static_cast<std::uint8_t>(0), FP16 = static_cast<std::uint8_t>(1) };
+enum class HIDDEN_STATES_DTYPE : std::uint8_t { BF16 = static_cast<std::uint8_t>(0), FP16 = static_cast<std::uint8_t>(1) };
 
 enum class COFF : std::uint8_t { DISABLE = static_cast<std::uint8_t>(1), OVERLAP = static_cast<std::uint8_t>(2) };
 
@@ -86,12 +86,12 @@ enum class CACHE_MODE : std::uint8_t {
     RING_BUFFER = static_cast<std::uint8_t>(2)
 };
 
-enum class TEMPLATE_ID : uint8_t { NORMAL = 0, EMPTY_X = 1, FULL_LOAD = 2 };
+enum class TEMPLATE_ID : uint8_t { NORMAL = 0, EMPTY_HIDDEN_STATES = 1, FULL_LOAD = 2 };
 
-template <X_LAYOUT X_L, X_DTYPE X_T, COFF C, typename... Args>
+template <HIDDEN_STATES_LAYOUT HIDDEN_STATES_L, HIDDEN_STATES_DTYPE HIDDEN_STATES_T, COFF C, typename... Args>
 struct COMPType {
-    static constexpr X_LAYOUT xLayout = X_L;
-    static constexpr X_DTYPE xDtype = X_T;
+    static constexpr HIDDEN_STATES_LAYOUT hiddenStatesLayout = HIDDEN_STATES_L;
+    static constexpr HIDDEN_STATES_DTYPE hiddenStatesDtype = HIDDEN_STATES_T;
     static constexpr COFF coff = C;
 };
 

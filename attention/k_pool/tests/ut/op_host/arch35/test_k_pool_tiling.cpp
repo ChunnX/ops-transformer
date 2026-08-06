@@ -62,18 +62,18 @@ TEST_F(KPoolTilingArch35, test1)
     gert::TilingContextPara tilingContextPara(
         "KPool",
         {
-            {{{2, 8, 4096}, {2, 8, 4096}}, ge::DT_BF16, ge::FORMAT_ND},      // x
-            {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},      // wkv
-            {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},      // wgate
+            {{{2, 8, 4096}, {2, 8, 4096}}, ge::DT_BF16, ge::FORMAT_ND},      // hidden_states
+            {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},      // wk
+            {{{1024, 4096}, {1024, 4096}}, ge::DT_BF16, ge::FORMAT_ND},      // gate_weight
             {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND}, // state_cache
             {{{4, 1024}, {4, 1024}}, ge::DT_FLOAT, ge::FORMAT_ND},           // ape
-            {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND},                 // state_block_table
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // cu_seqlens
-            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // seqused
+            {{{2, 8}, {2, 8}}, ge::DT_INT32, ge::FORMAT_ND},                 // cache_block_table
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // seq_lens
+            {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // seq_used
             {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},                         // start_pos
         },
         {
-            {{{2, 2, 512}, {2, 2, 512}}, ge::DT_BF16, ge::FORMAT_ND},        // cmp_kv
+            {{{2, 2, 512}, {2, 2, 512}}, ge::DT_BF16, ge::FORMAT_ND},        // pooled_key
             {{{4, 128, 2048}, {4, 128, 2048}}, ge::DT_FLOAT, ge::FORMAT_ND}, // state_cache (in-place)
         },
         {
@@ -219,7 +219,7 @@ TEST_F(KPoolTilingArch35, test5)
 // TH Layout Tiling Tests
 // ====================================================================
 
-// TH C4A: T=8, H=4096, B=2, cu_seqlens=[0,4,8]
+// TH C4A: T=8, H=4096, B=2, seq_lens=[0,4,8]
 TEST_F(KPoolTilingArch35, test6)
 {
     optiling::KPoolCompileInfo compileInfo = {};

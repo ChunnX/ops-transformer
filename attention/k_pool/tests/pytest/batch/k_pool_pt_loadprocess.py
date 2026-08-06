@@ -38,15 +38,15 @@ def test_k_pool_process(filepath, device_id=0):
     print("执行用例：", filepath)
     torch_npu.npu.set_device(device_id)
 
-    x =test_data['x']
-    wkv = test_data['wkv']
-    wgate = test_data['wgate']
+    hidden_states =test_data['hidden_states']
+    wk = test_data['wk']
+    gate_weight = test_data['gate_weight']
     kv_state = test_data['kv_state']
     score_state = test_data['score_state']
     ape = test_data['ape']
     block_table = test_data['block_table']
-    cu_seqlens = test_data['cu_seqlens']
-    seqused = test_data['seqused']
+    seq_lens = test_data['seq_lens']
+    seq_used = test_data['seq_used']
     start_pos = test_data['start_pos']
     cmp_ratio = test_data['cmp_ratio']
     coff = test_data['coff']
@@ -89,10 +89,10 @@ def test_k_pool_process(filepath, device_id=0):
 
 
     state_cache = state_cache.npu()
-    if cu_seqlens is not None: 
-        cu_seqlens = cu_seqlens.npu()
-    if seqused is not None: 
-        seqused = seqused.npu()
+    if seq_lens is not None:
+        seq_lens = seq_lens.npu()
+    if seq_used is not None:
+        seq_used = seq_used.npu()
     if start_pos is not None: 
         start_pos = torch.tensor(start_pos).to(torch.int32).npu()
     if block_table is not None: 
@@ -101,15 +101,15 @@ def test_k_pool_process(filepath, device_id=0):
 
     #调用k_pool算子
     npu_result = k_pool(
-                x.npu(),
-                wkv.npu(),
-                wgate.npu(),
+                hidden_states.npu(),
+                wk.npu(),
+                gate_weight.npu(),
                 state_cache,
                 ape.npu(),
                 cmp_ratio = cmp_ratio,
-                state_block_table = kv_block_table,
-                cu_seqlens = cu_seqlens,
-                seqused = seqused,
+                cache_block_table = kv_block_table,
+                seq_lens = seq_lens,
+                seq_used = seq_used,
                 start_pos = start_pos,
                 coff = coff,
                 cache_mode = cache_mode

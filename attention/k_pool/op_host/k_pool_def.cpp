@@ -22,17 +22,17 @@ public:
 
     explicit KPool(const char *name) : OpDef(name)
     {
-        this->Input("x")
+        this->Input("hidden_states")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("wkv")
+        this->Input("wk")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("wgate")
+        this->Input("gate_weight")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND})
@@ -47,17 +47,17 @@ public:
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("state_block_table")
+        this->Input("cache_block_table")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("cu_seqlens")
+        this->Input("seq_lens")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("seqused")
+        this->Input("seq_used")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
@@ -67,7 +67,7 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Output("cmp_kv")
+        this->Output("pooled_key")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND});

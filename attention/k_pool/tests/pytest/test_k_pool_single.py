@@ -28,7 +28,7 @@ for _, params in enumerate(ENABLED_PARAMS):
     # 生成所有参数组合
     param_names = [
         "batch_size", "hidden_size", "Seq_len", "head_dim", "block_size", "cmp_ratio",
-        "coff", "start_p", "cache_mode", "layout_x", "data_type", "cu_seqlens", "seqused", "start_pos",
+        "coff", "start_p", "cache_mode", "layout_x", "data_type", "seq_lens", "seq_used", "start_pos",
         "x_datarange","wkv_datarange","wgate_datarange","ape_datarange","kv_state_datarange","score_state_datarange"
     ]
 
@@ -74,8 +74,8 @@ for _, params in enumerate(ENABLED_PARAMS):
         cache_mode = param_combinations['cache_mode']
         layout_x = param_combinations['layout_x']
         data_type = param_combinations['data_type']
-        cu_seqlens = param_combinations['cu_seqlens']
-        seqused = param_combinations['seqused']
+        seq_lens = param_combinations['seq_lens']
+        seq_used = param_combinations['seq_used']
         start_pos = param_combinations['start_pos']
         x_datarange = param_combinations['x_datarange']
         wkv_datarange = param_combinations['wkv_datarange']
@@ -85,7 +85,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         score_state_datarange = param_combinations['score_state_datarange']
 
         test_data = batch_size, hidden_size, Seq_len, head_dim, block_size, cmp_ratio, coff, \
-                    start_p, cache_mode, layout_x, data_type, cu_seqlens, seqused, start_pos, \
+                    start_p, cache_mode, layout_x, data_type, seq_lens, seq_used, start_pos, \
                     x_datarange, wkv_datarange,  wgate_datarange, ape_datarange, kv_state_datarange, score_state_datarange
 
         torch_npu.npu.set_device(0)

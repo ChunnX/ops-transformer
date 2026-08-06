@@ -28,35 +28,35 @@ namespace optiling {
 
 void KPoolTiling::ConvertRequiredParams(gert::TilingContext &context, KPoolContext &k_poolContext)
 {
-    k_poolContext.x.desc = context.GetRequiredInputDesc(TOKEN_X_INPUT_INDEX);
-    k_poolContext.x.shape = context.GetRequiredInputShape(TOKEN_X_INPUT_INDEX);
-    k_poolContext.wkv.desc = context.GetRequiredInputDesc(WEIGHT_KV_INPUT_INDEX);
-    k_poolContext.wkv.shape = context.GetRequiredInputShape(WEIGHT_KV_INPUT_INDEX);
-    k_poolContext.wgate.desc = context.GetRequiredInputDesc(WEIGHT_WGATE_INPUT_INDEX);
-    k_poolContext.wgate.shape = context.GetRequiredInputShape(WEIGHT_WGATE_INPUT_INDEX);
+    k_poolContext.hidden_states.desc = context.GetRequiredInputDesc(HIDDEN_STATES_INPUT_INDEX);
+    k_poolContext.hidden_states.shape = context.GetRequiredInputShape(HIDDEN_STATES_INPUT_INDEX);
+    k_poolContext.wk.desc = context.GetRequiredInputDesc(WK_INPUT_INDEX);
+    k_poolContext.wk.shape = context.GetRequiredInputShape(WK_INPUT_INDEX);
+    k_poolContext.gate_weight.desc = context.GetRequiredInputDesc(GATE_WEIGHT_INPUT_INDEX);
+    k_poolContext.gate_weight.shape = context.GetRequiredInputShape(GATE_WEIGHT_INPUT_INDEX);
     k_poolContext.stateCache.desc = context.GetRequiredInputDesc(STATE_CACHE_INPUT_INDEX);
     k_poolContext.stateCache.shape = context.GetRequiredInputShape(STATE_CACHE_INPUT_INDEX);
     k_poolContext.ape.desc = context.GetRequiredInputDesc(APE_INPUT_INDEX);
     k_poolContext.ape.shape = context.GetRequiredInputShape(APE_INPUT_INDEX);
 
-    k_poolContext.cmpKv.desc = context.GetOutputDesc(CMP_KV_OUTPUT_INDEX);
-    k_poolContext.cmpKv.shape = context.GetOutputShape(CMP_KV_OUTPUT_INDEX);
+    k_poolContext.pooledKey.desc = context.GetOutputDesc(POOLED_KEY_OUTPUT_INDEX);
+    k_poolContext.pooledKey.shape = context.GetOutputShape(POOLED_KEY_OUTPUT_INDEX);
 
-    k_poolContext.dtype = k_poolContext.x.desc->GetDataType();
-    auto xDimNum = k_poolContext.x.shape->GetStorageShape().GetDimNum();
-    if (xDimNum == K_POOL_DIM_NUM_3) {
+    k_poolContext.dtype = k_poolContext.hidden_states.desc->GetDataType();
+    auto hiddenStatesDimNum = k_poolContext.hidden_states.shape->GetStorageShape().GetDimNum();
+    if (hiddenStatesDimNum == K_POOL_DIM_NUM_3) {
         k_poolContext.layout = LayoutType::LAYOUT_BSH;
-    } else if (xDimNum == K_POOL_DIM_NUM_2) {
+    } else if (hiddenStatesDimNum == K_POOL_DIM_NUM_2) {
         k_poolContext.layout = LayoutType::LAYOUT_TH;
     }
 }
 
 void KPoolTiling::ConvertOptionalParams(gert::TilingContext &context, KPoolContext &k_poolContext)
 {
-    k_poolContext.stateBlockTable.desc = context.GetOptionalInputDesc(STATE_BLOCK_TABLE_INPUT_INDEX);
-    k_poolContext.stateBlockTable.shape = context.GetOptionalInputShape(STATE_BLOCK_TABLE_INPUT_INDEX);
-    k_poolContext.cuSeqlens.desc = context.GetOptionalInputDesc(CU_SEQ_LEN_INPUT_INDEX);
-    k_poolContext.cuSeqlens.shape = context.GetOptionalInputShape(CU_SEQ_LEN_INPUT_INDEX);
+    k_poolContext.cacheBlockTable.desc = context.GetOptionalInputDesc(CACHE_BLOCK_TABLE_INPUT_INDEX);
+    k_poolContext.cacheBlockTable.shape = context.GetOptionalInputShape(CACHE_BLOCK_TABLE_INPUT_INDEX);
+    k_poolContext.seqLens.desc = context.GetOptionalInputDesc(SEQ_LENS_INPUT_INDEX);
+    k_poolContext.seqLens.shape = context.GetOptionalInputShape(SEQ_LENS_INPUT_INDEX);
     k_poolContext.seqUsed.desc = context.GetOptionalInputDesc(SEQ_USED_INPUT_INDEX);
     k_poolContext.seqUsed.shape = context.GetOptionalInputShape(SEQ_USED_INPUT_INDEX);
     k_poolContext.startPos.desc = context.GetOptionalInputDesc(START_POS_INPUT_INDEX);
@@ -119,19 +119,19 @@ ge::graphStatus KPoolTiling::GetNpuInfo()
 
 ge::graphStatus KPoolTiling::SetBaseInfo()
 {
-    if (context_->x.shape->GetStorageShape().GetDimNum() == K_POOL_DIM_NUM_3) {
-        baseParams_->batchSize = context_->x.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_0);
-        baseParams_->seqSize = context_->x.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_1);
-        baseParams_->hiddenSize = context_->x.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_2);
+    if (context_->hidden_states.shape->GetStorageShape().GetDimNum() == K_POOL_DIM_NUM_3) {
+        baseParams_->batchSize = context_->hidden_states.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_0);
+        baseParams_->seqSize = context_->hidden_states.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_1);
+        baseParams_->hiddenSize = context_->hidden_states.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_2);
         baseParams_->tokenSize = baseParams_->batchSize * baseParams_->seqSize;
     } else {
-        baseParams_->batchSize = context_->cuSeqlens.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_0) - 1;
-        baseParams_->tokenSize = context_->x.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_0);
-        baseParams_->hiddenSize = context_->x.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_1);
+        baseParams_->batchSize = context_->seqLens.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_0) - 1;
+        baseParams_->tokenSize = context_->hidden_states.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_0);
+        baseParams_->hiddenSize = context_->hidden_states.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_1);
     }
 
     coff = static_cast<uint8_t>(*context_->coff);
-    baseParams_->headDim = context_->wkv.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_0) / coff;
+    baseParams_->headDim = context_->wk.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_0) / coff;
     baseParams_->cmpRatio = static_cast<uint32_t>(*context_->cmpRatio);
     baseParams_->csSize = baseParams_->seqSize - (baseParams_->seqSize % baseParams_->cmpRatio);
     baseParams_->stateCacheStrideDim0 = static_cast<uint64_t>(*context_->stateCacheStrideDim0);
@@ -150,7 +150,7 @@ ge::graphStatus KPoolTiling::SetPageAttentionInfo()
     pageAttentionParams_->blockSize = context_->stateCache.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_1);
     if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::LINEAR_BUFFER)) {
         pageAttentionParams_->maxBlockNumPerBatch =
-            context_->stateBlockTable.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_1);
+            context_->cacheBlockTable.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_1);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -173,7 +173,7 @@ ge::graphStatus KPoolTiling::SetScenarioInfo() { return ge::GRAPH_SUCCESS; }
 
 ge::graphStatus KPoolTiling::SetTemplateId()
 {
-    if (context_->templateId == TemplateId::EMPTY_X) {
+    if (context_->templateId == TemplateId::EMPTY_HIDDEN_STATES) {
         return ge::GRAPH_SUCCESS;
     }
     // 设置高性能模板
@@ -264,20 +264,20 @@ ge::graphStatus KPoolTiling::CalcWorkSpace()
 ge::graphStatus KPoolTiling::CheckEmptyTensor() const
 {
     if ((context_->layout == LayoutType::LAYOUT_BSH &&
-         context_->x.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_0) == 0) ||
+         context_->hidden_states.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_0) == 0) ||
         (context_->layout == LayoutType::LAYOUT_BSH &&
-         context_->x.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_1) == 0) ||
+         context_->hidden_states.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_1) == 0) ||
         (context_->layout == LayoutType::LAYOUT_TH &&
-         context_->x.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_0) == 0)) {
-        context_->templateId = TemplateId::EMPTY_X;
+         context_->hidden_states.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_0) == 0)) {
+        context_->templateId = TemplateId::EMPTY_HIDDEN_STATES;
     } else {
-        if (context_->x.shape->GetStorageShape().GetShapeSize() == 0 ||
-            context_->wkv.shape->GetStorageShape().GetShapeSize() == 0 ||
-            context_->wgate.shape->GetStorageShape().GetShapeSize() == 0 ||
+        if (context_->hidden_states.shape->GetStorageShape().GetShapeSize() == 0 ||
+            context_->wk.shape->GetStorageShape().GetShapeSize() == 0 ||
+            context_->gate_weight.shape->GetStorageShape().GetShapeSize() == 0 ||
             context_->stateCache.shape->GetStorageShape().GetShapeSize() == 0 ||
             context_->ape.shape->GetStorageShape().GetShapeSize() == 0 ||
-            context_->stateBlockTable.shape->GetStorageShape().GetShapeSize() == 0) {
-            OP_LOGE(context_->opName, "Only input tensor x dim B or S or T supports to be 0");
+            context_->cacheBlockTable.shape->GetStorageShape().GetShapeSize() == 0) {
+            OP_LOGE(context_->opName, "Only input tensor hidden_states dim B or S or T supports to be 0");
             return ge::GRAPH_FAILED;
         }
         context_->templateId = TemplateId::NORMAL;
@@ -311,7 +311,7 @@ ge::graphStatus KPoolTiling::RunBigKernelTiling(KPoolTilingData *tilingData)
         }
     }
 
-    if (context_->templateId == TemplateId::EMPTY_X) {
+    if (context_->templateId == TemplateId::EMPTY_HIDDEN_STATES) {
         workspaceSize_ = libapiSize_;
         if (context_->workSpaces) {
             context_->workSpaces[0] = workspaceSize_;
@@ -344,14 +344,14 @@ ge::graphStatus KPoolTiling::GenTilingKey() const
     uint8_t templateId = static_cast<uint8_t>(context_->templateId);
     uint8_t cacheMode = static_cast<uint8_t>(*context_->cacheMode);
 
-    auto xDtype = context_->x.desc->GetDataType();
-    if (xDtype == ge::DT_BF16) {
+    auto hiddenStatesDtype = context_->hidden_states.desc->GetDataType();
+    if (hiddenStatesDtype == ge::DT_BF16) {
         dtype = 0;
-    } else if (xDtype == ge::DT_FLOAT16) {
+    } else if (hiddenStatesDtype == ge::DT_FLOAT16) {
         dtype = 1;
     }
-    auto xDimNum = context_->x.shape->GetStorageShape().GetDimNum();
-    if (xDimNum == K_POOL_DIM_NUM_3) {
+    auto hiddenStatesDimNum = context_->hidden_states.shape->GetStorageShape().GetDimNum();
+    if (hiddenStatesDimNum == K_POOL_DIM_NUM_3) {
         layout = 0;
     } else {
         layout = 1;
@@ -367,11 +367,11 @@ ge::graphStatus KPoolTiling::GenTilingKey() const
 
 ge::graphStatus KPoolTiling::CheckSinglePara() const
 {
-    if (ge::GRAPH_SUCCESS != CheckSingleParaX() || ge::GRAPH_SUCCESS != CheckSingleParaWkv() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaWgate() || ge::GRAPH_SUCCESS != CheckSingleParaStateCache() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaApe() || ge::GRAPH_SUCCESS != CheckSingleParaStateBlockTable() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaCuSeqlens() || ge::GRAPH_SUCCESS != CheckSingleParaSeqused() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaStartPos() || ge::GRAPH_SUCCESS != CheckSingleParaCmpKv() ||
+    if (ge::GRAPH_SUCCESS != CheckSingleParaHiddenStates() || ge::GRAPH_SUCCESS != CheckSingleParaWk() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaGateWeight() || ge::GRAPH_SUCCESS != CheckSingleParaStateCache() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaApe() || ge::GRAPH_SUCCESS != CheckSingleParaCacheBlockTable() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaSeqLens() || ge::GRAPH_SUCCESS != CheckSingleParaSeqUsed() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaStartPos() || ge::GRAPH_SUCCESS != CheckSingleParaPooledKey() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio() || ge::GRAPH_SUCCESS != CheckSingleParaCoff() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCacheMode()) {
         return ge::GRAPH_FAILED;
@@ -517,29 +517,29 @@ ge::graphStatus KPoolTiling::CheckDimNumSupport(const gert::StorageShape *shape,
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KPoolTiling::CheckSingleParaX() const
+ge::graphStatus KPoolTiling::CheckSingleParaHiddenStates() const
 {
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->x.desc, X_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->x.shape, X_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(LayoutTypeToStr(context_->layout), context_->x.shape, X_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->hidden_states.desc, HIDDEN_STATES_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->hidden_states.shape, HIDDEN_STATES_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(LayoutTypeToStr(context_->layout), context_->hidden_states.shape, HIDDEN_STATES_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KPoolTiling::CheckSingleParaWkv() const
+ge::graphStatus KPoolTiling::CheckSingleParaWk() const
 {
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->wkv.desc, WKV_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->wkv.shape, WKV_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->wk.desc, WK_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->wk.shape, WK_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KPoolTiling::CheckSingleParaWgate() const
+ge::graphStatus KPoolTiling::CheckSingleParaGateWeight() const
 {
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->wgate.desc, WGATE_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->wgate.shape, WGATE_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->gate_weight.desc, GATE_WEIGHT_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->gate_weight.shape, GATE_WEIGHT_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -563,37 +563,37 @@ ge::graphStatus KPoolTiling::CheckSingleParaApe() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KPoolTiling::CheckSingleParaStateBlockTable() const
+ge::graphStatus KPoolTiling::CheckSingleParaCacheBlockTable() const
 {
-    if (context_->stateBlockTable.desc == nullptr) {
+    if (context_->cacheBlockTable.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->stateBlockTable.desc, STATE_BLOCK_TABLE_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->stateBlockTable.shape, STATE_BLOCK_TABLE_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->cacheBlockTable.desc, CACHE_BLOCK_TABLE_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->cacheBlockTable.shape, CACHE_BLOCK_TABLE_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KPoolTiling::CheckSingleParaCuSeqlens() const
+ge::graphStatus KPoolTiling::CheckSingleParaSeqLens() const
 {
-    if (context_->cuSeqlens.desc == nullptr) {
+    if (context_->seqLens.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->cuSeqlens.desc, CU_SEQLENS_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->cuSeqlens.shape, CU_SEQLENS_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->seqLens.desc, SEQ_LENS_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->seqLens.shape, SEQ_LENS_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KPoolTiling::CheckSingleParaSeqused() const
+ge::graphStatus KPoolTiling::CheckSingleParaSeqUsed() const
 {
     if (context_->seqUsed.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->seqUsed.desc, SEQUSED_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->seqUsed.shape, SEQUSED_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->seqUsed.desc, SEQ_USED_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->seqUsed.shape, SEQ_USED_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -611,13 +611,13 @@ ge::graphStatus KPoolTiling::CheckSingleParaStartPos() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KPoolTiling::CheckSingleParaCmpKv() const
+ge::graphStatus KPoolTiling::CheckSingleParaPooledKey() const
 {
-    if (context_->cmpKv.desc == nullptr) {
+    if (context_->pooledKey.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->cmpKv.desc, CMP_KV_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->cmpKv.shape, CMP_KV_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->pooledKey.desc, POOLED_KEY_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->pooledKey.shape, POOLED_KEY_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -657,16 +657,16 @@ ge::graphStatus KPoolTiling::CheckRequiredParaExistence() const
 
 ge::graphStatus KPoolTiling::CheckRequiredInOutExistence() const
 {
-    OP_CHECK_IF(context_->x.shape == nullptr, OP_LOGE(context_->opName, "tensor x is nullptr"),
+    OP_CHECK_IF(context_->hidden_states.shape == nullptr, OP_LOGE(context_->opName, "tensor hidden_states is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->x.desc == nullptr, OP_LOGE(context_->opName, "tensor x is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->wkv.shape == nullptr, OP_LOGE(context_->opName, "tensor wkv is nullptr"),
+    OP_CHECK_IF(context_->hidden_states.desc == nullptr, OP_LOGE(context_->opName, "tensor hidden_states is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->wk.shape == nullptr, OP_LOGE(context_->opName, "tensor wk is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->wkv.desc == nullptr, OP_LOGE(context_->opName, "tensor wkv is nullptr"),
+    OP_CHECK_IF(context_->wk.desc == nullptr, OP_LOGE(context_->opName, "tensor wk is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->wgate.shape == nullptr, OP_LOGE(context_->opName, "tensor wgate is nullptr"),
+    OP_CHECK_IF(context_->gate_weight.shape == nullptr, OP_LOGE(context_->opName, "tensor gate_weight is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->wgate.desc == nullptr, OP_LOGE(context_->opName, "tensor wgate is nullptr"),
+    OP_CHECK_IF(context_->gate_weight.desc == nullptr, OP_LOGE(context_->opName, "tensor gate_weight is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->stateCache.shape == nullptr, OP_LOGE(context_->opName, "tensor stateCache is nullptr"),
                 return ge::GRAPH_FAILED);
@@ -676,27 +676,27 @@ ge::graphStatus KPoolTiling::CheckRequiredInOutExistence() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->ape.desc == nullptr, OP_LOGE(context_->opName, "tensor ape is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->stateBlockTable.shape == nullptr,
-                OP_LOGE(context_->opName, "tensor stateBlockTable is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->stateBlockTable.desc == nullptr,
-                OP_LOGE(context_->opName, "tensor stateBlockTable is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->cmpKv.shape == nullptr, OP_LOGE(context_->opName, "tensor cmpKv is nullptr"),
+    OP_CHECK_IF(context_->cacheBlockTable.shape == nullptr,
+                OP_LOGE(context_->opName, "tensor cacheBlockTable is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->cacheBlockTable.desc == nullptr,
+                OP_LOGE(context_->opName, "tensor cacheBlockTable is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context_->pooledKey.shape == nullptr, OP_LOGE(context_->opName, "tensor pooledKey is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context_->cmpKv.desc == nullptr, OP_LOGE(context_->opName, "tensor cmpKv is nullptr"),
+    OP_CHECK_IF(context_->pooledKey.desc == nullptr, OP_LOGE(context_->opName, "tensor pooledKey is nullptr"),
                 return ge::GRAPH_FAILED);
     if (context_->layout == LayoutType::LAYOUT_TH) {
-        OP_CHECK_IF(context_->cuSeqlens.desc == nullptr,
-                    OP_LOGE(context_->opName, "In TH layout, tensor cuSeqlens should not be nullptr"),
+        OP_CHECK_IF(context_->seqLens.desc == nullptr,
+                    OP_LOGE(context_->opName, "In TH layout, tensor seqLens should not be nullptr"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(context_->cuSeqlens.shape == nullptr,
-                    OP_LOGE(context_->opName, "In TH layout, tensor cuSeqlens should not be nullptr"),
+        OP_CHECK_IF(context_->seqLens.shape == nullptr,
+                    OP_LOGE(context_->opName, "In TH layout, tensor seqLens should not be nullptr"),
                     return ge::GRAPH_FAILED);
     } else {
-        OP_CHECK_IF(context_->cuSeqlens.desc != nullptr,
-                    OP_LOGE(context_->opName, "In BSH layout, tensor cuSeqlens must be nullptr"),
+        OP_CHECK_IF(context_->seqLens.desc != nullptr,
+                    OP_LOGE(context_->opName, "In BSH layout, tensor seqLens must be nullptr"),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(context_->cuSeqlens.shape != nullptr,
-                    OP_LOGE(context_->opName, "In BSH layout, tensor cuSeqlens must be nullptr"),
+        OP_CHECK_IF(context_->seqLens.shape != nullptr,
+                    OP_LOGE(context_->opName, "In BSH layout, tensor seqLens must be nullptr"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -754,21 +754,21 @@ ge::graphStatus KPoolTiling::CheckShapeConsistency() const
 {
     auto coffD = coff * baseParams_->headDim;
     uint32_t stateNum = 2;
-    if (ge::GRAPH_SUCCESS != LogErrorShapeConsistency("stateBlockTable", context_->stateBlockTable.shape,
+    if (ge::GRAPH_SUCCESS != LogErrorShapeConsistency("cacheBlockTable", context_->cacheBlockTable.shape,
                                                       K_POOL_DIM_INDEX_0, "batchSize", baseParams_->batchSize) ||
-        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("cuSeqlens", context_->cuSeqlens.shape, K_POOL_DIM_INDEX_0,
+        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("seqLens", context_->seqLens.shape, K_POOL_DIM_INDEX_0,
                                                       "batchSize+1", baseParams_->batchSize + 1) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("seqUsed", context_->seqUsed.shape, K_POOL_DIM_INDEX_0,
                                                       "batchSize", baseParams_->batchSize) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("startPos", context_->startPos.shape, K_POOL_DIM_INDEX_0,
                                                       "batchSize", baseParams_->batchSize) ||
-        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wkv", context_->wkv.shape, K_POOL_DIM_INDEX_1, "hiddenSize",
+        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wk", context_->wk.shape, K_POOL_DIM_INDEX_1, "hiddenSize",
                                                       baseParams_->hiddenSize) ||
-        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wgate", context_->wgate.shape, K_POOL_DIM_INDEX_1,
+        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("gate_weight", context_->gate_weight.shape, K_POOL_DIM_INDEX_1,
                                                       "hiddenSize", baseParams_->hiddenSize) ||
-        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wkv", context_->wkv.shape, K_POOL_DIM_INDEX_0,
+        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wk", context_->wk.shape, K_POOL_DIM_INDEX_0,
                                                       "coff*headDim", static_cast<uint32_t>(coffD)) ||
-        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("wgate", context_->wgate.shape, K_POOL_DIM_INDEX_0,
+        ge::GRAPH_SUCCESS != LogErrorShapeConsistency("gate_weight", context_->gate_weight.shape, K_POOL_DIM_INDEX_0,
                                                       "coff*headDim", static_cast<uint32_t>(coffD)) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("stateCache", context_->stateCache.shape, K_POOL_DIM_INDEX_2,
                                                       "2*coff*headDim", stateNum * static_cast<uint32_t>(coffD)) ||
@@ -788,12 +788,12 @@ ge::graphStatus KPoolTiling::CheckShapeConsistency() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus KPoolTiling::CheckDtypeConsistencyX(const gert::CompileTimeTensorDesc *desc,
+ge::graphStatus KPoolTiling::CheckDtypeConsistencyHiddenStates(const gert::CompileTimeTensorDesc *desc,
                                                          const std::string &name) const
 {
     const auto actualDtype = desc->GetDataType();
     OP_CHECK_IF(actualDtype != context_->dtype,
-                OP_LOGE(context_->opName, "%s datatype should be same with x: %s, but got %s", name.c_str(),
+                OP_LOGE(context_->opName, "%s datatype should be same with hidden_states: %s, but got %s", name.c_str(),
                         DataTypeToSerialString(actualDtype).c_str(), DataTypeToSerialString(context_->dtype).c_str()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -801,9 +801,9 @@ ge::graphStatus KPoolTiling::CheckDtypeConsistencyX(const gert::CompileTimeTenso
 
 ge::graphStatus KPoolTiling::CheckDtypeConsistency() const
 {
-    if (CheckDtypeConsistencyX(context_->wkv.desc, WKV_NAME) != ge::GRAPH_SUCCESS ||
-        CheckDtypeConsistencyX(context_->wgate.desc, WGATE_NAME) != ge::GRAPH_SUCCESS ||
-        CheckDtypeConsistencyX(context_->cmpKv.desc, CMP_KV_NAME) != ge::GRAPH_SUCCESS) {
+    if (CheckDtypeConsistencyHiddenStates(context_->wk.desc, WK_NAME) != ge::GRAPH_SUCCESS ||
+        CheckDtypeConsistencyHiddenStates(context_->gate_weight.desc, GATE_WEIGHT_NAME) != ge::GRAPH_SUCCESS ||
+        CheckDtypeConsistencyHiddenStates(context_->pooledKey.desc, POOLED_KEY_NAME) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -811,10 +811,10 @@ ge::graphStatus KPoolTiling::CheckDtypeConsistency() const
 
 ge::graphStatus KPoolTiling::CheckDimNumConsistency() const
 {
-    auto xDimNum = context_->x.shape->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(xDimNum != context_->cmpKv.shape->GetStorageShape().GetDimNum(),
-                OP_LOGE(context_->opName, "cmpKv dim num should be equal to x: %lu, but got %zu", xDimNum,
-                        context_->cmpKv.shape->GetStorageShape().GetDimNum()),
+    auto hiddenStatesDimNum = context_->hidden_states.shape->GetStorageShape().GetDimNum();
+    OP_CHECK_IF(hiddenStatesDimNum != context_->pooledKey.shape->GetStorageShape().GetDimNum(),
+                OP_LOGE(context_->opName, "pooledKey dim num should be equal to hidden_states: %lu, but got %zu", hiddenStatesDimNum,
+                        context_->pooledKey.shape->GetStorageShape().GetDimNum()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

@@ -2068,7 +2068,7 @@ __simd_vf__ inline void SoftmaxDndBase512(__ubuf__ T *inputAddr, __ubuf__ float 
 
 /**
  * @ingroup ProcessVec1Vf
- * @brief compute max = reducemax, exp(x-max)/sum(exp(x-max))
+ * @brief compute max = reducemax, exp(hidden_states-max)/sum(exp(hidden_states-max))
  * @param [out] dstTensor, output LocalTensor
  * @param [in] srcTensor, input LocalTensor
  * @param [in] RowSize, input rows

@@ -35,7 +35,7 @@ public:
     }
 
     __aicore__ inline void Init(__gm__ uint8_t *startPos, __gm__ uint8_t *seqUsed,
-                                __gm__ uint8_t *cuSeqlens);
+                                __gm__ uint8_t *seqLens);
 
     __aicore__ inline uint32_t GetSeqUsed(uint32_t bIdx);
     __aicore__ inline uint64_t GetStartPos(uint32_t bIdx);
@@ -55,7 +55,7 @@ private:
 
 template <typename COMP>
 __aicore__ inline void KPoolTools<COMP>::Init(__gm__ uint8_t *startPos, __gm__ uint8_t *seqUsed,
-                                                   __gm__ uint8_t *cuSeqlens)
+                                                   __gm__ uint8_t *seqLens)
 {
     isExistStartPos_ = (startPos != nullptr);
     if (isExistStartPos_) {
@@ -67,8 +67,8 @@ __aicore__ inline void KPoolTools<COMP>::Init(__gm__ uint8_t *startPos, __gm__ u
         sequsedGm_.SetGlobalBuffer((__gm__ int32_t *)seqUsed);
     }
 
-    if constexpr (COMP::xLayout == X_LAYOUT::TH) {
-        cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)cuSeqlens);
+    if constexpr (COMP::hiddenStatesLayout == HIDDEN_STATES_LAYOUT::TH) {
+        cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)seqLens);
     }
 }
 
@@ -78,7 +78,7 @@ __aicore__ inline uint32_t KPoolTools<COMP>::GetSeqUsed(uint32_t bIdx)
     if (isExistSeqUsed_) {
         return (uint32_t)sequsedGm_.GetValue(bIdx);
     } else {
-        if constexpr (COMP::xLayout == X_LAYOUT::TH) {
+        if constexpr (COMP::hiddenStatesLayout == HIDDEN_STATES_LAYOUT::TH) {
             return (uint32_t)(cuSeqlensGm_.GetValue(bIdx + 1) - cuSeqlensGm_.GetValue(bIdx));
         } else {
             return toolParams_.seqSize;
@@ -99,7 +99,7 @@ __aicore__ inline uint64_t KPoolTools<COMP>::GetStartPos(uint32_t bIdx)
 template <typename COMP>
 __aicore__ inline uint32_t KPoolTools<COMP>::GetSeqLength(uint32_t bIdx)
 {
-    if constexpr (COMP::xLayout == X_LAYOUT::TH) {
+    if constexpr (COMP::hiddenStatesLayout == HIDDEN_STATES_LAYOUT::TH) {
         return cuSeqlensGm_.GetValue(bIdx + 1) - cuSeqlensGm_.GetValue(bIdx);
     } else {
         return toolParams_.seqSize;
@@ -109,7 +109,7 @@ __aicore__ inline uint32_t KPoolTools<COMP>::GetSeqLength(uint32_t bIdx)
 template <typename COMP>
 __aicore__ inline uint64_t KPoolTools<COMP>::GetTIdxByBatch(uint32_t bIdx)
 {
-    if constexpr (COMP::xLayout == X_LAYOUT::TH) {
+    if constexpr (COMP::hiddenStatesLayout == HIDDEN_STATES_LAYOUT::TH) {
         return (uint64_t)(cuSeqlensGm_.GetValue(bIdx));
     } else {
         return (uint64_t)toolParams_.seqSize * bIdx;

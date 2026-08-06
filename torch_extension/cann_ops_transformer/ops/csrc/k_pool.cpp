@@ -46,47 +46,47 @@ std::vector<bool> IsContiguousAxes(const at::Tensor &tensor)
     return result;
 }
 
-at::Tensor ConstructKPoolOutputTensor(const at::Tensor &x, const at::Tensor &wkv,
-                                           const c10::optional<at::Tensor> &cuSeqlens, int64_t cmpRatio, int64_t coff)
+at::Tensor ConstructKPoolOutputTensor(const at::Tensor &hidden_states, const at::Tensor &wk,
+                                           const c10::optional<at::Tensor> &seqLens, int64_t cmpRatio, int64_t coff)
 {
-    auto xDim = x.dim();
-    at::SmallVector<int64_t, MAX_DIM_SIZE> cmpKvSize;
-    at::Tensor cmpKv;
+    auto hiddenStatesDim = hidden_states.dim();
+    at::SmallVector<int64_t, MAX_DIM_SIZE> pooledKeySize;
+    at::Tensor pooledKey;
     int64_t cmpS = 0;
     int64_t bSize = 0;
 
-    TORCH_CHECK(wkv.defined(), "Check x != nullptr failed");
-    auto wkvDim = wkv.dim();
-    TORCH_CHECK(wkvDim == DIM_TWO, "wkv dim num[", wkvDim, "] should be 2");
+    TORCH_CHECK(wk.defined(), "Check hidden_states != nullptr failed");
+    auto wkDim = wk.dim();
+    TORCH_CHECK(wkDim == DIM_TWO, "wk dim num[", wkDim, "] should be 2");
 
     TORCH_CHECK(coff == VALUE_1 || coff == VALUE_2, "coff value[", coff, "] should be 1 or 2");
 
-    if (xDim == DIM_THREE) {
-        cmpS = (x.size(1) + cmpRatio - 1) / cmpRatio;
-        cmpKvSize = {x.size(0), cmpS, wkv.size(0) / coff};
+    if (hiddenStatesDim == DIM_THREE) {
+        cmpS = (hidden_states.size(1) + cmpRatio - 1) / cmpRatio;
+        pooledKeySize = {hidden_states.size(0), cmpS, wk.size(0) / coff};
     } else {
-        TORCH_CHECK(cuSeqlens.has_value(), "Check cu_seqlens != nullptr failed");
-        bSize = cuSeqlens->size(0) - 1;
-        cmpS = std::min(x.size(0), x.size(0) / cmpRatio + bSize);
-        cmpKvSize = {cmpS, wkv.size(0) / coff};
+        TORCH_CHECK(seqLens.has_value(), "Check seq_lens != nullptr failed");
+        bSize = seqLens->size(0) - 1;
+        cmpS = std::min(hidden_states.size(0), hidden_states.size(0) / cmpRatio + bSize);
+        pooledKeySize = {cmpS, wk.size(0) / coff};
     }
 
-    cmpKv = at::empty(cmpKvSize, x.options().dtype(x.dtype()));
-    return cmpKv;
+    pooledKey = at::empty(pooledKeySize, hidden_states.options().dtype(hidden_states.dtype()));
+    return pooledKey;
 }
 
-at::Tensor KPool(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate, at::Tensor &stateCache,
-                      const at::Tensor &ape, int64_t cmpRatio, const c10::optional<at::Tensor> &stateBlockTable,
-                      const c10::optional<at::Tensor> &cuSeqlens, const c10::optional<at::Tensor> &seqused,
+at::Tensor KPool(const at::Tensor &hidden_states, const at::Tensor &wk, const at::Tensor &gate_weight, at::Tensor &stateCache,
+                      const at::Tensor &ape, int64_t cmpRatio, const c10::optional<at::Tensor> &cacheBlockTable,
+                      const c10::optional<at::Tensor> &seqLens, const c10::optional<at::Tensor> &seq_used,
                       const c10::optional<at::Tensor> &startPos, int64_t coff, int64_t cacheMode)
 {
-    TORCH_CHECK(x.defined(), "Check x != nullptr failed");
-    auto xDim = x.dim();
-    TORCH_CHECK(xDim == DIM_TWO || xDim == DIM_THREE, "x dim num[", xDim, "] should be 2 or 3");
+    TORCH_CHECK(hidden_states.defined(), "Check hidden_states != nullptr failed");
+    auto hiddenStatesDim = hidden_states.dim();
+    TORCH_CHECK(hiddenStatesDim == DIM_TWO || hiddenStatesDim == DIM_THREE, "hidden_states dim num[", hiddenStatesDim, "] should be 2 or 3");
 
     TORCH_CHECK(cmpRatio > VALUE_0, "cmp_ratio should be greater than 0");
 
-    at::Tensor cmpKv = ConstructKPoolOutputTensor(x, wkv, cuSeqlens, cmpRatio, coff);
+    at::Tensor pooledKey = ConstructKPoolOutputTensor(hidden_states, wk, seqLens, cmpRatio, coff);
 
     auto stateCacheDim = stateCache.dim();
     TORCH_CHECK(stateCacheDim == DIM_THREE, "state_cache dim num[", stateCacheDim, "] should be 3");
@@ -94,24 +94,24 @@ at::Tensor KPool(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &w
     auto contiguousAxesResult = IsContiguousAxes(stateCache);
     int64_t stateCacheStrideDim0 = stateCache.stride(0);
 
-    ACLNN_CMD(aclnnKPool, x, wkv, wgate, stateCache, ape, stateBlockTable, cuSeqlens, seqused, startPos, cmpRatio,
-              coff, cacheMode, stateCacheStrideDim0, cmpKv);
+    ACLNN_CMD(aclnnKPool, hidden_states, wk, gate_weight, stateCache, ape, cacheBlockTable, seqLens, seq_used, startPos, cmpRatio,
+              coff, cacheMode, stateCacheStrideDim0, pooledKey);
 
-    return cmpKv;
+    return pooledKey;
 }
 
-at::Tensor KPoolMeta(const at::Tensor &x, const at::Tensor &wkv, const at::Tensor &wgate, at::Tensor &stateCache,
-                          const at::Tensor &ape, int64_t cmpRatio, const c10::optional<at::Tensor> &stateBlockTable,
-                          const c10::optional<at::Tensor> &cuSeqlens, const c10::optional<at::Tensor> &seqused,
+at::Tensor KPoolMeta(const at::Tensor &hidden_states, const at::Tensor &wk, const at::Tensor &gate_weight, at::Tensor &stateCache,
+                          const at::Tensor &ape, int64_t cmpRatio, const c10::optional<at::Tensor> &cacheBlockTable,
+                          const c10::optional<at::Tensor> &seqLens, const c10::optional<at::Tensor> &seq_used,
                           const c10::optional<at::Tensor> &startPos, int64_t coff, int64_t cacheMode)
 {
-    TORCH_CHECK(x.defined(), "Check x != nullptr failed");
-    auto xDim = x.dim();
-    TORCH_CHECK(xDim == DIM_TWO || xDim == DIM_THREE, "x dim num[", xDim, "] should be 2 or 3");
+    TORCH_CHECK(hidden_states.defined(), "Check hidden_states != nullptr failed");
+    auto hiddenStatesDim = hidden_states.dim();
+    TORCH_CHECK(hiddenStatesDim == DIM_TWO || hiddenStatesDim == DIM_THREE, "hidden_states dim num[", hiddenStatesDim, "] should be 2 or 3");
 
     TORCH_CHECK(cmpRatio > VALUE_0, "cmp_ratio should be greater than 0");
 
-    return ConstructKPoolOutputTensor(x, wkv, cuSeqlens, cmpRatio, coff);
+    return ConstructKPoolOutputTensor(hidden_states, wk, seqLens, cmpRatio, coff);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)

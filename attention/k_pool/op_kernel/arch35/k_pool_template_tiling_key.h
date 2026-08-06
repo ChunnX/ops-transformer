@@ -26,9 +26,9 @@
 ASCENDC_TPL_ARGS_DECL(k_pool, // 算子唯一标识，与opType保持一致
                                   // 可能需要切分之后的headdim
                                   // bit:0 LAYOUT 0:BSH 1:TH
-                      ASCENDC_TPL_UINT_DECL(X_LAYOUT, ASCENDC_TPL_1_BW, ASCENDC_TPL_UI_LIST, 0, 1),
+                      ASCENDC_TPL_UINT_DECL(HIDDEN_STATES_LAYOUT, ASCENDC_TPL_1_BW, ASCENDC_TPL_UI_LIST, 0, 1),
                       // bit:1-4 x的dtype  0:BF16 1:FP16
-                      ASCENDC_TPL_UINT_DECL(X_DTYPE, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, 0, 1),
+                      ASCENDC_TPL_UINT_DECL(HIDDEN_STATES_DTYPE, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, 0, 1),
                       // bit:5-6  coff 1:无需overlap 2:需要overlap
                       ASCENDC_TPL_UINT_DECL(COFF, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, 1, 2),
                       // bit:7-8  cache_mode 1:LINEAR_BUFFER 2:RING_BUFFER
@@ -40,8 +40,8 @@ ASCENDC_TPL_ARGS_DECL(k_pool, // 算子唯一标识，与opType保持一致
 
 ASCENDC_TPL_SEL(
 
-    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(X_LAYOUT, ASCENDC_TPL_UI_LIST, 0, 1),
-                         ASCENDC_TPL_UINT_SEL(X_DTYPE, ASCENDC_TPL_UI_LIST, 0, 1),
+    ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(HIDDEN_STATES_LAYOUT, ASCENDC_TPL_UI_LIST, 0, 1),
+                         ASCENDC_TPL_UINT_SEL(HIDDEN_STATES_DTYPE, ASCENDC_TPL_UI_LIST, 0, 1),
                          ASCENDC_TPL_UINT_SEL(COFF, ASCENDC_TPL_UI_LIST, 1, 2),
                          ASCENDC_TPL_UINT_SEL(CACHE_MODE, ASCENDC_TPL_UI_LIST, 1, 2),
                          ASCENDC_TPL_UINT_SEL(TEMPLATE_ID, ASCENDC_TPL_UI_LIST, 0, 1, 2),
