@@ -18,7 +18,7 @@
 #
 # 注意:
 #   - 算子包构建期间请勿 source workspace CANN set_env.sh（beta.3 缺 asc/impl/tensor_api）
-#   - 精度测试运行前会自动 source workspace CANN set_env.sh
+#   - 精度测试需在已配置 CANN 与 python 环境（如 workspace CANN set_env.sh + conda kdy）下运行
 # -----------------------------------------------------------------------------------------------------------
 set -euo pipefail
 
@@ -26,7 +26,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPS_ROOT="${SCRIPT_DIR}"     # ops-transformer
 TORCH_EXT_DIR="${OPS_ROOT}/torch_extension"
 OPS="attn_res_fwd,attention_res_grad"
-WORKSPACE_CANN_ENV="/workspace/z00889690/Ascend_env/cann-9.1.0-beta.3/set_env.sh"
 
 RUN_TEST=1
 INSTALL_PATH=""
@@ -80,14 +79,6 @@ set -u
 if [[ "${RUN_TEST}" -eq 1 ]]; then
     echo ""
     echo "=== [4/4] 执行精度测试 (BF16 H=7168 seed=0) ==="
-    if [[ -f "${WORKSPACE_CANN_ENV}" ]]; then
-        # 构建阶段不能 source（缺 tensor_api），测试运行阶段需要完整 CANN 环境
-        set +u
-        source "${WORKSPACE_CANN_ENV}"
-        set -u
-    else
-        echo "WARNING: 未找到 workspace CANN 环境 ${WORKSPACE_CANN_ENV}，测试可能需要现有环境变量"
-    fi
     cd "${OPS_ROOT}/attention/attn_res_fwd"
     if ! python3 -c "import numpy, torch, torch_npu, cann_ops_transformer" 2>/dev/null; then
         echo "WARNING: 当前 python3 缺少测试依赖 (numpy/torch/torch_npu/cann_ops_transformer)，跳过精度测试"
