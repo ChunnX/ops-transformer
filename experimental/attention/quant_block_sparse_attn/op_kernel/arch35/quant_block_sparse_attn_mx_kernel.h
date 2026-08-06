@@ -42,6 +42,7 @@ public:
     static constexpr uint32_t S2_BASE = 512U;
     static constexpr uint32_t S2_SPLIT = 256U;
     static constexpr uint32_t DV_BASE = 128U;
+    static constexpr uint32_t UB_BANK_CONFLICT_PAD_SIZE = 32U;
     // 延迟两个 task 执行 C2/V2。
     static constexpr uint32_t PRELOAD_N = 2U;
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1U;
@@ -148,7 +149,8 @@ private:
         constexpr uint32_t mm2LeftSize = M_BASE * S2_BASE * sizeof(INPUT_T) + M_BASE * S2_BASE / 32U;
         l1BufferManager.Init(pipe, 512U * 1024U);
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
-        ubBufferManager.Init(pipe, mm1ResultSize * 2U + mm2ResultSize);
+        // 在 cross-core BMM 结果区尾部保留 32B，使随后分配的 VF UB 地址错开一个 bank row。
+        ubBufferManager.Init(pipe, mm1ResultSize * 2U + mm2ResultSize + UB_BANK_CONFLICT_PAD_SIZE);
         bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
         bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
     }
