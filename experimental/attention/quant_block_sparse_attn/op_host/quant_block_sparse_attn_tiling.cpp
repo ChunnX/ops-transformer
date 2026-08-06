@@ -248,9 +248,9 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
         pScaleShapeSize = static_cast<uint32_t>(info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize());
     }
     scaleParams.pScaleShapeSize = pScaleShapeSize;
-    scaleParams.queryQuantMode = BSA_MXFP8_PER_TOKEN_GROUP_MODE;
-    scaleParams.keyAntiquantMode = BSA_MXFP8_PER_TOKEN_GROUP_MODE;
-    scaleParams.valueAntiquantMode = BSA_MXFP8_PER_CHANNEL_GROUP_MODE;
+    scaleParams.queryQuantMode = QBSA_MXFP8_PER_TOKEN_GROUP_MODE;
+    scaleParams.keyAntiquantMode = QBSA_MXFP8_PER_TOKEN_GROUP_MODE;
+    scaleParams.valueAntiquantMode = QBSA_MXFP8_PER_CHANNEL_GROUP_MODE;
 
     auto &emptyTensorParams = mxTilingData_.emptyTensorParams;
     const uint64_t totalOutputSize = static_cast<uint64_t>(info.qTokenNum) * info.n1Size * dSizeV;
