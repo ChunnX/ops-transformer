@@ -699,6 +699,170 @@ __aicore__ inline void CalCausalSwizzleIndex(int64_t k, int64_t m, int64_t n, in
     }
 }
 
+__aicore__ inline int64_t BandColumnContiguousFloorMod(int64_t value, int64_t divisor)
+{
+    int64_t remainder = value % divisor;
+    return remainder < 0 ? remainder + divisor : remainder;
+}
+
+__aicore__ inline int64_t GetBandColumnContiguousRotationStride(int64_t k)
+{
+    if (k <= 1) {
+        return 0;
+    }
+
+    int64_t stride = k / NUM_TWO + 1;
+    while (Gcd(stride, k) != 1) {
+        ++stride;
+    }
+    return stride % k;
+}
+
+__aicore__ inline int64_t GetBandColumnContiguousIntervalOverlap(int64_t left, int64_t right,
+                                                                  int64_t windowStart, int64_t windowSize)
+{
+    int64_t overlapLeft = Max(left, windowStart);
+    int64_t overlapRight = Min(right, windowStart + windowSize - 1);
+    return Max(static_cast<int64_t>(0), overlapRight - overlapLeft + 1);
+}
+
+__aicore__ inline int64_t GetBandColumnContiguousGroupRoundCount(int64_t m, int64_t p, int64_t q,
+                                                                  int64_t groupStartY, int64_t groupSize)
+{
+    if (m <= 0 || p <= 0 || q <= 0 || groupSize <= 0) {
+        return 0;
+    }
+
+    int64_t diagonalCount = p + q - 1;
+    int64_t groupEndY = groupStartY + groupSize - 1;
+
+    // The maximum row degree is the largest overlap between this column group and a diagonalCount-wide row window.
+    int64_t rowWindowStart = Min(Max(groupStartY, 2 - p), m - p + 1);
+    int64_t maxRowDegree =
+        GetBandColumnContiguousIntervalOverlap(groupStartY, groupEndY, rowWindowStart, diagonalCount);
+
+    // A column's valid rows are a diagonalCount-wide window. Its maximum overlap with [1, m] is the owner degree.
+    int64_t columnWindowStart = Min(Max(static_cast<int64_t>(1), groupStartY + 1 - q), groupEndY + 1 - q);
+    int64_t maxCoreDegree =
+        GetBandColumnContiguousIntervalOverlap(1, m, columnWindowStart, diagonalCount);
+    return Max(maxRowDegree, maxCoreDegree);
+}
+
+__aicore__ inline int64_t GetBandColumnContiguousRoundsPerBatch(int64_t k, int64_t m, int64_t n, int64_t p,
+                                                                 int64_t q)
+{
+    int64_t effectiveN = Min(n, m + q - 1);
+    if (k <= 0 || m <= 0 || effectiveN <= 0 || p <= 0 || q <= 0) {
+        return 0;
+    }
+
+    int64_t roundsPerBatch = 0;
+    int64_t columnGroupCount = Ceil<int64_t>(effectiveN, k);
+    for (int64_t group = 0; group < columnGroupCount; ++group) {
+        int64_t groupStartY0 = group * k;
+        int64_t groupSize = Min(k, effectiveN - groupStartY0);
+        roundsPerBatch +=
+            GetBandColumnContiguousGroupRoundCount(m, p, q, groupStartY0 + 1, groupSize);
+    }
+    return roundsPerBatch;
+}
+
+struct BandColumnContiguousGroupCache {
+    int64_t batch0 = -1;
+    int64_t group = 0;
+    int64_t groupRoundBegin = 0;
+    int64_t groupRoundCount = 0;
+};
+
+__aicore__ inline void CalBandColumnContiguousSwizzleIndex(int64_t k, int64_t m, int64_t n, int64_t p, int64_t q,
+                                                            int64_t b, int64_t j, int64_t r,
+                                                            CoordinateInfo &coordinate, int64_t roundsPerBatch,
+                                                            BandColumnContiguousGroupCache *groupCache = nullptr)
+{
+    coordinate.batchId = -1;
+    int64_t effectiveN = Min(n, m + q - 1);
+    if (k <= 0 || m <= 0 || effectiveN <= 0 || p <= 0 || q <= 0 || b <= 0 || j < 1 || j > k || r < 1 ||
+        roundsPerBatch <= 0 || r > b * roundsPerBatch) {
+        return;
+    }
+
+    int64_t rotationStride = GetBandColumnContiguousRotationStride(k);
+    int64_t columnGroupCount = Ceil<int64_t>(effectiveN, k);
+    int64_t round0 = r - 1;
+    int64_t batch0 = round0 / roundsPerBatch;
+    int64_t roundInBatch = round0 % roundsPerBatch;
+
+    // Rounds are group-major. The four-scalar cache makes the monotonic group-prefix lookup O(1) amortized.
+    int64_t groupInBatch = 0;
+    int64_t groupRoundCount = 0;
+    int64_t groupRoundBegin = 0;
+    if (groupCache != nullptr && groupCache->batch0 == batch0 && roundInBatch >= groupCache->groupRoundBegin) {
+        groupInBatch = groupCache->group;
+        groupRoundBegin = groupCache->groupRoundBegin;
+        groupRoundCount = groupCache->groupRoundCount;
+    }
+    for (; groupInBatch < columnGroupCount; ++groupInBatch) {
+        int64_t currentGroupStartY0 = groupInBatch * k;
+        int64_t currentGroupSize = Min(k, effectiveN - currentGroupStartY0);
+        if (groupRoundCount <= 0) {
+            groupRoundCount =
+                GetBandColumnContiguousGroupRoundCount(m, p, q, currentGroupStartY0 + 1, currentGroupSize);
+        }
+        if (roundInBatch < groupRoundBegin + groupRoundCount) {
+            break;
+        }
+        groupRoundBegin += groupRoundCount;
+        groupRoundCount = 0;
+    }
+    if (groupInBatch >= columnGroupCount || groupRoundCount <= 0) {
+        return;
+    }
+    if (groupCache != nullptr) {
+        groupCache->batch0 = batch0;
+        groupCache->group = groupInBatch;
+        groupCache->groupRoundBegin = groupRoundBegin;
+        groupCache->groupRoundCount = groupRoundCount;
+    }
+    int64_t localRound = roundInBatch - groupRoundBegin;
+
+    int64_t groupStartY0 = groupInBatch * k;
+    int64_t groupSize = Min(k, effectiveN - groupStartY0);
+    int64_t pairRotation =
+        (batch0 * rotationStride + (groupInBatch / NUM_TWO) * rotationStride) % k;
+    int64_t permutedCore = BandColumnContiguousFloorMod(j - 1 - pairRotation, k);
+    int64_t localSlot = groupInBatch % NUM_TWO == 0 ? permutedCore : k - 1 - permutedCore;
+    if (localSlot >= groupSize) {
+        return;
+    }
+
+    int64_t y = groupStartY0 + localSlot + 1;
+    int64_t phase = 0;
+    int64_t residue = 0;
+    if (groupInBatch % NUM_TWO == 0) {
+        int64_t anchorY = groupStartY0 + 1;
+        int64_t anchorLowerDiagonal = Max(1 - q, 1 - anchorY);
+        phase = BandColumnContiguousFloorMod(anchorLowerDiagonal, groupRoundCount);
+        residue = BandColumnContiguousFloorMod(phase + localRound, groupRoundCount);
+    } else {
+        int64_t anchorY = groupStartY0 + groupSize;
+        int64_t anchorUpperDiagonal = Min(p - 1, m - anchorY);
+        phase = BandColumnContiguousFloorMod(anchorUpperDiagonal, groupRoundCount);
+        residue = BandColumnContiguousFloorMod(phase - localRound, groupRoundCount);
+    }
+
+    int64_t lowerDiagonal = Max(1 - q, 1 - y);
+    int64_t upperDiagonal = Min(p - 1, m - y);
+    int64_t diagonal =
+        lowerDiagonal + BandColumnContiguousFloorMod(residue - lowerDiagonal, groupRoundCount);
+    if (diagonal > upperDiagonal) {
+        return;
+    }
+
+    coordinate.batchId = batch0 + 1;
+    coordinate.s1Idx = y + diagonal;
+    coordinate.s2Idx = y;
+}
+
 __aicore__ inline void CalGQACausalIndex(int64_t k, int64_t m, int64_t n, int64_t b, int64_t j, int64_t r, int64_t g,
                                          CoordinateInfo &coordinate)
 {
@@ -941,6 +1105,7 @@ struct BandInfo {
     int64_t rm = 0;
     int64_t rm2 = 0;
     int64_t a = 0;
+    int64_t columnContiguousRoundsPerBatch = 0;
 };
 
 __aicore__ inline void GenBandInfo(int64_t k, int64_t m, int64_t n, int64_t p, int64_t q, int64_t b, BandInfo &bandInfo) {
