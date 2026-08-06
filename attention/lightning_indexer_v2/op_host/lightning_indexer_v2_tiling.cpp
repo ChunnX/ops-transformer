@@ -14,6 +14,7 @@
  */
 
 #include "lightning_indexer_v2_tiling.h"
+#include "checkers/li_checker.h"
 #include "../op_kernel/lightning_indexer_v2_template_tiling_key.h"
 
 using namespace ge;
@@ -811,10 +812,10 @@ ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQtnd()
             }
         }
         if (opParamInfo_.outputIdxOffset.tensor != nullptr) {
-            OP_CHECK_IF((opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0) != qTsize),
+            OP_CHECK_IF((opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0) != bSize_),
                         OP_LOGE(opName_,
-                                "TND case input query and output_idx_offset dim 0 are %u, %ld "
-                                "respectively, they must be same.",
+                                "TND case batch and output_idx_offset dim 0 are %u, %ld respectively, "
+                                "they must be same.", bSize_,
                                 opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0)),
                         return ge::GRAPH_FAILED);
         }
@@ -998,6 +999,7 @@ void LIV2InfoParser::GenerateInfo(LIV2TilingInfo &liInfo)
         liInfo.keyStride0 = 0; // 非PA无需使用stride
     }
 
+    liInfo.keyStridesVec = keyStridesVec_;
     liInfo.inputQLayout = qLayout_;
     liInfo.inputKLayout = kLayout_;
 }
@@ -1130,6 +1132,10 @@ ge::graphStatus TilingForLightningIndexerV2(gert::TilingContext *context)
     LIV2TilingInfo liV2Info;
     LIV2InfoParser LIV2InfoParser(context);
     if (LIV2InfoParser.ParseAndCheck(liV2Info) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    lightning_indexer_v2::LIChecker checker;
+    if (checker.Init(liV2Info) != ge::GRAPH_SUCCESS || checker.Process(liV2Info) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     LightningIndexerV2Tiling liTiling(context);

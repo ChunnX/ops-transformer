@@ -34,7 +34,7 @@ using namespace arch35FA;
 ge::graphStatus SinksChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 {
     if (faInfo.sinksFlag) {
-        OP_LOGE(faInfo.opName, "sinks is currently not supported.");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "sinks", "sinks is currently not supported");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

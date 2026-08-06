@@ -14,6 +14,7 @@
  */
 
 #include "quant_lightning_indexer_v2_tiling.h"
+#include "checkers/qli_checker.h"
 
 #include "../op_kernel/quant_lightning_indexer_v2_template_tiling_key.h"
 
@@ -999,10 +1000,10 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
                             return ge::GRAPH_FAILED);
             }
             if (opParamInfo_.outputIdxOffset.tensor != nullptr) {
-                OP_CHECK_IF((opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0) != qTsize),
+                OP_CHECK_IF((opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0) != bSize_),
                             OP_LOGE(opName_,
-                                    "TND case input query and output_idx_offset dim 0 are %u, %ld "
-                                    "respectively, they must be same.",
+                                    "TND case batch and output_idx_offset dim 0 are %u, %ld respectively, "
+                                    "they must be same.", bSize_,
                                     opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0)),
                             return ge::GRAPH_FAILED);
             }
@@ -1513,6 +1514,10 @@ ge::graphStatus TilingForQuantLightningIndexerV2(gert::TilingContext *context)
     QLIV2TilingInfo QLIV2Info;
     QLIV2InfoParser QLIV2InfoParser(context);
     if (QLIV2InfoParser.ParseAndCheck(QLIV2Info) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    lightning_indexer_v2::QLIChecker checker;
+    if (checker.Init(QLIV2Info) != ge::GRAPH_SUCCESS || checker.Process(QLIV2Info) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     QuantLightningIndexerV2Tiling QLIV2Tiling(context);

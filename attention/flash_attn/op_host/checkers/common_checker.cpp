@@ -278,23 +278,29 @@ ge::graphStatus CommonChecker::CheckMultiParaLayout(const FaTilingInfo &faInfo)
 {
     auto it = LAYOUT_CONSTRAINT_TABLE.find(faInfo.qLayout);
     OP_CHECK_IF(it == LAYOUT_CONSTRAINT_TABLE.end(),
-                OP_LOGE(faInfo.opName, "layout_q %s is not supported", LayoutToSerialString(faInfo.qLayout).c_str()),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_q",
+                                                      LayoutToSerialString(faInfo.qLayout).c_str(),
+                                                      "The query layout is not supported"),
                 return ge::GRAPH_FAILED);
 
     const auto &config = it->second;
     const std::string qLayoutStr = LayoutToSerialString(faInfo.qLayout);
 
-    OP_CHECK_IF(std::find(config.supportedKvLayouts.begin(), config.supportedKvLayouts.end(), faInfo.kvLayout) ==
-                    config.supportedKvLayouts.end(),
-                OP_LOGE(faInfo.opName, "When layout_q is %s, layout_kv must match constraint, but got %s",
-                        qLayoutStr.c_str(), LayoutToSerialString(faInfo.kvLayout).c_str()),
-                return ge::GRAPH_FAILED);
+    const std::string qKvLayouts = qLayoutStr + " and " + LayoutToSerialString(faInfo.kvLayout);
+    OP_CHECK_IF(
+        std::find(config.supportedKvLayouts.begin(), config.supportedKvLayouts.end(), faInfo.kvLayout) ==
+            config.supportedKvLayouts.end(),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo.opName, "layout_q and layout_kv", qKvLayouts.c_str(),
+                                               "The key/value layout does not match the query layout constraint"),
+        return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(std::find(config.supportedOutLayouts.begin(), config.supportedOutLayouts.end(), faInfo.outLayout) ==
-                    config.supportedOutLayouts.end(),
-                OP_LOGE(faInfo.opName, "When layout_q is %s, layout_out must match constraint, but got %s",
-                        qLayoutStr.c_str(), LayoutToSerialString(faInfo.outLayout).c_str()),
-                return ge::GRAPH_FAILED);
+    const std::string qOutLayouts = qLayoutStr + " and " + LayoutToSerialString(faInfo.outLayout);
+    OP_CHECK_IF(
+        std::find(config.supportedOutLayouts.begin(), config.supportedOutLayouts.end(), faInfo.outLayout) ==
+            config.supportedOutLayouts.end(),
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(faInfo.opName, "layout_q and layout_out", qOutLayouts.c_str(),
+                                               "The output layout does not match the query layout constraint"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

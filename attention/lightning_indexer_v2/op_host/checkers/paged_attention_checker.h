@@ -1,0 +1,27 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+#ifndef LIGHTNING_INDEXER_V2_PAGED_ATTENTION_CHECKER_H
+#define LIGHTNING_INDEXER_V2_PAGED_ATTENTION_CHECKER_H
+#include "base_checker.h"
+namespace optiling {
+namespace lightning_indexer_v2 {
+class PagedAttentionChecker : public LIBaseChecker {
+public:
+    ge::graphStatus CheckSinglePara(const IndexerCheckerInfo &info) override;
+    ge::graphStatus CheckParaExistence(const IndexerCheckerInfo &info) override;
+    ge::graphStatus CheckMultiPara(const IndexerCheckerInfo &info) override;
+
+private:
+    ge::graphStatus CheckStrides(const CheckerTensor &tensor, const std::vector<uint32_t> &strides,
+                                 bool allowDimZero, const char *name, const IndexerCheckerInfo &info) const;
+};
+} // namespace lightning_indexer_v2
+} // namespace optiling
+#endif

@@ -35,7 +35,7 @@ ge::graphStatus MetadataChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 {
     auto &metadataTensor = faInfo.opParamInfo.metadata.tensor;
     if (metadataTensor == nullptr) {
-        OP_LOGE(faInfo.opName, "metadata is required but is null!");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "metadata", "metadata is required and cannot be null");
         return ge::GRAPH_FAILED;
     }
 
