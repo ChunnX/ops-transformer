@@ -314,6 +314,15 @@ __aicore__ inline void LightningIndexerKLLoss<T, isDeterministic, weightType>::C
     ClampMin(ubLogP, ubTmp, eps_, tileElems);
     Ln(ubLogP, ubLogP, tileElems);
     Sub(ubLogP, ubLogP, ubLogY, tileElems);
+    // 根据 weightType 选择外层权重:
+    //   weightType=0 ('logits'): result = log_ratio * ubTargetScoreIn (原始 y)
+    //   weightType=1 ('probs'):  result = log_ratio * p, p = ubTargetScoreIn / (ubReduceSum + eps)
+
+    if constexpr (weightType) {
+        Mul(ubLogP, ubLogP, ubTmp, tileElems);
+    } else {
+        Mul(ubLogP, ubLogP, ubTargetScoreIn, tileElems);
+    }
     SetFlag<HardEvent::V_MTE2>(eventVToMTE2y_);
 
     WaitFlag<HardEvent::MTE3_V>(eventMTE3ToV_);
