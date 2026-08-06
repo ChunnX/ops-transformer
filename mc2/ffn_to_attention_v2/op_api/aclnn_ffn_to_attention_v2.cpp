@@ -47,7 +47,7 @@ static bool CheckNullStatus(const aclTensor *x, const aclTensor *sessionIds, con
         OP_LOGE_WITH_INVALID_INPUT("aclnnFFNToAttentionV2", "group");
         return false;
     }
-aclnnInnerFFNToAttentionV2GetWorkspaceSize
+    
     return true;
 }
 
