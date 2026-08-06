@@ -212,8 +212,13 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
         baseInfo.kvType = load_balance::DataType::INT8;
     }
     if (quantMode_ == 1) { // TODO：用adjust函数代替
-        mBaseSize_ = 64U;
-        s2BaseSize_ = 512U;
+        if (baseInfo.headDim == 256) {
+            mBaseSize_ = 64U;
+            s2BaseSize_ = 256U;
+        } else {
+            mBaseSize_ = 64U;
+            s2BaseSize_ = 512U;
+        }
     }
     mBaseSize_ = mBaseSize_ * (aivCoreNum_ / aicCoreNum_);
     param.mBaseSize = mBaseSize_;

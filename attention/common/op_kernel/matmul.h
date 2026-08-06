@@ -193,7 +193,7 @@ __aicore__ inline void LoadDataToL0AMx(LocalTensor<U> &aL0Tensor, const LocalTen
         // 64搬运对齐
         loadData2DParamsA.srcStride =
             loadData2DParamsA.ifTranspose ?
-                256 >> 4 :
+                ((kSplitSize + 63) >> 6 << 6) >> 4 :
                 ((mSplitSize + 31) >> 5 << 5) >>
                     4; // 以M*K矩阵为例，源矩阵K方向前一个分形起始地址与后一个分形起始地址的间隔，单位：512B
     } else {
