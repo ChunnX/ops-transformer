@@ -104,6 +104,11 @@ public:
             vecBlock.ClearOutput(tilingData->emptyTensorParams, constInfo);
         }
         ProcessMainLoop();
+        if ASCEND_IS_AIV {
+            vecBlock.FreeEventID();
+        } else {
+            cubeBlock.FreeEventID();
+        }
         CrossCoreBufferUninit();
     }
 
