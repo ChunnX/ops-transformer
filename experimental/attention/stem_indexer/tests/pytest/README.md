@@ -18,11 +18,11 @@
 
 ```text
 test_stem_indexer_paramset.py
-csv/stem_indexer_cases.csv
+csv/stem_indexer_generalized_cases.csv
 ```
 
 single case直接维护在`ENABLED_PARAMS`中，每条case前通过注释记录覆盖点和设计原因。
-`csv/stem_indexer_cases.csv`保存批量用例信息，作为批量模式生成`.pt`文件的输入。
+`csv/stem_indexer_generalized_cases.csv`保存批量用例信息，作为批量模式生成`.pt`文件的输入。
 
 single和batch模式当前均维护154条正例case，分别从`ENABLED_PARAMS`和CSV读取。
 两种用例源均包含`topk_score_precision`：1表示uint32，2表示uint16，未显式配置时默认1。
@@ -62,18 +62,18 @@ single和batch模式当前均维护154条正例case，分别从`ENABLED_PARAMS`�
 ## 文件结构
 
 ```text
-test_run.sh                         # 执行脚本
-test_stem_indexer_paramset.py        # single用例参数表
-stem_indexer_golden.py               # CPU侧golden实现
-result_compare_method.py             # sparse输出比较
-test_stem_indexer_single.py          # single主执行入口
-test_stem_indexer_batch.py           # batch主执行入口
-test_npu_stem_indexer.py             # 参考LI写法的普通单case脚本
-pytest.ini                           # pytest标记
-csv/stem_indexer_cases.csv           # batch用例表
-batch/stem_indexer_pt_save.py        # 读取CSV并生成pt
-batch/stem_indexer_pt_loadprocess.py # 读取pt并调用算子
-batch/replace_path.py                # 替换batch pytest中的pt路径
+test_run.sh                             # 执行脚本
+test_stem_indexer_paramset.py           # single用例参数表
+stem_indexer_golden.py                  # CPU侧golden实现
+result_compare_method.py                # sparse输出比较
+test_stem_indexer_single.py             # single主执行入口
+test_stem_indexer_batch.py              # batch主执行入口
+test_npu_stem_indexer.py                # 参考LI写法的普通单case脚本
+pytest.ini                              # pytest标记
+csv/stem_indexer_generalized_cases.csv  # batch用例表
+batch/stem_indexer_pt_save.py           # 读取CSV并生成pt
+batch/stem_indexer_pt_loadprocess.py    # 读取pt并调用算子
+batch/replace_path.py                   # 替换batch pytest中的pt路径
 ```
 
 ## 使用方法
@@ -108,7 +108,7 @@ python3 -m pytest test_stem_indexer_batch.py
 batch模式流程与QLI保持一致：
 
 ```text
-1. 读取csv/stem_indexer_cases.csv。
+1. 读取csv/stem_indexer_generalized_cases.csv。
 2. 生成每条case的.pt文件，保存输入和CPU golden。
 3. pytest逐个读取.pt文件，运行时动态构造metadata并调用NPU算子。
 4. 与.pt中保存的golden比对。
@@ -119,7 +119,7 @@ batch模式流程与QLI保持一致：
 
 ```bash
 STEM_INDEXER_CASE_ID=SI_WB_001_1,SI_WB_101_1 \
-    python3 batch/stem_indexer_pt_save.py csv/stem_indexer_cases.csv pt_path
+    python3 batch/stem_indexer_pt_save.py csv/stem_indexer_generalized_cases.csv pt_path
 ```
 
 `.pt`文件和`result.csv`是本地生成产物，不需要提交。
