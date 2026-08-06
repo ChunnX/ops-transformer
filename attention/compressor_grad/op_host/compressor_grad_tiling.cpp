@@ -262,10 +262,10 @@ ge::graphStatus GenTilingKey(CompressorGradContext &compressorGradContext)
     }
 
     uint8_t coff = static_cast<uint8_t>(*compressorGradContext.coff);
-    uint8_t coffIdx = coff - 1;
-    compressorGradContext.tilingKey = static_cast<uint64_t>(coffIdx)
-                                        | (static_cast<uint64_t>(layout) << 2)
-                                        | (static_cast<uint64_t>(dtype) << 3);
+    // 通过 ASCENDC 宏编码 tilingKey（force-include 的 codegen 生成头
+    // CompressorGradTilingKey_tilingkey.h 声明位布局，与 PyPTO 一致：
+    // Coff(2bit) | Layout(1bit) | DataType(2bit)，UINT 值自动映射为索引）
+    compressorGradContext.tilingKey = GET_TPL_TILING_KEY(coff, layout, dtype);
     
     OP_LOGI(compressorGradContext.opName,
             "CompressorGrad dtype:%hhu layout:%hhu  coff:%hhu", dtype, layout, coff);
@@ -582,8 +582,7 @@ ge::graphStatus CheckSingleParaCoff(CompressorGradContext &compressorGradContext
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckFeature(CompressorGradContext &compressorGradContext, CompressorGradBaseParams &compressorGradBaseParams,
-                             CompressorGradPageAttentionParams &compressorGradPageAttentionParams)
+ge::graphStatus CheckFeature(CompressorGradContext &compressorGradContext, CompressorGradBaseParams &compressorGradBaseParams)
 {
     if (ge::GRAPH_SUCCESS != CheckFeatureValueSupport(&compressorGradBaseParams.headDim, HEAD_DIM, "headDim", compressorGradContext.opName)) {
         return ge::GRAPH_FAILED;
@@ -593,10 +592,6 @@ ge::graphStatus CheckFeature(CompressorGradContext &compressorGradContext, Compr
                 OP_LOGE(compressorGradContext.opName, "hiddenSize should be whthin [1k, 10k] and be 512-aligned, but got %u",
                         compressorGradBaseParams.hiddenSize),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        compressorGradPageAttentionParams.blockSize < MIN_BLOCK_SIZE,
-        OP_LOGE(compressorGradContext.opName, "blockSize should not be less than 1, but got %u", compressorGradPageAttentionParams.blockSize),
-        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -731,26 +726,10 @@ ge::graphStatus CheckDimNumConsistency(CompressorGradContext &compressorGradCont
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckScenarioConsistency(CompressorGradContext &compressorGradContext, CompressorGradBaseParams &compressorGradBaseParams)
-{
-    auto curCmpratio = compressorGradBaseParams.cmpRatio;
-    auto curHeaddim = compressorGradBaseParams.headDim;
-    auto curCoff = static_cast<uint8_t>(*compressorGradContext.coff);
-    std::vector<uint32_t> curScenario{curCmpratio, curCoff, curHeaddim};
-    const std::vector<std::vector<uint32_t>> allowdScenarios = {{4, 2, 512}, {4, 2, 128}, {128, 1, 512}};
-
-    OP_CHECK_IF(std::find(allowdScenarios.begin(), allowdScenarios.end(), curScenario) == allowdScenarios.end(),
-                OP_LOGE(compressorGradContext.opName,
-                        "Cmpratio Coff Headdim should be equal to {4, 2, 512}, {4, 2, 128}, {128, 1, 512}, \
-                        but now cmpratio=%u, coff=%u, headdim=%u", curCmpratio, curCoff, curHeaddim),
-                return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus CheckBlockDimConstrain(CompressorGradContext &compressorGradContext,
                                        CompressorGradBaseParams &compressorGradBaseParams, uint32_t &aicNum)
 {
-    uint32_t minBlockNum = compressorGradBaseParams.headDim / 64; // 64 is the largest dBaseSize
+    uint32_t minBlockNum = compressorGradBaseParams.headDim / 128; // 128 is the largest dBaseSize
     OP_CHECK_IF(aicNum < minBlockNum,
                 OP_LOGE(compressorGradContext.opName, "aicNum is %u, which should not be less than %u", aicNum, minBlockNum),
                 return ge::GRAPH_FAILED);
@@ -764,11 +743,6 @@ ge::graphStatus CheckMultiParaConsistency(CompressorGradContext &compressorGradC
         CheckDimNumConsistency(compressorGradContext) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-#ifdef DAY0_SCOPE
-    if (CheckScenarioConsistency(compressorGradContext, compressorGradBaseParams) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-#endif
     return ge::GRAPH_SUCCESS;
 }
 
@@ -891,7 +865,6 @@ static ge::graphStatus CompressorGradTilingFunc(gert::TilingContext *context)
 {
     CompressorGradContext compressorGradContext{};
     CompressorGradBaseParams compressorGradBaseParams{};
-    CompressorGradPageAttentionParams compressorGradPageAttentionParams{};
     CompressorGradWorkspaceParams compressorGradWorkspaceParams{};
     CompressorGradInnerSplitParams compressorGradInnerSplitParams{};
     OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("CompressorGrad", "Context is nullptr."),
@@ -934,7 +907,7 @@ static ge::graphStatus CompressorGradTilingFunc(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    if (CheckFeature(compressorGradContext, compressorGradBaseParams, compressorGradPageAttentionParams) != ge::GRAPH_SUCCESS) {
+    if (CheckFeature(compressorGradContext, compressorGradBaseParams) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
