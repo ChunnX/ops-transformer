@@ -1038,7 +1038,10 @@ void SparseLightningIndexerGradKLLossTilingBaseRegbase::InitOutputSplit()
     }
     // 单个核均分元素数量
     singlecoresize = static_cast<uint32_t>(CeilDivision(totalsize, static_cast<int64_t>(aivNum))); // 输出k-index总大小TD或者BSD 除以 总的aiv核数 向上取整
-    sliGradkllossBaseParams_->set_totalAivNum(static_cast<int32_t>(aivNum));
+    // 实际使用的AIV核数 = 实际使用的AIC核数 * 单个AIC配对的AIV核数（由平台核数比推导，适配950/950PR等不同型号）
+    int32_t perAicAivNum = aicNum > 0 ? static_cast<int32_t>(aivNum / aicNum) : 1;
+    int32_t actualAivNum = static_cast<int32_t>(sliGradkllossMultiCoreParams_->get_coreNum()) * perAicAivNum;
+    sliGradkllossBaseParams_->set_totalAivNum(actualAivNum);
     OP_LOGD(context_, "init output split: aiv[%u] outputSize[%ld] perCore[%u]",
         aivNum, totalsize, singlecoresize);
     initoutput->set_singleCoreSize(singlecoresize);

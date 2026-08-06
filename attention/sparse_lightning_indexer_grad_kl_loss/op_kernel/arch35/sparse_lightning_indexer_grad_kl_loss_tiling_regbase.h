@@ -41,7 +41,7 @@ public:
     float scaleValue;
     int64_t t1Size;
     int64_t t2Size;
-    int32_t totalAivNum;
+    int32_t totalAivNum; // 实际使用的AIV核数（非平台总核数）
 
     uint8_t layoutType;  // 0: BSND, 1: TND
 
