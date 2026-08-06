@@ -88,8 +88,6 @@ public:
                 GlobalTensor<uint8_t> pScaleGm;
                 pScaleGm.SetGlobalBuffer((__gm__ uint8_t *)pScale);
                 pScaleValue_ = DecodeE8M0Scale(pScaleGm.GetValue(0));
-            } else {
-                pScaleValue_ = 1.0f;
             }
             if constexpr (HAS_ATTEN) {
                 attenMaskGm_.SetGlobalBuffer((__gm__ uint8_t *)attenMask);

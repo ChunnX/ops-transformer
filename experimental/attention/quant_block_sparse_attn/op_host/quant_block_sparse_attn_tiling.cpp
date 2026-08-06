@@ -37,7 +37,6 @@ constexpr uint32_t QBSA_K_SCALE_BYTES = sizeof(float);
 constexpr uint32_t QBSA_ATTEN_MASK_DEFAULT_BATCH = 1U;
 constexpr uint32_t QBSA_ATTEN_MASK_DEFAULT_S1_SIZE = 2048U;
 constexpr uint32_t QBSA_ATTEN_MASK_DEFAULT_S2_SIZE = 2048U;
-constexpr uint32_t QBSA_MXFP8_P_SCALE_SHAPE_SIZE = 1U;
 constexpr uint32_t QBSA_MXFP8_VALUE_SCALE_LAST_DIM = 2U;
 
 uint32_t GetAicCoreNum(gert::TilingContext *context)
@@ -122,7 +121,8 @@ void QuantBlockSparseAttnTiling::FillInputParams()
     inputParams.set_isSoftMaxLseEnable(info.returnSoftmaxLseVal ? 1 : 0);
     uint32_t fp8PScaleShapeSize = 0U;
     if (info.opParamInfo.pScale.shape != nullptr) {
-        fp8PScaleShapeSize = static_cast<uint32_t>(info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize());
+        const auto sz = info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize();
+        fp8PScaleShapeSize = (sz > 0) ? static_cast<uint32_t>(sz) : 0U;
     }
     inputParams.set_pScaleShapeSize(fp8PScaleShapeSize);
 }
@@ -245,7 +245,8 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     scaleParams.valueScaleDSize = valueScaleDSize;
     uint32_t pScaleShapeSize = 0U;
     if (info.opParamInfo.pScale.shape != nullptr) {
-        pScaleShapeSize = static_cast<uint32_t>(info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize());
+        const auto sz = info.opParamInfo.pScale.shape->GetStorageShape().GetShapeSize();
+        pScaleShapeSize = (sz > 0) ? static_cast<uint32_t>(sz) : 0U;
     }
     scaleParams.pScaleShapeSize = pScaleShapeSize;
     scaleParams.queryQuantMode = QBSA_MXFP8_PER_TOKEN_GROUP_MODE;
