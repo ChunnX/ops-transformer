@@ -60,6 +60,7 @@
 8. **wave 结构（模拟图）**：
    - **1 专家/wave**：AIC 按 `G1(e)→G2(e)`；G2(e) 等 S(e) 12us → 每专家 12us 空泡，周期 **123us/专家**。
    - **2 专家/wave**：AIC 按 `G1(e0)→G1(e1)→G2(e0)→G2(e1)`；S(e) 藏在同 wave 的 G1(e1)/G2(e0) 后 → 无空泡，周期 **111us/专家**。
+   - **3 专家/wave**：AIC 按 `G1(e0..e2)→G2(e0..e2)`；4 专家拆 3+1，尾 wave 单专家 → 最后一波 12us 空泡，≈**510us**（与 wave-2 打平略差 2us）。
    - 循环参考 A8W8 `MegaMoeWave`：AIC `G1(B)→G2(B)→G1(B+1)`；AIV1 预取 `D(B+1)` + `C(B)`；AIV0 prologue 跨 wave 预取。
 
 ## 6. 典型形态与总时长（可直接引用）
@@ -69,7 +70,9 @@
 | 当前分阶段 | ≈ 528us | Phase1 AIC-bound（73us/专家）；AIV1 空泡 ~31us/专家（首 43 / 尾 61）；Phase2 AIV1-bound（C 48 > G2 38）；AIC 富余 ~10us/专家 |
 | wave-1（1 专家/wave） | ≈ 546us | 每专家 +12us 等 S 空泡（**负面案例**，只验证结构） |
 | **wave-2（2 专家/wave）** | **≈ 508us** | **最优，模型下限** |
+| wave-3（3 专家/wave） | ≈ 510us | 4=3+1：尾 wave 单专家 12us 空泡 + wave0 内 combine 串行积压（C 48 > G2 间隔 38） |
 | 508 下限推导 | — | AIC 连续：G2(3) ≥ `30 + 4×73 + 3×38` = 436 起；combine 串行：C(3) ≥ C(2) ≥ G2(2)tile(412)+48 = 460 → wall ≥ 460+48 = 508 |
+| wave 粒度选择 | — | 约束A：上一波 combine 拖尾 `14+10N`us 须被下一波 GMM1（`73×N_next`）掩盖，否则下一波 combine 被推迟并级联（均匀波恒满足；tile 级下 8→2 也不破，破界需 N>7.3×N_next 或保守实现）；约束B：每波 ≥2（防单专家 12us 空泡）；wall = `44+111N+10×N_末波`（只与末波大小有关，前面的波怎么排不影响）→ 末波取 2、每 wave 均匀 ≥2 最稳 |
 
 ## 7. 绘制 checklist
 
@@ -85,4 +88,5 @@
 - `artifacts/a8w4_pipeline_overview.svg` —— 当前分阶段流水（528us）
 - `artifacts/a8w4_wave1_pipeline_overview.svg` —— wave-1 模拟（546us，负面案例）
 - `artifacts/a8w4_wave2_pipeline_overview.svg` —— wave-2 模拟（508us，最优）
+- `artifacts/a8w4_wave3_pipeline_overview.svg` —— wave-3 模拟（510us，与 wave-2 打平略差）
 - `docs/mega_moe_a8w4_wave_design.md` —— 由上述数据推导的 wave 改造设计文档
