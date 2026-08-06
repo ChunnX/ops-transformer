@@ -117,6 +117,9 @@ public:
     __aicore__ inline void CopyAntiqScaleE8M0Nz(LocalTensor<Q_T> dstLocal, GlobalTensor<uint8_t> &srcGm,
                                                 uint64_t offset, uint32_t rowCnt, uint32_t grpNum,
                                                 uint32_t s2RealSize);
+    __aicore__ inline uint64_t GetAntiqPageParamOffset(const AntiquantTaskParamBaseAPI &taskParam,
+                                                       uint64_t physicalBlockId, uint32_t tokenInBlock,
+                                                       uint32_t grpNum) const;
     template <typename PARAM_T>
     __aicore__ inline void CopyAntiqParamPageAttentionNz(
         LocalTensor<Q_T> dstLocal, GlobalTensor<PARAM_T> &srcGm, GlobalTensor<int32_t> &blockTableGm,
@@ -278,6 +281,23 @@ __aicore__ inline void AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQU
     DataCopyPad(dstLocal.template ReinterpretCast<uint8_t>(), srcGm[offset], copyInParams, copyInPadParams);
 }
 
+template <ANTIQUANT_PROCESSOR_TEMPLATE_DEF, const bool ANTIQUANT_PER_TOKEN>
+__aicore__ inline uint64_t
+AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::GetAntiqPageParamOffset(
+    const AntiquantTaskParamBaseAPI &taskParam, uint64_t physicalBlockId, uint32_t tokenInBlock, uint32_t grpNum) const
+{
+    // mode 6 参数按 KV cache 的 PA 布局存储，最后的 group 维度连续：
+    // BNBD [P, N, Bs, G]；BBH [P, Bs, N*G]。
+    if (taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_BSH)) {
+        return physicalBlockId * taskParam.kvCacheBlockSize * taskParam.kvHeadNum * grpNum +
+               static_cast<uint64_t>(tokenInBlock) * taskParam.kvHeadNum * grpNum +
+               static_cast<uint64_t>(taskParam.n2Idx) * grpNum;
+    }
+    return physicalBlockId * taskParam.kvHeadNum * taskParam.kvCacheBlockSize * grpNum +
+           static_cast<uint64_t>(taskParam.n2Idx) * taskParam.kvCacheBlockSize * grpNum +
+           static_cast<uint64_t>(tokenInBlock) * grpNum;
+}
+
 // PA_NZ parameter GM layout is [P, N, G, Bs]. Each physical page is selected by blockTable,
 // while the UB layout required by the NZ VF path is [G, AlignUp(copyTotalS, 32)]. PARAM_T keeps
 // scale as raw E8M0 bytes and offset as Q_T without sharing either their GM type or byte strides.
@@ -370,9 +390,7 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAnt
 
     DataCopyExtParams copyInParams;
     DataCopyPadExtParams<uint8_t> copyInPadParams{};
-    copyInParams.blockCount = 1;
     copyInParams.dstStride = 0;
-    copyInParams.srcStride = 0;
 
     while (copyFinishElmenCnt < taskParam.copyTotalS) {
         uint64_t blockIdOffset = curSequence / taskParam.kvCacheBlockSize;
@@ -382,11 +400,22 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAnt
         if (copyElmenCnt + copyFinishElmenCnt > taskParam.copyTotalS) {
             copyElmenCnt = taskParam.copyTotalS - copyFinishElmenCnt;
         }
-        // E8M0字节流：每token每group 1字节，字节寻址，GM为ACL_FLOAT8_E8M0
-        uint64_t srcByteOffset = idInBlockTable * taskParam.kvCacheBlockSize * grpNum * taskParam.kvHeadNum +
-                                 taskParam.kvCacheBlockSize * grpNum * taskParam.n2Idx + remainElmenCnt * grpNum;
-        copyInParams.blockLen = copyElmenCnt * grpNum;
-        DataCopyPad(dstLocal.template ReinterpretCast<uint8_t>() [dstByteOffset], srcGm[srcByteOffset], copyInParams,
+        // E8M0字节流：每token每group 1字节，字节寻址，GM为ACL_FLOAT8_E8M0。
+        // BNBD 与 BBH 的 token/head 轴顺序不同，偏移必须跟随 paKvShapeType。
+        uint64_t srcByteOffset = GetAntiqPageParamOffset(taskParam, idInBlockTable, remainElmenCnt, grpNum);
+        if (taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_BSH)) {
+            // BBH [P, Bs, N*G]: one token's G groups are contiguous, while successive
+            // tokens of one head are separated by the remaining KV heads.
+            copyInParams.blockCount = copyElmenCnt;
+            copyInParams.blockLen = grpNum;
+            copyInParams.srcStride = (taskParam.kvHeadNum - 1) * grpNum;
+        } else {
+            // BNBD [P, N, Bs, G]: the selected head's token range is contiguous.
+            copyInParams.blockCount = 1;
+            copyInParams.blockLen = copyElmenCnt * grpNum;
+            copyInParams.srcStride = 0;
+        }
+        DataCopyPad(dstLocal.template ReinterpretCast<uint8_t>()[dstByteOffset], srcGm[srcByteOffset], copyInParams,
                     copyInPadParams);
         dstByteOffset += copyElmenCnt * grpNum;
         copyFinishElmenCnt += copyElmenCnt;
@@ -408,9 +437,7 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAnt
 
     DataCopyExtParams copyInParams;
     DataCopyPadExtParams<Q_T> copyInPadParams{};
-    copyInParams.blockCount = 1;
     copyInParams.dstStride = 0;
-    copyInParams.srcStride = 0;
 
     while (copyFinishElmenCnt < taskParam.copyTotalS) {
         uint64_t blockIdOffset = curSequence / taskParam.kvCacheBlockSize;
@@ -420,9 +447,18 @@ AntiquantProcessorBaseAPI<ANTIQUANT_TEMPLATE_ARGS, ANTIQUANT_PER_TOKEN>::CopyAnt
         if (copyElmenCnt + copyFinishElmenCnt > taskParam.copyTotalS) {
             copyElmenCnt = taskParam.copyTotalS - copyFinishElmenCnt;
         }
-        uint64_t srcElemOffset = idInBlockTable * taskParam.kvCacheBlockSize * grpNum * taskParam.kvHeadNum +
-                                 taskParam.kvCacheBlockSize * grpNum * taskParam.n2Idx + remainElmenCnt * grpNum;
-        copyInParams.blockLen = copyElmenCnt * grpNum * sizeof(Q_T);
+        uint64_t srcElemOffset = GetAntiqPageParamOffset(taskParam, idInBlockTable, remainElmenCnt, grpNum);
+        if (taskParam.paKvShapeType == static_cast<uint32_t>(KvCacheLayout::KV_CACHE_BSH)) {
+            // BBH [P, Bs, N*G]: copy one token per block and skip the other heads.
+            copyInParams.blockCount = copyElmenCnt;
+            copyInParams.blockLen = grpNum * sizeof(Q_T);
+            copyInParams.srcStride = (taskParam.kvHeadNum - 1) * grpNum * sizeof(Q_T);
+        } else {
+            // BNBD [P, N, Bs, G]: the selected head's token range is contiguous.
+            copyInParams.blockCount = 1;
+            copyInParams.blockLen = copyElmenCnt * grpNum * sizeof(Q_T);
+            copyInParams.srcStride = 0;
+        }
         DataCopyPad(dstLocal[dstElemOffset], srcGm[srcElemOffset], copyInParams, copyInPadParams);
         dstElemOffset += copyElmenCnt * grpNum;
         copyFinishElmenCnt += copyElmenCnt;

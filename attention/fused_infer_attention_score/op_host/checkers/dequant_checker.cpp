@@ -2340,14 +2340,12 @@ ge::graphStatus DequantChecker::CheckFeaturePAForAntiquant(const FiaTilingInfo &
             return ge::GRAPH_FAILED;
         }
     }
-    // 本变更仅支持 PA_NZ。mode 6 的参数 GM 布局为 [P, N, G, Bs]，
-    // 其中 P 是物理页数、G = D / 32、Bs 是 page block size；kernel 会按 blockTable 取页。
+    // mode 6 PageAttention 参数布局跟随 KV cache 布局：
+    //   PA_NZ:  [P, N, G, Bs]
+    //   BNBD:   [P, N, Bs, G]
+    //   BBH:    [P, Bs, N * G]
+    // kernel 根据 paLayoutType 和 blockTable 取页，三种布局共享同一反量化计算路径。
     if (keyAntiquantMode == PER_TOKEN_GROUP_MODE && valueAntiquantMode == PER_TOKEN_GROUP_MODE) {
-        OP_CHECK_IF((fiaInfo.kvLayout != FiaLayout::NZ),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                        fiaInfo.opName, "input_layout", LayoutToSerialString(fiaInfo.kvLayout).c_str(),
-                        "per-token-group PageAttention currently supports only PA_NZ kv cache layout"),
-                    return ge::GRAPH_FAILED);
         OP_CHECK_IF((fiaInfo.qkHeadDim % 32) != 0,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                         fiaInfo.opName, "head_dim", std::to_string(fiaInfo.qkHeadDim).c_str(),
@@ -2999,11 +2997,6 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenGroupPAMode(const Fia
 {
     auto &keyAntiquantScaleTensor = fiaInfo.opParamInfo.keyAntiquantScale.tensor;
     gert::Shape keyAntiquantScaleTensorShape = keyAntiquantScaleTensor->GetStorageShape();
-    OP_CHECK_IF((fiaInfo.kvLayout != FiaLayout::NZ),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    fiaInfo.opName, "input_layout", LayoutToSerialString(fiaInfo.kvLayout).c_str(),
-                    "per-token-group PageAttention currently supports only PA_NZ kv cache layout"),
-                return ge::GRAPH_FAILED);
     OP_CHECK_IF((fiaInfo.qkHeadDim % 32) != 0,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     fiaInfo.opName, "head_dim", std::to_string(fiaInfo.qkHeadDim).c_str(),
@@ -3011,14 +3004,22 @@ ge::graphStatus DequantChecker::CheckKScaleShapeForPerTokenGroupPAMode(const Fia
                 return ge::GRAPH_FAILED);
 
     const uint32_t grpNum = fiaInfo.qkHeadDim / 32;
-    gert::Shape expectedShape = gert::Shape({fiaInfo.totalBlockNum, fiaInfo.n2Size, grpNum, fiaInfo.blockSize});
+    gert::Shape expectedShape;
+    if (fiaInfo.kvLayout == FiaLayout::NZ) {
+        expectedShape = gert::Shape({fiaInfo.totalBlockNum, fiaInfo.n2Size, grpNum, fiaInfo.blockSize});
+    } else if (fiaInfo.kvLayout == FiaLayout::BnNBsD) {
+        expectedShape = gert::Shape({fiaInfo.totalBlockNum, fiaInfo.n2Size, fiaInfo.blockSize, grpNum});
+    } else if (fiaInfo.kvLayout == FiaLayout::BnBsH) {
+        expectedShape = gert::Shape({fiaInfo.totalBlockNum, fiaInfo.blockSize, fiaInfo.n2Size * grpNum});
+    } else {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            fiaInfo.opName, "input_layout", LayoutToSerialString(fiaInfo.kvLayout).c_str(),
+            "per-token-group PageAttention supports only PA_NZ, PA_BNBD or PA_BBH kv cache layout");
+        return ge::GRAPH_FAILED;
+    }
     if (keyAntiquantScaleTensorShape != expectedShape) {
         std::string actualShape = ToStringRaw(keyAntiquantScaleTensorShape);
-        std::string reasonMsg =
-            "The shape of keyAntiquantScale must be [P(" + std::to_string(fiaInfo.totalBlockNum) + "), N(" +
-            std::to_string(fiaInfo.n2Size) + "), G=D/32(" + std::to_string(grpNum) + "), Bs(" +
-            std::to_string(fiaInfo.blockSize) +
-            ")] when keyAntiquantMode is per-token-group PageAttention PA_NZ mode";
+        std::string reasonMsg = "The shape of keyAntiquantScale must follow the selected PageAttention KV layout";
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "key_antiquant_scale", actualShape.c_str(),
                                               reasonMsg.c_str());
         return ge::GRAPH_FAILED;
