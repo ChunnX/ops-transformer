@@ -15,6 +15,7 @@
 import importlib.util
 import random
 import sys
+from bisect import bisect_right
 from pathlib import Path
 
 import numpy as np
@@ -62,7 +63,8 @@ class QuantSparseFlashMlaBatchRandomContext:
         self.base_seed = self.relations[0][1]
         self.call_index = 0
         self.randperm_call_index = 0
-        self.randperm_period = None
+        self.randperm_batch_offsets = None
+        self.randperm_relation_keys = {}
         self.original_torch_rand = None
         self.original_torch_randperm = None
         self.original_python_uniform = None
@@ -219,8 +221,8 @@ class QuantSparseFlashMlaBatchRandomContext:
 
     def validate_params(self, params):
         mode = params.get("template_run_mode")
-        if mode not in ("SWA", "HCA", "ORI_SPARSE", "ORI_CMP_SPARSE"):
-            raise ValueError("QSMLA batch consistency currently excludes CSA mode")
+        if mode not in ("SWA", "HCA", "CSA", "ORI_SPARSE", "ORI_CMP_SPARSE"):
+            raise ValueError(f"QSMLA batch consistency does not support mode {mode!r}")
         if int(params.get("quant_mode")) != 1:
             raise ValueError("QSMLA batch consistency currently supports quant_mode=1 only")
         for name in ("ori_sparse_indices_mode", "cmp_sparse_indices_mode"):
@@ -236,12 +238,39 @@ class QuantSparseFlashMlaBatchRandomContext:
                     "QSMLA batch consistency currently excludes random topk lengths"
                 )
 
-        sequence_lengths = [int(value) for value in params["seqused_q"]]
-        if not sequence_lengths or len(set(sequence_lengths)) != 1:
-            raise ValueError(
-                "QSMLA batch consistency currently requires a uniform seqused_q"
-            )
-        self.randperm_period = sequence_lengths[0] * int(params["N2"])
+        if mode in ("CSA", "ORI_SPARSE", "ORI_CMP_SPARSE"):
+            self.configure_randperm(params)
+
+    def configure_randperm(self, params):
+        sequence_lengths = params.get("seqused_q")
+        if torch.is_tensor(sequence_lengths):
+            sequence_lengths = sequence_lengths.detach().cpu().reshape(-1).tolist()
+        if sequence_lengths is None:
+            prefix = params.get("cu_seqlens_q")
+            if torch.is_tensor(prefix):
+                prefix = prefix.detach().cpu().reshape(-1).tolist()
+            if prefix is not None:
+                sequence_lengths = [
+                    prefix[index + 1] - prefix[index]
+                    for index in range(len(prefix) - 1)
+                ]
+            else:
+                sequence_lengths = [int(params["S1"])] * self.batch_size
+        if len(sequence_lengths) != self.batch_size:
+            raise ValueError("QSMLA sparse batch q lengths must contain B values")
+
+        calls_per_batch = [int(length) * int(params["N2"])
+                           for length in sequence_lengths]
+        offsets = [0]
+        for count in calls_per_batch:
+            offsets.append(offsets[-1] + count)
+        if offsets[-1] <= 0:
+            raise ValueError("QSMLA sparse batch requires a non-empty q relation")
+        self.randperm_batch_offsets = offsets
+        for batch_slice, seed in self.batch_relations:
+            start, stop, _ = batch_slice
+            for relative_index, batch_index in enumerate(range(start, stop)):
+                self.randperm_relation_keys[batch_index] = (seed, relative_index)
 
     @classmethod
     def derive_seed(cls, seed, call_index):
@@ -283,16 +312,26 @@ class QuantSparseFlashMlaBatchRandomContext:
         return value
 
     def torch_randperm(self, n, **kwargs):
-        if self.randperm_period is None:
-            raise RuntimeError("QSMLA batch random context was not configured")
+        if self.randperm_batch_offsets is None:
+            return self.original_torch_randperm(n, **kwargs)
         call_index = self.randperm_call_index
         self.randperm_call_index += 1
+        total_calls = self.randperm_batch_offsets[-1]
+        cycle_index, cycle_offset = divmod(call_index, total_calls)
+        batch_index = bisect_right(self.randperm_batch_offsets, cycle_offset) - 1
+        local_index = cycle_offset - self.randperm_batch_offsets[batch_index]
+        relation = self.randperm_relation_keys.get(batch_index)
+        if relation is None:
+            seed = self.base_seed
+            seed_index = 3000017 + call_index
+        else:
+            seed, relative_index = relation
+            seed_index = (2000003 + cycle_index * 1000000007
+                          + relative_index * 1000003 + local_index)
         call_kwargs = dict(kwargs)
         device = call_kwargs.get("device") or "cpu"
-        # The golden loops batch-major, so this maps matching positions in each batch.
         call_kwargs["generator"] = self.create_generator(
-            self.derive_seed(self.base_seed, 1000003 + call_index % self.randperm_period),
-            device,
+            self.derive_seed(seed, seed_index), device
         )
         return self.original_torch_randperm(n, **call_kwargs)
 

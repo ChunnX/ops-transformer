@@ -87,6 +87,41 @@ def test_batch_random_context_repeats_declared_batch_slices():
     assert np.array_equal(value[0], value[2])
 
 
+def test_sparse_modes_map_randperm_and_accept_quant_mode_two():
+    q = torch.empty((3, 2, 1, 1), dtype=torch.float32)
+    fields = batch_kwargs(((0, 1, 1), (2, 3, 1)), 7001)
+    fields.update({
+        "layout_q": "BSND",
+        "layout_kv": "BSND",
+        "seqused_q_values": [2, 1, 2],
+    })
+
+    for mode in ("CSA", "ORI_SPARSE", "ORI_CMP_SPARSE"):
+        context = INPUTS_MODULE.NumpyBatchRandomContext.from_case(
+            q, None, None, fields
+        )
+        context.validate_params({
+            "template_run_mode": mode,
+            "quant_mode": 1,
+            "ori_sparse_indices_mode": "full",
+            "cmp_sparse_indices_mode": "full",
+            "ori_kv_topk_mode": "fullK",
+            "cmp_kv_topk_mode": "fullK",
+            "seqused_q": [2, 1, 2],
+            "S1": 2,
+            "N2": 1,
+        })
+        with context:
+            permutations = [torch.randperm(8) for _ in range(5)]
+        assert torch.equal(permutations[0], permutations[3])
+        assert torch.equal(permutations[1], permutations[4])
+
+    quant_two = INPUTS_MODULE.NumpyBatchRandomContext.from_case(
+        q, None, None, fields
+    )
+    quant_two.validate_params({"template_run_mode": "SWA", "quant_mode": 2})
+
+
 def test_bsnd_batch_context_ignores_auxiliary_q_prefix():
     q = torch.empty((2, 1, 1, 1), dtype=torch.float32)
     fields = batch_kwargs(((0, 1, 1), (1, 2, 1)), 7001)
