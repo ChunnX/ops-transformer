@@ -69,10 +69,6 @@ public:
                                 __gm__ uint8_t *, const QuantBlockSparseAttnMxTilingData *__restrict tiling,
                                 TPipe *tPipe)
     {
-        // ACLGraph reuses the kernel context across consecutive cases. Reset
-        // the block-local allocator so AIC and both AIVs bind the same clean
-        // cross-core flag IDs on every launch.
-        fa_base_matmul::idCounterNum = 0;
         // Q/K/V 在 cube 中结合 block_table 完成 PA 搬运。
         pipe = tPipe;
         tilingData = tiling;
@@ -98,13 +94,16 @@ public:
         if (constInfo.aicIdx >= constInfo.coreNum || constInfo.aicIdx >= QBSA_FA_AIC_CORE_NUM) {
             return;
         }
-        CrossCoreBufferInit();
         if ASCEND_IS_AIC {
             cubeBlock.InitBuffers();
         } else {
             vecBlock.InitBuffers();
             vecBlock.ClearOutput(tilingData->emptyTensorParams, constInfo);
         }
+        // ClearOutput contains SyncAll. Seed the cross-core free tokens only
+        // after that barrier so the first compute task cannot consume a token
+        // left over from the output-initialization phase.
+        CrossCoreBufferInit();
         ProcessMainLoop();
         if ASCEND_IS_AIV {
             vecBlock.FreeEventID();
@@ -169,10 +168,16 @@ private:
         // L1 连续保存 P(e4m3) 和 PScale(e8m0)，供 C2 随路反量化。
         constexpr uint32_t mm2LeftSize = M_BASE * S2_BASE * sizeof(INPUT_T) + M_BASE * S2_BASE / 32U;
         l1BufferManager.Init(pipe, 512U * 1024U);
-        l1PBuffers.Init(l1BufferManager, mm2LeftSize);
         ubBufferManager.Init(pipe, mm1ResultSize * 2U + mm2ResultSize);
+
+        // ACLGraph static Tensor reserves cross-core event IDs 6 and 7. Match
+        // the proven static layout: BMM1 uses 0..3, BMM2 uses 4..5, and L1P
+        // uses 8..10. A sequential 0-based allocation would collide at 6/7.
+        fa_base_matmul::idCounterNum = 10U;
         bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
         bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
+        fa_base_matmul::idCounterNum = 7U;
+        l1PBuffers.Init(l1BufferManager, mm2LeftSize);
     }
 
     __aicore__ inline void CrossCoreBufferInit()
