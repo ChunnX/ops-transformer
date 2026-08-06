@@ -1165,8 +1165,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()");
 
-    // 空tensor场景：n_==0、k_==0、cols_==0
-    if (n_ == 0 || k_ == 0 || cols_ == 0) {
+    // 空tensor场景：n_==0、k_==0
+    if (n_ == 0 || k_ == 0) {
         isEmptyTensor_ = true;
     }
 
@@ -1800,7 +1800,7 @@ void MoeInitRoutingV3Arch35TilingClass::SetPerLoopParams4NoQuantDropLess(PerLoop
     int64_t baseMemory = rowIdxQueueSize * NUM_TWO + xQueueSize * NUM_TWO + scaleQueueSize * NUM_TWO;
 
     int64_t remainingSpace = availUbSize_ - baseMemory;
-    int64_t additionalBufferNum = remainingSpace / xQueueSize;
+    int64_t additionalBufferNum = xQueueSize == 0 ? 0 : remainingSpace / xQueueSize;
     perLoopParams.xCopyInQueueBufferNum = GetXBufferNum(additionalBufferNum);
 }
 
