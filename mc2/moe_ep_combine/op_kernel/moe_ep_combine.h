@@ -584,6 +584,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::ProcessTopKTo
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseReduce()
 {
+    PRINTF("[CB] r=%u aiv=%u recvPhase enter t=%u/%u tPerCore=%u\n", rankId_, aivId_, tStart_, tEnd_, tPerCore_);
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     tpipe_->InitBuffer(tokenStatusBuf_, Ceil(tPerCore_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN);
@@ -597,6 +598,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
     SyncFunc<AscendC::HardEvent::V_S>();
     uint32_t CompletedtokenNum = static_cast<uint32_t>(0);
     uint32_t copyCount = topK_;
+    uint32_t dbgPoll = 0U;
     while (CompletedtokenNum != tPerCore_) {
         for (uint32_t tokenIdx = tStart_; tokenIdx < tEnd_; ++tokenIdx) {
             if (tokenStatusTensor(tokenIdx - tStart_) == 1) {
@@ -613,16 +615,28 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
             SyncFunc<AscendC::HardEvent::V_MTE3>();
             DataCopyPad(combinedXGm_[tokenIdx * axisH_], ubResultBf16, xCopyParams);
         }
+        if (dbgPoll < 5U || (dbgPoll & 0xFFU) == 0U) {
+            PRINTF("[CB] r=%u aiv=%u recvPhase poll=%u completed=%u/%u\n", rankId_, aivId_, dbgPoll,
+                   CompletedtokenNum, tPerCore_);
+        }
+        dbgPoll++;
     }
+    PRINTF("[CB] r=%u aiv=%u recvPhase done\n", rankId_, aivId_);
 }
 
 template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
 {
+    if (aivId_ == 0U) {
+        PRINTF("[CB] r=%u aiv=0 process begin\n", rankId_);
+    }
     SendPhaseExpertToToken();
     PipeBarrier<PIPE_ALL>(); // MaskCheck中包含reset操作，需确保前面操作完成
     BuffInit();
     RecvPhaseReduce();
+    if (aivId_ == 0U) {
+        PRINTF("[CB] r=%u aiv=0 process done\n", rankId_);
+    }
 }
 
 } // namespace MoeEpCombineImpl
