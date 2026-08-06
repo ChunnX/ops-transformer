@@ -343,8 +343,6 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
     </tbody></table>
   </div>
 
-  其中，N = H<sub>q</sub> + H<sub>k</sub> + H<sub>v</sub>，T = und_len + gen_len，D = 128。
-
 - 返回值
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
@@ -432,7 +430,7 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
 
 ## 约束说明
 
-确定性说明：aclnnUndGenQkvRmsNormRopeCache 默认确定性实现。多核按输出 token 维切分，每个 token 的计算相互独立且不含跨核归约，同一输入必得同一结果。前提是 `slotMapping` 取值互不重复——出现重复槽位时多个核会写同一 cache 行，写入顺序与最终结果均不确定。
+- 确定性说明：aclnnUndGenQkvRmsNormRopeCache默认确定性实现。
 
 <details>
 <summary><term>Ascend 950PR/Ascend 950DT</term></summary>
@@ -453,12 +451,12 @@ aclnnStatus aclnnUndGenQkvRmsNormRopeCache(
   - `undWeightsQ`、`undWeightsK`、`genWeightsQ`、`genWeightsK` 均必须为 1 维 `[D]`，D = headDim = 128。
   - `cosSinCache` 必须为 2 维 `[max_pos, D]`，max_pos 为正数，D = headDim = 128。
   - `slotMapping` 必须为 1 维 `[T]`；`catIndices` 必须为 1 维 `[T]`；`positions` 必须为 2 维 `[3, T]`，第一维固定为 3。
-  - `q` 必须为 3 维 `[T, numHeadsQ, D]`。
+  - `qOut` 必须为 3 维 `[T, numHeadsQ, D]`。
   - `normEps` 必须为正数。
   - `mropeSection` 为空指针或空数组时按 `[D/2, 0, 0]` 处理；非空时长度必须为 3、每个元素非负、三元素之和不超过 D/2。
   - **当前实现要求 `genQkv`、`genWeightsQ`、`genWeightsK`、`catIndices` 四个可选输入全部提供，且 gen_len 为正数**。缺省对应的退化路径（纯 prefill、单序列恒等映射）暂不支持，会在 tiling 阶段返回失败。IR 中保留 OPTIONAL 声明，后续版本放开。
 - **输入值域约束**（属运行期数据，Host 侧无法校验，由调用方保证）
-  - `slotMapping` 取值必须落在 `[0, Bn*Bs-1]` 且互不重复。
+  - `slotMapping` 取值必须落在 `[0, Bn*Bs-1]` 且互不重复。出现重复槽位时多个核会写同一 cache 行，写入顺序与最终结果均不确定。
   - `positions` 取值必须落在 `[0, max_pos-1]`，否则会越界访问 `cosSinCache`。
   - `catIndices` 取值必须落在 `[0, T-1]`。
 
