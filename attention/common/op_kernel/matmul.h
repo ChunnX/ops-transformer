@@ -154,6 +154,60 @@ __aicore__ inline void LoadDataToL0A(LocalTensor<T> &aL0Tensor, const LocalTenso
                 LoadData(aL0Tensor[dstOffset], aL1Tensor[L1Aoffset], loadData2DParamsA);
                 dstOffset += dstAddrStride;
             }
+
+template <typename T>
+__aicore__ inline void LoadDataToL0AHif8(LocalTensor<T> &aL0Tensor, const LocalTensor<T> &aL1Tensor, const MMParam &mmParam,
+                                     uint64_t L1Aoffset, uint32_t kSplitSize, uint32_t mSplitSize)
+{
+    LoadData2DParamsV2 loadData2DParamsA;
+    loadData2DParamsA.mStartPosition = 0;
+    loadData2DParamsA.kStartPosition = 0;
+    loadData2DParamsA.ifTranspose = mmParam.isLeftTranspose;
+    if (loadData2DParamsA.ifTranspose) {
+        loadData2DParamsA.mStep = ((kSplitSize + 15) >> 4 << 4) >> 4;
+        if constexpr (IsSameType<T, fp8_e5m2_t>::value || IsSameType<T, fp8_e4m3fn_t>::value ||
+                      IsSameType<T, hifloat8_t>::value || IsSameType<T, int8_t>::value) {
+            loadData2DParamsA.mStep = (loadData2DParamsA.mStep + 1) >> 1 << 1;
+        }
+        loadData2DParamsA.kStep = GetBlockNum<T>(mSplitSize);
+    } else {
+        loadData2DParamsA.mStep = ((mSplitSize + 15) >> 4 << 4) >> 4;
+        loadData2DParamsA.kStep = GetBlockNum<T>(kSplitSize);
+    }
+    if constexpr (IsSameType<T, fp8_e5m2_t>::value || IsSameType<T, fp8_e4m3fn_t>::value ||
+                  IsSameType<T, hifloat8_t>::value || IsSameType<T, int8_t>::value) {
+        loadData2DParamsA.srcStride =
+            loadData2DParamsA.ifTranspose ?
+                256 >> 4 :
+                ((mSplitSize + 31) >> 5 << 5) >> 4;
+    } else {
+        loadData2DParamsA.srcStride =
+            loadData2DParamsA.ifTranspose ? ((mmParam.singleK + 15) >> 4 << 4) >> 4 : loadData2DParamsA.mStep;
+    }
+    if (mmParam.realM != 0) {
+        loadData2DParamsA.mStep = ((mmParam.realM + 15) >> 4 << 4) >> 4;
+    }
+    loadData2DParamsA.dstStride = loadData2DParamsA.ifTranspose ? (mSplitSize + 15) >> 4 : loadData2DParamsA.mStep;
+    if constexpr (IsSameType<T, fp8_e5m2_t>::value || IsSameType<T, fp8_e4m3fn_t>::value ||
+                  IsSameType<T, hifloat8_t>::value || IsSameType<T, int8_t>::value) {
+        if (loadData2DParamsA.ifTranspose && (loadData2DParamsA.dstStride & 1)) {
+            uint32_t l0bLoop = (loadData2DParamsA.mStep + 1) >> 1;
+            loadData2DParamsA.mStep = M_STEP_ALIGN_BASE;
+            uint64_t dstOffset = 0;
+            uint64_t dstAddrStride = (mSplitSize + 15) / 16 * 16 * 32;
+            uint16_t oriMStep = loadData2DParamsA.mStartPosition;
+            for (uint32_t idx = 0; idx < l0bLoop; ++idx) {
+                loadData2DParamsA.mStartPosition = oriMStep + M_STEP_ALIGN_BASE * idx;
+                LoadData(aL0Tensor[dstOffset], aL1Tensor[L1Aoffset], loadData2DParamsA);
+                dstOffset += dstAddrStride;
+            }
+        } else {
+            LoadData(aL0Tensor, aL1Tensor[L1Aoffset], loadData2DParamsA);
+        }
+    } else {
+        LoadData(aL0Tensor, aL1Tensor[L1Aoffset], loadData2DParamsA);
+    }
+}
         } else {
             LoadData(aL0Tensor, aL1Tensor[L1Aoffset], loadData2DParamsA);
         }
@@ -450,6 +504,8 @@ __aicore__ inline void MatmulFullMX(const LocalTensor<A> &aL1Tensor, const Local
     LocalTensor<L0ADType> L0ATensor = l0aBuffer.template GetTensor<L0ADType>();
     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
         LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM);
+    } else if constexpr (IsSameType<A, hifloat8_t>::value) {
+        LoadDataToL0AHif8<A>(L0ATensor, aL1Tensor, param, 0, param.singleK, param.singleM);
     } else {
         LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, param.singleK, param.singleM); // s2*d,d,s2
     }
