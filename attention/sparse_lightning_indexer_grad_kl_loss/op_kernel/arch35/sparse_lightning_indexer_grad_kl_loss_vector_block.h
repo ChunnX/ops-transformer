@@ -23,6 +23,7 @@
 #include "vf/vf_process_vec5.h"
 #include "vf/vf_process_vec6.h"
 #include "vf/vf_cast_dup.h"
+#include "vf/vf_sink.h"
 
 namespace SligKlLoss {
 
@@ -33,7 +34,8 @@ public:
     __aicore__ inline void InitParams(const SLIGradKLLossConstInfo &vecConstInfo, const optiling::SparseLightningIndexerGradKLLossRegBaseTilingData *tiling);
     __aicore__ inline void InitGlobalBuffer(
         GM_ADDR key, GM_ADDR keyIndex, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
-        GM_ADDR keyRope, GM_ADDR dKeyIndex, GM_ADDR dWeight, GM_ADDR loss, GlobalTensor<INPUT_T> &gatherSYRes,
+        GM_ADDR keyRope, GM_ADDR dKeyIndex, GM_ADDR dWeight, GM_ADDR loss, GM_ADDR sinks,
+        GlobalTensor<T> &psinkSync, GlobalTensor<INPUT_T> &gatherSYRes,
         GlobalTensor<T> &relu, GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes,
         GlobalTensor<T> &scatterAddResPong, GlobalTensor<T> &bmm3ResGm,
         GlobalTensor<int64_t> &actualSeqLengths, GlobalTensor<int64_t> actualSeqLengthsKey,
@@ -42,6 +44,7 @@ public:
     __aicore__ inline void ProcessVector0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo);
     __aicore__ inline void CopyInWeight(SLIGradKLLossRunInfo &runInfo);
     __aicore__ inline void CopyInMaxSum(SLIGradKLLossRunInfo &runInfo);
+    __aicore__ inline void ProcessVectorSink(SLIGradKLLossRunInfo &runInfo);
     __aicore__ inline void ProcessVector1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo);
     __aicore__ inline void ProcessVector2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, SLIGradKLLossRunInfo &runInfo);
     __aicore__ inline void ProcessVector3(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo);
@@ -76,6 +79,8 @@ public:
     GlobalTensor<int32_t> topKGm;
     GlobalTensor<T> softmaxMaxGm; 
     GlobalTensor<T> softmaxSumGm;
+    GlobalTensor<T> sinksGm;
+    GlobalTensor<T> psinkSyncGm;
     GlobalTensor<T> lossGm;
     GlobalTensor<WEIGHT_T> dWeightGm;
     GlobalTensor<OUT_T> dKeyIndexGm;
@@ -124,6 +129,8 @@ private:
     TQue<QuePosition::VECOUT, 1> gatherKeyIndexQue[2];
     TQue<QuePosition::VECIN, 1> maxInQue;
     TQue<QuePosition::VECIN, 1> sumInQue;
+    TQue<QuePosition::VECIN, 1> sinksInQue;
+    TQue<QuePosition::VECOUT, 1> psinkScalarQue;
     TQue<QuePosition::VECOUT, 1> mulsResQue;
     TQue<QuePosition::VECIN, 1> mulsInQue;
     TQue<QuePosition::VECOUT, 1> lossSumQue;
@@ -157,7 +164,8 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitParams(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     GM_ADDR key, GM_ADDR keyIndex, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
-    GM_ADDR keyRope, GM_ADDR dKeyIndex, GM_ADDR dWeight, GM_ADDR loss, GlobalTensor<INPUT_T> &gatherSYRes,
+    GM_ADDR keyRope, GM_ADDR dKeyIndex, GM_ADDR dWeight, GM_ADDR loss, GM_ADDR sinks,
+    GlobalTensor<T> &psinkSync, GlobalTensor<INPUT_T> &gatherSYRes,
     GlobalTensor<T> &relu, GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes,
     GlobalTensor<T> &scatterAddResPong, GlobalTensor<T> &bmm3ResGm,
     GlobalTensor<int64_t> &actualSeqLengths, GlobalTensor<int64_t> actualSeqLengthsKey,
@@ -171,6 +179,10 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     softmaxSumGm.SetGlobalBuffer((__gm__ T *)softmaxSum);
     if constexpr (HAS_ROPE) {
         keyRopeGm.SetGlobalBuffer((__gm__ INPUT_T *)keyRope);
+    }
+    if constexpr (HAS_SINK) {
+        sinksGm.SetGlobalBuffer((__gm__ T *)sinks);
+        psinkSyncGm = psinkSync;
     }
 
     dKeyIndexGm.SetGlobalBuffer((__gm__ OUT_T *)dKeyIndex);
@@ -203,6 +215,10 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pip
     pipe->InitBuffer(this->weightInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_128);
     pipe->InitBuffer(this->maxInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_256);
     pipe->InitBuffer(this->sumInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_256);
+    if constexpr (HAS_SINK) {
+        pipe->InitBuffer(this->sinksInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_256);
+        pipe->InitBuffer(this->psinkScalarQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32);
+    }
     pipe->InitBuffer(this->mulsResQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_512);
     pipe->InitBuffer(this->mulsInQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_512);
     pipe->InitBuffer(this->reluQue, 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K);
@@ -576,6 +592,47 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::CopyInMaxSum(SLIGradKL
 }
 
 TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVectorSink(SLIGradKLLossRunInfo &runInfo)
+{
+    if constexpr (HAS_SINK) {
+        auto sinkTensor = this->sinksInQue.template AllocTensor<T>();
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = 1;
+        dataCopyParams.blockLen = runInfo.nVecSize * sizeof(T);
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = 0;
+        DataCopyPadExtParams<T> padParams;
+        DataCopyPad(sinkTensor, sinksGm[runInfo.softmaxInputOffset], dataCopyParams, padParams);
+        this->sinksInQue.template EnQue(sinkTensor);
+        this->sinksInQue.template DeQue<T>();
+
+        auto maxTensor = this->maxInQue.template AllocTensor<T>();
+        auto sumTensor = this->sumInQue.template AllocTensor<T>();
+        auto psinkScalar = this->psinkScalarQue.template AllocTensor<T>();
+        ComputePsinkPartial<T>(psinkScalar, sinkTensor, maxTensor, sumTensor, runInfo.nVecSize);
+
+        DataCopyExtParams scalarParams = {1, static_cast<uint32_t>(sizeof(T)), 0, 0, 0};
+        CrossCoreWaitFlag<1, PIPE_MTE3>(SYNC_AIV_INNER_FLAG2);
+        DataCopyPad(psinkSyncGm[constInfo.subBlockIdx], psinkScalar, scalarParams);
+        CrossCoreSetFlag<1, PIPE_MTE3>(SYNC_AIV_INNER_FLAG1);
+        CrossCoreWaitFlag<1, PIPE_S>(SYNC_AIV_INNER_FLAG1);
+        float myPsink = psinkSyncGm.GetValue(constInfo.subBlockIdx);
+        float peerPsink = psinkSyncGm.GetValue(1 - constInfo.subBlockIdx);
+        CrossCoreSetFlag<1, PIPE_S>(SYNC_AIV_INNER_FLAG2);
+        float totalPsink = myPsink + peerPsink;
+        float gSize = static_cast<float>(constInfo.gSizeQuery);
+        if (totalPsink < gSize) {
+            runInfo.pScaler = 1.0f / (gSize - totalPsink);
+        }
+
+        this->sinksInQue.template FreeTensor(sinkTensor);
+        this->maxInQue.template FreeTensor(maxTensor);
+        this->sumInQue.template FreeTensor(sumTensor);
+        this->psinkScalarQue.template FreeTensor(psinkScalar);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector4(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf,
     SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo)
 {
@@ -587,8 +644,16 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector4(Buffer<
     auto sumTensor = this->sumInQue.template AllocTensor<T>();
 
     LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
-    ProcessVec4Vf<T>(mulsResUb, mmRes[kRunInfo.s2SingleCurSize], maxTensor, sumTensor, constInfo.scaleValue,
-        constInfo.pScaler, runInfo.nVecSize, constInfo.pKBaseSize);
+
+    if constexpr(HAS_SINK){
+        ProcessVec4Vf<T>(mulsResUb, mmRes[kRunInfo.s2SingleCurSize], maxTensor, sumTensor, constInfo.scaleValue,
+        runInfo.pScaler, runInfo.nVecSize, constInfo.pKBaseSize);
+    }
+    else {
+        ProcessVec4Vf<T>(mulsResUb, mmRes[kRunInfo.s2SingleCurSize], maxTensor, sumTensor, constInfo.scaleValue,
+            constInfo.pScaler, runInfo.nVecSize, constInfo.pKBaseSize);
+    }
+
     this->mulsResQue.template EnQue(mulsResUb);
     this->mulsResQue.template DeQue<T>();
     if (kRunInfo.s2SingleIdx >= kRunInfo.s2SingleLoopTimes - 1) {
@@ -1189,7 +1254,8 @@ class SligKlLossBlockVecDummy {
 public:
     __aicore__ inline void InitGlobalBuffer(
         GM_ADDR key, GM_ADDR keyIndex, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
-        GM_ADDR keyRope, GM_ADDR dKeyIndex, GM_ADDR dWeight, GM_ADDR loss, GlobalTensor<INPUT_T> &gatherSYRes,
+        GM_ADDR keyRope, GM_ADDR dKeyIndex, GM_ADDR dWeight, GM_ADDR loss, GM_ADDR sinks,
+        GlobalTensor<T> &psinkSync, GlobalTensor<INPUT_T> &gatherSYRes,
         GlobalTensor<T> &relu, GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes,
         GlobalTensor<T> &scatterAddResPong, GlobalTensor<T> &bmm3ResGm,
         GlobalTensor<int64_t> &actualSeqLengths, GlobalTensor<int64_t> actualSeqLengthsKey,
@@ -1201,6 +1267,7 @@ public:
     __aicore__ inline void ProcessVector2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, SLIGradKLLossRunInfo &runInfo){};
     __aicore__ inline void ProcessVector3(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo){};
     __aicore__ inline void CopyInMaxSum(SLIGradKLLossRunInfo &runInfo){};
+    __aicore__ inline void ProcessVectorSink(SLIGradKLLossRunInfo &runInfo){};
     __aicore__ inline void ProcessVector4(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm2ResBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo){};
     __aicore__ inline void ProcessVector5(SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo){};
     __aicore__ inline void ProcessVector6(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo){};

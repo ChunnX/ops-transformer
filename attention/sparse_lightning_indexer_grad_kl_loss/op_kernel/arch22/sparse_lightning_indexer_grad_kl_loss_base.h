@@ -60,6 +60,7 @@ public:
                                 __gm__ uint8_t* queryRope, __gm__ uint8_t* keyRope,
                                 __gm__ uint8_t* actualSeqLengthsQuery,
                                 __gm__ uint8_t* actualSeqLengthsKey,
+                                __gm__ uint8_t *sinks,
                                 __gm__ uint8_t *dQueryIndex, __gm__ uint8_t *dKeyIndex,
                                 __gm__ uint8_t *dWeight, __gm__ uint8_t *loss,
                                 __gm__ uint8_t *workspace,
@@ -104,6 +105,7 @@ private:
     GlobalTensor<T> softmaxMaxGm, softmaxSumGm;
     GlobalTensor<int32_t> topKIndexGm;
     GlobalTensor<int64_t> actualSeqLengthsQueryGm, actualSeqLengthsKeyGm;
+    GlobalTensor<T> sinksGm;
     // output GM
     GlobalTensor<OUT_T> dQueryIndexGm, dKeyIndexGm;
     GlobalTensor<W_T> dWeightGm;
@@ -135,6 +137,7 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Init(
     __gm__ uint8_t* queryRope, __gm__ uint8_t* keyRope,
     __gm__ uint8_t* actualSeqLengthsQuery,
     __gm__ uint8_t* actualSeqLengthsKey,
+    __gm__ uint8_t *sinks,
     __gm__ uint8_t *dQueryIndex, __gm__ uint8_t *dKeyIndex,
     __gm__ uint8_t *dWeight, __gm__ uint8_t *loss,
     __gm__ uint8_t *workspace,
@@ -169,6 +172,9 @@ __aicore__ inline void SparseLightningIndexerGradKLLossBase<SLIT>::Init(
         actualSeqLengthsKeyGm.SetGlobalBuffer((__gm__ int64_t *)actualSeqLengthsKey, constInfo.bSize);
     } else {
         actualSeqLengthsKeyGm.SetGlobalBuffer((__gm__ int64_t *)actualSeqLengthsKey, 0);
+    }
+    if (sinks != nullptr) {
+        sinksGm.SetGlobalBuffer((__gm__ T *)sinks);
     }
 
     // init output global buffer

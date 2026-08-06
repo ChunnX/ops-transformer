@@ -36,7 +36,8 @@ enum InputIdx {
     queryRopeEnum,
     keyRopeEnum,
     actualSeqLengthsQueryEnum,
-    actualSeqLengthsKvEnum
+    actualSeqLengthsKvEnum,
+    sinkEnum
 };
 
 enum OutputIdx {
