@@ -120,6 +120,10 @@ def run_case(params: dict,
         elif "block_table" in params and params["block_table"] is not None:
             cpu_inputs["block_table"] = params["block_table"]
 
+        if params.get("sinks") is not None:
+            n1 = params.get("N1", 1)
+            cpu_inputs["sinks"] = torch.randn(n1, dtype=torch.float32) * 0.5
+
         print(f"  [golden] CPU 参考计算...")
         golden_out = golden.compute(cpu_inputs, params)
 
