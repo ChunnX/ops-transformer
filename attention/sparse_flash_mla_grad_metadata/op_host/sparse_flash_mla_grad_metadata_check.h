@@ -388,14 +388,14 @@ int64_t GetCmpKvBatchSizeSmlag(const aclTensor *sequsedCmpKvOptional, const aclT
 std::string TopkLengthShapeToStringSmlag(const aclTensor *topkLengthOptional)
 {
     const auto &shape = topkLengthOptional->GetViewShape();
-    std::string result = "[";
+    std::string result;
     for (size_t i = 0; i < shape.GetDimNum(); ++i) {
         if (i != 0) {
             result += ", ";
         }
         result += std::to_string(shape.GetDim(i));
     }
-    return result + "]";
+    return result;
 }
 
 aclnnStatus CheckTopkLengthFirstDimSmlag(const aclTensor *topkLengthOptional, const std::string &topkLengthName,
