@@ -49,9 +49,9 @@ private:
     __aicore__ inline bool NeedAccessXn() const;
     __aicore__ inline bool NeedAccessCke() const;
     __aicore__ inline void PrepareWriteData();
-    __aicore__ inline void DataCopyWriteXn(uint32_t loops);
-    __aicore__ inline void DataCopyReadXn(uint32_t loops);
-    __aicore__ inline void DataCopyWriteThenReadXn(uint32_t loops);
+    __aicore__ inline void ReadXn();
+    __aicore__ inline void WriteXn();
+    __aicore__ inline void WriteThenReadXn();
     __aicore__ inline void SetValueXn(uint32_t loops);
     __aicore__ inline void SetValueCke(uint32_t loops);
     __aicore__ inline void GetValueCke(uint32_t loops);
@@ -121,30 +121,24 @@ __aicore__ inline void LocalXnCkeRw::PrepareWriteData()
     PipeBarrier<PIPE_ALL>();
 }
 
-__aicore__ inline void LocalXnCkeRw::DataCopyWriteXn(uint32_t loops)
+__aicore__ inline void LocalXnCkeRw::WriteXn()
 {
-    for (uint32_t i = 0; i < loops; i++) {
-        DataCopy(xnGm_, dataLocal_, 1);
-        PipeBarrier<PIPE_ALL>();
-    }
+    xnGm_.SetValue(0, pattern_);
+    PipeBarrier<PIPE_ALL>();
 }
 
-__aicore__ inline void LocalXnCkeRw::DataCopyReadXn(uint32_t loops)
+__aicore__ inline void LocalXnCkeRw::ReadXn()
 {
-    for (uint32_t i = 0; i < loops; i++) {
-        DataCopy(readXnLocal_, xnGm_, 1);
-        PipeBarrier<PIPE_ALL>();
-    }
+    xnReadBack_ = xnGm_.GetValue(0);
+    PipeBarrier<PIPE_ALL>();
 }
 
-__aicore__ inline void LocalXnCkeRw::DataCopyWriteThenReadXn(uint32_t loops)
+__aicore__ inline void LocalXnCkeRw::WriteThenReadXn()
 {
-    for (uint32_t i = 0; i < loops; i++) {
-        DataCopy(xnGm_, dataLocal_, 1);
-        PipeBarrier<PIPE_ALL>();
-        DataCopy(readXnLocal_, xnGm_, 1);
-        PipeBarrier<PIPE_ALL>();
-    }
+    xnGm_.SetValue(0, pattern_);
+    PipeBarrier<PIPE_ALL>();
+    xnReadBack_ = xnGm_.GetValue(0);
+    PipeBarrier<PIPE_ALL>();
 }
 
 __aicore__ inline void LocalXnCkeRw::SetValueXn(uint32_t loops)
@@ -186,7 +180,7 @@ __aicore__ inline void LocalXnCkeRw::RunSelectedOp(uint32_t loops)
     switch (mode_) {
         case MODE_WRITE:
             if (NeedAccessXn()) {
-                DataCopyWriteXn(loops);
+                for (uint32_t i = 0; i < loops; i++) { WriteXn(); }
             }
             if (NeedAccessCke()) {
                 SetValueCke(loops);
@@ -194,7 +188,7 @@ __aicore__ inline void LocalXnCkeRw::RunSelectedOp(uint32_t loops)
             break;
         case MODE_READ:
             if (NeedAccessXn()) {
-                DataCopyReadXn(loops);
+                for (uint32_t i = 0; i < loops; i++) { ReadXn(); }
             }
             if (NeedAccessCke()) {
                 GetValueCke(loops);
@@ -202,7 +196,7 @@ __aicore__ inline void LocalXnCkeRw::RunSelectedOp(uint32_t loops)
             break;
         case MODE_WRITE_THEN_READ:
             if (NeedAccessXn()) {
-                DataCopyWriteThenReadXn(loops);
+                for (uint32_t i = 0; i < loops; i++) { WriteThenReadXn(); }
             }
             if (NeedAccessCke()) {
                 SetValueThenGetValueCke(loops);
@@ -225,9 +219,6 @@ __aicore__ inline void LocalXnCkeRw::RunSelectedOp(uint32_t loops)
 __aicore__ inline void LocalXnCkeRw::CaptureReadBack()
 {
     if (mode_ == MODE_READ || mode_ == MODE_WRITE_THEN_READ) {
-        if (NeedAccessXn()) {
-            xnReadBack_ = readXnLocal_.GetValue(0);
-        }
         if (NeedAccessCke()) {
             ckeReadBack_ = ckeGm_.GetValue(0);
         }
