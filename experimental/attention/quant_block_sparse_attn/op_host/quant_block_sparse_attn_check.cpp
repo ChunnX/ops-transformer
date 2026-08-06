@@ -104,7 +104,7 @@ ge::graphStatus CheckMXFP8FullQuantScaleInputs(const QuantBlockSparseAttnParaInf
     if (opParamInfo.kDescale.shape == nullptr ||
         opParamInfo.vDescale.shape == nullptr || opParamInfo.qDescale.shape == nullptr) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            kOpName, "quantScale1/keyAntiquantScale/valueAntiquantScale/dequantScaleQuery", "nullptr",
+            kOpName, "keyAntiquantScale/valueAntiquantScale/dequantScaleQuery", "nullptr",
             "all must be passed in quant_mode=2 MXFP8 full-quant scenario");
         return ge::GRAPH_FAILED;
     }
