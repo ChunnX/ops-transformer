@@ -38,7 +38,7 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           DTemplateType dTemplateType = DTemplateType::Aligned128,
           DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0,
           bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
-class FAFullQuantFp8BlockCube {
+class QuantFlashAttnBlockCubeGqaFp8 {
 public:
 
     /* ============确定L0A的类型============= */
@@ -150,7 +150,7 @@ public:
     const ConstInfoX &constInfo;
 
     /*============================================================================== */
-    __aicore__ inline FAFullQuantFp8BlockCube(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline QuantFlashAttnBlockCubeGqaFp8(ConstInfoX &constInfo) : constInfo(constInfo){};
 
     __aicore__ inline void InitCubeBlock(TPipe *pipe, BufferManager<BufferType::L1> *l1BuffMgr, __gm__ uint8_t *query,
                                          __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *blockTable,
@@ -446,7 +446,7 @@ public:
 
         outputBuf.SetCrossCore();
     }
-}; // FAFullQuantFp8BlockCube
+}; // QuantFlashAttnBlockCubeGqaFp8
 
 template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,
           S1TemplateType s1TemplateType = S1TemplateType::Aligned128,
@@ -454,7 +454,7 @@ template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::
           DTemplateType dTemplateType = DTemplateType::Aligned128,
           DTemplateType dVTemplateType = DTemplateType::Aligned128, uint8_t KvLayoutType = 0,
           bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
-class FAFullQuantFp8BlockCubeDummy {
+class QuantFlashAttnBlockCubeGqaFp8Dummy {
 public:
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
     static constexpr uint32_t s2BaseSize = (uint32_t)s2TemplateType;
@@ -477,7 +477,7 @@ public:
     using MM2_ABUF_T = Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD>;
 
     using ConstInfoX = ConstInfo_t;
-    __aicore__ inline FAFullQuantFp8BlockCubeDummy(ConstInfoX &constInfo){};
+    __aicore__ inline QuantFlashAttnBlockCubeGqaFp8Dummy(ConstInfoX &constInfo){};
 };
 } // namespace BaseApi
 
