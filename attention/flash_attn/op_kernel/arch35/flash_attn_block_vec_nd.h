@@ -733,8 +733,15 @@ public:
         maskInfo.s2dealNum = runInfo.actSingleLoopS2Size;
         maskInfo.s2Size = runInfo.actS2Size;
         maskInfo.nBaseSize = s2BaseSize;
-        maskInfo.preToken = constInfo_.preTokens;
-        maskInfo.nextToken = constInfo_.nextTokens;
+        int64_t safePreToken = constInfo_.preTokens;
+        int64_t safeNextToken = constInfo_.nextTokens;
+        if (constInfo_.sparseMode == fa_base_vector::BAND) {
+            fa_base_vector::GetSafeActToken(static_cast<int64_t>(runInfo.actS1Size),
+                                            static_cast<int64_t>(runInfo.actS2Size), safePreToken, safeNextToken,
+                                            constInfo_.sparseMode);
+        }
+        maskInfo.preToken = safePreToken;
+        maskInfo.nextToken = safeNextToken;
         maskInfo.sparseMode = static_cast<SparseMode>(constInfo_.sparseMode);
         maskInfo.batchIdx = (constInfo_.attenMaskBatch == 1) ? 0 : runInfo.bIdx;
         maskInfo.attenMaskBatchStride = constInfo_.attenMaskS1Size * constInfo_.attenMaskS2Size;
