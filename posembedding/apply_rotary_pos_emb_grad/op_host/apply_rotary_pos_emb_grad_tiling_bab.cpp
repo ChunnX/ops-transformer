@@ -10,19 +10,7 @@
 
 /*!
  * \file apply_rotary_pos_emb_grad_tiling_bab.cpp
- * \brief BAB template tiling for ApplyRotaryPosEmbGrad
- *
- * BAB 模板适用场景：cos 沿 B 轴和 N 轴广播，即所有 B 和所有 N 共享同一份 S 方向的 cos/sin。
- * 核间切分：将 B × S 二维网格分配到核集群上，每个核处理若干 B 行和若干 S 行。
- * 核内切分：外层循环搬入 cos/sin（被 Q/K 两路复用），内层循环遍历 N。
- *
- * 相比单路反向算子，双路融合的关键差异：
- * - nQ / nK 独立，N 轴切分以 max(nQ, nK) 为上界，Q/K 各自裁尾
- * - UB buffer 需要同时容纳 gradQ + gradK 双路输入和 dxQ + dxK 双路输出
- * - cos/sin 在 UB 中保持不变，被 Q 路和 K 路依次复用
- * - 当 dCosFlag=1 时，grad_cos/grad_sin 的逐元素累加（query*gradQ + key*gradK）
- *   在 kernel 内与 grad_query/grad_key 同步计算，不拆分为独立阶段；
- *   仅有跨核 reduce（sum over broadcast dims）通过 reduce 框架 workspace 完成
+ * \brief
  */
 
 #include "apply_rotary_pos_emb_grad_tiling.h"
@@ -112,15 +100,12 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassBAB::DoOpTiling()
 ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassBAB::SplitUb()
 {
     uint32_t typeSize = ge::GetSizeByDataType(dtype_);
-    // 对齐 D 维度: CeilAlign(D * typeSize / dSplitCoef, blockSize) * dSplitCoef
-    int64_t dAlign = Ops::Base::CeilAlign(d_ * typeSize / dSplitCoef_, blockSize_) * dSplitCoef_;
-
-    // 根据 dCosFlag 选择不同的 unroll 因子
-    // dCosFlag=0: gradQ+gradK+dxQ+dxK = 4路 tensor, double buffer → ×8
+    int64_t dAlign = Ops::Base::CeilAlign(d_ * typeSize, blockSize_);
+    // dCosFlag=0: gradQueryEmb+gradKeyEmb+gradQ+gradK = 4路 tensor, double buffer → ×8
     // dCosFlag=1: +query+key+gradCos+gradSin = 8路 tensor, double buffer → ×16
     uint32_t minUbLoadDNum = dCosFlag_ ? MIN_UB_LOAD_D_NUM_DCOS1 : MIN_UB_LOAD_D_NUM_DCOS0;
     int64_t canLoadDNum = Ops::Base::FloorDiv(ubSize_, dAlign);
-    if (canLoadDNum < static_cast<int64_t>(minUbLoadDNum * DOUBLE_BUFFER)) {
+    if (canLoadDNum < static_cast<int64_t>(minUbLoadDNum)) {
         OP_LOGE(context_->GetNodeName(),
             "ubSize_ can't load minimum D lines, d_ = %ld, dAlign = %ld, canLoadDNum = %ld, minUbLoadDNum = %u",
             d_, dAlign, canLoadDNum, minUbLoadDNum);
@@ -131,9 +116,7 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassBAB::SplitUb()
     // 假设 S=1 (最坏情况)，确定 N 维度的切分
     // canLoadDNum 表示 S × (N + 1) 的上限, N ≤ canLoadDNum - 1
     int64_t ubLoopNum = Ops::Base::CeilDiv(maxN_, (canLoadDNum - 1));
-    ubFactorN_ = std::min(
-        Ops::Base::CeilDiv(maxN_, ubLoopNum),
-        MAX_COPY_BLOCK_COUNT / dSplitCoef_);
+    ubFactorN_ = Ops::Base::CeilDiv(maxN_, ubLoopNum);
     ubLoopNumN_ = Ops::Base::CeilDiv(maxN_, ubFactorN_);
     ubTailFactorN_ = (maxN_ % ubFactorN_ == 0) ? ubFactorN_ : maxN_ % ubFactorN_;
 
@@ -161,7 +144,7 @@ void ApplyRotaryPosEmbGradRegbaseTilingClassBAB::SplitCore()
     blockNumB2 = Ops::Base::CeilDiv(b_, blockFactorB2);
     auto usedCoreNum2 = blockNumB2 * blockNumS2;
 
-    // 选优: usedCoreNum × ubFactorS 最大者为优 (ubFactorS 反映真实吞吐)
+    // 选优: usedCoreNum × ubFactorS 最大者为优
     auto ubFactorS1 = std::min(ubFactorS_, blockFactorS1);
     auto ubFactorS2 = std::min(ubFactorS_, blockFactorS2);
     if (usedCoreNum1 * ubFactorS1 >= usedCoreNum2 * ubFactorS2) {

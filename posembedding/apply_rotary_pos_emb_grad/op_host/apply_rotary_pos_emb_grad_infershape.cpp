@@ -53,12 +53,8 @@ static graphStatus InferDataTypeForApplyRotaryPosEmbGrad(gert::InferDataTypeCont
 {
     context->SetOutputDataType(OGQ, context->GetInputDataType(IGQ));
     context->SetOutputDataType(OGK, context->GetInputDataType(IGK));
-    if (context->GetOutputShape(OGC) != nullptr) {
-        context->SetOutputDataType(OGC, context->GetInputDataType(ICS));
-    }
-    if (context->GetOutputShape(OGS) != nullptr) {
-        context->SetOutputDataType(OGS, context->GetInputDataType(ISN));
-    }
+    context->SetOutputDataType(OGC, context->GetInputDataType(ICS));
+    context->SetOutputDataType(OGS, context->GetInputDataType(ISN));
     return GRAPH_SUCCESS;
 }
 
