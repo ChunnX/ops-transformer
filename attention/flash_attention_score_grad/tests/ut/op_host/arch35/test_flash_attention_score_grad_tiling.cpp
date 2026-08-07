@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include <iostream>
+#include <vector>
 #include <gtest/gtest.h>
 #include "tiling/platform/platform_ascendc.h"
 #include "../../../../common/include/op_host/tiling_base.h"
@@ -49,6 +50,161 @@ protected:
         std::cout << "FlashAttentionScoreGradTiling TearDown" << std::endl;
     }
 };
+
+namespace {
+using TensorDesc = gert::TilingContextPara::TensorDescription;
+using OpAttr = gert::TilingContextPara::OpAttr;
+
+Ops::Transformer::OpTiling::FlashAttentionScoreGradCompileInfo MakeA5CompileInfo()
+{
+    return {
+        64,                                      // aivNum
+        32,                                      // aicNum
+        196608,                                  // ubSize
+        524288,                                  // l1Size
+        65536,                                   // l0aSize
+        65536,                                   // l0bSize
+        131072,                                  // l0cSize
+        33554432,                                // l2CacheSize
+        32,                                      // coreNum
+        platform_ascendc::SocVersion::ASCEND950  // socVersion
+    };
+}
+
+std::vector<OpAttr> MakeAttrs(const std::string &layout = "BSH", int64_t sparseMode = 0,
+                              float keepProb = 1.0f, int64_t preTokens = 65536, int64_t nextTokens = 65536,
+                              int64_t headNum = 1, int64_t pseType = 1,
+                              const std::string &softmaxInLayout = "")
+{
+    return {
+        {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+        {"keep_prob", Ops::Transformer::AnyValue::CreateFrom<float>(keepProb)},
+        {"pre_tockens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(preTokens)},
+        {"next_tockens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(nextTokens)},
+        {"head_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(headNum)},
+        {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>(layout)},
+        {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sparseMode)},
+        {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(pseType)},
+        {"seed", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2)},
+        {"offset", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        {"softmax_in_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>(softmaxInLayout)}
+    };
+}
+
+std::vector<TensorDesc> MakeBshInputs(ge::DataType dtype = ge::DT_FLOAT16)
+{
+    return {
+        {{{1, 128, 128}, {1, 128, 128}}, dtype, ge::FORMAT_ND},
+        {{{1, 128, 128}, {1, 128, 128}}, dtype, ge::FORMAT_ND},
+        {{{1, 128, 128}, {1, 128, 128}}, dtype, ge::FORMAT_ND},
+        {{{1, 128, 128}, {1, 128, 128}}, dtype, ge::FORMAT_ND},
+        {{{}, {}}, dtype, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+        {{{}, {}}, dtype, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+        {{{1, 1, 128, 8}, {1, 1, 128, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{1, 1, 128, 8}, {1, 1, 128, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{}, {}}, dtype, ge::FORMAT_ND},
+        {{{1, 128, 128}, {1, 128, 128}}, dtype, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{}, {}}, dtype, ge::FORMAT_ND},
+        {{{}, {}}, dtype, ge::FORMAT_ND},
+    };
+}
+
+std::vector<TensorDesc> MakeBshOutputs(ge::DataType dtype = ge::DT_FLOAT16)
+{
+    return {
+        {{{1, 128, 128}, {1, 128, 128}}, dtype, ge::FORMAT_ND},
+        {{{1, 128, 128}, {1, 128, 128}}, dtype, ge::FORMAT_ND},
+        {{{1, 128, 128}, {1, 128, 128}}, dtype, ge::FORMAT_ND},
+        {{{}, {}}, dtype, ge::FORMAT_ND},
+        {{{}, {}}, dtype, ge::FORMAT_ND},
+        {{{}, {}}, dtype, ge::FORMAT_ND},
+    };
+}
+
+std::vector<TensorDesc> MakeTndInputs(int64_t *actualSeqQ, int64_t *actualSeqKv, size_t seqSize,
+                                      int64_t t1, int64_t t2, int64_t n = 2, int64_t d = 64,
+                                      ge::DataType dtype = ge::DT_FLOAT16)
+{
+    return {
+        {{{t1, n, d}, {t1, n, d}}, dtype, ge::FORMAT_ND},
+        {{{t2, n, d}, {t2, n, d}}, dtype, ge::FORMAT_ND},
+        {{{t2, n, d}, {t2, n, d}}, dtype, ge::FORMAT_ND},
+        {{{t1, n, d}, {t1, n, d}}, dtype, ge::FORMAT_ND},
+        {{{}, {}}, dtype, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+        {{{}, {}}, dtype, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_UINT8, ge::FORMAT_ND},
+        {{{t1, n, 8}, {t1, n, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{t1, n, 8}, {t1, n, 8}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{}, {}}, dtype, ge::FORMAT_ND},
+        {{{t1, n, d}, {t1, n, d}}, dtype, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{static_cast<int64_t>(seqSize)}, {static_cast<int64_t>(seqSize)}}, ge::DT_INT64, ge::FORMAT_ND, true,
+         actualSeqQ},
+        {{{static_cast<int64_t>(seqSize)}, {static_cast<int64_t>(seqSize)}}, ge::DT_INT64, ge::FORMAT_ND, true,
+         actualSeqKv},
+        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        {{{}, {}}, dtype, ge::FORMAT_ND},
+        {{{}, {}}, dtype, ge::FORMAT_ND},
+    };
+}
+
+std::vector<TensorDesc> MakeTndOutputs(int64_t t1, int64_t t2, int64_t n = 2, int64_t d = 64,
+                                       ge::DataType dtype = ge::DT_FLOAT16)
+{
+    return {
+        {{{t1, n, d}, {t1, n, d}}, dtype, ge::FORMAT_ND},
+        {{{t2, n, d}, {t2, n, d}}, dtype, ge::FORMAT_ND},
+        {{{t2, n, d}, {t2, n, d}}, dtype, ge::FORMAT_ND},
+        {{{}, {}}, dtype, ge::FORMAT_ND},
+        {{{}, {}}, dtype, ge::FORMAT_ND},
+        {{{}, {}}, dtype, ge::FORMAT_ND},
+    };
+}
+
+gert::TilingContextPara MakeA5Context(const std::vector<TensorDesc> &inputs, const std::vector<TensorDesc> &outputs,
+                                      const std::vector<OpAttr> &attrs, void *compileInfo,
+                                      int32_t deterministicInfo = 0)
+{
+    return gert::TilingContextPara(
+        "FlashAttentionScoreGrad", inputs, outputs, attrs, compileInfo, "Ascend950", A5SocInfo, 4096,
+        deterministicInfo);
+}
+
+void ExpectTilingFailed(const gert::TilingContextPara &tilingContextPara)
+{
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteTiling(tilingContextPara, tilingInfo));
+}
+
+void ExpectTilingSuccess(const gert::TilingContextPara &tilingContextPara)
+{
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    ASSERT_GT(tilingInfo.tilingKey, 0);
+    ASSERT_GT(tilingInfo.workspaceSizes.size(), 0U);
+}
+} // namespace
 
 TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_0)
 {
@@ -1190,4 +1346,215 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_10)
     std::string expectTilingData = "";
     std::vector<size_t> expectWorkspaces = {21037056};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_attention_in_shape)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeBshInputs();
+    inputs[11] = {{{1, 64, 128}, {1, 64, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+    ExpectTilingFailed(MakeA5Context(inputs, MakeBshOutputs(), MakeAttrs(), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_softmax_max_dim)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeBshInputs();
+    inputs[8] = {{{1, 128, 8}, {1, 128, 8}}, ge::DT_FLOAT, ge::FORMAT_ND};
+    ExpectTilingFailed(MakeA5Context(inputs, MakeBshOutputs(), MakeAttrs(), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_softmax_sum_shape)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeBshInputs();
+    inputs[9] = {{{1, 1, 64, 8}, {1, 1, 64, 8}}, ge::DT_FLOAT, ge::FORMAT_ND};
+    ExpectTilingFailed(MakeA5Context(inputs, MakeBshOutputs(), MakeAttrs(), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_softmax_dtype)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeBshInputs();
+    inputs[8] = {{{1, 1, 128, 8}, {1, 1, 128, 8}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+    ExpectTilingFailed(MakeA5Context(inputs, MakeBshOutputs(), MakeAttrs(), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_dscale_for_non_quant)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeBshInputs();
+    inputs[17] = {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND};
+    ExpectTilingFailed(MakeA5Context(inputs, MakeBshOutputs(), MakeAttrs(), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_dropmask_without_dropout)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeBshInputs();
+    inputs[5] = {{{2048}, {2048}}, ge::DT_UINT8, ge::FORMAT_ND};
+    ExpectTilingFailed(MakeA5Context(inputs, MakeBshOutputs(), MakeAttrs(), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_dropmask_dtype)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeBshInputs();
+    inputs[5] = {{{2048}, {2048}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+    ExpectTilingFailed(MakeA5Context(inputs, MakeBshOutputs(), MakeAttrs("BSH", 0, 0.9f), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_dropmask_size)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeBshInputs();
+    inputs[5] = {{{1}, {1}}, ge::DT_UINT8, ge::FORMAT_ND};
+    ExpectTilingFailed(MakeA5Context(inputs, MakeBshOutputs(), MakeAttrs("BSH", 0, 0.9f), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_atten_mask_dim)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeBshInputs();
+    inputs[7] = {{{1, 2, 3}, {1, 2, 3}}, ge::DT_UINT8, ge::FORMAT_ND};
+    ExpectTilingFailed(MakeA5Context(inputs, MakeBshOutputs(), MakeAttrs(), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_atten_mask_dtype)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeBshInputs();
+    inputs[7] = {{{128, 128}, {128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+    ExpectTilingFailed(MakeA5Context(inputs, MakeBshOutputs(), MakeAttrs(), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_sparse_mode)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    ExpectTilingFailed(MakeA5Context(MakeBshInputs(), MakeBshOutputs(), MakeAttrs("BSH", 7), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_pse_type)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    ExpectTilingFailed(MakeA5Context(MakeBshInputs(), MakeBshOutputs(), MakeAttrs("BSH", 0, 1.0f, 65536, 65536, 1, 4),
+                                    &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_pse_dtype)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeBshInputs();
+    inputs[4] = {{{1, 1, 1, 128}, {1, 1, 1, 128}}, ge::DT_FLOAT, ge::FORMAT_ND};
+    ExpectTilingFailed(MakeA5Context(inputs, MakeBshOutputs(), MakeAttrs(), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_pse_dim)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeBshInputs();
+    inputs[4] = {{{1, 1, 128}, {1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+    ExpectTilingFailed(MakeA5Context(inputs, MakeBshOutputs(), MakeAttrs(), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_rope_missing_pair)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeBshInputs();
+    inputs[22] = {{{1, 128, 64}, {1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+    ExpectTilingFailed(MakeA5Context(inputs, MakeBshOutputs(), MakeAttrs(), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_rope_d)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeBshInputs();
+    inputs[22] = {{{1, 128, 64}, {1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+    inputs[23] = {{{1, 128, 32}, {1, 128, 32}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+    ExpectTilingFailed(MakeA5Context(inputs, MakeBshOutputs(), MakeAttrs(), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_sink_dtype)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeBshInputs();
+    auto outputs = MakeBshOutputs();
+    inputs.push_back({{{1}, {1}}, ge::DT_FLOAT16, ge::FORMAT_ND});
+    outputs.push_back({{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND});
+    ExpectTilingFailed(MakeA5Context(inputs, outputs, MakeAttrs(), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_sink_query_dtype)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeBshInputs(ge::DT_FLOAT);
+    auto outputs = MakeBshOutputs(ge::DT_FLOAT);
+    inputs.push_back({{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND});
+    outputs.push_back({{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND});
+    ExpectTilingFailed(MakeA5Context(inputs, outputs, MakeAttrs(), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_tnd_missing_actual_seq)
+{
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeBshInputs();
+    inputs[0] = {{{32, 2, 64}, {32, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+    inputs[1] = {{{32, 2, 64}, {32, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+    inputs[2] = {{{32, 2, 64}, {32, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+    inputs[3] = {{{32, 2, 64}, {32, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+    inputs[11] = {{{32, 2, 64}, {32, 2, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND};
+    ExpectTilingFailed(MakeA5Context(inputs, MakeTndOutputs(32, 32), MakeAttrs("TND", 0, 1.0f, 65536, 65536, 2),
+                                    &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_tnd_actual_seq_size)
+{
+    int64_t actualSeqQ[2] = {16, 40};
+    int64_t actualSeqKv[3] = {16, 40, 64};
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeTndInputs(actualSeqQ, actualSeqKv, 2, 40, 64);
+    inputs[14] = {{{3}, {3}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqKv};
+    ExpectTilingFailed(MakeA5Context(inputs, MakeTndOutputs(40, 64), MakeAttrs("TND", 0, 1.0f, 65536, 65536, 2),
+                                    &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_tnd_eod)
+{
+    int64_t actualSeqQ[3] = {16, 0, 20};
+    int64_t actualSeqKv[3] = {16, 0, 20};
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeTndInputs(actualSeqQ, actualSeqKv, 3, 20, 20);
+    ExpectTilingFailed(MakeA5Context(inputs, MakeTndOutputs(20, 20), MakeAttrs("TND", 0, 1.0f, 65536, 65536, 2),
+                                    &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_tnd_sparse_mode_prefix)
+{
+    int64_t actualSeqQ[2] = {16, 40};
+    int64_t actualSeqKv[2] = {16, 48};
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeTndInputs(actualSeqQ, actualSeqKv, 2, 40, 48);
+    ExpectTilingFailed(MakeA5Context(inputs, MakeTndOutputs(40, 48), MakeAttrs("TND", 5, 1.0f, 65536, 65536, 2),
+                                    &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_invalid_tnd_softmax_same_as_input_shape)
+{
+    int64_t actualSeqQ[2] = {16, 32};
+    int64_t actualSeqKv[2] = {16, 32};
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeTndInputs(actualSeqQ, actualSeqKv, 2, 32, 32);
+    inputs[8] = {{{32, 2, 8, 1}, {32, 2, 8, 1}}, ge::DT_FLOAT, ge::FORMAT_ND};
+    ExpectTilingFailed(MakeA5Context(inputs, MakeTndOutputs(32, 32),
+                                    MakeAttrs("TND", 0, 1.0f, 65536, 65536, 2, 1, "same_as_input"), &compileInfo));
+}
+
+TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tnd_zero_seq_split_axis)
+{
+    int64_t actualSeqQ[2] = {0, 16};
+    int64_t actualSeqKv[2] = {0, 16};
+    auto compileInfo = MakeA5CompileInfo();
+    auto inputs = MakeTndInputs(actualSeqQ, actualSeqKv, 2, 16, 16);
+    ExpectTilingSuccess(MakeA5Context(inputs, MakeTndOutputs(16, 16), MakeAttrs("TND", 0, 1.0f, 65536, 65536, 2),
+                                     &compileInfo));
 }
