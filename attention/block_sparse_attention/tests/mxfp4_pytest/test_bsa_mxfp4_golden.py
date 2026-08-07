@@ -854,7 +854,7 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
                         p_quant='snap_local', s_dtype='fp16',
                         dump=False, device_id=0,
                         s1_list=None, s2_list=None,
-                        data_x=1.0, dst_type_max=0.0):
+                        data_x=1.0, dst_type_max=0.0, act_s1=None, act_s2=None):
     """qfa 风格: fp32 造数据 -> mxfp4 打包 -> CPU golden -> NPU -> check_result.
        p_quant: 'snap_local'|'none'; s_dtype: 'fp16'(默认)|'bf16'|'fp32'; dump: 落盘中间结果。
        input_layout: 'BNSD'(默认)|'BSND'|'TND'; BSND/TND 对齐 QFA 哲学——golden 保持 BNSD 不动, 仅 NPU I/O
@@ -862,7 +862,11 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
        TND varlen(s1_list/s2_list 给 per-batch 变长): per-batch 造数/golden/打包 + concat(B,S->T per batch,
        T=sum S1_b, BTkv=sum CeilDiv(S2_b,64)), actualSeq=[S1_b]/[S2_b]。输出同法重排回目标布局比对。
        s1/s2(uniform, BNSD/BSND/uniform-TND) 或 s1_list/s2_list(TND varlen) 二选一。
-       返回 (fulfill_percent, result_str). NPU 不可用时返回 (-1.0, 'SKIP')."""
+       act_s1/act_s2(BNSD/BSND padded, 可选): actualSeqLengths < 张量 s1/s2(V3 doc L248/264 显式支持)。
+       int=uniform 或 list=per-batch; s1/s2 此时为 padded 张量形状。golden 走 per-batch unpadded(golden 不改),
+       NPU I/O 0-pad 到 s1/s2 + actualSeq=[act_b]; 比对只取 [0,act_q) 有效区(kernel 不清零 padding 区)。
+       量化一致性靠 0-padding(Q/K 轴 D 不跨 seq; V 轴 seq 末有效 32-block unpadded 内部 0-pad 与 0-padded 外部
+       0-pad 填 0 -> max/scale 相同)。返回 (fulfill_percent, result_str). NPU 不可用时返回 (-1.0, 'SKIP')."""
     g = n1 // n2
     assert input_layout in ('BNSD', 'BSND', 'TND'), f"首版仅支持 BNSD/BSND/TND, 当前 {input_layout}"
     assert n1 == n2 * g, f"GQA 约束 n1==n2*g: {n1} vs {n2}*{g}"
@@ -978,6 +982,91 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
         torch_npu.npu.synchronize()
         fulfill_percent, result = compare(cpu_out, npu_out, src_dtype)
         return fulfill_percent, result
+
+    # ===== padded BNSD/BSND 路径: act_s1/act_s2 < s1/s2(张量 0-pad 到 S, actualSeq 指示更小有效长度) =====
+    # V3 doc L248/264: BNSD/BSND 下配置 actualSeqLengths 则算子按实际长度处理(kernel 只建 [0,act) task,
+    #   不清零 [act,S) padding 区)。当前 uniform 路径恒令 actualSeq==s1/s2, 此路径此前零覆盖。
+    # golden 走 per-batch unpadded(复用 TND varlen 模式, golden 函数不改); NPU I/O 0-pad 到 s1/s2 后打包。
+    # 量化一致性靠 0-padding: Q/K 量化轴=head_dim(D) 32-block 不跨 seq; V 量化轴=seq_k 末有效 32-block 在
+    #   unpadded(内部 0-pad 到 32 边界) 与 0-padded(外部 0-pad) 填充值均 0 -> max/scale 相同。
+    # mask 用 _build_block_sparse_mask_varlen(per-batch actual blocking) + F.pad 补到 max-based padded
+    #   shape(host CheckSparsePattern 校验 mask dim=CeilDiv(S_pad, block); padding 块须置 0, host 不校验内容)。
+    # 比对只取 [0,act_q) 有效区(kernel 不清零 [act,S) padding 区, 不能比全 padded 输出), flatten-concat per-batch。
+    if input_layout in ('BNSD', 'BSND') and act_s1 is not None:
+        act_q = [int(x) for x in ([act_s1] * b if isinstance(act_s1, int) else act_s1)]
+        act_kv = [int(x) for x in ([act_s2] * b if isinstance(act_s2, int) else act_s2)]
+        assert len(act_q) == b and len(act_kv) == b, "act_s1/act_s2 长度须 == b"
+        assert all(a <= s1 for a in act_q) and all(a <= s2 for a in act_kv), \
+            "act_s1/act_s2 每 batch 须 <= s1/s2(padded 张量形状)"
+        block_x, block_y = int(block_shape[0]), int(block_shape[1])
+        mask = _build_block_sparse_mask_varlen(b, n1, act_q, act_kv, block_shape, mask_kind)
+        ceil_q_pad = (s1 + block_x - 1) // block_x
+        ceil_kv_pad = (s2 + block_y - 1) // block_y
+        mask = torch.nn.functional.pad(
+            mask, (0, ceil_kv_pad - mask.shape[3], 0, ceil_q_pad - mask.shape[2]), value=0)
+        # per-batch unpadded 造数(同一份供 golden + 0-pad 打包, mxfp4 噪声一致)
+        q_list = [randn_x((1, n1, act_q[bi], qk_d), data_x).to(torch.float32) for bi in range(b)]
+        k_list = [randn_x((1, n2, act_kv[bi], qk_d), data_x).to(torch.float32) for bi in range(b)]
+        v_list = [randn_x((1, n2, act_kv[bi], v_d), data_x).to(torch.float32) for bi in range(b)]
+        print("cpu calc start")
+        cpu_chunks = []
+        for bi in range(b):
+            cq_b = (act_q[bi] + block_x - 1) // block_x
+            ck_b = (act_kv[bi] + block_y - 1) // block_y
+            mask_b = mask[bi:bi + 1, :, :cq_b, :ck_b]
+            out_b, _ = cpu_block_sparse_attention_bnsd_mxfp4_with_lse(
+                q_list[bi], k_list[bi], v_list[bi], mask_b, block_shape, scale, n2,
+                p_quant=p_quant, s_dtype=s_dtype, dump=dump, out_dtype=out_dtype)
+            if input_layout == 'BSND':
+                out_b = out_b.permute(0, 2, 1, 3).contiguous()  # [1,N,act,D] -> [1,act,N,D]
+            cpu_chunks.append(out_b)
+        print("golden calc end")
+        if _FORCE_CPU or not _HAS_BSA_V3:
+            print(f"cpu_out(valid region) per-batch shape: {[tuple(c.shape) for c in cpu_chunks]}")
+            return -1.0, "SKIP"
+        # 0-pad per-batch seq 维到 s1(Q)/s2(KV) -> stack BNSD [B,N,s1,D] / [B,N,s2,D]
+        q_pad = torch.cat([torch.nn.functional.pad(q_list[bi], (0, 0, 0, s1 - q_list[bi].shape[2]))
+                           for bi in range(b)], 0).contiguous()
+        k_pad = torch.cat([torch.nn.functional.pad(k_list[bi], (0, 0, 0, s2 - k_list[bi].shape[2]))
+                           for bi in range(b)], 0).contiguous()
+        v_pad = torch.cat([torch.nn.functional.pad(v_list[bi], (0, 0, 0, s2 - v_list[bi].shape[2]))
+                           for bi in range(b)], 0).contiguous()
+        # 打包 0-padded BNSD(Q/K axis=-1, V axis=-2) + V3 e8m0 重排(复用 uniform 路径)
+        q_packed, q_e8m0 = mxfp4_quantize_pack_last(q_pad, quant_axis=-1)
+        k_packed, k_e8m0 = mxfp4_quantize_pack_last(k_pad, quant_axis=-1)
+        v_packed, v_e8m0 = mxfp4_quantize_pack_last(v_pad, quant_axis=-2)
+        q_scale = _e8m0_qk_to_v3(q_e8m0)
+        k_scale = _e8m0_qk_to_v3(k_e8m0)
+        v_scale = _e8m0_v_to_v3(v_e8m0)
+        if input_layout == 'BSND':  # packed 4D + 5D scale permute 到 BSND(复用 uniform 路径)
+            q_packed = q_packed.permute(0, 2, 1, 3).contiguous()
+            k_packed = k_packed.permute(0, 2, 1, 3).contiguous()
+            v_packed = v_packed.permute(0, 2, 1, 3).contiguous()
+            q_scale = q_scale.permute(0, 2, 1, 3, 4).contiguous()
+            k_scale = k_scale.permute(0, 2, 1, 3, 4).contiguous()
+            v_scale = v_scale.permute(0, 2, 1, 3, 4).contiguous()
+        torch_npu.npu.set_device(device_id)
+        print("npu calc start")
+        npu_out, _ = block_sparse_attention_v3(
+            q_packed.contiguous().npu(), k_packed.contiguous().npu(), v_packed.contiguous().npu(),
+            mask.contiguous().npu(), list(block_shape), act_q, act_kv,
+            num_heads=n1, num_key_value_heads=n2,
+            q_input_layout=input_layout, kv_input_layout=input_layout,
+            mask_type=0, scale_value=scale, inner_precise=inner_precise, block_size=0,
+            pre_tokens=2147483647, next_tokens=2147483647,
+            softmax_lse_flag=False, quant_mode=quant_mode, dst_type_max=dst_type_max,
+            q_dequant_scale=q_scale.npu(), k_dequant_scale=k_scale.npu(), v_dequant_scale=v_scale.npu(),
+            attention_out_dtype=_resolve_out_dtype(out_dtype))
+        torch_npu.npu.synchronize()
+        # 比对: 只取 [0,act_q) 有效区(kernel 不清零 [act,S) padding 区), flatten-concat per-batch
+        g_valid, n_valid = [], []
+        for bi in range(b):
+            g_valid.append(cpu_chunks[bi].reshape(-1))
+            if input_layout == 'BSND':
+                n_valid.append(npu_out[bi, :act_q[bi], :, :].reshape(-1).cpu())
+            else:
+                n_valid.append(npu_out[bi, :, :act_q[bi], :].reshape(-1).cpu())
+        return compare(torch.cat(g_valid), torch.cat(n_valid), src_dtype)
 
     # ===== uniform 路径(BNSD/BSND/uniform-TND): s1/s2 uniform =====
     assert s1 is not None and s2 is not None, "uniform 路径需 s1/s2(变长 TND 用 s1_list/s2_list)"
@@ -1993,6 +2082,111 @@ class TestBSAMxfp4Golden(TestCase):
         self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
                   block_shape=[128, 128], mask_kind='dense', input_layout='TND',
                   s1_list=[128, 256], s2_list=[128, 256], quant_mode=3,  dst_type_max=6.6)
+
+    # =====================================================================
+    # actualSeq ≠ seqlen 用例系列(BNSD/BSND padded 张量 + actualSeqLengths 指示更小有效长度):
+    #   覆盖 V3 doc L248/264 显式支持的 BNSD/BSND "actualSeq < 张量 S" 路径——driver uniform 路径恒令
+    #   actualSeq == s1/s2(张量 S), 此前零覆盖。driver 走 padded 分支(act_s1/act_s2 触发): golden per-batch
+    #   unpadded(golden 不改), NPU I/O 0-pad 到 s1/s2 + actualSeq=[act_b]。比对只取 [0,act_q) 有效区
+    #   (kernel 不清零 [act,S) padding 区)。维度: Q-padding/KV-padding/双 padded/decode/block 对齐/
+    #   GQA/per-batch 不同 actual(独立 kernel 路径)/sparse-mask 交互。
+    # =====================================================================
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn2_kvn2_g1_actq200_padq256_actkv200_padkv256_d128(self, device="npu"):
+        """⑫ BNSD 双 padded: act_q=200<256 + act_kv=200<256(末 q-block 72 行 + V 末 32-block 8 行), N=2。
+        验证 actualSeq 驱动 kernel 只建 [0,200) task、跳过 [200,256) padding q-block + KV 末块 lastYBlockSize 裁剪。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BNSD',
+                  act_s1=200, act_s2=200)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn2_kvn2_g1_actq256_padq256_actkv200_padkv256_d128(self, device="npu"):
+        """⑫ BNSD 仅 KV padded: act_q=256(满) + act_kv=200<256, N=2。验证 KV 侧 actualSeqKv 路径
+        (Q 无 padding, 聚焦 KV 末块裁剪 + padding KV 块由 mask 置 0 屏蔽)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BNSD',
+                  act_s1=256, act_s2=200)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn2_kvn2_g1_actq1_padq128_actkv128_padkv128_d128(self, device="npu"):
+        """⑫ BNSD decode Q-pad: act_q=1<128(Q 0-pad 到 128, 单 token decode) + act_kv=128(满 KV), N=2。
+        验证 decode 下 actualSeq 驱动 kernel 只建 1 个 q-token task、跳过 [1,128) padding q-block。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=128, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BNSD',
+                  act_s1=1, act_s2=128)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b1_qn2_kvn2_g1_actq128_padq256_actkv128_padkv256_d128(self, device="npu"):
+        """⑫ BNSD block 对齐 padded: act_q=128<256 + act_kv=128<256(act 恰 1 block, 整 padding 块跳过), N=2。
+        验证 act 恰为 blockShape 倍数时 padding 块边界干净跳过(ceil(128/128)=1 < ceil(256/128)=2)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BNSD',
+                  act_s1=128, act_s2=128)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_gqa_dense_b1_qn8_kvn2_g4_actq200_padq256_actkv200_padkv256_d128(self, device="npu"):
+        """⑫ BNSD GQA 双 padded: qn8/kvn2/g4 + act_q=200<256 + act_kv=200<256, N=2。验证 GQA 头映射
+        (qHeadMul=4/kvHeadMul=2) + actualSeq 驱动 per-batch task 切分叠加。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=256, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BNSD',
+                  act_s1=200, act_s2=200)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_dense_b2_qn2_kvn2_g1_actq200_128_padq256_actkv200_128_padkv256_d128(self, device="npu"):
+        """⑫ BNSD per-batch 不同 actual: b=2, act_q=[200,128] act_kv=[200,128](均 <256, 各 batch 不同有效长),
+        N=2。验证 host CalcSplitCoreTilingParams950 per-batch actual task 累加 + kernel
+        gActualQseqlen.GetValue(curBatch) 独立路径——与 TND varlen 不同的 padded-batch 路径。"""
+        self._run(b=2, n1=2, n2=2, g=1, s1=256, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BNSD',
+                  act_s1=[200, 128], act_s2=[200, 128])
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_actq200_padq256_actkv200_padkv256_d128(self, device="npu"):
+        """⑫ BSND 双 padded: act_q=200<256 + act_kv=200<256, N=2(BSND token-stride=N*D 与 actualSeq 叠加)。
+        验证 BSND padded 路径(golden BNSD 不动, 仅 NPU I/O 0-pad + permute)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND',
+                  act_s1=200, act_s2=200)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_actq256_padq256_actkv200_padkv256_d128(self, device="npu"):
+        """⑫ BSND 仅 KV padded: act_q=256(满) + act_kv=200<256, N=2。验证 BSND 下 KV 侧 actualSeqKv 路径
+        + KV 末块裁剪 + padding KV 块 mask 屏蔽(token-stride=N*D 下 gather)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND',
+                  act_s1=256, act_s2=200)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b1_qn2_kvn2_g1_actq1_padq128_actkv128_padkv128_d128(self, device="npu"):
+        """⑫ BSND decode Q-pad: act_q=1<128 + act_kv=128(满), N=2。验证 BSND decode 下 Q 0-pad +
+        actualSeq 驱动单 token task(token-stride=N*D 下 Q gather)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=128, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND',
+                  act_s1=1, act_s2=128)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_gqa_dense_b1_qn8_kvn2_g4_actq200_padq256_actkv200_padkv256_d128(self, device="npu"):
+        """⑫ BSND GQA 双 padded: qn8/kvn2/g4 + act_q=200<256 + act_kv=200<256, N=2。验证 BSND GQA 非对称
+        stride(qHeadMul=4/kvHeadMul=2) + actualSeq 叠加(BSND stride 布局 + padding, 高价值)。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=256, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND',
+                  act_s1=200, act_s2=200)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bsnd_mha_dense_b2_qn2_kvn2_g1_actq200_128_padq256_actkv200_128_padkv256_d128(self, device="npu"):
+        """⑫ BSND per-batch 不同 actual: b=2, act_q=[200,128] act_kv=[200,128](均 <256), N=2。验证 BSND
+        per-batch actual 独立 kernel 路径(token-stride=N*D + batch-offset 累加 + per-batch actual task 切分)。"""
+        self._run(b=2, n1=2, n2=2, g=1, s1=256, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND',
+                  act_s1=[200, 128], act_s2=[200, 128])
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_bnsd_mha_sparse_b1_qn2_kvn2_g1_actq200_padq256_actkv200_padkv256_d128(self, device="npu"):
+        """⑫ BNSD sparse + 双 padded: act_q=200<256 + act_kv=200<256, sparse mask, N=2。验证 actualSeq 与
+        稀疏块索引 gather 路径叠加(mask per-batch actual blocking + padding 块置 0 + 稀疏块选择)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='BNSD',
+                  act_s1=200, act_s2=200)
 
 
 if __name__ == "__main__":
