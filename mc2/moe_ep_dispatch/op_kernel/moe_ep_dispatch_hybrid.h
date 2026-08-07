@@ -1309,10 +1309,16 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
             static_cast<uint64_t>(destinationScaleoutSlot) * WIN_ADDR_ALIGN;
         uint32_t notifyValue =
             destinationScaleoutSlot == 0U ? scaleoutSlotCount + 1U : SCALEOUT_SLOT_READY;
-        int32_t writeRet = hcomm_.WriteWithNotifyNbi(commHandle, remoteScaleoutAddr, localScaleoutAddr,
-                                                     scaleoutSlotBytes_, remoteNotifyAddr, notifyValue);
-        ASCENDC_ASSERT(writeRet == 0, {
-            KERNEL_LOG(KERNEL_ERROR, "WriteWithNotifyNbi(scaleout) failed, ret=%d, rank=%u, aiv=%u", writeRet,
+        // 数据与状态分离：大块payload用纯写，状态值通过小写的notify写入（与count路径一致）
+        int32_t dataRet = hcomm_.WriteNbi(commHandle, remoteScaleoutAddr, localScaleoutAddr, scaleoutSlotBytes_);
+        ASCENDC_ASSERT(dataRet == 0, {
+            KERNEL_LOG(KERNEL_ERROR, "WriteNbi(scaleout-data) failed, ret=%d, rank=%u, aiv=%u", dataRet,
+                       epRankId_, aivId_);
+        });
+        int32_t notifyRet = hcomm_.WriteWithNotifyNbi(commHandle, remoteNotifyAddr + UB_ALIGN, localScaleoutAddr,
+                                                      sizeof(uint64_t), remoteNotifyAddr, notifyValue);
+        ASCENDC_ASSERT(notifyRet == 0, {
+            KERNEL_LOG(KERNEL_ERROR, "WriteWithNotifyNbi(scaleout-status) failed, ret=%d, rank=%u, aiv=%u", notifyRet,
                        epRankId_, aivId_);
         });
     }
