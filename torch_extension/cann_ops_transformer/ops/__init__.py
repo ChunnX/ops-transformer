@@ -47,6 +47,7 @@ from .mhc_pre_sinkhorn_backward import mhc_pre_sinkhorn_backward
 from .kv_compress_epilog import kv_compress_epilog
 from .indexer_quant_cache import indexer_quant_cache
 from .compressor import compressor
+from .compressor_grad import compressor_grad
 from .quant_compressor import quant_compressor
 from .inplace_partial_rotary_mul import inplace_partial_rotary_mul
 from .inplace_partial_rotary_mul_backward import inplace_partial_rotary_mul_backward
