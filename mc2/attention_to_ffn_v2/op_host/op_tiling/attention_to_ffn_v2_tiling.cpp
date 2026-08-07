@@ -21,9 +21,9 @@ namespace MC2Tiling {
 constexpr uint32_t SYNC_MODE = 1U;
 constexpr uint32_t DYNAMIC_QUANT_MODE = 2U;
 
-ge::graphStatus AttentionToFFNV2TilingFunc(gert::TilingContext *context)
+ge::graphStatus AttentionToFFnV2TilingFunc(gert::TilingContext *context)
 {
-    AttentionToFFNTilingConfig config;
+    AttentionToFFnTilingConfig config;
     config.contextIndex = 0U;
     config.xIndex = 1U;
     config.sessionIdIndex = 2U;
@@ -44,32 +44,32 @@ ge::graphStatus AttentionToFFNV2TilingFunc(gert::TilingContext *context)
     config.attrFfnStartRankIdIndex = 8U;
     config.isMc2Context = true;
 
-    auto ret = AttentionToFFNTilingFuncBase(context, config);
+    auto ret = AttentionToFFnTilingFuncBase(context, config);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
 
-    AttentionToFFNV2TilingData *tilingData = context->GetTilingData<AttentionToFFNV2TilingData>();
+    AttentionToFFnV2TilingData *tilingData = context->GetTilingData<AttentionToFFnV2TilingData>();
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "tilingData"),
                     return ge::GRAPH_FAILED);
-    const bool isQuant = tilingData->attentionToFFNV2Info.quantMode == DYNAMIC_QUANT_MODE;
-    const bool isSync = tilingData->attentionToFFNV2Info.syncFlag == SYNC_MODE;
-    const bool isActiveMask = tilingData->attentionToFFNV2Info.isActiveMask;
+    const bool isQuant = tilingData->attentionToFFnV2Info.quantMode == DYNAMIC_QUANT_MODE;
+    const bool isSync = tilingData->attentionToFFnV2Info.syncFlag == SYNC_MODE;
+    const bool isActiveMask = tilingData->attentionToFFnV2Info.isActiveMask;
     const uint64_t tilingKey = GET_TPL_TILING_KEY(isQuant, isSync, isActiveMask, TILINGKEY_TPL_A5);
     context->SetTilingKey(tilingKey);
-    OP_LOGD(context->GetNodeName(), "AttentionToFFNV2 cur case tilingKey is %lu", tilingKey);
+    OP_LOGD(context->GetNodeName(), "AttentionToFFnV2 cur case tilingKey is %lu", tilingKey);
     return ge::GRAPH_SUCCESS;
 }
 
-struct AttentionToFFNV2CompileInfo {};
+struct AttentionToFFnV2CompileInfo {};
 
-ge::graphStatus TilingParseForAttentionToFFNV2(gert::TilingParseContext *context)
+ge::graphStatus TilingParseForAttentionToFFnV2(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(AttentionToFFNV2)
-    .Tiling(AttentionToFFNV2TilingFunc)
-    .TilingParse<AttentionToFFNV2CompileInfo>(TilingParseForAttentionToFFNV2);
+IMPL_OP_OPTILING(AttentionToFFnV2)
+    .Tiling(AttentionToFFnV2TilingFunc)
+    .TilingParse<AttentionToFFnV2CompileInfo>(TilingParseForAttentionToFFnV2);
 } // namespace MC2Tiling

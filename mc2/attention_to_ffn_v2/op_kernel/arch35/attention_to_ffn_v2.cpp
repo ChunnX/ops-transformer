@@ -10,7 +10,7 @@
 
 /*!
  * \file attention_to_ffn_v2.cpp
- * \brief A5 (arch35) kernel entry for AttentionToFFNV2.
+ * \brief A5 (arch35) kernel entry for AttentionToFFnV2.
  */
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -27,27 +27,27 @@
 #include "attention_to_ffn_apt_tiling_key.h"
 
 using namespace AscendC;
-using namespace AttentionToFFNImpl;
+using namespace AttentionToFFnImpl;
 using namespace Mc2Tiling;
 
-static_assert(sizeof(AttentionToFFNV2Info) == sizeof(AttentionToFFNInfo),
-              "AttentionToFFN V1/V2 tiling info layout size mismatch");
-static_assert(sizeof(AttentionToFFNV2TilingData) == sizeof(AttentionToFFNTilingData),
-              "AttentionToFFN V1/V2 tiling data layout size mismatch");
+static_assert(sizeof(AttentionToFFnV2Info) == sizeof(AttentionToFFnInfo),
+              "AttentionToFFn V1/V2 tiling info layout size mismatch");
+static_assert(sizeof(AttentionToFFnV2TilingData) == sizeof(AttentionToFFnTilingData),
+              "AttentionToFFn V1/V2 tiling data layout size mismatch");
 
 template<bool isQuant, bool isSync, bool isActiveMask, uint8_t ArchTag>
 __global__ __aicore__ void attention_to_ffn_v2(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR sessionId,
     GM_ADDR microBatchId, GM_ADDR layerId, GM_ADDR expertIds, GM_ADDR expertRankTable, GM_ADDR scales,
     GM_ADDR activeMask, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    REGISTER_TILING_DEFAULT(AttentionToFFNV2TilingData);
+    REGISTER_TILING_DEFAULT(AttentionToFFnV2TilingData);
     TPipe pipe;
 
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
-        GET_TILING_DATA_WITH_STRUCT(AttentionToFFNV2TilingData, tilingData, tilingGM);
-        const auto *v1TilingData = reinterpret_cast<const AttentionToFFNTilingData *>(&tilingData);
-        AttentionToFFN<DTYPE_X, isQuant, isSync, isActiveMask,
-                       AttentionToFFNContextType::MC2_CONTEXT> op;
+        GET_TILING_DATA_WITH_STRUCT(AttentionToFFnV2TilingData, tilingData, tilingGM);
+        const auto *v1TilingData = reinterpret_cast<const AttentionToFFnTilingData *>(&tilingData);
+        AttentionToFFn<DTYPE_X, isQuant, isSync, isActiveMask,
+                       AttentionToFFnContextType::MC2_CONTEXT> op;
         op.Init(mc2Context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scales, activeMask,
                 workspaceGM, &pipe, v1TilingData);
         op.Process();

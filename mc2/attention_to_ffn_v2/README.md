@@ -1,4 +1,4 @@
-# AttentionToFFN
+# AttentionToFFn
 
 ## 产品支持情况
 
@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：将Attention节点上数据发往FFN节点。
+- 算子功能：将Attention节点上数据发往FFn节点。
 
 ## 参数说明
 
@@ -66,7 +66,7 @@
     <tr>
     <td style="white-space: nowrap">expertRankTable</td>
     <td style="white-space: nowrap">输入</td>
-    <td style="white-space: nowrap">每个micro batch组中专家Id到FFN卡专家部署的映射表（外部需保证值正确），3D Tensor，shape为 <code>(L, moeExpertNum + sharedExpertNum, M)。</code></td>
+    <td style="white-space: nowrap">每个micro batch组中专家Id到FFn卡专家部署的映射表（外部需保证值正确），3D Tensor，shape为 <code>(L, moeExpertNum + sharedExpertNum, M)。</code></td>
     <td style="white-space: nowrap">INT32</td>
     <td style="white-space: nowrap">ND</td>
     </tr>
@@ -101,14 +101,14 @@
     <tr>
     <td style="white-space: nowrap">ffnTokenInfoTableShape</td>
     <td style="white-space: nowrap">属性</td>
-    <td style="white-space: nowrap">表示FFN节点上token信息表格shape大小的列表，长度为3。</td>
+    <td style="white-space: nowrap">表示FFn节点上token信息表格shape大小的列表，长度为3。</td>
     <td style="white-space: nowrap">INT32</td>
     <td style="white-space: nowrap">-</td>
     </tr>
     <tr>
     <td style="white-space: nowrap">ffnTokenDataShape</td>
     <td style="white-space: nowrap">属性</td>
-    <td style="white-space: nowrap">表示FFN节点上token数据表格shape大小的列表，长度为5。</td>
+    <td style="white-space: nowrap">表示FFn节点上token数据表格shape大小的列表，长度为5。</td>
     <td style="white-space: nowrap">INT32</td>
     <td style="white-space: nowrap">-</td>
     </tr>
@@ -136,14 +136,14 @@
     <tr>
     <td style="white-space: nowrap">syncFlag</td>
     <td style="white-space: nowrap">属性</td>
-    <td style="white-space: nowrap">表示FFN节点同步模式，支持0（同步）、1（异步）。</td>
+    <td style="white-space: nowrap">表示FFn节点同步模式，支持0（同步）、1（异步）。</td>
     <td style="white-space: nowrap">INT64</td>
     <td style="white-space: nowrap">-</td>
     </tr>
     <tr>
     <td style="white-space: nowrap">ffnStartrankId</td>
     <td style="white-space: nowrap">属性</td>
-    <td style="white-space: nowrap">表示FFN节点的起始Id。</td>
+    <td style="white-space: nowrap">表示FFn节点的起始Id。</td>
     <td style="white-space: nowrap">INT64</td>
     <td style="white-space: nowrap">-</td>
     </tr>
@@ -160,14 +160,14 @@
     - `K`：表示选取topK个专家，，取值范围为0 < `K` ≤ 16且满足0 < `K` ≤ moeExpertNum。
     - `H`：表示hidden size（隐藏层大小），取值范围为1024 ≤ `H` ≤ 8192。
     - `L`：表示模型层数，当前版本只支持`L` = 1。
-    - `M`：表示expertRankTable最后一维的长度，具体体现为部署在FFN节点上数量最多的专家部署信息列表的长度。
+    - `M`：表示expertRankTable最后一维的长度，具体体现为部署在FFn节点上数量最多的专家部署信息列表的长度。
     - `moeExpertNum`：表示MoE专家数量，取值范围为0 < `moeExpertNum` ≤ 1024。
 
 - 通信域使用约束：
-    - AttentionToFFN算子的通信域中不允许有其他算子。
+    - AttentionToFFn算子的通信域中不允许有其他算子。
 
 ## 调用说明
 
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
-| aclnn调用 | [test_aclnn_attention_to_ffn.cpp](./examples/test_aclnn_attention_to_ffn.cpp) | 通过 [aclnnAttentionToFFN](./docs/aclnnAttentionToFFN.md)接口方式调用AttentionToFFN算子。 |
+| aclnn调用 | [test_aclnn_attention_to_ffn.cpp](./examples/test_aclnn_attention_to_ffn.cpp) | 通过 [aclnnAttentionToFFn](./docs/aclnnAttentionToFFn.md)接口方式调用AttentionToFFn算子。 |
