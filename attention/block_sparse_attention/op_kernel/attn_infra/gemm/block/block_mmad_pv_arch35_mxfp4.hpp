@@ -187,7 +187,7 @@ public:
     // [改造] P 的 L1->L0B 转置搬运改走 mx functor（原裸 LoadPToL0 下沉到 policy）。
     //   zN L1(P) + P-scale -> nZ L0B(Pᵀ)，ifTranspose=true 由 functor 内部设定。
         __aicore__ inline void LoadPToL0(uint32_t l1BBufId, uint32_t l0BBufId, uint32_t s2Align64,
-                                     uint32_t embedReal,uint32_t s1Act,uint32_t s1Align16)
+                                     uint32_t embedReal, uint32_t s1Align64)
     {
         // s2Base 取整 tile S2Base(=256)，用于推导 P-scale srcStride（原硬编码 5 的来源）。
         // [TODO] s2Base 应由调用方/TileShape 传入，此处暂以 256 占位（与 MXFP4::L1_P_BUF_SIZE 排布一致）。
@@ -196,7 +196,7 @@ public:
                     l0BTensor[l0BBufId],
                     l1BTensor[l1BBufId],
                     l1BScaleTensor[l1BBufId].template ReinterpretCast<AscendC::fp8_e8m0_t>(),
-                    s2Align64, embedReal, s2Base, 5, s1Act, s1Align16);
+                    s2Align64, embedReal, s2Base, 5, s1Align64);
     }
 
     // [改造] Mmad 改走 tileMmad functor（原裸 MatmulPV 的 AscendC::Mmad 下沉到 TileMmadTla）。
@@ -362,11 +362,11 @@ public:
     //     这里不再 .data() 重包——直收 tla。
     //   [注] 直接实例化 Tile::CopyL0CToUBTla（block 的 TileCopy::CopyL0CToDst 实为 L0C→GM，非 UB）。
     template <class TensorUB>
-    __aicore__ inline void FixpipeMm2(uint32_t s1Align128, uint32_t embedReal, TensorUB &ubOTmpTensor)
+    __aicore__ inline void FixpipeMm2(uint32_t s1Align64, uint32_t embedReal, TensorUB &ubOTmpTensor)
     {
         // L0C tla：rows=D+16（与 MatmulPV 的 mMmad=D+16 一致）→ srcStride=D+16
         auto l0CTensorTla = tla::MakeTensor(l0CTensor[0],
-            tla::MakeLayoutL0C(embedReal + MXFP4::ROW_SUM_PAD_NUM , s1Align128), Arch::PositionL0C{});
+            tla::MakeLayoutL0C(embedReal + MXFP4::ROW_SUM_PAD_NUM , s1Align64), Arch::PositionL0C{});
         // 模板参序 (ArchTag, TensorSrc=L0C, TensorDst=UB, SPLIT_N, NO_QUANT, ReluEnable=false)
         using CopyL0CToDst = Tile::CopyL0CToUBTla<ArchTag, decltype(l0CTensorTla), TensorUB,
                                                    Tile::CopyL0CToUBMode::SPLIT_N,
@@ -387,11 +387,11 @@ public:
     }
 
     template <class TensorUB>
-    __aicore__ inline void FixpipeMm2SingleVect(uint32_t s1Align128, uint32_t embedReal, TensorUB &ubOTmpTensor)
+    __aicore__ inline void FixpipeMm2SingleVect(uint32_t s1Align64, uint32_t embedReal, TensorUB &ubOTmpTensor)
     {
         // L0C tla：rows=D+16（与 MatmulPV 的 mMmad=D+16 一致）→ srcStride=D+16
         auto l0CTensorTla = tla::MakeTensor(l0CTensor[0],
-            tla::MakeLayoutL0C(embedReal + MXFP4::ROW_SUM_PAD_NUM , s1Align128), Arch::PositionL0C{});
+            tla::MakeLayoutL0C(embedReal + MXFP4::ROW_SUM_PAD_NUM , s1Align64), Arch::PositionL0C{});
         // 模板参序 (ArchTag, TensorSrc=L0C, TensorDst=UB, SPLIT_N, NO_QUANT, ReluEnable=false)
         using CopyL0CToDst = Tile::CopyL0CToUBTla<ArchTag, decltype(l0CTensorTla), TensorUB,
                                                    Tile::CopyL0CToUBMode::NO_SPLIT,
@@ -608,7 +608,7 @@ public:
         // [验证] L0A/B bufId 轮转
         // AscendC::printf("[L0-CHK] pvL0abBufId=%u\n", (unsigned)pvL0abBufId);
         // AscendC::printf("[CPY-G2L1] LoadPToL0 \n"); 
-        LoadPToL0(pSlot, l0BBufId,delay20TileInfo.kvsActBaseTileAlign64, embedReal, delay20TaskInfo.qsActBaseTile, delay20TaskInfo.qsActBaseTileAlign16);
+        LoadPToL0(pSlot, l0BBufId,delay20TileInfo.kvsActBaseTileAlign64, embedReal, delay20TaskInfo.qsActBaseTileAlign64);
         // AscendC::printf("[CPY-G2L1] LoadVToL0 \n"); 
         LoadVToL0(l1ABufId, l0ABufId, embedReal, delay20TileInfo.kvsActBaseTileAlign64);
         AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
@@ -616,7 +616,7 @@ public:
         // AscendC::printf("[CPY-G2L1] MatmulPV \n"); 
         // [#1] initC=isTileGoupFirstTile：TileGroup 首 tile 重置 L0C、tile 内累加
 
-        MatmulPV(l0ABufId, l0BBufId, mMmad, delay20TaskInfo.qsActBaseTile, delay20TileInfo.kvsActBaseTileAlign64, delay20TileInfo.isTileGoupFirstTile);
+        MatmulPV(l0ABufId, l0BBufId, mMmad, delay20TaskInfo.qsActBaseTileAlign64, delay20TileInfo.kvsActBaseTileAlign64, delay20TileInfo.isTileGoupFirstTile);
 
         // [#3] Mmad 完成 → 释放 L0A/B 槽给下次（M_MTE1：M→MTE1），轮转
         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
