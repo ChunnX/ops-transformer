@@ -30,6 +30,7 @@ protected:
 TEST_F(AttentionToFFNInferShapeTest, Basic)
 {
     gert::StorageShape xShape = {{1, 16, 7168}, {}};
+    gert::StorageShape contextShape = {{1}, {}};
     gert::StorageShape sessionIdShape = {{1}, {}};
     gert::StorageShape microBatchIdShape = {{1}, {}};
     gert::StorageShape layerIdShape = {{1}, {}};
@@ -38,8 +39,9 @@ TEST_F(AttentionToFFNInferShapeTest, Basic)
     gert::StorageShape scalesShape = {{9, 7168}, {}};
     gert::StorageShape activeMaskShape = {{1, 16}, {}};
 
-    gert::InfershapeContextPara infershapeContextPara("AttentionToFFN",
+    gert::InfershapeContextPara infershapeContextPara("AttentionToFFNV2",
         {
+            {contextShape, ge::DT_INT32, ge::FORMAT_ND},
             {xShape, ge::DT_FLOAT16, ge::FORMAT_ND},
             {sessionIdShape, ge::DT_INT32, ge::FORMAT_ND},
             {microBatchIdShape, ge::DT_INT32, ge::FORMAT_ND},

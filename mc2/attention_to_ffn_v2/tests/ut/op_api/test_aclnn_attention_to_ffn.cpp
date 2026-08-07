@@ -15,7 +15,7 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
-#include "../../../op_api/aclnn_attention_to_ffn.h"
+#include "../../../op_api/aclnn_attention_to_ffn_v2.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
@@ -29,7 +29,7 @@ class AclnnAttentionToFfnTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND910_93);
+        op::SetPlatformSocVersion(op::SocVersion::ASCEND950);
         cout << "AclnnAttentionToFfnTest SetUp" << endl;
     }
 
@@ -43,6 +43,7 @@ protected:
 TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnNoQuant)
 {
     TensorDesc x = TensorDesc({1, 16, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc context = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc sessionId = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc microBatchId = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc layerId = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
@@ -63,7 +64,7 @@ TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnNoQuant)
     int64_t syncFlag = 0;
     int64_t ffnStartRankId = 0;
 
-    auto ut = OP_API_UT(aclnnAttentionToFFN, INPUT(x, sessionId, microBatchId, layerId, expertIds,
+    auto ut = OP_API_UT(aclnnAttentionToFFNV2, INPUT(context, x, sessionId, microBatchId, layerId, expertIds,
     expertRankTable, nullptr, activeMask, group, worldSize, ffnTokenInfoTableShape, ffnTokenDataShape,
     attnTokenInfoTableShape, moeExpertNum, quantMode, syncFlag, ffnStartRankId), OUTPUT());
     uint64_t workspaceSize = 0;
@@ -75,6 +76,7 @@ TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnNoQuant)
 TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnQuant)
 {
     TensorDesc x = TensorDesc({1, 16, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc context = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc sessionId = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc microBatchId = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc layerId = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
@@ -95,7 +97,7 @@ TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnQuant)
     int64_t syncFlag = 0;
     int64_t ffnStartRankId = 0;
 
-    auto ut = OP_API_UT(aclnnAttentionToFFN, INPUT(x, sessionId, microBatchId, layerId, expertIds,
+    auto ut = OP_API_UT(aclnnAttentionToFFNV2, INPUT(context, x, sessionId, microBatchId, layerId, expertIds,
     expertRankTable, scales, activeMask, group, worldSize, ffnTokenInfoTableShape, ffnTokenDataShape, 
     attnTokenInfoTableShape, moeExpertNum,quantMode, syncFlag, ffnStartRankId), OUTPUT());
     uint64_t workspaceSize = 0;

@@ -9,16 +9,21 @@
  */
 
 /*!
- * \file attention_to_ffn_def.cpp
+ * \file attention_to_ffn_v2_def.cpp
  * \brief
  */
 
 #include "register/op_def_registry.h"
 
 namespace ops {
-class AttentionToFFN : public OpDef {
+class AttentionToFFNV2 : public OpDef {
 public:
-    explicit AttentionToFFN(const char *name) : OpDef(name) {
+    explicit AttentionToFFNV2(const char *name) : OpDef(name) {
+        this->Input("context")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
@@ -69,20 +74,6 @@ public:
         this->Attr("sync_flag").AttrType(OPTIONAL).Int();
         this->Attr("ffn_start_rank_id").AttrType(OPTIONAL).Int();
     
-        // _a3 entry (arch22/attention_to_ffn_a3.cpp).
-        OpAICoreConfig aicore_config_a3;
-        aicore_config_a3.DynamicCompileStaticFlag(true)
-            .DynamicFormatFlag(true)
-            .DynamicRankSupportFlag(true)
-            .DynamicShapeSupportFlag(true)
-            .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true)
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
-            .ExtendCfgInfo("jitCompile.flag", "static_true")
-            .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
-            .ExtendCfgInfo("opFile.value", "attention_to_ffn_a3");
-
-        // _apt entry (arch35/attention_to_ffn_apt.cpp).
         OpAICoreConfig aicore_config_apt;
         aicore_config_apt.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
@@ -92,14 +83,11 @@ public:
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
             .ExtendCfgInfo("jitCompile.flag", "static_true")
-            .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
-            .ExtendCfgInfo("opFile.value", "attention_to_ffn_apt");
+            .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
 
-        this->AICore().AddConfig("ascend910_93", aicore_config_a3);
         this->AICore().AddConfig("ascend950", aicore_config_apt);
-        this->MC2().HcclGroup({"group"});
     }
 };
 
-OP_ADD(AttentionToFFN);
+OP_ADD(AttentionToFFNV2);
 }  // namespace ops

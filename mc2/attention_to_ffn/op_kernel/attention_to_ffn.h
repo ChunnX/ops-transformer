@@ -27,9 +27,11 @@
 #include "attention_to_ffn_tiling.h"
 #if __has_include("../common/moe_distribute_base.h")
 #include "../common/moe_distribute_base.h"
+#include "../common/attention_ffn_context.h"
 #include "../common/mc2_kernel_utils.h"
 #else
 #include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/attention_ffn_context.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
@@ -50,17 +52,23 @@ constexpr uint32_t TOKEN_INFO_TABLE_COPY_BLOCK_CNT = 2; // tokenInfoTable在Data
 constexpr float INT8_MAX_VALUE = 127.0f;
 
 
-#define TemplateAttentionToFFNTypeClass typename XType, bool isQuant, bool isSync, bool isActiveMask
-#define TemplateAttentionToFFNTypeFunc XType, isQuant, isSync, isActiveMask
+enum class AttentionToFFNContextType : uint8_t {
+    HCCL_CONTEXT = 0,
+    MC2_CONTEXT = 1,
+};
+
+#define TemplateAttentionToFFNTypeClass                                                                             \
+    typename XType, bool isQuant, bool isSync, bool isActiveMask, AttentionToFFNContextType contextType
+#define TemplateAttentionToFFNTypeFunc XType, isQuant, isSync, isActiveMask, contextType
 
 using namespace AscendC;
 template <TemplateAttentionToFFNTypeClass>
 class AttentionToFFN {
 public:
     __aicore__ inline AttentionToFFN(){};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId, GM_ADDR layerId, GM_ADDR expertIds,
-                                GM_ADDR expertRankTable, GM_ADDR scales, GM_ADDR active_mask, GM_ADDR workspaceGM,
-                                TPipe *pipe, const AttentionToFFNTilingData *tilingData);
+    __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId, GM_ADDR layerId,
+                                GM_ADDR expertIds, GM_ADDR expertRankTable, GM_ADDR scales, GM_ADDR active_mask,
+                                GM_ADDR workspaceGM, TPipe *pipe, const AttentionToFFNTilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
@@ -77,6 +85,8 @@ private:
     __aicore__ inline void SetFlagInAttn();
     __aicore__ inline void FindExpertRank(int32_t expertId);
     __aicore__ inline void SetExpertAndRank(uint32_t tokenIdx, uint32_t tokenId, uint32_t topkId);
+    __aicore__ inline GM_ADDR GetWindowAddr(uint32_t rankId);
+    __aicore__ inline GM_ADDR GetLocalWindowAddr();
     __aicore__ inline void CheckFlagAndSetTableGM(int32_t toRankId, GM_ADDR &toRankAddr,
                                                   GlobalTensor<int32_t> &tokenInfoTableGMTensor);
     TPipe *tpipe_{nullptr};
@@ -161,7 +171,8 @@ private:
     uint32_t aivWorkspaceOffset_{0};
     uint8_t windowType_{0};
     uint8_t sharedExpertNum_{1};
-    __gm__ HcclOpResParam *winContext_{nullptr};
+    __gm__ HcclOpResParam *hcclContext_{nullptr};
+    __gm__ Mc2Aclnn::AttentionFFNContext *mc2Context_{nullptr};
 };
 
 template <TemplateAttentionToFFNTypeClass>
@@ -184,9 +195,11 @@ __aicore__ inline void
 AttentionToFFN<TemplateAttentionToFFNTypeFunc>::InitByTinglingData(const AttentionToFFNTilingData *tilingData)
 {
     aivId_ = GetBlockIdx();
-    auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    winContext_ = (__gm__ HcclOpResParam *)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    rankId_ = winContext_->localUsrRankId;
+    if constexpr (contextType == AttentionToFFNContextType::HCCL_CONTEXT) {
+        rankId_ = hcclContext_->localUsrRankId;
+    } else {
+        rankId_ = mc2Context_->epRankId;
+    }
     axisX_ = tilingData->attentionToFFNInfo.X;
     axisBS_ = tilingData->attentionToFFNInfo.BS;
     axisH_ = tilingData->attentionToFFNInfo.H;
@@ -218,10 +231,16 @@ AttentionToFFN<TemplateAttentionToFFNTypeFunc>::InitByTinglingData(const Attenti
 
 template <TemplateAttentionToFFNTypeClass>
 __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::Init(
-    GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId, GM_ADDR layerId, GM_ADDR expertIds, GM_ADDR expertRankTable,
-    GM_ADDR scales, GM_ADDR activeMask, GM_ADDR workspaceGM, TPipe *pipe, const AttentionToFFNTilingData *tilingData)
+    GM_ADDR context, GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId, GM_ADDR layerId, GM_ADDR expertIds,
+    GM_ADDR expertRankTable, GM_ADDR scales, GM_ADDR activeMask, GM_ADDR workspaceGM, TPipe *pipe,
+    const AttentionToFFNTilingData *tilingData)
 {
     tpipe_ = pipe;
+    if constexpr (contextType == AttentionToFFNContextType::HCCL_CONTEXT) {
+        hcclContext_ = reinterpret_cast<__gm__ HcclOpResParam *>(context);
+    } else {
+        mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::AttentionFFNContext *>(context);
+    }
     InitByTinglingData(tilingData);
 
     xGMTensor_.SetGlobalBuffer((__gm__ XType *)x);
@@ -415,15 +434,34 @@ AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SetExpertAndRank(uint32_t tokenI
 }
 
 template <TemplateAttentionToFFNTypeClass>
+__aicore__ inline GM_ADDR AttentionToFFN<TemplateAttentionToFFNTypeFunc>::GetWindowAddr(uint32_t rankId)
+{
+    if constexpr (contextType == AttentionToFFNContextType::MC2_CONTEXT) {
+        return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId];
+    } else {
+        if (hcclContext_->userMemType == 0) {
+            return (GM_ADDR)(((HcclRankRelationResV2 *)(hcclContext_->remoteRes[rankId].nextDevicePtr))->windowsIn);
+        }
+        return (GM_ADDR)(__gm__ uint8_t *)(hcclContext_->userMemRes[rankId].addr);
+    }
+}
+
+template <TemplateAttentionToFFNTypeClass>
+__aicore__ inline GM_ADDR AttentionToFFN<TemplateAttentionToFFNTypeFunc>::GetLocalWindowAddr()
+{
+    if constexpr (contextType == AttentionToFFNContextType::MC2_CONTEXT) {
+        return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId_];
+    } else {
+        return (GM_ADDR)hcclContext_->localWindowsIn;
+    }
+}
+
+template <TemplateAttentionToFFNTypeClass>
 __aicore__ inline void
 AttentionToFFN<TemplateAttentionToFFNTypeFunc>::CheckFlagAndSetTableGM(int32_t toRankId, GM_ADDR &toRankAddr,
                                                                        GlobalTensor<int32_t> &tokenInfoTableGMTensor)
 {
-    if (winContext_->userMemType == 0) {
-        toRankAddr = (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_->remoteRes[toRankId].nextDevicePtr))->windowsIn);
-    } else {
-        toRankAddr = (GM_ADDR)(__gm__ uint8_t *)(winContext_->userMemRes[toRankId].addr);
-    }
+    toRankAddr = GetWindowAddr(toRankId);
     GM_ADDR tokenInfoTable = (__gm__ uint8_t *)(toRankAddr + winInfoTableOffset_);
     tokenInfoTableGMTensor.SetGlobalBuffer((__gm__ int32_t *)tokenInfoTable);
 
@@ -580,12 +618,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SetFlagTo
                 continue;
             }
         }
-        if (winContext_->userMemType == 0) {
-            toRankAddr =
-                (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_->remoteRes[ffnIdx].nextDevicePtr))->windowsIn);
-        } else {
-            toRankAddr = (GM_ADDR)(winContext_->userMemRes[ffnIdx].addr);
-        }
+        toRankAddr = GetWindowAddr(ffnIdx);
         GM_ADDR tableFlagGM = (__gm__ uint8_t *)(toRankAddr + winInfoTableOffset_);
         tableFlagGMTensor.SetGlobalBuffer((__gm__ int32_t *)tableFlagGM);
         if (ffnIdx == startFFNId) {
@@ -614,7 +647,7 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNTypeFunc>::SetFlagIn
     uint64_t sendMaskTokenCnt = curBsCnt_ * (axisK_ + sharedExpertNum_);
     uint64_t attnTokenInfoTableOffset =
         (microBatchId_ * axisBS_ * (axisK_ + sharedExpertNum_) + sendMaskTokenCnt) * sizeof(int32_t);
-    GM_ADDR selfRankAddr = (GM_ADDR)(winContext_->localWindowsIn);
+    GM_ADDR selfRankAddr = GetLocalWindowAddr();
     GM_ADDR attnTokenInfoTableGM = (__gm__ uint8_t *)(selfRankAddr + attnTokenInfoTableOffset);
     GlobalTensor<int32_t> attnTableGMTensor;
     attnTableGMTensor.SetGlobalBuffer((__gm__ int32_t *)attnTokenInfoTableGM);

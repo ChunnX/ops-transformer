@@ -33,6 +33,7 @@
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "mc2_hcom_topo_info.h"
+#include "attention_to_ffn_tiling_base.h"
 #include "../../op_kernel/attention_to_ffn_tiling.h"
 #include "../../op_kernel/attention_to_ffn_tiling_key.h"
 
@@ -42,25 +43,6 @@ using namespace Mc2Tiling;
 
 namespace MC2Tiling {
 constexpr char ATTN_TO_FFN_WIN_TYPE_ENV[] = "ASCEND_ATTN_TO_FFN_WIN_TYPE";
-
-constexpr uint32_t INPUT_X_INDEX = 0;
-constexpr uint32_t INPUT_SESSION_IDS_INDEX = 1;
-constexpr uint32_t INPUT_MICRO_BATCH_IDS_INDEX = 2;
-constexpr uint32_t INPUT_LAYER_IDS_INDEX = 3;
-constexpr uint32_t INPUT_EXPERT_IDS_INDEX = 4;
-constexpr uint32_t INPUT_EXPERT_RANK_TABLE_INDEX = 5;
-constexpr uint32_t INPUT_SCALES_INDEX = 6;
-constexpr uint32_t INPUT_ACTIVE_MASK_INDEX = 7;
-
-constexpr uint32_t ATTR_GROUP_INDEX = 0;
-constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1;
-constexpr uint32_t ATTR_FFN_TOKEN_INFO_TABLE_SHAPE_INDEX = 2;
-constexpr uint32_t ATTR_FFN_TOKEN_DATA_SHAPE = 3;
-constexpr uint32_t ATTR_ATTN_TOKEN_INFO_TABLE_SHAPE_INDEX = 4;
-constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 5;
-constexpr uint32_t ATTR_QUANT_MODE_INDEX = 6;
-constexpr uint32_t ATTR_SYNC_FLAG_INDEX = 7;
-constexpr uint32_t ATTR_FFN_START_RANK_INDEX = 8;
 
 constexpr uint32_t INDEX_TWO = 2;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
@@ -120,17 +102,18 @@ static void PrintTilingDataInfo(AttentionToFFNTilingData &tilingData)
     OP_LOGD(ATTN_FFN_INNER_DEBUG, "totalWinSize is %lu.", tilingData.attentionToFFNInfo.totalWinSize);
 }
 
-static bool CheckAndSetShapeAttrs(gert::TilingContext *context, AttentionToFFNTilingData &tilingData)
+static bool CheckAndSetShapeAttrs(gert::TilingContext *context, AttentionToFFNTilingData &tilingData,
+                                  const AttentionToFFNTilingConfig &config)
 {
     auto attrs = context->GetAttrs();
-    auto worldSizePtr = attrs->GetAttrPointer<int>(ATTR_WORLD_SIZE_INDEX);
-    auto ffnTokenInfoTableDimNum = attrs->GetListInt(ATTR_FFN_TOKEN_INFO_TABLE_SHAPE_INDEX)->GetSize();
-    auto ffnTokenDataDimNum = attrs->GetListInt(ATTR_FFN_TOKEN_DATA_SHAPE)->GetSize();
-    auto attnTokenDataDimNum = attrs->GetListInt(ATTR_ATTN_TOKEN_INFO_TABLE_SHAPE_INDEX)->GetSize();
-    auto ffnTokenInfoTableShape = attrs->GetListInt(ATTR_FFN_TOKEN_INFO_TABLE_SHAPE_INDEX)->GetData();
-    auto ffnTokenDataShape = attrs->GetListInt(ATTR_FFN_TOKEN_DATA_SHAPE)->GetData();
-    auto attnTokenDataShape = attrs->GetListInt(ATTR_ATTN_TOKEN_INFO_TABLE_SHAPE_INDEX)->GetData();
-    const gert::StorageShape *xShape = context->GetInputShape(INPUT_X_INDEX);
+    auto worldSizePtr = attrs->GetAttrPointer<int>(config.attrWorldSizeIndex);
+    auto ffnTokenInfoTableDimNum = attrs->GetListInt(config.attrFfnTokenInfoTableShapeIndex)->GetSize();
+    auto ffnTokenDataDimNum = attrs->GetListInt(config.attrFfnTokenDataShapeIndex)->GetSize();
+    auto attnTokenDataDimNum = attrs->GetListInt(config.attrAttnTokenInfoTableShapeIndex)->GetSize();
+    auto ffnTokenInfoTableShape = attrs->GetListInt(config.attrFfnTokenInfoTableShapeIndex)->GetData();
+    auto ffnTokenDataShape = attrs->GetListInt(config.attrFfnTokenDataShapeIndex)->GetData();
+    auto attnTokenDataShape = attrs->GetListInt(config.attrAttnTokenInfoTableShapeIndex)->GetData();
+    const gert::StorageShape *xShape = context->GetInputShape(config.xIndex);
     int32_t bs = xShape->GetStorageShape().GetDim(1);
 
     OP_TILING_CHECK(ffnTokenInfoTableDimNum != DIM3,
@@ -198,17 +181,18 @@ static bool CheckAndSetShapeAttrs(gert::TilingContext *context, AttentionToFFNTi
     return true;
 }
 
-static bool CheckAndSetAttrs(gert::TilingContext *context, AttentionToFFNTilingData &tilingData, std::string &group)
+static bool CheckAndSetAttrs(gert::TilingContext *context, AttentionToFFNTilingData &tilingData, std::string &group,
+                             const AttentionToFFNTilingConfig &config)
 {
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "attrs"), return false);
 
-    auto groupPtr = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
-    auto worldSizePtr = attrs->GetAttrPointer<int>(ATTR_WORLD_SIZE_INDEX);
-    auto quantModePtr = attrs->GetAttrPointer<int>(ATTR_QUANT_MODE_INDEX);
-    auto syncFlagPtr = attrs->GetAttrPointer<int>(ATTR_SYNC_FLAG_INDEX);
-    auto ffnStartRankIdPtr = attrs->GetAttrPointer<int>(ATTR_FFN_START_RANK_INDEX);
-    auto moeExpertNumPtr = attrs->GetAttrPointer<int>(ATTR_MOE_EXPERT_NUM_INDEX);
+    auto groupPtr = attrs->GetAttrPointer<char>(config.attrGroupIndex);
+    auto worldSizePtr = attrs->GetAttrPointer<int>(config.attrWorldSizeIndex);
+    auto quantModePtr = attrs->GetAttrPointer<int>(config.attrQuantModeIndex);
+    auto syncFlagPtr = attrs->GetAttrPointer<int>(config.attrSyncFlagIndex);
+    auto ffnStartRankIdPtr = attrs->GetAttrPointer<int>(config.attrFfnStartRankIdIndex);
+    auto moeExpertNumPtr = attrs->GetAttrPointer<int>(config.attrMoeExpertNumIndex);
     uint32_t moeExpertNum = *moeExpertNumPtr;
     uint32_t worldSize = *worldSizePtr;
 
@@ -249,7 +233,7 @@ static bool CheckAndSetAttrs(gert::TilingContext *context, AttentionToFFNTilingD
             (std::string("[") + std::to_string(MIN_WORLD_SIZE) + ", " + std::to_string(MAX_WORLD_SIZE) + "]").c_str()),
         return false);
 
-    OP_TILING_CHECK(!CheckAndSetShapeAttrs(context, tilingData),
+    OP_TILING_CHECK(!CheckAndSetShapeAttrs(context, tilingData, config),
                     OP_LOGE(ATTN_FFN_INNER_DEBUG, "Check and set shape list attrs failed!"), return false);
 
     tilingData.attentionToFFNInfo.moeExpertNum = static_cast<uint32_t>(moeExpertNum);
@@ -330,60 +314,61 @@ static void InitTilingDataByExpert(AttentionToFFNTilingData &tilingData, const i
     tilingData.attentionToFFNInfo.sharedExpertNum = expertRankTableDim1 - tilingData.attentionToFFNInfo.moeExpertNum;
 }
 
-static bool CheckTensorDataType(gert::TilingContext *context, const bool isScales, const bool isActiveMask)
+static bool CheckTensorDataType(gert::TilingContext *context, const bool isScales, const bool isActiveMask,
+                                const AttentionToFFNTilingConfig &config)
 {
-    OP_TILING_CHECK(context->GetInputDesc(INPUT_X_INDEX) == nullptr,
+    OP_TILING_CHECK(context->GetInputDesc(config.xIndex) == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "xDesc"), return false);
-    auto xDesc = context->GetInputDesc(INPUT_X_INDEX);
+    auto xDesc = context->GetInputDesc(config.xIndex);
     OP_TILING_CHECK((xDesc->GetDataType() != ge::DT_BF16) && (xDesc->GetDataType() != ge::DT_FLOAT16),
                     OP_LOGE_FOR_INVALID_DTYPE(ATTN_FFN_INNER_DEBUG, "x",
                                               Ops::Base::ToString(xDesc->GetDataType()).c_str(), "FLOAT16, BF16"),
                     return false);
 
-    OP_TILING_CHECK(context->GetInputDesc(INPUT_SESSION_IDS_INDEX) == nullptr,
+    OP_TILING_CHECK(context->GetInputDesc(config.sessionIdIndex) == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "sessionIdDesc"), return false);
-    auto sessionIdDesc = context->GetInputDesc(INPUT_SESSION_IDS_INDEX);
+    auto sessionIdDesc = context->GetInputDesc(config.sessionIdIndex);
     OP_TILING_CHECK(sessionIdDesc->GetDataType() != ge::DT_INT32,
                     OP_LOGE_FOR_INVALID_DTYPE(ATTN_FFN_INNER_DEBUG, "session_id",
                                               Ops::Base::ToString(sessionIdDesc->GetDataType()).c_str(), "INT32"),
                     return false);
 
-    OP_TILING_CHECK(context->GetInputDesc(INPUT_MICRO_BATCH_IDS_INDEX) == nullptr,
+    OP_TILING_CHECK(context->GetInputDesc(config.microBatchIdIndex) == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "microBatchIdDesc"), return false);
-    auto microBatchIdDesc = context->GetInputDesc(INPUT_MICRO_BATCH_IDS_INDEX);
+    auto microBatchIdDesc = context->GetInputDesc(config.microBatchIdIndex);
     OP_TILING_CHECK(microBatchIdDesc->GetDataType() != ge::DT_INT32,
                     OP_LOGE_FOR_INVALID_DTYPE(ATTN_FFN_INNER_DEBUG, "micro_batch_id",
                                               Ops::Base::ToString(microBatchIdDesc->GetDataType()).c_str(), "INT32"),
                     return false);
 
-    OP_TILING_CHECK(context->GetInputDesc(INPUT_LAYER_IDS_INDEX) == nullptr,
+    OP_TILING_CHECK(context->GetInputDesc(config.layerIdIndex) == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "layerIdDesc"), return false);
-    auto layerIdDesc = context->GetInputDesc(INPUT_LAYER_IDS_INDEX);
+    auto layerIdDesc = context->GetInputDesc(config.layerIdIndex);
     OP_TILING_CHECK(layerIdDesc->GetDataType() != ge::DT_INT32,
                     OP_LOGE_FOR_INVALID_DTYPE(ATTN_FFN_INNER_DEBUG, "layer_id",
                                               Ops::Base::ToString(layerIdDesc->GetDataType()).c_str(), "INT32"),
                     return false);
 
-    OP_TILING_CHECK(context->GetInputDesc(INPUT_EXPERT_IDS_INDEX) == nullptr,
+    OP_TILING_CHECK(context->GetInputDesc(config.expertIdsIndex) == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expertIdDesc"), return false);
-    auto expertIdDesc = context->GetInputDesc(INPUT_EXPERT_IDS_INDEX);
+    auto expertIdDesc = context->GetInputDesc(config.expertIdsIndex);
     OP_TILING_CHECK(expertIdDesc->GetDataType() != ge::DT_INT32,
                     OP_LOGE_FOR_INVALID_DTYPE(ATTN_FFN_INNER_DEBUG, "expert_ids",
                                               Ops::Base::ToString(expertIdDesc->GetDataType()).c_str(), "INT32"),
                     return false);
 
-    OP_TILING_CHECK(context->GetInputDesc(INPUT_EXPERT_RANK_TABLE_INDEX) == nullptr,
+    OP_TILING_CHECK(context->GetInputDesc(config.expertRankTableIndex) == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expertRankTableDesc"), return false);
-    auto expertRankTableDesc = context->GetInputDesc(INPUT_EXPERT_RANK_TABLE_INDEX);
+    auto expertRankTableDesc = context->GetInputDesc(config.expertRankTableIndex);
     OP_TILING_CHECK(expertRankTableDesc->GetDataType() != ge::DT_INT32,
                     OP_LOGE_FOR_INVALID_DTYPE(ATTN_FFN_INNER_DEBUG, "expert_rank_table",
                                               Ops::Base::ToString(expertRankTableDesc->GetDataType()).c_str(), "INT32"),
                     return false);
 
     if (isScales) {
-        OP_TILING_CHECK(context->GetOptionalInputDesc(INPUT_SCALES_INDEX) == nullptr,
+        OP_TILING_CHECK(context->GetOptionalInputDesc(config.scalesIndex) == nullptr,
                         OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "scalesDesc"), return false);
-        auto scalesDesc = context->GetOptionalInputDesc(INPUT_SCALES_INDEX);
+        auto scalesDesc = context->GetOptionalInputDesc(config.scalesIndex);
         OP_TILING_CHECK(scalesDesc->GetDataType() != ge::DT_FLOAT,
                         OP_LOGE_FOR_INVALID_DTYPE(ATTN_FFN_INNER_DEBUG, "scales",
                                                   Ops::Base::ToString(scalesDesc->GetDataType()).c_str(), "FLOAT"),
@@ -391,9 +376,9 @@ static bool CheckTensorDataType(gert::TilingContext *context, const bool isScale
     }
 
     if (isActiveMask) {
-        OP_TILING_CHECK(context->GetOptionalInputDesc(INPUT_ACTIVE_MASK_INDEX) == nullptr,
+        OP_TILING_CHECK(context->GetOptionalInputDesc(config.activeMaskIndex) == nullptr,
                         OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "activeMaskDesc"), return false);
-        auto activeMaskDesc = context->GetOptionalInputDesc(INPUT_ACTIVE_MASK_INDEX);
+        auto activeMaskDesc = context->GetOptionalInputDesc(config.activeMaskIndex);
         OP_TILING_CHECK(activeMaskDesc->GetDataType() != ge::DT_BOOL,
                         OP_LOGE_FOR_INVALID_DTYPE(ATTN_FFN_INNER_DEBUG, "active_mask",
                                                   Ops::Base::ToString(activeMaskDesc->GetDataType()).c_str(), "BOOL"),
@@ -403,11 +388,12 @@ static bool CheckTensorDataType(gert::TilingContext *context, const bool isScale
     return true;
 }
 
-static bool CheckTensorFormat(gert::TilingContext *context, const bool isScales, const bool isActiveMask)
+static bool CheckTensorFormat(gert::TilingContext *context, const bool isScales, const bool isActiveMask,
+                              const AttentionToFFNTilingConfig &config)
 {
-    OP_TILING_CHECK(context->GetInputDesc(INPUT_X_INDEX) == nullptr,
+    OP_TILING_CHECK(context->GetInputDesc(config.xIndex) == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "xDesc"), return false);
-    auto xDesc = context->GetInputDesc(INPUT_X_INDEX);
+    auto xDesc = context->GetInputDesc(config.xIndex);
     OP_TILING_CHECK(
         static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
         OP_LOGE_FOR_INVALID_FORMAT(
@@ -416,9 +402,9 @@ static bool CheckTensorFormat(gert::TilingContext *context, const bool isScales,
             "ND"),
         return false);
 
-    OP_TILING_CHECK(context->GetInputDesc(INPUT_SESSION_IDS_INDEX) == nullptr,
+    OP_TILING_CHECK(context->GetInputDesc(config.sessionIdIndex) == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "sessionIdDesc"), return false);
-    auto sessionIdDesc = context->GetInputDesc(INPUT_SESSION_IDS_INDEX);
+    auto sessionIdDesc = context->GetInputDesc(config.sessionIdIndex);
     OP_TILING_CHECK(
         static_cast<ge::Format>(ge::GetPrimaryFormat(sessionIdDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
         OP_LOGE_FOR_INVALID_FORMAT(
@@ -428,9 +414,9 @@ static bool CheckTensorFormat(gert::TilingContext *context, const bool isScales,
             "ND"),
         return false);
 
-    OP_TILING_CHECK(context->GetInputDesc(INPUT_MICRO_BATCH_IDS_INDEX) == nullptr,
+    OP_TILING_CHECK(context->GetInputDesc(config.microBatchIdIndex) == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "microBatchIdDesc"), return false);
-    auto microBatchIdDesc = context->GetInputDesc(INPUT_MICRO_BATCH_IDS_INDEX);
+    auto microBatchIdDesc = context->GetInputDesc(config.microBatchIdIndex);
     OP_TILING_CHECK(
         static_cast<ge::Format>(ge::GetPrimaryFormat(microBatchIdDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
         OP_LOGE_FOR_INVALID_FORMAT(
@@ -440,9 +426,9 @@ static bool CheckTensorFormat(gert::TilingContext *context, const bool isScales,
             "ND"),
         return false);
 
-    OP_TILING_CHECK(context->GetInputDesc(INPUT_LAYER_IDS_INDEX) == nullptr,
+    OP_TILING_CHECK(context->GetInputDesc(config.layerIdIndex) == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "layerIdDesc"), return false);
-    auto layerIdDesc = context->GetInputDesc(INPUT_LAYER_IDS_INDEX);
+    auto layerIdDesc = context->GetInputDesc(config.layerIdIndex);
     OP_TILING_CHECK(
         static_cast<ge::Format>(ge::GetPrimaryFormat(layerIdDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
         OP_LOGE_FOR_INVALID_FORMAT(
@@ -451,9 +437,9 @@ static bool CheckTensorFormat(gert::TilingContext *context, const bool isScales,
             "ND"),
         return false);
 
-    OP_TILING_CHECK(context->GetInputDesc(INPUT_EXPERT_IDS_INDEX) == nullptr,
+    OP_TILING_CHECK(context->GetInputDesc(config.expertIdsIndex) == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expertIdDesc"), return false);
-    auto expertIdDesc = context->GetInputDesc(INPUT_EXPERT_IDS_INDEX);
+    auto expertIdDesc = context->GetInputDesc(config.expertIdsIndex);
     OP_TILING_CHECK(
         static_cast<ge::Format>(ge::GetPrimaryFormat(expertIdDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
         OP_LOGE_FOR_INVALID_FORMAT(
@@ -463,9 +449,9 @@ static bool CheckTensorFormat(gert::TilingContext *context, const bool isScales,
             "ND"),
         return false);
 
-    OP_TILING_CHECK(context->GetInputDesc(INPUT_EXPERT_RANK_TABLE_INDEX) == nullptr,
+    OP_TILING_CHECK(context->GetInputDesc(config.expertRankTableIndex) == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expertRankTableDesc"), return false);
-    auto expertRankTableDesc = context->GetInputDesc(INPUT_EXPERT_RANK_TABLE_INDEX);
+    auto expertRankTableDesc = context->GetInputDesc(config.expertRankTableIndex);
     OP_TILING_CHECK(
         static_cast<ge::Format>(ge::GetPrimaryFormat(expertRankTableDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
         OP_LOGE_FOR_INVALID_FORMAT(
@@ -476,9 +462,9 @@ static bool CheckTensorFormat(gert::TilingContext *context, const bool isScales,
         return false);
 
     if (isScales) {
-        OP_TILING_CHECK(context->GetOptionalInputDesc(INPUT_SCALES_INDEX) == nullptr,
+        OP_TILING_CHECK(context->GetOptionalInputDesc(config.scalesIndex) == nullptr,
                         OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "scalesDesc"), return false);
-        auto scalesDesc = context->GetOptionalInputDesc(INPUT_SCALES_INDEX);
+        auto scalesDesc = context->GetOptionalInputDesc(config.scalesIndex);
         OP_TILING_CHECK(
             static_cast<ge::Format>(ge::GetPrimaryFormat(scalesDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
             OP_LOGE_FOR_INVALID_FORMAT(
@@ -490,9 +476,9 @@ static bool CheckTensorFormat(gert::TilingContext *context, const bool isScales,
     }
 
     if (isActiveMask) {
-        OP_TILING_CHECK(context->GetOptionalInputDesc(INPUT_ACTIVE_MASK_INDEX) == nullptr,
+        OP_TILING_CHECK(context->GetOptionalInputDesc(config.activeMaskIndex) == nullptr,
                         OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "activeMaskDesc"), return false);
-        auto activeMaskDesc = context->GetOptionalInputDesc(INPUT_ACTIVE_MASK_INDEX);
+        auto activeMaskDesc = context->GetOptionalInputDesc(config.activeMaskIndex);
         OP_TILING_CHECK(
             static_cast<ge::Format>(ge::GetPrimaryFormat(activeMaskDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
             OP_LOGE_FOR_INVALID_FORMAT(
@@ -506,9 +492,10 @@ static bool CheckTensorFormat(gert::TilingContext *context, const bool isScales,
     return true;
 }
 
-static bool CheckTensorDim(gert::TilingContext *context, const bool isScales, const bool isActiveMask)
+static bool CheckTensorDim(gert::TilingContext *context, const bool isScales, const bool isActiveMask,
+                           const AttentionToFFNTilingConfig &config)
 {
-    const gert::StorageShape *xStorageShape = context->GetInputShape(INPUT_X_INDEX);
+    const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
     OP_TILING_CHECK(xStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "x"), return false);
     OP_TILING_CHECK(xStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
                     OP_LOGE_FOR_INVALID_SHAPEDIM(
@@ -516,7 +503,7 @@ static bool CheckTensorDim(gert::TilingContext *context, const bool isScales, co
                         (std::to_string(xStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "3D"),
                     return false);
 
-    const gert::StorageShape *sessionIdStorageShape = context->GetInputShape(INPUT_SESSION_IDS_INDEX);
+    const gert::StorageShape *sessionIdStorageShape = context->GetInputShape(config.sessionIdIndex);
     OP_TILING_CHECK(sessionIdStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "session_id"),
                     return false);
     OP_TILING_CHECK(sessionIdStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
@@ -525,7 +512,7 @@ static bool CheckTensorDim(gert::TilingContext *context, const bool isScales, co
                         (std::to_string(sessionIdStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
                     return false);
 
-    const gert::StorageShape *microBatchIdStorageShape = context->GetInputShape(INPUT_MICRO_BATCH_IDS_INDEX);
+    const gert::StorageShape *microBatchIdStorageShape = context->GetInputShape(config.microBatchIdIndex);
     OP_TILING_CHECK(microBatchIdStorageShape == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "micro_batch_id"), return false);
     OP_TILING_CHECK(microBatchIdStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
@@ -534,7 +521,7 @@ static bool CheckTensorDim(gert::TilingContext *context, const bool isScales, co
                         (std::to_string(microBatchIdStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
                     return false);
 
-    const gert::StorageShape *layerIdStorageShape = context->GetInputShape(INPUT_LAYER_IDS_INDEX);
+    const gert::StorageShape *layerIdStorageShape = context->GetInputShape(config.layerIdIndex);
     OP_TILING_CHECK(layerIdStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "layer_id"),
                     return false);
     OP_TILING_CHECK(layerIdStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
@@ -543,7 +530,7 @@ static bool CheckTensorDim(gert::TilingContext *context, const bool isScales, co
                         (std::to_string(layerIdStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
                     return false);
 
-    const gert::StorageShape *expertIdStorageShape = context->GetInputShape(INPUT_EXPERT_IDS_INDEX);
+    const gert::StorageShape *expertIdStorageShape = context->GetInputShape(config.expertIdsIndex);
     OP_TILING_CHECK(expertIdStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expert_ids"),
                     return false);
     OP_TILING_CHECK(expertIdStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
@@ -552,7 +539,7 @@ static bool CheckTensorDim(gert::TilingContext *context, const bool isScales, co
                         (std::to_string(expertIdStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "3D"),
                     return false);
 
-    const gert::StorageShape *expertRankTableStorageShape = context->GetInputShape(INPUT_EXPERT_RANK_TABLE_INDEX);
+    const gert::StorageShape *expertRankTableStorageShape = context->GetInputShape(config.expertRankTableIndex);
     OP_TILING_CHECK(expertRankTableStorageShape == nullptr,
                     OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "expert_rank_table"), return false);
     OP_TILING_CHECK(expertRankTableStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
@@ -563,7 +550,7 @@ static bool CheckTensorDim(gert::TilingContext *context, const bool isScales, co
                     return false);
 
     if (isScales) {
-        const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(INPUT_SCALES_INDEX);
+        const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(config.scalesIndex);
         OP_TILING_CHECK(scalesStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "scales"),
                         return false);
         OP_TILING_CHECK(scalesStorageShape->GetStorageShape().GetDimNum() != THREE_DIMS,
@@ -574,7 +561,7 @@ static bool CheckTensorDim(gert::TilingContext *context, const bool isScales, co
     }
 
     if (isActiveMask) {
-        const gert::StorageShape *activeMaskStorageShape = context->GetOptionalInputShape(INPUT_ACTIVE_MASK_INDEX);
+        const gert::StorageShape *activeMaskStorageShape = context->GetOptionalInputShape(config.activeMaskIndex);
         OP_TILING_CHECK(activeMaskStorageShape == nullptr,
                         OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "active_mask"), return false);
         OP_TILING_CHECK(activeMaskStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
@@ -589,14 +576,15 @@ static bool CheckTensorDim(gert::TilingContext *context, const bool isScales, co
 }
 
 static bool CheckTensorShapeAndSetTinglingData(gert::TilingContext *context, AttentionToFFNTilingData &tilingData,
-                                               const bool isScales, const bool isActiveMask)
+                                                const bool isScales, const bool isActiveMask,
+                                                const AttentionToFFNTilingConfig &config)
 {
-    const gert::StorageShape *xStorageShape = context->GetInputShape(INPUT_X_INDEX);
-    const gert::StorageShape *sessionIdStorageShape = context->GetInputShape(INPUT_SESSION_IDS_INDEX);
-    const gert::StorageShape *microBatchIdStorageShape = context->GetInputShape(INPUT_MICRO_BATCH_IDS_INDEX);
-    const gert::StorageShape *layerIdStorageShape = context->GetInputShape(INPUT_LAYER_IDS_INDEX);
-    const gert::StorageShape *expertIdsStorageShape = context->GetInputShape(INPUT_EXPERT_IDS_INDEX);
-    const gert::StorageShape *expertRankTableStorageShape = context->GetInputShape(INPUT_EXPERT_RANK_TABLE_INDEX);
+    const gert::StorageShape *xStorageShape = context->GetInputShape(config.xIndex);
+    const gert::StorageShape *sessionIdStorageShape = context->GetInputShape(config.sessionIdIndex);
+    const gert::StorageShape *microBatchIdStorageShape = context->GetInputShape(config.microBatchIdIndex);
+    const gert::StorageShape *layerIdStorageShape = context->GetInputShape(config.layerIdIndex);
+    const gert::StorageShape *expertIdsStorageShape = context->GetInputShape(config.expertIdsIndex);
+    const gert::StorageShape *expertRankTableStorageShape = context->GetInputShape(config.expertRankTableIndex);
     const int32_t xDim0 = xStorageShape->GetStorageShape().GetDim(0);
     const int32_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
     const int32_t xDim2 = xStorageShape->GetStorageShape().GetDim(DIM2);
@@ -662,13 +650,13 @@ static bool CheckTensorShapeAndSetTinglingData(gert::TilingContext *context, Att
                     return false);
 
     if (isScales) {
-        const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(INPUT_SCALES_INDEX);
+        const gert::StorageShape *scalesStorageShape = context->GetOptionalInputShape(config.scalesIndex);
         OP_TILING_CHECK(!CheckInputForScales(scalesStorageShape, expertRankTableDim0, expertRankTableDim1, xDim2),
                         OP_LOGE(ATTN_FFN_INNER_DEBUG, "Check input for scales shape failed!"), return false);
     }
 
     if (isActiveMask) {
-        const gert::StorageShape *activeMaskStorageShape = context->GetOptionalInputShape(INPUT_ACTIVE_MASK_INDEX);
+        const gert::StorageShape *activeMaskStorageShape = context->GetOptionalInputShape(config.activeMaskIndex);
         OP_TILING_CHECK(!CheckInputForActiveMask(activeMaskStorageShape, xDim0, xDim1),
                         OP_LOGE(ATTN_FFN_INNER_DEBUG, "Check input for activeMask shape failed!"), return false);
     }
@@ -678,10 +666,11 @@ static bool CheckTensorShapeAndSetTinglingData(gert::TilingContext *context, Att
     return true;
 }
 
-static bool CheckInputAndSetTilingData(gert::TilingContext *context, AttentionToFFNTilingData &tilingData)
+static bool CheckInputAndSetTilingData(gert::TilingContext *context, AttentionToFFNTilingData &tilingData,
+                                       const AttentionToFFNTilingConfig &config)
 {
-    const gert::StorageShape *scalesShape = context->GetOptionalInputShape(INPUT_SCALES_INDEX);
-    const gert::StorageShape *activeMaskShape = context->GetOptionalInputShape(INPUT_ACTIVE_MASK_INDEX);
+    const gert::StorageShape *scalesShape = context->GetOptionalInputShape(config.scalesIndex);
+    const gert::StorageShape *activeMaskShape = context->GetOptionalInputShape(config.activeMaskIndex);
     bool isScales = (scalesShape != nullptr);
     bool isActiveMask = (activeMaskShape != nullptr);
 
@@ -702,15 +691,15 @@ static bool CheckInputAndSetTilingData(gert::TilingContext *context, AttentionTo
                     return false);
 
     // 校验输入数据dim、format、dataType
-    OP_TILING_CHECK(!CheckTensorDim(context, isScales, isActiveMask),
+    OP_TILING_CHECK(!CheckTensorDim(context, isScales, isActiveMask, config),
                     OP_LOGE(ATTN_FFN_INNER_DEBUG, "input tensor dim is invalid."), return false);
-    OP_TILING_CHECK(!CheckTensorDataType(context, isScales, isActiveMask),
+    OP_TILING_CHECK(!CheckTensorDataType(context, isScales, isActiveMask, config),
                     OP_LOGE(ATTN_FFN_INNER_DEBUG, "input tensor dataType is invalid."), return false);
-    OP_TILING_CHECK(!CheckTensorFormat(context, isScales, isActiveMask),
+    OP_TILING_CHECK(!CheckTensorFormat(context, isScales, isActiveMask, config),
                     OP_LOGE(ATTN_FFN_INNER_DEBUG, "input tensor format is invalid."), return false);
 
     // 校验输入数据维度值
-    OP_TILING_CHECK(!CheckTensorShapeAndSetTinglingData(context, tilingData, isScales, isActiveMask),
+    OP_TILING_CHECK(!CheckTensorShapeAndSetTinglingData(context, tilingData, isScales, isActiveMask, config),
                     OP_LOGE(ATTN_FFN_INNER_DEBUG, "input tensor format is invalid."), return false);
 
     tilingData.attentionToFFNInfo.isScales = isScales;
@@ -801,17 +790,54 @@ static ge::graphStatus SetHcommCfg(AttentionToFFNTilingData &tilingData, const s
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus AttentionToFFNTilingFunc(gert::TilingContext *context)
+static ge::graphStatus CheckMc2Context(gert::TilingContext *context, const AttentionToFFNTilingConfig &config)
+{
+    const gert::StorageShape *contextStorageShape = context->GetInputShape(config.contextIndex);
+    OP_TILING_CHECK(contextStorageShape == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "contextShape"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(
+                        ATTN_FFN_INNER_DEBUG, "context",
+                        (std::to_string(contextStorageShape->GetStorageShape().GetDimNum()) + "D").c_str(), "1D"),
+                    return ge::GRAPH_FAILED);
+
+    auto contextDesc = context->GetInputDesc(config.contextIndex);
+    OP_TILING_CHECK(contextDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "contextDesc"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(contextDesc->GetDataType() != ge::DT_INT32,
+                    OP_LOGE_FOR_INVALID_DTYPE(ATTN_FFN_INNER_DEBUG, "context",
+                                              Ops::Base::ToString(contextDesc->GetDataType()).c_str(), "INT32"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(contextDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE_FOR_INVALID_FORMAT(
+            ATTN_FFN_INNER_DEBUG, "context",
+            Ops::Base::ToString(static_cast<ge::Format>(ge::GetPrimaryFormat(contextDesc->GetStorageFormat()))).c_str(),
+            "non-FRACTAL_NZ"),
+        return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus AttentionToFFNTilingFuncBase(gert::TilingContext *context,
+                                              const AttentionToFFNTilingConfig &config)
 {
     AttentionToFFNTilingData *tilingData = context->GetTilingData<AttentionToFFNTilingData>();
     std::string group = "";
 
+    OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(ATTN_FFN_INNER_DEBUG, "tilingData"),
+                    return ge::GRAPH_FAILED);
+    if (config.isMc2Context) {
+        OP_TILING_CHECK(CheckMc2Context(context, config) != ge::GRAPH_SUCCESS,
+                        OP_LOGE(ATTN_FFN_INNER_DEBUG, "Tiling check context failed."), return ge::GRAPH_FAILED);
+    }
+
     // Function that get check and set Attrs
-    OP_TILING_CHECK(!CheckAndSetAttrs(context, *tilingData, group),
+    OP_TILING_CHECK(!CheckAndSetAttrs(context, *tilingData, group, config),
                     OP_LOGE(ATTN_FFN_INNER_DEBUG, "Check and set attributes failed!"), return ge::GRAPH_FAILED);
 
     // Function that check input
-    OP_TILING_CHECK(!CheckInputAndSetTilingData(context, *tilingData),
+    OP_TILING_CHECK(!CheckInputAndSetTilingData(context, *tilingData, config),
                     OP_LOGE(ATTN_FFN_INNER_DEBUG, "Check Inputs and Outputs failed!"), return ge::GRAPH_FAILED);
 
     // Check window Size
@@ -857,6 +883,12 @@ ge::graphStatus AttentionToFFNTilingFunc(gert::TilingContext *context)
     PrintTilingDataInfo(*tilingData);
     OP_LOGD("AttentionToFFN", "tiling process finished successfully!!!");
     return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus AttentionToFFNTilingFunc(gert::TilingContext *context)
+{
+    const AttentionToFFNTilingConfig config{};
+    return AttentionToFFNTilingFuncBase(context, config);
 }
 
 struct AttentionToFFNCompileInfo {};

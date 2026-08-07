@@ -22,8 +22,9 @@ TEST_F(AttentionToFFNArch35TilingTest, NoQuantSyncNoActiveMask)
 {
     struct AttentionToFFNCompileInfo {} compileInfo;
 
-    gert::TilingContextPara tilingContextPara("AttentionToFFN",
+    gert::TilingContextPara tilingContextPara("AttentionToFFNV2",
         {
+            {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},

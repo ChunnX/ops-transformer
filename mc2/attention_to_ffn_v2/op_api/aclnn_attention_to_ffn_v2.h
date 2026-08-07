@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OP_API_INC_ATTENTION_TO_FFN_H_
-#define OP_API_INC_ATTENTION_TO_FFN_H_
+#ifndef OP_API_INC_ATTENTION_TO_FFN_V2_H_
+#define OP_API_INC_ATTENTION_TO_FFN_V2_H_
  
 #include <string>
  
@@ -24,6 +24,7 @@ extern "C" {
  * 算子功能：实现attention_to_ffn数据发送
  * @brief aclnnAttentionToFFN的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
+ * @param [in] context: A5 MC2 communication context tensor.
  * @param [in] x: 计算输入，Tensor，输入的token数据.
  * @param [in] sessionId: 计算输入，Tensor，会话ID，代表当前请求的唯一标识。
  * @param [in] microBatchId: 计算输入，Tensor, Batch切分成多少个小batch，对应的小BatchId
@@ -46,7 +47,7 @@ extern "C" {
  * @return aclnnStatus: 返回值，返回状态码。
  *
  */
-ACLNN_API aclnnStatus aclnnAttentionToFFNGetWorkspaceSize(const aclTensor* x, const aclTensor* sessionId, const aclTensor* microBatchId,
+ACLNN_API aclnnStatus aclnnAttentionToFFNV2GetWorkspaceSize(const aclTensor* context, const aclTensor* x, const aclTensor* sessionId, const aclTensor* microBatchId,
                                                           const aclTensor* layerId, const aclTensor* expertIds, const aclTensor* expertRankTable,
                                                           const aclTensor* scales, const aclTensor* activeMask, const char* group, int64_t worldSize,
                                                           const aclIntArray *ffnTokenInfoTableShape, const aclIntArray *ffnTokenDataShape,
@@ -61,12 +62,12 @@ ACLNN_API aclnnStatus aclnnAttentionToFFNGetWorkspaceSize(const aclTensor* x, co
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnAttentionToFFN(void* workspace, uint64_t workspaceSize,
-                                          aclOpExecutor* executor, aclrtStream stream);
+ACLNN_API aclnnStatus aclnnAttentionToFFNV2(void* workspace, uint64_t workspaceSize,
+                                            aclOpExecutor* executor, aclrtStream stream);
  
 #ifdef __cplusplus
 }
 #endif
  
-#endif  // OP_API_INC_ATTENTION_TO_FFN_
+#endif  // OP_API_INC_ATTENTION_TO_FFN_V2_H_
 
