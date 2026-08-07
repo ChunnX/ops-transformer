@@ -65,16 +65,16 @@ ffn_start_rank_id = 0                       # ffn worker 起始id
 
 server_num = 1
 server_index = 1
-rank_per_dev = 16                                               # 每个设备（如 GPU）上运行的 rank 数量
+rank_per_dev = 2                                               # 每个设备（如 GPU）上运行的 rank 数量
 world_size = rank_per_dev * server_num
 ep_world_size = world_size                                       # Expert Parallel 的 world size
 
-shared_expert_num = 2
-rank_num_per_shared_expert = 1
+shared_expert_num = 0
+rank_num_per_shared_expert = 0
 shared_expert_rank_num_ffn = shared_expert_num * rank_num_per_shared_expert     # 共享专家使用的 rank 数量
 
-moe_rank_ffn_num = 10
-moe_expert_per_rank = 64
+moe_rank_ffn_num = 1
+moe_expert_per_rank = 1
 moe_expert_num = moe_rank_ffn_num * moe_expert_per_rank                     # moe专家 总数
 
 ffn_worker_num = shared_expert_rank_num_ffn + moe_rank_ffn_num              # ffn rank数
