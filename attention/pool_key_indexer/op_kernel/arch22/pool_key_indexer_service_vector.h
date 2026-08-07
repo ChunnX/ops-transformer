@@ -244,14 +244,13 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::CleanInvalidOutput(int6
     outQueue_.FreeTensor(valueULocal);
 
     if (constInfo_.returnValue) {
-        if constexpr(std::is_same<K_T, float16_t>::value) {
-        }
-        
-        Duplicate(valueOutGm[invalidS1offset].template ReinterpretCast<int32_t>(), (int32_t)0xFF800000, constInfo_.sparseCount);
-        outQueue_.EnQue<uint16_t>(valueULocal);
-        valueULocal = outQueue_.DeQue<uint16_t>();
-        
-        ;
+        uint32_t negInf = constInfo_.INVALID_VAL;
+        LocalTensor<uint32_t> valueULocal = outQueue_.AllocTensor<uint32_t>();
+        Duplicate(valueULocal, negInf, constInfo_.sparseCount);
+        outQueue_.EnQue<uint32_t>(valueULocal);
+        valueULocal = outQueue_.DeQue<uint32_t>();
+        GlobalTensor<uint32_t> valueOutGmTmp;
+        valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
         PkiServiceVec::CopyOut(valueOutGmTmp[invalidS1offset], valueULocal, constInfo_.sparseCount);
         outQueue_.FreeTensor(valueULocal);
     }
@@ -373,6 +372,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
                 LocalTensor<float> UbTmpSort = constInfo_.isSparseCountOver2K ? tmpUb_ : tmpSortBuf;
                 PkiServiceVec::MergeSort(globalTopkUb_[innerS1Idx * virTopK * 2], virTopK, reduceOutBuff,
                                         cuS2LenVecAlign, UbTmpSort);
+            } else {
                 int64_t globalTopkUbCacheIdx = (info.s2Idx - blockS2StartIdx_) % 4;
                 Sort<float, true>(
                     SortedBasicBlock_[innerS1Idx * BASE_TOPK * 2 + globalTopkUbCacheIdx * s2BaseSize_ * 2],
@@ -386,6 +386,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec(const PkiCom
                     if (info.s2Idx - blockS2StartIdx_ < 4) {
                         MrgBasicBlock(globalTopkUb_[innerS1Idx * BASE_TOPK * 2], tt,
                                       static_cast<int64_t>(globalTopkUbCacheIdx + 1), s2BaseSize_);
+                    } else {
                         if (globalTopkUbCacheIdx > 0) {
                             MrgBasicBlock(tmpSortBuf, tt, static_cast<int64_t>(globalTopkUbCacheIdx + 1), s2BaseSize_);
                             PipeBarrier<PIPE_V>();
@@ -678,17 +679,16 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessLD()
             DataCopyPad(indiceOutGm[outOffset], idxULocal1,
                         {1, static_cast<uint16_t>(constInfo_.sparseCount * sizeof(int32_t)), 0, 0});
             SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
+        } else {
             Extract(outValueUb, outIdxUb, curValueIdxUb, (BASE_TOPK / 32));
             PipeBarrier<PIPE_V>();
             LocalTensor<int32_t> idxULocal1 = outIdxUb.template ReinterpretCast<int32_t>();
-            
-            PipeBarrier<PIPE_V>();
             SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
             SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
             DataCopyPad(indiceOutGm[outOffset], idxULocal1,
                         {1, static_cast<uint16_t>(constInfo_.sparseCount * sizeof(int32_t)), 0, 0});
-            DataCopyPad(valueOutGm[outOffset], valueULocal1,
-                        {1, static_cast<uint16_t>(constInfo_.sparseCount * sizeof(K_T)), 0, 0});
+            DataCopyPad(valueOutGm[outOffset], outValueUb,
+                        {1, static_cast<uint16_t>(constInfo_.sparseCount * sizeof(float)), 0, 0});
             SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
         }
     }

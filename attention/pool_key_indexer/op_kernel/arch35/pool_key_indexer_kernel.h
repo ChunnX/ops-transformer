@@ -161,7 +161,6 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::InitTilingData(const PoolKeyIn
     constInfo.sparseCount = tilingData->sparseCount;
     constInfo.outputLayout = LAYOUT_T;  // 输出和输入形状一致
     constInfo.INVALID_VAL = 0xFF800000; // float -inf
-    }
     if constexpr (LAYOUT_T == PkiLayout::TND) {
         constInfo.isAccumSeqS1 = true;
     }
@@ -181,6 +180,7 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::InitTilingData(const PoolKeyIn
     }
     constInfo.s2BaseSize = S2_BASE_SIZE;
     constInfo.returnValue = tilingData->returnValue;
+    constInfo.splitMFlag = (constInfo.gSize == 64 && constInfo.sparseCount <= 2048);
     constInfo.maskMode = tilingData->maskMode;
     constInfo.quantMode = tilingData->quantMode;
     constInfo.topk = tilingData->topk;
@@ -275,12 +275,12 @@ __aicore__ inline uint32_t PoolKeyIndexerKernel<LIT>::GetTotalBaseBlockNum()
         GetS1S2ActualSeqLen(bIdx, actS1Size, actS2Size, actS2SizeOrig);
         s1GBaseNum = CeilDiv(actS1Size, constInfo.s1BaseSize);
         if (!constInfo.attenMaskFlag) {
-            s2BaseNum = false ? CeilDiv(actS2Size, constInfo.s2BaseSize) : (actS2Size > 0 ? 1 : 0);
+            s2BaseNum = constInfo.isLDOpen ? CeilDiv(actS2Size, constInfo.s2BaseSize) : (actS2Size > 0 ? 1 : 0);
             totalBlockNum += s1GBaseNum * s2BaseNum * constInfo.kHeadNum;
             continue;
         }
         for (uint32_t s1gIdx = 0; s1gIdx < s1GBaseNum; s1gIdx++) {
-            s2BaseNum = false
+            s2BaseNum = constInfo.isLDOpen
                       ? GetS2BaseBlockNumOnMask(s1gIdx, actS1Size, actS2SizeOrig)
                       : (actS2Size > 0 ? 1 : 0);
             totalBlockNum += s2BaseNum * constInfo.kHeadNum;
@@ -337,7 +337,7 @@ __aicore__ void inline PoolKeyIndexerKernel<LIT>::SplitCore(uint32_t curCoreIdx,
                 info.s2Start = 0;
                 findLastCoreEnd = false;
             }
-            s2Loop = false ? s2BaseNum : (actS2Size > 0 ? 1 : 0);
+            s2Loop = constInfo.isLDOpen ? s2BaseNum : (actS2Size > 0 ? 1 : 0);
             for (uint32_t s2Idx = 0; s2Idx < s2Loop;) {
                 if (findLastCoreEnd) {
                     info.bN2Start = bN2Idx;
@@ -349,7 +349,7 @@ __aicore__ void inline PoolKeyIndexerKernel<LIT>::SplitCore(uint32_t curCoreIdx,
                 if (lastGS1RemainBlockCnt + s2RemainBaseNum >= coreDealBlockCnt) {
                     info.bN2End = bN2Idx;
                     info.gS1End = gS1Idx;
-                    info.s2End = false
+                    info.s2End = constInfo.isLDOpen
                                ? s2Idx + coreDealBlockCnt - lastGS1RemainBlockCnt - 1
                                : s2BaseNum - 1;
 
@@ -634,8 +634,8 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::ProcessMain()
 
     if ASCEND_IS_AIV {
         vectorService.AllocEventID();
-        CrossCoreSetFlag<PkiCommon::ConstInfo::LI_SYNC_MODE4, PIPE_V>(PkiCommon::ConstInfo::CROSS_VC_EVENT + 0);
-        CrossCoreSetFlag<PkiCommon::ConstInfo::LI_SYNC_MODE4, PIPE_V>(PkiCommon::ConstInfo::CROSS_VC_EVENT + 1);
+        CrossCoreSetFlag<PkiCommon::ConstInfo::PKI_SYNC_MODE4, PIPE_V>(PkiCommon::ConstInfo::CROSS_VC_EVENT + 0);
+        CrossCoreSetFlag<PkiCommon::ConstInfo::PKI_SYNC_MODE4, PIPE_V>(PkiCommon::ConstInfo::CROSS_VC_EVENT + 1);
     } else {
         matmulService.AllocEventID();
     }
@@ -667,8 +667,8 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::ProcessMain()
         vectorService.FreeEventID();
     } else {
         matmulService.FreeEventID();
-        CrossCoreWaitFlag<PkiCommon::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(PkiCommon::ConstInfo::CROSS_VC_EVENT + 0);
-        CrossCoreWaitFlag<PkiCommon::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(PkiCommon::ConstInfo::CROSS_VC_EVENT + 1);
+        CrossCoreWaitFlag<PkiCommon::ConstInfo::PKI_SYNC_MODE4, PIPE_FIX>(PkiCommon::ConstInfo::CROSS_VC_EVENT + 0);
+        CrossCoreWaitFlag<PkiCommon::ConstInfo::PKI_SYNC_MODE4, PIPE_FIX>(PkiCommon::ConstInfo::CROSS_VC_EVENT + 1);
     }
 }
 

@@ -48,8 +48,12 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
     const int64_t *topkPtr = attrs->GetInt(PKI_ATTR_TOPK);
     OP_CHECK_NULL_WITH_CONTEXT(context_, topkPtr);
     int64_t topkVal = *topkPtr;
-    OP_CHECK_IF(topkVal < 1 || topkVal > 8192,
-                OP_LOGE(context_, "topk(%ld) must be in [1, 8192]", topkVal),
+    bool topkValid = (topkVal >= 1 && topkVal <= 2048) ||
+                     topkVal == 3072 || topkVal == 4096 || topkVal == 5120 ||
+                     topkVal == 6144 || topkVal == 7168 || topkVal == 8192;
+    OP_CHECK_IF(!topkValid,
+                OP_LOGE(context_, "topk(%ld) must be in [1, 2048] or one of {3072, 4096, 5120, 6144, 7168, 8192}",
+                        topkVal),
                 return ge::GRAPH_FAILED);
     info.topk = static_cast<uint32_t>(topkVal);
 
@@ -166,10 +170,6 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
     // topk % poolSize == 0
     if (info.poolSize == 0 || info.topk % info.poolSize != 0) {
         OP_LOGE(context_, "topk(%u) must be divisible by poolSize(%u)", info.topk, info.poolSize);
-        return ge::GRAPH_FAILED;
-    }
-    if (info.poolSize > PKI_POOL_SIZE_LIMIT) {
-        OP_LOGE(context_, "poolSize(%u) must be <= %u", info.poolSize, PKI_POOL_SIZE_LIMIT);
         return ge::GRAPH_FAILED;
     }
     info.sparseCount = info.topk / info.poolSize;
@@ -350,6 +350,12 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
                     info.blockSize, PKI_BLOCK_SIZE_FACTOR, PKI_BLOCK_SIZE_LIMIT);
             return ge::GRAPH_FAILED;
         }
+        OP_CHECK_IF(static_cast<uint32_t>(keyShape->GetDim(2)) != info.n2Size,
+                    OP_LOGE(context_, "PA key N2(%ld) must be %u", keyShape->GetDim(2), info.n2Size),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(static_cast<uint32_t>(keyShape->GetDim(3)) != info.headDim,
+                    OP_LOGE(context_, "PA key D(%ld) must be %u(128)", keyShape->GetDim(3), info.headDim),
+                    return ge::GRAPH_FAILED);
         // keyStride0 = blockSize * N2 * D (elements per physical block, used for PA address calc)
         uint64_t keyStride = static_cast<uint64_t>(info.blockSize) * info.n2Size * info.headDim;
         OP_CHECK_IF(keyStride > UINT32_MAX,
@@ -368,6 +374,9 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
                     info.n2Size, keyShape->GetDim(2));
             return ge::GRAPH_FAILED;
         }
+        OP_CHECK_IF(static_cast<uint32_t>(keyShape->GetDim(3)) != info.headDim,
+                    OP_LOGE(context_, "BSND key D(%ld) must be %u(128)", keyShape->GetDim(3), info.headDim),
+                    return ge::GRAPH_FAILED);
         // keyStride0 = S2 * N2 * D (B-stride for BSND address calc)
         uint64_t keyStride = static_cast<uint64_t>(info.s2Size) * info.n2Size * info.headDim;
         OP_CHECK_IF(keyStride > UINT32_MAX,
@@ -377,6 +386,12 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
     } else {
         OP_CHECK_IF(keyShape->GetDimNum() != 3,
                     OP_LOGE(context_, "TND key must be 3D"),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(static_cast<uint32_t>(keyShape->GetDim(1)) != info.n2Size,
+                    OP_LOGE(context_, "TND key N2(%ld) must be %u", keyShape->GetDim(1), info.n2Size),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(static_cast<uint32_t>(keyShape->GetDim(2)) != info.headDim,
+                    OP_LOGE(context_, "TND key D(%ld) must be %u(128)", keyShape->GetDim(2), info.headDim),
                     return ge::GRAPH_FAILED);
         info.s2Size = 0; // determined from actual_seq_k
         // keyStride0 = N2 * D (S2-stride for TND address calc)
@@ -440,13 +455,7 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
                     OP_LOGE(context_, "pool_tail_k must be 1D (B,), got %zu",
                             ptkShape->GetDimNum()),
                     return ge::GRAPH_FAILED);
-        if (info.layoutQ == PkiDataLayout::BSND) {
-            OP_CHECK_IF(ptkShape->GetDim(0) != info.bSize,
-                        OP_LOGE(context_, "pool_tail_k B(%ld) must match query B(%u)",
-                                ptkShape->GetDim(0), info.bSize),
-                        return ge::GRAPH_FAILED);
-        }
-        // TND: B determined from actual_seq_q, checked at runtime
+        // B count checked in value-range validation below
     }
 
     // actual_seq_q shape (non-null, TND only): (B,) 1D prefix sum
@@ -529,6 +538,10 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
                         OP_LOGE(context_, "k_descale N2(%ld) must match key N2(%u)",
                                 kdsShape->GetDim(2), info.n2Size),
                         return ge::GRAPH_FAILED);
+            OP_CHECK_IF(kdsShape->GetDim(0) != keyShape->GetDim(0),
+                        OP_LOGE(context_, "PA k_descale blockNum(%ld) must match key blockNum(%ld)",
+                                kdsShape->GetDim(0), keyShape->GetDim(0)),
+                        return ge::GRAPH_FAILED);
         } else if (info.layoutK == PkiDataLayout::BSND) {
             OP_CHECK_IF(kdsShape->GetDimNum() != 3,
                         OP_LOGE(context_, "BSND k_descale must be 3D (B,S2,N2), got %zu",
@@ -538,6 +551,10 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
                         OP_LOGE(context_, "k_descale B(%ld) must match query B(%u)",
                                 kdsShape->GetDim(0), info.bSize),
                         return ge::GRAPH_FAILED);
+            OP_CHECK_IF(kdsShape->GetDim(1) != info.s2Size,
+                        OP_LOGE(context_, "BSND k_descale S2(%ld) must match key S2(%ld)",
+                                kdsShape->GetDim(1), info.s2Size),
+                        return ge::GRAPH_FAILED);
             OP_CHECK_IF(kdsShape->GetDim(2) != info.n2Size,
                         OP_LOGE(context_, "k_descale N2(%ld) must match key N2(%u)",
                                 kdsShape->GetDim(2), info.n2Size),
@@ -546,6 +563,10 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
             OP_CHECK_IF(kdsShape->GetDimNum() != 2,
                         OP_LOGE(context_, "TND k_descale must be 2D (T2,N2), got %zu",
                                 kdsShape->GetDimNum()),
+                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(kdsShape->GetDim(0) != keyShape->GetDim(0),
+                        OP_LOGE(context_, "TND k_descale T2(%ld) must match key T2(%ld)",
+                                kdsShape->GetDim(0), keyShape->GetDim(0)),
                         return ge::GRAPH_FAILED);
             OP_CHECK_IF(kdsShape->GetDim(1) != info.n2Size,
                         OP_LOGE(context_, "k_descale N2(%ld) must match key N2(%u)",
@@ -627,6 +648,118 @@ ge::graphStatus PoolKeyIndexerTiling::ParseAndCheckParams(PoolKeyIndexerTilingIn
                         OP_LOGE(context_, "sparse_values_out last dim(%ld) must be topk/poolSize(%ld)",
                                 valOutShape->GetDim(1), valLastDim),
                         return ge::GRAPH_FAILED);
+        }
+    }
+
+    // ---- Value-range validation (requires ValueDepend + support_aclnn) ----
+
+    // #5/#6: actual_seq_q prefix-sum (TND): determines B, validates non-decreasing + last==T1
+    if (info.layoutQ == PkiDataLayout::TND) {
+        const gert::Tensor *asqTensor = context_->GetOptionalInputTensor(PKI_ACTUAL_SEQ_Q_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, asqTensor);
+        const int32_t *asqData = asqTensor->GetData<int32_t>();
+        OP_CHECK_IF(asqData == nullptr,
+                    OP_LOGE(context_, "TND: actual_seq_q data is null, tiling sink not supported"),
+                    return ge::GRAPH_FAILED);
+        int64_t asqCount = asqTensor->GetShapeSize();
+        info.bSize = static_cast<uint32_t>(asqCount);
+        int32_t prev = 0;
+        for (int64_t i = 0; i < asqCount; ++i) {
+            OP_CHECK_IF(asqData[i] < 0,
+                        OP_LOGE(context_, "actual_seq_q[%ld]=%d must be >= 0", i, asqData[i]),
+                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(asqData[i] < prev,
+                        OP_LOGE(context_, "actual_seq_q must be non-decreasing, [%ld]=%d < prev=%d",
+                                i, asqData[i], prev),
+                        return ge::GRAPH_FAILED);
+            prev = asqData[i];
+        }
+        if (asqCount > 0) {
+            OP_CHECK_IF(asqData[asqCount - 1] != static_cast<int32_t>(info.s1Size),
+                        OP_LOGE(context_, "actual_seq_q last(%d) must equal query T1(%u)",
+                                asqData[asqCount - 1], info.s1Size),
+                        return ge::GRAPH_FAILED);
+        }
+    }
+
+    // #5: actual_seq_k values: TND prefix-sum / PA non-prefix-sum
+    if (info.layoutK == PkiDataLayout::TND || info.pageAttention) {
+        const gert::Tensor *askTensor = context_->GetOptionalInputTensor(PKI_ACTUAL_SEQ_K_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, askTensor);
+        const int32_t *askData = askTensor->GetData<int32_t>();
+        OP_CHECK_IF(askData == nullptr,
+                    OP_LOGE(context_, "actual_seq_k data is null, tiling sink not supported"),
+                    return ge::GRAPH_FAILED);
+        int64_t askCount = askTensor->GetShapeSize();
+        OP_CHECK_IF(static_cast<uint32_t>(askCount) != info.bSize,
+                    OP_LOGE(context_, "actual_seq_k count(%ld) must equal B(%u)", askCount, info.bSize),
+                    return ge::GRAPH_FAILED);
+
+        if (info.layoutK == PkiDataLayout::TND) {
+            int32_t prev = 0;
+            for (int64_t i = 0; i < askCount; ++i) {
+                OP_CHECK_IF(askData[i] < 0,
+                            OP_LOGE(context_, "actual_seq_k[%ld]=%d must be >= 0", i, askData[i]),
+                            return ge::GRAPH_FAILED);
+                OP_CHECK_IF(askData[i] < prev,
+                            OP_LOGE(context_, "actual_seq_k must be non-decreasing, [%ld]=%d < prev=%d",
+                                    i, askData[i], prev),
+                            return ge::GRAPH_FAILED);
+                prev = askData[i];
+            }
+            if (askCount > 0) {
+                OP_CHECK_IF(askData[askCount - 1] != static_cast<int32_t>(keyShape->GetDim(0)),
+                            OP_LOGE(context_, "actual_seq_k last(%d) must equal key T2(%ld)",
+                                    askData[askCount - 1], keyShape->GetDim(0)),
+                            return ge::GRAPH_FAILED);
+            }
+        } else {
+            // PA: non-prefix-sum, each value is current batch token count
+            uint32_t maxTokens = 0;
+            for (int64_t i = 0; i < askCount; ++i) {
+                OP_CHECK_IF(askData[i] < 0,
+                            OP_LOGE(context_, "actual_seq_k[%ld]=%d must be >= 0", i, askData[i]),
+                            return ge::GRAPH_FAILED);
+                if (static_cast<uint32_t>(askData[i]) > maxTokens) {
+                    maxTokens = static_cast<uint32_t>(askData[i]);
+                }
+            }
+            // #3: block_table dim(1) >= maxBlockNumPerSeq
+            uint32_t maxBlockNumPerSeq = CeilDiv(maxTokens, info.blockSize);
+            OP_CHECK_IF(info.maxBlockNumPerBatch < maxBlockNumPerSeq,
+                        OP_LOGE(context_, "block_table dim(1)=%u must be >= maxBlockNumPerSeq=%u",
+                                info.maxBlockNumPerBatch, maxBlockNumPerSeq),
+                        return ge::GRAPH_FAILED);
+        }
+    }
+
+    // #2: block_table dim(0) == B (PA, after B determined)
+    if (info.pageAttention) {
+        const gert::Shape *btShape = context_->GetOptionalInputShape(PKI_BLOCK_TABLE_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, btShape);
+        OP_CHECK_IF(static_cast<uint32_t>(btShape->GetDim(0)) != info.bSize,
+                    OP_LOGE(context_, "block_table dim(0)(%ld) must equal B(%u)",
+                            btShape->GetDim(0), info.bSize),
+                    return ge::GRAPH_FAILED);
+    }
+
+    // #4: pool_tail_k values: each must be in [0, pool_size-1]
+    {
+        const gert::Tensor *ptkTensor = context_->GetInputTensor(PKI_POOL_TAIL_K_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, ptkTensor);
+        OP_CHECK_IF(static_cast<uint32_t>(ptkTensor->GetShapeSize()) != info.bSize,
+                    OP_LOGE(context_, "pool_tail_k count(%ld) must equal B(%u)",
+                            ptkTensor->GetShapeSize(), info.bSize),
+                    return ge::GRAPH_FAILED);
+        const int32_t *ptkData = ptkTensor->GetData<int32_t>();
+        if (ptkData != nullptr) {
+            int64_t ptkCount = ptkTensor->GetShapeSize();
+            for (int64_t i = 0; i < ptkCount; ++i) {
+                OP_CHECK_IF(ptkData[i] < 0 || ptkData[i] >= static_cast<int32_t>(info.poolSize),
+                            OP_LOGE(context_, "pool_tail_k[%ld]=%d must be in [0, %u)",
+                                    i, ptkData[i], info.poolSize),
+                            return ge::GRAPH_FAILED);
+            }
         }
     }
 

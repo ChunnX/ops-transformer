@@ -41,16 +41,19 @@ public:
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
+            .ValueDepend(OPTIONAL)
             .AutoContiguous();
         this->Input("actual_seq_q")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
+            .ValueDepend(OPTIONAL)
             .AutoContiguous();
         this->Input("actual_seq_k")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
+            .ValueDepend(OPTIONAL)
             .AutoContiguous();
         this->Input("block_table")
             .ParamType(OPTIONAL)
@@ -89,7 +92,8 @@ public:
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true);
+            .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
         this->AICore().AddConfig("ascend910b", aicoreConfig);
         this->AICore().AddConfig("ascend910_93", aicoreConfig);
 
@@ -114,16 +118,19 @@ public:
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
+            .ValueDepend(OPTIONAL)
             .AutoContiguous();
         aicoreConfig950.Input("actual_seq_q")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
+            .ValueDepend(OPTIONAL)
             .AutoContiguous();
         aicoreConfig950.Input("actual_seq_k")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
+            .ValueDepend(OPTIONAL)
             .AutoContiguous();
         aicoreConfig950.Input("block_table")
             .ParamType(OPTIONAL)
@@ -153,7 +160,8 @@ public:
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
-            .PrecisionReduceFlag(true);
+            .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
         this->AICore().AddConfig("ascend950", aicoreConfig950);
     }
 };

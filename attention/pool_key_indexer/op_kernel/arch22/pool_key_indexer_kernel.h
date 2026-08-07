@@ -176,7 +176,6 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::InitTilingData(const PoolKeyIn
     constInfo.wsOffScore = tilingData->wsOffScore;
     constInfo.wsOffLdScore = tilingData->wsOffLdScore;
     constInfo.wsOffLdIdx = tilingData->wsOffLdIdx;
-    constInfo.isSparseCountOver2K = (constInfo.sparseCount > 2048);
 
     constInfo.outputLayout = LAYOUT_T; // 输出和输入形状一致
     if (LAYOUT_T == PkiLayout::TND) {
@@ -606,15 +605,11 @@ __aicore__ inline void PoolKeyIndexerKernel<LIT>::ProcessInvalid()
                 SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
                 WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
 
-                GlobalTensor<uint16_t> valueOutGmTmp;
-                valueOutGmTmp.SetGlobalBuffer((__gm__ uint16_t *)valueOutGm.GetPhyAddr());
-                GlobalTensor<uint16_t> valueOut = valueOutGmTmp[baseSize];
+                GlobalTensor<uint32_t> valueOutGmTmp;
+                valueOutGmTmp.SetGlobalBuffer((__gm__ uint32_t *)valueOutGm.GetPhyAddr());
+                GlobalTensor<uint32_t> valueOut = valueOutGmTmp[baseSize];
 
-                if constexpr(std::is_same<K_T, float16_t>::value) {
-                    (void)0;
-                } else {
-                    (void)0;
-                }
+                uint32_t negInf = constInfo.INVALID_VAL;
                 AscendC::InitGlobalMemory(valueOut, dealSize, negInf);
             }
         }

@@ -68,10 +68,21 @@ struct RunInfo {
 };
 
 struct ConstInfo {
+    static constexpr uint32_t FIA_SYNC_MODE2 = 2;
     static constexpr uint32_t PKI_SYNC_MODE4 = 4;
     static constexpr uint32_t AIV0_AIV1_OFFSET = 16;
     static constexpr uint32_t CROSS_VC_EVENT = 0;
     static constexpr uint32_t CROSS_CV_EVENT = 2;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_256B = 256;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_512B = 512;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_1K = 1024;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
+    static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
     static constexpr int INVALID_IDX = -1;
     uint32_t INVALID_VAL = 0xFF800000;
 
@@ -109,6 +120,8 @@ struct ConstInfo {
     int32_t quantMode = -1;
     bool returnValue = false;
     bool isSparseCountOver2K = false;
+    bool isLDOpen = false;
+    bool splitMFlag = false;
 
     uint32_t actualLenQDims = 0U;
     uint32_t actualLenDims = 0U;

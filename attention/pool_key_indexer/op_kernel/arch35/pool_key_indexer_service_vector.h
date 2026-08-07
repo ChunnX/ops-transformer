@@ -162,8 +162,9 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::InitBuffers(TPipe *pipe
     mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
     // returnvalue
     if (topkCount_ <= 2048) {
-        pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(K_T));
+        pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(float));
         valueOutLocal_ = valueOutBuf_.Get<float>();
+    } else { // sparseCount > 2k时，复用return value相关UB
         valueOutLocal_ = mrgValueBuf_.Get<float>(); // returnValue float
     }
 
@@ -260,14 +261,14 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::CleanInvalidOutput(int6
     if (returnValue) {
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-        Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>(), 0xFF800000, constInfo_.sparseCount);
+        Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>(), constInfo_.INVALID_VAL, constInfo_.sparseCount);
 
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
 
         AscendC::DataCopyParams copyOutValueParams;
         copyOutValueParams.blockCount = 1;
-        copyOutValueParams.blockLen = constInfo_.sparseCount * sizeof(K_T);
+        copyOutValueParams.blockLen = constInfo_.sparseCount * sizeof(float);
         copyOutValueParams.srcStride = 0;
         copyOutValueParams.dstStride = 0;
         AscendC::DataCopyPad(valueOutGm[invalidS1Offset], valueOutLocal_, copyOutValueParams);
@@ -279,7 +280,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec1(const PkiCo
 {
     auto pingpong = (info.loop % 2);
     // CV同步, V核等C核计算完mm1，mm1Res已搬运到UB
-    CrossCoreWaitFlag<PkiCommon::ConstInfo::LI_SYNC_MODE4, PIPE_V>(PkiCommon::ConstInfo::CROSS_CV_EVENT + pingpong);
+    CrossCoreWaitFlag<PkiCommon::ConstInfo::PKI_SYNC_MODE4, PIPE_V>(PkiCommon::ConstInfo::CROSS_CV_EVENT + pingpong);
     
     int64_t curS1Idx = info.gS1Idx * s1BaseSize_;
     int64_t curS2Idx = info.s2Idx * s2BaseSize_;
@@ -289,7 +290,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec1(const PkiCo
 
     if (curAivS1ProcNum == 0) {
         // V核处理完，通知C核可以把mm1Res搬运到UB
-        CrossCoreSetFlag<PkiCommon::ConstInfo::LI_SYNC_MODE4, PIPE_V>(PkiCommon::ConstInfo::CROSS_VC_EVENT +
+        CrossCoreSetFlag<PkiCommon::ConstInfo::PKI_SYNC_MODE4, PIPE_V>(PkiCommon::ConstInfo::CROSS_VC_EVENT +
                                                                      pingpong);
         return;
     }
@@ -336,7 +337,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessVec1(const PkiCo
                 copyOutParams);
     SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
     // V核处理完，通知C核可以把mm1Res搬运到UB
-    CrossCoreSetFlag<PkiCommon::ConstInfo::LI_SYNC_MODE4, PIPE_V>(PkiCommon::ConstInfo::CROSS_VC_EVENT + pingpong);
+    CrossCoreSetFlag<PkiCommon::ConstInfo::PKI_SYNC_MODE4, PIPE_V>(PkiCommon::ConstInfo::CROSS_VC_EVENT + pingpong);
 }
 
 template <typename LIT>
@@ -371,7 +372,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessTopK(const PkiCo
     for (uint32_t i = 0; i < curAivS1ProcNum; i++) {
         uint32_t rowIdx = blockId_ % 2 * CeilDiv(curS1ProcNum, 2) + i;
         uint32_t vecOffset = blockId_ % 2 * CeilDiv(s1BaseSize_, 2) + i;
-        
+
         SCORE_T zero = 0;
         int32_t neg = -1;
         if (constInfo_.attenMaskFlag) {
@@ -388,14 +389,14 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessTopK(const PkiCo
             SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             if (returnValue) {
                 WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>(), 0xFF800000, topkCount_);
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>(), constInfo_.INVALID_VAL, topkCount_);
 
                 SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
                 WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
 
                 AscendC::DataCopyParams copyOutValueParams;
                 copyOutValueParams.blockCount = 1;
-                copyOutValueParams.blockLen = topkCount_ * sizeof(K_T);
+                copyOutValueParams.blockLen = topkCount_ * sizeof(float);
                 copyOutValueParams.srcStride = 0;
                 copyOutValueParams.dstStride = 0;
                 AscendC::DataCopyPad(
@@ -429,9 +430,11 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessTopK(const PkiCo
                 SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                 WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                 topkOp_(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, validS2LenAlign, 0, 1, returnValue);
+            } else {
                 uint32_t actS2LoopNum = 0;
                 if (topkCount_ > trunkLen_) {
                     actS2LoopNum = 1 + (validS2Len - topkCountAlign256_ + trunkLen_ - 1) / trunkLen_;
+                } else {
                     actS2LoopNum = (validS2Len + trunkLen_ - 1) / trunkLen_;
                 }
                 for (uint32_t loopIdx = 0; loopIdx < actS2LoopNum; loopIdx++) {
@@ -449,6 +452,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessTopK(const PkiCo
                                                      (int32_t)zero, topkCountAlign256_);
                             AscendC::CreateVecIndex(topkSharedTmpLocal_.ReinterpretCast<int32_t>(),
                                                      (int32_t)zero, topkCountAlign256_);
+                        } else {
                             copyInParams.blockLen = trunkLen_ * sizeof(SCORE_T); // byte
                             AscendC::DataCopyPad(
                                 mrgValueLocal_,
@@ -474,6 +478,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessTopK(const PkiCo
                         offset = vecOffset *
                                 PkiCommon::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) +
                                 topkCountAlign256_ + (loopIdx - 1)* trunkLen_;
+                    } else {
                         validTrunkLen = (loopIdx * trunkLen_ + trunkLen_) > validS2Len
                                                                           ? validS2Len % trunkLen_
                                                                           :trunkLen_;
@@ -519,6 +524,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessTopK(const PkiCo
                     SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
                 }
             }
+        } else {
             AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)zero, validS2Len);
             if (returnValue) {
                 copyInParams.blockLen = PkiCommon::Align(validS2Len, (int32_t)32) * sizeof(SCORE_T);
@@ -529,7 +535,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessTopK(const PkiCo
                 WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
             }
         }
-        
+
         if (validS2Len < topkCount_) {
             uint64_t mask[1];
             mask[0] = ~0;
@@ -537,7 +543,7 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessTopK(const PkiCo
             PipeBarrier<PIPE_V>();
             Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[validS2Len / 8 * 8], neg, mask, 1, 1, 0);
         }
-        
+
         if (validS2Len / 8 * 8 + 64 < topkCount_) {
             PipeBarrier<PIPE_V>();
             Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[validS2Len / 8 * 8 + 64],
@@ -550,36 +556,33 @@ __aicore__ inline void PoolKeyIndexerServiceVector<LIT>::ProcessTopK(const PkiCo
         AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * topkCount_],
                              indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
 
-        
+
         // // 是否返回Value值
         if (returnValue) {
             WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
-            // uint16_t -> bfloat16
-                vector1::UIntToFloatReturnValue(valueOutLocal_,
-                    scoreOutLocal_, topkCountAlign256_);
-                vector1::UIntToFloatReturnValue(valueOutLocal_,
-                    scoreOutLocal_, topkCountAlign256_);
-            }
+            // uint32_t -> float
+            vector1::UIntToFloatReturnValue(valueOutLocal_,
+                scoreOutLocal_, topkCountAlign256_);
 
             if (validS2Len < topkCount_) {
                 uint64_t mask[1];
                 mask[0] = ~0;
                 mask[0] = mask[0] << (validS2Len % 16);
                 PipeBarrier<PIPE_V>();
-                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()()[validS2Len / 16 * 16],
-                            (uint32_t)0xFF800000, mask, 1, 1, 0);
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16],
+                            constInfo_.INVALID_VAL, mask, 1, 1, 0);
             }
             if (validS2Len / 16 * 16 + 64 < topkCount_) {
                 PipeBarrier<PIPE_V>();
-                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()()[validS2Len / 16 * 16 + 64],
-                            (uint32_t)0xFF800000, topkCount_ - (validS2Len / 16 * 16 + 64));
+                Duplicate(valueOutLocal_.template ReinterpretCast<uint32_t>()[validS2Len / 16 * 16 + 64],
+                            constInfo_.INVALID_VAL, topkCount_ - (validS2Len / 16 * 16 + 64));
             }
             SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             AscendC::DataCopyParams copyOutValueParams;
             copyOutValueParams.blockCount = 1;
-            copyOutValueParams.blockLen = topkCount_ * sizeof(K_T); // bytes
+            copyOutValueParams.blockLen = topkCount_ * sizeof(float); // bytes
             copyOutValueParams.srcStride = 0;
             copyOutValueParams.dstStride = 0;
             // 搬运到GM

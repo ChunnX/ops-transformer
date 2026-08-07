@@ -27,6 +27,8 @@ constexpr uint32_t ATTR_TOPK_INDEX = 0;
 constexpr uint32_t ATTR_POOL_SIZE_INDEX = 1;
 constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 2;
 constexpr uint32_t ATTR_LAYOUT_K_INDEX = 3;
+constexpr uint32_t ATTR_MASK_MODE_INDEX = 4;
+constexpr uint32_t ATTR_QUANT_MODE_INDEX = 5;
 constexpr uint32_t ATTR_RETURN_VALUE_INDEX = 6;
 
 // topk / poolSize constraints (ref aclnn doc)
@@ -62,6 +64,10 @@ static ge::graphStatus InferShapePoolKeyIndexer(gert::InferShapeContext *context
     OP_CHECK_NULL_WITH_CONTEXT(context, topkPtr);
     const int64_t *poolSizePtr = attrs->GetInt(ATTR_POOL_SIZE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, poolSizePtr);
+    const int64_t *maskModePtr = attrs->GetInt(ATTR_MASK_MODE_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, maskModePtr);
+    const int64_t *quantModePtr = attrs->GetInt(ATTR_QUANT_MODE_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, quantModePtr);
     const bool *returnValuePtr = attrs->GetAttrPointer<bool>(ATTR_RETURN_VALUE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, returnValuePtr);
 
@@ -69,11 +75,28 @@ static ge::graphStatus InferShapePoolKeyIndexer(gert::InferShapeContext *context
     std::string layoutK(layoutKPtr);
     int64_t topk = *topkPtr;
     int64_t poolSize = *poolSizePtr;
+    int64_t maskMode = *maskModePtr;
+    int64_t quantMode = *quantModePtr;
     bool returnValue = *returnValuePtr;
 
     OP_CHECK_IF(layoutQ != "BSND" && layoutQ != "TND",
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("PoolKeyIndexer", "layout_q",
                     layoutQ.c_str(), "layout_q should be BSND or TND"),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(layoutK != "BSND" && layoutK != "TND" && layoutK != "PA_BBND",
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("PoolKeyIndexer", "layout_k",
+                    layoutK.c_str(), "layout_k should be BSND, TND or PA_BBND"),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(maskMode != 0 && maskMode != 3,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("PoolKeyIndexer", "mask_mode",
+                    std::to_string(maskMode).c_str(), "mask_mode should be 0 or 3"),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(quantMode != -1 && quantMode != 0 && quantMode != 1,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("PoolKeyIndexer", "quant_mode",
+                    std::to_string(quantMode).c_str(), "quant_mode should be -1, 0 or 1"),
                 return ge::GRAPH_FAILED);
 
     // poolSize constraints: [1, 128]

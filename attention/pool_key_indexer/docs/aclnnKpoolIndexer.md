@@ -588,9 +588,12 @@ aclnnStatus aclnnPoolKeyIndexer(
 - 确定性说明：
   - aclnnPoolKeyIndexer默认确定性实现。
 - 输入shape限制：
-  - 参数query的N1支持小于等于64，poolKey的N2支持1，headDim支持128。
+  - 参数query的N1支持小于等于64，poolKey的N2必须为1，headDim支持128，且poolKey的D必须与query的headDim保持一致。
   - 不支持query、poolKey中对S1、S2 pad无效数据。
   - 输出sparseIndicesOut最后一维为topk + pool_size - 1，输出sparseValuesOut最后一维为topk // pool_size。
+  - 维度一致性约束：weights、qDescaleOptional的各维度（BSND时为B、S1、N1，TND时为T1、N1）必须与query对应维度一致；kDescaleOptional的各维度必须与poolKey对应维度一致（PA_BBND时blockNum、blockSize、N2需与poolKey一致）；poolTailK的元素数必须等于B；actualSeqLengthsKeyOptional的元素数必须等于B。
+  - 前缀和约束：当layoutQueryOptional为TND时，actualSeqLengthsQueryOptional的前缀和最后一个元素的值必须等于query的T1；当layoutKeyOptional为TND时，actualSeqLengthsKeyOptional的前缀和最后一个元素的值必须等于poolKey的T2。
+  - 输出维度约束：sparseIndicesOut和sparseValuesOut的B、S1（或T1）维度必须与query对应维度一致。
 - 输入属性限制：
   - topk需满足topk % pool_size == 0，pool_size支持[1, 128]，topk支持[1, 2048]以及3072、4096、5120、6144、7168、8192。
   - block_size取值为16的倍数，最大支持1024。

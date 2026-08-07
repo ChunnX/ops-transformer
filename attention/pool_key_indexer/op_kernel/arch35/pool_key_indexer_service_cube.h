@@ -152,9 +152,9 @@ PoolKeyIndexerServiceCube<LIT>::InitMm1GlobalTensor(const GlobalTensor<int32_t> 
 template <typename LIT>
 __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::ComputeMm1(const PkiCommon::RunInfo &runInfo)
 {
-    CrossCoreWaitFlag<PkiCommon::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
+    CrossCoreWaitFlag<PkiCommon::ConstInfo::PKI_SYNC_MODE4, PIPE_FIX>(
                                                     PkiCommon::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2);
-    CrossCoreWaitFlag<PkiCommon::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
+    CrossCoreWaitFlag<PkiCommon::ConstInfo::PKI_SYNC_MODE4, PIPE_FIX>(
                                                     PkiCommon::ConstInfo::CROSS_VC_EVENT +
                                                     runInfo.loop % 2 +
                                                     PkiCommon::ConstInfo::AIV0_AIV1_OFFSET);
@@ -196,7 +196,7 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::ComputeMm1(const PkiCommo
                     s2L1Offset + S2_BASIC_BLOCK_L0 > s2L1RealSize ? s2L1RealSize - s2L1Offset : S2_BASIC_BLOCK_L0;
                 
                 uint64_t l0Stride = constInfo_.mBaseSize;
-                if (false) {
+                if (constInfo_.splitMFlag) {
                     l0Stride /= 2;
                 }
                 
@@ -206,7 +206,7 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::ComputeMm1(const PkiCommo
                         s1gL1Offset + constInfo_.mBaseSize > s1gL1SizeAlign2G
                                                            ? s1gL1SizeAlign2G - s1gL1Offset
                                                            : constInfo_.mBaseSize;
-                    if (false) {
+                    if (constInfo_.splitMFlag) {
                         s1gL0RealSize = 128; // g=64, topK=2k时固定m=128
                     }
                     LoadQueryToL0a(s1gGmOffset, s1gL1Offset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
@@ -239,10 +239,10 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::ComputeMm1(const PkiCommo
         SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % KEY_BUF_NUM);
         keyL1BufIdx_++;
     }
-    CrossCoreSetFlag<PkiCommon::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
+    CrossCoreSetFlag<PkiCommon::ConstInfo::PKI_SYNC_MODE4, PIPE_FIX>(
                                                 PkiCommon::ConstInfo::CROSS_CV_EVENT +
                                                 runInfo.loop % 2);
-    CrossCoreSetFlag<PkiCommon::ConstInfo::LI_SYNC_MODE4, PIPE_FIX>(
+    CrossCoreSetFlag<PkiCommon::ConstInfo::PKI_SYNC_MODE4, PIPE_FIX>(
                                                 PkiCommon::ConstInfo::CROSS_CV_EVENT +
                                                 runInfo.loop % 2 +
                                                 PkiCommon::ConstInfo::AIV0_AIV1_OFFSET);
@@ -324,7 +324,7 @@ __aicore__ inline void PoolKeyIndexerServiceCube<LIT>::LoadQueryToL0a(uint64_t s
                                                      uint64_t s1gL0RealSize, const PkiCommon::RunInfo &runInfo)
 {
     LoadData2DParamsV2 loadData2DParamsV2;
-    if (false && runInfo.actMBaseSize > 128) { // 非尾块，切M
+    if (constInfo_.splitMFlag && runInfo.actMBaseSize > 128) { // 非尾块，切M
         uint64_t dstOffset = 0;
         loadData2DParamsV2.kStartPosition = 0;
         loadData2DParamsV2.mStep = CeilDiv(64, BLOCK_CUBE);

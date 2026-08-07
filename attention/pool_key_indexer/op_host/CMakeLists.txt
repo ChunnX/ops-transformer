@@ -25,5 +25,5 @@ add_ops_compile_options(
 )
 
 if (NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE pool_key_indexer ACLNNTYPE aclnn_inner)
+    add_modules_sources(OPTYPE pool_key_indexer ACLNNTYPE aclnn)
 endif()
