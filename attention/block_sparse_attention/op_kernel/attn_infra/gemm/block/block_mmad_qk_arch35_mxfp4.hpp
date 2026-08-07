@@ -226,13 +226,16 @@ public:
     }
 
     // [Step5] Q-scale 稠密 GM→L1：CopyGmToL1MxScaleDn2NzA5（Host 沿 D；禁止 PV MxScale）
-    // Host BNSD：[B,N1,S1,D//64,2]；每 token scaleK=Ceil(D/64)*2 字节，行主序 [S, scaleK]
+    // Host：BNSD [B,N,S,D//64,2] 头内 token 连续；BSND/TND [S/T,N,D//64,2] 头内隔 N。
+    //   每 token scaleK=Ceil(D/64)*2 字节；src 行步长须乘 qHeadMul（与 Q 数据 GetTile 同构）。
     __aicore__ inline void CopyQScaleGmToL1(uint32_t qsActBaseTile,
                                             uint32_t scaleK,   // = Ceil(D/64)*2
                                             AscendC::GlobalTensor<uint8_t> &gQDequantScale,
-                                            uint32_t qBufId)
+                                            uint32_t qBufId,
+                                            uint32_t qHeadMul)
     {
-        copyGmToL1MxScaleDn2Nz(l1BScaleTensor[qBufId], gQDequantScale, qsActBaseTile, scaleK);
+        copyGmToL1MxScaleDn2Nz(l1BScaleTensor[qBufId], gQDequantScale, qsActBaseTile, scaleK,
+                               0, 0, qHeadMul);
     }
 
 
@@ -352,8 +355,11 @@ public:
             //     "srcB16Off=%u dstB16Off=%u\n",
             //     (unsigned)oriStartOffset, (unsigned)curDealtLen, (unsigned)dealtLenAccum,
             //     (unsigned)scaleK, (unsigned)srcB16Off, (unsigned)dstB16Off);
+            // src 起点已乘 kvHeadMul；段内逐行步长也须乘 kvHeadMul（TND/BSND），
+            // 否则段内第 2 行起读到邻头/错 token 的 scale（与 Q-scale 同构缺陷）。
             copyGmToL1MxScaleDn2Nz(
-                l1AScaleTensor[kBufId], gKScale, curDealtLen, scaleK, srcB16Off, dstB16Off);
+                l1AScaleTensor[kBufId], gKScale, curDealtLen, scaleK, srcB16Off, dstB16Off,
+                kvHeadMul);
 
             dealtLenAccum += curDealtLen;
             gatheredStartOffset += curDealtLen;
@@ -371,10 +377,10 @@ public:
     // [Step2] Q→L0B 改走 mx functor（原裸 5 参 LoadData 下沉到 CopyL1ToL0BMxQKA5）
     // Q-scale 沿 D（Host [S,D//64,2]）；ifTranspose=false 由 functor 内部设定。
     // [QFA 对齐] m 方向三个对齐参数调用处统一传 Q_M_PAD=128（mStep=8/xStep=8）
-    __aicore__ inline void LoadQToL0B(uint32_t qsActBaseTileAlign16,
+    __aicore__ inline void LoadQToL0B(uint32_t qsActBaseTileAlign128,
                                       uint32_t embed,
-                                      uint32_t qsActBaseTileAlign16L0,
-                                      uint32_t scaleMAlign16,
+                                      uint32_t qsActBaseTileAlign128L0,
+                                      uint32_t scaleMAlign128,
                                       uint32_t scaleK,
                                       uint32_t qBufId, 
                                       uint32_t qkL0abBufId)   // = Ceil(D/64)*2，沿 D
@@ -383,7 +389,7 @@ public:
             l0BTensor[qkL0abBufId].template ReinterpretCast<fp4x2_e2m1_t>(),
             l1BTensor[qBufId].template ReinterpretCast<fp4x2_e2m1_t>(),
             l1BScaleTensor[qBufId].template ReinterpretCast<AscendC::fp8_e8m0_t>(),
-            qsActBaseTileAlign16, embed, qsActBaseTileAlign16L0, scaleMAlign16, scaleK);
+            qsActBaseTileAlign128, embed, qsActBaseTileAlign128L0, scaleMAlign128, scaleK);
     }
 
     // [Step2] K→L0A 改走 mx functor（原裸 LoadKToL0A 下沉到 CopyL1ToL0AMxQKA5）
@@ -415,18 +421,18 @@ public:
     // C=[n,m]=[K行,Q行(pad Q_M_PAD)]；A=K@L0A，B=Q@L0B；每 nSub 独立计算，initC 恒 true。
     // tileMmad 只读 .data()（不消费 layout stride），与 PV::MatmulPV 同构。
     __aicore__ inline void MatmulQK(uint32_t n,
-                                    uint32_t qsActBaseTileAlign16,
+                                    uint32_t qsActBaseTileAlign128,
                                     uint32_t embed, 
                                     uint32_t qkL0abBufId, 
                                     uint32_t qkL0cBufId)
     {
         auto l0ALayout = tla::MakeLayout<ElementB, LayoutTagL0A>(n, embed);
         auto l0ATensorTla = tla::MakeTensor(l0ATensor[qkL0abBufId], l0ALayout, Arch::PositionL0A{});
-        auto l0BLayout = tla::MakeLayout<ElementA, LayoutTagL0B>(embed, qsActBaseTileAlign16);
+        auto l0BLayout = tla::MakeLayout<ElementA, LayoutTagL0B>(embed, qsActBaseTileAlign128);
         auto l0BTensorTla = tla::MakeTensor(l0BTensor[qkL0abBufId], l0BLayout, Arch::PositionL0B{});
-        auto l0CLayout = tla::MakeLayoutL0C(n, qsActBaseTileAlign16);
+        auto l0CLayout = tla::MakeLayoutL0C(n, qsActBaseTileAlign128);
         auto l0CTensorTla = tla::MakeTensor(l0CTensor[qkL0cBufId], l0CLayout, Arch::PositionL0C{});
-        tileMmad(l0CTensorTla, l0ATensorTla, l0BTensorTla, n, qsActBaseTileAlign16, embed, true);
+        tileMmad(l0CTensorTla, l0ATensorTla, l0BTensorTla, n, qsActBaseTileAlign128, embed, true);
     }
 
     // [Step4] L0C→UB fixpipe 改走 CopyL0CToUBTla NO_SPLIT/NO_QUANT
@@ -436,11 +442,11 @@ public:
     //   subBlockId：选目标 AIV（与 kernel loop%2 / Vec GetSubBlockIdx 对齐）
     //   UB 由调用方构好 TLA（非标 RowMajor：shape=(nEven,Q_M_PAD)、row-stride=256），直传不再 .data() 重包。
     template <class TensorUB>
-    __aicore__ inline void FixpipeMm1(uint32_t qsActBaseTileAlign16, uint32_t n, 
+    __aicore__ inline void FixpipeMm1(uint32_t qsActBaseTileAlign128, uint32_t n, 
                                       TensorUB &ubSTensorTla, bool subBlockId, uint32_t qkL0cBufId)
     {
         auto l0CTensorTla = tla::MakeTensor(
-            l0CTensor[qkL0cBufId], tla::MakeLayoutL0C(n, qsActBaseTileAlign16), Arch::PositionL0C{});
+            l0CTensor[qkL0cBufId], tla::MakeLayoutL0C(n, qsActBaseTileAlign128), Arch::PositionL0C{});
 
         using CopyL0CToUB = Tile::CopyL0CToUBTla<
             ArchTag, decltype(l0CTensorTla), TensorUB,
@@ -485,7 +491,6 @@ public:
         int64_t kvSeqlen = curTaskInfo.kvSeqlen;
         uint32_t yBlockNumAval = curTaskInfo.yBlockNumAval;
         uint32_t yBlockNumRsvd = curTaskInfo.yBlockNumRsvd;
-        uint32_t qsActBaseTileAlign16 = curTaskInfo.qsActBaseTileAlign16;
         uint32_t qsActBaseTileAlign128 = curTaskInfo.qsActBaseTileAlign128;
 
         uint32_t kvsActBaseTile = curTileInfo.kvsActBaseTile;
@@ -504,10 +509,11 @@ public:
             // AscendC::printf("[Q-LOAD] gatheredIdx=%u m=%u k=%u (task first tile)\n",
             //     (unsigned)gatheredKvSTileIdx, (unsigned)m, (unsigned)k);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(l1QEventId); 
-            auto l1QLayout = tla::MakeLayout<ElementA, layout::zN>(qsActBaseTileAlign16, embed);
+            
+            auto l1QLayout = tla::MakeLayout<ElementA, layout::zN>(qsActBaseTileAlign128, embed);
             auto l1QTensorTla = tla::MakeTensor(l1BTensor[qBufId], l1QLayout, Arch::PositionL1{});
             CopyQGmToL1(qsActBaseTile, embed, gQTensorTla, l1QTensorTla);                       // k=embed（fp4 元素），非 packedK
-            CopyQScaleGmToL1(qsActBaseTile, scaleK, gQDequantScale, qBufId);
+            CopyQScaleGmToL1(qsActBaseTile, scaleK, gQDequantScale, qBufId, qHeadMul);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);  // 通知 MTE1: Q 就绪
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);
             // [STEP0 golden] L1 Q 数据 / Q-scale（仅首 tile；前 256B 采样）
@@ -549,13 +555,13 @@ public:
 
             {
                 AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId); 
-                LoadQToL0B(qsActBaseTileAlign16, embed, qsActBaseTileAlign16, qsActBaseTileAlign16, scaleK, qBufId, qkL0abBufId);         
+                LoadQToL0B(qsActBaseTileAlign128, embed, qsActBaseTileAlign128, qsActBaseTileAlign128, scaleK, qBufId, qkL0abBufId);         
                 LoadKToL0A(nSubRowStart, nCur, embed, kvsActBaseTileAlign16, scaleK, kBufId, qkL0abBufId);
                 AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
                 // [QFA 对齐] C=[nCur, Q_M_PAD]：Mmad n 恒 128（QFA mmadParams.n=actMSizeAlign128 语义）
                 // 等该 L0C 槽空闲（Alloc 预置 / 上次 Fixpipe 归还）→ Mmad 写入
-                MatmulQK(nCur, qsActBaseTileAlign16, embed, qkL0cBufId, qkL0abBufId); 
+                MatmulQK(nCur, qsActBaseTileAlign128, embed, qkL0cBufId, qkL0abBufId); 
                 AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId); 
                 qkL0abBufId = (qkL0abBufId + 1) % MXFP4::L0A_QK_BUF_CNT;
             }
@@ -568,8 +574,8 @@ public:
             // （QFA (actS2Size+1)>>1<<1 语义）；写到 ubS 第 nSubRowStart 行起，行 stride=256
             uint32_t nCurEven = (nCur + 1) >> 1 << 1;
             auto ubSSubTla = GetTile(
-                ubSTensorTla, tla::MakeCoord(nSubRowStart, 0), tla::MakeShape(nCurEven, qsActBaseTileAlign16));
-            FixpipeMm1(qsActBaseTileAlign16, nCur, ubSSubTla, subBlockIdx != 0, qkL0cBufId);
+                ubSTensorTla, tla::MakeCoord(nSubRowStart, 0), tla::MakeShape(nCurEven, qsActBaseTileAlign128));
+            FixpipeMm1(qsActBaseTileAlign128, nCur, ubSSubTla, subBlockIdx != 0, qkL0cBufId);
             // Fixpipe 完成，归还 L0C 槽并翻转 ping-pong
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
             qkL0cBufId = (qkL0cBufId + 1) % MXFP4::L0C_QK_BUF_CNT;

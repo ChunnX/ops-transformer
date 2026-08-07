@@ -170,10 +170,19 @@ public:
  #endif	 
  #ifdef __DAV_VEC__
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
-        half dstTypeMax = static_cast<half>(dstTypeMax_);
-        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_, dstTypeMax);
+        // host 侧已预算: log2Cx_ = -dstTypeMax, log2CxCeil_ = ceil(dstTypeMax)
+        half NEG_LOG2_CX = static_cast<half>(-log2Cx_);
+        half LOG2_CX_CEIL = static_cast<half>(log2CxCeil_);
+        // if(coreIdx == 0) {
+        //             AscendC::printf("NEG_LOG2_CX = %f, LOG2_CX_CEIL = %f\n", 
+        //         static_cast<float>(NEG_LOG2_CX), 
+        //         static_cast<float>(LOG2_CX_CEIL));
+        // }
+
+
+        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_, NEG_LOG2_CX);
         EpilogueCopyGlobalMaxUbToL1 epilogueCopyGlobalMaxUbToL1(resource);
-        EpilogueComputePScale epilogueComputePScale(resource);
+        EpilogueComputePScale epilogueComputePScale(resource, LOG2_CX_CEIL);
         EpilogueRescaleO epilogueRescaleO(resource);
  #endif	 
 
@@ -256,7 +265,7 @@ public:
                     //   非标 RowMajor（stride≠cols），由 block 的 FixpipeMm2 经 CopyL0CToUBTla SPLIT_N 消费；
                     //   isRowMajor 只查 stride<1>==1 → 命中。block 直传此 tla（不再 .data() 重包）。
                      auto ubOTmpLayoutTla = tla::MakeLayout(
- 	                         tla::MakeShape(embed_ + 1, delay20TaskInfo.qsActBaseTileAlign8),
+ 	                         tla::MakeShape(embed_ + 1, delay20TaskInfo.qsActBaseTileAlign128),
  	                         tla::MakeStride(static_cast<int64_t>(64), tla::Int<1>{}));
                     auto ubOTmpTensorTla = tla::MakeTensor(ubOTmpTensor, ubOTmpLayoutTla, Arch::PositionUB{});
 
@@ -480,7 +489,8 @@ public:
         blockShapeX_ = bsaTilingData->blockShapeX;
         blockShapeY_ = bsaTilingData->blockShapeY;
         scaleValue_ = bsaTilingData->scaleValue;
-        dstTypeMax_ = bsaTilingData->dstTypeMax;
+        log2Cx_ = bsaTilingData->log2Cx;
+        log2CxCeil_ = bsaTilingData->log2CxCeil;
         // mask2idx tile info
         xBlockNumAligned_ = bsaTilingData->BsaMask2IdxTileInfo.xBlockNumAligned;
         yBlockNumAligned_ = bsaTilingData->BsaMask2IdxTileInfo.yBlockNumAligned;
@@ -730,10 +740,6 @@ public:
         info.xBlockIdx = xBlockIdx;
         info.gatheredKvSeqlen = gatheredKvSeqlen;
         info.qsActBaseTile = qsActBaseTile;
-        
-        info.qsActBaseTileAlign8 = CeilDiv(qsActBaseTile, 8u) * 8;
-        info.qsActBaseTileAlign16 = CeilDiv(qsActBaseTile, 16u) * 16;
-        info.qsActBaseTileAlign64 = CeilDiv(qsActBaseTile, 64u) * 64;
         info.qsActBaseTileAlign128 = CeilDiv(qsActBaseTile, 128u) * 128;
         
         info.qsBaseTile = qBaseTile_;
@@ -922,7 +928,8 @@ private:
     uint32_t blockShapeX_;
     uint32_t blockShapeY_;
     float scaleValue_;
-    float dstTypeMax_;
+    float log2Cx_;
+    float log2CxCeil_;
     // mask2idx tile info
     uint32_t xBlockNumAligned_;
     uint32_t yBlockNumAligned_;

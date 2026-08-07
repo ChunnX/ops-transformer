@@ -139,6 +139,7 @@ _CLI_OVERRIDES = {}
 _DUMP_DIR = "/home/w00947241/lwg/bsa_code_0730/ops-transformer_0703/attention/block_sparse_attention/tests/mxfp4_pytest/dump_data"
 _DUMP_ENABLED = False  # 全局开关, 默认关; golden 的 dump=True 时由 _enable_dump(True) 开启(并建 dump_data/ 目录)
 PRINTF_CHECK_RES = False #打开看Out比较结果
+_E8M0_QK_FLIP_PAIR = False
 
 
 def _enable_dump(on):
@@ -186,6 +187,37 @@ def _to_e8m0_uint8(exp_int):
 
 
 # =====================================================================
+# 第零点五部分: 量化模式枚举 (对齐 host侧 quantMode: 2=OCP, 3=CX)
+# ---------------------------------------------------------------------
+# 区分 OCP 与 CX 两套 P 量化方案 (推导文档式1-26):
+#   OCP(quantMode=2): K_block = floor(Smax/ln2)
+#                     m_snap = (K_block - 2)·ln2            (式8)
+#                     corr   = 2^(K_block - K_new - 2)      (式12/13)
+#                     pscale byte = K_block - K_new - 2 + 127
+#   CX(quantMode=3):  log2CX = log2(dstTypeMax), ceil_log2CX = ceil(log2CX)
+#                     K_block = ceil(Smax/ln2 - log2CX)     (式19)
+#                     m_snap = K_block·ln2  (无 -2)         (式19)
+#                     corr   = 2^(K_block - K_new - ceil_log2CX)  (式26)
+#                     pscale byte = K_block - K_new - ceil_log2CX + 127
+# 二者差异仅在 K_block 取整方式 + 末尾 -2 换成 -ceil_log2CX。
+# CX 默认 dstTypeMax=6.0 -> log2CX=log2(6)≈2.585, ceil_log2CX=3。
+# =====================================================================
+QUANT_MODE_OCP = 2
+QUANT_MODE_CX = 3
+# CX 默认 dstTypeMax(host: dstTypeMax=0 时取 MXFP4_DEFAULT_DST_TYPE_MAX_LOG2=log2(6.0))
+CX_DEFAULT_DST_TYPE_MAX = 6.0
+
+
+def _resolve_cx_params(dst_type_max):
+    """CX 路径: 由 dstTypeMax 求 (log2CX, ceil_log2CX)。
+    dst_type_max=0 -> 默认 6.0(对齐 host MXFP4_DEFAULT_DST_TYPE_MAX_LOG2)。"""
+    cx_val = CX_DEFAULT_DST_TYPE_MAX if (dst_type_max is None or dst_type_max == 0) else float(dst_type_max)
+    log2_cx = math.log2(cx_val)
+    ceil_log2_cx = math.ceil(log2_cx)
+    return log2_cx, ceil_log2_cx
+
+
+# =====================================================================
 # 第一部分: MXFP4 (E2M1) 量化/反量化/打包 工具 (移植自 mx_quant_fp4_tool.py)
 # =====================================================================
 # FP4 E2M1: 4bit = S(1)+E(2)+M(1), bias=1。16 个值, 无 inf/NaN(e=3 是正规数 ±4/±6):
@@ -227,22 +259,32 @@ def quantize_fp4(tensor: torch.Tensor) -> torch.Tensor:
         idx = torch.argmin(torch.abs(expanded - FP4_E2M1_VALUES.to(tensor.device)), dim=-1)
         return FP4_E2M1_VALUES.to(tensor.device)[idx]
 
-# 为一个 32 元素 block 计算 E8M0 scale（ 2^exp ），使 block 内 max 经过除 scale 后落在 FP4 高精度区 [4, 6]
-def compute_e8m0_scale_block(block: torch.Tensor, mode: str = "baseline") -> torch.Tensor:
+# 为一个 32 元素 block 计算 E8M0 scale（ 2^exp ），使 block 内 max 经过除 scale 后落在 FP4 高精度区
+def compute_e8m0_scale_block(block: torch.Tensor, mode: str = "baseline",
+                             quant_mode: int = QUANT_MODE_OCP, log2_cx: float = 0.0) -> torch.Tensor:
     """为一个 32 元素 block 算 E8M0 scale(2^exp)。
-    baseline: floor(log2(max))-emax(最大化范围, 允许少量饱和); oas: ceil-2(防饱和)。"""
+    OCP(baseline): scale_exp = floor(log2(max))-emax, max 归一化到 [4,8)(式3: /4)。
+    OCP(oas):      scale_exp = ceil(log2(max))-emax,  防饱和。
+    CX:            scale_exp = ceil(log2(max) - log2CX), max 归一化到 (CX/2, CX](式16: /CX)。
+                   log2CX 由调用方预算传入(避免 per-block 重算 math.log2)。"""
     """
     为一个 block 计算 E8M0 缩放因子 (2 的整数次幂)。
 
-    按 OCP MX 规范:
+    OCP(quantMode=2) MX 规范(式3):
         scale_exp = floor(log2(max_abs(block))) - emax_elem   (baseline)
         scale_exp = ceil(log2(max_abs(block)))  - emax_elem   (oas, 防饱和)
+    CX(quantMode=3)(式16):
+        scale_exp = ceil(log2(max_abs) - log2CX) = ceil(log2(max_abs/CX))
+        其中 log2CX = log2(dstTypeMax), dstTypeMax=0 取默认 6.0。
 
     参数:
-        block:     shape [..., block_size] 的张量
-        mode:      "baseline" - floor, 最大化 FP4 范围利用, 允许少量饱和
-                   "oas"      - ceil,  保证不饱和, 牺牲一点精度
-        emax_elem: 元素格式最大正规化指数, FP4 E2M1 为 2
+        block:        shape [..., block_size] 的张量
+        mode:         "baseline" - floor, 最大化 FP4 范围利用, 允许少量饱和
+                      "oas"      - ceil,  保证不饱和, 牺牲一点精度
+                      (CX 忽略 mode, 固定用 ceil-log2CX)
+        quant_mode:   OCP(2)|CX(3)
+        dst_type_max: CX 的 dstTypeMax(0=默认6.0); 仅 CX 生效
+        emax_elem:    元素格式最大正规化指数, FP4 E2M1 为 2
 
     返回:
         scale: 标量, 2 的整数次幂, 指数范围 [-127, 127]
@@ -251,14 +293,22 @@ def compute_e8m0_scale_block(block: torch.Tensor, mode: str = "baseline") -> tor
     if max_abs.item() < 1e-30:          # 全 0 block: scale=1
         return torch.tensor(1.0, device=block.device)
     log_max = torch.log2(max_abs)
-    exp = torch.floor(log_max) - FP4_E2M1_EMAX if mode == "baseline" \
-        else torch.ceil(log_max) - FP4_E2M1_EMAX
+    if quant_mode == QUANT_MODE_CX:
+        # CX(式16): scale_exp = ceil(log2(max) - log2CX), log2CX 由调用方预算传入
+        exp = torch.ceil(log_max - log2_cx)
+    else:
+        # OCP(式3): scale_exp = floor(log2(max)) - emax (baseline) | ceil - emax (oas)
+        exp = torch.floor(log_max) - FP4_E2M1_EMAX if mode == "baseline" \
+            else torch.ceil(log_max) - FP4_E2M1_EMAX
     exp = torch.clamp(exp, -127.0, 127.0)
     return 2.0 ** exp
 
 # 完整的 MXFP4 量化流程 ：沿最后一维，每 32 元素一个 block，每个 block 共享一个 E8M0 scale，先除 scale 归一化再量化到 FP4
-def mx_quantize(tensor: torch.Tensor, block_size: int = 32, mode: str = "baseline"):
+def mx_quantize(tensor: torch.Tensor, block_size: int = 32, mode: str = "baseline",
+                quant_mode: int = QUANT_MODE_OCP, log2_cx: float = 0.0):
     """MXFP4 量化(FP32 模拟): 沿最后一维每 32 元素共享一个 E8M0 scale, 再各自量化到 FP4。
+    quant_mode/log2_cx 透传给 compute_e8m0_scale_block(CX 用 ceil-log2CX, OCP 用 floor-emax)。
+    log2_cx 由调用方预算传入(避免 per-block 重算 math.log2)。
     返回 (fp4_sim_fp32[同 shape], scales_real[每 block 一个])。"""
     original_shape = tensor.shape
     if tensor.dim() == 0:
@@ -273,7 +323,8 @@ def mx_quantize(tensor: torch.Tensor, block_size: int = 32, mode: str = "baselin
     scales = torch.empty(n_blk, device=tensor.device)
     fp4 = torch.empty_like(reshaped)
     for i in range(n_blk):
-        sc = compute_e8m0_scale_block(reshaped[i], mode=mode)
+        sc = compute_e8m0_scale_block(reshaped[i], mode=mode,
+                                      quant_mode=quant_mode, log2_cx=log2_cx)
         scales[i] = sc
         fp4[i] = quantize_fp4(reshaped[i] / sc)   # 归一化后量化到 FP4
     fp4 = fp4.view(tensor.shape)
@@ -299,11 +350,14 @@ def mx_dequantize(fp4_vals: torch.Tensor, scales: torch.Tensor, block_size: int 
     return dq
 
 # 沿任意轴做 mx_quantize → 立即mx_dequantize ，返回带量化噪声的 FP32。用于给 CPU golden 的 Q/K/V 引入与 NPU 一致的量化误差 ，使对比公平
-def mxfp4_qdq(t: torch.Tensor, axis: int, block_size: int = 32, mode: str = "baseline") -> torch.Tensor:
+def mxfp4_qdq(t: torch.Tensor, axis: int, block_size: int = 32, mode: str = "baseline",
+              quant_mode: int = QUANT_MODE_OCP, log2_cx: float = 0.0) -> torch.Tensor:
     """沿任意 axis 做 MXFP4 qdq round-trip, 返回带量化噪声的 FP32。
-    golden 用它给 Q/K/V 引入与 NPU(packed fp4+e8m0)一致的量化误差。"""
+    golden 用它给 Q/K/V 引入与 NPU(packed fp4+e8m0)一致的量化误差。
+    quant_mode/log2_cx 透传给 mx_quantize(CX 用 ceil-log2CX 网格, OCP 用 floor-emax)。"""
     t_last = t.movedim(axis, -1).contiguous()     # 量化轴搬到最后
-    fp4_sim, scales = mx_quantize(t_last, block_size=block_size, mode=mode)
+    fp4_sim, scales = mx_quantize(t_last, block_size=block_size, mode=mode,
+                                  quant_mode=quant_mode, log2_cx=log2_cx)
     dq = mx_dequantize(fp4_sim, scales, block_size=block_size)
     return dq.movedim(-1, axis).contiguous()      # 搬回原轴
 
@@ -328,15 +382,18 @@ def pack_fp4_to_uint8(fp4_enc: torch.Tensor) -> torch.Tensor:
 
 # NPU 打包入口 ：完整的 MXFP4 量化 → 编码 → 打包 + E8M0 指数转 biased uint8。全流程整合：
 def mxfp4_quantize_pack_last(tensor: torch.Tensor, quant_axis: int,
-                             block_size: int = 32, mode: str = "baseline"):
+                             block_size: int = 32, mode: str = "baseline",
+                             quant_mode: int = QUANT_MODE_OCP, log2_cx: float = 0.0):
     """NPU 侧打包入口: 量化轴任意, 打包轴=最后一维。
     返回 (packed_fp4 uint8[last=D//2], e8m0_scales uint8 biased[量化轴维=ceil(qd/32)])。
-    Q/K 用 quant_axis=-1(沿 head_dim); V 用 -2(沿 seq_k)。"""
+    Q/K 用 quant_axis=-1(沿 head_dim); V 用 -2(沿 seq_k)。
+    quant_mode/log2_cx 透传给 mx_quantize(CX 用 ceil-log2CX 网格, OCP 用 floor-emax)。"""
     nd = tensor.dim()
     qax = quant_axis % nd
     assert tensor.shape[-1] % 2 == 0, f"最后一维须偶数, 当前 {tensor.shape[-1]}"
     t_q_last = tensor.movedim(qax, -1).contiguous()
-    fp4_sim, scales_flat = mx_quantize(t_q_last, block_size=block_size, mode=mode)
+    fp4_sim, scales_flat = mx_quantize(t_q_last, block_size=block_size, mode=mode,
+                                       quant_mode=quant_mode, log2_cx=log2_cx)
     codes = convert_fp32_simulated_to_fp4_encoding(fp4_sim).movedim(-1, qax).contiguous()
     packed = pack_fp4_to_uint8(codes)
     qdim = tensor.shape[qax]
@@ -365,11 +422,23 @@ _FP4_POS_MIDPOINTS_FP32 = torch.tensor([0.25, 0.75, 1.25, 1.75, 2.5, 3.5, 5.0], 
 # 把 softmax 之前的 scores 矩阵 S （形状 [..., seq_k, nq] ）做 FP4 量化和 per-block E8M0 scale 反量化，得到 P_eff （有效概率，未归一化），
 # 供外部 sum(P) 和 PV matmul 在 fp32 上计算
 def _blockwise_snap_local_quantize_p_eff(S: torch.Tensor, m_running, seqk_dim: int,
-                                          mx_block_size: int = 32, mx_mode: str = "baseline"):
+                                          mx_block_size: int = 32, mx_mode: str = "baseline",
+                                          is_cx: bool = False,
+                                          neg_log2_cx: float = 0.0,
+                                          p_quant_exp_shift: float = 2.0):
     """对 scores(S, seqk_dim 轴)做 blockwise_snap_local P 量化, 返回 (P_eff, m_new)。
-    每 32 元素 block: m_block snap 到 log2 -> P_local(∈[4,8)) -> FP4 round 得 P_q(raw) ->
-    corr=2^(K_block-K_new-2) 折 per-block E8M0 -> P_eff=P_q*corr。
-    P_eff 未归一化(需外部 /sum); m_new=K_new(fp32 整数, 供 online softmax alpha=exp2(K_diff))。"""
+    每 32 元素 block: m_block snap 到 log2 -> P_local -> FP4 round 得 P_q(raw) ->
+    corr=2^(K_block-K_new-shift) 折 per-block E8M0 -> P_eff=P_q*corr。
+    P_eff 未归一化(需外部 /sum); m_new=K_new(fp32 整数, 供 online softmax alpha=exp2(K_diff))。
+
+    循环不变量 is_cx/neg_log2_cx/p_quant_exp_shift 由调用方提前算一次传入(避免 per-chunk 重复算):
+      OCP(is_cx=False): K_block=floor(Smax/ln2), m_snap=(K_block-2)·ln2,
+              corr=2^(K_block-K_new-2), pscale byte=K_block-K_new-2+127   (式8/12/13)
+              p_quant_exp_shift=2.0(默认), neg_log2_cx 不用(预置 0)。
+      CX(is_cx=True):  K_block=ceil(Smax/ln2 - log2CX), m_snap=K_block·ln2(无 -2),
+              corr=2^(K_block-K_new-ceil_log2CX), pscale byte=K_block-K_new-ceil_log2CX+127  (式19/26)
+              p_quant_exp_shift=ceil_log2CX, neg_log2_cx=-log2CX,
+              其中 log2CX=log2(dstTypeMax), dstTypeMax=0 时取默认 6.0(log2(6)≈2.585, ceil=3)。"""
     NEG_INF = float('-inf')
     device = S.device
     src_dtype = S.dtype                       # 全程跟随 S dtype(对齐 qfa: fp16)
@@ -377,6 +446,8 @@ def _blockwise_snap_local_quantize_p_eff(S: torch.Tensor, m_running, seqk_dim: i
     skp = seqk_dim if seqk_dim >= 0 else ndim + seqk_dim
     seqk_len = S.shape[skp]
     LN2 = math.log(2.0)
+
+    # 量化模式参数已由调用方预算传入(is_cx/neg_log2_cx/p_quant_exp_shift), 此处直接用。
 
     # 阶段1: pad seqk 到 32 倍数(-inf padding 不影响 max)。
     pad = (mx_block_size - seqk_len % mx_block_size) % mx_block_size
@@ -395,10 +466,26 @@ def _blockwise_snap_local_quantize_p_eff(S: torch.Tensor, m_running, seqk_dim: i
     m_block_raw = S_r.max(dim=-1).values
     m_block_raw_safe = torch.where(torch.isinf(m_block_raw) & (m_block_raw < 0),
                                    torch.zeros_like(m_block_raw), m_block_raw)  # 全 -inf block -> 0
-    K_block = torch.clamp(torch.floor(m_block_raw_safe / LN2), -127.0, 127.0)  # snap: floor(m/ln2)
-    if _DUMP_ENABLED: 
+    if is_cx:
+        # CX(式19): K_block = ceil(Smax/ln2 - log2CX), 全程 fp16 域(对齐 kernel:
+        #   kernel: Smax(fp16)*dScale*INV_LN2(fp16) + NEG_LOG2_CX(fp16) -> Truncate<CAST_CEIL> -> *LN2(fp16))
+        #   golden: LN2/neg_log2_cx 都转 fp16, 与 m_block_raw_safe(fp16) 同精度运算, 避免 fp64
+        #   标量混入导致 ceil 边界舍入翻转。
+        LN2_fp16 = torch.tensor(LN2, dtype=torch.float16, device=device)              # 对齐 kernel constexpr half LN2
+        neg_log2_cx_fp16 = torch.tensor(neg_log2_cx, dtype=torch.float16, device=device)  # 对齐 kernel NEG_LOG2_CX
+        k_raw = m_block_raw_safe / LN2_fp16 + neg_log2_cx_fp16                        # 全 fp16
+        K_block = torch.clamp(torch.ceil(k_raw), -127.0, 127.0)
+        m_block_snap = K_block * LN2_fp16                                            # 无 -2(式19), fp16
+    else:
+        # OCP(式8): K_block = floor(Smax/ln2), 全程 fp16 域(对齐 kernel:
+        #   kernel: Smax(fp16)*dScale*INV_LN2(fp16) -> Truncate<CAST_FLOOR> -> *LN2(fp16) -> -2*LN2(fp16))
+        #   golden: LN2 转 fp16, 与 m_block_raw_safe(fp16) 同精度运算, 避免 fp64 标量混入
+        #   导致 floor 边界舍入翻转。
+        LN2_fp16 = torch.tensor(LN2, dtype=torch.float16, device=device)              # 对齐 kernel constexpr half LN2
+        K_block = torch.clamp(torch.floor(m_block_raw_safe / LN2_fp16), -127.0, 127.0)  # snap: floor(m/ln2)
+        m_block_snap = (K_block - 2) * LN2_fp16                     # 使 P_local block max ∈ [4,8), fp16
+    if _DUMP_ENABLED:
         _dump_tensor(K_block.T, "local_group_max.bin")         # dump: 每 block 的 K(镜像 qfa local_group_max, 对齐转置)
-    m_block_snap = (K_block - 2) * LN2                     # 使 P_local block max ∈ [4,8)
     # 阶段3: 局部归一化 P_local = exp(S - m_block_snap)。
     P_local = torch.exp(S_r - m_block_snap.unsqueeze(-1))
     P_local_bf = P_local.to(torch.bfloat16).to(P_local.dtype)   # bf16 round-trip(模拟 NPU 中间)
@@ -417,13 +504,20 @@ def _blockwise_snap_local_quantize_p_eff(S: torch.Tensor, m_running, seqk_dim: i
     K_ij_fp32 = K_ij.float()
     m_new = K_ij_fp32 if m_running is None else torch.maximum(m_running, K_ij_fp32)
     K_new_s = m_new.to(src_dtype)                          # cast 回 s_dtype 与 K_block 同算
-    if _DUMP_ENABLED: 
+    if _DUMP_ENABLED:
         _dump_tensor(K_new_s, "global_max.bin")                # dump: 全局 K_new
-    # 阶段6: corr = 2^(K_block-K_new-2) = 0.25*2^(K_diff), per-block E8M0(折 2^-2 dequant 因子)。
-    K_diff = K_block - K_new_s.unsqueeze(-1)               # ≤0, s_dtype 整数
-    corr = torch.exp2(K_diff - 2.0)
+    # 阶段6: corr = 2^(K_block-K_new-p_quant_exp_shift), per-block E8M0(折 dequant 因子)。
+    #   OCP: p_quant_exp_shift=2  (式12/13: byte=K_block-K_new-2+127)
+    #   CX:  p_quant_exp_shift=ceil_log2CX  (式26: byte=K_block-K_new-ceil_log2CX+127)
+    # CX 全程 fp16(对齐 kernel pscale VF 的 16bit 算); OCP 保持原 s_dtype 精度。
+    if is_cx:
+        K_diff = (K_block - K_new_s.unsqueeze(-1))
+        corr = torch.exp2(K_diff - torch.tensor(p_quant_exp_shift, dtype=torch.float16, device=device))
+    else:
+        K_diff = K_block - K_new_s.unsqueeze(-1)               # ≤0, s_dtype 整数
+        corr = torch.exp2(K_diff - 2.0)
     if _DUMP_ENABLED:                                       # dump: P scale E8M0(镜像 qfa p_scale_e8m0)
-        p_scale_e8m0 = _to_e8m0_uint8(K_diff.to(torch.int32) - 2).T.contiguous()
+        p_scale_e8m0 = _to_e8m0_uint8(K_diff.to(torch.int32) - int(p_quant_exp_shift)).T.contiguous()
         _dump_tensor(p_scale_e8m0, "p_scale_e8m0.bin")
     # 阶段7: corr 广播回 seqk_len, P_eff = P_q * corr。
     corr_broad = corr.repeat_interleave(mx_block_size, dim=-1)[..., :seqk_len].movedim(-1, skp)
@@ -486,12 +580,14 @@ def rand_range(shape, data_range=[-10, 10], dtype=torch.bfloat16, device=None):
 def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(query, key, value, block_sparse_mask,
                                                     block_shape, scale_value, num_kv_heads,
                                                     p_quant='snap_local', s_dtype='fp16',
-                                                    dump=False, out_dtype='bfloat16'):
+                                                    dump=False, out_dtype='bfloat16',
+                                                    quant_mode=QUANT_MODE_OCP, dst_type_max=0.0):
     """CPU 标杆(BNSD, MXFP4, 分块 flash), 对齐 qfa flash golden 的 dtype 流 + kernel tile 结构:
        Q/K/V mxfp4 qdq(fp32); per q-block + 2-kv-block chunk + online softmax;
        S fp32 matmul -> s_dtype -> scale; P 量化(snap_local)与 P 本身在 s_dtype; sum/PV 在 fp32。
        dump=True 时落盘中间结果(dump_data/*.bin, per-chunk append)。
-       p_quant: 'snap_local'|'none'; s_dtype: 'fp16'(默认,qfa 对齐)|'bf16'|'fp32'。"""
+       p_quant: 'snap_local'|'none'; s_dtype: 'fp16'(默认,qfa 对齐)|'bf16'|'fp32'。
+       quant_mode: OCP(2)|CX(3), 仅 p_quant='snap_local' 时区分 P 量化方案; dst_type_max: CX 的 dstTypeMax(0=默认6.0)。"""
     if dump:
         _enable_dump(True)
     try:
@@ -507,10 +603,29 @@ def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(query, key, value, block_spar
         ceil_kv = (S2 + block_y - 1) // block_y
         s_torch_dtype = _resolve_s_dtype(s_dtype)
 
+        # 量化模式参数(循环不变量, 预算一次, 供每次 chunk 调用复用):
+        # 量化模式参数(循环不变量, 预算一次, 供每次 chunk 调用 + Q/K/V qdq + NPU 打包复用):
+        #   OCP(quant_mode=2): p_quant_exp_shift=2.0, neg_log2_cx/log2_cx 不用(预置 0)。
+        #   CX (quant_mode=3): p_quant_exp_shift=ceil_log2CX, neg_log2_cx=-log2CX, log2_cx=log2(CX)。
+        is_cx = (quant_mode == QUANT_MODE_CX)
+        neg_log2_cx = 0.0
+        log2_cx = 0.0
+        if is_cx:
+            print("MXFP4 CX QUANT")
+            log2_cx, ceil_log2_cx = _resolve_cx_params(dst_type_max)
+            neg_log2_cx = -log2_cx
+            p_quant_exp_shift = float(ceil_log2_cx)
+            print(f"p_quant_exp_shift: {p_quant_exp_shift}")
+        else:
+            print("MXFP4 OCP QUANT")
+            p_quant_exp_shift = 2.0
+            print(f"p_quant_exp_shift: {p_quant_exp_shift}")
+
         # Q/K/V mxfp4 qdq -> fp32(引入与 NPU 一致的量化噪声)
-        q_q = mxfp4_qdq(q, axis=-1)            # Q/K: head_dim(rowwise)
-        k_q = mxfp4_qdq(k, axis=-1)
-        v_q = mxfp4_qdq(v, axis=2)            # V: seq_k(columnwise)
+        # quant_mode/log2_cx 透传: CX 用 ceil-log2CX 网格, OCP 用 floor-emax 网格
+        q_q = mxfp4_qdq(q, axis=-1, quant_mode=quant_mode, log2_cx=log2_cx)  # Q/K: head_dim(rowwise)
+        k_q = mxfp4_qdq(k, axis=-1, quant_mode=quant_mode, log2_cx=log2_cx)
+        v_q = mxfp4_qdq(v, axis=2, quant_mode=quant_mode, log2_cx=log2_cx)   # V: seq_k(columnwise)
 
         out = torch.zeros((B, N, S, D), dtype=torch.float32)
         lse = torch.full((B, N, S, 1), float('-inf'), dtype=torch.float32)
@@ -557,7 +672,8 @@ def cpu_block_sparse_attention_bnsd_mxfp4_with_lse(query, key, value, block_spar
                             # P 量化在 s_dtype; snap_local 内部已 dump p_packed_x4/p_scale_e8m0/
                             # local_group_max/global_max。m_run 跨 chunk online。
                             P_eff_s, m_new = _blockwise_snap_local_quantize_p_eff(
-                                S_s, m_running=m_run, seqk_dim=0)  # DN: seqk=dim0
+                                S_s, m_running=m_run, seqk_dim=0,  # DN: seqk=dim0
+                                is_cx=is_cx, neg_log2_cx=neg_log2_cx, p_quant_exp_shift=p_quant_exp_shift)
                             P_eff_s = torch.nan_to_num(P_eff_s, nan=0.0)
                             P_fp32 = P_eff_s.float()      # 升 fp32 供 sum/PV
                             # alpha = exp2(K_old - K_new)(snap_local 的 m 存 K 整数, 位精确)
@@ -653,11 +769,17 @@ def compare(golden, real, src_dtype):
 # =====================================================================
 # 第六部分: e8m0 -> V3 形状 重排 (假设 A: 连续配对, 待 NPU 核验)
 # =====================================================================
-# Q/K 的 E8M0 scale 从 [B,N,S,D//32] 重排为 V3 算子 doc 规定的 [B,N,S,D//64,2] 形状（每 2 个连续的 32-block 配对成 1 个 64-group）
+# Q/K 的 E8M0 scale 从 [B,N,S,D//32] 重排为 V3 算子 doc 规定的 [B,N,S,D//64,2] 形状
+# 配对方向: flip (s0,s1)->(s1,s0)。经 NPU kernel mm1Res dump 核验(spec 假设A):
+#   连续配对下 Q 行 s=10/20(scales[0]!=scales[1])在所有 KV chunk 上 S=K@Q^T 整列出错,
+#   flip 配对后 Q dequant 与 kernel 一致。原 spec 写"连续配对, 可能需 flip"-> 确需 flip。
 def _e8m0_qk_to_v3(e8m0_uint8):
-    """q/k e8m0 [B,N,S,D//32] -> [B,N,S,D//64,2] (连续配对)。"""
+    """q/k e8m0 [B,N,S,D//32] -> [B,N,S,D//64,2] (配对方向由 _E8M0_QK_FLIP_PAIR 控制)。"""
     *lead, nd = e8m0_uint8.shape
-    return e8m0_uint8.reshape(*lead, nd // 2, 2).contiguous().view(torch.float8_e8m0fnu)
+    paired = e8m0_uint8.reshape(*lead, nd // 2, 2)
+    if _E8M0_QK_FLIP_PAIR:
+        paired = paired.flip(-1)                                # (s0,s1) -> (s1,s0)
+    return paired.contiguous().view(torch.float8_e8m0fnu)
 
 
 def _e8m0_v_to_v3(e8m0_uint8):
@@ -732,7 +854,7 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
                         p_quant='snap_local', s_dtype='fp16',
                         dump=False, device_id=0,
                         s1_list=None, s2_list=None,
-                        data_x=1.0):
+                        data_x=1.0, dst_type_max=0.0):
     """qfa 风格: fp32 造数据 -> mxfp4 打包 -> CPU golden -> NPU -> check_result.
        p_quant: 'snap_local'|'none'; s_dtype: 'fp16'(默认)|'bf16'|'fp32'; dump: 落盘中间结果。
        input_layout: 'BNSD'(默认)|'BSND'|'TND'; BSND/TND 对齐 QFA 哲学——golden 保持 BNSD 不动, 仅 NPU I/O
@@ -746,6 +868,32 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
     assert n1 == n2 * g, f"GQA 约束 n1==n2*g: {n1} vs {n2}*{g}"
     assert block_shape[0] in (64, 128), f"MXFP4 blockShapeX 仅支持 64/128, 当前 {block_shape[0]}"
     assert qk_d in (64, 128), f"MXFP4 D 仅支持 64/128, 当前 {qk_d}"
+    assert mask_kind in ('dense', 'sparse', 'gap_sparse'), \
+        f"mask_kind 仅支持 'dense'/'sparse/gap_sparse/ ', 当前 {mask_kind}"
+    assert s_dtype in ('fp16', 'bf16', 'fp32'), \
+        f"s_dtype 仅支持 'fp16'/'bf16'/'fp32', 当前 {s_dtype}"
+    assert quant_mode in (QUANT_MODE_OCP, QUANT_MODE_CX), \
+        f"quant_mode 仅支持 {QUANT_MODE_OCP}(OCP)/{QUANT_MODE_CX}(CX), 当前 {quant_mode}"
+    assert out_dtype in ('bfloat16', 'float16'), \
+        f"out_dtype 仅支持 'bfloat16'/'float16', 当前 {out_dtype}"
+    if quant_mode == QUANT_MODE_CX:
+        # CX dstTypeMax: 0(默认6.0) 或 [6.0, 12.0](对齐 host ValidateAdditionalParams)
+        _dst = 0.0 if dst_type_max is None else float(dst_type_max)
+        assert _dst == 0.0 or (6.0 <= _dst <= 12.0), \
+            f"CX(quant_mode=3) dst_type_max 须 0(默认6.0) 或 [6.0, 12.0], 当前 {dst_type_max}"
+
+    # 预算 log2_cx(供 Q/K/V 量化网格 + P snap 复用, 避免重复算 math.log2):
+    #   OCP: log2_cx 不用(预置 0); CX: log2_cx=log2(dstTypeMax), dstTypeMax=0 取默认 6.0。
+    if quant_mode == QUANT_MODE_CX:
+        print("MXFP4 CX QUANT")
+        log2_cx, _ = _resolve_cx_params(dst_type_max)
+        log2_cx_fp16 = float(torch.tensor(log2_cx, dtype=torch.float16).item())
+        print(f"log2_cx: {log2_cx} (fp16 cast: {log2_cx_fp16})")
+        # log2_cx = log2_cx_fp16  # 用 fp16 值后续透传(对齐 kernel static_cast<half>)
+    else:
+        print("MXFP4 OCP QUANT")
+        log2_cx = 0.0
+
     if v_d is None:
         v_d = qk_d
     assert v_d == qk_d, f"v_d must == qk_d (doc L517/L653: attentionOut shape==query, D 须一致), got v_d={v_d} qk_d={qk_d}"
@@ -771,7 +919,12 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
         k_list = [randn_x((1, n2, act_kv[bi], qk_d), data_x).to(torch.float32) for bi in range(b)]
         v_list = [randn_x((1, n2, act_kv[bi], v_d), data_x).to(torch.float32) for bi in range(b)]
         # golden per-batch(B=1, S=S_b, mask 切到实际) -> BNSD permute+flatten -> concat TND [Tq,N,D]
+        # dump 修复: 循环外一次性 _enable_dump(True)(含 truncate), 循环内 dump=False 避免
+        #   cpu_block_sparse_attention_bnsd_mxfp4_with_lse 进入时再 truncate 清掉前序 batch 数据;
+        #   循环外 _enable_dump(False) 收尾。否则 b>1 时 bin 仅剩最后一个 batch(per-batch 进入都 truncate)。
         print("cpu calc start")
+        if dump:
+            _enable_dump(True)
         cpu_chunks = []
         for bi in range(b):
             cq_b = (act_q[bi] + block_x - 1) // block_x
@@ -779,7 +932,8 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
             mask_b = mask[bi:bi + 1, :, :cq_b, :ck_b]
             out_b, _ = cpu_block_sparse_attention_bnsd_mxfp4_with_lse(
                 q_list[bi], k_list[bi], v_list[bi], mask_b, block_shape, scale, n2,
-                p_quant=p_quant, s_dtype=s_dtype, dump=dump, out_dtype=out_dtype)
+                p_quant=p_quant, s_dtype=s_dtype, dump=False, out_dtype=out_dtype,
+                quant_mode=quant_mode, dst_type_max=dst_type_max)
             cpu_chunks.append(out_b.permute(0, 2, 1, 3).flatten(0, 1))  # [S1_b, N, D] bf16
         cpu_out = torch.cat(cpu_chunks, dim=0).contiguous()  # [Tq, N, D] bf16
         print("golden calc end")
@@ -789,9 +943,12 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
         # 打包 per-batch -> BNSD permute+flatten -> concat TND [T,N,D//2] + 4D scale
         q_p_ch, k_p_ch, v_p_ch, q_s_ch, k_s_ch, v_s_ch = [], [], [], [], [], []
         for bi in range(b):
-            q_p, q_e = mxfp4_quantize_pack_last(q_list[bi], quant_axis=-1)
-            k_p, k_e = mxfp4_quantize_pack_last(k_list[bi], quant_axis=-1)
-            v_p, v_e = mxfp4_quantize_pack_last(v_list[bi], quant_axis=-2)
+            q_p, q_e = mxfp4_quantize_pack_last(q_list[bi], quant_axis=-1,
+                                                quant_mode=quant_mode, log2_cx=log2_cx)
+            k_p, k_e = mxfp4_quantize_pack_last(k_list[bi], quant_axis=-1,
+                                                quant_mode=quant_mode, log2_cx=log2_cx)
+            v_p, v_e = mxfp4_quantize_pack_last(v_list[bi], quant_axis=-2,
+                                                quant_mode=quant_mode, log2_cx=log2_cx)
             q_p_ch.append(q_p.permute(0, 2, 1, 3).flatten(0, 1))                       # [S1_b, N, D//2]
             k_p_ch.append(k_p.permute(0, 2, 1, 3).flatten(0, 1))                      # [S2_b, N, D//2]
             v_p_ch.append(v_p.permute(0, 2, 1, 3).flatten(0, 1))
@@ -814,7 +971,7 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
             q_input_layout='TND', kv_input_layout='TND',
             mask_type=0, scale_value=scale, inner_precise=inner_precise, block_size=0,
             pre_tokens=2147483647, next_tokens=2147483647,
-            softmax_lse_flag=False, quant_mode=quant_mode, dst_type_max=0,
+            softmax_lse_flag=False, quant_mode=quant_mode, dst_type_max=dst_type_max,
             q_dequant_scale=q_scale.npu(), k_dequant_scale=k_scale.npu(), v_dequant_scale=v_scale.npu(),
             attention_out_dtype=_resolve_out_dtype(out_dtype),
         )
@@ -840,7 +997,8 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
     print("cpu calc start")
     cpu_out, _ = cpu_block_sparse_attention_bnsd_mxfp4_with_lse(
         query, key, value, mask, block_shape, scale, n2,
-        p_quant=p_quant, s_dtype=s_dtype, dump=dump, out_dtype=out_dtype)
+        p_quant=p_quant, s_dtype=s_dtype, dump=dump, out_dtype=out_dtype,
+        quant_mode=quant_mode, dst_type_max=dst_type_max)
     print("golden calc end")
     # BSND/TND: golden 保持 BNSD 计算(QFA 哲学: 仅 NPU I/O 层), 输出重排到目标布局与 NPU out 比对。
     if input_layout == 'BSND':
@@ -854,10 +1012,13 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
         print(f"cpu_out: {cpu_out}")
         return -1.0, "SKIP"
 
-    # 4. mxfp4 打包喂 NPU: Q/K axis=-1, V axis=-2
-    q_packed, q_e8m0 = mxfp4_quantize_pack_last(query, quant_axis=-1)
-    k_packed, k_e8m0 = mxfp4_quantize_pack_last(key, quant_axis=-1)
-    v_packed, v_e8m0 = mxfp4_quantize_pack_last(value, quant_axis=-2)
+    # 4. mxfp4 打包喂 NPU: Q/K axis=-1, V axis=-2 (quant_mode/log2_cx 透传: CX 用 ceil-log2CX 网格)
+    q_packed, q_e8m0 = mxfp4_quantize_pack_last(query, quant_axis=-1,
+                                                quant_mode=quant_mode, log2_cx=log2_cx)
+    k_packed, k_e8m0 = mxfp4_quantize_pack_last(key, quant_axis=-1,
+                                                quant_mode=quant_mode, log2_cx=log2_cx)
+    v_packed, v_e8m0 = mxfp4_quantize_pack_last(value, quant_axis=-2,
+                                                quant_mode=quant_mode, log2_cx=log2_cx)
     assert q_packed.dtype == k_packed.dtype == v_packed.dtype == torch.uint8, "packed fp4 须为 uint8"
     assert q_e8m0.dtype == k_e8m0.dtype == v_e8m0.dtype == torch.uint8, "e8m0 scale 须为 uint8"
     q_scale = _e8m0_qk_to_v3(q_e8m0)
@@ -904,7 +1065,7 @@ def run_bsa_mxfp4_eager(b, n1, n2, s1=None, s2=None, g=1, qk_d=None, v_d=None,
         q_input_layout=input_layout, kv_input_layout=input_layout,
         mask_type=0, scale_value=scale, inner_precise=inner_precise, block_size=0,
         pre_tokens=2147483647, next_tokens=2147483647,
-        softmax_lse_flag=False, quant_mode=quant_mode, dst_type_max=0,
+        softmax_lse_flag=False, quant_mode=quant_mode, dst_type_max=dst_type_max,
         q_dequant_scale=q_scale.npu(), k_dequant_scale=k_scale.npu(), v_dequant_scale=v_scale.npu(),
         attention_out_dtype=_resolve_out_dtype(out_dtype),
     )
@@ -1568,6 +1729,262 @@ class TestBSAMxfp4Golden(TestCase):
         out=0。验证 degenerate 路径无 NaN/Inf。"""
         self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
                   block_shape=[128, 128], mask_kind='dense', input_layout='BSND', data_x=0.0)
+
+    # =====================================================================
+    # CX 量化方案用例(quant_mode=3): P 量化走 ceil(Smax/ln2 - log2CX) 路径(式19/26)。
+    #   默认 dstTypeMax=0 -> host 取 6.0(log2(6)≈2.585, ceil=3); golden 同步用 6.0。
+    #   覆盖典型 b/n/g/s/dense/sparse 组合, 与上方 OCP 用例镜像但走 CX 分支。
+    #   注: CX 与 OCP 唯一差异在 K_block 取整方式 + corr 末尾 shift(-ceil_log2CX 替代 -2);
+    #       E8M0 指数位充足, 二者 pscale 比值 ∈{1,2}(式25), 无精度损失。
+    # =====================================================================
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs128_d128(self, device="npu"):
+        """CX dense 单块: 基本精度(quant_mode=3, dstTypeMax=6.0)。"""
+        self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=16385, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3)
+
+    # =====================================================================
+    # CX 用例组(quant_mode=3): 30 个, 覆盖布局/mask/GQA/s2长度边界/dstTypeMax 全矩阵。
+    # 约束: dst_type_max ∈ {0(默认6.0), 6.0~12.0}; s2 含 31/128/256/511/512/1024/4096/8192/16385;
+    # TND varlen 强制 s1_list[i] < s2_list[i]。命名: cx_<layout>_<mha/gqa>_<mask>_b_qn_kvn_g_qs_kvs_d_dstmax。
+    # =====================================================================
+
+    # --- BNSD 基础 + s2 长度矩阵(dense, 默认 dstTypeMax=6.0) ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs31_d128(self, device="npu"):
+        """CX BNSD dense s2=31 边界: 单 KV 块不足(32*1-1), V-scale 尾块 pad + K 尾 1 行。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=31, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs128_d128(self, device="npu"):
+        """CX BNSD dense s2=128: 单 KV 块对齐, 最小完整块覆盖。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=128, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d128(self, device="npu"):
+        """CX BNSD dense s2=256: 2 KV 块, 基线多块 rescale 路径。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs511_d128(self, device="npu"):
+        """CX BNSD dense s2=511: 4 KV 块 + 尾块差 1 行(511=4*128-1), 尾块 V-scale/K 尾行 pad。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=511, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b2_qn4_kvn4_g1_qs256_kvs4096_d128(self, device="npu"):
+        """CX BNSD dense s2=4096: 长 KV(32 块) + b=2 batch + n=4 头维度。"""
+        self._run(b=2, n1=4, n2=4, g=1, s1=256, s2=4096, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs8192_d128(self, device="npu"):
+        """CX BNSD dense s2=8192: 长 KV(64 块), 验证长 KV rescale 累积 + BTkv 大值。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=8192, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn1_kvn1_g1_qs128_kvs16385_d128(self, device="npu"):
+        """CX BNSD dense s2=16385 超长 KV(129 块, 尾块 1 行): 16385=128*128+1, 极端尾块 + BTkv 上限。"""
+        self._run(b=1, n1=1, n2=1, g=1, s1=128, s2=16385, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3)
+
+    # --- BNSD sparse/gap_sparse/all_masked 边界 ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_sparse_b1_qn2_kvn2_g1_qs1_kvs31_d128(self, device="npu"):
+        """CX BNSD sparse decode: s1=1 单 q-block + s2=31 尾块, 稀疏 gather + 尾块 pad。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=1, s2=31, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_sparse_b1_qn2_kvn2_g1_qs1_kvs4096_d128(self, device="npu"):
+        """CX BNSD sparse decode 长 KV: s1=1 + s2=4096, 稀疏 gather 跨 32 块选择。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=1, s2=4096, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_sparse_b1_qn2_kvn2_g1_qs256_kvs8192_d128(self, device="npu"):
+        """CX BNSD sparse 长 KV: s1=256 + s2=8192(64 块), 稀疏 gather 多块 + rescale。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=8192, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_sparse_b1_qn2_kvn2_g1_qs128_kvs1024_d128(self, device="npu"):
+        """CX BNSD sparse 边界: s1=128 + s2=1024, 稀疏 gather 多块 + rescale。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_sparse_b1_qn2_kvn2_g1_qs256_kvs512_d128(self, device="npu"):
+        """CX BNSD sparse 中等: s1=256 + s2=512, 稀疏 gather 跨块 + rescale。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=256, s2=512, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', quant_mode=3)
+
+    # --- BNSD GQA(g=2/4/8) + 大 n + s1 边界 ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_gqa_dense_b1_qn4_kvn2_g2_qs128_kvs1024_d128(self, device="npu"):
+        """CX BNSD GQA g2 dense: n1=4/n2=2/g2, s2=1024, 头映射 stride + 多块 dense。"""
+        self._run(b=1, n1=4, n2=2, g=2, s1=128, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_gqa_dense_b1_qn8_kvn2_g4_qs256_kvs1024_d128(self, device="npu"):
+        """CX BNSD GQA g4 dense: n1=8/n2=2/g4, s1=256/s2=1024 多 block dense。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=256, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_gqa_sparse_b1_qn8_kvn2_g4_qs512_kvs4096_d128(self, device="npu"):
+        """CX BNSD GQA g4 sparse 长 KV: s1=512/s2=4096, 稀疏 gather + GQA stride 跨头。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=512, s2=4096, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_gqa_dense_b1_qn8_kvn1_g8_qs256_kvs511_d128(self, device="npu"):
+        """CX BNSD GQA g8 单 kv head dense: s2=511 尾块, g8 头映射 + K 尾 1 行 pad。"""
+        self._run(b=1, n1=8, n2=1, g=8, s1=256, s2=511, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_gqa_dense_b1_qn16_kvn4_g4_qs257_kvs8448_d128(self, device="npu"):
+        """CX BNSD GQA g4 n1=16 dense 超长: s2=8448, 大 head + 超 long dense KV。"""
+        self._run(b=1, n1=16, n2=4, g=4, s1=257, s2=8448, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn8_kvn8_g1_qs512_kvs512_d128(self, device="npu"):
+        """CX BNSD MHA dense 大形状: n=8/g1, s1=512/s2=512, 大 head + 多 q/kv block。"""
+        self._run(b=1, n1=8, n2=8, g=1, s1=512, s2=512, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3)
+
+    # --- BSND 布局(N 维 stride) + CX ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bsnd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d128(self, device="npu"):
+        """CX BSND dense 基线: N=2 stride + CX 量化路径(s2=256 多块)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bsnd_mha_sparse_b1_qn2_kvn2_g1_qs1_kvs4096_d128(self, device="npu"):
+        """CX BSND sparse decode 长 KV: s1=1 + s2=4096, BSND stride + 稀疏 gather。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=1, s2=4096, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='BSND', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bsnd_gqa_dense_b2_qn4_kvn2_g2_qs256_kvs8192_d128(self, device="npu"):
+        """CX BSND GQA g2 dense 长 KV: b=2, s2=8192, BSND stride + GQA + 长 KV rescale。"""
+        self._run(b=2, n1=4, n2=2, g=2, s1=256, s2=8192, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='BSND', quant_mode=3)
+
+    # --- TND uniform + CX ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_tnd_mha_dense_b1_qn2_kvn2_g1_qs4096_kvs4097_d128(self, device="npu"):
+        """CX TND uniform dense 基线: 3D [T,N,D] + CX 量化, 长 KV s2=4097 跨块。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=4096, s2=4097, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_tnd_mha_sparse_b2_qn2_kvn2_g1_qs256_kvs4096_d128(self, device="npu"):
+        """CX TND uniform sparse 长 KV: b=2, s2=4096, TND batch-flatten + 稀疏 gather。"""
+        self._run(b=2, n1=2, n2=2, g=1, s1=256, s2=4096, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='TND', quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_tnd_gqa_dense_b1_qn8_kvn2_g4_qs256_kvs8192_d128(self, device="npu"):
+        """CX TND GQA g4 dense 长 KV: s2=8192, TND flatten + GQA stride + 长 KV rescale。"""
+        self._run(b=1, n1=8, n2=2, g=4, s1=256, s2=8192, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND', quant_mode=3)
+
+    # --- TND varlen(强制 s1_list[i] < s2_list[i]) + CX ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_tnd_varlen_mha_dense_b2_qn2_kvn2_g1_s1_256_64_s2_128_256_d128(self, device="npu"):
+        """CX TND varlen dense 混合 s1><s2: s1=[256,64] s2=[128,256](batch0 s1>s2, batch1 s1<s2)。
+        验证 per-batch base-offset 累加 + CX 量化 + Q 长于 K 的 pre-fill 边界。"""
+        self._run(b=2, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[256, 64], s2_list=[128, 256], quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_tnd_varlen_gqa_dense_b2_qn8_kvn2_g4_s1_128_256_s2_512_512_d128(self, device="npu"):
+        """CX TND varlen GQA dense: s1=[128,256] s2=[512,512](s1<s2), GQA g4 + varlen 累加。"""
+        self._run(b=2, n1=8, n2=2, g=4, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[128, 256], s2_list=[512, 512], quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_tnd_varlen_mha_sparse_b3_qn2_kvn2_g1_s1_512_1_128_s2_128_4096_64_d128(self, device="npu"):
+        """CX TND varlen sparse b3 混合 s1><s2: s1=[512,1,128] s2=[128,4096,64]
+        (batch0 s1>s2 pre-fill, batch1 decode s1<s2, batch2 s1>s2), 3 batch 混合 + 长 KV 稀疏。"""
+        self._run(b=3, n1=2, n2=2, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='sparse', input_layout='TND',
+                  s1_list=[512, 1, 128], s2_list=[128, 4096, 64], quant_mode=3)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_tnd_varlen_mha_dense_b2_qn4_kvn4_g1_s1_256_512_s2_4096_128_d128(self, device="npu"):
+        """CX TND varlen dense 长 KV 混合: s1=[256,512] s2=[4096,128](batch0 s1<s2, batch1 s1>s2),
+        n=4 + 跨 batch 长 KV rescale + pre-fill 边界。"""
+        self._run(b=2, n1=4, n2=4, g=1, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', input_layout='TND',
+                  s1_list=[256, 512], s2_list=[4096, 128], quant_mode=3)
+
+    # --- dstTypeMax 全覆盖(0/6.0/6.6/7.4/8.0/8.8/9.5/10.0/12.0) ---
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d128_dstmax0(self, device="npu"):
+        """CX dstTypeMax=0(默认6.0): 验证 host 默认值路径(log2CX=log2(6)≈2.585, ceil=3)。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3, dst_type_max=0)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d128_dstmax66(self, device="npu"):
+        """CX dstTypeMax=6.6(log2≈2.722, ceil=3): 非整数 log2CX + ceil=3 corr 路径。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3, dst_type_max=6.6)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs512_d128_dstmax74(self, device="npu"):
+        """CX dstTypeMax=7.4(log2≈2.887, ceil=3): 接近 8 边界, ceil 仍=3。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=512, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3, dst_type_max=7.4)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs256_d128_dstmax8(self, device="npu"):
+        """CX dstTypeMax=8.0(log2=3.0, ceil=3): 整数 log2CX 边界, ceil=3。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=256, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3, dst_type_max=8.0)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs1024_d128_dstmax88(self, device="npu"):
+        """CX dstTypeMax=8.8(log2≈3.138, ceil=4): 跨 ceil 边界(>8), ceil=4 corr 路径。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=1024, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3, dst_type_max=8.8)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs4096_d128_dstmax95(self, device="npu"):
+        """CX dstTypeMax=9.5(log2≈3.248, ceil=4): ceil=4, 长 KV s2=4096 叠加。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=4096, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3, dst_type_max=9.5)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b64_qn2_kvn2_g1_qs128_kvs513_d128_dstmax10(self, device="npu"):
+        """CX dstTypeMax=10.0(log2≈3.322, ceil=4): ceil=4 + 大 batch b=64 + s2=513 跨块。"""
+        self._run(b=64, n1=2, n2=2, g=1, s1=128, s2=513, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3, dst_type_max=10.0)
+
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bnsd_mha_dense_b1_qn2_kvn2_g1_qs128_kvs8192_d128_dstmax12(self, device="npu"):
+        """CX dstTypeMax=12.0(log2≈3.585, ceil=4): 上限值, ceil=4 + 长 KV s2=8192。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=8192, qk_d=128,
+                  block_shape=[128, 128], mask_kind='dense', quant_mode=3, dst_type_max=12.0)
+    
+    @SkipIfNotGteCANNVersion("9.0.0")
+    def test_bsa_mxfp4_cx_bsnd_mha_gap_sparse_b1_qn2_kvn2_g1_qs128_kvs512_d128(self, device="npu"):
+        """⑪ BSND gap-sparse: 每 q-block 仅 attend kv-block 0+末(大 gap, 跨块 alpha rescale + 非连续 gather),
+        s1=128/s2=512(4 kv tile)。验证 online-softmax 跨大 K_diff rescale + snap_local corr 不下溢。"""
+        self._run(b=1, n1=2, n2=2, g=1, s1=128, s2=512, qk_d=128,
+                  block_shape=[128, 128], mask_kind='gap_sparse', input_layout='BSND', quant_mode=3, dst_type_max=9.9)
 
 
 if __name__ == "__main__":

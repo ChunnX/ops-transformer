@@ -103,7 +103,8 @@ TILING_DATA_FIELD_DEF(uint64_t, workSpaceSize);
 
 // V3 新增:量化参数
 TILING_DATA_FIELD_DEF(uint32_t, quantMode);
-TILING_DATA_FIELD_DEF(float, dstTypeMax);
+TILING_DATA_FIELD_DEF(float, log2Cx);
+TILING_DATA_FIELD_DEF(float, log2CxCeil);
 
 TILING_DATA_FIELD_DEF_STRUCT(BsaMask2IdxTiling, BsaMask2IdxTileInfo);
 TILING_DATA_FIELD_DEF_STRUCT(BsaBaseTiling, BsaBaseTileInfo);
@@ -228,7 +229,9 @@ private:
     bool softmaxLseFlag_ = false;
     // V3 新增:量化参数
     uint32_t quantMode_ = 0;
-    float dstTypeMax_ = 0.0f;
+    float dstTypeMax_ = 0.0f;  // 中间计算用,不下发 tiling
+    float log2Cx_ = 0.0f;
+    float log2CxCeil_ = 0.0f;
     
     uint32_t totalQBlocks_ = 0;
     uint32_t maxKvBlockNum_ = 0;

@@ -19,6 +19,7 @@
 #define VF_SOFTMAX_DN_CAST_NZ_MXFP4_QS128_KVS256_H_
 #include "kernel_tensor.h"
 #include "vf_common_def.h"
+#include "../../bsa_epilogue_dispatch_policy.hpp"
 namespace NpuArch::Epilogue::Block::Mxfp4VF {
 using AscendC::LocalTensor;
 using namespace AscendC;
@@ -26,9 +27,11 @@ using namespace MicroAPI;
 
 
 
-template <bool clear_gmax, typename T, typename T2, uint16_t KvsBase = 256, uint16_t QsBase = 128>
+template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
+          uint16_t KvsBase = 256, uint16_t QsBase = 128>
 __simd_vf__ inline void softmax_with_group_max_qs128_kvs256_vf(__ubuf__ T2 *pDest, __ubuf__ T *s, __ubuf__ T *local_group_max,
-                                                  __ubuf__ T *global_max, __ubuf__ uint8_t *indexesUb, const T dScale)
+                                                  __ubuf__ T *global_max, __ubuf__ uint8_t *indexesUb, const T dScale,
+                                                  const T NEG_LOG2_CX)
 {
     // ====================== 寄存器定义 ======================
     RegTensor<half> src_c0, src_c1, src_c2, src_c3;
@@ -84,10 +87,21 @@ __simd_vf__ inline void softmax_with_group_max_qs128_kvs256_vf(__ubuf__ T2 *pDes
 
     Muls(curr_group_max, curr_group_max, dScale, preg_all_16bit);
     Muls(curr_group_max, curr_group_max, INV_LN2, preg_all_16bit);
-    Truncate<T, RoundMode::CAST_FLOOR>(curr_group_max, curr_group_max, preg_all_16bit);
+    
+    if constexpr (MX_QUANT_MODE == MXQuantMode::OCP) {
+        Truncate<T, RoundMode::CAST_FLOOR>(curr_group_max, curr_group_max, preg_all_16bit);
+    } else {
+        // CX: M'_(local,FP16) = ceil(Smax/ln2 - log2(CX))·ln2, 其中 -log2(CX) = NEG_LOG2_CX。
+        Adds(curr_group_max, curr_group_max, NEG_LOG2_CX, preg_all_16bit);
+        Truncate<T, RoundMode::CAST_CEIL>(curr_group_max, curr_group_max, preg_all_16bit);
+    }
+
     Max(group_gmax, group_gmax, curr_group_max, preg_all_16bit);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(local_group_max, curr_group_max, preg_all_16bit);
-    Adds(curr_group_max, curr_group_max, NEG_TWO_VALE, preg_all_16bit);
+
+    if constexpr (MX_QUANT_MODE == MXQuantMode::OCP) {
+        Adds(curr_group_max, curr_group_max, NEG_TWO_VALE, preg_all_16bit);
+    }
     Muls(curr_group_max, curr_group_max, LN2, preg_all_16bit);
 
     // ====================== 核心：双块流水分组循环 ======================
@@ -233,7 +247,13 @@ __simd_vf__ inline void softmax_with_group_max_qs128_kvs256_vf(__ubuf__ T2 *pDes
         // 下一块最大值归一化
         Muls(next_group_max, next_group_max, dScale, preg_valid_max);
         Muls(next_group_max, next_group_max, INV_LN2, preg_valid_max);
-        Truncate<T, RoundMode::CAST_FLOOR>(next_group_max, next_group_max, preg_valid_max);
+        if constexpr (MX_QUANT_MODE == MXQuantMode::OCP) {
+            Truncate<T, RoundMode::CAST_FLOOR>(next_group_max, next_group_max, preg_valid_max);
+        } else {
+            // CX: 与当前块一致, ceil(Smax/ln2 - log2(CX))
+            Adds(next_group_max, next_group_max, NEG_LOG2_CX, preg_valid_max);
+            Truncate<T, RoundMode::CAST_CEIL>(next_group_max, next_group_max, preg_valid_max);
+        }
         Max(group_gmax, group_gmax, next_group_max, preg_valid_max);
 
         // 存储下一块最大值到 ulmax (i+1)*128 偏移
@@ -241,17 +261,20 @@ __simd_vf__ inline void softmax_with_group_max_qs128_kvs256_vf(__ubuf__ T2 *pDes
                                                           preg_valid_max);
 
         // 更新当前块最大值，用于下一次循环
-        Adds(next_group_max, next_group_max, NEG_TWO_VALE, preg_all_16bit);
+        if constexpr (MX_QUANT_MODE == MXQuantMode::OCP) {
+            Adds(next_group_max, next_group_max, NEG_TWO_VALE, preg_all_16bit);
+        }
         Muls(curr_group_max, next_group_max, LN2, preg_valid_max);
     }
 }
 
-template <bool clear_gmax, typename T, typename T2, uint16_t KvsBase = 256, uint16_t QsBase = 128>
+template <MXQuantMode MX_QUANT_MODE = MXQuantMode::OCP, bool clear_gmax, typename T, typename T2,
+          uint16_t KvsBase = 256, uint16_t QsBase = 128>
 __aicore__ inline void SoftmaxWithGroupMaxQs128Kvs256CallVF(const LocalTensor<T2> &dstTensor, const LocalTensor<T> &srcTensor,
                                                   const LocalTensor<T> &local_group_max,
                                                   const LocalTensor<T> &global_max,
                                                   const LocalTensor<uint8_t> &indexesBuf,
-                                                  const T scale)
+                                                  const T scale, const T NEG_LOG2_CX)
 {
     __ubuf__ T2 *pDest = (__ubuf__ T2*) dstTensor.GetPhyAddr();
     __ubuf__ T *input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
@@ -259,8 +282,8 @@ __aicore__ inline void SoftmaxWithGroupMaxQs128Kvs256CallVF(const LocalTensor<T2
     __ubuf__ T *globalMax = (__ubuf__ T*)global_max.GetPhyAddr();
     __ubuf__ uint8_t * indexesUb = (__ubuf__ uint8_t*)indexesBuf.GetPhyAddr();
 
-    softmax_with_group_max_qs128_kvs256_vf<clear_gmax, T, T2, KvsBase, QsBase>(
-        pDest, input_x_local_UB, localGroupMax, globalMax, indexesUb, scale);
+    softmax_with_group_max_qs128_kvs256_vf<MX_QUANT_MODE, clear_gmax, T, T2, KvsBase, QsBase>(
+        pDest, input_x_local_UB, localGroupMax, globalMax, indexesUb, scale, NEG_LOG2_CX);
 }
 
 }
