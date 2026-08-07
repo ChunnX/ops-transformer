@@ -58,7 +58,9 @@ class KPoolOpBuilder(OpBuilder):
         ):
             if (norm_weight is None) != (norm_bias is None):
                 raise ValueError("norm_weight and norm_bias must be passed as a pair")
-            if cos is not None or sin is not None:
+            if (cos is None) != (sin is None):
+                raise ValueError("cos and sin must be passed as a pair")
+            if cos is not None:
                 raise NotImplementedError("KPool RoPE is not implemented in this stage")
             b = cache_block_table.size(0)
             pcap = (cache_block_table.size(1) * state_cache.size(1) + cmp_ratio - 1) // cmp_ratio
@@ -95,7 +97,9 @@ def k_pool(
     """
     if (norm_weight is None) != (norm_bias is None):
         raise ValueError("norm_weight and norm_bias must be passed as a pair")
-    if cos is not None or sin is not None:
+    if (cos is None) != (sin is None):
+        raise ValueError("cos and sin must be passed as a pair")
+    if cos is not None:
         raise NotImplementedError("KPool RoPE is not implemented in this stage")
     op_module = k_pool_op_builder.load()
     return op_module.k_pool(

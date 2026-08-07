@@ -93,7 +93,8 @@ at::Tensor KPool(const at::Tensor &hidden_states, const at::Tensor &wk, const at
                     "norm_weight and norm_bias size must match wk.size(0)");
     }
     TORCH_CHECK(normEps > 0.0, "norm_eps should be greater than 0");
-    TORCH_CHECK(!cos.has_value() && !sin.has_value(), "KPool RoPE is not implemented in this stage");
+    TORCH_CHECK(cos.has_value() == sin.has_value(), "cos and sin must be provided as a pair");
+    TORCH_CHECK(!cos.has_value(), "KPool RoPE is not implemented in this stage");
     TORCH_CHECK(hiddenStatesDim != DIM_TWO || seqLens.has_value(), "seq_lens is required for TH layout");
     TORCH_CHECK(hiddenStatesDim != DIM_THREE || !seqLens.has_value(), "seq_lens must be absent for BSH layout");
     at::Tensor pooledKey = ConstructKPoolOutputTensor(hidden_states, wk, stateCache, cacheBlockTable, cmpRatio);
@@ -142,7 +143,8 @@ at::Tensor KPoolMeta(const at::Tensor &hidden_states, const at::Tensor &wk, cons
                     "norm_weight and norm_bias size must match wk.size(0)");
     }
     TORCH_CHECK(normEps > 0.0, "norm_eps should be greater than 0");
-    TORCH_CHECK(!cos.has_value() && !sin.has_value(), "KPool RoPE is not implemented in this stage");
+    TORCH_CHECK(cos.has_value() == sin.has_value(), "cos and sin must be provided as a pair");
+    TORCH_CHECK(!cos.has_value(), "KPool RoPE is not implemented in this stage");
     return ConstructKPoolOutputTensor(hidden_states, wk, stateCache, cacheBlockTable, cmpRatio);
 }
 

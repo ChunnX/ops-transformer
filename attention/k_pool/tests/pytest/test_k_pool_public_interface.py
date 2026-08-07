@@ -71,6 +71,18 @@ def test_k_pool_public_accepts_layer_norm_and_rejects_rope():
     )
     assert output.shape == (1, 2, 128)
 
+    with pytest.raises(ValueError, match="pair"):
+        torch_npu.k_pool_npu(
+            hidden_states,
+            wk,
+            gate_weight,
+            ape,
+            state_cache,
+            cache_block_table,
+            start_pos,
+            cos=torch.empty((1, 1, 64), dtype=torch.bfloat16, device="meta"),
+        )
+
     with pytest.raises(NotImplementedError, match="RoPE"):
         torch_npu.k_pool_npu(
             hidden_states,
