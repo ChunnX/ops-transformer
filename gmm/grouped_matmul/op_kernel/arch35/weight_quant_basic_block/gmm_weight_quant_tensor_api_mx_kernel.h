@@ -60,7 +60,10 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
 
     GM_ADDR xAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<XType>(0, x));
     GM_ADDR yAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
-    GM_ADDR perTokenScaleAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<PerTokenScaleType>(0, perTokenScale));
+    // per_token_scale is an optional Tensor in the operator ABI, not a
+    // dynamic TensorList.  It is already the data address and must not be
+    // decoded as a tensor-list descriptor.
+    GM_ADDR perTokenScaleAddr = perTokenScale;
 
     typename GroupedKernel::Params params{
         {{m, n, k},
