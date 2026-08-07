@@ -166,6 +166,7 @@ __aicore__ inline void KPoolKernelFullLoad<COMP>::InitTilingData()
     constInfo.dBaseSize = tilingData_->innerSplitParams.dBaseSize;
     constInfo.headDim = tilingData_->baseParams.headDim;
     constInfo.normEps = tilingData_->baseParams.normEps;
+    constInfo.stateCacheStrideDim0 = tilingData_->baseParams.stateCacheStrideDim0;
     constInfo.hSize = tilingData_->baseParams.hiddenSize;
     constInfo.sSize = tilingData_->baseParams.seqSize;
     constInfo.usedCoreNum = tilingData_->baseParams.usedCoreNum;
