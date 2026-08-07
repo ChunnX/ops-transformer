@@ -1357,11 +1357,14 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     for (uint32_t tokenRangeIndex = 0U; tokenRangeIndex < aivNum_; tokenRangeIndex++) {
         SendScaleoutPayloadRange(tokenRangeIndex, remoteServerOrdinal, dstScaleoutIndex, scaleoutSlotCount,
                                  commHandle, remoteScaleoutBase, remoteStatusBase);
+        // 每个tokenRange后Drain一次，避免大量outstanding NBI写导致部分写丢失
+        int32_t drainRet = hcomm_.Drain(commHandle);
+        ASCENDC_ASSERT(drainRet == 0, {
+            KERNEL_LOG(KERNEL_ERROR, "Drain(scaleout-range) failed, ret=%d, rank=%u, aiv=%u", drainRet, epRankId_,
+                       aivId_);
+        });
     }
-    int32_t drainRet = hcomm_.Drain(commHandle);
-    ASCENDC_ASSERT(drainRet == 0, {
-        KERNEL_LOG(KERNEL_ERROR, "Drain(scaleout) failed, ret=%d, rank=%u, aiv=%u", drainRet, epRankId_, aivId_);
-    });
+    PRINTF("[DH] r=%u aiv=%u scaleout proxy=%u count=%u done\n", epRankId_, aivId_, proxyRankId, scaleoutSlotCount);
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
