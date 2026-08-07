@@ -11,14 +11,15 @@
 namespace KPool {
 
 __aicore__ inline void KPoolLayerNorm(const LocalTensor<float> &out, const LocalTensor<float> &in,
-                                      const LocalTensor<float> &mean, const LocalTensor<float> &gamma,
-                                      const LocalTensor<float> &beta, float eps, uint32_t count)
+                                       const LocalTensor<float> &mean, const LocalTensor<float> &gamma,
+                                       const LocalTensor<float> &beta, const LocalTensor<float> &reduceTmp,
+                                       float eps, uint32_t count)
 {
     const float reciprocal = 1.0f / static_cast<float>(static_cast<int64_t>(count));
 
     Muls(mean, in, reciprocal, count);
     PipeBarrier<PIPE_V>();
-    ReduceSum(mean, mean, mean, count);
+    ReduceSum(mean, mean, reduceTmp, count);
     SetFlag<HardEvent::V_S>(EVENT_ID0);
     WaitFlag<HardEvent::V_S>(EVENT_ID0);
     float meanValue = mean.GetValue(0);
@@ -33,7 +34,7 @@ __aicore__ inline void KPoolLayerNorm(const LocalTensor<float> &out, const Local
     PipeBarrier<PIPE_V>();
     Muls(out, out, reciprocal, count);
     PipeBarrier<PIPE_V>();
-    ReduceSum(out, out, out, count);
+    ReduceSum(out, out, reduceTmp, count);
     SetFlag<HardEvent::V_S>(EVENT_ID0);
     WaitFlag<HardEvent::V_S>(EVENT_ID0);
     float variance = out.GetValue(0);
@@ -58,8 +59,9 @@ template <typename COMP>
 __aicore__ inline void ApplyKPoolLayerNormToCache(
     const GlobalTensor<float> &stateCache, const GlobalTensor<int32_t> &blockTable,
     const GlobalTensor<float> &normWeight, const GlobalTensor<float> &normBias, KPoolTools<COMP> &tools,
-    const ConstInfo &constInfo, uint32_t coff, const LocalTensor<float> &input, const LocalTensor<float> &output,
-    const LocalTensor<float> &mean, const LocalTensor<float> &gamma, const LocalTensor<float> &beta)
+     const ConstInfo &constInfo, uint32_t coff, const LocalTensor<float> &input, const LocalTensor<float> &output,
+     const LocalTensor<float> &mean, const LocalTensor<float> &gamma, const LocalTensor<float> &beta,
+     const LocalTensor<float> &reduceTmp)
 {
     const uint32_t headDim = constInfo.headDim;
     const uint32_t hiddenDim = coff * headDim;
@@ -90,7 +92,7 @@ __aicore__ inline void ApplyKPoolLayerNormToCache(
             }
             PipeBarrier<PIPE_MTE2>();
 
-            KPoolLayerNorm(output, input, mean, gamma, beta, constInfo.normEps, hiddenDim);
+            KPoolLayerNorm(output, input, mean, gamma, beta, reduceTmp, constInfo.normEps, hiddenDim);
 
             DataCopy(stateCache[stateOffset], output, headDim);
             if (coff == 2) {

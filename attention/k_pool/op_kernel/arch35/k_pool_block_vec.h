@@ -257,8 +257,9 @@ __aicore__ inline void KPoolBlockVector<COMP>::ApplyLayerNorm()
     LocalTensor<T> mean = output[constInfo_.headDim * static_cast<uint32_t>(COMP::coff)];
     LocalTensor<T> gamma = mean[constInfo_.headDim * static_cast<uint32_t>(COMP::coff)];
     LocalTensor<T> beta = gamma[constInfo_.headDim * static_cast<uint32_t>(COMP::coff)];
+    LocalTensor<T> reduceTmp = beta[constInfo_.headDim * static_cast<uint32_t>(COMP::coff)];
     ApplyKPoolLayerNormToCache(stateCacheGm_, stateBlockTableGm_, normWeightGm_, normBiasGm_, tools_, constInfo_,
-                               static_cast<uint32_t>(COMP::coff), input, output, mean, gamma, beta);
+                               static_cast<uint32_t>(COMP::coff), input, output, mean, gamma, beta, reduceTmp);
 }
 
 template <typename COMP>
