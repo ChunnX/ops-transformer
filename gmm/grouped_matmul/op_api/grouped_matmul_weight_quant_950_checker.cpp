@@ -443,11 +443,14 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckDimNumAndFormat(si
     }
 
     if (IsS8S4PseudoQuantDataFlow()) {
-        const auto weightFormat = (*gmmParams_.weight)[wIdx]->GetStorageFormat();
-        const bool weightIsNz = ge::GetPrimaryFormat(weightFormat) == op::Format::FORMAT_FRACTAL_NZ;
-        const bool weightIsBase = weightFormat < op::Format::FORMAT_END && !op::IsPrivateFormat(weightFormat);
-        CHECK_COND(weightIsBase || weightIsNz, ACLNN_ERR_PARAM_INVALID,
-                   "In S8S4 pseudo quant, weight must use a base format or standard FRACTAL_NZ format.");
+        const auto weightFormat = static_cast<op::Format>(
+            ge::GetPrimaryFormat((*gmmParams_.weight)[wIdx]->GetStorageFormat()));
+        const bool weightIsNz = weightFormat == op::Format::FORMAT_FRACTAL_NZ;
+        const bool weightIsNdCompatible = weightFormat == op::Format::FORMAT_ND ||
+                                          weightFormat == op::Format::FORMAT_NCL ||
+                                          weightFormat == op::Format::FORMAT_NCHW;
+        CHECK_COND(weightIsNdCompatible || weightIsNz, ACLNN_ERR_PARAM_INVALID,
+                   "In S8S4 pseudo quant, weight format must be ND, NCL, NCHW or FRACTAL_NZ.");
         CHECK_COND(gmmParams_.apiVersion != GMMApiVersion::WeightNz || weightIsNz,
                    ACLNN_ERR_PARAM_INVALID,
                    "In S8S4 pseudo quant through WeightNz, weight must be in FRACTAL_NZ format.");
@@ -707,6 +710,8 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckYDtype() const
 aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckBiasDtype()
 {
     if (gmmParams_.biasOptional != nullptr) {
+        CHECK_RET(CheckTensorNotNullPtr(gmmParams_.biasOptional, 0, "bias") == ACLNN_SUCCESS,
+                  ACLNN_ERR_PARAM_NULLPTR);
         biasDtype_ = (*gmmParams_.biasOptional)[0]->GetDataType();
         if (xDtype_ == DataType::DT_BF16) {
             if (unlikely(!(biasDtype_ == DataType::DT_BF16 || biasDtype_ == DataType::DT_FLOAT))) {

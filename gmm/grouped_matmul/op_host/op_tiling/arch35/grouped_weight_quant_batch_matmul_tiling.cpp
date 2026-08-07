@@ -1945,12 +1945,14 @@ bool GroupedS8S4BasicApiTiling::AnalyzeDtype()
     inputParams_.scaleDtype = scaleDesc->GetDataType();
     inputParams_.perTokenScaleDtype = perTokenScaleDesc->GetDataType();
     inputParams_.aFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(xDesc->GetStorageFormat()));
-    inputParams_.bFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(weightDesc->GetStorageFormat()));
-    // Match the legacy S8S4 classification: standard FRACTAL_NZ selects NZ;
-    // every base format accepted by the API checker uses the ND layout path.
-    if (inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ) {
-        inputParams_.bFormat = ge::FORMAT_ND;
-    }
+    const auto weightFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(weightDesc->GetStorageFormat()));
+    const bool weightIsNdCompatible = weightFormat == ge::FORMAT_ND || weightFormat == ge::FORMAT_NCL ||
+                                      weightFormat == ge::FORMAT_NCHW;
+    OP_CHECK_IF(!weightIsNdCompatible && weightFormat != ge::FORMAT_FRACTAL_NZ,
+                OP_LOGE(context_->GetNodeName(),
+                        "S8S4 BasicApi expects weight format ND, NCL, NCHW or FRACTAL_NZ."),
+                return false);
+    inputParams_.bFormat = weightFormat == ge::FORMAT_FRACTAL_NZ ? ge::FORMAT_FRACTAL_NZ : ge::FORMAT_ND;
 
     OP_CHECK_IF(inputParams_.aDtype != ge::DT_INT8 ||
                     (inputParams_.bDtype != ge::DT_INT4 && inputParams_.bDtype != ge::DT_INT32),
@@ -1965,10 +1967,6 @@ bool GroupedS8S4BasicApiTiling::AnalyzeDtype()
                 OP_LOGE(context_->GetNodeName(), "S8S4 BasicApi expects out BF16 or FLOAT16."), return false);
     OP_CHECK_IF(inputParams_.aFormat != ge::FORMAT_ND,
                 OP_LOGE(context_->GetNodeName(), "S8S4 BasicApi expects x in ND format."), return false);
-    OP_CHECK_IF(inputParams_.bFormat != ge::FORMAT_ND && inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ,
-                OP_LOGE(context_->GetNodeName(), "S8S4 BasicApi expects weight in ND or FRACTAL_NZ format."),
-                return false);
-
     auto biasShape = context_->GetDynamicInputShape(BIAS_INDEX, 0);
     inputParams_.hasBias = biasShape != nullptr && biasShape->GetStorageShape().GetShapeSize() != 0;
     auto biasDesc = context_->GetDynamicInputDesc(BIAS_INDEX, 0);
@@ -2292,18 +2290,15 @@ ge::graphStatus GroupedS8S4BasicApiTiling::ValidateFixedTileResources(uint64_t k
     const uint64_t l0bBytes = GmmConstant::DB_SIZE * baseKInt8Aligned * baseNCubeAligned;
     const uint64_t l0cBytes = baseMAligned * baseNCubeAligned * GmmConstant::DATA_SIZE_L0C;
 
-    uint64_t ubBytes = 0UL;
-    if (dequantMode_ == DequantMode::ASYMMETRIC_PER_CHANNEL) {
-        const uint64_t vectorBaseM = CeilDiv(basicTiling_.baseM, GmmConstant::CORE_RATIO);
-        const uint64_t dataTileBytes = CeilAlign(
-            vectorBaseM * CeilAlign(basicTiling_.baseN * sizeof(uint16_t), GmmConstant::UB_ALIGN_SIZE),
-            GmmConstant::UB_ALIGN_SIZE);
-        const uint64_t rowSumBytes = CeilAlign(
-            vectorBaseM * sizeof(float), GmmConstant::UB_ALIGN_SIZE);
-        const uint64_t offsetBytes = CeilAlign(
-            basicTiling_.baseN * sizeof(float), GmmConstant::UB_ALIGN_SIZE);
-        ubBytes = GmmConstant::NUM_HALF * (dataTileBytes + rowSumBytes) + offsetBytes;
-    }
+    const uint64_t vectorBaseM = CeilDiv(basicTiling_.baseM, GmmConstant::CORE_RATIO);
+    const uint64_t dataTileBytes = CeilAlign(
+        vectorBaseM * CeilAlign(basicTiling_.baseN * sizeof(uint16_t), GmmConstant::UB_ALIGN_SIZE),
+        GmmConstant::UB_ALIGN_SIZE);
+    const uint64_t rowSumBytes = CeilAlign(
+        vectorBaseM * sizeof(float), GmmConstant::UB_ALIGN_SIZE);
+    const uint64_t offsetBytes = CeilAlign(
+        basicTiling_.baseN * sizeof(float), GmmConstant::UB_ALIGN_SIZE);
+    const uint64_t ubBytes = GmmConstant::NUM_HALF * (dataTileBytes + rowSumBytes) + offsetBytes;
 
     OP_CHECK_IF(l1StageBytes > l1HalfBytes || l0aBytes > aicoreParams_.l0aSize ||
                     l0bBytes > aicoreParams_.l0bSize || l0cBytes > aicoreParams_.l0cSize ||

@@ -314,7 +314,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 - groupListType：支持0、1、2。
   - groupListType=0：须为非负单调非递减数列（累积和），groupList中最后一个值不大于x中tensor的第一维。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
   - groupListType=1：须为非负数列（各组大小），groupList中数值总和不大于x中tensor的第一维。例如：`[64, 0, 128, 64]`
-  - groupListType=2：全量化或A8W4伪量化且groupType=0场景下支持，须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`，非零组前置，groupList第二列的数值总和不大于x中tensor的第一维。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
+  - groupListType=2：仅全量化且groupType=0场景下支持，须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`，非零组前置，groupList第二列的数值总和不大于x中tensor的第一维。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
 - tuningConfigOptional：A8W4伪量化支持第一个值配置预期token数；NZ权重场景支持第二个值为1表示weight按`[E,N,K]`转换。其余场景不支持。
 - actType（0~5）：
   - 非量化/伪量化仅支持 0。
