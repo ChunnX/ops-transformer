@@ -106,9 +106,6 @@ public:
     {}
     __aicore__ inline void SoftmaxDataCopyOut(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<float> &sumUb,
                                               LocalTensor<float> &maxUb);
-    __aicore__ inline void SoftmaxDataCopyOutFp8(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<half> &sumUb,
-                                                 LocalTensor<half> &maxUb)
-    {}
     template <typename VEC2_RES_T>
     __aicore__ inline void CopyOutAttentionOut(RunInfo &runInfo, ConstInfo &constInfo,
                                                LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx,
@@ -136,7 +133,6 @@ public:
     TBuf<> stage2OutBuf;
     TEventID mte3ToVId[2];
     TEventID vToMte3Id[2];
-    TEventID lseVToMte3Id;
     TBuf<> softmaxMaxBuf[3];
     TBuf<> softmaxSumBuf[3];
     TBuf<> softmaxExpBuf[3];
@@ -574,7 +570,6 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe,
 
     mte3ToVId[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     vToMte3Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-    lseVToMte3Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
 }
 
@@ -706,8 +701,8 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(LocalTenso
     LocalTensor<float> lseUb = this->qScaleInputQue.template AllocTensor<float>();
     ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.halfS1RealSize);
     // V 写完成后手动 V→MTE3 同步（原 softmaxLseQueue(VECOUT) 的 EnQue/DeQue 已随其删除）
-    SetFlag<HardEvent::V_MTE3>(lseVToMte3Id);
-    WaitFlag<HardEvent::V_MTE3>(lseVToMte3Id);
+    this->qScaleInputQue.EnQue(lseUb);
+    this->qScaleInputQue.DeQue<float>();
     DataCopyExtParams intriParams1;
     intriParams1.blockLen = sizeof(float);
     intriParams1.blockCount = runInfo.halfS1RealSize;
