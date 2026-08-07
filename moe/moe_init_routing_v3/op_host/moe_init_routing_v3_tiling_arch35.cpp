@@ -524,6 +524,15 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
 
     isFullload_ = IsFullLoad();
     ComputeUseGatherCopy();
+    if (cols_ == 0) {
+        if (dropPadMode_ == DROP_PAD_MODE_DROPPAD && !isFullload_) {
+            Tiling4SrcToDstDropPadCompute();
+            Tiling4GatherOutDropPadCompute();
+        } else {
+            Tiling4GatherOutCompute();
+        }
+        return ge::GRAPH_SUCCESS;
+    }
     if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN ||
         quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 || quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN ||
         quantMode_ == QUANT_MODE_MXFP4_E2M1) {
@@ -1797,6 +1806,11 @@ void MoeInitRoutingV3Arch35TilingClass::SetPerLoopParams4NoQuantDropLess(PerLoop
 
     int64_t baseMemory = rowIdxQueueSize * NUM_TWO + xQueueSize * NUM_TWO + scaleQueueSize * NUM_TWO;
 
+    if (xQueueSize == 0) {
+        perLoopParams.xCopyInQueueBufferNum = NUM_TWO;
+        return;
+    }
+
     int64_t remainingSpace = availUbSize_ - baseMemory;
     int64_t additionalBufferNum = remainingSpace / xQueueSize;
     perLoopParams.xCopyInQueueBufferNum = GetXBufferNum(additionalBufferNum);
@@ -1824,6 +1838,11 @@ void MoeInitRoutingV3Arch35TilingClass::SetPerLoopParams4NoQuantDropPad(const Mu
     int64_t scaleQueueSize = AlignBytes(1, sizeof(float));
 
     int64_t baseMemory = rowIdxQueueSize * NUM_TWO + xQueueSize * NUM_TWO + scaleQueueSize * NUM_TWO;
+
+    if (xQueueSize == 0) {
+        perLoopParams.xCopyInQueueBufferNum = NUM_TWO;
+        return;
+    }
 
     int64_t remainingSpace = availUbSize_ - baseMemory;
     int64_t additionalBufferNum = remainingSpace / xQueueSize;
@@ -1857,10 +1876,6 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()");
 
     auto *gatherOutTiling = &(tilingDataPtr_->gatherOutComputeParamsOp);
-    if (cols_ == 0) {
-        // Full-load does not consume GatherOut tiling when X has no elements.
-        return;
-    }
     int64_t perCoreIndicesElements = Ops::Base::CeilDiv(totalLength_, aivCoreNum_);
     if (perCoreIndicesElements <= 0) {
         gatherOutTiling->needCoreNum = 0;
@@ -1878,8 +1893,12 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
         AlignInt4DynamicQuantPerLoopCols(perLoopParams);
     }
 
-    int64_t colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopParams.perLoopCols);
-    int64_t lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopParams.perLoopCols;
+    int64_t colsLoops = 0;
+    int64_t lastLoopCols = 0;
+    if (tilingDataPtr_->cols > 0) {
+        colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopParams.perLoopCols);
+        lastLoopCols = tilingDataPtr_->cols - (colsLoops - 1) * perLoopParams.perLoopCols;
+    }
     gatherOutTiling->needCoreNum = needCoreNum;
     gatherOutTiling->perCoreIndicesElements = perCoreIndicesElements;
     gatherOutTiling->lastCoreIndicesElements = lastCoreIndicesElements;
@@ -2346,7 +2365,7 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutDropPadCompute()
     int64_t lastCoreIndicesElements = 0;
     SetGatherOutDropPadCoreSplitParams(needCoreNum, perCoreIndicesElements, lastCoreIndicesElements);
 
-    if (perCoreIndicesElements <= 0) {
+    if (cols_ == 0 || perCoreIndicesElements <= 0) {
         return;
     }
 

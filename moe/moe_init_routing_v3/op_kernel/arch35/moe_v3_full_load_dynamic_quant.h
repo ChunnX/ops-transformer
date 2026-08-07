@@ -96,6 +96,10 @@ MoeV3FullLoadDynamicQuant<T, QuantT>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR
     }
     expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale);
 
+    if (this->cols_ == 0) {
+        return;
+    }
+
     if constexpr (IsSameType<T, float>::value) {
         this->pipe_->InitBuffer(inputXInQueue_, FULLLOAD_DYNAMIC_QUANT_BUFFER_NUM,
                                 AlignBytes(this->cols_, sizeof(float)));
@@ -429,6 +433,11 @@ __aicore__ inline void MoeV3FullLoadDynamicQuant<T, QuantT>::Process()
         if (this->blockIdx_ == this->needCoreNum_ - 1 && this->expertTokensNumFlag_ == 1) {
             this->ComputeExpertTokenCount();
             this->CopyExpertCountToOutput();
+        }
+
+        if (this->cols_ == 0) {
+            this->FreeLocalTensor();
+            return;
         }
 
         if (this->epFullload_ || this->isInputScale_) {

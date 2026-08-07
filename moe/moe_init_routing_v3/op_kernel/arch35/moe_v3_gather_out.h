@@ -150,8 +150,10 @@ __aicore__ inline void MoeGatherOut<T>::Init(GM_ADDR x, GM_ADDR scale, GM_ADDR w
                       AlignBytes(curCorePerLoopIndicesElements_, sizeof(int32_t)));
     int64_t xCopyInQueueBufferNum = max(tilingData->gatherOutComputeParamsOp.xCopyInQueueBufferNum,
                                             GATHER_OUT_BUFFER_NUM);
-    pipe_->InitBuffer(xCopyInQueue_, xCopyInQueueBufferNum, curCorePerLoopIndicesElements_ *
-                        AlignBytes(perLoopCols_, sizeof(T)));
+    if (colsLoops_ > 0) {
+        pipe_->InitBuffer(xCopyInQueue_, xCopyInQueueBufferNum, curCorePerLoopIndicesElements_ *
+                            AlignBytes(perLoopCols_, sizeof(T)));
+    }
     pipe_->InitBuffer(scaleCopyInQueue_, GATHER_OUT_BUFFER_NUM, curCorePerLoopIndicesElements_ *
                         AlignBytes(1, sizeof(float)));
 

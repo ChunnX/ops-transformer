@@ -445,6 +445,17 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         }
     }
 
+    constexpr bool isMxNoQuant = IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
+                                 IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value ||
+                                 IsSameType<DTYPE_X, fp4x2_e2m1_t>::value;
+    if (t->cols == 0 && (t->quantMode != -1 || t->dropPadMode == DROP_PAD_MODE || t->isInputScale == 0 ||
+                         isMxNoQuant)) {
+#if (__NPU_ARCH__ == 3510)
+        SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#endif
+        return;
+    }
+
     // 4.直接搬运或是搬运的过程中对x进行量化
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER) ||

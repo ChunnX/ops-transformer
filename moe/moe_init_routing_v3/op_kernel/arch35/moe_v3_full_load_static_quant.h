@@ -80,6 +80,10 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Init(GM_ADDR x, GM_ADDR expe
     scale_ = scaleGm_.GetValue(0);
     offset_ = offsetGm_.GetValue(0);
 
+    if (this->cols_ == 0) {
+        return;
+    }
+
     int64_t rowLength = this->endXRow_ - this->startXRow_ + 1;
 
     int64_t colsAlignBytes = AlignBytes(this->cols_ * rowLength, sizeof(T));
@@ -232,6 +236,11 @@ __aicore__ inline void MoeV3FullLoadStaticQuant<T>::Process()
         if (this->blockIdx_ == this->needCoreNum_ - 1 && this->expertTokensNumFlag_ == 1) {
             this->ComputeExpertTokenCount();
             this->CopyExpertCountToOutput();
+        }
+
+        if (this->cols_ == 0) {
+            this->FreeLocalTensor();
+            return;
         }
 
         if (this->epFullload_) {

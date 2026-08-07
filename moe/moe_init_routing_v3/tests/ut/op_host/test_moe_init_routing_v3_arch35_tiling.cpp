@@ -888,7 +888,7 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_empty_tensor_k
 {
     RunArch35ExtendedTestcase(3, 128, 0, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, ge::DT_FLOAT,
                               {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
-                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS, EMPTY_TENSOR_TILINGKEY);
 }
 
 // 零宽输入与非Ascend950保持相同的full-load tiling路径。
@@ -897,6 +897,55 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_cols_zero)
     RunArch35ExtendedTestcase(3, 0, 8, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, ge::DT_FLOAT,
                               {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
                               kExpandedXDtypeAuto, ge::GRAPH_SUCCESS, 200000);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_static_cols_zero)
+{
+    RunArch35ExtendedTestcase(3, 0, 8, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_STATIC, ge::DT_FLOAT,
+                              {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {1}, ge::DT_FLOAT, {1}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS, 210000);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_dynamic_cols_zero)
+{
+    RunArch35ExtendedTestcase(3, 0, 8, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_DYNAMIC, ge::DT_FLOAT,
+                              {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS, 220000);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_non_full_unquant_cols_zero)
+{
+    RunArch35ExtendedTestcase(8193, 0, 1, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, ge::DT_FLOAT,
+                              {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {8193}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_non_full_dynamic_cols_zero)
+{
+    RunArch35ExtendedTestcase(8193, 0, 1, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_DYNAMIC, ge::DT_FLOAT,
+                              {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_non_full_static_cols_zero)
+{
+    RunArch35ExtendedTestcase(8193, 0, 1, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_STATIC, ge::DT_FLOAT,
+                              {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {1}, ge::DT_FLOAT, {1}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_non_full_mxfp8_cols_zero)
+{
+    RunArch35ExtendedTestcase(8193, 0, 1, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_MXFP8_E5M2,
+                              ge::DT_FLOAT16, {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT,
+                              {}, ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_drop_pad_cols_zero)
+{
+    RunArch35ExtendedTestcase(8193, 0, 1, 1, 1, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, ge::DT_FLOAT,
+                              {0, EXPERT_NUM}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT,
+                              kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
 }
 
 // 空tensor场景：k_==0 + key_value模式
