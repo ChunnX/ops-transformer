@@ -65,6 +65,9 @@ using namespace Mc2Tiling;
 constexpr uint16_t SYNCFLAGC2V = 9;
 constexpr uint16_t SYNCFLAGV2C = 10;
 constexpr int32_t UB_MOVE_NUM = 16 * 1024;
+// dispatch/combine 二维并行分块参数：每个 (rank, 专家组) 的 token 行按该行数切块，
+// 让 EP < AIV 核数（如 EP=8/16 < 40）时所有 AIV 都能参与搬运。
+constexpr uint32_t ROWS_PER_BLOCK = 8;
 
 // Atlas A3 (910_93) kernel.
 template <class BlockMmad_, class BlockScheduler_, class ElementGroupList_, class BlockEpilogue1_,
@@ -1206,16 +1209,36 @@ private:
             // rank's local peer-mem and runs the pre-process step.
             // ----------------------------------------------------------
             uint32_t currentM = cumsumMM((params.EP - 1) * params.expertPerRank + groupIdx);
-            for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
+            // P2 优化：dispatch 从「一 AIV 一 rank」改为「rank × token 行块」二维并行。
+            // 每个 rank 的 token 行按 ROWS_PER_BLOCK 切块，任务总数 = EP × tokenBlocks，
+            // 40 个 AIV 全部参与搬运（EP=8/16 < 40 时不再有 AIV 空转）。
+            // rowStart / rowSrc 的偏移计算与旧实现完全一致（分块只把连续行区间拆开，
+            // 每个块的绝对地址不变），因此 GMM1 侧读 ptrA 的布局不受影响。
+            uint32_t tokenBlocks = CeilDiv(currentM, ROWS_PER_BLOCK);
+            uint32_t totalTasks = static_cast<uint32_t>(params.EP) * tokenBlocks;
+            for (uint32_t taskIdx = static_cast<uint32_t>(coreIdx); taskIdx < totalTasks;
+                 taskIdx += coreNum) {
+                uint32_t dstEpIdx = taskIdx / tokenBlocks;
+                uint32_t blockIdx = taskIdx % tokenBlocks;
                 uint32_t rowStartInGroup =
                     dstEpIdx == 0 ? 0 : cumsumMM((dstEpIdx - 1) * params.expertPerRank + groupIdx);
-                uint32_t rowStart = rowStartInGroup + prevGroupSum1;
+                uint32_t rowStart = rowStartInGroup + prevGroupSum1 + blockIdx * ROWS_PER_BLOCK;
                 if (rowStart < params.maxOutputSize) {
-                    uint32_t rows = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, runtimeRank, groupIdx));
+                    uint32_t rowsTotal = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, runtimeRank, groupIdx));
+                    // 该源 rank 的行数可能不足（rowsTotal==0 或 < blockIdx*ROWS_PER_BLOCK），
+                    // 直接跳过该块，避免 rowsTotal - blockIdx*ROWS_PER_BLOCK 下溢成巨数。
+                    if (blockIdx * ROWS_PER_BLOCK >= rowsTotal) {
+                        continue;
+                    }
+                    uint32_t rows = rowsTotal - blockIdx * ROWS_PER_BLOCK;
+                    if (rows > ROWS_PER_BLOCK) {
+                        rows = ROWS_PER_BLOCK;
+                    }
                     if (rowStart + rows > params.maxOutputSize) {
                         rows = params.maxOutputSize - rowStart;
                     }
-                    uint32_t rowSrc = preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx);
+                    uint32_t rowSrc = preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx) +
+                                      blockIdx * ROWS_PER_BLOCK;
                     GM_ADDR otherRankPtr = shmem(0, dstEpIdx);
                     AscendC::GlobalTensor<ElementABefore> gmRemoteA;
                     gmRemoteA.SetGlobalBuffer(
@@ -1226,7 +1249,8 @@ private:
                     // 所以dispatch的时候每个专家之间间隔从密排改为max（k， k2）
                     // 但是专家之内仍然是密排的
                     int64_t gmOffsetA = static_cast<int64_t>(prevGroupSum1) * params.gmm1InputExpertSlotWidth +
-                                        static_cast<int64_t>(rowStartInGroup) * params.problemShape.k();
+                                        static_cast<int64_t>(rowStartInGroup + blockIdx * ROWS_PER_BLOCK) *
+                                            params.problemShape.k();
                     if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
                         int64_t gmOffsetPeer = rowSrc * (params.problemShape.k() + ALIGN_512);
                         FetchAndPreprocessInt8ToInt4(static_cast<uint64_t>(gmOffsetA), gmPerTokenScale1[rowStart],
@@ -1460,19 +1484,43 @@ private:
             AscendC::SyncAll<true>();
 
             uint32_t groupIdx = t_groupIdx;
+            uint32_t groupTokenTotal = cumsumMM((params.EP - 1) * params.expertPerRank + groupIdx);
+            if (prevGroupSum2 >= static_cast<int32_t>(params.maxOutputSize)) {
+                groupTokenTotal = 0;
+            } else if (prevGroupSum2 + groupTokenTotal > params.maxOutputSize) {
+                groupTokenTotal = params.maxOutputSize - prevGroupSum2;
+            }
 
-            for (int32_t dstEpIdx = coreIdx; dstEpIdx < params.EP; dstEpIdx += coreNum) {
-                __gm__ void *dstPeermemPtr = shmem(peermemInfo.offsetD, dstEpIdx);
-                AscendC::GlobalTensor<ElementD2> gmRemotePeer;
-                gmRemotePeer.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD2 *>(dstPeermemPtr));
-                uint32_t srcRowOffset =
+            // P2 优化：CombineV1 从「一 AIV 一 rank」改为「rank × token 行块」二维并行，
+            // 与 dispatch 同理，让所有 AIV 都参与 combine 搬运。
+            uint32_t tokenBlocks = CeilDiv(groupTokenTotal, ROWS_PER_BLOCK);
+            uint32_t totalTasks = static_cast<uint32_t>(params.EP) * tokenBlocks;
+            for (uint32_t taskIdx = static_cast<uint32_t>(coreIdx); taskIdx < totalTasks;
+                 taskIdx += coreNum) {
+                uint32_t dstEpIdx = taskIdx / tokenBlocks;
+                uint32_t blockIdx = taskIdx % tokenBlocks;
+                uint32_t rowStartInGroup =
                     (dstEpIdx == 0 ? 0 : cumsumMM((dstEpIdx - 1) * params.expertPerRank + groupIdx)) + prevGroupSum2;
+                uint32_t srcRowOffset = rowStartInGroup + blockIdx * ROWS_PER_BLOCK;
                 if (srcRowOffset < params.maxOutputSize) {
-                    uint32_t dataRows = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, runtimeRank, groupIdx));
+                    uint32_t rowsTotal = tokenPerExpert(tokenPerExpertLayout(dstEpIdx, runtimeRank, groupIdx));
+                    // 该源 rank 的行数可能不足（rowsTotal==0 或 < blockIdx*ROWS_PER_BLOCK），
+                    // 直接跳过该块，避免 rowsTotal - blockIdx*ROWS_PER_BLOCK 下溢成巨数。
+                    if (blockIdx * ROWS_PER_BLOCK >= rowsTotal) {
+                        continue;
+                    }
+                    uint32_t dataRows = rowsTotal - blockIdx * ROWS_PER_BLOCK;
+                    if (dataRows > ROWS_PER_BLOCK) {
+                        dataRows = ROWS_PER_BLOCK;
+                    }
                     if (srcRowOffset + dataRows > params.maxOutputSize) {
                         dataRows = params.maxOutputSize - srcRowOffset;
                     }
-                    uint32_t dstRowOffset = preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx);
+                    __gm__ void *dstPeermemPtr = shmem(peermemInfo.offsetD, dstEpIdx);
+                    AscendC::GlobalTensor<ElementD2> gmRemotePeer;
+                    gmRemotePeer.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD2 *>(dstPeermemPtr));
+                    uint32_t dstRowOffset = preSumBeforeRank(dstEpIdx * params.expertPerRank + groupIdx) +
+                                            blockIdx * ROWS_PER_BLOCK;
                     MatrixCoord offsetC{srcRowOffset, 0};
                     MatrixCoord offsetPeer{dstRowOffset, 0};
                     MatrixCoord shapeC{dataRows, n2};
@@ -1484,7 +1532,7 @@ private:
                     }
                 }
             }
-            prevGroupSum2 += cumsumMM((params.EP - 1) * params.expertPerRank + groupIdx);
+            prevGroupSum2 += groupTokenTotal;
         }
         blockEpilogue.Finalize();
     }
