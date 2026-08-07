@@ -902,11 +902,11 @@ def mxfp8_pa_preprocessing(
     block_num = [math.ceil(act_s / pack_block_size) for act_s in pack_seq_lens]
     for b in range(B):
         bid_table = block_table[b]
-        # for n_q_idx in range(N_q):
         for blk_idx in range(block_num[b]):
             blockid = int(bid_table[blk_idx])
+            if blockid < 0 or blockid >= physical_block_num:
+                continue
             block_offset = blk_idx * pack_block_size
-            # block_offset = sparse_indices[b,n_q_idx,blk_idx] * pack_block_size
             valid_len = min(pack_block_size, pack_seq_lens[b] - block_offset)
             if valid_len <= 0:
                 continue
