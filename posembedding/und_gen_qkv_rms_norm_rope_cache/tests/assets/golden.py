@@ -21,7 +21,7 @@
 
     python3 -m ttk kernel -i <csv> -b=release --plugin <此文件>
 
-约定（与《算子需求分析和方案设计说明书》一致）
+张量约定
   und_qkv       bf16 [und_len, N, D]，N = Hq+Hk+Hv，D = head_dim = 128
   gen_qkv       bf16 [gen_len, N, D]，可为 None
   weights       bf16 [D] x4（und_q / und_k / gen_q / gen_k）
@@ -51,7 +51,7 @@ __all__ = [
     "ttk_golden",
 ]
 
-# 本期支持范围（设计说明书 §2.3 典型 case shape）
+# 本期支持范围
 HEAD_DIM = 128
 HEAD_COMBOS = ((8, 1, 1), (16, 2, 2))
 # 算子对 block_size 无约束，这只是 case 未指定 block_size 时的默认值

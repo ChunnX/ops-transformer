@@ -1,0 +1,110 @@
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[10:15:53] >>> [A5] grep -E '^  \[' /tmp/torch_full.log | sed 's/未命中槽保持原值/hit/' ; echo '---'; grep -E '接口连通性|数值精度' /tmp/torch_full.log
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  [t2_min                ] 接口 OK  T=2      heads=(8,1,1) bs=128  hit=True  slot=contiguous
+  [t8_shuffle            ] 接口 OK  T=8      heads=(8,1,1) bs=128  hit=True  
+  [t56_cores             ] 接口 OK  T=56     heads=(16,2,2) bs=128  hit=True  cat=identity slot=contiguous
+  [t96_mixed             ] 接口 OK  T=96     heads=(16,2,2) bs=128  hit=True  cat=identity
+  [t128_block_edge       ] 接口 OK  T=128    heads=(8,1,1) bs=128  hit=True  slot=contiguous
+  [t1024_decode          ] 接口 OK  T=1024   heads=(8,1,1) bs=128  hit=True  
+  [t4096_und_heavy       ] 接口 OK  T=4096   heads=(16,2,2) bs=128  hit=True  
+  [t4096_plain_rope      ] 接口 OK  T=4096   heads=(8,1,1) bs=128  hit=True  sec=[] cat=identity slot=contiguous
+  [t10752_typical_h8     ] 接口 OK  T=10752  heads=(8,1,1) bs=128  hit=True  
+  [t10752_typical_h16    ] 接口 OK  T=10752  heads=(16,2,2) bs=128  hit=True  
+  [t64_bs16              ] 接口 OK  T=64     heads=(8,1,1) bs=16   hit=True  
+  [t200_bs64             ] 接口 OK  T=200    heads=(16,2,2) bs=64   hit=True  
+  [t300_bs100            ] 接口 OK  T=300    heads=(8,1,1) bs=100  hit=True  
+  [t512_bs256            ] 接口 OK  T=512    heads=(8,1,1) bs=256  hit=True  cat=identity slot=contiguous
+  [t1024_bs512           ] 接口 OK  T=1024   heads=(16,2,2) bs=512  hit=True  
+  [t65536_h8             ] 接口 OK  T=65536  heads=(8,1,1) bs=128  hit=True  
+  [t65536_h16            ] 接口 OK  T=65536  heads=(16,2,2) bs=128  hit=True  
+---
+接口连通性: 17/17 PASS
+数值精度:   17/17 PASS
+[10:15:53] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[10:16:08] >>> [A5] grep -A3 -E '^  \[(t2_min|t128_block_edge|t10752_typical_h16|t65536_h8|t65536_h16|t1024_bs512|t64_bs16)' /tmp/torch_full.log | grep -E 'q: max|k_cache: max' 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      q: max_abs=0.01494 max_rel=0.00388 不达标元素=0/2048
+      k_cache: max_abs=0.00672 max_rel=0.00386 不达标元素=0/256
+      q: max_abs=0.03049 max_rel=0.04470 不达标元素=0/131072
+      k_cache: max_abs=0.01556 max_rel=0.00385 不达标元素=0/16384
+      q: max_abs=0.03111 max_rel=0.05495 不达标元素=0/22020096
+      k_cache: max_abs=0.03020 max_rel=0.02294 不达标元素=0/2752512
+      q: max_abs=0.02013 max_rel=0.00389 不达标元素=0/65536
+      k_cache: max_abs=0.01559 max_rel=0.00385 不达标元素=0/8192
+      q: max_abs=0.03103 max_rel=0.04911 不达标元素=0/2097152
+      k_cache: max_abs=0.02736 max_rel=0.00389 不达标元素=0/262144
+      q: max_abs=0.04564 max_rel=0.10617 不达标元素=0/67108864
+      k_cache: max_abs=0.03122 max_rel=0.01293 不达标元素=0/8388608
+      q: max_abs=0.03125 max_rel=0.11176 不达标元素=0/134217728
+      k_cache: max_abs=0.03122 max_rel=0.09872 不达标元素=0/16777216
+[10:16:08] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[10:17:51] >>> [A5] python3 - <<'PY'
+import re
+lines=open('/tmp/torch_full.log',encoding='utf-8').read().split('\n')
+cur=None
+for l in lines:
+    m=re.match(r'\s*\[(\S+)\s*\]', l)
+    if m: cur=m.group(1); continue
+    m=re.match(r'\s*(q|k_cache|v_cache): max_abs=(\S+) max_rel=(\S+) .*?=(\S+)', l)
+    if m and cur:
+        print(f'{cur}\t{m.group(1)}\t{m.group(3)}\t{m.group(4)}')
+PY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+t2_min	q	0.00388	0/2048
+t2_min	k_cache	0.00386	0/256
+t2_min	v_cache	0.00000	0/256
+t8_shuffle	q	0.00388	0/8192
+t8_shuffle	k_cache	0.00376	0/1024
+t8_shuffle	v_cache	0.00000	0/1024
+t56_cores	q	0.00389	0/114688
+t56_cores	k_cache	0.00388	0/14336
+t56_cores	v_cache	0.00000	0/14336
+t96_mixed	q	0.00389	0/196608
+t96_mixed	k_cache	0.00389	0/24576
+t96_mixed	v_cache	0.00000	0/24576
+t128_block_edge	q	0.04470	0/131072
+t128_block_edge	k_cache	0.00385	0/16384
+t128_block_edge	v_cache	0.00000	0/16384
+t1024_decode	q	0.01031	0/1048576
+t1024_decode	k_cache	0.00389	0/131072
+t1024_decode	v_cache	0.00000	0/131072
+t4096_und_heavy	q	0.02778	0/8388608
+t4096_und_heavy	k_cache	0.00397	0/1048576
+t4096_und_heavy	v_cache	0.00000	0/1048576
+t4096_plain_rope	q	0.00758	0/4194304
+t4096_plain_rope	k_cache	0.00389	0/524288
+t4096_plain_rope	v_cache	0.00000	0/524288
+t10752_typical_h8	q	0.06875	0/11010048
+t10752_typical_h8	k_cache	0.01163	0/1376256
+t10752_typical_h8	v_cache	0.00000	0/1376256
+t10752_typical_h16	q	0.05495	0/22020096
+t10752_typical_h16	k_cache	0.02294	0/2752512
+t10752_typical_h16	v_cache	0.00000	0/2752512
+t64_bs16	q	0.00389	0/65536
+t64_bs16	k_cache	0.00385	0/8192
+t64_bs16	v_cache	0.00000	0/8192
+t200_bs64	q	0.00444	0/409600
+t200_bs64	k_cache	0.00388	0/51200
+t200_bs64	v_cache	0.00000	0/51200
+t300_bs100	q	0.00395	0/307200
+t300_bs100	k_cache	0.00735	0/38400
+t300_bs100	v_cache	0.00000	0/38400
+t512_bs256	q	0.00909	0/524288
+t512_bs256	k_cache	0.00389	0/65536
+t512_bs256	v_cache	0.00000	0/65536
+t1024_bs512	q	0.04911	0/2097152
+t1024_bs512	k_cache	0.00389	0/262144
+t1024_bs512	v_cache	0.00000	0/262144
+t65536_h8	q	0.10617	0/67108864
+t65536_h8	k_cache	0.01293	0/8388608
+t65536_h8	v_cache	0.00000	0/8388608
+t65536_h16	q	0.11176	0/134217728
+t65536_h16	k_cache	0.09872	0/16777216
+t65536_h16	v_cache	0.00000	0/16777216
+[10:17:51] <<< 完成 (exit: 0)

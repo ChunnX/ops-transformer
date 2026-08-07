@@ -225,7 +225,7 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckOutputShapeValid()
 
 ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckSupportRange()
 {
-    // 本期支持范围（设计说明书 §2.3）：headDim=128、
+    // 本期支持范围：headDim=128、
     // (Hq, Hk, Hv) ∈ {(8,1,1), (16,2,2)}；需要放宽时改 tiling.h 里的常量即可。
     //
     // block_size 不设限：cache 强制连续 BBND，[Bn, Bs, N, D] 展平即 [Bn*Bs, N, D]，
