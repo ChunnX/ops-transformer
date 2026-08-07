@@ -470,6 +470,23 @@ def _rand_float(shape, generator, data_range=1.0):
     ) * data_range
 
 
+def _log_tensor_ranges(prefix, **tensors):
+    """Log tensor min/max after converting low-precision values to fp32."""
+    ranges = []
+    for name, tensor in tensors.items():
+        if tensor is None:
+            ranges.append(f"{name}=None")
+            continue
+        if tensor.numel() == 0:
+            ranges.append(f"{name}=empty")
+            continue
+        values = tensor.detach().to(dtype=torch.float32)
+        ranges.append(
+            f"{name}=[min={values.min().item():.8g}, max={values.max().item():.8g}]"
+        )
+    logger.info("[INFO] %s: %s", prefix, ", ".join(ranges))
+
+
 def _rand_fp8(shape, generator, data_range=1.0):
     return _rand_float(shape, generator, data_range).to(FP8_DTYPE)
 
@@ -957,6 +974,12 @@ def _generate_reference_style_mxfp8_inputs():
     max_kv_len = max(kv_lengths)
     k_fp32 = _rand_float((batch, max_kv_len, n2, head_dim), generator, DATA_RANGE_K)
     v_fp32 = _rand_float((batch, max_kv_len, n2, head_dim), generator, DATA_RANGE_V)
+    _log_tensor_ranges(
+        "original FP32 range",
+        q=q_fp32,
+        k=k_fp32,
+        v=v_fp32,
+    )
     dense_key, dense_k_descale = quantize_mxfp8_qk(k_fp32, FP8_DTYPE, QUANT_GROUP_SIZE)
     dense_value, dense_v_descale = quantize_mxfp8_v(v_fp32, FP8_DTYPE, QUANT_GROUP_SIZE)
 
@@ -1837,12 +1860,12 @@ def npu_mxfp8_fa(
     softmax_scale = float(CASE["softmax_scale"])
 
     q_layout = canonical_q_input_layout(Q_INPUT_LAYOUT)
-    q_npu = (
+    q_input = (
         convert_q_tnd_or_ntd_to_layout(q_fp8, q_lengths, N_q, q_layout, "Q")
         .contiguous()
         .view(FP8_DTYPE)
-        .npu()
     )
+    q_npu = q_input.npu()
     logger.info("[NPU %s] q=%s", q_layout, q_npu.shape)
 
     q_scale_e8m0 = fp32_to_e8m0fnu_safe(
@@ -1889,8 +1912,10 @@ def npu_mxfp8_fa(
         sparse_indices=sparse_indices,
         sparse_seq_len=sparse_seq_len,
     )
-    k_npu = k_pa.contiguous().view(FP8_DTYPE).npu()
-    v_npu = v_pa.contiguous().view(FP8_DTYPE).npu()
+    k_input = k_pa.contiguous().view(FP8_DTYPE)
+    v_input = v_pa.contiguous().view(FP8_DTYPE)
+    k_npu = k_input.npu()
+    v_npu = v_input.npu()
     if not IS_CONTIGUOUS:
         kv_cache = torch.stack([k_pa, v_pa], dim=2).npu()
         k_npu = kv_cache[:, :, 0]
@@ -1926,8 +1951,19 @@ def npu_mxfp8_fa(
         sparse_seq_len=sparse_seq_len,
     )
 
-    deq_k_npu = fp32_to_e8m0fnu_safe(k_scale_pa, "K PA descale").npu()
-    deq_v_npu = fp32_to_e8m0fnu_safe(v_scale_pa, "V PA descale").npu()
+    k_scale_e8m0 = fp32_to_e8m0fnu_safe(k_scale_pa, "K PA descale")
+    v_scale_e8m0 = fp32_to_e8m0fnu_safe(v_scale_pa, "V PA descale")
+    _log_tensor_ranges(
+        "converted NPU input range",
+        q=q_input,
+        k=k_input,
+        v=v_input,
+        q_descale=q_scale_e8m0,
+        k_descale=k_scale_e8m0,
+        v_descale=v_scale_e8m0,
+    )
+    deq_k_npu = k_scale_e8m0.npu()
+    deq_v_npu = v_scale_e8m0.npu()
     if not IS_CONTIGUOUS:
         fake_kscale_tensor = torch.ones_like(deq_k_npu)
         fake_vscale_tensor = torch.ones_like(deq_v_npu)
