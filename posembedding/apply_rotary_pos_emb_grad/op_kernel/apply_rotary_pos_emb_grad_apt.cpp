@@ -18,7 +18,7 @@
 #include "arch35/apply_rotary_pos_emb_grad_tiling_data.h"
 #include "arch35/apply_rotary_pos_emb_grad_bab.h"
 #include "arch35/apply_rotary_pos_emb_grad_ab.h"
-#include "arch35/apply_rotary_pos_emb_grad_a_and_b.h"
+#include "arch35/apply_rotary_pos_emb_grad_a.h"
 #include "arch35/apply_rotary_pos_emb_grad_dag.h"
 
 enum class ApplyRopeGradDxTilingKey : uint32_t {
@@ -44,8 +44,10 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
     if (g_coreType == AIC) {
         return;
     }
-    if (workspace == nullptr) {
-        return;
+    if constexpr (DxTilingKey != static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
+        if (workspace == nullptr) {
+            return;
+        }
     }
 
     REGISTER_TILING_DEFAULT(ApplyRopeGradTilingData);
@@ -71,23 +73,29 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
         op.Process();
         pipe.Reset();
     } else if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
-        ApplyRotaryPosEmbGradAAndB<DTYPE_DY> op(&pipe, &tilingData.ropeGradParams);
-        op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin,
-                query, key,
-                gradQueryOut, gradKeyOut, gradCosOut, gradSinOut);
-        op.Process();
+        if constexpr (DcosFlag) {
+            // 融合模式：grad_cos/grad_sin 在 Phase 1 内同步累加，grad 只搬一次
+            ApplyRotaryPosEmbGradA<DTYPE_DY, true> op(&pipe, &tilingData.ropeGradParams);
+            op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin,
+                    gradQueryOut, gradKeyOut,
+                    query, key, gradCosOut, gradSinOut);
+            op.Process();
+        } else {
+            ApplyRotaryPosEmbGradA<DTYPE_DY, false> op(&pipe, &tilingData.ropeGradParams);
+            op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin,
+                    gradQueryOut, gradKeyOut);
+            op.Process();
+        }
         pipe.Reset();
+        // A 模板无需 Reduce：grad_cos/grad_sin 已融合写回 GM
+        return;
     }
 
     // ================================================================
-    // Phase 2: DcosFlag=1 → Reduce 跨广播轴求和
+    // Phase 2: DcosFlag=1 → Reduce 跨广播轴求和（仅广播模板 BAB/AB 需要）
+    // A 模板 (205): grad_cos/grad_sin 已在 Phase 1 融合计算直接写回 GM，无 reduce
     // ================================================================
     if constexpr (DcosFlag) {
-        // A 模板 (205): 无广播轴，grad_cos/grad_sin 已在 kernel 内直接写回 GM，无需 reduce
-        if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
-            return;
-        }
-
         PipeBarrier<PIPE_ALL>();
         SetSysWorkspace(workspace);
         GM_ADDR usrWorkSpace = AscendC::GetUserWorkspace(workspace);
