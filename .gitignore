@@ -60,3 +60,7 @@ torch_extension/extra-info/
 torch_extension/1.log
 torch_extension/test
 torch_extension/fag_profiling
+
+.cache/
+tests/st/aclnnLightningIndexerKLLoss
+test.sh
