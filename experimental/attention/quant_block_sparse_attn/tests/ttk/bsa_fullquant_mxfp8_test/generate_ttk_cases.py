@@ -10,12 +10,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""Convert the legacy QBSA MXFP8 pytest parameter sets to a TTK E2E CSV."""
+"""Convert enabled QBSA MXFP8 Python pytest cases to a TTK E2E CSV."""
 
 import argparse
 import csv
 import io
-import json
 import math
 import runpy
 from pathlib import Path
@@ -24,7 +23,6 @@ from pathlib import Path
 CURRENT_DIR = Path(__file__).resolve().parent
 LEGACY_DIR = CURRENT_DIR.parents[1] / "pytest" / "bsa_fullquant_mxfp8_test"
 PYTHON_CASES = LEGACY_DIR / "qbsa_mxfp8_test_cases.py"
-CSV_CASES = LEGACY_DIR / "qbsa_mxfp8_test_cases.csv"
 DEFAULT_OUTPUT = CURRENT_DIR / "qbsa_mxfp8_cases.csv"
 
 FIELDNAMES = (
@@ -39,86 +37,13 @@ FIELDNAMES = (
     "priority",
 )
 
-BOOL_FIELDS = {
-    "enable",
-    "is_contiguous",
-    "return_softmax_lse",
-    "empty_actual_seq",
-}
-INT_FIELDS = {
-    "B",
-    "N1",
-    "N2",
-    "D",
-    "S1",
-    "S2",
-    "s2_base_size",
-    "block_size",
-    "mask_mode",
-    "quant_group_size",
-    "seed",
-    "device_id",
-    "sparse_q_block_size",
-    "sparse_kv_block_size",
-    "sparse_count",
-    "quant_mode",
-}
-FLOAT_FIELDS = {
-    "p_scale_value",
-    "data_range_q",
-    "data_range_k",
-    "data_range_v",
-    "softmax_scale",
-}
-LIST_FIELDS = {"actual_seq_q", "actual_seq_kv"}
-
-
-def parse_bool(value):
-    if isinstance(value, bool):
-        return value
-    normalized = str(value).strip().lower()
-    if normalized in {"true", "1", "yes"}:
-        return True
-    if normalized in {"false", "0", "no"}:
-        return False
-    raise ValueError(f"invalid boolean value: {value!r}")
-
-
-def parse_value(field, value):
-    if value is None or (isinstance(value, str) and not value.strip()):
-        return None
-    if isinstance(value, str) and value.strip().lower() == "none":
-        return None
-    if field in BOOL_FIELDS:
-        return parse_bool(value)
-    if field in INT_FIELDS:
-        return int(value)
-    if field in FLOAT_FIELDS:
-        return float(value)
-    if field in LIST_FIELDS:
-        parsed = value if isinstance(value, (list, tuple)) else json.loads(value)
-        return [int(item) for item in parsed]
-    return value
-
-
 def load_python_cases():
     namespace = runpy.run_path(str(PYTHON_CASES))
-    return [(dict(case), "python") for case in namespace["TestCases"]]
-
-
-def load_csv_cases():
-    cases = []
-    with CSV_CASES.open("r", encoding="utf-8-sig", newline="") as handle:
-        for row in csv.DictReader(handle):
-            if not any(value and value.strip() for value in row.values()):
-                continue
-            cases.append(
-                (
-                    {field: parse_value(field, value) for field, value in row.items()},
-                    "csv",
-                )
-            )
-    return cases
+    return [
+        (dict(case), "python")
+        for case in namespace["TestCases"]
+        if case.get("enable") is True
+    ]
 
 
 def normalize_lengths(case, field, max_field):
@@ -245,21 +170,13 @@ def case_to_row(case, source):
 
 def render_csv():
     rows = []
-    rows_by_name = {}
-    for case, source in load_python_cases() + load_csv_cases():
+    names = set()
+    for case, source in load_python_cases():
         row = case_to_row(case, source)
         name = row["testcase_name"]
-        if name in rows_by_name:
-            previous = dict(rows_by_name[name])
-            current = dict(row)
-            previous.pop("remark")
-            current.pop("remark")
-            if previous != current:
-                raise ValueError(
-                    f"conflicting testcase definitions across Python/CSV: {name}"
-                )
-            continue
-        rows_by_name[name] = row
+        if name in names:
+            raise ValueError(f"duplicate enabled testcase_name: {name}")
+        names.add(name)
         rows.append(row)
 
     output = io.StringIO(newline="")
