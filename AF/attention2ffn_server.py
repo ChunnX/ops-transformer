@@ -12,35 +12,32 @@ import pandas as pd
 import copy
 
 import torch_npu
-import torchair
 import toolss_attn
+import cann_ops_transformer as cot
+import ctypes
 
 ##################### 测试开关 #####################
 current_case_name = 'Test_AttentionToFFN_16die_ID030'
 
 is_attn2ffn = 1
-is_ffn_batching = 0         # 是否调用算子清理FFN状态位
 
-# 性能检测相关
+# region 性能检测相关
 is_performance = 0
 loop = 105              # 性能检测时的性能采集轮数
 attn2ffn_profiling_path = './Profiling_Result_attn2ffn'
+# endregion
 
 # 量化相关
 quant_mode = 0
 is_quant = (quant_mode > 0)
 is_attn2ffn_scales = 0
 
-# 图模式相关
-graph_type = 1
-
 # 参数设置
 is_mask = 0
 sync_flag = 0
 
-# 自定义windows区conda
+# 自定义windows区
 enable_window = True                        # 是否开启自定义window区功能
-# enable_window = False
 default_window_size = 1024 * 1024 * 200             # 200M 空间
 default_window_addr = 0x12c101800000        # 默认win区地址
 
@@ -68,13 +65,13 @@ ffn_start_rank_id = 0                       # ffn worker 起始id
 
 server_num = 1
 server_index = 1
-rank_per_dev = 16                                               # 每个设备（如 GPU）上运行的 rank 数量（这里可能指逻辑 rank，用于模拟多进程）                       
+rank_per_dev = 16                                               # 每个设备（如 GPU）上运行的 rank 数量
 world_size = rank_per_dev * server_num
-ep_world_size = world_size                                       # Expert Parallel 的 world size（专家并行规模）
+ep_world_size = world_size                                       # Expert Parallel 的 world size
 
 shared_expert_num = 2
 rank_num_per_shared_expert = 1
-shared_expert_rank_num_ffn = shared_expert_num * rank_num_per_shared_expert     # 共享专家（shared expert）使用的 rank 数量
+shared_expert_rank_num_ffn = shared_expert_num * rank_num_per_shared_expert     # 共享专家使用的 rank 数量
 
 moe_rank_ffn_num = 10
 moe_expert_per_rank = 64
@@ -106,7 +103,6 @@ model_dtype = dtype_mapping.get(set_dtype, torch.bfloat16)
 ffn_token_info_table_shape = [attention_worker_num, micro_batch_num, 1+1+bs*expert_num_per_token]
 
 # 实际 token 数据（embedding）
-# [11, 1, 16, 9, 7168] → 每个 token 被复制到 k+1=9 个位置, 量化时[11, 1, 16, 9, 7168 + 128], 用于存放量化参数
 if quant_mode == 0:
     token_data_size = (h * 2 + 512 - 1) // 512 * 512
 else:
@@ -123,13 +119,9 @@ window_size_data = attention_worker_num * micro_batch_num * bs * expert_num_per_
 valid_window_size = (window_size_state + 512 - 1) // 512 * 512 + window_size_data
 
 window_size = valid_window_size
-# window_size = default_window_size
-# print("window_size=", window_size/1024/1024, "MB")
 
 if (valid_window_size >= default_window_size):
     os.environ['HCCL_BUFFSIZE'] = '4000'
-
-# window_size = default_window_size
 
 ##################### ffn_to_attention 算子参数相关 #####################
 actual_token_num = bs * micro_batch_num * attention_worker_num * expert_num_per_token  # token数量
@@ -160,7 +152,6 @@ def print_setting():
     print(f"{quant_mode=}")
     print(f"{is_quant=}")
     print(f"{is_attn2ffn_scales=}")
-    print(f"{graph_type=}")
     print(f"{enable_window=}")
     print(f"{moe_expert_num=}")
     print(f"{moe_rank_ffn_num=}")
@@ -197,85 +188,6 @@ def check_setting():
         error_log_and_exit("当前不支持静态量化, quant_mode 合法值仅有 0 和 2")
 
 
-
-class ATTENTION_TO_FFN_GRAPH_Model(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-    
-    def forward(
-        self, x, session_id, micro_batch_id, layer_id, expert_ids, expert_rank_table, group, world_size, ffn_token_info_table_shape,
-        ffn_token_data_shape, attn_token_info_table_shape, moe_expert_num, scales, active_mask, quant_mode, sync_flag, ffn_start_rank_id
-    ):
-        output = torch_npu.npu_attention_to_ffn(
-            x=x,
-            session_id=session_id,
-            micro_batch_id=micro_batch_id,
-            layer_id=layer_id,
-            expert_ids=expert_ids,
-            expert_rank_table=expert_rank_table,
-            group=group,
-            world_size=world_size,
-            ffn_token_info_table_shape=ffn_token_info_table_shape,
-            ffn_token_data_shape=ffn_token_data_shape,
-            attn_token_info_table_shape=attn_token_info_table_shape,
-            moe_expert_num=moe_expert_num,
-            scales = scales,
-            active_mask = active_mask,
-            quant_mode = quant_mode,
-            sync_flag = sync_flag,
-            ffn_start_rank_id = ffn_start_rank_id
-        )
-        return output
-
-class FFN_WORKER_BATCHING_GRAPH_Model(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-    
-    def forward(
-        self, schedule_context, expert_num, max_out_shape, token_dtype, need_schedule, layer_num
-    ):
-        output = torch_npu.npu_ffn_worker_batching(
-            schedule_context = schedule_context,
-            expert_num = expert_num,
-            max_out_shape = max_out_shape,
-            token_dtype = token_dtype,
-            need_schedule = need_schedule,
-            layer_num = layer_num
-        )
-        return output
-
-
-def compile_model(model):
-    ''' 图模式编译模型
-    '''
-    if graph_type == 0:
-        print('单算子模式下不应调用compile_model函数')
-        exit(1)
-
-    print(f"------------------graph_type: {graph_type}------------------",)
-
-    from torchair.configs.compiler_config import CompilerConfig
-    if is_full_core:
-        compiler_config = None
-    else:
-        # 使用一半的核
-        compiler_config = CompilerConfig()
-        compiler_config.ge_config.aicore_num = f"{aic_core_num}|{aiv_core_num}"
-        print(f"当前图模式仅使用: {aic_core_num} aic核, {aiv_core_num} aiv核")
-    npu_backend = torchair.get_npu_backend(compiler_config=compiler_config)
-
-    if graph_type == 1:  
-        # 传统入图模式，静态shape+在线编译场景
-        print('graph_type=1, 测试场景: 传统入图模式, 静态shape+在线编译场景')
-        compiled_model = torch.compile(model, backend=npu_backend, dynamic=False)
-    elif graph_type == 2:  
-        # ACLNN入图模式，动态shape+二进制
-        print('graph_type=2, 测试场景: ACLNN入图模式, 动态shape+二进制场景')
-        compiled_model = torch.compile(model, backend=npu_backend, dynamic=True)
-
-    return compiled_model
-
-
 def attn2ffn_gen_inputs():
     '''生成attention_to_ffn算子需要的参数
     '''
@@ -307,7 +219,6 @@ def attn2ffn_gen_inputs():
         if is_quant and is_attn2ffn_scales:
             scales = torch.empty(size=[L, shared_expert_num + moe_expert_num, h], dtype=torch.float32).uniform_(-1, 1)
         else:
-            # 使用空张量torch.tensor([])会被dispatch算子的tiling检查拦截，只能用None，无法保证数据类型一致
             scales = None
         return scales
     
@@ -342,8 +253,7 @@ def attn2ffn_gen_inputs():
                     item.append(num_exp_id)
                     cards_h[num_rank_id].remove(num_exp_id)
 
-                # 分配的卡数量、分配的卡id，分配到该卡的专家id
-                layer_e1.append(item)  # item对应  这个 moe专家部署在多少张上、分别部署在哪些卡、及卡上的哪个专家id？？？
+                layer_e1.append(item)
                 max_len = max(max_len, len(item))
             # 共享专家
             for i in range(shared_expert_num):
@@ -353,7 +263,6 @@ def attn2ffn_gen_inputs():
                     item.append(moe_expert_num + i)
                 layer_e1.append(item)
                 max_len = max(max_len, len(item))
-                # layer_e1.append([shared_expert_rank_num_ffn, ffn_worker_num - 1, moe_expert_num + i])  # 共享专家
             data.append(layer_e1)
 
         # Padding
@@ -365,12 +274,11 @@ def attn2ffn_gen_inputs():
                 padded_layer.append(item_padded)
             padded_data.append(padded_layer)
 
-        tensor_data = torch.tensor(padded_data)  # shape: (L, E1, max_len)  层数,每层专家数，最大项目长度
-        # print("-------- expert_rank_table:", tensor_data.size(), tensor_data)
+        tensor_data = torch.tensor(padded_data)  # shape: (L, E1, max_len)
         return tensor_data
     
     def gen_active_mask():
-        '''生成 mask，形状 [attention_worker_num, X, bs]        [11, 1, 16]?
+        '''生成 mask，形状 [attention_worker_num, X, bs]
         '''
         min_real_token_num = 0 if is_mask else 1
         active_mask_list = []
@@ -381,9 +289,7 @@ def attn2ffn_gen_inputs():
             active_mask = active_mask.repeat(X, 1)  # 形状变为 [X, bs]
             active_mask_list.append(active_mask)
         
-        # 将列表转换为张量并堆叠
         active_mask_list = torch.stack(active_mask_list)
-        # print("-------- active_mask:", active_mask_list.size(), active_mask_list)
         return active_mask_list
 
     x = gen_x()
@@ -391,20 +297,18 @@ def attn2ffn_gen_inputs():
     expert_rank_table = gen_expert_rank_table()
     scales = gen_scales()
     active_mask_list = gen_active_mask()
-    # print("-------- expert_ids:", expert_ids.size(), expert_ids)
 
     return x, expert_ids, expert_rank_table, scales, active_mask_list
 
 def attn2ffn_golden(x_golden, expert_ids_golden, expert_rank_table, scales, active_mask_list):
     # 初始化
-    # token_size = hs if is_quant else h
     token_size = token_data_size if is_quant else token_data_size // 2
 
-    ffn_token_state = torch.zeros(ffn_worker_num, attention_worker_num, micro_batch_num, 1 + 1 + bs * expert_num_per_token)  # FFN层的状态信息
-    ffn_token_data = torch.zeros(ffn_worker_num, attention_worker_num, micro_batch_num, bs, expert_num_per_token, token_size)  # FFN层的输入数据
-    ffn_quant_scales = torch.zeros(ffn_worker_num, attention_worker_num, micro_batch_num, bs, expert_num_per_token)  # FFN层的量化参数
-    token_data_mask = torch.zeros(ffn_worker_num, attention_worker_num, micro_batch_num, bs, expert_num_per_token, token_size, dtype=torch.bool)   # 用于结果比较时，比较有效位置上的数据
-    attn_token_state = torch.zeros(attention_worker_num, micro_batch_num, bs, expert_num_per_token)  # FFN层的状态信息
+    ffn_token_state = torch.zeros(ffn_worker_num, attention_worker_num, micro_batch_num, 1 + 1 + bs * expert_num_per_token)
+    ffn_token_data = torch.zeros(ffn_worker_num, attention_worker_num, micro_batch_num, bs, expert_num_per_token, token_size)
+    ffn_quant_scales = torch.zeros(ffn_worker_num, attention_worker_num, micro_batch_num, bs, expert_num_per_token)
+    token_data_mask = torch.zeros(ffn_worker_num, attention_worker_num, micro_batch_num, bs, expert_num_per_token, token_size, dtype=torch.bool)
+    attn_token_state = torch.zeros(attention_worker_num, micro_batch_num, bs, expert_num_per_token)
 
     def load_banance(session_id, layer_id, expert_id):
         count = expert_rank_table[layer_id, expert_id, 0]
@@ -414,22 +318,19 @@ def attn2ffn_golden(x_golden, expert_ids_golden, expert_rank_table, scales, acti
         return (dst_rank_id, dst_exp_id)
     
     def quant_process(y, scales):
-        y = y.to(torch.float32) * scales           # 首先把需要量化的值乘上一个scales
+        y = y.to(torch.float32) * scales
 
-        y_max, _ = y.abs().max(dim=-1)              # 量化公式第一步求绝对值的最大值
-        y_max[y_max == 0] = 1.0                   # 防止除0
+        y_max, _ = y.abs().max(dim=-1)
+        y_max[y_max == 0] = 1.0
         dynamic_scales = torch.tensor(127.0, dtype=torch.float32) / y_max
         y = (y * dynamic_scales.view(-1, 1)).round().to(torch.int8)
         scale = 1.0 / dynamic_scales
         return y, scale.flatten()
 
-    # 算子部分
     def att2ffn(row_idx, x_i, expert_id, attn_id):
         nonlocal ffn_token_data, ffn_token_state, token_data_mask
         scales_i = None
         hAlign = (h + 32 -1) // 32 * 32
-        # 处理moe专家
-        # topk_id 为索引
         for topk_id, expert_i in enumerate(expert_id):
             rank_id, exp_id = load_banance(attn_id, default_layer_id, expert_i)
 
@@ -442,12 +343,10 @@ def attn2ffn_golden(x_golden, expert_ids_golden, expert_rank_table, scales, acti
             else:
                 ffn_token_data[rank_id, attn_id, default_micro_batch_id, row_idx, topk_id, :h] = x_i
 
-            # 标志位
             ffn_token_state[rank_id, attn_id, default_micro_batch_id, 0] = 1
             ffn_token_state[rank_id, attn_id, default_micro_batch_id, 1] = default_layer_id
             ffn_token_state[rank_id, attn_id, default_micro_batch_id, (row_idx * expert_num_per_token + topk_id + 2)] = exp_id.float()
 
-        # 处理共享专家
         for i in range(shared_expert_num):
             shared_rank_id, shared_exp_id = load_banance(attn_id, default_layer_id, moe_expert_num + i)
             ffn_token_state[shared_rank_id, attn_id, default_micro_batch_id, 0] = 1
@@ -471,12 +370,8 @@ def attn2ffn_golden(x_golden, expert_ids_golden, expert_rank_table, scales, acti
                 attn_token_state[attn_id, X - 1, token_id, : ] = torch.ones(expert_num_per_token)
 
     if (sync_flag == 0):
-        ffn_token_state[:, :, :, 0] = 1     # 同步即所有ffn节点flag位均置1
+        ffn_token_state[:, :, :, 0] = 1
     
-    # for i in range(ffn_worker_num):
-        # print(f"------rank {i} golden ffn_token_state:", ffn_token_state[i].size(), ffn_token_state[i])
-        # print(f"------rank {i} golden ffn_token_data:", ffn_token_data[i].size(), ffn_token_data[i])
-
     return ffn_token_data, token_data_mask, ffn_quant_scales, ffn_token_state, attn_token_state
 
 def write_row_to_csv(csv_name: str, row_content: list):
@@ -488,8 +383,7 @@ def write_row_to_csv(csv_name: str, row_content: list):
 
 
 def get_performance(profiling_path):
-    # op_types = path_to_op_types[profiling_path]
-    op_types = ['AttentionToFFN']
+    op_types = ['AttentionToFFNV2']
     rank_types = ['attention']
     performance_info = {(op_type, rank_type): [] for op_type in op_types for rank_type in rank_types}
 
@@ -556,8 +450,8 @@ def get_attn2ffn_performance():
 
     print_attn2ffn_performance(attn2ffn_performance)
 
-    op_types = ['AttentionToFFN']
-    save_performance_result('AttentionToFFN', current_case_name, op_types, [attn2ffn_performance])
+    op_types = ['AttentionToFFNV2']
+    save_performance_result('AttentionToFFNV2', current_case_name, op_types, [attn2ffn_performance])
 
     return attn2ffn_performance
 
@@ -591,7 +485,6 @@ def get_profiling(loop, path):
 
 
 def set_device(rank):
-    # print()
     torch_npu.npu.set_device(rank % rank_per_dev)
     print(f"current device set: {torch_npu.npu.current_device()}")
 
@@ -612,56 +505,40 @@ def init_hccl_comm(rank):
     return ep_hcomm_info, ep_group
 
 
-def dispatch_gen_expert_ids():
-    ''' 生成dispatch的expert_ids \n
-        每个token选择的专家, [bs, k] \n
-        moe_expert_num = k, 选择全部专家 \n
-    '''
-    def gen_random_token_expert_ids(length, from_, to_):
-        return (torch.randperm(to_ - from_, dtype=torch.int32) + from_)[:length]                        
-
-    
-    ep_expert_ids = [gen_random_token_expert_ids(k, 0, moe_expert_num) for _ in range(bs)] 
-    
-    return torch.cat(ep_expert_ids)[:bs * k].view([bs, k])
-
-
 def align_up(num, align):
     '''向上取整
     '''
     return ((num + align - 1) // align) * align
 
 
-def dispatch_get_kwargs(
-    rank, group_ep
-):
-    ''' dispatch算子的入参
-    '''
-    x_cpu = torch.zeros(size=[bs, h], dtype=input_dtype)
-    x = x_cpu.to(input_dtype).npu()
-    expert_dis_ids = dispatch_gen_expert_ids().to(torch.int32).npu()
-    
-    return {
-        'x': x,
-        'expert_ids': expert_dis_ids,
-        'group_ep': group_ep,
-        'group_tp': group_ep,
-        'ep_rank_id': rank,
-        'tp_rank_id': 0,
-        'ep_world_size': 16,
-        'tp_world_size': 1,
-        'shared_expert_num': 1,
-        'shared_expert_rank_num': 1,
-        'moe_expert_num': 15,
-        'scales': None,
-        'quant_mode': 0,
-        'global_bs': 0,
-    }
+_ACL_LIB = ctypes.CDLL("libascendcl.so")
+_ACL_LIB.aclrtMemcpy.restype = ctypes.c_int32
+_ACL_LIB.aclrtMemcpy.argtypes = [
+    ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int
+]
+_ACL_MEMCPY_DEVICE_TO_DEVICE = 3
+
+
+def create_npu_tensor_from_window(shape, dtype, window_addr):
+    """从 window 区 device 地址创建 NPU tensor (替代 torchair.llm_datadist.create_npu_tensors)。"""
+    numel = 1
+    for s in shape:
+        numel *= s
+    itemsize = torch.empty((), dtype=dtype).element_size()
+    nbytes = numel * itemsize
+    tensor = torch.empty(shape, dtype=dtype, device='npu')
+    ret = _ACL_LIB.aclrtMemcpy(
+        tensor.data_ptr(), nbytes, window_addr, nbytes, _ACL_MEMCPY_DEVICE_TO_DEVICE
+    )
+    if ret != 0:
+        raise RuntimeError(f"aclrtMemcpy from window failed, ret={ret}")
+    return tensor
 
 
 def attn2ffn_get_kwargs(
-    x, session_id, micro_batch_id, layer_id, expert_ids,expert_rank_table, group, world_size, ffn_token_info_table_shape, 
-    ffn_token_data_shape, attn_token_info_table_shape, moe_expert_num,scales, active_mask, quant_mode, sync_flag, ffn_start_rank_id
+    context, x, session_id, micro_batch_id, layer_id, expert_ids, expert_rank_table, group, world_size,
+    ffn_token_info_table_shape, ffn_token_data_shape, attn_token_info_table_shape, moe_expert_num,
+    scales, active_mask, quant_mode, sync_flag, ffn_start_rank_id
 ):
     '''attn2ffn算子的入参
     '''
@@ -676,11 +553,12 @@ def attn2ffn_get_kwargs(
     active_mask = active_mask.to(torch.bool).npu() if is_mask else None
 
     return {
+        'context': context,
         'x': x,
         'session_id': session_id,
         'micro_batch_id': micro_batch_id,
         'layer_id': layer_id,
-        'expert_ids':expert_ids,
+        'expert_ids': expert_ids,
         'expert_rank_table': expert_rank_table,
         'group': group,
         'world_size': world_size,
@@ -688,180 +566,120 @@ def attn2ffn_get_kwargs(
         'ffn_token_data_shape': ffn_token_data_shape,
         'attn_token_info_table_shape': attn_token_info_table_shape,
         'moe_expert_num': moe_expert_num,
+        'quant_mode': quant_mode,
+        'sync_flag': sync_flag,
+        'ffn_start_rank_id': ffn_start_rank_id,
         'scales': scales,
         'active_mask': active_mask,
-        'quant_mode': quant_mode,
-        "sync_flag":sync_flag,
-        "ffn_start_rank_id":ffn_start_rank_id,
     }
 
 
-def ffn_batching_get_kwargs(
-    rank, window_addr, window_size
-):
-    '''ffn_worker_batching算子的入参
-    '''
-    # token_size = hs if is_quant else h
-    token_size = token_data_size if is_quant else token_data_size // 2
-    max_out_shape = [attention_worker_num, bs, (k + shared_expert_num), token_size] #{Y, H} Y=A*BS*Local_E
-    if quant_mode == 2:
-        attn_to_ffn_token_size = align_up(hs, 512)  # 512:为了对齐 4: 量化scale fp32
-        token_dtype = 2
-    else:
-        attn_to_ffn_token_size = align_up(h * 2, 512)
-        token_dtype = 1 if input_dtype == torch.bfloat16 else 0
-    ffn_to_attn_token_size = align_up(h * 2, 512)
-    expert_num = moe_expert_num + shared_expert_rank_num_ffn
-
-    context_holder = torch_npu._afd.create_schedule_context_holder(schedule_mode=0, session_num=attention_worker_num,
-        micro_batch_num=micro_batch_num, micro_batch_size=bs, selected_expert_num=k+shared_expert_num,
-        expert_num=expert_num, attn_to_ffn_token_size=attn_to_ffn_token_size, ffn_to_attn_token_size=ffn_to_attn_token_size, 
-        ffn_window=window_addr, ffn_window_size=window_size)
-    schedule_context = context_holder.get_schedule_context_tensor()
-    
-    batching_kwargs = {
-        "schedule_context": schedule_context,
-        "expert_num": moe_expert_per_rank if rank < moe_rank_ffn_num else 1,
-        "max_out_shape": max_out_shape,
-        "token_dtype": token_dtype,
-        "need_schedule": 1,
-        "layer_num": layer_num
-    }
-
-    return batching_kwargs
-
-
-def attn2ffn_get_npu(ep_group):
+def attn2ffn_get_npu(ctx_buffer):
     ''' 拿回 FFN 计算结果 \n
         ffn_window_states: [11, 1, 1+1+16*9], win区状态 \n
         ffn_data_tensor: [11, 1, 16, 9, 7168或者7168+128(量化)], win区数据 \n
     '''
     window_addr = default_window_addr
     if enable_window:
-        window_addr = ep_group._get_backend(torch.device('npu'))._get_window_mem().data_ptr()
+        window_addr = ctx_buffer.get_window_addr()
+        if window_addr == 0:
+            print('[WARN] get_window_addr returned 0, using default_window_addr')
+            window_addr = default_window_addr
 
-    # 状态, [11, 1, 1+1+16*9]
-    npu_state_tensor = torchair.llm_datadist.create_npu_tensors(
-        [attention_worker_num, micro_batch_num, 1 + 1 + bs * expert_num_per_token], torch.int32, [window_addr]
+    # 状态, [attention_worker_num, micro_batch_num, 1+1+bs*expert_num_per_token]
+    ffn_window_states = create_npu_tensor_from_window(
+        [attention_worker_num, micro_batch_num, 1 + 1 + bs * expert_num_per_token], torch.int32, window_addr
     )
-    ffn_window_states = npu_state_tensor[0]
 
     ffn_token_size = ffn_window_states.element_size() * ffn_window_states.numel()
-    ffn_token_area_size = (ffn_token_size + 511) // 512 * 512     # +511使得需要对齐的数不是512的倍数的话，让结果推动到下一个倍数，例如513应该对齐到1024，513+511=1024,1024//512=2, 2*512 = 1024,结果正确
-    # token_size = hs if is_quant else h
+    ffn_token_area_size = (ffn_token_size + 511) // 512 * 512
+
     token_size = token_data_size if is_quant else token_data_size // 2
 
-    # 数据, [11, 1, 16, 9, 7168]
-    ffn_data_tensors = torchair.llm_datadist.create_npu_tensors(
-        [attention_worker_num, micro_batch_num, bs, expert_num_per_token, token_size], model_dtype, [window_addr + ffn_token_area_size]
+    # 数据, [attention_worker_num, micro_batch_num, bs, expert_num_per_token, token_size]
+    ffn_data_tensor = create_npu_tensor_from_window(
+        [attention_worker_num, micro_batch_num, bs, expert_num_per_token, token_size], model_dtype,
+        window_addr + ffn_token_area_size
     )
-    ffn_data_tensor = ffn_data_tensors[0]
 
     # 量化系数scales
     if is_quant:
-        ffn_data_tensors_float = torchair.llm_datadist.create_npu_tensors(
-            [attention_worker_num, micro_batch_num, bs, expert_num_per_token, token_size//4], torch.float32, [window_addr + ffn_token_area_size]
+        ffn_data_tensor_float = create_npu_tensor_from_window(
+            [attention_worker_num, micro_batch_num, bs, expert_num_per_token, token_size//4], torch.float32,
+            window_addr + ffn_token_area_size
         )
-        ffn_data_tensor_float = ffn_data_tensors_float[0]
         index = align_up(h, 32) // 4
         ffn_scales_tensor = ffn_data_tensor_float[:,:,:,:,index]
-
     else:
         ffn_scales_tensor = torch.ones([attention_worker_num, micro_batch_num, bs, expert_num_per_token], dtype=torch.float32)
 
     return ffn_window_states, ffn_data_tensor, ffn_scales_tensor
 
 
-def set_windows(rank, ep_group, ep_hcomm_info):
-    # 是否开启window自定义功能
-    if enable_window:
-        if rank >= ffn_worker_num:
-            # 当前 rank 属于后半部分：attention 卡 需要与前 ffn_worker_num 个 rank （ffn卡）通信
-            target_ranks = list(range(ffn_worker_num))
-        else:
-            # 当前 rank 属于前 ffn_worker_num 个：FFN卡，需要与后面的 rank （attention卡）通信
-            target_ranks = list(range(ffn_worker_num, world_size))
-
-        print(f'target_ranks: {target_ranks}')
-        ep_group._get_backend(torch.device('npu'))._window_register_and_exchange(window_size, target_ranks)
-    else:
-        # all2all通信, 握手
-        print(f'[INFO] device_{rank} 构造dispatch算子输入数据')
-        dispatch_kwargs = dispatch_get_kwargs(
-            rank=rank, 
-            group_ep=ep_hcomm_info,
-        )
-        output_dispatch = torch_npu.npu_moe_distribute_dispatch(**dispatch_kwargs)
-        out1, _, _, _, _, _, _ = output_dispatch
-
-
 def attn2ffn_run_npu(queue, rank, x, expert_ids, expert_rank_table, scales, active_mask_list):
+    print('================开始设置卡==============')
     set_device(rank)
-    ep_hcomm_info, ep_group= init_hccl_comm(rank)
-    set_windows(rank, ep_group, ep_hcomm_info)
+    print('==============开始建立通信域===================')
+    ep_hcomm_info, ep_group = init_hccl_comm(rank)
+    print('===================通信域建立完成======================')
 
-    # attention 算子 [5, ..., 15]
+    # 创建 CommContextManager context (Ascend 950 Channel backend)
+    ctx_buffer = cot.AttentionToFFNV2Buffer(
+        ep_group, world_size, ffn_token_info_table_shape, ffn_token_data_shape, quant_mode
+    )
+    print(f'[INFO] rank {rank} context created, ccl_buffer_size={ctx_buffer.ccl_buffer_size}')
+
+    # attention 算子 [ffn_worker_num, ..., world_size-1]
     if rank >= ffn_worker_num:
+        print(f'[INFO] device_{rank} 构造attn2ffn算子输入数据')
         attn2ffn_kwargs = attn2ffn_get_kwargs(
-        x=x[rank-ffn_worker_num],
-        session_id=torch.tensor([rank-ffn_worker_num], dtype=torch.int32),
-        micro_batch_id=torch.tensor([default_micro_batch_id], dtype=torch.int32),
-        layer_id=torch.tensor([default_layer_id], dtype=torch.int32),
-        expert_ids=expert_ids[rank-ffn_worker_num],
-        expert_rank_table=expert_rank_table,
-        group=ep_hcomm_info,
-        world_size=world_size,
-        ffn_token_info_table_shape=ffn_token_info_table_shape,
-        ffn_token_data_shape=ffn_token_data_shape,
-        attn_token_info_table_shape=attn_token_info_table_shape,
-        moe_expert_num=moe_expert_num,
-        scales = scales,
-        active_mask = active_mask_list[rank-ffn_worker_num],
-        quant_mode = quant_mode,
-        sync_flag = sync_flag,
-        ffn_start_rank_id = ffn_start_rank_id,
-        )   # 获取Attention节点入参
+            context = ctx_buffer.context,
+            x = x[rank-ffn_worker_num],
+            session_id = torch.tensor([rank-ffn_worker_num], dtype=torch.int32),
+            micro_batch_id = torch.tensor([default_micro_batch_id], dtype=torch.int32),
+            layer_id = torch.tensor([default_layer_id], dtype=torch.int32),
+            expert_ids = expert_ids[rank-ffn_worker_num],
+            expert_rank_table = expert_rank_table,
+            group = ep_hcomm_info,
+            world_size = world_size,
+            ffn_token_info_table_shape = ffn_token_info_table_shape,
+            ffn_token_data_shape = ffn_token_data_shape,
+            attn_token_info_table_shape = attn_token_info_table_shape,
+            moe_expert_num = moe_expert_num,
+            scales = scales,
+            active_mask = active_mask_list[rank-ffn_worker_num],
+            quant_mode = quant_mode,
+            sync_flag = sync_flag,
+            ffn_start_rank_id = ffn_start_rank_id,
+        )
 
-        if graph_type == 0 and not is_full_core:
+        if is_full_core:
+            torch.npu.set_stream_limit(torch.npu.current_stream(), aic_core_num, aiv_core_num)
+        else:
             torch.npu.set_stream_limit(torch.npu.current_stream(), aic_core_num, aiv_core_num)
             print(f"当前单算子模式仅使用: {aic_core_num} aic核, {aiv_core_num} aiv核")
 
-        if is_performance and not is_ffn_batching:
-            if graph_type == 0:
-                tensor = torch.ones(10000, 10000).to(torch.float16).npu()
-                prof = get_profiling(loop, attn2ffn_profiling_path)
-                prof.start()
+        if not is_performance:
+            cot.attention_to_ffn_v2(**attn2ffn_kwargs)
+        else:
+            tensor = torch.ones(10000, 10000).to(torch.float16).npu()
+            with get_profiling(loop, attn2ffn_profiling_path) as prof:
                 for i in range(loop):
-                    torch_npu.npu_attention_to_ffn(**attn2ffn_kwargs)
+                    cot.attention_to_ffn_v2(**attn2ffn_kwargs)
                     if i == 1:
                         for j in range(100):
                             torch.exp(tensor)
                     prof.step()
-                prof.stop()
-            else:
-                model = compile_model(ATTENTION_TO_FFN_GRAPH_Model())
-                prof = get_profiling(loop, attn2ffn_profiling_path)
-                prof.start()
-                for i in range(loop):
-                    model(**attn2ffn_kwargs)
-                    prof.step()
-                prof.stop()
-        else:
-            if graph_type == 0:
-                torch_npu.npu_attention_to_ffn(**attn2ffn_kwargs)
-            else:
-                model = compile_model(ATTENTION_TO_FFN_GRAPH_Model())
-                model(**attn2ffn_kwargs)
-            if is_performance:
-                time.sleep(50)
+
+        print(f'****************begin cann_ops_transformer.attention_to_ffn_v2 rank:{rank}***********')
+
         # attn状态
         if is_mask:
             time.sleep(5)
-            window_addr = ep_group._get_backend(torch.device('npu'))._get_window_mem().data_ptr()
-            npu_state_tensor = torchair.llm_datadist.create_npu_tensors(
-                [micro_batch_num, bs, expert_num_per_token], torch.int32, [window_addr]
+            window_addr = ctx_buffer.get_window_addr()
+            attn_window_states = create_npu_tensor_from_window(
+                [micro_batch_num, bs, expert_num_per_token], torch.int32, window_addr
             )
-            attn_window_states = npu_state_tensor[0]
             attn_state_cpu = attn_window_states.cpu()
             queue.put([
                 rank, 
@@ -869,61 +687,23 @@ def attn2ffn_run_npu(queue, rank, x, expert_ids, expert_rank_table, scales, acti
             ])
         print(f'rank {rank} attention finished! \n')
 
-    # ffn的rank, [0, ..., 4]
+    # ffn的rank, [0, ..., ffn_worker_num-1]
     if rank < ffn_worker_num:
-        time.sleep(50)
-        ffn_window_states, ffn_data_tensor, ffn_scales_tensor = attn2ffn_get_npu(ep_group)
+        if not is_performance:
+            time.sleep(50)
+        else:
+            time.sleep(50)
+        ffn_window_states, ffn_data_tensor, ffn_scales_tensor = attn2ffn_get_npu(ctx_buffer)
         # 将张量从 NPU 移到 CPU
         token_states_cpu = ffn_window_states.cpu()
         token_data_cpu = ffn_data_tensor.cpu()
         ffn_scales_cpu = ffn_scales_tensor.cpu()
-        # print(f"-----rank {rank} token_state:", token_states_cpu.size(), token_states_cpu)
-        # print(f"-----rank {rank} token_data:", token_data_cpu.size(), token_data_cpu)
         queue.put([
             rank, 
             [token_states_cpu, token_data_cpu, ffn_scales_cpu]
         ])
         print(f'FFN rank {rank} finished! \n')
-        if is_ffn_batching and is_performance:
-            # time.sleep(1)
-            # 调用FFNWorkerBatching 参数配置
-            window_addr = ep_group._get_backend(torch.device('npu'))._get_window_mem().data_ptr()
-            batching_kwargs = ffn_batching_get_kwargs(rank, window_addr, window_size)
-            print(f'rank {rank} get ffn batching complete! \n')
 
-    if is_performance and is_ffn_batching:
-        print(f'start rank {rank} get performance! \n')
-
-        if graph_type == 0:
-            tensor = torch.ones(10000, 10000).to(torch.float16).npu()
-            prof = get_profiling(loop, attn2ffn_profiling_path)
-            prof.start()
-            for i in range(loop):
-                if rank >= ffn_worker_num:
-                    torch_npu.npu_attention_to_ffn(**attn2ffn_kwargs)
-                    # time.sleep(1)
-                if rank < ffn_worker_num:
-                    batching_output = torch_npu.npu_ffn_worker_batching(**batching_kwargs)
-                if i == 1:
-                    for j in range(100):
-                        torch.exp(tensor)
-
-                prof.step()
-            prof.stop()
-        else:
-            model = compile_model(ATTENTION_TO_FFN_GRAPH_Model())
-            prof = get_profiling(loop, attn2ffn_profiling_path)
-            prof.start()
-            for i in range(loop):
-                if rank >= ffn_worker_num:
-                    model(**attn2ffn_kwargs)
-                    # time.sleep(1)
-                if rank < ffn_worker_num:
-                    batching_output = torch_npu.npu_ffn_worker_batching(**batching_kwargs)
-                prof.step()
-            prof.stop()
-
-    # torch.npu.synchronize()
     print(f'rank {rank} npu finished! \n')
 
 
@@ -938,7 +718,6 @@ def attn2ffn_gen_npu(target_func, x, expert_ids, expert_rank_table, scales, acti
     result_dqueue = manager.Queue()
     mp.set_start_method("forkserver", force=True)
     for rank in rank_list:
-        # print(rank)
         server_kwargs = {
             "queue": result_dqueue,
             "rank": rank,
@@ -1043,8 +822,6 @@ def compare_output(str_name, golden_per_card, npu_per_card, compare_dtype, tenso
                 f"{tensor_name}_{i}"
             )
             result[f"{tensor_name}_{i}"] = res
-
-            # print(f"-----rank {i} diff", sum(npu_per_card[local_rank_id] - golden_per_card[local_rank_id]))
 
     return result
 
@@ -1153,9 +930,10 @@ if __name__ == '__main__':
                 else:
                     print("attn2ffn test Failed.")
             else:
-                # time.sleep(5)
                 print("results are not in this server.")
                 print("attn2ffn test Success.")
 
         if is_performance:
             print_attn2ffn_performance(attn2ffn_performance)
+
+        print('跑完了')

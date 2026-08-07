@@ -164,8 +164,8 @@ def _calc_window_size(ffn_token_info_table_shape, ffn_token_data_shape, quant_mo
 
     token_info_size = attention_worker_num * micro_batch_num * info_table_last_dim * 4
     if quant_mode != 0:
-        # 量化模式: int8 (1 byte) + 128B scale per token
-        token_data_size = attention_worker_num * micro_batch_num * bs * k_plus_shared * (hs + 128)
+        # 量化模式: int8 (1 byte), hs already includes 128B scale padding
+        token_data_size = attention_worker_num * micro_batch_num * bs * k_plus_shared * hs
     else:
         # 非量化模式: float16/bfloat16 (2 bytes)
         token_data_size = attention_worker_num * micro_batch_num * bs * k_plus_shared * hs * 2
