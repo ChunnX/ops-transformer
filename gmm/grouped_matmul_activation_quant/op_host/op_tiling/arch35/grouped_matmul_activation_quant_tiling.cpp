@@ -64,6 +64,7 @@ constexpr uint32_t WEIGHT_NZ_LAST_DIM_FP4 = 64;
 constexpr uint32_t WEIGHT_NZ_C0_DIM = 16;
 constexpr uint32_t N_SIZE_ALIGN = 64;
 constexpr uint32_t MXFP4_PACK_FACTOR = 2;
+constexpr uint64_t MX_EPILOGUE_MAX_TILE_ELEMENTS = 128UL * 256UL;
 constexpr uint32_t FP8_E4M3FN_VALUE = 36;
 constexpr uint32_t FP8_E5M2_VALUE = 35;
 constexpr uint8_t ROUND_MODE_RINT = 4;
@@ -210,6 +211,14 @@ bool GroupedMatmulActivationQuantTiling950::CheckDtype() const
                     context_->GetNodeName(), "y_scale",
                     ge::TypeUtils::DataTypeToSerialString(inputParams_.outScaleDtype),
                     "when the quantization mode is mx, the dtype of y_scale must be FLOAT8_E8M0"),
+                return false);
+    OP_CHECK_IF(inputParams_.outDataDtype != yDtype_,
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                    context_->GetNodeName(), "y and y_dtype",
+                    FormatString("y=%s, y_dtype=%s",
+                                 ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype).c_str(),
+                                 ge::TypeUtils::DataTypeToSerialString(yDtype_).c_str()),
+                    "the y descriptor dtype must match the y_dtype attribute"),
                 return false);
     return true;
 }
@@ -394,7 +403,19 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::DoLibApiTiling()
     // The kernel consumes compact low-level BasicAPI fields instead of TCubeTiling, so scaleKAL1 and scaleKBL1
     // must be identical.
     GroupedQmmTiling::CalBasicBlock();
-    basicTiling_.baseM = GroupedMatmul::CeilAlign(basicTiling_.baseM, GmmConstant::CUBE_BLOCK);
+    const uint64_t alignedBaseM =
+        GroupedMatmul::CeilAlign(basicTiling_.baseM, GmmConstant::CUBE_BLOCK);
+    OP_CHECK_IF(basicTiling_.baseN == 0,
+                OP_LOGE(context_->GetNodeName(), "baseN must be greater than zero."),
+                return ge::GRAPH_FAILED);
+    const uint64_t maxBaseMByUb =
+        (MX_EPILOGUE_MAX_TILE_ELEMENTS / basicTiling_.baseN / GmmConstant::CUBE_BLOCK) *
+        GmmConstant::CUBE_BLOCK;
+    OP_CHECK_IF(maxBaseMByUb == 0,
+                OP_LOGE(context_->GetNodeName(), "baseN=%lu exceeds the MX epilogue UB capacity.",
+                        basicTiling_.baseN),
+                return ge::GRAPH_FAILED);
+    basicTiling_.baseM = std::min(alignedBaseM, maxBaseMByUb);
     OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
     tilingData_.mmTilingData.m = inputParams_.mSize;
