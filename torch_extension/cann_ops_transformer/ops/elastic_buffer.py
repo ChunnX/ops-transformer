@@ -198,7 +198,7 @@ def _get_moe_ep_window_layout(
         local_experts_num * count_dtype_size, win_addr_align
     )
     dispatch_cnt_notify_size = world_size * win_addr_align
-    dispatch_slot_notify_size = world_size * _inline_align(num_max_tokens_per_rank * notify_dtype_size, win_addr_align)
+    dispatch_slot_notify_size = world_size * _inline_align(num_max_tokens_per_rank * 64, win_addr_align)
     combine_state_size = (
         num_max_tokens_per_rank * topk * win_addr_align + world_size * win_addr_align
     )
