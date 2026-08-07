@@ -53,38 +53,6 @@ export ASCEND_TOOLKIT_HOME=${_ASCEND_INSTALL_PATH}
 export ASCEND_HOME_PATH=${_ASCEND_INSTALL_PATH}
 export LD_LIBRARY_PATH=${CURRENT_DIR}/out/lib:${CURRENT_DIR}/out/lib64:${_ASCEND_INSTALL_PATH}/lib64:$LD_LIBRARY_PATH
 
-# ==================== 自动编译 ====================
-
-NEED_BUILD=0
-BIN=${CURRENT_DIR}/out/bin/test_local_xncke_rw_v2
-
-if [ ! -x "$BIN" ]; then
-    NEED_BUILD=1
-else
-    # 源码比二进制新则重新编译
-    NEWEST_SRC=$(find "$CURRENT_DIR" -name '*.cpp' -o -name '*.h' -o -name 'CMakeLists.txt' \
-        | xargs stat -c '%Y %n' 2>/dev/null | sort -rn | head -1 | awk '{print $1}')
-    BIN_MTIME=$(stat -c '%Y' "$BIN" 2>/dev/null || echo 0)
-    if [ -n "$NEWEST_SRC" ] && [ "$NEWEST_SRC" -gt "$BIN_MTIME" ]; then
-        NEED_BUILD=1
-    fi
-fi
-
-if [ "$NEED_BUILD" -eq 1 ]; then
-    echo "[INFO] 开始编译..."
-    rm -rf "$CURRENT_DIR/build"
-    mkdir -p "$CURRENT_DIR/build"
-    cmake -B "$CURRENT_DIR/build" \
-        -DSOC_VERSION=${SOC_VERSION} \
-        -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
-        -DCMAKE_INSTALL_PREFIX=${CURRENT_DIR}/out \
-        -DASCEND_CANN_PACKAGE_PATH=${_ASCEND_INSTALL_PATH}
-    cmake --build "$CURRENT_DIR/build" -j
-    cmake --install "$CURRENT_DIR/build"
-    echo "[INFO] 编译完成"
-    echo "==================================================================="
-fi
-
 # ==================== 参数解析 ====================
 
 INPUT_CSV=""
@@ -126,6 +94,53 @@ OUTPUT_CSV="${OUTPUT_CSV:-${INPUT_CSV%.csv}_result.csv}"
 if [ ! -f "$INPUT_CSV" ]; then
     echo "[ERROR] 输入文件不存在: $INPUT_CSV"
     exit 1
+fi
+
+# ==================== 自动编译 ====================
+
+NEED_BUILD=0
+BIN=${CURRENT_DIR}/out/bin/test_local_xncke_rw_v2
+
+if [ ! -x "$BIN" ]; then
+    NEED_BUILD=1
+else
+    NEWEST_SRC=$(find "$CURRENT_DIR" -name '*.cpp' -o -name '*.h' -o -name 'CMakeLists.txt' \
+        | xargs stat -c '%Y %n' 2>/dev/null | sort -rn | head -1 | awk '{print $1}')
+    BIN_MTIME=$(stat -c '%Y' "$BIN" 2>/dev/null || echo 0)
+    if [ -n "$NEWEST_SRC" ] && [ "$NEWEST_SRC" -gt "$BIN_MTIME" ]; then
+        NEED_BUILD=1
+    fi
+fi
+
+if [ "$NEED_BUILD" -eq 1 ]; then
+    if [ -n "$CASE_LINE" ]; then
+        # 单跑：编译过程打屏
+        echo "[INFO] 开始编译..."
+        rm -rf "$CURRENT_DIR/build"
+        mkdir -p "$CURRENT_DIR/build"
+        cmake -B "$CURRENT_DIR/build" \
+            -DSOC_VERSION=${SOC_VERSION} \
+            -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+            -DCMAKE_INSTALL_PREFIX=${CURRENT_DIR}/out \
+            -DASCEND_CANN_PACKAGE_PATH=${_ASCEND_INSTALL_PATH}
+        cmake --build "$CURRENT_DIR/build" -j
+        cmake --install "$CURRENT_DIR/build"
+        echo "[INFO] 编译完成"
+        echo "==================================================================="
+    else
+        # 批跑：编译过程静默
+        echo "[INFO] 编译中..."
+        rm -rf "$CURRENT_DIR/build"
+        mkdir -p "$CURRENT_DIR/build"
+        cmake -B "$CURRENT_DIR/build" \
+            -DSOC_VERSION=${SOC_VERSION} \
+            -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+            -DCMAKE_INSTALL_PREFIX=${CURRENT_DIR}/out \
+            -DASCEND_CANN_PACKAGE_PATH=${_ASCEND_INSTALL_PATH} > /dev/null 2>&1
+        cmake --build "$CURRENT_DIR/build" -j > /dev/null 2>&1
+        cmake --install "$CURRENT_DIR/build" > /dev/null 2>&1
+        echo "[INFO] 编译完成"
+    fi
 fi
 
 echo "==================================================================="
@@ -170,20 +185,40 @@ tail -n +2 "$INPUT_CSV" | while IFS=',' read -r id mode res_kind die_id warmup_c
     echo "[INFO] === 用例 id=$id ($current/$case_count) ==="
     echo "  mode=$mode res_kind=$res_kind die_id=$die_id warmup=$warmup_count loop=$loop_count pattern=$pattern rank=$rank_id/$ranksize"
 
-    output=$("$BIN" \
-        --rank_id "$rank_id" \
-        --ranksize "$ranksize" \
-        --mode "$mode" \
-        --res_kind "$res_kind" \
-        --warmup "$warmup_count" \
-        --die_id "$die_id" \
-        --xn_num 1 \
-        --xn_index 0 \
-        --cke_num 1 \
-        --cke_index 0 \
-        --loop_count "$loop_count" \
-        --pattern "$pattern" 2>&1)
-    bin_ret=$?
+    if [ -n "$CASE_LINE" ]; then
+        # 单跑：直接打屏
+        "$BIN" \
+            --rank_id "$rank_id" \
+            --ranksize "$ranksize" \
+            --mode "$mode" \
+            --res_kind "$res_kind" \
+            --warmup "$warmup_count" \
+            --die_id "$die_id" \
+            --xn_num 1 \
+            --xn_index 0 \
+            --cke_num 1 \
+            --cke_index 0 \
+            --loop_count "$loop_count" \
+            --pattern "$pattern" 2>&1
+        bin_ret=$?
+        output=""
+    else
+        # 批跑：捕获到变量，不打屏
+        output=$("$BIN" \
+            --rank_id "$rank_id" \
+            --ranksize "$ranksize" \
+            --mode "$mode" \
+            --res_kind "$res_kind" \
+            --warmup "$warmup_count" \
+            --die_id "$die_id" \
+            --xn_num 1 \
+            --xn_index 0 \
+            --cke_num 1 \
+            --cke_index 0 \
+            --loop_count "$loop_count" \
+            --pattern "$pattern" 2>&1)
+        bin_ret=$?
+    fi
 
     # 解析输出
     warmup_cycles=$(echo "$output" | grep "warmupCycle:" | grep -oP '\d+' | tail -1)
