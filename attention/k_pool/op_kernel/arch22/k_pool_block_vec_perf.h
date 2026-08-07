@@ -61,6 +61,7 @@ public:
     __aicore__ inline void FreeEventID();
     // =================================执行计算=================================
     __aicore__ inline void ComputeVec1(const Vec1RunInfo &info);
+    __aicore__ inline void ComputeFullHistoryPool();
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<T> kvMm1ResGm, GlobalTensor<T> scoreMm1ResGm,
                                                 GlobalTensor<T> kvCacheTcGm, GlobalTensor<T> scoreCacheTcGm);
 
@@ -125,6 +126,9 @@ private:
                                              uint32_t dStartIdx, uint32_t globalSeqIdx, uint32_t dDealSize);
     __aicore__ inline void SoftmaxDN(const LocalTensor<T> &scoreLocal, const LocalTensor<T> &tmpUb, uint32_t tcDealSize,
                                      uint32_t dDealSize);
+    __aicore__ inline void RoundToHiddenDtype(const LocalTensor<T> &srcLocal, uint32_t elementCount);
+    __aicore__ inline void AddApeToPooledScore(const LocalTensor<T> &scoreLocal, const LocalTensor<T> &apeLocal,
+                                               uint32_t poolCount, uint32_t dDealSize);
     __aicore__ inline void KvMulReduceScore(const LocalTensor<T> &kvLocal, const LocalTensor<T> &scoreLocal,
                                             const LocalTensor<T> &dstLocal, const LocalTensor<T> &tmpUb,
                                             uint32_t tcDealSize, uint32_t dDealSize);
@@ -314,6 +318,7 @@ __aicore__ inline void KPoolBlockVectorPerf<COMP>::CopyInApe(const LocalTensor<T
     inputQue1.EnQue(apeUbTmp);
     inputQue1.DeQue<T>();
     DataCopy(apeUb, apeUbTmp, coff_ * dDealSize * constInfo_.cmpRatio);
+    PipeBarrier<PIPE_V>();
     inputQue1.FreeTensor(apeUbTmp);
 }
 
@@ -509,10 +514,6 @@ KPoolBlockVectorPerf<COMP>::OverLap(const LocalTensor<T> dstLocal, const LocalTe
         return;
     }
 
-    if constexpr (IS_SCORE) {
-        AddApeToScore(srcLocal, apeUb, sliceInfo, dDealSize);
-        PipeBarrier<PIPE_V>();
-    }
     SaveState(srcLocal, stateGm, blockTableGm, sliceInfo, dStartIdx, dDealSize, static_cast<uint32_t>(IS_SCORE));
 
     event_t eventId_V_MTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
@@ -776,6 +777,28 @@ __aicore__ inline void KPoolBlockVectorPerf<COMP>::SoftmaxDN(const LocalTensor<T
 }
 
 template <typename COMP>
+__aicore__ inline void KPoolBlockVectorPerf<COMP>::RoundToHiddenDtype(
+    const LocalTensor<T> &srcLocal, uint32_t elementCount)
+{
+    LocalTensor<HIDDEN_STATES_T> roundLocal = outputQue1.AllocTensor<HIDDEN_STATES_T>();
+    Cast(roundLocal, srcLocal, RoundMode::CAST_ROUND, elementCount);
+    PipeBarrier<PIPE_V>();
+    Cast(srcLocal, roundLocal, RoundMode::CAST_NONE, elementCount);
+    PipeBarrier<PIPE_V>();
+    outputQue1.FreeTensor(roundLocal);
+}
+
+template <typename COMP>
+__aicore__ inline void KPoolBlockVectorPerf<COMP>::AddApeToPooledScore(
+    const LocalTensor<T> &scoreLocal, const LocalTensor<T> &apeLocal, uint32_t poolCount, uint32_t dDealSize)
+{
+    uint32_t poolElementCount = cmpRatio_ * dDealSize;
+    for (uint32_t pool = 0; pool < poolCount; pool++) {
+        Add(scoreLocal[pool * poolElementCount], scoreLocal[pool * poolElementCount], apeLocal, poolElementCount);
+    }
+}
+
+template <typename COMP>
 __aicore__ inline void
 KPoolBlockVectorPerf<COMP>::KvMulReduceScore(const LocalTensor<T> &kvLocal, const LocalTensor<T> &scoreLocal,
                                                   const LocalTensor<T> &dstLocal, const LocalTensor<T> &tmpUb,
@@ -800,31 +823,26 @@ __aicore__ inline void KPoolBlockVectorPerf<COMP>::CopyOutVec1ResToOutput(const 
     Cast(outputUb, comperssoredUb, RoundMode::CAST_ROUND, compressTcSize * dDealSize);
     outputQue1.EnQue(outputUb);
     outputQue1.DeQue<HIDDEN_STATES_T>();
-    if constexpr (COMP::hiddenStatesLayout == HIDDEN_STATES_LAYOUT::BSH) {
-        uint32_t bOutputScLen = CeilDivT(GetSeqLength(sliceInfo.bIdx), cmpRatio_);
-        uint32_t bIdx = sliceInfo.bIdx;
-        uint32_t sIdx = sliceInfo.sIdx;
-        uint64_t ubOffset = 0;
-        while (compressTcSize > 0) {
-            uint32_t bStartPos = GetStartPos(bIdx);
-            uint32_t preScSize = (sIdx + bStartPos) / cmpRatio_;
-            uint32_t totalScSize = (GetSeqUsed(bIdx) + bStartPos) / cmpRatio_;
-            if (preScSize < totalScSize) {
-                uint32_t curScSize = min(compressTcSize, (totalScSize - preScSize));
-                uint64_t padScIdx = bIdx * bOutputScLen + preScSize - (bStartPos / cmpRatio_);
-                uint64_t outGmOffset = padScIdx * constInfo_.headDim + dStartIdx;
-                DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb[ubOffset], curScSize, dDealSize,
-                                    dDealSize, constInfo_.headDim);
-                compressTcSize -= curScSize;
-                ubOffset += curScSize * dDealSize;
-            }
-            bIdx++;
-            sIdx = 0;
+    uint32_t outputPoolCapacity =
+        CeilDivT(constInfo_.maxBlockNumPerBatch * constInfo_.blockSize, cmpRatio_);
+    uint32_t bIdx = sliceInfo.bIdx;
+    uint32_t sIdx = sliceInfo.sIdx;
+    uint64_t ubOffset = 0;
+    while (compressTcSize > 0) {
+        uint32_t bStartPos = GetStartPos(bIdx);
+        uint32_t preScSize = (sIdx + bStartPos) / cmpRatio_;
+        uint32_t totalScSize = (GetSeqUsed(bIdx) + bStartPos) / cmpRatio_;
+        if (preScSize < totalScSize) {
+            uint32_t curScSize = min(compressTcSize, totalScSize - preScSize);
+            uint64_t outputPoolIdx = static_cast<uint64_t>(bIdx) * outputPoolCapacity + preScSize;
+            uint64_t outGmOffset = outputPoolIdx * constInfo_.headDim + dStartIdx;
+            DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb[ubOffset], curScSize, dDealSize, dDealSize,
+                                constInfo_.headDim);
+            compressTcSize -= curScSize;
+            ubOffset += curScSize * dDealSize;
         }
-    } else {
-        uint64_t outGmOffset = compressedCnt_ * constInfo_.headDim + dStartIdx;
-        DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb, compressTcSize, dDealSize, dDealSize,
-                            constInfo_.headDim);
+        bIdx++;
+        sIdx = 0;
     }
     outputQue1.FreeTensor(outputUb);
 }
@@ -845,6 +863,7 @@ __aicore__ inline void KPoolBlockVectorPerf<COMP>::OverLapScoreKv(
     FromWokrSpaceToUb(scoreUb, scoreDBMm1ResGm, originSliceInfo, statisticInfo, dStartIdx, dDealSize);
     inputQue1.EnQue(scoreUb);
     inputQue1.DeQue<T>();
+    RoundToHiddenDtype(scoreUb, statisticInfo.dealSeqCnt * coff_ * dDealSize);
     overLapSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.sIdx, 0U, 0U);
     overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
     while (!overLapSliceIterator.IsEnd()) {
@@ -868,6 +887,7 @@ __aicore__ inline void KPoolBlockVectorPerf<COMP>::OverLapScoreKv(
 
     inputQue1.EnQue(kvUb);
     inputQue1.DeQue<T>();
+    RoundToHiddenDtype(kvUb, statisticInfo.dealSeqCnt * coff_ * dDealSize);
     overLapSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.sIdx, 0U, 0U);
     overLapSliceIterator.SetNeedDealTcSize(needDealTcSize);
     while (!overLapSliceIterator.IsEnd()) {
@@ -899,7 +919,11 @@ __aicore__ inline void KPoolBlockVectorPerf<COMP>::DealVec1BaseBlock(
 
     if (statisticInfo.k_poolScCnt > 0) {
         LocalTensor<T> tmpUb = kvLocal[BUFFER_SIZE_BYTE_32K / sizeof(T)];
+        AddApeToPooledScore(scoreLocal, apeUb, statisticInfo.k_poolScCnt, dDealSize);
+        PipeBarrier<PIPE_V>();
         SoftmaxDN(scoreLocal, tmpUb, statisticInfo.k_poolScCnt, dDealSize);
+        PipeBarrier<PIPE_V>();
+        RoundToHiddenDtype(scoreLocal, statisticInfo.k_poolScCnt * cmpRatio_ * dDealSize);
         LocalTensor<T> comperssoredUb = scoreLocal;
         PipeBarrier<PIPE_V>();
         KvMulReduceScore(kvLocal, scoreLocal, comperssoredUb, tmpUb, statisticInfo.k_poolScCnt, dDealSize);
@@ -1059,6 +1083,67 @@ __aicore__ inline void KPoolBlockVectorPerf<COMP>::ComputeVec1(const Vec1RunInfo
         }
     }
     compressedCnt_ = preCompressedCnt + splitInfo.totalCompressedCnt;
+}
+
+template <typename COMP>
+__aicore__ inline void KPoolBlockVectorPerf<COMP>::ComputeFullHistoryPool()
+{
+    uint32_t dDealSize = BlockElementNum<HIDDEN_STATES_T>();
+    uint32_t dStartIdx = GetBlockIdx() * dDealSize;
+    if (dStartIdx >= constInfo_.headDim) {
+        return;
+    }
+    dDealSize = min(dDealSize, constInfo_.headDim - dStartIdx);
+    uint32_t maxPoolCount = BUFFER_SIZE_BYTE_32K / (cmpRatio_ * dDealSize * sizeof(T));
+    maxPoolCount = max(maxPoolCount, 1U);
+    uint32_t outputPoolCapacity =
+        CeilDivT(constInfo_.maxBlockNumPerBatch * constInfo_.blockSize, cmpRatio_);
+
+    LocalTensor<T> pooledApeUb = inputQue1.AllocTensor<T>();
+    DataCopyAlignGmToUb(pooledApeUb, apeGm_[dStartIdx], cmpRatio_, dDealSize, constInfo_.headDim, dDealSize);
+    inputQue1.EnQue(pooledApeUb);
+    inputQue1.DeQue<T>();
+    LocalTensor<T> scoreLocal = tmpBuff1.Get<T>();
+    LocalTensor<T> kvLocal = tmpBuff2.Get<T>();
+    LocalTensor<T> tmpUb = kvLocal[BUFFER_SIZE_BYTE_32K / sizeof(T)];
+
+    for (uint32_t bIdx = 0; bIdx < constInfo_.batchSize; bIdx++) {
+        if (GetStartPos(bIdx) == 0) {
+            continue;
+        }
+        uint32_t validPoolCount = (GetStartPos(bIdx) + GetSeqUsed(bIdx)) / cmpRatio_;
+        for (uint32_t poolStart = 0; poolStart < validPoolCount; poolStart += maxPoolCount) {
+            uint32_t poolCount = min(maxPoolCount, validPoolCount - poolStart);
+            uint32_t tokenStart = poolStart * cmpRatio_;
+            uint32_t tokenEnd = (poolStart + poolCount) * cmpRatio_;
+            ReadFromCacheState(kvLocal, stateCacheGm_, stateBlockTableGm_, bIdx, tokenStart, tokenEnd,
+                               dStartIdx, dDealSize, 0U);
+            ReadFromCacheState(scoreLocal, stateCacheGm_, stateBlockTableGm_, bIdx, tokenStart, tokenEnd,
+                               dStartIdx, dDealSize, 1U);
+            event_t eventIdMte2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+            SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
+            WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
+            AddApeToPooledScore(scoreLocal, pooledApeUb, poolCount, dDealSize);
+            PipeBarrier<PIPE_V>();
+            SoftmaxDN(scoreLocal, tmpUb, poolCount, dDealSize);
+            PipeBarrier<PIPE_V>();
+            RoundToHiddenDtype(scoreLocal, poolCount * cmpRatio_ * dDealSize);
+            PipeBarrier<PIPE_V>();
+            KvMulReduceScore(kvLocal, scoreLocal, scoreLocal, tmpUb, poolCount, dDealSize);
+            PipeBarrier<PIPE_V>();
+
+            LocalTensor<HIDDEN_STATES_T> outputUb = outputQue1.AllocTensor<HIDDEN_STATES_T>();
+            Cast(outputUb, scoreLocal, RoundMode::CAST_ROUND, poolCount * dDealSize);
+            outputQue1.EnQue(outputUb);
+            outputQue1.DeQue<HIDDEN_STATES_T>();
+            uint64_t outputPoolIdx = static_cast<uint64_t>(bIdx) * outputPoolCapacity + poolStart;
+            uint64_t outGmOffset = outputPoolIdx * constInfo_.headDim + dStartIdx;
+            DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb, poolCount, dDealSize, dDealSize,
+                                constInfo_.headDim);
+            outputQue1.FreeTensor(outputUb);
+        }
+    }
+    inputQue1.FreeTensor(pooledApeUb);
 }
 } // namespace KPool
 #endif // K_POOL_BLOCK_VECTOR_PREF_H

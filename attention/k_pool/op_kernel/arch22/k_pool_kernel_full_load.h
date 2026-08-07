@@ -274,6 +274,8 @@ __aicore__ inline void KPoolKernelFullLoad<COMP>::ComputeVec()
     blockVec_.PrepareForComputeVec();
     CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_C1_V1_FLAG);
     blockVec_.ComputeVec1();
+    CrossCoreSetFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG);
+    CrossCoreWaitFlag<SYNC_MODE0, PIPE_MTE2>(SYNC_V1_FLAG);
 }
 
 template <typename COMP>
@@ -350,6 +352,11 @@ __aicore__ inline void KPoolKernelFullLoad<COMP>::Process()
         } else {
             ComputeVec();
         }
+    }
+    if ASCEND_IS_AIV {
+        PipeBarrier<PIPE_ALL>();
+        SyncAll();
+        blockVec_.ComputeFullHistoryPool();
     }
     FreeEventID();
 }

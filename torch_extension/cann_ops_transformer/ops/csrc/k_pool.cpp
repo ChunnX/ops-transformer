@@ -97,7 +97,7 @@ at::Tensor KPool(const at::Tensor &hidden_states, const at::Tensor &wk, const at
     c10::optional<at::Tensor> seqOffsets = c10::nullopt;
     if (seqLens.has_value()) {
         TORCH_CHECK(seqLens->dim() == DIM_ONE, "seq_lens dim num[", seqLens->dim(), "] should be 1");
-        auto cumulative = at::cumsum(*seqLens, VALUE_0);
+        auto cumulative = at::cumsum(*seqLens, VALUE_0, seqLens->scalar_type());
         auto prefix = at::zeros({VALUE_1}, seqLens->options());
         seqOffsets = at::cat({prefix, cumulative}, VALUE_0);
     }
