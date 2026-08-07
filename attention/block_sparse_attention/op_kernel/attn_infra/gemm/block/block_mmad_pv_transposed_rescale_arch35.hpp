@@ -75,8 +75,19 @@ public:
 
     using TileMmad = TileMmad_;
 
-    using CopyL1ToL0A = typename TileCopy::CopyL1ToL0A;
-    using CopyL1ToL0B = typename TileCopy::CopyL1ToL0B;
+    using CopyL1ToL0A = typename TileCopy::CopyL1ToL0A;      // fp8（PV^T 用）
+    using CopyL1ToL0B = typename TileCopy::CopyL1ToL0B;      // fp8（PV^T 用）
+
+    // RE 段：GO^T/diag 为 fp32，PV 的 TileCopy（fp8）的 CopyL1ToL0A/L0B 不匹配 float 实参；
+    // 用 float 的 PackedTileCopyTlaToUB 独立实例化（参考 interface 的 TileCopyPV 写法）；
+    // LayoutTagA/B = zN（GO^T/diag 的 L1 物理布局，源已在 L1，无 GM→L1 环节）；
+    // CopyMode/DEQUANT 仅影响 CopyL0CToDst（RE 不用），占位
+    using TileCopyRescale = Gemm::Tile::PackedTileCopyTlaToUB<
+        NpuArch::Arch::AtlasA5, float, NpuArch::layout::zN, float, NpuArch::layout::zN,
+        float, NpuArch::layout::RowMajor, void, Gemm::Tile::CopyL0CToUBMode::NO_SPLIT, false,
+        Gemm::Tile::ScaleGranularity::NO_QUANT>;
+    using CopyL1ToL0ARescale = typename TileCopyRescale::CopyL1ToL0A;  // float zN→zN 恒等特化
+    using CopyL1ToL0BRescale = typename TileCopyRescale::CopyL1ToL0B;  // float zN→nZ 转置特化
 
     using ElementAccumulator = typename TileCopy::ElementAccumulator;
 
@@ -397,7 +408,8 @@ public:
                     auto l0ALayoutTla = tla::MakeLayout<float, LayoutTagL0A>(l0TileMAct, nAct);
                     auto l0ATensorTla = tla::MakeTensor(l0ATensor[l0ABufId], l0ALayoutTla, Arch::PositionL0A{});
                     AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
-                    copyL1ToL0A(l0ATensorTla, l1GoTensorTlaTile);
+                    CopyL1ToL0ARescale copyL1ToL0ARescale;
+                    copyL1ToL0ARescale(l0ATensorTla, l1GoTensorTlaTile);
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
 
                     // B 块 = diag 的 [16, 16] 对角块：fr/4 选双子核块，块内偏移 (fr%4)×16（对角块 (fr,fr)）
@@ -409,7 +421,8 @@ public:
                     auto l0BLayoutTla = tla::MakeLayout<float, LayoutTagL0B>(16, 16);
                     auto l0BTensorTla = tla::MakeTensor(l0BTensor[l0BBufId], l0BLayoutTla, Arch::PositionL0B{});
                     AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
-                    copyL1ToL0B(l0BTensorTla, l1DiagTensorTlaTile);
+                    CopyL1ToL0BRescale copyL1ToL0BRescale;
+                    copyL1ToL0BRescale(l0BTensorTla, l1DiagTensorTlaTile);
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
 
                     // mmad：C[D 块, 16fr:16fr+nAct] += A [D 块,nAct] × B [16,16]，K=nAct，累加到 PV^T 的 bias

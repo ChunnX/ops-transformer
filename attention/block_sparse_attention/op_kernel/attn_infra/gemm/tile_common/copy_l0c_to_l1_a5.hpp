@@ -48,12 +48,19 @@ struct CopyL0CToL1Tla<
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::NZ> intriParams;
 
         // Fixpipe layout information
-        intriParams.nSize = tla::get<1>(dstTensor.shape());
-        intriParams.mSize = tla::get<0>(dstTensor.shape());
+        // 注：dst 为 zN 布局时 shape 每维 = (fractal 内元素数, fractal 数) 嵌套 tuple，
+        // 总元素数 = 两分量乘积（RowMajor/ColumnMajor 的 shape 为纯值，可直接 tla::get）
+        auto dstShape = dstTensor.shape();
+        uint32_t nSize =
+            static_cast<uint32_t>(tla::get<0>(tla::get<1>(dstShape))) * tla::get<1>(tla::get<1>(dstShape));
+        uint32_t mSize =
+            static_cast<uint32_t>(tla::get<0>(tla::get<0>(dstShape))) * tla::get<1>(tla::get<0>(dstShape));
+        intriParams.nSize = nSize;
+        intriParams.mSize = mSize;
         intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<0, 0>(srcTensor.stride());
         // NZ2NZ：目的 NZ 矩阵相邻 Z 排布的起始地址偏移 = mSize × C0_Size(32B) / sizeof(T)
         // （fixpipe_l0c2l1 样例：dstStride = baseM × c0Size，c0Size 单位 B；换算成 element 即本公式）
-        intriParams.dstStride = tla::get<0>(dstTensor.shape()) * NpuArch::BYTE_PER_C0 / sizeof(ElementDst);
+        intriParams.dstStride = mSize * NpuArch::BYTE_PER_C0 / sizeof(ElementDst);
 
         // Fixpipe auxiliary arguments
         intriParams.quantPre = quantPre;
@@ -95,12 +102,19 @@ struct CopyL0CToL1Tla<
         AscendC::FixpipeParamsC310<AscendC::CO2Layout::NZ> intriParams;
 
         // Fixpipe layout information
-        intriParams.nSize = tla::get<1>(dstTensor.shape());
-        intriParams.mSize = tla::get<0>(dstTensor.shape());
+        // 注：dst 为 zN 布局时 shape 每维 = (fractal 内元素数, fractal 数) 嵌套 tuple，
+        // 总元素数 = 两分量乘积（RowMajor/ColumnMajor 的 shape 为纯值，可直接 tla::get）
+        auto dstShape = dstTensor.shape();
+        uint32_t nSize =
+            static_cast<uint32_t>(tla::get<0>(tla::get<1>(dstShape))) * tla::get<1>(tla::get<1>(dstShape));
+        uint32_t mSize =
+            static_cast<uint32_t>(tla::get<0>(tla::get<0>(dstShape))) * tla::get<1>(tla::get<0>(dstShape));
+        intriParams.nSize = nSize;
+        intriParams.mSize = mSize;
         intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<0, 0>(srcTensor.stride());
         // NZ2NZ：目的 NZ 矩阵相邻 Z 排布的起始地址偏移 = mSize × C0_Size(32B) / sizeof(T)
         // （fixpipe_l0c2l1 样例：dstStride = baseM × c0Size，c0Size 单位 B；换算成 element 即本公式）
-        intriParams.dstStride = tla::get<0>(dstTensor.shape()) * NpuArch::BYTE_PER_C0 / sizeof(ElementDst);
+        intriParams.dstStride = mSize * NpuArch::BYTE_PER_C0 / sizeof(ElementDst);
 
         // Fixpipe auxiliary arguments
         intriParams.quantPre = quantPre;
