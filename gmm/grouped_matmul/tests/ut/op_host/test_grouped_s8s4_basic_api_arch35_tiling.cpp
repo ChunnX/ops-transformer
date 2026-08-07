@@ -239,6 +239,27 @@ TEST(GroupedS8S4BasicApiArch35Tiling, V5SymmetricPergroupUsesProductionRouter)
               static_cast<uint32_t>(optiling::QuantMode::PERGROUP_MODE));
 }
 
+TEST(GroupedS8S4BasicApiArch35Tiling, MapsA3CompatibleWeightFormatsToNd)
+{
+    for (const ge::Format weightFormat : {ge::FORMAT_ND, ge::FORMAT_NCL, ge::FORMAT_NCHW}) {
+        S8S4Case param;
+        param.weightFormat = weightFormat;
+
+        TilingInfo tilingInfo;
+        ASSERT_TRUE(ExecuteS8S4Tiling(param, tilingInfo)) << "weightFormat=" << weightFormat;
+        EXPECT_EQ(tilingInfo.tilingKey, S8S4_ND_PERGROUP_TILING_KEY);
+    }
+}
+
+TEST(GroupedS8S4BasicApiArch35Tiling, RejectsWeightFormatOutsideA3Whitelist)
+{
+    S8S4Case param;
+    param.weightFormat = ge::FORMAT_NHWC;
+
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteS8S4Tiling(param, tilingInfo));
+}
+
 TEST(GroupedS8S4BasicApiArch35Tiling, V5AsymmetricPerchannelUsesProductionRouter)
 {
     S8S4Case param;
@@ -427,6 +448,19 @@ TEST(GroupedS8S4BasicApiArch35Tiling, MaximumFixedTileMatchesA5ResourceBudget)
     compileInfo.ubSize = 130UL * 1024UL;
     TilingInfo tilingInfo;
     EXPECT_TRUE(ExecuteS8S4TilingWithCompileInfo(param, compileInfo, tilingInfo));
+}
+
+TEST(GroupedS8S4BasicApiArch35Tiling, PergroupValidatesFixedUbFootprint)
+{
+    S8S4Case param;
+
+    auto compileInfo = MakeCompileInfo();
+    compileInfo.ubSize = 130UL * 1024UL;
+    TilingInfo tilingInfo;
+    EXPECT_TRUE(ExecuteS8S4TilingWithCompileInfo(param, compileInfo, tilingInfo));
+
+    compileInfo.ubSize--;
+    EXPECT_FALSE(ExecuteS8S4TilingWithCompileInfo(param, compileInfo, tilingInfo));
 }
 
 TEST(GroupedS8S4BasicApiArch35Tiling, FixedTileRejectsInsufficientOnChipMemory)

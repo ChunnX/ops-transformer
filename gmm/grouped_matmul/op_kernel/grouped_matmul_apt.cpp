@@ -57,7 +57,7 @@ using GMMS8S4BasicApiTilingData = GroupedMatmulTilingData::GMMS8S4BasicApiTiling
 #include "arch35/weight_quant_basic_block/weight_quant_vcv_basic_block.h"
 #include "arch35/weight_quant_basic_block/weight_quant_tiling_key.h"
 #if defined(V310_GMM_S8S4_V5)
-#include "arch35/s8s4_v5/gmm_s8s4_perchannel_tensor_api.h"
+#include "arch35/weight_quant_basic_block/gmm_s8s4_perchannel_tensor_api.h"
 #endif
 using WeightQuantBatchMatmulV2::Arch35::A16MXF4_NZKN;
 using WeightQuantBatchMatmulV2::Arch35::MXA8W4_NZNK;
@@ -403,8 +403,14 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
     static_assert(!(IS_S8S4_V5_PER_GROUP && IS_S8S4_V5_PER_CHANNEL),
                   "S8S4 V5 per-group and per-channel keys must be mutually exclusive.");
     REGISTER_TILING_DEFAULT(GMMWeightQuantTilingData);
-    REGISTER_TILING_FOR_TILINGKEY(
-        "(TILING_KEY_VAR == 543163136) || (TILING_KEY_VAR == 543162880) || (TILING_KEY_VAR == 543163137) || (TILING_KEY_VAR == 543162881)",
+    REGISTER_TILING_FOR_TILINGKEY("(W_TYPE == WQGMM_ND || W_TYPE == WQGMM_FRACTAL_NZ) && \
+        (OFFSET_OR_BIAS_EXIT == WQGMM_ANTIQUANT_OFFSET_NOT_EXIST_BIAS_NOT_EXIST) && \
+        (C_QUANT_TYPE == WQGMM_PER_CHANNEL || C_QUANT_TYPE == WQGMM_PER_GROUP) && \
+        (W_QUANT_TYPE == WQGMM_NONE) && (WQ_B_TRANS == WQGMM_NO_TRANS) && \
+        (WQ_A_TRANS == WQGMM_NO_TRANS) && (TEMPLATE_CUSTOM_SC == WQGMM_S8S4_FIXED_TEMPLATE) && \
+        (IS_SINGLE_MULTI_SINGLE == WQGMM_NOT_SINGLE_MULTI_SINGLE) && \
+        (ALGORITHM_SUB_CATEGORY == WQGMM_VDEFAULT) && \
+        (ALGORITHM_CATEGORY == WQGMM_MULTI_SCALE_DEQUANT)",
         GMMS8S4BasicApiTilingData);
     if constexpr (IS_S8S4_V5_COMMON) {
         GET_TILING_DATA_WITH_STRUCT(GMMS8S4BasicApiTilingData, s8s4TilingData, tiling);

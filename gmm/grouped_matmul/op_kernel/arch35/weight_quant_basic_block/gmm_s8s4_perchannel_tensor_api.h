@@ -66,8 +66,8 @@ __aicore__ inline void InvokeGmmS8S4TensorApi(
         GROUPED_MATMUL::GetTensorAddr<uint64_t>(0, scale));
     params.epilogueParams.workspaceGmAddr = tileWorkspace;
     params.epilogueParams.perTokenScaleGmAddr = perTokenScale;
-    params.epilogueParams.offsetGmAddr = reinterpret_cast<GM_ADDR>(
-        GROUPED_MATMUL::GetTensorAddr<float>(0, offset));
+    params.epilogueParams.offsetGmAddr = s8s4.hasOffset != 0U ? reinterpret_cast<GM_ADDR>(
+        GROUPED_MATMUL::GetTensorAddr<float>(0, offset)) : nullptr;
     params.epilogueParams.xRowSumGmAddr = rowSumWorkspace;
     params.epilogueParams.outGmAddr = reinterpret_cast<GM_ADDR>(
         GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
