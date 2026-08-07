@@ -149,17 +149,19 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
         workspace, tiling, tPipe); // gm设置
     vecBlock.InitVecBlock(tPipe, cuSeqlensQ, sequsedKv);
     vecBlock.CleanOutput(attentionOut, constInfo);
+    /* 先完成主流程UB分配，地址计算复用stage0OutBuf和stage2OutBuf */
+    InitMMResBuf(workspace);
+    this->InitLocalBuffer();
     if ASCEND_IS_AIV {
         if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE && IS_VEC_S2PHYADDR) {
             this->vecBlock.GetKVPhyAddr(hasLoad, bN2StartIdx, bN2EndIdx, gS1StartIdx, nextGs1Idx,
                 actualSeqQlenAddr, cuSeqlensQAddr, actualSeqKvlenAddr, workspace, constInfo);
+            this->vecBlock.SetKvPhyAddrReady();
         }
     }
     /* cube侧不依赖sharedParams的scalar前置 */
-    InitMMResBuf(workspace);
     cubeBlock.InitCubeBlock(pipe, query);
     this->ComputeConstexpr();
-    this->InitLocalBuffer();
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -331,6 +333,7 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
                 }
             }
         }
+        this->vecBlock.WaitKvPhyAddrBeforeRead();
         return;
     }
     uint32_t s2LoopLimit = 0;
@@ -444,6 +447,8 @@ __aicore__ inline void KvQuantSparseAttnSharedkvScfa<CubeBlockType, VecBlockType
         }
         gS1StartIdx = 0;
     }
+    // hasLoad非零但没有有效Vec0的AIV也必须参与同一次同步。
+    this->vecBlock.WaitKvPhyAddrBeforeRead();
     if ASCEND_IS_AIC {
         if constexpr (IS_SPLIT_G) {
             for (int64_t loopCnt = 0; loopCnt < maxS2LoopCnt; loopCnt++) {
