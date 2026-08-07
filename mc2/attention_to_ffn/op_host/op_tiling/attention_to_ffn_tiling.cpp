@@ -206,21 +206,21 @@ static bool CheckAndSetAttrs(gert::TilingContext *context, const char *nodeName,
                     return false);
 
     OP_TILING_CHECK((moeExpertNum <= 0) || (moeExpertNum > MOE_EXPERT_MAX_NUM),
-                    OP_LOGE_FOR_INVALID_ATTR(nodeName, "moe_expert_num",
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName, "moe_expert_num",
                                               std::to_string(moeExpertNum).c_str(),
                                               (std::string("(0, ") + std::to_string(MOE_EXPERT_MAX_NUM) + "]").c_str()),
                     return false);
     OP_TILING_CHECK((*quantModePtr < static_cast<int64_t>(NO_SCALES)) ||
                         (*quantModePtr > static_cast<int64_t>(DYNAMIC_SCALES)),
-                    OP_LOGE_FOR_INVALID_ATTR(nodeName, "quant_mode", std::to_string(*quantModePtr).c_str(),
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName, "quant_mode", std::to_string(*quantModePtr).c_str(),
                                               (std::string("[0, ") + std::to_string(DYNAMIC_SCALES) + "]").c_str()),
                     return false);
     OP_TILING_CHECK(
         (*syncFlagPtr != 0) && (*syncFlagPtr != 1),
-        OP_LOGE_FOR_INVALID_ATTR(nodeName, "sync_flag", std::to_string(*syncFlagPtr).c_str(), "0 or 1"),
+        OP_LOGE_WITH_INVALID_ATTR(nodeName, "sync_flag", std::to_string(*syncFlagPtr).c_str(), "0 or 1"),
         return false);
     OP_TILING_CHECK((*ffnStartRankIdPtr >= *worldSizePtr) || (*ffnStartRankIdPtr < 0),
-                    OP_LOGE_FOR_INVALID_ATTR(nodeName, "ffn_start_rank_id",
+                    OP_LOGE_WITH_INVALID_ATTR(nodeName, "ffn_start_rank_id",
                                               std::to_string(*ffnStartRankIdPtr).c_str(),
                                               (std::string("[0, ") + std::to_string(*worldSizePtr) + ")").c_str()),
                     return false);
