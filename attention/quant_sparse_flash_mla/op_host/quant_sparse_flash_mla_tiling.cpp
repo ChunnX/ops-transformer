@@ -25,6 +25,8 @@ using std::pair;
 using std::string;
 namespace optiling {
 
+constexpr int64_t BATCH_CONSISTENCY_LEVEL = 3;
+
 struct QSMLACompileInfo {
     int64_t core_num;
 };
@@ -62,6 +64,7 @@ ge::graphStatus QSMLAInfoParser::GetOpName()
 ge::graphStatus QSMLAInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();
+    OP_LOGE(opName_, "[panjie]test.");
     OP_CHECK_IF(platformInfo_ == nullptr, OP_LOGE(opName_, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo_);
@@ -75,7 +78,9 @@ ge::graphStatus QSMLAInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
-
+    batchConsistency_ = true; //(context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL);
+    OP_LOGE(opName_, "DeterministicLevel: %d.", context_->GetDeterministicLevel());
+    OP_LOGE(opName_, "batchConsistency_ forced to true for testing.");
     return ge::GRAPH_SUCCESS;
 }
 
@@ -536,6 +541,7 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.cmpMaxBlockNumPerBatch = cmpMaxBlockNumPerBatch_;
 
     qsmlaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
+    qsmlaInfo.batchConsistency = batchConsistency_;
 
     qsmlaInfo.quantMode = *opParamInfo_.quantMode;
     qsmlaInfo.softmaxScale = *opParamInfo_.softmaxScale;
@@ -636,6 +642,12 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
     constexpr uint32_t TOPK_MAX_SIZE = 2048;         // TopK选取个数
     constexpr uint32_t UB_SIZE = 248 * 1024;         // UB大小共256KB,预留8k
     constexpr uint32_t SPARSE_BLOCK_ALIGN_NUM = 128; // VF向量化处理的元素对齐粒度
+    constexpr uint32_t MAX_S2_SPLIT_NUM = 2;  // 普通FD每核最多S2切分次数
+    constexpr uint32_t FLOAT_ELEM_SIZE = 4;   // sizeof(float)
+    constexpr uint32_t FD_BLOCK_ELEM = 8;     // FD广播份数
+    constexpr uint32_t FD_MAX_SUM_REGION_NUM = 2; // max和sum两个区域
+    constexpr uint32_t BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM = 33;
+
     uint32_t alignedOriSparseBlockCount = (tilingInfo->oriSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) /
                                           SPARSE_BLOCK_ALIGN_NUM * SPARSE_BLOCK_ALIGN_NUM;
     uint32_t alignedCmpSparseBlockCount = (tilingInfo->cmpSparseBlockCount + SPARSE_BLOCK_ALIGN_NUM - 1) /
@@ -676,6 +688,19 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
         }
         uint64_t cmpPhyAddrSize = static_cast<uint64_t>(totalBS1) * alignedCmpSparseBlockCount * sizeof(int64_t);
         workspaceSize += oriPhyAddrSize + cmpPhyAddrSize;
+    }
+    bool isSplitG = tilingInfo->gSize > 64;
+    uint32_t fdStagingSlotNum = isSplitG ? (aicNum >> 1U) : aicNum;
+    uint64_t fdStagingMSize = static_cast<uint64_t>(tilingInfo->gSize);
+    uint64_t combineElemSize = fdStagingMSize * D_SIZE +
+                               static_cast<uint64_t>(FD_MAX_SUM_REGION_NUM) * fdStagingMSize * FD_BLOCK_ELEM;
+    if (tilingInfo->batchConsistency) {
+        workspaceSize += 2ULL * fdStagingSlotNum * combineElemSize * FLOAT_ELEM_SIZE;
+        workspaceSize += static_cast<uint64_t>(aicNum) * BATCH_CONSISTENCY_MAX_REDUCE_BLOCK_NUM *
+                         combineElemSize * FLOAT_ELEM_SIZE;
+    } else {
+        workspaceSize += static_cast<uint64_t>(fdStagingSlotNum) * MAX_S2_SPLIT_NUM * combineElemSize *
+                         FLOAT_ELEM_SIZE;
     }
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workSpaces);
@@ -718,7 +743,9 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
     uint32_t qLayout = static_cast<uint32_t>(tilingInfo->qLayout);
     uint32_t inputKvLayout = static_cast<uint32_t>(tilingInfo->kvLayout);
     uint32_t tilingKey = GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(perfMode_),
-                                            static_cast<uint32_t>(tilingInfo->gSize > 64), DTYPE_HIF8, vectorizeFlag);
+                                            static_cast<uint32_t>(tilingInfo->gSize > 64), DTYPE_HIF8, vectorizeFlag,
+                                            static_cast<uint32_t>(tilingInfo->batchConsistency));
+    OP_LOGI(tilingInfo->opName, "Tiling key: %u", tilingKey);
     context_->SetTilingKey(tilingKey);
     context_->SetScheduleMode(1);
 

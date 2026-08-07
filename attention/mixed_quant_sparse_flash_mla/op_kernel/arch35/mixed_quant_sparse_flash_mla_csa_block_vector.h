@@ -1187,13 +1187,13 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     LocalTensor<T> apiTmpBuffer = this->commonTBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm1ResBuf.template GetTensor<T>();
 
-    bool isFirstSoftmaxBase = runInfo.s2LoopCount == 0;
+    bool isFirstSoftmaxBase = runInfo.s2LoopCount == 0;  // 非batch一致性
     if constexpr (IS_BATCH_CONSISTENCY) {
-        isFirstSoftmaxBase = runInfo.isFirstBase;
+        isFirstSoftmaxBase = runInfo.isFirstBase;  // batch一致性：是否是规约块的第一块
     }
     // The first base block of every reduce block starts a new online-softmax state.
     // With sinks, use update mode after initializing max/sum from the sink state.
-    if (isFirstSoftmaxBase && !isSinks) {
+    if (isFirstSoftmaxBase && !isSinks) {  // 规约块中第一个base块且没有sinks，初始化max/sum为负无穷和0
         if (likely(runInfo.s2RealSize == 128)) { // s2RealSize等于128分档, VF内常量化减少if判断
             ProcessVec1Vf<T, Q_T, false, s1BaseSize, s2BaseSize, FaVectorApi::OriginNRange::EQ_128_SFA>(
                 stage1CastTensor, mmRes, sumUb, maxUb, maxUb, apiTmpBuffer, vselrIndexesBuf, runInfo.halfMRealSize,
@@ -1208,11 +1208,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
                 runInfo.s2RealSize, static_cast<T>(constInfo.softmaxScale), negativeFloatScalar);
         }
     } else {
-        if (isFirstSoftmaxBase && isSinks) {
-            bool includeSink = (!runInfo.isCrossCoreSplit) || runInfo.isFirstS2SplitCore;
-            if constexpr (IS_BATCH_CONSISTENCY) {
-                includeSink = includeSink && runInfo.reduceBlockId == 0;
-            }
+        if (isFirstSoftmaxBase && isSinks) {  // 首块+sinks
+            bool includeSink = (!runInfo.isCrossCoreSplit) || runInfo.isFirstS2SplitCore;  // 不是跨核或者跨核但是是第一块（兼容普通FD，是第一个规约块） => 需要带上sinks
             if (includeSink) {
                 // s1切1,vec0: 0 ~ halfMRealSize - 1, vec1: gSize - halfMRealSize ~ gSize
                 int64_t sinksOffset = 0;
@@ -1271,7 +1268,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
     }
 
     if constexpr (IS_BATCH_CONSISTENCY) {
-        if (runInfo.isLastBase) {
+        if (runInfo.isLastBase) {  // 最后一个base块才需要写出
             if (runInfo.halfMRealSize > 0) {
                 LocalTensor<float> finalMaxUb =
                     this->softmaxFinalMaxBuf[runInfo.taskIdMod2].template Get<float>();
@@ -1282,7 +1279,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
                 DataCopy(finalMaxUb, maxUb, snapshotElems);
                 DataCopy(finalSumUb, sumUb, snapshotElems);
             }
-            if (runInfo.isCrossCoreSplit && !runInfo.isFirstS2SplitCore) {
+            if (runInfo.isCrossCoreSplit && !runInfo.isFirstS2SplitCore) {  // 跨核且不是第一块，规约到跨核缓冲区
                 AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
                     dTemplateAlign64, GetStagingSlotNum(false),
                     AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW, AttentionCommon::FD_REDUCE_CHUNK_ROWS};
@@ -1293,7 +1290,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
                     workspaceIdx, stagingMOffset, runInfo.halfMRealSize,
                     maxUb, sumUb, tmpUb, vToMte3Id, stageMte3ToVId);
             } else if (runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0 &&
-                runInfo.s2LoopCount < runInfo.s2LoopLimit) {
+                runInfo.s2LoopCount < runInfo.s2LoopLimit) {  // 是第一块但是后面还有内容要核内规约
                 AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
                     dTemplateAlign64, GetStagingSlotNum(true), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
                     AttentionCommon::FD_REDUCE_CHUNK_ROWS};
@@ -1305,6 +1302,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
                 SetFlag<HardEvent::MTE3_MTE2>(
                     intraLseMte3ToMte2Id[runInfo.multiCoreIdxMod2]);
             } else if (runInfo.isCrossCoreSplit && runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0) {
+                // 是第一块但是后面 没有 内容要核内规约，写到跨核
                 AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
                     dTemplateAlign64, GetStagingSlotNum(false),
                     AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW, AttentionCommon::FD_REDUCE_CHUNK_ROWS};
@@ -1330,10 +1328,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
                 maxUb, sumUb, tmpUb, vToMte3Id, stageMte3ToVId);
         }
     }
-    bool copyOutLse = constInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid &&
+    bool copyOutLse = constInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid &&  // 需要输出lse，之前的条件
         runInfo.halfMRealSize > 0 && runInfo.s2LoopCount == runInfo.s2LoopLimit;
     if constexpr (IS_BATCH_CONSISTENCY) {
-        copyOutLse = copyOutLse && !runInfo.isCrossCoreSplit && !runInfo.needReduce;
+        copyOutLse = copyOutLse && !runInfo.isCrossCoreSplit && !runInfo.needReduce;  // 不能是跨核规约+不能是核内规约
     }
     if (copyOutLse) {
         LocalTensor<float> outLse = this->outLseBuf[runInfo.multiCoreIdxMod2].template Get<float>();
@@ -1460,6 +1458,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
     WaitFlag<HardEvent::MTE3_V>(mte3ToVId);
     bool needIntraBlockReduce = false;
     if constexpr (IS_BATCH_CONSISTENCY) {
+        // 是一个规约块的最后一个base块 && 是跨核规约的第一块 && 不是第一个规约块（如果是第一个，直接保存，不用算）
         needIntraBlockReduce =
             runInfo.isLastBase && runInfo.isFirstS2SplitCore && runInfo.reduceBlockId > 0;
         if (needIntraBlockReduce) {
@@ -1479,7 +1478,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
             if (runInfo.isLastBase) {
                 LocalTensor<float> sumUb =
                     this->softmaxFinalSumBuf[runInfo.taskIdMod2].template Get<float>();
-                FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(
+                FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false, false>(  // vec计算，得到sum,max,O
                     vec2ResUb, mmRes, vec2ResUb, expUb, expUb, sumUb,
                     runInfo.vec2MRealSize, dTemplateAlign64, 1.0, 1.0);
             } else {
@@ -1503,22 +1502,22 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
 
     if constexpr (IS_BATCH_CONSISTENCY) {
         if (runInfo.isLastBase) {
-            if (unlikely(isFirstVec2Base)) {
+            if (unlikely(isFirstVec2Base)) {  // 规约块只有一个基本块时，直接除以sum
                 LocalTensor<float> sumUb =
                     this->softmaxFinalSumBuf[runInfo.taskIdMod2].template Get<float>();
                 LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(
                     vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0);
             }
-            if (needIntraBlockReduce) {
+            if (needIntraBlockReduce) {  // 需要做规约的
                 SetFlag<HardEvent::V_MTE2>(intraPartialOVToMte2Id);
-                SetFlag<HardEvent::V_MTE2>(reduceMaxSumVToMte2Id);
-                ReduceIntraBlockAndStage(runInfo, constInfo, vec2ResUb, mmRes);
+                SetFlag<HardEvent::V_MTE2>(reduceMaxSumVToMte2Id);  // sum,max,O全部计算完成
+                ReduceIntraBlockAndStage(runInfo, constInfo, vec2ResUb, mmRes);  // 规约计算
                 if (!runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
-                    this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
+                    this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);  // 拷出
                 }
             } else {
                 if (runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0 &&
-                    runInfo.s2LoopCount < runInfo.s2LoopLimit) {
+                    runInfo.s2LoopCount < runInfo.s2LoopLimit) {   // 不需要做规约的，第一块
                     AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
                         dTemplateAlign64, GetStagingSlotNum(true), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
                         AttentionCommon::FD_REDUCE_CHUNK_ROWS};
@@ -1532,16 +1531,15 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                 if (runInfo.isCrossCoreSplit &&
                     (!runInfo.isFirstS2SplitCore ||
                     (runInfo.isFirstS2SplitCore && runInfo.reduceBlockId == 0 &&
-                    runInfo.s2LoopCount == runInfo.s2LoopLimit))) {
+                    runInfo.s2LoopCount == runInfo.s2LoopLimit))) {  // 要跨核写的场景
                     AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
                         dTemplateAlign64, GetStagingSlotNum(false), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
                         AttentionCommon::FD_REDUCE_CHUNK_ROWS};
-                    uint32_t workspaceIdx = GetCrossCoreWorkspaceIdx(runInfo);
                     int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
                     AttentionCommon::StageVec2PartialOAndWait<T>(stagingLayout, crossCoreCombineGm,
-                        workspaceIdx, stagingMOffset, runInfo.vec2MRealSize,
+                        GetCrossCoreWorkspaceIdx(runInfo), stagingMOffset, runInfo.vec2MRealSize,
                         static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb, vToMte3Id, stageMte3ToVId);
-                } else if (!runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
+                } else if (!runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit) {  // 算完了直接写出
                     this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
                 }
             }

@@ -616,7 +616,7 @@ int64_t SparseFlashMlaMetadataCpuKernel::CmpCalcCost(uint32_t basicM, uint32_t b
 void SparseFlashMlaMetadataCpuKernel::CalcCostTable(uint32_t s1GTailSize, uint32_t reductionBlockSize,
                                                     uint32_t oriS2TailSize, uint32_t cmpS2TailSize)
 {
-    uint32_t normalS2Size = isBatchConsistency_ && reductionBlockSize > 0U ? reductionBlockSize : s2BaseSize_;
+    uint32_t normalS2Size = isBatchConsistency_ ? reductionBlockSize : s2BaseSize_;
     // ori 部分 cost
     if (hasOriKv_) {
         typeCost_[ORI_NORMAL_BLOCK][ORI_NORMAL_BLOCK] = OriCalcCost(mBaseSize_, normalS2Size);
@@ -912,22 +912,22 @@ void SparseFlashMlaMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const SplitC
         s1GCache.cmpS2TailSize = 0;
     }
     if (isBatchConsistency_) {
-        // The reduction block only depends on this row, so its reduction tree is independent of the surrounding batch.
-        uint64_t actTotalS2Size = static_cast<uint64_t>(s1GCache.actOriS2Size) + s1GCache.actCmpS2Size;
-        if (actTotalS2Size > 0U) {
-            uint64_t rawReductionBlockSize = actTotalS2Size / BATCH_CONSISTENCY_MAX_REDUCTION_PARTS;
-            s1GCache.reductionBlockSize = static_cast<uint32_t>(
-                (rawReductionBlockSize + s2BaseSize_ - 1U) / s2BaseSize_ * s2BaseSize_);
-            s1GCache.reductionBlockSize = std::max(s1GCache.reductionBlockSize, s2BaseSize_);
-            s1GCache.oriS2End = s1GCache.actOriS2Size == 0U ?
-                0U : (s1GCache.actOriS2Size - 1U) / s1GCache.reductionBlockSize + 1U;
-            s1GCache.oriS2TailSize = s1GCache.actOriS2Size % s1GCache.reductionBlockSize;
-            s1GCache.cmpS2Start = s1GCache.oriS2End;
-            s1GCache.cmpS2End = s1GCache.actCmpS2Size == 0U ?
-                s1GCache.cmpS2Start :
-                s1GCache.cmpS2Start + (s1GCache.actCmpS2Size - 1U) / s1GCache.reductionBlockSize + 1U;
-            s1GCache.cmpS2TailSize = s1GCache.actCmpS2Size % s1GCache.reductionBlockSize;
-        }
+        // 计算规约级切分大小
+        uint64_t actTotalS2Size = s1GCache.actOriS2Size + s1GCache.actCmpS2Size;
+        s1GCache.reductionBlockSize =
+            (actTotalS2Size / BATCH_CONSISTENCY_MAX_REDUCTION_PARTS + s2BaseSize_ - 1U) /
+            s2BaseSize_ * s2BaseSize_;
+        s1GCache.reductionBlockSize =
+            s1GCache.reductionBlockSize == 0U ? s2BaseSize_ : s1GCache.reductionBlockSize;
+        // 使用规约级切分大小对基本块进行重新划分
+        s1GCache.oriS2End =
+            s1GCache.actOriS2Size == 0 ? 0 : (s1GCache.actOriS2Size - 1) / s1GCache.reductionBlockSize + 1U;
+        s1GCache.oriS2TailSize = s1GCache.actOriS2Size % s1GCache.reductionBlockSize;
+        s1GCache.cmpS2End = s1GCache.actCmpS2Size == 0 ?
+                                s1GCache.cmpS2Start :
+                                s1GCache.cmpS2Start +
+                                    (s1GCache.actCmpS2Size - 1) / s1GCache.reductionBlockSize + 1U;
+        s1GCache.cmpS2TailSize = s1GCache.actCmpS2Size % s1GCache.reductionBlockSize;
     }
     // 计算基本块负载
     CalcCostTable(splitInfo.s1GTailSize[s1GCache.bIdx], s1GCache.reductionBlockSize, s1GCache.oriS2TailSize,

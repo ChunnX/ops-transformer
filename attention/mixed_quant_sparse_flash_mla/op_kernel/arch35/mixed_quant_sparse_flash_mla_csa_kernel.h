@@ -570,7 +570,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                 int64_t safeBaseBlockNum = runParam.baseBlockNumPerReductionBlock > 0 ?
                     runParam.baseBlockNumPerReductionBlock : 1LL;
-                if (runParam.isCrossCoreSplit && (s2LoopCount % safeBaseBlockNum == 0)) {
+                if (runParam.isCrossCoreSplit && (s2LoopCount % safeBaseBlockNum == 0)) {  // 跨核切分而且正好是一个规约块的第一个块
                     runParam.s2SplitIdx = s2SplitIdxCounter++;
                 }
                 if (notLastTwoLoop) {
@@ -628,7 +628,7 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline int64_t MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ConvertS2MetadataBlockToToken(
+__aicore__ inline int64_t MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::ConvertS2MetadataBlockToToken(  // 规约块编号转化为基本块号
     const RunParamStr &runParam, const ConstInfo &constInfo, uint32_t s2BlockIdx)
 {
     int64_t s2BaseSize = static_cast<int64_t>(constInfo.s2BaseSize);

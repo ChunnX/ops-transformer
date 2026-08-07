@@ -70,6 +70,7 @@ bash test_run.sh single
 |------|------|
 | `batch_save` | 从excel读取用例 → golden计算 → 保存pt文件 |
 | `batch_exec` | 读取pt文件 → NPU测试（需先`batch_save`） |
+| `batch_consistency` | 读取pt文件 → 验证batch重排/拆分后的样本级MD5一致性 |
 | `batch` | 全流程：`batch_save` + `batch_exec`，默认完成后清理pt文件 |
 
 ##### 选项参数
@@ -91,6 +92,15 @@ bash test_run.sh batch_save --excel my.xlsx --sheet prefill --pt-dir my_pt
 # batch_exec：只执行NPU测试（需先batch_save生成pt文件）
 bash test_run.sh batch_exec
 bash test_run.sh batch_exec --pt-dir my_pt
+
+# batch一致性：同时验证顺序打乱和batch拆分
+bash test_run.sh batch_consistency --pt-dir my_pt --device-id 0
+
+# 只验证某一模式
+MQSMLA_PT_DIR=my_pt python3 -m pytest -s \
+    test_mixed_quant_sparse_flash_mla_batch_consistency.py -k reorder -v
+MQSMLA_PT_DIR=my_pt python3 -m pytest -s \
+    test_mixed_quant_sparse_flash_mla_batch_consistency.py -k split -v
 
 # batch：全流程（默认清理pt文件）
 bash test_run.sh batch

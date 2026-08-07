@@ -82,7 +82,7 @@ ge::graphStatus MQSMLAInfoParser::GetNpuInfo()
         return GRAPH_FAILED;
     }
     batchConsistency_ = (context_->GetDeterministicLevel() == BATCH_CONSISTENCY_LEVEL);
-
+    OP_LOGE("PANJIE", "DeterministicLevel: %d\n.", context_->GetDeterministicLevel());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -645,7 +645,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
     constexpr uint32_t D_SIZE = 512;
     constexpr uint32_t VEC_RES_ELEM_SIZE = 2; // 2: fp16/bf16字节数
     constexpr uint32_t TOPK_MAX_SIZE = 2048;  // TopK选取个数
-    constexpr uint32_t MAX_S2_SPLIT_NUM = 2;  // 每核最多S2切分次数
+    constexpr uint32_t MAX_S2_SPLIT_NUM = 2;  // 普通FD每核最多S2切分次数
     constexpr uint32_t FLOAT_ELEM_SIZE = 4;   // sizeof(float)
     constexpr uint32_t FD_BLOCK_ELEM = 8;     // FD广播份数
     constexpr uint32_t FD_MAX_SUM_REGION_NUM = 2; // max和sum两个区域
