@@ -99,6 +99,7 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     const uint64_t weightFmtFlags = gmmBaseParams->reserved;
     const bool weightIsNz = (weightFmtFlags & 1ULL) != 0;
     const bool transB = (weightFmtFlags & 2ULL) != 0;
+    const bool weightNzC032 = (weightFmtFlags & 4ULL) != 0;
     // int4->int8 展开后体积: int4(0.5B/元素) -> int8(1B/元素)。weight[E,K,N], x[M,K]。
     // NZ 展开后的 INT8 物理布局按 K/16、N/32 补齐，必须与 weight preprocess 的
     // nzOutputNarrowBlockCount/nzOutputWideBlockCount 完全一致，避免后续 X workspace 重叠。
@@ -142,8 +143,10 @@ __aicore__ inline void GmmA4W4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     weightPreprocessParams.k = gmmBaseParams->k;
     // inputTransposedNz: weight 为 NZ 且 transB 时, weightPreprocessOp_ 走 ConvertTransposedNzTile
     // ([E,N,K] int4 NZ -> [E,K,N] int8 NZ); 否则走标准 NZ/ND 路径。
-    // host tiling 通过 GMMBaseParamsA4W4.reserved 下发: bit0=weightIsNz, bit1=transB。
+    // host tiling 通过 GMMBaseParamsA4W4.reserved 下发:
+    // bit0=weightIsNz, bit1=transB, bit2=input NZ C0=32。
     weightPreprocessParams.inputTransposedNz = weightIsNz && transB;
+    weightPreprocessParams.inputNzC032 = weightIsNz && weightNzC032;
 
     // XPreprocess: int4 x -> int8 workspace(AIV, A4W4 独有)。
     typename QgmmKernel::XPreprocessParams xPreprocessParams{};
