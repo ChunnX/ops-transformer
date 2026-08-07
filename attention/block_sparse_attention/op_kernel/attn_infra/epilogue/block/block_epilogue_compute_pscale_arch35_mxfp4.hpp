@@ -40,7 +40,7 @@ class BlockEpilogue<
 {
 public:
     using DispatchPolicy = EpilogueComputePScaleBsa<true, MX_QUANT_MODE_>;
-    static constexpr MXQuantMode mxQuantMode = DispatchPolicy::MX_QUANT_MODE;
+    static constexpr MXQuantMode MX_QUANT_MODE = DispatchPolicy::MX_QUANT_MODE;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementGroupMax = ElementGroupMax_;
     using PScaleType = PScaleType_;
@@ -48,7 +48,7 @@ public:
     using LayoutPScale = typename PScaleType::Layout;
     using ElementDm = ElementDm_;
 
-    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource) {
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, ElementGroupMax LOG2_CX_CEIL) {
         for (uint32_t i = 0; i < MXFP4::UB_P_SCALE_CNT; i++) {
             pscaleUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementPScale>(
                 MXFP4::UB_P_SCALE_BUF_OFFSET + MXFP4::UB_P_SCALE_BUF_SIZE * i);
@@ -70,6 +70,7 @@ public:
             dmUBTensor[i] = resource.ubBuf.template GetBufferByByte<ElementDm>(
                 MXFP4::UB_UPDATE_SCALE_BUF_OFFSET + MXFP4::UB_UPDATE_SCALE_BUF_SIZE * i);
         }
+        LOG2_CX_CEIL_ = LOG2_CX_CEIL;
     }
     __aicore__ inline ~BlockEpilogue() {}
 
@@ -95,11 +96,15 @@ public:
             return;
         }
 
+        
+
         uint16_t firstLoop = 0;
         uint16_t secondLoop = 0;
         uint16_t firstLoopStart = 0;
         uint16_t secondLoopStart = 0;
         GetPScaleParams(tileInfo, subBlockIdx, firstLoopStart, firstLoop, secondLoopStart, secondLoop);
+//         AscendC::PRINTF("firstLoopStart = %u, firstLoop = %u\n", firstLoopStart, firstLoop);
+// AscendC::PRINTF("secondLoopStart = %u, secondLoop = %u\n", secondLoopStart, secondLoop);
 
         AscendC::LocalTensor<ElementPScale> pscale1 = pscaleUBTensor[0];
         AscendC::LocalTensor<ElementPScale> pscale2 = pscaleUBTensor[firstLoop];
@@ -110,16 +115,34 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF1_FLAG);
 
         if (tileInfo.curKvsTileLoopIdx / TILE_GROUP_N == 0) {
-            Mxfp4VF::computePscale<true, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
+            Mxfp4VF::computePscale<MX_QUANT_MODE, true, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
                 pscale1, pscale2, localGroupMax1, localGroupMax2,
                 localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
-                firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx));
+                firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
         } else {
-            Mxfp4VF::computePscale<false, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
+            Mxfp4VF::computePscale<MX_QUANT_MODE, false, ElementGroupMax, MXFP4::QS_BASE_SIZE>(
                 pscale1, pscale2, localGroupMax1, localGroupMax2,
                 localGlobalMax, peerGlobalMax, softmaxMaxOld, dm,
-                firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx));
+                firstLoop, secondLoop, static_cast<uint16_t>(subBlockIdx), LOG2_CX_CEIL_);
         }
+        // AscendC::printf("localGroupMax: \n");
+        // for (int i =0; i < 8; i++) {
+        //     AscendC::DumpTensor(localGroupMax1[128*i], 128, 128);
+        // }
+        //  AscendC::printf("localGroupMax end : \n \n");
+
+        //          AscendC::printf("pscale1: \n");
+        // for (int i =0; i < 8; i++) {
+        //     AscendC::DumpTensor(pscale1[32*5*i], 128, 32*4);
+        // }
+        //  AscendC::printf("pscale1 end : \n \n");
+        
+        //  AscendC::printf("softmaxMaxOld: \n");
+        // for (int i =0; i < 1; i++) {
+        //     AscendC::DumpTensor(softmaxMaxOld[128*i], 128, 128);
+        // }
+
+
 
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_GMAX_UB_TO_L1_BUF0_FLAG + tileInfo.tileMaxIdx);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_VEC1_RES_BUF0_FLAG);
@@ -243,6 +266,7 @@ private:
     AscendC::LocalTensor<ElementGroupMax> localGroupMaxUBTensor[MXFP4::UB_LOCAL_GROUP_MAX_CNT]; // LocalGroupMax
     AscendC::LocalTensor<ElementGroupMax> localGlobalMaxUBTensor[MXFP4::UB_LOCAL_GLOBAL_MAX_CNT]; // LocalGlobalMax
     AscendC::LocalTensor<ElementDm>       dmUBTensor[MXFP4::UB_UPDATE_SCALE_CNT]; // updateScale
+    ElementGroupMax                       LOG2_CX_CEIL_;
 };
 
 }  // namespace NpuArch::Epilogue::Block
