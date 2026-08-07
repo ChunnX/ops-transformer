@@ -76,7 +76,7 @@ public:
             .ExtendCfgInfo("jitCompile.flag", "static_true")
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
         this->AICore().AddConfig("ascend950", aicore_config);
-        this->MC2().HcclGroup({"group"});
+        //this->MC2().HcclGroup({"group"});
     }
 };
 
