@@ -62,7 +62,7 @@ constexpr uint32_t PER_GROUP_SIZE = 40 * 1024U; // 计算count 40KB per group
 constexpr uint32_t EXPERT_NUM_PER_GROUP = 256U; // 直方图每次计算0-255
 constexpr uint32_t DATA_BLOCK_NUM = 8U;         // 256B/32B=8
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
-constexpr uint32_t COMMIT_SQE_NUM = 100;    // 100次sqe commit一次
+constexpr uint32_t SLOT_NOTIFY_STRIDE = 64U;
 constexpr uint8_t BUFFER_NUM = 2;
 constexpr struct UrmaWqeEntry URMA_CFG = {
     .odr      = 5,
@@ -777,9 +777,10 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::WriteToRemo
         uint32_t tokenEnd = tokenStart + tokensPerChannel > sendTokenNum ? sendTokenNum : tokenStart + tokensPerChannel;
         slotAddrGMTensor.SetGlobalBuffer((__gm__ uint64_t *)(slotAddrWorkspaceAddr_ +
             (static_cast<uint64_t>(dstRankId) * axisMaxBS_ + tokenStart) * WIN_ADDR_ALIGN));
-        notifyAddr += tokenStart * sizeof(uint64_t);
+        notifyAddr += tokenStart * SLOT_NOTIFY_STRIDE;
         SendTokenByChannel(tokenEnd - tokenStart, commHandle, remoteWinBaseAddr, notifyAddr, slotAddrGMTensor);
     }
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(topkIdxGMTensor_);
 }
 
 template <TemplateMoeEpDispatchTypeClass>
@@ -844,13 +845,10 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendTokenBy
         for (uint32_t i = 0; i < batchCnt; i++) {
             GM_ADDR localSlotAddr = payloadStashWinAddr_ + commAddrTensor.GetValue(i * INT64_UB_STRIDE);
             GM_ADDR remoteWinAddr = remoteWinBaseAddr + commAddrTensor.GetValue(i * INT64_UB_STRIDE + 1);
-            hcomm_.WriteWithNotifyNbi<false, PIPE_S, PIPE_MTE3, URMA_CFG>(commHandle, remoteWinAddr, localSlotAddr,
+            hcomm_.WriteWithNotifyNbi(commHandle, remoteWinAddr, localSlotAddr,
                                      perSlotBytes_, notifyAddr, 1);
-            if ((tokenProcessed % COMMIT_SQE_NUM == 0) || (tokenProcessed == tokenNum - 1)) {
-                hcomm_.Commit(commHandle);
-            }
-            tokenProcessed++;
-            notifyAddr += sizeof(uint64_t);
+            notifyAddr += SLOT_NOTIFY_STRIDE;
+            hcomm_.Drain(commHandle);
         }
         processed += batchCnt;
         if (processed < tokenNum) {
@@ -917,9 +915,9 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::SendPhase()
             SyncFunc<AscendC::HardEvent::V_S>();
         }
         tokenSlotTensor_ = perSlotQueue_.DeQue<XType>();
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
         topkIdxTensor_ = tokenSlotTensor_[metaOffset_ / sizeof(XType)].template ReinterpretCast<int32_t>();
         dstSlotIdxTensor_ = dstSlotQueue_.AllocTensor<int32_t>();
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
         if (tokenId + 1 < endTokenId_) {
             CopyInToken(tokenId + 1);
         }

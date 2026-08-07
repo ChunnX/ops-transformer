@@ -321,7 +321,8 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpCom
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
     uint64_t combineDataSizePerRank = nmt * topK * static_cast<uint64_t>(info.cfg.perSlotBytes);
 
-    uint64_t dispatchSlotNotifySize = epWorldSize * AlignUpWin(nmt * sizeof(uint64_t));
+    constexpr uint64_t SLOT_NOTIFY_STRIDE = 64UL;
+    uint64_t dispatchSlotNotifySize = epWorldSize * AlignUpWin(nmt * SLOT_NOTIFY_STRIDE);
     uint64_t dispatchWinStateSize = epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) +
                                     epWorldSize * COMM_ALIGN + dispatchSlotNotifySize;
     uint64_t combineWinStateSize = nmt * topK * COMM_ALIGN + epWorldSize * COMM_ALIGN;
