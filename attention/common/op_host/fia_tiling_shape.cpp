@@ -39,9 +39,7 @@ static const std::map<FiaLayout, std::vector<FiaAxis>> FIA_LAYOUT_AXIS_MAP = {
     {FiaLayout::IS1S2, {FiaAxis::CONST, FiaAxis::S1, FiaAxis::S2}},
     {FiaLayout::I1S1S2, {FiaAxis::CONST, FiaAxis::CONST, FiaAxis::S1, FiaAxis::S2}},
     {FiaLayout::S1S1, {FiaAxis::S1}},
-    {FiaLayout::PA_BBND, {FiaAxis::Bn, FiaAxis::Bs, FiaAxis::N, FiaAxis::D}},
-    {FiaLayout::PA_BNBD, {FiaAxis::Bn, FiaAxis::N, FiaAxis::Bs, FiaAxis::D}},
-    {FiaLayout::PA_NZ, {FiaAxis::Bn, FiaAxis::N, FiaAxis::D1, FiaAxis::Bs, FiaAxis::D0}},
+    {FiaLayout::BnBsND, {FiaAxis::Bn, FiaAxis::Bs, FiaAxis::N, FiaAxis::D}},
     {FiaLayout::LSE_BNS, {FiaAxis::B, FiaAxis::N, FiaAxis::S1}},
     {FiaLayout::LSE_NT, {FiaAxis::N, FiaAxis::T}},
 };
@@ -110,14 +108,7 @@ const std::map<FiaCompareType, CompareFunc<int64_t>> FiaTilingShapeCompare::comp
 std::string LayoutToSerialString(FiaLayout layout)
 {
     const std::map<FiaLayout, std::string> layout2Str = {
-        {FiaLayout::BSH, "BSH"},       {FiaLayout::BSND, "BSND"},     {FiaLayout::BNSD, "BNSD"},
-        {FiaLayout::NZ, "NZ"},         {FiaLayout::TND, "TND"},       {FiaLayout::NBSD, "NBSD"},
-        {FiaLayout::NTD, "NTD"},       {FiaLayout::S1S2, "S1S2"},     {FiaLayout::BS2, "BS2"},
-        {FiaLayout::BnBsH, "BnBsH"},   {FiaLayout::BnNBsD, "BnNBsD"}, {FiaLayout::BNS1S2, "BNS1S2"},
-        {FiaLayout::INS1S2, "1NS1S2"}, {FiaLayout::BNS11, "BNS11"},   {FiaLayout::TN1, "TN1"},
-        {FiaLayout::BS1S2, "BS1S2"},   {FiaLayout::B1S1S2, "B1S1S2"}, {FiaLayout::IS1S2, "1S1S2"},
-        {FiaLayout::I1S1S2, "11S1S2"}, {FiaLayout::PA_BBND, "PA_BBND"}, {FiaLayout::PA_BNBD, "PA_BNBD"},
-        {FiaLayout::PA_NZ, "PA_NZ"},   {FiaLayout::LSE_BNS, "LSE_BNS"}, {FiaLayout::LSE_NT, "LSE_NT"}};
+        {FiaLayout::BSH, "BSH"}, {FiaLayout::BSND, "BSND"}, {FiaLayout::BNSD, "BNSD"}, {FiaLayout::NZ, "NZ"}, {FiaLayout::TND, "TND"}, {FiaLayout::NBSD, "NBSD"}, {FiaLayout::NTD, "NTD"}, {FiaLayout::S1S2, "S1S2"}, {FiaLayout::BS2, "BS2"}, {FiaLayout::BnBsH, "BnBsH"}, {FiaLayout::BnNBsD, "BnNBsD"}, {FiaLayout::BNS1S2, "BNS1S2"}, {FiaLayout::INS1S2, "1NS1S2"}, {FiaLayout::BNS11, "BNS11"}, {FiaLayout::TN1, "TN1"}, {FiaLayout::BS1S2, "BS1S2"}, {FiaLayout::B1S1S2, "B1S1S2"}, {FiaLayout::IS1S2, "1S1S2"}, {FiaLayout::I1S1S2, "11S1S2"}, {FiaLayout::BnBsND, "BnBsND"}, {FiaLayout::LSE_BNS, "LSE_BNS"}, {FiaLayout::LSE_NT, "LSE_NT"}};
 
     if (layout2Str.find(layout) != layout2Str.end()) {
         return layout2Str.at(layout);
@@ -308,12 +299,8 @@ ge::graphStatus FiaTilingShapeCompare::GetExpectedShape(gert::Shape &shapeExpect
         shapeExpected = gert::Shape({param.N, param.B, param.S, param.D});
     } else if (layout_ == FiaLayout::NTD) {
         shapeExpected = gert::Shape({param.N, param.T, param.D});
-    } else if (layout_ == FiaLayout::PA_BBND) {
+    } else if (layout_ == FiaLayout::BnBsND) {
         shapeExpected = gert::Shape({param.Bn, param.Bs, param.N, param.D});
-    } else if (layout_ == FiaLayout::PA_BNBD) {
-        shapeExpected = gert::Shape({param.Bn, param.N, param.Bs, param.D});
-    } else if (layout_ == FiaLayout::PA_NZ) {
-        shapeExpected = gert::Shape({param.Bn, param.N, param.D / param.D0, param.Bs, param.D0});
     } else if (layout_ == FiaLayout::LSE_BNS) {
         shapeExpected = gert::Shape({param.B, param.N, param.S1});
     } else if (layout_ == FiaLayout::LSE_NT) {

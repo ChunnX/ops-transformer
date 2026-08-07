@@ -167,11 +167,11 @@ void FlashAttnTilingImpl::UpdateTilingKeyLayout()
 
 void FlashAttnTilingImpl::UpdateTilingKeyKvLayout()
 {
-    if (faInfo_->kvLayout == FaLayout::PA_BBND) {
+    if (faInfo_->kvLayout == FaLayout::BnBsND) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BBH;
-    } else if (faInfo_->kvLayout == FaLayout::PA_BNBD) {
+    } else if (faInfo_->kvLayout == FaLayout::BnNBsD) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
-    } else if (faInfo_->kvLayout == FaLayout::PA_NZ) {
+    } else if (faInfo_->kvLayout == FaLayout::NZ) {
         tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_NZ;
     }
 }
@@ -195,7 +195,6 @@ void FlashAttnTilingImpl::GenTilingKey()
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.hasAttenMask,
             tilingKeyInfo_.config);
 }
-
 
 void FlashAttnTilingImpl::CalcNumBlocks(uint32_t aicNum)
 {
@@ -282,11 +281,11 @@ void FlashAttnTilingImpl::ComputeTilingData()
     }
 
     if (faInfo_->pageAttentionFlag) {
-        if (faInfo_->kvLayout == FaLayout::PA_BBND) {
+        if (faInfo_->kvLayout == FaLayout::BnBsND) {
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 1;
-        } else if (faInfo_->kvLayout == FaLayout::PA_BNBD) {
+        } else if (faInfo_->kvLayout == FaLayout::BnNBsD) {
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 0;
-        } else if (faInfo_->kvLayout == FaLayout::PA_NZ) {
+        } else if (faInfo_->kvLayout == FaLayout::NZ) {
             tilingData_.baseTiling.flashAttnPageAttentionParams.paLayoutType = 2;
         }
     }

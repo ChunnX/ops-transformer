@@ -344,18 +344,18 @@ void FaInfoParser::GetKvIsContiguous()
     if (keyStrides_ != nullptr) {
         const gert::Shape &keyShape = opParamInfo_.key.shape->GetStorageShape();
         keyContig = (CheckTensorContiguous(keyShape.GetDimNum(), keyShape, keyStrides_, keyDimIdx) ==
-                      ge::GRAPH_SUCCESS);
+                     ge::GRAPH_SUCCESS);
         keyNonContigDim_ = keyContig ? -1 : keyDimIdx;
     }
 
     if (valueStrides_ != nullptr) {
         const gert::Shape &valueShape = opParamInfo_.value.shape->GetStorageShape();
         valContig = (CheckTensorContiguous(valueShape.GetDimNum(), valueShape, valueStrides_, valDimIdx) ==
-                        ge::GRAPH_SUCCESS);
+                     ge::GRAPH_SUCCESS);
         valueNonContigDim_ = valContig ? -1 : valDimIdx;
     }
-    
-    if (layoutKV_ == FaLayout::PA_BBND) {
+
+    if (layoutKV_ == FaLayout::BnBsND) {
         if (keyStrides_ != nullptr) {
             keyBnStride_ = keyStrides_->GetStride(0);
             keyN2Stride_ = keyStrides_->GetStride(2);
@@ -364,7 +364,7 @@ void FaInfoParser::GetKvIsContiguous()
             valueBnStride_ = valueStrides_->GetStride(0);
             valueN2Stride_ = valueStrides_->GetStride(2);
         }
-    } else if (layoutKV_ == FaLayout::PA_BNBD || layoutKV_ == FaLayout::PA_NZ) {
+    } else if (layoutKV_ == FaLayout::BnNBsD || layoutKV_ == FaLayout::NZ) {
         if (keyStrides_ != nullptr) {
             keyBnStride_ = keyStrides_->GetStride(0);
             keyN2Stride_ = keyStrides_->GetStride(1);
@@ -378,8 +378,8 @@ void FaInfoParser::GetKvIsContiguous()
 
 void FaInfoParser::GetKvStorageMode()
 {
-    bool isPaLayout = (layoutKV_ == FaLayout::PA_BBND || layoutKV_ == FaLayout::PA_BNBD ||
-                       layoutKV_ == FaLayout::PA_NZ);
+    bool isPaLayout = (layoutKV_ == FaLayout::BnBsND || layoutKV_ == FaLayout::BnNBsD ||
+                       layoutKV_ == FaLayout::NZ);
 
     if (isPaLayout) {
         kvStorageMode_ = KvStorageMode::PAGE_ATTENTION;
@@ -423,9 +423,9 @@ ge::graphStatus FaInfoParser::GetBlockNum()
 ge::graphStatus FaInfoParser::GetS2SizeForPageAttention()
 {
     OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
-            "When layout_kv is PA, block_table must be provided but got nullptr."),
-        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_table", "provided",
+                                                      "When layout_kv is PA, block_table must be provided but got nullptr."),
+                return ge::GRAPH_FAILED);
     if (GetBlockSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -467,7 +467,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
     if (itQ == layoutMap.end()) {
         std::string reason = "layout_q: " + std::string(opParamInfo_.layoutQ) + " is not supported.";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q",
-            opParamInfo_.layoutQ, reason.c_str());
+                                              opParamInfo_.layoutQ, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutQ_ = itQ->second;
@@ -476,7 +476,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
     if (itKV == layoutMap.end()) {
         std::string reason = "layout_kv: " + std::string(opParamInfo_.layoutKV) + " is not supported.";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_kv",
-            opParamInfo_.layoutKV, reason.c_str());
+                                              opParamInfo_.layoutKV, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutKV_ = itKV->second;
@@ -485,7 +485,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
     if (itOut == layoutMap.end()) {
         std::string reason = "layout_out: " + std::string(opParamInfo_.layoutOut) + " is not supported.";
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_out",
-            opParamInfo_.layoutOut, reason.c_str());
+                                              opParamInfo_.layoutOut, reason.c_str());
         return ge::GRAPH_FAILED;
     }
     layoutOut_ = itOut->second;
@@ -536,9 +536,9 @@ ge::graphStatus FaInfoParser::GetGSize()
     }
     if (n1Size_ % n2Size_ != 0U) {
         std::string shapeStr = ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
-            ToString(opParamInfo_.key.shape->GetStorageShape());
+                               ToString(opParamInfo_.key.shape->GetStorageShape());
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and key",
-            shapeStr.c_str(), "N of query must be an integer multiple of the same axis of key");
+                                               shapeStr.c_str(), "N of query must be an integer multiple of the same axis of key");
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
