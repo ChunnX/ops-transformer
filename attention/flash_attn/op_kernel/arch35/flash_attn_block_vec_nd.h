@@ -71,10 +71,8 @@ public:
 
     // 核间同步ID
     static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4;
-    static constexpr uint32_t CC_BMM1_0 = 0U;
-    static constexpr uint32_t CC_BMM1_1 = 1U;
-    static constexpr uint32_t CC_BMM2_0 = 2U;
-    static constexpr uint32_t CC_BMM2_1 = 3U;
+    static constexpr uint32_t CC_MM_0 = 0U;
+    static constexpr uint32_t CC_MM_1 = 1U;
     static constexpr uint32_t CC_L1P_0 = 5U;
     static constexpr uint32_t CC_L1P_1 = 6U;
     static constexpr uint32_t CC_L1P_2 = 7U;
@@ -239,8 +237,8 @@ public:
 
     __aicore__ inline void InitCrossCoreSync()
     {
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_0);
-        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_BMM1_1);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_0);
+        CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(CC_MM_1);
     }
 
     __aicore__ inline void UnInitCrossCoreSync()
@@ -259,15 +257,15 @@ public:
     {
         uint32_t mmResUbBufId = runInfo.loop % UB_MM_RES_BUFCNT;
         uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
-        uint32_t c1v1CrossCoreSyncIdx = CC_BMM1_0 + mmResUbBufId;
+        uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
         uint32_t v1c2CrossCoreSyncIdx = CC_L1P_0 + pL1BufId;
         LocalTensor<INPUT_T> pL1Tensor = l1PBuffers_[pL1BufId * L1_P_BUF_BYTES].template ReinterpretCast<INPUT_T>();
         auto mm1ResUbTensor = ubMmResBuffers_[mmResUbBufId * UB_MM_RES_BUF_BYTES].template ReinterpretCast<T>();
 
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c1v1CrossCoreSyncIdx);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
         ProcessVec1Nd(pL1Tensor, mm1ResUbTensor, runInfo);
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(
-            CC_BMM2_0 + mmResUbBufId); // 通知BMM2: Vec1已读完mmRes, 可覆写
+            mmSyncIdx); // 通知BMM2: Vec1已读完mmRes, 可覆写
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_MTE3>(v1c2CrossCoreSyncIdx);
         Vec1PostProcess(runInfo);
     }
@@ -640,15 +638,14 @@ public:
     __aicore__ inline void ProcessVec2(RunInfoX runInfo)
     {
         uint32_t mmResUbBufId = runInfo.loop % UB_MM_RES_BUFCNT;
-        uint32_t c2v2CrossCoreSyncIdx = CC_BMM2_0 + mmResUbBufId;
-        uint32_t vec2DoneSyncIdx = CC_BMM1_0 + mmResUbBufId;
+        uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
         if (unlikely(runInfo.actVecMSize == 0)) {
-            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c2v2CrossCoreSyncIdx);
-            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(vec2DoneSyncIdx);
+            CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
+            CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
             return;
         }
 
-        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(c2v2CrossCoreSyncIdx);
+        CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
         {
             Mutex::Lock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
             LocalTensor<T> mm2ResUbTensor =
@@ -678,7 +675,7 @@ public:
             Mutex::Unlock<PIPE_V>(UB_OUT_VEC2_RES_EVENT0);
         }
         CrossCoreSetFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(
-            vec2DoneSyncIdx); // 通知下个BMM1: Vec2已读完mmRes, slot空闲
+            mmSyncIdx); // 通知下个BMM1: Vec2已读完mmRes, slot空闲
 
         if (runInfo.isLastS2Loop) {
             if (unlikely(runInfo.isFirstS2Loop)) {

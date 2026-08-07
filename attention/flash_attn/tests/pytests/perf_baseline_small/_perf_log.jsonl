@@ -1,0 +1,2 @@
+{"tag": "hot0", "ok": true, "error": "", "name": "test_cases.functional_redline_infer/Prefill_D256_FP16_BNSD_1024_1024"}
+{"tag": "cold1", "ok": true, "error": "", "name": "test_cases.functional_redline_infer/Decode_D256_FP16_BNSD_1_2048"}

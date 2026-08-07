@@ -1,0 +1,2 @@
+#,case,dir,avg_us,mode,error
+1,test_cases.functional_redline_infer/Prefill_D256_FP16_BNSD_4096_4096,test_cases.functional_redline_infer_Prefill_D256_FP16_BNSD_4096_4096,312.8,hot,

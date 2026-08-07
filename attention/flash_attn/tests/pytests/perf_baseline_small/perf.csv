@@ -1,0 +1,3 @@
+#,case,dir,avg_us,mode,error
+1,test_cases.functional_redline_infer/Prefill_D256_FP16_BNSD_1024_1024,test_cases.functional_redline_infer_Prefill_D256_FP16_BNSD_1024_1024,33.2,hot,
+2,test_cases.functional_redline_infer/Decode_D256_FP16_BNSD_1_2048,test_cases.functional_redline_infer_Decode_D256_FP16_BNSD_1_2048,20.9,cold,

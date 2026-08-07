@@ -1,0 +1,6 @@
+Device_id,OP Type,Core Type,Count,Total Time(us),Min Time(us),Avg Time(us),Max Time(us),Ratio(%)
+0,FlashAttn,MIX_AIC,10,3132.925,312.624,313.292,317.741,86.044
+0,FlashAttnMetadata,AI_CPU,1,372.544,372.544,372.544,372.544,10.232
+0,StatelessRandomUniformV3,AI_VECTOR_CORE,3,91.243,28.75,30.414,33,2.506
+0,Muls,AI_VECTOR_CORE,3,22.525,6.478,7.508,8.798,0.619
+0,Add,AI_VECTOR_CORE,3,21.847,6.799,7.282,8.236,0.6
