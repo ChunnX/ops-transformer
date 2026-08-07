@@ -67,8 +67,11 @@ run_batch() {
         echo "pytest有失败用例"
     fi
 
-    echo -e "\n=====全部执行完成！[${mode_label}模式]====="
+    echo -e "\n=====全部执行完成！[${mode_label}]模式====="
     echo "结果文件: result.csv"
+    if [ $pytest_status -ne 0 ]; then
+        exit 1
+    fi
 }
 
 # 显示帮助信息

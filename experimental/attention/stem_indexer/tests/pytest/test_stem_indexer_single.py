@@ -26,6 +26,11 @@ from test_stem_indexer_paramset import ENABLED_PARAMS  # noqa: E402
 # 通过环境变量 STEM_INDEXER_MODE 切换执行模式：eager（默认）或 graph
 # 例: STEM_INDEXER_MODE=graph python -m pytest test_stem_indexer_single.py -m graph
 EXEC_MODE = os.environ.get("STEM_INDEXER_MODE", "eager").strip().lower()
+if EXEC_MODE not in ("eager", "graph"):
+    raise ValueError(
+        f"Unsupported STEM_INDEXER_MODE: {EXEC_MODE!r}. "
+        "Expected 'eager' or 'graph'."
+    )
 _IS_GRAPH_MODE = EXEC_MODE == "graph"
 
 
