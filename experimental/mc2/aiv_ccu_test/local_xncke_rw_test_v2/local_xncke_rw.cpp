@@ -11,17 +11,18 @@
 /*!
  * \file local_xncke_rw.cpp
  * \brief 本地读写 XN(64bit)/CKE(16bit) Kernel 入口 + <<<>>> 封装
- *        三个独立 kernel 入口：XN only / CKE only / Both
+ *        四个独立 kernel 入口：XN(Scalar) / CKE(Scalar) / Both(Scalar) / XN(DataCopy)
  */
 
 #include "kernel_operator.h"
 #include "./kernel/local_xn_rw_kernel.h"
 #include "./kernel/local_cke_rw_kernel.h"
 #include "./kernel/local_xncke_rw_kernel.h"
+#include "./kernel/local_xn_dc_kernel.h"
 
 using namespace AscendC;
 
-// ==================== XN only ====================
+// ==================== XN only (Scalar: WriteGmByPassDCache) ====================
 
 extern "C" __global__ __aicore__ void Aivccu_COMM_XN(uint32_t mode, uint32_t enableWarmup,
                                                       uint32_t loopCount, uint64_t pattern,
@@ -33,7 +34,7 @@ extern "C" __global__ __aicore__ void Aivccu_COMM_XN(uint32_t mode, uint32_t ena
     op.Process();
 }
 
-// ==================== CKE only ====================
+// ==================== CKE only (Scalar: WriteGmByPassDCache) ====================
 
 extern "C" __global__ __aicore__ void Aivccu_COMM_CKE(uint32_t mode, uint32_t enableWarmup,
                                                        uint32_t loopCount, uint64_t pattern,
@@ -45,7 +46,7 @@ extern "C" __global__ __aicore__ void Aivccu_COMM_CKE(uint32_t mode, uint32_t en
     op.Process();
 }
 
-// ==================== Both (XN + CKE) ====================
+// ==================== Both (XN + CKE, Scalar) ====================
 
 extern "C" __global__ __aicore__ void Aivccu_COMM_BOTH(uint32_t mode, uint32_t enableWarmup,
                                                         uint32_t loopCount, uint64_t pattern,
@@ -54,6 +55,19 @@ extern "C" __global__ __aicore__ void Aivccu_COMM_BOTH(uint32_t mode, uint32_t e
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     LocalXnCkeRwImpl::LocalXnCkeRw op;
     op.Init(mode, enableWarmup, loopCount, pattern, xnAddr, ckeAddr, timeAddr);
+    op.Process();
+}
+
+// ==================== XN only (DataCopy: DMA通路对比) ====================
+
+extern "C" __global__ __aicore__ void Aivccu_COMM_XN_DC(uint32_t mode, uint32_t enableWarmup,
+                                                         uint32_t loopCount, uint64_t pattern,
+                                                         GM_ADDR xnAddr, GM_ADDR timeAddr)
+{
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
+    TPipe pipe;
+    LocalXnDcImpl::LocalXnDc op;
+    op.Init(mode, enableWarmup, loopCount, pattern, xnAddr, timeAddr, &pipe);
     op.Process();
 }
 
@@ -67,6 +81,8 @@ void local_xncke_rw_demo(uint32_t mode, uint32_t resKind, uint32_t enableWarmup,
         Aivccu_COMM_XN<<<blockDim, nullptr, stream>>>(mode, enableWarmup, loopCount, pattern, xnAddr, timeAddr);
     } else if (resKind == 1) {
         Aivccu_COMM_CKE<<<blockDim, nullptr, stream>>>(mode, enableWarmup, loopCount, pattern, ckeAddr, timeAddr);
+    } else if (resKind == 3) {
+        Aivccu_COMM_XN_DC<<<blockDim, nullptr, stream>>>(mode, enableWarmup, loopCount, pattern, xnAddr, timeAddr);
     } else {
         Aivccu_COMM_BOTH<<<blockDim, nullptr, stream>>>(mode, enableWarmup, loopCount, pattern, xnAddr, ckeAddr, timeAddr);
     }

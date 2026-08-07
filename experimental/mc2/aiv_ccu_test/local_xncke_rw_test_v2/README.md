@@ -106,7 +106,7 @@ mode,res_kind,die_id,warmup_count,loop_count,pattern,rank_id,ranksize
 |------|------|------|
 | id | 用例 ID | 从 0 开始，用于 `-caseid` 指定单跑 |
 | mode | 读写模式 | `write` / `read` / `write_then_read`（或 `wtr`），也支持数字 0/1/2 |
-| res_kind | 资源类型 | `xn` / `cke` / `both`，也支持数字 0/1/2 |
+| res_kind | 资源类型 | `xn` / `cke` / `both` / `xn_dc`，也支持数字 0/1/2/3。`xn_dc` 用 DataCopy(DMA) 读写 XN，其余用 WriteGmByPassDCache(Scalar) |
 | die_id | IO Die ID | 0 或 1（单 rank 默认用 1） |
 | warmup_count | 预热次数 | 0=不预热, N=预热 N 轮 |
 | loop_count | 正式打点循环次数 | 正整数 |

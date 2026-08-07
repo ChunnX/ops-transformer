@@ -57,6 +57,7 @@ enum TestResKind : uint32_t {
     TEST_RES_XN = 0,
     TEST_RES_CKE = 1,
     TEST_RES_BOTH = 2,
+    TEST_RES_XN_DC = 3,
 };
 
 enum TestMode : uint32_t {
@@ -124,6 +125,7 @@ void GetOption(int argc, char **argv)
                 if (k == "xn" || k == "XN") { g_resKind = TEST_RES_XN; }
                 else if (k == "cke" || k == "CKE") { g_resKind = TEST_RES_CKE; }
                 else if (k == "both" || k == "BOTH") { g_resKind = TEST_RES_BOTH; }
+                else if (k == "xn_dc" || k == "XN_DC" || k == "xn-dc" || k == "XN-DC") { g_resKind = TEST_RES_XN_DC; }
                 else { g_resKind = static_cast<uint32_t>(atoi(optarg)); }
                 break;
             }
@@ -182,6 +184,8 @@ const char *GetResKindStr(uint32_t resKind)
             return "CKE";
         case TEST_RES_BOTH:
             return "BOTH";
+        case TEST_RES_XN_DC:
+            return "XN_DC";
         default:
             return "UNKNOWN";
     }
@@ -189,7 +193,7 @@ const char *GetResKindStr(uint32_t resKind)
 
 bool NeedAccessXn()
 {
-    return g_resKind == TEST_RES_XN || g_resKind == TEST_RES_BOTH;
+    return g_resKind == TEST_RES_XN || g_resKind == TEST_RES_BOTH || g_resKind == TEST_RES_XN_DC;
 }
 
 bool NeedAccessCke()
@@ -207,7 +211,7 @@ int main(int argc, char *argv[])
               g_xnNum, g_xnIndex, g_ckeNum, g_ckeIndex, g_loopCount, g_pattern);
 
     CHECK_RET(g_mode <= TEST_MODE_SET_VALUE, LOG_PRINT("[ERROR] mode invalid: %u\n", g_mode); return -1);
-    CHECK_RET(g_resKind <= TEST_RES_BOTH, LOG_PRINT("[ERROR] res_kind invalid: %u\n", g_resKind); return -1);
+    CHECK_RET(g_resKind <= TEST_RES_XN_DC, LOG_PRINT("[ERROR] res_kind invalid: %u\n", g_resKind); return -1);
     CHECK_RET(g_warmupCount <= 1000, LOG_PRINT("[ERROR] warmup invalid: %u (0-1000)\n", g_warmupCount); return -1);
     CHECK_RET(g_loopCount > 0, LOG_PRINT("[ERROR] loop_count must be greater than 0.\n"); return -1);
     CHECK_RET(g_dieId < 2, LOG_PRINT("[ERROR] die_id must be 0 or 1.\n"); return -1);
