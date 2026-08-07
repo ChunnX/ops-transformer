@@ -53,7 +53,6 @@ enum class FiaLayout : uint32_t {
     IS1S2 = 20,
     I1S1S2 = 21,
     S1S1 = 22,
-    // flash_attn layouts
     BnBsND = 23,
     LSE_BNS = 26,
     LSE_NT = 27,
