@@ -723,13 +723,6 @@ ge::graphStatus CompressorTiling::CheckFeature() const
                 OP_LOGE(context_->opName, "blockSize should be within [%u, %u], but got %u", MIN_BLOCK_SIZE,
                         MAX_BLOCK_SIZE, pageAttentionParams_->blockSize),
                 return ge::GRAPH_FAILED);
-    uint64_t cacheStride =
-        context_->stateCache.shape->GetShape().GetDim(1) * context_->stateCache.shape->GetShape().GetDim(2);
-    OP_CHECK_IF(cacheStride != baseParams_->stateCacheStrideDim0,
-                OP_LOGE(context_->opName,
-                        "state_cache must be contiguous, first axes stride should be equal to %lu, but got %lu",
-                        cacheStride, baseParams_->stateCacheStrideDim0),
-                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
