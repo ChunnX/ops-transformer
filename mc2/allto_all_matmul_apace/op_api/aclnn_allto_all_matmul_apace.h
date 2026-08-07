@@ -3,7 +3,7 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
@@ -31,18 +31,11 @@ extern "C" {
  * @param [in] biasOptional: Optional bias. Type: float.
  * @param [in] x1Scale: MX scale for x1. Type: float8_e8m0.
  * @param [in] x2Scale: MX scale for x2. Type: float8_e8m0.
- * @param [in] commScaleOptional: Optional communication scale.
- * @param [in] x1OffsetOptional: Optional x1 offset.
- * @param [in] x2OffsetOptional: Optional x2 offset.
  * @param [in] group: Communication group identifier.
  * @param [in] worldSize: Number of ranks.
- * @param [in] hcclBufferSize: HCCL communication buffer size (required, currently unused).
- * @param [in] all2allAxesOptional: AlltoAll axes. Default {-2, -1}.
+ * @param [in] hcclBufferSize: HCCL communication buffer size.
  * @param [in] x1QuantMode: x1 quantization mode. Default 0.
  * @param [in] x2QuantMode: x2 quantization mode. Default 0.
- * @param [in] commQuantMode: Communication quantization mode. Default 0.
- * @param [in] x1QuantDtype: x1 quantization data type. Default DT_UNDEFINED.
- * @param [in] commQuantDtype: Communication quantization data type. Default DT_UNDEFINED.
  * @param [in] transposeX1: Whether x1 is transposed. Default false.
  * @param [in] transposeX2: Whether x2 is transposed. Default false.
  * @param [in] groupSize: Group size for quantization. Default 0.
@@ -56,10 +49,8 @@ extern "C" {
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllMatmulApaceGetWorkspaceSize(
     const aclTensor *context, const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-    const aclTensor *x1ScaleOptional, const aclTensor *x2ScaleOptional, const aclTensor *commScaleOptional,
-    const aclTensor *x1OffsetOptional, const aclTensor *x2OffsetOptional, const char *group, int64_t worldSize,
-    int64_t hcclBufferSize, const aclIntArray *alltoAllAxesOptional, int64_t x1QuantMode, int64_t x2QuantMode,
-    int64_t commQuantMode, int64_t commQuantDtype, int64_t x1QuantDtype, bool transposeX1, bool transposeX2,
+    const aclTensor *x1ScaleOptional, const aclTensor *x2ScaleOptional, const char *group, int64_t worldSize,
+    int64_t hcclBufferSize, int64_t x1QuantMode, int64_t x2QuantMode, bool transposeX1, bool transposeX2,
     int64_t groupSize, const char *commMode, int64_t precisionMode, const aclTensor *output,
     const aclTensor *alltoAllOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 

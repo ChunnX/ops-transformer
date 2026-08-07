@@ -36,13 +36,10 @@ class _AllToAllQuantMatmulOpBuilder(OpBuilder):
             "npu_all_to_all_quant_matmul(Tensor context, Tensor x1, Tensor x2, int hccl_buffer_size, str group_name, int world_size, *, "
             "bool alltoall_out_flag=True, "
             "Tensor? bias=None, Tensor? x1_scale=None, Tensor? x2_scale=None, "
-            "Tensor? comm_scale=None, Tensor? x1_offset=None, Tensor? x2_offset=None, "
-            "int? x1_quant_mode=None, int? x2_quant_mode=None, int? comm_quant_mode=None, "
-            "int[] group_sizes=[], int[] all2all_axes=[], "
-            "int? comm_quant_dtype=None, int? x1_quant_dtype=None, "
+            "int? x1_quant_mode=None, int? x2_quant_mode=None, "
+            "int[] group_sizes=[], "
             "int? x1_dtype=None, int? x2_dtype=None, "
             "int? x1_scale_dtype=None, int? x2_scale_dtype=None, "
-            "int? output_scale_dtype=None, int? comm_scale_dtype=None, "
             "int? y_dtype=None, str comm_mode=\"ai_cpu\", int precision_mode=0"
             ") -> (Tensor, Tensor)"
         )
@@ -60,22 +57,13 @@ class _AllToAllQuantMatmulOpBuilder(OpBuilder):
             bias=None,
             x1_scale=None,
             x2_scale=None,
-            comm_scale=None,
-            x1_offset=None,
-            x2_offset=None,
             x1_quant_mode=None,
             x2_quant_mode=None,
-            comm_quant_mode=None,
             group_sizes=[],
-            all2all_axes=[],
-            comm_quant_dtype=None,
-            x1_quant_dtype=None,
             x1_dtype=None,
             x2_dtype=None,
             x1_scale_dtype=None,
             x2_scale_dtype=None,
-            output_scale_dtype=None,
-            comm_scale_dtype=None,
             y_dtype=None,
             comm_mode="ai_cpu",
             precision_mode=0,
@@ -122,22 +110,13 @@ def _npu_all_to_all_quant_matmul(
     bias=None,
     x1_scale=None,
     x2_scale=None,
-    comm_scale=None,
-    x1_offset=None,
-    x2_offset=None,
     x1_quant_mode=None,
     x2_quant_mode=None,
-    comm_quant_mode=None,
     group_sizes=[],
-    all2all_axes=[],
-    comm_quant_dtype=None,
-    x1_quant_dtype=None,
     x1_dtype=None,
     x2_dtype=None,
     x1_scale_dtype=None,
     x2_scale_dtype=None,
-    output_scale_dtype=None,
-    comm_scale_dtype=None,
     y_dtype=None,
     comm_mode="ai_cpu",
     precision_mode=0,
@@ -153,22 +132,13 @@ def _npu_all_to_all_quant_matmul(
         bias,
         x1_scale,
         x2_scale,
-        comm_scale,
-        x1_offset,
-        x2_offset,
         x1_quant_mode,
         x2_quant_mode,
-        comm_quant_mode,
         group_sizes,
-        all2all_axes,
-        comm_quant_dtype,
-        x1_quant_dtype,
         x1_dtype,
         x2_dtype,
         x1_scale_dtype,
         x2_scale_dtype,
-        output_scale_dtype,
-        comm_scale_dtype,
         y_dtype,
         comm_mode,
         precision_mode,
@@ -181,27 +151,17 @@ def all_to_all_quant_matmul(
     x2: torch.Tensor,
     group,
     *,
-    world_size: int = 0,
     alltoall_out_flag: bool = True,
     bias: Optional[torch.Tensor] = None,
     x1_scale: Optional[torch.Tensor] = None,
     x2_scale: Optional[torch.Tensor] = None,
-    comm_scale: Optional[torch.Tensor] = None,
-    x1_offset: Optional[torch.Tensor] = None,
-    x2_offset: Optional[torch.Tensor] = None,
     x1_quant_mode: int = 0,
     x2_quant_mode: int = 0,
-    comm_quant_mode: int = 0,
     group_sizes: Optional[List[int]] = None,
-    all2all_axes: Optional[List[int]] = None,
-    comm_quant_dtype: int = -1,
-    x1_quant_dtype: int = -1,
     x1_dtype: int = -1,
     x2_dtype: int = -1,
     x1_scale_dtype: int = -1,
     x2_scale_dtype: int = -1,
-    output_scale_dtype: int = -1,
-    comm_scale_dtype: int = -1,
     y_dtype: int = -1,
     comm_mode: Optional[str] = None,
     precision_mode: int = 0,
@@ -218,35 +178,22 @@ def all_to_all_quant_matmul(
         x2 (Tensor): Right matrix, shape ``(H*world_size, N)``.
         group (ProcessGroup): torch.distributed process group for AlltoAll
             communication.
-        world_size (int): Number of ranks participating in AlltoAll.
         alltoall_out_flag (bool): Whether to output alltoall result.
         bias (Tensor, optional): Bias added after matmul, shape ``(N,)``.
         x1_scale (Tensor, optional): Left matrix quantization scale.
         x2_scale (Tensor, optional): Right matrix quantization scale.
-        comm_scale (Tensor, optional): Communication quantization scale
-            (reserved).
-        x1_offset (Tensor, optional): Left matrix quantization offset
-            (reserved).
-        x2_offset (Tensor, optional): Right matrix quantization offset
-            (reserved).
         x1_quant_mode (int): Left matrix quantization mode (0=none, 2=perchannel,
             3=pertoken, 6=mx, 7=pertoken-dynamic).
         x2_quant_mode (int): Right matrix quantization mode.
-        comm_quant_mode (int): Communication quantization mode (reserved, 0=none).
         group_sizes (List[int], optional): Quantization group sizes as
             ``[group_m, group_n, group_k]``.
-        all2all_axes (List[int], optional): AlltoAll exchange axes,
-            defaults to ``[-2, -1]`` when None.
-        comm_quant_dtype (int): Communication quantization dtype enum (reserved).
-        x1_quant_dtype (int): Left matrix quantization dtype enum.
         x1_dtype (int): x1 dtype enum for bitcast, -1 means use tensor dtype.
         x2_dtype (int): x2 dtype enum for bitcast, -1 means use tensor dtype.
         x1_scale_dtype (int): x1_scale dtype enum, -1 means use tensor dtype.
         x2_scale_dtype (int): x2_scale dtype enum, -1 means use tensor dtype.
-        output_scale_dtype (int): Output scale dtype enum (reserved).
-        comm_scale_dtype (int): Communication scale dtype enum (reserved).
-        y_dtype (int): Output dtype enum, -1 means same as x1.
+        y_dtype (int): Output dtype enum, -1 means default float32.
         comm_mode (str): Communication engine, e.g. ``"ai_cpu"`` or ``"ccu"``.
+        precision_mode (int): Precision mode, 0 means default.
 
     Returns:
         Tuple[Tensor, Tensor]: (y, all2all_out) where y has shape
@@ -254,6 +201,7 @@ def all_to_all_quant_matmul(
         ``(BS/world_size, H*world_size)``.
     """
     rank_id = torch.distributed.get_rank(group)
+    world_size = torch.distributed.get_world_size(group)
     group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(
         rank_id
     )
@@ -276,26 +224,16 @@ def all_to_all_quant_matmul(
         bias=bias,
         x1_scale=x1_scale,
         x2_scale=x2_scale,
-        comm_scale=comm_scale,
-        x1_offset=x1_offset,
-        x2_offset=x2_offset,
         x1_quant_mode=None if x1_quant_mode == 0 else x1_quant_mode,
         x2_quant_mode=None if x2_quant_mode == 0 else x2_quant_mode,
-        comm_quant_mode=None if comm_quant_mode == 0 else comm_quant_mode,
         group_sizes=group_sizes if group_sizes is not None else [],
-        all2all_axes=all2all_axes if all2all_axes is not None else [],
-        comm_quant_dtype=None if comm_quant_dtype == -1 else comm_quant_dtype,
-        x1_quant_dtype=None if x1_quant_dtype == -1 else x1_quant_dtype,
         x1_dtype=None if x1_dtype == -1 else x1_dtype,
         x2_dtype=None if x2_dtype == -1 else x2_dtype,
         x1_scale_dtype=None if x1_scale_dtype == -1 else x1_scale_dtype,
         x2_scale_dtype=None if x2_scale_dtype == -1 else x2_scale_dtype,
-        output_scale_dtype=None if output_scale_dtype == -1 else output_scale_dtype,
-        comm_scale_dtype=None if comm_scale_dtype == -1 else comm_scale_dtype,
         y_dtype=None if y_dtype == -1 else y_dtype,
         comm_mode=comm_mode,
         precision_mode=precision_mode,
     )
     print(f"[all_to_all_quant_matmul] rank={rank_id}, npu_all_to_all_quant_matmul returned", flush=True)
     return result
-

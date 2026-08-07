@@ -18,14 +18,10 @@ using namespace Apace;
 
 template <uint32_t QUANTMODE, bool X2TRANSPOSE, uint32_t DTYPEBIAS, bool ISSMALLK, uint32_t COMMTYPE>
 __global__ __aicore__ void allto_all_matmul_apace(GM_ADDR context, GM_ADDR x1, GM_ADDR x2, GM_ADDR bias,
-                                                  GM_ADDR x1_scale, GM_ADDR x2_scale, GM_ADDR comm_scale,
-                                                  GM_ADDR x1_offset, GM_ADDR x2_offset, GM_ADDR y, GM_ADDR all2all_out,
+                                                  GM_ADDR x1_scale, GM_ADDR x2_scale, GM_ADDR y, GM_ADDR all2all_out,
                                                   GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     (void)bias;
-    (void)comm_scale;
-    (void)x1_offset;
-    (void)x2_offset;
     (void)all2all_out;
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
 

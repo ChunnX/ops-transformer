@@ -246,7 +246,6 @@ def golden_test_worker(queue, rank, args, world_size):
                 x1,
                 x2,
                 group,
-                world_size=world_size,
                 x1_scale=x1_scale,
                 x2_scale=x2_scale,
                 y_dtype=Y_DTYPE_BF16,
@@ -268,7 +267,6 @@ def golden_test_worker(queue, rank, args, world_size):
             x1,
             x2,
             group,
-            world_size=world_size,
             x1_scale=x1_scale,
             x2_scale=x2_scale,
             y_dtype=Y_DTYPE_BF16,
@@ -277,7 +275,7 @@ def golden_test_worker(queue, rank, args, world_size):
             group_sizes=MX_GROUP_SIZES,
             x1_scale_dtype=SCALE_DTYPE_FP8_E8M0,
             x2_scale_dtype=SCALE_DTYPE_FP8_E8M0,
-            comm_mode="ai_cpu",
+            comm_mode="udma",
             alltoall_out_flag=True,
         )
         torch.npu.synchronize()

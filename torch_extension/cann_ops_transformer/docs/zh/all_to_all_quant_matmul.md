@@ -72,7 +72,7 @@
 ## 函数原型
 
 ```python
-all_to_all_quant_matmul(x1, x2, group, *, world_size=0, alltoall_out_flag=True, bias=None, x1_scale=None, x2_scale=None, comm_scale=None, x1_offset=None, x2_offset=None, x1_quant_mode=0, x2_quant_mode=0, comm_quant_mode=0, group_sizes=None, all2all_axes=None, comm_quant_dtype=-1, x1_quant_dtype=-1, x1_dtype=-1, x2_dtype=-1, x1_scale_dtype=-1, x2_scale_dtype=-1, output_scale_dtype=-1, comm_scale_dtype=-1, y_dtype=-1, comm_mode=None, precision_mode=0) -> (Tensor, Tensor)
+all_to_all_quant_matmul(x1, x2, group, *, alltoall_out_flag=True, bias=None, x1_scale=None, x2_scale=None, x1_quant_mode=0, x2_quant_mode=0, group_sizes=None, x1_dtype=-1, x2_dtype=-1, x1_scale_dtype=-1, x2_scale_dtype=-1, y_dtype=-1, comm_mode=None, precision_mode=0) -> (Tensor, Tensor)
 ```
 
 ## 参数说明
@@ -120,17 +120,8 @@ all_to_all_quant_matmul(x1, x2, group, *, world_size=0, alltoall_out_flag=True, 
         <td>group</td>
         <td>ProcessGroup</td>
         <td>必选</td>
-        <td>torch.distributed进程组，用于AlltoAll通信。接口内部通过该group获取HCCL通信句柄并创建通信context。</td>
+        <td>torch.distributed进程组，用于AlltoAll通信。接口内部通过该group获取HCCL通信句柄并创建通信context。world_size由group自动获取，无需用户传入。</td>
         <td>ProcessGroup</td>
-        <td>不涉及</td>
-        <td>不涉及</td>
-    </tr>
-    <tr>
-        <td>world_size</td>
-        <td>int</td>
-        <td>必选</td>
-        <td>参与AlltoAll通信的rank数量。取值为2、4、8、16。</td>
-        <td>int</td>
         <td>不涉及</td>
         <td>不涉及</td>
     </tr>
@@ -171,33 +162,6 @@ all_to_all_quant_matmul(x1, x2, group, *, world_size=0, alltoall_out_flag=True, 
         <td>(N, CeilDiv(H*world_size, 64), 2)</td>
     </tr>
     <tr>
-        <td>comm_scale</td>
-        <td>预留参数</td>
-        <td>可选</td>
-        <td>预留参数，通信量化缩放因子，当前版本不支持，使用默认值即可。</td>
-        <td>预留参数</td>
-        <td>不涉及</td>
-        <td>不涉及</td>
-    </tr>
-    <tr>
-        <td>x1_offset</td>
-        <td>预留参数</td>
-        <td>可选</td>
-        <td>预留参数，x1量化偏移，当前版本不支持，使用默认值即可。</td>
-        <td>预留参数</td>
-        <td>不涉及</td>
-        <td>不涉及</td>
-    </tr>
-    <tr>
-        <td>x2_offset</td>
-        <td>预留参数</td>
-        <td>可选</td>
-        <td>预留参数，x2量化偏移，当前版本不支持，使用默认值即可。</td>
-        <td>预留参数</td>
-        <td>不涉及</td>
-        <td>不涉及</td>
-    </tr>
-    <tr>
         <td>x1_quant_mode</td>
         <td>int</td>
         <td>可选</td>
@@ -216,47 +180,11 @@ all_to_all_quant_matmul(x1, x2, group, *, world_size=0, alltoall_out_flag=True, 
         <td>不涉及</td>
     </tr>
     <tr>
-        <td>comm_quant_mode</td>
-        <td>int</td>
-        <td>可选</td>
-        <td>预留参数，通信量化模式，当前版本不支持。默认值为0。</td>
-        <td>int</td>
-        <td>不涉及</td>
-        <td>不涉及</td>
-    </tr>
-    <tr>
         <td>group_sizes</td>
         <td>List[int]</td>
         <td>可选</td>
         <td>量化分组大小，格式为 <code>[group_m, group_n, group_k]</code>。MX量化场景下默认值为<code>[1, 1, 32]</code>。</td>
         <td>List[int]</td>
-        <td>不涉及</td>
-        <td>不涉及</td>
-    </tr>
-    <tr>
-        <td>all2all_axes</td>
-        <td>List[int]</td>
-        <td>可选</td>
-        <td>AlltoAll数据交换方向，支持空或<code>[-2, -1]</code>。为空时默认按<code>[-2, -1]</code>处理。默认值为None。</td>
-        <td>List[int]</td>
-        <td>不涉及</td>
-        <td>不涉及</td>
-    </tr>
-    <tr>
-        <td>comm_quant_dtype</td>
-        <td>int</td>
-        <td>可选</td>
-        <td>预留参数，通信量化数据类型枚举，当前版本不支持。默认值为-1。</td>
-        <td>int</td>
-        <td>不涉及</td>
-        <td>不涉及</td>
-    </tr>
-    <tr>
-        <td>x1_quant_dtype</td>
-        <td>int</td>
-        <td>可选</td>
-        <td>x1量化数据类型枚举。MX量化场景下该参数不生效，使用默认值即可。默认值为-1。</td>
-        <td>int</td>
         <td>不涉及</td>
         <td>不涉及</td>
     </tr>
@@ -293,24 +221,6 @@ all_to_all_quant_matmul(x1, x2, group, *, world_size=0, alltoall_out_flag=True, 
         <td>可选</td>
         <td>x2_scale的数据类型枚举。float8_e8m0时设为293。-1表示使用tensor实际数据类型。默认值为-1。</td>
         <td>int</td>
-        <td>不涉及</td>
-        <td>不涉及</td>
-    </tr>
-    <tr>
-        <td>output_scale_dtype</td>
-        <td>预留参数</td>
-        <td>可选</td>
-        <td>预留参数，输出scale数据类型枚举，当前版本不支持。默认值为-1。</td>
-        <td>预留参数</td>
-        <td>不涉及</td>
-        <td>不涉及</td>
-    </tr>
-    <tr>
-        <td>comm_scale_dtype</td>
-        <td>预留参数</td>
-        <td>可选</td>
-        <td>预留参数，通信scale数据类型枚举，当前版本不支持。默认值为-1。</td>
-        <td>预留参数</td>
         <td>不涉及</td>
         <td>不涉及</td>
     </tr>
@@ -392,7 +302,7 @@ all_to_all_quant_matmul(x1, x2, group, *, world_size=0, alltoall_out_flag=True, 
 ## 约束说明
 
 - **参数一致性约束**：
-  - 所有rank的 `world_size`、`x1` 的shape、`x2` 的shape、量化参数（`x1_quant_mode`、`x2_quant_mode`、`group_sizes` 等）必须保持一致。
+  - 所有rank的 `x1` 的shape、`x2` 的shape、量化参数（`x1_quant_mode`、`x2_quant_mode`、`group_sizes` 等）必须保持一致。
   - `BS` 必须能被 `world_size` 整除。
 
 - **Shape约束**：
@@ -402,7 +312,7 @@ all_to_all_quant_matmul(x1, x2, group, *, world_size=0, alltoall_out_flag=True, 
   - `x2_scale`：3维张量，shape为 `(N, CeilDiv(H*world_size, 64), 2)`，第3维必须为2。
 
 - **world_size约束**：
-  - 取值为 `2`、`4`、`8`、`16`。
+  - `world_size` 由接口内部从 `group` 自动获取，取值为 `2`、`4`、`8`、`16`。
 
 - **数据类型约束**：
 
@@ -462,9 +372,6 @@ all_to_all_quant_matmul(x1, x2, group, *, world_size=0, alltoall_out_flag=True, 
   - 调用前需初始化HCCL通信域（`dist.init_process_group(backend="hccl")`）。
   - 所有rank必须使用相同的通信域。
   - HCCL通信缓存区大小需通过环境变量 `HCCL_BUFFSIZE` 配置，单位为MB。
-
-- **预留参数约束**：
-  - `comm_scale`、`x1_offset`、`x2_offset`、`comm_quant_mode`、`comm_quant_dtype`、`output_scale_dtype`、`comm_scale_dtype` 为预留参数，当前版本不支持，使用默认值即可。
 
 ## 确定性计算
 
@@ -556,7 +463,6 @@ def alltoallmm_worker(queue, rank, world_size, bs, h, n):
             x1,
             x2,
             group,
-            world_size=world_size,
             x1_scale=x1_scale,
             x2_scale=x2_scale,
             y_dtype=Y_DTYPE_BF16,
