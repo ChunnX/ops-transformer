@@ -96,14 +96,20 @@ public:
         if (constInfo.aicIdx >= constInfo.coreNum || constInfo.aicIdx >= QBSA_FA_AIC_CORE_NUM) {
             return;
         }
-        CrossCoreBufferInit();
         if ASCEND_IS_AIC {
             cubeBlock.InitBuffers();
         } else {
             vecBlock.InitBuffers();
             vecBlock.ClearOutput(tilingData->emptyTensorParams, constInfo);
+            vecBlock.InitEvents();
         }
+        // ClearOutput 内含 SyncAll。跨核 free token 必须在该屏障之后发布，避免第二次图重放
+        // 消费到前一次执行或当前执行屏障前产生的 token。
+        CrossCoreBufferInit();
         ProcessMainLoop();
+        if ASCEND_IS_AIV {
+            vecBlock.FinalizeEvents();
+        }
         CrossCoreBufferUninit();
     }
 
