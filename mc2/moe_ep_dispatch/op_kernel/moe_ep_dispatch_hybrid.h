@@ -151,6 +151,7 @@ private:
                                                     uint32_t destinationScaleupEnd);
     __aicore__ inline bool TryGetScaleoutSlotCount(uint32_t srcScaleoutIndex, uint32_t &count);
     __aicore__ inline bool TryScaleoutSlotReady(uint32_t srcScaleoutIndex, uint32_t scaleoutSlot);
+    __aicore__ inline void ReadScaleoutStatus(GM_ADDR statusAddr, uint32_t &statusValue);
     __aicore__ inline void GetSourceState(uint32_t srcOrdinal, int32_t &nextSlot, int32_t &slotsLeft);
     __aicore__ inline void SetSourceState(uint32_t srcOrdinal, int32_t nextSlot, int32_t slotsLeft);
     __aicore__ inline void ProcessOneScaleoutSlot(uint32_t srcScaleoutIndex, uint32_t scaleoutSlot,
@@ -219,6 +220,7 @@ private:
     // PreparePayloads 使用的 UB tensor 切片，在 PreparePayloads 初始化时从 numRecvPerRankBuf_ 切出
     LocalTensor<int32_t> slotIdxPerRankTensor_;
     LocalTensor<int32_t> counterSumTensor_; // prefix/scaleout 归约结果，发送阶段与 rank slot 映射复用 UB
+    LocalTensor<int32_t> scaleoutStatusTensor_; // fanout 轮询 scaleout 状态槽的 32B 读缓冲
     LocalTensor<int32_t> sendRankSlotTensor_;
     LocalTensor<int32_t> routeScaleoutIndexTensor_;
     LocalTensor<int32_t> routeScaleoutSlotTensor_;
@@ -243,6 +245,7 @@ private:
     TBuf<> sendEntryReadBuf_;
     TBuf<> routeInfoBuf_;
     TBuf<> sourceStateBuf_;
+    TBuf<> scaleoutStatusBuf_;
 
     GM_ADDR workspaceGM_{nullptr};
     GM_ADDR hostPinnedCounterAddrGM_{nullptr};
@@ -1487,7 +1490,8 @@ __aicore__ inline bool MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     GM_ADDR statusAddr =
         MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, epRankId_, scaleoutRecvStatusOffset_) +
         static_cast<uint64_t>(srcScaleoutIndex) * axisMaxBS_ * WIN_ADDR_ALIGN;
-    uint32_t statusValue = static_cast<uint32_t>(ReadGmByPassDCache((__gm__ int32_t *)statusAddr));
+    uint32_t statusValue = 0U;
+    ReadScaleoutStatus(statusAddr, statusValue);
     if (statusValue == 0U) {
         return false;
     }
@@ -1502,7 +1506,23 @@ __aicore__ inline bool MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     GM_ADDR statusAddr =
         MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, epRankId_, scaleoutRecvStatusOffset_) +
         (static_cast<uint64_t>(srcScaleoutIndex) * axisMaxBS_ + scaleoutSlot) * WIN_ADDR_ALIGN;
-    return static_cast<uint32_t>(ReadGmByPassDCache((__gm__ int32_t *)statusAddr)) == SCALEOUT_SLOT_READY;
+    uint32_t statusValue = 0U;
+    ReadScaleoutStatus(statusAddr, statusValue);
+    return statusValue == SCALEOUT_SLOT_READY;
+}
+
+template <TemplateMoeEpDispatchHybridTypeClass>
+__aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::ReadScaleoutStatus(
+    GM_ADDR statusAddr, uint32_t &statusValue)
+{
+    // 与 count 交换一致的 MTE2 读路径：标量 ReadGmByPassDCache 可能读到缓存旧值
+    GlobalTensor<int32_t> statusGMTensor;
+    statusGMTensor.SetGlobalBuffer((__gm__ int32_t *)statusAddr);
+    DataCopyParams statusReadParams = {1U, 1U, 0U, 0U};
+    DataCopy(scaleoutStatusTensor_, statusGMTensor, statusReadParams);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    statusValue = static_cast<uint32_t>(scaleoutStatusTensor_.GetValue(0));
+    SyncFunc<AscendC::HardEvent::S_MTE2>(); // 循环回边：下一次DataCopy写同一UB前，S读须完成
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -2016,6 +2036,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     uint32_t sourceStateBytes = Ceil(remoteServerCount_ * sizeof(int64_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(sourceStateBuf_, sourceStateBytes);
     sourceStateTensor_ = sourceStateBuf_.Get<int64_t>();
+    tpipe_->InitBuffer(scaleoutStatusBuf_, UB_ALIGN);
+    scaleoutStatusTensor_ = scaleoutStatusBuf_.Get<int32_t>();
     hcommTensor_ = hcommBuf_.Get<uint8_t>();
     hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
     sendRankSlotTensor_ = numRecvPerRankBuf_.Get<int32_t>();
