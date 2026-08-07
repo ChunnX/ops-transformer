@@ -41,6 +41,10 @@ public:
     using ElementSparseIdx = typename EpilogueMask2Idx::ElementSparseIdx;
     using ElementSparseCount = typename EpilogueMask2Idx::ElementSparseCount;
 
+    // rescaleOnCube on cube 路径开关：仅 DN + FP8（新 PV 特化 <true,true>）生效；
+    // 其余（含 FP8 ND 12 键）回落旧路径（VEC rescaleO 逐 tile + lo/dm UB 缓冲）
+    static constexpr bool RESCALE_ON_CUBE = transposedMm1 && BlockMmadPV::rescaleOnCube;
+
     using LayoutQ = std::conditional_t<transposedMm1, layout::ColumnMajor, layout::RowMajor>;
     using LayoutK = std::conditional_t<transposedMm1, layout::RowMajor, layout::ColumnMajor>;
     using LayoutS = layout::RowMajor;
@@ -58,9 +62,6 @@ public:
     static constexpr uint32_t PRE_LAUNCH = 2;
     static constexpr uint32_t MAX_CROSS_CORE_BUF_STAGES = PRE_LAUNCH + 1;
     static constexpr uint32_t UB_S_OTMP_BUF_STAGES = 2;
-    // rescaleOnCube on cube 路径开关：仅 DN + FP8（新 PV 特化 <true,true>）生效；
-    // 其余（含 FP8 ND 12 键）回落旧路径（VEC rescaleO 逐 tile + lo/dm UB 缓冲）
-    static constexpr bool RESCALE_ON_CUBE = transposedMm1 && BlockMmadPV::rescaleOnCube;
 
     // Methods
     __aicore__ inline

@@ -26,7 +26,7 @@ namespace NpuArch::Epilogue::Block {
 template <
     class OutputType_,
     class LayoutS_,
-    bool rescaleOnCube_ = false>
+    bool rescaleOnCube_>
 class BlockEpilogue<
     // S is transposed, has shape [kvSTile, qSTile], softmax is done columnwise
     // P would be rearranged from [kvSTile, qSTile] to zN,
@@ -738,11 +738,14 @@ private:
         RegTensor<float> diagDmVreg0;
         RegTensor<float> diagDmVreg1;
         RegTensor<float> allZeroVreg;
+        RegTensor<float> vScaleVreg;
         Duplicate(allZeroVreg, 0);
         MaskReg maskReg32VL64 = CreateMask<float, MaskPattern::VL64>();
 
         LoadAlign(dmVreg, dmUb);
-        Div(dmVreg, dmVreg, vDequantScaleValue, maskReg32VL64);
+        // 标量 vScale 先 Duplicate 成寄存器再真除（Div 全张量形式，无标量重载；VL64 全宽）
+        Duplicate(vScaleVreg, vDequantScaleValue);
+        Div(dmVreg, dmVreg, vScaleVreg, maskReg32VL64);
 
         __ubuf__ float *diagDmUb0 = diagonalDmUb;
         __ubuf__ float *diagDmUb1 = diagonalDmUb + 4 * diagDmRound; // diagDmRound/2 * 8(element per datablock)
