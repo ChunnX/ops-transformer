@@ -24,9 +24,9 @@ golden、用例集与输入构造都取自 ../tests/assets/golden.py（本算子
   4. CANN 自带的 python/site-packages 里有一份同名旧包，会遮蔽新装的 wheel，
      跑之前要把 venv 的 site-packages 前置：
      export PYTHONPATH=<venv>/lib/python3.12/site-packages:$PYTHONPATH
-  5. 若环境里的 torchair 与 torch 版本不兼容（import cann_ops_transformer.ops 直接抛
-     torch_npu.dynamo._ImportError），需在 import 前把 torchair 及其子模块桩进 sys.modules；
-     本算子走 aclnn 直调，不经过 torchair。
+  5. torchair 需与 torch 版本匹配：cann_ops_transformer.ops 的 __init__ 会加载全部
+     算子，其中若干个在 import 期就引用 torchair，torchair 坏掉会让整包 import 失败。
+     本算子自身走 aclnn 直调，不经过 torchair。
 
 用法：
   python3 test_torch_und_gen_qkv_rms_norm_rope_cache.py           # 默认 case 集（T ≤ 10752）
@@ -37,61 +37,13 @@ golden、用例集与输入构造都取自 ../tests/assets/golden.py（本算子
 """
 
 import argparse
-import importlib.abc
-import importlib.machinery
 import os
 import sys
-import types
-from unittest import mock
 
 import torch
 import torch_npu
 
 
-class _TorchairStubLoader(importlib.abc.Loader):
-    """把 torchair 的任意子模块加载成一个属性访问恒返回 MagicMock 的空壳。"""
-
-    def create_module(self, spec):
-        module = types.ModuleType(spec.name)
-        module.__path__ = []
-        module.__getattr__ = lambda name: mock.MagicMock()
-        return module
-
-    def exec_module(self, module):
-        pass
-
-
-class _TorchairStubFinder(importlib.abc.MetaPathFinder):
-    def find_spec(self, fullname, path=None, target=None):
-        if fullname == "torchair" or fullname.startswith("torchair."):
-            return importlib.machinery.ModuleSpec(fullname, _TorchairStubLoader(), is_package=True)
-        return None
-
-
-def _stub_torchair_if_broken():
-    """环境里的 torchair 与 torch 版本不兼容时把它桩掉。
-
-    cann_ops_transformer.ops 的 __init__ 会加载全部算子，其中若干个在 import 期就
-    引用 torchair；torchair 一旦与 torch 版本不匹配（例如 torch 2.12 移除了
-    torch.fx.experimental.symbolic_shapes.hint_int），整个包都 import 不进来。
-    本算子走 aclnn 直调，不经过 torchair，桩掉不影响被测路径。
-    """
-    try:
-        # 探测点要取实际会被引用的子模块：torchair 顶层包本身往往能 import 成功，
-        # 失败发生在加载 _ge_concrete_graph 时，只探顶层会漏判
-        import torchair._ge_concrete_graph.fx2ge_converter  # noqa: F401
-        return False
-    except Exception:  # torchair 侧的异常类型不固定，这里只关心"能不能用"
-        sys.meta_path.insert(0, _TorchairStubFinder())
-        for name in [n for n in sys.modules if n == "torchair" or n.startswith("torchair.")]:
-            del sys.modules[name]
-        return True
-
-
-if _stub_torchair_if_broken():
-    print("[warn] torchair 与当前 torch 不兼容，已桩掉；本算子走 aclnn 直调不受影响")
-
-# golden、用例集与输入构造都在 ../tests/assets/golden.py
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "tests"))
 from assets.golden import (  # noqa: E402
     GENERALIZED_CASES,
