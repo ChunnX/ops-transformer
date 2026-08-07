@@ -120,41 +120,26 @@ quant_flash_attn_gqa_fp8(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint
     constexpr DTemplateType dTemplateType = static_cast<DTemplateType>(ConfigValue[config].d);
     constexpr DTemplateType dVTemplateType = static_cast<DTemplateType>(ConfigValue[config].dv);
 
-    constexpr PseTypeEnum pseModeConst = PseTypeEnum::PSE_NONE_TYPE;
-    constexpr bool enableKVPrefixConst = false;
-
-    constexpr TPosition bmm2OutPos =
-        BaseApi::GetC2Position(dVTemplateType,
-                               BaseApi::UbOutCondition<INPUT_T>(false, pseModeConst, hasAttenMask, false, false,
-                                                                (uint32_t)s1TemplateType == 64),
-                               ((uint32_t)s2TemplateType == 256 && (uint32_t)s1TemplateType == 64), false);
-
     constexpr bool useDn = true;
-    constexpr bool bmm2Write2Ub = (bmm2OutPos == TPosition::VECCALC);
-    constexpr bool splitD = ((uint16_t)dVTemplateType > (uint16_t)DTemplateType::Aligned256);
 
     using Fp8CubeBlock =
         BaseApi::QuantFlashAttnBlockCubeGqaFp8<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-                                         dTemplateType, dVTemplateType, KvLayoutType,
-                                         enableKVPrefixConst, useDn, bmm2Write2Ub, splitD>;
+                                         dTemplateType, dVTemplateType, KvLayoutType, useDn>;
     using Fp8VecFaBlock =
         BaseApi::QuantFlashAttnBlockVecGqaFp8<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType, s1TemplateType,
-                                        s2TemplateType, dTemplateType, dVTemplateType, pseModeConst,
-                                        hasAttenMask, false, KvLayoutType, false, enableKVPrefixConst, useDn,
-                                        bmm2Write2Ub, splitD>;
+                                        s2TemplateType, dTemplateType, dVTemplateType,
+                                        hasAttenMask, KvLayoutType, false, useDn>;
     using VecFdBlock =
         BaseApi::QuantFlashAttnBlockVecFlashDecode<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
             s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, useDn>;
 
     using Fp8CubeBlockDummy =
         BaseApi::QuantFlashAttnBlockCubeGqaFp8Dummy<INPUT_T, float, inputLayoutType, s1TemplateType, s2TemplateType,
-                                              dTemplateType, dVTemplateType, KvLayoutType,
-                                              enableKVPrefixConst, useDn, bmm2Write2Ub, splitD>;
+                                              dTemplateType, dVTemplateType, KvLayoutType, useDn>;
     using Fp8VecFaBlockDummy =
         BaseApi::QuantFlashAttnBlockVecGqaFp8Dummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
                                              s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
-                                             pseModeConst, hasAttenMask, false, KvLayoutType, false,
-                                             enableKVPrefixConst, useDn, bmm2Write2Ub, splitD>;
+                                             hasAttenMask, KvLayoutType, false, useDn>;
     using VecFdBlockDummy =
         BaseApi::QuantFlashAttnBlockVecFlashDecodeDummy<INPUT_T, float, OUT_T, inputLayoutType, outputLayoutType,
             s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType, hasAttenMask, KvLayoutType, useDn>;
