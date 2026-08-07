@@ -36,7 +36,7 @@
 - 基于**自定义算子包**执行算子样例，命令如下：
 
     ```bash
-    bash build.sh --run_example ${op} ${mode} ${pkg_mode} [--vendor_name=${vendor_name}] [--soc=${soc_version}]
+    bash build.sh --run_example ${op} ${mode} ${pkg_mode} [--example_name=${example_name}] [--vendor_name=${vendor_name}] [--soc=${soc_version}] [--simulator=${simulator}] [--experimental=${experimental}]
     # 以FlashAttentionScore算子example执行为例
     # bash build.sh --run_example flash_attention_score eager cust --vendor_name=custom
     ```
@@ -125,7 +125,7 @@ mean result[1] is: 256.000000
 mean result[2] is: 256.000000
 mean result[3] is: 256.000000
 mean result[4] is: 256.000000
-mean result[4] is: 256.000000
+mean result[5] is: 256.000000
 ...
 mean result[65532] is: 256.000000
 mean result[65533] is: 256.000000
@@ -151,9 +151,9 @@ mean result[65535] is: 256.000000
 
 #### 调用流程
 
-为方便调用算子，Host侧提供算子对应的C语言API（即以aclnn为前缀的API）实现算子调用，无需提供算子IR（Intermediate Representation）定义。aclnn API调用流程如下
+为方便调用算子，Host侧提供算子对应的C语言API（即以aclnn为前缀的API）实现算子调用，无需提供算子IR（Intermediate Representation）定义。aclnn API调用流程如下：
 
-![原理图](../figures/aclnn调用.png)
+![原理图](../figures/aclnn_call_flow.png)
 
 #### 编译运行
 
@@ -257,8 +257,8 @@ int main()
 
 - **调用自定义算子**：依赖自定义算子包
 
-    ```bash
-    cmake_minimum_required(VERSION 3.14)
+    ```cmake
+    cmake_minimum_required(VERSION 3.18.4)
     # 设置工程名
     project(ACLNN_EXAMPLE)
 
@@ -322,8 +322,8 @@ int main()
 
 - **调用标准算子（内置算子）**：依赖ops-transformer整包
 
-    ```bash
-    cmake_minimum_required(VERSION 3.14)
+    ```cmake
+    cmake_minimum_required(VERSION 3.18.4)
     # 设置工程名
     project(ACLNN_EXAMPLE)
 
@@ -410,7 +410,7 @@ int main()
 
 该方式基于算子GE IR（Intermediate Representation）定义，以构图方式调用算子，调用流程如下：
 
-![原理图](../figures/IR调用.png)
+![原理图](../figures/geir_call_flow.png)
 
 #### 编译运行
 
@@ -472,7 +472,7 @@ int main()
    在`${test_geir_op_name}.cpp`同级目录下创建CMakeLists.txt文件，GE图引擎会根据配置好的环境变量自动加载已安装好的算子包（无论是自定义算子包或是标准内置算子包）库文件，无需特意区分。示例如下，仅供参考，请根据实际情况自行修改。
 
     ```bash
-   cmake_minimum_required(VERSION 3.14)
+   cmake_minimum_required(VERSION 3.18.4)
 
    # 设置工程名
    project(GE_IR_EXAMPLE)
