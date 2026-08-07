@@ -61,6 +61,8 @@ python3 -m ttk e2e \
 
 `PYTHONPATH` 必须包含 `tests/assets`，因为 CSV 的 `api_name` 是 `bsa_ttk_ops.quant_block_sparse_attn`；`--plugin` 则用于发现同目录下的 `spec.py`。
 
+`return_softmax_lse=False` 时，PTA 返回的第二个输出是 shape `()` 的无效占位 Tensor。TTK Golden 将该槽位保存为 `None` marker 并跳过数值比较；已有 manual-data 目录需要重新 prepare 才会生成新的 `golden_1_none.bin`。
+
 ## 重新生成 CSV
 
 在 `ops-transformer` 仓库根目录执行：

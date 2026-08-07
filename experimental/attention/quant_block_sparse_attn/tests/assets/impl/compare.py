@@ -179,7 +179,8 @@ def compare(*outputs, **kwargs):
     """Compare NPU outputs against golden references.
 
     Expects [npu_attention_out, npu_softmax_lse, golden_attention_out, golden_softmax_lse]
-    or [npu_attention_out, golden_attention_out] when return_softmax_lse=False.
+    When return_softmax_lse=False, golden_softmax_lse is None because the NPU
+    scalar-shaped placeholder does not contain a valid value.
     """
     if len(outputs) < 2 or len(outputs) % 2 != 0:
         return {
@@ -194,7 +195,7 @@ def compare(*outputs, **kwargs):
 
     results = [attention_compare(npu_outputs[0], golden_outputs[0])]
 
-    if half > 1:
+    if half > 1 and golden_outputs[1] is not None:
         results.append(lse_compare(npu_outputs[1], golden_outputs[1]))
 
     return results[0] if len(results) == 1 else results
