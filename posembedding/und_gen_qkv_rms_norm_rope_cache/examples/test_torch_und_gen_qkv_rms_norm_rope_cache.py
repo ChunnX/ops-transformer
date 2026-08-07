@@ -29,8 +29,9 @@ golden、用例集与输入构造都取自 ../tests/assets/golden.py（本算子
      本算子自身走 aclnn 直调，不经过 torchair。
 
 用法：
-  python3 test_torch_und_gen_qkv_rms_norm_rope_cache.py           # 默认 case 集（T ≤ 10752）
-  python3 test_torch_und_gen_qkv_rms_norm_rope_cache.py --full    # 追加 T=64K
+  python3 test_torch_und_gen_qkv_rms_norm_rope_cache.py             # 默认 case 集（T ≤ 10752）
+  python3 test_torch_und_gen_qkv_rms_norm_rope_cache.py --full      # 追加 T=64K
+  python3 test_torch_und_gen_qkv_rms_norm_rope_cache.py --whitebox  # 白盒集（见 WHITEBOX_CASES）
   python3 test_torch_und_gen_qkv_rms_norm_rope_cache.py --case t10752_typical_h8
 
 基线：2026-08-07 在 A5（Ascend950PR_9579）上 --full 17/17 全 PASS（含两个 T=64K）。
@@ -62,6 +63,50 @@ from cann_ops_transformer.ops.und_gen_qkv_rms_norm_rope_cache import (  # noqa: 
 # bf16 输出的比对判据：尾数 8 bit，取 rtol=2^-8，atol 覆盖近零值
 RTOL = 4e-3
 ATOL = 1e-3
+
+
+# --------------------------------------------------------------------------- #
+# 白盒 case 集
+# --------------------------------------------------------------------------- #
+# 取自 tests/whitebox 的白盒枚举结果（括号内为白盒 case id），与
+# tests/st/arch35/ttk_*_st.csv 中 w_ 前缀的 7 行一一对应，两处改动要同步。
+# 补的是默认集与泛化集都没有的三个轴：
+#   1. KV Cache 容量贴着下界 —— build_case 默认恒多给 2 个 block，这里用 extra_blocks
+#      把 Bn*Bs 压到 ceil(T/Bs)*Bs，w_t520_bs40_cap_exact 更是 Bn*Bs 恰好等于 T，
+#      slot_mapping 退化成整片 cache 的一个排列，没有未命中行；
+#   2. 非 2 的幂且较大的 block_size（39/33/127/431/178）—— 默认集只有 16/64/100/128/256/512；
+#   3. mrope_section=[24,20,20]（Qwen3-VL Interleaved MRoPE 的真实配置），
+#      轴映射截断点落在 l=60，默认集与泛化集的截断点都不在这个位置。
+WHITEBOX_CASES = (
+    # T=38：每核 1 token（T < 56 核），容量只余 1 个槽位
+    dict(name="w_t38_bs39_capfull",     heads=(8, 1, 1),  und_len=33,   gen_len=5,
+         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 16, 16], big=False,
+         block_size=39,  extra_blocks=0),
+    # T=56：恰好等于 A5 实测核数，每核 1 token 且余数为 0
+    dict(name="w_t56_bs33_h16",         heads=(16, 2, 2), und_len=40,   gen_len=16,
+         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 24, 24], big=False,
+         block_size=33,  extra_blocks=0),
+    # 质数 block_size + 容量只余 2 个槽位
+    dict(name="w_t379_bs127_h16",       heads=(16, 2, 2), und_len=334,  gen_len=45,
+         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 24, 24], big=False,
+         block_size=127, extra_blocks=0),
+    # Bn*Bs == T：cache 被 slot_mapping 铺满，无未命中行
+    dict(name="w_t520_bs40_cap_exact",  heads=(8, 1, 1),  und_len=479,  gen_len=41,
+         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 24, 24], big=False,
+         block_size=40,  extra_blocks=0),
+    # ubFactor 被 UB 容量夹住（N=20 时上界 10）+ 大质数 block_size
+    dict(name="w_t1356_bs431_h16",      heads=(16, 2, 2), und_len=1129, gen_len=227,
+         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 24, 24], big=False,
+         block_size=431, extra_blocks=0),
+    # ubFactor 被 UB 容量夹住（N=10 时上界 18）
+    dict(name="w_t1696_bs178_h8",       heads=(8, 1, 1),  und_len=1503, gen_len=193,
+         cat="shuffled", slot_mode="shuffled", mrope_section=[16, 24, 24], big=False,
+         block_size=178, extra_blocks=0),
+    # Qwen3-VL 4B TP1 图像 prefill 的真实配置：sec=[24,20,20]、max_pos 取到 32K
+    dict(name="w_qwen3vl_t2096_sec242020", heads=(16, 2, 2), und_len=2048, gen_len=48,
+         cat="shuffled", slot_mode="shuffled", mrope_section=[24, 20, 20], big=False,
+         block_size=256, extra_blocks=7, max_pos=32768),
+)
 
 
 def _to_npu(t):
@@ -159,15 +204,19 @@ def main():
     parser.add_argument("--case", default=None, help="只跑指定 case 名")
     parser.add_argument("--generalized", action="store_true",
                         help="只跑泛化集（mrope_section / cat / slot / seed / eps / max_pos 的覆盖补充）")
-    parser.add_argument("--all-sets", action="store_true", help="典型集 + 泛化集一起跑")
+    parser.add_argument("--whitebox", action="store_true",
+                        help="只跑白盒集（KV Cache 容量下界 / 非 2 的幂 block_size / Qwen3-VL 轴切分）")
+    parser.add_argument("--all-sets", action="store_true", help="典型集 + 泛化集 + 白盒集一起跑")
     args = parser.parse_args()
 
     print(f"device: {torch.npu.get_device_name(0)}, torch {torch.__version__}, "
           f"torch_npu {torch_npu.__version__}")
     if args.generalized:
         pool = list(GENERALIZED_CASES)
+    elif args.whitebox:
+        pool = list(WHITEBOX_CASES)
     elif args.all_sets:
-        pool = list(TYPICAL_CASES) + list(GENERALIZED_CASES)
+        pool = list(TYPICAL_CASES) + list(GENERALIZED_CASES) + list(WHITEBOX_CASES)
     else:
         pool = list(TYPICAL_CASES)
     specs = [s for s in pool if (args.case is None or s["name"] == args.case)]
