@@ -104,7 +104,6 @@ public:
                                             __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
                                             __gm__ uint8_t *&workspace, uint64_t singleCoreOffset, uint32_t aicIdx,
                                             ConstInfo &constInfo);
-    __aicore__ inline void InitUniqueLocalBuffer(ConstInfo &constInfo);
     __aicore__ inline void GenerateDropoutMask(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<uint8_t> &dropMaskUb)
     {}
     __aicore__ inline void SoftmaxDataCopyOut(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<float> &sumUb,
@@ -139,6 +138,7 @@ public:
     TBuf<> stage2OutBuf;
     TEventID mte3ToVId[2];
     TEventID vToMte3Id[2];
+    TEventID lseVToMte3Id;
     TBuf<> softmaxMaxBuf[3];
     TBuf<> softmaxSumBuf[3];
     TBuf<> softmaxExpBuf[3];
@@ -156,7 +156,6 @@ public:
 
     GlobalTensor<float> softmaxLseGm;
     TBuf<> lseTmpBuff;
-    TQue<QuePosition::VECOUT, 1> softmaxLseQueue;
 
 protected:
     template <typename VEC2_RES_T>
@@ -572,10 +571,9 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
         }
     }
 
-    InitUniqueLocalBuffer(constInfo);
-
     mte3ToVId[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
     vToMte3Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+    lseVToMte3Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
 }
 
@@ -672,14 +670,6 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitUniqueLocalBuffer(ConstInfo &constInfo)
-{
-    if (constInfo.isSoftmaxLseEnable) {
-        this->tPipe->InitBuffer(softmaxLseQueue, 1, (s1BaseSize >> 1U) * sizeof(float) * 8);
-    }
-}
-
-TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxDataCopyOut(RunInfo &runInfo, ConstInfo &constInfo,
                                                                       LocalTensor<float> &sumUb,
                                                                       LocalTensor<float> &maxUb)
@@ -708,17 +698,20 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(LocalTensor
     if (!constInfo.isSoftmaxLseEnable) {
         return;
     }
-    LocalTensor<float> lseUb = this->softmaxLseQueue.template AllocTensor<float>();
+    // 复用 qScaleInputQue 的 2048B buffer：ProcessVec1Dn 中 qScale 已先 FreeTensor 释放，
+    // 不再单独分配 softmaxLseQueue，节省一块 2048B UB。
+    LocalTensor<float> lseUb = this->qScaleInputQue.template AllocTensor<float>();
     ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.halfS1RealSize);
-    softmaxLseQueue.template EnQue(lseUb);
-    softmaxLseQueue.DeQue<float>();
+    // V 写完成后手动 V→MTE3 同步（原 softmaxLseQueue(VECOUT) 的 EnQue/DeQue 已随其删除）
+    SetFlag<HardEvent::V_MTE3>(lseVToMte3Id);
+    WaitFlag<HardEvent::V_MTE3>(lseVToMte3Id);
     DataCopyExtParams intriParams1;
     intriParams1.blockLen = sizeof(float);
     intriParams1.blockCount = runInfo.halfS1RealSize;
     intriParams1.srcStride = 0;
     intriParams1.dstStride = 0;
     DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], lseUb, intriParams1);
-    softmaxLseQueue.FreeTensor(lseUb);
+    this->qScaleInputQue.FreeTensor(lseUb);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
