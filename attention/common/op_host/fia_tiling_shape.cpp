@@ -114,7 +114,7 @@ std::string LayoutToSerialString(FiaLayout layout)
         {FiaLayout::BnBsH, "BnBsH"},   {FiaLayout::BnNBsD, "BnNBsD"}, {FiaLayout::BNS1S2, "BNS1S2"},
         {FiaLayout::INS1S2, "1NS1S2"}, {FiaLayout::BNS11, "BNS11"},   {FiaLayout::TN1, "TN1"},
         {FiaLayout::BS1S2, "BS1S2"},   {FiaLayout::B1S1S2, "B1S1S2"}, {FiaLayout::IS1S2, "1S1S2"},
-        {FiaLayout::I1S1S2, "11S1S2"}, {FiaLayout::BnBsND, "BnBsND"},
+        {FiaLayout::I1S1S2, "11S1S2"}, {FiaLayout::BnBsND, "PA_BBND"},
         {FiaLayout::LSE_BNS, "LSE_BNS"}, {FiaLayout::LSE_NT, "LSE_NT"}};
 
     if (layout2Str.find(layout) != layout2Str.end()) {
