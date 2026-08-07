@@ -18,17 +18,17 @@
 #include <vector>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
+#include "../quant_flash_attn_tiling_utils.h"
 #include "../../op_kernel/arch35/quant_flash_attn_template_tiling_key.h"
 #include "../../../common/op_host/fia_tiling_templates_registry.h"
-#include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling_constants.h"
+#include "../quant_flash_attn_tiling_constants.h"
 
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
 namespace quant_flash_attn {
-using namespace arch35FIA;
-constexpr uint64_t PRE_LOAD_NUM_QFA_ARCH35 = 3;
-// GQA FP8 fullquant 固定切分：SOUTER=64, SINNER=256（与 MXFP8 的 SINNER=512 不同）
+using namespace arch35QFA;
+// GQA FP8 fullquant 固定切分：SOUTER=64, SINNER=256
 constexpr uint32_t GQA_SINNER_256 = 256;
 
 void QuantFlashAttnFp8TilingImpl::InitTilingInfo(TilingInfo *tilingInfo)
@@ -51,7 +51,7 @@ bool QuantFlashAttnFp8TilingImpl::IsCapable()
 void QuantFlashAttnFp8TilingImpl::CalcScheduleMode()
 {
     scheduleMode_ = ScheduleMode::BATCH_MODE;
-    OP_LOGI(qfaInfo_->opName, "QuantFlashAttn(GQA) schedule mode: %u.", static_cast<uint32_t>(scheduleMode_));
+    OP_LOGI(qfaInfo_->opName, "QuantFlashAttn(GQA FP8 Fullquant) schedule mode: %u.", static_cast<uint32_t>(scheduleMode_));
 }
 
 ge::graphStatus QuantFlashAttnFp8TilingImpl::DoOpTiling()
@@ -115,8 +115,6 @@ void QuantFlashAttnFp8TilingImpl::InitImplParam()
     uint32_t seqUsedKvDims = (seqUsedKv != nullptr) ? seqUsedKv->GetShapeSize() : 0;
     seqUsedQFlag_ = !((seqUsedQDims == 0) || (seqUsedQ == nullptr) || (seqUsedQ->GetData<int32_t>() == nullptr));
     seqUsedKvFlag_ = !((seqUsedKvDims == 0) || (seqUsedKv == nullptr) || (seqUsedKv->GetData<int32_t>() == nullptr));
-
-    // GQA 无 prefill/decode 区分，无 decodeS1GMerge
 }
 
 void QuantFlashAttnFp8TilingImpl::SplitPolicy()
@@ -141,15 +139,7 @@ void QuantFlashAttnFp8TilingImpl::UpdateTilingKeyLayout()
 void QuantFlashAttnFp8TilingImpl::UpdateTilingKeyKvLayout()
 {
     // GQA 强制 PA 场景，layout_kv 仅支持 PA_BNBD
-    if (qfaInfo_->kvLayout == QfaLayout::PA_BNBD) {
-        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
-    } else if (qfaInfo_->kvLayout == QfaLayout::PA_BBND) {
-        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
-    } else if (qfaInfo_->kvLayout == QfaLayout::PA_NZ) {
-        tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_NZ;
-    } else {
-        tilingKeyInfo_.kvLayoutType = KvLayoutType_NO_PA;
-    }
+    tilingKeyInfo_.kvLayoutType = KvLayoutType_PA_BNBD;
 }
 
 void QuantFlashAttnFp8TilingImpl::UpdateTilingKeyInfo()
