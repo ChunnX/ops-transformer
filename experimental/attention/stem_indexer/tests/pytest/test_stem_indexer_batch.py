@@ -36,7 +36,6 @@ if EXEC_MODE not in ("eager", "graph"):
         f"Unsupported STEM_INDEXER_MODE: {EXEC_MODE!r}. "
         "Expected 'eager' or 'graph'."
     )
-_IS_GRAPH_MODE = EXEC_MODE == "graph"
 
 # 支持通过环境变量 STEM_INDEXER_CASE_ID 指定只跑特定 case_id（逗号分隔多个）
 # 例: STEM_INDEXER_CASE_ID=SI_WB_002 python -m pytest test_stem_indexer_batch.py
