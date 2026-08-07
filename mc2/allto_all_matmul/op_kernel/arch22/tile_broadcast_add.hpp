@@ -11,7 +11,7 @@
 #ifndef CATLASS_EPILOGUE_TILE_TILE_BROADCAST_ADD_HPP
 #define CATLASS_EPILOGUE_TILE_TILE_BROADCAST_ADD_HPP
 
-#include "../../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
+#include "catlass/catlass.hpp"
 
 namespace Catlass::Epilogue::Tile {
 
@@ -53,7 +53,7 @@ struct TileRowBroadcastAdd {
         repeatParams.src1RepStride = 0;
 
         constexpr uint32_t rowNumPerCompute = maxRepeatTimes;
-        constexpr uint32_t colNumPerCompute = BYTE_PER_VECTOR_FRCATLASSAL / sizeof(ElementCompute);
+        constexpr uint32_t colNumPerCompute = BYTE_PER_VECTOR_FRACTAL / sizeof(ElementCompute);
         for (uint32_t rowOffset = 0; rowOffset < TileShape::ROW; rowOffset += rowNumPerCompute) {
             uint32_t residueM = TileShape::ROW - rowOffset;
             uint8_t repeatTimes = static_cast<uint8_t>((residueM > rowNumPerCompute) ? rowNumPerCompute : residueM);
