@@ -14,8 +14,8 @@
 ## 功能说明
 - 接口说明
 
-  - **teacher 侧**（target_score）：压缩段未归一化的原始主注意力分数（sum ≠ 1），用 `clamp_min` 防止 y=0 处 log(0) 导致 NaN。
-  - **student 侧**（index_probs）：indexer softmax 后的概率分布，用 `+eps` 保住 Y→0 处的梯度。
+  - **teacher 侧**（target_score）：压缩段未归一化的原始主注意力分数（sum ≠ 1），用 `clamp_min` 防止 target_score=0 处 log(0) 导致 NaN。
+  - **student 侧**（index_probs）：indexer softmax 后的概率分布，用 `+eps` 保住 index_probs→0 处的梯度。
 
 - 计算公式：
 
@@ -65,13 +65,13 @@ lightning_indexer_kl_loss(
 | target_score | 必选输入 | teacher 侧压缩段原始未归一化主注意力分数，sum != 1。 | `float16`、`bfloat16`、`float32` | `(B, S, K)` 或 `(T, K)` |
 | index_probs | 必选输入 | student 侧 indexer softmax 后的概率分布。 | 与 `target_score` 一致 | 与 `target_score` 一致 |
 | eps | 可选属性 | 数值稳定常数，默认值为1e-9。 | `float` | - |
-| weight_type | 可选属性 | 外层权重选择。`'logits'`（默认）用原始 y 作为外层权重；`'probs'` 用归一化概率 P = y / sum(y) 作为外层权重。 | `str` | - |
+| weight_type | 可选属性 | 外层权重选择。`'logits'`（默认）用原始 target_score 作为外层权重；`'probs'` 用归一化概率 P = target_score / sum(target_score) 作为外层权重。 | `str` | - |
 
 ## 返回值说明
 
 | 输出 | 描述 | 数据类型 | 维度 |
 | :--- | :--- | :--- | :--- |
-| loss | KL 散度标量损失。 | 与输入一致 | `(1)`|
+| loss | KL 散度标量损失。 | 与输入一致 | `(1,), 标量`|
 
 ## 约束说明
 

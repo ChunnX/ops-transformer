@@ -34,7 +34,7 @@ extern "C" {
 struct LightningIndexerKLLossParams {
     const aclTensor *targetScore = nullptr;
     const aclTensor *indexProbs = nullptr;
-    float eps;
+    double eps;
     const char *weightType = nullptr;
     const aclTensor *loss = nullptr;
 };
@@ -103,7 +103,7 @@ static aclnnStatus ContiguousAndLightningIndexerKLLoss(const LightningIndexerKLL
 
 aclnnStatus aclnnLightningIndexerKLLossGetWorkspaceSize(
     const aclTensor *targetScore, const aclTensor *indexProbs,
-    float eps, const char *weightType,
+    double eps, const char *weightType,
     const aclTensor *loss, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnLightningIndexerKLLoss,

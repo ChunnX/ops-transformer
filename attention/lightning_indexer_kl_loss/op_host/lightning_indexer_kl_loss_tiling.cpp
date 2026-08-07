@@ -164,7 +164,6 @@ static ge::graphStatus LightningIndexerKLLossTilingFunc(gert::TilingContext* con
     tiling->tileLength = tileLength;
     tiling->eps = eps;
     tiling->coreNum = coreNum;
-
     context->SetBlockDim(coreNum);
 
 

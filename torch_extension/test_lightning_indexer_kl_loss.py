@@ -54,7 +54,35 @@ def lightning_indexer_kl_loss_ref(target_score, index_probs, eps=1e-9, weight_ty
     # print(f"logP:{torch.sum(log_P)}")
     # print(f"logY:{torch.sum(log_Y)}")
     # print(f"log_ratio:{torch.sum(log_P - log_Y)}")
-    return torch.sum(log_ratio)
+    return torch.sum(result)
+
+def lightning_indexer_kl_loss_ref_r(target_score, index_probs, reduce_target, eps=1e-9, weight_type='logits'):
+    y = target_score
+    Y = index_probs
+    P = y / reduce_target
+    log_P = torch.log(torch.clamp_min(P, eps))             # clamp_min 防止 log(0) 产生 NaN
+    log_Y = torch.log(Y + eps)                       # student: +eps 保住 Y→0 处的梯度
+    log_ratio = log_P - log_Y
+    if weight_type == 'logits':
+        weight = y                             # weighted by original y
+    elif weight_type == 'probs':
+        weight = P                             # weighted by normalized probability p
+    else:
+        raise ValueError("weight_type must be 'logits' or 'probs'")
+    result = weight * log_ratio
+    # torch.set_printoptions(profile="full")
+    # # print("target_score:")
+    # # print(target_score)
+    # print("reducesum:")
+    # print((reduce_target + eps)[0])
+    # print("clamp_min:")
+    # print(torch.clamp_min(P, eps)[0])
+    # print(result[:10])
+    # torch.set_printoptions(profile="default")
+    # print(f"logP:{torch.sum(log_P)}")
+    # print(f"logY:{torch.sum(log_Y)}")
+    # print(f"log_ratio:{torch.sum(log_P - log_Y)}")
+    return torch.sum(result)
 
 
 # ---------------------------------------------------------------------------
@@ -67,13 +95,14 @@ def _gen_data(shape, dtype=torch.float32):
     # return y, Y
     if len(shape) == 2:
         b, d = shape
-        # y = torch.randn(b, d, dtype=dtype)
-        y = torch.full((b, d), 1, dtype=dtype)
+        y = torch.randn(b, d, dtype=dtype)
+        # y = torch.full((b, d), 1, dtype=dtype)
         # y = torch.linspace(1, b * d, b * d, dtype=dtype).reshape(shape)
         Y = torch.softmax(torch.randn(b, d, dtype=dtype), dim=-1)
     else:
         b, h, d = shape
         y = torch.randn(b, h, d, dtype=dtype)
+        # y = torch.full((b, h, d), 100, dtype=dtype)
         # y = torch.arange(1, (b * h * d + 1), 1).reshape(shape)
         # y = y.to(dtype)
         Y = torch.softmax(torch.randn(b, h, d, dtype=dtype), dim=-1)
@@ -127,10 +156,11 @@ def run_test(name, shape, dtype=torch.float32, eps=1e-9, diff_thd=0.0001,
     #     ref = lightning_indexer_kl_loss_ref(y, Y, eps=eps, weight_type=weight_type)
     if deterministic:
         torch.use_deterministic_algorithms(True)
-
-    with profile(activities=[ProfilerActivity.CPU], record_shapes=True) as prof:
-        with record_function("model_inference"):
-            ref = lightning_indexer_kl_loss_ref(y.float(), Y.float(), eps=eps, weight_type=weight_type)
+    ref = lightning_indexer_kl_loss_ref(y.float(), Y.float(), eps=eps, weight_type=weight_type)
+    # torch.npu.synchronize()
+    # with profile(activities=[ProfilerActivity.CPU], record_shapes=True) as prof:
+    #     with record_function("model_inference"):
+    #         ref = lightning_indexer_kl_loss_ref(y.float(), Y.float(), eps=eps, weight_type=weight_type)
     torch.npu.synchronize()
     profile_path = "./fag_profiling"
     os.system(f"rm -rf {profile_path}")
@@ -158,7 +188,25 @@ def run_test(name, shape, dtype=torch.float32, eps=1e-9, diff_thd=0.0001,
     result = pd.read_csv(file_name[0])
     print(result)
     print("Total Time(us):",result["Total Time(us)"].sum())
-    return data_compare(npu_out.cpu().to(torch.float32).detach().numpy(), ref.to(torch.float32).detach().numpy(), diff_thd=diff_thd, max_diff_hd=max_diff_hd)
+    # print(f"shape: {npu_out.cpu()[:, :, :1].shape}")
+    # for i in range(3260416, 3260483):
+    #     yy = y.flatten()[i]
+    #     npu_s = npu_out.cpu()[:, :, :1].flatten()[i//8192]
+    #     cpu_s = ref.flatten()[i//8192]
+    #     print("%08d \t %.7f \t %.7f \t %.7f \t %.7f \t %.7f" % (i, yy, cpu_s, npu_s, yy / cpu_s, yy / npu_s))
+    #     # print(f"y: {y.flatten()[3260416 : 3260483]}")
+    #     # print(f"cpu reducesum: {ref.flatten()[3260416//8192 : 3260483//8192 + 1]}")
+    #     # print(f"npu reducesum: {npu_out.cpu()[:, :, :1].flatten()[3260416//8192 : 3260483//8192 + 1]}")
+
+    # data_compare(npu_out.cpu()[:, :, :1].to(torch.float32).detach().numpy(), ref.to(torch.float32).detach().numpy(), diff_thd=diff_thd, max_diff_hd=max_diff_hd, pct_thd=0)
+    
+    # print("loss")
+    # npu_l = lightning_indexer_kl_loss_ref_r(y.float(), Y.float(), npu_out.cpu()[:, :, :1], eps=eps, weight_type=weight_type)
+    # cpu_l = lightning_indexer_kl_loss_ref_r(y.float(), Y.float(), ref, eps=eps, weight_type=weight_type)
+    # data_compare(npu_l.to(torch.float32).detach().numpy(), cpu_l.to(torch.float32).detach().numpy(), diff_thd=diff_thd, max_diff_hd=max_diff_hd, pct_thd=0)
+
+    # print("P:")
+    return data_compare(npu_out.cpu().to(torch.float32).detach().numpy(), ref.detach().numpy(), diff_thd=diff_thd, max_diff_hd=max_diff_hd, pct_thd=0)
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +231,7 @@ def _check_zero_index_probs(npu_out, y_cpu, Y_cpu):
 # ---------------------------------------------------------------------------
 TESTS = [
     ("big basic_2d: (B, D) float32",         (800000, 2336),           {"deterministic": True}),
-    ("basic_2d: (B, D) float32",         (2, 2332),           None),
+    ("basic_2d: (B, D) float32",         (8888, 2332),           None),
     ("basic_3d: (B, H, D) float32",      (4, 10, 333),       {"eps": 0.5}),
     ("fp16: (B, H, D) float16",          (4, 2, 4444),       {"dtype": torch.float16, "diff_thd": 0.001}),
     ("bf16: (B, H, D) bfloat16",         (40, 264, 10),       {"eps": 0.5,"dtype": torch.bfloat16, "diff_thd": 0.005}),
@@ -200,7 +248,7 @@ TESTS = [
     ("probs large_d: (B, H, 512) float32",   (2125, 45, 8192),  {"weight_type": "probs"}),
     ("probs edge: zero target_score",        (2, 4, 128),       {"zero_target": True, "weight_type": "probs"}),
     ("probs edge: zero index_probs",         (2, 4, 128),       {"zero_index_probs": True, "weight_type": "probs"}),
-    # # --- weight_type='probs' with deterministic ---
+    # --- weight_type='probs' with deterministic ---
     ("probs deterministic_2d: (B, D) float32", (4000, 100),     {"weight_type": "probs", "deterministic": True}),
 ]
 
