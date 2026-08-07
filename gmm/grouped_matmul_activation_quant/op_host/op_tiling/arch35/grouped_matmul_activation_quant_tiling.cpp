@@ -384,7 +384,8 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::DoLibApiTiling()
     // 256 + 256 + 128 for groupM=640. These thin tails lower Cube utilization substantially.
     // Only shrink baseM and keep it Cube-aligned; this is safe for the existing L1/L0 buffers
     // and leaves non-integral average group sizes on the common path.
-    if (inputParams_.groupType == GroupedMatmul::SPLIT_M && inputParams_.groupNum > 0 &&
+    if (inputParams_.groupType == GroupedMatmul::SPLIT_M && inputParams_.mSize > 0 &&
+        inputParams_.groupNum > 0 &&
         inputParams_.mSize % inputParams_.groupNum == 0) {
         const uint64_t groupM = inputParams_.mSize / inputParams_.groupNum;
         const uint64_t groupMTileCount = Ops::Base::CeilDiv(groupM, basicTiling_.baseM);
