@@ -386,7 +386,7 @@ public:
             } else {
                 // start and end locate in tow or more G, but working same as crossing one complete block
                 s1FirstToken = 0;
-                s1LastToken = static_cast<int64_t>(actSeqLensQ_);
+                s1LastToken = static_cast<int64_t>(actSeqLensQ_) - 1;
             }
         }
 

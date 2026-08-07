@@ -782,6 +782,16 @@ public:
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSize);
             Mutex::Unlock<PIPE_V>(preMte2ToVId);
         }
+
+        if (constInfo_.sparseMode == fa_base_vector::BAND && runInfo.bIdx == 104 && runInfo.n2Idx == 2 &&
+            maskInfo.gs1StartIdx == 0 && maskInfo.s2StartIdx == 78080) {
+            uint32_t maskShape[] = {mDealSize, s2BaseSize};
+            AscendC::ShapeInfo maskShapeInfo(2, maskShape);
+            AscendC::DumpTensor(attenMaskUb, 0, mDealSize * s2BaseSize, maskShapeInfo);
+            printf("FA_MASK b=%u n2=%u gs1=%u s2=%u pre=%lld next=%lld skip=%d preSkip=%d\n", runInfo.bIdx,
+                   runInfo.n2Idx, maskInfo.gs1StartIdx, maskInfo.s2StartIdx, maskInfo.preToken, maskInfo.nextToken,
+                   IsSkipMask, IsSkipMaskForPre);
+        }
     }
 };
 
