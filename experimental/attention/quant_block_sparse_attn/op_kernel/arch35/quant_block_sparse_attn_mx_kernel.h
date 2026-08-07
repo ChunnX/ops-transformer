@@ -18,7 +18,6 @@
 #include "kernel_operator.h"
 #include "../quant_block_sparse_attn_mx_tiling_data.h"
 #include "quant_block_sparse_attn_common_arch35.h"
-#include "quant_block_sparse_attn_attenmask.h"
 #include "quant_block_sparse_attn_kvcache.h"
 #include "quant_block_sparse_attn_mx_block_cube.h"
 #include "quant_block_sparse_attn_mx_block_vec.h"
@@ -31,29 +30,19 @@ using namespace optiling;
 
 namespace BaseApi {
 // MX 独立 tiling/kernel 路径：两个 256 C1/V1 subLoop 生成 P[128,512]，再执行一次 C2/V2。
-template <typename inputType, typename mmType, typename outputType, QBSALayout layout, QBSALayout kvLayout,
-          S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType,
-          DTemplateType dVTemplateType, bool hasAtten, bool hasLse, bool isPa, bool useDn = true>
+template <bool hasAtten, bool hasLse>
 class QuantBlockSparseAttnMxKernel {
 public:
-    using INPUT_T = inputType;
-    using MM_T = mmType;
-    using OUTPUT_T = outputType;
-    static constexpr bool USE_DN = useDn;
+    using INPUT_T = fp8_e4m3fn_t;
+    using MM_T = float;
+    using OUTPUT_T = bfloat16_t;
     static constexpr bool HAS_ATTEN = hasAtten;
     static constexpr bool HAS_LSE = hasLse;
-    static constexpr bool IS_PA = isPa;
-    static constexpr QBSALayout LAYOUT = layout;
-    static constexpr QBSALayout KV_LAYOUT = kvLayout;
-    static constexpr uint32_t M_BASE = static_cast<uint32_t>(s1TemplateType);
-    static constexpr uint32_t S2_BASE = static_cast<uint32_t>(s2TemplateType);
+    static constexpr uint32_t M_BASE = 128U;
+    static constexpr uint32_t S2_BASE = 512U;
     static constexpr uint32_t S2_SPLIT = 256U;
-    static constexpr uint32_t D_BASE = static_cast<uint32_t>(dTemplateType);
-    static constexpr uint32_t DV_BASE = static_cast<uint32_t>(dVTemplateType);
-    static_assert(LAYOUT == QBSALayout::TND && KV_LAYOUT == QBSALayout::PA_BNSD && IS_PA,
-                  "MXFullQuantMode currently only supports TND query and PA_BNSD KV");
-    static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
-                  "MXFullQuantMode currently only supports S1=128, S2=512, D=128 and DV=128");
+    static constexpr uint32_t DV_BASE = 128U;
+    static constexpr uint32_t UB_BANK_CONFLICT_PAD_SIZE = 32U;
     // 延迟两个 task 执行 C2/V2。
     static constexpr uint32_t PRELOAD_N = 2U;
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1U;
@@ -72,9 +61,6 @@ public:
         // Q/K/V 在 cube 中结合 block_table 完成 PA 搬运。
         pipe = tPipe;
         tilingData = tiling;
-        queryPtr = query;
-        keyPtr = key;
-        valuePtr = value;
         sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
         sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
         metadataGm.SetGlobalBuffer((__gm__ int32_t *)metadata);
@@ -85,10 +71,10 @@ public:
         dc_preload(reinterpret_cast<__gm__ uint64_t *>(seqUsedKv), 0);
         InitConstInfo();
         InitMMResBuf();
-        cubeBlock.Init(pipe, &l1BufferManager, queryPtr, keyPtr, valuePtr, blockTable, qScale, kScale, vScale);
+        cubeBlock.Init(pipe, &l1BufferManager, query, key, value, blockTable, qScale, kScale, vScale);
         __gm__ uint8_t *pScalePtr = (tilingData->scaleParams.pScaleShapeSize == 0U) ? nullptr : pScale;
         vecBlock.Init(pipe, pScalePtr, softmaxLse, attentionOut, attenMask,
-                        tilingData->attenMaskParams.attenMaskS2Size);
+                      tilingData->attenMaskParams.attenMaskS2Size);
     }
 
     __aicore__ inline void Process()
@@ -163,7 +149,8 @@ private:
         constexpr uint32_t mm2LeftSize = M_BASE * S2_BASE * sizeof(INPUT_T) + M_BASE * S2_BASE / 32U;
         l1BufferManager.Init(pipe, 512U * 1024U);
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
-        ubBufferManager.Init(pipe, mm1ResultSize * 2U + mm2ResultSize);
+        // 在 cross-core BMM 结果区尾部保留 32B，使随后分配的 VF UB 地址错开一个 bank row。
+        ubBufferManager.Init(pipe, mm1ResultSize * 2U + mm2ResultSize + UB_BANK_CONFLICT_PAD_SIZE);
         bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
         bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
     }
@@ -184,26 +171,6 @@ private:
             bmm1Buffers.Get().WaitCrossCore();
             bmm2Buffers.Get().WaitCrossCore();
         }
-    }
-
-    __aicore__ inline uint32_t GetActualQSeqLen(uint32_t bIdx)
-    {
-        return static_cast<uint32_t>(cuSeqlensQGm.GetValue(bIdx + 1U) - cuSeqlensQGm.GetValue(bIdx));
-    }
-
-    __aicore__ inline uint32_t GetActualKvSeqLen(uint32_t bIdx)
-    {
-        return static_cast<uint32_t>(seqUsedKvGm.GetValue(bIdx));
-    }
-
-    __aicore__ inline uint32_t GetQTokenBase(uint32_t bIdx)
-    {
-        return static_cast<uint32_t>(cuSeqlensQGm.GetValue(bIdx));
-    }
-
-    __aicore__ inline uint32_t GetS1LoopStart(uint32_t bn1Idx, uint32_t bn1StartIdx, uint32_t s1StartIdx) const
-    {
-        return bn1Idx == bn1StartIdx ? s1StartIdx : 0U;
     }
 
     __aicore__ inline uint32_t GetS1LoopEnd(uint32_t bn1Idx, uint32_t bn1EndIdx, uint32_t s1EndIdx,
@@ -386,22 +353,22 @@ private:
                 const uint32_t bIdx = bn1Idx / constInfo.realN2Size;
                 const uint32_t n1Idx = bn1Idx % constInfo.realN2Size;
                 const uint32_t n2Idx = n1Idx / constInfo.gSize;
-                const uint32_t queryTokenBase = GetQTokenBase(bIdx);
-                const uint32_t actualS1Size = GetActualQSeqLen(bIdx);
-                const uint32_t actualS2Size = GetActualKvSeqLen(bIdx);
-                const uint32_t s1LoopStart = GetS1LoopStart(bn1Idx, bn1StartIdx, s1StartIdx);
+                const uint32_t queryTokenBase = static_cast<uint32_t>(cuSeqlensQGm.GetValue(bIdx));
+                const uint32_t actualS1Size =
+                    static_cast<uint32_t>(cuSeqlensQGm.GetValue(bIdx + 1U)) - queryTokenBase;
+                const uint32_t actualS2Size = static_cast<uint32_t>(seqUsedKvGm.GetValue(bIdx));
+                const uint32_t s1LoopStart = bn1Idx == bn1StartIdx ? s1StartIdx : 0U;
                 const uint32_t s1LoopEnd = GetS1LoopEnd(bn1Idx, bn1EndIdx, s1EndIdx, actualS1Size);
                 for (uint32_t s1OuterIdx = s1LoopStart; s1OuterIdx < s1LoopEnd; ++s1OuterIdx) {
                     // 当前 query block 的有效 sparse block 数。
                     const int32_t sparseLen = sparseSeqLenGm.GetValue(
-                        (static_cast<uint64_t>(bIdx) * constInfo.realN2Size + n1Idx) * constInfo.maxQb + s1OuterIdx);
+                        static_cast<uint64_t>(bn1Idx) * constInfo.maxQb + s1OuterIdx);
                     if (unlikely(sparseLen <= 0)) {
                         continue;
                     }
                     // sparseBase 指向 sparseIndices[B,N1,Qb,0]。
-                    const uint64_t sparseBase = (static_cast<uint64_t>(bIdx) * constInfo.realN2Size + n1Idx) *
-                                                    constInfo.maxQb * constInfo.maxKb +
-                                                static_cast<uint64_t>(s1OuterIdx) * constInfo.maxKb;
+                    const uint64_t sparseBase =
+                        (static_cast<uint64_t>(bn1Idx) * constInfo.maxQb + s1OuterIdx) * constInfo.maxKb;
                     const uint32_t s2LoopEnd = static_cast<uint32_t>(sparseLen - 1);
                     bool hasValidS2Task = false;
                     for (uint32_t s2LoopIdx = 0U; s2LoopIdx <= s2LoopEnd; s2LoopIdx += sparseBlocksPerTask) {
@@ -434,9 +401,6 @@ private:
     TPipe *pipe = nullptr;
     const QuantBlockSparseAttnMxTilingData *__restrict tilingData = nullptr;
     regbasemx::MxConstInfo constInfo;
-    __gm__ uint8_t *queryPtr = nullptr;
-    __gm__ uint8_t *keyPtr = nullptr;
-    __gm__ uint8_t *valuePtr = nullptr;
     GlobalTensor<int32_t> sparseIndicesGm;
     GlobalTensor<int32_t> sparseSeqLenGm;
     GlobalTensor<int32_t> metadataGm;
@@ -447,12 +411,8 @@ private:
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
     BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm2Buffers;
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
-    QuantBlockSparseAttnMxBlockCube<INPUT_T, MM_T, OUTPUT_T, LAYOUT, KV_LAYOUT, s1TemplateType, s2TemplateType,
-                                    dTemplateType, dVTemplateType, IS_PA, USE_DN>
-        cubeBlock;
-    QuantBlockSparseAttnMxBlockVec<INPUT_T, MM_T, OUTPUT_T, LAYOUT, KV_LAYOUT, s1TemplateType, s2TemplateType,
-                                   dTemplateType, dVTemplateType, HAS_ATTEN, HAS_LSE, IS_PA, USE_DN>
-        vecBlock;
+    QuantBlockSparseAttnMxBlockCube cubeBlock;
+    QuantBlockSparseAttnMxBlockVec<HAS_ATTEN, HAS_LSE> vecBlock;
 };
 } // namespace BaseApi
 
