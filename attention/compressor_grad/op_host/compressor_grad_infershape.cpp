@@ -1,4 +1,4 @@
-/**
+/* *
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -6,7 +6,12 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
+
+/*!
+ * \file compressor_grad_infershape.cpp
+ * \brief
+ */
 
 #include <graph/utils/type_utils.h>
 #include <register/op_impl_registry.h>
@@ -20,7 +25,7 @@ namespace ops {
     constexpr uint32_t TOKEN_X_INPUT_INDEX = 0;
     constexpr uint32_t WEIGHT_KV_INPUT_INDEX = 1;
     constexpr uint32_t WEIGHT_WGATE_INPUT_INDEX = 2;
-    constexpr uint32_t D_CMP_KV_INPUT_INDEX = 3; 
+    constexpr uint32_t D_CMP_KV_INPUT_INDEX = 3;
     constexpr uint32_t SOFTMAX_SCORE_INPUT_INDEX = 4;
     constexpr uint32_t KV_INPUT_INDEX = 5;
 
@@ -150,7 +155,8 @@ ge::graphStatus SetCompressorGradShapeDim(const CompressorGradProtoShapeParam &s
 
 ge::graphStatus InferDataTypeCompressorGrad(gert::InferDataTypeContext* context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE(context->GetNodeName(), "Context is nullptr."),
+    OP_CHECK_IF(context == nullptr,
+               OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("CompressorGrad", "context", "is nullptr"),
                return ge::GRAPH_FAILED);
     OP_LOGI(context->GetNodeName(), "Enter CompressorGrad inferDataType impl.");
 
@@ -164,18 +170,21 @@ ge::graphStatus InferDataTypeCompressorGrad(gert::InferDataTypeContext* context)
 
 ge::graphStatus InferShapeCompressorGrad(gert::InferShapeContext* context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE(context->GetNodeName(), "Context is nullptr."),
+    OP_CHECK_IF(context == nullptr,
+               OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("CompressorGrad", "context", "is nullptr"),
                return ge::GRAPH_FAILED);
     OP_LOGI(context->GetNodeName(), "Enter CompressorGrad infershape impl.");
 
     CompressorGradProtoShapeParam shapeParam {};
     auto apiRet = GetCompressorGradShapeDim(context, shapeParam);
-    OP_CHECK_IF((apiRet != GRAPH_SUCCESS),  OP_LOGE(context->GetNodeName(), "Context get input shape failed"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF((apiRet != GRAPH_SUCCESS),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "context", "get input shape failed"),
+                return ge::GRAPH_FAILED);
 
     apiRet = SetCompressorGradShapeDim(shapeParam, context);
-    OP_CHECK_IF((apiRet != GRAPH_SUCCESS), OP_LOGE(context->GetNodeName(), "Context set output shape failed"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF((apiRet != GRAPH_SUCCESS),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "context", "set output shape failed"),
+                return ge::GRAPH_FAILED);
 
     return GRAPH_SUCCESS;
 }
