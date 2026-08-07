@@ -296,7 +296,7 @@ def _cpu_mxfp8_golden(
     )
     attention_out = attention_out.to(torch.bfloat16)
     if not return_softmax_lse:
-        softmax_lse = torch.empty((0,), dtype=torch.float32)
+        softmax_lse = torch.empty((), dtype=torch.float32)
     return [attention_out, softmax_lse]
 
 
@@ -471,4 +471,4 @@ def cpu_quant_block_sparse_attn(
 
     if return_softmax_lse:
         return [attention_out, softmax_lse]
-    return [attention_out, torch.empty((0,), dtype=torch.float32)]
+    return [attention_out, torch.empty([], dtype=torch.float32)]
