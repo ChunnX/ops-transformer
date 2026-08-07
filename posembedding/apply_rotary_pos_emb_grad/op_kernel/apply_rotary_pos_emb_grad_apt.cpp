@@ -18,8 +18,9 @@
 #include "arch35/apply_rotary_pos_emb_grad_tiling_data.h"
 #include "arch35/apply_rotary_pos_emb_grad_bab.h"
 #include "arch35/apply_rotary_pos_emb_grad_ab.h"
-#include "arch35/apply_rotary_pos_emb_grad_a_and_b.h"
+#include "arch35/apply_rotary_pos_emb_grad_a.h"
 #include "arch35/apply_rotary_pos_emb_grad_dag.h"
+#include "arch35/apply_rotary_pos_emb_grad_rotary_x.h"
 
 enum class ApplyRopeGradDxTilingKey : uint32_t {
     TILING_KEY_BAB = 203,
@@ -44,8 +45,10 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
     if (g_coreType == AIC) {
         return;
     }
-    if (workspace == nullptr) {
-        return;
+    if constexpr (DxTilingKey != static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
+        if (workspace == nullptr) {
+            return;
+        }
     }
 
     REGISTER_TILING_DEFAULT(ApplyRopeGradTilingData);
@@ -71,10 +74,9 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
         op.Process();
         pipe.Reset();
     } else if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
-        ApplyRotaryPosEmbGradAAndB<DTYPE_DY> op(&pipe, &tilingData.ropeGradParams);
+        ApplyRotaryPosEmbGradA<DTYPE_DY> op(&pipe, &tilingData.ropeGradParams);
         op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin,
-                query, key,
-                gradQueryOut, gradKeyOut, gradCosOut, gradSinOut);
+                gradQueryOut, gradKeyOut);
         op.Process();
         pipe.Reset();
     }
@@ -85,6 +87,9 @@ __global__ __aicore__ void apply_rotary_pos_emb_grad(
     if constexpr (DcosFlag) {
         // A 模板 (205): 无广播轴，grad_cos/grad_sin 已在 kernel 内直接写回 GM，无需 reduce
         if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
+            ApplyNoBroadcastDcosDsin<DTYPE_DY> opGrad(&pipe, &tilingData.rotaryXParams);
+            opGrad.Init(gradQueryEmbed, gradKeyEmbed, query, key, gradCosOut, gradSinOut);
+            opGrad.Process();
             return;
         }
 

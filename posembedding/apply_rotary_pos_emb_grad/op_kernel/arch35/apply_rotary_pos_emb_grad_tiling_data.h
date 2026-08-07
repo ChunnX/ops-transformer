@@ -57,10 +57,24 @@ struct ApplyRopeGradRegbaseABParams {
     int64_t rotaryMode;        // HALF = 0
 };
 
+struct ApplyRotaryXParams {
+    int64_t b;                 // batch size
+    int64_t s;                 // seq_len
+    int64_t d;                 // head_dim
+    int64_t nQ;                // Q num_heads
+    int64_t nK;                // K num_heads
+    int64_t usedCoreNum;       // actual cores used
+    int64_t blockFactorN;      // flattened rows per core
+    int64_t blockTailFactorN;  // tail rows for the last core
+    int64_t ubFactorN;         // UB rows per iteration
+    int64_t rotaryMode;        // HALF = 0
+};
+
 struct ApplyRopeGradTilingData {
     Ops::Base::ReduceOpTilingData reduceTiling;
     ApplyRopeGradRegbaseParams ropeGradParams;          // BAB / A shared
     ApplyRopeGradRegbaseABParams ropeGradABParams;      // AB专用
+    ApplyRotaryXParams rotaryXParams;                   // A template grad_cos/grad_sin
     uint32_t dCosFlag;          // 0=不计算grad_cos/grad_sin, 1=需要计算(内联在kernel中同步完成)
     uint32_t layout;            // 0=BSND, 1=SBND, 2=BNSD(reserved)
 };

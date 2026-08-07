@@ -15,6 +15,7 @@
 #include <cmath>
 #include <graph/utils/type_utils.h>
 #include "tiling/tiling_api.h"
+#include "posembedding/apply_rotary_pos_emb_grad/op_kernel/arch35/apply_rotary_pos_emb_grad_tiling_key.h"
 #include "apply_rotary_pos_emb_grad_tiling.h"
 
 namespace {
@@ -758,12 +759,37 @@ ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::SetTilingKeyBlockDim(ui
     context_->SetTilingKey(tilingKey_);
     auto workspaces = context_->GetWorkspaceSizes(1);
     auto usrWorkSpaceSize = b_ * s_ * std::max(nQ_, nK_) * d_ * ge::GetSizeByDataType(dtype_) * INPUT_OUTPUT_NUM;
-    workspaces[0] = workspaces[0] + usrWorkSpaceSize;
-    if (dCosFlag_ == 1) {
+    if (dCosFlag_ == 1 && layout_ != ApplyRopeGradLayout::NO_BROADCAST) {
+        workspaces[0] = workspaces[0] + usrWorkSpaceSize;
         context_->SetScheduleMode(1); // batch mode, all cores start simultaneously
+        SetRotaryXTilingData();
     }
     OP_LOGD(context_->GetNodeName(), "workspaces[0] :%ld, usrWorkSpaceSize = %ld.\n",
         workspaces[0], usrWorkSpaceSize);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClass::SetRotaryXTilingData()
+{
+    int64_t totalN = nQ_ + nK_;
+    int64_t dSumNum = b_ * s_ * totalN;
+    int64_t blockFactorN = CeilDiv(dSumNum, usedCoreNum_);
+    int64_t rotaryUsedCoreNum = CeilDiv(dSumNum, blockFactorN);
+    int64_t blockTailFactorN = (dSumNum % blockFactorN == 0) ? blockFactorN : (dSumNum % blockFactorN);
+    int64_t dSize = CeilAlign(d_ * GetSizeByDataType(dtype_) / dSplitCoef_, blockSize_) * dSplitCoef_;
+    int64_t numDAvail = FloorDiv(static_cast<int64_t>(aicoreParams_.ubSize), DOUBLE_BUFFER * dSize);
+    int64_t ubFactorN = std::min(blockFactorN, numDAvail / 3);
+
+    tilingData_->rotaryXParams.b = b_;
+    tilingData_->rotaryXParams.s = s_;
+    tilingData_->rotaryXParams.d = d_;
+    tilingData_->rotaryXParams.nQ = nQ_;
+    tilingData_->rotaryXParams.nK = nK_;
+    tilingData_->rotaryXParams.usedCoreNum = rotaryUsedCoreNum;
+    tilingData_->rotaryXParams.blockFactorN = blockFactorN;
+    tilingData_->rotaryXParams.blockTailFactorN = blockTailFactorN;
+    tilingData_->rotaryXParams.ubFactorN = ubFactorN;
+    tilingData_->rotaryXParams.rotaryMode = static_cast<int64_t>(rotaryMode_);
     return ge::GRAPH_SUCCESS;
 }
 
