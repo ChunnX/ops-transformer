@@ -61,7 +61,7 @@
    - **1 专家/wave**：AIC 按 `G1(e)→G2(e)`；G2(e) 等 S(e) 12us → 每专家 12us 空泡，周期 **123us/专家**。
    - **2 专家/wave**：AIC 按 `G1(e0)→G1(e1)→G2(e0)→G2(e1)`；S(e) 藏在同 wave 的 G1(e1)/G2(e0) 后 → 无空泡，周期 **111us/专家**。
    - **3 专家/wave**：AIC 按 `G1(e0..e2)→G2(e0..e2)`；4 专家拆 3+1，尾 wave 单专家 → 最后一波 12us 空泡，≈**510us**（与 wave-2 打平略差 2us）。
-   - 循环参考 A8W8 `MegaMoeWave`：AIC `G1(B)→G2(B)→G1(B+1)`；AIV1 预取 `D(B+1)` + `C(B)`；AIV0 prologue 跨 wave 预取。
+   - 循环参考 A8W8 `MegaMoeWave`：AIC `G1(B)→G2(B)→G1(B+1)`；AIV1 预取 `D(B+1)` + `C(B)`（A8W4 现为逐专家 +1 dispatch 预取，2 专家/wave 下已跨 wave 边界，可复用）；AIV0 prologue 与 GMM 同步（A8W4：同一 scheduler tile 循环驱动，无需跨 wave 预取）。
 
 ## 6. 典型形态与总时长（可直接引用）
 
