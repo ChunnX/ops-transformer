@@ -15,23 +15,11 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include "../../../op_api/aclnn_attention_to_ffn_v2.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "opdev/platform.h"
 #include "platform/platform_info.h"
-
-extern "C" {
-aclnnStatus aclnnAttentionToFfnV2GetWorkspaceSize(
-    const aclTensor *context, const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId,
-    const aclTensor *layerId, const aclTensor *expertIds, const aclTensor *expertRankTable,
-    const aclTensor *scalesOptional, const aclTensor *activeMaskOptional, const char *group, int64_t worldSize,
-    const aclIntArray *ffnTokenInfoTableShape, const aclIntArray *ffnTokenDataShape,
-    const aclIntArray *attnTokenInfoTableShape, int64_t moeExpertNum, int64_t quantMode, int64_t syncFlag,
-    int64_t ffnStartRankId, uint64_t *workspaceSize, aclOpExecutor **executor);
-
-aclnnStatus aclnnAttentionToFfnV2(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
-}
 
 using namespace op;
 using namespace std;

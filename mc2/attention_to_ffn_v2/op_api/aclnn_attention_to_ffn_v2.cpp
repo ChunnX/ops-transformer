@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include "aclnn_attention_to_ffn_v2.h"
 #include "common/utils/op_mc2_def.h"
 #include <algorithm>
 #include "opdev/common_types.h"
