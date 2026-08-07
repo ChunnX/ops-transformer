@@ -24,7 +24,7 @@ TEST_PARAMS = {
         "B": [1],
         "S1": [1],
         "S2": [8193],
-        "N1": [64],
+        "N1": [64, 128],
         "N2": [1],
         "D": [512],
         "K": [512],
@@ -183,5 +183,5 @@ TEST_PARAMS = {
 }
 
 # 填入启用的测试参数
-ENABLED_PARAMS = [TEST_PARAMS["decode_typical"]]
+ENABLED_PARAMS = [TEST_PARAMS["decode_first"]]
 #ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
