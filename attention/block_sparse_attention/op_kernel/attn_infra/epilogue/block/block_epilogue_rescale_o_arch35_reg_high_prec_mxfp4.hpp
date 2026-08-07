@@ -105,8 +105,7 @@ public:
                 AscendC::LocalTensor<ElementO> oTransUBTensorB16 = oTransUBTensor.template ReinterpretCast<ElementO>();
                 AscendC::LocalTensor<ElementO> oUBTensorB16 = oUBTensor.template ReinterpretCast<ElementO>();
                 // embding size actualOriShape.m()
-                uint32_t embdingSize = actualOriShape.m();
-                uint32_t embedColumnCnt = embdingSize + MXFP4::DATA_BLOCK_BYTE / sizeof(ElementO);
+                uint32_t embedColumnCnt = EMB_ALIGN128 + MXFP4::DATA_BLOCK_BYTE / sizeof(ElementO);
                 // 搬回 oUBTensorB16
                 AscendC::DataCopy(oUBTensorB16, oTransUBTensorB16, actMSizeThisCore * embedColumnCnt);
                 AscendC::PipeBarrier<PIPE_V>();
@@ -117,6 +116,7 @@ public:
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(MXFP4::SYNC_ATTN_BUF_FLAG);
 
                 // copyUBOToGm
+                uint32_t embdingSize = actualOriShape.m();
                 uint32_t rowOffsetCurSubCore = subBlockIdx * splitMSizePerCore;
                 uint32_t colNumCurSubCore = tla::get<1>(gOTensor.shape());
                 auto gOTensorTlaTile = GetTile(gOTensor,
@@ -142,6 +142,7 @@ private:
     AscendC::LocalTensor<ElementDm>        dmUBTensor[MXFP4::UB_UPDATE_SCALE_CNT]; // updateScale
     CopyUbToGmO copyUbToGmO;
     static constexpr uint32_t VEC0 = 0;
+    static constexpr uint32_t EMB_ALIGN128 = 128;
 };
 
 }  // namespace NpuArch::Epilogue::Block
