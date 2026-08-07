@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 from dataclasses import dataclass
+from pathlib import Path
 
 import torch
 import torch_npu
@@ -45,8 +47,90 @@ CASES = {
             block_size=3,
             scramble_blocks=True,
         ),
+        # KPOOL-037 isolation: vary only the fourth TH batch around a
+        # zero-length batch with a nonzero historical start position.
+        Case(
+            "th_zero_history_b4_r4",
+            "TH",
+            (1, 1, 1, 0),
+            (0, 4, 4, 4),
+            4,
+            block_size=1,
+        ),
+        Case(
+            "th_zero_start0_b4_r4",
+            "TH",
+            (1, 1, 1, 0),
+            (0, 4, 4, 0),
+            4,
+            block_size=1,
+        ),
+        Case(
+            "th_nonzero_history_b4_r4",
+            "TH",
+            (1, 1, 1, 1),
+            (0, 4, 4, 4),
+            4,
+            block_size=1,
+        ),
+        Case(
+            "th_zero_history_b4_r16",
+            "TH",
+            (1, 1, 1, 0),
+            (0, 16, 16, 16),
+            16,
+            block_size=128,
+        ),
     )
 }
+
+
+def _parse_int_list(value: str) -> tuple[int, ...]:
+    return tuple(int(item) for item in value.split("|"))
+
+
+def _load_manifest_cases(path: Path) -> list[Case]:
+    cases = []
+    with path.open(encoding="utf-8", newline="") as stream:
+        for row in csv.DictReader(stream):
+            if row["expected"] != "run" or row["norm"] != "off" or row["rope"] != "off":
+                continue
+            batch_size = int(row["B"])
+            if row["layout"] == "BSH":
+                lengths = (int(row["length"]),) * batch_size
+            else:
+                lengths = _parse_int_list(row["seq_lens"])
+            start_pos = _parse_int_list(row["start_pos"])
+            if len(lengths) != batch_size or len(start_pos) != batch_size:
+                raise ValueError(f"invalid manifest batch shape: {row['case_id']}")
+            cases.append(
+                Case(
+                    name=row["case_id"],
+                    layout=row["layout"],
+                    lengths=lengths,
+                    start_pos=start_pos,
+                    cmp_ratio=int(row["cmp_ratio"]),
+                    block_size=int(row["block_size"]),
+                    scramble_blocks=row["block_table"] != "ordered",
+                )
+            )
+    if not cases:
+        raise ValueError(f"no executable Norm-off/RoPE-off cases in manifest: {path}")
+    return cases
+
+
+def _limit_batch(case: Case, batch_size: int) -> Case:
+    if batch_size <= 0 or batch_size > len(case.lengths):
+        raise ValueError(f"invalid batch limit {batch_size} for {case.name}")
+    return Case(
+        name=f"{case.name}_b{batch_size}",
+        layout=case.layout,
+        lengths=case.lengths[:batch_size],
+        start_pos=case.start_pos[:batch_size],
+        cmp_ratio=case.cmp_ratio,
+        block_size=case.block_size,
+        scramble_blocks=case.scramble_blocks,
+    )
 
 
 def _make_case_inputs(case: Case):
@@ -120,26 +204,29 @@ def _updated_mask(state_cache, cache_block_table, start_pos, lengths):
 def _precision(name, actual, expected, rtol, atol, required_percent=99.5):
     actual_fp32 = actual.float()
     expected_fp32 = expected.float()
+    abs_diff = (actual_fp32 - expected_fp32).abs()
     close = torch.isclose(
         actual_fp32, expected_fp32, rtol=rtol, atol=atol, equal_nan=True
     )
     pass_percent = float(close.float().mean().item() * 100.0) if close.numel() else 100.0
-    max_abs = (
-        float((actual_fp32 - expected_fp32).abs().max().item())
-        if actual_fp32.numel()
-        else 0.0
-    )
-    return {
+    result = {
         "name": name,
         "pass": pass_percent >= required_percent,
         "pass_percent": pass_percent,
-        "max_abs": max_abs,
+        "max_abs": float(abs_diff.max().item()) if abs_diff.numel() else 0.0,
         "rtol": rtol,
         "atol": atol,
     }
+    if not result["pass"] and abs_diff.numel():
+        max_index = list(torch.unravel_index(abs_diff.argmax(), abs_diff.shape))
+        result["max_index"] = [int(index.item()) for index in max_index]
+        index_tuple = tuple(max_index)
+        result["actual_at_max"] = float(actual_fp32[index_tuple].item())
+        result["expected_at_max"] = float(expected_fp32[index_tuple].item())
+    return result
 
 
-def run_case(case: Case):
+def run_case(case: Case, per_batch: bool = False):
     load_k_pool_public_api()
     torch_npu.npu.set_device(0)
     (
@@ -237,7 +324,7 @@ def run_case(case: Case):
             "nonzero_count": tail_nonzero,
         }
     )
-    return {
+    result = {
         "case": case.name,
         "layout": case.layout,
         "lengths": case.lengths,
@@ -248,6 +335,21 @@ def run_case(case: Case):
         "pass": all(check["pass"] for check in checks),
         "checks": checks,
     }
+    if per_batch:
+        batch_checks = []
+        for batch, length in enumerate(case.lengths):
+            valid_pools = (case.start_pos[batch] + length) // case.cmp_ratio
+            batch_check = _precision(
+                f"pooled_key_batch_{batch}",
+                actual_output[batch, :valid_pools],
+                golden_output[batch, :valid_pools],
+                rtol=0.0078125,
+                atol=0.0001,
+            )
+            batch_check["valid_pools"] = valid_pools
+            batch_checks.append(batch_check)
+        result["pooled_key_by_batch"] = batch_checks
+    return result
 
 
 def main():
@@ -255,9 +357,39 @@ def main():
     parser.add_argument(
         "--case", choices=(*CASES.keys(), "all"), default="bsh_minimal_r4"
     )
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        help="Run all Norm-off/RoPE-off executable cases from a CSV manifest.",
+    )
+    parser.add_argument(
+        "--manifest-case",
+        action="append",
+        help="Select one or more case_id values from --manifest.",
+    )
+    parser.add_argument(
+        "--per-batch",
+        action="store_true",
+        help="Include valid pooled_key precision results for each batch.",
+    )
+    parser.add_argument(
+        "--limit-batch",
+        type=int,
+        help="Keep only the first N batches of each selected case for isolation.",
+    )
     args = parser.parse_args()
-    selected = CASES.values() if args.case == "all" else (CASES[args.case],)
-    results = [run_case(case) for case in selected]
+    if args.manifest is not None:
+        selected = _load_manifest_cases(args.manifest)
+        if args.manifest_case:
+            selected_ids = set(args.manifest_case)
+            selected = [case for case in selected if case.name in selected_ids]
+            if not selected:
+                raise ValueError("none of --manifest-case values are executable manifest cases")
+    else:
+        selected = CASES.values() if args.case == "all" else (CASES[args.case],)
+    if args.limit_batch is not None:
+        selected = [_limit_batch(case, args.limit_batch) for case in selected]
+    results = [run_case(case, per_batch=args.per_batch) for case in selected]
     print(json.dumps(results, indent=2))
     if not all(result["pass"] for result in results):
         raise SystemExit(1)

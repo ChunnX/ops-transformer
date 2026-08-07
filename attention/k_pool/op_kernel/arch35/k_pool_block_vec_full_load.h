@@ -1234,7 +1234,7 @@ template <typename COMP>
 __aicore__ inline void KPoolBlockVectorFullLoad<COMP>::ComputeFullHistoryPool()
 {
     uint32_t dDealSize = BlockElementNum<HIDDEN_STATES_T>();
-    uint32_t dStartIdx = GetBlockIdx() * dDealSize;
+    uint32_t dStartIdx = constInfo_.aiCoreIdx * dDealSize;
     if (dStartIdx >= constInfo_.headDim) {
         return;
     }

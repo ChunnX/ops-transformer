@@ -1088,8 +1088,13 @@ __aicore__ inline void KPoolBlockVectorPerf<COMP>::ComputeVec1(const Vec1RunInfo
 template <typename COMP>
 __aicore__ inline void KPoolBlockVectorPerf<COMP>::ComputeFullHistoryPool()
 {
+    // A2 launches two AIV blocks per logical AIC index. Historical pooling
+    // traverses all batches, so only one AIV of each pair may own a D slice.
+    if ((GetBlockIdx() & 1U) != 0) {
+        return;
+    }
     uint32_t dDealSize = BlockElementNum<HIDDEN_STATES_T>();
-    uint32_t dStartIdx = GetBlockIdx() * dDealSize;
+    uint32_t dStartIdx = constInfo_.aiCoreIdx * dDealSize;
     if (dStartIdx >= constInfo_.headDim) {
         return;
     }
@@ -1140,6 +1145,7 @@ __aicore__ inline void KPoolBlockVectorPerf<COMP>::ComputeFullHistoryPool()
             uint64_t outGmOffset = outputPoolIdx * constInfo_.headDim + dStartIdx;
             DataCopyAlignUbToGm(cmpKvOutGm_[outGmOffset], outputUb, poolCount, dDealSize, dDealSize,
                                 constInfo_.headDim);
+            PipeBarrier<PIPE_ALL>();
             outputQue1.FreeTensor(outputUb);
         }
     }

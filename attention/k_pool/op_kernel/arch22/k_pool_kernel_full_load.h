@@ -120,7 +120,8 @@ KPoolKernelFullLoad<COMP>::Init(__gm__ uint8_t *hidden_states, __gm__ uint8_t *w
     // 剔除尾部的无效batch
     for (; constInfo.batchSize > 0; --constInfo.batchSize) {
         uint32_t bSeqUsed = tools_.GetSeqLength(constInfo.batchSize - 1);
-        if (bSeqUsed > 0) {
+        uint64_t bStartPos = tools_.GetStartPos(constInfo.batchSize - 1);
+        if (bSeqUsed > 0 || bStartPos > 0) {
             break;
         }
     }
