@@ -74,6 +74,7 @@ public:
         this->Attr("quant_mode").AttrType(OPTIONAL).Int();
         this->Attr("sync_flag").AttrType(OPTIONAL).Int();
         this->Attr("ffn_start_rank_id").AttrType(OPTIONAL).Int();
+        this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)

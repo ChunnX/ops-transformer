@@ -64,7 +64,7 @@ public:
         this->Attr("world_size").AttrType(REQUIRED).Int();
         this->Attr("token_info_table_shape").AttrType(REQUIRED).ListInt();
         this->Attr("token_data_shape").AttrType(REQUIRED).ListInt();
-
+        this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)

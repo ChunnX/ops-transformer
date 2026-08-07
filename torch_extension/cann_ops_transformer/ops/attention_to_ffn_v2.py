@@ -174,6 +174,7 @@ def _calc_window_size(ffn_token_info_table_shape, ffn_token_data_shape, quant_mo
     return ((raw_size + mb_align - 1) // mb_align) * mb_align
 
 
+
 class AttentionToFfnV2Buffer:
     """Communication buffer for attention_to_ffn_v2, wraps CommContextManager.
 
