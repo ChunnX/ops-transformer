@@ -723,6 +723,18 @@ ge::graphStatus CompressorTiling::CheckFeature() const
                 OP_LOGE(context_->opName, "blockSize should be within [%u, %u], but got %u", MIN_BLOCK_SIZE,
                         MAX_BLOCK_SIZE, pageAttentionParams_->blockSize),
                 return ge::GRAPH_FAILED);
+    // state_cache stride0 must be >= contiguous stride (dim1 * dim2).
+    // Only axis 0 non-contiguous is supported; axis 1/2 must remain contiguous.
+    // Full per-axis stride validation is done via GetInputStride in TilingCompressor entry
+    // (effective on ascend950) and via IsContiguousAxes in torch_extension csrc.
+    uint64_t contiguousStride0 = context_->stateCache.shape->GetShape().GetDim(1) *
+                                 context_->stateCache.shape->GetShape().GetDim(2);
+    OP_CHECK_IF(baseParams_->stateCacheStrideDim0 < contiguousStride0,
+                OP_LOGE(context_->opName,
+                        "state_cache stride0 (%lu) must be >= contiguous stride (%lu), "
+                        "only axis 0 non-contiguous is supported",
+                        baseParams_->stateCacheStrideDim0, contiguousStride0),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
