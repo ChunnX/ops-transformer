@@ -304,7 +304,6 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckFormat() const
     }
 
     const gert::CompileTimeTensorDesc *optionalDescs[] = {
-    const gert::CompileTimeTensorDesc *optionalDescs[] = {
         opParamInfo.attenMask.desc, opParamInfo.pScale.desc, opParamInfo.blockTable.desc,  opParamInfo.metadata.desc,
         opParamInfo.cuSeqlensQ.desc, opParamInfo.seqUsedKV.desc,
     };

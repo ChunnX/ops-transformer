@@ -256,7 +256,6 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::ParseAttributes(QuantBlockSparse
     tilingInfo.qBlockSizeVal = QBSAGetPositiveAttr(attrs, QBSA_SPARSE_Q_BLOCK_SIZE_ATTR_INDEX, QBSA_BLOCK_SIZE);
     tilingInfo.kvBlockSizeVal = QBSAGetPositiveAttr(attrs, QBSA_SPARSE_KV_BLOCK_SIZE_ATTR_INDEX, QBSA_BLOCK_SIZE);
 
-    opParamInfo.softmaxScale = attrs->GetAttrPointer<float>(QBSA_SOFTMAX_SCALE_ATTR_INDEX);
     opParamInfo.maskMode = attrs->GetAttrPointer<int64_t>(QBSA_MASK_MODE_ATTR_INDEX);
     opParamInfo.returnSoftmaxLse = attrs->GetAttrPointer<bool>(QBSA_RETURN_SOFTMAX_LSE_ATTR_INDEX);
     opParamInfo.layoutQ = attrs->GetAttrPointer<char>(QBSA_LAYOUT_Q_ATTR_INDEX);
