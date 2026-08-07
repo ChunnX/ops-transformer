@@ -92,13 +92,26 @@ A8W4 当前走 `MegaMoe` 逐专家/分阶段主流程：AIC 先跑全部专家�
 
 2 专家/wave 时 AIC 按 `G1(0)→G1(1)→G2(0)→G2(1)` 跑：**S(0) 做 12us 期间，AIC 正在跑 G1(1)（73us）**，等 S 空泡被吸收，AIC 连续 111us/专家、无空泡。同时第一波 G2(0) 提前到 176us（vs 分阶段 322us），combine 跟着前移，整体 ≈ 508us。
 
-### 3.4 收益来源分解
+### 3.4 wave-3：4=3+1 为什么不是最优（验证形态）
+
+![wave-3 模拟（算子总时长 ≈ 510us）](a8w4_wave3_pipeline_overview.svg)
+
+3 专家/wave 时 AIC 按 `G1(0)→G1(1)→G1(2)→G2(0)→G2(1)→G2(2)` 跑：**wave0 内 S0/S1/S2 全部藏进同 wave 的后续 G1/G2，AIC 连续 111us/专家、无空泡**。但 4 = 3 + 1，**wave1 只剩 1 个专家 → 单专家 wave 的 12us "等 S" 空泡重现**：G2(3) 等到 448us 才起（wave-2 只需 436us）。
+
+wall 由 combine 尾墙决定（末波 C(3) = [462, 510]）：
+
+- wave0 内 G2 间隔 38us < combine 48us → C(0)C(1)C(2) 串行积压（263→311→359→407）；
+- C(3) = max(G2(3)+14 = 462, C(2) 结束 407 + 48 = 455) = 462 → **wall ≈ 510us**。
+
+> **结论：wave-3（510us）与 wave-2（508us）基本打平、略差 2us**。4=3+1 的尾巴单专家 wave 空泡（+12us）抵消了 wave0 的 S 隐藏收益，大 wave 还让 wave0 内 combine 串行积压。这也与 3.7 的 wall 公式一致：公式对 N_末波 ≥ 2 成立（末波 2 → 508）；4=3+1 的 N_末波=1 违反约束 B，额外 +12us → 510。**2 仍是甜点；3 只适合专家数能被整除（如 6=3+3）的 case。**
+
+### 3.5 收益来源分解
 
 1. **消除"等 S"空泡**：相对 wave-1，2 专家/wave 把 4 × 12us = 48us 的空泡全部藏掉。
 2. **G2 / combine 前移**：相对现状，第一波 G2(0) 提前 146us（322→176），AIV1 的 combine 流提前清空，使最后一波 C(2)/C(3) 能贴着 G2 tile 就绪点（412/450us）启动，尾段缩短约 20us。
 3. **AIC / AIV0 满载**：AIC 的 444us GMM 工作连续执行；AIV0 的 P+Q 与 AIC 持平，仍不在关键路径。
 
-### 3.5 为什么 wave-2 已是模型下限（508us）
+### 3.6 为什么 wave-2 已是模型下限（508us）
 
 两个约束同时卡住，wall 无法更低（单核代表视图 + combine 串行模型）：
 
@@ -108,7 +121,9 @@ A8W4 当前走 `MegaMoe` 逐专家/分阶段主流程：AIC 先跑全部专家�
 
 > **注意：wave 不是越大越好。** N=4（= 当前分阶段结构）因为 G2(0) 被推到 322、第一波 combine 全部延后、AIV1 在 412us 时还忙着 C(1)，C(2)/C(3) 被拖到 432/480us，反而回到 528us。wave-3（4=3+1）≈510us 也比 wave-2 差 2us：尾巴单专家 wave 的 12us 等 S 空泡 + wave0 内 combine 串行积压（C 48 > G2 间隔 38）。**2 专家/wave 是甜点。**
 
-### 3.6 wave 粒度选择逻辑（两个约束 + wall 公式）
+### 3.7 wave 粒度选择逻辑（四个约束 + wall 公式）
+
+![四约束示意（A/B/C/D + wall 公式，约束 C 为分核逻辑场景图）](a8w4_wave_constraints_overview.svg)
 
 设单专家实测：G1=73、S=12、G2=38、C=48；wave B 含 N_B 个专家，同 wave 内 G2 背靠背（间隔 38us）。
 
@@ -121,6 +136,18 @@ $$14 + 10 N_B \le 73 \times N_{B+1} \quad(\approx N_B \le 7.3 \times N_{B+1})$$
 
 **约束 B —— 每波 ≥ 2 专家（避免单专家 wave）**：wave 内只有 1 个专家时，G2(e) 等 S(e) 12us 无处藏 → 12us 空泡（wave-1 全中招；wave-3 的 4=3+1 尾巴中招）。
 
+**约束 C —— 每 wave 的 GMM1 tile 总数 ≥ AIC 核数（任务量/核占用）**：GMM1 按 256×256 切 tile（`GMM1_TILE_M=256`、`L1_TILE_N=256`），各 AIC 核按 `loopIdx += blockNum` 步进领 tile。若某 wave 的 GMM1 tile 总数 < AIC 核数，必有核在 GMM1 阶段 0 tile → 直接进 GMM2，而 GMM2 的 `WaitForUpstreamReady` 要等 `swigluToGmm2Flag`（GMM1→S 完成）→ **该核空等一个 GMM1+S 周期**：
+
+$$\sum_{e \in wave} \Big\lceil \tfrac{tokens_e}{256} \Big\rceil \times \Big\lceil \tfrac{N1}{256} \Big\rceil \ge N_{AIC}$$
+
+（N1 = GMM1 输出/中间维；每专家 tile 数 = M-tile × N-tile。）
+
+- **与 token 路由强相关**：稀疏路由下有的专家 token 少（tile 少）甚至为 0（不产生 tile）→ 该 wave 有效 tile 变少，需更大 wave（每波专家数 ≥ ⌈aicNum / 每专家平均 tile⌉）才能凑够 aicNum 个 tile；**本质约束是每波（含末波）T_B ≥ aicNum**（"并入前一波"只是重排，不消除问题）；
+- **余数空等（T_B mod aicNum）**：tile 数几乎不可能整除 aicNum → 余数空等不可避免。wave 的 GMM1 阶段 = ⌈T_B/aicNum⌉ 轮，前 r = T_B mod aicNum 个核领 k+1 tile、其余 **aicNum−r 个核欠载空等 1 tile**（空等核数 = aicNum − r）→ **在 T_B ≥ aicNum 前提下让余数尽量大（整除 r=0 最佳）**，即每 wave 把 tile 凑满整数轮、余数尽量大以减少欠载核；**该空等主要落在末波**（前序波的欠载核可被越前进入下一波 GMM1 部分吸收）；
+- **与"末波取 2"的张力**：wall 公式偏好末波小，但末波也须满足 T_B ≥ aicNum 且余数尽量大；token 稀疏时末波可能需 >2 专家。
+
+**约束 D —— 末波专家数要小（wall 公式对末波的推论）**：combine 尾墙是每波必付的墙，wall = `44+111N+10×N_末波`——末波每多 1 专家，combine 链多 48us、末波 G2 只提前 38us（少一个前序专家）→ **净 +10us/专家**，故末波要尽量小。**末波的下界 2 不是约束 D 新增的，而是约束 B（每波 ≥2，防单专家 swiglu 空泡）对末波同样生效**——末波=1 即 wave-3 的 4=3+1 尾巴（510 vs 508），比末波=2 更差。故末波取 **2**；仅当约束 C（该波 tile ≥ aicNum）不满足时才放大。
+
 **wall 公式（拖尾恒被掩盖时，只与末波大小有关）**：对固定 N，**末波之前的专家数恒为 N − N_末波，前面的波怎么排都不影响**：
 
 $$\text{wall} = 44 + 111\times N + 10\times N_{\text{末波}}$$
@@ -132,8 +159,9 @@ $$\text{wall} = 44 + 111\times N + 10\times N_{\text{末波}}$$
 
 **结论**：
 1. 每波 ≥ 2（约束 B），拆分不得留下 `…+1` 的尾巴波；
-2. 末波取 **2**：wall = 64 + 111N，末波尾墙最小且必付；
-3. **每 wave 均匀分布且 ≥ 2**：同时满足 B，且保证约束 A 在 tile 级/保守两种实现下都不触发——最稳的默认值。
+2. 末波取 **2**（约束 D 要求末波小、下界 2 由约束 B 给定；前提：该波 GMM1 tile ≥ aicNum，见约束 C）：wall = 64 + 111N，末波尾墙最小且必付；
+3. **每 wave 均匀分布且 ≥ 2**：同时满足 B，且保证约束 A 在 tile 级/保守两种实现下都不触发——最稳的默认值；
+4. **wave 大小下界由任务量定（约束 C）**：每 wave（含末波）GMM1 tile 总数 ≥ aicNum，否则核空等；在此前提下余数 T_B mod aicNum 尽量大（整除最佳）以减少欠载核空等（末波最敏感）。
 
 ---
 

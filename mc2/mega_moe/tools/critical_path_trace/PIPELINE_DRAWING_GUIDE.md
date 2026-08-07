@@ -72,7 +72,7 @@
 | **wave-2（2 专家/wave）** | **≈ 508us** | **最优，模型下限** |
 | wave-3（3 专家/wave） | ≈ 510us | 4=3+1：尾 wave 单专家 12us 空泡 + wave0 内 combine 串行积压（C 48 > G2 间隔 38） |
 | 508 下限推导 | — | AIC 连续：G2(3) ≥ `30 + 4×73 + 3×38` = 436 起；combine 串行：C(3) ≥ C(2) ≥ G2(2)tile(412)+48 = 460 → wall ≥ 460+48 = 508 |
-| wave 粒度选择 | — | 约束A：上一波 combine 拖尾 `14+10N`us 须被下一波 GMM1（`73×N_next`）掩盖，否则下一波 combine 被推迟并级联（均匀波恒满足；tile 级下 8→2 也不破，破界需 N>7.3×N_next 或保守实现）；约束B：每波 ≥2（防单专家 12us 空泡）；wall = `44+111N+10×N_末波`（只与末波大小有关，前面的波怎么排不影响）→ 末波取 2、每 wave 均匀 ≥2 最稳 |
+| wave 粒度选择 | — | 约束A：上一波 combine 拖尾 `14+10N`us 须被下一波 GMM1（`73×N_next`）掩盖，否则下一波 combine 被推迟并级联（均匀波恒满足；tile 级下 8→2 也不破，破界需 N>7.3×N_next 或保守实现）；约束B：每波 ≥2（防单专家 12us 空泡）；约束C：每 wave GMM1 tile 总数 ≥ AIC 核数（256×256 tile、按核步进领，0-tile 核跳 GMM2 空等；tile 数 = Σ⌈tokens/256⌉×⌈N1/256⌉，token 稀疏时需放大 wave、本质每波含末波 T_B≥aicNum；余数空等不可避免 → T_B mod aicNum 尽量大、整除最佳，末波最敏感）；约束D：末波专家数小（拖尾短，wall +10/专家，wall 公式对末波的推论；下界 2 来自约束B 每波≥2）→ 末波取 2；wall = `44+111N+10×N_末波`（只与末波大小有关，前面的波怎么排不影响）→ 末波取 2（前提满足约束C）、每 wave 均匀 ≥2 最稳 |
 
 ## 7. 绘制 checklist
 
@@ -89,4 +89,5 @@
 - `artifacts/a8w4_wave1_pipeline_overview.svg` —— wave-1 模拟（546us，负面案例）
 - `artifacts/a8w4_wave2_pipeline_overview.svg` —— wave-2 模拟（508us，最优）
 - `artifacts/a8w4_wave3_pipeline_overview.svg` —— wave-3 模拟（510us，与 wave-2 打平略差）
+- `artifacts/a8w4_wave_constraints_overview.svg` —— 四约束（A/B/C/D + wall）总览示意（约束 C 含 tile→核 分核场景图）
 - `docs/mega_moe_a8w4_wave_design.md` —— 由上述数据推导的 wave 改造设计文档

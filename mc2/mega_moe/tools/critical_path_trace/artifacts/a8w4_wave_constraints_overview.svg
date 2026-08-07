@@ -1,0 +1,170 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1060" viewBox="0 0 1300 1060" font-family="'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <!-- 白色画布背景：保证在浅色/深色主题下都可读 -->
+  <rect x="0" y="0" width="1300" height="1060" fill="#ffffff"/>
+  <!-- ===================== 标题 / 口径 ===================== -->
+  <text x="650" y="26" text-anchor="middle" font-size="19" font-weight="bold" fill="#111827">MegaMoe A8W4 wave 粒度选择：四个约束示意</text>
+  <text x="40" y="48" font-size="12" fill="#4b5563">约束 A（combine 拖尾掩盖）/ B（每波≥2 防空泡）/ C（每 wave tile ≥ AIC 核数，分核逻辑）/ D（末波要小）+ wall 公式 ｜ 单核代表视图 + tile 分核视图</text>
+
+  <!-- ===================== 约束 A ===================== -->
+  <rect x="40" y="60" width="1220" height="200" fill="#f8fafc" stroke="#e2e8f0" rx="8"/>
+  <text x="60" y="84" font-size="14" font-weight="bold" fill="#111827">约束 A｜上一波 combine 拖尾须被下一波 GMM1 掩盖（否则下一波 combine 被推迟并级联）</text>
+  <text x="490" y="98" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b7280">波 B（2 专家）</text>
+  <text x="770" y="98" text-anchor="middle" font-size="11" font-weight="bold" fill="#6b7280">波 B+1（2 专家）</text>
+  <!-- 波边界虚线 -->
+  <line x1="604" y1="96" x2="604" y2="188" stroke="#9ca3af" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
+  <!-- AIC 行（G2 在前、G1 在后） -->
+  <g font-size="11" fill="#ffffff" text-anchor="middle" font-weight="bold">
+    <rect x="452" y="104" width="76" height="30" fill="#0891b2" rx="4"/>
+    <text x="490" y="124">G2(0)</text>
+    <rect x="528" y="104" width="76" height="30" fill="#0891b2" rx="4"/>
+    <text x="566" y="124">G2(1)</text>
+    <rect x="604" y="104" width="146" height="30" fill="#1d4ed8" rx="4"/>
+    <text x="677" y="124">G1(2)</text>
+    <rect x="750" y="104" width="146" height="30" fill="#1d4ed8" rx="4"/>
+    <text x="823" y="124">G1(3)</text>
+  </g>
+  <!-- AIV1 行（combine：C(1) 尾巴越过本波最后一个 G2） -->
+  <text x="60" y="174" font-size="11" font-weight="bold" fill="#111827">AIV1·C</text>
+  <g font-size="11" fill="#ffffff" text-anchor="middle" font-weight="bold">
+    <rect x="480" y="156" width="96" height="30" fill="#8b5cf6" rx="4"/>
+    <text x="528" y="176">C(0)</text>
+    <rect x="576" y="156" width="96" height="30" fill="#8b5cf6" rx="4"/>
+    <text x="624" y="176">C(1)</text>
+  </g>
+  <!-- 拖尾括号 -->
+  <line x1="604" y1="146" x2="672" y2="146" stroke="#dc2626" stroke-width="1.2"/>
+  <line x1="604" y1="141" x2="604" y2="146" stroke="#dc2626" stroke-width="1.2"/>
+  <line x1="672" y1="141" x2="672" y2="146" stroke="#dc2626" stroke-width="1.2"/>
+  <text x="638" y="138" text-anchor="middle" font-size="10.5" fill="#dc2626" font-weight="bold">拖尾 34 = 14+10×2</text>
+  <!-- 掩盖连接线 -->
+  <line x1="640" y1="156" x2="640" y2="134" stroke="#059669" stroke-width="1.2" stroke-dasharray="4,3"/>
+  <text x="660" y="202" font-size="11" fill="#059669" font-weight="bold">✓ G1(2) 掩盖拖尾（73 &gt; 34）</text>
+  <text x="60" y="232" font-size="12" fill="#374151">拖尾 = 14 + 10×N_B ≤ 73×N_{B+1}（均匀波恒满足；8→2 也满足 94 ≤ 146）</text>
+  <text x="60" y="250" font-size="12" fill="#dc2626">✗ 若拖尾盖不住（N_B &gt; 7.3×N_{B+1} 或保守实现）→ 波 B+1 首个 combine 被推迟并级联</text>
+
+  <!-- ===================== 约束 B ===================== -->
+  <rect x="40" y="272" width="1220" height="200" fill="#f8fafc" stroke="#e2e8f0" rx="8"/>
+  <text x="60" y="296" font-size="14" font-weight="bold" fill="#111827">约束 B｜每波 ≥ 2 专家（防单专家 swiglu 空泡）</text>
+  <!-- wave=1：负面 -->
+  <text x="60" y="318" font-size="12" font-weight="bold" fill="#dc2626">✗ wave=1（单专家）→ 周期 123us/专家</text>
+  <g font-size="11" fill="#ffffff" text-anchor="middle" font-weight="bold">
+    <rect x="170" y="324" width="146" height="30" fill="#1d4ed8" rx="4"/>
+    <text x="243" y="344">G1(e) 73</text>
+    <rect x="170" y="324" width="146" height="30" fill="none" stroke="#1d4ed8"/>
+    <rect x="316" y="324" width="24" height="30" fill="#e5e7eb" stroke="#dc2626" stroke-width="1" stroke-dasharray="3,2" rx="4"/>
+    <text x="328" y="343" fill="#6b7280" font-size="10">12</text>
+    <rect x="340" y="324" width="76" height="30" fill="#0891b2" rx="4"/>
+    <text x="378" y="344">G2(e) 38</text>
+  </g>
+  <text x="60" y="372" font-size="11.5" fill="#dc2626">G2(e) 等 S(e) 12us 无处藏 → AIC 空等 12us/专家（wave-1 全中招、wave-3 尾巴中招）</text>
+  <!-- wave=2：正面 -->
+  <text x="560" y="318" font-size="12" font-weight="bold" fill="#059669">✓ wave=2（双专家）→ 无空泡 111us/专家</text>
+  <g font-size="11" fill="#ffffff" text-anchor="middle" font-weight="bold">
+    <rect x="680" y="324" width="146" height="30" fill="#1d4ed8" rx="4"/>
+    <text x="753" y="344">G1(e0)</text>
+    <rect x="826" y="324" width="146" height="30" fill="#1d4ed8" rx="4"/>
+    <text x="899" y="344">G1(e1)</text>
+    <rect x="972" y="324" width="76" height="30" fill="#0891b2" rx="4"/>
+    <text x="1010" y="344">G2(e0)</text>
+    <rect x="1048" y="324" width="76" height="30" fill="#0891b2" rx="4"/>
+    <text x="1086" y="344">G2(e1)</text>
+  </g>
+  <text x="560" y="372" font-size="11.5" fill="#059669">S(e0) 藏在 G1(e1) 下（12 &lt; 73）→ 空泡消失</text>
+  <text x="60" y="446" font-size="12" fill="#374151">规则：每波 ≥ 2（约束 B）；该 ≥2 对末波同样生效——末波=1 即 wave-3 的 4=3+1（510 vs 508）</text>
+
+  <!-- ===================== 约束 C（分核逻辑） ===================== -->
+  <rect x="40" y="486" width="1220" height="320" fill="#f8fafc" stroke="#e2e8f0" rx="8"/>
+  <text x="60" y="510" font-size="14" font-weight="bold" fill="#111827">约束 C｜每 wave 的 GMM1 tile 总数 ≥ AIC 核数（分核逻辑）</text>
+  <text x="60" y="532" font-size="11.5" fill="#374151">分核方式：GMM1 按 256×256 切 tile；核 c 依次领 tile 下标 c, c+aicNum, c+2·aicNum…（stride = aicNum）。每专家 tile = ⌈tokens/256⌉×⌈N1/256⌉</text>
+
+  <!-- 场景 1：T_B=3 -->
+  <text x="60" y="576" font-size="11.5" font-weight="bold" fill="#dc2626">✗ T_B=3（&lt; aicNum=8）→ 0-tile 核空等整个 GMM1+S</text>
+  <g font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="bold">
+    <rect x="350" y="560" width="92" height="26" fill="#93c5fd" rx="3"/><text x="396" y="578" fill="#1e3a8a">1</text>
+    <rect x="446" y="560" width="92" height="26" fill="#93c5fd" rx="3"/><text x="492" y="578" fill="#1e3a8a">1</text>
+    <rect x="542" y="560" width="92" height="26" fill="#93c5fd" rx="3"/><text x="588" y="578" fill="#1e3a8a">1</text>
+    <rect x="638" y="560" width="92" height="26" fill="#fee2e2" stroke="#dc2626" stroke-width="1.2" rx="3"/><text x="684" y="578" fill="#dc2626">0 ✗</text>
+    <rect x="734" y="560" width="92" height="26" fill="#fee2e2" stroke="#dc2626" stroke-width="1.2" rx="3"/><text x="780" y="578" fill="#dc2626">0 ✗</text>
+    <rect x="830" y="560" width="92" height="26" fill="#fee2e2" stroke="#dc2626" stroke-width="1.2" rx="3"/><text x="876" y="578" fill="#dc2626">0 ✗</text>
+    <rect x="926" y="560" width="92" height="26" fill="#fee2e2" stroke="#dc2626" stroke-width="1.2" rx="3"/><text x="972" y="578" fill="#dc2626">0 ✗</text>
+    <rect x="1022" y="560" width="92" height="26" fill="#fee2e2" stroke="#dc2626" stroke-width="1.2" rx="3"/><text x="1068" y="578" fill="#dc2626">0 ✗</text>
+  </g>
+  <g font-size="9" fill="#6b7280" text-anchor="middle">
+    <text x="396" y="592">c0</text><text x="492" y="592">c1</text><text x="588" y="592">c2</text><text x="684" y="592">c3</text>
+    <text x="780" y="592">c4</text><text x="876" y="592">c5</text><text x="972" y="592">c6</text><text x="1068" y="592">c7</text>
+  </g>
+
+  <!-- 场景 2：T_B=8 -->
+  <text x="60" y="620" font-size="11.5" font-weight="bold" fill="#059669">✓ T_B=8（= aicNum）→ 完美均分、无空等</text>
+  <g font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="bold">
+    <rect x="350" y="602" width="92" height="26" fill="#93c5fd" rx="3"/><text x="396" y="620" fill="#1e3a8a">1</text>
+    <rect x="446" y="602" width="92" height="26" fill="#93c5fd" rx="3"/><text x="492" y="620" fill="#1e3a8a">1</text>
+    <rect x="542" y="602" width="92" height="26" fill="#93c5fd" rx="3"/><text x="588" y="620" fill="#1e3a8a">1</text>
+    <rect x="638" y="602" width="92" height="26" fill="#93c5fd" rx="3"/><text x="684" y="620" fill="#1e3a8a">1</text>
+    <rect x="734" y="602" width="92" height="26" fill="#93c5fd" rx="3"/><text x="780" y="620" fill="#1e3a8a">1</text>
+    <rect x="830" y="602" width="92" height="26" fill="#93c5fd" rx="3"/><text x="876" y="620" fill="#1e3a8a">1</text>
+    <rect x="926" y="602" width="92" height="26" fill="#93c5fd" rx="3"/><text x="972" y="620" fill="#1e3a8a">1</text>
+    <rect x="1022" y="602" width="92" height="26" fill="#93c5fd" rx="3"/><text x="1068" y="620" fill="#1e3a8a">1</text>
+  </g>
+
+  <!-- 场景 3：T_B=9 -->
+  <text x="60" y="662" font-size="11.5" font-weight="bold" fill="#d97706">T_B=9（k=1, r=1）→ 7 核欠载空等 1 轮</text>
+  <g font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="bold">
+    <rect x="350" y="644" width="92" height="26" fill="#1d4ed8" rx="3"/><text x="396" y="662">2</text>
+    <rect x="446" y="644" width="92" height="26" fill="#93c5fd" stroke="#f59e0b" stroke-width="2" rx="3"/><text x="492" y="662" fill="#1e3a8a">1</text>
+    <rect x="542" y="644" width="92" height="26" fill="#93c5fd" stroke="#f59e0b" stroke-width="2" rx="3"/><text x="588" y="662" fill="#1e3a8a">1</text>
+    <rect x="638" y="644" width="92" height="26" fill="#93c5fd" stroke="#f59e0b" stroke-width="2" rx="3"/><text x="684" y="662" fill="#1e3a8a">1</text>
+    <rect x="734" y="644" width="92" height="26" fill="#93c5fd" stroke="#f59e0b" stroke-width="2" rx="3"/><text x="780" y="662" fill="#1e3a8a">1</text>
+    <rect x="830" y="644" width="92" height="26" fill="#93c5fd" stroke="#f59e0b" stroke-width="2" rx="3"/><text x="876" y="662" fill="#1e3a8a">1</text>
+    <rect x="926" y="644" width="92" height="26" fill="#93c5fd" stroke="#f59e0b" stroke-width="2" rx="3"/><text x="972" y="662" fill="#1e3a8a">1</text>
+    <rect x="1022" y="644" width="92" height="26" fill="#93c5fd" stroke="#f59e0b" stroke-width="2" rx="3"/><text x="1068" y="662" fill="#1e3a8a">1</text>
+  </g>
+
+  <!-- 场景 4：T_B=15 -->
+  <text x="60" y="704" font-size="11.5" font-weight="bold" fill="#059669">✓ T_B=15（k=1, r=7）→ 仅 1 核欠载空等 1 轮（余数尽量大）</text>
+  <g font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="bold">
+    <rect x="350" y="686" width="92" height="26" fill="#1d4ed8" rx="3"/><text x="396" y="704">2</text>
+    <rect x="446" y="686" width="92" height="26" fill="#1d4ed8" rx="3"/><text x="492" y="704">2</text>
+    <rect x="542" y="686" width="92" height="26" fill="#1d4ed8" rx="3"/><text x="588" y="704">2</text>
+    <rect x="638" y="686" width="92" height="26" fill="#1d4ed8" rx="3"/><text x="684" y="704">2</text>
+    <rect x="734" y="686" width="92" height="26" fill="#1d4ed8" rx="3"/><text x="780" y="704">2</text>
+    <rect x="830" y="686" width="92" height="26" fill="#1d4ed8" rx="3"/><text x="876" y="704">2</text>
+    <rect x="926" y="686" width="92" height="26" fill="#1d4ed8" rx="3"/><text x="972" y="704">2</text>
+    <rect x="1022" y="686" width="92" height="26" fill="#93c5fd" stroke="#f59e0b" stroke-width="2" rx="3"/><text x="1068" y="704" fill="#1e3a8a">1</text>
+  </g>
+
+  <!-- 图例 -->
+  <g font-size="10.5" fill="#374151">
+    <rect x="350" y="720" width="16" height="12" fill="#1d4ed8" rx="2"/><text x="372" y="730">有 tile（领 2 个/忙）</text>
+    <rect x="520" y="720" width="16" height="12" fill="#93c5fd" rx="2"/><text x="542" y="730">有 1 个 tile（忙）</text>
+    <rect x="670" y="720" width="16" height="12" fill="#fee2e2" stroke="#dc2626" rx="2"/><text x="692" y="730">0-tile（跳 GMM2 空等）</text>
+    <rect x="850" y="720" width="16" height="12" fill="#93c5fd" stroke="#f59e0b" stroke-width="2" rx="2"/><text x="872" y="730">欠载空等 1 轮</text>
+  </g>
+  <text x="60" y="752" font-size="12" fill="#374151">T_B = Σ_{e∈wave} ⌈tokens_e/256⌉×⌈N1/256⌉ ≥ aicNum；余数 r = T_B mod aicNum → 欠载空等核数 = aicNum − r，故余数尽量大（整除最佳）</text>
+  <text x="60" y="776" font-size="12" fill="#dc2626">0-tile 核 → 直接进 GMM2 的 WaitForUpstreamReady（等 swigluToGmm2Flag）→ 空等一个 GMM1+S 周期；末波最敏感（前序波空等可被核越前进入下一波部分吸收）</text>
+
+  <!-- ===================== 约束 D + wall 公式 ===================== -->
+  <rect x="40" y="820" width="1220" height="180" fill="#f8fafc" stroke="#e2e8f0" rx="8"/>
+  <text x="60" y="844" font-size="14" font-weight="bold" fill="#111827">约束 D｜末波专家数要小（wall 公式对末波的推论）+ wall 公式</text>
+  <text x="60" y="866" font-size="12" fill="#374151">wall = 44 + 111×N + 10×N_末波（末波每多 1 专家 → +10us）；末波的下界 2 来自约束 B，不是 D 新增</text>
+  <line x1="430" y1="878" x2="430" y2="944" stroke="#9ca3af" stroke-width="1"/>
+  <text x="430" y="950" text-anchor="middle" font-size="9.5" fill="#6b7280">500us</text>
+  <g font-size="11" fill="#111827">
+    <text x="60" y="896">末波 = 2（最优）</text>
+    <rect x="430" y="888" width="24" height="10" fill="#059669"/>
+    <text x="462" y="896" fill="#059669" font-weight="bold">508 ✓</text>
+    <text x="60" y="910">末波 = 1（违反 B）</text>
+    <rect x="430" y="902" width="30" height="10" fill="#f59e0b"/>
+    <text x="468" y="910" fill="#d97706">510（+12 空泡，wave-3）</text>
+    <text x="60" y="924">末波 = 3</text>
+    <rect x="430" y="916" width="54" height="10" fill="#6b7280"/>
+    <text x="492" y="924" fill="#6b7280">518（+10）</text>
+    <text x="60" y="938">末波 = 4（=分阶段）</text>
+    <rect x="430" y="930" width="84" height="10" fill="#6b7280"/>
+    <text x="522" y="938" fill="#6b7280">528</text>
+  </g>
+  <text x="60" y="968" font-size="11.5" fill="#374151">N=4：末波=2 最优（508）；末波=1 是 wave-3（4=3+1，约束 B 空泡 → 510）；末波越大 wall 越晚（每专家 +10us，末波=4 即分阶段 528）</text>
+
+  <!-- ===================== 底部说明 ===================== -->
+  <text x="40" y="1010" font-size="11" fill="#6b7280">注：A 管跨波 combine 掩盖、B 管每波≥2 防空泡（对末波同样生效）、C 管 wave 大小下界（分核/tile，余数尽量大）、D 管末波要小（wall 公式推论）；均为单核代表视图 + tile 分核示意。</text>
+</svg>
