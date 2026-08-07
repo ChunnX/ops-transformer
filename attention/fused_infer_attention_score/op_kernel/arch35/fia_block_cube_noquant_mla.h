@@ -10,7 +10,7 @@
 
 /*!
  * \file fia_block_cube_noquant_mla.h
- * \brief
+ * \brief arch35 FIA block cube 非量化 MLA
  */
 #ifndef FIA_BLOCK_CUBE_NOQUANT_MLA_H_
 #define FIA_BLOCK_CUBE_NOQUANT_MLA_H_
@@ -370,7 +370,6 @@ public:
 
         outputBuf.SetCrossCore();
     }
-
 }; // FANoQuantMlaBlockCube
 
 template <typename INPUT_T, typename T, LayOutTypeEnum layout = LayOutTypeEnum::None,

@@ -468,7 +468,6 @@ void FiaTilingNonQuantMlaArch35::UpdateTilingKeyInfo()
     tilingKeyInfo_.hasAttenMask = fiaInfo_->attenMaskFlag;
     UpdateTilingKeyHasRope();
 
-
     if (fiaInfo_->pageAttentionFlag) {
         if (tilingData_.baseTiling.fiaPageAttentionParams.paLayoutType == 0) { // BNBD
             tilingKeyInfo_.kvLayoutType = 2;

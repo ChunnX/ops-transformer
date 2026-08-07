@@ -10,7 +10,7 @@
 
 /*!
  * \file fia_kernel_noquant_mla.h
- * \brief
+ * \brief arch35 FIA 非量化 MLA kernel
  */
 
 #ifndef FIA_KERNEL_NOQUANT_MLA_H_

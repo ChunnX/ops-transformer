@@ -10,7 +10,7 @@
 
 /*!
  * \file fia_block_vec_flashdecode_mla.h
- * \brief
+ * \brief arch35 FIA flashdecode MLA 向量块
  */
 #ifndef FIA_BLOCK_VEC_FLASHDECODE_MLA_H
 #define FIA_BLOCK_VEC_FLASHDECODE_MLA_H

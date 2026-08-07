@@ -10,7 +10,7 @@
 
 /*!
  * \file fia_block_vec_noquant_mla.h
- * \brief
+ * \brief arch35 FIA 非量化 MLA 向量块
  */
 #ifndef FIA_BLOCK_VEC_NOQUANT_MLA_H_
 #define FIA_BLOCK_VEC_NOQUANT_MLA_H_
@@ -390,7 +390,8 @@ public:
         LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
 
         if (likely(runInfo.actVecMSize != 0)) {
-            DataCopy(mm2AL1Tensor[s2BaseSize * dVBaseSize + runInfo.vecMbaseIdx * (AttentionCommon::BYTE_BLOCK / sizeof(INPUT_T))],
+            DataCopy(mm2AL1Tensor[s2BaseSize * dVBaseSize +
+                         runInfo.vecMbaseIdx * (AttentionCommon::BYTE_BLOCK / sizeof(INPUT_T))],
                      stage1CastTensor,
                      {s2BaseSize / 16, (uint16_t)runInfo.actVecMSize, (uint16_t)(vec1Srcstride - runInfo.actVecMSize),
                       (uint16_t)(mBaseSize - runInfo.actVecMSize)});
@@ -495,7 +496,8 @@ public:
     {
         int32_t vecMStartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
         int32_t vecMEndIdx = vecMStartIdx + runInfo.actVecMSize - 1;
-        int32_t s1StartTdx, s1EndTdx;
+        int32_t s1StartTdx;
+        int32_t s1EndTdx;
         bool ret = false;
         if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
             // S1G layout
@@ -739,7 +741,6 @@ public:
 
         bool IsSkipMask = IsSkipAttentionmask(maskInfo);
         bool IsSkipMaskForPre = IsSkipAttentionmaskForPre(maskInfo);
-
         if (IsSkipMask && IsSkipMaskForPre) {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSize);
             return;

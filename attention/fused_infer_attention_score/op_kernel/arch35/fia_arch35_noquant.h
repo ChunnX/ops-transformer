@@ -91,10 +91,9 @@ inline __aicore__ void fia_noquant_regbase(
                 isFd, emptyTensor, enableS1OutSplit>(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV,
                     blocktable, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
         } else {
-            run_fia_noquant_gqa_kernel<half, half, inOutLayoutType, config, hasAttenMask, KvLayoutType, isFd, emptyTensor,
-                                       enableS1OutSplit>(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV,
-                                                         blocktable, queryRope, keyRope, attentionOut, softmaxLse, user,
-                                                         tiling);
+            run_fia_noquant_gqa_kernel<half, half, inOutLayoutType, config, hasAttenMask, KvLayoutType, isFd,
+                emptyTensor, enableS1OutSplit>(query, key, value, attenMask, actualSeqLengths,
+                actualSeqLengthsKV, blocktable, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
         }
     } else {
         PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd,
@@ -146,10 +145,9 @@ inline __aicore__ void fia_noquant_regbase(
                 isFd, emptyTensor, enableS1OutSplit>(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV,
                     blocktable, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
         } else {
-            run_fia_noquant_gqa_kernel<bfloat16_t, bfloat16_t, inOutLayoutType, config, hasAttenMask, KvLayoutType, isFd,
-                                       emptyTensor, enableS1OutSplit>(query, key, value, attenMask, actualSeqLengths,
-                                                                      actualSeqLengthsKV, blocktable, queryRope, keyRope,
-                                                                      attentionOut, softmaxLse, user, tiling);
+            run_fia_noquant_gqa_kernel<bfloat16_t, bfloat16_t, inOutLayoutType, config, hasAttenMask, KvLayoutType,
+                isFd, emptyTensor, enableS1OutSplit>(query, key, value, attenMask, actualSeqLengths,
+                actualSeqLengthsKV, blocktable, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
         }
     } else {
         PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd,
