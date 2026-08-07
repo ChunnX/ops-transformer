@@ -45,8 +45,10 @@ using namespace Blaze::Gemm;
 using AscendC::Te::Get;
 using namespace Apace::AivComm;
 
-struct UdmaCommWaitPolicy {
-    __aicore__ inline void WaitTile(uint32_t tileIdx) {
+struct UdmaCommWaitPolicy
+{
+    __aicore__ inline void WaitTile(uint32_t tileIdx)
+    {
         AscendC::CrossCoreWaitFlag<0x2, PIPE_MTE2>(tileIdx);
     }
 };
@@ -109,7 +111,8 @@ public:
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMx<NONE_FULL_LOAD_MODE, false>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<
         DispatchPolicy, TypeA, LayoutA, TypeB, LayoutB, TypeC, LayoutC, BiasType, LayoutBias>;
-    using QuantMatmulKernelImpl = Kernel::QuantMatmulMxKernel<ProblemShape, BlockMmad, BlockScheduler, UdmaCommWaitPolicy>;
+    using QuantMatmulKernelImpl = Kernel::QuantMatmulMxKernel<ProblemShape, BlockMmad, BlockScheduler,
+        UdmaCommWaitPolicy>;
 
     // 参数类型
     using Params = typename QuantMatmulKernelImpl::Params;
