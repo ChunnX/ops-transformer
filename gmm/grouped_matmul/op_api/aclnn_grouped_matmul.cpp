@@ -85,11 +85,6 @@ static constexpr size_t SCALE_GROUP_DIM_INDEX = 1UL;
 static constexpr int64_t GROUP_LIST_CUMSUM = 0L;
 static constexpr int64_t GROUP_LIST_COUNT = 1L;
 static constexpr int64_t QUANT_GROUP_SIZE_S8S4 = 256L;
-static constexpr size_t TUNING_CONFIG_WEIGHT_FORMAT_INDEX = 1UL;
-static constexpr int64_t TUNING_CONFIG_SPECIAL_WEIGHT_FORMAT = 1L;
-static constexpr int64_t S8S4_NZ_DIM_NUM = 5L;
-static constexpr int64_t S8S4_NZ_N0 = 16L;
-static constexpr int64_t S8S4_NORMAL_NZ_C0 = 32L;
 static constexpr int64_t N_ALIGN_A4W4 = 8L;
 static constexpr int64_t QUANT_GROUP_SIZE_A4W4 = 2L;
 static constexpr size_t PER_CHANNEL_SCALE_DIM = 2UL;
@@ -220,14 +215,6 @@ bool IsS8S4PseudoQuantDataFlow(const gmm::GroupedMatmulParams &gmmParams)
         return false;
     }
     return (*gmmParams.scaleOptional)[0]->GetDataType() == DataType::DT_UINT64;
-}
-
-static bool IsS8S4SpecialWeightFormat(const gmm::GroupedMatmulParams &gmmParams)
-{
-    return gmmParams.tuningConfigOptional != nullptr &&
-           gmmParams.tuningConfigOptional->Size() > TUNING_CONFIG_WEIGHT_FORMAT_INDEX &&
-           (*gmmParams.tuningConfigOptional)[TUNING_CONFIG_WEIGHT_FORMAT_INDEX] ==
-               TUNING_CONFIG_SPECIAL_WEIGHT_FORMAT;
 }
 
 const char *GetGmmScenarioName(const DataType &xDtype, const DataType &weightDtype)
@@ -2407,49 +2394,9 @@ static aclnnStatus DataContiguousAndTransFormat(const aclTensor *tensor, const a
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus CheckS8S4WeightNzStorageShape(const gmm::GroupedMatmulParams &gmmParams,
-                                                 const aclTensor *weight)
-{
-    const op::Shape &viewShape = weight->GetViewShape();
-    CHECK_COND(viewShape.GetDimNum() == WEIGHT_DIM_A8W4, ACLNN_ERR_PARAM_INVALID,
-               "When S8S4 weight format is FRACTAL_NZ, weight view shape must be three-dimensional.");
-
-    const bool specialWeightFormat = IsS8S4SpecialWeightFormat(gmmParams);
-    const int64_t e = viewShape.GetDim(0);
-    const int64_t k = viewShape.GetDim(specialWeightFormat ? 2 : 1);
-    const int64_t n = viewShape.GetDim(specialWeightFormat ? 1 : 2);
-    CHECK_COND(e > 0 && k > 0 && n > 0, ACLNN_ERR_PARAM_INVALID,
-               "When S8S4 weight format is FRACTAL_NZ, E, K and N must be positive.");
-
-    const op::Shape &storageShape = weight->GetStorageShape();
-    const int64_t expectedOuter0 = specialWeightFormat ?
-                                       (k + S8S4_NORMAL_NZ_C0 - 1) / S8S4_NORMAL_NZ_C0 :
-                                       (n + S8S4_NORMAL_NZ_C0 - 1) / S8S4_NORMAL_NZ_C0;
-    const int64_t expectedOuter1 = specialWeightFormat ?
-                                       (n + S8S4_NZ_N0 - 1) / S8S4_NZ_N0 :
-                                       (k + S8S4_NZ_N0 - 1) / S8S4_NZ_N0;
-    const int64_t expectedC0 = S8S4_NORMAL_NZ_C0;
-    const bool shapeMatches = storageShape.GetDimNum() == S8S4_NZ_DIM_NUM && storageShape.GetDim(0) == e &&
-                              storageShape.GetDim(1) == expectedOuter0 &&
-                              storageShape.GetDim(2) == expectedOuter1 &&
-                              storageShape.GetDim(3) == S8S4_NZ_N0 && storageShape.GetDim(4) == expectedC0;
-    CHECK_COND(shapeMatches, ACLNN_ERR_PARAM_INVALID,
-               "When S8S4 weight format is FRACTAL_NZ, storage shape must match %s layout: "
-               "[E,%s,%s,16,%ld].",
-               specialWeightFormat ? "special ENK-NZ" : "normal KN-NZ",
-               specialWeightFormat ? "ceil(K/32)" : "ceil(N/32)",
-               specialWeightFormat ? "ceil(N/16)" : "ceil(K/16)", expectedC0);
-    return ACLNN_SUCCESS;
-}
-
 static aclnnStatus TransWeightToNzCheckAlign(gmm::GroupedMatmulParams &gmmParams, const aclTensor *weight,
                                              const DataType xDtype)
 {
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-        IsS8S4PseudoQuantDataFlow(gmmParams)) {
-        return CheckS8S4WeightNzStorageShape(gmmParams, weight);
-    }
-
     size_t viewDimNum = weight->GetViewShape().GetDimNum();
     uint64_t k = gmmParams.transposeWeight ? weight->GetViewShape().GetDim(viewDimNum - 1) :
                                              weight->GetViewShape().GetDim(viewDimNum - gmm::LAST_SECOND_DIM_INDEX);
@@ -2519,12 +2466,9 @@ static aclnnStatus TransWeightToNz(gmm::GroupedMatmulParams &gmmParams, aclOpExe
                 weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ_C0_32) {
                 break;
             }
-            const bool isDav3510 = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
-            const bool isS8S4PseudoQuant = isDav3510 && IsS8S4PseudoQuantDataFlow(gmmParams);
-            const bool skipDavQuantNzAlignCheck =
-                isDav3510 && IsQuant(xDtype, weight->GetDataType()) &&
-                weight->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ && !isS8S4PseudoQuant;
-            if (!skipDavQuantNzAlignCheck) {
+            if (!(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
+                  (IsQuant(xDtype, weight->GetDataType()) || IsS8S4PseudoQuantDataFlow(gmmParams)) &&
+                  weight->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ)) {
                 aclnnStatus ret = TransWeightToNzCheckAlign(gmmParams, weight, xDtype);
                 CHECK_RET(ret == ACLNN_SUCCESS, ret);
             }
