@@ -141,16 +141,9 @@ public:
     TBuf<> softmaxSumBuf[3];
     TBuf<> softmaxExpBuf[3];
     TBuf<> pScaleBuf[3];
-    TBuf<> preLoopMaxBuf;
-    TBuf<> preLoopSumBuf;
-    TBuf<> firstLoopSumBuf;
     TQue<QuePosition::VECIN, 1> qScaleInputQue;
     TQue<QuePosition::VECIN, 1> kScaleInputQue;
     TBuf<> vselrIndexesBuf[5];
-    TBuf<> mm2InBuf;
-    TBuf<> mm2OutBuf;
-    TQue<QuePosition::VECOUT, 1> maxBrdcst;
-    TQue<QuePosition::VECOUT, 1> sumBrdcst;
     CopyQueryScaleGmToUb<float, layout> copyQueryScaleGmToUb;
     CopyAntiquantGmToUb<float, kvLayout> copyKeyScaleGmToUb;
 
@@ -164,9 +157,6 @@ public:
     TQue<QuePosition::VECOUT, 1> softmaxLseQueue;
 
 protected:
-    __aicore__ inline void BroadCastAndCopyOut(RunInfo &runInfo, GlobalTensor<T> &sumGm, GlobalTensor<T> &maxGm,
-                                               int64_t gmOffset, int64_t calculateSize);
-
     template <typename VEC2_RES_T>
     __aicore__ inline void Bmm2DataCopyOut(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb,
                                            int64_t vec2S1Idx, int64_t vec2CalcSize = 0);
@@ -266,28 +256,6 @@ __aicore__ inline bool QBSABlockVec<TEMPLATE_ARGS>::SoftmaxInvalidLineCheck(Loca
     SetMaskNorm();
     ResetMask();
     return isUpdateNeedCheck;
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::BroadCastAndCopyOut(RunInfo &runInfo, GlobalTensor<T> &sumGm,
-                                                                        GlobalTensor<T> &maxGm, int64_t gmOffset,
-                                                                        int64_t calculateSize)
-{
-    LocalTensor<float> sumTensor = softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
-    LocalTensor<float> sumOutTensor = sumBrdcst.template AllocTensor<float>();
-    FaVectorApi::BroadcastMaxSum(sumOutTensor, sumTensor, runInfo.halfS1RealSize);
-    sumBrdcst.template EnQue(sumOutTensor);
-    sumBrdcst.template DeQue<float>();
-    DataCopy(sumGm[gmOffset], sumOutTensor, calculateSize);
-    sumBrdcst.template FreeTensor(sumOutTensor);
-
-    LocalTensor<float> maxOutTensor = maxBrdcst.template AllocTensor<float>();
-    LocalTensor<float> maxTensor = softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>();
-    FaVectorApi::BroadcastMaxSum(maxOutTensor, maxTensor, runInfo.halfS1RealSize);
-    maxBrdcst.template EnQue(maxOutTensor);
-    maxBrdcst.template DeQue<float>();
-    DataCopy(maxGm[gmOffset], maxOutTensor, calculateSize);
-    maxBrdcst.template FreeTensor(maxOutTensor);
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -513,17 +481,12 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxInitBuffer()
     tPipe->InitBuffer(softmaxSumBuf[0], 256);
     tPipe->InitBuffer(softmaxSumBuf[1], 256);
     tPipe->InitBuffer(softmaxSumBuf[2], 256);
-    tPipe->InitBuffer(maxBrdcst, 1, 2048);
-    tPipe->InitBuffer(sumBrdcst, 1, 2048);
     tPipe->InitBuffer(softmaxMaxBuf[0], 256);
     tPipe->InitBuffer(softmaxMaxBuf[1], 256);
     tPipe->InitBuffer(softmaxMaxBuf[2], 256);
     tPipe->InitBuffer(softmaxExpBuf[0], 256);
     tPipe->InitBuffer(softmaxExpBuf[1], 256);
     tPipe->InitBuffer(softmaxExpBuf[2], 256);
-    tPipe->InitBuffer(preLoopMaxBuf, 256);
-    tPipe->InitBuffer(preLoopSumBuf, 256);
-    tPipe->InitBuffer(firstLoopSumBuf, 256);
     tPipe->InitBuffer(qScaleInputQue, 1, 256 * 8);
     tPipe->InitBuffer(kScaleInputQue, 1, 1024);
 }
