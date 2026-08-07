@@ -18,9 +18,9 @@ from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 from .comm_context import CommContextManager
 
 
-class _AttentionToFFNV2OpBuilder(OpBuilder):
+class _AttentionToFfnV2OpBuilder(OpBuilder):
     def __init__(self):
-        super(_AttentionToFFNV2OpBuilder, self).__init__("npu_attention_to_ffn_v2")
+        super(_AttentionToFfnV2OpBuilder, self).__init__("npu_attention_to_ffn_v2")
 
     def sources(self):
         return ["ops/csrc/attention_to_ffn_v2.cpp"]
@@ -92,7 +92,7 @@ class _AttentionToFFNV2OpBuilder(OpBuilder):
             )
 
 
-_attention_to_ffn_v2_op_builder = _AttentionToFFNV2OpBuilder()
+_attention_to_ffn_v2_op_builder = _AttentionToFfnV2OpBuilder()
 
 
 @impl(AS_LIBRARY, _attention_to_ffn_v2_op_builder.name, "PrivateUse1")
@@ -174,7 +174,7 @@ def _calc_window_size(ffn_token_info_table_shape, ffn_token_data_shape, quant_mo
     return ((raw_size + mb_align - 1) // mb_align) * mb_align
 
 
-class AttentionToFFNV2Buffer:
+class AttentionToFfnV2Buffer:
     """Communication buffer for attention_to_ffn_v2, wraps CommContextManager.
 
     Uses the HCCL Channel backend (HcclCommMemReg + HcclChannelGetRemoteMems)
@@ -257,7 +257,7 @@ def attention_to_ffn_v2(
 
     Args:
         context (Tensor): Communication context tensor created by
-            ``AttentionToFFNV2Buffer``.
+            ``AttentionToFfnV2Buffer``.
         x (Tensor): Token data to send, shape (1, BS, H), dtype float16/bfloat16.
         session_id (Tensor): Session ID, shape (1,), dtype int32.
         micro_batch_id (Tensor): Micro batch ID, shape (1,), dtype int32.

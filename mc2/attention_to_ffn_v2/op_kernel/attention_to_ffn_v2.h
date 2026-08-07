@@ -33,7 +33,7 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
-namespace AttentionToFFNV2Impl {
+namespace AttentionToFfnV2Impl {
 constexpr uint8_t BUFFER_NUM = 2; // 多Buf
 constexpr uint32_t UB_ALIGN = 32; // UB按32字节对齐
 constexpr uint8_t WIN_OFFSET_CNT = 2;
@@ -50,11 +50,11 @@ constexpr uint32_t TOKEN_INFO_TABLE_COPY_BLOCK_CNT = 2; // tokenInfoTable在Data
 constexpr float INT8_MAX_VALUE = 127.0f;
 
 
-#define TemplateAttentionToFFNV2TypeClass typename XType, bool isQuant, bool isSync, bool isActiveMask
-#define TemplateAttentionToFFNV2TypeFunc XType, isQuant, isSync, isActiveMask
+#define TemplateAttentionToFfnV2TypeClass typename XType, bool isQuant, bool isSync, bool isActiveMask
+#define TemplateAttentionToFfnV2TypeFunc XType, isQuant, isSync, isActiveMask
 
 using namespace AscendC;
-template <TemplateAttentionToFFNV2TypeClass>
+template <TemplateAttentionToFfnV2TypeClass>
 class AttentionToFFN {
 public:
     __aicore__ inline AttentionToFFN(){};
@@ -164,8 +164,8 @@ private:
     __gm__ HcclOpResParam *winContext_{nullptr};
 };
 
-template <TemplateAttentionToFFNV2TypeClass>
-__aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::QuantInit(GM_ADDR scales)
+template <TemplateAttentionToFfnV2TypeClass>
+__aicore__ inline void AttentionToFFN<TemplateAttentionToFfnV2TypeFunc>::QuantInit(GM_ADDR scales)
 {
     scaleParamPad_ = SCALE_PARAM_PAD_SIZE; // 预留128B给量化参数
     hCommuSize_ = axisH_ * sizeof(int8_t) + scaleParamPad_;
@@ -179,9 +179,9 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::QuantIn
     tpipe_->InitBuffer(smoothScalesBuf_, hFp32Size);
 }
 
-template <TemplateAttentionToFFNV2TypeClass>
+template <TemplateAttentionToFfnV2TypeClass>
 __aicore__ inline void
-AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::InitByTinglingData(const AttentionToFFNTilingData *tilingData)
+AttentionToFFN<TemplateAttentionToFfnV2TypeFunc>::InitByTinglingData(const AttentionToFFNTilingData *tilingData)
 {
     aivId_ = GetBlockIdx();
     auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
@@ -216,8 +216,8 @@ AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::InitByTinglingData(const Atten
     aivWorkspaceOffset_ = Ceil(ffnNum_ * sizeof(int32_t), WORKSPACE_ELEMENT_OFFSET) * WORKSPACE_ELEMENT_OFFSET;
 }
 
-template <TemplateAttentionToFFNV2TypeClass>
-__aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::Init(
+template <TemplateAttentionToFfnV2TypeClass>
+__aicore__ inline void AttentionToFFN<TemplateAttentionToFfnV2TypeFunc>::Init(
     GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId, GM_ADDR layerId, GM_ADDR expertIds, GM_ADDR expertRankTable,
     GM_ADDR scales, GM_ADDR activeMask, GM_ADDR workspaceGM, TPipe *pipe, const AttentionToFFNTilingData *tilingData)
 {
@@ -276,8 +276,8 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::Init(
         (microBatchId_ * axisBS_ * (axisK_ + sharedExpertNum_) * axisHS_); // tokenData上attnWorkId以及microBatchId偏移
 }
 
-template <TemplateAttentionToFFNV2TypeClass>
-__aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::ActiveMaskCalCnt()
+template <TemplateAttentionToFfnV2TypeClass>
+__aicore__ inline void AttentionToFFN<TemplateAttentionToFfnV2TypeFunc>::ActiveMaskCalCnt()
 { // 搬运x_active_mask, 当前仅用于计算有效token总数
     LocalTensor<bool> activeMaskTensor = activeMaskBuf_.Get<bool>();
     LocalTensor<half> tempTensor = castTempBuf_.Get<half>();
@@ -295,9 +295,9 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::ActiveM
     curBsCnt_ = static_cast<int32_t>(sumOutTensor.GetValue(0));
 }
 
-template <TemplateAttentionToFFNV2TypeClass>
+template <TemplateAttentionToFfnV2TypeClass>
 __aicore__ inline void
-AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::ReduceMaxInplace(const LocalTensor<float> &srcLocal, uint32_t count)
+AttentionToFFN<TemplateAttentionToFfnV2TypeFunc>::ReduceMaxInplace(const LocalTensor<float> &srcLocal, uint32_t count)
 {
     uint64_t repsFp32 = count >> 6;       // 6 is count / elemPerRefFp32
     uint64_t offsetsFp32 = repsFp32 << 6; // 6 is repsFp32 * elemPerRefFp32
@@ -316,8 +316,8 @@ AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::ReduceMaxInplace(const LocalTe
     WholeReduceMax(srcLocal, srcLocal, mask, 1, REP_STRIDE, 1, REP_STRIDE);
 }
 
-template <TemplateAttentionToFFNV2TypeClass>
-__aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::QuantProcess(uint32_t expertIndex)
+template <TemplateAttentionToFfnV2TypeClass>
+__aicore__ inline void AttentionToFFN<TemplateAttentionToFfnV2TypeFunc>::QuantProcess(uint32_t expertIndex)
 {
     float dynamicScale = 0.0;
     uint32_t hOutSizeAlign = Ceil(axisH_ * sizeof(int8_t), UB_ALIGN) * UB_ALIGN;
@@ -365,8 +365,8 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::QuantPr
     floatLocalTemp.SetValue(hOutSizeAlign / sizeof(float), float(1.0) / dynamicScale); // int8->float32
 }
 
-template <TemplateAttentionToFFNV2TypeClass>
-__aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::FindExpertRank(int32_t expertId)
+template <TemplateAttentionToFfnV2TypeClass>
+__aicore__ inline void AttentionToFFN<TemplateAttentionToFfnV2TypeFunc>::FindExpertRank(int32_t expertId)
 {
     uint64_t expRankTableOffset = expertId * expRankTableM_ + layIdsExpRankTableOffset_;
     // 此前已刷新expertRankTableGM的整个Cache，可直接读取
@@ -376,8 +376,8 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::FindExp
     localExpId_ = expertRankTableGMTensor_.GetValue(expRankTableOffset + rankOffset + 1); // 拿到当前要发送的local专家号
 }
 
-template <TemplateAttentionToFFNV2TypeClass>
-__aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::SplitToCore(
+template <TemplateAttentionToFfnV2TypeClass>
+__aicore__ inline void AttentionToFFN<TemplateAttentionToFfnV2TypeFunc>::SplitToCore(
     uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId, uint32_t &endTokenId, uint32_t &sendTokenNum)
 {
     sendTokenNum = curSendCnt / curUseAivNum;               // 每个aiv需要发送的token数
@@ -392,9 +392,9 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::SplitTo
     endTokenId = startTokenId + sendTokenNum;
 }
 
-template <TemplateAttentionToFFNV2TypeClass>
+template <TemplateAttentionToFfnV2TypeClass>
 __aicore__ inline void
-AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::SetExpertAndRank(uint32_t tokenIdx, uint32_t tokenId, uint32_t topkId)
+AttentionToFFN<TemplateAttentionToFfnV2TypeFunc>::SetExpertAndRank(uint32_t tokenIdx, uint32_t tokenId, uint32_t topkId)
 {
     if (tokenIdx == 0) {
         SyncFunc<AscendC::HardEvent::MTE2_S>(); // 等待前面的expertIdsTensor_的搬入
@@ -414,9 +414,9 @@ AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::SetExpertAndRank(uint32_t toke
     }
 }
 
-template <TemplateAttentionToFFNV2TypeClass>
+template <TemplateAttentionToFfnV2TypeClass>
 __aicore__ inline void
-AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::CheckFlagAndSetTableGM(int32_t toRankId, GM_ADDR &toRankAddr,
+AttentionToFFN<TemplateAttentionToFfnV2TypeFunc>::CheckFlagAndSetTableGM(int32_t toRankId, GM_ADDR &toRankAddr,
                                                                        GlobalTensor<int32_t> &tokenInfoTableGMTensor)
 {
     if (winContext_->userMemType == 0) {
@@ -436,8 +436,8 @@ AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::CheckFlagAndSetTableGM(int32_t
     SyncFunc<AscendC::HardEvent::S_MTE3>(); // 等待flag
 }
 
-template <TemplateAttentionToFFNV2TypeClass>
-__aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::SendTokenToFFNByTokenIdx(uint32_t tokenIdx)
+template <TemplateAttentionToFfnV2TypeClass>
+__aicore__ inline void AttentionToFFN<TemplateAttentionToFfnV2TypeFunc>::SendTokenToFFNByTokenIdx(uint32_t tokenIdx)
 {
     GM_ADDR toRankAddr;
     GlobalTensor<int32_t> tokenInfoTableGMTensor;
@@ -492,8 +492,8 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::SendTok
                 statusCopyParams);
 }
 
-template <TemplateAttentionToFFNV2TypeClass>
-__aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::SendTokenToFFN()
+template <TemplateAttentionToFfnV2TypeClass>
+__aicore__ inline void AttentionToFFN<TemplateAttentionToFfnV2TypeFunc>::SendTokenToFFN()
 {
     uint32_t startId = 0;
     uint32_t endId = 0;
@@ -535,8 +535,8 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::SendTok
     }
 }
 
-template <TemplateAttentionToFFNV2TypeClass>
-__aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::SetFlagToFFN()
+template <TemplateAttentionToFfnV2TypeClass>
+__aicore__ inline void AttentionToFFN<TemplateAttentionToFfnV2TypeFunc>::SetFlagToFFN()
 {
     // 同步所有FFN节点全发 异步只有选中的节点发送
     uint32_t startFFNId = 0;
@@ -595,8 +595,8 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::SetFlag
     }
 }
 
-template <TemplateAttentionToFFNV2TypeClass>
-__aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::SetFlagInAttn()
+template <TemplateAttentionToFfnV2TypeClass>
+__aicore__ inline void AttentionToFFN<TemplateAttentionToFfnV2TypeFunc>::SetFlagInAttn()
 {
     // 未mask数据总量：axisX_ * (axisBS_ - curBsCnt_) * (axisK_ + sharedExpertNum_)
     uint32_t startId = 0;
@@ -625,8 +625,8 @@ __aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::SetFlag
     DataCopyPad(attnTableGMTensor[startId], tempTensor, dataCopyParams);
 }
 
-template <TemplateAttentionToFFNV2TypeClass>
-__aicore__ inline void AttentionToFFN<TemplateAttentionToFFNV2TypeFunc>::Process()
+template <TemplateAttentionToFfnV2TypeClass>
+__aicore__ inline void AttentionToFFN<TemplateAttentionToFfnV2TypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
         if constexpr (isActiveMask) {

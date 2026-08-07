@@ -30,9 +30,9 @@ using namespace AscendC;
 using namespace AttentionToFFNImpl;
 using namespace Mc2Tiling;
 
-static_assert(sizeof(AttentionToFFNV2Info) == sizeof(AttentionToFFNInfo),
+static_assert(sizeof(AttentionToFfnV2Info) == sizeof(AttentionToFFNInfo),
               "AttentionToFFN V1/V2 tiling info layout size mismatch");
-static_assert(sizeof(AttentionToFFNV2TilingData) == sizeof(AttentionToFFNTilingData),
+static_assert(sizeof(AttentionToFfnV2TilingData) == sizeof(AttentionToFFNTilingData),
               "AttentionToFFN V1/V2 tiling data layout size mismatch");
 
 template <bool isQuant, bool isSync, bool isActiveMask, uint8_t ArchTag>
@@ -40,12 +40,12 @@ __global__ __aicore__ void attention_to_ffn_v2(GM_ADDR mc2Context, GM_ADDR x, GM
                                             GM_ADDR layerId, GM_ADDR expertIds, GM_ADDR expertRankTable,
                                             GM_ADDR scales, GM_ADDR active_mask, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    REGISTER_TILING_DEFAULT(AttentionToFFNV2TilingData);
-    REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", AttentionToFFNV2TilingData);
+    REGISTER_TILING_DEFAULT(AttentionToFfnV2TilingData);
+    REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", AttentionToFfnV2TilingData);
     TPipe pipe;
 
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
-        GET_TILING_DATA_WITH_STRUCT(AttentionToFFNV2TilingData, tilingData, tilingGM);
+        GET_TILING_DATA_WITH_STRUCT(AttentionToFfnV2TilingData, tilingData, tilingGM);
         const auto *v1TilingData = reinterpret_cast<const AttentionToFFNTilingData *>(&tilingData);
         AttentionToFFN<DTYPE_X, isQuant, isSync, isActiveMask, AttentionToFFNContextType::MC2_CONTEXT> op;
         op.Init(mc2Context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scales, active_mask,

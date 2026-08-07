@@ -30,7 +30,7 @@ using namespace ge;
 using namespace Mc2Tiling;
 
 namespace MC2Tiling {
-ge::graphStatus AttentionToFFNV2TilingFunc(gert::TilingContext *context)
+ge::graphStatus AttentionToFfnV2TilingFunc(gert::TilingContext *context)
 {
     AttentionToFFNTilingConfig config;
     config.contextIndex = 0U;
@@ -59,28 +59,28 @@ ge::graphStatus AttentionToFFNV2TilingFunc(gert::TilingContext *context)
     }
 
     // Override tiling key from A3 to A5 after V1's tiling completes
-    AttentionToFFNV2TilingData *tilingData = context->GetTilingData<AttentionToFFNV2TilingData>();
-    uint32_t syncFlag = tilingData->attentionToFFNV2Info.syncFlag;
-    uint32_t quantMode = tilingData->attentionToFFNV2Info.quantMode;
-    bool activeMaskFlag = tilingData->attentionToFFNV2Info.isActiveMask;
+    AttentionToFfnV2TilingData *tilingData = context->GetTilingData<AttentionToFfnV2TilingData>();
+    uint32_t syncFlag = tilingData->attentionToFfnV2Info.syncFlag;
+    uint32_t quantMode = tilingData->attentionToFfnV2Info.quantMode;
+    bool activeMaskFlag = tilingData->attentionToFfnV2Info.isActiveMask;
 
     bool isSync = (syncFlag == 1U);
     bool isQuant = (quantMode == 2U); // DYNAMIC_QUANT_MODE
     const uint64_t tilingKey = GET_TPL_TILING_KEY(isQuant, isSync, activeMaskFlag, TILINGKEY_TPL_A5);
     context->SetTilingKey(tilingKey);
-    OP_LOGD(context->GetNodeName(), "AttentionToFFNV2 cur case tilingKey is %lu", tilingKey);
+    OP_LOGD(context->GetNodeName(), "AttentionToFfnV2 cur case tilingKey is %lu", tilingKey);
 
     return ge::GRAPH_SUCCESS;
 }
 
-struct AttentionToFFNV2CompileInfo {};
-ge::graphStatus TilingParseForAttentionToFFNV2(gert::TilingParseContext *context)
+struct AttentionToFfnV2CompileInfo {};
+ge::graphStatus TilingParseForAttentionToFfnV2(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(AttentionToFFNV2)
-    .Tiling(AttentionToFFNV2TilingFunc)
-    .TilingParse<AttentionToFFNV2CompileInfo>(TilingParseForAttentionToFFNV2);
+IMPL_OP_OPTILING(AttentionToFfnV2)
+    .Tiling(AttentionToFfnV2TilingFunc)
+    .TilingParse<AttentionToFfnV2CompileInfo>(TilingParseForAttentionToFfnV2);
 } // namespace MC2Tiling

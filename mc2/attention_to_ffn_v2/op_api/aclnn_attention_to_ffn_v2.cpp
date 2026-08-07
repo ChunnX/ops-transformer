@@ -43,7 +43,7 @@ static bool CheckNullStatus(const aclTensor *x, const aclTensor *sessionId, cons
     OP_CHECK_NULL(expertIds, return false);
     OP_CHECK_NULL(expertRankTable, return false);
     if ((group == nullptr) || (strnlen(group, HCCL_GROUP_NAME_MAX) == 0)) {
-        OP_LOGE_WITH_INVALID_INPUT("aclnnAttentionToFFNV2", "group");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnAttentionToFfnV2", "group");
         return false;
     }
 
@@ -60,7 +60,7 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *sessionId, c
 
     if (strnlen(group, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            "aclnnAttentionToFFNV2", "group", std::to_string(strnlen(group, HCCL_GROUP_NAME_MAX)).c_str(),
+            "aclnnAttentionToFfnV2", "group", std::to_string(strnlen(group, HCCL_GROUP_NAME_MAX)).c_str(),
             (std::string("The length of group must be less than ") + std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
     }
@@ -68,7 +68,7 @@ static aclnnStatus CheckParams(const aclTensor *x, const aclTensor *sessionId, c
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnAttentionToFFNV2GetWorkspaceSize(
+aclnnStatus aclnnAttentionToFfnV2GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId,
     const aclTensor *layerId, const aclTensor *expertIds, const aclTensor *expertRankTable,
     const aclTensor *scalesOptional, const aclTensor *activeMaskOptional, const char *group, int64_t worldSize,
@@ -79,19 +79,19 @@ aclnnStatus aclnnAttentionToFFNV2GetWorkspaceSize(
 {
     auto retParam = CheckParams(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, group);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    aclnnStatus ret = aclnnInnerAttentionToFFNV2GetWorkspaceSize(
+    aclnnStatus ret = aclnnInnerAttentionToFfnV2GetWorkspaceSize(
         context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scalesOptional, activeMaskOptional,
         const_cast<char *>(group), worldSize, ffnTokenInfoTableShape, ffnTokenDataShape, attnTokenInfoTableShape,
         moeExpertNum, quantMode, syncFlag, ffnStartRankId, workspaceSize, executor);
     return ret;
 }
 
-aclnnStatus aclnnAttentionToFFNV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+aclnnStatus aclnnAttentionToFfnV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
-    aclnnStatus ret = aclnnInnerAttentionToFFNV2(workspace, workspaceSize, executor, stream);
+    aclnnStatus ret = aclnnInnerAttentionToFfnV2(workspace, workspaceSize, executor, stream);
     return ret;
 }
 

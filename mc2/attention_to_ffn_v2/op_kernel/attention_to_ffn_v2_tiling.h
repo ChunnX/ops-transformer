@@ -18,7 +18,7 @@
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
-struct AttentionToFFNV2Info {
+struct AttentionToFfnV2Info {
     uint32_t X;
     uint32_t BS;
     uint32_t H;
@@ -44,10 +44,10 @@ struct AttentionToFFNV2Info {
     uint64_t totalWinSize;
 };
 
-struct AttentionToFFNV2TilingData {
+struct AttentionToFfnV2TilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling1;
-    AttentionToFFNV2Info attentionToFFNV2Info;
+    AttentionToFfnV2Info attentionToFfnV2Info;
 };
 
 #endif // ATTENTION_TO_FFN_V2_TILING_H

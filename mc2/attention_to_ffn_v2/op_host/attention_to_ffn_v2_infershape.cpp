@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file attention_to_ffn_infershape.cpp
+ * \file attention_to_ffn_v2_infershape.cpp
  * \brief
  */
 #include "runtime_util.h"
@@ -17,15 +17,15 @@
 
 using namespace ge;
 namespace ops {
-static ge::graphStatus InferShapeAttentionToFFNV2(gert::InferShapeContext *context)
+static ge::graphStatus InferShapeAttentionToFfnV2(gert::InferShapeContext *context)
 {
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeAttentionToFFNV2(gert::InferDataTypeContext *context)
+static ge::graphStatus InferDataTypeAttentionToFfnV2(gert::InferDataTypeContext *context)
 {
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(AttentionToFFNV2).InferShape(InferShapeAttentionToFFNV2).InferDataType(InferDataTypeAttentionToFFNV2);
+IMPL_OP_INFERSHAPE(AttentionToFfnV2).InferShape(InferShapeAttentionToFfnV2).InferDataType(InferDataTypeAttentionToFfnV2);
 } // namespace ops

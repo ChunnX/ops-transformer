@@ -383,7 +383,7 @@ def write_row_to_csv(csv_name: str, row_content: list):
 
 
 def get_performance(profiling_path):
-    op_types = ['AttentionToFFNV2']
+    op_types = ['AttentionToFfnV2']
     rank_types = ['attention']
     performance_info = {(op_type, rank_type): [] for op_type in op_types for rank_type in rank_types}
 
@@ -450,8 +450,8 @@ def get_attn2ffn_performance():
 
     print_attn2ffn_performance(attn2ffn_performance)
 
-    op_types = ['AttentionToFFNV2']
-    save_performance_result('AttentionToFFNV2', current_case_name, op_types, [attn2ffn_performance])
+    op_types = ['AttentionToFfnV2']
+    save_performance_result('AttentionToFfnV2', current_case_name, op_types, [attn2ffn_performance])
 
     return attn2ffn_performance
 
@@ -624,7 +624,7 @@ def attn2ffn_run_npu(queue, rank, x, expert_ids, expert_rank_table, scales, acti
     print('===================通信域建立完成======================')
 
     # 创建 CommContextManager context (Ascend 950 Channel backend)
-    ctx_buffer = cot.AttentionToFFNV2Buffer(
+    ctx_buffer = cot.AttentionToFfnV2Buffer(
         ep_group, world_size, ffn_token_info_table_shape, ffn_token_data_shape, quant_mode
     )
     print(f'[INFO] rank {rank} context created, ccl_buffer_size={ctx_buffer.ccl_buffer_size}')

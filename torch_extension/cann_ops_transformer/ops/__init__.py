@@ -71,5 +71,5 @@ from .ffn_to_attention_v2 import (
 )
 from .attention_to_ffn_v2 import (
     attention_to_ffn_v2,
-    AttentionToFFNV2Buffer,
+    AttentionToFfnV2Buffer,
 )

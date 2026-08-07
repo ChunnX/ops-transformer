@@ -9,16 +9,16 @@
  */
 
 /*!
- * \file attention_to_ffn_def.cpp
+ * \file attention_to_ffn_v2_def.cpp
  * \brief
  */
 
 #include "register/op_def_registry.h"
 
 namespace ops {
-class AttentionToFFNV2 : public OpDef {
+class AttentionToFfnV2 : public OpDef {
 public:
-    explicit AttentionToFFNV2(const char *name) : OpDef(name)
+    explicit AttentionToFfnV2(const char *name) : OpDef(name)
     {
         this->Input("context")
             .ParamType(REQUIRED)
@@ -89,5 +89,5 @@ public:
     }
 };
 
-OP_ADD(AttentionToFFNV2);
+OP_ADD(AttentionToFfnV2);
 } // namespace ops

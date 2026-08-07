@@ -25,7 +25,7 @@ const int DIM_THREE = 3;
  *        data is sent to peer ranks via the HCCL window. We therefore return an empty
  *        tensor so PyTorch's dispatcher contract (at least one output) is satisfied.
  */
-void NpuAttentionToFFNV2(
+void NpuAttentionToFfnV2(
     const at::Tensor &context, const at::Tensor &x, const at::Tensor &sessionId, const at::Tensor &microBatchId,
     const at::Tensor &layerId, const at::Tensor &expertIds, const at::Tensor &expertRankTable,
     const c10::optional<at::Tensor> &scalesOptional, const c10::optional<at::Tensor> &activeMaskOptional,
@@ -67,7 +67,7 @@ void NpuAttentionToFFNV2(
     at::IntArrayRef ffnTokenDataShapeRef(ffnTokenDataShape);
     at::IntArrayRef attnTokenInfoTableShapeRef(attnTokenInfoTableShape);
 
-    ACLNN_CMD(aclnnAttentionToFFNV2, context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable,
+    ACLNN_CMD(aclnnAttentionToFfnV2, context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable,
               scalesOptional, activeMaskOptional, groupPtr, worldSize, ffnTokenInfoTableShapeRef,
               ffnTokenDataShapeRef, attnTokenInfoTableShapeRef, moeExpertNum, quantMode, syncFlag, ffnStartRankId);
 }
@@ -75,6 +75,6 @@ void NpuAttentionToFFNV2(
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_attention_to_ffn_v2", &NpuAttentionToFFNV2, "npu_attention_to_ffn_v2");
+    m.def("npu_attention_to_ffn_v2", &NpuAttentionToFfnV2, "npu_attention_to_ffn_v2");
 }
 } // namespace op_api
