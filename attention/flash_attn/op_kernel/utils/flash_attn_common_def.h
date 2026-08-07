@@ -179,6 +179,8 @@ static constexpr ConfigParams ConfigValue[] = {
     // D=256 configurations
     {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256,
      inferDTemplateType::Aligned256}, // config=4
+    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned256,
+     inferDTemplateType::Aligned256}, // config=5
 };
 
 // Config macro definitions for D=64
@@ -191,6 +193,7 @@ static constexpr ConfigParams ConfigValue[] = {
 
 // Config macro definitions for D=256
 #define Config_S1Aligned64_S2Aligned256_DAligned256_DVAligned256 4
+#define Config_S1Aligned64_S2Aligned128_DAligned256_DVAligned256 5
 
 
 // PseMode
