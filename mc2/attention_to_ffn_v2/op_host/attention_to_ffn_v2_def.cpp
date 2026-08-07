@@ -16,10 +16,15 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class AttentionToFFN : public OpDef {
+class AttentionToFFNV2 : public OpDef {
 public:
-    explicit AttentionToFFN(const char *name) : OpDef(name)
+    explicit AttentionToFFNV2(const char *name) : OpDef(name)
     {
+        this->Input("context")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
@@ -84,5 +89,5 @@ public:
     }
 };
 
-OP_ADD(AttentionToFFN);
+OP_ADD(AttentionToFFNV2);
 } // namespace ops

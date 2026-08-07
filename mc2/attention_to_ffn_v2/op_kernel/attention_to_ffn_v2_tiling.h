@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file attention_to_ffn_tiling.h
+ * \file attention_to_ffn_v2_tiling.h
  * \brief
  */
-#ifndef ATTENTION_TO_FFN_TILING_H
-#define ATTENTION_TO_FFN_TILING_H
+#ifndef ATTENTION_TO_FFN_V2_TILING_H
+#define ATTENTION_TO_FFN_V2_TILING_H
 
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
@@ -50,4 +50,4 @@ struct AttentionToFFNV2TilingData {
     AttentionToFFNV2Info attentionToFFNV2Info;
 };
 
-#endif // ATTENTION_TO_FFN_TILING_H
+#endif // ATTENTION_TO_FFN_V2_TILING_H
