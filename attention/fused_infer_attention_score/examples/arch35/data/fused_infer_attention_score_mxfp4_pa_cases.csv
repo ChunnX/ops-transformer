@@ -1,8 +1,9 @@
 # name,layout,q_dtype,with_offset,b,kv_heads,s1,d,block_size,total_block_num,actual_kv_lens,block_table[,seed[,q_heads[,profile]]]
 # List fields use ';'. block_table is row-major [B, max_blocks_per_batch].
 # A positive optional seed selects reproducible pseudo-random data. It uses the
-# stable functional scale/offset range. A final profile value of 'wide' is only
-# permitted for the dedicated single-token antiquant case. Each full 16-FP4
+# stable functional scale/offset range. A final profile value of 'wide' selects
+# the dedicated antiquant stress data; 'pta_affine' reproduces the op-plugin
+# deterministic PTA peer generator exactly. Each full 16-FP4
 # segment remains a seeded permutation, so no E2M1 code drops from coverage.
 # The first two cases are the initial NZ numerical gate. All use the complete
 # FLOAT4_E2M1 code table; only shape/page-layout semantics live in this CSV.
@@ -73,3 +74,8 @@ bbh_bf16_asymmetric_random_group16_d512_boundaries_seed4194301,bbh,bf16,1,2,2,1,
 nz_fp16_symmetric_single_page_b1n1,nz,fp16,0,1,1,1,128,128,3,127,2
 bnbd_fp16_symmetric_single_page_b1n1,bnbd,fp16,0,1,1,1,128,128,3,127,2
 bbh_fp16_symmetric_single_page_b1n1,bbh,fp16,0,1,1,1,128,128,3,127,2
+# Exact reproduction of the real-NPU PTA case whose mode-6 PA, predequant PA
+# and contiguous non-PA outputs all share the same CPU-oracle deviation.
+nz_d256_fp16_asym_gqa_qh8_kvh2_s1x2_pta_affine,nz,fp16,1,3,2,2,256,128,12,128;256;257,11;3;8;1;10;4;7;0;6,999983,8,pta_affine
+bnbd_d256_fp16_asym_gqa_qh8_kvh2_s1x2_pta_affine,bnbd,fp16,1,3,2,2,256,128,12,128;256;257,11;3;8;1;10;4;7;0;6,999983,8,pta_affine
+bbh_d256_fp16_asym_gqa_qh8_kvh2_s1x2_pta_affine,bbh,fp16,1,3,2,2,256,128,12,128;256;257,11;3;8;1;10;4;7;0;6,999983,8,pta_affine

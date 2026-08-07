@@ -12,6 +12,9 @@
  * BBH), but the CPU oracle reads a separate canonical [P, N, Bs, D] code tensor.
  * This separation makes layout/packing errors observable instead of allowing the
  * producer and oracle to share a mistaken packed-address calculation.
+ * Set FIA_PRECISION_PEERS=1 to additionally run the same logical data through
+ * predequantized PA and contiguous non-PA controls. In that mode the controlled
+ * peer comparisons are the acceptance gate; the scalar CPU result is diagnostic.
  */
 
 #include <algorithm>
@@ -43,7 +46,7 @@ constexpr std::array<float, 16> FP4_E2M1_VALUES = {
 
 enum class QType : uint8_t { FP16, BF16 };
 enum class KvLayout : uint8_t { PA_NZ, PA_BNBD, PA_BBH };
-enum class RandomProfile : uint8_t { LEGACY, STABLE, WIDE };
+enum class RandomProfile : uint8_t { LEGACY, STABLE, WIDE, PTA_AFFINE };
 
 struct CaseConfig {
     std::string name;
@@ -148,7 +151,13 @@ const char *QTypeName(QType type)
 
 const char *RandomProfileName(RandomProfile profile)
 {
-    return profile == RandomProfile::WIDE ? "wide" : profile == RandomProfile::STABLE ? "stable" : "legacy";
+    if (profile == RandomProfile::WIDE) {
+        return "wide";
+    }
+    if (profile == RandomProfile::STABLE) {
+        return "stable";
+    }
+    return profile == RandomProfile::PTA_AFFINE ? "pta_affine" : "legacy";
 }
 
 float E8M0ToFloat(uint8_t exponent)
@@ -177,6 +186,10 @@ uint64_t SampleHash(uint64_t seed, uint64_t stream, int64_t p, int64_t n, int64_
 
 uint8_t Fp4Code(const CaseConfig &config, int64_t p, int64_t n, int64_t token, int64_t d, int64_t salt)
 {
+    if (config.randomProfile == RandomProfile::PTA_AFFINE) {
+        return static_cast<uint8_t>((11 * p + 7 * n + 5 * token + 3 * d +
+                                     static_cast<int64_t>(config.seed) + salt) & 0xFU);
+    }
     if (config.seed != 0) {
         // Every 16-element segment is a seeded random permutation of all E2M1
         // codes. This is less regular than the legacy affine pattern while
@@ -192,6 +205,10 @@ uint8_t Fp4Code(const CaseConfig &config, int64_t p, int64_t n, int64_t token, i
 
 uint8_t ScaleCode(const CaseConfig &config, int64_t p, int64_t n, int64_t group, int64_t token, int64_t salt)
 {
+    if (config.randomProfile == RandomProfile::PTA_AFFINE) {
+        return static_cast<uint8_t>(125 + ((5 * p + 3 * n + token + 7 * group +
+                                            static_cast<int64_t>(config.seed) + salt) & 0x3U));
+    }
     if (config.seed != 0) {
         // The stable profile preserves the established functional range while
         // varying every scale position. The wide profile is used only by a
@@ -210,6 +227,10 @@ uint8_t ScaleCode(const CaseConfig &config, int64_t p, int64_t n, int64_t group,
 
 float OffsetValue(const CaseConfig &config, int64_t p, int64_t n, int64_t group, int64_t token, int64_t salt)
 {
+    if (config.randomProfile == RandomProfile::PTA_AFFINE) {
+        return 0.03125F * static_cast<float>(((7 * p + 5 * n + token + 3 * group +
+                                               static_cast<int64_t>(config.seed) + salt) % 17) - 8);
+    }
     if (config.seed != 0) {
         // Both ranges are exactly representable in FP16 and BF16. The wide
         // range is isolated to the single-token antiquant test.
@@ -225,6 +246,10 @@ float OffsetValue(const CaseConfig &config, int64_t p, int64_t n, int64_t group,
 
 float QueryValue(const CaseConfig &config, int64_t b, int64_t n, int64_t s1, int64_t d)
 {
+    if (config.randomProfile == RandomProfile::PTA_AFFINE) {
+        return 0.03125F * static_cast<float>(((5 * b + 3 * n + 7 * s1 + d +
+                                               static_cast<int64_t>(config.seed)) % 15) - 7);
+    }
     if (config.seed != 0) {
         const uint64_t sample = SampleHash(config.seed, 0x5155455259ULL, b, n, s1, d, 0);
         return 0.0625F * static_cast<float>(static_cast<int64_t>(sample % 31U) - 15);
@@ -250,6 +275,66 @@ float DequantizeReference(uint8_t fp4Code, uint8_t scaleCode, uint16_t offset, b
     }
     value = RoundToBf16(value * RoundToBf16(E8M0ToFloat(scaleCode)));
     return DecodeQ(EncodeQ(value, qType), qType);
+}
+
+struct PrecisionStats {
+    int64_t failed = 0;
+    int64_t total = 0;
+    int64_t bitwiseMismatch = 0;
+    float fulfillPercent = 0.0F;
+    float maxRelativeError = 0.0F;
+    float maxAbsDifference = 0.0F;
+    bool passed = false;
+};
+
+PrecisionStats CompareFiaPrecision(const std::vector<uint16_t> &actual, const std::vector<uint16_t> &reference,
+                                   QType qType)
+{
+    PrecisionStats stats;
+    stats.total = static_cast<int64_t>(actual.size());
+    if (actual.size() != reference.size() || actual.empty()) {
+        return stats;
+    }
+    const float rtol = qType == QType::BF16 ? 0.0078125F : 0.005F;
+    const float atol = qType == QType::BF16 ? 0.0001F : 0.000025F;
+    const float relativeFloor = (1.0F / static_cast<float>(1U << 14U)) / 0.005F;
+    for (size_t index = 0; index < actual.size(); ++index) {
+        if (actual[index] != reference[index]) {
+            ++stats.bitwiseMismatch;
+        }
+        const float actualValue = DecodeQ(actual[index], qType);
+        const float referenceValue = DecodeQ(reference[index], qType);
+        const float absDifference = std::fabs(actualValue - referenceValue);
+        stats.maxAbsDifference = std::max(stats.maxAbsDifference, absDifference);
+        const bool bothNan = std::isnan(actualValue) && std::isnan(referenceValue);
+        const bool exactlyEqual = actualValue == referenceValue;
+        const bool bothFinite = std::isfinite(actualValue) && std::isfinite(referenceValue);
+        if (bothNan || exactlyEqual || (bothFinite && absDifference <= atol + rtol * std::fabs(referenceValue))) {
+            continue;
+        }
+        ++stats.failed;
+        if (bothFinite) {
+            const float denominator = std::max({std::fabs(actualValue), std::fabs(referenceValue), relativeFloor}) +
+                                      2.0e-9F;
+            stats.maxRelativeError = std::max(stats.maxRelativeError, absDifference / denominator);
+        } else {
+            stats.maxRelativeError = INFINITY;
+        }
+    }
+    stats.fulfillPercent = 100.0F * static_cast<float>(stats.total - stats.failed) / static_cast<float>(stats.total);
+    stats.passed = stats.fulfillPercent >= 99.5F && stats.maxRelativeError < 10.0F;
+    return stats;
+}
+
+void PrintFiaPrecision(const std::string &caseName, const char *comparison, const std::vector<uint16_t> &actual,
+                       const std::vector<uint16_t> &reference, QType qType)
+{
+    const PrecisionStats stats = CompareFiaPrecision(actual, reference, qType);
+    std::printf("[MXFP4_EXAMPLE_PRECISION][%s] %s=%s failed=%lld/%lld fulfill_percent=%.6f "
+                "bitwise_mismatch=%lld max_abs_difference=%.7f max_relative_error=%.7f\n",
+                caseName.c_str(), comparison, stats.passed ? "PASS" : "FAIL",
+                static_cast<long long>(stats.failed), static_cast<long long>(stats.total), stats.fulfillPercent,
+                static_cast<long long>(stats.bitwiseMismatch), stats.maxAbsDifference, stats.maxRelativeError);
 }
 
 int CreateTensor(const std::vector<uint16_t> &host, const std::vector<int64_t> &shape, aclDataType type,
@@ -326,6 +411,92 @@ void DestroyTensor(aclTensor *tensor, void *device)
     if (device != nullptr) {
         aclrtFree(device);
     }
+}
+
+bool RunPredequantPeer(aclrtStream stream, const CaseConfig &config, aclTensor *queryTensor,
+                       const std::vector<uint16_t> &keyHost, const std::vector<uint16_t> &valueHost,
+                       const std::vector<int64_t> &kvShape, aclTensor *blockTableTensor, int64_t blockSize,
+                       const char *peerName, std::vector<uint16_t> *outputHost)
+{
+    const std::vector<int64_t> queryShape = {config.b, config.qHeads, config.s1, config.d};
+    const std::vector<int64_t> actualQLens(static_cast<size_t>(config.b), config.s1);
+    void *keyDevice = nullptr;
+    void *valueDevice = nullptr;
+    void *outputDevice = nullptr;
+    void *workspace = nullptr;
+    aclTensor *keyTensor = nullptr;
+    aclTensor *valueTensor = nullptr;
+    aclTensor *outputTensor = nullptr;
+    aclTensorList *keyList = nullptr;
+    aclTensorList *valueList = nullptr;
+    aclIntArray *actualQArray = nullptr;
+    aclIntArray *actualKvArray = nullptr;
+    aclOpExecutor *executor = nullptr;
+    const auto cleanup = [&]() {
+        if (keyList != nullptr) aclDestroyTensorList(keyList);
+        if (valueList != nullptr) aclDestroyTensorList(valueList);
+        if (actualQArray != nullptr) aclDestroyIntArray(actualQArray);
+        if (actualKvArray != nullptr) aclDestroyIntArray(actualKvArray);
+        DestroyTensor(keyTensor, keyDevice);
+        DestroyTensor(valueTensor, valueDevice);
+        DestroyTensor(outputTensor, outputDevice);
+        if (workspace != nullptr) aclrtFree(workspace);
+    };
+
+    outputHost->assign(static_cast<size_t>(ShapeSize(queryShape)), EncodeQ(0.0F, config.qType));
+    int ret = CreateTensor(keyHost, kvShape, ToAclType(config.qType), &keyDevice, &keyTensor);
+    if (ret == ACL_SUCCESS) {
+        ret = CreateTensor(valueHost, kvShape, ToAclType(config.qType), &valueDevice, &valueTensor);
+    }
+    if (ret == ACL_SUCCESS) {
+        ret = CreateTensor(*outputHost, queryShape, ToAclType(config.qType), &outputDevice, &outputTensor);
+    }
+    if (ret != ACL_SUCCESS) {
+        std::printf("[MXFP4_EXAMPLE_PEER][%s] %s create tensor failed: %d\n", config.name.c_str(), peerName, ret);
+        cleanup();
+        return false;
+    }
+    keyList = aclCreateTensorList(&keyTensor, 1);
+    valueList = aclCreateTensorList(&valueTensor, 1);
+    actualQArray = aclCreateIntArray(actualQLens.data(), actualQLens.size());
+    actualKvArray = aclCreateIntArray(config.actualKvLens.data(), config.actualKvLens.size());
+    if (keyList == nullptr || valueList == nullptr || actualQArray == nullptr || actualKvArray == nullptr) {
+        std::printf("[MXFP4_EXAMPLE_PEER][%s] %s create list/array failed\n", config.name.c_str(), peerName);
+        cleanup();
+        return false;
+    }
+
+    uint64_t workspaceSize = 0;
+    char inputLayout[] = "BNSD";
+    ret = aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
+        queryTensor, keyList, valueList, nullptr, nullptr, actualQArray, actualKvArray,
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        blockTableTensor, nullptr, nullptr,
+        nullptr, nullptr, nullptr, nullptr,
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        config.qHeads, 1.0 / std::sqrt(static_cast<double>(config.d)), 65536, 65536, inputLayout, config.n, 0, 1,
+        blockSize, 0, false, 0, 0, 0, 0, outputTensor, nullptr, &workspaceSize, &executor);
+    if (ret != ACL_SUCCESS) {
+        std::printf("[MXFP4_EXAMPLE_PEER][%s] %s GetWorkspaceSize failed: %d\n", config.name.c_str(), peerName, ret);
+        cleanup();
+        return false;
+    }
+    if (workspaceSize > 0) {
+        ret = aclrtMalloc(&workspace, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    }
+    if (ret == ACL_SUCCESS) {
+        ret = aclnnFusedInferAttentionScoreV5(workspace, workspaceSize, executor, stream);
+    }
+    if (ret == ACL_SUCCESS) {
+        ret = aclrtSynchronizeStream(stream);
+    }
+    if (ret == ACL_SUCCESS) {
+        ret = aclrtMemcpy(outputHost->data(), outputHost->size() * sizeof(uint16_t), outputDevice,
+                          outputHost->size() * sizeof(uint16_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    }
+    std::printf("[MXFP4_EXAMPLE_PEER][%s] %s execution returned %d\n", config.name.c_str(), peerName, ret);
+    cleanup();
+    return ret == ACL_SUCCESS;
 }
 
 std::string Trim(const std::string &text)
@@ -454,10 +625,13 @@ bool ParseCase(const std::vector<std::string> &fields, CaseConfig *config)
         return false;
     }
     if (fields.size() == PROFILE_FIELD_COUNT) {
-        if (fields[14] != "wide") {
+        if (fields[14] == "wide") {
+            config->randomProfile = RandomProfile::WIDE;
+        } else if (fields[14] == "pta_affine") {
+            config->randomProfile = RandomProfile::PTA_AFFINE;
+        } else {
             return false;
         }
-        config->randomProfile = RandomProfile::WIDE;
     }
     return true;
 }
@@ -622,6 +796,7 @@ bool RunCase(aclrtStream stream, const CaseConfig &config)
         }
     }
     std::vector<uint16_t> output(static_cast<size_t>(ShapeSize(queryShape)), EncodeQ(0.0F, config.qType));
+    std::vector<uint16_t> expectedOutput(output.size(), EncodeQ(0.0F, config.qType));
     std::vector<uint8_t> canonicalKey(static_cast<size_t>(config.totalBlockNum * config.n * config.blockSize * config.d));
     std::vector<uint8_t> canonicalValue(canonicalKey.size());
     std::vector<uint8_t> key(static_cast<size_t>(ShapeSize(kvShape) / 2), 0);
@@ -654,6 +829,66 @@ bool RunCase(aclrtStream stream, const CaseConfig &config)
                     valueScale[static_cast<size_t>(index)] = ScaleCode(config, p, n, group, token, 1);
                     keyOffset[static_cast<size_t>(index)] = EncodeQ(OffsetValue(config, p, n, group, token, 0), config.qType);
                     valueOffset[static_cast<size_t>(index)] = EncodeQ(OffsetValue(config, p, n, group, token, 1), config.qType);
+                }
+            }
+        }
+    }
+
+    const bool runPrecisionPeers = std::getenv("FIA_PRECISION_PEERS") != nullptr;
+    std::vector<uint16_t> keyPredequantPa;
+    std::vector<uint16_t> valuePredequantPa;
+    std::vector<uint16_t> keyPredequantNonPa;
+    std::vector<uint16_t> valuePredequantNonPa;
+    std::vector<int64_t> nonPaKvShape;
+    if (runPrecisionPeers) {
+        keyPredequantPa.assign(static_cast<size_t>(ShapeSize(kvShape)), EncodeQ(0.0F, config.qType));
+        valuePredequantPa.assign(keyPredequantPa.size(), EncodeQ(0.0F, config.qType));
+        for (int64_t p = 0; p < config.totalBlockNum; ++p) {
+            for (int64_t n = 0; n < config.n; ++n) {
+                for (int64_t token = 0; token < config.blockSize; ++token) {
+                    for (int64_t d = 0; d < config.d; ++d) {
+                        const int64_t canonicalIndex = CanonicalIndex(config, p, n, token, d);
+                        const int64_t physicalIndex = KvLogicalIndex(config, p, n, token, d);
+                        const int64_t paramIndex = ParamIndex(config, p, n, d / GROUP_SIZE, token);
+                        const float keyValue = DequantizeReference(
+                            canonicalKey[static_cast<size_t>(canonicalIndex)],
+                            keyScale[static_cast<size_t>(paramIndex)], keyOffset[static_cast<size_t>(paramIndex)],
+                            config.withOffset, config.qType);
+                        const float valueValue = DequantizeReference(
+                            canonicalValue[static_cast<size_t>(canonicalIndex)],
+                            valueScale[static_cast<size_t>(paramIndex)], valueOffset[static_cast<size_t>(paramIndex)],
+                            config.withOffset, config.qType);
+                        keyPredequantPa[static_cast<size_t>(physicalIndex)] = EncodeQ(keyValue, config.qType);
+                        valuePredequantPa[static_cast<size_t>(physicalIndex)] = EncodeQ(valueValue, config.qType);
+                    }
+                }
+            }
+        }
+
+        const int64_t maxKvLen = *std::max_element(config.actualKvLens.begin(), config.actualKvLens.end());
+        nonPaKvShape = {config.b, config.n, maxKvLen, config.d};
+        keyPredequantNonPa.assign(static_cast<size_t>(ShapeSize(nonPaKvShape)), EncodeQ(0.0F, config.qType));
+        valuePredequantNonPa.assign(keyPredequantNonPa.size(), EncodeQ(0.0F, config.qType));
+        for (int64_t b = 0; b < config.b; ++b) {
+            for (int64_t s2 = 0; s2 < config.actualKvLens[static_cast<size_t>(b)]; ++s2) {
+                const int64_t p = config.blockTable[static_cast<size_t>(b * blocksPerBatch + s2 / config.blockSize)];
+                const int64_t token = s2 % config.blockSize;
+                for (int64_t n = 0; n < config.n; ++n) {
+                    for (int64_t d = 0; d < config.d; ++d) {
+                        const int64_t canonicalIndex = CanonicalIndex(config, p, n, token, d);
+                        const int64_t paramIndex = ParamIndex(config, p, n, d / GROUP_SIZE, token);
+                        const int64_t contiguousIndex = ((b * config.n + n) * maxKvLen + s2) * config.d + d;
+                        const float keyValue = DequantizeReference(
+                            canonicalKey[static_cast<size_t>(canonicalIndex)],
+                            keyScale[static_cast<size_t>(paramIndex)], keyOffset[static_cast<size_t>(paramIndex)],
+                            config.withOffset, config.qType);
+                        const float valueValue = DequantizeReference(
+                            canonicalValue[static_cast<size_t>(canonicalIndex)],
+                            valueScale[static_cast<size_t>(paramIndex)], valueOffset[static_cast<size_t>(paramIndex)],
+                            config.withOffset, config.qType);
+                        keyPredequantNonPa[static_cast<size_t>(contiguousIndex)] = EncodeQ(keyValue, config.qType);
+                        valuePredequantNonPa[static_cast<size_t>(contiguousIndex)] = EncodeQ(valueValue, config.qType);
+                    }
                 }
             }
         }
@@ -836,14 +1071,15 @@ bool RunCase(aclrtStream stream, const CaseConfig &config)
                     // outputTensor has Q_T dtype. Compare to the reference after
                     // its required final output conversion, rather than to the
                     // higher-precision host accumulator.
-                    const float expectedOutput = DecodeQ(EncodeQ(expected, config.qType), config.qType);
+                    const float expectedRounded = DecodeQ(EncodeQ(expected, config.qType), config.qType);
                     maxReferenceOutputCastDelta = std::max(maxReferenceOutputCastDelta,
-                                                           std::fabs(expectedOutput - expected));
+                                                           std::fabs(expectedRounded - expected));
                     const int64_t outIndex = ((b * config.qHeads + n) * config.s1 + s1) * config.d + d;
                     const uint16_t actualBits = output[static_cast<size_t>(outIndex)];
                     const float actual = DecodeQ(actualBits, config.qType);
-                    const float error = std::fabs(actual - expectedOutput);
+                    const float error = std::fabs(actual - expectedRounded);
                     const uint16_t expectedBits = EncodeQ(expected, config.qType);
+                    expectedOutput[static_cast<size_t>(outIndex)] = expectedBits;
                     const int32_t ulpDistance = std::abs(OrderedLowPrecisionBits(actualBits) -
                                                          OrderedLowPrecisionBits(expectedBits));
                     maxUlpDistance = std::max(maxUlpDistance, ulpDistance);
@@ -861,7 +1097,7 @@ bool RunCase(aclrtStream stream, const CaseConfig &config)
                         maxErrorD = d;
                         maxErrorActual = actual;
                         maxErrorExpectedAccumulated = expected;
-                        maxErrorExpectedOutput = expectedOutput;
+                        maxErrorExpectedOutput = expectedRounded;
                         maxErrorActualBits = actualBits;
                         maxErrorExpectedBits = expectedBits;
                     }
@@ -879,8 +1115,38 @@ bool RunCase(aclrtStream stream, const CaseConfig &config)
                 "expected_accumulated=%f expected_output=%f (0x%04x)\n",
                 config.name.c_str(), maxErrorB, maxErrorQHead, maxErrorS1, maxErrorD, maxErrorActual,
                 maxErrorActualBits, maxErrorExpectedAccumulated, maxErrorExpectedOutput, maxErrorExpectedBits);
+    PrintFiaPrecision(config.name, "mode6_vs_cpu", output, expectedOutput, config.qType);
+    bool peersOk = true;
+    if (runPrecisionPeers) {
+        std::vector<uint16_t> predequantPaOutput;
+        std::vector<uint16_t> nonPaOutput;
+        const bool predequantPaOk = RunPredequantPeer(
+            stream, config, queryTensor, keyPredequantPa, valuePredequantPa, kvShape, blockTableTensor,
+            config.blockSize, "predequant_pa", &predequantPaOutput);
+        const bool nonPaOk = RunPredequantPeer(
+            stream, config, queryTensor, keyPredequantNonPa, valuePredequantNonPa, nonPaKvShape, nullptr, 0,
+            "nonpa", &nonPaOutput);
+        peersOk = predequantPaOk && nonPaOk;
+        if (predequantPaOk) {
+            PrintFiaPrecision(config.name, "predequant_pa_vs_cpu", predequantPaOutput, expectedOutput,
+                              config.qType);
+            PrintFiaPrecision(config.name, "mode6_vs_predequant_pa", output, predequantPaOutput,
+                              config.qType);
+            peersOk = peersOk && CompareFiaPrecision(output, predequantPaOutput, config.qType).passed;
+        }
+        if (nonPaOk) {
+            PrintFiaPrecision(config.name, "nonpa_vs_cpu", nonPaOutput, expectedOutput, config.qType);
+            PrintFiaPrecision(config.name, "mode6_pa_vs_nonpa", output, nonPaOutput, config.qType);
+            peersOk = peersOk && CompareFiaPrecision(output, nonPaOutput, config.qType).passed;
+        }
+        if (predequantPaOk && nonPaOk) {
+            PrintFiaPrecision(config.name, "predequant_pa_vs_nonpa", predequantPaOutput, nonPaOutput,
+                              config.qType);
+            peersOk = peersOk && CompareFiaPrecision(predequantPaOutput, nonPaOutput, config.qType).passed;
+        }
+    }
     cleanup();
-    return maxError <= strictAbsoluteTolerance;
+    return runPrecisionPeers ? peersOk : maxError <= strictAbsoluteTolerance;
 }
 
 } // namespace
