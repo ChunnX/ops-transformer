@@ -132,8 +132,8 @@ gert::TilingContextPara MakeContext(const S8S4Case &param, optiling::GMMCompileI
     if (param.weightFormat == ge::FORMAT_FRACTAL_NZ) {
         weightStorageShape =
             param.specialWeightFormat ?
-                std::vector<int64_t>{param.groupNum, (param.k + 63) / 64, (param.n + 15) / 16, 16, 64} :
-                std::vector<int64_t>{param.groupNum, (param.n + 63) / 64, (param.k + 15) / 16, 16, 64};
+                std::vector<int64_t>{param.groupNum, (param.k + 31) / 32, (param.n + 15) / 16, 16, 32} :
+                std::vector<int64_t>{param.groupNum, (param.n + 31) / 32, (param.k + 15) / 16, 16, 32};
         if (param.weightDtype == ge::DT_INT32) {
             weightStorageShape.back() /= 8;
         }
@@ -615,6 +615,15 @@ TEST(GroupedS8S4BasicApiArch35Tiling, PackedInt32NzStorageIsEightToOne)
     const auto *tilingData = GetTilingData(tilingInfo);
     ASSERT_NE(tilingData, nullptr);
     EXPECT_EQ(tilingData->s8s4Params.weightPackedInt32, 1U);
+
+    auto compileInfo = MakeCompileInfo();
+    const auto context = MakeContext(param, &compileInfo);
+    const auto &storageShape = context.inputTensorDesc_[1].shape_.GetStorageShape();
+    ASSERT_EQ(storageShape.GetDimNum(), 5U);
+    EXPECT_EQ(storageShape.GetDim(1), (param.n + 31) / 32);
+    EXPECT_EQ(storageShape.GetDim(2), (param.k + 15) / 16);
+    EXPECT_EQ(storageShape.GetDim(3), 16);
+    EXPECT_EQ(storageShape.GetDim(4), 4);
 }
 
 TEST(GroupedS8S4BasicApiArch35Tiling, RejectsMalformedPackedInt32StorageShape)
@@ -627,7 +636,7 @@ TEST(GroupedS8S4BasicApiArch35Tiling, RejectsMalformedPackedInt32StorageShape)
     EXPECT_FALSE(ExecuteS8S4Tiling(param, tilingInfo));
 }
 
-TEST(GroupedS8S4BasicApiArch35Tiling, SpecialEnkNzWeightIsRecorded)
+TEST(GroupedS8S4BasicApiArch35Tiling, RejectsSpecialEnkNzWithoutOffset)
 {
     S8S4Case param;
     param.k = 2048;
@@ -638,13 +647,7 @@ TEST(GroupedS8S4BasicApiArch35Tiling, SpecialEnkNzWeightIsRecorded)
     param.tuningConfig = {0, 1};
 
     TilingInfo tilingInfo;
-    ASSERT_TRUE(ExecuteS8S4Tiling(param, tilingInfo));
-    EXPECT_EQ(tilingInfo.tilingKey, GetExpectedS8S4TilingKey(param.weightFormat, WQGMM_PER_GROUP));
-    const auto *tilingData = GetTilingData(tilingInfo);
-    ASSERT_NE(tilingData, nullptr);
-    EXPECT_EQ(tilingData->s8s4Params.specialWeightFormat, 1U);
-    EXPECT_EQ(tilingData->mmTilingData.k, 2048U);
-    EXPECT_EQ(tilingData->mmTilingData.n, 2048U);
+    EXPECT_FALSE(ExecuteS8S4Tiling(param, tilingInfo));
 }
 
 TEST(GroupedS8S4BasicApiArch35Tiling, PerchannelSpecialEnkUsesStandardW8NzWorkspaceStride)
@@ -665,6 +668,14 @@ TEST(GroupedS8S4BasicApiArch35Tiling, PerchannelSpecialEnkUsesStandardW8NzWorksp
     const auto *tilingData = GetTilingData(tilingInfo);
     ASSERT_NE(tilingData, nullptr);
     EXPECT_EQ(tilingData->s8s4Params.specialWeightFormat, 1U);
+    auto compileInfo = MakeCompileInfo();
+    const auto context = MakeContext(param, &compileInfo);
+    const auto &storageShape = context.inputTensorDesc_[1].shape_.GetStorageShape();
+    ASSERT_EQ(storageShape.GetDimNum(), 5U);
+    EXPECT_EQ(storageShape.GetDim(1), (param.k + 31) / 32);
+    EXPECT_EQ(storageShape.GetDim(2), (param.n + 15) / 16);
+    EXPECT_EQ(storageShape.GetDim(3), 16);
+    EXPECT_EQ(storageShape.GetDim(4), 32);
     constexpr uint64_t expectedStandardNzStride = 2064UL * 2048UL;
     EXPECT_EQ(tilingData->s8s4Params.expandedWeightStrideBytes, expectedStandardNzStride);
     const uint64_t expandedSize = AlignWorkspace(2UL * expectedStandardNzStride);

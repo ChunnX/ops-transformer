@@ -285,8 +285,8 @@ private:
     static constexpr uint64_t MAX_K_PER_GROUP = 18432UL;
     static constexpr uint64_t PACKED_INT32_RATIO = 8UL;
     static constexpr uint64_t NZ_BASE_K_ALIGN = 16UL;
-    static constexpr uint64_t NZ_BASE_N_ALIGN = 64UL;
-    static constexpr uint64_t NZ_SPECIAL_K_ALIGN = 64UL;
+    static constexpr uint64_t NZ_BASE_N_ALIGN = 32UL;
+    static constexpr uint64_t NZ_SPECIAL_K_ALIGN = 32UL;
     static constexpr uint64_t NZ_SPECIAL_N_ALIGN = 16UL;
     static constexpr size_t TUNING_CONFIG_EXPECTED_TOKEN_INDEX = 0UL;
     static constexpr size_t TUNING_CONFIG_WEIGHT_FORMAT_INDEX = 1UL;

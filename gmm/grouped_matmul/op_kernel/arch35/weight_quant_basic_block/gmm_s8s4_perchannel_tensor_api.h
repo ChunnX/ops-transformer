@@ -56,6 +56,7 @@ __aicore__ inline void InvokeGmmS8S4TensorApi(
     params.weightPreprocessParams.workspaceGmAddr = expandedWeight;
     params.weightPreprocessParams.inputTransposedNz =
         WFormat == CubeFormat::NZ && s8s4.specialWeightFormat != 0U;
+    params.weightPreprocessParams.inputNzC032 = WFormat == CubeFormat::NZ;
     params.rowSumPreprocessParams.xGmAddr = reinterpret_cast<GM_ADDR>(
         GROUPED_MATMUL::GetTensorAddr<int8_t>(0, x));
     params.rowSumPreprocessParams.rowSumGmAddr = rowSumWorkspace;

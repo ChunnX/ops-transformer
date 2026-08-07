@@ -35,6 +35,7 @@ public:
     __aicore__ inline void Process();
 private:
     __aicore__ inline void ScaleProcess();
+    __aicore__ inline void ProcessNzC032();
 
     GlobalTensor<int4b_t> weightGm;
     GlobalTensor<int8_t> yGm;
@@ -97,14 +98,27 @@ __aicore__ inline void GMMA8W4FakeQuantPreProcess<wFormat>::Process()
     constexpr uint32_t K_PER_LOOP = 24 * 1024 * 2 / 64;     //one buffer: 24k int4
 
     startNum = GetBlockIdx();
+    blockDim = GetBlockNum() * GetTaskRation();
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113)
+    // The A5 torch path first builds INT32 C0_32 NZ and then packs every eight
+    // INT4 values into a C0_4 carrier. ACLNN restores the descriptor to INT4
+    // C0_32 without moving bytes. The expanded INT8 workspace is also C0_32,
+    // so preserving the physical order is sufficient; the legacy C0_64 ->
+    // C0_32 shuffle below would mix adjacent K rows.
+    if constexpr (wFormat == CubeFormat::NZ) {
+        ProcessNzC032();
+        if (isPerchannel) {
+            ScaleProcess();
+        }
+        return;
+    }
+#endif
     totalGroup = tiling->n / 64;    //限制为64对齐
     uint64_t lastGroupRest = 0;
     if (totalGroup * 64 != tiling->n) {
         lastGroupRest = tiling->n - totalGroup * 64;
         totalGroup++;
     }
-    blockDim = GetBlockNum() * GetTaskRation();
-
     for(uint32_t eStart = 0; eStart < tiling->groupNum; eStart++) {
         const size_t eStartAddrGm = eStart * tiling->n * tiling->k;
         size_t weightBaseOffset;
@@ -206,6 +220,40 @@ __aicore__ inline void GMMA8W4FakeQuantPreProcess<wFormat>::Process()
         ScaleProcess();
     }
 }
+
+template <CubeFormat wFormat>
+__aicore__ inline void GMMA8W4FakeQuantPreProcess<wFormat>::ProcessNzC032()
+{
+    constexpr uint64_t NZ_N0 = 32;
+    constexpr uint64_t NZ_K0 = 16;
+    constexpr uint32_t TILE_ELEMENTS = 48 * 1024;
+    const uint64_t alignedN = (static_cast<uint64_t>(tiling->n) + NZ_N0 - 1) / NZ_N0 * NZ_N0;
+    const uint64_t alignedK = (static_cast<uint64_t>(tiling->k) + NZ_K0 - 1) / NZ_K0 * NZ_K0;
+    const uint64_t elementCount = static_cast<uint64_t>(tiling->groupNum) * alignedN * alignedK;
+
+    LocalTensor<int4b_t> weightLocal(TPosition::VECIN, 72 * 1024, TILE_ELEMENTS);
+    LocalTensor<half> castLocal(TPosition::VECIN, 0, TILE_ELEMENTS);
+    LocalTensor<int8_t> expandedLocal(TPosition::VECOUT, 0, TILE_ELEMENTS);
+
+    for (uint64_t elementOffset = static_cast<uint64_t>(startNum) * TILE_ELEMENTS;
+         elementOffset < elementCount;
+         elementOffset += static_cast<uint64_t>(blockDim) * TILE_ELEMENTS) {
+        const uint32_t actualElements = static_cast<uint32_t>(
+            elementCount - elementOffset < TILE_ELEMENTS ? elementCount - elementOffset : TILE_ELEMENTS);
+        DataCopy(weightLocal, weightGm[elementOffset], actualElements);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        Cast(castLocal, weightLocal, RoundMode::CAST_NONE, actualElements);
+        PipeBarrier<PIPE_V>();
+        Cast(expandedLocal, castLocal, RoundMode::CAST_NONE, actualElements);
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
+        DataCopy(yGm[elementOffset], expandedLocal, actualElements);
+        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    }
+}
+
 template <CubeFormat wFormat>
 __aicore__ inline void GMMA8W4FakeQuantPreProcess<wFormat>::ScaleProcess() {
     const size_t SCALE_SIZE = 192 * 1024 / sizeof(int64_t); //u64
