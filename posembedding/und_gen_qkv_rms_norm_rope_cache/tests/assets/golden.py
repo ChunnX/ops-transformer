@@ -21,29 +21,6 @@
 
     python3 -m ttk kernel -i <csv> -b=release --plugin <此文件>
 
-与竞品测试脚本 ``test_fused_qk_rmsnorm_mrope_store_kv_fp8.py`` 里的 ``_reference`` 相比：
-
-裁掉的冗余（不在本算子范围内）
-  * FP8/INT8 量化：quant_policy / k_scale / v_scale / q_scale / split_k 全部移除，
-    KV Cache 固定 bf16 存储。
-  * Hadamard-128 变换：2026-07-31 确认本期不做（算子未定义 use_hadamard 属性）。
-  * qk_norm_policy 分支：本算子固定 policy==2（先 RMSNorm 再 MRoPE），
-    policy 0/1 的路径不实现。
-  * ``torch.cat([und_qkv, gen_qkv])``：按段直接 gather，避免 total*hidden 的中间拷贝。
-  * num_seqlen / q_index / block_ids 三件套：已被 host 侧预计算的 slot_mapping 取代。
-
-补齐的遗漏
-  * 真正的分页 KV Cache 写入（scatter）：golden 直接产出写入后的 k_cache / v_cache，
-    未被 slot_mapping 覆盖的位置保持调用方传入的原值。
-  * float32 -> bf16 的显式舍入：q / k_cache / v_cache 都按 bf16 输出，
-    否则与 NPU 结果比对会有系统性偏差。
-  * 分页写入按 slot 拆 (block_num, row_idx)：cache 固定为连续 BBND
-    [num_blocks, block_size, N, D]（2026-08-01 确认，不支持非连续 BNBD 物理布局）。
-  * Optional 退化路径：gen_qkv=None / gen_len=0、cat_indices=None（恒等映射）、
-    gen_weights=None；positions 允许 1D [total]（三轴广播）。
-  * mrope_section 为空时退化为 [half, 0, 0]（等价标准 RoPE）。
-  * 全向量化：原 golden 逐 token、逐 half 的 Python 双循环在 total=64k 时不可用。
-
 约定（与《算子需求分析和方案设计说明书》一致）
   und_qkv       bf16 [und_len, N, D]，N = Hq+Hk+Hv，D = head_dim = 128
   gen_qkv       bf16 [gen_len, N, D]，可为 None
@@ -81,9 +58,7 @@ HEAD_COMBOS = ((8, 1, 1), (16, 2, 2))
 BLOCK_SIZE = 128
 
 
-# --------------------------------------------------------------------------- #
 # 工具
-# --------------------------------------------------------------------------- #
 def make_cos_sin_cache(max_pos, head_dim, device="cpu", base=10000.0):
     """构造 cos_sin_cache [max_pos, head_dim]，前半 cos 后半 sin（与竞品一致）。"""
     inv_freq = 1.0 / (base ** (torch.arange(0, head_dim, 2, device=device).float() / head_dim))
@@ -156,9 +131,7 @@ def _rope(x, cos, sin):
     return torch.cat([x1 * c - x2 * s, x2 * c + x1 * s], dim=-1)
 
 
-# --------------------------------------------------------------------------- #
 # 稠密段：split + index + rmsnorm + mrope（不含 cache 写入）
-# --------------------------------------------------------------------------- #
 def golden_dense(
     und_qkv,
     gen_qkv,
@@ -243,9 +216,7 @@ def golden_dense(
     return q, k, v.contiguous()
 
 
-# --------------------------------------------------------------------------- #
 # 分页 KV Cache 写入 / 读回
-# --------------------------------------------------------------------------- #
 def _check_cache(cache, name):
     """cache 固定为连续 BBND：[num_blocks, block_size, N, D]。"""
     assert cache.dim() == 4, f"{name} 期望 4D [num_blocks, block_size, N, D]，实得 {tuple(cache.shape)}"
@@ -270,9 +241,7 @@ def gather_cache_rows(cache, slot_mapping):
     return cache[slot // block_size, slot % block_size]
 
 
-# --------------------------------------------------------------------------- #
 # 算子 golden 主入口
-# --------------------------------------------------------------------------- #
 def golden_und_gen_qkv_rms_norm_rope_cache(
     und_qkv,
     und_weights_q,
@@ -336,13 +305,9 @@ def golden_und_gen_qkv_rms_norm_rope_cache(
     q_out = q_f32.to(torch.bfloat16)
     return q_out, k_out, v_out
 
-# --------------------------------------------------------------------------- #
 # TTK 插件：输入构造与 golden 注册
-# --------------------------------------------------------------------------- #
-# 用法：python3 -m ttk kernel -i <csv> -b=release --plugin <此文件>
-#
-# k_cache / v_cache 是原地更新的输入输出：IR 里输出名与输入名相同，
-# TTK 会据此自动填 output_inplace_indexes，kernel CSV 不必显式给出。
+# k_cache / v_cache 是原地更新：IR 里输出名与输入名相同，TTK 会据此自动填
+# output_inplace_indexes，kernel CSV 不必显式给出。
 
 # IR 输入序（与 op_host/und_gen_qkv_rms_norm_rope_cache_def.cpp 一致）
 IDX_UND_QKV = 0
@@ -388,18 +353,14 @@ def _seed_of(kwargs):
 
 
 def ttk_input(*inputs, **kwargs):
-    """把三个索引类输入改写成满足算子约束的取值。
+    """把三个索引类输入改写成合法取值，随机 range 做不到。
 
-    随机 range 满足不了的约束：
-      - slot_mapping：必须落在 [0, Bn*Bs-1] 且**互不重复**。重复槽位会让多个核写同一
-        cache 行，写入顺序与最终结果都不确定，随机整数几乎必然撞号，不改写就会得到
-        一个每次跑都不一样的 golden 比对。
-      - cat_indices ：必须落在 [0, T-1]
-      - positions   ：必须落在 [0, max_pos-1]，否则越界读 cos_sin_cache
+    其中 slot_mapping 必须**互不重复**：重复槽位会让多个核写同一 cache 行，写入顺序
+    与结果都不确定，随机整数几乎必然撞号，不改写就会得到一个每次跑都不一样的比对。
 
-    索引形态由用例名后缀决定，与 CSV 里的 slot_form / cat_form 列一一对应：
-      _slotseq                              -> slot_mapping 连续；缺省为不重复乱序
-      _catid / _catrev / _catund / _catgen  -> cat_indices 形态；缺省为乱序
+    形态由用例名后缀决定，与 CSV 的 slot_form / cat_form 列一一对应：
+      _slotseq                              -> slot_mapping 连续
+      _catid / _catrev / _catund / _catgen  -> cat_indices 形态
     """
     import numpy as np
 
@@ -425,24 +386,24 @@ def ttk_input(*inputs, **kwargs):
     rng = np.random.default_rng(_seed_of(kwargs))
 
     if "_slotseq" in name:
-        slots = np.arange(total)                                  # 连续槽位
+        slots = np.arange(total)
     else:
-        slots = rng.choice(max_slot, size=total, replace=False)    # 散布在整块 cache 上
+        slots = rng.choice(max_slot, size=total, replace=False)
     arrays[IDX_SLOT_MAPPING] = slots.astype(slot_mapping.dtype)
 
     cat_indices = arrays[IDX_CAT_INDICES]
     if cat_indices is not None:
         und_len = int(arrays[IDX_UND_QKV].shape[0])
         if "_catid" in name:
-            cat = np.arange(total)                                 # 恒等映射
+            cat = np.arange(total)
         elif "_catrev" in name:
-            cat = np.arange(total)[::-1].copy()                    # 逆序
+            cat = np.arange(total)[::-1].copy()
         elif "_catund" in name:
-            cat = rng.integers(0, und_len, size=total)             # 全部落在 und 段
+            cat = rng.integers(0, und_len, size=total)
         elif "_catgen" in name:
-            cat = rng.integers(und_len, total, size=total)         # 全部落在 gen 段
+            cat = rng.integers(und_len, total, size=total)
         else:
-            cat = rng.permutation(total)                           # 乱序
+            cat = rng.permutation(total)
         arrays[IDX_CAT_INDICES] = cat.astype(cat_indices.dtype)
 
     positions = arrays[IDX_POSITIONS]
@@ -468,13 +429,9 @@ def ttk_golden(und_qkv,
                **kwargs):
     '''Kernel golden for und_gen_qkv_rms_norm_rope_cache.
 
-    参数序与 @und_gen_qkv_rms_norm_rope_cache_def.cpp 的输入一致（不含输出）。
-    所有输入张量是 numpy.ndarray；bf16 由 ml_dtypes.bfloat16 承载。
-    kwargs 含算子属性（num_heads_q / num_heads_k / num_heads_v / norm_eps /
-    mrope_section）以及 short_soc_version、input_dtypes、output_dtypes 等元信息。
-
-    返回 (q, k_cache, v_cache)：k_cache / v_cache 是写入 slot 后的整块 cache，
-    未被 slot_mapping 命中的位置保持入参原值。
+    参数序与 @und_gen_qkv_rms_norm_rope_cache_def.cpp 的输入一致（不含输出），
+    张量为 numpy.ndarray，bf16 由 ml_dtypes.bfloat16 承载，kwargs 带算子属性。
+    返回写入 slot 后的整块 (q, k_cache, v_cache)。
     '''
     mrope_section = kwargs.get("mrope_section", None)
     if mrope_section is not None:
