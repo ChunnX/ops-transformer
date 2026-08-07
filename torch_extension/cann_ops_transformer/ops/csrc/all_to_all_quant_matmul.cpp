@@ -18,8 +18,6 @@ using npu_utils = at_npu::native::NpuUtils;
 const int DIM_TWO = 2;
 static const int64_t DYN_PERTOKEN_QUANT_MODE = 7;
 static const int64_t PERCHANNEL_QUANT_MODE = 2;
-static const int64_t NON_QUANT = 0;
-static const int64_t ACL_UNDEFINED = -1;
 static const int64_t ACL_FP8_E5M2 = 35;
 static const int64_t INT4_NUMS_IN_INT32 = 8;
 static const int64_t GROUP_MAX = 65535;
@@ -54,13 +52,9 @@ std::tuple<at::Tensor, at::Tensor> NpuAlltoAllQuantMatmul(
     const at::Tensor &context, const at::Tensor &x1, const at::Tensor &x2, int64_t hcclBufferSize, std::string group,
     int64_t worldSize, bool alltoallOutFlag, const c10::optional<at::Tensor> &biasOptional,
     const c10::optional<at::Tensor> &x1ScaleOptional, const c10::optional<at::Tensor> &x2ScaleOptional,
-    const c10::optional<at::Tensor> &commScaleOptional, const c10::optional<at::Tensor> &x1OffsetOptional,
-    const c10::optional<at::Tensor> &x2OffsetOptional, c10::optional<int64_t> x1QuantMode,
-    c10::optional<int64_t> x2QuantMode, c10::optional<int64_t> commQuantMode, c10::IntArrayRef groupSizes,
-    c10::IntArrayRef alltoAllAxesOptional, c10::optional<int64_t> commQuantDtype, c10::optional<int64_t> x1QuantDtype,
+    c10::optional<int64_t> x1QuantMode, c10::optional<int64_t> x2QuantMode, c10::IntArrayRef groupSizes,
     c10::optional<int64_t> x1Dtype, c10::optional<int64_t> x2Dtype, c10::optional<int64_t> x1ScaleDtype,
-    c10::optional<int64_t> x2ScaleDtype, c10::optional<int64_t> outputScaleDtype, c10::optional<int64_t> commScaleDtype,
-    c10::optional<int64_t> yDtype, std::string commMode, int64_t precisionMode)
+    c10::optional<int64_t> x2ScaleDtype, c10::optional<int64_t> yDtype, std::string commMode, int64_t precisionMode)
 {
     TORCH_CHECK(x1.dim() == DIM_TWO,
                 "The x1 input of alltoallquantmatmul is required to be 2D, but the actual x1 input is ", x1.dim(),
@@ -111,10 +105,6 @@ std::tuple<at::Tensor, at::Tensor> NpuAlltoAllQuantMatmul(
 
     int64_t x1QuantModeVal = x1QuantMode.has_value() ? x1QuantMode.value() : DYN_PERTOKEN_QUANT_MODE;
     int64_t x2QuantModeVal = x2QuantMode.has_value() ? x2QuantMode.value() : PERCHANNEL_QUANT_MODE;
-    int64_t commQuantModeVal = commQuantMode.has_value() ? commQuantMode.value() : NON_QUANT;
-    int64_t commQuantDtypeVal = commQuantDtype.has_value() ? commQuantDtype.value() : ACL_UNDEFINED;
-    int64_t x1QuantDtypeVal =
-        x1QuantDtype.has_value() ? static_cast<int64_t>(GetAclDataType(x1QuantDtype.value())) : ACL_FP8_E5M2;
 
     aclDataType x1AclDtype = (x1Dtype.has_value() && x1Dtype.value() != -1) ? GetAclDataType(x1Dtype.value()) :
                                                                               ConvertToAclDataType(x1.scalar_type());
@@ -140,13 +130,9 @@ std::tuple<at::Tensor, at::Tensor> NpuAlltoAllQuantMatmul(
 
     int64_t groupSize = CheckAndGetGroupSize(groupSizes);
 
-    c10::optional<c10::IntArrayRef> alltoAllAxesOptionalNull = c10::nullopt; // temp set nullptr
-
-    // 暂时没处理alltoallout flag，强制带出该可选出参
     ACLNN_CMD(aclnnAlltoAllMatmulApace, context, x1Wrapper, x2Wrapper, biasOptional, x1ScaleWrapper, x2ScaleWrapper,
-              commScaleOptional, x1OffsetOptional, x2OffsetOptional, groupPtr, worldSize, hcclBufferSize,
-              alltoAllAxesOptionalNull, x1QuantModeVal, x2QuantModeVal, commQuantModeVal, commQuantDtypeVal,
-              x1QuantDtypeVal, transposeX1, transposeX2, groupSize, commModePtr, precisionMode, y, alltoallOutWrapper);
+              groupPtr, worldSize, hcclBufferSize, x1QuantModeVal, x2QuantModeVal, transposeX1, transposeX2, groupSize,
+              commModePtr, precisionMode, y, alltoallOutWrapper);
 
     return std::make_tuple(y, alltoallOut);
 }
