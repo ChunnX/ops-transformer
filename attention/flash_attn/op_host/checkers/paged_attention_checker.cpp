@@ -120,7 +120,7 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FaTilingInfo &faInfo
     }
 
     // PA场景下kvcache非连续stride校验 (dimIndex由parser预计算)
-    if (faInfo.kvLayout == FaLayout::PA_BBND) {
+    if (faInfo.kvLayout == FaLayout::BnBsND) {
         OP_CHECK_IF((faInfo.keyNonContigDim > 0),
                     OP_LOGE(faInfo.opName,
                             "In PA BBND scenarios, key only supports non-contiguous tensors in dimension 0, "
@@ -131,7 +131,7 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FaTilingInfo &faInfo
                             "In PA BBND scenarios, value only supports non-contiguous tensors in dimension 0, "
                             "but the first non-contiguous dimension is index %d.", faInfo.valueNonContigDim),
                     return ge::GRAPH_FAILED);
-    } else if (faInfo.kvLayout == FaLayout::PA_BNBD || faInfo.kvLayout == FaLayout::PA_NZ) {
+    } else if (faInfo.kvLayout == FaLayout::BnNBsD || faInfo.kvLayout == FaLayout::NZ) {
         OP_CHECK_IF((faInfo.keyNonContigDim > 1),
                     OP_LOGE(faInfo.opName,
                             "In PA BNBD/NZ scenarios, key only supports non-contiguous tensors in dimensions 0 or 1, "

@@ -119,9 +119,9 @@ using FaTilingShapeCompare = FiaTilingShapeCompare;
 const std::map<std::string, FaLayout> layoutMap = {{"BSND", FaLayout::BSND},
                                                    {"BNSD", FaLayout::BNSD},
                                                    {"TND", FaLayout::TND},
-                                                   {"PA_BBND", FaLayout::PA_BBND},
-                                                   {"PA_BNBD", FaLayout::PA_BNBD},
-                                                   {"PA_NZ", FaLayout::PA_NZ}};
+                                                   {"PA_BBND", FaLayout::BnBsND},
+                                                   {"PA_BNBD", FaLayout::BnNBsD},
+                                                   {"PA_NZ", FaLayout::NZ}};
 
 enum class FaQuantMode : uint32_t {
     NO_QUANT = 0,

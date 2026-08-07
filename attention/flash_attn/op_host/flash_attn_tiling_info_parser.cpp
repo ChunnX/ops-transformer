@@ -355,7 +355,7 @@ void FaInfoParser::GetKvIsContiguous()
         valueNonContigDim_ = valContig ? -1 : valDimIdx;
     }
     
-    if (layoutKV_ == FaLayout::PA_BBND) {
+    if (layoutKV_ == FaLayout::BnBsND) {
         if (keyStrides_ != nullptr) {
             keyBnStride_ = keyStrides_->GetStride(0);
             keyN2Stride_ = keyStrides_->GetStride(2);
@@ -364,7 +364,7 @@ void FaInfoParser::GetKvIsContiguous()
             valueBnStride_ = valueStrides_->GetStride(0);
             valueN2Stride_ = valueStrides_->GetStride(2);
         }
-    } else if (layoutKV_ == FaLayout::PA_BNBD || layoutKV_ == FaLayout::PA_NZ) {
+    } else if (layoutKV_ == FaLayout::BnNBsD || layoutKV_ == FaLayout::NZ) {
         if (keyStrides_ != nullptr) {
             keyBnStride_ = keyStrides_->GetStride(0);
             keyN2Stride_ = keyStrides_->GetStride(1);
@@ -378,8 +378,8 @@ void FaInfoParser::GetKvIsContiguous()
 
 void FaInfoParser::GetKvStorageMode()
 {
-    bool isPaLayout = (layoutKV_ == FaLayout::PA_BBND || layoutKV_ == FaLayout::PA_BNBD ||
-                       layoutKV_ == FaLayout::PA_NZ);
+    bool isPaLayout = (layoutKV_ == FaLayout::BnBsND || layoutKV_ == FaLayout::BnNBsD ||
+                       layoutKV_ == FaLayout::NZ);
 
     if (isPaLayout) {
         kvStorageMode_ = KvStorageMode::PAGE_ATTENTION;

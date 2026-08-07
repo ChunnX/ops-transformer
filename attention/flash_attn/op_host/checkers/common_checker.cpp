@@ -42,7 +42,7 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FaTilingInfo &faInfo)
 {
     const std::vector<FaLayout> supportedQLayouts = {FaLayout::BNSD, FaLayout::BSND, FaLayout::TND};
     const std::vector<FaLayout> supportedKvLayouts = {FaLayout::BNSD,    FaLayout::BSND,    FaLayout::TND,
-                                                      FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_NZ};
+                                                      FaLayout::BnBsND, FaLayout::BnNBsD, FaLayout::NZ};
     const std::vector<FaLayout> supportedOutLayouts = {FaLayout::BNSD, FaLayout::BSND, FaLayout::TND};
 
     if (std::find(supportedQLayouts.begin(), supportedQLayouts.end(), faInfo.qLayout) ==
@@ -269,9 +269,9 @@ struct LayoutConstraintConfig {
 
 static const std::map<FaLayout, LayoutConstraintConfig> LAYOUT_CONSTRAINT_TABLE = {
     {FaLayout::BNSD,
-     {{FaLayout::BNSD, FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_NZ}, {FaLayout::BNSD, FaLayout::BSND}}},
-    {FaLayout::BSND, {{FaLayout::BSND, FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_NZ}, {FaLayout::BSND}}},
-    {FaLayout::TND, {{FaLayout::TND, FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_NZ}, {FaLayout::TND}}},
+     {{FaLayout::BNSD, FaLayout::BnBsND, FaLayout::BnNBsD, FaLayout::NZ}, {FaLayout::BNSD, FaLayout::BSND}}},
+    {FaLayout::BSND, {{FaLayout::BSND, FaLayout::BnBsND, FaLayout::BnNBsD, FaLayout::NZ}, {FaLayout::BSND}}},
+    {FaLayout::TND, {{FaLayout::TND, FaLayout::BnBsND, FaLayout::BnNBsD, FaLayout::NZ}, {FaLayout::TND}}},
 };
 
 ge::graphStatus CommonChecker::CheckMultiParaLayout(const FaTilingInfo &faInfo)
@@ -384,8 +384,8 @@ ge::graphStatus CommonChecker::CheckKVShape(const FaTilingInfo &faInfo) const
         return CheckKVShapeForContinuous(faInfo);
     }
 
-    if (faInfo.kvLayout == FaLayout::PA_BBND || faInfo.kvLayout == FaLayout::PA_BNBD ||
-        faInfo.kvLayout == FaLayout::PA_NZ) {
+    if (faInfo.kvLayout == FaLayout::BnBsND || faInfo.kvLayout == FaLayout::BnNBsD ||
+        faInfo.kvLayout == FaLayout::NZ) {
         if (faInfo.pageAttentionFlag) {
             return CheckKVShapeForPageAttention(faInfo);
         }
