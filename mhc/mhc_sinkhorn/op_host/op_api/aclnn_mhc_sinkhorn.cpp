@@ -156,6 +156,22 @@ static bool CheckShape(const aclTensor *x, int64_t outFlag, const aclTensor *out
                     sumOut->GetViewShape().GetShapeSize());
             return false;
         }
+    } else {
+        // outFlag为0时，normOut和sumOut应为shape{1}的空输出
+        if (normOut->GetViewShape().GetShapeSize() != 1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "outFlag is 0, normOut shape size must be 1, but got %ld. "
+                    "When outFlag is 0, normOut should not be used, please set it to shape {1} or pass nullptr.",
+                    normOut->GetViewShape().GetShapeSize());
+            return false;
+        }
+        if (sumOut->GetViewShape().GetShapeSize() != 1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "outFlag is 0, sumOut shape size must be 1, but got %ld. "
+                    "When outFlag is 0, sumOut should not be used, please set it to shape {1} or pass nullptr.",
+                    sumOut->GetViewShape().GetShapeSize());
+            return false;
+        }
     }
     return true;
 }
@@ -190,9 +206,13 @@ aclnnStatus aclnnMhcSinkhornGetWorkspaceSize(const aclTensor *x, float eps, int6
 
     int64_t outFlag = 1;
     if (normOut == nullptr || sumOut == nullptr) {
-        Shape emptyShape({});
-        normOut = (uniqueExecutor.get())->AllocTensor(emptyShape, x->GetDataType(), Format::FORMAT_ND);
-        sumOut = (uniqueExecutor.get())->AllocTensor(emptyShape, x->GetDataType(), Format::FORMAT_ND);
+        Shape emptyShape({1});
+        if (normOut == nullptr) {
+            normOut = (uniqueExecutor.get())->AllocTensor(emptyShape, x->GetDataType(), Format::FORMAT_ND);
+        }
+        if (sumOut == nullptr) {
+            sumOut = (uniqueExecutor.get())->AllocTensor(emptyShape, x->GetDataType(), Format::FORMAT_ND);
+        }
         outFlag = 0;
     }
 

@@ -226,6 +226,25 @@ ge::graphStatus MhcSinkhornTiling::CheckInputShape()
                                                    "sumOut shape size must be 2*numIters*T*8");
             return ge::GRAPH_FAILED;
         }
+    } else {
+        auto normOutShapePtr = context_->GetOutputShape(NORM_OUT_IDX);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, normOutShapePtr);
+        auto normOutShapeSize = normOutShapePtr->GetStorageShape().GetShapeSize();
+        if (normOutShapeSize != 1) {
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "normOut",
+                                                   Ops::Base::ToString(normOutShapePtr->GetStorageShape()).c_str(),
+                                                   "out_flag=0, normOut shape size must be 1");
+            return ge::GRAPH_FAILED;
+        }
+        auto sumOutShapePtr = context_->GetOutputShape(SUM_OUT_IDX);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, sumOutShapePtr);
+        auto sumOutShapeSize = sumOutShapePtr->GetStorageShape().GetShapeSize();
+        if (sumOutShapeSize != 1) {
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "sumOut",
+                                                   Ops::Base::ToString(sumOutShapePtr->GetStorageShape()).c_str(),
+                                                   "out_flag=0, sumOut shape size must be 1");
+            return ge::GRAPH_FAILED;
+        }
     }
 
     return ge::GRAPH_SUCCESS;
