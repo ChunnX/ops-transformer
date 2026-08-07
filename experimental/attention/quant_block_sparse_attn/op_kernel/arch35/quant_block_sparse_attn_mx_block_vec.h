@@ -141,12 +141,10 @@ public:
                 }
             }
 
-            // ClearOutput 与 V2 计算不能共用同一个 MTE3->V 事件。图重放时，前一次执行遗留的
-            // 置位状态会破坏下一次执行的 Wait/Set 配对，因此分别维护初始化和计算阶段的事件。
-            initOutputMte3ToVId_ = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+            // 同步 V2 cast 与 GM copy。
             mte3ToVId_[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
             vToMte3Id_[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-            SetFlag<HardEvent::MTE3_V>(initOutputMte3ToVId_);
+            SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
         }
     }
 
@@ -162,28 +160,9 @@ public:
                 InitOutputSingleCore(softmaxLseGm_, emptyTensorParams.totalSoftMaxLseOutputSize, aivCoreNum,
                                      constInfo.aivIdx, QBSA_EMPTY_LSE_VALUE);
             }
-            WaitFlag<HardEvent::MTE3_V>(initOutputMte3ToVId_);
-            SyncAll();
-        }
-    }
-
-    __aicore__ inline void InitEvents()
-    {
-        if ASCEND_IS_AIV {
-            // ClearOutput 内含 SyncAll。可复用计算事件必须在该屏障后置位，避免消费屏障前的 token。
-            SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
-        }
-    }
-
-    __aicore__ inline void FinalizeEvents()
-    {
-        if ASCEND_IS_AIV {
-            // ProcessVec2 每次 Wait 后都会 Set，最后一次执行结束时仍会留下一个 token。
-            // 在 kernel 退出前消费并释放，保证下一次 aclgraph replay 从干净状态开始。
             WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
-            GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(initOutputMte3ToVId_);
-            GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId_[0]);
-            GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id_[0]);
+            SyncAll();
+            SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
         }
     }
 
@@ -329,9 +308,9 @@ private:
         if (singleInitSize == 0U) {
             return;
         }
-        WaitFlag<HardEvent::MTE3_V>(initOutputMte3ToVId_);
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
         InitOutput<T>(outputGm[coreOffset], singleInitSize, initValue);
-        SetFlag<HardEvent::MTE3_V>(initOutputMte3ToVId_);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
     }
 
     __aicore__ inline float DecodeE8M0Scale(uint8_t scale) const
@@ -551,7 +530,6 @@ private:
     TBuf<> preLoopSumBuf_;
     TBuf<> firstLoopSumBuf_;
     TBuf<> vselrIndexesBuf_[4];
-    TEventID initOutputMte3ToVId_;
     TEventID mte3ToVId_[1];
     TEventID vToMte3Id_[1];
     MM_T negativeFloatScalar_ = 0.0f;

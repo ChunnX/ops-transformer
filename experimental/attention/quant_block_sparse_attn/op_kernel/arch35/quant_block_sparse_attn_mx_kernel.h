@@ -69,6 +69,9 @@ public:
                                 __gm__ uint8_t *, const QuantBlockSparseAttnMxTilingData *__restrict tiling,
                                 TPipe *tPipe)
     {
+        // Cross-core Buffer IDs are generated from block-local state. ACL graph replay reuses that state,
+        // so every kernel invocation must restart from the same ID sequence on AIC and AIV.
+        fa_base_matmul::idCounterNum = 0;
         // Q/K/V 在 cube 中结合 block_table 完成 PA 搬运。
         pipe = tPipe;
         tilingData = tiling;
@@ -96,20 +99,14 @@ public:
         if (constInfo.aicIdx >= constInfo.coreNum || constInfo.aicIdx >= QBSA_FA_AIC_CORE_NUM) {
             return;
         }
+        CrossCoreBufferInit();
         if ASCEND_IS_AIC {
             cubeBlock.InitBuffers();
         } else {
             vecBlock.InitBuffers();
             vecBlock.ClearOutput(tilingData->emptyTensorParams, constInfo);
-            vecBlock.InitEvents();
         }
-        // ClearOutput 内含 SyncAll。跨核 free token 必须在该屏障之后发布，避免第二次图重放
-        // 消费到前一次执行或当前执行屏障前产生的 token。
-        CrossCoreBufferInit();
         ProcessMainLoop();
-        if ASCEND_IS_AIV {
-            vecBlock.FinalizeEvents();
-        }
         CrossCoreBufferUninit();
     }
 
