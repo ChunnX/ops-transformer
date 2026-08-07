@@ -7,7 +7,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-import os
 import warnings
 from typing import Optional, List
 
@@ -15,9 +14,6 @@ import torch
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
-
-_HERE = os.path.dirname(os.path.realpath(__file__))
-_CSRC_DIR = os.path.join(_HERE, "..", "csrc")
 
 
 def _has_value(t):
@@ -40,7 +36,7 @@ class MoeFinalizeRoutingOpBuilder(OpBuilder):
         super(MoeFinalizeRoutingOpBuilder, self).__init__("moe_finalize_routing")
 
     def sources(self):
-        return [os.path.join(_CSRC_DIR, "moe_finalize_routing.cpp")]
+        return ["ops/csrc/moe_finalize_routing.cpp"]
 
     def schema(self) -> str:
         return (

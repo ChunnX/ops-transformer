@@ -8,25 +8,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import os
-import sys
-
 import torch
 import torch_npu
-
-_PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
-_REPO_ROOT = os.path.abspath(os.path.join(_PACKAGE_DIR, "..", ".."))
-_MOE_EXT_ROOTS = [
-    os.path.join(_REPO_ROOT, "moe", "moe_init_routing_v2", "torch_ops_extension"),
-    os.path.join(_REPO_ROOT, "moe", "moe_init_routing_v2_grad", "torch_ops_extension"),
-    os.path.join(_REPO_ROOT, "moe", "moe_finalize_routing_v2", "torch_ops_extension"),
-    os.path.join(
-        _REPO_ROOT, "moe", "moe_finalize_routing_v2_grad", "torch_ops_extension"
-    ),
-]
-for _root in _MOE_EXT_ROOTS:
-    if os.path.isdir(_root) and _root not in sys.path:
-        sys.path.insert(0, _root)
 
 from . import ops
 from .ops import *

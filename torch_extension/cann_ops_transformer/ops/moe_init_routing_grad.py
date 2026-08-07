@@ -7,15 +7,10 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-import os
-
 import torch
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
-
-_HERE = os.path.dirname(os.path.realpath(__file__))
-_CSRC_DIR = os.path.join(_HERE, "..", "csrc")
 
 
 class MoeInitRoutingGradOpBuilder(OpBuilder):
@@ -23,7 +18,7 @@ class MoeInitRoutingGradOpBuilder(OpBuilder):
         super(MoeInitRoutingGradOpBuilder, self).__init__("moe_init_routing_grad")
 
     def sources(self):
-        return [os.path.join(_CSRC_DIR, "moe_init_routing_grad.cpp")]
+        return ["ops/csrc/moe_init_routing_grad.cpp"]
 
     def schema(self) -> str:
         return (

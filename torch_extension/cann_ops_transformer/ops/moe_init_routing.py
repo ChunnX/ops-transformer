@@ -7,7 +7,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-import os
 from typing import Tuple
 
 import torch
@@ -15,16 +14,13 @@ from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
-_HERE = os.path.dirname(os.path.realpath(__file__))
-_CSRC_DIR = os.path.join(_HERE, "..", "csrc")
-
 
 class MoeInitRoutingOpBuilder(OpBuilder):
     def __init__(self):
         super(MoeInitRoutingOpBuilder, self).__init__("moe_init_routing")
 
     def sources(self):
-        return [os.path.join(_CSRC_DIR, "moe_init_routing.cpp")]
+        return ["ops/csrc/moe_init_routing.cpp"]
 
     def schema(self) -> str:
         return (
