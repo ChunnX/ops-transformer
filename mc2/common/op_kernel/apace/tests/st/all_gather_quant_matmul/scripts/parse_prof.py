@@ -21,6 +21,14 @@ _DEFAULT_PROF = os.path.join(
 )
 KERNEL_SUBSTR = "AllGatherQuantMatmulKernel"
 GROUP_THRESHOLD_S = 5
+OUTLIER_FACTOR = 2.0
+WARMUP_SKIP = 3  # 删除前 N 轮数据（冷启动 + 预热）
+
+
+def filter_outliers(durs, factor=OUTLIER_FACTOR):
+    min_val = min(durs)
+    threshold = min_val * factor
+    return [d for d in durs if d <= threshold]
 
 _TS_RE = re.compile(r"PROF_\d+_(\d{17})_")
 
@@ -132,25 +140,32 @@ def report_case(prof_base, case_dirs, case_idx, mkn_str=None):
         print(f"  {info_line}")
     print("  " + "-" * 58)
     for dev in sorted(all_devices.keys(), key=lambda x: int(x)):
-        durs = sorted(all_devices[dev])
-        med = median(durs)
-        medians.append(med)
+        raw_durs = all_devices[dev]
+        total_cnt = len(raw_durs)
+        warmup_cnt = min(WARMUP_SKIP, total_cnt)
+        remaining = raw_durs[warmup_cnt:] if total_cnt > WARMUP_SKIP else raw_durs
+        durs = sorted(remaining)
+        filtered = filter_outliers(durs)
+        rank_avg = sum(filtered) / len(filtered)
+        medians.append(rank_avg)
         cube_vals = all_cubes.get(dev, [0.0])
         cube_med = median(cube_vals)
         cube_medians.append(cube_med)
         print(
-            f"    Rank {dev:4s} | {len(durs):3d} iters | "
-            f"median={med:.3f} us | min={durs[0]:.3f} us | max={durs[-1]:.3f} us | "
+            f"    Rank {dev:4s} | {total_cnt} total, {warmup_cnt} warmup skipped, "
+            f"{len(remaining)} remaining, {len(filtered)} valid ({len(remaining) - len(filtered)} filtered) | "
+            f"avg={rank_avg:.3f} us | min={durs[0]:.3f} us | max={durs[-1]:.3f} us | "
             f"cube={cube_med:.1f}%"
         )
         for i, d in enumerate(durs):
-            print(f"                 iter[{i:2d}] = {d:.3f} us")
+            tag = " *outlier*" if d > min(durs) * OUTLIER_FACTOR else ""
+            print(f"                 iter[{i:2d}] = {d:.3f} us{tag}")
 
     avg = sum(medians) / len(medians)
     cube_avg = sum(cube_medians) / len(cube_medians) if cube_medians else 0.0
     print("  " + "-" * 58)
     print(
-        f"    Overall latency (avg of card medians): "
+        f"    Overall latency (avg of card avgs): "
         f"{avg:.3f} us  ({len(medians)} cards)"
     )
     print(f"    Cube utilization (avg of card medians): {cube_avg:.1f}%")
@@ -226,7 +241,7 @@ def main():
     print(f"Found {len(cases)} case(s) in {prof_base}\n")
 
     print("=" * 64)
-    print("AllGatherQuantMatmul — Per-Card Latency (median of iterations)")
+    print("AllGatherQuantMatmul — Per-Card Latency (avg, outliers > 2x min excluded)")
     print("=" * 64)
 
     results = []
