@@ -30,6 +30,7 @@ static const std::map<FiaLayout, std::vector<FiaAxis>> FIA_LAYOUT_AXIS_MAP = {
     {FiaLayout::S1S2, {FiaAxis::S1, FiaAxis::S2}},
     {FiaLayout::BnBsH, {FiaAxis::Bn, FiaAxis::Bs, FiaAxis::H}},
     {FiaLayout::BnNBsD, {FiaAxis::Bn, FiaAxis::N, FiaAxis::Bs, FiaAxis::D}},
+    {FiaLayout::BnBsND, {FiaAxis::Bn, FiaAxis::Bs, FiaAxis::N, FiaAxis::D}},
     {FiaLayout::BNS1S2, {FiaAxis::B, FiaAxis::N, FiaAxis::S1, FiaAxis::S2}},
     {FiaLayout::INS1S2, {FiaAxis::CONST, FiaAxis::N, FiaAxis::S1, FiaAxis::S2}},
     {FiaLayout::BNS11, {FiaAxis::B, FiaAxis::N, FiaAxis::S1, FiaAxis::CONST}},
@@ -39,7 +40,6 @@ static const std::map<FiaLayout, std::vector<FiaAxis>> FIA_LAYOUT_AXIS_MAP = {
     {FiaLayout::IS1S2, {FiaAxis::CONST, FiaAxis::S1, FiaAxis::S2}},
     {FiaLayout::I1S1S2, {FiaAxis::CONST, FiaAxis::CONST, FiaAxis::S1, FiaAxis::S2}},
     {FiaLayout::S1S1, {FiaAxis::S1}},
-    {FiaLayout::BnBsND, {FiaAxis::Bn, FiaAxis::Bs, FiaAxis::N, FiaAxis::D}},
     {FiaLayout::LSE_BNS, {FiaAxis::B, FiaAxis::N, FiaAxis::S1}},
     {FiaLayout::LSE_NT, {FiaAxis::N, FiaAxis::T}},
 };
