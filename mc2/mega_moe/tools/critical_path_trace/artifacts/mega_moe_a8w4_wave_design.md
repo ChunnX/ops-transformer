@@ -179,7 +179,7 @@ for (localExpertId = 0; localExpertId < moeExpertPerRank_; localExpertId++) {
     AIV1: prefetch dispatch(localExpertId + 1);   // SendCntCal + MetaInfoCalAndDispatch
     GroupMatmulWithSwigluQuant(...);              // GMM1 + SwiGLU
 }
-EndSync(vecSetSyncCom);   // 或 topkWeightsPrefetch 的 allDone 轮询 + SyncAll  ← 分阶段串行点
+EndSync(vecSetSyncCom);   // A8W4 中 vecSetSyncCom==0 → 实为 no-op；prefetch 路径为 allDone 轮询 + SyncAll
 
 // —— GMM2 阶段（Phase 2）——
 for (expertIdx = 0; expertIdx < moeExpertPerRank_; expertIdx++) {
@@ -188,7 +188,7 @@ for (expertIdx = 0; expertIdx < moeExpertPerRank_; expertIdx++) {
 EndGMM2Sync(vecSetSyncCom, gmm2PingPongIdx_);
 ```
 
-两个循环之间被 `EndSync` / allDone / `SyncAll` **强制切断**：必须等全部专家的 GMM1 + SwiGLU 完成，才进入 GMM2。这就是分析中"Phase1 与 Phase2 的互补浪费无法互相吸收"的**代码根源**。dispatch 预取目前只发生在 GMM1 循环内（e+1 与 e 并发），没有延伸到 GMM2 / combine。
+两个 for 之间**没有对 A8W4 生效的任务级 barrier**：`EndSync` / `EndGMM2Sync` 依赖 `vecSetSyncCom`，而 A8W4 的 GMM 走 `gmTileSequence`、不递增它 → `vecSetSyncCom` 恒 0 → **两者对 A8W4 都是 no-op**。真正把"全部 GMM1 完成后才进 GMM2"固定下来的，是**两个独立 for 的循环结构**（AIC 顺序执行：先跑完整个 GMM1 循环，再跑整个 GMM2 循环）。这就是分析中"Phase1 与 Phase2 的互补浪费无法互相吸收"的**代码根源**——wave 化只需改循环结构（逐 wave 交错 GMM1/GMM2）；prefetch 路径的 allDone + SyncAll 才是需要单独处理的真同步。dispatch 预取目前只发生在 GMM1 循环内（e+1 与 e 并发），没有延伸到 GMM2 / combine。
 
 ### 4.2 目标结构：单 wave 滚动循环
 
@@ -198,35 +198,37 @@ EndGMM2Sync(vecSetSyncCom, gmm2PingPongIdx_);
 for (waveBegin = 0; waveBegin < moeExpertPerRank_; waveBegin += waveExpertNum) {
     waveExpertNum = GetWaveExpertCount(waveBegin, moeExpertPerRank_, expertsPerBatch); // 尾 wave 可能不足
 
-    AIV1: DispatchExpertsUntil(下一 wave 结束);    // 预取 B+1（复用 SendCntCal / MetaInfoCalAndDispatch）
-    AIC : ProcessGmm1Wave(waveBegin, waveEnd);    // GMM1(B) 逐 expert；AIV0 并发 P/Q prologue(B)
-    AIC : ProcessGmm2Wave(waveBegin, waveEnd);    // GMM2(B) 直写 GM；逐 expert 后 PublishGmm2Ready(e)
-    AIV1: ProcessCombineExperts(waveBegin, waveEnd); // WaitGmm2Ready(e) + Combine(e)
+    AIV1: 复用现有 dispatch 预取（GMM1(e) 期间预取 e+1，天然跨 wave 边界）；可选 DispatchExpertsUntil(B+1) 加深
+    AIC : ProcessGmm1Wave(waveBegin, waveEnd);    // GMM1(B) 逐 expert；AIV0 P/Q prologue(B) 与 GMM 同步（共享 scheduler）
+    AIC : ProcessGmm2Wave(waveBegin, waveEnd);    // GMM2(B) 直写 GM；combine 由现有 gmm2CombineSyncCounter 逐 row-group 触发
+    AIV1: ProcessCombineExperts(waveBegin, waveEnd); // 复用 ProcessCombine（逐 slot 等 gmm2CombineSyncCounter）做 Combine(e)
 }
 // 收尾：仅剩 AIC→AIV0 的 UB 消费确认回收（参考 wave 路径 EndSync<GMM1_UB_PINGPONG>）
 ```
 
 - AIC 顺序即 `G1(e0)G1(e1)G2(e0)G2(e1)`，**S(e) 被同 wave 的 G1(e1)/G2(e0) 掩盖**，AIC 连续 111us/专家。
-- **删除两阶段之间的 `EndSync` / allDone / SyncAll**：wave 之间不再有批次级全局 barrier，只靠 wave 内 flag 依赖 + 专家粒度 GMM2-ready 推进。
+- **A8W4 的 `EndSync`/`EndGMM2Sync` 本为 no-op**（`vecSetSyncCom` 恒 0）→ 无需删 barrier；wave 化关键是**把两个全量 for 改成逐 wave 交错**，去掉"全部 GMM1 完成后才进 GMM2"的结构性串行，靠 wave 内 flag 依赖 + A8W4 现有 GMM2-ready（`gmm2CombineSyncCounter` row-group 粒度）推进；prefetch 路径的 allDone+SyncAll 另作处理。
 
 ### 4.3 关键改造点（函数/数据结构级）
 
 | # | 改造点 | 现状（A8W4） | 目标（参考 A8W8 wave） |
 | --- | --- | --- | --- |
 | 1 | 主循环 | `Process()` 两个 for | 合并为 wave 循环，拆出 `ProcessGmm1Wave` / `ProcessGmm2Wave` / `ProcessCombineExperts(begin, end)` |
-| 2 | GMM1 批量 | 循环内直接调 `GroupMatmulWithSwigluQuant` | 包进 `ProcessGmm1Wave`；AIV0 预取 P/Q prologue 到 B+1 |
-| 3 | GMM2 批量 | 循环内直接调 `GroupMatmulWithCombine` | 包进 `ProcessGmm2Wave`；每 expert 结束后 `PublishGmm2Ready(e)` |
-| 4 | combine 触发 | 逐 tile 轮询 `gmmToEpilogueFlag` | `ProcessCombineExperts`：`WaitGmm2Ready(e)`（专家粒度）触发 + tile 级 combine |
-| 5 | dispatch 预取 | GMM1 循环内 e+1 | `DispatchExpertsUntil(B+1)`，跨到 combine 之前 |
+| 2 | GMM1 批量 | 循环内直接调 `GroupMatmulWithSwigluQuant` | 包进 `ProcessGmm1Wave`；AIV0 P/Q prologue 与 GMM 同步（同一 scheduler tile 循环驱动），无需跨 wave 预取 |
+| 3 | GMM2 批量 | 循环内直接调 `GroupMatmulWithCombine` | 包进 `ProcessGmm2Wave`；combine 由现有 GMM2-ready（tile 级）触发，无需新增 |
+| 4 | combine 触发 | 已有 `gmm2CombineSyncCounter`（row-group 粒度、`FIX_S` 同步、逐 slot 归约）+ `gmmToEpilogueFlag`/gmTileSequence 序列软同步 | **复用现有机制，不新增**：`ProcessCombine` 逐 slot 等 `gmm2CombineSyncCounter` == `gmm2NTilesPerGroup_` 提前开 combine（tile 级重叠，晚启 14us）；wave 化只按 wave/expert 管理 slot 复用 |
+| 5 | dispatch 预取 | 已有：GMM1 循环内逐专家 e+1（AIV1 sub==1：SendCntCal + MetaInfoCalAndDispatch） | **复用现有 +1 预取即可**（2 专家/wave 下天然跨 wave 边界）；如需更深预取可选 `DispatchExpertsUntil(B+1)` |
 | 6 | 去串行点 | GMM1 循环后 `EndSync`/allDone/SyncAll | 删除；改 wave 内 flag 推进 |
 | 7 | 模板路由 | `apt.cpp` 由 dtype 对决定（`isA8W8DtypePair`→`MegaMoeWave`，否则→`MegaMoe`） | 让 A8W4（fp8×fp4）也进入 wave 实例（见 4.5） |
 | 8 | 空专家守卫 | 已有 `UpdateGroupParams` 跳过空专家 | 保留，并 guard `BlockMmad` / `BlockPrologue` 构造（`startLoopIdx < tileNum`），防空专家 flag 溢出 |
 
 ### 4.4 依赖、同步与缓冲
 
-- **沿用 wave 粒度 flag**：`dispatchToGmm1Flag[waveIdx]`、`swigluToGmm2Flag[waveIdx]`（`IS_WAVE_FLAG_GRAINED`）；combine 保留 `gmmToEpilogueFlag` 做 tile 级细化。
-- **补专家粒度 GMM2-ready 扇入**（复用 A8W8 模式）：workspace 按 `[slot][AIC][64B cache line]` 排布；每个 AIC 在 `FIX_S`（保证 GMM2 直写 GM 完成）后 `PublishGmm2Ready(slot)` 写 1；AIV1 `WaitGmm2Ready(slot)` 搬入并归约所有 AIC 的到达数。作为 combine 的主触发，tile 级标志只提供首 tile 提前量（G2 启动后 14us）。
-- **wave 双缓冲**：dispatch 槽、GMM2-ready slot 按 wave / 专家索引环形复用；AIV1 的 D(B+1) 与 C(B) 复用同一片 UB / 事件（参考 `DrainCombineRowRing` 与事件槽复用）。
+- **沿用 wave 粒度 flag（语义不改）**：`dispatchToGmm1Flag`（per-expert × `dispatchFlagSlotsPerExpert_`，专家内按 waveIdx 排布）、`swigluToGmm2Flag[waveIdx]`（`IS_WAVE_FLAG_GRAINED`，GMM2 逐 wave 等该 M-block 的 swiglu tile 完成）；`gmTileSequence`/`gmmToEpilogueFlag` 做 AIC→AIV1 的 GM 写序软同步。
+- **A8W4 现状 GMM2 为整 expert 等 swiglu**（`GroupMatmul2CombineA8W4` 未传 `IsWaveFlagGrained`，默认 `false`，等整个 expert 的 `swigluToGmm2Flag` 计数）：对 2 专家/wave **无碍**（wave 内先跑完 GMM1(e0)GMM1(e1) 再进 GMM2，GMM2(e) 等的整 expert swiglu 已就绪），**无需改 flag 粒度**；仅当未来做更细粒度交错才需开启并扩容 swigluToGmm2Flag 的 per-expert 槽数。
+- **combine 触发复用 A8W4 现有 GMM2-ready，不新增**：发布侧 `NotifyCombineConsumersOfTileCompletion`（每个 GMM2 tile 写回 + `FIX_S` 后，按 row-group 消费 slot `AtomicAdd`）；等待侧 `ProcessCombine` 逐 slot 等 `gmm2CombineSyncCounter` == `gmm2NTilesPerGroup_` 即提前开 combine（tile 级重叠，晚启 14us）。
+- **slot/flag 均 per-expert 静态分配，wave 间天然隔离**：`gmm2CombineSyncCounter` 按 `expertIdx × combineSyncSlotCountPerExpert` 偏移、`dispatchToGmm1Flag` 按 `expertIdx × dispatchFlagSlotsPerExpert_` 偏移——wave B 与 wave B+1 处理不同专家，用的 slot/flag 区不同，**无需环形复用**；只需确认 workspace 对 `combineSyncSlotCountPerExpert × moeExpertPerRank_` 的预留够用（现状已够）。
+- **A8W4 的 `EndSync`/`EndGMM2Sync` 均为 no-op**（`vecSetSyncCom` 恒 0，A8W4 GMM 走 `gmTileSequence` 不递增它）→ wave 化**无需删 barrier**，真正改动是**循环结构**（全 GMM1 循环 + 全 GMM2 循环 → 逐 wave 交错）；唯二要处理的：prefetch（TopkWeightsPrefetch）路径的 allDone+SyncAll（真同步，需换 wave 粒度或暂缓），以及 `ExpertTokenNumCopyOut`（读 expert token 数）从原 GMM1 循环后移到所有 wave 结束的收尾。
 - **无批次级全局 barrier**：不用 EndSync / SyncAll 做 wave 同步。
 
 ### 4.5 两条实施路线（决策点）
@@ -237,11 +239,15 @@ for (waveBegin = 0; waveBegin < moeExpertPerRank_; waveBegin += waveExpertNum) {
 
 ### 4.6 分步实施与验收
 
+> **当前状态（路线 B 已落地）**：已在 `MegaMoe::Process()` 内实现 `if constexpr (ENABLE_A8W4 && !TopkWeightsPrefetch)` 分支——直接 2 专家/wave 的 wave 循环（`GMM1(wave)→GMM2(wave)` 逐 wave 交错），跳过 1 专家结构验证；A4W4/generic 与 A8W4-prefetch 保持原两段式（prefetch 的 allDone+SyncAll 真同步暂缓）。待验收：编译 + 精度 + trace。
+>
+> **trace 配套修复**：`WriteCriticalPathTrace` 的 `expertsPerWave` 已按编译期常量改为 `(ENABLE_A8W4 && !TopkWeightsPrefetch) ? 2 : 1`；`mega_moe_trace_contract.py` 中 a8w4 contract 的 `experts_per_wave` 由写死 `1` 改为 `"derived_a8w4"`（按 `topk_weights_type` 推导：非 prefetch=2 / prefetch=1），使 runtime config hash 与预期一致（否则报 `runtime_config_hash`/`experts_per_wave` mismatch）。
+
 1. **结构先行**：合并两个 for 为 wave 循环（可先用 `expertsPerBatch = 1` 验证循环结构——按 3.2 这是负面形态，只验证结构、不做目标）。
 2. **切 2 专家/wave**：`expertsPerBatch = 2`，确认 AIC 连续（G2(e) 不再等 S(e)）。
-3. **去串行点**：删除 GMM1 循环后的 `EndSync` / allDone / SyncAll，改 wave 内 flag 推进。
-4. **补 GMM2-ready 扇入**：实现 `PublishGmm2Ready` / `WaitGmm2Ready`（`[slot][AIC][64B]`），combine 改按专家触发。
-5. **跨 wave 预取**：AIV1 `DispatchExpertsUntil(B+1)`、AIV0 P/Q prologue(B+1)。
+3. **循环结构改造（A8W4 无真 barrier 可删）**：A8W4 的 `EndSync`/`EndGMM2Sync` 因 `vecSetSyncCom` 恒 0 本是 no-op；wave 化的实质是把全 GMM1 循环 + 全 GMM2 循环改成逐 wave 交错；prefetch 路径的 allDone+SyncAll 换 wave 粒度或暂缓。
+4. **combine 触发复用现有 GMM2-ready**：A8W4 已有 `gmm2CombineSyncCounter`（`NotifyCombineConsumersOfTileCompletion` 发布 + `ProcessCombine` 逐 slot 等待），**无需新增** `PublishGmm2Ready`/`WaitGmm2Ready`；只验证 wave 化后 slot 按 wave/expert 复用不冲突、combine 仍按 row-group 提前触发。
+5. **dispatch 预取复用现有机制**：当前 A8W4 已是逐专家 +1 预取（GMM1(e) 期间预取 dispatch(e+1)，AIV1 sub==1），2 专家/wave 下天然跨 wave 边界，**无需新实现 `DispatchExpertsUntil(B+1)`**（如需更深预取可选）；AIV0 P/Q prologue 与 GMM 同步、随 wave 自然推进，无需跨 wave 预取。
 6. **边界收口**：尾 wave 不足（`GetWaveExpertCount`）、空专家守卫、共享专家保持前后置、combine-quant 路径（`gmm2MmadResPtr` 直写）与 no-quant 路径（GMM2 直写 GM + `FIX_S` 发布）分别验证。
 7. **trace 验收**：复用 A8W4 关键路径 trace（GMM1 wave 采样、combine tile 采样已就位），量化：AIC 空泡率、G1→S、S→G2、G2→C 三处 handoff 等待、算子总时长，与模拟 508us 对比；**确认"真正缩短了哪些等待，而不是只改了代码结构"**。
 

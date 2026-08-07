@@ -25,7 +25,11 @@ TRACE_CONTRACTS = {
     "mega-moe-a8w4-critical-path": {
         "path_id": 2,
         "flags_by_protocol": {1: 0xF, 2: 0x1F, 3: 0x3F},
-        "experts_per_wave": 1,
+        # Kernel MegaMoe::WriteCriticalPathTrace emits a compile-time constant:
+        #   expertsPerWave = (ENABLE_A8W4 && !TopkWeightsPrefetch) ? 2U : 1U;
+        # The a8w4 protocol only fires when ENABLE_A8W4, so "derived_a8w4" resolves
+        # to 2 for the wave-restructured non-prefetch path and 1 for the prefetch path.
+        "experts_per_wave": "derived_a8w4",
         "weight1_interleaved": 0,
     },
 }
@@ -244,6 +248,8 @@ def expected_header_from_metadata(
         trace_contract = TRACE_CONTRACTS[trace_name]
     except KeyError as exc:
         raise ContractError(f"unsupported MegaMoe trace contract {trace_name!r}") from exc
+    # metadata.topk_weights_type maps 1:1 to the kernel template bool TopkWeightsPrefetch.
+    topk_prefetch = int(bool(metadata.get("topk_weights_type", False)))
     if trace_contract["experts_per_wave"] == "derived":
         experts_per_wave = calc_experts_per_wave(
             bs=bs,
@@ -254,10 +260,17 @@ def expected_header_from_metadata(
             aic_count=aic_count,
         )
         repetitions = count_expert_waves(moe_experts, experts_per_wave)
+    elif trace_contract["experts_per_wave"] == "derived_a8w4":
+        # Mirror the kernel compile-time constant in MegaMoe::WriteCriticalPathTrace:
+        #   expertsPerWave = (ENABLE_A8W4 && !TopkWeightsPrefetch) ? 2U : 1U;
+        # The a8w4 protocol only fires when ENABLE_A8W4, so the value reduces to
+        # 2 for the wave-restructured non-prefetch path and 1 for the prefetch path.
+        # Records stay per-expert (repetition_count = moe_experts), independent of waves.
+        experts_per_wave = 1 if topk_prefetch else 2
+        repetitions = moe_experts
     else:
         experts_per_wave = int(trace_contract["experts_per_wave"])
         repetitions = moe_experts
-    topk_prefetch = int(bool(metadata.get("topk_weights_type", False)))
     interleaved = (
         int(bool(metadata.get("is_interleaved", False)))
         if trace_contract["weight1_interleaved"] == "metadata"
