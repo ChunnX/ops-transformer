@@ -2435,7 +2435,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--aclgraph",
-        dest="graph",
+        dest="aclgraph",
         action="store_true",
         help="使用图模式 (torchair + torch.compile) 执行 NPU 算子调用",
     )
@@ -2561,7 +2561,7 @@ if __name__ == "__main__":
                         rdv=args.rdv,
                         rdv_cache_dir=args.cache_dir,
                         debug=args.debug,
-                        graph=args.graph,
+                        graph=args.aclgraph,
                     )
                 )
             except Exception as err:  # pylint: disable=broad-except
