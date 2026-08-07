@@ -5,10 +5,12 @@ import inspect
 import pytest
 import torch
 
+from k_pool_public_loader import load_k_pool_public_api
+
 
 def test_k_pool_public_schema_and_meta():
     torch_npu = pytest.importorskip("torch_npu")
-    pytest.importorskip("cann_ops_transformer")
+    load_k_pool_public_api()
 
     assert callable(torch_npu.k_pool_npu)
     parameters = inspect.signature(torch_npu.k_pool_npu).parameters
@@ -46,7 +48,7 @@ def test_k_pool_public_schema_and_meta():
 
 def test_k_pool_public_rejects_reserved_stages():
     torch_npu = pytest.importorskip("torch_npu")
-    pytest.importorskip("cann_ops_transformer")
+    load_k_pool_public_api()
 
     hidden_states = torch.empty((1, 1, 4096), dtype=torch.bfloat16, device="meta")
     wk = torch.empty((128, 4096), dtype=torch.bfloat16, device="meta")
