@@ -522,7 +522,7 @@ uint32_t MixedQuantSparseFlashMlaMetadataCpuKernel::GetOriS2SeqSize(uint32_t bId
             return static_cast<uint32_t>(s2Ptr[bIdx + 1U] - s2Ptr[bIdx]);
         }
     }
-    // 如果 max_seqlen_ori_kv 没传入，且 ori_kv 为稀疏的，则尝试从 topk 中获取
+    // 如果是PA场景，或 max_seqlen_ori_kv 没传入，且 ori_kv 为稀疏的，则尝试从 topk 中获取
     if ((layoutKv_ == "PA_BBND" || maxSeqlenOriKv_ == 0) && isSparseOriKv_) {
         return UINT32_MAX;
     }
@@ -545,7 +545,7 @@ uint32_t MixedQuantSparseFlashMlaMetadataCpuKernel::GetCmpS2SeqSize(uint32_t bId
             return static_cast<uint32_t>(s2Ptr[bIdx + 1U] - s2Ptr[bIdx]);
         }
     }
-    // 如果 max_seqlen_cmp_kv 没传入，且 cmp_kv 为稀疏的，则尝试从topk中获取
+    // 如果是PA场景，或 max_seqlen_cmp_kv 没传入，且 cmp_kv 为稀疏的，则尝试从topk中获取
     if ((layoutKv_ == "PA_BBND" || maxSeqlenCmpKv_ == 0) && isSparseCmpKv_) {
         return UINT32_MAX;
     }
