@@ -58,6 +58,7 @@ void GroupedA4W4IntQuantTiling::Reset()
     int8XWs_ = 0UL;
     mmOutWs_ = 0UL;
     perTokenScaleFillWs_ = 0UL;
+    weightNzC032_ = false;
 }
 
 bool GroupedA4W4IntQuantTiling::IsCapable()
@@ -142,6 +143,10 @@ ge::graphStatus GroupedA4W4IntQuantTiling::GetShapeAttrsInfo()
     auto wShapePtr = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShapePtr);
     OP_CHECK_NULL_WITH_CONTEXT(context_, wShapePtr);
+    const auto &weightStorageShape = wShapePtr->GetStorageShape();
+    weightNzC032_ = inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ &&
+                    weightStorageShape.GetDimNum() > 0U &&
+                    weightStorageShape.GetDim(weightStorageShape.GetDimNum() - 1U) == 32;
     OP_CHECK_IF(!SetMKN(xShapePtr->GetOriginShape(), wShapePtr->GetOriginShape()),
                 OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "A4W4 SetMKN failed."),
                 return ge::GRAPH_FAILED);
@@ -493,7 +498,8 @@ ge::graphStatus GroupedA4W4IntQuantTiling::PostTiling()
     p.groupType = a4w4Tiling_.groupType;
     p.groupListType = a4w4Tiling_.groupListType;
     p.reserved = ((inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) ? A4W4_WEIGHT_NZ_FLAG : 0ULL) |
-                 (inputParams_.transB ? A4W4_TRANSPOSE_WEIGHT_FLAG : 0ULL);
+                 (inputParams_.transB ? A4W4_TRANSPOSE_WEIGHT_FLAG : 0ULL) |
+                 (weightNzC032_ ? A4W4_WEIGHT_NZ_C0_32_FLAG : 0ULL);
     errno_t retM = memcpy_s(tilingData_.gmmArray.mList, sizeof(tilingData_.gmmArray.mList), mList_, sizeof(mList_));
     OP_CHECK_IF(retM != EOK, OP_LOGE(context_->GetNodeName(), "memcpy_s mList failed, ret=%d", retM),
                 return ge::GRAPH_FAILED);
