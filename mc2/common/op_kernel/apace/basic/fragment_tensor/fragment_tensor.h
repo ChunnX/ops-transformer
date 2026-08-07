@@ -90,11 +90,19 @@ class FragmentTensor {
 public:
     __aicore__ inline FragmentTensor() = default;
 
+    /*!
+     * \brief 构造函数
+     * \note addrList 必须在 FragmentTensor 整个生命周期内保持有效，
+     *       本类只保存指针，不拷贝数组内容。调用方须保证 addrList 非空。
+     */
     __aicore__ inline FragmentTensor(
         const FragmentParam<Dims>& fragParam,
         GM_ADDR const* addrList)
-        : fragParam_(fragParam), addrList_(addrList)
+        : fragParam_(fragParam)
     {
+        if (addrList != nullptr) {
+            addrList_ = addrList;
+        }
         ArrayFill(sliceCoord_, 0, AscendC::Std::make_index_sequence<Dims>{});
         ArrayCopy(sliceShape_, fragParam_.assembledShape, AscendC::Std::make_index_sequence<Dims>{});
     }
@@ -136,9 +144,11 @@ public:
         return addrList_[idx];
     }
 
-    __aicore__ inline void UpdateAddrList(GM_ADDR const* addrList)
+        __aicore__ inline void UpdateAddrList(GM_ADDR const* addrList)
     {
-        addrList_ = addrList;
+        if (addrList != nullptr) {
+            addrList_ = addrList;
+        }
     }
 
     __aicore__ inline const FragmentParam<Dims>& GetFragParam() const { return fragParam_; }
@@ -299,7 +309,7 @@ private:
     }
 
     FragmentParam<Dims> fragParam_;
-    GM_ADDR const* addrList_{nullptr};
+    GM_ADDR const *addrList_{nullptr};
     uint64_t sliceCoord_[Dims]{};
     uint64_t sliceShape_[Dims]{};
 };

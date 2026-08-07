@@ -25,8 +25,6 @@ public:
     QuantMatmulTilingSwat() = default;
     ~QuantMatmulTilingSwat() override = default;
 
-    void SetMTailAlignEnable(bool enable) { enableMTailAlign_ = enable; }
-
 protected:
     const char* TilingName() const override
     {
@@ -54,8 +52,7 @@ private:
     using Base::platformInfo_;
     using Base::runInfo_;
     using Base::isOpenOptimize_;
-
-    bool enableMTailAlign_{false};
+    using Base::enableMTailAlign_;
 
 private:
     uint32_t CalcScaleKL1() const
@@ -142,12 +139,16 @@ private:
                 secSplitValid = newSecTile;
             }
         } else {
-            while ((CalUsedCoreNum(runInfo_, preSplit + 1UL, secSplit) <= platformInfo_.aicNum && preSplit < preSplitMax) ||
-                   (CalUsedCoreNum(runInfo_, preSplit, secSplit + 1UL) <= platformInfo_.aicNum && secSplit < secSplitMax)) {
-                if (CalUsedCoreNum(runInfo_, preSplit + 1UL, secSplit) <= platformInfo_.aicNum && preSplit < preSplitMax) {
+            while ((preSplit < preSplitMax &&
+                    CalUsedCoreNum(runInfo_, preSplit + 1UL, secSplit) <= platformInfo_.aicNum) ||
+                   (secSplit < secSplitMax &&
+                    CalUsedCoreNum(runInfo_, preSplit, secSplit + 1UL) <= platformInfo_.aicNum)) {
+                if (preSplit < preSplitMax &&
+                    CalUsedCoreNum(runInfo_, preSplit + 1UL, secSplit) <= platformInfo_.aicNum) {
                     preSplitValid = ++preSplit;
                 }
-                if (CalUsedCoreNum(runInfo_, preSplit, secSplit + 1UL) <= platformInfo_.aicNum && secSplit < secSplitMax) {
+                if (secSplit < secSplitMax &&
+                    CalUsedCoreNum(runInfo_, preSplit, secSplit + 1UL) <= platformInfo_.aicNum) {
                     secSplitValid = ++secSplit;
                 }
             }
