@@ -28,8 +28,11 @@ constexpr int64_t GE_DTYPE_FLOAT4_E2M1 = 40L;
 constexpr int64_t GE_DTYPE_FLOAT4_E1M2 = 41L;
 constexpr int64_t ACL_DTYPE_OFFSET = 256L;
 constexpr int64_t DIM_0 = 0L;
+constexpr int64_t DIM_1 = 1L;
 constexpr int64_t DIM_2 = 2L;
+constexpr int64_t DIM_3 = 3L;
 constexpr int64_t MX_GROUP_SIZE = 64L;
+constexpr int64_t MX_SCALE_PAIR = 2L;
 
 bool IsKnownGeDtype(int64_t dtype)
 {
@@ -138,11 +141,16 @@ int64_t CeilDiv(int64_t value, int64_t factor)
     return (value + factor - 1) / factor;
 }
 
+bool IsMxScaleTransposed(const at::Tensor &weightScaleTensor)
+{
+    return weightScaleTensor.stride(DIM_3) == 1 && weightScaleTensor.stride(DIM_1) == MX_SCALE_PAIR &&
+           weightScaleTensor.stride(DIM_2) == weightScaleTensor.size(DIM_1) * MX_SCALE_PAIR;
+}
+
 int64_t InferNzLogicalN(const at::Tensor &weightScaleTensor)
 {
-    // Runtime callers normalize MX weight to the non-transposed logical layout before this op.
-    // Thus 4D MX weightScale is [E, ceil(K / 64), N, 2], and logical N is dim2.
-    return weightScaleTensor.size(DIM_2);
+    return IsMxScaleTransposed(weightScaleTensor) ? weightScaleTensor.size(DIM_1) :
+                                                    weightScaleTensor.size(DIM_2);
 }
 
 void CheckTensorListIndexable(const std::vector<at::Tensor> &tensorList, const char *name)
@@ -193,8 +201,18 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
         yScale = at::empty({m, CeilDiv(n, MX_GROUP_SIZE), 2}, x.options().dtype(at::ScalarType::Float8_e8m0fnu));
     }
 
-    at::TensorList weightRef = weight;
-    at::TensorList weightScaleRef = weightScale;
+    std::vector<at::Tensor> normalizedWeight(weight);
+    std::vector<at::Tensor> normalizedWeightScale(weightScale);
+    if (IsMxScaleTransposed(weightScaleTensor)) {
+        for (auto &tensor : normalizedWeight) {
+            tensor = tensor.transpose(-1, -2);
+        }
+        for (auto &tensor : normalizedWeightScale) {
+            tensor = tensor.transpose(DIM_1, DIM_2);
+        }
+    }
+    at::TensorList weightRef = normalizedWeight;
+    at::TensorList weightScaleRef = normalizedWeightScale;
     const std::vector<at::Tensor> emptyBias;
     const std::vector<at::Tensor> &bias = biasOptional.has_value() ? biasOptional.value() : emptyBias;
     at::TensorList biasRef = bias;
