@@ -69,6 +69,9 @@ public:
                                 __gm__ uint8_t *, const QuantBlockSparseAttnMxTilingData *__restrict tiling,
                                 TPipe *tPipe)
     {
+        // Cross-core Buffer IDs are generated from block-local state. ACL graph replay reuses that state,
+        // so every kernel invocation must restart from the same ID sequence on AIC and AIV.
+        fa_base_matmul::idCounterNum = 0;
         // Q/K/V 在 cube 中结合 block_table 完成 PA 搬运。
         pipe = tPipe;
         tilingData = tiling;
