@@ -8,8 +8,6 @@
 #ifndef K_POOL_LAYER_NORM_H
 #define K_POOL_LAYER_NORM_H
 
-#include "k_pool_tools.h"
-
 namespace KPool {
 
 __aicore__ inline void KPoolLayerNorm(const LocalTensor<float> &out, const LocalTensor<float> &in,
