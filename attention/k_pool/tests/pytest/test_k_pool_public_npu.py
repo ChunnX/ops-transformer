@@ -22,6 +22,7 @@ class Case:
     cmp_ratio: int
     block_size: int = 4
     scramble_blocks: bool = False
+    head_dim: int = 128
 
 
 CASES = {
@@ -81,6 +82,7 @@ CASES = {
             16,
             block_size=128,
         ),
+        Case("bsh_head_dim_512_r4", "BSH", (4,), (0,), 4, head_dim=512),
     )
 }
 
@@ -130,13 +132,14 @@ def _limit_batch(case: Case, batch_size: int) -> Case:
         cmp_ratio=case.cmp_ratio,
         block_size=case.block_size,
         scramble_blocks=case.scramble_blocks,
+        head_dim=case.head_dim,
     )
 
 
 def _make_case_inputs(case: Case):
     torch.manual_seed(20260807 + case.cmp_ratio + sum(case.lengths) + sum(case.start_pos))
     hidden_size = 4096
-    head_dim = 128
+    head_dim = case.head_dim
     block_size = case.block_size
     max_updated = max(
         start + length for start, length in zip(case.start_pos, case.lengths)
@@ -226,7 +229,7 @@ def _precision(name, actual, expected, rtol, atol, required_percent=99.5):
     return result
 
 
-def run_case(case: Case, per_batch: bool = False):
+def run_case(case: Case, per_batch: bool = False, norm_on: bool = False):
     load_k_pool_public_api()
     torch_npu.npu.set_device(0)
     (
@@ -239,6 +242,11 @@ def run_case(case: Case, per_batch: bool = False):
         start_pos,
         seq_lens,
     ) = _make_case_inputs(case)
+    norm_weight = None
+    norm_bias = None
+    if norm_on:
+        norm_weight = torch.randn((wk.size(0),), dtype=torch.float32)
+        norm_bias = torch.randn((wk.size(0),), dtype=torch.float32)
 
     golden_cache = state_cache.clone()
     golden_output, _ = run_k_pool_golden(
@@ -249,6 +257,8 @@ def run_case(case: Case, per_batch: bool = False):
         golden_cache,
         cache_block_table,
         start_pos,
+        norm_weight=norm_weight,
+        norm_bias=norm_bias,
         seq_lens=seq_lens,
         cmp_ratio=case.cmp_ratio,
     )
@@ -262,6 +272,8 @@ def run_case(case: Case, per_batch: bool = False):
         npu_cache,
         cache_block_table.npu(),
         start_pos.npu(),
+        norm_weight=None if norm_weight is None else norm_weight.npu(),
+        norm_bias=None if norm_bias is None else norm_bias.npu(),
         seq_lens=None if seq_lens is None else seq_lens.npu(),
         cmp_ratio=case.cmp_ratio,
     )
@@ -377,6 +389,11 @@ def main():
         type=int,
         help="Keep only the first N batches of each selected case for isolation.",
     )
+    parser.add_argument(
+        "--norm-on",
+        action="store_true",
+        help="Enable FP32 LayerNorm on the current K projection.",
+    )
     args = parser.parse_args()
     if args.manifest is not None:
         selected = _load_manifest_cases(args.manifest)
@@ -389,7 +406,7 @@ def main():
         selected = CASES.values() if args.case == "all" else (CASES[args.case],)
     if args.limit_batch is not None:
         selected = [_limit_batch(case, args.limit_batch) for case in selected]
-    results = [run_case(case, per_batch=args.per_batch) for case in selected]
+    results = [run_case(case, per_batch=args.per_batch, norm_on=args.norm_on) for case in selected]
     print(json.dumps(results, indent=2))
     if not all(result["pass"] for result in results):
         raise SystemExit(1)
