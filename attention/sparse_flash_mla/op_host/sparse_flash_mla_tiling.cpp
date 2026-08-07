@@ -524,18 +524,20 @@ ge::graphStatus SMLAInfoParser::GetSMLATemplateMode(SMLATilingInfo &smlaInfo)
                 perfMode_ = SMLATemplateMode::SWA_TEMPLATE_MODE;
             }
         } else {
-            OP_LOGE(opName_, "When cmpSparseIndices is not nullptr, cmpKv cannot be nullptr.");
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "cmp_kv",
+                "When cmp_sparse_indices is not nullptr, cmp_kv cannot be nullptr");
             return ge::GRAPH_FAILED;
         }
         if (perfMode_ == SMLATemplateMode::HCA_TEMPLATE_MODE || perfMode_ == SMLATemplateMode::CSA_TEMPLATE_MODE) {
             if (kvLayout_ == SMLALayout::TND && opParamInfo_.cuSeqLensCmpKv.tensor == nullptr) {
-                OP_LOGE(opName_, "the layout_kv is %s, seqlens_cmp_kv must be provided.",
-                        SMLALayoutToSerialString(kvLayout_).c_str());
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "cu_seqlens_cmp_kv",
+                    "The layout_kv is" + SMLALayoutToSerialString(kvLayout_).c_str() +
+                    ", seqlens_cmp_kv must be provided");
                 return ge::GRAPH_FAILED;
             }
         }
     } else {
-        OP_LOGE(opName_, "oriKv is nullptr");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "ori_kv", "ori_kv is nullptr");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -560,10 +562,9 @@ ge::graphStatus SMLAInfoParser::GetQueryAndOutLayout()
     }
     if (qLayout_ == SMLALayout::BSND) {
         OP_CHECK_IF(opParamInfo_.cuSeqLensQ.tensor != nullptr,
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                        opName_, "cuSeqLensQ",
-                        Ops::Base::ToString(opParamInfo_.cuSeqLensQ.tensor->GetStorageShape()).c_str(),
-                        "when query's layout is BSND, cuSeqLensQ should be null"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                        opName_, "cu_seqlens_q",
+                        "When layout_q is BSND, cu_seqlens_q should be null"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -585,10 +586,10 @@ ge::graphStatus SMLAInfoParser::GetKvLayout()
         return ge::GRAPH_FAILED;
     }
     if (kvLayout_ != SMLALayout::PA_BBND && qLayout_ != kvLayout_) {
-        OP_LOGE(opName_,
-                "layout_q and layout_kv only support BSND/BSND, TND/TND, BSND/PA_BBND "
-                "or TND/PA_BBND, but got %s/%s.",
-                SMLALayoutToSerialString(qLayout_).c_str(), SMLALayoutToSerialString(kvLayout_).c_str());
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "layout_q and layout_kv",
+            SMLALayoutToSerialString(qLayout_) + " and " +
+            SMLALayoutToSerialString(kvLayout_),
+            "Layout_q and layout_kv only support BSND/BSND, TND/TND, BSND/PA_BBND or TND/PA_BBND");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -632,7 +633,8 @@ void SMLAInfoParser::SetSMLAShape()
     if (opParamInfo_.oriKv.tensor != nullptr) {
         oriKvShape_ = opParamInfo_.oriKv.tensor->GetStorageShape();
     } else {
-        OP_LOGE(opName_, "query tensor is nullptr, please check input parameters.");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "q",
+            "Q is nullptr, please check input parameters");
     }
     if (opParamInfo_.cmpKv.tensor != nullptr) {
         cmpKvShape_ = opParamInfo_.cmpKv.tensor->GetStorageShape();
@@ -642,7 +644,8 @@ void SMLAInfoParser::SetSMLAShape()
         if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
             cmpSparseIndicesShape_ = opParamInfo_.cmpSparseIndices.tensor->GetStorageShape();
         } else {
-            OP_LOGE(opName_, "cmpSparseIndices tensor is nullptr, please check input parameters.");
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "cmp_sparse_indices",
+                "Cmp_sparse_indices is nullptr, please check input parameters");
         }
     }
 
@@ -676,8 +679,9 @@ ge::graphStatus SMLAInfoParser::CheckContiguous() const
             oriExpectedStrides = {dim1 * dim2, dim2, 1};
         }
         OP_CHECK_IF(oriKeyStridesVec_.size() != oriExpectedStrides.size(),
-                    OP_LOGE(opName_, "oriKey strideVec size[%zu] not match kvLayout expect len[%zu].",
-                            oriKeyStridesVec_.size(), oriExpectedStrides.size()),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "ori_kv",
+                        "Ori_kv strideVec size[" + std::to_string(oriKeyStridesVec_.size()) +
+                        "] not match layout_kv expect len[" + std::to_string(oriExpectedStrides.size()) + "]"),
                     return ge::GRAPH_FAILED);
         oriKeyNonContiguous =
             static_cast<uint64_t>(oriKeyStridesVec_[checkStartIdx]) != oriExpectedStrides[checkStartIdx];
@@ -696,16 +700,21 @@ ge::graphStatus SMLAInfoParser::CheckContiguous() const
             cmpExpectedStrides = {dim1 * dim2, dim2, 1};
         }
         OP_CHECK_IF(cmpKeyStridesVec_.size() != cmpExpectedStrides.size(),
-                    OP_LOGE(opName_, "cmpKey strideVec size[%zu] not match kvLayout expect len[%zu].",
-                            cmpKeyStridesVec_.size(), cmpExpectedStrides.size()),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "cmpKey",
+                        "cmpKey strideVec size[" + std::to_string(cmpKeyStridesVec_.size()) +
+                        "] not match kvLayout expect len[" + std::to_string(cmpExpectedStrides.size()) + "]"),
                     return ge::GRAPH_FAILED);
         cmpKeyNonContiguous =
             static_cast<uint64_t>(cmpKeyStridesVec_[checkStartIdx]) != cmpExpectedStrides[checkStartIdx];
     }
 
-    OP_CHECK_IF(oriKeyNonContiguous, OP_LOGE(opName_, "oriKey only support non-continuous keying on the 0-axis."),
+    OP_CHECK_IF(oriKeyNonContiguous,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "oriKey",
+                    "oriKey only support non-continuous keying on the 0-axis"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(cmpKeyNonContiguous, OP_LOGE(opName_, "cmpKey only support non-continuous keying on the 0-axis."),
+    OP_CHECK_IF(cmpKeyNonContiguous,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "oriKey",
+                    "cmpKey only support non-continuous keying on the 0-axis"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -740,13 +749,15 @@ ge::graphStatus SMLAInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::
                                                     const std::string &name) const
 {
     if ((tensor == nullptr)) {
-        OP_LOGE(opName_, "when layout of q is %s, %s must be provided.", SMLALayoutToSerialString(layout).c_str(),
-                name.c_str());
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, name.c_str(),
+            "When layout_q is " + SMLALayoutToSerialString(layout) + ", " + name + " must be provided");
         return ge::GRAPH_FAILED;
     }
     int64_t shapeSize = tensor->GetShapeSize();
     if (shapeSize <= 0) {
-        OP_LOGE(opName_, "the shape size of %s is %ld, it should be greater than 0.", name.c_str(), shapeSize);
+        OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(opName, name.c_str(),
+            std::to_string(shapeSize).c_str(),
+            "The shape size of " + name + " should be greater than 0");
         return ge::GRAPH_FAILED;
     }
     size = static_cast<uint32_t>(shapeSize) - 1;
@@ -791,11 +802,15 @@ ge::graphStatus SMLAInfoParser::GetS1Size()
         perfMode_ == SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         if (cmpSparseIndicesLayout_ == SMLALayout::TND) {
             uint32_t cmpSparseIndicesT = GetAxisNum(cmpSparseIndicesShape_, SMLAAxis::T, cmpSparseIndicesLayout_);
-            OP_CHECK_IF(cmpSparseIndicesT != s1Size_, OP_LOGE(opName_, "T size check failed !"),
+            OP_CHECK_IF(cmpSparseIndicesT != s1Size_,
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cmp_sparse_indices",
+                            std::to_string(cmpSparseIndicesShape_), "T size check failed"),
                         return ge::GRAPH_FAILED);
         } else {
             uint32_t cmpSparseIndicesS1 = GetAxisNum(cmpSparseIndicesShape_, SMLAAxis::S, cmpSparseIndicesLayout_);
-            OP_CHECK_IF(cmpSparseIndicesS1 != s1Size_, OP_LOGE(opName_, "s1 size check failed !"),
+            OP_CHECK_IF(cmpSparseIndicesS1 != s1Size_,
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cmp_sparse_indices",
+                            std::to_string(cmpSparseIndicesShape_), "S1 size check failed"),
                         return ge::GRAPH_FAILED);
         }
     }
