@@ -921,7 +921,8 @@ public:
             .ExtendCfgInfo("prebuildPattern.value", "Opaque")
             .ExtendCfgInfo("coreType.value", "AiCore")
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
-            .ExtendCfgInfo("opFile.value", "grouped_matmul_apt");
+            .ExtendCfgInfo("opFile.value", "grouped_matmul_apt")
+            .ExtendCfgInfo("jitCompile.flag", "static_true,dynamic_true");
         this->AICore().AddConfig("ascend950", config950);
 
         OpAICoreConfig config_kirin = GetKirinCoreConfig();
