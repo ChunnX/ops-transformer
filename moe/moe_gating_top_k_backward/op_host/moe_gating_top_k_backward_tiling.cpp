@@ -45,8 +45,8 @@ const static int64_t K_DIM_INDEX = 1;
 const static int64_t DOUBLE_BUFFER_NUM = 2;
 const static int64_t UB_ALIGN_BYTES_MINUS_ONE = 31;
 const static int64_t UB_RESERVE_SPACE = 1024;
-const static int64_t NUM_TWO = 2;                       // 2 buffers with the same size
-const static int64_t NUM_SIX = 6;                       // 6 buffers with the same size
+const static int64_t NUM_TWO = 2; // 2 buffers with the same size
+const static int64_t NUM_SIX = 6; // 6 buffers with the same size
 
 // Tiling keys
 const static uint64_t TILING_KEY_RENORM_SIGMOID = 1;
@@ -65,7 +65,6 @@ const static int64_t DEFAULT_WORKSPACE_SIZE = 16777216; // 预留16M空间
 // dim size
 const static int64_t DIM_ZERO = 0;
 const static int64_t DIM_ONE = 1;
-
 
 class MoeGatingTopKBackwardTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
@@ -240,7 +239,6 @@ ge::graphStatus MoeGatingTopKBackwardTiling::CheckExpertIdx()
     return ge::GRAPH_SUCCESS;
 }
 
-
 ge::graphStatus MoeGatingTopKBackwardTiling::CheckAttr()
 {
     auto attrs = context_->GetAttrs();
@@ -341,7 +339,7 @@ ge::graphStatus MoeGatingTopKBackwardTiling::CalcMaxRows()
     int64_t indicesQuePerTokenSpace = k_ * SIZE_OF_FLOAT32;
     int64_t xQuePerTokenSpace = expertCount_ * SIZE_OF_FLOAT32;
     int64_t outQuePerTokenSpace = expertCount_ * gradYDtypeSize_;
-    
+
     int64_t bufk0PerTokenSpace = k_ * SIZE_OF_FLOAT32;
     int64_t bufk1PerTokenSpace = k_ * SIZE_OF_FLOAT32;
     int64_t bufn2PerTokenSpace = expertCount_ * SIZE_OF_FLOAT32;
