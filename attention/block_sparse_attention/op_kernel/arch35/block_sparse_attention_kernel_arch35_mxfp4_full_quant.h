@@ -170,10 +170,19 @@ public:
  #endif	 
  #ifdef __DAV_VEC__
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
-        half dstTypeMax = static_cast<half>(dstTypeMax_);
-        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_, dstTypeMax);
+        // host 侧已预算: log2Cx_ = -dstTypeMax, log2CxCeil_ = ceil(dstTypeMax)
+        half NEG_LOG2_CX = static_cast<half>(-log2Cx_);
+        half LOG2_CX_CEIL = static_cast<half>(log2CxCeil_);
+        // if(coreIdx == 0) {
+        //             AscendC::printf("NEG_LOG2_CX = %f, LOG2_CX_CEIL = %f\n", 
+        //         static_cast<float>(NEG_LOG2_CX), 
+        //         static_cast<float>(LOG2_CX_CEIL));
+        // }
+
+
+        EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_, NEG_LOG2_CX);
         EpilogueCopyGlobalMaxUbToL1 epilogueCopyGlobalMaxUbToL1(resource);
-        EpilogueComputePScale epilogueComputePScale(resource);
+        EpilogueComputePScale epilogueComputePScale(resource, LOG2_CX_CEIL);
         EpilogueRescaleO epilogueRescaleO(resource);
  #endif	 
 
@@ -480,7 +489,8 @@ public:
         blockShapeX_ = bsaTilingData->blockShapeX;
         blockShapeY_ = bsaTilingData->blockShapeY;
         scaleValue_ = bsaTilingData->scaleValue;
-        dstTypeMax_ = bsaTilingData->dstTypeMax;
+        log2Cx_ = bsaTilingData->log2Cx;
+        log2CxCeil_ = bsaTilingData->log2CxCeil;
         // mask2idx tile info
         xBlockNumAligned_ = bsaTilingData->BsaMask2IdxTileInfo.xBlockNumAligned;
         yBlockNumAligned_ = bsaTilingData->BsaMask2IdxTileInfo.yBlockNumAligned;
@@ -922,7 +932,8 @@ private:
     uint32_t blockShapeX_;
     uint32_t blockShapeY_;
     float scaleValue_;
-    float dstTypeMax_;
+    float log2Cx_;
+    float log2CxCeil_;
     // mask2idx tile info
     uint32_t xBlockNumAligned_;
     uint32_t yBlockNumAligned_;

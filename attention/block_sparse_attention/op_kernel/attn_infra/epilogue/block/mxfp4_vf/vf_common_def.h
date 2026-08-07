@@ -69,6 +69,7 @@ constexpr static AscendC::MicroAPI::CastTrait castTraitThree = {
 };
 
 constexpr half NUM_127 = static_cast<half>(127.0f);
+constexpr half NUM_NEG_127 = static_cast<half>(-127.0f);
 constexpr half NUM_NEG_125 = static_cast<half>(-125.0f);
 constexpr half ZERO_VALUE = static_cast<half>(0.0f);
 constexpr int16_t SHIFT_VALUE = 23;
