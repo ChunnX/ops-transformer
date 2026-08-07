@@ -198,32 +198,32 @@ __aicore__ inline int64_t FindNearestPower2(const int64_t value)
 
 template <typename T>
 __aicore__ inline void LoadTensorForDtypeT(
-    __local_mem__ T* input, AscendC::MicroAPI::RegTensor<float>& dst, AscendC::MicroAPI::MaskReg& preg, uint32_t offset)
+    __ubuf__ T* input, AscendC::MicroAPI::RegTensor<float>& dst, AscendC::MicroAPI::MaskReg& preg, uint32_t offset)
 {
     if constexpr (IsSameType<T, half>::value) {
         AscendC::MicroAPI::RegTensor<half> xFp16;
-        DataCopy<half, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(xFp16, ((__local_mem__ half*)(input) + (offset)));
+        AscendC::MicroAPI::LoadAlign<half, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(xFp16, ((__ubuf__ half*)(input) + (offset)));
         Cast<float, half, CAST_B16_TO_B32>(dst, xFp16, preg);
     } else if constexpr (IsSameType<T, bfloat16_t>::value) {
         AscendC::MicroAPI::RegTensor<bfloat16_t> xBf16;
-        DataCopy<bfloat16_t, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
-            xBf16, ((__local_mem__ bfloat16_t*)(input) + (offset)));
+        AscendC::MicroAPI::LoadAlign<bfloat16_t, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+            xBf16, ((__ubuf__ bfloat16_t*)(input) + (offset)));
         Cast<float, bfloat16_t, CAST_B16_TO_B32>(dst, xBf16, preg);
     } else {
-        DataCopy(dst, ((__local_mem__ float*)(input) + (offset)));
+        LoadAlign(dst, ((__ubuf__ float*)(input) + (offset)));
     }
 }
 
 template <typename T>
 __aicore__ inline void StoreTensorForDtypeTOut(
-    __local_mem__ T* dst, AscendC::MicroAPI::RegTensor<float>& src, AscendC::MicroAPI::MaskReg& preg, uint32_t offset)
+    __ubuf__ T* dst, AscendC::MicroAPI::RegTensor<float>& src, AscendC::MicroAPI::MaskReg& preg, uint32_t offset)
 {
     if constexpr (IsSameType<T, float>::value) {
-        DataCopy<T, AscendC::MicroAPI::StoreDist::DIST_NORM>(dst + offset, src, preg);
+        AscendC::MicroAPI::StoreAlign<T, AscendC::MicroAPI::StoreDist::DIST_NORM>(dst + offset, src, preg);
     } else {
         AscendC::MicroAPI::RegTensor<T> xFp16;
         Cast<T, float, CAST_FP32_TO_FP16>(xFp16, src, preg);
-        DataCopy<T, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(dst + offset, xFp16, preg);
+        AscendC::MicroAPI::StoreAlign<T, AscendC::MicroAPI::StoreDist::DIST_PACK_B32>(dst + offset, xFp16, preg);
     }
 }
 
@@ -231,7 +231,7 @@ __aicore__ inline void StoreTensorForDtypeTOut(
 // output数据类型支持int8, hifloat8, float8_e5m2, float8_e4m3fn, bfloat16, float16, float32
 template <typename T>
 __aicore__ inline void StoreUnAlignOneTensor(
-    __local_mem__ T*& output, MicroAPI::RegTensor<float>& src, MicroAPI::UnalignReg& uValue, MicroAPI::MaskReg& preg,
+    __ubuf__ T*& output, MicroAPI::RegTensor<float>& src, MicroAPI::UnalignRegForStore& uValue, MicroAPI::MaskReg& preg,
     uint32_t postUpdateStride)
 {
     if constexpr (IsSameType<T, half>::value) {
@@ -239,13 +239,13 @@ __aicore__ inline void StoreUnAlignOneTensor(
         MicroAPI::RegTensor<half> xFp16Pack;
         Cast<half, float, CAST_FP32_TO_FP16>(xFp16, src, preg);
         Pack((MicroAPI::RegTensor<uint16_t>&)xFp16Pack, (MicroAPI::RegTensor<uint32_t>&)xFp16);
-        DataCopyUnAlign(output, xFp16Pack, uValue, postUpdateStride);
+        StoreUnAlign(output, xFp16Pack, uValue, postUpdateStride);
     } else if constexpr (IsSameType<T, bfloat16_t>::value) {
         MicroAPI::RegTensor<bfloat16_t> xBf16;
         MicroAPI::RegTensor<bfloat16_t> xBf16Pack;
         Cast<bfloat16_t, float, CAST_FP32_TO_FP16>(xBf16, src, preg);
         Pack((MicroAPI::RegTensor<uint16_t>&)xBf16Pack, (MicroAPI::RegTensor<uint32_t>&)xBf16);
-        DataCopyUnAlign(output, xBf16Pack, uValue, postUpdateStride);
+        StoreUnAlign(output, xBf16Pack, uValue, postUpdateStride);
     } else if constexpr (IsSameType<T, int8_t>::value) {
         // 量化为int8
         AscendC::MicroAPI::RegTensor<half> tmpHalf;
@@ -256,7 +256,7 @@ __aicore__ inline void StoreUnAlignOneTensor(
         AscendC::MicroAPI::Cast<int8_t, half, CAST_FP16_TO_INT8>(quantInt8, tmpHalf, preg);
         Pack((MicroAPI::RegTensor<uint16_t>&)tmpInt16, (MicroAPI::RegTensor<uint32_t>&)quantInt8);
         Pack((MicroAPI::RegTensor<uint8_t>&)quantInt8, (MicroAPI::RegTensor<uint16_t>&)tmpInt16);
-        DataCopyUnAlign(output, quantInt8, uValue, postUpdateStride);
+        StoreUnAlign(output, quantInt8, uValue, postUpdateStride);
     } else if constexpr (IsSameType<T, hifloat8_t>::value) {
         // 量化为hifloat8
         AscendC::MicroAPI::RegTensor<hifloat8_t> quantHifloat8Pack;
@@ -264,7 +264,7 @@ __aicore__ inline void StoreUnAlignOneTensor(
         AscendC::MicroAPI::Cast<hifloat8_t, float, CAST_FP32_TO_HIFLOAT8>(quantHifloat8, src, preg);
         Pack((MicroAPI::RegTensor<uint16_t>&)quantHifloat8Pack, (MicroAPI::RegTensor<uint32_t>&)quantHifloat8);
         Pack((MicroAPI::RegTensor<uint8_t>&)quantHifloat8, (MicroAPI::RegTensor<uint16_t>&)quantHifloat8Pack);
-        DataCopyUnAlign(output, quantHifloat8, uValue, postUpdateStride);
+        StoreUnAlign(output, quantHifloat8, uValue, postUpdateStride);
     } else if constexpr (IsSameType<T, fp8_e5m2_t>::value) {
         // 量化fp8_e5m2
         AscendC::MicroAPI::RegTensor<fp8_e5m2_t> quantFloat8E5m2Pack;
@@ -272,7 +272,7 @@ __aicore__ inline void StoreUnAlignOneTensor(
         AscendC::MicroAPI::Cast<fp8_e5m2_t, float, CAST_FP32_TO_FLOAT8>(quantFloat8E5m2, src, preg);
         Pack((MicroAPI::RegTensor<uint16_t>&)quantFloat8E5m2Pack, (MicroAPI::RegTensor<uint32_t>&)quantFloat8E5m2);
         Pack((MicroAPI::RegTensor<uint8_t>&)quantFloat8E5m2, (MicroAPI::RegTensor<uint16_t>&)quantFloat8E5m2Pack);
-        DataCopyUnAlign(output, quantFloat8E5m2, uValue, postUpdateStride);
+        StoreUnAlign(output, quantFloat8E5m2, uValue, postUpdateStride);
     } else if constexpr (IsSameType<T, fp8_e4m3fn_t>::value) {
         // 量化为fp8_e4m3fn
         AscendC::MicroAPI::RegTensor<fp8_e4m3fn_t> quantFloat8E4m3fnPack;
@@ -280,9 +280,9 @@ __aicore__ inline void StoreUnAlignOneTensor(
         AscendC::MicroAPI::Cast<fp8_e4m3fn_t, float, CAST_FP32_TO_FLOAT8>(quantFloat8E4m3fn, src, preg);
         Pack((MicroAPI::RegTensor<uint16_t>&)quantFloat8E4m3fnPack, (MicroAPI::RegTensor<uint32_t>&)quantFloat8E4m3fn);
         Pack((MicroAPI::RegTensor<uint8_t>&)quantFloat8E4m3fn, (MicroAPI::RegTensor<uint16_t>&)quantFloat8E4m3fnPack);
-        DataCopyUnAlign(output, quantFloat8E4m3fn, uValue, postUpdateStride);
+        StoreUnAlign(output, quantFloat8E4m3fn, uValue, postUpdateStride);
     } else {
-        DataCopyUnAlign(output, src, uValue, postUpdateStride);
+        StoreUnAlign(output, src, uValue, postUpdateStride);
     }
 }
 
@@ -345,9 +345,9 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
     uint16_t loopTimes = aSize;
 
     if (rSize <= VL_FP32) {
-        __local_mem__ float* dst = (__local_mem__ float*)dstTensor.GetPhyAddr();
-        __local_mem__ T_KV* x = (__local_mem__ T_KV*)xTensor.GetPhyAddr();
-        __local_mem__ T_KV* gamma = (__local_mem__ T_KV*)grammaTensor.GetPhyAddr();
+        __ubuf__ float* dst = (__ubuf__ float*)dstTensor.GetPhyAddr();
+        __ubuf__ T_KV* x = (__ubuf__ T_KV*)xTensor.GetPhyAddr();
+        __ubuf__ T_KV* gamma = (__ubuf__ T_KV*)grammaTensor.GetPhyAddr();
         __VEC_SCOPE__
         {
             uint32_t count = static_cast<uint32_t>(rSize);
@@ -361,7 +361,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
                 LoadTensorForDtypeT<T_KV>(x, reg0, pMask, i * stride);
                 LoadTensorForDtypeT<T_KV>(gamma, reg1, pMask, 0);
                 AscendC::MicroAPI::Mul(reg2, reg0, reg0, pMask);
-                ReduceSum(reg2, reg2, pMask);
+                AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(reg2, reg2, pMask);
                 AscendC::MicroAPI::Muls(reg3, reg2, reciprocal, pFull);
                 AscendC::MicroAPI::Adds(reg4, reg3, epsilon, pFull);
                 AscendC::MicroAPI::Sqrt(reg5, reg4, pFull);
@@ -372,11 +372,11 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             }
         }
     } else {
-        __local_mem__ float* dst = (__local_mem__ float*)dstTensor.GetPhyAddr();
-        __local_mem__ T_KV* x = (__local_mem__ T_KV*)xTensor.GetPhyAddr();
-        __local_mem__ T_KV* x_1 = (__local_mem__ T_KV*)xTensor.GetPhyAddr() + VL_FP32;
-        __local_mem__ T_KV* gamma = (__local_mem__ T_KV*)grammaTensor.GetPhyAddr();
-        __local_mem__ T_KV* gamma_1 = (__local_mem__ T_KV*)grammaTensor.GetPhyAddr() + VL_FP32;
+        __ubuf__ float* dst = (__ubuf__ float*)dstTensor.GetPhyAddr();
+        __ubuf__ T_KV* x = (__ubuf__ T_KV*)xTensor.GetPhyAddr();
+        __ubuf__ T_KV* x_1 = (__ubuf__ T_KV*)xTensor.GetPhyAddr() + VL_FP32;
+        __ubuf__ T_KV* gamma = (__ubuf__ T_KV*)grammaTensor.GetPhyAddr();
+        __ubuf__ T_KV* gamma_1 = (__ubuf__ T_KV*)grammaTensor.GetPhyAddr() + VL_FP32;
         __VEC_SCOPE__
         {
             uint32_t count = static_cast<uint32_t>(rSize - VL_FP32);
@@ -397,8 +397,8 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
                 AscendC::MicroAPI::Mul(reg2, reg0, reg0, pFull);
                 AscendC::MicroAPI::Mul(reg2_1, reg0_1, reg0_1, pMask);
                 Add<float, AscendC::MicroAPI::MaskMergeMode::ZEROING>(reg2_1, reg2, reg2_1, pMask);
-                Copy<float, AscendC::MicroAPI::MaskMergeMode::MERGING>(reg2, reg2_1, pMask);
-                ReduceSum(reg2, reg2, pFull);
+                AscendC::MicroAPI::Move<float, AscendC::MicroAPI::MaskMergeMode::MERGING>(reg2, reg2_1, pMask);
+                AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(reg2, reg2, pFull);
 
                 // Calc: xSum = xSum * reciprocal
                 // Calc: xSum = xSum + epsilon
@@ -452,21 +452,21 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
     int64_t tailSrcBOffset = floorVLCount * VL_FP32;
     int64_t unFoldSrcOffset = (mainFoldLoopTimes + tailFoldLoopTimes) * VL_FP32;
 
-    __local_mem__ float* dst = (__local_mem__ float*)wsLocal.GetPhyAddr();
+    __ubuf__ float* dst = (__ubuf__ float*)wsLocal.GetPhyAddr();
 
-    __local_mem__ T_KV* foldSrcX0A = (__local_mem__ T_KV*)xLocal.GetPhyAddr();
-    __local_mem__ T_KV* foldSrcX0B = (__local_mem__ T_KV*)xLocal.GetPhyAddr() + foldSrcBOffset;
-    __local_mem__ T_KV* tailSrcX0A = (__local_mem__ T_KV*)xLocal.GetPhyAddr() + tailSrcAOffset;
-    __local_mem__ T_KV* tailSrcX0B = (__local_mem__ T_KV*)xLocal.GetPhyAddr() + tailSrcBOffset;
-    __local_mem__ T_KV* unFoldX0 = (__local_mem__ T_KV*)xLocal.GetPhyAddr() + unFoldSrcOffset;
+    __ubuf__ T_KV* foldSrcX0A = (__ubuf__ T_KV*)xLocal.GetPhyAddr();
+    __ubuf__ T_KV* foldSrcX0B = (__ubuf__ T_KV*)xLocal.GetPhyAddr() + foldSrcBOffset;
+    __ubuf__ T_KV* tailSrcX0A = (__ubuf__ T_KV*)xLocal.GetPhyAddr() + tailSrcAOffset;
+    __ubuf__ T_KV* tailSrcX0B = (__ubuf__ T_KV*)xLocal.GetPhyAddr() + tailSrcBOffset;
+    __ubuf__ T_KV* unFoldX0 = (__ubuf__ T_KV*)xLocal.GetPhyAddr() + unFoldSrcOffset;
 
     __VEC_SCOPE__
     {
         AscendC::MicroAPI::MaskReg pFull = AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-        AscendC::MicroAPI::UnalignReg UReg;
+        AscendC::MicroAPI::UnalignRegForStore UReg;
         // 每一行循环一次
         for (uint16_t i = 0; i < outerLoopTimes; ++i) {
-            dst = (__local_mem__ float*)wsLocal.GetPhyAddr() + i * outerLoopDstStride;
+            dst = (__ubuf__ float*)wsLocal.GetPhyAddr() + i * outerLoopDstStride;
             // 完全能折叠
             for (uint16_t j = 0; j < mainFoldLoopTimes; ++j) {
                 AscendC::MicroAPI::RegTensor<float> reg0, reg1, reg2, reg2_1;
@@ -476,8 +476,8 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
                 AscendC::MicroAPI::Mul(reg2, reg0, reg0, pFull);
                 AscendC::MicroAPI::Mul(reg2_1, reg1, reg1, pFull);
                 Add<float, AscendC::MicroAPI::MaskMergeMode::ZEROING>(reg2, reg2, reg2_1, pFull);
-                ReduceSum(reg2, reg2, pFull);
-                AscendC::MicroAPI::DataCopyUnAlign((__local_mem__ float*&)dst, reg2, UReg, 1);
+                AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(reg2, reg2, pFull);
+                AscendC::MicroAPI::StoreUnAlign((__ubuf__ float*&)dst, reg2, UReg, 1);
             }
             // 一个能折叠，另外一个短了
             for (uint16_t j = 0; j < tailFoldLoopTimes; ++j) {
@@ -489,19 +489,19 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
                 AscendC::MicroAPI::Mul(reg2, reg0, reg0, pFull);
                 AscendC::MicroAPI::Mul(reg2_1, reg1, reg1, pMask);
                 Add<float, AscendC::MicroAPI::MaskMergeMode::ZEROING>(reg2_1, reg2, reg2_1, pMask);
-                Copy<float, AscendC::MicroAPI::MaskMergeMode::MERGING>(reg2, reg2_1, pMask);
-                ReduceSum(reg2, reg2, pFull);
-                AscendC::MicroAPI::DataCopyUnAlign((__local_mem__ float*&)dst, reg2, UReg, 1);
+                AscendC::MicroAPI::Move<float, AscendC::MicroAPI::MaskMergeMode::MERGING>(reg2, reg2_1, pMask);
+                AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(reg2, reg2, pFull);
+                AscendC::MicroAPI::StoreUnAlign((__ubuf__ float*&)dst, reg2, UReg, 1);
             }
             // 无法折叠
             for (uint16_t j = 0; j < unFoldLoopTimes; ++j) {
                 AscendC::MicroAPI::RegTensor<float> reg0, reg1;
                 LoadTensorForDtypeT<T_KV>(unFoldX0, reg0, pFull, i * outerLoopStride + j * innerLoopStride);
                 AscendC::MicroAPI::Mul(reg1, reg0, reg0, pFull);
-                ReduceSum(reg1, reg1, pFull);
-                AscendC::MicroAPI::DataCopyUnAlign((__local_mem__ float*&)dst, reg1, UReg, 1);
+                AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(reg1, reg1, pFull);
+                AscendC::MicroAPI::StoreUnAlign((__ubuf__ float*&)dst, reg1, UReg, 1);
             }
-            AscendC::MicroAPI::DataCopyUnAlignPost((__local_mem__ float*&)dst, UReg, 0);
+            AscendC::MicroAPI::StoreUnAlignPost((__ubuf__ float*&)dst, UReg, 0);
         }
     }
 }
@@ -525,10 +525,10 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
     uint32_t oriRAligned = static_cast<uint32_t>(dvAlign);
 
     if (rSize <= VL_FP32) {
-        __local_mem__ T_KV* dst = (__local_mem__ T_KV*)dstTensor.GetPhyAddr();
-        __local_mem__ T_KV* x = (__local_mem__ T_KV*)xTensor.GetPhyAddr();
-        __local_mem__ T_KV* gamma = (__local_mem__ T_KV*)gammaLocal.GetPhyAddr();
-        __local_mem__ float* sumTmp = (__local_mem__ float*)reduceSumTempTensor.GetPhyAddr();
+        __ubuf__ T_KV* dst = (__ubuf__ T_KV*)dstTensor.GetPhyAddr();
+        __ubuf__ T_KV* x = (__ubuf__ T_KV*)xTensor.GetPhyAddr();
+        __ubuf__ T_KV* gamma = (__ubuf__ T_KV*)gammaLocal.GetPhyAddr();
+        __ubuf__ float* sumTmp = (__ubuf__ float*)reduceSumTempTensor.GetPhyAddr();
         __VEC_SCOPE__
         {
             uint32_t count = static_cast<uint32_t>(rSize);
@@ -539,8 +539,8 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::MicroAPI::MaskReg maskOri;
             // 每行循环一次
             for (uint16_t i = 0; i < loopTimes; ++i) {
-                DataCopy(reg0, (__local_mem__ float*)sumTmp + i * stride);
-                ReduceSum(reg1, reg0, pMask);
+                LoadAlign(reg0, (__ubuf__ float*)sumTmp + i * stride);
+                AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(reg1, reg0, pMask);
                 // Calc: xSum = xSum * reciprocal
                 // Calc: xSum = xSum + epsilon
                 // Calc: xSum = sqrt(xSum)
@@ -562,11 +562,11 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             }
         }
     } else {
-        __local_mem__ T_KV* dst = (__local_mem__ T_KV*)dstTensor.GetPhyAddr();
-        __local_mem__ float* sumTmpA = (__local_mem__ float*)reduceSumTempTensor.GetPhyAddr();
-        __local_mem__ float* sumTmpB = (__local_mem__ float*)reduceSumTempTensor.GetPhyAddr() + VL_FP32;
-        __local_mem__ T_KV* x = (__local_mem__ T_KV*)xTensor.GetPhyAddr();
-        __local_mem__ T_KV* gamma = (__local_mem__ T_KV*)gammaLocal.GetPhyAddr();
+        __ubuf__ T_KV* dst = (__ubuf__ T_KV*)dstTensor.GetPhyAddr();
+        __ubuf__ float* sumTmpA = (__ubuf__ float*)reduceSumTempTensor.GetPhyAddr();
+        __ubuf__ float* sumTmpB = (__ubuf__ float*)reduceSumTempTensor.GetPhyAddr() + VL_FP32;
+        __ubuf__ T_KV* x = (__ubuf__ T_KV*)xTensor.GetPhyAddr();
+        __ubuf__ T_KV* gamma = (__ubuf__ T_KV*)gammaLocal.GetPhyAddr();
         __VEC_SCOPE__
         {
             uint32_t count = static_cast<uint32_t>(rSize - VL_FP32);
@@ -577,11 +577,11 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::MicroAPI::MaskReg maskOri;
             // 行
             for (uint16_t i = 0; i < loopTimes; ++i) {
-                DataCopy(reg0, (__local_mem__ float*)sumTmpA + i * stride);
-                DataCopy(reg1, (__local_mem__ float*)sumTmpB + i * stride);
+                LoadAlign(reg0, (__ubuf__ float*)sumTmpA + i * stride);
+                LoadAlign(reg1, (__ubuf__ float*)sumTmpB + i * stride);
                 Add<float, AscendC::MicroAPI::MaskMergeMode::ZEROING>(reg1, reg0, reg1, pMask);
-                Copy<float, AscendC::MicroAPI::MaskMergeMode::MERGING>(reg0, reg1, pMask);
-                ReduceSum(reg2, reg0, pFull);
+                AscendC::MicroAPI::Move<float, AscendC::MicroAPI::MaskMergeMode::MERGING>(reg0, reg1, pMask);
+                AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(reg2, reg0, pFull);
                 // Calc: xSum = xSum * reciprocal
                 // Calc: xSum = xSum + epsilon
                 // Calc: xSum = sqrt(xSum)
@@ -625,13 +625,13 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
     uint32_t oriRAligned = static_cast<uint32_t>(dvAlign);
     uint32_t quantOutOffset = static_cast<uint32_t>(dvB8Align);
     if (rSize <= VL_FP32) {
-        __local_mem__ T_KV* dst = (__local_mem__ T_KV*)dstTensor.GetPhyAddr();
-        __local_mem__ float* vScale = (__local_mem__ float*)vScaleTensor.GetPhyAddr();
-        __local_mem__ float* vOffset = (__local_mem__ float*)vOffsetTensor.GetPhyAddr();
-        __local_mem__ T_V_CACHE* vQuant = (__local_mem__ T_V_CACHE*)quantLocal.GetPhyAddr();
-        __local_mem__ T_KV* x = (__local_mem__ T_KV*)xTensor.GetPhyAddr();
-        __local_mem__ T_KV* gamma = (__local_mem__ T_KV*)gammaLocal.GetPhyAddr();
-        __local_mem__ float* sumTmp = (__local_mem__ float*)reduceSumTempTensor.GetPhyAddr();
+        __ubuf__ T_KV* dst = (__ubuf__ T_KV*)dstTensor.GetPhyAddr();
+        __ubuf__ float* vScale = (__ubuf__ float*)vScaleTensor.GetPhyAddr();
+        __ubuf__ float* vOffset = (__ubuf__ float*)vOffsetTensor.GetPhyAddr();
+        __ubuf__ T_V_CACHE* vQuant = (__ubuf__ T_V_CACHE*)quantLocal.GetPhyAddr();
+        __ubuf__ T_KV* x = (__ubuf__ T_KV*)xTensor.GetPhyAddr();
+        __ubuf__ T_KV* gamma = (__ubuf__ T_KV*)gammaLocal.GetPhyAddr();
+        __ubuf__ float* sumTmp = (__ubuf__ float*)reduceSumTempTensor.GetPhyAddr();
         __VEC_SCOPE__
         {
             uint32_t count = static_cast<uint32_t>(rSize);
@@ -647,8 +647,8 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::MicroAPI::MaskReg maskOri;
             // 每行循环一次
             for (uint16_t i = 0; i < loopTimes; ++i) {
-                DataCopy(reg0, (__local_mem__ float*)sumTmp + i * stride);
-                ReduceSum(reg1, reg0, pMask);
+                LoadAlign(reg0, (__ubuf__ float*)sumTmp + i * stride);
+                AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(reg1, reg0, pMask);
                 // Calc: xSum = xSum * reciprocal
                 // Calc: xSum = xSum + epsilon
                 // Calc: xSum = sqrt(xSum)
@@ -681,20 +681,20 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
                                          IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                         AscendC::MicroAPI::Cast<T_V_CACHE, float, CAST_FP32_TO_FLOAT8>(quant, offset, maskOri);
                     }
-                    DataCopy<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    AscendC::MicroAPI::StoreAlign<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
                         vQuant + j * VL_FP32 + i * quantOutOffset, quant, maskOri);
                 }
             }
         }
     } else {
-        __local_mem__ T_KV* dst = (__local_mem__ T_KV*)dstTensor.GetPhyAddr();
-        __local_mem__ float* vScale = (__local_mem__ float*)vScaleTensor.GetPhyAddr();
-        __local_mem__ float* vOffset = (__local_mem__ float*)vOffsetTensor.GetPhyAddr();
-        __local_mem__ T_V_CACHE* vQuant = (__local_mem__ T_V_CACHE*)quantLocal.GetPhyAddr();
-        __local_mem__ float* sumTmpA = (__local_mem__ float*)reduceSumTempTensor.GetPhyAddr();
-        __local_mem__ float* sumTmpB = (__local_mem__ float*)reduceSumTempTensor.GetPhyAddr() + VL_FP32;
-        __local_mem__ T_KV* x = (__local_mem__ T_KV*)xTensor.GetPhyAddr();
-        __local_mem__ T_KV* gamma = (__local_mem__ T_KV*)gammaLocal.GetPhyAddr();
+        __ubuf__ T_KV* dst = (__ubuf__ T_KV*)dstTensor.GetPhyAddr();
+        __ubuf__ float* vScale = (__ubuf__ float*)vScaleTensor.GetPhyAddr();
+        __ubuf__ float* vOffset = (__ubuf__ float*)vOffsetTensor.GetPhyAddr();
+        __ubuf__ T_V_CACHE* vQuant = (__ubuf__ T_V_CACHE*)quantLocal.GetPhyAddr();
+        __ubuf__ float* sumTmpA = (__ubuf__ float*)reduceSumTempTensor.GetPhyAddr();
+        __ubuf__ float* sumTmpB = (__ubuf__ float*)reduceSumTempTensor.GetPhyAddr() + VL_FP32;
+        __ubuf__ T_KV* x = (__ubuf__ T_KV*)xTensor.GetPhyAddr();
+        __ubuf__ T_KV* gamma = (__ubuf__ T_KV*)gammaLocal.GetPhyAddr();
         __VEC_SCOPE__
         {
             uint32_t count = static_cast<uint32_t>(rSize - VL_FP32);
@@ -709,11 +709,11 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::MicroAPI::MaskReg maskOri;
             // 行
             for (uint16_t i = 0; i < loopTimes; ++i) {
-                DataCopy(reg0, (__local_mem__ float*)sumTmpA + i * stride);
-                DataCopy(reg1, (__local_mem__ float*)sumTmpB + i * stride);
+                LoadAlign(reg0, (__ubuf__ float*)sumTmpA + i * stride);
+                LoadAlign(reg1, (__ubuf__ float*)sumTmpB + i * stride);
                 Add<float, AscendC::MicroAPI::MaskMergeMode::ZEROING>(reg1, reg0, reg1, pMask);
-                Copy<float, AscendC::MicroAPI::MaskMergeMode::MERGING>(reg0, reg1, pMask);
-                ReduceSum(reg2, reg0, pFull);
+                AscendC::MicroAPI::Move<float, AscendC::MicroAPI::MaskMergeMode::MERGING>(reg0, reg1, pMask);
+                AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(reg2, reg0, pFull);
                 // Calc: xSum = xSum * reciprocal
                 // Calc: xSum = xSum + epsilon
                 // Calc: xSum = sqrt(xSum)
@@ -746,7 +746,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
                                          IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                         AscendC::MicroAPI::Cast<T_V_CACHE, float, CAST_FP32_TO_FLOAT8>(quant, offset, maskOri);
                     }
-                    DataCopy<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    AscendC::MicroAPI::StoreAlign<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
                         vQuant + j * VL_FP32 + i * quantOutOffset, quant, maskOri);
                 }
             }
@@ -773,12 +773,12 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
     uint32_t oriRAligned = static_cast<uint32_t>(dvAlign);
     uint32_t quantOutOffset = static_cast<uint32_t>(dvB8Align);
     if (rSize <= VL_FP32) {
-        __local_mem__ T_KV* dst = (__local_mem__ T_KV*)dstTensor.GetPhyAddr();
-        __local_mem__ T_KV* x = (__local_mem__ T_KV*)xTensor.GetPhyAddr();
-        __local_mem__ T_KV* gamma = (__local_mem__ T_KV*)gammaLocal.GetPhyAddr();
-        __local_mem__ float* sumTmp = (__local_mem__ float*)reduceSumTempTensor.GetPhyAddr();
-        __local_mem__ float* vScale = (__local_mem__ float*)vScaleTensor.GetPhyAddr();
-        __local_mem__ T_V_CACHE* vQuant = (__local_mem__ T_V_CACHE*)quantLocal.GetPhyAddr();
+        __ubuf__ T_KV* dst = (__ubuf__ T_KV*)dstTensor.GetPhyAddr();
+        __ubuf__ T_KV* x = (__ubuf__ T_KV*)xTensor.GetPhyAddr();
+        __ubuf__ T_KV* gamma = (__ubuf__ T_KV*)gammaLocal.GetPhyAddr();
+        __ubuf__ float* sumTmp = (__ubuf__ float*)reduceSumTempTensor.GetPhyAddr();
+        __ubuf__ float* vScale = (__ubuf__ float*)vScaleTensor.GetPhyAddr();
+        __ubuf__ T_V_CACHE* vQuant = (__ubuf__ T_V_CACHE*)quantLocal.GetPhyAddr();
         __VEC_SCOPE__
         {
             uint32_t count = static_cast<uint32_t>(rSize);
@@ -794,8 +794,8 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::MicroAPI::MaskReg maskOri;
             // 每行循环一次
             for (uint16_t i = 0; i < loopTimes; ++i) {
-                DataCopy(reg0, (__local_mem__ float*)sumTmp + i * stride);
-                ReduceSum(reg1, reg0, pMask);
+                LoadAlign(reg0, (__ubuf__ float*)sumTmp + i * stride);
+                AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(reg1, reg0, pMask);
                 // Calc: xSum = xSum * reciprocal
                 // Calc: xSum = xSum + epsilon
                 // Calc: xSum = sqrt(xSum)
@@ -827,19 +827,19 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
                                          IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                         AscendC::MicroAPI::Cast<T_V_CACHE, float, CAST_FP32_TO_FLOAT8>(quant, scale, maskOri);
                     }
-                    DataCopy<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    AscendC::MicroAPI::StoreAlign<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
                         vQuant + j * VL_FP32 + i * quantOutOffset, quant, maskOri);
                 }
             }
         }
     } else {
-        __local_mem__ T_KV* dst = (__local_mem__ T_KV*)dstTensor.GetPhyAddr();
-        __local_mem__ float* sumTmpA = (__local_mem__ float*)reduceSumTempTensor.GetPhyAddr();
-        __local_mem__ float* sumTmpB = (__local_mem__ float*)reduceSumTempTensor.GetPhyAddr() + VL_FP32;
-        __local_mem__ T_KV* x = (__local_mem__ T_KV*)xTensor.GetPhyAddr();
-        __local_mem__ T_KV* gamma = (__local_mem__ T_KV*)gammaLocal.GetPhyAddr();
-        __local_mem__ float* vScale = (__local_mem__ float*)vScaleTensor.GetPhyAddr();
-        __local_mem__ T_V_CACHE* vQuant = (__local_mem__ T_V_CACHE*)quantLocal.GetPhyAddr();
+        __ubuf__ T_KV* dst = (__ubuf__ T_KV*)dstTensor.GetPhyAddr();
+        __ubuf__ float* sumTmpA = (__ubuf__ float*)reduceSumTempTensor.GetPhyAddr();
+        __ubuf__ float* sumTmpB = (__ubuf__ float*)reduceSumTempTensor.GetPhyAddr() + VL_FP32;
+        __ubuf__ T_KV* x = (__ubuf__ T_KV*)xTensor.GetPhyAddr();
+        __ubuf__ T_KV* gamma = (__ubuf__ T_KV*)gammaLocal.GetPhyAddr();
+        __ubuf__ float* vScale = (__ubuf__ float*)vScaleTensor.GetPhyAddr();
+        __ubuf__ T_V_CACHE* vQuant = (__ubuf__ T_V_CACHE*)quantLocal.GetPhyAddr();
         __VEC_SCOPE__
         {
             uint32_t count = static_cast<uint32_t>(rSize - VL_FP32);
@@ -854,11 +854,11 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::MicroAPI::MaskReg maskOri;
             // 行
             for (uint16_t i = 0; i < loopTimes; ++i) {
-                DataCopy(reg0, (__local_mem__ float*)sumTmpA + i * stride);
-                DataCopy(reg1, (__local_mem__ float*)sumTmpB + i * stride);
+                LoadAlign(reg0, (__ubuf__ float*)sumTmpA + i * stride);
+                LoadAlign(reg1, (__ubuf__ float*)sumTmpB + i * stride);
                 Add<float, AscendC::MicroAPI::MaskMergeMode::ZEROING>(reg1, reg0, reg1, pMask);
-                Copy<float, AscendC::MicroAPI::MaskMergeMode::MERGING>(reg0, reg1, pMask);
-                ReduceSum(reg2, reg0, pFull);
+                AscendC::MicroAPI::Move<float, AscendC::MicroAPI::MaskMergeMode::MERGING>(reg0, reg1, pMask);
+                AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(reg2, reg0, pFull);
                 // Calc: xSum = xSum * reciprocal
                 // Calc: xSum = xSum + epsilon
                 // Calc: xSum = sqrt(xSum)
@@ -890,7 +890,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
                                          IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                         AscendC::MicroAPI::Cast<T_V_CACHE, float, CAST_FP32_TO_FLOAT8>(quant, scale, maskOri);
                     }
-                    DataCopy<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    AscendC::MicroAPI::StoreAlign<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
                         vQuant + j * VL_FP32 + i * quantOutOffset, quant, maskOri);
                 }
             }
@@ -917,12 +917,12 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
     uint32_t oriRAligned = static_cast<uint32_t>(dvAlign);
     uint32_t quantOutOffset = static_cast<uint32_t>(dvB8Align);
     if (rSize <= VL_FP32) {
-        __local_mem__ T_KV* x = (__local_mem__ T_KV*)xTensor.GetPhyAddr();
-        __local_mem__ T_KV* gamma = (__local_mem__ T_KV*)gammaLocal.GetPhyAddr();
-        __local_mem__ float* sumTmp = (__local_mem__ float*)reduceSumTempTensor.GetPhyAddr();
-        __local_mem__ float* vScale = (__local_mem__ float*)vScaleTensor.GetPhyAddr();
-        __local_mem__ float* vOffset = (__local_mem__ float*)vOffsetTensor.GetPhyAddr();
-        __local_mem__ T_V_CACHE* vQuant = (__local_mem__ T_V_CACHE*)quantLocal.GetPhyAddr();
+        __ubuf__ T_KV* x = (__ubuf__ T_KV*)xTensor.GetPhyAddr();
+        __ubuf__ T_KV* gamma = (__ubuf__ T_KV*)gammaLocal.GetPhyAddr();
+        __ubuf__ float* sumTmp = (__ubuf__ float*)reduceSumTempTensor.GetPhyAddr();
+        __ubuf__ float* vScale = (__ubuf__ float*)vScaleTensor.GetPhyAddr();
+        __ubuf__ float* vOffset = (__ubuf__ float*)vOffsetTensor.GetPhyAddr();
+        __ubuf__ T_V_CACHE* vQuant = (__ubuf__ T_V_CACHE*)quantLocal.GetPhyAddr();
         __VEC_SCOPE__
         {
             uint32_t count = static_cast<uint32_t>(rSize);
@@ -937,8 +937,8 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::MicroAPI::MaskReg maskOri;
             // 每行循环一次
             for (uint16_t i = 0; i < loopTimes; ++i) {
-                DataCopy(reg0, (__local_mem__ float*)sumTmp + i * stride);
-                ReduceSum(reg1, reg0, pMask);
+                LoadAlign(reg0, (__ubuf__ float*)sumTmp + i * stride);
+                AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(reg1, reg0, pMask);
                 // Calc: xSum = xSum * reciprocal
                 // Calc: xSum = xSum + epsilon
                 // Calc: xSum = sqrt(xSum)
@@ -970,19 +970,19 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
                                          IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                         AscendC::MicroAPI::Cast<T_V_CACHE, float, CAST_FP32_TO_FLOAT8>(quant, offset, maskOri);
                     }
-                    DataCopy<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    AscendC::MicroAPI::StoreAlign<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
                         vQuant + j * VL_FP32 + i * quantOutOffset, quant, maskOri);
                 }
             }
         }
     } else {
-        __local_mem__ float* sumTmpA = (__local_mem__ float*)reduceSumTempTensor.GetPhyAddr();
-        __local_mem__ float* sumTmpB = (__local_mem__ float*)reduceSumTempTensor.GetPhyAddr() + VL_FP32;
-        __local_mem__ T_KV* x = (__local_mem__ T_KV*)xTensor.GetPhyAddr();
-        __local_mem__ T_KV* gamma = (__local_mem__ T_KV*)gammaLocal.GetPhyAddr();
-        __local_mem__ float* vScale = (__local_mem__ float*)vScaleTensor.GetPhyAddr();
-        __local_mem__ float* vOffset = (__local_mem__ float*)vOffsetTensor.GetPhyAddr();
-        __local_mem__ T_V_CACHE* vQuant = (__local_mem__ T_V_CACHE*)quantLocal.GetPhyAddr();
+        __ubuf__ float* sumTmpA = (__ubuf__ float*)reduceSumTempTensor.GetPhyAddr();
+        __ubuf__ float* sumTmpB = (__ubuf__ float*)reduceSumTempTensor.GetPhyAddr() + VL_FP32;
+        __ubuf__ T_KV* x = (__ubuf__ T_KV*)xTensor.GetPhyAddr();
+        __ubuf__ T_KV* gamma = (__ubuf__ T_KV*)gammaLocal.GetPhyAddr();
+        __ubuf__ float* vScale = (__ubuf__ float*)vScaleTensor.GetPhyAddr();
+        __ubuf__ float* vOffset = (__ubuf__ float*)vOffsetTensor.GetPhyAddr();
+        __ubuf__ T_V_CACHE* vQuant = (__ubuf__ T_V_CACHE*)quantLocal.GetPhyAddr();
         __VEC_SCOPE__
         {
             uint32_t count = static_cast<uint32_t>(rSize - VL_FP32);
@@ -997,11 +997,11 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::MicroAPI::MaskReg maskOri;
             // 行
             for (uint16_t i = 0; i < loopTimes; ++i) {
-                DataCopy(reg0, (__local_mem__ float*)sumTmpA + i * stride);
-                DataCopy(reg1, (__local_mem__ float*)sumTmpB + i * stride);
+                LoadAlign(reg0, (__ubuf__ float*)sumTmpA + i * stride);
+                LoadAlign(reg1, (__ubuf__ float*)sumTmpB + i * stride);
                 Add<float, AscendC::MicroAPI::MaskMergeMode::ZEROING>(reg1, reg0, reg1, pMask);
-                Copy<float, AscendC::MicroAPI::MaskMergeMode::MERGING>(reg0, reg1, pMask);
-                ReduceSum(reg2, reg0, pFull);
+                AscendC::MicroAPI::Move<float, AscendC::MicroAPI::MaskMergeMode::MERGING>(reg0, reg1, pMask);
+                AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(reg2, reg0, pFull);
                 // Calc: xSum = xSum * reciprocal
                 // Calc: xSum = xSum + epsilon
                 // Calc: xSum = sqrt(xSum)
@@ -1033,7 +1033,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
                                          IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                         AscendC::MicroAPI::Cast<T_V_CACHE, float, CAST_FP32_TO_FLOAT8>(quant, offset, maskOri);
                     }
-                    DataCopy<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    AscendC::MicroAPI::StoreAlign<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
                         vQuant + j * VL_FP32 + i * quantOutOffset, quant, maskOri);
                 }
             }
@@ -1060,11 +1060,11 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
     uint32_t oriRAligned = static_cast<uint32_t>(dvAlign);
     uint32_t quantOutOffset = static_cast<uint32_t>(dvB8Align);
     if (rSize <= VL_FP32) {
-        __local_mem__ T_KV* x = (__local_mem__ T_KV*)xTensor.GetPhyAddr();
-        __local_mem__ T_KV* gamma = (__local_mem__ T_KV*)gammaLocal.GetPhyAddr();
-        __local_mem__ float* sumTmp = (__local_mem__ float*)reduceSumTempTensor.GetPhyAddr();
-        __local_mem__ float* vScale = (__local_mem__ float*)vScaleTensor.GetPhyAddr();
-        __local_mem__ T_V_CACHE* vQuant = (__local_mem__ T_V_CACHE*)quantLocal.GetPhyAddr();
+        __ubuf__ T_KV* x = (__ubuf__ T_KV*)xTensor.GetPhyAddr();
+        __ubuf__ T_KV* gamma = (__ubuf__ T_KV*)gammaLocal.GetPhyAddr();
+        __ubuf__ float* sumTmp = (__ubuf__ float*)reduceSumTempTensor.GetPhyAddr();
+        __ubuf__ float* vScale = (__ubuf__ float*)vScaleTensor.GetPhyAddr();
+        __ubuf__ T_V_CACHE* vQuant = (__ubuf__ T_V_CACHE*)quantLocal.GetPhyAddr();
         __VEC_SCOPE__
         {
             uint32_t count = static_cast<uint32_t>(rSize);
@@ -1079,8 +1079,8 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::MicroAPI::MaskReg maskOri;
             // 每行循环一次
             for (uint16_t i = 0; i < loopTimes; ++i) {
-                DataCopy(reg0, (__local_mem__ float*)sumTmp + i * stride);
-                ReduceSum(reg1, reg0, pMask);
+                LoadAlign(reg0, (__ubuf__ float*)sumTmp + i * stride);
+                AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(reg1, reg0, pMask);
                 // Calc: xSum = xSum * reciprocal
                 // Calc: xSum = xSum + epsilon
                 // Calc: xSum = sqrt(xSum)
@@ -1110,18 +1110,18 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
                                          IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                         AscendC::MicroAPI::Cast<T_V_CACHE, float, CAST_FP32_TO_FLOAT8>(quant, scale, maskOri);
                     }
-                    DataCopy<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    AscendC::MicroAPI::StoreAlign<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
                         vQuant + j * VL_FP32 + i * quantOutOffset, quant, maskOri);
                 }
             }
         }
     } else {
-        __local_mem__ float* sumTmpA = (__local_mem__ float*)reduceSumTempTensor.GetPhyAddr();
-        __local_mem__ float* sumTmpB = (__local_mem__ float*)reduceSumTempTensor.GetPhyAddr() + VL_FP32;
-        __local_mem__ T_KV* x = (__local_mem__ T_KV*)xTensor.GetPhyAddr();
-        __local_mem__ T_KV* gamma = (__local_mem__ T_KV*)gammaLocal.GetPhyAddr();
-        __local_mem__ float* vScale = (__local_mem__ float*)vScaleTensor.GetPhyAddr();
-        __local_mem__ T_V_CACHE* vQuant = (__local_mem__ T_V_CACHE*)quantLocal.GetPhyAddr();
+        __ubuf__ float* sumTmpA = (__ubuf__ float*)reduceSumTempTensor.GetPhyAddr();
+        __ubuf__ float* sumTmpB = (__ubuf__ float*)reduceSumTempTensor.GetPhyAddr() + VL_FP32;
+        __ubuf__ T_KV* x = (__ubuf__ T_KV*)xTensor.GetPhyAddr();
+        __ubuf__ T_KV* gamma = (__ubuf__ T_KV*)gammaLocal.GetPhyAddr();
+        __ubuf__ float* vScale = (__ubuf__ float*)vScaleTensor.GetPhyAddr();
+        __ubuf__ T_V_CACHE* vQuant = (__ubuf__ T_V_CACHE*)quantLocal.GetPhyAddr();
         __VEC_SCOPE__
         {
             uint32_t count = static_cast<uint32_t>(rSize - VL_FP32);
@@ -1136,11 +1136,11 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
             AscendC::MicroAPI::MaskReg maskOri;
             // 行
             for (uint16_t i = 0; i < loopTimes; ++i) {
-                DataCopy(reg0, (__local_mem__ float*)sumTmpA + i * stride);
-                DataCopy(reg1, (__local_mem__ float*)sumTmpB + i * stride);
+                LoadAlign(reg0, (__ubuf__ float*)sumTmpA + i * stride);
+                LoadAlign(reg1, (__ubuf__ float*)sumTmpB + i * stride);
                 Add<float, AscendC::MicroAPI::MaskMergeMode::ZEROING>(reg1, reg0, reg1, pMask);
-                Copy<float, AscendC::MicroAPI::MaskMergeMode::MERGING>(reg0, reg1, pMask);
-                ReduceSum(reg2, reg0, pFull);
+                AscendC::MicroAPI::Move<float, AscendC::MicroAPI::MaskMergeMode::MERGING>(reg0, reg1, pMask);
+                AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(reg2, reg0, pFull);
                 // Calc: xSum = xSum * reciprocal
                 // Calc: xSum = xSum + epsilon
                 // Calc: xSum = sqrt(xSum)
@@ -1170,7 +1170,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
                                          IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                         AscendC::MicroAPI::Cast<T_V_CACHE, float, CAST_FP32_TO_FLOAT8>(quant, scale, maskOri);
                     }
-                    DataCopy<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    AscendC::MicroAPI::StoreAlign<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
                         vQuant + j * VL_FP32 + i * quantOutOffset, quant, maskOri);
                 }
             }
@@ -1194,8 +1194,8 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
     }
     if (actualCol <= CONST_TWO * VL_FP32) {
         RmsNormPostWithMul(wsLocal, xLocal, gammaLocal, row, actualCol, stride);
-        __local_mem__ T_KV* dst = (__local_mem__ T_KV*)outVLocal.GetPhyAddr();
-        __local_mem__ float* ws = (__local_mem__ float*)wsLocal.GetPhyAddr();
+        __ubuf__ T_KV* dst = (__ubuf__ T_KV*)outVLocal.GetPhyAddr();
+        __ubuf__ float* ws = (__ubuf__ float*)wsLocal.GetPhyAddr();
         __VEC_SCOPE__
         {
             AscendC::MicroAPI::RegTensor<float> x;
@@ -1235,11 +1235,11 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
     }
     if (actualCol <= CONST_TWO * VL_FP32) {
         RmsNormPostWithMul(wsLocal, xLocal, gammaLocal, row, actualCol, stride);
-        __local_mem__ T_KV* dst = (__local_mem__ T_KV*)outVLocal.GetPhyAddr();
-        __local_mem__ float* ws = (__local_mem__ float*)wsLocal.GetPhyAddr();
-        __local_mem__ float* vScale = (__local_mem__ float*)vScaleTensor.GetPhyAddr();
-        __local_mem__ float* vOffset = (__local_mem__ float*)vOffsetTensor.GetPhyAddr();
-        __local_mem__ T_V_CACHE* vQuant = (__local_mem__ T_V_CACHE*)quantLocal.GetPhyAddr();
+        __ubuf__ T_KV* dst = (__ubuf__ T_KV*)outVLocal.GetPhyAddr();
+        __ubuf__ float* ws = (__ubuf__ float*)wsLocal.GetPhyAddr();
+        __ubuf__ float* vScale = (__ubuf__ float*)vScaleTensor.GetPhyAddr();
+        __ubuf__ float* vOffset = (__ubuf__ float*)vOffsetTensor.GetPhyAddr();
+        __ubuf__ T_V_CACHE* vQuant = (__ubuf__ T_V_CACHE*)quantLocal.GetPhyAddr();
         __VEC_SCOPE__
         {
             AscendC::MicroAPI::RegTensor<float> x, out, scale, offset;
@@ -1268,7 +1268,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
                                          IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                         AscendC::MicroAPI::Cast<T_V_CACHE, float, CAST_FP32_TO_FLOAT8>(quant, offset, mask);
                     }
-                    DataCopy<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    AscendC::MicroAPI::StoreAlign<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
                             vQuant + i * VL_FP32 + rowId * quantOutOffset, quant, mask);
                 }
             }
@@ -1301,10 +1301,10 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
     }
     if (actualCol <= CONST_TWO * VL_FP32) {
         RmsNormPostWithMul(wsLocal, xLocal, gammaLocal, row, actualCol, stride);
-        __local_mem__ T_KV* dst = (__local_mem__ T_KV*)outVLocal.GetPhyAddr();
-        __local_mem__ float* ws = (__local_mem__ float*)wsLocal.GetPhyAddr();
-        __local_mem__ float* vScale = (__local_mem__ float*)vScaleTensor.GetPhyAddr();
-        __local_mem__ T_V_CACHE* vQuant = (__local_mem__ T_V_CACHE*)quantLocal.GetPhyAddr();
+        __ubuf__ T_KV* dst = (__ubuf__ T_KV*)outVLocal.GetPhyAddr();
+        __ubuf__ float* ws = (__ubuf__ float*)wsLocal.GetPhyAddr();
+        __ubuf__ float* vScale = (__ubuf__ float*)vScaleTensor.GetPhyAddr();
+        __ubuf__ T_V_CACHE* vQuant = (__ubuf__ T_V_CACHE*)quantLocal.GetPhyAddr();
         __VEC_SCOPE__
         {
             AscendC::MicroAPI::RegTensor<float> x, scale, offset;
@@ -1331,7 +1331,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
                                          IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                         AscendC::MicroAPI::Cast<T_V_CACHE, float, CAST_FP32_TO_FLOAT8>(quant, scale, mask);
                     }
-                    DataCopy<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    AscendC::MicroAPI::StoreAlign<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
                         vQuant + i * VL_FP32 + rowId * quantOutOffset, quant, mask);
                 }
             }
@@ -1363,10 +1363,10 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
     }
     if (actualCol <= CONST_TWO * VL_FP32) {
         RmsNormPostWithMul(wsLocal, xLocal, gammaLocal, row, actualCol, stride);
-        __local_mem__ float* ws = (__local_mem__ float*)wsLocal.GetPhyAddr();
-        __local_mem__ float* vScale = (__local_mem__ float*)vScaleTensor.GetPhyAddr();
-        __local_mem__ float* vOffset = (__local_mem__ float*)vOffsetTensor.GetPhyAddr();
-        __local_mem__ T_V_CACHE* vQuant = (__local_mem__ T_V_CACHE*)quantLocal.GetPhyAddr();
+        __ubuf__ float* ws = (__ubuf__ float*)wsLocal.GetPhyAddr();
+        __ubuf__ float* vScale = (__ubuf__ float*)vScaleTensor.GetPhyAddr();
+        __ubuf__ float* vOffset = (__ubuf__ float*)vOffsetTensor.GetPhyAddr();
+        __ubuf__ T_V_CACHE* vQuant = (__ubuf__ T_V_CACHE*)quantLocal.GetPhyAddr();
         __VEC_SCOPE__
         {
             AscendC::MicroAPI::RegTensor<float> x, out, scale, offset;
@@ -1394,7 +1394,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
                                          IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                         AscendC::MicroAPI::Cast<T_V_CACHE, float, CAST_FP32_TO_FLOAT8>(quant, offset, mask);
                     }
-                    DataCopy<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    AscendC::MicroAPI::StoreAlign<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
                         vQuant + i * VL_FP32 + rowId * quantOutOffset, quant, mask);
                 }
             }
@@ -1425,9 +1425,9 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
     }
     if (actualCol <= CONST_TWO * VL_FP32) {
         RmsNormPostWithMul(wsLocal, xLocal, gammaLocal, row, actualCol, stride);
-        __local_mem__ float* ws = (__local_mem__ float*)wsLocal.GetPhyAddr();
-        __local_mem__ float* vScale = (__local_mem__ float*)vScaleTensor.GetPhyAddr();
-        __local_mem__ T_V_CACHE* vQuant = (__local_mem__ T_V_CACHE*)quantLocal.GetPhyAddr();
+        __ubuf__ float* ws = (__ubuf__ float*)wsLocal.GetPhyAddr();
+        __ubuf__ float* vScale = (__ubuf__ float*)vScaleTensor.GetPhyAddr();
+        __ubuf__ T_V_CACHE* vQuant = (__ubuf__ T_V_CACHE*)quantLocal.GetPhyAddr();
         __VEC_SCOPE__
         {
             AscendC::MicroAPI::RegTensor<float> x, out, scale, offset;
@@ -1453,7 +1453,7 @@ __aicore__ inline void KvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::Rm
                                          IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                         AscendC::MicroAPI::Cast<T_V_CACHE, float, CAST_FP32_TO_FLOAT8>(quant, scale, mask);
                     }
-                    DataCopy<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                    AscendC::MicroAPI::StoreAlign<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
                         vQuant + i * VL_FP32 + rowId * quantOutOffset, quant, mask);
                 }
             }
