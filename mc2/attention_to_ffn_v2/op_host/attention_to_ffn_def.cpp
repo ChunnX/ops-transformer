@@ -19,11 +19,6 @@ namespace ops {
 class AttentionToFFN : public OpDef {
 public:
     explicit AttentionToFFN(const char *name) : OpDef(name) {
-        this->Input("context")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
@@ -64,17 +59,16 @@ public:
             .DataTypeList({ge::DT_BOOL})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        //this->Attr("group").AttrType(REQUIRED).String();
+        this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("world_size").AttrType(REQUIRED).Int();
-        this->Attr("ccl_buffer_size").AttrType(REQUIRED).Int();
         this->Attr("ffn_token_info_table_shape").AttrType(REQUIRED).ListInt();
         this->Attr("ffn_token_data_shape").AttrType(REQUIRED).ListInt();
         this->Attr("attn_token_info_table_shape").AttrType(REQUIRED).ListInt();
         this->Attr("moe_expert_num").AttrType(REQUIRED).Int();
-
         this->Attr("quant_mode").AttrType(OPTIONAL).Int();
         this->Attr("sync_flag").AttrType(OPTIONAL).Int();
         this->Attr("ffn_start_rank_id").AttrType(OPTIONAL).Int();
+    
         // _a3 entry (arch22/attention_to_ffn_a3.cpp).
         OpAICoreConfig aicore_config_a3;
         aicore_config_a3.DynamicCompileStaticFlag(true)
@@ -101,9 +95,9 @@ public:
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
             .ExtendCfgInfo("opFile.value", "attention_to_ffn_apt");
 
-        //this->AICore().AddConfig("ascend910_93", aicore_config_a3);
+        this->AICore().AddConfig("ascend910_93", aicore_config_a3);
         this->AICore().AddConfig("ascend950", aicore_config_apt);
-        //this->MC2().HcclGroup({"group"});
+        this->MC2().HcclGroup({"group"});
     }
 };
 

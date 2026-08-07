@@ -27,7 +27,5 @@ static ge::graphStatus InferDataTypeAttentionToFFN(gert::InferDataTypeContext *c
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(AttentionToFFN)
-    .InferShape(InferShapeAttentionToFFN)
-    .InferDataType(InferDataTypeAttentionToFFN);
-}  // namespace ops
+IMPL_OP_INFERSHAPE(AttentionToFFN).InferShape(InferShapeAttentionToFFN).InferDataType(InferDataTypeAttentionToFFN);
+} // namespace ops
