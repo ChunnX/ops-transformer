@@ -15,7 +15,7 @@
 #include "aclnn_common.h"
 
 namespace op_api {
-using npu_utils = at_npu::native;
+using npu_utils = at_npu::native::NpuUtils;
 const int DIM_ONE = 1;
 const int DIM_TWO = 2;
 
