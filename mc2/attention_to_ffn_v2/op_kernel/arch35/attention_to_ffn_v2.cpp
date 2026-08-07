@@ -18,16 +18,16 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "../attention_to_ffn.h"
-#include "../attention_to_ffn_tiling.h"
-#include "../attention_to_ffn_tiling_key.h"
+#include "../attention_to_ffn_v2.h"
+#include "../attention_to_ffn_v2_tiling.h"
+#include "../attention_to_ffn_v2_tiling_key.h"
 
 using namespace AscendC;
 using namespace AttentionToFFNImpl;
 using namespace Mc2Tiling;
 
 template <bool isQuant, bool isSync, bool isActiveMask, uint8_t ArchTag>
-__global__ __aicore__ void attention_to_ffn(GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId, GM_ADDR layerId,
+__global__ __aicore__ void attention_to_ffn_v2(GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId, GM_ADDR layerId,
                                             GM_ADDR expertIds, GM_ADDR expertRankTable, GM_ADDR scales,
                                             GM_ADDR active_mask, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {

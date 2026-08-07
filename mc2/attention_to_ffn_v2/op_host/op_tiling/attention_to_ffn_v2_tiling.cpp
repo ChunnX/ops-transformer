@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file attention_to_ffn_tiling.cpp
+ * \file attention_to_ffn_v2_tiling.cpp
  * \brief
  */
 
@@ -33,8 +33,8 @@
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
 #include "mc2_hcom_topo_info.h"
-#include "../../op_kernel/attention_to_ffn_tiling.h"
-#include "../../op_kernel/attention_to_ffn_tiling_key.h"
+#include "../../op_kernel/attention_to_ffn_v2_tiling.h"
+#include "../../op_kernel/attention_to_ffn_v2_tiling_key.h"
 
 using namespace AscendC;
 using namespace ge;

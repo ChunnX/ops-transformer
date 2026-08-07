@@ -8,14 +8,13 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "aclnn_attention_to_ffn.h"
 #include <algorithm>
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "mc2_log_compat.h"
 #include "opdev/common_types.h"
-#include "aclnnInner_attention_to_ffn.h"
+#include "aclnnInner_attention_to_ffn_v2.h"
 
 using namespace op;
 
@@ -44,7 +43,7 @@ static bool CheckNullStatus(const aclTensor *x, const aclTensor *sessionId, cons
     OP_CHECK_NULL(expertIds, return false);
     OP_CHECK_NULL(expertRankTable, return false);
     if ((group == nullptr) || (strnlen(group, HCCL_GROUP_NAME_MAX) == 0)) {
-        OP_LOGE_WITH_INVALID_INPUT("aclnnAttentionToFFN", "group");
+        OP_LOGE_WITH_INVALID_INPUT("aclnnAttentionToFFNV2", "group");
         return false;
     }
 
