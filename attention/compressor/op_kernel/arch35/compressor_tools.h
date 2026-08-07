@@ -751,7 +751,10 @@ template <typename COMP>
 __aicore__ inline Vec1SliceInfo& CompressorVec1SliceIterator<COMP>::GetSlice()
 {
     uint32_t cmpRatio = tools_.toolParams_.cmpRatio;
-    if (sliceInfo_.bSeqUsed < sliceInfo_.sIdx) {
+    if (sliceInfo_.bSeqUsed <= sliceInfo_.sIdx) {
+        // sIdx == bSeqUsed 时同样视为无效 slice（含 bSeqUsed==0 的空洞 batch 起点）：
+        // 否则 GetSlice 会生成 headHolder>0/valid=0 的伪 slice（dealTcSize=1）
+        // 每轮白吃 1 个 tc 配额且不推进 → 迭代器卡死在空洞 batch，其后块全部丢失
         sliceInfo_.headHolderSeqCnt = 0;
         sliceInfo_.validSeqCnt = 0;
         sliceInfo_.tailHolderSeqCnt = 0;
