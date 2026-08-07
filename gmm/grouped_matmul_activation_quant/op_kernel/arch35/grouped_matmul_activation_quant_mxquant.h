@@ -19,7 +19,7 @@
 #include "blaze/epilogue/block/block_epilogue_gelu_tanh_mx_quant.h"
 #include "blaze/gemm/block/block_mmad_qgmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
-#include "blaze/gemm/kernel/kernel_qgmm_mx.h"
+#include "blaze/gemm/kernel/kernel_qgmm_mx_activation_quant.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "grouped_matmul_activation_quant_tiling_data.h"
 
