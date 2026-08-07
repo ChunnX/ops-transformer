@@ -184,12 +184,12 @@ class FFNToAttentionV2Buffer:
         if context_ptr == 0:
             return 0
 
-        offset_buffer_start = 2 * 4 + 8
-        addr_bytes = ctypes.c_uint64.from_address(context_ptr + offset_buffer_start)
+        # offset_buffer_start = 2 * 4 + 8
+        # addr_bytes = ctypes.c_uint64.from_address(context_ptr + offset_buffer_start)
 
-        # offset_epHcclBuffer = 2 * 4 + 8
-        # offset_target = offset_epHcclBuffer + self.rank_id * 8
-        # addr_bytes = ctypes.c_uint64.from_address(context_ptr + offset_target)
+        offset_epHcclBuffer = 2 * 4 + 8
+        offset_target = offset_epHcclBuffer + self.rank_id * 8
+        addr_bytes = ctypes.c_uint64.from_address(context_ptr + offset_target)
         return int(addr_bytes.value)
 
 
