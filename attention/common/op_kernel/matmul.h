@@ -163,7 +163,7 @@ __aicore__ inline void LoadDataToL0A(LocalTensor<T> &aL0Tensor, const LocalTenso
 }
 
 // L1->L0A + 切k/切M/全载
-template <typename T, typename U = T>
+template <typename T, typename U = T, uint32_t baseK>
 __aicore__ inline void LoadDataToL0AMx(LocalTensor<U> &aL0Tensor, const LocalTensor<T> &aL1Tensor,
                                        const LocalTensor<fp8_e8m0_t> &aScaleL1Tensor, const MMParam &mmParam,
                                        uint64_t L1Aoffset, uint32_t kSplitSize, uint32_t mSplitSize)
@@ -193,7 +193,7 @@ __aicore__ inline void LoadDataToL0AMx(LocalTensor<U> &aL0Tensor, const LocalTen
         // 64搬运对齐
         loadData2DParamsA.srcStride =
             loadData2DParamsA.ifTranspose ?
-                ((kSplitSize + 63) >> 6 << 6) >> 4 :
+                ((baseK + 63) >> 6 << 6) >> 4 :
                 ((mSplitSize + 31) >> 5 << 5) >>
                     4; // 以M*K矩阵为例，源矩阵K方向前一个分形起始地址与后一个分形起始地址的间隔，单位：512B
     } else {
@@ -449,7 +449,7 @@ __aicore__ inline void MatmulFullMX(const LocalTensor<A> &aL1Tensor, const Local
     l0aBuffer.template Wait<HardEvent::M_MTE1>();
     LocalTensor<L0ADType> L0ATensor = l0aBuffer.template GetTensor<L0ADType>();
     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-        LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM);
+        LoadDataToL0AMx<A, L0ADType, baseK>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM);
     } else {
         LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, param.singleK, param.singleM); // s2*d,d,s2
     }
