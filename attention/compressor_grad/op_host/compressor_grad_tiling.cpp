@@ -1,4 +1,4 @@
-/**
+/* *
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
 /*!
  * \file compressor_grad_tiling.cpp
@@ -17,7 +17,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <graph/utils/type_utils.h>
-#include "err/ops_err.h"
+#include "log/log.h"
 #include "register/op_def_registry.h"
 #include "compressor_grad_tiling.h"
 
@@ -71,7 +71,7 @@ void ConvertOptionalParams(gert::TilingContext &context, CompressorGradContext &
 ge::graphStatus ConvertContext(gert::TilingContext &context, CompressorGradContext &compressorGradContext)
 {
     if (context.GetNodeName() == nullptr) {
-        OP_LOGE("CompressorGrad", "opName got from TilingContext is nullptr");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("CompressorGrad", "opName", "got from TilingContext is nullptr");
         return ge::GRAPH_FAILED;
     }
 
@@ -81,13 +81,15 @@ ge::graphStatus ConvertContext(gert::TilingContext &context, CompressorGradConte
     ConvertOptionalParams(context, compressorGradContext);
 
     auto attrs = context.GetAttrs();
-    OP_CHECK_IF(attrs == nullptr, OP_LOGE(context.GetNodeName(), "attrs got from ge is nullptr"),
+    OP_CHECK_IF(attrs == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.GetNodeName(), "attrs", "got from ge is nullptr"),
                 return ge::GRAPH_FAILED);
     compressorGradContext.coff = attrs->GetAttrPointer<uint32_t>(COFF_ATTR_INDEX);
     compressorGradContext.cmpRatio = attrs->GetAttrPointer<uint32_t>(CMP_RATIO_ATTR_INDEX);
 
     OP_CHECK_IF(context.GetWorkspaceSizes(1) == nullptr,
-                OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), "workSpaceSize got from ge is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.GetNodeName(), "workSpaceSize",
+                                                         "got from ge is nullptr"),
                 return ge::GRAPH_FAILED);
     compressorGradContext.workSpaces = context.GetWorkspaceSizes(1);
     return ge::GRAPH_SUCCESS;
@@ -129,7 +131,8 @@ ge::graphStatus SetBaseInfo(CompressorGradContext &compressorGradContext,
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CalcWorkSpace(CompressorGradContext &compressorGradContext, CompressorGradBaseParams &compressorGradBaseParams,
+ge::graphStatus CalcWorkSpace(CompressorGradContext &compressorGradContext,
+                              CompressorGradBaseParams &compressorGradBaseParams,
                               CompressorGradWorkspaceParams &compressorGradWorkspaceParams,
                               size_t &workspaceSize, size_t libapiSize, uint32_t aicNum)
 {
@@ -162,7 +165,7 @@ ge::graphStatus CalcWorkSpace(CompressorGradContext &compressorGradContext, Comp
     uint64_t dXCacheWorkSpaceSize = static_cast<uint64_t>(dbRatio) * cmpRatio * hiddenSize;
 
     workspaceSize = libapiSize;
-    workspaceSize += (apeWorkSpaceSize + dXWorkSpaceSize + dWeightWorkSpaceSize * 2 + 
+    workspaceSize += (apeWorkSpaceSize + dXWorkSpaceSize + dWeightWorkSpaceSize * 2 +
                      xWorkSpaceSize + dXCacheWorkSpaceSize) * MM1_RES_ELEM_SIZE;
 
     if (compressorGradContext.workSpaces) {
@@ -231,8 +234,8 @@ void LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actu
         }
     }
 
-    OP_LOGE(opName, "%s %s only supports %s, but got %s", name.c_str(), subName.c_str(), oss.str().c_str(),
-            to_string(actualValue).c_str());
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, name, to_string(actualValue),
+                                          subName + " only supports " + oss.str());
 }
 
 template <typename T>
@@ -250,7 +253,7 @@ ge::graphStatus CheckFeatureValueSupport(const T *featureValue,
 
 template <typename T>
 ge::graphStatus CheckAttrValueSupportInterval(const T *attrValue, const uint32_t minVal, const uint32_t maxVal,
-                                                        const std::string &name, const char *opName)
+                                              const std::string &name, const char *opName)
 {
     if (attrValue == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -260,11 +263,8 @@ ge::graphStatus CheckAttrValueSupportInterval(const T *attrValue, const uint32_t
     if (*attrValue < minVal ||  *attrValue > maxVal) {
         std::ostringstream oss;
         oss << "[" << minVal << ", " << maxVal << "]";
-        OP_LOGE(opName, "%s %s only supports value in range %s, but got %s",
-                name.c_str(),
-                attr_value.c_str(),
-                oss.str().c_str(),
-                std::to_string(*attrValue).c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, name, std::to_string(*attrValue),
+                                              "attr value only supports value in range " + oss.str());
         return ge::GRAPH_FAILED;
     }
 
@@ -273,7 +273,7 @@ ge::graphStatus CheckAttrValueSupportInterval(const T *attrValue, const uint32_t
 
 template <typename T>
 ge::graphStatus CheckAttrValueSupportList(const T *attrValue, const std::vector<T> &expectAttrValList,
-                                                        const std::string &name, const char *opName)
+                                          const std::string &name, const char *opName)
 {
     if (attrValue == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -306,8 +306,9 @@ ge::graphStatus CheckDimNumInLayoutSupport(CompressorGradContext &compressorGrad
 {
     const auto &dimIt = LAYOUT_DIM_MAP.find(layout);
     OP_CHECK_IF(shape->GetStorageShape().GetDimNum() != dimIt->second,
-                OP_LOGE(compressorGradContext.opName, "When layout is %s, %s dimension should be %u, but it's %zu",
-                        layout.c_str(), name.c_str(), dimIt->second, shape->GetStorageShape().GetDimNum()),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(compressorGradContext.opName, name,
+                    std::to_string(shape->GetStorageShape().GetDimNum()),
+                    "when layout is " + layout + ", dimension should be " + std::to_string(dimIt->second)),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -322,19 +323,18 @@ void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
             oss << ", ";
         }
     }
-    OP_LOGE(opName, "Tensor %s only supports dtype %s, but got %s", name.c_str(), oss.str().c_str(),
-            DataTypeToSerialString(actualDtype).c_str());
+    OP_LOGE_FOR_INVALID_DTYPE(opName, name, DataTypeToSerialString(actualDtype), oss.str());
 }
 
 ge::graphStatus CheckDtypeSupport(CompressorGradContext &compressorGradContext, const gert::CompileTimeTensorDesc *desc,
-                                                        const std::string &name)
+                                  const std::string &name)
 {
     if (desc != nullptr) {
         const auto &it = DTYPE_SUPPORT_MAP.find(name);
         OP_CHECK_IF(
             it == DTYPE_SUPPORT_MAP.end(),
-            OP_LOGE(compressorGradContext.opName, "%s datatype support list should be specify in DTYPE_SUPPORT_MAP",
-                    name.c_str()),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(compressorGradContext.opName, name,
+                "datatype support list should be specify in DTYPE_SUPPORT_MAP"),
             return ge::GRAPH_FAILED);
         auto &expectDtypeList = it->second;
         OP_CHECK_IF(std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) ==
@@ -351,7 +351,8 @@ static std::string DataTypeToSerialString(ge::DataType type)
     if (it != DATATYPE_TO_STRING_MAP.end()) {
         return it->second;
     } else {
-        OP_LOGE("CompressorGrad", "datatype %d not support", type);
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON("CompressorGrad", "datatype", std::to_string(static_cast<int32_t>(type)),
+                                              "not support");
         return "UNDEFINED";
     }
 }
@@ -363,7 +364,8 @@ ge::graphStatus CheckDimNumSupport(const gert::StorageShape *shape, const std::s
     }
     const auto &it = DIM_NUM_MAP.find(name);
     OP_CHECK_IF(it == DIM_NUM_MAP.end(),
-                OP_LOGE(opName, "%s dim number support list should be specify in DIM_NUM_MAP", name.c_str()),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, name,
+                    "dim number support list should be specify in DIM_NUM_MAP"),
                 return ge::GRAPH_FAILED);
     auto &expectDimNumList = it->second;
     OP_CHECK_IF(std::find(expectDimNumList.begin(), expectDimNumList.end(), shape->GetStorageShape().GetDimNum()) ==
@@ -576,22 +578,27 @@ ge::graphStatus CheckSingleParaCoff(CompressorGradContext &compressorGradContext
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckFeature(CompressorGradContext &compressorGradContext, CompressorGradBaseParams &compressorGradBaseParams)
+ge::graphStatus CheckFeature(CompressorGradContext &compressorGradContext,
+                             CompressorGradBaseParams &compressorGradBaseParams)
 {
-    if (ge::GRAPH_SUCCESS != CheckFeatureValueSupport(&compressorGradBaseParams.headDim, HEAD_DIM, "headDim", compressorGradContext.opName)) {
+    if (ge::GRAPH_SUCCESS != CheckFeatureValueSupport(&compressorGradBaseParams.headDim, HEAD_DIM,
+                                                      "headDim", compressorGradContext.opName)) {
         return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF(compressorGradBaseParams.hiddenSize > MAX_HIDDEN_SIZE || compressorGradBaseParams.hiddenSize < MIN_HIDDEN_SIZE ||
-                    compressorGradBaseParams.hiddenSize % ALIGN_FACTOR_HIDDEN_SIZE != 0,
-                OP_LOGE(compressorGradContext.opName, "hiddenSize should be whthin [1k, 10k] and be 512-aligned, but got %u",
-                        compressorGradBaseParams.hiddenSize),
+    OP_CHECK_IF(compressorGradBaseParams.hiddenSize > MAX_HIDDEN_SIZE ||
+                compressorGradBaseParams.hiddenSize < MIN_HIDDEN_SIZE ||
+                compressorGradBaseParams.hiddenSize % ALIGN_FACTOR_HIDDEN_SIZE != 0,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(compressorGradContext.opName, "hiddenSize",
+                    std::to_string(compressorGradBaseParams.hiddenSize),
+                    "should be within [" + std::to_string(MIN_HIDDEN_SIZE) + ", " +
+                    std::to_string(MAX_HIDDEN_SIZE) + "] and be 512-aligned"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus LogErrorShapeConsistency(const std::string &name, const gert::StorageShape *shape,
-                                                           const uint32_t &dimNum, const std::string &subName,
-                                                           const uint32_t &expectNum, const char *opName)
+                                         const uint32_t &dimNum, const std::string &subName,
+                                         const uint32_t &expectNum, const char *opName)
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -599,8 +606,9 @@ ge::graphStatus LogErrorShapeConsistency(const std::string &name, const gert::St
 
     const uint32_t actualNum = shape->GetStorageShape().GetDim(dimNum);
     OP_CHECK_IF(actualNum != expectNum,
-                OP_LOGE(opName, "%s shape dim %u, should be equal to %s: %u, but got %u", name.c_str(),
-                        dimNum, subName.c_str(), expectNum, actualNum),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName, name,
+                    "dim " + std::to_string(dimNum) + "=" + std::to_string(actualNum),
+                    "should be equal to " + subName + ": " + std::to_string(expectNum)),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -709,9 +717,9 @@ ge::graphStatus CheckDtypeConsistencyX(const gert::CompileTimeTensorDesc *desc,
 {
     const auto actualDtype = desc->GetDataType();
     OP_CHECK_IF(actualDtype != compressorGradContext.dtype,
-                OP_LOGE(compressorGradContext.opName, "%s datatype should be same with x: %s, but got %s", name.c_str(),
-                        DataTypeToSerialString(actualDtype).c_str(),
-                        DataTypeToSerialString(compressorGradContext.dtype).c_str()),
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(compressorGradContext.opName, name,
+                    DataTypeToSerialString(actualDtype),
+                    "should be same with x: " + DataTypeToSerialString(compressorGradContext.dtype)),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -745,23 +753,27 @@ ge::graphStatus CheckDimNumConsistency(CompressorGradContext &compressorGradCont
 {
     auto xDimNum = compressorGradContext.x.shape->GetStorageShape().GetDimNum();
     OP_CHECK_IF(xDimNum != compressorGradContext.dX.shape->GetStorageShape().GetDimNum(),
-                OP_LOGE(compressorGradContext.opName, "dX dim num should be equal to x: %lu, but got %zu", xDimNum,
-                        compressorGradContext.dX.shape->GetStorageShape().GetDimNum()),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(compressorGradContext.opName, "d_x",
+                    std::to_string(compressorGradContext.dX.shape->GetStorageShape().GetDimNum()),
+                    "dim num should be equal to x: " + std::to_string(xDimNum)),
                 return ge::GRAPH_FAILED);
     
     OP_CHECK_IF(xDimNum != compressorGradContext.dCmpKv.shape->GetStorageShape().GetDimNum(),
-                OP_LOGE(compressorGradContext.opName, "dCmpKv dim num should be equal to x: %lu, but got %zu", xDimNum,
-                        compressorGradContext.dCmpKv.shape->GetStorageShape().GetDimNum()),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(compressorGradContext.opName, "d_cmp_kv",
+                    std::to_string(compressorGradContext.dCmpKv.shape->GetStorageShape().GetDimNum()),
+                    "dim num should be equal to x: " + std::to_string(xDimNum)),
                 return ge::GRAPH_FAILED);
     
     OP_CHECK_IF(xDimNum != compressorGradContext.softmaxScore.shape->GetStorageShape().GetDimNum() - 1,
-                OP_LOGE(compressorGradContext.opName, "softmaxScore dim num should be x dim + 1: %lu, but got %zu",
-                        xDimNum + 1, compressorGradContext.softmaxScore.shape->GetStorageShape().GetDimNum()),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(compressorGradContext.opName, "softmax_score",
+                    std::to_string(compressorGradContext.softmaxScore.shape->GetStorageShape().GetDimNum()),
+                    "dim num should be x dim + 1: " + std::to_string(xDimNum + 1)),
                 return ge::GRAPH_FAILED);
     
     OP_CHECK_IF(xDimNum != compressorGradContext.kv.shape->GetStorageShape().GetDimNum() - 1,
-                OP_LOGE(compressorGradContext.opName, "kv dim num should be x dim + 1: %lu, but got %zu", xDimNum + 1,
-                        compressorGradContext.kv.shape->GetStorageShape().GetDimNum()),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(compressorGradContext.opName, "kv",
+                    std::to_string(compressorGradContext.kv.shape->GetStorageShape().GetDimNum()),
+                    "dim num should be x dim + 1: " + std::to_string(xDimNum + 1)),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -772,11 +784,11 @@ ge::graphStatus CheckBlockDimConstrain(CompressorGradContext &compressorGradCont
 {
     uint32_t minBlockNum = compressorGradBaseParams.headDim / 128; // 128 is the largest dBaseSize
     OP_CHECK_IF(aicNum < minBlockNum,
-                OP_LOGE(compressorGradContext.opName,
-                        "aicNum is %u, which should not be less than %u",
-                        aicNum, minBlockNum),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(compressorGradContext.opName, "aicNum",
+                    std::to_string(aicNum),
+                    "should not be less than " + std::to_string(minBlockNum)),
                 return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS; 
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus CheckMultiParaConsistency(CompressorGradContext &compressorGradContext,
@@ -813,63 +825,88 @@ ge::graphStatus CheckSinglePara(CompressorGradContext &compressorGradContext)
 
 ge::graphStatus CheckRequiredInOutExistence(CompressorGradContext &context)
 {
-    OP_CHECK_IF(context.x.shape == nullptr, OP_LOGE(context.opName, "tensor x is nullptr"),
+    OP_CHECK_IF(context.x.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "x", "shape is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.x.desc == nullptr, OP_LOGE(context.opName, "tensor x is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.wkv.shape == nullptr, OP_LOGE(context.opName, "tensor wkv is nullptr"),
+    OP_CHECK_IF(context.x.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "x", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.wkv.desc == nullptr, OP_LOGE(context.opName, "tensor wkv is nullptr"),
+    OP_CHECK_IF(context.wkv.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "wkv", "shape is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.wgate.shape == nullptr, OP_LOGE(context.opName, "tensor wgate is nullptr"),
+    OP_CHECK_IF(context.wkv.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "wkv", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.wgate.desc == nullptr, OP_LOGE(context.opName, "tensor wgate is nullptr"),
+    OP_CHECK_IF(context.wgate.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "wgate", "shape is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.dCmpKv.shape == nullptr, OP_LOGE(context.opName, "tensor d_cmp_kv is nullptr"),
+    OP_CHECK_IF(context.wgate.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "wgate", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.dCmpKv.desc == nullptr, OP_LOGE(context.opName, "tensor d_cmp_kv is nullptr"),
+    OP_CHECK_IF(context.dCmpKv.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_cmp_kv", "shape is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.softmaxScore.shape == nullptr, OP_LOGE(context.opName, "tensor softmax_score is nullptr"),
+    OP_CHECK_IF(context.dCmpKv.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_cmp_kv", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.softmaxScore.desc == nullptr, OP_LOGE(context.opName, "tensor softmax_score is nullptr"),
+    OP_CHECK_IF(context.softmaxScore.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "softmax_score", "shape is nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context.softmaxScore.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "softmax_score", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(context.kv.shape == nullptr,
-                OP_LOGE(context.opName, "tensor kv is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.kv.desc == nullptr,
-                OP_LOGE(context.opName, "tensor kv is nullptr"), return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(context.dX.shape == nullptr, OP_LOGE(context.opName, "tensor d_x is nullptr"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "kv", "shape is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.dX.desc == nullptr, OP_LOGE(context.opName, "tensor d_x is nullptr"),
+    OP_CHECK_IF(context.kv.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "kv", "desc is nullptr"),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(context.dX.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_x", "shape is nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context.dX.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_x", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
     
-    OP_CHECK_IF(context.dWkv.shape == nullptr, OP_LOGE(context.opName, "tensor d_wkv is nullptr"),
+    OP_CHECK_IF(context.dWkv.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_wkv", "shape is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.dWkv.desc == nullptr, OP_LOGE(context.opName, "tensor d_wkv is nullptr"),
-                return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(context.dWgate.shape == nullptr, OP_LOGE(context.opName, "tensor d_wgate is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.dWgate.desc == nullptr, OP_LOGE(context.opName, "tensor d_wgate is nullptr"),
+    OP_CHECK_IF(context.dWkv.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_wkv", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(context.dApe.shape == nullptr, OP_LOGE(context.opName, "tensor d_ape is nullptr"),
+    OP_CHECK_IF(context.dWgate.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_wgate", "shape is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(context.dApe.desc == nullptr, OP_LOGE(context.opName, "tensor d_ape is nullptr"),
+    OP_CHECK_IF(context.dWgate.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_wgate", "desc is nullptr"),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(context.dApe.shape == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_ape", "shape is nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context.dApe.desc == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "d_ape", "desc is nullptr"),
                 return ge::GRAPH_FAILED);
     
     if (context.layout == LayoutType::LAYOUT_TH) {
         OP_CHECK_IF(context.cuSeqlens.desc == nullptr,
-                    OP_LOGE(context.opName, "In TH layout, tensor cuSeqlens should not be nullptr"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "cu_seqlens",
+                        "in TH layout, should not be nullptr"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context.cuSeqlens.shape == nullptr,
-                    OP_LOGE(context.opName, "In TH layout, tensor cuSeqlens should not be nullptr"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "cu_seqlens",
+                        "in TH layout, should not be nullptr"),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(context.cuSeqlens.desc != nullptr,
-                    OP_LOGE(context.opName, "In BSH layout, tensor cuSeqlens must be nullptr"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "cu_seqlens",
+                        "in BSH layout, must be nullptr"),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(context.cuSeqlens.shape != nullptr,
-                    OP_LOGE(context.opName, "In BSH layout, tensor cuSeqlens must be nullptr"),
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "cu_seqlens",
+                        "in BSH layout, must be nullptr"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -877,7 +914,8 @@ ge::graphStatus CheckRequiredInOutExistence(CompressorGradContext &context)
 
 ge::graphStatus CheckRequiredAttrExistence(CompressorGradContext &context)
 {
-    OP_CHECK_IF(context.cmpRatio == nullptr, OP_LOGE(context.opName, "attr cmpRatio is nullptr"),
+    OP_CHECK_IF(context.cmpRatio == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context.opName, "cmp_ratio", "attr is nullptr"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -905,7 +943,7 @@ ge::graphStatus CheckEmptyTensor(CompressorGradContext &compressorGradcontext)
         compressorGradcontext.dWkv.shape->GetStorageShape().GetShapeSize() == 0 ||
         compressorGradcontext.dWgate.shape->GetStorageShape().GetShapeSize() == 0 ||
         compressorGradcontext.dApe.shape->GetStorageShape().GetShapeSize() == 0) {
-        OP_LOGE(compressorGradcontext.opName,
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(compressorGradcontext.opName, "x", "0",
                 "CompressorGrad does not support empty tensor: all inputs/outputs shapeSize must be > 0");
         return ge::GRAPH_FAILED;
     }
@@ -918,14 +956,14 @@ static ge::graphStatus CompressorGradTilingFunc(gert::TilingContext *context)
     CompressorGradContext compressorGradContext{};
     CompressorGradBaseParams compressorGradBaseParams{};
     CompressorGradWorkspaceParams compressorGradWorkspaceParams{};
-    OP_CHECK_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("CompressorGrad", "Context is nullptr."),
+    OP_CHECK_IF(context == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("CompressorGrad", "context", "is nullptr"),
                 return ge::GRAPH_FAILED);
 
     OP_LOGI("Getting Tiling");
 
     OP_CHECK_IF(context->GetPlatformInfo() == nullptr,
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                "GetPlatformInfo is nullptr."),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "platformInfo", "is nullptr"),
                 return ge::GRAPH_FAILED);
 
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -933,13 +971,16 @@ static ge::graphStatus CompressorGradTilingFunc(gert::TilingContext *context)
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
     uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
     OP_CHECK_IF(aicNum == 0 || aivNum == 0,
-                OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "num of core obtained is 0."), return GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "aicNum/aivNum",
+                                                         "num of core obtained is 0"),
+                return ge::GRAPH_FAILED);
     
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
     context->SetBlockDim(blockDim);
     
     if (ConvertContext(*context, compressorGradContext) != ge::GRAPH_SUCCESS) {
-        OP_LOGE(context->GetNodeName(), "Error occurred while converting tilingContext to CompressorGrad context");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(context->GetNodeName(), "context",
+            "error occurred while converting tilingContext to CompressorGrad context");
         return ge::GRAPH_FAILED;
     }
 
@@ -976,7 +1017,7 @@ static ge::graphStatus CompressorGradTilingFunc(gert::TilingContext *context)
     size_t workspaceSize = 0;
 
     if (CalcWorkSpace(compressorGradContext, compressorGradBaseParams, compressorGradWorkspaceParams, workspaceSize,
-                    libapiSize, aicNum) != ge::GRAPH_SUCCESS) {
+                      libapiSize, aicNum) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (GenTilingKey(compressorGradContext) != ge::GRAPH_SUCCESS) {
@@ -1049,5 +1090,3 @@ IMPL_OP_OPTILING(CompressorGrad)
     .Tiling(CompressorGradTilingFunc)
     .TilingParse<CompressorGradCompileInfo>(TilingParseForCompressorGrad);
 } // namespace optiling
-
-
