@@ -24,7 +24,7 @@ import check_valid_param
 import kv_quant_sparse_flash_attention_golden
 import result_compare_method
 import traceback
-import tensorflow as tf
+from ml_dtypes import bfloat16
 import json
 
 
@@ -572,8 +572,8 @@ def get_np_dtype(type_str):
         "int32": np.int32,
         "int8": np.int8,
         "uint8": np.uint8,
-        "bf16": tf.bfloat16.as_numpy_dtype,
-        "bfloat16": tf.bfloat16.as_numpy_dtype,
+        "bf16": bfloat16,
+        "bfloat16": bfloat16,
         "float32": np.float32,
         "float16": np.float16,
         "hifloat8": np.uint8,
@@ -676,7 +676,7 @@ def modify_alcnn_input_file(
                     .detach()
                     .cpu()
                     .numpy()
-                    .astype(tf.bfloat16.as_numpy_dtype)
+                    .astype(bfloat16)
                 )
             else:
                 out_tensor = tensors.detach().cpu().numpy()

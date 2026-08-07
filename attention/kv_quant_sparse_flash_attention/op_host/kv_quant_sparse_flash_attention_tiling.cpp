@@ -911,7 +911,7 @@ static ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *t
 void QSFATilingCheck::SetQSFAShapeCompare()
 {
     queryShapeCmp_ = opParamInfo_.query.shape->GetStorageShape();
-    topkShapeCmp_ = opParamInfo_.sparse_indices.shape->GetStorageShape();
+    topkShapeCmp_ = opParamInfo_.sparseIndices.shape->GetStorageShape();
     keyShapeCmp_ = opParamInfo_.key.shape->GetStorageShape();
     valueShapeCmp_ = opParamInfo_.value.shape->GetStorageShape();
     attenOutShapeCmp_ = opParamInfo_.attenOut.shape->GetStorageShape();
