@@ -733,8 +733,15 @@ public:
         maskInfo.s2dealNum = runInfo.actSingleLoopS2Size;
         maskInfo.s2Size = runInfo.actS2Size;
         maskInfo.nBaseSize = s2BaseSize;
-        maskInfo.preToken = constInfo_.preTokens;
-        maskInfo.nextToken = constInfo_.nextTokens;
+        int64_t safePreToken = constInfo_.preTokens;
+        int64_t safeNextToken = constInfo_.nextTokens;
+        if (constInfo_.sparseMode == fa_base_vector::BAND) {
+            fa_base_vector::GetSafeActToken(static_cast<int64_t>(runInfo.actS1Size),
+                                            static_cast<int64_t>(runInfo.actS2Size), safePreToken, safeNextToken,
+                                            constInfo_.sparseMode);
+        }
+        maskInfo.preToken = safePreToken;
+        maskInfo.nextToken = safeNextToken;
         maskInfo.sparseMode = static_cast<SparseMode>(constInfo_.sparseMode);
         maskInfo.batchIdx = (constInfo_.attenMaskBatch == 1) ? 0 : runInfo.bIdx;
         maskInfo.attenMaskBatchStride = constInfo_.attenMaskS1Size * constInfo_.attenMaskS2Size;
@@ -774,6 +781,16 @@ public:
             Mutex::Lock<PIPE_V>(preMte2ToVId);
             MergeMask(attenMaskUb, attenMaskUbPre, maskInfo.gs1dealNum, s2BaseSize);
             Mutex::Unlock<PIPE_V>(preMte2ToVId);
+        }
+
+        if (constInfo_.sparseMode == fa_base_vector::BAND && runInfo.bIdx == 104 && runInfo.n2Idx == 2 &&
+            maskInfo.gs1StartIdx == 0 && maskInfo.s2StartIdx == 78080) {
+            uint32_t maskShape[] = {mDealSize, s2BaseSize};
+            AscendC::ShapeInfo maskShapeInfo(2, maskShape);
+            AscendC::DumpTensor(attenMaskUb, 0, mDealSize * s2BaseSize, maskShapeInfo);
+            printf("FA_MASK b=%u n2=%u gs1=%u s2=%u pre=%lld next=%lld skip=%d preSkip=%d\n", runInfo.bIdx,
+                   runInfo.n2Idx, maskInfo.gs1StartIdx, maskInfo.s2StartIdx, maskInfo.preToken, maskInfo.nextToken,
+                   IsSkipMask, IsSkipMaskForPre);
         }
     }
 };
