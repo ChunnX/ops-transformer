@@ -134,7 +134,7 @@ $$14 + 10 N_B \le 73 \times N_{B+1} \quad(\approx N_B \le 7.3 \times N_{B+1})$$
 - **均匀波（N_B = N_{B+1}）恒满足** → 均匀分布保证该机制永不触发，这是要避免"上一波极大、下一波极小"的原因；
 - tile 级下 **8→2 也不破**（拖尾 94 ≤ 146）；破界需 N_B > 7.3×N_{B+1}（如 15→2），或保守实现（combine 等本波 G2 全完成才起，拖尾变 48×N_B，需 N_B ≤ 1.5×N_{B+1}，此时 8→2、4→2 都破）。
 
-**约束 B —— 每波 ≥ 2 专家（避免单专家 wave）**：wave 内只有 1 个专家时，G2(e) 等 S(e) 12us 无处藏 → 12us 空泡（wave-1 全中招；wave-3 的 4=3+1 尾巴中招）。
+**约束 B —— 每核 wave 内 ≥ 2 个 GMM1 tile（$T_B \ge 2\times aicNum$，硬条件）**：藏住 S 需要“wave 内 GMM1 时段 ≥ S 时长”。swiglu 很快（12us）**一定比 GMM1 少**，故每核 2 个 tile 的 GMM1 时段必 > S，S 必被同 wave 的后续 GMM1 藏住、**不会等 S**。**与专家数无关**（1 个 tile 多的专家贡献每核 2 tile，或 2 个专家各贡献每核 1 tile 均可）。wave-1 的 12us 空泡本质是“每核 tile < 2”（该 case 每专家每核约 1.5 tile）；wave-2 恰好把每核 tile 抬到 ≥2。$2\times aicNum$ 是**硬性下界**（表述明确、杜绝等 S），与约束 C（$T_B\ge aicNum$，防空等）合并后有效下界即 $T_B\ge 2\times aicNum$。
 
 **约束 C —— 每 wave 的 GMM1 tile 总数 ≥ AIC 核数（任务量/核占用）**：GMM1 按 256×256 切 tile（`GMM1_TILE_M=256`、`L1_TILE_N=256`），各 AIC 核按 `loopIdx += blockNum` 步进领 tile。若某 wave 的 GMM1 tile 总数 < AIC 核数，必有核在 GMM1 阶段 0 tile → 直接进 GMM2，而 GMM2 的 `WaitForUpstreamReady` 要等 `swigluToGmm2Flag`（GMM1→S 完成）→ **该核空等一个 GMM1+S 周期**：
 
@@ -146,7 +146,7 @@ $$\sum_{e \in wave} \Big\lceil \tfrac{tokens_e}{256} \Big\rceil \times \Big\lcei
 - **余数空等（T_B mod aicNum）**：tile 数几乎不可能整除 aicNum → 余数空等不可避免。wave 的 GMM1 阶段 = ⌈T_B/aicNum⌉ 轮，前 r = T_B mod aicNum 个核领 k+1 tile、其余 **aicNum−r 个核欠载空等 1 tile**（空等核数 = aicNum − r）→ **在 T_B ≥ aicNum 前提下让余数尽量大（整除 r=0 最佳）**，即每 wave 把 tile 凑满整数轮、余数尽量大以减少欠载核；**该空等主要落在末波**（前序波的欠载核可被越前进入下一波 GMM1 部分吸收）；
 - **与"末波取 2"的张力**：wall 公式偏好末波小，但末波也须满足 T_B ≥ aicNum 且余数尽量大；token 稀疏时末波可能需 >2 专家。
 
-**约束 D —— 末波专家数要小（wall 公式对末波的推论）**：combine 尾墙是每波必付的墙，wall = `44+111N+10×N_末波`——末波每多 1 专家，combine 链多 48us、末波 G2 只提前 38us（少一个前序专家）→ **净 +10us/专家**，故末波要尽量小。**末波的下界 2 不是约束 D 新增的，而是约束 B（每波 ≥2，防单专家 swiglu 空泡）对末波同样生效**——末波=1 即 wave-3 的 4=3+1 尾巴（510 vs 508），比末波=2 更差。故末波取 **2**；仅当约束 C（该波 tile ≥ aicNum）不满足时才放大。
+**约束 D —— 末波专家数要小（wall 公式对末波的推论）**：combine 尾墙是每波必付的墙，wall = `44+111N+10×N_末波`——末波每多 1 专家，combine 链多 48us、末波 G2 只提前 38us（少一个前序专家）→ **净 +10us/专家**，故末波要尽量小。**末波的下界不是约束 D 新增的，而是约束 B（每核 ≥2 tile，防 S 空泡）对末波同样生效**——末波=1 个“每核 tile<2”的专家即 wave-3 的 4=3+1 尾巴（510 vs 508），比末波每核 ≥2 tile 更差。故末波取**尽量小但满足约束 B（每核 ≥2 tile）与约束 C（每核 ≥1 tile）**；固定“2 专家”只在能凑够 tile 时成立。
 
 **wall 公式（拖尾恒被掩盖时，只与末波大小有关）**：对固定 N，**末波之前的专家数恒为 N − N_末波，前面的波怎么排都不影响**：
 
@@ -158,9 +158,9 @@ $$\text{wall} = 44 + 111\times N + 10\times N_{\text{末波}}$$
 - N=4：末波 2 → 508（wave-2）；N=5：末波 2（即 3+2）→ 619、末波 3（即 2+3）→ 629；N=6：末波 2（2+2+2）→ 730、末波 3（3+3）→ 740；N=8：末波 2（2+2+2+2 / 6+2 / 4+2+2 等价）→ 952。
 
 **结论**：
-1. 每波 ≥ 2（约束 B），拆分不得留下 `…+1` 的尾巴波；
-2. 末波取 **2**（约束 D 要求末波小、下界 2 由约束 B 给定；前提：该波 GMM1 tile ≥ aicNum，见约束 C）：wall = 64 + 111N，末波尾墙最小且必付；
-3. **每 wave 均匀分布且 ≥ 2**：同时满足 B，且保证约束 A 在 tile 级/保守两种实现下都不触发——最稳的默认值；
+1. 每波（含末波）每核 ≥2 个 GMM1 tile（约束 B，$T_B \ge 2\times aicNum$），拆分不得留下每核 tile<2 的尾巴波（如 `…+1` 的单专家尾巴）；
+2. 末波尽量小（约束 D：wall 每多 1 专家 +10us），但须满足约束 B（末波每核 ≥2 tile）与约束 C（末波每核 ≥1 tile）；固定 2 专家仅在能凑够 tile 时成立：wall = 64 + 111N，末波尾墙最小且必付；
+3. **每 wave 均匀分布且每核 ≥2 tile（$T_B \ge 2\times aicNum$）**：同时满足 B，且保证约束 A 在 tile 级/保守两种实现下都不触发——最稳的默认值；
 4. **wave 大小下界由任务量定（约束 C）**：每 wave（含末波）GMM1 tile 总数 ≥ aicNum，否则核空等；在此前提下余数 T_B mod aicNum 尽量大（整除最佳）以减少欠载核空等（末波最敏感）。
 
 ---
@@ -239,7 +239,7 @@ for (waveBegin = 0; waveBegin < moeExpertPerRank_; waveBegin += waveExpertNum) {
 
 ### 4.6 分步实施与验收
 
-> **当前状态（路线 B 已落地）**：已在 `MegaMoe::Process()` 内实现 `if constexpr (ENABLE_A8W4 && !TopkWeightsPrefetch)` 分支——直接 2 专家/wave 的 wave 循环（`GMM1(wave)→GMM2(wave)` 逐 wave 交错），跳过 1 专家结构验证；A4W4/generic 与 A8W4-prefetch 保持原两段式（prefetch 的 allDone+SyncAll 真同步暂缓）。待验收：编译 + 精度 + trace。
+> **当前状态（路线 B 已落地，已按约束 B/C 精化为动态切波）**：已在 `MegaMoe::Process()` 内实现 `if constexpr (ENABLE_A8W4 && !TopkWeightsPrefetch)` 分支——wave 循环（`GMM1(wave)→GMM2(wave)` 逐 wave 交错），**wave 边界由 GMM1 tile 累计 ≥ 2×aicNum 动态确定**（每专家 tile = ⌈M_e/256⌉×⌈hiddenDim/256⌉，M_e=该专家 token 数），**末波并入**（剩余不足 2 个专家时并入当前 wave，消除"1 专家末波"空泡）；A4W4/generic 与 A8W4-prefetch 保持原两段式（prefetch 的 allDone+SyncAll 真同步暂缓）。待验收：编译 + 精度 + trace。
 >
 > **trace 配套修复**：`WriteCriticalPathTrace` 的 `expertsPerWave` 已按编译期常量改为 `(ENABLE_A8W4 && !TopkWeightsPrefetch) ? 2 : 1`；`mega_moe_trace_contract.py` 中 a8w4 contract 的 `experts_per_wave` 由写死 `1` 改为 `"derived_a8w4"`（按 `topk_weights_type` 推导：非 prefetch=2 / prefetch=1），使 runtime config hash 与预期一致（否则报 `runtime_config_hash`/`experts_per_wave` mismatch）。
 

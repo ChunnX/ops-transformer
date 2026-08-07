@@ -3,7 +3,7 @@
   <rect x="0" y="0" width="1300" height="1060" fill="#ffffff"/>
   <!-- ===================== 标题 / 口径 ===================== -->
   <text x="650" y="26" text-anchor="middle" font-size="19" font-weight="bold" fill="#111827">MegaMoe A8W4 wave 粒度选择：四个约束示意</text>
-  <text x="40" y="48" font-size="12" fill="#4b5563">约束 A（combine 拖尾掩盖）/ B（每波≥2 防空泡）/ C（每 wave tile ≥ AIC 核数，分核逻辑）/ D（末波要小）+ wall 公式 ｜ 单核代表视图 + tile 分核视图</text>
+  <text x="40" y="48" font-size="12" fill="#4b5563">约束 A（combine 拖尾掩盖）/ B（每核≥2 tile 防空泡）/ C（每 wave tile ≥ AIC 核数，分核逻辑）/ D（末波要小）+ wall 公式 ｜ 单核代表视图 + tile 分核视图</text>
 
   <!-- ===================== 约束 A ===================== -->
   <rect x="40" y="60" width="1220" height="200" fill="#f8fafc" stroke="#e2e8f0" rx="8"/>
@@ -44,7 +44,7 @@
 
   <!-- ===================== 约束 B ===================== -->
   <rect x="40" y="272" width="1220" height="200" fill="#f8fafc" stroke="#e2e8f0" rx="8"/>
-  <text x="60" y="296" font-size="14" font-weight="bold" fill="#111827">约束 B｜每波 ≥ 2 专家（防单专家 swiglu 空泡）</text>
+  <text x="60" y="296" font-size="14" font-weight="bold" fill="#111827">约束 B｜每核 wave 内 ≥ 2 个 GMM1 tile（T_B ≥ 2×AIC，硬条件；swiglu 一定比 GMM1 少，避免等 S）</text>
   <!-- wave=1：负面 -->
   <text x="60" y="318" font-size="12" font-weight="bold" fill="#dc2626">✗ wave=1（单专家）→ 周期 123us/专家</text>
   <g font-size="11" fill="#ffffff" text-anchor="middle" font-weight="bold">
@@ -70,7 +70,7 @@
     <text x="1086" y="344">G2(e1)</text>
   </g>
   <text x="560" y="372" font-size="11.5" fill="#059669">S(e0) 藏在 G1(e1) 下（12 &lt; 73）→ 空泡消失</text>
-  <text x="60" y="446" font-size="12" fill="#374151">规则：每波 ≥ 2（约束 B）；该 ≥2 对末波同样生效——末波=1 即 wave-3 的 4=3+1（510 vs 508）</text>
+  <text x="60" y="446" font-size="12" fill="#374151">规则：每波每核 ≥ 2 tile（约束 B，T_B ≥ 2×AIC 硬条件，避免等 S）；对末波同样生效——末波每核 tile&lt;2 即 wave-3 的 4=3+1 尾巴（510 vs 508）</text>
 
   <!-- ===================== 约束 C（分核逻辑） ===================== -->
   <rect x="40" y="486" width="1220" height="320" fill="#f8fafc" stroke="#e2e8f0" rx="8"/>
@@ -146,7 +146,7 @@
   <!-- ===================== 约束 D + wall 公式 ===================== -->
   <rect x="40" y="820" width="1220" height="180" fill="#f8fafc" stroke="#e2e8f0" rx="8"/>
   <text x="60" y="844" font-size="14" font-weight="bold" fill="#111827">约束 D｜末波专家数要小（wall 公式对末波的推论）+ wall 公式</text>
-  <text x="60" y="866" font-size="12" fill="#374151">wall = 44 + 111×N + 10×N_末波（末波每多 1 专家 → +10us）；末波的下界 2 来自约束 B，不是 D 新增</text>
+  <text x="60" y="866" font-size="12" fill="#374151">wall = 44 + 111×N + 10×N_末波（末波每多 1 专家 → +10us）；末波下界由约束 B（每核≥2 tile）/ C（每核≥1 tile）决定，不是 D 新增</text>
   <line x1="430" y1="878" x2="430" y2="944" stroke="#9ca3af" stroke-width="1"/>
   <text x="430" y="950" text-anchor="middle" font-size="9.5" fill="#6b7280">500us</text>
   <g font-size="11" fill="#111827">
@@ -166,5 +166,5 @@
   <text x="60" y="968" font-size="11.5" fill="#374151">N=4：末波=2 最优（508）；末波=1 是 wave-3（4=3+1，约束 B 空泡 → 510）；末波越大 wall 越晚（每专家 +10us，末波=4 即分阶段 528）</text>
 
   <!-- ===================== 底部说明 ===================== -->
-  <text x="40" y="1010" font-size="11" fill="#6b7280">注：A 管跨波 combine 掩盖、B 管每波≥2 防空泡（对末波同样生效）、C 管 wave 大小下界（分核/tile，余数尽量大）、D 管末波要小（wall 公式推论）；均为单核代表视图 + tile 分核示意。</text>
+  <text x="40" y="1010" font-size="11" fill="#6b7280">注：A 管跨波 combine 掩盖、B 管每核≥2 tile 防空泡（对末波同样生效）、C 管 wave 大小下界（分核/tile，余数尽量大）、D 管末波要小（wall 公式推论）；均为单核代表视图 + tile 分核示意。</text>
 </svg>
