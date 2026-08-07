@@ -48,7 +48,7 @@ template <
     DTemplateType dVTemplateType = DTemplateType::Aligned128, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE,
     bool hasAtten = false, bool hasDrop = false, uint8_t KvLayoutType = 0, bool isFd = false,
     bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
-class FAFullQuantFp8BlockVec {
+class QuantFlashAttnBlockVecGqaFp8 {
 public:
     /* =================编译期常量的基本块信息================= */
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;
@@ -157,7 +157,7 @@ public:
     bool isSkipMask{false};
 
     // ==================== Functions ======================
-    __aicore__ inline FAFullQuantFp8BlockVec(ConstInfoX &constInfo) : constInfo(constInfo){};
+    __aicore__ inline QuantFlashAttnBlockVecGqaFp8(ConstInfoX &constInfo) : constInfo(constInfo){};
 
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *actualSeqQlenAddr,
                                         __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *pScale,
@@ -970,13 +970,13 @@ template <
     DTemplateType dVTemplateType = DTemplateType::Aligned128, PseTypeEnum pseMode = PseTypeEnum::PSE_NONE_TYPE,
     bool hasAtten = false, bool hasDrop = false, uint8_t KvLayoutType = 0, bool isFd = false,
     bool enableKVPrefix = false, bool useDn = false, bool bmm2Write2Ub = true, bool splitD = false>
-class FAFullQuantFp8BlockVecDummy {
+class QuantFlashAttnBlockVecGqaFp8Dummy {
 public:
     static constexpr bool HAS_MASK = hasAtten;
     static constexpr bool FLASH_DECODE = isFd;
     using OUT_T = OUTPUT_T;
     using ConstInfoX = ConstInfo_t;
-    __aicore__ inline FAFullQuantFp8BlockVecDummy(ConstInfoX &constInfo){};
+    __aicore__ inline QuantFlashAttnBlockVecGqaFp8Dummy(ConstInfoX &constInfo){};
 };
 } // namespace BaseApi
 #endif // QUANT_FLASH_ATTN_BLOCK_VEC_FULLQUANT_FP8_H_
