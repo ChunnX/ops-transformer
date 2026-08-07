@@ -173,6 +173,7 @@ struct ConstInfo {
     uint32_t sSize = 0;
     uint32_t headDim = 0;
     uint32_t cmpRatio = 0;
+    float normEps = 1e-6f;
     uint64_t stateCacheStrideDim0 = 0;
 
     uint32_t curGroupIdx = 0;

@@ -27,8 +27,8 @@ using namespace KPool;
 #define INVOKE_K_POOL_GENERAL_OP_IMPL(templateClass, ...)                                                          \
     do {                                                                                                               \
         templateClass<COMPType<__VA_ARGS__>> op(&pipe, tilingData);                                                    \
-        op.Init(hidden_states, wk, gateWeight, stateCache, ape, cacheBlockTable,  \
-                seqLens, nullptr, startPos, pooledKeyOut, workspace);                                                    \
+        op.Init(hidden_states, wk, gateWeight, normWeight, normBias, stateCache, ape, cacheBlockTable,              \
+                seqLens, nullptr, startPos, pooledKeyOut, workspace);                                                \
         op.Process();                                                                                                  \
     } while (0)
 

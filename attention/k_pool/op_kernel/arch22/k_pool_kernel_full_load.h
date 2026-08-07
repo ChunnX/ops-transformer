@@ -35,6 +35,7 @@ public:
     }
 
     __aicore__ inline void Init(__gm__ uint8_t *hidden_states, __gm__ uint8_t *wk, __gm__ uint8_t *gateWeight,
+                                __gm__ uint8_t *normWeight, __gm__ uint8_t *normBias,
                                 __gm__ uint8_t *stateCache, __gm__ uint8_t *ape, __gm__ uint8_t *cacheBlockTable,
                                 __gm__ uint8_t *seqLens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
                                 __gm__ uint8_t *pooledKeyOut, __gm__ uint8_t *workspace);
@@ -101,6 +102,7 @@ private:
 template <typename COMP>
 __aicore__ inline void
 KPoolKernelFullLoad<COMP>::Init(__gm__ uint8_t *hidden_states, __gm__ uint8_t *wk, __gm__ uint8_t *gateWeight,
+                                     __gm__ uint8_t *normWeight, __gm__ uint8_t *normBias,
                                      __gm__ uint8_t *stateCache, __gm__ uint8_t *ape, __gm__ uint8_t *cacheBlockTable,
                                      __gm__ uint8_t *seqLens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
                                      __gm__ uint8_t *pooledKeyOut, __gm__ uint8_t *workspace)
@@ -148,7 +150,7 @@ KPoolKernelFullLoad<COMP>::Init(__gm__ uint8_t *hidden_states, __gm__ uint8_t *w
         blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
     } else {
         blockVec_.InitParams(constInfo, tools_);
-        blockVec_.Init(hidden_states, wk, gateWeight, stateCache, ape, cacheBlockTable, seqLens,
+        blockVec_.Init(hidden_states, wk, gateWeight, normWeight, normBias, stateCache, ape, cacheBlockTable, seqLens,
                        seqUsed, startPos, pooledKeyOut);
         blockVec_.InitBuffers(pipe_);
         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm);
@@ -163,6 +165,7 @@ __aicore__ inline void KPoolKernelFullLoad<COMP>::InitTilingData()
     constInfo.mBaseSize = tilingData_->innerSplitParams.mBaseSize;
     constInfo.dBaseSize = tilingData_->innerSplitParams.dBaseSize;
     constInfo.headDim = tilingData_->baseParams.headDim;
+    constInfo.normEps = tilingData_->baseParams.normEps;
     constInfo.hSize = tilingData_->baseParams.hiddenSize;
     constInfo.sSize = tilingData_->baseParams.seqSize;
     constInfo.usedCoreNum = tilingData_->baseParams.usedCoreNum;
@@ -357,6 +360,10 @@ __aicore__ inline void KPoolKernelFullLoad<COMP>::Process()
     if ASCEND_IS_AIV {
         PipeBarrier<PIPE_ALL>();
         SyncAll();
+        if (blockVec_.HasLayerNorm()) {
+            blockVec_.ApplyLayerNorm();
+            SyncAll();
+        }
         blockVec_.ComputeFullHistoryPool();
     }
     FreeEventID();

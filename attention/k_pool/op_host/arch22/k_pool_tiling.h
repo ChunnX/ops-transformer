@@ -47,10 +47,16 @@ constexpr uint32_t APE_INPUT_INDEX = 3;
 constexpr uint32_t STATE_CACHE_INPUT_INDEX = 4;
 constexpr uint32_t CACHE_BLOCK_TABLE_INPUT_INDEX = 5;
 constexpr uint32_t START_POS_INPUT_INDEX = 6;
+constexpr uint32_t NORM_WEIGHT_INPUT_INDEX = 7;
+constexpr uint32_t NORM_BIAS_INPUT_INDEX = 8;
+constexpr uint32_t COS_INPUT_INDEX = 9;
+constexpr uint32_t SIN_INPUT_INDEX = 10;
 constexpr uint32_t SEQ_LENS_INPUT_INDEX = 11;
 
 // ATTR
 constexpr uint32_t CMP_RATIO_ATTR_INDEX = 0;
+constexpr uint32_t NORM_EPS_ATTR_INDEX = 1;
+constexpr uint32_t ROTARY_MODE_ATTR_INDEX = 2;
 constexpr uint32_t STATE_CACHE_STRIDE_DIM0_ATTR_INDEX = 3;
 
 // OUTPUT
@@ -83,6 +89,10 @@ static const std::string CACHE_BLOCK_TABLE_NAME = "cache_block_table";
 static const std::string SEQ_LENS_NAME = "seq_lens";
 static const std::string SEQ_USED_NAME = "seq_used";
 static const std::string START_POS_NAME = "start_pos";
+static const std::string NORM_WEIGHT_NAME = "norm_weight";
+static const std::string NORM_BIAS_NAME = "norm_bias";
+static const std::string COS_NAME = "cos";
+static const std::string SIN_NAME = "sin";
 static const std::string CMP_RATIO_NAME = "cmp_ratio";
 static const std::string COFF_NAME = "coff";
 static const std::string CACHE_MODE_NAME = "cache_mode";
@@ -100,6 +110,10 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {SEQ_LENS_NAME, {ge::DT_INT32}},
     {SEQ_USED_NAME, {ge::DT_INT32}},
     {START_POS_NAME, {ge::DT_INT32}},
+    {NORM_WEIGHT_NAME, {ge::DT_FLOAT}},
+    {NORM_BIAS_NAME, {ge::DT_FLOAT}},
+    {COS_NAME, {ge::DT_BF16}},
+    {SIN_NAME, {ge::DT_BF16}},
     {POOLED_KEY_NAME, {ge::DT_BF16, ge::DT_FLOAT16}}};
 
 const std::map<std::string, std::vector<uint32_t>> DIM_NUM_MAP = {
@@ -112,6 +126,10 @@ const std::map<std::string, std::vector<uint32_t>> DIM_NUM_MAP = {
     {SEQ_LENS_NAME, {K_POOL_DIM_NUM_1}},
     {SEQ_USED_NAME, {K_POOL_DIM_NUM_1}},
     {START_POS_NAME, {K_POOL_DIM_NUM_1}},
+    {NORM_WEIGHT_NAME, {K_POOL_DIM_NUM_1}},
+    {NORM_BIAS_NAME, {K_POOL_DIM_NUM_1}},
+    {COS_NAME, {K_POOL_DIM_NUM_2, K_POOL_DIM_NUM_3}},
+    {SIN_NAME, {K_POOL_DIM_NUM_2, K_POOL_DIM_NUM_3}},
     {POOLED_KEY_NAME, {K_POOL_DIM_NUM_2, K_POOL_DIM_NUM_3}}};
 
 static const std::map<std::string, uint32_t> LAYOUT_DIM_MAP = {
@@ -213,11 +231,17 @@ struct KPoolContext {
     OptionalParaInfo seqLens;
     OptionalParaInfo seqUsed;
     OptionalParaInfo startPos;
+    OptionalParaInfo normWeight;
+    OptionalParaInfo normBias;
+    OptionalParaInfo cos;
+    OptionalParaInfo sin;
     RequiredParaInfo pooledKey;
 
     const int *coff;
     const int *cmpRatio;
     const int *cacheMode;
+    const float *normEps;
+    const int *rotaryMode;
     const int *stateCacheStrideDim0;
     TemplateId templateId;
 
@@ -278,6 +302,8 @@ private:
     ge::graphStatus CheckSingleParaSeqLens() const;
     ge::graphStatus CheckSingleParaSeqUsed() const;
     ge::graphStatus CheckSingleParaStartPos() const;
+    ge::graphStatus CheckSingleParaNormWeight() const;
+    ge::graphStatus CheckSingleParaNormBias() const;
     ge::graphStatus CheckSingleParaPooledKey() const;
     ge::graphStatus CheckSingleParaCmpRatio() const;
     ge::graphStatus CheckSingleParaCoff() const;

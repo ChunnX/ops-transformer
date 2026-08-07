@@ -61,6 +61,14 @@ void KPoolTiling::ConvertOptionalParams(gert::TilingContext &context, KPoolConte
     k_poolContext.cacheBlockTable.shape = context.GetRequiredInputShape(CACHE_BLOCK_TABLE_INPUT_INDEX);
     k_poolContext.startPos.desc = context.GetRequiredInputDesc(START_POS_INPUT_INDEX);
     k_poolContext.startPos.shape = context.GetRequiredInputShape(START_POS_INPUT_INDEX);
+    k_poolContext.normWeight.desc = context.GetOptionalInputDesc(NORM_WEIGHT_INPUT_INDEX);
+    k_poolContext.normWeight.shape = context.GetOptionalInputShape(NORM_WEIGHT_INPUT_INDEX);
+    k_poolContext.normBias.desc = context.GetOptionalInputDesc(NORM_BIAS_INPUT_INDEX);
+    k_poolContext.normBias.shape = context.GetOptionalInputShape(NORM_BIAS_INPUT_INDEX);
+    k_poolContext.cos.desc = context.GetOptionalInputDesc(COS_INPUT_INDEX);
+    k_poolContext.cos.shape = context.GetOptionalInputShape(COS_INPUT_INDEX);
+    k_poolContext.sin.desc = context.GetOptionalInputDesc(SIN_INPUT_INDEX);
+    k_poolContext.sin.shape = context.GetOptionalInputShape(SIN_INPUT_INDEX);
     k_poolContext.seqLens.desc = context.GetOptionalInputDesc(SEQ_LENS_INPUT_INDEX);
     k_poolContext.seqLens.shape = context.GetOptionalInputShape(SEQ_LENS_INPUT_INDEX);
 }
@@ -86,6 +94,8 @@ ge::graphStatus KPoolTiling::ConvertContext(gert::TilingContext &context, KPoolC
     k_poolContext.coff = &KPOOL_COFF;
     k_poolContext.cmpRatio = attrs->GetAttrPointer<int>(CMP_RATIO_ATTR_INDEX);
     k_poolContext.cacheMode = &KPOOL_LINEAR_CACHE;
+    k_poolContext.normEps = attrs->GetAttrPointer<float>(NORM_EPS_ATTR_INDEX);
+    k_poolContext.rotaryMode = attrs->GetAttrPointer<int>(ROTARY_MODE_ATTR_INDEX);
     k_poolContext.stateCacheStrideDim0 = attrs->GetAttrPointer<int>(STATE_CACHE_STRIDE_DIM0_ATTR_INDEX);
     k_poolContext.batchConsistency = context.GetDeterministicLevel();
     OP_LOGD(context.GetNodeName(), "deterministic_level=%d", context.GetDeterministicLevel());
@@ -136,6 +146,7 @@ ge::graphStatus KPoolTiling::SetBaseInfo()
     baseParams_->headDim = context_->wk.shape->GetStorageShape().GetDim(K_POOL_DIM_INDEX_0) / coff;
     baseParams_->cmpRatio = static_cast<uint32_t>(*context_->cmpRatio);
     baseParams_->csSize = baseParams_->seqSize - (baseParams_->seqSize % baseParams_->cmpRatio);
+    baseParams_->normEps = context_->normEps == nullptr ? 1e-6f : *context_->normEps;
     baseParams_->stateCacheStrideDim0 = static_cast<uint64_t>(*context_->stateCacheStrideDim0);
     baseParams_->nSize = 2; // 2:每个核处理两个基本块后做全核同步
     baseParams_->usedCoreNum = aicNum_;
@@ -368,11 +379,15 @@ ge::graphStatus KPoolTiling::CheckSinglePara() const
 {
     if (ge::GRAPH_SUCCESS != CheckSingleParaHiddenStates() || ge::GRAPH_SUCCESS != CheckSingleParaWk() ||
         ge::GRAPH_SUCCESS != CheckSingleParaGateWeight() || ge::GRAPH_SUCCESS != CheckSingleParaStateCache() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaApe() || ge::GRAPH_SUCCESS != CheckSingleParaCacheBlockTable() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaApe() || ge::GRAPH_SUCCESS != CheckSingleParaNormWeight() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaNormBias() || ge::GRAPH_SUCCESS != CheckSingleParaCacheBlockTable() ||
         ge::GRAPH_SUCCESS != CheckSingleParaSeqLens() || ge::GRAPH_SUCCESS != CheckSingleParaStartPos() ||
         ge::GRAPH_SUCCESS != CheckSingleParaPooledKey() || ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio()) {
         return ge::GRAPH_FAILED;
     }
+    OP_CHECK_IF(context_->normEps != nullptr && *context_->normEps <= 0.0f,
+                OP_LOGE(context_->opName, "norm_eps must be greater than 0, but got %f", *context_->normEps),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -608,6 +623,35 @@ ge::graphStatus KPoolTiling::CheckSingleParaStartPos() const
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus KPoolTiling::CheckSingleParaNormWeight() const
+{
+    bool hasWeight = context_->normWeight.desc != nullptr;
+    bool hasBias = context_->normBias.desc != nullptr;
+    OP_CHECK_IF(hasWeight != hasBias,
+                OP_LOGE(context_->opName, "norm_weight and norm_bias must be provided together"),
+                return ge::GRAPH_FAILED);
+    if (!hasWeight) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->normWeight.desc, NORM_WEIGHT_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->normWeight.shape, NORM_WEIGHT_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus KPoolTiling::CheckSingleParaNormBias() const
+{
+    if (context_->normBias.desc == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->normBias.desc, NORM_BIAS_NAME) ||
+        ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->normBias.shape, NORM_BIAS_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus KPoolTiling::CheckSingleParaPooledKey() const
 {
     if (context_->pooledKey.desc == nullptr) {
@@ -791,6 +835,13 @@ ge::graphStatus KPoolTiling::CheckShapeConsistency() const
                                                       "coff*headDim", static_cast<uint32_t>(coffD)) ||
         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("ape", context_->ape.shape, K_POOL_DIM_INDEX_0, "cmpRatio",
                                                       baseParams_->cmpRatio)) {
+        return ge::GRAPH_FAILED;
+    }
+    if (context_->normWeight.shape != nullptr &&
+        (ge::GRAPH_SUCCESS != LogErrorShapeConsistency("norm_weight", context_->normWeight.shape, K_POOL_DIM_INDEX_0,
+                                                        "coff*headDim", static_cast<uint32_t>(coffD)) ||
+         ge::GRAPH_SUCCESS != LogErrorShapeConsistency("norm_bias", context_->normBias.shape, K_POOL_DIM_INDEX_0,
+                                                       "coff*headDim", static_cast<uint32_t>(coffD)))) {
         return ge::GRAPH_FAILED;
     }
     if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::LINEAR_BUFFER) &&

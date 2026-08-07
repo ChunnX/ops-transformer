@@ -21,6 +21,7 @@
 #include "vf/vf_softmax.h"
 #include "vf/vf_add.h"
 #include "vf/vf_mul.h"
+#include "../k_pool_layer_norm.h"
 #include <cstdint>
 
 using namespace AscendC;
@@ -44,6 +45,7 @@ public:
     // =================================设置参数=================================
     __aicore__ inline void InitParams(const ConstInfo &constInfo, const KPoolTools<COMP> &tools);
     __aicore__ inline void Init(__gm__ uint8_t *hidden_states, __gm__ uint8_t *wk, __gm__ uint8_t *gateWeight,
+                                __gm__ uint8_t *normWeight, __gm__ uint8_t *normBias,
                                 __gm__ uint8_t *stateCache, __gm__ uint8_t *ape, __gm__ uint8_t *cacheBlockTable,
                                 __gm__ uint8_t *seqLens, __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
                                 __gm__ uint8_t *pooledKeyOut);
@@ -55,6 +57,8 @@ public:
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<T> kvMm1ResGm, GlobalTensor<T> scoreMm1ResGm,
                                                 GlobalTensor<T> kvCacheTcGm, GlobalTensor<T> scoreCacheTcGm);
     __aicore__ inline void ComputeVec1();
+    __aicore__ inline bool HasLayerNorm() const;
+    __aicore__ inline void ApplyLayerNorm();
     __aicore__ inline void ComputeFullHistoryPool();
 
 protected:
@@ -173,6 +177,8 @@ private:
     GlobalTensor<int32_t> sequsedGm_;
     GlobalTensor<int32_t> stateBlockTableGm_;
     GlobalTensor<T> stateCacheGm_;
+    GlobalTensor<T> normWeightGm_;
+    GlobalTensor<T> normBiasGm_;
     GlobalTensor<T> apeGm_;
     GlobalTensor<HIDDEN_STATES_T> cmpKvOutGm_;
 
@@ -193,6 +199,7 @@ private:
     // out queue
     TQue<QuePosition::VECOUT, 1> outputQue1;
     TQue<QuePosition::VECOUT, 1> outputQue2;
+    bool hasLayerNorm_ = false;
 };
 
 template <typename COMP>
@@ -207,13 +214,19 @@ __aicore__ inline void KPoolBlockVectorFullLoad<COMP>::InitParams(const ConstInf
 
 template <typename COMP>
 __aicore__ inline void KPoolBlockVectorFullLoad<COMP>::Init(__gm__ uint8_t *hidden_states, __gm__ uint8_t *wk,
-                                                                 __gm__ uint8_t *gateWeight, __gm__ uint8_t *stateCache,
+                                                                 __gm__ uint8_t *gateWeight, __gm__ uint8_t *normWeight,
+                                                                 __gm__ uint8_t *normBias, __gm__ uint8_t *stateCache,
                                                                  __gm__ uint8_t *ape, __gm__ uint8_t *cacheBlockTable,
                                                                  __gm__ uint8_t *seqLens, __gm__ uint8_t *seqUsed,
                                                                  __gm__ uint8_t *startPos, __gm__ uint8_t *pooledKeyOut)
 {
     stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)cacheBlockTable);
     stateCacheGm_.SetGlobalBuffer((__gm__ T *)stateCache);
+    hasLayerNorm_ = (normWeight != nullptr);
+    if (hasLayerNorm_) {
+        normWeightGm_.SetGlobalBuffer((__gm__ T *)normWeight);
+        normBiasGm_.SetGlobalBuffer((__gm__ T *)normBias);
+    }
     apeGm_.SetGlobalBuffer((__gm__ T *)ape);
     cmpKvOutGm_.SetGlobalBuffer((__gm__ HIDDEN_STATES_T *)pooledKeyOut);
     isExistSeqUsed_ = (seqUsed != nullptr);
@@ -227,6 +240,27 @@ __aicore__ inline void KPoolBlockVectorFullLoad<COMP>::Init(__gm__ uint8_t *hidd
     if (isExistStartPos_) {
         startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
     }
+}
+
+template <typename COMP>
+__aicore__ inline bool KPoolBlockVectorFullLoad<COMP>::HasLayerNorm() const
+{
+    return hasLayerNorm_;
+}
+
+template <typename COMP>
+__aicore__ inline void KPoolBlockVectorFullLoad<COMP>::ApplyLayerNorm()
+{
+    if (!hasLayerNorm_) {
+        return;
+    }
+    LocalTensor<T> input = tmpBuf1.Get<T>();
+    LocalTensor<T> output = tmpBuf2.Get<T>();
+    LocalTensor<T> mean = output[constInfo_.headDim * static_cast<uint32_t>(COMP::coff)];
+    LocalTensor<T> gamma = mean[constInfo_.headDim * static_cast<uint32_t>(COMP::coff)];
+    LocalTensor<T> beta = gamma[constInfo_.headDim * static_cast<uint32_t>(COMP::coff)];
+    ApplyKPoolLayerNormToCache(stateCacheGm_, stateBlockTableGm_, normWeightGm_, normBiasGm_, tools_, constInfo_,
+                               static_cast<uint32_t>(COMP::coff), input, output, mean, gamma, beta);
 }
 
 template <typename COMP>

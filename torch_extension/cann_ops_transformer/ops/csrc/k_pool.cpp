@@ -82,7 +82,17 @@ at::Tensor KPool(const at::Tensor &hidden_states, const at::Tensor &wk, const at
 
     TORCH_CHECK(cmpRatio > VALUE_0, "cmp_ratio should be greater than 0");
 
-    TORCH_CHECK(!normWeight.has_value() && !normBias.has_value(), "KPool LayerNorm is not implemented in this stage");
+    TORCH_CHECK(normWeight.has_value() == normBias.has_value(),
+                "norm_weight and norm_bias must be provided as a pair");
+    if (normWeight.has_value()) {
+        TORCH_CHECK(normWeight->scalar_type() == at::kFloat && normBias->scalar_type() == at::kFloat,
+                    "norm_weight and norm_bias must be FP32");
+        TORCH_CHECK(normWeight->dim() == DIM_ONE && normBias->dim() == DIM_ONE,
+                    "norm_weight and norm_bias must be rank-1");
+        TORCH_CHECK(normWeight->size(0) == wk.size(0) && normBias->size(0) == wk.size(0),
+                    "norm_weight and norm_bias size must match wk.size(0)");
+    }
+    TORCH_CHECK(normEps > 0.0, "norm_eps should be greater than 0");
     TORCH_CHECK(!cos.has_value() && !sin.has_value(), "KPool RoPE is not implemented in this stage");
     TORCH_CHECK(hiddenStatesDim != DIM_TWO || seqLens.has_value(), "seq_lens is required for TH layout");
     TORCH_CHECK(hiddenStatesDim != DIM_THREE || !seqLens.has_value(), "seq_lens must be absent for BSH layout");
@@ -121,7 +131,17 @@ at::Tensor KPoolMeta(const at::Tensor &hidden_states, const at::Tensor &wk, cons
 
     TORCH_CHECK(cmpRatio > VALUE_0, "cmp_ratio should be greater than 0");
 
-    TORCH_CHECK(!normWeight.has_value() && !normBias.has_value(), "KPool LayerNorm is not implemented in this stage");
+    TORCH_CHECK(normWeight.has_value() == normBias.has_value(),
+                "norm_weight and norm_bias must be provided as a pair");
+    if (normWeight.has_value()) {
+        TORCH_CHECK(normWeight->scalar_type() == at::kFloat && normBias->scalar_type() == at::kFloat,
+                    "norm_weight and norm_bias must be FP32");
+        TORCH_CHECK(normWeight->dim() == DIM_ONE && normBias->dim() == DIM_ONE,
+                    "norm_weight and norm_bias must be rank-1");
+        TORCH_CHECK(normWeight->size(0) == wk.size(0) && normBias->size(0) == wk.size(0),
+                    "norm_weight and norm_bias size must match wk.size(0)");
+    }
+    TORCH_CHECK(normEps > 0.0, "norm_eps should be greater than 0");
     TORCH_CHECK(!cos.has_value() && !sin.has_value(), "KPool RoPE is not implemented in this stage");
     return ConstructKPoolOutputTensor(hidden_states, wk, stateCache, cacheBlockTable, cmpRatio);
 }

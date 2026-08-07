@@ -48,6 +48,7 @@ namespace optiling {
         uint32_t coreGroupNum = 0;
         uint32_t mLoopNum = 0;
         uint32_t batchConsistency = 0;
+        float normEps = 1e-6f;
         KPoolSplitCoreParams splitCoreParam[CMP_MAX_AIC_CORE_NUM];
     };
 

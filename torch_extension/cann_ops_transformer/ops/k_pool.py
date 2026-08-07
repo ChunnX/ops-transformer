@@ -56,8 +56,8 @@ class KPoolOpBuilder(OpBuilder):
             norm_eps=1e-6,
             rotary_mode=1,
         ):
-            if norm_weight is not None or norm_bias is not None:
-                raise NotImplementedError("KPool LayerNorm is not implemented in this stage")
+            if (norm_weight is None) != (norm_bias is None):
+                raise ValueError("norm_weight and norm_bias must be passed as a pair")
             if cos is not None or sin is not None:
                 raise NotImplementedError("KPool RoPE is not implemented in this stage")
             b = cache_block_table.size(0)
@@ -93,8 +93,8 @@ def k_pool(
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
-    if norm_weight is not None or norm_bias is not None:
-        raise NotImplementedError("KPool LayerNorm is not implemented in this stage")
+    if (norm_weight is None) != (norm_bias is None):
+        raise ValueError("norm_weight and norm_bias must be passed as a pair")
     if cos is not None or sin is not None:
         raise NotImplementedError("KPool RoPE is not implemented in this stage")
     op_module = k_pool_op_builder.load()
