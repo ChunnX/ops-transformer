@@ -8,13 +8,12 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "aclnn_attention_to_ffn_v2.h"
-#include <algorithm>
 #include "common/utils/op_mc2_def.h"
+#include <algorithm>
+#include "opdev/common_types.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "mc2_log_compat.h"
-#include "opdev/common_types.h"
 #include "aclnnInner_attention_to_ffn_v2.h"
 
 using namespace op;
