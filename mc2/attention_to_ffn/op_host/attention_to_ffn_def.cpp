@@ -16,9 +16,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class AttentionToFFN : public OpDef {
+class AttentionToFfn : public OpDef {
 public:
-    explicit AttentionToFFN(const char *name) : OpDef(name)
+    explicit AttentionToFfn(const char *name) : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)
@@ -85,5 +85,5 @@ public:
     }
 };
 
-OP_ADD(AttentionToFFN);
+OP_ADD(AttentionToFfn);
 } // namespace ops

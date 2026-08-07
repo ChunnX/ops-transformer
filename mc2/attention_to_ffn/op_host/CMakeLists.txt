@@ -25,7 +25,7 @@ if (BUILD_OPEN_PROJECT)  # custom
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
     if("${CONDITION_UNIT}" STREQUAL "ascend910_93")
         add_ops_compile_options(
-            OP_NAME AttentionToFFN
+            OP_NAME AttentionToFfn
             OPTIONS --cce-auto-sync=off
         )
     endif()

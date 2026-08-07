@@ -25,7 +25,7 @@ BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULA
 using namespace op;
 using namespace std;
 
-namespace AttentionToFFNUT {
+namespace AttentionToFfnUT {
 class AclnnAttentionToFfnTest : public testing::Test {
 protected:
     static void SetUpTestCase()
@@ -64,7 +64,7 @@ TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnNoQuant)
     int64_t syncFlag = 0;
     int64_t ffnStartRankId = 0;
 
-    auto ut = OP_API_UT(aclnnAttentionToFFN,
+    auto ut = OP_API_UT(aclnnAttentionToFfn,
                         INPUT(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, nullptr, activeMask,
                               group, worldSize, ffnTokenInfoTableShape, ffnTokenDataShape, attnTokenInfoTableShape,
                               moeExpertNum, quantMode, syncFlag, ffnStartRankId),
@@ -98,7 +98,7 @@ TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnQuant)
     int64_t syncFlag = 0;
     int64_t ffnStartRankId = 0;
 
-    auto ut = OP_API_UT(aclnnAttentionToFFN,
+    auto ut = OP_API_UT(aclnnAttentionToFfn,
                         INPUT(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scales, activeMask,
                               group, worldSize, ffnTokenInfoTableShape, ffnTokenDataShape, attnTokenInfoTableShape,
                               moeExpertNum, quantMode, syncFlag, ffnStartRankId),
@@ -109,4 +109,4 @@ TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnQuant)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-} // namespace AttentionToFFNUT
+} // namespace AttentionToFfnUT

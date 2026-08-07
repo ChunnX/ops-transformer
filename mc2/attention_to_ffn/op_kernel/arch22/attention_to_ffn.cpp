@@ -23,7 +23,7 @@
 #include "../attention_to_ffn_tiling_key.h"
 
 using namespace AscendC;
-using namespace AttentionToFFNImpl;
+using namespace AttentionToFfnImpl;
 using namespace Mc2Tiling;
 
 template <bool isQuant, bool isSync, bool isActiveMask, uint8_t ArchTag>
@@ -31,14 +31,14 @@ __global__ __aicore__ void attention_to_ffn(GM_ADDR x, GM_ADDR sessionId, GM_ADD
                                             GM_ADDR expertIds, GM_ADDR expertRankTable, GM_ADDR scales,
                                             GM_ADDR active_mask, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    REGISTER_TILING_DEFAULT(AttentionToFFNTilingData);
-    REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A3", AttentionToFFNTilingData);
+    REGISTER_TILING_DEFAULT(AttentionToFfnTilingData);
+    REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A3", AttentionToFfnTilingData);
     TPipe pipe;
 
     if constexpr (ArchTag == TILINGKEY_TPL_A3) {
-        GET_TILING_DATA_WITH_STRUCT(AttentionToFFNTilingData, tilingData, tilingGM);
+        GET_TILING_DATA_WITH_STRUCT(AttentionToFfnTilingData, tilingData, tilingGM);
         GM_ADDR context = (GM_ADDR)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-        AttentionToFFN<DTYPE_X, isQuant, isSync, isActiveMask, AttentionToFFNContextType::HCCL_CONTEXT> op;
+        AttentionToFfn<DTYPE_X, isQuant, isSync, isActiveMask, AttentionToFfnContextType::HCCL_CONTEXT> op;
         op.Init(context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scales, active_mask,
                 workspaceGM, &pipe, &tilingData);
         op.Process();

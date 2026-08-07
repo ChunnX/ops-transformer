@@ -14,28 +14,28 @@ BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULA
 #include "../../../../op_kernel/attention_to_ffn_tiling.h"
 #include "mc2_tiling_case_executor.h"
 
-namespace AttentionToFFNUT {
+namespace AttentionToFfnUT {
 
-class AttentionToFFNArch22TilingTest : public testing::Test {
+class AttentionToFfnArch22TilingTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "AttentionToFFNArch22TilingTest SetUp" << std::endl;
+        std::cout << "AttentionToFfnArch22TilingTest SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "AttentionToFFNArch22TilingTest TearDown" << std::endl;
+        std::cout << "AttentionToFfnArch22TilingTest TearDown" << std::endl;
     }
 };
 
-TEST_F(AttentionToFFNArch22TilingTest, NoQuantSyncNoActivateMask)
+TEST_F(AttentionToFfnArch22TilingTest, NoQuantSyncNoActivateMask)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -59,13 +59,13 @@ TEST_F(AttentionToFFNArch22TilingTest, NoQuantSyncNoActivateMask)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, NoQuantAsyncNoActivateMask)
+TEST_F(AttentionToFfnArch22TilingTest, NoQuantAsyncNoActivateMask)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -89,13 +89,13 @@ TEST_F(AttentionToFFNArch22TilingTest, NoQuantAsyncNoActivateMask)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, QuantSyncNoActivateMask)
+TEST_F(AttentionToFfnArch22TilingTest, QuantSyncNoActivateMask)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -119,13 +119,13 @@ TEST_F(AttentionToFFNArch22TilingTest, QuantSyncNoActivateMask)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, QuantAsyncNoActivateMask)
+TEST_F(AttentionToFfnArch22TilingTest, QuantAsyncNoActivateMask)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -149,13 +149,13 @@ TEST_F(AttentionToFFNArch22TilingTest, QuantAsyncNoActivateMask)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, NoQuantSyncActivateMask)
+TEST_F(AttentionToFfnArch22TilingTest, NoQuantSyncActivateMask)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -180,13 +180,13 @@ TEST_F(AttentionToFFNArch22TilingTest, NoQuantSyncActivateMask)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, NoQuantAsyncActivateMask)
+TEST_F(AttentionToFfnArch22TilingTest, NoQuantAsyncActivateMask)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -212,13 +212,13 @@ TEST_F(AttentionToFFNArch22TilingTest, NoQuantAsyncActivateMask)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, QuantSyncActivateMask)
+TEST_F(AttentionToFfnArch22TilingTest, QuantSyncActivateMask)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -244,13 +244,13 @@ TEST_F(AttentionToFFNArch22TilingTest, QuantSyncActivateMask)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, QuantAsyncActivateMask)
+TEST_F(AttentionToFfnArch22TilingTest, QuantAsyncActivateMask)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -276,13 +276,13 @@ TEST_F(AttentionToFFNArch22TilingTest, QuantAsyncActivateMask)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, MicroBatchNumInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, MicroBatchNumInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{2, 16, 7168}, {2, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -305,13 +305,13 @@ TEST_F(AttentionToFFNArch22TilingTest, MicroBatchNumInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, BsInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, BsInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 513, 7168}, {1, 513, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -334,13 +334,13 @@ TEST_F(AttentionToFFNArch22TilingTest, BsInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, KInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, KInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -363,13 +363,13 @@ TEST_F(AttentionToFFNArch22TilingTest, KInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, HInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, HInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 8196}, {1, 16, 8196}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -392,13 +392,13 @@ TEST_F(AttentionToFFNArch22TilingTest, HInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, LayerNumInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, LayerNumInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -421,13 +421,13 @@ TEST_F(AttentionToFFNArch22TilingTest, LayerNumInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, MoeExpertNumInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, MoeExpertNumInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -450,13 +450,13 @@ TEST_F(AttentionToFFNArch22TilingTest, MoeExpertNumInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, FfnTokenInfoTableShapeInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, FfnTokenInfoTableShapeInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -479,13 +479,13 @@ TEST_F(AttentionToFFNArch22TilingTest, FfnTokenInfoTableShapeInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, FfnTokenDataShapeInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, FfnTokenDataShapeInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -508,13 +508,13 @@ TEST_F(AttentionToFFNArch22TilingTest, FfnTokenDataShapeInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, AttnTokenInfoTableShapeInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, AttnTokenInfoTableShapeInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -537,13 +537,13 @@ TEST_F(AttentionToFFNArch22TilingTest, AttnTokenInfoTableShapeInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, XDimInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, XDimInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168, 1}, {1, 16, 7168, 1}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -566,13 +566,13 @@ TEST_F(AttentionToFFNArch22TilingTest, XDimInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, SessionIdDimInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, SessionIdDimInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -595,13 +595,13 @@ TEST_F(AttentionToFFNArch22TilingTest, SessionIdDimInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, MicroBatchIdDimInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, MicroBatchIdDimInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1, 1}, {1, 1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -624,13 +624,13 @@ TEST_F(AttentionToFFNArch22TilingTest, MicroBatchIdDimInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, LayerIdDimInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, LayerIdDimInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -653,13 +653,13 @@ TEST_F(AttentionToFFNArch22TilingTest, LayerIdDimInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, ExpertIdsDimInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, ExpertIdsDimInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -682,13 +682,13 @@ TEST_F(AttentionToFFNArch22TilingTest, ExpertIdsDimInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, ExpertRankTableDimInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, ExpertRankTableDimInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -711,13 +711,13 @@ TEST_F(AttentionToFFNArch22TilingTest, ExpertRankTableDimInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, ScalesDimInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, ScalesDimInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -741,13 +741,13 @@ TEST_F(AttentionToFFNArch22TilingTest, ScalesDimInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, ActiveMaskDimInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, ActiveMaskDimInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -772,13 +772,13 @@ TEST_F(AttentionToFFNArch22TilingTest, ActiveMaskDimInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, XDtypeInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, XDtypeInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -801,13 +801,13 @@ TEST_F(AttentionToFFNArch22TilingTest, XDtypeInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, SessionIdDtypeInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, SessionIdDtypeInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -830,13 +830,13 @@ TEST_F(AttentionToFFNArch22TilingTest, SessionIdDtypeInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, MicroBatchIdDtypeInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, MicroBatchIdDtypeInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT16, ge::FORMAT_ND},
@@ -859,13 +859,13 @@ TEST_F(AttentionToFFNArch22TilingTest, MicroBatchIdDtypeInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, LayerIdDtypeInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, LayerIdDtypeInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -888,13 +888,13 @@ TEST_F(AttentionToFFNArch22TilingTest, LayerIdDtypeInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, ExpertIdsDtypeInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, ExpertIdsDtypeInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -917,13 +917,13 @@ TEST_F(AttentionToFFNArch22TilingTest, ExpertIdsDtypeInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, ExpertRankTableDtypeInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, ExpertRankTableDtypeInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -946,13 +946,13 @@ TEST_F(AttentionToFFNArch22TilingTest, ExpertRankTableDtypeInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, ScalesDtypeInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, ScalesDtypeInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -976,13 +976,13 @@ TEST_F(AttentionToFFNArch22TilingTest, ScalesDtypeInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, ActiveMaskDtypeInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, ActiveMaskDtypeInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -1007,13 +1007,13 @@ TEST_F(AttentionToFFNArch22TilingTest, ActiveMaskDtypeInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, XFormatInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, XFormatInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_FRACTAL_NZ},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -1036,13 +1036,13 @@ TEST_F(AttentionToFFNArch22TilingTest, XFormatInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, SessionIdFormatInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, SessionIdFormatInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_FRACTAL_NZ},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -1065,13 +1065,13 @@ TEST_F(AttentionToFFNArch22TilingTest, SessionIdFormatInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, MicroBatchIdFormatInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, MicroBatchIdFormatInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_FRACTAL_NZ},
@@ -1094,13 +1094,13 @@ TEST_F(AttentionToFFNArch22TilingTest, MicroBatchIdFormatInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, LayerIdFormatInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, LayerIdFormatInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -1123,13 +1123,13 @@ TEST_F(AttentionToFFNArch22TilingTest, LayerIdFormatInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, ExpertIdsFormatInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, ExpertIdsFormatInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -1152,13 +1152,13 @@ TEST_F(AttentionToFFNArch22TilingTest, ExpertIdsFormatInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, ExpertRankTableDormatInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, ExpertRankTableDormatInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -1181,13 +1181,13 @@ TEST_F(AttentionToFFNArch22TilingTest, ExpertRankTableDormatInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, ScalesFormatInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, ScalesFormatInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -1211,13 +1211,13 @@ TEST_F(AttentionToFFNArch22TilingTest, ScalesFormatInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-TEST_F(AttentionToFFNArch22TilingTest, ActiveMaskFormatInvalid)
+TEST_F(AttentionToFfnArch22TilingTest, ActiveMaskFormatInvalid)
 {
-    struct AttentionToFFNCompileInfo {
+    struct AttentionToFfnCompileInfo {
     } compileInfo;
 
     gert::TilingContextPara tilingContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
          {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
@@ -1242,4 +1242,4 @@ TEST_F(AttentionToFFNArch22TilingTest, ActiveMaskFormatInvalid)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
 }
 
-} // namespace AttentionToFFNUT
+} // namespace AttentionToFfnUT

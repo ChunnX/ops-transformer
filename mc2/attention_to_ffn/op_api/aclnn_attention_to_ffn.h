@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef OP_API_INC_ATTENTION_TO_FFN_H_
-#define OP_API_INC_ATTENTION_TO_FFN_H_
+#ifndef OP_API_INC_ATTENTION_TO_Ffn_H_
+#define OP_API_INC_ATTENTION_TO_Ffn_H_
 
 #include <string>
 
@@ -22,7 +22,7 @@ extern "C" {
 
 /**
  * 算子功能：实现attention_to_ffn数据发送
- * @brief aclnnAttentionToFFN的第一段接口，根据具体的计算流程，计算workspace大小。
+ * @brief aclnnAttentionToFfn的第一段接口，根据具体的计算流程，计算workspace大小。
  * @domain aclnn_ops_infer
  * @param [in] x: 计算输入，Tensor，输入的token数据.
  * @param [in] sessionId: 计算输入，Tensor，会话ID，代表当前请求的唯一标识。
@@ -34,8 +34,8 @@ extern "C" {
  * @param [in] activeMask: 计算输入，可选输入，Tensor, token的激活掩码。
  * @param [in] group: 计算输入，str, 通信group名称
  * @param [in] worldSize: 计算输入，int, world size
- * @param [in] ffnTokenInfoTableShape: 计算输入，list int, 发给FFN的token信息表的shape信息
- * @param [in] ffnTokenDataShape: 计算输入，list int, 发给FFN的实际token数据的shape信息
+ * @param [in] ffnTokenInfoTableShape: 计算输入，list int, 发给Ffn的token信息表的shape信息
+ * @param [in] ffnTokenDataShape: 计算输入，list int, 发给Ffn的实际token数据的shape信息
  * @param [in] attnTokenInfoTableShape: 计算输入，list int, Attention侧的token信息表的shape信息
  * @param [in] moeExpertNum: 计算输入，int, MOE专家数量
  * @param [in] quantMode: 计算输入，int, 量化模式
@@ -46,7 +46,7 @@ extern "C" {
  * @return aclnnStatus: 返回值，返回状态码。
  *
  */
-ACLNN_API aclnnStatus aclnnAttentionToFFNGetWorkspaceSize(
+ACLNN_API aclnnStatus aclnnAttentionToFfnGetWorkspaceSize(
     const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId, const aclTensor *layerId,
     const aclTensor *expertIds, const aclTensor *expertRankTable, const aclTensor *scales, const aclTensor *activeMask,
     const char *group, int64_t worldSize, const aclIntArray *ffnTokenInfoTableShape,
@@ -54,18 +54,18 @@ ACLNN_API aclnnStatus aclnnAttentionToFFNGetWorkspaceSize(
     int64_t quantMode, int64_t syncFlag, int64_t ffnStartRankId, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
- * @brief aclnnAttentionToFFN的第二段接口，用于执行计算。
+ * @brief aclnnAttentionToFfn的第二段接口，用于执行计算。
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
- * @param [in] workspace_size: 在npu device侧申请的workspace大小，由第一段接口aclnnAttentionToFFNGetWorkspaceSize获取。
+ * @param [in] workspace_size: 在npu device侧申请的workspace大小，由第一段接口aclnnAttentionToFfnGetWorkspaceSize获取。
  * @param [in] exector: op执行器，包含了算子计算流程。
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnAttentionToFFN(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+ACLNN_API aclnnStatus aclnnAttentionToFfn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                           aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // OP_API_INC_ATTENTION_TO_FFN_
+#endif // OP_API_INC_ATTENTION_TO_Ffn_

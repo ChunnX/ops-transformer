@@ -15,22 +15,22 @@ BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULA
 #include "infer_datatype_context_faker.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
-namespace AttentionToFFNUT {
+namespace AttentionToFfnUT {
 
-class AttentionToFFNInferShapeTest : public testing::Test {
+class AttentionToFfnInferShapeTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "AttentionToFFNInferShapeTest SetUp" << std::endl;
+        std::cout << "AttentionToFfnInferShapeTest SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "AttentionToFFNInferShapeTest TearDown" << std::endl;
+        std::cout << "AttentionToFfnInferShapeTest TearDown" << std::endl;
     }
 };
 
-TEST_F(AttentionToFFNInferShapeTest, Basic)
+TEST_F(AttentionToFfnInferShapeTest, Basic)
 {
     gert::StorageShape xShape = {{1, 16, 7168}, {}};
     gert::StorageShape sessionIdShape = {{1}, {}};
@@ -42,7 +42,7 @@ TEST_F(AttentionToFFNInferShapeTest, Basic)
     gert::StorageShape activeMaskShape = {{1, 16}, {}};
 
     gert::InfershapeContextPara infershapeContextPara(
-        "AttentionToFFN",
+        "AttentionToFfn",
         {{xShape, ge::DT_FLOAT16, ge::FORMAT_ND},
          {sessionIdShape, ge::DT_INT32, ge::FORMAT_ND},
          {microBatchIdShape, ge::DT_INT32, ge::FORMAT_ND},
@@ -67,4 +67,4 @@ TEST_F(AttentionToFFNInferShapeTest, Basic)
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
-} // namespace AttentionToFFNUT
+} // namespace AttentionToFfnUT

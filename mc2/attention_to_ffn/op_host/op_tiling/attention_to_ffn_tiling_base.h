@@ -8,15 +8,15 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef ATTENTION_TO_FFN_TILING_BASE_H
-#define ATTENTION_TO_FFN_TILING_BASE_H
+#ifndef ATTENTION_TO_Ffn_TILING_BASE_H
+#define ATTENTION_TO_Ffn_TILING_BASE_H
 
 #include <cstdint>
 
 #include "register/tilingdata_base.h"
 
 namespace MC2Tiling {
-struct AttentionToFFNTilingConfig {
+struct AttentionToFfnTilingConfig {
     uint32_t contextIndex = 0U;
     uint32_t xIndex = 0U;
     uint32_t sessionIdIndex = 1U;
@@ -40,9 +40,9 @@ struct AttentionToFFNTilingConfig {
     bool isMc2Context = false;
 };
 
-ge::graphStatus AttentionToFFNTilingFuncBase(gert::TilingContext *context,
-                                              const AttentionToFFNTilingConfig &config);
-ge::graphStatus AttentionToFFNTilingFunc(gert::TilingContext *context);
+ge::graphStatus AttentionToFfnTilingFuncBase(gert::TilingContext *context,
+                                              const AttentionToFfnTilingConfig &config);
+ge::graphStatus AttentionToFfnTilingFunc(gert::TilingContext *context);
 } // namespace MC2Tiling
 
-#endif // ATTENTION_TO_FFN_TILING_BASE_H
+#endif // ATTENTION_TO_Ffn_TILING_BASE_H

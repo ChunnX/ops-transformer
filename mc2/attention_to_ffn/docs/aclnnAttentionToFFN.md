@@ -1,4 +1,4 @@
-# aclnnAttentionToFFN
+# aclnnAttentionToFfn
 
 ## 产品支持情况
 
@@ -23,14 +23,14 @@
 
 ## 功能说明
 
-将Attention节点上token数据发往FFN节点。
+将Attention节点上token数据发往Ffn节点。
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnAttentionToFFNGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnAttentionToFFN”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnAttentionToFfnGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnAttentionToFfn”接口执行计算。
 
 ```c++
-aclnnStatus aclnnAttentionToFFNGetWorkspaceSize(
+aclnnStatus aclnnAttentionToFfnGetWorkspaceSize(
     const aclTensor    *x,
     const aclTensor    *sessionId,
     const aclTensor    *microBatchId,
@@ -53,14 +53,14 @@ aclnnStatus aclnnAttentionToFFNGetWorkspaceSize(
 ```
 
 ```c++
-aclnnStatus aclnnAttentionToFFN(
+aclnnStatus aclnnAttentionToFfn(
     void            *workspace,
     uint64_t        workspaceSize,
     aclOpExecutor   *executor,
     aclrtStream     stream)
 ```
 
-## aclnnAttentionToFFNGetWorkspaceSize
+## aclnnAttentionToFfnGetWorkspaceSize
 
 - **参数说明：**
 
@@ -139,7 +139,7 @@ aclnnStatus aclnnAttentionToFFN(
       <tr>
         <td>expertRankTable</td>
         <td>输入</td>
-        <td>每个micro batch组中专家Id到FFN卡专家部署的映射表（外部需保证值正确）。</td>
+        <td>每个micro batch组中专家Id到Ffn卡专家部署的映射表（外部需保证值正确）。</td>
         <td>shape为(L, moeExpertNum + sharedExpertNum, M)。</td>
         <td>INT32</td>
         <td>ND</td>
@@ -189,7 +189,7 @@ aclnnStatus aclnnAttentionToFFN(
       <tr>
         <td>ffnTokenInfoTableShape</td>
         <td>输入</td>
-        <td>表示FFN节点上token信息表格shape大小的列表。</td>
+        <td>表示Ffn节点上token信息表格shape大小的列表。</td>
         <td>长度为3，包括Attention节点的数量、microBatchSize的大小以及每个token对应的相关发送状态信息shape的大小。</td>
         <td>INT32</td>
         <td>-</td>
@@ -199,7 +199,7 @@ aclnnStatus aclnnAttentionToFFN(
       <tr>
         <td>ffnTokenDataShape</td>
         <td>输入</td>
-        <td>表示FFN节点上token数据表格shape大小的列表。</td>
+        <td>表示Ffn节点上token数据表格shape大小的列表。</td>
         <td>长度为5，包括Attention节点的数量、microBatchSize的大小、batchSize大小、每个token需发送的专家数量（包括共享专家）、单个token的长度。</td>
         <td>INT32</td>
         <td>-</td>
@@ -239,7 +239,7 @@ aclnnStatus aclnnAttentionToFFN(
       <tr>
         <td>syncFlag</td>
         <td>输入</td>
-        <td>表示FFN节点同步模式。</td>
+        <td>表示Ffn节点同步模式。</td>
         <td>仅支持0（同步）、1（异步）。</td>
         <td>INT64</td>
         <td>-</td>
@@ -249,7 +249,7 @@ aclnnStatus aclnnAttentionToFFN(
       <tr>
         <td>ffnStartRankId</td>
         <td>输入</td>
-        <td>表示FFN节点的起始ID。</td>
+        <td>表示Ffn节点的起始ID。</td>
         <td>取值范围为[0, worldSize)。</td>
         <td>INT64</td>
         <td>-</td>
@@ -316,7 +316,7 @@ aclnnStatus aclnnAttentionToFFN(
     </tbody>
     </table>
 
-## aclnnAttentionToFFN
+## aclnnAttentionToFfn
 
 - **参数说明：**
 
@@ -340,7 +340,7 @@ aclnnStatus aclnnAttentionToFFN(
     <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnAttentionToFFNGetWorkspaceSize</code>获取。</td>
+        <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnAttentionToFfnGetWorkspaceSize</code>获取。</td>
     </tr>
     <tr>
         <td>executor</td>
@@ -361,7 +361,7 @@ aclnnStatus aclnnAttentionToFFN(
 ## 约束说明
 
 - **确定性约束**：
-  - `aclnnAttentionToFFN`默认确定性实现。
+  - `aclnnAttentionToFfn`默认确定性实现。
 
 - **参数一致性约束**：
   - 调用接口过程中使用的`group`、`worldSize`、`moeExpertNum`、`ffnTokenInfoTableShape`、`ffnTokenDataShape`、`ffnStartRankId`参数及`HCCL_BUFFSIZE`取值所有卡需保持一致，网络中不同层中也需保持一致，且和分离场景系列算子对应参数也保持一致。
@@ -382,34 +382,34 @@ aclnnStatus aclnnAttentionToFFN(
   | Bs           | 表示batch sequence size（本卡最终输出的token数量），取值范围为<code>0 < Bs ≤ 512</code>。 |
   | K            | 表示选取topK个专家，取值范围为<code>0 < K ≤ 16</code>，且<code>0 < K ≤ moeExpertNum</code>。 |
   | L            | 表示模型层数，当前版本只支持<code>L = 1</code>。 |
-  | M            | 表示expertRankTable最后一维的长度，具体体现为部署在FFN节点上数量最多的专家部署信息列表的长度，取值范围为<code>1 < M ≤ FFNWorkerNum * 2 + 1</code>。 |
+  | M            | 表示expertRankTable最后一维的长度，具体体现为部署在Ffn节点上数量最多的专家部署信息列表的长度，取值范围为<code>1 < M ≤ FfnWorkerNum * 2 + 1</code>。 |
   | moeExpertNum | 表示MoE专家数量，取值范围 <code>(0, 1024]</code>。                   |
   | sharedExpertNum | 表示共享专家数量（一个共享专家可以复制部署到多个ffnRank卡上），取值范围 <code>[0, 4]</code>。                   |
-  | moeExpertRankNum | 表示部署MoE专家的FFN节点数量，取值范围 <code>0 < moeExpertRankNum < FFNWorkerNum</code>。                   |
-  | sharedExpertRankNum | 表示部署共享专家的FFN节点数量，取值范围 <code>0 < sharedExpertRankNum ≤ FFNWorkerNum</code>。                 |
-  | FFNWorkerNum | 表示FFN节点的数量，取值范围为 <code>0 < FFNWorkerNum < worldSize</code>，且满足<code>FFNWorkerNum = moeExpertRankNum + sharedExpertRankNum</code>。                   |
+  | moeExpertRankNum | 表示部署MoE专家的Ffn节点数量，取值范围 <code>0 < moeExpertRankNum < FfnWorkerNum</code>。                   |
+  | sharedExpertRankNum | 表示部署共享专家的Ffn节点数量，取值范围 <code>0 < sharedExpertRankNum ≤ FfnWorkerNum</code>。                 |
+  | FfnWorkerNum | 表示Ffn节点的数量，取值范围为 <code>0 < FfnWorkerNum < worldSize</code>，且满足<code>FfnWorkerNum = moeExpertRankNum + sharedExpertRankNum</code>。                   |
   | AttentionWorkerNum | 表示Attention节点的数量，取值范围 <code>0 < AttentionWorkerNum < worldSize</code>。
 
 - **环境变量约束**：
   - **HCCL_BUFFSIZE**：调用本接口前需检查HCCL_BUFFSIZE环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
 
 - **通信域使用约束**：
-  - AttentionToFFN算子的通信域中不允许有其他算子。
+  - AttentionToFfn算子的通信域中不允许有其他算子。
 
 ## 调用示例
 
 文件准备：
 
-1.新建AttentionToFFNDemo目录，按照下方指导在AttentionToFFNDemo下新建aclnnAttentionToFFNDemo.cpp，AttentionToFFN.sh文件并参考如下代码修改。
+1.新建AttentionToFfnDemo目录，按照下方指导在AttentionToFfnDemo下新建aclnnAttentionToFfnDemo.cpp，AttentionToFfn.sh文件并参考如下代码修改。
 
-2.安装cann包，并根据下方指导编译运行AttentionToFFNDemo。
+2.安装cann包，并根据下方指导编译运行AttentionToFfnDemo。
 
-AttentionToFFN.sh编译脚本
+AttentionToFfn.sh编译脚本
 
 ```bash
 #!/bin/bash
 cann_path="/path/to/cann_env" # 更改cann包环境的路径
-g++ "aclnnAttentionToFFNDemo.cpp" -o AttentionToFFNDemo -I"$cann_path/latest/include/" -I"$cann_path/latest/include/aclnnop/" \
+g++ "aclnnAttentionToFfnDemo.cpp" -o AttentionToFfnDemo -I"$cann_path/latest/include/" -I"$cann_path/latest/include/aclnnop/" \
                     -L="$cann_path/latest/lib64/" -lascendcl -lnnopbase -lopapi_math -lop_common -lpthread -lhccl
 ```
 
@@ -419,10 +419,10 @@ g++ "aclnnAttentionToFFNDemo.cpp" -o AttentionToFFNDemo -I"$cann_path/latest/inc
 # source cann环境
 source /path/to/cann_env/latest/bin/setenv.bash
 
-# 编译aclnnAttentionToFFNDemo.cpp
-bash AttentionToFFN.sh
+# 编译aclnnAttentionToFfnDemo.cpp
+bash AttentionToFfn.sh
 
-./AttentionToFFNDemo
+./AttentionToFfnDemo
 ```
 
 示例代码如下，仅供参考
@@ -453,13 +453,13 @@ bash AttentionToFFN.sh
 struct Args {
     uint32_t rankId;
     HcclComm hcclComm;
-    aclrtStream attentionToFFNStream;
+    aclrtStream attentionToFfnStream;
     aclrtContext context;
 };
 
 constexpr uint32_t WORLD_SIZE = 16;
-constexpr uint32_t FFN_WORKER_NUM = 5;
-constexpr uint32_t ATTENTION_WORKER_NUM = WORLD_SIZE - FFN_WORKER_NUM;
+constexpr uint32_t Ffn_WORKER_NUM = 5;
+constexpr uint32_t ATTENTION_WORKER_NUM = WORLD_SIZE - Ffn_WORKER_NUM;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -488,7 +488,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     return 0;
 }
 
-int LaunchOneProcessAttentionToFFN(Args &args)
+int LaunchOneProcessAttentionToFfn(Args &args)
 {
     int ret = aclrtSetCurrentContext(args.context);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed, ret %d\n", ret); return ret);
@@ -496,8 +496,8 @@ int LaunchOneProcessAttentionToFFN(Args &args)
     char hcomName[128] = {0};
     ret = HcclGetCommName(args.hcclComm, hcomName);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed, ret %d\n", ret); return -1);
-    LOG_PRINT("[INFO] rank = %d, hcomName = %s, attentionToFFNStream = %p, context = %p\n",
-              args.rankId, hcomName, args.attentionToFFNStream, args.context);
+    LOG_PRINT("[INFO] rank = %d, hcomName = %s, attentionToFfnStream = %p, context = %p\n",
+              args.rankId, hcomName, args.attentionToFfnStream, args.context);
 
     int64_t X = 1;
     int64_t L = 1;
@@ -508,7 +508,7 @@ int LaunchOneProcessAttentionToFFN(Args &args)
     int64_t sharedExpertRankNum = 1;
     int64_t moeExpertNum = 8;
     int64_t expertNumPerToken = K + sharedExpertNum;
-    int64_t M = 2 *(FFN_WORKER_NUM - sharedExpertNum * sharedExpertRankNum) + 1;
+    int64_t M = 2 *(Ffn_WORKER_NUM - sharedExpertNum * sharedExpertRankNum) + 1;
     int64_t quantMode = 0;
     int64_t syncFlag = 0;
     int64_t ffnStartRankId = 0;
@@ -556,7 +556,7 @@ int LaunchOneProcessAttentionToFFN(Args &args)
 
     // 构造host侧变量
     std::vector<int16_t> xHostData(xShapeSize, 1);
-    std::vector<int16_t> sessionIdHostData(sessionIdShapeSize, args.rankId - FFN_WORKER_NUM);
+    std::vector<int16_t> sessionIdHostData(sessionIdShapeSize, args.rankId - Ffn_WORKER_NUM);
     std::vector<int16_t> microBatchIdHostData(microBatchIdShapeSize, 0);
     std::vector<int16_t> layerIdHostData(layerIdShapeSize, 0);
     std::vector<int32_t> expertIdsHostData;
@@ -591,45 +591,45 @@ int LaunchOneProcessAttentionToFFN(Args &args)
     ret = CreateAclTensor(scalesHostData, scalesShape, &scalesDeviceAddr, aclDataType::ACL_FLOAT, &scales);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    uint64_t attentionToFFNWorkspaceSize = 0;
-    aclOpExecutor *attentionToFFNExecutor = nullptr;
-    void *attentionToFFNWorkspaceAddr = nullptr;
+    uint64_t attentionToFfnWorkspaceSize = 0;
+    aclOpExecutor *attentionToFfnExecutor = nullptr;
+    void *attentionToFfnWorkspaceAddr = nullptr;
 
-    /**************************************** 调用AttentionToFFN ********************************************/
+    /**************************************** 调用AttentionToFfn ********************************************/
     // 调用第一阶段接口
-    ret = aclnnAttentionToFFNGetWorkspaceSize(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, (quantMode > 0 ? scales : nullptr),
+    ret = aclnnAttentionToFfnGetWorkspaceSize(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, (quantMode > 0 ? scales : nullptr),
                                               nullptr, hcomName, WORLD_SIZE, ffnTokenInfoTableShape, ffnTokenDataShape, attnTokenInfoTableShape,
-                                              moeExpertNum, quantMode, syncFlag, ffnStartRankId, &attentionToFFNWorkspaceSize, &attentionToFFNExecutor);
+                                              moeExpertNum, quantMode, syncFlag, ffnStartRankId, &attentionToFfnWorkspaceSize, &attentionToFfnExecutor);
 
     CHECK_RET(ret == ACL_SUCCESS,
-        LOG_PRINT("[ERROR] aclnnAttentionToFFNGetWorkspaceSize failed. ret = %d \n", ret); return ret);
+        LOG_PRINT("[ERROR] aclnnAttentionToFfnGetWorkspaceSize failed. ret = %d \n", ret); return ret);
 
     // 根据第一阶段接口计算出的workspaceSize申请device内存
-    if (attentionToFFNWorkspaceSize > 0) {
-        ret = aclrtMalloc(&attentionToFFNWorkspaceAddr, attentionToFFNWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+    if (attentionToFfnWorkspaceSize > 0) {
+        ret = aclrtMalloc(&attentionToFfnWorkspaceAddr, attentionToFfnWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
     }
 
-    if (args.rankId < FFN_WORKER_NUM) {  // FFN Worker
+    if (args.rankId < Ffn_WORKER_NUM) {  // Ffn Worker
         // 等待Attention Worker任务执行结束
-        LOG_PRINT("[INFO] device_%d is FFN worker, skipping aclnnAttentionToFFN execute.\n", args.rankId);
+        LOG_PRINT("[INFO] device_%d is Ffn worker, skipping aclnnAttentionToFfn execute.\n", args.rankId);
         std::this_thread::sleep_for(std::chrono::seconds(30));
     } else {    // Attention Worker
         // 调用第二阶段接口
-        ret = aclnnAttentionToFFN(attentionToFFNWorkspaceAddr, attentionToFFNWorkspaceSize,
-                                    attentionToFFNExecutor, args.attentionToFFNStream);
+        ret = aclnnAttentionToFfn(attentionToFfnWorkspaceAddr, attentionToFfnWorkspaceSize,
+                                    attentionToFfnExecutor, args.attentionToFfnStream);
 
         //（固定写法）同步等待任务执行结束
-        ret = aclrtSynchronizeStreamWithTimeout(args.attentionToFFNStream, 10000);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnAttentionToFFN failed. ret = %d \n", ret);  \
+        ret = aclrtSynchronizeStreamWithTimeout(args.attentionToFfnStream, 10000);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnAttentionToFfn failed. ret = %d \n", ret);  \
             return ret);
 
-        LOG_PRINT("[INFO] device_%d aclnnAttentionToFFN execute successfully.\n", args.rankId);
+        LOG_PRINT("[INFO] device_%d aclnnAttentionToFfn execute successfully.\n", args.rankId);
     }
 
     // 释放device资源
-    if (attentionToFFNWorkspaceSize > 0) {
-        aclrtFree(attentionToFFNWorkspaceAddr);
+    if (attentionToFfnWorkspaceSize > 0) {
+        aclrtFree(attentionToFfnWorkspaceAddr);
     }
 
     if (x != nullptr) {
@@ -686,7 +686,7 @@ int LaunchOneProcessAttentionToFFN(Args &args)
     }
 
     HcclCommDestroy(args.hcclComm);
-    aclrtDestroyStream(args.attentionToFFNStream);
+    aclrtDestroyStream(args.attentionToFfnStream);
     aclrtDestroyContext(args.context);
     aclrtResetDevice(args.rankId);
 
@@ -699,7 +699,7 @@ int main(int argc, char *argv[])
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtInit failed, ret = %d\n", ret); return ret);
 
-    aclrtStream attentionToFFNStream[WORLD_SIZE];
+    aclrtStream attentionToFfnStream[WORLD_SIZE];
     aclrtContext context[WORLD_SIZE];
 
     for (uint32_t rankId = 0; rankId < WORLD_SIZE; rankId++) {
@@ -707,7 +707,7 @@ int main(int argc, char *argv[])
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed, ret = %d\n", ret); return ret);
         ret = aclrtCreateContext(&context[rankId], rankId);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed, ret = %d\n", ret); return ret);
-        ret = aclrtCreateStream(&attentionToFFNStream[rankId]);
+        ret = aclrtCreateStream(&attentionToFfnStream[rankId]);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed, ret = %d\n", ret); return ret);
     }
 
@@ -726,9 +726,9 @@ int main(int argc, char *argv[])
     for (uint32_t rankId = 0; rankId < WORLD_SIZE; rankId++) {
         args[rankId].rankId = rankId;
         args[rankId].hcclComm = comms[rankId];
-        args[rankId].attentionToFFNStream = attentionToFFNStream[rankId];
+        args[rankId].attentionToFfnStream = attentionToFfnStream[rankId];
         args[rankId].context = context[rankId];
-        threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneProcessAttentionToFFN, std::ref(args[rankId])));
+        threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneProcessAttentionToFfn, std::ref(args[rankId])));
     }
 
     for(uint32_t rankId = 0; rankId < WORLD_SIZE; rankId++) {

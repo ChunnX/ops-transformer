@@ -12,13 +12,13 @@
  * \file attention_to_ffn_tiling.h
  * \brief
  */
-#ifndef ATTENTION_TO_FFN_TILING_H
-#define ATTENTION_TO_FFN_TILING_H
+#ifndef ATTENTION_TO_Ffn_TILING_H
+#define ATTENTION_TO_Ffn_TILING_H
 
 #include <cstdint>
 #include "kernel_tiling/kernel_tiling.h"
 
-struct AttentionToFFNInfo {
+struct AttentionToFfnInfo {
     uint32_t X;
     uint32_t BS;
     uint32_t H;
@@ -44,10 +44,10 @@ struct AttentionToFFNInfo {
     uint64_t totalWinSize;
 };
 
-struct AttentionToFFNTilingData {
+struct AttentionToFfnTilingData {
     Mc2InitTiling mc2InitTiling;
     Mc2CcTiling mc2CcTiling1;
-    AttentionToFFNInfo attentionToFFNInfo;
+    AttentionToFfnInfo attentionToFfnInfo;
 };
 
-#endif // ATTENTION_TO_FFN_TILING_H
+#endif // ATTENTION_TO_Ffn_TILING_H

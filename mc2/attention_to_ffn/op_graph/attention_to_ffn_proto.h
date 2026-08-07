@@ -12,14 +12,14 @@
  * \file attention_to_ffn_proto.h
  * \brief
  */
-#ifndef ATTENTION_TO_FFN_H_
-#define ATTENTION_TO_FFN_H_
+#ifndef ATTENTION_TO_Ffn_H_
+#define ATTENTION_TO_Ffn_H_
 
 #include "graph/operator_reg.h"
 
 namespace ge {
 /**
- * @brief Fusion op AttentionToFFN.
+ * @brief Fusion op AttentionToFfn.
 
  * @par Inputs:
  * @li x:
@@ -39,7 +39,7 @@ namespace ge {
 
  * @attention Constraints:
  */
-REG_OP(AttentionToFFN)
+REG_OP(AttentionToFfn)
     .INPUT(x, TensorType({DT_FLOAT16, DT_BF16}))
     .INPUT(session_id, TensorType({DT_INT32}))
     .INPUT(micro_batch_id, TensorType({DT_INT32}))
@@ -57,10 +57,10 @@ REG_OP(AttentionToFFN)
     .ATTR(quant_mode, Int, 0)
     .ATTR(sync_flag, Int, 0)
     .ATTR(ffn_start_rank_id, Int, 0)
-    .OP_END_FACTORY_REG(AttentionToFFN)
+    .OP_END_FACTORY_REG(AttentionToFfn)
 
 
 } // namespace ge
 
 
-#endif // ATTENTION_TO_FFN_H_
+#endif // ATTENTION_TO_Ffn_H_
