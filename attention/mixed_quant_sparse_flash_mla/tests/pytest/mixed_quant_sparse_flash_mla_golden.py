@@ -2548,7 +2548,7 @@ def generate_and_save_testdata(
     )
     max_seqlen_q = S1
     if layout_q == "TND":
-        max_seqlen_q = cu_seqlens_q.max().item()
+        max_seqlen_q = (cu_seqlens_q[1:] - cu_seqlens_q[:-1]).max().item()
     else:
         cu_seqlens_q = None
         max_seqlen_q = S1
