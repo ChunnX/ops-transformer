@@ -159,6 +159,9 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckS8S4PseudoQuantSca
                GetAclnnName());
 
     const bool specialWeightFormat = IsS8S4SpecialWeightFormat();
+    CHECK_COND(!specialWeightFormat || HasS8S4Offset(), ACLNN_ERR_PARAM_INVALID,
+               "In op [%s], the S8S4 special ENK-NZ template requires non-null offset per-channel mode.",
+               GetAclnnName());
     const int64_t e = weightShape.GetDim(0);
     const int64_t k = weightShape.GetDim(specialWeightFormat ? WEIGHT_N_DIM_S8S4 : WEIGHT_K_DIM_S8S4);
     const int64_t n = weightShape.GetDim(specialWeightFormat ? WEIGHT_K_DIM_S8S4 : WEIGHT_N_DIM_S8S4);

@@ -149,7 +149,14 @@ __aicore__ inline void GMMA8W4Compute<mmType>::Init(GM_ADDR x, GM_ADDR weight, G
     perTokenScaleGm.SetGlobalBuffer(reinterpret_cast<__gm__ DTYPE_PERTOKEN_SCALE_A8W4 *>(pertoken_scale));
     groupTokensGm.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(group_tokens));
     yGm.SetGlobalBuffer(GetTensorAddr<DTYPE_OUT>(0, y));
-    const size_t weightSize = tilingData->groupNum * tilingData->k * tilingData->n * sizeof(int8_t);
+    size_t weightSize = tilingData->groupNum * tilingData->k * tilingData->n * sizeof(int8_t);
+    if constexpr (mmType::BT::format == CubeFormat::NZ) {
+        constexpr size_t NZ_N0 = 32;
+        constexpr size_t NZ_K0 = 16;
+        const size_t alignedN = (static_cast<size_t>(tilingData->n) + NZ_N0 - 1) / NZ_N0 * NZ_N0;
+        const size_t alignedK = (static_cast<size_t>(tilingData->k) + NZ_K0 - 1) / NZ_K0 * NZ_K0;
+        weightSize = static_cast<size_t>(tilingData->groupNum) * alignedN * alignedK * sizeof(int8_t);
+    }
     mmOutGm.SetGlobalBuffer(reinterpret_cast<__gm__ cT::T *>(workspace + weightSize));
 
     this->mmTilingData = mmTilingData;
@@ -239,7 +246,11 @@ __aicore__ inline void GMMA8W4Compute<mmType>::MMCompute(uint32_t groupIdx, MNCo
         uint64_t xOffset = (mnConfig.offsetM + mnConfig.mIdx * mnConfig.singleM) * tiling->k;
         uint64_t weightOffset;
         if constexpr (mmType::BT::format == CubeFormat::NZ) {
-            weightOffset = static_cast<uint64_t>(groupIdx) * tiling->n * tiling->k + tailN * tiling->k;
+            constexpr uint64_t NZ_N0 = 32;
+            constexpr uint64_t NZ_K0 = 16;
+            const uint64_t alignedN = (static_cast<uint64_t>(tiling->n) + NZ_N0 - 1) / NZ_N0 * NZ_N0;
+            const uint64_t alignedK = (static_cast<uint64_t>(tiling->k) + NZ_K0 - 1) / NZ_K0 * NZ_K0;
+            weightOffset = static_cast<uint64_t>(groupIdx) * alignedN * alignedK + tailN * alignedK;
         } else {
             weightOffset = static_cast<uint64_t>(groupIdx) * tiling->n * tiling->k + tailN;
         }

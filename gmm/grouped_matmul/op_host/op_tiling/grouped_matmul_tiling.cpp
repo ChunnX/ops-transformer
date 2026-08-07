@@ -2220,8 +2220,13 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
             OP_CHECK_NULL_WITH_CONTEXT(context, workspaces);    // check workspaces is not null
 
             workspaces[0] = SYS_WORKSPACE_SIZE; // default size
+            constexpr uint32_t NZ_N0 = 32U;
+            constexpr uint32_t NZ_K0 = 16U;
+            const size_t expandedWeightElements = wNZ ?
+                static_cast<size_t>(groupNum) * AlignUp(n, NZ_N0) * AlignUp(k, NZ_K0) :
+                static_cast<size_t>(groupNum) * k * n;
             workspaces[0] += static_cast<size_t>(
-                groupNum * k * n * static_cast<uint32_t>(sizeof(int8_t)) +
+                expandedWeightElements * static_cast<uint32_t>(sizeof(int8_t)) +
                 (cvParallNum * aicNum * singleN * singleM * static_cast<uint32_t>(sizeof(int32_t)) * EIGHT));
             if (isPerchannel) {
                 tilingData.gmmBaseParams.set_isSingleTensor(isSingleTensor);
@@ -2230,7 +2235,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
                 A8W4QuantGroupNum_ = quantGroupNum;
                 A8W4N_ = n;
                 A8W4K_ = k;
-                A8W4noMsdSpace_ = groupNum * k * n * sizeof(int8_t) + groupNum * n * sizeof(float);
+                A8W4noMsdSpace_ = expandedWeightElements * sizeof(int8_t) + groupNum * n * sizeof(float);
                 return ge::GRAPH_PARAM_INVALID; // continue A8W8
             } else {
                 return ge::GRAPH_SUCCESS;

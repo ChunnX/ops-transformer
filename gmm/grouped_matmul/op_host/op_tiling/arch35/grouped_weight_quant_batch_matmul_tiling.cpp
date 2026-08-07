@@ -2035,6 +2035,10 @@ bool GroupedS8S4BasicApiTiling::AnalyzeAttrs()
                 OP_LOGE(context_->GetNodeName(),
                         "tuningConfig[1]=1 expects [E,N,K] weight converted to FRACTAL_NZ."),
                 return false);
+    OP_CHECK_IF(specialWeightFormat_ && !hasOffset_,
+                OP_LOGE(context_->GetNodeName(),
+                        "tuningConfig[1]=1 is supported only by non-null offset per-channel mode."),
+                return false);
     return true;
 }
 
@@ -2135,6 +2139,41 @@ bool GroupedS8S4BasicApiTiling::CheckAntiquantInputsEmpty() const
 
 bool GroupedS8S4BasicApiTiling::CheckWeightStorageShape(const gert::StorageShape &weightShape)
 {
+    const gert::Shape &storageShape = weightShape.GetStorageShape();
+    if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
+        // torch_npu constructs the normal A5 KN-NZ path as follows:
+        //   INT8 NZ:          [E, ceil(N/32), ceil(K/16), 16, 32]
+        //   packed INT32:     [E, ceil(N/32), ceil(K/16), 16, 4]
+        // The special ENK-NZ path uses the same C0 and swaps the logical K/N
+        // block axes: [E, ceil(K/32), ceil(N/16), 16, 32/4].
+        // ACLNN reinterprets the INT32 carrier as INT4 and restores the last
+        // storage dimension from 4 to 32 before Host tiling. Keep support for
+        // a direct INT32 Host invocation as well, but reject all other physical
+        // layouts instead of accepting a same-sized, differently blocked NZ.
+        const uint64_t expectedC0 = weightPackedInt32_ ? 4UL : 32UL;
+        const uint64_t expectedOuter0 = specialWeightFormat_ ?
+                                            CeilDiv(inputParams_.kSize, NZ_SPECIAL_K_ALIGN) :
+                                            CeilDiv(inputParams_.nSize, NZ_BASE_N_ALIGN);
+        const uint64_t expectedOuter1 = specialWeightFormat_ ?
+                                            CeilDiv(inputParams_.nSize, NZ_SPECIAL_N_ALIGN) :
+                                            CeilDiv(inputParams_.kSize, NZ_BASE_K_ALIGN);
+        const bool shapeMatches = storageShape.GetDimNum() == 5 &&
+            static_cast<uint64_t>(storageShape.GetDim(0)) == inputParams_.groupNum &&
+            static_cast<uint64_t>(storageShape.GetDim(1)) == expectedOuter0 &&
+            static_cast<uint64_t>(storageShape.GetDim(2)) == expectedOuter1 &&
+            static_cast<uint64_t>(storageShape.GetDim(3)) == NZ_BASE_K_ALIGN &&
+            static_cast<uint64_t>(storageShape.GetDim(4)) == expectedC0;
+        OP_CHECK_IF(!shapeMatches,
+                    OP_LOGE(context_->GetNodeName(),
+                            "A5 INT4 %s weight storage shape must be "
+                            "[E,%s,%s,16,%lu].",
+                            specialWeightFormat_ ? "special ENK-NZ" : "normal KN-NZ",
+                            specialWeightFormat_ ? "ceil(K/32)" : "ceil(N/32)",
+                            specialWeightFormat_ ? "ceil(N/16)" : "ceil(K/16)", expectedC0),
+                    return false);
+        return true;
+    }
+
     uint64_t scalarSlotNum = inputParams_.groupNum * inputParams_.kSize * inputParams_.nSize;
     if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
         const uint64_t alignedK = specialWeightFormat_ ?
@@ -2145,8 +2184,7 @@ bool GroupedS8S4BasicApiTiling::CheckWeightStorageShape(const gert::StorageShape
                                       CeilAlign(inputParams_.nSize, NZ_BASE_N_ALIGN);
         scalarSlotNum = inputParams_.groupNum * alignedK * alignedN;
     }
-    const uint64_t actualStorageElements =
-        static_cast<uint64_t>(weightShape.GetStorageShape().GetShapeSize());
+    const uint64_t actualStorageElements = static_cast<uint64_t>(storageShape.GetShapeSize());
     // aclnnGroupedMatmulV5 normalizes a packed INT32 carrier to logical INT4 before Host tiling.
     // For ND weights the 8:1 physical storage shape is intentionally retained, so dtype alone is
     // insufficient to recover the carrier representation at this point.
