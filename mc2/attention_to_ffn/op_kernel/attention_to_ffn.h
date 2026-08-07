@@ -52,13 +52,13 @@ constexpr uint32_t TOKEN_INFO_TABLE_COPY_BLOCK_CNT = 2; // tokenInfoTable在Data
 constexpr float INT8_MAX_VALUE = 127.0f;
 
 
-enum class AttentionToFfnContextType : uint8_t {
+enum class AttentionToFFNContextType : uint8_t {
     HCCL_CONTEXT = 0,
     MC2_CONTEXT = 1,
 };
 
 #define TemplateAttentionToFfnTypeClass                                                                             \
-    typename XType, bool isQuant, bool isSync, bool isActiveMask, AttentionToFfnContextType contextType
+    typename XType, bool isQuant, bool isSync, bool isActiveMask, AttentionToFFNContextType contextType
 #define TemplateAttentionToFfnTypeFunc XType, isQuant, isSync, isActiveMask, contextType
 
 using namespace AscendC;
@@ -172,7 +172,7 @@ private:
     uint8_t windowType_{0};
     uint8_t sharedExpertNum_{1};
     __gm__ HcclOpResParam *hcclContext_{nullptr};
-    __gm__ Mc2Aclnn::AttentionFfnContext *mc2Context_{nullptr};
+    __gm__ Mc2Aclnn::AttentionFFNContext *mc2Context_{nullptr};
 };
 
 template <TemplateAttentionToFfnTypeClass>
@@ -195,7 +195,7 @@ __aicore__ inline void
 AttentionToFfn<TemplateAttentionToFfnTypeFunc>::InitByTinglingData(const AttentionToFfnTilingData *tilingData)
 {
     aivId_ = GetBlockIdx();
-    if constexpr (contextType == AttentionToFfnContextType::HCCL_CONTEXT) {
+    if constexpr (contextType == AttentionToFFNContextType::HCCL_CONTEXT) {
         rankId_ = hcclContext_->localUsrRankId;
     } else {
         rankId_ = mc2Context_->epRankId;
@@ -236,10 +236,10 @@ __aicore__ inline void AttentionToFfn<TemplateAttentionToFfnTypeFunc>::Init(
     const AttentionToFfnTilingData *tilingData)
 {
     tpipe_ = pipe;
-    if constexpr (contextType == AttentionToFfnContextType::HCCL_CONTEXT) {
+    if constexpr (contextType == AttentionToFFNContextType::HCCL_CONTEXT) {
         hcclContext_ = reinterpret_cast<__gm__ HcclOpResParam *>(context);
     } else {
-        mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::AttentionFfnContext *>(context);
+        mc2Context_ = reinterpret_cast<__gm__ Mc2Aclnn::AttentionFFNContext *>(context);
     }
     InitByTinglingData(tilingData);
 
@@ -436,7 +436,7 @@ AttentionToFfn<TemplateAttentionToFfnTypeFunc>::SetExpertAndRank(uint32_t tokenI
 template <TemplateAttentionToFfnTypeClass>
 __aicore__ inline GM_ADDR AttentionToFfn<TemplateAttentionToFfnTypeFunc>::GetWindowAddr(uint32_t rankId)
 {
-    if constexpr (contextType == AttentionToFfnContextType::MC2_CONTEXT) {
+    if constexpr (contextType == AttentionToFFNContextType::MC2_CONTEXT) {
         return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId];
     } else {
         if (hcclContext_->userMemType == 0) {
@@ -449,7 +449,7 @@ __aicore__ inline GM_ADDR AttentionToFfn<TemplateAttentionToFfnTypeFunc>::GetWin
 template <TemplateAttentionToFfnTypeClass>
 __aicore__ inline GM_ADDR AttentionToFfn<TemplateAttentionToFfnTypeFunc>::GetLocalWindowAddr()
 {
-    if constexpr (contextType == AttentionToFfnContextType::MC2_CONTEXT) {
+    if constexpr (contextType == AttentionToFFNContextType::MC2_CONTEXT) {
         return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId_];
     } else {
         return (GM_ADDR)hcclContext_->localWindowsIn;

@@ -47,7 +47,7 @@ __global__ __aicore__ void attention_to_ffn_v2(GM_ADDR mc2Context, GM_ADDR x, GM
         GET_TILING_DATA_WITH_STRUCT(AttentionToFfnV2TilingData, tilingData, tilingGM);
         const auto *v1TilingData = reinterpret_cast<const AttentionToFfnTilingData *>(&tilingData);
         AttentionToFfn<DTYPE_X, isQuant, isSync, isActiveMask,
-                       AttentionToFfnContextType::MC2_CONTEXT> op;
+                       AttentionToFFNContextType::MC2_CONTEXT> op;
         op.Init(mc2Context, x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scales, activeMask,
                 workspaceGM, &pipe, v1TilingData);
         op.Process();
