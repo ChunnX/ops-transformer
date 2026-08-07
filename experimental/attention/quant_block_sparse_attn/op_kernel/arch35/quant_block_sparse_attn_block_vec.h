@@ -701,24 +701,27 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(LocalTenso
     LocalTensor<float> lseUb = this->qScaleInputQue.template AllocTensor<float>();
     // lse 事件按次分配/释放（与 vDoneEvent 模式一致），避免长期占用事件池。
     TEventID lseVToMte3Id = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-    TEventID lseMte3ToVId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+    TEventID lseMte3ToMte2Id = GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>();
+
     ComputeLseOutputVF(lseUb, softmaxSumTmp, softmaxMaxTmp, runInfo.halfS1RealSize);
-    // qScaleInputQue 是 VECIN 队列，EnQue/DeQue 同步的是 MTE2→VEC，不能用于 V→MTE3；
-    // 用专用事件做 V→MTE3 同步，保证 DataCopyPad(MTE3) 在 V 写完 lseUb 之后才读。
+
+    // Vector 写完 lseUb 后，MTE3 才能读取。
     SetFlag<HardEvent::V_MTE3>(lseVToMte3Id);
     WaitFlag<HardEvent::V_MTE3>(lseVToMte3Id);
+
     DataCopyExtParams intriParams1;
     intriParams1.blockLen = sizeof(float);
     intriParams1.blockCount = runInfo.halfS1RealSize;
     intriParams1.srcStride = 0;
     intriParams1.dstStride = 0;
     DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], lseUb, intriParams1);
-    // 等待 MTE3 完成，确保下一 block 复用 qScaleInputQue buffer（MTE2 覆写）前 lse 已读走，
-    // 避免开头几个 block 的 lse 被下个 block 的 qScale 数据污染。
-    SetFlag<HardEvent::MTE3_V>(lseMte3ToVId);
-    WaitFlag<HardEvent::MTE3_V>(lseMte3ToVId);
+
+    // MTE3 读完 lseUb 后，下一轮 MTE2 才能覆写该 UB。
+    SetFlag<HardEvent::MTE3_MTE2>(lseMte3ToMte2Id);
+    WaitFlag<HardEvent::MTE3_MTE2>(lseMte3ToMte2Id);
+
     GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(lseVToMte3Id);
-    GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(lseMte3ToVId);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_MTE2>(lseMte3ToMte2Id);
     this->qScaleInputQue.FreeTensor(lseUb);
 }
 
