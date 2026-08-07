@@ -28,14 +28,6 @@
 
 namespace optiling {
 
-BEGIN_TILING_DATA_DEF(ApplyRotaryPosEmbGradTilingData)
-TILING_DATA_FIELD_DEF_STRUCT(ApplyRopeGradRegbaseParams, ropeGradParams);
-TILING_DATA_FIELD_DEF_STRUCT(ApplyRopeGradRegbaseABParams, ropeGradABParams);
-TILING_DATA_FIELD_DEF(uint32_t, dCosFlag);
-TILING_DATA_FIELD_DEF(uint32_t, layout);
-END_TILING_DATA_DEF;
-REGISTER_TILING_DATA_CLASS(ApplyRotaryPosEmbGrad, ApplyRotaryPosEmbGradTilingData)
-
 struct ApplyRotaryPosEmbGradCompileInfo {
     int64_t numBlocks;
     uint64_t ubSize;
@@ -121,6 +113,7 @@ protected:
     ge::graphStatus InitTilingData();
     ge::graphStatus TilingReduce();
     ge::graphStatus SetTilingKeyBlockDim(uint32_t dxTilingKey);
+    ge::graphStatus SetRotaryXTilingData();
 
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     const static int64_t MAX_COPY_BLOCK_COUNT = 4095;
