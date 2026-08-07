@@ -14,7 +14,6 @@
  */
 
 #include <torch/extension.h>
-#include <torch/library.h>
 #include "aclnn_common.h"
 
 namespace op_api {
@@ -22,9 +21,8 @@ namespace op_api {
 constexpr int64_t DROP_PAD_MODE_DROPLESS = 0;
 constexpr int64_t DROP_PAD_MODE_DROP_PAD = 1;
 
-// NPU device implementation
-at::Tensor moe_init_routing_grad_npu(const at::Tensor &gradExpandedX, const at::Tensor &expandedRowIdx,
-                                     int64_t topK, int64_t dropPadMode, int64_t activeNum)
+at::Tensor moe_init_routing_grad(const at::Tensor &gradExpandedX, const at::Tensor &expandedRowIdx,
+                                 int64_t topK, int64_t dropPadMode, int64_t activeNum)
 {
     TORCH_CHECK(expandedRowIdx.dim() == 1, "expanded_row_idx must be a 1D tensor, but got ", expandedRowIdx.dim(),
                 " dimensions.");
@@ -47,28 +45,9 @@ at::Tensor moe_init_routing_grad_npu(const at::Tensor &gradExpandedX, const at::
     return out;
 }
 
-// Meta device implementation (shape inference)
-at::Tensor moe_init_routing_grad_meta(const at::Tensor &gradExpandedX, const at::Tensor &expandedRowIdx,
-                                      int64_t topK, int64_t dropPadMode, int64_t activeNum)
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    TORCH_CHECK(expandedRowIdx.dim() == 1, "expanded_row_idx must be a 1D tensor, but got ", expandedRowIdx.dim(),
-                " dimensions.");
-    TORCH_CHECK(dropPadMode == DROP_PAD_MODE_DROPLESS || dropPadMode == DROP_PAD_MODE_DROP_PAD,
-                "drop_pad_mode must be 0 or 1, but got ", dropPadMode, ".");
-    TORCH_CHECK(topK > 0, "top_k must be greater than 0, but got ", topK, ".");
-    int64_t gradXDim0 = expandedRowIdx.numel() / topK;
-    int64_t gradXDim1 = (dropPadMode == DROP_PAD_MODE_DROP_PAD) ? gradExpandedX.size(2) : gradExpandedX.size(1);
-    return gradExpandedX.new_empty({gradXDim0, gradXDim1});
-}
-
-TORCH_LIBRARY_IMPL(cann_ops_transformer, PrivateUse1, m)
-{
-    m.impl("moe_init_routing_grad", &moe_init_routing_grad_npu);
-}
-
-TORCH_LIBRARY_IMPL(cann_ops_transformer, Meta, m)
-{
-    m.impl("moe_init_routing_grad", &moe_init_routing_grad_meta);
+    m.def("moe_init_routing_grad", &moe_init_routing_grad, "moe_init_routing_grad");
 }
 
 } // namespace op_api

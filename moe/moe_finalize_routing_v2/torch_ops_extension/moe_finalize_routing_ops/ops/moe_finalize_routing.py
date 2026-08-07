@@ -7,10 +7,17 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+import os
 import warnings
 from typing import Optional, List
 
 import torch
+from torch.library import impl
+from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+
+_HERE = os.path.dirname(os.path.realpath(__file__))
+_CSRC_DIR = os.path.join(_HERE, "..", "csrc")
 
 
 def _has_value(t):
@@ -26,6 +33,99 @@ def _is_valid_expert_range(r):
 
 
 _NUM_FORWARD_INPUTS = 16
+
+
+class MoeFinalizeRoutingOpBuilder(OpBuilder):
+    def __init__(self):
+        super(MoeFinalizeRoutingOpBuilder, self).__init__("moe_finalize_routing")
+
+    def sources(self):
+        return [os.path.join(_CSRC_DIR, "moe_finalize_routing.cpp")]
+
+    def schema(self) -> str:
+        return (
+            "moe_finalize_routing(Tensor expanded_x, Tensor expanded_row_idx, "
+            "Tensor? x1, Tensor? x2, Tensor? bias, Tensor? scales, "
+            "Tensor? expert_idx, Tensor? x, Tensor? alpha1, Tensor? alpha2, Tensor? v, "
+            "int? drop_pad_mode=0, "
+            "int[]? zero_expert_range=None, int[]? copy_expert_range=None, "
+            "int[]? constant_expert_range=None, int? k=1) -> Tensor"
+        )
+
+    def register_meta(self):
+        @impl(AS_LIBRARY, self.name, "Meta")
+        def moe_finalize_routing_meta(
+            expanded_x,
+            expanded_row_idx,
+            x1=None,
+            x2=None,
+            bias=None,
+            scales=None,
+            expert_idx=None,
+            x=None,
+            alpha1=None,
+            alpha2=None,
+            v=None,
+            drop_pad_mode=0,
+            zero_expert_range=None,
+            copy_expert_range=None,
+            constant_expert_range=None,
+            k=1,
+        ):
+            k_val = k if k is not None else 1
+            mode = drop_pad_mode if drop_pad_mode is not None else 0
+            dimm = expanded_row_idx.size(0)
+            if scales is not None:
+                dimm = scales.size(0)
+            elif k_val > 0:
+                dimm = dimm // k_val
+            dimn = (
+                expanded_x.size(2) if (mode == 1 or mode == 3) else expanded_x.size(1)
+            )
+            return expanded_x.new_empty((dimm, dimn))
+
+
+moe_finalize_routing_op_builder = MoeFinalizeRoutingOpBuilder()
+
+
+@impl(AS_LIBRARY, moe_finalize_routing_op_builder.name, "PrivateUse1")
+def _moe_finalize_routing_dispatch(
+    expanded_x,
+    expanded_row_idx,
+    x1=None,
+    x2=None,
+    bias=None,
+    scales=None,
+    expert_idx=None,
+    x=None,
+    alpha1=None,
+    alpha2=None,
+    v=None,
+    drop_pad_mode=0,
+    zero_expert_range=None,
+    copy_expert_range=None,
+    constant_expert_range=None,
+    k=1,
+):
+    op_module = moe_finalize_routing_op_builder.load()
+    return op_module.moe_finalize_routing(
+        expanded_x,
+        expanded_row_idx,
+        x1,
+        x2,
+        bias,
+        scales,
+        expert_idx,
+        x,
+        alpha1,
+        alpha2,
+        v,
+        drop_pad_mode,
+        zero_expert_range,
+        copy_expert_range,
+        constant_expert_range,
+        k,
+    )
 
 
 def _check_backward_supported(ctx):
@@ -279,7 +379,29 @@ def moe_finalize_routing(
     Returns:
         Tensor: output of shape (R, H), same dtype as ``expanded_x``.
     """
-    return MoeFinalizeRoutingFn.apply(
+    needs_grad = expanded_x.requires_grad or (
+        scales is not None and scales.requires_grad
+    )
+    if needs_grad:
+        return MoeFinalizeRoutingFn.apply(
+            expanded_x,
+            expanded_row_idx,
+            x1,
+            x2,
+            bias,
+            scales,
+            expert_idx,
+            x,
+            alpha1,
+            alpha2,
+            v,
+            drop_pad_mode,
+            zero_expert_range,
+            copy_expert_range,
+            constant_expert_range,
+            k,
+        )
+    return torch.ops.cann_ops_transformer.moe_finalize_routing(
         expanded_x,
         expanded_row_idx,
         x1,

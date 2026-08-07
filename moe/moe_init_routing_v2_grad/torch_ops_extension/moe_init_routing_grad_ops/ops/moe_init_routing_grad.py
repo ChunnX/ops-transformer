@@ -7,8 +7,55 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+import os
 
 import torch
+from torch.library import impl
+from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+
+_HERE = os.path.dirname(os.path.realpath(__file__))
+_CSRC_DIR = os.path.join(_HERE, "..", "csrc")
+
+
+class MoeInitRoutingGradOpBuilder(OpBuilder):
+    def __init__(self):
+        super(MoeInitRoutingGradOpBuilder, self).__init__("moe_init_routing_grad")
+
+    def sources(self):
+        return [os.path.join(_CSRC_DIR, "moe_init_routing_grad.cpp")]
+
+    def schema(self) -> str:
+        return (
+            "moe_init_routing_grad(Tensor grad_expanded_x, Tensor expanded_row_idx, "
+            "int top_k, int drop_pad_mode=0, int active_num=0) -> Tensor"
+        )
+
+    def register_meta(self):
+        @impl(AS_LIBRARY, self.name, "Meta")
+        def moe_init_routing_grad_meta(
+            grad_expanded_x, expanded_row_idx, top_k, drop_pad_mode, active_num
+        ):
+            grad_x_dim0 = expanded_row_idx.numel() // top_k
+            grad_x_dim1 = (
+                grad_expanded_x.size(2)
+                if drop_pad_mode == 1
+                else grad_expanded_x.size(1)
+            )
+            return grad_expanded_x.new_empty((grad_x_dim0, grad_x_dim1))
+
+
+moe_init_routing_grad_op_builder = MoeInitRoutingGradOpBuilder()
+
+
+@impl(AS_LIBRARY, moe_init_routing_grad_op_builder.name, "PrivateUse1")
+def _moe_init_routing_grad_dispatch(
+    grad_expanded_x, expanded_row_idx, top_k, drop_pad_mode=0, active_num=0
+):
+    op_module = moe_init_routing_grad_op_builder.load()
+    return op_module.moe_init_routing_grad(
+        grad_expanded_x, expanded_row_idx, top_k, drop_pad_mode, active_num
+    )
 
 
 def moe_init_routing_grad(

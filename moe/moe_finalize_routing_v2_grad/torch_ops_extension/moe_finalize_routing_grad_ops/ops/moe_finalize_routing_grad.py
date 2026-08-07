@@ -7,9 +7,108 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+import os
 from typing import Optional, Tuple
 
 import torch
+from torch.library import impl
+from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+
+_HERE = os.path.dirname(os.path.realpath(__file__))
+_CSRC_DIR = os.path.join(_HERE, "..", "csrc")
+
+
+def _has_value(t):
+    if t is None:
+        return False
+    if isinstance(t, torch.Tensor):
+        return t.numel() > 0
+    return True
+
+
+class MoeFinalizeRoutingGradOpBuilder(OpBuilder):
+    def __init__(self):
+        super(MoeFinalizeRoutingGradOpBuilder, self).__init__(
+            "moe_finalize_routing_grad"
+        )
+
+    def sources(self):
+        return [os.path.join(_CSRC_DIR, "moe_finalize_routing_grad.cpp")]
+
+    def schema(self) -> str:
+        return (
+            "moe_finalize_routing_grad(Tensor grad_y, Tensor expanded_row_idx, "
+            "Tensor? expanded_x=None, Tensor? scales=None, Tensor? expert_idx=None, "
+            "Tensor? bias=None, int drop_pad_mode=0, int active_num=0, "
+            "int expert_num=0, int expert_capacity=0) -> (Tensor, Tensor)"
+        )
+
+    def register_meta(self):
+        @impl(AS_LIBRARY, self.name, "Meta")
+        def moe_finalize_routing_grad_meta(
+            grad_y,
+            expanded_row_idx,
+            expanded_x=None,
+            scales=None,
+            expert_idx=None,
+            bias=None,
+            drop_pad_mode=0,
+            active_num=0,
+            expert_num=0,
+            expert_capacity=0,
+        ):
+            hidden = grad_y.size(1)
+            if drop_pad_mode == 1:
+                grad_expanded_x_shape = (expert_num, expert_capacity, hidden)
+            else:
+                dim0 = expanded_row_idx.numel()
+                if active_num > 0 and active_num < dim0:
+                    dim0 = active_num
+                grad_expanded_x_shape = (dim0, hidden)
+
+            scales_dim1 = 1
+            scales_dtype = grad_y.dtype
+            if _has_value(scales):
+                scales_dim1 = scales.size(1)
+                scales_dtype = scales.dtype
+
+            grad_expanded_x = grad_y.new_empty(grad_expanded_x_shape)
+            grad_scales = grad_y.new_empty(
+                (grad_y.size(0), scales_dim1), dtype=scales_dtype
+            )
+            return (grad_expanded_x, grad_scales)
+
+
+moe_finalize_routing_grad_op_builder = MoeFinalizeRoutingGradOpBuilder()
+
+
+@impl(AS_LIBRARY, moe_finalize_routing_grad_op_builder.name, "PrivateUse1")
+def _moe_finalize_routing_grad_dispatch(
+    grad_y,
+    expanded_row_idx,
+    expanded_x=None,
+    scales=None,
+    expert_idx=None,
+    bias=None,
+    drop_pad_mode=0,
+    active_num=0,
+    expert_num=0,
+    expert_capacity=0,
+):
+    op_module = moe_finalize_routing_grad_op_builder.load()
+    return op_module.moe_finalize_routing_grad(
+        grad_y,
+        expanded_row_idx,
+        expanded_x,
+        scales,
+        expert_idx,
+        bias,
+        drop_pad_mode,
+        active_num,
+        expert_num,
+        expert_capacity,
+    )
 
 
 def moe_finalize_routing_grad(  # noqa: huawei-too-many-arguments

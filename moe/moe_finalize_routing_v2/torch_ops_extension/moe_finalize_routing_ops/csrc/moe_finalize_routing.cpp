@@ -14,7 +14,6 @@
  */
 
 #include <torch/extension.h>
-#include <torch/library.h>
 #include "aclnn_common.h"
 
 namespace op_api {
@@ -23,22 +22,21 @@ constexpr size_t INDEX_ONE = 1;
 constexpr size_t INDEX_TWO = 2;
 constexpr size_t DIM_THREE = 3;
 
-// NPU device implementation
-at::Tensor moe_finalize_routing_npu(const at::Tensor &expandedX, const at::Tensor &expandedRowIdx,
-                                    const c10::optional<at::Tensor> &x1Optional,
-                                    const c10::optional<at::Tensor> &x2Optional,
-                                    const c10::optional<at::Tensor> &biasOptional,
-                                    const c10::optional<at::Tensor> &scalesOptional,
-                                    const c10::optional<at::Tensor> &expertIdxOptional,
-                                    const c10::optional<at::Tensor> &xOptional,
-                                    const c10::optional<at::Tensor> &alpha1Optional,
-                                    const c10::optional<at::Tensor> &alpha2Optional,
-                                    const c10::optional<at::Tensor> &vOptional,
-                                    c10::optional<int64_t> dropPadMode,
-                                    const c10::optional<std::vector<int64_t>> &zeroExpertRange,
-                                    const c10::optional<std::vector<int64_t>> &copyExpertRange,
-                                    const c10::optional<std::vector<int64_t>> &constantExpertRange,
-                                    c10::optional<int64_t> k)
+at::Tensor moe_finalize_routing(const at::Tensor &expandedX, const at::Tensor &expandedRowIdx,
+                                const c10::optional<at::Tensor> &x1Optional,
+                                const c10::optional<at::Tensor> &x2Optional,
+                                const c10::optional<at::Tensor> &biasOptional,
+                                const c10::optional<at::Tensor> &scalesOptional,
+                                const c10::optional<at::Tensor> &expertIdxOptional,
+                                const c10::optional<at::Tensor> &xOptional,
+                                const c10::optional<at::Tensor> &alpha1Optional,
+                                const c10::optional<at::Tensor> &alpha2Optional,
+                                const c10::optional<at::Tensor> &vOptional,
+                                c10::optional<int64_t> dropPadMode,
+                                const c10::optional<std::vector<int64_t>> &zeroExpertRange,
+                                const c10::optional<std::vector<int64_t>> &copyExpertRange,
+                                const c10::optional<std::vector<int64_t>> &constantExpertRange,
+                                c10::optional<int64_t> k)
 {
     int64_t kAttr = c10::value_or_else(k, [] { return 1; });
 
@@ -74,43 +72,9 @@ at::Tensor moe_finalize_routing_npu(const at::Tensor &expandedX, const at::Tenso
     return result;
 }
 
-// Meta device implementation (shape inference)
-at::Tensor moe_finalize_routing_meta(const at::Tensor &expandedX, const at::Tensor &expandedRowIdx,
-                                     const c10::optional<at::Tensor> &x1Optional,
-                                     const c10::optional<at::Tensor> &x2Optional,
-                                     const c10::optional<at::Tensor> &biasOptional,
-                                     const c10::optional<at::Tensor> &scalesOptional,
-                                     const c10::optional<at::Tensor> &expertIdxOptional,
-                                     const c10::optional<at::Tensor> &xOptional,
-                                     const c10::optional<at::Tensor> &alpha1Optional,
-                                     const c10::optional<at::Tensor> &alpha2Optional,
-                                     const c10::optional<at::Tensor> &vOptional,
-                                     c10::optional<int64_t> dropPadMode,
-                                     const c10::optional<std::vector<int64_t>> &zeroExpertRange,
-                                     const c10::optional<std::vector<int64_t>> &copyExpertRange,
-                                     const c10::optional<std::vector<int64_t>> &constantExpertRange,
-                                     c10::optional<int64_t> k)
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    int64_t kVal = c10::value_or_else(k, [] { return 1; });
-    int64_t mode = c10::value_or_else(dropPadMode, [] { return 0; });
-    int64_t dimm = expandedRowIdx.size(0);
-    if (scalesOptional.has_value()) {
-        dimm = scalesOptional.value().size(0);
-    } else if (kVal > 0) {
-        dimm = dimm / kVal;
-    }
-    int64_t dimn = (mode == 1 || mode == 3) ? expandedX.size(2) : expandedX.size(1);
-    return expandedX.new_empty({dimm, dimn});
-}
-
-TORCH_LIBRARY_IMPL(cann_ops_transformer, PrivateUse1, m)
-{
-    m.impl("moe_finalize_routing", &moe_finalize_routing_npu);
-}
-
-TORCH_LIBRARY_IMPL(cann_ops_transformer, Meta, m)
-{
-    m.impl("moe_finalize_routing", &moe_finalize_routing_meta);
+    m.def("moe_finalize_routing", &moe_finalize_routing, "moe_finalize_routing");
 }
 
 } // namespace op_api

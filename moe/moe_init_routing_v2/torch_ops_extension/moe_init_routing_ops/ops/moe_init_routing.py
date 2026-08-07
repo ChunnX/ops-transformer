@@ -7,9 +7,96 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
+import os
 from typing import Tuple
 
 import torch
+from torch.library import impl
+from cann_ops_transformer.op_builder.builder import OpBuilder
+from cann_ops_transformer.op_builder.builder import AS_LIBRARY
+
+_HERE = os.path.dirname(os.path.realpath(__file__))
+_CSRC_DIR = os.path.join(_HERE, "..", "csrc")
+
+
+class MoeInitRoutingOpBuilder(OpBuilder):
+    def __init__(self):
+        super(MoeInitRoutingOpBuilder, self).__init__("moe_init_routing")
+
+    def sources(self):
+        return [os.path.join(_CSRC_DIR, "moe_init_routing.cpp")]
+
+    def schema(self) -> str:
+        return (
+            "moe_init_routing(Tensor x, Tensor expert_idx, int active_num=0, "
+            "int expert_capacity=0, int expert_num=0, int drop_pad_mode=0, "
+            "int expert_tokens_count_or_cumsum_flag=0, "
+            "bool expert_tokens_before_capacity_flag=False) -> "
+            "(Tensor, Tensor, Tensor, Tensor)"
+        )
+
+    def register_meta(self):
+        @impl(AS_LIBRARY, self.name, "Meta")
+        def moe_init_routing_meta(
+            x,
+            expert_idx,
+            active_num,
+            expert_capacity,
+            expert_num,
+            drop_pad_mode,
+            expert_tokens_count_or_cumsum_flag,
+            expert_tokens_before_capacity_flag,
+        ):
+            n = x.size(0)
+            cols = x.size(1)
+            k = expert_idx.size(1)
+            out_active_num = min(n * k, active_num) if active_num > 0 else n * k
+
+            if drop_pad_mode == 1:
+                expanded_x = x.new_empty((expert_num, expert_capacity, cols))
+                tokens_count = x.new_empty((0,), dtype=torch.int32)
+                if expert_tokens_before_capacity_flag:
+                    tokens_before_capacity = x.new_empty(
+                        (expert_num,), dtype=torch.int32
+                    )
+                else:
+                    tokens_before_capacity = x.new_empty((0,), dtype=torch.int32)
+            else:
+                expanded_x = x.new_empty((out_active_num, cols))
+                if expert_tokens_count_or_cumsum_flag > 0:
+                    tokens_count = x.new_empty((expert_num,), dtype=torch.int32)
+                else:
+                    tokens_count = x.new_empty((0,), dtype=torch.int32)
+                tokens_before_capacity = x.new_empty((0,), dtype=torch.int32)
+            expanded_row_idx = x.new_empty((n * k,), dtype=torch.int32)
+            return (expanded_x, expanded_row_idx, tokens_count, tokens_before_capacity)
+
+
+moe_init_routing_op_builder = MoeInitRoutingOpBuilder()
+
+
+@impl(AS_LIBRARY, moe_init_routing_op_builder.name, "PrivateUse1")
+def _moe_init_routing_dispatch(
+    x,
+    expert_idx,
+    active_num=0,
+    expert_capacity=0,
+    expert_num=0,
+    drop_pad_mode=0,
+    expert_tokens_count_or_cumsum_flag=0,
+    expert_tokens_before_capacity_flag=False,
+):
+    op_module = moe_init_routing_op_builder.load()
+    return op_module.moe_init_routing(
+        x,
+        expert_idx,
+        active_num,
+        expert_capacity,
+        expert_num,
+        drop_pad_mode,
+        expert_tokens_count_or_cumsum_flag,
+        expert_tokens_before_capacity_flag,
+    )
 
 
 class MoeInitRoutingFn(torch.autograd.Function):
@@ -115,7 +202,19 @@ def moe_init_routing(  # noqa: huawei-too-many-arguments
              expert_tokens_before_capacity). The two token-count tensors are
             empty (0-element) when the corresponding flag is inactive.
     """
-    return MoeInitRoutingFn.apply(
+    needs_grad = x.requires_grad
+    if needs_grad:
+        return MoeInitRoutingFn.apply(
+            x,
+            expert_idx,
+            active_num,
+            expert_capacity,
+            expert_num,
+            drop_pad_mode,
+            expert_tokens_count_or_cumsum_flag,
+            expert_tokens_before_capacity_flag,
+        )
+    return torch.ops.cann_ops_transformer.moe_init_routing(
         x,
         expert_idx,
         active_num,

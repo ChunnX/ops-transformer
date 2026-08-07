@@ -14,7 +14,6 @@
  */
 
 #include <torch/extension.h>
-#include <torch/library.h>
 #include "aclnn_common.h"
 
 namespace op_api {
@@ -22,8 +21,7 @@ namespace op_api {
 constexpr int64_t DROP_PAD_MODE_DROPLESS = 0;
 constexpr int64_t DROP_PAD_MODE_DROP_PAD = 1;
 
-// NPU device implementation
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_routing_npu(
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_routing(
     const at::Tensor &x, const at::Tensor &expertIdx, int64_t activeNum, int64_t expertCapacity,
     int64_t expertNum, int64_t dropPadMode, int64_t expertTokensCountOrCumsumFlag,
     bool expertTokensBeforeCapacityFlag)
@@ -84,54 +82,9 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_routing_npu(
                            std::move(expertTokensCountOrCumsumOut), std::move(expertTokensBeforeCapacityOut));
 }
 
-// Meta device implementation (shape inference)
-std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> moe_init_routing_meta(
-    const at::Tensor &x, const at::Tensor &expertIdx, int64_t activeNum, int64_t expertCapacity,
-    int64_t expertNum, int64_t dropPadMode, int64_t expertTokensCountOrCumsumFlag,
-    bool expertTokensBeforeCapacityFlag)
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    TORCH_CHECK(x.dim() == 2, "x must be a 2D tensor, but got ", x.dim(), " dimensions.");
-    TORCH_CHECK(expertIdx.dim() == 2, "expert_idx must be a 2D tensor, but got ", expertIdx.dim(), " dimensions.");
-    TORCH_CHECK(dropPadMode == DROP_PAD_MODE_DROPLESS || dropPadMode == DROP_PAD_MODE_DROP_PAD,
-                "drop_pad_mode must be 0 or 1, but got ", dropPadMode, ".");
-
-    int64_t n = x.size(0);
-    int64_t cols = x.size(1);
-    int64_t k = expertIdx.size(1);
-    int64_t outActiveNum = (activeNum > 0) ? std::min(n * k, activeNum) : n * k;
-
-    at::Tensor expandedX;
-    at::Tensor tokensCount;
-    at::Tensor tokensBeforeCapacity;
-    if (dropPadMode == DROP_PAD_MODE_DROP_PAD) {
-        expandedX = x.new_empty({expertNum, expertCapacity, cols});
-        tokensCount = x.new_empty({0}, at::kInt);
-        if (expertTokensBeforeCapacityFlag) {
-            tokensBeforeCapacity = x.new_empty({expertNum}, at::kInt);
-        } else {
-            tokensBeforeCapacity = x.new_empty({0}, at::kInt);
-        }
-    } else {
-        expandedX = x.new_empty({outActiveNum, cols});
-        if (expertTokensCountOrCumsumFlag > 0) {
-            tokensCount = x.new_empty({expertNum}, at::kInt);
-        } else {
-            tokensCount = x.new_empty({0}, at::kInt);
-        }
-        tokensBeforeCapacity = x.new_empty({0}, at::kInt);
-    }
-    at::Tensor expandedRowIdx = x.new_empty({n * k}, at::kInt);
-    return std::make_tuple(expandedX, expandedRowIdx, tokensCount, tokensBeforeCapacity);
-}
-
-TORCH_LIBRARY_IMPL(cann_ops_transformer, PrivateUse1, m)
-{
-    m.impl("moe_init_routing", &moe_init_routing_npu);
-}
-
-TORCH_LIBRARY_IMPL(cann_ops_transformer, Meta, m)
-{
-    m.impl("moe_init_routing", &moe_init_routing_meta);
+    m.def("moe_init_routing", &moe_init_routing, "moe_init_routing");
 }
 
 } // namespace op_api
