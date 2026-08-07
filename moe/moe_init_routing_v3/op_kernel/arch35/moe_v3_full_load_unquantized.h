@@ -60,8 +60,8 @@ MoeV3FullLoadUnquantized<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, G
                                   GM_ADDR topkWeight, GM_ADDR expandedTopkWeight, GM_ADDR workspace,
                                   const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
-    MoeV3FullLoadBase<T>::Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum, workspace,
-                                topkWeight, expandedTopkWeight, tilingData, tPipe);
+    MoeV3FullLoadBase<T>::Init(expertIdx, expandedRowIdx, expertTokensCountOrCumsum,
+                                topkWeight, expandedTopkWeight, workspace, tilingData, tPipe);
 
     if constexpr (IsSameType<T, hifloat8_t>::value) {
         xUint8tGm_.SetGlobalBuffer((__gm__ uint8_t *)x);

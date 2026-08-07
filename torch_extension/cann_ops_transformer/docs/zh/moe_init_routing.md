@@ -208,11 +208,14 @@ def moe_init_routing(
     - 在`expert\_tokens\_num\_type`为2的场景下，shape为[expert\_num, 2]，表示token总数为非0的expert及其处理token的总数。
 
 - **expanded\_scale** (`Tensor`)：输出不同量化过程中scale的中间值。数据类型支持`float32`或`float8\_e8m0`，数据格式要求为$ND$。
-    - 非量化场景下，当`scale`输入时，shape为[NUM\_ROWS\*K, 1]，前availableIdxNum个元素为有效数据，输出`float32`类型。
-    - 动态量化场景下，前availableIdxNum个元素为有效数据。
-    - 静态量化场景下，shape为(availableIdxNum,)，输出`float32`类型。
-    - MXFP8量化场景下，输出`float8\_e8m0`类型，Shape为[NUM\_ROWS\*K, M]，其中M=CeilAlign(CeilDiv(H, 32), 2)，前availableIdxNum行为有效数据。
-    - 其他量化场景或不输入`scale`的非量化场景下，输出为空tensor。
+    - 非量化场景下，当`scale`输入时，shape为[NUM\_ROWS\*K, 1]，前availableIdxNum个元素为有效数据，输出`float32`类型。当输入x数据类型为`float8_e5m2`、`float8_e4m3fn`或`float4_e2m1`时，如果`scale`输入，则shape为[NUM\_ROWS\*K, CeilDiv(H, 64), 2]，输出`float8_e8m0`类型。
+    - 动态量化场景下，当`scale`输入时，前availableIdxNum个元素为有效数据。
+    - 静态量化场景下、HIF8直转量化场景下、HIF8 PERTENSOR量化场景下，输出为空tensor。
+    - HIF8 PERTOKEN量化场景下，shape为[NUM\_ROWS\*K, 1]，输出`float32`类型。
+    - MXFP8量化场景下（quantMode为2、3、16、17），输出`float8\_e8m0`类型，Shape为[NUM\_ROWS\*K, M]，其中M=CeilAlign(CeilDiv(H, 32), 2)，前availableIdxNum行为有效数据。
+    - MXFP4量化场景下，输出`float8\_e8m0`类型，Shape为[NUM\_ROWS\*K, M, 2]，其中M=CeilDiv(H, 64)，前availableIdxNum行为有效数据。
+    - FP8 PerGroup量化场景下（quantMode为4、5、14、15），输出`float32`类型，Shape为[NUM\_ROWS\*K, CeilDiv(H, 128)]，前availableIdxNum行为有效数据。
+    - FP8 PerBlock量化场景下（quantMode为11、12），输出`float32`类型，Shape为[NUM\_ROWS\*K, CeilDiv(H, 256), 2]，前availableIdxNum行为有效数据。
 
 - **expanded\_topk\_weight** (`Tensor`)：按排序索引重排后的路由权重，与`expanded\_x`一一对应。数据类型仅支持`float32`，数据格式要求为$ND$。
     - 可选输出，`topk\_weight`输入时必须同时输出；`topk\_weight`未输入时输出为空tensor（shape为(0,)）。

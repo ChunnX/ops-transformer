@@ -16,9 +16,9 @@ from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 
-_DTYPE_HIFLOAT8 = 290       # torch_npu.hifloat8
-_DTYPE_FLOAT4_E2M1 = 296    # torch_npu.float4_e2m1fn_x2
-_DTYPE_FLOAT4_E1M2 = 297    # torch_npu.float4_e1m2fn_x2
+_DTYPE_HIFLOAT8 = torch_npu.hifloat8
+_DTYPE_FLOAT4_E2M1 = torch_npu.float4_e2m1fn_x2
+_DTYPE_FLOAT4_E1M2 = torch_npu.float4_e1m2fn_x2
 
 TORCH_DTYPE_ENUM_VALUE_TO_SCALAR_TYPE_MAP = {
     _DTYPE_HIFLOAT8: torch.uint8,

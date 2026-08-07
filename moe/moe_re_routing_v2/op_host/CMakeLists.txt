@@ -10,13 +10,12 @@
 
 message(STATUS "=== Debug: start ops.moe.moe_re_routing_v2.op_host.CMakeLists.txt")
 
-set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
     message(STATUS "=== Debug: BUILD is BUILD_OPEN_PROJECT")
     set(moe_re_routing_v2_depends moe/moe_re_routing
         CACHE INTERNAL "Dependencies for moe_re_routing_v2")
     set(moe_re_routing_v2_apt_depends moe/moe_re_routing
-        CACHE INTERNAL "Dependencies for moe_re_routing_v2")
+        CACHE INTERNAL "Dependencies for moe_re_routing_v2_apt")
     target_sources(op_host_aclnnInner PRIVATE
         moe_re_routing_v2_def.cpp
     )

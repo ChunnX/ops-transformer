@@ -144,7 +144,7 @@ TEST_F(MoeReRoutingV2, MoeReRoutingV2_infershape_no_topk_weight)
                                                         {"expert_token_num_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                                                         {"idx_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                                                       });
-    std::vector<std::vector<int64_t>> expectOutputShape = {{256, 7168}, {256}, {256}, {16}, {0}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{256, 7168}, {256}, {256}, {16}, {0, 1}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 

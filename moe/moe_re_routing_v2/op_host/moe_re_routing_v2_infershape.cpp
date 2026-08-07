@@ -8,6 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+/*!
+ * \file moe_re_routing_v2_infershape.cpp
+ * \brief
+ */
 #include <sstream>
 #include <string>
 #include <vector>
@@ -29,6 +33,7 @@ constexpr size_t OUTPUT_IDX_EXPERT_TOKEN_NUM = 3;
 constexpr size_t OUTPUT_IDX_PERMUTE_TOPK_WEIGHT = 4;
 constexpr size_t IDX_ZERO = 0;
 constexpr size_t IDX_ONE = 1;
+constexpr size_t IDX_TWO = 2;
 constexpr int64_t DIM_NUM = 2;
 
 graphStatus InferShape4MoeReRoutingV2(gert::InferShapeContext *context)
@@ -83,8 +88,9 @@ graphStatus InferShape4MoeReRoutingV2(gert::InferShapeContext *context)
         if (topkWeightShape != nullptr) {
             *permuteTopkWeightShape = *topkWeightShape;
         } else {
-            permuteTopkWeightShape->SetDimNum(IDX_ONE);
+            permuteTopkWeightShape->SetDimNum(IDX_TWO);
             permuteTopkWeightShape->SetDim(IDX_ZERO, 0);
+            permuteTopkWeightShape->SetDim(IDX_ONE, 1);
         }
     }
 

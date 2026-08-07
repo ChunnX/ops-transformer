@@ -63,7 +63,9 @@ ge::graphStatus MoeReRoutingReTiling::SplitUb()
         reserveUbSize += INDEX_UB_SIZE * DOUBLE_BUFFER * sizeof(float);
     }
     int64_t canUseUbSize = (ubSize_ - reserveUbSize) / DOUBLE_BUFFER;
-    canUseUbSize -= RESERVE_UB_GAP;
+    if (hasTopkWeight_) {
+        canUseUbSize -= RESERVE_UB_GAP;
+    }
     ubFactor_ = Ops::Base::CeilAlign(canUseUbSize, static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_)));
     return ge::GRAPH_SUCCESS;
 }

@@ -507,7 +507,7 @@ aclnnStatus aclnnMoeInitRoutingV4(
       <td>计算输入和计算输出是空指针。</td>
     </tr>
     <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
       <td>输入和输出的数据类型不在支持的范围内。</td>
     </tr>
@@ -692,7 +692,7 @@ int main()
     std::vector<int64_t> expandedXOutShape = {12, 2};
     std::vector<int64_t> expandedRowIdxOutShape = {12};
     std::vector<int64_t> expertTokensCountOrCumsumOutOptionalShape = {4};
-    std::vector<int64_t> expandedScaleOutOptionalShape = {12};
+    std::vector<int64_t> expandedScaleOutOptionalShape = {};
     std::vector<int64_t> expandedTopkWeightOutShape = {12, 1};
 
     std::vector<int64_t> activeExpertRangeArray = {0, 4};
@@ -717,12 +717,12 @@ int main()
     aclTensor *activeNumOptional = nullptr;
     aclTensor *topkWeightOptional = nullptr;
 
-    int64_t expertCapacity = 4;
+    int64_t expertCapacity = 0;
     int64_t expertNum = 256;
     int64_t dropPadMode = 0;
     int64_t expertTokensNumType = 1;
     bool expertTokensNumFlag = true;
-    int64_t quantMode = -1;
+    int64_t quantMode = 0;
     aclIntArray *activeExpertRange = aclCreateIntArray(activeExpertRangeArray.data(), activeExpertRangeArray.size());
     int64_t rowIdxType = 1;
 
@@ -739,10 +739,10 @@ int main()
     std::vector<int64_t> activeNumHostData = {12};
     std::vector<float> topkWeightHostData = {0.5, 0.3, 0.2, 0.1, 0.4, 0.6, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65};
 
-    std::vector<float> expandedXOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    std::vector<int8_t> expandedXOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::vector<int> expandedRowIdxOutHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::vector<int64_t> expertTokensCountOrCumsumOutOptionalHostData = {0, 0, 0, 0};
-    std::vector<float> expandedScaleOutOptionalHostData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    std::vector<float> expandedScaleOutOptionalHostData = {};
     std::vector<float> expandedTopkWeightOutHostData(expandedTopkWeightOutShape[0] * expandedTopkWeightOutShape[1], 0.0f);
 
     // 创建self aclTensor
@@ -760,7 +760,7 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 创建out aclTensor
     ret = CreateAclTensor(
-        expandedXOutHostData, expandedXOutShape, &expandedXOutDeviceAddr, aclDataType::ACL_FLOAT, &expandedXOut);
+        expandedXOutHostData, expandedXOutShape, &expandedXOutDeviceAddr, aclDataType::ACL_INT8, &expandedXOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(expandedRowIdxOutHostData,
         expandedRowIdxOutShape,

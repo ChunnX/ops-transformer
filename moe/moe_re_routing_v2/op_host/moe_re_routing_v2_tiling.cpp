@@ -8,6 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+/*!
+ * \file moe_re_routing_v2_tiling.cpp
+ * \brief
+ */
 #include "moe_re_routing_v2_tiling.h"
 #include "../../moe_re_routing/op_host/moe_re_routing_re_tiling.h"
 #include "../../moe_re_routing/op_host/moe_re_routing_r_tiling.h"
@@ -17,6 +21,8 @@
 namespace optiling {
 
 const static int64_t V2_IN_EXPERT_TOPK_WEIGHT_INDEX = 3;
+const static int64_t TOPK_WEIGHT_DIM = 2;
+const static int64_t TOPK_WEIGHT_DIM1_VALUE = 1;
 
 class MoeReRoutingV2ReTiling : public MoeReRoutingReTiling {
 public:
@@ -43,7 +49,7 @@ protected:
             auto topkWeightShapePtr = context_->GetOptionalInputShape(V2_IN_EXPERT_TOPK_WEIGHT_INDEX);
             OP_CHECK_NULL_WITH_CONTEXT(context_, topkWeightShapePtr);
             auto &topkWeightShape = topkWeightShapePtr->GetStorageShape();
-            OP_CHECK_IF(topkWeightShape.GetDimNum() != 2,
+            OP_CHECK_IF(topkWeightShape.GetDimNum() != TOPK_WEIGHT_DIM,
                         OP_LOGE_FOR_INVALID_SHAPEDIM(
                             context_->GetNodeName(), "expert_topk_weight",
                             std::to_string(topkWeightShape.GetDimNum()).c_str(), "2"),
@@ -52,7 +58,7 @@ protected:
                         OP_LOGE(context_->GetNodeName(), "expert_topk_weight dim0: %ld should equal tokenSum: %ld.",
                                 topkWeightShape.GetDim(0), tokenSum_),
                         return ge::GRAPH_FAILED);
-            OP_CHECK_IF(topkWeightShape.GetDim(1) != 1,
+            OP_CHECK_IF(topkWeightShape.GetDim(1) != TOPK_WEIGHT_DIM1_VALUE,
                         OP_LOGE(context_->GetNodeName(), "expert_topk_weight dim1 must be 1, actual %ld.",
                                 topkWeightShape.GetDim(1)),
                         return ge::GRAPH_FAILED);
@@ -87,7 +93,7 @@ protected:
             auto topkWeightShapePtr = context_->GetOptionalInputShape(V2_IN_EXPERT_TOPK_WEIGHT_INDEX);
             OP_CHECK_NULL_WITH_CONTEXT(context_, topkWeightShapePtr);
             auto &topkWeightShape = topkWeightShapePtr->GetStorageShape();
-            OP_CHECK_IF(topkWeightShape.GetDimNum() != 2,
+            OP_CHECK_IF(topkWeightShape.GetDimNum() != TOPK_WEIGHT_DIM,
                         OP_LOGE_FOR_INVALID_SHAPEDIM(
                             context_->GetNodeName(), "expert_topk_weight",
                             std::to_string(topkWeightShape.GetDimNum()).c_str(), "2"),
@@ -96,7 +102,7 @@ protected:
                         OP_LOGE(context_->GetNodeName(), "expert_topk_weight dim0: %ld should equal tokenSum: %ld.",
                                 topkWeightShape.GetDim(0), tokenSum_),
                         return ge::GRAPH_FAILED);
-            OP_CHECK_IF(topkWeightShape.GetDim(1) != 1,
+            OP_CHECK_IF(topkWeightShape.GetDim(1) != TOPK_WEIGHT_DIM1_VALUE,
                         OP_LOGE(context_->GetNodeName(), "expert_topk_weight dim1 must be 1, actual %ld.",
                                 topkWeightShape.GetDim(1)),
                         return ge::GRAPH_FAILED);
