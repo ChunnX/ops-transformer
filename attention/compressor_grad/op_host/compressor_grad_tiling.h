@@ -1,4 +1,4 @@
-/**
+/* *
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
 /*!
  * \file compressor_grad_tiling.h
@@ -28,7 +28,7 @@ constexpr uint32_t TOKEN_X_INPUT_INDEX = 0;
 constexpr uint32_t WEIGHT_KV_INPUT_INDEX = 1;
 constexpr uint32_t WEIGHT_WGATE_INPUT_INDEX = 2;
 
-constexpr uint32_t D_CMP_KV_INPUT_INDEX = 3; 
+constexpr uint32_t D_CMP_KV_INPUT_INDEX = 3;
 
 constexpr uint32_t SOFTMAX_SCORE_INPUT_INDEX = 4;
 
@@ -211,8 +211,8 @@ struct CompressorGradContext {
     const uint32_t *cmpRatio;
     TemplateId templateId;
 
-    ge::DataType dtype = ge::DT_BF16; 
-    LayoutType layout = LayoutType::LAYOUT_BSH; 
+    ge::DataType dtype = ge::DT_BF16;
+    LayoutType layout = LayoutType::LAYOUT_BSH;
 
     size_t *workSpaces;
     uint64_t tilingKey;
@@ -229,9 +229,9 @@ struct CompressorGradSplitCoreParams {
     };
 
 // 1. 基础参数结构体
-struct CompressorGradBaseParams {   
+struct CompressorGradBaseParams {
     uint32_t batchSize = 0;             // bastch size（批大小）
-    uint32_t seqSize = 0;               // sequence size（kvs大小）  
+    uint32_t seqSize = 0;               // sequence size（kvs大小） 
     uint32_t hiddenSize = 0;            // hidden size（隐藏层大小）
     uint32_t tokenSize = 0;             // token size = batchSize * seqSize(token总数：批大小x序列1长度)
     uint32_t headDim = 0;               // head size of kv

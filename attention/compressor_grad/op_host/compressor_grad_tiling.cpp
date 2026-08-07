@@ -1,4 +1,4 @@
-/**
+/* *
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
 /*!
  * \file compressor_grad_tiling.cpp
@@ -129,7 +129,8 @@ ge::graphStatus SetBaseInfo(CompressorGradContext &compressorGradContext,
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CalcWorkSpace(CompressorGradContext &compressorGradContext, CompressorGradBaseParams &compressorGradBaseParams,
+ge::graphStatus CalcWorkSpace(CompressorGradContext &compressorGradContext,
+                              CompressorGradBaseParams &compressorGradBaseParams,
                               CompressorGradWorkspaceParams &compressorGradWorkspaceParams,
                               size_t &workspaceSize, size_t libapiSize, uint32_t aicNum)
 {
@@ -162,7 +163,7 @@ ge::graphStatus CalcWorkSpace(CompressorGradContext &compressorGradContext, Comp
     uint64_t dXCacheWorkSpaceSize = static_cast<uint64_t>(dbRatio) * cmpRatio * hiddenSize;
 
     workspaceSize = libapiSize;
-    workspaceSize += (apeWorkSpaceSize + dXWorkSpaceSize + dWeightWorkSpaceSize * 2 + 
+    workspaceSize += (apeWorkSpaceSize + dXWorkSpaceSize + dWeightWorkSpaceSize * 2 +
                      xWorkSpaceSize + dXCacheWorkSpaceSize) * MM1_RES_ELEM_SIZE;
 
     if (compressorGradContext.workSpaces) {
@@ -250,7 +251,7 @@ ge::graphStatus CheckFeatureValueSupport(const T *featureValue,
 
 template <typename T>
 ge::graphStatus CheckAttrValueSupportInterval(const T *attrValue, const uint32_t minVal, const uint32_t maxVal,
-                                                        const std::string &name, const char *opName)
+                                              const std::string &name, const char *opName)
 {
     if (attrValue == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -273,7 +274,7 @@ ge::graphStatus CheckAttrValueSupportInterval(const T *attrValue, const uint32_t
 
 template <typename T>
 ge::graphStatus CheckAttrValueSupportList(const T *attrValue, const std::vector<T> &expectAttrValList,
-                                                        const std::string &name, const char *opName)
+                                          const std::string &name, const char *opName)
 {
     if (attrValue == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -327,7 +328,7 @@ void LogErrorDtypeSupport(const std::vector<ge::DataType> &expectDtypeList,
 }
 
 ge::graphStatus CheckDtypeSupport(CompressorGradContext &compressorGradContext, const gert::CompileTimeTensorDesc *desc,
-                                                        const std::string &name)
+                                  const std::string &name)
 {
     if (desc != nullptr) {
         const auto &it = DTYPE_SUPPORT_MAP.find(name);
@@ -576,22 +577,26 @@ ge::graphStatus CheckSingleParaCoff(CompressorGradContext &compressorGradContext
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckFeature(CompressorGradContext &compressorGradContext, CompressorGradBaseParams &compressorGradBaseParams)
+ge::graphStatus CheckFeature(CompressorGradContext &compressorGradContext,
+                             CompressorGradBaseParams &compressorGradBaseParams)
 {
-    if (ge::GRAPH_SUCCESS != CheckFeatureValueSupport(&compressorGradBaseParams.headDim, HEAD_DIM, "headDim", compressorGradContext.opName)) {
+    if (ge::GRAPH_SUCCESS != CheckFeatureValueSupport(&compressorGradBaseParams.headDim, HEAD_DIM,
+                                                      "headDim", compressorGradContext.opName)) {
         return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF(compressorGradBaseParams.hiddenSize > MAX_HIDDEN_SIZE || compressorGradBaseParams.hiddenSize < MIN_HIDDEN_SIZE ||
-                    compressorGradBaseParams.hiddenSize % ALIGN_FACTOR_HIDDEN_SIZE != 0,
-                OP_LOGE(compressorGradContext.opName, "hiddenSize should be whthin [1k, 10k] and be 512-aligned, but got %u",
+    OP_CHECK_IF(compressorGradBaseParams.hiddenSize > MAX_HIDDEN_SIZE ||
+                compressorGradBaseParams.hiddenSize < MIN_HIDDEN_SIZE ||
+                compressorGradBaseParams.hiddenSize % ALIGN_FACTOR_HIDDEN_SIZE != 0,
+                OP_LOGE(compressorGradContext.opName,
+                        "hiddenSize should be whthin [1k, 10k] and be 512-aligned, but got %u",
                         compressorGradBaseParams.hiddenSize),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus LogErrorShapeConsistency(const std::string &name, const gert::StorageShape *shape,
-                                                           const uint32_t &dimNum, const std::string &subName,
-                                                           const uint32_t &expectNum, const char *opName)
+                                         const uint32_t &dimNum, const std::string &subName,
+                                         const uint32_t &expectNum, const char *opName)
 {
     if (shape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -776,7 +781,7 @@ ge::graphStatus CheckBlockDimConstrain(CompressorGradContext &compressorGradCont
                         "aicNum is %u, which should not be less than %u",
                         aicNum, minBlockNum),
                 return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS; 
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus CheckMultiParaConsistency(CompressorGradContext &compressorGradContext,
@@ -976,7 +981,7 @@ static ge::graphStatus CompressorGradTilingFunc(gert::TilingContext *context)
     size_t workspaceSize = 0;
 
     if (CalcWorkSpace(compressorGradContext, compressorGradBaseParams, compressorGradWorkspaceParams, workspaceSize,
-                    libapiSize, aicNum) != ge::GRAPH_SUCCESS) {
+                      libapiSize, aicNum) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     if (GenTilingKey(compressorGradContext) != ge::GRAPH_SUCCESS) {
@@ -1049,5 +1054,3 @@ IMPL_OP_OPTILING(CompressorGrad)
     .Tiling(CompressorGradTilingFunc)
     .TilingParse<CompressorGradCompileInfo>(TilingParseForCompressorGrad);
 } // namespace optiling
-
-
