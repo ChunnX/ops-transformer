@@ -446,14 +446,12 @@ void AllToAllMxQuantMatmulTilingBase::AlignCutResForKernel(CutResult &cutRes, ui
     constexpr uint64_t KERNEL_ALIGN_M = 256;
     auto alignUp = [](uint64_t val, uint64_t align) { return (val + align - 1) / align * align; };
 
-    cutRes.shortTileAtBack = true;
-    cutRes.shortTileLen = 0;
-    cutRes.numShortTile = 0;
-
     uint64_t longTile = alignUp(cutRes.longTileLen, KERNEL_ALIGN_M);
-    if (longTile >= mValue || (cutRes.numShortTile == 0 && cutRes.numLongTile > 0)) {
+    if (longTile >= mValue) {
         cutRes.longTileLen = mValue;
         cutRes.numLongTile = 1;
+        cutRes.shortTileLen = 0;
+        cutRes.numShortTile = 0;
     } else {
         cutRes.longTileLen = longTile;
         cutRes.numLongTile = mValue / longTile;
@@ -461,8 +459,12 @@ void AllToAllMxQuantMatmulTilingBase::AlignCutResForKernel(CutResult &cutRes, ui
         if (remainder > 0) {
             cutRes.shortTileLen = remainder;
             cutRes.numShortTile = 1;
+        } else {
+            cutRes.shortTileLen = 0;
+            cutRes.numShortTile = 0;
         }
     }
+    cutRes.shortTileAtBack = true;
     OP_LOGD(opName_, "Adjusted cutRes: longTile=%lu numLong=%lu shortTile=%lu numShort=%lu atBack=%d",
             cutRes.longTileLen, cutRes.numLongTile, cutRes.shortTileLen, cutRes.numShortTile,
             cutRes.shortTileAtBack);
