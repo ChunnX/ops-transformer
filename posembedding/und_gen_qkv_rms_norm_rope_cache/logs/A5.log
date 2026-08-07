@@ -1,0 +1,95 @@
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[16:01:10] >>> [A5] ps -eo pid,etime,args | grep '[t]tk kernel' | head -3; echo '---'; grep -cE 'STATUS: PASS' /tmp/st31.log 2>/dev/null; export PATH=/workspace/venv/bin:$PATH; cd /workspace/cann/ops-test-kit && python3 -m ttk aclnn --help 2>&1 | head -40
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+31
+usage: ttk aclnn [-h] -i INPUT [-o OUTPUT] [-t TESTCASE] [--ti TESTCASE_INDEX]
+                 [--tc TESTCASE_COUNT] [--priority PRIORITY] [--op OPERATOR]
+                 [--no-op EXCLUDE_OPERATOR] [--seed RANDOM_SEED]
+                 [--input-dist {uniform,normal}]
+                 [--compare {close,cosine,binary,requant}]
+                 [--golden-mode {Enable,Disable,Promote}] [--dump [DUMP]]
+                 [--dump-format {bin,npy,pt,print}] [--dump-on-fail]
+                 [--plugin PLUGIN] [--rerun RERUN] [--title TITLE]
+                 [--csv-preserve] [--single-log] [--print SUMMARY_PRINT]
+                 [--validate] [--proc-no-reuse] [--no-memory-check]
+                 [--task-prof TASK_PROF] [--po PROGRESS_OUTPUT] [--dev DEVICE]
+                 [--device-blacklist DEVICE_BLACKLIST]
+                 [--device-whitelist DEVICE_WHITELIST] [--pc PROCESS_COUNT]
+                 [--plat PLATFORM] [--proc-timeout PROC_TIMEOUT]
+                 [--warmup WARMUP] [--run RUN] [-l LIMIT]
+
+options:
+  -h, --help            show this help message and exit
+  -i INPUT, --input INPUT
+                        CSV test case file
+  -o OUTPUT, --output OUTPUT
+                        Output CSV file
+  -t TESTCASE, --testcase TESTCASE
+                        Specify testcase name(s), comma-separated
+  --ti TESTCASE_INDEX, --testcase-index TESTCASE_INDEX
+                        Specify testcase indexes, e.g. --ti=1,3,6 or --ti=1-5
+  --tc TESTCASE_COUNT, --testcase-count TESTCASE_COUNT
+                        Randomly pick N test cases
+  --priority PRIORITY   Filter by priority, e.g. --priority=1,3 or
+                        --priority=1-3
+  --op OPERATOR, --operator OPERATOR
+                        Filter by operator name(s)
+  --no-op EXCLUDE_OPERATOR, --exclude-operator EXCLUDE_OPERATOR
+                        Exclude operator name(s)
+  --seed RANDOM_SEED, --random-seed RANDOM_SEED
+                        Random seed
+  --input-dist {uniform,normal}
+                        Input data distribution (default: uniform)
+  --compare {close,cosine,binary,requant}
+                        Comparison method (default: close)
+[16:01:10] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[16:01:50] >>> [A5] export PATH=/workspace/venv/bin:$PATH; export PYTHONPATH=/workspace/venv/lib/python3.12/site-packages:$PYTHONPATH; export LD_LIBRARY_PATH=$ASCEND_HOME_PATH/opp/vendors/custom_transformer/op_api/lib/:$LD_LIBRARY_PATH; unset ASCEND_CUSTOM_OPP_PATH; OP=/workspace/cann/ops-transformer/posembedding/und_gen_qkv_rms_norm_rope_cache; cd /workspace/cann/ops-test-kit && timeout 900 python3 -m ttk aclnn -i $OP/tests/st/arch35/ttk_aclnn_und_gen_qkv_rms_norm_rope_cache_st.csv --plugin $OP/tests/assets/golden.py -t UndGenQkvRmsNormRopeCache_w_t38_bs39_capfull --pc 1 --seed 42 2>&1 | tail -35
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2026-08-07 16:05:26,778 [INFO] [2067509 MP MT] [bridge.py:198]: Command: ttk aclnn -i /workspace/cann/ops-transformer/posembedding/und_gen_qkv_rms_norm_rope_cache/tests/st/arch35/ttk_aclnn_und_gen_qkv_rms_norm_rope_cache_st.csv 
+2026-08-07 16:05:26,778 [INFO] [2067509 MP MT] [instance_base.py:100]: TTK Profiling Start! 
+2026-08-07 16:05:26,779 [INFO] [2067509 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
+2026-08-07 16:05:26,782 [INFO] [2067509 MP MT] [instance_base.py:104]: Device Platform: Ascend950PR_9579 
+2026-08-07 16:05:26,782 [INFO] [2067509 MP MT] [instance_base.py:111]: Device Count: 1 
+2026-08-07 16:05:26,782 [INFO] [2067509 MP MT] [instance_base.py:231]: Preparing testcases ... 
+2026-08-07 16:05:26,782 [INFO] [2067509 MP MT] [instance_base.py:233]: Reading testcase file /workspace/cann/ops-transformer/posembedding/und_gen_qkv_rms_norm_rope_cache/tests/st/arch35/ttk_aclnn_und_gen_qkv_rms_norm_rope_cache_st.csv ... 
+2026-08-07 16:05:26,782 [INFO] [2067509 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
+2026-08-07 16:05:26,782 [INFO] [2067509 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
+2026-08-07 16:05:26,879 [ERROR] [2067509 TestcaseManager UndGenQkvRmsNormRopeCache_w_t38_bs39_capfull] [testcase_aclnn.py:1005]: Indexes in `output_tensor_indexes` and `output_inplace_indexes` mismatch: (12,) vs (4, 5) 
+2026-08-07 16:05:26,879 [INFO] [2067509 MP MT] [instance_base.py:237]: Checking testcase name... 
+2026-08-07 16:05:26,879 [INFO] [2067509 MP MT] [instance_base.py:240]: Case number: 1 
+2026-08-07 16:05:27,965 [INFO] [2067509 MP MT] [instance_base.py:313]: Initialize output csv file... 
+2026-08-07 16:05:27,966 [INFO] [2067509 MP MT] [instance_base.py:321]: Output csv file is not specified. It will be set as /workspace/cann/ops-transformer/posembedding/und_gen_qkv_rms_norm_rope_cache/tests/st/arch35/ttk_aclnn_und_gen_qkv_rms_norm_rope_cache_st_result.csv 
+2026-08-07 16:05:28,008 [INFO] [2067509 MP MT] [instance_base.py:145]: Process per device: 1 
+2026-08-07 16:05:28,008 [INFO] [2067509 MP MT] [instance_base.py:147]: Preparing Task Executors... 
+2026-08-07 16:05:28,340 [INFO] [2067509 MP MT] [instance_base.py:211]: 
++-------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 1s Rev: UNKNOWN                       |
++-------------------------------------------------------------------------------------------------------+
+| 0   Ascend950PR_9579 V100 ???C OK        | 2067655 D0P0             UNKNOWN              IDLE     0s  |
+| AIC   0  % 100  Mhz / 1650 Mhz           |                                                            |
+| VEC   0  % ???? Mhz                      |                                                            |
+| HBM   4  % 3200 Mhz Bandwidth: 0  %      |                                                            |
++-------------------------------------------------------------------------------------------------------+ 
+2026-08-07 16:05:28,346 [INFO] [2067655 UndGenQkvRmsNormRopeCache_w_t38_bs39_capfull OnParseParameters] [profiling.py:61]: 
+########################
+GOLD: OUTPUT_INDEX_MISMATCH
+PRECISION_STATUS: OUTPUT_INDEX_MISMATCH
+########################
+ 
+2026-08-07 16:05:28,346 [INFO] [2067509 MP MT] [instance_base.py:126]: ttk Profiling complete 
+[16:01:53] <<< 完成 (exit: 0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[17:05:08] >>> [A5] cd /tmp && ls -la tc_ge_irrun_test_npu_output_*.bin 2>/dev/null; for f in tc_ge_irrun_test_npu_output_*.bin; do echo "$f 非零字节数=$(od -An -tu1 -v $f | tr ' ' '\n' | grep -v '^$' | grep -vc '^0$')"; done
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+-rw-r--r--. 1 root root 16384 Aug  7 17:05 tc_ge_irrun_test_npu_output_0.bin
+-rw-r--r--. 1 root root  4096 Aug  7 17:05 tc_ge_irrun_test_npu_output_1.bin
+-rw-r--r--. 1 root root  4096 Aug  7 17:05 tc_ge_irrun_test_npu_output_2.bin
+tc_ge_irrun_test_npu_output_0.bin 非零字节数=0
+tc_ge_irrun_test_npu_output_1.bin 非零字节数=0
+tc_ge_irrun_test_npu_output_2.bin 非零字节数=0
+[17:05:09] <<< 完成 (exit: 0)
