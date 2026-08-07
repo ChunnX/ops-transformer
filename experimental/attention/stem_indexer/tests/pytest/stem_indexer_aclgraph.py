@@ -16,8 +16,6 @@ import sys
 import torch
 import torch_npu
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-
 import stem_indexer_golden  # noqa: E402
 import custom_ops  # noqa: E402, F401
 
