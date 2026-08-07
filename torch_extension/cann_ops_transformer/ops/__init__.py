@@ -8,7 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_metadata
-from .moe_finalize_routing import moe_finalize_routing
 from .moe_token_permute import moe_token_permute
 from .mega_moe import get_symm_buffer_for_mega_moe, mega_moe
 from .deep_ep import MoeDistributeBuffer
@@ -65,3 +64,10 @@ from .dense_lightning_indexer_softmax_lse import (
     dense_lightning_indexer_softmax_lse,
     dense_lightning_indexer_softmax_lse_metadata,
 )
+
+# MoE operators — source files reside under moe/*/torch_ops_extension/
+# and are loaded via cann_ops_transformer/__init__.py sys.path injection.
+from moe_init_routing_ops import moe_init_routing
+from moe_finalize_routing_ops import moe_finalize_routing
+from moe_init_routing_grad_ops import moe_init_routing_grad
+from moe_finalize_routing_grad_ops import moe_finalize_routing_grad
