@@ -9,52 +9,37 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-"""UndGenQkvRmsNormRopeCache 的 golden 参考实现（NPU/Ascend 950 版本）。
+"""UndGenQkvRmsNormRopeCache 的用例集与输入构造。
 
-与竞品测试脚本 ``test_fused_qk_rmsnorm_mrope_store_kv_fp8.py`` 里的 ``_reference`` 相比：
+golden 的数学实现不在这里，在 ``assets/golden.py``——那是本算子唯一的 golden 实现，
+同时也是 TTK 的输入/golden 插件。本文件只负责在其之上提供：
 
-裁掉的冗余（不在本算子范围内）
-  * FP8/INT8 量化：quant_policy / k_scale / v_scale / q_scale / split_k 全部移除，
-    KV Cache 固定 bf16 存储。
-  * Hadamard-128 变换：2026-07-31 确认本期不做（算子未定义 use_hadamard 属性）。
-  * qk_norm_policy 分支：本算子固定 policy==2（先 RMSNorm 再 MRoPE），
-    policy 0/1 的路径不实现。
-  * ``torch.cat([und_qkv, gen_qkv])``：按段直接 gather，避免 total*hidden 的中间拷贝。
-  * num_seqlen / q_index / block_ids 三件套：已被 host 侧预计算的 slot_mapping 取代。
+  - ``TYPICAL_CASES`` / ``GENERALIZED_CASES``：用例集
+  - ``build_case``：按用例规格造出全套输入张量
 
-补齐的遗漏
-  * 真正的分页 KV Cache 写入（scatter）：golden 直接产出写入后的 k_cache / v_cache，
-    未被 slot_mapping 覆盖的位置保持调用方传入的原值。
-  * float32 -> bf16 的显式舍入：q / k_cache / v_cache 都按 bf16 输出，
-    否则与 NPU 结果比对会有系统性偏差。
-  * 分页写入按 slot 拆 (block_num, row_idx)：cache 固定为连续 BBND
-    [num_blocks, block_size, N, D]（2026-08-01 确认，不支持非连续 BNBD 物理布局）。
-  * Optional 退化路径：gen_qkv=None / gen_len=0、cat_indices=None（恒等映射）、
-    gen_weights=None；positions 允许 1D [total]（三轴广播）。
-  * mrope_section 为空时退化为 [half, 0, 0]（等价标准 RoPE）。
-  * 全向量化：原 golden 逐 token、逐 half 的 Python 双循环在 total=64k 时不可用。
-  * 典型 case 集：headDim=128 固定，(Hq,Hk,Hv) ∈ {(8,1,1), (16,2,2)}，
-    T 不设上限，case 集覆盖 1 ~ 64K；block_size 不设限，case 集覆盖 16~512（见 TYPICAL_CASES）。
+下方从 ``assets.golden`` 再导出的符号是为了让 ``from golden import golden_dense`` 这类
+既有写法继续可用；新代码建议直接从 ``assets.golden`` 导入。
 
-约定（与《算子需求分析和方案设计说明书》一致）
-  und_qkv       bf16 [und_len, N, D]，N = Hq+Hk+Hv，D = head_dim = 128
-  gen_qkv       bf16 [gen_len, N, D]，可为 None
-  weights       bf16 [D] x4（und_q / und_k / gen_q / gen_k）
-  cos_sin_cache f32  [max_pos, D]，前半 cos 后半 sin
-  positions     i64  [3, total]（或 [total]）
-  cat_indices   i64  [total]，out_t -> src_t，可为 None
-  slot_mapping  i64  [total]，slot = block_idx * block_size + row_idx（索引类张量统一 int64）
-  k_cache       bf16 [num_blocks, block_size, Hk, D]（逻辑 shape）
-  v_cache       bf16 [num_blocks, block_size, Hv, D]（逻辑 shape）
-  q             bf16 [total, Hq, D]
-
-本文件是本算子的**唯一 golden 实现**，供以下用例共用：
-  - tests/test_und_gen_qkv_rms_norm_rope_cache_torch.py（torch 接口 + 上板精度比对）
-  - 后续接入的 ST 用例
-纯 CPU torch 实现，不依赖 NPU；`python3 golden.py` 可直接自检 case 集构造是否合法。
+``python3 golden.py`` 可直接自检 case 集构造是否合法。
 """
 
+import os
+import sys
+
 import torch
+
+# assets 是一个包，故模块名是 assets.golden，不会与本文件（模块名 golden）撞名
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from assets.golden import (  # noqa: E402
+    BLOCK_SIZE,
+    HEAD_COMBOS,
+    HEAD_DIM,
+    gather_cache_rows,
+    golden_dense,
+    golden_und_gen_qkv_rms_norm_rope_cache,
+    make_cos_sin_cache,
+    mrope_axis_map,
+)
 
 __all__ = [
     "HEAD_DIM",
@@ -69,268 +54,6 @@ __all__ = [
     "gather_cache_rows",
     "build_case",
 ]
-
-# 本期支持范围（设计说明书 §2.3 典型 case shape）
-HEAD_DIM = 128
-HEAD_COMBOS = ((8, 1, 1), (16, 2, 2))
-# 算子对 block_size 无约束，这只是 case 未指定 block_size 时的默认值
-BLOCK_SIZE = 128
-
-
-# --------------------------------------------------------------------------- #
-# 工具
-# --------------------------------------------------------------------------- #
-def make_cos_sin_cache(max_pos, head_dim, device="cpu", base=10000.0):
-    """构造 cos_sin_cache [max_pos, head_dim]，前半 cos 后半 sin（与竞品一致）。"""
-    inv_freq = 1.0 / (base ** (torch.arange(0, head_dim, 2, device=device).float() / head_dim))
-    freqs = torch.outer(torch.arange(max_pos, device=device).float(), inv_freq)
-    return torch.cat([freqs.cos(), freqs.sin()], dim=-1).contiguous()
-
-
-def mrope_axis_map(head_dim, mrope_section):
-    """预计算 half 个索引各自取哪一轴的 cos/sin（Host Tiling 下发的 axisLut）。
-
-    规则（与竞品 _mrope 完全一致）：
-        axis = 0
-        if i % 3 == 1 and i < 3 * sec[1]: axis = 1
-        if i % 3 == 2 and i < 3 * sec[2]: axis = 2
-
-    这三个数**不是**对 half 的划分：只有 sec[1]/sec[2] 被读，sec[0] 从不参与计算，
-    T 是"其余全归它"的兜底轴。所以 [16,16,16] 实际得到 T/H/W = 32/16/16 而不是
-    16/16/16，[64,16,16] 与 [0,16,16] 的轴映射逐位相同。
-    """
-    half = head_dim // 2
-    if mrope_section is None or len(mrope_section) == 0:
-        mrope_section = [half, 0, 0]
-    assert len(mrope_section) == 3, "mrope_section 必须是长度 3 的列表"
-    # 只是挡手误的粗筛，不是语义要求：参考实现没有这条约束，它自己的用例就是 sum=48。
-    # 要放宽得连 op_host/..._base_tiling.cpp 的 CheckAttrsValid 一起改。
-    assert sum(mrope_section) <= half, "mrope_section 三轴之和不能超过 head_dim/2"
-
-    idx = torch.arange(half, dtype=torch.int64)
-    axis = torch.zeros(half, dtype=torch.int64)
-    axis[(idx % 3 == 1) & (idx < 3 * int(mrope_section[1]))] = 1
-    axis[(idx % 3 == 2) & (idx < 3 * int(mrope_section[2]))] = 2
-    return axis
-
-
-def _normalize_qkv(x, num_heads_total, name):
-    """QKV 输入约定为 3D [T, N, D]；为兼容旧脚本也接受 2D [T, N*D]。"""
-    if x is None:
-        return None
-    if x.dim() == 2:
-        assert x.shape[1] % num_heads_total == 0, f"{name} 的 hidden 无法被 N={num_heads_total} 整除"
-        x = x.reshape(x.shape[0], num_heads_total, x.shape[1] // num_heads_total)
-    assert x.dim() == 3, f"{name} 期望 3D [T, N, D]，实得 {tuple(x.shape)}"
-    assert x.shape[1] == num_heads_total, (
-        f"{name} 的 N={x.shape[1]} 与 Hq+Hk+Hv={num_heads_total} 不一致"
-    )
-    return x
-
-
-def _normalize_positions(positions, total):
-    """positions 支持 [3, total] 与 [total]（单序列，三轴广播）。"""
-    if positions.dim() == 1:
-        positions = positions.unsqueeze(0).expand(3, -1)
-    assert positions.shape == (3, total), f"positions 期望 [3, {total}]，实得 {tuple(positions.shape)}"
-    return positions.to(torch.int64)
-
-
-def _rmsnorm(x, weight, eps):
-    """x: [T, H, D] float32；weight: [T, D] float32（每 token 已按 und/gen 选好）。"""
-    inv = torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + eps)
-    return x * inv * weight.unsqueeze(1)
-
-
-def _rope(x, cos, sin):
-    """x: [T, H, D] float32；cos/sin: [T, half] float32（已按 mask 合并三轴）。"""
-    half = x.shape[-1] // 2
-    x1 = x[..., :half]
-    x2 = x[..., half:]
-    c = cos.unsqueeze(1)
-    s = sin.unsqueeze(1)
-    return torch.cat([x1 * c - x2 * s, x2 * c + x1 * s], dim=-1)
-
-
-# --------------------------------------------------------------------------- #
-# 稠密段：split + index + rmsnorm + mrope（不含 cache 写入）
-# --------------------------------------------------------------------------- #
-def golden_dense(
-    und_qkv,
-    gen_qkv,
-    und_weights_q,
-    und_weights_k,
-    gen_weights_q,
-    gen_weights_k,
-    cos_sin_cache,
-    positions,
-    cat_indices,
-    num_heads_q,
-    num_heads_k,
-    num_heads_v,
-    norm_eps=1e-6,
-    mrope_section=None,
-):
-    """返回 float32 的 (q, k, v)，shape 分别 [total, Hq/Hk/Hv, D]。
-
-    这是 KV Cache scatter 之前的中间结果，供精度定界与单元比对使用。
-    """
-    device = und_qkv.device
-    num_heads_total = num_heads_q + num_heads_k + num_heads_v
-    und_qkv = _normalize_qkv(und_qkv, num_heads_total, "und_qkv")
-    gen_qkv = _normalize_qkv(gen_qkv, num_heads_total, "gen_qkv")
-
-    und_len, _, head_dim = und_qkv.shape
-    gen_len = 0 if gen_qkv is None else gen_qkv.shape[0]
-    if gen_qkv is not None:
-        assert gen_qkv.shape[2] == head_dim, "gen_qkv 的 head_dim 必须与 und_qkv 一致"
-
-    total = (und_len + gen_len) if cat_indices is None else cat_indices.numel()
-    if cat_indices is None:
-        src = torch.arange(total, dtype=torch.int64, device=device)  # 恒等映射
-    else:
-        assert cat_indices.dtype in (torch.int64, torch.int32), "cat_indices 应为 int64"
-        src = cat_indices.to(torch.int64)
-    assert int(src.min()) >= 0 and int(src.max()) < und_len + gen_len, "cat_indices 越界"
-
-    is_und = src < und_len
-
-    # ---- index：按 src_t 从 und/gen 两段各自 gather，不做 concat ----
-    rows = torch.empty(total, num_heads_total, head_dim, dtype=torch.float32, device=device)
-    if bool(is_und.any()):
-        rows[is_und] = und_qkv[src[is_und]].float()
-    if bool((~is_und).any()):
-        assert gen_qkv is not None, "src_t >= und_len 但 gen_qkv 为 None"
-        rows[~is_und] = gen_qkv[src[~is_und] - und_len].float()
-
-    # ---- split（N 维切 Q/K/V）----
-    q = rows[:, :num_heads_q, :]
-    k = rows[:, num_heads_q:num_heads_q + num_heads_k, :]
-    v = rows[:, num_heads_q + num_heads_k:, :]
-
-    # ---- rmsnorm（按 token 选 und/gen 权重）----
-    und_wq = und_weights_q.float()
-    und_wk = und_weights_k.float()
-    gen_wq = und_wq if gen_weights_q is None else gen_weights_q.float()
-    gen_wk = und_wk if gen_weights_k is None else gen_weights_k.float()
-    sel = is_und.unsqueeze(-1)
-    w_q = torch.where(sel, und_wq.unsqueeze(0), gen_wq.unsqueeze(0))  # [total, D]
-    w_k = torch.where(sel, und_wk.unsqueeze(0), gen_wk.unsqueeze(0))
-    q = _rmsnorm(q, w_q, norm_eps)
-    k = _rmsnorm(k, w_k, norm_eps)
-
-    # ---- MRoPE：三轴 cos/sin 按 axisLut 合并成一份，再做标准 RoPE ----
-    half = head_dim // 2
-    positions = _normalize_positions(positions, total)
-    axis = mrope_axis_map(head_dim, mrope_section).to(device)          # [half]
-    pos_sel = positions[axis]                                          # [half, total]
-    pos_sel = pos_sel.transpose(0, 1).contiguous()                     # [total, half]
-    assert int(pos_sel.min()) >= 0 and int(pos_sel.max()) < cos_sin_cache.shape[0], (
-        "positions 超出 cos_sin_cache 的 max_pos 范围"
-    )
-    col = torch.arange(half, dtype=torch.int64, device=device).unsqueeze(0)  # [1, half]
-    cos_sin_f32 = cos_sin_cache.float()
-    cos = cos_sin_f32[pos_sel, col]                                    # [total, half]
-    sin = cos_sin_f32[pos_sel, col + half]
-    q = _rope(q, cos, sin)
-    k = _rope(k, cos, sin)
-
-    # V 分支：既不 rmsnorm 也不 rope，仅 index 后直通
-    return q, k, v.contiguous()
-
-
-# --------------------------------------------------------------------------- #
-# 分页 KV Cache 写入 / 读回
-# --------------------------------------------------------------------------- #
-def _check_cache(cache, name):
-    """cache 固定为连续 BBND：[num_blocks, block_size, N, D]。"""
-    assert cache.dim() == 4, f"{name} 期望 4D [num_blocks, block_size, N, D]，实得 {tuple(cache.shape)}"
-    assert cache.is_contiguous(), f"{name} 必须内存连续（BBND），本算子不支持非连续布局"
-    return cache
-
-
-def _scatter_cache(cache, slot_mapping, data):
-    """按 slot_mapping 原地写入；data: [total, N, D]（已是 cache 的 dtype）。"""
-    num_blocks, block_size = cache.shape[0], cache.shape[1]
-    assert slot_mapping.dtype in (torch.int64, torch.int32), "slot_mapping 应为 int64（兼容 int32）"
-    slot = slot_mapping.to(torch.int64)
-    assert int(slot.min()) >= 0 and int(slot.max()) < num_blocks * block_size, "slot_mapping 越界"
-    cache[slot // block_size, slot % block_size] = data
-    return cache
-
-
-def gather_cache_rows(cache, slot_mapping):
-    """按 slot_mapping 从 cache 读回 [total, N, D]，用于精度比对。"""
-    block_size = cache.shape[1]
-    slot = slot_mapping.to(torch.int64)
-    return cache[slot // block_size, slot % block_size]
-
-
-# --------------------------------------------------------------------------- #
-# 算子 golden 主入口
-# --------------------------------------------------------------------------- #
-def golden_und_gen_qkv_rms_norm_rope_cache(
-    und_qkv,
-    und_weights_q,
-    und_weights_k,
-    cos_sin_cache,
-    k_cache,
-    v_cache,
-    slot_mapping,
-    positions,
-    gen_qkv=None,
-    gen_weights_q=None,
-    gen_weights_k=None,
-    cat_indices=None,
-    num_heads_q=8,
-    num_heads_k=1,
-    num_heads_v=1,
-    norm_eps=1e-6,
-    mrope_section=None,
-    inplace=False,
-):
-    """返回 (q, k_cache, v_cache)，dtype 全为 bf16。
-
-    k_cache / v_cache 语义与算子一致：调用方预分配，算子原地写入；
-    未被 slot_mapping 命中的位置保持传入的原值。默认返回副本（inplace=False），
-    传 inplace=True 则直接改写入参。
-    """
-    q_f32, k_f32, v_f32 = golden_dense(
-        und_qkv,
-        gen_qkv,
-        und_weights_q,
-        und_weights_k,
-        gen_weights_q,
-        gen_weights_k,
-        cos_sin_cache,
-        positions,
-        cat_indices,
-        num_heads_q,
-        num_heads_k,
-        num_heads_v,
-        norm_eps,
-        mrope_section,
-    )
-
-    total = q_f32.shape[0]
-    assert slot_mapping.numel() == total, (
-        f"slot_mapping 长度 {slot_mapping.numel()} 与 total {total} 不一致"
-    )
-    assert torch.unique(slot_mapping.to(torch.int64)).numel() == total, (
-        "slot_mapping 存在重复 slot，多核写入结果不确定"
-    )
-
-    _check_cache(k_cache, "k_cache")
-    _check_cache(v_cache, "v_cache")
-    k_out = k_cache if inplace else k_cache.clone()
-    v_out = v_cache if inplace else v_cache.clone()
-
-    # 写入前 Cast float32 -> bf16（与 Kernel 的 Cast + DataCopy 对齐）
-    _scatter_cache(k_out, slot_mapping, k_f32.to(k_out.dtype))
-    _scatter_cache(v_out, slot_mapping, v_f32.to(v_out.dtype))
-
-    q_out = q_f32.to(torch.bfloat16)
-    return q_out, k_out, v_out
 
 
 # --------------------------------------------------------------------------- #

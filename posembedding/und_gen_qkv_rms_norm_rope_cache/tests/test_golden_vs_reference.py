@@ -40,10 +40,10 @@ import types
 import torch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from assets.golden import golden_dense  # noqa: E402
 from golden import (  # noqa: E402
     TYPICAL_CASES,
     build_case,
-    golden_dense,
 )
 
 DEFAULT_REF_ENV = "UND_GEN_REF_FILE"

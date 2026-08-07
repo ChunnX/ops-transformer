@@ -11,7 +11,8 @@
 # ----------------------------------------------------------------------------
 """UndGenQkvRmsNormRopeCache torch 接口测试（NPU 上板）。
 
-用例集与精度基准都取自同目录的 golden.py（本算子唯一 golden 实现），
+精度基准取自 assets/golden.py（本算子唯一 golden 实现，同时是 TTK 插件），
+用例集取自同目录的 golden.py，
 覆盖 headDim=128、(Hq,Hk,Hv) ∈ {(8,1,1),(16,2,2)}、block_size=16~512、T=1~64K
 （T 本身算子侧不设上限，case 集覆盖到 64K）。
 
@@ -33,7 +34,7 @@
   python3 test_und_gen_qkv_rms_norm_rope_cache_torch.py --full    # 追加 T=64K
   python3 test_und_gen_qkv_rms_norm_rope_cache_torch.py --case t10752_typical_h8
 
-基线：2026-08-03 在 A5（Ascend950PR_9579）上 12/12 全 PASS（含 --full 的两个 T=64K）。
+基线：2026-08-07 在 A5（Ascend950PR_9579）上 --full 17/17 全 PASS（含两个 T=64K）。
 """
 
 import argparse
@@ -92,13 +93,15 @@ if _stub_torchair_if_broken():
     print("[warn] torchair 与当前 torch 不兼容，已桩掉；本算子走 aclnn 直调不受影响")
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from golden import (  # noqa: E402
-    GENERALIZED_CASES,
+from assets.golden import (  # noqa: E402
     HEAD_DIM,
-    TYPICAL_CASES,
-    build_case,
     gather_cache_rows,
     golden_dense,
+)
+from golden import (  # noqa: E402
+    GENERALIZED_CASES,
+    TYPICAL_CASES,
+    build_case,
 )
 
 # 直接导入本算子，避免加载其他无关算子
