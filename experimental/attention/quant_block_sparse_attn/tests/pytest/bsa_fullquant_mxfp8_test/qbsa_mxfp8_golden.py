@@ -2428,7 +2428,8 @@ if __name__ == "__main__":
         "含 gen 时数据写入 debug pt 目录；不含 gen 时从 golden_cache 加载(可用 --cache-dir 指定)",
     )
     parser.add_argument(
-        "--graph",
+        "--aclgraph",
+        dest="graph",
         action="store_true",
         help="使用图模式 (torchair + torch.compile) 执行 NPU 算子调用",
     )
