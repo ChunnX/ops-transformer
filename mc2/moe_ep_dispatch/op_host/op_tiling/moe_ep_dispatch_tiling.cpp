@@ -812,7 +812,8 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
 
     uint64_t cntWinStateSize =
         epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + epWorldSize * WIN_ADDR_ALIGN;
-    uint64_t slotWinStateSize = epWorldSize * AlignUpWin(nmt * sizeof(uint64_t));
+    constexpr uint64_t SLOT_NOTIFY_STRIDE = 64UL;
+    uint64_t slotWinStateSize = epWorldSize * AlignUpWin(nmt * SLOT_NOTIFY_STRIDE);
     uint64_t dispatchWinStateSize = cntWinStateSize + slotWinStateSize;
     uint64_t combineWinStateSize = nmt * topK * WIN_ADDR_ALIGN + epWorldSize * WIN_ADDR_ALIGN;
     uint64_t totalStateWinSizeEp = dispatchWinStateSize + combineWinStateSize;
@@ -854,7 +855,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
     info.totalWinSizeEp = maxWindowSize;
     info.cntWinStateOffset = 0UL;
     info.slotWinStateOffset = cntWinStateSize;
-    info.slotStateBytesPerRank = AlignUpWin(nmt * sizeof(uint64_t));
+    info.slotStateBytesPerRank = AlignUpWin(nmt * SLOT_NOTIFY_STRIDE);
     OP_LOGD(nodeName, "windowSize = %lu", maxWindowSize);
     return ge::GRAPH_SUCCESS;
 }
