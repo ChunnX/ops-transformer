@@ -1,97 +1,204 @@
 # ApplyRotaryPosEmbGrad
 
-## 算子功能
+## 产品支持情况
 
-双路反向旋转位置编码（ApplyRotaryPosEmb 的反向）。同时计算 **query** 和 **key** 的 rope 反向梯度，融合为一次 kernel 调用，节省 cos/sin 加载和 kernel launch 开销。
+| 产品                                                         |  是否支持   |
+| :----------------------------------------------------------- |:-------:|
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×    |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×    |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
+| <term>Atlas 推理系列产品</term>                             |    ×    |
+| <term>Atlas 训练系列产品</term>                              |    ×    |
 
-## 数学公式（half mode）
+## 功能说明
 
-对于 Q 路和 K 路分别计算：
+- **算子功能**：执行双路旋转位置编码[ApplyRotaryPosEmb](../apply_rotary_pos_emb/README.md)的反向计算。同时计算 **query** 和 **key** 的 rope 反向梯度，融合为一次 kernel 调用，节省 cos/sin 加载和 kernel launch 开销。
 
-```
-# Q 路
-grad_query = cat(cos1 * grad_q_embed_1 + sin2 * grad_q_embed_2, cos2 * grad_q_embed_2 - sin1 * grad_q_embed_1, dim=-1)
-grad_cos += sum(grad_query_embed * query, [reduce_dims])
-grad_sin += sum(grad_query_embed * cat(-query_2, query_1, dim=-1), [reduce_dims])
+- **计算公式**：
 
-# K 路
-grad_key = cat(cos1 * grad_k_embed_1 + sin2 * grad_k_embed_2, cos2 * grad_k_embed_2 - sin1 * grad_k_embed_1, dim=-1)
-grad_cos += sum(grad_key_embed * key, [reduce_dims])
-grad_sin += sum(grad_key_embed * cat(-key_2, key_1, dim=-1), [reduce_dims])
-```
+    取旋转位置编码的正向计算中，broadcast的轴列表为`dims`，则计算公式可表达如下：
 
-## 支持情况
+    - <term>Ascend 950PR/Ascend 950DT</term>：
 
-| 产品 | 支持 |
-|:--|:--|
-| Ascend 950PR/Ascend 950DT | √ |
-| Atlas A3/A2 系列 | ×（不涉及 membase） |
+    （1）half模式：
+    $$
+    grad\_q_1, grad\_q_2 = chunk(grad\_query\_embed, chunks=2, dim=-1)
+    $$
 
-## 输入/输出
+    $$
+    grad\_k_1, grad\_k_2 = chunk(grad\_key\_embed, chunks=2, dim=-1)
+    $$
 
-### 输入
-| 参数 | 类型 | 说明 |
+    $$
+    cos_1, cos_2 = chunk(cos, chunks=2, dim=-1)
+    $$
+
+    $$
+    sin_1, sin_2 = chunk(sin, chunks=2, dim=-1)
+    $$
+
+    $$
+    query\_rotate = cat((-query_2, query_1), dim=-1)
+    $$
+
+    $$
+    key\_rotate = cat((-key_2, key_1), dim=-1)
+    $$
+
+    $$
+    grad\_query = cat(cos_1 * grad\_q_1 + sin_2 * grad\_q_2, cos_2 * grad\_q_2 - sin_1 * grad\_q_1, dim=-1)
+    $$
+
+    $$
+    grad\_key = cat(cos_1 * grad\_k_1 + sin_2 * grad\_k_2, cos_2 * grad\_k_2 - sin_1 * grad\_k_1, dim=-1)
+    $$
+
+    $$
+    grad\_cos = sum(grad\_query\_embed * query + grad\_key\_embed * key, dims)
+    $$
+
+    $$
+    grad\_sin = sum(grad\_query\_embed * query\_rotate + grad\_key\_embed * key\_rotate, dims)
+    $$
+
+## 参数说明
+
+<table style="undefined;table-layout: fixed; width: 1200px">
+<colgroup>
+  <col style="width: 50px">
+  <col style="width: 50px">
+  <col style="width: 200px">
+  <col style="width: 100px">
+  <col style="width: 50px">
+</colgroup>
+<thead>
+  <tr>
+    <th>参数名</th>
+    <th>输入/输出/属性</th>
+    <th>描述</th>
+    <th>数据类型</th>
+    <th>数据格式</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td>grad_query_embed</td>
+    <td>输入</td>
+    <td>正向输出query的导数，对应公式中$grad\_q_{embed}$。</td>
+    <td>BFLOAT16、FLOAT16、FLOAT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>grad_key_embed</td>
+    <td>输入</td>
+    <td>正向输出key的导数，对应公式中$grad\_k_{embed}$。</td>
+    <td>BFLOAT16、FLOAT16、FLOAT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>cos</td>
+    <td>输入</td>
+    <td>正向计算输入cos，需与grad_query_embed数据类型一致。</td>
+    <td>BFLOAT16、FLOAT16、FLOAT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>sin</td>
+    <td>输入</td>
+    <td>正向计算输入sin，需与grad_query_embed数据类型一致。</td>
+    <td>BFLOAT16、FLOAT16、FLOAT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>query</td>
+    <td>可选输入</td>
+    <td>正向计算输入query。如果为空指针，则不计算grad_cos和grad_sin。</td>
+    <td>BFLOAT16、FLOAT16、FLOAT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>key</td>
+    <td>可选输入</td>
+    <td>正向计算输入key。如果为空指针，则不计算grad_cos和grad_sin。</td>
+    <td>BFLOAT16、FLOAT16、FLOAT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>rotary_mode</td>
+    <td>属性</td>
+    <td>旋转模式，仅支持"half"。</td>
+    <td>STRING</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>layout</td>
+    <td>属性</td>
+    <td>输入Tensor的布局格式。1=BSND，2=SBND，4=TND。默认值为1。</td>
+    <td>INT64</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>grad_query</td>
+    <td>输出</td>
+    <td>正向计算输入query的导数，shape与grad_query_embed相同。</td>
+    <td>BFLOAT16、FLOAT16、FLOAT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>grad_key</td>
+    <td>输出</td>
+    <td>正向计算输入key的导数，shape与grad_key_embed相同。</td>
+    <td>BFLOAT16、FLOAT16、FLOAT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>grad_cos</td>
+    <td>可选输出</td>
+    <td>正向计算输入cos的导数，仅当query和key非空时有效。</td>
+    <td>BFLOAT16、FLOAT16、FLOAT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>grad_sin</td>
+    <td>可选输出</td>
+    <td>正向计算输入sin的导数，仅当query和key非空时有效。</td>
+    <td>BFLOAT16、FLOAT16、FLOAT32</td>
+    <td>ND</td>
+  </tr>
+</tbody>
+</table>
+
+## 约束说明
+
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    输入张量支持BNSD、BSND、SBND、TND排布。各参数的shape约束可以描述如下：
+    - 输入只支持3维或4维。
+    - 输入输出Tensor的dtype必须相同。
+    - 输入输出Tensor的D轴必须相同，在half模式下必须≤1024且能被2整除。
+    - `grad_query_embed`、`grad_query`的shape必须相同，`grad_key_embed`、`grad_key`的shape必须相同。
+    - 对于任意`layout`，`grad_query_embed`和`grad_key_embed`除N维度外其它维度必须相同。
+    - `cos`、`sin`的N维度必须等于1，`cos`、`sin`的B维度可以等于1，也可以和`grad_query_embed`的B维度一致，其余维度需与`grad_query_embed`一致。
+    - `cos`、`sin`、`grad_cos`、`grad_sin`的shape必须相同。
+    - `query`维度需与`grad_query_embed`一致，`key`维度需与`grad_key_embed`一致。
+    - `rotary_mode`仅支持"half"。
+    - `layout`仅支持{1, 2, 4}，对应{BSND, SBND, TND}。3=BNSD为预留，暂不支持。
+
+## 调用说明
+
+| 调用方式           | 调用样例                                                                                    | 说明                                                                                                  |
+|----------------|-----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
+| aclnn调用 | [test_aclnn_apply_rotary_pos_emb_grad](./examples/test_aclnn_apply_rotary_pos_emb_grad.cpp) | 通过[aclnnApplyRotaryPosEmbGrad](./docs/aclnnApplyRotaryPosEmbGrad.md)接口方式调用ApplyRotaryPosEmbGrad算子。             |
+
+## Tiling 模板
+
+根据cos/sin的广播模式选择不同的分核策略：
+
+| 模板 | 适用场景 | 核间切分 |
 |:--|:--|:--|
-| grad_query_embed | REQUIRED | Q 路输出端上游梯度 |
-| grad_key_embed | REQUIRED | K 路输出端上游梯度 |
-| cos | REQUIRED | 正向 cos 输入 |
-| sin | REQUIRED | 正向 sin 输入 |
-| query | OPTIONAL | 正向 Q 输入（非空则计算 grad_cos/grad_sin） |
-| key | OPTIONAL | 正向 K 输入（非空则计算 grad_cos/grad_sin） |
-
-### 输出
-| 参数 | 说明 |
-|:--|:--|
-| grad_query | Q 路梯度 |
-| grad_key | K 路梯度 |
-| grad_cos | cos 梯度（query/key 非空时有效） |
-| grad_sin | sin 梯度（query/key 非空时有效） |
-
-### 属性
-| 属性 | 类型 | 默认值 | 说明 |
-|:--|:--|:--|:--|
-| rotary_mode | string | "half" | 旋转模式。仅支持 "half"。 |
-| layout | int | 1 | layout 类型。1=BSND, 2=SBND, 3=BNSD(预留), 4=TND。 |
-
-## Layout 支持
-
-OpDef attr layout: {1=BSND, 2=SBND, 3=BNSD, 4=TND} → internal Layout {0=BSND, 1=SBND, 2=BNSD}
-
-| Attr Layout | dy shape | cos shape | Internal Layout | DxTilingKey | 状态 |
-|:--|:--|:--|:--|:--|:--|
-| 1=BSND, B=1 | (1,S,N,D) | (1,S,1,D) | 0=BSND | 203=BAB | √ |
-| 1=BSND, B>1 | (B,S,N,D) | (B,S,1,D) 或 (1,S,1,D) | 1=SBND | 204=AB | √ |
-| 2=SBND | (S,B,N,D) | (S,B,1,D) 或 (S,1,1,D) | 1=SBND | 204=AB | √ |
-| 3=BNSD | (B,N,S,D) | (B,1,S,D) 或 (1,1,S,D) | 2=BNSD | — | 预留 |
-| 4=TND | (T,N,D) | (T,1,D) | 0=BSND | 203=BAB | √ |
-
-> 约束: cos N 维必须 = 1; cos B ∈ {1, grad_query_embed.B}; cos S/D 与 grad_query_embed 一致。
-> TND 经维度映射 (B=1, S=T, N=N) 后等价于 BSND → BAB。
-
-## 约束
-
-- 仅 Ascend 950 (regbase) 支持
-- 仅 half 模式 (rotary_mode="half")
-- D <= 1024, D 必须能被 2 整除
-- cos N 必须 = 1; cos B ∈ {1, grad_query_embed.B}
-- query 和 key 必须同时非空或同时为空
-- GQA 支持: nQ >= nK 或 nK >= nQ 均可
-
-## Tiling Key 编码
-
-四维 tiling key: `REDUCE_TPL_KEY + DxTilingKey(8bit) + DcosFlag(1bit) + Layout(2bit)`
-
-| DxTilingKey | 值 | Split 模式 |
-|:--|:--|:--|
-| KEY_BAB | 203 | BSND 分核 |
-| KEY_AB  | 204 | SBND 分核 |
-| KEY_A   | 205 | NO_BROADCAST 分核 |
-
-| Layout | 值 | 说明 |
-|:--|:--|:--|
-| BSND | 0 | cos (1, S, 1, D) + TND 映射 — BAB |
-| SBND | 1 | cos (B, S, 1, D) B>1 — AB |
-| BNSD | 2 | 预留，不实例化 |
+| BAB | layout=BSND且cos为1S1D，或layout=TND | B轴分核 × S轴分核 |
+| AB | layout=BSND且cos为BS1D，或layout=SBND | BS合并轴分核 × N轴分核 |
+| A | grad_query_embed、cos、sin的shape完全一致 | B×N×S合并 → 逐元素分核 |
 
 ## 文件结构
 
@@ -99,6 +206,8 @@ OpDef attr layout: {1=BSND, 2=SBND, 3=BNSD, 4=TND} → internal Layout {0=BSND, 
 apply_rotary_pos_emb_grad/
 ├── CMakeLists.txt
 ├── README.md
+├── docs/
+│   └── aclnnApplyRotaryPosEmbGrad.md
 ├── examples/
 │   └── test_aclnn_apply_rotary_pos_emb_grad.cpp
 ├── op_graph/
@@ -109,24 +218,26 @@ apply_rotary_pos_emb_grad/
 │   ├── CMakeLists.txt
 │   ├── apply_rotary_pos_emb_grad_def.cpp
 │   ├── apply_rotary_pos_emb_grad_infershape.cpp
-│   ├── apply_rotary_pos_emb_grad_tiling.h
 │   ├── apply_rotary_pos_emb_grad_tiling.cpp
+│   ├── apply_rotary_pos_emb_grad_tiling.h
 │   ├── apply_rotary_pos_emb_grad_tiling_bab.cpp
 │   ├── apply_rotary_pos_emb_grad_tiling_ab.cpp
 │   ├── apply_rotary_pos_emb_grad_tiling_a_and_b.cpp
 │   └── config/ascend950/
 │       ├── apply_rotary_pos_emb_grad_binary.json
 │       └── apply_rotary_pos_emb_grad_simplified_key.ini
-└── op_kernel/
-    ├── apply_rotary_pos_emb_grad_apt.cpp
-    └── arch35/
-        ├── apply_rotary_pos_emb_grad_tiling_key.h
-        ├── apply_rotary_pos_emb_grad_tiling_data.h
-        ├── apply_rotary_pos_emb_grad_common.h
-        ├── apply_rotary_pos_emb_grad_dag.h
-        ├── apply_rotary_pos_emb_grad_rotary_x_vf.h
-        ├── apply_rotary_pos_emb_grad_bab.h
-        ├── apply_rotary_pos_emb_grad_ab.h
-        ├── apply_rotary_pos_emb_grad_a_and_b.h
-        └── apply_rotary_pos_emb_grad_rotary_x.h
+├── op_kernel/
+│   ├── apply_rotary_pos_emb_grad_apt.cpp
+│   └── arch35/
+│       ├── apply_rotary_pos_emb_grad_tiling_key.h
+│       ├── apply_rotary_pos_emb_grad_tiling_data.h
+│       ├── apply_rotary_pos_emb_grad_common.h
+│       ├── apply_rotary_pos_emb_grad_dag.h
+│       ├── apply_rotary_pos_emb_grad_rotary_x.h
+│       ├── apply_rotary_pos_emb_grad_rotary_x_vf.h
+│       ├── apply_rotary_pos_emb_grad_bab.h
+│       ├── apply_rotary_pos_emb_grad_ab.h
+│       └── apply_rotary_pos_emb_grad_a_and_b.h
+└── tests/
+    └── ...
 ```

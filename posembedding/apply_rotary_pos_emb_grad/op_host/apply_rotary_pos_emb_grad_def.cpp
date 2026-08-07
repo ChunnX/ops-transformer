@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -10,21 +10,7 @@
 
 /*!
  * \file apply_rotary_pos_emb_grad_def.cpp
- * \brief OpDef 注册
- *
- * torch.ops.custom.npu_apply_rotary_pos_emb_backward(
- *   grad_query_embed, grad_key_embed, cos, sin,
- *   *, query=None, key=None,
- *   rotary_mode="half", layout=1
- * ) -> (grad_query, grad_key, grad_cos, grad_sin)
- *
- * 约束:
- *   输入 3D/4D, 同 dtype, D<=1024, D%2==0.
- *   gradQueryEmbed==gradQuery, gradKeyEmbed==gradKey.
- *   gradQueryEmbed/gradKeyEmbed 除 N 外一致.
- *   cos==sin, cos N==1, cos B∈{1, gradQueryEmbed.B}, 其余维一致.
- *   query==gradQueryEmbed, key==gradKeyEmbed. gradCos==cos, gradSin==sin.
- *   layout∈{1=BSND, 2=SBND, 3=BNSD(预留), 4=TND}.
+ * \brief
  */
 #include <cstdint>
 #include "register/op_def_registry.h"
@@ -94,7 +80,6 @@ public:
         this->Attr("rotary_mode").AttrType(OPTIONAL).String("half");
         this->Attr("layout").AttrType(OPTIONAL).Int(1);
 
-        // 仅 Ascend 950 (regbase)
         OpAICoreConfig regbaseCfg;
         regbaseCfg.DynamicCompileStaticFlag(true)
             .DynamicRankSupportFlag(true)

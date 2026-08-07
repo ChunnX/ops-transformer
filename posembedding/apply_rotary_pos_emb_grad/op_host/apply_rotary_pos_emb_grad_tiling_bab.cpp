@@ -10,37 +10,56 @@
 
 /*!
  * \file apply_rotary_pos_emb_grad_tiling_bab.cpp
- * \brief BAB tiling (BSND layout, cos 1S1D)
- * 双路反向 Q+K
- * 参照 rope_grad_regbase_tiling_bab.cpp
+ * \brief BAB template tiling for ApplyRotaryPosEmbGrad
+ *
+ * BAB 模板适用场景：cos 沿 B 轴和 N 轴广播，即所有 B 和所有 N 共享同一份 S 方向的 cos/sin。
+ * 核间切分：将 B × S 二维网格分配到核集群上，每个核处理若干 B 行和若干 S 行。
+ * 核内切分：外层循环搬入 cos/sin（被 Q/K 两路复用），内层循环遍历 N。
+ *
+ * 相比单路反向算子，双路融合的关键差异：
+ * - nQ / nK 独立，N 轴切分以 max(nQ, nK) 为上界，Q/K 各自裁尾
+ * - UB buffer 需要同时容纳 gradQ + gradK 双路输入和 dxQ + dxK 双路输出
+ * - cos/sin 在 UB 中保持不变，被 Q 路和 K 路依次复用
+ * - 当 dCosFlag=1 时，grad_cos/grad_sin 的逐元素累加（query*gradQ + key*gradK）
+ *   在 kernel 内与 grad_query/grad_key 同步计算，不拆分为独立阶段；
+ *   仅有跨核 reduce（sum over broadcast dims）通过 reduce 框架 workspace 完成
  */
+
 #include "apply_rotary_pos_emb_grad_tiling.h"
 
 namespace optiling {
 constexpr uint64_t APPLY_ROPE_GRAD_BAB_TILING_PRIORITY = 20000;
-constexpr uint32_t MIN_UB_LOAD_D_NUM = 4;
 constexpr uint32_t DOUBLE_BUFFER = 2;
 
-class ApplyRopeGradRegBaseTilingClassBAB : public ApplyRopeGradRegbaseTilingClass
+// UB buffer count for inner-loop tensors × double buffer
+// dCosFlag=0: gradQ + gradK + dxQ + dxK = 4 tensors × Db(2) = 8
+// dCosFlag=1: + query + key + gradCos + gradSin = 8 tensors × Db(2) = 16
+constexpr uint32_t MIN_UB_LOAD_D_NUM_DCOS0 = 8;
+constexpr uint32_t MIN_UB_LOAD_D_NUM_DCOS1 = 16;
+
+class ApplyRotaryPosEmbGradRegbaseTilingClassBAB : public ApplyRotaryPosEmbGradRegbaseTilingClass
 {
 public:
-    explicit ApplyRopeGradRegBaseTilingClassBAB(gert::TilingContext* context_)
-        : ApplyRopeGradRegbaseTilingClass(context_) {}
-    ~ApplyRopeGradRegBaseTilingClassBAB() override = default;
+    explicit ApplyRotaryPosEmbGradRegbaseTilingClassBAB(gert::TilingContext* context_)
+        : ApplyRotaryPosEmbGradRegbaseTilingClass(context_)
+    {}
+    ~ApplyRotaryPosEmbGradRegbaseTilingClassBAB() override = default;
     void Reset(gert::TilingContext* context_) override
     {
-        ApplyRopeGradRegbaseTilingClass::Reset(context_);
+        ApplyRotaryPosEmbGradRegbaseTilingClass::Reset(context_);
     }
 
 protected:
     ge::graphStatus DoOpTiling() override;
     ge::graphStatus PostTiling() override;
+
     bool IsCapable() override
     {
-        // BSND layout (含 TND 映射后的 1S1D): cosb_==1, dy B==1
+        // BAB 模板适用条件:
+        // 1. Regbase soc (ascend950)
+        // 2. BSND layout 且 cosb == 1 (1S1D广播模式), 或 TND layout (退化为 B=1 的 BSND)
         if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_) &&
-            ((layout_ == ApplyRopeLayout::BSND) || (isTndLayout_)) &&
-            (cosb_ == 1)) {
+            ((layout_ == ApplyRopeGradLayout::BSND && cosb_ == 1) || isTndLayout_)) {
             return true;
         }
         return false;
@@ -48,21 +67,27 @@ protected:
 
 private:
     int64_t coreNum_ = 0;
-    int64_t blockNumB_ = 0, blockFactorB_ = 0;
-    int64_t blockNumS_ = 0, blockFactorS_ = 0;
-    int64_t ubFactorS_ = 1, ubFactorB_ = 1;
-    int64_t ubLoopNumN_ = 0, ubFactorN_ = 1, ubTailFactorN_ = 0;
+    int64_t blockNumB_ = 0;
+    int64_t blockFactorB_ = 0;
+    int64_t blockNumS_ = 0;
+    int64_t blockFactorS_ = 0;
+    int64_t ubFactorS_ = 1;
+    int64_t ubLoopNumN_ = 0;     // N 轴 UB 循环次数
+    int64_t ubFactorN_ = 1;      // 每次循环处理的 N 数
+    int64_t ubTailFactorN_ = 0;  // 最后一次循环处理的 N 数
     int64_t ubSize_ = 0;
+    int64_t maxN_ = 0;           // max(nQ, nK)
 
     void SplitCore();
     ge::graphStatus SplitUb();
     void PrintTilingData();
 };
 
-ge::graphStatus ApplyRopeGradRegBaseTilingClassBAB::DoOpTiling()
+ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassBAB::DoOpTiling()
 {
     ubSize_ = aicoreParams_.ubSize;
     coreNum_ = aicoreParams_.numBlocks;
+    maxN_ = std::max(nQ_, nK_);
     ge::graphStatus status = SplitUb();
     if (status != ge::GRAPH_SUCCESS) {
         OP_LOGE(context_->GetNodeName(), "SplitUb Failed.");
@@ -70,101 +95,147 @@ ge::graphStatus ApplyRopeGradRegBaseTilingClassBAB::DoOpTiling()
     }
     SplitCore();
     if (blockNumB_ * blockNumS_ > coreNum_) {
-        OP_LOGE(context_->GetNodeName(), "split coreNum [%ld] large than coreNum[%ld]",
+        OP_LOGE(
+            context_->GetNodeName(), "split coreNum [%ld] large than coreNum[%ld]",
             blockNumB_ * blockNumS_, coreNum_);
         return ge::GRAPH_FAILED;
     }
-    usedCoreNum_ = blockNumB_ * blockNumS_;
-    PrintTilingData();
-    return ge::GRAPH_SUCCESS;
-}
-
-void ApplyRopeGradRegBaseTilingClassBAB::SplitCore()
-{
-    blockFactorB_ = Ops::Base::CeilDiv(b_, coreNum_);
-    blockNumB_ = Ops::Base::CeilDiv(b_, blockFactorB_);
-    blockFactorS_ = Ops::Base::CeilDiv(s_, coreNum_ / blockNumB_);
-    blockNumS_ = Ops::Base::CeilDiv(s_, blockFactorS_);
-}
-
-ge::graphStatus ApplyRopeGradRegBaseTilingClassBAB::SplitUb()
-{
-    int64_t typeSize = ge::GetSizeByDataType(dtype_);
-    int64_t blockLen = Ops::Base::CeilAlign(d_ / dSplitCoef_, blockSize_ / typeSize) * dSplitCoef_;
-    int64_t dSize = blockLen * typeSize;
-    int64_t maxN = (nQ_ > nK_) ? nQ_ : nK_;
-    // UB 中可容纳的 D 数量
-    int64_t dNumInUb = Ops::Base::FloorAlign(
-        static_cast<int64_t>(ubSize_ / (MIN_UB_LOAD_D_NUM * DOUBLE_BUFFER)), blockSize_) / dSize;
-    OP_CHECK_IF(dNumInUb < 1,
-        OP_LOGE(context_->GetNodeName(), "ubSize can't load one d size, d = %ld.", d_),
-        return ge::GRAPH_FAILED);
-
-    ubFactorN_ = dNumInUb;
-    ubFactorS_ = Ops::Base::FloorAlign(
-        static_cast<int64_t>(ubSize_ / ((MIN_UB_LOAD_D_NUM + 1) * DOUBLE_BUFFER)), blockSize_) / dSize;
-    ubFactorS_ = std::max(ubFactorS_, static_cast<int64_t>(1));
-
-    if (ubFactorS_ >= blockFactorS_) {
-        ubFactorS_ = blockFactorS_;
-        int64_t remainDNumInUb = Ops::Base::FloorAlign(
-            static_cast<int64_t>(ubSize_ / ((2 * ubFactorS_ + maxN * ubFactorS_) * DOUBLE_BUFFER)), blockSize_) / dSize;
-        ubFactorN_ = std::max(remainDNumInUb, static_cast<int64_t>(1));
-    }
-
-    ubLoopNumN_ = Ops::Base::CeilDiv(maxN, ubFactorN_);
-    ubTailFactorN_ = (maxN % ubFactorN_ == 0) ? ubFactorN_ : (maxN % ubFactorN_);
     OP_CHECK_IF(
-        (ubFactorS_ == 0) || (ubFactorN_ == 0),
-        OP_LOGE(context_->GetNodeName(), "ub factor S %ld or ub factor N %ld == 0", ubFactorS_, ubFactorN_),
-        return ge::GRAPH_FAILED);
+        InitTilingData() != ge::GRAPH_SUCCESS,
+        OP_LOGE(context_->GetNodeName(), "InitTilingData failed."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        TilingReduce() != ge::GRAPH_SUCCESS,
+        OP_LOGE(context_->GetNodeName(), "TilingReduce failed."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus ApplyRopeGradRegBaseTilingClassBAB::PostTiling()
+ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassBAB::SplitUb()
 {
-    OP_CHECK_IF(InitTilingData() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "InitTilingData Failed."), return ge::GRAPH_FAILED);
+    uint32_t typeSize = ge::GetSizeByDataType(dtype_);
+    // 对齐 D 维度: CeilAlign(D * typeSize / dSplitCoef, blockSize) * dSplitCoef
+    int64_t dAlign = Ops::Base::CeilAlign(d_ * typeSize / dSplitCoef_, blockSize_) * dSplitCoef_;
 
-    tilingData_->ropeGradParams.layout = static_cast<uint64_t>(layout_);
+    // 根据 dCosFlag 选择不同的 unroll 因子
+    // dCosFlag=0: gradQ+gradK+dxQ+dxK = 4路 tensor, double buffer → ×8
+    // dCosFlag=1: +query+key+gradCos+gradSin = 8路 tensor, double buffer → ×16
+    uint32_t minUbLoadDNum = dCosFlag_ ? MIN_UB_LOAD_D_NUM_DCOS1 : MIN_UB_LOAD_D_NUM_DCOS0;
+    int64_t canLoadDNum = Ops::Base::FloorDiv(ubSize_, dAlign);
+    if (canLoadDNum < static_cast<int64_t>(minUbLoadDNum * DOUBLE_BUFFER)) {
+        OP_LOGE(context_->GetNodeName(),
+            "ubSize_ can't load minimum D lines, d_ = %ld, dAlign = %ld, canLoadDNum = %ld, minUbLoadDNum = %u",
+            d_, dAlign, canLoadDNum, minUbLoadDNum);
+        return ge::GRAPH_FAILED;
+    }
+    canLoadDNum = canLoadDNum / minUbLoadDNum;
+
+    // 假设 S=1 (最坏情况)，确定 N 维度的切分
+    // canLoadDNum 表示 S × (N + 1) 的上限, N ≤ canLoadDNum - 1
+    int64_t ubLoopNum = Ops::Base::CeilDiv(maxN_, (canLoadDNum - 1));
+    ubFactorN_ = std::min(
+        Ops::Base::CeilDiv(maxN_, ubLoopNum),
+        MAX_COPY_BLOCK_COUNT / dSplitCoef_);
+    ubLoopNumN_ = Ops::Base::CeilDiv(maxN_, ubFactorN_);
+    ubTailFactorN_ = (maxN_ % ubFactorN_ == 0) ? ubFactorN_ : maxN_ % ubFactorN_;
+
+    // 用完整的 N 保守反算 S 能放多少
+    int64_t ubFactorS = Ops::Base::FloorDiv(canLoadDNum, maxN_ + 1);
+    ubFactorS_ = (ubFactorS == 0) ? 1 : ubFactorS;
+    return ge::GRAPH_SUCCESS;
+}
+
+void ApplyRotaryPosEmbGradRegbaseTilingClassBAB::SplitCore()
+{
+    // 方案1: B 优先铺满核
+    auto blockFactorB1 = Ops::Base::CeilDiv(b_, coreNum_);
+    auto blockNumB1 = Ops::Base::CeilDiv(b_, blockFactorB1);
+    auto blockNumS1 = std::min(coreNum_ / blockNumB1, s_);
+    auto blockFactorS1 = Ops::Base::CeilDiv(s_, blockNumS1);
+    blockNumS1 = Ops::Base::CeilDiv(s_, blockFactorS1);
+    auto usedCoreNum1 = blockNumB1 * blockNumS1;
+
+    // 方案2: S 优先铺满核
+    auto blockFactorS2 = Ops::Base::CeilDiv(s_, coreNum_);
+    auto blockNumS2 = Ops::Base::CeilDiv(s_, blockFactorS2);
+    auto blockNumB2 = std::min(coreNum_ / blockNumS2, b_);
+    auto blockFactorB2 = Ops::Base::CeilDiv(b_, blockNumB2);
+    blockNumB2 = Ops::Base::CeilDiv(b_, blockFactorB2);
+    auto usedCoreNum2 = blockNumB2 * blockNumS2;
+
+    // 选优: usedCoreNum × ubFactorS 最大者为优 (ubFactorS 反映真实吞吐)
+    auto ubFactorS1 = std::min(ubFactorS_, blockFactorS1);
+    auto ubFactorS2 = std::min(ubFactorS_, blockFactorS2);
+    if (usedCoreNum1 * ubFactorS1 >= usedCoreNum2 * ubFactorS2) {
+        blockNumB_ = blockNumB1;
+        blockFactorB_ = blockFactorB1;
+        blockNumS_ = blockNumS1;
+        blockFactorS_ = blockFactorS1;
+        usedCoreNum_ = usedCoreNum1;
+        ubFactorS_ = ubFactorS1;
+    } else {
+        blockNumB_ = blockNumB2;
+        blockFactorB_ = blockFactorB2;
+        blockNumS_ = blockNumS2;
+        blockFactorS_ = blockFactorS2;
+        usedCoreNum_ = usedCoreNum2;
+        ubFactorS_ = ubFactorS2;
+    }
+    return;
+}
+
+void ApplyRotaryPosEmbGradRegbaseTilingClassBAB::PrintTilingData()
+{
+    OP_LOGI(
+        context_->GetNodeName(),
+        "ApplyRotaryPosEmbGrad BAB tilingData: useCoreNum is %ld, "
+        "B is %ld, S is %ld, D is %ld, nQ is %ld, nK is %ld, maxN is %ld, "
+        "blockNumB %ld, blockFactorB is %ld, blockNumS %ld, blockFactorS is %ld, "
+        "ubFactorS is %ld, ubLoopNumN is %ld, ubFactorN is %ld, ubTailFactorN is %ld, "
+        "rotaryMode is %ld, dCosFlag is %u, tilingKey is %lu",
+        usedCoreNum_,
+        tilingData_->ropeGradParams.b,
+        tilingData_->ropeGradParams.s,
+        tilingData_->ropeGradParams.d,
+        tilingData_->ropeGradParams.nQ,
+        tilingData_->ropeGradParams.nK,
+        maxN_,
+        tilingData_->ropeGradParams.blockNumB,
+        tilingData_->ropeGradParams.blockFactorB,
+        tilingData_->ropeGradParams.blockNumS,
+        tilingData_->ropeGradParams.blockFactorS,
+        tilingData_->ropeGradParams.ubFactorS,
+        tilingData_->ropeGradParams.ubLoopNumN,
+        tilingData_->ropeGradParams.ubFactorN,
+        tilingData_->ropeGradParams.ubTailFactorN,
+        tilingData_->ropeGradParams.rotaryMode,
+        tilingData_->dCosFlag,
+        tilingKey_);
+    return;
+}
+
+ge::graphStatus ApplyRotaryPosEmbGradRegbaseTilingClassBAB::PostTiling()
+{
     tilingData_->ropeGradParams.b = b_;
     tilingData_->ropeGradParams.s = s_;
     tilingData_->ropeGradParams.d = d_;
     tilingData_->ropeGradParams.nQ = nQ_;
     tilingData_->ropeGradParams.nK = nK_;
+    tilingData_->ropeGradParams.ubFactorS = ubFactorS_;
+    tilingData_->ropeGradParams.ubLoopNumN = ubLoopNumN_;
+    tilingData_->ropeGradParams.ubFactorN = ubFactorN_;
+    tilingData_->ropeGradParams.ubTailFactorN = ubTailFactorN_;
     tilingData_->ropeGradParams.blockNumB = blockNumB_;
     tilingData_->ropeGradParams.blockFactorB = blockFactorB_;
     tilingData_->ropeGradParams.blockNumS = blockNumS_;
     tilingData_->ropeGradParams.blockFactorS = blockFactorS_;
-    tilingData_->ropeGradParams.ubFactorS = ubFactorS_;
-    tilingData_->ropeGradParams.ubFactorB = ubFactorB_;
-    tilingData_->ropeGradParams.ubLoopNumN = ubLoopNumN_;
-    tilingData_->ropeGradParams.ubFactorN = ubFactorN_;
-    tilingData_->ropeGradParams.ubTailFactorN = ubTailFactorN_;
     tilingData_->ropeGradParams.usedCoreNum = usedCoreNum_;
-    tilingData_->ropeGradParams.coreNum = coreNum_;
-    tilingData_->ropeGradParams.rotaryMode = rotaryMode_;
-
-    uint32_t layoutVal = static_cast<uint32_t>(layout_);
-    SetTilingKeyBlockDim(static_cast<uint32_t>(ApplyDxTilingKey::KEY_BAB), layoutVal);
-
-    if (dCosFlag_ == 1) {
-        SetRotaryXTilingData();
-    }
+    tilingData_->ropeGradParams.rotaryMode = static_cast<int64_t>(rotaryMode_);
+    tilingData_->ropeGradParams.layout = static_cast<int64_t>(layout_);
     tilingData_->dCosFlag = dCosFlag_;
     tilingData_->layout = static_cast<uint32_t>(layout_);
+    SetTilingKeyBlockDim(static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_BAB));
+    PrintTilingData();
     return ge::GRAPH_SUCCESS;
 }
 
-void ApplyRopeGradRegBaseTilingClassBAB::PrintTilingData()
-{
-    OP_LOGI(context_->GetNodeName(),
-        "%s b=%ld s=%ld d=%ld nQ=%ld nK=%ld blockNumB=%ld blockFactorB=%ld blockNumS=%ld blockFactorS=%ld "
-        "ubLoopNumN=%ld ubFactorN=%ld ubTailFactorN=%ld ubFactorS=%ld ubFactorB=%ld usedCoreNum=%ld coreNum=%ld",
-        context_->GetNodeName(), b_, s_, d_, nQ_, nK_, blockNumB_, blockFactorB_, blockNumS_, blockFactorS_,
-        ubLoopNumN_, ubFactorN_, ubTailFactorN_, ubFactorS_, ubFactorB_, usedCoreNum_, coreNum_);
-}
-
-REGISTER_TILING_CLASS(ApplyRopeGradRegBaseTilingClassBAB, APPLY_ROPE_GRAD_BAB_TILING_PRIORITY);
-
+REGISTER_OPS_TILING_TEMPLATE(ApplyRotaryPosEmbGrad, ApplyRotaryPosEmbGradRegbaseTilingClassBAB, APPLY_ROPE_GRAD_BAB_TILING_PRIORITY);
 } // namespace optiling

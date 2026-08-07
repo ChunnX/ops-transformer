@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -10,102 +10,110 @@
 
 /*!
  * \file apply_rotary_pos_emb_grad_apt.cpp
- * \brief 模板分发 kernel 入口（仅 Ascend 950 regbase）
- *
- * DxTilingKey: 203=BAB(BSND), 204=AB(SBND), 205=A(NO_BROADCAST)
- * Layout: 0=BSND, 1=SBND, 2=BNSD(参数预留), 3=NO_BROADCAST
+ * \brief
  */
+
 #include "atvoss/reduce/reduce_sch.h"
-#include "arch35/apply_rotary_pos_emb_grad_dag.h"
 #include "arch35/apply_rotary_pos_emb_grad_tiling_key.h"
 #include "arch35/apply_rotary_pos_emb_grad_tiling_data.h"
 #include "arch35/apply_rotary_pos_emb_grad_bab.h"
 #include "arch35/apply_rotary_pos_emb_grad_ab.h"
 #include "arch35/apply_rotary_pos_emb_grad_a_and_b.h"
-#include "arch35/apply_rotary_pos_emb_grad_rotary_x.h"
+#include "arch35/apply_rotary_pos_emb_grad_dag.h"
 
 enum class ApplyRopeGradDxTilingKey : uint32_t {
-    TK_BAB = 203,   // BSND (含 TND)
-    TK_AB  = 204,   // SBND
-    TK_A   = 205,   // NO_BROADCAST (N=1, cos==grad)
+    TILING_KEY_BAB = 203,
+    TILING_KEY_AB  = 204,
+    TILING_KEY_A   = 205
 };
 
+using namespace ApplyRotaryPosEmbGrad;
 using namespace Ops::Base::ReduceOpTmpl;
 using namespace AscendC;
 
-template <REDUCE_TPL_PARAM, uint32_t DxTilingKey, uint32_t DcosFlag, uint32_t Layout>
+constexpr int64_t INPUT_OUTPUT_NUM = 2; // grad_cos_partial + grad_sin_partial
+
+template <REDUCE_TPL_PARAM, uint32_t DxTilingKey, uint32_t DcosFlag>
 __global__ __aicore__ void apply_rotary_pos_emb_grad(
-    GM_ADDR grad_query_embed, GM_ADDR grad_key_embed, GM_ADDR cos, GM_ADDR sin,
+    GM_ADDR gradQueryEmbed, GM_ADDR gradKeyEmbed, GM_ADDR cos, GM_ADDR sin,
     GM_ADDR query, GM_ADDR key,
-    GM_ADDR grad_query, GM_ADDR grad_key,
-    GM_ADDR grad_cos, GM_ADDR grad_sin,
+    GM_ADDR gradQueryOut, GM_ADDR gradKeyOut, GM_ADDR gradCosOut, GM_ADDR gradSinOut,
     GM_ADDR workspace, GM_ADDR tiling)
 {
-    if (g_coreType == AIC) return;
-    if (workspace == nullptr) return;
+    // AIC core 不执行 vector 计算
+    if (g_coreType == AIC) {
+        return;
+    }
+    if (workspace == nullptr) {
+        return;
+    }
 
     REGISTER_TILING_DEFAULT(ApplyRopeGradTilingData);
     GET_TILING_DATA_WITH_STRUCT(ApplyRopeGradTilingData, tilingData, tiling);
     TPipe pipe;
 
-    // ==================================================================
-    // Phase 1: dx 计算 (Q + K 双路)
-    // ==================================================================
-    if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TK_BAB)) {
-        // BSND (含 TND 映射) — BAB tiling
-        ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradBAB<DTYPE_DY> op(
-            &pipe, &tilingData.ropeGradParams);
-        op.Init(grad_query_embed, grad_key_embed, cos, sin, grad_query, grad_key);
+    // ================================================================
+    // Phase 1: 计算 grad_query / grad_key
+    //          当 DcosFlag=1 时，同步在 kernel 内累加 grad_cos / grad_sin 部分积
+    // ================================================================
+    if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_BAB)) {
+        ApplyRotaryPosEmbGradBAB<DTYPE_DY> op(&pipe, &tilingData.ropeGradParams);
+        op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin,
+                query, key,
+                gradQueryOut, gradKeyOut, gradCosOut, gradSinOut);
         op.Process();
         pipe.Reset();
-    } else if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TK_AB)) {
-        // SBND — AB tiling
-        ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradAB<DTYPE_DY> op(
-            &pipe, &tilingData.ropeGradABParams);
-        op.Init(grad_query_embed, grad_key_embed, cos, sin, grad_query, grad_key);
+    } else if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_AB)) {
+        ApplyRotaryPosEmbGradAB<DTYPE_DY> op(&pipe, &tilingData.ropeGradABParams);
+        op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin,
+                query, key,
+                gradQueryOut, gradKeyOut, gradCosOut, gradSinOut);
         op.Process();
         pipe.Reset();
-    } else if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TK_A)) {
-        // NO_BROADCAST (N=1, cos==grad) — A tiling
-        ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradA<DTYPE_DY> op(
-            &pipe, &tilingData.ropeGradParams);
-        op.Init(grad_query_embed, grad_key_embed, cos, sin, grad_query, grad_key);
+    } else if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
+        ApplyRotaryPosEmbGradAAndB<DTYPE_DY> op(&pipe, &tilingData.ropeGradParams);
+        op.Init(gradQueryEmbed, gradKeyEmbed, cos, sin,
+                query, key,
+                gradQueryOut, gradKeyOut, gradCosOut, gradSinOut);
         op.Process();
         pipe.Reset();
     }
 
-    // ==================================================================
-    // Phase 2: grad_cos/grad_sin (DcosFlag == 1)
-    // ==================================================================
+    // ================================================================
+    // Phase 2: DcosFlag=1 → Reduce 跨广播轴求和
+    // ================================================================
     if constexpr (DcosFlag) {
-        // A template (NO_BROADCAST, N=1): 无广播轴, element-wise mul 直接出结果
-        if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TK_A)) {
-            // TODO: ComputeADcosDsin<DTYPE_DY> with dual Q+K paths
-        } else {
-            PipeBarrier<PIPE_ALL>();
-            SetSysWorkspace(workspace);
-            GM_ADDR usrWorkSpace = AscendC::GetUserWorkspace(workspace);
-
-            int64_t wsPerQ = tilingData.rotaryXParams.b * tilingData.rotaryXParams.s *
-                             tilingData.rotaryXParams.nQ * tilingData.rotaryXParams.d;
-
-            // rotate_half query → workspace
-            ApplyRotaryPosEmbGrad::ApplyRopeGradRotaryX<DTYPE_DY> rotQ(
-                &pipe, &tilingData.rotaryXParams);
-            rotQ.Init(query, usrWorkSpace);
-            rotQ.Process(); pipe.Reset(); SyncAll();
-
-            // rotate_half key → workspace[nQ*b*s*d]
-            GM_ADDR keyRot = usrWorkSpace + wsPerQ * sizeof(DTYPE_DY);
-            ApplyRotaryPosEmbGrad::ApplyRopeGradRotaryX<DTYPE_DY> rotK(
-                &pipe, &tilingData.rotaryXParams);
-            rotK.Init(key, keyRot);
-            rotK.Process(); pipe.Reset(); SyncAll();
-
-            // Reduce: grad_cos = sum(dy * x), grad_sin = sum(dy * x_rot)
-            using ReduceOp = ReduceSch<REDUCE_TPL_VALUE,
-                ApplyRotaryPosEmbGrad::ApplyRopeGradDag<DTYPE_DY, float>::OpDag>;
-            // TODO: 双路 reduce — Q/K 分别 reduce 后累加到 grad_cos/grad_sin
+        // A 模板 (205): 无广播轴，grad_cos/grad_sin 已在 kernel 内直接写回 GM，无需 reduce
+        if constexpr (DxTilingKey == static_cast<uint32_t>(ApplyRopeGradDxTilingKey::TILING_KEY_A)) {
+            return;
         }
+
+        PipeBarrier<PIPE_ALL>();
+        SetSysWorkspace(workspace);
+        GM_ADDR usrWorkSpace = AscendC::GetUserWorkspace(workspace);
+
+        // 单份中间结果大小 = B * S * max(nQ, nK) * D
+        int64_t maxN = std::max(tilingData.ropeGradParams.nQ, tilingData.ropeGradParams.nK);
+        int64_t partSize = tilingData.ropeGradParams.b * tilingData.ropeGradParams.s *
+                           maxN * tilingData.ropeGradParams.d;
+
+        using ReduceOp = ReduceSch<REDUCE_TPL_VALUE,
+            ApplyRotaryPosEmbGrad::ApplyRotaryPosEmbGradDag<DTYPE_DY, float>::OpDag>;
+        ReduceOp reduceOp0(&tilingData.reduceTiling);
+        ReduceOp reduceOp1(&tilingData.reduceTiling);
+
+        // 第一份 workspace 存 dcos_partial，第二份存 dsin_partial
+        // gradCosOut = reduce(dcos_partial), gradSinOut = reduce(dsin_partial)
+        GM_ADDR reduceWorkSpace = usrWorkSpace + partSize * INPUT_OUTPUT_NUM * sizeof(DTYPE_DY);
+
+        reduceOp0.Init(&pipe, gradQueryEmbed, usrWorkSpace, gradCosOut, reduceWorkSpace);
+        reduceOp0.Process();
+        pipe.Reset();
+        PipeBarrier<PIPE_ALL>();
+
+        GM_ADDR dSinWorkSpace = usrWorkSpace + partSize * sizeof(DTYPE_DY);
+        reduceOp1.Init(&pipe, gradQueryEmbed, dSinWorkSpace, gradSinOut, reduceWorkSpace);
+        reduceOp1.Process();
+        pipe.Reset();
     }
 }
