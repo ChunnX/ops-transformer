@@ -156,6 +156,7 @@ private:
     GlobalTensor<KV_T> vec1ResGm;
     GlobalTensor<MM2_OUT_T> mm2ResGm;
     GlobalTensor<KV_T> kvMergeGm_;
+    GlobalTensor<KV_T> kvNzWorkspaceGm_;
 
     GlobalTensor<UPDATE_T> vec2ResGm;
 
@@ -472,20 +473,29 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::Init(
         aiCoreIdx * 512 * 512 * MERGE_CACHE_GM_BUF_NUM * sizeof(KV_T)));
     offset += GetBlockNum() * 512 * 512 * 4 * sizeof(KV_T);
 
+    kvNzWorkspaceGm_.SetGlobalBuffer((__gm__ KV_T *)(workspace + offset + \
+        aiCoreIdx * 512 * 512 * MERGE_CACHE_GM_BUF_NUM * sizeof(KV_T)));
+    offset += GetBlockNum() * 512 * 512 * sizeof(KV_T); 
+
     if ASCEND_IS_AIV {
+        printf("DEBUG AIV INIT: blockIdx=%u\n", tmpBlockIdx);
         vectorBlock.InitParams(constInfo, tilingData);
-        vectorBlock.InitVec0GlobalTensor(kvMergeGm_, oriKvGm, cmpKvGm, oriBlockTableGm,
+        vectorBlock.InitVec0GlobalTensor(kvMergeGm_, kvNzWorkspaceGm_, oriKvGm, cmpKvGm, oriBlockTableGm,
                                          cmpBlockTableGm);
         vectorBlock.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, actualSeqLengthsQGm, actualSeqLengthsKVGm, topKGm,
                                          sinksGm, softmaxLseGm);
         vectorBlock.InitVec2GlobalTensor(accumOutGm, vec2ResGm, mm2ResGm, attentionOutGm);
+        printf("DEBUG AIV INIT DONE\n");
     }
 
     if ASCEND_IS_AIC {
+        printf("DEBUG AIC INIT: blockIdx=%u aiCoreIdx=%u\n",
+            tmpBlockIdx,
+            aiCoreIdx);
         cubeBlock.InitParams(constInfo);
         cubeBlock.InitMm1GlobalTensor(queryGm, oriKvGm, cmpKvGm, mm1ResGm);
         cubeBlock.InitMm2GlobalTensor(vec1ResGm, mm2ResGm, attentionOutGm);
-        cubeBlock.InitPageAttentionInfo(oriKvGm, kvMergeGm_, oriBlockTableGm, cmpBlockTableGm);
+        cubeBlock.InitPageAttentionInfo(oriKvGm, kvMergeGm_, oriBlockTableGm, cmpBlockTableGm, kvNzWorkspaceGm_);
     }
     // 要在InitParams之后执行
     if (pipe != nullptr) {
@@ -618,7 +628,9 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::ComputeMm1(const RunInfo &i
         mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize;
         mSplitInfo.nBufferDealM = (i + 1 != nBufferLoopTimes) ? constInfo.nBufferMBaseSize : nBufferTail;
         cubeBlock.ComputeMm1(info, mSplitInfo);
+        printf("DEBUG MM1 RETURN: setting C1V1 flag\n");
         CrossCoreSetFlag<ConstInfo::SAS_SYNC_MODE2, PIPE_FIX>(constInfo.syncC1V1);
+        printf("DEBUG MM1 RETURN: C1V1 flag set\n");
     }
 }
 
@@ -631,9 +643,13 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::ComputeMm2(const RunInfo &i
         MSplitInfo mSplitInfo;
         mSplitInfo.nBufferStartM = i * constInfo.nBufferMBaseSize;
         mSplitInfo.nBufferDealM = (i + 1 != nBufferLoopTimes) ? constInfo.nBufferMBaseSize : nBufferTail;
+        printf("DEBUG AIC: waiting V1C2...\n");
         CrossCoreWaitFlag(constInfo.syncV1C2);
+        printf("DEBUG AIC: V1C2 done, entering MM2\n");
         cubeBlock.ComputeMm2(info, mSplitInfo);
+        printf("DEBUG AIC: MM2 done, setting C2V2 flag\n");
         CrossCoreSetFlag<ConstInfo::SAS_SYNC_MODE2, PIPE_FIX>(constInfo.syncC2V2);
+        printf("DEBUG AIC: C2V2 flag set, MM2 complete\n");
     }
 }
 
@@ -644,6 +660,8 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::Process()
     if (hasLoad == 0) {
         return;
     }
+    printf("DEBUG AIC/AIV PROCESS: blockIdx=%u hasLoad=%u\n", tmpBlockIdx, hasLoad);
+
     if ASCEND_IS_AIV {
         vectorBlock.AllocEventID();
         vectorBlock.InitSoftmaxDefaultBuffer();
@@ -758,6 +776,9 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::ProcessBalance()
             tempLoopInfo.tndIsS2SplitCore = ((constInfo.s2Start == 0) && (s2LoopEnd == s2SplitNum)) ? false : true;
             tempLoopInfo.tndCoreStartKVSplitPos = globalLoopStart ? constInfo.coreStartKVSplitPos : 0;
             uint32_t extraLoop = isEnd ? 2 : 0;
+            if ASCEND_IS_AIV {
+                printf("DEBUG BALANCE: blockIdx=%u bN2=%u gS1=%u s2End=%u s2LoopTimes=%u isEnd=%u extraLoop=%u\n", GetBlockIdx(), bN2LoopIdx, gS1LoopIdx, s2LoopEnd, tempLoopInfo.s2LoopTimes, isEnd, extraLoop);
+            }
             uint32_t curTopKIdx = 0;
             for (uint32_t s2LoopIdx = constInfo.s2Start; s2LoopIdx < (s2LoopEnd + extraLoop); s2LoopIdx++) {
                 PreloadPipeline(gloop, cmpLoop, constInfo.s2Start, s2LoopIdx, extraInfo);
@@ -766,6 +787,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::ProcessBalance()
                     ++cmpLoop;
                 }
             }
+            printf("DEBUG BALANCE END: blockIdx=%u gloop=%u cmpLoop=%u\n", GetBlockIdx(), gloop, cmpLoop);
             globalLoopStart = false;
             constInfo.s2Start = 0;
         }
@@ -788,37 +810,50 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::PreloadPipeline(uint32_t lo
     RunInfo &extraInfo2 = extraInfo[(loop + 2) % SAS_PRELOAD_TASK_CACHE_SIZE]; // 上一轮任务
     RunInfo &extraInfo1 = extraInfo[(loop + 1) % SAS_PRELOAD_TASK_CACHE_SIZE]; // 上两轮任务
 
+    //printf("%s %d\n", __func__, __LINE__);
     CalcParams(loop, cmpLoop, s2Start, s2LoopIdx, extraInfo0);
     if (extraInfo0.isValid) {
         if ASCEND_IS_AIC {
             if (!extraInfo0.isOriOnly) {
                 CrossCoreWaitFlag(constInfo.syncV0C1);
             }
+            //printf("%s %d\n", __func__, __LINE__);
             ComputeMm1(extraInfo0);
+            //printf("%s %d\n", __func__, __LINE__);
         } else {
             if (extraInfo0.isFirstSInnerLoop) {
                 CrossCoreWaitFlag(3);
             }
+            //printf("%s %d\n", __func__, __LINE__);
             vectorBlock.ProcessVec0L(extraInfo0);
+            //printf("%s %d\n", __func__, __LINE__);
             if (!extraInfo0.isOriOnly) {
                 CrossCoreSetFlag<ConstInfo::SAS_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV0C1);
             }
+            ////printf("%s %d\n", __func__, __LINE__);
         }
     }
     if (extraInfo2.isValid) {
         if ASCEND_IS_AIV {
+            //printf("%s %d\n", __func__, __LINE__);
             vectorBlock.ProcessVec1L(extraInfo2);
+            //printf("%s %d\n", __func__, __LINE__);
         }
         if ASCEND_IS_AIC {
+            //printf("%s %d\n", __func__, __LINE__);
             ComputeMm2(extraInfo2);
+            //printf("%s %d\n", __func__, __LINE__);
             if (extraInfo2.isLastS2Loop) {
                 CrossCoreSetFlag<ConstInfo::SAS_SYNC_MODE2, PIPE_MTE2>(3);
             }
+            ////printf("%s %d\n", __func__, __LINE__);
         }
     }
     if (extraInfo1.isValid) {
         if ASCEND_IS_AIV {
+            //printf("%s %d\n", __func__, __LINE__);
             vectorBlock.ProcessVec2L(extraInfo1);
+            //printf("%s %d\n", __func__, __LINE__);
         }
         extraInfo1.isValid = false;
     }

@@ -45,7 +45,7 @@ public:
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct ConstInfo &constInfo,
                                       const SparseAttnSharedkvTilingData *__restrict tilingData);
-    __aicore__ inline void InitVec0GlobalTensor(const GlobalTensor<KV_T> &kvMergeGm, const GlobalTensor<KV_T> &oriKvGm,
+    __aicore__ inline void InitVec0GlobalTensor(const GlobalTensor<KV_T> &kvMergeGm, const GlobalTensor<KV_T> &kvNzWorkspaceGm, const GlobalTensor<KV_T> &oriKvGm,
                                                 const GlobalTensor<KV_T> &cmpKvGm,
                                                 const GlobalTensor<int32_t> &oriBlockTableGm,
                                                 const GlobalTensor<int32_t> &cmpBlockTableGm);
@@ -138,7 +138,7 @@ private:
     static constexpr uint32_t MAX_N1_SIZE = 128U;
     static constexpr T SOFTMAX_MIN_NUM = -2e38;
     static constexpr SINKS_T R0 = 1.0f;
-
+    static constexpr uint32_t N_SPLIT_SIZE = 128;     // n方向切分
     const SparseAttnSharedkvTilingData *__restrict tilingData;
 
     uint32_t pingpongFlag = 0U;
@@ -166,6 +166,7 @@ private:
     GlobalTensor<KV_T> cmpKvGm_;
     GlobalTensor<int32_t> oriBlockTableGm_;
     GlobalTensor<int32_t> cmpBlockTableGm_;
+    GlobalTensor<KV_T> kvNzWorkspaceGm_;
 
     // ================================Local Buffer区====================================
     TBuf<> inputBuff1;            // 32K
@@ -250,6 +251,7 @@ __aicore__ inline void SASVectorBlock<SAST>::InitParams(const struct ConstInfo &
 
 template <typename SAST>
 __aicore__ inline void SASVectorBlock<SAST>::InitVec0GlobalTensor(const GlobalTensor<KV_T> &kvMergeGm,
+                                                                  const GlobalTensor<KV_T> &kvNzWorkspaceGm,
                                                                   const GlobalTensor<KV_T> &oriKvGm,
                                                                   const GlobalTensor<KV_T> &cmpKvGm,
                                                                   const GlobalTensor<int32_t> &oriBlockTableGm,
@@ -260,6 +262,7 @@ __aicore__ inline void SASVectorBlock<SAST>::InitVec0GlobalTensor(const GlobalTe
     this->cmpKvGm_ = cmpKvGm;
     this->oriBlockTableGm_ = oriBlockTableGm;
     this->cmpBlockTableGm_ = cmpBlockTableGm;
+    this->kvNzWorkspaceGm_ = kvNzWorkspaceGm;
 }
 
 template <typename SAST>
@@ -638,27 +641,198 @@ __aicore__ inline void SASVectorBlock<SAST>::CopyInKv(int64_t &mte2Size, int64_t
     }
 }
 
+// template <typename SAST>
+// __aicore__ inline void SASVectorBlock<SAST>::CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size,
+//                                                                int64_t s2GmStartOffset, int64_t mergeMte3Idx,
+//                                                                const RunInfo &runInfo)
+// {
+//     if (mte2Size <= mte3Size) {
+//         return;
+//     }
+
+//     // 1. 同步等待上一次 DMA 完成（与原来一致）
+//     SetFlag<AscendC::HardEvent::MTE2_MTE3>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
+//     WaitFlag<AscendC::HardEvent::MTE2_MTE3>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
+
+//     // 2. 源数据：UB 中的 ND 格式（来自 inputBuff2）
+//     uint32_t ubOffset = mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T);
+//     LocalTensor<KV_T> srcNdUb = kvMergUb_[ubOffset];
+//     uint32_t totalRows = mte2Size - mte3Size;  // 最大不超过 16（因阈值控制）
+
+//     // ============ 3. 判断是否在 AIV 核上 ============
+//     // if (ASCEND_IS_AIV) {
+//     // ---------- AIV 路径：UB(ND) -> UB(NZ) -> GM(NZ) ----------
+
+//     // 3.1 使用 tmpBuff1 作为 NZ 格式的临时输出缓冲区（物理隔离，防止覆盖源数据）
+//     LocalTensor<KV_T> dstNzUb = tmpBuff1.Get<KV_T>();
+
+//     // 3.2 调用 common.h 中的 Nd2NzInAiv 进行 UB 内重排
+//     //     参数：目标UB，源UB，实际行数，实际列数（headDim）
+//     Nd2NzInAiv<KV_T>(dstNzUb, srcNdUb, totalRows, constInfo.headDim);
+//     PipeBarrier<PIPE_V>();   // 确保重排完成
+
+//     // ===== 新增：尾块零填充 =====
+//     if (totalRows % 16 != 0) {
+//         uint32_t padRows = 16 - (totalRows % 16);
+//         uint32_t padOffset = totalRows * constInfo.headDim;
+//         // 将 dstNzUb 中尾块空洞部分置零
+//         AscendC::Duplicate(dstNzUb[padOffset], (KV_T)0, padRows * constInfo.headDim);
+//         PipeBarrier<PIPE_V>();
+//     }
+
+//     // 3.3 计算 NZ 格式的 GM 目标地址（列主序布局）
+//     // uint32_t currentAbsRow = s2GmStartOffset + mte3Size;        // 当前绝对行索引
+//     // uint32_t tileRow = currentAbsRow / 16;                     // 宏块行号
+//     // uint32_t rowInTile = currentAbsRow % 16;                   // 宏块内行偏移
+//     // uint32_t numTileRows = (constInfo.kvSeqSize + 15) / 16;   // 总宏块数（固定，由预留最大长度决定）
+//     // constexpr uint32_t MICRO_TILE_ELEMS = 16 * 16;             // 每个 16x16 微块元素数
+//     // // 逻辑索引 = 当前已处理的行数（mte3Size）
+//     // uint32_t logicIdx = mte3Size;
+//     // uint32_t tileRow = logicIdx / 16;
+//     // uint32_t rowInTile = logicIdx % 16;
+
+//     // // 改为（块内固定，每个方格 128 行，numTileRows=8）：
+//     // // N_SPLIT_SIZE = 128
+//     // uint32_t numTileRows = 128 / 16;  // 128/16 = 8
+
+//     // // GM 基地址（第 tileRow 个宏块的第 rowInTile 行的起始位置）
+//     // uint64_t baseGmOffset = tileRow * MICRO_TILE_ELEMS + rowInTile * constInfo.headDim;
+
+//     // // 3.4 配置带步长的 DMA 搬运参数（按列微块跳跃）
+//     // //     列微块数：headDim / 16（例如 512/16 = 32）
+//     // uint32_t numTileCols = constInfo.headDim / 16;
+//     // // 每个列微块包含 totalRows 行 × 16 列 个元素（字节数）
+//     // uint32_t blockLenBytes = totalRows * 16 * sizeof(KV_T);
+//     // // 目标端步长：从当前列微块结束地址到下一个列微块起始地址的偏移
+//     // // 下一个列微块基址 = (tileCol+1) * numTileRows * MICRO_TILE_ELEMS * sizeof(KV_T)
+//     // // 当前块结束地址 = 当前基址 + blockLenBytes
+//     // // 步长 = 下一个基址 - 当前块结束地址
+//     // uint32_t colTileBytes = numTileRows * MICRO_TILE_ELEMS * sizeof(KV_T);
+//     // uint32_t dstStride = colTileBytes - blockLenBytes;  // 可能为 0，但通常 >0
+
+//     uint32_t nL1 = (s2GmStartOffset + mte3Size) / N_SPLIT_SIZE; // 当前nL1 (0~3)
+//     uint32_t localRow = (s2GmStartOffset + mte3Size) % N_SPLIT_SIZE; // nL1内行号
+//     uint32_t m1 = localRow / 16;  // nL1内M1 （0~7） 当前M1索引 (0~7) 每个nL1块里是128行，所以是8个M1
+//     uint32_t n1Count = 32;  // 共32个N1 列方向
+
+//     uint64_t nL1Base = nL1 * 128 * 512; // = nL1 * 65536
+
+//     // N1 = 0 的 M1=m1 在HBM上的偏移
+//     uint64_t baseGmOffset = nL1Base + m1 * 256;
+//     DataCopyExtParams dataCopyParams;
+//     dataCopyParams.blockCount = n1Count;       // 重复次数（列微块数）
+//     dataCopyParams.blockLen = 256 * sizeof(KV_T);       // 每次搬运的字节数
+//     dataCopyParams.srcStride = 0;                  // UB 内紧凑连续，无需跳转
+//     dataCopyParams.dstStride = (8 - 1) * 256 * sizeof(KV_T);          // GM 上跨列微块的跳跃步长
+
+//     // ===== 调试：打印地址信息 =====
+//     // //printf("DEBUG: baseGmOffset=%llu, dstStride=%u, blockLenBytes=%u, numTileCols=%u, totalRows=%u\n",
+//     //     (unsigned long long)baseGmOffset, dstStride, blockLenBytes, numTileCols, totalRows);
+
+//     // // ===== 边界检查：计算最大偏移并防止越界 =====
+//     // uint64_t maxOffset = baseGmOffset + (numTileCols - 1) * (uint64_t)dstStride + blockLenBytes;
+//     // // kvNzWorkspaceGm_ 分配大小：在 Init 中为 GetBlockNum() * 512 * 512 * 4，但这里用保守估计
+//     // const uint64_t workspaceSize = 512 * 512 * 4;  // 单位：元素数（假设每个核分配这么多）
+//     // if (maxOffset >= workspaceSize) {
+//     //     //printf("ERROR: maxOffset=%llu >= workspaceSize=%llu, abort\n", (unsigned long long)maxOffset, (unsigned long long)workspaceSize);
+//     //     // 可选：写一个特殊值到 GM 起始位置，用于 host 检测
+//     //     // 这里直接返回，避免执行 DataCopyPad 导致越界
+//     //     return;
+//     // }
+
+//     //printf("DEBUG: before copy\n");
+//     // 3.5 执行 DMA 写出
+//     DataCopyPad(kvNzWorkspaceGm_[baseGmOffset], dstNzUb, dataCopyParams);
+//     //printf("DEBUG: after copy\n");
+//     // } else {
+//     // ---------- 非 AIV 回退路径：保持 ND 格式直拷（与原逻辑一致） ----------
+//     uint64_t ndGmOffset = (s2GmStartOffset + mte3Size) * constInfo.headDim;
+//     DataCopyExtParams nddataCopyParams;
+//     nddataCopyParams.blockCount = mte2Size - mte3Size;
+//     nddataCopyParams.blockLen = constInfo.headDim * sizeof(KV_T);
+//     nddataCopyParams.srcStride = 0;
+//     nddataCopyParams.dstStride = 0;
+//     DataCopyPad(kvMergeGm_[runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM * 512 * 512 +
+//                            (s2GmStartOffset + mte3Size) * constInfo.headDim],
+//                 kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T)], dataCopyParams);    // }
+
+//     // 4. 标记写出完成（与原来一致）
+//     SetFlag<AscendC::HardEvent::MTE3_MTE2>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
+// }
+
+
 template <typename SAST>
 __aicore__ inline void SASVectorBlock<SAST>::CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size,
-                                                               int64_t s2GmStartOffset, int64_t mergeMte3Idx,
-                                                               const RunInfo &runInfo)
+                                                                int64_t s2GmStartOffset, int64_t mergeMte3Idx,
+                                                                const RunInfo &runInfo)
 {
     if (mte2Size <= mte3Size) {
         return;
     }
+
     SetFlag<AscendC::HardEvent::MTE2_MTE3>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
     WaitFlag<AscendC::HardEvent::MTE2_MTE3>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
 
-    DataCopyExtParams dataCopyParams;
-    dataCopyParams.blockCount = mte2Size - mte3Size;
-    dataCopyParams.blockLen = constInfo.headDim * sizeof(KV_T);
-    dataCopyParams.srcStride = 0;
-    dataCopyParams.dstStride = 0;
+    uint32_t ubOffset = mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T);
+    LocalTensor<KV_T> srcNdUb = kvMergUb_[ubOffset];
+    uint32_t totalRows = mte2Size - mte3Size;
 
+    uint32_t nL1 = (s2GmStartOffset + mte3Size) / N_SPLIT_SIZE;
+    uint32_t localRow = (s2GmStartOffset + mte3Size) % N_SPLIT_SIZE;
+    uint32_t m1 = localRow / 16;
+    const uint32_t n1Count = constInfo.headDim / 16;
+    const uint32_t numM1PerNL1 = N_SPLIT_SIZE / 16;
+    constexpr uint32_t MICRO_TILE_ELEMS = 16 * 16;
+
+    // ============ NZ 拷贝（给 Mm1 用） ============
+    LocalTensor<KV_T> dstNzUb = tmpBuff1.Get<KV_T>();
+    const uint32_t ROWS_PER_CHUNK = 4;   // tmpBuff1 32KB，4行×512列 NZ = 4KB，安全
+
+    printf("DEBUG VEC: totalRows=%u nL1=%u m1=%u headDim=%u\n", totalRows, nL1, m1, constInfo.headDim);
+
+    Nd2NzInAiv<KV_T>(dstNzUb, srcNdUb, totalRows, constInfo.headDim);
+    PipeBarrier<PIPE_V>();
+
+    if (totalRows < 16) {
+        AscendC::Duplicate(dstNzUb[totalRows * constInfo.headDim], (KV_T)0,
+                           (16 - totalRows) * constInfo.headDim);
+        PipeBarrier<PIPE_V>();
+    }
+
+    uint64_t nL1Base = nL1 * N_SPLIT_SIZE * constInfo.headDim;
+    uint64_t baseGmOffset = nL1Base + m1 * MICRO_TILE_ELEMS;
+
+    DataCopyExtParams nzParams;
+    nzParams.blockCount = n1Count;
+    nzParams.blockLen = 16 * 16 * sizeof(KV_T);  // 512B = 一个完整微块
+    nzParams.srcStride = 0;
+    nzParams.dstStride = (numM1PerNL1 - 1) * MICRO_TILE_ELEMS * sizeof(KV_T);
+
+    printf("DEBUG VEC: nL1Base=%llu baseGmOffset=%llu dstStride=%u blockCount=%u blockLen=%u\n",
+        (unsigned long long)nL1Base, (unsigned long long)baseGmOffset,
+        nzParams.dstStride, nzParams.blockCount, nzParams.blockLen);
+
+    DataCopyPad(kvNzWorkspaceGm_[baseGmOffset], dstNzUb, nzParams);
+
+    printf("DEBUG VEC: NZ DataCopyPad done\n");
+
+
+    // PipeBarrier<PIPE_MTE3>();
+
+    // ============ ND 拷贝（给 Mm2 用） ============
+    uint64_t ndGmOffset = (s2GmStartOffset + mte3Size) * constInfo.headDim;
+    DataCopyExtParams ndParams;
+    ndParams.blockCount = totalRows;
+    ndParams.blockLen = constInfo.headDim * sizeof(KV_T);
+    ndParams.srcStride = 0;
+    ndParams.dstStride = 0;
     DataCopyPad(kvMergeGm_[runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM * 512 * 512 +
                            (s2GmStartOffset + mte3Size) * constInfo.headDim],
-                kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T)], dataCopyParams);
+                srcNdUb, ndParams);
+
+    printf("DEBUG VEC: ND DataCopyPad done\n");
 }
+
 
 // b s1 k
 template <typename SAST>
@@ -678,6 +852,8 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec0L(const RunInfo &runInfo
     if (s2GmLimit > s2ProcessSize) {
         s2GmLimit = s2ProcessSize;
     }
+
+    printf("ProcessVec0 start\n");
     // 处理两个基本块
     for (int64_t s2GmOffsetArray = s2GmStartOffset; s2GmOffsetArray < s2GmLimit;
          s2GmOffsetArray += 2 * constInfo.sparseBlockSize) {
@@ -703,6 +879,8 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec0L(const RunInfo &runInfo
             needWaitMte3ToMte2 = true;
         }
     }
+    printf("ProcessVec0 end\n");
+
     return;
 }
 
@@ -710,6 +888,7 @@ template <typename SAST>
 __aicore__ inline void SASVectorBlock<SAST>::ProcessVec1L(const RunInfo &info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
+    printf("DEBUG VEC1L ENTRY: blockIdx=%u nBufferLoopTimes=%u\n", GetBlockIdx(), nBufferLoopTimes);
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
     for (uint32_t i = 0; i < nBufferLoopTimes; i++) {
         MSplitInfo mSplitInfo;
@@ -725,7 +904,9 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec1L(const RunInfo &info)
             mSplitInfo.vecDealM = mSplitInfo.nBufferDealM - mSplitInfo.vecDealM;
         }
 
+        printf("V1S: %u wait C1V1\n", GetBlockIdx());
         CrossCoreWaitFlag(constInfo.syncC1V1);
+        printf("V1S: %u C1V1 done\n", GetBlockIdx());
         // vec1 compute
         ProcessVec1SingleBuf(info, mSplitInfo);
         CrossCoreSetFlag<ConstInfo::SAS_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV1C2);
@@ -756,6 +937,8 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec2SingleBuf(const RunInfo 
 template <typename SAST>
 __aicore__ inline void SASVectorBlock<SAST>::ProcessVec2L(const RunInfo &info)
 {
+    printf("ProcessVec2 start\n");
+
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
     for (uint32_t i = 0; i < nBufferLoopTimes; i++) {
@@ -774,6 +957,9 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec2L(const RunInfo &info)
         CrossCoreWaitFlag(constInfo.syncC2V2);
         ProcessVec2SingleBuf(info, mSplitInfo);
     }
+
+    printf("ProcessVec2 end\n");
+
 }
 
 template <typename SAST>
