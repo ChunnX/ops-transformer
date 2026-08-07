@@ -437,7 +437,7 @@ class QuantLightningIndexerV2InputAdapter:
         cu_k_cpu = as_int_tensor(cu_k_values)
         seq_q_cpu = as_int_tensor(seq_q_values)
         seq_k_cpu = as_int_tensor(seq_k_values)
-        query, key, query_scale, key_scale = restore_mx_input_dtypes(
+        typed_query, _, typed_query_scale, _ = restore_mx_input_dtypes(
             query, key, query_scale, key_scale, quant_mode
         )
         query = query.detach().cpu()
@@ -445,17 +445,43 @@ class QuantLightningIndexerV2InputAdapter:
         weights = weights.detach().cpu()
         query_scale = query_scale.detach().cpu()
         key_scale = key_scale.detach().cpu()
+
+        if quant_mode == QUANT_MODE_MXFP4:
+            def unpack_mxfp4(tensor):
+                storage = tensor.contiguous().view(torch.uint8)
+                codes = torch.stack((storage & 0x0F, storage >> 4), dim=-1)
+                logical_shape = tuple(storage.shape[:-1]) + (storage.shape[-1] * 2,)
+                return pytest_golden.FP4_E2M1_VALUES[
+                    codes.reshape(logical_shape).to(torch.long)
+                ]
+
+            query = unpack_mxfp4(query)
+            key = unpack_mxfp4(key)
+        elif quant_mode == QUANT_MODE_MXFP8:
+            query = query.contiguous().view(torch.uint8).view(
+                torch.float8_e4m3fn
+            ).to(torch.float32)
+            key = key.contiguous().view(torch.uint8).view(
+                torch.float8_e4m3fn
+            ).to(torch.float32)
+        if quant_mode in (QUANT_MODE_MXFP8, QUANT_MODE_MXFP4):
+            query_scale = pytest_golden.e8m0_raw_to_float(
+                query_scale.contiguous().view(torch.uint8)
+            )
+            key_scale = pytest_golden.e8m0_raw_to_float(
+                key_scale.contiguous().view(torch.uint8)
+            )
         block_table = None if block_table is None else block_table.detach().cpu()
         offset = None if offset is None else offset.detach().cpu()
         model_args = [
             batch_size, q_seq, k_seq, q_t_size, k_t_size,
             q_head_num, k_head_num, head_dim, block_size, block_num,
-            query.dtype,
+            typed_query.dtype,
         ]
         if uses_weight_dtype:
             model_args.append(weights.dtype)
         model_args.extend([
-            query_scale.dtype, torch.int32,
+            typed_query_scale.dtype, torch.int32,
             cu_q_cpu, cu_k_cpu, q_lengths, k_lengths, residual_for_cpu,
             max_seqlen_q, quant_mode, layout_q, layout_k, sparse_count,
             sparse_mode, None, None, None, None, None,
