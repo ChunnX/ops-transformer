@@ -194,12 +194,19 @@ def check_result(expect, result, data_type, pct_thd=0.005):
         print_log('Overflow,size:%s,benchmark_output:%s, %s' % (
             overflows_count, data_compe[np.isinf(data_compe)][0:10], data_compe[np.isnan(data_compe)][0:10]))
 
-    # 检测 NPU 输出 (real_data) 中的 NaN/Inf
+    # 检测 NPU 输出 (real_data) 中的 NaN/Inf；同时计算“两边同坏”（golden 与 NPU
+    # 同位置都是 NaN 或都是 Inf）——同坏视为一致（输入语义一致时输出应一致），
+    # 不判错；单边坏（NPU 坏但 golden 对应位置不坏）才是真实 bug，强制 Failed。
     real_data_f32 = real_data.astype(np.float32) if str(real_data.dtype) == 'bfloat16' else real_data
+    data_compe_f32 = data_compe.astype(np.float32) if str(data_compe.dtype) == 'bfloat16' else data_compe
     real_nan_mask = np.isnan(real_data_f32)
     real_inf_mask = np.isinf(real_data_f32)
     real_overflow_mask = real_nan_mask | real_inf_mask
     real_overflow_count = int(real_overflow_mask.sum())
+    both_bad = (np.isnan(real_data_f32) & np.isnan(data_compe_f32)) | \
+               (np.isinf(real_data_f32) & np.isinf(data_compe_f32))
+    unmatched_bad = real_overflow_mask & ~both_bad
+    unmatched_bad_count = int(unmatched_bad.sum())
     if real_overflow_count > 0:
         print_log('NPU output has NaN/Inf, count:%s, nan:%s, inf:%s, sample_values:%s' % (
             real_overflow_count, int(real_nan_mask.sum()), int(real_inf_mask.sum()),
@@ -217,12 +224,14 @@ def check_result(expect, result, data_type, pct_thd=0.005):
     print_log('split_count:%s; max_diff_hd:%s;' % (float(split_count), max_diff_hd))
 
     # bfloat16 需转 float32 再 isclose；float16 / float32 直接 isclose
-    # 注意：使用 equal_nan=False，使 NPU 输出中的 NaN 与 CPU 期望不匹配时判为错误
+    # 注意：使用 equal_nan=False，使 NPU 输出中的 NaN 与 CPU 期望不匹配时判为错误；
+    # 但两边同坏（both_bad：同位置都是 NaN 或都是 Inf）视为匹配
     if str(real_data.dtype) == 'bfloat16':
         diff_result = np.isclose(real_data.astype(np.float32), data_compe.astype(np.float32),
                                  rtol=rtol, atol=atol, equal_nan=False)
     else:
         diff_result = np.isclose(real_data, data_compe, rtol=rtol, atol=atol, equal_nan=False)
+    diff_result = diff_result | both_bad
     err_idx = np.where(diff_result != np.array((True,)))[0]
 
     if str(data_compe.dtype) == 'bool':
@@ -238,8 +247,9 @@ def check_result(expect, result, data_type, pct_thd=0.005):
 
     fulfill_percent = float(split_count - err_idx.size) / float(split_count) * 100.0
 
-    # NPU 输出含 NaN/Inf 时直接判 Failed（NaN 会传染，结果不可信）
-    if real_overflow_count > 0:
+    # NPU 输出含 NaN/Inf 且 golden 对应位置不同样坏（unmatched）时判 Failed
+    #（NaN 会传染，结果不可信）；两边同坏（both_bad）视为一致，不强制 Failed
+    if unmatched_bad_count > 0:
         result_str = "Failed"
         max_error = float('inf')
         display_output_np_isclose(real_data, data_compe, start, end)
@@ -249,7 +259,8 @@ def check_result(expect, result, data_type, pct_thd=0.005):
         print_log('---------------------------------------------------------------------------------------')
         print_log('%.4f    \t %.6f  \t %.2f%%   \t %.6f%%   \t %s' %
                   (rtol, atol, pct_thd, fulfill_percent, result_str))
-        print_log('NPU output contains NaN/Inf (count=%s). Force Failed.' % real_overflow_count)
+        print_log('NPU output has NaN/Inf unmatched with golden (count=%s, total nan/inf=%s). Force Failed.' %
+                  (unmatched_bad_count, real_overflow_count))
         if len(err_diff) > 0:
             display_error_output(real_data, data_compe, err_idx, err_diff[0:max_error_idx])
         return fulfill_percent, result_str
