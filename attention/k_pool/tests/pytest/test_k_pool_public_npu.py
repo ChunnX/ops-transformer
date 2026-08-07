@@ -261,6 +261,7 @@ def run_case(case: Case, per_batch: bool = False, norm_on: bool = False):
         norm_bias=norm_bias,
         seq_lens=seq_lens,
         cmp_ratio=case.cmp_ratio,
+        enforce_model_dims=False,
     )
 
     npu_cache = state_cache.npu()
