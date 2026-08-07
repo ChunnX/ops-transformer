@@ -29,6 +29,12 @@ public:
         buffer_ = bufferManager.template AllocBuffer<syncType>(size);
         buffer_.Init();
     }
+
+    __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size,
+                                uint32_t id0, uint32_t id1) {
+        buffer_ = bufferManager.template AllocBuffer<syncType>(size, id0, id1);
+        buffer_.Init();
+    }
  
     __aicore__ inline void Uninit(BufferManager<bufferType> &bufferManager){
         buffer_.UnInit();
@@ -55,8 +61,22 @@ template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
 class BuffersPolicyDB {
 public:
     __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size){
+        flag1_ = 0;
+        flag2_ = 0;
         ping_ = bufferManager.template AllocBuffer<syncType>(size);
         pong_ = bufferManager.template AllocBuffer<syncType>(size);
+
+        ping_.Init();
+        pong_.Init();
+    }
+
+    __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size,
+                                uint32_t pingId0, uint32_t pingId1,
+                                uint32_t pongId0, uint32_t pongId1) {
+        flag1_ = 0;
+        flag2_ = 0;
+        ping_ = bufferManager.template AllocBuffer<syncType>(size, pingId0, pingId1);
+        pong_ = bufferManager.template AllocBuffer<syncType>(size, pongId0, pongId1);
 
         ping_.Init();
         pong_.Init();
@@ -124,9 +144,30 @@ template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
 class BuffersPolicy3buff {
 public:
     __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size) {
+        flag1_ = 0;
+        flag1_vec1_ = 0;
+        flag1_bmm2_ = 0;
+        flag2_ = 0;
         a_ = bufferManager.template AllocBuffer<syncType>(size);
         b_ = bufferManager.template AllocBuffer<syncType>(size);
         c_ = bufferManager.template AllocBuffer<syncType>(size);
+
+        a_.Init();
+        b_.Init();
+        c_.Init();
+    }
+
+    __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size,
+                                uint32_t aId0, uint32_t bId0, uint32_t cId0) {
+        static_assert(syncType == SyncType::CROSS_CORE_SYNC_FORWARD,
+                      "Three explicit IDs are only valid for forward cross-core buffers");
+        flag1_ = 0;
+        flag1_vec1_ = 0;
+        flag1_bmm2_ = 0;
+        flag2_ = 0;
+        a_ = bufferManager.template AllocBuffer<syncType>(size, aId0, INVALID_CROSS_CORE_EVENT_ID);
+        b_ = bufferManager.template AllocBuffer<syncType>(size, bId0, INVALID_CROSS_CORE_EVENT_ID);
+        c_ = bufferManager.template AllocBuffer<syncType>(size, cId0, INVALID_CROSS_CORE_EVENT_ID);
 
         a_.Init();
         b_.Init();
@@ -221,6 +262,9 @@ template<BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
 class BuffersPolicy4buff {
 public:
     __aicore__ inline void Init(BufferManager<bufferType> &bufferManager, uint32_t size) {
+        tail_ = 0;
+        head_ = 0;
+        used_ = 0;
         a_ = bufferManager.template AllocBuffer<syncType>(size);
         b_ = bufferManager.template AllocBuffer<syncType>(size);
         c_ = bufferManager.template AllocBuffer<syncType>(size);

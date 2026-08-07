@@ -144,6 +144,16 @@ public:
         }
     }
 
+    __aicore__ inline Buffer(TensorType tensor, uint32_t size, uint32_t id0, uint32_t id1)
+    {
+        static_assert(syncType != SyncType::INNER_CORE_SYNC && syncType != SyncType::NO_SYNC,
+                      "Explicit event IDs are only valid for cross-core buffers");
+        tensor_ = tensor;
+        size_ = size;
+        id0_ = id0;
+        id1_ = id1;
+    }
+
     __aicore__ inline void Init()
     {
         if ASCEND_IS_AIC {
