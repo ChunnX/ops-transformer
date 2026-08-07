@@ -15,6 +15,7 @@
 
 #include "kv_quant_sparse_attn_sharedkv_check.h"
 #include "../op_kernel/kv_quant_sparse_attn_sharedkv_template_tiling_key.h"
+#include "../op_kernel/arch35/kv_quant_sparse_attn_sharedkv_scfa_ub_config.h"
 #include "kv_quant_sparse_attn_sharedkv_tiling.h"
 
 using namespace ge;
@@ -594,16 +595,20 @@ ge::graphStatus KvQuantSparseAttnSharedkvTiling::DoOpTiling(KvQuantSASTilingInfo
     constexpr uint32_t VEC_RES_ELEM_SIZE = 2;        // 2: fp16/bf16
     constexpr uint32_t TOPK_MAX_SIZE = 2048;          // TopK选取个数
     constexpr uint32_t UB_SIZE = 248 * 1024;          // UB大小共256KB,预留8k
+    constexpr uint32_t INIT_ADDR_INPUT_BUF_SIZE =
+        KvQuantSparseAttnSharedkv::ScfaUbConfig::TypedBufferSize<uint16_t>::STAGE0_OUT;  // pa表和稀疏表的UB空间复用stage0OutBuf[0]、stage0OutBuf[1]，此处和InitLocalBuffer中的UB分配耦合
+    constexpr uint32_t INIT_ADDR_OUTPUT_BUF_SIZE =
+        KvQuantSparseAttnSharedkv::ScfaUbConfig::TypedBufferSize<float>::STAGE2_OUT;     // kv物理地址的UB空间复用stage2OutBuf，此处和InitLocalBuffer中的UB分配耦合
     uint32_t totalBS1 = (tilingInfo->qLayout == SASLayout::TND) ?
         tilingInfo->s1Size : (tilingInfo->bSize * tilingInfo->s1Size);
 
     uint32_t blocksizeFlag = static_cast<uint32_t>((tilingInfo->cmpBlockSize &
         (tilingInfo->cmpBlockSize - 1)) == 0); // blockSize2是否为2的幂次
-    uint32_t vectorizeUbSize = tilingInfo->cmpMaxBlockNumPerBatch * sizeof(int32_t) +
-        tilingInfo->sparseBlockCount * sizeof(int32_t) +
-        tilingInfo->sparseBlockCount * sizeof(int64_t); // 物理地址计算向量化所需ub大小
+    bool vectorizeBufferFit = tilingInfo->cmpMaxBlockNumPerBatch * sizeof(int32_t) <= INIT_ADDR_INPUT_BUF_SIZE &&
+        tilingInfo->sparseBlockCount * sizeof(int32_t) <= INIT_ADDR_INPUT_BUF_SIZE &&
+        tilingInfo->sparseBlockCount * sizeof(int64_t) <= INIT_ADDR_OUTPUT_BUF_SIZE;
     uint32_t vectorizeFlag = static_cast<uint32_t>((perfMode_ == SASTemplateMode::SCFA_TEMPLATE_MODE) &&
-        (vectorizeUbSize <= UB_SIZE) && blocksizeFlag); // 是否满足向量化条件
+        vectorizeBufferFit && blocksizeFlag); // 是否满足向量化条件
 
     uint64_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     if (tilingInfo->gSize > 64) {

@@ -36,27 +36,30 @@ using namespace regbaseutil;
 using namespace matmul;
 
 namespace BaseApi {
+constexpr uint16_t KV_PHY_ADDR_SYNC_FLAG_ID = 8;
+
 TEMPLATES_DEF
 class SCFABlockVec {
 public:
     // BUFFER的字节数
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
     /* =================编译期常量的基本块信息================= */
-    static constexpr uint32_t s1BaseSize = 64; 
+    static constexpr uint32_t s1BaseSize = KvQuantSparseAttnSharedkv::ScfaUbConfig::S1_BASE_SIZE;
     static constexpr uint32_t s2BaseSize = 128; 
     static constexpr uint32_t vec1Srcstride = (s1BaseSize >> 1) + 1; 
-    static constexpr uint32_t dVTemplateType = 512;
-    static constexpr uint32_t dTemplateAlign64 = Align64Func(dVTemplateType);
-    static constexpr uint32_t dVTemplateTypeInput = 640;
+    static constexpr uint32_t dVTemplateType = KvQuantSparseAttnSharedkv::ScfaUbConfig::D_TEMPLATE_SIZE;
+    static constexpr uint32_t dTemplateAlign64 = KvQuantSparseAttnSharedkv::ScfaUbConfig::D_TEMPLATE_ALIGN64;
+    static constexpr uint32_t dVTemplateTypeInput = KvQuantSparseAttnSharedkv::ScfaUbConfig::D_INPUT_SIZE;
+    static constexpr uint32_t v0ProcessRowNum = KvQuantSparseAttnSharedkv::ScfaUbConfig::V0_PROCESS_ROW_NUM;
     static constexpr uint32_t combineKvInputBytes = dVTemplateTypeInput;
     static constexpr uint32_t combineKvInputAlignBytes =
         ((combineKvInputBytes + BUFFER_SIZE_BYTE_32B - 1) / BUFFER_SIZE_BYTE_32B) * BUFFER_SIZE_BYTE_32B;
     static constexpr uint32_t sparseCopyTokenNum = 8;
     static constexpr float R0 = 1.0f;
-    static constexpr uint32_t blkTableBufId = 0;
-    static constexpr uint32_t sparseIdxBufId = 1;
-    static constexpr uint32_t kvPhyAddrBufId = 2;
-    static constexpr uint32_t syncSinksBufId = 6;
+    static constexpr uint32_t blkTableBufId = 2;
+    static constexpr uint32_t sparseIdxBufId = 3;
+    static constexpr uint32_t kvPhyAddrBufId = 6;
+    static constexpr uint32_t syncSinksBufId = 7;
     static constexpr uint32_t stage2OutBufBufId = 6;
 
     // ==================== Functions ======================
@@ -94,6 +97,8 @@ public:
          uint32_t hasLoad, uint32_t bN2StartIdx, uint32_t bN2EndIdx, uint32_t gS1StartIdx, uint32_t nextGs1Idx,
         __gm__ int32_t *actualSeqQlenAddr, __gm__ int32_t *cuSeqlensQAddr,
         __gm__ int32_t *actualSeqKvlenAddr, __gm__ uint8_t *workspace, ConstInfo &constInfo);
+    __aicore__ inline void SetKvPhyAddrReady();
+    __aicore__ inline void WaitKvPhyAddrBeforeRead();
 
 private:
     __aicore__ inline void ProcessSparseKv(Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
@@ -168,6 +173,7 @@ private:
 
     T negativeFloatScalar;
     bool isSinks = false;
+    bool isKvPhyAddrSynced = false;
     uint32_t maxBlockNumPerBatch;
     uint32_t blockSize;
     int64_t procSize;
@@ -187,6 +193,25 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int64_t *tok
             tokenData[i] = cmpSparseIndicesGm.GetValue(idx);
         } else {
             break;
+        }
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::SetKvPhyAddrReady()
+{
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE && IS_VEC_S2PHYADDR) {
+        CrossCoreSetFlag<0, PIPE_MTE3>(KV_PHY_ADDR_SYNC_FLAG_ID);
+    }
+}
+
+TEMPLATES_DEF_NO_DEFAULT
+__aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::WaitKvPhyAddrBeforeRead()
+{
+    if constexpr (TEMPLATE_MODE == SASTemplateMode::SCFA_TEMPLATE_MODE && IS_VEC_S2PHYADDR) {
+        if (unlikely(!isKvPhyAddrSynced)) {
+            CrossCoreWaitFlag<0, PIPE_S>(KV_PHY_ADDR_SYNC_FLAG_ID);
+            isKvPhyAddrSynced = true;
         }
     }
 }
@@ -666,6 +691,8 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessSparseKv(
     Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> &v0ResGm,
     const RunInfo &runInfo, ConstInfo &constInfo)
 {
+    // 所有进入压缩KV路径的AIV在提前返回前消费一次地址就绪flag。
+    WaitKvPhyAddrBeforeRead();
     const int64_t procSizeLocal = procSize;
     if (procSizeLocal == 0) {
         return;
@@ -1246,8 +1273,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
     __gm__ int32_t *actualSeqKvlenAddr, __gm__ uint8_t *workspace, ConstInfo &constInfo)
 {
     if (hasLoad == 0) {
-        SyncAll();
-        tPipe->Reset();
         return;
     }
     static constexpr uint16_t s2NumPerLoop =128;
@@ -1276,15 +1301,9 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
 
     const uint32_t kvStride = static_cast<uint32_t>(constInfo.cmpKvStride);
 
-    TBuf<> blkTableBuf;
-    TBuf<> sparseIdxBuf;
-    TBuf<> kvPhyAddrBuf;
-    tPipe->InitBuffer(blkTableBuf, constInfo.cmpMaxBlockNumPerBatch * sizeof(int32_t));
-    tPipe->InitBuffer(sparseIdxBuf, constInfo.sparseBlockCount * sizeof(int32_t));
-    tPipe->InitBuffer(kvPhyAddrBuf, constInfo.sparseBlockCount * sizeof(int64_t));
-    LocalTensor<int32_t> blkTableUb = blkTableBuf.template Get<int32_t>();
-    LocalTensor<int32_t> sparseIdxUb = sparseIdxBuf.template Get<int32_t>(); // 逐行处理
-    LocalTensor<uint32_t> kvPhyAddrUb = kvPhyAddrBuf.template Get<uint32_t>();
+    LocalTensor<int32_t> blkTableUb = stage0OutBuf[0].template Get<int32_t>();
+    LocalTensor<int32_t> sparseIdxUb = stage0OutBuf[1].template Get<int32_t>(); // 逐行处理
+    LocalTensor<uint32_t> kvPhyAddrUb = stage2OutBuf.template Get<uint32_t>();
 
     int64_t totalValidS1 = 0;
     uint32_t tmpGS1Start = gS1StartIdx;
@@ -1317,8 +1336,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
     int64_t curCount = s1PerVecCore + (vecCoreIdx < (uint32_t)s1Tail ? 1 : 0); // 尾块均分到前几个vec
 
     if (curCount == 0) {
-        SyncAll();
-        tPipe->Reset();
         return;
     }
 
@@ -1409,8 +1426,6 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::GetKVPhyAddr(
     rls_buf(PIPE_MTE2, sparseIdxBufId, false);
     get_buf(PIPE_V, kvPhyAddrBufId, false);
     rls_buf(PIPE_V, kvPhyAddrBufId, false);
-    SyncAll();
-    tPipe->Reset();
 }
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -1468,23 +1483,30 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitSinksBuffer(ConstInfo &c
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo)
 {
+    constexpr uint32_t stage0OutBufferSize =
+        KvQuantSparseAttnSharedkv::ScfaUbConfig::TypedBufferSize<Q_T>::STAGE0_OUT;
+    constexpr uint32_t stage2OutBufferSize =
+        KvQuantSparseAttnSharedkv::ScfaUbConfig::TypedBufferSize<T>::STAGE2_OUT;
+
     // ub buffer
-    pipe->InitBuffer(dequantScaleBuff, 64 * 16 * 2 * sizeof(float)); // v0阶段每次处理16行，每行64个元素，开2 buffer
+    // V0阶段解量化scale，双buffer
+    pipe->InitBuffer(dequantScaleBuff, s1BaseSize * v0ProcessRowNum * 2 * sizeof(float));
 
     SoftmaxInitBuffer();
 
     tPipe->InitBuffer(commonTBuf, 512); // commonTBuf内存申请512B
     tPipe->InitBuffer(sinksBuf, 512); // sinksBuf内存申请512B
 
-    tPipe->InitBuffer(stage0InBuf[0], dVTemplateTypeInput * 16 * sizeof(KV_T)); // V0阶段每次处理16个seq, 开2 buffer
-    tPipe->InitBuffer(stage0InBuf[1], dVTemplateTypeInput * 16 * sizeof(KV_T));
-    // kv输入D轴640, V0阶段每次处理16个seq, 开2 buffer
-    tPipe->InitBuffer(stage0OutBuf[0], dVTemplateTypeInput * (16 + 1) * sizeof(Q_T));
-    tPipe->InitBuffer(stage0OutBuf[1], dVTemplateTypeInput * (16 + 1) * sizeof(Q_T));
+    // V0阶段输入，双buffer
+    tPipe->InitBuffer(stage0InBuf[0], dVTemplateTypeInput * v0ProcessRowNum * sizeof(KV_T));
+    tPipe->InitBuffer(stage0InBuf[1], dVTemplateTypeInput * v0ProcessRowNum * sizeof(KV_T));
+    // V0阶段输出额外预留一行，双buffer
+    tPipe->InitBuffer(stage0OutBuf[0], stage0OutBufferSize);
+    tPipe->InitBuffer(stage0OutBuf[1], stage0OutBufferSize);
 
     tPipe->InitBuffer(stage1OutBuf[0], vec1Srcstride * s2BaseSize * sizeof(Q_T));
     tPipe->InitBuffer(stage1OutBuf[1], vec1Srcstride * s2BaseSize * sizeof(Q_T));
-    tPipe->InitBuffer(stage2OutBuf, (s1BaseSize / CV_RATIO) * dTemplateAlign64 * sizeof(T));
+    tPipe->InitBuffer(stage2OutBuf, stage2OutBufferSize);
 
     if (this->isSinks) {
         InitSinksBuffer(constInfo);
@@ -1508,6 +1530,8 @@ public:
         __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sinks) {}
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *sequsedKv) {};
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
+    __aicore__ inline void SetKvPhyAddrReady() {}
+    __aicore__ inline void WaitKvPhyAddrBeforeRead() {}
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
         Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo) {}

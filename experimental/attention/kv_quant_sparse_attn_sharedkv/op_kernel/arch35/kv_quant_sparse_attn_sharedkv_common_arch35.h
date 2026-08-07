@@ -17,6 +17,7 @@
 #include <type_traits>
 #include "kernel_tiling/kernel_tiling.h"
 #include "../kv_quant_sparse_attn_sharedkv_common.h"
+#include "kv_quant_sparse_attn_sharedkv_scfa_ub_config.h"
 
 constexpr uint64_t BLOCK_BYTE = 32;
 constexpr uint32_t NEGATIVE_MIN_VAULE_FP32 = 0xFF7FFFFF;
@@ -29,7 +30,7 @@ constexpr uint32_t BUFFER_SIZE_64K = 65536; // 65536表示64 * 1024
 constexpr uint32_t BUFFER_SIZE_96K = 98304; // 98304表示96 * 1024
 constexpr uint32_t BUFFER_SIZE_256K = 262144; // 262144表示256 * 1024
 
-constexpr uint32_t CV_RATIO = 2;
+constexpr uint32_t CV_RATIO = KvQuantSparseAttnSharedkv::ScfaUbConfig::CV_RATIO;
 constexpr uint64_t SYNC_MODE = 4;
 
 namespace BaseApi {
