@@ -65,3 +65,4 @@ from .dense_lightning_indexer_softmax_lse import (
     dense_lightning_indexer_softmax_lse,
     dense_lightning_indexer_softmax_lse_metadata,
 )
+from .fused_causal_conv1d import fused_causal_conv1d
