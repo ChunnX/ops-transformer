@@ -444,27 +444,22 @@ CutResult AllToAllMxQuantMatmulTilingBase::GetCutResOfCommAndCompute()
 void AllToAllMxQuantMatmulTilingBase::AlignCutResForKernel(CutResult &cutRes, uint64_t mValue) const
 {
     constexpr uint64_t KERNEL_ALIGN_M = 256;
-    cutRes.shortTileAtBack = true;
-    if (cutRes.numShortTile == 0 && cutRes.numLongTile > 0) {
-        return;
-    }
     auto alignUp = [](uint64_t val, uint64_t align) { return (val + align - 1) / align * align; };
+
+    cutRes.shortTileAtBack = true;
+    cutRes.shortTileLen = 0;
+    cutRes.numShortTile = 0;
+
     uint64_t longTile = alignUp(cutRes.longTileLen, KERNEL_ALIGN_M);
-    uint64_t numLong = mValue / longTile;
-    uint64_t remainder = mValue % longTile;
-    cutRes.longTileLen = longTile;
-    cutRes.numLongTile = numLong;
-    if (remainder == 0) {
-        cutRes.shortTileLen = 0;
-        cutRes.numShortTile = 0;
+    if (longTile >= mValue || (cutRes.numShortTile == 0 && cutRes.numLongTile > 0)) {
+        cutRes.longTileLen = mValue;
+        cutRes.numLongTile = 1;
     } else {
-        uint64_t shortTile = alignUp(remainder, KERNEL_ALIGN_M);
-        if (shortTile >= longTile) {
-            cutRes.numLongTile = numLong + 1;
-            cutRes.shortTileLen = 0;
-            cutRes.numShortTile = 0;
-        } else {
-            cutRes.shortTileLen = shortTile;
+        cutRes.longTileLen = longTile;
+        cutRes.numLongTile = mValue / longTile;
+        uint64_t remainder = mValue % longTile;
+        if (remainder > 0) {
+            cutRes.shortTileLen = remainder;
             cutRes.numShortTile = 1;
         }
     }
