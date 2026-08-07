@@ -115,9 +115,10 @@
 | Tiling 多核 / UB 切分 | 已完成（切分策略与 UB 划分见 `op_host/*_tiling.h` 注释） |
 | Kernel 计算实现 | 已完成（RMSNorm + MRoPE 在 `op_kernel/arch35/*_mrope_vf.h` 的单个 `__VEC_SCOPE__` 内完成，中间量驻留 vreg） |
 | aclnn L0/L2 接口 | 已完成 |
-| UT（infershape / tiling / aclnn） | 已完成（op_host 39 例 = infershape 4 + tiling 35、op_api 4 例） |
-| 上板精度验证 | 已完成：在 A5（Ascend950PR_9579）跑 `tests/test_und_gen_qkv_rms_norm_rope_cache_torch.py`，对 golden **43/43 PASS** = 典型集 15 + 泛化集 28（`--all-sets`）；`--full` 追加的两个 T=64K 大 case 亦 PASS |
-| ST（ATK） | 待补（golden 已就绪，见 `tests/golden.py`） |
+| UT（infershape / tiling / aclnn） | 已完成（op_host 74 例 = infershape 39 + tiling 35、op_api 4 例） |
+| 上板精度验证 | 已完成：在 A5（Ascend950PR_9579）跑 `examples/test_torch_und_gen_qkv_rms_norm_rope_cache.py --full`，对 golden **17/17 PASS**（含两个 T=64K） |
+| TTK st 用例 | 已完成：`tests/st/arch35/ttk_kernel_*.csv` 24 例，`python3 -m ttk kernel -b=release --plugin tests/assets/golden.py` 在 A5 上 **24/24 PASS** |
+| ST（ATK） | 待补（golden 已就绪，见 `tests/assets/golden.py`） |
 
 > **用例集分工**：`TYPICAL_CASES` 是稳定回归基线，随机种子与标量参数刻意钉死，便于逐次比对；
 > `GENERALIZED_CASES` 补的是被基线压成单点的维度——`mrope_section` 轴映射（基线 17 例里 16 例同值，
@@ -128,15 +129,10 @@
 > 忽略 `cat_indices` → 96.6~99.8%；忽略 `norm_eps` → 需要把输入幅度压到 `x_scale=1e-2` 才测得出
 > （默认幅度下 eps 对 rms 的影响低于 bf16 判据，`g_eps_tiny` 更是原理上无区分力，仅验不出 inf/nan）。
 
-> **golden 的正确性依据**：`tests/golden.py` 与需求来源的外部参考实现逐比特一致。
-> 该参考实现属于外部代码、不入本仓，对拍脚本按路径加载它，缺失时自动 SKIP：
->
-> ```bash
-> export UND_GEN_REF_FILE=/path/to/test_fused_qk_rmsnorm_mrope_store_kv_fp8.py
-> python3 tests/test_golden_vs_reference.py          # T ≤ 10752 的 10 个 case
-> python3 tests/test_golden_vs_reference.py --full   # 追加 T=64K
-> ```
+> **golden 的正确性依据**：`tests/assets/golden.py` 与需求来源的外部参考实现
+> （CUDA hpc 侧的 `test_fused_qk_rmsnorm_mrope_store_kv_fp8.py` 中的 `_reference`）
+> 的 Q/K/V 结果逐比特一致，已在开发期对拍确认。该参考实现属于外部代码、不入本仓，
+> 故对拍脚本亦不随仓分发；改动 golden 语义时需自行取回参考实现重新对拍。
 >
 > 对拍范围限于 `golden_dense` 的 Q/K/V（KV Cache scatter 之前）；scatter 用的
 > `slot_mapping` 方案与参考实现的 block_ids/num_seqlen/q_index 接口不同，无外部基准。
-> 改动 golden 语义后请重跑此脚本。

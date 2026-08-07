@@ -308,7 +308,7 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheTilingBase::CheckAttrsValid()
     // 参考实现 _mrope）只读 sec[1]/sec[2]，sec[0] 从不参与计算，T 是"其余全归它"的兜底轴。
     // 所以 [16,16,16] 实际得到 T/H/W = 32/16/16，[64,16,16] 与 [0,16,16] 的轴映射逐位相同。
     // 下面的 sum <= half 因此只是挡手误的粗筛，不是语义要求——参考实现没有这条约束，
-    // 它自己的用例就是 sum=48。要放宽得连 tests/golden.py:mrope_axis_map 的同名 assert 一起改。
+    // 它自己的用例就是 sum=48。要放宽得连 tests/assets/golden.py:mrope_axis_map 的同名 assert 一起改。
     int64_t half = headDim_ / DIM_NUM_TWO;
     mropeSection_[DIM_ZERO] = half;
     mropeSection_[DIM_ONE] = 0;
