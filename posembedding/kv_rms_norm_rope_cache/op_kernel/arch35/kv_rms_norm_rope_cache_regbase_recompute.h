@@ -10,7 +10,7 @@
 
 /*!
  * \file kv_rms_norm_rope_cache_regbase_recompute.h
- * \brief
+ * \brief recompute path for kv_rms_norm_rope_cache
  */
 
 #ifndef KV_RMS_NORM_ROPE_CACHE_REGBASE_RECOMPUTE_H_
