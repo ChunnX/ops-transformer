@@ -76,7 +76,7 @@ inline void AdjustSinnerAndSouter(uint32_t vHeadDim, int64_t maxSeqQ, int64_t ma
         }
     }
     if (vHeadDim == DSIZE_256) {
-        sOuterFactor = SOUTER_32;
+        sOuterFactor = SOUTER_64;
         sInnerFactor = SINNER_128;
     }
 }

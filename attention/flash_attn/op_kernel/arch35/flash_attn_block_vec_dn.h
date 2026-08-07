@@ -93,6 +93,7 @@ public:
     static constexpr uint32_t UB_MM_RES_BUF_BYTES =
         mBaseSize / CV_RATIO * (s2BaseSize > dVBaseSize ? s2BaseSize : dVBaseSize) * sizeof(T);
     LocalTensor<uint8_t> ubMmResBuffers_;
+    uint32_t mmResBufId_ = 0;
 
     static constexpr uint32_t UB_VEC2_RES_BUF_BYTES = mBaseSize / CV_RATIO * dTemplateAlign64 * sizeof(T);
     LocalTensor<T> ubVec2Res_; // 存放vec2阶段VEC的中间处理结果, 并且作为attn_out的输出buffer, 需配对的MTE3和V的同步ID
@@ -228,7 +229,8 @@ public:
 
     __aicore__ inline void ProcessVec1(RunInfoX runInfo)
     {
-        uint32_t mmResUbBufId = runInfo.loop % UB_MM_RES_BUFCNT;
+        uint32_t mmResUbBufId = mmResBufId_;
+        mmResBufId_ = (mmResBufId_ + 1) % UB_MM_RES_BUFCNT;
         uint32_t pL1BufId = runInfo.loop % L1_P_BUFCNT;
         uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
         uint32_t v1c2CrossCoreSyncIdx = CC_L1P_0 + pL1BufId;
@@ -483,7 +485,8 @@ public:
 
     __aicore__ inline void ProcessVec2(RunInfoX runInfo)
     {
-        uint32_t mmResUbBufId = runInfo.loop % UB_MM_RES_BUFCNT;
+        uint32_t mmResUbBufId = mmResBufId_;
+        mmResBufId_ = (mmResBufId_ + 1) % UB_MM_RES_BUFCNT;
         uint32_t mmSyncIdx = CC_MM_0 + mmResUbBufId;
         if (unlikely(runInfo.actVecMSize == 0)) {
             CrossCoreWaitFlag<CROSS_CORE_SYNC_MODE, PIPE_V>(mmSyncIdx);
