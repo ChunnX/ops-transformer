@@ -47,38 +47,34 @@ std::vector<bool> IsContiguousAxes(const at::Tensor &tensor)
 }
 
 at::Tensor ConstructKPoolOutputTensor(const at::Tensor &hidden_states, const at::Tensor &wk,
-                                           const c10::optional<at::Tensor> &seqLens, int64_t cmpRatio, int64_t coff)
+                                      const at::Tensor &stateCache, const at::Tensor &cacheBlockTable, int64_t cmpRatio)
 {
     auto hiddenStatesDim = hidden_states.dim();
     at::SmallVector<int64_t, MAX_DIM_SIZE> pooledKeySize;
     at::Tensor pooledKey;
-    int64_t cmpS = 0;
-    int64_t bSize = 0;
 
     TORCH_CHECK(wk.defined(), "Check hidden_states != nullptr failed");
     auto wkDim = wk.dim();
     TORCH_CHECK(wkDim == DIM_TWO, "wk dim num[", wkDim, "] should be 2");
 
-    TORCH_CHECK(coff == VALUE_1 || coff == VALUE_2, "coff value[", coff, "] should be 1 or 2");
+    TORCH_CHECK(hiddenStatesDim == DIM_TWO || hiddenStatesDim == DIM_THREE,
+                "hidden_states dim num[", hiddenStatesDim, "] should be 2 or 3");
+    TORCH_CHECK(stateCache.dim() == DIM_THREE, "state_cache dim num[", stateCache.dim(), "] should be 3");
+    TORCH_CHECK(cacheBlockTable.dim() == DIM_TWO,
+                "cache_block_table dim num[", cacheBlockTable.dim(), "] should be 2");
+    int64_t pcap = (cacheBlockTable.size(1) * stateCache.size(1) + cmpRatio - 1) / cmpRatio;
+    pooledKeySize = {cacheBlockTable.size(0), pcap, wk.size(0)};
 
-    if (hiddenStatesDim == DIM_THREE) {
-        cmpS = (hidden_states.size(1) + cmpRatio - 1) / cmpRatio;
-        pooledKeySize = {hidden_states.size(0), cmpS, wk.size(0) / coff};
-    } else {
-        TORCH_CHECK(seqLens.has_value(), "Check seq_lens != nullptr failed");
-        bSize = seqLens->size(0) - 1;
-        cmpS = std::min(hidden_states.size(0), hidden_states.size(0) / cmpRatio + bSize);
-        pooledKeySize = {cmpS, wk.size(0) / coff};
-    }
-
-    pooledKey = at::empty(pooledKeySize, hidden_states.options().dtype(hidden_states.dtype()));
+    pooledKey = at::zeros(pooledKeySize, hidden_states.options().dtype(hidden_states.dtype()));
     return pooledKey;
 }
 
-at::Tensor KPool(const at::Tensor &hidden_states, const at::Tensor &wk, const at::Tensor &gate_weight, at::Tensor &stateCache,
-                      const at::Tensor &ape, int64_t cmpRatio, const c10::optional<at::Tensor> &cacheBlockTable,
-                      const c10::optional<at::Tensor> &seqLens, const c10::optional<at::Tensor> &seq_used,
-                      const c10::optional<at::Tensor> &startPos, int64_t coff, int64_t cacheMode)
+at::Tensor KPool(const at::Tensor &hidden_states, const at::Tensor &wk, const at::Tensor &gate_weight,
+                 const at::Tensor &ape, at::Tensor &stateCache, const at::Tensor &cacheBlockTable,
+                 const at::Tensor &startPos, const c10::optional<at::Tensor> &normWeight,
+                 const c10::optional<at::Tensor> &normBias, const c10::optional<at::Tensor> &cos,
+                 const c10::optional<at::Tensor> &sin, const c10::optional<at::Tensor> &seqLens,
+                 int64_t cmpRatio, double normEps, int64_t rotaryMode)
 {
     TORCH_CHECK(hidden_states.defined(), "Check hidden_states != nullptr failed");
     auto hiddenStatesDim = hidden_states.dim();
@@ -86,7 +82,11 @@ at::Tensor KPool(const at::Tensor &hidden_states, const at::Tensor &wk, const at
 
     TORCH_CHECK(cmpRatio > VALUE_0, "cmp_ratio should be greater than 0");
 
-    at::Tensor pooledKey = ConstructKPoolOutputTensor(hidden_states, wk, seqLens, cmpRatio, coff);
+    TORCH_CHECK(!normWeight.has_value() && !normBias.has_value(), "KPool LayerNorm is not implemented in this stage");
+    TORCH_CHECK(!cos.has_value() && !sin.has_value(), "KPool RoPE is not implemented in this stage");
+    TORCH_CHECK(hiddenStatesDim != DIM_TWO || seqLens.has_value(), "seq_lens is required for TH layout");
+    TORCH_CHECK(hiddenStatesDim != DIM_THREE || !seqLens.has_value(), "seq_lens must be absent for BSH layout");
+    at::Tensor pooledKey = ConstructKPoolOutputTensor(hidden_states, wk, stateCache, cacheBlockTable, cmpRatio);
 
     auto stateCacheDim = stateCache.dim();
     TORCH_CHECK(stateCacheDim == DIM_THREE, "state_cache dim num[", stateCacheDim, "] should be 3");
@@ -94,16 +94,26 @@ at::Tensor KPool(const at::Tensor &hidden_states, const at::Tensor &wk, const at
     auto contiguousAxesResult = IsContiguousAxes(stateCache);
     int64_t stateCacheStrideDim0 = stateCache.stride(0);
 
-    ACLNN_CMD(aclnnKPool, hidden_states, wk, gate_weight, stateCache, ape, cacheBlockTable, seqLens, seq_used, startPos, cmpRatio,
-              coff, cacheMode, stateCacheStrideDim0, pooledKey);
+    c10::optional<at::Tensor> seqOffsets = c10::nullopt;
+    if (seqLens.has_value()) {
+        TORCH_CHECK(seqLens->dim() == DIM_ONE, "seq_lens dim num[", seqLens->dim(), "] should be 1");
+        auto cumulative = at::cumsum(*seqLens, VALUE_0);
+        auto prefix = at::zeros({VALUE_1}, seqLens->options());
+        seqOffsets = at::cat({prefix, cumulative}, VALUE_0);
+    }
+    ACLNN_CMD(aclnnKPool, hidden_states, wk, gate_weight, ape, stateCache, cacheBlockTable, startPos,
+              normWeight, normBias, cos, sin, seqOffsets, cmpRatio, normEps, rotaryMode,
+              stateCacheStrideDim0, pooledKey);
 
     return pooledKey;
 }
 
-at::Tensor KPoolMeta(const at::Tensor &hidden_states, const at::Tensor &wk, const at::Tensor &gate_weight, at::Tensor &stateCache,
-                          const at::Tensor &ape, int64_t cmpRatio, const c10::optional<at::Tensor> &cacheBlockTable,
-                          const c10::optional<at::Tensor> &seqLens, const c10::optional<at::Tensor> &seq_used,
-                          const c10::optional<at::Tensor> &startPos, int64_t coff, int64_t cacheMode)
+at::Tensor KPoolMeta(const at::Tensor &hidden_states, const at::Tensor &wk, const at::Tensor &gate_weight,
+                     const at::Tensor &ape, at::Tensor &stateCache, const at::Tensor &cacheBlockTable,
+                     const at::Tensor &startPos, const c10::optional<at::Tensor> &normWeight,
+                     const c10::optional<at::Tensor> &normBias, const c10::optional<at::Tensor> &cos,
+                     const c10::optional<at::Tensor> &sin, const c10::optional<at::Tensor> &seqLens,
+                     int64_t cmpRatio, double normEps, int64_t rotaryMode)
 {
     TORCH_CHECK(hidden_states.defined(), "Check hidden_states != nullptr failed");
     auto hiddenStatesDim = hidden_states.dim();
@@ -111,7 +121,9 @@ at::Tensor KPoolMeta(const at::Tensor &hidden_states, const at::Tensor &wk, cons
 
     TORCH_CHECK(cmpRatio > VALUE_0, "cmp_ratio should be greater than 0");
 
-    return ConstructKPoolOutputTensor(hidden_states, wk, seqLens, cmpRatio, coff);
+    TORCH_CHECK(!normWeight.has_value() && !normBias.has_value(), "KPool LayerNorm is not implemented in this stage");
+    TORCH_CHECK(!cos.has_value() && !sin.has_value(), "KPool RoPE is not implemented in this stage");
+    return ConstructKPoolOutputTensor(hidden_states, wk, stateCache, cacheBlockTable, cmpRatio);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)

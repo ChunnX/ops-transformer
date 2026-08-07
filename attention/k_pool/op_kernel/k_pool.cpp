@@ -28,7 +28,7 @@ using namespace KPool;
     do {                                                                                                               \
         templateClass<COMPType<__VA_ARGS__>> op(&pipe, tilingData);                                                    \
         op.Init(hidden_states, wk, gateWeight, stateCache, ape, cacheBlockTable,  \
-                seqLens, seqUsed, startPos, pooledKeyOut, workspace);                                                    \
+                seqLens, nullptr, startPos, pooledKeyOut, workspace);                                                    \
         op.Process();                                                                                                  \
     } while (0)
 
@@ -37,14 +37,16 @@ __global__ __aicore__ void k_pool(
     __gm__ uint8_t *hidden_states,
     __gm__ uint8_t *wk,
     __gm__ uint8_t *gateWeight,
-    __gm__ uint8_t *stateCache,
     __gm__ uint8_t *ape,
+    __gm__ uint8_t *stateCache,
     __gm__ uint8_t *cacheBlockTable,
-    __gm__ uint8_t *seqLens,
-    __gm__ uint8_t *seqUsed,
     __gm__ uint8_t *startPos,
+    __gm__ uint8_t *normWeight,
+    __gm__ uint8_t *normBias,
+    __gm__ uint8_t *cos,
+    __gm__ uint8_t *sin,
+    __gm__ uint8_t *seqLens,
     __gm__ uint8_t *pooledKeyOut,
-    __gm__ uint8_t *stateCacheOut,
     __gm__ uint8_t *workspace,
     __gm__ uint8_t *tiling) {
     REGISTER_TILING_DEFAULT(optiling::KPoolTilingData);

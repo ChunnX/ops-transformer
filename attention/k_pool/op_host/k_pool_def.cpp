@@ -15,9 +15,7 @@ class KPool : public OpDef {
 public:
     static constexpr uint32_t ROPE_HEAD_DIM_VALUE = 64;
     static constexpr uint32_t CMP_RATIO_VALUE = 4;
-    static constexpr uint32_t COFF_VALUE = 1;
     static constexpr uint32_t ROTARY_MODE_VALUE = 1;
-    static constexpr uint32_t CACHE_MODE_VALUE = 1;
     static constexpr uint32_t STATE_CACHE_STRIDE_DIM0 = 0;
 
     explicit KPool(const char *name) : OpDef(name)
@@ -37,32 +35,31 @@ public:
             .DataType({ge::DT_BF16, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("state_cache")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND})
-            .IgnoreContiguous(); // state_cache需要支持非连续，不使能aclnn自动转连续的功能
         this->Input("ape")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("state_cache")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_FLOAT})
+            .FormatList({ge::FORMAT_ND})
+            .IgnoreContiguous(); // state_cache需要支持非连续，不使能aclnn自动转连续的功能
         this->Input("cache_block_table")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("seq_lens")
-            .ParamType(OPTIONAL)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
-        this->Input("seq_used")
-            .ParamType(OPTIONAL)
+            .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("start_pos")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT32})
+            .FormatList({ge::FORMAT_ND})
+            .AutoContiguous();
+        this->Input("norm_weight").ParamType(OPTIONAL).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
+        this->Input("norm_bias").ParamType(OPTIONAL).DataTypeList({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
+        this->Input("cos").ParamType(OPTIONAL).DataTypeList({ge::DT_BF16}).FormatList({ge::FORMAT_ND});
+        this->Input("sin").ParamType(OPTIONAL).DataTypeList({ge::DT_BF16}).FormatList({ge::FORMAT_ND});
+        this->Input("seq_lens")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
@@ -71,13 +68,9 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND});
-        this->Output("state_cache")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND});
         this->Attr("cmp_ratio").AttrType(REQUIRED).Int(CMP_RATIO_VALUE);
-        this->Attr("coff").AttrType(OPTIONAL).Int(COFF_VALUE);
-        this->Attr("cache_mode").AttrType(OPTIONAL).Int(CACHE_MODE_VALUE);
+        this->Attr("norm_eps").AttrType(OPTIONAL).Float(1e-6);
+        this->Attr("rotary_mode").AttrType(OPTIONAL).Int(ROTARY_MODE_VALUE);
         this->Attr("state_cache_stride_dim0").AttrType(OPTIONAL).Int(STATE_CACHE_STRIDE_DIM0);
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)

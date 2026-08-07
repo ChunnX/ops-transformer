@@ -42,19 +42,14 @@ namespace optiling {
 constexpr uint32_t HIDDEN_STATES_INPUT_INDEX = 0;
 constexpr uint32_t WK_INPUT_INDEX = 1;
 constexpr uint32_t GATE_WEIGHT_INPUT_INDEX = 2;
-constexpr uint32_t STATE_CACHE_INPUT_INDEX = 3;
-constexpr uint32_t APE_INPUT_INDEX = 4;
-
-// INPUT(OPTION)
+constexpr uint32_t APE_INPUT_INDEX = 3;
+constexpr uint32_t STATE_CACHE_INPUT_INDEX = 4;
 constexpr uint32_t CACHE_BLOCK_TABLE_INPUT_INDEX = 5;
-constexpr uint32_t SEQ_LENS_INPUT_INDEX = 6;
-constexpr uint32_t SEQ_USED_INPUT_INDEX = 7;
-constexpr uint32_t START_POS_INPUT_INDEX = 8;
+constexpr uint32_t START_POS_INPUT_INDEX = 6;
+constexpr uint32_t SEQ_LENS_INPUT_INDEX = 11;
 
 // ATTR
 constexpr uint32_t CMP_RATIO_ATTR_INDEX = 0;
-constexpr uint32_t COFF_ATTR_INDEX = 1;
-constexpr uint32_t CACHE_MODE_ATTR_INDEX = 2;
 constexpr uint32_t STATE_CACHE_STRIDE_DIM0_ATTR_INDEX = 3;
 
 // OUTPUT

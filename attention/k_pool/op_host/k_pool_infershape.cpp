@@ -21,29 +21,19 @@ namespace ops {
     constexpr uint32_t WK_INPUT_INDEX = 1;
     constexpr uint32_t GATE_WEIGHT_INPUT_INDEX = 2;
 
-    constexpr uint32_t STATE_CACHE_INPUT_INDEX = 3;
-
-    constexpr uint32_t APE_INPUT_INDEX = 4;
-
-    // INPUT(OPTION)
+    constexpr uint32_t APE_INPUT_INDEX = 3;
+    constexpr uint32_t STATE_CACHE_INPUT_INDEX = 4;
     constexpr uint32_t CACHE_BLOCK_TABLE_INPUT_INDEX = 5;
-
-    constexpr uint32_t SEQ_LENS_INPUT_INDEX = 6;
-    constexpr uint32_t SEQ_USED_INPUT_INDEX = 7;
-    constexpr uint32_t START_POS_INPUT_INDEX = 8;
+    constexpr uint32_t START_POS_INPUT_INDEX = 6;
+    constexpr uint32_t SEQ_LENS_INPUT_INDEX = 11;
 
     // ATTR
     constexpr uint32_t CMP_RATIO_ATTR_INDEX = 0;
-    constexpr uint32_t COFF_ATTR_INDEX = 1;
-    constexpr uint32_t CACHE_MODE_ATTR_INDEX = 2;
-    constexpr uint32_t STATE_CACHE_STRIDE_DIM0_ATTR_INDEX = 3;
-
     // OUTPUT
     constexpr uint32_t POOLED_KEY_OUTPUT_INDEX = 0;
 
     // ATTR DEFAULT VALUE
     constexpr uint32_t CMP_RATIO_VALUE = 4;
-    constexpr uint32_t COFF_VALUE = 1;
 
 struct KPoolProtoShapeParam {
     bool isBsMerge { false };
@@ -80,25 +70,19 @@ ge::graphStatus GetKPoolShapeDim(const gert::InferShapeContext* context, KPoolPr
     auto apeShape = context->GetRequiredInputShape(APE_INPUT_INDEX);    // (r, coff * D)
     OP_CHECK_NULL_WITH_CONTEXT(context, apeShape);
 
-    // (B, sMax/block_size) | (B, )
-    auto cacheBlockTableShape = context->GetOptionalInputShape(CACHE_BLOCK_TABLE_INPUT_INDEX);
+    auto cacheBlockTableShape = context->GetRequiredInputShape(CACHE_BLOCK_TABLE_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, cacheBlockTableShape);
     if (hiddenStatesShape->GetDimNum() == DIM_NUM_2) {
         auto seqLensShape = context->GetOptionalInputShape(SEQ_LENS_INPUT_INDEX);    // (B+1,)
         OP_CHECK_NULL_WITH_CONTEXT(context, seqLensShape);
     }
-    auto seqUsedShape = context->GetOptionalInputShape(SEQ_USED_INPUT_INDEX);    // (B,)
-    OP_CHECK_NULL_WITH_CONTEXT(context, seqUsedShape);
-    auto startPosShape = context->GetOptionalInputShape(START_POS_INPUT_INDEX);    // (B,)
+    auto startPosShape = context->GetRequiredInputShape(START_POS_INPUT_INDEX);    // (B,)
     OP_CHECK_NULL_WITH_CONTEXT(context, startPosShape);
 
     auto attr = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attr);
     const int64_t *cmpRatioPtr = attr->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
     int64_t cmpRatio = (cmpRatioPtr != nullptr) ? *cmpRatioPtr : CMP_RATIO_VALUE;
-    const int64_t *coffPtr = attr->GetAttrPointer<int64_t>(COFF_ATTR_INDEX);
-    int64_t coff = (coffPtr != nullptr) ? *coffPtr : COFF_VALUE;
-
     if (hiddenStatesShape->GetDimNum() == DIM_NUM_3) {                // BS
         shapeParam.isBsMerge = false;
         shapeParam.B = hiddenStatesShape->GetDim(DIM_INDEX_0);
@@ -109,35 +93,34 @@ ge::graphStatus GetKPoolShapeDim(const gert::InferShapeContext* context, KPoolPr
     } else {                                                    // T
         shapeParam.isBsMerge = true;
         auto seqLensShape = context->GetOptionalInputShape(SEQ_LENS_INPUT_INDEX);
-        shapeParam.Sr = std::min(hiddenStatesShape->GetDim(DIM_INDEX_0),
-            hiddenStatesShape->GetDim(DIM_INDEX_0) / cmpRatio+ seqLensShape->GetDim(DIM_INDEX_0) - 1);
+        shapeParam.B = seqLensShape->GetDim(DIM_INDEX_0);
+        shapeParam.Sr = (cacheBlockTableShape->GetDim(DIM_INDEX_1) * stateCacheShape->GetDim(DIM_INDEX_1) +
+            cmpRatio - 1) / cmpRatio;
         shapeParam.T = hiddenStatesShape->GetDim(DIM_INDEX_0);
         shapeParam.H = hiddenStatesShape->GetDim(DIM_INDEX_1);
     }
 
-    shapeParam.D = wkShape->GetDim(DIM_INDEX_0) / coff;
+    shapeParam.D = wkShape->GetDim(DIM_INDEX_0);
+    if (!shapeParam.isBsMerge) {
+        shapeParam.Sr = (cacheBlockTableShape->GetDim(DIM_INDEX_1) * stateCacheShape->GetDim(DIM_INDEX_1) +
+            cmpRatio - 1) / cmpRatio;
+    }
 
     return GRAPH_SUCCESS;
 }
 
 ge::graphStatus SetKPoolShapeDim(const KPoolProtoShapeParam &shapeParam, gert::InferShapeContext* context)
 {
-    // query: (B, S, N, Hckv) | (T, N, Hckv)
+    // KPool always returns a fixed-capacity BSH tensor.
     auto pooledKeyShape = context->GetOutputShape(POOLED_KEY_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, pooledKeyShape);
     auto attr = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attr);
     // Set output shape
-    if (!shapeParam.isBsMerge) {
-        pooledKeyShape->SetDimNum(DIM_NUM_3);                   // (B, Sr, H)
-        pooledKeyShape->SetDim(DIM_INDEX_0, shapeParam.B);
-        pooledKeyShape->SetDim(DIM_INDEX_1, shapeParam.Sr);
-        pooledKeyShape->SetDim(DIM_INDEX_2, shapeParam.D);
-    } else {
-        pooledKeyShape->SetDimNum(DIM_NUM_2);                   // (T, N, Hckv)
-        pooledKeyShape->SetDim(DIM_INDEX_0, shapeParam.Sr);
-        pooledKeyShape->SetDim(DIM_INDEX_1, shapeParam.D);
-    }
+    pooledKeyShape->SetDimNum(DIM_NUM_3);
+    pooledKeyShape->SetDim(DIM_INDEX_0, shapeParam.B);
+    pooledKeyShape->SetDim(DIM_INDEX_1, shapeParam.Sr);
+    pooledKeyShape->SetDim(DIM_INDEX_2, shapeParam.D);
 
     return GRAPH_SUCCESS;
 }

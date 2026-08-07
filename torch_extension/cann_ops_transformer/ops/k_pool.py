@@ -7,17 +7,11 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-from enum import IntEnum
 from typing import Optional
 import torch
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
-
-
-class CacheMode(IntEnum):
-    LINEAR_BUFFER = 1
-    RING_BUFFER = 2
 
 
 class KPoolOpBuilder(OpBuilder):
@@ -31,12 +25,10 @@ class KPoolOpBuilder(OpBuilder):
     def schema(self):
         """PyTorch operator signature."""
         return (
-            "k_pool(Tensor hidden_states, Tensor wk, Tensor gate_weight, Tensor(a!) state_cache, "
-            "Tensor ape, "
-            "int cmp_ratio=4, *, "
-            "Tensor? cache_block_table=None, Tensor? seq_lens=None, "
-            "Tensor? seq_used=None, Tensor? start_pos=None, "
-            "int coff=1, int cache_mode=1) -> Tensor"
+            "k_pool(Tensor hidden_states, Tensor wk, Tensor gate_weight, Tensor ape, Tensor(a!) state_cache, "
+            "Tensor cache_block_table, Tensor start_pos, *, "
+            "Tensor? norm_weight=None, Tensor? norm_bias=None, Tensor? cos=None, Tensor? sin=None, "
+            "Tensor? seq_lens=None, int cmp_ratio=4, float norm_eps=1e-6, int rotary_mode=1) -> Tensor"
         )
 
     def register_meta(self):
@@ -50,27 +42,27 @@ class KPoolOpBuilder(OpBuilder):
             hidden_states,
             wk,
             gate_weight,
-            state_cache,
             ape,
-            cmp_ratio=4,
+            state_cache,
+            cache_block_table,
+            start_pos,
             *,
-            cache_block_table=None,
+            norm_weight=None,
+            norm_bias=None,
+            cos=None,
+            sin=None,
             seq_lens=None,
-            seq_used=None,
-            start_pos=None,
-            coff=1,
-            cache_mode=CacheMode.LINEAR_BUFFER,
+            cmp_ratio=4,
+            norm_eps=1e-6,
+            rotary_mode=1,
         ):
-            d = wk.size(0) // coff
-            if hidden_states.dim() == 3:
-                b = hidden_states.size(0)
-                s = hidden_states.size(1)
-                sr = (s + cmp_ratio - 1) // cmp_ratio
-                pooled_key_size = (b, sr, d)
-            else:
-                t = hidden_states.size(0)
-                sr = (t + cmp_ratio - 1) // cmp_ratio
-                pooled_key_size = (sr, d)
+            if norm_weight is not None or norm_bias is not None:
+                raise NotImplementedError("KPool LayerNorm is not implemented in this stage")
+            if cos is not None or sin is not None:
+                raise NotImplementedError("KPool RoPE is not implemented in this stage")
+            b = cache_block_table.size(0)
+            pcap = (cache_block_table.size(1) * state_cache.size(1) + cmp_ratio - 1) // cmp_ratio
+            pooled_key_size = (b, pcap, wk.size(0))
 
             return torch.empty(pooled_key_size, dtype=hidden_states.dtype, device="meta")
 
@@ -83,36 +75,46 @@ def k_pool(
     hidden_states: torch.Tensor,
     wk: torch.Tensor,
     gate_weight: torch.Tensor,
-    state_cache: torch.Tensor,
     ape: torch.Tensor,
-    cmp_ratio: int = 4,
+    state_cache: torch.Tensor,
+    cache_block_table: torch.Tensor,
+    start_pos: torch.Tensor,
     *,
-    cache_block_table: Optional[torch.Tensor] = None,
+    norm_weight: Optional[torch.Tensor] = None,
+    norm_bias: Optional[torch.Tensor] = None,
+    cos: Optional[torch.Tensor] = None,
+    sin: Optional[torch.Tensor] = None,
     seq_lens: Optional[torch.Tensor] = None,
-    seq_used: Optional[torch.Tensor] = None,
-    start_pos: Optional[torch.Tensor] = None,
-    coff: Optional[int] = 1,
-    cache_mode: Optional[CacheMode] = CacheMode.LINEAR_BUFFER,
+    cmp_ratio: int = 4,
+    norm_eps: float = 1e-6,
+    rotary_mode: int = 1,
 ) -> torch.tensor:
     """
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
     """
+    if norm_weight is not None or norm_bias is not None:
+        raise NotImplementedError("KPool LayerNorm is not implemented in this stage")
+    if cos is not None or sin is not None:
+        raise NotImplementedError("KPool RoPE is not implemented in this stage")
     op_module = k_pool_op_builder.load()
     return op_module.k_pool(
         hidden_states,
         wk,
         gate_weight,
-        state_cache,
         ape,
-        cmp_ratio,
+        state_cache,
         cache_block_table,
-        seq_lens,
-        seq_used,
         start_pos,
-        coff,
-        cache_mode,
+        norm_weight,
+        norm_bias,
+        cos,
+        sin,
+        seq_lens,
+        cmp_ratio,
+        norm_eps,
+        rotary_mode,
     )
 
 
-k_pool.CacheMode = CacheMode
+k_pool_npu = k_pool
