@@ -776,10 +776,17 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
 
     // notifyValue 的低 32 位为 ready，高 32 位为该目标 rank 的 token count。
-    hcomm_.WriteWithNotifyNbi(commHandle, remoteCountAddr, srcWorkspaceAddr,
-                              static_cast<uint64_t>(moeExpertNumPerRank_ * sizeof(int32_t)),
-                              notifyAddr, notifyValue);
-    hcomm_.Drain(commHandle);
+    int32_t writeRet = hcomm_.WriteWithNotifyNbi(commHandle, remoteCountAddr, srcWorkspaceAddr,
+                                                 static_cast<uint64_t>(moeExpertNumPerRank_ * sizeof(int32_t)),
+                                                 notifyAddr, notifyValue);
+    ASCENDC_ASSERT(writeRet == 0, {
+        KERNEL_LOG(KERNEL_ERROR, "WriteWithNotifyNbi(count) failed, ret=%d, rank=%u, aiv=%u", writeRet, epRankId_,
+                   aivId_);
+    });
+    int32_t drainRet = hcomm_.Drain(commHandle);
+    ASCENDC_ASSERT(drainRet == 0, {
+        KERNEL_LOG(KERNEL_ERROR, "Drain(count) failed, ret=%d, rank=%u, aiv=%u", drainRet, epRankId_, aivId_);
+    });
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1299,8 +1306,12 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
             static_cast<uint64_t>(destinationScaleoutSlot) * WIN_ADDR_ALIGN;
         uint32_t notifyValue =
             destinationScaleoutSlot == 0U ? scaleoutSlotCount + 1U : SCALEOUT_SLOT_READY;
-        hcomm_.WriteWithNotifyNbi(commHandle, remoteScaleoutAddr, localScaleoutAddr,
-                                  scaleoutSlotBytes_, remoteNotifyAddr, notifyValue);
+        int32_t writeRet = hcomm_.WriteWithNotifyNbi(commHandle, remoteScaleoutAddr, localScaleoutAddr,
+                                                     scaleoutSlotBytes_, remoteNotifyAddr, notifyValue);
+        ASCENDC_ASSERT(writeRet == 0, {
+            KERNEL_LOG(KERNEL_ERROR, "WriteWithNotifyNbi(scaleout) failed, ret=%d, rank=%u, aiv=%u", writeRet,
+                       epRankId_, aivId_);
+        });
     }
 }
 
@@ -1320,17 +1331,28 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         uint64_t remoteServerStatusOffset =
             static_cast<uint64_t>(currentServerIndex_) * axisMaxBS_ * WIN_ADDR_ALIGN;
         GM_ADDR emptyPayloadSourceAddr = sendCntWorkspaceAddr_ + proxyRankId * WIN_ADDR_ALIGN;
-        hcomm_.WriteWithNotifyNbi(commHandle, remoteScaleoutBase + remoteServerDataOffset,
-                                  emptyPayloadSourceAddr, sizeof(uint64_t),
-                                  remoteStatusBase + remoteServerStatusOffset, 1U);
-        hcomm_.Drain(commHandle);
+        int32_t writeRet = hcomm_.WriteWithNotifyNbi(commHandle, remoteScaleoutBase + remoteServerDataOffset,
+                                                     emptyPayloadSourceAddr, sizeof(uint64_t),
+                                                     remoteStatusBase + remoteServerStatusOffset, 1U);
+        ASCENDC_ASSERT(writeRet == 0, {
+            KERNEL_LOG(KERNEL_ERROR, "WriteWithNotifyNbi(scaleout-empty) failed, ret=%d, rank=%u, aiv=%u", writeRet,
+                       epRankId_, aivId_);
+        });
+        int32_t drainRet = hcomm_.Drain(commHandle);
+        ASCENDC_ASSERT(drainRet == 0, {
+            KERNEL_LOG(KERNEL_ERROR, "Drain(scaleout-empty) failed, ret=%d, rank=%u, aiv=%u", drainRet, epRankId_,
+                       aivId_);
+        });
         return;
     }
     for (uint32_t tokenRangeIndex = 0U; tokenRangeIndex < aivNum_; tokenRangeIndex++) {
         SendScaleoutPayloadRange(tokenRangeIndex, remoteServerOrdinal, dstScaleoutIndex, scaleoutSlotCount,
                                  commHandle, remoteScaleoutBase, remoteStatusBase);
     }
-    hcomm_.Drain(commHandle);
+    int32_t drainRet = hcomm_.Drain(commHandle);
+    ASCENDC_ASSERT(drainRet == 0, {
+        KERNEL_LOG(KERNEL_ERROR, "Drain(scaleout) failed, ret=%d, rank=%u, aiv=%u", drainRet, epRankId_, aivId_);
+    });
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1430,9 +1452,16 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     GM_ADDR unusedNotifyAddr =
         MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, dstRankId, slotWinStateOffset_) +
         static_cast<uint64_t>(srcRankId) * WIN_ADDR_ALIGN + UB_ALIGN;
-    hcomm_.WriteWithNotifyNbi(commHandle, destinationPayloadAddr, sourcePayloadAddr,
-                              perSlotBytes_, unusedNotifyAddr, 1U);
-    hcomm_.Drain(commHandle);
+    int32_t writeRet = hcomm_.WriteWithNotifyNbi(commHandle, destinationPayloadAddr, sourcePayloadAddr,
+                                                 perSlotBytes_, unusedNotifyAddr, 1U);
+    ASCENDC_ASSERT(writeRet == 0, {
+        KERNEL_LOG(KERNEL_ERROR, "WriteWithNotifyNbi(fanout) failed, ret=%d, rank=%u, aiv=%u", writeRet, epRankId_,
+                   aivId_);
+    });
+    int32_t drainRet = hcomm_.Drain(commHandle);
+    ASCENDC_ASSERT(drainRet == 0, {
+        KERNEL_LOG(KERNEL_ERROR, "Drain(fanout) failed, ret=%d, rank=%u, aiv=%u", drainRet, epRankId_, aivId_);
+    });
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1610,9 +1639,17 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         if (dstRankId == epRankId_) {
             CopyPayloadToLocal(sourcePayloadAddr, destinationPayloadAddr);
         } else {
-            hcomm_.WriteWithNotifyNbi(commHandle, destinationPayloadAddr, sourcePayloadAddr,
-                                      perSlotBytes_, unusedNotifyAddr, 1U);
-            hcomm_.Drain(commHandle);
+            int32_t writeRet = hcomm_.WriteWithNotifyNbi(commHandle, destinationPayloadAddr, sourcePayloadAddr,
+                                                         perSlotBytes_, unusedNotifyAddr, 1U);
+            ASCENDC_ASSERT(writeRet == 0, {
+                KERNEL_LOG(KERNEL_ERROR, "WriteWithNotifyNbi(entries) failed, ret=%d, rank=%u, aiv=%u", writeRet,
+                           epRankId_, aivId_);
+            });
+            int32_t drainRet = hcomm_.Drain(commHandle);
+            ASCENDC_ASSERT(drainRet == 0, {
+                KERNEL_LOG(KERNEL_ERROR, "Drain(entries) failed, ret=%d, rank=%u, aiv=%u", drainRet, epRankId_,
+                           aivId_);
+            });
         }
     }
 }
@@ -1712,10 +1749,17 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     for (uint32_t notifyIndex = 0U; notifyIndex < dispatchNotifyCount_; notifyIndex++) {
         GM_ADDR notifyAddr = notifyBase + static_cast<uint64_t>(notifyIndex) * WIN_ADDR_ALIGN;
         GM_ADDR unusedNotifyAddr = notifyAddr + UB_ALIGN;
-        hcomm_.WriteWithNotifyNbi(commHandle, notifyAddr, readySourceAddr, sizeof(uint64_t),
-                                  unusedNotifyAddr, 1U);
+        int32_t writeRet = hcomm_.WriteWithNotifyNbi(commHandle, notifyAddr, readySourceAddr, sizeof(uint64_t),
+                                                     unusedNotifyAddr, 1U);
+        ASCENDC_ASSERT(writeRet == 0, {
+            KERNEL_LOG(KERNEL_ERROR, "WriteWithNotifyNbi(finalReady) failed, ret=%d, rank=%u, aiv=%u", writeRet,
+                       epRankId_, aivId_);
+        });
     }
-    hcomm_.Drain(commHandle);
+    int32_t drainRet = hcomm_.Drain(commHandle);
+    ASCENDC_ASSERT(drainRet == 0, {
+        KERNEL_LOG(KERNEL_ERROR, "Drain(finalReady) failed, ret=%d, rank=%u, aiv=%u", drainRet, epRankId_, aivId_);
+    });
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
