@@ -15,7 +15,6 @@ import os
 import sys
 import torch
 import pytest
-from cann_ops_transformer.ops.compressor_grad import compressor_grad as pta_compressor_grad
 def run_small_ops_case(case, device):
     """通路 3：小算子拼接通路——CPU 小算子拼接 + 自动反向推导梯度作 golden，
     算子侧经 pta 反向传播串联正反向（与通路 1 相同 NPU 流程）。
@@ -629,97 +628,6 @@ def run_case(case, device):
 
     return result
 
-def run_pta_backward_case(case, device):
-    """通路 2：单反向——随机构造中间量 → PyPTO 直跑 kernel → golden 比对。
-
-    不经 aclnn/custom 包（kernel 运行时 JIT 编译）；TilingData 29 字段
-    派生逻辑与 op_host/compressor_grad_tiling.cpp 一致。
-    """
-    p = _parse_case(case, device)
-    B, H, D = p["B"], p["H"], p["D"]
-    cr, coff = p["cr"], p["coff"]
-    layoutId, ioDtype = p["layoutId"], p["ioDtype"]
-    tokenSize, seqSize, outputRows = p["tokenSize"], p["seqSize"], p["outputRows"]
-    seqused, start_pos = case.get("seqused_q"), case.get("start_pos")
-    xRows = tokenSize if layoutId == 1 else B * seqSize
-
-    if layoutId == 1:
-        print("layout is 1")
-        cuNpu = torch.tensor(case["seqlens_list_q"], device=device, dtype=torch.int32)
-    else:
-        print("layout is 2")
-        cuNpu = None
-    sequsedNpu = torch.tensor(seqused, device=device, dtype=torch.int32) if seqused else None
-    startPosNpu = torch.tensor(start_pos, device=device, dtype=torch.int32) if start_pos else None
-
-
-    # ── 随机构造输入/中间量（不依赖正向输出）──
-    torch.manual_seed(case["manual_seed"])
-    if layoutId == 1:
-        xNpu = torch.randn(xRows, H, device=device, dtype=ioDtype)
-        wkvInp = torch.randn(coff * D, H, device=device, dtype=ioDtype)
-        wgateInp = torch.randn(coff * D, H, device=device, dtype=ioDtype)
-        dcNpu = torch.randn(outputRows, D, device=device, dtype=ioDtype)
-        kvNpu = torch.randn(outputRows, coff * cr, D, device=device, dtype=torch.float32)
-        smNpu = torch.softmax(torch.randn(outputRows, coff * cr, D, device=device), dim=1)
-    else:
-        xNpu = torch.randn(B, seqSize, H, device=device, dtype=ioDtype)
-        wkvInp = torch.randn(coff * D, H, device=device, dtype=ioDtype)
-        wgateInp = torch.randn(coff * D, H, device=device, dtype=ioDtype)
-        dcNpu = torch.randn(B, outputRows // B, D, device=device, dtype=ioDtype)
-        kvNpu = torch.randn(B, outputRows // B, coff * cr, D, device=device, dtype=torch.float32)
-        smNpu = torch.softmax(torch.randn(B, outputRows // B, coff * cr, D, device=device), dim=1)
-
-    npu_out = (
-        pta_compressor_grad(
-            xNpu,
-            wkvInp,
-            wgateInp,
-            dcNpu,
-            smNpu,
-            kvNpu,
-            cr,
-            coff = coff,
-            cu_seqlens = cuNpu,
-            seqused = sequsedNpu,
-            start_pos = startPosNpu,
-        )
-    )
-
-    dX = npu_out[0]
-    dWkv = npu_out[1]
-    dWgate = npu_out[2]
-    dApe = npu_out[3]
-
-    # ── golden（BSH 输入需 3 维；dc/sm/kv 需 (B, blocks, ...) 维）──
-    xCpu = xNpu.cpu().view(B, seqSize, H) if layoutId == 0 else xNpu.cpu()
-    smCpu = smNpu.cpu().view(B, -1, coff * cr, D) if layoutId == 0 else smNpu.cpu()
-    kvCpu = kvNpu.cpu().view(B, -1, coff * cr, D) if layoutId == 0 else kvNpu.cpu()
-    g_dx, g_dwkv, g_dwgate, g_dape = compressor_grad_golden(
-        x=xCpu, wkv=wkvInp.cpu().float(), wgate=wgateInp.cpu().float(),
-        d_cpm_kv=(dcNpu.cpu().view(B, -1, D) if layoutId == 0 else dcNpu.cpu()),
-        softmax_score=smCpu, kv=kvCpu,
-        cu_seqlens=cuNpu.cpu() if cuNpu is not None else None,
-        seqused=sequsedNpu.cpu() if sequsedNpu is not None else None,
-        start_pos=startPosNpu.cpu() if startPosNpu is not None else None,
-        cmp_ratio=cr, coff=coff)
-
-    # ── 四输出比对 ──
-    p_pct_thd = get_pct_thd(p["dataType"])
-    checks = [
-        ("d_wkv", g_dwkv.float(), dWkv.cpu().float(), p["dataType"], p_pct_thd),
-        ("d_wgate", g_dwgate.float(), dWgate.cpu().float(), p["dataType"], p_pct_thd),
-        ("d_ape", g_dape, dApe.cpu().float(), "float32", get_pct_thd("float32")),
-        ("d_x", g_dx.float(), dX.cpu().float(), p["dataType"], p_pct_thd),
-    ]
-    statuses = []
-    for name, exp, act, dt, thd in checks:
-        r = check_one_output(name, exp, act, dt, True, 1, thd)
-        statuses.append(f"{name}={r['status']}")
-    status = "ERROR" if any("ERROR" in s for s in statuses) else \
-             "FAIL" if any("FAIL" in s for s in statuses) else "PASS"
-    return {"status": status, "detail": "  ".join(statuses)}
-
 def run_backward_case(case, device):
     """通路 2：单反向——随机构造中间量 → PyPTO 直跑 kernel → golden 比对。
 
@@ -886,19 +794,3 @@ def test_compressor_grad_small_ops(case, request):
         pytest.skip(f"pathway={_pathway(request)}")
     result = run_small_ops_case(case, f"npu:{DEVICE_ID}")
     assert result["status"] == "PASS", result["detail"]
-
-@pytest.mark.parametrize(
-    "case",
-    [c for c in REDLINE_CASES if c.get("enable", True)],
-    ids=[c["testcase_name"] for c in REDLINE_CASES if c.get("enable", True)],
-)
-def test_compressor_grad_pta_ops(case, request):
-    """通路 4：小算子拼接 golden + pta 串联正反向（loss 只对有效压缩块）。
-
-    运行：pytest test_compressor_grad.py --pathway 4 -k <case名子串> -q
-    """
-    if _pathway(request) != 4:
-        pytest.skip(f"pathway={_pathway(request)}")
-    result = run_pta_backward_case(case, f"npu:{DEVICE_ID}")
-    assert result["status"] == "PASS", result["detail"]
-
