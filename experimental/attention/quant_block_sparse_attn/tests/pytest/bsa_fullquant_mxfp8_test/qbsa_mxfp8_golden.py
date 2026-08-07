@@ -571,7 +571,6 @@ def _make_reference_block_table(
     physical_block_count=0,
     sparse_indices=None,
     sparse_seq_len=None,
-    kv_data=None,
 ):
     if isinstance(seq_lens, int):
         seq_lens = [seq_lens] * batch
@@ -601,9 +600,9 @@ def _make_reference_block_table(
                         if blk_id >= 0 and blk_id < block_nums[b]:
                             needed_logical_ids[b].add(blk_id)
 
-    # 按 KV 数据内容去重：数据相同的逻辑页复用同一个物理页 ID
-    # kv_data: [B, S, N2, D] (BSND)，每个逻辑页是 [block_size, N2, D] 的切片
-    data_to_pid = {}  # hash → physical page ID
+    # 给选中的逻辑页分配物理页 ID，范围 [0, total_physical_blocks)
+    # physical_ids 按 pattern 生成物理页 ID 序列（sequential/reverse/random）
+    physical_ids = _physical_ids(0, total_physical_blocks, pattern, rng)
     next_pid = 0
     for b in range(batch):
         needed = (
@@ -612,22 +611,7 @@ def _make_reference_block_table(
             else list(range(block_nums[b]))
         )
         for lid in needed:
-            if kv_data is not None and lid < kv_data.shape[1]:
-                block_slice = kv_data[b, lid * block_size : (lid + 1) * block_size]
-                block_hash = hash(
-                    block_slice.contiguous().view(torch.uint8).cpu().numpy().tobytes()
-                )
-                if block_hash in data_to_pid:
-                    block_table[b, lid] = data_to_pid[block_hash]
-                    continue
-            pid = next_pid % total_physical_blocks
-            block_table[b, lid] = pid
-            if kv_data is not None and lid < kv_data.shape[1]:
-                block_slice = kv_data[b, lid * block_size : (lid + 1) * block_size]
-                block_hash = hash(
-                    block_slice.contiguous().view(torch.uint8).cpu().numpy().tobytes()
-                )
-                data_to_pid[block_hash] = pid
+            block_table[b, lid] = physical_ids[next_pid % total_physical_blocks]
             next_pid += 1
     return block_table
 
@@ -1020,7 +1004,6 @@ def _generate_reference_style_mxfp8_inputs():
         BLOCK_NUM,
         sparse_indices,
         sparse_seq_len,
-        kv_data=dense_key,
     )
     p_scale = torch.tensor([float(case["p_scale_value"])], dtype=torch.float32)
 
