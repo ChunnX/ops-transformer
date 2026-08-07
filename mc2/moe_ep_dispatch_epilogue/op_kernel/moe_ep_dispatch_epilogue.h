@@ -57,6 +57,8 @@ static constexpr uint32_t CACHED_META_TILE = 8192U;
 static constexpr uint32_t ALIGNED_LEN_256 = 256U;
 static constexpr uint32_t SLOTS_TILE = 128U;
 static constexpr uint32_t INT64_UB_STRIDE = 4U;
+static constexpr uint32_t SLOT_NOTIFY_STRIDE = 64U;
+static constexpr uint32_t SLOT_NOTIFY_ELEMS = SLOT_NOTIFY_STRIDE / sizeof(uint64_t);
 static constexpr uint32_t STATUS_BUFFER_SIZE = 10 * 1024U;
 static constexpr uint32_t HYBRID_MODE = 1U;
 
@@ -230,7 +232,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     axisKAlign_ = Ceil(axisK_, ELEM_ALIGN) * ELEM_ALIGN;
     metaBytes_ = (META_TOPK_SECTION * axisKAlign_) * (uint32_t)sizeof(int32_t) + UB_ALIGN;
     totalNotifyCnt_ = epWorldSize_ * dispatchNotifyCount_;
-    statusCntPerGroup_ = STATUS_BUFFER_SIZE / sizeof(uint64_t);
+    statusCntPerGroup_ = STATUS_BUFFER_SIZE / SLOT_NOTIFY_STRIDE;
     uint32_t ubExpertPfxBytes = Ceil((uint32_t)(numLocalExperts_ * sizeof(int64_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t ubRecvCntBytes = Ceil((uint32_t)(epWorldSize_ * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     uint32_t expertReduceTmpBytes =
@@ -395,9 +397,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         uint32_t sumOfFlag = 0;
         uint32_t commpareFlag = statusCntPerGroup_ > waitCnt ? waitCnt : statusCntPerGroup_;
         statusGMTensor_.SetGlobalBuffer((__gm__ uint64_t *)(localSlotStateWinAddr_ + slotStateWinSize_ * srcRankId));
-        statusCopyParams.blockLen = static_cast<uint16_t>(commpareFlag * sizeof(uint64_t));
+        statusCopyParams.blockLen = static_cast<uint16_t>(commpareFlag * SLOT_NOTIFY_STRIDE);
         while (sumOfFlag != commpareFlag) {
-            DataCopyPad(ubWaitStatus, statusGMTensor_[slotIndex], statusCopyParams, padParams);
+            DataCopyPad(ubWaitStatus, statusGMTensor_[slotIndex * SLOT_NOTIFY_ELEMS], statusCopyParams, padParams);
             SyncFunc<AscendC::HardEvent::MTE2_V>();
             ReduceSum<uint64_t>(ubWaitSum, ubWaitStatus, sharedTmp, commpareFlag);
             SyncFunc<AscendC::HardEvent::V_S>();
@@ -405,7 +407,7 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
         }
         Duplicate<uint64_t>(ubWaitStatus, 0, commpareFlag);
         SyncFunc<AscendC::HardEvent::V_MTE3>();
-        DataCopyPad(statusGMTensor_[slotIndex], ubWaitStatus, statusCopyParams);
+        DataCopyPad(statusGMTensor_[slotIndex * SLOT_NOTIFY_ELEMS], ubWaitStatus, statusCopyParams);
         uint32_t stride = (slotIndex + commpareFlag < effectiveCnt) ? commpareFlag : numMaxTokensPerRank_ - slotIndex;
         processId += stride;
         if (processId < waitNum) {
