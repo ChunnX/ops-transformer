@@ -173,14 +173,30 @@ public:
     }
 
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *actualSeqQlenAddr,
-                                        __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *pScale,
-                                        __gm__ uint8_t *attenMask, __gm__ uint8_t *softmaxLse,
+                                        __gm__ uint8_t *actualSeqKvlenAddr, __gm__ uint8_t *dequantScaleQuery,
+                                        __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue,
+                                        __gm__ uint8_t *pScale, __gm__ uint8_t *attenMask, __gm__ uint8_t *softmaxLse,
                                         __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace)
     {
         tPipe_ = pipe;
         uint32_t tmp1 = NEGATIVE_MIN_VALUE_FP32;
         this->negativeFloatScalar_ = *((T *)&tmp1);
         UpdateMinCheckValue();
+
+        float qScale = 1.0f;
+        float kScale = 1.0f;
+        float vScale = 1.0f;
+        if (dequantScaleQuery != nullptr) {
+            qScale = *((__gm__ float *)dequantScaleQuery);
+        }
+        if (dequantScaleKey != nullptr) {
+            kScale = *((__gm__ float *)dequantScaleKey);
+        }
+        if (dequantScaleValue != nullptr) {
+            vScale = *((__gm__ float *)dequantScaleValue);
+        }
+        SetDescaleQK(qScale, kScale);
+        SetVScale(vScale);
 
         InitVecInput(actualSeqQlenAddr, actualSeqKvlenAddr, pScale, attenMask, softmaxLse, attentionOut, workspace);
     }
@@ -218,20 +234,17 @@ public:
 
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                       RunInfoX runInfo, uint32_t subLoop)
+                                       RunInfoX runInfo)
     {
         bmm1ResBuf.WaitCrossCore();
         if (unlikely(runInfo.actVecMSize == 0)) {
             bmm1ResBuf.SetCrossCore();
-            if (((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) ||
-                (runInfo.actSingleLoopS2Size <= s2SplitSize)) {
-                outputBuf.SetCrossCore();
-            }
+            outputBuf.SetCrossCore();
             return;
         }
 
         if constexpr (USE_DN) {
-            ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo, subLoop);
+            ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo);
         }
     }
 
@@ -308,11 +321,11 @@ public:
 
     __aicore__ inline void ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
                                          Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf,
-                                         RunInfoX runInfo, uint32_t subLoop)
+                                         RunInfoX runInfo)
     {
         int64_t maskLine = 0;
         if constexpr (HAS_MASK) {
-            maskLine = ComputeMaskLineDN(runInfo, subLoop);
+            maskLine = ComputeMaskLineDN(runInfo);
         }
         if (isFullMask_) {
             maskLine = -256;
@@ -331,9 +344,6 @@ public:
 
         static constexpr int32_t s2BaseSizeCur = s2BaseSize;
         uint32_t s2CalcSize = runInfo.actSingleLoopS2Size;
-        if (runInfo.actSingleLoopS2Size > s2SplitSize) {
-            s2CalcSize = subLoop == 0 ? s2BaseSizeCur : runInfo.actSingleLoopS2Size - s2BaseSizeCur;
-        }
 
         if (unlikely(runInfo.isFirstS2Loop)) {
             if (unlikely(!isSkipMask_)) {
@@ -370,26 +380,16 @@ public:
         this->stage1OutQue_[stage1Offset].template DeQue<INPUT_T>();
 
         LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
-        int64_t subLoopOffset = s2BaseSizeCur * mBaseSize * subLoop;
-        constexpr uint16_t elementSize = 32;
-        constexpr uint32_t singleProcessSOuterSize = mBaseSize >> 1;
-        constexpr uint32_t actCopyCount = (singleProcessSOuterSize + elementSize - 1) / elementSize;
-        constexpr uint32_t actVec0Align32 = mBaseSize >> 1;
-        for (uint32_t i = 0; i < actCopyCount; i++) {
-            uint32_t dstOffset = 32 * s2BaseSizeCur * i + subLoopOffset;
-            if (constInfo_.subBlockIdx == 1) {
-                dstOffset += s2BaseSizeCur * actVec0Align32;
-            }
-            uint32_t srcOffset = i * (65 << 5);
-            DataCopy(mm2AL1Tensor[dstOffset], stage1CastTensor[srcOffset],
-                     {4, s2BaseSizeCur / 4, s2BaseSizeCur / 4 + 2, 0});
-        }
+        uint32_t s2RealSizeAlign = ((runInfo.actSingleLoopS2Size + 63) >> 6) << 6;
+        constexpr uint32_t vec1HalfS1BaseSize = mBaseSize >> 1;
+        DataCopy(mm2AL1Tensor[constInfo_.subBlockIdx * vec1HalfS1BaseSize * s2RealSizeAlign],
+                 stage1CastTensor, {static_cast<uint16_t>(s2RealSizeAlign >> 6), 64, 66, 0});
+        DataCopy(mm2AL1Tensor[constInfo_.subBlockIdx * vec1HalfS1BaseSize * s2RealSizeAlign +
+                              s2RealSizeAlign * 32],
+                 stage1CastTensor[65 << 5], {static_cast<uint16_t>(s2RealSizeAlign >> 6), 64, 66, 0});
         this->stage1OutQue_[stage1Offset].template FreeTensor(stage1CastTensor);
 
-        if (((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) ||
-            (runInfo.actSingleLoopS2Size <= s2SplitSize)) {
-            outputBuf.SetCrossCore();
-        }
+        outputBuf.SetCrossCore();
         if (unlikely(runInfo.isLastS2Loop)) {
             SoftmaxDataCopyOut(runInfo, sumUb, maxUb);
         }
@@ -799,20 +799,17 @@ public:
     }
 
     __aicore__ inline void AttenMaskCopyIn(LocalTensor<uint8_t> attenMaskUb, uint32_t vecMIdx, uint32_t mDealSize,
-                                           RunInfoX &runInfo, uint32_t subLoop)
+                                           RunInfoX &runInfo)
     {
         uint32_t s2RealSize = runInfo.actSingleLoopS2Size;
         constexpr uint32_t s2BaseSizeCur = s2BaseSize;
-        if (runInfo.actSingleLoopS2Size > s2SplitSize) {
-            s2RealSize = subLoop == 0 ? s2SplitSize : runInfo.actSingleLoopS2Size - s2SplitSize;
-        }
 
         MaskInfo maskInfo;
         maskInfo.gs1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx + vecMIdx;
         maskInfo.gs1dealNum = mDealSize;
         maskInfo.s1Size = runInfo.actS1Size;
         maskInfo.gSize = constInfo_.realGSize;
-        maskInfo.s2StartIdx = (subLoop == 0) ? runInfo.s2Idx : (runInfo.s2Idx + s2BaseSizeCur);
+        maskInfo.s2StartIdx = runInfo.s2Idx;
         maskInfo.s2dealNum = s2RealSize;
         maskInfo.s2Size = runInfo.actS2Size;
         maskInfo.nBaseSize = s2BaseSizeCur;
@@ -838,16 +835,13 @@ public:
     }
 
 
-    __aicore__ inline int64_t ComputeMaskLineDN(RunInfoX &runInfo, uint32_t subLoop)
+    __aicore__ inline int64_t ComputeMaskLineDN(RunInfoX &runInfo)
     {
         uint32_t s2RealSize = runInfo.actSingleLoopS2Size;
         constexpr uint32_t s2BaseSizeCur = s2BaseSize;
-        if (runInfo.actSingleLoopS2Size > s2SplitSize) {
-            s2RealSize = subLoop == 0 ? s2SplitSize : runInfo.actSingleLoopS2Size - s2SplitSize;
-        }
         int64_t nextToken = static_cast<int64_t>(runInfo.actS2Size) - static_cast<int64_t>(runInfo.actS1Size);
         uint32_t s1StartIdx = runInfo.gS1Idx + runInfo.vecMbaseIdx;
-        uint32_t s2StartIdx = (subLoop == 0) ? runInfo.s2Idx : (runInfo.s2Idx + s2BaseSizeCur);
+        uint32_t s2StartIdx = runInfo.s2Idx;
         if (static_cast<int64_t>(s2StartIdx + s2RealSize) <= static_cast<int64_t>(s1StartIdx) + nextToken) {
             isSkipMask_ = true;
         } else {

@@ -164,6 +164,7 @@ public:
     __gm__ uint8_t *valuePtr_ = nullptr;
 
     const ConstInfoX &constInfo_;
+    LocalTensor<float> dummyScale_;
 
     /*============================================================================== */
     __aicore__ inline QuantFlashAttnBlockCubeHif8(ConstInfoX &constInfo)
@@ -316,12 +317,9 @@ public:
         copyKvGmToL1_(l1Tensor, keyGm_, gmCoord);
     }
 
-    // 全量拷贝
-    __aicore__ inline void CopyKeyTile(const LocalTensor<KV_T> &dstTensor, RunInfoX &runInfo, uint32_t s2RealSize,
-                                       uint32_t subLoop)
+    __aicore__ inline void CopyKeyTile(const LocalTensor<KV_T> &dstTensor, RunInfoX &runInfo, uint32_t s2RealSize)
     {
-        uint32_t s2Offset = (subLoop % 2 == 0) ? runInfo.s2Idx : runInfo.s2Idx + s2BaseSize / 2;
-        CopyKeySlice(dstTensor, s2Offset, s2RealSize, 0, constInfo_.dSize, runInfo);
+        CopyKeySlice(dstTensor, runInfo.s2Idx, s2RealSize, 0, constInfo_.dSize, runInfo);
     }
 
 
@@ -370,9 +368,9 @@ public:
         valueGm_.offsetCalculator.Init(*this->kvSeqParserPtr_);
     }
 
-    __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoX &runInfo, uint32_t subLoop)
+    __aicore__ inline void IterateBmm1(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
     {
-        IterateBmm1Dn(outputBuf, runInfo, subLoop);
+        IterateBmm1Dn(outputBuf, runInfo);
     }
 
     __aicore__ inline void FixpipeMm1(const LocalTensor<T> &dstTensor, const LocalTensor<T> &l0C, RunInfoX &runInfo,
@@ -414,16 +412,11 @@ public:
     }
 
     /* 针对S1Base=128, S2Base = 256, D = 128场景, L1全载/L0全载, K * Q^T, Q矩阵驻留. GS1>80, S=S1*S2 */
-    __aicore__ inline void IterateBmm1Dn(MM1_DBUF_T &outputBuf, RunInfoX &runInfo, uint32_t subLoop)
+    __aicore__ inline void IterateBmm1Dn(MM1_DBUF_T &outputBuf, RunInfoX &runInfo)
     {
-        uint32_t s2CalcSize;
-        if (runInfo.actSingleLoopS2Size <= s2SplitSize) {
-            s2CalcSize = runInfo.actSingleLoopS2Size;
-        } else {
-            s2CalcSize = (subLoop == 0) ? s2SplitSize : (runInfo.actSingleLoopS2Size - s2SplitSize);
-        }
+        uint32_t s2CalcSize = runInfo.actSingleLoopS2Size;
         Buffer<BufferType::L1> mm1B;
-        if (unlikely(runInfo.isFirstS2Loop && subLoop == 0)) {
+        if (unlikely(runInfo.isFirstS2Loop)) {
             mm1B = l1QBuffers_.Get();
             mm1B.Wait<HardEvent::MTE1_MTE2>();
             LocalTensor<Q_T> mm1BTensor = mm1B.GetTensor<Q_T>();
@@ -437,7 +430,7 @@ public:
         Buffer<BufferType::L1> mm1A = l1KVBuffers_.Get();
         mm1A.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<KV_T> mm1ATensor = mm1A.GetTensor<KV_T>();
-        CopyKeyTile(mm1ATensor, runInfo, s2CalcSize, subLoop);
+        CopyKeyTile(mm1ATensor, runInfo, s2CalcSize);
         mm1A.Set<HardEvent::MTE2_MTE1>();
         mm1A.Wait<HardEvent::MTE2_MTE1>();
         mm1B.Wait<HardEvent::MTE2_MTE1>();
@@ -453,8 +446,7 @@ public:
             mm1ResL0C.GetTensor<T>(),
             param);
 
-        if (unlikely(runInfo.isLastS2Loop && (((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) ||
-                                              (runInfo.actSingleLoopS2Size <= s2SplitSize)))) {
+        if (unlikely(runInfo.isLastS2Loop)) {
             mm1B.Set<HardEvent::MTE1_MTE2>();
         }
         mm1A.Set<HardEvent::MTE1_MTE2>();
@@ -498,7 +490,8 @@ public:
         mm2ResL0C.Wait<HardEvent::FIX_M>();
 
         constexpr uint32_t baseK = s2SplitSize;
-        uint64_t l1BaseKOffset = baseK * mBaseSize;
+        uint32_t s2RealSizeAlign = ((runInfo.actSingleLoopS2Size + 63) >> 6) << 6;
+        uint64_t l1BaseKOffset = s2RealSizeAlign * mBaseSize;
         uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
         uint32_t realK = baseK;
         for (uint32_t k = 0; k < kLoops; k++) {
@@ -517,14 +510,13 @@ public:
             mm2B.Wait<HardEvent::MTE2_MTE1>();
             MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo_.dSizeV,
                                         realK, USE_DN, false, k == 0, k == 0);
-            LocalTensor<float> dummyScale;
             MatmulFullMX<INPUT_T, KV_T, T, 128, dVBaseSize, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
                        float, float, INPUT_T, INPUT_T>(
                 mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset],
                 mm2BTensor, mmL0ABuffers_, mmL0BBuffers_,
                 mm2ResL0C.GetTensor<T>(),
                 param,
-                dummyScale, dummyScale);
+                dummyScale_, dummyScale_);
             mm2B.Set<HardEvent::MTE1_MTE2>();
         }
 
