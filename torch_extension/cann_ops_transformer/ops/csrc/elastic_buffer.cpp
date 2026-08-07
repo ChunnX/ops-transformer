@@ -389,12 +389,14 @@ private:
     static void QueryHcclBufferResource(const HcclComm &commHandle, EngramContextResources &resources)
     {
         uint32_t rankId = resources.context.rankId;
-        constexpr uint32_t channelsPerPeer = 2U;
+        uint32_t rankSize = resources.context.rankSize;
+        constexpr uint32_t maxSendersPerRank = 4U;
+        uint32_t channelsPerPeer = maxSendersPerRank * 2U;
         resources.context.channelsPerRank = channelsPerPeer;
         ChannelHandle handlesByRank[HCCL_MAX_RANK_SIZE * 2] = {};
-        GetHcclCommChannel(commHandle, resources.context.rankSize, rankId, channelsPerPeer,
+        GetHcclCommChannel(commHandle, rankSize, rankId, channelsPerPeer,
                            resources.memHandle, handlesByRank);
-        for (uint32_t peer = 0; peer < resources.context.rankSize; ++peer) {
+        for (uint32_t peer = 0; peer < rankSize; ++peer) {
             if (peer == rankId)
                 continue;
             for (uint32_t ch = 0; ch < channelsPerPeer; ++ch) {
