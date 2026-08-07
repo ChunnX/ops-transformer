@@ -427,13 +427,6 @@ public:
     {
         RunInfoX &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
 
-        if (runInfo0.isValid) {
-            if ASCEND_IS_AIC {
-                ComputeMm1(runInfo0);
-            } else {
-                ComputeVec1(runInfo0);
-            }
-        }
         if (loop >= PRELOAD_N) {
             RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) & PRELOAD_TASK_CACHE_MASK]; // 上PRELOAD_N轮任务
             if (runInfoNegN.isValid) {
@@ -443,6 +436,13 @@ public:
                     ComputeVec2(runInfoNegN);
                 }
                 runInfoNegN.isValid = false;
+            }
+        }
+        if (runInfo0.isValid) {
+            if ASCEND_IS_AIC {
+                ComputeMm1(runInfo0);
+            } else {
+                ComputeVec1(runInfo0);
             }
         }
     }
