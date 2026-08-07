@@ -44,7 +44,7 @@ class BlockEpilogue<
 {
 public:
     using DispatchPolicy = EpilogueOnlineSoftmaxBsa<true, MX_QUANT_MODE_>;
-    static constexpr MXQuantMode mxQuantMode = DispatchPolicy::MX_QUANT_MODE;
+    static constexpr MXQuantMode MX_QUANT_MODE = DispatchPolicy::MX_QUANT_MODE;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementOutput = typename OutputType_::Element; // P
     using ElementInput = half; // S
@@ -55,7 +55,7 @@ public:
     using LayoutPL1 = typename OutputType_::Layout;
     using LayoutPUB = layout::RowMajor;
 
-    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue, ElementInput dstTypeMax)
+    __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource, float scaleValue, ElementInput NEG_LOG2_CX)
     {
         // FIXPIPE<->V 区
         for (uint32_t i = 0; i < MXFP4::UB_S_BUF_CNT; i++) {
@@ -100,7 +100,7 @@ public:
         }
         indexUBTensor = resource.ubBuf.template GetBufferByByte<ElementIndex>(MXFP4::UB_INDEX_BUF_OFFSET);
 
-        dstTypeMax_ = dstTypeMax;
+        NEG_LOG2_CX_ = NEG_LOG2_CX;
         scaleValue_ = static_cast<ElementInput>(scaleValue);
         //  Init Tensor
         Mxfp4VF::InitIndexesAndDuplicateCallVF<ElementMax>(indexUBTensor, localGlobalMaxUBTensor[0]);
@@ -118,19 +118,25 @@ public:
                 MXFP4::SYNC_GMAX_UB_TO_L1_BUF0_FLAG + tileInfo.tileMaxIdx);
         }
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF0_FLAG + spBuffIdx);
+    
 
         const uint32_t actKvsTile = actualBlockShape.m();
         const uint32_t actQsTile = actualBlockShape.n();
         const uint32_t groupMaxIdx = GetLocalGroupMaxBufIdx(tileInfo.loop);
+        //     AscendC::PRINTF("mm1Res \n");
+        // AscendC::DumpTensor(sUBTensor[spBuffIdx][0], 127, 128);
+        // AscendC::DumpTensor(sUBTensor[spBuffIdx][256], 127, 128);
+        //         AscendC::DumpTensor(sUBTensor[spBuffIdx][512], 127, 128);
+        // AscendC::DumpTensor(sUBTensor[spBuffIdx][768], 127, 128);
 
         if (tileInfo.isFirstKvsTile) {
             if (actQsTile == MXFP4::QS_BASE_SIZE && actKvsTile == MXFP4::KVS_BASE_SIZE) {
                 // qs=128, kvs=256 softmax
-                Mxfp4VF::SoftmaxWithGroupMaxQs128Kvs256CallVF<true, ElementInput, ElementDisguiseP,
+                Mxfp4VF::SoftmaxWithGroupMaxQs128Kvs256CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
                     MXFP4::KVS_BASE_SIZE, MXFP4::QS_BASE_SIZE>(
                     pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                     localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                    indexUBTensor, scaleValue_);
+                    indexUBTensor, scaleValue_, NEG_LOG2_CX_);
             } else {
                 // kvs padding 32 multi
                 if (actKvsTile != tileInfo.kvsActBaseTileAlign32) {
@@ -142,28 +148,28 @@ public:
                 // softmax
                 if (tileInfo.kvsActBaseTileAlign32 == MXFP4::DATA_BLOCK_BYTE) {
                     // softmax padding 32
-                    Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32CallVF<true, ElementInput, ElementDisguiseP>(
+                    Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                         localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                        indexUBTensor, scaleValue_);
+                        indexUBTensor, scaleValue_, NEG_LOG2_CX_);
                 } else {
                     // softmax padding 32 multi >= 64
-                    Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF<true, ElementInput, ElementDisguiseP,
+                    Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
                         MXFP4::QS_BASE_SIZE>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                         localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                        indexUBTensor, scaleValue_,
+                        indexUBTensor, scaleValue_, NEG_LOG2_CX_,
                         static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32), static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign64));
                 }
             }
         } else {
             if (actQsTile == MXFP4::QS_BASE_SIZE && actKvsTile == MXFP4::KVS_BASE_SIZE) {
                 // qs=128, kvs=256 softmax
-                Mxfp4VF::SoftmaxWithGroupMaxQs128Kvs256CallVF<false, ElementInput, ElementDisguiseP,
+                Mxfp4VF::SoftmaxWithGroupMaxQs128Kvs256CallVF<MX_QUANT_MODE, false, ElementInput, ElementDisguiseP,
                     MXFP4::KVS_BASE_SIZE, MXFP4::QS_BASE_SIZE>(
                     pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                     localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                    indexUBTensor, scaleValue_);
+                    indexUBTensor, scaleValue_, NEG_LOG2_CX_);
             } else {
                 // kvs padding 32 multi
                 if (actKvsTile != tileInfo.kvsActBaseTileAlign32) {
@@ -175,17 +181,17 @@ public:
                 // softmax
                 if (tileInfo.kvsActBaseTileAlign32 == MXFP4::DATA_BLOCK_BYTE) {
                     // softmax padding 32
-                    Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32CallVF<false, ElementInput, ElementDisguiseP>(
+                    Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32CallVF<MX_QUANT_MODE, false, ElementInput, ElementDisguiseP>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                         localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                        indexUBTensor, scaleValue_);
+                        indexUBTensor, scaleValue_, NEG_LOG2_CX_);
                 } else {
                     // softmax padding 32 multi >= 64
-                    Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF<false, ElementInput, ElementDisguiseP,
+                    Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF<MX_QUANT_MODE, false, ElementInput, ElementDisguiseP,
                         MXFP4::QS_BASE_SIZE>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                         localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                        indexUBTensor, scaleValue_,
+                        indexUBTensor, scaleValue_, NEG_LOG2_CX_,
                         static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32), static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign64));
                 }
             }
@@ -309,7 +315,7 @@ private:
     AscendC::LocalTensor<float>        updateScaleUBTensor[MXFP4::UB_UPDATE_SCALE_CNT]; // updateScale
     AscendC::LocalTensor<ElementIndex> indexUBTensor;                        // Index
     ElementInput scaleValue_;
-    ElementInput dstTypeMax_;
+    ElementInput NEG_LOG2_CX_;
 };
 
 }  // namespace NpuArch::Epilogue::Block
