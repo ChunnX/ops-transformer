@@ -175,6 +175,9 @@ def test_example(param_combinations):
     print("npu_result.size():", npu_result.size())
 
     # 结果精度对比
-    result, fulfill_percent = result_compare_method.check_result(input_data['cpu_output'], npu_result)
+    # result, fulfill_percent = result_compare_method.check_result(input_data['cpu_output'], npu_result)
+    result, fulfill_percent = result_compare_method.check_result(
+        input_data['cpu_output'], npu_result, output_shape=npu_result.shape
+    )
     # 记录结果
     utils.save_result(result, fulfill_percent, test_data, result_path)

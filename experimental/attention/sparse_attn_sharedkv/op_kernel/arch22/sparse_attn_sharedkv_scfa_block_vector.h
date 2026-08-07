@@ -45,7 +45,7 @@ public:
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct ConstInfo &constInfo,
                                       const SparseAttnSharedkvTilingData *__restrict tilingData);
-    __aicore__ inline void InitVec0GlobalTensor(const GlobalTensor<KV_T> &kvMergeGm, const GlobalTensor<KV_T> &oriKvGm,
+    __aicore__ inline void InitVec0GlobalTensor(const GlobalTensor<KV_T> &kvMergeGm, const GlobalTensor<KV_T> &kvNzWorkspaceGm, const GlobalTensor<KV_T> &oriKvGm,
                                                 const GlobalTensor<KV_T> &cmpKvGm,
                                                 const GlobalTensor<int32_t> &oriBlockTableGm,
                                                 const GlobalTensor<int32_t> &cmpBlockTableGm);
@@ -138,7 +138,7 @@ private:
     static constexpr uint32_t MAX_N1_SIZE = 128U;
     static constexpr T SOFTMAX_MIN_NUM = -2e38;
     static constexpr SINKS_T R0 = 1.0f;
-
+    static constexpr uint32_t N_SPLIT_SIZE = 128;     // n方向切分
     const SparseAttnSharedkvTilingData *__restrict tilingData;
 
     uint32_t pingpongFlag = 0U;
@@ -166,6 +166,7 @@ private:
     GlobalTensor<KV_T> cmpKvGm_;
     GlobalTensor<int32_t> oriBlockTableGm_;
     GlobalTensor<int32_t> cmpBlockTableGm_;
+    GlobalTensor<KV_T> kvNzWorkspaceGm_;
 
     // ================================Local Buffer区====================================
     TBuf<> inputBuff1;            // 32K
@@ -250,6 +251,7 @@ __aicore__ inline void SASVectorBlock<SAST>::InitParams(const struct ConstInfo &
 
 template <typename SAST>
 __aicore__ inline void SASVectorBlock<SAST>::InitVec0GlobalTensor(const GlobalTensor<KV_T> &kvMergeGm,
+                                                                  const GlobalTensor<KV_T> &kvNzWorkspaceGm,
                                                                   const GlobalTensor<KV_T> &oriKvGm,
                                                                   const GlobalTensor<KV_T> &cmpKvGm,
                                                                   const GlobalTensor<int32_t> &oriBlockTableGm,
@@ -260,6 +262,7 @@ __aicore__ inline void SASVectorBlock<SAST>::InitVec0GlobalTensor(const GlobalTe
     this->cmpKvGm_ = cmpKvGm;
     this->oriBlockTableGm_ = oriBlockTableGm;
     this->cmpBlockTableGm_ = cmpBlockTableGm;
+    this->kvNzWorkspaceGm_ = kvNzWorkspaceGm;
 }
 
 template <typename SAST>
@@ -638,27 +641,76 @@ __aicore__ inline void SASVectorBlock<SAST>::CopyInKv(int64_t &mte2Size, int64_t
     }
 }
 
+
 template <typename SAST>
 __aicore__ inline void SASVectorBlock<SAST>::CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size,
-                                                               int64_t s2GmStartOffset, int64_t mergeMte3Idx,
-                                                               const RunInfo &runInfo)
+                                                                int64_t s2GmStartOffset, int64_t mergeMte3Idx,
+                                                                const RunInfo &runInfo)
 {
     if (mte2Size <= mte3Size) {
         return;
     }
+
     SetFlag<AscendC::HardEvent::MTE2_MTE3>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
     WaitFlag<AscendC::HardEvent::MTE2_MTE3>(mergeMte3Idx % 2 + SYNC_INPUT_BUF2_FLAG);
 
-    DataCopyExtParams dataCopyParams;
-    dataCopyParams.blockCount = mte2Size - mte3Size;
-    dataCopyParams.blockLen = constInfo.headDim * sizeof(KV_T);
-    dataCopyParams.srcStride = 0;
-    dataCopyParams.dstStride = 0;
+    uint32_t ubOffset = mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T);
+    LocalTensor<KV_T> srcNdUb = kvMergUb_[ubOffset];
+    uint32_t totalRows = mte2Size - mte3Size;
 
+    uint32_t nL1 = (s2GmStartOffset + mte3Size) / N_SPLIT_SIZE;
+    uint32_t localRow = (s2GmStartOffset + mte3Size) % N_SPLIT_SIZE;
+    uint32_t m1 = localRow / 16;
+    const uint32_t n1Count = constInfo.headDim / 16;
+    const uint32_t numM1PerNL1 = N_SPLIT_SIZE / 16;
+    constexpr uint32_t MICRO_TILE_ELEMS = 16 * 16;
+
+    // ============ NZ 拷贝（给 Mm1 用） ============
+    LocalTensor<KV_T> dstNzUb = tmpBuff1.Get<KV_T>();
+    const uint32_t ROWS_PER_CHUNK = 4;   // tmpBuff1 32KB，4行×512列 NZ = 4KB，安全
+
+    // printf("DEBUG VEC: totalRows=%u nL1=%u m1=%u headDim=%u\n", totalRows, nL1, m1, constInfo.headDim);
+    // printf("VEC COPYOUT: blockIdx=%u start\n", GetBlockIdx());
+
+    // printf("VEC ND2NZ: blockIdx=%u start\n", GetBlockIdx());
+    Nd2NzInAiv<KV_T>(dstNzUb, srcNdUb, totalRows, constInfo.headDim);
+    //printf("VEC ND2NZ: blockIdx=%u done\n", GetBlockIdx());
+    PipeBarrier<PIPE_V>();
+
+    uint64_t loopBase = runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM * 512 * 512;
+    uint64_t nL1Base = nL1 * N_SPLIT_SIZE * constInfo.headDim;
+    uint64_t baseGmOffset = loopBase + nL1Base + m1 * MICRO_TILE_ELEMS;
+
+    DataCopyExtParams nzParams;
+    nzParams.blockCount = n1Count;
+    nzParams.blockLen = 16 * 16 * sizeof(KV_T);  // 512B = 一个完整微块
+    nzParams.srcStride = 0;
+    nzParams.dstStride = (numM1PerNL1 - 1) * MICRO_TILE_ELEMS * sizeof(KV_T);
+
+    // printf("DEBUG VEC NZNMACPY:blockIdx=%u nL1Base=%llu baseGmOffset=%llu dstStride=%u blockCount=%u blockLen=%u\n", GetBlockIdx(),
+    //     (unsigned long long)nL1Base, (unsigned long long)baseGmOffset,
+    //     nzParams.dstStride, nzParams.blockCount, nzParams.blockLen);
+
+    DataCopyPad(kvNzWorkspaceGm_[baseGmOffset], dstNzUb, nzParams);
+
+    // printf("DEBUG VEC NZDMACPY: blockIdx=%u NZ DataCopyPad done\n", GetBlockIdx());
+
+    // PipeBarrier<PIPE_MTE3>();
+
+    // ============ ND 拷贝（给 Mm2 用） ============
+    uint64_t ndGmOffset = (s2GmStartOffset + mte3Size) * constInfo.headDim;
+    DataCopyExtParams ndParams;
+    ndParams.blockCount = totalRows;
+    ndParams.blockLen = constInfo.headDim * sizeof(KV_T);
+    ndParams.srcStride = 0;
+    ndParams.dstStride = 0;
     DataCopyPad(kvMergeGm_[runInfo.cmpLoop % MERGE_CACHE_GM_BUF_NUM * 512 * 512 +
                            (s2GmStartOffset + mte3Size) * constInfo.headDim],
-                kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T)], dataCopyParams);
+                srcNdUb, ndParams);
+
+    // printf("DEBUG VEC: ND DataCopyPad done\n");
 }
+
 
 // b s1 k
 template <typename SAST>
@@ -678,6 +730,9 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec0L(const RunInfo &runInfo
     if (s2GmLimit > s2ProcessSize) {
         s2GmLimit = s2ProcessSize;
     }
+
+    // printf("ProcessVec0 start\n");
+    // printf("VEC0: blockIdx=%u start, b=%u s1=%u s2=%u\n", GetBlockIdx(), runInfo.bIdx, runInfo.s1Idx, runInfo.s2Idx);
     // 处理两个基本块
     for (int64_t s2GmOffsetArray = s2GmStartOffset; s2GmOffsetArray < s2GmLimit;
          s2GmOffsetArray += 2 * constInfo.sparseBlockSize) {
@@ -703,6 +758,8 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec0L(const RunInfo &runInfo
             needWaitMte3ToMte2 = true;
         }
     }
+    // printf("ProcessVec0 end\n");
+
     return;
 }
 
@@ -710,6 +767,7 @@ template <typename SAST>
 __aicore__ inline void SASVectorBlock<SAST>::ProcessVec1L(const RunInfo &info)
 {
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
+    // printf("DEBUG VEC1L ENTRY: blockIdx=%u nBufferLoopTimes=%u\n", GetBlockIdx(), nBufferLoopTimes);
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
     for (uint32_t i = 0; i < nBufferLoopTimes; i++) {
         MSplitInfo mSplitInfo;
@@ -725,10 +783,14 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec1L(const RunInfo &info)
             mSplitInfo.vecDealM = mSplitInfo.nBufferDealM - mSplitInfo.vecDealM;
         }
 
+        // printf("V1S: %u wait C1V1\n", GetBlockIdx());
+        // printf("V1S: blockIdx=%u s2Idx=%u curSInnerLoopTimes=%u\n", GetBlockIdx(), info.s2Idx, info.curSInnerLoopTimes);
         CrossCoreWaitFlag(constInfo.syncC1V1);
+        // printf("V1S: blockIdx=%u C1V1 done\n", GetBlockIdx());
         // vec1 compute
         ProcessVec1SingleBuf(info, mSplitInfo);
         CrossCoreSetFlag<ConstInfo::SAS_SYNC_MODE2, PIPE_MTE3>(constInfo.syncV1C2);
+        // printf("V1S: blockIdx=%u set V1C2 done\n", GetBlockIdx());
 
         // move lse for flash decode or FA
         if (constInfo.returnSoftmaxLse && info.s2Idx == info.curSInnerLoopTimes - 1) {
@@ -756,6 +818,8 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec2SingleBuf(const RunInfo 
 template <typename SAST>
 __aicore__ inline void SASVectorBlock<SAST>::ProcessVec2L(const RunInfo &info)
 {
+    // printf("ProcessVec2 start\n");
+
     uint32_t nBufferLoopTimes = (info.actMBaseSize + constInfo.nBufferMBaseSize - 1) / constInfo.nBufferMBaseSize;
     uint32_t nBufferTail = info.actMBaseSize - (nBufferLoopTimes - 1) * constInfo.nBufferMBaseSize;
     for (uint32_t i = 0; i < nBufferLoopTimes; i++) {
@@ -774,6 +838,9 @@ __aicore__ inline void SASVectorBlock<SAST>::ProcessVec2L(const RunInfo &info)
         CrossCoreWaitFlag(constInfo.syncC2V2);
         ProcessVec2SingleBuf(info, mSplitInfo);
     }
+
+    // printf("ProcessVec2 end\n");
+
 }
 
 template <typename SAST>

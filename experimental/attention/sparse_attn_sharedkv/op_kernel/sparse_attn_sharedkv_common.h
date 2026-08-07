@@ -170,10 +170,120 @@ __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  // l1
         LocalTensor<T> tmpDstTensor = dstTensor[copyFinishRowCnt * blockElementCnt];
         GlobalTensor<T> tmpSrcTensor = srcTensor[offset];
 
+        // printf("DEBUG PA: blockId=%lld blockIdx=%u offsetInBlock=%u copyRowCnt=%u\n",
+        //             (long long)idInBlockTable, (uint32_t)blockIdOffset,
+        //             (uint32_t)reaminRowCnt, copyRowCnt);
+        // 恢复 ND→NZ 随路转换（原来注释掉的逻辑）
         DataCopyGmNDToL1<T>(tmpDstTensor, tmpSrcTensor, copyRowCnt, shape.copyRowNumAlign, dValue, srcDValue);
+        // printf("DEBUG PA: DataCopyGmNDToL1 done, copyFinishRowCnt=%u\n", copyFinishRowCnt + copyRowCnt);
+
         copyFinishRowCnt += copyRowCnt;
         curS2Idx += copyRowCnt;
     }
+}
+
+
+// ============================================================
+// AIV 核上的 ND→NZ 格式转换（通用工具函数）
+// 要求：输入数据在 UB/L1 中按 ND 格式连续排列（行连续），
+// 输出仍放在 UB/L1 中，按 NZ 格式排列（16×16 分形块连续）。
+// 注意：该函数仅在 AIV 核上有效。行数不满 16 时自动 padding 到 16。
+// ============================================================
+template <typename T>
+__aicore__ inline void Nd2NzInAiv(
+    AscendC::LocalTensor<T>& dstUb,   // 目标 UB（NZ 格式）
+    const AscendC::LocalTensor<T>& srcUb, // 源 UB（ND 格式）
+    uint32_t rowCount,                // 实际行数（≤ 16，若 >16 需分块）
+    uint32_t colCount)                // 实际列数（通常 512）
+{
+    constexpr uint64_t c0Size = 16;               // NZ 格式的 C0 块大小
+    constexpr uint64_t SINGLE_COPY_SIZE = 256;     // 单次 Copy 最大字节数
+    constexpr uint64_t REPEAT_TIMES_MAX = 255;     // Copy 指令最大重复次数
+
+    uint32_t rowCountPad = (rowCount + 15) / 16 * 16;  // padding 到 16 的倍数
+
+    // 计算每次 Copy 搬运的元素数（一次搬运 SINGLE_COPY_SIZE 字节）
+    uint32_t nRepeat = SINGLE_COPY_SIZE / sizeof(T);   // 128 for half/bfloat16
+
+    // 列方向 C0 块数
+    uint32_t nRowBlock = colCount / c0Size;            // 512/16 = 32
+
+    // 行方向分块
+    uint32_t numIterI = rowCountPad / REPEAT_TIMES_MAX;
+    uint32_t heightTail = rowCountPad % REPEAT_TIMES_MAX;
+
+    // 列方向分块
+    uint32_t numIterJ = colCount / nRepeat;
+    uint32_t widthTail = colCount % nRepeat;
+
+    // 先将 dstUb 对应区域清零，避免 padding 区脏数据
+    // （如果 dstUb 已有零值可跳过，但为安全起见加一次 Memset）
+    if (rowCountPad > rowCount) {
+        uint32_t padStart = rowCount * colCount;  // ND 视角的 padding 起始
+        uint32_t padSize = (rowCountPad - rowCount) * colCount;
+        // 对 dst 的 padding 区域在 ND 写入后再覆盖为 0；
+        // 但这里是 NZ 格式，直接在 Copy 写完后对 tail 行对应的 NZ 区域置零更简单——见下文。
+    }
+
+    // ============ 核心重排 ============
+    for (uint32_t i = 0; i < numIterI; ++i) {
+        uint32_t actualHeight = (i == numIterI - 1 && heightTail) ? heightTail : REPEAT_TIMES_MAX;
+        for (uint32_t j = 0; j < numIterJ; ++j) {
+            AscendC::Copy(
+                dstUb[rowCountPad * nRepeat * j + i * REPEAT_TIMES_MAX * c0Size],
+                srcUb[nRepeat * j + i * REPEAT_TIMES_MAX * colCount],
+                nRepeat, actualHeight,
+                {static_cast<uint16_t>(rowCountPad), 1, 1, static_cast<uint16_t>(nRowBlock)}
+            );
+        }
+        if (widthTail) {
+            AscendC::Copy(
+                dstUb[rowCountPad * nRepeat * numIterJ + i * REPEAT_TIMES_MAX * c0Size],
+                srcUb[nRepeat * numIterJ + i * REPEAT_TIMES_MAX * colCount],
+                widthTail, actualHeight,
+                {static_cast<uint16_t>(rowCountPad), 1, 1, static_cast<uint16_t>(nRowBlock)}
+            );
+        }
+    }
+
+    // 处理行方向尾块（heightTail > 0）
+    if (heightTail) {
+        for (uint32_t j = 0; j < numIterJ; ++j) {
+            AscendC::Copy(
+                dstUb[rowCountPad * nRepeat * j + numIterI * REPEAT_TIMES_MAX * c0Size],
+                srcUb[nRepeat * j + numIterI * REPEAT_TIMES_MAX * colCount],
+                nRepeat, heightTail,
+                {static_cast<uint16_t>(rowCountPad), 1, 1, static_cast<uint16_t>(nRowBlock)}
+            );
+        }
+        if (widthTail) {
+            AscendC::Copy(
+                dstUb[rowCountPad * nRepeat * numIterJ + numIterI * REPEAT_TIMES_MAX * c0Size],
+                srcUb[nRepeat * numIterJ + numIterI * REPEAT_TIMES_MAX * colCount],
+                widthTail, heightTail,
+                {static_cast<uint16_t>(rowCountPad), 1, 1, static_cast<uint16_t>(nRowBlock)}
+            );
+        }
+    }
+
+    // padding 区域清零：实际数据只写到 rowCount 行，多出的 (rowCountPad-rowCount) 行在 NZ 格式中处于各个 C0 块末尾
+    // 需要将 dstUb 尾部（rowCount 到 rowCountPad 之间）对应的 NZ 区域清零
+    uint32_t padRows = rowCountPad - rowCount;
+    if (padRows > 0) {
+        // NZ 格式中，每个 C0 块有 rowCountPad 行，有效数据只占了前 rowCount 行
+        // 对每个 C0 块，清零 [rowCount * c0Size, rowCountPad * c0Size) 区域
+        for (uint32_t b = 0; b < nRowBlock; ++b) {
+            // dstUb 中第 b 个 C0 块的 padding 区域起始：dstUb[b * rowCountPad * c0Size + rowCount * c0Size]
+            // 需要清零 padRows * c0Size 个元素
+            uint32_t zeroStart = b * rowCountPad * c0Size + rowCount * c0Size;  // 在 dstUb 的线性地址
+            uint32_t zeroCount = padRows * c0Size;
+            // 用 Memset 或 Copy 清零
+            AscendC::Duplicate<T>(dstUb[zeroStart], (T)0, zeroCount);
+        }
+    }
+
+    // 同步：确保重排完成后再进行后续操作
+    AscendC::PipeBarrier<PIPE_V>();
 }
 
 struct RunInfo {
@@ -338,3 +448,4 @@ struct MSplitInfo {
 };
 } // namespace SASKernel
 #endif // SPARSE_ATTN_SHAREDKV_COMMON_H
+
