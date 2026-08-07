@@ -401,13 +401,26 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
     int64_t actualS2Len;
     for (int64_t i = 0; i < this->sharedParams.bSize; ++i) {
         this->GetSeqQlenKvlenByBoidx(i, actualS1Len, actualS2Len);
+        // 跳过空kv batch的s1块计数，但保留偏移累积
+        if (actualS2Len == 0) {
+            this->s1SizeAcc += actualS1Len;
+            this->s2SizeAcc += actualS2Len;
+            runParam.b1SSOffset += actualS1Len * actualS2Len;
+            if constexpr (hasDrop) {
+                runParam.b1SSOffsetAlign16 += actualS1Len * Align(actualS2Len);
+            }
+            runParam.boIdx++;
+            continue;
+        }
         actualS1Outersize += (CeilDiv(actualS1Len, this->s1BaseSize) * this->constInfo.n2G);
         if (multiCoreInnerOffset >= actualS1Outersize) {
             this->s1OuterSizeAcc = actualS1Outersize;
             this->s1SizeAcc += actualS1Len;
             this->s2SizeAcc += actualS2Len;
             runParam.b1SSOffset += actualS1Len * actualS2Len;
-            runParam.b1SSOffsetAlign16 += actualS1Len * Align(actualS2Len);
+            if constexpr (hasDrop) {
+                runParam.b1SSOffsetAlign16 += actualS1Len * Align(actualS2Len);
+            }
             runParam.boIdx++;
             continue;
         }
