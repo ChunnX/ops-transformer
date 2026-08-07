@@ -180,30 +180,16 @@ public:
 
         InitMMResBuf(workspace);
 
-        float qScale = 1.0f;
-        float kScale = 1.0f;
-        float vScale = 1.0f;
-        if (dequantScaleQuery != nullptr) {
-            qScale = *((__gm__ float *)dequantScaleQuery);
-        }
-        if (dequantScaleKey != nullptr) {
-            kScale = *((__gm__ float *)dequantScaleKey);
-        }
-        if (dequantScaleValue != nullptr) {
-            vScale = *((__gm__ float *)dequantScaleValue);
-        }
-
         if ASCEND_IS_AIV {
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
-                vecFaBlock_.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, pScale, attnMask, softmaxLse, attnOut,
-                                        workspace);
+                vecFaBlock_.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, dequantScaleQuery, dequantScaleKey,
+                                        dequantScaleValue, pScale, attnMask, softmaxLse, attnOut, workspace);
                 vecFaBlock_.SetCuSeqLensParser(qCuSeqLensParser_);
             } else {
-                vecFaBlock_.InitVecBlock(tPipe, sequsedQ, sequsedKv, pScale, attnMask, softmaxLse, attnOut, workspace);
+                vecFaBlock_.InitVecBlock(tPipe, sequsedQ, sequsedKv, dequantScaleQuery, dequantScaleKey,
+                                        dequantScaleValue, pScale, attnMask, softmaxLse, attnOut, workspace);
                 vecFaBlock_.SetCuSeqLensParser(qSeqUsedParser_);
             }
-            vecFaBlock_.SetDescaleQK(qScale, kScale);
-            vecFaBlock_.SetVScale(vScale);
             vecFaBlock_.ClearOutput();
         }
 
@@ -592,13 +578,10 @@ public:
         RunInfoX &runInfo0 = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];                  // 本轮任务
         RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
         if (runInfo0.isValid) {
-            uint32_t c1v1Loop = CeilDiv(runInfo0.actSingleLoopS2Size, 256);
-            for (uint32_t subLoop = 0; subLoop < c1v1Loop; ++subLoop) {
-                if ASCEND_IS_AIC {
-                    ComputeMm1(runInfo0, subLoop);
-                } else {
-                    ComputeVec1(runInfo0, subLoop);
-                }
+            if ASCEND_IS_AIC {
+                ComputeMm1(runInfo0);
+            } else {
+                ComputeVec1(runInfo0);
             }
         }
 
@@ -614,9 +597,9 @@ public:
         }
     }
 
-    __aicore__ inline void ComputeMm1(RunInfoX &runInfo, uint32_t subLoop)
+    __aicore__ inline void ComputeMm1(RunInfoX &runInfo)
     {
-        cubeBlock_.IterateBmm1(this->bmm1Buffers_.Get(), runInfo, subLoop);
+        cubeBlock_.IterateBmm1(this->bmm1Buffers_.Get(), runInfo);
     }
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
@@ -624,13 +607,9 @@ public:
         cubeBlock_.IterateBmm2(this->bmm2Buffers_.Get(), this->l1PBuffers_, runInfo);
     }
 
-    __aicore__ inline void ComputeVec1(RunInfoX &runInfo, uint32_t subLoop)
+    __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
     {
-        if (subLoop % 2 == 0) {
-            vecFaBlock_.ProcessVec1(this->l1PBuffers_.Get(), this->bmm1Buffers_.Get(), runInfo, subLoop);
-        } else {
-            vecFaBlock_.ProcessVec1(this->l1PBuffers_.GetPre(), this->bmm1Buffers_.Get(), runInfo, subLoop);
-        }
+        vecFaBlock_.ProcessVec1(this->l1PBuffers_.Get(), this->bmm1Buffers_.Get(), runInfo);
     }
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
