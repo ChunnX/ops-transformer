@@ -34,7 +34,6 @@ class BufferManager {
 public:
     __aicore__ inline void Init(TPipe *pipe, uint32_t size) {
         static_assert(bufferType != BufferType::GM, "GM should use workspace.");
-        offset_ = 0;
         TBuf<BufferInfo<bufferType>::Position> tbuf;
         pipe->InitBuffer(tbuf, size);
         mem_ = tbuf.template Get<uint8_t>();
@@ -42,7 +41,6 @@ public:
 
     __aicore__ inline void Init(__gm__ uint8_t* workspace) {
         static_assert(bufferType == BufferType::GM, "BufferType should be GM.");
-        offset_ = 0;
         mem_.SetGlobalBuffer((__gm__ uint8_t*)workspace);
     }
 
@@ -51,13 +49,6 @@ public:
         TensorType temp = mem_[offset_];
         offset_ += size;
         return Buffer<bufferType, syncType>(temp, size);
-    }
-
-    template<SyncType syncType>
-    __aicore__ inline Buffer<bufferType, syncType> AllocBuffer(uint32_t size, uint32_t id0, uint32_t id1) {
-        TensorType temp = mem_[offset_];
-        offset_ += size;
-        return Buffer<bufferType, syncType>(temp, size, id0, id1);
     }
 
     template<SyncType syncType = SyncType::INNER_CORE_SYNC>
