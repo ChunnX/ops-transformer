@@ -14,7 +14,7 @@ __aicore__ inline void KPoolLayerNorm(const LocalTensor<float> &out, const Local
                                       const LocalTensor<float> &mean, const LocalTensor<float> &gamma,
                                       const LocalTensor<float> &beta, float eps, uint32_t count)
 {
-    const float reciprocal = 1.0f / static_cast<float>(count);
+    const float reciprocal = 1.0f / static_cast<float>(static_cast<int64_t>(count));
 
     Muls(mean, in, reciprocal, count);
     PipeBarrier<PIPE_V>();
