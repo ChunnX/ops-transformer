@@ -726,7 +726,7 @@ ge::graphStatus CompressorTiling::CheckFeature() const
     // state_cache stride0 must be >= contiguous stride (dim1 * dim2).
     // Only axis 0 non-contiguous is supported; axis 1/2 must remain contiguous.
     // Full per-axis stride validation is done via GetInputStride in TilingCompressor entry
-    // (effective on ascend950) and via IsContiguousAxes in torch_extension csrc.
+    // and via IsContiguousAxes in torch_extension csrc.
     uint64_t contiguousStride0 = context_->stateCache.shape->GetShape().GetDim(1) *
                                  context_->stateCache.shape->GetShape().GetDim(2);
     OP_CHECK_IF(baseParams_->stateCacheStrideDim0 < contiguousStride0,
@@ -875,6 +875,26 @@ CMP_EXTERN_C ge::graphStatus TilingCompressor(gert::TilingContext *context)
     if (CompressorTiling::ConvertContext(*context, compressorContext) != ge::GRAPH_SUCCESS) {
         OP_LOGE(context->GetNodeName(), "Error occurred while converting tilingContext to Compressor context");
         return ge::GRAPH_FAILED;
+    }
+    // Validate state_cache axis 1/2 contiguity via GetInputStride
+    // Only axis 0 non-contiguous is supported; axis 1 and 2 must be contiguous
+    {
+        auto *stateCacheStride = context->GetInputStride(STATE_CACHE_INPUT_INDEX);
+        const auto &stateCacheShape = compressorContext.stateCache.shape->GetStorageShape();
+        if (stateCacheStride != nullptr && stateCacheStride->GetDimNum() == stateCacheShape.GetDimNum()) {
+            uint64_t expectedStride = 1;
+            for (int64_t i = static_cast<int64_t>(stateCacheShape.GetDimNum()) - 1; i >= 1; --i) {
+                uint64_t actualStride = static_cast<uint64_t>(stateCacheStride->GetStride(static_cast<size_t>(i)));
+                if (actualStride != expectedStride) {
+                    OP_LOGE(context->GetNodeName(),
+                            "state_cache must be contiguous on axis 1 and 2, only axis 0 non-contiguous is supported. "
+                            "axis %ld: actual stride=%lu, expected contiguous stride=%lu.",
+                            i, actualStride, expectedStride);
+                    return ge::GRAPH_FAILED;
+                }
+                expectedStride *= static_cast<uint64_t>(stateCacheShape.GetDim(static_cast<size_t>(i)));
+            }
+        }
     }
     CompressorTiling compressorTiling(&compressorContext);
     CompressorTilingData *tilingData = context->GetTilingData<CompressorTilingData>();
