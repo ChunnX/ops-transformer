@@ -164,6 +164,58 @@ struct BlockWorkspaceContext {
     uint32_t blockNum;
 };
 
+namespace MegaMoeImpl {
+
+// 调用方提供的 AIV 逻辑任务信息。jobIndex 是 [0, totalJobs) 内从零开始的连续编号，
+// 与物理 AIV 编号无关。
+struct AivJobContext {
+    uint32_t jobIndex;
+    uint32_t totalJobs;
+};
+
+struct MoeTopologyContext {
+    uint32_t rankId;
+    uint32_t worldSize;
+    uint32_t expertPerRank;
+};
+
+struct TokenShapeContext {
+    int32_t tokenNum;
+    uint32_t topK;
+    uint32_t tokenHiddenDim;
+};
+
+// Dispatch 前处理阶段跨量化、mask、workspace reset 和共享专家输入准备共用的信息。
+struct DispatchPrepareContext {
+    AivJobContext job;
+    MoeTopologyContext topology;
+    TokenShapeContext tokenShape;
+};
+
+__aicore__ inline void TilingByJobContext(int32_t totalLen, int32_t &jobLen, int32_t &jobOffset,
+                                          uint32_t jobIndex, uint32_t totalJobs, int32_t align = ALIGN_32)
+{
+    if (totalJobs == 0U || jobIndex >= totalJobs) {
+        jobLen = 0;
+        jobOffset = 0;
+        return;
+    }
+    int32_t lenPerJob = Ops::Base::CeilDiv(static_cast<uint32_t>(totalLen), totalJobs);
+    int32_t lenPerJobAlign =
+        Ops::Base::CeilAlign(static_cast<uint32_t>(lenPerJob), static_cast<uint32_t>(align));
+    jobLen = lenPerJobAlign;
+    jobOffset = static_cast<int32_t>(jobIndex) * lenPerJobAlign;
+    if (jobOffset >= totalLen) {
+        jobLen = 0;
+        return;
+    }
+    if (jobOffset + jobLen > totalLen) {
+        jobLen = totalLen - jobOffset;
+    }
+}
+
+} // namespace MegaMoeImpl
+
 template <typename T>
 struct PackedElementTraits {
     static constexpr uint32_t ELEMENTS_PER_BYTE = Std::IsSame<T, fp4x2_e2m1_t>::value ? 2U : 1U;

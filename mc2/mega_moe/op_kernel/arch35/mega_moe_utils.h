@@ -18,7 +18,7 @@
 
 #include <cstdint>
 
-#include "mega_moe_job_context.h"
+#include "mega_moe_base.h"
 
 namespace MegaMoeImpl {
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)

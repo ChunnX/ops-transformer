@@ -29,12 +29,11 @@
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
 #include "mega_moe_utils.h"
-#include "mega_moe_job_context.h"
 #include "aiv_compute/mega_moe_quant_process.h"
-#include "aiv_compute/mega_moe_shared_expert_prepare.h"
+#include "aiv_compute/mega_moe_expert_token_count.h"
 #include "aiv_comm/mega_moe_send_mask.h"
-#include "mega_moe_shared_expert_gmm1_swiglu.h"
-#include "mega_moe_wave_moe_expert_pipeline.h"
+#include "mega_moe_gmm1_swiglu_pipeline.h"
+#include "mega_moe_gmm2_combine_pipeline.h"
 #include "mega_moe_unpermute.h"
 #if __has_include("../../moe_distribute_dispatch_v2/quantize_functions.h")
 #include "../../moe_distribute_dispatch_v2/quantize_functions.h"
@@ -52,6 +51,86 @@ namespace MegaMoeImpl {
 #define TemplateMegaMoeWaveTypeFunc \
     XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch, \
         IsGmm1Interleaved
+
+// 执行滚动的 Dispatch -> GMM1/SwiGLU -> GMM2 -> Combine 流水：
+//   AIC  : GMM1(B) -> GMM2(B) -> GMM1(B+1)
+//   AIV0 : SwiGLU(B) -> SwiGLU(B+1)
+//   AIV1 : Dispatch(B+1) -> Combine(B)
+template <uint8_t CombineMode, typename QuantOutType, typename ActivationType, typename WeightType,
+          typename QuantScaleType, uint32_t Gmm1TileM, uint32_t EpilogueTileM,
+          bool TopkWeightsPrefetch, bool IsGmm1Interleaved, typename BlockEpilogue>
+__aicore__ inline void ProcessMoeExpertWaves(
+    const TokenDispatchContext &dispatchContext, const TokenDispatchArgs &dispatchArgs,
+    const Gmm1SwigluContext &gmm1Context, const Gmm1SwigluArgs &gmm1Args,
+    const Gmm2Context &gmm2Context, const Gmm2Args &gmm2Args,
+    const WaveCombineContext &combineContext, const WaveCombineArgs &combineArgs,
+    const WaveGmm2ReadyArgs &readyArgs, const ExpertTokenCountExportContext &exportContext,
+    const ExpertTokenCountExportArgs &exportArgs, const Params &params, BlockEpilogue &epilogueOp,
+    TokenDispatchScratch<ActivationType> &dispatchScratch, Gmm1SwigluScratch &gmm1Scratch,
+    Gmm2Scratch &gmm2Scratch, WaveCombineScratch &combineScratch,
+    ExpertTokenCountExportScratch &exportScratch, const WaveCombineBufferConfig &combineBufferConfig,
+    uint32_t expertsPerWave, uint32_t &startBlockIdx, uint16_t &gmm1PingPongIdx,
+    uint16_t &gmm2PingPongIdx)
+{
+    GMMAddrInfo gmm1AddrInfo{};
+    GMMAddrInfo gmm2AddrInfo{};
+    GMMAddrInfo combineAddrInfo{};
+    Gmm1ExpertLoopState gmm1State = CreateGmm1ExpertLoopState(gmm1Context);
+    Gmm2ExpertLoopState gmm2State = CreateGmm2ExpertLoopState(gmm2Context);
+    Gmm2ExpertLoopState combineState = CreateGmm2ExpertLoopState(gmm2Context);
+    int32_t vecSetSyncCom = 0;
+    int32_t gmm1TileSequence = 0;
+    Gmm1SwigluState gmm1RuntimeState{
+        startBlockIdx, vecSetSyncCom, gmm1TileSequence, gmm1PingPongIdx};
+
+    uint32_t nextDispatchExpert = 0U;
+    uint32_t currentWaveExpertNum = 0U;
+    for (uint32_t batchBegin = 0U; batchBegin < gmm2Context.expertPerRank;
+         batchBegin += currentWaveExpertNum) {
+        currentWaveExpertNum =
+            GetWaveExpertCount(batchBegin, gmm2Context.expertPerRank, expertsPerWave);
+        const uint32_t batchEnd = batchBegin + currentWaveExpertNum;
+        const uint32_t waveBeginCursor = startBlockIdx;
+
+        const uint32_t nextWaveExpertNum =
+            GetWaveExpertCount(batchEnd, gmm2Context.expertPerRank, expertsPerWave);
+        const uint32_t nextBatchEnd = batchEnd + nextWaveExpertNum;
+        // Dispatch 与 Combine 复用 UB/event 资源，因此 AIV1 先预取下一 wave，再处理当前 wave 的 Combine。
+        DispatchWaveExpertsUntil<ActivationType, QuantScaleType, Gmm1TileM, TopkWeightsPrefetch>(
+            dispatchContext, dispatchArgs, dispatchScratch, nextDispatchExpert, nextBatchEnd);
+
+        RunWaveGmm1Stage<QuantOutType, ActivationType, WeightType, QuantScaleType,
+                         Gmm1TileM, EpilogueTileM, TopkWeightsPrefetch, IsGmm1Interleaved>(
+            gmm1Context, gmm1Args, params, epilogueOp, gmm1Scratch, batchBegin, batchEnd,
+            gmm1State, gmm1AddrInfo, gmm1RuntimeState);
+        const uint32_t gmm1EndCursor = startBlockIdx;
+
+        RunWaveGmm2Stage<QuantOutType, ActivationType, WeightType, QuantScaleType,
+                         Gmm1TileM, TopkWeightsPrefetch, IsGmm1Interleaved>(
+            gmm2Context, gmm2Args, gmm2Scratch, combineContext, readyArgs, params,
+            batchBegin, batchEnd, gmm2State, gmm2AddrInfo, startBlockIdx, vecSetSyncCom,
+            gmm2PingPongIdx);
+        // 避免一个完整 wave 内两个游标抵消后，GMM1/GMM2 固定绑定到同一组物理核。
+        const bool hasNextWave = batchEnd < gmm2Context.expertPerRank;
+        const bool fixedRoleResonance =
+            startBlockIdx == waveBeginCursor && gmm1EndCursor != waveBeginCursor;
+        if (hasNextWave && fixedRoleResonance) {
+            startBlockIdx = gmm1EndCursor;
+        }
+
+        RunWaveCombineStage<CombineMode, ActivationType, QuantScaleType>(
+            gmm2Context, gmm2Args, gmm2Scratch, combineContext, combineArgs, readyArgs,
+            combineBufferConfig, combineScratch, params, batchBegin, batchEnd, combineState,
+            combineAddrInfo);
+    }
+
+    if constexpr (!TopkWeightsPrefetch) {
+        EndSync<IsGmm1Interleaved>(vecSetSyncCom, gmm1PingPongIdx);
+    }
+    vecSetSyncCom = 0;
+    gmm1PingPongIdx = 0;
+    ExportExpertTokenCountsFromWorkspace(exportContext, exportArgs, exportScratch);
+}
 
 template <TemplateMegaMoeWaveTypeClass>
 class MegaMoeWave {
@@ -615,7 +694,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessSharedEx
     int32_t gmTileSequence = 0;
     SharedExpertGmm1SwigluState runtimeState{
         startBlockIdx_, vecSetSyncCom, gmTileSequence, gmm1PingPongIdx_};
-    ControlSharedExpertGmm1SwigluPipeline<QuantOutType, ActivationType, Weight1Type, ActivationType,
+    SharedExpertGmm1SwigluPipeline<QuantOutType, ActivationType, Weight1Type, ActivationType,
                                           QuantScaleOutType, false, GMM1_TILE_M, GMM1_INTERLEAVED, true>(
         sharedGmm1Context_, sharedGmm1Args_, params_, sharedEpilogueOp_, runtimeState);
     vecSetSyncCom = 0;

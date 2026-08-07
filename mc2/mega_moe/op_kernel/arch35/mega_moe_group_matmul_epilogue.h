@@ -278,44 +278,6 @@ __aicore__ inline void ComputeSwigluTileA8W4(
     }
 }
 
-// Prototype: AivGmm2PostGeneric. Runs generic GMM2 combine post-processing on one AIV.
-template <typename ElementC, typename WorkSet, typename ExtraArgs>
-__aicore__ inline void AivGmm2PostGeneric(WorkSet &workSet, ExtraArgs &args, uint32_t startLoopIdx, uint32_t tileNum)
-{
-    constexpr uint32_t ubBufSize = MAX_SINGLE_MN_ALIGN32_NUM_128;
-    int64_t ubOffsetFirst = 0;
-    int64_t ubOffsetSecond = static_cast<int64_t>(ubBufSize) * sizeof(ElementC);
-    LocalTensor<ElementC> l0cOutUbGMM2First(TPosition::VECIN, ubOffsetFirst, L1_TILE_M_128 * L1_TILE_N);
-    LocalTensor<ElementC> l0cOutUbGMM2Second(TPosition::VECIN, ubOffsetSecond, L1_TILE_M_128 * L1_TILE_N);
-
-    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += workSet.config.blockNum) {
-        auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
-        auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
-        uint32_t mLoc = Get<M_VALUE>(blockCoord);
-        uint32_t nLoc = Get<N_VALUE>(blockCoord);
-
-        auto l0cOutUbGMM2 = args.pingpongIdx == 0 ? l0cOutUbGMM2First : l0cOutUbGMM2Second;
-        WaitForCube(args.pingpongIdx);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
-        AscendC::GlobalTensor<int32_t> metaInfoGm;
-        int32_t lenTile = Get<M_VALUE>(actualShape);
-        LocalTensor<int32_t> metaInfoTensor =
-            LocalTensor<int32_t>(TPosition::VECCALC, META_INFO_TENSOR_ADDR, lenTile * META_INFO_SIZE);
-        metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-            workSet.params.workspaceInfo.metaInfoPtr + (args.groupCnt + mLoc) * META_INFO_SIZE * sizeof(int32_t)));
-        AscendC::DataCopy(metaInfoTensor, metaInfoGm, lenTile * META_INFO_SIZE);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
-        MegaMoeCombineImpl::CombineTokens<ElementC, decltype(actualShape)>(
-            nLoc, workSet.config.n, metaInfoTensor, l0cOutUbGMM2, actualShape, L1_TILE_N, workSet.params);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
-        NotifyCube(args.pingpongIdx);
-        args.pingpongIdx = 1 - args.pingpongIdx;
-    }
-}
-
 // Prototype: AivGmm2PostA8W4. Consumes AIC GM tiles and runs combine on AIV1.
 template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config>
 __aicore__ inline void AivGmm2PostA8W4(Scheduler &scheduler, TensorC &l0cOutGm, const Params &params,

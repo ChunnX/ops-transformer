@@ -14,7 +14,6 @@
 #include "kernel_operator.h"
 #include "../mega_moe_base.h"
 #include "../mega_moe_impl_base.h"
-#include "../mega_moe_job_context.h"
 #include "../mega_moe_utils.h"
 #include "../aiv_compute/mega_moe_mxfp8_quantization.h"
 #if __has_include("../../../common/mc2_kernel_utils.h")

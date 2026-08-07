@@ -28,14 +28,12 @@
 #include "mega_moe_workspace_info.h"
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
-#include "mega_moe_job_context.h"
 #include "aiv_compute/mega_moe_quant_process.h"
-#include "aiv_compute/mega_moe_shared_expert_prepare.h"
 #include "aiv_compute/mega_moe_expert_token_count.h"
 #include "aiv_comm/mega_moe_send_mask.h"
 #include "mega_moe_utils.h"
-#include "mega_moe_moe_expert_pipeline.h"
-#include "mega_moe_shared_expert_gmm1_swiglu.h"
+#include "mega_moe_gmm1_swiglu_pipeline.h"
+#include "mega_moe_gmm2_combine_pipeline.h"
 #include "mega_moe_unpermute.h"
 #if __has_include("../../moe_distribute_dispatch_v2/quantize_functions.h")
 #include "../../moe_distribute_dispatch_v2/quantize_functions.h"
@@ -53,6 +51,48 @@ namespace MegaMoeImpl {
         int32_t CombineQuantMode, bool TopkWeightsPrefetch
 #define TemplateMegaMoeTypeFunc \
     XType, OutputType, TopkWeightsType, Weight1Type, QuantMode, CombineQuantMode, TopkWeightsPrefetch
+
+// 执行普通模板完整的 Dispatch -> GMM1/SwiGLU -> GMM2/Combine 流水。
+template <uint8_t CombineMode, typename QuantOutType, typename ActivationType, typename WeightType,
+          typename SwigluOutType, typename QuantScaleType, bool EnableA8W4, bool EnableA4W4,
+          uint32_t Gmm1TileM, uint32_t EpilogueTileM, bool TopkWeightsPrefetch, typename BlockEpilogue>
+__aicore__ inline void ProcessMoeExperts(
+    const DispatchGmm1SwigluContext &gmm1Context, const DispatchGmm1SwigluArgs &gmm1Args,
+    const Gmm2Context &gmm2Context, const Gmm2Args &gmm2Args,
+    const QuantCombineContext &combineContext, const QuantCombineBufferConfig &combineBufferConfig,
+    const Params &params, BlockEpilogue &epilogueOp, TokenDispatchScratch<ActivationType> &dispatchScratch,
+    Gmm1SwigluScratch &gmm1Scratch, Gmm2Scratch &gmm2Scratch, GM_ADDR expertTokenNumsOutPtr,
+    int32_t &gmTileSequence, uint16_t &gmm2PingPongIdx)
+{
+    uint32_t gmm1StartBlockIdx = 0U;
+    int32_t gmm1VecSetSyncCom = 0;
+    uint16_t gmm1PingPongIdx = 0U;
+    DispatchGmm1SwigluState gmm1RuntimeState{
+        gmm1StartBlockIdx, gmm1VecSetSyncCom, gmTileSequence, gmm1PingPongIdx};
+    DispatchGmm1SwigluPipeline<QuantOutType, ActivationType, WeightType, SwigluOutType,
+                                      QuantScaleType, EnableA8W4, Gmm1TileM, EpilogueTileM,
+                                      TopkWeightsPrefetch>(
+        gmm1Context, gmm1Args, params, epilogueOp, dispatchScratch, gmm1Scratch, gmm1RuntimeState);
+
+    if constexpr (g_coreType == AIV) {
+        if (GetSubBlockIdx() == 1U) {
+            ExportExpertTokenCounts<ActivationType, EnableA8W4>(
+                gmm1Context.dispatch, dispatchScratch, expertTokenNumsOutPtr);
+        }
+    }
+    if constexpr (TopkWeightsPrefetch) {
+        SyncAll<false>();
+    }
+
+    uint32_t gmm2StartBlockIdx = gmm1RuntimeState.startBlockIdx;
+    int32_t gmm2VecSetSyncCom = 0;
+    Gmm2RuntimeState gmm2RuntimeState{
+        gmm2StartBlockIdx, gmm2VecSetSyncCom, gmTileSequence, gmm2PingPongIdx};
+    ProcessMoeExpertGmm2AndCombine<CombineMode, QuantOutType, SwigluOutType, WeightType,
+                                   QuantScaleType, ActivationType, EnableA8W4, EnableA4W4,
+                                   Gmm1TileM, TopkWeightsPrefetch>(
+        gmm2Context, gmm2Args, gmm2Scratch, combineContext, combineBufferConfig, params, gmm2RuntimeState);
+}
 
 template <TemplateMegaMoeTypeClass>
 class MegaMoe {
@@ -629,7 +669,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         uint16_t sharedGmm1PingPongIdx = 0U;
         SharedExpertGmm1SwigluState sharedGmm1State{
             sharedGmm1StartBlockIdx, sharedGmm1VecSetSyncCom, gmTileSequence, sharedGmm1PingPongIdx};
-        ControlSharedExpertGmm1SwigluPipeline<QuantOutType, ActivationType, Weight1Type, SwigluQuantOutType,
+        SharedExpertGmm1SwigluPipeline<QuantOutType, ActivationType, Weight1Type, SwigluQuantOutType,
                                               QuantScaleOutType, ENABLE_A8W4, GMM1_TILE_M>(
             sharedGmm1Context_, sharedGmm1Args_, params_, sharedEpilogueOp_, sharedGmm1State);
     }

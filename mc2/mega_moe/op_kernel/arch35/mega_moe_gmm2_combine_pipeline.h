@@ -8,9 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef MEGA_MOE_GMM2_H
-#define MEGA_MOE_GMM2_H
+#ifndef MEGA_MOE_GMM2_COMBINE_PIPELINE_H
+#define MEGA_MOE_GMM2_COMBINE_PIPELINE_H
 
+#include "adv_api/reduce/reduce.h"
+#include "aiv_comm/mega_moe_token_combine.h"
 #include "mega_moe_impl.h"
 
 namespace MegaMoeImpl {
@@ -261,6 +263,263 @@ __aicore__ inline void ProcessSharedExpertGmm2(const Gmm2Context &context, const
     }
 }
 
+// 调度普通模板当前 MoE 专家的量化 Combine，并保持原有 GMM2-ready 等待顺序。
+template <uint8_t CombineMode>
+__aicore__ inline void ScheduleQuantizedMoeExpertCombine(
+    const QuantCombineContext &context, const QuantCombineBufferConfig &bufferConfig,
+    const Params &params, const GMMAddrInfo &gmmAddrInfo, uint32_t expertTokenCount,
+    uint32_t expertBeforeCnt, uint32_t expertIdx)
+{
+    if constexpr (g_coreType == AIC || CombineMode == COMBINE_NO_QUANT) {
+        return;
+    }
+    if (!context.participates || context.job.totalJobs == 0U ||
+        context.job.jobIndex >= context.job.totalJobs || expertTokenCount == 0U) {
+        return;
+    }
+    uint32_t groupCount = Ops::Base::CeilDiv(expertTokenCount, COMBINE_TOKEN_GROUP_SIZE);
+    uint32_t firstGroup = 0U;
+    uint32_t groupStride = 0U;
+    uint32_t jobIndexWithinGroup = 0U;
+    uint32_t jobsAssignedToGroup = 0U;
+    ComputeCombineGroupsForCore(context.job.jobIndex, groupCount, context.job.totalJobs, firstGroup,
+                                groupStride, jobIndexWithinGroup, jobsAssignedToGroup);
+    for (uint32_t groupIndex = firstGroup; groupIndex < groupCount; groupIndex += groupStride) {
+        uint32_t syncSlotIndex = groupCount <= context.job.totalJobs ? context.job.jobIndex : groupIndex;
+        __gm__ int32_t *syncCounterAddress =
+            GetCombineSyncCounterAddress(gmmAddrInfo.gmm2CombineSyncCounter, syncSlotIndex);
+        while (AscendC::ReadGmByPassDCache(syncCounterAddress) !=
+               static_cast<int32_t>(context.gmm2NTilesPerGroup)) {
+            int64_t waitStartCycle = AscendC::GetSystemCycle();
+            while (AscendC::GetSystemCycle() - waitStartCycle < 100) {
+            }
+        }
+
+        uint32_t groupTokenStart = groupIndex * COMBINE_TOKEN_GROUP_SIZE;
+        uint32_t groupTokenCount =
+            COMBINE_TOKEN_GROUP_SIZE < expertTokenCount - groupTokenStart ?
+                COMBINE_TOKEN_GROUP_SIZE :
+                expertTokenCount - groupTokenStart;
+        uint32_t tokensPerJob = Ops::Base::CeilDiv(groupTokenCount, jobsAssignedToGroup);
+        uint32_t tokenOffsetWithinGroup = jobIndexWithinGroup * tokensPerJob;
+        if (tokenOffsetWithinGroup >= groupTokenCount) {
+            continue;
+        }
+        uint32_t tokenCountForJob = groupTokenCount - tokenOffsetWithinGroup;
+        tokenCountForJob = tokenCountForJob < tokensPerJob ? tokenCountForJob : tokensPerJob;
+
+        QuantCombineTokenRange tokenRange{
+            groupTokenStart + tokenOffsetWithinGroup,
+            tokenCountForJob,
+            static_cast<uint64_t>(expertBeforeCnt) + groupTokenStart + tokenOffsetWithinGroup,
+            expertIdx};
+        CombineQuantizedTokenRange<CombineMode>(context, bufferConfig, params, gmmAddrInfo, tokenRange);
+    }
+}
+
+// 原型：MegaMoe 的 MoE 专家 GMM2 循环。执行 GMM2 及可选的量化 Combine。
+template <uint8_t CombineMode, typename GenericElementA, typename A8W4ElementA, typename WeightType,
+          typename QuantScaleType, typename WeightAddressType, bool EnableA8W4, bool EnableA4W4,
+          uint32_t Gmm1TileM, bool TopkWeightsPrefetch>
+__aicore__ inline void ProcessMoeExpertGmm2AndCombine(
+    const Gmm2Context &gmm2Context, const Gmm2Args &gmm2Args, Gmm2Scratch &gmm2Scratch,
+    const QuantCombineContext &combineContext, const QuantCombineBufferConfig &combineBufferConfig,
+    const Params &params, Gmm2RuntimeState &runtimeState)
+{
+    if (gmm2Context.blockJob.totalJobs == 0U ||
+        gmm2Context.blockJob.jobIndex >= gmm2Context.blockJob.totalJobs ||
+        gmm2Context.countWorkspace.blockNum == 0U ||
+        gmm2Context.countWorkspace.blockIdx >= gmm2Context.countWorkspace.blockNum) {
+        return;
+    }
+    gmm2Scratch.expertRevNumsGlobalTensor.SetGlobalBuffer(
+        reinterpret_cast<__gm__ int32_t *>(gmm2Args.expertRevTokenNumsPtr));
+    Gmm2ExpertLoopState state = CreateGmm2ExpertLoopState(gmm2Context);
+    GMMAddrInfo gmmAddrInfo{};
+    for (uint32_t expertIdx = 0; expertIdx < gmm2Context.expertPerRank; ++expertIdx) {
+        if (!UpdateMoeGmm2GroupParams<PackedElementTraits<GenericElementA>::ELEMENTS_PER_BYTE,
+                                      PackedElementTraits<WeightType>::ELEMENTS_PER_BYTE,
+                                      PackedElementTraits<A8W4ElementA>::ELEMENTS_PER_BYTE>(
+                gmm2Context, gmm2Scratch, state, expertIdx)) {
+            continue;
+        }
+        constexpr bool configureGmm2Output =
+            EnableA8W4 || EnableA4W4 || CombineMode != COMBINE_NO_QUANT;
+        constexpr bool configureCombineCounter = CombineMode != COMBINE_NO_QUANT;
+        UpdateMoeGmm2GlobalBuffer<WeightAddressType, A8W4ElementA, QuantScaleType,
+                                  configureGmm2Output, configureCombineCounter, EnableA8W4 || EnableA4W4>(
+            gmm2Context, gmm2Args, gmmAddrInfo, state, expertIdx);
+        RunGmm2<CombineMode, GenericElementA, A8W4ElementA, WeightType, QuantScaleType,
+                EnableA8W4, EnableA4W4, Gmm1TileM, TopkWeightsPrefetch, false>(
+            gmm2Context, params, gmmAddrInfo, state, runtimeState);
+        ScheduleQuantizedMoeExpertCombine<CombineMode>(
+            combineContext, combineBufferConfig, params, gmmAddrInfo,
+            static_cast<uint32_t>(Get<M_VALUE>(state.problemShape)), state.expertBeforeCnt, expertIdx);
+    }
+    if constexpr (CombineMode == COMBINE_NO_QUANT) {
+        EndGMM2Sync(runtimeState.vecSetSyncCom, runtimeState.pingpongIdx);
+    }
+}
+
+constexpr uint32_t WAVE_GMM2_READY_SCAN_UB_ADDR = 184U * 1024U;
+constexpr uint32_t WAVE_GMM2_READY_MAX_SCAN_BYTES =
+    MAX_AICORE_NUM * INT_CACHELINE * sizeof(int32_t) > ALIGN_512 ?
+        MAX_AICORE_NUM * INT_CACHELINE * sizeof(int32_t) :
+        ALIGN_512;
+constexpr uint32_t WAVE_GMM2_READY_REDUCE_TMP_UB_ADDR =
+    WAVE_GMM2_READY_SCAN_UB_ADDR +
+    ((WAVE_GMM2_READY_MAX_SCAN_BYTES + ALIGN_512 - 1U) / ALIGN_512) * ALIGN_512;
+constexpr uint32_t WAVE_GMM2_READY_SUM_UB_ADDR = WAVE_GMM2_READY_REDUCE_TMP_UB_ADDR + ALIGN_512;
+
+struct WaveGmm2ReadyArgs {
+    GM_ADDR gmm2ReadyPtr;
+};
+
+__aicore__ inline uint64_t GetWaveGmm2ReadySlotStride(const WaveCombineContext &context)
+{
+    return static_cast<uint64_t>(context.job.totalJobs) * INT_CACHELINE;
+}
+
+// 每个 AIC 在 GMM2 写入可见后发布一个独占 cache line 的完成标记。
+__aicore__ inline void NotifyWaveGmm2Ready(const WaveCombineContext &context,
+                                           const WaveGmm2ReadyArgs &args, uint32_t slotIdx)
+{
+    if constexpr (g_coreType == AIC) {
+        AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
+        __gm__ int32_t *readyBase = reinterpret_cast<__gm__ int32_t *>(args.gmm2ReadyPtr);
+        uint64_t slotOffset =
+            static_cast<uint64_t>(slotIdx) * GetWaveGmm2ReadySlotStride(context);
+        AscendC::WriteGmByPassDCache(
+            readyBase + slotOffset + static_cast<uint64_t>(context.job.jobIndex) * INT_CACHELINE,
+            int32_t(1));
+    }
+}
+
+// 一个 AIV Combine 任务等待全部 AIC 完成指定专家。
+__aicore__ inline void WaitWaveGmm2Ready(const WaveCombineContext &context,
+                                         const WaveGmm2ReadyArgs &args, uint32_t slotIdx)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if (!context.participates || context.job.totalJobs == 0U) {
+        return;
+    }
+    uint32_t readyElements = context.job.totalJobs * static_cast<uint32_t>(INT_CACHELINE);
+    __gm__ int32_t *readyBase = reinterpret_cast<__gm__ int32_t *>(args.gmm2ReadyPtr);
+    uint64_t readySlotOffset =
+        static_cast<uint64_t>(slotIdx) * GetWaveGmm2ReadySlotStride(context);
+    GlobalTensor<int32_t> readyGm;
+    readyGm.SetGlobalBuffer(readyBase);
+    LocalTensor<int32_t> scanUb(TPosition::VECCALC, WAVE_GMM2_READY_SCAN_UB_ADDR, readyElements);
+    LocalTensor<uint8_t> reduceTmpUb(
+        TPosition::VECCALC, WAVE_GMM2_READY_REDUCE_TMP_UB_ADDR, ALIGN_512);
+    LocalTensor<int32_t> sumUb(
+        TPosition::VECCALC, WAVE_GMM2_READY_SUM_UB_ADDR, INT_CACHELINE);
+    const uint32_t readyShape[] = {1U, readyElements};
+    while (true) {
+        DataCopy(scanUb, readyGm[readySlotOffset], readyElements);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+        ReduceSum<int32_t, AscendC::Pattern::Reduce::AR, true>(
+            sumUb, scanUb, reduceTmpUb, readyShape, true);
+        SetFlag<HardEvent::V_S>(EVENT_ID0);
+        WaitFlag<HardEvent::V_S>(EVENT_ID0);
+        if (sumUb.GetValue(0) >= static_cast<int32_t>(context.job.totalJobs)) {
+            return;
+        }
+        int64_t waitStart = AscendC::GetSystemCycle();
+        while (AscendC::GetSystemCycle() - waitStart < 100) {
+        }
+    }
+}
+
+// 原型：MegaMoeWave::ProcessGmm2Wave。
+// AIC 执行一个专家 wave，同时 AIV0 推进对应的虚拟 GMM2 游标。
+template <typename QuantOutType, typename ActivationType, typename WeightType, typename QuantScaleType,
+          uint32_t Gmm1TileM, bool TopkWeightsPrefetch, bool IsGmm1Interleaved>
+__aicore__ inline void RunWaveGmm2Stage(
+    const Gmm2Context &context, const Gmm2Args &args, Gmm2Scratch &scratch,
+    const WaveCombineContext &combineContext, const WaveGmm2ReadyArgs &readyArgs,
+    const Params &params, uint32_t batchBegin, uint32_t batchEnd, Gmm2ExpertLoopState &state,
+    GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom,
+    uint16_t &gmm2PingPongIdx)
+{
+    if constexpr (g_coreType == AIV) {
+        if (GetSubBlockIdx() == 1U) {
+            return;
+        }
+    }
+    int32_t gmTileSequence = 0;
+    Gmm2RuntimeState runtimeState{startBlockIdx, vecSetSyncCom, gmTileSequence, gmm2PingPongIdx};
+    for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
+        if (!UpdateMoeGmm2GroupParams<1U, 1U, 1U>(context, scratch, state, expertIdx)) {
+            continue;
+        }
+        UpdateMoeGmm2GlobalBuffer<ActivationType, ActivationType, QuantScaleType,
+                                  true, false, false>(
+            context, args, gmmAddrInfo, state, expertIdx);
+        RunGmm2<COMBINE_NO_QUANT, QuantOutType, ActivationType, WeightType,
+                QuantScaleType, false, false, Gmm1TileM, TopkWeightsPrefetch, false,
+                IsGmm1Interleaved, true>(
+            context, params, gmmAddrInfo, state, runtimeState);
+        NotifyWaveGmm2Ready(combineContext, readyArgs, expertIdx);
+    }
+}
+
+// 原型：MegaMoeWave::ProcessCombineExperts。
+// 等待一个 wave 的 GMM2 汇聚完成，并发送 AIV1 任务负责的 token 范围。
+template <uint8_t CombineMode, typename ActivationType, typename QuantScaleType>
+__aicore__ inline void RunWaveCombineStage(
+    const Gmm2Context &gmm2Context, const Gmm2Args &gmm2Args, Gmm2Scratch &gmm2Scratch,
+    const WaveCombineContext &combineContext, const WaveCombineArgs &combineArgs,
+    const WaveGmm2ReadyArgs &readyArgs, const WaveCombineBufferConfig &bufferConfig,
+    WaveCombineScratch &combineScratch, const Params &params, uint32_t batchBegin,
+    uint32_t batchEnd, Gmm2ExpertLoopState &state, GMMAddrInfo &gmmAddrInfo)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if (GetSubBlockIdx() != 1U) {
+        return;
+    }
+
+    uint32_t rowSequence = 0U;
+    for (uint32_t expertIdx = batchBegin; expertIdx < batchEnd; ++expertIdx) {
+        if (!UpdateMoeGmm2GroupParams<1U, 1U, 1U>(
+                gmm2Context, gmm2Scratch, state, expertIdx)) {
+            continue;
+        }
+        UpdateMoeGmm2GlobalBuffer<ActivationType, ActivationType, QuantScaleType,
+                                  true, false, false>(
+            gmm2Context, gmm2Args, gmmAddrInfo, state, expertIdx);
+        uint32_t currentExpertTokenNum = static_cast<uint32_t>(Get<M_VALUE>(state.problemShape));
+        TokenRange currentCoreTokenRange =
+            GetWaveCombineOwnedRange(combineContext, currentExpertTokenNum);
+        if (currentCoreTokenRange.count != 0U) {
+            WaitWaveGmm2Ready(combineContext, readyArgs, expertIdx);
+        }
+
+        for (uint32_t processedTokenNum = 0U; processedTokenNum < currentCoreTokenRange.count;) {
+            uint32_t remainingTokenNum = currentCoreTokenRange.count - processedTokenNum;
+            uint32_t chunkTokenNum =
+                remainingTokenNum < WAVE_COMBINE_META_INFO_TOKEN_CAPACITY ?
+                    remainingTokenNum :
+                    WAVE_COMBINE_META_INFO_TOKEN_CAPACITY;
+            PreloadWaveCombineMetaInfo(
+                combineArgs, combineScratch,
+                static_cast<uint64_t>(state.expertBeforeCnt) + currentCoreTokenRange.start + processedTokenNum,
+                chunkTokenNum, 0U);
+            CombineWaveTokenRange<CombineMode>(
+                combineContext, bufferConfig, combineScratch, params, gmmAddrInfo.gmm2OutGlobal,
+                currentCoreTokenRange.start + processedTokenNum, chunkTokenNum, 0U, rowSequence);
+            processedTokenNum += chunkTokenNum;
+        }
+    }
+    DrainWaveCombineRowRing<CombineMode>(rowSequence);
+}
+
 } // namespace MegaMoeImpl
 
-#endif // MEGA_MOE_GMM2_H
+#endif // MEGA_MOE_GMM2_COMBINE_PIPELINE_H

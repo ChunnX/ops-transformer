@@ -197,7 +197,7 @@ template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typenam
 __aicore__ inline void AicComputeGmm2Generic(BlockMmad &blockMmad, WorkSet &workSet, uint32_t startLoopIdx,
                                              uint32_t tileNum, ExtraArgs &args)
 {
-    static_assert(!Policy::IS_GMM1, "GMM1 must use ControlGmm1SwigluPipelineGeneric");
+    static_assert(!Policy::IS_GMM1, "GMM1 must use Gmm1SwigluPipelineGeneric");
     const auto &config = workSet.config;
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
     GroupSyncSlotLayout groupSyncSlotLayout{};
@@ -266,7 +266,7 @@ __aicore__ inline void AicComputeGmm2A8W4(BlockMmad &blockMmad, Scheduler &sched
                                           const GMMAddrInfo &gmmAddrInfo, int32_t &gmTileSequence,
                                           const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
 {
-    static_assert(!Policy::IS_GMM1, "GMM1 must use ControlGmm1SwigluPipelineA8W4");
+    static_assert(!Policy::IS_GMM1, "GMM1 must use Gmm1SwigluPipelineA8W4");
     GroupSyncSlotLayout groupSyncSlotLayout{};
     if constexpr ((CombineQuantMode != COMBINE_NO_QUANT || IsLayered) && !IsShared) {
         uint32_t logicalCoreCount = config.blockNum;
