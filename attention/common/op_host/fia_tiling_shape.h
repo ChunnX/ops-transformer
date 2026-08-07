@@ -54,8 +54,8 @@ enum class FiaLayout : uint32_t {
     I1S1S2 = 21,
     S1S1 = 22,
     BnBsND = 23,
-    LSE_BNS = 26,
-    LSE_NT = 27,
+    LSE_BNS = 24,
+    LSE_NT = 25,
 };
 
 enum class FiaAxis : uint32_t {
