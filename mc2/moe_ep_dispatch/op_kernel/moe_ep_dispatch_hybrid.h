@@ -867,19 +867,30 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     LocalTensor<float> recvCounterTensorFp32 = recvCounterTensor.template ReinterpretCast<float>();
     LocalTensor<float> numRecvPerRankTensorFp32 = numRecvPerRankTensor_.template ReinterpretCast<float>();
     SyncFunc<AscendC::HardEvent::MTE3_V>(); // 等待本核上轮计数器清0(buf 复用)
+    PRINTF("[DH] r=%u aiv=0 getRecvCount enter cmp=%u\n", epRankId_, compareFlag);
+    uint32_t dbgPoll = 0U;
     while (sumOfFlag != compareFlag) {      // 状态位check
         DataCopy(recvCounterTensor, recvCounterGMTensor_, statusCopyParams_);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum(numRecvPerRankTensorFp32, recvCounterTensorFp32, tempFp32, mask, serverRankCount, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = numRecvPerRankTensor_.GetValue(0);
+        if (dbgPoll < 5U) {
+            PRINTF("[DH] r=%u aiv=0 getRecvCount poll=%u sum=%d cmp=%d\n", epRankId_, dbgPoll, sumOfFlag, compareFlag);
+            for (uint32_t srcRankId = 0U; srcRankId < serverRankCount; ++srcRankId) {
+                PRINTF("  r%u=%d\n", srcRankId, recvCounterTensor.GetValue(srcRankId * UB_STRIDE));
+            }
+        }
+        dbgPoll++;
     }
+    PRINTF("[DH] r=%u aiv=0 getRecvCount done sum=%d\n", epRankId_, sumOfFlag);
     SetRecvNumPerExpert();                // 计算本卡上各专家接收的token总数
     SetRecvNumPerRank(recvCounterTensor); // 计算本端接收来自各卡的token总数
     // status clear
     Duplicate<int32_t>(recvCounterTensor, 0, serverRankCount * UB_STRIDE);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(recvCounterGMTensor_, recvCounterTensor, clearStatusCopyParams_);
+    PRINTF("[DH] r=%u aiv=0 getRecvCount status cleared\n", epRankId_);
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1309,6 +1320,10 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
             static_cast<uint64_t>(destinationScaleoutSlot) * WIN_ADDR_ALIGN;
         uint32_t notifyValue =
             destinationScaleoutSlot == 0U ? scaleoutSlotCount + 1U : SCALEOUT_SLOT_READY;
+        if (tokenRangeIndex == 0U && destinationScaleoutSlot == 0U) {
+            PRINTF("[DH] r=%u aiv=%u scaleout send dst=%u row=%u status=%lu\n", epRankId_, aivId_, dstScaleoutIndex,
+                   currentServerIndex_, reinterpret_cast<unsigned long>(remoteNotifyAddr));
+        }
         // 数据与状态分离：大块payload用纯写，状态值通过小写的notify写入（与count路径一致）
         int32_t dataRet = hcomm_.WriteNbi(commHandle, remoteScaleoutAddr, localScaleoutAddr, scaleoutSlotBytes_);
         ASCENDC_ASSERT(dataRet == 0, {
@@ -1352,6 +1367,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
             KERNEL_LOG(KERNEL_ERROR, "Drain(scaleout-empty) failed, ret=%d, rank=%u, aiv=%u", drainRet, epRankId_,
                        aivId_);
         });
+        PRINTF("[DH] r=%u aiv=%u scaleout proxy=%u count=0 done\n", epRankId_, aivId_, proxyRankId);
         return;
     }
     for (uint32_t tokenRangeIndex = 0U; tokenRangeIndex < aivNum_; tokenRangeIndex++) {
@@ -1362,6 +1378,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     ASCENDC_ASSERT(drainRet == 0, {
         KERNEL_LOG(KERNEL_ERROR, "Drain(scaleout) failed, ret=%d, rank=%u, aiv=%u", drainRet, epRankId_, aivId_);
     });
+    PRINTF("[DH] r=%u aiv=%u scaleout proxy=%u count=%u done\n", epRankId_, aivId_, proxyRankId, scaleoutSlotCount);
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1575,7 +1592,18 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     bool hasReadRouteInfo = false;
     Duplicate<int64_t>(sourceStateTensor_, SOURCE_STATE_UNREAD, remoteServerCount_);
     SyncFunc<AscendC::HardEvent::V_S>();
+    for (uint32_t srcOrdinal = 0U; srcOrdinal < remoteServerCount_; ++srcOrdinal) {
+        uint32_t srcScaleoutIndex = srcOrdinal < currentServerIndex_ ? srcOrdinal : srcOrdinal + 1U;
+        GM_ADDR statusAddr =
+            MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, epRankId_, scaleoutRecvStatusOffset_) +
+            static_cast<uint64_t>(srcScaleoutIndex) * axisMaxBS_ * WIN_ADDR_ALIGN;
+        uint32_t rawStatus = 0U;
+        ReadScaleoutStatus(statusAddr, rawStatus);
+        PRINTF("[DH] r=%u aiv=%u fanout src%u status=%lu val=%u\n", epRankId_, aivId_, srcOrdinal,
+               reinterpret_cast<unsigned long>(statusAddr), rawStatus);
+    }
     uint32_t completedSourceCount = 0U;
+    uint32_t dbgPoll = 0U;
     while (completedSourceCount != remoteServerCount_) {
         bool madeProgress = false;
         for (uint32_t sourceServerOrdinal = 0U;
@@ -1598,6 +1626,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
                 if (slotsLeft == 0) {
                     SetSourceState(sourceServerOrdinal, nextSlot, slotsLeft);
                     completedSourceCount++;
+                    PRINTF("[DH] r=%u aiv=%u fanout src=%u done(count=0)\n", epRankId_, aivId_, sourceServerOrdinal);
                     madeProgress = true;
                     continue;
                 }
@@ -1615,14 +1644,27 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
             madeProgress = true;
             if (slotsLeft == 0) {
                 completedSourceCount++;
+                PRINTF("[DH] r=%u aiv=%u fanout src=%u done\n", epRankId_, aivId_, sourceServerOrdinal);
             }
         }
         if (!madeProgress) {
+            if (dbgPoll < 5U) {
+                PRINTF("[DH] r=%u aiv=%u fanout poll=%u completed=%u/%u\n", epRankId_, aivId_, dbgPoll,
+                       completedSourceCount, remoteServerCount_);
+                for (uint32_t srcOrdinal = 0U; srcOrdinal < remoteServerCount_; ++srcOrdinal) {
+                    int32_t dbgNextSlot = 0;
+                    int32_t dbgSlotsLeft = 0;
+                    GetSourceState(srcOrdinal, dbgNextSlot, dbgSlotsLeft);
+                    PRINTF("  s%u=(%d,%d)\n", srcOrdinal, dbgNextSlot, dbgSlotsLeft);
+                }
+            }
+            dbgPoll++;
             int64_t backoffStartCycle = GetSystemCycle();
             while (GetSystemCycle() - backoffStartCycle < STATUS_POLL_BACKOFF_CYCLES) {
             }
         }
     }
+    PRINTF("[DH] r=%u aiv=%u fanout all done\n", epRankId_, aivId_);
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -2019,6 +2061,9 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     ExchangeCount();
     SyncAll<true>(); // 本Rank的count全部发出后，AIV0等待远端count，其余AIV开始本地构建。
     if (aivId_ == 0U) {
+        PRINTF("[DH] r=%u aiv=0 exchangeCount+syncAll done\n", epRankId_);
+    }
+    if (aivId_ == 0U) {
         GetRecvCount();
     }
     PipeBarrier<PIPE_ALL>();
@@ -2027,6 +2072,9 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         PreparePayloads();
     }
     SyncAll<true>();
+    if (aivId_ == 0U) {
+        PRINTF("[DH] r=%u aiv=0 prepareDispatchPayloads all done\n", epRankId_);
+    }
 
     PipeBarrier<PIPE_ALL>();
     tpipe_->Reset();
@@ -2053,6 +2101,10 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::TransferDispatchPayloads()
 {
+    if (aivId_ == 0U) {
+        PRINTF("[DH] r=%u aiv=0 transfer begin serverNum=%u remote=%u scaleoutAiv=%u scaleupAiv=%u\n",
+               epRankId_, serverNum_, remoteServerCount_, numScaleoutSendAiv_, numNodeLocalAiv_);
+    }
     if (aivNum_ == 1U) {
         SendScaleoutPayloadsToProxy();
         SendScaleupPayloads();
@@ -2063,15 +2115,27 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         SendScaleupPayloads();
     }
     SyncAll<true>(); // 所有节点内发送完成后才能清理本轮Scaleout接收状态。
+    if (aivId_ == 0U) {
+        PRINTF("[DH] r=%u aiv=0 transfer payloads syncAll done\n", epRankId_);
+    }
     ClearReceivedScaleoutStatuses();
+    if (aivId_ == 0U) {
+        PRINTF("[DH] r=%u aiv=0 transfer done\n", epRankId_);
+    }
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
+        if (aivId_ == 0U) {
+            PRINTF("[DH] r=%u aiv=0 process begin\n", epRankId_);
+        }
         PrepareDispatchPayloads();
         TransferDispatchPayloads();
+        if (aivId_ == 0U) {
+            PRINTF("[DH] r=%u aiv=0 process done\n", epRankId_);
+        }
     }
 }
 } // namespace MoeEpDispatchHybridImpl
