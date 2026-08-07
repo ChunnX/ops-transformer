@@ -203,9 +203,11 @@ public:
 
     ge::Format aFormat = ge::FORMAT_ND;
     ge::Format bFormat = ge::FORMAT_ND;
+    ge::Format scaleFormat = ge::FORMAT_ND;
     ge::Format cFormat = ge::FORMAT_ND;
     bool transA = false;
     bool transB = false;
+    bool scaleNzFlag = false;
     bool hasBias = false;
     bool isSingleX = false;
     bool isSingleW = false;
