@@ -38,7 +38,7 @@ using namespace regbaseutil;
 
 namespace BaseApi {
 template <typename CubeBlockType, typename VecFaBlockType, typename VecFdBlockType>
-class FlashAttentionFullQuantFp8Kernel {
+class QuantFlashAttnKernelGqaFp8 {
 public:
     static constexpr uint32_t mBaseSize = CubeBlockType::mBaseSize;
     static constexpr uint32_t s2BaseSize = CubeBlockType::s2BaseSize;
@@ -131,7 +131,7 @@ public:
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> kvSeqUsedParser;
 
     // ==============================fuction=======================================================
-    __aicore__ inline FlashAttentionFullQuantFp8Kernel()
+    __aicore__ inline QuantFlashAttnKernelGqaFp8()
         : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
 
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
@@ -780,7 +780,7 @@ public:
             CrossCoreBufferUnInit();
         }
     }
-}; // FlashAttentionFullQuantFp8Kernel
+}; // QuantFlashAttnKernelGqaFp8
 
 } // namespace BaseApi
 
