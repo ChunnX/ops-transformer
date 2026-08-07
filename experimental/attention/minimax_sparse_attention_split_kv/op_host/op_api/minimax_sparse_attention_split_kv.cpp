@@ -28,8 +28,8 @@ const aclTensor *MinimaxSparseAttentionSplitKv(
     const aclTensor *k2qRowPtr,
     const aclTensor *k2qQIndices,
     const aclTensor *k2qSlotIndices,
-    const aclTensor *actualSeqLengthsOptional,
-    const aclTensor *actualSeqLengthsKvOptional,
+    const aclTensor *actualSeqLengths,
+    const aclTensor *actualSeqLengthsKv,
     int64_t numKeyValueHeads,
     double scaleValue,
     int64_t blockSize,
@@ -39,7 +39,7 @@ const aclTensor *MinimaxSparseAttentionSplitKv(
 {
     L0_DFX(MinimaxSparseAttentionSplitKv, query, key, value, blockTable,
            k2qRowPtr, k2qQIndices, k2qSlotIndices,
-           actualSeqLengthsOptional, actualSeqLengthsKvOptional,
+           actualSeqLengths, actualSeqLengthsKv,
            numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise);
 
     DataType attentionOutDtype = query->GetDataType();
@@ -49,7 +49,7 @@ const aclTensor *MinimaxSparseAttentionSplitKv(
     auto ret = INFER_SHAPE(MinimaxSparseAttentionSplitKv,
                            OP_INPUT(query, key, value, blockTable,
                                     k2qRowPtr, k2qQIndices, k2qSlotIndices,
-                                    actualSeqLengthsOptional, actualSeqLengthsKvOptional),
+                                    actualSeqLengths, actualSeqLengthsKv),
                            OP_OUTPUT(attentionOutTensor),
                            OP_ATTR(static_cast<int64_t>(numKeyValueHeads),
                                    static_cast<float>(scaleValue),
@@ -65,7 +65,7 @@ const aclTensor *MinimaxSparseAttentionSplitKv(
     ADD_TO_LAUNCHER_LIST_AICORE(MinimaxSparseAttentionSplitKv,
                                 OP_INPUT(query, key, value, blockTable,
                                          k2qRowPtr, k2qQIndices, k2qSlotIndices,
-                                         actualSeqLengthsOptional, actualSeqLengthsKvOptional),
+                                         actualSeqLengths, actualSeqLengthsKv),
                                 OP_OUTPUT(attentionOutTensor),
                                 OP_ATTR(static_cast<int64_t>(numKeyValueHeads),
                                         static_cast<float>(scaleValue),

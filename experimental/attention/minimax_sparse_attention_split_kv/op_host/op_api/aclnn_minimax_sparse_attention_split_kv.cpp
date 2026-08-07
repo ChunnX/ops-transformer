@@ -36,8 +36,8 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
                                   const aclTensor *&k2qRowPtr,
                                   const aclTensor *&k2qQIndices,
                                   const aclTensor *&k2qSlotIndices,
-                                  const aclTensor *&actualSeqLengthsOptional,
-                                  const aclTensor *&actualSeqLengthsKvOptional,
+                                  const aclTensor *&actualSeqLengths,
+                                  const aclTensor *&actualSeqLengthsKv,
                                   aclOpExecutor *executor)
 {
     query = l0op::Contiguous(query, executor);
@@ -61,11 +61,11 @@ static aclnnStatus MakeContiguous(const aclTensor *&query,
     k2qSlotIndices = l0op::Contiguous(k2qSlotIndices, executor);
     CHECK_RET(k2qSlotIndices != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
-    actualSeqLengthsOptional = l0op::Contiguous(actualSeqLengthsOptional, executor);
-    CHECK_RET(actualSeqLengthsOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    actualSeqLengths = l0op::Contiguous(actualSeqLengths, executor);
+    CHECK_RET(actualSeqLengths != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
-    actualSeqLengthsKvOptional = l0op::Contiguous(actualSeqLengthsKvOptional, executor);
-    CHECK_RET(actualSeqLengthsKvOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    actualSeqLengthsKv = l0op::Contiguous(actualSeqLengthsKv, executor);
+    CHECK_RET(actualSeqLengthsKv != nullptr, ACLNN_ERR_PARAM_NULLPTR);
 
     return ACLNN_SUCCESS;
 }
@@ -80,8 +80,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     const aclTensor *k2qRowPtr,
     const aclTensor *k2qQIndices,
     const aclTensor *k2qSlotIndices,
-    const aclTensor *actualSeqLengthsOptional,
-    const aclTensor *actualSeqLengthsKvOptional,
+    const aclTensor *actualSeqLengths,
+    const aclTensor *actualSeqLengthsKv,
     int64_t numKeyValueHeads,
     double scaleValue,
     int64_t blockSize,
@@ -98,8 +98,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     CHECK_RET(k2qRowPtr != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(k2qQIndices != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(k2qSlotIndices != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(actualSeqLengthsOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(actualSeqLengthsKvOptional != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(actualSeqLengths != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(actualSeqLengthsKv != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(attentionOut != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(workspaceSize != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
@@ -107,7 +107,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     L2_DFX_PHASE_1(aclnnMinimaxSparseAttentionSplitKv,
                    DFX_IN(query, key, value, blockTable,
                           k2qRowPtr, k2qQIndices, k2qSlotIndices,
-                          actualSeqLengthsOptional, actualSeqLengthsKvOptional,
+                          actualSeqLengths, actualSeqLengthsKv,
                           numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise),
                    DFX_OUT(attentionOut));
 
@@ -117,7 +117,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
 
     aclnnStatus ret = MakeContiguous(query, key, value, blockTable,
                                      k2qRowPtr, k2qQIndices, k2qSlotIndices,
-                                     actualSeqLengthsOptional, actualSeqLengthsKvOptional,
+                                     actualSeqLengths, actualSeqLengthsKv,
                                      executorImpl);
     if (ret != ACLNN_SUCCESS) {
         return ret;
@@ -125,7 +125,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnMinimaxSparseAttentionSp
     auto output = l0op::MinimaxSparseAttentionSplitKv(
         query, key, value, blockTable,
         k2qRowPtr, k2qQIndices, k2qSlotIndices,
-        actualSeqLengthsOptional, actualSeqLengthsKvOptional,
+        actualSeqLengths, actualSeqLengthsKv,
         numKeyValueHeads, scaleValue, blockSize, topK, innerPrecise,
         executorImpl);
     if (output == nullptr) {

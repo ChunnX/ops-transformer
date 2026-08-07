@@ -28,8 +28,8 @@
 | `k2q_row_ptr` | `[kvHeads, totalPackedRows + 1]` | int32 | Dense packed-row CSR 行指针；`totalPackedRows = sum(ceil(kv_seqlen/blockSize))`。 |
 | `k2q_q_indices` | `[kvHeads, totalQTokens * topK]` | int32 | CSR 列数据：global `qToken` id，按 head 分段存储。 |
 | `k2q_slot_indices` | `[kvHeads, totalQTokens * topK]` | int32 | 每条边在 workspace 中的 `slotK`，范围 `[0, topK)`。 |
-| `actual_seq_lengths` | `[batch]` | int32 | 每个 batch 的 Q sequence length。 |
-| `actual_seq_lengths_kv` | `[batch]` | int32 | 每个 batch 的 KV sequence length。 |
+| `actual_seq_lengths` | `[batch]` | int32 | **必选**。每个 batch 的 Q sequence length。 |
+| `actual_seq_lengths_kv` | `[batch]` | int32 | **必选**。每个 batch 的 KV sequence length。 |
 
 
 ### 2.2 反向索引输入约束
