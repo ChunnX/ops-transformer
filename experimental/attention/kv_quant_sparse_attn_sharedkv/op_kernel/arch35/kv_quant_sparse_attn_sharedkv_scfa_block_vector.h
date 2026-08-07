@@ -804,8 +804,7 @@ __aicore__ inline void SCFABlockVec<TEMPLATE_ARGS>::ProcessVec1(
         Mutex::Unlock<PIPE_MTE3>(INNERCORE_STAGE1(stage1Offset));
     }
 
-    CrossCoreSetFlag<4, PIPE_MTE3>(CROSSCORE_L1P);
-    CrossCoreSetFlag<4, PIPE_MTE3>(CROSSCORE_L1P + AIV0_AIV1_OFFSET);
+    CrossCoreSetFlag<4, PIPE_MTE3>(CROSSCORE_L1P(outputBuf.idx));
     // ======================================================
     if (runInfo.s2LoopCount != 0 || (runInfo.s2LoopCount == 0 && isSinks)) {
         SCFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);

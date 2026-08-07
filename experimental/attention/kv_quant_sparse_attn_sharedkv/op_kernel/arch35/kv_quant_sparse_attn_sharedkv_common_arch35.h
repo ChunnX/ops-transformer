@@ -63,7 +63,8 @@ constexpr uint32_t L0C_ELEM_PER_BUF       = 32768;      // T   元素, 每个 L0
 #define CROSSCORE_BMM1_D(s)          (6 + 16 + (s))    // 16, 17: bmm1 dual-dest
 #define CROSSCORE_BMM2               (8)           // 2:    bmm2 Single
 #define CROSSCORE_BMM2_D             (24)          // 18:   bmm2 dual-dest
-#define CROSSCORE_L1P                (0)           // 0:    L1 P buffer forward sync (AIV→AIC)
+#define CROSSCORE_L1P(s)            (9 + s)           // 0, 1: L1 P buffer forward sync (AIV→AIC)
+#define CROSSCORE_L1P_D(s)            (9 + 16 + s)
 
 template <typename ElemT>
 struct StaticBuffer {

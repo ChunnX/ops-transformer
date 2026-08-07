@@ -46,9 +46,10 @@ else:
 def sas(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu")
     try:
-        npu_result, cpu_quant_result = kv_quant_sparse_attn_sharedkv_process.test_sas_quant_process_ci(test_data, device_id=device_id)
-        # result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
-        result, fulfill_percent = "Pass", 0
+        for i in range(1):
+            npu_result, cpu_quant_result = kv_quant_sparse_attn_sharedkv_process.test_sas_quant_process_ci(test_data, device_id=device_id)
+            result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
+        # result, fulfill_percent = "Pass", 0
     except Exception as e:
         print("NPU ERROR：", e)
         result = "NPU ERROR"
