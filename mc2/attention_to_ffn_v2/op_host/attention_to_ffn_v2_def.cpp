@@ -16,9 +16,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class AttentionToFFnV2 : public OpDef {
+class AttentionToFfnV2 : public OpDef {
 public:
-    explicit AttentionToFFnV2(const char *name) : OpDef(name) {
+    explicit AttentionToFfnV2(const char *name) : OpDef(name) {
         this->Input("context")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
@@ -89,5 +89,5 @@ public:
     }
 };
 
-OP_ADD(AttentionToFFnV2);
+OP_ADD(AttentionToFfnV2);
 }  // namespace ops

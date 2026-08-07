@@ -11,15 +11,15 @@
  * \file attention_to_ffn_v2_tiling_key.h
  * \brief
  */
-#ifndef ATTENTION_TO_FFn_V2_TILING_KEY_H
-#define ATTENTION_TO_FFn_V2_TILING_KEY_H
+#ifndef ATTENTION_TO_Ffn_V2_TILING_KEY_H
+#define ATTENTION_TO_Ffn_V2_TILING_KEY_H
 #include "ascendc/host_api/tiling/template_argument.h"
 
 namespace Mc2Tiling {
 #define TILINGKEY_TPL_A3 1
 #define TILINGKEY_TPL_A5 2
 
-ASCENDC_TPL_ARGS_DECL(AttentionToFFnV2,
+ASCENDC_TPL_ARGS_DECL(AttentionToFfnV2,
     ASCENDC_TPL_BOOL_DECL(TILINGKEY_QUANT, 0, 1),
     ASCENDC_TPL_BOOL_DECL(TILINGKEY_SYNC, 0, 1),
     ASCENDC_TPL_BOOL_DECL(TILINGKEY_ACTIVE_MASK, 0, 1),
@@ -27,4 +27,4 @@ ASCENDC_TPL_ARGS_DECL(AttentionToFFnV2,
                          TILINGKEY_TPL_A3, TILINGKEY_TPL_A5),
 );
 } // namespace Mc2Tiling
-#endif // ATTENTION_TO_FFn_V2_TILING_KEY_H
+#endif // ATTENTION_TO_Ffn_V2_TILING_KEY_H

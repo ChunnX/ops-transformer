@@ -21,7 +21,7 @@
 #include "platform/platform_info.h"
 
 extern "C" {
-aclnnStatus aclnnAttentionToFFnV2GetWorkspaceSize(
+aclnnStatus aclnnAttentionToFfnV2GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *sessionId, const aclTensor *microBatchId,
     const aclTensor *layerId, const aclTensor *expertIds, const aclTensor *expertRankTable,
     const aclTensor *scalesOptional, const aclTensor *activeMaskOptional, const char *group, int64_t worldSize,
@@ -29,14 +29,14 @@ aclnnStatus aclnnAttentionToFFnV2GetWorkspaceSize(
     const aclIntArray *attnTokenInfoTableShape, int64_t moeExpertNum, int64_t quantMode, int64_t syncFlag,
     int64_t ffnStartRankId, uint64_t *workspaceSize, aclOpExecutor **executor);
 
-aclnnStatus aclnnAttentionToFFnV2(
+aclnnStatus aclnnAttentionToFfnV2(
     void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 }
 
 using namespace op;
 using namespace std;
 
-namespace AttentionToFFnUT {
+namespace AttentionToFfnUT {
 class AclnnAttentionToFfnTest : public testing::Test {
 protected:
     static void SetUpTestCase()
@@ -76,7 +76,7 @@ TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnNoQuant)
     int64_t syncFlag = 0;
     int64_t ffnStartRankId = 0;
 
-    auto ut = OP_API_UT(aclnnAttentionToFFnV2, INPUT(context, x, sessionId, microBatchId, layerId, expertIds,
+    auto ut = OP_API_UT(aclnnAttentionToFfnV2, INPUT(context, x, sessionId, microBatchId, layerId, expertIds,
     expertRankTable, nullptr, activeMask, group, worldSize, ffnTokenInfoTableShape, ffnTokenDataShape,
     attnTokenInfoTableShape, moeExpertNum, quantMode, syncFlag, ffnStartRankId), OUTPUT());
     uint64_t workspaceSize = 0;
@@ -109,7 +109,7 @@ TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnQuant)
     int64_t syncFlag = 0;
     int64_t ffnStartRankId = 0;
 
-    auto ut = OP_API_UT(aclnnAttentionToFFnV2, INPUT(context, x, sessionId, microBatchId, layerId, expertIds,
+    auto ut = OP_API_UT(aclnnAttentionToFfnV2, INPUT(context, x, sessionId, microBatchId, layerId, expertIds,
     expertRankTable, scales, activeMask, group, worldSize, ffnTokenInfoTableShape, ffnTokenDataShape, 
     attnTokenInfoTableShape, moeExpertNum,quantMode, syncFlag, ffnStartRankId), OUTPUT());
     uint64_t workspaceSize = 0;
@@ -118,4 +118,4 @@ TEST_F(AclnnAttentionToFfnTest, TestAttentionToFfnQuant)
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-} // AttentionToFFnUT
+} // AttentionToFfnUT

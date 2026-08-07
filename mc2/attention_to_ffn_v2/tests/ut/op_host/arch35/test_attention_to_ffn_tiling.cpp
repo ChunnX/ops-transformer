@@ -14,15 +14,15 @@
 #include <gtest/gtest.h>
 #include "mc2_tiling_case_executor.h"
 
-namespace AttentionToFFnUT {
+namespace AttentionToFfnUT {
 
-class AttentionToFFnArch35TilingTest : public testing::Test {};
+class AttentionToFfnArch35TilingTest : public testing::Test {};
 
-TEST_F(AttentionToFFnArch35TilingTest, NoQuantSyncNoActiveMask)
+TEST_F(AttentionToFfnArch35TilingTest, NoQuantSyncNoActiveMask)
 {
-    struct AttentionToFFnCompileInfo {} compileInfo;
+    struct AttentionToFfnCompileInfo {} compileInfo;
 
-    gert::TilingContextPara tilingContextPara("AttentionToFFnV2",
+    gert::TilingContextPara tilingContextPara("AttentionToFfnV2",
         {
             {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{1, 16, 7168}, {1, 16, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -57,4 +57,4 @@ TEST_F(AttentionToFFnArch35TilingTest, NoQuantSyncNoActiveMask)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-} // namespace AttentionToFFnUT
+} // namespace AttentionToFfnUT

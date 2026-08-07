@@ -14,20 +14,20 @@
 #include "infer_datatype_context_faker.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
-namespace AttentionToFFnUT {
+namespace AttentionToFfnUT {
 
-class AttentionToFFnInferShapeTest : public testing::Test {
+class AttentionToFfnInferShapeTest : public testing::Test {
 protected:
     static void SetUpTestCase() {
-        std::cout << "AttentionToFFnInferShapeTest SetUp" << std::endl;
+        std::cout << "AttentionToFfnInferShapeTest SetUp" << std::endl;
     }
 
     static void TearDownTestCase() {
-        std::cout << "AttentionToFFnInferShapeTest TearDown" << std::endl;
+        std::cout << "AttentionToFfnInferShapeTest TearDown" << std::endl;
     }
 };
 
-TEST_F(AttentionToFFnInferShapeTest, Basic)
+TEST_F(AttentionToFfnInferShapeTest, Basic)
 {
     gert::StorageShape xShape = {{1, 16, 7168}, {}};
     gert::StorageShape contextShape = {{1}, {}};
@@ -39,7 +39,7 @@ TEST_F(AttentionToFFnInferShapeTest, Basic)
     gert::StorageShape scalesShape = {{9, 7168}, {}};
     gert::StorageShape activeMaskShape = {{1, 16}, {}};
 
-    gert::InfershapeContextPara infershapeContextPara("AttentionToFFnV2",
+    gert::InfershapeContextPara infershapeContextPara("AttentionToFfnV2",
         {
             {contextShape, ge::DT_INT32, ge::FORMAT_ND},
             {xShape, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -74,4 +74,4 @@ TEST_F(AttentionToFFnInferShapeTest, Basic)
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
-} // AttentionToFFnUT
+} // AttentionToFfnUT
