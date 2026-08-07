@@ -1066,10 +1066,15 @@ ge::graphStatus BSATiling::ParseAttrs(gert::TilingContext *bsaContext)
             dstTypeMax_ = MXFP4_DEFAULT_DST_TYPE_MAX_LOG2;
         } else {
             dstTypeMax_ = std::log2(dstTypeMax_);
-        }       
-    } else if (quantMode_ == MXFP4_OCP_QUANT) {
-        dstTypeMax_ = MXFP4_OCP_DST_TYPE_MAX;
+        }
+        // 派生量:device 侧无法调用 host 库函数,host 侧预算好
+        // dstTypeMax_ 此处已是 log2 域(CX) 或固定值(OCP)
+        // 负号在 kernel 侧加,此处只传原值
+        log2Cx_ = dstTypeMax_;
+        log2CxCeil_ = std::ceil(dstTypeMax_);
     }
+
+
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1299,7 +1304,8 @@ ge::graphStatus BSATiling::FillTilingData(gert::TilingContext *bsaContext)
     tilingData_->set_selectIdxSize(selectIdxSize_);
     // V3 新增:填充量化参数
     tilingData_->set_quantMode(quantMode_);
-    tilingData_->set_dstTypeMax(dstTypeMax_);
+    tilingData_->set_log2Cx(log2Cx_);
+    tilingData_->set_log2CxCeil(log2CxCeil_);
     // fill 950 mask2idx tile info
     tilingData_->BsaMask2IdxTileInfo.set_xBlockNumAligned(xBlockNumAligned_);
     tilingData_->BsaMask2IdxTileInfo.set_yBlockNumAligned(yBlockNumAligned_);

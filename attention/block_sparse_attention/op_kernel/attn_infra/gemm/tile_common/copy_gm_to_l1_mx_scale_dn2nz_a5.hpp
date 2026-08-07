@@ -34,13 +34,19 @@ struct CopyGmToL1MxScaleDn2NzA5 {
     // rows   : 本次搬的 token 行数（稠密 = m/n；稀疏段 = curDealtLen）
     // scaleK : Ceil(D/64)*2
     // srcB16Off / dstB16Off : 稀疏多段拼接时的 half 偏移；稠密传 0
+    // headMul: 头内 token 步长因子。BNSD=1（头内 token 连续）；
+    //          BSND/TND=N（GM [S/T,N,D//64,2]，同头相邻 token 隔 N 个 scale 行）。
+    //          原写死 srcDValue=scaleRowHalf，仅 BNSD 正确；TND/BSND 多头时会读到邻头
+    //          /错 token 的 scale。CX dst≠2^k 时少数 token 的 pair 内 scale 不等才暴露
+    //          （mm1 仅若干 Q 列错）；dst=8/OCP 下 scale 近乎全等，缺陷被掩盖。
     __aicore__ inline void operator()(
         AscendC::LocalTensor<uint8_t> const &l1Scale,
         AscendC::GlobalTensor<uint8_t> const &gScale,
         uint32_t rows,
         uint32_t scaleK,
         uint32_t srcB16Off = 0,
-        uint32_t dstB16Off = 0)
+        uint32_t dstB16Off = 0,
+        uint32_t headMul = 1)
     {
         uint32_t scaleRowHalf = scaleK / 2;
 
@@ -53,7 +59,9 @@ struct CopyGmToL1MxScaleDn2NzA5 {
         dn2nzParams.dValue = rows;
         dn2nzParams.nValue = scaleRowHalf;
         dn2nzParams.srcDnMatrixStride = 0;
-        dn2nzParams.srcDValue = scaleRowHalf;
+        // 同头相邻 token 的 half 步长 = headMul * (D//64)
+        // dn2nzParams.srcDValue = scaleRowHalf;
+        dn2nzParams.srcDValue = headMul * scaleRowHalf;
         dn2nzParams.dstNzC0Stride = scaleRowHalf;
         dn2nzParams.dstNzNStride = 1;
         dn2nzParams.dstNzMatrixStride = 0;

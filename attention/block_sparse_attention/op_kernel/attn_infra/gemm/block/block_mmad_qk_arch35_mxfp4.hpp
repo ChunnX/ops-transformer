@@ -230,9 +230,11 @@ public:
     __aicore__ inline void CopyQScaleGmToL1(uint32_t qsActBaseTile,
                                             uint32_t scaleK,   // = Ceil(D/64)*2
                                             AscendC::GlobalTensor<uint8_t> &gQDequantScale,
-                                            uint32_t qBufId)
+                                            uint32_t qBufId,
+                                            uint32_t qHeadMul)
     {
-        copyGmToL1MxScaleDn2Nz(l1BScaleTensor[qBufId], gQDequantScale, qsActBaseTile, scaleK);
+        copyGmToL1MxScaleDn2Nz(l1BScaleTensor[qBufId], gQDequantScale, qsActBaseTile, scaleK,
+                               0, 0, qHeadMul);
     }
 
 
@@ -352,8 +354,11 @@ public:
             //     "srcB16Off=%u dstB16Off=%u\n",
             //     (unsigned)oriStartOffset, (unsigned)curDealtLen, (unsigned)dealtLenAccum,
             //     (unsigned)scaleK, (unsigned)srcB16Off, (unsigned)dstB16Off);
+            // src 起点已乘 kvHeadMul；段内逐行步长也须乘 kvHeadMul（TND/BSND），
+            // 否则段内第 2 行起读到邻头/错 token 的 scale（与 Q-scale 同构缺陷）。
             copyGmToL1MxScaleDn2Nz(
-                l1AScaleTensor[kBufId], gKScale, curDealtLen, scaleK, srcB16Off, dstB16Off);
+                l1AScaleTensor[kBufId], gKScale, curDealtLen, scaleK, srcB16Off, dstB16Off,
+                kvHeadMul);
 
             dealtLenAccum += curDealtLen;
             gatheredStartOffset += curDealtLen;
@@ -507,7 +512,7 @@ public:
             auto l1QLayout = tla::MakeLayout<ElementA, layout::zN>(qsActBaseTileAlign16, embed);
             auto l1QTensorTla = tla::MakeTensor(l1BTensor[qBufId], l1QLayout, Arch::PositionL1{});
             CopyQGmToL1(qsActBaseTile, embed, gQTensorTla, l1QTensorTla);                       // k=embed（fp4 元素），非 packedK
-            CopyQScaleGmToL1(qsActBaseTile, scaleK, gQDequantScale, qBufId);
+            CopyQScaleGmToL1(qsActBaseTile, scaleK, gQDequantScale, qBufId, qHeadMul);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);  // 通知 MTE1: Q 就绪
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1QEventId);
             // [STEP0 golden] L1 Q 数据 / Q-scale（仅首 tile；前 256B 采样）
