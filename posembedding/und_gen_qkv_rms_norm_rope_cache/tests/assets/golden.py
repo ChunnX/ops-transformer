@@ -16,9 +16,22 @@
 
   - ``examples/test_torch_und_gen_qkv_rms_norm_rope_cache.py``：torch 接口上板精度比对
   - ``tests/st/arch35/ttk_kernel_*.csv``：TTK kernel 用例，经文末的
-    ``__input__`` / ``__golden__`` 注册表接入
+    ``__input__`` / ``__golden__`` 注册表的 ``kernel`` 层接入
 
-    python3 -m ttk kernel -i <csv> -b=release --plugin <此文件>
+    python3 -m ttk kernel -i <csv> --plugin <此文件>
+
+  - ``tests/st/arch35/ttk_aclnn_*.csv``：TTK aclnn 用例，经同一注册表的 ``aclnn`` 层接入
+    （适配函数见文末 ``aclnn_input`` / ``aclnn_golden``，与 kernel 层的契约差异见那里的注释）
+
+    export LD_LIBRARY_PATH=$ASCEND_HOME_PATH/opp/vendors/custom_transformer/op_api/lib/:$LD_LIBRARY_PATH
+    python3 -m ttk aclnn -i <csv> --plugin <此文件>
+
+golden 的正确性依据
+  ``golden_dense`` 的 Q/K/V（KV Cache scatter 之前）与需求来源的外部参考实现
+  （CUDA hpc 侧 ``test_fused_qk_rmsnorm_mrope_store_kv_fp8.py`` 中的 ``_reference``）
+  逐比特一致，已在开发期对拍确认。该参考实现属于外部代码、不入本仓，故对拍脚本亦不随仓分发；
+  改动 golden 语义时需自行取回参考实现重新对拍。scatter 用的 slot_mapping 方案与参考实现的
+  block_ids/num_seqlen/q_index 接口不同，无外部基准。
 
 张量约定
   und_qkv       bf16 [und_len, N, D]，N = Hq+Hk+Hv，D = head_dim = 128
@@ -367,6 +380,11 @@ TYPICAL_CASES = (
 # 轴映射 α(l) 的规则是 `l%3==1 且 l<3*sec[1] -> H`、`l%3==2 且 l<3*sec[2] -> W`、其余 -> T，
 # 只读 sec[1]/sec[2]，sec[0] 不参与计算。所以下面按「截断点落在哪」来选值，
 # 而不是按三段和是否等于 D/2 来选。
+#
+# 新增维度都做过区分力自检（扰动 golden 看用例是否会 FAIL）：忽略 mrope_section -> 4.6~64.8%
+# 元素不达标；忽略 cat_indices -> 96.6~99.8%；忽略 norm_eps 需要把输入幅度压到 x_scale=1e-2
+# 才测得出（默认幅度下 eps 对 rms 的影响低于 bf16 判据，g_eps_tiny 更是原理上无区分力，
+# 只验极小 eps + 小幅度输入下 rsqrt 不出 inf/nan）。
 GENERALIZED_CASES = (
     # ---- mrope_section：轴映射的各种截断形态 ----
     dict(name="g_mrope_zeros",     heads=(8, 1, 1),  und_len=33,  gen_len=31,
@@ -483,7 +501,11 @@ def build_case(spec, device="cpu", seed=7, max_pos=4096, init_cache="randn"):
     # 当行号用，Bs 只影响 [Bn, Bs, ...] 怎么切分同一片连续内存
     bs = int(spec.get("block_size", BLOCK_SIZE))
     assert bs >= 1, "block_size 必须为正"
-    num_blocks = (total + bs - 1) // bs + 2
+    # extra_blocks 控制冗余块数：默认 2 留出未命中位置，取 0 则 Bn*Bs 贴着 ceil(T/Bs)*Bs，
+    # 覆盖 CheckKvCacheValid 的 blockNum_*blockSize_ >= totalTokens_ 下界（slot 铺满整片 cache）
+    extra_blocks = int(spec.get("extra_blocks", 2))
+    assert extra_blocks >= 0, "extra_blocks 不能为负"
+    num_blocks = (total + bs - 1) // bs + extra_blocks
     k_shape, v_shape = (num_blocks, bs, hk, d), (num_blocks, bs, hv, d)  # 连续 BBND
     init = torch.randn if init_cache == "randn" else torch.zeros
 
@@ -625,24 +647,13 @@ def _seed_of(kwargs):
     return abs(hash(name)) % (2 ** 31)
 
 
-def ttk_input(*inputs, **kwargs):
-    """把三个索引类输入改写成合法取值，随机 range 做不到。
+def _gen_index_values(arrays, kwargs):
+    """按用例名后缀生成三个索引类输入的合法取值（numpy），kernel / aclnn 两条通路共用。
 
-    其中 slot_mapping 必须**互不重复**：重复槽位会让多个核写同一 cache 行，写入顺序
-    与结果都不确定，随机整数几乎必然撞号，不改写就会得到一个每次跑都不一样的比对。
-
-    形态由用例名后缀决定，与 CSV 的 slot_form / cat_form 列一一对应：
-      _slotseq                              -> slot_mapping 连续
-      _catid / _catrev / _catund / _catgen  -> cat_indices 形态
+    返回 (slots, cat, positions)，未提供对应输入时该项为 None。
+    rng 抽取顺序固定为 slot -> cat -> positions，改动会让既有用例的输入整体漂移。
     """
     import numpy as np
-
-    arrays = list(inputs)
-    if len(arrays) != TTK_INPUT_NUM:
-        raise RuntimeError(
-            "und_gen_qkv_rms_norm_rope_cache 期望 %d 个输入，实际收到 %d 个"
-            % (TTK_INPUT_NUM, len(arrays))
-        )
 
     slot_mapping = arrays[IDX_SLOT_MAPPING]
     k_cache = arrays[IDX_K_CACHE]
@@ -662,10 +673,9 @@ def ttk_input(*inputs, **kwargs):
         slots = np.arange(total)
     else:
         slots = rng.choice(max_slot, size=total, replace=False)
-    arrays[IDX_SLOT_MAPPING] = slots.astype(slot_mapping.dtype)
 
-    cat_indices = arrays[IDX_CAT_INDICES]
-    if cat_indices is not None:
+    cat = None
+    if arrays[IDX_CAT_INDICES] is not None:
         und_len = int(arrays[IDX_UND_QKV].shape[0])
         if "_catid" in name:
             cat = np.arange(total)
@@ -677,12 +687,38 @@ def ttk_input(*inputs, **kwargs):
             cat = rng.integers(und_len, total, size=total)
         else:
             cat = rng.permutation(total)
-        arrays[IDX_CAT_INDICES] = cat.astype(cat_indices.dtype)
 
-    positions = arrays[IDX_POSITIONS]
-    if positions is not None:
+    positions = None
+    if arrays[IDX_POSITIONS] is not None:
         max_pos = int(arrays[IDX_COS_SIN_CACHE].shape[0])
-        arrays[IDX_POSITIONS] = rng.integers(0, max_pos, size=positions.shape).astype(positions.dtype)
+        positions = rng.integers(0, max_pos, size=tuple(arrays[IDX_POSITIONS].shape))
+
+    return slots, cat, positions
+
+
+def ttk_input(*inputs, **kwargs):
+    """把三个索引类输入改写成合法取值，随机 range 做不到。
+
+    其中 slot_mapping 必须**互不重复**：重复槽位会让多个核写同一 cache 行，写入顺序
+    与结果都不确定，随机整数几乎必然撞号，不改写就会得到一个每次跑都不一样的比对。
+
+    形态由用例名后缀决定，与 CSV 的 slot_form / cat_form 列一一对应：
+      _slotseq                              -> slot_mapping 连续
+      _catid / _catrev / _catund / _catgen  -> cat_indices 形态
+    """
+    arrays = list(inputs)
+    if len(arrays) != TTK_INPUT_NUM:
+        raise RuntimeError(
+            "und_gen_qkv_rms_norm_rope_cache 期望 %d 个输入，实际收到 %d 个"
+            % (TTK_INPUT_NUM, len(arrays))
+        )
+
+    slots, cat, positions = _gen_index_values(arrays, kwargs)
+    arrays[IDX_SLOT_MAPPING] = slots.astype(arrays[IDX_SLOT_MAPPING].dtype)
+    if cat is not None:
+        arrays[IDX_CAT_INDICES] = cat.astype(arrays[IDX_CAT_INDICES].dtype)
+    if positions is not None:
+        arrays[IDX_POSITIONS] = positions.astype(arrays[IDX_POSITIONS].dtype)
 
     return arrays
 
@@ -739,14 +775,96 @@ def ttk_golden(und_qkv,
     )
 
 
+# --------------------------------------------------------------------------- #
+# aclnn 层插件
+# --------------------------------------------------------------------------- #
+# 与 kernel 层的三处差异，改动前先看清楚：
+#   1. 入参序是 aclnn 头文件的形参序（12 个张量 + 5 个属性 + qOut），
+#      不是 _def.cpp 的输入序，属性走位置参数而不是 kwargs；
+#   2. input 插件的返回值被 TTK 丢弃（op_api/input_generation.py 只调不收），
+#      必须原地改写张量；
+#   3. golden 的返回序要与 CSV 的 output_tensor_indexes 声明序一致，
+#      本算子声明为 (12, 4, 5) 即 (q, k_cache, v_cache)。
+ACLNN_ATTR_NUM = 5
+
+
+def _aclnn_split_args(args):
+    """拆 aclnn 形参：前 12 个张量 + 5 个属性（qOut 及其后的形参 golden 用不到）。"""
+    if len(args) < TTK_INPUT_NUM + ACLNN_ATTR_NUM:
+        raise RuntimeError(
+            "aclnnUndGenQkvRmsNormRopeCache 期望至少 %d 个形参，实际收到 %d 个"
+            % (TTK_INPUT_NUM + ACLNN_ATTR_NUM, len(args))
+        )
+    tensors = list(args[:TTK_INPUT_NUM])
+    hq, hk, hv, eps, sec = args[TTK_INPUT_NUM:TTK_INPUT_NUM + ACLNN_ATTR_NUM]
+    attrs = dict(num_heads_q=int(hq), num_heads_k=int(hk), num_heads_v=int(hv),
+                 norm_eps=float(eps),
+                 mrope_section=(list(sec) if sec is not None else None))
+    return tensors, attrs
+
+
+def _as_torch(x):
+    """numpy（bf16 由 ml_dtypes 承载）或 torch 张量 -> CPU torch 张量。"""
+    if x is None:
+        return None
+    if isinstance(x, torch.Tensor):
+        return x.detach().cpu()
+    return _np_to_torch(x)
+
+
+def _write_back(dst, values):
+    """把 numpy 取值原地写回 dst（numpy 或 torch 均可）。"""
+    if isinstance(dst, torch.Tensor):
+        dst.copy_(torch.from_numpy(values.astype("int64")).to(dst.dtype))
+    else:
+        dst[...] = values.astype(dst.dtype)
+
+
+def aclnn_input(*args, **kwargs):
+    """aclnn 层的索引改写，取值规则与 ttk_input 完全一致（共用 _gen_index_values）。"""
+    tensors, _ = _aclnn_split_args(args)
+    slots, cat, positions = _gen_index_values(tensors, kwargs)
+    _write_back(tensors[IDX_SLOT_MAPPING], slots)
+    if cat is not None:
+        _write_back(tensors[IDX_CAT_INDICES], cat)
+    if positions is not None:
+        _write_back(tensors[IDX_POSITIONS], positions)
+
+
+def aclnn_golden(*args, **kwargs):
+    """aclnn 层 golden，返回 (q, k_cache, v_cache)，与 output_tensor_indexes=(12,4,5) 对齐。"""
+    tensors, attrs = _aclnn_split_args(args)
+    q_t, k_t, v_t = golden_und_gen_qkv_rms_norm_rope_cache(
+        *[_as_torch(t) for t in tensors[:8]],
+        gen_qkv=_as_torch(tensors[IDX_GEN_QKV]),
+        gen_weights_q=_as_torch(tensors[IDX_GEN_WEIGHTS_Q]),
+        gen_weights_k=_as_torch(tensors[IDX_GEN_WEIGHTS_K]),
+        cat_indices=_as_torch(tensors[IDX_CAT_INDICES]),
+        inplace=False,
+        **attrs,
+    )
+    ref = tensors[IDX_K_CACHE]
+    if isinstance(ref, torch.Tensor):
+        return q_t.to(ref.dtype), k_t.to(ref.dtype), v_t.to(ref.dtype)
+    return (_torch_to_np(q_t, ref.dtype),
+            _torch_to_np(k_t, ref.dtype),
+            _torch_to_np(v_t, ref.dtype))
+
+
 __input__ = {
     "kernel": {
         "und_gen_qkv_rms_norm_rope_cache": "ttk_input"
+    },
+    "aclnn": {
+        "aclnnUndGenQkvRmsNormRopeCache": "aclnn_input"
     }
 }
 
 __golden__ = {
     "kernel": {
         "und_gen_qkv_rms_norm_rope_cache": "ttk_golden"
+    },
+    "aclnn": {
+        "aclnnUndGenQkvRmsNormRopeCache": "aclnn_golden"
     }
 }
