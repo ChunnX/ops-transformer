@@ -69,6 +69,10 @@ public:
                                 __gm__ uint8_t *, const QuantBlockSparseAttnMxTilingData *__restrict tiling,
                                 TPipe *tPipe)
     {
+        // BufferManager assigns cross-core IDs from this block-local counter.
+        // ACLGraph may reuse the kernel context, so restart the dynamic
+        // allocation sequence for every launch.
+        fa_base_matmul::idCounterNum = 0U;
         // Q/K/V 在 cube 中结合 block_table 完成 PA 搬运。
         pipe = tPipe;
         tilingData = tiling;
@@ -168,16 +172,10 @@ private:
         // L1 连续保存 P(e4m3) 和 PScale(e8m0)，供 C2 随路反量化。
         constexpr uint32_t mm2LeftSize = M_BASE * S2_BASE * sizeof(INPUT_T) + M_BASE * S2_BASE / 32U;
         l1BufferManager.Init(pipe, 512U * 1024U);
+        l1PBuffers.Init(l1BufferManager, mm2LeftSize);
         ubBufferManager.Init(pipe, mm1ResultSize * 2U + mm2ResultSize);
-
-        // ACLGraph static Tensor reserves cross-core event IDs 6 and 7. Match
-        // the proven static layout: BMM1 uses 0..3, BMM2 uses 4..5, and L1P
-        // uses 8..10. A sequential 0-based allocation would collide at 6/7.
-        fa_base_matmul::idCounterNum = 10U;
         bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
         bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
-        fa_base_matmul::idCounterNum = 7U;
-        l1PBuffers.Init(l1BufferManager, mm2LeftSize);
     }
 
     __aicore__ inline void CrossCoreBufferInit()
