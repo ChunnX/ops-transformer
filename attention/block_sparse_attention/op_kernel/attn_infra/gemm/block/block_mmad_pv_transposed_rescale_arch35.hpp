@@ -151,6 +151,11 @@ public:
                 L0A_PINGPONG_BUF_SIZE * i);
             l0BTensor[i] = resource.l0BBuf.template GetBufferByByte<ElementB>(
                 L0B_PINGPONG_BUF_SIZE * i);
+            // RE 段 float buffer：复用同一偏移（float [128,16]=8KB = fp8 [128,64]=8KB；[16,16]=1KB ≤ 8KB）
+            l0ARescaleTensor[i] = resource.l0ABuf.template GetBufferByByte<float>(
+                L0A_PINGPONG_BUF_SIZE * i);
+            l0BRescaleTensor[i] = resource.l0BBuf.template GetBufferByByte<float>(
+                L0B_PINGPONG_BUF_SIZE * i);
             l0CTensor[i] = resource.l0CBuf.template GetBufferByByte<ElementAccumulator>(
                 L0C_HALF_BUF_SIZE + L0C_PINGPONG_BUF_SIZE * i);
         }
@@ -406,7 +411,8 @@ public:
                     auto l1GoTensorTlaTile = GetTile(l1GoTensorTla,
                         tla::MakeCoord(mL0Itr * L0_TILE_M, fr * 16), tla::MakeShape(l0TileMAct, nAct));
                     auto l0ALayoutTla = tla::MakeLayout<float, LayoutTagL0A>(l0TileMAct, nAct);
-                    auto l0ATensorTla = tla::MakeTensor(l0ATensor[l0ABufId], l0ALayoutTla, Arch::PositionL0A{});
+                    auto l0ATensorTla = tla::MakeTensor(l0ARescaleTensor[l0ABufId],
+                        l0ALayoutTla, Arch::PositionL0A{});
                     AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
                     CopyL1ToL0ARescale copyL1ToL0ARescale;
                     copyL1ToL0ARescale(l0ATensorTla, l1GoTensorTlaTile);
@@ -419,7 +425,8 @@ public:
                     auto l1DiagTensorTlaTile = GetTile(l1DiagTensorTla,
                         tla::MakeCoord(frInBlk * 16, frInBlk * 16), tla::MakeShape(16, 16));
                     auto l0BLayoutTla = tla::MakeLayout<float, LayoutTagL0B>(16, 16);
-                    auto l0BTensorTla = tla::MakeTensor(l0BTensor[l0BBufId], l0BLayoutTla, Arch::PositionL0B{});
+                    auto l0BTensorTla = tla::MakeTensor(l0BRescaleTensor[l0BBufId],
+                        l0BLayoutTla, Arch::PositionL0B{});
                     AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
                     CopyL1ToL0BRescale copyL1ToL0BRescale;
                     copyL1ToL0BRescale(l0BTensorTla, l1DiagTensorTlaTile);
@@ -498,6 +505,10 @@ protected:
     AscendC::LocalTensor<float> l1DiagTensor[DIAG_BUF_NUM];    // diag 块 [qS/2, qS/2]
     AscendC::LocalTensor<ElementA> l0ATensor[L0_STAGES];
     AscendC::LocalTensor<ElementB> l0BTensor[L0_STAGES];
+    // RE 段：GO^T/diag 为 fp32，需 float 的 L0 buffer（PV^T 的 fp8 buffer 元素类型不匹配 float 布局）；
+    // 物理复用同一 L0A/L0B 内存（RE 块 ≤ PV^T 块大小，同 stage 不同时使用）
+    AscendC::LocalTensor<float> l0ARescaleTensor[L0_STAGES];
+    AscendC::LocalTensor<float> l0BRescaleTensor[L0_STAGES];
     AscendC::LocalTensor<ElementAccumulator> l0CTensor[L0_STAGES];
 
     TileMmad tileMmad;
