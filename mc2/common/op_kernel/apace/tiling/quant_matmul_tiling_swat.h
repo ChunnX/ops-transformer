@@ -25,8 +25,6 @@ public:
     QuantMatmulTilingSwat() = default;
     ~QuantMatmulTilingSwat() override = default;
 
-    void SetMTailAlignEnable(bool enable) { enableMTailAlign_ = enable; }
-
 protected:
     const char* TilingName() const override
     {
@@ -54,8 +52,7 @@ private:
     using Base::platformInfo_;
     using Base::runInfo_;
     using Base::isOpenOptimize_;
-
-    bool enableMTailAlign_{false};
+    using Base::enableMTailAlign_;
 
 private:
     uint32_t CalcScaleKL1() const
