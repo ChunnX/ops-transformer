@@ -212,12 +212,13 @@ int LaunchOneRank(Args &args)
 
 #ifdef PROF_ADDR_CALIB
     // ══════════════════════════════════════════════════════════════════
-    // 标定阶段：kernel（-DPROF_ADDR_CALIB 编译）把 workspace 基址写到 yOut[0..8]，
-    // host 读出后计算 delta = kernelWsBase - hostWsBase。
+    // 标定阶段：kernel（-DPROF_ADDR_CALIB 编译）把 workspace 基址写到 expertTokenNumsOut[0..7]（第二个输出），
+    // host 从 tokenNumDev 读出后计算 delta = kernelWsBase - hostWsBase。
+    // ⚠️ 不要读 yDev：yOut 会被 Unpermute 写满真实输出，bridge 值会被覆盖（mega_moe_layered.h 已改写到 expertTokenNumsOut）。
     // ══════════════════════════════════════════════════════════════════
     {
         uint64_t kernelWsBase = 0;
-        ret = aclrtMemcpy(&kernelWsBase, 8, yDev, 8, ACL_MEMCPY_DEVICE_TO_HOST);
+        ret = aclrtMemcpy(&kernelWsBase, 8, tokenNumDev, 8, ACL_MEMCPY_DEVICE_TO_HOST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] bridge D2H failed. ret = %d\n", ret); return ret);
         uint64_t hostWsBase = reinterpret_cast<uint64_t>(workspaceAddr);
         uint64_t delta = kernelWsBase - hostWsBase;
@@ -234,8 +235,13 @@ int LaunchOneRank(Args &args)
     {
         // [MODIFY] 标定阶段输出的 delta 值填入此处（每次换环境/算子类型需重新标定）
         constexpr uint64_t WS_ADDR_DELTA = 0ULL; // 16MB = 16777216ULL for Ascend 950 MC2
+        // 与 tiling RESERVED_WORKSPACE_SIZE 保持一致（mc2/mega_moe/op_host/op_tiling/arch35/mega_moe_tiling.cpp）
+        constexpr uint64_t PROF_RESERVED_WORKSPACE_SIZE = 1024ULL * 1024 * 50;
 
-        uint64_t profBufOff = workspaceSize - PROF_BUF_TOTAL;
+        // ⚠️ 必须用 kernel 相对偏移：
+        //   profBufAddr[0] = workspaceSize - PROF_BUF_TOTAL - WS_ADDR_DELTA - RESERVED
+        // 直接只减 PROF_BUF_TOTAL 会偏后 sysWs + RESERVED（50MB+），读回的是 RESERVED 空洞/越界数据。
+        uint64_t profBufOff = workspaceSize - PROF_BUF_TOTAL - WS_ADDR_DELTA - PROF_RESERVED_WORKSPACE_SIZE;
         uint8_t *profDevPtr = reinterpret_cast<uint8_t *>(workspaceAddr) + WS_ADDR_DELTA + profBufOff;
 
         std::vector<uint8_t> hostBuf(PROF_BUF_TOTAL);

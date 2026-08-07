@@ -161,6 +161,8 @@ python setup.py build install   # 或 pip install .
 |------|------------|
 | `prof_rank*.bin` 全零 | ① host 读错地址 → 确认 `MEGA_MOE_PROF_DELTA`/`WS_ADDR_DELTA` 已填标定值；② kernel 未写 → 确认 `MEGA_MOE_ENABLE_PROFILING=1` 已编译进 kernel（旧 .o 已清理） |
 | delta 标定出来为 0 | 非 CCU 通信场景，workspace 无偏移 → 直接用 `hostBase + profBufOffset` 读（delta=0） |
+| delta 标定出来巨大（>1GB 或回绕） | bridge 没写到输出：① 装的 kernel .o 是旧的/无 profiler（`kernelWsBase` 读到的是 token 数）→ 清理旧 .o 重编重装；② tiling 的 `profBufAddr[0]==0`（`kernelWsBase` 读到 0）→ tiling .so 未同步；③ 独立 C++ 标定读的是 `yDev` → 改读 `tokenNumDev`（kernel 现在写 `expertTokenNumsOut`） |
+| dump 后事件乱、耗时/cycle 离谱 | host 回读偏移不能直接用 `workspaceSize - PROF_BUF_TOTAL`，必须用 kernel 相对偏移 `workspaceSize - PROF_BUF_TOTAL - delta - RESERVED(50MB)`（torch 扩展与独立测试程序均已按此修正） |
 | AIC 核数据全 0 | 确认用了 `PROF_FINALIZE_AIC`（已在代码中） |
 | aclrtSetDevice 507033 | 未 `source $HOME/SUB/vendors/custom_transformer/bin/set_env.bash` |
 | 部分 rank 崩溃 507015 | `profBufAddr` 数组已按 rank 隔离；若仍复现检查 tiling 侧是否有 static counter |

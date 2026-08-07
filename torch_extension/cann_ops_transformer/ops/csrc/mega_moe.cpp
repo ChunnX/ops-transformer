@@ -40,16 +40,27 @@ constexpr uint32_t MEGA_MOE_PROF_RINGIDX_ALIGN = 64;
 constexpr size_t MEGA_MOE_PROF_BUF_TOTAL =
     (size_t)MEGA_MOE_PROF_N_CORES * MEGA_MOE_PROF_RINGIDX_ALIGN +
     (size_t)MEGA_MOE_PROF_N_CORES * MEGA_MOE_PROF_SLOTS_PER_CORE * MEGA_MOE_PROF_RECORD_BYTES;
+// ⚠️ 必须与 op_host/op_tiling/arch35/mega_moe_tiling.cpp 的 RESERVED_WORKSPACE_SIZE 保持一致。
+// tiling 把 profBuf 放在 kernel 布局之后（profBufAddr[0] = align(workspaceInfo.workspaceSize)），
+// host 侧可精确反解该偏移（见 DumpMegaMoeProfBuf 内注释）。
+constexpr uint64_t MEGA_MOE_PROF_RESERVED_WORKSPACE_SIZE = 1024ULL * 1024 * 50;
 
 // 从 workspace 尾部读 profBuf 写 prof_rank{deviceId}.bin（MIX_1_2 → layout_type=3）
 inline void DumpMegaMoeProfBuf(void *workspaceAddr, uint64_t workspaceSize, int deviceId, uint64_t wsDelta)
 {
-    if (workspaceSize < MEGA_MOE_PROF_BUF_TOTAL) {
-        ASCEND_LOGW("MegaMoe profBuf: workspaceSize %llu < PROF_BUF_TOTAL %zu, skip dump.",
-                    (unsigned long long)workspaceSize, MEGA_MOE_PROF_BUF_TOTAL);
+    // ⚠️ 不能用 workspaceSize - PROF_BUF_TOTAL 当 profBuf 偏移：
+    //   tiling 的 profBufAddr[0] = align(workspaceInfo.workspaceSize)（相对 kernel 布局），而
+    //   workspaceSize = sysWs + wsSize + RESERVED + (align(wsSize)-wsSize) + PROF_BUF_TOTAL。
+    //   由于 wsDelta == sysWs（框架在 workspace 头部预留的 context 区域，kernel 拿到的基址 = hostBase + wsDelta），
+    //   可精确反解：profBufOff = align(wsSize) = workspaceSize - PROF_BUF_TOTAL - wsDelta - RESERVED。
+    //   直接只减 PROF_BUF_TOTAL 会偏后 sysWs + RESERVED（50MB+），读回的是 RESERVED 空洞/越界数据。
+    if (workspaceSize < MEGA_MOE_PROF_BUF_TOTAL + wsDelta + MEGA_MOE_PROF_RESERVED_WORKSPACE_SIZE) {
+        ASCEND_LOGW("MegaMoe profBuf: workspaceSize %llu too small (need >= %llu), skip dump.",
+                    (unsigned long long)workspaceSize,
+                    (unsigned long long)(MEGA_MOE_PROF_BUF_TOTAL + wsDelta + MEGA_MOE_PROF_RESERVED_WORKSPACE_SIZE));
         return;
     }
-    uint64_t profBufOff = workspaceSize - MEGA_MOE_PROF_BUF_TOTAL;
+    uint64_t profBufOff = workspaceSize - MEGA_MOE_PROF_BUF_TOTAL - wsDelta - MEGA_MOE_PROF_RESERVED_WORKSPACE_SIZE;
     uint8_t *profDevPtr = reinterpret_cast<uint8_t *>(workspaceAddr) + wsDelta + profBufOff;
 
     std::vector<uint8_t> hostBuf(MEGA_MOE_PROF_BUF_TOTAL);
@@ -70,6 +81,11 @@ inline void DumpMegaMoeProfBuf(void *workspaceAddr, uint64_t workspaceSize, int 
     uint32_t firstWord = 0;
     memcpy(&firstWord, hostBuf.data(), 4);
     printf("[PROFILER] MegaMoe rank %d dumped to %s (first word 0x%08X)\n", deviceId, fname, firstWord);
+    if (firstWord >= MEGA_MOE_PROF_SLOTS_PER_CORE) {
+        printf("[PROFILER] WARN: ring idx 0x%08X out of range — dump 可能读错地址（MEGA_MOE_PROF_DELTA 或 "
+               "workspace 布局不匹配）。\n",
+               firstWord);
+    }
 }
 
 // 手动两阶段调用：与 ACLNN_CMD 等价，但保留 workspace 直到回读完成
@@ -112,6 +128,10 @@ void LaunchMegaMoeWithProfDump(const at::Tensor &yOut, const at::Tensor &expertT
         workspace_tensor = at::empty({workspace_size}, options.dtype(at::kByte));
         workspace_addr = const_cast<void *>(workspace_tensor.storage().data());
     }
+    // [PROFILER] 诊断用：打点版 tiling 的 workspaceSize 应比未打点版大约多 PROF_BUF_TOTAL（5.5MB）。
+    // 若这里没有多出 ~5.5MB，说明装到卡上的 tiling .so 是旧的（profBufAddr[0]==0，bridge 会写 0 → delta 巨大）。
+    printf("[PROFILER] MegaMoe rank %d workspaceSize=%llu (PROF_BUF_TOTAL=%zu)\n", deviceId,
+           (unsigned long long)workspace_size, MEGA_MOE_PROF_BUF_TOTAL);
     auto acl_call = [converted_params, workspace_addr, workspace_size, acl_stream, executor, releaseMemFunc]() -> int {
         typedef int (*OpApiFunc)(void *, uint64_t, aclOpExecutor *, const aclrtStream);
         OpApiFunc opApiFunc = reinterpret_cast<OpApiFunc>(opApiFuncAddr);
@@ -142,7 +162,7 @@ void LaunchMegaMoeWithProfDump(const at::Tensor &yOut, const at::Tensor &expertT
     const char *dump = getenv("MEGA_MOE_PROF_DUMP");
     uint64_t hostWsBase = reinterpret_cast<uint64_t>(workspace_addr);
     if (calib != nullptr && std::strcmp(calib, "1") == 0) {
-        // 标定：kernel(address-bridge) 把 workspace 基址写到 expertTokenNumsOut[0..8]
+        // 标定：kernel(address-bridge) 把 workspace 基址写到 expertTokenNumsOut[0..7]
         //（不写 yOut——yOut 会被 Unpermute 写满真实输出，bridge 值被覆盖）
         uint64_t kernelWsBase = 0;
         aclError ret = aclrtMemcpy(&kernelWsBase, 8, const_cast<void *>(expertTokenNums.storage().data()), 8,
@@ -161,6 +181,16 @@ void LaunchMegaMoeWithProfDump(const at::Tensor &yOut, const at::Tensor &expertT
             if (delta > (uint64_t)0x8000000000000000ULL) {
                 printf("[PROFILER] WARN: delta appears to have wrapped (kernelWsBase < hostWsBase). "
                        "Check bridge write timing / output tensor overwrite.\n");
+            }
+            if (kernelWsBase == 0) {
+                printf("[PROFILER] WARN: kernelWsBase==0 → kernel 的 wsBaseGm_ 未被赋值，说明 tiling 的 "
+                       "profBufAddr[0]==0（tiling 未开打点或装的是旧 tiling .so）。请重编重装算子包并确认 "
+                       "OP_LOGD 里 profiler profBufOffset > 0。\n");
+            } else if (kernelWsBase < 0x100000000ULL) {
+                printf("[PROFILER] WARN: kernelWsBase(0x%llX) 不像设备地址 → 实际运行的 kernel 没有写 bridge "
+                       "（旧 .o 缓存或 MEGA_MOE_PROF_ADDR_CALIB=0 的版本），读到的是 expertTokenNums 的 token 数。"
+                       "请清理旧 .o 后重编重装（标定阶段须 MEGA_MOE_PROF_ADDR_CALIB=1）。\n",
+                       (unsigned long long)kernelWsBase);
             }
         }
     } else if (dump != nullptr && std::strcmp(dump, "1") == 0) {
