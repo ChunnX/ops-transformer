@@ -254,14 +254,13 @@ __aicore__ inline void KPoolBlockVectorFullLoad<COMP>::ApplyLayerNorm()
     if (!hasLayerNorm_) {
         return;
     }
-    LocalTensor<T> input = tmpBuf1.Get<T>();
     LocalTensor<T> output = tmpBuf2.Get<T>();
     LocalTensor<T> mean = output[constInfo_.headDim * static_cast<uint32_t>(COMP::coff)];
     LocalTensor<T> gamma = mean[constInfo_.headDim * static_cast<uint32_t>(COMP::coff)];
     LocalTensor<T> beta = gamma[constInfo_.headDim * static_cast<uint32_t>(COMP::coff)];
-    LocalTensor<T> reduceTmp = beta[constInfo_.headDim * static_cast<uint32_t>(COMP::coff)];
-    ApplyKPoolLayerNormToCache(stateCacheGm_, stateBlockTableGm_, normWeightGm_, normBiasGm_, tools_, constInfo_,
-                               static_cast<uint32_t>(COMP::coff), input, output, mean, gamma, beta, reduceTmp);
+    ApplyKPoolLayerNormToCache<COMP, decltype(inputQue1), HIDDEN_STATES_T>(
+        stateCacheGm_, stateBlockTableGm_, normWeightGm_, normBiasGm_, tools_, constInfo_,
+        static_cast<uint32_t>(COMP::coff), inputQue1, output, mean, gamma, beta);
 }
 
 template <typename COMP>
@@ -1265,7 +1264,9 @@ __aicore__ inline void KPoolBlockVectorFullLoad<COMP>::ComputeFullHistoryPool()
     LocalTensor<T> tmpUb = tmpBuf2.Get<T>();
 
     for (uint32_t bIdx = 0; bIdx < constInfo_.batchSize; bIdx++) {
-        if (GetStartPos(bIdx) == 0) {
+        // With LayerNorm, the cache is normalized after the streaming path.
+        // Rebuild first-pass pools from the normalized cache as well.
+        if (GetStartPos(bIdx) == 0 && !HasLayerNorm()) {
             continue;
         }
         uint32_t validPoolCount = (GetStartPos(bIdx) + GetSeqUsed(bIdx)) / cmpRatio_;

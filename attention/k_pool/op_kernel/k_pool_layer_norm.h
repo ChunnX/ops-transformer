@@ -12,14 +12,15 @@ namespace KPool {
 
 __aicore__ inline void KPoolLayerNorm(const LocalTensor<float> &out, const LocalTensor<float> &in,
                                        const LocalTensor<float> &mean, const LocalTensor<float> &gamma,
-                                       const LocalTensor<float> &beta, const LocalTensor<float> &reduceTmp,
-                                       float eps, uint32_t count)
+                                       const LocalTensor<float> &beta, float eps, uint32_t count)
 {
     const float reciprocal = 1.0f / static_cast<float>(static_cast<int64_t>(count));
 
-    Muls(mean, in, reciprocal, count);
+    Duplicate(mean, reciprocal, count);
     PipeBarrier<PIPE_V>();
-    ReduceSum(mean, mean, reduceTmp, count);
+    Mul(mean, in, mean, count);
+    PipeBarrier<PIPE_V>();
+    ReduceSum(mean, mean, mean, count);
     SetFlag<HardEvent::V_S>(EVENT_ID0);
     WaitFlag<HardEvent::V_S>(EVENT_ID0);
     float meanValue = mean.GetValue(0);
@@ -34,7 +35,7 @@ __aicore__ inline void KPoolLayerNorm(const LocalTensor<float> &out, const Local
     PipeBarrier<PIPE_V>();
     Muls(out, out, reciprocal, count);
     PipeBarrier<PIPE_V>();
-    ReduceSum(out, out, reduceTmp, count);
+    ReduceSum(out, out, out, count);
     SetFlag<HardEvent::V_S>(EVENT_ID0);
     WaitFlag<HardEvent::V_S>(EVENT_ID0);
     float variance = out.GetValue(0);
@@ -55,13 +56,12 @@ __aicore__ inline void KPoolLayerNorm(const LocalTensor<float> &out, const Local
     PipeBarrier<PIPE_V>();
 }
 
-template <typename COMP>
+template <typename COMP, typename INPUT_QUEUE, typename HIDDEN_STATES_T>
 __aicore__ inline void ApplyKPoolLayerNormToCache(
     const GlobalTensor<float> &stateCache, const GlobalTensor<int32_t> &blockTable,
     const GlobalTensor<float> &normWeight, const GlobalTensor<float> &normBias, KPoolTools<COMP> &tools,
-     const ConstInfo &constInfo, uint32_t coff, const LocalTensor<float> &input, const LocalTensor<float> &output,
-     const LocalTensor<float> &mean, const LocalTensor<float> &gamma, const LocalTensor<float> &beta,
-     const LocalTensor<float> &reduceTmp)
+     const ConstInfo &constInfo, uint32_t coff, INPUT_QUEUE &inputQue, const LocalTensor<float> &output,
+     const LocalTensor<float> &mean, const LocalTensor<float> &gamma, const LocalTensor<float> &beta)
 {
     const uint32_t headDim = constInfo.headDim;
     const uint32_t hiddenDim = coff * headDim;
@@ -70,7 +70,9 @@ __aicore__ inline void ApplyKPoolLayerNormToCache(
 
     DataCopy(gamma, normWeight, hiddenDim);
     DataCopy(beta, normBias, hiddenDim);
-    PipeBarrier<PIPE_MTE2>();
+    SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    PipeBarrier<PIPE_ALL>();
 
     for (uint32_t bIdx = vectorId; bIdx < constInfo.batchSize; bIdx += vectorCount) {
         const uint32_t seqLength = tools.GetSeqLength(bIdx);
@@ -86,14 +88,30 @@ __aicore__ inline void ApplyKPoolLayerNormToCache(
                 physicalBlock * constInfo.stateCacheStrideDim0 +
                 blockOffset * STATE_INTERLEAVE_FACTOR * hiddenDim;
 
+            LocalTensor<float> input = inputQue.template AllocTensor<float>();
             DataCopy(input, stateCache[stateOffset], headDim);
             if (coff == 2) {
                 DataCopy(input[headDim], stateCache[stateOffset + headDim], headDim);
             }
-            PipeBarrier<PIPE_MTE2>();
+            inputQue.EnQue(input);
+            input = inputQue.template DeQue<float>();
+            SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+            PipeBarrier<PIPE_ALL>();
 
-            KPoolLayerNorm(output, input, mean, gamma, beta, reduceTmp, constInfo.normEps, hiddenDim);
+            KPoolLayerNorm(output, input, mean, gamma, beta, constInfo.normEps, hiddenDim);
 
+            // Match the BF16/FP16 projection contract before storing the
+            // normalized result in the FP32 state cache.
+            inputQue.FreeTensor(input);
+            LocalTensor<HIDDEN_STATES_T> rounded = inputQue.template AllocTensor<HIDDEN_STATES_T>();
+            Cast(rounded, output, RoundMode::CAST_ROUND, hiddenDim);
+            PipeBarrier<PIPE_V>();
+            Cast(output, rounded, RoundMode::CAST_NONE, hiddenDim);
+            PipeBarrier<PIPE_V>();
+            inputQue.FreeTensor(rounded);
+            SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
+            WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
             DataCopy(stateCache[stateOffset], output, headDim);
             if (coff == 2) {
                 DataCopy(stateCache[stateOffset + headDim], output[headDim], headDim);

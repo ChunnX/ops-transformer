@@ -46,7 +46,7 @@ def test_k_pool_public_schema_and_meta():
     assert output.dtype == torch.bfloat16
 
 
-def test_k_pool_public_rejects_reserved_stages():
+def test_k_pool_public_accepts_layer_norm_and_rejects_rope():
     torch_npu = pytest.importorskip("torch_npu")
     load_k_pool_public_api()
 
@@ -58,7 +58,20 @@ def test_k_pool_public_rejects_reserved_stages():
     cache_block_table = torch.empty((1, 2), dtype=torch.int32, device="meta")
     start_pos = torch.empty((1,), dtype=torch.int32, device="meta")
 
-    with pytest.raises(NotImplementedError, match="LayerNorm"):
+    output = torch_npu.k_pool_npu(
+        hidden_states,
+        wk,
+        gate_weight,
+        ape,
+        state_cache,
+        cache_block_table,
+        start_pos,
+        norm_weight=torch.empty((128,), dtype=torch.float32, device="meta"),
+        norm_bias=torch.empty((128,), dtype=torch.float32, device="meta"),
+    )
+    assert output.shape == (1, 2, 128)
+
+    with pytest.raises(NotImplementedError, match="RoPE"):
         torch_npu.k_pool_npu(
             hidden_states,
             wk,
@@ -67,6 +80,6 @@ def test_k_pool_public_rejects_reserved_stages():
             state_cache,
             cache_block_table,
             start_pos,
-            norm_weight=torch.empty((128,), dtype=torch.float32, device="meta"),
-            norm_bias=torch.empty((128,), dtype=torch.float32, device="meta"),
+            cos=torch.empty((1, 1, 64), dtype=torch.bfloat16, device="meta"),
+            sin=torch.empty((1, 1, 64), dtype=torch.bfloat16, device="meta"),
         )

@@ -229,7 +229,12 @@ def _precision(name, actual, expected, rtol, atol, required_percent=99.5):
     return result
 
 
-def run_case(case: Case, per_batch: bool = False, norm_on: bool = False):
+def run_case(
+    case: Case,
+    per_batch: bool = False,
+    norm_on: bool = False,
+    norm_eps: float = 1e-6,
+):
     load_k_pool_public_api()
     torch_npu.npu.set_device(0)
     (
@@ -261,6 +266,7 @@ def run_case(case: Case, per_batch: bool = False, norm_on: bool = False):
         norm_bias=norm_bias,
         seq_lens=seq_lens,
         cmp_ratio=case.cmp_ratio,
+        norm_eps=norm_eps,
         enforce_model_dims=False,
     )
 
@@ -277,6 +283,7 @@ def run_case(case: Case, per_batch: bool = False, norm_on: bool = False):
         norm_bias=None if norm_bias is None else norm_bias.npu(),
         seq_lens=None if seq_lens is None else seq_lens.npu(),
         cmp_ratio=case.cmp_ratio,
+        norm_eps=norm_eps,
     )
     torch_npu.npu.synchronize()
     actual_output = npu_output.cpu()
@@ -395,6 +402,12 @@ def main():
         action="store_true",
         help="Enable FP32 LayerNorm on the current K projection.",
     )
+    parser.add_argument(
+        "--norm-eps",
+        type=float,
+        default=1e-6,
+        help="Positive LayerNorm epsilon used when --norm-on is set.",
+    )
     args = parser.parse_args()
     if args.manifest is not None:
         selected = _load_manifest_cases(args.manifest)
@@ -407,7 +420,15 @@ def main():
         selected = CASES.values() if args.case == "all" else (CASES[args.case],)
     if args.limit_batch is not None:
         selected = [_limit_batch(case, args.limit_batch) for case in selected]
-    results = [run_case(case, per_batch=args.per_batch, norm_on=args.norm_on) for case in selected]
+    results = [
+        run_case(
+            case,
+            per_batch=args.per_batch,
+            norm_on=args.norm_on,
+            norm_eps=args.norm_eps,
+        )
+        for case in selected
+    ]
     print(json.dumps(results, indent=2))
     if not all(result["pass"] for result in results):
         raise SystemExit(1)
