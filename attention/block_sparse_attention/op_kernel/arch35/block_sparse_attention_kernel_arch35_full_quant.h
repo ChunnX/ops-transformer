@@ -614,9 +614,12 @@ public:
             mm1L0BTotalStages_ = (kvBaseTile_ / BlockMmadQK::L0_TILE_N) * (embed_ / BlockMmadQK::L0_TILE_K);
         }
         if constexpr (RESCALE_ON_CUBE) {
-            // 新 PV：每 tile L0A/L0B 用量 = PV^T 的 K 分块数 + RE 的 16 列块数（qS 上限）
-            mm2L0ATotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) + CeilDiv(qBaseTile_, 16);
-            mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) + CeilDiv(qBaseTile_, 16);
+            // 新 PV：每 tile L0A/L0B 用量 = PV^T 分块数 + RE 的 16 列块数（GO 沿 D 按 L0_TILE_M 切分、
+            // diag 不切；与 PV 内部 counter 结构（mL0×kL0 / nL0×kL0 + fr）严格对应）
+            mm2L0ATotalStages_ = (embed_ / BlockMmadPV::L0_TILE_M) * (kvBaseTile_ / BlockMmadPV::L0_TILE_K) +
+                CeilDiv(qBaseTile_, 16) * (embed_ / BlockMmadPV::L0_TILE_M);
+            mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) * (qBaseTile_ / BlockMmadPV::L0_TILE_N) +
+                CeilDiv(qBaseTile_, 16);
         } else {
             mm2L0ATotalStages_ = (qBaseTile_ / BlockMmadPV::L0_TILE_M) * (kvBaseTile_ / BlockMmadPV::L0_TILE_K);
             mm2L0BTotalStages_ = (kvBaseTile_ / BlockMmadPV::L0_TILE_K) * (embed_ / BlockMmadPV::L0_TILE_N);
@@ -644,10 +647,12 @@ public:
         uint32_t dmStartOffset;
         uint32_t llStartOffset;
         if constexpr (RESCALE_ON_CUBE) {
-            // rescaleOnCube on cube：OTmp(lo) 不再驻留 UB（偏移传 0）；diag 块中转 [qS/2, qS/2] fp32 单份
+            // rescaleOnCube on cube：OTmp(lo) 不再驻留 UB（偏移传 0）；
+            // diag 块中转 [qS/2, qS/2] fp32 3 份轮转（与 L1 diag 3 份、dm 3 份同节奏，索引 l1PBufId）
             loStartOffset = 0;
             diagStartOffset = pStartOffset + pTotalSize;
-            goStartOffset = diagStartOffset + qBaseTilePerSubCore * qBaseTilePerSubCore * sizeof(float);
+            goStartOffset = diagStartOffset +
+                qBaseTilePerSubCore * qBaseTilePerSubCore * sizeof(float) * (PRE_LAUNCH + 1);
         } else {
             // 旧路径：lo 2 份轮转、dm 3 份轮转（偏移与 HEAD 一致）
             loStartOffset = pStartOffset + pTotalSize;
@@ -657,7 +662,7 @@ public:
         uint32_t lmStartOffset = goStartOffset + qBaseTilePerSubCore * embedPerSubCore * sizeof(ElementOTmp);
         uint32_t gmStartOffset = lmStartOffset + qBaseTilePerSubCore * sizeof(float);
         // dm 3 份轮转（rescaleOnCube 同样保留）：UpdateDeltaMax 先算出 dm 存 dmUb，
-        // GenDiagBlockAndCopyL1 再据此生成 diag 块，不再借用 diag 中转缓冲暂存 dm
+        // SetDiagonalDeltaMax 再据此生成 diag 块，不再借用 diag 中转缓冲暂存 dm
         dmStartOffset = gmStartOffset + qBaseTilePerSubCore * sizeof(float);
         llStartOffset = dmStartOffset + qBaseTilePerSubCore * (PRE_LAUNCH + 1) * sizeof(float);
         uint32_t glStartOffset = llStartOffset + qBaseTilePerSubCore * sizeof(float);
@@ -784,8 +789,11 @@ public:
         // rescale
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
         if constexpr (RESCALE_ON_CUBE) {
-            // diag 中转缓冲的 MTE3 搬运围栏（softmax 每 tile wait/set 一次，与 Release VEC 的 EVENT_ID5 收尾成对）
+            // diag 中转缓冲 3 份轮转的 MTE3 搬运围栏（softmax 每 tile 按 l1PBufId 索引 wait/set 一次，
+            // 与 Release VEC 的 EVENT_ID5~7 收尾成对；P 的 P→L1 围栏同模式）
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID6);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID7);
         }
 
         AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
@@ -849,8 +857,10 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
         if constexpr (RESCALE_ON_CUBE) {
-            // diag 中转缓冲围栏收尾（与 Init VEC 的 EVENT_ID5 预置成对）
+            // diag 中转缓冲 3 份围栏收尾（与 Init VEC 的 EVENT_ID5~7 预置成对）
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID5);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID6);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID7);
         }
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);

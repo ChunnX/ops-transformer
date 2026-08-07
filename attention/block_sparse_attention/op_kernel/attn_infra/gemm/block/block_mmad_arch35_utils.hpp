@@ -89,4 +89,4 @@ uint32_t GetCurLoopCounter(uint32_t outterLoopItr, uint32_t curLoopNum, uint32_t
 }
 
 }
-#endif // GEMM_BLOCK_ARCH35_COMMON_HPP
+#endif // GEMM_BLOCK_ARCH35_UTILS_HPP

@@ -61,6 +61,7 @@ struct BlockMmadTla {
 #endif
 #if (__CCE_AICORE__ == 310)
 #include "../../../attn_infra/gemm/block/block_mmad_pv_arch35_ABf16_C_to_UB.hpp"
+#include "../../../attn_infra/gemm/block/block_mmad_pv_transposed_rescale_arch35.hpp"
 #include "../../../attn_infra/gemm/block/block_mmad_qk_arch35_ABf16_C_to_UB.hpp"
 #include "../../../attn_infra/gemm/block/block_mmad_k_qt_st_arch35.hpp"
 #endif

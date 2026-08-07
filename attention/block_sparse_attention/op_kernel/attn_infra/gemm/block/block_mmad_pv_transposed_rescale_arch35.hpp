@@ -285,6 +285,9 @@ public:
         auto l1DiagTensorTlaBlk1 = tla::MakeTensor(
             l1DiagTensor[l1DiagBufId][GO_Q_PER_SUBCORE * GO_Q_PER_SUBCORE], l1DiagLayoutTla, Arch::PositionL1{});
 
+        // PV^T 与 RE 共用的 L0 分块数：M=D、N=qS、K=kvS（RE 的 GO 沿 M 方向同 D 切分）
+        uint32_t mL0LoopNum = CeilDiv(embed, L0_TILE_M);
+        uint32_t nL0LoopNum = CeilDiv(rowNum, L0_TILE_N);
         uint32_t kL0LoopNum = CeilDiv(curBaseTileSize, L0_TILE_K);
         uint32_t l0CBufId = gatheredKvSTileIdx % L0_STAGES;
         uint32_t l0CEventId = l0CBufId + 2;
@@ -292,61 +295,72 @@ public:
         auto l0CLayoutTla = tla::MakeLayoutL0C(embed, rowNum);
         auto l0CTensorTla = tla::MakeTensor(l0CTensor[l0CBufId], l0CLayoutTla, Arch::PositionL0C{});
 
-        // PV^T：C [D, qS] = (V)^T [D, kvS] * (P)^T [kvS, qS]，K=kvS 分块（全量，无子核分摊）
-        for (uint32_t kL0Itr = 0; kL0Itr < kL0LoopNum; kL0Itr++) {
-            uint32_t l0TileKAct = (kL0Itr == kL0LoopNum - 1) ?
-                (curBaseTileSize - kL0Itr * L0_TILE_K) : L0_TILE_K;
-            uint32_t l0ALoopCounter = prefixSumL0AStages + GetCurLoopCounter(0, kL0LoopNum, kL0Itr);
-            uint32_t l0BLoopCounter = prefixSumL0BStages + GetCurLoopCounter(0, kL0LoopNum, kL0Itr);
-            uint32_t l0ABufId = l0ALoopCounter % L0_STAGES;
-            uint32_t l0BBufId = l0BLoopCounter % L0_STAGES;
-            uint32_t l0AEventId = l0ABufId;
-            uint32_t l0BEventId = l0BBufId + 2;
+        // PV^T：C [D, qS] = (V)^T [D, kvS] * (P)^T [kvS, qS]，M=D、N=qS、K=kvS 三重 L0 分块（全量，无子核分摊）
+        for (uint32_t mL0Itr = 0; mL0Itr < mL0LoopNum; mL0Itr++) {
+            uint32_t l0TileMAct = (mL0Itr == mL0LoopNum - 1) ? (embed - mL0Itr * L0_TILE_M) : L0_TILE_M;
+            for (uint32_t nL0Itr = 0; nL0Itr < nL0LoopNum; nL0Itr++) {
+                uint32_t l0TileNAct = (nL0Itr == nL0LoopNum - 1) ? (rowNum - nL0Itr * L0_TILE_N) : L0_TILE_N;
+                // l0C 同一 buffer 内子块（bias 保留给 RE 累加，不按 chunk 换 buffer）
+                auto l0CTensorTlaTile = GetTile(l0CTensorTla,
+                    tla::MakeCoord(mL0Itr * L0_TILE_M, nL0Itr * L0_TILE_N), tla::MakeShape(l0TileMAct, l0TileNAct));
+                for (uint32_t kL0Itr = 0; kL0Itr < kL0LoopNum; kL0Itr++) {
+                    uint32_t l0TileKAct = (kL0Itr == kL0LoopNum - 1) ?
+                        (curBaseTileSize - kL0Itr * L0_TILE_K) : L0_TILE_K;
+                    uint32_t l0ALoopCounter = prefixSumL0AStages + GetCurLoopCounter(mL0Itr, kL0LoopNum, kL0Itr);
+                    uint32_t l0BLoopCounter = prefixSumL0BStages + GetCurLoopCounter(nL0Itr, kL0LoopNum, kL0Itr);
+                    uint32_t l0ABufId = l0ALoopCounter % L0_STAGES;
+                    uint32_t l0BBufId = l0BLoopCounter % L0_STAGES;
+                    uint32_t l0AEventId = l0ABufId;
+                    uint32_t l0BEventId = l0BBufId + 2;
 
-            // A 块 [D, kvS块]：ColumnMajor [D,kvS] 的 K 方向分块
-            auto l1ATensorTlaTile = GetTile(l1ATensorTla,
-                tla::MakeCoord(0, kL0Itr * L0_TILE_K), tla::MakeShape(embed, l0TileKAct));
-            auto l0ALayoutTla = tla::MakeLayout<ElementA, LayoutTagL0A>(embed, l0TileKAct);
-            auto l0ATensorTla = tla::MakeTensor(l0ATensor[l0ABufId], l0ALayoutTla, Arch::PositionL0A{});
+                    // A 块 = (V)^T [D, kvS] 的 [D 块, kvS 块]：ColumnMajor 视图的 M/K 方向分块
+                    auto l1ATensorTlaTile = GetTile(l1ATensorTla,
+                        tla::MakeCoord(mL0Itr * L0_TILE_M, kL0Itr * L0_TILE_K), tla::MakeShape(l0TileMAct, l0TileKAct));
+                    auto l0ALayoutTla = tla::MakeLayout<ElementA, LayoutTagL0A>(l0TileMAct, l0TileKAct);
+                    auto l0ATensorTla = tla::MakeTensor(l0ATensor[l0ABufId], l0ALayoutTla, Arch::PositionL0A{});
 
-            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
-            copyL1ToL0A(l0ATensorTla, l1ATensorTlaTile);
-            AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
-            if (kL0Itr == kL0LoopNum - 1) {
-                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1VEventId);
+                    AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
+                    copyL1ToL0A(l0ATensorTla, l1ATensorTlaTile);
+                    AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
+                    if ((mL0Itr == mL0LoopNum - 1) && (nL0Itr == nL0LoopNum - 1) && (kL0Itr == kL0LoopNum - 1)) {
+                        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1VEventId);
+                    }
+
+                    // B 块 = (P)^T [kvS, qS] 的 [kvS 块, qS 块]：zN 视图的 K/N 方向分块
+                    auto l1BTensorTlaTile = GetTile(l1BTensorTla,
+                        tla::MakeCoord(kL0Itr * L0_TILE_K, nL0Itr * L0_TILE_N), tla::MakeShape(l0TileKAct, l0TileNAct));
+                    auto l0BLayoutTla = tla::MakeLayout<ElementB, LayoutTagL0B>(l0TileKAct, l0TileNAct);
+                    auto l0BTensorTla = tla::MakeTensor(l0BTensor[l0BBufId], l0BLayoutTla, Arch::PositionL0B{});
+
+                    AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
+                    copyL1ToL0B(l0BTensorTla, l1BTensorTlaTile);
+                    AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
+                    // reverse crossCoreSync for P：最后一次 copyL1ToL0B 已消费 L1 P 缓冲，VEC 才能覆写
+                    // （与旧 PV 的 "L1 P buffer free" 方向对齐；softmax epilogue 在 P→L1 DataCopy 前
+                    // wait 同一 flag，缺此 set 会死锁）
+                    if ((mL0Itr == mL0LoopNum - 1) && (nL0Itr == nL0LoopNum - 1) && (kL0Itr == kL0LoopNum - 1)) {
+                        SetCrossCoreSync<4, PIPE_MTE1>(smToMm2Flag);
+                    }
+
+                    // M 侧：等 MTE1 数据就绪（MTE1_M）再 mmad——与旧 PV/QK 惯例一致
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
+                    if ((mL0Itr == 0) && (nL0Itr == 0) && (kL0Itr == 0)) {
+                        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
+                    }
+                    tileMmad(
+                        l0CTensorTlaTile,
+                        l0ATensorTla,
+                        l0BTensorTla,
+                        RoundUp(l0TileMAct, 16),
+                        l0TileNAct,
+                        l0TileKAct,
+                        (kL0Itr == 0));
+                    AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
+                    AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
+                }
             }
-
-            // B 块 [kvS块, qS]：zN [kvS,qS] 的 K 行 + 全 N 列
-            auto l1BTensorTlaTile = GetTile(l1BTensorTla,
-                tla::MakeCoord(kL0Itr * L0_TILE_K, 0),
-                tla::MakeShape(l0TileKAct, rowNum));
-            auto l0BLayoutTla = tla::MakeLayout<ElementB, LayoutTagL0B>(l0TileKAct, rowNum);
-            auto l0BTensorTla = tla::MakeTensor(l0BTensor[l0BBufId], l0BLayoutTla, Arch::PositionL0B{});
-
-            AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
-            copyL1ToL0B(l0BTensorTla, l1BTensorTlaTile);
-            AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
-
-            // M 侧：等 MTE1 数据就绪（MTE1_M）再 mmad——与旧 PV/QK 惯例一致
-            AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
-            if (kL0Itr == 0) {
-                AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
-            }
-            tileMmad(
-                l0CTensorTla,
-                l0ATensorTla,
-                l0BTensorTla,
-                embed,
-                rowNum,
-                l0TileKAct,
-                (kL0Itr == 0));
-            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
-            AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
         }
-        // reverse crossCoreSync for P：最后一次 copyL1ToL0B 已消费 L1 P 缓冲，VEC 才能覆写（与旧 PV 的
-        // "L1 P buffer free" 方向对齐；softmax epilogue 在 P→L1 DataCopy 前 wait 同一 flag，缺此 set 会死锁）
-        SetCrossCoreSync<4, PIPE_MTE1>(smToMm2Flag);
 
         // rescale：C 按 16 列块拼接累加（8 次 [D,16]×[16,16] 小 mmad，K=16，全量覆盖 qS）
         // diag 双子核块各 [64,64] fp32 = 4×8 个 16×8 fractal，非零仅对角斜带（fractal 行 fr 的列 2fr/2fr+1）
@@ -364,61 +378,69 @@ public:
             // K 尾块同惯例；k 对齐填充读的 B 行在 C 的列区内为 0——对角矩阵保证填充贡献恒为 0，无污染）
             uint32_t blockNum = CeilDiv(rowNum, 16);   // 8
             for (uint32_t fr = 0; fr < blockNum; fr++) {
-                uint32_t nAct = min(16, rowNum - fr * 16);
-                uint32_t l0ALoopCounter = prefixSumL0AStages + kL0LoopNum + fr;
-                uint32_t l0BLoopCounter = prefixSumL0BStages + kL0LoopNum + fr;
-                uint32_t l0ABufId = l0ALoopCounter % L0_STAGES;
-                uint32_t l0BBufId = l0BLoopCounter % L0_STAGES;
-                uint32_t l0AEventId = l0ABufId;
-                uint32_t l0BEventId = l0BBufId + 2;
+                uint32_t nAct = (fr == blockNum - 1) ? (rowNum - fr * 16) : 16;
+                // GO 沿 M 方向（D）按 L0_TILE_M 切分，与 PV^T 的 mL0 同结构（当前 D=128 退化为单层）
+                for (uint32_t mL0Itr = 0; mL0Itr < mL0LoopNum; mL0Itr++) {
+                    uint32_t l0TileMAct = (mL0Itr == mL0LoopNum - 1) ? (embed - mL0Itr * L0_TILE_M) : L0_TILE_M;
+                    // RE 的 stage 接在 PV^T 之后：A 每 (fr, mL0) 一次（PV^T A 总 = mL0×kL0）、B 每 fr 一次（PV^T B 总 = nL0×kL0）
+                    uint32_t l0ALoopCounter = prefixSumL0AStages +
+                        mL0LoopNum * kL0LoopNum + fr * mL0LoopNum + mL0Itr;
+                    uint32_t l0BLoopCounter = prefixSumL0BStages + nL0LoopNum * kL0LoopNum + fr;
+                    uint32_t l0ABufId = l0ALoopCounter % L0_STAGES;
+                    uint32_t l0BBufId = l0BLoopCounter % L0_STAGES;
+                    uint32_t l0AEventId = l0ABufId;
+                    uint32_t l0BEventId = l0BBufId + 2;
 
-                // A 块 = (GO_prev)^T 的 [D, 16] 列块：zN -> L0A zN 恒等
-                auto l1GoTensorTlaTile = GetTile(l1GoTensorTla,
-                    tla::MakeCoord(0, fr * 16), tla::MakeShape(embed, 16));
-                auto l0ALayoutTla = tla::MakeLayout<float, LayoutTagL0A>(embed, 16);
-                auto l0ATensorTla = tla::MakeTensor(l0ATensor[l0ABufId], l0ALayoutTla, Arch::PositionL0A{});
-                AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
-                copyL1ToL0A(l0ATensorTla, l1GoTensorTlaTile);
-                AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
+                    // A 块 = (GO_prev)^T 的 [D 块, 尾块 nAct] 列块：zN -> L0A zN 恒等（尾块时 L0A 只装有效列）
+                    auto l1GoTensorTlaTile = GetTile(l1GoTensorTla,
+                        tla::MakeCoord(mL0Itr * L0_TILE_M, fr * 16), tla::MakeShape(l0TileMAct, nAct));
+                    auto l0ALayoutTla = tla::MakeLayout<float, LayoutTagL0A>(l0TileMAct, nAct);
+                    auto l0ATensorTla = tla::MakeTensor(l0ATensor[l0ABufId], l0ALayoutTla, Arch::PositionL0A{});
+                    AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
+                    copyL1ToL0A(l0ATensorTla, l1GoTensorTlaTile);
+                    AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
 
-                // B 块 = diag 的 [16, 16] 对角块：fr/4 选双子核块，块内偏移 (fr%4)×16（对角块 (fr,fr)）
-                uint32_t frInBlk = fr % 4;
-                auto l1DiagTensorTla = (fr < 4) ? l1DiagTensorTlaBlk0 : l1DiagTensorTlaBlk1;
-                auto l1DiagTensorTlaTile = GetTile(l1DiagTensorTla,
-                    tla::MakeCoord(frInBlk * 16, frInBlk * 16), tla::MakeShape(16, 16));
-                auto l0BLayoutTla = tla::MakeLayout<float, LayoutTagL0B>(16, 16);
-                auto l0BTensorTla = tla::MakeTensor(l0BTensor[l0BBufId], l0BLayoutTla, Arch::PositionL0B{});
-                AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
-                copyL1ToL0B(l0BTensorTla, l1DiagTensorTlaTile);
-                AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
+                    // B 块 = diag 的 [16, 16] 对角块：fr/4 选双子核块，块内偏移 (fr%4)×16（对角块 (fr,fr)）
+                    // diag 粒度固定 16（RE 对角块语义，非 L0_TILE），不随 mL0 循环切分
+                    uint32_t frInBlk = fr % 4;
+                    auto l1DiagTensorTla = (fr < 4) ? l1DiagTensorTlaBlk0 : l1DiagTensorTlaBlk1;
+                    auto l1DiagTensorTlaTile = GetTile(l1DiagTensorTla,
+                        tla::MakeCoord(frInBlk * 16, frInBlk * 16), tla::MakeShape(16, 16));
+                    auto l0BLayoutTla = tla::MakeLayout<float, LayoutTagL0B>(16, 16);
+                    auto l0BTensorTla = tla::MakeTensor(l0BTensor[l0BBufId], l0BLayoutTla, Arch::PositionL0B{});
+                    AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
+                    copyL1ToL0B(l0BTensorTla, l1DiagTensorTlaTile);
+                    AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
 
-                // mmad：C[:, 16fr:16fr+nAct] += A [D,16] × B [16,16]，K=nAct，累加到 PV^T 的 bias
-                // A/B 块固定 [16] 取（物理够），k=nAct 只算有效部分
-                // M 侧：等 MTE1 数据就绪（MTE1_M）再 mmad——与旧 PV/QK 惯例一致
-                AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
-                auto l0CTensorTlaTileFr = GetTile(l0CTensorTla,
-                    tla::MakeCoord(0, fr * 16), tla::MakeShape(embed, nAct));
-                tileMmad(
-                    l0CTensorTlaTileFr,
-                    l0ATensorTla,
-                    l0BTensorTla,
-                    embed,
-                    nAct,
-                    nAct,
-                    false);
-                AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
-                AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
-                // diag 消费完成（softmax 覆写同 buffer 前 wait）：最后一块 mmad 后 set（读已完成，单实例单发）
-                if (fr == blockNum - 1) {
-                    // 同一 flag set 回 consumed：VEC 下一轮覆写同 buffer 前 wait
-                    SetCrossCoreSync<4, PIPE_MTE1>(diagFlag);
+                    // mmad：C[D 块, 16fr:16fr+nAct] += A [D 块,nAct] × B [16,16]，K=nAct，累加到 PV^T 的 bias
+                    // A 块按 nAct 取（尾块 L0A 少装）；B=diag 块固定 [16,16]（物理 16×16，mmad K=nAct 截断有效部分）
+                    // M 侧：等 MTE1 数据就绪（MTE1_M）再 mmad——与旧 PV/QK 惯例一致
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
+                    auto l0CTensorTlaTileFr = GetTile(l0CTensorTla,
+                        tla::MakeCoord(mL0Itr * L0_TILE_M, fr * 16), tla::MakeShape(l0TileMAct, nAct));
+                    tileMmad(
+                        l0CTensorTlaTileFr,
+                        l0ATensorTla,
+                        l0BTensorTla,
+                        RoundUp(l0TileMAct, 16),
+                        nAct,
+                        nAct,
+                        false);
+                    AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
+                    AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
+                    // diag 消费完成（softmax 覆写同 buffer 前 wait）：最后一块 mmad 后 set（读已完成，单实例单发）
+                    if ((fr == blockNum - 1) && (mL0Itr == mL0LoopNum - 1)) {
+                        // 同一 flag set 回 consumed：VEC 下一轮覆写同 buffer 前 wait
+                        SetCrossCoreSync<4, PIPE_MTE1>(diagFlag);
+                    }
                 }
             }
         }
 
         // fixpipe
-        // 注：FIX_M 的 L0C 释放等待已在 mmad 循环（kL0Itr==0）执行，此处不重复 wait（双 wait 会消费两个 token 而死锁）
+        // 注：FIX_M 的 L0C 释放等待已在 mmad 循环（首个 chunk (mL0Itr==0 && nL0Itr==0 && kL0Itr==0)）执行，
+        // 此处不重复 wait（双 wait 会消费两个 token 而死锁）
         AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
         AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
         if (isLastKvSTile) {
@@ -431,11 +453,13 @@ public:
             WaitCrossCoreSync<4, PIPE_FIX>(mm2ToReFlag);
             // 单目标（dualDstCtl=0）显式两次调用（Sub0/Sub1，与现有 MM1/PV 的 FixPipe 模式一致）：
             // 各搬 [D, qS/2] 半区到对应 AIV 的 UB（subBlockId 0/1 路由），双目标模式不支持随路量化
-            uint32_t qHalf = rowNum / 2;
+            // 半区固定 GO_Q_PER_SUBCORE(64)（与 kernel 的 go UB TLA [embed_, 64] 一致）：FixPipe nSize 16
+            // 倍数对齐，尾块实际列 < 64 时多搬的部分为 L0C dummy / go 缓冲固定分配区，无害
+            uint32_t qHalf = GO_Q_PER_SUBCORE;
             auto l0CTensorTlaTileSub0 = GetTile(l0CTensorTla,
                 tla::MakeCoord(0, 0), tla::MakeShape(embed, qHalf));
             auto l0CTensorTlaTileSub1 = GetTile(l0CTensorTla,
-                tla::MakeCoord(0, qHalf), tla::MakeShape(embed, rowNum - qHalf));
+                tla::MakeCoord(0, qHalf), tla::MakeShape(embed, qHalf));
             CopyL0CToDst copyL0CToDst;
             copyL0CToDst(ubCTensor, l0CTensorTlaTileSub0, deqScalar, 0);
             copyL0CToDst(ubCTensor, l0CTensorTlaTileSub1, deqScalar, 1);
