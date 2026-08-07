@@ -36,6 +36,7 @@ if EXEC_MODE not in ("eager", "graph"):
         f"Unsupported STEM_INDEXER_MODE: {EXEC_MODE!r}. "
         "Expected 'eager' or 'graph'."
     )
+_IS_GRAPH_MODE = EXEC_MODE == "graph"
 
 # 支持通过环境变量 STEM_INDEXER_CASE_ID 指定只跑特定 case_id（逗号分隔多个）
 # 例: STEM_INDEXER_CASE_ID=SI_WB_002 python -m pytest test_stem_indexer_batch.py
@@ -115,12 +116,15 @@ def load_case(filepath):
 @pytest.mark.parametrize("testcase_file", TESTCASE_FILES)
 def test_stem_indexer_batch(testcase_file):
     case = load_case(testcase_file)
+
     if case["testcase_name"] == "invalid_sparse_indices_shape":
         pytest.skip(
             "Torch custom op API does not expose output tensor shape injection."
         )
 
     if case["expected_result"] == "FAIL":
+        if _IS_GRAPH_MODE:
+            pytest.skip("Graph mode does not support FAIL test cases.")
         try:
             with pytest.raises(Exception):
                 stem_indexer_pt_loadprocess.stem_indexer_process(
