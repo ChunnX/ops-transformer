@@ -48,21 +48,21 @@ ge::graphStatus CommonChecker::CheckSingleParaLayout(const FaTilingInfo &faInfo)
     if (std::find(supportedQLayouts.begin(), supportedQLayouts.end(), faInfo.qLayout) ==
         supportedQLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_q",
-            LayoutToSerialString(faInfo.qLayout).c_str(), "The value of layout_q must be in BNSD/BSND/TND");
+            FaLayoutToSerialString(faInfo.qLayout).c_str(), "The value of layout_q must be in BNSD/BSND/TND");
         return ge::GRAPH_FAILED;
     }
 
     OP_CHECK_IF(std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) ==
                     supportedKvLayouts.end(),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    faInfo.opName, "layout_kv", LayoutToSerialString(faInfo.kvLayout).c_str(),
+                    faInfo.opName, "layout_kv", FaLayoutToSerialString(faInfo.kvLayout).c_str(),
                     "The value of layout_kv(layout of K/V) can only be BNSD/BSND/TND/PA_BBND/PA_BNBD/PA_NZ"),
                 return ge::GRAPH_FAILED);
 
     if (std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) ==
         supportedOutLayouts.end()) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_out",
-            LayoutToSerialString(faInfo.outLayout).c_str(), "The value of layout_out must be in BNSD/BSND/TND");
+            FaLayoutToSerialString(faInfo.outLayout).c_str(), "The value of layout_out must be in BNSD/BSND/TND");
         return ge::GRAPH_FAILED;
     }
 
@@ -278,22 +278,22 @@ ge::graphStatus CommonChecker::CheckMultiParaLayout(const FaTilingInfo &faInfo)
 {
     auto it = LAYOUT_CONSTRAINT_TABLE.find(faInfo.qLayout);
     OP_CHECK_IF(it == LAYOUT_CONSTRAINT_TABLE.end(),
-                OP_LOGE(faInfo.opName, "layout_q %s is not supported", LayoutToSerialString(faInfo.qLayout).c_str()),
+                OP_LOGE(faInfo.opName, "layout_q %s is not supported", FaLayoutToSerialString(faInfo.qLayout).c_str()),
                 return ge::GRAPH_FAILED);
 
     const auto &config = it->second;
-    const std::string qLayoutStr = LayoutToSerialString(faInfo.qLayout);
+    const std::string qLayoutStr = FaLayoutToSerialString(faInfo.qLayout);
 
     OP_CHECK_IF(std::find(config.supportedKvLayouts.begin(), config.supportedKvLayouts.end(), faInfo.kvLayout) ==
                     config.supportedKvLayouts.end(),
                 OP_LOGE(faInfo.opName, "When layout_q is %s, layout_kv must match constraint, but got %s",
-                        qLayoutStr.c_str(), LayoutToSerialString(faInfo.kvLayout).c_str()),
+                        qLayoutStr.c_str(), FaLayoutToSerialString(faInfo.kvLayout).c_str()),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(std::find(config.supportedOutLayouts.begin(), config.supportedOutLayouts.end(), faInfo.outLayout) ==
                     config.supportedOutLayouts.end(),
                 OP_LOGE(faInfo.opName, "When layout_q is %s, layout_out must match constraint, but got %s",
-                        qLayoutStr.c_str(), LayoutToSerialString(faInfo.outLayout).c_str()),
+                        qLayoutStr.c_str(), FaLayoutToSerialString(faInfo.outLayout).c_str()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -390,14 +390,14 @@ ge::graphStatus CommonChecker::CheckKVShape(const FaTilingInfo &faInfo) const
             return CheckKVShapeForPageAttention(faInfo);
         }
         std::string reason = "block_table cannot be empty when layout_kv is " +
-            LayoutToSerialString(faInfo.kvLayout);
+            FaLayoutToSerialString(faInfo.kvLayout);
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(faInfo.opName, "block_table", reason.c_str());
         return ge::GRAPH_FAILED;
     }
 
-    std::string reason = "layout_kv: " + LayoutToSerialString(faInfo.kvLayout) + " is not supported";
+    std::string reason = "layout_kv: " + FaLayoutToSerialString(faInfo.kvLayout) + " is not supported";
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(faInfo.opName, "layout_kv",
-        LayoutToSerialString(faInfo.kvLayout).c_str(), reason.c_str());
+        FaLayoutToSerialString(faInfo.kvLayout).c_str(), reason.c_str());
     return ge::GRAPH_FAILED;
 }
 

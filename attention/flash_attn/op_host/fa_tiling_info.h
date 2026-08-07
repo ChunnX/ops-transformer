@@ -116,6 +116,16 @@ using FaTilingShapeCompareParam = FiaTilingShapeCompareParam;
 using FaTilingShape = FiaTilingShape;
 using FaTilingShapeCompare = FiaTilingShapeCompare;
 
+inline std::string FaLayoutToSerialString(FaLayout layout)
+{
+    switch (layout) {
+        case FaLayout::BnBsND: return "PA_BBND";
+        case FaLayout::BnNBsD: return "PA_BNBD";
+        case FaLayout::NZ:     return "PA_NZ";
+        default:               return LayoutToSerialString(layout);
+    }
+}
+
 const std::map<std::string, FaLayout> layoutMap = {{"BSND", FaLayout::BSND},
                                                    {"BNSD", FaLayout::BNSD},
                                                    {"TND", FaLayout::TND},

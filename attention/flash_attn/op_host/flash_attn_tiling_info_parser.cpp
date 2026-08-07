@@ -100,7 +100,7 @@ ge::graphStatus FaInfoParser::GetCuSeqLenQSize(int64_t &size)
 {
     if (opParamInfo_.cuSeqlensQ.tensor == nullptr) {
         OP_LOGE(opName_, "when %s's layout is %s, %s must be provided.", QUERY_NAME.c_str(),
-                LayoutToSerialString(layoutQ_).c_str(), CU_SEQLENS_Q_NAME.c_str());
+                FaLayoutToSerialString(layoutQ_).c_str(), CU_SEQLENS_Q_NAME.c_str());
         return ge::GRAPH_FAILED;
     }
     int64_t shapeSize = opParamInfo_.cuSeqlensQ.tensor->GetShapeSize();
