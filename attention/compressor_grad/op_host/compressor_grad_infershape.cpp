@@ -20,7 +20,7 @@ namespace ops {
     constexpr uint32_t TOKEN_X_INPUT_INDEX = 0;
     constexpr uint32_t WEIGHT_KV_INPUT_INDEX = 1;
     constexpr uint32_t WEIGHT_WGATE_INPUT_INDEX = 2;
-    constexpr uint32_t D_CMP_KV_INPUT_INDEX = 3;
+    constexpr uint32_t D_CMP_KV_INPUT_INDEX = 3; 
     constexpr uint32_t SOFTMAX_SCORE_INPUT_INDEX = 4;
     constexpr uint32_t KV_INPUT_INDEX = 5;
 

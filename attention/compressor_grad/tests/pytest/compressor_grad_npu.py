@@ -31,6 +31,36 @@ except ImportError:
 from cann_ops_transformer.ops.compressor import _compressor_forward
 
 
+def _valid_block_mask(cmp_kv, cu_seqlens, seqused, start_pos, cmp_ratio, seq_size=None):
+    """有效压缩块 mask（与 totalValid 计算一致；padding 无效块置 False）。
+
+    返回与 cmp_kv 同形状的 bool 张量：BSH (B, blocks, D) 每 batch 前 vb 块有效；
+    TH (rows, D) 前 totalValid 行有效（块索引全局连续）。
+    """
+    d3 = cmp_kv.dim() == 3
+    B = cmp_kv.shape[0] if d3 else (int(cu_seqlens.shape[0] - 1) if cu_seqlens is not None else 0)
+    valid = torch.zeros_like(cmp_kv, dtype=torch.bool)
+    if d3:  # BSH: (B, blocks, D)
+        for i in range(B):
+            sp = int(start_pos[i]) if start_pos is not None else 0
+            sq = int(seqused[i]) if seqused is not None else seq_size
+            cmp_limit = (sp + sq) // cmp_ratio * cmp_ratio
+            vb = (cmp_limit - sp + cmp_ratio - 1) // cmp_ratio if cmp_limit > sp else 0
+            valid[i, :vb, :] = True
+    else:  # TH: (rows, D)
+        rows = cmp_kv.shape[0]
+        total = 0
+        for i in range(B):
+            sp = int(start_pos[i]) if start_pos is not None else 0
+            sq = int(seqused[i]) if seqused is not None else \
+                 (int(cu_seqlens[i + 1] - cu_seqlens[i]) if cu_seqlens is not None else 0)
+            cmp_limit = (sp + sq) // cmp_ratio * cmp_ratio
+            if cmp_limit > sp:
+                total += (cmp_limit - sp + cmp_ratio - 1) // cmp_ratio
+        valid[:min(total, rows), :] = True
+    return valid
+
+
 class NPUBackend:
     """compressor_grad NPU 后端 — 通过 autograd 自动调用反向算子。
 
@@ -132,13 +162,20 @@ class NPUBackend:
             state_block_table=block_table,
             cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos,
             cmp_ratio=cmp_ratio, coff=coff, cache_mode=cache_mode,
-            grad_enabled=False
+            grad_enabled=True
         )
+        # backward 会释放 autograd 保存的中间量（sm/kv）→ 提前 clone 脱离图
+        softmax_score_saved = softmax_score.detach().clone()
+        kv_saved = kv.detach().clone()
         torch.npu.synchronize()
 
         # 用上游梯度 d_cpm_kv 构造 loss → backward 自动调用 compressor_grad
-        loss = (cmp_kv * d_cpm_kv).sum()
-        loss.backward()
+        # ⚠️ 只对有效压缩块计算：padding 无效块在 cmp_kv 中未写（可能垃圾/NaN），
+        #    必须 mask 掉，否则其值污染 loss 与梯度（参考正向 cmp_mask 语义）
+        loss = (cmp_kv * d_cpm_kv * _valid_block_mask(cmp_kv, cu_seqlens, seqused,
+                                                      start_pos, cmp_ratio,
+                                                      seq_size=x.shape[1] if x.dim() == 3 else None)).sum()
+        loss.backward(retain_graph=True)
         torch.npu.synchronize()
 
         d_x = x.grad
@@ -161,6 +198,6 @@ class NPUBackend:
             "d_wgate": d_wgate,
             "d_ape": d_ape,
             "cmp_kv": cmp_kv.detach(),
-            "softmax_score": softmax_score.detach(),
-            "kv": kv.detach(),
+            "softmax_score": softmax_score_saved,
+            "kv": kv_saved,
         }
