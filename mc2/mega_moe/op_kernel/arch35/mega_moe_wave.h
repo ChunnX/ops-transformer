@@ -238,6 +238,8 @@ private:
     uint32_t gmm1TilesPerMGroup_ = 1;
     // 每个计算 Wave 固定消费的专家内 256-row 分组数。
     uint32_t mGroupsPerWave_ = 1;
+    // dispatch 合批预算：一个 pass 最多合入的专家行数（= 一个计算 Wave 的行数 × 可调倍数）。
+    uint32_t dispatchWaveRowBudget_ = 0;
     int64_t hiddenDim_ = 0;
     uint64_t maxOutputSize_ = 0;
     uint16_t gmm1PingPongIdx_ = 0;
@@ -342,6 +344,8 @@ private:
     LocalTensor<bfloat16_t> topKWeightsBf16Tensor_; // Unpermute bf16 weight 搬运中转
 
     static constexpr uint32_t GMM1_TILE_M = MegaMoeImpl::L1_TILE_M_256;
+    // dispatch 合批预算倍数：预算 = mGroupsPerWave_ × GMM1_TILE_M × 本倍数，可整倍数放大合并窗口。
+    static constexpr uint32_t DISPATCH_WAVE_BUDGET_MULTIPLE = 1U;
     // 保持两种模式相近的物理 GMM1 深度：非交织模式每核至少两个 gate/up 成对任务，
     // 交织模式每核至少四个独立 N-tile 任务。
     static constexpr uint32_t GMM1_MIN_TILE_TASKS_PER_CORE = GMM1_INTERLEAVED ? 4U : 2U;
@@ -406,6 +410,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Init(
     uint32_t gmm2TilesPerMGroup = Ops::Base::CeilDiv(k_, MegaMoeImpl::L1_TILE_N);
     mGroupsPerWave_ = MegaMoeImpl::GetMGroupsPerWave(
         blockNum_, gmm1TilesPerMGroup_, gmm2TilesPerMGroup, GMM1_MIN_TILE_TASKS_PER_CORE);
+    // dispatch 合批预算随 GMM1 计算 Wave 深度走：N 越小每个 M 分组产生的 N-tile 任务越少，
+    // mGroupsPerWave_ 越大，一个 pass 可合入的行数越多，避免小专家 pass 过碎、AIC 边界等待。
+    dispatchWaveRowBudget_ = mGroupsPerWave_ * GMM1_TILE_M * DISPATCH_WAVE_BUDGET_MULTIPLE;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext *>(context);
     rankId_ = mc2Context_->epRankId;
     for (int i = 0; i < worldSize_; i++) {
@@ -1078,11 +1085,8 @@ __aicore__ inline uint64_t MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchExp
     return expertTokenCount;
 }
 
-// dispatch token 组波预算：一个 wave 最多合入的专家行数。小专家合并成一批、大专家独占一个 wave。
-static constexpr uint32_t DISPATCH_WAVE_ROW_COUNT = 256U;
-
 // AIV1 规划当前 Wave 的终点并分核下发该 Wave 的行段。与参考实现不同，这里不再在专家首次进入时
-// 全量发送，而是按 token 组(dispatch wave)合批：小专家按 DISPATCH_WAVE_ROW_COUNT 行预算合并成
+// 全量发送，而是按 token 组(dispatch wave)合批：小专家按 dispatchWaveRowBudget_ 行预算合并成
 // 一个 wave 一次 pass；单专家行数超出预算时独占一个 wave（不切专家），避免热点专家被切成多个 pass。
 // wave 边界总在专家边界，GMM1 flag 由分核侧按 256-row 段累加。
 template <TemplateMegaMoeWaveTypeClass>
@@ -1096,7 +1100,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
             return dispatchCursor;
         }
 
-        // 按 token 组合批：wave 行预算 DISPATCH_WAVE_ROW_COUNT 内尽量合并小专家，
+        // 按 token 组合批：wave 行预算 dispatchWaveRowBudget_ 内尽量合并小专家，
         // 单专家行数超出预算时独占一个 wave（不切专家）。
         uint32_t waveBeginExpert = dispatchCursor.expertIdx;
         if (waveBeginExpert >= moeExpertPerRank_) {
@@ -1118,7 +1122,7 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::DispatchWaveAndGetEndCursor(
                     ++plannedUpToExpert;
                 }
                 uint32_t expertRowCount = static_cast<uint32_t>(GetExpertDispatchRowCount(waveEndExpert));
-                if (expertRowCount != 0U && waveRowCount + expertRowCount > DISPATCH_WAVE_ROW_COUNT) {
+                if (expertRowCount != 0U && waveRowCount + expertRowCount > dispatchWaveRowBudget_) {
                     break; // 该专家放不进当前 wave，作为下一 wave 的首个专家
                 }
                 waveRowCount += expertRowCount;
@@ -1324,7 +1328,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::CopyGMToGMPerTo
 //       按段内命中序号区间做逐 batch 的 mask 交集搬运。小专家合批后，各核行区间不再受单专家行数限制，
 //       只有整个 wave 行数不足时才会出现空闲核。
 //       GMM1 flag 按 rank 段增量更新：每搬完一个段即累加该段覆盖的 wave，让早期 wave 尽早补满。
-//       wave 边界总在专家边界：小专家按 DISPATCH_WAVE_ROW_COUNT 合批，大专家独占 wave 不切段，
+//       wave 边界总在专家边界：小专家按 dispatchWaveRowBudget_ 合批，大专家独占 wave 不切段，
 //       wave 区间为半开 [waveBeginExpert, waveEndExpert)。
 // ====================================================================================================
 template <TemplateMegaMoeWaveTypeClass>
