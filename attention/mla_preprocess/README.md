@@ -57,7 +57,7 @@
     k^R = Cache(ROPE(RmsNormQuant(x)))
     $$
 
-    ACLNN接口的`cos`和`sin`同时传入空指针时跳过Q-RoPE和K-RoPE数学运算，输出和Cache仍按原布局写入未经旋转的Q-rope和K-rope分量；自定义接口会将二者转换为shape为`[0]`的内部Tensor。二者均为非空Tensor时保持原RoPE行为，禁止仅传入一个空指针。Host侧仅将一维shape `[0]`识别为关闭RoPE，其他零元素shape不具有关闭语义。
+    ACLNN接口的`cos`和`sin`同时传入空指针时跳过Q-RoPE和K-RoPE数学运算，输出和Cache仍按原布局写入未经旋转的Q-rope和K-rope分量；二者均为非空Tensor时保持原RoPE行为，禁止仅传入一个空指针。
 
 ## 参数说明
 

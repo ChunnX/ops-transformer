@@ -10,8 +10,7 @@
 
 #include "aclnn_mla_preprocess_v2.h"
 
-#include <vector>
-
+#include "../../mla_preprocess/op_api/empty_tensor_holder.h"
 #include "opdev/op_log.h"
 
 namespace {
@@ -31,35 +30,6 @@ extern "C" aclnnStatus aclnnInnerMlaPreprocessV2GetWorkspaceSize(
 
 extern "C" aclnnStatus aclnnInnerMlaPreprocessV2(
     void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
-
-class EmptyTensorHolder {
-public:
-    EmptyTensorHolder(const aclTensor *&tensor, aclDataType dataType)
-    {
-        if (tensor == nullptr) {
-            const std::vector<int64_t> shape = {0};
-            tensor_ = aclCreateTensor(shape.data(), shape.size(), dataType, shape.data(), 0, ACL_FORMAT_ND,
-                                      shape.data(), shape.size(), static_cast<void *>(&placeholderAddr_));
-            tensor = tensor_;
-        }
-    }
-
-    ~EmptyTensorHolder()
-    {
-        if (tensor_ != nullptr) {
-            aclDestroyTensor(tensor_);
-        }
-    }
-
-    bool IsValid() const
-    {
-        return tensor_ != nullptr;
-    }
-
-private:
-    const aclTensor *tensor_ = nullptr;
-    int64_t placeholderAddr_ = 0xff;
-};
 
 }  // namespace
 
@@ -90,8 +60,8 @@ extern "C" aclnnStatus aclnnMlaPreprocessV2GetWorkspaceSize(
             return status;
         }
     }
-    EmptyTensorHolder cosHolder(cos, ropeDataType);
-    EmptyTensorHolder sinHolder(sin, ropeDataType);
+    MlaPreprocessApi::EmptyTensorHolder cosHolder(cos, ropeDataType);
+    MlaPreprocessApi::EmptyTensorHolder sinHolder(sin, ropeDataType);
     if (cosIsNull && (!cosHolder.IsValid() || !sinHolder.IsValid())) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Failed to create empty cos or sin tensor.");
         return ACLNN_ERR_INNER_NULLPTR;

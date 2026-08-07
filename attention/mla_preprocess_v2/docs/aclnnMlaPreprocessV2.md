@@ -72,7 +72,7 @@
     k^R = Cache(ROPE(RmsNormQuant(x)))
     $$
 
-    `cos`和`sin`同时传入空指针时跳过Q-RoPE和K-RoPE数学运算，$q^R$和$k^R$分别保存未经旋转的原始Q-rope和K-rope分量；接口内部会将二者转换为shape为`[0]`的Tensor。二者均为非空Tensor时保持原RoPE行为，禁止仅传入一个空指针；Host侧仅将一维shape `[0]`识别为关闭RoPE，其他零元素shape不具有关闭语义。其他计算、输出形状、`q_down_out`语义和Cache布局不变。
+    `cos`和`sin`同时传入空指针时跳过Q-RoPE和K-RoPE数学运算，$q^R$和$k^R$分别保存未经旋转的原始Q-rope和K-rope分量；二者均为非空Tensor时保持原RoPE行为，禁止仅传入一个空指针。其他计算、输出形状、`q_down_out`语义和Cache布局不变。
 
 ## 函数原型
 
