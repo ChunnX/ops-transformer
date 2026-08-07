@@ -514,22 +514,29 @@ __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::CalSendCnt(
 template <TemplateMoeEpDispatchTypeClass>
 __aicore__ inline void MoeEpDispatch<TemplateMoeEpDispatchTypeFunc>::Communication()
 {
-    SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, rankNumPerCore_); // 按卡分核
-    if (startRankId_ >= epWorldSize_) {                                            // 空闲核，直接返回
+    uint32_t copyRankStart = 0;
+    uint32_t copyRankNum = 0;
+    uint32_t channelIndex = 0;
+    uint32_t coreIndexInGroup = 0;
+    uint32_t groupSize = 1;
+    if (!GetCoreAssignment(copyRankStart, copyRankNum, channelIndex, coreIndexInGroup, groupSize)) {
         return;
     }
 
     GlobalTensor<uint64_t> numSendGMTensorU64;
-    numSendGMTensorU64.SetGlobalBuffer((__gm__ uint64_t *)(sendCntWorkspaceAddr_ + startRankId_ * WIN_ADDR_ALIGN));
+    numSendGMTensorU64.SetGlobalBuffer((__gm__ uint64_t *)(sendCntWorkspaceAddr_ + copyRankStart * WIN_ADDR_ALIGN));
     LocalTensor<uint64_t> sendCntPerRankU64 = sendCntRankBuf_.Get<uint64_t>();
-    DataCopyParams cntCopyParams = {static_cast<uint16_t>(rankNumPerCore_), 1U,
+    DataCopyParams cntCopyParams = {static_cast<uint16_t>(copyRankNum), 1U,
                                     static_cast<uint16_t>(STATE_STRIDE), 0U};
     SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
     DataCopy(sendCntPerRankU64, numSendGMTensorU64, cntCopyParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
 
-    for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; dstRankId++) {
-        uint32_t notifyStride = (dstRankId - startRankId_) * INT64_UB_STRIDE;
+    for (uint32_t dstRankId = copyRankStart; dstRankId < copyRankStart + copyRankNum; ++dstRankId) {
+        if (channelIndex != 0) {
+            continue;
+        }
+        uint32_t notifyStride = (dstRankId - copyRankStart) * INT64_UB_STRIDE;
         uint32_t srcOffset = dstRankId * moeExpertNumPerRank_;
         uint64_t notifyVal = sendCntPerRankU64.GetValue(notifyStride);
         // 计算目标窗口地址:
