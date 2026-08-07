@@ -52,3 +52,6 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+
+# local analysis docs
+attention/flash_attn/tests/D256_implementation_analysis.md
