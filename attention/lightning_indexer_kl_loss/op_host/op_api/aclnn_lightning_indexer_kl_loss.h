@@ -23,7 +23,7 @@ extern "C" {
  */
 aclnnStatus aclnnLightningIndexerKLLossGetWorkspaceSize(
     const aclTensor *targetScore, const aclTensor *indexProbs,
-    float eps, const char *weightType,
+    double eps, const char *weightType,
     const aclTensor *loss, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**

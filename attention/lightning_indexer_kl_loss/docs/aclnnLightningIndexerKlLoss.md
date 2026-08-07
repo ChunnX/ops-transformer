@@ -40,10 +40,10 @@
   \text{loss} = \sum((\log\_P - \log\_Y) \cdot \text{weight})
   $$
 
-  其中 $\varepsilon$ 为 `eps` 参数，默认值 $10^{-9}$。
+  其中 $\varepsilon$ 为 `eps` 参数$。
 
   weight 的选择由 `weight_type` 控制：
-  - `'logits'`（默认）：weight = y，即原始未归一化分数
+  - `'logits'`：weight = y，即原始未归一化分数
   - `'probs'`：weight = P，即归一化概率
 
 ## 函数原型
@@ -54,7 +54,7 @@
 aclnnStatus aclnnLightningIndexerKLLossGetWorkspaceSize(
   const aclTensor   *targetScore,
   const aclTensor   *indexProbs,
-  float             eps,
+  double             eps,
   const char        *weightType,
   const aclTensor   *loss,
   uint64_t          *workspaceSize,
@@ -122,7 +122,7 @@ aclnnStatus aclnnLightningIndexerKLLoss(
       <td>属性</td>
       <td>数值稳定常数。</td>
       <td>用于防止 log(0) 导致 NaN。</td>
-      <td>float</td>
+      <td>double</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -131,7 +131,7 @@ aclnnStatus aclnnLightningIndexerKLLoss(
       <td>weightType</td>
       <td>属性</td>
       <td>外层权重选择，'logits' 或 'probs'。</td>
-      <td>'logits'（默认）用原始 y 作为外层权重，'probs' 用归一化概率 p = y / sum(y) 作为外层权重。</td>
+      <td>'logits'用原始 target_score 作为外层权重，'probs' 用归一化概率 P = target_score / sum(target_score) 作为外层权重。</td>
       <td>string</td>
       <td>-</td>
       <td>-</td>
@@ -223,7 +223,7 @@ aclnnStatus aclnnLightningIndexerKLLoss(
 - 确定性计算：
   - aclnnLightningIndexerKLLoss默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 输入shape限制：
-  - 支持 shape 为 (B, S, K) 或 (T, K)，targetScore 最后一维 K 的取值范围为 1\~8192。
+  - 支持 shape 为 (B, S, K) 或 (T, K)，B的取值范围为1\~512，最后一维 K 的取值范围为 1\~8192。
 
 ## 调用示例
 
@@ -357,7 +357,7 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   // eps 参数
-  float eps = 1e-9;
+  double eps = 1e-9;
 
   // 3. 调用 C(A)NN 算子库 API
   uint64_t workspaceSize = 0;
