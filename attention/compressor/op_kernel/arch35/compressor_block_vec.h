@@ -937,12 +937,18 @@ CompressorBlockVector<COMP>::CopyOutMidResToOutput(const LocalTensor<T> &kvLocal
                 uint32_t curScSize = min(compressTcSize, (totalScSize - preScSize));
                 uint64_t padScIdx = bIdx * bOutputScLen + preScSize - (bStartPos / cmpRatio_);
                 uint64_t outGmOffset = padScIdx * coff_ * cmpRatio_ * constInfo_.headDim + dStartIdx;
-                DataCopyWithOutputQue(softmaxScoreOutGm_[outGmOffset], scoreLocal, curScSize * coff_ * cmpRatio_,
+                // ubOffset：跨 batch 时（while 循环多次迭代）scoreLocal/kvLocal 的内容是
+                // 按压缩块连续排布的（PadAlign 的 dstUbOffset = compressoredScCnt×cmpRatio 行），
+                // 第二次迭代必须从 scoreLocal[ubOffset] 拷贝，否则会把第一个 slice 的内容
+                // 重复输出（batch8 尾块内容串写到 batch9 块0 槽位，且末尾块丢失）。
+                // 注意：与 CopyOutVec1ResToOutput 不同（那是 reduce 后每块 1 行），
+                // 这里每块占 coff*cmpRatio 行，ubOffset 推进单位必须乘上行数。
+                DataCopyWithOutputQue(softmaxScoreOutGm_[outGmOffset], scoreLocal[ubOffset],
+                                      curScSize * coff_ * cmpRatio_, dDealSize, dDealSize, constInfo_.headDim);
+                DataCopyWithOutputQue(kvOutGm_[outGmOffset], kvLocal[ubOffset], curScSize * coff_ * cmpRatio_,
                                       dDealSize, dDealSize, constInfo_.headDim);
-                DataCopyWithOutputQue(kvOutGm_[outGmOffset], kvLocal, curScSize * coff_ * cmpRatio_, dDealSize,
-                                      dDealSize, constInfo_.headDim);
                 compressTcSize -= curScSize;
-                ubOffset += curScSize * dDealSize;
+                ubOffset += curScSize * coff_ * cmpRatio_ * dDealSize;
             }
             bIdx++;
             sIdx = 0;
@@ -1086,6 +1092,13 @@ __aicore__ inline void CompressorBlockVector<COMP>::CalcGroupInfo(const Vec1RunI
 {
     uint32_t aiCoreNum = constInfo_.usedCoreNum * 2;
     splitInfo.dBaseSize = constInfo_.headDim / min(FloorPow2(aiCoreNum), CeilPow2(CeilDivT(aiCoreNum, info.dealTcNum)));
+    // 32B(8个FP32)对齐的UB列窗口上限。dBaseSize 超过它时 CalcTilingStrategy 会走
+    // dSplitSize = dBaseSize/dLoopCount 整数除法拆分，切出的列窗口非32B对齐
+    // （DataCopy 的 blockLen/srcGap 整数除法错位 → 行间源偏移错误 → 数据错乱）。
+    // clamp 到“不超过 maxDealColNum 的最大2的幂”后，dSplitSize 恒等于 dBaseSize
+    // （2的幂，天然8元素对齐），不再进入拆分分支。
+    uint32_t maxDealColNum = BUFFER_SIZE_BYTE_32K / (cmpRatio_ * coff_ * sizeof(T));
+    splitInfo.dBaseSize = min(splitInfo.dBaseSize, FloorPow2(Trunc(maxDealColNum, BlockElementNum<T>())));
     if (constInfo_.kBaseNum > 1) {
         splitInfo.dBaseSize = max(splitInfo.dBaseSize, FP32_REPEAT_ELEMENT_NUM);
     }
