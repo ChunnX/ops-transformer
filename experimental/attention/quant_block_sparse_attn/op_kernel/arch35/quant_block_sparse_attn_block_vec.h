@@ -310,7 +310,6 @@ __aicore__ inline void QBSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(
 
     LocalTensor<float> qScaleUbTensor = qScaleInputQue.template AllocTensor<float>();
     LocalTensor<float> kScaleUbTensor = kScaleInputQue.template AllocTensor<float>();
-
     if (unlikely(runInfo.s2SparseBlk2RealSize < constInfo.kvSparseBlockSize)) {
         Duplicate<float>(kScaleUbTensor, 1, s2BaseSize);
         TEventID vDoneEvent = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
