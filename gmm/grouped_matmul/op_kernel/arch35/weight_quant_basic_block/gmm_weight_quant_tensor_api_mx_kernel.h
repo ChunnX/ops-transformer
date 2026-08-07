@@ -60,10 +60,11 @@ __aicore__ inline void GmmWeightQuantTensorApiMxKernel(
 
     GM_ADDR xAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<XType>(0, x));
     GM_ADDR yAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
+    GM_ADDR perTokenScaleAddr = reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<PerTokenScaleType>(0, perTokenScale));
 
     typename GroupedKernel::Params params{
         {{m, n, k},
-         {xAddr, perTokenScale, nullptr, yAddr,
+         {xAddr, perTokenScaleAddr, nullptr, yAddr,
           AscendC::Te::MakeShape(baseM, baseN, static_cast<int64_t>(kL1Size), static_cast<int64_t>(kL1Size)),
           AscendC::Te::MakeShape(baseM, baseN, baseK), L1_BUFFER_NUM, gmmTiling->hasBias != 0U},
          {nullptr, nullptr, kBubSize, static_cast<uint64_t>(baseN)},
