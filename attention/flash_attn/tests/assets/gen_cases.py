@@ -79,11 +79,23 @@ def normalize_params(raw):
     c.setdefault("mask_mode", 0)
     c.setdefault("win_left", -1)
     c.setdefault("win_right", -1)
+    # mask_mode=3(因果掩码)时算子不接受 win_left/win_right 有值, 强制归 -1
+    if int(c.get("mask_mode", 0)) == 3:
+        c["win_left"] = -1
+        c["win_right"] = -1
     c.setdefault("return_softmax_lse", False)
 
     for key in ("cu_seqlens_q", "cu_seqlens_kv", "seqused_q", "seqused_kv"):
         if c.get(key) == [None] or c.get(key) is None:
             c.pop(key, None)
+
+    # cu_seqlens 首值必须为 0; 若非 0 则整体平移(段长不变)
+    for key in ("cu_seqlens_q", "cu_seqlens_kv"):
+        v = c.get(key)
+        if isinstance(v, (list, tuple)) and len(v) > 0:
+            first = v[0]
+            if isinstance(first, (int, float)) and int(first) != 0:
+                c[key] = [int(x) - int(first) for x in v]
 
     if layout_q == "TND":
         cu_q = c.get("cu_seqlens_q")
