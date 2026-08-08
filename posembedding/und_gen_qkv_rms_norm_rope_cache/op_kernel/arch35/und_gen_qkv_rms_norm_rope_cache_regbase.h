@@ -17,6 +17,8 @@
  *         token，其余核处理 tailBlockFactor 个；各核独立无同步。
  *   UB  ：只切 token 维，每次处理 ubFactor 个 token。CopyIn 按 tile 批量预取，
  *         计算与写出逐 token，计算中间量走 vreg 不落 UB。
+ *         cat_indices / slot_mapping / positions 在 GM 上连续，每 tile 一次性搬进
+ *         idxBuf_（两半乒乓），标量读全部落在 UB 上，不逐 token 打 GM。
  *
  * 每个 out_t 的计算流程：
  *   1) src_t = cat_indices[out_t]；isUnd = (src_t < undLen)
@@ -57,6 +59,24 @@ constexpr static int64_t WEIGHT_IDX_GEN_K = 3;
 
 // 标量写 UB 后被向量读，需要显式 S->V 同步；这里只用一个事件号
 constexpr static event_t EVT_S_TO_V_INDEX_READY = EVENT_ID0;
+// 索引批量搬入 UB 后被标量读，需要 MTE2->S 同步；与上面不是同一对流水，事件号也分开
+constexpr static event_t EVT_MTE2_TO_S_INDEX_READY = EVENT_ID1;
+
+// idxBuf_ 的分区：一半放一个 tile 的全部索引，两半乒乓。
+// 下面三个常量与 op_host/..._tiling.h 的 IDX_REGION_NUM / IDX_PINGPONG_NUM / MAX_UB_FACTOR
+// 必须一致，host 的 residentBytes 就是按它们算的。区长取 MAX_UB_FACTOR 而不是 ubFactor：
+// 区间距成了编译期常量，host 侧 ubFactor 的求解保持线性，也不用为 32B 对齐留余量
+// （MAX_UB_FACTOR * 8 = 512 本就是 32 的整数倍，host 有 static_assert 钉着）。
+constexpr static int64_t IDX_REGION_NUM = 5;
+constexpr static int64_t IDX_PINGPONG_NUM = 2;
+// 区长直接绑到 undMask_ 的位宽：host 的 MAX_UB_FACTOR 就是这个位宽，两边同源不会各自漂
+constexpr static int64_t IDX_REGION_ELEMS = sizeof(uint64_t) * 8;
+constexpr static int64_t IDX_REGION_CAT = 0;   // cat_indices[tileStart .. +tokenNum)
+constexpr static int64_t IDX_REGION_SLOT = 1;  // slot_mapping[tileStart .. +tokenNum)
+constexpr static int64_t IDX_REGION_POS = 2;   // positions[axis, tileStart .. +tokenNum)，占 3 个区
+static_assert(IDX_REGION_POS + MROPE_AXIS_NUM == IDX_REGION_NUM, "index regions must be contiguous and exhaustive");
+static_assert(IDX_REGION_ELEMS * static_cast<int64_t>(sizeof(int64_t)) % BLOCK_ALIGN_BYTES == 0,
+              "index region stride must be 32B-aligned for DataCopyPad");
 
 /**
  * @brief UndGenQkvRmsNormRopeCache regbase 模板
@@ -89,15 +109,19 @@ public:
         // axisLut 与 token 无关，每核只建一次
         BuildMropeGatherIndex();
 
-        // 每次处理 ubFactor 个 token；尾块 token 数不足时按实际数量处理
+        // 每次处理 ubFactor 个 token；尾块 token 数不足时按实际数量处理。
+        // half 在 idxBuf_ 的两份之间轮转：本 tile 的 slot 要到 CopyOut 才读，
+        // 用另一份接下一 tile 的搬入就不必再加一道 S->MTE2 屏障
+        int64_t half = 0;
         for (int64_t tileStart = coreStart_; tileStart < coreEnd_; tileStart += ubFactor_) {
             int64_t tokenNum = coreEnd_ - tileStart;
             if (tokenNum > ubFactor_) {
                 tokenNum = ubFactor_;
             }
-            CopyIn(tileStart, tokenNum);
+            CopyIn(tileStart, tokenNum, half);
             Compute(tileStart, tokenNum);
-            CopyOut(tileStart, tokenNum);
+            CopyOut(tileStart, tokenNum, half);
+            half ^= 1;
         }
 
         wInQue_.FreeTensor(wBf16Local_);
@@ -207,9 +231,11 @@ private:
         // VF 按 undMask 算基址，直接从 wFp32Buf 取本 token 该用的那一组 gamma
         pipe_->InitBuffer(wFp32Buf_, WEIGHT_NUM * headDim_ * sizeof(float));
         pipe_->InitBuffer(gatherIdxBuf_, AlignUp(halfDim_ * sizeof(uint32_t), BLOCK_ALIGN_BYTES));
+        pipe_->InitBuffer(idxBuf_, IDX_PINGPONG_NUM * IDX_REGION_NUM * IDX_REGION_ELEMS * sizeof(int64_t));
 
         wFp32Local_ = wFp32Buf_.Get<float>();
         gatherIdxLocal_ = gatherIdxBuf_.Get<uint32_t>();
+        idxLocal_ = idxBuf_.Get<int64_t>();
     }
 
     // 4 个 gamma 一次性搬入并 Cast 成 float 常驻，按 [undQ|undK|genQ|genK] 排布。
@@ -254,10 +280,42 @@ private:
         WaitFlag<HardEvent::S_V>(EVT_S_TO_V_INDEX_READY);
     }
 
-    // 取 out_t 对应的源 token 下标；越界一律回落到 0，避免非法 GM 访问
-    __aicore__ inline int64_t GetSrcIndex(int64_t outT)
+    // idxBuf_ 内第 half 份、第 region 个区的起始元素下标
+    __aicore__ inline int64_t IdxBase(int64_t half, int64_t region)
     {
-        int64_t srcT = hasCatIndices_ ? catIndicesGm_.GetValue(outT) : outT;
+        return (half * IDX_REGION_NUM + region) * IDX_REGION_ELEMS;
+    }
+
+    __aicore__ inline void CopyIndexToUb(const LocalTensor<int64_t>& dst, const GlobalTensor<int64_t>& src,
+                                         int64_t num)
+    {
+        DataCopyExtParams params{1, static_cast<uint32_t>(num * sizeof(int64_t)), 0, 0, 0};
+        DataCopyPadExtParams<int64_t> padParams{false, 0, 0, 0};
+        DataCopyPad(dst, src, params, padParams);
+    }
+
+    // 本 tile 要用的 5 组索引一次性搬进 UB，后续标量读全部落在 UB 上。
+    // 屏障等的是整条 MTE2 队列，但循环走到这里时上一 tile 的搬运已被 Compute 的 DeQue
+    // （MTE2->V）等过，队列本就是空的，所以只付这 5 笔自己的延迟，不吃双缓冲的重叠。
+    __aicore__ inline void LoadTileIndices(int64_t tileStart, int64_t tokenNum, int64_t half)
+    {
+        if (hasCatIndices_) {
+            CopyIndexToUb(idxLocal_[IdxBase(half, IDX_REGION_CAT)], catIndicesGm_[tileStart], tokenNum);
+        }
+        CopyIndexToUb(idxLocal_[IdxBase(half, IDX_REGION_SLOT)], slotMappingGm_[tileStart], tokenNum);
+        // positions 是 [3, total]，三个轴在 GM 上隔着 totalTokens_，只能一轴一笔
+        for (int64_t axis = 0; axis < MROPE_AXIS_NUM; ++axis) {
+            CopyIndexToUb(idxLocal_[IdxBase(half, IDX_REGION_POS + axis)],
+                          positionsGm_[axis * totalTokens_ + tileStart], tokenNum);
+        }
+        SetFlag<HardEvent::MTE2_S>(EVT_MTE2_TO_S_INDEX_READY);
+        WaitFlag<HardEvent::MTE2_S>(EVT_MTE2_TO_S_INDEX_READY);
+    }
+
+    // 取 out_t 对应的源 token 下标；越界一律回落到 0，避免非法 GM 访问
+    __aicore__ inline int64_t GetSrcIndex(int64_t outT, int64_t i, int64_t half)
+    {
+        int64_t srcT = hasCatIndices_ ? idxLocal_.GetValue(IdxBase(half, IDX_REGION_CAT) + i) : outT;
         if (srcT < 0 || srcT >= totalTokens_) {
             srcT = 0;
         }
@@ -265,17 +323,19 @@ private:
     }
 
     // 逐 token 搬入：cat_indices 乱序导致各 token 的源行不连续，只能一 token 一笔；
-    // DoubleBuffer 让本批 MTE2 与上一批的向量计算重叠
-    // TODO(perf): 索引标量目前直接走 GM GetValue，每 token 5 次（cat/positions*3/slot）。
-    //             后续可批量搬入 UB，需同步扩 host 侧 UB 预算。
-    __aicore__ inline void CopyIn(int64_t tileStart, int64_t tokenNum)
+    // DoubleBuffer 让本批 MTE2 与上一批的向量计算重叠。
+    // 索引本身在 GM 上连续，先由 LoadTileIndices 一次性批量搬进 UB，
+    // 下面所有 GetValue 都是 UB 上的短延迟标量读，不再逐 token 打 GM
+    __aicore__ inline void CopyIn(int64_t tileStart, int64_t tokenNum, int64_t half)
     {
+        LoadTileIndices(tileStart, tokenNum, half);
+
         LocalTensor<T_QKV> qkvLocal = qkvInQue_.AllocTensor<T_QKV>();
         // 顺带产出本 tile 的 und/gen 位图给 VF 选 gamma 用：srcT 这里本来就要读，
         // 不必在别处再读一次 cat_indices
         undMask_ = 0;
         for (int64_t i = 0; i < tokenNum; ++i) {
-            int64_t srcT = GetSrcIndex(tileStart + i);
+            int64_t srcT = GetSrcIndex(tileStart + i, i, half);
             if (srcT < undLen_) {
                 undMask_ |= (static_cast<uint64_t>(1) << i);
                 DataCopy(qkvLocal[i * rowElems_], undQkvGm_[srcT * rowElems_], rowElems_);
@@ -288,9 +348,8 @@ private:
         // 三轴 cos_sin：每 token 按 positions[axis, out_t] 各取一行 [D]
         LocalTensor<float> cosSinLocal = cosSinInQue_.AllocTensor<float>();
         for (int64_t i = 0; i < tokenNum; ++i) {
-            int64_t outT = tileStart + i;
             for (int64_t axis = 0; axis < MROPE_AXIS_NUM; ++axis) {
-                int64_t pos = positionsGm_.GetValue(axis * totalTokens_ + outT);
+                int64_t pos = idxLocal_.GetValue(IdxBase(half, IDX_REGION_POS + axis) + i);
                 if (pos < 0 || pos >= maxPos_) { // 运行期数据，host 校验不到，这里兜底
                     pos = 0;
                 }
@@ -333,7 +392,7 @@ private:
 
     // outLocal 按 [ubFactor 个 q | ubFactor 个 k | ubFactor 个 v] 分段：
     // q 的输出下标 out_t 连续，可一笔写出；k/v 按 slot_mapping 散写，只能逐 token
-    __aicore__ inline void CopyOut(int64_t tileStart, int64_t tokenNum)
+    __aicore__ inline void CopyOut(int64_t tileStart, int64_t tokenNum, int64_t half)
     {
         LocalTensor<T_QKV> outLocal = outQue_.DeQue<T_QKV>();
 
@@ -346,7 +405,7 @@ private:
         DataCopy(qGm_[tileStart * qSegElems], outLocal[0], tokenNum * qSegElems);
 
         for (int64_t i = 0; i < tokenNum; ++i) {
-            int64_t slot = slotMappingGm_.GetValue(tileStart + i);
+            int64_t slot = idxLocal_.GetValue(IdxBase(half, IDX_REGION_SLOT) + i);
             if (slot < 0 || slot >= maxSlot_) { // 运行期数据，越界则跳过写入而不是踩内存
                 continue;
             }
@@ -369,7 +428,7 @@ private:
     // 模板参数是 queue depth（同时"已 EnQue 未 DeQue"的句柄数），不是 buffer 数。
     // 本 kernel 每轮 CopyIn -> Compute -> CopyOut 最多 1 个 outstanding EnQue，故取 1；
     // 双缓冲由 InitUbBuffers 里 InitBuffer 的 BUFFER_NUM_DB 开，两者互不影响。
-    // 将来若改成"预取下一 tile"（见 CopyIn 的 TODO），outstanding 会变 2，depth 必须同步加大
+    // 将来若改成"预取下一 tile"，outstanding 会变 2，depth 必须同步加大
     TQue<QuePosition::VECIN, 1> qkvInQue_;
     TQue<QuePosition::VECIN, 1> cosSinInQue_;
     TQue<QuePosition::VECOUT, 1> outQue_;
@@ -377,12 +436,14 @@ private:
 
     TBuf<TPosition::VECCALC> wFp32Buf_;
     TBuf<TPosition::VECCALC> gatherIdxBuf_;
+    TBuf<TPosition::VECCALC> idxBuf_;
 
     // 常驻 LocalTensor：权重来自 wInQue_（Process 开头 DeQue、结束时 Free），
     // 其余是 TBuf 的视图，Init 时取一次，整个 Process 复用
     LocalTensor<T_QKV> wBf16Local_;
     LocalTensor<float> wFp32Local_;
     LocalTensor<uint32_t> gatherIdxLocal_;
+    LocalTensor<int64_t> idxLocal_;
 
     GlobalTensor<T_QKV> undQkvGm_;
     GlobalTensor<T_QKV> genQkvGm_;
