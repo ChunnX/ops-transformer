@@ -10,16 +10,12 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-from collections import Counter
-
 import torch
 
 import stem_indexer_golden
 
 
-TOPK_SCORE_ATOL = 2.5e-5
-TOPK_SCORE_RTOL = 5e-3
-MAX_INDEX_ERROR_RATIO = 5e-3
+TOPK_BOUNDARY_RE_TOLERANCE = 1e-3
 MAX_PRINT_FAILURES = 8
 
 
@@ -31,23 +27,20 @@ def normalize_npu_result(npu_result):
     raise TypeError("StemIndexer should return (sparse_indices, sparse_seq_len).")
 
 
-def count_index_mismatches(actual_indices, expected_indices):
-    actual_counter = Counter(actual_indices)
-    expected_counter = Counter(expected_indices)
-    matched_count = sum((actual_counter & expected_counter).values())
-    return max(len(actual_indices), len(expected_indices)) - matched_count
+def calculate_relative_error(value, reference):
+    if reference == 0.0:
+        return 0.0 if value == 0.0 else float("inf")
+    return abs(value - reference) / abs(reference)
 
 
 def get_row_scores(case, inputs, b_idx, q_head_idx, q_block_idx):
-    qflat = inputs["qflat"].detach().cpu().float()
-    kflat = inputs["kflat"].detach().cpu().float()
-    vbias = inputs["vbias"].detach().cpu().float()
     g_size = case["q_heads"] // case["kv_heads"]
     kv_head_idx = q_head_idx // g_size
     score_scale = 1.0 / ((case["stem_block_size"] // case["stem_stride"]) ** 2)
-    q_vec = qflat[b_idx, q_head_idx, q_block_idx]
-    k_group = kflat[b_idx, kv_head_idx]
-    return torch.matmul(k_group, q_vec) * score_scale + vbias[b_idx, kv_head_idx]
+    q_vec = inputs["qflat"][b_idx, q_head_idx, q_block_idx].detach().cpu().float()
+    k_group = inputs["kflat"][b_idx, kv_head_idx].detach().cpu().float()
+    vbias = inputs["vbias"][b_idx, kv_head_idx].detach().cpu().float()
+    return torch.matmul(k_group, q_vec) * score_scale + vbias
 
 
 def get_s2_valid(case, b_idx, q_block_idx):
@@ -135,33 +128,38 @@ def explain_topk_mismatch(
         return None
 
     scores = get_row_scores(case, inputs, b_idx, q_head_idx, q_block_idx)
-    topk_score_type = stem_indexer_golden.get_golden_topk_score_type(case)
-    sort_scores = stem_indexer_golden.get_topk_sort_scores(scores, topk_score_type)
-    boundary_score = min(float(sort_scores[idx]) for idx in expected_dynamic)
-    tolerance = max(abs(boundary_score) * TOPK_SCORE_RTOL, TOPK_SCORE_ATOL)
-    bad_actual_indices = [
+    boundary_score = min(float(scores[idx]) for idx in expected_dynamic)
+    actual_differences = [
         {
             "idx": idx,
             "score": float(scores[idx]),
-            "sort_score": float(sort_scores[idx]),
             "boundary_score": boundary_score,
-            "golden_topk_score_type": topk_score_type,
-            "tolerance": tolerance,
+            "relative_error": calculate_relative_error(
+                float(scores[idx]), boundary_score
+            ),
         }
         for idx in only_in_actual
-        if float(sort_scores[idx]) + tolerance < boundary_score
     ]
-    bad_expected_indices = [
+    expected_differences = [
         {
             "idx": idx,
             "score": float(scores[idx]),
-            "sort_score": float(sort_scores[idx]),
             "boundary_score": boundary_score,
-            "golden_topk_score_type": topk_score_type,
-            "tolerance": tolerance,
+            "relative_error": calculate_relative_error(
+                float(scores[idx]), boundary_score
+            ),
         }
         for idx in only_in_expected
-        if float(sort_scores[idx]) > boundary_score + tolerance
+    ]
+    bad_actual_indices = [
+        item
+        for item in actual_differences
+        if item["relative_error"] > TOPK_BOUNDARY_RE_TOLERANCE
+    ]
+    bad_expected_indices = [
+        item
+        for item in expected_differences
+        if item["relative_error"] > TOPK_BOUNDARY_RE_TOLERANCE
     ]
     if bad_actual_indices or bad_expected_indices:
         return {
@@ -172,7 +170,8 @@ def explain_topk_mismatch(
             "expected": expected_prefix,
             "bad_actual_indices": bad_actual_indices[:MAX_PRINT_FAILURES],
             "bad_expected_indices": bad_expected_indices[:MAX_PRINT_FAILURES],
-            "reason": "dynamic TopK index difference is outside CPU boundary score tolerance",
+            "relative_error_tolerance": TOPK_BOUNDARY_RE_TOLERANCE,
+            "reason": "dynamic TopK index difference is outside CPU boundary relative error tolerance",
         }
     return None
 
@@ -197,14 +196,14 @@ def assert_stem_indexer_result(
     )
 
     failures = []
-    bad_index_count = 0
-    valid_index_count = 0
+    mismatched_row_count = 0
+    tolerated_row_count = 0
+    failed_row_count = 0
     padding_failures = []
     bad_padding_count = 0
     for index in torch.nonzero(expected_seq_len >= 0, as_tuple=False):
         b_idx, q_head_idx, q_block_idx = [int(item) for item in index]
         valid_len = int(expected_seq_len[b_idx, q_head_idx, q_block_idx])
-        valid_index_count += valid_len
         actual_row = actual_indices[b_idx, q_head_idx, q_block_idx]
         invalid_positions = torch.nonzero(
             actual_row[valid_len:] != -1, as_tuple=False
@@ -227,29 +226,22 @@ def assert_stem_indexer_result(
         expected_prefix = expected_indices[
             b_idx, q_head_idx, q_block_idx, :valid_len
         ].tolist()
-        if sorted(actual_prefix) != sorted(expected_prefix):
-            row_bad_index_count = count_index_mismatches(actual_prefix, expected_prefix)
-            bad_index_count += row_bad_index_count
-            if len(failures) < MAX_PRINT_FAILURES:
-                failure = explain_topk_mismatch(
-                    case,
-                    inputs,
-                    b_idx,
-                    q_head_idx,
-                    q_block_idx,
-                    actual_prefix,
-                    expected_prefix,
-                )
-                if failure is None:
-                    failure = {
-                        "b": b_idx,
-                        "q_head": q_head_idx,
-                        "q_block": q_block_idx,
-                        "actual": actual_prefix,
-                        "expected": expected_prefix,
-                        "reason": "index mismatch is within CPU boundary score tolerance",
-                    }
-                failure["bad_index_count"] = row_bad_index_count
+        if set(actual_prefix) != set(expected_prefix):
+            mismatched_row_count += 1
+            failure = explain_topk_mismatch(
+                case,
+                inputs,
+                b_idx,
+                q_head_idx,
+                q_block_idx,
+                actual_prefix,
+                expected_prefix,
+            )
+            if failure is None:
+                tolerated_row_count += 1
+            else:
+                failed_row_count += 1
+            if failure is not None and len(failures) < MAX_PRINT_FAILURES:
                 failures.append(failure)
 
     for index in torch.nonzero(expected_seq_len < 0, as_tuple=False):
@@ -274,12 +266,9 @@ def assert_stem_indexer_result(
         f"bad_padding_count={bad_padding_count}, expected padding value=-1, failures={padding_failures}"
     )
 
-    index_error_ratio = (
-        bad_index_count / valid_index_count if valid_index_count else 0.0
-    )
-    assert index_error_ratio <= MAX_INDEX_ERROR_RATIO, (
+    assert failed_row_count == 0, (
         f"{case['case_id']} sparse_indices valid prefix mismatch: "
-        f"bad_index_count={bad_index_count}, "
-        f"valid_index_count={valid_index_count}, index_error_ratio={index_error_ratio:.6g}, "
-        f"max_index_error_ratio={MAX_INDEX_ERROR_RATIO:.6g}, failures={failures}"
+        f"mismatched_row_count={mismatched_row_count}, "
+        f"tolerated_row_count={tolerated_row_count}, failed_row_count={failed_row_count}, "
+        f"relative_error_tolerance={TOPK_BOUNDARY_RE_TOLERANCE:.6g}, failures={failures}"
     )
