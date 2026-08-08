@@ -103,6 +103,9 @@ struct FFNParams {
 
 static ActiveType GetActiveType(const char *activeType)
 {
+    if (activeType == nullptr) {
+        return ActiveType::INVALID_TYPE;
+    }
     for (const ActiveMap &item : g_activeMap) {
         size_t len = strlen(item.activeName);
         bool isValidActiveType = strlen(activeType) == len;
@@ -111,7 +114,7 @@ static ActiveType GetActiveType(const char *activeType)
             continue;
         }
         for (size_t i = 0; i < len; i++) {
-            if (tolower(activeType[i]) != item.activeName[i]) {
+            if (tolower(static_cast<unsigned char>(activeType[i])) != item.activeName[i]) {
                 isValidActiveType = false;
                 break;
             }
@@ -234,17 +237,21 @@ static bool GluShapeCheck(size_t weight1NDimValue, size_t weight2kDimValue)
 static aclnnStatus CheckFmapWeightShape(const FFNParams &ffnParams)
 {
     auto xDimNum = ffnParams.x->GetViewShape().GetDimNum();
-    auto xKdimIndex = xDimNum - 1; // 1 represents the last dimension of x
-    int64_t xKDimValue = ffnParams.x->GetViewShape().GetDim(xKdimIndex);
     // x's dim should within 2 ~ 8
     CHECK_COND(xDimNum >= DIM_LIMIT_LOWER && xDimNum <= DIM_LIMIT_UPPER, ACLNN_ERR_PARAM_INVALID,
                "x dim should within 2 ~ 8, but x dim is %zu", xDimNum);
+    auto xKdimIndex = xDimNum - 1; // 1 represents the last dimension of x
+    int64_t xKDimValue = ffnParams.x->GetViewShape().GetDim(xKdimIndex);
 
     bool hasExperts = (ffnParams.expertTokens != nullptr);
     // weight dim size should be 3 when having experTokens, and be 2 when not having it
     size_t weightSize = hasExperts ? DIM_NUM_THREE : DIM_NUM_TWO;
     size_t weight1DimNum = ffnParams.weight1->GetViewShape().GetDimNum();
     size_t weight2DimNum = ffnParams.weight2->GetViewShape().GetDimNum();
+    CHECK_COND(weight1DimNum == weightSize, ACLNN_ERR_PARAM_INVALID,
+               "weight1 DimNum dim should be (3: has experts, 2: no experts), but got %zu", weight1DimNum);
+    CHECK_COND(weight2DimNum == weightSize, ACLNN_ERR_PARAM_INVALID,
+               "weight2 DimNum dim should be (3: has experts, 2: no experts), but got %zu", weight2DimNum);
     size_t kDimIdx = weightSize - 2; // 2 represents the penultimate dimension of weight
     size_t nDimIdx = weightSize - 1; // 1 represents the last dimension of weight
     int64_t weight1kDimValue = ffnParams.weight1->GetViewShape().GetDim(kDimIdx);
@@ -255,11 +262,6 @@ static aclnnStatus CheckFmapWeightShape(const FFNParams &ffnParams)
                "kDimValue of weight1 "
                "%ld and weight2 %ld should both be equal to or less than 65535",
                weight1kDimValue, weight2kDimValue);
-
-    CHECK_COND(weight1DimNum == weightSize, ACLNN_ERR_PARAM_INVALID,
-               "weight1 DimNum dim should be (3: has experts, 2: no experts), but got %zu", weight1DimNum);
-    CHECK_COND(weight2DimNum == weightSize, ACLNN_ERR_PARAM_INVALID,
-               "weight2 DimNum dim should be (3: has experts, 2: no experts), but got %zu", weight2DimNum);
 
     CHECK_COND(xKDimValue == weight1kDimValue, ACLNN_ERR_PARAM_INVALID,
                "x KDimValue[%ld] is not equal to weight1 kDimValue[%ld]", xKDimValue, weight1kDimValue);
@@ -319,6 +321,8 @@ static aclnnStatus CheckQuantScaleAndOffset(const FFNParams &ffnParams, bool has
 {
     // 校验scale是否smooth 和 有无专家时scale和offset参数的维度数量和维度大小是否正确
     auto scaleDimNum = ffnParams.scale->GetViewShape().GetDimNum();
+    CHECK_COND(scaleDimNum >= DIM_NUM_ONE, ACLNN_ERR_PARAM_INVALID,
+               "scale dim num should be at least 1 in quant scenario, but currently is %zu", scaleDimNum);
     int64_t weight1N1 = ffnParams.weight1->GetViewShape().GetDim(weightNDimIdx);
     int64_t scaleLengthDim0 = ffnParams.scale->GetViewShape().GetDim(0);
     DataType deqScaleDtype = ffnParams.deqScale1->GetDataType();
@@ -341,8 +345,9 @@ static aclnnStatus CheckQuantScaleAndOffset(const FFNParams &ffnParams, bool has
                        "BFLOAT16 for output dtype is BFLOAT16, others are not supported.");
         }
     } else {
-        CHECK_COND(
-            scaleDimNum == 1 && (scaleLengthDim0 == 1 || scaleLengthDim0 == weight1N1), ACLNN_ERR_PARAM_INVALID, "scale dimNum should be 1 and dimValue should be equal to n1 or 1 when no experts, but currently dimNum is %lu, dimValue is %ld",
+        CHECK_COND(scaleDimNum == 1 && (scaleLengthDim0 == 1 || scaleLengthDim0 == weight1N1), ACLNN_ERR_PARAM_INVALID,
+                   "scale dimNum should be 1 and dimValue should be equal to n1 or 1 when no experts, but currently "
+                   "dimNum is %zu, dimValue is %ld",
                    scaleDimNum, scaleLengthDim0);
         if (scaleLengthDim0 == weight1N1 && weight1N1 != 1) { // 1 represents the last dimension of weight1
             CHECK_COND(deqScaleDtype == DataType::DT_UINT64 || deqScaleDtype == DataType::DT_BF16 ||
@@ -388,8 +393,7 @@ static aclnnStatus CheckQuantDimNumAndShape(const FFNParams &ffnParams)
     CHECK_COND(dequantScale2NDimValue == weight2NDimValue, ACLNN_ERR_PARAM_INVALID,
                "deqScale2 last dim should be %ld, but deqScale2 last dim is %ld", weight2NDimValue,
                dequantScale2NDimValue);
-    CHECK_COND(CheckQuantScaleAndOffset(ffnParams, hasExperts, weightNDimIdx) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected quant scale and offset params dim num or shape or dtype is not right!");
+    CHECK_RET(CheckQuantScaleAndOffset(ffnParams, hasExperts, weightNDimIdx) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     if (hasExperts) {
         int64_t dequantScale1EDimValue = ffnParams.deqScale1->GetViewShape().GetDim(0);
@@ -426,22 +430,17 @@ static aclnnStatus CheckQuant(const FFNParams &ffnParams)
     OP_CHECK_DTYPE_NOT_MATCH(ffnParams.scale, op::DataType::DT_FLOAT, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_DTYPE_NOT_MATCH(ffnParams.offset, op::DataType::DT_FLOAT, return ACLNN_ERR_PARAM_INVALID);
 
-    CHECK_COND(IsAntiQuantEmpty(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected quant input, but antiquant inputs is not empty!");
-    CHECK_COND(CheckQuantDimNumAndShape(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected quant params dim num or shape or dtype is not right!");
+    CHECK_RET(IsAntiQuantEmpty(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckQuantDimNumAndShape(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 
 static aclnnStatus CheckHighPrecisionBF16(const FFNParams &ffnParams)
 {
     OP_CHECK_DTYPE_NOT_SAME(ffnParams.weight1, ffnParams.weight2, return ACLNN_ERR_PARAM_INVALID);
-    CHECK_COND(IsQuantEmpty(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected high precision, but quant inputs is not empty!");
-    CHECK_COND(IsAntiQuantEmpty(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected high precision, but antiquant inputs is not empty!");
-    CHECK_COND(CheckBiasDtype(ffnParams, {DataType::DT_FLOAT}) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected high precision, bias dtype is not right!");
+    CHECK_RET(IsQuantEmpty(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(IsAntiQuantEmpty(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckBiasDtype(ffnParams, {DataType::DT_FLOAT}) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_COND(ffnParams.activationType != ActiveType::GEGLU, ACLNN_ERR_PARAM_INVALID,
                "Detected high precision, GEGLU is not supported!");
     return ACLNN_SUCCESS;
@@ -451,13 +450,10 @@ static aclnnStatus CheckHighPrecisionFP16(const FFNParams &ffnParams)
 {
     OP_CHECK_DTYPE_NOT_MATCH(ffnParams.weight1, op::DataType::DT_FLOAT16, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_DTYPE_NOT_SAME(ffnParams.weight1, ffnParams.weight2, return ACLNN_ERR_PARAM_INVALID);
-    CHECK_COND(IsQuantEmpty(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected high precision, but quant inputs is not empty!");
-    CHECK_COND(IsAntiQuantEmpty(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected high precision, but antiquant inputs is not empty!");
+    CHECK_RET(IsQuantEmpty(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(IsAntiQuantEmpty(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_DTYPE_NOT_SAME(ffnParams.x, ffnParams.weight1, return ACLNN_ERR_PARAM_INVALID);
-    CHECK_COND(CheckBiasDtype(ffnParams, {DataType::DT_FLOAT16}) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected high precision, bias dtype is not right!");
+    CHECK_RET(CheckBiasDtype(ffnParams, {DataType::DT_FLOAT16}) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_COND(ffnParams.activationType != ActiveType::GEGLU, ACLNN_ERR_PARAM_INVALID,
                "Detected high precision, GEGLU is not supported!");
     return ACLNN_SUCCESS;
@@ -569,10 +565,8 @@ static aclnnStatus CheckAntiQuantShape(const FFNParams &ffnParams)
     CHECK_COND(antiquantOffset2NDimValue == weight2NDimValue, ACLNN_ERR_PARAM_INVALID, "antiquantOffset2 last dim should be %ld, but antiquantOffset2 last dim is %ld", weight2NDimValue,
                antiquantOffset2NDimValue);
 
-    CHECK_COND(CheckAntiQuantW4Shape(ffnParams, weightNDimIdx) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected antiquant w is int4, shape N is not an even number!");
-    CHECK_COND(CheckAntiQuantShapeE(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected antiquant params dim0 and expert_tokens length are not equal");
+    CHECK_RET(CheckAntiQuantW4Shape(ffnParams, weightNDimIdx) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckAntiQuantShapeE(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 
@@ -622,16 +616,11 @@ static aclnnStatus CheckAntiQuant(const FFNParams &ffnParams, const DtypeCheck &
     OP_CHECK_DTYPE_NOT_SUPPORT(ffnParams.antiquantOffset1, supportList, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_DTYPE_NOT_SUPPORT(ffnParams.antiquantScale2, supportList, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_DTYPE_NOT_SUPPORT(ffnParams.antiquantOffset2, supportList, return ACLNN_ERR_PARAM_INVALID);
-    CHECK_COND(IsQuantEmpty(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected antiquant input, but quant inputs is not empty!");
-    CHECK_COND(CheckBiasDtype(ffnParams, biasSupportList) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected AntiQuant, bias dtype is not right!");
-    CHECK_COND(CheckAntiQuantDimNum(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected antiquant params dim num is not right!");
-    CHECK_COND(CheckAntiQuantShape(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected antiquant params shape is not right!");
-    CHECK_COND(CheckAntiQuantPergroup(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected antiquant params per group num or weight dtype is not right!");
+    CHECK_RET(IsQuantEmpty(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckBiasDtype(ffnParams, biasSupportList) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckAntiQuantDimNum(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckAntiQuantShape(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckAntiQuantPergroup(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 
@@ -642,8 +631,7 @@ static aclnnStatus CheckGlu(const FFNParams &ffnParams)
                "Detected glu, inner precision is not right!");
     CHECK_COND(ffnParams.expertTokens == nullptr, ACLNN_ERR_PARAM_INVALID,
                "Detected glu, expert tokens should be nullptr, but current it is not nullptr!");
-    CHECK_COND(CheckBiasDtype(ffnParams, {DataType::DT_FLOAT16}) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected glu, bias dtype is not right!");
+    CHECK_RET(CheckBiasDtype(ffnParams, {DataType::DT_FLOAT16}) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 
@@ -651,12 +639,9 @@ static aclnnStatus CheckHighPerformance(const FFNParams &ffnParams)
 {
     OP_CHECK_DTYPE_NOT_MATCH(ffnParams.weight1, op::DataType::DT_FLOAT16, return ACLNN_ERR_PARAM_INVALID);
     OP_CHECK_DTYPE_NOT_SAME(ffnParams.weight1, ffnParams.weight2, return ACLNN_ERR_PARAM_INVALID);
-    CHECK_COND(IsQuantEmpty(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected quant input, but quant inputs is not empty!");
-    CHECK_COND(IsAntiQuantEmpty(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected antiquant input, but quant inputs is not empty!");
-    CHECK_COND(CheckBiasDtype(ffnParams, {DataType::DT_FLOAT16}) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Detected HighPerformance, bias dtype is not right!");
+    CHECK_RET(IsQuantEmpty(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(IsAntiQuantEmpty(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckBiasDtype(ffnParams, {DataType::DT_FLOAT16}) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     return ACLNN_SUCCESS;
 }
 
@@ -692,8 +677,7 @@ static aclnnStatus CheckOptionalParams(FFNParams &ffnParams)
     DataType yDtype = ffnParams.y->GetDataType();
     if (xDtype == DataType::DT_INT8) {
         OP_CHECK_DTYPE_NOT_MATCH(ffnParams.weight1, op::DataType::DT_INT8, return ACLNN_ERR_PARAM_INVALID);
-        CHECK_COND(CheckBiasDtype(ffnParams, {DataType::DT_INT32}) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-                   "Detected QUANT, bias dtype is not right!");
+        CHECK_RET(CheckBiasDtype(ffnParams, {DataType::DT_INT32}) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         if (yDtype == DataType::DT_BF16 || yDtype == DataType::DT_FLOAT16) {
             return CheckQuant(ffnParams); // QUANT
         } else {
@@ -748,10 +732,10 @@ static aclnnStatus CheckFormat(const FFNParams &ffnParams)
 
 inline static aclnnStatus CheckParam(FFNParams &ffnParams)
 {
-    CHECK_COND(CheckFormat(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "invalid format.");
-    CHECK_RET(CheckY(ffnParams), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckFormat(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    CHECK_COND(CheckY(ffnParams), ACLNN_ERR_PARAM_INVALID, "y's dimNum should be equal to x's dimNum.");
     CHECK_RET(CheckFmapWeightShape(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-    CHECK_RET(CheckBias(ffnParams), ACLNN_ERR_PARAM_INVALID);
+    CHECK_COND(CheckBias(ffnParams), ACLNN_ERR_PARAM_INVALID, "bias shape is not right.");
     if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND310P) {
         auto xDimNum = ffnParams.x->GetViewShape().GetDimNum();
         CHECK_COND(xDimNum == DIM_LIMIT_LOWER, ACLNN_ERR_PARAM_INVALID,
@@ -766,7 +750,8 @@ inline static aclnnStatus CheckParam(FFNParams &ffnParams)
                    "FFN only supports no expert cases on ASCEND310P.");
         CHECK_RET(CheckHighPerformance(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     } else {
-        CHECK_RET(ffnParams.activationType != ActiveType::INVALID_TYPE, ACLNN_ERR_PARAM_INVALID);
+        CHECK_COND(ffnParams.activationType != ActiveType::INVALID_TYPE, ACLNN_ERR_PARAM_INVALID,
+                   "the activation type is not supported by ffn operator.");
         CHECK_RET(CheckOptionalParams(ffnParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     }
 
@@ -811,6 +796,9 @@ static int64_t GetBatchSizeX(const aclTensor *x)
 {
     int64_t bs = 1;
     size_t xDimNum = x->GetViewShape().GetDimNum();
+    if (xDimNum == 0) {
+        return bs;
+    }
     for (size_t i = 0; i < xDimNum - 1; i++) {
         bs *= x->GetViewShape().GetDim(i);
     }
@@ -908,9 +896,9 @@ static aclnnStatus GetFFNResultByL0Api(FFNParams &ffnParams, const char *activat
     // 定义校验宏
     #define CHECK_AND_CONVERT(param, param_name, conti_var) \
         const aclTensor *conti_var = nullptr; \
-        CHECK_COND(InputsContiguousAndTransFormat(ffnParams.param, conti_var, #param_name, \
+        CHECK_RET(InputsContiguousAndTransFormat(ffnParams.param, conti_var, #param_name, \
                                                 uniqueExecutor.get()) == ACLNN_SUCCESS, \
-                ACLNN_ERR_PARAM_INVALID, "Convert " #param_name " to contiguous tensor failed.")
+                ACLNN_ERR_PARAM_INVALID)
 
     // 使用宏进行校验和转换
     CHECK_AND_CONVERT(expertTokens, expertTokens, contiExpertTokens);
@@ -924,6 +912,7 @@ static aclnnStatus GetFFNResultByL0Api(FFNParams &ffnParams, const char *activat
     CHECK_AND_CONVERT(antiquantScale2, antiquantScale2, contiAntiScale2);
     CHECK_AND_CONVERT(antiquantOffset1, antiquantOffset1, contiAntiOffset1);
     CHECK_AND_CONVERT(antiquantOffset2, antiquantOffset2, contiAntiOffset2);
+    #undef CHECK_AND_CONVERT
 
 
     // call l0 interface
@@ -936,7 +925,7 @@ static aclnnStatus GetFFNResultByL0Api(FFNParams &ffnParams, const char *activat
                 activation, ffnParams.innerPrecise, yDtype, 
                 ffnParams.tokensIndexFlag, uniqueExecutor.get());
     CHECK_RET(ffnResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    const aclTensor *reformatedFFNResult;
+    const aclTensor *reformatedFFNResult = nullptr;
     ret = OutputransFormat(ffnParams, ffnResult, reformatedFFNResult, uniqueExecutor.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
@@ -990,9 +979,8 @@ aclnnStatus aclnnFFNGetWorkspaceSize(const aclTensor *x, const aclTensor *weight
     CHECK_COND(activationType != ActiveType::INVALID_TYPE, ACLNN_ERR_PARAM_INVALID,
                "the activation type %s is not supported by ffn operator, please select right activation according to "
                "the document",
-               activation);
-    CHECK_COND(CheckNotNull(x, weight1, weight2, y) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR,
-               "one of required inputs for aclnnFFNGetWorkspaceSize is nullptr.");
+               activation == nullptr ? "null" : activation);
+    CHECK_RET(CheckNotNull(x, weight1, weight2, y) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
     FFNParams ffnParams{x,
                         weight1,
                         weight2,
@@ -1047,9 +1035,8 @@ aclnnStatus aclnnFFNV2GetWorkspaceSize(const aclTensor *x, const aclTensor *weig
     CHECK_COND(activationType != ActiveType::INVALID_TYPE, ACLNN_ERR_PARAM_INVALID,
                "the activation type %s is not supported by ffn operator, please select right activation according to "
                "the document",
-               activation);
-    CHECK_COND(CheckNotNull(x, weight1, weight2, y) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR,
-               "one of required inputs for aclnnFFNV2GetWorkspaceSize is nullptr.");
+               activation == nullptr ? "null" : activation);
+    CHECK_RET(CheckNotNull(x, weight1, weight2, y) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
     FFNParams ffnParams{x,
                         weight1,
                         weight2,
@@ -1103,9 +1090,8 @@ aclnnStatus aclnnFFNV3GetWorkspaceSize(
     CHECK_COND(activationType != ActiveType::INVALID_TYPE, ACLNN_ERR_PARAM_INVALID,
                "the activation type %s is not supported by ffn operator, please select right activation according to "
                "the document",
-               activation);
-    CHECK_COND(CheckNotNull(x, weight1, weight2, y) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR,
-               "one of required inputs for aclnnFFNV3GetWorkspaceSize is nullptr.");
+               activation == nullptr ? "null" : activation);
+    CHECK_RET(CheckNotNull(x, weight1, weight2, y) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
     FFNParams ffnParams{x,
                         weight1,
                         weight2,
