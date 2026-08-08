@@ -8,10 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef MEGA_MOE_SHARED_EXPERT_PREPARE_H
-#define MEGA_MOE_SHARED_EXPERT_PREPARE_H
+#ifndef MEGA_MOE_SHARED_EXPERT_INPUT_H
+#define MEGA_MOE_SHARED_EXPERT_INPUT_H
 
-#include "../mega_moe_job_context.h"
+#include "../common/mega_moe_utils.h"
 
 namespace MegaMoeImpl {
 
@@ -31,7 +31,7 @@ struct SharedExpertPrepareScratch {
     LocalTensor<ActivationType> copyBuffer1;
 };
 
-// Prototype: MegaMoe::SharedExpertCopyInput. Splits interleaved token data and scale for one logical AIV job.
+// 拆分一个逻辑 AIV 任务上的共享专家 token data 和 scale。
 template <typename ActivationType, typename QuantScaleType>
 __aicore__ inline void PrepareSharedExpertInput(const DispatchPrepareContext &context,
                                                 const SharedExpertPrepareArgs &args,
@@ -91,4 +91,4 @@ __aicore__ inline void PrepareSharedExpertInput(const DispatchPrepareContext &co
 
 } // namespace MegaMoeImpl
 
-#endif // MEGA_MOE_SHARED_EXPERT_PREPARE_H
+#endif // MEGA_MOE_SHARED_EXPERT_INPUT_H
