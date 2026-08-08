@@ -111,7 +111,8 @@ __aicore__ inline void CompressorKernel<COMP>::Init(__gm__ uint8_t *x, __gm__ ui
                                                     __gm__ uint8_t *stateCache, __gm__ uint8_t *ape,
                                                     __gm__ uint8_t *stateBlockTable, __gm__ uint8_t *cuSeqlens,
                                                     __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos,
-                                                    __gm__ uint8_t *cmpKvOut, __gm__ uint8_t *softmaxScoreOut, __gm__ uint8_t *kvOut, __gm__ uint8_t *workspace)
+                                                    __gm__ uint8_t *cmpKvOut, __gm__ uint8_t *softmaxScoreOut,
+                                                    __gm__ uint8_t *kvOut, __gm__ uint8_t *workspace)
 {
     if ASCEND_IS_AIV {
         constInfo.aiCoreIdx = GetBlockIdx() / 2;

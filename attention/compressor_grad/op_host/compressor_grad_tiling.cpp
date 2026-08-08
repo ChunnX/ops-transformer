@@ -116,7 +116,8 @@ ge::graphStatus SetBaseInfo(CompressorGradContext &compressorGradContext,
             compressorGradContext.x.shape->GetStorageShape().GetDim(COMPRESSOR_GRAD_DIM_INDEX_1);
     }
 
-    uint8_t coff = compressorGradContext.coff == nullptr ? COFF_VALUE : static_cast<uint8_t>(*compressorGradContext.coff);
+    uint8_t coff = compressorGradContext.coff == nullptr ? COFF_VALUE :
+        static_cast<uint8_t>(*compressorGradContext.coff);
     compressorGradBaseParams.headDim =
         compressorGradContext.wkv.shape->GetStorageShape().GetDim(COMPRESSOR_GRAD_DIM_INDEX_0) / coff;
     compressorGradBaseParams.featureDim =
@@ -139,7 +140,8 @@ ge::graphStatus CalcWorkSpace(CompressorGradContext &compressorGradContext,
     constexpr uint32_t MM1_RES_ELEM_SIZE = 4; // 4: fp32
     constexpr uint32_t M_BASE_SIZE = 128;
     
-    uint8_t coff = compressorGradContext.coff == nullptr ? COFF_VALUE : static_cast<uint8_t>(*compressorGradContext.coff);
+    uint8_t coff = compressorGradContext.coff == nullptr ? COFF_VALUE :
+        static_cast<uint8_t>(*compressorGradContext.coff);
     uint32_t cmpRatio = compressorGradBaseParams.cmpRatio;
     uint32_t headDim = compressorGradBaseParams.headDim;
     uint32_t hiddenSize = compressorGradBaseParams.hiddenSize;
@@ -208,7 +210,8 @@ ge::graphStatus GenTilingKey(CompressorGradContext &compressorGradContext)
         layout = 1;
     }
 
-    uint8_t coff = compressorGradContext.coff == nullptr ? COFF_VALUE : static_cast<uint8_t>(*compressorGradContext.coff);
+    uint8_t coff = compressorGradContext.coff == nullptr ? COFF_VALUE :
+        static_cast<uint8_t>(*compressorGradContext.coff);
     // 通过 ASCENDC 宏编码 tilingKey（force-include 的 codegen 生成头
     // CompressorGradTilingKey_tilingkey.h 声明位布局，与 PyPTO 一致：
     // Coff(2bit) | Layout(1bit) | DataType(2bit)，UINT 值自动映射为索引）
@@ -616,7 +619,8 @@ ge::graphStatus LogErrorShapeConsistency(const std::string &name, const gert::St
 ge::graphStatus CheckShapeConsistency(CompressorGradContext &compressorGradContext,
     CompressorGradBaseParams &compressorGradBaseParams)
 {
-    uint8_t coff = compressorGradContext.coff == nullptr ? COFF_VALUE : static_cast<uint8_t>(*compressorGradContext.coff);
+    uint8_t coff = compressorGradContext.coff == nullptr ? COFF_VALUE :
+        static_cast<uint8_t>(*compressorGradContext.coff);
     auto coffD = compressorGradBaseParams.headDim * coff;
     if (ge::GRAPH_SUCCESS !=
             LogErrorShapeConsistency("cuSeqlens", compressorGradContext.cuSeqlens.shape, COMPRESSOR_GRAD_DIM_INDEX_0,
@@ -1023,7 +1027,8 @@ static ge::graphStatus CompressorGradTilingFunc(gert::TilingContext *context)
         return ge::GRAPH_FAILED;
     }
 
-    uint8_t coff = compressorGradContext.coff == nullptr ? COFF_VALUE : static_cast<uint8_t>(*compressorGradContext.coff);
+    uint8_t coff = compressorGradContext.coff == nullptr ? COFF_VALUE :
+        static_cast<uint8_t>(*compressorGradContext.coff);
     CompressorGradTiling *tilingData = context->GetTilingData<CompressorGradTiling>();
     tilingData->batch_size = compressorGradBaseParams.batchSize;
     tilingData->token_size = compressorGradBaseParams.tokenSize;

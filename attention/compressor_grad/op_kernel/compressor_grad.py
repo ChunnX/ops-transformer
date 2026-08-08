@@ -10,7 +10,6 @@
 """
 compressor_grad_kernel — Compressor 反向传播 NPU Kernel（统一入口）。
 
-
 TilingKey:  Coff, Layout, DataType                  — 编译期常量
 TilingData: batch_size, token_size, seq_size,       — 运行时参数
             cmp_ratio, hidden_size, head_dim（另有 23 个 host 派生的分核/workspace 字段）
@@ -21,7 +20,6 @@ TilingData: batch_size, token_size, seq_size,       — 运行时参数
                           d_kv @ x + d_score @ x → d_wkv / d_wgate partial
   Phase 3: Vec Reduce   — 跨核归约 d_x / d_wkv / d_wgate / d_ape（跨轮累加）
 """
-
 
 from dataclasses import dataclass
 import torch
@@ -71,10 +69,11 @@ class CompressorGradTilingKey:
     Layout = tilingkey_field(bits=1, values=[0, 1])
     DataType = tilingkey_field(bits=2, values=[0, 1])
 
-    @staticmethod
+
     def is_valid(self, key):
         coff, layout, dtype = key
         return coff in (1, 2) and layout in (0, 1) and dtype in (0, 1)
+
 
 # ================================================================
 #  TilingData
@@ -115,14 +114,18 @@ class CompressorGradTiling:
     x_ws_size: int = 0     # dbRatio * groupNum * groupRowStride * hiddenSize
     d_x_cache_ws_size: int = 0     # dbRatio * cmpRatio * hiddenSize
 
+
 def _ceil_div(dividend, divisor):
     return 0 if divisor == 0 else ((dividend) + (divisor) - 1) // (divisor)
+
 
 def _align(num, rnd):
     return 0 if (rnd) == 0 else (((num) + (rnd) - 1) // (rnd) * (rnd))
 
+
 def _trunc(num, rnd):
     return 0 if (rnd) == 0 else (((num) // (rnd) * (rnd)))
+
 
 # ================================================================
 #  VF: 反向 scatter — d_kv = dC * softmax, d_score = softmax * (dsw - col_sum)
@@ -179,6 +182,7 @@ def _vf_scatter_backward(
                 vf.store_align(d_score_tile + offset, vreg_d_score, mask)
     vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
 
+
 # ================================================================
 #  VF: 清零 tile
 # ================================================================
@@ -197,6 +201,7 @@ def _vf_tile_zero(
         for m in pl.range(0, n_rows):
             vf.store_align(tile + m * row_stride + half_off, zero_reg, mask)
     vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
+
 
 # ================================================================
 #  VF: 清零 tile (FP16)
@@ -217,6 +222,7 @@ def _vf_tile_zero_f16(
             vf.store_align(tile + m * row_stride + half_off, zero_reg, mask)
     vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
 
+
 # ================================================================
 #  VF: 清零 tile (BF16)
 # ================================================================
@@ -235,6 +241,7 @@ def _vf_tile_zero_bf16(
         for m in pl.range(0, n_rows):
             vf.store_align(tile + m * row_stride + half_off, zero_reg, mask)
     vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
+
 
 # ================================================================
 #  VF: 掩码清零 — 将非有效 token 对应的 d_kv/d_score 行置零
@@ -257,6 +264,7 @@ def _vf_mask_cache_fill(
                 vf.store_align(d_score_tile + r_idx * d_stride + d_offset, vreg_zero, mask)
                 vf.store_align(dkv_tile + r_idx * d_stride + d_offset, vreg_zero, mask)
         vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
+
 
 # ================================================================
 #  VF: 跨 block 归约 — dApe[m,:] += Σ_k d_score[k,m,:]（per-round 调用）
@@ -289,6 +297,7 @@ def _vf_reduce_dscore_to_ape(
             vf.store_align(ape_tile + ape_off, ape_reg, mask)
     vf.mem_bar(mode=pl.MemBarMode.VST_VLD)
 
+
 # ================================================================
 #  Helper: get start position / seq used / seq length
 # ================================================================
@@ -298,6 +307,7 @@ def _get_start_pos(b_idx, start_pos, ctx):
         result = pl.getval(pl.make_tensor(start_pos, [ctx.batch_size], [1], dtype=pl.DT_INT32), b_idx)
     return result
 
+
 def _get_seq_length(b_idx, cu_seqlens, ctx):
     result = ctx.seq_size
     if ctx.layout == 1:  # TH (1=TH)
@@ -305,12 +315,14 @@ def _get_seq_length(b_idx, cu_seqlens, ctx):
                  pl.getval(pl.make_tensor(cu_seqlens, [ctx.batch_size + 1], [1], dtype=pl.DT_INT32), b_idx)
     return result
 
+
 def _get_seq_used(b_idx, seq_used, cu_seqlens, ctx):
     if seq_used is not None:
         result = pl.getval(pl.make_tensor(seq_used, [ctx.batch_size], [1], dtype=pl.DT_INT32), b_idx)
     else:
         result = _get_seq_length(b_idx, cu_seqlens, ctx)
     return result
+
 
 # ================================================================
 #  Helper: 将 (b, s) 映射为全局 token 索引 tIdx，BSH/TH 统一
@@ -321,12 +333,14 @@ def _get_token_idx(b_idx, s_idx, cu_seqlens, ctx):
         result = pl.getval(pl.make_tensor(cu_seqlens, [ctx.batch_size + 1], [1], dtype=pl.DT_INT32), b_idx) + s_idx
     return result
 
+
 # ================================================================
 #  Helper: 计算 (bStart,sStart) 到 (bEnd,sEnd) 之间的行数，sEnd 左闭右开
 # ================================================================
 def _get_row_count(b_start, s_start, b_end, s_end, cu_seqlens, ctx):
     result = _get_token_idx(b_end, s_end, cu_seqlens, ctx) - _get_token_idx(b_start, s_start, cu_seqlens, ctx)
     return result
+
 
 # ================================================================
 #  Helper: 计算位置 (bIdx, sIdx) 之前的压缩块总数
@@ -350,6 +364,7 @@ def _get_cmp_block_count(b_idx, s_idx, start_pos, seq_used, cu_seqlens, ctx):
     result += (min(last_s, s_idx) + b_start_pos) // ctx.cmp_ratio - b_start_pos // ctx.cmp_ratio
     return result
 
+
 # ================================================================
 #  Helper: 将全局 token 索引 tIdx 反向映射为 (bIdx, sIdx)
 # ================================================================
@@ -365,6 +380,7 @@ def _get_pos_from_token_idx(t_idx, cu_seqlens, ctx):
                 break
             result_b += 1
     return result_b, result_s
+
 
 # ================================================================
 #  Helper: advance block traversal（scatter/x 搬运与 dX reduce 共用）
@@ -390,6 +406,7 @@ def _skip_blocks(block_count, b_idx, sc_idx,
             break
     return b_idx, sc_idx
 
+
 # ================================================================
 #  Unified Compressor Grad Kernel
 # ================================================================
@@ -414,6 +431,7 @@ def _mm1_nl0_block(matmul_ctx, n_tile_rows, d_coff_idx, dx_row_off, h, w_idx, n_
         if n_tile_rows > 0:
             pl.matmul_acc(l0c, l0c, l0a, l0b)
         pl.store(d_x_result_gm, l0c, [d_coff_idx, dx_row_off, h + n_l0])
+
 
 def _mm1_sub_tile(matmul_ctx, h, w_idx, sub_vec_idx, db_idx,
                   cv_l0a, cv_l0b, cv_l0c, l1_w_db,
@@ -442,6 +460,7 @@ def _mm1_sub_tile(matmul_ctx, h, w_idx, sub_vec_idx, db_idx,
         _mm1_nl0_block(matmul_ctx, n_tile_rows, d_coff_idx, dx_row_base + m_off, h, w_idx, n_l0,
                        cv_l0b, cv_l0c, w_l1, l0a, d_x_result_gm)
 
+
 def _compute_dx_partial(matmul_ctx, db_idx, cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                         l1_kv0, l1_kv1, l1_sb0, l1_sb1,
                         wkv_t, wgate_t, d_x_result_gm):
@@ -461,6 +480,7 @@ def _compute_dx_partial(matmul_ctx, db_idx, cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                               l1_kv0, l1_kv1, l1_sb0, l1_sb1, wkv_t, wgate_t, d_x_result_gm,
                               n_start, dx_row_base)
 
+
 def _mm2_store(matmul_ctx, round_idx, w_idx, row_off, col_off, l0c,
                d_wkv_result_gm, d_w_gate_result_gm):
     """mm2 单个 (wIdx) 结果写回：round 0 覆盖写 / round 1+ 原子加（跨轮累加）"""
@@ -477,6 +497,7 @@ def _mm2_store(matmul_ctx, round_idx, w_idx, row_off, col_off, l0c,
             pl.store(d_w_gate_result_gm, l0c, [row_off, col_off],
                      atomic=pl.AtomicType.AtomicAdd)
 
+
 def _mm2_l0a_load(matmul_ctx, sub_vec_idx, w_idx, n_tile_rows, m_start, h,
                   l0a, w_l1, l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t, x_arrange_gm):
     """mm2 nL0==0 时：L0A 搬移（dkv/dsb 半区）+ x 权重加载到 L1W（w_idx==0 时）"""
@@ -491,6 +512,7 @@ def _mm2_l0a_load(matmul_ctx, sub_vec_idx, w_idx, n_tile_rows, m_start, h,
             x_off = x_off - matmul_ctx.cmp_ratio
         pl.set_validshape(w_l1, [n_tile_rows, H_L1_BASE_SIZE])
         pl.load(w_l1, x_arrange_gm, [x_off, h])
+
 
 def _mm2_core(matmul_ctx, round_idx, sub_vec_idx, w_idx, n_l0, h, dw_row_base, m_start,
               cv_l0a, cv_l0b, cv_l0c, l1_w_db,
@@ -519,6 +541,7 @@ def _mm2_core(matmul_ctx, round_idx, sub_vec_idx, w_idx, n_l0, h, dw_row_base, m
         _mm2_store(matmul_ctx, round_idx, w_idx, dw_row_base + dw_row_off, h + n_l0, l0c,
                    d_wkv_result_gm, d_w_gate_result_gm)
 
+
 def _mm2_sub_block(matmul_ctx, round_idx, sub_vec_idx, n_l0, h, dw_row_base, m_start,
                    cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                    l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t,
@@ -530,6 +553,7 @@ def _mm2_sub_block(matmul_ctx, round_idx, sub_vec_idx, n_l0, h, dw_row_base, m_s
                   l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t,
                   x_arrange_gm, d_wkv_result_gm, d_w_gate_result_gm)
 
+
 def _mm2_sub_vec(matmul_ctx, round_idx, sub_vec_idx, h, dw_row_base, m_start,
                  cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                  l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t,
@@ -540,6 +564,7 @@ def _mm2_sub_vec(matmul_ctx, round_idx, sub_vec_idx, h, dw_row_base, m_start,
                        cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                        l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t,
                        x_arrange_gm, d_wkv_result_gm, d_w_gate_result_gm)
+
 
 def _compute_dw_partial(matmul_ctx, round_idx, db_idx, cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                         l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t,
@@ -565,6 +590,7 @@ def _compute_dw_partial(matmul_ctx, round_idx, db_idx, cv_l0a, cv_l0b, cv_l0c, l
                          cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                          l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t,
                          x_arrange_gm, d_wkv_result_gm, d_w_gate_result_gm)
+
 
 # ================================================================
 #  Phase 3 reduce sub-functions（从 kernel 提取）
@@ -603,6 +629,7 @@ def _reduce_ape(vec_ctx, core_idx, group_idx, db_idx, round_blocks,
         pl.load(reduce_ld, tensor_d_ape_ws_flat, [flat_row_base + r, rg_start])
         pl.add(reduce_acc, reduce_acc, reduce_ld)
     pl.store(tensor_d_ape_flat, reduce_acc, [0, rg_start])
+
 
 def _reduce_d_weight(vec_ctx, core_idx, group_idx, db_idx, round_blocks,
                      reduce_acc, reduce_ld_group, p3_cast,
@@ -644,6 +671,7 @@ def _reduce_d_weight(vec_ctx, core_idx, group_idx, db_idx, round_blocks,
         pl.cast(p3_cast, reduce_acc, mode=pl.RoundMode.CAST_ROUND)
         pl.store(tensor_dw_gate_flat, p3_cast, [0, cur_rg_start])
 
+
 # ================================================================
 #  无压缩块：四输出显式刷 0（totalValid=0 / compressedCnt=0）
 # ================================================================
@@ -670,6 +698,7 @@ def _zero_outputs(core_idx, core_num, x_rows, hidden_size, total_head_dim, cmp_s
     pl.set_validshape(reduce_acc, [1, hidden_size])
     _vf_tile_zero(reduce_acc, 1, hidden_size)        # FP32 全零（d_ape 用）
 
+
     # ── d_x [xRows, hiddenSize]：按行分片（_reduce_dx 同款）──
     rows_per_core = x_rows // core_num
     rows_remain = x_rows % core_num
@@ -677,6 +706,7 @@ def _zero_outputs(core_idx, core_num, x_rows, hidden_size, total_head_dim, cmp_s
     r_e = r_s + rows_per_core + (1 if core_idx < rows_remain else 0)
     for r in pl.range(r_s, r_e):
         pl.store(d_x_out_gm, zero_cast, [r, 0])
+
 
     # ── d_wkv / d_wgate [totalHeadDim * hiddenSize]：按 D_BASE_SIZE 块分片 ──
     #    （与 _reduce_d_weight 同款：扁平 view + 块分片）
@@ -693,6 +723,7 @@ def _zero_outputs(core_idx, core_num, x_rows, hidden_size, total_head_dim, cmp_s
         pl.store(tensor_dw_kv_flat, zero_cast, [0, cur_w_start])
         pl.store(tensor_dw_gate_flat, zero_cast, [0, cur_w_start])
 
+
     # ── d_ape [1, cmpSize] FP32：按 D_BASE_SIZE 块分片（_reduce_ape 同款）──
     rg_chunk_num = cmp_size // D_BASE_SIZE
     rg_per_core = rg_chunk_num // core_num
@@ -705,6 +736,7 @@ def _zero_outputs(core_idx, core_num, x_rows, hidden_size, total_head_dim, cmp_s
         cur_rg_num = min(BASE_SIZE * BASE_SIZE, rg_end - cur_rg_start)
         pl.set_validshape(reduce_acc, [1, cur_rg_num])
         pl.store(tensor_d_ape_flat, reduce_acc, [0, cur_rg_start])
+
 
 def _cast_to_l1_channel(vec_ctx, n_tile_rows, deal_tc_size,
                         tile_cast, tile_nz, tile_cast_md, tile_nz_md_prev, tile_nz_md_cur,
@@ -731,6 +763,7 @@ def _cast_to_l1_channel(vec_ctx, n_tile_rows, deal_tc_size,
         pl.set_validshape(temp_tile, [deal_tc_size * cmp_ratio, d_deal_size])
         pl.move(temp_tile, tile_cast_md, offset=[0, d_deal_size])
         pl.move(tile_nz_md_cur, temp_tile)
+
 
 def _cast_dkv_dsb_to_l1(vec_ctx, n_tile_rows, deal_tc_size, sub_idx,
                         tile_temp, tile_dkv_cast, tile_dkv_cast_md, tile_dkv_nz,
@@ -772,6 +805,7 @@ def _cast_dkv_dsb_to_l1(vec_ctx, n_tile_rows, deal_tc_size, sub_idx,
         pl.insert(l1_sb0, tile_dsb_nz_md_prev, [0, col_offset])
         pl.insert(l1_sb1, tile_dsb_nz_md_cur, [0, col_offset])
 
+
 def _reduce_dx_ws_offset(db_idx, cube_core_num, cube_m_base_size, group_size, group_deal_sc_num,
                          cmp_ratio, p3l_sc_idx, prev_sc_idx, sc_inner_idx):
     """dX partial workspace 槽位偏移（相对块号 → group/块内序号映射）"""
@@ -779,6 +813,7 @@ def _reduce_dx_ws_offset(db_idx, cube_core_num, cube_m_base_size, group_size, gr
     return (db_idx * cube_core_num * cube_m_base_size +
             (rel_sc // group_deal_sc_num) * group_size * cube_m_base_size +
             (rel_sc % group_deal_sc_num) * cmp_ratio + sc_inner_idx)
+
 
 def _reduce_dx_setup(vec_ctx, core_idx, round_idx,
                      b_idx_start, sc_idx_start, b_idx_end, sc_idx_end,
@@ -812,6 +847,7 @@ def _reduce_dx_setup(vec_ctx, core_idx, round_idx,
                      _get_cmp_block_count(b_start, s_start, start_pos, seq_used, cu_seqlens, seq_ctx) - 1
     start_tidx = _get_token_idx(b_start, s_start, cu_seqlens, seq_ctx)
     return (my_row_s, my_row_e, start_tidx, round_end_sc_idx, b_start, s_start, prev_sc_idx)
+
 
 def _reduce_dx_row(vec_ctx, db_idx, prev_sc_idx, p3l_sc_idx, round_end_sc_idx, batch_end_sc_idx,
                    sc_inner_idx, reduce_acc, reduce_ld_group, d_x_cache_gm, d_x_result_gm):
@@ -851,6 +887,7 @@ def _reduce_dx_row(vec_ctx, db_idx, prev_sc_idx, p3l_sc_idx, round_end_sc_idx, b
                 pl.load(reduce_ld, d_x_result_gm, [0, next_ws_offset + r * vec_ctx.cube_m_base_size, 0])
                 pl.add(reduce_acc, reduce_acc, reduce_ld)
 
+
 def _reduce_dx_store(vec_ctx, db_idx, p3l_sc_idx, round_end_sc_idx, batch_end_sc_idx,
                      sc_inner_idx, t_idx, reduce_acc, p3_cast, d_x_cache_gm, d_x_out_gm):
     """行结果写回：coff=2 轮末块存 dXCache（下轮跨轮累加），否则 cast+store d_x"""
@@ -864,6 +901,7 @@ def _reduce_dx_store(vec_ctx, db_idx, p3l_sc_idx, round_end_sc_idx, batch_end_sc
         pl.cast(p3_cast, reduce_acc, mode=pl.RoundMode.CAST_ROUND)
         pl.store(d_x_out_gm, p3_cast, [t_idx, 0])
 
+
 def _reduce_dx_zero_row(p3_cast, hidden_size, d_x_out_gm, t_idx):
     """非压缩区行：输出显式刷 0（不依赖归约路径隐式行为）"""
     pl.set_validshape(p3_cast, [1, hidden_size])
@@ -872,6 +910,7 @@ def _reduce_dx_zero_row(p3_cast, hidden_size, d_x_out_gm, t_idx):
     else:
         _vf_tile_zero_f16(p3_cast, 1, hidden_size)
     pl.store(d_x_out_gm, p3_cast, [t_idx, 0])
+
 
 def _reduce_dx_advance_batch(vec_ctx, b, local_s, p3l_sc_idx, cmp_limit, b_start, s_start,
                              batch_size, start_pos, seq_used, cu_seqlens, seq_ctx):
@@ -897,6 +936,7 @@ def _reduce_dx_advance_batch(vec_ctx, b, local_s, p3l_sc_idx, cmp_limit, b_start
                      _get_cmp_block_count(b_start, s_start, start_pos, seq_used, cu_seqlens, seq_ctx) - 1
     return (b, local_s, p3l_sc_idx, b_start_pos, b_seq_used, b_seq_length, cmp_limit, batch_end_sc_idx)
 
+
 def _reduce_dx_scan(vec_ctx, start_tidx, my_row_s, b_start, s_start,
                     start_pos, seq_used, cu_seqlens, seq_ctx):
     """行起点状态扫描：返回 10 元组（b/localS/tIdx/bStartPos/bSeqUsed/bSeqLength/cmpLimit/p3lScIdx/batchEndScIdx/scInnerIdx）"""
@@ -916,6 +956,7 @@ def _reduce_dx_scan(vec_ctx, start_tidx, my_row_s, b_start, s_start,
     sc_inner_idx = (local_s + b_start_pos) % cmp_ratio
     return (b, local_s, t_idx, b_start_pos, b_seq_used, b_seq_length, cmp_limit,
             p3l_sc_idx, batch_end_sc_idx, sc_inner_idx)
+
 
 def _reduce_dx(vec_ctx, core_idx, db_idx, round_idx,
                b_idx_start, sc_idx_start, b_idx_end, sc_idx_end,
@@ -967,6 +1008,7 @@ def _reduce_dx(vec_ctx, core_idx, db_idx, round_idx,
                     p3l_sc_idx += 1
             sc_inner_idx = (local_s + b_start_pos) % cmp_ratio
 
+
 def _process_mask_fill(sm_tile, dkv_tile, b_start_pos, sc_idx, cmp_ratio, d_deal_size, taken):
     """scatter 后按 coff/batch 首块规则掩码清零非有效 cache 行（coff=1/2 统一）"""
     if Coff == 1:
@@ -982,6 +1024,7 @@ def _process_mask_fill(sm_tile, dkv_tile, b_start_pos, sc_idx, cmp_ratio, d_deal
         _vf_mask_cache_fill(sm_tile, dkv_tile, cache_fill_rows, d_deal_size, D_BASE_SIZE)
         cache_fill_rows = b_start_pos % cmp_ratio if sc_idx == 0 else 0
         _vf_mask_cache_fill(sm_tile[1:, :], dkv_tile[1:, :], cache_fill_rows, d_deal_size, D_BASE_SIZE)
+
 
 def _process_scatter_slice(vec_ctx, round_idx, total_sc_num_per_round, pre_deal_tc_size, processed,
                            b_idx, sc_idx, taken, n_start, b_start_pos,
@@ -1015,6 +1058,7 @@ def _process_scatter_slice(vec_ctx, round_idx, total_sc_num_per_round, pre_deal_
     )
     _process_mask_fill(sm_tile, dkv_tile, b_start_pos, sc_idx, cmp_ratio, d_deal_size, taken)
 
+
 def _process_scatter(vec_ctx, round_idx, total_sc_num_per_round, pre_deal_tc_size, deal_tc_size,
                      b_idx, sc_idx,
                      tile_dc_f16, tile_dc_f32, tile_kv, tile_softmax, tile_temp,
@@ -1044,6 +1088,7 @@ def _process_scatter(vec_ctx, round_idx, total_sc_num_per_round, pre_deal_tc_siz
         if ended:
             break
 
+
 def _advance_block_boundary(b_idx, sc_idx, blk_in_batch, batch_size):
     """块遍历记账推进：批内 sc 耗尽则换批；越界返回 ended 哨兵供调用方 break。
     返回 (b_idx, sc_idx, ended)。"""
@@ -1052,6 +1097,7 @@ def _advance_block_boundary(b_idx, sc_idx, blk_in_batch, batch_size):
         b_idx += 1
     ended = b_idx >= batch_size
     return (b_idx, sc_idx, ended)
+
 
 def _arrange_x_zero_fill(move_x_tiles, x_arrange_gm, rows, dst_row, hidden_size):
     """xArrangeGm 指定区域显式清零（防 mm2 读到未初始化 workspace 的 NaN 位模式）"""
@@ -1064,6 +1110,7 @@ def _arrange_x_zero_fill(move_x_tiles, x_arrange_gm, rows, dst_row, hidden_size)
             _vf_tile_zero_f16(mx_tie, rows, D_BASE_SIZE * 2)
         pl.store(x_arrange_gm, mx_tie, [dst_row, hi])
 
+
 def _arrange_x_copy_zone(move_x_tiles, src_gm, dst_gm, rows, src_row, dst_row, hidden_size):
     """xArrangeGm 区域拷贝（load src_gm → store dst_gm，源可为 x_gm 或 xArrangeGm）"""
     for hi in pl.range(0, hidden_size, D_BASE_SIZE * 2):
@@ -1071,6 +1118,7 @@ def _arrange_x_copy_zone(move_x_tiles, src_gm, dst_gm, rows, src_row, dst_row, h
         pl.set_validshape(mx_tie, [rows, D_BASE_SIZE * 2])
         pl.load(mx_tie, src_gm, [src_row, hi])
         pl.store(dst_gm, mx_tie, [dst_row, hi])
+
 
 def _arrange_x_prev_head(vec_ctx, db_idx, group_idx, src_idx, move_x_tiles, x_gm, x_arrange_gm):
     """coff=2 prev 头部补写：前 cr-srcIdx 行清零（cache 历史），后 srcIdx 行拷贝上一块 cur"""
@@ -1085,6 +1133,7 @@ def _arrange_x_prev_head(vec_ctx, db_idx, group_idx, src_idx, move_x_tiles, x_gm
     if head_rows > 0:
         _arrange_x_copy_zone(move_x_tiles, x_gm, x_arrange_gm, head_rows, head_src,
                              head_dst + head_zero, hidden_size)
+
 
 def _arrange_x_batch_slice(vec_ctx, db_idx, group_idx, db_row_cnt,
                            b_idx, sc_idx, sub_slot, processed, taken,
@@ -1116,6 +1165,7 @@ def _arrange_x_batch_slice(vec_ctx, db_idx, group_idx, db_row_cnt,
     if Coff == 2 and processed == 0 and group_idx > 0:
         _arrange_x_prev_head(vec_ctx, db_idx, group_idx, src_idx, move_x_tiles, x_gm, x_arrange_gm)
     _arrange_x_copy_zone(move_x_tiles, x_gm, x_arrange_gm, mx_rows, src_idx, dst_idx, hidden_size)
+
 
 def _arrange_x(vec_ctx, db_idx, group_idx, db_row_cnt, deal_tc_size,
                b_idx, sc_idx, sub_slot, move_x_tiles, x_gm, x_arrange_gm,
@@ -1157,6 +1207,7 @@ def _arrange_x(vec_ctx, db_idx, group_idx, db_row_cnt, deal_tc_size,
         if ended:
             break
 
+
 def _accumulate_ape(vec_ctx, round_idx, core_idx, group_idx, n_start,
                     tile_ape_local, tile_softmax, tensor_ape,
                     deal_tc_size, cmp_row_cnt, d_deal_size, coff_coef):
@@ -1174,6 +1225,7 @@ def _accumulate_ape(vec_ctx, round_idx, core_idx, group_idx, n_start,
         deal_tc_size, cmp_row_cnt, d_deal_size, d_deal_size,
     )
     pl.store(tensor_ape, tile_ape_local, [local_slot, n_start])
+
 
 # ================================================================
 #  Phase 1/2/3 循环骨架函数（从 kernel 主函数 round 循环提取）
@@ -1235,6 +1287,7 @@ def _phase1_scatter(vec_ctx, round_idx, pre_deal_tc_size, deal_tc_size,
                b_idx, sc_idx, sub_slot, move_x_tile_group, x_gm, x_arrange_gm,
                start_pos, seq_used, cu_seqlens, seq_ctx)
 
+
 def _phase2_matmul(round_idx, db_idx, deal_tc_size, hidden_size, head_dim,
                    deal_sc_num, cube_m_base_size, cmp_ratio,
                    cube_core_num, group_size, group_num, total_head_dim,
@@ -1272,6 +1325,7 @@ def _phase2_matmul(round_idx, db_idx, deal_tc_size, hidden_size, head_dim,
         group_num=group_num, total_head_dim=total_head_dim,
         db_row_cnt=db_row_cnt, group_row_stride=group_row_stride)
 
+
     # ── Matmul #1/#2：提取子函数（coff=1/2 统一）──
     _compute_dx_partial(matmul_ctx, db_idx, cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                         l1_kv0, l1_kv1, l1_sb0, l1_sb1,
@@ -1279,6 +1333,7 @@ def _phase2_matmul(round_idx, db_idx, deal_tc_size, hidden_size, head_dim,
     _compute_dw_partial(matmul_ctx, round_idx, db_idx, cv_l0a, cv_l0b, cv_l0c, l1_w_db,
                         l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t,
                         x_arrange_gm, d_wkv_result_gm, d_w_gate_result_gm)
+
 
 def _phase3_reduce(vec_ctx, core_idx, group_idx, round_idx, round_cnt, max_round_blocks,
                    prev_db_idx, prev_b_idx_start, prev_sc_idx_start,
@@ -1315,6 +1370,7 @@ def _phase3_reduce(vec_ctx, core_idx, group_idx, round_idx, round_cnt, max_round
                d_x_cache_gm, d_x_result_gm, d_x_out_gm,
                start_pos, seq_used, cu_seqlens, seq_ctx)
 
+
     # ── 末轮：dApe/dW 一次性跨核归约（生产者侧已按轮累加至 ws 固定槽）──
     # roundBlocks 传 maxRoundBlocks：validRows 只覆盖写过数据的行
     #（不满轮时 groupIdx >= ceil(maxRoundBlocks/groupDealScNum) 的核未执行
@@ -1326,8 +1382,10 @@ def _phase3_reduce(vec_ctx, core_idx, group_idx, round_idx, round_cnt, max_round
                          reduce_acc, reduce_load_tile_group, p3_cast,
                          tensor_dw_kv_flat, tensor_dw_kv_ws_flat, tensor_dw_gate_flat, tensor_dw_gate_ws_flat)
 
+
 def _init_scalars(batch_size, seq_size, cmp_ratio, start_pos, seq_used, cu_seqlens):
     """Init: seq_ctx struct + compressed_cnt（依赖 startPos/seqUsed 数据内容）"""
+
 
     # ── Sequence context ──
     seq_ctx = pl.struct("SeqCtx",
@@ -1336,6 +1394,7 @@ def _init_scalars(batch_size, seq_size, cmp_ratio, start_pos, seq_used, cu_seqle
         layout=Layout,
         seq_size=seq_size,
     )
+
 
     # ── Compressed rows / block counts ──
     # compressedCnt 依赖 startPos/seqUsed 数据内容（op_host tiling 阶段读不到），kernel 内算
@@ -1350,6 +1409,7 @@ def _init_scalars(batch_size, seq_size, cmp_ratio, start_pos, seq_used, cu_seqle
             compressed_cnt = compressed_cnt + _ceil_div(compress_seq_idx - b_start_pos, cmp_ratio)
     return (seq_ctx, compressed_cnt)
 
+
 def _init_round_params(compressed_cnt, batch_size, cmp_ratio, head_dim, hidden_size,
     total_head_dim, cmp_row_cnt, cmp_size, d_deal_size, m_deal_size,
     db_ratio, coff_coef, cube_m_base_size, group_deal_sc_num, deal_sc_num,
@@ -1363,6 +1423,7 @@ def _init_round_params(compressed_cnt, batch_size, cmp_ratio, head_dim, hidden_s
     #（不满轮时空闲 group 的 ws 区域未写，归约只读写过数据的行）
     max_round_blocks = min(total_sc_num_per_round, compressed_cnt)
 
+
     # ── Vec 子函数共享 ctx（int64 稳定值，派生配置经 tiling 传入）──
     vec_ctx = pl.struct("VecCtx",
         hidden_size=hidden_size, batch_size=batch_size, cmp_ratio=cmp_ratio, head_dim=head_dim,
@@ -1375,6 +1436,7 @@ def _init_round_params(compressed_cnt, batch_size, cmp_ratio, head_dim, hidden_s
         group_size=group_size, group_num=group_num,
         total_head_dim=total_head_dim, db_row_cnt=db_row_cnt, group_row_stride=group_row_stride, round_cnt=round_cnt)
     return (round_cnt, max_round_blocks, vec_ctx)
+
 
 def _init_l1_tile_groups(io_d_type):
     """Init: L1A CV 通道 4 组 [128,128] 双缓冲 tile_group（Mat 内存，vec/cube 共享）"""
@@ -1398,6 +1460,7 @@ def _init_l1_tile_groups(io_d_type):
             l1_score1_tile_group_nz, l1_kv0_tile_group_zn, l1_kv1_tile_group_zn,
             l1_score0_tile_group_zn, l1_score1_tile_group_zn)
 
+
 def _init_vec_tile_groups(io_d_type, group_size, d_deal_size):
     """Init: UB tile/tile_group 声明 + vec 身份值"""
     #  Vec tile declarations (once)
@@ -1405,6 +1468,7 @@ def _init_vec_tile_groups(io_d_type, group_size, d_deal_size):
 
     core_idx = pl.get_block_idx()
     sub_core_idx = pl.get_subblock_idx()
+
 
     # ── UB tile type declarations ──
     # TileType 静态 shape 需编译期立即量 → 用内联算术（值恒等于 tiling.dDealSize/mDealSize）
@@ -1455,6 +1519,7 @@ def _init_vec_tile_groups(io_d_type, group_size, d_deal_size):
     temp_tile_type = pl.TileType(
         shape=[M_BASE_SIZE, D_BASE_SIZE // 2], dtype=io_d_type,
         target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1], compact=1)
+
 
     # ── UB tile_group allocation (auto_mutex for shared addresses) ──
     #          | group             | addr      | size（coff=2 上限）| mutex |
@@ -1527,6 +1592,7 @@ def _init_vec_tile_groups(io_d_type, group_size, d_deal_size):
 
     p3_cast = reduce_result_tile_group.next()
 
+
     # ── D group division ──
     cube_core_idx = core_idx // 2
     group_idx = cube_core_idx // group_size
@@ -1539,6 +1605,7 @@ def _init_vec_tile_groups(io_d_type, group_size, d_deal_size):
             tile_dkv_nz_md_prev, tile_dsb_nz_md_prev, tile_dkv_nz_md_cur, tile_dsb_nz_md_cur,
             reduce_acc, p3_cast, move_x_tile_group, reduce_load_tile_group,
             reduce_acc_tile_group, reduce_result_tile_group, temp_tile_group)
+
 
 def _init_cube_tile_groups(io_d_type, group_size):
     """Init: L1W/L0 tile_group + cube 身份值（wkv/wgate 视图在 _phase2_matmul 内创建）"""
@@ -1573,8 +1640,10 @@ def _init_cube_tile_groups(io_d_type, group_size):
                          target_memory=pl.MemorySpace.Acc, layout=pl.NZ, fractal=1024, compact=1),
         addrs=0x00000, mutex_ids=[24, 25, 26, 27])
 
+
     # ═════════════════════════════════════════════════════════════════════════
     return (cube_core_idx, group_idx, intra_group_idx, l1_w_db, cv_l0a, cv_l0b, cv_l0c)
+
 
 @pl.jit(tiling_key=CompressorGradTilingKey, auto_mutex=True, arch="a5")
 def compressor_grad(
@@ -1583,15 +1652,18 @@ def compressor_grad(
     wkv: pl.Ptr[pl.DT_UINT8],     # (C, hiddenSize)       
     wgate: pl.Ptr[pl.DT_UINT8],     # (C, hiddenSize)       
 
+
     # ── 输入（前向中间变量 / 上游梯度） ──
     d_cmp_kv: pl.Ptr[pl.DT_UINT8],     # (cmpKvRows, headDim)
     softmax_score: pl.Ptr[pl.DT_UINT8],     # (cmpKvRows, cmpRowCnt, headDim) FP32
     kv: pl.Ptr[pl.DT_UINT8],     # (cmpKvRows, cmpRowCnt, headDim) FP32
 
+
     # ── 位置 / 序列参数 ──
     cu_seqlens: pl.Ptr[pl.DT_UINT8],
     seq_used: pl.Ptr[pl.DT_UINT8],
     start_pos: pl.Ptr[pl.DT_UINT8],
+
 
     # ── 输出（最终梯度） ──
     d_x: pl.Ptr[pl.DT_UINT8],     # (T, hiddenSize) FP16/BF16 输出
@@ -1599,8 +1671,10 @@ def compressor_grad(
     d_wgate: pl.Ptr[pl.DT_UINT8],     # (C, hiddenSize) FP16/BF16 输出
     d_ape: pl.Ptr[pl.DT_UINT8],     # (cmpRatio, coff*D) FP32 输出
 
+
     # ── 工作空间 ──
     workspace: pl.Ptr[pl.DT_UINT8],     # 各 phase 中间结果（分区布局见 op_host CalcWorkSpace）
+
 
     # ── Tiling ──
     tiling: CompressorGradTiling,
@@ -1608,6 +1682,7 @@ def compressor_grad(
     io_d_type = pl.DT_BF16 if DataType == 0 else pl.DT_FP16
     db_ratio = 2  # workspace 双缓冲
     group_row_stride = tiling.group_row_stride
+
 
     # ═══ Init：标量派生 / round 参数（普通函数返回元组）═══
     (seq_ctx, compressed_cnt) = _init_scalars(
@@ -1618,6 +1693,7 @@ def compressor_grad(
         db_ratio, tiling.coff_coef, tiling.cube_m_base_size, tiling.group_deal_sc_num, tiling.deal_sc_num,
         tiling.cmp_kv_batch_stride, tiling.cube_core_num, tiling.core_num, tiling.group_size, tiling.group_num,
         tiling.db_row_cnt, group_row_stride, tiling.total_sc_num_per_round)
+
 
     # ── Workspace 分块: APE 区域 + dX 区域──
     ape_work_space_size = tiling.dape_ws_size
@@ -1633,6 +1709,7 @@ def compressor_grad(
     x_work_space_ptr = pl.addptr(d_w_gate_work_space_ptr, d_weight_work_space_size)
     d_x_cache_ptr = pl.addptr(x_work_space_ptr, x_work_space_size)
 
+
     # ── dX output + workspace views（跨 phase 共享，Phase 1/3 其余视图在函数内创建）──
     d_x_result_gm = pl.make_tensor(
         d_x_work_space_ptr,
@@ -1645,7 +1722,9 @@ def compressor_grad(
     x_arrange_gm = pl.make_tensor(x_work_space_ptr,
         [x_work_space_size // tiling.hidden_size, tiling.hidden_size], [tiling.hidden_size, 1], dtype=io_d_type)
     d_x_cache_gm = pl.make_tensor(d_x_cache_ptr,
-        [d_x_cache_work_space_size // tiling.hidden_size, tiling.hidden_size], [tiling.hidden_size, 1], dtype=pl.DT_FP32)
+        [d_x_cache_work_space_size // tiling.hidden_size, tiling.hidden_size],
+        [tiling.hidden_size, 1], dtype=pl.DT_FP32)
+
 
     # ── L1A CV 通道（vec insert / cube 读共享）──
     (l1_kv0_tile_group_nz, l1_kv1_tile_group_nz, l1_score0_tile_group_nz,
@@ -1653,12 +1732,14 @@ def compressor_grad(
      l1_score0_tile_group_zn, l1_score1_tile_group_zn) = _init_l1_tile_groups(
         io_d_type)
 
+
     # ── Per-round shared state (persists across rounds) ──
     b_idx, sc_idx = 0, 0
     prev_db_idx, prev_b_idx_start, prev_sc_idx_start = 0, 0, 0
     prev_b_idx_end, prev_sc_idx_end = 0, 0
     cur_db_idx, cur_b_idx_start, cur_sc_idx_start = 0, 0, 0
     cur_b_idx_end, cur_sc_idx_end = 0, 0
+
 
     # ════════════════════════════════════════════════════════════
     #  Vec tile declarations (once)
@@ -1673,6 +1754,7 @@ def compressor_grad(
          reduce_load_tile_group, reduce_acc_tile_group,
          reduce_result_tile_group, temp_tile_group) = _init_vec_tile_groups(
             io_d_type, tiling.group_size, tiling.d_deal_size)
+
 
     # ════════════════════════════════════════════════════════════
     #  Cube tile declarations (once)
@@ -1716,6 +1798,7 @@ def compressor_grad(
                                    max(0, round_blocks - pre_deal_tc_size))
                 blocks_after = max(0, round_blocks - pre_deal_tc_size - deal_tc_size)
 
+
                 # ── 块遍历节点规划（所有核：scatter/x 用 before/after，dX reduce 用 start/end）──
                 b_idx_start, sc_idx_start = b_idx, sc_idx
                 b_idx_before, sc_idx_before = _skip_blocks(
@@ -1749,10 +1832,12 @@ def compressor_grad(
                                     move_x_tile_group, x_arrange_gm,
                                     start_pos, seq_used, cu_seqlens, seq_ctx)
 
+
                 # ── CV 通路: 本轮 v1 完成即发信号（供 cube c1(i) 消费）──
                 b_idx, sc_idx = b_idx_end, sc_idx_end
                 pl.system.set_cross_core(pipe=pl.PipeType.MTE3, event_id=db_idx,
                     sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
+
 
                 # ── 本轮快照存入 cur（V2(i-1) 结束后才轮换为 prev，避免被本轮 V2 读到）──
                 cur_db_idx, cur_b_idx_start, cur_sc_idx_start = db_idx, b_idx_start, sc_idx_start
@@ -1775,10 +1860,12 @@ def compressor_grad(
                                work_space_ptr, d_w_kv_work_space_ptr, d_w_gate_work_space_ptr,
                                start_pos, seq_used, cu_seqlens, seq_ctx)
 
+
                 # ── V2 结束后轮换：本轮快照 cur → prev（供下一轮 V2(i) 使用）──
                 (prev_db_idx, prev_b_idx_start, prev_sc_idx_start,
                  prev_b_idx_end, prev_sc_idx_end) = (cur_db_idx, cur_b_idx_start, cur_sc_idx_start,
                                                      cur_b_idx_end, cur_sc_idx_end)
+
 
         # ════════════════════════════════════════════════════════════
         #  Phase 2: Cube Matmul — dkv@wkv + dsb@wgate → d_x_partial
