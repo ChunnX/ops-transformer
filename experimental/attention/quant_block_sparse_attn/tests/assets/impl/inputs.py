@@ -142,6 +142,7 @@ def _build_mxfp8_case(
     seed,
     quant_group_size,
     s2_base_size,
+    blocknum,
     data_range_q,
     data_range_k,
     data_range_v,
@@ -153,7 +154,7 @@ def _build_mxfp8_case(
         q_fallback = int(query.shape[1]) // batch
     else:
         q_fallback = int(query.shape[0]) // batch
-    kv_fallback = int(key.shape[0]) * int(key.shape[2]) // batch
+    kv_fallback = int(sparse_indices.shape[-1]) * int(sparse_kv_block_size)
     q_lengths = (
         [int(value) for value in actual_seq_q]
         if actual_seq_q is not None
@@ -170,6 +171,11 @@ def _build_mxfp8_case(
             f"q={len(q_lengths)}, kv={len(kv_lengths)}"
         )
     head_axis = 0 if layout_q == "NTD" else 1
+    normalized_blocknum = None if blocknum is None else int(blocknum)
+    if normalized_blocknum is not None and normalized_blocknum <= 0:
+        raise ValueError(
+            f"blocknum must be > 0 or None, got {normalized_blocknum}"
+        )
     return {
         "B": batch,
         "N1": int(query.shape[head_axis]),
@@ -180,6 +186,7 @@ def _build_mxfp8_case(
         "actual_seq_q": q_lengths,
         "actual_seq_kv": kv_lengths,
         "s2_base_size": int(s2_base_size),
+        "blocknum": normalized_blocknum,
         "block_size": int(key.shape[2]),
         "mask_mode": int(mask_mode),
         "fp8_dtype": torch.float8_e4m3fn,
@@ -242,6 +249,7 @@ def _customize_inputs_mxfp8(
     seed=0,
     quant_group_size=32,
     s2_base_size=512,
+    blocknum=None,
     data_range_q=1.0,
     data_range_k=1.0,
     data_range_v=1.0,
@@ -272,6 +280,7 @@ def _customize_inputs_mxfp8(
         seed=seed,
         quant_group_size=quant_group_size,
         s2_base_size=s2_base_size,
+        blocknum=blocknum,
         data_range_q=data_range_q,
         data_range_k=data_range_k,
         data_range_v=data_range_v,
@@ -286,10 +295,18 @@ def _customize_inputs_mxfp8(
         "Q descale",
     )
     key_pa = module.mxfp8_pa_preprocessing(
-        data["key"], data["kv_lengths"], case["block_size"], data["block_table"]
+        data["key"],
+        data["kv_lengths"],
+        case["block_size"],
+        data["block_table"],
+        physical_block_count=case["blocknum"] or 0,
     )
     value_pa = module.mxfp8_pa_preprocessing(
-        data["value"], data["kv_lengths"], case["block_size"], data["block_table"]
+        data["value"],
+        data["kv_lengths"],
+        case["block_size"],
+        data["block_table"],
+        physical_block_count=case["blocknum"] or 0,
     )
     k_scale_pa = module.mxfp8_pa_preprocessing(
         data["k_descale"],
@@ -297,6 +314,7 @@ def _customize_inputs_mxfp8(
         case["block_size"],
         data["block_table"],
         is_scale=True,
+        physical_block_count=case["blocknum"] or 0,
     )
     v_scale_pa = module.mxfp8_pa_preprocessing(
         data["v_descale"],
@@ -305,6 +323,7 @@ def _customize_inputs_mxfp8(
         data["block_table"],
         is_vscale=True,
         is_scale=True,
+        physical_block_count=case["blocknum"] or 0,
     )
 
     _inplace_copy(query, data["query"])

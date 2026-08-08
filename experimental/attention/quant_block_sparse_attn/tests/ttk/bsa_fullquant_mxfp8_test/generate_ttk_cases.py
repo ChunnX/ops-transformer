@@ -106,6 +106,9 @@ def validate_case(case, q_lengths, kv_lengths):
         )
     if sum(q_lengths) <= 0 or sum(kv_lengths) <= 0:
         raise ValueError(f"{name}: total Q/KV sequence length must be positive")
+    blocknum = case.get("blocknum")
+    if blocknum is not None and int(blocknum) <= 0:
+        raise ValueError(f"{name}: blocknum must be > 0 or None, got {blocknum}")
 
 
 def case_to_row(case, source):
@@ -121,7 +124,11 @@ def case_to_row(case, source):
     sparse_q = int(case["sparse_q_block_size"])
     sparse_kv = int(case["sparse_kv_block_size"])
     total_q = sum(q_lengths)
-    page_count = sum(math.ceil(length / page_size) for length in kv_lengths)
+    logical_page_count = sum(math.ceil(length / page_size) for length in kv_lengths)
+    blocknum = case.get("blocknum")
+    physical_page_count = (
+        logical_page_count if blocknum is None else int(blocknum)
+    )
     q_block_count = math.ceil(max(q_lengths) / sparse_q)
     kv_block_count = math.ceil(max(kv_lengths) / sparse_kv)
     p_scale_value = case.get("p_scale_value")
@@ -131,11 +138,17 @@ def case_to_row(case, source):
     # shift the required sparse-index and mask tensors into the wrong positions.
     tensor_shapes = (
         (total_q, n1, head_dim),
-        (page_count, n2, page_size, head_dim),
-        (page_count, n2, page_size, head_dim),
+        (physical_page_count, n2, page_size, head_dim),
+        (physical_page_count, n2, page_size, head_dim),
         (total_q, n1, head_dim // 64, 2),
-        (page_count, n2, page_size, head_dim // 64, 2),
-        (page_count, n2, math.ceil(page_size / 64), head_dim, 2),
+        (physical_page_count, n2, page_size, head_dim // 64, 2),
+        (
+            physical_page_count,
+            n2,
+            math.ceil(page_size / 64),
+            head_dim,
+            2,
+        ),
         (batch, n1, q_block_count, kv_block_count),
         (batch, n1, q_block_count),
         (2048, 2048),
@@ -184,6 +197,8 @@ def case_to_row(case, source):
         "data_range_k": normalize_data_range(case, "data_range_k"),
         "data_range_v": normalize_data_range(case, "data_range_v"),
     }
+    if blocknum is not None:
+        attributes["blocknum"] = int(blocknum)
     group = case.get("case_group") or "ungrouped"
     return {
         "testcase_name": case["name"],
