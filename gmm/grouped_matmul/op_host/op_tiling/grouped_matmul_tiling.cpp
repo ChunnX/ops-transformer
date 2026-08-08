@@ -2123,8 +2123,8 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
 
         const int is_in_a8w4_white_list =
             ((tuningConfig != 0 && tuningConfig <= 64) || (A8W4_PRETILING_WHITE_LIST.count(mKNList))) &&
-            quantGroupNum != 0 && k / quantGroupNum == 256 && k % quantGroupNum == 0 && withOffset == 0 &&
-            k % 64 == 0 && n % 64 == 0; // 256: 新方案只支持256 pergroup
+            quantGroupNum != 0 && k / quantGroupNum == 256 && k % quantGroupNum == 0 &&
+            k % 64 == 0 && n % 64 == 0; // 256: 新方案只支持256 pergroup; offset 由 MSD New/旧模板运行时支持
         uint32_t calc_m = 1U;
         if (groupNum != 0U) {
             calc_m = m / groupNum;
@@ -2316,6 +2316,9 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
             OP_CHECK_NULL_WITH_CONTEXT(context, workspaces);    // check workspaces is not null
             workspaces[0] = SYS_WORKSPACE_SIZE;                 // default size
             if (is_in_a8w4_white_list) {
+                if (withOffset == 1U) {
+                    workspaces[0] += static_cast<size_t>(m) * sizeof(float);  // xRowSumGm: MSD New offset 修正依赖
+                }
                 workspaces[0] += static_cast<size_t>(
                     (cvParallNum * aicNum * A8W4_MSD_BASE_M * A8W4_MSD_BASE_N * static_cast<uint32_t>(sizeof(short))) *
                     TWO);
@@ -2342,7 +2345,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
                 uint32_t isA8W4MSDPreNZ = 0;
 
                 // workspace 合法, k64位对齐 → 开启 ND→NZ 预处理分支并且计算需要额外分配的空间大小
-                if (isWorkspaceValid && k % kNZInt4Alignment == 0 && withOffset == 0) {
+                if (isWorkspaceValid && k % kNZInt4Alignment == 0) {
                     isA8W4MSDPreNZ = 1;
                     workspaces[0] += preProcessWorkspaceSize;
                 }

@@ -44,6 +44,7 @@ public:
     __aicore__ inline void copyIn(uint32_t mIdx, uint32_t kIdx, uint32_t curVecBaseM, uint32_t curVecBaseK);
     __aicore__ inline void compute(uint32_t mIdx, uint32_t kIdx, uint32_t curVecBaseM, uint32_t curVecBaseK);
     __aicore__ inline void copyOut(uint32_t mIdx, uint32_t kIdx, uint32_t curVecBaseM, uint32_t curVecBaseK);
+    __aicore__ inline void CalcRowSum();
 
 private:
     TQue<QuePosition::VECIN, QUE_DEPTH> vecInQueueX;
@@ -58,6 +59,8 @@ private:
     TBuf<TPosition::VECIN> groupListBuff;
     TBuf<TPosition::VECCALC> groupListFloatBuff;
     TBuf<TPosition::VECCALC> reduceSumWorkSpace;
+    TBuf<TPosition::VECCALC> rowSumXBuff;
+    TBuf<TPosition::VECCALC> rowSumCalcBuff;
     TBuf<TPosition::VECCALC> maskBuff;
     TBuf<TPosition::VECCALC> fp16Buff;
 
@@ -98,6 +101,9 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Init(GM_ADDR x, GM_ADDR x_out, GM_AD
     xGm.SetGlobalBuffer(GetTensorAddr<int8_t>(0, x));
     xOutInt4.SetGlobalBuffer((__gm__ int4b_t*)((__gm__ int8_t*)x_out ));
     groupNum = static_cast<uint32_t>(tilingData.groupNum);
+    if (tilingData.withOffset == WITH_OFFSET_NZ) {
+        xRowSumGm.SetGlobalBuffer((__gm__ float *)workspace);
+    }
     withOffset = tilingData.withOffset;
     m = tilingData.m;
     k = tilingData.k;
@@ -110,6 +116,11 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Init(GM_ADDR x, GM_ADDR x_out, GM_AD
     pipe->InitBuffer(groupListFloatBuff,
         Ceil(static_cast<uint32_t>(groupNum * sizeof(float)), DATA_BLOCK_SIZE_32_NZ) * DATA_BLOCK_SIZE_32_NZ);
     pipe->InitBuffer(reduceSumWorkSpace, BUFFER_SIZE_256B * sizeof(float));
+    if (tilingData.withOffset == WITH_OFFSET_NZ) {
+        pipe->InitBuffer(vecOutQueueRowSum, BUFFER_NUM_ONE, 32);  // 1 float 行和, 32B 对齐
+        pipe->InitBuffer(rowSumXBuff, k * sizeof(int8_t));         // 整行 int8
+        pipe->InitBuffer(rowSumCalcBuff, k * sizeof(float) * 2);   // xFloat[k] + ReduceSum work[k]
+    }
 
     pipe->InitBuffer(xHighHalfBuff, A8W4PRE_VECTOR_BASE_M * A8W4PRE_VECTOR_BASE_K * sizeof(half));
     xHighHalfTensor = xHighHalfBuff.Get<half>();
@@ -232,7 +243,38 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Process()
         compute(mIdx, kIdx, curVecBaseM, curVecBaseK);
         copyOut(mIdx, kIdx, curVecBaseM, curVecBaseK);
     }
+    CalcRowSum();  // withOffset 时按行计算 xRowSum 写入 workspace，供 MSD New offset 修正
     SyncAll<false>();
+}
+
+__aicore__ inline void GMMA8W4PreProcessNZ::CalcRowSum() {
+    if (withOffset != WITH_OFFSET_NZ) { return; }
+    // 每核负责若干整行(startNum,+blockDim)，无跨核冲突；对整行 sum_k(int8 x) -> xRowSumGm[row]
+    // 用向量累加(不走 GetValue 标量路径，避免 V->S 同步陷阱)。要求 rowSumCalcBuff 容纳 xFloat[k] + work[k]。
+    LocalTensor<int8_t> xTile = rowSumXBuff.Get<int8_t>();               // [k] int8
+    LocalTensor<half> xHalfTile = xHighHalfBuff.Get<half>();             // [k] int8->half
+    LocalTensor<float> xFloatTile = rowSumCalcBuff.GetWithOffset<float>(k, 0);            // [k] half->float
+    LocalTensor<float> workTile = rowSumCalcBuff.GetWithOffset<float>(k, k * sizeof(float)); // ReduceSum work
+    LocalTensor<float> rowSumRes = vecOutQueueRowSum.AllocTensor<float>();  // [8] 结果(32B)
+    for (uint32_t row = startNum; row < totalGroup; row += blockDim) {
+        DataCopyExtParams inP{1, static_cast<uint32_t>(k * sizeof(int8_t)), 0, 0, 0};
+        DataCopyPadExtParams<int8_t> inPad{false, 0, 0, 0};
+        DataCopyPad(xTile, xGm[row * k], inP, inPad);
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID3);
+        WaitFlag<HardEvent::MTE2_V>(EVENT_ID3);
+        Cast(xHalfTile, xTile, AscendC::RoundMode::CAST_NONE, k);
+        PipeBarrier<PIPE_V>();
+        Cast(xFloatTile, xHalfTile, AscendC::RoundMode::CAST_NONE, k);
+        PipeBarrier<PIPE_V>();
+        ReduceSum(rowSumRes, xFloatTile, workTile, k);   // 整行一次求和 -> rowSumRes[0]
+        SetFlag<HardEvent::V_MTE3>(EVENT_ID3);
+        WaitFlag<HardEvent::V_MTE3>(EVENT_ID3);
+        DataCopyExtParams outP{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
+        DataCopyPad(xRowSumGm[row], rowSumRes, outP);
+        SetFlag<HardEvent::MTE3_V>(EVENT_ID3);
+        WaitFlag<HardEvent::MTE3_V>(EVENT_ID3);
+    }
+    vecOutQueueRowSum.FreeTensor(rowSumRes);
 }
 
 }
