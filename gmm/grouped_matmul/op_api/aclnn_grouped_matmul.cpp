@@ -85,8 +85,8 @@ static constexpr size_t SCALE_GROUP_DIM_INDEX = 1UL;
 static constexpr int64_t GROUP_LIST_CUMSUM = 0L;
 static constexpr int64_t GROUP_LIST_COUNT = 1L;
 static constexpr int64_t QUANT_GROUP_SIZE_S8S4 = 256L;
-static constexpr int64_t N_ALIGN_A4W4 = 8L;
-static constexpr int64_t QUANT_GROUP_SIZE_A4W4 = 2L;
+static constexpr int64_t N_ALIGN_S4S4 = 8L;
+static constexpr int64_t QUANT_GROUP_SIZE_S4S4 = 2L;
 static constexpr size_t PER_CHANNEL_SCALE_DIM = 2UL;
 static constexpr size_t PER_GROUP_SCALE_DIM = 3UL;
 static constexpr size_t DIMS_THREE_FOR_GMM = 3UL;
@@ -1337,7 +1337,7 @@ static aclnnStatus CheckA4W4ParamsShape(const gmm::GroupedMatmulParams &gmmParam
                "dim should be 2 for per-channel or 3 for per-group].",
                opName, "scale", scaleDimNum);
     int64_t n = scaleShape.GetDim(scaleDimNum - 1);
-    CHECK_COND((n % N_ALIGN_A4W4) == 0, ACLNN_ERR_PARAM_INVALID,
+    CHECK_COND((n % N_ALIGN_S4S4) == 0, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], when A4W4 quant, the shape of [%s] is not supported, got [n %ld]. Constraint:[n axis "
                "should align with 8].",
                opName, "scale", n);
@@ -1350,7 +1350,7 @@ static aclnnStatus CheckA4W4ParamsShape(const gmm::GroupedMatmulParams &gmmParam
                    "[scale shape is [e, G, n], x shape [m, k] requires k divisible by G, but k is %ld and G is %ld].",
                    opName, "x, scale", k, kGroupNum);
         int64_t pergroupNum = static_cast<int64_t>(k / kGroupNum);
-        CHECK_COND((pergroupNum % QUANT_GROUP_SIZE_A4W4) == 0, ACLNN_ERR_PARAM_INVALID,
+        CHECK_COND((pergroupNum % QUANT_GROUP_SIZE_S4S4) == 0, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when per-group A4W4 quant, the tensor shapes of [%s...] are mismatched, the reason is: "
                    "[scale shape is [e, G, n], per-group num k/G should be divisible by 2, but got %ld].",
                    opName, "x, scale", pergroupNum);
