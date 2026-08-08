@@ -27,7 +27,7 @@ OP_TYPE_REGISTER(MoeInitRoutingV4);
 std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>
 MoeInitRoutingV4(const aclTensor *x, const aclTensor *expertIdx,
                  const aclTensor *scale, const aclTensor *offset,
-                 const aclTensor *active_num, const aclTensor *topk_weight,
+                 const aclTensor *activeNum, const aclTensor *topkWeight,
                  int64_t expertCapacity, int64_t expertNum, int64_t dropPadMode,
                  int64_t expertTokensNumType, bool expertTokensNumFlag,
                  int64_t quantMode, const aclIntArray *activeExpertRange,
@@ -35,14 +35,14 @@ MoeInitRoutingV4(const aclTensor *x, const aclTensor *expertIdx,
                  const aclTensor *expandedRowIdx,
                  const aclTensor *expertTokensCountOrCumsum,
                  const aclTensor *expandedScale,
-                 const aclTensor *expanded_topk_weight,
+                 const aclTensor *expandedTopkWeight,
                  aclOpExecutor *executor)
 {
-    L0_DFX(MoeInitRoutingV4, x, expertIdx, scale, offset, active_num, topk_weight,
+    L0_DFX(MoeInitRoutingV4, x, expertIdx, scale, offset, activeNum, topkWeight,
            expertCapacity, expertNum, dropPadMode, expertTokensNumType,
            expertTokensNumFlag, quantMode, activeExpertRange, rowIdxType,
            expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
-           expanded_topk_weight);
+           expandedTopkWeight, executor);
 
     auto expandedXOut = executor->AllocTensor(expandedX->GetViewShape(), expandedX->GetDataType(),
                                               Format::FORMAT_ND);
@@ -63,10 +63,9 @@ MoeInitRoutingV4(const aclTensor *x, const aclTensor *expertIdx,
     }
 
     aclTensor* expandedTopkWeightOut = nullptr;
-    const aclTensor* topkWeightInput = topk_weight;
-    if (expanded_topk_weight != nullptr) {
-        expandedTopkWeightOut = executor->AllocTensor(expanded_topk_weight->GetViewShape(),
-                                                      expanded_topk_weight->GetDataType(),
+    if (expandedTopkWeight != nullptr) {
+        expandedTopkWeightOut = executor->AllocTensor(expandedTopkWeight->GetViewShape(),
+                                                      expandedTopkWeight->GetDataType(),
                                                       Format::FORMAT_ND);
         if (expandedTopkWeightOut == nullptr) {
             return std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*, aclTensor*>(
@@ -79,7 +78,7 @@ MoeInitRoutingV4(const aclTensor *x, const aclTensor *expertIdx,
     }
     ADD_TO_LAUNCHER_LIST_AICORE(
         MoeInitRoutingV4,
-        OP_INPUT(x, expertIdx, scale, offset, active_num, topkWeightInput),
+        OP_INPUT(x, expertIdx, scale, offset, activeNum, topkWeight),
         OP_OUTPUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut, expandedScaleOut,
                   expandedTopkWeightOut),
         OP_ATTR(expertCapacity, expertNum, dropPadMode, expertTokensNumType, expertTokensNumFlag,

@@ -451,6 +451,9 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     }
 
     // 4.TopkWeightOut（仅非FullLoad路径）
+    // V3 regression: isInputTopkWeight 恒为 0，此分支不会执行。
+    // topkWeight/expandedTopkWeight 传 nullptr 仅为占位，不可在 isInputTopkWeight==1 时执行，
+    // 否则 Init 内 SetGlobalBuffer 会解引用空指针。V4 通过 tiling 设置 isInputTopkWeight=1 启用此路径。
     if (t->isInputTopkWeight == 1) {
         TPipe topkWeightPipe;
         MoeV3TopkWeightOut topkWeightOp;

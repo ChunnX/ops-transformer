@@ -415,6 +415,42 @@ TEST_F(MoeInitRoutingV4, moe_init_routing_v4_infer_shape_empty_n)
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
+// DropPad + topk_weight
+TEST_F(MoeInitRoutingV4, moe_init_routing_v4_infer_shape_droppad_with_topkweight)
+{
+    gert::InfershapeContextPara infershapeContextPara("MoeInitRoutingV4",
+                                                      {
+                                                        {{{8, 1024}, {8, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                        {{{8, 512}, {8, 512}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+                                                        {{{8, 512}, {8, 512}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                        {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                        {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                      },
+                                                      {
+                                                        {"expert_capacity",Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)},
+                                                        {"expert_num",Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
+                                                        {"drop_pad_mode",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                                        {"expert_tokens_num_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                                        {"expert_tokens_num_flag",Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+                                                        {"quant_mode",Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+                                                        {"active_expert_range",Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 256})},
+                                                        {"row_idx_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                      },
+                                                      {1, 1, 0, 0, 0, 1},
+                                                      {1, 1, 1, 1, 1});
+    // DropPad: expandedXOut = [expertNum, expertCapacity, H], expandedTopkWeightOut = [expertNum*expertCapacity, 1]
+    std::vector<std::vector<int64_t>> expectOutputShape = {{256, 4, 1024}, {8 * 512}, {256}, {256 * 4}, {256 * 4, 1}};
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
 // BF16, unquant, no scale, no topk_weight
 TEST_F(MoeInitRoutingV4, moe_init_routing_v4_infer_shape_bf16)
 {

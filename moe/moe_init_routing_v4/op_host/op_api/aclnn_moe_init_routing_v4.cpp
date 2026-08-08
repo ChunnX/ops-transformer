@@ -20,7 +20,6 @@
 #include "opdev/common_types.h"
 #include "moe_init_routing_v4.h"
 #include "aclnn_moe_init_routing_v4.h"
-#include "external/aclnn_kernels/aclnn_platform.h"
 #include "aclnn_util.h"
 
 using namespace op;
@@ -28,11 +27,6 @@ using namespace op;
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-namespace {
-static const int64_t MOE_DIM_2 = 2;
-static const int64_t MOE_DIM_1 = 1;
-} // namespace
 
 static const std::initializer_list<DataType> DTYPE_SUPPORT_LIST_X_REGBASE = {
     DataType::DT_FLOAT16,  DataType::DT_BF16,        DataType::DT_FLOAT,         DataType::DT_INT8,

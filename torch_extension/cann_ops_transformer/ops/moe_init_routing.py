@@ -139,7 +139,7 @@ class _MoeInitRoutingOpBuilder(OpBuilder):
 
     @staticmethod
     def _validate_inputs(x, expert_idx, scale, offset, active_num,
-                         expert_num, drop_pad_mode, expert_tokens_num_type,
+                         expert_num, expert_capacity, drop_pad_mode, expert_tokens_num_type,
                          quant_mode, active_expert_range,
                          row_idx_type, x_dtype, topk_weight):
         torch._check(x.dim() == 2,
@@ -148,10 +148,15 @@ class _MoeInitRoutingOpBuilder(OpBuilder):
             lambda: f"expert_idx must be 2D, but got {expert_idx.dim()}D.{ops_error(ErrCode.VALUE)}")
         torch._check(x.size(0) == expert_idx.size(0),
             lambda: f"the first dim of expert_idx and x should be the same.{ops_error(ErrCode.VALUE)}")
+        torch._check(expert_num > 0,
+            lambda: f"expert_num must be greater than 0.{ops_error(ErrCode.VALUE)}")
         expert_range_length = _MoeInitRoutingOpBuilder._validate_active_expert_range(
             active_expert_range, expert_num)
         torch._check(drop_pad_mode in [0, 1],
             lambda: f"drop_pad_mode must be 0 or 1.{ops_error(ErrCode.VALUE)}")
+        if drop_pad_mode == 1:
+            torch._check(expert_capacity > 0,
+                lambda: f"expert_capacity must be greater than 0 when drop_pad_mode=1.{ops_error(ErrCode.VALUE)}")
         torch._check(expert_tokens_num_type in [0, 1, 2],
             lambda: f"expert_tokens_num_type must be 0, 1 or 2.{ops_error(ErrCode.VALUE)}")
         torch._check(quant_mode in [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17],
@@ -281,7 +286,7 @@ class _MoeInitRoutingOpBuilder(OpBuilder):
             is_float4_case, is_fp8_or_fp4_dtype, is_dynamic_int4_output, expert_range_length = \
                 _MoeInitRoutingOpBuilder._validate_inputs(
                     x, expert_idx, scale, offset, active_num,
-                    expert_num, drop_pad_mode, expert_tokens_num_type,
+                    expert_num, expert_capacity, drop_pad_mode, expert_tokens_num_type,
                     quant_mode, active_expert_range,
                     row_idx_type, x_dtype, topk_weight)
             bs = x.size(0)

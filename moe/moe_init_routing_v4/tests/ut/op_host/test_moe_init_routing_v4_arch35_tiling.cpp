@@ -719,3 +719,66 @@ TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_mxfp8_active_topkweigh
                   {180, 192}, ROW_IDX_TYPE_GATHER, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, kExpandedXDtypeAuto,
                   true, 27, true, ge::GRAPH_SUCCESS);
 }
+
+// topk_weight failure cases
+TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_topk_weight_invalid_dtype)
+{
+    int64_t h = 83;
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 262144, platform_ascendc::SocVersion::ASCEND950};
+    int64_t n = 1;
+    int64_t k = 27;
+    int64_t totalLength = n * k;
+    auto inputDesc = BuildV4Inputs(n, h, k, ge::DT_FLOAT16, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, false, 0, true, totalLength);
+    auto outputDesc = BuildV4Outputs(totalLength, h, ge::DT_FLOAT16, {EXPERT_NUM - 180}, {{totalLength}, ge::DT_FLOAT},
+                                     true, n, k, 0, EXPERT_NUM, 0);
+    auto attrs = BuildV4Attrs(0, EXPERT_NUM, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, {180, 192}, ROW_IDX_TYPE_GATHER);
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingV4", inputDesc, outputDesc, attrs, &compileInfo, "Ascend950", A5SocInfo, 4096);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_topk_weight_1d)
+{
+    int64_t h = 83;
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 262144, platform_ascendc::SocVersion::ASCEND950};
+    int64_t n = 1;
+    int64_t k = 27;
+    int64_t totalLength = n * k;
+    auto inputDesc = BuildV4Inputs(n, h, k, ge::DT_FLOAT16, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, false, 0, true, totalLength);
+    inputDesc[5] = {gert::StorageShape({totalLength}, {totalLength}), ge::DT_FLOAT, ge::FORMAT_ND};
+    auto outputDesc = BuildV4Outputs(totalLength, h, ge::DT_FLOAT16, {EXPERT_NUM - 180}, {{totalLength}, ge::DT_FLOAT},
+                                     true, n, k, 0, EXPERT_NUM, 0);
+    auto attrs = BuildV4Attrs(0, EXPERT_NUM, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, {180, 192}, ROW_IDX_TYPE_GATHER);
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingV4", inputDesc, outputDesc, attrs, &compileInfo, "Ascend950", A5SocInfo, 4096);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_topk_weight_inconsistent)
+{
+    int64_t h = 83;
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 262144, platform_ascendc::SocVersion::ASCEND950};
+    int64_t n = 1;
+    int64_t k = 27;
+    int64_t totalLength = n * k;
+    auto inputDesc = BuildV4Inputs(n, h, k, ge::DT_FLOAT16, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, false, 0, true, totalLength);
+    auto outputDesc = BuildV4Outputs(totalLength, h, ge::DT_FLOAT16, {EXPERT_NUM - 180}, {{totalLength}, ge::DT_FLOAT},
+                                     false, n, k, 0, EXPERT_NUM, 0);
+    auto attrs = BuildV4Attrs(0, EXPERT_NUM, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, {180, 192}, ROW_IDX_TYPE_GATHER);
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingV4", inputDesc, outputDesc, attrs, &compileInfo, "Ascend950", A5SocInfo, 4096);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeInitRoutingV4Tiling, moe_init_routing_v4_tiling_active_num_invalid_dtype)
+{
+    int64_t h = 83;
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 262144, platform_ascendc::SocVersion::ASCEND950};
+    int64_t n = 1;
+    int64_t k = 27;
+    int64_t totalLength = n * k;
+    auto inputDesc = BuildV4Inputs(n, h, k, ge::DT_FLOAT16, {}, ge::DT_FLOAT, {}, ge::DT_FLOAT, false, 0, false, totalLength);
+    inputDesc[4] = {gert::StorageShape({1}, {1}), ge::DT_FLOAT, ge::FORMAT_ND};
+    auto outputDesc = BuildV4Outputs(totalLength, h, ge::DT_FLOAT16, {EXPERT_NUM - 180}, {{totalLength}, ge::DT_FLOAT},
+                                     false, n, k, 0, EXPERT_NUM, 0);
+    auto attrs = BuildV4Attrs(0, EXPERT_NUM, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, {180, 192}, ROW_IDX_TYPE_GATHER);
+    gert::TilingContextPara tilingContextPara("MoeInitRoutingV4", inputDesc, outputDesc, attrs, &compileInfo, "Ascend950", A5SocInfo, 4096);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}

@@ -15,6 +15,8 @@
 #include "moe_init_routing_v3_tiling_arch35.h"
 
 namespace optiling {
+constexpr int64_t DIM_VALUE_ONE = 1LL;
+constexpr int64_t DIM_VALUE_TWO = 2LL;
 
 ge::graphStatus MoeInitRoutingV3TilingArch35::GetPlatformInfo()
 {
@@ -755,10 +757,10 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::CheckSetInputs()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3TilingArch35::CheckSetInputs()");
 
-    n_ = xShape_.GetDim(0);
-    k_ = expertIdxShape_.GetDim(1);
     MIRV3_CHECK_GE_RET(CheckInputX());
     MIRV3_CHECK_GE_RET(CheckInputExpertIdx());
+    n_ = xShape_.GetDim(0);
+    k_ = expertIdxShape_.GetDim(1);
     MIRV3_CHECK_GE_RET(CheckInputScale());
     MIRV3_CHECK_GE_RET(CheckInputOffset());
     MIRV3_CHECK_GE_RET(CheckInputTopkWeight());
@@ -966,7 +968,7 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::CheckOutputExpertTokensCountOrCums
     } else if (expertTokensNumType_ == EXPERT_TOKENS_TYPE_KEY_VALUE) {
         expectedRank = RANK_TWO;
         expectedDim0 = expertNum_;
-        expectedDim1 = DIM_TWO;
+        expectedDim1 = DIM_VALUE_TWO;
     }
 
     auto rank = static_cast<int64_t>(expertTokensCountOrCumsumShape_.GetDimNum());
@@ -1114,7 +1116,7 @@ ge::graphStatus MoeInitRoutingV3TilingArch35::CheckOutputExpandedTopkWeight()
     }
     // dim[1]校验：必须为1
     int64_t dim1 = expandedTopkWeightShape_.GetDim(1);
-    OP_CHECK_IF(dim1 != DIM_ONE,
+    OP_CHECK_IF(dim1 != DIM_VALUE_ONE,
                 OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "expanded_topk_weight dim[1]",
                                           std::to_string(dim1), "1"),
                 return ge::GRAPH_FAILED);
@@ -1375,7 +1377,7 @@ void MoeInitRoutingV3TilingArch35::Tiling4ExpertTokensCountCompute()
 
     int64_t expertNumElement = (tilingDataPtr_->expertTokensNumType != EXPERT_TOKENS_TYPE_KEY_VALUE) ?
                                    tilingDataPtr_->actualExpertNum :
-                                   (tilingDataPtr_->actualExpertNum + 1) * DIM_TWO;
+                                   (tilingDataPtr_->actualExpertNum + 1) * DIM_VALUE_TWO;
     int64_t maxElementsPerLoop =
         (availUbSize_ -
          Ops::Base::CeilAlign(expertNumElement, UB_BLOCK_SIZE) *
@@ -1911,9 +1913,11 @@ void MoeInitRoutingV3TilingArch35::Tiling4TopkWeightOut()
     int64_t splitBase = totalLength_;
     int64_t perCoreElements = Ops::Base::CeilDiv(splitBase, aivCoreNum_);
 
-    // TopkWeightOut使用独立TPipe，UB全部可用，每次搬1个float weight + 1个int32索引
-    int64_t perLoopMaxElements = availUbSize_ / NUM_TWO /
-        (AlignBytes(1, static_cast<int64_t>(sizeof(float))) + static_cast<int64_t>(sizeof(int32_t)));
+    // TopkWeightOut使用独立TPipe，UB全部可用。
+    // kernel侧UB占用: topkWeightCopyInQueue_固定32字节 + rowIdxCopyInQueue_双缓冲每元素8字节(2*4)
+    int64_t fixedBuffer = AlignBytes(1, static_cast<int64_t>(sizeof(float)));
+    int64_t perElementSize = DOUBLE_BUFFER * static_cast<int64_t>(sizeof(int32_t));
+    int64_t perLoopMaxElements = (availUbSize_ - fixedBuffer) / perElementSize;
     int64_t perCorePerLoopElements = std::min(perLoopMaxElements, perCoreElements);
 
     tilingDataPtr_->topkWeightOutPerCorePerLoopElements = perCorePerLoopElements;

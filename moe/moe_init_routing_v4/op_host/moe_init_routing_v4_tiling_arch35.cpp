@@ -21,12 +21,6 @@
 namespace optiling {
 using Ops::Transformer::OpTiling::TilingBaseClass;
 
-const static int64_t V4_OUTPUT_EXPANDED_X_INDEX = 0LL;
-const static int64_t V4_OUTPUT_EXPANDED_ROW_IDX_INDEX = 1LL;
-const static int64_t V4_OUTPUT_EXPERT_TOKENS_COUNT_INDEX = 2LL;
-const static int64_t V4_OUTPUT_EXPANDED_SCALE_INDEX = 3LL;
-const static int64_t V4_OUTPUT_EXPANDED_TOPK_WEIGHT_INDEX = 4LL;
-
 class MoeInitRoutingV4TilingArch35 : public MoeInitRoutingV3TilingArch35 {
 public:
     explicit MoeInitRoutingV4TilingArch35(gert::TilingContext *context)
@@ -38,6 +32,7 @@ public:
 protected:
     bool IsCapable() override
     {
+        // V4 仅在 def.cpp 注册了 ascend950 配置，框架保证只有 950 才会匹配到此算子，无需再校验 SoC 版本。
         return true;
     }
 
@@ -45,6 +40,9 @@ protected:
     {
         OP_LOGD(context_, "Entered MoeInitRoutingV4TilingArch35::GetInputAttrsInfo()");
 
+        // 当前阶段不读取 active_num 输入的值，activeNum_ 设为 -1，
+        // 后续 CheckSetEmptyTensor 会将其归一化为 totalLength_（n*k）。
+        // 未来动态语义阶段需通过 InputsDataDependency + GetInputTensor 读取实际值。
         activeNum_ = -1LL;
 
         auto attrsPtr = context_->GetAttrs();
@@ -106,6 +104,11 @@ protected:
                         OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "active_num",
                                                   Ops::Base::ToString(activeNumDtype), "DT_INT64"),
                         return ge::GRAPH_FAILED);
+            auto activeNumRank = static_cast<int64_t>(activeNumShape.GetDimNum());
+            OP_CHECK_IF(activeNumRank != 0 && !(activeNumRank == 1 && activeNumShape.GetDim(0) == 1),
+                        OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "active_num",
+                                                  Ops::Base::ToString(activeNumShape), "() or (1,)"),
+                        return ge::GRAPH_FAILED);
         }
         MIRV3_CHECK_GE_RET(GetOptionalInputShapeDtype(topkWeightShape_, topkWeightDtype_, isInputTopkWeight_,
                                                       V4_INPUT_TOPK_WEIGHT_INDEX));
@@ -128,7 +131,9 @@ protected:
                                                       V4_OUTPUT_EXPERT_TOKENS_COUNT_INDEX));
         MIRV3_CHECK_GE_RET(
             GetTensorShapeDtype<false>(expandedScaleShape_, expandedScaleDtype_, V4_OUTPUT_EXPANDED_SCALE_INDEX));
-        if (context_->GetOutputShape(V4_OUTPUT_EXPANDED_TOPK_WEIGHT_INDEX) != nullptr) {
+        auto expandedTopkWeightOutShapePtr = context_->GetOutputShape(V4_OUTPUT_EXPANDED_TOPK_WEIGHT_INDEX);
+        if (expandedTopkWeightOutShapePtr != nullptr &&
+            expandedTopkWeightOutShapePtr->GetStorageShape().GetShapeSize() > 0) {
             isOutputExpandedTopkWeight_ = 1;
             MIRV3_CHECK_GE_RET(GetTensorShapeDtype<false>(expandedTopkWeightShape_, expandedTopkWeightDtype_,
                                                           V4_OUTPUT_EXPANDED_TOPK_WEIGHT_INDEX));

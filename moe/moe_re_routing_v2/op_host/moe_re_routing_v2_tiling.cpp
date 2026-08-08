@@ -21,6 +21,7 @@
 namespace optiling {
 
 const static int64_t V2_IN_EXPERT_TOPK_WEIGHT_INDEX = 3;
+const static int64_t V2_OUTPUT_PERMUTE_TOPK_WEIGHT_INDEX = 4;
 const static int64_t TOPK_WEIGHT_DIM = 2;
 const static int64_t TOPK_WEIGHT_DIM1_VALUE = 1;
 
@@ -62,6 +63,16 @@ protected:
                         OP_LOGE(context_->GetNodeName(), "expert_topk_weight dim1 must be 1, actual %ld.",
                                 topkWeightShape.GetDim(1)),
                         return ge::GRAPH_FAILED);
+        } else {
+            auto permuteTopkWeightOutShape = context_->GetOutputShape(V2_OUTPUT_PERMUTE_TOPK_WEIGHT_INDEX);
+            if (permuteTopkWeightOutShape != nullptr) {
+                auto &shape = permuteTopkWeightOutShape->GetStorageShape();
+                OP_CHECK_IF(shape.GetDimNum() > 0 && shape.GetDim(0) > 0,
+                            OP_LOGE(context_->GetNodeName(),
+                                    "permute_topk_weight output must not be provided"
+                                    " when expert_topk_weight is not input."),
+                            return ge::GRAPH_FAILED);
+            }
         }
 
         return ge::GRAPH_SUCCESS;
@@ -106,6 +117,16 @@ protected:
                         OP_LOGE(context_->GetNodeName(), "expert_topk_weight dim1 must be 1, actual %ld.",
                                 topkWeightShape.GetDim(1)),
                         return ge::GRAPH_FAILED);
+        } else {
+            auto permuteTopkWeightOutShape = context_->GetOutputShape(V2_OUTPUT_PERMUTE_TOPK_WEIGHT_INDEX);
+            if (permuteTopkWeightOutShape != nullptr) {
+                auto &shape = permuteTopkWeightOutShape->GetStorageShape();
+                OP_CHECK_IF(shape.GetDimNum() > 0 && shape.GetDim(0) > 0,
+                            OP_LOGE(context_->GetNodeName(),
+                                    "permute_topk_weight output must not be provided"
+                                    " when expert_topk_weight is not input."),
+                            return ge::GRAPH_FAILED);
+            }
         }
 
         return ge::GRAPH_SUCCESS;

@@ -50,8 +50,6 @@ private:
     int64_t dropPadMode_;
     int64_t expertNum_;
     int64_t expertCapacity_;
-    int64_t expertStart_;
-    int64_t expertEnd_;
     int64_t outputRows_;
     int64_t needCoreNum_;
     int64_t perCoreElements_;
@@ -80,22 +78,20 @@ __aicore__ inline void MoeV3TopkWeightOut::Init(GM_ADDR topkWeight, GM_ADDR expa
     dropPadMode_ = tilingData->dropPadMode;
     expertNum_ = tilingData->expertNum;
     expertCapacity_ = tilingData->expertCapacity;
-    expertStart_ = tilingData->expertStart;
-    expertEnd_ = tilingData->expertEnd;
 
     outputRows_ = (dropPadMode_ == DROP_PAD_MODE) ? expertNum_ * expertCapacity_ : activeNum_;
-
-    GlobalTensor<int32_t> expertTotalCountGm;
-    expertTotalCountGm.SetGlobalBuffer((__gm__ int32_t *)workspace +
-        Align(totalLength_, sizeof(int32_t)) * 2 + Align(tilingData->actualExpertNum, sizeof(int32_t)), 1);
-    AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-        AscendC::DcciDst::CACHELINE_OUT>(expertTotalCountGm);
-    expertTotalCount_ = expertTotalCountGm.GetValue(0);
 
     topkWeightGm_.SetGlobalBuffer((__gm__ float *)topkWeight, totalLength_);
     expandedTopkWeightGm_.SetGlobalBuffer((__gm__ float *)expandedTopkWeight, outputRows_);
 
     if (dropPadMode_ != DROP_PAD_MODE) {
+        GlobalTensor<int32_t> expertTotalCountGm;
+        expertTotalCountGm.SetGlobalBuffer((__gm__ int32_t *)workspace +
+            Align(totalLength_, sizeof(int32_t)) * 2 + Align(tilingData->actualExpertNum, sizeof(int32_t)), 1);
+        AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
+            AscendC::DcciDst::CACHELINE_OUT>(expertTotalCountGm);
+        expertTotalCount_ = expertTotalCountGm.GetValue(0);
+
         if (rowIdxType_ == SCATTER) {
             expandDstToSrcRowGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, totalLength_);
         } else {
@@ -204,7 +200,6 @@ __aicore__ inline void MoeV3TopkWeightOut::ProcessDroplessScatter(int64_t startI
 
 __aicore__ inline void MoeV3TopkWeightOut::Process()
 {
-    DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
     int64_t startIdx = blockIdx_ * perCoreElements_;
 
     if (dropPadMode_ == DROP_PAD_MODE) {
@@ -212,15 +207,13 @@ __aicore__ inline void MoeV3TopkWeightOut::Process()
         int64_t startRow = blockIdx_ * perCoreZeroRows;
         int64_t endRow = Min(startRow + perCoreZeroRows, outputRows_);
         if (startRow < endRow) {
-            LocalTensor<float> zeroLocal = topkWeightCopyInQueue_.AllocTensor<float>();
-            Duplicate<float>(zeroLocal, 0.0f, static_cast<int32_t>(1));
-            topkWeightCopyInQueue_.EnQue(zeroLocal);
-            zeroLocal = topkWeightCopyInQueue_.DeQue<float>();
-            SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-            for (int64_t row = startRow; row < endRow; row++) {
-                DataCopyPad(expandedTopkWeightGm_[row], zeroLocal, copyParams);
-            }
-            topkWeightCopyInQueue_.FreeTensor(zeroLocal);
+            GlobalTensor<float> zeroGm;
+            zeroGm.SetGlobalBuffer(
+                (__gm__ float *)expandedTopkWeightGm_.GetPhyAddr() + startRow,
+                endRow - startRow);
+            SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+            InitGlobalMemory(zeroGm, endRow - startRow, 0.0f);
+            SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
         }
 #ifndef __CCE_KT_TEST__
         AscendC::SyncAll();

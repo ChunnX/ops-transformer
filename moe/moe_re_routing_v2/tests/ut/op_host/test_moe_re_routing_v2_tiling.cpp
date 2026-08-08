@@ -240,7 +240,8 @@ TEST_F(MoeReRoutingV2Tiling, moe_re_routing_v2_r_with_topk_weight) {
                                                 &compileInfo, "Ascend950");
     uint64_t expectTilingKey = 210100;
     std::vector<size_t> expectWorkspaces = {1024 * 1024 * 16};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, "", expectWorkspaces);
+    string expectTilingData = "7168 1 16 16 16 1 128992 0 0 1 ";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 TEST_F(MoeReRoutingV2Tiling, moe_re_routing_v2_re_with_topk_weight) {
@@ -266,7 +267,8 @@ TEST_F(MoeReRoutingV2Tiling, moe_re_routing_v2_re_with_topk_weight) {
                                                 &compileInfo, "Ascend950");
     uint64_t expectTilingKey = 200100;
     std::vector<size_t> expectWorkspaces = {1024 * 1024 * 16};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, "", expectWorkspaces);
+    string expectTilingData = "7168 1 4 4 16 4 1 4 1 128992 0 0 1 ";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
 TEST_F(MoeReRoutingV2Tiling, moe_re_routing_v2_r_topk_weight_no_scale) {
@@ -292,7 +294,80 @@ TEST_F(MoeReRoutingV2Tiling, moe_re_routing_v2_r_topk_weight_no_scale) {
                                                 &compileInfo, "Ascend950");
     uint64_t expectTilingKey = 210000;
     std::vector<size_t> expectWorkspaces = {1024 * 1024 * 16};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, "", expectWorkspaces);
+    string expectTilingData = "7168 0 16 16 16 1 128992 0 0 1 ";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
+}
+
+TEST_F(MoeReRoutingV2Tiling, moe_re_routing_v2_topk_weight_invalid_dtype) {
+    optiling::MoeReRoutingCompileInfo compileInfo = {48, 65536};
+    gert::TilingContextPara tilingContextPara("MoeReRoutingV2",
+                                                {
+                                                    {{{256, 7168}, {256, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                    {{{16, 16}, {16, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                    {{{256}, {256}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                    {{{256, 1}, {256, 1}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                },
+                                                {
+                                                    {{{256, 7168}, {256, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                    {{{256}, {256}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                    {{{256}, {256}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                    {{{16}, {16}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                    {{{256, 1}, {256, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                },
+                                                {
+                                                    {"expert_token_num_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                                    {"idx_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                },
+                                                &compileInfo, "Ascend950");
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeReRoutingV2Tiling, moe_re_routing_v2_topk_weight_invalid_dim) {
+    optiling::MoeReRoutingCompileInfo compileInfo = {48, 65536};
+    gert::TilingContextPara tilingContextPara("MoeReRoutingV2",
+                                                {
+                                                    {{{256, 7168}, {256, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                    {{{16, 16}, {16, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                    {{{256}, {256}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                    {{{256}, {256}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                },
+                                                {
+                                                    {{{256, 7168}, {256, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                    {{{256}, {256}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                    {{{256}, {256}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                    {{{16}, {16}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                    {{{256}, {256}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                },
+                                                {
+                                                    {"expert_token_num_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                                    {"idx_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                },
+                                                &compileInfo, "Ascend950");
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
+}
+
+TEST_F(MoeReRoutingV2Tiling, moe_re_routing_v2_topk_weight_invalid_dim1) {
+    optiling::MoeReRoutingCompileInfo compileInfo = {48, 65536};
+    gert::TilingContextPara tilingContextPara("MoeReRoutingV2",
+                                                {
+                                                    {{{256, 7168}, {256, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                    {{{16, 16}, {16, 16}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                    {{{256}, {256}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                    {{{256, 2}, {256, 2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                },
+                                                {
+                                                    {{{256, 7168}, {256, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                    {{{256}, {256}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                    {{{256}, {256}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                    {{{16}, {16}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                    {{{256, 2}, {256, 2}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                },
+                                                {
+                                                    {"expert_token_num_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+                                                    {"idx_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+                                                },
+                                                &compileInfo, "Ascend950");
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 TEST_F(MoeReRoutingV2Tiling, moe_re_routing_v2_hif8_fp32_scale_s32) {

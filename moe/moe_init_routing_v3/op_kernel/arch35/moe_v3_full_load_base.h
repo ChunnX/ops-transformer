@@ -606,6 +606,7 @@ template <typename T>
 __aicore__ inline void MoeV3FullLoadBase<T>::TopkWeightGatherOut()
 {
     LocalTensor<int32_t> expandedRowIdx = expandedRowIdxQueue_.DeQue<int32_t>();
+    SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
 
     DataCopyExtParams copyParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
     DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
@@ -638,14 +639,12 @@ __aicore__ inline void MoeV3FullLoadBase<T>::TopkWeightZeroOut()
     if (startRow >= endRow) {
         return;
     }
-
-    DataCopyExtParams copyParams{1, static_cast<uint32_t>(sizeof(float)), 0, 0, 0};
-    LocalTensor<float> zeroLocal = topkWeightBuf_.Get<float>();
-    Duplicate<float>(zeroLocal, 0.0f, static_cast<int32_t>(1));
-    SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
-    for (int64_t row = startRow; row < endRow; row++) {
-        DataCopyPad(expandedTopkWeightGm_[row], zeroLocal, copyParams);
-    }
+    int64_t rowCount = endRow - startRow;
+    GlobalTensor<float> topkWeightZeroGm;
+    topkWeightZeroGm.SetGlobalBuffer((__gm__ float *)expandedTopkWeightGm_.GetPhyAddr() + startRow, rowCount);
+    SetWaitFlag<HardEvent::S_MTE3>(HardEvent::S_MTE3);
+    InitGlobalMemory(topkWeightZeroGm, rowCount, 0.0f);
+    SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
 }
 
 } // namespace MoeInitRoutingV3

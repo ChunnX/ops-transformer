@@ -52,7 +52,7 @@ TEST_F(l2_moe_init_routing_v4_test, Ascend950_moe_init_routing_v4_basic)
                                                       expertTokensNumType, expertTokensNumFlag, quantMode,
                                                       activeExpertRange, rowIdxType),
                         OUTPUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut,
-                               expandedScaleOut, expandedTopkWeightOut));
+                               expandedScaleOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -88,7 +88,7 @@ TEST_F(l2_moe_init_routing_v4_test, Ascend950_moe_init_routing_v4_with_scale_off
                                                       expertTokensNumType, expertTokensNumFlag, quantMode,
                                                       activeExpertRange, rowIdxType),
                         OUTPUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut,
-                               expandedScaleOut, expandedTopkWeightOut));
+                               expandedScaleOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -158,7 +158,7 @@ TEST_F(l2_moe_init_routing_v4_test, Ascend950_moe_init_routing_v4_with_active_nu
                                                       expertTokensNumType, expertTokensNumFlag, quantMode,
                                                       activeExpertRange, rowIdxType),
                         OUTPUT(expandedXOut, expandedRowIdxOut, expertTokensCountOrCumsumOut,
-                               expandedScaleOut, expandedTopkWeightOut));
+                               expandedScaleOut, nullptr));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);

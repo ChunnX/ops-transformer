@@ -17,20 +17,28 @@
 
 #include "../../moe_init_routing_v3/op_host/moe_init_routing_v3_tiling_arch35.h"
 
-const static int64_t V4_INPUT_X_INDEX = 0LL;
-const static int64_t V4_INPUT_EXPERT_IDX_INDEX = 1LL;
-const static int64_t V4_INPUT_SCALE_INDEX = 2LL;
-const static int64_t V4_INPUT_OFFSET_INDEX = 3LL;
-const static int64_t V4_INPUT_ACTIVE_NUM_INDEX = 4LL;
-const static int64_t V4_INPUT_TOPK_WEIGHT_INDEX = 5LL;
+namespace optiling {
+constexpr int64_t V4_INPUT_X_INDEX = 0LL;
+constexpr int64_t V4_INPUT_EXPERT_IDX_INDEX = 1LL;
+constexpr int64_t V4_INPUT_SCALE_INDEX = 2LL;
+constexpr int64_t V4_INPUT_OFFSET_INDEX = 3LL;
+constexpr int64_t V4_INPUT_ACTIVE_NUM_INDEX = 4LL;
+constexpr int64_t V4_INPUT_TOPK_WEIGHT_INDEX = 5LL;
 
-const static int64_t V4_ATTR_EXPERT_CAPACITY_INDEX = 0LL;
-const static int64_t V4_ATTR_EXPERT_NUM_INDEX = 1LL;
-const static int64_t V4_ATTR_DROP_PAD_MODE_INDEX = 2LL;
-const static int64_t V4_ATTR_EXPERT_TOKEN_NUM_TYPE_INDEX = 3LL;
-const static int64_t V4_ATTR_EXPERT_TOKEN_NUM_FLAG_INDEX = 4LL;
-const static int64_t V4_ATTR_QUANT_MODE_INDEX = 5LL;
-const static int64_t V4_ATTR_EXPERT_RANGE_INDEX = 6LL;
-const static int64_t V4_ATTR_ROW_IDX_TYPE_INDEX = 7LL;
+constexpr int64_t V4_ATTR_EXPERT_CAPACITY_INDEX = 0LL;
+constexpr int64_t V4_ATTR_EXPERT_NUM_INDEX = 1LL;
+constexpr int64_t V4_ATTR_DROP_PAD_MODE_INDEX = 2LL;
+constexpr int64_t V4_ATTR_EXPERT_TOKEN_NUM_TYPE_INDEX = 3LL;
+constexpr int64_t V4_ATTR_EXPERT_TOKEN_NUM_FLAG_INDEX = 4LL;
+constexpr int64_t V4_ATTR_QUANT_MODE_INDEX = 5LL;
+constexpr int64_t V4_ATTR_EXPERT_RANGE_INDEX = 6LL;
+constexpr int64_t V4_ATTR_ROW_IDX_TYPE_INDEX = 7LL;
+
+constexpr int64_t V4_OUTPUT_EXPANDED_X_INDEX = 0LL;
+constexpr int64_t V4_OUTPUT_EXPANDED_ROW_IDX_INDEX = 1LL;
+constexpr int64_t V4_OUTPUT_EXPERT_TOKENS_COUNT_INDEX = 2LL;
+constexpr int64_t V4_OUTPUT_EXPANDED_SCALE_INDEX = 3LL;
+constexpr int64_t V4_OUTPUT_EXPANDED_TOPK_WEIGHT_INDEX = 4LL;
+}
 
 #endif

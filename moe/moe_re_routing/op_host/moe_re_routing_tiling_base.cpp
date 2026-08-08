@@ -293,8 +293,11 @@ ge::graphStatus MoeReRoutingTilingBase::CheckOutputShape() const
         const gert::StorageShape *outTopkWeightShapePtr = context_->GetOutputShape(OUT_PERMUTE_TOPK_WEIGHT_INDEX);
         OP_CHECK_IF(outTopkWeightShapePtr == nullptr, OP_LOGE(context_->GetNodeName(),
                     "outTopkWeightShapePtr is nullptr."), return ge::GRAPH_FAILED);
-        OP_CHECK_IF(outTopkWeightShapePtr->GetStorageShape() !=
-                        context_->GetOptionalInputShape(IN_EXPERT_TOPK_WEIGHT_INDEX)->GetStorageShape(),
+        const gert::StorageShape *inTopkWeightShapePtr =
+            context_->GetOptionalInputShape(IN_EXPERT_TOPK_WEIGHT_INDEX);
+        OP_CHECK_IF(inTopkWeightShapePtr == nullptr, OP_LOGE(context_->GetNodeName(),
+                    "inTopkWeightShapePtr is nullptr."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF(outTopkWeightShapePtr->GetStorageShape() != inTopkWeightShapePtr->GetStorageShape(),
                     OP_LOGE(context_->GetNodeName(), "expert_topk_weight shape must same with permute_topk_weight."),
                     return ge::GRAPH_FAILED);
     }
@@ -357,7 +360,9 @@ ge::graphStatus MoeReRoutingTilingBase::GetShapeAttrsInfo()
     expertDtype_ = context_->GetInputDesc(IN_EXPERT_TOKEN_NUM_PER_RANK_INDEX)->GetDataType();
     auto scalePtr = context_->GetOptionalInputDesc(IN_TOKEN_SCALE_INDEX);
     if (scalePtr != nullptr) {
-        auto &scaleShape = context_->GetOptionalInputShape(IN_TOKEN_SCALE_INDEX)->GetStorageShape();
+        auto scaleShapePtr = context_->GetOptionalInputShape(IN_TOKEN_SCALE_INDEX);
+        OP_CHECK_NULL_WITH_CONTEXT(context_, scaleShapePtr);
+        auto &scaleShape = scaleShapePtr->GetStorageShape();
         auto scaleDimNum = scaleShape.GetDimNum();
         if (scaleDimNum == DIM_1) {
             scaleSize_ = 1;

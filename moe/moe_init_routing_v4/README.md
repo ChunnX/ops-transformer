@@ -78,13 +78,13 @@
   5.对quantResult取前min(activeNum, NUM_ROWS*K)个sortedRowIdx的对应位置的值，得出expandedXOut：
 
     $$
-    expandedXOut[i]=quantResult[sortedRowIdx[i]\%NUM\_ROWS]
+    expandedXOut[i]=quantResult[sortedRowIdx[i]/K]
     $$
 
   6.如果输入topkWeight，对topkWeight按sortedRowIdx做位置映射，得出expandedTopkWeightOut：
 
     $$
-    expandedTopkWeightOut[i]=topkWeight[sortedRowIdx[i]\%NUM\_ROWS]
+    expandedTopkWeightOut[i]=topkWeight[sortedRowIdx[i]]
     $$
 
     其中i的取值范围为[0, min(activeNum, availableIdxNum))。

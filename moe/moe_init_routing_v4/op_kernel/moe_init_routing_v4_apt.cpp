@@ -235,6 +235,17 @@ extern "C" __global__ __aicore__ void moe_init_routing_v4(GM_ADDR x, GM_ADDR exp
                     InitGlobalMemory(expandedScaleGm, scaleElements, 0.0f);
                 }
             }
+            if (t->isInputTopkWeight == 1) {
+                int64_t topkWeightElements = rowIdxElements;
+                if (t->dropPadMode == DROP_PAD_MODE) {
+                    topkWeightElements = t->expertNum * t->expertCapacity;
+                }
+                if (topkWeightElements > 0) {
+                    GlobalTensor<float> expandedTopkWeightGm;
+                    expandedTopkWeightGm.SetGlobalBuffer((__gm__ float *)expandedTopkWeight, topkWeightElements);
+                    InitGlobalMemory(expandedTopkWeightGm, topkWeightElements, 0.0f);
+                }
+            }
         }
         if (t->expertTokensNumFlag) {
             GlobalTensor<int64_t> expertTokensCountGm;
