@@ -23,7 +23,7 @@ def _discover_ops_from_entry_points():
         eps = entry_points(group="cann_ops_transformer.ops")
         for ep in eps:
             ops[ep.name] = ep.value
-    except Exception:
+    except (ImportError, RuntimeError, AttributeError):
         pass
     return ops
 
