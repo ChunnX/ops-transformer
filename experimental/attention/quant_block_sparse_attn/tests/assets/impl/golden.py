@@ -94,6 +94,32 @@ def to_cpu(value):
     return value.detach().cpu() if torch.is_tensor(value) else value
 
 
+def _normalize_data_range(data_range):
+    """Preserve scalar radius or normalize an explicit [min, max] range."""
+    if isinstance(data_range, (list, tuple)):
+        if len(data_range) != 2:
+            raise ValueError(
+                f"data_range must be a scalar or [min, max], got: {data_range}"
+            )
+        low, high = float(data_range[0]), float(data_range[1])
+        if not math.isfinite(low) or not math.isfinite(high):
+            raise ValueError(
+                f"data_range bounds must be finite, got: [{low}, {high}]"
+            )
+        if low > high:
+            raise ValueError(
+                f"data_range min must not exceed max, got: [{low}, {high}]"
+            )
+        return [low, high]
+
+    radius = float(data_range)
+    if not math.isfinite(radius) or radius < 0:
+        raise ValueError(
+            f"scalar data_range must be finite and non-negative, got: {radius}"
+        )
+    return radius
+
+
 def lengths_from_prefix(value):
     vals = to_list(value)
     return (
@@ -270,9 +296,15 @@ def _cpu_mxfp8_golden(
             "return_softmax_lse": bool(return_softmax_lse),
             "empty_actual_seq": bool(empty_actual_seq),
             "seed": int(seed),
-            "data_range_q": float(kwargs.get("data_range_q", 1.0)),
-            "data_range_k": float(kwargs.get("data_range_k", 1.0)),
-            "data_range_v": float(kwargs.get("data_range_v", 1.0)),
+            "data_range_q": _normalize_data_range(
+                kwargs.get("data_range_q", 1.0)
+            ),
+            "data_range_k": _normalize_data_range(
+                kwargs.get("data_range_k", 1.0)
+            ),
+            "data_range_v": _normalize_data_range(
+                kwargs.get("data_range_v", 1.0)
+            ),
             "device_id": 0,
             "sparse_q_block_size": int(sparse_q_block_size),
             "sparse_kv_block_size": int(sparse_kv_block_size),
