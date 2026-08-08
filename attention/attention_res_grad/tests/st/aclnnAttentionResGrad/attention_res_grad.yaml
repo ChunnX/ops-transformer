@@ -1,0 +1,115 @@
+api: pytorch
+api_type: ascend_function_attention_res_grad
+aclnn_api_type: aclnn_attention_res_grad
+name: attention_res_grad
+aclnn_name: AttentionResGrad
+version: v2.1
+generate: attention_res_grad
+dtype_numbers: 98
+extra_numbers: 4
+standard:
+  acc:
+    cv_fused_double_benchmark:
+      max_re_ratio: 5
+      avg_re_ratio: 1.5
+      root_mean_squared_ratio: 1.5
+  perf: not_key
+inputs:
+  - name: prefix_sum
+    type: tensor
+    required: true
+    dtypes:
+      values: [fp16, bf16]
+    ranges:
+      valid:
+        values: [[-100, 100]]
+    shapes:
+      dim_numbers:
+        values: [2]
+      dim_values:
+        - values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129, 255, 256, 257, 511, 512, 513, 1023, 1024, 1025, 2047, 2048, 2049, 4095, 4096, 4097, 8191, 8192, 8193, 12000, 16384]
+        - values: [7168]
+  - name: block_residual
+    type: tensor
+    required: true
+    dtypes:
+      values: [fp16, bf16]
+    ranges:
+      valid:
+        values: [[-100, 100]]
+    shapes:
+      dim_numbers:
+        values: [3]
+      dim_values:
+        - values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129, 255, 256, 257, 511, 512, 513, 1023, 1024, 1025, 2047, 2048, 2049, 4095, 4096, 4097, 8191, 8192, 8193, 12000, 16384]
+        - values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        - values: [7168]
+  - name: proj_weight
+    type: tensor
+    required: true
+    dtypes:
+      values: [fp16, bf16]
+    ranges:
+      valid:
+        values: [[-100, 100]]
+    shapes:
+      dim_numbers:
+        values: [2]
+      dim_values:
+        - values: [1]
+        - values: [7168]
+  - name: norm_weight
+    type: tensor
+    required: true
+    dtypes:
+      values: [fp16, bf16]
+    ranges:
+      valid:
+        values: [[-100, 100]]
+    shapes:
+      dim_numbers:
+        values: [1]
+      dim_values:
+        - values: [7168]
+  - name: grad_output
+    type: tensor
+    required: true
+    dtypes:
+      values: [fp16, bf16]
+    ranges:
+      valid:
+        values: [[-100, 100]]
+    shapes:
+      dim_numbers:
+        values: [2]
+      dim_values:
+        - values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129, 255, 256, 257, 511, 512, 513, 1023, 1024, 1025, 2047, 2048, 2049, 4095, 4096, 4097, 8191, 8192, 8193, 12000, 16384]
+        - values: [7168]
+  - name: inv_rms
+    type: tensor
+    required: true
+    dtypes:
+      values: [fp32]
+    ranges:
+      valid:
+        values: [[0.5, 2]]
+    shapes:
+      dim_numbers:
+        values: [2]
+      dim_values:
+        - values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129, 255, 256, 257, 511, 512, 513, 1023, 1024, 1025, 2047, 2048, 2049, 4095, 4096, 4097, 8191, 8192, 8193, 12000, 16384]
+        - values: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+  - name: probs
+    type: tensor
+    required: true
+    dtypes:
+      values: [fp32]
+    ranges:
+      valid:
+        values: [[0, 2]]
+    shapes:
+      dim_numbers:
+        values: [2]
+      dim_values:
+        - values: [1, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 12000, 16384]
+        - values: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
