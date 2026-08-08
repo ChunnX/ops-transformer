@@ -160,13 +160,13 @@ public:
     }
 
     /*!
-     * \brief P2pSend: 使用WriteNbi发送数据到远端
+     * \brief Write: 使用WriteNbi发送数据到远端
      * \param dstRankId 目标rank ID
      * \param remoteAddr 远端目标地址(GM_ADDR类型，匹配WriteNbi签名)
      * \param localAddr 本地数据地址(GM_ADDR类型，匹配WriteNbi签名)
      * \param length 发送数据长度(字节)
      */
-    __aicore__ inline void P2pSend(int32_t dstRankId, GM_ADDR remoteAddr, GM_ADDR localAddr, uint32_t length)
+    __aicore__ inline void Write(int32_t dstRankId, GM_ADDR remoteAddr, GM_ADDR localAddr, uint32_t length)
     {
         hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteAddr, localAddr, length);
     }

@@ -16,8 +16,8 @@
  * 基于moe_distribute_base.h中的SQE级接口实现P2P通信。
  * 通信流程：
  *   InitRankComm -> 加载SQ/CQ信息、获取PICI、准备SQE模板
- *   P2pSend -> 提交单个WriteWithNotify SQE（不敲DoorBell、不轮询CQ）
- *   P2pSendDrain -> 敲DoorBell + 轮询CQ + 更新PICI，冲刷所有待发送SQE
+ *   Write -> 提交单个WriteWithNotify SQE（不敲DoorBell、不轮询CQ）
+ *   Drain -> 敲DoorBell + 轮询CQ + 更新PICI，冲刷所有待发送SQE
  */
 
 #ifndef P2P_URMA_COMM_H
@@ -47,6 +47,7 @@ constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint32_t P2P_CQ_DEPTH_256 = 256U;
 constexpr uint32_t P2P_UB_ALIGN = 32U;
 constexpr uint32_t P2P_WRITE_WITH_NOTIFY_SQE_SIZE = 96U;
+constexpr uint32_t P2P_SQ_FLUSH_THRESHOLD = 200U;       // SQ溢出保护阈值, 小于P2P_CQ_DEPTH_256
 constexpr uint32_t P2P_STATE_OFFSET = 32U;             // 状态块大小(8个int32 = 32字节)
 constexpr uint64_t P2P_NOTIFY_DATA_FLAG = 0x3F800000UL; // 1.0f标志值的整数表示
 
@@ -101,7 +102,7 @@ __aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMT
         dataStateLocalTensor.SetValue(HCCL_WORLDSIZE_POS, epWorldSizeHccl);
         SyncFunc<AscendC::HardEvent::S_MTE3>();
         DataCopyPad(selfDataStatusGMTensor[HCCL_DFX_POS], dataStateLocalTensor, hcclDatacopyParams);
-    }
+    } 
     return dataState;
 }
 
@@ -109,6 +110,16 @@ __aicore__ inline uint32_t InitWinState(GlobalTensor<uint32_t> selfDataStatusGMT
 // P2pUrmaSqeComm - SQE级URMA P2P通信实现
 // 使用HcclCombinOpParam上下文，通过SQE级接口完成WriteWithNotify P2P通信
 // ============================================================================
+
+// SQE模式内部打点slot定义
+constexpr uint32_t SQE_TIMING_SLOT_INIT_END = 0;       // InitRankComm步骤1-6完成
+constexpr uint32_t SQE_TIMING_SLOT_TEMPLATE_END = 1;    // InitRankComm步骤7-8完成
+constexpr uint32_t SQE_TIMING_SLOT_WRITE_END = 2;       // Write完成（仅记录最后一次）
+constexpr uint32_t SQE_TIMING_SLOT_DOORBELL_END = 3;    // TriggerDoorBell完成
+constexpr uint32_t SQE_TIMING_SLOT_POLL_CQ_END = 4;     // PollCommCQUpdateSQCI完成
+constexpr uint32_t SQE_TIMING_SLOT_UPDATE_PICI_END = 5; // UpdatePICI完成
+constexpr uint32_t SQE_TIMING_SLOTS = 6;
+
 class P2pUrmaSqeComm {
 public:
     __aicore__ inline P2pUrmaSqeComm() {};
@@ -166,14 +177,16 @@ public:
      * \brief 初始化与指定目标rank的SQE通信状态
      * 加载SQ/CQ信息，获取PICI，检查首次通信标志，
      * 首次时InvalidateCqeStatus，轮询CQ清理残余，准备WriteWithNotify SQE模板
+     * 内部自动打点: timings_[SQE_TIMING_SLOT_INIT_END], timings_[SQE_TIMING_SLOT_TEMPLATE_END]
      * \param dstRankId 目标rank ID
-     * \param cycleSqCqLoadEndPtr 可选：步骤1-6完成后的cycle打点（nullptr=不记录）
-     * \param cycleSqeTemplateEndPtr 可选：步骤7-8完成后的cycle打点（nullptr=不记录）
      */
-    __aicore__ inline void InitRankComm(int32_t dstRankId,
-                                          int64_t* cycleSqCqLoadEndPtr = nullptr,
-                                          int64_t* cycleSqeTemplateEndPtr = nullptr)
+    __aicore__ inline void InitRankComm(int32_t dstRankId)
     {
+        // 切换rank前flush待发送的SQE
+        if (pendingSqCnt_ > 0 && dstRankId != curDstRankId_) {
+            FlushPendingSqes();
+        }
+
         // 步骤1: 从HcclCombinOpParam中获取SQ信息到UB
         GetURMASqInfoTensor(sqInfoTensor_, (GM_ADDR)hcclContext_, dstRankId);
         SyncFunc<AscendC::HardEvent::MTE2_S>();
@@ -183,40 +196,46 @@ public:
         SyncFunc<AscendC::HardEvent::MTE2_S>();
 
         // 步骤3: 检查是否为首次与该rank通信
+        // GetIsFirstInComm 读 PICI 窗口的 isFirstFlag:
+        //   flag=0 → 返回false → 未初始化过 → isFirstComm_=true(首次)
+        //   flag=1 → 返回true  → 已初始化过   → isFirstComm_=false(非首次)
         bool isFirstComm = false;
         GetIsFirstInComm((GM_ADDR)hcclContext_, epRankId_, dstRankId, isFirstComm);
-        isFirstComm_ = !isFirstComm; // GetIsFirstInComm返回true表示已经初始化过
+        isFirstComm_ = !isFirstComm;
 
         // 步骤4: 获取PICI（Producer-Consumer Index）
+        // 从 windowsOut[myRank] + 1MB + 512B*dstRankId 读取 sqPi/sqCi/cqPi/cqCi 等索引
         GetPICI((GM_ADDR)hcclContext_, epRankId_, dstRankId,
                 outSqPi_, outSqCi_, outCqPi_, outCqCi_, outSqPiLinear_, outCqCiLinear_);
 
         // 步骤5: 首次通信时，将CQ中所有CQE的status初始化为无效值（0xff）
+        // CheckCqeStatus 靠 status==0xff 判断"CQE尚未产生完成事件"
+        // CQ内存初始值不确定，首次必须初始化，否则pollCQ会误判垃圾值为已完成
         if (isFirstComm_) {
             InvalidateCqeStatus(cqInfoTensor_, cqeTensor_);
             SyncFunc<AscendC::HardEvent::MTE3_S>();
-            UpdateIsFirstInComm((GM_ADDR)hcclContext_, epRankId_, dstRankId, true);
+            UpdateIsFirstInComm((GM_ADDR)hcclContext_, epRankId_, dstRankId, true); // 写flag=1
         }
 
         // 步骤6: 轮询CQ清理残余完成事件，更新sqCi
+        // 处理上一次通信遗留的CQE（fire-and-forget模式下上一次可能未Drain）
         PollCommCQUpdateSQCI(sqInfoTensor_, cqInfoTensor_, cqeTensor_, jfsDoorBellTensor_,
                              outSqCi_, outCqCi_, outCqCiLinear_);
 
         // 打点：步骤1-6完成（SQ/CQ加载+PICI+CQE初始化+CQ轮询）
-        if (cycleSqCqLoadEndPtr != nullptr) {
-            *cycleSqCqLoadEndPtr = GetSystemCycle();
-        }
+        timings_[SQE_TIMING_SLOT_INIT_END] = GetSystemCycle();
 
         // 步骤7: 生成WriteWithNotify SQE模板
+        // 填固定字段: odr, owner, rmt_jetty_type, token_en, opcode=0x5, sge_num=1
         GenerateCommWriteWithNotifySQE(sqeTensor_, 1);
 
         // 步骤8: 更新SQE模板中的通信元数据（tp_id, jetty_id, rmt_eid等）
+        // 填与目标rank绑定的固定字段: tp_id, rmt_jetty_id, rmt_eid(128bit), rmt_token_value
+        // 这些字段对同一rank的所有SQE都相同，做成模板后循环Write只需填localAddr/remoteAddr/length
         UpdateCommWriteWithNotifySQE(sqeTensor_, sqInfoTensor_);
 
         // 打点：步骤7-8完成（SQE模板生成+元数据更新）
-        if (cycleSqeTemplateEndPtr != nullptr) {
-            *cycleSqeTemplateEndPtr = GetSystemCycle();
-        }
+        timings_[SQE_TIMING_SLOT_TEMPLATE_END] = GetSystemCycle();
 
         // 记录当前目标rank
         curDstRankId_ = dstRankId;
@@ -230,9 +249,14 @@ public:
      * \param remoteAddr 远端目标地址
      * \param length 发送数据长度（字节）
      */
-    __aicore__ inline void P2pSend(int32_t dstRankId, uint64_t localAddr, uint64_t remoteAddr,
+    __aicore__ inline void Write(int32_t dstRankId, uint64_t localAddr, uint64_t remoteAddr,
                                    uint32_t length)
     {
+        // SQ溢出保护: 同一rank连续发送超过阈值时自动flush
+        if (pendingSqCnt_ >= P2P_SQ_FLUSH_THRESHOLD && dstRankId == curDstRankId_) {
+            FlushPendingSqes();
+        }
+
         // 从远端窗口状态区计算通知地址：dstRankId的状态区 + 本rank的状态偏移
         uint64_t notifyAddr = reinterpret_cast<uint64_t>(GetRemoteWinStateAddr(dstRankId, notifyDataState_))
                               + P2P_STATE_OFFSET * (uint64_t)epRankId_;
@@ -240,6 +264,8 @@ public:
         SetCommWriteWithNotifySQE(sqeTensor_, localAddr, remoteAddr, length, notifyAddr, notifyData, 0);
         PutCommNotifySQE(sqInfoTensor_, cqInfoTensor_, sqeTensor_, cqeTensor_, jfcDoorBellTensor_,
                          1, outSqPi_, outSqPiLinear_, outSqCi_, outCqCi_, outCqCiLinear_);
+        pendingSqCnt_++;
+        timings_[SQE_TIMING_SLOT_WRITE_END] = GetSystemCycle();
     }
 
     /*!
@@ -252,65 +278,75 @@ public:
      * \param notifyAddr 远端通知地址
      * \param notifyData 通知数据值
      */
-    __aicore__ inline void P2pSend(int32_t dstRankId, uint64_t localAddr, uint64_t remoteAddr,
+    __aicore__ inline void Write(int32_t dstRankId, uint64_t localAddr, uint64_t remoteAddr,
                                    uint32_t length, uint64_t notifyAddr, uint64_t notifyData)
     {
+        // SQ溢出保护: 同一rank连续发送超过阈值时自动flush
+        if (pendingSqCnt_ >= P2P_SQ_FLUSH_THRESHOLD && dstRankId == curDstRankId_) {
+            FlushPendingSqes();
+        }
+
         // 设置SQE中的数据传输参数
         SetCommWriteWithNotifySQE(sqeTensor_, localAddr, remoteAddr, length, notifyAddr, notifyData, 0);
 
         // 将SQE写入SQ，sqPi和sqPiLinear由PutCommNotifySQE在引用参数中更新
         PutCommNotifySQE(sqInfoTensor_, cqInfoTensor_, sqeTensor_, cqeTensor_, jfcDoorBellTensor_,
                          1, outSqPi_, outSqPiLinear_, outSqCi_, outCqCi_, outCqCiLinear_);
+        pendingSqCnt_++;
+        timings_[SQE_TIMING_SLOT_WRITE_END] = GetSystemCycle();
     }
 
     /*!
-     * \brief 敲JFS DoorBell通知硬件有新的SQE（P2pSendDrain的第一步）
-     * 用于精确测量头开销：从Process开始到DoorBell触发完成的时间间隔
+     * \brief 敲JFS DoorBell通知硬件有新的SQE（Drain的第一步）
+     * 内部自动打点: timings_[SQE_TIMING_SLOT_DOORBELL_END]
      */
     __aicore__ inline void TriggerDoorBell()
     {
         SendJFSDoorBell(jfsDoorBellTensor_, sqInfoTensor_, outSqPiLinear_);
+        timings_[SQE_TIMING_SLOT_DOORBELL_END] = GetSystemCycle();
     }
 
     /*!
-     * \brief 轮询CQ等待完成 + 更新PICI（P2pSendDrain的第二、三步）
-     * 用于精确测量延迟：从DoorBell触发完成到Drain执行完毕的时间间隔
+     * \brief 轮询CQ等待完成 + 更新PICI（Drain的第二、三步）
+     * 内部自动打点: timings_[SQE_TIMING_SLOT_POLL_CQ_END], timings_[SQE_TIMING_SLOT_UPDATE_PICI_END]
      * \param dstRankId 目标rank ID
-     * \param cyclePollCqEndPtr 可选：PollCommCQUpdateSQCI完成后的cycle打点（nullptr=不记录）
-     * \param cycleUpdatePiciEndPtr 可选：UpdatePICI完成后的cycle打点（nullptr=不记录）
      */
-    __aicore__ inline void DrainWaitCompletion(int32_t dstRankId,
-                                                int64_t* cyclePollCqEndPtr = nullptr,
-                                                int64_t* cycleUpdatePiciEndPtr = nullptr)
+    __aicore__ inline void DrainWaitCompletion(int32_t dstRankId)
     {
         // 步骤2: 轮询CQ等待完成通知，更新sqCi
         PollCommCQUpdateSQCI(sqInfoTensor_, cqInfoTensor_, cqeTensor_, jfsDoorBellTensor_,
                              outSqCi_, outCqCi_, outCqCiLinear_);
-
-        // 打点：CQ轮询完成
-        if (cyclePollCqEndPtr != nullptr) {
-            *cyclePollCqEndPtr = GetSystemCycle();
-        }
+        timings_[SQE_TIMING_SLOT_POLL_CQ_END] = GetSystemCycle();
 
         // 步骤3: 更新PICI，保存到HcclCombinOpParam的windowsOut中
         UpdatePICI((GM_ADDR)hcclContext_, epRankId_, dstRankId,
                    outSqPi_, outSqCi_, outCqPi_, outCqCi_, outSqPiLinear_, outCqCiLinear_);
-
-        // 打点：PICI更新完成
-        if (cycleUpdatePiciEndPtr != nullptr) {
-            *cycleUpdatePiciEndPtr = GetSystemCycle();
-        }
+        timings_[SQE_TIMING_SLOT_UPDATE_PICI_END] = GetSystemCycle();
+        pendingSqCnt_ = 0;
     }
 
     /*!
      * \brief 冲刷所有待发送SQE：敲DoorBell + 轮询CQ + 更新PICI
-     * P2pSendDrain = TriggerDoorBell + DrainWaitCompletion
+     * Drain = TriggerDoorBell + DrainWaitCompletion
      * \param dstRankId 目标rank ID
      */
-    __aicore__ inline void P2pSendDrain(int32_t dstRankId)
+    __aicore__ inline void Drain(int32_t dstRankId)
     {
         TriggerDoorBell();
         DrainWaitCompletion(dstRankId);
+    }
+
+    /*!
+     * \brief 冲刷待发送SQE: 敲DoorBell + 轮询CQ + 更新PICI
+     * 用于SQ溢出保护: 当pendingSqCnt_达到阈值时自动调用
+     * 也用于InitRankComm切换rank前冲刷上一个rank的残余SQE
+     */
+    __aicore__ inline void FlushPendingSqes()
+    {
+        if (pendingSqCnt_ == 0) { return; }
+        TriggerDoorBell();
+        DrainWaitCompletion(curDstRankId_);
+        pendingSqCnt_ = 0;
     }
 
     /*!
@@ -371,10 +407,16 @@ public:
     __aicore__ inline GM_ADDR GetWorkspace() { return localUrmaWorkspace_; }
 
     /*!
-     * \brief 设置双缓冲状态值，用于4参数P2pSend自动计算notifyAddr
+     * \brief 设置双缓冲状态值，用于4参数Write自动计算notifyAddr
      * \param dataState 双缓冲状态值(0或1)
      */
     __aicore__ inline void SetNotifyDataState(uint32_t dataState) { notifyDataState_ = dataState; }
+
+    // 获取内部打点数据（6个slot）
+    __aicore__ inline const int64_t* GetTimings() const { return timings_; }
+
+    // 重置打点数据（在InitRankComm前调用）
+    __aicore__ inline void ResetTimings() { for (uint32_t i = 0; i < SQE_TIMING_SLOTS; i++) { timings_[i] = 0; } }
 
 private:
     // 通信上下文
@@ -383,7 +425,7 @@ private:
     int32_t epRankId_{0};
     int32_t epWorldSize_{0};
     GM_ADDR localUrmaWorkspace_{nullptr};
-    uint32_t notifyDataState_{0};  // 双缓冲状态值，用于4参数P2pSend自动计算notifyAddr
+    uint32_t notifyDataState_{0};  // 双缓冲状态值，用于4参数Write自动计算notifyAddr
 
     // SQE级UB缓冲区
     LocalTensor<uint8_t> sqInfoTensor_;
@@ -408,6 +450,10 @@ private:
     uint32_t outCqCiLinear_{0};
     bool isFirstComm_{true};
     int32_t curDstRankId_{-1};
+    uint32_t pendingSqCnt_{0};  // 待flush的SQE计数, 用于SQ溢出保护
+
+    // 内部打点数据
+    int64_t timings_[SQE_TIMING_SLOTS] = {0};
 };
 
 } // namespace UrmaP2pBenchmarkImpl

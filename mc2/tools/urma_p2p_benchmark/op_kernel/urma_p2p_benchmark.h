@@ -43,28 +43,26 @@ using namespace AscendC;
 #define MAX_UB_SIZE_P2P 240 * 1024UL
 
 // ==================== 性能计时常量(SQE模式) ====================
-// 9个时间戳slot，记录Process()中每个SQE级操作的cycle计数
-// [0]  PROCESS_START       - Process()开始
-// [1]  DUPLICATE_END       - Duplicate(dstRankIds)+PipeBarrier完成
-// [2]  INIT_SQ_CQ_LOAD_END - InitRankComm步骤1-6完成（SQ/CQ加载+PICI+CQE初始化+CQ轮询）
-// [3]  SQE_TEMPLATE_END    - InitRankComm步骤7-8完成（SQE模板生成+元数据更新）
-// [4]  PROCESS_TOKEN_END   - ProcessToken完成（数据写入本地窗口）
-// [5]  P2P_SEND_END         - P2pSend完成（SQE填写+写入环形缓冲区）
-// [6]  DOORBELL_END        - TriggerDoorBell完成（SendJFSDoorBell完成）
-// [7]  POLL_CQ_END         - PollCommCQUpdateSQCI完成（CQ轮询获得完成通知+sqCi更新）
-// [8]  UPDATE_PICI_END     - UpdatePICI完成（PICI保存回HcclCombinOpParam）= TOTAL_END
-// [9-11] PADDING           - DataCopy对齐填充
+// SQE模式8个timing slot:
+// [0] PROCESS_START        - Process()开始
+// [1] DUPLICATE_END        - Duplicate(dstRankIds)+PipeBarrier完成
+// [2] INIT_END             - InitRankComm步骤1-6完成（SQ/CQ加载+PICI+CQE初始化+CQ轮询）
+// [3] TEMPLATE_END         - InitRankComm步骤7-8完成（SQE模板生成+元数据更新）
+// [4] PROCESS_TOKEN_END    - ProcessToken完成（数据写入本地窗口）
+// [5] WRITE_END            - Write完成（SQE填写+写入环形缓冲区）
+// [6] DOORBELL_END         - TriggerDoorBell完成（SendJFSDoorBell完成）
+// [7] POLL_CQ_END          - PollCommCQUpdateSQCI完成（CQ轮询获得完成通知+sqCi更新）
+// 补齐到12以满足DataCopy<int64_t>对齐(32字节边界)
 constexpr uint32_t TIMING_SLOT_PROCESS_START = 0;
 constexpr uint32_t TIMING_SLOT_DUPLICATE_END = 1;
-constexpr uint32_t TIMING_SLOT_INIT_SQ_CQ_LOAD_END = 2;
-constexpr uint32_t TIMING_SLOT_SQE_TEMPLATE_END = 3;
+constexpr uint32_t TIMING_SLOT_INIT_END = 2;
+constexpr uint32_t TIMING_SLOT_TEMPLATE_END = 3;
 constexpr uint32_t TIMING_SLOT_PROCESS_TOKEN_END = 4;
-constexpr uint32_t TIMING_SLOT_P2P_SEND_END = 5;
+constexpr uint32_t TIMING_SLOT_WRITE_END = 5;
 constexpr uint32_t TIMING_SLOT_DOORBELL_END = 6;
 constexpr uint32_t TIMING_SLOT_POLL_CQ_END = 7;
 constexpr uint32_t TIMING_SLOT_UPDATE_PICI_END = 8;
 constexpr uint32_t TIMING_SLOTS_SQE = 9;
-// DataCopy<int64_t>要求count对齐到32字节边界: 32/sizeof(int64_t)=4，9不是4的倍数，补齐到12
 constexpr uint32_t PERFORMANCE_DATA_COPY_COUNT_SQE = 12;
 
 // ==================== 性能计时常量(Hcomm模式) ====================
@@ -104,21 +102,12 @@ public:
 
 private:
     // ==================== 测试模式方法（双模式设计） ====================
-    // 每个测试函数接受cycle引用参数，在内部正确位置打点:
-    //   cycleInitRankCommEndRef:  InitRankComm完成后打点（SLOT[2]）
-    //   cycleProcessTokenEndRef:  ProcessToken完成后打点（SLOT[3]）
-    //   cycleP2pSendEndRef:       P2pSend完成后打点（SLOT[4]）
-    //   cycleDoorBellEndRef:      TriggerDoorBell完成后打点（SLOT[5]）
-    //   cycleDrainWaitEndRef:     DrainWaitCompletion完成后打点（SLOT[6]）
+    // SQE模式打点由P2pUrmaSqeComm内部自动完成，通过GetTimings()读取
+    // ProcessToken的打点在测试函数内手动记录
     __aicore__ inline void OverheadLatencyTest(int64_t cycleDuplicateEndFallback,
-                                                int64_t& cycleSqCqLoadEndRef, int64_t& cycleSqeTemplateEndRef,
-                                                int64_t& cycleProcessTokenEndRef, int64_t& cycleP2pSendEndRef,
-                                                int64_t& cycleDoorBellEndRef, int64_t& cyclePollCqEndRef,
-                                                int64_t& cycleUpdatePiciEndRef);
+                                                int64_t& cycleProcessTokenEndRef);
     __aicore__ inline void BandwidthTest(int64_t cycleDuplicateEndFallback,
-                                          int64_t& cycleSqeTemplateEndRef, int64_t& cycleProcessTokenEndRef,
-                                          int64_t& cycleP2pSendEndRef, int64_t& cycleDoorBellEndRef,
-                                          int64_t& cyclePollCqEndRef, int64_t& cycleUpdatePiciEndRef);
+                                          int64_t& cycleProcessTokenEndRef);
 
     // ==================== Hcomm模式测试方法 ====================
     // startRemoteIdx/endRemoteIdx: SplitToCore分配的远程rank索引范围
@@ -217,7 +206,7 @@ __aicore__ inline void UrmaP2pBenchmark<TemplateUrmaP2pBenchmarkTypeFunc>::Init(
     axisBS_ = tilingData->max_bs;            // token数量
     axisH_ = tilingData->data_size;          // hidden size
     epWorldSize_ = tilingData->world_size;   // rank总数
-    aivNum_ = tilingData->aiv_num;           // AIV核总数
+    aivNum_ = 1;  // 点对点测试仅使用0核
     mode_ = tilingData->mode;                // 测试模式
     dstRankIdAttr_ = tilingData->dst_rank_id; // P2P目标rank ID
     commMode_ = tilingData->comm_mode;       // 通信模式: 0=SQE, 1=Hcomm
@@ -399,16 +388,13 @@ __aicore__ inline void UrmaP2pBenchmark<TemplateUrmaP2pBenchmarkTypeFunc>::CalTo
 template <TemplateUrmaP2pBenchmarkTypeClass>
 __aicore__ inline void UrmaP2pBenchmark<TemplateUrmaP2pBenchmarkTypeFunc>::OverheadLatencyTest(
     int64_t cycleDuplicateEndFallback,
-    int64_t& cycleSqCqLoadEndRef, int64_t& cycleSqeTemplateEndRef,
-    int64_t& cycleProcessTokenEndRef, int64_t& cycleP2pSendEndRef,
-    int64_t& cycleDoorBellEndRef, int64_t& cyclePollCqEndRef,
-    int64_t& cycleUpdatePiciEndRef)
+    int64_t& cycleProcessTokenEndRef)
 {
     uint32_t tokenIndex = 0;
     int32_t todDstRankId = dstRankIdsTensor_(tokenIndex);
 
     if (todDstRankId != epRankId_) {
-        urmaComm_.InitRankComm(todDstRankId, &cycleSqCqLoadEndRef, &cycleSqeTemplateEndRef);
+        urmaComm_.InitRankComm(todDstRankId);
 
         int32_t curExpertCnt = 0;
         GM_ADDR localAddr = urmaComm_.GetLocalWinAddr(todDstRankId, totalWinSizeEp_, winDataSizeOffset_)
@@ -419,26 +405,14 @@ __aicore__ inline void UrmaP2pBenchmark<TemplateUrmaP2pBenchmarkTypeFunc>::Overh
         GlobalTensor<XType> outTokenGT;
         outTokenGT.SetGlobalBuffer((__gm__ XType*)localAddr);
         ProcessToken(outTokenGT, tokenIndex);
-        cycleProcessTokenEndRef = GetSystemCycle(); // SLOT[4]
+        cycleProcessTokenEndRef = GetSystemCycle();
 
-        urmaComm_.P2pSend(todDstRankId, reinterpret_cast<uint64_t>(localAddr),
+        urmaComm_.Write(todDstRankId, reinterpret_cast<uint64_t>(localAddr),
                           reinterpret_cast<uint64_t>(remoteAddr), hAlignWinSize_);
-        cycleP2pSendEndRef = GetSystemCycle(); // SLOT[5]
 
-        urmaComm_.TriggerDoorBell();
-        cycleDoorBellEndRef = GetSystemCycle(); // SLOT[6]
-
-        urmaComm_.DrainWaitCompletion(todDstRankId, &cyclePollCqEndRef, &cycleUpdatePiciEndRef);
+        urmaComm_.Drain(todDstRankId);
     } else {
-        // todDstRankId == epRankId_: 不做P2P通信，用DUPLICATE_END的时间作为fallback
-        int64_t fallbackCycle = cycleDuplicateEndFallback;
-        cycleSqCqLoadEndRef = fallbackCycle;
-        cycleSqeTemplateEndRef = fallbackCycle;
-        cycleProcessTokenEndRef = fallbackCycle;
-        cycleP2pSendEndRef = fallbackCycle;
-        cycleDoorBellEndRef = fallbackCycle;
-        cyclePollCqEndRef = fallbackCycle;
-        cycleUpdatePiciEndRef = fallbackCycle;
+        cycleProcessTokenEndRef = cycleDuplicateEndFallback;
     }
 }
 
@@ -448,79 +422,45 @@ __aicore__ inline void UrmaP2pBenchmark<TemplateUrmaP2pBenchmarkTypeFunc>::Overh
 template <TemplateUrmaP2pBenchmarkTypeClass>
 __aicore__ inline void UrmaP2pBenchmark<TemplateUrmaP2pBenchmarkTypeFunc>::BandwidthTest(
     int64_t cycleDuplicateEndFallback,
-    int64_t& cycleSqeTemplateEndRef, int64_t& cycleProcessTokenEndRef,
-    int64_t& cycleP2pSendEndRef, int64_t& cycleDoorBellEndRef,
-    int64_t& cyclePollCqEndRef, int64_t& cycleUpdatePiciEndRef)
+    int64_t& cycleProcessTokenEndRef)
 {
     uint32_t startTokenId, endTokenId, sendTokenNum;
     SplitToCore(axisBS_, aivNum_, startTokenId, endTokenId, sendTokenNum);
 
     if (startTokenId >= axisBS_) { return; }
 
-    bool firstSqeTemplateTimingRecorded = false;
-    bool firstP2pSendTimingRecorded = false;
-    bool firstProcessTokenTimingRecorded = false;
+    // 步骤1: InitRankComm（点对点仅一个目标rank，只调一次）
+    int32_t dstRankId = dstRankIdsTensor_(startTokenId);
+    if (dstRankId == epRankId_) {
+        cycleProcessTokenEndRef = cycleDuplicateEndFallback;
+        return;
+    }
+    urmaComm_.InitRankComm(dstRankId);
+
+    // 步骤2: 预搬运所有token到本地窗口
     for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; ++tokenIndex) {
-        int32_t todDstRankId = dstRankIdsTensor_(tokenIndex);
+        int32_t curExpertCnt = tokenIndex - startTokenId;
+        GM_ADDR localAddr = urmaComm_.GetLocalWinAddr(dstRankId, totalWinSizeEp_, winDataSizeOffset_)
+                          + epRankId_ * expertPerSizeOnWin_ + curExpertCnt * hAlignWinSize_;
+        GlobalTensor<XType> outTokenGT;
+        outTokenGT.SetGlobalBuffer((__gm__ XType*)localAddr);
+        ProcessToken(outTokenGT, tokenIndex);
+    }
+    cycleProcessTokenEndRef = GetSystemCycle();
 
-        if (todDstRankId != epRankId_) {
-            urmaComm_.InitRankComm(todDstRankId);
+    // 步骤3: 循环Write（仅Write，InitRankComm已在步骤1完成）
+    for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; ++tokenIndex) {
+        int32_t curExpertCnt = tokenIndex - startTokenId;
+        GM_ADDR localAddr = urmaComm_.GetLocalWinAddr(dstRankId, totalWinSizeEp_, winDataSizeOffset_)
+                          + epRankId_ * expertPerSizeOnWin_ + curExpertCnt * hAlignWinSize_;
+        GM_ADDR remoteAddr = urmaComm_.GetRemoteWinAddr(dstRankId, winDataSizeOffset_)
+                          + epRankId_ * expertPerSizeOnWin_ + curExpertCnt * hAlignWinSize_;
 
-            if (!firstSqeTemplateTimingRecorded) {
-                cycleSqeTemplateEndRef = GetSystemCycle(); // SLOT[3]
-                firstSqeTemplateTimingRecorded = true;
-            }
-
-            int32_t curExpertCnt = 0;
-            if (tokenIndex > 0) {
-                CalTokenSendExpertCnt(todDstRankId, tokenIndex, curExpertCnt);
-            }
-
-            GM_ADDR localAddr = urmaComm_.GetLocalWinAddr(todDstRankId, totalWinSizeEp_, winDataSizeOffset_)
-                              + epRankId_ * expertPerSizeOnWin_ + curExpertCnt * hAlignWinSize_;
-            GM_ADDR remoteAddr = urmaComm_.GetRemoteWinAddr(todDstRankId, winDataSizeOffset_)
-                              + epRankId_ * expertPerSizeOnWin_ + curExpertCnt * hAlignWinSize_;
-
-            GlobalTensor<XType> outTokenGT;
-            outTokenGT.SetGlobalBuffer((__gm__ XType*)localAddr);
-            ProcessToken(outTokenGT, tokenIndex);
-
-            if (!firstProcessTokenTimingRecorded) {
-                cycleProcessTokenEndRef = GetSystemCycle(); // SLOT[4]
-                firstProcessTokenTimingRecorded = true;
-            }
-
-            urmaComm_.P2pSend(todDstRankId, reinterpret_cast<uint64_t>(localAddr), reinterpret_cast<uint64_t>(remoteAddr), hAlignWinSize_);
-
-            if (!firstP2pSendTimingRecorded) {
-                cycleP2pSendEndRef = GetSystemCycle(); // SLOT[5]
-                firstP2pSendTimingRecorded = true;
-            }
-        }
+        urmaComm_.Write(dstRankId, reinterpret_cast<uint64_t>(localAddr), reinterpret_cast<uint64_t>(remoteAddr), hAlignWinSize_);
     }
 
-    // SLOT[6] DoorBell, SLOT[7] PollCQ, SLOT[8] UpdatePICI: BandwidthTest中统一P2pSendDrain，不单独打点
-
-    for (int32_t rankId = 0; rankId < epWorldSize_; ++rankId) {
-        if (rankId != epRankId_) {
-            urmaComm_.InitRankComm(rankId);
-            urmaComm_.P2pSendDrain(rankId);
-        }
-    }
-
-    // SLOT[8]: 统一Drain完成后打点
-    if (firstSqeTemplateTimingRecorded) {
-        cycleUpdatePiciEndRef = GetSystemCycle();
-    } else {
-        // 该AIV核没有执行P2P（todDstRankId == epRankId_），用fallback值
-        int64_t fallbackCycle = cycleDuplicateEndFallback;
-        cycleSqeTemplateEndRef = fallbackCycle;
-        cycleProcessTokenEndRef = fallbackCycle;
-        cycleP2pSendEndRef = fallbackCycle;
-        cycleDoorBellEndRef = fallbackCycle;
-        cyclePollCqEndRef = fallbackCycle;
-        cycleUpdatePiciEndRef = fallbackCycle;
-    }
+    // 步骤4: 统一Drain
+    urmaComm_.Drain(dstRankId);
 }
 
 // ============================================================================
@@ -532,18 +472,12 @@ __aicore__ inline void UrmaP2pBenchmark<TemplateUrmaP2pBenchmarkTypeFunc>::Proce
     // 纯P2P发送流程：Duplicate → SQE/Hcomm测试 → 结束
     // 不包含SetStatus/WaitDispatch/LocalWindowCopy（纯P2P测量）
     if ASCEND_IS_AIV {
+        if (aivId_ != 0) { return; }
         int64_t cycleProcessStart = GetSystemCycle();
 
         if (commMode_ == COMM_MODE_SQE) {
             // ========== SQE级通信模式 ==========
-            int64_t cycleDuplicateEnd = 0;
-            int64_t cycleSqCqLoadEnd = 0;
-            int64_t cycleSqeTemplateEnd = 0;
             int64_t cycleProcessTokenEnd = 0;
-            int64_t cycleP2pSendEnd = 0;
-            int64_t cycleDoorBellEnd = 0;
-            int64_t cyclePollCqEnd = 0;
-            int64_t cycleUpdatePiciEnd = 0;
 
             int32_t effectiveDstRankId = dstRankIdAttr_;
             if (effectiveDstRankId == -1) {
@@ -551,29 +485,30 @@ __aicore__ inline void UrmaP2pBenchmark<TemplateUrmaP2pBenchmarkTypeFunc>::Proce
             }
             Duplicate<int32_t>(dstRankIdsTensor_, effectiveDstRankId, axisBS_);
             PipeBarrier<PIPE_V>();
-            cycleDuplicateEnd = GetSystemCycle(); // SLOT[1]
+            int64_t cycleDuplicateEnd = GetSystemCycle();
 
+            urmaComm_.ResetTimings();
             if (mode_ == 0) {
-                OverheadLatencyTest(cycleDuplicateEnd, cycleSqCqLoadEnd, cycleSqeTemplateEnd,
-                                    cycleProcessTokenEnd, cycleP2pSendEnd, cycleDoorBellEnd,
-                                    cyclePollCqEnd, cycleUpdatePiciEnd);
+                OverheadLatencyTest(cycleDuplicateEnd, cycleProcessTokenEnd);
             } else if (mode_ == 1) {
-                BandwidthTest(cycleDuplicateEnd, cycleSqeTemplateEnd, cycleProcessTokenEnd,
-                              cycleP2pSendEnd, cycleDoorBellEnd, cyclePollCqEnd, cycleUpdatePiciEnd);
+                BandwidthTest(cycleDuplicateEnd, cycleProcessTokenEnd);
             }
+
+            // 从urmaComm_内部读取打点数据
+            const int64_t* urmaTimings = urmaComm_.GetTimings();
 
             // AIV core 0 写入性能计时数据到performanceInfo输出tensor
             if (aivId_ == 0) {
                 LocalTensor<int64_t> performanceLocal = performanceBuf_.Get<int64_t>();
                 performanceLocal.SetValue(TIMING_SLOT_PROCESS_START, cycleProcessStart);
                 performanceLocal.SetValue(TIMING_SLOT_DUPLICATE_END, cycleDuplicateEnd);
-                performanceLocal.SetValue(TIMING_SLOT_INIT_SQ_CQ_LOAD_END, cycleSqCqLoadEnd);
-                performanceLocal.SetValue(TIMING_SLOT_SQE_TEMPLATE_END, cycleSqeTemplateEnd);
+                performanceLocal.SetValue(TIMING_SLOT_INIT_END, urmaTimings[SQE_TIMING_SLOT_INIT_END]);
+                performanceLocal.SetValue(TIMING_SLOT_TEMPLATE_END, urmaTimings[SQE_TIMING_SLOT_TEMPLATE_END]);
                 performanceLocal.SetValue(TIMING_SLOT_PROCESS_TOKEN_END, cycleProcessTokenEnd);
-                performanceLocal.SetValue(TIMING_SLOT_P2P_SEND_END, cycleP2pSendEnd);
-                performanceLocal.SetValue(TIMING_SLOT_DOORBELL_END, cycleDoorBellEnd);
-                performanceLocal.SetValue(TIMING_SLOT_POLL_CQ_END, cyclePollCqEnd);
-                performanceLocal.SetValue(TIMING_SLOT_UPDATE_PICI_END, cycleUpdatePiciEnd);
+                performanceLocal.SetValue(TIMING_SLOT_WRITE_END, urmaTimings[SQE_TIMING_SLOT_WRITE_END]);
+                performanceLocal.SetValue(TIMING_SLOT_DOORBELL_END, urmaTimings[SQE_TIMING_SLOT_DOORBELL_END]);
+                performanceLocal.SetValue(TIMING_SLOT_POLL_CQ_END, urmaTimings[SQE_TIMING_SLOT_POLL_CQ_END]);
+                performanceLocal.SetValue(TIMING_SLOT_UPDATE_PICI_END, urmaTimings[SQE_TIMING_SLOT_UPDATE_PICI_END]);
                 PipeBarrier<PIPE_ALL>();
                 DataCopy<int64_t>(performanceInfoGMTensor_, performanceLocal, PERFORMANCE_DATA_COPY_COUNT_SQE);
                 SyncFunc<AscendC::HardEvent::MTE3_S>();
@@ -674,7 +609,7 @@ __aicore__ inline void UrmaP2pBenchmark<TemplateUrmaP2pBenchmarkTypeFunc>::Hcomm
         cycleDataCopyEndRef = GetSystemCycle(); // HCOMM SLOT[1]
 
         // 步骤2: WriteNbi推送数据到远端URMA Buffer
-        hcommComm_.P2pSend(todDstRankId, remoteUrmaAddr, localAddr, hAlignWinSize_);
+        hcommComm_.Write(todDstRankId, remoteUrmaAddr, localAddr, hAlignWinSize_);
         cycleWriteNbiEndRef = GetSystemCycle(); // HCOMM SLOT[2]
 
         // 步骤3: Drain等待数据WriteNbi完成
@@ -751,7 +686,7 @@ __aicore__ inline void UrmaP2pBenchmark<TemplateUrmaP2pBenchmarkTypeFunc>::Hcomm
                         + static_cast<uint64_t>(epRankId_) * expertPerSizeOnWin_;
         GM_ADDR dstAddr = hcommComm_.GetRemoteUrmaAddr(rankId, winDataSizeOffset_)
                         + static_cast<uint64_t>(epRankId_) * expertPerSizeOnWin_;
-        hcommComm_.P2pSend(rankId, dstAddr, srcAddr, axisBS_ * hAlignWinSize_);
+        hcommComm_.Write(rankId, dstAddr, srcAddr, axisBS_ * hAlignWinSize_);
     }
     cycleWriteNbiEndRef = GetSystemCycle(); // HCOMM SLOT[2]
 
