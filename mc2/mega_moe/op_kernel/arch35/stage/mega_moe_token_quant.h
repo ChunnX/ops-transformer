@@ -8,10 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef MEGA_MOE_QUANT_PROCESS_H
-#define MEGA_MOE_QUANT_PROCESS_H
+#ifndef MEGA_MOE_TOKEN_QUANT_H
+#define MEGA_MOE_TOKEN_QUANT_H
 
-#include "../mega_moe_job_context.h"
+#include "../common/mega_moe_utils.h"
 #if __has_include("../../../moe_distribute_dispatch_v2/quantize_functions.h")
 #include "../../../moe_distribute_dispatch_v2/quantize_functions.h"
 #else
@@ -73,7 +73,7 @@ __aicore__ inline void LoadTopkWeightsToUb(const QuantProcessArgs &args, QuantPr
     }
 }
 
-// Prototype: MegaMoe::QuantProcessInRank. Quantizes the local tokens assigned to one logical AIV job.
+// 原型：MegaMoe::QuantProcessInRank。量化一个逻辑 AIV 任务负责的本卡 token。
 template <int32_t QuantMode, typename QuantOutType, typename ActivationType, typename TopkWeightsType,
           bool TopkWeightsPrefetch>
 __aicore__ inline void QuantizeLocalTokens(const DispatchPrepareContext &context, const QuantProcessArgs &args,
@@ -145,4 +145,4 @@ __aicore__ inline void QuantizeLocalTokens(const DispatchPrepareContext &context
 
 } // namespace MegaMoeImpl
 
-#endif // MEGA_MOE_QUANT_PROCESS_H
+#endif // MEGA_MOE_TOKEN_QUANT_H
