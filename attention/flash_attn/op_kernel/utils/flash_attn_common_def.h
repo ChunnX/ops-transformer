@@ -179,7 +179,7 @@ static constexpr ConfigParams ConfigValue[] = {
     // D=256 configurations
     {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned256, inferDTemplateType::Aligned256,
      inferDTemplateType::Aligned256}, // config=4
-    {inferS1TemplateType::Aligned64, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned256,
+    {inferS1TemplateType::Aligned128, inferS2TemplateType::Aligned128, inferDTemplateType::Aligned256,
      inferDTemplateType::Aligned256}, // config=5
 };
 
