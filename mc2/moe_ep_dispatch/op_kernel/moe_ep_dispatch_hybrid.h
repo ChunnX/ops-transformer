@@ -63,6 +63,9 @@ constexpr uint32_t DATA_BLOCK_NUM = 8U;         // 256B/32B=8
 constexpr uint8_t BUFFER_NUM = 2;
 constexpr int64_t STATUS_POLL_BACKOFF_CYCLES = 100; // ready 未就绪时的轮询退避周期
 constexpr uint32_t STATUS_CLEAR_BATCH_RECORDS = 64U;
+// 诊断用：隔离 count、跨超发送和节点内发送的 channel 状态。
+constexpr uint32_t SCALEOUT_CHANNEL_INDEX = 1U;
+constexpr uint32_t SCALEUP_CHANNEL_INDEX = 2U;
 // status[0]发布总slot数，其余status只表示对应slot已到达。
 constexpr uint32_t SCALEOUT_SLOT_READY = 1U;
 // 高32位为nextSlot，低32位为slotsLeft；低32位为-1表示count尚未读到。
@@ -182,6 +185,7 @@ private:
                                                       uint32_t &tokenRangeIndexEnd);
     __aicore__ inline void SplitToCore(uint32_t itemCount, uint32_t coreCount, uint32_t &itemStart,
                                        uint32_t &itemEnd, uint32_t &itemNum);
+    __aicore__ inline uint64_t GetPhaseCommHandle(uint32_t rankId, uint32_t preferredChannelIndex);
 
     TPipe *tpipe_{nullptr};
     __gm__ Mc2Aclnn::MoeCommContext *mc2Context_{nullptr};
@@ -482,6 +486,15 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 {
     SplitRangeForCore(itemCount, coreCount, aivId_, itemStart, itemEnd);
     itemNum = itemEnd - itemStart;
+}
+
+template <TemplateMoeEpDispatchHybridTypeClass>
+__aicore__ inline uint64_t MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::GetPhaseCommHandle(
+    uint32_t rankId, uint32_t preferredChannelIndex)
+{
+    uint32_t channelCount = mc2Context_->channelsPerRank == 0U ? 1U : mc2Context_->channelsPerRank;
+    uint32_t channelIndex = preferredChannelIndex < channelCount ? preferredChannelIndex : 0U;
+    return MoeEpDispatchBase::GetCommHandle(mc2Context_, rankId, channelIndex);
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1330,7 +1343,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     uint32_t remoteServerOrdinal, uint32_t dstScaleoutIndex, uint32_t proxyRankId,
     uint32_t scaleoutSlotCount)
 {
-    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, proxyRankId);
+    uint64_t commHandle = GetPhaseCommHandle(proxyRankId, SCALEOUT_CHANNEL_INDEX);
     GM_ADDR remoteScaleoutBase =
         MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, proxyRankId, scaleoutRecvDataOffset_);
     GM_ADDR remoteStatusBase =
@@ -1461,7 +1474,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         return;
     }
 
-    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
+    uint64_t commHandle = GetPhaseCommHandle(dstRankId, SCALEUP_CHANNEL_INDEX);
     GM_ADDR unusedNotifyAddr =
         MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, dstRankId, slotWinStateOffset_) +
         static_cast<uint64_t>(srcRankId) * dispatchNotifyCount_ * WIN_ADDR_ALIGN + UB_ALIGN;
@@ -1730,7 +1743,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     uint32_t dstRankId)
 {
     uint64_t commHandle =
-        dstRankId == epRankId_ ? 0UL : MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
+        dstRankId == epRankId_ ? 0UL : GetPhaseCommHandle(dstRankId, SCALEUP_CHANNEL_INDEX);
     SendScaleupEntries(dstRankId, commHandle);
     if (dstRankId == epRankId_) {
         PipeBarrier<PIPE_MTE3>();
@@ -1778,7 +1791,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         return;
     }
 
-    uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
+    uint64_t commHandle = GetPhaseCommHandle(dstRankId, SCALEUP_CHANNEL_INDEX);
     GM_ADDR readySourceAddr = sendCntWorkspaceAddr_ + dstRankId * WIN_ADDR_ALIGN;
     for (uint32_t notifyIndex = 0U; notifyIndex < dispatchNotifyCount_; notifyIndex++) {
         GM_ADDR notifyAddr = notifyBase + static_cast<uint64_t>(notifyIndex) * WIN_ADDR_ALIGN;
@@ -2067,8 +2080,9 @@ template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::TransferDispatchPayloads()
 {
     if (aivId_ == 0U) {
-        PRINTF("[DH] r=%u aiv=0 transfer begin serverNum=%u remote=%u scaleoutAiv=%u scaleupAiv=%u\n",
-               epRankId_, serverNum_, remoteServerCount_, numScaleoutSendAiv_, numNodeLocalAiv_);
+        PRINTF("[DH] r=%u aiv=0 transfer begin serverNum=%u remote=%u scaleoutAiv=%u scaleupAiv=%u channels=%u\n",
+               epRankId_, serverNum_, remoteServerCount_, numScaleoutSendAiv_, numNodeLocalAiv_,
+               mc2Context_->channelsPerRank);
         PRINTF("[DH] r=%u aiv=0 offsets data=%lu status=%lu win=%lu slot=%lu\n", epRankId_,
                scaleoutRecvDataOffset_, scaleoutRecvStatusOffset_, winDataOffset_, slotWinStateOffset_);
     }
