@@ -18,13 +18,29 @@
   - ``tests/st/arch35/ttk_kernel_*.csv``：TTK kernel 用例，经文末的
     ``__input__`` / ``__golden__`` 注册表的 ``kernel`` 层接入
 
-    python3 -m ttk kernel -i <csv> --plugin <此文件>
+    python3 -m ttk kernel -i <csv> --plugin <此文件> --compare close
+
+    **`--compare close` 不能省。** TTK 默认的 `stat_rel_err` 用
+    `|a-g| / (|g| + 1e-7)` 算相对误差，这个 1e-7 的下限与 dtype、与张量量级都无关。
+    本算子的输出里存在 golden 恰好为 0、NPU 给出 2^-23 或 2^-24 的元素（RoPE 的
+    两项相消），此时相对误差被算成 1.19 / 0.596，`mare` 判据必挂——而张量本身的
+    典型量级是 0.4，这点绝对偏差毫无意义。实测：4~16 个这样的元素就能让 31 条用例
+    挂掉 16 条，**且正确 kernel 与植入缺陷的 kernel 挂的是同一批用例（对称差 0），
+    该判据在本算子上没有任何区分力**。
+    改用 close 后判据变成 `|a-g| <= atol + rtol*|g|`，rtol/atol/ptol 由 CSV 的
+    `precision_tolerances` / `absolute_precision` 逐输出给出：rtol=2^-7（2 个 bf16
+    ULP，实测 7600 万个元素里最大真实偏差就是 2 ULP）、atol=2^-13、ptol=0（不容许
+    任何一个元素超标）。正确 kernel 31/31 全绿且每个输出都是 100.0%，植入
+    undMask 缺陷的变异体则挂 9 条 —— 区分力经实测确认。
 
   - ``tests/st/arch35/ttk_aclnn_*.csv``：TTK aclnn 用例，经同一注册表的 ``aclnn`` 层接入
     （适配函数见文末 ``aclnn_input`` / ``aclnn_golden``，与 kernel 层的契约差异见那里的注释）
 
     export LD_LIBRARY_PATH=$ASCEND_HOME_PATH/opp/vendors/custom_transformer/op_api/lib/:$LD_LIBRARY_PATH
-    python3 -m ttk aclnn -i <csv> --plugin <此文件>
+    python3 -m ttk aclnn -i <csv> --plugin <此文件> --compare close
+
+    aclnn 侧同样必须带 `--compare close`，原因与 kernel 侧相同；容差也一样由该 CSV 的
+    `precision_tolerances` / `absolute_precision` 逐输出给出（输出为 q / k_cache / v_cache 三个）。
 
 张量约定
   und_qkv       bf16 [und_len, N, D]，N = Hq+Hk+Hv，D = head_dim = 128
