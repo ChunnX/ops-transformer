@@ -166,10 +166,8 @@ static aclnnStatus checkCounts(const char *apiName, const aclTensor *gmmWeight, 
     if (hasSendTensor) {
         int64_t ep = 0;
         if (gmmWeight != nullptr) {
-            auto gmmWeightShape = aclGetViewShape(gmmWeight);
-            if (gmmWeightShape != nullptr) {
-                ep = gmmWeightShape->GetDim(0);
-            }
+            auto gmmWeightShape = gmmWeight->GetViewShape();
+            ep = gmmWeightShape.GetDim(0);
         }
         int64_t expectedCount = ep * epWorldSize;
         if (expectedCount <= 0) {
@@ -178,18 +176,14 @@ static aclnnStatus checkCounts(const char *apiName, const aclTensor *gmmWeight, 
             return ACLNN_ERR_PARAM_INVALID;
         }
         int64_t sendTensorElems = 1;
-        auto sendShape = aclGetViewShape(sendCountsTensorOptional);
-        if (sendShape != nullptr && sendShape->GetDimNum() > 0) {
-            for (size_t i = 0; i < sendShape->GetDimNum(); i++) {
-                sendTensorElems *= sendShape->GetDim(i);
-            }
+        auto sendShape = sendCountsTensorOptional->GetViewShape();
+        for (size_t i = 0; i < sendShape.GetDimNum(); i++) {
+            sendTensorElems *= sendShape.GetDim(i);
         }
         int64_t recvTensorElems = 1;
-        auto recvShape = aclGetViewShape(recvCountsTensorOptional);
-        if (recvShape != nullptr && recvShape->GetDimNum() > 0) {
-            for (size_t i = 0; i < recvShape->GetDimNum(); i++) {
-                recvTensorElems *= recvShape->GetDim(i);
-            }
+        auto recvShape = recvCountsTensorOptional->GetViewShape();
+        for (size_t i = 0; i < recvShape.GetDimNum(); i++) {
+            recvTensorElems *= recvShape.GetDim(i);
         }
         if (sendTensorElems != expectedCount) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
