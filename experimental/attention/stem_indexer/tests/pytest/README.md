@@ -53,7 +53,9 @@ single和batch模式当前均维护154条正例case，分别从`ENABLED_PARAMS`�
 当前case表只保留可运行并可与golden比对的正例。
 
 当前StemIndexer主算子使用BNSD布局，`q_seq_lens`和`kv_seq_lens`按batch实际长度传入，
-`num_prompt_tokens`按batch传入动态TopK预算基准长度，正例中保持`num_prompt_tokens >= kv_seq_lens`。
+`num_prompt_tokens`按batch传入动态TopK预算基准长度，正例中保持`num_prompt_tokens >= kv_seq_lens`；
+该输入缺省时由OpHost通过TilingData通知Kernel复用`kv_seq_lens`。`metadata`虽然在接口层声明为可选输入，
+但当前主算子计算必须传入有效Metadata，缺省时会在Tiling阶段返回参数错误。
 测试用例不再单独维护额外token长度辅助字段；
 `qflat`、`kflat`的shape由`q_seq_lens`、`kv_seq_lens`的最大值推导。
 

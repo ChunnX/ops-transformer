@@ -104,8 +104,8 @@ torch.ops.custom.npu_stem_indexer(
 | `vbias` | 输入 | Value量值偏置，即OAM项。 | Batch、KV Head和KV Block维度必须与`kflat`一致。 | FLOAT32 | ND | `(B,N2,max_Kb)` |
 | `q_seq_lens` | 输入 | 每个Batch中Query的有效Token数。 | 每个元素按`stem_block_size`向上取整为实际Query Block数。 | INT32 | ND | `(B)` |
 | `kv_seq_lens` | 输入 | 每个Batch中KV的有效Token数。 | 每个元素按`stem_block_size`向上取整为实际KV Block数。 | INT32 | ND | `(B)` |
-| `num_prompt_tokens` | 输入 | 每个Batch的Prompt Token数。 | 用于Position-Decay动态TopK预算分档。当前执行路径需要传入有效Tensor。 | INT32 | ND | `(B)` |
-| `metadata` | 输入 | 分核调度信息。 | 由StemIndexerMetadata算子根据本次输入生成，当前执行路径需要传入有效Tensor。 | INT32 | ND | `(metadata_size)` |
+| `num_prompt_tokens` | 可选输入 | 每个Batch的Prompt Token数。 | 用于Position-Decay动态TopK预算分档；未传入时复用`kv_seq_lens`。 | INT32 | ND | `(B)` |
+| `metadata` | 可选输入 | 分核调度信息。 | 接口声明为可选输入，但当前计算必须使用有效Metadata；未传入时Tiling返回参数错误。 | INT32 | ND | `(metadata_size)` |
 | `causal` | 输入属性 | 是否采用Right-down Causal语义。 | 默认值为`true`。 | BOOL | - | - |
 | `stem_block_size` | 输入属性 | 一个Stem Block包含的原始Token数。 | 当前仅支持128，默认值为128。 | INT64 | - | - |
 | `stem_stride` | 输入属性 | Stem Block内部的分组数/聚合Stride。 | 当前仅支持16，默认值为16。 | INT64 | - | - |
@@ -128,7 +128,7 @@ torch.ops.custom.npu_stem_indexer(
 - 当前仅适配Ascend 950PR/Ascend 950DT，不支持A3、A2及其他产品。
 - `qflat`、`kflat`仅支持BF16、ND格式和4D Tensor。
 - `vbias`仅支持FLOAT32、ND格式和3D Tensor。
-- `q_seq_lens`、`kv_seq_lens`、`num_prompt_tokens`、`metadata`仅支持INT32、ND格式和1D Tensor。
+- `q_seq_lens`、`kv_seq_lens`仅支持INT32、ND格式和1D Tensor；传入`num_prompt_tokens`或`metadata`时同样仅支持INT32、ND格式和1D Tensor。
 - `sparse_indices`、`sparse_seq_len`的数据类型固定为INT32，数据格式为ND。
 - `stem_block_size`固定为128，`stem_stride`固定为16，因此`R=8`、`D_flat=2048`。
 - `initial_blocks`固定为4，`window_size`固定为4。
@@ -139,7 +139,9 @@ torch.ops.custom.npu_stem_indexer(
 
 ### 存在性约束
 
-- `qflat`、`kflat`、`vbias`、`q_seq_lens`、`kv_seq_lens`、`num_prompt_tokens`和`metadata`均需传入有效Tensor。
+- `qflat`、`kflat`、`vbias`、`q_seq_lens`和`kv_seq_lens`必须传入有效Tensor。
+- `num_prompt_tokens`可以不传；缺省时OpHost在TilingData中记录复用标志，Kernel使用`kv_seq_lens`作为`num_prompt_tokens`。
+- `metadata`在接口中声明为可选输入，以支持统一的Optional调用形式；当前计算仍要求传入有效Tensor，缺省时Tiling明确返回参数错误。
 - `metadata`需要由StemIndexerMetadata算子根据本次输入生成，不支持传入空Tensor或与本次输入无关的占位Tensor。
 
 ### 一致性约束
@@ -148,10 +150,10 @@ torch.ops.custom.npu_stem_indexer(
 - `N1`仅支持32或64，`N2`仅支持2、4或8，并满足`N1 % N2 == 0`。
 - `qflat`和`kflat`的Batch维、最后一维必须一致，最后一维固定为2048。
 - `vbias`的shape必须为`(B,N2,max_Kb)`，与`kflat`对应维度一致。
-- `q_seq_lens`、`kv_seq_lens`和`num_prompt_tokens`的shape必须为`(B)`。
+- `q_seq_lens`和`kv_seq_lens`的shape必须为`(B)`；传入`num_prompt_tokens`时，其shape也必须为`(B)`。
 - `q_seq_lens[b]`应满足`0 <= q_seq_lens[b] <= max_Qb * stem_block_size`。
 - `kv_seq_lens[b]`应满足`0 <= kv_seq_lens[b] <= max_Kb * stem_block_size`。
-- `num_prompt_tokens[b]`应为非负值，并满足`num_prompt_tokens[b] >= kv_seq_lens[b]`。
+- 有效Prompt Token数应为非负值，并满足`effective_num_prompt_tokens[b] >= kv_seq_lens[b]`；其中传入`num_prompt_tokens`时取其值，未传入时`effective_num_prompt_tokens = kv_seq_lens`。
 - `sparse_indices`的shape由输入推导为`(B,N1,max_Qb,max_Kb)`；`sparse_seq_len`的shape由输入推导为`(B,N1,max_Qb)`。
 - `sparse_indices`有效前缀中的元素为Key Block逻辑索引，取值范围为`[0, actual_Kb - 1]`。
 - `sparse_seq_len`每个元素的取值范围为`[0, actual_visible_Kb]`，并且不大于对应输出行的`max_Kb`。
@@ -174,7 +176,7 @@ torch.ops.custom.npu_stem_indexer(
   s2_valid = clamp(Kb - Qb + qb + 1, 0, Kb)
   ```
 
-- Decode场景定义为`q_seq_lens[b] == 1`且`num_prompt_tokens[b] >= kv_seq_lens[b]`，该场景使用完整的实际KV Block范围。
+- Decode场景定义为`q_seq_lens[b] == 1`且`effective_num_prompt_tokens[b] >= kv_seq_lens[b]`，该场景使用完整的实际KV Block范围。
 - Sink Block和Window Block不参与普通TopK候选，最终结果为固定块与动态TopK结果的并集，避免重复索引。
 - `topk_score_precision`只影响内部Score排序精度；无论取1还是2，`sparse_indices`与`sparse_seq_len`均为INT32。
 - Tensor元素值相关约束由调用者保证；接口的Shape/Dtype校验不能替代对输入Tensor内容的合法性检查。

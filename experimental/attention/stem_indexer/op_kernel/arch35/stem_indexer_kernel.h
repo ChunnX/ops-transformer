@@ -327,7 +327,9 @@ SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_t *kflat, __gm__ uint8_
 
     InitTilingData(tiling);
     InitActualSeqLen(qSeqLens, kvSeqLens);
-    numPromptTokensGm.SetGlobalBuffer((__gm__ int32_t *)numPromptTokens, constInfo.batchSize);
+    __gm__ uint8_t *effectiveNumPromptTokens =
+        tiling->useKvSeqLensAsNumPrompt != 0U ? kvSeqLens : numPromptTokens;
+    numPromptTokensGm.SetGlobalBuffer((__gm__ int32_t *)effectiveNumPromptTokens, constInfo.batchSize);
 
     sectionNum_ = ((__gm__ uint32_t *)metadata)[0];
     if (sectionNum_ == 0U) {
