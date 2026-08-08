@@ -109,13 +109,13 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
                                             GM_ADDR comm_scale, GM_ADDR x1_offset, GM_ADDR x2_offset, GM_ADDR y,
                                             GM_ADDR all2all_out, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
-    REGISTER_TILING_DEFAULT(AlltoAllQuantMatmulTilingData);
     TPipe pipe;
     constexpr HcclServerType hcclServerType = COMMTYPE == ALL2ALL_COMM_TYPE_CCU ?
                                                   HcclServerType::HCCL_SERVER_TYPE_CCU :
                                                   HcclServerType::HCCL_SERVER_TYPE_AICPU;
 
 #if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)))
+    REGISTER_TILING_DEFAULT(AlltoAllMatmulTilingData);
     GET_TILING_DATA_WITH_STRUCT(AlltoAllMatmulTilingData, tilingData, tilingGM);
 
     if constexpr (DTYPEBIAS == DTYPE_BIAS_SAME_WITH_X) {
@@ -127,6 +127,7 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     }
 
 #else
+    REGISTER_TILING_DEFAULT(AlltoAllQuantMatmulTilingData);
 #if (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) && \
      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))
     if constexpr (HAS_ALL2ALL_OUT) {
