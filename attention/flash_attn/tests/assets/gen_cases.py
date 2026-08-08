@@ -116,6 +116,8 @@ def normalize_params(raw):
         if c.get("block_table") is not None and isinstance(c.get("block_table"), list):
             bt_raw = c["block_table"]
             c["num_blocks"] = int(max(max(row) for row in bt_raw)) + 1
+            c["_bt_b"] = len(bt_raw)
+            c["_bt_max_blk"] = max(len(row) for row in bt_raw)
             return c
 
         seqused_kv = c["seqused_kv"]
@@ -132,7 +134,13 @@ def normalize_params(raw):
             max_blk = (
                 (max(seqused_kv) + block_size - 1) // block_size if seqused_kv else 1
             )
-        c["num_blocks"] = max_blk * b_val
+        # num_blocks 取按 seqused_kv 顺序填充实际占用的 page 数(与 inputs.py 填充一致),
+        # 避免按 max_blk*B 整体分配导致 K/V 缓冲过度分配(如 (30,4096) 多出约 300 倍)
+        used = 0
+        for i in range(b_val):
+            s = seqused_kv[i] if i < len(seqused_kv) else seqused_kv[-1]
+            used += min((int(s) + block_size - 1) // block_size, max_blk)
+        c["num_blocks"] = max(used, 1)
         c["_bt_b"] = b_val
         c["_bt_max_blk"] = max_blk
     return c
