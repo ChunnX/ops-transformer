@@ -76,10 +76,13 @@ protected:
                                       TilingContextInfo &contextInfo);
 
     void SetTilingInfo(CommTilingData &tilingInfo) const;
+    void SetArch35TilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const;
+    ge::graphStatus DoArch35MxQuantMMTiling();
     void PrintAlltoAllMxQuantMatmulTilingData(ccuAllToAllMatmulTilingData &outTilingData);
 
 private:
     ccuAllToAllMatmulTilingData localTilingData_;
+    AlltoAllQuantMatmulTilingData arch35TilingData_;
     bool isMxFp4_ = false;
     uint64_t mmMvalueLen_ = 0;
     QuantType matmulQuantType_ = QuantType::MXFP8_QUANT;
