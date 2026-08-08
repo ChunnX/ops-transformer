@@ -136,8 +136,12 @@ bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuant
     std::map<int64_t, std::set<int64_t>> supportedKvQuantMode;
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         supportedKvQuantMode = {
-            {0LL, {0LL}},           {1LL, {0LL, 2LL, 3LL}}, {2LL, {0LL, 1LL, 3LL}},
-            {3LL, {0LL, 1LL, 3LL}}, {4LL, {0LL, 1LL, 3LL}}, {5LL, {0LL, 1LL, 3LL}},
+            {0LL, {0LL}},
+            {1LL, {0LL, 2LL, 3LL}},
+            {2LL, {0LL, 1LL, 3LL}},
+            {3LL, {0LL, 1LL, 3LL}},
+            {4LL, {0LL, 1LL, 3LL}},
+            {5LL, {0LL, 1LL, 3LL}},
         };
     } else {
         supportedKvQuantMode = {
@@ -152,7 +156,7 @@ bool CheckKvCacheQuantModeValidity(int64_t weightQuantMode, int64_t kvCacheQuant
     }
     if (it->second.find(kvCacheQuantMode) == it->second.end()) {
         std::string supportedStr;
-        const auto& modes = it->second;
+        const auto &modes = it->second;
         size_t total = modes.size();
         size_t idx = 0;
         for (auto mode : modes) {
@@ -263,6 +267,25 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     // weightQuantMode != 0:量化场景
     if (!dequantScaleQNormHolder.CheckTensorConditionalNotNull(weightQuantMode != WEIGHT_QUANT_MODE_NO_QUANT &&
                                                                queryNormFlag)) {
+        return ge::GRAPH_FAILED;
+    }
+    // OpDef 中 ropeSin/ropeCos 为 REQUIRED。RoPE off：双 nullptr / empty；
+    // TensorHolder 将 nullptr 转成 shape={0} placeholder，避免 Inner 因空指针拦截。
+    // A2/A3 与 Ascend950 共用同一套开关约定。
+    auto isRopeOffPlaceholder = [](const aclTensor *t) -> bool {
+        return t == nullptr || t->IsEmpty();
+    };
+    if (isRopeOffPlaceholder(ropeSin) != isRopeOffPlaceholder(ropeCos)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "MlaPrologV3", "ropeSin / ropeCos", "(one empty, one non-empty)",
+            "ropeSin and ropeCos must both be valid (RoPE on) or both be null/empty (RoPE off)");
+        return ge::GRAPH_FAILED;
+    }
+    // Holder 必须活到 Inner GetWorkspaceSize 返回之后（与 queryNorm 相同）。
+    auto ropeSinHolder = TensorHolder(ropeSin, aclDataType::ACL_BF16, std::string("ropeSin"));
+    auto ropeCosHolder = TensorHolder(ropeCos, aclDataType::ACL_BF16, std::string("ropeCos"));
+    if (ropeSin == nullptr || ropeCos == nullptr) {
+        OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", ropeSin == nullptr ? "ropeSin" : "ropeCos");
         return ge::GRAPH_FAILED;
     }
     return aclnnInnerMlaPrologV3GetWorkspaceSize(

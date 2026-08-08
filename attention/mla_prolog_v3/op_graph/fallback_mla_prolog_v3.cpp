@@ -21,48 +21,39 @@ using namespace gert;
 graphStatus GetMlaPrologV3InputTensor(const OpExecuteContext *ctx, MlaPrologV3FallBackParam &param)
 {
     param.tokenX = ctx->GetRequiredInputTensor(TOKEN_X_INDEX_V3);
-    OP_CHECK_IF(param.tokenX == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "tokenX"),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(param.tokenX == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "tokenX"), return GRAPH_FAILED);
 
     param.weightDq = ctx->GetRequiredInputTensor(WEIGHT_DQ_INDEX_V3);
-    OP_CHECK_IF(param.weightDq == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "weightDq"),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(param.weightDq == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "weightDq"), return GRAPH_FAILED);
 
     param.weightUqQr = ctx->GetRequiredInputTensor(WEIGHT_UQ_QR_INDEX_V3);
     OP_CHECK_IF(param.weightUqQr == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "weightUqQr"),
                 return GRAPH_FAILED);
 
     param.weightUk = ctx->GetRequiredInputTensor(WEIGHT_UK_INDEX_V3);
-    OP_CHECK_IF(param.weightUk == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "weightUk"),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(param.weightUk == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "weightUk"), return GRAPH_FAILED);
 
     param.weightDkvKr = ctx->GetRequiredInputTensor(WEIGHT_DKV_KR_INDEX_V3);
     OP_CHECK_IF(param.weightDkvKr == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "weightDkvKr"),
                 return GRAPH_FAILED);
 
     param.rmsnormGammaCq = ctx->GetRequiredInputTensor(RMSNORM_GAMMA_CQ_INDEX_V3);
-    OP_CHECK_IF(param.rmsnormGammaCq == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "rmsnormGammaCq"), return GRAPH_FAILED);
+    OP_CHECK_IF(param.rmsnormGammaCq == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "rmsnormGammaCq"),
+                return GRAPH_FAILED);
 
     param.rmsnormGammaCkv = ctx->GetRequiredInputTensor(RMSNORM_GAMMA_CKV_INDEX_V3);
-    OP_CHECK_IF(param.rmsnormGammaCkv == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "rmsnormGammaCkv"), return GRAPH_FAILED);
+    OP_CHECK_IF(param.rmsnormGammaCkv == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "rmsnormGammaCkv"),
+                return GRAPH_FAILED);
 
+    // rope 允许 nullptr / empty（RoPE-off）；成对校验由 aclnnMlaPrologV3WeightNz 完成。
     param.ropeSin = ctx->GetRequiredInputTensor(ROPE_SIN_INDEX_V3);
-    OP_CHECK_IF(param.ropeSin == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "ropeSin"),
-                return GRAPH_FAILED);
-
     param.ropeCos = ctx->GetRequiredInputTensor(ROPE_COS_INDEX_V3);
-    OP_CHECK_IF(param.ropeCos == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "ropeCos"),
-                return GRAPH_FAILED);
 
     param.kvCache = ctx->GetRequiredInputTensor(KV_CACHE_INDEX_V3);
-    OP_CHECK_IF(param.kvCache == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "kvCache"),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(param.kvCache == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "kvCache"), return GRAPH_FAILED);
 
     param.krCache = ctx->GetRequiredInputTensor(KR_CACHE_INDEX_V3);
-    OP_CHECK_IF(param.krCache == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "krCache"),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(param.krCache == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "krCache"), return GRAPH_FAILED);
 
     param.cacheIndex = ctx->GetOptionalInputTensor(CACHE_INDEX_V3);
     param.dequantScaleX = ctx->GetOptionalInputTensor(DEQUANT_SCALE_X_INDEX_V3);
@@ -81,8 +72,7 @@ graphStatus GetMlaPrologV3InputTensor(const OpExecuteContext *ctx, MlaPrologV3Fa
 graphStatus GetMlaPrologV3OutputTensor(const OpExecuteContext *ctx, MlaPrologV3FallBackParam &param)
 {
     param.query = ctx->GetOutputTensor(QUERY_INDEX);
-    OP_CHECK_IF(param.query == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "query"),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(param.query == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "query"), return GRAPH_FAILED);
 
     param.queryRope = ctx->GetOutputTensor(QUERY_ROPE_INDEX);
     OP_CHECK_IF(param.queryRope == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "queryRope"),
@@ -97,16 +87,16 @@ graphStatus GetMlaPrologV3OutputTensor(const OpExecuteContext *ctx, MlaPrologV3F
                 return GRAPH_FAILED);
 
     param.dequantScaleQNope = ctx->GetOutputTensor(DEQUANT_SCALE_Q_NOPE_INDEX);
-    OP_CHECK_IF(param.dequantScaleQNope == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "dequantScaleQNope"), return GRAPH_FAILED);
+    OP_CHECK_IF(param.dequantScaleQNope == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "dequantScaleQNope"),
+                return GRAPH_FAILED);
 
     param.queryNorm = ctx->GetOutputTensor(QUERY_NORM_INDEX);
     OP_CHECK_IF(param.queryNorm == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "queryNorm"),
                 return GRAPH_FAILED);
 
     param.dequantScaleQNorm = ctx->GetOutputTensor(DEQUANT_SCALE_Q_NORM_INDEX);
-    OP_CHECK_IF(param.dequantScaleQNorm == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "dequantScaleQNorm"), return GRAPH_FAILED);
+    OP_CHECK_IF(param.dequantScaleQNorm == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "dequantScaleQNorm"),
+                return GRAPH_FAILED);
 
     return GRAPH_SUCCESS;
 }
