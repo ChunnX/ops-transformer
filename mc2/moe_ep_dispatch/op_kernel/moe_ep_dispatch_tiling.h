@@ -51,14 +51,10 @@ struct MoeEpDispatchWindowLayout {
 };
 
 struct MoeEpDispatchWorkspaceLayout {
-    uint32_t fanoutCountCoreBytes;       // 单个 fanout 生产核的计数区字节数
     uint64_t sendEntryTokenRangeBytes;  // 单个 token 范围的发送记录字节数
-    uint64_t fanoutSendEntryCoreBytes;  // 单个 fanout 生产核的发送记录字节数
     uint64_t routeWorkspaceOffset;
     uint64_t scaleoutSendEntryOffset;
     uint64_t scaleupSendEntryOffset;
-    uint64_t fanoutSendEntryOffset;
-    uint64_t fanoutCountOffset;
 };
 
 struct MoeEpDispatchInfo {
