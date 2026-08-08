@@ -47,6 +47,8 @@ constexpr uint64_t GROUP_M_OFFSET = 32;
 constexpr uint64_t GROUP_N_OFFSET = 16;
 constexpr uint64_t BIT_NUMBER = 1;
 class AllToAllMxQuantMatmulTilingBase : public AllToAllMatmulTilingBase {
+    friend class AlltoAllMxQuantMatmulHelper;
+
 public:
     explicit AllToAllMxQuantMatmulTilingBase(gert::TilingContext *context);
     ~AllToAllMxQuantMatmulTilingBase() override = default;
@@ -58,7 +60,6 @@ protected:
     ge::graphStatus GetWorkspaceSize() override;
     uint64_t GetTilingKey() const override;
     CutResult GetCutResOfCommAndCompute() override;
-    void AlignCutResForKernel(CutResult &cutRes, uint64_t mValue) const;
     ge::graphStatus CheckMxQuantTensorDataType(const gert::TilingContext *context, const char *opName);
     ge::graphStatus CheckX2Transpose(const gert::TilingContext *context, const char *opName,
                                      const OpAttrIndexSchema &indexSchema);
@@ -75,18 +76,40 @@ protected:
     ge::graphStatus SetMxDataTypeInfo(const gert::TilingContext *context, const char *opName,
                                       TilingContextInfo &contextInfo);
 
-    void SetTilingInfo(CommTilingData &tilingInfo) const;
-    void SetArch35TilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const;
-    ge::graphStatus DoArch35MxQuantMMTiling();
-    void PrintAlltoAllMxQuantMatmulTilingData(hcommAllToAllMatmulTilingData &outTilingData);
+    void SetTilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const;
+    void SetHcommTilingInfo(CommTilingData &tilingInfo) const;
+    ge::graphStatus DoHcommMxQuantMMTiling();
+    void PrintAlltoAllMxQuantMatmulTilingData(AlltoAllQuantMatmulTilingData &outTilingData);
 
 private:
-    hcommAllToAllMatmulTilingData localTilingData_;
-    AlltoAllQuantMatmulTilingData arch35TilingData_;
+    AlltoAllQuantMatmulTilingData localTilingData_;
+    hcommAllToAllMatmulTilingData hcommTilingData_;
     bool isMxFp4_ = false;
     uint64_t mmMvalueLen_ = 0;
     QuantType matmulQuantType_ = QuantType::MXFP8_QUANT;
-    void PrintAlltoAllMxQuantMatmulTilingInfo(const std::string &opName, CommTilingData &tilingInfo);
+    void PrintAlltoAllMxQuantMatmulTilingInfo(const std::string &opName, AlltoAllMatmulTilingInfo &tilingInfo);
+    void PrintMxQuantMMV3TilingData(const std::string &opName,
+                                    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &tiling);
+    void PrintExtendMatmulTiling(const std::string &opName, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &tiling);
+};
+
+class AlltoAllMxQuantMatmulHelper : public Mc2AdaptiveSlidingWindowTiling {
+public:
+    AlltoAllMxQuantMatmulHelper(AllToAllMxQuantMatmulTilingBase &allToAllMxQuantMatmulTilingBase,
+                                DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &out, uint64_t &mmMvalueLen_);
+    const gert::Shape GetX1Shape(const size_t index) override;
+    const gert::Shape GetX2Shape(const size_t index) override;
+    const gert::StorageShape *GetPertokenShape(const size_t index) override;
+    const gert::Shape &GetScaleShape(const size_t index) override;
+    const gert::StorageShape *GetBiasShape(const size_t index) override;
+    ge::graphStatus GetShapeAttrsInfo() override;
+    ge::graphStatus DoLibApiTiling() override;
+    void PrintTilingInputParam(Mc2QuantBatchMatmulInfo &quantMatmulInfo);
+    ge::graphStatus PostTiling() override;
+
+private:
+    uint64_t mmLen_ = 0;
+    AllToAllMxQuantMatmulTilingBase &tilingProcesser_;
 };
 } // namespace MC2Tiling
 #endif
