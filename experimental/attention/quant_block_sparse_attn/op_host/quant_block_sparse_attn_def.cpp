@@ -18,8 +18,7 @@
 namespace ops {
 class QuantBlockSparseAttn : public OpDef {
 public:
-    explicit QuantBlockSparseAttn(const char *name)
-        : OpDef(name)
+    explicit QuantBlockSparseAttn(const char *name) : OpDef(name)
     {
         this->Input("query")
             .ParamType(REQUIRED)
