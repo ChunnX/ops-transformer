@@ -549,13 +549,14 @@ string BuildCaseName(const testing::TestParamInfo<GroupedMatmulOpApiCase> &info)
 
 class grouped_matmul_opapi_csv_test : public testing::TestWithParam<GroupedMatmulOpApiCase> {};
 
-aclnnStatus CheckS8S4PseudoQuantInputs(int64_t groupListType, bool hasOffset, bool nullBiasElement = false,
-                                      aclFormat weightFormat = ACL_FORMAT_ND)
+aclnnStatus CheckS8S4Inputs(int64_t groupListType, bool hasOffset, bool nullBiasElement = false,
+                            aclFormat weightFormat = ACL_FORMAT_ND, int64_t scaleGroupNum = 4)
 {
     auto x = BuildAclTensorListDesc("64:1024", "INT8", "ND").ToAclType();
     auto weight = BuildAclTensorListDesc({{2, 1024, 256}}, ACL_INT4, weightFormat).ToAclType();
     auto bias = BuildAclTensorListDesc("2:256", "FLOAT", "ND").ToAclType();
-    auto scale = BuildAclTensorListDesc(hasOffset ? "2:1:256" : "2:4:256", "UINT64", "ND").ToAclType();
+    const std::string scaleShape = hasOffset ? "2:1:256" : "2:" + std::to_string(scaleGroupNum) + ":256";
+    auto scale = BuildAclTensorListDesc(scaleShape, "UINT64", "ND").ToAclType();
     auto offset = BuildAclTensorListDesc("2:1:256", "FLOAT", "ND").ToAclType();
     auto perTokenScale = BuildAclTensorListDesc("64", "FLOAT", "ND").ToAclType();
     auto out = BuildAclTensorListDesc("64:256", hasOffset ? "FLOAT16" : "BF16", "ND").ToAclType();
@@ -585,9 +586,9 @@ aclnnStatus CheckS8S4PseudoQuantInputs(int64_t groupListType, bool hasOffset, bo
 TEST(GroupedMatmulS8S4OpApiChecker, OnlyAcceptsCountGroupListType)
 {
     for (bool hasOffset : {false, true}) {
-        EXPECT_EQ(CheckS8S4PseudoQuantInputs(1, hasOffset), ACLNN_SUCCESS);
+        EXPECT_EQ(CheckS8S4Inputs(1, hasOffset), ACLNN_SUCCESS);
         for (int64_t groupListType : {0L, 2L, 99L}) {
-            EXPECT_EQ(CheckS8S4PseudoQuantInputs(groupListType, hasOffset), ACLNN_ERR_PARAM_INVALID)
+            EXPECT_EQ(CheckS8S4Inputs(groupListType, hasOffset), ACLNN_ERR_PARAM_INVALID)
                 << "hasOffset=" << hasOffset << ", groupListType=" << groupListType;
         }
     }
@@ -595,16 +596,22 @@ TEST(GroupedMatmulS8S4OpApiChecker, OnlyAcceptsCountGroupListType)
 
 TEST(GroupedMatmulS8S4OpApiChecker, RejectsNullBiasElementBeforeReadingDtype)
 {
-    EXPECT_EQ(CheckS8S4PseudoQuantInputs(1, false, true), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(CheckS8S4Inputs(1, false, true), ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST(GroupedMatmulS8S4OpApiChecker, OnlyAcceptsPerGroupSize256)
+{
+    EXPECT_EQ(CheckS8S4Inputs(1, false, false, ACL_FORMAT_ND, 4), ACLNN_SUCCESS);
+    EXPECT_EQ(CheckS8S4Inputs(1, false, false, ACL_FORMAT_ND, 8), ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST(GroupedMatmulS8S4OpApiChecker, UsesA3WeightFormatWhitelist)
 {
     for (const aclFormat weightFormat : {ACL_FORMAT_ND, ACL_FORMAT_NCL, ACL_FORMAT_NCHW}) {
-        EXPECT_EQ(CheckS8S4PseudoQuantInputs(1, false, false, weightFormat), ACLNN_SUCCESS)
+        EXPECT_EQ(CheckS8S4Inputs(1, false, false, weightFormat), ACLNN_SUCCESS)
             << "weightFormat=" << static_cast<int32_t>(weightFormat);
     }
-    EXPECT_EQ(CheckS8S4PseudoQuantInputs(1, false, false, ACL_FORMAT_NHWC), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(CheckS8S4Inputs(1, false, false, ACL_FORMAT_NHWC), ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_P(grouped_matmul_opapi_csv_test, run_case)
