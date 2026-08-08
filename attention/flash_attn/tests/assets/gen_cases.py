@@ -60,6 +60,9 @@ HEADER = [
     "absolute_precision",
 ]
 
+# kv 0 轴非连续声明列(仅套件含 nc_kv_dims 用例时输出)
+NC_HEADER = ["tensor_storage_shapes", "tensor_view_offsets", "tensor_view_strides"]
+
 DTYPE_MAP = {"fp16": "float16", "bf16": "bfloat16"}
 INT_DTYPE = "int32"
 ABSOLUTE_PRECISION_DEFAULT = 1e-8
@@ -71,6 +74,15 @@ ABSOLUTE_PRECISION_DEFAULT = 1e-8
 def normalize_params(raw):
     c = dict(raw)
     layout_q = c.get("layout_q", "BNSD")
+    layout_kv = c.get("layout_kv", layout_q)
+    nc_kv_dims = c.get("nc_kv_dims")
+    # 拦截用例(REJ): 非 PA 必须连续; PA_BBND 仅 dim0 合法。
+    # pytest 预期 NPU compute 报错, TTK 无"预期失败"机制, 不生成
+    if nc_kv_dims is not None:
+        if layout_kv not in ("PA_BBND", "PA_BNBD", "PA_NZ"):
+            return None
+        if layout_kv == "PA_BBND" and nc_kv_dims == (0, 1):
+            return None
     c.setdefault("layout_kv", layout_q)
     c.setdefault("layout_out", layout_q)
     c.setdefault("N2", c["N1"])
@@ -351,6 +363,28 @@ def _data_ranges(p, num_tensors):
 # ── CSV row builder ──
 
 
+def _nc_fields(shape, nc_kv_dims):
+    """构造 kv 非连续视图的 storage/stride/offset 三元组。
+
+    与 pytests utils/data.py make_noncontiguous 逐位一致:
+      nc_kv_dims == 0      -> pad dim1 (+1 元素), 0 轴 stride 膨胀
+      nc_kv_dims == (0, 1) -> pad dim2 (+1 元素), 0/1 轴 stride 联动膨胀
+    返回 (storage_shape, view_stride, view_offset); 无 NC 时返回 (None, None, None)。
+    """
+    if nc_kv_dims == 0:
+        pad_dim = 1
+    elif nc_kv_dims == (0, 1):
+        pad_dim = 2
+    else:
+        return None, None, None
+    storage = list(shape)
+    storage[pad_dim] += 1
+    strides = [1] * len(shape)
+    for d in range(len(shape) - 2, -1, -1):
+        strides[d] = strides[d + 1] * storage[d + 1]
+    return tuple(storage), tuple(strides), 0
+
+
 def _build_row(case_name, p):
     q_shape, k_shape, v_shape = _qkv_shapes(p)
     bt_shape, cu_q_shape, cu_kv_shape, sq_shape, skv_shape = _aux_shapes(p)
@@ -387,6 +421,17 @@ def _build_row(case_name, p):
     attrs = _build_attrs(p)
     prec = _precision(p)
 
+    # kv 0 轴非连续声明(k/v 槽位 1、2; 其余槽位留空 = TTK 默认连续)
+    nc_kv_dims = p.get("nc_kv_dims")
+    storage_shapes = [None] * len(shapes)
+    view_strides = [None] * len(shapes)
+    view_offsets = [None] * len(shapes)
+    if nc_kv_dims is not None:
+        for i in (1, 2):
+            storage_shapes[i], view_strides[i], view_offsets[i] = _nc_fields(
+                shapes[i], nc_kv_dims
+            )
+
     return [
         case_name,
         API_NAME,
@@ -399,6 +444,9 @@ def _build_row(case_name, p):
         repr(data_ranges),
         repr(prec),
         repr(ABSOLUTE_PRECISION_DEFAULT),
+        repr(tuple(storage_shapes)),
+        repr(tuple(view_offsets)),
+        repr(tuple(view_strides)),
     ]
 
 
@@ -426,18 +474,25 @@ def main():
 
     cases = load_case_modules([f"test_cases.{args.case_file}"])
 
+    has_nc = any("nc_kv_dims" in raw for raw in cases.values())
+    header = HEADER + NC_HEADER if has_nc else HEADER
+
     out_path = os.path.join(_HERE, args.output)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    written = 0
     with open(out_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(HEADER)
+        writer.writerow(header)
         for case_id, raw_params in sorted(cases.items()):
             short_name = case_id.rsplit("/", 1)[-1]
             p = normalize_params(raw_params)
+            if p is None:  # REJ 拦截用例: 预期算子报错, TTK 不生成
+                continue
             row = _build_row(short_name, p)
-            writer.writerow(row)
+            writer.writerow(row if has_nc else row[: len(HEADER)])
+            written += 1
 
-    print(f"wrote {out_path} ({len(cases)} cases)")
+    print(f"wrote {out_path} ({written} cases)")
 
 
 if __name__ == "__main__":
