@@ -708,7 +708,7 @@ int main() {
   const int64_t headDim = 128;
   const int64_t topk = 512;
   const int64_t maskMode = 3;
-  const int64_t cmpRatio = 4;
+  const int64_t cmpRatio = 1;
 
   std::vector<int64_t> qShape = {t1, numHeadsQ, headDim};
   std::vector<int64_t> kShape = {t2, numHeadsK, headDim};
