@@ -196,7 +196,7 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckAttrs() const
 
 ge::graphStatus QuantBlockSparseAttnCheck::CheckSoftmaxScale() const
 {
-    if (tilingInfo_.softmaxScaleVal <= 0.0F || tilingInfo_.softmaxScaleVal > 1.0F) {
+    if (!(tilingInfo_.softmaxScaleVal > 0.0F && tilingInfo_.softmaxScaleVal <= 1.0F)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "softmax_scale",
                                               std::to_string(tilingInfo_.softmaxScaleVal),
                                               "Must be in range (0, 1]");
