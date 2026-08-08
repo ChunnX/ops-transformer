@@ -419,11 +419,12 @@ CutResult AllToAllMxQuantMatmulTilingBase::GetCutResOfCommAndCompute()
                                                         commMode) != ge::GRAPH_SUCCESS) {
         OP_LOGD(opName_, "GetAndConvertCommMode failed, use default commMode AICPU for tiling.");
     }
+    CutResult cutRes;
     if (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR) {
         // 950的4卡形态使用基于拟合数据的公式化tiling
         AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, TopoType::STANDARD_CARD,
                                               SocVersion::SOC950, commMode);
-        return tiling.GetTiling();
+        cutRes = tiling.GetTiling();
     } else {
         OP_LOGD(opName_, "Falling back to formulaic tiling for arch35 tiling");
         AlltoAllMM alltoallMatmulTileFormulate(contextInfo_.args_, contextInfo_.args_.rankDim, KernelType::ALL_TO_ALL,
@@ -433,8 +434,39 @@ CutResult AllToAllMxQuantMatmulTilingBase::GetCutResOfCommAndCompute()
             alltoallMatmulTileFormulate.tilingM_.SetMaxTileCnt(MX_AICPU_TILING_MAX_NUM);
         }
         alltoallMatmulTileFormulate.GetTiling();
-        return alltoallMatmulTileFormulate.tilingM_.cutRes;
+        cutRes = alltoallMatmulTileFormulate.tilingM_.cutRes;
     }
+    AlignCutResForKernel(cutRes, contextInfo_.args_.mValue);
+    return cutRes;
+}
+
+void AllToAllMxQuantMatmulTilingBase::AlignCutResForKernel(CutResult &cutRes, uint64_t mValue) const
+{
+    constexpr uint64_t KERNEL_ALIGN_M = 256;
+    auto alignUp = [](uint64_t val, uint64_t align) { return (val + align - 1) / align * align; };
+
+    uint64_t longTile = alignUp(cutRes.longTileLen, KERNEL_ALIGN_M);
+    if (longTile >= mValue) {
+        cutRes.longTileLen = mValue;
+        cutRes.numLongTile = 1;
+        cutRes.shortTileLen = 0;
+        cutRes.numShortTile = 0;
+    } else {
+        cutRes.longTileLen = longTile;
+        cutRes.numLongTile = mValue / longTile;
+        uint64_t remainder = mValue % longTile;
+        if (remainder > 0) {
+            cutRes.shortTileLen = remainder;
+            cutRes.numShortTile = 1;
+        } else {
+            cutRes.shortTileLen = 0;
+            cutRes.numShortTile = 0;
+        }
+    }
+    cutRes.shortTileAtBack = true;
+    OP_LOGD(opName_, "Adjusted cutRes: longTile=%lu numLong=%lu shortTile=%lu numShort=%lu atBack=%d",
+            cutRes.longTileLen, cutRes.numLongTile, cutRes.shortTileLen, cutRes.numShortTile,
+            cutRes.shortTileAtBack);
 }
 
 /**
