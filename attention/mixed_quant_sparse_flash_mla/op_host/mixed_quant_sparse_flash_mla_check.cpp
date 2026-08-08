@@ -33,20 +33,6 @@ std::string MQSMLADataTypeToSerialString(ge::DataType type)
     }
 }
 
-std::string MQSMLALayoutToSerialString(MQSMLALayout layout)
-{
-    switch (layout) {
-        case MQSMLALayout::BSND:
-            return "BSND";
-        case MQSMLALayout::TND:
-            return "TND";
-        case MQSMLALayout::PA_BBND:
-            return "PA_BBND";
-        default:
-            return "UNKNOWN";
-    }
-}
-
 std::string GetShapeStr(gert::Shape shape)
 {
     std::ostringstream oss;
