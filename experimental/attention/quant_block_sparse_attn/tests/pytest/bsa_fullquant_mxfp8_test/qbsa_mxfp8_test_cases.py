@@ -2901,7 +2901,7 @@ TestCases = [
         "n1_n2_ratio": 1,
         "s1_s2_relation": "lt",
         "alignment": "s1_aligned_s2_aligned",
-        "blocknum": 83,
+        "blocknum": 86,
     },
     {
         "name": "BSA_FP8_e4m3_FP8_e4m3_BF16_mxfp8_8_4_2_8192_8192_128_128_00001",
@@ -2946,7 +2946,7 @@ TestCases = [
         "n1_n2_ratio": 2,
         "s1_s2_relation": "eq",
         "alignment": "s1_aligned_s2_aligned",
-        "blocknum": 365,
+        "blocknum": 361,
     },
     {
         "name": "BSA_FP8_e4m3_FP8_e4m3_BF16_mxfp8_16_9_3_2048_8192_128_128_00002",
@@ -3036,7 +3036,7 @@ TestCases = [
         "n1_n2_ratio": 4,
         "s1_s2_relation": "lt",
         "alignment": "s1_aligned_s2_aligned",
-        "blocknum": 294,
+        "blocknum": 299,
     },
     {
         "name": "BSA_FP8_e4m3_FP8_e4m3_BF16_mxfp8_64_25_5_2048_2048_128_128_00004",
@@ -3081,7 +3081,7 @@ TestCases = [
         "n1_n2_ratio": 5,
         "s1_s2_relation": "eq",
         "alignment": "s1_aligned_s2_aligned",
-        "blocknum": 448,
+        "blocknum": 449,
     },
     {
         "name": "BSA_FP8_e4m3_FP8_e4m3_BF16_mxfp8_128_36_6_4_1024_128_128_00005",
@@ -3126,7 +3126,7 @@ TestCases = [
         "n1_n2_ratio": 6,
         "s1_s2_relation": "lt",
         "alignment": "s1_unaligned_s2_aligned",
-        "blocknum": 225,
+        "blocknum": 220,
     },
     {
         "name": "BSA_FP8_e4m3_FP8_e4m3_BF16_mxfp8_10_49_7_777_896_128_128_00006",
@@ -3261,7 +3261,7 @@ TestCases = [
         "n1_n2_ratio": 9,
         "s1_s2_relation": "lt",
         "alignment": "s1_aligned_s2_unaligned",
-        "blocknum": 160,
+        "blocknum": 155,
     },
     {
         "name": "BSA_FP8_e4m3_FP8_e4m3_BF16_mxfp8_120_20_2_16_1024_128_128_00009",
@@ -3351,7 +3351,7 @@ TestCases = [
         "n1_n2_ratio": 11,
         "s1_s2_relation": "eq",
         "alignment": "s1_aligned_s2_aligned",
-        "blocknum": 192,
+        "blocknum": 189,
     },
     {
         "name": "BSA_FP8_e4m3_FP8_e4m3_BF16_mxfp8_2_48_4_2142_2300_128_128_00011",
@@ -3396,7 +3396,7 @@ TestCases = [
         "n1_n2_ratio": 12,
         "s1_s2_relation": "lt",
         "alignment": "s1_unaligned_s2_unaligned",
-        "blocknum": 6,
+        "blocknum": 10,
     },
     {
         "name": "BSA_FP8_e4m3_FP8_e4m3_BF16_mxfp8_6_65_5_2350_2350_128_128_00012",
@@ -3486,7 +3486,7 @@ TestCases = [
         "n1_n2_ratio": 14,
         "s1_s2_relation": "gt",
         "alignment": "s1_aligned_s2_aligned",
-        "blocknum": 36,
+        "blocknum": 34,
     },
     {
         "name": "BSA_FP8_e4m3_FP8_e4m3_BF16_mxfp8_24_105_7_4096_4096_128_128_00014",
@@ -3576,7 +3576,7 @@ TestCases = [
         "n1_n2_ratio": 16,
         "s1_s2_relation": "eq",
         "alignment": "s1_unaligned_s2_unaligned",
-        "blocknum": 12,
+        "blocknum": 15,
     },
     {
         "name": "BSA_FP8_e4m3_FP8_e4m3_BF16_mxfp8_8_64_8_65536_65536_128_128_00016",
