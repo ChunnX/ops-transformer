@@ -503,8 +503,9 @@ class QuantBlockSparseAttnGraph(torch.nn.Module):
             self.sparse_seq_len,
             self.atten_mask,
             cu_seqlens_q=self.cu_seqlens_q,
-            cu_seqlens_kv=self.cu_seqlens_kv,
-            seqused_q=self.seqused_q,
+            # The current MXFP8 operator contract requires both inputs to be None.
+            cu_seqlens_kv=None,
+            seqused_q=None,
             seqused_kv=self.seqused_kv,
             block_table=self.block_table,
             metadata=self.metadata,
