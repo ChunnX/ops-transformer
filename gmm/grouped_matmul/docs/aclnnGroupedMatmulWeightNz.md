@@ -358,7 +358,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <tr>
     <td>tuningConfigOptional（aclIntArray *）</td>
     <td>可选输入</td>
-    <td>第一个数代表各个专家处理的token数的预期值，用于优化tiling。</td>
+    <td>第一个数代表各个专家处理的token数的预期值，用于优化tiling；第二个数置1时，A8W4可选开启离线按<code>[E,N,K]</code>排布的特殊NZ weight格式。</td>
     <td>兼容历史版本，用户如不使用该参数，不传（即为nullptr）即可。</td>
     <td>INT64</td>
     <td>-</td>
@@ -496,7 +496,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
     <td>6.splitItem为0、1的场景，out长度不等于weight的长度，groupListOptional长度不等于weight的长度。</td>
     </tr>
     <tr>
-    <td>7.传入参数tuningConfigOptional的元素为负数，或者大于x的行数m。</td>
+    <td>7.传入参数tuningConfigOptional的第一个元素为负数，或者大于x的行数m。</td>
     </tr>
     </tbody>
     </table>
@@ -641,7 +641,7 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
       - 非对称per-channel场景：offsetOptional为FLOAT32且shape为`[E,1,N]`，scaleOptional为UINT64且shape为`[E,1,N]`，quantGroupSize填0，out仅支持FLOAT16。
       - antiquantScaleOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional和activationFeatureOutOptional必须为空。
       - 各专家预期处理的token数大于N/4时，即tuningConfigOptional中第一个值大于N/4时，通常可获得更好的性能，此时显存占用会增加`E × K × N`字节。
-      - tuningConfigOptional数组第二个元素可置1，以开启A8W4 per-channel场景的weight特殊格式模板。该模板要求weight的shape为`[E,N,K]`，再进行ND2NZ转换后作为算子输入，推荐用于K不小于2048且N不小于2048的场景。
+      - tuningConfigOptional数组第二个元素可置1，以开启A8W4 offsetOptional不为空的per-channel场景的weight特殊格式模板。使用该模板时，应将数学意义上shape为`[E,K,N]`的weight离线连续重排为`[E,N,K]`，再进行ND2NZ转换后作为算子输入；算子按`[E,N,K]`解释该特殊布局，其中N为weight第1维、K为weight第2维。该模式不是运行时转置，`transposeWeight`必须为false，不得在NZ Tensor上再创建末两维转置view。仅支持长度为1的weight TensorList，推荐用于K不小于2048且N不小于2048的场景。
 
     **其他伪量化场景：**
     - 以下入参为空：offsetOptional、antiquantOffsetOptional、activationInputOptional、activationQuantScaleOptional、activationQuantOffsetOptional、activationFeatureOutOptional
