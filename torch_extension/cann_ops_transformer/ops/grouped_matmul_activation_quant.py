@@ -137,8 +137,8 @@ def _resolve_y_dtype(y_dtype, x, x_dtype):
 
 
 def _infer_nz_logical_n(weight_scale):
-    # Runtime callers normalize MX weight to the non-transposed logical layout before this op.
-    # Thus 4D MX weight_scale is [E, ceil(K / 64), N, 2], and logical N is dim2.
+    # Both the non-transposed scale and the view produced by
+    # scale_source.transpose(-3, -2) are [E, ceil(K / 64), N, 2].
     return weight_scale.shape[2]
 
 
@@ -294,10 +294,11 @@ def grouped_matmul_activation_quant(
             当前E取值范围为[1, 1024]。
         weight (List[Tensor]): 右矩阵dynamic input，当前MX仅支持长度为1。
             元素为3D逻辑Tensor；MXFP4使用 ``torch.uint8`` 存放打包数据并通过 ``weight_dtype``
-            指定逻辑FLOAT4类型。MX WeightNZ运行时调用者会将其规整为非转置逻辑布局，
-            传入前需要通过 ``torch_npu.npu_format_cast(weight, 29)`` 转为FRACTAL_NZ格式。
+            指定逻辑FLOAT4类型。转置场景应先将源Weight通过
+            ``torch_npu.npu_format_cast(weight, 29)`` 转为FRACTAL_NZ格式，再对末两维执行transpose。
         weight_scale (List[Tensor]): weight的MX量化scale，当前MX仅支持长度为1。
-            shape为 ``(E, ceil(K / 64), N, 2)``，torch层根据第2维推导逻辑N。
+            传入算子的shape为 ``(E, ceil(K / 64), N, 2)``；转置场景由源shape
+            ``(E, N, ceil(K / 64), 2)`` 对中间两维执行transpose得到。
         activation_type (str): 激活函数类型，当前仅支持 ``"gelu_tanh"``。
         bias (List[Tensor], optional): bias dynamic input。当前MX仅支持传None、空TensorList或单个空Tensor。
         x_scale (Tensor, optional): x的MX量化scale。当前MX必须传入，shape为
