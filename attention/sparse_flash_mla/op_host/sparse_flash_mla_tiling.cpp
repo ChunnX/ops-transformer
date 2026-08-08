@@ -700,8 +700,8 @@ ge::graphStatus SMLAInfoParser::CheckContiguous() const
             cmpExpectedStrides = {dim1 * dim2, dim2, 1};
         }
         OP_CHECK_IF(cmpKeyStridesVec_.size() != cmpExpectedStrides.size(),
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "cmpKey",
-                        "cmpKey strideVec size[" + std::to_string(cmpKeyStridesVec_.size()) +
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "cmp_kv",
+                        "Cmp_kv strideVec size[" + std::to_string(cmpKeyStridesVec_.size()) +
                         "] not match kvLayout expect len[" + std::to_string(cmpExpectedStrides.size()) + "]"),
                     return ge::GRAPH_FAILED);
         cmpKeyNonContiguous =
@@ -709,12 +709,12 @@ ge::graphStatus SMLAInfoParser::CheckContiguous() const
     }
 
     OP_CHECK_IF(oriKeyNonContiguous,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "oriKey",
-                    "oriKey only support non-continuous keying on the 0-axis"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "ori_kv",
+                    "Ori_kv only support non-continuous keying on the 0-axis"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(cmpKeyNonContiguous,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "oriKey",
-                    "cmpKey only support non-continuous keying on the 0-axis"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "cmp_kv",
+                    "Cmp_kv only support non-continuous keying on the 0-axis"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1506,7 +1506,7 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaOriBlockTable() const
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(!IsPaBlockSizeSupport(npuArch_, oriBlockSize_),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            opName_, "ori_kv", ToStringRaw(opParamInfo_.oriKv.shape->GetStorageShape()).c_str(),
+            opName_, "ori_kv", ToStringRaw(opParamInfo_.orikv.tensor->GetStorageShape()).c_str(),
             "OriBlockSize_ should be in [1, 1024] on " + A5_PLATFORM_LOG +
             " or 16-aligned [16, 1024] on " + A2_A3_PLATFORM_LOG + ", but got: " + std::to_string(oriBlockSize_)),
         return ge::GRAPH_FAILED);
@@ -1540,7 +1540,7 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaCmpBlockTable() const
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(!IsPaBlockSizeSupport(npuArch_, cmpBlockSize_),
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                opName_, "cmp_kv", ToStringRaw(opParamInfo_.oriKv.shape->GetStorageShape()).c_str(),
+                opName_, "cmp_kv", ToStringRaw(opParamInfo_.orikv.tensor->GetStorageShape()).c_str(),
                 "CmpBlockSize should be in [1, 1024] on " + A5_PLATFORM_LOG +
                 " or 16-aligned [16, 1024] on " + A2_A3_PLATFORM_LOG + ", but got: " + std::to_string(cmpBlockSize_)),
             return ge::GRAPH_FAILED);
@@ -1580,7 +1580,7 @@ ge::graphStatus SMLATilingCheck::CheckSingleParaMetadata() const
 {
     if (opParamInfo_.metadata.tensor == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "metadata",
-            "metadata must be provided");
+            "Metadata must be provided");
         return ge::GRAPH_FAILED;
     }
     const std::vector<size_t> dimNumList = {DIM_NUM_ONE};
@@ -1848,7 +1848,7 @@ ge::graphStatus SMLATilingCheck::CheckFeatureShape() const
         OP_CHECK_IF(
             n1Size_ < 1 || n1Size_ > 128,
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                opName_, "query", ToStringRaw(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+                opName_, "q", ToStringRaw(opParamInfo_.query.shape->GetStorageShape()).c_str(),
                 "The head num of q should be in [1, 128] on" + A5_PLATFORM_LOG +
                 ", but got " + std::to_string(n1Size_)),
             return ge::GRAPH_FAILED);
@@ -2113,7 +2113,7 @@ ge::graphStatus SMLATilingCheck::CheckActualSeqLensQ() const
             Ops::Base::ToString(opParamInfo_.seqUsedQ.tensor->GetStorageShape()),
             "Seqused_q's first dimension(" +
             std::to_string(opParamInfo_.seqUsedQ.tensor->GetShapeSize()) +
-            ") should be equal to B(" + std::to_string(bSize_) +")");
+            ") should be equal to B(" + std::to_string(bSize_) +")"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
