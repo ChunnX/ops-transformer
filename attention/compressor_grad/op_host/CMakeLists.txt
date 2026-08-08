@@ -13,13 +13,13 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnn PRIVATE
     compressor_grad_def.cpp
     )
+    enable_pypto_kernel(compressor_grad)
 endif()
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if("${CONDITION_UNIT}" STREQUAL "ascend950")
     # PyPTO kernel: runs codegen at configure time and exposes PYPTO_GEN_DIR for the host tiling -I below.
     # Must be called BEFORE add_modules_sources(...) (which reads PYPTO_GEN_DIR).
-    enable_pypto_kernel(compressor_grad)
     add_ops_compile_options(
         OP_NAME CompressorGrad
         COMPUTE_UNIT Ascend950PR_9599
