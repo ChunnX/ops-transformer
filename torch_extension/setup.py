@@ -71,8 +71,8 @@ def _non_python_files(directory):
     for path, dirs, filenames in os.walk(directory):
         dirs[:] = [d for d in dirs if d != "__pycache__"]
         if _selected_ops is not None:
-            rel = os.path.relpath(path, directory)
-            parts = rel.split(os.sep)
+            rel_path = os.path.relpath(path, directory)
+            parts = rel_path.split(os.sep)
             if (
                 len(parts) >= 2
                 and parts[0] in ("ops", "csrc")
@@ -100,20 +100,20 @@ _op_py_files = []
 _op_cpp_files = []
 
 
-def _collect_op(cat, name, torch_extension):
-    _selected_op_categories.append((cat, name))
+def _collect_op(op_cat, op_name, te_dir):
+    _selected_op_categories.append((op_cat, op_name))
 
-    for f in sorted(os.listdir(torch_extension)):
+    for f in sorted(os.listdir(te_dir)):
         if f.endswith(".py"):
-            f_src = os.path.join(torch_extension, f)
-            _op_py_files.append((os.path.join("ops", cat, name, f), f_src))
+            f_src = os.path.join(te_dir, f)
+            _op_py_files.append((os.path.join("ops", op_cat, op_name, f), f_src))
 
-    csrc_dir = os.path.join(torch_extension, "csrc")
+    csrc_dir = os.path.join(te_dir, "csrc")
     if os.path.isdir(csrc_dir):
         for cpp in sorted(os.listdir(csrc_dir)):
             if cpp.endswith(".cpp"):
                 _op_cpp_files.append(
-                    (os.path.join("csrc", cat, cpp), os.path.join(csrc_dir, cpp))
+                    (os.path.join("csrc", op_cat, cpp), os.path.join(csrc_dir, cpp))
                 )
 
 
@@ -190,17 +190,17 @@ class BuildPyWithOps(_build_py):
                 base_dir = os.path.join(build_pkg, subdir)
                 if not os.path.isdir(base_dir):
                     continue
-                for cat in os.listdir(base_dir):
-                    cat_dir = os.path.join(base_dir, cat)
+                for cat_name in os.listdir(base_dir):
+                    cat_dir = os.path.join(base_dir, cat_name)
                     if not os.path.isdir(cat_dir):
                         continue
-                    for name in os.listdir(cat_dir):
-                        if name not in _selected_ops and name != "__pycache__":
-                            target = os.path.join(cat_dir, name)
+                    for op_name in os.listdir(cat_dir):
+                        if op_name not in _selected_ops and op_name != "__pycache__":
+                            target = os.path.join(cat_dir, op_name)
                             if os.path.isdir(target):
                                 shutil.rmtree(target)
                                 logger.info(
-                                    "removing centralized %s/%s/%s", subdir, cat, name
+                                    "removing centralized %s/%s/%s", subdir, cat_name, op_name
                                 )
             ops_cat_inits = {}
             for cat, name in _sorted_selected_op_categories:
@@ -242,9 +242,9 @@ class BuildPyWithOps(_build_py):
             shutil.copy2(src_abs, dst)
         common_src_dir = os.path.join(_src_path, "common")
         if os.path.isdir(common_src_dir):
-            for root, _, filenames in os.walk(common_src_dir):
+            for root_dir, _, filenames in os.walk(common_src_dir):
                 for filename in filenames:
-                    src_abs = os.path.join(root, filename)
+                    src_abs = os.path.join(root_dir, filename)
                     rel_path = os.path.relpath(src_abs, _src_path)
                     dst = os.path.join(build_pkg, rel_path)
                     os.makedirs(os.path.dirname(dst), exist_ok=True)

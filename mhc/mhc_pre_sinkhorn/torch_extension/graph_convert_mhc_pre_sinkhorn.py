@@ -55,9 +55,11 @@ if _TORCHAIR_AVAILABLE:
         hc_eps: float = 1e-6,
         norm_eps: float = 1e-6,
         need_backward: bool = True,
-        dependencies=[],
+        dependencies=None,
         node_name=None,
     ):
+        if dependencies is None:
+            dependencies = []
         """REG_OP(MhcPreSinkhorn)\n
         .INPUT(x, TensorType({DT_BF16, DT_FLOAT16}))\n
         .INPUT(phi, TensorType({DT_FLOAT}))\n
