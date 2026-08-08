@@ -106,11 +106,11 @@ ge::graphStatus GetCompressorGradShapeDim(const gert::InferShapeContext* context
 ge::graphStatus SetCompressorGradShapeDim(const CompressorGradProtoShapeParam &shapeParam,
                                           gert::InferShapeContext* context)
 {
-    // query: (B, S, N, Hckv) | (T, N, Hckv)
+    // d_x: 与 x 同形状 (B, S, H) | (T, H)
     auto dxShape = context->GetOutputShape(D_X_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, dxShape);
 
-    // query: (B, S, N, Hckv) | (T, N, Hckv)
+    // d_wkv: (coff * D, H)
     auto dWkvShape = context->GetOutputShape(D_WKV_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, dWkvShape);
 
@@ -146,9 +146,9 @@ ge::graphStatus SetCompressorGradShapeDim(const CompressorGradProtoShapeParam &s
     dWgateShape->SetDim(DIM_INDEX_0, shapeParam.D * coff);                   // (coff*D, H)
     dWgateShape->SetDim(DIM_INDEX_1, shapeParam.H);                   // (coff*D, H)
 
-    dApeShape->SetDimNum(DIM_NUM_2);                   // (coff*D, H)
-    dApeShape->SetDim(DIM_INDEX_0, cmpRatio);                   // (coff*D, H)
-    dApeShape->SetDim(DIM_INDEX_1, shapeParam.D * coff);                   // (coff*D, H)
+    dApeShape->SetDimNum(DIM_NUM_2);                   // (cmpRatio, coff*D)
+    dApeShape->SetDim(DIM_INDEX_0, cmpRatio);                   // (cmpRatio, coff*D)
+    dApeShape->SetDim(DIM_INDEX_1, shapeParam.D * coff);                   // (cmpRatio, coff*D)
 
     return GRAPH_SUCCESS;
 }

@@ -51,7 +51,7 @@ constexpr uint32_t D_APE_OUTPUT_INDEX = 3;
 
 // ATTR DEFAULT VALUE
 constexpr uint32_t CMP_RATIO_VALUE = 4;
-constexpr uint32_t COFF_VALUE = 2;
+constexpr uint32_t COFF_VALUE = 1;
 
 constexpr uint32_t COMPRESSOR_GRAD_DIM_NUM_1 = 1;
 constexpr uint32_t COMPRESSOR_GRAD_DIM_NUM_2 = 2;
@@ -239,7 +239,7 @@ struct CompressorGradBaseParams {
     uint32_t csSize = 0;                // Compress sequence len
     uint32_t cmpRatio = 4;              // Compress ratio
     uint32_t usedCoreNum = 0;           // 使用核数
-    uint32_t nSize = 0;                 // 控制v2积攒的轮数
+    uint32_t nSize = 0;                 // 预留字段（当前未参与 tiling 决策）
     uint64_t stateCacheStrideDim0 = 0;  // stateCache第0维的stride
     uint32_t kBaseNum = 0;
     uint32_t kBaseSize = 0;

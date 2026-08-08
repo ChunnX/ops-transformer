@@ -100,9 +100,9 @@ def _compressor_forward_fake(
         softmax_score_size = (b, cmp_size, coff_cmp, d)
         kv_size = (b, cmp_size, coff_cmp, d)
     else:
-        bSize = cu_seqlens.size(0) - 1
+        b_size = cu_seqlens.size(0) - 1
         t = x.size(0)
-        cmp_size = min(t, t // cmp_ratio + bSize)
+        cmp_size = min(t, t // cmp_ratio + b_size)
         cmp_kv_size = (cmp_size, d)
         softmax_score_size = (cmp_size, coff_cmp, d)
         kv_size = (cmp_size, coff_cmp, d)
@@ -219,7 +219,7 @@ def compressor(
     'PrivateUse1' is the combine key for custom NPU backends.
     """
     grad_enabled = x.requires_grad
-    cmp_kv, softmax_score, kv =  _compressor_forward(
+    cmp_kv, softmax_score, kv = _compressor_forward(
         x,
         wkv,
         wgate,
