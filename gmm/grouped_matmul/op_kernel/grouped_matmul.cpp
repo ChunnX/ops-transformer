@@ -257,7 +257,7 @@ namespace {
         if ASCEND_IS_AIV {                                                                                         \
             if (gmmBaseParams_.isA8W4MSDPreNZ == 1) {                                                              \
                 GMMA8W4PreProcessNZ op1;                                                                           \
-                op1.Init(x, user1, groupList, user1, gmmBaseParams_, &tPipe);                                      \
+                op1.Init(x, user1, groupList, user1 + AlignUp<8>(gmmBaseParams_.m) * gmmBaseParams_.k, gmmBaseParams_, &tPipe);                      \
                 op1.Process();                                                                                     \
             } else{                                                                                                \
                 GMMA8W4PreProcess op1;                                                                             \
