@@ -25,7 +25,6 @@ GE_DTYPE_FLOAT8_E8M0 = 37
 GE_DTYPE_FLOAT4_E2M1 = 40
 GE_DTYPE_FLOAT4_E1M2 = 41
 ACL_DTYPE_OFFSET = 256
-DEFAULT_Y_DTYPE = GE_DTYPE_FLOAT8_E4M3FN
 
 FLOAT8_E8M0_DTYPE = getattr(
     torch_npu, "float8_e8m0fnu", getattr(torch, "float8_e8m0fnu", torch.uint8)
@@ -45,6 +44,8 @@ _GE_DTYPE_TO_TORCH_DTYPE = {
     GE_DTYPE_FLOAT8_E5M2: torch.float8_e5m2,
     GE_DTYPE_FLOAT8_E4M3FN: torch.float8_e4m3fn,
     GE_DTYPE_FLOAT8_E8M0: FLOAT8_E8M0_DTYPE,
+    GE_DTYPE_FLOAT4_E2M1: torch.uint8,
+    GE_DTYPE_FLOAT4_E1M2: torch.uint8,
 }
 
 _GE_DTYPE_TO_NAME = {
@@ -130,7 +131,7 @@ def _resolve_y_dtype(y_dtype, x, x_dtype):
         if x_ge_dtype in (GE_DTYPE_FLOAT8_E4M3FN, GE_DTYPE_FLOAT8_E5M2):
             return x_ge_dtype
         if x_ge_dtype in (GE_DTYPE_FLOAT4_E2M1, GE_DTYPE_FLOAT4_E1M2):
-            return DEFAULT_Y_DTYPE
+            return x_ge_dtype
         raise TypeError("y_dtype is None only supports inferring from FP8 or FP4 x dtype.")
     return _normalize_attr_dtype(y_dtype)
 
@@ -205,8 +206,10 @@ class GroupedMatmulActivationQuantOpBuilder(OpBuilder):
             m = x.shape[0]
             n = _infer_nz_logical_n(weight_scale[0])
 
-            y_dtype_value = _to_torch_dtype(_resolve_y_dtype(y_dtype, x, x_dtype))
-            y = torch.empty((m, n), dtype=y_dtype_value, device="meta")
+            y_ge_dtype = _resolve_y_dtype(y_dtype, x, x_dtype)
+            y_dtype_value = _to_torch_dtype(y_ge_dtype)
+            y_n = math.ceil(n / 2) if y_ge_dtype in (GE_DTYPE_FLOAT4_E2M1, GE_DTYPE_FLOAT4_E1M2) else n
+            y = torch.empty((m, y_n), dtype=y_dtype_value, device="meta")
             y_scale = torch.empty(
                 (m, math.ceil(n / 64), 2), dtype=FLOAT8_E8M0_DTYPE, device="meta"
             )
@@ -302,9 +305,8 @@ def grouped_matmul_activation_quant(
         group_list_type (int): group_list语义类型，当前支持0或1。
         tuning_config (List[int], optional): 预留调优参数。
         quant_mode (str, optional): 量化模式，torch层不做解析，直接透传到aclnn层处理。
-        y_dtype (torch.dtype, optional): 输出y的数据类型，支持 ``torch.float8_e4m3fn`` 和
-            ``torch.float8_e5m2``；为None时MXFP8默认推导为x的数据类型，MXFP4默认使用
-            ``torch.float8_e4m3fn``。
+        y_dtype (torch.dtype, optional): 输出y的数据类型，支持两种FP8和两种FP4类型；为None时
+            默认推导为x的数据类型。FP4输出以打包 ``torch.uint8`` 返回，末维物理长度为 ``N / 2``。
         round_mode (str): 舍入模式，当前仅支持 ``"rint"``。
         scale_alg (int): scale算法，当前支持0或1。
         dst_type_max (float): 预留参数，当前仅支持0.0。
