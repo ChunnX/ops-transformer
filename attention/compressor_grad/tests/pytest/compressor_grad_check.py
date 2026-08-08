@@ -244,15 +244,14 @@ def check_result(expect, result, data_type, pct_thd=0.005):
     diff_result = diff_result | both_bad
     err_idx = np.where(diff_result != np.array((True,)))[0]
 
-    if str(data_compe.dtype) == 'bool':
+    if data_compe.dtype == np.bool_:
         data_compe = data_compe.astype(np.int8)
         real_data = real_data.astype(np.int8)
-    diff_abs = abs(data_compe - real_data)
-    b1 = np.maximum(np.abs(real_data), (np.abs(data_compe)))
-    b2 = float((1.0 / (1 << 14)) / diff_thd)
-    b = np.add(np.maximum(b1, b2), 10e-10)
-    eps = 10e-10
-    err_diff = diff_abs / (b + eps)
+    diff_abs = np.abs(data_compe - real_data)
+    b1 = np.maximum(np.abs(real_data), np.abs(data_compe))
+    b2 = (1.0 / (1 << 14)) / diff_thd
+    b = np.maximum(b1, b2) + 1e-9
+    err_diff = diff_abs / (b + 1e-9)
     err_diff = err_diff[err_idx]
 
     fulfill_percent = float(split_count - err_idx.size) / float(split_count) * 100.0
