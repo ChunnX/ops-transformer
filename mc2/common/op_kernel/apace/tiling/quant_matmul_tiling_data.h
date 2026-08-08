@@ -14,8 +14,6 @@
  */
 
 #pragma once
-#ifndef QUANT_MATMUL_TILING_DATA_H
-#define QUANT_MATMUL_TILING_DATA_H
 
 #ifndef __CCE_AICORE__
 #include <cstdint>
@@ -60,6 +58,4 @@ struct alignas(8) QuantMatmulTilingData {
     uint8_t dbL0c{0};
 };
 #pragma pack(pop)
-
-#endif // QUANT_MATMUL_TILING_DATA_H
 
