@@ -60,6 +60,33 @@ def normalize_lengths(case, field, max_field):
     )
 
 
+def normalize_data_range(case, field):
+    value = case[field]
+    if isinstance(value, (list, tuple)):
+        if len(value) != 2:
+            raise ValueError(
+                f"{case['name']}: {field} must contain exactly [min, max]"
+            )
+        low, high = float(value[0]), float(value[1])
+        if not math.isfinite(low) or not math.isfinite(high):
+            raise ValueError(
+                f"{case['name']}: {field} bounds must be finite, got {value}"
+            )
+        if low > high:
+            raise ValueError(
+                f"{case['name']}: {field} min must not exceed max, got {value}"
+            )
+        return [low, high]
+
+    radius = float(value)
+    if not math.isfinite(radius) or radius < 0:
+        raise ValueError(
+            f"{case['name']}: scalar {field} must be finite and non-negative, "
+            f"got {value}"
+        )
+    return radius
+
+
 def validate_case(case, q_lengths, kv_lengths):
     name = case["name"]
     if int(case["quant_mode"]) != 2:
@@ -153,9 +180,9 @@ def case_to_row(case, source):
         ),
         "quant_group_size": int(case["quant_group_size"]),
         "s2_base_size": int(case["s2_base_size"]),
-        "data_range_q": float(case["data_range_q"]),
-        "data_range_k": float(case["data_range_k"]),
-        "data_range_v": float(case["data_range_v"]),
+        "data_range_q": normalize_data_range(case, "data_range_q"),
+        "data_range_k": normalize_data_range(case, "data_range_k"),
+        "data_range_v": normalize_data_range(case, "data_range_v"),
     }
     group = case.get("case_group") or "ungrouped"
     return {

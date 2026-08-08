@@ -92,6 +92,32 @@ def _inplace_copy(destination, source):
         destination[...] = source_tensor
 
 
+def _normalize_data_range(data_range):
+    """Preserve scalar radius or normalize an explicit [min, max] range."""
+    if isinstance(data_range, (list, tuple)):
+        if len(data_range) != 2:
+            raise ValueError(
+                f"data_range must be a scalar or [min, max], got: {data_range}"
+            )
+        low, high = float(data_range[0]), float(data_range[1])
+        if not math.isfinite(low) or not math.isfinite(high):
+            raise ValueError(
+                f"data_range bounds must be finite, got: [{low}, {high}]"
+            )
+        if low > high:
+            raise ValueError(
+                f"data_range min must not exceed max, got: [{low}, {high}]"
+            )
+        return [low, high]
+
+    radius = float(data_range)
+    if not math.isfinite(radius) or radius < 0:
+        raise ValueError(
+            f"scalar data_range must be finite and non-negative, got: {radius}"
+        )
+    return radius
+
+
 def _build_mxfp8_case(
     query,
     key,
@@ -172,9 +198,9 @@ def _build_mxfp8_case(
         "return_softmax_lse": bool(return_softmax_lse),
         "empty_actual_seq": bool(empty_actual_seq),
         "seed": int(seed),
-        "data_range_q": float(data_range_q),
-        "data_range_k": float(data_range_k),
-        "data_range_v": float(data_range_v),
+        "data_range_q": _normalize_data_range(data_range_q),
+        "data_range_k": _normalize_data_range(data_range_k),
+        "data_range_v": _normalize_data_range(data_range_v),
         "device_id": 0,
         "sparse_q_block_size": int(sparse_q_block_size),
         "sparse_kv_block_size": int(sparse_kv_block_size),
