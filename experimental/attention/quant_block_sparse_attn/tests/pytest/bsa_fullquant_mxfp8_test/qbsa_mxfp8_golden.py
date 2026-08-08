@@ -435,7 +435,10 @@ def set_active_case(case):
     KEY_LAYOUT = CASE["layout_kv"]
     SPARSE_INDICES_LAYOUT = CASE["layout_sparse_indices"]
     OUT_LAYOUT = CASE["layout_out"]
-    BLOCK_NUM = CASE.get("block_num", 0)
+    _block_num_raw = CASE.get("block_num", None)
+    if _block_num_raw is not None and _block_num_raw <= 0:
+        raise ValueError(f"block_num must be > 0 or None, got {_block_num_raw}")
+    BLOCK_NUM = _block_num_raw if _block_num_raw is not None else -1
 
 
 CASE = _load_initial_case()
@@ -647,18 +650,14 @@ def _make_reference_block_table(
         physical_block_count if physical_block_count > 0 else total_logical_blocks
     )
 
-    # 收集 sparse_indices 中实际被选中的逻辑页 ID（按 batch 去重）
-    needed_logical_ids = [set() for _ in range(batch)]
+    # 收集 sparse_indices 中实际被选中的逻辑页 ID
+    needed_logical_ids = [[] for _ in range(batch)]
     if sparse_indices is not None and sparse_seq_len is not None:
         for b in range(batch):
-            qb_max = sparse_indices.shape[2]
-            for h in range(sparse_indices.shape[1]):
-                for qb in range(qb_max):
-                    cnt = int(sparse_seq_len[b, h, qb].item())
-                    for i in range(cnt):
-                        blk_id = int(sparse_indices[b, h, qb, i].item())
-                        if blk_id >= 0 and blk_id < block_nums[b]:
-                            needed_logical_ids[b].add(blk_id)
+            valid = sparse_indices[b][sparse_seq_len[b] > 0]
+            needed_logical_ids[b] = [
+                int(x) for x in valid[valid >= 0].unique() if x < block_nums[b]
+            ]
 
     # 给选中的逻辑页分配物理页 ID，范围 [0, total_physical_blocks)
     # physical_ids 按 pattern 生成物理页 ID 序列（sequential/reverse/random）
@@ -666,7 +665,7 @@ def _make_reference_block_table(
     next_pid = 0
     for b in range(batch):
         needed = (
-            sorted(needed_logical_ids[b])
+            needed_logical_ids[b]
             if needed_logical_ids[b]
             else list(range(block_nums[b]))
         )
