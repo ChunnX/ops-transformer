@@ -105,6 +105,10 @@ private:
     __aicore__ inline void ExchangeCount();
     __aicore__ inline void SendCountToRemoteRank(uint32_t dstRankId, uint64_t notifyValue);
     __aicore__ inline void CopyLocalCountToWindow(uint32_t dstRankId, uint64_t notifyVal);
+    __aicore__ inline bool IsCommTargetRank(uint32_t dstRankId);
+    __aicore__ inline void SendRemainingCountRange();
+    __aicore__ inline void SendCommTargetCounts(uint32_t remoteScaleoutStart, uint32_t remoteScaleoutEnd,
+                                                uint32_t localRankStart, uint32_t localRankEnd);
     __aicore__ inline void GetRecvCount();
     __aicore__ inline void SetRecvNumPerExpert();
     __aicore__ inline void WriteHostRecvTokenCount(LocalTensor<int64_t> recvPerExpertTensor);
@@ -808,18 +812,18 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
-__aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::ExchangeCount()
+__aicore__ inline bool MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::IsCommTargetRank(
+    uint32_t dstRankId)
 {
-    SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, rankNumPerCore_);
-    if (startRankId_ >= epWorldSize_) {
-        return;
+    if (dstRankId >= serverStartRank_ && dstRankId < serverEndRank_) {
+        return true;
     }
+    return rankNumPerServer_ > 0U && dstRankId % rankNumPerServer_ == epRankId_ % rankNumPerServer_;
+}
 
-    // 通信初始化
-    tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
-    hcommTensor_ = hcommBuf_.Get<uint8_t>();
-    hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
-
+template <TemplateMoeEpDispatchHybridTypeClass>
+__aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SendRemainingCountRange()
+{
     GlobalTensor<uint64_t> numSendGMTensorInt64;
     numSendGMTensorInt64.SetGlobalBuffer(
         (__gm__ uint64_t *)(sendCntWorkspaceAddr_ + startRankId_ * WIN_ADDR_ALIGN));
@@ -829,15 +833,88 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
                                     static_cast<uint16_t>(WIN_ADDR_ALIGN - UB_ALIGN), 0U};
     DataCopyPad(sendCntPerRankInt64, numSendGMTensorInt64, cntCopyParams, padParams_);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-
     for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; dstRankId++) {
+        if (IsCommTargetRank(dstRankId)) {
+            continue;
+        }
         uint32_t notifyStride = (dstRankId - startRankId_) * INT64_UB_STRIDE;
+        SendCountToRemoteRank(dstRankId, sendCntPerRankInt64.GetValue(notifyStride));
+    }
+}
+
+template <TemplateMoeEpDispatchHybridTypeClass>
+__aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SendCommTargetCounts(
+    uint32_t remoteScaleoutStart, uint32_t remoteScaleoutEnd, uint32_t localRankStart, uint32_t localRankEnd)
+{
+    uint32_t currentScaleupIndex =
+        rankNumPerServer_ == 0U ? epRankId_ : epRankId_ % rankNumPerServer_;
+    for (uint32_t remoteScaleoutOrdinal = remoteScaleoutStart;
+         remoteScaleoutOrdinal < remoteScaleoutEnd; remoteScaleoutOrdinal++) {
+        uint32_t dstScaleoutIndex = remoteScaleoutOrdinal < currentServerIndex_ ?
+            remoteScaleoutOrdinal : remoteScaleoutOrdinal + 1U;
+        uint32_t proxyRankId = dstScaleoutIndex * rankNumPerServer_ + currentScaleupIndex;
+        if (proxyRankId >= epWorldSize_) {
+            continue;
+        }
+        __gm__ uint64_t *notifyValueAddr =
+            (__gm__ uint64_t *)(sendCntWorkspaceAddr_ + static_cast<uint64_t>(proxyRankId) * WIN_ADDR_ALIGN);
+        SendCountToRemoteRank(proxyRankId, static_cast<uint64_t>(ReadGmByPassDCache(notifyValueAddr)));
+    }
+    for (uint32_t localRankIndex = localRankStart; localRankIndex < localRankEnd; localRankIndex++) {
+        uint32_t dstRankId = serverStartRank_ + localRankIndex;
+        __gm__ uint64_t *notifyValueAddr =
+            (__gm__ uint64_t *)(sendCntWorkspaceAddr_ + static_cast<uint64_t>(dstRankId) * WIN_ADDR_ALIGN);
+        uint64_t notifyValue = static_cast<uint64_t>(ReadGmByPassDCache(notifyValueAddr));
         if (dstRankId != epRankId_) {
-            SendCountToRemoteRank(dstRankId, sendCntPerRankInt64.GetValue(notifyStride));
+            SendCountToRemoteRank(dstRankId, notifyValue);
         } else {
-            CopyLocalCountToWindow(dstRankId, sendCntPerRankInt64.GetValue(notifyStride));
+            CopyLocalCountToWindow(dstRankId, notifyValue);
         }
     }
+}
+
+template <TemplateMoeEpDispatchHybridTypeClass>
+__aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::ExchangeCount()
+{
+    // 计数发送规则：
+    // 1. 需要发数据的卡（本节点卡、跨节点代理卡）由负责发数据的核一并发送计数，
+    //    保证每个通道每轮只由一个核使用；
+    // 2. 其余卡按核数均匀分片发送。
+    SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, rankNumPerCore_);
+    bool hasRemainingCountTarget = false;
+    for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; dstRankId++) {
+        if (!IsCommTargetRank(dstRankId)) {
+            hasRemainingCountTarget = true;
+            break;
+        }
+    }
+    uint32_t remoteScaleoutStart = 0U;
+    uint32_t remoteScaleoutEnd = 0U;
+    if (aivId_ < numScaleoutSendAiv_) {
+        SplitRangeForCore(remoteServerCount_, numScaleoutSendAiv_, aivId_,
+                          remoteScaleoutStart, remoteScaleoutEnd);
+    }
+    uint32_t localRankStart = 0U;
+    uint32_t localRankEnd = 0U;
+    bool ownsLocalRank = InitOwnedScaleupRankRange(localRankStart, localRankEnd);
+    if (aivNum_ == 1U && aivId_ == 0U) {
+        localRankStart = 0U;
+        localRankEnd = serverEndRank_ - serverStartRank_;
+        ownsLocalRank = localRankStart < localRankEnd;
+    }
+    if (!hasRemainingCountTarget && remoteScaleoutStart >= remoteScaleoutEnd && !ownsLocalRank) {
+        return;
+    }
+
+    // 通信初始化
+    tpipe_->InitBuffer(hcommBuf_, HCOMM_INIT_SIZE);
+    hcommTensor_ = hcommBuf_.Get<uint8_t>();
+    hcomm_.Init(hcommTensor_, HCOMM_INIT_SIZE);
+
+    if (hasRemainingCountTarget) {
+        SendRemainingCountRange();
+    }
+    SendCommTargetCounts(remoteScaleoutStart, remoteScaleoutEnd, localRankStart, localRankEnd);
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
