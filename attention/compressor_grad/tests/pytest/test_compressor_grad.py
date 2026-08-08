@@ -115,6 +115,7 @@ from compressor_grad import compressor_grad, CompressorGradTiling  # noqa: E402
 from test_compressor_grad_cases import REDLINE_CASES
 from compressor_grad_cpu_golden import compressor_grad_golden
 from compressor_grad_npu import NPUBackend
+from cann_ops_transformer.ops.compressor import _compressor_forward, _compressor_backward
 import compressor_forward
 from compressor_grad_check import (
     check_one_output,
@@ -239,22 +240,26 @@ def _check_block_size(case, batchSize, seqSize, layoutId, cmpRatio, coff, cacheM
 
 def check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu, stateCacheCpu, apeCpu,
                            blockTableCpu, spGolden, sqGolden, cuGolden,
-                           cmpRatio, coff, cacheMode, headDim, dataType):
-    """通路 1 增强：正向输出（cmp_kv/softmax_score/kv）与小算子拼接参考比对。
+                           cmpRatio, coff, cacheMode, headDim, dataType, ref=None):
+    """通路 1/5：正向输出（cmp_kv/softmax_score/kv）与小算子拼接参考比对。
 
     参考实现：compressor_forward.compressor_forward（纯 PyTorch 小算子拼接）。
     仅比对有效压缩块行（padding 行参考为 0、NPU 不保证写）。
+    ref: 可选预计算参考（return_intermediates=True 的 6/8 元组），避免重复计算；
+         为 None 时内部调用 compressor_forward。
     """
     coffD = coff * headDim
     kv_state = stateCacheCpu[..., :coffD]
     score_state = stateCacheCpu[..., coffD:]
-    ref_cmp, ref_mask, _, _, ref_sm, ref_kv = compressor_forward.compressor_forward(
-        xCpu, wkvCpu, wgateCpu, kv_state, score_state, apeCpu, blockTableCpu,
-        [int(v) for v in spGolden] if spGolden is not None else None,
-        cmp_ratio=cmpRatio, coff=coff, cache_mode=cacheMode,
-        cu_seqlens=cuGolden,
-        seqused=[int(v) for v in sqGolden] if sqGolden is not None else None,
-        return_intermediates=True)
+    if ref is None:
+        ref = compressor_forward.compressor_forward(
+            xCpu, wkvCpu, wgateCpu, kv_state, score_state, apeCpu, blockTableCpu,
+            [int(v) for v in spGolden] if spGolden is not None else None,
+            cmp_ratio=cmpRatio, coff=coff, cache_mode=cacheMode,
+            cu_seqlens=cuGolden,
+            seqused=[int(v) for v in sqGolden] if sqGolden is not None else None,
+            return_intermediates=True)
+    ref_cmp, ref_mask, _, _, ref_sm, ref_kv = ref[:6]
 
     valid = ref_mask.any(dim=-1)  # (B, blocks) 或 (rows,)
 
@@ -300,8 +305,263 @@ def check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu, stateCacheCpu, ape
     d.update(per)
     return d
 
+
+def check_state_outputs(npu_state_cache, ref_kv_state, ref_score_state, kv_mask, score_mask,
+                        coff, headDim, dataType, totalValid):
+    """通路 5：state_cache 4 项校验（与正向 pytest 的 kv_state_update / score_state_update /
+    kv_state_origin / score_state_origin 完全一致）。
+
+    npu_state_cache: (block_num, block_size, 2*coff*headDim) float32——直调正向后已原地更新；
+                     前一半列 = kv_state（stateIdx=0），后一半列 = score_state（stateIdx=1）。
+    ref_kv_state / ref_score_state: 参考（compressor_forward 写回后）的 CPU state。
+    kv_mask / score_mask: 参考的写入位置 bool mask（与正向 pytest 的 update_kv/update_score 同语义）。
+
+    校验：
+      *update: 写入位置 NPU vs 参考（pct_thd 常规阈值）；
+      *origin: 未写位置 NPU vs 参考（= 初始值），pct_thd=0.0 严格相等（kernel 不得误写）。
+    """
+    coffD = coff * headDim
+    kv_half = npu_state_cache[..., :coffD]
+    score_half = npu_state_cache[..., coffD:]
+    pct_thd = get_pct_thd("float32")
+    results = []
+    per = {}
+    state_key_map = {
+        "kv_state_update":    ("kvUpdPct",    "kvUpdStatus"),
+        "score_state_update": ("scoreUpdPct", "scoreUpdStatus"),
+        "kv_state_origin":    ("kvOrgPct",    "kvOrgStatus"),
+        "score_state_origin": ("scoreOrgPct", "scoreOrgStatus"),
+    }
+    for name, exp, act, thd in (
+        ("kv_state_update",    ref_kv_state[kv_mask],       kv_half[kv_mask],       pct_thd),
+        ("score_state_update", ref_score_state[score_mask], score_half[score_mask], pct_thd),
+        ("kv_state_origin",    ref_kv_state[~kv_mask],      kv_half[~kv_mask],      0.0),
+        ("score_state_origin", ref_score_state[~score_mask], score_half[~score_mask], 0.0),
+    ):
+        r = check_one_output(name, exp, act, dataType, True, totalValid, thd)
+        results.append((name, r))
+        pk, sk = state_key_map[name]
+        per[pk] = r["pct"]
+        per[sk] = r["status"]
+    detail = "  ".join(f"{n}={r['pct']:.2f}%[{r['status']}]" for n, r in results)
+    ok = all(r["status"] == "PASS" for _, r in results)
+    d = {"status": "PASS" if ok else "FAIL", "detail": detail}
+    d.update(per)
+    return d
+
+def _prepare_case(case, device):
+    """通路 1/4/5 共用：解析 case + 构造 cuNpu/totalValid/sps/sqs/seed。"""
+    p = _parse_case(case, device)
+    batchSize, layoutId = p["B"], p["layoutId"]
+    tokenSize = p["tokenSize"]
+    sps = case["start_pos"]
+    if sps is None:
+        sps = [0] * batchSize
+    sqs = case["seqused_q"]
+    seqlens_list_q = case["seqlens_list_q"]
+    seed = case["manual_seed"]
+
+    # ── 构造 cu_seqlens（TH 布局；BSH 为 None）──
+    if layoutId == 1:
+        # case 数据统一为"0 开始累加"的累积形式（B+1 项、首项 0），直用不再调整
+        if seqlens_list_q is not None:
+            cuNpu = torch.tensor(seqlens_list_q, dtype=torch.int32)
+        elif sqs is not None:
+            cuNpu = torch.tensor([0] + torch.tensor(sqs).cumsum(0).tolist(),
+                                 dtype=torch.int32)
+        else:
+            cuNpu = torch.zeros(batchSize + 1, dtype=torch.int32)
+    else:
+        cuNpu = None
+
+    # ── Total valid compression blocks ──
+    totalValid = 0
+    for i in range(batchSize):
+        sp = sps[i] if sps else 0
+        if sqs:
+            sq = sqs[i]
+        elif cuNpu is not None:
+            sq = int(cuNpu[i + 1].item() - cuNpu[i].item())
+        else:
+            sq = tokenSize if layoutId == 1 else tokenSize // batchSize
+        cmpLimit = (sp + sq) // p["cr"] * p["cr"]
+        if cmpLimit > sp:
+            # startPos%cmpRatio!=0 时首块为部分块但仍计 1 块 → 向上取整（与 kernel 一致）
+            totalValid += (cmpLimit - sp + p["cr"] - 1) // p["cr"]
+    return p, totalValid, cuNpu, sps, sqs, seed
+
+
+def run_forward_direct_case(case, p, b, totalValid, device):
+    """通路 5：单正向——直调 _compressor_forward（不经 autograd）。
+
+    校验：
+      - 正向 3 输出：cmp_kv / softmax_score / kv vs compressor_forward 参考（check_forward_outputs）；
+      - state_cache 4 项：kv_state_update / score_state_update / kv_state_origin /
+        score_state_origin（check_state_outputs，与正向 pytest 一致；origin 严格相等）。
+
+    返回 (result, intermediates)：intermediates = {cmp_kv, softmax_score, kv} 为
+    NPU 真实中间量，供通路 4（直调反向）复用——通路 1 = 通路 5 + 通路 4 拼接。
+    """
+    batchSize, seqSize, headDim, hiddenSize = p["B"], p["S1"], p["D"], p["H"]
+    cmpRatio, coff = p["cr"], p["coff"]
+    layoutId, dataType = p["layoutId"], p["dataType"]
+    wkvInp, wgateInp = b["wkvInp"], b["wgateInp"]
+    state_cache_npu = b["state_cache_npu"]
+    ape_npu = b["ape_npu"]
+    block_table_npu = b["block_table_npu"]
+    cache_mode = b["cache_mode"]
+    cuArg = b["cuArg"]
+    if cuArg is not None:
+        cuArg = cuArg.to(device)  # _build_inputs 中 cuNpu 在 CPU 构造（golden 用）；直调必须 NPU
+    sqNpu = b["inputs"]["seqused"]
+    spNpu = b["inputs"]["start_pos"]
+    sps = b["inputs"]["start_pos"]
+    sqs = b["inputs"]["seqused"]
+
+    # 参考输入：初始 state 必须在直调 forward 之前 clone（forward 原地更新 state_cache）
+    state_cpu_initial = state_cache_npu.cpu()
+
+    # ── 直调正向（不经 autograd）；grad_enabled=True 才会写 softmax_score/kv 中间输出 ──
+    cmp_kv, softmax_score, kv = _compressor_forward(
+        b["inputs"]["x"], wkvInp, wgateInp, state_cache_npu, ape_npu,
+        state_block_table=block_table_npu,
+        cu_seqlens=cuArg, seqused=sqNpu, start_pos=spNpu,
+        cmp_ratio=cmpRatio, coff=coff, cache_mode=cache_mode,
+        grad_enabled=True)
+    torch.npu.synchronize()
+    npu_state_updated = state_cache_npu.cpu()
+
+    # ── CPU 参考（小算子拼接 + 写回 state + update mask）──
+    coffD = coff * headDim
+    xCpu = b["xNpu"]
+    xCpu = xCpu.cpu().view(batchSize, seqSize, hiddenSize) if layoutId == 0 else xCpu.cpu()
+    cuGolden = cuArg.cpu() if cuArg is not None else None
+    ref = compressor_forward.compressor_forward(
+        xCpu, wkvInp.cpu(), wgateInp.cpu(),
+        state_cpu_initial[..., :coffD], state_cpu_initial[..., coffD:],
+        ape_npu.cpu(), block_table_npu.cpu(),
+        [int(v) for v in sps] if sps is not None else None,
+        cmp_ratio=cmpRatio, coff=coff, cache_mode=cache_mode,
+        cu_seqlens=cuGolden,
+        seqused=[int(v) for v in sqs] if sqs is not None else None,
+        return_intermediates=True, return_update_mask=True)
+    # ref = (cmp_kv, cmp_mask, kv_state_out, score_state_out, sm, kv, kv_mask, score_mask)
+
+    # ── 校验 ──
+    npu_result = {"cmp_kv": cmp_kv, "softmax_score": softmax_score, "kv": kv}
+    fwd = check_forward_outputs(npu_result, xCpu, wkvInp.cpu(), wgateInp.cpu(),
+                                state_cpu_initial, ape_npu.cpu(), block_table_npu.cpu(),
+                                sps, sqs, cuGolden,
+                                cmpRatio, coff, cache_mode, headDim, dataType, ref=ref)
+    state = check_state_outputs(npu_state_updated, ref[2], ref[3], ref[6], ref[7],
+                                coff, headDim, dataType, totalValid)
+    print_log(f"Forward check: {fwd['detail']}")
+    print_log(f"State check: {state['detail']}")
+
+    result = {"fwdStatus": fwd["status"], "fwdDetail": fwd["detail"],
+              "stateStatus": state["status"], "stateDetail": state["detail"]}
+    for k in ("cmpkvPct", "cmpkvStatus", "smPct", "smStatus", "kvPct", "kvStatus"):
+        result[k] = fwd[k]
+    for k in ("kvUpdPct", "kvUpdStatus", "scoreUpdPct", "scoreUpdStatus",
+              "kvOrgPct", "kvOrgStatus", "scoreOrgPct", "scoreOrgStatus"):
+        result[k] = state[k]
+    statuses = [fwd["status"], state["status"]]
+    result["status"] = "ERROR" if any(s == "ERROR" for s in statuses) else \
+                       "FAIL" if any(s == "FAIL" for s in statuses) else \
+                       "SKIP" if all(s == "SKIP" for s in statuses) else "PASS"
+    return result, {"cmp_kv": cmp_kv, "softmax_score": softmax_score, "kv": kv}
+
+
+def run_backward_direct_case(case, p, b, totalValid, device, fwd=None):
+    """通路 4：单反向——直调 _compressor_backward（不经 autograd）。
+
+    中间量（softmax_score/kv）默认来自真实正向：fwd 为 None 时先直调一次
+    _compressor_forward（与 golden 一致性原则相同——golden 输入用前向真实输出）；
+    通路 1 拼接时由通路 5 传入复用同一份中间量。
+
+    校验反向 4 输出：d_wkv / d_wgate / d_ape / d_x vs compressor_grad_golden。
+    """
+    batchSize, seqSize, headDim, hiddenSize = p["B"], p["S1"], p["D"], p["H"]
+    cmpRatio, coff = p["cr"], p["coff"]
+    layoutId, dataType = p["layoutId"], p["dataType"]
+    wkvInp, wgateInp = b["wkvInp"], b["wgateInp"]
+    dcNpu = b["dcNpu"]
+    inputs = b["inputs"]
+    cuArg, sqNpu, spNpu = inputs["cu_seqlens"], inputs["seqused"], inputs["start_pos"]
+    if cuArg is not None:
+        cuArg = cuArg.to(device)  # _build_inputs 中 cuNpu 在 CPU 构造（golden 用）；直调必须 NPU
+
+    if fwd is None:
+        # 先直调一次真实正向拿中间量（不经 autograd）
+        cmp_kv, softmax_score, kv = _compressor_forward(
+            inputs["x"], wkvInp, wgateInp, b["state_cache_npu"], b["ape_npu"],
+            state_block_table=b["block_table_npu"],
+            cu_seqlens=cuArg, seqused=sqNpu, start_pos=spNpu,
+            cmp_ratio=cmpRatio, coff=coff, cache_mode=b["cache_mode"],
+            grad_enabled=True)
+        torch.npu.synchronize()
+    else:
+        cmp_kv, softmax_score, kv = fwd["cmp_kv"], fwd["softmax_score"], fwd["kv"]
+
+    # ── 直调反向（不经 autograd）──
+    d_x, d_wkv, d_wgate, d_ape = _compressor_backward(
+        dcNpu, inputs["x"], wkvInp, wgateInp, softmax_score, kv,
+        cu_seqlens=cuArg, seqused=sqNpu, start_pos=spNpu,
+        cmp_ratio=cmpRatio, coff=coff)
+    torch.npu.synchronize()
+
+    # ── CPU Golden（与通路 1 相同：golden 输入用前向真实输出）──
+    dcCpu = dcNpu.cpu().float()
+    spGolden = spNpu.cpu() if spNpu is not None else None
+    sqGolden = sqNpu.cpu() if sqNpu is not None else None
+    cuGolden = cuArg.cpu() if cuArg is not None else None
+    xCpu = inputs["x"].cpu()
+    if layoutId == 0:  # BSH
+        xCpu = xCpu.view(batchSize, seqSize, hiddenSize)
+    dXGold, dWkvGold, dWgateGold, apeGold = compressor_grad_golden(
+        x=xCpu, wkv=wkvInp.cpu().float(), wgate=wgateInp.cpu().float(),
+        d_cpm_kv=(dcCpu.view(batchSize, -1, headDim) if layoutId == 0 else dcCpu),
+        softmax_score=softmax_score.cpu(),
+        kv=kv.cpu(),
+        cu_seqlens=cuGolden, seqused=sqGolden, start_pos=spGolden,
+        cmp_ratio=cmpRatio, coff=coff,
+    )
+
+    # ── 反向 4 输出比对 ──
+    p_pct_thd = get_pct_thd(dataType)
+    dWkvNp = d_wkv.cpu().float()
+    dWgateNp = d_wgate.cpu().float()
+    apeNp = d_ape.cpu().view(cmpRatio, coff * headDim)
+    dXNp = d_x.cpu().float()
+    dXGoldF = dXGold.float()
+
+    print_log("=" * 80)
+    print_log(f"Start precision check for case '{case['testcase_name']}' (validBlocks={totalValid})")
+
+    r_dwkv = check_one_output("d_wkv", dWkvGold.float(), dWkvNp, dataType,
+                              ENABLE_DWKV_CHECK, totalValid, p_pct_thd)
+    r_dwgate = check_one_output("d_wgate", dWgateGold.float(), dWgateNp, dataType,
+                                ENABLE_DWGATE_CHECK, totalValid, p_pct_thd)
+    r_ape = check_one_output("d_ape", apeGold, apeNp, "float32",
+                             ENABLE_APE_CHECK, totalValid, get_pct_thd("float32"))
+    r_dx = check_one_output("d_x", dXGoldF, dXNp, dataType,
+                            ENABLE_DX_CHECK, totalValid, p_pct_thd)
+
+    result = dict(
+        dwkvDiff=r_dwkv["diff"], dwkvPct=r_dwkv["pct"], dwkvStatus=r_dwkv["status"],
+        dwgateDiff=r_dwgate["diff"], dwgatePct=r_dwgate["pct"], dwgateStatus=r_dwgate["status"],
+        apeDiff=r_ape["diff"], apePct=r_ape["pct"], apeStatus=r_ape["status"],
+        dxDiff=r_dx["diff"], dxPct=r_dx["pct"], dxStatus=r_dx["status"],
+    )
+    statuses = [r_dwkv["status"], r_dwgate["status"], r_ape["status"], r_dx["status"]]
+    result["status"] = "ERROR" if any(s == "ERROR" for s in statuses) else \
+                        "FAIL" if any(s == "FAIL" for s in statuses) else \
+                        "SKIP" if all(s == "SKIP" for s in statuses) else "PASS"
+    return result
+
+
 def _parse_case(case, device):
-    """解析 case 公共参数（通路 1/2 共用）。"""
+    """解析 case 公共参数（通路 1/2/4/5 共用）。"""
     B, S1, H, D = case["B"], case["S1"], case["hidden_size"], case["D"]
     cr, coff = case["cmp_ratio"], case["coff"]
     layout = case["input_layout"]
@@ -321,11 +581,14 @@ def _parse_case(case, device):
                 tokenSize=tokenSize, seqSize=seqSize, outputRows=outputRows)
 
 
-def _build_inputs(case, p, device, seed, totalValid, cuNpu, sqs, sps):
-    """构造通路 1/3 共用的 NPU 输入（x/wkv/wgate/state_cache/ape/dc/block_table + 输出占位）。
+def _build_inputs(case, p, device, seed, totalValid, cuNpu, sqs, sps, state_init="zeros"):
+    """构造通路 1/3/4/5 共用的 NPU 输入（x/wkv/wgate/state_cache/ape/dc/block_table + 输出占位）。
 
     返回 compute inputs dict + 附带 tensor（输出占位用 rand 模拟未初始化内存，
     不依赖初始 0——kernel 未写输出时比对必须 FAIL 而非被零掩盖）。
+    state_init: "zeros"（通路 1/3/4，反向不依赖 state 内容）或
+                "rand"（通路 5 state 校验：与正向 pytest 的 kv_state/score_state
+                随机 uniform(-10,10) 初始一致，origin 校验未写位置保持原值）。
     """
     batchSize, seqSize, headDim, hiddenSize = p["B"], p["S1"], p["D"], p["H"]
     cmpRatio, coff = p["cr"], p["coff"]
@@ -399,7 +662,11 @@ def _build_inputs(case, p, device, seed, totalValid, cuNpu, sqs, sps):
     _check_block_size(case, batchSize, seqSize, layoutId, cmpRatio, coff, cache_mode,
                       cuNpu, sqs)
 
-    state_cache_npu = torch.zeros(state_shape, device=device, dtype=torch.float32)
+    if state_init == "rand":
+        # 与正向 pytest 的 kv_state/score_state 初始一致：uniform(-10, 10)
+        state_cache_npu = torch.empty(state_shape, device=device, dtype=torch.float32).uniform_(-10, 10)
+    else:
+        state_cache_npu = torch.zeros(state_shape, device=device, dtype=torch.float32)
     ape_npu = torch.randn(torch.Size([cmpRatio, coff * headDim]), device=device,
                           dtype=torch.float32)
 
@@ -462,161 +729,34 @@ def _build_inputs(case, p, device, seed, totalValid, cuNpu, sqs, sps):
 
 
 def run_case(case, device):
-    """Run one test case and return result dict."""
+    """通路 1：正反向全链路 = 通路 5（直调正向）+ 通路 4（直调反向）拼接。
+
+    共享同一份输入构造（_build_inputs, state 随机初始）与 NPU 真实中间量
+    （softmax_score/kv），校验正向 3 输出 + state_cache 4 项 + 反向 4 输出。
+    """
     name = case["testcase_name"]
-    p = _parse_case(case, device)
-    batchSize, seqSize, headDim, hiddenSize = p["B"], p["S1"], p["D"], p["H"]
-    cmpRatio, coff = p["cr"], p["coff"]
-    layoutId, ioDtype, dataType = p["layoutId"], p["ioDtype"], p["dataType"]
-    layout = p["layout"]
-    tokenSize, outputRows = p["tokenSize"], p["outputRows"]
-    sps = case["start_pos"]
-    if sps is None:
-        sps = [0] * case["B"]
-    sqs = case["seqused_q"]
-    seqlens_list_q = case["seqlens_list_q"]
-    seed = case["manual_seed"]
+    p, totalValid, cuNpu, sps, sqs, seed = _prepare_case(case, device)
+    b = _build_inputs(case, p, device, seed, totalValid, cuNpu, sqs, sps,
+                      state_init="rand")
 
-    dataTypeId = 0 if dataType == "bfloat16" else 1
-
-    sqNpu = torch.tensor(sqs, device=device, dtype=torch.int32) if sqs else None
-    spNpu = torch.tensor(sps, device=device, dtype=torch.int32) if sps else None
-
-    # ── 构造 cu_seqlens（TH 布局；BSH 为 None）──
-    if layoutId == 1:
-        # case 数据统一为"0 开始累加"的累积形式（B+1 项、首项 0），直用不再调整
-        if seqlens_list_q is not None:
-            cuNpu = torch.tensor(seqlens_list_q, dtype=torch.int32)
-        elif sqs is not None:
-            cuNpu = torch.tensor([0] + torch.tensor(sqs).cumsum(0).tolist(),
-                                 dtype=torch.int32)
-        else:
-            cuNpu = torch.zeros(batchSize + 1, dtype=torch.int32)
-    else:
-        cuNpu = None
-
-    # ── Total valid compression blocks ──
-    totalValid = 0
-    for i in range(batchSize):
-        sp = sps[i] if sps else 0
-        if sqs:
-            sq = sqs[i]
-        elif cuNpu is not None:
-            sq = int(cuNpu[i + 1].item() - cuNpu[i].item())
-        else:
-            sq = tokenSize if layoutId == 1 else tokenSize // batchSize
-        cmpLimit = (sp + sq) // cmpRatio * cmpRatio
-        if cmpLimit > sp:
-            # startPos%cmpRatio!=0 时首块为部分块但仍计 1 块 → 向上取整（与 kernel 一致）
-            totalValid += (cmpLimit - sp + cmpRatio - 1) // cmpRatio
-
-    b = _build_inputs(case, p, device, seed, totalValid, cuNpu, sqs, sps)
-    xNpu, wkvInp, wgateInp = b["xNpu"], b["wkvInp"], b["wgateInp"]
-    dcNpu = b["dcNpu"]; state_cache_npu = b["state_cache_npu"]; ape_npu = b["ape_npu"]
-    block_table_npu = b["block_table_npu"]; cache_mode = b["cache_mode"]
-    d_xNpu = b["d_xNpu"]; d_wkvNpu = b["d_wkvNpu"]; d_wgateNpu = b["d_wgateNpu"]
-    dapeOutNpu = b["dapeOutNpu"]; totalTokens = b["totalTokens"]
-    backend = NPUBackend(device_id=DEVICE_ID)
-    npu_result = backend.compute(inputs=b["inputs"])
-
-    d_xNpu.copy_(npu_result["d_x"].view_as(d_xNpu))
-    d_wkvNpu.copy_(npu_result["d_wkv"])
-    d_wgateNpu.copy_(npu_result["d_wgate"])
-    dapeOutNpu.copy_(npu_result["d_ape"].flatten())
-    torch.npu.synchronize()
-
-    # ── CPU Golden: 使用 compressor_grad.py 作为完整反向参考 ──
-    dcCpu  = dcNpu.cpu().float()
-    spGolden = sps if sps else None
-    if spGolden is not None and not isinstance(spGolden, torch.Tensor):
-        spGolden = torch.tensor(spGolden, dtype=torch.int32)
-    sqGolden = sqNpu.cpu() if sqNpu is not None else None
-    # golden 与 kernel 共用同一份 cuNpu（统一来源）
-    cuGolden = cuNpu.cpu() if cuNpu is not None else None
-
-    # x 输入：TH 布局为 (T, H)，BSH 布局为 (B, S, H)
-    xCpu = xNpu.cpu()
-    if layoutId == 0:  # BSH
-        xCpu = xCpu.view(batchSize, seqSize, hiddenSize)
-    wkvCpu = wkvInp.cpu()
-    wgateCpu = wgateInp.cpu()
-
-    dXGold, dWkvGold, dWgateGold, apeGold = compressor_grad_golden(
-        x=xCpu, wkv=wkvCpu, wgate=wgateCpu,
-        # golden 约定 dc 为 (B, blocks, D)；测试构造为扁平 (blocks, D)，BSH 时 view 对齐
-        d_cpm_kv=(dcCpu.view(batchSize, -1, headDim) if layoutId == 0 else dcCpu),
-        # golden 输入需与 kernel（autograd）一致：用前向真实输出，而非占位 randn
-        softmax_score=npu_result["softmax_score"].cpu(),
-        kv=npu_result["kv"].cpu(),
-        cu_seqlens=cuGolden, seqused=sqGolden, start_pos=spGolden,
-        cmp_ratio=cmpRatio, coff=coff,
-    )
-
-    # ── Phase 3 writes d_ape directly ──
-    apeNp = dapeOutNpu.cpu().view(cmpRatio, coff * headDim)
+    # 通路 5：直调正向 + 校验（cmp_kv/sm/kv + state 4 项），返回 NPU 中间量
+    fwd_result, fwd_inter = run_forward_direct_case(case, p, b, totalValid, device)
+    # 通路 4：直调反向（复用同一份中间量）+ 校验（反向 4 输出）
+    bwd_result = run_backward_direct_case(case, p, b, totalValid, device, fwd=fwd_inter)
 
     result = dict(name=name, totalValid=totalValid,
-                  coff=coff, cmpRatio=cmpRatio, headDim=headDim,
-                  batchSize=batchSize)
-
-    p_pct_thd = get_pct_thd(dataType)
-
-    dWkvNp = d_wkvNpu.cpu().float()
-    dWgateNp = d_wgateNpu.cpu().float()
-
-    # ── 输出精度对比 ──
-    # 通过 ENABLE_XXX_CHECK 控制是否对比；未开启 → SKIP，便于按需启用任意输出
-    print_log("=" * 80)
-    print_log(f"Start precision check for case '{name}' (validBlocks={totalValid})")
-
-    # d_wkv check
-    r_dwkv = check_one_output("d_wkv", dWkvGold.float(), dWkvNp, dataType,
-                             ENABLE_DWKV_CHECK, totalValid, p_pct_thd)
-    result["dwkvDiff"] = r_dwkv["diff"]
-    result["dwkvPct"] = r_dwkv["pct"]
-    result["dwkvStatus"] = r_dwkv["status"]
-
-    # d_wgate check
-    r_dwgate = check_one_output("d_wgate", dWgateGold.float(), dWgateNp, dataType,
-                             ENABLE_DWGATE_CHECK, totalValid, p_pct_thd)
-    result["dwgateDiff"] = r_dwgate["diff"]
-    result["dwgatePct"] = r_dwgate["pct"]
-    result["dwgateStatus"] = r_dwgate["status"]
-
-    # d_ape check
-    r_ape = check_one_output("d_ape", apeGold, apeNp, "float32",
-                             ENABLE_APE_CHECK, totalValid, get_pct_thd("float32"))
-    result["apeDiff"] = r_ape["diff"]
-    result["apePct"] = r_ape["pct"]
-    result["apeStatus"] = r_ape["status"]
-
-    # d_x check
-    dXNp = d_xNpu.cpu().float()
-    dXGoldF = dXGold.float()
-    r_dx = check_one_output("d_x", dXGoldF, dXNp, dataType,
-                            ENABLE_DX_CHECK, totalValid, p_pct_thd)
-    result["dxDiff"] = r_dx["diff"]
-    result["dxPct"] = r_dx["pct"]
-    result["dxStatus"] = r_dx["status"]
-
-    # ── 通路 1 增强：正向输出校验（cmp_kv/softmax_score/kv vs 小算子拼接参考）──
-    fwd = check_forward_outputs(npu_result, xCpu, wkvCpu, wgateCpu,
-                                 state_cache_npu.cpu(), ape_npu.cpu(),
-                                 block_table_npu.cpu(), spGolden, sqGolden, cuGolden,
-                                 cmpRatio, coff, cache_mode, headDim, dataType)
-    result["fwdStatus"] = fwd["status"]
-    result["fwdDetail"] = fwd["detail"]
-    # 正向 3 输出 per-output 字段并入 result（与反向 4 输出同构，供统一打印/汇总）
-    for k in ("cmpkvPct", "cmpkvStatus", "smPct", "smStatus", "kvPct", "kvStatus"):
-        result[k] = fwd[k]
-    print_log(f"Forward check: {fwd['detail']}")
+                  coff=p["coff"], cmpRatio=p["cr"], headDim=p["D"],
+                  batchSize=p["B"])
+    result.update(fwd_result)
+    result.update(bwd_result)
 
     # ── Overall status ──
     # 任一 FAIL → FAIL；任一 ERROR → ERROR
     # 注：totalValid=0 不再 trivial PASS——四输出必须真实写 0（golden 全 0），
     #      kernel 未写输出（垃圾）时校验必须 FAIL（见 _zero_outputs）
     statuses = [result["dwkvStatus"], result["dwgateStatus"],
-                result["apeStatus"], result["dxStatus"], result["fwdStatus"]]
+                result["apeStatus"], result["dxStatus"],
+                result["fwdStatus"], result["stateStatus"]]
     if any(s == "ERROR" for s in statuses):
         result["status"] = "ERROR"
     elif any(s == "FAIL" for s in statuses):
@@ -627,6 +767,7 @@ def run_case(case, device):
         result["status"] = "PASS"
 
     return result
+
 
 def run_backward_case(case, device):
     """通路 2：单反向——随机构造中间量 → PyPTO 直跑 kernel → golden 比对。
@@ -794,3 +935,51 @@ def test_compressor_grad_small_ops(case, request):
         pytest.skip(f"pathway={_pathway(request)}")
     result = run_small_ops_case(case, f"npu:{DEVICE_ID}")
     assert result["status"] == "PASS", result["detail"]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [c for c in REDLINE_CASES if c.get("enable", True)],
+    ids=[c["testcase_name"] for c in REDLINE_CASES if c.get("enable", True)],
+)
+def test_compressor_grad_backward_direct(case, request):
+    """通路 4：单反向——通过正向接口内部函数 _compressor_backward 直接调用
+    （不经 autograd，经 custom 包/aclnn）；中间量来自真实正向（先直调一次
+    _compressor_forward，与通路 1 的 golden 一致性原则相同）。
+
+    运行：pytest test_compressor_grad.py --pathway 4 -k <case名子串> -q
+    """
+    if _pathway(request) != 4:
+        pytest.skip(f"pathway={_pathway(request)}")
+    device = f"npu:{DEVICE_ID}"
+    torch.npu.set_device(device)
+    p, totalValid, cuNpu, sps, sqs, seed = _prepare_case(case, device)
+    b = _build_inputs(case, p, device, seed, totalValid, cuNpu, sqs, sps,
+                      state_init="rand")
+    result = run_backward_direct_case(case, p, b, totalValid, device)
+    assert result["status"] == "PASS", format_case_line(result)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [c for c in REDLINE_CASES if c.get("enable", True)],
+    ids=[c["testcase_name"] for c in REDLINE_CASES if c.get("enable", True)],
+)
+def test_compressor_grad_forward_direct(case, request):
+    """通路 5：单正向——通过正向接口内部函数 _compressor_forward 直接调用
+    （不经 autograd，经 custom 包/aclnn），校验正向 3 输出
+    （cmp_kv/softmax_score/kv）+ state_cache 4 项
+    （kv_state_update/score_state_update/kv_state_origin/score_state_origin，
+    与正向算子 pytest 一致）。
+
+    运行：pytest test_compressor_grad.py --pathway 5 -k <case名子串> -q
+    """
+    if _pathway(request) != 5:
+        pytest.skip(f"pathway={_pathway(request)}")
+    device = f"npu:{DEVICE_ID}"
+    torch.npu.set_device(device)
+    p, totalValid, cuNpu, sps, sqs, seed = _prepare_case(case, device)
+    b = _build_inputs(case, p, device, seed, totalValid, cuNpu, sqs, sps,
+                      state_init="rand")
+    result, _ = run_forward_direct_case(case, p, b, totalValid, device)
+    assert result["status"] == "PASS", format_case_line(result)

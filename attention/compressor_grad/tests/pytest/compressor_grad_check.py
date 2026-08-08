@@ -43,9 +43,12 @@ PRECISION = {
 #  输出定义
 # ================================================================
 # 算子所有输出列表（顺序固定，便于汇总统计）：
-# 反向 4 个 + 正向 3 个；通路 2/3 的 result 无正向字段，打印/汇总时自动跳过
+# 反向 4 个 + 正向 3 个 + state_cache 4 个；通路 2/3 的 result 无正向/state 字段，
+# 打印/汇总时自动跳过
 ALL_OUTPUTS = ["d_wkv", "d_wgate", "d_ape", "d_x",
-               "cmp_kv", "softmax_score", "kv"]
+               "cmp_kv", "softmax_score", "kv",
+               "kv_state_update", "score_state_update",
+               "kv_state_origin", "score_state_origin"]
 
 # 输出名 → result dict 中的 status/pct key 映射
 _OUTPUT_KEY_MAP = {
@@ -56,6 +59,10 @@ _OUTPUT_KEY_MAP = {
     "cmp_kv":      ("cmpkvPct", "cmpkvStatus"),
     "softmax_score": ("smPct",   "smStatus"),
     "kv":          ("kvPct",   "kvStatus"),
+    "kv_state_update":    ("kvUpdPct",   "kvUpdStatus"),
+    "score_state_update": ("scoreUpdPct", "scoreUpdStatus"),
+    "kv_state_origin":    ("kvOrgPct",   "kvOrgStatus"),
+    "score_state_origin": ("scoreOrgPct", "scoreOrgStatus"),
 }
 
 
