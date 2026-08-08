@@ -700,8 +700,8 @@ ge::graphStatus SMLAInfoParser::CheckContiguous() const
             cmpExpectedStrides = {dim1 * dim2, dim2, 1};
         }
         OP_CHECK_IF(cmpKeyStridesVec_.size() != cmpExpectedStrides.size(),
-                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "cmpKey",
-                        "cmpKey strideVec size[" + std::to_string(cmpKeyStridesVec_.size()) +
+                    OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "cmp_kv",
+                        "Cmp_kv strideVec size[" + std::to_string(cmpKeyStridesVec_.size()) +
                         "] not match kvLayout expect len[" + std::to_string(cmpExpectedStrides.size()) + "]"),
                     return ge::GRAPH_FAILED);
         cmpKeyNonContiguous =
@@ -709,12 +709,12 @@ ge::graphStatus SMLAInfoParser::CheckContiguous() const
     }
 
     OP_CHECK_IF(oriKeyNonContiguous,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "oriKey",
-                    "oriKey only support non-continuous keying on the 0-axis"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "ori_kv",
+                    "Ori_kv only support non-continuous keying on the 0-axis"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(cmpKeyNonContiguous,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "oriKey",
-                    "cmpKey only support non-continuous keying on the 0-axis"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "cmp_kv",
+                    "Cmp_kv only support non-continuous keying on the 0-axis"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
