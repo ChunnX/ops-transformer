@@ -345,6 +345,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 | 动态量化（T-T/T-C/K-T/K-C） | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | BFLOAT16/FLOAT16/FLOAT32 | [动态量化（T-T/T-C/K-T/K-C）场景约束](#ascend950-动态量化-ttck) |
 | 动态量化（<abbr title="pergroup-pergroup（G-G）量化模式，量化参数类型为FLOAT8_E8M0，group size为32的特例">MX</abbr>） | FLOAT8_E5M2/FLOAT8_E4M3FN / FLOAT4_E2M1 | FLOAT8_E5M2/FLOAT8_E4M3FN / FLOAT4_E2M1 | BFLOAT16/FLOAT16/FLOAT32 | [动态量化（MX）场景约束](#ascend950-动态量化-mx) |
 | 动态量化（<abbr title="左矩阵pergroup，右矩阵perblock">G-B</abbr>） | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | HIFLOAT8 / FLOAT8_E5M2 / FLOAT8_E4M3FN | BFLOAT16/FLOAT16/FLOAT32 | [动态量化（G-B）场景约束](#ascend950-动态量化-gb) |
+| 全量化-S4S4 | INT4 | INT4 | BFLOAT16/FLOAT16 | [S4S4场景约束](#ascend950-s4s4场景约束) |
 | 伪量化-A8W4 | INT8 | INT4 | BFLOAT16/FLOAT16 | [伪量化场景约束](#ascend950-伪量化场景约束) |
 | <abbr title="对右矩阵权重进行量化的模式，包括perchannel量化模式">伪量化</abbr> | FLOAT16 / BFLOAT16 | INT8/INT4 | FLOAT16 / BFLOAT16 | [伪量化场景约束](#ascend950-伪量化场景约束) |
 | <abbr title="对右矩阵权重进行量化的模式，包括perchannel量化模式">伪量化</abbr> | FLOAT16 / BFLOAT16 | FLOAT8_E5M2/FLOAT8_E4M3FN/HIFLOAT8 | FLOAT16 / BFLOAT16 | [伪量化场景约束](#ascend950-伪量化场景约束) |
@@ -493,6 +494,34 @@ aclnnGroupedMatmulV5默认确定性实现。
   - 在动态量化场景 K分组情况下，当 M等于1 且 perTokenScaleOptional 的 shape 为 `(g, 1)` 时，x既可以pertoken量化也可以pertensor量化时，优先选择pertensor量化模式。
   - 在动态量化场景 K分组情况下，K小于128，M等于1 且 perTokenScaleOptional 的 shape 为 `(g, 1)` 时，如果 N小于等于128，x则选择pergroup量化；如果 N大于128，根据weight的量化模式选择x的量化模式（weight 如果是 perchannel 或者pertensor量化，x选择pertensor量化；weight 如果是 perblock量化，x选择pergroup量化）。
   - 在动态量化场景 K分组情况下，K小于128，M不等于 1 时，如果 N小于等于128，x则选择pergroup量化；如果 N大于128，根据weight的量化模式选择x的量化模式（weight 如果是 perchannel 或者pertensor量化，x选择pertoken量化；weight 如果是 perblock量化，x选择pergroup量化）。
+
+</details>
+
+<a id="ascend950-s4s4场景约束"></a>
+
+<details>
+<summary>S4S4 场景约束</summary>
+
+**数据类型要求：**
+
+| x | weight | bias | scale | perTokenScale | out |
+|:---|:---|:---|:---|:---|:---|
+| INT4 | INT4 (ND/NZ) | null | UINT64 | FLOAT/null | FLOAT16/BFLOAT16 |
+
+> 以下参数须传空：offset、antiquantScale、antiquantOffset、activationInput、activationQuantScale、activationQuantOffset。
+
+- **约束说明**
+
+  除平台约束外，S4S4场景其余约束如下：
+  - 仅支持groupType=0（M轴分组），actType=0，groupListType=0/1/2
+  - 当前仅支持x、weight、out均为长度为1的TensorList
+  - x不支持转置，weight为NZ格式时，支持转置。ND格式仅支持非转置。
+  - x仅支持2维Tensor，Shape为（M，K）
+  - weight仅支持3维Tensor，Shape为（E，K，N）
+  - weight的数据格式为ND时，要求n为8的整数倍。
+  - 支持perchannel和pergroup量化。perchannel场景的scale的shape需为 $[E, N]$，pergroup场景需为 $[E, G, N]$。
+  - pergroup场景下，$G$必须要能整除$K$，且$k/G$需为偶数。
+  - 开启右矩阵NZ转置后，$K/G$必须按照64对齐， K按照64对齐， N按照16对齐。
 
 </details>
 
