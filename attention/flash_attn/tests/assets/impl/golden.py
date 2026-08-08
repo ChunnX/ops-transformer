@@ -260,7 +260,12 @@ class FlashAttnGolden:
             out = None
             lse = None
         else:
-            max_sq = max(q_lens) if q_lens else 0
+            # out/lse 的 S 维度用张量全量(算子按 q 张量形状输出),
+            # 不能取 max(seqused_q) — 否则 seqused < S1 时 shape mismatch
+            if layout_q == "BSND":
+                max_sq = q.shape[1]
+            else:
+                max_sq = q.shape[2]
             out = torch.zeros(B, N_q, max_sq, dv, dtype=torch.float32, device=q.device)
             lse = torch.zeros(B, N_q, max_sq, dtype=torch.float32, device=q.device)
             out_tnd = None
