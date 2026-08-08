@@ -435,9 +435,9 @@ def set_active_case(case):
     KEY_LAYOUT = CASE["layout_kv"]
     SPARSE_INDICES_LAYOUT = CASE["layout_sparse_indices"]
     OUT_LAYOUT = CASE["layout_out"]
-    _block_num_raw = CASE.get("block_num", None)
+    _block_num_raw = CASE.get("blocknum", None)
     if _block_num_raw is not None and _block_num_raw <= 0:
-        raise ValueError(f"block_num must be > 0 or None, got {_block_num_raw}")
+        raise ValueError(f"blocknum must be > 0 or None, got {_block_num_raw}")
     BLOCK_NUM = _block_num_raw if _block_num_raw is not None else -1
 
 
