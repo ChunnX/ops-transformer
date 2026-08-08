@@ -295,4 +295,4 @@ sparse_indices, sparse_seq_len = torch.ops.custom.npu_stem_indexer(
 
 - `npu_stem_indexer_metadata`：根据序列长度、Head配置和Causal属性生成StemIndexer分核调度信息。
 
-更多测试与调用示例见[pytest说明](./tests/pytest/README.md)。
+更多测试与调用示例见[pytest说明](../tests/pytest/README.md)。
