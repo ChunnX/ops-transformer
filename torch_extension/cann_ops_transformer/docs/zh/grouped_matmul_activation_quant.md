@@ -75,20 +75,20 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 | `group_list_type` | int | 可选 | `group_list`语义类型，默认值为0，支持0或1。 | int | - |
 | `tuning_config` | List[int] | 可选 | 预留调优参数，默认值为`None`。 | int | - |
 | `quant_mode` | str | 可选 | 量化模式，默认值为`None`。torch层不解析该参数，直接透传到aclnn层；显式传值时当前仅支持`"mx"`。 | string | - |
-| `y_dtype` | torch.dtype | 可选 | 输出`y`的数据类型，默认值为`None`；MXFP8时推导为与`x`相同的数据类型，MXFP4时推导为`torch.float8_e4m3fn`。 | `torch.float8_e4m3fn`、`torch.float8_e5m2` | - |
+| `y_dtype` | torch.dtype | 可选 | 输出`y`的数据类型，默认值为`None`，此时推导为与`x`相同的FP8或FP4逻辑类型。 | `torch.float8_e4m3fn`、`torch.float8_e5m2`、两种FLOAT4 wrapper dtype | - |
 | `round_mode` | str | 可选 | 舍入模式，默认值为`"rint"`，当前仅支持`"rint"`。 | string | - |
 | `scale_alg` | int | 可选 | MX量化scale算法，默认值为0；0表示OCP实现，1表示cuBLAS实现。 | int | - |
 | `dst_type_max` | float | 可选 | 表示maxType的取值，对应公式中的Amax(DType)，默认值为0.0。当前MX场景仅支持0.0，表示Amax(DType)为量化结果数据类型的最大值。 | float | - |
 | `x_dtype` | int | 可选 | `x`的dtype wrapper覆盖值。MXFP4传`torch_npu.float4_e2m1fn_x2`或`torch_npu.float4_e1m2fn_x2`。 | int | - |
 | `weight_dtype` | int | 可选 | `weight`的dtype wrapper覆盖值。MXFP4传`torch_npu.float4_e2m1fn_x2`或`torch_npu.float4_e1m2fn_x2`。 | int | - |
-| `weight_scale_dtype` | int | 可选 | `weight_scale`的dtype wrapper覆盖值，默认值为`None`。当前MX FP8场景需要传入`torch_npu.float8_e8m0fnu`。 | `torch_npu.float8_e8m0fnu` | - |
-| `x_scale_dtype` | int | 可选 | `x_scale`的dtype wrapper覆盖值，默认值为`None`。当前MX FP8场景需要传入`torch_npu.float8_e8m0fnu`。 | `torch_npu.float8_e8m0fnu` | - |
+| `weight_scale_dtype` | int | 可选 | `weight_scale`的dtype wrapper覆盖值，默认值为`None`。当前MX场景需要传入`torch_npu.float8_e8m0fnu`。 | `torch_npu.float8_e8m0fnu` | - |
+| `x_scale_dtype` | int | 可选 | `x_scale`的dtype wrapper覆盖值，默认值为`None`。当前MX场景需要传入`torch_npu.float8_e8m0fnu`。 | `torch_npu.float8_e8m0fnu` | - |
 
 ## 返回值说明
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 | --- | --- | --- | --- | --- | --- |
-| `y` | Tensor | 必选 | 激活后量化输出。 | 由`y_dtype`指定；MXFP4且`y_dtype=None`时为`torch.float8_e4m3fn` | `(M, N)` |
+| `y` | Tensor | 必选 | 激活后量化输出。FP4以`torch.uint8`承载打包数据。 | 由`y_dtype`指定；`y_dtype=None`时逻辑类型跟随`x` | FP8：`(M, N)`；FP4物理shape：`(M, N / 2)` |
 | `y_scale` | Tensor | 必选 | 输出`y`对应的MX量化scale。 | `torch_npu.float8_e8m0fnu` | `(M, ceil(N / 64), 2)` |
 
 ## 约束说明

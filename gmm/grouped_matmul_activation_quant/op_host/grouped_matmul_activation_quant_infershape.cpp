@@ -100,9 +100,9 @@ static graphStatus InferDataType4GroupedMatmulActivationQuant(gert::InferDataTyp
     if (outputDtype == ge::DT_UNDEFINED) {
         outputDtype = context->GetInputDataType(X_INDEX);
     }
-    context->SetOutputDataType(OUT_Y_INDEX, outputDtype);
-    context->SetOutputDataType(OUT_Y_SCALE_INDEX, ge::DT_FLOAT8_E8M0);
-    return GRAPH_SUCCESS;
+    OP_CHECK_IF(context->SetOutputDataType(OUT_Y_INDEX, outputDtype) != GRAPH_SUCCESS,
+                OP_LOGE(context->GetNodeName(), "failed to set y dtype"), return GRAPH_FAILED);
+    return context->SetOutputDataType(OUT_Y_SCALE_INDEX, ge::DT_FLOAT8_E8M0);
 }
 
 IMPL_OP_INFERSHAPE(GroupedMatmulActivationQuant)
