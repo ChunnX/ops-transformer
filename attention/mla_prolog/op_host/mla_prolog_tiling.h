@@ -119,7 +119,6 @@ constexpr char V1_OP_NAME[]{"MlaProlog"};
 constexpr char V2_OP_NAME[]{"MlaPrologV2"};
 constexpr char V3_OP_NAME[]{"MlaPrologV3"};
 
-
 constexpr uint32_t CACHE_MODE_LEN =
     std::max({sizeof(CACHE_MODE_BSND), sizeof(CACHE_MODE_TND), sizeof(CACHE_MODE_PA_BSND), sizeof(CACHE_MODE_PA_NZ),
               sizeof(CACHE_MODE_PA_BLK_BSND), sizeof(CACHE_MODE_PA_BLK_NZ)});
@@ -246,9 +245,7 @@ inline const std::unordered_map<int, std::unordered_map<int, QUANT_MODE>> QUANT_
 
 // 各 weightQuantMode 下合法 kvQuantMode 集合说明（用于错误日志 reason 文本，与原实现逐字一致）
 inline const std::unordered_map<int, const char *> VALID_KV_REASON_TABLE = {
-    {0, "When weightQuantMode==0, must be {0}"},       {1, "When weightQuantMode==1, must be {0, 2, 3}"},
-    {2, "When weightQuantMode==2, must be {0, 1, 3}"}, {3, "When weightQuantMode==3, must be {0, 1, 3}"},
-    {4, "When weightQuantMode==4, must be {0, 1, 3}"}, {5, "When weightQuantMode==5, must be {0, 1, 3}"}};
+    {0, "When weightQuantMode==0, must be {0}"}, {1, "When weightQuantMode==1, must be {0, 2, 3}"}, {2, "When weightQuantMode==2, must be {0, 1, 3}"}, {3, "When weightQuantMode==3, must be {0, 1, 3}"}, {4, "When weightQuantMode==4, must be {0, 1, 3}"}, {5, "When weightQuantMode==5, must be {0, 1, 3}"}};
 
 // QUANT_MODE → (weightQuantMode, kvQuantMode) 反向映射表
 // 用于从 quantMode_ 反推 wq/kvq，V1/V2（按 dtype 推断 quantMode_）与 V3（正向查表得 quantMode_）通用
@@ -312,6 +309,80 @@ struct RequiredParaInfo : BaseParaInfo {};
 
 struct OptionalParaInfo : BaseParaInfo {};
 
+// RoPE-off placeholder (OpDef REQUIRED): nullptr / dimNum==0 / 1D{0} / ShapeSize==0.
+inline bool IsRopeOffPlaceholder(const BaseParaInfo &para)
+{
+    if (para.shape == nullptr) {
+        return true;
+    }
+    const auto &storageShape = para.shape->GetStorageShape();
+    const size_t dimNum = storageShape.GetDimNum();
+    if (dimNum == 0) {
+        return true;
+    }
+    if (dimNum == 1 && storageShape.GetDim(0) == 0) {
+        return true;
+    }
+    return storageShape.GetShapeSize() == 0;
+}
+
+inline bool IsEmptyStorageShape(const gert::Shape &storageShape)
+{
+    const size_t dimNum = storageShape.GetDimNum();
+    if (dimNum == 0) {
+        return true;
+    }
+    if (dimNum == 1 && storageShape.GetDim(0) == 0) {
+        return true;
+    }
+    return storageShape.GetShapeSize() == 0;
+}
+
+// ND weight [*, col] or NZ [(col)/a, */16, 16, a] → merged col size.
+inline int64_t GetWeightMergedColSize(const gert::Shape &shape)
+{
+    if (shape.GetDimNum() == MLA_PROLOG_DIM_NUM_4) {
+        return static_cast<int64_t>(shape.GetDim(MLA_PROLOG_DIM_INDEX_0)) *
+               static_cast<int64_t>(shape.GetDim(MLA_PROLOG_DIM_INDEX_3));
+    }
+    return static_cast<int64_t>(shape.GetDim(MLA_PROLOG_DIM_INDEX_1));
+}
+
+// RoPE-off: Dr from kr_cache last dim if valid; else weightDkvKr−Hckv(weightUk); else weightUqQr.
+inline bool InferDrSizeWhenRopeOff(const gert::Shape *krCacheShape, const gert::Shape &weightUkShape,
+                                   const gert::Shape &weightDkvKrShape, const gert::Shape *weightUqQrShape,
+                                   uint32_t &drSize)
+{
+    if (krCacheShape != nullptr && !IsEmptyStorageShape(*krCacheShape)) {
+        const int64_t krDr = krCacheShape->GetDim(krCacheShape->GetDimNum() - 1);
+        if (krDr > 0) {
+            drSize = static_cast<uint32_t>(krDr);
+            return true;
+        }
+    }
+    if (weightUkShape.GetDimNum() >= MLA_PROLOG_DIM_NUM_3) {
+        const int64_t hckv = weightUkShape.GetDim(MLA_PROLOG_DIM_INDEX_2);
+        const int64_t hckvPlusDr = GetWeightMergedColSize(weightDkvKrShape);
+        if (hckv > 0 && hckvPlusDr > hckv) {
+            drSize = static_cast<uint32_t>(hckvPlusDr - hckv);
+            return true;
+        }
+        if (weightUqQrShape != nullptr) {
+            const int64_t nSize = weightUkShape.GetDim(MLA_PROLOG_DIM_INDEX_0);
+            const int64_t dSize = weightUkShape.GetDim(MLA_PROLOG_DIM_INDEX_1);
+            const int64_t nqd = GetWeightMergedColSize(*weightUqQrShape);
+            if (nSize > 0 && dSize >= 0 && (nqd % nSize) == 0) {
+                const int64_t dPlusDr = nqd / nSize;
+                if (dPlusDr > dSize) {
+                    drSize = static_cast<uint32_t>(dPlusDr - dSize);
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr uint32_t NUM_BYTES_BF16 = 2;
 constexpr uint32_t NUM_BYTES_INT8 = 1;
@@ -373,6 +444,9 @@ struct MlaPrologContext {
 
     const float *qcQrScale;
     const float *kcScale;
+    // V3: inferred from ropeSin/ropeCos empty placeholder (both empty → off).
+    bool doRopeValue = true;
+    const bool *doRope = nullptr;
 
     size_t *workSpaces;
     uint64_t tilingKey;
@@ -448,6 +522,7 @@ private:
     ge::DataType mmDateType_ = ge::DT_BF16;
     bool enableDequantOpt_ = false;
     bool enableGroupComputeOpt_ = false; // 低延时场景算例分组标记
+    bool enableRope_ = true;             // rope开关，仅 MlaPrologV3 可关（empty placeholder）
 
     size_t ubSize_ = 0;
     size_t l1Size_ = 0;

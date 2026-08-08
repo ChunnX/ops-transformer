@@ -20,10 +20,11 @@
     - 新增Query与Key的尺度矫正因子，分别对应qcQrScale（$\alpha_q$）与kcScale（$\alpha_{kv}$）。
     - 新增可选输入参数（例如actualSeqLenOptional、kNopeClipAlphaOptional、queryNormFlag、weightQuantMode、kvCacheQuantMode、queryQuantMode、ckvkrRepoMode、quantScaleRepoMode、tileSize、queryNormOutOptional和dequantScaleQNormOptional等），将cache_mode由必选改为可选。
     - 调整cacheIndex参数的名称与位置，对应当前的cacheIndexOptional。
+    - ropeSin/ropeCos支持RoPE可选开关：二者同时为有效非空Tensor时执行RoPE；二者同时为nullptr时跳过RoPE（queryRopeOut/krCache写直通结果）；不允许只传其中一个。
 - **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为五路:
-    - 首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后，再乘以Query尺度矫正因子$\alpha_q$得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$。
+    - 首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后，再乘以Query尺度矫正因子$\alpha_q$得到$q^N$；第二路乘以$W^{QR}$后，在RoPE开启时经过旋转位置编码得到$q^R$，RoPE关闭时对$c^Q \cdot W^{QR}$直通写出。
     - 第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后，乘以Key尺度矫正因子$\alpha_{kv}$传入Cache中得到$k^C$；
-    - 第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$；
+    - 第四路是输入$x$乘以$W^{KR}$后，在RoPE开启时经过旋转位置编码再写入Cache得到$k^R$，RoPE关闭时对$x \cdot W^{KR}$直通写入Cache；
     - 第五路是输出$q^N$经过DynamicQuant后得到的量化参数。
     - 权重参数WeightDq、WeightUqQr和WeightDkvKr需要以NZ格式传入
 
@@ -53,7 +54,7 @@
     q^N = q^C \cdot W^{UK}
     $$
 
-    对Query进行ROPE旋转位置编码
+    对Query进行ROPE旋转位置编码（RoPE开启时）；RoPE关闭时$q^R = c^Q \cdot W^{QR}$
 
     $$
     q^R = \mathrm{ROPE}(c^Q \cdot W^{QR})
@@ -69,7 +70,7 @@
     k^C = \mathrm{Cache}(c^{KV})
     $$
 
-    对Key进行ROPE旋转位置编码，并将结果存入cache
+    对Key进行ROPE旋转位置编码，并将结果存入cache（RoPE开启时）；RoPE关闭时$k^R = \mathrm{Cache}(x \cdot W^{KR})$
 
     $$
     k^R = \mathrm{Cache}(\mathrm{ROPE}(x \cdot W^{KR}))
@@ -244,32 +245,42 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <tr>
         <td>ropeSin</td>
         <td>输入</td>
-        <td>用于计算旋转位置编码的正弦参数矩阵。</td>
-        <td>支持B=0,S=0,T=0的空Tensor</td>
+        <td>用于计算旋转位置编码的正弦参数矩阵。与ropeCos须同时有效（RoPE开启）或同时为nullptr（RoPE关闭）。</td>
+        <td><ul>
+          <li>须与ropeCos同时为有效非空，或同时为nullptr；不允许只传其中一个</li>
+          <li>RoPE开启：非空时支持B=0,S=0,T=0的空Tensor（表示该维长度为0）</li>
+          <li>RoPE关闭：传入nullptr</li>
+        </ul></td>
         <td>BFLOAT16</td>
         <td>ND</td>
         <td>
           <ul>
-            <li>BS合轴：(T,Dr)</li>
-            <li>BS非合轴：(B,S,Dr)</li>
+            <li>RoPE开启且BS合轴：(T,Dr)</li>
+            <li>RoPE开启且BS非合轴：(B,S,Dr)</li>
+            <li>RoPE关闭：(0)</li>
           </ul>
         </td>
-        <td>×</td>
+        <td>√</td>
       </tr>
       <tr>
         <td>ropeCos</td>
         <td>输入</td>
-        <td>用于计算旋转位置编码的余弦参数矩阵。</td>
-        <td>支持B=0,S=0,T=0的空Tensor</td>
+        <td>用于计算旋转位置编码的余弦参数矩阵。与ropeSin须同时有效（RoPE开启）或同时为nullptr（RoPE关闭）。</td>
+        <td><ul>
+          <li>须与ropeSin同时为有效非空，或同时为nullptr；不允许只传其中一个</li>
+          <li>RoPE开启：非空时支持B=0,S=0,T=0的空Tensor（表示该维长度为0）</li>
+          <li>RoPE关闭：传入nullptr</li>
+        </ul></td>
         <td>BFLOAT16</td>
         <td>ND</td>
         <td>
           <ul>
-            <li>BS合轴：(T,Dr)</li>
-            <li>BS非合轴：(B,S,Dr)</li>
+            <li>RoPE开启且BS合轴：(T,Dr)</li>
+            <li>RoPE开启且BS非合轴：(B,S,Dr)</li>
+            <li>RoPE关闭：(0)</li>
           </ul>
         </td>
-        <td>×</td>
+        <td>√</td>
       </tr>
       <tr>
         <td>kvCacheRef</td>
@@ -860,7 +871,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
       <tr>
         <td>N</td>
         <td>Head-Num（多头数）</td>
-        <td>取值范围：1、2、4、8、16、32、64、128</td>
+        <td>取值范围：1-128</td>
       </tr>
       <tr>
         <td>Hckv</td>
@@ -927,7 +938,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   <summary><a id="shapeConstraint"></a>shape约束</summary>
 
   - 若tokenX的维度采用BS合轴，即(T, He)
-    - ropeSin和ropeCos的shape为(T, Dr)
+    - RoPE开启时，ropeSin和ropeCos的shape为(T, Dr)；RoPE关闭时，ropeSin和ropeCos的shape为(0)
     - 当CacheMode为PA_BSND或PA_NZ时，cacheIndex的shape为(T)
     - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，cacheIndex的shape为(Sum(⌈<i>S<sub>i</sub></i>/BlockSize⌉))，S_i为每个Batch中的S的长度
     - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，actualSeqLenOptional需要传入，维度为(B)
@@ -936,7 +947,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
     - queryRopeOut的shape为(T, N, Dr)
     - int8/mxfp8/fp8/hif8全量化场景下，dequantScaleQNopeOutOptional的shape为(T, N, 1)，其他场景下为nullptr
   - 若tokenX的维度不采用BS合轴，即(B, S, He)
-      - ropeSin和ropeCos的shape为(B, S, Dr)
+      - RoPE开启时，ropeSin和ropeCos的shape为(B, S, Dr)；RoPE关闭时，ropeSin和ropeCos的shape为(0)
       - 当CacheMode为PA_BSND或PA_NZ时，cacheIndex的shape为(B, S)
       - 当CacheMode为PA_BLK_BSND或PA_BLK_NZ时，cacheIndex的shape为(B, ⌈S/BlockSize⌉)
       - int8/fp8/hif8全量化场景下，dequantScaleXOptional的shape为(B\*S, 1)；mxfp8全量化场景下，dequantScaleXOptional的shape为(B*S, He/32)
@@ -964,6 +975,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   - pertoken-pergroup量化模式下，ckvkrRepoMode和quantScaleRepoMode必须同时为1；其他量化模式以及非量化场景下，ckvkrRepoMode和quantScaleRepoMode必须同时为0。
   - pertoken-pergroup量化模式下，CacheMode只支持PA_BSND, BSND和TND。
   - 当ckvkrRepoMode值为1时，krCache必须为空Tensor（即shape的乘积为0）。
+  - RoPE关闭时，Dr按以下优先级推断：krCache末维（>0）→ weightDkvKr的合并列维减去weightUk的Hckv → weightUqQr的合并列维按N拆分后减去D；当ckvkrRepoMode=1且krCache为空时，须能从权重反推出Dr。
   - kvcache pertensor量化模式下，kvCacheQuantMode和queryQuantMode必须同时为1。
 
   </details>
@@ -973,11 +985,33 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   <ul>
     <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：当前不支持fp8/hif8/mxfp8全量化场景</li>
     <li><term>Ascend 950PR/Ascend 950DT</term>：当前支持所有量化场景</li>
+    <li>RoPE开关（上述产品均支持，约定一致）：
+      <ul>
+        <li>RoPE开启：ropeSin与ropeCos同时传入有效非空Tensor（shape随tokenX为(T,Dr)或(B,S,Dr)），对queryRopeOut与krCache执行旋转位置编码</li>
+        <li>RoPE关闭：ropeSin与ropeCos同时为nullptr或shape=(0)的空placeholder；queryRopeOut与krCache写直通结果（不做旋转）；不允许只关闭其中一个</li>
+        <li>RoPE关闭可与下表各量化场景组合使用；当ckvkrRepoMode=1且krCache为空时，Dr须能从weightDkvKr/weightUk（或weightUqQr）反推</li>
+      </ul>
+    </li>
   </ul>
   <table style="table-layout: auto;" border="1">
     <tr>
       <th colspan="2">场景</th>
       <th>含义</th>
+    </tr>
+    <tr>
+      <td rowspan="2">RoPE</td>
+      <td>开启</td>
+      <td>
+          ropeSin、ropeCos同时为有效非空BFLOAT16 Tensor<br>
+          行为：对$q^R$、$k^R$执行ROPE后写出/写入Cache
+      </td>
+    </tr>
+    <tr>
+      <td>关闭</td>
+      <td>
+          ropeSin、ropeCos同时为nullptr或shape=(0)<br>
+          行为：对$c^Q\cdot W^{QR}$、$x\cdot W^{KR}$直通写出/写入Cache，不做旋转
+      </td>
     </tr>
     <tr>
       <td colspan="2">非量化</td>
