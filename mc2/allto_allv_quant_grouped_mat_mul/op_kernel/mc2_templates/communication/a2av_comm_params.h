@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef A2AV_COMM_PARAMS_P
-#define A2AV_COMM_PARAMS_P
+#ifndef A2AV_COMM_PARAMS_H
+#define A2AV_COMM_PARAMS_H
 
 #include "../common/a2av_common_tiling.h"
 
@@ -114,4 +114,4 @@ __aicore__ inline void CalcA2avCommAfterParams(
 
 } // namespace MC2KernelTemplate
 
-#endif // A2AV_COMM_PARAMS_P
+#endif // A2AV_COMM_PARAMS_H

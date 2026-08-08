@@ -63,12 +63,11 @@ static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
     return true;
 }
 
-static aclnnStatus checkCounts(const char *apiName, int64_t epWorldSize,
+static aclnnStatus checkCounts(const char *apiName, const aclTensor *gmmWeight, int64_t epWorldSize,
                                const aclTensor *sendCountsTensorOptional,
                                const aclTensor *recvCountsTensorOptional,
                                const aclIntArray *sendCounts, const aclIntArray *recvCounts)
 {
-    (void)epWorldSize;
     bool hasSendTensor = (sendCountsTensorOptional != nullptr);
     bool hasRecvTensor = (recvCountsTensorOptional != nullptr);
     bool hasSendAttr = false;
@@ -109,6 +108,48 @@ static aclnnStatus checkCounts(const char *apiName, int64_t epWorldSize,
                                               "at least one of sendCounts attr or sendCountsTensor must be provided.");
         return ACLNN_ERR_PARAM_INVALID;
     }
+    // 校验 counts tensor 元素个数 == ep * epWorldSize
+    if (hasSendTensor) {
+        int64_t ep = 0;
+        if (gmmWeight != nullptr) {
+            auto gmmWeightShape = aclGetViewShape(gmmWeight);
+            if (gmmWeightShape != nullptr) {
+                ep = gmmWeightShape->GetDim(0);
+            }
+        }
+        int64_t expectedCount = ep * epWorldSize;
+        if (expectedCount <= 0) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(apiName, "ep*epWorldSize", std::to_string(expectedCount).c_str(),
+                                                  "ep*epWorldSize must be positive when using counts tensor.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        int64_t sendTensorElems = 1;
+        auto sendShape = aclGetViewShape(sendCountsTensorOptional);
+        if (sendShape != nullptr && sendShape->GetDimNum() > 0) {
+            for (size_t i = 0; i < sendShape->GetDimNum(); i++) {
+                sendTensorElems *= sendShape->GetDim(i);
+            }
+        }
+        int64_t recvTensorElems = 1;
+        auto recvShape = aclGetViewShape(recvCountsTensorOptional);
+        if (recvShape != nullptr && recvShape->GetDimNum() > 0) {
+            for (size_t i = 0; i < recvShape->GetDimNum(); i++) {
+                recvTensorElems *= recvShape->GetDim(i);
+            }
+        }
+        if (sendTensorElems != expectedCount) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                apiName, "sendCountsTensor", std::to_string(sendTensorElems).c_str(),
+                (std::to_string(expectedCount) + " (ep*epWorldSize)").c_str());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (recvTensorElems != expectedCount) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                apiName, "recvCountsTensor", std::to_string(recvTensorElems).c_str(),
+                (std::to_string(expectedCount) + " (ep*epWorldSize)").c_str());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
     return ACLNN_SUCCESS;
 }
 
@@ -147,16 +188,27 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
         CheckParams(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
                     group, epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, y, mmYOptional);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
-    auto ret_counts = checkCounts("aclnnGroupedMatMulAlltoAllvGetWorkspaceSize", epWorldSize,
+    auto ret_counts = checkCounts("aclnnGroupedMatMulAlltoAllvGetWorkspaceSize", gmmWeight, epWorldSize,
                                   sendCountsTensorOptional, recvCountsTensorOptional, sendCounts, recvCounts);
     CHECK_RET(ret_counts == ACLNN_SUCCESS, ret_counts);
+
+    uint64_t sendArrSize = 0U;
+    uint64_t recvArrSize = 0U;
+    if (sendCounts != nullptr) {
+        aclGetIntArraySize(sendCounts, &sendArrSize);
+    }
+    if (recvCounts != nullptr) {
+        aclGetIntArraySize(recvCounts, &recvArrSize);
+    }
+    const aclIntArray *sendCountsReal = (sendCounts != nullptr && sendArrSize == 0U) ? nullptr : sendCounts;
+    const aclIntArray *recvCountsReal = (recvCounts != nullptr && recvArrSize == 0U) ? nullptr : recvCounts;
 
     const char *commMode = "ai_cpu";
     char *str_commMode = const_cast<char *>(commMode);
     aclnnStatus ret = aclnnInnerGroupedMatMulAlltoAllvGetWorkspaceSize(
         gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional,
-        const_cast<char *>(group), epWorldSize, sendCounts, recvCounts, transGmmWeight, transMmWeight, str_commMode, y,
-        mmYOptional, workspaceSize, executor);
+        const_cast<char *>(group), epWorldSize, sendCountsReal, recvCountsReal, transGmmWeight, transMmWeight,
+        str_commMode, y, mmYOptional, workspaceSize, executor);
     OP_LOGD("GroupedMatMulAlltoAllv, aclnnInnerGroupedMatMulAlltoAllvGetWorkspaceSize ret %d.", ret);
     if (*executor != nullptr) {
         uint8_t commModeType = Mc2Comm::COMM_MODE_AICPU;

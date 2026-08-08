@@ -176,30 +176,25 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode,
         ASCENDC_ASSERT(tPipe != nullptr, { KERNEL_LOG(KERNEL_ERROR, "tPipe must not be null for tensor counts path"); });
         ASCENDC_ASSERT(sendCountsTensorGM != nullptr && recvCountsTensorGM != nullptr,
                        { KERNEL_LOG(KERNEL_ERROR, "counts tensor GM addr must not be null for tensor counts path"); });
-        constexpr uint32_t COUNTS_UB_ALIGN = 32U;
-        uint32_t countsBytes = countsTensorLen_ * sizeof(int64_t);
-        uint32_t countsUbSize = (countsBytes + COUNTS_UB_ALIGN - 1U) & ~(COUNTS_UB_ALIGN - 1U);
-        tPipe->InitBuffer(sendCountsUB_, countsUbSize);
-        tPipe->InitBuffer(recvCountsUB_, countsUbSize);
-        sendCountsGlobal_.SetGlobalBuffer((__gm__ int64_t *)sendCountsTensorGM);
-        recvCountsGlobal_.SetGlobalBuffer((__gm__ int64_t *)recvCountsTensorGM);
-        DataCopyParams countsCopyParams{1U, static_cast<uint16_t>(countsTensorLen_ * sizeof(int64_t)), 0U, 0U};
-        DataCopyPadParams countsPadParams{false, 0U, 0U, 0U};
-        sendCountsLt_ = sendCountsUB_.Get<int64_t>();
-        recvCountsLt_ = recvCountsUB_.Get<int64_t>();
-        if (GetBlockIdx() == 0) {
-            AscendC::DumpTensor(sendCountsGlobal_, 1001, countsTensorLen_);
-            AscendC::DumpTensor(recvCountsGlobal_, 1002, countsTensorLen_);
-        }
-        DataCopyPad(sendCountsLt_, sendCountsGlobal_, countsCopyParams, countsPadParams);
-        DataCopyPad(recvCountsLt_, recvCountsGlobal_, countsCopyParams, countsPadParams);
-        int32_t mte2vEventID = static_cast<int32_t>(tPipe->FetchEventID<HardEvent::MTE2_V>());
-        SetFlag<HardEvent::MTE2_V>(mte2vEventID);
-        WaitFlag<HardEvent::MTE2_V>(mte2vEventID);
-        tPipe->ReleaseEventID<HardEvent::MTE2_V>(mte2vEventID);
-        if (GetBlockIdx() == 0) {
-            AscendC::DumpTensor(sendCountsLt_, 1003, countsTensorLen_);
-            AscendC::DumpTensor(recvCountsLt_, 1004, countsTensorLen_);
+        // UB / DataCopyPad / MTE2_V 仅在 AIV 核上可用，AIC 核无 UB 和 V 流水线
+        if ASCEND_IS_AIV {
+            constexpr uint32_t COUNTS_UB_ALIGN = 32U;
+            uint32_t countsBytes = countsTensorLen_ * sizeof(int64_t);
+            uint32_t countsUbSize = (countsBytes + COUNTS_UB_ALIGN - 1U) & ~(COUNTS_UB_ALIGN - 1U);
+            tPipe->InitBuffer(sendCountsUB_, countsUbSize);
+            tPipe->InitBuffer(recvCountsUB_, countsUbSize);
+            sendCountsGlobal_.SetGlobalBuffer((__gm__ int64_t *)sendCountsTensorGM);
+            recvCountsGlobal_.SetGlobalBuffer((__gm__ int64_t *)recvCountsTensorGM);
+            DataCopyParams countsCopyParams{1U, static_cast<uint16_t>(countsTensorLen_ * sizeof(int64_t)), 0U, 0U};
+            DataCopyPadParams countsPadParams{false, 0U, 0U, 0U};
+            sendCountsLt_ = sendCountsUB_.Get<int64_t>();
+            recvCountsLt_ = recvCountsUB_.Get<int64_t>();
+            DataCopyPad(sendCountsLt_, sendCountsGlobal_, countsCopyParams, countsPadParams);
+            DataCopyPad(recvCountsLt_, recvCountsGlobal_, countsCopyParams, countsPadParams);
+            int32_t mte2vEventID = static_cast<int32_t>(tPipe->FetchEventID<HardEvent::MTE2_V>());
+            SetFlag<HardEvent::MTE2_V>(mte2vEventID);
+            WaitFlag<HardEvent::MTE2_V>(mte2vEventID);
+            tPipe->ReleaseEventID<HardEvent::MTE2_V>(mte2vEventID);
         }
     } else {
         for (int i = 0; i < e_ * rankDim_; i++) {

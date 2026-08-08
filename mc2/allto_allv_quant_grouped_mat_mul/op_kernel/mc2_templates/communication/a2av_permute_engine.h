@@ -25,7 +25,7 @@ namespace MC2KernelTemplate {
 
 template <bool IsExpertFirst, typename GetCountFn>
 __aicore__ inline void ComputePrefixSum(
-    LocalTensor<uint32_t> &sumCnt, uint32_t baseOffset, uint32_t totalPos,
+    LocalTensor<uint64_t> &sumCnt, uint32_t baseOffset, uint32_t totalPos,
     GetCountFn getCount, uint32_t e,
     uint32_t startExpertIdx, uint32_t expertNum, uint32_t rankDim)
 {
@@ -39,7 +39,7 @@ __aicore__ inline void ComputePrefixSum(
             rankIndex = pos % rankDim;
         }
         uint32_t globalExpertIdx = startExpertIdx + localExpertIdx;
-        uint32_t val = static_cast<uint32_t>(getCount(rankIndex * e + globalExpertIdx));
+        uint64_t val = static_cast<uint64_t>(getCount(rankIndex * e + globalExpertIdx));
         if (pos != 0U) {
             val += sumCnt.GetValue(baseOffset + pos - 1U);
         }
@@ -117,11 +117,11 @@ __aicore__ inline void PermuteImplParallel(
 
     uint32_t totalPos = rankDim * expertNum;
     TBuf<QuePosition::VECCALC> sumCntBuf;
-    pipe->InitBuffer(sumCntBuf, totalPos * sizeof(uint32_t) * 2U);
-    LocalTensor<uint32_t> sumCntLt = sumCntBuf.Get<uint32_t>();
+    pipe->InitBuffer(sumCntBuf, totalPos * sizeof(uint64_t) * 2U);
+    LocalTensor<uint64_t> sumCntLt = sumCntBuf.Get<uint64_t>();
     for (uint32_t i = 0U; i < totalPos; i++) {
-        sumCntLt.SetValue(i, 0U);
-        sumCntLt.SetValue(totalPos + i, 0U);
+        sumCntLt.SetValue(i, 0UL);
+        sumCntLt.SetValue(totalPos + i, 0UL);
     }
 
     ComputePrefixSum<SrcIsExpertFirst>(sumCntLt, 0U, totalPos, getCount, e, startExpertIdx, expertNum, rankDim);

@@ -114,7 +114,7 @@ static bool CheckNullStatus(const aclTensor *gmmX, const aclTensor *gmmWeight,
     return CheckMmOptionalConsistency(mmXOptional, mmWeightOptional, mmYOptional);
 }
 
-static aclnnStatus checkCounts(const char *apiName, int64_t epWorldSize,
+static aclnnStatus checkCounts(const char *apiName, const aclTensor *gmmWeight, int64_t epWorldSize,
                                const aclTensor *sendCountsTensorOptional,
                                const aclTensor *recvCountsTensorOptional,
                                const aclIntArray *sendCounts, const aclIntArray *recvCounts)
@@ -154,6 +154,48 @@ static aclnnStatus checkCounts(const char *apiName, int64_t epWorldSize,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(apiName, "sendCounts/sendCountsTensor", "both null",
                                               "at least one of sendCounts attr or sendCountsTensor must be provided.");
         return ACLNN_ERR_PARAM_INVALID;
+    }
+    // 校验 counts tensor 元素个数 == ep * epWorldSize
+    if (hasSendTensor) {
+        int64_t ep = 0;
+        if (gmmWeight != nullptr) {
+            auto gmmWeightShape = aclGetViewShape(gmmWeight);
+            if (gmmWeightShape != nullptr) {
+                ep = gmmWeightShape->GetDim(0);
+            }
+        }
+        int64_t expectedCount = ep * epWorldSize;
+        if (expectedCount <= 0) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(apiName, "ep*epWorldSize", std::to_string(expectedCount).c_str(),
+                                                  "ep*epWorldSize must be positive when using counts tensor.");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        int64_t sendTensorElems = 1;
+        auto sendShape = aclGetViewShape(sendCountsTensorOptional);
+        if (sendShape != nullptr && sendShape->GetDimNum() > 0) {
+            for (size_t i = 0; i < sendShape->GetDimNum(); i++) {
+                sendTensorElems *= sendShape->GetDim(i);
+            }
+        }
+        int64_t recvTensorElems = 1;
+        auto recvShape = aclGetViewShape(recvCountsTensorOptional);
+        if (recvShape != nullptr && recvShape->GetDimNum() > 0) {
+            for (size_t i = 0; i < recvShape->GetDimNum(); i++) {
+                recvTensorElems *= recvShape->GetDim(i);
+            }
+        }
+        if (sendTensorElems != expectedCount) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                apiName, "sendCountsTensor", std::to_string(sendTensorElems).c_str(),
+                (std::to_string(expectedCount) + " (ep*epWorldSize)").c_str());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (recvTensorElems != expectedCount) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                apiName, "recvCountsTensor", std::to_string(recvTensorElems).c_str(),
+                (std::to_string(expectedCount) + " (ep*epWorldSize)").c_str());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
     return ACLNN_SUCCESS;
 }
@@ -467,7 +509,7 @@ extern "C" aclnnStatus aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
                     gmmWeightQuantMode, mmXQuantMode, mmWeightQuantMode, commQuantMode, group, epWorldSize, sendCounts,
                     recvCounts, transGmmWeight, transMmWeight, y, mmYOptional, workspaceSize, executor);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    auto retCounts = checkCounts("aclnnQuantGroupedMatMulAlltoAllv", epWorldSize, sendCountsTensorOptional,
+    auto retCounts = checkCounts("aclnnQuantGroupedMatMulAllToAllvGetWorkspaceSize", gmmWeight, epWorldSize, sendCountsTensorOptional,
                                  recvCountsTensorOptional, sendCounts, recvCounts);
     CHECK_RET(retCounts == ACLNN_SUCCESS, retCounts);
     char *strGroup = const_cast<char *>(group);
