@@ -11,7 +11,7 @@
 #ifndef MEGA_MOE_SEND_MASK_H
 #define MEGA_MOE_SEND_MASK_H
 
-#include "../mega_moe_base.h"
+#include "../common/mega_moe_utils.h"
 
 namespace MegaMoeImpl {
 

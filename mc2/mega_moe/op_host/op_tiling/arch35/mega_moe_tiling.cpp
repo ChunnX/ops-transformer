@@ -30,7 +30,7 @@
 #include "../mega_moe.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling_key.h"
-#include "../../../op_kernel/arch35/mega_moe_workspace_info.h"
+#include "../../../op_kernel/arch35/common/mega_moe_workspace.h"
 
 using namespace Mc2Tiling;
 using namespace AscendC;

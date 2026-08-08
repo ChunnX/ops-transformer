@@ -11,9 +11,8 @@
 #ifndef MEGA_MOE_UNPERMUTE_H
 #define MEGA_MOE_UNPERMUTE_H
 
-#include "aiv_compute/mega_moe_mxfp8_quantization.h"
-#include "mega_moe_impl_base.h"
-#include "mega_moe_base.h"
+#include "../common/mega_moe_mxfp8_utils.h"
+#include "../common/mega_moe_utils.h"
 
 namespace MegaMoeImpl {
 

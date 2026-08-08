@@ -8,11 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef MEGA_MOE_MXFP8_QUANTIZATION_H
-#define MEGA_MOE_MXFP8_QUANTIZATION_H
+#ifndef MEGA_MOE_MXFP8_UTILS_H
+#define MEGA_MOE_MXFP8_UTILS_H
 
 #include "kernel_operator.h"
-#include "../mega_moe_workspace_info.h"
+#include "mega_moe_constants.h"
 #if __has_include("../../../moe_distribute_dispatch_v2/quantize_functions.h")
 #include "../../../moe_distribute_dispatch_v2/quantize_functions.h"
 #else
@@ -114,4 +114,4 @@ __aicore__ inline void DeQuantMxFp8(LocalTensor<XType> &inLocal, LocalTensor<flo
 
 } // namespace MegaMoeCombineImpl
 
-#endif // MEGA_MOE_MXFP8_QUANTIZATION_H
+#endif // MEGA_MOE_MXFP8_UTILS_H

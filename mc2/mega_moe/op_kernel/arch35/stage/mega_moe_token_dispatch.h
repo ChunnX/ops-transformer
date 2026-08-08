@@ -11,7 +11,7 @@
 #ifndef MEGA_MOE_TOKEN_DISPATCH_H
 #define MEGA_MOE_TOKEN_DISPATCH_H
 
-#include "../mega_moe_impl.h"
+#include "../common/mega_moe_utils.h"
 
 namespace MegaMoeImpl {
 
@@ -414,6 +414,203 @@ __aicore__ inline void DispatchExpertTokens(const TokenDispatchContext &context,
                 AtomicAdd(dispatchWaveReadyCount + static_cast<int64_t>(waveIdx) * INT_CACHELINE,
                           overlapRowEnd - overlapRowBegin);
             }
+        }
+    }
+}
+
+// 计算一个专家的接收 token 数，并发布就绪 flag。
+template <typename ActivationType, bool EnableA8W4, bool TopkWeightsPrefetch>
+__aicore__ inline void ComputeExpertTokenCountAndNotify(
+    const TokenDispatchContext &context, const TokenDispatchArgs &args,
+    TokenDispatchScratch<ActivationType> &scratch, uint32_t localExpertId, uint64_t &sendCnt)
+{
+    sendCnt = 0;
+    GlobalTensor<int32_t> countSrcGlobal;
+    countSrcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+        args.maskRecvPtr + static_cast<uint64_t>(localExpertId) * context.worldSize * context.maskSlotSize +
+        context.maskAlignSize));
+    DataCopyExtParams countCopyParams{static_cast<uint16_t>(context.worldSize), static_cast<uint32_t>(sizeof(int32_t)),
+                                      static_cast<uint32_t>(context.maskSlotSize - sizeof(int32_t)), 0U, 0U};
+    DataCopyPadExtParams<int32_t> countPad{true, 0U, 0U, 0U};
+    DataCopyPad(scratch.sendCntTensor, countSrcGlobal, countCopyParams, countPad);
+
+    if constexpr (EnableA8W4) {
+        if (localExpertId != 0) {
+            DataCopyPad(scratch.cumsumInfoTensor, scratch.cumsumInfoGlobalTensor,
+                        {1U, static_cast<uint32_t>(context.worldSize * localExpertId * sizeof(int32_t)), 0U, 0U, 0U},
+                        {true, 0U, 0U, 0U});
+        }
+    }
+    SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
+    if constexpr (TopkWeightsPrefetch) {
+        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+    }
+    constexpr int32_t countStrideI32 = ALIGN_32 / sizeof(int32_t);
+    for (uint32_t rankIdx = 0; rankIdx < context.worldSize; ++rankIdx) {
+        int32_t rankCount = scratch.sendCntTensor.GetValue(rankIdx * countStrideI32);
+        sendCnt += static_cast<uint64_t>(rankCount);
+        scratch.cumsumRevCntInRank += static_cast<uint64_t>(rankCount);
+        scratch.cumsumInfoTensor.SetValue(localExpertId * context.worldSize + rankIdx,
+                                          static_cast<int32_t>(scratch.cumsumRevCntInRank));
+    }
+
+    scratch.expertTokenCntTensor.SetValue(0, sendCnt);
+    SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
+    uint64_t countOffset = localExpertId * INT32_PER_256B * context.countWorkspace.blockNum +
+                           INT32_PER_256B * context.countWorkspace.blockIdx;
+    DataCopy<int32_t>(scratch.expertRevNumsGlobalTensor[countOffset], scratch.expertTokenCntTensor, INT32_PER_256B);
+    if constexpr (EnableA8W4) {
+        DataCopyPad(scratch.cumsumInfoGlobalTensor, scratch.cumsumInfoTensor,
+                    {1U, static_cast<uint32_t>(context.worldSize * (localExpertId + 1) * sizeof(int32_t)), 0U, 0U, 0U});
+    }
+    PipeBarrier<PIPE_ALL>();
+
+    __gm__ int32_t *sendCntFlag =
+        reinterpret_cast<__gm__ int32_t *>(args.sendCntFlagPtr) +
+        static_cast<uint64_t>(localExpertId) * context.countWorkspace.blockNum * INT_CACHELINE +
+        static_cast<uint64_t>(context.countWorkspace.blockIdx) * INT_CACHELINE;
+    AscendC::AtomicAdd(sendCntFlag, static_cast<int32_t>(1));
+}
+
+// 导出 Token Dispatch 生成的逐专家接收 token 数。
+template <typename ActivationType, bool ReloadCumsumFromGm>
+__aicore__ inline void ExportExpertTokenCounts(const TokenDispatchContext &context,
+                                               TokenDispatchScratch<ActivationType> &scratch,
+                                               GM_ADDR expertTokenNumsOutPtr)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if constexpr (ReloadCumsumFromGm) {
+        DataCopyPad(scratch.cumsumInfoTensor, scratch.cumsumInfoGlobalTensor,
+                    {1U, static_cast<uint32_t>(context.worldSize * context.expertCapacityPerRank * sizeof(int32_t)),
+                     0U, 0U, 0U},
+                    {true, 0U, 0U, 0U});
+        SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
+        WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
+    }
+    int32_t lastRankIdx = static_cast<int32_t>(context.worldSize - 1U);
+    scratch.expertTokenNumsOutTensor.SetValue(0, scratch.cumsumInfoTensor.GetValue(lastRankIdx));
+    for (int32_t expertIdx = 1; expertIdx < static_cast<int32_t>(context.expertCapacityPerRank); ++expertIdx) {
+        int32_t currentCount = scratch.cumsumInfoTensor.GetValue(
+            expertIdx * static_cast<int32_t>(context.worldSize) + lastRankIdx);
+        int32_t previousCount = scratch.cumsumInfoTensor.GetValue(
+            (expertIdx - 1) * static_cast<int32_t>(context.worldSize) + lastRankIdx);
+        scratch.expertTokenNumsOutTensor.SetValue(expertIdx, currentCount - previousCount);
+    }
+    SyncFuncStatic<HardEvent::S_MTE3, SYNC_EVENT_ID2>();
+    GlobalTensor<int32_t> expertTokenNumsOut;
+    expertTokenNumsOut.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(expertTokenNumsOutPtr));
+    DataCopyPad(expertTokenNumsOut, scratch.expertTokenNumsOutTensor,
+                {1U, static_cast<uint32_t>(context.expertCapacityPerRank * sizeof(int32_t)), 0U, 0U, 0U});
+    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+}
+
+struct ExpertTokenCountExportContext {
+    BlockWorkspaceContext countWorkspace;
+    uint32_t expertPerRank;
+    bool participates;
+};
+
+struct ExpertTokenCountExportArgs {
+    GM_ADDR expertRevTokenNumsPtr;
+    GM_ADDR expertTokenNumsOutPtr;
+};
+
+struct ExpertTokenCountExportScratch {
+    LocalTensor<int32_t> stridedTensor;
+    LocalTensor<int32_t> compactTensor;
+};
+
+__aicore__ inline void InitExpertTokenCountExportBuffers(
+    const ExpertTokenCountExportContext &context, ExpertTokenCountExportScratch &scratch)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if (!context.participates) {
+        return;
+    }
+    uint32_t stridedTensorBytes = context.expertPerRank * static_cast<uint32_t>(ALIGN_32);
+    scratch.stridedTensor =
+        LocalTensor<int32_t>(TPosition::VECCALC, 0U, stridedTensorBytes / sizeof(int32_t));
+    uint32_t compactTensorBytes = Ops::Base::CeilAlign(
+        static_cast<uint64_t>(context.expertPerRank * sizeof(int32_t)), static_cast<uint64_t>(ALIGN_32));
+    scratch.compactTensor = LocalTensor<int32_t>(
+        TPosition::VECCALC, stridedTensorBytes, compactTensorBytes / sizeof(int32_t));
+}
+
+// 从稳定的物理 workspace 槽导出专家 token 数。
+__aicore__ inline void ExportExpertTokenCountsFromWorkspace(
+    const ExpertTokenCountExportContext &context, const ExpertTokenCountExportArgs &args,
+    ExpertTokenCountExportScratch &scratch)
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    if (!context.participates) {
+        return;
+    }
+    GlobalTensor<int32_t> expertRevTokenNums;
+    expertRevTokenNums.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(args.expertRevTokenNumsPtr));
+    uint32_t expertCountStrideBytes =
+        context.countWorkspace.blockNum * static_cast<uint32_t>(INT32_PER_256B) * sizeof(int32_t);
+    DataCopyPad(scratch.stridedTensor,
+                expertRevTokenNums[context.countWorkspace.blockIdx * static_cast<uint32_t>(INT32_PER_256B)],
+                {static_cast<uint16_t>(context.expertPerRank), static_cast<uint32_t>(sizeof(int32_t)),
+                 expertCountStrideBytes - static_cast<uint32_t>(sizeof(int32_t)), 0U, 0U},
+                {true, 0U, 0U, 0U});
+    SyncFuncStatic<HardEvent::MTE2_S, SYNC_EVENT_ID2>();
+    for (uint32_t expertIdx = 0U; expertIdx < context.expertPerRank; ++expertIdx) {
+        int32_t tokenCount =
+            scratch.stridedTensor.GetValue(expertIdx * static_cast<uint32_t>(INT32_PER_256B));
+        scratch.compactTensor.SetValue(expertIdx, tokenCount);
+    }
+    SyncFuncStatic<HardEvent::S_MTE3, SYNC_EVENT_ID2>();
+    GlobalTensor<int32_t> expertTokenNumsOut;
+    expertTokenNumsOut.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(args.expertTokenNumsOutPtr));
+    DataCopyPad(expertTokenNumsOut, scratch.compactTensor,
+                {1U, static_cast<uint32_t>(context.expertPerRank * sizeof(int32_t)), 0U, 0U, 0U});
+    SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+    WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+}
+
+// 执行一个 MoE 专家的 SendCount 和 Token Dispatch。
+template <typename ActivationType, typename QuantScaleType, bool EnableA8W4, uint32_t Gmm1TileM,
+          bool TopkWeightsPrefetch>
+__aicore__ inline void RunMoeExpertDispatchStage(
+    const TokenDispatchContext &context, const TokenDispatchArgs &args,
+    TokenDispatchScratch<ActivationType> &scratch, uint32_t expertIdx, uint64_t &sendCnt)
+{
+    sendCnt = 0U;
+    if constexpr (g_coreType == AIV) {
+        if (GetSubBlockIdx() != 1U) {
+            return;
+        }
+        ComputeExpertTokenCountAndNotify<ActivationType, EnableA8W4, TopkWeightsPrefetch>(
+            context, args, scratch, expertIdx, sendCnt);
+        if (sendCnt != 0U) {
+            DispatchExpertTokens<ActivationType, QuantScaleType, EnableA8W4, Gmm1TileM, TopkWeightsPrefetch>(
+                context, args, scratch, expertIdx);
+        }
+    }
+}
+
+// 推进 AIV1 Dispatch 游标，并确保每个新暴露的专家只预取一次。
+template <typename ActivationType, typename QuantScaleType, uint32_t Gmm1TileM, bool TopkWeightsPrefetch>
+__aicore__ inline void DispatchWaveExpertsUntil(
+    const TokenDispatchContext &context, const TokenDispatchArgs &args,
+    TokenDispatchScratch<ActivationType> &scratch, uint32_t &nextDispatchExpert, uint32_t dispatchEnd)
+{
+    if constexpr (g_coreType == AIV) {
+        if (GetSubBlockIdx() != 1U) {
+            return;
+        }
+        for (; nextDispatchExpert < dispatchEnd; ++nextDispatchExpert) {
+            uint64_t sendCnt = 0U;
+            RunMoeExpertDispatchStage<ActivationType, QuantScaleType, false, Gmm1TileM, TopkWeightsPrefetch>(
+                context, args, scratch, nextDispatchExpert, sendCnt);
         }
     }
 }
