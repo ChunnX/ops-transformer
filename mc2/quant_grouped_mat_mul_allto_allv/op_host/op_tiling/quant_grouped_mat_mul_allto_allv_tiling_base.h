@@ -122,6 +122,7 @@ constexpr uint32_t SYS_WORKSPACE_SIZE = 16U * 1024U * 1024U;
 constexpr uint32_t MAX_TURN_NUM = 24;
 constexpr int32_t MAX_BASE_K = 128;
 constexpr uint64_t MAX_EXPERT_NUM = 256;
+constexpr uint64_t MAX_TOTAL_EXPERTS_FOR_TENSOR = 2048U;
 constexpr uint64_t COMM_TILE = 8; // 每卡数据分配几次计算
 constexpr int64_t MAX_EXPERT_NUM_PER_RANK = 32;
 constexpr int64_t MAX_DIM_VALUE = 65536;
@@ -151,6 +152,8 @@ protected:
     ge::graphStatus PostTiling() override;
     QuantModePair GetQuantMode(const gert::TilingContext *context, const char *opName);
     const char *opName_{nullptr};
+
+    bool countsFromTensor_ = false;
 
     NpuArch npuArch_;
 };

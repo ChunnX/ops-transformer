@@ -37,7 +37,8 @@ public:
                                 GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
                                 GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM,
                                 GmmArrayAddrType *gmmArrayAddrIn, GmmArrayAddrType *mmArrayAddrIn, TPipe *tPipe,
-                                bool isA2avGmmFlag)
+                                bool isA2avGmmFlag, GM_ADDR sendCountsTensorGM = nullptr,
+                                GM_ADDR recvCountsTensorGM = nullptr)
     {
         // init member variables
         GET_TILING_DATA(tilingData, tilingGM);
@@ -62,7 +63,8 @@ public:
         uint64_t hcclCcTilingOffset = offsetof(TilingDataType, hcclA2avTilingInfo) +
                                       offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
         commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commOutGm_, commOutGm_,
-                    static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum));
+                    static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum), tPipe, sendCountsTensorGM,
+                    recvCountsTensorGM);
         // scale commOut区域：MX场景scale通信输出
         if constexpr (MX_QUANT_MODE) {
             uint64_t scaleAxis = CeilDiv(tilingData_->taskTilingInfo.H1, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
@@ -78,10 +80,11 @@ public:
         if (tilingData_->isNeedMM != 0) {
             localComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, mmxScaleGM, mmWeightScaleGM, mmyOptionalGM,
                                 computeWorkspaceGm_, tilingData_, &tilingData_->mmQuantTilingData, mmArrayAddrIn, tPipe,
-                                isA2avGmmFlag);
+                                isA2avGmmFlag, sendCountsTensorGM, recvCountsTensorGM);
         }
         computeOp.Init(commOutGm_, gmmweightGM, computeScaleGm_, gmmWeightScaleGM, gmmyGM, computeWorkspaceGm_,
-                       tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag);
+                       tilingData_, &tilingData_->gmmQuantTilingData, gmmArrayAddrIn, tPipe, isA2avGmmFlag,
+                       sendCountsTensorGM, recvCountsTensorGM);
     }
 
     __aicore__ inline void Process()
@@ -134,8 +137,6 @@ private:
                     SYNC_FLAG_ID_COMM_DONE + SYNC_FLAG_AIV1_OFFSET);
 #endif
                 computeOp.Process(start, actualExpertNum);
-                AscendC::CrossCoreSetFlag<SYNC_MODE_AIC_BARRIER, PIPE_FIX>(SYNC_FLAG_ID_AIC_BARRIER);
-                AscendC::CrossCoreWaitFlag<SYNC_MODE_AIC_BARRIER, PIPE_FIX>(SYNC_FLAG_ID_AIC_BARRIER);
             }
         }
     }

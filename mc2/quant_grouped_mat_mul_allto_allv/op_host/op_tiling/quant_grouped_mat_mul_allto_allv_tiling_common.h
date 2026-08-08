@@ -93,6 +93,8 @@ public:
     }
     ~QuantGroupedMatmulAllToAllvTilingCommon() override = default;
 
+    static constexpr uint64_t EXPERT_MAX_VALUE = 256U;
+
 protected:
     void Reset();
     ge::graphStatus GetShapeAttrsInfo() override;

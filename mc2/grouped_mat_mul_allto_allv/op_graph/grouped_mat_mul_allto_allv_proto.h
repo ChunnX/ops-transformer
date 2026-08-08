@@ -41,8 +41,8 @@ and should match that of mm_x; the format supports ND.
 * @par Attributes:
 * @li group: A required String identifying the expert group of ranks
 * @li ep_world_size: A required int identifying the number of expert parallel group rank num.
-* @li send_counts: An int list. A list containing amount of data to be sent.
-* @li recv_counts: An int list. A list containing amount of data to be received.
+* @li send_counts: An optional int list. A list containing amount of data to be sent. Mutually exclusive with send_counts_tensor; required when e*ep_world_size <= 256, must use send_counts_tensor instead when e*ep_world_size > 256.
+* @li recv_counts: An optional int list. A list containing amount of data to be received. Mutually exclusive with recv_counts_tensor; required when e*ep_world_size <= 256, must use recv_counts_tensor instead when e*ep_world_size > 256.
 * @li trans_gmm_weight: A boolean value. Indicating whether gmm_weight is transposed.
 * @li trans_mm_weight: A boolean value. Indicating whether mm_weight is transposed.
 * @li comm_mode: A String value. Indicating communication type.
@@ -64,8 +64,8 @@ REG_OP(GroupedMatMulAlltoAllv)
     .OUTPUT(mm_y, TensorType({DT_FLOAT16, DT_BF16}))
     .REQUIRED_ATTR(group, String)
     .REQUIRED_ATTR(ep_world_size, Int)
-    .REQUIRED_ATTR(send_counts, ListInt)
-    .REQUIRED_ATTR(recv_counts, ListInt)
+    .ATTR(send_counts, ListInt, {})
+    .ATTR(recv_counts, ListInt, {})
     .ATTR(trans_gmm_weight, Bool, false)
     .ATTR(trans_mm_weight, Bool, false)
     .ATTR(comm_mode, String, "ai_cpu")

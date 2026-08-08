@@ -394,10 +394,22 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckParamsAttrEpAndSetLoca
         return ge::GRAPH_FAILED;
     } else {
         uint64_t expertNum = localParams_.ep * rankDim;
-        OP_TILING_CHECK(expertNum > MAX_EXPERT_NUM,
-                        OP_LOGE_FOR_INVALID_VALUE(opName_, "expertNum", std::to_string(expertNum),
-                                                  "<= " + std::to_string(MAX_EXPERT_NUM)),
-                        return ge::GRAPH_FAILED);
+        if (countsFromTensor_) {
+            OP_TILING_CHECK(expertNum > MAX_TOTAL_EXPERTS_FOR_TENSOR,
+                            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                                opName_, "expertNum", std::to_string(expertNum),
+                                "exceeds max expert num for countsFromTensor"),
+                            return ge::GRAPH_FAILED);
+        } else {
+            OP_TILING_CHECK(expertNum > MAX_EXPERT_NUM,
+                            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                                opName_, "expertNum", std::to_string(expertNum),
+                                (std::string("exceeds max expert num, use sendCountsTensor/recvCountsTensor when "
+                                             "expertNum > ") +
+                                 std::to_string(EXPERT_MAX_VALUE))
+                                    .c_str()),
+                            return ge::GRAPH_FAILED);
+        }
     }
 
     auto groupSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_GROUP_SIZE_OPTIONAL_INDEX);
@@ -686,9 +698,9 @@ uint64_t MxQuantGroupedMatmulAllToAllvTiling::GetTilingKey() const
         return ge::GRAPH_FAILED;
     }
     const uint64_t tilingKey = GET_TPL_TILING_KEY(localParams_.hasSharedMm, localParams_.isGmmWeightTrans,
-                                                  localParams_.isMmWeightTrans, commMode);
-    OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
-            localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, tilingKey);
+                                                  localParams_.isMmWeightTrans, commMode, countsFromTensor_);
+    OP_LOGD(opName_, "GET_TPL_TILING_KEY: [%d,%d,%d,%d,%d], TilingKey is [%lu].", localParams_.hasSharedMm,
+            localParams_.isGmmWeightTrans, localParams_.isMmWeightTrans, commMode, countsFromTensor_, tilingKey);
     return tilingKey;
 }
 
