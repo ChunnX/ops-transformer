@@ -36,12 +36,14 @@ ge::graphStatus MQSMLATilingCheck::CheckParaExistenceAntiquant() const
         if (perfMode_ != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
             perfMode_ != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
             OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
-                        OP_LOGE(opName_, "when layout_kv is PA_BBND, sequsedOriKv must not be null."),
-                        return ge::GRAPH_FAILED);
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                    opName_, "seqused_ori_kv", "When layout_kv is PA_BBND, seqused_ori_kv must not be null"),
+                return ge::GRAPH_FAILED);
         }
         OP_CHECK_IF(opParamInfo_.oriBlockTable.tensor == nullptr,
-                    OP_LOGE(opName_, "when layout_kv is PA_BBND, oriBlockTable must not be null."),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                opName_, "ori_block_table", "When layout_kv is PA_BBND, ori_block_table must not be null"),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -62,14 +64,14 @@ ge::graphStatus MQSMLATilingCheck::CheckCmpSparseIndicesExistence()
         if (qLayout_ == MQSMLALayout::BSND) {
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) <= 0) {
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cmpSparseIndices",
-                    Ops::Base::ToString(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
+                    ToStringRaw(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
                     "When qLayout is BSND, topK should be greater than 0, but got " +
                     std::to_string(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3)));
                 return ge::GRAPH_FAILED;
             }
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_1) != s1Size_) {
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cmpSparseIndices",
-                    Ops::Base::ToString(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
+                    ToStringRaw(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
                     "When qLayout is BSND, cmpSparseIndices's S should be equal to s1Size:" +
                     std::to_string(s1Size_) + ", but got " +
                     std::to_string(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(1)));
@@ -78,14 +80,14 @@ ge::graphStatus MQSMLATilingCheck::CheckCmpSparseIndicesExistence()
         } else {
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_2) <= 0) {
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cmpSparseIndices",
-                    Ops::Base::ToString(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
+                    ToStringRaw(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
                     "When qLayout is TND, topK should be greater than 0, but got " +
                     std::to_string(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(2)));
                 return ge::GRAPH_FAILED;
             }
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_0) != qTSize_) {
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "cmpSparseIndices",
-                    Ops::Base::ToString(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
+                    ToStringRaw(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape()).c_str(),
                     "When qLayout is TND, cmpSparseIndices's T should be equal to qTSize:" +
                     std::to_string(qTSize_) + ", but got " +
                     std::to_string(opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_0)));
@@ -137,8 +139,9 @@ ge::graphStatus MQSMLATilingCheck::CheckHCAExistence()
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(kvLayout_ == MQSMLALayout::TND && opParamInfo_.cuSeqLensCmpKv.tensor == nullptr,
-                OP_LOGE(opName_, "cuSeqLensCmpKv must not be empty when kvLayout is TND in HCA mode."),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+            opName_, "cu_seqlens_cmp_kv", "Cu_seqlens_cmp_kv must not be empty when layout_kv is TND in HCA mode"),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -185,18 +188,23 @@ ge::graphStatus MQSMLATilingCheck::CheckCSAExistence()
 
 ge::graphStatus MQSMLATilingCheck::CheckCmpRatioExistence()
 {
-    OP_CHECK_IF(opParamInfo_.cmpRatio == nullptr, OP_LOGE(opName_, "cmpRatio is required, but got nullptr."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.cmpRatio == nullptr,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+            opName_, "cmp_ratio", "Cmp_ratio is required, but got nullptr"),
+        return ge::GRAPH_FAILED);
 
     if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         OP_CHECK_IF(*opParamInfo_.cmpRatio != 1,
-                    OP_LOGE(opName_, "When SWA mode, cmpRatio must be 1, but got %ld.", *opParamInfo_.cmpRatio),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                opName_, "cmp_ratio", "When SWA mode, Cmp_ratio must be 1, but got " +
+                std::to_string(*opParamInfo_.cmpRatio)),
+            return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(*opParamInfo_.cmpRatio < 1 || *opParamInfo_.cmpRatio > 128,
-                    OP_LOGE(opName_, "When non-SWA mode, cmpRatio must be in range [1, 128], but got %ld.",
-                            *opParamInfo_.cmpRatio),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(
+                opName_, "cmp_ratio", "When non-SWA mode, cmp_ratio must be in range [1, 128], but got " +
+                std::to_string(*opParamInfo_.cmpRatio)),
+            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
