@@ -375,7 +375,6 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
         </tbody>
     </table>
 
-
 - **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
@@ -462,7 +461,11 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
 ## 约束说明
 
 - 确定性计算：
+
+    <!-- npu="950" id7 -->
     - <term>Ascend 950PR/Ascend 950DT</term>：aclnnDenseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+
+    <!-- end id7 -->
 
 - 公共约束：
   - 参数q、k、dq、dk的数据类型应保持一致，支持FLOAT16和BFLOAT16。

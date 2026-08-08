@@ -21,6 +21,7 @@
 - <term>Atlas 训练系列产品</term>：不支持
 <!-- end id6 -->
 
+
 ## 功能说明
 
 - 算子功能：该算子为AICPU算子，是aclnnDenseLightningIndexerKLLossGrad算子的前置算子。根据aclnnDenseLightningIndexerKLLossGrad算子的输入shape、layout、mask和压缩比例信息，计算并输出分核切分metadata。输出结果可作为aclnnDenseLightningIndexerKLLossGrad算子的metadataOptional输入，减少主算子tiling阶段对host array的访问。

@@ -8,7 +8,7 @@
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列加速卡产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
@@ -62,3 +62,4 @@
 | 调用方式 | 调用样例 | 说明 |
 |----------|----------|------|
 | PyTorch API | - | 通过[torch.ops.cann_ops_transformer.quant_lightning_indexer](../../torch_extension/cann_ops_transformer/docs/zh/quant_lightning_indexer.md)接口调用QuantLightningIndexerV2算子。 |
+| aclnn API | `aclnnQuantLightningIndexerV2` | 通过[aclnnQuantLightningIndexerV2](docs/aclnnQuantLightningIndexerV2.md)两段式接口调用。示例代码见[examples/test_aclnn_quant_lightning_indexer_v2.cpp](examples/test_aclnn_quant_lightning_indexer_v2.cpp)。 |

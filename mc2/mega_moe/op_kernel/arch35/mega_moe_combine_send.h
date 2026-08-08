@@ -16,7 +16,23 @@
 #ifndef MEGA_MOE_COMBINE_SEND_H
 #define MEGA_MOE_COMBINE_SEND_H
 
+#if __has_include("version/asc_devkit_version.h") && __has_include("version/hcomm_version.h")
+#include "version/asc_devkit_version.h"
+#include "version/hcomm_version.h"
+
+#if (ASC_DEVKIT_MAJOR > 9 || (ASC_DEVKIT_MAJOR == 9 && ASC_DEVKIT_MINOR > 0)) && \
+    (HCOMM_MAJOR > 9 || (HCOMM_MAJOR == 9 && HCOMM_MINOR > 0))
+#define ENABLE_MEGA_MOE_LAYERED_KERNEL
+#endif
+
+#endif
+
+#if ASC_DEVKIT_MAJOR >= 9
+#include "basic_api/kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
+
 #include "mega_moe_base.h"
 #if __has_include("../../common/mc2_kernel_utils.h")
 #include "../../common/mc2_kernel_utils.h"
@@ -26,24 +42,25 @@
 #include "../../../moe_distribute_dispatch_v2/op_kernel/quantize_functions.h"
 #endif
 
-#include "mega_moe_impl_base.h"
 using namespace AscendC;
 
 namespace MegaMoeCombineImpl {
 
 template <typename ElementMMadOut2, typename BlockShape>
-__aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, LocalTensor<int32_t> &metaInfoTensor,
+__aicore__ inline void CombineTokens(uint32_t nLoc, uint32_t n, LocalTensor<int32_t> &metaInfoTensor,
                                      LocalTensor<ElementMMadOut2> &l0cOutUbGMM2, BlockShape &actualBlockShape,
-                                     const Params &params)
+                                     uint32_t ubTileN, const Params &params)
 {
+    // The caller owns the GM-to-UB lifetime of metaInfoTensor and must make it
+    // scalar-visible once after the bulk preload.  Keeping that dependency at
+    // the preload boundary avoids one MTE2_S round trip for every token row.
     int32_t lenTile = Get<M_VALUE>(actualBlockShape);
     AscendC::GlobalTensor<ElementMMadOut2> gmRemoteD;
     uint64_t gmRemoteBaseOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
     AscendC::DataCopyExtParams ub2GmParams{1, 0, 0, 0, 0};
     ub2GmParams.blockCount = 1;
-    ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2); // N_VALUE是当前tile块的n长度
-    AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(0);
-    AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(0);
+    // 尾块只发送 actualN 个有效元素，但 UB 中相邻两行仍按物理 tile 宽度 ubTileN 排布。
+    ub2GmParams.blockLen = Get<N_VALUE>(actualBlockShape) * sizeof(ElementMMadOut2);
     for (int32_t tileIdx = 0; tileIdx < lenTile; ++tileIdx) {
         uint32_t toRankId = metaInfoTensor.GetValue(tileIdx * 8);
         uint32_t tokenIdx = metaInfoTensor.GetValue(tileIdx * 8 + 1);
@@ -51,8 +68,38 @@ __aicore__ inline void CombineTokens(uint32_t mLoc, uint32_t nLoc, uint32_t n, L
         gmRemoteD.SetGlobalBuffer(
             reinterpret_cast<__gm__ ElementMMadOut2 *>(GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
         uint64_t gmDstOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * n + nLoc;
-        AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * Get<N_VALUE>(actualBlockShape)],
-                             ub2GmParams);
+        AscendC::DataCopyPad(gmRemoteD[gmDstOffset], l0cOutUbGMM2[tileIdx * ubTileN], ub2GmParams);
+    }
+}
+
+// Wave combine has one complete row resident in UB. Resolve the route and
+// destination row once, then issue fixed-size remote copies for both BF16 and
+// FP8 rows.
+template <typename Element>
+__aicore__ inline void SendCombineTokenRow(uint32_t rowElements, uint64_t gmRemoteBaseOffset,
+                                           LocalTensor<int32_t> &metaInfoTensor, LocalTensor<Element> &rowTensor,
+                                           const Params &params)
+{
+    uint32_t toRankId = metaInfoTensor.GetValue(RANK_ID);
+    uint32_t tokenIdx = metaInfoTensor.GetValue(TOKEN_ID);
+    uint32_t topkIdx = metaInfoTensor.GetValue(TOPK_INDEX);
+
+    AscendC::GlobalTensor<Element> gmRemoteD;
+    gmRemoteD.SetGlobalBuffer(
+        reinterpret_cast<__gm__ Element *>(GetRankWinAddrWithOffset(toRankId, gmRemoteBaseOffset)));
+    uint64_t gmDstRowOffset =
+        (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * rowElements;
+
+    constexpr uint32_t TRANSFER_BYTES = 512U;
+    constexpr uint32_t TILE_ELEMENTS = TRANSFER_BYTES / sizeof(Element);
+    AscendC::DataCopyExtParams ub2GmParams{1U, 0U, 0U, 0U, 0U};
+    for (uint32_t elementOffset = 0U; elementOffset < rowElements; elementOffset += TILE_ELEMENTS) {
+        // 每轮最多下发 512B；最后一轮不足 512B 时只发送有效尾块。
+        uint32_t remainingElements = rowElements - elementOffset;
+        uint32_t currentElements = remainingElements < TILE_ELEMENTS ? remainingElements : TILE_ELEMENTS;
+        ub2GmParams.blockLen = currentElements * sizeof(Element);
+        AscendC::DataCopyPad(
+            gmRemoteD[gmDstRowOffset + elementOffset], rowTensor[elementOffset], ub2GmParams);
     }
 }
 
@@ -62,6 +109,8 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
                                                 LocalTensor<int32_t> &metaInfoTensor, LocalTensor<DataType> &ubQuant,
                                                 const Params &params, GM_ADDR localSrcPtr)
 {
+#if defined(ENABLE_MEGA_MOE_LAYERED_KERNEL)
+
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID3>();
     int64_t quantTokenSize = IsQuantized ? (n + nScale) : n;
     uint32_t toRankId = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + RANK_ID);
@@ -103,6 +152,8 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
         GM_ADDR remoteAddr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset) + dstBaseOffset * sizeof(DataType);
         params.combineCommParams.hcomm->WriteNbi(channelHandle, remoteAddr, srcAddr, quantTokenSize * sizeof(DataType));
     }
+
+#endif
 }
 
 // =============================================
@@ -120,7 +171,10 @@ __aicore__ inline void QuantMxFp8(LocalTensor<ExpandXType> &outLocal, LocalTenso
     __ubuf__ uint16_t *maxExpAddr = (__ubuf__ uint16_t *)floatTemp.GetPhyAddr();
     __ubuf__ uint16_t *halfScaleLocalAddr = (__ubuf__ uint16_t *)floatTemp[Align32(mxScaleNum)].GetPhyAddr();
     __ubuf__ int8_t *outLocalAddr = (__ubuf__ int8_t *)castFp8LocalTensor.GetPhyAddr();
-    __ubuf__ uint16_t *mxScaleLocalAddr = (__ubuf__ uint16_t *)castFp8LocalTensor[processLen].GetPhyAddr();
+    // The MTE record stores scales after the 256B-aligned FP8 token region.
+    uint32_t tokenStorageElementCount = Align256<uint32_t>(static_cast<uint32_t>(processLen));
+    __ubuf__ uint16_t *mxScaleLocalAddr =
+        (__ubuf__ uint16_t *)castFp8LocalTensor[tokenStorageElementCount].GetPhyAddr();
     Quant::ComputeMaxExp(srcAddr, maxExpAddr, processLen); // 计算最大Exp
     // 计算scales并填充
     Quant::ComputeScale<Fp8Type>(maxExpAddr, mxScaleLocalAddr, halfScaleLocalAddr, mxScaleNum);
@@ -203,9 +257,9 @@ __aicore__ inline void DeQuantMxFp8(LocalTensor<XType> &inLocal, LocalTensor<flo
 template <typename QuantOutType>
 __aicore__ inline void CombineQuantizedTokens(uint32_t batchStart, uint32_t curRows, uint32_t n, uint32_t nScale,
                                               uint32_t groupIdx, uint32_t rankId, LocalTensor<int32_t> &metaInfoTensor,
-                                              LocalTensor<QuantOutType> &ubQuant, const Params &params)
+                                              LocalTensor<QuantOutType> &ubQuant, const Params &params,
+                                              uint32_t quantTokenSizeBytes)
 {
-    int64_t quantTokenSize = n + nScale;
     uint32_t toRankId = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + RANK_ID);
     uint32_t tokenIdx = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + TOKEN_ID);
     uint32_t topkIdx = metaInfoTensor.GetValue(batchStart * META_INFO_SIZE + TOPK_INDEX);
@@ -215,9 +269,10 @@ __aicore__ inline void CombineQuantizedTokens(uint32_t batchStart, uint32_t curR
     __gm__ void *dstPeermemPtr = GetRankWinAddrWithOffset(toRankId, gmRemoteOffset);
     gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType *>(dstPeermemPtr));
 
-    uint64_t dstBaseOffset = (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * quantTokenSize;
+    uint64_t dstBaseOffset =
+        (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * quantTokenSizeBytes;
 
-    AscendC::DataCopyExtParams singleCopyParams{1, static_cast<uint32_t>(quantTokenSize), 0, 0, 0};
+    AscendC::DataCopyExtParams singleCopyParams{1, quantTokenSizeBytes, 0, 0, 0};
     AscendC::DataCopyPad(gmRemoteD[dstBaseOffset], ubQuant, singleCopyParams);
 }
 
@@ -234,8 +289,10 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
     offset += ubTensorSize * sizeof(T);
 
     uint32_t nScale = Ops::Base::CeilDiv(n, uint32_t(MXFP_SCALE_GROUP_NUM));
+    uint32_t mxScaleNum = Align2(nScale);
     uint32_t nAlign32 = Ops::Base::CeilAlign(n, static_cast<uint32_t>(ALIGN_32));
-    uint32_t floatTempSize = nScale + nScale / 2;
+    // floatTemp stores aligned maxExp followed by one BF16 halfScale for each stored scale.
+    uint32_t floatTempSize = Align32(mxScaleNum) + mxScaleNum / 2;
     LocalTensor<float> floatTemp = LocalTensor<float>(TPosition::VECIN, offset, floatTempSize);
 
     GlobalTensor<T> gmm2OutGm;
@@ -273,7 +330,9 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
             CombineSendTokenToRemote<SendType, IsQuantized>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor,
                                                             ubQuantSend, params, localSrcPtr);
         } else {
-            CombineQuantizedTokens<SendType>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantSend, params);
+            // Only the MTE path uses the padded H=32 quantized-record layout.
+            CombineQuantizedTokens<SendType>(i, 1, n, nScale, groupIdx, rankId, metaInfoTensor, ubQuantSend, params,
+                                             quantTokenSizeBytes);
         }
     }
 

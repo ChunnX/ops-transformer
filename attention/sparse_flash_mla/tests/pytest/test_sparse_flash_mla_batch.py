@@ -73,21 +73,36 @@ print("files:", locals()["testcase_files"])
 def test_sparse_flash_mla(testcase_files):
     print("执行文件: ", testcase_files)
     torch_npu.npu.set_device(0)
-    test_data = torch.load(testcase_files, map_location="cpu")
+    test_data = torch.load(testcase_files, map_location="cpu", weights_only=False)
     npu_result = None
     try:
         npu_result, softmax_lse = sparse_flash_mla_process.call_npu(test_data)
     except Exception as e:
         utils.save_result('Exception', 0, test_data['params'], result_path)
         pytest.fail(f"NPU执行异常: {e}")
-    if npu_result != None:
+
+    global_failed = False
+    fulfill_percent = 0
+    if npu_result is not None:
         result, fulfill_percent = result_compare_method.check_result(test_data['cpu_output'], npu_result)
+        if result == "Failed":
+            global_failed = True
     else:
-        result = "Failed"
+        global_failed = True
         fulfill_percent = 0
+
     if test_data['params'].get('return_softmax_lse'):
-            print("return_softmax_lse is true!!!")
-            result, fulfill_percent = result_compare_method.check_result(test_data['softmax_lse'], softmax_lse)
-    utils.save_result(result, fulfill_percent, test_data['params'], result_path)
-    if result not in ("Passed", "passed", "Pass", "pass"):
-        pytest.fail(f"用例结果校验失败: result={result}, fulfill_percent={fulfill_percent}")
+        print("return_softmax_lse is true!!!")
+        lse_result, lse_percent = result_compare_method.check_result(test_data['softmax_lse'], softmax_lse)
+        if lse_result == "Failed":
+            global_failed = True
+        fulfill_percent = min(fulfill_percent, lse_percent)
+
+    if global_failed:
+        final_result = "Failed"
+    else:
+        final_result = "Passed"
+
+    utils.save_result(final_result, fulfill_percent, test_data['params'], result_path)
+    if final_result not in ("Passed", "passed", "Pass", "pass"):
+        pytest.fail(f"用例结果校验失败: result={final_result}, fulfill_percent={fulfill_percent}")

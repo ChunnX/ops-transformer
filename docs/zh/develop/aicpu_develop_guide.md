@@ -177,9 +177,9 @@ uint32_t AddExampleCpuKernel::Compute(CpuKernelContext& ctx) {
     case DT_FLOAT:
       return AddCompute<float>(...);
     case DT_INT32:
-      return AddCompute<int32>(...);
+      return AddCompute<int32_t>(...);
       ....
-    default : return PARAM_INVALID;
+    default : return kParamInvalid;
   }
 }
 
@@ -190,11 +190,11 @@ REGISTER_CPU_KERNEL(kAddExample, AddExampleCpuKernel);
 
 ## aclnn适配
 
-通常算子开发和编译完成后，会自动生成aclnn接口（一套基于C的API），无需做其他配置，可直接在应用程序中调用aclnn接口实现调用算子。
+通常算子开发和编译完成后，会自动生成aclnn接口（一套基于C的API），无需做其他配置，可直接在应用程序中调用aclnn接口实现算子调用。
 
 ## 编译部署
 
-算子开发完成后，需对算子工程进行编译，生成自定义算子安装包\*\.run，具体操作如下：
+算子开发完成后，需对算子工程进行编译，生成自定义算子安装包 `*.run`，具体操作如下：
 
 1. **准备工作。**
 
@@ -204,14 +204,14 @@ REGISTER_CPU_KERNEL(kAddExample, AddExampleCpuKernel);
    以`AddExample`算子为例，假设开发交付件在`examples`目录，完整代码参见[add_example](../../../examples/add_example/op_kernel_aicpu)目录。
 
    ```bash
-   # 编译指定算子，如bash build.sh --pkg --ops=add_example --aicpu_kernel -j16
-   bash build.sh --pkg --soc=${soc_version} --vendor_name=${vendor_name} --ops=${op_list} --aicpu_kernel [--experimental] [-j${n}]
+   # 编译指定算子，如bash build.sh --pkg --ops=add_example --opkernel_aicpu -j16
+   bash build.sh --pkg --soc=${soc_version} --vendor_name=${vendor_name} --ops=${op_list} --opkernel_aicpu [--experimental] [-j${n}]
    ```
 
    - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2系列产品使用"ascend910b"（默认），Atlas A3系列产品使用"ascend910_93"，Ascend 950PR/Ascend 950DT产品使用"ascend950"。
    - --vendor_name（可选）：\$\{vendor\_name\}表示构建的自定义算子包名，默认名为custom。
    - --ops（可选）：\$\{op\_list\}表示待编译算子，不指定时默认编译所有算子。格式形如"--ops=add_example"。
-   - --aicpu_kernel：开启ENABLE_AICPU_KERNEL，编译kernel_aicpu
+   - --opkernel_aicpu：开启ENABLE_AICPU_KERNEL，编译kernel_aicpu
    - --experimental（可选）：若编译的算子为贡献算子，需配置--experimental。
    - -j（可选）：指定编译线程数，加快编译速度。
 
@@ -234,7 +234,7 @@ REGISTER_CPU_KERNEL(kAddExample, AddExampleCpuKernel);
    自定义算子包安装后在```${ASCEND_HOME_PATH}/opp/vendors/custom_transformer/scripts```目录会生成`uninstall.sh`，通过该脚本可卸载自定义算子包，命令如下：
 
    ```bash
-   bash ${ASCEND_HOME_PATH}/opp/vendors/custom_transformer/scripts/uninstall.sh
+   bash ${ASCEND_HOME_PATH}/opp/vendors/${vendor_name}_transformer/scripts/uninstall.sh
    ```
 
 ## 算子验证
