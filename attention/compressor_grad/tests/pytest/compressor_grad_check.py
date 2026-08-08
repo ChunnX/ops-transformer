@@ -80,86 +80,95 @@ def get_pct_thd(data_type):
 #  日志输出
 # ================================================================
 def print_log(data=None, level='INFO'):
-    print("[%s] [%s]-%s:%s - %s" % (datetime.datetime.now().strftime(
-        "%Y/%m/%d %H:%M:%S"), level, os.path.basename(sys._getframe().f_back.f_code.co_filename),
-                                     str(sys._getframe().f_back.f_lineno).zfill(4), data))
+    stamp = datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+    caller = sys._getframe().f_back
+    caller_file = os.path.basename(caller.f_code.co_filename)
+    caller_line = str(caller.f_lineno).zfill(4)
+    print(f"[{stamp}] [{level}]-{caller_file}:{caller_line} - {data}")
 
 
 # ================================================================
 #  单点位精度对比展示
 # ================================================================
+# 精度对比表格的共用分隔线与表头（display/check 系列函数共享）
+_ROW_DIVIDER = '-' * 87
+_ERROR_DIVIDER = 'Error Line' + '-' * 77
+_MAX_RE_DIVIDER = 'Max-RE line:' + '-' * 75
+_LOOP_HEADER = 'Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff'
+
+
 def cal_relative_diff_np_isclose(real_data, expect_data):
+    """单点相对误差：|real - expect| / (|expect| + 1e-9)。"""
     diff = abs(float(real_data) - float(expect_data))
-    result = diff / (np.abs(expect_data) + 10e-10)
-    return result
+    return diff / (abs(float(expect_data)) + 1e-9)
+
+
+def _format_loop_row(seq, expect_val, real_val):
+    """格式化单行点位：期望值为 inf/nan 时用字符串列，否则用 7 位小数。"""
+    diff_rate = cal_relative_diff_np_isclose(real_val, expect_val)
+    if "inf" in str(expect_val) or "nan" in str(expect_val):
+        diff_abs = "inf" if "inf" in str(expect_val) else "nan"
+        return f"{seq:08d} \t {expect_val:<7} \t {real_val:<7} \t {diff_abs:<7} \t {diff_rate:<7}"
+    diff_abs = abs(np.float64(expect_val) - np.float64(real_val))
+    return f"{seq:08d} \t {expect_val:.7f} \t {real_val:.7f} \t {diff_abs:.7f} \t {diff_rate:.7f}"
+
+
+def _format_error_row(seq, expect_val, real_val, diff_rate):
+    """格式化错误点位明细行（7 位小数定点）。"""
+    diff_abs = abs(np.float64(expect_val) - np.float64(real_val))
+    return f"{seq:08d} \t {expect_val:.7f} \t {real_val:.7f} \t {diff_abs:.7f} \t {diff_rate:.7f}"
+
+
+def _display_row_range(real_data, expect_data, start, row_range):
+    """打印 [start + lo, start + hi) 区间的点位行（绝对序号 = start + idx + 1）。"""
+    for idx in row_range:
+        seq = start + idx + 1
+        print_log(_format_loop_row(seq, expect_data[idx + start], real_data[idx + start]))
 
 
 def display_output_np_isclose(real_data, expect_data, start, end):
     """输出每个点位的对比结果（≤20 点位全显示，>20 显示首尾各 10）。"""
-    def display_inner(idx):
-        j = idx + start
-        diff_rate = cal_relative_diff_np_isclose(real_data[j], expect_data[j])
-
-        if "inf" in str(expect_data[j]) or "nan" in str(expect_data[j]):
-            diff_abs = "inf" if "inf" in str(expect_data[j]) else "nan"
-            print_log('%08d \t %-7s \t %-7s \t %-7s \t %-7s' % (
-                start + idx + 1, expect_data[j], real_data[j], diff_abs, diff_rate))
-        else:
-            diff_abs = abs(np.float64(expect_data[j]) - np.float64(real_data[j]))
-            print_log('%08d \t %0.7f \t %0.7f \t %0.7f \t %0.7f' % (
-                start + idx + 1, expect_data[j], real_data[j], diff_abs, diff_rate))
-
-    print_log('---------------------------------------------------------------------------------------')
-    print_log('Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff')
-    print_log('---------------------------------------------------------------------------------------')
+    print_log(_ROW_DIVIDER)
+    print_log(_LOOP_HEADER)
+    print_log(_ROW_DIVIDER)
     split_count = int(end - start)
     if split_count <= 20:
-        for i in range(split_count + 1):
-            display_inner(i)
+        _display_row_range(real_data, expect_data, start, range(split_count + 1))
     else:
-        for i in range(10):
-            display_inner(i)
+        _display_row_range(real_data, expect_data, start, range(10))
         print_log('...   \t   ...   \t   ...   \t   ...    \t   ...')
-        for i in range(split_count - 10 + 1, split_count + 1):
-            display_inner(i)
+        _display_row_range(real_data, expect_data, start,
+                           range(split_count - 10 + 1, split_count + 1))
 
 
 def display_error_output(real_data, expect_data, err_idx, relative_diff):
     """输出错误点位明细 + 最大相对误差点位。"""
-    print_log('Error Line-----------------------------------------------------------------------------')
-    print_log('Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff')
-    print_log('---------------------------------------------------------------------------------------')
-    count = 0
-    len_err = len(err_idx)
-    for i in err_idx:
-        count += 1
+    print_log(_ERROR_DIVIDER)
+    print_log(_LOOP_HEADER)
+    print_log(_ROW_DIVIDER)
+    err_num = len(err_idx)
+    for count, i in enumerate(err_idx, start=1):
         if count < 10 or (90 < count < 100):
-            print_log('%08d \t %.7f \t %.7f \t %.7f \t %.7f' % (
-                i, expect_data[i], real_data[i], abs(np.float64(
-                    expect_data[i]) - np.float64(real_data[i])),
-                relative_diff[count - 1]))
-        elif count == 10 or (count == 100 and len_err > 100):
-            dot_3 = '...'
-            print_log('%08s \t %07s \t %07s \t %07s \t %07s' %
-                      (dot_3, dot_3, dot_3, dot_3, dot_3))
+            print_log(_format_error_row(i, expect_data[i], real_data[i], relative_diff[count - 1]))
+        elif count == 10 or (count == 100 and err_num > 100):
+            print_log(f"{'...':>8} \t {'...':>7} \t {'...':>7} \t {'...':>7} \t {'...':>7}")
         elif count > 100:
             break
 
-    print_log('Max-RE line:---------------------------------------------------------------------------')
+    print_log(_MAX_RE_DIVIDER)
     max_error = max(relative_diff)
     m_idx_list = err_idx[np.where(relative_diff == max_error)]
-    m_count = 0
-    for m_idx in m_idx_list:
-        m_count += 1
-        if m_count < 4:
-            print_log('%08d \t %.7f \t %.7f \t %.7f \t %.7f' % (
-                m_idx, expect_data[m_idx], real_data[m_idx],
-                abs(np.float64(expect_data[m_idx]) -
-                    np.float64(real_data[m_idx])),
-                max_error))
-        else:
-            break
-    print_log('---------------------------------------------------------------------------------------')
+    for m_idx in m_idx_list[:4]:
+        print_log(_format_error_row(m_idx, expect_data[m_idx], real_data[m_idx], max_error))
+    print_log(_ROW_DIVIDER)
+
+
+def _print_verdict(rtol, atol, pct_thd, fulfill_percent, result_str):
+    """打印 Rtol/Atol/PctThd/PctRlt/Result 汇总表格（check_result 两分支共用）。"""
+    print_log(_ROW_DIVIDER)
+    print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')
+    print_log(_ROW_DIVIDER)
+    print_log(f"{rtol:.4f}    \t {atol:.6f}  \t {pct_thd:.2f}%   \t {fulfill_percent:.6f}%   \t {result_str}")
 
 
 # ================================================================
@@ -178,28 +187,23 @@ def check_result(expect, result, data_type, pct_thd=0.005):
         fulfill_percent: 满足精度要求的百分比
         result_str:      "Pass" / "Failed"
     """
-    real_data = result.cpu().numpy()
-    data_compe = expect.cpu().numpy()
-    real_data = real_data.flatten()
-    data_compe = data_compe.flatten()
-    if real_data.size == 0 and real_data.size == data_compe.size:
+    real_data = result.cpu().numpy().flatten()
+    data_compe = expect.cpu().numpy().flatten()
+    if real_data.size == 0 and data_compe.size == 0:
         print_log('The npu_output is [],and it is same as bm_output, the result of data_compare is "Pass"')
         return 100.0, "Pass"
-    start = 0
-    end = real_data.size - 1
-    if end < start:
-        end = start
     max_error = 0
     result_str = "Failed"
+    start, end = 0, max(real_data.size - 1, 0)
 
     if real_data.size != data_compe.size:
-        print_log('Error,the size of npu output[%s] and benchmark[%s] is not equal.' % (real_data.size, data_compe.size))
+        print_log(f"Error,the size of npu output[{real_data.size}] and benchmark[{data_compe.size}] is not equal.")
         return 0.0, result_str
     overflows_count = data_compe[np.isinf(data_compe)].size + data_compe[np.isnan(data_compe)].size
 
     if overflows_count > 0:
-        print_log('Overflow,size:%s,benchmark_output:%s, %s' % (
-            overflows_count, data_compe[np.isinf(data_compe)][0:10], data_compe[np.isnan(data_compe)][0:10]))
+        print_log(f"Overflow,size:{overflows_count},benchmark_output:"
+                  f"{data_compe[np.isinf(data_compe)][0:10]}, {data_compe[np.isnan(data_compe)][0:10]}")
 
     # 检测 NPU 输出 (real_data) 中的 NaN/Inf；同时计算“两边同坏”（golden 与 NPU
     # 同位置都是 NaN 或都是 Inf）——同坏视为一致（输入语义一致时输出应一致），
@@ -215,9 +219,8 @@ def check_result(expect, result, data_type, pct_thd=0.005):
     unmatched_bad = real_overflow_mask & ~both_bad
     unmatched_bad_count = int(unmatched_bad.sum())
     if real_overflow_count > 0:
-        print_log('NPU output has NaN/Inf, count:%s, nan:%s, inf:%s, sample_values:%s' % (
-            real_overflow_count, int(real_nan_mask.sum()), int(real_inf_mask.sum()),
-            real_data_f32[real_overflow_mask][0:10]))
+        print_log(f"NPU output has NaN/Inf, count:{real_overflow_count}, nan:{int(real_nan_mask.sum())}, "
+                  f"inf:{int(real_inf_mask.sum())}, sample_values:{real_data_f32[real_overflow_mask][0:10]}")
 
     # 仅支持 bfloat16 / float16 / float32，阈值统一从 PRECISION 配置获取
     cfg = PRECISION[data_type]
@@ -227,8 +230,8 @@ def check_result(expect, result, data_type, pct_thd=0.005):
     atol = cfg["atol"]
     max_error_idx = 10000000
 
-    split_count = int(end - start + 1) if end != start else 1
-    print_log('split_count:%s; max_diff_hd:%s;' % (float(split_count), max_diff_hd))
+    split_count = int(end - start) + 1
+    print_log(f"split_count:{float(split_count)}; max_diff_hd:{max_diff_hd};")
 
     # bfloat16 需转 float32 再 isclose；float16 / float32 直接 isclose
     # 注意：使用 equal_nan=False，使 NPU 输出中的 NaN 与 CPU 期望不匹配时判为错误；
@@ -261,13 +264,9 @@ def check_result(expect, result, data_type, pct_thd=0.005):
         max_error = float('inf')
         display_output_np_isclose(real_data, data_compe, start, end)
         pct_thd = (1 - pct_thd) * 100.0
-        print_log('---------------------------------------------------------------------------------------')
-        print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')
-        print_log('---------------------------------------------------------------------------------------')
-        print_log('%.4f    \t %.6f  \t %.2f%%   \t %.6f%%   \t %s' %
-                  (rtol, atol, pct_thd, fulfill_percent, result_str))
-        print_log('NPU output has NaN/Inf unmatched with golden (count=%s, total nan/inf=%s). Force Failed.' %
-                  (unmatched_bad_count, real_overflow_count))
+        _print_verdict(rtol, atol, pct_thd, fulfill_percent, result_str)
+        print_log(f"NPU output has NaN/Inf unmatched with golden (count={unmatched_bad_count}, "
+                  f"total nan/inf={real_overflow_count}). Force Failed.")
         if len(err_diff) > 0:
             display_error_output(real_data, data_compe, err_idx, err_diff[0:max_error_idx])
         return fulfill_percent, result_str
@@ -282,13 +281,9 @@ def check_result(expect, result, data_type, pct_thd=0.005):
             max_error = float(np.max(finite_err_diff[0:max_error_idx]))
             if max_error >= max_diff_hd:
                 result_str = "Failed"
-    print_log('---------------------------------------------------------------------------------------')
-    print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')
-    print_log('---------------------------------------------------------------------------------------')
-    print_log('%.4f    \t %.6f  \t %.2f%%   \t %.6f%%   \t %s' %
-              (rtol, atol, pct_thd, fulfill_percent, result_str))
+    _print_verdict(rtol, atol, pct_thd, fulfill_percent, result_str)
     if len(err_diff) > 0:
-        print_log('Max-RelativeError is: %s. Threshold is: %s.' % (max_error, max_diff_hd))
+        print_log(f"Max-RelativeError is: {max_error}. Threshold is: {max_diff_hd}.")
     if result_str == "Failed":
         display_error_output(real_data, data_compe, err_idx, err_diff[0:max_error_idx])
     return fulfill_percent, result_str
