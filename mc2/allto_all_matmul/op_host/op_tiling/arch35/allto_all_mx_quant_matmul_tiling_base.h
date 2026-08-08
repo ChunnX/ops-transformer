@@ -78,10 +78,10 @@ protected:
     void SetTilingInfo(CommTilingData &tilingInfo) const;
     void SetArch35TilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const;
     ge::graphStatus DoArch35MxQuantMMTiling();
-    void PrintAlltoAllMxQuantMatmulTilingData(ccuAllToAllMatmulTilingData &outTilingData);
+    void PrintAlltoAllMxQuantMatmulTilingData(hcommAllToAllMatmulTilingData &outTilingData);
 
 private:
-    ccuAllToAllMatmulTilingData localTilingData_;
+    hcommAllToAllMatmulTilingData localTilingData_;
     AlltoAllQuantMatmulTilingData arch35TilingData_;
     bool isMxFp4_ = false;
     uint64_t mmMvalueLen_ = 0;

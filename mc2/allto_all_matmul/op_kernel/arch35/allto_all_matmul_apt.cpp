@@ -136,10 +136,10 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
         constexpr uint64_t x1HcclDataType = Apace::GetX1HcclDataType<DTYPE_X1>();
         ALLTO_ALL_MX_QUANT_MATMUL_ARCH35_IMPL(tilingData, pipe, hcclServerType, false, x1HcclDataType);
     } else {
-        REGISTER_TILING_DEFAULT(ccuAllToAllMatmulTilingData);
-        GET_TILING_DATA_WITH_STRUCT(ccuAllToAllMatmulTilingData, tilingData, tilingGM);
+        REGISTER_TILING_DEFAULT(hcommAllToAllMatmulTilingData);
+        GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
         Apace::AllToAllMxQuantMatmulImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_X1,
-            ccuAllToAllMatmulTilingData, hcclServerType, false>
+            hcommAllToAllMatmulTilingData, hcclServerType, false>
             op(&tilingData, &pipe);
         op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM);
         op.Run();
@@ -152,10 +152,10 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
         constexpr uint64_t x1HcclDataType = Apace::GetX1HcclDataType<DTYPE_X1>();
         ALLTO_ALL_MX_QUANT_MATMUL_ARCH35_IMPL(tilingData, pipe, hcclServerType, true, x1HcclDataType);
     } else {
-        REGISTER_TILING_DEFAULT(ccuAllToAllMatmulTilingData);
-        GET_TILING_DATA_WITH_STRUCT(ccuAllToAllMatmulTilingData, tilingData, tilingGM);
+        REGISTER_TILING_DEFAULT(hcommAllToAllMatmulTilingData);
+        GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
         Apace::AllToAllMxQuantMatmulImpl<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_X1,
-            ccuAllToAllMatmulTilingData, hcclServerType, true>
+            hcommAllToAllMatmulTilingData, hcclServerType, true>
             op(&tilingData, &pipe);
         op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM);
         op.Run();
