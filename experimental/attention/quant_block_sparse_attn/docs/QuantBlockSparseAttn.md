@@ -250,7 +250,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>metadata</td>
       <td>输入</td>
       <td>负载均衡元数据。</td>
-      <td>必须传入且不能为 nullptr 或空 Tensor，shape 的维数必须大于 0；由 npu_quant_block_sparse_attn_metadata 生成，有效长度随分 section 结果动态变化。</td>
+      <td>必须传入且不能为 nullptr 或空 Tensor；由 npu_quant_block_sparse_attn_metadata 生成，有效长度随分 section 结果动态变化。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>(metadata_size)</td>
@@ -608,7 +608,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 - 特性交叉约束
 
-  - 当前文档仅描述 FP8 全量化（`quant_mode=1`）场景；`query`、`key`、`value` 的 head dim 必须与量化参数、稀疏 block 参数和输出 head dim 保持一致。
+  - `query`、`key`、`value` 的 head dim 必须与量化参数、稀疏 block 参数和输出 head dim 保持一致。
   - `layout_q` 会影响 `query`、`q_descale` 的轴解释；其余输入参数中的 Batch、Head、Block 维度需与该解释保持一致。`attention_out`、`softmax_lse` 按固定输出语义返回，不随 `layout_q` 改变轴解释。
 
 #### 量化参数组（QuantChecker）
@@ -747,7 +747,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 - 存在性约束
 
-  - `metadata` 在主算子 schema 中为可选输入，但当前执行路径必须传入有效 `metadata`；`metadata` 不能为 nullptr 或空 Tensor，且 shape 的维数必须大于 0。应使用 `npu_quant_block_sparse_attn_metadata` 生成并传入。
+  - `metadata` 在主算子 schema 中为可选输入，但当前执行路径必须传入有效 `metadata`；`metadata` 不能为 nullptr 或空 Tensor。应使用 `npu_quant_block_sparse_attn_metadata` 生成并传入。
 
 - 一致性约束
 
