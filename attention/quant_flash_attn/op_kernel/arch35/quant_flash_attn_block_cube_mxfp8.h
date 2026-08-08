@@ -444,9 +444,6 @@ public:
                                        uint32_t subLoop)
     {
         uint32_t s2Offset = (subLoop % 2 == 0) ? runInfo.s2Idx : runInfo.s2Idx + s2BaseSize / 2;
-        if (constInfo_.dSize == 256 && !USE_DN) { // mxfp8 D==256 decode场景，GM->L1搬运128*256
-            s2Offset = (subLoop % 2 == 0) ? runInfo.s2Idx : runInfo.s2Idx + s2BaseSize;
-        }
         CopyKeySlice(dstTensor, s2Offset, s2RealSize, 0, constInfo_.dSize, runInfo);
     }
 
@@ -472,9 +469,6 @@ public:
                                             uint32_t s2RealSize, uint32_t subLoop)
     {
         uint32_t s2Offset = subLoop % 2 == 0 ? runInfo.s2Idx : runInfo.s2Idx + s2BaseSize / 2;
-        if (constInfo_.dSize == 256 && !USE_DN) {
-            s2Offset = (subLoop % 2 == 0) ? runInfo.s2Idx : runInfo.s2Idx + s2BaseSize;
-        }
         CopyKeyScaleSlice(dstTensor, s2Offset, s2RealSize, 0, constInfo_.dSize / MXFP_GROUP_SIZE, runInfo);
     }
 
@@ -554,12 +548,10 @@ public:
     /* 针对S1Base=128, S2Base = 256, D = 128场景, L1全载/L0全载, 左矩阵驻留. GS1<=80, S=S1*S2 */
     __aicore__ inline void IterateBmm1Nd(MM1_DBUF_T &outputBuf, RunInfoX &runInfo, uint32_t subLoop)
     {
-        uint32_t s2CurSize;
-        if (runInfo.actSingleLoopS2Size <= s2SplitSize) {
-            s2CurSize = runInfo.actSingleLoopS2Size;
-        } else {
+        uint32_t s2CurSize = s2SplitSize;
+        if (unlikely(runInfo.actSingleLoopS2Size < s2BaseSize)) {
             if (subLoop == 0) {
-                s2CurSize = s2SplitSize;
+                s2CurSize = AttentionCommon::Min((int32_t)s2SplitSize, (int32_t)runInfo.actSingleLoopS2Size);
             } else {
                 s2CurSize = runInfo.actSingleLoopS2Size - s2SplitSize;
             }
@@ -859,9 +851,6 @@ public:
             MMParam param =
                 MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo_.dSizeV,
                             (realK + 63) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE, USE_DN, false, k == 0, k == 0);
-            if constexpr (!USE_DN) {
-                param.realM = (uint32_t)runInfo.actMSize;
-            }
             MatmulFullMX<INPUT_T, KV_T, T, 128, dVBaseSize, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
                          SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
                 mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset], mm2BTensor, mmL0ABuffers_, mmL0BBuffers_,
