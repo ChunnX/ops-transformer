@@ -99,6 +99,9 @@ def case_to_row(case, source):
     kv_block_count = math.ceil(max(kv_lengths) / sparse_kv)
     p_scale_value = case.get("p_scale_value")
 
+    # TTK's E2E param planner drops None entries while matching a Python
+    # signature.  Keep the optional p_scale slot last so a missing value cannot
+    # shift the required sparse-index and mask tensors into the wrong positions.
     tensor_shapes = (
         (total_q, n1, head_dim),
         (page_count, n2, page_size, head_dim),
@@ -106,10 +109,10 @@ def case_to_row(case, source):
         (total_q, n1, head_dim // 64, 2),
         (page_count, n2, page_size, head_dim // 64, 2),
         (page_count, n2, math.ceil(page_size / 64), head_dim, 2),
-        None if p_scale_value is None else (1,),
         (batch, n1, q_block_count, kv_block_count),
         (batch, n1, q_block_count),
         (2048, 2048),
+        None if p_scale_value is None else (1,),
     )
     tensor_dtypes = (
         "float8_e4m3fn",
@@ -118,10 +121,10 @@ def case_to_row(case, source):
         "float8_e8m0",
         "float8_e8m0",
         "float8_e8m0",
-        "float8_e8m0",
         "int32",
         "int32",
         "uint8",
+        None if p_scale_value is None else "float8_e8m0",
     )
     softmax_scale = case.get("softmax_scale")
     if softmax_scale is None:

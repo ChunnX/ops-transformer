@@ -258,10 +258,10 @@ def quant_block_sparse_attn(
     q_descale: torch.Tensor,
     k_descale: torch.Tensor,
     v_descale: torch.Tensor,
-    p_scale: Optional[torch.Tensor],
     sparse_indices: torch.Tensor,
     sparse_seq_len: torch.Tensor,
     atten_mask: torch.Tensor,
+    p_scale: Optional[torch.Tensor] = None,
     *,
     cu_seqlens_q: Optional[torch.Tensor] = None,
     cu_seqlens_kv: Optional[torch.Tensor] = None,
@@ -285,7 +285,12 @@ def quant_block_sparse_attn(
     block_table_pattern: str = "sequential",
     seed: int = 0,
 ):
-    """Compute metadata first, then call cann_ops_transformer.quant_block_sparse_attn."""
+    """Compute metadata first, then call the real QBSA operator.
+
+    The TTK-facing signature keeps required tensors before the optional
+    ``p_scale`` tensor.  The real operator call below restores its native
+    argument order, where ``p_scale`` precedes the sparse-index tensors.
+    """
     _ensure_cann_ops()
 
     if seqused_q is None and cu_seqlens_q is None:
