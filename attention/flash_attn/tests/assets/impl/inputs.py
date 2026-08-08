@@ -104,14 +104,9 @@ def customize_inputs(
     """
     block_size = kwargs.get("block_size")
 
-    if torch.is_tensor(block_table):
-        _fill_block_table(block_table, seqused_kv, block_size)
-
-    if mask_mode in (3, 4):
-        _fill_attn_mask(attn_mask, mask_mode, win_left, win_right)
-
     # 小整数张量(cu_seqlens/seqused)的值经 *_values attr 传入(避免与
-    # TTK match_overload 的输入计数冲突), 在此就地填入对应张量
+    # TTK match_overload 的输入计数冲突), 必须先于 block_table 填充,
+    # 否则 _fill_block_table 会读到随机值导致分页表错误
     for name, tensor in (
         ("cu_seqlens_q", cu_seqlens_q),
         ("cu_seqlens_kv", cu_seqlens_kv),
@@ -122,3 +117,9 @@ def customize_inputs(
         if tensor is not None and values is not None:
             t = torch.tensor(list(values), dtype=tensor.dtype)
             tensor.copy_(t.to(device=tensor.device))
+
+    if torch.is_tensor(block_table):
+        _fill_block_table(block_table, seqused_kv, block_size)
+
+    if mask_mode in (3, 4):
+        _fill_attn_mask(attn_mask, mask_mode, win_left, win_right)
