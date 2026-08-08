@@ -329,6 +329,63 @@ inline bool IsRopeOffPlaceholder(const BaseParaInfo &para)
     return storageShape.GetShapeSize() == 0;
 }
 
+inline bool IsEmptyStorageShape(const gert::Shape &storageShape)
+{
+    const size_t dimNum = storageShape.GetDimNum();
+    if (dimNum == 0) {
+        return true;
+    }
+    if (dimNum == 1 && storageShape.GetDim(0) == 0) {
+        return true;
+    }
+    return storageShape.GetShapeSize() == 0;
+}
+
+// ND weight [*, col] or NZ [(col)/a, */16, 16, a] → merged col size.
+inline int64_t GetWeightMergedColSize(const gert::Shape &shape)
+{
+    if (shape.GetDimNum() == MLA_PROLOG_DIM_NUM_4) {
+        return static_cast<int64_t>(shape.GetDim(MLA_PROLOG_DIM_INDEX_0)) *
+               static_cast<int64_t>(shape.GetDim(MLA_PROLOG_DIM_INDEX_3));
+    }
+    return static_cast<int64_t>(shape.GetDim(MLA_PROLOG_DIM_INDEX_1));
+}
+
+// RoPE-off: Dr from kr_cache last dim if valid; else weightDkvKr−Hckv(weightUk); else weightUqQr.
+inline bool InferDrSizeWhenRopeOff(const gert::Shape *krCacheShape, const gert::Shape &weightUkShape,
+                                   const gert::Shape &weightDkvKrShape, const gert::Shape *weightUqQrShape,
+                                   uint32_t &drSize)
+{
+    if (krCacheShape != nullptr && !IsEmptyStorageShape(*krCacheShape)) {
+        const int64_t krDr = krCacheShape->GetDim(krCacheShape->GetDimNum() - 1);
+        if (krDr > 0) {
+            drSize = static_cast<uint32_t>(krDr);
+            return true;
+        }
+    }
+    if (weightUkShape.GetDimNum() >= MLA_PROLOG_DIM_NUM_3) {
+        const int64_t hckv = weightUkShape.GetDim(MLA_PROLOG_DIM_INDEX_2);
+        const int64_t hckvPlusDr = GetWeightMergedColSize(weightDkvKrShape);
+        if (hckv > 0 && hckvPlusDr > hckv) {
+            drSize = static_cast<uint32_t>(hckvPlusDr - hckv);
+            return true;
+        }
+        if (weightUqQrShape != nullptr) {
+            const int64_t nSize = weightUkShape.GetDim(MLA_PROLOG_DIM_INDEX_0);
+            const int64_t dSize = weightUkShape.GetDim(MLA_PROLOG_DIM_INDEX_1);
+            const int64_t nqd = GetWeightMergedColSize(*weightUqQrShape);
+            if (nSize > 0 && dSize >= 0 && (nqd % nSize) == 0) {
+                const int64_t dPlusDr = nqd / nSize;
+                if (dPlusDr > dSize) {
+                    drSize = static_cast<uint32_t>(dPlusDr - dSize);
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr uint32_t NUM_BYTES_BF16 = 2;
 constexpr uint32_t NUM_BYTES_INT8 = 1;

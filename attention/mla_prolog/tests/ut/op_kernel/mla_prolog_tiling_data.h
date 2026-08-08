@@ -65,6 +65,7 @@ namespace optiling {
         float kcScale;                       // kv 的尺度矫正因子
         uint16_t isQcQrScaleEnable;          // query 的尺度矫正因子是否生效（默认是1.0的时候不生效）
         uint16_t isKcScaleEnable;            // kv 的尺度矫正因子是否生效（默认是1.0的时候不生效）
+        uint32_t enableRope;                 // 1=RoPE on, 0=passthrough（运行时开关）
     };
 
     // 2. 完整分块数据结构体（对应 MlaPrologTilingData 宏定义，嵌套基础参数）

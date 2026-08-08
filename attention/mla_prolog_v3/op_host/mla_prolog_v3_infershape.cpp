@@ -30,6 +30,55 @@ inline bool IsRopeShapeOffPlaceholder(const gert::Shape *shape)
     }
     return shape->GetShapeSize() == 0;
 }
+
+inline bool IsEmptyStorageShape(const gert::Shape *shape)
+{
+    return IsRopeShapeOffPlaceholder(shape);
+}
+
+// ND [*, col] or NZ [(col)/a, */16, 16, a]
+inline int64_t GetWeightMergedColSize(const gert::Shape *shape)
+{
+    if (shape->GetDimNum() == DIM_NUM_4) {
+        return shape->GetDim(DIM_INDEX_0) * shape->GetDim(DIM_INDEX_3);
+    }
+    return shape->GetDim(DIM_INDEX_1);
+}
+
+// RoPE-off: kr_cache → weightDkvKr−Hckv → weightUqQr
+inline bool InferDrSizeWhenRopeOff(const gert::Shape *krCacheShape, const gert::Shape *weightUkShape,
+                                   const gert::Shape *weightDkvKrShape, const gert::Shape *weightUqQrShape,
+                                   int64_t &drSize)
+{
+    if (krCacheShape != nullptr && !IsEmptyStorageShape(krCacheShape)) {
+        const int64_t krDr = krCacheShape->GetDim(krCacheShape->GetDimNum() - 1);
+        if (krDr > 0) {
+            drSize = krDr;
+            return true;
+        }
+    }
+    if (weightUkShape != nullptr && weightUkShape->GetDimNum() >= DIM_NUM_3 && weightDkvKrShape != nullptr) {
+        const int64_t hckv = weightUkShape->GetDim(DIM_INDEX_2);
+        const int64_t hckvPlusDr = GetWeightMergedColSize(weightDkvKrShape);
+        if (hckv > 0 && hckvPlusDr > hckv) {
+            drSize = hckvPlusDr - hckv;
+            return true;
+        }
+        if (weightUqQrShape != nullptr) {
+            const int64_t nSize = weightUkShape->GetDim(DIM_INDEX_0);
+            const int64_t dSize = weightUkShape->GetDim(DIM_INDEX_1);
+            const int64_t nqd = GetWeightMergedColSize(weightUqQrShape);
+            if (nSize > 0 && (nqd % nSize) == 0) {
+                const int64_t dPlusDr = nqd / nSize;
+                if (dPlusDr > dSize) {
+                    drSize = dPlusDr - dSize;
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
 } // namespace
 
 ge::graphStatus GetMlaPrologV3ShapeDim(const gert::InferShapeContext *context, MlaPrologProtoShapeParam &shapeParam)
@@ -44,9 +93,13 @@ ge::graphStatus GetMlaPrologV3ShapeDim(const gert::InferShapeContext *context, M
     OP_CHECK_NULL_WITH_CONTEXT(context, ropeCosShape);
     auto weightDqShape = context->GetRequiredInputShape(WEIGHT_DQ_INDEX); // (He, Hcq)
     OP_CHECK_NULL_WITH_CONTEXT(context, weightDqShape);
+    auto weightUqQrShape = context->GetRequiredInputShape(WEIGHT_UQ_QR_INDEX); // (Hcq, N*(D+Dr))
+    OP_CHECK_NULL_WITH_CONTEXT(context, weightUqQrShape);
+    auto weightDkvKrShape = context->GetRequiredInputShape(WEIGHT_DKV_KR_INDEX); // (He, Hckv+Dr)
+    OP_CHECK_NULL_WITH_CONTEXT(context, weightDkvKrShape);
     auto kvCacheShape = context->GetRequiredInputShape(KV_CACHE_INDEX_V3); // (B, Nkv, Skv, Hckv)
     OP_CHECK_NULL_WITH_CONTEXT(context, kvCacheShape);
-    auto krCacheShape = context->GetRequiredInputShape(KR_CACHE_INDEX_V3); // (B, Nkv, Skv, Dr)
+    auto krCacheShape = context->GetRequiredInputShape(KR_CACHE_INDEX_V3); // (B, Nkv, Skv, Dr) | {0}
     OP_CHECK_NULL_WITH_CONTEXT(context, krCacheShape);
 
     const bool ropeSinOff = IsRopeShapeOffPlaceholder(ropeSinShape);
@@ -96,8 +149,14 @@ ge::graphStatus GetMlaPrologV3ShapeDim(const gert::InferShapeContext *context, M
     }
 
     if (ropeSinOff) {
-        // RoPE-off: Dr from kr_cache last dim.
-        shapeParam.Dr = krCacheShape->GetDim(krCacheShape->GetDimNum() - 1);
+        // RoPE-off: kr_cache → weightDkvKr−Hckv → weightUqQr（ckvkrRepoMode=1 时 kr 为空）
+        OP_CHECK_IF(!InferDrSizeWhenRopeOff(krCacheShape, weightUkShape, weightDkvKrShape, weightUqQrShape,
+                                            shapeParam.Dr),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context->GetNodeName(), "Dr", "uninferable",
+                        "When RoPE is off, Dr must be inferred from kr_cache last dim, or "
+                        "weightDkvKr(Hckv+Dr)-weightUk(Hckv), or weightUqQr(N*(D+Dr))"),
+                    return ge::GRAPH_FAILED);
     } else if (tokenXShape->GetDimNum() == DIM_NUM_3) {
         shapeParam.Dr = ropeSinShape->GetDim(DIM_INDEX_2);
     } else {

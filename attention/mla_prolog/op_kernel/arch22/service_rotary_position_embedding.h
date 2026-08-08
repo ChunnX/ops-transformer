@@ -69,10 +69,10 @@ __aicore__ inline void PreprocessRopeInput(const GlobalTensor<T> &inputGm, Local
  * @param channelDeqScaleGm 量化参数；该tensor的每个元素不同
  * @param scale 量化参数；该tensor共用
  */
-template <typename T, typename C, typename O, bool enableDequant = false, bool enableRope = true>
+template <typename T, typename C, typename O, bool enableDequant = false>
 __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const GlobalTensor<T> &inputGm,
                                              const LocalTensor<C> &cosLocal, const LocalTensor<C> &sinLocal,
-                                             LocalTensor<uint8_t> &shareTmpUb, Rectangle ropeParams,
+                                             LocalTensor<uint8_t> &shareTmpUb, Rectangle ropeParams, bool doRope,
                                              LocalTensor<float> channelDeqScaleLocal = LocalTensor<float>(),
                                              LocalTensor<float> scale = LocalTensor<float>())
 {
@@ -97,7 +97,7 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
         Cast(kFp32Local, kLocal, RoundMode::CAST_NONE, cnt);
         AscendC::PipeBarrier<PIPE_V>();
     }
-    if constexpr (enableRope) {
+    if (doRope) {
         if constexpr (std::is_same<O, C>::value) {
             RotaryPosEmb(outputLocal, kFp32Local, cosLocal, sinLocal, ropeShareUB.template ReinterpretCast<uint8_t>(),
                          ropeParams.row, ropeParams.col, 0);
@@ -137,10 +137,11 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
  * @param channelDeqScaleGm 量化参数：最终使用shape[1,col]
  * @param deQuantScale 量化参数；最终使用shape[row,8]
  */
-template <typename T, typename C, typename O, bool enableDequant = false, bool enableRope = true>
+template <typename T, typename C, typename O, bool enableDequant = false>
 __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const GlobalTensor<T> &inputGm,
                                            const LocalTensor<C> &cosLocal, const LocalTensor<C> &sinLocal,
                                            LocalTensor<uint8_t> &shareTmpUb, Rectangle ropeParams, int64_t strideScale,
+                                           bool doRope,
                                            GlobalTensor<float> channelDeqScaleGm = GlobalTensor<float>(),
                                            LocalTensor<float> deQuantScale = LocalTensor<float>())
 {
@@ -179,7 +180,7 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
         Cast(kFp32Local, kLocal, RoundMode::CAST_NONE, cnt);
     }
     AscendC::PipeBarrier<PIPE_V>();
-    if constexpr (enableRope) {
+    if (doRope) {
         RotaryPosEmb(kFp32OutputLocal, kFp32Local, cosLocal, sinLocal, ropeShareUB.template ReinterpretCast<uint8_t>(),
                      ropeParams.row, ropeParams.col, ropeParams.col);
         AscendC::PipeBarrier<PIPE_V>();

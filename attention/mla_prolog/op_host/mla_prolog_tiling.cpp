@@ -202,18 +202,28 @@ ge::graphStatus MlaPrologTiling::SetShapeInfo()
         baseShapeInfo_.hcqSize =
             weightDqAxisSize_ * context_->weightDq.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_0);
     }
-    baseShapeInfo_.nSize = context_->weightUk.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_0);
+    const auto &weightUkShape = context_->weightUk.shape->GetStorageShape();
+    baseShapeInfo_.nSize = weightUkShape.GetDim(MLA_PROLOG_DIM_INDEX_0);
+    baseShapeInfo_.dSize = weightUkShape.GetDim(MLA_PROLOG_DIM_INDEX_1);
     if (!IsRopeOffPlaceholder(context_->ropeCos)) {
         baseShapeInfo_.drSize = context_->ropeCos.shape->GetStorageShape().GetDim(
             context_->ropeCos.shape->GetStorageShape().GetDimNum() - 1);
     } else {
-        // RoPE off: infer Dr from kr_cache last dim.
-        OP_CHECK_IF(context_->krCache.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->opName, "krCache"),
+        // RoPE off: kr_cache 末维 → weightDkvKr−Hckv → weightUqQr（ckvkrRepoMode=1 时 kr 为空）
+        OP_CHECK_IF(context_->weightDkvKr.shape == nullptr,
+                    OP_LOGE_WITH_INVALID_INPUT(context_->opName, "weightDkvKr"), return ge::GRAPH_FAILED);
+        const gert::Shape *krShape =
+            (context_->krCache.shape == nullptr) ? nullptr : &context_->krCache.shape->GetStorageShape();
+        const gert::Shape *weightUqQrShape =
+            (context_->weightUqQr.shape == nullptr) ? nullptr : &context_->weightUqQr.shape->GetStorageShape();
+        OP_CHECK_IF(!InferDrSizeWhenRopeOff(krShape, weightUkShape, context_->weightDkvKr.shape->GetStorageShape(),
+                                            weightUqQrShape, baseShapeInfo_.drSize),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        context_->opName, "Dr", "uninferable",
+                        "When RoPE is off, Dr must be inferred from kr_cache last dim, or "
+                        "weightDkvKr(Hckv+Dr)-weightUk(Hckv), or weightUqQr(N*(D+Dr))"),
                     return ge::GRAPH_FAILED);
-        const auto &krShape = context_->krCache.shape->GetStorageShape();
-        baseShapeInfo_.drSize = static_cast<uint32_t>(krShape.GetDim(krShape.GetDimNum() - 1));
     }
-    baseShapeInfo_.dSize = context_->weightUk.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_1);
     baseShapeInfo_.headSizeQc = baseShapeInfo_.dSize * baseShapeInfo_.nSize;
     baseShapeInfo_.headSizeQr = baseShapeInfo_.drSize * baseShapeInfo_.nSize;
     baseShapeInfo_.headSizeUqQr = baseShapeInfo_.headSizeQc + baseShapeInfo_.headSizeQr;
@@ -480,6 +490,7 @@ ge::graphStatus MlaPrologTiling::FillTiling()
     baseParams_->numHeadKvSize = baseShapeInfo_.nkvSize;
     baseParams_->dimHeadSizeQc = baseShapeInfo_.dSize;
     baseParams_->dimHeadRope = baseShapeInfo_.drSize;
+    baseParams_->enableRope = enableRope_ ? 1U : 0U;
     baseParams_->blockNum = baseShapeInfo_.blockNum;
     baseParams_->blockSize = baseShapeInfo_.blockSize;
     baseParams_->reciprocalCq = reciprocalCq_;
@@ -617,19 +628,19 @@ ge::graphStatus MlaPrologTiling::GenTilingKey() const
 
     if (scenarioInfo_.emptyTensorMode_ == EMPTY_TENSOR_MODE::EMPTY_QUERY) {
         context_->tilingKey = GET_TPL_TILING_KEY(
-            0, 0, 0, false, false, static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), 0, 0, cvMode, true);
+            0, 0, 0, false, false, static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), 0, 0, cvMode);
     } else {
         uint8_t cacheMode =
             scenarioInfo_.cacheMode_ == CACHE_MODE::TND ? 0 : static_cast<uint8_t>(scenarioInfo_.cacheMode_);
         context_->tilingKey = GET_TPL_TILING_KEY(
             static_cast<uint8_t>(cacheMode), typeValue, quantType, enableDequantOpt_, enableGroupComputeOpt_,
             static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), static_cast<uint8_t>(scenarioInfo_.actualSeqMode_),
-            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), cvMode, enableRope_);
+            static_cast<uint8_t>(scenarioInfo_.splitMFlag_), cvMode);
         OP_LOGI(
             context_->opName,
             "MlaProlog tilingKey args: "
             "CACHE_MODE:%u, SCENARIO:%u, QUANT_MODE:%u, ENABLE_DEQUANT_OPTIONAL:%u, ENABLE_GROUP_COMPUTE_OPTIONAL:%u, "
-            "EMPTY_TENSOR_MODE:%u, ACTUAL_SEQ_LEN_MODE:%u, SPLIT_M_MODE:%u, CV_MODE:%u, ENABLE_ROPE:%u",
+            "EMPTY_TENSOR_MODE:%u, ACTUAL_SEQ_LEN_MODE:%u, SPLIT_M_MODE:%u, CV_MODE:%u, enableRope(tilingData):%u",
             static_cast<uint8_t>(cacheMode), typeValue, quantType, enableDequantOpt_, enableGroupComputeOpt_,
             static_cast<uint8_t>(scenarioInfo_.emptyTensorMode_), static_cast<uint8_t>(scenarioInfo_.actualSeqMode_),
             static_cast<uint8_t>(scenarioInfo_.splitMFlag_), cvMode, static_cast<uint8_t>(enableRope_));

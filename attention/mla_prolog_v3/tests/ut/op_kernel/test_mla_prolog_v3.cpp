@@ -222,8 +222,7 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_noQuant)
                              0,   // EMPTY_TENSOR_MODE
                              0,   // ACTUAL_SEQ_LEN_MODE
                              0,   // SPLIT_M_MODE
-                             7,   // CV_MODE
-                             true // ENABLE_ROPE
+                             7   // CV_MODE
                              >(PARAM_LIST);
     };
 
@@ -347,8 +346,7 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_semiQuantKVNoQuant)
                              0,   // EMPTY_TENSOR_MODE
                              0,   // ACTUAL_SEQ_LEN_MODE
                              0,   // SPLIT_M_MODE
-                             7,   // CV_MODE
-                             true // ENABLE_ROPE
+                             7   // CV_MODE
                              >(PARAM_LIST);
     };
 
@@ -395,8 +393,7 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_semiQuantKVQuant)
                              0,   // EMPTY_TENSOR_MODE
                              0,   // ACTUAL_SEQ_LEN_MODE
                              0,   // SPLIT_M_MODE
-                             7,   // CV_MODE
-                             true // ENABLE_ROPE
+                             7   // CV_MODE
                              >(PARAM_LIST);
     };
     // 输入变量
@@ -520,8 +517,7 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_semiQuantKVQuantPerfill)
                              0,   // EMPTY_TENSOR_MODE
                              0,   // ACTUAL_SEQ_LEN_MODE
                              0,   // SPLIT_M_MODE
-                             7,   // CV_MODE
-                             true // ENABLE_ROPE
+                             7   // CV_MODE
                              >(PARAM_LIST);
     };
     // 输入变量
@@ -645,8 +641,7 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_QuantKVNoQuant)
                              0,   // EMPTY_TENSOR_MODE
                              0,   // ACTUAL_SEQ_LEN_MODE
                              0,   // SPLIT_M_MODE
-                             7,   // CV_MODE
-                             true // ENABLE_ROPE
+                             7   // CV_MODE
                              >(PARAM_LIST);
     };
     // 输入变量
@@ -770,8 +765,7 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_QuantKVQuant)
                              0,   // EMPTY_TENSOR_MODE
                              0,   // ACTUAL_SEQ_LEN_MODE
                              0,   // SPLIT_M_MODE
-                             7,   // CV_MODE
-                             true // ENABLE_ROPE
+                             7   // CV_MODE
                              >(PARAM_LIST);
     };
     // 输入变量
@@ -895,8 +889,7 @@ TEST_F(MlaPrologV3Kernel, test_case_v3_QuantKVQuantPerfill)
                              0,   // EMPTY_TENSOR_MODE
                              0,   // ACTUAL_SEQ_LEN_MODE
                              0,   // SPLIT_M_MODE
-                             7,   // CV_MODE
-                             true // ENABLE_ROPE
+                             7   // CV_MODE
                              >(PARAM_LIST);
     };
     // 输入变量

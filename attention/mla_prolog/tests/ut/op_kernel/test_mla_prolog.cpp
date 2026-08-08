@@ -139,8 +139,7 @@ TEST_F(MlaPrologKernel, test_case_v1_noQuant)
                           0,   // EMPTY_TENSOR_MODE
                           0,   // ACTUAL_SEQ_LEN_MODE
                           0,   // SPLIT_M_MODE
-                          7,   // CV_MODE
-                          true // ENABLE_ROPE
+                          7   // CV_MODE
                           >(PARAM_LIST);
     };
     // 输入变量
