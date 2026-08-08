@@ -115,8 +115,18 @@ at::ScalarType GetYScalarType(int64_t yDtype)
     if (geDtype == GE_DTYPE_FLOAT8_E5M2) {
         return at::ScalarType::Float8_e5m2;
     }
-    TORCH_CHECK(false, "y_dtype only supports FLOAT8_E4M3FN or FLOAT8_E5M2, but got ",
+    if (geDtype == GE_DTYPE_FLOAT4_E2M1 || geDtype == GE_DTYPE_FLOAT4_E1M2) {
+        // Torch exposes the packed FP4 result as uint8; TensorWrapper restores the logical FP4 descriptor.
+        return at::ScalarType::Byte;
+    }
+    TORCH_CHECK(false, "y_dtype only supports FLOAT8_E4M3FN, FLOAT8_E5M2, FLOAT4_E2M1 or FLOAT4_E1M2, but got ",
                 GetDtypeName(yDtype), ".");
+}
+
+bool IsFp4GeDtype(int64_t dtype)
+{
+    const int64_t geDtype = NormalizeGeDtype(dtype);
+    return geDtype == GE_DTYPE_FLOAT4_E2M1 || geDtype == GE_DTYPE_FLOAT4_E1M2;
 }
 
 int64_t ResolveYGeDtype(const c10::optional<int64_t> &yDtype, aclDataType xAclDtype)
@@ -131,7 +141,7 @@ int64_t ResolveYGeDtype(const c10::optional<int64_t> &yDtype, aclDataType xAclDt
         return GE_DTYPE_FLOAT8_E5M2;
     }
     if (xAclDtype == ACL_FLOAT4_E2M1 || xAclDtype == ACL_FLOAT4_E1M2) {
-        return GE_DTYPE_FLOAT8_E4M3FN;
+        return xAclDtype == ACL_FLOAT4_E2M1 ? GE_DTYPE_FLOAT4_E2M1 : GE_DTYPE_FLOAT4_E1M2;
     }
     TORCH_CHECK(false, "y_dtype is None only supports inferring from FP8 or FP4 x dtype.");
 }
@@ -197,7 +207,8 @@ std::tuple<at::Tensor, at::Tensor> grouped_matmul_activation_quant(
     {
         auto localDevice = c10::Device(x.device());
         const c10::OptionalDeviceGuard deviceGuard(localDevice);
-        y = at::empty({m, n}, x.options().dtype(GetYScalarType(yDtypeValue)));
+        const int64_t physicalN = IsFp4GeDtype(yDtypeValue) ? CeilDiv(n, 2L) : n;
+        y = at::empty({m, physicalN}, x.options().dtype(GetYScalarType(yDtypeValue)));
         yScale = at::empty({m, CeilDiv(n, MX_GROUP_SIZE), 2}, x.options().dtype(at::ScalarType::Float8_e8m0fnu));
     }
 

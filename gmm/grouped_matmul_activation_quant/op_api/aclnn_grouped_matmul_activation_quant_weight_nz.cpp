@@ -43,6 +43,8 @@ constexpr char ROUND_MODE_RINT[] = "rint";
 constexpr int64_t MAX_GROUP_NUM = 1024L;
 constexpr int64_t FLOAT8_E5M2_VALUE = static_cast<int64_t>(DataType::DT_FLOAT8_E5M2);
 constexpr int64_t FLOAT8_E4M3FN_VALUE = static_cast<int64_t>(DataType::DT_FLOAT8_E4M3FN);
+constexpr int64_t FLOAT4_E2M1_VALUE = static_cast<int64_t>(DataType::DT_FLOAT4_E2M1);
+constexpr int64_t FLOAT4_E1M2_VALUE = static_cast<int64_t>(DataType::DT_FLOAT4_E1M2);
 constexpr int64_t SCALE_ALG_OCP = 0L;
 constexpr int64_t SCALE_ALG_CUBLAS = 1L;
 constexpr float DEFAULT_DST_TYPE_MAX = 0.0F;
@@ -72,9 +74,10 @@ bool IsSupportedMxInputPair(DataType xDtype, DataType weightDtype)
            (IsFp4(xDtype) && IsFp4(weightDtype));
 }
 
-bool IsFp8DtypeValue(int64_t dtype)
+bool IsMxOutputDtypeValue(int64_t dtype)
 {
-    return dtype == FLOAT8_E4M3FN_VALUE || dtype == FLOAT8_E5M2_VALUE;
+    return dtype == FLOAT8_E4M3FN_VALUE || dtype == FLOAT8_E5M2_VALUE ||
+           dtype == FLOAT4_E2M1_VALUE || dtype == FLOAT4_E1M2_VALUE;
 }
 
 bool IsMxScaleDtype(DataType dtype)
@@ -105,9 +108,12 @@ aclnnStatus CheckMxQuantDtype(const aclTensor *x, const aclTensor *weight, const
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "weightScale",
             op::ToString(weightScale->GetDataType()).GetString(),
             "when the quantization mode is mx, the dtype of weightScale must be FLOAT8_E8M0"));
-    GMMAQ_CHECK_WITH_LOG(IsFp8(y->GetDataType()), ACLNN_ERR_PARAM_INVALID,
+    const bool isFp4Input = IsFp4(x->GetDataType()) && IsFp4(weight->GetDataType());
+    GMMAQ_CHECK_WITH_LOG(IsFp8(y->GetDataType()) || (isFp4Input && IsFp4(y->GetDataType())),
+        ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "y", op::ToString(y->GetDataType()).GetString(),
-            "when the quantization mode is mx, the dtype of y must be FLOAT8_E4M3FN or FLOAT8_E5M2"));
+            "when the quantization mode is mx, y supports FLOAT8_E4M3FN/FLOAT8_E5M2; "
+            "FLOAT4_E2M1/FLOAT4_E1M2 output additionally requires FLOAT4 inputs"));
     GMMAQ_CHECK_WITH_LOG(IsMxScaleDtype(yScale->GetDataType()), ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "yScale", op::ToString(yScale->GetDataType()).GetString(),
             "when the quantization mode is mx, the dtype of yScale must be FLOAT8_E8M0"));
@@ -337,8 +343,8 @@ aclnnStatus CreateContiguousTensorList(const aclTensorList *tensorList, const ac
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckMXTranspose(const aclTensor *x, const aclTensor *xScaleOptional, const aclTensorList *&weight,
-                             const aclTensorList *&weightScale, bool &transposeWeight, aclOpExecutor *executor)
+aclnnStatus CheckMXTranspose(const aclTensor *x, const aclTensor *xScaleOptional, const aclTensorList *weight,
+                             const aclTensorList *weightScale, bool &transposeWeight)
 {
     const aclTensor *w = (*weight)[gmaq::FIRST_TENSOR_INDEX];
     const aclTensor *wScale = (*weightScale)[gmaq::FIRST_TENSOR_INDEX];
@@ -351,9 +357,6 @@ aclnnStatus CheckMXTranspose(const aclTensor *x, const aclTensor *xScaleOptional
             "non-transposed", "the transposition of weightScale must be equal to the transposition of weight"));
     if (transposeWeightScale && transposeWeightByStride) {
         transposeWeight = true;
-        CHECK_RET(CreateContiguousTensorListForMXTypeMScale(weightScale, weightScale, executor) == ACLNN_SUCCESS,
-                  ACLNN_ERR_INNER_NULLPTR);
-        CHECK_RET(CreateContiguousTensorList(weight, weight, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     }
     if (IsSpecialMxXTransposeCase(x, xScaleOptional)) {
         return ACLNN_SUCCESS;
@@ -363,6 +366,18 @@ aclnnStatus CheckMXTranspose(const aclTensor *x, const aclTensor *xScaleOptional
             FormatString("{%s, %s}", transposeX ? "transposed" : "non-transposed",
                          transposeXScale ? "transposed" : "non-transposed").c_str(),
             "x and xScaleOptional only support non-transposed input"));
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus NormalizeMXTranspose(const aclTensorList *&weight, const aclTensorList *&weightScale,
+                                 bool transposeWeight, aclOpExecutor *executor)
+{
+    if (!transposeWeight) {
+        return ACLNN_SUCCESS;
+    }
+    CHECK_RET(CreateContiguousTensorListForMXTypeMScale(weightScale, weightScale, executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(CreateContiguousTensorList(weight, weight, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
     return ACLNN_SUCCESS;
 }
 
@@ -518,10 +533,10 @@ aclnnStatus CheckMxQuantAttrs(int64_t groupListType, int64_t effectiveYDtype, co
                               const aclTensorList *bias)
 {
     CHECK_RET(ResolveAndCheckRoundMode(roundMode, effectiveRoundMode) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-    GMMAQ_CHECK_WITH_LOG(IsFp8DtypeValue(effectiveYDtype), ACLNN_ERR_PARAM_INVALID,
+    GMMAQ_CHECK_WITH_LOG(IsMxOutputDtypeValue(effectiveYDtype), ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(OP_NAME, "y",
             op::ToString(static_cast<DataType>(effectiveYDtype)).GetString(),
-            "the dtype of y must be FLOAT8_E4M3FN or FLOAT8_E5M2"));
+            "the dtype of y must be FLOAT8_E4M3FN, FLOAT8_E5M2, FLOAT4_E2M1 or FLOAT4_E1M2"));
     GMMAQ_CHECK_WITH_LOG(groupListType == 0 || groupListType == 1, ACLNN_ERR_PARAM_INVALID,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(OP_NAME, "groupListType", std::to_string(groupListType),
                                              "groupListType must be 0 or 1"));
@@ -617,11 +632,13 @@ aclnnStatus CheckMxQuantParams(const aclTensor *x, const aclTensor *groupList, c
             op::ToString(groupList->GetDataType()).GetString(), "the dtype of groupList must be INT64"));
     checkRet = CheckMxQuantFormat(x, groupList, w, wScale, xScaleOptional, y, yScale);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
-    checkRet = CheckMXTranspose(x, xScaleOptional, weight, weightScale, transposeWeight, executor);
+    checkRet = CheckMXTranspose(x, xScaleOptional, weight, weightScale, transposeWeight);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
-    w = (*weight)[gmaq::FIRST_TENSOR_INDEX];
-    wScale = (*weightScale)[gmaq::FIRST_TENSOR_INDEX];
+    // Shape semantics must be checked on the caller's original strided views. Normalizing a transposed
+    // weightScale changes [E, N, K/64, 2] to [E, K/64, N, 2] and therefore changes which dim represents N.
     checkRet = CheckMxQuantShape(x, groupList, xScaleOptional, w, wScale, transposeWeight, y, yScale);
+    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
+    checkRet = NormalizeMXTranspose(weight, weightScale, transposeWeight, executor);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
     return ACLNN_SUCCESS;
 }
