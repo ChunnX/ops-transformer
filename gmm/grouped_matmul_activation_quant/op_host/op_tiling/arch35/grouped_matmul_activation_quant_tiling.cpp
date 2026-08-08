@@ -67,6 +67,8 @@ constexpr uint32_t MXFP4_PACK_FACTOR = 2;
 constexpr uint64_t MX_EPILOGUE_MAX_TILE_ELEMENTS = 128UL * 256UL;
 constexpr uint32_t FP8_E4M3FN_VALUE = 36;
 constexpr uint32_t FP8_E5M2_VALUE = 35;
+constexpr uint32_t FP4_E2M1_VALUE = 40;
+constexpr uint32_t FP4_E1M2_VALUE = 41;
 constexpr uint8_t ROUND_MODE_RINT = 4;
 constexpr uint32_t SCALE_ALG_OCP = 0;
 constexpr uint32_t SCALE_ALG_CUBLAS = 1;
@@ -139,6 +141,9 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
                     activationTypePtr == nullptr,
                 OP_LOGE(context_->GetNodeName(), "quant attrs must not be nullptr."), return false);
     auto yDtype = static_cast<ge::DataType>(*yDtypePtr);
+    if (yDtype == ge::DT_UNDEFINED) {
+        yDtype = inputParams_.aDtype;
+    }
     std::string quantMode = quantModePtr == nullptr ? "" : std::string(quantModePtr);
     if (quantMode.empty()) {
         OP_CHECK_IF(
@@ -157,10 +162,11 @@ bool GroupedMatmulActivationQuantTiling950::AnalyzeAttrs()
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "quant_mode", quantMode,
                                                       "quant_mode must be mx"),
                 return false);
-    OP_CHECK_IF(!IsFp8(yDtype),
+    OP_CHECK_IF(!IsFp8(yDtype) && !IsFp4(yDtype),
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
                     context_->GetNodeName(), "y_dtype", ge::TypeUtils::DataTypeToSerialString(yDtype),
-                    "when the quantization mode is mx, y_dtype must be FLOAT8_E4M3FN or FLOAT8_E5M2"),
+                    "when the quantization mode is mx, y_dtype must be FLOAT8_E4M3FN, FLOAT8_E5M2, "
+                    "FLOAT4_E2M1 or FLOAT4_E1M2"),
                 return false);
     std::string roundMode(roundModePtr);
     OP_CHECK_IF(roundMode != "rint",
@@ -211,6 +217,15 @@ bool GroupedMatmulActivationQuantTiling950::CheckDtype() const
                     context_->GetNodeName(), "y_scale",
                     ge::TypeUtils::DataTypeToSerialString(inputParams_.outScaleDtype),
                     "when the quantization mode is mx, the dtype of y_scale must be FLOAT8_E8M0"),
+                return false);
+    OP_CHECK_IF(IsFp4(inputParams_.outDataDtype) && !isSupportedFp4,
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                    context_->GetNodeName(), "x, weight, y",
+                    FormatString("{%s, %s, %s}",
+                                 ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
+                                 ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str(),
+                                 ge::TypeUtils::DataTypeToSerialString(inputParams_.outDataDtype).c_str()),
+                    "FLOAT4 output requires both x and weight to be FLOAT4"),
                 return false);
     OP_CHECK_IF(inputParams_.outDataDtype != yDtype_,
                 OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
@@ -390,7 +405,15 @@ ge::graphStatus GroupedMatmulActivationQuantTiling950::DoOpTiling()
     tilingData_.gmmActivationQuantParams.groupNum = static_cast<uint32_t>(inputParams_.groupNum);
     tilingData_.gmmActivationQuantParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
     tilingData_.gmmActivationQuantParams.activationType = activationType_;
-    tilingData_.gmmActivationQuantParams.quantDtype = yDtype_ == ge::DT_FLOAT8_E5M2 ? FP8_E5M2_VALUE : FP8_E4M3FN_VALUE;
+    if (yDtype_ == ge::DT_FLOAT8_E5M2) {
+        tilingData_.gmmActivationQuantParams.quantDtype = FP8_E5M2_VALUE;
+    } else if (yDtype_ == ge::DT_FLOAT4_E2M1) {
+        tilingData_.gmmActivationQuantParams.quantDtype = FP4_E2M1_VALUE;
+    } else if (yDtype_ == ge::DT_FLOAT4_E1M2) {
+        tilingData_.gmmActivationQuantParams.quantDtype = FP4_E1M2_VALUE;
+    } else {
+        tilingData_.gmmActivationQuantParams.quantDtype = FP8_E4M3FN_VALUE;
+    }
     tilingData_.gmmActivationQuantParams.roundMode = roundMode_;
     tilingData_.gmmActivationQuantParams.scaleAlg = scaleAlg_;
     tilingData_.gmmActivationQuantParams.dstTypeMax = dstTypeMax_;

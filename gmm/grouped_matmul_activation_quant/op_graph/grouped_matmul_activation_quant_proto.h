@@ -41,8 +41,8 @@ namespace ge {
 * supports (m, ceildiv(k, 64), 2), the format supports ND, and the data type supports float8_e8m0.
 
 * @par Outputs:
-* @li y: A tensor. The quantized output after grouped matmul and activation. In MXFP8 scenario, the shape
-* supports (m, n), the format supports ND, and the data type supports float8_e4m3fn and float8_e5m2.
+* @li y: A tensor. The quantized output after grouped matmul and activation. The shape supports (m, n),
+* the format supports ND, and the data type supports float8_e4m3fn, float8_e5m2, float4_e2m1 and float4_e1m2.
 * @li y_scale: A tensor. The MX scale of y. In MXFP8 scenario, the shape supports
 * (m, ceildiv(n, 64), 2), the format supports ND, and the data type supports float8_e8m0.
 
@@ -52,21 +52,21 @@ namespace ge {
 * @li group_list_type: An int. Indicates the group list type. Default: 0.
 * @li tuning_config: A list int. Reserved parameter. Default: {0}.
 * @li quant_mode: A string. The quantization mode. Current scenario only supports "mx". Default: "".
-* @li y_dtype: An int. Indicates the data type of y. It supports DT_FLOAT8_E4M3FN and DT_FLOAT8_E5M2.
-* Default: DT_UNDEFINED.
+* @li y_dtype: An int. Indicates the data type of y. It supports DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2,
+* DT_FLOAT4_E2M1 and DT_FLOAT4_E1M2. DT_UNDEFINED makes y follow x. Default: DT_UNDEFINED.
 * @li round_mode: A string. The rounding mode. Current scenario only supports "rint". Default: "rint".
 * @li scale_alg: An int. The scale algorithm. 0 means OCP implementation, and 1 means cuBLAS implementation.
 * Default: 0.
 * @li dst_type_max: A float. Indicates Amax(DType). Default: 0.0.
 */
 REG_OP(GroupedMatmulActivationQuant)
-    .INPUT(x, TensorType({DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2}))
+    .INPUT(x, TensorType({DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))
     .INPUT(group_list, TensorType({DT_INT64}))
-    .DYNAMIC_INPUT(weight, TensorType({DT_FLOAT8_E4M3FN}))
+    .DYNAMIC_INPUT(weight, TensorType({DT_FLOAT8_E4M3FN, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))
     .DYNAMIC_INPUT(weight_scale, TensorType({DT_FLOAT8_E8M0}))
     .DYNAMIC_INPUT(bias, TensorType({DT_FLOAT}))
     .OPTIONAL_INPUT(x_scale, TensorType({DT_FLOAT8_E8M0}))
-    .OUTPUT(y, TensorType({DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2}))
+    .OUTPUT(y, TensorType({DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2}))
     .OUTPUT(y_scale, TensorType({DT_FLOAT8_E8M0}))
     .REQUIRED_ATTR(activation_type, String)
     .ATTR(transpose_weight, Bool, false)
