@@ -10,6 +10,8 @@
 
 
 def pytest_addoption(parser):
-    """选择验证通路：1=autograd 全链路（默认） 2=单反向 PyPTO 直跑 3=小算子拼接 golden"""
+    """选择验证通路：1=正反向全链路（通路5+通路4拼接，默认） 2=单反向PyPTO直跑
+    3=小算子拼接golden 4=单反向直调（_compressor_backward） 5=单正向直调（_compressor_forward）"""
     parser.addoption("--pathway", action="store", type=int, default=1,
-                     help="验证通路: 1=autograd全链路(默认) 2=单反向PyPTO直跑 3=小算子拼接golden")
+                     help="验证通路: 1=全链路(默认) 2=单反向PyPTO直跑 3=小算子拼接golden "
+                          "4=单反向直调 5=单正向直调")

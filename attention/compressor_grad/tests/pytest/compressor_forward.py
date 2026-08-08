@@ -100,9 +100,11 @@ def _write_cache(
     start_seq: int,
     end_seq: int,
     cache_mode: int,
+    update_mask: Optional[torch.Tensor] = None,   # 与 state 同 shape 的 bool 张量，记录写入位置
 ) -> torch.Tensor:
     """
     向 page cache 写入数据。为避免破坏 autograd 计算图，返回新的 state 张量。
+    传入 update_mask 时同步标记实际写入的位置（block_id 为 0 的无效块不标记）。
     """
     state = state.clone()
     block_size = state.shape[1]
@@ -123,6 +125,8 @@ def _write_cache(
         if cnt > n - done:
             cnt = n - done
         state[bid:bid + 1, off:off + cnt, :] = data[done:done + cnt]
+        if update_mask is not None:
+            update_mask[bid:bid + 1, off:off + cnt, :] = True
         done += cnt
     return state
 
@@ -177,6 +181,7 @@ def compressor_forward(
     cu_seqlens: Optional[torch.Tensor] = None,  # bs_combine 模式下的累积序列长度
     seqused: Optional[List[int]] = None,        # 每个 batch 实际使用的序列长度
     return_intermediates: bool = False,          # 是否返回 d_kv, d_score, d_sc2
+    return_update_mask: bool = False,            # 是否返回 kv/score state 的写入位置 mask（与 kv_state_out/score_state_out 同 shape）
 ) -> Tuple:
     """
     执行 compressor 前向计算。
@@ -234,6 +239,8 @@ def compressor_forward(
 
     kv_state_out = kv_state.clone()
     score_state_out = score_state.clone()
+    kv_update_mask = torch.zeros_like(kv_state_out, dtype=torch.bool)
+    score_update_mask = torch.zeros_like(score_state_out, dtype=torch.bool)
 
     # 中间变量：按 output layout 预分配（与 cmp_kv 同 shape，最后维为 N=coff*cmpRatio）
     N_inter = coff * cmp_ratio
@@ -287,10 +294,12 @@ def compressor_forward(
             if save_flag:
                 kv_state_out = _write_cache(kv_state_out, block_table,
                                             flat_kv[off_s:off_e, :], b_idx,
-                                            s_start, s_end, cache_mode)
+                                            s_start, s_end, cache_mode,
+                                            kv_update_mask if return_update_mask else None)
                 score_state_out = _write_cache(score_state_out, block_table,
                                                flat_score[off_s:off_e, :], b_idx,
-                                               s_start, s_end, cache_mode)
+                                               s_start, s_end, cache_mode,
+                                               score_update_mask if return_update_mask else None)
 
             # ---- 执行压缩 ----
             if compress_flag:
@@ -386,6 +395,13 @@ def compressor_forward(
     # TH 和 BSH 都使用预分配缓冲区，无需额外拼接
 
     cmp_kv = cmp_kv.to(orig_dtype)
+    if return_intermediates and return_update_mask:
+        return (cmp_kv, cmp_mask, kv_state_out, score_state_out,
+                softmaxScoreIntermediate, kvIntermediate,
+                kv_update_mask, score_update_mask)
+    if return_update_mask:
+        return (cmp_kv, cmp_mask, kv_state_out, score_state_out,
+                kv_update_mask, score_update_mask)
     if return_intermediates:
         return cmp_kv, cmp_mask, kv_state_out, score_state_out, softmaxScoreIntermediate, kvIntermediate
     return cmp_kv, cmp_mask, kv_state_out, score_state_out
