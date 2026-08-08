@@ -37,7 +37,7 @@
 #include "common/mega_moe_types.h"
 #include "common/mega_moe_workspace.h"
 #include "common/mega_moe_utils.h"
-#include "stage/block_epilogue_swiglu_mx_quant.h"
+#include "blaze/epilogue/block_epilogue_swiglu_mx_quant.h"
 #include "stage/mega_moe_gmm1_swiglu.h"
 #include "stage/mega_moe_gmm2_combine.h"
 #include "common/mega_moe_mxfp8_utils.h"
@@ -381,10 +381,16 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::Init(
         Ops::Base::CeilAlign(static_cast<int64_t>(worldSize_ * moeExpertPerRank_ * sizeof(int32_t)), ALIGN_32);
     cumsumInfoGlobalTensor_.SetGlobalBuffer(
         reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.cumsumInfoPtr + cumsumStride * blockIdx_));
-    epilogueOp_.Init({params_.workspaceInfo.swigluQuantDataPtr, params_.workspaceInfo.swigluQuantScalePtr,
-                      params_.workspaceInfo.flagSwiGluToGmm2Ptr, nullptr, nullptr, nullptr,
-                      params_.workspaceInfo.metaInfoPtr, tilingData->clampLimit, static_cast<uint8_t>(ActMode::SWIGLU),
-                      static_cast<uint8_t>(ActSubMode::DEFAULT), 1.0f, 1.0f});
+    epilogueOp_.Init({.yGmAddr = params_.workspaceInfo.swigluQuantDataPtr,
+                      .yScaleGmAddr = params_.workspaceInfo.swigluQuantScalePtr,
+                      .x2ScaleGmAddr = nullptr,
+                      .x1ScaleGmAddr = nullptr,
+                      .biasGmAddr = nullptr,
+                      .clampLimit = tilingData->clampLimit,
+                      .actMode = static_cast<uint8_t>(ActMode::SWIGLU),
+                      .actSubMode = static_cast<uint8_t>(ActSubMode::DEFAULT),
+                      .activationAlpha = 1.0f,
+                      .activationBeta = 1.0f});
     // 各 win 区相对 win 基址(rankSyncInWorldPtr)的偏移; 所有卡 win 布局一致, 跨卡读写用同一偏移。
     maskWinOffset_ = static_cast<uint64_t>(params_.peermemInfo.maskRecvPtr - params_.peermemInfo.rankSyncInWorldPtr);
     dispatchWinOffset_ =
@@ -1707,6 +1713,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeLayeredTypeFunc>::UpdateGlo
             gmmAddrInfo.gmm1OutGlobal =
                 params_.workspaceInfo.gmm1MmadResPtr + Get<IDX_GMM1_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
         }
+        gmmAddrInfo.metaInfoGlobal = params_.workspaceInfo.metaInfoPtr;
         gmmAddrInfo.aGlobal =
             params_.workspaceInfo.dispatchRevDataPtr + Get<IDX_A_OFFSET>(state.baseOffset) * sizeof(ActivationType);
         gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.dispatchRevScalePtr +

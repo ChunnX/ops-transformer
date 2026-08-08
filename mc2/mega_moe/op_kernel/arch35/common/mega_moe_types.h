@@ -101,22 +101,20 @@ struct AivJobContext {
     uint32_t totalJobs;
 };
 
-struct MoeTopologyContext {
+struct MoeStageCommonContext {
     uint32_t rankId;
     uint32_t worldSize;
-    uint32_t expertPerRank;
-};
-
-struct TokenShapeContext {
-    int32_t tokenNum;
+    uint32_t moeExpertPerRank;
+    uint32_t sharedExpertNum;
+    uint32_t tokenNum;
     uint32_t topK;
     uint32_t tokenHiddenDim;
+    uint32_t gmm1OutputDim;
 };
 
 struct DispatchPrepareContext {
     AivJobContext job;
-    MoeTopologyContext topology;
-    TokenShapeContext tokenShape;
+    MoeStageCommonContext common;
 };
 
 struct GroupSyncSlotLayout {

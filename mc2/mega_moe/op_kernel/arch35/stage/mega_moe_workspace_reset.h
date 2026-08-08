@@ -16,36 +16,36 @@
 namespace MegaMoeImpl {
 
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
-struct ResetWorkspaceArgs {
-    GM_ADDR flagWorkspacePtr;
-    GM_ADDR gmm1TileStatusPtr;
+struct ResetWorkspaceConfig {
     int32_t flagElementCount;
-    int32_t gmm1StatusExpertCapacity;
-    int32_t maxTilesPerExpert;
     int32_t resetBatchElementCount;
 };
 
 // 清理连续 flag workspace；prefetch 路径额外清理独立分配的 GMM1 tile 状态区。
 template <bool TopkWeightsPrefetch>
 __aicore__ inline void ResetDispatchWorkspace(const DispatchPrepareContext &context,
-                                              const ResetWorkspaceArgs &args,
+                                              const Params &params,
+                                              const ResetWorkspaceConfig &config,
                                               LocalTensor<int32_t> &resetTensor)
 {
     if constexpr (g_coreType == AIC) {
         return;
     }
     const AivJobContext &job = context.job;
-    if (job.totalJobs == 0U || job.jobIndex >= job.totalJobs || args.resetBatchElementCount <= 0) {
+    if (job.totalJobs == 0U || job.jobIndex >= job.totalJobs || config.resetBatchElementCount <= 0) {
         return;
     }
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
-    ResetWorkspaceRegion<1>(job, args.flagWorkspacePtr, args.flagElementCount,
-                            args.resetBatchElementCount, resetTensor);
+    ResetWorkspaceRegion<1>(job, params.workspaceInfo.flagSwiGluToGmm2Ptr, config.flagElementCount,
+                            config.resetBatchElementCount, resetTensor);
     if constexpr (TopkWeightsPrefetch) {
         int32_t statusElementCount =
-            (args.gmm1StatusExpertCapacity * args.maxTilesPerExpert + 1) * INT_CACHELINE;
-        ResetWorkspaceRegion<1>(job, args.gmm1TileStatusPtr, statusElementCount,
-                                args.resetBatchElementCount, resetTensor);
+            (static_cast<int32_t>(context.common.moeExpertPerRank) *
+                 static_cast<int32_t>(params.tilingData->maxTilesPerExpert) +
+             1) *
+            INT_CACHELINE;
+        ResetWorkspaceRegion<1>(job, params.workspaceInfo.gmm1TileStatusPtr, statusElementCount,
+                                config.resetBatchElementCount, resetTensor);
     }
 }
 #endif
