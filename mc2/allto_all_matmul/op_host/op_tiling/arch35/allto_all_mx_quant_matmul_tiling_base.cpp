@@ -487,7 +487,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoOpTiling()
         // arch35 路径: all2all_out 非空，生成 AlltoAllQuantMatmulTilingData
         MC2_CHECK_LOG_RET(opName_, DoArch35MxQuantMMTiling());
     } else {
-        // hcomm 路径: all2all_out 为空，生成 ccuAllToAllMatmulTilingData
+        // hcomm 路径: all2all_out 为空，生成 hcommAllToAllMatmulTilingData
         MC2_CHECK_LOG_RET(opName_, DoMxQuantMMTiling());
     }
     // hccl的tiling参数赋值处理
@@ -587,7 +587,7 @@ void AllToAllMxQuantMatmulTilingBase::PrintAlltoAllMxQuantMatmulTilingInfo(const
  *
  * @param outTilingData tilingData参数
  */
-void AllToAllMxQuantMatmulTilingBase::PrintAlltoAllMxQuantMatmulTilingData(ccuAllToAllMatmulTilingData &outTilingData)
+void AllToAllMxQuantMatmulTilingBase::PrintAlltoAllMxQuantMatmulTilingData(hcommAllToAllMatmulTilingData &outTilingData)
 {
     PrintAlltoAllMxQuantMatmulTilingInfo(opName_, outTilingData.commTilingData);
     OP_LOGD(opName_, "tileQbmm: m=%u n=%u k=%u baseM=%u baseN=%u baseK=%u stepK=%u scaleKL1=%u dbL0c=%u localMatmul=%u",
@@ -626,9 +626,9 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
                 sizeof(AlltoAllQuantMatmulTilingData), context_->GetRawTilingData()->GetCapacity());
         context_->GetRawTilingData()->SetDataSize(sizeof(AlltoAllQuantMatmulTilingData));
     } else {
-        // hcomm 路径: 输出 ccuAllToAllMatmulTilingData
+        // hcomm 路径: 输出 hcommAllToAllMatmulTilingData
         SetTilingInfo(localTilingData_.commTilingData);
-        ccuAllToAllMatmulTilingData *outTilingData = context_->GetTilingData<ccuAllToAllMatmulTilingData>();
+        hcommAllToAllMatmulTilingData *outTilingData = context_->GetTilingData<hcommAllToAllMatmulTilingData>();
         OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Fail to get tiling data from context"),
                         return ge::GRAPH_FAILED);
         OP_TILING_CHECK((tilingBufCap < sizeof(localTilingData_)),
@@ -641,8 +641,8 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
             return ge::GRAPH_FAILED;
         }
         OP_LOGD(opName_, "Final tiling data size=%zu and context capacity size=%zu.",
-                sizeof(ccuAllToAllMatmulTilingData), context_->GetRawTilingData()->GetCapacity());
-        context_->GetRawTilingData()->SetDataSize(sizeof(ccuAllToAllMatmulTilingData));
+                sizeof(hcommAllToAllMatmulTilingData), context_->GetRawTilingData()->GetCapacity());
+        context_->GetRawTilingData()->SetDataSize(sizeof(hcommAllToAllMatmulTilingData));
         PrintAlltoAllMxQuantMatmulTilingData(*outTilingData);
     }
     context_->SetBlockDim(contextInfo_.args_.aicCoreNum);
