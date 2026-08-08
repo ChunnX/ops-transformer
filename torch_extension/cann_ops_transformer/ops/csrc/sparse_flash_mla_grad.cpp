@@ -171,13 +171,11 @@ SparseFlashMlaGrad(const at::Tensor &q, const at::Tensor &dout, const at::Tensor
         cmpSoftmaxL1Norm = at::Tensor();
     }
 
-    // aclnn 签名在 layoutKv 与 dQueryOut 之间有 bool deterministic，漏传会导致参数错位/段错误
-    const bool deterministic = at::globalContext().deterministicAlgorithms();
     ACLNN_CMD(aclnnSparseFlashMlaGrad, q, dout, attnOut, softmaxLse, oriKvConst, cmpKvConst, oriSparseIndicesConst,
               cmpSparseIndicesConst, cuSeqlensQConst, cuSeqlensOriKvConst, cuSeqlensCmpKvConst, sequsedQConst,
               sequsedOriKvConst, sequsedCmpKvConst, cmpResidualKvConst, oriTopkLengthConst, cmpTopkLengthConst,
               sinksConst, metadataConst, softmaxScaleConst, cmpRatioConst, oriMaskModeConst, cmpMaskModeConst,
-              oriWinLeftConst, oriWinRightConst, layoutQPtr, layoutKvPtr, deterministic, dq, dOriKv, dCmpKv, dSinks,
+              oriWinLeftConst, oriWinRightConst, layoutQPtr, layoutKvPtr, dq, dOriKv, dCmpKv, dSinks,
               oriSoftmaxL1Norm, cmpSoftmaxL1Norm);
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>(

@@ -46,8 +46,10 @@ public:
     __aicore__ inline void ScatterAdd(const RunInfo &runInfo);
     // smlag_det：(1) 调用方 SyncAll 后；均分 K，依次处理 0~coreNum 产物，core 间全 AIV sync
     __aicore__ inline void ScatterAddDeter(int64_t s1Round, int64_t scatterDbIdx);
-    // smlag_det：(2) 调用方 SyncAll 后按 core 串行；只累加本 cube deterKv staging
-    __aicore__ inline void AccumulateKvDeter(const RunInfo &runInfo);
+    // smlag_det：(2) SyncAll 后；全 AIV 均分 K，依次处理 0~coreNum 的 deterKv（同 ScatterAddDeter）
+    // AccMeta 用 UB→GM DataCopy 广播（避免 GlobalTensor::SetValue 跨核不可见）
+    __aicore__ inline void PublishDeterAccMeta(bool valid, const RunInfo &runInfo);
+    __aicore__ inline void AccumulateKvDeter(int64_t targetCoreIdx);
     __aicore__ inline void CopyOutDsinks();
 protected:
     __aicore__ inline void InitParams(const TILING_CLASS *__restrict ordTilingData);
@@ -101,9 +103,12 @@ protected:
     GlobalTensor<float> dSinkWorkspaceGm;
     GlobalTensor<float> cmpSoftmaxL1WorkspaceGm;
     GlobalTensor<float> deterKvWorkspaceGm;
+    GlobalTensor<int64_t> deterAccMetaGm;
+    LocalTensor<int64_t> deterAccMetaTensor;
 
     int64_t aivNum{0};
     int64_t deterKvWorkspaceLen{0};
+    int64_t deterKvDataLen{0};
     int64_t dSinkWorkspaceLen{0};
     int64_t cmpSoftmaxL1WorkspaceLen{0};
     int64_t formerProcessNNum{0};
@@ -365,6 +370,8 @@ __aicore__ inline void VecOp<SMLAGT>::InitGMBuffer(GM_ADDR ori_kv, GM_ADDR cmp_k
     if constexpr (IS_DETER) {
         aivNum = tilingData->opInfo.aivNum;
         deterKvWorkspaceLen = tilingData->opInfo.deterKvWorkspaceLen;
+        deterKvDataLen = deterKvWorkspaceLen > static_cast<int64_t>(DETER_ACC_META_BYTES) ?
+                         deterKvWorkspaceLen - static_cast<int64_t>(DETER_ACC_META_BYTES) : 0;
         dSinkWorkspaceLen = tilingData->opInfo.dSinkWorkspaceLen;
         cmpSoftmaxL1WorkspaceLen = tilingData->opInfo.cmpSoftmaxL1WorkspaceLen;
         dSinkWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace +
@@ -373,6 +380,8 @@ __aicore__ inline void VecOp<SMLAGT>::InitGMBuffer(GM_ADDR ori_kv, GM_ADDR cmp_k
             (__gm__ float *)workspace + tilingData->postTilingData.cmpSoftmaxL1WorkSpaceOffset / sizeof(float));
         deterKvWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace +
                                            tilingData->postTilingData.deterKvWorkSpaceOffset / sizeof(float));
+        deterAccMetaGm.SetGlobalBuffer(
+            (__gm__ int64_t *)(workspace + tilingData->postTilingData.deterKvWorkSpaceOffset + deterKvDataLen));
     }
 }
 
@@ -440,6 +449,9 @@ __aicore__ inline void VecOp<SMLAGT>::InitUB(TPipe *pipe)
     rowsumUbOffset += 16 * dimDAlign * 2 * sizeof(float);
     scatterAddTensorV = vecQue.GetWithOffset<float>(16 * dimD2Align * 2, rowsumUbOffset);
     rowsumUbOffset += 16 * dimD2Align * 2 * sizeof(float);
+    // AccMeta scratch：独立 64B，避免与 scatterAdd float tile 别名
+    deterAccMetaTensor = vecQue.GetWithOffset<int64_t>(DETER_ACC_META_FIELDS, rowsumUbOffset);
+    rowsumUbOffset += DETER_ACC_META_FIELDS * sizeof(int64_t);
 
     maxSelCnt = 2;
     gatherTensorPing = vecQue.GetWithOffset<T1>(params.maxGatherSize * dimDqk, dSinksUbOffset);
@@ -497,6 +509,7 @@ __aicore__ inline void VecOp<SMLAGT>::AtomicClean()
         DumpGmZero(cmpSoftmaxL1Gm, dimTq * dimN2 * selectedBlockCount);
     }
     if constexpr (IS_DETER) {
+        // 整段清零（含末尾 AccMeta），避免首波读到脏 meta
         DumpGmZero(deterKvWorkspaceGm, deterKvWorkspaceLen / sizeof(float));
         DumpGmZero(dSinkWorkspaceGm, dSinkWorkspaceLen / sizeof(float));
     }
@@ -1270,47 +1283,92 @@ __aicore__ inline void VecOp<SMLAGT>::ScatterAddDeter(int64_t s1Round, int64_t s
 }
 
 template <typename SMLAGT>
-__aicore__ inline void VecOp<SMLAGT>::AccumulateKvDeter(const RunInfo &runInfo)
+__aicore__ inline void VecOp<SMLAGT>::PublishDeterAccMeta(bool valid, const RunInfo &runInfo)
 {
-    // 只读本 cube 的 deterKv staging → 本核 selectedKGmOffset，避免他核窗错配。
-    // 调用方已按 coreIdx 串行；同 cube 双子核写不同 S2 段 → load-add-store，不用 Atomic。
-    LocalTensor<float> dkInUb;
-    LocalTensor<float> dvInUb;
-    LocalTensor<float> accUb;
-    int64_t UB_ROW_SIZE = 16;
-    int64_t totalVec = 2;
-    int64_t localVec = subBlockIdx;
-    int64_t s2RealSize = runInfo.actualSelCntOffset;
-    if (s2RealSize <= 0) {
+    // 仅 aiv0 写 meta。用 UB→GM DataCopy（MTE3），避免 GlobalTensor::SetValue 跨核不可见。
+    if (subBlockIdx != 0 || static_cast<int64_t>(cubeBlockIdx) >= usedCoreNum) {
         return;
     }
-    int64_t remainder = s2RealSize % totalVec;
-    int64_t avgSize = s2RealSize / totalVec;
-    int64_t currentCoreKSize = avgSize + (localVec < remainder ? 1 : 0);
-    int64_t s2SrcOffset = localVec < remainder ? (localVec * (avgSize + 1)) :
-                                                 (remainder * (avgSize + 1) + (localVec - remainder) * avgSize);
-    if (currentCoreKSize <= 0) {
-        return;
-    }
-
-    int64_t singleN = params.singleN;
     int64_t dbIdx = 0;
     if constexpr (MODE == SMLAG_SCFA_MODE) {
         dbIdx = runInfo.roundDbIdx;
     } else {
-        // SWA/CFA 保持原有按 task ping-pong，不受 SCFA round DB 调度影响。
         dbIdx = runInfo.task & 1;
     }
-    // layout: [db][aic][singleN][Dk] then [db][aic][singleN][Dv]
+    for (uint64_t i = 0; i < DETER_ACC_META_FIELDS; i++) {
+        deterAccMetaTensor.SetValue(i, 0);
+    }
+    deterAccMetaTensor.SetValue(0, valid ? 1 : 0);
+    deterAccMetaTensor.SetValue(1, valid ? runInfo.actualSelCntOffset : 0);
+    deterAccMetaTensor.SetValue(2, valid ? runInfo.selectedKGmOffset : 0);
+    deterAccMetaTensor.SetValue(3, valid ? (runInfo.isOri ? 1 : 0) : 0);
+    deterAccMetaTensor.SetValue(4, valid ? dbIdx : 0);
+    event_t eventIdSToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
+    SetFlag<AscendC::HardEvent::S_MTE3>(eventIdSToMte3);
+    WaitFlag<AscendC::HardEvent::S_MTE3>(eventIdSToMte3);
+    int64_t base = static_cast<int64_t>(cubeBlockIdx) * static_cast<int64_t>(DETER_ACC_META_FIELDS);
+    DataCopy(deterAccMetaGm[base], deterAccMetaTensor, DETER_ACC_META_FIELDS);
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
+    // 刷写 cache，保证他核 Acc 侧 MTE2 读到最新 meta（避免 SetValue 时代跨核不可见同类问题）
+    DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+        deterAccMetaGm[base]);
+}
+
+template <typename SMLAGT>
+__aicore__ inline void VecOp<SMLAGT>::AccumulateKvDeter(int64_t targetCoreIdx)
+{
+    // 同 ScatterAddDeter：全 AIV 均分 targetCore 的 [singleN,D]；core 间串行由调用方 mode0 保证。
+    // load-add-store（不用 Atomic）；src=deterKv[db][targetCore]，dst=该 core 的 d_ori/d_cmp 窗。
+    if (static_cast<int64_t>(cubeBlockIdx) >= usedCoreNum || targetCoreIdx < 0 ||
+        targetCoreIdx >= usedCoreNum) {
+        return;
+    }
+
+    // 读 AccMeta：先 DCCI 再 GM→UB DataCopy + MTE2_S（禁止直接对 GM SetValue/GetValue）
+    int64_t metaBase = targetCoreIdx * static_cast<int64_t>(DETER_ACC_META_FIELDS);
+    DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+        deterAccMetaGm[metaBase]);
+    DataCopy(deterAccMetaTensor, deterAccMetaGm[metaBase], DETER_ACC_META_FIELDS);
+    SetFlag<AscendC::HardEvent::MTE2_S>(sWaitMte2);
+    WaitFlag<AscendC::HardEvent::MTE2_S>(sWaitMte2);
+    int64_t valid = deterAccMetaTensor.GetValue(0);
+    if (valid == 0) {
+        return;
+    }
+    int64_t s2RealSize = deterAccMetaTensor.GetValue(1);
+    int64_t outBase = deterAccMetaTensor.GetValue(2);
+    int64_t isOri = deterAccMetaTensor.GetValue(3);
+    int64_t dbIdx = deterAccMetaTensor.GetValue(4);
+    if (s2RealSize <= 0) {
+        return;
+    }
+    if (!isOri) {
+        outBase = outBase + dOriKvSize;
+    }
+
+    int64_t totalVec = usedCoreNum * 2;
+    int64_t myVecId = static_cast<int64_t>(cubeBlockIdx) * 2 + static_cast<int64_t>(subBlockIdx);
+    int64_t remainder = s2RealSize % totalVec;
+    int64_t avgSize = s2RealSize / totalVec;
+    int64_t currentCoreKSize = avgSize + (myVecId < remainder ? 1 : 0);
+    int64_t s2SrcOffset = myVecId < remainder ? (myVecId * (avgSize + 1)) :
+                                                 (remainder * (avgSize + 1) + (myVecId - remainder) * avgSize);
+    if (currentCoreKSize <= 0) {
+        return;
+    }
+
+    LocalTensor<float> dkInUb;
+    LocalTensor<float> dvInUb;
+    LocalTensor<float> accUb;
+    int64_t UB_ROW_SIZE = 16;
+    int64_t singleN = params.singleN;
     int64_t perCoreDk = singleN * dimDAlign;
     int64_t perCoreDv = singleN * dimD2Align;
     int64_t dbStride = usedCoreNum * (perCoreDk + perCoreDv);
-    int64_t coreIdx = static_cast<int64_t>(cubeBlockIdx);
-    int64_t outBase = runInfo.isOri ? (runInfo.selectedKGmOffset) :
-                                      (runInfo.selectedKGmOffset + dOriKvSize);
     GlobalTensor<float> dkOutGm = dkWorkspaceGm[outBase + s2SrcOffset * dimDAlign];
 
-    int64_t coreBase = dbIdx * dbStride + coreIdx * (perCoreDk + perCoreDv);
+    int64_t coreBase = dbIdx * dbStride + targetCoreIdx * (perCoreDk + perCoreDv);
     int64_t dkSrcBase = coreBase + s2SrcOffset * dimDAlign;
     int64_t dvSrcBase = coreBase + perCoreDk + s2SrcOffset * dimD2Align;
     GlobalTensor<float> dkSrcGm = deterKvWorkspaceGm[dkSrcBase];
@@ -1336,7 +1394,6 @@ __aicore__ inline void VecOp<SMLAGT>::AccumulateKvDeter(const RunInfo &runInfo)
         PipeBarrier<PIPE_V>();
         Add(dkInUb, dkInUb, dvInUb, tileElems);
         PipeBarrier<PIPE_V>();
-        // load GM 旧值 → add → store（替代 AtomicAdd）
         DataCopy(accUb, dkOutGm[loop * tileElems], tileElems);
         SetFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
         WaitFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
@@ -1368,7 +1425,6 @@ __aicore__ inline void VecOp<SMLAGT>::AccumulateKvDeter(const RunInfo &runInfo)
     SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
     WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
     DataCopy(dkOutGm[(maxLoops - 1) * UB_ROW_SIZE * dimDAlign], dkInUb, tailElems);
-    // 排空 MTE3，再交给 mode0 barrier，避免与下一 core 的 load-add-store 竞态
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
     SetFlag<AscendC::HardEvent::MTE3_V>(vWaitMte3);

@@ -217,8 +217,10 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetWorkspaceSize()
     if (tmpData.deterministic) {
         // ori & CFA: aicNum * singleN * (Dk+Dv) * DB * sizeof(fp32)
         // SCFA cmp 复用既有 mm4/mm5 staging；此处为 ori/CFA 或 SCFA-ori 的 singleN staging
+        // 末尾追加 AccMeta（UB DataCopy 广播，供全 AIV 均分 Acc）
+        constexpr int64_t kDeterAccMetaBytes = ((24 * 8 * static_cast<int64_t>(sizeof(int64_t)) + 511) / 512) * 512;
         deterKvWorkspaceLen = aicNum * tmpData.singleN * (dAlign + dAlign) * PING_PONG_BUFFER * B32;
-        deterKvWorkspaceLen = AlignData(deterKvWorkspaceLen, GM_ALIGN);
+        deterKvWorkspaceLen = AlignData(deterKvWorkspaceLen, GM_ALIGN) + kDeterAccMetaBytes;
         dSinkWorkspaceLen = aivNum * tilingData.opInfo.get_G() * B32;
         dSinkWorkspaceLen = AlignData(dSinkWorkspaceLen, GM_ALIGN);
         if (tmpData.mode == SMLAG_SCFA_MODE) {

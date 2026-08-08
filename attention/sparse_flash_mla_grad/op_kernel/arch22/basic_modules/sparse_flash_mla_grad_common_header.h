@@ -29,6 +29,11 @@ namespace SMLAG_BASIC {
 constexpr static uint64_t MAX_CORE_NUM = 24;
 // SCFA deter mm4/mm5 scatter staging：2 面 ping-pong（对齐 SFAG，非三缓冲）
 constexpr static uint64_t SCFA_SCATTER_DB_NUM = 2;
+// AccMeta：每 cube 8x int64（64B 对齐），供全 AIV 均分 Acc 时广播 pending RunInfo
+// 字段: valid, selCnt, outOffset, isOri, dbIdx, rsv[3]
+constexpr static uint64_t DETER_ACC_META_FIELDS = 8;
+constexpr static uint64_t DETER_ACC_META_BYTES =
+    ((MAX_CORE_NUM * DETER_ACC_META_FIELDS * sizeof(int64_t) + 511) / 512) * 512;
 
 #define SET_FLAG(trigger, waiter, e) AscendC::SetFlag<AscendC::HardEvent::trigger##_##waiter>((e))
 #define WAIT_FLAG(trigger, waiter, e) AscendC::WaitFlag<AscendC::HardEvent::trigger##_##waiter>((e))
@@ -52,7 +57,8 @@ struct SMLAG_TYPE {
 // 与 sfag_basic DETER_KV_SYNC_FLAG(7, mode2) 错开，避免同 id 不同 mode 冲突
 constexpr uint32_t DETER_SCATTER_VEC_SYNC_FLAG = 10;
 constexpr uint32_t DETER_CMP_L1_SYNC_FLAG = 8;
-// AccumulateKvDeter 按 core0..N-1 串行时的全 AIV 轮次屏障（替代每 core 一次 SyncAll）
+// AccumulateKvDeter：入口 mode0（替代 SyncAll，等 AccMeta Publish）+ core0..N-1 串行 mode0；
+// 每轮内全 AIV 均分该 core 的 [singleN,D]
 constexpr uint32_t DETER_ACC_VEC_SYNC_FLAG = 9;
 
 struct RunInfo {

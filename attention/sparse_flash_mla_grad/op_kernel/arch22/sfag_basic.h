@@ -724,16 +724,15 @@ __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::GetTndSeqLen(const GM
 template <typename SMLAGT>
 __aicore__ inline void SelectedAttentionGradBasic<SMLAGT>::DeterAccumulateAfterLocalSync(VecOp<SMLAGT> &vecOp)
 {
-    // smlag_det (2)：SyncAll 后保序累加；core0..N-1 串行 + mode0 屏障（等价于每次循环间全 AIV 同步）。
-    // 保留 v1/v2：只累加本核 deterKv staging；Acc-previous / 跳过首 Acc 由调用方保证次数对齐。
+    // smlag_det (2)：全 AIV 均分每个 core 的 [singleN,D]；core0..N-1 mode0 串行。
     if (needDeterAcc) {
         CrossCoreWaitFlag<2, PIPE_MTE2>(DETER_KV_SYNC_FLAG);
     }
-    SyncAll();
+    vecOp.PublishDeterAccMeta(needDeterAcc, deterAccRunInfo);
+    CrossCoreSetFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
+    CrossCoreWaitFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
     for (int64_t coreIdx = 0; coreIdx < static_cast<int64_t>(usedCoreNum); coreIdx++) {
-        if (needDeterAcc && static_cast<int64_t>(cubeBlockIdx) == coreIdx) {
-            vecOp.AccumulateKvDeter(deterAccRunInfo);
-        }
+        vecOp.AccumulateKvDeter(coreIdx);
         CrossCoreSetFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
         CrossCoreWaitFlag<0, PIPE_MTE3>(DETER_ACC_VEC_SYNC_FLAG);
     }

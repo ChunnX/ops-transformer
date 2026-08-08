@@ -83,10 +83,10 @@ TILING_DATA_FIELD_DEF(uint32_t, selectedBlockSize);
 TILING_DATA_FIELD_DEF(int64_t, cmpRatio);
 TILING_DATA_FIELD_DEF(int64_t, oriWinLeft);
 TILING_DATA_FIELD_DEF(int64_t, oriWinRight);
-TILING_DATA_FIELD_DEF(uint32_t, isDeterministic);
 TILING_DATA_FIELD_DEF(int64_t, deterKvWorkspaceLen);
 TILING_DATA_FIELD_DEF(int64_t, dSinkWorkspaceLen);
 TILING_DATA_FIELD_DEF(int64_t, cmpSoftmaxL1WorkspaceLen);
+TILING_DATA_FIELD_DEF(uint32_t, isDeterministic);
 TILING_DATA_FIELD_DEF(uint32_t, aivNum);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaGradBasicParamsOp, SparseFlashMlaGradBasicParams)
