@@ -27,7 +27,6 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #if ((defined(__CCE_AICORE__) && (__CCE_AICORE__ == 310)) && !(defined(__NPU_ARCH__) && __NPU_ARCH__ == 3113))
-// A8W8 and A4W4 both accumulate in int32 on the cube path.
 #if defined(ORIG_DTYPE_X) && defined(DT_INT8) && defined(DT_INT4) && defined(ORIG_DTYPE_WEIGHT) && \
     (ORIG_DTYPE_X == DT_INT8 || (ORIG_DTYPE_X == DT_INT4 && ORIG_DTYPE_WEIGHT == DT_INT4))
 #define DTYPE_L0C_LOCAL int32_t
@@ -55,7 +54,7 @@
 #endif
 #elif defined(ORIG_DTYPE_X) && defined(ORIG_DTYPE_WEIGHT) && defined(DT_INT4) && \
     ORIG_DTYPE_X == DT_INT4 && ORIG_DTYPE_WEIGHT == DT_INT4
-#define V310_GMM_QUANT_A4W4
+#define V310_GMM_QUANT_S4S4
 #else
 #define V310_GMM_QUANT_CUBE
 #endif
