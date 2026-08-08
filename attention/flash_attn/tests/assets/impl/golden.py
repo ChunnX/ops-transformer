@@ -255,7 +255,8 @@ class FlashAttnGolden:
             out_tnd = torch.zeros(
                 total_q, N_q, dv, dtype=torch.float32, device=q.device
             )
-            lse_tnd = torch.zeros(total_q, N_q, dtype=torch.float32, device=q.device)
+            # 算子 lse 输出为 (N, T), 与算子对齐
+            lse_tnd = torch.zeros(N_q, total_q, dtype=torch.float32, device=q.device)
             out = None
             lse = None
         else:
@@ -272,7 +273,7 @@ class FlashAttnGolden:
                 q_start = cu_q[b]
             if sq <= 0 or skv <= 0:
                 if is_tnd_out:
-                    lse_tnd[q_start : q_start + sq, :] = 0.0
+                    lse_tnd[:, q_start : q_start + sq] = 0.0
                 else:
                     lse[b, :, :sq] = 0.0
                 continue
@@ -336,7 +337,7 @@ class FlashAttnGolden:
                         o, l = compute_fn(q_bh, k_bh, v_bh, mask_b, scale, sink)
                     if is_tnd_out:
                         out_tnd[q_start : q_start + sq, qh, :] = o
-                        lse_tnd[q_start : q_start + sq, qh] = l
+                        lse_tnd[qh, q_start : q_start + sq] = l
                     else:
                         out[b, qh, :sq, :] = o
                         lse[b, qh, :sq] = l
