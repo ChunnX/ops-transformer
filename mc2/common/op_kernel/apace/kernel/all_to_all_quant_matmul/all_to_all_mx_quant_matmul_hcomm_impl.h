@@ -162,9 +162,6 @@ AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
     GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR y, GM_ADDR all2all_out, GM_ADDR x1_scale, GM_ADDR x2_scale,
     GM_ADDR workspaceGM)
 {
-    if ASCEND_IS_AIV {
-        return;
-    }
     auto &&commTiling = tilingData_->commTilingData;
     splitAxisSize_ = commTiling.splitAxisTileSize * commTiling.splitAxisTileCnt +
                     commTiling.splitAxisTailSize * commTiling.splitAxisTailCnt;
@@ -231,9 +228,6 @@ __aicore__ inline void
 AllToAllMxQuantMatmulImpl<X1Type, X2Type, YType, CommDataTypeX1,
                           AlltoAllMatmulTilingDataType, ServerType, IsMxFp4>::Run()
 {
-    if ASCEND_IS_AIV {
-        return;
-    }
     if (tilingData_->localMatmul != 0) {
         MatmulProcess(MatmulMode::LOCAL);
     }
