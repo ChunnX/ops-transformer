@@ -42,7 +42,8 @@ extern "C" {
  * @param [in] groupListType:
  * 整数型参数，表示groupList的解释方式，当前支持0或1。
  * @param [in] tuningConfig:
- * 调优参数，预留参数，当前暂不使用，支持传入nullptr。
+ * 调优参数。数组首元素表示各分组处理token数的预期值，算子据此优化M轴tiling；首元素为0或传入nullptr时
+ * 不启用该优化。非空输入时首元素取值范围为[0, M]，其余元素预留。
  * @param [in] quantMode:
  * 表示量化模式，当前仅支持"mx"；传入nullptr或空字符串时根据x和xScaleOptional的数据类型推导为"mx"。
  * @param [in] roundMode:

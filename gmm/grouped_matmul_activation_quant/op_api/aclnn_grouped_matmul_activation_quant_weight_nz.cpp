@@ -458,6 +458,24 @@ aclnnStatus CheckActivationType(const char *activationType)
     return ACLNN_SUCCESS;
 }
 
+aclnnStatus CheckTuningConfig(const aclTensor *x, const aclIntArray *tuningConfig)
+{
+    if (tuningConfig == nullptr || tuningConfig->Size() == 0U) {
+        return ACLNN_SUCCESS;
+    }
+    const int64_t mSize = x->GetViewShape().GetDim(gmaq::X_M_DIM_INDEX);
+    // Preserve the behavior of existing empty-output calls, where tuningConfig was a reserved parameter.
+    if (mSize == 0L) {
+        return ACLNN_SUCCESS;
+    }
+    const int64_t expectedGroupM = (*tuningConfig)[0];
+    GMMAQ_CHECK_WITH_LOG(expectedGroupM >= 0L && expectedGroupM <= mSize, ACLNN_ERR_PARAM_INVALID,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            OP_NAME, "tuningConfig[0]", std::to_string(expectedGroupM),
+            FormatString("the first value of tuningConfig must be in the range [0, M], where M is %ld", mSize)));
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus ResolveAndCheckQuantMode(const aclTensor *x, const aclTensor *xScaleOptional, const char *quantMode,
                                      const char *&effectiveQuantMode)
 {
@@ -611,7 +629,8 @@ aclnnStatus CheckMxQuantParams(const aclTensor *x, const aclTensor *groupList, c
 aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const aclTensorList *&weight,
                         const aclTensorList *&weightScale, const aclTensorList *bias,
                         const aclTensor *xScaleOptional, const char *activationType,
-                        bool &transposeWeight, int64_t groupListType, const char *quantMode,
+                        bool &transposeWeight, int64_t groupListType, const aclIntArray *tuningConfig,
+                        const char *quantMode,
                         const char *roundMode, int64_t scaleAlg, float dstTypeMax, const aclTensor *y,
                         const aclTensor *yScale, aclOpExecutor *executor, const char *&effectiveQuantMode,
                         const char *&effectiveRoundMode, int64_t &effectiveYDtype)
@@ -619,6 +638,8 @@ aclnnStatus CheckParams(const aclTensor *x, const aclTensor *groupList, const ac
     aclnnStatus checkRet = CheckRequiredParams(x, groupList, weight, weightScale, activationType, y, yScale);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
     checkRet = CheckActivationType(activationType);
+    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
+    checkRet = CheckTuningConfig(x, tuningConfig);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
 
     checkRet = ResolveAndCheckQuantMode(x, xScaleOptional, quantMode, effectiveQuantMode);
@@ -664,7 +685,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
 {
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnGroupedMatmulActivationQuantWeightNz,
-                   DFX_IN(x, groupList, weight, weightScale, bias, xScaleOptional),
+                   DFX_IN(x, groupList, weight, weightScale, bias, xScaleOptional, activationType, groupListType,
+                          tuningConfig, quantMode, roundMode, scaleAlg, dstTypeMax),
                    DFX_OUT(y, yScale));
     bool transposeWeight = false;
 
@@ -674,7 +696,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNzGetWorkspaceSize(const aclT
     const char *effectiveRoundMode = nullptr;
     int64_t effectiveYDtype = 0L;
     aclnnStatus checkRet = CheckParams(x, groupList, weight, weightScale, bias, xScaleOptional, activationType,
-        transposeWeight, groupListType, quantMode, roundMode, scaleAlg, dstTypeMax, y, yScale,
+        transposeWeight, groupListType, tuningConfig, quantMode, roundMode, scaleAlg, dstTypeMax, y, yScale,
         uniqueExecutor.get(), effectiveQuantMode, effectiveRoundMode, effectiveYDtype);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
 

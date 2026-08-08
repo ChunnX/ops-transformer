@@ -291,7 +291,8 @@ def grouped_matmul_activation_quant(
         x_scale (Tensor, optional): x的MX量化scale。当前MXFP8必须传入，shape为
             ``(M, ceil(K / 64), 2)``。
         group_list_type (int): group_list语义类型，当前支持0或1。
-        tuning_config (List[int], optional): 预留调优参数。
+        tuning_config (List[int], optional): 首元素表示预期的单个group M轴长度，算子据此优化M轴tiling。
+            ``None``、空列表或首元素为0时不启用；非空输入时首元素取值范围为 ``[0, M]``，其余元素预留。
         quant_mode (str, optional): 量化模式，torch层不做解析，直接透传到aclnn层处理。
         y_dtype (torch.dtype, optional): 输出y的数据类型，支持 ``torch.float8_e4m3fn`` 和
             ``torch.float8_e5m2``；为None时默认推导为x的数据类型。

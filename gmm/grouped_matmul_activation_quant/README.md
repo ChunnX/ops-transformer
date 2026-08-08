@@ -66,7 +66,7 @@
 | activation_type | 必选属性 | 激活函数类型，当前仅支持`"gelu_tanh"`。 | STRING | - | - |
 | transpose_weight | 可选属性 | 表示`weight`是否转置，默认false。 | BOOL | - | - |
 | group_list_type | 可选属性 | 表示`group_list`输入的分组方式，支持0和1，默认0。 | INT64 | - | - |
-| tuning_config | 可选属性 | 预留调优参数，默认`[0]`，当前暂不使用。 | LIST_INT | - | - |
+| tuning_config | 可选属性 | 数组首元素表示各分组处理token数的预期值，算子据此优化M轴tiling；默认`[0]`，0表示不启用，其余元素预留。非空输入时首元素取值范围为`[0, M]`。 | LIST_INT | - | - |
 | quant_mode | 可选属性 | 量化模式，当前仅支持`"mx"`。 | STRING | - | - |
 | y_dtype | 可选属性 | 输出`y`的数据类型，默认0；当前支持0、35、36，其中35表示FLOAT8_E5M2，36表示FLOAT8_E4M3FN。 | INT64 | - | - |
 | round_mode | 可选属性 | 量化舍入模式，默认`"rint"`，当前仅支持`"rint"`。 | STRING | - | - |
