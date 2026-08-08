@@ -98,6 +98,10 @@ __aicore__ inline void InvokeGmmS8S4TensorApi(
     params.epilogueParams.xRowSumGmAddr = rowSumWorkspace;
     params.epilogueParams.outGmAddr = reinterpret_cast<GM_ADDR>(
         GROUPED_MATMUL::GetTensorAddr<YType>(0, y));
+    params.epilogueParams.n = mm.n;
+    params.epilogueParams.baseM = mm.baseM;
+    params.epilogueParams.baseN = mm.baseN;
+    params.epilogueParams.withOffset = s8s4.dequantMode != 0U && s8s4.hasOffset != 0U;
     params.groupListGmAddr = groupList;
     params.gmmParams.groupNum = tiling->gmmQuantParams.groupNum;
     params.gmmParams.m = mm.m;
@@ -114,7 +118,6 @@ __aicore__ inline void InvokeGmmS8S4TensorApi(
     params.gmmParams.kBL1 = mm.kBL1;
     params.gmmParams.nBufferNum = 2U;
     params.gmmParams.dbL0C = mm.dbL0C;
-    params.gmmParams.withOffset = s8s4.hasOffset;
     params.gmmParams.groupListType = tiling->gmmQuantParams.groupListType;
     {
         TensorApiKernel kernel;

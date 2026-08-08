@@ -91,7 +91,6 @@ __aicore__ inline void GmmS4S4Kernel(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM
     gmmParams.kBL1 = kBL1;
     gmmParams.nBufferNum = 2U;  // L1 双缓冲(对应 host dbL0A=dbL0B=2)
     gmmParams.dbL0C = static_cast<uint8_t>(mmTilingData->dbL0C);
-    gmmParams.withOffset = 0U;  // S4S4 对称量化(offset=null, 无 xRowSum 修正)
     gmmParams.groupListType = gmmBaseParams->groupListType;
 
     // The user workspace follows the runtime-reserved system workspace.
