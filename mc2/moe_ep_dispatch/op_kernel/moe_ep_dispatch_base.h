@@ -53,12 +53,12 @@ __simd_vf__ __aicore__ inline void HistogramsVf(__ubuf__ U *dst, __ubuf__ T *src
         uint32_t remaining = totalElm - static_cast<uint32_t>(i) * repeatElm;
         uint32_t valid = (remaining > repeatElm) ? repeatElm : remaining;
         Reg::MaskReg preg = Reg::UpdateMask<T>(valid);
-        Reg::LoadAlign(srcReg, src + repeatElm * i);
+        Reg::DataCopy(srcReg, src + repeatElm * i);
         Reg::Histograms<T, U, Reg::HistogramsBinType::BIN0, htype>(dst0Reg, srcReg, preg);
         Reg::Histograms<T, U, Reg::HistogramsBinType::BIN1, htype>(dst1Reg, srcReg, preg);
     }
-    Reg::StoreAlign(dst, dst0Reg, pregOut);
-    Reg::StoreAlign(dst + halfRepeat, dst1Reg, pregOut);
+    Reg::DataCopy(dst, dst0Reg, pregOut);
+    Reg::DataCopy(dst + halfRepeat, dst1Reg, pregOut);
 }
 
 __aicore__ inline void GetExpertFreq(LocalTensor<uint16_t> &dstLocal, LocalTensor<uint8_t> &srcLocal, uint32_t totalElm)
