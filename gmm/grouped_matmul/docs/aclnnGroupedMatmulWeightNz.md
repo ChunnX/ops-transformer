@@ -718,6 +718,14 @@ aclnnStatus aclnnGroupedMatmulWeightNz(
         |:---------:|:---------:| :------ |
         |0|x单tensor|每个tensor 3维，shape为（M, ceil(K / 64), 2）|
 
+  - S4S4（全量化INT4×INT4）场景支持的输入类型为：
+    - 仅支持groupType=0、actType=0，groupListType=0/1/2。
+    - 仅支持x、weight、out均为长度为1的TensorList。
+    - x为INT4、weight为INT4、biasOptional为空、scaleOptional为UINT64、offsetOptional为空、antiquantScaleOptional为空、antiquantOffsetOptional为空、perTokenScaleOptional为空或为FLOAT32、activationInputOptional为空、out为FLOAT16或BFLOAT16。
+    - x不支持转置；weight支持NZ转置输入，即输入为[E,N,K]，但view shape为[E,K,N]以保证算子识别转置状态，转置输入下，$k/G$要求按照64对齐，K按照64对齐，N按照16对齐，ND不支持转置输入。
+    - 支持perchannel和pergroup量化。perchannel场景的scale的shape需为$[E, N]$，pergroup场景需为$[E, G, N]$。
+    - pergroup场景下，$G$必须要能整除$K$，且$k/G$需为偶数。
+
   - 不同groupType支持场景:
 
     - 支持场景中单表示单tensor，多表示多tensor，表示顺序为x，weight，out，例如单多单表示支持x为单tensor，weight多tensor，out单tensor的场景。
