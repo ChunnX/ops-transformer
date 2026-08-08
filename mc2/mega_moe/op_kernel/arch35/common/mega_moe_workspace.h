@@ -9,91 +9,34 @@
  */
 
 /*!
- * \file mega_moe_workspace_info.h
+ * \file mega_moe_workspace.h
  * \brief
  */
 
-#ifndef MEGA_MOE_WORKSPACE_INFO_H
-#define MEGA_MOE_WORKSPACE_INFO_H
+#ifndef MEGA_MOE_WORKSPACE_H
+#define MEGA_MOE_WORKSPACE_H
 
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
 #include "kernel_operator.h"
+#include "op_kernel/math_util.h"
 #define HOST_DEVICE __forceinline__[aicore]
 #else
 #define GM_ADDR uint8_t *
 #define HOST_DEVICE
 #endif
-#include "mega_moe_impl_base.h"
+#include "../mega_moe_tiling.h"
+#include "mega_moe_constants.h"
 
 namespace {
-constexpr uint64_t M_VALUE = 0UL;
-constexpr uint64_t N_VALUE = 1UL;
-constexpr uint64_t K_VALUE = 2UL;
-constexpr uint64_t IDX_A_OFFSET = 0UL;
-constexpr uint64_t IDX_B_OFFSET = 1UL;
-constexpr uint64_t IDX_A_SCALE_OFFSET = 2UL;
-constexpr uint64_t IDX_B_SCALE_OFFSET = 3UL;
-constexpr uint64_t IDX_C_OFFSET = 5UL;
-constexpr uint64_t IDX_C_SCALE_OFFSET = 6UL;
-constexpr uint64_t IDX_FLAG_OFFSET = 7UL;
-constexpr uint64_t IDX_B2_OFFSET = 8UL;
-constexpr uint64_t IDX_B2_SCALE_OFFSET = 9UL;
-constexpr uint64_t IDX_Y2_OFFSET = 10UL;
-constexpr uint64_t IDX_M_OFFSET = 11UL;
-constexpr uint64_t IDX_GMM1_OFFSET = 12UL;
-constexpr uint64_t IDX_GMM2_OFFSET = 13UL;
-constexpr uint64_t INT32_PER_256B = 8U;
-constexpr uint8_t SYNC_AIC_AIV_MODE = 4;
-constexpr uint16_t AIC_SYNC_AIV_FLAG = 4;
-constexpr uint16_t AIV_SYNC_AIC_FLAG = 6;
-constexpr uint16_t FLAG_ID_MAX_PER_V = 16;
-constexpr int32_t MXFP_DIVISOR_SIZE = 64;
-constexpr int32_t MXFP_SCALE_GROUP_NUM = 32;
-constexpr int32_t MXFP_MULTI_BASE_SIZE = 2;
 constexpr int64_t PEERMEM_DATA_OFFSET = 1024 * 60LL;
-constexpr int64_t SIMT_THREAD_NUM = 2048;
-constexpr int64_t ALIGN_32 = 32LL;
-constexpr int64_t ALIGN_128 = 128LL;
-constexpr int64_t ALIGN_256 = 256LL;
-constexpr int64_t ALIGN_512 = 512LL;
-constexpr int32_t MAX_AICORE_NUM = 36;
-constexpr uint32_t BUFFER_ALIGN = 96U * 1024U * 2U;
-constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024U;
-constexpr uint32_t UNPERMUTE_LIST_NUM = 3U;
-constexpr uint32_t DOUBLE_BUFFER = 2U;
-constexpr uint32_t TWO_FLAG = 2U;
-constexpr uint32_t RANK_ID = 0U;
-constexpr uint32_t TOKEN_ID = 1U;
-constexpr uint32_t TOPK_INDEX = 2U;
-constexpr uint32_t WEIGHT_INDEX = 3U;
-constexpr uint32_t SYNC_EVENT_ID1 = 1;
-constexpr uint32_t SYNC_EVENT_ID2 = 2;
-constexpr uint32_t SYNC_EVENT_ID3 = 3;
-constexpr uint32_t SYNC_EVENT_ID4 = 4;
-constexpr uint32_t SYNC_EVENT_ID5 = 5;
 constexpr int64_t SIZE_INT_8 = 1U;
 constexpr int64_t SIZE_INT_32 = 4U;
 constexpr int64_t SIZE_BF_16 = 2U;
-constexpr int64_t E5M2_QUANT = 3U;
-constexpr int64_t E4M3_QUANT = 4U;
-constexpr int64_t E2M1_QUANT = 5U;
-constexpr int64_t HALF_TO_FP32 = 2U;
-constexpr int64_t DEQUANT_SCALE_EXPAND = 2U;
-constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
-// Combine 量化模式。
-constexpr uint8_t COMBINE_NO_QUANT = 0;
-constexpr uint8_t MXFP8_E5M2_COMM_QUANT = 3;
-constexpr uint8_t MXFP8_E4M3_COMM_QUANT = 4;
-// Combine buffer 常量。
-constexpr uint32_t META_INFO_SIZE = 8U; // 每个 token 的 metaInfo 大小（8 个 int32）
 // GroupedMatmul 模式。
 constexpr uint8_t GROUPED_MATMUL_MODE_GENERAL = 0U;
 constexpr uint8_t GROUPED_MATMUL_MODE_A8W4 = 1U;
-constexpr uint8_t GROUPED_MATMUL_MODE_A8W8_NZ = 2U;
 // a4w4 混合场景：GMM1 走 generic a4w4，GMM2 走 A8W4。GMM2 需要 gmm2MmadResPtr workspace。
 constexpr uint8_t GROUPED_MATMUL_MODE_A4W4 = 3U;
-// a4w4 NZ 场景：weight1/weight2 均为 fp4 NZ 格式。
-constexpr uint8_t GROUPED_MATMUL_MODE_A4W4_NZ = 4U;
 constexpr int64_t TOPO_TYPE_MTE = 0U;  // mte
 constexpr int64_t TOPO_TYPE_URMA = 1U; // urma
 
@@ -143,6 +86,60 @@ HOST_DEVICE int64_t CalcMegaMoeFlagWorkspaceSize(const MegaMoeTilingData *tiling
 }
 
 } // namespace
+
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+struct PeermemInfo {
+    GM_ADDR rankSyncInWorldPtr;
+    GM_ADDR maskRecvPtr;
+    GM_ADDR quantTokenScalePtr;
+    GM_ADDR dispatchRecivePtr;
+    GM_ADDR dispatchFlagPtr;
+    GM_ADDR combineSendPtr;
+
+    __aicore__ inline PeermemInfo() = default;
+    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData *tilingData, uint32_t elemsPerByte = 1,
+                                  uint32_t serverNum = 1)
+    {
+        rankSyncInWorldPtr = base;
+        int64_t offset = PEERMEM_DATA_OFFSET;
+        maskRecvPtr = base + offset;
+        int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
+        int64_t compareCount = Ops::Base::CeilAlign(sendTotalNum * static_cast<int64_t>(sizeof(int32_t)), ALIGN_256) /
+                               static_cast<int64_t>(sizeof(int32_t));
+        int64_t maskAlignSize = Ops::Base::CeilAlign(compareCount / 8, ALIGN_32);
+        int64_t maskSlotSize = maskAlignSize + ALIGN_32;
+        offset += Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->moeExpertPerRank) * tilingData->epWorldSize * maskSlotSize, ALIGN_512);
+
+        uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
+        uint32_t dataBytes =
+            Ops::Base::CeilAlign(tilingData->h / elemsPerByte, static_cast<uint32_t>(ALIGN_256)) * sizeof(int8_t);
+        uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
+        uint32_t tokenScaleBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
+        if (tilingData->topkWeightsPrefetch == 1) {
+            uint32_t weightBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)),
+                                                        static_cast<uint32_t>(ALIGN_32));
+            tokenScaleBytes = Ops::Base::CeilAlign(tokenScaleBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
+        }
+
+        if (tilingData->topoType == TOPO_TYPE_MTE) {
+            quantTokenScalePtr = base + offset;
+            offset += Ops::Base::CeilAlign(
+                static_cast<int64_t>(tilingData->bs) * tokenScaleBytes * sizeof(int8_t), ALIGN_512);
+        } else {
+            dispatchRecivePtr = base + offset;
+            uint32_t relayRecordBytes = Ops::Base::CeilAlign(tokenScaleBytes, static_cast<uint32_t>(ALIGN_512));
+            offset += Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs) * relayRecordBytes * sizeof(int8_t) *
+                                               static_cast<int64_t>(serverNum),
+                                           ALIGN_512);
+            dispatchFlagPtr = base + offset;
+            offset += Ops::Base::CeilAlign(
+                static_cast<int64_t>(serverNum) * tilingData->bs * static_cast<int64_t>(sizeof(uint64_t)), ALIGN_512);
+        }
+        combineSendPtr = base + offset;
+    }
+};
+#endif
 
 struct WorkspaceInfo {
     GM_ADDR dispatchRevDataPtr;
@@ -395,4 +392,4 @@ struct WorkspaceInfo {
         }
     }
 };
-#endif // MEGA_MOE_WORKSPACE_INFO_H
+#endif // MEGA_MOE_WORKSPACE_H
