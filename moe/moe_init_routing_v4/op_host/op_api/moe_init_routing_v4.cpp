@@ -42,7 +42,7 @@ MoeInitRoutingV4(const aclTensor *x, const aclTensor *expertIdx,
            expertCapacity, expertNum, dropPadMode, expertTokensNumType,
            expertTokensNumFlag, quantMode, activeExpertRange, rowIdxType,
            expandedX, expandedRowIdx, expertTokensCountOrCumsum, expandedScale,
-           expandedTopkWeight, executor);
+           expandedTopkWeight);
 
     auto expandedXOut = executor->AllocTensor(expandedX->GetViewShape(), expandedX->GetDataType(),
                                               Format::FORMAT_ND);
