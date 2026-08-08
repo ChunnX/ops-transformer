@@ -1026,6 +1026,279 @@ def _arrange_x(vec_ctx, db_idx, group_idx, db_row_cnt, deal_tc_size,
             break
 
 
+
+
+def _init_scalars(batch_size, seq_size, cmp_ratio, start_pos, seq_used, cu_seqlens):
+    """Init: seq_ctx struct + compressed_cnt（依赖 startPos/seqUsed 数据内容）"""
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # ── Sequence context ──
+    seq_ctx = pl.struct("SeqCtx",
+        batch_size=batch_size,
+        cmp_ratio=cmp_ratio,
+        layout=Layout,
+        seq_size=seq_size,
+    )
+
+    # ── Compressed rows / block counts ──
+    # compressedCnt 依赖 startPos/seqUsed 数据内容（op_host tiling 阶段读不到），kernel 内算
+
+    compressed_cnt = 0
+    for b_idx in pl.range(0, batch_size):
+        b_start_pos = _get_start_pos(b_idx, start_pos, seq_ctx)
+        b_seq_used = _get_seq_used(b_idx, seq_used, cu_seqlens, seq_ctx)
+        compress_seq_idx = _trunc(b_start_pos + b_seq_used, cmp_ratio)
+        if compress_seq_idx > b_start_pos:
+            # startPos%cmpRatio!=0 时首块为部分块但仍计 1 块 → 向上取整（_ceil_div）
+            compressed_cnt = compressed_cnt + _ceil_div(compress_seq_idx - b_start_pos, cmp_ratio)
+    return (seq_ctx, compressed_cnt)
+
+
+def _init_round_params(compressed_cnt, batch_size, cmp_ratio, head_dim, hidden_size,
+    total_head_dim, cmp_row_cnt, cmp_size, d_deal_size, m_deal_size,
+    db_ratio, coff_coef, cube_m_base_size, group_deal_sc_num, deal_sc_num,
+    cmp_kv_batch_stride, cube_core_num, core_num, group_size, group_num,
+    db_row_cnt, group_row_stride, total_sc_num_per_round):
+    """Init: round 循环参数 + Vec 子函数共享 ctx"""
+    # ── 共享 round 参数（Phase 1 + Phase 2 都需要）──
+
+
+
+
+
+
+
+
+    round_cnt = _ceil_div(compressed_cnt, total_sc_num_per_round)
+    # 单轮实际块数上限 = 首轮块数（各轮最大值）：归约侧有效行数依据
+    #（不满轮时空闲 group 的 ws 区域未写，归约只读写过数据的行）
+    max_round_blocks = min(total_sc_num_per_round, compressed_cnt)
+
+    # ── Vec 子函数共享 ctx（int64 稳定值，派生配置经 tiling 传入）──
+    vec_ctx = pl.struct("VecCtx",
+        hidden_size=hidden_size, batch_size=batch_size, cmp_ratio=cmp_ratio, head_dim=head_dim,
+        cmp_row_cnt=cmp_row_cnt, cmp_size=cmp_size,
+        d_deal_size=d_deal_size, m_deal_size=m_deal_size,
+        db_ratio=db_ratio, coff_coef=coff_coef,
+        cube_m_base_size=cube_m_base_size, group_deal_sc_num=group_deal_sc_num,
+        deal_sc_num=deal_sc_num, cmp_kv_batch_stride=cmp_kv_batch_stride,
+        cube_core_num=cube_core_num, core_num=core_num,
+        group_size=group_size, group_num=group_num,
+        total_head_dim=total_head_dim, db_row_cnt=db_row_cnt, group_row_stride=group_row_stride, round_cnt=round_cnt)
+    return (round_cnt, max_round_blocks, vec_ctx)
+
+
+def _init_l1_tile_groups(io_d_type):
+    """Init: L1A CV 通道 4 组 [128,128] 双缓冲 tile_group（Mat 内存，vec/cube 共享）"""
+    # ── L1A CV 通道: 4 个独立 tile_group [128,128], double-buffer ──
+    l1_nz_tile_type = pl.TileType(shape=[M_BASE_SIZE, D_BASE_SIZE], dtype=io_d_type,
+                              target_memory=pl.MemorySpace.Mat, layout=pl.NZ, compact=1)
+    l1_zn_tile_type = pl.TileType(shape=[M_BASE_SIZE, D_BASE_SIZE], dtype=io_d_type,
+                              target_memory=pl.MemorySpace.Mat, layout=pl.ZN, compact=1)
+
+    l1_kv0_tile_group_nz = pl.make_tile_group(type=l1_nz_tile_type, addrs=L1_KV0_ADDR, mutex_ids=[10, 11]) # 128 * 128 * 2 = 0x10000
+    l1_kv1_tile_group_nz = pl.make_tile_group(type=l1_nz_tile_type, addrs=L1_KV1_ADDR, mutex_ids=[12, 13])
+    l1_score0_tile_group_nz = pl.make_tile_group(type=l1_nz_tile_type, addrs=L1_SB0_ADDR, mutex_ids=[14, 15])
+    l1_score1_tile_group_nz = pl.make_tile_group(type=l1_nz_tile_type, addrs=L1_SB1_ADDR, mutex_ids=[16, 17])
+
+    l1_kv0_tile_group_zn = pl.make_tile_group(type=l1_zn_tile_type, addrs=L1_KV0_ADDR, mutex_ids=[10, 11])
+    l1_kv1_tile_group_zn = pl.make_tile_group(type=l1_zn_tile_type, addrs=L1_KV1_ADDR, mutex_ids=[12, 13])
+    l1_score0_tile_group_zn = pl.make_tile_group(type=l1_zn_tile_type, addrs=L1_SB0_ADDR, mutex_ids=[14, 15])
+    l1_score1_tile_group_zn = pl.make_tile_group(type=l1_zn_tile_type, addrs=L1_SB1_ADDR, mutex_ids=[16, 17])
+    return (l1_kv0_tile_group_nz, l1_kv1_tile_group_nz, l1_score0_tile_group_nz, l1_score1_tile_group_nz, l1_kv0_tile_group_zn, l1_kv1_tile_group_zn, l1_score0_tile_group_zn, l1_score1_tile_group_zn)
+
+
+def _init_vec_tile_groups(io_d_type, group_size, d_deal_size):
+    """Init: UB tile/tile_group 声明 + vec 身份值（tensor 视图留主函数）"""
+    #  Vec tile declarations (once)
+    # ════════════════════════════════════════════════════════════
+
+    core_idx = pl.get_block_idx()
+    sub_core_idx = pl.get_subblock_idx()
+
+    # ── UB tile type declarations ──
+    # TileType 静态 shape 需编译期立即量 → 用内联算术（值恒等于 tiling.dDealSize/mDealSize）
+    d_cmp_kv_tile_type = pl.TileType(
+        shape=[M_BASE_SIZE * Coff // 2, D_BASE_SIZE // Coff], dtype=io_d_type,
+        target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1])
+
+    d_cmp_kv_fp32_tile_type = pl.TileType(shape=[M_BASE_SIZE * Coff // 2, D_BASE_SIZE // Coff], dtype=pl.DT_FP32,
+        target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1], pad=pl.TilePad.zero)
+    
+    normel_tile_type = pl.TileType(
+        shape=[M_BASE_SIZE * Coff, D_BASE_SIZE // Coff], dtype=pl.DT_FP32,
+        target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1],
+        pad=pl.TilePad.zero, compact=1)
+    
+    cast_tile_type = pl.TileType(
+        shape=[M_BASE_SIZE * Coff, D_BASE_SIZE // Coff], dtype=io_d_type,
+        target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1], compact=1)
+
+    cast_md_tile_type = pl.TileType(
+        shape=[M_BASE_SIZE, D_BASE_SIZE], dtype=io_d_type,
+        target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1], compact=1)
+
+    nz_tile_type = pl.TileType(
+        shape=[M_BASE_SIZE * Coff, D_BASE_SIZE // Coff], dtype=io_d_type,
+        target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1],
+        layout=pl.NZ, compact=1)
+    
+    nz_md_tile_type = pl.TileType(
+        shape=[M_BASE_SIZE, D_BASE_SIZE // Coff], dtype=io_d_type,
+        target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1],
+        layout=pl.NZ, compact=1)
+
+    move_x_tile_type = pl.TileType(
+        shape=[M_BASE_SIZE, D_BASE_SIZE * 2], dtype=io_d_type,
+        target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1],
+        pad=pl.TilePad.zero)
+    
+    flat_tile_type = pl.TileType(
+        shape=[1, M_BASE_SIZE * D_BASE_SIZE], dtype=pl.DT_FP32,
+        target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1],
+        pad=pl.TilePad.zero)
+    
+    flat_cast_tile_type = pl.TileType(
+        shape=[1, M_BASE_SIZE * D_BASE_SIZE], dtype=io_d_type,
+        target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1])
+    
+    temp_tile_type = pl.TileType(
+        shape=[M_BASE_SIZE, D_BASE_SIZE // 2], dtype=io_d_type,
+        target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1], compact=1)
+
+    # ── UB tile_group allocation (auto_mutex for shared addresses) ──
+    #          | group             | addr      | size   | mutex |
+    #          | dc_f16            | 0x00000   | 16384  | [0]   |
+    #          | dc_f32            | 0x04000   | 32768  | [1]   |
+    #          | kv / dsw          | 0x0C000   | 65536  | [2]   |
+    #          | softmax          | 0x1C000   | 65536  | [3]   |
+    #          | dkv (temp)       | 0x2C000   | 65536  | [4]   |
+    #          | dsb_cast         | 0x1C000   | 32768  | [3]   |
+    #          | dsb_nz           | 0x24000   | 32768  | [5]   |
+    #          | dkv_cast         | 0x2C000   | 32768  | [4]   |
+    #          | dkv_nz           | 0x34000   | 32768  | [6]   |
+    d_cmp_kv_tile_group = pl.make_tile_group(type=d_cmp_kv_tile_type, addrs=[UB_DC_F16_ADDR], mutex_ids=[0])
+    d_cmp_kv_fp32_tile_group = pl.make_tile_group(type=d_cmp_kv_fp32_tile_type, addrs=[UB_DC_F32_ADDR], mutex_ids=[1]) # 16kB = 0x4000
+
+    kv_tile_group = pl.make_tile_group(type=normel_tile_type, addrs=[UB_KV_APE_ADDR], mutex_ids=[2]) # 32kB = 0x8000
+    softmax_score_tile_group = pl.make_tile_group(type=normel_tile_type, addrs=[UB_SM_DSB_ADDR], mutex_ids=[3]) # 64kb = 0x10000
+    d_kv_tile_group = pl.make_tile_group(type=normel_tile_type, addrs=[UB_DKV_ADDR], mutex_ids=[4])
+
+    d_score_cast_tile_group = pl.make_tile_group(type=cast_tile_type, addrs=[UB_SM_DSB_ADDR], mutex_ids=[3])
+    d_kv_cast_tile_group = pl.make_tile_group(type=cast_tile_type, addrs=[UB_DKV_ADDR], mutex_ids=[4])
+
+    ape_tile_group = pl.make_tile_group(type=normel_tile_type, addrs=[UB_KV_APE_ADDR], mutex_ids=[2])
+
+    d_score_cast_md_tile_group = pl.make_tile_group(type=cast_md_tile_type, addrs=[UB_SM_DSB_ADDR], mutex_ids=[3])
+    d_kv_cast_md_tile_group = pl.make_tile_group(type=cast_md_tile_type, addrs=[UB_DKV_ADDR], mutex_ids=[4])
+
+    d_score_nz_tile_group = pl.make_tile_group(type=nz_tile_type, addrs=[UB_DSB_NZ_ADDR], mutex_ids=[3])
+    d_kv_nz_tile_group = pl.make_tile_group(type=nz_tile_type, addrs=[UB_DKV_NZ_ADDR], mutex_ids=[4])
+
+    d_score_nz_md_prev_tile_group = pl.make_tile_group(type=nz_md_tile_type, addrs=[UB_DSB_NZ_ADDR], mutex_ids=[3])
+    d_kv_nz_md_prev_tile_group = pl.make_tile_group(type=nz_md_tile_type, addrs=[UB_DKV_NZ_ADDR], mutex_ids=[4])
+    d_score_nz_md_cur_tile_group = pl.make_tile_group(type=nz_md_tile_type, addrs=[UB_DSB_NZ_MD_CUR_ADDR], mutex_ids=[3])
+    d_kv_nz_md_cur_tile_group = pl.make_tile_group(type=nz_md_tile_type, addrs=[UB_DKV_NZ_MD_CUR_ADDR], mutex_ids=[4])
+
+    temp_tile_group = pl.make_tile_group(type=temp_tile_type, addrs=UB_DC_F16_ADDR, mutex_ids=[0, 1]) # 16kB = 0x4000
+
+    move_x_tile_group = pl.make_tile_group(type=move_x_tile_type, addrs=[UB_SM_DSB_ADDR, UB_DKV_ADDR], mutex_ids=[3, 4])
+
+    # Phase 3 reduce: 复用 0x0C000/0x1C000/0x2C000 三个 64KB 区域
+    reduce_acc_tile_group = pl.make_tile_group(type=flat_tile_type, addrs=[UB_KV_APE_ADDR], mutex_ids=[2])
+    reduce_load_tile_group = pl.make_tile_group(type=flat_tile_type, addrs=[UB_SM_DSB_ADDR, UB_DKV_ADDR], mutex_ids=[3, 4])
+
+    # Phase 3 dX reduce: acc/ld 复用 reduce_acc/reduce_ld0，仅新增 cast
+    reduce_result_tile_group = pl.make_tile_group(type=flat_cast_tile_type, addrs=[UB_KV_APE_ADDR], mutex_ids=[2])
+
+    tile_dc_f16 = d_cmp_kv_tile_group.next()
+    tile_dc_f32 = d_cmp_kv_fp32_tile_group.next()
+    tile_kv = kv_tile_group.next()
+    tile_softmax = softmax_score_tile_group.next()
+    tile_dsb_cast = d_score_cast_tile_group.next()
+    tile_dsb_cast_md = d_score_cast_md_tile_group.next()
+    tile_temp = d_kv_tile_group.next()
+    tile_dkv_cast = d_kv_cast_tile_group.next()
+    tile_dkv_cast_md = d_kv_cast_md_tile_group.next()
+    tile_ape_local = ape_tile_group.next()
+    tile_dkv_nz = d_kv_nz_tile_group.next()
+    tile_dsb_nz = d_score_nz_tile_group.next()
+
+    tile_dkv_nz_md_prev = d_kv_nz_md_prev_tile_group.next()
+    tile_dsb_nz_md_prev = d_score_nz_md_prev_tile_group.next()
+    tile_dkv_nz_md_cur = d_kv_nz_md_cur_tile_group.next()
+    tile_dsb_nz_md_cur = d_score_nz_md_cur_tile_group.next()
+
+    reduce_acc = reduce_acc_tile_group.next()
+
+    p3_cast = reduce_result_tile_group.next()
+
+    # ── D group division ──
+    cube_core_idx = core_idx // 2
+    group_idx = cube_core_idx // group_size
+    intra_group_idx = cube_core_idx % group_size
+
+    n_start = intra_group_idx * D_BASE_SIZE + (sub_core_idx % Coff) * d_deal_size
+    return (core_idx, sub_core_idx, cube_core_idx, group_idx, intra_group_idx, n_start, tile_dc_f16, tile_dc_f32, tile_kv, tile_softmax, tile_dsb_cast, tile_dsb_cast_md, tile_temp, tile_dkv_cast, tile_dkv_cast_md, tile_ape_local, tile_dkv_nz, tile_dsb_nz, tile_dkv_nz_md_prev, tile_dsb_nz_md_prev, tile_dkv_nz_md_cur, tile_dsb_nz_md_cur, reduce_acc, p3_cast, move_x_tile_group, reduce_load_tile_group, reduce_acc_tile_group, reduce_result_tile_group, temp_tile_group)
+
+
+def _init_cube_tile_groups(io_d_type, group_size):
+    """Init: L1W/L0 tile_group + cube 身份值（wkv/wgate 视图留主函数）"""
+    #  Cube tile declarations (once)
+    # ═════════════════════════════════════════════════════════════════════════
+
+    cube_core_idx = pl.get_block_idx()
+    group_idx = cube_core_idx // group_size
+    intra_group_idx = cube_core_idx % group_size
+
+    n_start = intra_group_idx * D_BASE_SIZE
+
+    # L1A CV 数据: 复用主函数体 tile_group, 通过 .next() db
+
+    # L1W: wkv/wgate chunk 加载（double-buffer, 0x40000-0x4FFFF, 64KB）
+    l1_w_db = pl.make_tile_group(
+        type=pl.TileType(shape=[BASE_SIZE, H_L1_BASE_SIZE], dtype=io_d_type,
+                         target_memory=pl.MemorySpace.Mat, layout=pl.NZ, compact=1),
+        addrs=L1_W_ADDR, mutex_ids=[20, 21])
+
+    # L0 tiles
+    cv_l0a = pl.make_tile_group(
+        type=pl.TileType(shape=[BASE_SIZE, BASE_SIZE], dtype=io_d_type,
+                         target_memory=pl.MemorySpace.Left, layout=pl.NZ, compact=1),
+        addrs=[0x00000, 0x08000], mutex_ids=[18, 19])
+    cv_l0b = pl.make_tile_group(
+        type=pl.TileType(shape=[BASE_SIZE, H_BASE_SIZE], dtype=io_d_type,
+                         target_memory=pl.MemorySpace.Right, layout=pl.ZN, compact=1),
+        addrs=[0x00000, 0x08000], mutex_ids=[22, 23])
+    cv_l0c = pl.make_tile_group(
+        type=pl.TileType(shape=[BASE_SIZE, H_BASE_SIZE], dtype=pl.DT_FP32,
+                         target_memory=pl.MemorySpace.Acc, layout=pl.NZ, fractal=1024, compact=1),
+        addrs=0x00000, mutex_ids=[24, 25, 26, 27])
+
+
+
+
+    # dX partial workspace (dkv@wkv) + dsb@wgate workspace
+
+
+
+    # ═════════════════════════════════════════════════════════════════════════
+    return (cube_core_idx, group_idx, intra_group_idx, l1_w_db, cv_l0a, cv_l0b, cv_l0c)
+
+
 @pl.jit(tiling_key=CompressorGradTilingKey, auto_mutex=True, arch="a5")
 def compressor_grad(
     # ── 输入（前向参数） ──
@@ -1054,42 +1327,34 @@ def compressor_grad(
 
     # ── Tiling ──
     tiling: CompressorGradTiling,
-):
-    batch_size = tiling.batch_size
-    seq_size = tiling.seq_size
-    token_size = tiling.token_size if Layout == 1 else batch_size * seq_size
-    cmp_ratio = tiling.cmp_ratio
-    head_dim = tiling.head_dim
-    hidden_size = tiling.hidden_size
-    total_head_dim = tiling.total_head_dim
-    cmp_row_cnt = tiling.cmp_row_cnt
-    cmp_size = tiling.cmp_size
-    cmp_kv_batch_stride = tiling.cmp_kv_batch_stride
+):    # ═══ Init：tiling 解包（主函数内支持 tiling.xxx）═══
+    (batch_size, seq_size, token_size, cmp_ratio, head_dim, hidden_size,
+     total_head_dim, cmp_row_cnt, cmp_size, cmp_kv_batch_stride,
+     d_deal_size, m_deal_size, x_rows, core_num, db_row_cnt, cmp_kv_rows,
+     cube_core_num, group_size, group_num, coff_coef, cube_m_base_size,
+     group_deal_sc_num, deal_sc_num, total_sc_num_per_round) = (
+        tiling.batch_size, tiling.seq_size, tiling.token_size, tiling.cmp_ratio,
+        tiling.head_dim, tiling.hidden_size, tiling.total_head_dim,
+        tiling.cmp_row_cnt, tiling.cmp_size, tiling.cmp_kv_batch_stride,
+        tiling.d_deal_size, tiling.m_deal_size, tiling.x_rows,
+        tiling.core_num, tiling.db_row_cnt, tiling.cmp_kv_rows,
+        tiling.cube_core_num, tiling.group_size, tiling.group_num,
+        tiling.coff_coef, tiling.cube_m_base_size,
+        tiling.group_deal_sc_num, tiling.deal_sc_num,
+        tiling.total_sc_num_per_round)
     io_d_type = pl.DT_BF16 if DataType == 0 else pl.DT_FP16
-    db_ratio = 2 # tiling传入
-    d_deal_size = tiling.d_deal_size
-    m_deal_size = tiling.m_deal_size
+    db_ratio = 2  # workspace 双缓冲
+    group_row_stride = tiling.group_row_stride
 
-    # ── Sequence context ──
-    seq_ctx = pl.struct("SeqCtx",
-        batch_size=batch_size,
-        cmp_ratio=cmp_ratio,
-        layout=Layout,
-        seq_size=seq_size,
-    )
-
-    # ── Compressed rows / block counts ──
-    # compressedCnt 依赖 startPos/seqUsed 数据内容（op_host tiling 阶段读不到），kernel 内算
-    cmp_kv_rows = tiling.cmp_kv_rows
-    compressed_cnt = 0
-    for b_idx in pl.range(0, batch_size):
-        b_start_pos = _get_start_pos(b_idx, start_pos, seq_ctx)
-        b_seq_used = _get_seq_used(b_idx, seq_used, cu_seqlens, seq_ctx)
-        compress_seq_idx = _trunc(b_start_pos + b_seq_used, cmp_ratio)
-        if compress_seq_idx > b_start_pos:
-            # startPos%cmpRatio!=0 时首块为部分块但仍计 1 块 → 向上取整（_ceil_div）
-            compressed_cnt = compressed_cnt + _ceil_div(compress_seq_idx - b_start_pos, cmp_ratio)
-
+    # ═══ Init：标量派生 / round 参数（普通函数返回元组）═══
+    (seq_ctx, compressed_cnt) = _init_scalars(
+        batch_size, seq_size, cmp_ratio, start_pos, seq_used, cu_seqlens)
+    (round_cnt, max_round_blocks, vec_ctx) = _init_round_params(
+        compressed_cnt, batch_size, cmp_ratio, head_dim, hidden_size,
+        total_head_dim, cmp_row_cnt, cmp_size, d_deal_size, m_deal_size,
+        db_ratio, coff_coef, cube_m_base_size, group_deal_sc_num, deal_sc_num,
+        cmp_kv_batch_stride, cube_core_num, core_num, group_size, group_num,
+        db_row_cnt, group_row_stride, total_sc_num_per_round)
 
     # ── Gm Tensor ──
     d_cmp_kv_gm = pl.make_tensor(d_cmp_kv, [cmp_kv_rows, head_dim],
@@ -1111,47 +1376,6 @@ def compressor_grad(
                               [hidden_size, 1], dtype=io_d_type)
 
 
-    # ── 共享 round 参数（Phase 1 + Phase 2 都需要）──
-    cube_core_num = tiling.cube_core_num
-    group_size = tiling.group_size
-    group_num = tiling.group_num
-    coff_coef = tiling.coff_coef
-    cube_m_base_size = tiling.cube_m_base_size # coff = 1, vec子核分M轴；coff = 2, vec子核分coff
-    group_deal_sc_num = tiling.group_deal_sc_num
-    deal_sc_num = tiling.deal_sc_num
-    total_sc_num_per_round = tiling.total_sc_num_per_round
-    round_cnt = _ceil_div(compressed_cnt, total_sc_num_per_round)
-    # 单轮实际块数上限 = 首轮块数（各轮最大值）：归约侧有效行数依据
-    #（不满轮时空闲 group 的 ws 区域未写，归约只读写过数据的行）
-    max_round_blocks = min(total_sc_num_per_round, compressed_cnt)
-
-    # ── Vec 子函数共享 ctx（int64 稳定值，派生配置经 tiling 传入）──
-    vec_ctx = pl.struct("VecCtx",
-        hidden_size=hidden_size, batch_size=batch_size, cmp_ratio=cmp_ratio, head_dim=head_dim,
-        cmp_row_cnt=cmp_row_cnt, cmp_size=cmp_size,
-        d_deal_size=d_deal_size, m_deal_size=m_deal_size,
-        db_ratio=db_ratio, coff_coef=coff_coef,
-        cube_m_base_size=cube_m_base_size, group_deal_sc_num=group_deal_sc_num,
-        deal_sc_num=deal_sc_num, cmp_kv_batch_stride=cmp_kv_batch_stride,
-        cube_core_num=cube_core_num, core_num=tiling.core_num,
-        group_size=group_size, group_num=group_num,
-        total_head_dim=total_head_dim, db_row_cnt=tiling.db_row_cnt, group_row_stride=tiling.group_row_stride, round_cnt=round_cnt)
-
-    # ── L1A CV 通道: 4 个独立 tile_group [128,128], double-buffer ──
-    l1_nz_tile_type = pl.TileType(shape=[M_BASE_SIZE, D_BASE_SIZE], dtype=io_d_type,
-                              target_memory=pl.MemorySpace.Mat, layout=pl.NZ, compact=1)
-    l1_zn_tile_type = pl.TileType(shape=[M_BASE_SIZE, D_BASE_SIZE], dtype=io_d_type,
-                              target_memory=pl.MemorySpace.Mat, layout=pl.ZN, compact=1)
-
-    l1_kv0_tile_group_nz = pl.make_tile_group(type=l1_nz_tile_type, addrs=L1_KV0_ADDR, mutex_ids=[10, 11]) # 128 * 128 * 2 = 0x10000
-    l1_kv1_tile_group_nz = pl.make_tile_group(type=l1_nz_tile_type, addrs=L1_KV1_ADDR, mutex_ids=[12, 13])
-    l1_score0_tile_group_nz = pl.make_tile_group(type=l1_nz_tile_type, addrs=L1_SB0_ADDR, mutex_ids=[14, 15])
-    l1_score1_tile_group_nz = pl.make_tile_group(type=l1_nz_tile_type, addrs=L1_SB1_ADDR, mutex_ids=[16, 17])
-
-    l1_kv0_tile_group_zn = pl.make_tile_group(type=l1_zn_tile_type, addrs=L1_KV0_ADDR, mutex_ids=[10, 11])
-    l1_kv1_tile_group_zn = pl.make_tile_group(type=l1_zn_tile_type, addrs=L1_KV1_ADDR, mutex_ids=[12, 13])
-    l1_score0_tile_group_zn = pl.make_tile_group(type=l1_zn_tile_type, addrs=L1_SB0_ADDR, mutex_ids=[14, 15])
-    l1_score1_tile_group_zn = pl.make_tile_group(type=l1_zn_tile_type, addrs=L1_SB1_ADDR, mutex_ids=[16, 17])
 
     # ── Workspace 分块: APE 区域 + dX 区域──
     ape_work_space_size = tiling.dape_ws_size
@@ -1167,6 +1391,7 @@ def compressor_grad(
     x_work_space_ptr = pl.addptr(d_w_gate_work_space_ptr, d_weight_work_space_size)   
     d_x_cache_ptr = pl.addptr(x_work_space_ptr, x_work_space_size)   
 
+
     # ── dX output + workspace views (Phase 3) ──
     d_x_result_gm = pl.make_tensor(d_x_work_space_ptr,
         [Coff, d_x_work_space_size // hidden_size // Coff, hidden_size], [d_x_work_space_size // Coff, hidden_size, 1], dtype=pl.DT_FP32)
@@ -1179,153 +1404,33 @@ def compressor_grad(
     d_x_cache_gm = pl.make_tensor(d_x_cache_ptr,
         [d_x_cache_work_space_size // hidden_size, hidden_size], [hidden_size, 1], dtype=pl.DT_FP32)
 
+
+    # ── L1A CV 通道（vec insert / cube 读共享）──
+    (l1_kv0_tile_group_nz, l1_kv1_tile_group_nz, l1_score0_tile_group_nz,
+     l1_score1_tile_group_nz, l1_kv0_tile_group_zn, l1_kv1_tile_group_zn,
+     l1_score0_tile_group_zn, l1_score1_tile_group_zn) = _init_l1_tile_groups(
+        io_d_type)
+
     # ── Per-round shared state (persists across rounds) ──
-    b_idx = 0
-    sc_idx = 0
-    # ── Prev-round snapshot（preload：v2(i-1) 在下一轮执行，使用上一轮存档）──
-    prev_db_idx = 0
-    prev_b_idx_start = 0
-    prev_sc_idx_start = 0
-    prev_b_idx_end = 0
-    prev_sc_idx_end = 0
-    # ── Current-round snapshot（V1(i) 写入；V2(i-1) 结束后轮换为 prev）──
-    cur_db_idx = 0
-    cur_b_idx_start = 0
-    cur_sc_idx_start = 0
-    cur_b_idx_end = 0
-    cur_sc_idx_end = 0
+    b_idx, sc_idx = 0, 0
+    prev_db_idx, prev_b_idx_start, prev_sc_idx_start = 0, 0, 0
+    prev_b_idx_end, prev_sc_idx_end = 0, 0
+    cur_db_idx, cur_b_idx_start, cur_sc_idx_start = 0, 0, 0
+    cur_b_idx_end, cur_sc_idx_end = 0, 0
 
     # ════════════════════════════════════════════════════════════
     #  Vec tile declarations (once)
     # ════════════════════════════════════════════════════════════
     with pl.section_vector():
-        core_num = tiling.core_num
-        core_idx = pl.get_block_idx()
-        sub_core_idx = pl.get_subblock_idx()
-
-        # ── UB tile type declarations ──
-        # TileType 静态 shape 需编译期立即量 → 用内联算术（值恒等于 tiling.dDealSize/mDealSize）
-        d_cmp_kv_tile_type = pl.TileType(
-            shape=[M_BASE_SIZE * Coff // 2, D_BASE_SIZE // Coff], dtype=io_d_type,
-            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1])
-
-        d_cmp_kv_fp32_tile_type = pl.TileType(shape=[M_BASE_SIZE * Coff // 2, D_BASE_SIZE // Coff], dtype=pl.DT_FP32,
-            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1], pad=pl.TilePad.zero)
-        
-        normel_tile_type = pl.TileType(
-            shape=[M_BASE_SIZE * Coff, D_BASE_SIZE // Coff], dtype=pl.DT_FP32,
-            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1],
-            pad=pl.TilePad.zero, compact=1)
-        
-        cast_tile_type = pl.TileType(
-            shape=[M_BASE_SIZE * Coff, D_BASE_SIZE // Coff], dtype=io_d_type,
-            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1], compact=1)
-
-        cast_md_tile_type = pl.TileType(
-            shape=[M_BASE_SIZE, D_BASE_SIZE], dtype=io_d_type,
-            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1], compact=1)
-
-        nz_tile_type = pl.TileType(
-            shape=[M_BASE_SIZE * Coff, D_BASE_SIZE // Coff], dtype=io_d_type,
-            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1],
-            layout=pl.NZ, compact=1)
-        
-        nz_md_tile_type = pl.TileType(
-            shape=[M_BASE_SIZE, D_BASE_SIZE // Coff], dtype=io_d_type,
-            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1],
-            layout=pl.NZ, compact=1)
-
-        move_x_tile_type = pl.TileType(
-            shape=[M_BASE_SIZE, D_BASE_SIZE * 2], dtype=io_d_type,
-            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1],
-            pad=pl.TilePad.zero)
-        
-        flat_tile_type = pl.TileType(
-            shape=[1, M_BASE_SIZE * D_BASE_SIZE], dtype=pl.DT_FP32,
-            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1],
-            pad=pl.TilePad.zero)
-        
-        flat_cast_tile_type = pl.TileType(
-            shape=[1, M_BASE_SIZE * D_BASE_SIZE], dtype=io_d_type,
-            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1])
-        
-        temp_tile_type = pl.TileType(
-            shape=[M_BASE_SIZE, D_BASE_SIZE // 2], dtype=io_d_type,
-            target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1], compact=1)
-
-        # ── UB tile_group allocation (auto_mutex for shared addresses) ──
-        #          | group             | addr      | size   | mutex |
-        #          | dc_f16            | 0x00000   | 16384  | [0]   |
-        #          | dc_f32            | 0x04000   | 32768  | [1]   |
-        #          | kv / dsw          | 0x0C000   | 65536  | [2]   |
-        #          | softmax          | 0x1C000   | 65536  | [3]   |
-        #          | dkv (temp)       | 0x2C000   | 65536  | [4]   |
-        #          | dsb_cast         | 0x1C000   | 32768  | [3]   |
-        #          | dsb_nz           | 0x24000   | 32768  | [5]   |
-        #          | dkv_cast         | 0x2C000   | 32768  | [4]   |
-        #          | dkv_nz           | 0x34000   | 32768  | [6]   |
-        d_cmp_kv_tile_group = pl.make_tile_group(type=d_cmp_kv_tile_type, addrs=[UB_DC_F16_ADDR], mutex_ids=[0])
-        d_cmp_kv_fp32_tile_group = pl.make_tile_group(type=d_cmp_kv_fp32_tile_type, addrs=[UB_DC_F32_ADDR], mutex_ids=[1]) # 16kB = 0x4000
-
-        kv_tile_group = pl.make_tile_group(type=normel_tile_type, addrs=[UB_KV_APE_ADDR], mutex_ids=[2]) # 32kB = 0x8000
-        softmax_score_tile_group = pl.make_tile_group(type=normel_tile_type, addrs=[UB_SM_DSB_ADDR], mutex_ids=[3]) # 64kb = 0x10000
-        d_kv_tile_group = pl.make_tile_group(type=normel_tile_type, addrs=[UB_DKV_ADDR], mutex_ids=[4])
-
-        d_score_cast_tile_group = pl.make_tile_group(type=cast_tile_type, addrs=[UB_SM_DSB_ADDR], mutex_ids=[3])
-        d_kv_cast_tile_group = pl.make_tile_group(type=cast_tile_type, addrs=[UB_DKV_ADDR], mutex_ids=[4])
-
-        ape_tile_group = pl.make_tile_group(type=normel_tile_type, addrs=[UB_KV_APE_ADDR], mutex_ids=[2])
-
-        d_score_cast_md_tile_group = pl.make_tile_group(type=cast_md_tile_type, addrs=[UB_SM_DSB_ADDR], mutex_ids=[3])
-        d_kv_cast_md_tile_group = pl.make_tile_group(type=cast_md_tile_type, addrs=[UB_DKV_ADDR], mutex_ids=[4])
-
-        d_score_nz_tile_group = pl.make_tile_group(type=nz_tile_type, addrs=[UB_DSB_NZ_ADDR], mutex_ids=[3])
-        d_kv_nz_tile_group = pl.make_tile_group(type=nz_tile_type, addrs=[UB_DKV_NZ_ADDR], mutex_ids=[4])
-
-        d_score_nz_md_prev_tile_group = pl.make_tile_group(type=nz_md_tile_type, addrs=[UB_DSB_NZ_ADDR], mutex_ids=[3])
-        d_kv_nz_md_prev_tile_group = pl.make_tile_group(type=nz_md_tile_type, addrs=[UB_DKV_NZ_ADDR], mutex_ids=[4])
-        d_score_nz_md_cur_tile_group = pl.make_tile_group(type=nz_md_tile_type, addrs=[UB_DSB_NZ_MD_CUR_ADDR], mutex_ids=[3])
-        d_kv_nz_md_cur_tile_group = pl.make_tile_group(type=nz_md_tile_type, addrs=[UB_DKV_NZ_MD_CUR_ADDR], mutex_ids=[4])
-
-        temp_tile_group = pl.make_tile_group(type=temp_tile_type, addrs=UB_DC_F16_ADDR, mutex_ids=[0, 1]) # 16kB = 0x4000
-
-        move_x_tile_group = pl.make_tile_group(type=move_x_tile_type, addrs=[UB_SM_DSB_ADDR, UB_DKV_ADDR], mutex_ids=[3, 4])
-
-        # Phase 3 reduce: 复用 0x0C000/0x1C000/0x2C000 三个 64KB 区域
-        reduce_acc_tile_group = pl.make_tile_group(type=flat_tile_type, addrs=[UB_KV_APE_ADDR], mutex_ids=[2])
-        reduce_load_tile_group = pl.make_tile_group(type=flat_tile_type, addrs=[UB_SM_DSB_ADDR, UB_DKV_ADDR], mutex_ids=[3, 4])
-
-        # Phase 3 dX reduce: acc/ld 复用 reduce_acc/reduce_ld0，仅新增 cast
-        reduce_result_tile_group = pl.make_tile_group(type=flat_cast_tile_type, addrs=[UB_KV_APE_ADDR], mutex_ids=[2])
-
-        tile_dc_f16 = d_cmp_kv_tile_group.next()
-        tile_dc_f32 = d_cmp_kv_fp32_tile_group.next()
-        tile_kv = kv_tile_group.next()
-        tile_softmax = softmax_score_tile_group.next()
-        tile_dsb_cast = d_score_cast_tile_group.next()
-        tile_dsb_cast_md = d_score_cast_md_tile_group.next()
-        tile_temp = d_kv_tile_group.next()
-        tile_dkv_cast = d_kv_cast_tile_group.next()
-        tile_dkv_cast_md = d_kv_cast_md_tile_group.next()
-        tile_ape_local = ape_tile_group.next()
-        tile_dkv_nz = d_kv_nz_tile_group.next()
-        tile_dsb_nz = d_score_nz_tile_group.next()
-
-        tile_dkv_nz_md_prev = d_kv_nz_md_prev_tile_group.next()
-        tile_dsb_nz_md_prev = d_score_nz_md_prev_tile_group.next()
-        tile_dkv_nz_md_cur = d_kv_nz_md_cur_tile_group.next()
-        tile_dsb_nz_md_cur = d_score_nz_md_cur_tile_group.next()
-
-        reduce_acc = reduce_acc_tile_group.next()
-
-        p3_cast = reduce_result_tile_group.next()
-
-        # ── D group division ──
-        cube_core_idx = core_idx // 2
-        group_idx = cube_core_idx // group_size
-        intra_group_idx = cube_core_idx % group_size
-
-        n_start = intra_group_idx * D_BASE_SIZE + (sub_core_idx % Coff) * d_deal_size
+        (core_idx, sub_core_idx, cube_core_idx, group_idx, intra_group_idx,
+         n_start, tile_dc_f16, tile_dc_f32, tile_kv, tile_softmax,
+         tile_dsb_cast, tile_dsb_cast_md, tile_temp, tile_dkv_cast,
+         tile_dkv_cast_md, tile_ape_local, tile_dkv_nz, tile_dsb_nz,
+         tile_dkv_nz_md_prev, tile_dsb_nz_md_prev, tile_dkv_nz_md_cur,
+         tile_dsb_nz_md_cur, reduce_acc, p3_cast, move_x_tile_group,
+         reduce_load_tile_group, reduce_acc_tile_group,
+         reduce_result_tile_group, temp_tile_group) = _init_vec_tile_groups(
+            io_d_type, group_size, d_deal_size)
 
         tensor_ape = pl.make_tensor(work_space_ptr,
             [group_num * coff_coef * cmp_row_cnt, head_dim],
@@ -1354,49 +1459,21 @@ def compressor_grad(
 
 
 
-    # ═════════════════════════════════════════════════════════════════════════
+        # ═════════════════════════════════════════════════════════════════════════
+
+    # ════════════════════════════════════════════════════════════
     #  Cube tile declarations (once)
-    # ═════════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════
     with pl.section_cube():
-        cube_core_idx = pl.get_block_idx()
-        group_idx = cube_core_idx // group_size
-        intra_group_idx = cube_core_idx % group_size
-
-        n_start = intra_group_idx * D_BASE_SIZE
-
-        # L1A CV 数据: 复用主函数体 tile_group, 通过 .next() db
-
-        # L1W: wkv/wgate chunk 加载（double-buffer, 0x40000-0x4FFFF, 64KB）
-        l1_w_db = pl.make_tile_group(
-            type=pl.TileType(shape=[BASE_SIZE, H_L1_BASE_SIZE], dtype=io_d_type,
-                             target_memory=pl.MemorySpace.Mat, layout=pl.NZ, compact=1),
-            addrs=L1_W_ADDR, mutex_ids=[20, 21])
-
-        # L0 tiles
-        cv_l0a = pl.make_tile_group(
-            type=pl.TileType(shape=[BASE_SIZE, BASE_SIZE], dtype=io_d_type,
-                             target_memory=pl.MemorySpace.Left, layout=pl.NZ, compact=1),
-            addrs=[0x00000, 0x08000], mutex_ids=[18, 19])
-        cv_l0b = pl.make_tile_group(
-            type=pl.TileType(shape=[BASE_SIZE, H_BASE_SIZE], dtype=io_d_type,
-                             target_memory=pl.MemorySpace.Right, layout=pl.ZN, compact=1),
-            addrs=[0x00000, 0x08000], mutex_ids=[22, 23])
-        cv_l0c = pl.make_tile_group(
-            type=pl.TileType(shape=[BASE_SIZE, H_BASE_SIZE], dtype=pl.DT_FP32,
-                             target_memory=pl.MemorySpace.Acc, layout=pl.NZ, fractal=1024, compact=1),
-            addrs=0x00000, mutex_ids=[24, 25, 26, 27])
-
-        # GM tensor views
+        (cube_core_idx, group_idx, intra_group_idx,
+         l1_w_db, cv_l0a, cv_l0b, cv_l0c) = _init_cube_tile_groups(
+            io_d_type, group_size)
+        # GM tensor views（make_tensor 返回值 pointer 绑定丢失，必须留主函数）
         wkv_t = pl.make_tensor(wkv, [total_head_dim, hidden_size],
                                [hidden_size, 1], dtype=io_d_type)
         wgate_t = pl.make_tensor(wgate, [total_head_dim, hidden_size],
                                  [hidden_size, 1], dtype=io_d_type)
 
-        # dX partial workspace (dkv@wkv) + dsb@wgate workspace
-
-
-
-    # ═════════════════════════════════════════════════════════════════════════
     #  无压缩块（totalValid=0 / compressedCnt=0）特判：放所有 section 外部，
     #  主函数支持多个 return——vec 侧四输出刷 0 后返回，cube 侧无代码直接返回，
     #  均不进 round 循环（d_ape/d_wkv/d_wgate 归约在 validRows=0 时虽隐式写 0，
@@ -1564,3 +1641,4 @@ def compressor_grad(
                                         x_arrange_gm, d_wkv_result_gm, d_w_gate_result_gm)
 
                 pl.system.sync_all(core_type=pl.SyncCoreType.MIX)
+
