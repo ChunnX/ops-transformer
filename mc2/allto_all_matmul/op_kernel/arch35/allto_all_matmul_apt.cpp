@@ -77,26 +77,27 @@ using MC2KernelTemplate::MC2AlltoAllPrimitives;
     } while (0)
 #endif
 
-#ifndef ALLTO_ALL_MX_QUANT_MATMUL_ARCH35_IMPL
-#define ALLTO_ALL_MX_QUANT_MATMUL_ARCH35_IMPL(tilingData, pipe, hcclServerType, isMxFp4, x1HcclDataTypeVal)            \
+#ifndef ALLTO_ALL_MX_QUANT_MATMUL_IMPL
+#define ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, hcclDataType, commDataTypeX1, isMxFp4)        \
     do {                                                                                                               \
-        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, hcclServerType, MC2AlltoAllContext,                                    \
-                                          AlltoAllQuantMatmulTilingData, MC2AlltoAllPrimitives, 0, 1,                   \
-                                          CommunicationType);                                                          \
+        DEFINE_MC2_HCCL_FOR_COMMUNICATION(false, hcclServerType, MC2AlltoAllContext, AlltoAllQuantMatmulTilingData,    \
+                                          MC2AlltoAllPrimitives, 0, 1, CommunicationType);                             \
         CommunicationType commImplName(&tilingData);                                                                   \
-        DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(DTYPE_X1, TransposeType);                                            \
-        TransposeType transImplName(&pipe);                                                                            \
+        DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(commDataTypeX1, TransposeType);                                      \
+        TransposeType transposeImplName(&pipe);                                                                        \
         DEFINE_MC2_TRANSPOSE_FOR_MATH_COMPUTATION(AscendC::fp8_e8m0_t, ScaleTransposeType);                            \
-        ScaleTransposeType scaleTransImplName(&pipe);                                                                  \
+        ScaleTransposeType scaleTransposeImplName(&pipe);                                                              \
         DEFINE_MC2_MATMUL_CONTEXT_FOR_MATMUL_COMPUTATION_MX_QUANT(ComputationContextType);                             \
         DEFINE_MC2_MATMUL_FOR_MATMUL_COMPUTATION_MX_QUANT(ComputationType);                                            \
         ComputationType matmulImplName(&pipe);                                                                         \
         using SchedulerContextType = Mc2Kernel::AlltoAllMXQmmPipelineContext<ComputationContextType>;                  \
-        using SchedulerType = Mc2Kernel::AlltoAllMXQuantMatmulPipeLine<                                                \
-            CommunicationType, TransposeType, ScaleTransposeType, ComputationType, SchedulerContextType>;              \
-        SchedulerType schedulerImpl(&commImplName, &transImplName, &scaleTransImplName, &matmulImplName);               \
-        Mc2Kernel::AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType,                                     \
-            AlltoAllQuantMatmulTilingData, isMxFp4> op(&schedulerImpl, x1HcclDataTypeVal);                             \
+        using SchedulerType =                                                                                          \
+            Mc2Kernel::AlltoAllMXQuantMatmulPipeLine<CommunicationType, TransposeType, ScaleTransposeType,             \
+                                                     ComputationType, SchedulerContextType>;                           \
+        SchedulerType SchedulerImpl(&commImplName, &transposeImplName, &scaleTransposeImplName, &matmulImplName);      \
+        Mc2Kernel::AlltoAllMxQuantMatmulArch35<SchedulerType, SchedulerContextType, AlltoAllQuantMatmulTilingData,     \
+                                               isMxFp4>                                                                \
+            op(&SchedulerImpl, hcclDataType);                                                                          \
         op.Init(x1, x2, bias, y, all2all_out, x1_scale, x2_scale, workspaceGM, &tilingData, &pipe);                    \
         op.Process();                                                                                                  \
     } while (0)
@@ -133,8 +134,11 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     if constexpr (HAS_ALL2ALL_OUT) {
         REGISTER_TILING_DEFAULT(AlltoAllQuantMatmulTilingData);
         GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
-        constexpr uint64_t x1HcclDataType = Apace::GetX1HcclDataType<DTYPE_X1>();
-        ALLTO_ALL_MX_QUANT_MATMUL_ARCH35_IMPL(tilingData, pipe, hcclServerType, false, x1HcclDataType);
+        AscendC::HcclDataType hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E4M3;
+        if constexpr (AscendC::IsSameType<DTYPE_X1, float8_e5m2_t>::value) {
+            hcclDataType = AscendC::HCCL_DATA_TYPE_FP8E5M2;
+        }
+        ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, hcclDataType, DTYPE_X1, false);
     } else {
         REGISTER_TILING_DEFAULT(hcommAllToAllMatmulTilingData);
         GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
@@ -149,8 +153,7 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
     if constexpr (HAS_ALL2ALL_OUT) {
         REGISTER_TILING_DEFAULT(AlltoAllQuantMatmulTilingData);
         GET_TILING_DATA_WITH_STRUCT(AlltoAllQuantMatmulTilingData, tilingData, tilingGM);
-        constexpr uint64_t x1HcclDataType = Apace::GetX1HcclDataType<DTYPE_X1>();
-        ALLTO_ALL_MX_QUANT_MATMUL_ARCH35_IMPL(tilingData, pipe, hcclServerType, true, x1HcclDataType);
+        ALLTO_ALL_MX_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, AscendC::HCCL_DATA_TYPE_UINT8, uint8_t, true);
     } else {
         REGISTER_TILING_DEFAULT(hcommAllToAllMatmulTilingData);
         GET_TILING_DATA_WITH_STRUCT(hcommAllToAllMatmulTilingData, tilingData, tilingGM);
@@ -170,6 +173,4 @@ __global__ __aicore__ void allto_all_matmul(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias
         ALLTO_ALL_KC_QUANT_MATMUL_IMPL(tilingData, pipe, hcclServerType, float8_e4m3_t, ISSMALLK);
     }
 #endif
-#endif
 }
-

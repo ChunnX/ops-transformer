@@ -30,7 +30,6 @@
 namespace Blaze {
 namespace Gemm {
 namespace Kernel {
-
 #define QBMM_MX_KERNEL_CLASS_TEM_PARAMS \
     template <class ProblemShape, class BlockMmad, class BlockScheduler, class CommPolicy>
 #define QBMM_MX_KERNEL_FUNC_TEM_PARAMS ProblemShape, BlockMmad, BlockScheduler, CommPolicy
@@ -40,10 +39,7 @@ using AscendC::Te::Get;
 
 /**
  * @brief SWAT MX 量化矩阵乘内核实现
- * 该类负责具体的矩阵乘块调度和计算，支持本地(LOCAL)和远程(REMOTE)两种切片模式。
- * 通信等待逻辑经 CommPolicy 策略类注入（组合模式）：基类持 commPolicy_ 成员对象，
- * 调用点直接 commPolicy_.WaitTile(tileIdx)，编译期由模板参数绑定具体策略，
- * 无需继承与 static_cast。
+ * 该类负责具体的矩阵乘块调度和计算，支持本地(LOCAL)和远程(REMOTE)两种切片模式
  */
 
 template <class ProblemShape, class BlockMmad, class BlockScheduler,
