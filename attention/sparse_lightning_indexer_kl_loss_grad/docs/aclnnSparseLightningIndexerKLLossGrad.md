@@ -402,17 +402,22 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGrad(
             <tr>
                 <td>ACLNN_ERR_PARAM_NULLPTR</td>
                 <td>161001</td>
-                <td>必选参数或输出为空指针。</td>
+                <td>参数校验错误，参数中存在非法的nullptr。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
                 <td>161002</td>
-                <td>输入、输出、属性的数据类型、数据格式或取值不在支持范围内。</td>
+                <td>参数校验错误，如输入的两个数据类型不满足输入类型推导关系。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_RUNTIME_ERROR</td>
                 <td>361001</td>
-                <td>API内存调用npu runtime的接口异常。</td>
+                <td>API内部调用npu runtime的接口异常。</td>
+            </tr>
+            <tr>
+                <td>ACLNN_ERR_INNER_XXX</td>
+                <td>561xxx</td>
+                <td>API内部发生异常。</td>
             </tr>
         </tbody>
     </table>
