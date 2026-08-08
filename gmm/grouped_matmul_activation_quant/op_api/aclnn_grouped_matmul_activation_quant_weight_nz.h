@@ -52,7 +52,8 @@ extern "C" {
  * @param [in] dstTypeMax:
  * 表示maxType的取值，对应公式中的Amax(DType)。当前MXFP8场景仅支持0.0。
  * @param [out] y:
- * 表示激活并量化后的输出矩阵，数据类型支持FLOAT8_E4M3FN、FLOAT8_E5M2，数据格式支持ND。
+ * 表示激活并量化后的输出矩阵，数据类型支持FLOAT8_E4M3FN、FLOAT8_E5M2；MXFP4输入时还支持
+ * FLOAT4_E2M1、FLOAT4_E1M2，数据格式支持ND。
  * @param [out] yScale:
  * 表示输出量化因子，数据类型支持FLOAT8_E8M0，数据格式支持ND。
  * @param [out] workspaceSize: 返回用户需要在npu device侧申请的workspace大小。
