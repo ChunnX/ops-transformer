@@ -408,7 +408,7 @@ def set_active_case(case):
         DATA_RANGE_V, \
         DEVICE_ID, \
         SPARSE_BLOCK_SIZE
-    global QUANT_MODE_MXFP8, KEY_LAYOUT, SPARSE_INDICES_LAYOUT, OUT_LAYOUT
+    global QUANT_MODE_MXFP8, KEY_LAYOUT, SPARSE_INDICES_LAYOUT, OUT_LAYOUT, BLOCK_NUM
 
     CASE = dict(case)
     B = CASE["B"]
@@ -435,6 +435,10 @@ def set_active_case(case):
     KEY_LAYOUT = CASE["layout_kv"]
     SPARSE_INDICES_LAYOUT = CASE["layout_sparse_indices"]
     OUT_LAYOUT = CASE["layout_out"]
+    _block_num_raw = CASE.get("blocknum", None)
+    if _block_num_raw is not None and _block_num_raw <= 0:
+        raise ValueError(f"blocknum must be > 0 or None, got {_block_num_raw}")
+    BLOCK_NUM = _block_num_raw if _block_num_raw is not None else -1
 
 
 CASE = _load_initial_case()
@@ -621,7 +625,16 @@ def _physical_ids(start, count, pattern, rng):
     return ids
 
 
-def _make_reference_block_table(batch, seq_lens, block_size, pattern, rng):
+def _make_reference_block_table(
+    batch,
+    seq_lens,
+    block_size,
+    pattern,
+    rng,
+    physical_block_count=0,
+    sparse_indices=None,
+    sparse_seq_len=None,
+):
     if isinstance(seq_lens, int):
         seq_lens = [seq_lens] * batch
     block_nums = [math.ceil(int(seq_len) / block_size) for seq_len in seq_lens]
@@ -632,16 +645,33 @@ def _make_reference_block_table(batch, seq_lens, block_size, pattern, rng):
     if total_logical_blocks == 0:
         return block_table
 
-    # 与 common MX 一致：物理页数由实际 KV 序列自动推导，每个逻辑页使用唯一物理页。
-    physical_ids = _physical_ids(0, total_logical_blocks, pattern, rng)
+    # physical_block_count > 0 时用传入的物理页数，否则自动推导。
+    total_physical_blocks = (
+        physical_block_count if physical_block_count > 0 else total_logical_blocks
+    )
 
-    logical_offset = 0
-    for batch_idx, logical_block_num in enumerate(block_nums):
-        block_table[batch_idx, :logical_block_num] = torch.tensor(
-            physical_ids[logical_offset : logical_offset + logical_block_num],
-            dtype=torch.int32,
+    # 收集 sparse_indices 中实际被选中的逻辑页 ID
+    needed_logical_ids = [[] for _ in range(batch)]
+    if sparse_indices is not None and sparse_seq_len is not None:
+        for b in range(batch):
+            valid = sparse_indices[b][sparse_seq_len[b] > 0]
+            needed_logical_ids[b] = [
+                int(x) for x in valid[valid >= 0].unique() if x < block_nums[b]
+            ]
+
+    # 给选中的逻辑页分配物理页 ID，范围 [0, total_physical_blocks)
+    # physical_ids 按 pattern 生成物理页 ID 序列（sequential/reverse/random）
+    physical_ids = _physical_ids(0, total_physical_blocks, pattern, rng)
+    next_pid = 0
+    for b in range(batch):
+        needed = (
+            needed_logical_ids[b]
+            if needed_logical_ids[b]
+            else list(range(block_nums[b]))
         )
-        logical_offset += logical_block_num
+        for lid in needed:
+            block_table[b, lid] = physical_ids[next_pid % total_physical_blocks]
+            next_pid += 1
     return block_table
 
 
@@ -850,6 +880,7 @@ def mxfp8_pa_preprocessing(
     group_size=32,
     sparse_indices=None,
     sparse_seq_len=None,
+    physical_block_count=0,
 ):
     """
     MXFP8 PA 预处理: internal K/V BNSD -> PagedAttention KV Cache
@@ -874,9 +905,12 @@ def mxfp8_pa_preprocessing(
         else torch.as_tensor(block_table)
     )
     B, N, S, D = tensor_bnsd.shape
-    physical_block_num = (
-        int(block_table.max().item()) + 1 if block_table.numel() > 0 else 0
-    )
+    if physical_block_count > 0:
+        physical_block_num = physical_block_count
+    else:
+        physical_block_num = (
+            int(block_table.max().item()) + 1 if block_table.numel() > 0 else 0
+        )
 
     if is_scale:
         if is_vscale:
@@ -911,11 +945,11 @@ def mxfp8_pa_preprocessing(
     block_num = [math.ceil(act_s / pack_block_size) for act_s in pack_seq_lens]
     for b in range(B):
         bid_table = block_table[b]
-        # for n_q_idx in range(N_q):
         for blk_idx in range(block_num[b]):
             blockid = int(bid_table[blk_idx])
+            if blockid < 0 or blockid >= physical_block_num:
+                continue
             block_offset = blk_idx * pack_block_size
-            # block_offset = sparse_indices[b,n_q_idx,blk_idx] * pack_block_size
             valid_len = min(pack_block_size, pack_seq_lens[b] - block_offset)
             if valid_len <= 0:
                 continue
@@ -1023,12 +1057,18 @@ def _generate_reference_style_mxfp8_inputs():
     dense_key, dense_k_descale = quantize_mxfp8_qk(k_fp32, FP8_DTYPE, QUANT_GROUP_SIZE)
     dense_value, dense_v_descale = quantize_mxfp8_v(v_fp32, FP8_DTYPE, QUANT_GROUP_SIZE)
 
-    block_table = _make_reference_block_table(
-        batch, kv_lengths, BLOCK_SIZE, case["block_table_pattern"], rng
-    )
-
     sparse_indices, sparse_seq_len = _make_reference_sparse_indices(
         case, q_lengths, kv_lengths, rng
+    )
+    block_table = _make_reference_block_table(
+        batch,
+        kv_lengths,
+        BLOCK_SIZE,
+        case["block_table_pattern"],
+        rng,
+        BLOCK_NUM,
+        sparse_indices,
+        sparse_seq_len,
     )
     p_scale_value = case.get("p_scale_value")
     p_scale = (
@@ -2012,6 +2052,7 @@ def npu_mxfp8_fa(
         group_size=32,
         sparse_indices=sparse_indices,
         sparse_seq_len=sparse_seq_len,
+        physical_block_count=BLOCK_NUM,
     )
     v_pa = mxfp8_pa_preprocessing(
         v_fp8,
@@ -2024,6 +2065,7 @@ def npu_mxfp8_fa(
         group_size=32,
         sparse_indices=sparse_indices,
         sparse_seq_len=sparse_seq_len,
+        physical_block_count=BLOCK_NUM,
     )
     k_input = k_pa.contiguous().view(FP8_DTYPE)
     v_input = v_pa.contiguous().view(FP8_DTYPE)
@@ -2050,6 +2092,7 @@ def npu_mxfp8_fa(
         group_size=32,
         sparse_indices=sparse_indices,
         sparse_seq_len=sparse_seq_len,
+        physical_block_count=BLOCK_NUM,
     )
     v_scale_pa = mxfp8_pa_preprocessing(
         dequant_scale_v,
@@ -2062,6 +2105,7 @@ def npu_mxfp8_fa(
         group_size=32,
         sparse_indices=sparse_indices,
         sparse_seq_len=sparse_seq_len,
+        physical_block_count=BLOCK_NUM,
     )
 
     k_scale_e8m0 = fp32_to_e8m0fnu_safe(k_scale_pa, "K PA descale")
