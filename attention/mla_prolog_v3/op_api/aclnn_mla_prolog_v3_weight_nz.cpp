@@ -271,7 +271,6 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
     }
     // OpDef 中 ropeSin/ropeCos 为 REQUIRED。RoPE off：双 nullptr / empty；
     // TensorHolder 将 nullptr 转成 shape={0} placeholder，避免 Inner 因空指针拦截。
-    // A2/A3 与 Ascend950 共用同一套开关约定。
     auto isRopeOffPlaceholder = [](const aclTensor *t) -> bool {
         return t == nullptr || t->IsEmpty();
     };
@@ -282,12 +281,10 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
         return ge::GRAPH_FAILED;
     }
     // Holder 必须活到 Inner GetWorkspaceSize 返回之后（与 queryNorm 相同）。
+    // 双 nullptr 转成 empty placeholder 以绕过 Inner 空指针校验。
     auto ropeSinHolder = TensorHolder(ropeSin, aclDataType::ACL_BF16, std::string("ropeSin"));
     auto ropeCosHolder = TensorHolder(ropeCos, aclDataType::ACL_BF16, std::string("ropeCos"));
-    if (ropeSin == nullptr || ropeCos == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", ropeSin == nullptr ? "ropeSin" : "ropeCos");
-        return ge::GRAPH_FAILED;
-    }
+    
     return aclnnInnerMlaPrologV3GetWorkspaceSize(
         tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos,
         kvCacheRef, krCacheRef, cacheIndexOptional, dequantScaleXOptional, dequantScaleWDqOptional,
