@@ -161,7 +161,6 @@ else()
 endif()
 
 set(OP_TILING_INCLUDE
-  ${BLAZE}
   ${OPBASE_INC_DIRS}
   ${C_SEC_INCLUDE}
   ${PLATFORM_INC_DIRS}
