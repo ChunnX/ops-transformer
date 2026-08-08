@@ -2,17 +2,91 @@
 
 ## 1 概述
 
-RecurrentGatedDeltaRule（循环门控 Delta Rule，简称 RGDR）是一种应用于循环神经网络 / 线性注意力机制的算子。在每个时间步 $t$，根据当前输入 $q_t$、$k_t$、$v_t$ 和上一隐藏状态 $S_{t-1}$，计算当前输出 $o_t$ 和新隐藏状态 $S_t$。
+### 1.1 算子背景与功能
 
-$$
-S_t := \alpha_t \cdot \text{Diag}(\alpha_{kt}) \cdot S_{t-1} + \beta_t \cdot (v_t - \alpha_t \cdot \text{Diag}(\alpha_{kt}) \cdot S_{t-1} \cdot k_t) \cdot k_t^T
-$$
+RecurrentGatedDeltaRule（循环门控 Delta Rule，简称 RGDR）是一种应用于循环神经网络 / 线性注意力机制的算子。它源自 DeltaNet 的 Delta Rule 状态更新机制，并引入两组衰减门控（全局衰减 $\alpha_t$ 和维度衰减 $\alpha_{kt}$），使状态矩阵能够在长序列中实现选择性遗忘与更新。
 
-$$
-o_t := \frac{S_t \cdot q_t}{\sqrt{d_k}}
-$$
+在每个时间步 $t$，根据当前输入 $q_t$、$k_t$、$v_t$ 和上一隐藏状态 $S_{t-1}$，计算当前输出 $o_t$ 和新隐藏状态 $S_t$。
 
-其中 $S \in \mathbb{R}^{d_v \times d_k}$，$q, k \in \mathbb{R}^{d_k}$，$v \in \mathbb{R}^{d_v}$，$\alpha = e^g$，$\alpha_k = e^{g_k}$，$\beta \in \mathbb{R}$，$o \in \mathbb{R}^{d_v}$。
+### 1.2 原始 Delta Rule
+
+DeltaNet 的核心思想是维护一个关联矩阵 $S \in \mathbb{R}^{d_v \times d_k}$，将 key 向量 $k$ 映射到 value 向量 $v$。在每个时间步，通过"预测-纠错"机制更新状态：
+
+1. **预测**：用当前 key $k_t$ 查询状态，得到预测值 $\hat{v}_t = S_{t-1} \cdot k_t$
+2. **纠差（Delta）**：计算预测误差 $\delta_t = v_t - \hat{v}_t = v_t - S_{t-1} \cdot k_t$（此即"Delta"名称的由来——它是实际值与预测值之差）
+3. **更新**：将误差沿 $k_t$ 方向写回状态 $S_t = S_{t-1} + \beta_t \cdot \delta_t \cdot k_t^T$
+
+其中 $\beta_t$ 为写入门控，控制新信息的写入强度。原始 Delta Rule 的完整公式为：
+
+$$S_t = S_{t-1}(I - \beta_t k_t k_t^T) + \beta_t v_t k_t^T$$
+
+展开可验证其等价于上述三步：
+
+$$S_{t-1} - \beta_t S_{t-1} k_t k_t^T + \beta_t v_t k_t^T = S_{t-1} + \beta_t(v_t - S_{t-1}k_t)k_t^T$$
+
+### 1.3 门控扩展（Gated Delta Rule）
+
+RGDR 在 Delta Rule 基础上引入两组衰减门控，使状态能够随时间主动遗忘：
+
+- **全局衰减门** $\alpha_t = e^{g_t} \in (0, 1)$（标量，约束 $g_t < 0$）：控制整个状态矩阵的遗忘程度。每个 token、每个 value head 独立设定。
+- **维度衰减门** $\alpha_{kt} = e^{g_{kt}} \in (0, 1)^{d_k}$（向量，约束 $g_{kt} < 0$）：沿 key 维度进行选择性衰减，不同维度可以以不同速率遗忘。每个 token、每个 value head、每个 key 维度独立设定。
+
+衰减门作用于状态矩阵的 **key 维度（列方向）**，实现为 $S_{t-1} \cdot \text{Diag}(\alpha_{kt})$（右乘对角矩阵），对每一列 $j$ 独立缩放 $\alpha_{kt}[j]$。全局衰减 $\alpha_t$ 再对整个矩阵做标量缩放。
+
+> **注意**：$\text{Diag}(\alpha_{kt})$ 为右乘而非左乘。左乘 $\text{Diag}(\alpha_{kt}) \cdot S_{t-1}$ 作用于行方向（$d_v$ 维），当 $d_v \neq d_k$ 时维度不兼容。右乘 $S_{t-1} \cdot \text{Diag}(\alpha_{kt})$ 作用于列方向（$d_k$ 维），与 key 维度对齐。
+
+门控 Delta Rule 的完整公式（第一形式，紧凑型）：
+
+$$S_t = \alpha_t \cdot S_{t-1} \cdot \text{Diag}(\alpha_{kt}) \cdot (I - \beta_t k_t k_t^T) + \beta_t v_t k_t^T$$
+
+展开 $(I - \beta_t k_t k_t^T)$ 并合并项，得到等价的第二形式（计算友好型）：
+
+$$\boxed{S_t = \alpha_t \cdot S_{t-1} \cdot \text{Diag}(\alpha_{kt}) + \beta_t \cdot (v_t - \alpha_t \cdot S_{t-1} \cdot \text{Diag}(\alpha_{kt}) \cdot k_t) \cdot k_t^T}$$
+
+**等价推导**：
+
+$$\begin{aligned}
+& \alpha_t S_{t-1} \text{Diag}(\alpha_{kt})(I - \beta_t k_t k_t^T) + \beta_t v_t k_t^T \\
+=& \alpha_t S_{t-1} \text{Diag}(\alpha_{kt}) - \alpha_t \beta_t S_{t-1} \text{Diag}(\alpha_{kt}) k_t k_t^T + \beta_t v_t k_t^T \\
+=& \alpha_t S_{t-1} \text{Diag}(\alpha_{kt}) + \beta_t (v_t - \alpha_t S_{t-1} \text{Diag}(\alpha_{kt}) k_t) k_t^T
+\end{aligned}$$
+
+第二形式的优势：**先衰减 → 再预测 → 最后纠差**，计算路径清晰，每个中间量有明确物理含义，且避免了显式构造 $d_k \times d_k$ 矩阵 $(I - \beta_t k_t k_t^T)$。算子实现采用此形式。
+
+### 1.4 输出公式
+
+$$o_t = \frac{S_t \cdot q_t}{\sqrt{d_k}}$$
+
+输出 $o_t$ 是用 query $q_t$ 查询更新后状态 $S_t$ 的结果，缩放因子 $\frac{1}{\sqrt{d_k}}$ 与标准 Attention 一致，防止内积值随维度增大而发散。
+
+从线性注意力视角看，状态 $S$ 是一个"外积记忆矩阵"：它递推地累积 $(k, v)$ 关联对，输出 $o = Sq / \sqrt{d_k}$ 即线性注意力的 query 阶段。门控机制使其成为带选择性遗忘的线性注意力，优于传统线性注意力的无界状态增长问题。
+
+### 1.5 变量与维度
+
+| 符号 | 维度 | 含义 |
+|:-----|:-----|:-----|
+| $S_{t-1}, S_t$ | $\mathbb{R}^{d_v \times d_k}$ | 隐藏状态矩阵（递推更新） |
+| $q_t$ | $\mathbb{R}^{d_k}$ | Query 向量 |
+| $k_t$ | $\mathbb{R}^{d_k}$ | Key 向量 |
+| $v_t$ | $\mathbb{R}^{d_v}$ | Value 向量 |
+| $\alpha_t = e^{g_t}$ | $\mathbb{R}$（标量） | 全局衰减门，$g_t < 0 \Rightarrow \alpha_t \in (0, 1)$ |
+| $\alpha_{kt} = e^{g_{kt}}$ | $\mathbb{R}^{d_k}$（向量） | 维度衰减门，$g_{kt} < 0 \Rightarrow \alpha_{kt}[j] \in (0, 1)$ |
+| $\beta_t$ | $\mathbb{R}$（标量） | 写入门，$0 < \beta_t < 1$ |
+| $o_t$ | $\mathbb{R}^{d_v}$ | 输出向量 |
+
+> **门控取值约束**：$g < 0$ 和 $g_k < 0$ 保证衰减因子 $e^g \in (0, 1)$，确保状态随时间衰减而非爆炸；$0 < \beta < 1$ 限制写入强度，保证数值稳定性。这些约束由用户保证，算子不校验具体数值。
+>
+> **可选门控**：$g$（对应参数 `g`）和 $g_k$（对应参数 `gk`）为可选输入。传入 `nullptr` 时分别等价于 $\alpha_t = 1$（不衰减）和 $\alpha_{kt} = \mathbf{1}$（不衰减），退化为原始 Delta Rule。
+
+### 1.6 变步长与推测解码支持
+
+RGDR 支持变步长（Variable Step Length）场景，适配 Multi-Token Prediction（MTP）和推测解码（Speculative Decoding）：
+
+- **`actualSeqLengths`**（shape `(B,)`）：每个 batch 的实际序列长度 $L_i$（$0 < L_i \le 8$），允许不同 batch 处理不同数量的 token。所有 batch 的序列长度累加 $T = \sum_i L_i$。
+- **`ssmStateIndices`**（shape `(T,)`）：将每个 token 映射到 state 矩阵的槽位索引。`state[ssmStateIndices[i]]` 表示第 $i$ 个 token 对应的状态矩阵。同一序列内的 token 通过递推共享/更新同一状态槽位。
+- **`numAcceptedTokens`**（shape `(B,)`，可选）：推测解码场景下，每个 batch 实际接受的 token 数。状态矩阵的初始读取位置从 `ssmStateIndices[seq0 + numAcceptedTokens[i] - 1]` 开始，跳过被拒绝的 token 对应的状态，仅从最后一个被接受 token 的状态继续递推。
+
+> **状态递推**：状态矩阵 $S$ 在序列内是**递推更新**的——每个 token 计算后更新的 $S_t$ 立即写回 GM，下一个 token 读取最新的 $S_t$ 继续计算。这种设计使得单个序列内的 token 必须串行处理，但不同 `(batch, head)` 之间可以并行。
 
 ### 支持产品
 
@@ -100,23 +174,50 @@ ProcessHead(seq0, seq1, head_i, stateOffset)
 
 ### 3.3 Compute 核心计算步骤
 
-以 arch22 为例，arch35 逻辑等价但使用 VF intrinsic：
+`Compute()` 函数实现了第二形式公式的完整计算流程。以 arch22 为例（arch35 逻辑等价但使用 VF intrinsic），共分三个阶段：**状态衰减**、**Delta 纠差更新**、**Query 查询输出**。
 
-| 步骤 | 操作 | 公式 |
-|:-----|:-----|:-----|
-| 1 | (可选) `Muls(state, gama)` | $S \leftarrow \alpha \cdot S$ |
-| 2 | (可选) `MatVecMul(state, gk)` | $S \leftarrow S \cdot \text{Diag}(\alpha_k)$（逐行乘 gk 向量） |
-| 3 | `MatVecMul(state, k) → tmp` | $\text{tmp} \leftarrow S \cdot k$（逐元素乘） |
-| 4 | `ReduceSum(tmp → delta)` | $\delta \leftarrow \sum_j S_{ij} k_j$（行求和） |
-| 5 | `delta = v - delta` | $\delta \leftarrow v - S \cdot k$ |
-| 6 | `Muls(delta, beta)` | $\delta \leftarrow \beta \cdot \delta$ |
-| 7 | `Broadcast(tmp, delta)` | 将 $\delta$ 广播为 $d_v \times d_k$ 矩阵 |
-| 8 | `MatVecMul(tmp, k, state, isAdd)` | $S \leftarrow S + \delta \cdot k^T$（外积加） |
-| 9 | `MatVecMul(state, q) → tmp` | $\text{tmp} \leftarrow S \cdot q$ |
-| 10 | `ReduceSum(tmp → attn)` | $o \leftarrow \sum_j S_{ij} q_j$ |
-| 11 | `Cast(stateOut, state)` / `Cast(attnOut, attn)` | 输出转回 bf16 |
+#### 阶段一：状态衰减（对应公式 $\tilde{S} = \alpha_t \cdot S_{t-1} \cdot \text{Diag}(\alpha_{kt})$）
 
-其中 `MatVecMul` 在 arch22 中通过 `Mul`/`MulAddDst` 指令逐 repeat 实现（`REPEAT_LENTH=64`），在 arch35 中替换为 `VecMulMatVF` MicroAPI intrinsic，利用寄存器级 LoadAlign/Mul/StoreAlign 提升效率。
+| 步骤 | 操作 | 公式 | 说明 |
+|:-----|:-----|:-----|:-----|
+| 1 | (可选) `Muls(state, gama)` | $S \leftarrow \alpha_t \cdot S$ | 全局衰减，标量乘整个状态矩阵 |
+| 2 | (可选) `MatVecMul(state, gk)` | $S \leftarrow S \cdot \text{Diag}(\alpha_{kt})$ | 维度衰减，每列 $j$ 乘 $\alpha_{kt}[j]$（实现上逐行乘 gk 向量） |
+
+> 步骤 1-2 合并后得到衰减后的状态 $\tilde{S} = \alpha_t \cdot S_{t-1} \cdot \text{Diag}(\alpha_{kt})$。若 $g$ / $g_k$ 未传入（`nullptr`），对应步骤跳过，$\alpha_t = 1$ 或 $\alpha_{kt} = \mathbf{1}$。
+
+#### 阶段二：Delta 纠差与状态更新（对应公式 $\delta = \beta_t(v_t - \tilde{S}k_t)$，$S_t = \tilde{S} + \delta k_t^T$）
+
+| 步骤 | 操作 | 公式 | 说明 |
+|:-----|:-----|:-----|:-----|
+| 3 | `MatVecMul(state, k) → tmp` | $\text{tmp}_{ij} \leftarrow S_{ij} \cdot k_j$ | 逐元素乘，准备矩阵-向量乘 |
+| 4 | `ReduceSum(tmp → delta)` | $\delta_i \leftarrow \sum_j S_{ij} k_j$ | 行求和，得到预测值 $\hat{v} = \tilde{S} \cdot k_t$ |
+| 5 | `delta = v - delta` | $\delta \leftarrow v_t - \tilde{S} \cdot k_t$ | **Delta（预测误差）**：实际值减预测值 |
+| 6 | `Muls(delta, beta)` | $\delta \leftarrow \beta_t \cdot \delta$ | 写入门控，控制误差写入强度 |
+| 7 | `Broadcast(tmp, delta)` | $\text{tmp}_{ij} \leftarrow \delta_i$ | 将 $\delta \in \mathbb{R}^{d_v}$ 广播为 $d_v \times d_k$ 矩阵 |
+| 8 | `MatVecMul(tmp, k, state, isAdd)` | $S_{ij} \leftarrow S_{ij} + \delta_i \cdot k_j$ | **外积加**：$S_t = \tilde{S} + \delta \cdot k_t^T$ |
+
+> 步骤 3-4 组合实现矩阵-向量乘 $\hat{v} = \tilde{S} \cdot k_t$（因 AIV-only 无 Cube 单元，通过逐元素乘 + ReduceSum 实现）。步骤 5-8 实现 Delta Rule 的核心纠差更新。
+
+#### 阶段三：Query 查询与输出（对应公式 $o_t = S_t \cdot q_t / \sqrt{d_k}$）
+
+| 步骤 | 操作 | 公式 | 说明 |
+|:-----|:-----|:-----|:-----|
+| 9 | `MatVecMul(state, q) → tmp` | $\text{tmp}_{ij} \leftarrow S_{ij} \cdot q_j$ | 逐元素乘，q 已在 CopyInQKV 阶段乘 scale |
+| 10 | `ReduceSum(tmp → attn)` | $o_i \leftarrow \sum_j S_{ij} q_j$ | 行求和，得到输出 $o_t = S_t \cdot q_t$ |
+| 11 | `Cast(stateOut, state)` / `Cast(attnOut, attn)` | — | 输出转回 bf16（若 state 为 fp32 则直接 DataCopy） |
+
+> 步骤 9-10 组合实现 $o_t = S_t \cdot q_t$。query 的缩放因子 $\frac{1}{\sqrt{d_k}}$ 在数据搬入阶段（`CopyInQKV` 中 `Muls(qInUb, qInUb, scale_)`）已预先乘到 q 上，避免在计算阶段额外操作。
+
+#### MatVecMul 实现差异
+
+`MatVecMul`（矩阵-向量乘，通过逐元素乘 + 预留行求和位置实现）在两代架构中的实现方式不同：
+
+| 架构 | 实现方式 | 关键参数 |
+|:-----|:---------|:---------|
+| arch22 | `Mul` / `MulAddDst` 高阶 API，逐 repeat 循环 | `REPEAT_LENTH=64`（单次处理 64 个 fp32 元素），`MAX_REPEAT_TIME=255`（单次最大 repeat 数，超过则分段循环） |
+| arch35 | `VecMulMatVF` MicroAPI intrinsic | 寄存器级 `LoadAlign` / `Mul` / `MulAddDst` / `StoreAlign`，无 repeat 分段限制 |
+
+arch35 的 `OuterAddVF` 还使用 `DIST_BRC_B32` 加载模式替代步骤 7 的显式 `Broadcast` 操作，将 delta 首元素广播到整个寄存器，减少一条指令。
 
 ## 4 Tiling 策略
 
@@ -330,136 +431,123 @@ vStep = vStep / 16 * 16         // 对齐到 16（64B，2 个 32B block）
 5. **数值约束**（用户保证，算子不校验）：$|q|, |k| \le 1$，$g < 0$，$g_k < 0$，$0 < \beta < 1$
 6. **确定性**：默认确定性计算
 
-## 8 下一代芯片适配分析（UB=384KB, AIV=1）
+## 8 下一代芯片适配分析（AIV=1, UB=384KB）
 
-假设下一代芯片将 UB 总空间调整为 384KB（当前 A2/950 典型为 192KB），且 AIV 数量为 1。以下分析 UB 分配是否需要调整，以及对计算流程的影响。
+下一代芯片基于 arch35 路线演进，两个关键变化：**AIV 数量从多核改为 1**（单 Vector 核），**UB 总空间扩展至 384KB**。以下基于 arch35 现有实现分析适配方案。
 
-### 8.1 对 arch22（动态分配）UB 的影响
+### 8.1 当前 arch35 UB 占用现状
 
-arch22 的 `CalUbSize()` 从平台信息动态读取 `ubSize`，按 `vStep = (ubSize - usedUbBytes) / coeff / 8 * 8` 自适应推导。**UB 变大后无需修改代码即可自动适配**，vStep 会按比例增大。
+arch35 采用**硬编码常量**分配各 buffer，不依赖 Host 侧动态推导。当前各 buffer 占用如下：
 
-以最坏场景（$D_k=512, D_v=512, N_v=256$，FP32 state，含 g/gk）为例，量化对比：
+| Buffer | 分配方式 | 大小 | FP32 state 合计 | BF16 state 合计 |
+|:-------|:---------|:-----|:----------------|:----------------|
+| `inputQueue1_` | TQue Double Buffer | 32K×2 / 16K×2 | 64KB | 32KB |
+| `stateOutQueue_` | TQue Single | 32K / 16K | 32KB | 16KB |
+| `stateBuff_` | TBuf | 32K | 32KB | 32KB |
+| `tmpBuff2_` | TBuf | 32K | 32KB | 32KB |
+| `attnOutQueue_` | TQue Single | 16K | 16KB | 16KB |
+| `gamaBuff_` | TBuf | 16K | 16KB | 16KB |
+| `queryBuff_` | TBuf | 16K | 16KB | 16KB |
+| `keyBuff_` | TBuf | 16K | 16KB | 16KB |
+| `valueBuff_` | TBuf | 16K | 16KB | 16KB |
+| `tmpBuff1_` | TBuf | 2K | 2KB | 2KB |
+| **总计** | | | **242KB** | **194KB** |
 
-| UB 大小 | 固定占用 | coeff（每行边际） | vStep（原始） | vStep（微调后） | $D_v$ 迭代次数 |
-|:--------|:---------|:-----------------|:--------------|:----------------|:--------------|
-| 192KB | ~108KB | 8204 B | 8 | 8 | 64 |
-| 384KB | ~108KB | 8204 B | 32 | 32 | 16 |
+> 当前 FP32 state 场景占用 242KB，说明 950 实际 UB 不小于 256KB。下一代芯片 UB 扩展至 384KB 后，FP32 state 场景有 142KB 闲置，BF16 state 场景有 190KB 闲置。
 
-> vStep 从 8 提升到 32，$D_v$ 方向迭代次数从 64 降至 16，减少 75% 的 state GM 读写往返。
+### 8.2 vStep 提升方案
 
-以典型场景（$D_k=128, D_v=128, N_v=8$，FP32 state，含 g/gk）为例：
+vStep 由 `stateBuff_` 和 `tmpBuff2_` 两个 buffer 的大小决定（分别存储 state 的 fp32 工作副本和 VecMulMat 输出，容量均为 `alignDK × vStep × 4B`）。当前公式：
 
-| UB 大小 | vStep（原始） | vStep（微调后） | $D_v$ 迭代次数 |
-|:--------|:--------------|:----------------|:--------------|
-| 192KB | 80 | 64 | 2 |
-| 384KB | 176 | 128 | 1 |
+```
+vStep = 8192 / alignDK          // 8192 = 32KB(stateBuff_) / 4B(sizeof fp32)
+if (vStep > 256) vStep = 255    // 硬件 repeat 上限
+vStep = vStep / 16 * 16         // 对齐到 16
+```
 
-> 典型场景下 vStep 达到 $D_v=128$，单头仅需 1 次 $D_v$ 迭代即可完成，state 只需一次性 Load/Store。
-
-**结论**：arch22 无需修改代码。vStep 增大后，state 相关 TQue（`stateInQueue_`/`stateOutQueue_`）和 TBuf（`stateInUb`/`broadTmpInUb`）的容量按 `vStep` 同比例增长，`CalUbSize()` 公式保证总占用不超过 UB 上限。
-
-**注意点**：
-1. 当 vStep 增大至 $\ge D_v$ 时，`rptime = CeilDiv(Dv, vStep) = 1`，vStep 被 `CeilAlign(Dv, 8)` 截断为 $D_v$（对齐后），**超出部分 UB 空间闲置**。此时可考虑将闲置空间用于 Double Buffer 或增大 `MAX_MTP`（但 `MAX_MTP` 受 $L_i \le 8$ 约束，不宜调整）。
-2. arch22 的 `MatVecMul` 内部以 `MAX_REPEAT_TIME=255` 分段循环，无 vStep 上限硬约束。`ReduceSum` 高阶 API 内部自行 tiling，也不受 vStep 大小限制。
-3. TilingData 中 `ubCalSize`/`ubRestBytes` 为 `uint32_t`，384KB = 393216 远未溢出。
-
-### 8.2 对 arch35（固定分配）UB 的影响
-
-arch35 的 buffer 大小为**硬编码常量**（`BUFFER_SIZE_BYTE_16K`/`32K` 等），vStep 在 Kernel 构造函数中按 `vStep = 8192 / alignDK` 计算（8192 = 32KB / 4B，绑定 `stateBuff_` 的 32KB 固定大小）。**UB 变大后不会自动适配，额外空间被完全浪费**。
-
-当前 arch35 固定 UB 占用（FP32 state）：
-
-| Buffer | 大小 | 说明 |
-|:-------|:-----|:-----|
-| `inputQueue1_`（Double Buffer） | 64KB | 32K × 2 |
-| `stateOutQueue_` | 32KB | |
-| `stateBuff_` | 32KB | vStep 基准 |
-| `tmpBuff2_` | 32KB | VecMulMat 输出 |
-| `attnOutQueue_` / `gamaBuff_` / `queryBuff_` / `keyBuff_` / `valueBuff_` | 16KB × 5 = 80KB | |
-| `tmpBuff1_` | 2KB | ReduceSum 结果 |
-| **合计** | **242KB** | |
-
-| UB 大小 | 占用 | 剩余 | 剩余利用率 |
-|:--------|:-----|:-----|:-----------|
-| 192KB | 242KB | **-50KB（超限）** | FP32 state + 大 shape 在 192KB 下已无法运行 |
-| 384KB | 242KB | 142KB | **36.9% 浪费** |
-
-> **关键发现**：arch35 当前固定分配 242KB 已超过 192KB，说明 950 实际 UB 大于 192KB（推测为 256KB+）。在 384KB 下有 142KB 闲置。
-
-**需调整的 buffer 及 vStep 提升效果**：
-
-`stateBuff_` 和 `tmpBuff2_` 是与 vStep 直接相关的两个 buffer（分别存储 state 工作副本和 VecMulMat 输出，大小均为 `alignDK × vStep × 4B`）。增大这两个 buffer 即可提升 vStep：
+增大这两个 buffer 即可线性提升 vStep。以下分析各方案（以 FP32 state 为基准）：
 
 | `stateBuff_`/`tmpBuff2_` 大小 | vStep（alignDK=512） | vStep（alignDK=128） | vStep（alignDK=64） | 新总占用 | 384KB 内余量 |
 |:------------------------------|:---------------------|:---------------------|:---------------------|:---------|:-------------|
 | 32KB（当前） | 16 | 64 | 128 | 242KB | 142KB |
 | 64KB | 32 | 128 | 240 | 306KB | 78KB |
 | 96KB | 48 | 192 | 240 | 370KB | 14KB |
-| 128KB | 64 | 256→255 | 255 | 434KB | **超限** |
+| 128KB | 64 | 256 | 240 | 434KB | **超限** |
 
-> - **推荐调整为 96KB**：在 384KB 内可容纳（余 14KB），vStep 提升显著（alignDK=512 时从 16→48，提升 3 倍）。
-> - 128KB 方案总占用 434KB 超 384KB 上限，不可行。
-> - vStep 受 `if (vStep > 255) vStep = 255` 硬件 repeat 上限约束，alignDK=64 时 96KB 方案已达上限 240（对齐 16 后）。
+> - vStep 受 `if (vStep > 256) vStep = 255` + 对齐 16 约束，实际有效上限为 240（vStep > 256 时被截断为 255，再对齐到 240）
+> - **推荐 96KB 方案**：384KB 内可容纳（余 14KB），vStep 提升显著（alignDK=512 时 16→48，提升 3 倍）
+> - 128KB 方案总占用 434KB 超 384KB 上限，不可行
+> - 其余 buffer（`inputQueue1_`/`queryBuff_`/`keyBuff_` 等）存储 `MAX_MTP × alignDK` 级数据，与 vStep 无关，16KB 已覆盖最大 shape（$8 \times 512 \times 4B = 16KB$），无需调整
 
-### 8.3 对 arch35 的推荐调整方案
+**vStep 提升对 $D_v$ 迭代次数的影响**：
 
-若下一代芯片采用 arch35 路线，建议新增 arch 配置（如 arch36），做以下调整：
+| 场景 | vStep（32KB） | $D_v$ 迭代次数 | vStep（96KB） | $D_v$ 迭代次数 | 减少 |
+|:-----|:--------------|:--------------|:--------------|:--------------|:-----|
+| $D_k=512, D_v=512$ | 16 | 32 | 48 | 11 | 66% |
+| $D_k=128, D_v=128$ | 64 | 2 | 192 | 1 | 50% |
+| $D_k=64, D_v=512$ | 128 | 4 | 240 | 3 | 25% |
+
+> 每次 $D_v$ 迭代涉及一次 state 的 GM→UB Load 和 UB→GM Store。vStep 增大直接减少 GM 读写往返次数，是单核场景下的关键优化手段。
+
+### 8.3 推荐代码调整
+
+建议新增 arch 配置（如 arch36），做以下调整：
 
 ```cpp
-// 推荐调整（基于 384KB UB）
 constexpr uint32_t BUFFER_SIZE_BYTE_96K = 98304;
-// stateBuff_ 和 tmpBuff2_ 从 32K 增至 96K
+
 pipe_->InitBuffer(stateBuff_, BUFFER_SIZE_BYTE_96K);    // 原 32K
 pipe_->InitBuffer(tmpBuff2_, BUFFER_SIZE_BYTE_96K);     // 原 32K
-// vStep 公式同步调整
+
 vStep_ = (96 * 1024 / 4) / alignDK_;   // = 24576 / alignDK_
-if (vStep_ > 255) vStep_ = 255;
+if (vStep_ > 256) {
+    vStep_ = 255;
+}
 vStep_ = vStep_ / BF16_NUM_PER_BLOCK * BF16_NUM_PER_BLOCK;
 ```
 
-其余 buffer（`inputQueue1_`/`queryBuff_`/`keyBuff_` 等）保持不变——它们存储的是 `MAX_MTP × alignDK` 级别的数据，与 vStep 无关，且 16KB 已足够覆盖最大 shape（$8 \times 512 \times 4B = 16KB$）。
+其余 buffer 和计算流程保持不变。TilingData 中无需新增字段（arch35 的 vStep 在 Kernel 构造函数中计算，不依赖 Host 传递）。
 
-### 8.4 对计算流程的影响（AIV=1）
+### 8.4 AIV=1 对任务调度的影响
 
-#### 8.4.1 任务调度
+AIV=1 时 `vectorCoreNum = min(1, B × NV) = 1`，`SetBlockDim(1)`，全部 $B \times N_v$ 个任务在单核上串行执行。
 
-AIV=1 时 `vectorCoreNum = min(1, B × NV) = 1`，`SetBlockDim(1)`，全部 $B \times N_v$ 个任务在单核上串行执行：
-
-| 调度逻辑 | AIV > 1（当前） | AIV = 1 |
-|:---------|:----------------|:--------|
+| 调度逻辑 | AIV > 1（当前） | AIV = 1（下一代） |
+|:---------|:----------------|:------------------|
 | `ComputeAvgload()` | `Ceil(realT × NV, aivNum)` 均分到多核 | `Ceil(realT × NV, 1) = realT × NV`，全部归一核 |
 | `IsCurrentBlock()` | 轮转分配，`usedblk` 递增切换核 | `usedblk` 始终为 0，所有任务命中 `blockIdx==0` |
 | 并行度 | $B \times N_v$ 任务分散到多核 | 全串行，无并行 |
 
-**调度逻辑无需修改**，`IsCurrentBlock` 在 `blockIdx=0, usedblk=0` 时对所有任务返回 `true`，行为正确。
+**调度逻辑无需修改**。`IsCurrentBlock` 在 `blockIdx=0, usedblk=0` 时对所有任务返回 `true`，行为正确。`ComputeAvgload` 中 `maxSeqLen > avgload` 的保护逻辑也仍然有效（单核时 `avgload = max(realT × NV, maxSeqLen)`）。
 
-#### 8.4.2 状态更新
+### 8.5 AIV=1 对状态更新的影响
 
 state 在序列内递推更新（每 token 写回 GM）。多核场景下不同核处理不同 `(batch, head)`，state 槽位通过 `ssmStateIndices` 映射，天然无冲突。AIV=1 时全部串行，**反而简化了状态一致性**——无需担心核间竞争，state 写回顺序确定。
 
-#### 8.4.3 性能影响
+### 8.6 AIV=1 对性能的影响
 
 | 因素 | 影响 |
 |:-----|:-----|
 | 核间并行丧失 | $B \times N_v$ 任务全串行，吞吐量降为 1/aivNum（相比多核） |
-| vStep 增大（384KB） | 减少 $D_v$ 方向迭代次数，降低 GM 读写往返，部分弥补串行损失 |
-| 单核流水线 | arch35 Double Buffer 的 MTE2/V 流水仍在单核内有效，不受 AIV 数量影响 |
-| 数据搬运 | 单核独占带宽，无多核竞争 GM 带宽 |
+| vStep 增大（96KB 方案） | 减少 $D_v$ 方向迭代次数，降低 GM 读写往返，部分弥补串行损失 |
+| Double Buffer | `inputQueue1_` 的 MTE2/V 流水在单核内仍然有效，不受 AIV 数量影响 |
+| GM 带宽 | 单核独占带宽，无多核竞争，DataCopy 效率不降 |
+| 计算流水 | arch35 的 VecMulMatVF / OuterAddVF MicroAPI 流水不受核数影响 |
 
-> **净效果**：AIV=1 导致性能大幅下降（串行化），但 384KB UB 通过增大 vStep 可减少 GM 访问次数，对单核吞吐有一定补偿。对于 $D_v$ 较大的 shape（如 512），vStep 从 8→32 可减少 75% 的 state Load/Store 次数，缓解串行瓶颈。
+> **净效果**：AIV=1 导致性能大幅下降（串行化），这是下一代芯片的主要性能瓶颈。384KB UB 通过将 `stateBuff_`/`tmpBuff2_` 从 32KB 扩至 96KB，使 vStep 提升 3 倍（alignDK=512 场景），减少 66% 的 state GM 读写往返，对单核吞吐有一定补偿。但对于 $B \times N_v$ 较大的场景，串行化损失难以仅靠 vStep 增大完全弥补。
 
-#### 8.4.4 Workspace
+### 8.7 Workspace
 
-`workspaceSize_` 固定为 16MB（系统 workspace），与 AIV 数量和 UB 大小无关，无需调整。
+`workspaceSize` 固定为 16MB（系统 workspace），与 AIV 数量和 UB 大小无关，无需调整。
 
-### 8.5 总结
+### 8.8 总结
 
-| 维度 | arch22（动态分配） | arch35（固定分配） |
-|:-----|:-------------------|:-------------------|
-| **UB 适配** | 自动适配，无需改码 | 需手动调整 `stateBuff_`/`tmpBuff2_` 大小及 vStep 公式 |
-| **vStep 变化** | 192K→384K：8→32（最坏），64→128（典型） | 32K→96K：16→48（alignDK=512） |
-| **代码改动** | 无 | 新增 arch 或修改常量（推荐 96K 方案） |
-| **计算流程** | 不变 | 不变 |
-| **AIV=1 调度** | 不需修改，`IsCurrentBlock` 自动收敛 | 同左 |
-| **性能** | vStep 增大补偿部分串行损失 | 同左，但需先完成 UB 调整才能获益 |
-| **风险** | vStep≥Dv 时 UB 闲置（低风险） | 96K 方案余量仅 14KB，需验证各 shape 组合 |
+| 维度 | 分析结论 |
+|:-----|:---------|
+| **UB 适配** | 需手动调整 `stateBuff_`/`tmpBuff2_` 从 32KB 至 96KB，并同步修改 vStep 公式 |
+| **vStep 变化** | alignDK=512：16→48；alignDK=128：64→192；$D_v$ 迭代次数显著减少 |
+| **代码改动** | 仅 2 个 buffer 大小常量 + vStep 公式分母，其余不变 |
+| **AIV=1 调度** | 不需修改，`IsCurrentBlock` / `ComputeAvgload` 自动收敛到单核 |
+| **AIV=1 状态更新** | 串行执行，无核间竞争，状态一致性更简单 |
+| **性能** | 串行化是主要瓶颈，vStep 增大部分补偿（减少 GM 访问），Double Buffer 流水仍有效 |
+| **风险** | 96KB 方案余量仅 14KB，需验证各 shape + dtype 组合不超限 |
