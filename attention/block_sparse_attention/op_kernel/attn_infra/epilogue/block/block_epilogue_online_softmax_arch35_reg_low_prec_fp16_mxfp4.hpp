@@ -22,9 +22,13 @@
 #include "block_epilogue_arch35_utils.hpp"
 #include "mxfp4_vf/vf_nd2nz_indexes_dn_mxfp4.h"
 #include "mxfp4_vf/vf_softmax_dn_cast_nz_mxfp4_qs128_kvs256.h"
+#include "mxfp4_vf/vf_softmax_dn_cast_nz_mxfp4_qs64_kvs256.h"
 #include "mxfp4_vf/vf_mm1_res_pre_padding_align_kvs32_multi.h"
+#include "mxfp4_vf/vf_mm1_res_pre_padding_align_kvs32_multi_qs64.h"
 #include "mxfp4_vf/vf_softmax_dn_cast_nz_mxfp4_align_qs128_kvs32_multi.h"
 #include "mxfp4_vf/vf_softmax_dn_cast_nz_mxfp4_align_qs128_kvs32.h"
+#include "mxfp4_vf/vf_softmax_dn_cast_nz_mxfp4_align_qs64_kvs32_multi.h"
+#include "mxfp4_vf/vf_softmax_dn_cast_nz_mxfp4_align_qs64_kvs32.h"
 
 
 namespace NpuArch::Epilogue::Block {
@@ -109,7 +113,7 @@ public:
 
     template <class TensorL1P>
     __aicore__ inline
-    void operator()(TensorL1P &l1PTensorTla, GemmCoord &actualBlockShape, TileInfo const &tileInfo)
+    void operator()(TensorL1P &l1PTensorTla, GemmCoord &actualBlockShape, TileInfo const &tileInfo, TaskInfo const &taskInfo)
     {
         uint32_t spBuffIdx = GetSPBufferIdx(tileInfo.loop);
         // 跨 tile 同步: 每个 vec core 都需要一个跨 tile 的同步
@@ -130,69 +134,139 @@ public:
         // AscendC::DumpTensor(sUBTensor[spBuffIdx][768], 127, 128);
 
         if (tileInfo.isFirstKvsTile) {
-            if (actQsTile == MXFP4::QS_BASE_SIZE && actKvsTile == MXFP4::KVS_BASE_SIZE) {
-                // qs=128, kvs=256 softmax
-                Mxfp4VF::SoftmaxWithGroupMaxQs128Kvs256CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
-                    MXFP4::KVS_BASE_SIZE, MXFP4::QS_BASE_SIZE>(
-                    pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
-                    localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                    indexUBTensor, scaleValue_, NEG_LOG2_CX_);
-            } else {
-                // kvs padding 32 multi
-                if (actKvsTile != tileInfo.kvsActBaseTileAlign32) {
-                    Mxfp4VF::Mm1ResPrePaddingAlignKvs32MultiCallVF<ElementInput>(
-                        sUBTensor[spBuffIdx], static_cast<uint16_t>(actKvsTile),
-                        static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32));
-                    AscendC::PipeBarrier<PIPE_V>();
-                }
-                // softmax
-                if (tileInfo.kvsActBaseTileAlign32 == MXFP4::DATA_BLOCK_BYTE) {
-                    // softmax padding 32
-                    Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP>(
+            if (actKvsTile == MXFP4::KVS_BASE_SIZE) {
+                if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
+                    // qs=128, kvs=256 softmax
+                    Mxfp4VF::SoftmaxWithGroupMaxQs128Kvs256CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
+                        MXFP4::KVS_BASE_SIZE, MXFP4::QS_BASE_SIZE>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                         localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
                         indexUBTensor, scaleValue_, NEG_LOG2_CX_);
                 } else {
-                    // softmax padding 32 multi >= 64
-                    Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
-                        MXFP4::QS_BASE_SIZE>(
+                    // qs=64, kvs=256 softmax
+                    Mxfp4VF::SoftmaxWithGroupMaxQs64Kvs256CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
+                        MXFP4::KVS_BASE_SIZE, MXFP4::QS_BASE_SIZE>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                         localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                        indexUBTensor, scaleValue_, NEG_LOG2_CX_,
-                        static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32), static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign64));
+                        indexUBTensor, scaleValue_, NEG_LOG2_CX_);
+                }
+               
+            } else {
+                // kvs padding 32 multi
+                if (actKvsTile != tileInfo.kvsActBaseTileAlign32) {
+                    if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
+                        Mxfp4VF::Mm1ResPrePaddingAlignKvs32MultiCallVF<ElementInput>(
+                            sUBTensor[spBuffIdx], static_cast<uint16_t>(actKvsTile),
+                            static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32));
+                        
+                    } else {
+                        // qs=64
+                        Mxfp4VF::Mm1ResPrePaddingAlignKvs32MultiQs64CallVF<ElementInput>(
+                            sUBTensor[spBuffIdx], static_cast<uint16_t>(actKvsTile),
+                            static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32));
+                    }
+                    AscendC::PipeBarrier<PIPE_V>();
+                }
+                // softmax
+                if (tileInfo.kvsActBaseTileAlign32 == MXFP4::DATA_BLOCK_BYTE) {
+                    if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
+                        // softmax padding 32, qs=128
+                        Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP>(
+                            pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
+                            localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
+                            indexUBTensor, scaleValue_, NEG_LOG2_CX_);
+                    } else {
+                        // softmax padding 32, qs=64
+                        Mxfp4VF::SoftmaxWithGroupMaxAlignQs64Kvs32CallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP>(
+                            pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
+                            localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
+                            indexUBTensor, scaleValue_, NEG_LOG2_CX_);
+                    }
+                } else {
+                    if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
+                        // softmax padding 32 multi >= 64, qs=128
+                        Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
+                            MXFP4::QS_BASE_SIZE>(
+                            pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
+                            localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
+                            indexUBTensor, scaleValue_, NEG_LOG2_CX_,
+                            static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32), static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign64));
+                    } else {
+                        // softmax padding 32 multi >= 64, qs=64
+                        Mxfp4VF::SoftmaxWithGroupMaxAlignQs64Kvs32MultiCallVF<MX_QUANT_MODE, true, ElementInput, ElementDisguiseP,
+                            MXFP4::QS_BASE_SIZE>(
+                            pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
+                            localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
+                            indexUBTensor, scaleValue_, NEG_LOG2_CX_,
+                            static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32), static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign64));
+                    }
                 }
             }
         } else {
-            if (actQsTile == MXFP4::QS_BASE_SIZE && actKvsTile == MXFP4::KVS_BASE_SIZE) {
-                // qs=128, kvs=256 softmax
-                Mxfp4VF::SoftmaxWithGroupMaxQs128Kvs256CallVF<MX_QUANT_MODE, false, ElementInput, ElementDisguiseP,
-                    MXFP4::KVS_BASE_SIZE, MXFP4::QS_BASE_SIZE>(
-                    pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
-                    localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                    indexUBTensor, scaleValue_, NEG_LOG2_CX_);
-            } else {
-                // kvs padding 32 multi
-                if (actKvsTile != tileInfo.kvsActBaseTileAlign32) {
-                    Mxfp4VF::Mm1ResPrePaddingAlignKvs32MultiCallVF<ElementInput>(
-                        sUBTensor[spBuffIdx], static_cast<uint16_t>(actKvsTile),
-                        static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32));
-                    AscendC::PipeBarrier<PIPE_V>();
-                }
-                // softmax
-                if (tileInfo.kvsActBaseTileAlign32 == MXFP4::DATA_BLOCK_BYTE) {
-                    // softmax padding 32
-                    Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32CallVF<MX_QUANT_MODE, false, ElementInput, ElementDisguiseP>(
+            if (actKvsTile == MXFP4::KVS_BASE_SIZE) {
+                if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
+                    // qs=128, kvs=256 softmax
+                    Mxfp4VF::SoftmaxWithGroupMaxQs128Kvs256CallVF<MX_QUANT_MODE, false, ElementInput, ElementDisguiseP,
+                        MXFP4::KVS_BASE_SIZE, MXFP4::QS_BASE_SIZE>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                         localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
                         indexUBTensor, scaleValue_, NEG_LOG2_CX_);
                 } else {
-                    // softmax padding 32 multi >= 64
-                    Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF<MX_QUANT_MODE, false, ElementInput, ElementDisguiseP,
-                        MXFP4::QS_BASE_SIZE>(
+                    // qs=64, kvs=256 softmax
+                    Mxfp4VF::SoftmaxWithGroupMaxQs64Kvs256CallVF<MX_QUANT_MODE, false, ElementInput, ElementDisguiseP,
+                        MXFP4::KVS_BASE_SIZE, MXFP4::QS_BASE_SIZE>(
                         pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
                         localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
-                        indexUBTensor, scaleValue_, NEG_LOG2_CX_,
-                        static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32), static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign64));
+                        indexUBTensor, scaleValue_, NEG_LOG2_CX_);
+                }
+            } else {
+                // kvs padding 32 multi
+                if (actKvsTile != tileInfo.kvsActBaseTileAlign32) {
+                    if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
+                        Mxfp4VF::Mm1ResPrePaddingAlignKvs32MultiCallVF<ElementInput>(
+                            sUBTensor[spBuffIdx], static_cast<uint16_t>(actKvsTile),
+                            static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32));
+                    } else {
+                        // qs=64
+                        Mxfp4VF::Mm1ResPrePaddingAlignKvs32MultiQs64CallVF<ElementInput>(
+                            sUBTensor[spBuffIdx], static_cast<uint16_t>(actKvsTile),
+                            static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32));
+                    }
+                    AscendC::PipeBarrier<PIPE_V>();
+                }
+                // softmax
+                if (tileInfo.kvsActBaseTileAlign32 == MXFP4::DATA_BLOCK_BYTE) {
+                    if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
+                        // softmax padding 32, qs=128
+                        Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32CallVF<MX_QUANT_MODE, false, ElementInput, ElementDisguiseP>(
+                            pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
+                            localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
+                            indexUBTensor, scaleValue_, NEG_LOG2_CX_);
+                    } else {
+                        // softmax padding 32, qs=64
+                        Mxfp4VF::SoftmaxWithGroupMaxAlignQs64Kvs32CallVF<MX_QUANT_MODE, false, ElementInput, ElementDisguiseP>(
+                            pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
+                            localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
+                            indexUBTensor, scaleValue_, NEG_LOG2_CX_);
+                    }
+                } else {
+                    if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
+                        // softmax padding 32 multi >= 64, qs=128
+                        Mxfp4VF::SoftmaxWithGroupMaxAlignQs128Kvs32MultiCallVF<MX_QUANT_MODE, false, ElementInput, ElementDisguiseP,
+                            MXFP4::QS_BASE_SIZE>(
+                            pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
+                            localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
+                            indexUBTensor, scaleValue_, NEG_LOG2_CX_,
+                            static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32), static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign64));
+                    } else {
+                        // softmax padding 32 multi >= 64, qs=64
+                        Mxfp4VF::SoftmaxWithGroupMaxAlignQs64Kvs32MultiCallVF<MX_QUANT_MODE, false, ElementInput, ElementDisguiseP,
+                            MXFP4::QS_BASE_SIZE>(
+                            pUBTensor[spBuffIdx], sUBTensor[spBuffIdx],
+                            localGroupMaxUBTensor[groupMaxIdx], localGlobalMaxUBTensor[tileInfo.tileMaxIdx],
+                            indexUBTensor, scaleValue_, NEG_LOG2_CX_,
+                            static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32), static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign64));
+                    }
                 }
             }
         }
@@ -204,21 +278,25 @@ public:
         auto ubPLayoutTla = tla::MakeLayout<ElementDisguiseP, LayoutPUB>(MXFP4::KVS_BASE_SIZE / 4, MXFP4::QS_BASE_SIZE * 4);
         auto ubPTensorTla = tla::MakeTensor(pUBTensor[0], ubPLayoutTla, Arch::PositionUB{});
 
-        CopyPUBToPL1(l1PTensorTla, ubPTensorTla, tileInfo, actQsTile, spBuffIdx);
+        CopyPUBToPL1(l1PTensorTla, ubPTensorTla, tileInfo, taskInfo, spBuffIdx);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(MXFP4::SYNC_VEC1_RES_BUF0_FLAG + spBuffIdx);
     }
 
     template <class TensorDst, class TensorSrc>
     __aicore__ inline
-    void CopyPUBToPL1(TensorDst const &l1PTensorTla, TensorSrc const &ubPTensorTla, TileInfo const &tileInfo, uint32_t actQsTile, uint32_t spBuffIdx)
+    void CopyPUBToPL1(TensorDst const &l1PTensorTla, TensorSrc const &ubPTensorTla, TileInfo const &tileInfo, TaskInfo const &taskInfo, uint32_t spBuffIdx)
     {
         uint32_t pUBTlaMSize = tla::get<0>(ubPTensorTla.shape());
         uint32_t pUBTlaNSize = tla::get<1>(ubPTensorTla.shape());
 
-        if (actQsTile == MXFP4::QS_BASE_SIZE && tileInfo.kvsActBaseTileAlign32 == MXFP4::KVS_BASE_SIZE) {
+        if (tileInfo.kvsActBaseTileAlign32 == MXFP4::KVS_BASE_SIZE) {
             // qs=128, kvs=256 整块搬运
             AscendC::DataCopyParams repeatParams;
-            repeatParams.blockCount = static_cast<uint16_t>(pUBTlaMSize); // UB的物理P一整行256B, 包含P的逻辑视图4行
+            if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
+                repeatParams.blockCount = static_cast<uint16_t>(pUBTlaMSize); // UB的物理P一整行256B, 包含P的逻辑视图4行
+            } else {
+                repeatParams.blockCount = static_cast<uint16_t>(pUBTlaMSize / 2); // UB的物理P一整行256B, 包含P的逻辑视图4行
+            }
             repeatParams.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
             repeatParams.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
             repeatParams.dstStride = 0;
@@ -227,6 +305,7 @@ public:
             auto srcOffset = pUBTensorTlaTile.layout()(pUBTensorTlaTile.coord());
 
             AscendC::DataCopy(l1PTensorTla.data(), pUBTensorTlaTile.data()[srcOffset], repeatParams);
+            
         } else {
             // 消去高位 低位中间的间隙搬运
             // 低位搬运
@@ -247,27 +326,29 @@ public:
             auto srcOffset1 = pUBTensorTlaTile1.layout()(pUBTensorTlaTile1.coord());
             AscendC::DataCopy(l1PTensorTla.data(), ubPTensorTla.data()[srcOffset1], repeatParams1);
 
-            // 高位搬运
-            AscendC::DataCopyParams repeatParams2;
-            repeatParams2.blockCount = static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32 / (pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE));// UB的物理P一整行256B, 包含P的逻辑视图高位(低位)地址8行
-            repeatParams2.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
-            repeatParams2.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
-            repeatParams2.dstStride = 0;
+            if (taskInfo.qsActBaseTileAlign64 == MXFP4::QS_BASE_SIZE) {
+                // 高位搬运
+                AscendC::DataCopyParams repeatParams2;
+                repeatParams2.blockCount = static_cast<uint16_t>(tileInfo.kvsActBaseTileAlign32 / (pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE));// UB的物理P一整行256B, 包含P的逻辑视图高位(低位)地址8行
+                repeatParams2.blockLen = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
+                repeatParams2.srcStride = static_cast<uint16_t>(pUBTlaNSize / 2 / MXFP4::DATA_BLOCK_BYTE);
+                repeatParams2.dstStride = 0;
 
-            uint32_t pL1NHalfSize = tla::get<1, 0>(l1PTensorTla.shape());
-            uint32_t xL1P = tileInfo.kvsActBaseTileAlign64;
-            uint32_t yL1P = 0;
-            if (tileInfo.kvsActBaseTileAlign64 == MXFP4::KVS_BASE_SIZE) {
-                xL1P = 0;
-                yL1P = pL1NHalfSize;
+                uint32_t pL1NHalfSize = tla::get<1, 0>(l1PTensorTla.shape());
+                uint32_t xL1P = tileInfo.kvsActBaseTileAlign64;
+                uint32_t yL1P = 0;
+                if (tileInfo.kvsActBaseTileAlign64 == MXFP4::KVS_BASE_SIZE) {
+                    xL1P = 0;
+                    yL1P = pL1NHalfSize;
+                }
+                auto pUBTensorTlaTile2 = tla::GetTile(pUBTensorTlaTile1, tla::MakeCoord(pUBTlaMSize / 2, 0u), tla::MakeShape(pUBTlaMSize / 2, pUBTlaNSize / 2)); // 遗留
+                auto pl1TensorTlaTile = tla::GetTile(l1PTensorTla, tla::MakeCoord(xL1P, yL1P), tla::MakeShape(MXFP4::KVS_BASE_SIZE, pL1NHalfSize));
+
+                auto srcOffset2 = pUBTensorTlaTile2.layout()(pUBTensorTlaTile2.coord());
+                auto dstOffset2 = pl1TensorTlaTile.layout()(pl1TensorTlaTile.coord());
+
+                AscendC::DataCopy(pl1TensorTlaTile.data()[dstOffset2], pUBTensorTlaTile2.data()[srcOffset2], repeatParams2);
             }
-            auto pUBTensorTlaTile2 = tla::GetTile(pUBTensorTlaTile1, tla::MakeCoord(pUBTlaMSize / 2, 0u), tla::MakeShape(pUBTlaMSize / 2, pUBTlaNSize / 2)); // 遗留
-            auto pl1TensorTlaTile = tla::GetTile(l1PTensorTla, tla::MakeCoord(xL1P, yL1P), tla::MakeShape(MXFP4::KVS_BASE_SIZE, pL1NHalfSize));
-
-            auto srcOffset2 = pUBTensorTlaTile2.layout()(pUBTensorTlaTile2.coord());
-            auto dstOffset2 = pl1TensorTlaTile.layout()(pl1TensorTlaTile.coord());
-
-            AscendC::DataCopy(pl1TensorTlaTile.data()[dstOffset2], pUBTensorTlaTile2.data()[srcOffset2], repeatParams2);
 
             // AscendC::printf("==== CopyPUBToPL1 ELSE debug ====\n");
             // AscendC::printf("pUBTlaMSize:%d, pUBTlaNSize:%d, actQsTile:%d, spBuffIdx:%d\n", pUBTlaMSize, pUBTlaNSize, actQsTile, spBuffIdx);
