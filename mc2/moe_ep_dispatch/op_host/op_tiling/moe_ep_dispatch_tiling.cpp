@@ -799,7 +799,8 @@ static ge::graphStatus BuildAndCheckWindowLayout(const gert::TilingContext *cont
     uint64_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN * UB_ALIGN;
     uint32_t topKAlign = ((info.cfg.topK * METADATA_DTYPE_SIZE + UB_ALIGN - 1UL) / UB_ALIGN) * UB_ALIGN;
     uint64_t dispatchReservedPerSlotBytes = AlignUpWin(hiddenAlign + topKAlign * 2 + UB_ALIGN);
-    uint64_t scaleoutReservedPerSlotBytes = static_cast<uint64_t>(info.window.scaleoutSlotAlignedBytes);
+    // 布局按固定保留stride计算，与epilogue/combine保持一致；kernel仍使用真实slot大小寻址和搬运
+    uint64_t scaleoutReservedPerSlotBytes = AlignUpWin(dispatchReservedPerSlotBytes + topK * sizeof(int32_t));
     uint64_t combineWinDataSize = nmt * topK * AlignUpWin(static_cast<uint64_t>(hiddenAlign + UB_ALIGN));
     uint64_t winNeed;
     if (info.networkMode == NETWORK_HYBRID) {

@@ -1445,7 +1445,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     uint64_t commHandle = MoeEpDispatchBase::GetCommHandle(mc2Context_, dstRankId);
     GM_ADDR unusedNotifyAddr =
         MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, dstRankId, slotWinStateOffset_) +
-        static_cast<uint64_t>(srcRankId) * WIN_ADDR_ALIGN + UB_ALIGN;
+        static_cast<uint64_t>(srcRankId) * dispatchNotifyCount_ * WIN_ADDR_ALIGN + UB_ALIGN;
     hcomm_.WriteWithNotifyNbi(commHandle, destinationPayloadAddr, sourcePayloadAddr,
                               perSlotBytes_, unusedNotifyAddr, 1U);
     hcomm_.Drain(commHandle);
@@ -1535,6 +1535,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 {
     bool hasReadRouteInfo = false;
     Duplicate<int64_t>(sourceStateTensor_, SOURCE_STATE_UNREAD, remoteServerCount_);
+    SyncFunc<AscendC::HardEvent::V_S>();
     uint32_t completedSourceCount = 0U;
     while (completedSourceCount != remoteServerCount_) {
         bool madeProgress = false;
@@ -1611,7 +1612,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         static_cast<uint64_t>(srcRankId) * axisMaxBS_ * perSlotBytes_;
     GM_ADDR unusedNotifyAddr =
         MoeEpDispatchBase::GetWindowAddrByRankId(mc2Context_, dstRankId, slotWinStateOffset_) +
-        static_cast<uint64_t>(srcRankId) * WIN_ADDR_ALIGN + UB_ALIGN;
+        static_cast<uint64_t>(srcRankId) * dispatchNotifyCount_ * WIN_ADDR_ALIGN + UB_ALIGN;
     for (uint32_t sendEntryIndex = 0U; sendEntryIndex < sendEntryCount; sendEntryIndex++) {
         uint32_t sourceSlotIndex = 0U;
         uint32_t destinationSlotIndex = 0U;
