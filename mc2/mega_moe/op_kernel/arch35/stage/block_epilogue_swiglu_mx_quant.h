@@ -22,7 +22,7 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "mega_moe_base.h"
+#include "../common/mega_moe_utils.h"
 
 namespace SwigluQuantMsg {
 enum class QuantMode : uint32_t {
@@ -183,7 +183,7 @@ public:
     __aicore__ inline void NotifyCompletedTile(uint32_t flagSlotIdx = 0);
     __aicore__ inline void UpdateNextProblem(const ProblemShape &problemShape);
 
-    // 权重预加载相关：由 ComputeSwigluTileGeneric 提前 DataCopy，VFDoSwigluAndQuantForMX 直接消费
+    // 权重预加载相关：由 GMM1 Prefetch epilogue tile 提前 DataCopy，VFDoSwigluAndQuantForMX 直接消费
     AscendC::LocalTensor<float> weightUb_;
     AscendC::GlobalTensor<float> metaInfoGm_;
 
