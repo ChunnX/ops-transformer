@@ -25,11 +25,15 @@ namespace optiling {
 ge::graphStatus MQSMLATilingCheck::CheckFeatureWinKV() const
 {
     OP_CHECK_IF(oriWinLeft_ != -1 && oriWinLeft_ < 0,
-                OP_LOGE(opName_, "oriWinLeft_ only support -1 or >=0, but got %ld", oriWinLeft_),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "ori_win_left",
+                    std::to_string(oriWinLeft_).c_str(),
+                    "Ori_win_left only supports -1 or >=0"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(oriWinRight_ != -1 && oriWinRight_ < 0,
-                OP_LOGE(opName_, "oriWinRight_ only support -1 or >=0, but got %ld", oriWinRight_),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "ori_win_right",
+                    std::to_string(oriWinLeft_).c_str(),
+                    "Ori_win_right only supports -1 or >=0"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -68,14 +72,18 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantShape() const
 
     if (quant_mode_ == 1) {
         OP_CHECK_IF(dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE,
-                    OP_LOGE(opName_, "When quant_mode is 1, dSizeVInput only support %u, but got %u",
-                            KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE, dSizeVInput_),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                opName_, "ori_kv", ToStringRaw(opParamInfo_.oriKv.tensor->GetStorageShape()).c_str(),
+                "When quant_mode is 1, dSizeVInput only supports " + std::to_string(KV_INPUT_DIM_LIMIT_QUANT_MODE_ONE) +
+                ", but got " + std::to_string(dSizeVInput_)),
+            return ge::GRAPH_FAILED);
     } else if (quant_mode_ == 2) {
         OP_CHECK_IF(dSizeVInput_ != KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO,
-                    OP_LOGE(opName_, "When quant_mode is 2, dSizeVInput only support %u, but got %u",
-                            KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO, dSizeVInput_),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                opName_, "ori_kv", ToStringRaw(opParamInfo_.oriKv.tensor->GetStorageShape()).c_str(),
+                "When quant_mode is 2, dSizeVInput only supports " + std::to_string(KV_INPUT_DIM_LIMIT_QUANT_MODE_TWO) +
+                ", but got " + std::to_string(dSizeVInput_)),
+            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -86,7 +94,9 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantLayout() const
     const std::vector<std::string> layoutSupportList = {"BSND", "TND"};
     std::string layoutQuery = opParamInfo_.layoutQ;
     OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layoutQuery) == layoutSupportList.end(),
-                OP_LOGE(opName_, "layoutQuery only support BSND/TND, but got %s", layoutQuery.c_str()),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q",
+                    layoutQuery.c_str(),
+                    "Layout_q only supports BSND or TND"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -105,7 +115,9 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantDtype() const
 ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantAttr() const
 {
     OP_CHECK_IF(*opParamInfo_.quantMode != 1 && *opParamInfo_.quantMode != 2,
-                OP_LOGE(opName_, "quant_mode only support 1 and 2, but got %ld", *opParamInfo_.quantMode),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "quant_mode",
+                    std::to_string(*opParamInfo_.quantMode).c_str(),
+                    "Quant_mode only support 1 and 2"),
                 return ge::GRAPH_FAILED);
 
     if (*opParamInfo_.quantMode == 1 || *opParamInfo_.quantMode == 2) {
@@ -117,8 +129,8 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantAttr() const
 
     OP_CHECK_IF(*opParamInfo_.ropeHeadDim != 64, // 64:当前不泛化
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "rope_head_dim",
-            std::to_string(*opParamInfo_.ropeHeadDim).c_str(),
-            "rope_head_dim only support 64"),
+                    std::to_string(*opParamInfo_.ropeHeadDim).c_str(),
+                    "rope_head_dim only support 64"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -130,15 +142,19 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantPa() const
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(oriBlockSize_ <= 0 || oriBlockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE),
-                OP_LOGE(opName_, "when page attention is enabled, oriBlockSize_(%u) should be in range (0, %u].",
-                        oriBlockSize_, MAX_BLOCK_SIZE),
-                return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                opName_, "ori_kv", ToStringRaw(opParamInfo_.oriKv.tensor->GetStorageShape()).c_str(),
+                "When page attention is enabled, cmpBlockSize_(" + std::to_string(oriBlockSize_) +
+                ") should be in range (0, " + std::to_string(MAX_BLOCK_SIZE) + "]"),
+            return ge::GRAPH_FAILED);
 
     if (cmpBlockSize_ != 0) {
         OP_CHECK_IF(cmpBlockSize_ <= 0 || cmpBlockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE),
-                    OP_LOGE(opName_, "when page attention is enabled, cmpBlockSize_(%u) should be in range (0, %u].",
-                            cmpBlockSize_, MAX_BLOCK_SIZE),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                opName_, "cmp_kv", ToStringRaw(opParamInfo_.oriKv.tensor->GetStorageShape()).c_str(),
+                "When page attention is enabled, cmpBlockSize_(" + std::to_string(cmpBlockSize_) +
+                ") should be in range (0, " + std::to_string(MAX_BLOCK_SIZE) + "]"),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
