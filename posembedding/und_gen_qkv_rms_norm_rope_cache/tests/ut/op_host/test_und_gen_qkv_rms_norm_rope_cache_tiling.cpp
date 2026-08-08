@@ -161,7 +161,8 @@ int64_t ExpectedUbFactor(int64_t numHeadQ, int64_t numHeadK, int64_t numHeadV, i
     const int64_t d = HEAD_DIM;
     const int64_t resident = 4 * d * 2 +                       // wBf16Buf
                              4 * d * 4 +                       // wFp32Buf
-                             (((d / 2) * 4 + 31) / 32) * 32;   // gatherIdxBuf
+                             (((d / 2) * 4 + 31) / 32) * 32 +  // gatherIdxBuf
+                             2 * 5 * 64 * 8;                   // idxBuf（乒乓 x 5 区 x MAX_UB_FACTOR 个 int64）
     // gamma 是 TBuf 常驻、不随 token 数伸缩（VF 按 undMask 算基址直接取 wFp32Buf），
     // 所以 perToken 只有三个队列
     const int64_t perToken = 2 * n * d * 2 + 2 * MROPE_AXIS_NUM * d * 4 + 2 * n * d * 2;
@@ -303,6 +304,11 @@ TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_ub_factor_differs_between_head_co
     EXPECT_EQ(tdLarge->ubFactor, ExpectedUbFactor(16, 2, 2, tdLarge->blockFactor));
     // N=20 单 token 占 UB 更多，一次能处理的 token 数必然更少
     EXPECT_GT(tdSmall->ubFactor, tdLarge->ubFactor);
+
+    // ExpectedUbFactor 是按同一套公式复算的，往常驻区加 buffer 时它会跟着变小而测试仍然通过。
+    // 这里再钉一次绝对值：常驻区涨到挤掉一个 token 时必须有人看见，而不是默默少跑一个。
+    EXPECT_EQ(tdSmall->ubFactor, 19) << "N=10 档的 ubFactor 变了，检查是不是常驻区又长大了";
+    EXPECT_EQ(tdLarge->ubFactor, 10) << "N=20 档的 ubFactor 变了，检查是不是常驻区又长大了";
 }
 
 TEST_F(UndGenQkvRmsNormRopeCacheTiling, tiling_success_plain_rope_empty_mrope_section)
