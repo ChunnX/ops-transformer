@@ -804,22 +804,22 @@ def run_backward_case(case, device):
     groupRowStride = groupDealScNum * cr + (coff - 1) * cr
     dbRowCnt = groupNum * groupRowStride
     tiling = CompressorGradTiling(
-        batchSize=B, tokenSize=tokenSize, seqSize=seqSize,
-        cmpRatio=cr, hiddenSize=H, headDim=D,
-        cubeCoreNum=cubeCoreNum, coreNum=coreNum,
-        totalHeadDim=totalHeadDim, cmpRowCnt=coff * cr, cmpSize=cmpSize,
-        cmpKvBatchStride=cmpKvBatchStride, cmpKvRows=outputRows, xRows=xRows,
-        groupSize=groupSize, groupNum=groupNum,
-        groupDealScNum=groupDealScNum, dealScNum=dealScNum,
-        totalScNumPerRound=totalScNumPerRound, dbRowCnt=dbRowCnt,
-        groupRowStride=groupRowStride,
-        coffCoef=coffCoef, cubeMBaseSize=128 * coffCoef,
-        dDealSize=128 // coff, mDealSize=128 * coff,
-        dapeWsSize=groupNum * cmpSize * coffCoef,
-        dXWsSize=2 * cubeCoreNum * 256 * H,
-        dWWeightWsSize=groupNum * totalHeadDim * H,
-        xWsSize=2 * groupNum * groupRowStride * H,
-        dXCacheWsSize=2 * cr * H,
+        batch_size=B, token_size=tokenSize, seq_size=seqSize,
+        cmp_ratio=cr, hidden_size=H, head_dim=D,
+        cube_core_num=cubeCoreNum, core_num=coreNum,
+        total_head_dim=totalHeadDim, cmp_row_cnt=coff * cr, cmp_size=cmpSize,
+        cmp_kv_batch_stride=cmpKvBatchStride, cmp_kv_rows=outputRows, x_rows=xRows,
+        group_size=groupSize, group_num=groupNum,
+        group_deal_sc_num=groupDealScNum, deal_sc_num=dealScNum,
+        total_sc_num_per_round=totalScNumPerRound, db_row_cnt=dbRowCnt,
+        group_row_stride=groupRowStride,
+        coff_coef=coffCoef, cube_m_base_size=128 * coffCoef,
+        d_deal_size=128 // coff, m_deal_size=128 * coff,
+        dape_ws_size=groupNum * cmpSize * coffCoef,
+        d_x_ws_size=2 * cubeCoreNum * 256 * H,
+        d_w_weight_ws_size=groupNum * totalHeadDim * H,
+        x_ws_size=2 * groupNum * groupRowStride * H,
+        d_x_cache_ws_size=2 * cr * H,
     )
 
     # ── 随机构造输入/中间量（不依赖正向输出）──
@@ -838,8 +838,8 @@ def run_backward_case(case, device):
     dWkv = torch.rand(coff * D, H, device=device, dtype=ioDtype)
     dWgate = torch.rand(coff * D, H, device=device, dtype=ioDtype)
     dApe = torch.rand(cr * coff * D, device=device, dtype=torch.float32)
-    wsSize = (tiling.dapeWsSize + tiling.dXWsSize + 2 * tiling.dWWeightWsSize +
-              tiling.xWsSize + tiling.dXCacheWsSize)
+    wsSize = (tiling.dape_ws_size + tiling.d_x_ws_size + 2 * tiling.d_w_weight_ws_size +
+              tiling.x_ws_size + tiling.d_x_cache_ws_size)
     workspace = torch.rand(wsSize, device=device, dtype=torch.float32)
 
     # ── PyPTO 直跑（不经 aclnn/custom 包）──
