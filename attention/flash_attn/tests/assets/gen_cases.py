@@ -23,7 +23,9 @@ TTK E2E CSV file compatible with:
 Tensor order in CSV (matches flash_attn_ttk signature keyword-only order):
     [0] q              [3] block_table       [6] seqused_q
     [1] k              [4] cu_seqlens_q      [7] seqused_kv
-    [2] v              [5] cu_seqlens_kv
+    [2] v              [5] cu_seqlens_kv      [8] sinks
+                                                   [9] attn_mask
+                                                  [10] metadata
 
 Unused positions use None. Small integer tensors (cu_seqlens, seqused)
 get their values from attributes dict → override_tensors_from_attributes.
@@ -341,6 +343,7 @@ def _build_row(case_name, p):
         cu_kv_shape,
         sq_shape,
         skv_shape,
+        None,
         attn_mask_shape,
         None,
     ]
@@ -350,7 +353,7 @@ def _build_row(case_name, p):
     for i in range(3, len(shapes)):
         if shapes[i] is None:
             dtypes.append(None)
-        elif i == 8:
+        elif i == 9:
             dtypes.append("int8")
         else:
             dtypes.append(INT_DTYPE)
@@ -385,8 +388,8 @@ def main():
     parser.add_argument(
         "--output",
         "-o",
-        default="flash_attn_stc.csv",
-        help="Output CSV filename (default: flash_attn_stc.csv)",
+        default="testcase/flash_attn_stc.csv",
+        help="Output CSV path relative to assets (default: testcase/flash_attn_stc.csv)",
     )
     parser.add_argument(
         "--case-file",
@@ -400,6 +403,7 @@ def main():
     cases = load_case_modules([f"test_cases.{args.case_file}"])
 
     out_path = os.path.join(_HERE, args.output)
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(HEADER)

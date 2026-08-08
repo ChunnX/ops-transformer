@@ -660,8 +660,10 @@ def _derive_head_dims(q, k, layout_q, layout_kv):
         num_heads_kv = int(k.shape[1])
     elif layout_kv == "BNSD":
         num_heads_kv = int(k.shape[1])
-    elif layout_kv in ("PA_BBND", "PA_BNBD"):
-        num_heads_kv = int(k.shape[2]) if layout_kv == "PA_BBND" else int(k.shape[1])
+    elif layout_kv in ("PA_BNBD", "PA_NZ"):
+        num_heads_kv = int(k.shape[1])
+    elif layout_kv == "PA_BBND":
+        num_heads_kv = int(k.shape[2])
     else:
         num_heads_kv = int(k.shape[2])
     return num_heads_q, num_heads_kv, head_dim
@@ -694,6 +696,11 @@ def cpu_flash_attn(
     **_unused,
 ):
     """Compute CPU golden reference using FlashAttnGolden."""
+    if sinks is not None:
+        message = "FlashAttn golden does not support sinks yet"
+        print(message)
+        raise NotImplementedError(message)
+
     q_cpu = _to_cpu(q)
     k_cpu = _to_cpu(k)
     v_cpu = _to_cpu(v)
