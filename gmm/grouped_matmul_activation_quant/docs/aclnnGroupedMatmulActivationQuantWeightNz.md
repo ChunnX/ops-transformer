@@ -112,7 +112,7 @@
           Amax(D_{fp32}^b)=max(\{|d_j|\}_{j=1}^{k})
           $$
 
-          将FP32映射到目标数据类型FP8可表示的范围内，其中$Amax(DType)$是目标精度能表示的最大值：
+          将FP32映射到目标数据类型可表示的范围内，其中$Amax(DType)$是目标精度能表示的最大值：
 
           $$
           S_{fp32}^b = \frac{Amax(D_{fp32}^b)}{Amax(DType)}
@@ -302,7 +302,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>quantMode（const char *）</td>
       <td>可选输入</td>
       <td>表示量化模式。</td>
-      <td>支持传入nullptr或空字符串。当前仅支持"mx"；传入nullptr或空字符串时，若x的数据类型为FLOAT8_E4M3FN或FLOAT8_E5M2且xScaleOptional的数据类型为FLOAT8_E8M0，则推导为"mx"。若显式传入非"mx"，则报错。</td>
+      <td>支持传入nullptr或空字符串。当前仅支持"mx"；传入nullptr或空字符串时，若x的数据类型为支持的FLOAT8或FLOAT4类型且xScaleOptional的数据类型为FLOAT8_E8M0，则推导为"mx"。若显式传入非"mx"，则报错。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -332,7 +332,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>dstTypeMax（float）</td>
       <td>输入</td>
       <td>表示maxType的取值，对应公式中的Amax(DType)。</td>
-      <td>当前MXFP8场景仅支持0.0，表示Amax(DType)为量化结果数据类型的最大值。6.0-12.0为后续数据类型为FLOAT4_E2M1且blocksize为32的场景预留。</td>
+      <td>当前MX场景仅支持0.0，表示Amax(DType)为量化结果数据类型的最大值。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -342,8 +342,8 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
       <td>y（aclTensor *）</td>
       <td>输出</td>
       <td>表示激活并量化后的输出矩阵。</td>
-      <td>必选参数。</td>
-      <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+      <td>必选参数。FLOAT4输出仅支持FLOAT4输入场景。</td>
+      <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、FLOAT4_E1M2</td>
       <td>ND</td>
       <td>2</td>
       <td>-</td>
@@ -526,7 +526,7 @@ aclnnStatus aclnnGroupedMatmulActivationQuantWeightNz(
           <td>FLOAT4_E2M1、FLOAT4_E1M2</td>
           <td>FLOAT8_E8M0</td>
           <td>FLOAT8_E8M0</td>
-          <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+          <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、FLOAT4_E1M2</td>
           <td>FLOAT8_E8M0</td>
         </tr>
       </tbody>
