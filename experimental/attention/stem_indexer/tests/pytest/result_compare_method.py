@@ -16,6 +16,7 @@ import stem_indexer_golden
 
 
 TOPK_BOUNDARY_RE_TOLERANCE = 1e-3
+MAX_BOUNDARY_RE_EXCEED_RATIO = 5e-3
 MAX_PRINT_FAILURES = 8
 
 
@@ -161,7 +162,10 @@ def explain_topk_mismatch(
         for item in expected_differences
         if item["relative_error"] > TOPK_BOUNDARY_RE_TOLERANCE
     ]
-    if bad_actual_indices or bad_expected_indices:
+    exceeded_difference_count = max(
+        len(bad_actual_indices), len(bad_expected_indices)
+    )
+    if exceeded_difference_count > 0:
         return {
             "b": b_idx,
             "q_head": q_head_idx,
@@ -171,6 +175,7 @@ def explain_topk_mismatch(
             "bad_actual_indices": bad_actual_indices[:MAX_PRINT_FAILURES],
             "bad_expected_indices": bad_expected_indices[:MAX_PRINT_FAILURES],
             "relative_error_tolerance": TOPK_BOUNDARY_RE_TOLERANCE,
+            "exceeded_difference_count": exceeded_difference_count,
             "reason": "dynamic TopK index difference is outside CPU boundary relative error tolerance",
         }
     return None
@@ -196,9 +201,13 @@ def assert_stem_indexer_result(
     )
 
     failures = []
+    exceeded_details = []
     mismatched_row_count = 0
     tolerated_row_count = 0
+    exceeded_row_count = 0
     failed_row_count = 0
+    total_valid_topk_count = 0
+    total_exceeded_difference_count = 0
     padding_failures = []
     bad_padding_count = 0
     for index in torch.nonzero(expected_seq_len >= 0, as_tuple=False):
@@ -222,6 +231,7 @@ def assert_stem_indexer_result(
             )
         if valid_len == 0:
             continue
+        total_valid_topk_count += valid_len
         actual_prefix = actual_row[:valid_len].tolist()
         expected_prefix = expected_indices[
             b_idx, q_head_idx, q_block_idx, :valid_len
@@ -239,10 +249,17 @@ def assert_stem_indexer_result(
             )
             if failure is None:
                 tolerated_row_count += 1
+            elif "exceeded_difference_count" in failure:
+                exceeded_row_count += 1
+                total_exceeded_difference_count += failure[
+                    "exceeded_difference_count"
+                ]
+                if len(exceeded_details) < MAX_PRINT_FAILURES:
+                    exceeded_details.append(failure)
             else:
                 failed_row_count += 1
-            if failure is not None and len(failures) < MAX_PRINT_FAILURES:
-                failures.append(failure)
+                if len(failures) < MAX_PRINT_FAILURES:
+                    failures.append(failure)
 
     for index in torch.nonzero(expected_seq_len < 0, as_tuple=False):
         b_idx, q_head_idx, q_block_idx = [int(item) for item in index]
@@ -270,5 +287,22 @@ def assert_stem_indexer_result(
         f"{case['case_id']} sparse_indices valid prefix mismatch: "
         f"mismatched_row_count={mismatched_row_count}, "
         f"tolerated_row_count={tolerated_row_count}, failed_row_count={failed_row_count}, "
-        f"relative_error_tolerance={TOPK_BOUNDARY_RE_TOLERANCE:.6g}, failures={failures}"
+        f"failures={failures}"
+    )
+
+    exceeded_difference_ratio = (
+        total_exceeded_difference_count / total_valid_topk_count
+        if total_valid_topk_count > 0
+        else 0.0
+    )
+    assert exceeded_difference_ratio <= MAX_BOUNDARY_RE_EXCEED_RATIO, (
+        f"{case['case_id']} sparse_indices TopK boundary mismatch ratio exceeds tolerance: "
+        f"mismatched_row_count={mismatched_row_count}, "
+        f"tolerated_row_count={tolerated_row_count}, exceeded_row_count={exceeded_row_count}, "
+        f"total_exceeded_difference_count={total_exceeded_difference_count}, "
+        f"total_valid_topk_count={total_valid_topk_count}, "
+        f"exceeded_difference_ratio={exceeded_difference_ratio:.6g}, "
+        f"relative_error_tolerance={TOPK_BOUNDARY_RE_TOLERANCE:.6g}, "
+        f"max_exceeded_difference_ratio={MAX_BOUNDARY_RE_EXCEED_RATIO:.6g}, "
+        f"details={exceeded_details}"
     )
