@@ -55,7 +55,6 @@ static const int64_t JUDGE_EVEN = 2;
 static const int64_t MAX_K = 65535;
 using DtypeCheck = std::initializer_list<op::DataType>;
 
-
 enum class ActiveType {
     FASTGELU = 0,
     RELU,
@@ -74,8 +73,12 @@ public:
 };
 
 constexpr class ActiveMap g_activeMap[] = {
-    {"fastgelu", ActiveType::FASTGELU}, {"relu", ActiveType::RELU},   {"silu", ActiveType::SILU},
-    {"gelu", ActiveType::GELU},         {"geglu", ActiveType::GEGLU}, {"swiglu", ActiveType::SWIGLU},
+    {"fastgelu", ActiveType::FASTGELU},
+    {"relu", ActiveType::RELU},
+    {"silu", ActiveType::SILU},
+    {"gelu", ActiveType::GELU},
+    {"geglu", ActiveType::GEGLU},
+    {"swiglu", ActiveType::SWIGLU},
     {"reglu", ActiveType::REGLU},
 };
 
@@ -379,7 +382,7 @@ static aclnnStatus CheckQuantDimNumAndShape(const FFNParams &ffnParams)
     auto offsetDimNum = ffnParams.offset->GetViewShape().GetDimNum();
     CHECK_COND(offsetDimNum == 1, ACLNN_ERR_PARAM_INVALID, "offset DimNum should be 1, but offset DimNum is %zu",
                offsetDimNum);
-    // check deqScale last dim is equal to the corresponding weight 
+    // check deqScale last dim is equal to the corresponding weight
     size_t weightSize = hasExperts ? DIM_NUM_THREE : DIM_NUM_TWO;
     size_t weightNDimIdx = weightSize - 1;
     size_t dequantParamNDimIdx = dequantParamSize - 1;
@@ -545,7 +548,7 @@ static aclnnStatus CheckAntiQuantShapeE(const FFNParams &ffnParams)
 
 static aclnnStatus CheckAntiQuantShape(const FFNParams &ffnParams)
 {
-    // check last dim of antiquant params is equal to the corresponding weight 
+    // check last dim of antiquant params is equal to the corresponding weight
     size_t antiquantParamSize = ffnParams.antiquantScale1->GetViewShape().GetDimNum();
     size_t weightSize = ffnParams.expertTokens != nullptr ? DIM_NUM_THREE : DIM_NUM_TWO;
     size_t weightNDimIdx = weightSize - 1;
@@ -887,18 +890,18 @@ static aclnnStatus GetFFNResultByL0Api(FFNParams &ffnParams, const char *activat
     ret = InputsContiguousAndTransFormat(ffnParams.weight2, reformatedWeight2, "weight2", uniqueExecutor.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    // when input tensor is from pytorch framework, its view_shape/ori_shape/storage_shape is different
-    // view_shape is ND-dimension as we expected, but ori_shape/storage_shape is flattened.
-    // Now storage_shape is used in tiling process to determine some scenarios like pergroup antiquant,
-    // smooth quant and etc. So we call l0op::contiguous to keep them identical.
-    // Currently quant_scale, antiquant_scale1,  antiquant_scale2 need to be processed.
-    
-    // 定义校验宏
-    #define CHECK_AND_CONVERT(param, param_name, conti_var) \
-        const aclTensor *conti_var = nullptr; \
-        CHECK_RET(InputsContiguousAndTransFormat(ffnParams.param, conti_var, #param_name, \
-                                                uniqueExecutor.get()) == ACLNN_SUCCESS, \
-                ACLNN_ERR_PARAM_INVALID)
+// when input tensor is from pytorch framework, its view_shape/ori_shape/storage_shape is different
+// view_shape is ND-dimension as we expected, but ori_shape/storage_shape is flattened.
+// Now storage_shape is used in tiling process to determine some scenarios like pergroup antiquant,
+// smooth quant and etc. So we call l0op::contiguous to keep them identical.
+// Currently quant_scale, antiquant_scale1,  antiquant_scale2 need to be processed.
+
+// 定义校验宏
+#define CHECK_AND_CONVERT(param, param_name, conti_var) \
+    const aclTensor *conti_var = nullptr; \
+    CHECK_RET(InputsContiguousAndTransFormat(ffnParams.param, conti_var, #param_name, \
+                                             uniqueExecutor.get()) == ACLNN_SUCCESS, \
+              ACLNN_ERR_PARAM_INVALID)
 
     // 使用宏进行校验和转换
     CHECK_AND_CONVERT(expertTokens, expertTokens, contiExpertTokens);
@@ -912,18 +915,17 @@ static aclnnStatus GetFFNResultByL0Api(FFNParams &ffnParams, const char *activat
     CHECK_AND_CONVERT(antiquantScale2, antiquantScale2, contiAntiScale2);
     CHECK_AND_CONVERT(antiquantOffset1, antiquantOffset1, contiAntiOffset1);
     CHECK_AND_CONVERT(antiquantOffset2, antiquantOffset2, contiAntiOffset2);
-    #undef CHECK_AND_CONVERT
-
+#undef CHECK_AND_CONVERT
 
     // call l0 interface
     DataType yDtype = ffnParams.y->GetDataType();
     auto ffnResult =
-        l0op::FFN(reformatedX, reformatedWeight1, reformatedWeight2, 
-                contiExpertTokens, contiBias1, contiBias2,
-                contiQuantScale, contiOffset, contiDeqScale1, contiDeqScale2,
-                contiAntiScale1, contiAntiScale2, contiAntiOffset1, contiAntiOffset2,
-                activation, ffnParams.innerPrecise, yDtype, 
-                ffnParams.tokensIndexFlag, uniqueExecutor.get());
+        l0op::FFN(reformatedX, reformatedWeight1, reformatedWeight2,
+                  contiExpertTokens, contiBias1, contiBias2,
+                  contiQuantScale, contiOffset, contiDeqScale1, contiDeqScale2,
+                  contiAntiScale1, contiAntiScale2, contiAntiOffset1, contiAntiOffset2,
+                  activation, ffnParams.innerPrecise, yDtype,
+                  ffnParams.tokensIndexFlag, uniqueExecutor.get());
     CHECK_RET(ffnResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
     const aclTensor *reformatedFFNResult = nullptr;
     ret = OutputransFormat(ffnParams, ffnResult, reformatedFFNResult, uniqueExecutor.get());
