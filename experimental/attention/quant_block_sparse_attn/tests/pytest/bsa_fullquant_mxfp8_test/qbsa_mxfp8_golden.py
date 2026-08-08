@@ -30,6 +30,7 @@ import os
 import random
 import sys
 import time
+import warnings
 
 import torch
 import torch_npu
@@ -442,9 +443,18 @@ def set_active_case(case):
     SPARSE_INDICES_LAYOUT = CASE["layout_sparse_indices"]
     OUT_LAYOUT = CASE["layout_out"]
     _block_num_raw = CASE.get("blocknum", None)
-    if _block_num_raw is not None and _block_num_raw <= 0:
-        raise ValueError(f"blocknum must be > 0 or None, got {_block_num_raw}")
-    BLOCK_NUM = _block_num_raw if _block_num_raw is not None else -1
+    if _block_num_raw is not None and int(_block_num_raw) <= 0:
+        warnings.warn(
+            f"{CASE.get('name', '<unnamed>')}: blocknum is expected to be >= 0; "
+            f"got {_block_num_raw} (<= 0), so it will be derived from actual_seq_kv",
+            UserWarning,
+            stacklevel=2,
+        )
+    BLOCK_NUM = (
+        int(_block_num_raw)
+        if _block_num_raw is not None and int(_block_num_raw) > 0
+        else sum(math.ceil(int(seq_len) / BLOCK_SIZE) for seq_len in ACTUAL_SEQ_KV)
+    )
 
 
 CASE = _load_initial_case()

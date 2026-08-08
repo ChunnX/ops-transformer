@@ -157,11 +157,13 @@ def _auto_generate_params(
         )
         total_logical_blocks = sum(block_counts)
         total_physical_blocks = (
-            total_logical_blocks if blocknum is None else int(blocknum)
+            int(blocknum)
+            if blocknum is not None and int(blocknum) > 0
+            else total_logical_blocks
         )
         if total_physical_blocks <= 0:
             raise ValueError(
-                f"blocknum must be > 0 or None, got {blocknum}"
+                "physical block count derived from blocknum/actual_seq_kv must be > 0"
             )
 
         rng = random.Random(int(seed))

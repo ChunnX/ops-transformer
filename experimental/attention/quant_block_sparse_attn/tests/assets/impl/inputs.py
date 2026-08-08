@@ -172,10 +172,6 @@ def _build_mxfp8_case(
         )
     head_axis = 0 if layout_q == "NTD" else 1
     normalized_blocknum = None if blocknum is None else int(blocknum)
-    if normalized_blocknum is not None and normalized_blocknum <= 0:
-        raise ValueError(
-            f"blocknum must be > 0 or None, got {normalized_blocknum}"
-        )
     return {
         "B": batch,
         "N1": int(query.shape[head_axis]),
@@ -288,6 +284,20 @@ def _customize_inputs_mxfp8(
     module.set_active_case(case)
     data = module._generate_reference_style_mxfp8_inputs()
 
+    physical_block_count = (
+        int(case["blocknum"])
+        if case["blocknum"] is not None and int(case["blocknum"]) > 0
+        else sum(
+            math.ceil(int(seq_len) / int(case["block_size"]))
+            for seq_len in data["kv_lengths"]
+        )
+    )
+    if int(key.shape[0]) != physical_block_count:
+        raise ValueError(
+            f"key physical block count {int(key.shape[0])} does not match "
+            f"resolved blocknum {physical_block_count}"
+        )
+
     q_scale = module.fp32_to_e8m0fnu_safe(
         module.convert_q_scale_tnd_or_ntd_to_layout(
             data["q_descale"], data["q_lengths"]
@@ -299,14 +309,14 @@ def _customize_inputs_mxfp8(
         data["kv_lengths"],
         case["block_size"],
         data["block_table"],
-        physical_block_count=case["blocknum"] or 0,
+        physical_block_count=physical_block_count,
     )
     value_pa = module.mxfp8_pa_preprocessing(
         data["value"],
         data["kv_lengths"],
         case["block_size"],
         data["block_table"],
-        physical_block_count=case["blocknum"] or 0,
+        physical_block_count=physical_block_count,
     )
     k_scale_pa = module.mxfp8_pa_preprocessing(
         data["k_descale"],
@@ -314,7 +324,7 @@ def _customize_inputs_mxfp8(
         case["block_size"],
         data["block_table"],
         is_scale=True,
-        physical_block_count=case["blocknum"] or 0,
+        physical_block_count=physical_block_count,
     )
     v_scale_pa = module.mxfp8_pa_preprocessing(
         data["v_descale"],
@@ -323,7 +333,7 @@ def _customize_inputs_mxfp8(
         data["block_table"],
         is_vscale=True,
         is_scale=True,
-        physical_block_count=case["blocknum"] or 0,
+        physical_block_count=physical_block_count,
     )
 
     _inplace_copy(query, data["query"])
