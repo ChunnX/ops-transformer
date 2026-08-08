@@ -17,6 +17,7 @@ import csv
 import io
 import math
 import runpy
+import warnings
 from pathlib import Path
 
 
@@ -103,12 +104,17 @@ def validate_case(case, q_lengths, kv_lengths):
     if page_size <= 0 or page_size % int(case["sparse_kv_block_size"]) != 0:
         raise ValueError(
             f"{name}: block_size must be a positive multiple of sparse_kv_block_size"
-        )
+    )
     if sum(q_lengths) <= 0 or sum(kv_lengths) <= 0:
         raise ValueError(f"{name}: total Q/KV sequence length must be positive")
     blocknum = case.get("blocknum")
     if blocknum is not None and int(blocknum) <= 0:
-        raise ValueError(f"{name}: blocknum must be > 0 or None, got {blocknum}")
+        warnings.warn(
+            f"{name}: blocknum is expected to be >= 0; got {blocknum} (<= 0), "
+            "so it will be derived from actual_seq_kv",
+            UserWarning,
+            stacklevel=2,
+        )
 
 
 def case_to_row(case, source):
@@ -127,7 +133,9 @@ def case_to_row(case, source):
     logical_page_count = sum(math.ceil(length / page_size) for length in kv_lengths)
     blocknum = case.get("blocknum")
     physical_page_count = (
-        logical_page_count if blocknum is None else int(blocknum)
+        int(blocknum)
+        if blocknum is not None and int(blocknum) > 0
+        else logical_page_count
     )
     q_block_count = math.ceil(max(q_lengths) / sparse_q)
     kv_block_count = math.ceil(max(kv_lengths) / sparse_kv)
