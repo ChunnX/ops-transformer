@@ -53,8 +53,7 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_BOOL_SEL(ISSMALLK, 0),
                          ASCENDC_TPL_UINT_SEL(COMMTYPE, ASCENDC_TPL_UI_LIST, ALL2ALL_COMM_TYPE_CCU,
                                               ALL2ALL_COMM_TYPE_AICPU),
-                         ASCENDC_TPL_BOOL_SEL(HAS_ALL2ALL_OUT, 0),
-                         ASCENDC_TPL_TILING_STRUCT_SEL(AlltoAllMatmulTilingData)),
+                         ASCENDC_TPL_BOOL_SEL(HAS_ALL2ALL_OUT, 0)),
     // KC_QUANT_FP8E4M3_MODE: X2TRANSPOSE(0,1) x DTYPEBIAS(FP32) x ISSMALLK(0,1) x COMMTYPE(CCU, AICPU) x HAS_ALL2ALL_OUT(0) = 8种组合
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
                          ASCENDC_TPL_UINT_SEL(QUANTMODE, ASCENDC_TPL_UI_LIST, KC_QUANT_FP8E4M3_MODE),
@@ -63,8 +62,7 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_BOOL_SEL(ISSMALLK, 0, 1),
                          ASCENDC_TPL_UINT_SEL(COMMTYPE, ASCENDC_TPL_UI_LIST, ALL2ALL_COMM_TYPE_CCU,
                                               ALL2ALL_COMM_TYPE_AICPU),
-                         ASCENDC_TPL_BOOL_SEL(HAS_ALL2ALL_OUT, 0),
-                         ASCENDC_TPL_TILING_STRUCT_SEL(AlltoAllQuantMatmulTilingData)),
+                         ASCENDC_TPL_BOOL_SEL(HAS_ALL2ALL_OUT, 0)),
     // KC_QUANT_FP8E5M2_MODE: X2TRANSPOSE(0,1) x DTYPEBIAS(FP32) x ISSMALLK(0,1) x COMMTYPE(CCU, AICPU) x HAS_ALL2ALL_OUT(0) = 8种组合
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
                          ASCENDC_TPL_UINT_SEL(QUANTMODE, ASCENDC_TPL_UI_LIST, KC_QUANT_FP8E5M2_MODE),
@@ -73,9 +71,8 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_BOOL_SEL(ISSMALLK, 0, 1),
                          ASCENDC_TPL_UINT_SEL(COMMTYPE, ASCENDC_TPL_UI_LIST, ALL2ALL_COMM_TYPE_CCU,
                                               ALL2ALL_COMM_TYPE_AICPU),
-                         ASCENDC_TPL_BOOL_SEL(HAS_ALL2ALL_OUT, 0),
-                         ASCENDC_TPL_TILING_STRUCT_SEL(AlltoAllQuantMatmulTilingData)),
-    // MX_QUANT_MODE + HAS_ALL2ALL_OUT=1: arch35主线pipeline, MIX_AIC_1_2, 绑定 AlltoAllQuantMatmulTilingData
+                         ASCENDC_TPL_BOOL_SEL(HAS_ALL2ALL_OUT, 0)),
+    // MX_QUANT_MODE + HAS_ALL2ALL_OUT=1: arch35主线pipeline, MIX_AIC_1_2
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
                          ASCENDC_TPL_UINT_SEL(QUANTMODE, ASCENDC_TPL_UI_LIST, MX_QUANT_MODE),
                          ASCENDC_TPL_BOOL_SEL(X2TRANSPOSE, 0, 1),
@@ -83,9 +80,8 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_BOOL_SEL(ISSMALLK, 0),
                          ASCENDC_TPL_UINT_SEL(COMMTYPE, ASCENDC_TPL_UI_LIST, ALL2ALL_COMM_TYPE_CCU,
                                               ALL2ALL_COMM_TYPE_AICPU),
-                         ASCENDC_TPL_BOOL_SEL(HAS_ALL2ALL_OUT, 1),
-                         ASCENDC_TPL_TILING_STRUCT_SEL(AlltoAllQuantMatmulTilingData)),
-    // MX_QUANT_MODE + HAS_ALL2ALL_OUT=0: hcomm纯C通信, AIC_ONLY, 绑定 hcommAllToAllMatmulTilingData
+                         ASCENDC_TPL_BOOL_SEL(HAS_ALL2ALL_OUT, 1)),
+    // MX_QUANT_MODE + HAS_ALL2ALL_OUT=0: hcomm纯C通信, AIC_ONLY
     ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_AIC_ONLY),
                          ASCENDC_TPL_UINT_SEL(QUANTMODE, ASCENDC_TPL_UI_LIST, MX_QUANT_MODE),
                          ASCENDC_TPL_BOOL_SEL(X2TRANSPOSE, 0, 1),
@@ -93,7 +89,6 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_BOOL_SEL(ISSMALLK, 0),
                          ASCENDC_TPL_UINT_SEL(COMMTYPE, ASCENDC_TPL_UI_LIST, ALL2ALL_COMM_TYPE_CCU,
                                               ALL2ALL_COMM_TYPE_AICPU),
-                         ASCENDC_TPL_BOOL_SEL(HAS_ALL2ALL_OUT, 0),
-                         ASCENDC_TPL_TILING_STRUCT_SEL(hcommAllToAllMatmulTilingData)));
+                         ASCENDC_TPL_BOOL_SEL(HAS_ALL2ALL_OUT, 0)));
 
 #endif // ALLTO_ALL_MATMUL_TILING_KEY_H
