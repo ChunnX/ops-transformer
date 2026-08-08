@@ -312,6 +312,23 @@ struct RequiredParaInfo : BaseParaInfo {};
 
 struct OptionalParaInfo : BaseParaInfo {};
 
+// RoPE-off placeholder (OpDef REQUIRED): nullptr / dimNum==0 / 1D{0} / ShapeSize==0.
+inline bool IsRopeOffPlaceholder(const BaseParaInfo &para)
+{
+    if (para.shape == nullptr) {
+        return true;
+    }
+    const auto &storageShape = para.shape->GetStorageShape();
+    const size_t dimNum = storageShape.GetDimNum();
+    if (dimNum == 0) {
+        return true;
+    }
+    if (dimNum == 1 && storageShape.GetDim(0) == 0) {
+        return true;
+    }
+    return storageShape.GetShapeSize() == 0;
+}
+
 constexpr uint32_t BLOCK_SIZE = 32;
 constexpr uint32_t NUM_BYTES_BF16 = 2;
 constexpr uint32_t NUM_BYTES_INT8 = 1;
@@ -373,7 +390,7 @@ struct MlaPrologContext {
 
     const float *qcQrScale;
     const float *kcScale;
-    // V3: inferred from ropeSin/ropeCos nullity (both null → off).
+    // V3: inferred from ropeSin/ropeCos empty placeholder (both empty → off).
     bool doRopeValue = true;
     const bool *doRope = nullptr;
 
@@ -451,7 +468,7 @@ private:
     ge::DataType mmDateType_ = ge::DT_BF16;
     bool enableDequantOpt_ = false;
     bool enableGroupComputeOpt_ = false; // 低延时场景算例分组标记
-    bool enableRope_ = true;             // rope开关，仅 MlaPrologV3 +DAV_3510 可关；DAV_2201 恒为 true
+    bool enableRope_ = true;             // rope开关，仅 MlaPrologV3 可关（empty placeholder）
 
     size_t ubSize_ = 0;
     size_t l1Size_ = 0;

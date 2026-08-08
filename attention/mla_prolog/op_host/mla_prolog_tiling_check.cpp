@@ -430,10 +430,10 @@ void MlaPrologTilingCheck::FillRequiredParamShapeWithDims()
 
 void MlaPrologTilingCheck::FillTokenAndQueryShapes()
 {
-    // RoPE 可关仅 V3 + DAV_3510
+    // RoPE 可关仅 V3（empty placeholder → doRope=false）
     const bool ropeEnabled =
-        !(GetCurNpuArch() == NpuArch::DAV_3510 && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0 &&
-          context_.doRope != nullptr && !*(context_.doRope));
+        !(std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0 && context_.doRope != nullptr &&
+          !*(context_.doRope));
     if (scenarioInfo_.batchSeqFusedFlag_) {
         expectedParamInfo_.emplace(TOKEN_X_NAME, std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.heSize});
         if (ropeEnabled) {
@@ -442,8 +442,9 @@ void MlaPrologTilingCheck::FillTokenAndQueryShapes()
             expectedParamInfo_.emplace(ROPE_COS_NAME,
                                        std::vector<uint32_t>{baseShapeInfo_.tSize, baseShapeInfo_.drSize});
         } else {
-            expectedParamInfo_[ROPE_SIN_NAME].isValid = false;
-            expectedParamInfo_[ROPE_COS_NAME].isValid = false;
+            // OpDef REQUIRED: RoPE-off 用 empty placeholder，跳过 shape 严格比对（由 CheckRope* 校验 placeholder）。
+            expectedParamInfo_[ROPE_SIN_NAME] = actualParamInfo_[ROPE_SIN_NAME];
+            expectedParamInfo_[ROPE_COS_NAME] = actualParamInfo_[ROPE_COS_NAME];
         }
         if ((scenarioInfo_.cacheMode_ != CACHE_MODE::BSND) && (scenarioInfo_.cacheMode_ != CACHE_MODE::TND)) {
             expectedParamInfo_.emplace(CACHE_INDEX_NAME, std::vector<uint32_t>{baseShapeInfo_.tSize});
@@ -462,8 +463,9 @@ void MlaPrologTilingCheck::FillTokenAndQueryShapes()
             expectedParamInfo_.emplace(ROPE_COS_NAME, std::vector<uint32_t>{baseShapeInfo_.bSize, baseShapeInfo_.s1Size,
                                                                             baseShapeInfo_.drSize});
         } else {
-            expectedParamInfo_[ROPE_SIN_NAME].isValid = false;
-            expectedParamInfo_[ROPE_COS_NAME].isValid = false;
+            // OpDef REQUIRED: RoPE-off 用 empty placeholder，跳过 shape 严格比对（由 CheckRope* 校验 placeholder）。
+            expectedParamInfo_[ROPE_SIN_NAME] = actualParamInfo_[ROPE_SIN_NAME];
+            expectedParamInfo_[ROPE_COS_NAME] = actualParamInfo_[ROPE_COS_NAME];
         }
         if ((scenarioInfo_.cacheMode_ != CACHE_MODE::BSND) && (scenarioInfo_.cacheMode_ != CACHE_MODE::TND)) {
             expectedParamInfo_.emplace(CACHE_INDEX_NAME,
@@ -1160,12 +1162,12 @@ bool MlaPrologTilingCheck::CheckRmsnormGammaCkv() const
 
 bool MlaPrologTilingCheck::CheckRopeSin() const
 {
-    // DAV_3510 + V3: rope may be null when RoPE is disabled.
-    if (GetCurNpuArch() == NpuArch::DAV_3510 && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0 &&
-        context_.doRope != nullptr && !*(context_.doRope)) {
-        OP_CHECK_IF(context_.ropeSin.shape != nullptr || context_.ropeSin.desc != nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_.opName, "ropeSin", "non-null",
-                                                          "ropeSin must be null when RoPE is disabled"),
+    // V3 RoPE-off: empty placeholder (OpDef REQUIRED), skip shape check.
+    if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0 && context_.doRope != nullptr &&
+        !*(context_.doRope)) {
+        OP_CHECK_IF(!IsRopeOffPlaceholder(context_.ropeSin),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_.opName, "ropeSin", "non-empty",
+                                                          "ropeSin must be empty placeholder when RoPE is disabled"),
                     return false);
         return true;
     }
@@ -1174,11 +1176,11 @@ bool MlaPrologTilingCheck::CheckRopeSin() const
 
 bool MlaPrologTilingCheck::CheckRopeCos() const
 {
-    if (GetCurNpuArch() == NpuArch::DAV_3510 && std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0 &&
-        context_.doRope != nullptr && !*(context_.doRope)) {
-        OP_CHECK_IF(context_.ropeCos.shape != nullptr || context_.ropeCos.desc != nullptr,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_.opName, "ropeCos", "non-null",
-                                                          "ropeCos must be null when RoPE is disabled"),
+    if (std::strncmp(context_.opType, V3_OP_NAME, OP_NAME_LEN) == 0 && context_.doRope != nullptr &&
+        !*(context_.doRope)) {
+        OP_CHECK_IF(!IsRopeOffPlaceholder(context_.ropeCos),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_.opName, "ropeCos", "non-empty",
+                                                          "ropeCos must be empty placeholder when RoPE is disabled"),
                     return false);
         return true;
     }

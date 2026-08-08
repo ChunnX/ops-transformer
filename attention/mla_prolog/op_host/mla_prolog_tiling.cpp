@@ -54,16 +54,6 @@ inline auto Align(T num, T rnd) -> T
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
 }
 
-// RoPE 开关（ropeSin/ropeCos 可空）仅 DAV_3510 生效。
-inline bool IsDav3510Platform(fe::PlatFormInfos *platformInfo)
-{
-    if (platformInfo == nullptr) {
-        return false;
-    }
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    return ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510;
-}
-
 NpuArch MlaPrologTiling::GetCurNpuArch() const
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->platformInfo);
@@ -213,19 +203,15 @@ ge::graphStatus MlaPrologTiling::SetShapeInfo()
             weightDqAxisSize_ * context_->weightDq.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_0);
     }
     baseShapeInfo_.nSize = context_->weightUk.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_0);
-    if (context_->ropeCos.shape != nullptr) {
+    if (!IsRopeOffPlaceholder(context_->ropeCos)) {
         baseShapeInfo_.drSize = context_->ropeCos.shape->GetStorageShape().GetDim(
             context_->ropeCos.shape->GetStorageShape().GetDimNum() - 1);
-    } else if (GetCurNpuArch() == NpuArch::DAV_3510) {
-        // Ascend950 RoPE off: infer Dr from kr_cache last dim.
+    } else {
+        // RoPE off: infer Dr from kr_cache last dim.
         OP_CHECK_IF(context_->krCache.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->opName, "krCache"),
                     return ge::GRAPH_FAILED);
         const auto &krShape = context_->krCache.shape->GetStorageShape();
         baseShapeInfo_.drSize = static_cast<uint32_t>(krShape.GetDim(krShape.GetDimNum() - 1));
-    } else {
-        // DAV_2201：rope 为必选，不允许为空
-        OP_LOGE_WITH_INVALID_INPUT(context_->opName, "ropeCos");
-        return ge::GRAPH_FAILED;
     }
     baseShapeInfo_.dSize = context_->weightUk.shape->GetStorageShape().GetDim(MLA_PROLOG_DIM_INDEX_1);
     baseShapeInfo_.headSizeQc = baseShapeInfo_.dSize * baseShapeInfo_.nSize;
@@ -321,9 +307,9 @@ ge::graphStatus MlaPrologTiling::SetAttrInfo()
         qcQrScale_ = *(context_->qcQrScale);
         kcScale_ = *(context_->kcScale);
     }
-    // rope开关仅对 MlaPrologV3 + DAV_3510 生效，其他场景强制开启
+    // rope 开关仅对 MlaPrologV3 生效（由 ropeSin/ropeCos empty placeholder 推断），非 V3 强制开启
     enableRope_ = true;
-    if (GetCurNpuArch() == NpuArch::DAV_3510 && context_->doRope != nullptr) {
+    if (std::strncmp(context_->opType, V3_OP_NAME, OP_NAME_LEN) == 0 && context_->doRope != nullptr) {
         enableRope_ = *(context_->doRope);
     }
     return ge::GRAPH_SUCCESS;
@@ -733,22 +719,17 @@ ge::graphStatus MlaPrologTiling::ConvertContext(gert::TilingContext &context, Ml
         mlaPrologContext.tileSize = attrs->GetAttrPointer<int64_t>(TILE_SIZE_ATTR_INDEX);
         mlaPrologContext.qcQrScale = attrs->GetAttrPointer<float>(QC_QR_SCALE_ATTR_INDEX);
         mlaPrologContext.kcScale = attrs->GetAttrPointer<float>(KC_SCALE_ATTR_INDEX);
-        // RoPE 开关仅 DAV_3510：由 ropeSin/ropeCos 是否为空推断。
-        // DAV_2201：保持原逻辑，RoPE 始终开启。
-        if (IsDav3510Platform(mlaPrologContext.platformInfo)) {
-            const bool ropeSinNull = (mlaPrologContext.ropeSin.shape == nullptr);
-            const bool ropeCosNull = (mlaPrologContext.ropeCos.shape == nullptr);
-            OP_CHECK_IF(ropeSinNull != ropeCosNull,
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                            mlaPrologContext.opName, "ropeSin / ropeCos", "(one null, one non-null)",
-                            "ropeSin and ropeCos must both be null (RoPE off) or both non-null (RoPE on)"),
-                        return ge::GRAPH_FAILED);
-            mlaPrologContext.doRopeValue = !ropeSinNull;
-            mlaPrologContext.doRope = &mlaPrologContext.doRopeValue;
-        } else {
-            mlaPrologContext.doRopeValue = true;
-            mlaPrologContext.doRope = nullptr;
-        }
+        // RoPE 开关：由 ropeSin/ropeCos 是否为 empty placeholder 推断。
+        // OpDef 为 REQUIRED；aclnn 空输入会转成 shape={0} placeholder。
+        const bool ropeSinOff = IsRopeOffPlaceholder(mlaPrologContext.ropeSin);
+        const bool ropeCosOff = IsRopeOffPlaceholder(mlaPrologContext.ropeCos);
+        OP_CHECK_IF(ropeSinOff != ropeCosOff,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        mlaPrologContext.opName, "ropeSin / ropeCos", "(one empty, one non-empty)",
+                        "ropeSin and ropeCos must both be empty placeholder (RoPE off) or both valid (RoPE on)"),
+                    return ge::GRAPH_FAILED);
+        mlaPrologContext.doRopeValue = !ropeSinOff;
+        mlaPrologContext.doRope = &mlaPrologContext.doRopeValue;
     } else {
         mlaPrologContext.queryNormFlag = nullptr;
         mlaPrologContext.weightQuantMode = nullptr;
@@ -787,19 +768,11 @@ void MlaPrologTiling::ConvertRequiredParams(gert::TilingContext &context, MlaPro
     mlaPrologContext.rmsnormGammaCq.shape = context.GetRequiredInputShape(RMSNORM_GAMMA_CQ_INPUT_INDEX);
     mlaPrologContext.rmsnormGammaCkv.desc = context.GetRequiredInputDesc(RMS_NORM_GAMMA_CKV_INPUT_INDEX);
     mlaPrologContext.rmsnormGammaCkv.shape = context.GetRequiredInputShape(RMS_NORM_GAMMA_CKV_INPUT_INDEX);
-    // V3 + DAV_3510：rope 可选（null → RoPE off）。DAV_2201 与非 V3：rope 必选。
-    if (std::strncmp(mlaPrologContext.opType, V3_OP_NAME, OP_NAME_LEN) == 0 &&
-        IsDav3510Platform(mlaPrologContext.platformInfo)) {
-        mlaPrologContext.ropeSin.desc = context.GetOptionalInputDesc(ROPE_SIN_INPUT_INDEX);
-        mlaPrologContext.ropeSin.shape = context.GetOptionalInputShape(ROPE_SIN_INPUT_INDEX);
-        mlaPrologContext.ropeCos.desc = context.GetOptionalInputDesc(ROPE_COS_INPUT_INDEX);
-        mlaPrologContext.ropeCos.shape = context.GetOptionalInputShape(ROPE_COS_INPUT_INDEX);
-    } else {
-        mlaPrologContext.ropeSin.desc = context.GetRequiredInputDesc(ROPE_SIN_INPUT_INDEX);
-        mlaPrologContext.ropeSin.shape = context.GetRequiredInputShape(ROPE_SIN_INPUT_INDEX);
-        mlaPrologContext.ropeCos.desc = context.GetRequiredInputDesc(ROPE_COS_INPUT_INDEX);
-        mlaPrologContext.ropeCos.shape = context.GetRequiredInputShape(ROPE_COS_INPUT_INDEX);
-    }
+    // OpDef REQUIRED；RoPE-off 通过 empty placeholder（shape={0}）表达，统一 Required 读取。
+    mlaPrologContext.ropeSin.desc = context.GetRequiredInputDesc(ROPE_SIN_INPUT_INDEX);
+    mlaPrologContext.ropeSin.shape = context.GetRequiredInputShape(ROPE_SIN_INPUT_INDEX);
+    mlaPrologContext.ropeCos.desc = context.GetRequiredInputDesc(ROPE_COS_INPUT_INDEX);
+    mlaPrologContext.ropeCos.shape = context.GetRequiredInputShape(ROPE_COS_INPUT_INDEX);
 
     if (std::strncmp(mlaPrologContext.opType, V3_OP_NAME, OP_NAME_LEN) == 0) {
         mlaPrologContext.kvCache.desc = context.GetRequiredInputDesc(KV_CACHE_INPUT_INDEX_V3);

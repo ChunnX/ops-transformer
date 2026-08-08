@@ -236,12 +236,12 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("rope_sin")
-            .ParamType(OPTIONAL)
+            .ParamType(REQUIRED)
             .DataTypeList({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("rope_cos")
-            .ParamType(OPTIONAL)
+            .ParamType(REQUIRED)
             .DataTypeList({ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();

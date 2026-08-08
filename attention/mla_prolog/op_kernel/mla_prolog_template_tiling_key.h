@@ -46,12 +46,8 @@
 
 #include "ascendc/host_api/tiling/template_argument.h"
 
-// ENABLE_ROPE=0 仅 DAV_3510 / AICORE 310) + MlaPrologV3；
-// DAV_2201 设备侧只实例化 ENABLE_ROPE=1，保持原逻辑。
-// Host 侧（无 __CCE_AICORE__）仍为 V3 生成 0/1，供 DAV_3510 tilingKey 编码。
-#if defined(__CCE_AICORE__) && (__CCE_AICORE__ != 310)
-#define MLA_PROLOG_ENABLE_ROPE_SEL ASCENDC_TPL_BOOL_SEL(ENABLE_ROPE, 1)
-#elif MLA_PROLOG_VERSION == -1 || MLA_PROLOG_VERSION == 3
+// ENABLE_ROPE=0/1：MlaPrologV3（host/device 均实例化）；非 V3 仅 ENABLE_ROPE=1。
+#if MLA_PROLOG_VERSION == -1 || MLA_PROLOG_VERSION == 3
 #define MLA_PROLOG_ENABLE_ROPE_SEL ASCENDC_TPL_BOOL_SEL(ENABLE_ROPE, 0, 1)
 #else
 #define MLA_PROLOG_ENABLE_ROPE_SEL ASCENDC_TPL_BOOL_SEL(ENABLE_ROPE, 1)

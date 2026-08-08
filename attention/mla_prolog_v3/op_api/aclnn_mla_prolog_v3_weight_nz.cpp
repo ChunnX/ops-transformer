@@ -265,17 +265,22 @@ aclnnStatus aclnnMlaPrologV3WeightNzGetWorkspaceSize(
                                                                queryNormFlag)) {
         return ge::GRAPH_FAILED;
     }
-    // RoPE 开关仅 DAV_3510：二者同空=关，同非空=开。
-    // DAV_2201：保持原逻辑，ropeSin/ropeCos 均为必选。
-    const bool isDav3510 = (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510);
-    if (isDav3510) {
-        if ((ropeSin == nullptr) != (ropeCos == nullptr)) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                "MlaPrologV3", "ropeSin / ropeCos", "(one null, one non-null)",
-                "On Dav3510, ropeSin and ropeCos must both be non-null (RoPE on) or both be null (RoPE off)");
-            return ge::GRAPH_FAILED;
-        }
-    } else if (ropeSin == nullptr || ropeCos == nullptr) {
+    // OpDef 中 ropeSin/ropeCos 为 REQUIRED。RoPE off：双 nullptr / empty；
+    // TensorHolder 将 nullptr 转成 shape={0} placeholder，避免 Inner 因空指针拦截。
+    // A2/A3 与 Ascend950 共用同一套开关约定。
+    auto isRopeOffPlaceholder = [](const aclTensor *t) -> bool {
+        return t == nullptr || t->IsEmpty();
+    };
+    if (isRopeOffPlaceholder(ropeSin) != isRopeOffPlaceholder(ropeCos)) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "MlaPrologV3", "ropeSin / ropeCos", "(one empty, one non-empty)",
+            "ropeSin and ropeCos must both be valid (RoPE on) or both be null/empty (RoPE off)");
+        return ge::GRAPH_FAILED;
+    }
+    // Holder 必须活到 Inner GetWorkspaceSize 返回之后（与 queryNorm 相同）。
+    auto ropeSinHolder = TensorHolder(ropeSin, aclDataType::ACL_BF16, std::string("ropeSin"));
+    auto ropeCosHolder = TensorHolder(ropeCos, aclDataType::ACL_BF16, std::string("ropeCos"));
+    if (ropeSin == nullptr || ropeCos == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", ropeSin == nullptr ? "ropeSin" : "ropeCos");
         return ge::GRAPH_FAILED;
     }

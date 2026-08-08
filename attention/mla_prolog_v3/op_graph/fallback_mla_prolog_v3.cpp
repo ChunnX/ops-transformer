@@ -45,15 +45,9 @@ graphStatus GetMlaPrologV3InputTensor(const OpExecuteContext *ctx, MlaPrologV3Fa
     OP_CHECK_IF(param.rmsnormGammaCkv == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "rmsnormGammaCkv"),
                 return GRAPH_FAILED);
 
-    // DAV_3510 OpDef 中 rope 为 OPTIONAL（可双空关 RoPE）；DAV_2201 为 REQUIRED。
-    // 统一用 Optional 读取；DAV_2201 上 Required 入参由框架保证非空，aclnn 侧再按芯片校验。
-    param.ropeSin = ctx->GetOptionalInputTensor(ROPE_SIN_INDEX_V3);
-    param.ropeCos = ctx->GetOptionalInputTensor(ROPE_COS_INDEX_V3);
-    OP_CHECK_IF((param.ropeSin == nullptr) != (param.ropeCos == nullptr),
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    "MlaPrologV3", "ropeSin / ropeCos", "(one null, one non-null)",
-                    "ropeSin and ropeCos must both be null (RoPE off, DAV_3510 only) or both non-null (RoPE on)"),
-                return GRAPH_FAILED);
+    // rope 允许 nullptr / empty（RoPE-off）；成对校验由 aclnnMlaPrologV3WeightNz 完成。
+    param.ropeSin = ctx->GetRequiredInputTensor(ROPE_SIN_INDEX_V3);
+    param.ropeCos = ctx->GetRequiredInputTensor(ROPE_COS_INDEX_V3);
 
     param.kvCache = ctx->GetRequiredInputTensor(KV_CACHE_INDEX_V3);
     OP_CHECK_IF(param.kvCache == nullptr, OP_LOGE_WITH_INVALID_INPUT("MlaPrologV3", "kvCache"), return GRAPH_FAILED);
