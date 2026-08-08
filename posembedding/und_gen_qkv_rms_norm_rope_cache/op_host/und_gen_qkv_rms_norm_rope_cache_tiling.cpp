@@ -66,7 +66,7 @@ ge::graphStatus UndGenQkvRmsNormRopeCacheRegbaseTiling::CalUbTiling()
         WEIGHT_NUM * headDim_ * BF16_BYTES +                                       // wInQue（单 buffer）
         WEIGHT_NUM * headDim_ * FLOAT32_BYTES +                                    // wFp32Buf
         Ops::Base::CeilAlign(halfDim * UINT32_BYTES, BLOCK_ALIGN_BYTES) +          // gatherIdxBuf
-        IDX_PINGPONG_NUM * IDX_REGION_NUM * MAX_UB_FACTOR * INT64_BYTES;           // idxBuf（乒乓）
+        IDX_REGION_NUM * IDX_WINDOW_TOKENS * INT64_BYTES;                          // idxBuf（索引滑窗）
 
     const int64_t perTokenBytes =
         DOUBLE_BUFFER * numHead_ * headDim_ * BF16_BYTES +                      // qkvInQue
