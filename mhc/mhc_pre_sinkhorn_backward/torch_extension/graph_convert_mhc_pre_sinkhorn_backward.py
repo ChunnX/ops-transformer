@@ -88,9 +88,11 @@ if _TORCHAIR_AVAILABLE:
         norm_out: Tensor,
         *,
         hc_eps: float = 1e-6,
-        dependencies=[],
+        dependencies=None,
         node_name=None,
     ):
+        if dependencies is None:
+            dependencies = []
         """REG_OP(MhcPreSinkhornBackward)\n
         .INPUT(grad_hin, TensorType({DT_BF16, DT_FLOAT16}))\n
         .INPUT(grad_h_post, TensorType({DT_FLOAT}))\n

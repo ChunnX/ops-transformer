@@ -270,8 +270,8 @@ def quant_flash_attn_metadata(
     metadata_size = _calculate_metadata_size()
     output = torch.empty((metadata_size,), dtype=torch.int32, device="npu")
 
-    op_module = quant_flash_attn_op_builder.load()
-    return op_module.quant_flash_attn_metadata(
+    loaded = quant_flash_attn_op_builder.load()
+    return loaded.quant_flash_attn_metadata(
         cu_seqlens_q,
         cu_seqlens_kv,
         seqused_q,

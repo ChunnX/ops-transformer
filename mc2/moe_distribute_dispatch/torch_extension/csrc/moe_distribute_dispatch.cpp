@@ -38,8 +38,11 @@ aclDataType GetDynamicScalesDtype(const at::Tensor &x, const c10::optional<at::T
 {
     aclDataType dynamic_scale_dtype = ACL_FLOAT;
     if (quant_mode == QuantMode::QUANT_MODE_NO_QUANT) {
-        aclDataType scale_value_type = HasTensor(scales) ? ConvertToAclDataType(scales.value().scalar_type()) : ACL_FLOAT;
-        dynamic_scale_dtype = (x.scalar_type() == at::kBFloat16 || x.scalar_type() == at::kHalf) ? ACL_FLOAT : (scales_dtype.has_value() ? GetAclDataType(scales_dtype.value()) : scale_value_type);
+        aclDataType scale_value_type =
+            HasTensor(scales) ? ConvertToAclDataType(scales.value().scalar_type()) : ACL_FLOAT;
+        dynamic_scale_dtype = (x.scalar_type() == at::kBFloat16 || x.scalar_type() == at::kHalf)
+            ? ACL_FLOAT
+            : (scales_dtype.has_value() ? GetAclDataType(scales_dtype.value()) : scale_value_type);
     } else if (quant_mode == QuantMode::QUANT_MODE_MX || quant_mode == QuantMode::QUANT_MODE_MX_CLIP) {
         dynamic_scale_dtype = ACL_FLOAT8_E8M0;
     }
@@ -245,7 +248,9 @@ tensor_list NpuMoeDistributeDispatch(
 
     aclDataType xAclDtype = xDtype.has_value() ? GetAclDataType(xDtype.value()) : ConvertToAclDataType(x.scalar_type());
     at::Tensor scalesTensor = HasTensor(scales) ? scales.value() : at::Tensor();
-    aclDataType scalesAclDtype = scalesDtype.has_value() ? GetAclDataType(scalesDtype.value()) : ConvertToAclDataType(scalesTensor.defined() ? scalesTensor.scalar_type() : at::kFloat);
+    aclDataType scalesAclDtype = scalesDtype.has_value()
+        ? GetAclDataType(scalesDtype.value())
+        : ConvertToAclDataType(scalesTensor.defined() ? scalesTensor.scalar_type() : at::kFloat);
     aclDataType dynamicScalesAclDtype = GetDynamicScalesDtype(x, scales, scalesDtype, quantMode);
     TensorWrapper xWrapper = {x, xAclDtype};
     TensorWrapper scalesWrapper = {scalesTensor, scalesAclDtype};
