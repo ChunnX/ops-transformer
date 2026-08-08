@@ -270,30 +270,41 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2(
 
     第一段接口完成入参校验，出现以下场景时报错：
 
-    <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-    <col style="width: 319px">
-    <col style="width: 144px">
-    <col style="width: 671px">
-    </colgroup>
-    <thead>
-     <tr>
-      <th>返回值</th>
-      <th>错误码</th>
-      <th>描述</th>
-     </tr>
-    </thead>
-    <tbody>
-     <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161001</td>
-      <td>必选参数或者输出是空指针。</td>
-     </tr>
-     <tr>
-      <td>ACLNN_ERR_PARAM_INVALID</td>
-      <td>161002</td>
-      <td>queryIndex、keyIndex、weight 等输入变量的数据类型和数据格式不在支持的范围内，或 layoutQ/layoutK 非法，或 maskMode/cmpRatio 取值不合法。</td>
-     </tr>
-    </tbody>
+    <table style="undefined;table-layout: fixed;width: 1155px">
+        <colgroup>
+            <col style="width: 319px">
+            <col style="width: 144px">
+            <col style="width: 671px">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>返回值</th>
+                <th>错误码</th>
+                <th>描述</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>ACLNN_ERR_PARAM_NULLPTR</td>
+                <td>161001</td>
+                <td>参数校验错误，参数中存在非法的nullptr。</td>
+            </tr>
+            <tr>
+                <td>ACLNN_ERR_PARAM_INVALID</td>
+                <td>161002</td>
+                <td>参数校验错误，如输入的两个数据类型不满足输入类型推导关系。</td>
+            </tr>
+            <tr>
+                <td>ACLNN_ERR_RUNTIME_ERROR</td>
+                <td>361001</td>
+                <td>API内部调用npu runtime的接口异常。</td>
+            </tr>
+            <tr>
+                <td>ACLNN_ERR_INNER_XXX</td>
+                <td>561xxx</td>
+                <td>API内部发生异常。</td>
+            </tr>
+        </tbody>
     </table>
 
 ## aclnnDenseLightningIndexerSoftmaxLseV2
