@@ -193,7 +193,7 @@ void QLIV2InfoParser::GetOptionalInputParaInfo()
 {
     opParamInfo_.cuSeqLensQ.tensor = context_->GetOptionalInputTensor(CU_SEQLENS_Q_INDEX);
     opParamInfo_.cuSeqLensQ.desc = context_->GetOptionalInputDesc(CU_SEQLENS_Q_INDEX);
-    opParamInfo_.cuSeqLensK.tensor = context_->GetOptionalInputTensor(CU_SEQLENS_K_INDEX);
+    opParamInfo_.cuSeqLensK.tensor = context_->GetOptionalInputTensor(CU_SEQLENS_K_INDEX);batch_size should be greater than
     opParamInfo_.cuSeqLensK.desc = context_->GetOptionalInputDesc(CU_SEQLENS_K_INDEX);
     opParamInfo_.sequsedQ.tensor = context_->GetOptionalInputTensor(SEQUSED_Q_INDEX);
     opParamInfo_.sequsedQ.desc = context_->GetOptionalInputDesc(SEQUSED_Q_INDEX);
@@ -305,7 +305,9 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
     } else if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF(((std::string(opParamInfo_.layOutKey) != "PA_BBND") &&
                      (std::string(opParamInfo_.layOutKey) != "BSND") && (std::string(opParamInfo_.layOutKey) != "TND")),
-                    OP_LOGE(opName_, "input attr layout_key only supported PA_BBND, BSND or TND"),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q",
+                        inputLayoutQueryPtrStr.c_str(),
+                        "Layout_k only supports PA_BBND, BSND or TND"),
                     return ge::GRAPH_FAILED);
     }
 
@@ -323,29 +325,33 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                     return ge::GRAPH_FAILED);
     } else if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF(!((*opParamInfo_.sparseCount > 0) && (*opParamInfo_.sparseCount <= SPARSE_LIMIT_8K)),
-                    OP_LOGE(opName_, "input attr sparse_count must > 0 and <= %d, but now sparse_count is %d",
-                            SPARSE_LIMIT_8K, *opParamInfo_.sparseCount),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "topk",
+                        std::string(*opParamInfo_.sparseCount),
+                        "Sparse_count must > 0 and <= " + std::string(SPARSE_LIMIT_8K)),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF((*opParamInfo_.cmpRatio <= 0) || (*opParamInfo_.cmpRatio > 128),
-                    OP_LOGE(opName_, "input attr cmpRatio must > 0 and <= 128, but now cmpRatio is %ld.",
-                            *opParamInfo_.cmpRatio),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "cmp_ratio",
+                        std::string(*opParamInfo_.cmpRatio),
+                        "Cmp_ratio must > 0 and <= 128"),
                     return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF(((std::string(opParamInfo_.layOutQuery) != "BSND") &&
                 (std::string(opParamInfo_.layOutQuery) != "TND")),
-                OP_LOGE(opName_, "input attr layout_query only supported BSND or TND."), return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q",
+            std::string(opParamInfo_.layOutQuery).c_str(), "Layout_q only supports BSND or TND"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(((std::string(opParamInfo_.layOutKey) != "PA_BBND") &&
                  (std::string(opParamInfo_.layOutQuery)) != (std::string(opParamInfo_.layOutKey))),
-                OP_LOGE(opName_,
-                        "outside of PA, input attr layout_query and input attr layout_key must be the same,"
-                        "but now layout_key is %s, layout_query is %s.",
-                        layout_key.c_str(), layout_query.c_str()),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            opName_, "layout_q and layout_k",
+            layout_query + " and " + layout_key,
+            "Outside of PA, layout_q and layout_k must be the same"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_IF(!((*opParamInfo_.sparseMode == 0) || (*opParamInfo_.sparseMode == SPARSE_MODE_LOWER)),
-                OP_LOGE(opName_, "input attr sparse_mode only supported 0 or 3, but now sparseMode is %d.",
-                        *opParamInfo_.sparseMode),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse_mode",
+            std::string(opParamInfo_.sparseMode).c_str(), "Sparse_mode only supports 0 or 3"),
+        return ge::GRAPH_FAILED);
     if (npuArch_ == NpuArch::DAV_2201) {
         OP_CHECK_IF(*opParamInfo_.quantMode != 2, OP_LOGE(opName_, "input attr quant_mode only supported 2."),
                     return ge::GRAPH_FAILED);
@@ -354,8 +360,9 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                     (*opParamInfo_.quantMode != QUANT_MODE_MXFP8) &&
                     (*opParamInfo_.quantMode != QUANT_MODE_HIFLOAT8) &&
                     (*opParamInfo_.quantMode != QUANT_MODE_MXFP4),
-                    OP_LOGE(opName_, "input attr quant_mode only supported 1, 2, 3, 4 and 5."),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse_mode",
+                std::string(opParamInfo_.quantMode).c_str(), "Quant_mode only supports 1, 2, 3, 4 and 5"),
+            return ge::GRAPH_FAILED);
     }
 
     if (npuArch_ == NpuArch::DAV_2201) {
@@ -363,18 +370,14 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
                     return ge::GRAPH_FAILED);
     } else if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF((*opParamInfo_.returnValue != 0) && (*opParamInfo_.returnValue != 1),
-                    OP_LOGE(opName_,
-                            "input attr return_value only support 0 or 1, "
-                            "but now return_value is %ld.",
-                            *opParamInfo_.returnValue),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "return_value",
+                std::string(*opParamInfo_.returnValue).c_str(), "Return_value only supports 0 or 1"),
+            return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF((*opParamInfo_.maxSeqlenQ < -1),
-                OP_LOGE(opName_,
-                        "input attr max_seqlens_q must >= -1, "
-                        "but now max_seqlen_q is %d.",
-                        *opParamInfo_.maxSeqlenQ),
-                return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "max_seqlen_q",
+            std::string(opParamInfo_.maxSeqlenQ).c_str(), "Max_seqlen_q must >= -1"),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -643,7 +646,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckOptionalInput()
                             Ops::Base::ToString(opParamInfo_.cmpResidualK.tensor->GetStorageShape().GetShapeSize()),
                             "When layout_q is TND and layout_k is PA_BBND, "
                             "the shape size of cu_seqlens_q must equal the shape size + 1 of seqused_k"),
-                return ge::GRAPH_FAILED);
+                        return ge::GRAPH_FAILED);
         } else if (kLayout_ == DataLayout::TND) {
             // q、k都为TND, cuSeqlensQ与cuSeqlensK维度一致校验
             OP_CHECK_IF(opParamInfo_.cuSeqLensQ.tensor->GetStorageShape().GetShapeSize() !=
@@ -698,7 +701,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckOptionalInput()
     }
     // metadata 必传
     OP_CHECK_IF(opParamInfo_.metadata.tensor == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "metadata", "metadata must not be null"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "metadata", "Metadata must not be null"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -821,7 +824,7 @@ ge::graphStatus QLIV2InfoParser::GetGSize()
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "q and k",
                 Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
                 Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()),
-                "The value of (the head num of q divided by the head num of k) must <= 64");
+                "The value of (the head num of q divided by the head num of k) must <= 64"),
             return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(gSize_ != G_SIZE_LIMIT,
@@ -1044,7 +1047,7 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
                         std::to_string(qTsize) + ", " +
                         std::to_string(opParamInfo_.sparseValues.shape->GetStorageShape().GetDim(0)) +
                         " respectively, they must be same"),
-        return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
             }
             if (opParamInfo_.outputIdxOffset.tensor != nullptr) {
                 OP_CHECK_IF((opParamInfo_.outputIdxOffset.tensor->GetStorageShape().GetDim(0) != qTsize),
@@ -1172,7 +1175,7 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
             Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
             "BSND case sparse_count, sparse_indices last dim are " +
             std::to_string(*opParamInfo_.sparseCount) + ", " +
-            std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1))) +
+            std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1)) +
             " respectively, they must be same"),
         return ge::GRAPH_FAILED);
     // -----------------------check cmp_residual_k-------------------
@@ -1182,7 +1185,7 @@ ge::graphStatus QLIV2InfoParser::ValidateInputShapesMatch()
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(
                 opName_, "cmp_residual_k",
                 std::to_string(opParamInfo_.cmpResidualK.tensor->GetShapeSize()),
-                "The shape size of cmp_residual_k must be equal to batch_size"),
+                "The shape size of cmp_residual_k must be equal to batch_size (" + std::to_string(bSize_) + ")"),
             return ge::GRAPH_FAILED);
     }
     // -----------------------check sparse_values------------------
