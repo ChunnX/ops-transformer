@@ -1028,6 +1028,135 @@ def _arrange_x(vec_ctx, db_idx, group_idx, db_row_cnt, deal_tc_size,
 
 
 
+# ================================================================
+#  Phase 1/2/3 循环骨架函数（从 kernel 主函数 round 循环提取）
+# ================================================================
+def _phase1_scatter(vec_ctx, round_idx, pre_deal_tc_size, deal_tc_size,
+                    b_idx, sc_idx, core_idx, sub_core_idx, group_idx, n_start,
+                    db_idx, cmp_ratio, cmp_row_cnt, d_deal_size, coff_coef,
+                    db_row_cnt, deal_sc_num, total_sc_num_per_round,
+                    tile_dc_f16, tile_dc_f32, tile_kv, tile_softmax,
+                    tile_temp, d_cmp_kv_gm, kv_gm, softmax_score_gm,
+                    tile_ape_local, tensor_ape,
+                    tile_dkv_cast, tile_dkv_cast_md, tile_dkv_nz,
+                    tile_dkv_nz_md_prev, tile_dkv_nz_md_cur,
+                    tile_dsb_cast, tile_dsb_cast_md, tile_dsb_nz,
+                    tile_dsb_nz_md_prev, tile_dsb_nz_md_cur,
+                    temp_tile_group, l1_kv0_tile_group_nz, l1_kv1_tile_group_nz,
+                    l1_score0_tile_group_nz, l1_score1_tile_group_nz,
+                    move_x_tile_group, x_gm, x_arrange_gm,
+                    start_pos, seq_used, cu_seqlens, seq_ctx):
+    """Phase 1: scatter + APE 累加 + cast L1 + x 搬运（vec 侧，before → after 窗口）"""
+    # Segment 2: process（scatter，before → after；b_idx/sc_idx 传值局部推进）
+    _process_scatter(vec_ctx, round_idx, total_sc_num_per_round, pre_deal_tc_size, deal_tc_size,
+                     b_idx, sc_idx,
+                     tile_dc_f16, tile_dc_f32, tile_kv, tile_softmax, tile_temp,
+                     d_cmp_kv_gm, kv_gm, softmax_score_gm, n_start,
+                     start_pos, seq_used, cu_seqlens, seq_ctx)
+
+    n_tile_rows = deal_tc_size * cmp_row_cnt
+
+    # APE: local_ape 累加 + 写 workspace（round0 清零 / round>0 读旧值，VF 内累加，一次 MTE3）
+    local_slot = group_idx * coff_coef * cmp_row_cnt
+    if Coff == 1 and core_idx % 2 == 1:
+        local_slot += cmp_row_cnt
+    pl.set_validshape(tile_ape_local, [cmp_row_cnt, d_deal_size])
+    if round_idx == 0:
+        _vf_tile_zero(tile_ape_local, cmp_row_cnt, d_deal_size)
+    else:
+        pl.load(tile_ape_local, tensor_ape, [local_slot, n_start])
+    _vf_reduce_dscore_to_ape(
+        tile_softmax, tile_ape_local,
+        deal_tc_size, cmp_row_cnt, d_deal_size, d_deal_size,
+    )
+    pl.store(tensor_ape, tile_ape_local, [local_slot, n_start])
+    sub_idx = core_idx % 2
+    # ── Cast dkv/dsb FP32→BF16/FP16 + ND→NZ + insert L1（子函数）──
+    _cast_dkv_dsb_to_l1(vec_ctx, n_tile_rows, deal_tc_size, sub_idx,
+                        tile_temp, tile_dkv_cast, tile_dkv_cast_md, tile_dkv_nz,
+                        tile_dkv_nz_md_prev, tile_dkv_nz_md_cur,
+                        tile_dsb_cast, tile_dsb_cast_md, tile_dsb_nz, tile_softmax,
+                        tile_dsb_nz_md_prev, tile_dsb_nz_md_cur,
+                        temp_tile_group, l1_kv0_tile_group_nz, l1_kv1_tile_group_nz, l1_score0_tile_group_nz, l1_score1_tile_group_nz)
+
+    # 搬运x（subSlot: coff=1 的 M 轴子核槽位偏移；coff=2 恒 0）
+    sub_slot = sub_core_idx * deal_sc_num if Coff == 1 else 0
+    _arrange_x(vec_ctx, db_idx, group_idx, db_row_cnt, deal_tc_size,
+               b_idx, sc_idx, sub_slot, move_x_tile_group, x_gm, x_arrange_gm,
+               start_pos, seq_used, cu_seqlens, seq_ctx)
+
+
+def _phase2_matmul(round_idx, db_idx, deal_tc_size, hidden_size, head_dim,
+                   deal_sc_num, cube_m_base_size, cmp_ratio,
+                   cube_core_num, group_size, group_num, total_head_dim,
+                   db_row_cnt, group_row_stride,
+                   cv_l0a, cv_l0b, cv_l0c, l1_w_db,
+                   l1_kv0_tile_group_nz, l1_kv1_tile_group_nz,
+                   l1_score0_tile_group_nz, l1_score1_tile_group_nz,
+                   l1_kv0_tile_group_zn, l1_kv1_tile_group_zn,
+                   l1_score0_tile_group_zn, l1_score1_tile_group_zn,
+                   wkv_t, wgate_t, d_x_result_gm, x_arrange_gm,
+                   d_wkv_result_gm, d_w_gate_result_gm):
+    """Phase 2: dkv@wkv + dsb@wgate → dX partial；dkv@x + dsb@x → dW partial"""
+    l1_kv0 = l1_kv0_tile_group_nz.next()
+    l1_kv1 = l1_kv1_tile_group_nz.next()
+    l1_sb0 = l1_score0_tile_group_nz.next()
+    l1_sb1 = l1_score1_tile_group_nz.next()
+
+    l1_kv0_t = l1_kv0_tile_group_zn.next()
+    l1_kv1_t = l1_kv1_tile_group_zn.next()
+    l1_sb0_t = l1_score0_tile_group_zn.next()
+    l1_sb1_t = l1_score1_tile_group_zn.next()
+
+    n_tile_rows0 = min(deal_tc_size, deal_sc_num) * cmp_ratio if Coff == 1 else deal_tc_size * cmp_ratio
+    n_tile_rows1 = max(deal_tc_size - deal_sc_num, 0) * cmp_ratio if Coff == 1 else deal_tc_size * cmp_ratio
+
+    matmul_ctx = pl.struct("MatmulCtx",
+        hidden_size=hidden_size, n_tile_rows0=n_tile_rows0, n_tile_rows1=n_tile_rows1,
+        head_dim=head_dim, deal_sc_num=deal_sc_num,
+        cube_m_base_size=cube_m_base_size, cmp_ratio=cmp_ratio,
+        cube_core_num=cube_core_num, group_size=group_size,
+        group_num=group_num, total_head_dim=total_head_dim,
+        db_row_cnt=db_row_cnt, group_row_stride=group_row_stride)
+
+    # ── Matmul #1/#2：提取子函数（coff=1/2 统一）──
+    _compute_dx_partial(matmul_ctx, db_idx, cv_l0a, cv_l0b, cv_l0c, l1_w_db,
+                        l1_kv0, l1_kv1, l1_sb0, l1_sb1,
+                        wkv_t, wgate_t, d_x_result_gm)
+    _compute_dw_partial(matmul_ctx, round_idx, db_idx, cv_l0a, cv_l0b, cv_l0c, l1_w_db,
+                        l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t,
+                        x_arrange_gm, d_wkv_result_gm, d_w_gate_result_gm)
+
+
+def _phase3_reduce(vec_ctx, core_idx, group_idx, round_idx, round_cnt, max_round_blocks,
+                   prev_db_idx, prev_b_idx_start, prev_sc_idx_start,
+                   prev_b_idx_end, prev_sc_idx_end,
+                   reduce_acc, reduce_load_tile_group, p3_cast,
+                   d_x_cache_gm, d_x_result_gm, d_x_out_gm,
+                   start_pos, seq_used, cu_seqlens, seq_ctx,
+                   tensor_d_ape_flat, tensor_d_ape_ws_flat,
+                   tensor_dw_kv_flat, tensor_dw_kv_ws_flat,
+                   tensor_dw_gate_flat, tensor_dw_gate_ws_flat):
+    """Phase 3: dX reduce（上一轮 start/end 节点）+ 末轮 dApe/dW 一次性跨核归约"""
+    _reduce_dx(vec_ctx, core_idx, prev_db_idx, round_idx - 1,
+               prev_b_idx_start, prev_sc_idx_start, prev_b_idx_end, prev_sc_idx_end,
+               reduce_acc, reduce_load_tile_group, p3_cast,
+               d_x_cache_gm, d_x_result_gm, d_x_out_gm,
+               start_pos, seq_used, cu_seqlens, seq_ctx)
+
+    # ── 末轮：dApe/dW 一次性跨核归约（生产者侧已按轮累加至 ws 固定槽）──
+    # roundBlocks 传 maxRoundBlocks：validRows 只覆盖写过数据的行
+    #（不满轮时 groupIdx >= ceil(maxRoundBlocks/groupDealScNum) 的核未执行
+    #  Phase 1/2 写入，其 ws 区域是初始值，不能参与归约）
+    if round_idx == round_cnt:
+        _reduce_ape(vec_ctx, core_idx, group_idx, 0, max_round_blocks,
+                    reduce_acc, reduce_load_tile_group, tensor_d_ape_flat, tensor_d_ape_ws_flat)
+        _reduce_d_weight(vec_ctx, core_idx, group_idx, 0, max_round_blocks,
+                         reduce_acc, reduce_load_tile_group, p3_cast,
+                         tensor_dw_kv_flat, tensor_dw_kv_ws_flat, tensor_dw_gate_flat, tensor_dw_gate_ws_flat)
+
+
+
 def _init_scalars(batch_size, seq_size, cmp_ratio, start_pos, seq_used, cu_seqlens):
     """Init: seq_ctx struct + compressed_cnt（依赖 startPos/seqUsed 数据内容）"""
 
@@ -1509,48 +1638,22 @@ def compressor_grad(
                 b_idx_end, sc_idx_end = _skip_blocks(blocks_after, b_idx_after, sc_idx_after, start_pos, seq_used, cu_seqlens, seq_ctx)
 
                 if pre_deal_tc_size < round_blocks:
-                    # Segment 2: process（scatter，before → after）
-                    b_idx, sc_idx = b_idx_before, sc_idx_before
-                    _process_scatter(vec_ctx, round_idx, total_sc_num_per_round, pre_deal_tc_size, deal_tc_size,
-                                     b_idx, sc_idx,
-                                     tile_dc_f16, tile_dc_f32, tile_kv, tile_softmax, tile_temp,
-                                     d_cmp_kv_gm, kv_gm, softmax_score_gm, n_start,
-                                     start_pos, seq_used, cu_seqlens, seq_ctx)
-
-                    n_tile_rows = deal_tc_size * cmp_row_cnt
-
-                    # APE: local_ape 累加 + 写 workspace（round0 清零 / round>0 读旧值，VF 内累加，一次 MTE3）
-                    local_slot = group_idx * coff_coef * cmp_row_cnt
-                    if Coff == 1 and core_idx % 2 == 1:
-                        local_slot += cmp_row_cnt
-                    pl.set_validshape(tile_ape_local, [cmp_row_cnt, d_deal_size])
-                    if round_idx == 0:
-                        _vf_tile_zero(tile_ape_local, cmp_row_cnt, d_deal_size)
-                    else:
-                        pl.load(tile_ape_local, tensor_ape, [local_slot, n_start])
-                    _vf_reduce_dscore_to_ape(
-                        tile_softmax, tile_ape_local,
-                        deal_tc_size, cmp_row_cnt, d_deal_size, d_deal_size,
-                    )
-                    pl.store(tensor_ape, tile_ape_local, [local_slot, n_start])
-                    sub_idx = core_idx % 2
-                    # ── Cast dkv/dsb FP32→BF16/FP16 + ND→NZ + insert L1（子函数）──
-                    _cast_dkv_dsb_to_l1(vec_ctx, n_tile_rows, deal_tc_size, sub_idx,
-                                        tile_temp, tile_dkv_cast, tile_dkv_cast_md, tile_dkv_nz,
-                                        tile_dkv_nz_md_prev, tile_dkv_nz_md_cur,
-                                        tile_dsb_cast, tile_dsb_cast_md, tile_dsb_nz, tile_softmax,
-                                        tile_dsb_nz_md_prev, tile_dsb_nz_md_cur,
-                                        temp_tile_group, l1_kv0_tile_group_nz, l1_kv1_tile_group_nz, l1_score0_tile_group_nz, l1_score1_tile_group_nz)
-
-
-
-                    db_row_cnt = tiling.db_row_cnt
-                    # 搬运x（subSlot: coff=1 的 M 轴子核槽位偏移；coff=2 恒 0）
-                    b_idx, sc_idx = b_idx_before, sc_idx_before
-                    sub_slot = sub_core_idx * deal_sc_num if Coff == 1 else 0
-                    _arrange_x(vec_ctx, db_idx, group_idx, db_row_cnt, deal_tc_size,
-                               b_idx, sc_idx, sub_slot, move_x_tile_group, x_gm, x_arrange_gm,
-                               start_pos, seq_used, cu_seqlens, seq_ctx)
+                    _phase1_scatter(vec_ctx, round_idx, pre_deal_tc_size, deal_tc_size,
+                                    b_idx_before, sc_idx_before, core_idx, sub_core_idx, group_idx, n_start,
+                                    db_idx, cmp_ratio, cmp_row_cnt, d_deal_size,
+                                    coff_coef, db_row_cnt, deal_sc_num,
+                                    total_sc_num_per_round,
+                                    tile_dc_f16, tile_dc_f32, tile_kv, tile_softmax,
+                                    tile_temp, d_cmp_kv_gm, kv_gm, softmax_score_gm,
+                                    tile_ape_local, tensor_ape,
+                                    tile_dkv_cast, tile_dkv_cast_md, tile_dkv_nz,
+                                    tile_dkv_nz_md_prev, tile_dkv_nz_md_cur,
+                                    tile_dsb_cast, tile_dsb_cast_md, tile_dsb_nz,
+                                    tile_dsb_nz_md_prev, tile_dsb_nz_md_cur,
+                                    temp_tile_group, l1_kv0_tile_group_nz, l1_kv1_tile_group_nz,
+                                    l1_score0_tile_group_nz, l1_score1_tile_group_nz,
+                                    move_x_tile_group, x_gm, x_arrange_gm,
+                                    start_pos, seq_used, cu_seqlens, seq_ctx)
 
                 # ── CV 通路: 本轮 v1 完成即发信号（供 cube c1(i) 消费）──
                 b_idx, sc_idx = b_idx_end, sc_idx_end
@@ -1573,23 +1676,15 @@ def compressor_grad(
             if round_idx > 0:
                 pl.system.sync_all(core_type=pl.SyncCoreType.MIX)
 
-                # ── Phase 3: dX reduce（上一轮 start/end 节点，每轮执行）──
-                _reduce_dx(vec_ctx, core_idx, prev_db_idx, round_idx - 1,
-                           prev_b_idx_start, prev_sc_idx_start, prev_b_idx_end, prev_sc_idx_end,
-                           reduce_acc, reduce_load_tile_group, p3_cast,
-                           d_x_cache_gm, d_x_result_gm, d_x_out_gm,
-                           start_pos, seq_used, cu_seqlens, seq_ctx)
-
-                # ── 末轮：dApe/dW 一次性跨核归约（生产者侧已按轮累加至 ws 固定槽）──
-                # roundBlocks 传 maxRoundBlocks：validRows 只覆盖写过数据的行
-                #（不满轮时 groupIdx >= ceil(maxRoundBlocks/groupDealScNum) 的核未执行
-                #  Phase 1/2 写入，其 ws 区域是初始值，不能参与归约）
-                if round_idx == round_cnt:
-                    _reduce_ape(vec_ctx, core_idx, group_idx, 0, max_round_blocks,
-                                reduce_acc, reduce_load_tile_group, tensor_d_ape_flat, tensor_d_ape_ws_flat)
-                    _reduce_d_weight(vec_ctx, core_idx, group_idx, 0, max_round_blocks,
-                                     reduce_acc, reduce_load_tile_group, p3_cast,
-                                     tensor_dw_kv_flat, tensor_dw_kv_ws_flat, tensor_dw_gate_flat, tensor_dw_gate_ws_flat)
+                _phase3_reduce(vec_ctx, core_idx, group_idx, round_idx, round_cnt, max_round_blocks,
+                               prev_db_idx, prev_b_idx_start, prev_sc_idx_start,
+                               prev_b_idx_end, prev_sc_idx_end,
+                               reduce_acc, reduce_load_tile_group, p3_cast,
+                               d_x_cache_gm, d_x_result_gm, d_x_out_gm,
+                               start_pos, seq_used, cu_seqlens, seq_ctx,
+                               tensor_d_ape_flat, tensor_d_ape_ws_flat,
+                               tensor_dw_kv_flat, tensor_dw_kv_ws_flat,
+                               tensor_dw_gate_flat, tensor_dw_gate_ws_flat)
 
                 # ── V2 结束后轮换：本轮快照 cur → prev（供下一轮 V2(i) 使用）──
                 prev_db_idx = cur_db_idx
@@ -1610,35 +1705,17 @@ def compressor_grad(
                         pipe=pl.PipeType.MTE1, event_id=db_idx,
                     sync_mode=pl.CrossCoreSyncMode.INTRA_BLOCK)
                 if pre_deal_tc_size < round_blocks:
-                    l1_kv0 = l1_kv0_tile_group_nz.next()
-                    l1_kv1 = l1_kv1_tile_group_nz.next()
-                    l1_sb0 = l1_score0_tile_group_nz.next()
-                    l1_sb1 = l1_score1_tile_group_nz.next()
-
-                    l1_kv0_t = l1_kv0_tile_group_zn.next()
-                    l1_kv1_t = l1_kv1_tile_group_zn.next()
-                    l1_sb0_t = l1_score0_tile_group_zn.next()
-                    l1_sb1_t = l1_score1_tile_group_zn.next()
-
-
-                    n_tile_rows0 = min(deal_tc_size, deal_sc_num) * cmp_ratio if Coff == 1 else deal_tc_size * cmp_ratio
-                    n_tile_rows1 = max(deal_tc_size - deal_sc_num, 0) * cmp_ratio if Coff == 1 else deal_tc_size * cmp_ratio
-
-                    matmul_ctx = pl.struct("MatmulCtx",
-                        hidden_size=hidden_size, n_tile_rows0=n_tile_rows0, n_tile_rows1=n_tile_rows1,
-                        head_dim=head_dim, deal_sc_num=deal_sc_num,
-                        cube_m_base_size=cube_m_base_size, cmp_ratio=cmp_ratio,
-                        cube_core_num=tiling.cube_core_num, group_size=tiling.group_size,
-                        group_num=tiling.group_num, total_head_dim=tiling.total_head_dim,
-                        db_row_cnt=tiling.db_row_cnt, group_row_stride=tiling.group_row_stride)
-
-                    # ── Matmul #1/#2：提取子函数（coff=1/2 统一）──
-                    _compute_dx_partial(matmul_ctx, db_idx, cv_l0a, cv_l0b, cv_l0c, l1_w_db,
-                                        l1_kv0, l1_kv1, l1_sb0, l1_sb1,
-                                        wkv_t, wgate_t, d_x_result_gm)
-                    _compute_dw_partial(matmul_ctx, round_idx, db_idx, cv_l0a, cv_l0b, cv_l0c, l1_w_db,
-                                        l1_kv0_t, l1_kv1_t, l1_sb0_t, l1_sb1_t,
-                                        x_arrange_gm, d_wkv_result_gm, d_w_gate_result_gm)
+                    _phase2_matmul(round_idx, db_idx, deal_tc_size, hidden_size, head_dim,
+                                   deal_sc_num, cube_m_base_size, cmp_ratio,
+                                   cube_core_num, group_size, group_num, total_head_dim,
+                                   db_row_cnt, group_row_stride,
+                                   cv_l0a, cv_l0b, cv_l0c, l1_w_db,
+                                   l1_kv0_tile_group_nz, l1_kv1_tile_group_nz,
+                                   l1_score0_tile_group_nz, l1_score1_tile_group_nz,
+                                   l1_kv0_tile_group_zn, l1_kv1_tile_group_zn,
+                                   l1_score0_tile_group_zn, l1_score1_tile_group_zn,
+                                   wkv_t, wgate_t, d_x_result_gm, x_arrange_gm,
+                                   d_wkv_result_gm, d_w_gate_result_gm)
 
                 pl.system.sync_all(core_type=pl.SyncCoreType.MIX)
 
