@@ -113,9 +113,15 @@ constexpr int64_t MROPE_AXIS_NUM = 3;
 constexpr int64_t BF16_BYTES = 2;
 constexpr int64_t FLOAT32_BYTES = 4;
 constexpr int64_t UINT32_BYTES = 4;
+constexpr int64_t INT64_BYTES = 8;
 constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr int64_t BLOCK_ALIGN_BYTES = 32;
 constexpr int64_t WEIGHT_NUM = 4;           // und_q / und_k / gen_q / gen_k
+// kernel 每 tile 把索引批量搬进 UB（见 regbase 的 idxBuf_）：
+// 5 个区 = cat_indices / slot_mapping / positions 的 3 个轴，各 MAX_UB_FACTOR 个 int64；
+// 两半乒乓，避免相邻 tile 的标量读与下一笔 MTE2 写撞在同一块上还要加屏障
+constexpr int64_t IDX_REGION_NUM = 5;
+constexpr int64_t IDX_PINGPONG_NUM = 2;
 // kernel 用一个 uint64_t 位图把 tile 内各 token 的 und/gen 标志带给 VF
 // （见 regbase 的 undMask_，CopyIn 里做 undMask_ |= 1ULL << i，i 取 [0, ubFactor)），
 // 所以 ubFactor 不能超过位图宽度，否则移位越界且是静默的。
@@ -126,6 +132,11 @@ constexpr int64_t MAX_UB_FACTOR = UND_MASK_BITS;
 // undMask_ 的类型会直接编译失败，而不是等到板上出随机结果
 static_assert(MAX_UB_FACTOR <= UND_MASK_BITS,
               "ubFactor is carried to the VF as a uint64_t bitmap (regbase undMask_); widen that type first");
+// idxBuf 的每个区固定 MAX_UB_FACTOR 个 int64，正好是 32B 的整数倍，于是区起址天然满足
+// DataCopyPad 对 UB 落点的 32B 对齐要求，host 这边也不用为对齐留余量、预算保持精确。
+// 一旦 MAX_UB_FACTOR 改成让这条不成立的值，就得同时给 kernel 的区间距补 CeilAlign。
+static_assert(MAX_UB_FACTOR * INT64_BYTES % BLOCK_ALIGN_BYTES == 0,
+              "index regions must stay 32B-aligned so DataCopyPad needs no per-region padding");
 
 /* UB 划分（kernel 侧必须按同一套公式分配，改这里要同步改 kernel）
  *
@@ -145,6 +156,10 @@ static_assert(MAX_UB_FACTOR <= UND_MASK_BITS,
  *                                                  是为了拿 EnQue/DeQue 的 MTE2->V 同步
  *   wFp32Buf     TBuf    WEIGHT_NUM * D * 4        4 个 gamma 的 float 版本，VF 直接从这里取
  *   gatherIdxBuf TBuf    align32((D/2) * 4)        axisLut 展开的 uint32 元素索引，每核建一次
+ *   idxBuf       TBuf    2 * 5 * MAX_UB_FACTOR * 8 本 tile 的 cat/slot/positions*3，批量搬入后
+ *                                                  标量在 UB 上读，替掉逐 token 的 GM GetValue。
+ *                                                  按 MAX_UB_FACTOR 而不是 u 定长：区间距成了
+ *                                                  编译期常量，ubFactor 的式子保持线性
  *
  * 随 u 的部分:
  *   qkvInQue     VECIN   2 * u * N * D * 2
