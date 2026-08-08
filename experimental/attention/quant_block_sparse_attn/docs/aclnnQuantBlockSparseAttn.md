@@ -143,7 +143,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>输入</td>
       <td>Query 反量化缩放因子。</td>
       <td>PERTOKEN_PERHEAD。</td>
-      <td>FLOAT32</td>
+      <td>quant_mode=1: FLOAT32; quant_mode=2: FLOAT8_E8M0</td>
       <td>ND</td>
       <td>TND:(T1,N1); NTD:(N1,T1)</td>
     </tr>
@@ -152,7 +152,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>输入</td>
       <td>Key 反量化缩放因子。</td>
       <td>PERTOKEN_PERHEAD。按 4D 非连续 PA BNB1 视图传入。</td>
-      <td>FLOAT32</td>
+      <td>quant_mode=1: FLOAT32; quant_mode=2: FLOAT8_E8M0</td>
       <td>ND</td>
       <td>(block_num,N2,sparse_kv_block_size,1)</td>
     </tr>
@@ -161,7 +161,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>输入</td>
       <td>Value 反量化缩放因子。</td>
       <td>PERHEAD。</td>
-      <td>FLOAT32</td>
+      <td>quant_mode=1: FLOAT32; quant_mode=2: FLOAT8_E8M0</td>
       <td>ND</td>
       <td>(N2)</td>
     </tr>
@@ -170,7 +170,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>输入</td>
       <td>softmax 概率 FP8 量化缩放因子。</td>
       <td>可选输入。支持传空（None 或 shape size == 0），传空时 kernel 侧使用默认 scale 1.0；传入时 shape 必须为 (1)。quant_mode=1 和 quant_mode=2 场景下均支持传空。</td>
-      <td>FLOAT32</td>
+      <td>quant_mode=1: FLOAT32; quant_mode=2: FLOAT8_E8M0</td>
       <td>ND</td>
       <td>(1) 或空</td>
     </tr>
@@ -322,7 +322,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>quant_mode</td>
       <td>输入属性</td>
       <td>量化模式。</td>
-      <td>当前仅支持 1，表示 Q_PERTOKEN_PERHEAD_K_PERTOKEN_PERHEAD_V_PERHEAD。</td>
+      <td>当前支持 1 和 2。1 表示 FP8 量化（Q_PERTOKEN_PERHEAD_K_PERTOKEN_PERHEAD_V_PERHEAD）；2 表示 MXFP8 全量化。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -590,7 +590,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
   - `sparse_q_block_size` 和 `sparse_kv_block_size` 当前均仅支持 128。
   - `layout_q` 当前仅支持 `TND`、`NTD`。
   - `layout_out` 为预留参数，当前不使能；传入非 `TND` 类型会被拦截。
-  - `quant_mode` 当前主算子仅支持 1，表示 `Q_PERTOKEN_PERHEAD_K_PERTOKEN_PERHEAD_V_PERHEAD`。
+  - `quant_mode` 当前支持 1 和 2。1 表示 FP8 量化（`Q_PERTOKEN_PERHEAD_K_PERTOKEN_PERHEAD_V_PERHEAD`）；2 表示 MXFP8 全量化。
   - `softmax_scale` 为 float 属性，取值范围必须为 `(0, 1]`，传入 `<=0` 或 `>1` 的值将被 host 侧拦截。常用值为 `1 / sqrt(QueryHeadDim)`。
 
 - 存在性约束
@@ -609,14 +609,14 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 - 特性交叉约束
 
-  - 当前执行路径仅支持 FP8 全量化场景；`query`、`key`、`value` 的 head dim 必须与量化参数、稀疏 block 参数和输出 head dim 保持一致。
+  - 当前执行路径支持 FP8 全量化（`quant_mode=1`）和 MXFP8 全量化（`quant_mode=2`）场景；`query`、`key`、`value` 的 head dim 必须与量化参数、稀疏 block 参数和输出 head dim 保持一致。
   - `layout_q` 会影响 `query`、`q_descale` 的轴解释；其余输入参数中的 Batch、Head、Block 维度需与该解释保持一致。`attention_out`、`softmax_lse` 按固定输出语义返回，不随 `layout_q` 改变轴解释。
 
 #### 量化参数组（QuantChecker）
 
 - 单参数约束
 
-  - `q_descale`、`k_descale`、`v_descale` 数据类型仅支持 `FLOAT32`，数据格式仅支持 ND。`p_scale` 数据类型支持 `FLOAT32`，数据格式仅支持 ND。
+  - `q_descale`、`k_descale`、`v_descale` 数据类型在 `quant_mode=1` 时为 `FLOAT32`，在 `quant_mode=2` 时为 `FLOAT8_E8M0`，数据格式仅支持 ND。`p_scale` 数据类型在 `quant_mode=1` 时为 `FLOAT32`，在 `quant_mode=2` 时为 `FLOAT8_E8M0`，数据格式仅支持 ND。
   - `q_descale` 表示 Query per-token-per-head 反量化缩放，`layout_q="TND"` 时通常为 `(QueryTokenNum, QueryNumHead)`，`layout_q="NTD"` 时通常为 `(QueryNumHead, QueryTokenNum)`。
   - `k_descale` 表示 Key per-token-per-head 反量化缩放，需与 PA KV Cache 的物理 block、KV head 和 block 内 token 对应。
   - `v_descale` 表示 Value per-head 反量化缩放，shape 为 `(KeyValueNumHead)`。
@@ -636,7 +636,8 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 - 特性交叉约束
 
-  - `quant_mode=1` 时，量化粒度固定为 Query per-token-per-head、Key per-token-per-head、Value per-head、P per-tensor。
+  - `quant_mode=1` 时，量化粒度固定为 Query per-token-per-head、Key per-token-per-head、Value per-head、P per-tensor；scale 数据类型为 `FLOAT32`。
+  - `quant_mode=2` 时，量化粒度固定为 MXFP8 per-token-group、Key per-token-group、Value per-channel-group、P per-tensor；scale 数据类型为 `FLOAT8_E8M0`。
   - `k_descale` 必须满足 Paged Attention 参数组中的 4D PA block 内连续分段存储 stride 约束。
 
 #### 稀疏索引参数组（SparseIndexChecker）
