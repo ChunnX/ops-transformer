@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 算子功能：融合GroupedMatmul、activation和quant计算。当前版本支持WeightNz路径下的MXFP8和MXFP4输入场景，激活函数仅支持gelu_tanh，量化输出为FP8。
+- 算子功能：融合GroupedMatmul、activation和quant计算。当前版本支持WeightNz路径下的MXFP8和MXFP4输入场景，激活函数仅支持gelu_tanh，量化输出支持FP8和FP4。
 
 - 计算公式：
   - <term>Ascend 950PR/Ascend 950DT</term>：
@@ -61,14 +61,14 @@
 | weight_scale | 动态输入 | `weight`的MX量化因子，dynamic tensorList，长度仅支持1。 | FLOAT8_E8M0 | ND | 4维 |
 | bias | 动态输入 | bias dynamic tensorList。当前MX场景必须为空。 | FLOAT | ND | - |
 | x_scale | 可选输入 | `x`的MX量化因子。当前MX场景必须传入。 | FLOAT8_E8M0 | ND | 3维，形如`(M, ceil(K / 64), 2)` |
-| y | 输出 | 激活并量化后的输出矩阵。 | FLOAT8_E4M3FN、FLOAT8_E5M2 | ND | 2维，形如`(M, N)` |
+| y | 输出 | 激活并量化后的输出矩阵。FP4输出仅支持MXFP4输入场景。 | FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、FLOAT4_E1M2 | ND | 2维，形如`(M, N)` |
 | y_scale | 输出 | 输出`y`的MX量化因子。 | FLOAT8_E8M0 | ND | 3维，形如`(M, ceil(N / 64), 2)` |
 | activation_type | 必选属性 | 激活函数类型，当前仅支持`"gelu_tanh"`。 | STRING | - | - |
 | transpose_weight | 可选属性 | 表示`weight`是否转置，默认false。 | BOOL | - | - |
 | group_list_type | 可选属性 | 表示`group_list`输入的分组方式，支持0和1，默认0。 | INT64 | - | - |
 | tuning_config | 可选属性 | 预留调优参数，默认`[0]`，当前暂不使用。 | LIST_INT | - | - |
 | quant_mode | 可选属性 | 量化模式，当前仅支持`"mx"`。 | STRING | - | - |
-| y_dtype | 可选属性 | 输出`y`的数据类型，默认0；当前支持0、35、36，其中35表示FLOAT8_E5M2，36表示FLOAT8_E4M3FN。 | INT64 | - | - |
+| y_dtype | 可选属性 | 输出`y`的数据类型，默认0（DT_UNDEFINED），此时输出类型跟随`x`；当前支持0、35、36、40、41，其中35/36表示两种FP8，40/41表示两种FP4。 | INT64 | - | - |
 | round_mode | 可选属性 | 量化舍入模式，默认`"rint"`，当前仅支持`"rint"`。 | STRING | - | - |
 | scale_alg | 可选属性 | MX量化scale算法，默认0；支持0或1，其中0表示OCP实现，1表示cuBLAS实现。 | INT64 | - | - |
 | dst_type_max | 可选属性 | 表示maxType的取值，对应公式中的Amax(DType)，默认0.0。当前MX场景仅支持0.0。 | FLOAT | - | - |

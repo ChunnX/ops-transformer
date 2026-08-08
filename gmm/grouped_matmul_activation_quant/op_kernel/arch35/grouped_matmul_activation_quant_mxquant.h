@@ -31,7 +31,7 @@ __aicore__ inline __gm__ T* GetFirstTensorAddr(GM_ADDR tensorListAddr)
 {
     AscendC::GlobalTensor<uint64_t> tensorList;
     tensorList.SetGlobalBuffer(reinterpret_cast<__gm__ uint64_t*>(tensorListAddr));
-    const uint64_t addressTableOffset = tensorList.GetValue(0);
+    const int64_t addressTableOffset = static_cast<int64_t>(tensorList.GetValue(0));
     return reinterpret_cast<__gm__ T*>(tensorList.GetValue(addressTableOffset >> 3));
 }
 } // namespace

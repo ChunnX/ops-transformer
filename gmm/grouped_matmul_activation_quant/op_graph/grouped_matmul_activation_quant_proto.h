@@ -20,30 +20,30 @@
 namespace ge {
 /**
 * @brief The fusion operator of grouped matmul, activation and quantization. Current scenario supports
-* gelu_tanh activation with MXFP8 quantization.
+* gelu_tanh activation with MXFP8 and MXFP4 quantization.
 
 * @par Inputs:
-* @li x: A tensor. The left matrix of grouped matmul. In MXFP8 scenario, the shape supports (m, k),
-* the format supports ND, and the data type supports float8_e4m3fn and float8_e5m2.
+* @li x: A tensor. The left matrix of grouped matmul. The shape supports (m, k), the format supports ND,
+* and the data type supports float8_e4m3fn, float8_e5m2, float4_e2m1 and float4_e1m2.
 * @li group_list: A tensor. Indicates the group information of grouped matmul. The shape supports (e),
 * the format supports ND, and the data type supports int64.
-* @li weight: A dynamic tensor list. The right matrix of grouped matmul. In MXFP8 scenario, the data type
-* supports float8_e4m3fn, and the format supports FRACTAL_NZ. The view shape supports (e, k, n) when
+* @li weight: A dynamic tensor list. The right matrix of grouped matmul. The data type supports
+* float8_e4m3fn, float4_e2m1 and float4_e1m2, and the format supports FRACTAL_NZ. The view shape supports (e, k, n) when
 * transpose_weight is false and (e, n, k) when transpose_weight is true. The storage shape supports
 * (e, ceildiv(n, 32), ceildiv(k, 16), 16, 32) when transpose_weight is false and
 * (e, ceildiv(k, 32), ceildiv(n, 16), 16, 32) when transpose_weight is true.
-* @li weight_scale: A dynamic tensor list. The MX scale of weight. In MXFP8 scenario, the format supports ND,
+* @li weight_scale: A dynamic tensor list. The MX scale of weight. The format supports ND,
 * and the data type supports float8_e8m0. The shape supports (e, ceildiv(k, 64), n, 2) when
 * transpose_weight is false and (e, n, ceildiv(k, 64), 2) when transpose_weight is true.
-* @li bias: A dynamic tensor list. The bias of grouped matmul. The data type supports float32. In MXFP8
+* @li bias: A dynamic tensor list. The bias of grouped matmul. The data type supports float32. In the MX
 * scenario, bias must be empty.
-* @li x_scale: An optional tensor. The MX scale of x. In MXFP8 scenario, this input is required. The shape
+* @li x_scale: An optional tensor. The MX scale of x. In the MX scenario, this input is required. The shape
 * supports (m, ceildiv(k, 64), 2), the format supports ND, and the data type supports float8_e8m0.
 
 * @par Outputs:
 * @li y: A tensor. The quantized output after grouped matmul and activation. The shape supports (m, n),
 * the format supports ND, and the data type supports float8_e4m3fn, float8_e5m2, float4_e2m1 and float4_e1m2.
-* @li y_scale: A tensor. The MX scale of y. In MXFP8 scenario, the shape supports
+* @li y_scale: A tensor. The MX scale of y. The shape supports
 * (m, ceildiv(n, 64), 2), the format supports ND, and the data type supports float8_e8m0.
 
 * @par Attributes:
