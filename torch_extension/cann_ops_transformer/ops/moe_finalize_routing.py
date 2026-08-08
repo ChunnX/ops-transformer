@@ -86,7 +86,7 @@ class _MoeFinalizeRoutingOpBuilder(OpBuilder):
 
 
 _moe_finalize_routing_builder = _MoeFinalizeRoutingOpBuilder()
-_op_module = _moe_finalize_routing_builder.load()
+# 惰性加载：在调用处按需 load()，避免 import 时编译插件
 
 
 @impl(AS_LIBRARY, _moe_finalize_routing_builder.name, "PrivateUse1")
@@ -108,7 +108,7 @@ def _moe_finalize_routing(
     constant_expert_range=None,
     k=1,
 ):
-    return _op_module.moe_finalize_routing(
+    return _moe_finalize_routing_builder.load().moe_finalize_routing(
         expanded_x,
         expanded_row_idx,
         x1,

@@ -80,9 +80,7 @@ class InplacePartialRotaryMulBackwardOpBuilder(OpBuilder):
 inplace_partial_rotary_mul_backward_op_builder = (
     InplacePartialRotaryMulBackwardOpBuilder()
 )
-# Pre-load the op module so that torch.compile / dynamo tracing does not
-# encounter torch.utils.cpp_extension.load() at trace time.
-inplace_partial_rotary_mul_backward_op_builder.load()
+# 惰性加载：在 @impl 与公共接口中按需 load()，避免 import 时编译插件
 
 
 @impl(AS_LIBRARY, inplace_partial_rotary_mul_backward_op_builder.name, "PrivateUse1")

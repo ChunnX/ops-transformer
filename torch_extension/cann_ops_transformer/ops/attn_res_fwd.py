@@ -24,14 +24,17 @@ class AttnResFwdOpBuilder(OpBuilder):
     def schema(self) -> str:
         return (
             "attn_res_fwd(Tensor prefix_sum, Tensor block_residual, Tensor proj_weight, "
-            "Tensor norm_weight, float norm_eps=1e-5, bool need_backward=False) "
+            "Tensor norm_weight, float norm_eps=1e-5, bool? need_backward=None) "
             "-> (Tensor, Tensor, Tensor)"
         )
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
         def attn_res_fwd_meta(prefix_sum, block_residual, proj_weight, norm_weight, norm_eps=1e-5,
-                              need_backward=False):
+                              need_backward=None):
+            if need_backward is None:
+                need_backward = all(t.requires_grad for t in
+                                    (prefix_sum, block_residual, proj_weight, norm_weight))
             T = prefix_sum.size(0)
             H = prefix_sum.size(1)
             B = block_residual.size(1) + 1
@@ -44,20 +47,32 @@ class AttnResFwdOpBuilder(OpBuilder):
 attn_res_fwd_op_builder = AttnResFwdOpBuilder()
 
 
+def _resolve_need_backward(prefix_sum, block_residual, proj_weight, norm_weight, need_backward):
+    if need_backward is not None:
+        return need_backward
+    return all(t.requires_grad for t in (prefix_sum, block_residual, proj_weight, norm_weight))
+
+
 @impl(AS_LIBRARY, attn_res_fwd_op_builder.name, "PrivateUse1")
 def _attn_res_fwd_dispatch(prefix_sum, block_residual, proj_weight, norm_weight, norm_eps=1e-5,
-                           need_backward=False):
+                           need_backward=None):
+    need_backward = _resolve_need_backward(prefix_sum, block_residual, proj_weight, norm_weight,
+                                           need_backward)
     op_module = attn_res_fwd_op_builder.load()
     return op_module.attn_res_fwd(prefix_sum, block_residual, proj_weight, norm_weight, norm_eps,
                                   need_backward)
 
 
-def attn_res_fwd(prefix_sum, block_residual, proj_weight, norm_weight, norm_eps=1e-5, need_backward=False):
+def attn_res_fwd(prefix_sum, block_residual, proj_weight, norm_weight, norm_eps=1e-5, need_backward=None):
     """Attention Residual 加权融合前向（Eager / PrivateUse1）。
 
+    need_backward=None（默认）时根据是否所有输入（prefix_sum/block_residual/proj_weight/norm_weight）
+    都有梯度（requires_grad=True）自动决定：全有梯度则返回中间量，否则不返回。
     need_backward=False 时仅返回 hidden_states；
     need_backward=True 时返回 (hidden_states, inv_rms, probs)，dtype 分别为 BF16 / FP32 / FP32。
     """
+    need_backward = _resolve_need_backward(prefix_sum, block_residual, proj_weight, norm_weight,
+                                           need_backward)
     op_module = attn_res_fwd_op_builder.load()
     hidden, inv_rms, probs = op_module.attn_res_fwd(
         prefix_sum, block_residual, proj_weight, norm_weight, norm_eps, need_backward)
