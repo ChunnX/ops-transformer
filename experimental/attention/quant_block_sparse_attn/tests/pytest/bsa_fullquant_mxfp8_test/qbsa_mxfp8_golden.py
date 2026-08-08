@@ -216,10 +216,16 @@ def _parse_case_field(field_name, value):
     if field_name in _CASE_INT_FIELDS:
         return int(value)
     if field_name in _CASE_RANGE_FIELDS:
-        parsed = json.loads(value) if isinstance(value, str) and value.startswith("[") else value
+        parsed = (
+            json.loads(value)
+            if isinstance(value, str) and value.startswith("[")
+            else value
+        )
         if isinstance(parsed, (list, tuple)):
             if len(parsed) != 2:
-                raise ValueError(f"{field_name} must contain exactly [min, max], got: {value}")
+                raise ValueError(
+                    f"{field_name} must contain exactly [min, max], got: {value}"
+                )
             return [float(parsed[0]), float(parsed[1])]
         return float(parsed)
     if field_name in _CASE_FLOAT_FIELDS:
@@ -502,8 +508,7 @@ def _rand_float(shape, generator, data_range=1.0):
         return torch.full(shape, low, dtype=torch.float32)
 
     result = (
-        torch.rand(shape, dtype=torch.float32, generator=generator) * (high - low)
-        + low
+        torch.rand(shape, dtype=torch.float32, generator=generator) * (high - low) + low
     )
     if explicit_bounds and result.numel() > 0:
         # 显式 [a, b] 表示闭区间，固定首尾元素以确保两个端点都被覆盖。
@@ -634,6 +639,7 @@ def _make_reference_block_table(
     physical_block_count=0,
     sparse_indices=None,
     sparse_seq_len=None,
+    sparse_block_size=None,
 ):
     if isinstance(seq_lens, int):
         seq_lens = [seq_lens] * batch
@@ -650,13 +656,31 @@ def _make_reference_block_table(
         physical_block_count if physical_block_count > 0 else total_logical_blocks
     )
 
-    # 收集 sparse_indices 中实际被选中的逻辑页 ID
+    # sparse_indices uses sparse-block IDs, while block_table uses PA-page IDs.
+    # One PA page may contain several sparse blocks, so convert the IDs before
+    # deciding which logical PA pages need a physical mapping.
     needed_logical_ids = [[] for _ in range(batch)]
     if sparse_indices is not None and sparse_seq_len is not None:
+        if (
+            sparse_block_size is None
+            or sparse_block_size <= 0
+            or block_size % sparse_block_size != 0
+        ):
+            raise ValueError(
+                "sparse_block_size must be a positive divisor of block_size when "
+                "building a sparse PA block table"
+            )
+        sparse_blocks_per_page = block_size // sparse_block_size
         for b in range(batch):
             valid = sparse_indices[b][sparse_seq_len[b] > 0]
             needed_logical_ids[b] = [
-                int(x) for x in valid[valid >= 0].unique() if x < block_nums[b]
+                int(x)
+                for x in torch.div(
+                    valid[valid >= 0].unique(),
+                    sparse_blocks_per_page,
+                    rounding_mode="floor",
+                ).unique()
+                if x < block_nums[b]
             ]
 
     # 给选中的逻辑页分配物理页 ID，范围 [0, total_physical_blocks)
@@ -1069,6 +1093,7 @@ def _generate_reference_style_mxfp8_inputs():
         BLOCK_NUM,
         sparse_indices,
         sparse_seq_len,
+        case["sparse_kv_block_size"],
     )
     p_scale_value = case.get("p_scale_value")
     p_scale = (
@@ -1240,15 +1265,66 @@ def cpu_mxfp8_golden(
     cu_seqlens_q,
     sparse_indices,
     sparse_seq_len,
+    block_table_torch,
 ):
     """Reference-style CPU golden for MXFP8 block sparse attention."""
     layout_q = canonical_q_input_layout(Q_INPUT_LAYOUT)
     q_tensor = q_fp8
     q_scale = dequant_scale_q
-    k_tensor = k_fp8.to(torch.float32)
-    v_tensor = v_fp8.to(torch.float32)
-    k_scale = dequant_scale_k
-    v_scale = dequant_scale_v
+    if block_table_torch is None:
+        raise ValueError("PA CPU golden requires block_table_torch")
+
+    # CPU golden must observe the same physical-page overwrite semantics as the
+    # NPU.  Reading the original dense K/V here is incorrect when several
+    # logical blocks reuse one physical block: mxfp8_pa_preprocessing writes
+    # the cache in batch/logical-block order, so later writes replace earlier
+    # data.  Build the CPU-side cache with the very same block table and helper
+    # used by npu_mxfp8_fa, then dereference it below for every sparse position.
+    block_table = torch.as_tensor(block_table_torch, dtype=torch.int32)
+    k_tensor = mxfp8_pa_preprocessing(
+        k_fp8,
+        kv_lengths,
+        BLOCK_SIZE,
+        block_table,
+        is_vscale=False,
+        is_scale=False,
+        kv_layout="BnNBsD",
+        group_size=QUANT_GROUP_SIZE,
+        physical_block_count=BLOCK_NUM,
+    ).to(torch.float32)
+    v_tensor = mxfp8_pa_preprocessing(
+        v_fp8,
+        kv_lengths,
+        BLOCK_SIZE,
+        block_table,
+        is_vscale=False,
+        is_scale=False,
+        kv_layout="BnNBsD",
+        group_size=QUANT_GROUP_SIZE,
+        physical_block_count=BLOCK_NUM,
+    ).to(torch.float32)
+    k_scale = mxfp8_pa_preprocessing(
+        dequant_scale_k,
+        kv_lengths,
+        BLOCK_SIZE,
+        block_table,
+        is_vscale=False,
+        is_scale=True,
+        kv_layout="BnNBsD",
+        group_size=QUANT_GROUP_SIZE,
+        physical_block_count=BLOCK_NUM,
+    )
+    v_scale = mxfp8_pa_preprocessing(
+        dequant_scale_v,
+        kv_lengths,
+        BLOCK_SIZE,
+        block_table,
+        is_vscale=True,
+        is_scale=True,
+        kv_layout="BnNBsD",
+        group_size=QUANT_GROUP_SIZE,
+        physical_block_count=BLOCK_NUM,
+    )
 
     total_q = int(cu_seqlens_q[-1].item())
     batch = len(q_lengths)
@@ -1322,8 +1398,26 @@ def cpu_mxfp8_golden(
                     positions = [pos for chunk in task_chunks for pos in chunk]
                     pos_tensor = torch.as_tensor(positions, dtype=torch.long)
 
-                    k_mat = k_tensor[batch_idx, n2_idx, pos_tensor, :]
-                    k_scale_mat = k_scale[batch_idx, n2_idx, pos_tensor, :]
+                    logical_blocks = torch.div(
+                        pos_tensor, BLOCK_SIZE, rounding_mode="floor"
+                    )
+                    block_offsets = torch.remainder(pos_tensor, BLOCK_SIZE)
+                    physical_blocks = block_table[batch_idx, logical_blocks].to(
+                        torch.long
+                    )
+                    if torch.any(physical_blocks < 0) or torch.any(
+                        physical_blocks >= k_tensor.shape[0]
+                    ):
+                        raise ValueError(
+                            "sparse position references an unmapped PA block: "
+                            f"batch={batch_idx}, logical_blocks={logical_blocks.tolist()}, "
+                            f"physical_blocks={physical_blocks.tolist()}"
+                        )
+
+                    k_mat = k_tensor[physical_blocks, n2_idx, block_offsets, :]
+                    k_scale_mat = k_scale[
+                        physical_blocks, n2_idx, block_offsets, :, :
+                    ].flatten(-2)
                     k_dequant = k_mat * _expand_d_group_scale(k_scale_mat, head_dim)
 
                     valid_mask = _valid_mask_for_positions(
@@ -1433,16 +1527,38 @@ def cpu_mxfp8_golden(
                                 torch.zeros_like(subloop_rescale),
                             )
 
-                            subloop_pos_tensor = pos_tensor[subloop_start:subloop_end]
-                            v_mat = v_tensor[batch_idx, n2_idx, subloop_pos_tensor, :]
+                            subloop_physical_blocks = physical_blocks[
+                                subloop_start:subloop_end
+                            ]
+                            subloop_block_offsets = block_offsets[
+                                subloop_start:subloop_end
+                            ]
+                            v_mat = v_tensor[
+                                subloop_physical_blocks,
+                                n2_idx,
+                                subloop_block_offsets,
+                                :,
+                            ]
                             v_group_idx = torch.div(
-                                subloop_pos_tensor,
-                                QUANT_GROUP_SIZE,
+                                subloop_block_offsets,
+                                QUANT_GROUP_SIZE * 2,
                                 rounding_mode="floor",
                             )
-                            v_scale_mat = v_scale[batch_idx, n2_idx, v_group_idx, :].to(
-                                torch.float32
+                            v_group_pair = torch.remainder(
+                                torch.div(
+                                    subloop_block_offsets,
+                                    QUANT_GROUP_SIZE,
+                                    rounding_mode="floor",
+                                ),
+                                2,
                             )
+                            v_scale_mat = v_scale[
+                                subloop_physical_blocks,
+                                n2_idx,
+                                v_group_idx,
+                                :,
+                                v_group_pair,
+                            ].to(torch.float32)
                             v_dequant = v_mat * v_scale_mat
 
                             pv += torch.matmul(
@@ -2049,7 +2165,7 @@ def npu_mxfp8_fa(
         is_vscale=False,
         is_scale=False,
         kv_layout=KV_CACHE_LAYOUT,
-        group_size=32,
+        group_size=QUANT_GROUP_SIZE,
         sparse_indices=sparse_indices,
         sparse_seq_len=sparse_seq_len,
         physical_block_count=BLOCK_NUM,
@@ -2062,7 +2178,7 @@ def npu_mxfp8_fa(
         is_vscale=False,
         is_scale=False,
         kv_layout=KV_CACHE_LAYOUT,
-        group_size=32,
+        group_size=QUANT_GROUP_SIZE,
         sparse_indices=sparse_indices,
         sparse_seq_len=sparse_seq_len,
         physical_block_count=BLOCK_NUM,
@@ -2089,7 +2205,7 @@ def npu_mxfp8_fa(
         is_vscale=False,
         is_scale=True,
         kv_layout=KV_CACHE_LAYOUT,
-        group_size=32,
+        group_size=QUANT_GROUP_SIZE,
         sparse_indices=sparse_indices,
         sparse_seq_len=sparse_seq_len,
         physical_block_count=BLOCK_NUM,
@@ -2102,7 +2218,7 @@ def npu_mxfp8_fa(
         is_vscale=True,
         is_scale=True,
         kv_layout=KV_CACHE_LAYOUT,
-        group_size=32,
+        group_size=QUANT_GROUP_SIZE,
         sparse_indices=sparse_indices,
         sparse_seq_len=sparse_seq_len,
         physical_block_count=BLOCK_NUM,
@@ -2492,6 +2608,7 @@ def run_one_case(
             cu_seqlens_q,
             sparse_indices,
             sparse_seq_len,
+            block_table_torch,
         )
         golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cache_dir)
     elif "compare" in mode:
