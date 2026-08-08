@@ -181,9 +181,6 @@ public:
         kkLocal_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(tmpBufferLen), buffOffset);
         buffOffset += tmpBufferLen * sizeof(float);
 
-        inverseGatherBuffer_ = tmpBuff_.GetWithOffset<uint32_t>(static_cast<uint32_t>(INVERSE_SHAPE), buffOffset);
-        buffOffset += INVERSE_SHAPE * sizeof(uint32_t);
-
         inverseRes_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(chunkSize_ * halfChunkSize_), buffOffset);
     }
 
@@ -191,9 +188,6 @@ public:
     {
         for (uint32_t i = 0; i < chunkSize_; ++i) {
             inputGatherBuffer_.SetValue(i, i * BLOCK_SIZE);
-        }
-        for (uint32_t i = 0; i < INVERSE_SHAPE; ++i) {
-            inverseGatherBuffer_.SetValue<uint32_t>(i, (i * chunkSize_) * sizeof(float));
         }
         int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
         SetFlag<HardEvent::S_V>(eventID);
@@ -542,59 +536,12 @@ private:
         SetFlag<HardEvent::S_V>(eventID);
         WaitFlag<HardEvent::S_V>(eventID);
 
-        InverseAIVVF<INVERSE_SHAPE>(reinterpret_cast<__ubuf__ float *>(attnUbFloat_.GetPhyAddr()),
-                                    reinterpret_cast<__ubuf__ float *>(inverseRes_.GetPhyAddr()),
-                                    reinterpret_cast<__ubuf__ float *>(inverseBuffer_.GetPhyAddr()),
-                                    subOffset_, chunkSize_);
+        InverseAIVVF<INVERSE_SHAPE>(attnUbFloat_, inverseRes_, inverseBuffer_, subOffset_, chunkSize_);
         PipeBarrier<PIPE_V>();
         auto tmp = outQueue_.AllocTensor<bfloat16_t>();
         Cast(tmp, inverseRes_, RoundMode::CAST_RINT, curVecLen);
         outQueue_.EnQue(tmp);
         DataCopyOutBf16(halfChunkSize_, chunkSize_, chunkSize_, dst[subOffset_ * chunkSize_]);
-    }
-
-    __aicore__ inline void InverseAIV(uint64_t offset, uint32_t inverseVecLen)
-    {
-        uint64_t inverseBufferOffset = 0;
-        auto row = inverseBuffer_[inverseBufferOffset];
-        inverseBufferOffset += inverseVecLen * inverseVecLen;
-        auto col = inverseBuffer_[inverseBufferOffset];
-        inverseBufferOffset += inverseVecLen * inverseVecLen + inverseVecLen;
-        auto yLocal = inverseBuffer_[inverseBufferOffset];
-        inverseBufferOffset += inverseVecLen * inverseVecLen;
-        auto eiMatrix = inverseBuffer_[inverseBufferOffset];
-
-        Duplicate(yLocal, static_cast<float>(0.0), inverseVecLen * inverseVecLen);
-        Duplicate(eiMatrix, static_cast<float>(0.0), inverseVecLen * inverseVecLen);
-        int32_t vsEventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::V_S));
-        SetFlag<HardEvent::V_S>(vsEventID);
-        WaitFlag<HardEvent::V_S>(vsEventID);
-        for (uint32_t j = 0; j < inverseVecLen; ++j) {
-            eiMatrix.SetValue(j * inverseVecLen + j, static_cast<float>(1.0));
-        }
-        inverseRes_.SetValue(offset, static_cast<float>(1.0));
-
-        uint32_t srcShape[2] = {1, inverseVecLen};
-        int32_t eventID = static_cast<int32_t>(pipe_->FetchEventID(HardEvent::S_V));
-        SetFlag<HardEvent::S_V>(eventID);
-        WaitFlag<HardEvent::S_V>(eventID);
-        for (int i = 1; i < inverseVecLen; ++i) {
-            uint32_t curI = i - 1;
-            uint32_t validRows = inverseVecLen - i;
-            Gather(col, attnUbFloat_[offset + i * chunkSize_ + curI], inverseGatherBuffer_, (uint32_t)0, validRows);
-            PipeBarrier<PIPE_V>();
-            uint32_t dstShape[2] = {validRows, inverseVecLen};
-            uint32_t colSrcShape[2] = {validRows, 1};
-            Broadcast<float, BROADCAST_AXIS, 1>(col[inverseVecLen], col, dstShape, colSrcShape);
-            Broadcast<float, BROADCAST_AXIS, 0>(row, inverseRes_[offset + curI * chunkSize_], dstShape, srcShape);
-            PipeBarrier<PIPE_V>();
-            MulAddDst(yLocal[i * inverseVecLen], col[inverseVecLen], row, inverseVecLen * validRows);
-            PipeBarrier<PIPE_V>();
-            // xi = (I - SUM) / Lii = I - SUM
-            Sub(inverseRes_[offset + i * chunkSize_], eiMatrix[i * inverseVecLen],
-                yLocal[i * inverseVecLen], inverseVecLen);
-            PipeBarrier<PIPE_V>();
-        }
     }
 
     __aicore__ inline void GBKCompute(const GlobalTensor<bfloat16_t> gBKWsGm, const GlobalTensor<bfloat16_t> outKgGm,
@@ -911,7 +858,6 @@ private:
     LocalTensor<float> gTransBroadUbFloat_;
     LocalTensor<float> gEndBroadUbFloat_;
     LocalTensor<float> gammaUbFloat_;
-    LocalTensor<uint32_t> inverseGatherBuffer_;
     LocalTensor<float> qUbFloatCon_;
     LocalTensor<float> kUbFloatCon_;
     LocalTensor<float> gBKUbFloat_;
