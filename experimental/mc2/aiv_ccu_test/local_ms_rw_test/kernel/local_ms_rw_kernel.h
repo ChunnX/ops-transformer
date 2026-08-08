@@ -149,7 +149,6 @@ __aicore__ inline void LocalMsRw<T>::ReadWriteWarmup()
 {
     for (uint32_t i = 0; i < enableWarmup_; i++) {
         DataCopy(readLocal_, msGm_[msId_], totalElem_);
-        Duplicate<T>(dataLocal_, (T)2, totalElem_);
         DataCopy(msGm_[msId_], dataLocal_, totalElem_);
         PipeBarrier<PIPE_ALL>();
     }
@@ -160,7 +159,6 @@ __aicore__ inline void LocalMsRw<T>::ReadWriteMode()
 {
     for (uint32_t i = 0; i < loopCount_; i++) {
         DataCopy(readLocal_, msGm_[msId_], totalElem_);
-        Duplicate<T>(dataLocal_, (T)2, totalElem_);
         DataCopy(msGm_[msId_], dataLocal_, totalElem_);
         PipeBarrier<PIPE_ALL>();
     }
@@ -257,10 +255,8 @@ __aicore__ inline void LocalMsRw<T>::Process()
     // 打点外：填充数据
     if (mode0_ == MODE_WRITE_THEN_READ) {
         FillData();
-    } else if (mode0_ == MODE_WRITE) {
-        for (uint32_t i = 0; i < totalElem_; i++) {
-            dataLocal_.SetValue(i, static_cast<T>(i & 0xFF));
-        }
+    } else if (mode0_ == MODE_WRITE || mode0_ == MODE_READ_WRITE) {
+        Duplicate<T>(dataLocal_, (T)2, totalElem_);
     }
 
     PipeBarrier<PIPE_ALL>();

@@ -174,7 +174,7 @@ echo "==================================================================="
 
 current=0
 
-tail -n +2 "$INPUT_CSV" | while IFS=',' read -r id mode0 warmup ms_id loop_count data_size rank_id ranksize; do
+tail -n +2 "$INPUT_CSV" | while IFS=',' read -r id mode0 warmup ms_id loop_count data_size rank_id ranksize || [ -n "$id" ]; do
     current=$((current + 1))
 
     # 单跑模式：按 id 匹配
