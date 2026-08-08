@@ -634,11 +634,11 @@ aclnnStatus CheckMxQuantParams(const aclTensor *x, const aclTensor *groupList, c
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
     checkRet = CheckMXTranspose(x, xScaleOptional, weight, weightScale, transposeWeight);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
-    // Shape semantics must be checked on the caller's original strided views. Normalizing a transposed
-    // weightScale changes [E, N, K/64, 2] to [E, K/64, N, 2] and therefore changes which dim represents N.
-    checkRet = CheckMxQuantShape(x, groupList, xScaleOptional, w, wScale, transposeWeight, y, yScale);
-    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
     checkRet = NormalizeMXTranspose(weight, weightScale, transposeWeight, executor);
+    CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
+    w = (*weight)[gmaq::FIRST_TENSOR_INDEX];
+    wScale = (*weightScale)[gmaq::FIRST_TENSOR_INDEX];
+    checkRet = CheckMxQuantShape(x, groupList, xScaleOptional, w, wScale, transposeWeight, y, yScale);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
     return ACLNN_SUCCESS;
 }

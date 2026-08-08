@@ -67,8 +67,8 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 | --- | --- | --- | --- | --- | --- |
 | `x` | Tensor | 必选 | 左矩阵。MXFP4时用`torch.uint8`存放两个一组的打包数据，并通过`x_dtype`指定逻辑类型。 | MXFP8：`torch.float8_e4m3fn`、`torch.float8_e5m2`；MXFP4：`torch.uint8` | MXFP8：`(M, K)`；MXFP4物理shape：`(M, K / 2)` |
 | `group_list` | Tensor | 必选 | 分组信息。`group_list_type=0`时表示每个group在M轴上的累计结束位置；`group_list_type=1`时表示每个group的M轴长度。 | `torch.int64` | `(E,)` |
-| `weight` | List[Tensor] | 必选 | 右矩阵TensorList，长度仅支持1。调用者必须传入FRACTAL_NZ格式的`weight`；MXFP4用`torch.uint8`存放打包数据并通过`weight_dtype`指定逻辑类型。 | MXFP8：`torch.float8_e4m3fn`；MXFP4：`torch.uint8` | 非转置逻辑shape：`(E, K, N)`<br>转置逻辑shape：`(E, N, K)` |
-| `weight_scale` | List[Tensor] | 必选 | `weight`的MX量化scale，tensorList长度仅支持1。 | 通过`weight_scale_dtype`按`torch_npu.float8_e8m0fnu`解析 | 非转置：`(E, ceil(K / 64), N, 2)`<br>转置：`(E, N, ceil(K / 64), 2)` |
+| `weight` | List[Tensor] | 必选 | 右矩阵TensorList，长度仅支持1。调用者必须传入FRACTAL_NZ格式的`weight`；MXFP4用`torch.uint8`存放打包数据并通过`weight_dtype`指定逻辑类型。转置场景先对源Weight执行`npu_format_cast(..., 29)`，再对末两维执行transpose并传入该view。 | MXFP8：`torch.float8_e4m3fn`；MXFP4：`torch.uint8` | 非转置逻辑shape：`(E, K, N)`；MXFP4物理shape：`(E, K, N / 2)`<br>转置源逻辑shape：`(E, N, K)`；MXFP4源物理shape：`(E, N, K / 2)` |
+| `weight_scale` | List[Tensor] | 必选 | `weight`的MX量化scale，tensorList长度仅支持1。转置场景由源scale对中间两维执行transpose后传入。 | 通过`weight_scale_dtype`按`torch_npu.float8_e8m0fnu`解析 | 传入算子的shape：`(E, ceil(K / 64), N, 2)`<br>转置源shape：`(E, N, ceil(K / 64), 2)` |
 | `activation_type` | str | 必选 | 激活函数类型，当前仅支持`"gelu_tanh"`。 | string | - |
 | `bias` | List[Tensor] | 可选 | bias TensorList，默认值为`None`。当前MX场景必须为空，支持`None`、空TensorList或单个空Tensor。 | `torch.float32` | - |
 | `x_scale` | Tensor | 可选 | `x`的MX量化scale。当前MX场景必须传入有效Tensor。 | 通过`x_scale_dtype`按`torch_npu.float8_e8m0fnu`解析 | `(M, ceil(K / 64), 2)` |
@@ -97,6 +97,7 @@ cann_ops_transformer.grouped_matmul_activation_quant(
 - 调用方式：该接口支持单算子模式调用。
 - `N`必须为64的整数倍，`E`取值范围为`[1, 1024]`。
 - MXFP4场景下`x`与`weight`必须同时为FLOAT4，二者可分别选择E2M1或E1M2；`K`必须为偶数且不能为2。
+- WeightNZ转置场景必须先对源Weight执行`torch_npu.npu_format_cast(weight_source, 29)`，再执行`transpose(-1, -2)`；`weight_scale`必须对源shape的中间两维同步执行transpose。
 - 支持M为0或N为0的空Tensor场景；该场景下允许K为0。
 
 ## 确定性计算
