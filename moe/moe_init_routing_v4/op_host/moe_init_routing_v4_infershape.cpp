@@ -748,7 +748,8 @@ static void SetExpandedScaleShape(gert::Shape *expandedScaleShape, const gert::S
     } else if (QuantMode::FP8_PERBLOCK_E5M2 == quantMode || QuantMode::FP8_PERBLOCK_E4M3FN == quantMode) {
         expandedScaleShape->SetDimNum(DIM_THREE);
         expandedScaleShape->SetDim(0U, outNum);
-        int64_t colsAligned = (cols == NEG_ONE) ? NEG_ONE : Ops::Base::CeilDiv<int64_t>(cols, FP8_PERBLOCK_BLOCK_SIZE * NUM_TWO);
+        int64_t colsAligned = (cols == NEG_ONE) ? NEG_ONE :
+            Ops::Base::CeilDiv<int64_t>(cols, FP8_PERBLOCK_BLOCK_SIZE * NUM_TWO);
         expandedScaleShape->SetDim(1U, colsAligned);
         expandedScaleShape->SetDim(DIM_TWO, SCALE_THIRD_DIM_SIZE);
     }

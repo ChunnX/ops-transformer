@@ -160,7 +160,8 @@ class _MoeInitRoutingOpBuilder(OpBuilder):
         torch._check(expert_tokens_num_type in [0, 1, 2],
             lambda: f"expert_tokens_num_type must be 0, 1 or 2.{ops_error(ErrCode.VALUE)}")
         torch._check(quant_mode in [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17],
-            lambda: f"quant_mode must be in [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17].{ops_error(ErrCode.VALUE)}")
+            lambda: f"quant_mode must be in [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, "
+                    f"14, 15, 16, 17].{ops_error(ErrCode.VALUE)}")
         torch._check(row_idx_type in [0, 1],
             lambda: f"row_idx_type must be 0 or 1.{ops_error(ErrCode.VALUE)}")
         is_float4_case = (hasattr(torch, 'float4_e2m1fn_x2') and x.dtype == torch.float4_e2m1fn_x2) \
@@ -376,7 +377,7 @@ def moe_init_routing(x: torch.Tensor, expert_idx: torch.Tensor,
         topk_weight (Tensor, optional): Topk weight tensor of shape (n, k), dtype float32.
             When provided, expanded_topk_weight output will also be produced. Default: None.
         active_num (Union[int, torch.SymInt]): Number of active tokens. -1 means n*k (all tokens).
- 	        Supports SymInt for dynamic shape in graph mode. Default: -1.
+            Supports SymInt for dynamic shape in graph mode. Default: -1.
         expert_capacity (int): Capacity per expert, required when drop_pad_mode=1. Default: -1.
         expert_num (int): Total number of experts, must be greater than 0. Default: -1.
         drop_pad_mode (int): 0 for dropless, 1 for drop/pad mode. Default: 0.
